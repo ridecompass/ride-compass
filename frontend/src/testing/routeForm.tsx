@@ -72,6 +72,7 @@ export function renderForm(options: Options = {}, tab: SettingsTab = "generate")
     setDistanceTargeted: vi.fn(),
     setLoop: vi.fn(),
     removeWaypoint: vi.fn(),
+    reorderWaypoint: vi.fn(),
     clearDestination: vi.fn(),
     clearPoints: vi.fn(),
     onOriginReset: vi.fn(),

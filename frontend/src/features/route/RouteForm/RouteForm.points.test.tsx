@@ -2,7 +2,7 @@
  * `RouteForm/RoutePoints.tsx`・`RouteForm/PointStrip.tsx`——周回の切り替えと地点の並び。`RouteForm`の中に置かれる子なので、`RouteForm`を描いて確かめる。
  *
  * 見るもの: 周回の切り替え（押している状態と、押して上げる値）、地点の並び（出発地・経由地の番号の丸・終点。周回の間の終点は
- * 出発地の印と名前で押せない）、押した地点を選んで上げること、経由地を足す操作の上限、並びに出ている地点を全部消す操作。
+ * 出発地の印と名前で押せない）、押した地点を選んで上げること、経由地の番号の丸を押さえて動かす並び替え、経由地を足す操作の上限、並びに出ている地点を全部消す操作。
  *
  * ここで見ないもの: 選んでいる地点をどう決めるか（何も選んでいない・選んだ経由地が消えた・探して足した経由地を選ぶ）
  * → `features/route/useGenerationConditions.points.test.ts`。押した地点の詳しくの中身 → `RouteForm/RouteForm.pointDetail.test.tsx`。
@@ -11,9 +11,9 @@
  *
  * 差し替えたもの: 辺りの口の応答（網の層）。辺り無しと答える。
  */
-import { screen } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { PIN_MARK_COLOR } from "@/components/PinMark/PinMark";
 import { onBackend, serveAxisCatalog } from "@/testing/backendServer";
@@ -86,6 +86,37 @@ describe("RouteForm 地点の並び", () => {
       expect(button(name)).toHaveProperty("disabled", disabled);
     },
   );
+
+  // 丸の幅はテスト環境に無いレイアウトの実寸なので、押さえた丸の幅をテストが決める。入る所は、離したときに丸いくつ分動いたかで決まる。
+  it.each([
+    { label: "丸1つ分より半分多く左へ動かすと、1つ前へ動かす", from: 2, dx: -45, to: 1 },
+    { label: "並びの端より先へ動かすと、端へ動かす", from: 1, dx: 200, to: 2 },
+  ])(
+    "経由地の番号の丸を押さえたまま動かして離すと、その順へ動かすことを上げ、丸を選ばない: $label",
+    ({ from, dx, to }) => {
+      const { reorderWaypoint, selectPoint } = renderForm({ waypoints: waypointsOf(3) });
+      const mark = button(`経由地${from + 1}: 地図で選んだ地点`);
+      vi.spyOn(mark, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 0, 30, 30));
+
+      fireEvent.pointerDown(mark, { pointerId: 1, isPrimary: true, clientX: 115 });
+      fireEvent.pointerMove(mark, { pointerId: 1, isPrimary: true, clientX: 115 + dx });
+      fireEvent.pointerUp(mark, { pointerId: 1, isPrimary: true, clientX: 115 + dx });
+      fireEvent.click(mark);
+
+      expect(reorderWaypoint).toHaveBeenCalledExactlyOnceWith(from, to);
+      expect(selectPoint).not.toHaveBeenCalled();
+    },
+  );
+
+  it("経由地の番号の丸を押しただけなら、順を変えずにその経由地を選ぶ", async () => {
+    const { reorderWaypoint, selectPoint } = renderForm({ waypoints: waypointsOf(3) });
+
+    await userEvent.click(button("経由地2: 地図で選んだ地点"));
+
+    expect(selectPoint).toHaveBeenLastCalledWith({ role: "waypoint", index: 1 });
+    expect(reorderWaypoint).not.toHaveBeenCalled();
+    expect(detail("経由地2").textContent).toContain("番号の丸を押さえたまま左右へ動かすと、通る順を入れ替えます");
+  });
 
   it("全部消す操作を押すと上げる", async () => {
     const { clearPoints } = renderForm({ waypoints: waypointsOf(2), destination: DESTINATION });

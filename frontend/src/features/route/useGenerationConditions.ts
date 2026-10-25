@@ -31,6 +31,14 @@ const NO_ROAD_AVOIDANCE: RoadAvoidanceOverride = {};
 export function waypointsFull(waypoints: readonly Coordinates[]): boolean {
   return waypoints.length >= routeGenerateConfig.max_waypoints;
 }
+
+/** 経由地の`from`番目を`to`番目へ動かしたあと、いま`index`番目の経由地が何番目になるか（間の経由地は1つずつ詰まる）。 */
+export function reorderedIndex(index: number, from: number, to: number): number {
+  if (index === from) return to;
+  if (from < index && index <= to) return index - 1;
+  if (to <= index && index < from) return index + 1;
+  return index;
+}
 // 「条件」タブの入力値。場所（目的地・経由地のピン）は持たない——行くたびに変わるうえ、
 // 古いピンが残っていると気づかないまま生成してしまう。
 const LOOP_STORAGE_KEY = "ridecompass:loop";
@@ -82,6 +90,20 @@ export function useGenerationConditions({ onOriginPlace }: GenerationConditionsI
   );
 
   const selectPoint = useCallback((target: PointTarget) => setChosenPoint(target), []);
+  // 経由地の通る順を入れ替える。選んでいる経由地は、番号ではなく同じ地点に付けたままにする（番号のまま残すと、入れ替わった
+  // 別の経由地を選んだことになる）。
+  const reorderWaypoint = useCallback((from: number, to: number) => {
+    setWaypoints((prev) => {
+      const next = [...prev];
+      next.splice(to, 0, ...next.splice(from, 1));
+      return next;
+    });
+    setChosenPoint((current) =>
+      current?.role !== "waypoint" || current.index === null
+        ? current
+        : { role: "waypoint", index: reorderedIndex(current.index, from, to) },
+    );
+  }, []);
   // 経由地を消すと後ろの番号を詰めるので、選んでいる経由地も同じに詰める（番号のまま残すと、次の経由地を選んだことになる）。
   const removeWaypoint = useCallback((index: number) => {
     setWaypoints((prev) => prev.filter((_, i) => i !== index));
@@ -266,6 +288,7 @@ export function useGenerationConditions({ onOriginPlace }: GenerationConditionsI
     waypoints,
     removeWaypoint,
     moveWaypoint,
+    reorderWaypoint,
     /** 生成と画面（地点の並び・地図のピン）が使う目的地（周回の間はnull）。 */
     destination,
     setDestination,

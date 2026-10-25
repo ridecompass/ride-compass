@@ -1,6 +1,6 @@
 /**
  * 生成の条件（`useGenerationConditions.ts`）の地点（出発地以外）——地図のタップで置く地点の選び（経由地は足すか、何番目を
- * 置き直すか）と、経由地・目的地を動かす・消すことと、検索・名前のある点で置いた地点の候補（その位置のままの間だけ）。
+ * 置き直すか）と、経由地・目的地を動かす・消すこと、経由地の通る順の入れ替えと、検索・名前のある点で置いた地点の候補（その位置のままの間だけ）。
  * 地点は保存しない。
  *
  * ここで見ないもの:
@@ -158,6 +158,47 @@ describe("地点", () => {
     act(() => result.current.clearDestination());
     expect(result.current.waypoints).toEqual([C]);
     expect(result.current.destination).toBeNull();
+  });
+
+  // 生成の入力（`snapshot`）の経由地がその順になり、選んでいた経由地は番号が変わっても同じ地点を選んだままにする（番号のままだと、
+  // 詳しくと地図のタップが入れ替わった別の経由地を指す）。
+  it.each([
+    {
+      label: "動かした経由地を選んでいれば、動かした先を選ぶ",
+      from: 1,
+      to: 0,
+      order: [B, A, C],
+      selected: 1,
+      after: 0,
+    },
+    {
+      label: "前へ動かした経由地に追い越されたら、1つ後ろを選ぶ",
+      from: 2,
+      to: 0,
+      order: [C, A, B],
+      selected: 1,
+      after: 2,
+    },
+    {
+      label: "後ろへ動かした経由地に追い越されたら、1つ前を選ぶ",
+      from: 0,
+      to: 2,
+      order: [B, C, A],
+      selected: 2,
+      after: 1,
+    },
+    { label: "動かした範囲の外の経由地は、同じ番号のまま", from: 0, to: 1, order: [B, A, C], selected: 2, after: 2 },
+  ])("経由地の順を入れ替える: $label", ({ from, to, order, selected, after }) => {
+    const { result } = renderConditions();
+    act(() => result.current.selectPoint({ role: "waypoint", index: null }));
+    for (const at of [A, B, C]) act(() => result.current.placeAtSelected(at, null));
+    act(() => result.current.selectPoint({ role: "waypoint", index: selected }));
+
+    act(() => result.current.reorderWaypoint(from, to));
+
+    expect(result.current.snapshot.waypoints).toEqual(order);
+    expect(result.current.selectedPoint).toEqual({ role: "waypoint", index: after });
+    expect(result.current.waypoints[after]).toEqual([A, B, C][selected]);
   });
 
   it("経由地と目的地は一度に消せ、出発地はそのまま残し、出発地を選んでいることに戻る", () => {
