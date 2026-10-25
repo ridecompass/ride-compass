@@ -22,13 +22,7 @@ import type {
   DynamicWeatherLayerId,
   DynamicWeatherRenderPayload,
 } from "@/features/map/layers/dynamicWeather";
-import {
-  areaLayerAnchor,
-  hideBasemapPois,
-  labelLayerAnchor,
-  prepareBasemap,
-  runWhenStyleReady,
-} from "@/features/map/layers/mapStyleOps";
+import { areaLayerAnchor, hideBasemapPois, prepareBasemap, runWhenStyleReady } from "@/features/map/layers/mapStyleOps";
 import { axisMapLayerIds } from "@/features/map/layers/mapLayers";
 import type { LensId, RouteStyleMode } from "@/lib/mapDisplay/routeStyleModes";
 import type { RoadMapLayerView, RouteCandidate, SelectedRouteSegment } from "@/types/route";
@@ -277,7 +271,7 @@ export function applyScene(map: MapLibreMap, scene: MapScene, options: { reset?:
     applyMapScene(map, {
       scene,
       previous: options.reset === true ? EMPTY_MAP_SCENE : (appliedScene.get(map) ?? EMPTY_MAP_SCENE),
-      basemapAnchors: { roads: areaLayerAnchor(map), labels: labelLayerAnchor(map) },
+      basemapAnchors: { roads: areaLayerAnchor(map) },
     });
     appliedScene.set(map, scene);
   });

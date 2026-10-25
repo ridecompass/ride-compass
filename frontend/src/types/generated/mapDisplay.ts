@@ -751,7 +751,9 @@ export const mapDisplay = {
       "supply_poi": 0.9,
       "stop_place": 0.9
     },
-    "segmentNearbyMaxDistanceM": 100.0
+    "segmentNearbyMaxDistanceM": 100.0,
+    "countProperty": "count",
+    "membersProperty": "members"
   },
   "area": {
     "opacity": 0.55,

@@ -21,7 +21,7 @@ import { hiddenRoadLineAt, ROAD_LINE_HIT_TARGET, roadLineRowAt } from "@/feature
 import type { MapLook } from "@/features/map/view/mapLook";
 import { distinctFacilities, facilityOf } from "@/components/MapPopup/facilityRows";
 import type { MapPopupControls } from "@/features/map/MapView/useMapPopups";
-import { pointPlaceName, type PointLayer } from "@/lib/mapDisplay/pointLayers";
+import { pointMembers, pointPlaceName, type PointLayer } from "@/lib/mapDisplay/pointLayers";
 import { projectOnEdge, type EdgeProjection } from "@/lib/localPlane";
 
 /**
@@ -144,19 +144,30 @@ export function bindMapTaps(map: MapLibreMap, latest: { readonly current: MapTap
     open(hit.feature, e, features);
   }
 
-  // 押した所に描かれている名前のある点を全部並べる（重なった点は、上の1つだけでなく中が分かるように）。点の位置は押した所でなく点そのもの
-  // （外の地図で探す位置。押した所は絵の端のことがある）。点の層のタイルは点1つずつを焼く。
+  // 押した所に描かれている名前のある点を、束ねた点の中まで全部並べる（重なった点は、上の1つだけでなく中が分かるように）。点の
+  // 位置は押した所でなく点そのもの（外の地図で探す位置。押した所は絵の端のことがある）。小窓は押した代表点の位置へ出す。
   function openPoint(_feature: MapGeoJSONFeature, _e: MapMouseEvent, features: readonly MapGeoJSONFeature[]) {
-    const found = features.flatMap((feature) => {
+    const points = features.flatMap((feature) => {
       const layer = pointLayerAt(feature);
       if (layer === undefined || feature.geometry.type !== "Point" || !isOpenable(feature, POINT_HIT_TARGET)) return [];
       const [lng, lat] = feature.geometry.coordinates;
-      const at: [number, number] = [lng, lat];
-      return [{ at, facility: facilityOf(layer, feature.properties, at, latest.current.sidePointAlong(at)) }];
+      return [{ layer, feature, at: [lng, lat] as [number, number] }];
     });
-    if (found.length === 0) return;
+    if (points.length === 0) return;
+    // 開ける点は名前を宣言している（`isOpenable`）。
+    const found = points.flatMap(({ layer, feature, at: pointAt }) =>
+      pointMembers(layer, feature.properties, pointAt).map(({ name, at }) => ({
+        at,
+        facility: facilityOf(
+          layer,
+          { ...feature.properties, [layer.point_name_property!]: name },
+          at,
+          latest.current.sidePointAlong(at),
+        ),
+      })),
+    );
     popups.openPoint(
-      found[0].at,
+      points[0].at,
       distinctFacilities(found.map(({ facility }) => facility)),
       found.map(({ at }) => at),
     );

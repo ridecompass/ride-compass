@@ -10,7 +10,6 @@ from app.domain.registry import (
     DisplayAxisSpec,
     DisplayCategorySpec,
     PointFactSpec,
-    PointThinningSpec,
     PrimaryAttributeSpec,
 )
 from app.domain.stop_place import StopPlaceGroup
@@ -270,18 +269,6 @@ PRIMARY_ATTRIBUTES: tuple[PrimaryAttributeSpec, ...] = (
                     ),
                 ),
             ),
-        ),
-        # 街中は飲食店で埋まるので、地点の少ない群から残す（並びは都内の件数の少ない順）。
-        point_thinning=PointThinningSpec(
-            rows=(
-                StopPlaceGroup.TEMPLE_SHRINE.value,
-                StopPlaceGroup.BATH.value,
-                StopPlaceGroup.BICYCLE.value,
-                StopPlaceGroup.LODGING.value,
-                StopPlaceGroup.SCENIC.value,
-                StopPlaceGroup.EAT_DRINK.value,
-            ),
-            ratio_property="confidence",
         ),
         point_name_property="name",
     ),

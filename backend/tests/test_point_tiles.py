@@ -12,15 +12,26 @@
 - 範囲の中で点の無いタイルを空のバイト列にすること → `test_road_graph_repository_contracts.py`
 - 自転車・死亡の判定の両側（自転車ではない軽車両・死者0） → `test_derive_counts.py`（同じ式で数える）
 - 立ち寄り先の群・絞り・まとめ → `test_stop_places.py`
+
+束ねる升目は、タイルの端から升目の幅で測った位置に点を置いて作る（升目の境目にちょうど乗った点は、どちらの升目に入るかが
+浮動小数の丸めで決まる）。
 """
 
 from collections import Counter
+
+import json
 
 import mapbox_vector_tile
 import pytest
 
 from app.batch import derive_stop_places
-from app.domain.region import BoundingBox, tile_bounds_lonlat, tiles_covering_bbox
+from app.domain.map_display import (
+    POINT_CLUSTER_CELLS_PER_TILE,
+    POINT_CLUSTER_CELLS_PER_TILE_AT_MAX_ZOOM,
+    POINT_COUNT_PROPERTY,
+    POINT_MEMBERS_PROPERTY,
+)
+from app.domain.region import ROAD_TILE_MAX_ZOOM, BoundingBox, tile_bounds_lonlat, tile_position, tiles_covering_bbox
 from app.domain.tuning import STOP_CLUSTER_DISTANCE_ID
 from app.infrastructure import derived_data_meta
 from app.infrastructure.point_tile_layers import POINT_TILE_LAYERS
@@ -40,9 +51,12 @@ Z = 16
 [(X, Y)] = tiles_covering_bbox(
     BoundingBox(min_latitude=35.6501, min_longitude=139.7001, max_latitude=35.6502, max_longitude=139.7002), Z)
 TILE = tile_bounds_lonlat(Z, X, Y)
-LON = (TILE.min_longitude + TILE.max_longitude) / 2
-LAT = (TILE.min_latitude + TILE.max_latitude) / 2
-#: まとめる距離（40m）より十分に近い／遠いずれ（度）。経度0.0001度は約9m、0.002度は約180m。
+#: 束ねる升目1つの幅（経度）。
+CELL = (TILE.max_longitude - TILE.min_longitude) / POINT_CLUSTER_CELLS_PER_TILE_AT_MAX_ZOOM
+#: タイルの真ん中の升目の中の点。経度・緯度とも升目の境目から升目の幅の1/4ずつ離す（緯度の升目の高さは経度の幅に近い）。
+LON = (TILE.min_longitude + TILE.max_longitude) / 2 + CELL / 4
+LAT = (TILE.min_latitude + TILE.max_latitude) / 2 + CELL / 4
+#: まとめる距離（40m）より十分に近い／遠いずれ（度）。経度0.0001度は約9mで、束ねる升目の幅より広い。0.002度は約180m。
 NEAR = 0.0001
 FAR = 0.002
 #: タイルを含む取込の範囲（(min_lat, min_lon, max_lat, max_lon)）と、含まない範囲。
@@ -67,9 +81,9 @@ async def _ingest_pois(nodes: list[tuple[float, float, dict[str, str]]], road_ar
         await derive_nodes_at_default_radius(conn)
 
 
-async def _tile(repository: RoadGraphRepository, name: str, x: int = X) -> bytes | None:
+async def _tile(repository: RoadGraphRepository, name: str, x: int = X, *, z: int = Z, y: int = Y) -> bytes | None:
     layer = POINT_TILE_LAYERS[name]
-    return await repository.get_tile_mvt(layer.sql, layer.source_layer, Z, x, Y, tile_bounds_lonlat(Z, x, Y))
+    return await repository.get_tile_mvt(layer.sql, layer.source_layer, z, x, y, tile_bounds_lonlat(z, x, y))
 
 
 def _features(tile: bytes | None, name: str) -> list[dict]:
@@ -153,11 +167,64 @@ async def test_stop_pois_merge_within_the_distance_the_counts_were_built_with(ro
     assert _kinds(tile) == Counter({"barrier": 2})
 
 
-async def test_supply_pois_are_never_merged(road_graph_repository):
-    """補給の点は別々の実体なので、隣り合っていても1つずつ出す。"""
+async def test_supply_pois_are_not_merged_into_one_place(road_graph_repository):
+    """補給の点は別々の実体なので、隣り合っていても1つの所にまとめない（升目が違えば別の点のまま）。"""
     await _ingest_pois([(LON, LAT, TOILETS), (LON + NEAR, LAT, TOILETS)])
 
     assert _kinds(await _tile(road_graph_repository, "poi")) == Counter({"toilets": 2})
+
+
+async def test_points_of_the_same_legend_row_in_one_cell_become_one_point_counting_them(road_graph_repository):
+    """同じ升目の同じ行の点は、束ねた点の1つの位置に1点だけ描き、数と、名前のある点の名前と位置を名前の順に持つ。
+    押すと、中の店を1行ずつ並べられる。"""
+    first, second = (LON + CELL / 4, LAT), (LON, LAT + CELL / 4)
+    await _ingest_stop_places([
+        overture_place_record(1, *first, "店B"),
+        overture_place_record(2, *second, "店A"),
+    ])
+
+    [feature] = _features(await _tile(road_graph_repository, "stop_place"), "stop_place")
+
+    props = feature["properties"]
+    assert props[POINT_COUNT_PROPERTY] == 2
+    assert props["name"] in {"店A", "店B"}
+    assert json.loads(props[POINT_MEMBERS_PROPERTY]) == [
+        ["店A", pytest.approx(second[0], abs=1e-6), pytest.approx(second[1], abs=1e-6)],
+        ["店B", pytest.approx(first[0], abs=1e-6), pytest.approx(first[1], abs=1e-6)],
+    ]
+
+
+async def test_points_of_different_legend_rows_in_one_cell_stay_apart(road_graph_repository):
+    """凡例で行を隠したときに、ほかの行の点ごと消えない。"""
+    await ingest_records("accident", [
+        accident_record(1, LON, LAT, party_a="51"),
+        accident_record(2, LON + CELL / 4, LAT, fatal=True),
+    ])
+
+    features = _features(await _tile(road_graph_repository, "accident"), "accident")
+
+    assert sorted((f["properties"]["fatal"], f["properties"][POINT_COUNT_PROPERTY]) for f in features) == [
+        (False, 1), (True, 1)]
+
+
+async def test_cells_are_coarser_below_the_most_zoomed_tile(road_graph_repository):
+    """一番寄った縮尺より引いたタイルは粗い升目で束ね、一番寄った縮尺のタイルは細かい升目で1点ずつに近く描く。"""
+    x, y = (int(i) for i in tile_position(LON, LAT, ROAD_TILE_MAX_ZOOM - 1))
+    coarse = tile_bounds_lonlat(ROAD_TILE_MAX_ZOOM - 1, x, y)
+    width = (coarse.max_longitude - coarse.min_longitude) / POINT_CLUSTER_CELLS_PER_TILE
+    lat = coarse.min_latitude + width / 4
+    await ingest_records("accident", [
+        accident_record(1, coarse.min_longitude + width / 4, lat),
+        accident_record(2, coarse.min_longitude + width * 3 / 4, lat),
+    ])
+    fine_x, fine_y = (int(i) for i in tile_position(coarse.min_longitude + width / 4, lat, ROAD_TILE_MAX_ZOOM))
+
+    [merged] = _features(await _tile(road_graph_repository, "accident", x, z=ROAD_TILE_MAX_ZOOM - 1, y=y), "accident")
+    apart = _features(
+        await _tile(road_graph_repository, "accident", fine_x, z=ROAD_TILE_MAX_ZOOM, y=fine_y), "accident")
+
+    assert merged["properties"][POINT_COUNT_PROPERTY] == 2
+    assert [f["properties"][POINT_COUNT_PROPERTY] for f in apart] == [1, 1]
 
 
 async def test_convenience_stores_come_from_the_stop_places_and_not_from_openstreetmap(road_graph_repository):
@@ -222,13 +289,13 @@ async def test_an_accident_point_carries_bicycle_fatal_and_year(road_graph_repos
 
     [feature] = _features(await _tile(road_graph_repository, "accident"), "accident")
 
-    assert feature["properties"] == {**expected, "occurred_year": 2021}
+    assert feature["properties"] == {**expected, "occurred_year": 2021, POINT_COUNT_PROPERTY: 1}
 
 
 # --- 立ち寄り先 ----------------------------------------------------------------
 
 
-async def test_a_stop_place_point_carries_its_group_confidence_and_name(road_graph_repository):
+async def test_a_stop_place_point_carries_its_group_and_name(road_graph_repository):
     """立ち寄り先は事故と同じく対象範囲を一括で取り込むので、道を取り込んでいない所でも出す。タイルの外の地点と、
     補給の点に出す群「コンビニ」は出ない。"""
     await _ingest_stop_places([
@@ -239,4 +306,4 @@ async def test_a_stop_place_point_carries_its_group_confidence_and_name(road_gra
 
     [feature] = _features(await _tile(road_graph_repository, "stop_place"), "stop_place")
 
-    assert feature["properties"] == {"group": "eat_drink", "confidence": 0.75, "name": "店1"}
+    assert feature["properties"] == {"group": "eat_drink", "name": "店1", POINT_COUNT_PROPERTY: 1}

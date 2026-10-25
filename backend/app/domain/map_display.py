@@ -688,6 +688,17 @@ POINT_STROKE_WIDTH_PX = 1
 #: 絵記号で描く点（行が`glyph`を持つ軸）の一辺。丸い点より大きくし、中の絵を読める大きさにする。
 POINT_ICON_SIZE_PX = 20
 POINT_OPACITY = 0.9
+#: 点のタイルが近い点を1つの代表点に束ねる升目の数（タイルの一辺を等分する数）。升目はタイルの端に揃うので、隣り合うタイルで
+#: 同じ点が別々の代表点にならない。地図は1つのタイルを一辺512画素から描くので、一辺の升目は32画素から（点の絵が重なり合わない幅）。
+POINT_CLUSTER_CELLS_PER_TILE = 16
+#: 一番寄った縮尺のタイル（`domain/region.py: ROAD_TILE_MAX_ZOOM`）の升目の数。それより寄った地図はこのタイルを引き伸ばして描くので、
+#: 升目を細かくし、寄るほど1点ずつに近く見せる。
+POINT_CLUSTER_CELLS_PER_TILE_AT_MAX_ZOOM = 64
+#: 代表点が束ねた点の数を持つタイルのプロパティ。
+POINT_COUNT_PROPERTY = "count"
+#: 代表点が束ねた名前のある点（代表点そのものも入る）を持つタイルのプロパティ。2点以上を束ねたときだけ持ち、
+#: 値は`[名前, 経度, 緯度]`の並びのJSONの文字列（MVTの属性は配列を持てない）。
+POINT_MEMBERS_PROPERTY = "members"
 #: 区間を選んでいる間、地図の点のうち区間の近くに数える、区間の線からの地上の距離（m）。
 SEGMENT_NEARBY_POINT_MAX_DISTANCE_M = 100.0
 

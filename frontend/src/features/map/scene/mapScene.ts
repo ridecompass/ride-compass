@@ -7,13 +7,10 @@ import { NO_BASEMAP_POI_KINDS, type BasemapPoiKinds } from "@/features/map/layer
  * （scene を組み立てる側が配列へ挿す位置では決まらない）。
  * 並びは「後から前面へ積まれる側が、先に積まれた側を塗り潰さない」ように決める。
  * 面の塗りは下にあるものを隠すため、基礎地図の道路網より下へ潜らせる。
- * 重なった絵を省く点は、基礎地図の文字より下へ潜らせる——MapLibre は前面の層の記号から場所を取るので、
- * 下にあれば文字が先に置かれ、文字と重なった絵のほうが省かれる。
  * 選んだ区間の近くの点は、その区間の縁取りと点の層の上に描く（区間の近くの何を見ているかを隠さない）。
  */
 const MAP_SCENE_TIERS = [
   { id: "area", under: "roads" },
-  { id: "pointUnderLabels", under: "labels" },
   { id: "observedLine", under: null },
   { id: "lensLine", under: null },
   { id: "point", under: null },

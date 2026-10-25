@@ -11,7 +11,10 @@
  * backendのテスト（`test_primary_attributes.py`）が全種別で確かめる。
  *
  * 点の形も源泉が決める。先頭の軸の行が絵記号（`glyph`）を持つレイヤーは、行の色の角丸四角に絵記号を載せた
- * 記号で描き、持たないレイヤーは丸い点で描く。重なった絵を間引くか・どれを残すかも源泉（`point_thinning`）が決める。
+ * 記号で描き、持たないレイヤーは丸い点で描く。重なっても全部描く。
+ *
+ * 近い点はタイルの側で1つの代表点に束ねてあり、代表点は束ねた点の数を持つ（`mapDisplay.point.countProperty`）。2点以上を
+ * 束ねた代表点は、点の右に数を出す。数の層は点の層を全部積んだ後に積む（ほかの層の点に数が隠れない）。
  *
  * 行が出ている間は、同じ種類の基礎地図の店・施設の印を隠す（`BASEMAP_POIS_BY_ROW`）。
  *
@@ -200,18 +203,6 @@ export const POINT_IMAGES: readonly MapSceneImage[] = POINT_ICONS.map((icon) => 
   },
 }));
 
-/** 間引くときに先に残す順の鍵（小さいほど先に残す）。行の順位を2つ刻みにし、行の中では割合（0〜1）の大きいほうを
- * 先にする——刻みが割合の幅より広いので、行をまたいで順が入れ替わらない。 */
-function thinningSortKey(layer: PointLayer, thinning: NonNullable<PointLayer["point_thinning"]>): unknown {
-  const axis = layer.display_axes[0];
-  // 行の鍵は先頭の軸の行を1度ずつ全部並べる（backend の宣言の検査が守る）。
-  const cases = thinning.rows.flatMap((key, rank) => {
-    const category = axis.categories.find((c) => c.key === key)!;
-    return [categoryMatch(axis, category), rank * 2];
-  });
-  return ["+", ["case", ...cases, thinning.rows.length * 2], ["-", 1, ["to-number", ["get", thinning.ratio_property]]]];
-}
-
 function iconImageExpression(layer: PointLayer, categories: readonly GlyphCategory[]): unknown {
   const axis = layer.display_axes[0];
   const cases = categories.flatMap((category) => [categoryMatch(axis, category), pointIconId(layer, category)]);
@@ -225,11 +216,8 @@ function radiusExpression(layer: PointLayer): unknown {
   return ["case", ...cases, POINT.radiusPx];
 }
 
-/** 点の層の印。`thinning`が無ければ、重なっても全部描く。 */
-export function pointLook(
-  layer: PointLayer,
-  thinning: PointLayer["point_thinning"],
-): Pick<SceneLayerEntry, "type" | "paint" | "layout"> {
+/** 点の層の印。重なっても全部描く。 */
+export function pointLook(layer: PointLayer): Pick<SceneLayerEntry, "type" | "paint" | "layout"> {
   const glyphs = glyphCategories(layer);
   const opacity = POINT.opacityByLayer[layer.attr_id];
   if (glyphs.length === 0) {
@@ -249,16 +237,51 @@ export function pointLook(
     paint: { "icon-opacity": opacity },
     layout: {
       "icon-image": iconImageExpression(layer, glyphs),
-      ...(thinning === null
-        ? // 間引かない。丸い点と同じく、重なっても全部描く。
-          { "icon-allow-overlap": true, "icon-ignore-placement": true }
-        : // 重なった絵を省く。自分どうしで省き合うには、置いた絵がほかの絵を退ける（ignore-placementを付けない）。
-          {
-            "icon-allow-overlap": false,
-            "icon-ignore-placement": false,
-            "symbol-sort-key": thinningSortKey(layer, thinning),
-          }),
+      "icon-allow-overlap": true,
+      "icon-ignore-placement": true,
     },
+  };
+}
+
+/** 束ねた点の数の字の大きさ（画素）。 */
+const COUNT_TEXT_SIZE_PX = 12;
+/** 数の字。基礎地図（OpenFreeMap の liberty）の字の置き場にある字体を名指す（無い字体は字が出ない）。 */
+const COUNT_TEXT_FONT = ["Noto Sans Bold"];
+
+/** 点の絵の中心から右の縁までの画素。 */
+function pointHalfWidthPx(layer: PointLayer): number {
+  if (glyphCategories(layer).length > 0) return POINT.iconSizePx / 2;
+  const axis = sizeAxis(layer);
+  return axis === undefined ? POINT.radiusPx : Math.max(...axis.categories.map(pointCategoryRadiusPx));
+}
+
+const COUNT = ["to-number", ["get", POINT.countProperty], 1];
+
+/** 点の層から、同じ点のうち2点以上を束ねた代表点の右に数を出す層を作る。数は押せない（押すのは点）。 */
+export function pointCountEntry(entry: SceneLayerEntry, layer: PointLayer): SceneLayerEntry {
+  const many = [">", COUNT, 1];
+  return {
+    role: `${entry.role}:count`,
+    tier: entry.tier,
+    source: entry.source,
+    sourceLayer: entry.sourceLayer,
+    type: "symbol",
+    paint: {
+      "text-color": palette.semantic.mark_glyph,
+      "text-halo-color": palette.semantic.mark_halo,
+      "text-halo-width": 1.5,
+    },
+    layout: {
+      "text-field": ["to-string", COUNT],
+      "text-font": COUNT_TEXT_FONT,
+      "text-size": COUNT_TEXT_SIZE_PX,
+      "text-anchor": "left",
+      "text-offset": [pointHalfWidthPx(layer) / COUNT_TEXT_SIZE_PX, 0],
+      "text-allow-overlap": true,
+      "text-ignore-placement": true,
+    },
+    visible: entry.visible,
+    filter: (entry.filter === undefined ? many : ["all", entry.filter, many]) as unknown as FilterSpecification,
   };
 }
 
@@ -273,22 +296,18 @@ export const pointGroup = declareGroup<PointState>((state) => {
     tiles: tiles.urls[name],
   }));
 
-  const layers: readonly SceneLayerEntry[] = POINT_LAYERS.map((layer) => {
-    const filter = layerFilter(layer, state.hiddenKeys);
-    const hidesBasemapPois = basemapPoisHiddenBy(layer, state.hiddenKeys);
-    return {
-      role: layer.attr_id,
-      // 重なった絵を省く層は、基礎地図の文字に場所を譲る（文字と重なった絵のほうを省く）。
-      tier: layer.point_thinning === null ? "point" : "pointUnderLabels",
-      source: POINT_TILE_SOURCES[layer.tile_kind].sourceId,
-      sourceLayer: POINT_TILE_SOURCES[layer.tile_kind].sourceLayer,
-      ...pointLook(layer, layer.point_thinning),
-      visible: state.visible[layer.attr_id] === true,
-      hitTargets: [POINT_HIT_TARGET],
-      filter,
-      hidesBasemapPois,
-    };
-  });
+  const points: readonly SceneLayerEntry[] = POINT_LAYERS.map((layer) => ({
+    role: layer.attr_id,
+    tier: "point",
+    source: POINT_TILE_SOURCES[layer.tile_kind].sourceId,
+    sourceLayer: POINT_TILE_SOURCES[layer.tile_kind].sourceLayer,
+    ...pointLook(layer),
+    visible: state.visible[layer.attr_id] === true,
+    hitTargets: [POINT_HIT_TARGET],
+    filter: layerFilter(layer, state.hiddenKeys),
+    hidesBasemapPois: basemapPoisHiddenBy(layer, state.hiddenKeys),
+  }));
+  const counts = points.map((entry, i) => pointCountEntry(entry, POINT_LAYERS[i]));
 
-  return { sources, layers, images: POINT_IMAGES };
+  return { sources, layers: [...points, ...counts], images: POINT_IMAGES };
 });

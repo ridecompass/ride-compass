@@ -6,7 +6,6 @@ export const primaryAttributes = [
     "geometry": "line",
     "point_facts": [],
     "tile_kind": null,
-    "point_thinning": null,
     "point_name_property": null,
     "display_axes": []
   },
@@ -16,7 +15,6 @@ export const primaryAttributes = [
     "geometry": "line",
     "point_facts": [],
     "tile_kind": null,
-    "point_thinning": null,
     "point_name_property": null,
     "display_axes": []
   },
@@ -26,7 +24,6 @@ export const primaryAttributes = [
     "geometry": "line",
     "point_facts": [],
     "tile_kind": null,
-    "point_thinning": null,
     "point_name_property": null,
     "display_axes": []
   },
@@ -36,7 +33,6 @@ export const primaryAttributes = [
     "geometry": "line",
     "point_facts": [],
     "tile_kind": null,
-    "point_thinning": null,
     "point_name_property": null,
     "display_axes": []
   },
@@ -46,7 +42,6 @@ export const primaryAttributes = [
     "geometry": "line",
     "point_facts": [],
     "tile_kind": null,
-    "point_thinning": null,
     "point_name_property": null,
     "display_axes": []
   },
@@ -56,7 +51,6 @@ export const primaryAttributes = [
     "geometry": "line",
     "point_facts": [],
     "tile_kind": null,
-    "point_thinning": null,
     "point_name_property": null,
     "display_axes": []
   },
@@ -66,7 +60,6 @@ export const primaryAttributes = [
     "geometry": "line",
     "point_facts": [],
     "tile_kind": null,
-    "point_thinning": null,
     "point_name_property": null,
     "display_axes": []
   },
@@ -76,7 +69,6 @@ export const primaryAttributes = [
     "geometry": "line",
     "point_facts": [],
     "tile_kind": null,
-    "point_thinning": null,
     "point_name_property": null,
     "display_axes": []
   },
@@ -86,7 +78,6 @@ export const primaryAttributes = [
     "geometry": "line",
     "point_facts": [],
     "tile_kind": null,
-    "point_thinning": null,
     "point_name_property": null,
     "display_axes": []
   },
@@ -96,7 +87,6 @@ export const primaryAttributes = [
     "geometry": "line",
     "point_facts": [],
     "tile_kind": null,
-    "point_thinning": null,
     "point_name_property": null,
     "display_axes": []
   },
@@ -106,7 +96,6 @@ export const primaryAttributes = [
     "geometry": "area",
     "point_facts": [],
     "tile_kind": null,
-    "point_thinning": null,
     "point_name_property": null,
     "display_axes": []
   },
@@ -116,7 +105,6 @@ export const primaryAttributes = [
     "geometry": "point",
     "point_facts": [],
     "tile_kind": "poi",
-    "point_thinning": null,
     "point_name_property": null,
     "display_axes": [
       {
@@ -204,7 +192,6 @@ export const primaryAttributes = [
       }
     ],
     "tile_kind": "accident",
-    "point_thinning": null,
     "point_name_property": null,
     "display_axes": [
       {
@@ -267,7 +254,6 @@ export const primaryAttributes = [
     "geometry": "point",
     "point_facts": [],
     "tile_kind": null,
-    "point_thinning": null,
     "point_name_property": null,
     "display_axes": []
   },
@@ -277,7 +263,6 @@ export const primaryAttributes = [
     "geometry": "area",
     "point_facts": [],
     "tile_kind": null,
-    "point_thinning": null,
     "point_name_property": null,
     "display_axes": []
   },
@@ -287,7 +272,6 @@ export const primaryAttributes = [
     "geometry": "point",
     "point_facts": [],
     "tile_kind": "poi",
-    "point_thinning": null,
     "point_name_property": "name",
     "display_axes": [
       {
@@ -366,17 +350,6 @@ export const primaryAttributes = [
     "geometry": "point",
     "point_facts": [],
     "tile_kind": "stop_place",
-    "point_thinning": {
-      "rows": [
-        "temple_shrine",
-        "bath",
-        "bicycle",
-        "lodging",
-        "scenic",
-        "eat_drink"
-      ],
-      "ratio_property": "confidence"
-    },
     "point_name_property": "name",
     "display_axes": [
       {

@@ -9,18 +9,29 @@ TILE_SHAPES`）・生成物（`region-tile-config.json`の`point_layers`）は�
 読み、判定しないレイヤー（事故・立ち寄り先は対象範囲を一括で取り込むため「範囲の一部だけ取得済み」が無い）は`covered`を
 常に真にする。`:layer_name`・`:extent`・タイル座標（`:z`・`:x`・`:y`・`:xmin`等）は読み出しの側
 （`road_graph_repository.py: RoadGraphRepository.get_tile_mvt`）が渡す。
+
+どのレイヤーも、タイルの中の近い点を凡例の行ごとに1つの代表点へ束ねて焼き、代表点は束ねた点の数
+（`domain/map_display.py: POINT_COUNT_PROPERTY`）と、2点以上なら束ねた名前のある点の名前と位置
+（`domain/map_display.py: POINT_MEMBERS_PROPERTY`）を持つ。
 """
 
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from functools import cached_property
 
-from sqlalchemy import Float, Text, TextClause, bindparam, text
+from sqlalchemy import Float, Integer, Text, TextClause, bindparam, text
 from sqlalchemy.dialects.postgresql import ARRAY
 
 from app.domain.accident import BICYCLE_SQL, FATAL_SQL
 from app.domain.geo import degrees_covering_m
+from app.domain.map_display import (
+    POINT_CLUSTER_CELLS_PER_TILE,
+    POINT_CLUSTER_CELLS_PER_TILE_AT_MAX_ZOOM,
+    POINT_COUNT_PROPERTY,
+    POINT_MEMBERS_PROPERTY,
+)
 from app.domain.primary_attributes import PRIMARY_ATTRIBUTES, stop_poi_map_group_sql
+from app.domain.region import ROAD_TILE_MAX_ZOOM
 from app.domain.registry import PrimaryAttributeSpec, TileKind
 from app.domain.stop_place import StopPlaceGroup
 from app.domain.traffic import STOP_POI_KINDS, stop_kind_sql
@@ -48,6 +59,62 @@ class PointTileLayer:
 
 _CONVENIENCE_GROUP = bindparam("convenience_group", value=StopPlaceGroup.CONVENIENCE.value, type_=Text())
 
+_CLUSTER_PARAMS = (
+    bindparam("cluster_cells", value=POINT_CLUSTER_CELLS_PER_TILE, type_=Integer()),
+    bindparam("cluster_fine_cells", value=POINT_CLUSTER_CELLS_PER_TILE_AT_MAX_ZOOM, type_=Integer()),
+    bindparam("cluster_fine_zoom", value=ROAD_TILE_MAX_ZOOM, type_=Integer()),
+)
+
+
+def _clustered_mvt_sql(points: str, rows: tuple[str, ...], properties: tuple[str, ...], preference: str) -> str:
+    """タイルの中の点を、凡例の行ごと・升目ごとに1つの代表点へ束ねて1タイルへ焼くSQL式。
+
+    `points`はタイルの中の点の行を返すSQLで、列`geom`（経度・緯度の点）・`name`（名前。無ければNULL）と、`rows`
+    （凡例の行を決める列）・`properties`（代表点がタイルへ出す列）・`preference`（代表点の選び順の式。列は`celled.`で読む）が読む列を持つ。
+    行をまたいで束ねない——凡例で行を隠したときに、代表点ごと消えたり件数が合わなくなったりする。代表点は束ねた点の1つで、
+    重心へ動かさない（名前と位置で外の地図を開く）。
+    """
+    same_row = " AND ".join(f"celled.{c} IS NOT DISTINCT FROM clusters.{c}" for c in rows)
+    row_columns = ", ".join(rows)
+    celled_rows = ", ".join(f"celled.{c}" for c in rows)
+    selected = ", ".join(f"celled.{c} AS {c}" for c in properties)
+    return f"""(
+        WITH points AS ({points}),
+        grid AS (
+            SELECT ST_TileEnvelope(:z, :x, :y) AS env,
+                   CASE WHEN :z >= :cluster_fine_zoom THEN :cluster_fine_cells ELSE :cluster_cells END AS cells
+        ),
+        celled AS (
+            SELECT points.*, m.geom AS geom_3857,
+                   floor((ST_X(m.geom) - ST_XMin(grid.env)) * grid.cells
+                         / (ST_XMax(grid.env) - ST_XMin(grid.env))) AS cell_x,
+                   floor((ST_Y(m.geom) - ST_YMin(grid.env)) * grid.cells
+                         / (ST_YMax(grid.env) - ST_YMin(grid.env))) AS cell_y
+            FROM points CROSS JOIN grid CROSS JOIN LATERAL (SELECT ST_Transform(points.geom, 3857) AS geom) m
+        ),
+        clusters AS (
+            SELECT {row_columns}, cell_x, cell_y, count(*) AS count,
+                   (json_agg(json_build_array(name, round(ST_X(geom)::numeric, 6), round(ST_Y(geom)::numeric, 6))
+                             ORDER BY name, ST_X(geom), ST_Y(geom)) FILTER (WHERE name IS NOT NULL))::text AS members
+            FROM celled
+            GROUP BY {row_columns}, cell_x, cell_y
+        )
+        SELECT ST_AsMVT(mvt.*, :layer_name, :extent, 'geom') FROM (
+            SELECT DISTINCT ON ({celled_rows}, celled.cell_x, celled.cell_y)
+                ST_AsMVTGeom(celled.geom_3857, ST_TileEnvelope(:z, :x, :y), :extent, {TILE_BUFFER}, true) AS geom,
+                {selected},
+                celled.name AS name,
+                clusters.count AS {POINT_COUNT_PROPERTY},
+                CASE WHEN clusters.count > 1 THEN clusters.members END AS {POINT_MEMBERS_PROPERTY}
+            FROM celled
+            JOIN clusters ON {same_row} AND celled.cell_x = clusters.cell_x AND celled.cell_y = clusters.cell_y
+            ORDER BY {celled_rows}, celled.cell_x, celled.cell_y,
+                     {preference}, ST_X(celled.geom), ST_Y(celled.geom)
+        ) mvt
+        WHERE mvt.geom IS NOT NULL
+    )"""
+
+
 # 種別は`node_kinds.kind`（派生側の分類器が付けたもの）に信号の読み替えを済ませたもので、
 # 位置は`source_features`の点。コンビニだけは立ち寄り先の表（`stop_places`）から足し、店の名前も添える。
 _POI_KIND_EXPR = stop_kind_sql("nm")
@@ -57,116 +124,110 @@ _POI_GROUP_EXPR = stop_poi_map_group_sql("nm")
 _DEGREES_PER_M = degrees_covering_m(1.0)
 
 # 停止要因POI・補給POIを1タイルへ焼き込む。停止要因は数える側（`batch/derive_counts.py`）と同じく、派生を作り直したときの
-# まとめる距離でまとめる。タイル境界で塊が切れると、同じ交差点が隣り合うタイルで別々の点になるので、境目の外へまとめる距離
-# ずつ2つ先まで連なる点を読む（塊の間隔はWeb Mercatorのmで測り、その1mは地面では1m以下なので、地面のmで覆えば足りる）。
+# まとめる距離で1つの所にまとめてから、ほかの点と同じく升目で束ねる。タイル境界で塊が切れると、同じ交差点が隣り合うタイルで
+# 別々の点になるので、境目の外へまとめる距離ずつ2つ先まで連なる点を読む（塊の間隔はWeb Mercatorのmで測り、その1mは地面では
+# 1m以下なので、地面のmで覆えば足りる）。
+_POI_POINTS_SQL = f"""
+    SELECT grouped.kind, grouped.map_group, grouped.name, grouped.geom
+    FROM (
+        -- まとめた点の種別はどれを代表にしても凡例の同じ行に入る。
+        SELECT min(clustered.kind) AS kind,
+               clustered.map_group,
+               min(clustered.name) AS name,
+               ST_Centroid(ST_Collect(clustered.geom)) AS geom
+        FROM (
+            SELECT {_POI_KIND_EXPR} AS kind,
+                   {_POI_GROUP_EXPR} AS map_group,
+                   p.geom AS geom,
+                   -- 停止要因はまとめてから出す（同じ交差点が複数の点に
+                   -- ならないように）。補給POIは別々の実体なのでまとめない。
+                   CASE WHEN nm.kind = ANY(:stop_kinds) THEN
+                       'c' || ST_ClusterDBSCAN(
+                           ST_Transform(p.geom, 3857),
+                           eps := (SELECT eps_m FROM cluster), minpoints := 1
+                       ) OVER (PARTITION BY {_POI_GROUP_EXPR})
+                   ELSE 'n' || p.osm_node_id END AS cluster_key,
+                   NULL::text AS name
+            FROM {NODES_SOURCE_SQL} p
+            JOIN node_kinds nm ON nm.osm_node_id = p.osm_node_id
+            WHERE ST_Intersects(
+                  p.geom,
+                  ST_Expand(
+                      ST_MakeEnvelope(:xmin, :ymin, :xmax, :ymax, 4326),
+                      (SELECT 2 * eps_m * :degrees_per_m FROM cluster)))
+            UNION ALL
+            -- 補給POIのコンビニは立ち寄り先の群「コンビニ」の行から出す。群の値が種別の値。
+            SELECT s.place_group, s.place_group, s.geom,
+                   's' || s.source || ':' || s.source_key, s.name
+            FROM stop_places s
+            WHERE s.place_group = :convenience_group
+              AND ST_Intersects(s.geom, ST_MakeEnvelope(:xmin, :ymin, :xmax, :ymax, 4326))
+        ) clustered
+        GROUP BY clustered.map_group, clustered.cluster_key
+    ) grouped
+    WHERE ST_Intersects(grouped.geom, ST_MakeEnvelope(:xmin, :ymin, :xmax, :ymax, 4326))
+"""
+
+_POI_CLUSTERED_SQL = _clustered_mvt_sql(_POI_POINTS_SQL, rows=("map_group",), properties=("kind",), preference="celled.kind")
+
 _POI_TILE_MVT_SQL = text(
     f"""
     WITH coverage AS ({COVERAGE_SQL}),
     cluster AS (SELECT {recorded_tuning_sql(STOP_CLUSTER_DISTANCE_ID)} AS eps_m)
     SELECT
         coverage.covered,
-        CASE WHEN coverage.covered THEN (
-            SELECT ST_AsMVT(mvt.*, :layer_name, :extent, 'geom') FROM (
-                SELECT
-                    ST_AsMVTGeom(
-                        ST_Transform(grouped.geom, 3857),
-                        ST_TileEnvelope(:z, :x, :y), :extent, {TILE_BUFFER}, true
-                    ) AS geom,
-                    grouped.kind AS kind,
-                    grouped.name AS name
-                FROM (
-                    -- まとめた点の種別はどれを代表にしても凡例の同じ行に入る。
-                    SELECT min(clustered.kind) AS kind,
-                           min(clustered.name) AS name,
-                           ST_Centroid(ST_Collect(clustered.geom)) AS geom
-                    FROM (
-                        SELECT {_POI_KIND_EXPR} AS kind,
-                               {_POI_GROUP_EXPR} AS map_group,
-                               p.geom AS geom,
-                               -- 停止要因はまとめてから出す（同じ交差点が複数の点に
-                               -- ならないように）。補給POIは別々の実体なのでまとめない。
-                               CASE WHEN nm.kind = ANY(:stop_kinds) THEN
-                                   'c' || ST_ClusterDBSCAN(
-                                       ST_Transform(p.geom, 3857),
-                                       eps := (SELECT eps_m FROM cluster), minpoints := 1
-                                   ) OVER (PARTITION BY {_POI_GROUP_EXPR})
-                               ELSE 'n' || p.osm_node_id END AS cluster_key,
-                               NULL::text AS name
-                        FROM {NODES_SOURCE_SQL} p
-                        JOIN node_kinds nm ON nm.osm_node_id = p.osm_node_id
-                        WHERE ST_Intersects(
-                              p.geom,
-                              ST_Expand(
-                                  ST_MakeEnvelope(:xmin, :ymin, :xmax, :ymax, 4326),
-                                  (SELECT 2 * eps_m * :degrees_per_m FROM cluster)))
-                        UNION ALL
-                        -- 補給POIのコンビニは立ち寄り先の群「コンビニ」の行から出す。群の値が種別の値。
-                        SELECT s.place_group, s.place_group, s.geom,
-                               's' || s.source || ':' || s.source_key, s.name
-                        FROM stop_places s
-                        WHERE s.place_group = :convenience_group
-                          AND ST_Intersects(s.geom, ST_MakeEnvelope(:xmin, :ymin, :xmax, :ymax, 4326))
-                    ) clustered
-                    GROUP BY clustered.map_group, clustered.cluster_key
-                ) grouped
-                WHERE ST_Intersects(
-                    grouped.geom, ST_MakeEnvelope(:xmin, :ymin, :xmax, :ymax, 4326))
-            ) mvt
-            WHERE mvt.geom IS NOT NULL
-        ) END AS tile
+        CASE WHEN coverage.covered THEN {_POI_CLUSTERED_SQL} END AS tile
     FROM coverage
     """
 ).bindparams(
     bindparam("stop_kinds", value=sorted(STOP_POI_KINDS), type_=ARRAY(Text())),
     bindparam("degrees_per_m", value=_DEGREES_PER_M, type_=Float()),
     _CONVENIENCE_GROUP,
+    *_CLUSTER_PARAMS,
 )
 
 # 事故。表示に使う値（死亡事故か・自転車が絡むか・発生年）は生データの列から都度導く。判定の
-# 規則は`domain/accident.py`が持ち、集計（`derive_counts.py`）と同じものを使う。
+# 規則は`domain/accident.py`が持ち、集計（`derive_counts.py`）と同じものを使う。束ねた代表点は、一番新しい事故の発生年を持つ。
+_ACCIDENT_POINTS_SQL = f"""
+    SELECT a.geom, NULL::text AS name, {BICYCLE_SQL} AS involves_bicycle, {FATAL_SQL} AS fatal, a.occurred_year
+    FROM {accidents_within_sql("ST_MakeEnvelope(:xmin, :ymin, :xmax, :ymax, 4326)")} a
+"""
+
+_ACCIDENT_CLUSTERED_SQL = _clustered_mvt_sql(
+    _ACCIDENT_POINTS_SQL,
+    rows=("involves_bicycle", "fatal"),
+    properties=("involves_bicycle", "fatal", "occurred_year"),
+    preference="celled.occurred_year DESC NULLS LAST",
+)
+
 _ACCIDENT_TILE_MVT_SQL = text(
     f"""
     SELECT
         true AS covered,
-        (
-            SELECT ST_AsMVT(mvt.*, :layer_name, :extent, 'geom') FROM (
-                SELECT
-                    ST_AsMVTGeom(
-                        ST_Transform(a.geom, 3857), ST_TileEnvelope(:z, :x, :y), :extent, {TILE_BUFFER}, true
-                    ) AS geom,
-                    {BICYCLE_SQL} AS involves_bicycle,
-                    {FATAL_SQL} AS fatal,
-                    a.occurred_year
-                FROM {accidents_within_sql("ST_MakeEnvelope(:xmin, :ymin, :xmax, :ymax, 4326)")} a
-            ) mvt
-            WHERE mvt.geom IS NOT NULL
-        ) AS tile
+        {_ACCIDENT_CLUSTERED_SQL} AS tile
     """
+).bindparams(*_CLUSTER_PARAMS)
+
+# 立ち寄り先。群へ入れ、近くの同じ店をまとめた後の表（`batch/derive_stop_places.py`）をそのまま出す。代表点は確からしい地点を先に選ぶ。
+_STOP_PLACE_POINTS_SQL = """
+    SELECT s.geom, s.name, s.place_group AS "group", s.confidence
+    FROM stop_places s
+    -- 群「コンビニ」は補給の点のタイル（`poi`）が出す。
+    WHERE s.place_group <> :convenience_group
+      AND ST_Intersects(s.geom, ST_MakeEnvelope(:xmin, :ymin, :xmax, :ymax, 4326))
+"""
+
+_STOP_PLACE_CLUSTERED_SQL = _clustered_mvt_sql(
+    _STOP_PLACE_POINTS_SQL, rows=('"group"',), properties=('"group"',), preference="celled.confidence DESC NULLS LAST"
 )
 
-# 立ち寄り先。群へ入れ、近くの同じ店をまとめた後の表（`batch/derive_stop_places.py`）をそのまま出す。
 _STOP_PLACE_TILE_MVT_SQL = text(
     f"""
     SELECT
         true AS covered,
-        (
-            SELECT ST_AsMVT(mvt.*, :layer_name, :extent, 'geom') FROM (
-                SELECT
-                    ST_AsMVTGeom(
-                        ST_Transform(s.geom, 3857), ST_TileEnvelope(:z, :x, :y), :extent, {TILE_BUFFER}, true
-                    ) AS geom,
-                    s.place_group AS "group",
-                    s.confidence,
-                    s.name
-                FROM stop_places s
-                -- 群「コンビニ」は補給の点のタイル（`poi`）が出す。
-                WHERE s.place_group <> :convenience_group
-                  AND ST_Intersects(s.geom, ST_MakeEnvelope(:xmin, :ymin, :xmax, :ymax, 4326))
-            ) mvt
-            WHERE mvt.geom IS NOT NULL
-        ) AS tile
+        {_STOP_PLACE_CLUSTERED_SQL} AS tile
     """
-).bindparams(_CONVENIENCE_GROUP)
+).bindparams(_CONVENIENCE_GROUP, *_CLUSTER_PARAMS)
 
 #: 名前→点のレイヤー。
 POINT_TILE_LAYERS: dict[str, PointTileLayer] = {

@@ -2,7 +2,7 @@
  * `app/page.tsx`——トップページのうち、地図の小窓。
  *
  * 見ること: 「ルート結果」を開いていても、区間・道・地図の点のどれを押しても小窓は1つだけで、最後に押した物の中身を出すこと。
- * 名前の無い点は押せる物に数えず下の物を開き、重なった名前のある点は全部並べること。区間の中身から点を開くと区間へ戻れ、道へ
+ * 名前の無い点は押せる物に数えず下の物を開き、重なった名前のある点と、束ねた代表点の中の点は全部並べること。区間の中身から点を開くと区間へ戻れ、道へ
  * 入れ替えると区間の選びを外し、開ける物の無い所を押すと閉じること。道の小窓を別の道へ押し替えると、前の道で押した評価を
  * 新しい道へ持ち越さないこと。区間の小窓が上の帯と難易度の塊の形で出て、寄せるアイコンで寄せること。
  *
@@ -16,6 +16,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { POINT_TILE_SOURCES } from "@/features/map/scene/groups/points";
 import { sceneLayerId } from "@/features/map/scene/sceneBuilders";
+import { mapDisplay } from "@/types/generated/mapDisplay";
 import { onBackend } from "@/testing/backendServer";
 import {
   ELSEWHERE,
@@ -48,7 +49,7 @@ beforeEach(() => {
 const ROAD: PointedFeature = { layer: "road-tiles-surface", properties: { osm_way_id: 1, feature_key: "1" } };
 
 describe("地図の小窓", () => {
-  it("「ルート結果」を開いたままでも、区間・点・道のどれを押しても小窓は1つだけで最後に押した物の中身を出す。名前の無い点は飛ばして下の物を開き、重なった名前のある点は全部並べ、区間の中身から点を開くと区間へ戻れる", async () => {
+  it("「ルート結果」を開いたままでも、区間・点・道のどれを押しても小窓は1つだけで最後に押した物の中身を出す。名前の無い点は飛ばして下の物を開き、重なった名前のある点と束ねた代表点の中の点は全部並べ、区間の中身から点を開くと区間へ戻れる", async () => {
     const shop: PointedFeature = {
       layer: sceneLayerId(POINT_TILE_SOURCES.poi.sourceId, "supply_poi"),
       properties: { name: "角の店", kind: "convenience" },
@@ -57,6 +58,19 @@ describe("地図の小窓", () => {
     const cafe: PointedFeature = {
       layer: sceneLayerId(POINT_TILE_SOURCES.poi.sourceId, "supply_poi"),
       properties: { name: "峠の茶屋", kind: "cafe" },
+      geometry: { type: "Point", coordinates: [ELSEWHERE.longitude, ELSEWHERE.latitude] },
+    };
+    const bundled: PointedFeature = {
+      layer: sceneLayerId(POINT_TILE_SOURCES.poi.sourceId, "supply_poi"),
+      properties: {
+        name: "角の店",
+        kind: "convenience",
+        [mapDisplay.point.countProperty]: 2,
+        [mapDisplay.point.membersProperty]: JSON.stringify([
+          ["角の店", ELSEWHERE.longitude, ELSEWHERE.latitude],
+          ["駅前の店", ELSEWHERE.longitude + 0.0001, ELSEWHERE.latitude],
+        ]),
+      },
       geometry: { type: "Point", coordinates: [ELSEWHERE.longitude, ELSEWHERE.latitude] },
     };
     const toilet: PointedFeature = {
@@ -97,6 +111,13 @@ describe("地図の小窓", () => {
         .getAllByRole("link")
         .map((link) => link.textContent),
     ).toEqual(["角の店", "峠の茶屋"]);
+    // 束ねた代表点は、中の店を1行ずつ並べる。
+    clickMap(ELSEWHERE, [bundled]);
+    expect(
+      within(header("点の小窓の上の帯")!.parentElement!)
+        .getAllByRole("link")
+        .map((link) => link.textContent),
+    ).toEqual(["角の店", "駅前の店"]);
     clickMap(ELSEWHERE, [toilet, ROAD]);
     expect(await screen.findByRole("button", { name: "この道の評価を見る" })).toBeInTheDocument();
 

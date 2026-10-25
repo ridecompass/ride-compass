@@ -1,5 +1,5 @@
 // 地図へ当てる宣言（`features/map/scene/mapScene.ts: MapScene`）を、`applyMapScene`のテストが組み立てる道具。
-// 地図は基礎地図のレイヤー（`BASEMAP_LAYER_IDS`）を先に持ち、基礎地図の道と文字の位置（`BASEMAP_ANCHORS`）を呼び出し側が渡す。
+// 地図は基礎地図のレイヤー（`BASEMAP_LAYER_IDS`）を先に持ち、基礎地図の道の位置（`BASEMAP_ANCHORS`）を呼び出し側が渡す。
 import { applyMapScene, type MapSceneTarget } from "@/features/map/scene/applyMapScene";
 import {
   EMPTY_MAP_SCENE,
@@ -12,7 +12,7 @@ import { tilesContent } from "@/features/map/scene/sceneBuilders";
 import { createRecordingMap } from "@/testing/mapTrace/recordingMap";
 
 export const BASEMAP_LAYER_IDS = ["basemap-water", "basemap-road", "basemap-label"];
-export const BASEMAP_ANCHORS = { roads: "basemap-road", labels: "basemap-label" };
+export const BASEMAP_ANCHORS = { roads: "basemap-road" };
 export const ROAD_TILES = ["https://tiles.test/v1/{z}/{x}/{y}.pbf"];
 
 export function recordingMap(): ReturnType<typeof createRecordingMap> {
