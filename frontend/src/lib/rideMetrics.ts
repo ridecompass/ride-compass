@@ -1,11 +1,10 @@
-// 走行の計測。デバッグモードの間に走行モードを始めると、電池・位置・地図とページの描き直し・通信・重い処理を1分ごとに
-// 1行へまとめ、端末に残す（実走で電池の減りの原因を切り分ける。開発機の DevTools は実走中につなげない）。
-// 走っていない間と、デバッグモードでない間は何もしない——数える口は、記録していなければ最初の比べだけで戻る。
+// 走行の計測。走行モードの間、電池・位置・地図とページの描き直し・通信・重い処理を1分ごとに1行へまとめ、端末に残す
+// （実走で電池の減りの原因を切り分ける。開発機の DevTools は実走中につなげない）。残すのは数だけで、位置の座標は残さず、
+// どこへも送らない。走っていない間は何もしない——数える口は、記録していなければ最初の比べだけで戻る。
 // 標準の口が無い端末（Safari 等）では、その項目を null・0 のまま残す。
 
 import type { Map as MapLibreMap } from "maplibre-gl";
 
-import { isDebugEnabled } from "@/lib/debugLog";
 import { readStoredValue, writeStoredValue } from "@/lib/safeStorage";
 
 const STORAGE_KEY = "ridecompass:ride-metrics";
@@ -257,9 +256,9 @@ function watchBattery(): () => void {
 
 type BatteryManagerLike = EventTarget & { level: number; charging: boolean };
 
-/** 走行モードを始めたとき。デバッグモードなら前の走行の記録を消して記録を始める。 */
+/** 走行モードを始めたとき。前の走行の記録を消して記録を始める。 */
 export function startRideMetrics(): void {
-  if (recording !== null || !isDebugEnabled() || typeof window === "undefined") return;
+  if (recording !== null || typeof window === "undefined") return;
   const nowMs = Date.now();
   const log: RideMetricsLog = {
     startedAt: new Date(nowMs).toISOString(),

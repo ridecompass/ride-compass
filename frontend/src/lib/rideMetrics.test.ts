@@ -1,11 +1,10 @@
 /**
- * `lib/rideMetrics.ts`——走行の計測。デバッグモードの間の走行だけを、1分ごとの行にして端末に残す。
+ * `lib/rideMetrics.ts`——走行の計測。走行モードの間だけ、1分ごとの行にして端末に残す。
  *
  * ここで見ないもの: 標準の観測の口（電池・Long Tasks・通信）の値。テスト環境に無いので、その項目は null・0 のまま残ることだけを見る。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { setDebugEnabled } from "@/lib/debugLog";
 import {
   countRideMetric,
   readRideMetrics,
@@ -21,12 +20,10 @@ describe("走行の計測", () => {
   });
   afterEach(() => {
     stopRideMetrics();
-    setDebugEnabled(false);
     vi.useRealTimers();
   });
 
-  it("デバッグモードでない間の走行は残さない", () => {
-    startRideMetrics();
+  it("走っていない間の数は残さない", () => {
     countRideMetric("mapRenders");
     vi.advanceTimersByTime(60_000);
 
@@ -34,7 +31,6 @@ describe("走行の計測", () => {
   });
 
   it("走行の1分ごとに数と位置の誤差・間隔をまとめた行を足し、次の走行を始めると前の走行の行を消す", () => {
-    setDebugEnabled(true);
     startRideMetrics();
     recordRideFix(5, 5, 1_000);
     recordRideFix(15, null, 4_000);
