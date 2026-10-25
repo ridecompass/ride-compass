@@ -27,8 +27,15 @@ interface MapNavigationControlProps {
   onResetNorth: () => void;
   /** いまの「評価で塗る」の周りの道の塗りが、地図の向きで決まっている。 */
   linked: boolean;
-  /** 走行モードの間だけ渡る。拡大・縮小の代わりに倍率のボタンを出し、方位磁針はダイヤルを開かず、北が上と進む向きが上を切り替える。 */
-  ride: { headingUp: boolean; onToggleHeadingUp: () => void; zoomBase: number; onNextZoom: () => void } | null;
+  /** 走行モードの間だけ渡る。拡大・縮小の代わりに倍率のボタンを出し、方位磁針はダイヤルを開かず、現在地を追っている間は北が上と
+   * 進む向きが上を切り替え、追っていない間は北が上に戻す。 */
+  ride: {
+    headingUp: boolean;
+    following: boolean;
+    onCompass: () => void;
+    zoomBase: number;
+    onNextZoom: () => void;
+  } | null;
 }
 
 const DIAL_SIZE_PX = 176;
@@ -105,10 +112,10 @@ export default function MapNavigationControl({
           variant="mapCtrl"
           size="mapCtrl"
           className={compassClassName}
-          aria-label={ride.headingUp ? "北を上にする（いまは進む向きが上）" : "進む向きを上にする（いまは北が上）"}
+          aria-label={rideCompassLabel(ride)}
           aria-description={linked ? LENS_LINK_DESCRIPTION : undefined}
-          usage="走っている間は、押すと北が上と進む向きが上を切り替えます。"
-          onClick={ride.onToggleHeadingUp}
+          usage="走っている間は、押すと北が上と進む向きが上を切り替えます。地図を指で動かしたあとは、押すとその場で北が上に戻ります。"
+          onClick={ride.onCompass}
         >
           {needle}
         </Button>
@@ -138,6 +145,12 @@ export default function MapNavigationControl({
       )}
     </div>
   );
+}
+
+/** 走行中の方位磁針のボタンの名前。追っていない間は、押すと北が上に戻る。 */
+function rideCompassLabel({ headingUp, following }: { headingUp: boolean; following: boolean }): string {
+  if (headingUp) return "北を上にする（いまは進む向きが上）";
+  return following ? "進む向きを上にする（いまは北が上）" : "北を上にする";
 }
 
 /** 走行モードの倍率のボタン: 押すたびに基準の倍率を中→遠→近と回す。絵は基準の倍率にいちばん近い段。 */

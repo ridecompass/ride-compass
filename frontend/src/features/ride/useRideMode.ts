@@ -35,8 +35,8 @@ interface RideOnMap {
   onPause: () => void;
   /** 区間の選びを外した（地図を動かして休んでいれば追い直す）。 */
   onResume: () => void;
-  /** 北が上と進む向きが上を切り替える。 */
-  onToggleHeadingUp: () => void;
+  /** 進む向きを上にするかを選んだ。 */
+  onHeadingUpChange: (headingUp: boolean) => void;
   /** 追っている間の基準の倍率（速さで引く前）。この走行でまだ選んでいなければnull（地図が最初の段を使う）。 */
   zoomBase: number | null;
   /** 利用者が基準の倍率を選んだ（倍率のボタン・つまむ）。 */
@@ -262,7 +262,6 @@ export function useRideMode(plausibleMaxKmh: number | undefined): UseRideModeRes
     () => setStatus((current) => (current === "off" || current === "resting" ? current : "paused")),
     [],
   );
-  const toggleHeadingUp = useCallback(() => setHeadingUp((current) => !current), []);
 
   const speedKmh = fix?.speedMs != null ? fix.speedMs * 3.6 : null;
   const position = fix?.position ?? null;
@@ -280,11 +279,11 @@ export function useRideMode(plausibleMaxKmh: number | undefined): UseRideModeRes
             headingUp,
             onPause: pause,
             onResume: followAgain,
-            onToggleHeadingUp: toggleHeadingUp,
+            onHeadingUpChange: setHeadingUp,
             zoomBase,
             onZoomBaseChange: setZoomBase,
           },
-    [status, position, travel, device.heading, speedKmh, headingUp, pause, followAgain, toggleHeadingUp, zoomBase],
+    [status, position, travel, device.heading, speedKmh, headingUp, pause, followAgain, zoomBase],
   );
 
   const screenWakeLock = useScreenWakeLock(receiving);

@@ -3,8 +3,8 @@
  *
  * 見ること: 走行モードの間の配置（上の帯を走りの数字に替え、パネルと「現在地に移動」を隠し、選んだ候補のプロファイルを
  * 見るだけで地図の下に出すこと・「表示」と「評価で塗る」は走っていないときと同じに出し、走行中に効かない操作は出さないこと・
- * 方位磁針で北が上と進む向きが上を切り替えること）と、届いた現在地がプロファイルの印と
- * 地図のルート線の薄めと走りの帯の残りへ同じ距離で渡り、到着予想が位置を受けた時刻と選んだ候補の計画から出ること、
+ * 方位磁針で北が上と進む向きが上を切り替え、地図を指で動かして休んでいる間はその場で北が上に戻すこと）と、
+ * 届いた現在地がプロファイルの印と地図のルート線の薄めと走りの帯の残りへ同じ距離で渡り、到着予想が位置を受けた時刻と選んだ候補の計画から出ること、
  * 次に曲がる所がカードと地図の札に出ること、ルートを外れた・戻ったことが走りの帯に出ること、読み込み直しても走行モードが続くこと、
  * 読み込み直しで iPhone がスマホの向きを読む許しを聞けなかったら、ボタンの横から求め直して現在地の印に向きを出せること、
  * 走行中も左下に俯瞰図を出すこと。
@@ -117,6 +117,28 @@ describe("走行モード", () => {
     ]).toEqual([null, null]);
     geolocation.deliver(RIDDEN_MIDDLE);
     expect(screen.queryByRole("button", { name: "現在地へ戻る" })).toBeNull();
+  });
+
+  it("地図を指で動かして追うのを休んでいる間は、方位磁針を押すと進む向きが上でも北が上でも、その場で北が上に戻り、追い直すと北が上のまま追う", async () => {
+    const geolocation = installGeolocation(HERE);
+    const { user } = renderHome();
+    jobs.respond([FIRST], LOOP_CONDITIONS);
+    await generate(user);
+    await user.click(screen.getByRole("button", { name: "走行モード" }));
+    geolocation.deliver(RIDDEN_MIDDLE);
+    await user.click(screen.getByRole("button", { name: "進む向きを上にする（いまは北が上）" }));
+
+    act(() => mapOnScreen().emit("movestart", { originalEvent: new MouseEvent("mousedown") }));
+    act(() => mapOnScreen().rotateByHand(40));
+    await user.click(screen.getByRole("button", { name: "北を上にする（いまは進む向きが上）" }));
+    expect(mapOnScreen().bearing()).toBe(0);
+
+    act(() => mapOnScreen().rotateByHand(70));
+    await user.click(screen.getByRole("button", { name: "北を上にする" }));
+    expect(mapOnScreen().bearing()).toBe(0);
+
+    await user.click(screen.getByRole("button", { name: "現在地へ戻る" }));
+    expect(screen.getByRole("button", { name: "進む向きを上にする（いまは北が上）" })).toBeInTheDocument();
   });
 
   it("走行中も、気象の層を出して寄せていれば左下に俯瞰図を出す", async () => {
