@@ -43,9 +43,42 @@ def _result(*segments: dict) -> dict:
     return {"routes": [{"segments": list(segments)}], "no_candidates_reason": None}
 
 
-def test_generation_request_is_accepted_by_the_api():
+@pytest.mark.parametrize("request_of", [check.generation_request, lambda now: check.splice_request(now, ["way-1-seg0-fwd"])])
+def test_requests_are_accepted_by_the_api(request_of):
     """要求の形がAPIの型に合わないと、本番の確かめが毎回422で落ち、壊れを見張れなくなる。"""
-    RouteGenerateRequest.model_validate(check.generation_request(NOW))
+    RouteGenerateRequest.model_validate(request_of(NOW))
+
+
+def _loop(*nodes: str) -> dict:
+    """出発地`o`から`nodes`を順に通って戻る候補（JSON）。区間の鍵は両端のノードから作る。"""
+    path = ["o", *nodes, "o"]
+    return {"node_ids": path, "edge_ids": [f"{a}-{b}" for a, b in zip(path, path[1:])]}
+
+
+@pytest.mark.parametrize(
+    ("routes", "expected"),
+    [
+        # 共に通る「x」で、北の候補の前半から東の候補の後半へ乗り換える。
+        ([_loop("n", "x", "w"), _loop("e", "x", "s")], ["o-n", "n-x", "x-s", "s-o"]),
+        # 共に通る地点で乗り換えても、前半か後半が同じ道なら、どちらかの候補そのものになる。
+        ([_loop("a", "n", "b"), _loop("a", "s", "b")], None),
+        ([_loop("n"), _loop("s")], None),
+    ],
+)
+def test_spliced_edge_ids(routes, expected):
+    assert check.spliced_edge_ids(routes) == expected
+
+
+@pytest.mark.parametrize(
+    ("result", "fails"),
+    [
+        ({"routes": [_loop("n")], "no_candidates_reason": None}, False),
+        ({"routes": [], "no_candidates_reason": "つながっていない"}, True),
+    ],
+)
+def test_splice_problems(result, fails):
+    """乗り換えた経路の評価が返らないのに通すと、本番で乗り換えが壊れても気付けない。"""
+    assert bool(check.splice_problems(result)) == fails
 
 
 @pytest.mark.parametrize(

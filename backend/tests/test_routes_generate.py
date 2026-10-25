@@ -18,6 +18,7 @@
 """
 
 import asyncio
+import logging
 import re
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -36,6 +37,7 @@ from app.infrastructure.road_network_store import RoadNetworkUnavailableError
 from app.main import app
 from app.services.graph_service import GraphService, SearchMemory
 from app.services.route_generation_setup import assemble_route_generation_setup
+from tests.bound_fake import bound
 from tests.road_class_fixture import classification, fact_is, map_layer, replaced_road_classes, road_classes
 from tests.route_world import (
     AVOID_AXIS,
@@ -52,6 +54,7 @@ from tests.route_world import (
     grid_network,
     lattice_at,
     lattice_node,
+    lattice_ring_edges,
     passes_in_order,
     serve_road_network,
 )
@@ -226,6 +229,32 @@ async def test_a_spliced_route_that_skips_a_placed_waypoint_lists_none_of_them(c
     ))["result"]["routes"]
 
     assert spliced["waypoint_distances_km"] == []
+
+
+async def test_a_spliced_route_with_a_road_the_network_does_not_have_says_why(client):
+    """道路網に無い区間（古い候補の区間等）は利用者の側の事情なので、ジョブは終わり、0本と理由を返す。"""
+    body = {**_point(SOUTH_WEST), "destination": _point(NORTH_EAST), "distance_km": None}
+    (route, *_) = (await _generate(client, **body, max_routes=1))["result"]["routes"]
+
+    status = await _generate(client, **body, spliced_edge_ids=[*route["edge_ids"], "way-999-seg0-fwd"])
+
+    assert status["status"] == "done"
+    assert status["result"]["routes"] == []
+    assert JAPANESE.search(status["result"]["no_candidates_reason"])
+
+
+async def test_a_spliced_route_outside_the_search_area_fails_as_an_error_of_the_backend(client, world, monkeypatch, caplog):
+    """探索の範囲が送られた区間を覆わなかったら、利用者への理由（つながっていない等）にせず、ERRORを残してジョブを失敗させる
+    ——理由にすると、範囲の誤りが利用者の操作の誤りに見え、本番で気付けない。範囲を作る側が送られた区間を取りこぼした状態は、
+    区間の両端を引く口（`GraphService.edge_endpoints`）を空にして作る。"""
+    world.network = LATTICE
+    monkeypatch.setattr(GraphService, "edge_endpoints", bound(GraphService.edge_endpoints, lambda self, edge_ids: []))
+
+    with caplog.at_level(logging.ERROR):
+        status = await _generate(client, **lattice_at(0, 0).model_dump(), spliced_edge_ids=lattice_ring_edges(4))
+
+    assert status["status"] == "failed"
+    assert [r for r in caplog.records if r.levelno == logging.ERROR]
 
 
 async def test_a_distance_with_placed_points_is_the_length_of_the_whole_route(client, world, monkeypatch):

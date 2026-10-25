@@ -25,7 +25,7 @@ import pytest
 
 from app.domain.axis_definitions import AXIS_DEFINITIONS, AxisDefinition, BreakpointLinearShape, MaterialTerm
 from app.domain.geo import KM_PER_DEGREE_LATITUDE, haversine_distance_km, km_per_degree_longitude
-from app.domain.graph import edge_key, node_key
+from app.domain.graph import node_key
 from app.domain.material_catalog import GRADIENT_PERCENT
 from app.domain.road_classes import TRUE_FACT_VALUE
 from app.domain.rain import rain_window_material_id
@@ -69,6 +69,7 @@ from tests.route_world import (
     lattice_at,
     lattice_network,
     lattice_node,
+    lattice_ring_edges,
     lattice_ways,
     node_point,
     nodes_of,
@@ -667,22 +668,11 @@ async def test_loops_spliced_together_are_evaluated_as_one_route_back_to_the_ori
     assert_connected(spliced, CENTER, CENTER)
 
 
-def _lattice_edge(start: tuple[int, int], end: tuple[int, int]) -> str:
-    """`LATTICE`の隣り合うノード（行, 列）をこの向きに走る区間の鍵。"""
-    way_of = {pair: way for way, pair in lattice_ways(6).items()}
-    tail, head = lattice_node(*start), lattice_node(*end)
-    if (tail, head) in way_of:
-        return edge_key(way_of[tail, head], 0, True)
-    return edge_key(way_of[head, tail], 0, False)
-
-
 async def test_a_spliced_loop_running_far_from_the_origin_is_evaluated(engine_over):
     """経由地を置かない周回の乗り換えでも、出発地から探索の最小の余白（約2km）より遠くを走る経路を評価する。範囲を
     出発地のまわりだけで作ると、遠い区間が未知として断られ、評価が出ない。"""
     generator = engine_over(LATTICE)
-    ring = [(0, col) for col in range(4)] + [(row, 4) for row in range(4)] \
-        + [(4, col) for col in range(4, 0, -1)] + [(row, 0) for row in range(4, -1, -1)]
-    edges = [_lattice_edge(a, b) for a, b in zip(ring, ring[1:])]
+    edges = lattice_ring_edges(4)
 
     (spliced,) = await generator.generate_spliced_route(lattice_at(0, 0), NO_POINTS, tuple(edges), start_time=DEPARTURE)
 
