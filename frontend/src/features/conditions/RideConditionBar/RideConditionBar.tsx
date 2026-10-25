@@ -3,15 +3,22 @@
 import { cn } from "@/lib/cn";
 import { LENS_LINK_CLASS, LENS_LINK_DESCRIPTION } from "@/lib/lensLink";
 import { Popover, PopoverContent, PopoverTrigger, POPOVER_COLLISION_PADDING_PX } from "@/components/ui/Popover/Popover";
-import { useState, useSyncExternalStore, type ComponentProps, type ReactNode } from "react";
+import { useMemo, useState, useSyncExternalStore, type ComponentProps, type ReactNode } from "react";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
-import { departureLabelParts, floorToDepartureStep } from "@/features/conditions/rideConditions";
+import { departureLabelParts } from "@/features/conditions/rideConditions";
 import { clampSpeedKmh, MAX_SPEED_KMH, MIN_SPEED_KMH } from "@/lib/assumedSpeed";
 
 import DynamicLayerTimeSlider from "@/features/conditions/DynamicLayerTimeSlider/DynamicLayerTimeSlider";
 import { nearestTimeIndex, parseJstLocalValue, toJstLocalValue } from "@/lib/time";
 import { ClockIcon, SpeedGaugeIcon } from "@/components/ui/icons/lucideIcons";
-import { buildDepartureFrames, buildDepartureTimeline } from "./departureTimeline";
+import { useStoredState } from "@/hooks/useStoredState";
+import {
+  buildDepartureFrames,
+  buildDepartureTimeline,
+  DEPARTURE_STEPS,
+  isDepartureStep,
+  type DepartureStep,
+} from "./departureTimeline";
 import { Button } from "@/components/ui/Button/Button";
 import { NumberInput } from "@/components/ui/NumberInput/NumberInput";
 import { Input } from "@/components/ui/Input/Input";
@@ -82,21 +89,26 @@ function ConditionTrigger({
   );
 }
 
-/** 出発時刻のドラッグタイムライン。目盛りは描き始めた（ポップオーバーを開いた）時刻を基準に一度だけ作る——開いたまま
- * 長時間放置されても「現在」ボタン・目盛りの基準がずれないよう、開くたびに作り直す。 */
+const DEPARTURE_STEP_STORAGE_KEY = "ridecompass:departure-step";
+
+/** 出発時刻のドラッグタイムライン。目盛りは描き始めた（ポップオーバーを開いた）時刻を基準に作る——開いたまま
+ * 長時間放置されても「現在」ボタン・目盛りの基準がずれないよう、開くたびに基準を取り直す。刻みは端末に覚える。 */
 function DepartureRuler({
   departureTime,
   onDepartureTimeChange,
   onDepartureNow,
 }: Pick<RideConditionBarProps, "departureTime" | "onDepartureTimeChange" | "onDepartureNow">) {
-  const [{ timeline, frames, nowIndex }] = useState(() => {
-    const anchor = new Date();
-    const timeline = buildDepartureTimeline(anchor);
-    // 「今」に追従する出発時刻は刻みへ切り下げてあるので、「今」の目盛りも切り下げた時刻で選ぶ（今に最も近い目盛りで選ぶと、
-    // 刻みの後半では1つ先の目盛りになり、そこへ送る操作が「今」への追従へ化ける）。
-    const now = new Date(floorToDepartureStep(anchor.getTime()));
-    return { timeline, frames: buildDepartureFrames(timeline), nowIndex: nearestTimeIndex(timeline, now) };
+  const [anchor] = useState(() => new Date());
+  const [step, setStep] = useStoredState<DepartureStep>(DEPARTURE_STEP_STORAGE_KEY, "hour", {
+    serialize: (value) => value,
+    deserialize: (raw) => (isDepartureStep(raw) ? raw : null),
   });
+  const { timeline, frames } = useMemo(() => {
+    const timeline = buildDepartureTimeline(anchor, step);
+    return { timeline, frames: buildDepartureFrames(timeline, step) };
+  }, [anchor, step]);
+  // 先頭の目盛りは「今」（開いた時刻を刻みへ切り下げた時刻）。「今」に追従する出発時刻も同じく切り下げてある。
+  const nowIndex = 0;
   return (
     <DynamicLayerTimeSlider
       frames={frames}
@@ -107,6 +119,13 @@ function DepartureRuler({
       currentIndex={nowIndex}
       onNow={onDepartureNow}
       ariaLabel="出発時刻"
+      steps={DEPARTURE_STEPS}
+      step={step}
+      onStepChange={(next) => {
+        if (!isDepartureStep(next)) return;
+        setStep(next);
+        onDepartureNow();
+      }}
     />
   );
 }
@@ -181,7 +200,7 @@ export default function RideConditionBar({
           />
           <div
             className="contents"
-            data-usage="目盛りをなぞって出発時刻を選びます。‹ › で1つずつ動かし、「現在」で今の時刻に合わせ続ける状態へ戻します。"
+            data-usage="目盛りをなぞって出発時刻を選びます。‹ › で1つずつ動かし、「現在」で今の時刻に合わせ続ける状態へ戻します。刻みを切り替えると今の時刻へ戻ります。"
           >
             <DepartureRuler
               departureTime={departureTime}

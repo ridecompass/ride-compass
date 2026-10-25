@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/Button/Button";
 import { BackToNowIcon } from "@/components/ui/icons/lucideIcons";
 import Ruler, { type RulerFrame } from "@/components/ui/Ruler/Ruler";
 import { textVariants } from "@/components/ui/Text/Text";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/ToggleGroup/ToggleGroup";
 import { cn } from "@/lib/cn";
 import { cardVariants } from "@/components/ui/Card/Card";
 
@@ -18,9 +19,13 @@ interface DynamicLayerTimeSliderProps {
   /** 「現在」ボタン。`currentIndex`へは飛ばない（目盛りへ丸めた近似で、実時刻より粗い）。 */
   onNow: () => void;
   ariaLabel: string;
+  /** 目盛りの刻みの選択肢。時刻の文字の右に切り替えとして出す。 */
+  steps: readonly { value: string; label: string }[];
+  step: string;
+  onStepChange: (step: string) => void;
 }
 
-/** 出発時刻を選ぶルーラーと、1コマ送り・現在へ戻すボタン。時刻の計算は知らない（コマの並びは呼ぶ側が作る）。 */
+/** 出発時刻を選ぶルーラーと、刻みの切り替え・1コマ送り・現在へ戻すボタン。時刻の計算は知らない（コマの並びは呼ぶ側が作る）。 */
 export default function DynamicLayerTimeSlider({
   frames,
   index,
@@ -28,6 +33,9 @@ export default function DynamicLayerTimeSlider({
   currentIndex,
   onNow,
   ariaLabel,
+  steps,
+  step,
+  onStepChange,
 }: DynamicLayerTimeSliderProps) {
   // 端では押せないので、動かした先は必ず範囲の中。
   const stepIndex = (delta: number) => onIndexChange(index + delta);
@@ -42,8 +50,23 @@ export default function DynamicLayerTimeSlider({
           "flex w-[min(90vw,26rem)] max-w-[min(26rem,100%)] flex-col gap-1 rounded-sm px-2 py-1.5",
         )}
       >
-        <div className={cn(textVariants({ variant: "heading" }), "pointer-events-auto touch-none tabular-nums")}>
-          {frame.label}
+        <div className="flex items-center gap-2">
+          <div className={cn(textVariants({ variant: "heading" }), "pointer-events-auto touch-none tabular-nums")}>
+            {frame.label}
+          </div>
+          <ToggleGroup
+            value={step}
+            onValueChange={onStepChange}
+            aria-label={`${ariaLabel}の刻み`}
+            usage="目盛りの1コマの刻みを選びます。"
+            className="pointer-events-auto"
+          >
+            {steps.map((option) => (
+              <ToggleGroupItem key={option.value} value={option.value} className="py-0.5">
+                {option.label}
+              </ToggleGroupItem>
+            ))}
+          </ToggleGroup>
         </div>
         <div className="flex items-center gap-2">
           <Button
