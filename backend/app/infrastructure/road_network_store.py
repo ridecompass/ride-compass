@@ -285,7 +285,7 @@ async def build(repository: RoadGraphRepository, revision: int | None) -> RoadNe
 _NODE_COLUMNS = {
     "node_osm_id": ("osm_node_id", np.int64), "node_lat": ("latitude", np.float64),
     "node_lon": ("longitude", np.float64), "node_has_signals": ("has_traffic_signals", np.bool_),
-    "node_max_rank": ("max_highway_rank", np.int64),
+    "node_max_rank": ("max_highway_rank", np.int64), "node_branch_count": ("branch_count", np.int16),
 }
 #: `RoadNetwork`の区間の欄 → 型。
 _EDGE_DTYPES = {"edge_way_id": np.int64, "edge_segment": np.int32, "edge_forward": np.bool_, "edge_from": np.int32,

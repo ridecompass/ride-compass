@@ -143,7 +143,7 @@ def y_fork_edges(left_deg, right_deg):
     ],
 )
 def test_turns_along_a_path_are_the_turns_at_a_branch(nodes, edges, route, expected):
-    """案内する曲がりは、来た道へ戻る遷移を除いて2本以上の道へ進める点（分かれ道）での、直進でない遷移と、
+    """案内する曲がりは、3本以上の道が集まる点（分かれ道）での、直進でない遷移と、
     よりまっすぐに近い道を外れて進む遷移。分かれ道の無い角で案内すると、道なりに進むだけの所で「曲がる」と
     言ってしまい、浅いY字で道なりでない方へ入る所で案内しないと、道なりの方へ進んでしまう。"""
     graph = make_graph(nodes, edges)
@@ -178,6 +178,23 @@ def test_a_bend_without_a_branch_adds_no_wait_even_beside_a_higher_ranked_road()
         if source == "AB"
     }
     assert from_a == pytest.approx({"BC": 0.0, "BA": TURN_SPEC.uturn_seconds})
+
+
+# T字路。西から東へ来て、東の道は向こうからCへ入る一方通行なので、進めるのは北への左折だけ。
+NO_ENTRY_AHEAD_EDGES = {k: PLUS_EDGES[k] for k in ("WC", "CW", "EC", "CN", "NC")}
+
+
+def test_a_turn_where_the_road_ahead_is_no_entry_is_still_a_turn_at_a_branch():
+    """分かれ道かは、その点に集まる道の本数で決める。進めない道（向こうから来る一方通行）も交差点の道で、
+    進める道だけで数えると、交差点の左折が道のデータの継ぎ目に見え、案内も待ちも消える。"""
+    graph = make_graph(ONE_WAY_NODES, NO_ENTRY_AHEAD_EDGES)
+    lazy, _, structure = build_all(graph, spec=TURN_SPEC)
+    index = state_index(lazy)
+
+    turns = turn_structure.turns_along(structure, [index["WC"], index["CN"]])
+
+    assert [(turn.index, turn.kind) for turn in turns] == [(1, turn_structure.TurnKind.LEFT)]
+    assert transition_seconds(lazy, structure)[("WC", "CN")] == pytest.approx(TURN_SPEC.left_seconds)
 
 
 def _plus_ranks(lazy, crossing_rank, entering_rank):

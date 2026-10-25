@@ -89,6 +89,14 @@ class NamedLazy:
         return self.graph.node_count
 
 
+def branch_counts(edge_from, edge_to, node_count):
+    """点ごとの、そこに集まる道の本数（本番は派生の`road_nodes.branch_count`が持つ）。有向の区間を向きを問わない
+    端点の組へ畳み、組の端として点が現れる回数を数える——一方通行の区間も1本の道に数える。同じ2点を結ぶ区間が
+    2本ある網は、本番の数え方（区間の端の数）と違って1本に数えるので、この足場では作らない。"""
+    pairs = np.unique(np.sort(np.column_stack([edge_from, edge_to]), axis=1), axis=0)
+    return np.bincount(pairs.ravel(), minlength=node_count).astype(np.int16)
+
+
 def lazy_of(net):
     graph = search_graph.build_lazy_road_graph(net.edge_from, net.edge_to, len(net.node_ids))
     return NamedLazy(
@@ -114,8 +122,9 @@ TURN_SPEC = turn_structure.TurnCostSpec(
 def build_all(graph, spec=FLAT_SPEC, edge_rank=None, node_has_signal=None, node_db_rank=None):
     """lazy graph・静的派生物・ターン展開構造を一度に組む。
 
-    ターンの費用に要る3つの列は`None`を渡せない（渡し忘れが「上位の道の横断に待ちが付かない」
+    ターンの費用に要る列は`None`を渡せない（渡し忘れが「上位の道の横断に待ちが付かない」
     構造を黙って作るため）。省略したときは、待ちが付かない値——階級0・信号なし——で埋める。
+    集まる道の本数は、渡した区間から数える。
     """
     lazy = lazy_of(graph)
     statics = search_graph.build_search_graph_statics(lazy.graph, graph.distance_m)
@@ -130,6 +139,7 @@ def build_all(graph, spec=FLAT_SPEC, edge_rank=None, node_has_signal=None, node_
         spec,
         np.zeros(node_count, dtype=bool) if node_has_signal is None else node_has_signal,
         np.zeros(node_count, dtype=np.int64) if node_db_rank is None else node_db_rank,
+        branch_counts(graph.edge_from, graph.edge_to, node_count),
     )
     return lazy, statics, structure
 

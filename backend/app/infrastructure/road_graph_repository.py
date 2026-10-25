@@ -261,8 +261,9 @@ NETWORK_TUNING = (TURN_BEARING_DISTANCE_ID,)
 #: 座標はノードの生データから読み、生データが無いノードは現れない。
 _NETWORK_NODES_SQL = text(f"""
 SELECT nm.osm_node_id, ST_X(n.geom) AS longitude, ST_Y(n.geom) AS latitude,
-       nm.has_traffic_signals, nm.max_highway_rank
+       nm.has_traffic_signals, nm.max_highway_rank, rn.branch_count
 FROM node_turns nm
+JOIN road_nodes rn ON rn.osm_node_id = nm.osm_node_id
 JOIN LATERAL {nodes_lookup_sql("nm.osm_node_id")} n ON true
 ORDER BY nm.osm_node_id
 """)

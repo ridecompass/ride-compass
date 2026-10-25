@@ -40,6 +40,8 @@ class RoadNetwork:
     node_lon: np.ndarray  # float64
     node_has_signals: np.ndarray  # bool
     node_max_rank: np.ndarray  # int64
+    # そこに集まる道の本数（`road_nodes.branch_count`）。3本以上なら分かれ道。
+    node_branch_count: np.ndarray  # int16
 
     edge_way_id: np.ndarray  # int64
     edge_segment: np.ndarray  # int32
