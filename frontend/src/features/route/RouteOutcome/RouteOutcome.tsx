@@ -31,7 +31,7 @@ import type { SpliceSessionView } from "@/features/route/useSpliceSession";
 import type { RouteCandidate, RoutePreferenceWeights } from "@/types/route";
 
 const CANDIDATE_TAB_USAGE =
-  "この候補を地図と内訳に出します。稲妻の印は最も早く着く最速ルート、合成の印は区間を乗り換えて作った合成ルートで、番号だけのものは生成した候補です。上の段は距離、下の段は時間（最速ルート［無ければ最も早い候補］は所要時間、ほかはそれとの差で、速ければ−）と総合難易度で、下の帯は総合難易度を地図と同じ色で塗ります。";
+  "この候補を地図と内訳に出し、地図をその候補の全体へ収めます。稲妻の印は最も早く着く最速ルート、合成の印は区間を乗り換えて作った合成ルートで、番号だけのものは生成した候補です。上の段は距離、下の段は時間（最速ルート［無ければ最も早い候補］は所要時間、ほかはそれとの差で、速ければ−）と総合難易度で、下の帯は総合難易度を地図と同じ色で塗ります。";
 
 /** 名前の列で群を見分ける印と、その意味（指を置いたときの吹き出しと読み上げの名前）。生成した候補は印を持たない。 */
 const GROUP_MARKS: Partial<Record<RouteListGroup, { Icon: typeof FastestRouteIcon; meaning: string }>> = {
@@ -110,7 +110,7 @@ export default function RouteOutcome({ results, generation, splice, routeWeights
         originName={nameOf(origin.id)}
         origin={origin}
         edited={route}
-        onShowOrigin={() => results.selectTab(origin.id)}
+        onShowOrigin={() => results.showRoute(origin.id)}
       />
     );
   }
@@ -152,7 +152,7 @@ export default function RouteOutcome({ results, generation, splice, routeWeights
             作った組み合わせは「{nameOf(reusedRouteId)}」と同じ道なので、「{nameOf(reusedRouteId)}」を選びました
           </p>
         )}
-        <Tabs className="flex flex-col gap-2" value={selectedValue} onValueChange={results.selectTab}>
+        <Tabs className="flex flex-col gap-2" value={selectedValue} onValueChange={results.selectRoute}>
           {/* 候補は1枚ずつのカードで横に並べ、幅に収まらない分は一覧の中だけを横へ送る。縦には動かないので、縦のなぞりは
               シート・パネルのスクロールへ渡る（縦に動く所を1つにする）。 */}
           <TabsList ref={listRef} variant="cards" aria-label="ルート結果">
@@ -168,6 +168,8 @@ export default function RouteOutcome({ results, generation, splice, routeWeights
                     ref={route.id === selectedValue ? selectedCardRef : undefined}
                     value={route.id}
                     usage={CANDIDATE_TAB_USAGE}
+                    // 選びはタブが（変わったときだけ）知らせ、押したら選んでいたカードでも全体へ収める。
+                    onClick={results.focusRoute}
                   >
                     <span className="flex items-baseline justify-between gap-1">
                       <span className="inline-flex items-center gap-0.5">
@@ -233,24 +235,21 @@ export default function RouteOutcome({ results, generation, splice, routeWeights
                 </div>
               )}
               {renderEditDifference(route, nameOf)}
-              {/* 区間を押している間は、候補全体の内訳を出さない（その区間の詳しくはグラフの下に出る）。 */}
-              {selectedRouteSegment === null && (
-                <RouteAxisProfile
-                  axes={axisCatalog.axes}
-                  weights={routeWeights}
-                  axisDifficulties={route.axis_difficulties}
-                  axisContributions={route.axis_contributions}
-                  axisRawValues={route.axis_raw_values}
-                  materialValues={route.material_values}
-                  materialCategoryShares={route.material_category_shares}
-                  distanceKm={route.distance_km}
-                  overallDifficulty={route.overall_difficulty}
-                  estimatedDurationSeconds={route.estimated_duration_seconds}
-                  windUnavailable={route.wind_unavailable}
-                  missingTravelDataShare={route.missing_travel_data_share}
-                  axisColors={axisCatalog.axisColors}
-                />
-              )}
+              <RouteAxisProfile
+                axes={axisCatalog.axes}
+                weights={routeWeights}
+                axisDifficulties={route.axis_difficulties}
+                axisContributions={route.axis_contributions}
+                axisRawValues={route.axis_raw_values}
+                materialValues={route.material_values}
+                materialCategoryShares={route.material_category_shares}
+                distanceKm={route.distance_km}
+                overallDifficulty={route.overall_difficulty}
+                estimatedDurationSeconds={route.estimated_duration_seconds}
+                windUnavailable={route.wind_unavailable}
+                missingTravelDataShare={route.missing_travel_data_share}
+                axisColors={axisCatalog.axisColors}
+              />
             </TabsContent>
           ))}
         </Tabs>

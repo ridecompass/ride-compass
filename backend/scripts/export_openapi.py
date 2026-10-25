@@ -145,7 +145,7 @@ from app.domain.material_catalog import MATERIAL_CATALOG, display_axis_missing_s
 from app.domain.material_coverage_spec import MISSING_SEMANTICS_DISPLAY, POPULATION_LABELS
 from app.domain.primary_attributes import PRIMARY_ATTRIBUTES
 from app.domain.region import MAX_MERCATOR_LATITUDE, ROAD_TILE_MAX_ZOOM, ROAD_TILE_MIN_ZOOM
-from app.domain.leg_costs import MAX_TIME_BINS, MISSING_TRAVEL_DATA_WORDING, TIME_BIN_HOURS
+from app.domain.leg_costs import MISSING_TRAVEL_DATA_WORDING
 from app.config import Settings
 from app.domain.route_preference import ENABLED_AXIS_WEIGHT
 from app.domain.tuning import client_tuning_defaults
@@ -581,11 +581,6 @@ def main() -> None:
             "job_result_ttl_seconds": JOB_TTL_SECONDS,
             # ルート候補の型の契約の印。画面は端末に置いた候補にこの印を添え、印が違う候補は今の型で読めないとして使わない。
             "route_candidate_shape": schema_shape_mark(openapi, "RouteCandidate"),  # type: ignore[arg-type]
-            # 風の予報を追う長さ（レグごと、時刻ビンの本数×幅）。区間の詳細の説明が、この先は最後に追った時刻の予報を
-            # そのまま使うことを数字で示す。
-            "wind_forecast_hours_per_leg": MAX_TIME_BINS * TIME_BIN_HOURS,
-            # 区間の風を引く時刻の刻み（時刻ビンの幅）。区間の詳細の説明が評価の刻みを数字で示す。
-            "wind_time_bin_hours": TIME_BIN_HOURS,
             # 区間ごとに速度を変える条件の名前（走行モデルの並び）。所要時間の説明が差し込む。
             "segment_speed_conditions": list(SEGMENT_SPEED_CONDITIONS),
             # ルート全体の難易度（平均・総量）の数え方の文。結果の難易度の説明が差し込む。

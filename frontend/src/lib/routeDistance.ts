@@ -191,3 +191,8 @@ export function alongSegment(segment: RouteSegmentShape, position: Coordinates):
   const nearest = projections.reduce((best, p) => (p.offsetM < best.offsetM ? p : best), projections[0]);
   return nearest ?? { km: 0, offsetM: 0 };
 }
+
+/** 選んだ地点`picked`を区間`column`の道なりの形に当てた、ルートの上の距離。 */
+export function kmOfPickedPoint(column: RouteStretch<RouteSegmentShape>, picked: Coordinates): number {
+  return Math.min(column.endKm, column.startKm + alongSegment(column.segment, picked).km);
+}

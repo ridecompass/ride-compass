@@ -11,18 +11,16 @@ import { EvaluationPaintIcon } from "@/components/ui/icons/lucideIcons";
 import DifficultyProfile from "@/features/route/DifficultyProfile/DifficultyProfile";
 import { profileBoxes } from "@/features/route/DifficultyProfile/profileGeometry";
 import { useProfileScale } from "@/features/route/ProfileChart/profileScale";
-import { useAxisCatalog } from "@/hooks/useAxisCatalog";
 import type { CatalogAxis } from "@/lib/catalogAxis";
 import palette from "@/types/generated/palette.json";
 import type { RouteSegmentDetail, SelectedRouteSegment } from "@/types/route";
 
 import LayerProfile, { type ShownLayers } from "./LayerProfile";
-import { layerBand, layerLine, profileLayers, type BandLayer, type LineLayer } from "./profileLayers";
+import { layerBand, layerLine, type BandLayer, type LineLayer } from "./profileLayers";
 import ProfileLayerPicker from "./ProfileLayerPicker";
-import type { SectionOnMap } from "@/features/route/SegmentDetail/SegmentDetail";
+import { SectionOnMapButton, type SectionOnMap } from "@/features/route/SegmentDetail/SegmentDetail";
 
-import ProfilePointDetail from "./ProfilePointDetail";
-import type { ProfileLayerSelection } from "./useProfileLayers";
+import { useChosenProfileLayers, type ProfileLayerSelection } from "./useProfileLayers";
 
 interface RouteProfileProps {
   segments: readonly RouteSegmentDetail[];
@@ -34,9 +32,9 @@ interface RouteProfileProps {
   /** 横軸の右端の距離。 */
   scaleKm: number;
   selected: SelectedRouteSegment | null;
-  /** なぞる・押して離すと、その地点の区間を選ぶ。地点の詳しくを閉じると null で外す。無ければ見るだけの図にする。 */
+  /** なぞる・押して離すと、その地点の区間を選ぶ。無ければ見るだけの図にする。 */
   onSelect?: (selection: SelectedRouteSegment | null) => void;
-  /** 地点の詳しくの「区間を地図で見る」。無ければ出さない。 */
+  /** 地点を選んでいる間に右上に出す「区間を地図で見る」。無ければ出さない。 */
   segmentOnMap?: SectionOnMap;
   /** 走行中の現在地のルートの上の距離。 */
   progressKm?: number | null;
@@ -49,7 +47,7 @@ interface RouteProfileProps {
 }
 
 /** 道のりのグラフ。地図の2つの入口と同じ名前のタブで、「評価で塗る」は区間の難易度を、「表示」は選んだ情報（標高の折れ線・道の区分の帯等）を、
- * 同じ横軸で出す。地点を選んでいる間は、その地点の詳しくを図の下に出す。 */
+ * 同じ横軸で出す。選んだ地点の中身は地図の区間の小窓が出す。 */
 export default function RouteProfile({
   segments,
   overallDifficulty,
@@ -72,37 +70,18 @@ export default function RouteProfile({
     const { byAxis } = profileBoxes(scale.columns, axisOrder, overallDifficulty);
     return axes.filter((axis) => (byAxis.get(axis.axisId)?.length ?? 0) > 0);
   }, [scale, axes, axisOrder, overallDifficulty]);
-  const roadLayers = useAxisCatalog().roadClasses.map_layers;
-  const available = useMemo(() => profileLayers(roadLayers), [roadLayers]);
-  const shownLayers = useMemo((): ShownLayers => {
-    const chosen = available.filter((layer) => layers.ids.includes(layer.id));
-    return {
+  const { available, chosen } = useChosenProfileLayers(layers.ids);
+  const shownLayers = useMemo(
+    (): ShownLayers => ({
       lines: chosen
         .filter((layer): layer is LineLayer => layer.draw.kind === "line")
         .map((layer) => ({ layer, ...layerLine(scale.columns, layer) })),
       bands: chosen
         .filter((layer): layer is BandLayer => layer.draw.kind === "band")
         .map((layer) => ({ layer, pieces: layerBand(scale.columns, layer) })),
-    };
-  }, [available, scale, layers.ids]);
-  // 地点を選んでいる間は、その地点の詳しくを図の下に出す（結果と走行中で同じ形）。地図で押した区間も、図はその区間と押した
-  // 所の地点を探して出す（`lib/routeDistance.ts: findSameSegment`）。図に無い区間だけは地点が分からないので、区間の値だけを出す。
-  function pointDetail(pointKm: number | null) {
-    if (selected === null) return null;
-    const detail = (
-      <ProfilePointDetail
-        selection={selected}
-        point={pointKm === null ? null : { columns: scale.columns, km: pointKm }}
-        layers={available}
-        axes={axes}
-        axisColors={axisColors}
-        onClear={onSelect === undefined ? undefined : () => onSelect(null)}
-        onMap={segmentOnMap}
-      />
-    );
-    return riding ? <div className="max-h-[40dvh] overflow-y-auto">{detail}</div> : detail;
-  }
-
+    }),
+    [chosen, scale],
+  );
   return (
     <Tabs value={tab} onValueChange={setTab} className="relative flex flex-col gap-1">
       {/* 切り替えと見方・出す情報のボタンは、結果も走行中も図の右上に重ね、図の上に段を取らない（スマホの低い高さで図を大きく
@@ -142,6 +121,8 @@ export default function RouteProfile({
           </InfoPopover>
         )}
         {tab === "layer" && <ProfileLayerPicker available={available} layers={layers} shown={shownLayers} />}
+        {/* 選んだ地点の値は地図の区間の小窓が出す。地図は選んでも動かないので、ここから寄せる（地点が地図の外なら目立たせる）。 */}
+        {selected !== null && segmentOnMap !== undefined && <SectionOnMapButton onMap={segmentOnMap} />}
       </div>
       <TabsContent value="lens">
         <DifficultyProfile
@@ -155,7 +136,6 @@ export default function RouteProfile({
           progressKm={progressKm}
           waypointKms={waypointKms}
           riding={riding}
-          caption={pointDetail}
         />
       </TabsContent>
       <TabsContent value="layer" className="flex flex-col gap-1">
@@ -167,7 +147,6 @@ export default function RouteProfile({
           progressKm={progressKm}
           waypointKms={waypointKms}
           riding={riding}
-          pointDetail={pointDetail}
         />
       </TabsContent>
     </Tabs>

@@ -209,8 +209,6 @@ export default function DraftWayValuesMap<Draft>({
           travelledKm: null,
           selectedRouteSegment: null,
           sidePointPath: null,
-          sidePointsHidden: new Set(),
-          chosenSidePoint: null,
         }),
       ),
     [axisId, axis, materials, loading, hiddenLegendKeys, mapCatalog.routeStyleModes, mapCatalog.tileVersions],

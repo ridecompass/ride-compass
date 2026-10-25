@@ -1,10 +1,10 @@
 /**
  * `app/page.tsx`——トップページのうち、地図の小窓。
  *
- * 見ること: 区間・ピン・道・地図の点のどれを押しても小窓は1つだけで、最後に押した物の中身を出し、名前の無い点は押しても
- * 何も変えないこと。区間の中身から、その区間に
- * 属さない物（ピン・道・点）へ入れ替えると区間の選びを外し、開ける物の無い所を押すと閉じること。道の小窓を別の道へ押し替えると、
- * 前の道で押した評価を新しい道へ持ち越さないこと。見るだけの間の区間の小窓が、上の帯と難易度の塊の形で出ること。
+ * 見ること: 「ルート結果」を開いていても、区間・道・地図の点のどれを押しても小窓は1つだけで、最後に押した物の中身を出すこと。
+ * 名前の無い点は押せる物に数えず下の物を開き、重なった名前のある点は全部並べること。区間の中身から点を開くと区間へ戻れ、道へ
+ * 入れ替えると区間の選びを外し、開ける物の無い所を押すと閉じること。道の小窓を別の道へ押し替えると、前の道で押した評価を
+ * 新しい道へ持ち越さないこと。区間の小窓が上の帯と難易度の塊の形で出て、寄せるアイコンで寄せること。
  *
  * ここで見ないもの: 区間の近くの施設の小窓（区間へ戻る）は`app/page.map.test.tsx`の「区間の近くの施設」が、地図を押したときの
  * 意味をどのパネルが決めるかは同じファイルの「地図で扱えること」が見る。
@@ -26,7 +26,6 @@ import {
   clickMap,
   clickSegment,
   generate,
-  marksAt,
   renderHome,
   route,
   selectedPointMarks,
@@ -48,10 +47,8 @@ beforeEach(() => {
 
 const ROAD: PointedFeature = { layer: "road-tiles-surface", properties: { osm_way_id: 1, feature_key: "1" } };
 
-const CAFE = { latitude: 35.705, longitude: 139.705 };
-
 describe("地図の小窓", () => {
-  it("区間・ピン・道・点のどれを押しても小窓は1つだけで最後に押した物の中身を出し、区間の中身をほかの物へ入れ替えると区間の選びを外し、名前の無い点は何も変えず、何も無い所を押すと閉じる", async () => {
+  it("「ルート結果」を開いたままでも、区間・点・道のどれを押しても小窓は1つだけで最後に押した物の中身を出す。名前の無い点は飛ばして下の物を開き、重なった名前のある点は全部並べ、区間の中身から点を開くと区間へ戻れる", async () => {
     const shop: PointedFeature = {
       layer: sceneLayerId(POINT_TILE_SOURCES.poi.sourceId, "supply_poi"),
       properties: { name: "角の店", kind: "convenience" },
@@ -60,7 +57,7 @@ describe("地図の小窓", () => {
     const cafe: PointedFeature = {
       layer: sceneLayerId(POINT_TILE_SOURCES.poi.sourceId, "supply_poi"),
       properties: { name: "峠の茶屋", kind: "cafe" },
-      geometry: { type: "Point", coordinates: [CAFE.longitude, CAFE.latitude] },
+      geometry: { type: "Point", coordinates: [ELSEWHERE.longitude, ELSEWHERE.latitude] },
     };
     const toilet: PointedFeature = {
       layer: sceneLayerId(POINT_TILE_SOURCES.poi.sourceId, "supply_poi"),
@@ -72,50 +69,46 @@ describe("地図の小窓", () => {
     await user.click(screen.getByRole("button", { name: "地図に出す情報" }));
     await user.click(screen.getByRole("checkbox", { name: "補給・休憩ポイント" }));
     await user.keyboard("{Escape}");
-    await user.click(screen.getByRole("button", { name: "経由地を足す" }));
-    clickMap(CAFE, [cafe]);
     jobs.respond([FIRST], LOOP_CONDITIONS);
     await generate(user);
     await waitFor(() => expect(candidateTabs()).toHaveLength(1));
-    await user.click(screen.getByRole("button", { name: "パネルを閉じる" }));
     const [drawnSegment] = mapOnScreen().sourceFeatures("route-segments");
-    const [waypointPin] = marksAt(CAFE);
+    const header = (name: string) => screen.queryByRole("group", { name });
 
     clickSegment(drawnSegment, HERE);
-    expect(screen.getByRole("group", { name: "区間の小窓の上の帯" })).toBeInTheDocument();
+    expect(header("区間の小窓の上の帯")).toBeInTheDocument();
 
-    await user.click(waypointPin.element);
-    expect(screen.getByText("経由地 1: 峠の茶屋")).toBeInTheDocument();
-    expect(screen.queryByRole("group", { name: "区間の小窓の上の帯" })).toBeNull();
-    expect(selectedPointMarks()).toEqual([]);
-
-    clickSegment(drawnSegment, HERE);
-    expect(screen.getByRole("group", { name: "区間の小窓の上の帯" })).toBeInTheDocument();
-    expect(screen.queryByText("経由地 1: 峠の茶屋")).toBeNull();
+    // 区間の中身から点を開くと、区間の選びを残し、「‹ 区間」で区間の中身へ戻れる。
+    clickMap(ELSEWHERE, [shop]);
+    expect(screen.getByRole("link", { name: "角の店" })).toBeInTheDocument();
+    expect(selectedPointMarks()).toHaveLength(1);
+    await user.click(within(header("点の小窓の上の帯")!).getByRole("button", { name: "‹ 区間" }));
+    expect(header("区間の小窓の上の帯")).toBeInTheDocument();
 
     clickMap(ELSEWHERE, [ROAD]);
     expect(await screen.findByRole("button", { name: "この道の評価を見る" })).toBeInTheDocument();
-    expect(screen.queryByRole("group", { name: "区間の小窓の上の帯" })).toBeNull();
+    expect(header("区間の小窓の上の帯")).toBeNull();
     expect(selectedPointMarks()).toEqual([]);
 
-    clickMap(ELSEWHERE, [shop]);
-    expect(screen.getByText(/角の店/)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "この道の評価を見る" })).toBeNull();
-
-    // 名前の無い点は押しても何も開かず、開いている小窓もそのまま残す。
-    clickMap(ELSEWHERE, [toilet]);
-    expect(screen.getByText(/角の店/)).toBeInTheDocument();
+    // 重なった名前のある点は全部並べ、名前の無い点は飛ばす。名前の無い点だけの所は、下の道を開く。
+    clickMap(ELSEWHERE, [toilet, shop, cafe]);
+    expect(
+      within(header("点の小窓の上の帯")!.parentElement!)
+        .getAllByRole("link")
+        .map((link) => link.textContent),
+    ).toEqual(["角の店", "峠の茶屋"]);
+    clickMap(ELSEWHERE, [toilet, ROAD]);
+    expect(await screen.findByRole("button", { name: "この道の評価を見る" })).toBeInTheDocument();
 
     clickMap(ELSEWHERE, []);
-    expect(screen.queryByText(/角の店/)).toBeNull();
+    expect(header("道の小窓の上の帯")).toBeNull();
   });
 
-  it("見るだけの間に押した区間の小窓は、上の帯に何km地点と到達予想、その下に難易度の塊と風のチップを出す", async () => {
+  it("区間の小窓は、上の帯に何km地点と到達予想、その下に難易度の塊を出し、押しただけでは地図は動かず、寄せるアイコンで区間へ寄せる", async () => {
     const segment = makeRouteSegment({
       cumulative_distance_km: 1,
       estimated_arrival_time: "2026-10-05T00:30:00Z",
       difficulty: 42,
-      wind: { speed_ms: 3.26, direction_deg: 180, forecast_at: "2026-10-05T09:00" },
     });
     const { user } = renderHome();
     jobs.respond([route("one", { segments: [segment] })], LOOP_CONDITIONS);
@@ -129,19 +122,10 @@ describe("地図の小窓", () => {
     expect(screen.getByRole("group", { name: "区間の小窓の上の帯" })).toHaveTextContent(
       "ルートの何km地点 1.0km到達予想 09:30着",
     );
-    const block = within(screen.getByRole("region", { name: "難易度" }));
     expect(screen.getByRole("region", { name: "難易度" })).toHaveTextContent(/^難易度42\.0\/100/);
-    expect(
-      block.getByRole("button", { name: /^区間の風（最寄りの格子点の値 .* 3\.3m\/s）の説明を表示$/ }),
-    ).toBeInTheDocument();
 
-    // 区間を押しただけでは地図は動かず、上の帯の「区間を地図で見る」で区間へ寄せる。
     expect(mapOnScreen().fits()).toHaveLength(fitsBefore);
-    await user.click(
-      within(screen.getByRole("group", { name: "区間の小窓の上の帯" })).getByRole("button", {
-        name: "区間を地図で見る",
-      }),
-    );
+    await user.click(screen.getByRole("button", { name: "地図をここへ寄せる" }));
     await waitFor(() => expect(mapOnScreen().fits()).toHaveLength(fitsBefore + 1));
   });
 

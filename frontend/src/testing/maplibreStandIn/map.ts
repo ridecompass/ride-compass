@@ -253,9 +253,19 @@ export class StandInMap extends Evented {
     if (undrawn.length > 0) {
       throw new Error(`描かれていないレイヤーの地物は押せない: ${undrawn.map((feature) => feature.layer).join(", ")}`);
     }
-    this.pointed = features;
+    // MapLibre の地物はいつも形を持つ。テストが形を渡さなければ、押した位置の点を形にする。
+    const withGeometry = features.map((feature): PointedFeature =>
+      feature.geometry === undefined
+        ? { ...feature, geometry: { type: "Point", coordinates: [lngLat.longitude, lngLat.latitude] } }
+        : feature,
+    );
+    this.pointed = withGeometry;
     try {
-      this.fire("click", { lngLat: { lng: lngLat.longitude, lat: lngLat.latitude }, point: { x: 0, y: 0 } }, features);
+      this.fire(
+        "click",
+        { lngLat: { lng: lngLat.longitude, lat: lngLat.latitude }, point: { x: 0, y: 0 } },
+        withGeometry,
+      );
     } finally {
       this.pointed = [];
     }

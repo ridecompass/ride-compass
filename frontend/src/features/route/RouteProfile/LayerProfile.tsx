@@ -1,7 +1,5 @@
 "use client";
 
-import type { ReactNode } from "react";
-
 import ProfileChart from "@/features/route/ProfileChart/ProfileChart";
 import { PROFILE_VIEW_HEIGHT, profileTextClass, type ProfileScale } from "@/features/route/ProfileChart/profileScale";
 import { cn } from "@/lib/cn";
@@ -33,8 +31,6 @@ interface LayerProfileProps {
   progressKm: number | null;
   waypointKms: readonly number[];
   riding: boolean;
-  /** 選んだ地点の詳しく（区間を選んでいなければnull）。 */
-  pointDetail: (pointKm: number | null) => ReactNode;
 }
 
 /** 道のりのグラフの「表示」の図。選んだ情報の折れ線を上に、道の区分の帯を下から積んで同じ横軸に描き、図の下に情報ごとの要約を出す。 */
@@ -46,7 +42,6 @@ export default function LayerProfile({
   progressKm,
   waypointKms,
   riding,
-  pointDetail,
 }: LayerProfileProps) {
   const rowCount = shown.bands.length;
   const lineBottom = PROFILE_VIEW_HEIGHT - rowCount * (BAND_HEIGHT + BAND_GAP);
@@ -59,7 +54,7 @@ export default function LayerProfile({
   }
 
   // グラフの下の要約は、情報ごとに値の1行だけにする（凡例は「グラフに出す情報」の一覧の行に出し、グラフの場所を取らない）。
-  // 帯は値が無いときだけ文で言う（その地点の区分は、地点の詳しくのチップが出す）。
+  // 帯は値が無いときだけ文で言う（その地点の区分は、区間の小窓のチップが出す）。
   function bandCaption(layer: BandLayer, pieces: readonly BandPiece[]) {
     return pieces.length === 0 ? <p key={layer.id}>{layer.label}の値がありません。</p> : null;
   }
@@ -88,7 +83,7 @@ export default function LayerProfile({
     <ProfileChart
       scale={scale}
       label="道のりに沿った情報"
-      usage="横が道のり、縦が選んだ情報の値、下の帯が選んだ道の区分の色です。なぞるか押して離すと、その地点を地図に印で出し、下にその地点の詳しくを出します。"
+      usage="横が道のり、縦が選んだ情報の値、下の帯が選んだ道の区分の色です。なぞるか押して離すと、その地点を地図に印で出し、地図にその区間の小窓を出します。"
       selected={selected}
       onSelect={onSelect}
       progressKm={progressKm}
@@ -96,36 +91,25 @@ export default function LayerProfile({
       valueTicks={valueTicks}
       riding={riding}
       waypointKms={waypointKms}
-      caption={(pointKm) => {
-        // 出している情報の全体の要約（最高・最低、値が無い・近くに無い）。走行中は図の中の目盛りが最高・最低を持つので、
-        // 地点を選んでいる間は詳しくだけを出す。結果では、地点を選んでいる間も要約を詳しくの上に残す。
-        const summary = (
-          <div className={cn(profileTextClass(riding), "text-[var(--color-muted)] tabular-nums")}>
-            {shown.lines.length + rowCount === 0 ? (
-              <p>出す情報を選んでください。</p>
-            ) : (
-              shown.lines.map(({ layer, range }) => {
-                if (range === null) return <p key={layer.id}>{layer.label}の値がありません。</p>;
-                const unit = layer.draw.unit;
-                return (
-                  <p key={layer.id}>
-                    {`${layer.label} 最高 ${Math.round(range.max)}${unit}・最低 ${Math.round(range.min)}${unit}`}
-                  </p>
-                );
-              })
-            )}
-            {shown.bands.map(({ layer, pieces }) => bandCaption(layer, pieces))}
-          </div>
-        );
-        if (selected === null) return summary;
-        if (riding) return pointDetail(pointKm);
-        return (
-          <div className="flex flex-col gap-1.5">
-            {summary}
-            {pointDetail(pointKm)}
-          </div>
-        );
-      }}
+      // 出している情報の全体の要約（最高・最低、値が無い・近くに無い）。選んだ地点の値は地図の区間の小窓が出す。
+      caption={
+        <div className={cn(profileTextClass(riding), "text-[var(--color-muted)] tabular-nums")}>
+          {shown.lines.length + rowCount === 0 ? (
+            <p>出す情報を選んでください。</p>
+          ) : (
+            shown.lines.map(({ layer, range }) => {
+              if (range === null) return <p key={layer.id}>{layer.label}の値がありません。</p>;
+              const unit = layer.draw.unit;
+              return (
+                <p key={layer.id}>
+                  {`${layer.label} 最高 ${Math.round(range.max)}${unit}・最低 ${Math.round(range.min)}${unit}`}
+                </p>
+              );
+            })
+          )}
+          {shown.bands.map(({ layer, pieces }) => bandCaption(layer, pieces))}
+        </div>
+      }
     >
       {shown.bands.map(({ layer, pieces }, index) => (
         <g key={layer.id} data-layer={layer.id}>

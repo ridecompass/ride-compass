@@ -350,8 +350,6 @@ class EdgePassage:
     elapsed_seconds: float
     # この区間を走る秒（探索と同じビンの値。有限でなければ巡航速度で走ったものとして数える）。
     seconds: float
-    # レグの時刻ビンの範囲の先で、最後のビンをそのまま使った区間。
-    beyond_bins: bool
 
 
 def turn_waits_along(structure: TurnExpandedStructure, path: Sequence[int]) -> list[float]:
@@ -398,10 +396,7 @@ def route_passages(
         seconds = float(leg.travel_bins_lazy[time_bin, index])
         if not np.isfinite(seconds):
             seconds = distance_m / fallback_ms
-        passages.append(EdgePassage(
-            time_bin=time_bin, elapsed_seconds=elapsed, seconds=seconds,
-            beyond_bins=bin_count > 1 and leg_elapsed >= bin_count * leg.bin_seconds,
-        ))
+        passages.append(EdgePassage(time_bin=time_bin, elapsed_seconds=elapsed, seconds=seconds))
         leg_elapsed += entry_wait + seconds
         entry_wait = waits[i] if i < len(waits) else 0.0
         elapsed += seconds + entry_wait

@@ -26,7 +26,8 @@ const SURFACE_ROAD_CLASSES = [
   roadClass("paved", { label: "舗装", color: "#111111" }),
   roadClass("gravel", { label: "砂利・未舗装", color: "#222222" }),
 ];
-const ROAD_LAYERS = [
+/** 道の区分の層（軸カタログの応答の`road_classes.map_layers`）。区間の小窓のテストは、ここから選んでいる層を組む。 */
+export const ROAD_LAYERS = [
   roadMapLayer("surface", { label: "路面の種類", has_no_data: true, classes: SURFACE_ROAD_CLASSES }),
   roadMapLayer("tunnel", { label: "トンネル", classes: [roadClass("tunnel", { label: "トンネル" })] }),
 ];
@@ -56,12 +57,11 @@ export const UNKNOWN = makeRouteSegment({
   end_latitude: 35,
   end_longitude: 139.02,
 });
-// 地点の詳しくを見る区間。舗装の道でトンネルではない（「該当なし」）。
+// 区間の中身を見る区間。舗装の道でトンネルではない（「該当なし」）。
 export const PAVED: RouteSegmentDetail = {
   ...CLIMB,
   estimated_arrival_time: "2026-10-04T00:42:00Z",
   axis_difficulties: { axis_a: 72.4 },
-  wind: { speed_ms: 3, direction_deg: 180, forecast_at: "2026-10-04T09:00" },
   road_classes: { surface: [{ distance_km: 1, value: "paved" }], tunnel: [{ distance_km: 1, value: null }] },
 };
 

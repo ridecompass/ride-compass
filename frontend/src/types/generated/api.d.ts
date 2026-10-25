@@ -2085,7 +2085,6 @@ export interface components {
             };
             /** Difficulty */
             difficulty: number | null;
-            wind: components["schemas"]["SegmentWind"] | null;
             /** Road Classes */
             road_classes: {
                 [key: string]: components["schemas"]["RoadClassStretch"][];
@@ -2125,15 +2124,6 @@ export interface components {
         ScoresPreviewResponse: {
             /** Scores */
             scores: number[];
-        };
-        /** SegmentWind */
-        SegmentWind: {
-            /** Speed Ms */
-            speed_ms: number;
-            /** Direction Deg */
-            direction_deg: number;
-            /** Forecast At */
-            forecast_at: string;
         };
         /** SignedMaterialMapValue */
         SignedMaterialMapValue: {

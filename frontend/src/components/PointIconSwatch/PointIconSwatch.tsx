@@ -1,6 +1,6 @@
 // 地図の点の見本。絵記号で描く点の絵（行の色の角丸四角に、白い絵記号を載せたもの）の形の宣言を持ち、地図へ登録する画素
 // （`features/map/layers/pointIcon.ts: drawPointIcon`）とここの見本は同じ宣言を読む——別々に描くと、見本と地図の絵が食い違う。
-// 地図の凡例と区間の近くの施設のチップ（別の機能）が同じ見本を出すので、共有の層に置く。
+// 地図の凡例と地図の小窓の施設の行（別の機能）が同じ見本を出すので、共有の層に置く。
 
 import { cn } from "@/lib/cn";
 import { LEGEND_SWATCH_RING_CLASS, type PointGlyph } from "@/lib/mapDisplay/legendFilter";

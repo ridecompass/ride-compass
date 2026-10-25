@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, type ReactNode } from "react";
+import { useMemo } from "react";
 
 import ProfileChart from "@/features/route/ProfileChart/ProfileChart";
 import { PROFILE_VIEW_HEIGHT, useProfileScale } from "@/features/route/ProfileChart/profileScale";
@@ -27,8 +27,6 @@ interface DifficultyProfileProps {
   waypointKms: readonly number[];
   /** 走行中の地図の下の図。目盛りの文字を大きくする。 */
   riding?: boolean;
-  /** 図の下の1行。区間を選んでいれば、その地点の距離を受け取る。 */
-  caption?: (pointKm: number | null) => ReactNode;
 }
 
 function boxesPath(boxes: readonly ProfileBox[], xOf: (km: number) => number): string {
@@ -52,7 +50,6 @@ export default function DifficultyProfile({
   progressKm = null,
   waypointKms,
   riding = false,
-  caption,
 }: DifficultyProfileProps) {
   const scale = useProfileScale(segments, scaleKm);
   // 塗る形はルートと横軸が変わったときだけ組む（なぞる間に動くのは、カーソルの線と選んだ区間の帯だけ）。
@@ -85,7 +82,6 @@ export default function DifficultyProfile({
       progressMarkY={progressMarkY}
       waypointKms={waypointKms}
       riding={riding}
-      caption={caption}
     >
       {paths.missing !== null && <path d={paths.missing} fill={palette.semantic.no_data} opacity={0.6} />}
       {paths.byAxis.map(({ axisId, d }) => (

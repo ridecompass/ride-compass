@@ -61,33 +61,41 @@ function addPointMarker(
   point: Coordinates,
   element: HTMLDivElement,
   editable: boolean,
-  handlers: { onMove: (coordinates: Coordinates) => void; onClick: () => void },
+  handlers: { onMove: (coordinates: Coordinates) => void; onPress: () => boolean },
 ): Marker {
   const marker = new maplibregl.Marker({ element, anchor: "center", draggable: editable })
     .setLngLat([point.longitude, point.latitude])
     .addTo(map);
+  element.style.cursor = pinCursor(editable);
   marker.on("dragend", () => {
     const lngLat = marker.getLngLat();
     handlers.onMove({ latitude: lngLat.lat, longitude: lngLat.lng });
   });
-  bindDragAwareClick(marker, element, handlers.onClick);
+  bindDragAwareClick(marker, element, handlers.onPress);
   return marker;
+}
+
+/** 動かせる間はつかめる形。動かせない間、ピンは押せる物に数えない（位置と呼び名以上の情報を持たない）ので押せる形にしない。 */
+function pinCursor(editable: boolean): string {
+  return editable ? "grab" : "default";
 }
 
 // マーカーをドラッグした直後は、同じ操作の終わりにclickも飛ぶ。つかんで動かしただけで
 // 選び直しや小窓が起きないよう、ドラッグ由来の1回を読み飛ばす。
-function bindDragAwareClick(marker: maplibregl.Marker, element: HTMLElement, onClick: () => void): void {
+/** 印を押したとき。`onClick`が押しを受けた（true）ときと、つかんで動かした直後の押しは地図へ通さない。受けなければ地図へ通し、
+ * 印の下の物を地図の押しとして開かせる（印は地図の器の中にあり、止めなければ地図の押しになる）。 */
+function bindDragAwareClick(marker: maplibregl.Marker, element: HTMLElement, onClick: () => boolean): void {
   let dragged = false;
   marker.on("dragstart", () => {
     dragged = true;
   });
   element.addEventListener("click", (event) => {
-    event.stopPropagation();
     if (dragged) {
       dragged = false;
+      event.stopPropagation();
       return;
     }
-    onClick();
+    if (onClick()) event.stopPropagation();
   });
 }
 
@@ -103,9 +111,8 @@ interface MapMarkersInputs {
   onOriginMove: (coordinates: Coordinates) => void;
   onWaypointMove: (index: number, coordinates: Coordinates) => void;
   onDestinationMove: (coordinates: Coordinates) => void;
-  /** 地点の印を押したときにすること（押した地点の位置を受ける）。何も起きない印ならnullで、動かせない間はその印に押せる見た目
-   * （ポインタの形）を付けない。 */
-  pointPress: (target: PointTarget) => ((at: Coordinates) => void) | null;
+  /** 動かせる間に地点の印を押したとき（その地点を選ぶ）。動かせない間の押しは地図へ通す。 */
+  onPointSelect: (target: PointTarget) => void;
   onRouteSegmentSelect: (selection: SelectedRouteSegment | null) => void;
 }
 
@@ -144,6 +151,12 @@ export function useMapMarkers(
   useEffect(() => {
     latest.current = latestProps;
   });
+  // 印を押したとき。動かせる間だけ受けてその地点を選び、受けなければ地図へ通す。
+  const pressPoint = (target: PointTarget) => {
+    if (!latest.current.pointsEditable) return false;
+    latest.current.onPointSelect(target);
+    return true;
+  };
   // 出発地点をドラッグで動かした直後の1回だけ、位置の更新でカメラを動かさない（その地点は既に画面に見えている）。
   const skipNextFlyToRef = useRef(false);
 
@@ -183,7 +196,7 @@ export function useMapMarkers(
             skipNextFlyToRef.current = true;
             latest.current.onOriginMove(coordinates);
           },
-          onClick: () => latest.current.pointPress({ role: "origin" })?.(latest.current.location),
+          onPress: () => pressPoint({ role: "origin" }),
         });
         appliedMarkerSourceRef.current = locationSource;
       }
@@ -203,8 +216,7 @@ export function useMapMarkers(
       waypointMarkersRef.current = waypoints.map((point, index) =>
         addPointMarker(map, point, elements[index], latest.current.pointsEditable, {
           onMove: (coordinates) => latest.current.onWaypointMove(index, coordinates),
-          onClick: () =>
-            latest.current.pointPress({ role: "waypoint", index })?.(latest.current.waypoints[index] ?? point),
+          onPress: () => pressPoint({ role: "waypoint", index }),
         }),
       );
       setWaypointMarks(elements);
@@ -216,9 +228,10 @@ export function useMapMarkers(
   // 印のつかめる/つかめないは、印を作り直さずに切り替える——出発地の印を作り直すeffect（上）はカメラ移動を伴うため、
   // パネルを切り替えるたびに地図が飛んでしまう。
   useEffect(() => {
-    markerRef.current?.setDraggable(pointsEditable);
-    waypointMarkersRef.current.forEach((marker) => marker.setDraggable(pointsEditable));
-    destinationMarkerRef.current?.setDraggable(pointsEditable);
+    for (const marker of [markerRef.current, ...waypointMarkersRef.current, destinationMarkerRef.current]) {
+      marker?.setDraggable(pointsEditable);
+      if (marker) marker.getElement().style.cursor = pinCursor(pointsEditable);
+    }
   }, [pointsEditable]);
 
   // 目的地の印。
@@ -236,33 +249,12 @@ export function useMapMarkers(
 
       destinationMarkerRef.current = addPointMarker(map, destination, element, latest.current.pointsEditable, {
         onMove: (coordinates) => latest.current.onDestinationMove(coordinates),
-        onClick: () => latest.current.pointPress({ role: "destination" })?.(latest.current.destination ?? destination),
+        onPress: () => pressPoint({ role: "destination" }),
       });
     };
 
     runWhenStyleReady(map, applyDestinationMarker);
   }, [mapRef, destination]);
-
-  // 印の見た目: 動かせる間はつかめる形、動かせない間は押すと何かが起きる印だけをポインタの形にする。押せるかは地点の名前で
-  // 変わるので、描くたびに当て直す。印を作るeffect（上）の後に置き、同じ描画で作った印にも当てる。
-  useEffect(() => {
-    const pins: [Marker | null, PointTarget][] = [
-      [markerRef.current, { role: "origin" }],
-      ...waypointMarkersRef.current.map((marker, index): [Marker, PointTarget] => [
-        marker,
-        { role: "waypoint", index },
-      ]),
-      [destinationMarkerRef.current, { role: "destination" }],
-    ];
-    for (const [marker, target] of pins) {
-      if (marker === null) continue;
-      marker.getElement().style.cursor = pointsEditable
-        ? "grab"
-        : handlers.pointPress(target) !== null
-          ? "pointer"
-          : "default";
-    }
-  });
 
   // 選んでいる区間の印。選択が外れれば（どこで外しても）消える。
   useEffect(() => {

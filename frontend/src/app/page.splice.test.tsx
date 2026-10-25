@@ -24,6 +24,7 @@ import {
   route,
   routeLinesOnMap,
   selectDestination,
+  selectedPointMarks,
   serveHome,
   showRoadSurface,
 } from "@/testing/homePage";
@@ -91,7 +92,7 @@ describe("区間の乗り換え", () => {
 
     clickSegment(mapOnScreen().sourceFeatures("route-segments")[0], ELSEWHERE);
     await user.click(screen.getByRole("button", { name: "編集をやめて候補へ戻る" }));
-    expect(screen.queryByRole("button", { name: "区間の選択を解除" })).toBeNull();
+    expect(selectedPointMarks()).toEqual([]);
 
     await user.click(screen.getByRole("button", { name: "ルートを合成" }));
     jobs.respond([BASE, OTHER], DESTINATION_CONDITIONS);
@@ -116,7 +117,7 @@ describe("区間の乗り換え", () => {
     expect(await screen.findByRole("button", { name: "1つ戻す" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "この道の評価を見る" })).toBeNull();
     await user.click(screen.getByRole("button", { name: "編集をやめて候補へ戻る" }));
-    expect(screen.queryByRole("button", { name: "区間の選択を解除" })).toBeNull();
+    expect(selectedPointMarks()).toEqual([]);
   });
 
   it("作り直しの失敗は前の候補を残して窓で知らせ、作った合成ルートを選んでいる間は、地図に元のルートだけを重ねる", async () => {

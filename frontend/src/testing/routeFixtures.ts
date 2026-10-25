@@ -126,7 +126,6 @@ export function makeRouteSegment(overrides: Partial<RouteSegmentDetail> = {}): R
     axis_contributions: {},
     material_values: {},
     difficulty: null,
-    wind: null,
     elevations: [],
     road_classes: {},
     ...overrides,

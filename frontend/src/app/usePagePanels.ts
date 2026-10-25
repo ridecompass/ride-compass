@@ -16,19 +16,11 @@ export type Panel = Exclude<MobileSheet, null>;
 
 /**
  * 地図を押したときの意味を、効いているパネルから決める（地図を触った副作用で、いま見ていない面の状態が変わらない）。
- * 「ルート設定」の条件タブは地点、「ルート結果」はルートと区間、編集中は乗り換える区間、効いているパネルが無ければ見るだけ
- * （走行中は何も開かず、地図は現在地を追うことに専念する）。走行中に開いたパネルの中は、走っていないときと同じに決める。
+ * 「ルート設定」の条件タブは地点、編集中は乗り換える区間、ほかは押した物を開く（走行中も同じ）。
  */
-export function mapTapModeOf(
-  panel: Panel | null,
-  settingsTab: SettingsTab,
-  editing: boolean,
-  riding: boolean,
-): MapTapMode {
+export function mapTapModeOf(panel: Panel | null, settingsTab: SettingsTab, editing: boolean): MapTapMode {
   if (editing) return "splice";
-  if (panel === "routeSettings") return settingsTab === "generate" ? "points" : "look";
-  if (panel === "routeOutcome") return "routes";
-  return riding ? "ride" : "look";
+  return panel === "routeSettings" && settingsTab === "generate" ? "points" : "open";
 }
 
 /**

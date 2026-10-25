@@ -17,7 +17,7 @@ interface PointNamesInputs {
 }
 
 /** 地点の名前のうち、探して・名前のある点で置いた地点の名前（無ければnull。地図で置いた地点・現在地は名前を持たない）。 */
-export function placeNames({
+function placeNames({
   waypoints,
   destination,
   foundAt,

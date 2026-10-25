@@ -349,7 +349,7 @@ get_way_materials(z, x, y, at)
   ├─ TileMidpoints.arrays → 鍵ごとの中ほど（カバレッジ外はNone→{}、DB障害も{}。それ以外の例外は500）
   ├─ get_wind_forecast_lattice(タイルと全フィーチャーの中ほどを覆う矩形)（読めなければ{}）
   │     … タイルをまたぐ道の中ほどはタイルの外にありうる。格子の外の点は端の格子点へ寄せられるため、覆う
-  ├─ sampled_times で時刻が予報の範囲の外（端へ寄せた）なら{}
+  ├─ WindForecastSeries.covers で時刻が予報の範囲の外（端へ寄せる）なら{}
   ├─ WindForecastSeries.sample(時刻, 通過時刻0, 各中ほどの格子点) → 道ごとの風速・風向
   └─ 戻り値は {WIND_SPEED_LEAF: {feature_key: 値}, WIND_DIRECTION_LEAF: {feature_key: 値}}
 ```

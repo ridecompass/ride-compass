@@ -17,7 +17,7 @@ import logging
 from collections import Counter
 import math
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from itertools import accumulate, combinations
 
 import numpy as np
@@ -1021,17 +1021,6 @@ def _wind(times: list[datetime], speed_by_point: list[float]) -> WindForecastSer
 
 
 HOURS_OF_THE_DAY = [datetime(2026, 9, 22, h) for h in range(24)]
-
-
-async def test_segment_wind_is_the_forecast_for_the_local_time_of_passing(engine_over):
-    """予報の時刻は日本時間。出発時刻を別のタイムゾーンで渡されても、通る時刻の予報を読む（ずれると9時間違う風になる）。"""
-    generator = engine_over(grid_network(), wind=_wind(HOURS_OF_THE_DAY, [3.0, 3.0, 3.0, 3.0]))
-
-    (candidate, *_) = await generator.generate_via_waypoints(
-        at(SOUTH_WEST), [], destination=at(NORTH_EAST), max_routes=1,
-        start_time=DEPARTURE.astimezone(timezone.utc))
-
-    assert {s.wind.forecast_at for s in candidate.segments} == {"2026-09-22T08:00"}
 
 
 async def test_a_route_timed_without_the_wind_forecast_says_so(engine_over):

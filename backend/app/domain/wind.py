@@ -187,11 +187,6 @@ class WindForecastSeries:
         index, _clamped = self._sample_index(start, passage_hours)
         return self.speed_ms[points, index], self.direction_deg[points, index]
 
-    def sampled_times(self, start: datetime, passage_hours: np.ndarray) -> tuple[list[datetime], np.ndarray]:
-        """`sample`が引く予報の時刻と、系列の範囲の外で端の時刻へ寄せたか（予報の先を延ばして使っている）。"""
-        index, clamped = self._sample_index(start, passage_hours)
-        return [self.times[i] for i in index], clamped
-
     def covers(self, at: datetime) -> bool:
         """`at`に最も近い時刻が系列の範囲の中にあるか（端の値で延ばさずに引けるか）。"""
         _, clamped = self._sample_index(at, np.zeros(1))

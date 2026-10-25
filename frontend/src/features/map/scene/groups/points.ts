@@ -40,7 +40,7 @@ import { drawPointIcon } from "@/features/map/layers/pointIcon";
 import type { MapSceneImage } from "@/features/map/scene/mapScene";
 import { declareGroup, type SceneLayerEntry, type SceneSourceEntry } from "@/features/map/scene/mapSceneGroups";
 
-export const POINT = mapDisplay.point;
+const POINT = mapDisplay.point;
 
 /** 配信される点のタイルの名前 → source-layer。 */
 const POINT_TILE_SOURCE_LAYERS: Readonly<Record<PointTileLayer, string>> = regionTileConfig.point_layers;
