@@ -978,7 +978,7 @@ def compile_search_kernels() -> None:
     nodes_reached_without_retracing(statics.csr, np.ones(2, dtype=bool), np.ones(2, dtype=bool), [0])
     structure = build_turn_expanded_structure(
         statics.csr, lazy_graph, np.zeros(2), np.zeros(2), np.zeros(2, dtype=np.int64), current_turn_cost(),
-        np.zeros(2, dtype=bool), np.zeros(2, dtype=np.int64),
+        np.zeros(2, dtype=bool), np.zeros(2, dtype=np.int64), np.ones(2, dtype=np.int16),
     )
     cost = np.ones((1, 2))
     origin_states = np.array([0])

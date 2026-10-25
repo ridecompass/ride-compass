@@ -48,6 +48,8 @@ def network() -> RoadNetwork:
         node_lon=lon,
         node_has_signals=np.zeros(len(NODES), dtype=bool),
         node_max_rank=np.zeros(len(NODES), dtype=np.int64),
+        # 区間の端として現れる回数。道30の2区間が接するノード105だけが2本。
+        node_branch_count=np.array([1, 1, 1, 1, 1, 2, 1], dtype=np.int16),
         edge_way_id=np.array([way for way, *_ in EDGES], dtype=np.int64),
         edge_segment=np.array([segment for _, segment, *_ in EDGES], dtype=np.int32),
         edge_forward=np.array([forward for _, _, forward, *_ in EDGES], dtype=bool),

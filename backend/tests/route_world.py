@@ -144,6 +144,9 @@ def road_network(
         revision=1,
         node_osm_id=node_ids, node_lat=lat, node_lon=lon,
         node_has_signals=np.zeros(len(node_ids), dtype=bool), node_max_rank=np.zeros(len(node_ids), dtype=np.int64),
+        # 集まる道の本数は、1本1区間の道の端として現れる回数（一方通行の道も数える）。
+        node_branch_count=np.bincount(
+            [row_of[osm] for pair in ways.values() for osm in pair], minlength=len(node_ids)).astype(np.int16),
         edge_way_id=way_of_row, edge_segment=np.zeros(n, dtype=np.int32),
         edge_forward=forward,
         edge_from=tail, edge_to=head,

@@ -361,6 +361,7 @@ class RoadGraphEngine:
             statics.csr, lazy_graph, start_bearings, end_bearings, edge_rank, self._turn_cost,
             np.asarray(network.node_has_signals[road.nodes], dtype=bool),
             np.asarray(network.node_max_rank[road.nodes], dtype=np.int64),
+            np.asarray(network.node_branch_count[road.nodes], dtype=np.int16),
         )
 
     async def prepare(

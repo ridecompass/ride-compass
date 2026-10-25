@@ -159,6 +159,7 @@ def build_turn_expanded_structure(
     spec: TurnCostSpec,
     node_has_signal: np.ndarray,
     node_db_rank: np.ndarray,
+    node_branch_count: np.ndarray,
 ) -> TurnExpandedStructure:
     """`CsrGraphStructure`から、状態＝有向Edgeの遷移構造を組む。
 
@@ -168,8 +169,10 @@ def build_turn_expanded_structure(
 
     曲がりは、入る区間の終点のそばの向き`end_bearing_deg`と出る区間の始点のそばの向き`start_bearing_deg`
     （どちらも区間の番号順）の差で測る。区間の端から端の向きで測ると、交差点から離れた所のカーブが
-    交差点の曲がりに混ざる。曲がりの待ちと上位の道の待ちは、来た道へ戻る遷移を除いて2本以上の道へ
-    進める点（分かれ道）でだけ足す——分かれ道でない点は道のデータの継ぎ目で、道を選ばない。
+    交差点の曲がりに混ざる。曲がりの待ちと上位の道の待ちは、3本以上の道が集まる点（分かれ道。本数は
+    `node_branch_count`）でだけ足す——分かれ道でない点は道のデータの継ぎ目で、道を選ばない。本数は進めない道
+    （向こうから来る一方通行）も、部分グラフの外へ出る道も数える。進める道だけで数えると、進めない道のある交差点の
+    曲がりが継ぎ目に見え、待ちも案内も消える。
 
     ターンの費用に要る入力はすべて引数で受け取り、**`None`を受け取らない**。既定を持たせても
     実行時に`None`を許しても、渡し忘れた呼び出しが「上位の道の横断に待ちが付かない」構造を
@@ -193,8 +196,7 @@ def build_turn_expanded_structure(
     target_state = csr.entry_edge_index[entry_index].astype(np.int64)
     is_uturn = csr.indices[entry_index].astype(np.int64) == edge_from[source]
     delta = (start_bearing_deg[target_state] - end_bearing_deg[source] + 180.0) % 360.0 - 180.0
-    branch_of_state = np.bincount(source, weights=~is_uturn, minlength=state_count) >= 2
-    branch = branch_of_state[source]
+    branch = node_branch_count[edge_to[source]] >= 3
     wait_kind = _turn_kinds(delta, is_uturn, branch, spec)
     straight = wait_kind == TurnKind.STRAIGHT
     turn_seconds = _turn_seconds_for(wait_kind, spec)

@@ -64,6 +64,7 @@ def _network(revision: int | None, distance_m: float = 100.0) -> RoadNetwork:
         node_lon=np.array([139.0, 139.001]),
         node_has_signals=np.array([False, True]),
         node_max_rank=np.array([0, 3], dtype=np.int64),
+        node_branch_count=np.array([1, 1], dtype=np.int16),
         edge_way_id=np.array([10, 10], dtype=np.int64),
         edge_segment=np.array([0, 0], dtype=np.int32),
         edge_forward=np.array([True, False]),
