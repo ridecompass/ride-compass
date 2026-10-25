@@ -30,10 +30,24 @@ export interface RideFollow {
   zoomBase: number | null;
   /** 利用者が基準の倍率を選んだ（倍率のボタン・追っている間につまむ）。 */
   onZoomBaseChange: (zoom: number) => void;
+  /** 地図への触れを受け付けないロックの間か。 */
+  locked: boolean;
 }
 
 // 速さは位置ごとに揺れるので、新しい値をこの割合だけ混ぜてから倍率に使う（倍率がちらつかないように）。
 const SPEED_SMOOTHING = 0.3;
+
+// ロックの間に止める、地図の手ぶりの操作（MapLibreの各操作の入切の口）。
+const GESTURE_HANDLERS = [
+  "dragPan",
+  "dragRotate",
+  "scrollZoom",
+  "boxZoom",
+  "keyboard",
+  "doubleClickZoom",
+  "touchZoomRotate",
+  "touchPitch",
+] as const;
 
 const FACING_CONE_ATTRIBUTE = "data-facing-cone";
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -70,7 +84,7 @@ function isTwoFingerTouch(input: unknown): boolean {
 }
 
 /** 走行モードの間、現在地の点を出し、追っている間は地図の中心（と向き）を現在地へ動かし続ける。追っている間の2本指の
- * 操作は拡大・縮小だけにし、利用者が地図を指で動かすと追うのを休むよう知らせる。止めたら地図の向きを走る前に戻す。走っていない間は、`here`（取り直した現在地）に同じ点を出す。
+ * 操作は拡大・縮小だけにし、利用者が地図を指で動かすと追うのを休むよう知らせる。ロックの間は地図の手ぶりの操作を止める。止めたら地図の向きを走る前に戻す。走っていない間は、`here`（取り直した現在地）に同じ点を出す。
  * `visibleOffset`は、地図に重なる部品を避けて見えている所の中ほどへ寄せるための、中心からのずれ（px）。
  * 返すのは倍率のボタンと方位磁針を押したときの処理。 */
 export function useRideFollow(
@@ -137,6 +151,19 @@ export function useRideFollow(
       map.touchZoomRotate.enableRotation();
     };
   }, [mapRef, following]);
+
+  // ロックの間は手ぶりの操作を止め、外したら止める前に効いていたものだけを戻す（傾けは地図を作るときから止めてある）。
+  // 追うのをやめると上で2本指で回す操作を戻すので、追っているかが変わるたびに止め直す（このeffectは上より後に置く）。
+  const locked = ride?.locked ?? false;
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !locked) return;
+    const stopped = GESTURE_HANDLERS.map((name) => map[name]).filter((handler) => handler.isEnabled());
+    for (const handler of stopped) handler.disable();
+    return () => {
+      for (const handler of stopped) handler.enable();
+    };
+  }, [mapRef, locked, following]);
 
   // 走り始めたときの地図の向きを覚え、止めたらそこへ戻す（進む向きを上にして回した地図を、作業台に持ち越さない）。
   // 戻すのは止めたときだけで、画面を離れて地図を片付けるときは動かさない。

@@ -21,6 +21,7 @@ import {
   Layers,
   ListChecks,
   Lock,
+  LockOpen,
   Map as MapShape,
   MapPin,
   MapPinX,
@@ -118,6 +119,10 @@ export const DistanceTargetIcon = fromLucide(Ruler);
 export const RemovePointIcon = fromLucide(Trash);
 /** 利用者が変えられない選び方（いつも決まった値の行）。 */
 export const LockedIcon = fromLucide(Lock);
+/** 走行中の地図への触れを受け付けないロックの間。 */
+export const MapLockedIcon = fromLucide(Lock);
+/** 走行中の地図のロックを外している間（押すとロックする）。 */
+export const MapUnlockedIcon = fromLucide(LockOpen);
 /** 取れなかったものを取り直す。 */
 export const RetryIcon = fromLucide(RotateCw);
 /** 取れていない情報がある印。警報の色と取り違えないよう、三角の形を使わない。 */

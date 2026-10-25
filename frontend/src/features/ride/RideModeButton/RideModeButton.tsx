@@ -18,7 +18,8 @@ const WAKE_LOCK_UNAVAILABLE =
 
 const HEADING_NEEDS_GESTURE = "現在地の印にスマホの向きを出すには、向きを読む許しが要ります。";
 
-const NOTICE_CARD = "absolute top-0 right-full mr-2 w-max max-w-55 border-0 px-2.5 py-1.5";
+/** 右の列のボタンの横（左）に出す札の置き場と形。 */
+export const NOTICE_CARD = "absolute top-0 right-full mr-2 w-max max-w-55 border-0 px-2.5 py-1.5";
 
 interface RideModeButtonProps {
   status: RideStatus;

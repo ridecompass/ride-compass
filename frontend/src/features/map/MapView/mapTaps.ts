@@ -45,6 +45,8 @@ export interface MapTapState {
   roadLayers: readonly RoadMapLayerView[];
   interactiveLayerIds: readonly string[];
   tapMode: MapTapMode;
+  /** 走行中のロックの間か。ロックの間は押しても何もしない（雨粒を押しと取らない）。 */
+  tapsLocked: boolean;
   onPointPlace: (coordinates: Coordinates, spot: PlaceCandidate | null) => void;
   onRouteSegmentSelect: (selection: SelectedRouteSegment | null) => void;
   /** 点の位置を、選んでいる区間に当てたルートの上の位置。区間を選んでいない・区間の形が無ければnull。 */
@@ -121,6 +123,7 @@ export function bindMapTaps(map: MapLibreMap, latest: { readonly current: MapTap
   // 点（店など）の上なら、その点の位置へ、その点の候補として置く。ほかの意味の間は、その意味が開ける地物だけを開き、
   // 開ける物の無い所を押すと小窓を閉じる。
   function handleClick(e: MapMouseEvent) {
+    if (latest.current.tapsLocked) return;
     if (latest.current.tapMode === "points") {
       const spot = interactiveFeaturesAt(e.point)
         .map(namedSpotOf)

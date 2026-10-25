@@ -41,6 +41,8 @@ interface RideOnMap {
   zoomBase: number | null;
   /** 利用者が基準の倍率を選んだ（倍率のボタン・つまむ）。 */
   onZoomBaseChange: (zoom: number) => void;
+  /** 地図への触れを受け付けないロックの間か（雨粒を指の操作と取らないため）。 */
+  locked: boolean;
 }
 
 interface UseRideModeResult {
@@ -63,6 +65,12 @@ interface UseRideModeResult {
   rest: () => void;
   /** 地図を指で動かして休んでいれば追い直し、休むを選んでいれば位置を受け直す。 */
   resume: () => void;
+  /** 地図への触れを受け付けないロックの間か。走行モードを止めると外れる。 */
+  locked: boolean;
+  /** ロックする。地図を指で動かして休んでいれば追い直す。 */
+  lock: () => void;
+  /** ロックを外す。 */
+  unlock: () => void;
   /** 走行モードの間だけ値がある。 */
   map: RideOnMap | null;
 }
@@ -141,6 +149,7 @@ export function useRideMode(plausibleMaxKmh: number | undefined): UseRideModeRes
   const [fix, setFix] = useState<Fix | null>(null);
   const [headingUp, setHeadingUp] = useState(false);
   const [zoomBase, setZoomBase] = useState<number | null>(null);
+  const [locked, setLocked] = useState(false);
   const watchId = useRef<number | null>(null);
   // 位置が速さを持たないときに、距離と時刻の差から速さを出す測り始めの位置（`nextMotion`）。
   const motion = useRef<MotionAnchor | null>(null);
@@ -174,12 +183,13 @@ export function useRideMode(plausibleMaxKmh: number | undefined): UseRideModeRes
     [stopWatching],
   );
 
-  // 次に始めるときは北を上・地図の最初の倍率から始める。
+  // 次に始めるときは北を上・地図の最初の倍率・ロックしない状態から始める。
   const stop = useCallback(() => {
     leave("off");
     stopRideMetrics();
     setHeadingUp(false);
     setZoomBase(null);
+    setLocked(false);
   }, [leave]);
 
   const start = useCallback(() => {
@@ -253,6 +263,12 @@ export function useRideMode(plausibleMaxKmh: number | undefined): UseRideModeRes
     if (status === "resting") start();
     else followAgain();
   }, [status, start, followAgain]);
+  // ロックの間は地図を指で動かせず、追い直す「現在地へ戻る」も出ないままになるので、ロックするときに追い直す。
+  const lock = useCallback(() => {
+    setLocked(true);
+    followAgain();
+  }, [followAgain]);
+  const unlock = useCallback(() => setLocked(false), []);
 
   // 画面を離れたら受け取りをやめる。
   useEffect(() => stopWatching, [stopWatching]);
@@ -282,8 +298,9 @@ export function useRideMode(plausibleMaxKmh: number | undefined): UseRideModeRes
             onHeadingUpChange: setHeadingUp,
             zoomBase,
             onZoomBaseChange: setZoomBase,
+            locked,
           },
-    [status, position, travel, device.heading, speedKmh, headingUp, pause, followAgain, zoomBase],
+    [status, position, travel, device.heading, speedKmh, headingUp, pause, followAgain, zoomBase, locked],
   );
 
   const screenWakeLock = useScreenWakeLock(receiving);
@@ -299,6 +316,9 @@ export function useRideMode(plausibleMaxKmh: number | undefined): UseRideModeRes
     press,
     rest,
     resume,
+    locked,
+    lock,
+    unlock,
     map,
   };
 }
