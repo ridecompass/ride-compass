@@ -10,6 +10,7 @@ import type { MapScene, MapSceneLayer } from "@/features/map/scene/mapScene";
 import { describe, expect, it } from "vitest";
 
 import { METERS_PER_DEGREE, longitudeScale } from "@/lib/localPlane";
+import { lineLayer, scene } from "@/testing/mapSceneDeclarations";
 
 import {
   OVERVIEW_MIN_ZOOM,
@@ -129,19 +130,16 @@ describe("overviewBasemapEdits", () => {
 
 describe("overviewScene", () => {
   // 俯瞰図の地図は2倍の大きさで1段細かいズームとして描いて縮めるので、描く地図のズームz+1で2倍の値なら、見た目は本体と同じ。
-  const layerOf = (spec: object): MapSceneLayer =>
-    ({ spec, tier: "point", visible: true, hitTargets: [] }) as unknown as MapSceneLayer;
-  const sceneOf = (...specs: object[]): MapScene => ({
-    sources: [],
-    layers: specs.map(layerOf),
-    images: [],
-    globalState: {},
-  });
-  const specsOf = (scene: MapScene) => scene.layers.map((layer) => layer.spec);
+  const sceneOf = (...specs: object[]): MapScene =>
+    scene(
+      specs.map((spec) => lineLayer("", "point", { spec: spec as MapSceneLayer["spec"] })),
+      [],
+    );
+  const specsOf = (drawn: MapScene) => drawn.layers.map((layer) => layer.spec);
 
   it("記号の大きさ・縁取り・線の幅を、描く地図のズームで2倍にし、記号に地名の場所を取らせない", () => {
     const byZoom = ["interpolate", ["linear"], ["zoom"], 10, ["*", ["get", "s"], 0.5], 14, 1];
-    const scene = sceneOf(
+    const input = sceneOf(
       {
         id: "mark",
         type: "symbol",
@@ -158,7 +156,7 @@ describe("overviewScene", () => {
       { id: "fill", type: "fill", source: "s", paint: { "fill-opacity": 0.5 } },
     );
 
-    expect(specsOf(overviewScene(scene))).toEqual([
+    expect(specsOf(overviewScene(input))).toEqual([
       {
         id: "mark",
         type: "symbol",
