@@ -32,16 +32,6 @@ function areaLayerAnchorIndex(layers: readonly { id: string; "source-layer"?: st
   return layers.findIndex((layer) => layer["source-layer"] === ROAD_NETWORK_SOURCE_LAYER);
 }
 
-/** 文字に場所を譲る点を差し込む位置（このidのレイヤーの直前＝下へ入る）。基礎地図が最後まで続けて描く記号の並びの
- * 頭を返す。基礎地図は文字（地名・通りの名前・店や駅の印）を最後にまとめて描くが、その前にも記号を挟む（libertyでは道路網の
- * 途中に一方通行の矢印があり、その後ろに橋の線・建物・境界を描く）。最初の記号の層の下に入れると、その後ろの線と面が
- * 点の絵の上に描かれる。
- *
- * 求めるのはこのアプリのレイヤーが載る前（スタイルを読んだ直後）に限る——このアプリの線が最前面にあると、並びの頭が求まらない。 */
-function labelLayerAnchorIndex(layers: readonly { type: string }[]): number {
-  return layers.findLastIndex((layer) => layer.type !== "symbol") + 1;
-}
-
 /** 差し込み位置より後ろにある面レイヤーのid（追加順のまま）。基礎地図が道路より後ろに置いて
  * いる面（建物）を指す。 */
 function basemapAreaLayersAfter(layers: readonly { id: string; type: string }[], anchorIndex: number): string[] {
@@ -96,7 +86,6 @@ interface StyleReadyTag {
   __rcStyleReady?: boolean;
   __rcBasemapPrepared?: boolean;
   __rcAreaLayerAnchorId?: string;
-  __rcLabelLayerAnchorId?: string;
   /** 基礎地図の店・施設を描くレイヤーの配信元の絞り（id → 絞り）。 */
   __rcBasemapPoiFilters?: ReadonlyMap<string, FilterSpecification | undefined>;
 }
@@ -138,8 +127,6 @@ export function prepareBasemap(map: MapLibreMap): void {
     map.setPaintProperty(layerId, "line-color", palette.semantic.basemap_minor_road_casing);
   }
   debugLog("map:lifecycle", "基礎地図の細い道の縁取りを描き替えた層", { layers: recolored });
-  tagged.__rcLabelLayerAnchorId = layers[labelLayerAnchorIndex(layers)]?.id;
-  debugLog("map:lifecycle", "文字に場所を譲る点の差し込み位置", { anchorId: tagged.__rcLabelLayerAnchorId ?? null });
   const anchorIndex = areaLayerAnchorIndex(layers);
   const anchorId = anchorIndex < 0 ? undefined : layers[anchorIndex].id;
   tagged.__rcAreaLayerAnchorId = anchorId;
@@ -161,11 +148,6 @@ function recordedAnchor(map: MapLibreMap, anchorId: string | undefined): string 
 /** 面レイヤーの差し込み位置（`recordedAnchor`）。 */
 export function areaLayerAnchor(map: MapLibreMap): string | undefined {
   return recordedAnchor(map, tagOf(map).__rcAreaLayerAnchorId);
-}
-
-/** 文字に場所を譲る点の差し込み位置（`recordedAnchor`）。 */
-export function labelLayerAnchor(map: MapLibreMap): string | undefined {
-  return recordedAnchor(map, tagOf(map).__rcLabelLayerAnchorId);
 }
 
 /** スタイルを`url`から取り直し、新しいスタイルが読み込まれたら（`style.load`）、次の`prepareBasemap`が新しいスタイルに

@@ -52,3 +52,18 @@ export function pointPlaceName(
   const name = layer.point_name_property === null ? undefined : properties[layer.point_name_property];
   return typeof name === "string" && name !== "" ? name : null;
 }
+
+/** 点が束ねた名前のある点の名前と位置（`mapDisplay.point.membersProperty`の値）。持たない点は、名前があれば自分（位置`at`）
+ * だけ、無ければ空。 */
+export function pointMembers(
+  layer: { point_name_property: string | null },
+  properties: Readonly<Record<string, unknown>>,
+  at: readonly [number, number],
+): { name: string; at: [number, number] }[] {
+  const members = properties[mapDisplay.point.membersProperty];
+  if (typeof members === "string") {
+    return (JSON.parse(members) as [string, number, number][]).map(([name, lng, lat]) => ({ name, at: [lng, lat] }));
+  }
+  const name = pointPlaceName(layer, properties);
+  return name === null ? [] : [{ name, at: [at[0], at[1]] }];
+}

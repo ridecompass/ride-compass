@@ -1,17 +1,16 @@
 // @vitest-environment node
-/** 重なった点の絵を間引くレイヤーが、源泉の宣言の順（先に並ぶ行・同じ行の中では割合の大きい点）で点を残し、
- * 基礎地図の文字と重なれば文字に場所を譲ること。
+/** 点のタイルが束ねた代表点のうち2点以上を束ねたものに、点の右へ数を出すこと。
  *
  * ここで見ないもの:
  * - 凡例の見本と地図の点の色・絵の一致、凡例の行ごとの絞り込み → `scene/legends.test.ts`
- * - 地図が重なった絵を実際に省くこと（MapLibreの置き方そのもの。上の層の記号から置く）
- * - 文字に場所を譲る段が基礎地図の文字の下へ入ること → `scene/applyMapScene.test.ts`
+ * - 束ねること・数を数えること（backend の点のタイル） → `backend/tests/test_point_tiles.py`
  */
 import { describe, expect, it } from "vitest";
 
-import { evaluateExpression as evaluate } from "@/testing/mapExpressions";
+import { evaluateExpression as evaluate, matchesFilter } from "@/testing/mapExpressions";
+import { mapDisplay } from "@/types/generated/mapDisplay";
 
-import { POINT_LAYERS } from "@/lib/mapDisplay/pointLayers";
+import { POINT_LAYERS, type PointLayer } from "@/lib/mapDisplay/pointLayers";
 
 import { pointGroup } from "./points";
 
@@ -31,50 +30,21 @@ function layerOf(role: string) {
   return layer;
 }
 
-function layoutOf(role: string): Record<string, unknown> {
-  return layerOf(role).layout as Record<string, unknown>;
+/** そのレイヤーの先頭の行に入る点で、`count`点を束ねた代表点のプロパティ。 */
+function representative(layer: PointLayer, count: number): Record<string, unknown> {
+  const axis = layer.display_axes[0];
+  return { [axis.property]: axis.categories[0].values[0], [mapDisplay.point.countProperty]: count };
 }
 
-const THINNED = POINT_LAYERS.flatMap((layer) =>
-  layer.point_thinning === null ? [] : [[layer.attr_id, layer] as const],
-);
+describe("束ねた点の数", () => {
+  it.each(POINT_LAYERS.map((layer) => [layer.attr_id, layer] as const))(
+    "%s は、2点以上を束ねた代表点にだけ数を出す",
+    (attrId, layer) => {
+      const count = layerOf(`${attrId}:count`);
+      const shown = (n: number) => matchesFilter(count.filter, representative(layer, n), 1);
 
-describe("重なった点の間引き", () => {
-  it("間引く点のレイヤーがある", () => {
-    expect(THINNED.length).toBeGreaterThan(0);
-  });
-
-  it.each(THINNED)("%s は、先に並ぶ行の点を、同じ行の中では割合の大きい点を先に残す", (attrId, layer) => {
-    const thinning = layer.point_thinning!;
-    const axis = layer.display_axes[0];
-    const layout = layoutOf(attrId);
-    expect(layout["icon-allow-overlap"]).toBe(false);
-    expect(layout["icon-ignore-placement"]).toBe(false);
-
-    // 鍵の小さい点ほど先に置かれ、重なったほかの点を退ける。
-    const sortKey = (rowKey: string, ratio: number) => {
-      const value = axis.categories.find((category) => category.key === rowKey)!.values[0];
-      return evaluate(layout["symbol-sort-key"], {
-        [axis.property]: value,
-        [thinning.ratio_property]: ratio,
-      }) as number;
-    };
-    const keys = thinning.rows.flatMap((rowKey) => [sortKey(rowKey, 1), sortKey(rowKey, 0.5), sortKey(rowKey, 0)]);
-    expect(keys).toEqual([...keys].sort((a, b) => a - b));
-    expect(new Set(keys).size).toBe(keys.length);
-  });
-
-  it.each(THINNED)("%s は、基礎地図の文字に場所を譲る（文字より下に積み、文字が先に置かれる）", (attrId) => {
-    expect(layerOf(attrId).tier).toBe("pointUnderLabels");
-  });
-
-  it("間引かない絵の点は、重なっても全部描く", () => {
-    const unthinned = POINT_LAYERS.filter(
-      (layer) => layer.point_thinning === null && layer.display_axes[0].categories.some((c) => "glyph" in c),
-    );
-    expect(unthinned.length).toBeGreaterThan(0);
-    for (const layer of unthinned) {
-      expect(layoutOf(layer.attr_id)).toMatchObject({ "icon-allow-overlap": true, "icon-ignore-placement": true });
-    }
-  });
+      expect([shown(1), shown(2)]).toEqual([false, true]);
+      expect(evaluate((count.layout as Record<string, unknown>)["text-field"], representative(layer, 12))).toBe("12");
+    },
+  );
 });

@@ -636,6 +636,14 @@ OSMは中央分離帯のある道路の上下線を別々のwayとして持ち�
 - POIのタイルは`node_kinds`の種別に、補給休憩のコンビニとして立ち寄り先の群「コンビニ」の行（`stop_places`）を足して焼く
   （コンビニの出どころはOverture。上の「立ち寄り先」）。コンビニの点だけが店の名前（`name`）を持ち、OpenStreetMapの点は名前を焼かない。
   取込範囲の判定はPOIのまま当てる。立ち寄り先のタイルは群「コンビニ」の行を焼かない（補給休憩のタイルが出す）。
+- **どのレイヤーも、近い点を代表点に束ねて焼く**（`point_tile_layers.py: _clustered_mvt_sql`）。タイルを升目に切り
+  （一辺の数は`domain/map_display.py: POINT_CLUSTER_CELLS_PER_TILE`、配る一番寄ったズームでは`domain/map_display.py: POINT_CLUSTER_CELLS_PER_TILE_AT_MAX_ZOOM`）、
+  凡例の同じ行に入る点だけを升目ごとに1つへ束ねる。升目はタイルの端に揃えるので、隣り合うタイルの縁で同じ点が別々に束ねられて食い違わない。
+  代表点は束ねた点の1つで（位置を重心へ動かさない。名前と位置で外の地図を開くため）、選ぶ順はレイヤーごとの宣言（事故は新しい年、
+  立ち寄り先は確からしさの大きい点）。代表点は束ねた点の数（`domain/map_display.py: POINT_COUNT_PROPERTY`）を持ち、2点以上なら
+  束ねた点のうち名前のあるものの名前と経度・緯度の並びをJSONの文字列で持つ（`domain/map_display.py: POINT_MEMBERS_PROPERTY`）。
+  名前の欄名は生成物`mapDisplay.point.countProperty`・`membersProperty`で配る。停止要因は、交差点ごとにまとめた後の点を束ねる。
+  確からしさは代表点を選ぶのにだけ使い、タイルへ焼かない。
 - レジストリに無い名前は404。
 - 古い世代・名前を変えた系統（例: `region/accidents/…`）のキャッシュは、定期の掃除が消す（下の「旧世代の掃除」）。
 

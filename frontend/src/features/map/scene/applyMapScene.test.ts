@@ -106,24 +106,6 @@ describe("applyMapScene", () => {
     expect(added).toEqual([{ id: "arrow", options: { pixelRatio: 2 }, layersOnMap: BASEMAP_LAYER_IDS }]);
   });
 
-  it("文字に場所を譲る点の段は、呼び出し側が渡した基礎地図の文字の位置より下へ入る", () => {
-    const { map, handle } = recordingMap();
-
-    applied(map, scene([lineLayer("thinned-poi", "pointUnderLabels"), ...SHUFFLED_LAYERS]));
-
-    expect(handle.layerOrder()).toEqual([
-      "basemap-water",
-      "landcover-fill",
-      "basemap-road",
-      "thinned-poi",
-      "basemap-label",
-      "surface-line",
-      "lens-line",
-      "poi",
-      "route",
-    ]);
-  });
-
   it("scene が名指ししていない基礎地図のレイヤーは、scene を空にしても残る", () => {
     const { map, handle } = recordingMap();
     const first = scene(SCENE_LAYERS);

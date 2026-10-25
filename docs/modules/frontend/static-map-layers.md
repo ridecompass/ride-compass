@@ -18,8 +18,8 @@
 | `lib/mapDisplay/roadTracks.ts` | 道の線の層（軸カタログが配る`road_classes.map_layers`）の凡例の行（区分・その他／該当なし・データなし）と、道の区分が入る行（`lib/mapDisplay/roadTracks.ts: roadTrackRowOf`）。地図の線・地図の凡例・道のりのグラフの帯が同じ行を読むので、同じ道が地図と帯で同じ色・呼び名になる |
 | `features/map/scene/groups/roadLines.ts` | 道路の線（例: 路面の種類・トンネル・自転車レーン）を、backendの配る層の値（feature-state）と`roadTracks.ts`の行から式へ組んだ配色と、詳細を見ている1本の強調。**線レイヤーで分類を運ぶのは色だけで、太さは情報を持たず、線種が運ぶのは値が無いこと（タグが無い道＝「データなし」の破線）だけ**——1本の線へ複数の分類を載せると、色の意味が他方のON/OFFで入れ替わる。同時表示は横へ平行に割り付けて分ける |
 | `features/map/useRoadClasses.ts` | 道路の線を塗る道ごとの層の値を、表示中のタイルを1枚ずつ問い合わせて取り（[評価軸の色分け](map-axis-coloring.md)の`features/map/tileQueries.ts`）、取得中・失敗とともに返す（道の線の層が1つも出ていない間は取らない） |
-| `lib/mapDisplay/pointLayers.ts` | 点で描く属性（`lib/mapDisplay/pointLayers.ts: POINT_LAYERS`）と、点の値が入る行（`lib/mapDisplay/pointLayers.ts: pointCategoryOf`）・大きさの軸と行の半径・点の名前（`lib/mapDisplay/pointLayers.ts: pointPlaceName`）。地図の点・地図の凡例・点のポップアップ・道のりのグラフの印が同じ宣言を読むので、同じ点が地図とグラフで同じ色・呼び名になる |
-| `features/map/scene/groups/points.ts` | 停止要因POI・補給休憩POI・事故・立ち寄り先の分類・配色・点の形（丸い点か絵記号か）・重なった絵を間引く順と、同じタイルを分け合う条件 |
+| `lib/mapDisplay/pointLayers.ts` | 点で描く属性（`lib/mapDisplay/pointLayers.ts: POINT_LAYERS`）と、点の値が入る行（`lib/mapDisplay/pointLayers.ts: pointCategoryOf`）・大きさの軸と行の半径・点の名前（`lib/mapDisplay/pointLayers.ts: pointPlaceName`）・束ねた代表点の中の名前のある点（`lib/mapDisplay/pointLayers.ts: pointMembers`）。地図の点・地図の凡例・点のポップアップ・道のりのグラフの印が同じ宣言を読むので、同じ点が地図とグラフで同じ色・呼び名になる |
+| `features/map/scene/groups/points.ts` | 停止要因POI・補給休憩POI・事故・立ち寄り先の分類・配色・点の形（丸い点か絵記号か）・束ねた点の数の文字と、同じタイルを分け合う条件 |
 | `features/map/scene/groups/sidePoints.ts` | 選んだ区間の近くの点を、点の層のタイルから点の層と同じ色・絵記号で描く印と、近いかの絞り込み（下記「選んだ区間の近くの点」） |
 | `lib/mapDisplay/sidePoints.ts` | 近くの点の距離の上限（backendの`domain/map_display.py: SEGMENT_NEARBY_POINT_MAX_DISTANCE_M`を生成物から読む）・区間の小窓に並べる点の層（補給・立ち寄り先）・地図に出す・消すの区分の鍵と、点の位置を区間に当てた道のりと道からの距離 |
 | `features/map/layers/pointIcon.ts` | 絵記号で描く点の、地図へ登録する画素。形は見本（`components/PointIconSwatch/PointIconSwatch.tsx`）の宣言を読む。**単体テストは持たない**（`sdfIcon.ts`と同じく、テスト環境のcanvasは2D描画を実装せず、形は座標の宣言そのもの） |
@@ -48,7 +48,7 @@
 | `features/map/MapView/layerDataSources.ts` | レイヤーのデータ取得状態の算出元（`features/map/MapView/layerDataSources.ts: buildLayerDataSources`）。レイヤーカタログの情報源の名前を、取得を見るMapLibreのソースへ引く |
 | `features/map/baseMap.ts` | 基礎地図のスタイル・出典の表記・MapLibreの部品の日本語の文言で地図を作る（`features/map/baseMap.ts: createBaseMap`）。一般の地図（`MapView.tsx`）と下書きの点数の地図が使い、載せるものはどちらも場面で当てる。俯瞰図（`features/map/MapOverview/MapOverview.tsx`）は`inset`で、操作を受けず出典の表記を持たない地図として作る（出典は同じ画面の本体の地図が出す） |
 | `features/map/DraftWayValuesMap/DraftWayValuesMap.tsx` | 下書きの点数の地図（管理画面の較正の画面が置く。[軸スタジオ](axis-studio.md)「較正の画面」）。下書きで求めた道の点数を、一般の地図と同じ場面の組み立て・道の線の塗り・凡例で塗る。点数は backend が走る条件を入れて求め終えた値なので、道ごとの材料1つとして載せ、それをそのまま道の値にする木（`scene/wayValueFormula.ts: featureValueFormula`）で塗る。下書きの中身と点数の求め方は知らず、置く側が渡す |
-| `features/map/layers/mapStyleOps.ts` | 地図インスタンスへの低水準操作（スタイル読み込み後の実行・面レイヤーと文字に場所を譲る点の差し込み位置・基礎地図の細い道の縁取りの描き替え・ズーム依存のicon-size式）。このアプリのどのレイヤーかを知らないものだけを置く |
+| `features/map/layers/mapStyleOps.ts` | 地図インスタンスへの低水準操作（スタイル読み込み後の実行・面レイヤーの差し込み位置・基礎地図の細い道の縁取りの描き替え・ズーム依存のicon-size式）。このアプリのどのレイヤーかを知らないものだけを置く |
 | `features/map/layers/routeArrowIcon.ts`・`components/ui/icons/icons.tsx`・`components/ui/icons/layerIcons.tsx`・`components/ui/icons/lucideIcons.tsx`・`components/ui/icons/mapLayerIcons.ts` | ルート矢印・アイコン集（下記「本モジュールとの関係」参照）。`icons.tsx`はアイコンの土台（大きさの受け口・線の様式）と、操作・地点の自前の形、`layerIcons.tsx`は地図のレイヤーと評価軸の自前の形、`lucideIcons.tsx`はlucideの形の包み、`mapLayerIcons.ts`は源泉が宣言するレイヤーごとのアイコンの表（地図の「表示」の一覧と、区間の小窓の層の値のチップが同じ表を引く。レイヤーを足すと型が書き忘れを止める） |
 | `features/map/layers/sdfIcon.ts` | 地図の記号に使う単色シルエット（例: ルート矢印・落雷の記号）の描画の土台。白で塗った絵を`sdf: true`で登録し、色はicon-colorで付ける。canvasの2D描画が使えなければ投げる——空の絵を黙って返すと記号が地図から消えるだけで誰も気づけない。**単体テストは持たない**（テスト環境のcanvasは2D描画を実装しない。絵の中身は座標の宣言そのもので、写してもなにも守らない） |
 | `components/MapPopup/MapPopupParts.tsx` | 地図の小窓（点・道・区間）を組む部品。どの小窓も「上の帯」（`components/MapPopup/MapPopupParts.tsx: PopupHeader`）と塊——難易度の塊（`components/MapPopup/MapPopupParts.tsx: DifficultyBlock`。難易度・寄与の帯・軸のチップに、同じ塊で読むチップ（風・土地被覆）を並べる）と施設の行（`components/MapPopup/MapPopupParts.tsx: FacilityRows`）——だけで組む。小窓ごとに別の組み方をすると、同じ値が小窓によって違う形に見える。上の帯は右端を×の幅だけ空ける——×はMapLibreが本文の器の右上に置き、どの中身でも44px四方の押す所を持つ（`app/globals.css`） |
@@ -234,15 +234,6 @@ DOM/MapLibreを一切知らない。`MapView.tsx`は画面の状態をsceneの�
 **暗黙の前提**: 建物を道路の手前へ動かすと、面レイヤーを1枚も出していないときの基礎地図も
 「建物の上に道路」へ変わる。この地図はpitchを持たないため影響は小さい。
 
-**重なった絵を省く点は基礎地図の文字より下に入る**（段`pointUnderLabels`。差し込み位置は`labelLayerAnchor`）。MapLibreは
-前面の層の記号から場所を取る（`maplibre-gl`の`src/style/pauseable_placement.ts`が並びの最後の層から置く）ので、文字より下にあれば
-文字（地名・駅名・通りの名前・病院や駅の印）が先に置かれ、文字と重なった絵のほうが省かれる。差し込み位置は**基礎地図が最後まで
-続けて描く記号の並びの頭**（最後の記号でない層の次）で、最初の記号の層ではない——libertyは道路網の途中に一方通行の矢印（記号）を
-描き、その後ろに橋の線・建物・境界を描くので、最初の記号の下に入れると橋の線が絵の上に描かれる。この位置もスタイルごとに
-`prepareBasemap`が1度だけ決める。道路網の位置と違って、このアプリのレイヤーが載る前（スタイルを読んだ直後）に求めることを
-前提にする（このアプリの線が最前面にあると、並びの頭が求まらない）。`prepareBasemap`は`applyScene`がsceneを当てる直前に呼ばれ、
-`map.setStyle()`はこのアプリのレイヤーごと差し替えるので、どちらの時機でも載っていない。
-
 **基礎地図の細い道の縁取りは、面の有無に関わらずいつも濃い灰で描く**（`palette.json: semantic.basemap_minor_road_casing`。
 `prepareBasemap`がスタイルごとに1度、`mapStyleOps.ts: MINOR_ROAD_CASING_LAYER_ID`に当たる層の`line-color`を描き替える）。libertyは
 引いた縮尺（z13.5より手前）の細い道を白い線を描かずに縁取りの線だけで描き、配信元の縁取りの薄い灰は、雨・色別標高図の面を
@@ -277,7 +268,7 @@ DOM/MapLibreを一切知らない。`MapView.tsx`は画面の状態をsceneの�
 あり、かつ既に載っている最初のレイヤーの直下」へ差し込むため、宣言をどの順で並べても
 結果は変わる余地が無い（初回描画だけ重なりがずれて再描画で直る、という形の不具合が
 構造的に起きない）。段が決めるのはこのアプリが足したレイヤーどうしの前後だけで、
-基礎地図に対する位置は`areaLayerAnchor`・`labelLayerAnchor`が決める（上記）。
+基礎地図に対する位置は`areaLayerAnchor`が決める（上記）。
 
 
 「道路情報」の各層（軸カタログの`road_classes.map_layers`。分け方1つが層1つ）は**それぞれ独立した線レイヤー**で、同じベクタソースを
@@ -405,7 +396,7 @@ MSMを配るOpen-MeteoのCC BY 4.0も、リンク付きのクレジット・ラ�
 
 **小窓の中身。**
 
-- 点: 押した所に描かれている名前のある点を1施設1行で並べる。見本・名前（Googleマップを開くリンク）・道からの距離、区間を選んでいる間はその地点から見た前後。
+- 点: 押した所に描かれている名前のある点を1施設1行で並べる。束ねた代表点は、中の名前のある点を全部並べる（`lib/mapDisplay/pointLayers.ts: pointMembers`。印は中の点ごとの位置に置く）。見本・名前（Googleマップを開くリンク）・道からの距離、区間を選んでいる間はその地点から見た前後。
 - 道: 上の帯に線の見本・名前・事実の要約、評価の塊（押すと取る）・土地被覆・畳んだ属性。
 - 区間: 道のりのグラフの表示の断面。上の帯に何km地点・到達予想、グラフで選んでいる層のその地点の値（線の層の値と勾配・帯の層の区分）、難易度と軸ごとの寄与。風は難易度の内訳に入っているので、値を別に出さない。
 
@@ -415,17 +406,17 @@ MSMを配るOpen-MeteoのCC BY 4.0も、リンク付きのクレジット・ラ�
 
 ## 選んだ区間の近くの点（`groups/sidePoints.ts`）
 
-区間を選んでいる間だけ、点の層のタイル（停止要因・補給・立ち寄り先・事故）のうち区間の線から`lib/mapDisplay/sidePoints.ts: SIDE_POINT_MAX_DISTANCE_M`以内の点を、点の層と同じ見た目（行の色の丸か、行の色に絵記号を載せた絵）で、「表示」で点の層を出しているかに関わらず描く。近いかは MapLibre の`distance`式で決める（backendへは問い合わせない）。描いた点は「表示」の点と同じ点で、押したときは上の「地図を押したときと地図の小窓」の決まりに従う。点の層の行（先頭の軸の行）に当たらない値の点は描かず、重なっても間引かない。点のタイルは路面のタイルと同じズーム（`features/map/regionApi.ts: ROAD_TILE_MIN_ZOOM`）から読むので、それより引いた地図では近くの点を描かない。
+区間を選んでいる間だけ、点の層のタイル（停止要因・補給・立ち寄り先・事故）のうち区間の線から`lib/mapDisplay/sidePoints.ts: SIDE_POINT_MAX_DISTANCE_M`以内の点を、点の層と同じ見た目（行の色の丸か、行の色に絵記号を載せた絵）で、「表示」で点の層を出しているかに関わらず描く。近いかは MapLibre の`distance`式で決める（backendへは問い合わせない）。描いた点は「表示」の点と同じ点で、押したときは上の「地図を押したときと地図の小窓」の決まりに従う。点の層の行（先頭の軸の行）に当たらない値の点は描かない。点の層と同じく、束ねた点には数を出す。点のタイルは路面のタイルと同じズーム（`features/map/regionApi.ts: ROAD_TILE_MIN_ZOOM`）から読むので、それより引いた地図では近くの点を描かない。
 
 ## 重なりの段（`scene/mapScene.ts: MAP_SCENE_TIERS`）
 
 **レイヤーは前後を個別に指定せず、段を選ぶ。** 隣り合う2枚の前後を宣言で決める形にすると、
 3枚目を足したときに既存の2枚の関係だけでは位置が決まらない。並びの正本は
-`MAP_SCENE_TIERS`で、面 → 文字に場所を譲る点 → 観測した事実の線 → レンズの線 → 点 → ルート → 選んだ区間の近くの点の順。
+`MAP_SCENE_TIERS`で、面 → 観測した事実の線 → レンズの線 → 点 → ルート → 選んだ区間の近くの点の順。
 選んだ区間の近くの点は、その区間の縁取りと点の層の上に描く（区間の近くの何を見ているかを隠さない）。
 
-**面は基礎地図の道路網より下へ、文字に場所を譲る点は基礎地図の文字より下へ入る**（`under`）。面を道路の上に置くと、
-どの道の話なのかが読めなくなる。重なった絵を省く点を文字より上に置くと、絵が文字を退けて地名が読めなくなる（上記）。
+**面は基礎地図の道路網より下へ入る**（`under`）。面を道路の上に置くと、
+どの道の話なのかが読めなくなる。
 ほかの線・点・ルートは基礎地図より前面。段の順が効くのは、基礎地図の同じ位置へ入る段どうしの前後だけ。
 
 **段を足すのは、上下関係が既存のどれとも違うときだけ。** 「この2枚だけ入れ替えたい」は
@@ -798,12 +789,10 @@ E2Eの`e2e/map-runtime.spec.ts`「宣言された地図レイヤーを全部ON�
 
 **点の形も源泉が決める。** 先頭の軸の行が絵記号の名前（`domain/registry.py: DisplayCategorySpec.glyph`）を持つレイヤーは、行の色の
 角丸四角に白い絵記号を載せた記号で描き（例: 補給・休憩のコンビニ＝袋・トイレ＝WC）、持たないレイヤーは丸い点で描く。
-絵は行ごとにsceneの絵として宣言し（`scene/groups/points.ts: POINT_IMAGES`）、記号は行の値から絵の名前を引く。丸い点と同じく、重なっても
-間引かずに全部描く。ただし源泉が間引きの順（一次属性の`point_thinning`）を宣言したレイヤー（立ち寄り先。街中は飲食店だけで
-絵が埋まる）は、重なった絵を省く。残す順は宣言の行の並び（地点の少ない群から）で、同じ行の中では宣言のプロパティ
-（確からしさ`confidence`）の大きい点を先に残す（`symbol-sort-key`）。自分どうしで省き合うには置いた絵がほかの記号を退ける
-必要がある（`icon-ignore-placement`を付けない）。ほかの記号を退けると基礎地図の文字まで退けてしまうので、このレイヤーは
-基礎地図の文字より下に積み（段`pointUnderLabels`）、文字と重なった絵のほうを省く。絵記号は行の全部に付けるか、どれにも付けない——一部の行だけ形が違うと、形が分類の意味を持って
+絵は行ごとにsceneの絵として宣言し（`scene/groups/points.ts: POINT_IMAGES`）、記号は行の値から絵の名前を引く。丸い点と同じく、重なっても省かずに全部描く。点は基礎地図の文字を退けない（`icon-ignore-placement`）。
+近い点はタイルの側で凡例の行ごとに代表点へ束ねて届く（[静的道路属性](../backend/static-road-attributes.md)「点のタイル」）ので、
+地図は届いた代表点を全部描き、2点以上を束ねた代表点には点の右へ数を出す（`scene/groups/points.ts: pointCountEntry`。数は押せず、
+文字は点の層を全部積んだ後に積むので、ほかの点に隠れない）。絵記号は行の全部に付けるか、どれにも付けない——一部の行だけ形が違うと、形が分類の意味を持って
 しまう（backendの`test_registry.py`が確かめる）。地図が行の値ごとに見本と同じ色・同じ絵記号の絵を引くことは
 `scene/legends.test.ts`が確かめる。
 
@@ -831,8 +820,8 @@ E2Eの`e2e/map-runtime.spec.ts`「宣言された地図レイヤーを全部ON�
 1つの交差点に立つ複数の信号ノードは1点で、位置は交差点の真ん中になる。届く`kind`は取込時の
 値だが、横断歩道位置に立つ信号（`crossing`＋`crossing=*signals*`）は信号として届くため、
 凡例の「横断歩道」に残るのは信号を伴わない横断歩道だけである。まとめる単位は凡例の行で、
-凡例で同じ行に入る近くの点（車道用と歩道・自転車道用の踏切）は1点で届く。補給休憩POIはまとめずに
-1点ずつ届く。
+凡例で同じ行に入る近くの点（車道用と歩道・自転車道用の踏切）は1点で届く。補給休憩POIは交差点ではまとめない。
+どちらも、そのあとタイルの升目で凡例の行ごとに束ねて届く（上記）。
 
 自販機は「飲料自販機」と「自販機(中身不明)」の2つに分かれて届く。前者は`vending`タグで
 飲食物と分かるもの、後者はタグが無く判断できないもので、口に入らないものを売る機械は
