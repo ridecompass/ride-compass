@@ -174,7 +174,12 @@ describe("作成", () => {
 
   it.each([
     {
-      label: "評価が空で返る",
+      label: "評価が理由を付けて空で返る",
+      outcome: () => evaluations.respond([], "組み合わせた経路がつながっていないため評価できませんでした。"),
+      message: "組み合わせた経路がつながっていないため評価できませんでした。",
+    },
+    {
+      label: "評価が理由を付けずに空で返る",
       outcome: () => evaluations.respond([]),
       message: "組み合わせたルートを評価できませんでした",
     },

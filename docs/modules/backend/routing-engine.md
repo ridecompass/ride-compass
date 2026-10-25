@@ -466,7 +466,9 @@ idの文字列や要求の形から決め直さない。
 （経由地・目的地）、`radius_km`は仕上げの戦略が自由に選ぶ部分の届く半径（`route_generator.py: _Finish.search_radius_km`）。
 距離ありは自由に選ぶ部分の長さ×較正値`search.turnaround_radius_ratio`（上の「半径ヒューリスティック」）、置いた点だけをつなぐ距離なしと
 区間の差し替えは0（マージンの最低値だけ）。経由地も目的地も無い周回は、起点を中心に目標距離×その比の
-円を覆う矩形になる。
+円を覆う矩形になる。区間の差し替えは送られた区間の両端の地点（取込範囲全体の道路網から引く）も`points`と同じく矩形に含める——
+出発地のまわりだけで作ると、遠くを走る周回の区間が範囲の外になり、実在しない扱いで断られる。範囲は送られた区間から決め、
+画面が送る距離を使わない。
 
 `GraphService.get_search_slice`で探索範囲の区間（`domain/road_network.py: RoadSlice`）を受け取り、
 `_build_search_graph`がその材料から「Edge×公開軸」静的スコア行列（`StaticEdgeScoreMatrix`、行は切り出した

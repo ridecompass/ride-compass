@@ -19,7 +19,8 @@ const SPLICE_IDLE: SpliceTask = { status: "idle", error: null };
 
 /** 失敗の文言だけを消す（処理中なら何もしない）。 */
 const withoutError = (task: SpliceTask): SpliceTask => (task.status === "idle" ? SPLICE_IDLE : task);
-const NOT_EVALUATED: SpliceTask = { status: "idle", error: "組み合わせたルートを評価できませんでした" };
+/** backendが組み合わせたルートを0本で返し、理由も付けなかったときの文言。 */
+const NOT_EVALUATED = "組み合わせたルートを評価できませんでした";
 
 /** 区間の乗り換えの編集1回ぶん。 */
 interface SpliceSession {
@@ -153,7 +154,8 @@ export function useSpliceSession({
     [spliceOptions],
   );
 
-  const canEvaluate = splice !== null && editingRoute !== null && appliedAlternatives.length > 0;
+  const canEvaluate =
+    splice !== null && editingRoute !== null && splicedShape !== null && appliedAlternatives.length > 0;
   const failTask = (token: symbol, error: unknown) => {
     if (isLive(token))
       setSpliceTask({ status: "idle", error: errorMessage(error, "組み合わせたルートの評価に失敗しました") });
@@ -161,22 +163,22 @@ export function useSpliceSession({
 
   // 選んだ組み合わせをbackendで評価する（frontendは経路を組み立てるだけ）。差分の表示と「作る」で同じものを使い、
   // 評価済みなら投げ直さない。
-  // 評価を待つ間に編集が効かなくなったら、評価を捨てて何も書かない（`stale`）。
-  async function evaluateSplicedRoute(): Promise<RouteCandidate | null | "stale"> {
-    if (!canEvaluate || !splicedShape) return null;
+  // 評価を待つ間に編集が効かなくなったら、評価を捨てて何も書かない（`stale`）。0本ならbackendの理由を返す。
+  async function evaluateSplicedRoute(): Promise<{ spliced: RouteCandidate } | { reason: string } | "stale"> {
+    if (!canEvaluate) throw new Error("評価できない編集を評価しようとした");
     const cached = splice.previews[spliceChoiceKey];
-    if (cached) return cached;
+    if (cached) return { spliced: cached };
     // 表示中の候補を作った条件（編集を始めたときの生成の入力）で評価する（いまのフォームだと、生成後に重みを
     // 変えた1本だけ別の条件で並ぶ）。
-    const { routes: candidates } = await generateRoutes({
+    const { routes: candidates, noCandidatesReason } = await generateRoutes({
       ...buildGenerateRequest(splice.basis),
       spliced_edge_ids: splicedShape.edgeIds,
     });
     if (!isLive(splice.token)) return "stale";
-    const spliced = candidates[0] ?? null;
-    if (spliced)
-      updateSplice((current) => ({ ...current, previews: { ...current.previews, [spliceChoiceKey]: spliced } }));
-    return spliced;
+    const spliced = candidates[0];
+    if (!spliced) return { reason: noCandidatesReason ?? NOT_EVALUATED };
+    updateSplice((current) => ({ ...current, previews: { ...current.previews, [spliceChoiceKey]: spliced } }));
+    return { spliced };
   }
 
   // 作る前に、この組み合わせで何が変わるかを見る（評価はbackendでしか出せないので、押したときだけ投げる）。
@@ -185,9 +187,9 @@ export function useSpliceSession({
     const { token } = splice;
     setSpliceTask({ status: "previewing" });
     try {
-      const spliced = await evaluateSplicedRoute();
-      if (spliced === "stale") return;
-      setSpliceTask(spliced ? SPLICE_IDLE : NOT_EVALUATED);
+      const evaluated = await evaluateSplicedRoute();
+      if (evaluated === "stale") return;
+      setSpliceTask("reason" in evaluated ? { status: "idle", error: evaluated.reason } : SPLICE_IDLE);
     } catch (error) {
       failTask(token, error);
     }
@@ -202,12 +204,13 @@ export function useSpliceSession({
     applyingRef.current = true;
     setSpliceTask({ status: "applying" });
     try {
-      const spliced = await evaluateSplicedRoute();
-      if (spliced === "stale") return;
-      if (!spliced) {
-        setSpliceTask(NOT_EVALUATED);
+      const evaluated = await evaluateSplicedRoute();
+      if (evaluated === "stale") return;
+      if ("reason" in evaluated) {
+        setSpliceTask({ status: "idle", error: evaluated.reason });
         return;
       }
+      const { spliced } = evaluated;
       // 既にある候補と同じ道なら、並べずにその候補を選ぶ。
       const sameRoute = sameRouteAs(spliced);
       onApplied(sameRoute ? { existingRouteId: sameRoute.id } : { created: spliced, originId: editingRoute.id });
