@@ -33,6 +33,7 @@
 | `scripts/prepare-standalone.mjs` | standalone構成のビルド成果物へ`.next/static`と`public`を写し、手元・CIのE2Eで本番と同じ入口を起こせるようにする |
 | `scripts/image.mjs` | 本番のfrontendの像を作る（CIと、frontendのデプロイの手動の起動が呼ぶ）。像へ渡す環境変数の組は撮影の道具も同じものを使う |
 | `scripts/capture.mjs`・`scripts/capture/` | 画面を、選んだ版と応答で開き、脚本で進めた状態を撮る（[デザイン基盤](frontend-design-system.md)「7. 実機確認の方法」） |
+| `capture/ride-simulation.ts` | 模擬走行の脚本（`scripts/capture.mjs --script`で流す）。ルートを作って走行モードを始め、選んだルートの線に沿って毎秒1点ずつ位置と、Android の Chrome と同じ向きの出来事を届け、走行の記録（下記「走行の計測」）とページの CPU の時間を出力へ書く。直す前と後を同じ条件で比べるためのもので、地図を GPU を使わずに描くので時間の絶対値はスマホと合わない（回数で比べる）。打ち方は脚本の先頭 |
 | `scripts/dev-prod-data.mjs` | 開発機の画面を本番のbackendのデータで開く開発サーバーを起こす（[setup.md](../../architecture/setup.md)「開発機の画面を本番のデータで開く」）。取り次ぎの向け先とAPIの宛先は`next.config.ts`が切り替えから決める |
 | `scripts/audit-test-rewrite.mjs` | 実装から起こし直したテストを外から測る（`.claude/rules/testing-rewrite.md`の手順） |
 | `scripts/structure-population.mjs`・`scripts/structure-population/` | 画面がbackendの宣言を持ち直している形の候補を構文木から列挙する（周期レビューの「構造の問い」のfrontendの母集団）。候補を出すだけで判じない。語彙（生成物の値・現象の語・軸名）の読み取りと、字句の置かれた文脈の判定は`scripts/structure-population/`の下に分けて持つ |
