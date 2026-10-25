@@ -148,6 +148,7 @@ def main() -> int:
         print(f"失敗: {line}")
     if found:
         return 1
+    assert edge_ids is not None  # 乗り換えを試せる組が無ければ found に載って上で返っている
     print(f"通った: 候補 {len(result['routes'])} 件・軸 {len(catalog['axes'])} 本のどれも、候補1の区間に塗る値があり、"
           f"乗り換えた経路（区間 {len(edge_ids)} 本）も評価が返る")
     return 0
