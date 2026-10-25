@@ -15,6 +15,7 @@ import { buildLayerDataSources } from "@/features/map/MapView/layerDataSources";
 import { useLayerDataStatus } from "@/features/map/MapView/useLayerDataStatus";
 import { ORIGIN_ZOOM } from "@/features/map/MapView/useMapMarkers";
 import { debugLog } from "@/lib/debugLog";
+import { bindRideMetrics } from "@/lib/rideMetrics";
 import { roundToDigits } from "@/lib/numberFormat";
 
 // 初期表示の覆い（「地図を読み込み中…」）を出しておく上限。覆いは基礎地図が描けた時点（"load"）で外すので、
@@ -89,6 +90,7 @@ export function useMapLifecycle(
     });
     resizeObserver.observe(containerRef.current);
     const unbindInteractions = bindInteractions(map);
+    const unbindRideMetrics = bindRideMetrics(map);
 
     // "load"は載っているすべてのタイルが揃った最初の描画で来る。アプリのソースは"load"の後に足す
     // （runWhenStyleReady）ので、この時点で描けているのは基礎地図だけ——覆いはここで外す。"idle"は
@@ -181,6 +183,7 @@ export function useMapLifecycle(
       window.clearTimeout(initialOverlayTimer);
       resizeObserver.disconnect();
       unbindInteractions();
+      unbindRideMetrics();
       map.off("load", handleLoad);
       map.off("error", handleMapError);
       map.off("moveend", handleMoveEnd);

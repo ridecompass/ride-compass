@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { debugLog } from "@/lib/debugLog";
+import { recordRideFix, setRideMetricsStatus, startRideMetrics, stopRideMetrics } from "@/lib/rideMetrics";
 import { haversineKm } from "@/lib/geoDistance";
 import type { Coordinates } from "@/types/route";
 
@@ -148,6 +149,9 @@ export function useRideMode(plausibleMaxKmh: number | undefined): UseRideModeRes
   useEffect(() => {
     plausibleMax.current = plausibleMaxKmh;
   }, [plausibleMaxKmh]);
+  useEffect(() => {
+    setRideMetricsStatus(status);
+  }, [status]);
   // 位置を受けている間だけ、向きを読み、画面を点けたままにする。
   const receiving = status !== "off" && status !== "resting";
   const device = useDeviceHeading(receiving);
@@ -173,6 +177,7 @@ export function useRideMode(plausibleMaxKmh: number | undefined): UseRideModeRes
   // 次に始めるときは北を上・地図の最初の倍率から始める。
   const stop = useCallback(() => {
     leave("off");
+    stopRideMetrics();
     setHeadingUp(false);
     setZoomBase(null);
   }, [leave]);
@@ -186,6 +191,7 @@ export function useRideMode(plausibleMaxKmh: number | undefined): UseRideModeRes
     requestHeading();
     setError(null);
     setStatus("waiting");
+    startRideMetrics();
     debugLog("ride:mode", "始めた");
     watchId.current = navigator.geolocation.watchPosition(
       (received) => {
@@ -200,6 +206,7 @@ export function useRideMode(plausibleMaxKmh: number | undefined): UseRideModeRes
         });
         motion.current = next.anchor;
         debugLog("ride:position", "受け取った", { speed, accuracy, speedMs: next.speedMs });
+        recordRideFix(accuracyM, next.speedMs, received.timestamp);
         const speedKmh = next.speedMs === null ? null : next.speedMs * 3.6;
         const limit = plausibleMax.current;
         if (speedKmh !== null && limit !== undefined && speedKmh > limit) {
