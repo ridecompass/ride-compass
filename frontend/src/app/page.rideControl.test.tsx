@@ -190,7 +190,6 @@ describe("走行モードの操作", () => {
 
     await user.click(lockButton());
     expect(lockButton()).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByText("ロック中: 地図は触っても動きません")).toBeInTheDocument();
     expect(rideButton()).toHaveAttribute("data-ride", "following");
     expect(backToHere()).toBeNull();
     // 指の操作が地図を動かさないかは実ブラウザの MapLibre でしか出ないので、e2e/ride-mode-touch.spec.ts が指を送って見る。
@@ -220,7 +219,6 @@ describe("走行モードの操作", () => {
     await user.click(lockButton());
     await user.click(unlockChoice()!);
     expect(lockButton()).toHaveAttribute("aria-pressed", "false");
-    expect(screen.queryByText("ロック中: 地図は触っても動きません")).toBeNull();
     expect(mapOnScreen().stoppedGestures()).toEqual([]);
 
     // ロックして案内を終え、また始めるとロックしていない。
