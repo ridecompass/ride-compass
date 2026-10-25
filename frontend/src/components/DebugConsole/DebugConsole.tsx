@@ -5,6 +5,7 @@ import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
 import { useDebugEnabled, useDebugLogEntries } from "@/hooks/useDebugLog";
 import { CopyIcon } from "@/components/ui/icons/lucideIcons";
 import { clearDebugLog, type DebugLogEntry, type DebugLogLevel } from "@/lib/debugLog";
+import { readRideMetrics } from "@/lib/rideMetrics";
 import FloatingPanel from "@/components/FloatingPanel/FloatingPanel";
 import { Button } from "@/components/ui/Button/Button";
 import { Select } from "@/components/ui/Input/Input";
@@ -84,6 +85,17 @@ export default function DebugConsole({ open, onClose }: DebugConsoleProps) {
           </Button>
           <Button size="xs" onClick={clearDebugLog}>
             クリア
+          </Button>
+          <Button
+            size="xs"
+            // 直近の走行の計測（`lib/rideMetrics.ts`）を JSON で写す。端末に残っているので、走り終えてから開いて写せる。
+            onClick={() => {
+              const metrics = readRideMetrics();
+              copy(metrics === null ? "走行の計測はありません" : JSON.stringify(metrics));
+            }}
+            aria-label={copied ? "走行の計測をコピーしました" : "走行の計測をコピー"}
+          >
+            走行
           </Button>
         </>
       }
