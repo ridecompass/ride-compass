@@ -75,8 +75,9 @@
 4. **MSMの格子点は、backendが返した格子点の位置と値だけから描く**: 風の矢印と降水の升目は1回の取得
    （`useWeatherGrid.ts`、backendの`GET /api/weather/msm-grid`）を共有する。取るのは表示中のチップがこの段を読み、地図の
    ズームが源泉の情報源の宣言（生成物`mapDisplay.layerDataSources`の`msmGrid`の`minZoom`）以上の間だけで、表示範囲
-   （俯瞰図を出すズームでは俯瞰図が映す範囲との和）は地図を動かし終えてから取る（`hooks/useDebouncedValue.ts: MAP_FETCH_DEBOUNCE_MS`）。取り直す間は前の範囲の格子点を
-   出したままにする。矢印は格子点の位置に置き、升目は格子点を中心に応答の格子点どうしの間隔（`latitude_step_deg`・
+   （俯瞰図を出すズームでは俯瞰図が映す範囲との和）は地図を動かし終えてから取る（`hooks/useDebouncedValue.ts: MAP_FETCH_DEBOUNCE_MS`）。取る範囲の端は範囲の幅に応じた刻みへ外向きに
+   丸め、刻みの中を動く間は取り直さない——走行中は現在地が届くたびに地図が動き、そのたびに取り直すとbackendの回数の上限に当たり、
+   断られた間は格子点が消えて矢印が点滅する。取り直す間は前の範囲の格子点を出したままにする。矢印は格子点の位置に置き、升目は格子点を中心に応答の格子点どうしの間隔（`latitude_step_deg`・
    `longitude_step_deg`）の半分ずつ広げる——どちらも値を補間・平均せず、格子点の間の地点の値を作らない（上の「責務」）。
    どの格子点を残すか（間引き）はbackendが決め、画面は選び直さない。コマの時刻は応答の`times`で、選んだ時刻の値は
    その時刻の`times`の中の位置で引く。
@@ -424,7 +425,7 @@ basetime・validtimeを含む）で持つため、フレームが進んで取得
   （`features/map/MapOverview/overview.ts: overviewZoom`）。ズーム13あたりまでは今の画面の枠がいつも同じ大きさで、それより寄せると下限に当たり枠が小さくなる。
   下限は、約5kmおきのMSMの格子点の風の矢印が俯瞰図に数本は入る広さ。今の画面の範囲は真ん中の枠で示す。俯瞰図は操作を受けない（`features/map/baseMap.ts: createBaseMap`の`inset`）。
 - **格子点**: MSMの格子点は本体の地図と1回の取得を共有し、俯瞰図を出すズームでは俯瞰図の範囲まで広げて取る
-  （`features/map/MapOverview/overview.ts: overviewBounds`）。配信元のタイルは俯瞰図の地図を描くズームのタイルを地図が取る。
+  （`features/map/MapOverview/overview.ts: overviewBounds`）。広げる範囲は俯瞰図がどの向きに回っても覆う広さで、向きによらない——走行中に進む向きが変わるたびに取り直さない。配信元のタイルは俯瞰図の地図を描くズームのタイルを地図が取る。
 
 ## 常設ヘッダーの天候表示（`WeatherPanel`）
 

@@ -33,17 +33,29 @@ interface UseWeatherGridResult {
 
 const DISABLED: UseWeatherGridResult = { grid: null, loading: false, error: null, hasFetched: false };
 
+// 取る範囲の端を丸める刻みは、範囲の幅のこの分の1以下で最大の2の冪（度）。丸めると幅は最大でこの分の2だけ広がり、
+// 小さくするほど取り直しは減るが、広がりが増えてbackendの広さの上限と間引きに近づく。
+const BBOX_SNAP_DIVISOR = 8;
+
+// 範囲の端を刻みへ外向きに丸める。刻みの中を動く間は取得の鍵が変わらず、取り直さない。
+function snappedOutward(min: number, max: number): [number, number] {
+  const unit = 2 ** Math.floor(Math.log2((max - min) / BBOX_SNAP_DIVISOR));
+  return [Math.floor(min / unit) * unit, Math.ceil(max / unit) * unit];
+}
+
 // 俯瞰図を出すズームでは、俯瞰図が映す範囲も覆うように取る（俯瞰図は本体の地図と同じ格子点を描く）。
 function gridBbox(viewport: MapViewport): Bbox {
-  const box = { minLon: viewport.west, minLat: viewport.south, maxLon: viewport.east, maxLat: viewport.north };
-  if (viewport.zoom < OVERVIEW_MIN_ZOOM) return box;
-  const overview = overviewBounds(viewport);
-  return {
-    minLon: Math.min(box.minLon, overview.west),
-    minLat: Math.min(box.minLat, overview.south),
-    maxLon: Math.max(box.maxLon, overview.east),
-    maxLat: Math.max(box.maxLat, overview.north),
-  };
+  let { west, south, east, north } = viewport;
+  if (viewport.zoom >= OVERVIEW_MIN_ZOOM) {
+    const overview = overviewBounds(viewport);
+    west = Math.min(west, overview.west);
+    south = Math.min(south, overview.south);
+    east = Math.max(east, overview.east);
+    north = Math.max(north, overview.north);
+  }
+  const [minLon, maxLon] = snappedOutward(west, east);
+  const [minLat, maxLat] = snappedOutward(south, north);
+  return { minLon, minLat, maxLon, maxLat };
 }
 
 /** 風の矢印と降水の塗りが共有する、表示範囲の中のMSMの格子点（1回の取得に風と降水が載る）。`enabled`の間、源泉が

@@ -16,6 +16,7 @@ vi.mock("maplibre-gl", () => import("@/testing/maplibre"));
 import { jmaTilePayload } from "@/features/map/layers/jmaDelivery";
 import { registerJmaTileProtocol, withJmaTileProtocol } from "@/features/map/layers/jmaTileProtocol";
 import type { MapLayerVisibility } from "@/features/map/layers/mapLayers";
+import { MAP_FETCH_DEBOUNCE_MS } from "@/hooks/useDebouncedValue";
 import { heldReplies, inTurn, onBackend, onSameOrigin } from "@/testing/backendServer";
 import { protocolHandler } from "@/testing/maplibre";
 import { jmaDeliveryOf, jmaTileUrlAt } from "@/testing/jmaDeliveries";
@@ -42,15 +43,15 @@ function render(
   mapViewport: Options["mapViewport"] = null,
 ) {
   return renderHook(
-    ({ at }: { at: Date }) =>
+    ({ at = NOW, viewport = mapViewport }: { at?: Date; viewport?: Options["mapViewport"] }) =>
       useDynamicWeatherLayers({
         visibility: shown as MapLayerVisibility,
         hiddenSources,
-        mapViewport,
+        mapViewport: viewport,
         at,
         now: NOW,
       }),
-    { initialProps: { at: NOW } },
+    { initialProps: {} },
   );
 }
 
@@ -257,6 +258,43 @@ describe("useDynamicWeatherLayers", () => {
       [139.6875, 35.55],
     ]);
     expect(cells?.kind === "gridFill" && cells.geojson.features).toHaveLength(1);
+  });
+
+  it("表示範囲が少し動くだけなら格子点を取り直さず、矢印を描き直さない。大きく動けば取り直す", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const sent = onBackend("GET", "/api/weather/msm-grid", () =>
+      Response.json({
+        times: ["2026-10-07T12:00"],
+        latitude_step_deg: 0.05,
+        longitude_step_deg: 0.0625,
+        points: [
+          { latitude: 35.65, longitude: 139.8125, wind_speed_ms: [4], wind_direction_deg: [0], precipitation_mm: [0] },
+        ],
+      }),
+    );
+    const zoom = mapDisplay.layerDataSources.find((source) => source.key === "msmGrid")!.minZoom!;
+    const viewport = { west: 139.7, south: 35.55, east: 139.9, north: 35.74, zoom, bearing: 0 };
+    const shifted = (deg: number) => ({
+      ...viewport,
+      west: viewport.west + deg,
+      east: viewport.east + deg,
+      south: viewport.south + deg,
+      north: viewport.north + deg,
+    });
+    const arrows = () => result.current.dynamicWeather.windVector?.arrow?.payload;
+    const { result, rerender } = render({ windVector: true }, {}, viewport);
+    await vi.waitFor(() => expect(arrows()).toBeDefined());
+    const drawn = arrows();
+
+    // 走行中に地図が現在地へ寄せ直すたびの、100mほどのずれ。取り直すと backend の回数の上限に当たり、断られた間は矢印が消える。
+    rerender({ viewport: shifted(0.001) });
+    await act(() => vi.advanceTimersByTimeAsync(MAP_FETCH_DEBOUNCE_MS));
+    expect(sent).toHaveLength(1);
+    expect(arrows()).toBe(drawn);
+
+    rerender({ viewport: shifted(0.1) });
+    await act(() => vi.advanceTimersByTimeAsync(MAP_FETCH_DEBOUNCE_MS));
+    await vi.waitFor(() => expect(sent).toHaveLength(2));
   });
 
   it("描いているコマのタイルの配信が落ちている間は、そのチップを失敗にする", async () => {
