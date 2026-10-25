@@ -15,7 +15,7 @@ import numpy as np
 
 from app.services.route_generation_setup import assemble_route_generation_setup
 from app.domain.geo import bearing_between, haversine_distance_km
-from app.domain.graph import node_key, parse_edge_key
+from app.domain.graph import edge_key, node_key, parse_edge_key
 from app.domain.material_catalog import GRADIENT_PERCENT
 from app.domain.landcover import LANDCOVER_CLASSES
 from app.domain.traffic import stop_count_material_ids
@@ -270,6 +270,18 @@ LATTICE = lattice_network(6)
 
 def lattice_at(row: int, col: int) -> Coordinates:
     return node_point(LATTICE, lattice_node(row, col))
+
+
+def lattice_ring_edges(side: int) -> list[str]:
+    """`LATTICE`の南西の角（出発地）から東へ回って戻る、1辺`side`kmの正方形の周回の区間の鍵。"""
+    ring = [(0, col) for col in range(side)] + [(row, side) for row in range(side)] \
+        + [(side, col) for col in range(side, 0, -1)] + [(row, 0) for row in range(side, -1, -1)]
+    way_of = {pair: way for way, pair in lattice_ways(6).items()}
+    edges = []
+    for start, end in zip(ring, ring[1:]):
+        tail, head = lattice_node(*start), lattice_node(*end)
+        edges.append(edge_key(way_of[tail, head], 0, True) if (tail, head) in way_of else edge_key(way_of[head, tail], 0, False))
+    return edges
 
 
 def passes_in_order(node_ids: list[str], start: int, stops: list[int], end: int) -> bool:

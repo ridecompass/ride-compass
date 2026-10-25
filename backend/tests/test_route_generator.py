@@ -108,7 +108,7 @@ class FakeEngine:
         self.closes = closes
 
     @_as_engine
-    async def prepare(self, origin, points, radius_km, now):
+    async def prepare(self, origin, points, radius_km, now, *, covering_edge_ids):
         if self.prepare_error is not None:
             raise self.prepare_error
         return self.context

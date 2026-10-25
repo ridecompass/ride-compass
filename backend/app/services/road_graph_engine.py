@@ -370,15 +370,19 @@ class RoadGraphEngine:
         points: list[Coordinates],
         radius_km: float,
         now: datetime,
+        *,
+        covering_edge_ids: Sequence[str],
     ) -> RoadGraphContext | None:
         """`points`は置いた点（経由地・目的地）、`radius_km`は自由に選ぶ部分が届く見込みの半径（置いた点だけを
         つなぐなら0）。出発地と置いた点を覆う矩形をこの半径とマージンだけ広げるので、中継点がどの方位に選ばれても
-        この1回の取得で足りる。
+        この1回の取得で足りる。`covering_edge_ids`は範囲に必ず入れる区間（送られた確定済みの経路）で、
+        道路網から引いた両端の地点も矩形に含める。
 
         起点は出て戻れるNodeへ寄せ（`domain/node_spatial_index.py: snap_to_accessible_node`）、寄せられなければ`RoutingError`。"""
         # nowは出発時刻。区間ごとの通過時刻（風・昼夜）はここからの経過で決まる。
         margin_km = max(_BBOX_MARGIN_MIN_KM, radius_km * _BBOX_MARGIN_RATIO)
-        bbox = bbox_covering_points([origin, *points], radius_km + margin_km)
+        covering = self._graph_service.edge_endpoints(covering_edge_ids)
+        bbox = bbox_covering_points([origin, *points, *covering], radius_km + margin_km)
 
         search = await self._build_search_graph(bbox, origin, now)
         if search is None:

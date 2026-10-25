@@ -395,6 +395,7 @@ class RouteGenerator:
         radius_km: float,
         start_time: datetime,
         *,
+        covering_edge_ids: tuple[str, ...] = (),
         log_label: str,
         log_detail: str,
         failure_phrase: str,
@@ -407,7 +408,8 @@ class RouteGenerator:
         started = start_timer()
         origin_label = _origin_label(origin)
         try:
-            context = await self._engine.prepare(origin, points, radius_km, now=start_time)
+            context = await self._engine.prepare(
+                origin, points, radius_km, now=start_time, covering_edge_ids=covering_edge_ids)
         except SearchAreaTooLargeError as exc:
             logger.warning(
                 "%s origin=%s %s -> search area too large edges=%d limit=%d prepare_ms=%d",
@@ -546,7 +548,7 @@ class RouteGenerator:
         origin_label = _origin_label(origin)
 
         context = await self._prepare(
-            origin, points.placed, 0.0, start_time,
+            origin, points.placed, 0.0, start_time, covering_edge_ids=edge_ids,
             log_label="generate(spliced)", log_detail=f"edges={len(edge_ids)}",
             failure_phrase="ルートを組み立てられませんでした。")
         prepare_ms = elapsed_ms(started)

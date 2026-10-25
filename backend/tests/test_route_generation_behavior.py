@@ -69,6 +69,7 @@ from tests.route_world import (
     lattice_at,
     lattice_network,
     lattice_node,
+    lattice_ring_edges,
     lattice_ways,
     node_point,
     nodes_of,
@@ -665,6 +666,17 @@ async def test_loops_spliced_together_are_evaluated_as_one_route_back_to_the_ori
 
     assert spliced.edge_ids == edges
     assert_connected(spliced, CENTER, CENTER)
+
+
+async def test_a_spliced_loop_running_far_from_the_origin_is_evaluated(engine_over):
+    """経由地を置かない周回の乗り換えでも、出発地から探索の最小の余白（約2km）より遠くを走る経路を評価する。範囲を
+    出発地のまわりだけで作ると、遠い区間が未知として断られ、評価が出ない。"""
+    generator = engine_over(LATTICE)
+    edges = lattice_ring_edges(4)
+
+    (spliced,) = await generator.generate_spliced_route(lattice_at(0, 0), NO_POINTS, tuple(edges), start_time=DEPARTURE)
+
+    assert spliced.edge_ids == edges
 
 
 @pytest.mark.parametrize(

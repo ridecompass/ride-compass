@@ -240,8 +240,10 @@ def lean_edge(context: RoadGraphContext, index: int) -> LeanEdge:
 
 
 def lazy_index_of(context: RoadGraphContext, edge_id: str) -> int | None:
-    """区間の文字列の鍵→区間の番号。この探索範囲に無い・探索用グラフに載らない（並行区間の
-    採られなかった側）区間はNone。"""
+    """区間の文字列の鍵→区間の番号。道路網に無い・探索用グラフに載らない（並行区間の採られなかった側）区間はNone。
+
+    道路網にあるのに探索範囲の外の区間は`RuntimeError`——範囲は送られた区間を覆って作るので、外にあるのは範囲を作る側の誤りで、
+    利用者への理由（つながっていない等）にすると原因を誤って伝える。"""
     parsed = parse_edge_key(edge_id)
     if parsed is None:
         return None
@@ -251,7 +253,7 @@ def lazy_index_of(context: RoadGraphContext, edge_id: str) -> int | None:
     rows = context.road.rows
     position = int(np.searchsorted(rows, network_row))
     if position >= len(rows) or rows[position] != network_row:
-        return None
+        raise RuntimeError("道路網にある区間が探索範囲の外にある")
     index = context.composer.lazy_row(position)
     return index if index >= 0 else None
 

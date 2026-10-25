@@ -124,8 +124,9 @@ export function serveSpliceEvaluations() {
   return {
     /** 出された評価の要求。 */
     submitted: jobs.submitted,
-    /** 次の評価は`routes`を返す。 */
-    respond: (routes: RouteCandidate[]) => jobs.respond(routes, CONDITIONS),
+    /** 次の評価は`routes`を返す（0本なら、backendが付けた理由`noCandidatesReason`も添えうる）。 */
+    respond: (routes: RouteCandidate[], noCandidatesReason?: string) =>
+      jobs.respond(routes, CONDITIONS, noCandidatesReason),
     /** 次の評価は失敗する。 */
     fail: () => jobs.fail("リクエストに失敗しました"),
     /** 次の評価は、`resolve`で決着させるまで待つ。 */

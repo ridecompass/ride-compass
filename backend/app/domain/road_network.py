@@ -12,7 +12,7 @@
 分類の材料は文字列のまま持たず、列ごとの語彙への番号で持つ（番号0は値なし）。
 """
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, fields
 from typing import Any
 
@@ -25,6 +25,7 @@ from app.domain.attributes import (
     ElevationAttribute,
     MaterialColumn,
 )
+from app.domain.geo import LatLonPoint
 from app.domain.material_catalog import GRADIENT_PERCENT
 from app.domain.road_classes import RoadClassDefinitions, class_columns, layer_columns
 
@@ -228,3 +229,15 @@ def edge_row_of(network: RoadNetwork, osm_way_id: int, segment_index: int, forwa
         if int(network.edge_segment[row]) == segment_index and bool(network.edge_forward[row]) == forward:
             return row
     return None
+
+
+def edge_endpoint_points(network: RoadNetwork, edges: Iterable[tuple[int, int, bool]]) -> list[LatLonPoint]:
+    """`(道, 区間番号, 向き)`の区間の両端の地点。道路網に無い区間は飛ばす。"""
+    points: list[LatLonPoint] = []
+    for edge in edges:
+        row = edge_row_of(network, *edge)
+        if row is None:
+            continue
+        for node in (int(network.edge_from[row]), int(network.edge_to[row])):
+            points.append(LatLonPoint(float(network.node_lat[node]), float(network.node_lon[node])))
+    return points
