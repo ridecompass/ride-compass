@@ -108,6 +108,8 @@ interface MapMarkersInputs {
   selectedRouteSegment: SelectedRouteSegment | null;
   /** 地点をつかんで動かせるか。falseの間、印はつかめない（押すことはできる）。 */
   pointsEditable: boolean;
+  /** 走行中のロックの間か。ロックの間は、選んでいる区間の印を押しても選びを外さない。 */
+  tapsLocked: boolean;
   onOriginMove: (coordinates: Coordinates) => void;
   onWaypointMove: (index: number, coordinates: Coordinates) => void;
   onDestinationMove: (coordinates: Coordinates) => void;
@@ -275,6 +277,7 @@ export function useMapMarkers(
       el.setAttribute("aria-label", "選択中の区間");
       el.addEventListener("click", (event) => {
         event.stopPropagation();
+        if (latest.current.tapsLocked) return;
         latest.current.onRouteSegmentSelect(null);
       });
       selectedSegmentMarkerRef.current = new maplibregl.Marker({ element: el, anchor: "bottom" })

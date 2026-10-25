@@ -36,6 +36,20 @@ const STYLE_OPERATIONS = [
 
 const drawn: StandInMap[] = [];
 
+/** 地図の手ぶりの操作1つ（`dragPan`等）の代役。入切の様子だけを持つ。 */
+class StandInHandler {
+  private enabled = true;
+  isEnabled() {
+    return this.enabled;
+  }
+  enable() {
+    this.enabled = true;
+  }
+  disable() {
+    this.enabled = false;
+  }
+}
+
 /** `fitBounds` に渡された範囲（[[西, 南], [東, 北]]）と、寄せる倍率の上限。 */
 export interface FittedBounds {
   readonly bounds: [[number, number], [number, number]];
@@ -54,8 +68,15 @@ export class StandInMap extends Evented {
   private bounds: ViewBounds | null = null;
   private pointed: readonly PointedFeature[] = [];
   private readonly placedTileFeatures = new Map<string, readonly GeoJSON.Feature<GeoJSON.Point>[]>();
-  // 手ぶりの入切は、代役では指の操作が無いので受けるだけにする。
-  readonly touchZoomRotate = { disableRotation() {}, enableRotation() {} };
+  // 手ぶりの入切は、代役では指の操作が無いので、入切の様子を持つだけにする。
+  readonly dragPan = new StandInHandler();
+  readonly dragRotate = new StandInHandler();
+  readonly scrollZoom = new StandInHandler();
+  readonly boxZoom = new StandInHandler();
+  readonly keyboard = new StandInHandler();
+  readonly doubleClickZoom = new StandInHandler();
+  readonly touchZoomRotate = Object.assign(new StandInHandler(), { disableRotation() {}, enableRotation() {} });
+  readonly touchPitch = new StandInHandler();
 
   /** 本体の地図に添える小さな地図（操作を受けない地図）か。 */
   readonly inset: boolean;
@@ -237,6 +258,21 @@ export class StandInMap extends Evented {
       .map(asRendered);
   }
 
+  stoppedGestures(): string[] {
+    const gestures = {
+      dragPan: this.dragPan,
+      dragRotate: this.dragRotate,
+      scrollZoom: this.scrollZoom,
+      boxZoom: this.boxZoom,
+      keyboard: this.keyboard,
+      doubleClickZoom: this.doubleClickZoom,
+      touchZoomRotate: this.touchZoomRotate,
+      touchPitch: this.touchPitch,
+    };
+    return Object.entries(gestures)
+      .filter(([, handler]) => !handler.isEnabled())
+      .map(([name]) => name);
+  }
   remove() {
     const index = drawn.indexOf(this);
     if (index !== -1) drawn.splice(index, 1);

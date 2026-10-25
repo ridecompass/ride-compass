@@ -4,13 +4,13 @@
  * 見ること: スマホで走行中は下部タブを隠すこと・休んでいる間は位置を受けずにルートと進み具合を残し、「続きから走る」で続けること・地図を指で動かした間だけ
  * 「現在地へ戻る」を出すこと、走行中に帯の「ルート」で開いたパネルで選び直す・作り直すと走行モードが新しい候補を追い（地図をその候補へ収め直さない）、
  * パネルを出していない間は地図で何も変えも開きもしないこと、「このルートで走る」でその候補で走り始めてシートを閉じ、
- * 止めると走る前のシートへ戻ること。パネルの中で区間を選んでも追い続けて地図を動かさず、「区間を地図で見る」で追うのを休んでその区間へ寄せ、選びを外すと追い直すこと。
+ * 止めると走る前のシートへ戻ること。鍵のボタンでロックすると追い直して地図の手ぶりと押しを受けず、2か所を順に押すと外れること。パネルの中で区間を選んでも追い続けて地図を動かさず、「区間を地図で見る」で追うのを休んでその区間へ寄せ、選びを外すと追い直すこと。
  *
  * ここで見ないもの: 走っている間に見えるもの（帯・プロファイル・進み具合・次に曲がる所）は`app/page.ride.test.tsx`が見る。
  *
  * 差し替えたもの: backend の応答（網の層）、位置情報の取得、地図の描画（`maplibre-gl`）。子の部品は本物を描く。
  */
-import { act, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { installGeolocation } from "@/testing/geolocation";
@@ -33,6 +33,7 @@ import {
   serveHome,
   useMobileLayout,
 } from "@/testing/homePage";
+import { UNLOCK_CHOICE_MS } from "@/features/ride/RideLockButton/RideLockButton";
 import { mapOnScreen } from "@/testing/maplibre";
 import { makeRouteSegment } from "@/testing/routeFixtures";
 
@@ -164,6 +165,69 @@ describe("走行モードの操作", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(screen.queryByRole("navigation", { name: "パネル切り替え" })).toBeNull();
     expect(screen.getByRole("group", { name: "走りの数字" })).toBeInTheDocument();
+  });
+
+  it("走行中に鍵のボタンでロックすると、地図を指で動かして休んでいれば追い直し、地図の手ぶりの操作を止め、地図や区間の印を押しても何も開かず閉じない。鍵を押して横に出る「ロックを外す」を押すと外れ、選ばずにいると時間で閉じ、案内を終えるとロックも外れる", async () => {
+    const geolocation = installGeolocation(HERE);
+    const { user } = renderHome();
+    jobs.respond([RIDDEN], LOOP_CONDITIONS);
+    await generate(user);
+    await waitFor(() => expect(candidateTabs()).toHaveLength(1));
+    const [drawnSegment] = mapOnScreen().sourceFeatures("route-segments");
+    const rideButton = () => screen.getByRole("button", { name: "走行モード" });
+    const lockButton = () => screen.getByRole("button", { name: "ロック" });
+    const backToHere = () => screen.queryByRole("button", { name: "現在地へ戻る" });
+    const unlockChoice = () => screen.queryByRole("button", { name: "ロックを外す" });
+    const segmentPopup = () => screen.queryByRole("group", { name: "区間の小窓の上の帯" });
+    // 走っていない間は鍵を出さない。
+    expect(screen.queryByRole("button", { name: "ロック" })).toBeNull();
+    await user.click(rideButton());
+    geolocation.deliver({ ...RIDDEN_MIDDLE, accuracy: 20 });
+    clickSegment(drawnSegment, HERE);
+    expect(segmentPopup()).toBeInTheDocument();
+    act(() => mapOnScreen().emit("movestart", { originalEvent: new MouseEvent("mousedown") }));
+    expect(backToHere()).toBeInTheDocument();
+
+    await user.click(lockButton());
+    expect(lockButton()).toHaveAttribute("aria-pressed", "true");
+    expect(rideButton()).toHaveAttribute("data-ride", "following");
+    expect(backToHere()).toBeNull();
+    // 指の操作が地図を動かさないかは実ブラウザの MapLibre でしか出ないので、e2e/ride-mode-touch.spec.ts が指を送って見る。
+    expect(mapOnScreen().stoppedGestures()).toEqual(
+      expect.arrayContaining(["dragPan", "touchZoomRotate", "doubleClickZoom"]),
+    );
+    // 開いていた小窓は、区間の印を押しても地図の外れを押しても閉じず、ほかの物を押しても開かない。
+    const segmentMark = mapOnScreen()
+      .markers()
+      .find((mark) => mark.element.getAttribute("aria-label") === "選択中の区間")!;
+    act(() => segmentMark.element.click());
+    clickMap(ELSEWHERE);
+    expect(segmentPopup()).toBeInTheDocument();
+
+    // 鍵を押すと外す選びを出し、選ばずにいると時間で閉じてロックのまま。
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      fireEvent.click(lockButton());
+      expect(unlockChoice()).toBeInTheDocument();
+      act(() => vi.advanceTimersByTime(UNLOCK_CHOICE_MS));
+      expect(unlockChoice()).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(lockButton()).toHaveAttribute("aria-pressed", "true");
+
+    await user.click(lockButton());
+    await user.click(unlockChoice()!);
+    expect(lockButton()).toHaveAttribute("aria-pressed", "false");
+    expect(mapOnScreen().stoppedGestures()).toEqual([]);
+
+    // ロックして案内を終え、また始めるとロックしていない。
+    await user.click(lockButton());
+    await user.click(rideButton());
+    await user.click(screen.getByRole("button", { name: "案内を終える" }));
+    expect(mapOnScreen().stoppedGestures()).toEqual([]);
+    await user.click(rideButton());
+    expect(lockButton()).toHaveAttribute("aria-pressed", "false");
   });
 
   it("走行中も、地図を押しても地点を置かず、押した物は走っていない間と同じに扱い（線を押すとそのルートを選び、区間を押すと小窓を出す）、ピンは押せる物に数えない", async () => {

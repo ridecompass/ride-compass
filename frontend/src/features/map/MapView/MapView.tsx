@@ -186,6 +186,7 @@ export default function MapView({
     // 区間を選んでいる間、その近くの点を描く。
     sidePointPath: selectedSectionPath,
   });
+  const tapsLocked = ride?.locked ?? false;
   // 地図のイベント（初期化のeffectで一度だけ登録する）が、いまのpropsを読むための参照。
   const latestProps = {
     scene,
@@ -193,6 +194,7 @@ export default function MapView({
     roadLayers: mapCatalog.roadLayers,
     interactiveLayerIds,
     tapMode,
+    tapsLocked,
     onPointPlace,
     onRouteSegmentSelect,
     sidePointAlong: (lngLat: readonly [number, number]) =>
@@ -237,7 +239,8 @@ export default function MapView({
     waypoints,
     destination,
     selectedRouteSegment,
-    pointsEditable: tapMode === "points",
+    pointsEditable: tapMode === "points" && !tapsLocked,
+    tapsLocked,
     onOriginMove,
     onWaypointMove,
     onDestinationMove,

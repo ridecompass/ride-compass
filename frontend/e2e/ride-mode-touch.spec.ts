@@ -108,4 +108,59 @@ test.describe("タッチ端末", () => {
     await client.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
     await expect(backToHere).toBeVisible();
   });
+
+  // ロックで地図の手ぶりを止めたとき、指のタッチが地図を動かさず倍率も変えないかは、実ブラウザの MapLibre に指を送ってしか
+  // 出ない（パターン4 観点2）。押しを受けないことと鍵の入切は app/page.rideControl.test.tsx が見る。
+  test("走行モードでロックしている間は、1本指で動かしても2本指でつまんでも2回たたいても地図は動かず倍率も変わらずに追い続け、ロックを外すと1本指で動かして休める", async ({
+    page,
+    context,
+    browserName,
+  }) => {
+    test.skip(browserName !== "chromium", "指ごとのタッチの列はCDP（Chromiumだけの口）でしか送れない");
+    await installApiMocks(page);
+    await context.setGeolocation({ ...START, accuracy: 50 });
+    await seedStoredState(page, INTRO_CLOSED);
+    await page.addInitScript(installMapFinder);
+    await page.goto("/");
+    await expect(page.getByText("地図を読み込み中…")).toBeHidden({ timeout: 15_000 });
+    await page.getByRole("button", { name: "走行モード" }).click();
+    const anchor = await settledScreenPoint(page, START);
+    const zoom = await settledZoom(page);
+    const backToHere = page.getByRole("button", { name: "現在地へ戻る" });
+    await page.getByRole("button", { name: "ロック" }).click();
+
+    const client = await context.newCDPSession(page);
+    const touch = (type: "touchStart" | "touchMove", points: { x: number; y: number }[]) =>
+      client.send("Input.dispatchTouchEvent", { type, touchPoints: points.map((p, id) => ({ ...p, id })) });
+    const release = () => client.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    const canvas = (await page.locator(MAIN_MAP_CANVAS).boundingBox())!;
+    const center = { x: canvas.x + canvas.width / 2, y: canvas.y + canvas.height / 2 };
+    const dragOneFinger = async () => {
+      await touch("touchStart", [center]);
+      for (let step = 1; step <= 10; step += 1) await touch("touchMove", [{ x: center.x - step * 10, y: center.y }]);
+      await release();
+    };
+
+    await dragOneFinger();
+    for (let step = 0; step <= 10; step += 1) {
+      const gap = 80 + step * 16;
+      await touch(step === 0 ? "touchStart" : "touchMove", [
+        { x: center.x - gap / 2, y: center.y },
+        { x: center.x + gap / 2, y: center.y },
+      ]);
+    }
+    await release();
+    for (let tap = 0; tap < 2; tap += 1) {
+      await touch("touchStart", [center]);
+      await release();
+    }
+    expect(await settledZoom(page)).toBeCloseTo(zoom, 2);
+    await expectDrawnAt(page, START, anchor);
+    await expect(backToHere).toBeHidden();
+
+    await page.getByRole("button", { name: "ロック" }).click();
+    await page.getByRole("button", { name: "ロックを外す" }).click();
+    await dragOneFinger();
+    await expect(backToHere).toBeVisible();
+  });
 });

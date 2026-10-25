@@ -18,6 +18,7 @@ import MapView from "@/features/map/MapView/MapView";
 import type { MapTapMode } from "@/features/map/MapView/mapTaps";
 import type { useMapView } from "@/features/map/view/useMapView";
 import RideBottom from "@/features/ride/RideBottom/RideBottom";
+import RideLockButton from "@/features/ride/RideLockButton/RideLockButton";
 import RideModeButton from "@/features/ride/RideModeButton/RideModeButton";
 import TurnCard from "@/features/ride/TurnCard/TurnCard";
 import type { useRideMode } from "@/features/ride/useRideMode";
@@ -171,7 +172,7 @@ export default function HomeMapPane({
       {usageGuideActive ? <UsageGuide onEnd={onUsageGuideEnd} /> : <UsageTooltip />}
 
       {/* 走行条件（出発時刻・想定速度）は地図の拡大・縮小と方位磁針の列の直下に積む。出発時刻は気象レイヤーの表示時刻と同じもの。
-        その下へ現在地と走行モードを続ける。 */}
+        その下へ現在地と走行モード（走行中はその下にロック）を続ける。 */}
       <div
         {...mapOverlayEdge("right")}
         className={cn(
@@ -226,6 +227,7 @@ export default function HomeMapPane({
           onRest={riding.rest}
           onResume={riding.resume}
         />
+        {navigating && <RideLockButton locked={riding.locked} onLock={riding.lock} onUnlock={riding.unlock} />}
       </div>
       {navigating && (
         <RideBottom
