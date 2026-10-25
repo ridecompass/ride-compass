@@ -17,8 +17,9 @@ export interface TargetTimesFile {
   refreshIntervalMs: number;
 }
 
-/** ファイルの読み取りの状態。行も失敗も無ければ、まだ一度も届いていない。取り直しに失敗している間は、前に届いた行を
- * 使わずに失敗として数える（時刻一覧は数分で更新され、古い一覧のコマは表示時刻から外れていく）。 */
+/** ファイルの読み取りの状態。行も失敗も無ければ、まだ一度も届いていない。取り直しに失敗している間は、前に届いた行と
+ * 失敗の両方を持つ（行を捨てると、まだ表示時刻を覆うコマまで消え、網が一瞬切れるたびに層が次の取り直しまで消える。
+ * 古い一覧のコマは表示時刻から外れて描かれなくなる）。 */
 export interface FileState {
   rows: readonly unknown[] | undefined;
   error: string | undefined;
@@ -28,7 +29,7 @@ const PENDING_FILE: FileState = { rows: undefined, error: undefined };
 
 export function fileStatesOf(results: readonly UseQueryResult<unknown[]>[]): FileState[] {
   return results.map((result) => ({
-    rows: result.status === "success" ? result.data : undefined,
+    rows: result.data,
     error: result.status === "error" ? result.error.message : undefined,
   }));
 }
@@ -93,7 +94,8 @@ export function deliveryResultsOf(
   for (const { delivery, label } of deliveries) {
     const states = delivery.targetTimesPaths.map((path) => byPath.get(path) ?? PENDING_FILE);
     if (states.some((state) => state.rows === undefined && state.error === undefined)) continue;
-    // 一部のファイルだけ取れなくても残りで部分的な時系列を作り、全部取れなかったときだけ最初の失敗を出す。
+    // 一部のファイルだけ取れなくても残りで部分的な時系列を作る。出す失敗は、描いた行のファイルの取り直しの失敗か、
+    // 全部取れなかったときの最初の失敗。
     const loaded = states.filter((state) => state.rows !== undefined);
     results.set(
       delivery.id,
@@ -103,7 +105,7 @@ export function deliveryResultsOf(
               delivery,
               loaded.flatMap((state) => state.rows!),
             ),
-            error: null,
+            error: loaded.find((state) => state.error)?.error ?? null,
           }
         : { frames: [], error: states.find((state) => state.error)?.error ?? `${label}の時刻一覧が宣言されていない` },
     );

@@ -110,7 +110,7 @@ describe("useDynamicWeatherLayers", () => {
     );
   });
 
-  it("時刻一覧の取り直しに失敗している間は、前に届いた一覧で描かずに失敗にする", async () => {
+  it("時刻一覧の取り直しに失敗している間は、前に届いた一覧のコマで描き続け、失敗にする", async () => {
     vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"], shouldAdvanceTime: true });
     onSameOrigin("GET", timesPath("risk/targetTimes.json"), inTurn(Response.json(rows("rain_mesh")), failure()));
     const { result } = render({ disaster: true }, { disaster: DISASTER_NOWCAST });
@@ -119,7 +119,9 @@ describe("useDynamicWeatherLayers", () => {
     act(() => vi.advanceTimersByTime(jmaDeliveryOf("rain_mesh").refreshIntervalMs));
 
     await waitFor(() => expect(result.current.dynamicWeatherDataStatus.disaster).toBe("error"));
-    expect(result.current.dynamicWeather.disaster?.heavyRain?.payload).toBeUndefined();
+    expect(result.current.dynamicWeather.disaster?.heavyRain?.payload).toEqual(
+      jmaTilePayload("rasterTile", jmaDeliveryOf("rain_mesh"), FRAME),
+    );
   });
 
   it("地物で描く段は選んでいるコマの地物だけを描き、取れていない間は読み込み中、取れなければ失敗にする", async () => {
