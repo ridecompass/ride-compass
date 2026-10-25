@@ -89,13 +89,10 @@ describe("overviewBounds", () => {
   const widthM = (bounds: { west: number; east: number }) =>
     (bounds.east - bounds.west) * METERS_PER_DEGREE * longitudeScale(35.7);
 
-  it.each([
-    { bearing: 0, widthM: 20_000 },
-    // 45°回した正方形を覆う箱は、1辺の√2倍。
-    { bearing: 45, widthM: 20_000 * Math.SQRT2 },
-  ])("向き$bearing°では、本体の地図の真ん中を中心に幅$widthM mを覆う", ({ bearing, widthM: expected }) => {
+  // どの向きに回した正方形も覆う箱は、1辺の√2倍。向きで変わると、向きが変わるたびに格子点を取り直す。
+  it.each([0, 45])("向き%s°でも、本体の地図の真ん中を中心に1辺の√2倍の幅を覆う", (bearing) => {
     const bounds = overviewBounds({ ...viewport, bearing });
-    expect(widthM(bounds)).toBeCloseTo(expected, -1);
+    expect(widthM(bounds)).toBeCloseTo(20_000 * Math.SQRT2, -1);
     expect((bounds.south + bounds.north) / 2).toBeCloseTo(35.7);
     expect((bounds.west + bounds.east) / 2).toBeCloseTo(139.7);
   });

@@ -74,13 +74,11 @@ export function overviewFrameSize(
   return { width: main.width * scale, height: main.height * scale };
 }
 
-/** 俯瞰図が映す範囲を覆う緯度経度の箱。俯瞰図は本体の地図と同じ向きに回るので、回した正方形を覆う広さにする。 */
+/** 俯瞰図が映す範囲を覆う緯度経度の箱。俯瞰図は本体の地図と同じ向きに回るので、どの向きに回した正方形も覆う広さにする
+ * （向きで箱を変えると、走行中に進む向きが変わるたびに格子点を取り直す）。 */
 export function overviewBounds(viewport: MapViewport): MapViewport {
   const { latitude, longitude } = viewportCenter(viewport);
-  const radians = (viewport.bearing * Math.PI) / 180;
-  const halfM =
-    (overviewSpanM(latitude, overviewZoom(latitude, viewport.zoom)) / 2) *
-    (Math.abs(Math.cos(radians)) + Math.abs(Math.sin(radians)));
+  const halfM = (overviewSpanM(latitude, overviewZoom(latitude, viewport.zoom)) / 2) * Math.SQRT2;
   const halfLat = halfM / METERS_PER_DEGREE;
   const halfLon = halfM / (METERS_PER_DEGREE * longitudeScale(latitude));
   return {
