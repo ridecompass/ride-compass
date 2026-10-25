@@ -29,7 +29,7 @@ import type { RouteSegmentDetail, SelectedRouteSegment } from "@/types/route";
 const isLineLayer = (layer: ProfileLayer): layer is LineLayer => layer.draw.kind === "line";
 
 /** 区間へ入る見込みの時刻（日本時間）。無い・読めない時刻は「不明」。 */
-export function formatSegmentArrivalTime(iso: string | null): string {
+function formatSegmentArrivalTime(iso: string | null): string {
   if (!iso) return "不明";
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "不明";
