@@ -8,21 +8,23 @@ interface PointMarkProps {
   label?: string;
   /** 出発地の印を、実際の位置（現在地か置いた地点）の色で出すか。 */
   originLocated: boolean;
+  /** 丸の径（px）。中の記号は径に合わせて描く。 */
+  size?: number;
   className?: string;
 }
 
 /** 地点の並びと詳しくに出す、地図のピンと同じ図形の丸。同じものを2度描くと、片方だけ直したときにピンと違う見た目になる。 */
-export default function PointMark({ role, label, originLocated, className }: PointMarkProps) {
+export default function PointMark({ role, label, originLocated, size = 18, className }: PointMarkProps) {
   return (
     <span
       aria-hidden="true"
       className={cn(
-        "inline-flex size-4.5 flex-none items-center justify-center rounded-full shadow-[0_1px_2px_rgba(0,0,0,0.35)]",
+        "inline-flex flex-none items-center justify-center rounded-full shadow-[0_1px_2px_rgba(0,0,0,0.35)]",
         className,
       )}
-      style={{ background: PIN_MARK_BACKGROUND }}
+      style={{ background: PIN_MARK_BACKGROUND, width: size, height: size }}
     >
-      <PinMark role={role} label={label} size={13} originColor={originMarkColor(originLocated)} />
+      <PinMark role={role} label={label} size={Math.round(size * 0.72)} originColor={originMarkColor(originLocated)} />
     </span>
   );
 }

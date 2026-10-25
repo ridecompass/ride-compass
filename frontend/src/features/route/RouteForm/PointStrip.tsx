@@ -1,9 +1,11 @@
 "use client";
 
-import { useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState, type PointerEvent } from "react";
 
 import { Button } from "@/components/ui/Button/Button";
+import { reorderedIndex } from "@/features/route/useGenerationConditions";
 import { cn } from "@/lib/cn";
+import { TAP_SLOP_PX } from "@/lib/tapSlop";
 import type { PointTarget } from "@/types/route";
 
 import PointMark from "@/components/PinMark/PointMark";
@@ -25,6 +27,8 @@ interface PointStripProps {
   selectedPoint: PointTarget;
   /** 押した地点を選ぶ。 */
   selectPoint: (target: PointTarget) => void;
+  /** 経由地の`from`番目を`to`番目へ動かす（番号の丸を押さえたまま左右へ動かして離したとき）。 */
+  reorderWaypoint: (from: number, to: number) => void;
 }
 
 /** 押している間の枠（地点の札と、並びの左の周回の切り替え）。 */
@@ -33,6 +37,25 @@ export const pressableClass =
 
 /** 札の印と名前の間（札の`gap-1`）。 */
 const NAME_GAP_PX = 4;
+
+/** 経由地の番号の丸の径。押さえたまま動かすので、並びに入りきる間は両端の札の印より大きくする。 */
+const WAYPOINT_MARK_PX = 26;
+/** 大きい丸では並びに入りきらないときの径（押す所は`Button`の下限の24px四方に収まる）。 */
+const WAYPOINT_MARK_SMALL_PX = 18;
+
+/** 並びを1行に入れる段（両端の名前と大きい丸／名前を隠して大きい丸／名前を隠して小さい丸）。 */
+type StripFitting = "names" | "large-marks" | "small-marks";
+
+/** 押さえている経由地の番号の丸（何番目か・押さえた指・押さえた所からの横の動き・丸1つ分の幅）。 */
+interface WaypointDrag {
+  from: number;
+  pointerId: number;
+  startX: number;
+  dx: number;
+  step: number;
+  /** 押した所から動かしたか（動かしたら、離しても押したことにしない）。 */
+  moved: boolean;
+}
 
 /**
  * 「出発地 › ①②③… ＋ › 終点」の並び（経由地は地図のピンと同じ番号の丸。経由地が増えても出発地と終点が欠けず、スクロールも
@@ -47,37 +70,92 @@ export default function PointStrip({
   originLocated,
   selectedPoint: target,
   selectPoint,
+  reorderWaypoint,
 }: PointStripProps) {
   const waypointCount = waypointNames.length;
   const isShown = (other: PointTarget) =>
     other.role === "waypoint" ? target.role === "waypoint" && target.index === other.index : other.role === target.role;
 
-  // 両端の札に名前を出すか。並び全体が1行に入りきるときだけ出し、入らなければ両端とも印だけにする（途中で切った名前は読めない。
-  // 名前は押すと詳しくに出る）。出さない間も名前は札の中で幅を測れる形で置いてあり、出したときの幅を足して入りきるかを見る。
+  // 並びが1行に入りきるように、両端の名前を隠し、それでも入らなければ経由地の丸を小さくする（途中で切った名前は読めない。
+  // 名前は押すと詳しくに出る）。丸は押さえて動かす所なので、入りきる間は大きく出す。出さない間も名前は札の中で幅を測れる形で
+  // 置いてあり、戻したときの幅を足して入りきるかを見る。
   const stripRef = useRef<HTMLDivElement>(null);
-  const [namesShown, setNamesShown] = useState(true);
+  const [fitting, setFitting] = useState<StripFitting>("names");
+  const namesShown = fitting === "names";
+  const markSize = fitting === "small-marks" ? WAYPOINT_MARK_SMALL_PX : WAYPOINT_MARK_PX;
   useLayoutEffect(() => {
     const strip = stripRef.current;
     if (strip === null) return;
     const fit = () => {
       // 並べた中身の幅は、最後の札の右端まで（`scrollWidth`は箱の幅より小さくならず、空きを測れない）。
       const used = (strip.lastElementChild?.getBoundingClientRect().right ?? 0) - strip.getBoundingClientRect().left;
-      if (namesShown) {
-        setNamesShown(used <= strip.clientWidth);
+      if (used > strip.clientWidth) {
+        setFitting(fitting === "names" ? "large-marks" : "small-marks");
         return;
       }
-      const names = [...strip.querySelectorAll<HTMLElement>("[data-chip-name]")].reduce(
-        (sum, name) => sum + name.getBoundingClientRect().width + NAME_GAP_PX,
-        0,
-      );
-      // 戻すときは1px余らせる（端数の丸めで、出す・出さないを行き来し続けない）。
-      setNamesShown(used + names <= strip.clientWidth - 1);
+      // 戻すときは1px余らせる（端数の丸めで、戻す・戻さないを行き来し続けない）。
+      if (fitting === "small-marks") {
+        if (used + waypointCount * (WAYPOINT_MARK_PX - WAYPOINT_MARK_SMALL_PX) <= strip.clientWidth - 1) {
+          setFitting("large-marks");
+        }
+        return;
+      }
+      if (fitting === "large-marks") {
+        const names = [...strip.querySelectorAll<HTMLElement>("[data-chip-name]")].reduce(
+          (sum, name) => sum + name.getBoundingClientRect().width + NAME_GAP_PX,
+          0,
+        );
+        if (used + names <= strip.clientWidth - 1) setFitting("names");
+      }
     };
     fit();
     const observer = new ResizeObserver(fit);
     observer.observe(strip);
     return () => observer.disconnect();
-  }, [namesShown, originName, destinationName, waypointCount]);
+  }, [fitting, originName, destinationName, waypointCount]);
+
+  // 経由地の番号の丸を押さえたまま左右へ動かすと、指の下へ丸を付いてこさせ、入る所を空けて見せ、離した所へ動かす。丸は隙間なく
+  // 同じ幅で並ぶので、入る所は動かした丸の数で決まる。
+  const [drag, setDrag] = useState<WaypointDrag | null>(null);
+  // 動かして離したあとに届くclickで、押した丸を選ばない（同じ操作の終わりにclickが飛ぶ）。clickが来ないまま次に押したときは、
+  // その押した操作のclickを捨てないよう、押すたびに戻す。
+  const swallowClickRef = useRef(false);
+  const dropIndex = (current: WaypointDrag) =>
+    Math.min(waypointCount - 1, Math.max(0, current.from + Math.round(current.dx / current.step)));
+  const pressWaypoint = (index: number, event: PointerEvent<HTMLButtonElement>) => {
+    swallowClickRef.current = false;
+    if (!event.isPrimary || waypointCount < 2) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setDrag({
+      from: index,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      dx: 0,
+      step: event.currentTarget.getBoundingClientRect().width,
+      moved: false,
+    });
+  };
+  const moveWaypointMark = (event: PointerEvent<HTMLButtonElement>) => {
+    if (drag === null || event.pointerId !== drag.pointerId || drag.step <= 0) return;
+    const dx = event.clientX - drag.startX;
+    setDrag({ ...drag, dx, moved: drag.moved || Math.abs(dx) > TAP_SLOP_PX });
+  };
+  const releaseWaypoint = (event: PointerEvent<HTMLButtonElement>) => {
+    if (drag === null || event.pointerId !== drag.pointerId) return;
+    setDrag(null);
+    if (!drag.moved) return;
+    swallowClickRef.current = true;
+    const to = dropIndex(drag);
+    if (to !== drag.from) reorderWaypoint(drag.from, to);
+  };
+  const shownDrag = drag?.moved ? drag : null;
+  const shownDrop = shownDrag === null ? null : dropIndex(shownDrag);
+  /** 経由地`index`の丸を、いまの位置からどれだけ横へずらして描くか（引きずる丸は指に付け、ほかは入る所を空ける）。 */
+  const offsetOf = (index: number) => {
+    if (shownDrag === null || shownDrop === null) return 0;
+    if (index === shownDrag.from) return shownDrag.dx;
+    return (reorderedIndex(index, shownDrag.from, shownDrop) - index) * shownDrag.step;
+  };
 
   const chipClass = cn("rounded-full", pressableClass);
   const arrow = (
@@ -128,7 +206,7 @@ export default function PointStrip({
     <div ref={stripRef} role="group" aria-label="地点の並び" className="flex min-w-0 flex-1 items-center gap-1">
       {endChip("origin", "出発地", originName)}
       {arrow}
-      {/* 番号の丸は押す所（24px四方）を隙間なく並べ、両端の名前に幅を残す。 */}
+      {/* 番号の丸は隙間なく並べ、両端の名前に幅を残す。縦の動きはシート・パネルのスクロールへ渡し、横の動きで並び替える。 */}
       <span className="flex flex-none items-center">
         {waypointNames.map((name, index) => (
           <Button
@@ -136,12 +214,33 @@ export default function PointStrip({
             variant="ghost"
             size="bare"
             shape="pill"
-            className={cn(chipClass, "border-transparent p-px")}
+            className={cn(
+              chipClass,
+              "touch-pan-y border-transparent p-px select-none [-webkit-touch-callout:none]",
+              // 引きずる丸は指に付けて遅らせず、ほかの丸は入る所を空けるときに滑らせる。
+              shownDrag?.from === index ? "relative z-10 scale-110" : "transition-transform",
+            )}
+            style={{ translate: `${offsetOf(index)}px 0` }}
             aria-pressed={isShown({ role: "waypoint", index })}
             aria-label={`経由地${index + 1}: ${name}`}
-            onClick={() => selectPoint({ role: "waypoint", index })}
+            onPointerDown={(event) => pressWaypoint(index, event)}
+            onPointerMove={moveWaypointMark}
+            onPointerUp={releaseWaypoint}
+            onPointerCancel={() => setDrag(null)}
+            onClick={() => {
+              if (swallowClickRef.current) {
+                swallowClickRef.current = false;
+                return;
+              }
+              selectPoint({ role: "waypoint", index });
+            }}
+            usage={
+              waypointCount < 2
+                ? undefined
+                : "押すと詳しくを出します。押さえたまま左右へ動かすと、通る順を入れ替えます。"
+            }
           >
-            <PointMark role="waypoint" label={String(index + 1)} originLocated={originLocated} />
+            <PointMark role="waypoint" label={String(index + 1)} originLocated={originLocated} size={markSize} />
           </Button>
         ))}
         <Button

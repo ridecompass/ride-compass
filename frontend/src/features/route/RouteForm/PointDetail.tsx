@@ -40,6 +40,8 @@ interface PointDetailProps {
   /** 打つ欄の右に並べる操作（消す・現在地に戻す。どれもアイコンだけの形）。要らない間も出し入れせず、押せない形で
    * 渡す（押した直後に並びが動くと、続けて押したときに別の操作に当たる）。 */
   extra?: React.ReactNode;
+  /** 名前の下に添える、この地点の操作の案内（引きずって動かす等、画面に手掛かりの無い操作）。 */
+  note?: string;
   /** 地図をタップするとこの地点を置く間に、打つ欄の中に出す文言。置いた数を隠さないため、経由地を足す間は件数を添える。 */
   placingHint?: string;
   /** 候補を選ぶと何が起きるか（「目的地にします」等）。 */
@@ -73,6 +75,7 @@ export default function PointDetail({
   at,
   placed,
   extra,
+  note,
   placingHint = "地図をタップ",
   chooseResult,
   full = false,
@@ -150,6 +153,7 @@ export default function PointDetail({
               {representative && <Badge variant="warning">代表の位置</Badge>}
             </p>
           )}
+          {note !== undefined && <p className={textVariants({ variant: "note" })}>{note}</p>}
         </div>
       </div>
 

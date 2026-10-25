@@ -20,6 +20,7 @@ type RoutePointsConditions = Pick<
   | "setLoop"
   | "waypoints"
   | "removeWaypoint"
+  | "reorderWaypoint"
   | "destination"
   | "clearDestination"
   | "clearPoints"
@@ -80,6 +81,7 @@ export default function RoutePoints({
     setLoop,
     waypoints,
     removeWaypoint,
+    reorderWaypoint,
     destination,
     clearDestination,
     clearPoints,
@@ -201,6 +203,7 @@ export default function RoutePoints({
             <RemovePointIcon />
           </Button>
         }
+        note={waypointCount > 1 ? "番号の丸を押さえたまま左右へ動かすと、通る順を入れ替えます" : undefined}
         chooseResult={`${title}を置き直します`}
         placing={placing}
         onChoose={(candidate) => onPlaceFound("waypoint", candidate, index)}
@@ -233,6 +236,7 @@ export default function RoutePoints({
           originLocated={originLocated}
           selectedPoint={selectedPoint}
           selectPoint={selectPoint}
+          reorderWaypoint={reorderWaypoint}
         />
         {/* 消すものが無い間も押せない状態で残す（置き場が動くと、並びの名前の出し分けが揺れる）。周回の間は並びに出ている
             経由地だけを消し、覚えている目的地は残す。 */}
