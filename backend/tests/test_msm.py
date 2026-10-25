@@ -3,7 +3,7 @@
 
 入口は`MsmGrid.from_bbox_and_shape`・`MsmGrid.window`と、窓の`lat_slice`/`lon_slice`で切り出した
 部分ブロックを渡す`MsmWindow.interpolate`、格子点の並びを作る`MsmGrid.block_covering`・`MsmGrid.block_overlapping`・`MsmGrid.nearest_points`と
-その`points_of`・`holds_nearest`・`values`・`thinned_points`、`wind_speed_and_direction`。格子はMSMの公表値（緯度0.05度・
+その`points_of`・`values`・`thinned_points`、`wind_speed_and_direction`。格子はMSMの公表値（緯度0.05度・
 経度0.0625度、北緯22.4〜47.6度・東経120〜150度）で作る。
 
 ここで見ないもの:
@@ -144,7 +144,6 @@ def test_a_place_picks_the_same_nearest_grid_point_from_any_rectangle_around_it(
         point = block.points_of(np.array([lat]), np.array([lon]))
         latitudes, longitudes = block.coordinates()
         _assert_on_the_grid(latitudes, longitudes)
-        assert block.holds_nearest(np.array([lat]), np.array([lon])).tolist() == [True]
         picked.append((float(latitudes[point][0]), float(longitudes[point][0])))
 
     assert picked[0] == pytest.approx(picked[1], abs=1e-9)
@@ -152,14 +151,13 @@ def test_a_place_picks_the_same_nearest_grid_point_from_any_rectangle_around_it(
     assert abs(picked[0][1] - lon) <= GRID.d_lon / 2 + 1e-9
 
 
-def test_a_place_outside_the_block_is_moved_to_its_edge_and_is_not_its_nearest_point():
-    """タイルをまたぐ道の中ほどは並びの外にありうる。端の格子点は計算には使えるが、最寄りの格子点の値としては示せない。"""
+def test_a_place_outside_the_block_is_moved_to_its_edge():
+    """タイルをまたぐ道の中ほどは並びの外にありうる。並びの外の地点は端の格子点で計算する。"""
     block = GRID.block_covering(35.0, 139.0, 35.05, 139.0625)
     lat, lon = block.coordinates()
     beyond = np.array([lat.min() - 1.0, lat.max() + 1.0]), np.array([lon.min() - 1.0, lon.max() + 1.0])
 
     assert block.points_of(*beyond).tolist() == [0, block.size - 1]
-    assert block.holds_nearest(*beyond).tolist() == [False, False]
 
 
 @given(points=st.one_of(_points, _nearby_points()))

@@ -2,8 +2,11 @@
 
 import { useCallback, useMemo } from "react";
 
+import { useAxisCatalog } from "@/hooks/useAxisCatalog";
 import { useStoredState } from "@/hooks/useStoredState";
 import { readStoredList } from "@/lib/storedList";
+
+import { profileLayers, type ProfileLayer } from "./profileLayers";
 
 const PROFILE_LAYERS_STORAGE_KEY = "ridecompass:profile-layers";
 const DEFAULT_LAYER_IDS: readonly string[] = ["elevation"];
@@ -27,4 +30,15 @@ export function useProfileLayers(): ProfileLayerSelection {
     [setIds],
   );
   return useMemo(() => ({ ids, toggle }), [ids, toggle]);
+}
+
+/** 重ねられるレイヤと、そのうち選んでいるレイヤ（道のりのグラフと区間の小窓が同じ選びを読む）。 */
+export function useChosenProfileLayers(ids: readonly string[]): {
+  readonly available: readonly ProfileLayer[];
+  readonly chosen: readonly ProfileLayer[];
+} {
+  const roadLayers = useAxisCatalog().roadClasses.map_layers;
+  const available = useMemo(() => profileLayers(roadLayers), [roadLayers]);
+  const chosen = useMemo(() => available.filter((layer) => ids.includes(layer.id)), [available, ids]);
+  return { available, chosen };
 }

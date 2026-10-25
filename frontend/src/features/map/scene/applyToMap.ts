@@ -110,12 +110,8 @@ type SceneWiringProps = {
   readonly travelledKm: number | null;
   /** 道のりのグラフか地図で選んだ地点と、その地点を含む区間。選んでいなければnull。 */
   readonly selectedRouteSegment: SelectedRouteSegment | null;
-  /** 地図で押して選んでいる区間の線（近くの点を描く）。押していなければnull。 */
+  /** 選んでいる区間の線（近くの点を描く）。選んでいなければnull。 */
   readonly sidePointPath: readonly (readonly [number, number])[] | null;
-  /** 区間の近くの点のうち、地図から消した区分。 */
-  readonly sidePointsHidden: ReadonlySet<string>;
-  /** 小窓に中身を出している、区間の近くの施設の印の位置。無ければnull。 */
-  readonly chosenSidePoint: readonly [number, number] | null;
 };
 
 const NO_KEYS: readonly string[] = [];
@@ -266,9 +262,7 @@ export function sceneInputsFrom(props: SceneWiringProps): SceneInputs {
     route: routeStateFrom(props),
     sidePoint: {
       path: props.sidePointPath,
-      hidden: props.sidePointsHidden,
       tilesReady: versions !== null,
-      chosen: props.chosenSidePoint,
     },
   };
 }

@@ -226,12 +226,6 @@ def _build_segment_details(
     segment_raw_values: list[dict[str, float]] = []
     road_classes = SegmentClassReader.of(context.road)
     timed = _values_at_passages(context, rows, leg_of_edge, passages)
-    winds = context.composer.winds_at(
-        rows,
-        [_passage_hours_of(context, row, leg_index, passage)
-         for row, leg_index, passage in zip(rows, leg_of_edge, passages)],
-        [passage.beyond_bins for passage in passages],
-    )
 
     for index, (edge, row, leg_index) in enumerate(zip(edges, rows, leg_of_edge)):
         leg = context.legs[leg_index]
@@ -333,7 +327,6 @@ def _build_segment_details(
                 axis_contributions=axis_contributions,
                 material_values=material_values,
                 difficulty=composite_difficulty_value,
-                wind=winds[index],
                 road_classes={
                     layer: [RoadClassStretch(distance_km=rounded_km, value=value)]
                     for layer, value in road_classes.values_at(row).items()
@@ -361,16 +354,6 @@ def _values_at_passages(
         for position, index in enumerate(indices):
             timed[index] = (values, position)
     return timed
-
-
-def _passage_hours_of(context: RoadGraphContext, row: int, leg_index: int, passage: EdgePassage) -> float | None:
-    """その区間の評価に使った通過時刻（出発からの経過[h]）。出発時点の値で合成したレグはNone。"""
-    leg = context.legs[leg_index]
-    if leg.bin_start_hours:
-        return leg.bin_start_hours[passage.time_bin]
-    if leg.passage_hours is not None:
-        return float(leg.passage_hours[row])
-    return None
 
 
 _TURN_DIRECTION = {TurnKind.LEFT: "left", TurnKind.RIGHT: "right", TurnKind.UTURN: "uturn"}

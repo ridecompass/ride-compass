@@ -42,17 +42,15 @@
 | `features/map/scene/applyMapScene.ts` | 宣言を地図へ当てる唯一の実装（`features/map/scene/applyMapScene.ts: addImage`/`features/map/scene/applyMapScene.ts: addSource`/`features/map/scene/applyMapScene.ts: addLayer`/`features/map/scene/applyMapScene.ts: setPaintProperty`/`features/map/scene/applyMapScene.ts: setFilter`/`features/map/scene/applyMapScene.ts: setFeatureState`）。前回の宣言との差分だけを当て、段の順に差し込む |
 | `features/map/MapView/MapView.tsx`（静的レイヤーの箇所のみ） | 画面の状態をsceneの入力へ渡し、組んだ宣言を地図へ当てる配線。レイヤーの描画コードは持たない |
 | `features/map/MapView/useMapScene.ts` | 地図に載るもの全部の入力から scene を組む唯一の口と、そこから押せるレイヤーを引く |
-| `features/map/MapView/useSidePointsOnMap.ts` | 選んだ区間の近くの施設を、地図が読み込んだ点のタイルから読んで知らせる。区間の線が変わったときと地図が描き終えたとき（`idle`）に読み直し、中身が変わったときだけ知らせる。点のタイルを読まないズームではnullを知らせる |
 | `features/map/MapView/mapTaps.ts` | 地図を押す・なぞる操作。押した所で一番上の地物を、そのレイヤーが宣言した当たり判定の対象（`hitTargets`）のうち、地図を押したときの意味（`features/map/MapView/mapTaps.ts: MapTapMode`）が開ける対象で開く手続きへ振り分ける |
-| `features/map/MapView/useMapPopups.tsx` | 地図の小窓（点・ピン・道の詳細・区間の中身）の状態と開閉。**小窓はいつも1つ**で、最後に押した物の中身へ入れ替える。MapLibreのPopupを1つ器にしてportalで描き、選択の持ち主が変わると閉じる。地図を押して閉じるのは押した手続き（`mapTaps.ts`）が決め、開ける物の無い所を押すか×で閉じると、区間の選びも外す。区間の中身を出している間に区間の近くの点を押すと、点の中身へ入れ替えて点の位置を指し（枠を付けた印を覆わない高さだけずらす）、区間の選びを残して上の帯の左に「‹ 区間」を置く。ほかの物（道・ピン・地図の点）へ入れ替えると区間の選びを外す。区間の小窓は、区間を囲む枠の上・下・右・左のうち、見えている所に収まる側に置き（押した地点に置くと区間の続きにかぶる。選び方は`features/map/MapView/popupPlacement.ts: popupPlacementAround`）、地図が動き終えるたび・中身が伸び縮みするたびに選び直す。どの側にも収まらなければ押した地点に置く。小窓の幅は中身によらず同じ上限（入れ替えるたびに幅が跳ねない）で、地図の幅の2/3（横のずれを引く）で頭打ちにする——MapLibreは押した所が端から小窓の幅の半分以内のときだけ横向きに開くので、幅の狭い画面で広い小窓を縦の中ほどの端に寄った所で開くと、横に開いて画面の外へはみ出す |
+| `features/map/MapView/useMapPopups.tsx` | 地図の小窓（点・道・区間）の状態と開閉と置き方。**小窓はいつも1つ**で、点と道は押して開き、区間は選んでいる区間から導く（押して開いた中身が無ければ区間の中身。区間の選びが変わると、その区間に属さない中身を閉じる）。MapLibreのPopupを1つ器にしてportalで描き、どの小窓も指す地点・押した物の形・間の幅だけで置く（決まりは下記「地図を押したときと地図の小窓」）。選択の持ち主が変わると押して開いた中身を閉じ、閉じる（×・何も無い所を押す）と区間の選びも外す |
 | `features/map/MapView/popupPlacement.ts` | 線を囲む枠にかぶらない小窓の置き場（画面のpxで、上・下・右・左の順に、見えている所に収まる最初の側と、その側の向き（MapLibreの`anchor`））。見えている所が無い地図（描く前・隠れている間）では選ばない |
 | `features/map/MapView/layerDataSources.ts` | レイヤーのデータ取得状態の算出元（`features/map/MapView/layerDataSources.ts: buildLayerDataSources`）。レイヤーカタログの情報源の名前を、取得を見るMapLibreのソースへ引く |
 | `features/map/baseMap.ts` | 基礎地図のスタイル・出典の表記・MapLibreの部品の日本語の文言で地図を作る（`features/map/baseMap.ts: createBaseMap`）。一般の地図（`MapView.tsx`）と下書きの点数の地図が使い、載せるものはどちらも場面で当てる。俯瞰図（`features/map/MapOverview/MapOverview.tsx`）は`inset`で、操作を受けず出典の表記を持たない地図として作る（出典は同じ画面の本体の地図が出す） |
 | `features/map/DraftWayValuesMap/DraftWayValuesMap.tsx` | 下書きの点数の地図（管理画面の較正の画面が置く。[軸スタジオ](axis-studio.md)「較正の画面」）。下書きで求めた道の点数を、一般の地図と同じ場面の組み立て・道の線の塗り・凡例で塗る。点数は backend が走る条件を入れて求め終えた値なので、道ごとの材料1つとして載せ、それをそのまま道の値にする木（`scene/wayValueFormula.ts: featureValueFormula`）で塗る。下書きの中身と点数の求め方は知らず、置く側が渡す |
 | `features/map/layers/mapStyleOps.ts` | 地図インスタンスへの低水準操作（スタイル読み込み後の実行・面レイヤーと文字に場所を譲る点の差し込み位置・基礎地図の細い道の縁取りの描き替え・ズーム依存のicon-size式）。このアプリのどのレイヤーかを知らないものだけを置く |
-| `features/map/layers/routeArrowIcon.ts`・`components/ui/icons/icons.tsx`・`components/ui/icons/layerIcons.tsx`・`components/ui/icons/lucideIcons.tsx`・`components/ui/icons/mapLayerIcons.ts` | ルート矢印・アイコン集（下記「本モジュールとの関係」参照）。`icons.tsx`はアイコンの土台（大きさの受け口・線の様式）と、操作・地点の自前の形、`layerIcons.tsx`は地図のレイヤーと評価軸の自前の形、`lucideIcons.tsx`はlucideの形の包み、`mapLayerIcons.ts`は源泉が宣言するレイヤーごとのアイコンの表（地図の「表示」の一覧と、道のりのグラフの地点の詳しくのチップが同じ表を引く。レイヤーを足すと型が書き忘れを止める） |
+| `features/map/layers/routeArrowIcon.ts`・`components/ui/icons/icons.tsx`・`components/ui/icons/layerIcons.tsx`・`components/ui/icons/lucideIcons.tsx`・`components/ui/icons/mapLayerIcons.ts` | ルート矢印・アイコン集（下記「本モジュールとの関係」参照）。`icons.tsx`はアイコンの土台（大きさの受け口・線の様式）と、操作・地点の自前の形、`layerIcons.tsx`は地図のレイヤーと評価軸の自前の形、`lucideIcons.tsx`はlucideの形の包み、`mapLayerIcons.ts`は源泉が宣言するレイヤーごとのアイコンの表（地図の「表示」の一覧と、区間の小窓の層の値のチップが同じ表を引く。レイヤーを足すと型が書き忘れを止める） |
 | `features/map/layers/sdfIcon.ts` | 地図の記号に使う単色シルエット（例: ルート矢印・落雷の記号）の描画の土台。白で塗った絵を`sdf: true`で登録し、色はicon-colorで付ける。canvasの2D描画が使えなければ投げる——空の絵を黙って返すと記号が地図から消えるだけで誰も気づけない。**単体テストは持たない**（テスト環境のcanvasは2D描画を実装しない。絵の中身は座標の宣言そのもので、写してもなにも守らない） |
-| `features/map/MapView/pointPopup.ts` | 地点のピンを押したときの小窓の本文「ピンの呼び名: 名前」（`features/map/MapView/pointPopup.ts: pinPopupText`）。地点の名前（探して・名前のある点を押して置いた名前）の無いピンは小窓を開かない |
 | `components/MapPopup/MapPopupParts.tsx` | 地図の小窓（点・道・区間）を組む部品。どの小窓も「上の帯」（`components/MapPopup/MapPopupParts.tsx: PopupHeader`）と塊——難易度の塊（`components/MapPopup/MapPopupParts.tsx: DifficultyBlock`。難易度・寄与の帯・軸のチップに、同じ塊で読むチップ（風・土地被覆）を並べる）と施設の行（`components/MapPopup/MapPopupParts.tsx: FacilityRows`）——だけで組む。小窓ごとに別の組み方をすると、同じ値が小窓によって違う形に見える。上の帯は右端を×の幅だけ空ける——×はMapLibreが本文の器の右上に置き、どの中身でも44px四方の押す所を持つ（`app/globals.css`） |
 | `components/MapPopup/facilityRows.ts` | 点データ（事故・POI・立ち寄り先）を1施設1行で見せる行の中身（`components/MapPopup/facilityRows.ts: facilityOf`）。区分の名前を凡例と同じ点の宣言（`POINT_LAYERS`の`display_axes`）から引き、宣言（`point_facts`）が点に添える事実（事故の発生年等）を値のあるものだけ並べる。宣言（`point_name_property`）が名前のプロパティを持ち、その点に名前があれば（立ち寄り先と補給のコンビニ）、名前を外の地図（Google マップの検索）を別の画面で開くリンクにする——閉店にデータが追いついていないことがあるので、営業を外で確かめられるようにする。リンクは名前の検索をその点を中心にした地図の中で行う（座標だけではピンしか出ず、名前だけでは同じ名前の別の店舗へ飛びうる。形は`components/MapPopup/facilityRows.ts: externalMapSearchUrl`）。行の位置は、ルートの始点からの道のりでなく、基準の地点から見た前後（「300m先」「100m手前」。走行中は現在地からの「あと1.2km」）で出す（`components/MapPopup/facilityRows.ts: facilityPosition`）。基準の地点は、見るだけの間は区間で押した地点を区間の道なりに当てた所、走行中は現在地で、ページ（`app/HomeMapPane.tsx`）が1つ決めて地図の点の小窓と区分の一覧へ渡す。名前は`lib/mapDisplay/pointLayers.ts: pointPlaceName`が引き、地点を置く意味の間に名前のある点を押して地点を置くとき（`features/map/MapView/mapTaps.ts`）も同じ名前を使う。同じ場所に重なった同じ施設は1行にし、道のりの順（同じ位置なら道に近い順）に並べる（`components/MapPopup/facilityRows.ts: distinctFacilities`） |
 | `features/map/MapView/RoadInspectorPopup.tsx` | 道をクリックしたときの詳細（**Reactで描き、MapLibreのPopupへportalで差し込む**）。上の帯に地図の道の線と同じ見本・名前（名前の無い道は道の色の凡例の名前）・事実の要約（路面等）を出し、属性（タイルの事実と、評価を取ったときに届くタグ。**同じ項目は1度だけ**で、日本語の値だけを出し、英語の生の値と登録外のタグはその中の「その他のタグ」にさらに畳む）は畳む——地図の上の小さな枠に収めるため。中身の高さには上限を付けて中でスクロールさせ、中身が伸び縮みしたら置く向きを決め直す（MapLibreのPopupは地図が動いたときにしか決め直さず、開いた後に伸びた中身が画面の外へはみ出す）。評価は押したときだけ取りに行き（backend `POST /api/region/axis-inspector`、[静的道路属性・タイル配信](../backend/static-road-attributes.md)参照。押した地物の鍵と押した点を送る）、応答の押した区間と道1本の値を、「区間」「道全体」の札を付けた難易度の塊（周囲の土地被覆は最も多いクラスのチップにし、押すと内訳を開く）として並べ（2つの値が同じなら札の無い塊を1つだけ出す）（区間の値は寄せた地図の色、道1本の値は引いた地図の色と同じ値で、どちらの値かを取り違えると地図の色と窓の値が食い違って見える）、**利用者がいま設定している重み**（ルート生成へ送るのと同じ`routePreferenceToSend`の値）で計算させる——既定の重みで見せると、重みを0にした軸まで効いて見える。重みを変えたら、前の重みの評価を見せずに取り直しへ戻す。走行の条件は押したときのものに留める——出発時刻は「今」へ
@@ -395,9 +393,29 @@ MSMを配るOpen-MeteoのCC BY 4.0も、リンク付きのクレジット・ラ�
 **綴りを手で書かない。** 家族の外でidが要るとき（押されたレイヤーの判定・テスト）は、
 その家族が出すソース名と役割を`sceneLayerId`へ渡して作る。
 
+## 地図を押したときと地図の小窓（`MapView/mapTaps.ts`・`MapView/useMapPopups.tsx`）
+
+地図を押したときの動きと地図の小窓は、この節の決まりだけで決まる。場合を足すときは、この節の決まりを書き換えてから足す（決まりの外に場合分けを重ねない）。
+
+**押したとき。** 押すことが別の操作になっている間（「ルート設定」を開いている間は押した所に地点を置き、ピンを押すとその地点を選ぶ。乗り換えを選んでいる間は乗り換え先の帯を選ぶ）を除き、どの画面の状態（パネルを閉じている間・「ルート結果」の間・走行中）でも同じに、押した物の小窓を開く。重なっていれば一番上に描かれた物を開き、何も無い所を押すと小窓を閉じる。候補の線を押すと、小窓は開かずにそのルートを選ぶ。
+
+**押せる物は、情報を足す物だけ。** 名前のある点（「表示」の層の点と、区間の付近に描いた点。どちらも同じ点）・道・選んでいるルートの区間・候補の線。名前の無い点と地点のピンは、位置と凡例（印の形と色）以上の情報を持たないので、押せる物に数えない——上を押すと、下にある物がそのまま開く。
+
+**小窓はいつも1つで、作りと置き方は同じ。** 最後に押した物の中身を出す。どの小窓も上の帯と塊で組み、右上に地図を寄せるアイコンと×（44px四方）を置く。どの小窓も、押した物の形（点は点、道は押した道の線のうち地図のタイルにある分、区間は区間の形）を囲む枠の上・下・右・左の順に、小窓の全体が見えている所に収まる側に置き、押した物にかぶらない（`MapView/popupPlacement.ts: popupPlacementAround`）。今の向きの側が収まるなら続けて使い（向きを変えると矢印の位置で小窓の大きさが変わり、選び直すたびに側が入れ替わって止まらなくなる）、地図が動き終えたときと中身の大きさが変わったときに選び直す。どの側にも収まらなければ押した所を指す。この置き方は自前で持つ——MapLibre の Popup は、向きを指定しなければ地図の枠に収まる向きを選ぶだけで、指す物の形を避ける機能を持たない。かぶらないことは必須の要件なので、自前の計算で置く。幅を中身に合わせること（`maxWidth`）と、地図の上に重ねた部品を避けること（`padding`）は Popup の標準の設定で済ませる。名前は折り返さず、小窓の幅を中身に合わせて広げ、地図の幅を超えるときだけ空白で折る。高さには上限があり、あふれたら中でスクロールする。×・何も無い所を押す・パネルを切り替えると閉じる。区間の小窓を出している間に点を押すと、区間の選びを残し、点の小窓の上の帯に「‹ 区間」を置いて戻れるようにする。点のほかの物を押すと、区間の選びを外す。
+
+**小窓の中身。**
+
+- 点: 押した所に描かれている名前のある点を1施設1行で並べる。見本・名前（Googleマップを開くリンク）・道からの距離、区間を選んでいる間はその地点から見た前後。
+- 道: 上の帯に線の見本・名前・事実の要約、評価の塊（押すと取る）・土地被覆・畳んだ属性。
+- 区間: 道のりのグラフの表示の断面。上の帯に何km地点・到達予想、グラフで選んでいる層のその地点の値（線の層の値と勾配・帯の層の区分）、難易度と軸ごとの寄与。風は難易度の内訳に入っているので、値を別に出さない。
+
+**区間を選んだとき。** 区間は地図で押しても、道のりのグラフで選んでも（押す・なぞる）同じに選ばれ、押した区間を強調し、押した所に印を置き、区間の小窓を出し、線から`lib/mapDisplay/sidePoints.ts: SIDE_POINT_MAX_DISTANCE_M`以内の点の層の点を、「表示」で出しているかに関わらず描く（下の「選んだ区間の近くの点」）。地図は動かさない。グラフの下には地点の詳しくを出さず、区間の中身は地図の区間の小窓だけが出す。選んだ地点が地図の見えている所の外にあれば、グラフの右上の寄せるボタンを色で目立たせて知らせる。
+
+**地図を寄せる。** 地図は押しただけでは動かず、寄せる操作のときだけ動く。小窓の寄せるアイコンは、点ならその点へ、区間ならその区間の形へ、道なら押した道の線（地図のタイルにある分）へ寄せる。グラフの右上の寄せるボタンは、選んだ区間の形へ寄せる。ルート結果のカードを押すと、選び直しでも今選んでいるカードでも、そのルート全体へ収める（生成直後と同じ）。走行中に現在地を追っている間は、寄せるアイコンと寄せるボタンは追うのを休んで寄せ、休ませた後に小窓が閉じると（区間なら選びを外すと）追い直す。カードは収めない。寄せるのはどの小窓も同じ1つの手続き（`features/map/MapView/useSectionFocus.ts: useSectionFocus`）で、点は点へ寄せ、線は線を収める。
+
 ## 選んだ区間の近くの点（`groups/sidePoints.ts`）
 
-地図で区間を押して選んでいる間だけ、点の層のタイル（停止要因・補給・立ち寄り先・事故）のうち区間の線から`lib/mapDisplay/sidePoints.ts: SIDE_POINT_MAX_DISTANCE_M`以内の点を、点の層と同じ見た目（行の色の丸か、行の色に絵記号を載せた絵）で、「表示」で点の層を出しているかに関わらず描く。近いかは MapLibre の`distance`式で決め（backendへは問い合わせない）、区間の小窓に並べる施設も同じ絞り込み（`groups/sidePoints.ts: sidePointFilter`）で地図から読む（`features/map/MapView/useSidePointsOnMap.ts`）。点の層の行（先頭の軸の行）に当たらない値の点は描かず、重なっても間引かない。地図から消した区分は描かない。点のタイルは路面のタイルと同じズーム（`features/map/regionApi.ts: ROAD_TILE_MIN_ZOOM`）から読むので、それより引いた地図では近くの点も施設も出さない。名前のある点を押すと、見本・名前・基準の地点から見た前後・道からの距離の1施設1行を地図の小窓に出す（`components/MapPopup/facilityRows.ts`。前後と道からの距離は画面で点の位置を区間の線に当てて出す）。名前の無い点は押しても開かない（前後と道からの距離は区分の一覧の行で見る）。小窓に出している点の印には、選んだ地点の印と同じ色の枠を付ける（ソース`side-point-chosen`。押せない）——点が並ぶ所で、どの印の中身かを見分ける。
+区間を選んでいる間だけ、点の層のタイル（停止要因・補給・立ち寄り先・事故）のうち区間の線から`lib/mapDisplay/sidePoints.ts: SIDE_POINT_MAX_DISTANCE_M`以内の点を、点の層と同じ見た目（行の色の丸か、行の色に絵記号を載せた絵）で、「表示」で点の層を出しているかに関わらず描く。近いかは MapLibre の`distance`式で決める（backendへは問い合わせない）。描いた点は「表示」の点と同じ点で、押したときは上の「地図を押したときと地図の小窓」の決まりに従う。点の層の行（先頭の軸の行）に当たらない値の点は描かず、重なっても間引かない。点のタイルは路面のタイルと同じズーム（`features/map/regionApi.ts: ROAD_TILE_MIN_ZOOM`）から読むので、それより引いた地図では近くの点を描かない。
 
 ## 重なりの段（`scene/mapScene.ts: MAP_SCENE_TIERS`）
 

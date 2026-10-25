@@ -4,10 +4,10 @@ import { useId, useState, type KeyboardEvent, type PointerEvent, type ReactNode 
 
 import { columnAtKm } from "@/features/route/DifficultyProfile/profileGeometry";
 import { roundToDigits } from "@/lib/numberFormat";
-import { alongSegment, findSameSegment, pointAlongSegment, type RouteStretch } from "@/lib/routeDistance";
+import { findSameSegment, kmOfPickedPoint, pointAlongSegment } from "@/lib/routeDistance";
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import palette from "@/types/generated/palette.json";
-import type { RouteSegmentDetail, SelectedRouteSegment } from "@/types/route";
+import type { SelectedRouteSegment } from "@/types/route";
 
 import ProfileMarks, { type ValueTick } from "./ProfileMarks";
 import { PROFILE_VIEW_HEIGHT, PROFILE_VIEW_WIDTH, type ProfileScale } from "./profileScale";
@@ -33,17 +33,12 @@ interface ProfileChartProps {
   waypointKms: readonly number[];
   /** 図の中身（`scale.xOf`の横座標と、0〜`PROFILE_VIEW_HEIGHT`の縦座標で描く）。 */
   children: ReactNode;
-  /** 図の下の1行。区間を選んでいれば、その地点の距離を受け取る。 */
-  caption?: (pointKm: number | null) => ReactNode;
+  /** 図の下の1行。 */
+  caption?: ReactNode;
   /** 縦の値の目盛り（0〜`PROFILE_VIEW_HEIGHT`の縦の位置と文字）。図の左の端に重ねる。 */
   valueTicks?: readonly ValueTick[];
   /** 走行中の地図の下の図。目盛りの文字を大きくする。 */
   riding?: boolean;
-}
-
-/** 地図で押した所を区間`column`の道なりの形に当てた、ルートの上の距離。 */
-function kmOfPickedPoint(column: RouteStretch<RouteSegmentDetail>, picked: SelectedRouteSegment): number {
-  return Math.min(column.endKm, column.startKm + alongSegment(column.segment, picked).km);
 }
 
 /** 道のりに沿った図の枠。横が距離で、選んだ区間の帯・走行中の現在地・動かした地点の線を中身の上に引き、下に距離の目盛りを
@@ -232,7 +227,7 @@ export default function ProfileChart({
           riding={riding}
         />
       </div>
-      {caption?.(selectedColumn === undefined ? null : positionKm)}
+      {caption}
     </div>
   );
 }

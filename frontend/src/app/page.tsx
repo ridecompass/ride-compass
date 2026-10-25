@@ -93,7 +93,7 @@ export default function Home() {
   // 「ルート設定」のタブ。タブ列は見出し行、中身は本文に描くため、両方を囲むパネルの外で持つ。
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("generate");
 
-  const tapMode = mapTapModeOf(panels.activePanel, settingsTab, route.splice.editingRoute !== null, navigating);
+  const tapMode = mapTapModeOf(panels.activePanel, settingsTab, route.splice.editingRoute !== null);
   // 地図に出した一時の選択（選んだ区間・小窓）の持ち主。地図を押した意味は効いているパネルで決まるので、前に効いていたのと別の
   // パネルが効いたら（閉じてから別のパネルを開いたときも）、前のパネルで出した選択を外す。閉じるだけなら外さない（地図だけを
   // 見て、選んだ区間を小窓で読む）。
@@ -134,7 +134,7 @@ export default function Home() {
     onRide: navigating
       ? undefined
       : (routeId: string) => {
-          results.selectTab(routeId);
+          results.showRoute(routeId);
           riding.press();
         },
   };
@@ -177,7 +177,6 @@ export default function Home() {
             route={route}
             conditions={conditions}
             place={place}
-            originFound={originFound}
             riding={riding}
             guidance={guidance}
             ride={ride}

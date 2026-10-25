@@ -23,7 +23,6 @@ import MapNavigationControl from "@/features/map/MapNavigationControl/MapNavigat
 import MapLoadStatus from "@/features/map/MapView/MapLoadStatus";
 import { fitBoundsToRoute, flyToVisible, mapVisibleCenterOffset } from "@/features/map/MapView/mapCamera";
 import { bindMapTaps, type MapTapMode } from "@/features/map/MapView/mapTaps";
-import { pinPopupText, type PinNames } from "@/features/map/MapView/pointPopup";
 import { roadWayId } from "@/features/map/MapView/roadFacts";
 import { rideZoomBase } from "@/features/map/MapView/rideZoom";
 import { useMapLifecycle } from "@/features/map/MapView/useMapLifecycle";
@@ -32,9 +31,8 @@ import { useMapPopupMount, useMapPopups } from "@/features/map/MapView/useMapPop
 import { useMapScene } from "@/features/map/MapView/useMapScene";
 import { useRideFollow, type RideFollow } from "@/features/map/MapView/useRideFollow";
 import { useSectionFocus } from "@/features/map/MapView/useSectionFocus";
-import { useSidePointsOnMap } from "@/features/map/MapView/useSidePointsOnMap";
 import { type TurnMarkPoint, useTurnMark } from "@/features/map/MapView/useTurnMark";
-import { sidePointAlong, type SidePointOnMap } from "@/lib/mapDisplay/sidePoints";
+import { sidePointAlong } from "@/lib/mapDisplay/sidePoints";
 import { findSameSegment, segmentPath } from "@/lib/routeDistance";
 
 interface MapViewProps {
@@ -64,20 +62,14 @@ interface MapViewProps {
   segmentFocus: object | null;
   /** 選んでいる区間が見えている所の外にあるかが変わりうるとき（区間を選び直した・地図が動き終えた）に呼ばれる。 */
   onSegmentOutsideChange: (outside: boolean) => void;
-  /** 区間を地図で押している間、その近くの点のうち地図から消した区分（`lib/mapDisplay/sidePoints.ts: sidePointKindId`）。 */
-  sidePointsHidden: ReadonlySet<string>;
-  /** 区間を地図で押している間、地図が読み込んだタイルにあるその近くの施設が変わったとき（押していない・点のタイルを読まないズームならnull）。 */
-  onSidePointsChange: (points: readonly SidePointOnMap[] | null) => void;
-  /** 近くの施設の位置を前後で言う基準の地点。 */
-  facilityOrigin: FacilityOrigin | null;
+  /** 選んでいるルートの全体へ収める頼み。新しい値を渡すたびに収める（走行中に追っている間は収めない）。 */
+  routeFocus: object | null;
   /** ルートの区間を押したとき・印を押して選択を外したとき・区間の小窓を閉じたか別の中身へ入れ替えたとき（null）。 */
   onRouteSegmentSelect: (selection: SelectedRouteSegment | null) => void;
   /** 経由地（通る順）。 */
   waypoints: Coordinates[];
   /** 目的地（あれば片道のルート）。 */
   destination: Coordinates | null;
-  /** 地点のピンを押したときに小窓へ出す名前（見るだけの間）。 */
-  pinNames: PinNames;
   /** 地図を押したときの意味（効いているパネルが決める）。 */
   tapMode: MapTapMode;
   /** 地図に出した一時の選択の持ち主。変わると、開いている小窓を閉じる。 */
@@ -92,9 +84,9 @@ interface MapViewProps {
   onWaypointMove: (index: number, coordinates: Coordinates) => void;
   /** 目的地のピンをつかんで動かしたとき。 */
   onDestinationMove: (coordinates: Coordinates) => void;
-  /** ルートの意味の間に、選んでいない候補の線を押したとき。 */
+  /** 候補の線を押したとき（地図は動かさない）。 */
   onRouteSelect: (routeId: string) => void;
-  /** 押した区間の小窓の中身（ページが描く）。出さなければnull。地図で押した区間の印の上にだけ出す（グラフで選んだ地点へは出さない）。 */
+  /** 選んでいる区間の小窓の中身（ページが描く）。出さなければnull。地図で押しても、グラフで選んでも出す。 */
   segmentDetail: ReactNode | null;
   /** 地図を寄せる地点（住所の検索で置いた地点・取り直した現在地）。新しい値を渡すたびに寄せる。 */
   focusPoint: Coordinates | null;
@@ -124,13 +116,10 @@ export default function MapView({
   selectedRouteSegment,
   segmentFocus,
   onSegmentOutsideChange,
-  sidePointsHidden,
-  onSidePointsChange,
-  facilityOrigin,
+  routeFocus,
   onRouteSegmentSelect,
   waypoints,
   destination,
-  pinNames,
   tapMode,
   selectionOwner,
   onPointPlace,
@@ -149,13 +138,17 @@ export default function MapView({
 }: MapViewProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
-  const { shown: popup, controls: popups } = useMapPopups(selectionOwner, selectedRouteSegment, onRouteSegmentSelect);
+  const {
+    shown: popup,
+    controls: popups,
+    backToSegment,
+  } = useMapPopups(selectionOwner, selectedRouteSegment, onRouteSegmentSelect);
   const mapCatalog = useMapAxisCatalog();
-  // 詳細を見ている道と、中身を見ている区間の近くの施設。強調も scene の一部として当てる。
+  // 詳細を見ている道。強調も scene の一部として当てる。
   const inspectedWayId = popup?.kind === "road" ? roadWayId(popup.properties) : null;
-  const chosenSidePoint = popup?.kind === "point" && popup.segment !== null ? popup.lngLat : null;
   // 選んでいる区間（候補の同じ区間から引く。地図で押した区間は形を持たない写し）と、その形。
-  const selectedSegments = routes.find((route) => route.id === selectedRouteId)?.segments;
+  const selectedRoute = routes.find((route) => route.id === selectedRouteId) ?? null;
+  const selectedSegments = selectedRoute?.segments;
   const selectedSection = useMemo(
     () =>
       selectedRouteSegment === null || selectedSegments === undefined
@@ -167,9 +160,19 @@ export default function MapView({
     () => (selectedSection === null ? null : segmentPath(selectedSection)),
     [selectedSection],
   );
-  // 近くの点は、区間を地図で押している間だけ描いて読む（グラフで選んだ地点では出さない）。
-  const sidePointPath = popup?.segment != null ? selectedSectionPath : null;
-  useSidePointsOnMap(mapRef, sidePointPath, onSidePointsChange);
+  // 点の小窓で、点の位置を前後で言う基準。走行中は走った所、ほかは選んだ区間の地点（点の位置と同じ式で出す）。
+  const facilityOrigin = useMemo(
+    (): FacilityOrigin | null =>
+      travelledKm !== null
+        ? { km: travelledKm, riding: true }
+        : selectedSection !== null && selectedRouteSegment !== null
+          ? {
+              km: sidePointAlong(selectedSection, [selectedRouteSegment.longitude, selectedRouteSegment.latitude]).km,
+              riding: false,
+            }
+          : null,
+    [travelledKm, selectedSection, selectedRouteSegment],
+  );
   const { scene, interactiveLayerIds } = useMapScene({
     look,
     catalog: mapCatalog,
@@ -180,17 +183,9 @@ export default function MapView({
     inspectedWayId,
     travelledKm,
     selectedRouteSegment,
-    sidePointPath,
-    sidePointsHidden,
-    chosenSidePoint,
+    // 区間を選んでいる間、その近くの点を描く。
+    sidePointPath: selectedSectionPath,
   });
-  // 地図の線を押して選んだ候補のid。その候補へは収め直さない（利用者はもうその範囲を見ている）。
-  const routePickedOnMap = useRef<string | null>(null);
-  // 区間の小窓は地図で押した区間にだけ出す（グラフで選んだ地点へは出さない。なぞるたびに小窓が付いて回る）。
-  const selectSegmentOnMap = (selection: SelectedRouteSegment | null) => {
-    if (selection !== null) popups.showSegment(selection);
-    onRouteSegmentSelect(selection);
-  };
   // 地図のイベント（初期化のeffectで一度だけ登録する）が、いまのpropsを読むための参照。
   const latestProps = {
     scene,
@@ -199,15 +194,13 @@ export default function MapView({
     interactiveLayerIds,
     tapMode,
     onPointPlace,
-    onRouteSegmentSelect: selectSegmentOnMap,
+    onRouteSegmentSelect,
     sidePointAlong: (lngLat: readonly [number, number]) =>
       selectedSection === null ? null : sidePointAlong(selectedSection, lngLat),
     onSpliceStretchSelect,
-    onRouteSelect: (routeId: string) => {
-      routePickedOnMap.current = routeId;
-      onRouteSelect(routeId);
-    },
+    onRouteSelect,
     ride,
+    selectedRoute,
   };
   const latest = useRef(latestProps);
   useEffect(() => {
@@ -248,28 +241,29 @@ export default function MapView({
     onOriginMove,
     onWaypointMove,
     onDestinationMove,
-    // 地点の意味の間はその地点を選び、走る間は何も出さず、ほかの間は地点の名前があれば呼び名と並べて小窓に出すだけ（押しただけでは
-    // 消さない）。呼び名しか無い地点は何も開かない。
-    pointPress: (target) => {
-      if (tapMode === "ride") return null;
-      if (tapMode === "points") return () => onPointSelect(target);
-      const text = pinPopupText(target, pinNames);
-      return text === null ? null : (at) => popups.openPin([at.longitude, at.latitude], text);
-    },
-    onRouteSegmentSelect: selectSegmentOnMap,
+    onPointSelect,
+    onRouteSegmentSelect,
   });
 
   const onNextRideZoom = useRideFollow(mapRef, ride, here, mapVisibleCenterOffset);
   const turnMarkContent = useTurnMark(mapRef, turnPoint);
-  // 出している小窓と、区間の小窓の区間の形。小窓は区間にかぶらない所に置き、区間へ寄せるときは小窓の高さを空ける。
-  const { content: popupContent, reservedTopPx } = useMapPopupMount(mapRef, {
+  const focus = useSectionFocus(mapRef, {
+    sectionPath: selectedSectionPath,
+    request: segmentFocus,
+    popupOpen: popup !== null,
+    onOutsideChange: onSegmentOutsideChange,
+    ride,
+  });
+  const popupContent = useMapPopupMount(mapRef, {
     shown: popup,
     controls: popups,
     segmentDetail,
+    segmentPath: selectedSectionPath,
     rideConditions,
     routePreference,
     facilityOrigin,
-    segmentPath: selectedSectionPath,
+    onBackToSegment: backToSegment,
+    onFocus: focus,
   });
 
   // 住所の検索で置いた地点・取り直した現在地へ寄せる。出発地を置いたときは印のフックの位置の更新も寄せるが、このeffectが
@@ -290,24 +284,13 @@ export default function MapView({
     recomputeLayerDataStatus();
   }, [scene, recomputeLayerDataStatus]);
 
-  useSectionFocus(mapRef, {
-    sectionPath: selectedSectionPath,
-    request: segmentFocus,
-    onOutsideChange: onSegmentOutsideChange,
-    ride,
-    reservedTopPx,
-  });
-
-  // 選んでいる1本へ収める。生成し直すと同じidの候補が来るので、idでなく候補そのものが変わったときに収める。地図の線を
-  // 押して選んだときと、追っている間（追う側が地図を動かす）は収め直さない。
-  const selectedRoute = routes.find((route) => route.id === selectedRouteId) ?? null;
+  // 選んでいるルートの全体へ収める（生成した・カードを押した・乗り換えで作ったとき）。追っている間（追う側が地図を動かす）は収めない。
   useEffect(() => {
     const map = mapRef.current;
-    const pickedOnMap = selectedRoute !== null && routePickedOnMap.current === selectedRoute.id;
-    routePickedOnMap.current = null;
-    if (!map || selectedRoute === null || pickedOnMap || latest.current.ride?.following) return;
-    fitBoundsToRoute(map, selectedRoute);
-  }, [selectedRoute]);
+    const route = latest.current.selectedRoute;
+    if (!map || routeFocus === null || route === null || latest.current.ride?.following) return;
+    fitBoundsToRoute(map, route);
+  }, [routeFocus]);
 
   return (
     <div style={{ position: "relative", width: "100%", height: "100%" }}>

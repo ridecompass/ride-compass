@@ -210,16 +210,12 @@ class MsmBlock:
         return i, j
 
     def points_of(self, latitudes: np.ndarray, longitudes: np.ndarray) -> np.ndarray:
-        """各地点に最も近い格子点の番号。並びの外の地点は端の格子点へ寄せる（`holds_nearest`が偽になる）。"""
+        """各地点に最も近い格子点の番号。並びの外の地点は端の格子点へ寄せる。"""
         i, j = self._nearest_rows_cols(latitudes, longitudes)
         i = np.clip(i, 0, self.rows - 1).astype(np.int64)
         j = np.clip(j, 0, self.cols - 1).astype(np.int64)
         return i * self.cols + j
 
-    def holds_nearest(self, latitudes: np.ndarray, longitudes: np.ndarray) -> np.ndarray:
-        """各地点の最寄りの格子点が、この並びの中にあるか（`points_of`が端へ寄せずに引けるか）。"""
-        i, j = self._nearest_rows_cols(latitudes, longitudes)
-        return (i >= 0) & (i < self.rows) & (j >= 0) & (j < self.cols)
 
 
 @dataclass(frozen=True)

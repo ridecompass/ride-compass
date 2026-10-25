@@ -90,10 +90,12 @@ describe("地図に置く地点", () => {
     clickMap(ELSEWHERE, pointed);
     expect(marksAt(shop)).toHaveLength(2);
 
-    // 閉じている間、地点の名前のあるピンは押すと呼び名と名前を小窓に出す。
-    expect(destinationMark.style.cursor).toBe("pointer");
+    // 閉じている間、名前のある点は小窓を開く（地点は置かない）。ピンは押せる物に数えない（呼び名と名前は、ピンの形と地点の並びで分かる）。
+    expect(screen.getByRole("group", { name: "点の小窓の上の帯" })).toBeInTheDocument();
+    clickMap(ELSEWHERE);
+    expect(destinationMark.style.cursor).toBe("default");
     await user.click(destinationMark);
-    expect(screen.getByText("目的地: 角の店")).toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: /小窓の上の帯$/ })).toBeNull();
   });
 
   it("目的地を探して選んだ地点は地図に目的地として立ち、地点の並びにその名前が出る", async () => {

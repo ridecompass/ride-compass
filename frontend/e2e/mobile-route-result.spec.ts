@@ -141,12 +141,12 @@ test.describe("タッチ端末", () => {
 
     await drag(center, { x: center.x, y: center.y - 120 });
     await expect.poll(scrollTopOfBody).toBeGreaterThan(0);
-    await expect(sheet.getByRole("button", { name: "区間の選択を解除" })).toHaveCount(0);
+    await expect(sheet.getByRole("button", { name: "区間を地図で見る" })).toHaveCount(0);
 
     const moved = (await graph.boundingBox())!;
     const row = moved.y + moved.height / 2;
     await drag({ x: moved.x + moved.width * 0.2, y: row }, { x: moved.x + moved.width * 0.6, y: row });
-    await expect(sheet.getByRole("button", { name: "区間の選択を解除" })).toBeVisible();
+    await expect(sheet.getByRole("button", { name: "区間を地図で見る" })).toBeVisible();
   });
 });
 

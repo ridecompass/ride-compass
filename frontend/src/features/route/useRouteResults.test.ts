@@ -70,10 +70,10 @@ describe("選ぶ", () => {
   it("候補のタブへ切り替えるとそれを選び、押した区間は外す", () => {
     const rendered = renderResults();
     generated(rendered);
-    act(() => rendered.result.current.selectTab("r2"));
+    act(() => rendered.result.current.selectRoute("r2"));
     pressSegment(rendered);
 
-    act(() => rendered.result.current.selectTab("r1"));
+    act(() => rendered.result.current.selectRoute("r1"));
     expect(rendered.result.current.selectedCandidate).toEqual(FIRST);
     expect(rendered.result.current.selectedRouteSegment).toBeNull();
   });
@@ -83,7 +83,7 @@ describe("選ぶ", () => {
     generated(rendered, [FIRST, makeRouteCandidate({ id: "detailed", segments: [SEGMENT.segment] })]);
     expect(rendered.result.current.hasDetail).toBe(false);
 
-    act(() => rendered.result.current.selectTab("detailed"));
+    act(() => rendered.result.current.selectRoute("detailed"));
 
     expect(rendered.result.current.hasDetail).toBe(true);
   });
@@ -118,7 +118,7 @@ describe("選ぶ", () => {
     expect(result.current.selectedEdit?.number).toBe(2);
     expect(result.current.selectedEdit?.origin?.id).toBe("spliced-1");
 
-    act(() => result.current.selectTab("r1"));
+    act(() => result.current.selectRoute("r1"));
     expect(result.current.selectedEdit).toBeNull();
   });
 
@@ -152,7 +152,7 @@ describe("選ぶ", () => {
     expect(result.current.reusedRouteId).toBe("r2");
     expect(result.current.selectedRouteSegment).toBeNull();
 
-    act(() => result.current.selectTab("r2"));
+    act(() => result.current.selectRoute("r2"));
     expect(result.current.reusedRouteId).toBeNull();
   });
 });

@@ -21,13 +21,13 @@ import { facilityPosition, type Facility, type FacilityOrigin } from "./facility
 
 const hintClass = cn(textVariants({ variant: "hint" }), "m-0");
 
-/** 小窓の上の帯。右端は地図の小窓の×（44px四方。小窓の器の右上に重なる）の幅だけ空ける。 */
+/** 小窓の上の帯。右端は、小窓の器の右上に重なる寄せるアイコンと×（どちらも44px四方）の幅だけ空ける。 */
 export function PopupHeader({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div
       role="group"
       aria-label={label}
-      className="flex min-h-7 min-w-0 items-center gap-1.5 pr-9 text-[length:var(--font-size-md)] tabular-nums"
+      className="flex min-h-7 min-w-0 items-center gap-1.5 pr-[5.5rem] text-[length:var(--font-size-md)] tabular-nums"
     >
       {children}
     </div>
@@ -50,7 +50,7 @@ export function BackToSegmentButton({ onBack }: { onBack: () => void }) {
 }
 
 /** 地図の印と同じ見本。読み上げと長押しの説明に区分の名前を持たせる。 */
-export function KindSwatch({ color, glyph, label }: { color: string; glyph?: PointGlyph; label: string }) {
+function KindSwatch({ color, glyph, label }: { color: string; glyph?: PointGlyph; label: string }) {
   return (
     <span role="img" aria-label={label} title={label} className="inline-flex flex-none items-center">
       {glyph === undefined ? <PointDotSwatch color={color} /> : <PointIconSwatch color={color} glyph={glyph} />}
@@ -59,7 +59,7 @@ export function KindSwatch({ color, glyph, label }: { color: string; glyph?: Poi
 }
 
 /** アイコンと値の小さな組。何の値かは読み上げと長押しの説明が持つ。 */
-function IconValue({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
+export function IconValue({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
   return (
     <span title={label} className={cn(hintClass, "inline-flex flex-none items-center gap-0.5 whitespace-nowrap")}>
       <span aria-hidden="true" className="inline-flex">
@@ -72,22 +72,19 @@ function IconValue({ icon, label, value }: { icon: ReactNode; label: string; val
 }
 
 /** 施設を1つ1行で並べる。左から地図の印の見本・名前（名前のある施設は外の地図で探すリンク）・基準の地点から見たルートの前後・
- * 道からの距離。長い名前は名前の列の中で折り返す（値の位置は動かない）。見本は、区分の一覧のように帯が見本を持つ所では出さない。
- * 基準の地点（`origin`）が無ければ前後を出さない。 */
+ * 道からの距離。長い名前は名前の列の中で折り返す（値の位置は動かない）。基準の地点（`origin`）が無ければ前後を出さない。 */
 export function FacilityRows({
   facilities,
   origin,
-  swatch = true,
 }: {
   facilities: readonly Facility[];
   origin: FacilityOrigin | null;
-  swatch?: boolean;
 }) {
   return (
     <ul className="m-0 flex list-none flex-col divide-y divide-[var(--color-border)] p-0 tabular-nums">
       {facilities.map((facility) => (
         <li key={facility.key} className="flex items-center gap-1.5 py-1 first:pt-0 last:pb-0">
-          {swatch && <KindSwatch color={facility.color} glyph={facility.glyph} label={facility.kindLabel} />}
+          <KindSwatch color={facility.color} glyph={facility.glyph} label={facility.kindLabel} />
           {/* 名前は空白（「吉野家 ボートレース戸田店」の間）で折り、語の途中では1語が行に収まらないときだけ折る。 */}
           <span className="min-w-0 flex-1 break-keep [overflow-wrap:anywhere]">
             {facility.mapUrl !== null ? (

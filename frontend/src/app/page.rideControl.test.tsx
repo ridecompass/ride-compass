@@ -166,7 +166,7 @@ describe("走行モードの操作", () => {
     expect(screen.getByRole("group", { name: "走りの数字" })).toBeInTheDocument();
   });
 
-  it("走行中は、帯の「ルート」で開いたパネルの中を除き、地図を押しても地点を置かず、線・区間・ピンを押しても選ばず中身も出さない", async () => {
+  it("走行中も、地図を押しても地点を置かず、押した物は走っていない間と同じに扱い（線を押すとそのルートを選び、区間を押すと小窓を出す）、ピンは押せる物に数えない", async () => {
     const { user } = renderHome();
     jobs.respond([FIRST, SECOND], LOOP_CONDITIONS);
     await generate(user);
@@ -187,16 +187,11 @@ describe("走行モードの操作", () => {
 
     clickMap(ELSEWHERE);
     expect(marksAt(ELSEWHERE)).toEqual([]);
-    clickSecondLine();
-    expect(linesOn("route-selected")).toEqual([FIRST.geometry.coordinates]);
     clickSegment(drawnSegment, HERE);
-    expect(screen.queryByRole("group", { name: "区間の小窓の上の帯" })).toBeNull();
+    expect(screen.getByRole("group", { name: "区間の小窓の上の帯" })).toBeInTheDocument();
     const [originPin] = marksAt(HERE);
     expect(originPin.draggable).toBe(false);
-    await user.click(originPin.element);
-    expect(screen.queryByText(/^出発地: /)).toBeNull();
-
-    await user.click(screen.getByRole("button", { name: "ルート" }));
+    expect(originPin.element.style.cursor).toBe("default");
     clickSecondLine();
     expect(linesOn("route-selected")).toEqual([SECOND.geometry.coordinates]);
   });
@@ -226,8 +221,8 @@ describe("走行モードの操作", () => {
       [139.71, 35.7],
     ]);
 
-    // 選んだ区間はパネルと下部のプロファイルの両方に出て、どちらで外しても同じ。
-    await user.click(screen.getAllByRole("button", { name: "区間の選択を解除" })[0]);
+    // 何も無い所を押して選びを外すと、追い直す。
+    clickMap(ELSEWHERE);
     expect(rideButton()).toHaveAttribute("data-ride", "following");
   });
 

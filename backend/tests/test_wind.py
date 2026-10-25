@@ -7,7 +7,7 @@
 - 予報を引くMSMの格子点の並び（`MsmBlock`） → `test_msm.py`
 - 風の材料を道・区間へ配る評価器（`domain/dynamic_materials.py`） → `test_wind_way_service.py`・`test_leg_costs.py`
 - タイルの道へ予報を引く配信 → `test_wind_way_service.py`
-- 探索の時刻ビンと区間の風（`SegmentWind`） → `test_leg_costs.py`・`test_route_generation_behavior.py`
+- 探索の時刻ビン → `test_leg_costs.py`・`test_route_generation_behavior.py`
 """
 
 import dataclasses
@@ -112,21 +112,17 @@ def test_sample_picks_the_nearest_hour_for_each_point():
 @pytest.mark.parametrize(("minutes", "hours"), [(30, 1), (90, 2)])
 def test_a_passage_halfway_between_two_hours_takes_the_later_one(minutes, hours):
     """毎時30分の通過は、どの時刻でも後の時刻の予報を引く（偶数丸めだと、30分ずつずれた出発が同じ時刻の風になる）。"""
-    times, _ = _series().sampled_times(T0 + timedelta(minutes=minutes), np.zeros(1))
+    speed, _ = _series().sample(T0 + timedelta(minutes=minutes), np.zeros(1), np.array([0]))
 
-    assert times == [T0 + timedelta(hours=hours)]
+    # 風速は時刻の番号（点0）。
+    assert speed.tolist() == [float(hours)]
 
 
 def test_sample_extends_the_edge_hours_beyond_the_series():
-    """探索では値が無いより端の値の方が妥当。延ばしたことは`sampled_times`が示す。"""
-    series = _series()
-
-    speed, _ = series.sample(T0, np.array([-5.0, 10.0]), np.array([1, 1]))
-    times, clamped = series.sampled_times(T0, np.array([-5.0, 1.0, 10.0]))
+    """探索では値が無いより端の値の方が妥当。"""
+    speed, _ = _series().sample(T0, np.array([-5.0, 10.0]), np.array([1, 1]))
 
     assert speed.tolist() == [100.0, 102.0]
-    assert times == [T0, T0 + timedelta(hours=1), T0 + timedelta(hours=2)]
-    assert clamped.tolist() == [True, False, True]
 
 
 # --- 通過予定時刻 ---

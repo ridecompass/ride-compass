@@ -21,9 +21,8 @@ import RideBottom from "@/features/ride/RideBottom/RideBottom";
 import RideModeButton from "@/features/ride/RideModeButton/RideModeButton";
 import TurnCard from "@/features/ride/TurnCard/TurnCard";
 import type { useRideMode } from "@/features/ride/useRideMode";
-import { placeNames } from "@/features/route/pointNames";
 import RouteProfile from "@/features/route/RouteProfile/RouteProfile";
-import type { ProfileLayerSelection } from "@/features/route/RouteProfile/useProfileLayers";
+import { useChosenProfileLayers, type ProfileLayerSelection } from "@/features/route/RouteProfile/useProfileLayers";
 import SegmentDetail from "@/features/route/SegmentDetail/SegmentDetail";
 import type { GenerationConditionsState } from "@/features/route/useGenerationConditions";
 import type { useRoutePlanner } from "@/features/route/useRoutePlanner";
@@ -31,18 +30,13 @@ import { useAxisCatalog } from "@/hooks/useAxisCatalog";
 import type { useLocation } from "@/hooks/useLocation";
 import { cn } from "@/lib/cn";
 import { mapOverlayEdge } from "@/lib/mapOverlayEdges";
-import type { Coordinates, PlaceCandidate } from "@/types/route";
+import type { Coordinates } from "@/types/route";
 import type { useRideGuidance } from "./useRideGuidance";
-
-// 区間を選んでいない間も同じ参照を渡し、地図の描き直しを起こさない。
-const NOTHING_HIDDEN: ReadonlySet<string> = new Set();
 
 interface HomeMapPaneProps {
   route: ReturnType<typeof useRoutePlanner>;
   conditions: GenerationConditionsState;
   place: ReturnType<typeof useLocation>;
-  /** 出発地が、探して置いたときの位置のままなら、その候補。 */
-  originFound: PlaceCandidate | null;
   riding: ReturnType<typeof useRideMode>;
   guidance: ReturnType<typeof useRideGuidance>;
   ride: ReturnType<typeof useRideConditions>;
@@ -66,7 +60,6 @@ export default function HomeMapPane({
   route,
   conditions,
   place,
-  originFound,
   riding,
   guidance,
   ride,
@@ -85,18 +78,12 @@ export default function HomeMapPane({
   const { results, splice } = route;
   const { progress, upcomingTurn } = guidance;
   const navigating = riding.status !== "off";
-  // 近くの施設の位置を前後で言う基準。走行中は現在地、見るだけの間は区間で押した地点。
-  const sidePoints = results.segmentSidePoints;
-  const facilityOrigin =
-    navigating && progress.km !== null
-      ? { km: progress.km, riding: true }
-      : sidePoints !== null
-        ? { km: sidePoints.pickedKm, riding: false }
-        : null;
-  // 走行中の道のりのグラフ（候補が無ければ出さない。結果の図と同じくなぞると地点を選び、地図に印を出して図の下にその地点の
-  // 詳しくを出す）。
   const selected = results.selectedCandidate;
+  const selection = results.selectedRouteSegment;
+  // 走行中の道のりのグラフ（候補が無ければ出さない。結果の図と同じくなぞると地点を選び、地図にその区間の小窓を出す）。
   const profile = selected !== null && selected.segments.length > 0 ? selected : null;
+  // 区間の小窓に値を出す、グラフで選んでいる層。
+  const chosenLayers = useChosenProfileLayers(profileLayers.ids).chosen;
   const paneRef = useRef<HTMLDivElement>(null);
   const { viewport } = mapView;
   const overview =
@@ -118,35 +105,19 @@ export default function HomeMapPane({
         compassLinked={mapView.lensConditions.includes("bearing_deg")}
         routePreference={conditions.routePreferenceToSend}
         selectedRouteSegment={results.selectedRouteSegment}
-        sidePointsHidden={sidePoints?.hidden ?? NOTHING_HIDDEN}
-        onSidePointsChange={results.onSidePointsChange}
-        facilityOrigin={facilityOrigin}
+        routeFocus={results.routeFocus}
         onRouteSegmentSelect={results.selectSegment}
         segmentFocus={results.segmentFocus}
         onSegmentOutsideChange={results.setSegmentOutsideMap}
-        // 地図で押した区間の小窓。見るだけの間は区間の中身を全部出し、「ルート結果」が効いている間は中身をグラフの下が
-        // 出すので、近くの施設だけを出す（地図が近くの点を読まないズームでは出さない）。
+        // 選んでいる区間の小窓（道のりのグラフの表示の断面）。
         segmentDetail={
-          results.selectedRouteSegment !== null &&
-          (tapMode === "look" || (tapMode === "routes" && sidePoints?.groups != null)) ? (
-            <SegmentDetail
-              selection={results.selectedRouteSegment}
-              sidePoints={sidePoints}
-              facilityOrigin={facilityOrigin}
-              facilitiesOnly={tapMode === "routes"}
-              onMap={results.segmentOnMap}
-            />
+          selection !== null && selected !== null ? (
+            <SegmentDetail selection={selection} segments={selected.segments} layers={chosenLayers} />
           ) : null
         }
-        onRouteSelect={results.selectTab}
+        onRouteSelect={results.selectRoute}
         waypoints={conditions.waypoints}
         destination={conditions.destination}
-        pinNames={placeNames({
-          waypoints: conditions.waypoints,
-          destination: conditions.destination,
-          foundAt: conditions.foundAt,
-          originFound,
-        })}
         tapMode={tapMode}
         selectionOwner={selectionOwner}
         onPointPlace={conditions.placeAtSelected}

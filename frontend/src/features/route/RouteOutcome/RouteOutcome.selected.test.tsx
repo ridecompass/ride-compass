@@ -2,12 +2,12 @@
  * `features/route/RouteOutcome/RouteOutcome.tsx`——「ルート結果」の中身のうち、選んだ候補の中身。
  *
  * 見るもの: 編集で作ったルートの「元との違い」の元と名前、道のりのグラフ（横軸・押した区間・動かして選ぶこと）、
- * 区間を押している間は内訳の代わりにグラフの下へ区間の詳しくが出ることと、押していない間の内訳、編集中は編集面だけを出し、
+ * 候補の内訳、編集中は編集面だけを出し、
  * 同じ道の候補を一覧の名前で渡すこと。
  *
- * ここで見ないもの: 候補が無い間の案内・候補の上の知らせ・候補の一覧 → `RouteOutcome.test.tsx`。区間の詳しくの中身
- * （総合難易度・寄与・風・到達予想の書き方）→ `features/route/RouteProfile/RouteProfile.test.tsx`。子の部品（道のりのグラフ・
- * 内訳・寄与の帯・元との違い・区間の風・編集面）は本物を描き、ここでは受け渡し（親の値が子のどこに出るか・子の操作で親の
+ * ここで見ないもの: 候補が無い間の案内・候補の上の知らせ・候補の一覧 → `RouteOutcome.test.tsx`。選んだ区間の中身
+ * （地図の区間の小窓）→ `features/route/SegmentDetail/SegmentDetail.test.tsx`。子の部品（道のりのグラフ・
+ * 内訳・寄与の帯・元との違い・編集面）は本物を描き、ここでは受け渡し（親の値が子のどこに出るか・子の操作で親の
  * 何が変わるか）だけを見る。子が値をどう描くか（書式・並び・空のときの案内）は各部品のテストが見る。道のりのグラフの塗り
  * （積む軸の並び・色・値の無い区間の高さ）は読み上げに出ないので見ない。
  *
@@ -17,7 +17,6 @@ import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { RouteResults } from "@/features/route/useRouteResults";
 import { serveAxisCatalog } from "@/testing/backendServer";
 import { makeRouteSegment } from "@/testing/routeFixtures";
 import {
@@ -30,7 +29,6 @@ import {
   route,
   type Splice,
 } from "@/testing/routeOutcome";
-import type { RouteSegmentDetail } from "@/types/route";
 
 beforeEach(() => {
   serveAxisCatalog(CATALOG_RESPONSE);
@@ -39,20 +37,6 @@ beforeEach(() => {
 afterEach(() => {
   vi.restoreAllMocks();
 });
-
-function segmentPressed(): Pick<RouteResults, "generated" | "selectedRouteSegment"> {
-  const segment: RouteSegmentDetail = makeRouteSegment({
-    distance_km: 1,
-    cumulative_distance_km: 3.25,
-    estimated_arrival_time: "2026-10-04T00:42:00Z",
-    axis_contributions: { axis_a: 12 },
-    wind: { speed_ms: 3, direction_deg: 90, forecast_at: "2026-10-04T09:00" },
-  });
-  return {
-    generated: [{ ...FAST, segments: [segment] }],
-    selectedRouteSegment: { segment: { ...segment }, latitude: 35, longitude: 139 },
-  };
-}
 
 describe("選んだ候補の中身", () => {
   it("編集で作ったルートには、元とその一覧での名前で「元との違い」を出し、「元を見る」で元のタブを選ぶ", async () => {
@@ -68,7 +52,7 @@ describe("選んだ候補の中身", () => {
     expect(difference).toHaveTextContent("元: 2 20.0km");
     expect(difference).toHaveTextContent("距離−8.0km");
     await userEvent.click(within(difference).getByRole("button", { name: "元を見る" }));
-    expect(results.selectTab).toHaveBeenCalledWith("slow");
+    expect(results.showRoute).toHaveBeenCalledWith("slow");
   });
 
   it("生成した候補・元が一覧に無い編集には「元との違い」を出さない", () => {
@@ -100,19 +84,10 @@ describe("選んだ候補の中身", () => {
     expect(results.selectSegment).toHaveBeenCalledWith(expect.objectContaining({ segment: first }));
   });
 
-  it("区間を押していない間は、候補の総合難易度の内訳を出す", () => {
+  it("候補の総合難易度の内訳を出す", () => {
     const candidate = route("fast", { overall_difficulty: { average: 30, load: 300 } });
     renderOutcome({ results: resultsOf({ generated: [candidate] }) });
     expect(screen.getByText("総合難易度").parentElement).toHaveTextContent("総合難易度30.0/100");
-    expect(screen.queryByRole("button", { name: "区間の選択を解除" })).not.toBeInTheDocument();
-  });
-
-  it("区間を押している間は、候補の内訳の代わりに、グラフの下へその区間の詳しくを出す", () => {
-    renderOutcome({ results: resultsOf(segmentPressed()) });
-    const detail = screen.getByRole("group", { name: "選んだ地点の詳しく" });
-    expect(detail).toHaveTextContent("3.3km地点到達予想 09:42");
-    expect(within(detail).getByRole("button", { name: /^区間の風/ })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "総合難易度の説明を表示" })).not.toBeInTheDocument();
   });
 
   it("編集している間は、一覧の代わりに編集面だけを出し、同じ道の候補は一覧の名前で渡す", () => {

@@ -1,7 +1,7 @@
 """`domain/leg_costs.py`——探索範囲の静的スコア行列・重み・0次フィルタ・風・昼夜から、レグ（時刻・向き）ごとに区間の所要時間と
 探索のコスト、区間の表示が読む値を合成する`LegCostComposer`。
 
-入口は`LegCostComposer`（`compose`・`values_at_rows`・`winds_at`・`missing_travel_data_share`・`to_full_row_order`・
+入口は`LegCostComposer`（`compose`・`values_at_rows`・`missing_travel_data_share`・`to_full_row_order`・
 `lazy_row`・`wind_unavailable`）と、`LegCostArrays`/`RowValues`の`axis_contributions_at`、`material_value_at`。
 静的スコア行列は架空の軸・材料で組み、風に依る軸と夜だけ効く軸は軸の宣言（本番はDBが正本）を架空の1本へ差し替える。
 
@@ -443,7 +443,7 @@ def test_the_display_of_a_segment_weighs_the_night_axis_at_the_hour_it_is_ridden
         {"axis_a": 0.0, NIGHT_AXIS: 0.0}, {"axis_a": 0.0, NIGHT_AXIS: 50.0}]
 
 
-# --- 所要時間の欠け・区間の風 ---------------------------------------------------
+# --- 所要時間の欠け ---------------------------------------------------
 
 
 def test_the_share_of_distance_timed_without_gradient_or_stop_data():
@@ -454,36 +454,3 @@ def test_the_share_of_distance_timed_without_gradient_or_stop_data():
 
     assert composer.missing_travel_data_share(np.array([0, 1, 2])) == 0.4
     assert composer.missing_travel_data_share(np.array([], dtype=np.int64)) is None
-
-
-def test_the_wind_of_a_segment_is_the_forecast_at_its_passage():
-    composer = _composer(_matrix(4), series=_series([1.04, 2.0, 3.0], from_deg=90.0))
-
-    winds = composer.winds_at([0, 1, 2, 3], [0.2, 1.0, 1.0, 9.0], [False, False, True, False])
-
-    # 時刻ビンの範囲の先・計算値の期間の先は、最後に追った値を延ばして評価しているので、値を出さない。
-    assert winds == [
-        leg_costs.SegmentWind(speed_ms=1.0, direction_deg=90.0, forecast_at="2026-10-03T09:00"),
-        leg_costs.SegmentWind(speed_ms=2.0, direction_deg=90.0, forecast_at="2026-10-03T10:00"),
-        None,
-        None,
-    ]
-
-
-def test_a_segment_whose_nearest_grid_point_is_outside_the_forecast_shows_no_wind():
-    """予報の格子点の並びの外の区間は端の格子点の風で評価しているので、最寄りの格子点の値として示さない。"""
-    composer = _composer(_matrix(2, mid_lat=[35.0, 35.5]), series=_series([1.0, 2.0]))
-
-    winds = composer.winds_at([0, 1], [0.0, 0.0], [False, False])
-
-    assert winds[0] is not None
-    assert winds[1] is None
-
-
-def test_a_segment_evaluated_with_the_wind_at_departure_shows_no_wind():
-    composer = _composer(_matrix(2), departure_wind=_departure_wind(3.0, from_deg=271.1))
-
-    winds = composer.winds_at([0, 1], [None, 0.5], [False, False])
-
-    # 時別の予報が無いと、通過時刻で合成した区間（夜だけ効く軸のため）も出発時点の風で走っている。
-    assert winds == [None, None]

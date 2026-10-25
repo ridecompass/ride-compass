@@ -5,6 +5,7 @@ import type { Position } from "geojson";
 import type { Coordinates, RouteCandidate } from "@/types/route";
 import { runWhenStyleReady } from "@/features/map/layers/mapStyleOps";
 import { debugLog } from "@/lib/debugLog";
+import type { RouteFitObscuredPx } from "@/lib/mapOverlayEdges";
 import { computePathBounds, visibleCenterOffset, visiblePadding } from "@/lib/routeFit";
 
 import type { ScreenBox } from "./popupPlacement";
@@ -13,21 +14,13 @@ import type { ScreenBox } from "./popupPlacement";
 // 収めるときも、短い区間でこれより寄らない。
 const FOCUS_ZOOM = 16;
 
-/** 線を見えている所に収める。`maxZoom`を渡すと、それより寄らない。`reservedTopPx`は見えている所の上に空ける高さ（地図の小窓の分）。 */
-function fitPaths(
-  map: MapLibreMap,
-  paths: readonly (readonly Position[])[],
-  what: string,
-  { maxZoom, reservedTopPx = 0 }: { maxZoom?: number; reservedTopPx?: number } = {},
-) {
+/** 線を見えている所に収める。`maxZoom`を渡すと、それより寄らない。 */
+function fitPaths(map: MapLibreMap, paths: readonly (readonly Position[])[], what: string, maxZoom?: number) {
   const bounds = computePathBounds(paths);
   if (bounds === null) return;
 
   runWhenStyleReady(map, () => {
-    const visible = visiblePadding(map.getCanvas());
-    // 空けすぎると収める所が無くなるので、見えている所の下の1/4は残す。
-    const room = map.getCanvas().clientHeight - visible.top - visible.bottom;
-    const padding = { ...visible, top: visible.top + Math.min(reservedTopPx, room * 0.75) };
+    const padding = visiblePadding(map.getCanvas());
     debugLog("map:viewport", `${what}を収める`, { padding });
     map.fitBounds(bounds, { padding, ...(maxZoom === undefined ? {} : { maxZoom }) });
   });
@@ -38,9 +31,9 @@ export function fitBoundsToRoute(map: MapLibreMap, route: RouteCandidate) {
   fitPaths(map, [route.geometry.coordinates], "ルート");
 }
 
-/** 選んだ区間の形を、見えている所の上に`reservedTopPx`（区間の上に出す地図の小窓の分）を空けて収める。 */
-export function fitBoundsToSection(map: MapLibreMap, path: readonly Position[], reservedTopPx: number) {
-  fitPaths(map, [path], "区間", { maxZoom: FOCUS_ZOOM, reservedTopPx });
+/** 線（選んだ区間・押した道）の形を、見えている所に収める。 */
+export function fitBoundsToSection(map: MapLibreMap, path: readonly Position[]) {
+  fitPaths(map, [path], "線", FOCUS_ZOOM);
 }
 
 /** 線を囲む枠（画面のpx）。 */
@@ -57,9 +50,11 @@ export function pathScreenBox(map: MapLibreMap, path: readonly Position[]): Scre
 }
 
 /** 地図の上に重ねた部品を避けた、見えている所（画面のpx）。 */
-export function visibleScreenBox(map: MapLibreMap): ScreenBox {
+export function visibleScreenBox(
+  map: MapLibreMap,
+  padding: Required<RouteFitObscuredPx> = visiblePadding(map.getCanvas()),
+): ScreenBox {
   const canvas = map.getCanvas();
-  const padding = visiblePadding(canvas);
   return {
     left: padding.left,
     top: padding.top,

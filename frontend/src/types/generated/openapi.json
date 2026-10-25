@@ -6793,16 +6793,6 @@
             ],
             "title": "Difficulty"
           },
-          "wind": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SegmentWind"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
           "road_classes": {
             "additionalProperties": {
               "items": {
@@ -6832,7 +6822,6 @@
           "axis_contributions",
           "material_values",
           "difficulty",
-          "wind",
           "road_classes"
         ],
         "title": "RouteSegmentDetail"
@@ -6943,30 +6932,6 @@
           "scores"
         ],
         "title": "ScoresPreviewResponse"
-      },
-      "SegmentWind": {
-        "properties": {
-          "speed_ms": {
-            "type": "number",
-            "title": "Speed Ms"
-          },
-          "direction_deg": {
-            "type": "number",
-            "title": "Direction Deg"
-          },
-          "forecast_at": {
-            "type": "string",
-            "title": "Forecast At"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "speed_ms",
-          "direction_deg",
-          "forecast_at"
-        ],
-        "title": "SegmentWind"
       },
       "SignedMaterialMapValue": {
         "properties": {

@@ -12,9 +12,7 @@
   "min_assumed_speed_kmh": 5.0,
   "max_assumed_speed_kmh": 60.0,
   "job_result_ttl_seconds": 600.0,
-  "route_candidate_shape": "9455545ef292fb42",
-  "wind_forecast_hours_per_leg": 4.0,
-  "wind_time_bin_hours": 1.0,
+  "route_candidate_shape": "8ea873ab94312f36",
   "segment_speed_conditions": [
     "坂",
     "風",

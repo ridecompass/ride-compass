@@ -49,14 +49,6 @@ class Coordinates(StrictModel):
     longitude: Longitude
 
 
-class SegmentWind(StrictModel):
-    """区間の評価に使った風。`forecast_at`はその計算値の時刻（JSTのローカル時刻、分まで）。"""
-
-    speed_ms: float
-    direction_deg: float
-    forecast_at: str
-
-
 @dataclass(frozen=True, slots=True)
 class DensityScoreInput:
     """密度の軸（`axis_definitions.py: averages_density`）の、区間をまたいで平均する値。
@@ -130,10 +122,6 @@ class RouteSegmentDetail(StrictModel):
     # 重み>0の公開軸が参照する材料id→値。評価に使っていない軸の材料は出ない。
     material_values: dict[str, float] = Field(default_factory=dict)
     difficulty: float | None = None
-    # この区間の評価に使った風（到達予想の時刻に通るとして引いた計算値）。風を持たない生成と、計算値を追える範囲（レグごとの
-    # 時刻ビンの本数・計算値の期間）の先や出発時点の値で評価した区間ではNone——これらは評価に使うが、値を出すと予報業務の許可が
-    # 要る形になる（docs/architecture/data-sources.md「気象業務法の予報業務許可」節）。
-    wind: SegmentWind | None = None
     # 分け方（地図の道の線の層のid）と「緑と水」の層のid→区間の始まりから並べた、区分が同じまま続く部分。部分の距離の和は区間の距離と丸めの分だけずれうる。
     road_classes: dict[str, list[RoadClassStretch]]
     # 密度の軸のid→区間をまたいで平均する値。応答には出さない（ビンと候補の値を作るための内部の値）。
@@ -526,8 +514,6 @@ BIN_FIELD_MERGERS: dict[str, Callable[[list[RouteSegmentDetail]], object]] = {
     "edge_end": lambda segments: segments[-1].edge_end,
     "elevations": lambda segments: [stretch for segment in segments for stretch in segment.elevations],
     "estimated_arrival_time": lambda segments: segments[0].estimated_arrival_time,
-    # 到達予想と同じく、ビンに入った先頭の区間の値（ビンの中で予報の時刻が変わっても、入るときの風を出す）。
-    "wind": lambda segments: segments[0].wind,
     "difficulty": merge_difficulty,
     "road_classes": merge_road_classes,
     **BIN_DICT_FIELD_MERGERS,
