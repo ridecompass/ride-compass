@@ -261,8 +261,9 @@ export function useMapPopupMount(
   if (onMap === null || mount?.key !== mountKey) return null;
   const { shape } = targetOf(onMap, segmentPath);
   return createPortal(
-    // 高さに上限を付け、あふれたら中でスクロールする——地図の上の枠は、中身が伸びても画面の外へ出てはいけない。
-    <div className="max-h-[min(24rem,50vh)] overflow-y-auto text-[length:var(--font-size-md)] leading-[1.4]">
+    // 高さに上限を付け、あふれたら中でスクロールする——地図の上の枠は、中身が伸びても画面の外へ出てはいけない。縦をスクロールに
+    // すると横も切り取られるので、端に接する見本の枠（箱の1px外に描く`ring`）が欠けないよう、四辺に1pxの余白を置く。
+    <div className="max-h-[min(24rem,50vh)] overflow-y-auto p-px text-[length:var(--font-size-md)] leading-[1.4]">
       {shape !== null && shape.length > 0 && (
         // ×（MapLibreが本文の器の右上に置く）の左に並べる。
         <Button
