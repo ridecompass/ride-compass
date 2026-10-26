@@ -141,6 +141,8 @@ ROUTE_POLICIES: Final[tuple[tuple[str, CachePolicy], ...]] = (
     ("/api/place-search", MASTER_LOOKUP),
     # 置いた位置の辺り（URLに緯度経度を含むため位置ごとに別エントリになる）
     ("/api/place-area", MASTER_LOOKUP),
+    # 施設を外の地図で開く転送。302にはミドルウェアが付けないので、ハンドラが`MASTER_LOOKUP`を付ける
+    ("/api/place-link", HANDLER_MANAGED),
     # ルート生成（POSTはそもそもキャッシュされないが、進捗のGETは明示的に禁じる）
     ("/api/routes/", NO_STORE),
     ("/api/region/axis-inspector", NO_STORE),

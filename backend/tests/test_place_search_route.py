@@ -6,7 +6,7 @@
 番地付きの残りの番号で当たる街区（住居表示の区域）と地番（それ以外の区域）、
 件数の上限、入力の一部にだけ当たった住所を出さないこと、施設の名前を表記の揺れを除いて部分一致で引くこと（並び・地図の
 真ん中に近い店から上限まで）、群の語で群の店を名前に当たる店より先に引くこと、施設に添える辺り、住所と施設を並べる順、対象範囲を読めなければ502、回数制限。
-置いた位置の辺りの口（`GET /api/place-area`）も、同じ注入から本物を通して見る。
+置いた位置の辺りの口（`GET /api/place-area`）と、施設を外の地図で開く転送（`GET /api/place-link`）も、同じ注入から本物を通して見る。
 住所の区画の表は、アドレス・ベース・レジストリの行（街区を含む。地番は街区レベル位置参照情報の行）を取り込んで住所の派生の段を
 本物のまま流して作る。辺りは小地域の境界の行を取り込んで引く。対象範囲は道路の取込の記録から、施設は Overture の地点の取込から立ち寄り先の派生の段を本物のまま流して作り、
 注入から本物を通す。
@@ -456,3 +456,37 @@ async def test_the_area_is_rate_limited_per_client():
 
     assert (await _area_at(LON, LAT)).status_code == 200
     assert (await _area_at(LON, LAT)).status_code == 429
+
+
+async def _place_link(name: str, longitude: float, latitude: float) -> httpx.Response:
+    transport = httpx.ASGITransport(app=app, client=(CLIENT_HOST, 50000))
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        return await client.get("/api/place-link", params={"name": name, "latitude": latitude, "longitude": longitude})
+
+
+@pytest.mark.parametrize(("longitude", "latitude", "query"), [
+    pytest.param(LON + 0.001, LAT, "吉野家 西新宿店,新宿区西新宿二丁目", id="境界の中"),
+    pytest.param(OUTSIDE_LON, OUTSIDE_LAT, f"吉野家 西新宿店 {OUTSIDE_LAT:.6f},{OUTSIDE_LON:.6f}", id="境界の外"),
+])
+@pytest.mark.usefixtures("area")
+async def test_a_facility_link_opens_the_external_map_by_name_and_area(longitude, latitude, query):
+    """施設の名前のリンクは、外の地図で同じ名前の別の店へ飛ばないよう、名前に位置の辺りを添えて探す。辺りの無い所では
+    座標を添える。"""
+    await _ingest_boundaries()
+
+    response = await _place_link("吉野家 西新宿店", longitude, latitude)
+
+    assert response.status_code == 302
+    location = httpx.URL(response.headers["location"])
+    assert (location.host, location.path) == ("www.google.com", "/maps/search/")
+    assert dict(location.params) == {"api": "1", "query": query}
+
+
+@pytest.mark.usefixtures("area")
+async def test_the_facility_link_is_rate_limited_per_client():
+    limit = settings.place_link_rate_limit_per_minute
+    for _ in range(limit - 1):
+        rate_limiter.check_rate_limit(f"place-link:{CLIENT_HOST}", limit)
+
+    assert (await _place_link("吉野家", LON, LAT)).status_code == 302
+    assert (await _place_link("吉野家", LON, LAT)).status_code == 429

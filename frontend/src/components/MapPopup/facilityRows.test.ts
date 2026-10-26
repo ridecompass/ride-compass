@@ -1,7 +1,7 @@
 // @vitest-environment node
 /**
  * `components/MapPopup/facilityRows.ts`——地図の点を1施設1行で見せる行の中身が、区分の名前（凡例と同じ宣言）を並べ、引けない値を
- * 「不明」にし、宣言が点に添える事実を値のあるものだけ並べ、名前のある点には位置だけで外の地図を開く先を持たせること。
+ * 「不明」にし、宣言が点に添える事実を値のあるものだけ並べ、名前のある点には名前と位置で外の地図を開く先（backend の転送）を持たせること。
  * 同じ場所の同じ施設を1行にし、道のりの順に並べること。施設の位置を、基準の地点から見た前後（走行中は残り）で言うこと。
  *
  * 点の宣言は架空のもので与える（実在の区分の名前をテストへ書き写さない）。
@@ -52,10 +52,16 @@ describe("facilityOf", () => {
     expect(facility.facts).toEqual(["年 2023"]);
   });
 
-  it("名前のある点は、名前をその点を中心にした地図の中で探す先を持ち、名前が空の点は持たない", () => {
+  it("名前のある点は、名前と位置を backend の外の地図への転送へ渡す先を持ち、名前が空の点は持たない", () => {
     const named = facilityOf(LAYER, { kind: "a1", name: "店 1&2/3" }, AT);
     expect(named.name).toBe("店 1&2/3");
-    expect(named.mapUrl).toBe("https://www.google.com/maps/search/%E5%BA%97%201%262%2F3/@35.705300,139.649700,18z");
+    const url = new URL(named.mapUrl!);
+    expect(url.pathname).toBe("/api/place-link");
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      name: "店 1&2/3",
+      latitude: String(AT[1]),
+      longitude: String(AT[0]),
+    });
 
     const unnamed = facilityOf(LAYER, { kind: "a1", name: "" }, AT);
     expect([unnamed.name, unnamed.mapUrl]).toEqual([null, null]);
