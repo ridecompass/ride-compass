@@ -32,7 +32,7 @@ import { useMapScene } from "@/features/map/MapView/useMapScene";
 import { useRideFollow, type RideFollow } from "@/features/map/MapView/useRideFollow";
 import { useSectionFocus } from "@/features/map/MapView/useSectionFocus";
 import { type TurnMarkPoint, useTurnMark } from "@/features/map/MapView/useTurnMark";
-import { sidePointAlong } from "@/lib/mapDisplay/sidePoints";
+import { sidePointLocator } from "@/lib/mapDisplay/sidePoints";
 import { findSameSegment, segmentPath } from "@/lib/routeDistance";
 
 interface MapViewProps {
@@ -169,18 +169,20 @@ export default function MapView({
     () => (selectedSection === null ? null : segmentPath(selectedSection)),
     [selectedSection],
   );
-  // 点の小窓で、点の位置を前後で言う基準。走行中は走った所、ほかは選んだ区間の地点（点の位置と同じ式で出す）。
+  // 選んだ区間の道なりの形に地点を当てる（区間を選び直したときだけ組み直す）。点の小窓の点の位置と、その基準の地点が同じ当て方を使う。
+  const locateOnSection = useMemo(
+    () => (selectedSection === null ? null : sidePointLocator(selectedSection)),
+    [selectedSection],
+  );
+  // 点の小窓で、点の位置を前後で言う基準。走行中は走った所、ほかは選んだ区間の地点。
   const facilityOrigin = useMemo(
     (): FacilityOrigin | null =>
       travelledKm !== null
         ? { km: travelledKm, riding: true }
-        : selectedSection !== null && selectedRouteSegment !== null
-          ? {
-              km: sidePointAlong(selectedSection, [selectedRouteSegment.longitude, selectedRouteSegment.latitude]).km,
-              riding: false,
-            }
+        : locateOnSection !== null && selectedRouteSegment !== null
+          ? { km: locateOnSection([selectedRouteSegment.longitude, selectedRouteSegment.latitude]).km, riding: false }
           : null,
-    [travelledKm, selectedSection, selectedRouteSegment],
+    [travelledKm, locateOnSection, selectedRouteSegment],
   );
   const { scene, interactiveLayerIds } = useMapScene({
     look,
@@ -206,8 +208,7 @@ export default function MapView({
     tapsLocked,
     onPointPlace,
     onRouteSegmentSelect,
-    sidePointAlong: (lngLat: readonly [number, number]) =>
-      selectedSection === null ? null : sidePointAlong(selectedSection, lngLat),
+    sidePointAlong: (lngLat: readonly [number, number]) => locateOnSection?.(lngLat) ?? null,
     onSpliceStretchSelect,
     onRouteSelect,
     ride,
