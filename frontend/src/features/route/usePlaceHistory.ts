@@ -7,7 +7,7 @@ import { readSavedPlaces, withHistoryPlace, withoutHistoryPlaceAt } from "@/feat
 import type { Coordinates, PlaceCandidate } from "@/types/route";
 
 // 保存先はこの端末のブラウザの中だけ（保存した地点と同じ）。
-export const PLACE_HISTORY_STORAGE_KEY = "ridecompass:place-history";
+const PLACE_HISTORY_STORAGE_KEY = "ridecompass:place-history";
 
 /** 検索で選んだ地点の履歴（新しい順）と、入れる・1件を消す。 */
 export function usePlaceHistory() {
