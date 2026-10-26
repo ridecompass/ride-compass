@@ -3126,9 +3126,6 @@
             "type": "string",
             "title": "Feature Key"
           },
-          "point": {
-            "$ref": "#/components/schemas/Coordinates"
-          },
           "z": {
             "type": "integer",
             "maximum": 15.0,
@@ -3192,7 +3189,6 @@
         "required": [
           "osm_way_id",
           "feature_key",
-          "point",
           "z",
           "x",
           "y",
@@ -3213,10 +3209,7 @@
             "type": "object",
             "title": "Tags"
           },
-          "segment": {
-            "$ref": "#/components/schemas/InspectorValues"
-          },
-          "way": {
+          "values": {
             "$ref": "#/components/schemas/InspectorValues"
           }
         },
@@ -3225,8 +3218,7 @@
         "required": [
           "highway",
           "tags",
-          "segment",
-          "way"
+          "values"
         ],
         "title": "AxisInspectorResult"
       },

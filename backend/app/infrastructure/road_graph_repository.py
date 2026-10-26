@@ -27,7 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 from app.domain.attributes import CategoricalColumn, EdgeMaterialArrays, MaterialColumn
 from app.domain.dynamic_way_values import FeatureMaterials, FeatureSegments
 from app.domain.geo import bearing_sql, midpoint_sql
-from app.domain.graph import LeanEdge, edge_feature_key_sql, edge_key, node_key, parse_edge_feature_key
+from app.domain.graph import LeanEdge, edge_key, node_key, parse_edge_feature_key
 from app.domain.landcover import LandcoverPercentages, landcover_key
 from app.domain.material_catalog import (
     material_array_columns,
@@ -150,24 +150,6 @@ _FEATURE_LANDCOVER_SQL = text(
     + material_from_clause(_FEATURE_LANDCOVER_COLUMNS, "k.osm_way_id", "k.segment_index",
                            way_when_no_segment=True)
 )
-
-
-#: 道のフィーチャーのうち地点に最も近いものの鍵と、その上で地点に最も近い点。フィーチャーは区間で焼くズームのタイルと
-#: 同じ単位——区間を1本も持たない道は道丸ごと。
-_NEAREST_WAY_SEGMENT_SQL = text(f"""
-    WITH pt AS (SELECT ST_SetSRID(ST_MakePoint(:longitude, :latitude), 4326) AS geom)
-    SELECT f.feature_key, ST_Y(ST_ClosestPoint(f.geom, pt.geom)) AS latitude,
-           ST_X(ST_ClosestPoint(f.geom, pt.geom)) AS longitude
-    FROM (
-        SELECT {edge_feature_key_sql("re.osm_way_id", "re.segment_index")} AS feature_key, re.geom
-        FROM road_edges re WHERE re.osm_way_id = :osm_way_id
-        UNION ALL
-        SELECT w.osm_way_id::text, w.geom FROM {ways_lookup_sql(":osm_way_key")} w
-        WHERE NOT EXISTS (SELECT 1 FROM road_edges re2 WHERE re2.osm_way_id = :osm_way_id)
-    ) f CROSS JOIN pt
-    ORDER BY ST_Distance(f.geom::geography, pt.geom::geography)
-    LIMIT 1
-""")
 
 
 def _material_values_from_row(row: Row) -> dict[str, object]:
@@ -531,17 +513,6 @@ class RoadGraphRepository:
         if row is None:
             return None
         return (row.highway, row.tags)
-
-    async def get_nearest_way_segment(
-        self, osm_way_id: int, latitude: float, longitude: float
-    ) -> tuple[str, float, float] | None:
-        """道のうち地点に最も近い区間の、区間で焼くタイルのフィーチャーの鍵と、その区間の上で地点に最も近い点
-        `(緯度, 経度)`。区間を1本も持たない道は道丸ごとの鍵。道が無ければNone。"""
-        row = (await self._session.execute(_NEAREST_WAY_SEGMENT_SQL, {
-            # 道の生データは鍵をtextで渡す（`ways_lookup_sql`が主キーで引くため）。
-            "osm_way_id": osm_way_id, "osm_way_key": str(osm_way_id), "latitude": latitude, "longitude": longitude,
-        })).first()
-        return None if row is None else (row.feature_key, row.latitude, row.longitude)
 
     async def get_feature_landcover(
         self, osm_way_id: int, feature_key: str | None

@@ -5,16 +5,9 @@ from functools import partial
 from app.domain.axis_definitions import copy_axis_definitions, published_axis_order
 from app.domain.axis_inspector import AxisInspectorResult, InspectorValues, inspector_values
 from app.domain.dynamic_way_values import MissingConditions, WayValueQuery
-from app.domain.geo import LatLon
 from app.domain.landcover import LandcoverPercentages
 from app.domain.route_preference import RoutePreference
-from app.domain.region import (
-    EDGE_UNIT_MIN_ZOOM,
-    BoundingBox,
-    edge_unit_tile,
-    tile_bounds_lonlat,
-    way_unit_tile,
-)
+from app.domain.region import BoundingBox, tile_bounds_lonlat
 from app.domain.registry import TileKind
 from app.domain.tuning import REBUILT_CLIENT_TUNING_IDS
 from app.infrastructure.database import DB_UNAVAILABLE_ERRORS
@@ -50,8 +43,8 @@ class InspectedFeature:
 class InspectedRoad:
     highway: str
     tags: dict[str, str]
-    segment: InspectedFeature
-    way: InspectedFeature
+    #: 押したフィーチャー（その倍率で地図が塗る単位）。
+    feature: InspectedFeature
 
 
 class RegionService:
@@ -151,14 +144,11 @@ class RegionService:
             y=y,
         )
 
-    async def inspected_road(
-        self, osm_way_id: int, feature_key: str, z: int, x: int, y: int, point: LatLon
-    ) -> InspectedRoad | None:
-        """区間インスペクタが評価する、押した道の区間と道1本のフィーチャーと、道の一次属性。
+    async def inspected_road(self, osm_way_id: int, feature_key: str, z: int, x: int, y: int) -> InspectedRoad | None:
+        """区間インスペクタが評価する、押したフィーチャー（タイル`(z, x, y)`が焼いた`feature_key`）と、道の一次属性。
 
         引き直しの鍵はタイルへ焼き込み済みのosm_way_idで、クリック地点の緯度経度から道を空間マッチで選ばない——交差点
-        付近など複数の道路が近接する場所で、実際にクリックされたフィーチャーとは別の道路を拾う。地点は、道1本で塗る倍率で
-        押したときに、その道の区間を選ぶのにだけ使う。
+        付近など複数の道路が近接する場所で、実際にクリックされたフィーチャーとは別の道路を拾う。
 
         該当way不在・DB例外はいずれもNoneへ倒す（タイル配信と同じグレースフルデグレード方針）。
         """
@@ -168,27 +158,14 @@ class RegionService:
                 if way_tags_result is None:
                     fields["lookup"] = "not_found"
                     return None
-                if z >= EDGE_UNIT_MIN_ZOOM:
-                    segment_key, segment_tile = feature_key, (z, x, y)
-                else:
-                    nearest = await self._repository.get_nearest_way_segment(
-                        osm_way_id, point.latitude, point.longitude)
-                    if nearest is None:
-                        fields["lookup"] = "not_found"
-                        return None
-                    segment_key, latitude, longitude = nearest
-                    segment_tile = edge_unit_tile(longitude, latitude)
-                way_key = str(osm_way_id)
-                segment = InspectedFeature(segment_key, segment_tile,
-                                           await self._repository.get_feature_landcover(osm_way_id, segment_key))
-                way = InspectedFeature(way_key, way_unit_tile(z, x, y),
-                                       await self._repository.get_feature_landcover(osm_way_id, way_key))
+                feature = InspectedFeature(feature_key, (z, x, y),
+                                           await self._repository.get_feature_landcover(osm_way_id, feature_key))
             except DB_UNAVAILABLE_ERRORS as exc:
                 mark_failed(fields, exc)
                 return None
             fields["lookup"] = "ok"
             highway, tags = way_tags_result
-            return InspectedRoad(highway, tags, segment, way)
+            return InspectedRoad(highway, tags, feature)
 
     async def get_accident_years(self) -> list[int]:
         """事故データの収録年。地図の説明文へ配る。
@@ -238,8 +215,8 @@ class RegionService:
 
 
 class AxisInspectorService:
-    """区間インスペクタ。押した区間と、その区間を含む道1本の公開軸の得点を、地図の配信がそれぞれを塗るタイルの値
-    （`tile_axis_values`）から出す——地図の色と内訳の数字が、同じ評価の同じ値になる。"""
+    """区間インスペクタ。押したフィーチャー（その倍率で地図が塗る区間か道1本）の公開軸の得点を、地図の配信がそれを塗る
+    タイルの値（`tile_axis_values`）から出す——地図の色と内訳の数字が、同じ評価の同じ値になる。"""
 
     def __init__(
         self,
@@ -258,7 +235,6 @@ class AxisInspectorService:
         z: int,
         x: int,
         y: int,
-        point: LatLon,
         query: WayValueQuery,
         preference: RoutePreference | None,
     ) -> AxisInspectorResult | None:
@@ -267,7 +243,7 @@ class AxisInspectorService:
 
         `query`の条件が欠けて値の出ない軸は、評価できない軸になる（地図の配信なら欠けを断る）。
         """
-        road = await self._region_service.inspected_road(osm_way_id, feature_key, z, x, y, point)
+        road = await self._region_service.inspected_road(osm_way_id, feature_key, z, x, y)
         if road is None:
             return None
         definitions = copy_axis_definitions()
@@ -284,4 +260,4 @@ class AxisInspectorService:
             return inspector_values({axis_id: scores[axis_id] for axis_id in published}, feature.landcover, weights)
 
         return AxisInspectorResult(
-            highway=road.highway, tags=road.tags, segment=await values(road.segment), way=await values(road.way))
+            highway=road.highway, tags=road.tags, values=await values(road.feature))

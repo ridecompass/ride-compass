@@ -8,7 +8,6 @@ import type { ReactNode } from "react";
 import AxisContributionBar, { hasAnyContribution } from "@/components/AxisContributionBar/AxisContributionBar";
 import { PointDotSwatch, PointIconSwatch } from "@/components/PointIconSwatch/PointIconSwatch";
 import { legendChipsClass } from "@/components/ui/AxisLegend/axisLegend";
-import { Badge } from "@/components/ui/Badge/Badge";
 import { Button } from "@/components/ui/Button/Button";
 import { OffRoadDistanceIcon, SelectedSpotIcon } from "@/components/ui/icons/lucideIcons";
 import { textVariants } from "@/components/ui/Text/Text";
@@ -125,10 +124,8 @@ export function FacilityRows({
   );
 }
 
-/** 難易度の塊: 難易度・寄与の帯・軸ごとのチップ（押すと軸の詳しく）と、同じ塊で読むチップ（風・土地被覆等）。`tag`は
- * 同じ小窓に塊を並べるときに付ける短い札。 */
+/** 難易度の塊: 難易度・寄与の帯・軸ごとのチップ（押すと軸の詳しく）と、同じ塊で読むチップ（風・土地被覆等）。 */
 export function DifficultyBlock({
-  tag,
   difficulty,
   note,
   axes,
@@ -137,7 +134,6 @@ export function DifficultyBlock({
   renderDetail,
   extraChips,
 }: {
-  tag?: string;
   /** 算出できなかったらnull（「—」）。 */
   difficulty: number | null;
   /** 難易度に添える短い断り。 */
@@ -151,9 +147,8 @@ export function DifficultyBlock({
 }) {
   const contributed = hasAnyContribution(axes, contributions);
   return (
-    <section aria-label={tag ?? "難易度"} className="flex flex-col gap-1 tabular-nums">
+    <section aria-label="難易度" className="flex flex-col gap-1 tabular-nums">
       <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
-        {tag !== undefined && <Badge className="self-center">{tag}</Badge>}
         <span className="inline-flex items-baseline gap-0.5">
           <span className={textVariants({ variant: "hint" })}>難易度</span>
           <span className="font-semibold">{difficulty === null ? "—" : formatDifficulty(difficulty)}</span>
