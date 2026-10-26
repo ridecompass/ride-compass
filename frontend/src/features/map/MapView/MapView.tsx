@@ -102,6 +102,15 @@ interface MapViewProps {
   compassLinked: boolean;
 }
 
+/** ルートの線を薄める境目の刻み（m）。走った距離が変わるたびに薄める所を動かすと、走っている間ずっと地図の中身を組み直して
+ * ルートの線を入れ直す（電池を食う）ので、この刻みをまたいだときだけ動かす。刻みは寄せた倍率で現在地の印に隠れる程度の長さ。 */
+const TRAVELLED_SHADE_STEP_M = 25;
+
+/** 走った距離（km）を、薄める境目の刻みへ切り下げる（まだ走っていない所を薄めない）。 */
+function shadedTravelledKm(km: number): number {
+  return (Math.floor((km * 1000) / TRAVELLED_SHADE_STEP_M) * TRAVELLED_SHADE_STEP_M) / 1000;
+}
+
 export default function MapView({
   routes,
   selectedRouteId,
@@ -181,7 +190,7 @@ export default function MapView({
     spliceStretches,
     splicedRoute,
     inspectedWayId,
-    travelledKm,
+    travelledKm: travelledKm === null ? null : shadedTravelledKm(travelledKm),
     selectedRouteSegment,
     // 区間を選んでいる間、その近くの点を描く。
     sidePointPath: selectedSectionPath,

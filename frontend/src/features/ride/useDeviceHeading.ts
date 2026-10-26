@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { debugLog } from "@/lib/debugLog";
+import { createLiveValue, type LiveValue } from "@/lib/liveValue";
 import { countRideMetric } from "@/lib/rideMetrics";
 
 // 端末の向きの出来事は1秒に何十回も届く。これより小さい変わり目では描き直さない（印の向きとして見分けられない）。
@@ -45,17 +46,15 @@ function permissionRequest(): PermissionRequest | null {
 
 /** スマホが向いている方角（画面の上の向き）。`active`の間だけ読む。iPhone では`request`を利用者の操作（走行モードを始める
  * ボタン）の中で呼んで許しを求め、断られたら方角を出さない。操作の外（読み込み直しの始め直し）で求めて聞けなかった間は、
- * `requestAgain`に利用者の操作の中で求め直す口を返す。 */
+ * `requestAgain`に利用者の操作の中で求め直す口を返す。方角は状態にせず`heading`の口で渡す（向きの出来事は1秒に何十回も
+ * 届くので、状態にすると走行モードを持つページを描き直し続ける）。 */
 export function useDeviceHeading(active: boolean): {
-  heading: number | null;
+  heading: LiveValue<number | null>;
   request: () => void;
   requestAgain: (() => void) | null;
 } {
   const [permission, setPermission] = useState<Permission | null>(null);
-  const [heading, setHeading] = useState<number | null>(null);
-  useEffect(() => {
-    if (heading !== null) countRideMetric("headingUpdates");
-  }, [heading]);
+  const [heading] = useState(() => createLiveValue<number | null>(null));
 
   const request = useCallback(() => {
     const ask = permissionRequest();
@@ -78,30 +77,32 @@ export function useDeviceHeading(active: boolean): {
   useEffect(() => {
     if (!active || permission !== "granted") return;
     // Android の Chrome は北を基準にした向きを別の出来事で、iPhone の Safari はふつうの出来事にコンパスの読みを添えて出す。
-    // 両方を受け、方角が分かる読みだけを使う。
+    // 両方を受け、方角が分かる読みだけを使う。北を基準にした出来事が届く端末では、もう一方（同じ向きを北を基準にせずに
+    // 同じ頻度で出す）は受けるのをやめる。
     function onOrientation(event: Event) {
       countRideMetric("orientationEvents");
       const reading = event as unknown as OrientationReading & { absolute?: boolean };
       const absolute = event.type === "deviceorientationabsolute" || reading.absolute === true;
       const next = headingFromOrientation(reading, absolute, screen.orientation?.angle ?? 0);
       if (next === null) return;
-      setHeading((current) => {
-        if (current === null) return next;
-        const turned = Math.abs(((next - current + 540) % 360) - 180);
-        return turned < MIN_HEADING_STEP_DEG ? current : next;
-      });
+      // 向きのセンサーが無い端末でも、受け始めに値の無い北を基準にした出来事が1回届くので、方角が読めたときだけやめる。
+      if (event.type === "deviceorientationabsolute") window.removeEventListener("deviceorientation", onOrientation);
+      const current = heading.current();
+      if (current !== null && Math.abs(((next - current + 540) % 360) - 180) < MIN_HEADING_STEP_DEG) return;
+      countRideMetric("headingUpdates");
+      heading.set(next);
     }
     window.addEventListener("deviceorientationabsolute", onOrientation);
     window.addEventListener("deviceorientation", onOrientation);
     return () => {
       window.removeEventListener("deviceorientationabsolute", onOrientation);
       window.removeEventListener("deviceorientation", onOrientation);
-      setHeading(null);
+      heading.set(null);
     };
-  }, [active, permission]);
+  }, [active, permission, heading]);
 
   return {
-    heading: active ? heading : null,
+    heading,
     request,
     requestAgain: active && permission === "needsGesture" ? request : null,
   };

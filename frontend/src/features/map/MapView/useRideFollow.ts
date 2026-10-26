@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, type RefObject } from "react";
 import * as maplibregl from "maplibre-gl";
 import type { Map as MapLibreMap, Marker } from "maplibre-gl";
 
+import type { LiveValue } from "@/lib/liveValue";
 import type { Coordinates } from "@/types/route";
 
 import { nextRideZoom, rideZoomBase, rideZoomOut } from "./rideZoom";
@@ -13,8 +14,9 @@ export interface RideFollow {
   position: Coordinates | null;
   /** 進む向き（真北0・時計回りの度）。まだ分からなければnull。 */
   bearing: number | null;
-  /** スマホが向いている方角（真北0・時計回りの度）。読めなければnull（向きの印を出さない）。 */
-  facing: number | null;
+  /** スマホが向いている方角（真北0・時計回りの度）。読めなければnull（向きの印を出さない）。1秒に何十回も変わるので、
+   * 描き直さずに読む口で受け、現在地の印だけを回す。 */
+  facing: LiveValue<number | null>;
   following: boolean;
   /** 今の速さ（時速km）。分からなければnull。追っている間の倍率に使う。 */
   speedKmh: number | null;
@@ -204,8 +206,13 @@ export function useRideFollow(
     const dot = dotRef.current;
     if (!dot) return;
     const cone = dot.getElement().querySelector<SVGElement>(`[${FACING_CONE_ATTRIBUTE}]`);
-    cone?.setAttribute("visibility", facing === null ? "hidden" : "visible");
-    dot.setRotation(facing ?? 0);
+    const turn = () => {
+      const degrees = facing?.current() ?? null;
+      cone?.setAttribute("visibility", degrees === null ? "hidden" : "visible");
+      dot.setRotation(degrees ?? 0);
+    };
+    turn();
+    return facing?.subscribe(turn);
   }, [position, facing]);
   useEffect(
     () => () => {

@@ -32,6 +32,70 @@ afterEach(() => {
   removeGeolocation();
 });
 
+describe("走行の値へ流す位置", () => {
+  // 前に流した位置: 誤差5m・走っている（端末の速さ秒速5m）。緯度0.00001度は約1.1m。
+  const LAST = { latitude: 35.68, longitude: 139.76, accuracy: 5, timestamp: 0, speed: 5 };
+  it.each([
+    {
+      name: "2つの誤差の和の内の揺れ",
+      next: { latitude: 35.68003, accuracy: 5, timestamp: 1_000, speed: 5 },
+      published: false,
+    },
+    {
+      name: "2つの誤差の和を超えて動いた",
+      next: { latitude: 35.68012, accuracy: 5, timestamp: 1_000, speed: 5 },
+      published: true,
+    },
+    {
+      name: "止まっている間の、2つの誤差の和を超える揺れ",
+      last: { ...LAST, speed: 0 },
+      next: { latitude: 35.68012, accuracy: 5, timestamp: 1_000, speed: 0 },
+      published: false,
+    },
+    {
+      name: "速さが大きく変わった（止まった）",
+      next: { latitude: 35.68, accuracy: 5, timestamp: 1_000, speed: 2 },
+      published: true,
+    },
+    {
+      name: "速さの小さな揺れ",
+      next: { latitude: 35.68, accuracy: 5, timestamp: 1_000, speed: 5.5 },
+      published: false,
+    },
+    {
+      name: "誤差の大きい位置（流した位置がまだ新しい）",
+      next: { latitude: 35.682, accuracy: 50, timestamp: 9_000, speed: 5 },
+      published: false,
+    },
+    {
+      name: "誤差の大きい位置（流した位置から待つ長さを過ぎた）",
+      next: { latitude: 35.682, accuracy: 50, timestamp: 10_000, speed: 5 },
+      published: true,
+    },
+    {
+      name: "動かないまま30秒たった",
+      next: { latitude: 35.68, accuracy: 5, timestamp: 30_000, speed: 5 },
+      published: true,
+    },
+  ])("$name: 流すか $published", ({ last = LAST, next, published }) => {
+    let renders = 0;
+    const { result } = renderHook(() => {
+      renders += 1;
+      return useRideMode(PLAUSIBLE_MAX_KMH);
+    });
+    act(() => result.current.press());
+    geolocation.deliver(last);
+    const before = renders;
+    geolocation.deliver({ ...next, longitude: 139.76 });
+    // 流さない位置では、地図の位置も描き直しも変わらない（止まっていても地図が動き続けない）。
+    expect(result.current.map?.position).toEqual(
+      published ? { latitude: next.latitude, longitude: 139.76 } : { latitude: 35.68, longitude: 139.76 },
+    );
+    expect(result.current.fixedAtMs).toBe(published ? next.timestamp : 0);
+    expect(renders > before).toBe(published);
+  });
+});
+
 describe("受けた位置の読み", () => {
   it("今の速さは、位置が持つ速さ（秒速）を時速にして出し、持たなければ出さない。止めると消える", () => {
     const { result } = renderHook(() => useRideMode(PLAUSIBLE_MAX_KMH));
