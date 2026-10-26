@@ -338,7 +338,7 @@ useAxisCatalog() ──→ catalog.axes（公開軸一覧、is_published=Trueの
 **近くの点**は、生成の応答に載せず、区間を選んでいる間、地図が点の層のタイルのうち区間の線に近い点を描く（近さと描き方は
 [静的地図レイヤー](static-map-layers.md)「選んだ区間の近くの点」）。描いた点は「表示」の点と同じ点で、名前のある点を押すと点の小窓を開き、
 区間の小窓から開いたときは上の帯の「‹ 区間」で区間の中身へ戻れる。点の小窓の行の位置は、区間を選んでいる間は選んだ地点から見た前後
-（走行中は現在地からの残り）で出す（`lib/mapDisplay/sidePoints.ts: sidePointAlong`）。
+（走行中は現在地からの残り）で出す（`lib/mapDisplay/sidePoints.ts: sidePointLocator`）。
 
 ## 保存した条件（SavedConditionsPanel.tsx・useSavedConditions.ts）
 
