@@ -15,6 +15,7 @@ import {
   overviewFrameSize,
   overviewRenderZoom,
   overviewScene,
+  overviewWeather,
   overviewZoom,
 } from "@/features/map/MapOverview/overview";
 import { applyScene, weatherStateFrom, type SceneLook } from "@/features/map/scene/applyToMap";
@@ -100,7 +101,10 @@ function OverviewMap({ viewport, dynamicWeather, paneRef, onCollapse }: MapOverv
     });
   }, [center.longitude, center.latitude, renderZoom, viewport.bearing]);
 
-  const scene = useMemo(() => overviewScene(buildOverviewScene(weatherStateFrom(dynamicWeather))), [dynamicWeather]);
+  const scene = useMemo(
+    () => overviewScene(buildOverviewScene(weatherStateFrom(overviewWeather(dynamicWeather, zoom, center.latitude)))),
+    [dynamicWeather, zoom, center.latitude],
+  );
   useEffect(() => {
     if (mapRef.current) applyScene(mapRef.current, scene);
   }, [scene]);

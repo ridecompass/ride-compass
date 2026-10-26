@@ -246,6 +246,7 @@ describe("useDynamicWeatherLayers", () => {
           },
         ],
       },
+      gridStepDeg: { latitude: 0.1, longitude: 0.125 },
     });
     const cells = result.current.dynamicWeather.precipitationNowcast?.main?.payload;
     expect(cells).toMatchObject({ kind: "gridFill", geojson: { features: [{ properties: { mmPerHour: 3.2 } }] } });

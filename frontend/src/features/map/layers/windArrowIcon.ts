@@ -5,7 +5,7 @@ import { drawSdfIcon } from "@/features/map/layers/sdfIcon";
 
 // 矢印は白いシルエットをsdf:trueで登録し、icon-colorで着色する。向き（icon-rotate）・長さと太さ（icon-size。
 // アイコン全体を一様に拡縮するので両方同時に変わる）・色（icon-color）を、描く側が風速から決められる。
-const WIND_ARROW_SIZE_PX = 32;
+export const WIND_ARROW_SIZE_PX = 32;
 
 interface Point2D {
   x: number;

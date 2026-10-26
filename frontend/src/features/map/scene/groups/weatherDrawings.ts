@@ -4,14 +4,14 @@ import palette from "@/types/generated/palette.json";
 import weatherScales from "@/types/generated/weather-scales.json";
 import type { FilterSpecification } from "maplibre-gl";
 
-import { createLidenIcon } from "@/features/map/layers/lidenIcon";
+import { LIDEN_ICON_SIZE_PX, createLidenIcon } from "@/features/map/layers/lidenIcon";
 import { PRECIPITATION_COLOR_STOPS, PRECIPITATION_NONE_THRESHOLD_MM } from "@/features/map/layers/precipitationNowcast";
-import { createWindArrowIcon } from "@/features/map/layers/windArrowIcon";
+import { WIND_ARROW_SIZE_PX, createWindArrowIcon } from "@/features/map/layers/windArrowIcon";
 import { WIND_CALM_THRESHOLD_MS, WIND_SPEED_COLOR_STOPS } from "@/features/map/layers/windLayer";
 
 import type { MapSceneImage } from "@/features/map/scene/mapScene";
 import { AREA_OPACITY } from "./areaRasters";
-import { zoomScaleExpression } from "@/features/map/scene/sceneBuilders";
+import { linearAt, zoomScaleExpression } from "@/features/map/scene/sceneBuilders";
 
 /** キキクルの危険度の段（源泉`domain/weather_display.py`）。洪水の線を、配信元のタイルが持つ段の番号で塗る。 */
 const RISK_LEVELS = weatherScales.risk_levels;
@@ -28,6 +28,8 @@ export type Drawing = {
   readonly filter?: FilterSpecification;
   /** 記号を描くのに要るアイコン。 */
   readonly icon?: MapSceneImage;
+  /** 記号の1辺（px）。ズーム`zoom`で、プロパティ`properties`の地物の記号を描く大きさ（`layout`の`icon-size`と同じ値から求める）。 */
+  readonly markSizePx?: (zoom: number, properties: Readonly<Record<string, unknown>>) => number;
   /** 主の線の下に敷く縁取りの線の見た目。背景の色に関わらず線を読めるようにする。 */
   readonly casing?: { readonly paint: Readonly<Record<string, unknown>> };
 };
@@ -81,22 +83,28 @@ function notBelowFilter(property: string, below: number): FilterSpecification {
 type MarkScale =
   number | { readonly property: string; readonly range: readonly [number, number]; readonly fullScaleValue: number };
 
+function markScaleStops(scale: Exclude<MarkScale, number>): [number, number][] {
+  return [
+    [0, scale.range[0]],
+    [scale.fullScaleValue, scale.range[1]],
+  ];
+}
+
 function markScaleExpression(scale: MarkScale): unknown {
   if (typeof scale === "number") return scale;
-  return [
-    "interpolate",
-    ["linear"],
-    ["to-number", ["get", scale.property]],
-    0,
-    scale.range[0],
-    scale.fullScaleValue,
-    scale.range[1],
-  ];
+  return ["interpolate", ["linear"], ["to-number", ["get", scale.property]], ...markScaleStops(scale).flat()];
+}
+
+function markScaleAt(scale: MarkScale, properties: Readonly<Record<string, unknown>>): number {
+  if (typeof scale === "number") return scale;
+  return linearAt(markScaleStops(scale), Number(properties[scale.property] ?? 0));
 }
 
 function markDrawing(options: {
   readonly iconId: string;
   readonly createIcon: () => ImageData;
+  /** `createIcon`が描く絵の1辺（px）。 */
+  readonly iconSizePx: number;
   readonly color: unknown;
   readonly scale: MarkScale;
   /** 記号を地図の北から時計回りに回す角度（度）を持つプロパティ。無ければ回さない。 */
@@ -105,6 +113,8 @@ function markDrawing(options: {
 }): Drawing {
   return {
     icon: { id: options.iconId, draw: () => ({ data: options.createIcon(), options: { sdf: true } }) },
+    markSizePx: (zoom, properties) =>
+      options.iconSizePx * markScaleAt(options.scale, properties) * linearAt(WEATHER.markSizeByZoom, zoom),
     layout: {
       "icon-image": options.iconId,
       "icon-rotate": options.rotateProperty === undefined ? 0 : ["to-number", ["get", options.rotateProperty]],
@@ -143,6 +153,7 @@ const DRAWINGS: { readonly [K in DrawnKey]: Drawing } = {
   "windVector/arrow/gridMark": markDrawing({
     iconId: "weather-wind-arrow",
     createIcon: createWindArrowIcon,
+    iconSizePx: WIND_ARROW_SIZE_PX,
     color: bandColorExpression(
       ["get", "speed"],
       WIND_SPEED_COLOR_STOPS.map((stop) => ({ from: stop.speedMs, color: stop.color })),
@@ -170,6 +181,7 @@ const DRAWINGS: { readonly [K in DrawnKey]: Drawing } = {
   "disaster/liden/gridMark": markDrawing({
     iconId: "weather-liden",
     createIcon: createLidenIcon,
+    iconSizePx: LIDEN_ICON_SIZE_PX,
     // 落雷の強弱を配信元が持たないため、大きさはズームだけで決まる。
     color: palette.semantic.lightning,
     scale: WEATHER.lightningIconScale,

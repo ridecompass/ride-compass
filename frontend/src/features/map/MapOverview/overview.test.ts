@@ -9,6 +9,7 @@ import type { LayerSpecification } from "maplibre-gl";
 import type { MapScene, MapSceneLayer } from "@/features/map/scene/mapScene";
 import { describe, expect, it } from "vitest";
 
+import { weatherMarkSizePx } from "@/features/map/scene/groups/weather";
 import { METERS_PER_DEGREE, longitudeScale } from "@/lib/localPlane";
 import { lineLayer, scene } from "@/testing/mapSceneDeclarations";
 
@@ -21,6 +22,7 @@ import {
   overviewFrameSize,
   overviewScene,
   overviewShown,
+  overviewWeather,
   overviewZoom,
 } from "./overview";
 
@@ -75,6 +77,51 @@ describe("anyWeatherShown", () => {
   ])("$name", ({ weather, shown }) => {
     expect(anyWeatherShown(weather)).toBe(shown);
   });
+});
+
+describe("overviewWeather", () => {
+  // MSMの格子（緯度0.05度・経度0.0625度おき）の、北区のあたりの9×9の格子点。弱い風（2m/s）の中に、強い風（9m/s）の一角がある。
+  const latitude = 35.75;
+  const gridStepDeg = { latitude: 0.05, longitude: 0.0625 };
+  const features = Array.from({ length: 81 }, (_, i) => ({
+    type: "Feature" as const,
+    geometry: {
+      type: "Point" as const,
+      coordinates: [139.5 + (i % 9) * gridStepDeg.longitude, 35.55 + Math.floor(i / 9) * gridStepDeg.latitude],
+    },
+    properties: { speed: i % 9 >= 6 && i < 27 ? 9 : 2, bearing: 90 },
+  }));
+  const weather = {
+    windVector: {
+      arrow: {
+        visible: true,
+        payload: { kind: "gridMark" as const, geojson: { type: "FeatureCollection" as const, features }, gridStepDeg },
+      },
+    },
+  };
+  const arrowSizePx = weatherMarkSizePx({ group: "windVector", source: "arrow" })!;
+
+  // 本体の倍率12では弱い風の矢印も格子点の間隔より大きく、14では強い風の矢印だけが格子点の間隔より大きい。
+  it.each([12, 14])(
+    "本体の倍率%sで、俯瞰図の矢印はどの2本も大きい方の1辺以上離れ、落とした矢印はどれも残した矢印のどれかと重なる",
+    (mainZoom) => {
+      const zoom = overviewZoom(latitude, mainZoom);
+      const payload = overviewWeather(weather, zoom, latitude).windVector?.arrow?.payload;
+      const kept = new Set(payload !== undefined && "geojson" in payload ? payload.geojson.features : []);
+      // メルカトルの地図の上で、2本の矢印の真ん中どうしの長さが大きい方の1辺より短いか。
+      const pxPerDeg = (512 * 2 ** zoom) / 360;
+      const overlap = (a: (typeof features)[number], b: (typeof features)[number]) =>
+        Math.hypot(
+          (a.geometry.coordinates[0] - b.geometry.coordinates[0]) * pxPerDeg,
+          ((a.geometry.coordinates[1] - b.geometry.coordinates[1]) * pxPerDeg) / longitudeScale(latitude),
+        ) < Math.max(arrowSizePx(zoom, a.properties), arrowSizePx(zoom, b.properties));
+      const keptFeatures = features.filter((feature) => kept.has(feature));
+
+      expect(keptFeatures.length).toBeGreaterThanOrEqual(4);
+      expect(keptFeatures.filter((a) => keptFeatures.some((b) => a !== b && overlap(a, b)))).toEqual([]);
+      expect(features.filter((a) => !kept.has(a) && !keptFeatures.some((b) => overlap(a, b)))).toEqual([]);
+    },
+  );
 });
 
 describe("overviewFrameSize", () => {
