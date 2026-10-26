@@ -121,12 +121,14 @@ const round1 = (value: number) => Math.round(value * 10) / 10;
 const average = (values: readonly number[]) =>
   values.length === 0 ? null : round1(values.reduce((sum, value) => sum + value, 0) / values.length);
 
-/** 通信の行き先の区切り。`/api/<名前>`は名前まで、ほかはホスト名。 */
+/** 通信の行き先の区切り。`/api/<名前>`は名前と、続く区切りが英字で始まればその区切りまで（同じ名前の下の口を分け、
+ * タイルの座標の数字では分けない）。ほかはホスト名。 */
 export function requestKind(url: string): string {
   try {
     const parsed = new URL(url);
-    const api = parsed.pathname.match(/^\/api\/([^/]+)/);
-    return api === null ? parsed.hostname : `api:${api[1]}`;
+    const api = parsed.pathname.match(/^\/api\/([^/]+)(?:\/([a-z][^/]*))?/i);
+    if (api === null) return parsed.hostname;
+    return api[2] === undefined ? `api:${api[1]}` : `api:${api[1]}/${api[2]}`;
   } catch {
     return "other";
   }

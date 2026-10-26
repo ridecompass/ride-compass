@@ -6,6 +6,9 @@ import type { CaptureScript } from "./context";
 // （電池の減りそのものと、スマホの GPU・画面の消費は測れない）。
 //   node frontend/scripts/capture.mjs --script frontend/capture/ride-simulation.ts --api <本番の backend> --size 390x812
 // 走る長さ（分）・速さ（km/h）・CPU を遅くする倍率は、環境変数 RIDE_SIM_MINUTES・RIDE_SIM_SPEED_KMH・RIDE_SIM_CPU_SLOWDOWN で変える。
+// 走り終えたあとに同じ所で止まっている長さ（分。信号待ち・休憩に見立て、位置のぶれと向きの出来事は続ける）は RIDE_SIM_STOP_MINUTES、
+// 出しておく層（「表示」の層の id をカンマで区切る。例: precipitationNowcast,windVector）は RIDE_SIM_LAYERS で選ぶ。
+// 走行モードを始めたあとの地図の縮尺（利用者が引いて走る形）は RIDE_SIM_ZOOM で選ぶ（省けば走行モードが決めた縮尺のまま）。
 
 /** 位置のぶれ（m）。実機の GPS の誤差の目安で、毎回この幅で散らす。 */
 const JITTER_M = 4;
@@ -48,8 +51,10 @@ const script: CaptureScript = async ({ page, fixtures, open, shot, expect }) => 
   const minutes = Number(process.env.RIDE_SIM_MINUTES ?? 3);
   const speedKmh = Number(process.env.RIDE_SIM_SPEED_KMH ?? 20);
   const slowdown = Number(process.env.RIDE_SIM_CPU_SLOWDOWN ?? 1);
+  const stopMinutes = Number(process.env.RIDE_SIM_STOP_MINUTES ?? 0);
+  const layers = (process.env.RIDE_SIM_LAYERS ?? "").split(",").filter((id) => id !== "");
 
-  await open();
+  await open({ layers });
   await fixtures.generateRoutes(page, { distanceKm: 10 });
   // 結果のシートが地図の上の走行モードのボタンを覆うので閉じる。
   await page.keyboard.press("Escape");
@@ -83,6 +88,8 @@ const script: CaptureScript = async ({ page, fixtures, open, shot, expect }) => 
   const [startLng, startLat] = line[0];
   await page.context().setGeolocation({ latitude: startLat, longitude: startLng, accuracy: JITTER_M });
   await page.getByRole("button", { name: "走行モード" }).click();
+  const zoom = process.env.RIDE_SIM_ZOOM === undefined ? null : Number(process.env.RIDE_SIM_ZOOM);
+  if (zoom !== null) await page.evaluate((z) => window.__liveMap().zoomTo(z, { duration: 0 }), zoom);
   const before = await metricsOf();
 
   // 向きの出来事は、ページの中で毎秒30回届ける（手に持ったスマホの揺れとして、進む向きに数度のぶれを足す）。
@@ -101,8 +108,9 @@ const script: CaptureScript = async ({ page, fixtures, open, shot, expect }) => 
   }, ORIENTATION_PER_SECOND);
 
   const metersPerSecond = speedKmh / 3.6;
-  for (let second = 0; second < minutes * 60; second++) {
-    const { at, bearing } = pointAlong(line, second * metersPerSecond);
+  const movingSeconds = minutes * 60;
+  for (let second = 0; second < movingSeconds + stopMinutes * 60; second++) {
+    const { at, bearing } = pointAlong(line, Math.min(second, movingSeconds - 1) * metersPerSecond);
     const jitter = () => ((Math.random() - 0.5) * 2 * JITTER_M) / METERS_PER_DEGREE;
     await page
       .context()
@@ -127,7 +135,9 @@ const script: CaptureScript = async ({ page, fixtures, open, shot, expect }) => 
     ]),
   );
   // 出力の1行目は条件と CPU の時間（ms。メモリは MB）、2行目は走行の記録の JSON。
-  console.log(`[ride-simulation] ${JSON.stringify({ minutes, speedKmh, slowdown, cpuMs: cpu })}`);
+  console.log(
+    `[ride-simulation] ${JSON.stringify({ minutes, stopMinutes, speedKmh, slowdown, layers, zoom, cpuMs: cpu })}`,
+  );
   console.log(`[ride-simulation:record] ${record}`);
 };
 
