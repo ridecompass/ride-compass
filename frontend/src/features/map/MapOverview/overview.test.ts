@@ -80,7 +80,7 @@ describe("anyWeatherShown", () => {
 });
 
 describe("overviewWeather", () => {
-  // MSMの格子（緯度0.05度・経度0.0625度おき）の、北区のあたりの9×9の格子点。風速は3〜8m/sに散らす。
+  // MSMの格子（緯度0.05度・経度0.0625度おき）の、北区のあたりの9×9の格子点。弱い風（2m/s）の中に、強い風（9m/s）の一角がある。
   const latitude = 35.75;
   const gridStepDeg = { latitude: 0.05, longitude: 0.0625 };
   const features = Array.from({ length: 81 }, (_, i) => ({
@@ -89,7 +89,7 @@ describe("overviewWeather", () => {
       type: "Point" as const,
       coordinates: [139.5 + (i % 9) * gridStepDeg.longitude, 35.55 + Math.floor(i / 9) * gridStepDeg.latitude],
     },
-    properties: { speed: 3 + (i % 6), bearing: 90 },
+    properties: { speed: i % 9 >= 6 && i < 27 ? 9 : 2, bearing: 90 },
   }));
   const weather = {
     windVector: {
@@ -100,29 +100,26 @@ describe("overviewWeather", () => {
     },
   };
   const arrowSizePx = weatherMarkSizePx({ group: "windVector", source: "arrow" })!;
-  // メルカトルの地図の上の2点の間の長さ（px）。
-  const distancePx = (zoom: number, a: number[], b: number[]) => {
-    const pxPerDeg = (512 * 2 ** zoom) / 360;
-    return Math.hypot((a[0] - b[0]) * pxPerDeg, ((a[1] - b[1]) * pxPerDeg) / longitudeScale(latitude));
-  };
 
-  // 本体の倍率12では格子点が俯瞰図の上で矢印より狭く並び、14ではほぼ矢印の大きさで並ぶ。
+  // 本体の倍率12では弱い風の矢印も格子点の間隔より大きく、14では強い風の矢印だけが格子点の間隔より大きい。
   it.each([12, 14])(
-    "本体の倍率%sで、俯瞰図の矢印どうしは一番大きな矢印の1辺以上離れ、それより格子1つぶん以上は離れない",
+    "本体の倍率%sで、俯瞰図の矢印はどの2本も大きい方の1辺以上離れ、落とした矢印はどれも残した矢印のどれかと重なる",
     (mainZoom) => {
       const zoom = overviewZoom(latitude, mainZoom);
       const payload = overviewWeather(weather, zoom, latitude).windVector?.arrow?.payload;
-      const kept = payload !== undefined && "geojson" in payload ? payload.geojson.features : [];
-      const coordinates = kept.map((feature) => (feature.geometry as GeoJSON.Point).coordinates);
-      const largestPx = Math.max(...features.map((feature) => arrowSizePx(zoom, feature.properties)));
-      const gridPx = distancePx(zoom, [0, latitude], [gridStepDeg.longitude, latitude + gridStepDeg.latitude]);
+      const kept = new Set(payload !== undefined && "geojson" in payload ? payload.geojson.features : []);
+      // メルカトルの地図の上で、2本の矢印の真ん中どうしの長さが大きい方の1辺より短いか。
+      const pxPerDeg = (512 * 2 ** zoom) / 360;
+      const overlap = (a: (typeof features)[number], b: (typeof features)[number]) =>
+        Math.hypot(
+          (a.geometry.coordinates[0] - b.geometry.coordinates[0]) * pxPerDeg,
+          ((a.geometry.coordinates[1] - b.geometry.coordinates[1]) * pxPerDeg) / longitudeScale(latitude),
+        ) < Math.max(arrowSizePx(zoom, a.properties), arrowSizePx(zoom, b.properties));
+      const keptFeatures = features.filter((feature) => kept.has(feature));
 
-      expect(coordinates.length).toBeGreaterThanOrEqual(4);
-      const nearest = Math.min(
-        ...coordinates.flatMap((a, i) => coordinates.slice(i + 1).map((b) => distancePx(zoom, a, b))),
-      );
-      expect(nearest).toBeGreaterThanOrEqual(largestPx);
-      expect(nearest).toBeLessThan(largestPx + gridPx);
+      expect(keptFeatures.length).toBeGreaterThanOrEqual(4);
+      expect(keptFeatures.filter((a) => keptFeatures.some((b) => a !== b && overlap(a, b)))).toEqual([]);
+      expect(features.filter((a) => !kept.has(a) && !keptFeatures.some((b) => overlap(a, b)))).toEqual([]);
     },
   );
 });
