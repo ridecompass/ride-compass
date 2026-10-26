@@ -1,5 +1,4 @@
-"""地点の検索の段取り: 対象範囲と住所と施設を同じ接続でDBから読み、住所と施設を並べる。置いた位置の辺りと、施設を外の地図で
-開く URL も引く。
+"""地点の検索の段取り: 対象範囲と住所と施設を同じ接続でDBから読み、住所と施設を並べる。置いた位置の辺りも引く。
 
 対象範囲はサービスの対象範囲（取り込んだ道路の範囲、`RegionService.get_ingested_area`）で、範囲の外の地点では
 ルートを作れない。施設は範囲で絞る。住所の区画の表は派生の段が範囲の中の区画だけを入れるので、範囲で絞らない。
@@ -10,7 +9,7 @@ from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 
 from app.domain.geo import LatLon
-from app.domain.place_search import PlaceArea, PlaceSearchResult, external_map_search_url
+from app.domain.place_search import PlaceArea, PlaceSearchResult
 from app.infrastructure.address_search import AddressSearchQuery
 from app.infrastructure.place_area_query import PlaceAreaQuery
 from app.infrastructure.stop_place_search import StopPlaceSearchQuery
@@ -49,7 +48,3 @@ class PlaceSearchService:
         """`point`を含む小地域の境界の辺り。範囲では絞らない（境界の生データは取込の範囲に掛かる都道府県の分だけ）。"""
         async with self._open_reads() as reads:
             return PlaceArea(area=await reads.areas.area_at(point))
-
-    async def external_map_url(self, name: str, point: LatLon) -> str:
-        """施設`name`（位置`point`）を外の地図で開く URL。辺りは置いた位置の辺りと同じく位置から引く。"""
-        return external_map_search_url(name, (await self.area_at(point)).area, point)

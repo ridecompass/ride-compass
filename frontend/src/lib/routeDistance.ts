@@ -185,11 +185,16 @@ export function projectOnTrack(track: readonly RouteTrackEdge[], position: Coord
   });
 }
 
-/** 地点`position`を区間`segment`の道なりの形に当てた点の、区間の始まりからの距離（km）と、地点からの隔たり（m）。 */
-export function alongSegment(segment: RouteSegmentShape, position: Coordinates): TrackProjection {
-  const projections = projectOnTrack(routeTrack([segment]), position);
+/** 地点`position`を道なりの形`track`に当てた、いちばん近い点の距離（km）と、地点からの隔たり（m）。 */
+export function nearestOnTrack(track: readonly RouteTrackEdge[], position: Coordinates): TrackProjection {
+  const projections = projectOnTrack(track, position);
   const nearest = projections.reduce((best, p) => (p.offsetM < best.offsetM ? p : best), projections[0]);
   return nearest ?? { km: 0, offsetM: 0 };
+}
+
+/** 地点`position`を区間`segment`の道なりの形に当てた点の、区間の始まりからの距離（km）と、地点からの隔たり（m）。 */
+function alongSegment(segment: RouteSegmentShape, position: Coordinates): TrackProjection {
+  return nearestOnTrack(routeTrack([segment]), position);
 }
 
 /** 選んだ地点`picked`を区間`column`の道なりの形に当てた、ルートの上の距離。 */

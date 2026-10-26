@@ -54,8 +54,6 @@ class Settings(BaseSettings):
     place_search_rate_limit_per_minute: int = math.ceil(60 / PLACE_PREDICTION_DELAY_SECONDS)
     # 置いた位置の辺りは、地点を置く（地図をタップする・現在地を取る）たびに1回呼ばれる。1件は境界を索引で1つ引くだけ。
     place_area_rate_limit_per_minute: int = 60
-    # 施設を外の地図で開く転送は、利用者が施設の名前のリンクを押すたびに1回呼ばれる。1件は境界を索引で1つ引くだけ。
-    place_link_rate_limit_per_minute: int = 60
     # ルート生成は最も高コストなエンドポイント（1件で数秒〜数十秒CPUを使い、探索範囲に比例して
     # メモリを使う）のため、per-IPレート制限に加えプロセス全体の同時実行数も絞る。
     # 同時に動く生成は、この件数の枠とは別に、探索範囲の大きさに比例するメモリを分け合う（`services/graph_service.py: SearchMemory`）。

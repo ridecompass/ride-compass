@@ -9,11 +9,10 @@
 """
 
 from typing import Annotated, Literal
-from urllib.parse import quote, urlencode
 
 from pydantic import StringConstraints
 
-from app.domain.geo import LatLon, Latitude, Longitude
+from app.domain.geo import Latitude, Longitude
 from app.domain.strict_model import StrictModel
 
 #: 候補の種類。
@@ -90,15 +89,3 @@ class PlaceArea(StrictModel):
     #: 位置を含む小地域の境界の、市区町村から町丁・字までの名前（施設の辺りと同じ形。「新宿区西新宿二丁目」）。
     #: 名前を持つ境界に含まれなければ持たない（海の上・取り込んだ境界の外・名前の無い境界の中）。
     area: str | None
-
-
-#: 外の地図で探す施設の名前の長さの上限。立ち寄り先の表の名前が収まる長さ（実測は`docs/modules/backend/place-search.md`「外の地図で開く」）。
-PLACE_LINK_NAME_MAX_LENGTH = 200
-PlaceLinkName = Annotated[str, StringConstraints(min_length=1, max_length=PLACE_LINK_NAME_MAX_LENGTH)]
-
-
-def external_map_search_url(name: str, area: str | None, point: LatLon) -> str:
-    """施設を外の地図（Google マップの公式の「Maps URLs」の`search`）で開く URL。名前の検索を場所で絞る欄は無いので、
-    特定の店へ結ぶ公式の形「名前,住所」に辺りを住所として渡す。辺りが無ければ名前に座標を添える（同じ名前の別の店へ飛びうる）。"""
-    query = f"{name},{area}" if area is not None else f"{name} {point.latitude:.6f},{point.longitude:.6f}"
-    return f"https://www.google.com/maps/search/?{urlencode({'api': 1, 'query': query}, quote_via=quote)}"

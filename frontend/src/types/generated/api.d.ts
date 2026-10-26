@@ -212,22 +212,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/place-link": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["place_link_api_place_link_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/region/road-surface-tiles/{z}/{x}/{y}.pbf": {
         parameters: {
             query?: never;
@@ -2763,37 +2747,6 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["PlaceArea"];
                 };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    place_link_api_place_link_get: {
-        parameters: {
-            query: {
-                name: string;
-                latitude: number;
-                longitude: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            302: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
             };
             /** @description Validation Error */
             422: {
