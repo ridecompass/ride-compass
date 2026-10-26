@@ -4,7 +4,8 @@
  * 文字数から、打つのが止まると引く（かな漢字の変換中は引かない）。文字数に足りなくなると候補を下げる。引いたあとに地図を
  * 動かしても引き直さない。引けないとき・当たらないときはそう出す。打つ欄を押すと保存した地点を出し、打った文字を名前に含むものに
  * 絞り、選んだ地点を上げる。狭い画面では、欄を押してから閉じるまで欄を上側に出したままにし、その間は地図で置く待ちでも欄の空の
- * 案内に地図で置く案内を出さない。
+ * 案内に地図で置く案内を出さない。住所・施設の候補か履歴を選ぶと履歴に残し、次に欄を押すと保存した地点の下に新しい順に出し、
+ * 打った文字で絞り、1件ずつ消せる。
  *
  * ここで見ないもの:
  * - 置いた地点の辺り・代表の位置と、置いた地点の保存 → `RouteForm/PointDetail.test.tsx`
@@ -13,9 +14,10 @@
  * - 選んだ候補を置いたあとに、置ける状態を解くこと → `features/route/useGenerationConditions.points.test.ts`
  * - 狭い画面で、候補が出ている間に欄と候補をキーボードの上の見える範囲へ出すこと（レイアウトの実寸） → `e2e/destination.spec.ts`
  * - 打ちかけの語の続きの候補・施設の候補とその並びを返すこと → backend の `tests/test_place_search_route.py`
- * - 保存した地点の一覧の読み方 → `features/route/savedPlaces.test.ts`
+ * - 保存した地点の一覧の読み方、履歴の上限・同じ位置の置き換え・保存した地点と同じ位置を出さないこと →
+ *   `features/route/savedPlaces.test.ts`
  *
- * 差し替えたもの: 検索の口の応答（網の層）。保存した地点は本物の置き場（この端末の保存）を通す。
+ * 差し替えたもの: 検索の口の応答（網の層）。保存した地点と履歴は本物の置き場（この端末の保存）を通す。
  */
 import { act, fireEvent, screen, render, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -233,6 +235,55 @@ describe("PointSearch 保存した地点", () => {
     expect(onChoose).toHaveBeenCalledExactlyOnceWith(HOME);
     expect(screen.queryByRole("list", { name: "保存した地点" })).toBeNull();
     expect(searchBox()).toHaveValue("");
+  });
+});
+
+describe("PointSearch 検索の履歴", () => {
+  const history = () => screen.getByRole("list", { name: "検索の履歴" });
+  const rows = () =>
+    within(history())
+      .getAllByRole("button", { name: /^(?!.*履歴から消す)/ })
+      .map((row) => row.textContent);
+
+  it("選んだ候補を次に欄を押したとき新しい順に出し、選ぶとその地点を上げ、打った文字で絞り、1件ずつ消せる", async () => {
+    onBackend("GET", "/api/place-search", (request) =>
+      Response.json({ candidates: request.query.q === "浅草寺" ? [FACILITY] : [AZA] }),
+    );
+    const { onChoose } = renderSearch();
+    for (const [text, name] of [
+      ["丸の内", AZA.name],
+      ["浅草寺", FACILITY.name],
+    ]) {
+      await searchFor(text);
+      const list = await screen.findByRole("list", { name: "地点の候補" });
+      await userEvent.click(within(list).getByRole("button", { name: new RegExp(name) }));
+    }
+
+    await userEvent.click(searchBox());
+    expect(rows()).toEqual([`${FACILITY.name}${FACILITY.area}`, AZA.name]);
+
+    await userEvent.click(within(history()).getByRole("button", { name: AZA.name }));
+    expect(onChoose).toHaveBeenLastCalledWith(AZA);
+
+    await userEvent.click(searchBox());
+    expect(rows()).toEqual([AZA.name, `${FACILITY.name}${FACILITY.area}`]);
+    await userEvent.type(searchBox(), "浅草");
+    expect(rows()).toEqual([`${FACILITY.name}${FACILITY.area}`]);
+
+    await userEvent.click(screen.getByRole("button", { name: `${FACILITY.name}を履歴から消す` }));
+    await userEvent.clear(searchBox());
+    expect(rows()).toEqual([AZA.name]);
+  });
+
+  it("保存した地点を選んでも履歴に残さない", async () => {
+    storeSavedPlaces([{ ...FACILITY, name: "いつものカフェ" }]);
+    renderSearch();
+
+    await userEvent.click(searchBox());
+    await userEvent.click(within(screen.getByRole("list", { name: "保存した地点" })).getByRole("button"));
+    await userEvent.click(searchBox());
+
+    expect(screen.queryByRole("list", { name: "検索の履歴" })).toBeNull();
   });
 });
 

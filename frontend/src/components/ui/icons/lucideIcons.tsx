@@ -87,6 +87,10 @@ export const SavePlaceIcon = fromLucide(Star);
 export function SavedPlaceIcon({ size = 16 }: IconProps) {
   return <Star size={size} strokeWidth={LUCIDE_STROKE_WIDTH} fill="currentColor" />;
 }
+/** 検索で選んだ地点の履歴（保存した地点の塗った星と見分ける）。 */
+export const PlaceHistoryIcon = fromLucide(History);
+/** 検索で選んだ地点を履歴から消す。 */
+export const ForgetHistoryPlaceIcon = fromLucide(Trash);
 export const InfoIcon = fromLucide(Info, 14);
 export const ZoomInIcon = fromLucide(Plus);
 export const ZoomOutIcon = fromLucide(Minus);

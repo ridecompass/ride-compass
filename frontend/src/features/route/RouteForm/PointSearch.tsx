@@ -3,11 +3,12 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/Button/Button";
-import { SavedPlaceIcon } from "@/components/ui/icons/lucideIcons";
+import { ForgetHistoryPlaceIcon, PlaceHistoryIcon, SavedPlaceIcon } from "@/components/ui/icons/lucideIcons";
 import { textVariants } from "@/components/ui/Text/Text";
 import PlaceCandidates from "@/features/route/PlaceSearch/PlaceCandidates";
 import { PREDICTION_MIN_LENGTH, usePlaceLookup } from "@/features/route/PlaceSearch/usePlaceLookup";
-import { savedPlacesMatching } from "@/features/route/savedPlaces";
+import { historyMatching, savedPlacesMatching } from "@/features/route/savedPlaces";
+import { usePlaceHistory } from "@/features/route/usePlaceHistory";
 import type { SavedPlacesState } from "@/features/route/useSavedPlaces";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useVisualViewport } from "@/hooks/useVisualViewport";
@@ -31,7 +32,7 @@ interface PointSearchProps {
   placing: boolean;
   /** 地図でいま見ている所の真ん中。施設の候補はここから近い順に並ぶ。 */
   mapCenter: Coordinates;
-  /** 探して選んだ候補（保存した地点も）を、この地点として置く。 */
+  /** 探して選んだ候補（保存した地点・履歴も）を、この地点として置く。 */
   onChoose: (candidate: PlaceCandidate) => void;
   /** 保存した地点の一覧。打つ欄を押すと候補に出す。 */
   savedPlaces: SavedPlacesState;
@@ -53,7 +54,7 @@ function scrollToScrollerTop(element: HTMLElement) {
 
 /**
  * 住所・施設の名前を打って地点を置く欄と、その候補（欄のすぐ下）。欄を押すと、保存した地点のうち打った文字を名前に含むものを
- * 住所・施設の候補の上に出す。狭い画面では、欄を押してから選ぶ・閉じるまでは、欄のあった位置からせり上がって、欄と候補を
+ * 住所・施設の候補の上に出し、その下に検索で選んだ地点の履歴を新しい順に出す。狭い画面では、欄を押してから選ぶ・閉じるまでは、欄のあった位置からせり上がって、欄と候補を
  * 見えている範囲の上側に出す。
  */
 export default function PointSearch({
@@ -72,11 +73,13 @@ export default function PointSearch({
   const inputId = useId();
   const formRef = useRef<HTMLFormElement>(null);
   const listing = lookup.query !== "";
-  // 打つ欄を押してから、選ぶ・閉じるまでの間は、保存した地点を候補に出す。
+  const history = usePlaceHistory();
+  // 打つ欄を押してから、選ぶ・閉じるまでの間は、保存した地点と履歴を候補に出す。
   const [browsing, setBrowsing] = useState(false);
   const inputProps = lookup.inputProps();
   const savedMatches = browsing ? savedPlacesMatching(savedPlaces.places, inputProps.value) : [];
-  const listOpen = listing || savedMatches.length > 0;
+  const historyMatches = browsing ? historyMatching(history.places, savedPlaces.places, inputProps.value) : [];
+  const listOpen = listing || savedMatches.length > 0 || historyMatches.length > 0;
   // 狭い画面では、欄を押してから選ぶ・閉じるまでは、欄と候補を見えている範囲（キーボードの上まで）の上側に重ねて出し、候補は
   // その中で送る。シートの中では、欄の下の候補がシートの下端とキーボードの裏に入る。出す物の有無で上げ下げすると、打つ途中で
   // 欄が上側とシートを行き来してちらつく。欄は同じ要素のまま動かす（作り直すとキーボードが閉じる）。
@@ -128,6 +131,12 @@ export default function PointSearch({
   function choose(candidate: PlaceCandidate) {
     onChoose(candidate);
     closeList();
+  }
+
+  /** 住所・施設の候補か履歴を選ぶ（履歴に残す。保存した地点は保存した一覧から出すので残さない）。 */
+  function chooseFound(candidate: PlaceCandidate) {
+    history.remember(candidate);
+    choose(candidate);
   }
 
   return (
@@ -214,6 +223,39 @@ export default function PointSearch({
                 ))}
               </ul>
             )}
+            {historyMatches.length > 0 && (
+              <ul aria-label="検索の履歴" className="flex flex-col gap-0.5">
+                {historyMatches.map((place) => (
+                  <li key={`${place.latitude},${place.longitude}`} className="flex items-center gap-0.5">
+                    <Button
+                      variant="menu"
+                      size="sm"
+                      className="min-w-0 flex-auto whitespace-normal"
+                      onClick={() => chooseFound(place)}
+                      usage={`前に検索で選んだ地点です。選ぶと${chooseResult}。`}
+                    >
+                      <PlaceHistoryIcon size={14} />
+                      <span className="min-w-0 flex-auto [overflow-wrap:anywhere]">
+                        {place.name}
+                        {place.area !== null && (
+                          <span className={cn("ml-1.5", textVariants({ variant: "note" }))}>{place.area}</span>
+                        )}
+                      </span>
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-6 flex-none"
+                      onClick={() => history.forget(place)}
+                      aria-label={`${place.name}を履歴から消す`}
+                      usage="この地点を検索の履歴から消します。"
+                    >
+                      <ForgetHistoryPlaceIcon size={14} />
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
             {listing && (
               <PlaceCandidates
                 lookup={lookup}
@@ -222,7 +264,7 @@ export default function PointSearch({
                     variant="menu"
                     size="sm"
                     className="w-full"
-                    onClick={() => choose(candidate)}
+                    onClick={() => chooseFound(candidate)}
                     usage={`この候補を選ぶと${chooseResult}。`}
                   >
                     {candidateLabel}

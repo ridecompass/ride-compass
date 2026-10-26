@@ -487,7 +487,7 @@ localStorageへの保存・復元を1箇所に集約する。
   レンズの選択（`lens`）は`deserialize`が地図の軸カタログの`routeStyleModes`を参照するため、
   `axisCatalog.loaded`を`reloadKey`にする——カタログ取得前の1回だけで判定すると、軸を指す
   保存値が未知のidとして捨てられ、再訪のたびに総合難易度へ戻る。
-- `deserialize`が投げた・nullを返した保存値は既定値として扱う。保存した一覧（保存した地点・保存した設定・地図で
+- `deserialize`が投げた・nullを返した保存値は既定値として扱う。保存した一覧（保存した地点・検索の履歴・保存した設定・地図で
   外した項目）の`deserialize`は`lib/storedList.ts: readStoredList`を通し、読めない件だけを捨ててほかの件を残す
   （画面の形が変わったあとも、前に保存した一覧が丸ごと消えない）。
 - `rewrite`: 読めた値を今の`serialize`で書き戻す。前の形の保存を読み替える`deserialize`は、これで1度読めば今の形になる。

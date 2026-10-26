@@ -16,7 +16,7 @@
 | `features/route/RouteForm/RoutePoints.tsx` | 左端の周回の切り替えと、地点の並び（`PointStrip.tsx`）と、その右の並びに出ている地点を全部消す操作。押した地点の詳しく（`PointDetail.tsx`）を地点の役割ごとに組んで下に出す（下記「地点の指定」） |
 | `features/route/RouteForm/PointStrip.tsx` | 地点の並び（出発地 › 経由地の番号の丸・足す › 終点［周回の間は出発地、外せば目的地］）と、押した地点の選びと、番号の丸を押さえて動かす経由地の並び替え。並びが1行に入りきるかを測って両端の札の名前と丸の大きさを出し分ける（下記「地点の指定」） |
 | `features/route/RouteForm/PointDetail.tsx` | 押した地点の詳しく: 呼び名・名前・出どころ・辺りと、住所や施設の名前を打つ欄（`PointSearch.tsx`）・消す／現在地に戻す・置いた地点の保存（どれもアイコンだけの形。下記「地点の指定」「保存した地点」） |
-| `features/route/RouteForm/PointSearch.tsx` | 住所や施設の名前を打つ欄（候補は欄の下。狭い画面では欄を押してから選ぶ・閉じるまで、欄と候補を画面の上側に出す。欄を押すと保存した地点も出す）と、地図で置く間の欄の案内（下記「住所・施設で探す」「保存した地点」） |
+| `features/route/RouteForm/PointSearch.tsx` | 住所や施設の名前を打つ欄（候補は欄の下。狭い画面では欄を押してから選ぶ・閉じるまで、欄と候補を画面の上側に出す。欄を押すと保存した地点と検索の履歴も出す）と、地図で置く間の欄の案内（下記「住所・施設で探す」「保存した地点」） |
 | `components/PinMark/PointMark.tsx` | 並びの札・詳しく・道のりのグラフの経由地の印に出す、地図のピンと同じ図形の丸（`components/PinMark/PinMark.tsx`の中身に背景色を付けたもの。ルートの機能と地図の機能の両方が描くので共有の層に置く） |
 | `features/route/RouteForm/useRouteFormSubmit.ts` | 上記の検証（`{error, check}`。`features/route/RouteForm/useRouteFormSubmit.ts: check`は通ったかを返す）。「ルート生成」ボタン自体は`RouteForm`の外（`GenerateRouteActions.tsx`。見出し行）にあるため分離している（下記参照） |
 | `features/route/RouteSettingsPanel/RouteSettingsPanel.tsx` | 一般向け軸重み設定（「重み」タブの中身。地図の色分けはここになく`LensControl`のみが持つ、下記参照） |
@@ -25,7 +25,8 @@
 | `features/route/SavedPlacesPanel/SavedPlacesPanel.tsx` | 「保存済み」タブの「地点」の中身: 保存した地点の一覧（行は名前・辺りと、アイコンの「呼び出す」「消す」。呼び出すはメニューで出発地・経由地・目的地のどれに置くかを選び（周回の間は目的地を使わないので「目的地にする」を押せない）、消すは確認の窓で「消す」を押すと消す）。無ければ無いと出し、保存の仕方は(i)の奥（下記「保存した地点」） |
 | `features/route/SavedList/SavedList.tsx` | 「保存済み」タブの一覧（地点・プリセット）の形: 空の案内と保存の仕方の(i)・行の枠・消す操作と確認の窓。行の名前の欄と行ごとの操作（「呼び出す」）は使う側が渡す |
 | `features/route/useSavedPlaces.ts` | 保存した地点の一覧（この端末の`localStorage`）と、保存・削除 |
-| `features/route/savedPlaces.ts` | 保存した地点の形（探した候補と同じ形）と、保存値の読み方（今の画面が受け付けない件だけを捨てる）・同じ名前と同じ位置の置き換え・打った文字での絞り込み |
+| `features/route/savedPlaces.ts` | 保存した地点の形（探した候補と同じ形）と、保存値の読み方（今の画面が受け付けない件だけを捨てる）・同じ名前と同じ位置の置き換え・打った文字での絞り込み。検索で選んだ地点の履歴の入れ方（同じ位置の置き換えと件数の上限）・消し方・出す件（保存した地点と同じ位置を除く） |
+| `features/route/usePlaceHistory.ts` | 検索で選んだ地点の履歴（この端末の`localStorage`。保存した地点と同じ読み方）と、入れる・1件を消す。地点の打つ欄（`RouteForm/PointSearch.tsx`）が使う |
 | `features/route/SavedConditionsPanel/SavedConditionsPanel.tsx` | 「条件」タブの1行目に置くアイコンの「いまの設定を保存」（`features/route/SavedConditionsPanel/SavedConditionsPanel.tsx: SaveConditionsButton`。窓に保存する条件・出発地の扱いの切り替え・重み・除外と、名前の欄・保存のボタン）と、「保存済み」タブの「プリセット」の中身の保存した設定の一覧（行は名前と、アイコンの「呼び出す」「消す」。呼び出すは窓で中身を見せて「反映する」で呼び出し、消すは確認の窓で「消す」を押すと消す。無ければ無いと出し、保存の仕方は(i)の奥。下記「保存した条件」） |
 | `features/route/useSavedConditions.ts` | 保存した条件の一覧（この端末の`localStorage`）と、いまの条件（`useGenerationConditions.ts: snapshot`）の保存（出発地を固定するかを受け取る）・呼び出し・削除。呼び出すと`useGenerationConditions.ts: restore`で条件を入れ替え、出発地は位置の持ち主（`hooks/useLocation.ts`）へ渡す。軸カタログが届いたら、各件の避け方を今の行の鍵へ書き直して書き戻す（`features/route/savedConditions.ts: savedWithCurrentRoadKeys`） |
 | `features/route/savedConditions.ts` | 生成の条件の形（`features/route/savedConditions.ts: GenerationConditionsSnapshot`。いまの条件・保存・呼び出しが同じ形を使い、保存の1件はそれに名前と出発地を足す）と、保存値の読み方（項目ごとの読み方の表で読み、今の画面が受け付けない件だけを捨てる）・仮の名前・何が保存されるかの説明（`features/route/savedConditions.ts: describeConditions`。重みは軸ごとの割合）・同じ名前の上書き。距離・候補数として受け付ける範囲（`features/route/savedConditions.ts: acceptedDistanceInput`・`features/route/savedConditions.ts: acceptedMaxRoutesInput`）もここが持ち、`useGenerationConditions.ts`の保存値の読み直しと共有する。距離の刻み（`DISTANCE_STEP_KM`。5km刻みで、下限も1刻み分）は画面だけの値で、`RouteForm`のルーラーのコマも読み、保存値は刻みの近い方へ寄せて読む。候補数の下限・上限は生成物`route-generate-config.json`から読む |
@@ -381,7 +382,7 @@ useAxisCatalog() ──→ catalog.axes（公開軸一覧、is_published=Trueの
   読み替えの隣に書く。除外は今の項目へ揃え、道の避け方は今の行へ揃える（避け方を持たない件は既定の段で読む。前の鍵に選んだ段は、軸カタログが届いたら今の鍵へ移して書き戻す。`rewrite`は形を直すだけで、鍵は軸カタログが届くまで分からない）。重みは「重み」へ入れたあと、いつもの保存値と同じく軸カタログの公開軸へ揃える
   （「RouteSettingsPanel.tsx」）。
 
-## 保存した地点（SavedPlacesPanel.tsx・useSavedPlaces.ts・PointDetail.tsx・PointSearch.tsx）
+## 保存した地点（SavedPlacesPanel.tsx・useSavedPlaces.ts・usePlaceHistory.ts・PointDetail.tsx・PointSearch.tsx）
 
 よく行く場所に名前を付けてこの端末に保存し、探し直さずに出発地・経由地・目的地に置ける（保存先は保存した条件と同じく
 この端末の`localStorage`だけ）。保存は地点を置く所（条件タブの押した地点の詳しく）で行い、呼び出しは詳しくの打つ欄と、
@@ -396,6 +397,10 @@ useAxisCatalog() ──→ catalog.axes（公開軸一覧、is_published=Trueの
 - **呼び出し**: 詳しくの打つ欄を押すと、保存した地点を住所・施設の候補の上に出す（打った文字を名前に含むものだけ。候補と同じ枠の中で、
   ✕・選ぶ・Escapeで閉じる）。選ぶと、探した候補を選んだのと同じく置く（`useGenerationConditions.ts: placeFound`）ので、名前は詳しくと並びに出て、
   住所の地点には代表の位置と出る。
+- **検索の履歴**: 住所・施設の候補か履歴を選ぶと、その地点（名前・辺り・位置・種類と段）をこの端末の履歴に新しい順で残す（同じ位置は
+  置き換え、件数の上限を超えた古いものから捨てる。保存した地点を選んでも残さない——保存した一覧から出す）。欄を押すと保存した地点の下に、
+  時計の印で保存した地点の星と見分けて出し、保存した地点と同じ位置のものは出さない（同じ所を2つ並べない）。打った文字で名前を絞るのは保存した
+  地点と同じで、行の右のごみ箱で1件ずつ消せる。
 - **一覧から呼び出す**: 「地点」の一覧の行の「呼び出す」（保存した設定の行と同じアイコン）はメニューを開き、「出発地にする」
   「経由地に足す」「目的地にする」から選ぶ。選ぶと詳しくから選んだときと同じく置き（経由地は足す）、「条件」タブへ移って置いた
   地点を選び、その詳しくを出す——置いた結果を地点の並びと詳しくで確かめられるように。経由地が上限まで置いてあれば「経由地に足す」は
