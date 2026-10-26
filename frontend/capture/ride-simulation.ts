@@ -12,6 +12,8 @@ import type { CaptureScript } from "./context";
 
 /** 位置のぶれ（m）。実機の GPS の誤差の目安で、毎回この幅で散らす。 */
 const JITTER_M = 4;
+/** 位置に添える誤差（m）。端末が返す誤差は位置の多くが入る半径なので、縦横に散らした四角の対角まで覆う。 */
+const ACCURACY_M = JITTER_M * Math.SQRT2;
 const ORIENTATION_PER_SECOND = 30;
 const METERS_PER_DEGREE = 111_320;
 
@@ -86,7 +88,7 @@ const script: CaptureScript = async ({ page, fixtures, open, shot, expect }) => 
     );
 
   const [startLng, startLat] = line[0];
-  await page.context().setGeolocation({ latitude: startLat, longitude: startLng, accuracy: JITTER_M });
+  await page.context().setGeolocation({ latitude: startLat, longitude: startLng, accuracy: ACCURACY_M });
   await page.getByRole("button", { name: "走行モード" }).click();
   const zoom = process.env.RIDE_SIM_ZOOM === undefined ? null : Number(process.env.RIDE_SIM_ZOOM);
   if (zoom !== null) await page.evaluate((z) => window.__liveMap().zoomTo(z, { duration: 0 }), zoom);
@@ -114,7 +116,7 @@ const script: CaptureScript = async ({ page, fixtures, open, shot, expect }) => 
     const jitter = () => ((Math.random() - 0.5) * 2 * JITTER_M) / METERS_PER_DEGREE;
     await page
       .context()
-      .setGeolocation({ latitude: at[1] + jitter(), longitude: at[0] + jitter(), accuracy: JITTER_M });
+      .setGeolocation({ latitude: at[1] + jitter(), longitude: at[0] + jitter(), accuracy: ACCURACY_M });
     await page.evaluate((heading) => {
       (window as unknown as { __simHeading: number }).__simHeading = heading;
     }, bearing);

@@ -175,17 +175,40 @@ describe("useRideMode", () => {
       expect(asked).toBe(1);
       // 国土地理院の偏角の計算例の地点（東京。約7°36.5′の西偏）。
       geolocation.deliver({ latitude: 35.68, longitude: 139.7 });
-      expect(result.current.map?.facing).toBeNull();
+      expect(result.current.map?.facing.current()).toBeNull();
       act(() => {
         const event = new Event("deviceorientation");
         Object.assign(event, { webkitCompassHeading: 45, alpha: 0 });
         window.dispatchEvent(event);
       });
       // コンパスの読みは磁北が基準なので、偏角の分だけ戻す。
-      expect(result.current.map?.facing).toBeCloseTo(45 - (7 + 36.5 / 60), 2);
+      expect(result.current.map?.facing.current()).toBeCloseTo(45 - (7 + 36.5 / 60), 2);
     } finally {
       holder.DeviceOrientationEvent = undefined;
     }
+  });
+
+  it("スマホの向きの出来事が届いても走行モードを持つ所を描き直さず、向きを読む所にだけ知らせる", () => {
+    let renders = 0;
+    const { result } = renderHook(() => {
+      renders += 1;
+      return useRideMode(PLAUSIBLE_MAX_KMH);
+    });
+    act(() => result.current.press());
+    geolocation.deliver({ latitude: 35.68, longitude: 139.7 });
+    const facing = result.current.map!.facing;
+    let notified = 0;
+    const stop = facing.subscribe(() => (notified += 1));
+    const before = renders;
+    act(() => {
+      for (const alpha of [270, 260, 250]) {
+        window.dispatchEvent(Object.assign(new Event("deviceorientationabsolute"), { alpha }));
+      }
+    });
+    stop();
+    expect(renders).toBe(before);
+    expect(notified).toBe(3);
+    expect(facing.current()).not.toBeNull();
   });
 
   it("画面を離れたら受け取りをやめる", () => {

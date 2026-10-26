@@ -255,7 +255,7 @@ localStorageキーは`ridecompass:route-style-mode`。今のカタログに無�
 - **選んだ区間の範囲の縁取り**（役割`selectedSection`）は、ルートの段のいちばん後ろに置く。選んでいる候補の縁取り
   （役割`selectedHalo`）より太い半透明の線で、どのルートの線にも隠されない外側へはみ出た所で範囲を示す（中身は
   [ルート設定・結果パネル](route-settings-and-results.md)「区間クリック詳細（selectedRouteSegment）」）。
-- **走り終えた所は薄める**: 走行モードの間、選択中候補の区間を走り終えた地点で分け、手前の色分け線と縁取りを
+- **走り終えた所は薄める**: 走行モードの間、選択中候補の区間を走り終えた地点（刻みへ切り下げる）で分け、手前の色分け線と縁取りを
   `mapDisplay.route.opacities.travelled`の濃さにする（区間の属性`travelled`で見分ける）。距離の決め方はpage-composition.md「走行モード」。
 
 - **進行方向の矢印は、本体を白・縁を濃色にする。** 区間の色分けはレンズのモードで紺・緑・赤・
