@@ -181,6 +181,29 @@ describe("走行モード", () => {
     expect(drawn.map((feature) => feature.properties?.travelled ?? false)).toEqual([true, false]);
   });
 
+  it("地図のルート線を薄める所は、走った距離が刻みをまたいだときだけ動かす（刻みの中の動きでは線を入れ直さない）", async () => {
+    const geolocation = installGeolocation(HERE);
+    const { user } = renderHome();
+    jobs.respond([RIDDEN], LOOP_CONDITIONS);
+    await generate(user);
+    await waitFor(() => expect(candidateTabs()).toHaveLength(1));
+    await user.click(screen.getByRole("button", { name: "走行モード" }));
+    // 東へ1kmのルートの上で0.51km・0.52km・0.56km。誤差を小さくし、どの位置も走行の値へ流れる動きにする。
+    const shadedEnd = () => {
+      const [travelled] = mapOnScreen()
+        .sourceFeatures("route-segments")
+        .filter((feature) => feature.properties?.travelled === true);
+      const line = travelled.geometry as GeoJSON.LineString;
+      return line.coordinates.at(-1);
+    };
+    geolocation.deliver({ latitude: 35.7, longitude: 139.7051, accuracy: 2, timestamp: 0 });
+    const first = shadedEnd();
+    geolocation.deliver({ latitude: 35.7, longitude: 139.7052, accuracy: 2, timestamp: 1_000 });
+    expect(shadedEnd()).toEqual(first);
+    geolocation.deliver({ latitude: 35.7, longitude: 139.7056, accuracy: 2, timestamp: 2_000 });
+    expect(shadedEnd()![0]).toBeGreaterThan(first![0]);
+  });
+
   it("走行中は、現在地より先でいちばん近い曲がる所の向きと距離を地図の上のカードに出し、その地点にカードと同じ矢印の札を出す", async () => {
     const geolocation = installGeolocation(HERE);
     const { user } = renderHome();

@@ -67,15 +67,15 @@ describe("useDeviceHeading", () => {
     });
     act(() => result.current.request());
     orient("deviceorientationabsolute", { alpha: 270 });
-    expect(result.current.heading).toBeCloseTo(90, 6);
+    expect(result.current.heading.current()).toBeCloseTo(90, 6);
     // 同じ端末が並べて出す、北を基準にしない向きの出来事は読まない。
     orient("deviceorientation", { alpha: 0 });
-    expect(result.current.heading).toBeCloseTo(90, 6);
+    expect(result.current.heading.current()).toBeCloseTo(90, 6);
 
     rerender({ active: false });
-    expect(result.current.heading).toBeNull();
+    expect(result.current.heading.current()).toBeNull();
     orient("deviceorientationabsolute", { alpha: 180 });
-    expect(result.current.heading).toBeNull();
+    expect(result.current.heading.current()).toBeNull();
   });
 
   it("iPhone では始める操作の中で許しを求め、断られたら方角を出さない", async () => {
@@ -83,7 +83,7 @@ describe("useDeviceHeading", () => {
     const { result } = renderHook(() => useDeviceHeading(true));
     await act(async () => result.current.request());
     orient("deviceorientation", { webkitCompassHeading: 90, alpha: 0 });
-    expect(result.current.heading).toBeNull();
+    expect(result.current.heading.current()).toBeNull();
     // 利用者が断った答えは、求め直しても変わらないので、求め直す口を出さない。
     expect(result.current.requestAgain).toBeNull();
   });
@@ -95,7 +95,7 @@ describe("useDeviceHeading", () => {
     });
     await act(async () => result.current.request());
     orient("deviceorientation", { webkitCompassHeading: 90, alpha: 0 });
-    expect(result.current.heading).toBeNull();
+    expect(result.current.heading.current()).toBeNull();
     // 位置を受けていない間は、求め直しても読まないので出さない。
     rerender({ active: false });
     expect(result.current.requestAgain).toBeNull();
@@ -106,6 +106,6 @@ describe("useDeviceHeading", () => {
     await act(async () => result.current.requestAgain?.());
     expect(result.current.requestAgain).toBeNull();
     orient("deviceorientation", { webkitCompassHeading: 90, alpha: 0 });
-    expect(result.current.heading).toBeCloseTo(90, 6);
+    expect(result.current.heading.current()).toBeCloseTo(90, 6);
   });
 });
