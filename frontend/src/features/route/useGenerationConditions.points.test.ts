@@ -1,6 +1,6 @@
 /**
  * 生成の条件（`useGenerationConditions.ts`）の地点（出発地以外）——地図のタップで置く地点の選び（経由地は足すか、何番目を
- * 置き直すか）と、経由地・目的地を動かす・消すこと、経由地の通る順の入れ替えと、検索・名前のある点で置いた地点の候補（その位置のままの間だけ）。
+ * 置き直すか）と、経由地・目的地を動かす・消すこと、出発地・経由地・目的地の通る順の入れ替えと、検索・名前のある点で置いた地点の候補（その位置のままの間だけ）。
  * 地点は保存しない。
  *
  * ここで見ないもの:
@@ -17,13 +17,16 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { heldReplies, onBackend } from "@/testing/backendServer";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
-import type { Coordinates, PlaceCandidate } from "@/types/route";
+import type { Coordinates, PlaceCandidate, PointTarget } from "@/types/route";
 
 import { useGenerationConditions } from "./useGenerationConditions";
 
 const A: Coordinates = { latitude: 35.1, longitude: 139.1 };
 const B: Coordinates = { latitude: 35.2, longitude: 139.2 };
 const C: Coordinates = { latitude: 35.3, longitude: 139.3 };
+const D: Coordinates = { latitude: 35.4, longitude: 139.4 };
+/** 出発地の位置（位置の持ち主が持ち、入れ替えのときに渡す）。 */
+const O: Coordinates = { latitude: 35.5, longitude: 139.5 };
 
 function renderConditions() {
   const onOriginPlace = vi.fn();
@@ -160,45 +163,119 @@ describe("地点", () => {
     expect(result.current.destination).toBeNull();
   });
 
-  // 生成の入力（`snapshot`）の経由地がその順になり、選んでいた経由地は番号が変わっても同じ地点を選んだままにする（番号のままだと、
-  // 詳しくと地図のタップが入れ替わった別の経由地を指す）。
+  // 生成の入力（`snapshot`）の地点が置いた位置の役割になり（先頭は位置の持ち主へ出発地として渡す）、選んでいた地点は番号・役割が
+  // 変わっても同じ地点を選んだままにする（番号のままだと、詳しくと地図のタップが入れ替わった別の地点を指す）。並びは
+  // 出発地O・経由地A・B・C・目的地（置いていれば）。
   it.each([
     {
       label: "動かした経由地を選んでいれば、動かした先を選ぶ",
-      from: 1,
-      to: 0,
-      order: [B, A, C],
-      selected: 1,
-      after: 0,
+      destination: null,
+      from: 2,
+      to: 1,
+      selected: { role: "waypoint", index: 1 },
+      waypoints: [B, A, C],
+      after: { role: "waypoint", index: 0 },
     },
     {
       label: "前へ動かした経由地に追い越されたら、1つ後ろを選ぶ",
-      from: 2,
-      to: 0,
-      order: [C, A, B],
-      selected: 1,
-      after: 2,
+      destination: null,
+      from: 3,
+      to: 1,
+      selected: { role: "waypoint", index: 1 },
+      waypoints: [C, A, B],
+      after: { role: "waypoint", index: 2 },
     },
     {
       label: "後ろへ動かした経由地に追い越されたら、1つ前を選ぶ",
-      from: 0,
-      to: 2,
-      order: [B, C, A],
-      selected: 2,
-      after: 1,
+      destination: null,
+      from: 1,
+      to: 3,
+      selected: { role: "waypoint", index: 2 },
+      waypoints: [B, C, A],
+      after: { role: "waypoint", index: 1 },
     },
-    { label: "動かした範囲の外の経由地は、同じ番号のまま", from: 0, to: 1, order: [B, A, C], selected: 2, after: 2 },
-  ])("経由地の順を入れ替える: $label", ({ from, to, order, selected, after }) => {
-    const { result } = renderConditions();
+    {
+      label: "動かした範囲の外の経由地は、同じ番号のまま",
+      destination: null,
+      from: 1,
+      to: 2,
+      selected: { role: "waypoint", index: 2 },
+      waypoints: [B, A, C],
+      after: { role: "waypoint", index: 2 },
+    },
+    {
+      label: "経由地を先頭へ動かすと出発地になり、前の出発地は経由地1になる",
+      destination: null,
+      from: 2,
+      to: 0,
+      selected: { role: "waypoint", index: 1 },
+      origin: B,
+      waypoints: [O, A, C],
+      after: { role: "origin" },
+    },
+    {
+      label: "目的地を間へ動かすと経由地になり、最後の経由地が目的地になる",
+      destination: D,
+      from: 4,
+      to: 1,
+      selected: { role: "destination" },
+      waypoints: [D, A, B],
+      placedDestination: C,
+      after: { role: "waypoint", index: 0 },
+    },
+    {
+      label: "置いていない目的地の席へ経由地を動かすと、目的地になる",
+      destination: null,
+      from: 1,
+      to: 4,
+      selected: { role: "waypoint", index: 0 },
+      waypoints: [B, C],
+      placedDestination: A,
+      after: { role: "destination" },
+    },
+  ] satisfies {
+    label: string;
+    destination: Coordinates | null;
+    from: number;
+    to: number;
+    selected: PointTarget;
+    origin?: Coordinates;
+    waypoints: Coordinates[];
+    placedDestination?: Coordinates;
+    after: PointTarget;
+  }[])(
+    "通る順を入れ替える: $label",
+    ({ destination, from, to, selected, origin, waypoints, placedDestination, after }) => {
+      const { result, onOriginPlace } = renderConditions();
+      act(() => result.current.selectPoint({ role: "waypoint", index: null }));
+      for (const at of [A, B, C]) act(() => result.current.placeAtSelected(at, null));
+      if (destination !== null) act(() => result.current.setDestination(destination));
+      act(() => result.current.selectPoint(selected));
+
+      act(() => result.current.reorderPoints(from, to, O));
+
+      expect(result.current.snapshot.waypoints).toEqual(waypoints);
+      expect(result.current.snapshot.destination).toEqual(placedDestination ?? destination);
+      if (origin === undefined) expect(onOriginPlace).not.toHaveBeenCalled();
+      else expect(onOriginPlace).toHaveBeenCalledExactlyOnceWith(origin);
+      expect(result.current.selectedPoint).toEqual(after);
+    },
+  );
+
+  it("周回の間は目的地を並びに入れず、出発地を動かすと、次の地点が出発地になり、覚えている目的地はそのまま残す", () => {
+    const { result, onOriginPlace } = renderConditions();
+    act(() => result.current.setDestination(D));
+    act(() => result.current.setLoop(true));
     act(() => result.current.selectPoint({ role: "waypoint", index: null }));
-    for (const at of [A, B, C]) act(() => result.current.placeAtSelected(at, null));
-    act(() => result.current.selectPoint({ role: "waypoint", index: selected }));
+    for (const at of [A, B]) act(() => result.current.placeAtSelected(at, null));
+    act(() => result.current.selectPoint({ role: "origin" }));
 
-    act(() => result.current.reorderWaypoint(from, to));
+    act(() => result.current.reorderPoints(0, 2, O));
 
-    expect(result.current.snapshot.waypoints).toEqual(order);
-    expect(result.current.selectedPoint).toEqual({ role: "waypoint", index: after });
-    expect(result.current.waypoints[after]).toEqual([A, B, C][selected]);
+    expect(onOriginPlace).toHaveBeenCalledExactlyOnceWith(A);
+    expect(result.current.snapshot.waypoints).toEqual([B, O]);
+    expect(result.current.snapshot.destination).toEqual(D);
+    expect(result.current.selectedPoint).toEqual({ role: "waypoint", index: 1 });
   });
 
   it("経由地と目的地は一度に消せ、出発地はそのまま残し、出発地を選んでいることに戻る", () => {

@@ -1,14 +1,14 @@
 "use client";
 
-import { useLayoutEffect, useRef, useState, type PointerEvent } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/Button/Button";
-import { reorderedIndex } from "@/features/route/useGenerationConditions";
 import { cn } from "@/lib/cn";
-import { TAP_SLOP_PX } from "@/lib/tapSlop";
 import type { PointTarget } from "@/types/route";
 
 import PointMark from "@/components/PinMark/PointMark";
+
+import { useReorderDrag } from "./useReorderDrag";
 
 interface PointStripProps {
   /** 出発地へ戻る周回か。周回の間の終点は出発地で、押せない。 */
@@ -45,17 +45,6 @@ const WAYPOINT_MARK_SMALL_PX = 18;
 
 /** 並びを1行に入れる段（両端の名前と大きい丸／名前を隠して大きい丸／名前を隠して小さい丸）。 */
 type StripFitting = "names" | "large-marks" | "small-marks";
-
-/** 押さえている経由地の番号の丸（何番目か・押さえた指・押さえた所からの横の動き・丸1つ分の幅）。 */
-interface WaypointDrag {
-  from: number;
-  pointerId: number;
-  startX: number;
-  dx: number;
-  step: number;
-  /** 押した所から動かしたか（動かしたら、離しても押したことにしない）。 */
-  moved: boolean;
-}
 
 /**
  * 「出発地 › ①②③… ＋ › 終点」の並び（経由地は地図のピンと同じ番号の丸。経由地が増えても出発地と終点が欠けず、スクロールも
@@ -114,48 +103,8 @@ export default function PointStrip({
     return () => observer.disconnect();
   }, [fitting, originName, destinationName, waypointCount]);
 
-  // 経由地の番号の丸を押さえたまま左右へ動かすと、指の下へ丸を付いてこさせ、入る所を空けて見せ、離した所へ動かす。丸は隙間なく
-  // 同じ幅で並ぶので、入る所は動かした丸の数で決まる。
-  const [drag, setDrag] = useState<WaypointDrag | null>(null);
-  // 動かして離したあとに届くclickで、押した丸を選ばない（同じ操作の終わりにclickが飛ぶ）。clickが来ないまま次に押したときは、
-  // その押した操作のclickを捨てないよう、押すたびに戻す。
-  const swallowClickRef = useRef(false);
-  const dropIndex = (current: WaypointDrag) =>
-    Math.min(waypointCount - 1, Math.max(0, current.from + Math.round(current.dx / current.step)));
-  const pressWaypoint = (index: number, event: PointerEvent<HTMLButtonElement>) => {
-    swallowClickRef.current = false;
-    if (!event.isPrimary || waypointCount < 2) return;
-    event.currentTarget.setPointerCapture(event.pointerId);
-    setDrag({
-      from: index,
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      dx: 0,
-      step: event.currentTarget.getBoundingClientRect().width,
-      moved: false,
-    });
-  };
-  const moveWaypointMark = (event: PointerEvent<HTMLButtonElement>) => {
-    if (drag === null || event.pointerId !== drag.pointerId || drag.step <= 0) return;
-    const dx = event.clientX - drag.startX;
-    setDrag({ ...drag, dx, moved: drag.moved || Math.abs(dx) > TAP_SLOP_PX });
-  };
-  const releaseWaypoint = (event: PointerEvent<HTMLButtonElement>) => {
-    if (drag === null || event.pointerId !== drag.pointerId) return;
-    setDrag(null);
-    if (!drag.moved) return;
-    swallowClickRef.current = true;
-    const to = dropIndex(drag);
-    if (to !== drag.from) reorderWaypoint(drag.from, to);
-  };
-  const shownDrag = drag?.moved ? drag : null;
-  const shownDrop = shownDrag === null ? null : dropIndex(shownDrag);
-  /** 経由地`index`の丸を、いまの位置からどれだけ横へずらして描くか（引きずる丸は指に付け、ほかは入る所を空ける）。 */
-  const offsetOf = (index: number) => {
-    if (shownDrag === null || shownDrop === null) return 0;
-    if (index === shownDrag.from) return shownDrag.dx;
-    return (reorderedIndex(index, shownDrag.from, shownDrop) - index) * shownDrag.step;
-  };
+  // 経由地の番号の丸を押さえたまま左右へ動かして、通る順を入れ替える。
+  const drag = useReorderDrag({ count: waypointCount, onReorder: reorderWaypoint });
 
   const chipClass = cn("rounded-full", pressableClass);
   const arrow = (
@@ -218,21 +167,17 @@ export default function PointStrip({
               chipClass,
               "touch-pan-y border-transparent p-px select-none [-webkit-touch-callout:none]",
               // 引きずる丸は指に付けて遅らせず、ほかの丸は入る所を空けるときに滑らせる。
-              shownDrag?.from === index ? "relative z-10 scale-110" : "transition-transform",
+              drag.dragging === index ? "relative z-10 scale-110" : "transition-transform",
             )}
-            style={{ translate: `${offsetOf(index)}px 0` }}
+            style={{ translate: `${drag.offsetOf(index)}px 0` }}
             aria-pressed={isShown({ role: "waypoint", index })}
             aria-label={`経由地${index + 1}: ${name}`}
-            onPointerDown={(event) => pressWaypoint(index, event)}
-            onPointerMove={moveWaypointMark}
-            onPointerUp={releaseWaypoint}
-            onPointerCancel={() => setDrag(null)}
+            onPointerDown={(event) => drag.press(index, event)}
+            onPointerMove={drag.move}
+            onPointerUp={drag.release}
+            onPointerCancel={drag.cancel}
             onClick={() => {
-              if (swallowClickRef.current) {
-                swallowClickRef.current = false;
-                return;
-              }
-              selectPoint({ role: "waypoint", index });
+              if (drag.pressed()) selectPoint({ role: "waypoint", index });
             }}
             usage={
               waypointCount < 2

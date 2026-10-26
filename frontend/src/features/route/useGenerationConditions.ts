@@ -32,7 +32,7 @@ export function waypointsFull(waypoints: readonly Coordinates[]): boolean {
   return waypoints.length >= routeGenerateConfig.max_waypoints;
 }
 
-/** 経由地の`from`番目を`to`番目へ動かしたあと、いま`index`番目の経由地が何番目になるか（間の経由地は1つずつ詰まる）。 */
+/** 並びの`from`番目を`to`番目へ動かしたあと、いま`index`番目のものが何番目になるか（間のものは1つずつ詰まる）。 */
 export function reorderedIndex(index: number, from: number, to: number): number {
   if (index === from) return to;
   if (from < index && index <= to) return index - 1;
@@ -90,20 +90,41 @@ export function useGenerationConditions({ onOriginPlace }: GenerationConditionsI
   );
 
   const selectPoint = useCallback((target: PointTarget) => setChosenPoint(target), []);
-  // 経由地の通る順を入れ替える。選んでいる経由地は、番号ではなく同じ地点に付けたままにする（番号のまま残すと、入れ替わった
-  // 別の経由地を選んだことになる）。
-  const reorderWaypoint = useCallback((from: number, to: number) => {
-    setWaypoints((prev) => {
-      const next = [...prev];
+  // 通る順の並び（出発地・経由地・目的地。周回の間は目的地を除く）の`from`番目を`to`番目へ動かし、置いた位置の役割にする。
+  // 置いていない目的地は空の席として並びの末尾にあり、経由地をそこへ動かすと目的地になる。出発地は位置の持ち主が持つので、
+  // 呼び出し側が今の位置を渡す（先頭が変わったら、新しい先頭を出発地として置く。現在地を追っていた出発地も、動かした時点の
+  // 位置の地点になる）。選んでいる地点は、番号・役割ではなく同じ地点に付けたままにする（番号のまま残すと、入れ替わった別の
+  // 地点を選んだことになる）。
+  const reorderPoints = useCallback(
+    (from: number, to: number, origin: Coordinates) => {
+      const order: (Coordinates | null)[] = [origin, ...waypoints, ...(loop ? [] : [placedDestination])];
+      const next = [...order];
       next.splice(to, 0, ...next.splice(from, 1));
-      return next;
-    });
-    setChosenPoint((current) =>
-      current?.role !== "waypoint" || current.index === null
-        ? current
-        : { role: "waypoint", index: reorderedIndex(current.index, from, to) },
-    );
-  }, []);
+      const [first] = next;
+      if (first === null) return;
+      const last = loop ? next.length : next.length - 1;
+      if (first !== origin) onOriginPlace(first);
+      setWaypoints(next.slice(1, last).filter((point) => point !== null));
+      if (!loop) setDestination(next[last]);
+      if (chosenPoint === null || (chosenPoint.role === "waypoint" && chosenPoint.index === null)) return;
+      const chosenAt =
+        selectedPoint.role === "origin"
+          ? 0
+          : selectedPoint.role === "destination"
+            ? last
+            : (selectedPoint.index ?? 0) + 1;
+      if (order[chosenAt] === null) return;
+      const movedTo = reorderedIndex(chosenAt, from, to);
+      setChosenPoint(
+        movedTo === 0
+          ? { role: "origin" }
+          : !loop && movedTo === last
+            ? { role: "destination" }
+            : { role: "waypoint", index: movedTo - 1 },
+      );
+    },
+    [waypoints, loop, placedDestination, onOriginPlace, chosenPoint, selectedPoint],
+  );
   // 経由地を消すと後ろの番号を詰めるので、選んでいる経由地も同じに詰める（番号のまま残すと、次の経由地を選んだことになる）。
   const removeWaypoint = useCallback((index: number) => {
     setWaypoints((prev) => prev.filter((_, i) => i !== index));
@@ -288,7 +309,9 @@ export function useGenerationConditions({ onOriginPlace }: GenerationConditionsI
     waypoints,
     removeWaypoint,
     moveWaypoint,
-    reorderWaypoint,
+    reorderPoints,
+    /** 地点を選んで出しているか（何も選んでいない間の`selectedPoint`は出発地）。 */
+    pointChosen: chosenPoint !== null,
     /** 生成と画面（地点の並び・地図のピン）が使う目的地（周回の間はnull）。 */
     destination,
     setDestination,

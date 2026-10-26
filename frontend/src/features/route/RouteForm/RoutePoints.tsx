@@ -12,6 +12,7 @@ import type { Coordinates, PinRole, PlaceCandidate } from "@/types/route";
 import { MAP_PLACED, pointNames } from "@/features/route/pointNames";
 
 import PointDetail from "./PointDetail";
+import PointOrder from "./PointOrder";
 import PointStrip, { pressableClass } from "./PointStrip";
 
 type RoutePointsConditions = Pick<
@@ -20,12 +21,13 @@ type RoutePointsConditions = Pick<
   | "setLoop"
   | "waypoints"
   | "removeWaypoint"
-  | "reorderWaypoint"
+  | "reorderPoints"
   | "destination"
   | "clearDestination"
   | "clearPoints"
   | "selectedPoint"
   | "selectPoint"
+  | "pointChosen"
   | "foundAt"
 >;
 
@@ -81,12 +83,13 @@ export default function RoutePoints({
     setLoop,
     waypoints,
     removeWaypoint,
-    reorderWaypoint,
+    reorderPoints,
     destination,
     clearDestination,
     clearPoints,
     selectedPoint,
     selectPoint,
+    pointChosen,
     foundAt,
   } = conditions;
   const waypointCount = waypoints.length;
@@ -203,7 +206,6 @@ export default function RoutePoints({
             <RemovePointIcon />
           </Button>
         }
-        note={waypointCount > 1 ? "番号の丸を押さえたまま左右へ動かすと、通る順を入れ替えます" : undefined}
         chooseResult={`${title}を置き直します`}
         placing={placing}
         onChoose={(candidate) => onPlaceFound("waypoint", candidate, index)}
@@ -236,7 +238,7 @@ export default function RoutePoints({
           originLocated={originLocated}
           selectedPoint={selectedPoint}
           selectPoint={selectPoint}
-          reorderWaypoint={reorderWaypoint}
+          reorderWaypoint={(from, to) => reorderPoints(from + 1, to + 1, origin)}
         />
         {/* 消すものが無い間も押せない状態で残す（置き場が動くと、並びの名前の出し分けが揺れる）。周回の間は並びに出ている
             経由地だけを消し、覚えている目的地は残す。 */}
@@ -255,6 +257,19 @@ export default function RoutePoints({
           <ClearPointsIcon size={18} />
         </Button>
       </div>
+      {/* 地点を選んでいる間は、詳しくの上に通る順の大きい丸の並びを出す（何も選んでいない・新しい経由地を置く間は、探す欄を上に残す）。 */}
+      {pointChosen && waypointCount > 0 && !(target.role === "waypoint" && target.index === null) && (
+        <PointOrder
+          loop={loop}
+          originName={originName}
+          originLocated={originLocated}
+          waypointNames={names.waypoints}
+          destinationName={destination === null ? null : names.destination}
+          selectedPoint={selectedPoint}
+          selectPoint={selectPoint}
+          reorderPoints={(from, to) => reorderPoints(from, to, origin)}
+        />
+      )}
       {renderDetail()}
     </div>
   );

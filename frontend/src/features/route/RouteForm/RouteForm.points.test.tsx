@@ -1,24 +1,26 @@
 /**
- * `RouteForm/RoutePoints.tsx`・`RouteForm/PointStrip.tsx`——周回の切り替えと地点の並び。`RouteForm`の中に置かれる子なので、`RouteForm`を描いて確かめる。
+ * `RouteForm/RoutePoints.tsx`・`RouteForm/PointStrip.tsx`・`RouteForm/PointOrder.tsx`——周回の切り替えと地点の並びと通る順の並び。`RouteForm`の中に置かれる子なので、`RouteForm`を描いて確かめる。
  *
  * 見るもの: 周回の切り替え（押している状態と、押して上げる値）、地点の並び（出発地・経由地の番号の丸・終点。周回の間の終点は
- * 出発地の印と名前で押せない）、押した地点を選んで上げること、経由地の番号の丸を押さえて動かす並び替え、経由地を足す操作の上限、並びに出ている地点を全部消す操作。
+ * 出発地の印と名前で押せない）、押した地点を選んで上げること、経由地の番号の丸を押さえて動かす並び替え、
+ * 地点を選んでいる間に出す通る順の大きい丸の並び（出発地・経由地・目的地を押さえて動かす並び替え）、経由地を足す操作の上限、並びに出ている地点を全部消す操作。
  *
  * ここで見ないもの: 選んでいる地点をどう決めるか（何も選んでいない・選んだ経由地が消えた・探して足した経由地を選ぶ）
  * → `features/route/useGenerationConditions.points.test.ts`。押した地点の詳しくの中身 → `RouteForm/RouteForm.pointDetail.test.tsx`。
- * 並びに入りきらないときに両端の札を印だけにすること（テスト環境はレイアウトの実寸を持たない）→ `e2e/all-states.spec.ts`の
+ * 並べ替えで地点の役割がどう変わるか → `features/route/useGenerationConditions.points.test.ts`。
+ * 並びに入りきらないときに両端の札を印だけにすること・通る順の丸を縮めること（テスト環境はレイアウトの実寸を持たない）→ `e2e/all-states.spec.ts`の
  * 省略の検査（名前を途中で切っていないこと）。印の役割ごとの背景色（書いた定数をそのまま渡す）。
  *
  * 差し替えたもの: 辺りの口の応答（網の層）。辺り無しと答える。
  */
-import { fireEvent, screen } from "@testing-library/react";
+import { fireEvent, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { PIN_MARK_COLOR } from "@/components/PinMark/PinMark";
 import { onBackend, serveAxisCatalog } from "@/testing/backendServer";
 import { catalogResponse } from "@/testing/catalogAxes";
-import { DESTINATION, button, detail, renderForm, strip, waypointsOf } from "@/testing/routeForm";
+import { DESTINATION, ORIGIN, button, detail, order, renderForm, strip, waypointsOf } from "@/testing/routeForm";
 import { AZA_CANDIDATE as AZA, FACILITY_CANDIDATE as FACILITY } from "@/testing/routeFixtures";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 
@@ -94,7 +96,7 @@ describe("RouteForm 地点の並び", () => {
   ])(
     "経由地の番号の丸を押さえたまま動かして離すと、その順へ動かすことを上げ、丸を選ばない: $label",
     ({ from, dx, to }) => {
-      const { reorderWaypoint, selectPoint } = renderForm({ waypoints: waypointsOf(3) });
+      const { reorderPoints, selectPoint } = renderForm({ waypoints: waypointsOf(3) });
       const mark = button(`経由地${from + 1}: 地図で選んだ地点`);
       vi.spyOn(mark, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 0, 30, 30));
 
@@ -103,19 +105,19 @@ describe("RouteForm 地点の並び", () => {
       fireEvent.pointerUp(mark, { pointerId: 1, isPrimary: true, clientX: 115 + dx });
       fireEvent.click(mark);
 
-      expect(reorderWaypoint).toHaveBeenCalledExactlyOnceWith(from, to);
+      // 通る順の並びの番目は、先頭の出発地の分だけ経由地の番号より1つ後ろ。
+      expect(reorderPoints).toHaveBeenCalledExactlyOnceWith(from + 1, to + 1, ORIGIN);
       expect(selectPoint).not.toHaveBeenCalled();
     },
   );
 
   it("経由地の番号の丸を押しただけなら、順を変えずにその経由地を選ぶ", async () => {
-    const { reorderWaypoint, selectPoint } = renderForm({ waypoints: waypointsOf(3) });
+    const { reorderPoints, selectPoint } = renderForm({ waypoints: waypointsOf(3) });
 
     await userEvent.click(button("経由地2: 地図で選んだ地点"));
 
     expect(selectPoint).toHaveBeenLastCalledWith({ role: "waypoint", index: 1 });
-    expect(reorderWaypoint).not.toHaveBeenCalled();
-    expect(detail("経由地2").textContent).toContain("番号の丸を押さえたまま左右へ動かすと、通る順を入れ替えます");
+    expect(reorderPoints).not.toHaveBeenCalled();
   });
 
   it("全部消す操作を押すと上げる", async () => {
@@ -124,6 +126,102 @@ describe("RouteForm 地点の並び", () => {
     await userEvent.click(button("経由地と目的地を全部消す"));
 
     expect(clearPoints).toHaveBeenCalledOnce();
+  });
+});
+
+describe("RouteForm 通る順の並び", () => {
+  /** 通る順の並びの丸の名前。 */
+  const orderNames = () =>
+    within(order() as HTMLElement)
+      .getAllByRole("button")
+      .map((mark) => mark.getAttribute("aria-label"));
+
+  it.each([
+    {
+      label: "目的地を置いていなければ、末尾に空の目的地の丸を出す",
+      loop: false,
+      destination: null,
+      names: ["出発地: 現在地（1番目）", "経由地1: 地図で選んだ地点（2番目）", "目的地: 未設定（3番目）"],
+    },
+    {
+      label: "周回の間は、目的地の丸を出さない",
+      loop: true,
+      destination: DESTINATION,
+      names: ["出発地: 現在地（1番目）", "経由地1: 地図で選んだ地点（2番目）"],
+    },
+  ])(
+    "地点を押すと、詳しくの上に出発地・経由地・目的地の丸を通る順に並べ、動かし方を添える: $label",
+    async ({ loop, destination, names }) => {
+      renderForm({ loop, destination, waypoints: waypointsOf(1) });
+      expect(order()).toBeNull();
+
+      await userEvent.click(button("経由地1: 地図で選んだ地点"));
+
+      expect(orderNames()).toEqual(names);
+      expect(
+        within(order() as HTMLElement).getByRole("button", { name: "経由地1: 地図で選んだ地点（2番目）" }),
+      ).toHaveAttribute("aria-pressed", "true");
+      expect(screen.getByText(/^丸を押さえたまま左右へ動かすと、通る順を入れ替えます/)).toBeInTheDocument();
+    },
+  );
+
+  it("新しい経由地を置く間は、通る順の並びを出さない（探す欄を上に残す）", async () => {
+    renderForm({ waypoints: waypointsOf(1) });
+
+    await userEvent.click(button("経由地を足す"));
+
+    expect(order()).toBeNull();
+  });
+
+  // 丸の幅はテスト環境に無いレイアウトの実寸なので、押さえた丸の幅をテストが決める。
+  it.each([
+    { label: "経由地を先頭へ動かす", originLocated: true, destination: null, from: 2, dx: -100, to: 0 },
+    { label: "目的地を間へ動かす", originLocated: true, destination: DESTINATION, from: 3, dx: -88, to: 1 },
+    { label: "経由地を空の目的地の席へ動かす", originLocated: true, destination: null, from: 1, dx: 100, to: 3 },
+    { label: "仮の出発地の前へは入れない", originLocated: false, destination: null, from: 2, dx: -100, to: 1 },
+  ])(
+    "通る順の丸を押さえたまま動かして離すと、その順へ動かすことを上げ、丸を選ばない: $label",
+    ({ originLocated, destination, from, dx, to }) => {
+      const { reorderPoints, selectPoint } = renderForm({
+        originLocated,
+        destination,
+        waypoints: waypointsOf(2),
+        selectedPoint: { role: "waypoint", index: 0 },
+        pointChosen: true,
+      });
+      const mark = within(order() as HTMLElement).getAllByRole("button")[from];
+      vi.spyOn(mark, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 0, 44, 44));
+
+      fireEvent.pointerDown(mark, { pointerId: 1, isPrimary: true, clientX: 120 });
+      fireEvent.pointerMove(mark, { pointerId: 1, isPrimary: true, clientX: 120 + dx });
+      fireEvent.pointerUp(mark, { pointerId: 1, isPrimary: true, clientX: 120 + dx });
+      fireEvent.click(mark);
+
+      expect(reorderPoints).toHaveBeenCalledExactlyOnceWith(from, to, ORIGIN);
+      expect(selectPoint).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    { label: "置いていない目的地の丸", originLocated: true, from: 3, target: { role: "destination" } },
+    { label: "仮の地点のままの出発地の丸", originLocated: false, from: 0, target: { role: "origin" } },
+  ])("押さえて動かしても動かさず、押すと選ぶ丸: $label", ({ originLocated, from, target }) => {
+    const { reorderPoints, selectPoint } = renderForm({
+      originLocated,
+      waypoints: waypointsOf(2),
+      selectedPoint: { role: "waypoint", index: 0 },
+      pointChosen: true,
+    });
+    const mark = within(order() as HTMLElement).getAllByRole("button")[from];
+    vi.spyOn(mark, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 0, 44, 44));
+
+    fireEvent.pointerDown(mark, { pointerId: 1, isPrimary: true, clientX: 120 });
+    fireEvent.pointerMove(mark, { pointerId: 1, isPrimary: true, clientX: 20 });
+    fireEvent.pointerUp(mark, { pointerId: 1, isPrimary: true, clientX: 20 });
+    fireEvent.click(mark);
+
+    expect(reorderPoints).not.toHaveBeenCalled();
+    expect(selectPoint).toHaveBeenLastCalledWith(target);
   });
 });
 
