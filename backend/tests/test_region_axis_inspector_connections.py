@@ -78,10 +78,10 @@ async def test_one_inspection_holds_one_connection_at_a_time():
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
             response = await client.post(
                 "/api/region/axis-inspector",
-                json={"osm_way_id": 1, "feature_key": "1-0", "point": {"latitude": middle, "longitude": west},
+                json={"osm_way_id": 1, "feature_key": "1-0",
                       "z": TILE[0], "x": TILE[1], "y": TILE[2], "bearing_deg": 90.0, "speed_kmh": 20.0},
             )
 
     assert response.status_code == 200
-    assert response.json()["way"]["axes"]
+    assert response.json()["values"]["axes"]
     assert held["most"] == 1

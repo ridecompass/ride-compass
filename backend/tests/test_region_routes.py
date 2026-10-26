@@ -53,7 +53,6 @@ from app.domain.dynamic_way_values import (
     FeatureMaterials,
     WayValueQuery,
 )
-from app.domain.geo import LatLon
 from app.domain.route_preference import RoutePreference
 from app.domain.gradient import ROAD_BEARING_LEAF
 from app.domain.wind import WIND_DIRECTION_LEAF, WIND_SPEED_LEAF
@@ -96,15 +95,14 @@ class FakeAxisInspector:
         self._result = result
         self.request = None
 
-    async def inspect(self, osm_way_id: int, feature_key: str, z: int, x: int, y: int, point: LatLon,
+    async def inspect(self, osm_way_id: int, feature_key: str, z: int, x: int, y: int,
                       query: WayValueQuery, preference: RoutePreference | None) -> AxisInspectorResult | None:
-        self.request = (osm_way_id, feature_key, z, x, y, (point.latitude, point.longitude), query, preference)
+        self.request = (osm_way_id, feature_key, z, x, y, query, preference)
         return self._result
 
 
-#: 区間インスペクタの要求が必ず運ぶもの（押した道・押したフィーチャー・押した地点・押したタイル・走行方位）。
-INSPECTED = {"osm_way_id": 12345, "feature_key": "12345-0", "point": {"latitude": 35.6, "longitude": 139.4},
-             "z": 14, "x": 14551, "y": 6447, "bearing_deg": 90.0}
+#: 区間インスペクタの要求が必ず運ぶもの（押した道・押したフィーチャー・押したタイル・走行方位）。
+INSPECTED = {"osm_way_id": 12345, "feature_key": "12345-0", "z": 14, "x": 14551, "y": 6447, "bearing_deg": 90.0}
 
 
 # 一時的な失敗（DB障害・混雑）で取れなかった空タイルを1時間キャッシュさせると、サーバーが回復した後も
@@ -202,18 +200,18 @@ def test_each_kind_of_region_request_is_counted_on_its_own(override_dependency):
 
 
 def test_region_axis_inspector_hands_the_pressed_feature_and_the_maps_conditions_over(override_dependency):
-    """押した道・フィーチャー・地点・タイルと、地図が指定している走行方位・時刻・想定速度がサービスへ渡り、その結果が
+    """押した道・フィーチャー・タイルと、地図が指定している走行方位・時刻・想定速度がサービスへ渡り、その結果が
     応答になる。
 
     条件が届かないと、1本の道が往復2方向で違う値を持つ材料（勾配・風）を算出できず、地図が色を塗っている軸だけが
-    内訳で「データなし」になる。フィーチャー・地点が届かないと、押した区間とは別の区間の値が出る。
+    内訳で「データなし」になる。フィーチャーが届かないと、押した物とは別の物の値が出る。
     """
     values = InspectorValues(
         axes=[AxisInspectorAxis(axis_id="axis_b", difficulty=75.0, contribution=75.0)],
         composite_difficulty=InspectorComposite(value=75.0, covered_weight_fraction=1.0),
         landcover=None,
     )
-    result = AxisInspectorResult(highway="primary", tags={}, segment=values, way=values)
+    result = AxisInspectorResult(highway="primary", tags={}, values=values)
     fake = FakeAxisInspector(result)
     override_dependency(get_axis_inspector_service, lambda: fake)
     response = client.post(
@@ -223,8 +221,8 @@ def test_region_axis_inspector_hands_the_pressed_feature_and_the_maps_conditions
 
     assert response.status_code == 200
     assert response.json() == result.model_dump()
-    assert fake.request[:7] == (
-        12345, "12345-0", 14, 14551, 6447, (35.6, 139.4),
+    assert fake.request[:6] == (
+        12345, "12345-0", 14, 14551, 6447,
         WayValueQuery(at=datetime(2026, 9, 21, 9, 0, tzinfo=timezone.utc), bearing_deg=90.0, speed_kmh=20.0),
     )
 

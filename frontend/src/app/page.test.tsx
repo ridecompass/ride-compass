@@ -61,8 +61,7 @@ beforeEach(() => {
 const INSPECTED_ROAD: AxisInspectorResult = {
   highway: "residential",
   tags: {},
-  segment: { axes: [], composite_difficulty: { value: 40, covered_weight_fraction: 1 }, landcover: null },
-  way: { axes: [], composite_difficulty: { value: 40, covered_weight_fraction: 1 }, landcover: null },
+  values: { axes: [], composite_difficulty: { value: 40, covered_weight_fraction: 1 }, landcover: null },
 };
 
 /** 全部の道路をその軸で塗っているか。 */

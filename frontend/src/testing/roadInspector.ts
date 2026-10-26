@@ -25,8 +25,6 @@ export const RIDE = {
     z: 14,
     x: 1,
     y: 2,
-    latitude: 35.6,
-    longitude: 139.4,
   },
   routePreference: null,
 };
@@ -34,17 +32,9 @@ export const RIDE = {
 export const openEvaluation = (user: UserEvent) =>
   user.click(screen.getByRole("button", { name: "この道の評価を見る" }));
 
-/** 押した区間と道1本の評価を差し替えた応答。区間と道1本は、どの値も違う値にしてある（窓がどちらの値を出したかが分かる）。 */
-export function inspectorResult(
-  way: Partial<AxisInspectorResult["way"]> = {},
-  segment: Partial<AxisInspectorResult["segment"]> = {},
-): AxisInspectorResult {
-  return {
-    highway: "residential",
-    tags: { lit: "yes", name: "明治通り" },
-    segment: { ...segmentValues(), ...segment },
-    way: { ...wayValues(), ...way },
-  };
+/** 押したフィーチャーの評価を差し替えた応答。 */
+export function inspectorResult(values: Partial<AxisInspectorResult["values"]> = {}): AxisInspectorResult {
+  return { highway: "residential", tags: { lit: "yes", name: "明治通り" }, values: { ...pressedValues(), ...values } };
 }
 
 const NO_LANDCOVER = {
@@ -58,7 +48,7 @@ const NO_LANDCOVER = {
   rangeland_percent: 0,
 };
 
-function wayValues(): AxisInspectorResult["way"] {
+function pressedValues(): AxisInspectorResult["values"] {
   return {
     axes: [
       { axis_id: "axis_sample", difficulty: 57.8, contribution: 30 },
@@ -67,16 +57,5 @@ function wayValues(): AxisInspectorResult["way"] {
     ],
     composite_difficulty: { value: 40, covered_weight_fraction: 0.8 },
     landcover: { ...NO_LANDCOVER, trees_percent: 20, crops_percent: 30, built_percent: 50 },
-  };
-}
-
-function segmentValues(): AxisInspectorResult["segment"] {
-  return {
-    axes: [
-      { axis_id: "axis_sample", difficulty: 81.2, contribution: 45 },
-      { axis_id: "night", difficulty: 6, contribution: 3 },
-    ],
-    composite_difficulty: { value: 48, covered_weight_fraction: 1 },
-    landcover: { ...NO_LANDCOVER, trees_percent: 70, built_percent: 30 },
   };
 }

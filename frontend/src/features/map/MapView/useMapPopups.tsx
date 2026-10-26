@@ -207,8 +207,8 @@ export function useMapPopupMount(
       .addTo(map);
     setMount({ key: mountKey, container });
     const shownMap = map;
-    // 小窓は、押した物の形を囲む枠の上・下・右・左のうち、見えている所に収まる側に置く（押した物にかぶらない）。どの側にも
-    // 収まらなければ押した所を指し、向きはMapLibreに任せる。
+    // 小窓は、押した物の形を囲む枠の上・下・右・左のうち、見えている所に収まる側に置く（押した物にかぶらない）。見えている所が
+    // 無い・形が無いときは押した所を指し、向きはMapLibreに任せる。
     function place() {
       const current = latest.current.onMap;
       if (current === null) return;
@@ -285,8 +285,6 @@ export function useMapPopupMount(
           conditions={{
             ...rideConditions,
             ...onMap.tile,
-            longitude: onMap.lngLat[0],
-            latitude: onMap.lngLat[1],
           }}
           routePreference={routePreference}
         />

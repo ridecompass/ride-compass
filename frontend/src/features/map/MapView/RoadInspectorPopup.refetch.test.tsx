@@ -24,11 +24,11 @@ describe("評価の重み", () => {
     };
     const { rerender } = render(<RoadInspectorPopup {...props} routePreference={WEIGHTS} />);
     await openEvaluation(user);
-    await screen.findByRole("region", { name: "道全体" });
+    await screen.findByRole("region", { name: "難易度" });
 
     rerender(<RoadInspectorPopup {...props} routePreference={{ axis_sample: 1, night: 1 }} />);
 
-    expect(screen.queryByRole("region", { name: "道全体" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "難易度" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "この道の評価を見る" })).toBeInTheDocument();
   });
 });
@@ -48,11 +48,11 @@ describe("評価の走行の条件", () => {
     serveInspector(inspectorResult());
     const { rerender } = render(<RoadInspectorPopup {...props} conditions={CONDITIONS} />);
     await openEvaluation(user);
-    await screen.findByRole("region", { name: "道全体" });
+    await screen.findByRole("region", { name: "難易度" });
 
     rerender(<RoadInspectorPopup {...props} conditions={{ ...CONDITIONS, at: new Date("2026-09-24T00:05:00Z") }} />);
 
-    expect(screen.getByRole("region", { name: "道全体" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "難易度" })).toBeInTheDocument();
   });
 
   it("同じ道を同じ条件・重みで開き直したときは、取り直さずに前の評価を出す", async () => {
@@ -60,11 +60,11 @@ describe("評価の走行の条件", () => {
     serveInspector(inspectorResult());
     const first = render(<RoadInspectorPopup {...props} conditions={CONDITIONS} />);
     await openEvaluation(user);
-    await screen.findByRole("region", { name: "道全体" });
+    await screen.findByRole("region", { name: "難易度" });
     first.unmount();
 
     render(<RoadInspectorPopup {...props} conditions={{ ...CONDITIONS }} />);
 
-    expect(screen.getByRole("region", { name: "道全体" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "難易度" })).toBeInTheDocument();
   });
 });

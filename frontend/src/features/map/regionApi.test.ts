@@ -67,14 +67,12 @@ describe("押した道の内訳（fetchAxisInspector）", () => {
     z: 15,
     x: 1,
     y: 2,
-    latitude: 35.6,
-    longitude: 139.4,
     bearingDeg: 0,
     at: new Date("2026-10-01T00:30:00Z"),
     speedKmh: 20,
   };
 
-  it("押した地物・地点・重み・タイルと走行の条件を、backendの項目名で送る", async () => {
+  it("押した地物・重み・タイルと走行の条件を、backendの項目名で送る", async () => {
     const sent = onBackend("POST", "/api/region/axis-inspector", () => Response.json(null));
 
     await api.fetchAxisInspector(
@@ -84,8 +82,6 @@ describe("押した道の内訳（fetchAxisInspector）", () => {
         z: 15,
         x: 29100,
         y: 12900,
-        latitude: 35.68,
-        longitude: 139.77,
         bearingDeg: 270,
         at: new Date("2026-10-01T00:30:00Z"),
         speedKmh: 22,
@@ -96,7 +92,6 @@ describe("押した道の内訳（fetchAxisInspector）", () => {
     expect(sent[0].body).toEqual({
       osm_way_id: 123,
       feature_key: "123:4",
-      point: { latitude: 35.68, longitude: 139.77 },
       route_preference: { wind: 2, slope: 0 },
       z: 15,
       x: 29100,
@@ -108,7 +103,7 @@ describe("押した道の内訳（fetchAxisInspector）", () => {
   });
 
   it("重みが無ければ、その項目を送らない（重みはbackendの既定に任せる）", async () => {
-    const result = { way: { composite_difficulty: 42 } };
+    const result = { values: { composite_difficulty: 42 } };
     const sent = onBackend("POST", "/api/region/axis-inspector", () => Response.json(result));
 
     await expect(api.fetchAxisInspector(123, "123", CONDITIONS, null)).resolves.toEqual(result);
@@ -117,7 +112,6 @@ describe("押した道の内訳（fetchAxisInspector）", () => {
       {
         osm_way_id: 123,
         feature_key: "123",
-        point: { latitude: 35.6, longitude: 139.4 },
         z: 15,
         x: 1,
         y: 2,

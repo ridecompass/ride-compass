@@ -242,16 +242,14 @@ async def test_way_is_looked_up_by_its_key_as_text():
     repo, session = _repo([_Row(highway="highway_a", tags={"tag_a": "value_a"})], [])
 
     await repo.get_way_tags_by_osm_way_id(123)
-    await repo.get_nearest_way_segment(123, 35.0, 139.0)
 
-    assert [session.params[0]["osm_way_id"], session.params[1]["osm_way_key"]] == ["123", "123"]
+    assert session.params[0]["osm_way_id"] == "123"
 
 
-async def test_unknown_way_has_neither_tags_nor_a_segment():
+async def test_unknown_way_has_no_tags():
     repo, _ = _repo([], [])
 
     assert await repo.get_way_tags_by_osm_way_id(123) is None
-    assert await repo.get_nearest_way_segment(123, 35.0, 139.0) is None
 
 
 async def test_sampled_way_without_length_is_dropped():

@@ -119,46 +119,21 @@ export default function RoadInspectorPopup({
         </Button>
       )}
       {inspector.isError && <p className={hintClass}>評価を取得できませんでした。</p>}
-      {result !== null && <RoadEvaluation result={result} axes={axes} axisColors={axisColors} />}
+      {result !== null && <FeatureValues values={result.values} axes={axes} axisColors={axisColors} />}
       <RoadAttributeRows properties={properties} result={result} />
       {isDebugEnabled() && wayId != null && <p className={hintClass}>OSM way id: {wayId}</p>}
     </div>
   );
 }
 
-type InspectorValues = AxisInspectorResult["way"];
+type InspectorValues = AxisInspectorResult["values"];
 
-/** 押した区間と道全体の評価。押した区間は寄せた地図の色、道全体は引いた地図の色と同じ値。2つが同じ値なら塊を1つにし、
- * 違うときだけ札を付けて2つ並べる。 */
-function RoadEvaluation({
-  result,
-  axes,
-  axisColors,
-}: {
-  result: AxisInspectorResult;
-  axes: readonly CatalogAxis[];
-  axisColors: Record<string, string>;
-}) {
-  const blocks =
-    JSON.stringify(result.segment) === JSON.stringify(result.way)
-      ? [{ key: "way", tag: undefined, values: result.way }]
-      : [
-          { key: "segment", tag: "区間", values: result.segment },
-          { key: "way", tag: "道全体", values: result.way },
-        ];
-  return blocks.map((block) => (
-    <FeatureValues key={block.key} tag={block.tag} values={block.values} axes={axes} axisColors={axisColors} />
-  ));
-}
-
-/** 1つのフィーチャーの評価の塊: 難易度・軸ごとの効き方と、周囲の土地被覆のチップ。 */
+/** 押したフィーチャー（その倍率で地図が塗る区間か道1本）の評価の塊: 難易度・軸ごとの効き方と、周囲の土地被覆のチップ。 */
 function FeatureValues({
-  tag,
   values,
   axes,
   axisColors,
 }: {
-  tag: string | undefined;
   values: InspectorValues;
   axes: readonly CatalogAxis[];
   axisColors: Record<string, string>;
@@ -177,7 +152,6 @@ function FeatureValues({
 
   return (
     <DifficultyBlock
-      tag={tag}
       difficulty={values.composite_difficulty?.value ?? null}
       note={
         coveredWeightPercent !== null && coveredWeightPercent < 100
