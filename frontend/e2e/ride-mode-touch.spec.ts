@@ -23,8 +23,9 @@ test.describe("タッチ端末", () => {
     browserName,
   }) => {
     test.skip(browserName !== "chromium", "指ごとのタッチの列はCDP（Chromiumだけの口）でしか送れない");
-    // 位置の誤差を持たせ、その内の動きで届けて速さを0と読ませる（倍率に速さの引きを混ぜない）。
-    const at = (point: { latitude: number; longitude: number }) => ({ ...point, accuracy: 50 });
+    // 誤差の内の動きは地図へ流れないので、誤差を小さくし、それを超える数mずつの動きで届ける。動きは時速15km（倍率に速さの
+    // 引きが混ざり始める速さ。`rideZoom.ts: RIDE_ZOOM_SLOW_KMH`）に届かない遅さに保つ。
+    const at = (point: { latitude: number; longitude: number }) => ({ ...point, accuracy: 1 });
     await installApiMocks(page);
     await context.setGeolocation(at(START));
     await seedStoredState(page, INTRO_CLOSED);
@@ -86,7 +87,7 @@ test.describe("タッチ端末", () => {
     // 休まず、つまむ最中に届いた位置へ寄せ直し、次の位置もつまんだ倍率のまま追う。
     await expectDrawnAt(page, duringPinch, anchor);
     await expect(backToHere).toBeHidden();
-    const next = moved(START, 0, 20);
+    const next = moved(START, 0, 13);
     await deliverPosition(page, context, at(next));
     await expectDrawnAt(page, next, anchor);
     expect(await zoom()).toBeCloseTo(pinchedZoom, 2);

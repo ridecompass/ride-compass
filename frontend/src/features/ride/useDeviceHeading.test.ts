@@ -78,6 +78,14 @@ describe("useDeviceHeading", () => {
     expect(result.current.heading.current()).toBeNull();
   });
 
+  it("北を基準にした出来事が値を持たずに届いても（センサーの無い端末の受け始め）、もう一方の出来事の方角を読み続ける", () => {
+    const { result } = renderHook(() => useDeviceHeading(true));
+    act(() => result.current.request());
+    orient("deviceorientationabsolute", { alpha: null });
+    orient("deviceorientation", { webkitCompassHeading: 90, alpha: 0 });
+    expect(result.current.heading.current()).toBeCloseTo(90, 6);
+  });
+
   it("iPhone では始める操作の中で許しを求め、断られたら方角を出さない", async () => {
     setRequestPermission("denied");
     const { result } = renderHook(() => useDeviceHeading(true));

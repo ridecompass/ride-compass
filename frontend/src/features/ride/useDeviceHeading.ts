@@ -81,11 +81,12 @@ export function useDeviceHeading(active: boolean): {
     // 同じ頻度で出す）は受けるのをやめる。
     function onOrientation(event: Event) {
       countRideMetric("orientationEvents");
-      if (event.type === "deviceorientationabsolute") window.removeEventListener("deviceorientation", onOrientation);
       const reading = event as unknown as OrientationReading & { absolute?: boolean };
       const absolute = event.type === "deviceorientationabsolute" || reading.absolute === true;
       const next = headingFromOrientation(reading, absolute, screen.orientation?.angle ?? 0);
       if (next === null) return;
+      // 向きのセンサーが無い端末でも、受け始めに値の無い北を基準にした出来事が1回届くので、方角が読めたときだけやめる。
+      if (event.type === "deviceorientationabsolute") window.removeEventListener("deviceorientation", onOrientation);
       const current = heading.current();
       if (current !== null && Math.abs(((next - current + 540) % 360) - 180) < MIN_HEADING_STEP_DEG) return;
       countRideMetric("headingUpdates");
