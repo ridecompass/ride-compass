@@ -79,7 +79,7 @@
    丸め、刻みの中を動く間は取り直さない——走行中は現在地が届くたびに地図が動き、そのたびに取り直すとbackendの回数の上限に当たり、
    断られた間は格子点が消えて矢印が点滅する。取り直す間は前の範囲の格子点を出したままにする。矢印は格子点の位置に置き、升目は格子点を中心に応答の格子点どうしの間隔（`latitude_step_deg`・
    `longitude_step_deg`）の半分ずつ広げる——どちらも値を補間・平均せず、格子点の間の地点の値を作らない（上の「責務」）。
-   どの格子点を残すか（間引き）はbackendが決め、画面は選び直さない。コマの時刻は応答の`times`で、選んだ時刻の値は
+   どの格子点を残すか（間引き）はbackendが決め、本体の地図は選び直さない（俯瞰図だけは下の「俯瞰図」のとおりさらに間引く）。コマの時刻は応答の`times`で、選んだ時刻の値は
    その時刻の`times`の中の位置で引く。
 
 ## 表示層の実装（`scene/groups/weather.ts`）
@@ -417,7 +417,10 @@ basetime・validtimeを含む）で持つため、フレームが進んで取得
 - **描くもの**: 下地は同じ基礎地図から、高速道路の本線のほかの道路・建物・店とその文字の層を消し、高速道路は細い線にし、地名を市・区・町と都道府県に絞る
   （`features/map/MapOverview/overview.ts: overviewBasemapEdits`。森・水・土地の塗りは残す）。地名は日本語だけの小さな字にする（`features/map/MapOverview/overview.ts: OVERVIEW_PLACE_LABEL`）。その上に、本体の地図と同じ
   `dynamicWeather`から気象の家族だけの scene（`features/map/scene/buildScene.ts: buildOverviewScene`）を描くので、色・時刻・中身は本体の地図と揃う。
-  気象の記号は地名の場所を取らない（`features/map/MapOverview/overview.ts: overviewScene`）——上に描く風の矢印の記号が先に場所を取ると、地名が衝突で全部押し出される。場所を取らない記号は記号どうしでも間引かれないので、俯瞰図では格子点の全部に矢印が出る。
+  気象の記号は地名の場所を取らない（`features/map/MapOverview/overview.ts: overviewScene`）——上に描く風の矢印の記号が先に場所を取ると、地名が衝突で全部押し出される。場所を取らない記号は記号どうしでも間引かれないので、
+  格子点に並ぶ記号（風の矢印）は、俯瞰図のズームで一番大きな記号の1辺以上の間隔になるまで格子の行・列を同じ数おきに残す
+  （`features/map/MapOverview/overview.ts: overviewWeather`）。記号の大きさは描き方の値から求め（`features/map/scene/groups/weather.ts: weatherMarkSizePx`）、
+  格子点の間隔は応答の`latitude_step_deg`・`longitude_step_deg`を中身に持たせたもの。残す行・列は緯度・経度0から数えるので、地図を動かしても同じ格子点が残る。
 - **倍で描いて縮める**: 俯瞰図の地図は`features/map/MapOverview/overview.ts: OVERVIEW_RENDER_SCALE`倍の大きさの地図として描いてCSSで縮める。
   約20km四方を映す粗い段の基礎地図のタイルには区の名前が無く、1段細かい段から載るため。pxで決まる見た目（地名の字・気象の記号の大きさ等）は
   その倍にして見た目の大きさを保つ。基礎地図と配信元のタイルは1段細かい段のものを取る。

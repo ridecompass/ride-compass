@@ -97,6 +97,13 @@ export function weatherElementKey(element: Pick<WeatherElement, "group" | "sourc
   return `${element.group}/${element.source}`;
 }
 
+/** 名前付きソースを記号で描くなら、その記号の1辺（px）の求め方。記号で描かないソースは`undefined`。 */
+export function weatherMarkSizePx(element: Pick<WeatherElement, "group" | "source">): Drawing["markSizePx"] {
+  const key = weatherElementKey(element);
+  return WEATHER_ELEMENTS.find((candidate) => weatherElementKey(candidate) === key && candidate.drawing.markSizePx)
+    ?.drawing.markSizePx;
+}
+
 const WEATHER_IMAGES: readonly MapSceneImage[] = WEATHER_ELEMENTS.flatMap((element) =>
   element.drawing.icon === undefined ? [] : [element.drawing.icon],
 );

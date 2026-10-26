@@ -32,7 +32,13 @@ type TileRenderPayload = { kind: TileRenderKind; tileUrlTemplate: string };
 /** 1コマの描画内容。表示層はkindだけで描き方を決める（どの配信元由来かはデータ層が吸収済み）。
  * GeoJSONの`outline`は配信元が配る領域の輪郭線で、属性は読まず線として描くだけ。 */
 export type DynamicWeatherRenderPayload =
-  TileRenderPayload | { kind: "gridFill" | "gridMark" | "outline"; geojson: GeoJSON.FeatureCollection };
+  | TileRenderPayload
+  | {
+      kind: "gridFill" | "gridMark" | "outline";
+      geojson: GeoJSON.FeatureCollection;
+      /** 地物が格子点に並ぶなら、格子点どうしの緯度・経度の間隔（度）。 */
+      gridStepDeg?: { latitude: number; longitude: number };
+    };
 
 /** 配信元のタイルで描く描き方か。 */
 export function isTileRenderKind(kind: DynamicWeatherRenderPayload["kind"]): kind is TileRenderKind {

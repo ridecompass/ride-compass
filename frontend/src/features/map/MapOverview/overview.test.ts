@@ -9,6 +9,7 @@ import type { LayerSpecification } from "maplibre-gl";
 import type { MapScene, MapSceneLayer } from "@/features/map/scene/mapScene";
 import { describe, expect, it } from "vitest";
 
+import { weatherMarkSizePx } from "@/features/map/scene/groups/weather";
 import { METERS_PER_DEGREE, longitudeScale } from "@/lib/localPlane";
 import { lineLayer, scene } from "@/testing/mapSceneDeclarations";
 
@@ -21,6 +22,7 @@ import {
   overviewFrameSize,
   overviewScene,
   overviewShown,
+  overviewWeather,
   overviewZoom,
 } from "./overview";
 
@@ -75,6 +77,54 @@ describe("anyWeatherShown", () => {
   ])("$name", ({ weather, shown }) => {
     expect(anyWeatherShown(weather)).toBe(shown);
   });
+});
+
+describe("overviewWeather", () => {
+  // MSMの格子（緯度0.05度・経度0.0625度おき）の、北区のあたりの9×9の格子点。風速は3〜8m/sに散らす。
+  const latitude = 35.75;
+  const gridStepDeg = { latitude: 0.05, longitude: 0.0625 };
+  const features = Array.from({ length: 81 }, (_, i) => ({
+    type: "Feature" as const,
+    geometry: {
+      type: "Point" as const,
+      coordinates: [139.5 + (i % 9) * gridStepDeg.longitude, 35.55 + Math.floor(i / 9) * gridStepDeg.latitude],
+    },
+    properties: { speed: 3 + (i % 6), bearing: 90 },
+  }));
+  const weather = {
+    windVector: {
+      arrow: {
+        visible: true,
+        payload: { kind: "gridMark" as const, geojson: { type: "FeatureCollection" as const, features }, gridStepDeg },
+      },
+    },
+  };
+  const arrowSizePx = weatherMarkSizePx({ group: "windVector", source: "arrow" })!;
+  // メルカトルの地図の上の2点の間の長さ（px）。
+  const distancePx = (zoom: number, a: number[], b: number[]) => {
+    const pxPerDeg = (512 * 2 ** zoom) / 360;
+    return Math.hypot((a[0] - b[0]) * pxPerDeg, ((a[1] - b[1]) * pxPerDeg) / longitudeScale(latitude));
+  };
+
+  // 本体の倍率12では格子点が俯瞰図の上で矢印より狭く並び、14ではほぼ矢印の大きさで並ぶ。
+  it.each([12, 14])(
+    "本体の倍率%sで、俯瞰図の矢印どうしは一番大きな矢印の1辺以上離れ、それより格子1つぶん以上は離れない",
+    (mainZoom) => {
+      const zoom = overviewZoom(latitude, mainZoom);
+      const payload = overviewWeather(weather, zoom, latitude).windVector?.arrow?.payload;
+      const kept = payload !== undefined && "geojson" in payload ? payload.geojson.features : [];
+      const coordinates = kept.map((feature) => (feature.geometry as GeoJSON.Point).coordinates);
+      const largestPx = Math.max(...features.map((feature) => arrowSizePx(zoom, feature.properties)));
+      const gridPx = distancePx(zoom, [0, latitude], [gridStepDeg.longitude, latitude + gridStepDeg.latitude]);
+
+      expect(coordinates.length).toBeGreaterThanOrEqual(4);
+      const nearest = Math.min(
+        ...coordinates.flatMap((a, i) => coordinates.slice(i + 1).map((b) => distancePx(zoom, a, b))),
+      );
+      expect(nearest).toBeGreaterThanOrEqual(largestPx);
+      expect(nearest).toBeLessThan(largestPx + gridPx);
+    },
+  );
 });
 
 describe("overviewFrameSize", () => {

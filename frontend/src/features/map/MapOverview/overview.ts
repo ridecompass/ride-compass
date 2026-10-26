@@ -6,7 +6,9 @@ import type {
   SymbolLayerSpecification,
 } from "maplibre-gl";
 
+import type { DynamicWeatherRenderPayload } from "@/features/map/layers/dynamicWeather";
 import type { SceneLook } from "@/features/map/scene/applyToMap";
+import { weatherMarkSizePx } from "@/features/map/scene/groups/weather";
 import type { MapScene } from "@/features/map/scene/mapScene";
 import { viewportCenter, type MapViewport } from "@/features/map/view/mapLook";
 import { METERS_PER_DEGREE, longitudeScale } from "@/lib/localPlane";
@@ -62,6 +64,61 @@ export function overviewShown({
   sheetOpen: boolean;
 }): boolean {
   return weatherShown && zoom !== null && zoom >= OVERVIEW_MIN_ZOOM && !sheetOpen;
+}
+
+/** 格子点の番号`index`が、`stride`おきに残す行・列に当たるか。番号は緯度・経度0から数えるので、範囲を動かしても同じ格子点が残る。 */
+function onStride(index: number, stride: number): boolean {
+  return ((index % stride) + stride) % stride === 0;
+}
+
+/** 格子点に並ぶ記号を、ズーム`zoom`で一番大きな記号の1辺以上の間隔になるまで、格子の行・列を同じ数おきに残して間引く。 */
+function thinnedGridMarks(
+  payload: DynamicWeatherRenderPayload,
+  markSizePx: (zoom: number, properties: Readonly<Record<string, unknown>>) => number,
+  zoom: number,
+  latitude: number,
+): DynamicWeatherRenderPayload {
+  if (!("geojson" in payload) || payload.gridStepDeg === undefined) return payload;
+  const { features } = payload.geojson;
+  const sizePx = Math.max(0, ...features.map((feature) => markSizePx(zoom, feature.properties ?? {})));
+  // メルカトルの地図では、緯度1度の幅は経度1度の幅の1/cos(緯度)倍。
+  const pxPerLongitudeDeg = (TILE_SIZE_PX * 2 ** zoom) / 360;
+  const { latitude: latitudeStep, longitude: longitudeStep } = payload.gridStepDeg;
+  const rowStride = Math.max(1, Math.ceil(sizePx / ((latitudeStep * pxPerLongitudeDeg) / longitudeScale(latitude))));
+  const columnStride = Math.max(1, Math.ceil(sizePx / (longitudeStep * pxPerLongitudeDeg)));
+  if (rowStride === 1 && columnStride === 1) return payload;
+  const kept = features.filter((feature) => {
+    if (feature.geometry.type !== "Point") return true;
+    const [longitude, pointLatitude] = feature.geometry.coordinates;
+    return (
+      onStride(Math.round(pointLatitude / latitudeStep), rowStride) &&
+      onStride(Math.round(longitude / longitudeStep), columnStride)
+    );
+  });
+  return { ...payload, geojson: { ...payload.geojson, features: kept } };
+}
+
+/** 俯瞰図に描く気象の中身。格子点に並ぶ記号は、俯瞰図のズーム`zoom`（緯度`latitude`）の上で一番大きな記号の1辺以上の間隔に
+ * なるまで間引く——俯瞰図の記号は地名の場所を取らないので（`overviewScene`）記号どうしでも間引かれず、引くと格子点の全部の記号が
+ * 重なって敷き詰められる。 */
+export function overviewWeather(
+  dynamicWeather: SceneLook["dynamicWeather"],
+  zoom: number,
+  latitude: number,
+): SceneLook["dynamicWeather"] {
+  return Object.fromEntries(
+    Object.entries(dynamicWeather).map(([group, sources]) => [
+      group,
+      sources &&
+        Object.fromEntries(
+          Object.entries(sources).map(([source, state]) => {
+            const markSizePx = weatherMarkSizePx({ group, source });
+            if (state?.payload === undefined || markSizePx === undefined) return [source, state];
+            return [source, { ...state, payload: thinnedGridMarks(state.payload, markSizePx, zoom, latitude) }];
+          }),
+        ),
+    ]),
+  );
 }
 
 /** 本体の地図が映す範囲を、俯瞰図の上の枠の大きさ（px）にする。 */
@@ -176,7 +233,8 @@ function scaledProperties(properties: object | undefined, keys: readonly string[
 }
 
 /** 気象の家族の scene を、俯瞰図の地図（`OVERVIEW_RENDER_SCALE`倍で描いて縮める）に載せる形にする。pxで決まる見た目を倍にし、
- * 記号は地名の場所を取らないようにする（取ると地名が衝突で押し出される）。場所を取らない記号は記号どうしでも間引かれず、格子点の全部に出る。 */
+ * 記号は地名の場所を取らないようにする（取ると地名が衝突で押し出される）。場所を取らない記号は記号どうしでも間引かれないので、
+ * 格子点の記号は`overviewWeather`で間引いておく。 */
 export function overviewScene(scene: MapScene): MapScene {
   return {
     ...scene,
