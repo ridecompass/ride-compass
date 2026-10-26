@@ -136,21 +136,6 @@ def tile_position(lon: float, lat: float, z: int) -> tuple[float, float]:
     return x, y
 
 
-def way_unit_tile(z: int, x: int, y: int) -> tuple[int, int, int]:
-    """タイル`(z, x, y)`の道を道1本のフィーチャーとして焼くタイル。道1本で焼くズームならそのタイル、区間で焼くズームなら
-    それを含む、道1本で焼く最も寄ったズームのタイル——中の道はどれもそのタイルにも在る。"""
-    if z < EDGE_UNIT_MIN_ZOOM:
-        return z, x, y
-    shift = z - (EDGE_UNIT_MIN_ZOOM - 1)
-    return EDGE_UNIT_MIN_ZOOM - 1, x >> shift, y >> shift
-
-
-def edge_unit_tile(lon: float, lat: float) -> tuple[int, int, int]:
-    """地点を含む、区間を1つのフィーチャーとして焼く最も引いたズームのタイル。"""
-    x, y = tile_position(lon, lat, EDGE_UNIT_MIN_ZOOM)
-    return EDGE_UNIT_MIN_ZOOM, int(x), int(y)
-
-
 def tile_position_sql(lon: str, lat: str, zoom: str) -> tuple[str, str]:
     """`tile_position`と同じ式をSQLで書いたもの。経度・緯度の式`lon`・`lat`と
     ズームの式`zoom`から、タイル座標を小数のまま返す`(x, y)`の式（整数部がタイルの番号、

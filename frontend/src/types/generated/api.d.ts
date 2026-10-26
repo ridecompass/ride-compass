@@ -974,7 +974,6 @@ export interface components {
             osm_way_id: number;
             /** Feature Key */
             feature_key: string;
-            point: components["schemas"]["Coordinates"];
             /** Z */
             z: number;
             /** X */
@@ -997,8 +996,7 @@ export interface components {
             tags: {
                 [key: string]: string;
             };
-            segment: components["schemas"]["InspectorValues"];
-            way: components["schemas"]["InspectorValues"];
+            values: components["schemas"]["InspectorValues"];
         };
         /** AxisMaterialBreakdownEntry */
         AxisMaterialBreakdownEntry: {

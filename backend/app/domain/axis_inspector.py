@@ -35,7 +35,7 @@ class InspectorComposite(StrictModel):
 
 
 class InspectorValues(StrictModel):
-    """1つのフィーチャー（押した区間・その区間を含む道1本）の軸ごとの得点と合成。"""
+    """押したフィーチャー（その倍率で地図が塗る単位。区間か道1本）の軸ごとの得点と合成。"""
 
     axes: list[AxisInspectorAxis]
     #: 1つも取得できなければNone。
@@ -49,10 +49,8 @@ class InspectorValues(StrictModel):
 class AxisInspectorResult(StrictModel):
     highway: str
     tags: dict[str, str]
-    #: 押した区間（道1本で塗る倍率で押したときは、押した地点に最も近いその道の区間）。値は区間で塗る地図と同じ。
-    segment: InspectorValues
-    #: 押した区間を含む道1本。値は道1本で塗る地図と同じ。
-    way: InspectorValues
+    #: 押したフィーチャー（区間で塗る倍率なら区間、道1本で塗る倍率なら道1本）。値はその倍率で地図が塗る色と同じ。
+    values: InspectorValues
 
 
 def inspector_values(

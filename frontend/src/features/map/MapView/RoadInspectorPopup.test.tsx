@@ -34,10 +34,6 @@ function renderPopup(properties: RoadSurfacePopupProperties = SURFACED_ROAD) {
   );
 }
 
-/** 窓の中の、押した区間の評価と道全体の評価の塊。 */
-const segmentRegion = () => screen.getByRole("region", { name: "区間" });
-const wayRegion = () => screen.getByRole("region", { name: "道全体" });
-
 describe("RoadInspectorPopup", () => {
   it("上の帯に地図の道の種類の名前と路面を出し、評価は押したときに取りに行く（クリックのたびに引かない）", () => {
     render(
@@ -64,38 +60,22 @@ describe("RoadInspectorPopup", () => {
     expect(within(screen.getByRole("group", { name: "道の小窓の上の帯" })).getByText("明治通り")).toBeInTheDocument();
   });
 
-  it("押した区間と道全体の値が違えば、札を付けた難易度の塊を2つ並べ、土地被覆は最も多いクラスのチップにする", async () => {
+  it("押した物の難易度の塊を出し、土地被覆は最も多いクラスのチップにする", async () => {
     const user = userEvent.setup();
     serveInspector(inspectorResult());
     renderPopup();
 
     await openEvaluation(user);
 
-    // 区間は寄せた地図の色、道全体は引いた地図の色と同じ値なので、取り違えると地図の色と窓の値が食い違う。
-    const segment = within(await screen.findByRole("region", { name: "区間" }));
-    const way = within(wayRegion());
-    expect(segmentRegion()).toHaveTextContent("難易度48.0/100");
-    expect(segment.getByText("45.0")).toBeInTheDocument();
-    expect(segment.getByRole("button", { name: "周囲の土地被覆（樹木 70%）の内訳を表示" })).toBeInTheDocument();
-    expect(wayRegion()).toHaveTextContent("難易度40.0/100");
-    expect(way.getByText("30.0")).toBeInTheDocument();
+    // 押した物（その倍率で地図が塗る区間か道1本）の値なので、地図の線の色と窓の値が一致する。
+    const pressed = within(await screen.findByRole("region", { name: "難易度" }));
+    expect(screen.getByRole("region", { name: "難易度" })).toHaveTextContent("難易度40.0/100");
+    expect(pressed.getByText("30.0")).toBeInTheDocument();
 
     // チップを押すと割合の大きい順に開く。0%のクラス（水面・湿地・裸地・雪氷・草地）は行自体を作らない。
-    await user.click(way.getByRole("button", { name: "周囲の土地被覆（建物 50%）の内訳を表示" }));
+    await user.click(pressed.getByRole("button", { name: "周囲の土地被覆（建物 50%）の内訳を表示" }));
     const breakdown = within(screen.getByText("周囲の土地被覆").parentElement!);
     expect(breakdown.getAllByRole("term").map((term) => term.textContent)).toEqual(["建物", "農地", "樹木"]);
-  });
-
-  it("押した区間と道全体の値が同じなら、札の無い難易度の塊を1つだけ出す", async () => {
-    const user = userEvent.setup();
-    const result = inspectorResult();
-    serveInspector({ ...result, segment: result.way });
-    renderPopup();
-
-    await openEvaluation(user);
-
-    expect(await screen.findByRole("region", { name: "難易度" })).toHaveTextContent("難易度40.0/100");
-    expect(screen.getAllByRole("region")).toHaveLength(1);
   });
 
   it("評価はルート結果と同じ寄与度で出し、算出できない軸は並べない", async () => {
@@ -105,7 +85,7 @@ describe("RoadInspectorPopup", () => {
 
     await openEvaluation(user);
 
-    const way = within(await screen.findByRole("region", { name: "道全体" }));
+    const way = within(await screen.findByRole("region", { name: "難易度" }));
     // チップから開く詳細は、その軸の難易度をルート結果と同じ桁で出す。
     await user.click(way.getByRole("button", { name: "見本の軸の詳細を表示" }));
     expect(screen.getByText("この評価軸の難易度 57.8/100")).toBeInTheDocument();
@@ -128,7 +108,7 @@ describe("RoadInspectorPopup", () => {
 
     await openEvaluation(user);
 
-    const way = within(await screen.findByRole("region", { name: "道全体" }));
+    const way = within(await screen.findByRole("region", { name: "難易度" }));
     expect(way.getByText("どの評価軸も0（易しい）")).toBeInTheDocument();
   });
 
@@ -142,7 +122,7 @@ describe("RoadInspectorPopup", () => {
 
     await openEvaluation(user);
 
-    const way = within(await screen.findByRole("region", { name: "道全体" }));
+    const way = within(await screen.findByRole("region", { name: "難易度" }));
     expect(way.queryAllByText(/^重みの約/).map((note) => note.textContent)).toEqual(notes);
   });
 

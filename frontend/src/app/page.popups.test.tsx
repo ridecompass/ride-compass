@@ -161,7 +161,7 @@ describe("地図の小窓", () => {
     await user.click(screen.getByRole("button", { name: "パネルを閉じる" }));
     clickMap(HERE, [ROAD]);
     await user.click(screen.getByRole("button", { name: "この道の評価を見る" }));
-    expect(await screen.findByRole("region", { name: "道全体" })).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "難易度" })).toBeInTheDocument();
 
     clickMap(ELSEWHERE, [{ layer: "road-tiles-surface", properties: { osm_way_id: 2, feature_key: "2" } }]);
     expect(await screen.findByRole("button", { name: "この道の評価を見る" })).toBeInTheDocument();
