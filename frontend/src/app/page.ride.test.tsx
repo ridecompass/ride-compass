@@ -80,7 +80,7 @@ describe("走行モード", () => {
     expect(selectedSectionOnMap()).toEqual(linesOn("route-segments"));
     expect(screen.getByRole("group", { name: "区間の小窓の上の帯" })).toBeInTheDocument();
     // 何も無い所を押すと、小窓を閉じて選びを外す（走行中も押した物の小窓の決まりは同じ）。
-    clickMap(HERE);
+    await clickMap(HERE);
     expect(selectedPointMarks()).toHaveLength(0);
     expect(selectedSectionOnMap()).toEqual([]);
     // グラフに出す情報は、ページが持つ1つの選択（はじめは標高）を走行中の図にも渡す。

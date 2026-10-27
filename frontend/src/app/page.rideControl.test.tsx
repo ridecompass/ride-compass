@@ -183,7 +183,7 @@ describe("走行モードの操作", () => {
     expect(screen.queryByRole("button", { name: "ロック" })).toBeNull();
     await user.click(rideButton());
     geolocation.deliver({ ...RIDDEN_MIDDLE, accuracy: 20 });
-    clickSegment(drawnSegment, HERE);
+    await clickSegment(drawnSegment, HERE);
     expect(segmentPopup()).toBeInTheDocument();
     act(() => mapOnScreen().emit("movestart", { originalEvent: new MouseEvent("mousedown") }));
     expect(backToHere()).toBeInTheDocument();
@@ -201,7 +201,7 @@ describe("走行モードの操作", () => {
       .markers()
       .find((mark) => mark.element.getAttribute("aria-label") === "選択中の区間")!;
     act(() => segmentMark.element.click());
-    clickMap(ELSEWHERE);
+    await clickMap(ELSEWHERE);
     expect(segmentPopup()).toBeInTheDocument();
 
     // 鍵を押すと外す選びを出し、選ばずにいると時間で閉じてロックのまま。
@@ -249,14 +249,14 @@ describe("走行モードの操作", () => {
     const [drawnSegment] = mapOnScreen().sourceFeatures("route-segments");
     await user.click(screen.getByRole("button", { name: "走行モード" }));
 
-    clickMap(ELSEWHERE);
+    await clickMap(ELSEWHERE);
     expect(marksAt(ELSEWHERE)).toEqual([]);
-    clickSegment(drawnSegment, HERE);
+    await clickSegment(drawnSegment, HERE);
     expect(screen.getByRole("group", { name: "区間の小窓の上の帯" })).toBeInTheDocument();
     const [originPin] = marksAt(HERE);
     expect(originPin.draggable).toBe(false);
     expect(originPin.element.style.cursor).toBe("default");
-    clickSecondLine();
+    await clickSecondLine();
     expect(linesOn("route-selected")).toEqual([SECOND.geometry.coordinates]);
   });
 
@@ -274,7 +274,7 @@ describe("走行モードの操作", () => {
 
     const [drawnSegment] = mapOnScreen().sourceFeatures("route-segments");
     const fitsBefore = mapOnScreen().fits().length;
-    clickSegment(drawnSegment, HERE);
+    await clickSegment(drawnSegment, HERE);
     expect(rideButton()).toHaveAttribute("data-ride", "following");
     expect(mapOnScreen().fits()).toHaveLength(fitsBefore);
 
@@ -286,7 +286,7 @@ describe("走行モードの操作", () => {
     ]);
 
     // 何も無い所を押して選びを外すと、追い直す。
-    clickMap(ELSEWHERE);
+    await clickMap(ELSEWHERE);
     expect(rideButton()).toHaveAttribute("data-ride", "following");
   });
 

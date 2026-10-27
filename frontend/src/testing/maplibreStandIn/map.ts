@@ -283,8 +283,17 @@ export class StandInMap extends Evented {
     this.fire(type, event);
   }
 
-  /** `lngLat` を押す。`features` はそこに描かれている地物で、無い・隠したレイヤーのものは渡せない（MapLibre は返さない）。 */
+  /** `lngLat` を押す（MapLibre の`click`）。`features` はそこに描かれている地物で、無い・隠したレイヤーのものは渡せない（MapLibre は返さない）。 */
   click(lngLat: Coordinates, features: readonly PointedFeature[]) {
+    this.pointAt("click", lngLat, features);
+  }
+
+  /** `lngLat` を長押しする（MapLibre の`contextmenu`。指の長押しも PC の右クリックも同じ出来事）。`features` は`click`と同じ。 */
+  longPress(lngLat: Coordinates, features: readonly PointedFeature[]) {
+    this.pointAt("contextmenu", lngLat, features);
+  }
+
+  private pointAt(type: "click" | "contextmenu", lngLat: Coordinates, features: readonly PointedFeature[]) {
     const undrawn = features.filter((feature) => (this.content.layer(feature.layer)?.visibility ?? "none") === "none");
     if (undrawn.length > 0) {
       throw new Error(`描かれていないレイヤーの地物は押せない: ${undrawn.map((feature) => feature.layer).join(", ")}`);
@@ -297,11 +306,7 @@ export class StandInMap extends Evented {
     );
     this.pointed = withGeometry;
     try {
-      this.fire(
-        "click",
-        { lngLat: { lng: lngLat.longitude, lat: lngLat.latitude }, point: { x: 0, y: 0 } },
-        withGeometry,
-      );
+      this.fire(type, { lngLat: { lng: lngLat.longitude, lat: lngLat.latitude }, point: { x: 0, y: 0 } }, withGeometry);
     } finally {
       this.pointed = [];
     }
