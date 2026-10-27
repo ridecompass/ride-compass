@@ -18,6 +18,7 @@ import {
 } from "@/testing/catalogAxes";
 import { serveGenerationJobs } from "@/testing/generationJobs";
 import { installGeolocation } from "@/testing/geolocation";
+import { TAP_CONFIRM_MS } from "@/features/map/MapView/mapTaps";
 import { mapOnScreen, type PointedFeature } from "@/testing/maplibre";
 import { makeGenerationConditions, makeRouteCandidate, makeRouteSegment } from "@/testing/routeFixtures";
 import regionTileConfig from "@/types/generated/region-tile-config.json";
@@ -208,13 +209,20 @@ export function marksAt(point: Coordinates) {
 }
 
 /** 地図を押す。`features`はそこに描かれている地物。 */
-export function clickMap(at: Coordinates, features: PointedFeature[] = []) {
+/** 地図をタップする。小窓はタップを1回のタップと確かめてから開くので、その間を本物の時間で待つ。 */
+export async function clickMap(at: Coordinates, features: PointedFeature[] = []) {
   act(() => mapOnScreen().click(at, features));
+  await act(() => new Promise((resolve) => setTimeout(resolve, TAP_CONFIRM_MS)));
+}
+
+/** 地図を長押しする。 */
+export function longPressMap(at: Coordinates, features: PointedFeature[] = []) {
+  act(() => mapOnScreen().longPress(at, features));
 }
 
 /** 地図に描いた区間を押す。 */
-export function clickSegment(segment: GeoJSON.Feature, at: Coordinates) {
-  clickMap(at, [
+export async function clickSegment(segment: GeoJSON.Feature, at: Coordinates) {
+  await clickMap(at, [
     { layer: "route-segments-detailHit", properties: segment.properties ?? {}, geometry: segment.geometry },
   ]);
 }

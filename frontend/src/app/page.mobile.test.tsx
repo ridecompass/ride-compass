@@ -65,11 +65,11 @@ describe("スマホのシート", () => {
     await user.click(within(settingsSheet).getByRole("tab", { name: "重み" }));
     expect(originMark().draggable).toBe(false);
     await user.click(within(settingsSheet).getByRole("tab", { name: "条件" }));
-    clickMap(HERE);
+    await clickMap(HERE);
     jobs.respond([FIRST], LOOP_CONDITIONS);
     expect(await generate(user)).toMatchObject({ latitude: HERE.latitude, longitude: HERE.longitude });
     const outcomeSheet = await screen.findByRole("dialog", { name: "ルート結果" });
-    clickMap(ELSEWHERE);
+    await clickMap(ELSEWHERE);
     expect(marksAt(ELSEWHERE)).toEqual([]);
     await user.click(within(outcomeSheet).getByRole("button", { name: "閉じる" }));
     expect(screen.queryByRole("dialog")).toBeNull();
