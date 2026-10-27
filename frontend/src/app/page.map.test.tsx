@@ -20,6 +20,7 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { ROUTE_SEGMENT_INDEX_PROPERTY } from "@/features/map/scene/groups/routeSources";
 import { POINT_TILE_SOURCES } from "@/features/map/scene/groups/points";
 import { sceneLayerId } from "@/features/map/scene/sceneBuilders";
 import {
@@ -133,7 +134,7 @@ describe("地図で扱えること", () => {
     expect(screen.getByRole("group", { name: "区間の小窓の上の帯" })).toBeInTheDocument();
   });
 
-  it("区間を選んでいる間は、地図にその区間の範囲の縁取りと選んだ地点の印を出し、外すと消す。地図で押した区間（形を持たない写し）でも、縁取りは候補の区間の道なりの形になる", async () => {
+  it("区間を選んでいる間は、地図にその区間の範囲の縁取りと選んだ地点の印を出し、外すと消す。地図で区間を押すと、縁取りは候補の区間の道なりの形になる（地図の区間の線は形の外の中身を持たない）", async () => {
     // 道なりの形が、始点と終点を結ぶ直線と違う区間。
     const curved = makeRouteSegment({
       start_latitude: 35.7,
@@ -377,7 +378,7 @@ describe("区間の近くの施設", () => {
     // 走った所で線が分かれるので、2つ目の区間は始点からの道のりで引く。
     const second = mapOnScreen()
       .sourceFeatures("route-segments")
-      .find((feature) => feature.properties?.cumulative_distance_km === 1)!;
+      .find((feature) => feature.properties?.[ROUTE_SEGMENT_INDEX_PROPERTY] === 1)!;
     clickSegment(second, { latitude: 35.7, longitude: 139.715 });
     const familyMart = mapOnScreen()
       .drawnTileFeatures("point-poi-side-supply_poi")

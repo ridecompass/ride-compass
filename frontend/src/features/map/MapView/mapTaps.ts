@@ -7,6 +7,7 @@ import type {
   RouteSegmentDetail,
   SelectedRouteSegment,
 } from "@/types/route";
+import { segmentPath } from "@/lib/routeDistance";
 import { fetchRoadsAt, ROAD_TILE_MAX_ZOOM, ROAD_TILE_MIN_ZOOM } from "@/features/map/regionApi";
 import { tileContainingLonLat } from "@/features/map/layers/dynamicWayValues";
 import { sceneHitTargetsOfLayer, type MapScene } from "@/features/map/scene/mapScene";
@@ -15,6 +16,7 @@ import {
   ROUTE_HIT_TARGET_SEGMENT,
   ROUTE_HIT_TARGET_SPLICE_BAND,
 } from "@/features/map/scene/groups/routes";
+import { ROUTE_SEGMENT_INDEX_PROPERTY } from "@/features/map/scene/groups/routeSources";
 import { POINT_HIT_TARGET, pointLayerOfSceneLayer } from "@/features/map/scene/groups/points";
 import { sidePointLayerOfSceneLayer } from "@/features/map/scene/groups/sidePoints";
 import { shownRoadTrackOf } from "@/features/map/scene/groups/roadLines";
@@ -62,6 +64,8 @@ export interface MapTapState {
   tapsLocked: boolean;
   onPointPlace: (coordinates: Coordinates, spot: PlaceCandidate | null) => void;
   onRouteSegmentSelect: (selection: SelectedRouteSegment | null) => void;
+  /** 選んでいる候補。押した区間は、この候補の同じ番号の区間。 */
+  selectedRoute: { readonly segments: readonly RouteSegmentDetail[] } | null;
   /** 点の位置を、選んでいる区間に当てたルートの上の位置。区間を選んでいない・区間の形が無ければnull。 */
   sidePointAlong: (lngLat: readonly [number, number]) => { km: number; offsetM: number } | null;
   onSpliceStretchSelect: (index: number) => void;
@@ -225,12 +229,12 @@ export function bindMapTaps(map: MapLibreMap, latest: { readonly current: MapTap
     latest.current.onSpliceStretchSelect(index);
   }
 
+  // 押した区間は、選んでいる候補の同じ番号の区間（地図の区間の線は番号と塗る値だけを持つ）。
   function openRouteSegment(feature: MapGeoJSONFeature, e: MapMouseEvent) {
-    const properties = feature.properties as unknown as Omit<RouteSegmentDetail, "geometry">;
-    const segment: RouteSegmentDetail = { ...properties, geometry: null };
-    const geometry = feature.geometry as GeoJSON.Geometry | undefined;
-    const lineCoordinates = geometry?.type === "LineString" ? (geometry.coordinates as [number, number][]) : [];
-    const [snappedLng, snappedLat] = nearestPointOnLineString(lineCoordinates, [e.lngLat.lng, e.lngLat.lat]);
+    const index = feature.properties[ROUTE_SEGMENT_INDEX_PROPERTY];
+    const segment = typeof index === "number" ? latest.current.selectedRoute?.segments[index] : undefined;
+    if (segment === undefined) return;
+    const [snappedLng, snappedLat] = nearestPointOnLineString(segmentPath(segment), [e.lngLat.lng, e.lngLat.lat]);
     latest.current.onRouteSegmentSelect({ segment, latitude: snappedLat, longitude: snappedLng });
   }
 

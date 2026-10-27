@@ -2,8 +2,7 @@
  * `features/route/SegmentDetail/SegmentDetail.tsx`——選んだ区間の小窓の中身（道のりのグラフの表示の断面）。
  *
  * 見るもの: 上の帯に何km地点と到達予想（読めなければ出さない）、グラフで選んでいる層だけのその地点の値（線の層は値と勾配、帯の層は
- * 区分のチップ。当たらない区分は出さない）、難易度の塊を出すこと。地図で押した区間（地物から組み直した写し）も、押した所を区間の
- * 道なりに当てた地点の値を出すこと。
+ * 区分のチップ。当たらない区分は出さない）、難易度の塊を出すこと。値は、選んだ地点を区間の道なりに当てた所のもの。
  *
  * 差し替えたもの: 無し（軸カタログは網の層で与える）。
  *
@@ -38,8 +37,8 @@ const values = () => screen.queryByRole("group", { name: "グラフの層の値"
 
 describe("SegmentDetail", () => {
   it("グラフで選んでいる層の、選んだ地点の値と区分を出し、当たらない区分は出さない。難易度の塊を続ける", async () => {
-    // 地図は区間を自分の地物から組み直すので、図の区間と同じものではない。押した所は区間の始まりから0.3km東。
-    renderDetail({ segment: { ...PAVED, geometry: null }, latitude: 35, longitude: 139.003 }, [
+    // 選んだ地点は区間の始まりから0.3km東。
+    renderDetail({ segment: PAVED, latitude: 35, longitude: 139.003 }, [
       "elevation",
       ...ROAD_LAYERS.map((layer) => layer.id),
     ]);

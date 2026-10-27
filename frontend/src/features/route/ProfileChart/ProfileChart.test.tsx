@@ -3,7 +3,7 @@
  *
  * 見るもの: 選ばれた区間の帯とスライダーとしての値、キーボード（矢印・Home・End）と1本の指（マウス）で横になぞる・
  * 押して離す操作で選ぶ区間と地点、押しただけ・ボタンを押していない動き・縦に動き出した操作・2本目の指が加わった操作では
- * 選ばないこと、自分で動かした地点の線（選ばれた区間の中にあるときだけ）、選ぶ受け口が無ければ見るだけの図にすること。
+ * 選ばないこと、選んだ地点の線（図で選んでも地図で押しても、選んだ地点を区間の道なりに当てた所）、選ぶ受け口が無ければ見るだけの図にすること。
  *
  * ここで見ないもの: 図の中身（難易度の塗り・現在地の印の高さ） → `DifficultyProfile.test.tsx`・`RouteProfile.test.tsx`。
  * 区間の中の割合から地点を引く計算（道なりの形の上） → `lib/routeDistance.ts`。
@@ -140,7 +140,8 @@ describe("ProfileChart", () => {
     fireEvent.pointerUp(slider!, { pointerId: 1, clientX: 250 });
     expect(lastSelection(onSelect)).toEqual({ segment: MISSING, longitude: 139.02 });
 
-    rerender(<Chart {...chartProps({ scaleKm: 4, selected: selection(MISSING) })} />);
+    const [chosen] = onSelect.mock.lastCall as [SelectedRouteSegment];
+    rerender(<Chart {...chartProps({ scaleKm: 4, selected: chosen })} />);
     expect(slider?.querySelector("line")).toHaveAttribute("x1", "500");
     expect(slider).toHaveAttribute("aria-valuenow", "2");
   });
@@ -151,13 +152,13 @@ describe("ProfileChart", () => {
     expect(onSelect).not.toHaveBeenCalled();
   });
 
-  it("自分で動かした地点に線を引くのは、その地点が選ばれた区間の中にある間だけ", () => {
+  it("図で動かしていない地点（地図で押した所）でも、選ばれた区間の選んだ地点に線を引く", () => {
     const { slider, rerender } = renderProfile();
     fireEvent.keyDown(slider!, { key: "End" });
-    // 地図で別の区間を押した。
-    rerender(<Chart {...chartProps({ selected: selection(FIRST) })} />);
-    expect(slider?.querySelector("line")).toBeNull();
-    expect(slider).toHaveAttribute("aria-valuenow", "0");
+    // 地図で前の区間の始まりから0.3km東を押した。
+    rerender(<Chart {...chartProps({ selected: { segment: FIRST, latitude: 35, longitude: 139.003 } })} />);
+    expect(slider?.querySelector("line")).not.toBeNull();
+    expect(slider).toHaveAttribute("aria-valuenow", "0.3");
   });
 
   it("選ぶ受け口が無ければ、押せない（選べると読み上げず、キーでも移れない）見るだけの図として描く", () => {
