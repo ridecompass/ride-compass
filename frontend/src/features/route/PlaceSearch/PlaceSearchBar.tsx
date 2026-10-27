@@ -120,7 +120,8 @@ export default function PlaceSearchBar({
           placeholder={`${title}を住所・施設で探す`}
           disabled={full}
           enterKeyHint="search"
-          className="min-w-0 flex-auto bg-transparent text-[length:var(--font-size-md)] text-[var(--foreground)] outline-none placeholder:text-[var(--color-muted)]"
+          // ブラウザの消すボタンは隠す（右の✕が文字を消して閉じるので、並べるとどちらを押すか迷う）。
+          className="min-w-0 flex-auto bg-transparent text-[length:var(--font-size-md)] text-[var(--foreground)] outline-none placeholder:text-[var(--color-muted)] [&::-webkit-search-cancel-button]:appearance-none"
           {...inputProps}
           onFocus={() => setBrowsing(true)}
           onKeyDown={(event) => {
