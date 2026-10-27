@@ -45,7 +45,7 @@ const OPENABLE_TARGETS: Record<MapTapMode, ReadonlySet<string>> = {
 /** 押した所から道を拾う幅（画素）。指の幅ほどずれても、その道を押したとみなす。 */
 const ROAD_REACH_PX = 20;
 /** タップを1回のタップと確かめるまで待つ時間（ms）。この間に次の押しが来たら、ダブルタップ（地図の拡大）として開かない。
- * MapLibre がダブルタップとみなす間（`maplibre-gl/src/ui/handler/tap_recognizer.ts: MAX_TAP_INTERVAL`。公開の設定ではない）と同じ長さ。 */
+ * MapLibre がダブルタップとみなす間（タップを数える部品の`MAX_TAP_INTERVAL`。公開の設定ではない）と同じ長さ。 */
 export const TAP_CONFIRM_MS = 500;
 /** 押してから離すまでに指がこれより動いたら、地図をずらす操作でタップではない。MapLibre の`clickTolerance`の既定で、MapLibre は
  * これより動いた指で地図をずらし、長押しも取り消す。 */
