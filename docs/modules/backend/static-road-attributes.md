@@ -637,7 +637,7 @@ OSMは中央分離帯のある道路の上下線を別々のwayとして持ち�
   （コンビニの出どころはOverture。上の「立ち寄り先」）。コンビニの点だけが店の名前（`name`）を持ち、OpenStreetMapの点は名前を焼かない。
   取込範囲の判定はPOIのまま当てる。立ち寄り先のタイルは群「コンビニ」の行を焼かない（補給休憩のタイルが出す）。
 - **どのレイヤーも、近い点を代表点に束ねて焼く**（`point_tile_layers.py: _clustered_mvt_sql`）。タイルを升目に切り
-  （一辺の数は`domain/map_display.py: POINT_CLUSTER_CELLS_PER_TILE`、配る一番寄ったズームでは`domain/map_display.py: POINT_CLUSTER_CELLS_PER_TILE_AT_MAX_ZOOM`）、
+  （一辺の数は`domain/map_display.py: POINT_CLUSTER_CELLS_PER_TILE`で、配る一番寄ったズームも同じ。それより寄った地図はそのタイルを引き伸ばして描くので、細かく切ると代表点の絵が重なる）、
   凡例の同じ行に入る点だけを升目ごとに1つへ束ねる。升目はタイルの端に揃えるので、隣り合うタイルの縁で同じ点が別々に束ねられて食い違わない。
   代表点は束ねた点の1つで（位置を重心へ動かさない。名前と位置で外の地図を開くため）、選ぶ順はレイヤーごとの宣言（事故は新しい年、
   立ち寄り先は確からしさの大きい点）。代表点は束ねた点の数（`domain/map_display.py: POINT_COUNT_PROPERTY`）を持ち、2点以上なら
