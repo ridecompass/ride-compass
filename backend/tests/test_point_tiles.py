@@ -27,7 +27,6 @@ import pytest
 from app.batch import derive_stop_places
 from app.domain.map_display import (
     POINT_CLUSTER_CELLS_PER_TILE,
-    POINT_CLUSTER_CELLS_PER_TILE_AT_MAX_ZOOM,
     POINT_COUNT_PROPERTY,
     POINT_MEMBERS_PROPERTY,
 )
@@ -52,11 +51,11 @@ Z = 16
     BoundingBox(min_latitude=35.6501, min_longitude=139.7001, max_latitude=35.6502, max_longitude=139.7002), Z)
 TILE = tile_bounds_lonlat(Z, X, Y)
 #: 束ねる升目1つの幅（経度）。
-CELL = (TILE.max_longitude - TILE.min_longitude) / POINT_CLUSTER_CELLS_PER_TILE_AT_MAX_ZOOM
+CELL = (TILE.max_longitude - TILE.min_longitude) / POINT_CLUSTER_CELLS_PER_TILE
 #: タイルの真ん中の升目の中の点。経度・緯度とも升目の境目から升目の幅の1/4ずつ離す（緯度の升目の高さは経度の幅に近い）。
 LON = (TILE.min_longitude + TILE.max_longitude) / 2 + CELL / 4
 LAT = (TILE.min_latitude + TILE.max_latitude) / 2 + CELL / 4
-#: まとめる距離（40m）より十分に近い／遠いずれ（度）。経度0.0001度は約9mで、束ねる升目の幅より広い。0.002度は約180m。
+#: まとめる距離（40m）より十分に近い／遠いずれ（度）。経度0.0001度は約9mで、束ねる升目の幅より狭い。0.002度は約180m。
 NEAR = 0.0001
 FAR = 0.002
 #: タイルを含む取込の範囲（(min_lat, min_lon, max_lat, max_lon)）と、含まない範囲。
@@ -156,7 +155,7 @@ async def test_stop_pois_farther_apart_than_the_merging_distance_stay_separate(r
 async def test_stop_pois_merge_within_the_distance_the_counts_were_built_with(road_graph_repository):
     """停止の点は、管理画面の今の上書きではなく、派生を作り直したときのまとめる距離でまとめる。地図の点の数が、停止回数として
     数えた数と食い違わない。"""
-    await _ingest_pois([(LON, LAT, BOLLARD), (LON + NEAR, LAT, BOLLARD)])
+    await _ingest_pois([(LON, LAT, BOLLARD), (LON + CELL, LAT, BOLLARD)])
     async with raw_connection() as conn:
         await derived_data_meta.replace_tuning(conn, {STOP_CLUSTER_DISTANCE_ID: 5.0})
         try:
@@ -169,7 +168,7 @@ async def test_stop_pois_merge_within_the_distance_the_counts_were_built_with(ro
 
 async def test_supply_pois_are_not_merged_into_one_place(road_graph_repository):
     """補給の点は別々の実体なので、隣り合っていても1つの所にまとめない（升目が違えば別の点のまま）。"""
-    await _ingest_pois([(LON, LAT, TOILETS), (LON + NEAR, LAT, TOILETS)])
+    await _ingest_pois([(LON, LAT, TOILETS), (LON + CELL, LAT, TOILETS)])
 
     assert _kinds(await _tile(road_graph_repository, "poi")) == Counter({"toilets": 2})
 
@@ -207,24 +206,21 @@ async def test_points_of_different_legend_rows_in_one_cell_stay_apart(road_graph
         (False, 1), (True, 1)]
 
 
-async def test_cells_are_coarser_below_the_most_zoomed_tile(road_graph_repository):
-    """一番寄った縮尺より引いたタイルは粗い升目で束ね、一番寄った縮尺のタイルは細かい升目で1点ずつに近く描く。"""
-    x, y = (int(i) for i in tile_position(LON, LAT, ROAD_TILE_MAX_ZOOM - 1))
-    coarse = tile_bounds_lonlat(ROAD_TILE_MAX_ZOOM - 1, x, y)
-    width = (coarse.max_longitude - coarse.min_longitude) / POINT_CLUSTER_CELLS_PER_TILE
-    lat = coarse.min_latitude + width / 4
+async def test_the_most_zoomed_tile_is_cut_into_cells_as_wide_as_the_zoomed_out_ones(road_graph_repository):
+    """一番寄った縮尺のタイルも、引いた縮尺と同じ数の升目で束ねる。それより寄った地図はこのタイルを引き伸ばして描くので、
+    升目が細かいと隣り合う升目の代表点の絵が重なって描かれる。"""
+    x, y = (int(i) for i in tile_position(LON, LAT, ROAD_TILE_MAX_ZOOM))
+    tile = tile_bounds_lonlat(ROAD_TILE_MAX_ZOOM, x, y)
+    width = (tile.max_longitude - tile.min_longitude) / POINT_CLUSTER_CELLS_PER_TILE
+    lat = tile.min_latitude + width / 4
     await ingest_records("accident", [
-        accident_record(1, coarse.min_longitude + width / 4, lat),
-        accident_record(2, coarse.min_longitude + width * 3 / 4, lat),
+        accident_record(1, tile.min_longitude + width / 4, lat),
+        accident_record(2, tile.min_longitude + width * 3 / 4, lat),
     ])
-    fine_x, fine_y = (int(i) for i in tile_position(coarse.min_longitude + width / 4, lat, ROAD_TILE_MAX_ZOOM))
 
-    [merged] = _features(await _tile(road_graph_repository, "accident", x, z=ROAD_TILE_MAX_ZOOM - 1, y=y), "accident")
-    apart = _features(
-        await _tile(road_graph_repository, "accident", fine_x, z=ROAD_TILE_MAX_ZOOM, y=fine_y), "accident")
+    [merged] = _features(await _tile(road_graph_repository, "accident", x, z=ROAD_TILE_MAX_ZOOM, y=y), "accident")
 
     assert merged["properties"][POINT_COUNT_PROPERTY] == 2
-    assert [f["properties"][POINT_COUNT_PROPERTY] for f in apart] == [1, 1]
 
 
 async def test_convenience_stores_come_from_the_stop_places_and_not_from_openstreetmap(road_graph_repository):

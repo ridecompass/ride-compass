@@ -26,12 +26,10 @@ from app.domain.accident import BICYCLE_SQL, FATAL_SQL
 from app.domain.geo import degrees_covering_m
 from app.domain.map_display import (
     POINT_CLUSTER_CELLS_PER_TILE,
-    POINT_CLUSTER_CELLS_PER_TILE_AT_MAX_ZOOM,
     POINT_COUNT_PROPERTY,
     POINT_MEMBERS_PROPERTY,
 )
 from app.domain.primary_attributes import PRIMARY_ATTRIBUTES, stop_poi_map_group_sql
-from app.domain.region import ROAD_TILE_MAX_ZOOM
 from app.domain.registry import PrimaryAttributeSpec, TileKind
 from app.domain.stop_place import StopPlaceGroup
 from app.domain.traffic import STOP_POI_KINDS, stop_kind_sql
@@ -59,11 +57,7 @@ class PointTileLayer:
 
 _CONVENIENCE_GROUP = bindparam("convenience_group", value=StopPlaceGroup.CONVENIENCE.value, type_=Text())
 
-_CLUSTER_PARAMS = (
-    bindparam("cluster_cells", value=POINT_CLUSTER_CELLS_PER_TILE, type_=Integer()),
-    bindparam("cluster_fine_cells", value=POINT_CLUSTER_CELLS_PER_TILE_AT_MAX_ZOOM, type_=Integer()),
-    bindparam("cluster_fine_zoom", value=ROAD_TILE_MAX_ZOOM, type_=Integer()),
-)
+_CLUSTER_PARAMS = (bindparam("cluster_cells", value=POINT_CLUSTER_CELLS_PER_TILE, type_=Integer()),)
 
 
 def _clustered_mvt_sql(points: str, rows: tuple[str, ...], properties: tuple[str, ...], preference: str) -> str:
@@ -81,8 +75,7 @@ def _clustered_mvt_sql(points: str, rows: tuple[str, ...], properties: tuple[str
     return f"""(
         WITH points AS ({points}),
         grid AS (
-            SELECT ST_TileEnvelope(:z, :x, :y) AS env,
-                   CASE WHEN :z >= :cluster_fine_zoom THEN :cluster_fine_cells ELSE :cluster_cells END AS cells
+            SELECT ST_TileEnvelope(:z, :x, :y) AS env, :cluster_cells AS cells
         ),
         celled AS (
             SELECT points.*, m.geom AS geom_3857,
