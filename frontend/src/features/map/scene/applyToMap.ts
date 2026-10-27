@@ -27,7 +27,8 @@ import { axisMapLayerIds } from "@/features/map/layers/mapLayers";
 import type { LensId, RouteStyleMode } from "@/lib/mapDisplay/routeStyleModes";
 import type { RoadMapLayerView, RouteCandidate, SelectedRouteSegment } from "@/types/route";
 import { valueBands } from "@/lib/mapDisplay/valueScale";
-import { findSameSegment, routeStretches, segmentPath, splitSegmentAt } from "@/lib/routeDistance";
+import { routeStretches, segmentPath, splitSegmentAt } from "@/lib/routeDistance";
+import { ROUTE_SEGMENT_INDEX_PROPERTY } from "@/features/map/scene/groups/routeSources";
 import { tileBaseUrl } from "@/lib/tileBaseUrl";
 import {
   ROAD_TILE_MAX_ZOOM,
@@ -125,9 +126,7 @@ function routeStateFrom(props: SceneWiringProps): RouteState {
   const bands = visible ? props.spliceStretches : [];
   const composite = visible ? props.splicedRoute : null;
   const picked = visible ? props.selectedRouteSegment : null;
-  // 区間の形は、選んでいる候補の同じ区間から引く（地図で押した区間は形を持たない写し）。
-  const pickedSegment =
-    picked === null ? null : (findSameSegment(segments, picked.segment, (segment) => segment) ?? picked.segment);
+  const pickedSegment = picked !== null && segments.includes(picked.segment) ? picked.segment : null;
   const hiddenBandFilter = buildLegendFilterExpression(
     mode.legend,
     look.hiddenLegendKeys[look.lens] ?? NO_KEYS,
@@ -139,10 +138,15 @@ function routeStateFrom(props: SceneWiringProps): RouteState {
       path: route.geometry.coordinates,
     })),
     selectedRouteId: props.selectedRouteId,
-    segments: routeStretches(segments).flatMap(({ segment, startKm, endKm }) => {
-      // 形は`segmentPath`が読み、地物の属性には載せない。
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const { geometry: _geometry, ...properties } = segment;
+    segments: routeStretches(segments).flatMap(({ segment, startKm, endKm }, index) => {
+      // 地物の属性は、区間の番号と線を塗る値（色分けのモードの式と凡例の絞り込みが読む値）だけ。押した区間の中身は、
+      // 選んでいる候補の同じ番号の区間から引く（`docs/architecture/data-model.md`の、押したときにしか使わない詳しさは載せない決まり）。
+      const properties = {
+        [ROUTE_SEGMENT_INDEX_PROPERTY]: index,
+        difficulty: segment.difficulty,
+        axis_difficulties: segment.axis_difficulties,
+        material_values: segment.material_values,
+      };
       const travelled = { ...properties, travelled: true };
       const km = props.travelledKm;
       if (km === null || km <= startKm) return [{ path: segmentPath(segment), properties }];

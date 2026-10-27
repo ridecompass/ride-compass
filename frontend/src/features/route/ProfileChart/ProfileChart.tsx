@@ -1,10 +1,10 @@
 "use client";
 
-import { useId, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
+import { useId, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
 
 import { columnAtKm } from "@/features/route/DifficultyProfile/profileGeometry";
 import { roundToDigits } from "@/lib/numberFormat";
-import { findSameSegment, kmOfPickedPoint, pointAlongSegment } from "@/lib/routeDistance";
+import { kmOfPickedPoint, pointAlongSegment } from "@/lib/routeDistance";
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import palette from "@/types/generated/palette.json";
 import type { SelectedRouteSegment } from "@/types/route";
@@ -59,24 +59,14 @@ export default function ProfileChart({
   valueTicks = [],
   riding = false,
 }: ProfileChartProps) {
-  const [scrubKm, setScrubKm] = useState<number | null>(null);
   const clipId = `profile${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
   const pointerHandlers = useProfileGesture();
   const { columns, routeKm, widthKm, xOf } = scale;
   if (routeKm <= 0) return null;
 
-  const selectedColumn =
-    selected === null ? undefined : findSameSegment(columns, selected.segment, (column) => column.segment);
-  // 線を引く地点。図で選んだ区間は、自分で動かした地点がその区間の中にあるときだけ。地図で押した区間（地図は区間を自分の
-  // 地物から組み直すので、図の区間と同じものではない）は、押した所を区間の道なりの形に当てた地点。
-  const cursorKm =
-    selected === null || selectedColumn === undefined
-      ? null
-      : selectedColumn.segment !== selected.segment
-        ? kmOfPickedPoint(selectedColumn, selected)
-        : scrubKm !== null && scrubKm >= selectedColumn.startKm && scrubKm <= selectedColumn.endKm
-          ? scrubKm
-          : null;
+  const selectedColumn = selected === null ? undefined : columns.find((column) => column.segment === selected.segment);
+  // 線を引く地点。図で選んでも地図で押しても、選んだ地点を区間の道なりの形に当てた所。
+  const cursorKm = selected === null || selectedColumn === undefined ? null : kmOfPickedPoint(selectedColumn, selected);
   const positionKm = cursorKm ?? selectedColumn?.startKm ?? 0;
   const travelledKm = progressKm === null ? null : Math.min(routeKm, Math.max(0, progressKm));
 
@@ -86,7 +76,6 @@ export default function ProfileChart({
     const hit = columnAtKm(columns, clamped);
     if (hit === null) return;
     const [longitude, latitude] = pointAlongSegment(hit.column.segment, hit.fraction);
-    setScrubKm(clamped);
     onSelect?.({ segment: hit.column.segment, latitude, longitude });
   }
 

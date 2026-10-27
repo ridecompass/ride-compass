@@ -8,7 +8,7 @@ import { fitBoundsToSection, flyToVisible, pathInView } from "./mapCamera";
 import type { RideFollow } from "./useRideFollow";
 
 interface SectionFocus {
-  /** 選んでいる区間の形（選んでいる候補の同じ区間から引く。地図で押した区間は形を持たない写し）。選んでいなければnull。 */
+  /** 選んでいる区間の形。選んでいなければnull。 */
   sectionPath: readonly Position[] | null;
   /** 選んでいる区間へ寄せる頼み（道のりのグラフの寄せるボタン）。新しい値になるたびに寄せる。 */
   request: object | null;

@@ -32,7 +32,7 @@ import { useRideFollow, type RideFollow } from "@/features/map/MapView/useRideFo
 import { useSectionFocus } from "@/features/map/MapView/useSectionFocus";
 import { type TurnMarkPoint, useTurnMark } from "@/features/map/MapView/useTurnMark";
 import { sidePointLocator } from "@/lib/mapDisplay/sidePoints";
-import { findSameSegment, segmentPath } from "@/lib/routeDistance";
+import { segmentPath } from "@/lib/routeDistance";
 
 interface MapViewProps {
   routes: RouteCandidate[];
@@ -154,16 +154,13 @@ export default function MapView({
   const mapCatalog = useMapAxisCatalog();
   // 詳細を見ている道。強調も scene の一部として当てる。
   const inspectedShape = popup?.kind === "road" ? popup.shape : null;
-  // 選んでいる区間（候補の同じ区間から引く。地図で押した区間は形を持たない写し）と、その形。
+  // 選んでいる区間（選んでいる候補の区間のときだけ）と、その形。
   const selectedRoute = routes.find((route) => route.id === selectedRouteId) ?? null;
   const selectedSegments = selectedRoute?.segments;
-  const selectedSection = useMemo(
-    () =>
-      selectedRouteSegment === null || selectedSegments === undefined
-        ? null
-        : (findSameSegment(selectedSegments, selectedRouteSegment.segment, (segment) => segment) ?? null),
-    [selectedSegments, selectedRouteSegment],
-  );
+  const selectedSection =
+    selectedRouteSegment !== null && selectedSegments?.includes(selectedRouteSegment.segment) === true
+      ? selectedRouteSegment.segment
+      : null;
   const selectedSectionPath = useMemo(
     () => (selectedSection === null ? null : segmentPath(selectedSection)),
     [selectedSection],

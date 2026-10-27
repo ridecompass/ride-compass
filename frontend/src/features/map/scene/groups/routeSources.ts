@@ -10,6 +10,9 @@ export type RoutePath = readonly Position[];
 
 export type RouteShape = { readonly path: RoutePath; readonly properties?: Readonly<Record<string, unknown>> };
 
+/** 区間の線の地物が持つ、選んでいる候補の中の区間の番号（`segments`の並びの位置）。 */
+export const ROUTE_SEGMENT_INDEX_PROPERTY = "index";
+
 type RouteLine = { readonly routeId: string; readonly path: RoutePath };
 
 export const ROUTE_SOURCE = {

@@ -22,7 +22,7 @@ import { useAxisCatalog } from "@/hooks/useAxisCatalog";
 import { cn } from "@/lib/cn";
 import type { RoadTrackRow } from "@/lib/mapDisplay/roadTracks";
 import { isUnclassifiedRow } from "@/lib/mapDisplay/roadTracks";
-import { findSameSegment, kmOfPickedPoint, routeStretches } from "@/lib/routeDistance";
+import { kmOfPickedPoint, routeStretches } from "@/lib/routeDistance";
 import { formatJstHourMinute } from "@/lib/time";
 import type { RouteSegmentDetail, SelectedRouteSegment } from "@/types/route";
 
@@ -74,7 +74,7 @@ export default function SegmentDetail({
   const axisCatalog = useAxisCatalog();
   const { segment } = selection;
   const columns = useMemo(() => routeStretches(segments), [segments]);
-  const column = findSameSegment(columns, segment, (item) => item.segment);
+  const column = columns.find((item) => item.segment === segment);
   const km = column === undefined ? null : kmOfPickedPoint(column, selection);
   // 選んだ地点の層の値（線の層は値と勾配、帯の層は区分の行）。地点が引けなければ出さない。
   const { lines, bands } = useMemo(() => {
