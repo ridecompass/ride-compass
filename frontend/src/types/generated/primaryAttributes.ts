@@ -119,6 +119,7 @@ export const primaryAttributes = [
               "traffic_signals"
             ],
             "description": "信号機。信号付きの横断歩道もここに入る[OSM の highway=traffic_signals・crossing]。",
+            "glyph": "signal",
             "color": "#885270"
           },
           {
@@ -128,6 +129,7 @@ export const primaryAttributes = [
               "crossing"
             ],
             "description": "信号の無い横断歩道[OSM の highway=crossing]。",
+            "glyph": "crosswalk",
             "color": "#8d5449"
           },
           {
@@ -137,6 +139,7 @@ export const primaryAttributes = [
               "stop"
             ],
             "description": "一時停止の標識がある所[OSM の highway=stop]。",
+            "glyph": "octagon",
             "color": "#736134"
           },
           {
@@ -146,6 +149,7 @@ export const primaryAttributes = [
               "give_way"
             ],
             "description": "相手に道を譲る（徐行する）標識がある所[OSM の highway=give_way]。",
+            "glyph": "yield",
             "color": "#496c44"
           },
           {
@@ -156,6 +160,7 @@ export const primaryAttributes = [
               "railway_crossing"
             ],
             "description": "線路（路面電車を含む）を渡る所。車道の踏切も歩道・自転車道の踏切も入る[OSM の railway タグ]。",
+            "glyph": "cross",
             "color": "#016f6b"
           },
           {
@@ -165,6 +170,7 @@ export const primaryAttributes = [
               "barrier"
             ],
             "description": "車止めの柱・ゲート・柵など、道をふさいで止まるか押して通る所[OSM の barrier タグ]。",
+            "glyph": "barrier",
             "color": "#0c6b8b"
           },
           {
@@ -174,6 +180,7 @@ export const primaryAttributes = [
               "traffic_calming"
             ],
             "description": "車の速度を落とさせる段差（ハンプ）や道幅の絞り込み[OSM の traffic_calming タグ]。",
+            "glyph": "hump",
             "color": "#5e5f8d"
           }
         ],
@@ -206,6 +213,7 @@ export const primaryAttributes = [
               true
             ],
             "description": "当事者に自転車が含まれる事故[警察庁の交通事故統計の当事者種別]。",
+            "glyph": "bicycle",
             "color": "#5791ba"
           },
           {
@@ -215,6 +223,7 @@ export const primaryAttributes = [
               false
             ],
             "description": "当事者に自転車が含まれない事故（車どうし・車と歩行者など）。",
+            "glyph": "alert",
             "color": "#a7865c"
           }
         ],

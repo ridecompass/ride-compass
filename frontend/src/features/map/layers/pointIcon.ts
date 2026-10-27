@@ -1,13 +1,14 @@
 // 絵記号で描く点の、地図へ登録する画素。形は見本（`components/PointIconSwatch/PointIconSwatch.tsx: PointIconSwatch`）と同じ宣言を読む。
 
 import {
-  BOX_PATH,
   BOX_STROKE,
   FRAME,
+  FRAME_PATHS,
   GLYPH_OFFSET,
   GLYPH_PATHS,
   GLYPH_SCALE,
   GLYPH_STROKE,
+  type PointFrame,
 } from "@/components/PointIconSwatch/PointIconSwatch";
 import { drawCanvasIcon } from "@/features/map/layers/sdfIcon";
 import type { PointGlyph } from "@/lib/mapDisplay/legendFilter";
@@ -18,11 +19,15 @@ import palette from "@/types/generated/palette.json";
 const PIXEL_RATIO = 2;
 
 /** 地図へ登録する絵。canvasの2D描画が使えなければ投げる——空の絵を返すと点が地図から消えるだけで誰も気づけない。 */
-export function drawPointIcon(color: string, glyph: PointGlyph): { data: ImageData; pixelRatio: number } {
+export function drawPointIcon(
+  color: string,
+  glyph: PointGlyph,
+  frame: PointFrame,
+): { data: ImageData; pixelRatio: number } {
   const sizePx = mapDisplay.point.iconSizePx * PIXEL_RATIO;
   const data = drawCanvasIcon(sizePx, (ctx) => {
     ctx.scale(sizePx / FRAME, sizePx / FRAME);
-    const box = new Path2D(BOX_PATH);
+    const box = new Path2D(FRAME_PATHS[frame]);
     ctx.fillStyle = color;
     ctx.fill(box);
     ctx.strokeStyle = palette.semantic.mark_stroke;

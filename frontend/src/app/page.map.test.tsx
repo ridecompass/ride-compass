@@ -290,7 +290,8 @@ describe("区間の近くの施設", () => {
     return Object.fromEntries(
       mapOnScreen()
         .visibleLayerIds()
-        .filter((id) => id.includes("-side-"))
+        // 点の層だけを見る（引いた縮尺の丸・束ねた数の字の層は、点に添える層）。
+        .filter((id) => id.includes("-side-") && !id.includes(":"))
         .map((id) => [
           id,
           mapOnScreen()

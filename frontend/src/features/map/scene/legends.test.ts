@@ -30,10 +30,12 @@ const TILES = {
   maxZoom: 14,
 };
 
+function pointLayersOf(layerId: string, hiddenKeys: Readonly<Record<string, readonly string[]>> = {}) {
+  return pointGroup.build({ tiles: TILES, visible: { [layerId]: true }, hiddenKeys }).layers;
+}
+
 function pointLayerOf(role: string, hiddenKeys: Readonly<Record<string, readonly string[]>> = {}) {
-  const layer = pointGroup
-    .build({ tiles: TILES, visible: { [role]: true }, hiddenKeys })
-    .layers.find((l) => l.role === role);
+  const layer = pointLayersOf(role, hiddenKeys).find((l) => l.role === role);
   if (layer === undefined) throw new Error(`${role} の層が無い`);
   return layer;
 }
@@ -54,7 +56,10 @@ describe("点の凡例", () => {
       } else if (entry.diameterPx === undefined) {
         expect(valuesIn(paint["circle-color"])).toContain(entry.color);
       } else {
-        expect(valuesIn(paint["circle-radius"])).toContain(entry.diameterPx / 2);
+        // 点の大きさの見本は、丸で描く層（絵記号の層を引いた縮尺で丸に描く層を含む）の半径に現れる。
+        const circle =
+          pointLayersOf(axis.layerId).find((l) => l.role === `${axis.layerId}:dot`) ?? pointLayerOf(axis.layerId);
+        expect(valuesIn((circle.paint as Record<string, unknown>)["circle-radius"])).toContain(entry.diameterPx / 2);
       }
     }
   });
