@@ -1,10 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import GenerationNotice from "@/features/route/GenerationNotice/GenerationNotice";
+import PlaceSearchBar from "@/features/route/PlaceSearch/PlaceSearchBar";
+import { chooseResultOf, pointTitle } from "@/features/route/pointNames";
 import type { SettingsTab } from "@/features/route/RouteForm/RouteForm";
 import RouteSettingsForm from "@/features/route/RouteForm/RouteSettingsForm";
-import { useGenerationConditions } from "@/features/route/useGenerationConditions";
+import { useGenerationConditions, waypointsFull } from "@/features/route/useGenerationConditions";
 import { useSavedConditions } from "@/features/route/useSavedConditions";
 import { useSavedPlaces } from "@/features/route/useSavedPlaces";
 import type { Coordinates, PinRole, PlaceCandidate } from "@/types/route";
@@ -48,10 +50,6 @@ export default function Home() {
   // 地図を寄せる地点（住所の検索で置いた地点・取り直した現在地）。住所の検索で置くたびにそこへ寄せる（ピンを直すのは
   // 地図の上なので）。
   const [focusPoint, setFocusPoint] = useState<Coordinates | null>(null);
-  function placeFound(role: PinRole, candidate: PlaceCandidate, waypointIndex: number | null) {
-    conditions.placeFound(role, candidate, waypointIndex);
-    setFocusPoint({ latitude: candidate.latitude, longitude: candidate.longitude });
-  }
   const ride = useRideConditions();
   const ridingWayConditions = useRideWayConditions(riding.map, ride.speedKmh);
   // 名前を付けて保存した生成の条件（保存は「条件」タブ、呼び出しは「保存済み」タブ）。
@@ -62,7 +60,7 @@ export default function Home() {
     onOriginPlace: setManualLocation,
     onOriginFollowCurrent: resetOriginToCurrent,
   });
-  // 名前を付けて保存した地点（地点の詳しくで保存し、打つ欄の候補に出す）。
+  // 名前を付けて保存した地点（地点の詳しくで保存し、地点の検索の欄の候補に出す）。
   const savedPlaces = useSavedPlaces();
 
   // 説明を見る状態（ヘッダーのメニューの「使い方を見る」で入る）。
@@ -70,6 +68,22 @@ export default function Home() {
 
   const isMobile = useIsMobile();
   const panels = usePagePanels({ navigating, isMobile });
+
+  // 「ルート設定」のタブ。タブ列は見出し行、中身は本文に描くため、両方を囲むパネルの外で持つ。
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>("generate");
+
+  // 探した・保存した地点を置いたら、置いた地点を選んで「ルート設定」の条件タブにその詳しくを見せる（ピンを地図でつかんで直す
+  // ため。足した経由地は`conditions.placeFound`が選ぶ）。
+  function placeFound(role: PinRole, candidate: PlaceCandidate, waypointIndex: number | null) {
+    conditions.placeFound(role, candidate, waypointIndex);
+    if (role !== "waypoint") conditions.selectPoint({ role });
+    setFocusPoint({ latitude: candidate.latitude, longitude: candidate.longitude });
+    setSettingsTab("generate");
+    panels.showRouteSettings();
+  }
+  // 地図の上端の地点の検索の欄。ルート設定で選んでいる地点の役割で置く。
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const searchTarget = conditions.selectedPoint;
 
   // ルートを作る機能（結果・生成・区間の乗り換え）。
   const route = useRoutePlanner({
@@ -91,9 +105,6 @@ export default function Home() {
     now: ride.departure.now,
     routeWeights: route.routeWeights,
   });
-
-  // 「ルート設定」のタブ。タブ列は見出し行、中身は本文に描くため、両方を囲むパネルの外で持つ。
-  const [settingsTab, setSettingsTab] = useState<SettingsTab>("generate");
 
   const tapMode = mapTapModeOf(panels.activePanel, settingsTab, route.splice.editingRoute !== null);
   // 地図に出した一時の選択（選んだ区間・小窓）の持ち主。地図を押した意味は効いているパネルで決まるので、前に効いていたのと別の
@@ -123,11 +134,10 @@ export default function Home() {
         originAtHere={place.originAtHere}
         onOriginReset={resetOriginToCurrent}
         originFound={originFound}
-        // 地図は出発地を真ん中にして開くので、地図が範囲を知らせる前は出発地が真ん中。
-        mapCenter={mapView.center ?? location}
+        // クリックの中で同期して focus する（iOS は、利用者の操作の中で focus したときだけキーボードを出す）。
+        onSearchOpen={() => searchInputRef.current?.focus()}
         onPlaceFound={placeFound}
         savedPlaces={savedPlaces}
-        onPointsShow={() => setSettingsTab("generate")}
         placing={tapMode === "points"}
       />
     ),
@@ -192,6 +202,22 @@ export default function Home() {
             sheetOpen={isMobile && panels.mobileSheet !== null}
             usageGuideActive={usageGuideActive}
             onUsageGuideEnd={() => setUsageGuideActive(false)}
+            searchBar={
+              <PlaceSearchBar
+                title={pointTitle(searchTarget)}
+                chooseResult={chooseResultOf(searchTarget)}
+                full={
+                  searchTarget.role === "waypoint" && searchTarget.index === null && waypointsFull(conditions.waypoints)
+                }
+                // 地図は出発地を真ん中にして開くので、地図が範囲を知らせる前は出発地が真ん中。
+                mapCenter={mapView.center ?? location}
+                onChoose={(candidate) =>
+                  placeFound(searchTarget.role, candidate, searchTarget.role === "waypoint" ? searchTarget.index : null)
+                }
+                savedPlaces={savedPlaces}
+                inputRef={searchInputRef}
+              />
+            }
           />
         </div>
       </div>

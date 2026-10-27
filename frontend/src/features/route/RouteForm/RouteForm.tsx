@@ -62,14 +62,12 @@ interface RouteFormProps {
   onOriginReset: () => void;
   /** 出発地が、探して置いたときの位置のままなら、その候補（名前を出す）。 */
   originFound: PlaceCandidate | null;
-  /** 地図でいま見ている所の真ん中。探す施設の候補は、ここから近い順に並ぶ。 */
-  mapCenter: Coordinates;
-  /** 探して選んだ候補を、その役割の地点として置く（経由地は`waypointIndex`番目を置き直し、無ければ足す）。 */
+  /** 地図の上端の地点の検索の欄を、選んでいる地点の役割で開く。 */
+  onSearchOpen: () => void;
+  /** 保存した候補を、その役割の地点として置き、置いた地点の詳しくを見せる（経由地は足す）。 */
   onPlaceFound: (role: PinRole, candidate: PlaceCandidate, waypointIndex: number | null) => void;
-  /** 保存した地点（地点の詳しくで保存して打つ欄の候補に出し、「保存済み」タブの「地点」に並べて呼び出す）。 */
+  /** 保存した地点（地点の詳しくで保存して検索の欄の候補に出し、「保存済み」タブの「地点」に並べて呼び出す）。 */
   savedPlaces: SavedPlacesState;
-  /** 「条件」タブへ移る（「保存済み」タブの「地点」から呼び出した地点を見せる）。 */
-  onPointsShow: () => void;
   /** 地図をタップすると選んでいる地点を置くか（ルート設定が地図で効いている間）。 */
   placing: boolean;
   /** 「重み」タブの中身。タブの列と「ルート生成」ボタンは見出しの行、検証は`useRouteFormSubmit`が持つ。 */
@@ -119,10 +117,9 @@ export default function RouteForm({
   originAtHere,
   onOriginReset,
   originFound,
-  mapCenter,
+  onSearchOpen,
   onPlaceFound,
   savedPlaces,
-  onPointsShow,
   placing,
   weightsPanel,
   exclusionsPanel,
@@ -134,13 +131,6 @@ export default function RouteForm({
   const distanceToggleName = distanceTargeted ? "全長の目標をやめる" : "全長の目標を決める";
   // 許容差は管理画面の較正値（目標の距離に対する割合）。引けない間は幅の文を出さない（較正したのとは別の数を出さない）。
   const distanceToleranceRatio = clientTuningValue(useAxisCatalog(), CLIENT_TUNING_IDS.distanceToleranceRatio);
-
-  // 保存した地点を呼び出したら「条件」タブへ移り、置いた地点を選んで詳しくを出す（足した経由地は`onPlaceFound`が選ぶ）。
-  function recallSavedPlace(role: PinRole, place: PlaceCandidate) {
-    onPlaceFound(role, place, null);
-    if (role !== "waypoint") conditions.selectPoint({ role });
-    onPointsShow();
-  }
 
   // 範囲の端ではボタンを押せなくするので、足した値は範囲を出ない。
   function stepMaxRoutes(delta: number) {
@@ -229,8 +219,7 @@ export default function RouteForm({
           originAtHere={originAtHere}
           onOriginReset={onOriginReset}
           originFound={originFound}
-          mapCenter={mapCenter}
-          onPlaceFound={onPlaceFound}
+          onSearchOpen={onSearchOpen}
           savedPlaces={savedPlaces}
           placing={placing}
         />
@@ -262,7 +251,7 @@ export default function RouteForm({
               places={savedPlaces.places}
               waypointsFull={waypointsFull(conditions.waypoints)}
               loop={conditions.loop}
-              onRecall={recallSavedPlace}
+              onRecall={(role, place) => onPlaceFound(role, place, null)}
               onRemove={savedPlaces.remove}
             />
           </KeptTabContent>

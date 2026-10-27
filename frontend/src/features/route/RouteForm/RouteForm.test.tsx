@@ -5,9 +5,10 @@
  * 見るもの: 候補数のステッパー（今の件数・1件ずつの増減・端で押せない）、全長の目標の入り切り（押して上がる値・
  * 外している間はルーラーを動かせない）とルーラーのコマ（5km刻みの範囲・今の値）と動かして上がる値、全長の目標の(i)の奥の
  * 許容差（軸カタログが配る較正値で、引けない間は書かない）、距離・候補数の値と地点の並びの札の名前の文字の大きさのそろい、
- * 「保存済み」タブの「地点」から呼び出した地点をその役割で上げて「条件」タブへ移ること、タブを切り替えても各タブの中身を外さないこと。
+ * 「保存済み」タブの「地点」から呼び出した地点をその役割で上げること、タブを切り替えても各タブの中身を外さないこと。
  *
- * ここで見ないもの: タブの列と選んだタブ、どのタブの中身が見えるか（スタイルで隠す）→ `app/page.tsx`。
+ * ここで見ないもの: タブの列と選んだタブ、どのタブの中身が見えるか（スタイルで隠す）、呼び出した地点を選んで「条件」タブへ移ること
+ * → `app/page.tsx`。
  * 書いた定数や受け取った値をそのまま渡すもの（今の値と km の表記・候補の距離の幅、(i)の奥の文）。
  * 周回の間に呼び出した地点を目的地にできないこと → `SavedPlacesPanel/SavedPlacesPanel.test.tsx`。
  * 周回の切り替えと地点の並び → `RouteForm/RouteForm.points.test.tsx`。押した地点の詳しく → `RouteForm/RouteForm.pointDetail.test.tsx`。
@@ -156,21 +157,16 @@ describe("RouteForm 保存した地点を呼び出す", () => {
   const savedPlaces = { places: [FACILITY], save: () => {}, remove: () => {} };
 
   it.each([
-    ["出発地にする", "origin", [{ role: "origin" }]],
-    ["経由地に足す", "waypoint", []],
-    ["目的地にする", "destination", [{ role: "destination" }]],
-  ] as const)(
-    "「%s」を押すと、その地点をその役割で上げ、出発地・目的地はその地点を選んで「条件」タブへ移る",
-    async (label, role, selected) => {
-      const { onPlaceFound, selectPoint, onPointsShow } = renderForm({ savedPlaces }, "saved");
+    ["出発地にする", "origin"],
+    ["経由地に足す", "waypoint"],
+    ["目的地にする", "destination"],
+  ] as const)("「%s」を押すと、その地点をその役割で上げる", async (label, role) => {
+    const { onPlaceFound } = renderForm({ savedPlaces }, "saved");
 
-      await userEvent.click(within(await openRecallMenu()).getByRole("button", { name: label }));
+    await userEvent.click(within(await openRecallMenu()).getByRole("button", { name: label }));
 
-      expect(onPlaceFound).toHaveBeenCalledExactlyOnceWith(role, FACILITY, null);
-      expect(selectPoint.mock.calls.map(([target]) => target)).toEqual(selected);
-      expect(onPointsShow).toHaveBeenCalledOnce();
-    },
-  );
+    expect(onPlaceFound).toHaveBeenCalledExactlyOnceWith(role, FACILITY, null);
+  });
 
   it("経由地を上限まで置いたあとは「経由地に足す」を押せない", async () => {
     renderForm({ savedPlaces, waypoints: waypointsOf(routeGenerateConfig.max_waypoints) }, "saved");

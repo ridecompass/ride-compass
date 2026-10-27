@@ -36,7 +36,6 @@ const BASE = {
   placing: false,
   foundAt: () => null,
   originFound: null,
-  mapCenter: { latitude: 35.681, longitude: 139.767 },
   weightsPanel: null,
   exclusionsPanel: null,
   saveConditionsButton: null,
@@ -83,7 +82,7 @@ export function renderForm(options: Options = {}, tab: SettingsTab = "generate")
     onOriginReset: vi.fn(),
     selectPoint: vi.fn(),
     onPlaceFound: vi.fn(),
-    onPointsShow: vi.fn(),
+    onSearchOpen: vi.fn(),
   };
   const element = (nextTab: SettingsTab, changed: Options = {}) => {
     const {
@@ -93,9 +92,8 @@ export function renderForm(options: Options = {}, tab: SettingsTab = "generate")
       originAtHere,
       onOriginReset,
       originFound,
-      mapCenter,
+      onSearchOpen,
       onPlaceFound,
-      onPointsShow,
       weightsPanel,
       exclusionsPanel,
       saveConditionsButton,
@@ -124,9 +122,8 @@ export function renderForm(options: Options = {}, tab: SettingsTab = "generate")
               originAtHere={originAtHere}
               onOriginReset={onOriginReset}
               originFound={originFound}
-              mapCenter={mapCenter}
+              onSearchOpen={onSearchOpen}
               onPlaceFound={onPlaceFound}
-              onPointsShow={onPointsShow}
               savedPlaces={savedPlaces}
               placing={placing}
               weightsPanel={weightsPanel}
@@ -151,14 +148,14 @@ export function button(name: string) {
   return screen.getByRole("button", { name });
 }
 
-/** 押した地点の詳しく（呼び名・出どころ・名前・打つ欄・操作）。 */
+/** 押した地点の詳しく（呼び名・出どころ・名前・探すボタン・操作）。 */
 export function detail(title: string) {
   return screen.getByRole("region", { name: title });
 }
 
-/** 詳しくの打つ欄。 */
-export function pointBox(title: string) {
-  return screen.getByRole("searchbox", { name: `${title}を住所・施設で探す` });
+/** 詳しくの、地図の上端の検索の欄をその地点の役割で開くボタン。 */
+export function searchButton(title: string) {
+  return screen.getByRole("button", { name: `${title}を探す` });
 }
 
 /** 地点の並び（出発地 › 経由地の番号の丸 ＋ › 目的地）の、押せるものの名前。 */

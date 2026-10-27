@@ -101,6 +101,9 @@
    * 拡大・縮小の代わりの倍率のボタンと方位磁針の2つの下端から続ける。 */
   --map-ctrl-stack-top: calc(var(--map-ctrl-margin) + 3 * var(--map-ctrl-button-size) + var(--map-ctrl-stack-gap));
   --map-ctrl-ride-stack-top: calc(var(--map-ctrl-margin) + 2 * var(--map-ctrl-button-size) + var(--map-ctrl-stack-gap));
+  /* 地図の上端の地点の検索の欄の高さと、その下の段（左上の「表示」と上の中央の「評価で塗る」）の上端。 */
+  --map-search-bar-height: 2.25rem;
+  --map-below-search-top: calc(0.75rem + var(--map-search-bar-height) + var(--space-2));
 
   /* スマホ幅かどうか。**幅の分岐を書けるのはメディアクエリだけ**なので、
    * この判定はCSSが持ち、JS（hooks/useIsMobile.ts）はこの旗を読むだけにする。

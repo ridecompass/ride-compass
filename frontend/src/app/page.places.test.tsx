@@ -2,14 +2,16 @@
  * `app/page.tsx`——トップページのうち、地図に置く地点。
  *
  * 見ること: ピンを押しても消えずルート設定ではその地点を選ぶこと、閉じている間は地点の名前のあるピンだけが小窓を開き押せる見た目を
- * 持つこと、目的地の行で探して置いた地点と、名前のある点を押して置いた地点が地図に立ち、行にその名前が出ること、周回の間は置いた目的地を地図にも行にも出さず地図を押しても目的地にしないで、
- * 外すと戻すこと、名前を付けて保存した地点を打つ欄から選び直せ、「保存済み」の「地点」から呼び出すと条件タブへ移って置くこと。
+ * 持つこと、名前のある点を押して置いた地点が地図に立ち、行にその名前が出ること、地図の上端の地点の検索の欄（パネルを閉じていても
+ * 出る）が詳しくの探すボタンでその地点の役割で開き、選んだ候補をその役割で地図に立てて「ルート設定」にその詳しくを見せること、
+ * 探している間のブラウザの「戻る」で検索だけを閉じること、周回の間は置いた目的地を地図にも行にも出さず地図を押しても目的地にしないで、
+ * 外すと戻すこと、名前を付けて保存した地点を検索の欄から選び直せ、「保存済み」の「地点」から呼び出すと条件タブへ移って置くこと。
  *
  * ここで見ないもの: 地図を押したときの意味をどのパネルが決めるか・区間を押したときは`app/page.map.test.tsx`が見る。
  *
  * 差し替えたもの: backend の応答（網の層）、位置情報の取得、地図の描画（`maplibre-gl`）。子の部品は本物を描く。
  */
-import { screen, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { POINT_TILE_SOURCES } from "@/features/map/scene/groups/points";
@@ -23,6 +25,7 @@ import {
   renderHome,
   selectDestination,
   serveHome,
+  type User,
 } from "@/testing/homePage";
 import type { PointedFeature } from "@/testing/maplibre";
 import type { Coordinates } from "@/types/route";
@@ -32,6 +35,15 @@ vi.mock("maplibre-gl", () => import("@/testing/maplibre"));
 beforeEach(() => {
   serveHome();
 });
+
+const SENSOJI = {
+  kind: "facility",
+  level: "point",
+  name: "浅草寺",
+  area: "台東区浅草二丁目",
+  latitude: 35.7148,
+  longitude: 139.7967,
+} as const;
 
 describe("地図に置く地点", () => {
   it("ピンを押しただけでは消えず、ルート設定ではその地点を選んで詳しくを出し、閉じている間は呼び名しか無いピンは小窓を開かず押せる見た目にもしない", async () => {
@@ -98,25 +110,73 @@ describe("地図に置く地点", () => {
     expect(screen.queryByRole("group", { name: /小窓の上の帯$/ })).toBeNull();
   });
 
-  it("目的地を探して選んだ地点は地図に目的地として立ち、地点の並びにその名前が出る", async () => {
-    const candidate = {
-      kind: "facility",
-      level: "point",
-      name: "浅草寺",
-      area: "台東区浅草二丁目",
-      latitude: 35.7148,
-      longitude: 139.7967,
-    } as const;
-    onBackend("GET", "/api/place-search", () => Response.json({ candidates: [candidate] }));
+  it.each([
+    ["出発地", async () => screen.getByRole("button", { name: "出発地: 現在地" }), "出発地: 浅草寺"],
+    ["新しい経由地", async () => screen.getByRole("button", { name: "経由地を足す" }), "経由地1: 浅草寺"],
+    [
+      "経由地1",
+      async (user: User) => {
+        await user.click(screen.getByRole("button", { name: "経由地を足す" }));
+        await clickMap(ELSEWHERE);
+        return screen.getByRole("button", { name: "経由地1: 地図で選んだ地点" });
+      },
+      "経由地1: 浅草寺",
+    ],
+    [
+      "目的地",
+      async (user: User) => {
+        await user.click(screen.getByRole("button", { name: "周回", pressed: true }));
+        return screen.getByRole("button", { name: "目的地: 未設定" });
+      },
+      "目的地: 浅草寺",
+    ],
+  ] as const)(
+    "地点の並びで%sを押し、詳しくの探すボタンを押すと上端の欄がその役割で開き、選んだ候補をその地点として地図に立てる",
+    async (title, chipOf, placed) => {
+      onBackend("GET", "/api/place-search", () => Response.json({ candidates: [SENSOJI] }));
+      const { user } = renderHome();
+      await user.click(await chipOf(user));
+
+      await user.click(screen.getByRole("button", { name: `${title}を探す` }));
+      const searchBox = screen.getByRole("searchbox", { name: `${title}を住所・施設で探す` });
+      expect(searchBox).toHaveFocus();
+      await user.type(searchBox, "浅草寺{Enter}");
+      await user.click(await screen.findByRole("button", { name: new RegExp(SENSOJI.name) }));
+
+      expect(marksAt(SENSOJI)).toHaveLength(1);
+      expect(screen.getByRole("button", { name: placed })).toBeInTheDocument();
+      expect(screen.queryByRole("list", { name: "地点の候補" })).toBeNull();
+    },
+  );
+
+  it("上端の欄はパネルを閉じていても出ていて、選ぶと「ルート設定」を開いて置いた地点の詳しくを見せる", async () => {
+    onBackend("GET", "/api/place-search", () => Response.json({ candidates: [SENSOJI] }));
     const { user } = renderHome();
     await selectDestination(user);
+    await user.click(screen.getByRole("button", { name: "パネルを閉じる" }));
+    expect(screen.queryByRole("region", { name: "目的地" })).toBeNull();
+
+    await user.type(screen.getByRole("searchbox", { name: "目的地を住所・施設で探す" }), "浅草寺{Enter}");
+    await user.click(await screen.findByRole("button", { name: new RegExp(SENSOJI.name) }));
+
+    expect(screen.getByRole("region", { name: "目的地" })).toHaveTextContent(SENSOJI.name);
+  });
+
+  it("上端の欄で探している間にブラウザの「戻る」を押すと、検索だけを閉じて打った文字を消す", async () => {
+    onBackend("GET", "/api/place-search", () => Response.json({ candidates: [SENSOJI] }));
+    const { user } = renderHome();
+    await selectDestination(user);
+    await user.click(screen.getByRole("button", { name: "目的地を探す" }));
     const searchBox = screen.getByRole("searchbox", { name: "目的地を住所・施設で探す" });
-
     await user.type(searchBox, "浅草寺{Enter}");
-    await user.click(await screen.findByRole("button", { name: new RegExp(candidate.name) }));
+    await screen.findByRole("list", { name: "地点の候補" });
 
-    expect(marksAt(candidate)).toHaveLength(1);
-    expect(screen.getByRole("button", { name: `目的地: ${candidate.name}` })).toBeInTheDocument();
+    act(() => window.history.back());
+
+    await waitFor(() => expect(screen.queryByRole("list", { name: "地点の候補" })).toBeNull());
+    expect(searchBox).toHaveValue("");
+    expect(searchBox).not.toHaveFocus();
+    expect(screen.getByRole("region", { name: "目的地" })).toBeInTheDocument();
   });
 
   it("周回にすると置いた目的地を地図にも地点の並びにも出さず、地図を押しても目的地にせず、周回を外すとその目的地が戻る", async () => {
@@ -136,7 +196,7 @@ describe("地図に置く地点", () => {
     expect(screen.getByRole("button", { name: "目的地: 地図で選んだ地点" })).toBeInTheDocument();
   });
 
-  it("名前を付けて保存した地点は、目的地を消したあとも打つ欄を押して選び直せ、「保存済み」の「地点」から呼び出すと条件タブへ移って置く", async () => {
+  it("名前を付けて保存した地点は、目的地を消したあとも探すボタンから選び直せ、「保存済み」の「地点」から呼び出すと条件タブへ移って置く", async () => {
     const { user } = renderHome();
     await selectDestination(user);
     await clickMap(DESTINATION);
@@ -149,7 +209,7 @@ describe("地図に置く地点", () => {
     await user.click(screen.getByRole("button", { name: "目的地を消す" }));
     expect(marksAt(DESTINATION)).toEqual([]);
 
-    await user.click(screen.getByRole("searchbox", { name: "目的地を住所・施設で探す" }));
+    await user.click(screen.getByRole("button", { name: "目的地を探す" }));
     const saved = screen.getByRole("list", { name: "保存した地点" });
     await user.click(within(saved).getByRole("button", { name: /いつものカフェ/ }));
 

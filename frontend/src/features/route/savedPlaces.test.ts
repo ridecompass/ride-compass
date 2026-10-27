@@ -5,7 +5,7 @@
  * 保存すると置き換える。履歴は同じ位置を置き換え、上限を超えた古い件を捨て、保存した地点と同じ位置の件を出さない。
  *
  * ここで見ないもの:
- * - 一覧をどこに出し、選ぶと何が起きるか → `RouteForm/PointSearch.test.tsx`
+ * - 一覧をどこに出し、選ぶと何が起きるか → `PlaceSearch/PlaceSearchBar.test.tsx`
  * - 一覧として読めない保存値・入れた件を先頭に置くこと → `lib/storedList.test.ts`
  */
 import { describe, expect, it } from "vitest";

@@ -1,26 +1,26 @@
 /**
  * `RouteForm/PointDetail.tsx`を`RouteForm`の中で使う所——押した地点の詳しくに、どの地点の何を渡すか。`RouteForm`を描いて確かめる。
  *
- * 見るもの: 押した地点の詳しく（呼び名・出どころ・名前・その位置から引いた辺り）、出発地の印の色、地図で置ける間の打つ欄の誘い、
- * 消す/現在地に戻す操作、名前を打って選んだ候補をその地点として上げること。
+ * 見るもの: 押した地点の詳しく（呼び名・出どころ・名前・その位置から引いた辺り）、出発地の印の色、地図で置ける間の探すボタンの
+ * 文言、消す/現在地に戻す操作。
  *
- * ここで見ないもの: 打ちかけで引く間・変換中に引かないこと・候補の行の中身（辺り・距離・札）・引けない／当たらないときの文
- * → `RouteForm/PointSearch.test.tsx`。探して置いた地点の辺りと代表の位置 → `RouteForm/PointDetail.test.tsx`。
+ * ここで見ないもの: 探すボタンで地図の上端の欄を開き、選んだ候補をその地点として置くこと → `app/page.places.test.tsx`。
+ * 探して置いた地点の辺りと代表の位置 → `RouteForm/PointDetail.test.tsx`。
  * 検索で置いた地点が、ピンを動かすまでその候補のままか → `features/route/useGenerationConditions.points.test.ts`。
  * 地点の並びと押した地点の選び → `RouteForm/RouteForm.points.test.tsx`。
  * 受け取った値をそのまま渡すもの（出発地が現在地にある間に戻す操作を押せなくすること、経由地が上限の間に探す欄を押せなくすること）。
  *
  * 差し替えたもの: 検索の口と辺りの口の応答（網の層）。辺りの口は、テストが応答を渡さなければ辺り無しと答える。
  */
-import { screen, within } from "@testing-library/react";
+import { within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { ORIGIN_MARK_FALLBACK_COLOR, PIN_MARK_COLOR } from "@/components/PinMark/PinMark";
 import { onBackend, serveAxisCatalog } from "@/testing/backendServer";
 import { catalogResponse } from "@/testing/catalogAxes";
-import { DESTINATION, ORIGIN, button, detail, pointBox, renderForm, waypointsOf } from "@/testing/routeForm";
-import { AZA_CANDIDATE as AZA, FACILITY_CANDIDATE as FACILITY } from "@/testing/routeFixtures";
+import { DESTINATION, ORIGIN, button, detail, renderForm, searchButton, waypointsOf } from "@/testing/routeForm";
+import { FACILITY_CANDIDATE as FACILITY } from "@/testing/routeFixtures";
 
 // 詳しくは置いた地点の辺りを引く。辺りを見ないテストには、辺り無しと答える（見るテストは後から応答を渡す）。
 beforeEach(() => {
@@ -65,23 +65,23 @@ describe("RouteForm 出発地", () => {
 
 describe("RouteForm 地点の詳しく", () => {
   it.each([
-    [true, "地図をタップ"],
+    [true, "地図をタップか、住所・施設で探す"],
     [false, "住所・施設で置き直す"],
-  ])("地図で置ける間か（%s）で、選んでいる地点の打つ欄に「%s」と出す", (placing, placeholder) => {
+  ])("地図で置ける間か（%s）で、選んでいる地点の探すボタンに「%s」と出す", (placing, text) => {
     renderForm({ placing });
 
-    expect(pointBox("出発地")).toHaveAttribute("placeholder", placeholder);
+    expect(searchButton("出発地")).toHaveTextContent(text);
   });
 
   it.each([
-    [3, "地図をタップ[3地点]"],
-    [0, "地図をタップ"],
+    [3, "地図をタップ[3地点]か、住所・施設で探す"],
+    [0, "地図をタップか、住所・施設で探す"],
   ])(
-    "置いた経由地が%i件のとき、新しい経由地を選んでいれば打つ欄に件数があれば添えて「地図をタップ」を出す",
+    "置いた経由地が%i件のとき、新しい経由地を選んでいれば探すボタンに件数があれば添えて「地図をタップ」を出す",
     (count, hint) => {
       renderForm({ waypoints: waypointsOf(count), selectedPoint: { role: "waypoint", index: null }, placing: true });
 
-      expect(pointBox("新しい経由地")).toHaveAttribute("placeholder", hint);
+      expect(searchButton("新しい経由地")).toHaveTextContent(hint);
     },
   );
 
@@ -150,43 +150,4 @@ describe("RouteForm 目的地", () => {
       expect(clearDestination).toHaveBeenCalledOnce();
     },
   );
-});
-
-describe("RouteForm 探して置く", () => {
-  it.each([
-    ["目的地", "目的地: 未設定", "destination", null],
-    ["新しい経由地", "経由地を足す", "waypoint", null],
-    ["経由地2", "経由地2: 地図で選んだ地点", "waypoint", 1],
-    ["出発地", "出発地: 現在地", "origin", null],
-  ] as const)(
-    "%sの詳しくで名前を打つと候補を欄の下に出し、選ぶとその地点として上げて、打った文字と一覧を消す",
-    async (title, chip, role, waypointIndex) => {
-      const sent = onBackend("GET", "/api/place-search", () => Response.json({ candidates: [AZA, FACILITY] }));
-      const { onPlaceFound } = renderForm({ waypoints: waypointsOf(2) });
-      await userEvent.click(button(chip));
-
-      await userEvent.type(pointBox(title), "浅草寺{Enter}");
-
-      const list = await within(detail(title)).findByRole("list", { name: "地点の候補" });
-      expect(sent.map((request) => request.query.q)).toEqual(["浅草寺"]);
-      await userEvent.click(within(list).getByRole("button", { name: new RegExp(FACILITY.name) }));
-
-      expect(onPlaceFound).toHaveBeenCalledExactlyOnceWith(role, FACILITY, waypointIndex);
-      expect(screen.queryByRole("list", { name: "地点の候補" })).toBeNull();
-    },
-  );
-
-  it("候補の一覧は✕で閉じ、打った文字も消す", async () => {
-    onBackend("GET", "/api/place-search", () => Response.json({ candidates: [AZA] }));
-    const { onPlaceFound } = renderForm();
-    await userEvent.click(button("目的地: 未設定"));
-
-    await userEvent.type(pointBox("目的地"), "丸の内{Enter}");
-    await screen.findByRole("list", { name: "地点の候補" });
-    await userEvent.click(button("目的地の候補を閉じる"));
-
-    expect(screen.queryByRole("list", { name: "地点の候補" })).toBeNull();
-    expect(pointBox("目的地")).toHaveValue("");
-    expect(onPlaceFound).not.toHaveBeenCalled();
-  });
 });

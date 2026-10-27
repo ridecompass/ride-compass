@@ -263,7 +263,7 @@ backendも日本時間で扱う。`domain/time_zone.py`）。暦と時刻の取�
 | 種別 | コンポーネント |
 |---|---|
 | 地図本体 | `features/map/MapView/MapView`（全静的/動的レイヤーのMapLibre実装本体） |
-| 地図オーバーレイ制御 | `MapOverlayControls`（地図の左上の「表示」のボタンと一覧）・`MapNavigationControl`（地図右上の拡大・縮小と方位磁針）・`LensControl`（地図の上の中央のレンズ選択ピル）・`RideConditionBar`（方位磁針の直下、地図右上の走行条件アイコン列、出発時刻・想定速度） |
+| 地図オーバーレイ制御 | `PlaceSearchBar`（地図の上端の1段目の、地点を住所・施設で探す欄。[ルート設定・結果](route-settings-and-results.md)「住所・施設で探す」）・`MapOverlayControls`（検索の欄の下の段の左の「表示」のボタンと一覧）・`MapNavigationControl`（地図右上の拡大・縮小と方位磁針）・`LensControl`（検索の欄の下の段の中央のレンズ選択ピル）・`RideConditionBar`（方位磁針の直下、地図右上の走行条件アイコン列、出発時刻・想定速度） |
 | ルート設定 | `RouteForm`（モード切替/距離/候補件数/生成ボタン）・`RouteSettingsPanel`（0次除外・軸選択・重み） |
 | ルート結果 | `features/route/RouteOutcome/RouteOutcome.tsx`（「ルート結果」の中身: 空の状態・候補の一覧［横に並ぶカード］・区間の詳細・編集面）・`RouteCandidateActions`（選んでいる候補1本への操作。見出しの行に置く）・`RouteAxisProfile.tsx: RouteAxisProfile`（候補ごとのタブの中身、軸別難易度） |
 | レイアウト | `BottomSheet`（モバイル下部シート） |

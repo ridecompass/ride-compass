@@ -124,6 +124,19 @@ export function usePagePanels({ navigating, isMobile }: { navigating: boolean; i
     setUnseenOutcome(null);
   };
 
+  // 「ルート設定」を地図で効く区分にして見せる（地点を置いたあと、置いた地点の詳しくを見せる）。走行中のデスクトップは帯の
+  // 「ルート」で出す左のパネルを出す。
+  const showRouteSettings = () => {
+    if (isMobile) {
+      setMobileSheet("routeSettings");
+      return;
+    }
+    setGenerateOpen(true);
+    setLastTouchedPanel("routeSettings");
+    setSidebarCollapsed(false);
+    if (navigating) setRidePanelOpen(true);
+  };
+
   // 2枚のシートが共有する開閉と高さ。
   const sharedSheetProps = {
     onClose: () => setMobileSheet(null),
@@ -143,6 +156,7 @@ export function usePagePanels({ navigating, isMobile }: { navigating: boolean; i
     mobileSheet,
     toggleMobileSheet,
     toggleRidePanel,
+    showRouteSettings,
     sharedSheetProps,
     panelsShown,
     desktopPanels,
