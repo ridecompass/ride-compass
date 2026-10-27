@@ -117,7 +117,7 @@ describe("地図に置く地点", () => {
       "経由地1",
       async (user: User) => {
         await user.click(screen.getByRole("button", { name: "経由地を足す" }));
-        clickMap(ELSEWHERE);
+        await clickMap(ELSEWHERE);
         return screen.getByRole("button", { name: "経由地1: 地図で選んだ地点" });
       },
       "経由地1: 浅草寺",
