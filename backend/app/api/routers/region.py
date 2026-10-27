@@ -20,7 +20,8 @@ from app.domain.axis_inspector import AxisInspectorResult
 from app.domain.geo import BearingDeg
 from app.domain.route_request import AssumedSpeedKmh
 from app.domain.landcover import LandcoverTileZoom
-from app.domain.region import RoadTileZoom, TileIndex, check_tile_index
+from app.domain.geo import Latitude, Longitude
+from app.domain.region import RoadAt, RoadsAtRadiusM, RoadTileZoom, TileIndex, check_tile_index
 from app.infrastructure.media_types import PNG_CONTENT_TYPE
 from app.infrastructure.point_tile_layers import POINT_TILE_LAYERS
 from app.services.dedicated_way_values import AxisWayValueLens
@@ -182,6 +183,27 @@ class AxisInspectorRequest(StrictModel):
     def _check_tile_index(self) -> "AxisInspectorRequest":
         check_tile_index(self.z, self.x, self.y)
         return self
+
+
+class RoadsAtRequest(StrictModel):
+    longitude: Longitude
+    latitude: Latitude
+    # 地図の今の倍率を、路面タイルのズームへ丸めた値。返す道の単位（区間か道1本か）をタイルと同じにする。
+    z: RoadTileZoom
+    # 拾う距離。地図が指の幅を今の倍率で m に直して送る。
+    radius_m: RoadsAtRadiusM
+
+
+@router.post("/api/region/roads-at")
+async def region_roads_at(
+    body: RoadsAtRequest,
+    http_request: Request,
+    region_service: RegionService = Depends(get_region_service),
+) -> list[RoadAt]:
+    """押した所に近い道のフィーチャー（近い順）。プロパティはズーム`z`の路面タイルと同じで、地図は道のタイルを読まずに
+    道の小窓を開ける。押した位置を URL に残さないよう POST で受ける。"""
+    enforce_rate_limit(http_request, "roads-at", settings.roads_at_rate_limit_per_minute)
+    return await region_service.roads_at(body.longitude, body.latitude, body.z, body.radius_m)
 
 
 @router.post("/api/region/axis-inspector")

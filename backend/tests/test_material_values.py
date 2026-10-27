@@ -13,7 +13,7 @@ SQLの中の条件はPythonのカバレッジに現れないので、式をテ�
 本物の材料のidで引く——そこでは、その材料が何を返すかがテストの関心である。
 
 カタログの全部の式が、読み出しの各経路（`infrastructure/road_graph_repository.py: RoadGraphRepository`の区間の材料・
-道1本・道の標本・路面タイル・タイルのフィーチャーごとの材料・土地被覆の内訳）の中で実在の列だけを読むことも見る。上の節は別名を値で与えるので、
+道1本・道の標本・路面タイル・押した所に近い道・タイルのフィーチャーごとの材料・土地被覆の内訳）の中で実在の列だけを読むことも見る。上の節は別名を値で与えるので、
 綴りの合わない列や、経路に無い別名を読む式を見つけられない。道の標本の経路は、範囲を絞ると抽選しないことも見る
 （セッションを差し替える契約のテストには、SQLが返す値が現れない）。
 
@@ -185,4 +185,5 @@ async def test_every_declared_expression_reads_only_what_each_reading_path_provi
     assert await road_graph_repository.get_feature_landcover(1, None) is None
     # 取込範囲の外なので焼かずにNoneを返すが、タイルの列は先に解決される。
     assert await road_graph_repository.get_road_surface_tile_mvt(14, 14552, 6451, area) is None
+    assert await road_graph_repository.roads_at(139.005, 35.005, 14, 10.0, 1) == []
     assert await road_graph_repository.get_feature_materials_in_tile(14, 14552, 6451, area, 1) is None

@@ -45,7 +45,7 @@ from app.domain.axis_definitions import (
 from app.config import settings
 from app.domain.axis_inspector import AxisInspectorAxis, AxisInspectorResult, InspectorComposite, InspectorValues
 from app.domain.rain import RAIN_WINDOW_HOURS, rain_window_material_id
-from app.domain.region import ROAD_TILE_MAX_ZOOM, ROAD_TILE_MIN_ZOOM
+from app.domain.region import ROAD_TILE_MAX_ZOOM, ROAD_TILE_MIN_ZOOM, ROADS_AT_MAX_RADIUS_M, RoadAt
 from app.infrastructure import database, rate_limiter
 from app.infrastructure.point_tile_layers import POINT_TILE_LAYERS
 from app.infrastructure.region_tile_cache import TileResponse
@@ -74,11 +74,14 @@ SIGNED = "axis_way_value_signed"
 
 
 class FakeRegionService:
-    def __init__(self, tile_bytes=b"\x00\x01\x02", cacheable=True):
+    def __init__(self, tile_bytes=b"\x00\x01\x02", cacheable=True, roads: list[RoadAt] | None = None):
         self._tile_bytes = tile_bytes
         self._cacheable = cacheable
+        self._roads = roads or []
         # 頼まれたタイル（点のレイヤーの名前・路面ならNone、z、x、y）
         self.tile_request = None
+        # 頼まれた近い道（経度、緯度、z、拾う距離）
+        self.roads_request = None
 
     async def get_road_surface_tile(self, z, x, y):
         self.tile_request = (None, z, x, y)
@@ -87,6 +90,10 @@ class FakeRegionService:
     async def get_point_tile(self, layer, z, x, y):
         self.tile_request = (layer.name, z, x, y)
         return TileResponse(self._tile_bytes, cacheable=self._cacheable)
+
+    async def roads_at(self, lon, lat, z, radius_m):
+        self.roads_request = (lon, lat, z, radius_m)
+        return self._roads
 
 class FakeAxisInspector:
     """区間インスペクタの代役。受け取ったものを残し、決めた結果を返す。"""
@@ -103,6 +110,8 @@ class FakeAxisInspector:
 
 #: 区間インスペクタの要求が必ず運ぶもの（押した道・押したフィーチャー・押したタイル・走行方位）。
 INSPECTED = {"osm_way_id": 12345, "feature_key": "12345-0", "z": 14, "x": 14551, "y": 6447, "bearing_deg": 90.0}
+#: 押した所に近い道の要求。
+PRESSED = {"longitude": 139.70, "latitude": 35.68, "z": 14, "radius_m": 30.0}
 
 
 # 一時的な失敗（DB障害・混雑）で取れなかった空タイルを1時間キャッシュさせると、サーバーが回復した後も
@@ -134,7 +143,7 @@ def test_region_tiles_hand_the_services_mvt_over(override_dependency, path, cach
 # 在りもしない範囲を引く。入口ごとに、量の型と列・行の上限の検査を使っていることを1行ずつ見る。
 @pytest.mark.usefixtures("dedicated_axes")
 @pytest.mark.parametrize(
-    ("path", "inspected"),
+    ("path", "body"),
     [
         (f"/api/region/road-surface-tiles/{ROAD_TILE_MIN_ZOOM - 1}/0/0.pbf", None),
         (f"/api/region/road-surface-tiles/{ROAD_TILE_MAX_ZOOM + 1}/0/0.pbf", None),
@@ -146,18 +155,21 @@ def test_region_tiles_hand_the_services_mvt_over(override_dependency, path, cach
         (f"/api/region/landcover-tiles/10/{2**10}/403.png", None),
         (f"/api/region/way-materials/{SIGNED}/{ROAD_TILE_MIN_ZOOM - 1}/0/0", None),
         (f"/api/region/way-materials/{SIGNED}/14/{2**14}/6447", None),
-        ("/api/region/axis-inspector", {"z": ROAD_TILE_MAX_ZOOM + 1}),
-        ("/api/region/axis-inspector", {"x": 2**14}),
-        ("/api/region/axis-inspector", {"bearing_deg": 360.0}),
-        ("/api/region/axis-inspector", {"speed_kmh": 0.0}),
+        ("/api/region/axis-inspector", {**INSPECTED, "z": ROAD_TILE_MAX_ZOOM + 1}),
+        ("/api/region/axis-inspector", {**INSPECTED, "x": 2**14}),
+        ("/api/region/axis-inspector", {**INSPECTED, "bearing_deg": 360.0}),
+        ("/api/region/axis-inspector", {**INSPECTED, "speed_kmh": 0.0}),
+        ("/api/region/roads-at", {**PRESSED, "z": ROAD_TILE_MIN_ZOOM - 1}),
+        ("/api/region/roads-at", {**PRESSED, "radius_m": ROADS_AT_MAX_RADIUS_M + 1}),
+        ("/api/region/roads-at", {**PRESSED, "latitude": 91.0}),
     ],
 )
-def test_region_requests_outside_each_quantitys_range_are_refused(override_dependency, path, inspected):
+def test_region_requests_outside_each_quantitys_range_are_refused(override_dependency, path, body):
     override_dependency(get_region_service, lambda: FakeRegionService())
     override_dependency(get_dedicated_way_value_service, lambda: _lens(SIGNED))
     override_dependency(get_axis_inspector_service, lambda: FakeAxisInspector())
 
-    response = client.get(path) if inspected is None else client.post(path, json={**INSPECTED, **inspected})
+    response = client.get(path) if body is None else client.post(path, json=body)
 
     assert response.status_code == 422
 
@@ -172,7 +184,7 @@ def test_region_point_tile_rejects_an_undeclared_layer(override_dependency):
 
 @pytest.mark.usefixtures("dedicated_axes")
 def test_each_kind_of_region_request_is_counted_on_its_own(override_dependency):
-    """路面・点のレイヤーごと・道ごとの材料・区間インスペクタは、それぞれ別の回数で上限に当たる。
+    """路面・点のレイヤーごと・道ごとの材料・区間インスペクタ・押した所に近い道は、それぞれ別の回数で上限に当たる。
 
     回数を分け合うと、1つの種類の取得だけでほかの種類の上限を先に使い切り、地図の別のレイヤーが描かれなくなる。
     """
@@ -193,6 +205,7 @@ def test_each_kind_of_region_request_is_counted_on_its_own(override_dependency):
     others = [client.get(point.format(layer)).status_code for layer in other_layers]
     others.append(client.get(f"/api/region/way-materials/{SIGNED}/14/14551/6447").status_code)
     others.append(client.post("/api/region/axis-inspector", json=INSPECTED).status_code)
+    others.append(client.post("/api/region/roads-at", json=PRESSED).status_code)
 
     assert exhausted == [200, 429, 200, 429]
     assert other_layers
@@ -225,6 +238,19 @@ def test_region_axis_inspector_hands_the_pressed_feature_and_the_maps_conditions
         12345, "12345-0", 14, 14551, 6447,
         WayValueQuery(at=datetime(2026, 9, 21, 9, 0, tzinfo=timezone.utc), bearing_deg=90.0, speed_kmh=20.0),
     )
+
+
+def test_region_roads_at_hands_the_pressed_place_over(override_dependency):
+    """押した所・地図のズーム・拾う距離がサービスへ渡り、近い順の道が応答になる。"""
+    roads = [RoadAt(properties={"feature_key": "1", "osm_way_id": 1}, shape=[(139.70, 35.68), (139.71, 35.68)])]
+    fake = FakeRegionService(roads=roads)
+    override_dependency(get_region_service, lambda: fake)
+
+    response = client.post("/api/region/roads-at", json=PRESSED)
+
+    assert response.status_code == 200
+    assert response.json() == [road.model_dump(mode="json") for road in roads]
+    assert fake.roads_request == (139.70, 35.68, 14, 30.0)
 
 
 class FakeDynamicWayValueService:

@@ -144,6 +144,8 @@ ROUTE_POLICIES: Final[tuple[tuple[str, CachePolicy], ...]] = (
     # ルート生成（POSTはそもそもキャッシュされないが、進捗のGETは明示的に禁じる）
     ("/api/routes/", NO_STORE),
     ("/api/region/axis-inspector", NO_STORE),
+    # 押した所を本文で送るPOSTで、同じURLの応答を使い回させない。
+    ("/api/region/roads-at", NO_STORE),
     # 管理・状態確認（認可必須の情報を中間キャッシュへ残さない）
     (ADMIN_PATH_PREFIX, NO_STORE),
     ("/api/debug/", NO_STORE),

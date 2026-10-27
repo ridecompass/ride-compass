@@ -292,6 +292,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/region/roads-at": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["region_roads_at_api_region_roads_at_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/region/axis-inspector": {
         parameters: {
             query?: never;
@@ -1746,6 +1762,18 @@ export interface components {
             /** Total Unit */
             total_unit: string | null;
         };
+        /** RoadAt */
+        RoadAt: {
+            /** Properties */
+            properties: {
+                [key: string]: string | number | boolean;
+            };
+            /** Shape */
+            shape: [
+                number,
+                number
+            ][];
+        };
         /** RoadAvoidanceOverride */
         RoadAvoidanceOverride: {
             [key: string]: "pass" | "avoid" | "exclude";
@@ -1879,6 +1907,17 @@ export interface components {
             has_no_data: boolean;
             /** Classes */
             classes: components["schemas"]["RoadClassView"][];
+        };
+        /** RoadsAtRequest */
+        RoadsAtRequest: {
+            /** Longitude */
+            longitude: number;
+            /** Latitude */
+            latitude: number;
+            /** Z */
+            z: number;
+            /** Radius M */
+            radius_m: number;
         };
         /** Round */
         Round: {
@@ -2925,6 +2964,39 @@ export interface operations {
                             [key: string]: string;
                         };
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    region_roads_at_api_region_roads_at_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RoadsAtRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoadAt"][];
                 };
             };
             /** @description Validation Error */

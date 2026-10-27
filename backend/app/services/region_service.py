@@ -7,7 +7,7 @@ from app.domain.axis_inspector import AxisInspectorResult, InspectorValues, insp
 from app.domain.dynamic_way_values import MissingConditions, WayValueQuery
 from app.domain.landcover import LandcoverPercentages
 from app.domain.route_preference import RoutePreference
-from app.domain.region import BoundingBox, tile_bounds_lonlat
+from app.domain.region import ROADS_AT_LIMIT, BoundingBox, RoadAt, tile_bounds_lonlat
 from app.domain.registry import TileKind
 from app.domain.tuning import REBUILT_CLIENT_TUNING_IDS
 from app.infrastructure.database import DB_UNAVAILABLE_ERRORS
@@ -166,6 +166,20 @@ class RegionService:
             fields["lookup"] = "ok"
             highway, tags = way_tags_result
             return InspectedRoad(highway, tags, feature)
+
+    async def roads_at(self, lon: float, lat: float, z: int, radius_m: float) -> list[RoadAt]:
+        """押した所に近い道（近い順、最大`ROADS_AT_LIMIT`本）。道のタイルを読まずに道を押せるようにする。
+
+        DB例外は空へ倒す（押した所に道が無いのと同じに、小窓を開かない）。
+        """
+        with log_external_call("region:roads-at", z=z) as fields:
+            try:
+                roads = await self._repository.roads_at(lon, lat, z, radius_m, ROADS_AT_LIMIT)
+            except DB_UNAVAILABLE_ERRORS as exc:
+                mark_failed(fields, exc)
+                return []
+            fields["found"] = len(roads)
+            return roads
 
     async def get_accident_years(self) -> list[int]:
         """事故データの収録年。地図の説明文へ配る。

@@ -43,7 +43,7 @@ import {
   routeLinesOnMap,
   section,
   serveHome,
-  showRoadSurface,
+  serveRoadsAt,
 } from "@/testing/homePage";
 import { mapOnScreen } from "@/testing/maplibre";
 import type { Coordinates } from "@/types/route";
@@ -147,11 +147,10 @@ describe("ルートを作る", () => {
     // 出発日時の入力は日本時間で読む。
     fireEvent.change(await screen.findByLabelText("出発日時を直接指定"), { target: { value: "2026-10-05T09:00" } });
 
-    // 道を押せるのは、道路のレイヤーを出していて、パネルを閉じて見るだけの間。
-    await showRoadSurface(user);
+    serveRoadsAt([{ at: HERE, properties: { osm_way_id: 1, feature_key: "1" } }]);
     await user.click(screen.getByRole("button", { name: "パネルを閉じる" }));
-    clickMap(HERE, [{ layer: "road-tiles-surface", properties: { osm_way_id: 1, feature_key: "1" } }]);
-    await user.click(screen.getByRole("button", { name: "この道の評価を見る" }));
+    clickMap(HERE);
+    await user.click(await screen.findByRole("button", { name: "この道の評価を見る" }));
     expect(await screen.findByRole("region", { name: "難易度" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "パネルを開く" }));
     jobs.respond([FIRST], LOOP_CONDITIONS);

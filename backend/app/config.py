@@ -67,6 +67,8 @@ class Settings(BaseSettings):
     # 区間インスペクタは道を押すたびの単発リクエストで、パン/ズームのたびに多数のz/x/y
     # タイルを連続要求するroad_tileとは負荷特性が異なるため別の上限を持つ。
     axis_inspector_rate_limit_per_minute: int = 120
+    # 押した所に近い道も、道を押すたびの単発リクエスト（区間インスペクタと同じ負荷特性）。
+    roads_at_rate_limit_per_minute: int = 120
     # 土地被覆ラスタタイルはDBを読まず、GeoTIFFの読み取り・再投影（GDAL）をスレッドプールで
     # 行う。律速がCPUとディスクI/Oになるため、DB向けのタイル上限とは別に持つ。
     # `asyncio.to_thread`の既定スレッドプールを1画面ぶんのタイルで埋めないための値。

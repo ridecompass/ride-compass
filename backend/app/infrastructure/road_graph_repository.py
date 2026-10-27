@@ -26,7 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from app.domain.attributes import CategoricalColumn, EdgeMaterialArrays, MaterialColumn
 from app.domain.dynamic_way_values import FeatureMaterials, FeatureSegments
-from app.domain.geo import bearing_sql, midpoint_sql
+from app.domain.geo import bearing_sql, degrees_covering_m, midpoint_sql
 from app.domain.graph import LeanEdge, edge_key, node_key, parse_edge_feature_key
 from app.domain.landcover import LandcoverPercentages, landcover_key
 from app.domain.material_catalog import (
@@ -34,12 +34,13 @@ from app.domain.material_catalog import (
     material_value_sql,
     segment_material_ids,
 )
-from app.domain.region import BoundingBox
+from app.domain.region import BoundingBox, RoadAt
 from app.domain.tuning import TUNING_PARAMETERS_BY_ID, TURN_BEARING_DISTANCE_ID
 from app.infrastructure import derived_data_meta
 from app.infrastructure.material_joins import material_from_clause
 from app.infrastructure.orm_base import declared_metadata
 from app.infrastructure.road_tile_sql import (
+    ROADS_AT_SQL,
     FEATURE_GRADIENT_INPUTS_IN_TILE_SQL,
     FEATURE_MATERIALS_IN_TILE_SQL,
     FEATURE_MIDPOINTS_IN_TILE_SQL,
@@ -535,6 +536,23 @@ class RoadGraphRepository:
                                        for field in LandcoverPercentages.model_fields})
 
     # --- タイル --------------------------------------------------------------
+
+    async def roads_at(self, lon: float, lat: float, z: int, radius_m: float, limit: int) -> list[RoadAt]:
+        """押した所`(lon, lat)`から`radius_m`以内の道のフィーチャーを、近い順に`limit`本（`road_tile_sql.py: ROADS_AT_SQL`）。
+        フィーチャーの単位とプロパティは、ズーム`z`の路面タイルと同じ。"""
+        reach = degrees_covering_m(radius_m)
+        rows = await self._session.execute(ROADS_AT_SQL, {
+            "lon": lon, "lat": lat, "z": z, "radius_m": radius_m, "limit": limit,
+            "xmin": lon - reach, "ymin": lat - reach, "xmax": lon + reach, "ymax": lat + reach,
+        })
+        return [
+            RoadAt(
+                properties={column: value for column, value in row._mapping.items()
+                            if column != "shape" and value is not None},
+                shape=[(lon_, lat_) for lon_, lat_ in shapely.from_geojson(row.shape).coords],
+            )
+            for row in rows
+        ]
 
     async def get_road_surface_tile_mvt(
         self, z: int, x: int, y: int, bbox: BoundingBox

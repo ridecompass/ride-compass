@@ -89,6 +89,24 @@ export interface AxisInspectorConditions extends RideConditions {
 
 export type AxisInspectorResult = components["schemas"]["AxisInspectorResult"];
 
+export type RoadAt = components["schemas"]["RoadAt"];
+
+/** 押した所から`radiusM`以内の道（近い順）。プロパティはズーム`z`の路面タイルと同じ。 */
+export async function fetchRoadsAt(
+  lngLat: readonly [number, number],
+  z: number,
+  radiusM: number,
+): Promise<readonly RoadAt[]> {
+  const body = { longitude: lngLat[0], latitude: lngLat[1], z, radius_m: radiusM };
+  return requestApi((init) => backendApi.POST("/api/region/roads-at", { body, ...init }), {
+    timeoutMs: API_TIMEOUT_MS.default,
+    category: "api:roads-at",
+    messages: { failure: "道の取得に失敗しました", parseFailure: "道の取得に失敗しました" },
+    requestMeta: { body },
+    successMeta: (data) => ({ found: data.length }),
+  });
+}
+
 /** 地図で押した道（`osm_way_id`）の一次属性と、押したフィーチャー（その倍率で地図が塗る区間か道1本）の全軸・合成を取る。 */
 export async function fetchAxisInspector(
   osmWayId: number,

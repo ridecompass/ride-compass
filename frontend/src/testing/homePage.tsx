@@ -96,7 +96,26 @@ export function serveHome() {
   onBackend("GET", "/api/weather/flood-forecast", () => Response.json({ forecasts: [] }));
   onBackend("POST", "/api/weather/route-warning-timeline", () => Response.json({ areas: [] }));
   onBackend("GET", "/api/place-area", () => Response.json({ area: null }));
+  serveRoadsAt([]);
   return jobs;
+}
+
+/** 地図で押した所に近い道を問われたら、押した所が`at`の道を返す（ほかの所は道が無い）。道の形は`at`から東へ延ばした線。
+ * 届いた問いを順に積む配列を返す。 */
+export function serveRoadsAt(roads: readonly { at: Coordinates; properties: Record<string, unknown> }[]) {
+  return onBackend("POST", "/api/region/roads-at", ({ body }) => {
+    const pressed = body as { longitude: number; latitude: number };
+    const found = roads.filter(({ at }) => at.longitude === pressed.longitude && at.latitude === pressed.latitude);
+    return Response.json(
+      found.map(({ at, properties }) => ({
+        properties,
+        shape: [
+          [at.longitude, at.latitude],
+          [at.longitude + 0.001, at.latitude],
+        ],
+      })),
+    );
+  });
 }
 
 /** そのテストの間、スマホの配置にする。 */

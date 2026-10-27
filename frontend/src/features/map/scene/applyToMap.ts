@@ -98,8 +98,8 @@ type SceneWiringProps = {
   readonly splicedRoute: readonly GeoJSON.Position[] | null;
   /** タイルの世代。全系統が揃うまで`null`。 */
   readonly tileVersions: TileVersions | null;
-  /** 詳細を見ている道（ポップアップが開いている間だけ非null）。 */
-  readonly inspectedWayId: number | null;
+  /** 詳細を見ている道の線の形（小窓が開いている間だけ非null）。 */
+  readonly inspectedShape: readonly (readonly [number, number])[] | null;
   /** 選んだ候補の上で走り終えた距離（km）。走っていなければnull。 */
   readonly travelledKm: number | null;
   /** 道のりのグラフか地図で選んだ地点と、その地点を含む区間。選んでいなければnull。 */
@@ -244,7 +244,7 @@ export function sceneInputsFrom(props: SceneWiringProps): SceneInputs {
       hiddenKeys,
       classes: props.look.roadClasses.values,
       loading: props.look.roadClasses.loading,
-      inspectedWayId: props.inspectedWayId,
+      inspectedShape: props.inspectedShape,
     },
     axis: axisStateFrom(props, roadTiles?.sourceLayer ?? null),
     point: {

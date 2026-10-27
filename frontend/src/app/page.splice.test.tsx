@@ -26,7 +26,7 @@ import {
   selectDestination,
   selectedPointMarks,
   serveHome,
-  showRoadSurface,
+  serveRoadsAt,
 } from "@/testing/homePage";
 import { mapOnScreen } from "@/testing/maplibre";
 import { makeGenerationConditions, routeThrough, type Places } from "@/testing/routeFixtures";
@@ -101,8 +101,8 @@ describe("区間の乗り換え", () => {
   });
 
   it("乗り換えの帯が区間と道に重なった所を押すと、帯の乗り換えだけを選び、区間も道も開かない", async () => {
+    serveRoadsAt([{ at: HERE, properties: { osm_way_id: 1, feature_key: "1" } }]);
     const { user } = renderHome();
-    await showRoadSurface(user);
     await generateTwo(user);
     await startEditing(user);
     const [band] = mapOnScreen().sourceFeatures("route-splice-bands");
@@ -111,7 +111,6 @@ describe("区間の乗り換え", () => {
     clickMap(HERE, [
       { layer: "route-splice-bands-spliceBandHit", properties: band.properties ?? {}, geometry: band.geometry },
       { layer: "route-segments-detailHit", properties: segment.properties ?? {}, geometry: segment.geometry },
-      { layer: "road-tiles-surface", properties: { osm_way_id: 1, feature_key: "1" } },
     ]);
 
     expect(await screen.findByRole("button", { name: "1つ戻す" })).toBeInTheDocument();
