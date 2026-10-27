@@ -35,7 +35,7 @@ def _kinds_note(kinds: tuple[str, ...]) -> str:
     ) + "]"
 
 
-def _kind_row(key: str, label: str, values: tuple[str, ...], meaning: str, glyph: str | None = None) -> DisplayCategorySpec:
+def _kind_row(key: str, label: str, values: tuple[str, ...], meaning: str, *, glyph: str) -> DisplayCategorySpec:
     """種別を行の値に持つ行。説明は意味の文`meaning`に元のタグを添える。"""
     return DisplayCategorySpec(
         key=key, label=label, values=values, glyph=glyph, description=f"{meaning}{_kinds_note(values)}。"
