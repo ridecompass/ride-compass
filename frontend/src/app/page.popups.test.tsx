@@ -101,7 +101,11 @@ describe("地図の小窓", () => {
     clickMap(ELSEWHERE);
     expect(await screen.findByRole("button", { name: "この道の評価を見る" })).toBeInTheDocument();
     expect(header("区間の小窓の上の帯")).toBeNull();
-    expect(mapOnScreen().sourceFeatures("road-inspected").map((feature) => feature.geometry)).toEqual([
+    expect(
+      mapOnScreen()
+        .sourceFeatures("road-inspected")
+        .map((feature) => feature.geometry),
+    ).toEqual([
       {
         type: "LineString",
         coordinates: [
@@ -111,7 +115,11 @@ describe("地図の小窓", () => {
       },
     ]);
     // 道のタイルは、道の層を出していないので読まない（MapLibre は、描くレイヤーの無いソースのタイルを読まない）。
-    expect(mapOnScreen().visibleLayerIds().filter((id) => id.startsWith("road-tiles"))).toEqual([]);
+    expect(
+      mapOnScreen()
+        .visibleLayerIds()
+        .filter((id) => id.startsWith("road-tiles")),
+    ).toEqual([]);
     expect(selectedPointMarks()).toEqual([]);
 
     // 重なった名前のある点は全部並べ、名前の無い点は飛ばす。名前の無い点だけの所は、下の道を開く。
