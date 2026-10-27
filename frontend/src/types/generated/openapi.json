@@ -1005,6 +1005,47 @@
         }
       }
     },
+    "/api/region/roads-at": {
+      "post": {
+        "operationId": "region_roads_at_api_region_roads_at_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoadsAtRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RoadAt"
+                  },
+                  "type": "array",
+                  "title": "Response Region Roads At Api Region Roads At Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/region/axis-inspector": {
       "post": {
         "operationId": "region_axis_inspector_api_region_axis_inspector_post",
@@ -5708,6 +5749,54 @@
         ],
         "title": "RawValueUnits"
       },
+      "RoadAt": {
+        "properties": {
+          "properties": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Properties"
+          },
+          "shape": {
+            "items": {
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array",
+              "maxItems": 2,
+              "minItems": 2
+            },
+            "type": "array",
+            "title": "Shape"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "properties",
+          "shape"
+        ],
+        "title": "RoadAt"
+      },
       "RoadAvoidanceOverride": {
         "additionalProperties": {
           "type": "string",
@@ -6115,6 +6204,43 @@
           "classes"
         ],
         "title": "RoadMapLayerView"
+      },
+      "RoadsAtRequest": {
+        "properties": {
+          "longitude": {
+            "type": "number",
+            "maximum": 180.0,
+            "minimum": -180.0,
+            "title": "Longitude"
+          },
+          "latitude": {
+            "type": "number",
+            "maximum": 90.0,
+            "minimum": -90.0,
+            "title": "Latitude"
+          },
+          "z": {
+            "type": "integer",
+            "maximum": 15.0,
+            "minimum": 12.0,
+            "title": "Z"
+          },
+          "radius_m": {
+            "type": "number",
+            "maximum": 400.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Radius M"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "longitude",
+          "latitude",
+          "z",
+          "radius_m"
+        ],
+        "title": "RoadsAtRequest"
       },
       "Round": {
         "properties": {

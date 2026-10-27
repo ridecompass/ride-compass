@@ -205,7 +205,7 @@ export default function DraftWayValuesMap<Draft>({
           spliceStretches: [],
           splicedRoute: null,
           tileVersions: mapCatalog.tileVersions,
-          inspectedWayId: null,
+          inspectedShape: null,
           travelledKm: null,
           selectedRouteSegment: null,
           sidePointPath: null,

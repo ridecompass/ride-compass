@@ -1,12 +1,14 @@
-/** 道の線の層（軸カタログの`road_classes.map_layers`。分け方1つが層1つ）と、詳細を見ている1本の道の強調。
+/** 道の線の層（軸カタログの`road_classes.map_layers`。分け方1つが層1つ）と、詳細を見ている道の強調。
  *
  * 道の層の値（区分の鍵か「データなし」）はbackendが決め、地図は道ごとに feature-state で受け取って塗るだけにする——ルートの
  * 区間の帯と同じ値になる。**feature-state の値は MapLibre の絞り込みからも `line-dasharray` からも読めない**ため、凡例で隠した
  * 行は透明で落とし、データなしの道の破線は、破線だけの線を重ねて濃さで出し入れする。区分の外の道は値を持たないので、値を
  * 取っている間は、値の無い道をどれも取得中の色で描く（届いていない道と区分の外の道は、取り終えるまで見分けられない）。
  *
- * すべて**同じ路面タイルのソース**を共有する。評価軸の線も同じソースを読むため、
- * ソースの宣言は合成（`composeScene`）が1本へ畳む。
+ * 道の層の線は**同じ路面タイルのソース**を共有する。評価軸の線も同じソースを読むため、
+ * ソースの宣言は合成（`composeScene`）が1本へ畳む。道の線は押せない——道は押した所に近い道を backend に問うて開く
+ * （`features/map/MapView/mapTaps.ts: bindMapTaps`）ので、道の層を出していなくても押せる。強調は、その答えの線の形を
+ * 自分のソースで描き、道のタイルを読まない。
  *
  * **同じ道へ複数の線を重ねると後から描いた方が隠す**ので、出ている本数から対称に
  * 横へ割り付ける（1本なら中央）。線の太さは意味を運ばず、線種が運ぶのは値が無いこと（データなし）だけ
@@ -15,9 +17,8 @@
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import palette from "@/types/generated/palette.json";
 import regionTileConfig from "@/types/generated/region-tile-config.json";
-import type { FilterSpecification } from "maplibre-gl";
 
-import { sceneLayerId, sceneSourceId } from "@/features/map/scene/sceneBuilders";
+import { sceneSourceId } from "@/features/map/scene/sceneBuilders";
 import { LEGEND_NO_DATA_KEY } from "@/lib/mapDisplay/mapColorLegend";
 import { ROAD_OTHER_KEY, roadTrackRowOf, type RoadTrackRow } from "@/lib/mapDisplay/roadTracks";
 import type { RoadMapLayerView } from "@/types/route";
@@ -27,13 +28,11 @@ import { declareGroup, type SceneLayerEntry, type SceneSourceEntry } from "@/fea
 const ROAD = mapDisplay.road;
 
 export const ROAD_LINE_SOURCE_ID = sceneSourceId("road-tiles");
-/** 押したときに拾う対象。道路の線はどれも共通の名前を名乗る。 */
-export const ROAD_LINE_HIT_TARGET = "road";
+const ROAD_INSPECTED_SOURCE_ID = sceneSourceId("road-inspected");
 
 /** `feature_key`は地物へ安定したidを与えるための昇格先（**この列でなければ feature-state が効かない**
- * ——タイルの地物はズームによって道1本にも区間にもなり、この列だけがその単位に追従する）。`way_id`は詳細の強調が
- * 突き合わせる列（道1本の単位）。列名はタイルを焼くbackendが配る。 */
-const { feature_key: FEATURE_KEY_PROPERTY, way_id: WAY_ID_PROPERTY } = regionTileConfig.road_surface.properties;
+ * ——タイルの地物はズームによって道1本にも区間にもなり、この列だけがその単位に追従する）。列名はタイルを焼くbackendが配る。 */
+const FEATURE_KEY_PROPERTY = regionTileConfig.road_surface.properties.feature_key;
 
 export type RoadLineState = {
   /** 道の線の層。**軸カタログが届くまでは空**。 */
@@ -53,8 +52,8 @@ export type RoadLineState = {
   readonly classes: RoadClassValues;
   /** 今の範囲の層の値を取っている最中か。 */
   readonly loading: boolean;
-  /** 詳細を見ている道。開いていなければ null。 */
-  readonly inspectedWayId: number | null;
+  /** 詳細を見ている道の線の形（経度, 緯度）。開いていなければ null。 */
+  readonly inspectedShape: readonly (readonly [number, number])[] | null;
 };
 
 /** 道ごとの層の値。feature_key → 層のid → 区分の鍵か「データなし」（区分の外の道の層は鍵ごと無い）。 */
@@ -70,27 +69,16 @@ function valueOf(layer: RoadMapLayerView): unknown {
   return ["to-string", ["feature-state", stateKey(layer.id)]];
 }
 
-/** 押した道の線（地図のレイヤーid）の層と、その道が入る凡例の行（地図の線の色と同じ値から引く）。道の線でなければundefined。 */
-export function roadLineRowAt(
-  layerId: string,
-  state: Readonly<Record<string, unknown>>,
+/** 道（`feature_key`）が、「表示」で出している道の層の先頭の層で入る凡例の行（地図の線の色と同じ値から引く）。道の層を
+ * 出していなければ null。 */
+export function shownRoadTrackOf(
+  featureKey: string,
   layers: readonly RoadMapLayerView[],
-): { layer: RoadMapLayerView; row: RoadTrackRow } | undefined {
-  const layer = layers.find((candidate) => sceneLayerId(ROAD_LINE_SOURCE_ID, candidate.id) === layerId);
-  if (layer === undefined) return undefined;
-  const value = state[stateKey(layer.id)];
-  return { layer, row: roadTrackRowOf(layer, typeof value === "string" ? value : null) };
-}
-
-/** 押した道の線（地図のレイヤーid）が、凡例で隠した行の道か。透明に描いた道も当たり判定には残るので、押す側がこれで飛ばす。 */
-export function hiddenRoadLineAt(
-  layerId: string,
-  state: Readonly<Record<string, unknown>>,
-  layers: readonly RoadMapLayerView[],
-  hiddenKeys: Readonly<Record<string, readonly string[]>>,
-): boolean {
-  const at = roadLineRowAt(layerId, state, layers);
-  return at !== undefined && (hiddenKeys[at.layer.id] ?? []).includes(at.row.key);
+  visible: Readonly<Record<string, boolean>>,
+  classes: RoadClassValues,
+): RoadTrackRow | null {
+  const layer = layers.find((candidate) => visible[candidate.id] === true);
+  return layer === undefined ? null : roadTrackRowOf(layer, classes.get(featureKey)?.[layer.id] ?? null);
 }
 
 /** 区分ごとの色。凡例で隠した行は透明。データなしの道は破線の線が描くので、実線は透明にする。取得中の色は「その他」を
@@ -138,10 +126,30 @@ function offsetsFor(visibleCount: number): readonly number[] {
 }
 
 export const roadLineGroup = declareGroup<RoadLineState>((state) => {
-  if (state.tiles === null) return { sources: [], layers: [] };
+  const inspectedSource: SceneSourceEntry = {
+    id: ROAD_INSPECTED_SOURCE_ID,
+    spec: { type: "geojson" },
+    data: {
+      type: "FeatureCollection",
+      features:
+        state.inspectedShape === null
+          ? []
+          : [{ type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: state.inspectedShape } }],
+    },
+  };
+  const inspected: SceneLayerEntry = {
+    role: "inspected",
+    tier: "observedLine",
+    source: ROAD_INSPECTED_SOURCE_ID,
+    type: "line",
+    paint: { "line-color": palette.semantic.inspected, "line-width": ROAD.inspectedWidthPx, "line-opacity": 1 },
+    visible: state.inspectedShape !== null,
+  };
+  if (state.tiles === null) return { sources: [inspectedSource], layers: [inspected] };
   const tiles = state.tiles;
 
   const sources: readonly SceneSourceEntry[] = [
+    inspectedSource,
     {
       id: ROAD_LINE_SOURCE_ID,
       spec: {
@@ -181,7 +189,6 @@ export const roadLineGroup = declareGroup<RoadLineState>((state) => {
           "line-offset": offset,
         },
         visible,
-        hitTargets: [ROAD_LINE_HIT_TARGET],
       },
       // データなしの道だけを、薄い破線で描く。
       {
@@ -199,16 +206,7 @@ export const roadLineGroup = declareGroup<RoadLineState>((state) => {
     ];
   });
 
-  layers.push({
-    role: "inspected",
-    tier: "observedLine",
-    source: ROAD_LINE_SOURCE_ID,
-    sourceLayer: tiles.sourceLayer,
-    type: "line",
-    paint: { "line-color": palette.semantic.inspected, "line-width": ROAD.inspectedWidthPx, "line-opacity": 1 },
-    visible: state.inspectedWayId !== null,
-    filter: ["==", ["get", WAY_ID_PROPERTY], state.inspectedWayId ?? -1] as unknown as FilterSpecification,
-  });
+  layers.push(inspected);
 
   return { sources, layers };
 });

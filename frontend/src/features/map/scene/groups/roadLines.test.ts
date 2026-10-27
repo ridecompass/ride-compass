@@ -10,9 +10,7 @@ import { roadClass, roadMapLayer } from "@/testing/catalogAxes";
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import palette from "@/types/generated/palette.json";
 
-import { sceneLayerId } from "@/features/map/scene/sceneBuilders";
-
-import { hiddenRoadLineAt, ROAD_LINE_SOURCE_ID, roadLineGroup } from "./roadLines";
+import { roadLineGroup } from "./roadLines";
 
 const LAYER = roadMapLayer("surface", { has_no_data: true, classes: [roadClass("paved", { color: "#123456" })] });
 
@@ -24,7 +22,7 @@ function linesOf(hidden: readonly string[] = [], loading = false) {
     hiddenKeys: { surface: hidden },
     classes: new Map(),
     loading,
-    inspectedWayId: null,
+    inspectedShape: null,
   }).layers;
   const paint = (role: string) => built.find((layer) => layer.role === role)?.paint ?? {};
   return { solid: paint("surface"), dashed: paint("surface-no-data") };
@@ -68,15 +66,12 @@ it("値を取っている間は、値の届いていない道を取得中の色�
 
 // 凡例に出す行はどれも、チェックを外すとその行の道だけが地図から消える。
 describe("凡例で隠した行", () => {
-  // 透明に描いた道も当たり判定には残るので、押しても開かないことも同じ行で見る。
-  it.each(ROADS.map(({ row }) => row))("「%s」を隠すと、その行の道だけが消え、押しても開かない", (hiddenRow) => {
+  it.each(ROADS.map(({ row }) => row))("「%s」を隠すと、その行の道だけが消える", (hiddenRow) => {
     const lines = linesOf([hiddenRow]);
     const dashedLayerShown = hiddenRow !== LEGEND_NO_DATA_KEY;
-    const layerId = sceneLayerId(ROAD_LINE_SOURCE_ID, LAYER.id);
     for (const { row, state } of ROADS) {
       const { solid, dashed } = drawn(lines, state);
       expect(solid !== null || (dashed && dashedLayerShown), row).toBe(row !== hiddenRow);
-      expect(hiddenRoadLineAt(layerId, state, [LAYER], { surface: [hiddenRow] }), row).toBe(row === hiddenRow);
     }
   });
 });

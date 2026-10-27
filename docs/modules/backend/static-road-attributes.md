@@ -711,6 +711,7 @@ OSMは中央分離帯のある道路の上下線を別々のwayとして持ち�
 | `GET /api/region/road-surface-tiles/{z}/{x}/{y}.pbf` | 路面・道路種別等のMVTタイル |
 | `GET /api/region/point-tiles/{layer}/{z}/{x}/{y}.pbf` | 点のレイヤー（例: 停止要因・補給休憩のPOI`poi`、事故`accident`）のMVTタイル。`layer`はレジストリの名前で、無ければ404 |
 | `GET /api/region/landcover-tiles/{z}/{x}/{y}.png` | 土地被覆ラスタのPNGタイル |
+| `POST /api/region/roads-at` | 押した所に近い道のフィーチャー（近い順、上限は`domain/region.py: ROADS_AT_LIMIT`）。フィーチャーの単位とプロパティはそのズームの路面タイルと同じで（`infrastructure/road_tile_sql.py: ROADS_AT_SQL`がタイルと同じ並びと列を使う）、線の形はタイルで切らない全体。拾う距離は呼び手が送り、上限を`domain/region.py: ROADS_AT_MAX_RADIUS_M`が持つ。道が並ぶ所で選び直せるよう一覧で返す |
 | `POST /api/region/axis-inspector` | 区間インスペクタ（osm_way_id指定）。合成は送られた重み（`route_preference`、ルート生成と同じ形・同じ検証で公開軸をすべて明示）で計算し、省略すると既定の重み |
 
 MVTエンコードはPostGIS側（`ST_AsMVT`、`road_graph_repository.py`・`point_tile_layers.py`）で行う。タイル内の

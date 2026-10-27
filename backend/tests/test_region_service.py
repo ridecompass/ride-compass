@@ -1,4 +1,4 @@
-"""`services/region_service.py`——地域のレイヤー（路面・点のタイル）の配信と、区間インスペクタ・事故の収録年。
+"""`services/region_service.py`——地域のレイヤー（路面・点のタイル）の配信と、区間インスペクタ・押した所に近い道・事故の収録年。
 
 確かめるのは、焼けなかったタイル（範囲外・DB障害）の空タイルとブラウザに持たせてよいか、焼いたタイルを世代付きの鍵で
 ディスクへ残すか、区間インスペクタ（`AxisInspectorService`）が押したフィーチャーの値を地図が塗る値と同じ値で出し、渡された
@@ -287,6 +287,23 @@ async def test_the_inspector_does_not_open_and_is_counted_as_a_failure_when_the_
     result = await _inspector(unavailable=True).inspect(int(WAY), WAY, *WAY_TILE, QUERY, None)
 
     assert result is None
+    assert [(call.fields["result"], call.fields["error_type"]) for call in calls] == [("error", "ConnectionRefusedError")]
+
+
+class _UnreachableRoadsRepository:
+    """近い道を読めないDBの代役。"""
+
+    async def roads_at(self, lon, lat, z, radius_m, limit):
+        raise ConnectionRefusedError("db down")
+
+
+async def test_no_road_is_found_and_it_is_counted_as_a_failure_when_the_db_is_down(monkeypatch):
+    """DB障害では道が無い所を押したのと同じに小窓を開かず、失敗が`/api/debug/stats`の集計に載る。"""
+    calls = record_external_calls(monkeypatch, region_service)
+
+    roads = await RegionService(repository=_UnreachableRoadsRepository()).roads_at(139.70, 35.68, 14, 30.0)
+
+    assert roads == []
     assert [(call.fields["result"], call.fields["error_type"]) for call in calls] == [("error", "ConnectionRefusedError")]
 
 

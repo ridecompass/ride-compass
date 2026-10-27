@@ -7,7 +7,7 @@ import type {
   RouteSegmentDetail,
   SelectedRouteSegment,
 } from "@/types/route";
-import { ROAD_TILE_MAX_ZOOM, ROAD_TILE_MIN_ZOOM } from "@/features/map/regionApi";
+import { fetchRoadsAt, ROAD_TILE_MAX_ZOOM, ROAD_TILE_MIN_ZOOM } from "@/features/map/regionApi";
 import { tileContainingLonLat } from "@/features/map/layers/dynamicWayValues";
 import { sceneHitTargetsOfLayer, type MapScene } from "@/features/map/scene/mapScene";
 import {
@@ -17,16 +17,18 @@ import {
 } from "@/features/map/scene/groups/routes";
 import { POINT_HIT_TARGET, pointLayerOfSceneLayer } from "@/features/map/scene/groups/points";
 import { sidePointLayerOfSceneLayer } from "@/features/map/scene/groups/sidePoints";
-import { hiddenRoadLineAt, ROAD_LINE_HIT_TARGET, roadLineRowAt } from "@/features/map/scene/groups/roadLines";
+import { shownRoadTrackOf } from "@/features/map/scene/groups/roadLines";
+import { roadFeatureKey } from "@/features/map/MapView/roadFacts";
 import type { MapLook } from "@/features/map/view/mapLook";
 import { distinctFacilities, facilityOf } from "@/components/MapPopup/facilityRows";
 import type { MapPopupControls } from "@/features/map/MapView/useMapPopups";
 import { pointMembers, pointPlaceName, type PointLayer } from "@/lib/mapDisplay/pointLayers";
 import { projectOnEdge, type EdgeProjection } from "@/lib/localPlane";
+import geoConfig from "@/types/generated/geo-config.json";
 
 /**
  * 地図を押したときの意味。地点: 選んでいる地点を置く・ピンを押すとその地点を選ぶ。乗り換え: 乗り換える区間を選ぶ。開く: 押した物
- * （名前のある点・道・選んでいるルートの区間）の小窓を開き、候補の線を押すとそのルートを選ぶ（決まりは
+ * （名前のある点・選んでいるルートの区間。開ける物が無ければ押した所に近い道）の小窓を開き、候補の線を押すとそのルートを選ぶ（決まりは
  * `docs/modules/frontend/static-map-layers.md`「地図を押したときと地図の小窓」）。
  */
 export type MapTapMode = "points" | "splice" | "open";
@@ -35,8 +37,19 @@ export type MapTapMode = "points" | "splice" | "open";
 const OPENABLE_TARGETS: Record<MapTapMode, ReadonlySet<string>> = {
   points: new Set(),
   splice: new Set([ROUTE_HIT_TARGET_SPLICE_BAND]),
-  open: new Set([ROUTE_HIT_TARGET_SEGMENT, POINT_HIT_TARGET, ROAD_LINE_HIT_TARGET, ROUTE_HIT_TARGET_CANDIDATE]),
+  open: new Set([ROUTE_HIT_TARGET_SEGMENT, POINT_HIT_TARGET, ROUTE_HIT_TARGET_CANDIDATE]),
 };
+
+/** 押した所から道を拾う幅（画素）。指の幅ほどずれても、その道を押したとみなす。 */
+const ROAD_REACH_PX = 20;
+/** MapLibre が世界を描く1枚のタイルの画素（ズーム0で世界がこの幅になる）。 */
+const MAPLIBRE_TILE_PX = 512;
+
+/** 緯度`lat`・ズーム`zoom`の地図で、画面の`px`画素が地面の何 m に当たるか。 */
+function groundMetersOf(px: number, lat: number, zoom: number): number {
+  const equatorM = 2 * Math.PI * geoConfig.earth_radius_km * 1000;
+  return (px * equatorM * Math.cos((lat * Math.PI) / 180)) / (MAPLIBRE_TILE_PX * 2 ** zoom);
+}
 
 /** 押した瞬間に読む、いまの画面の状態と知らせ先。 */
 export interface MapTapState {
@@ -103,17 +116,11 @@ export function bindMapTaps(map: MapLibreMap, latest: { readonly current: MapTap
   }
 
   /** 意味ごとに押して開ける対象で、押した所に重なった地物のうち一番上に描かれたもの（乗り換えの帯は区間の上に描くので、
-   * 重なった所は帯を選ぶ）。開けない物（開けない対象・名前の無い点・地図で消した道）は、上に重なっていても飛ばす。 */
+   * 重なった所は帯を選ぶ）。開けない物（開けない対象・名前の無い点）は、上に重なっていても飛ばす。 */
   function openableFeatureAmong(features: readonly MapGeoJSONFeature[]) {
     const openable = OPENABLE_TARGETS[latest.current.tapMode];
-    const { roadLayers, look } = latest.current;
     for (const feature of features) {
       const target = sceneHitTargetsOfLayer(latest.current.scene, feature.layer.id).find((t) => openable.has(t));
-      if (
-        target === ROAD_LINE_HIT_TARGET &&
-        hiddenRoadLineAt(feature.layer.id, feature.state, roadLayers, look.hiddenLegendKeys)
-      )
-        continue;
       if (target !== undefined && isOpenable(feature, target)) return { feature, target };
     }
     return null;
@@ -121,9 +128,11 @@ export function bindMapTaps(map: MapLibreMap, latest: { readonly current: MapTap
 
   // 地点の意味の間は、地物を開かずに、押した所へ選んでいる地点を置く（道の上を目的地にしたいこともある）。名前のある
   // 点（店など）の上なら、その点の位置へ、その点の候補として置く。ほかの意味の間は、その意味が開ける地物だけを開き、
-  // 開ける物の無い所を押すと小窓を閉じる。
+  // 開ける物の無い所を押すと小窓を閉じ、開く意味の間は近い道があれば開く（`openRoadAt`）。
   function handleClick(e: MapMouseEvent) {
     if (latest.current.tapsLocked) return;
+    // 近い道を問うている間に押し直したら、その答えは捨てる（後から開くと、押し直した物の小窓を上書きする）。
+    roadAsk += 1;
     if (latest.current.tapMode === "points") {
       const spot = interactiveFeaturesAt(e.point)
         .map(namedSpotOf)
@@ -140,6 +149,7 @@ export function bindMapTaps(map: MapLibreMap, latest: { readonly current: MapTap
     const hit = openableFeatureAmong(features);
     if (hit === null) {
       popups.close();
+      if (latest.current.tapMode === "open") void openRoadAt(e);
       return;
     }
     const open = OPEN_BY_HIT_TARGET.get(hit.target);
@@ -176,20 +186,34 @@ export function bindMapTaps(map: MapLibreMap, latest: { readonly current: MapTap
     );
   }
 
-  function openRoad(feature: MapGeoJSONFeature, e: MapMouseEvent) {
-    const geometry = feature.geometry;
+  /** 何度目の押しか。近い道の答えが、それを問うた押しのものかを見分ける。 */
+  let roadAsk = 0;
+
+  // 押した所に近い道を backend に問い、近い順の先頭の道の小窓を開く。道のタイルが無い引いた縮尺では問わない。拾う幅は
+  // 画面の画素で決め、押した所の緯度と倍率で地面の m に直す。
+  async function openRoadAt(e: MapMouseEvent) {
+    const ask = roadAsk;
+    if (map.getZoom() < ROAD_TILE_MIN_ZOOM) return;
+    const lngLat: [number, number] = [e.lngLat.lng, e.lngLat.lat];
+    const tile = tileContainingLonLat(lngLat[0], lngLat[1], map.getZoom(), ROAD_TILE_MIN_ZOOM, ROAD_TILE_MAX_ZOOM);
+    const reachM = groundMetersOf(ROAD_REACH_PX, lngLat[1], map.getZoom());
+    // 取れなかった内訳は`requestApi`が記録する。押すたびの補助の操作なので、道が無いのと同じに閉じる。
+    const road = await fetchRoadsAt(lngLat, tile.z, reachM).then(
+      (roads) => roads[0] ?? null,
+      () => null,
+    );
+    if (ask !== roadAsk || road === null) return;
+    const { look, roadLayers } = latest.current;
+    const featureKey = roadFeatureKey(road.properties);
     popups.openRoad({
-      track: roadLineRowAt(feature.layer.id, feature.state, latest.current.roadLayers)?.row ?? null,
-      lngLat: [e.lngLat.lng, e.lngLat.lat],
-      // 押した道の線のうち、地図のタイルにある分（小窓を置く・寄せるときに避ける形）。
-      shape:
-        geometry.type === "LineString"
-          ? (geometry.coordinates as [number, number][])
-          : geometry.type === "MultiLineString"
-            ? (geometry.coordinates.flat() as [number, number][])
-            : [[e.lngLat.lng, e.lngLat.lat]],
-      properties: feature.properties,
-      tile: tileContainingLonLat(e.lngLat.lng, e.lngLat.lat, map.getZoom(), ROAD_TILE_MIN_ZOOM, ROAD_TILE_MAX_ZOOM),
+      track:
+        featureKey === null
+          ? null
+          : shownRoadTrackOf(featureKey, roadLayers, look.layerVisibility, look.roadClasses.values),
+      lngLat,
+      shape: road.shape,
+      properties: road.properties,
+      tile,
     });
   }
 
@@ -226,7 +250,6 @@ export function bindMapTaps(map: MapLibreMap, latest: { readonly current: MapTap
     [ROUTE_HIT_TARGET_SEGMENT, openRouteSegment],
     [ROUTE_HIT_TARGET_CANDIDATE, openRouteCandidate],
     [POINT_HIT_TARGET, openPoint],
-    [ROAD_LINE_HIT_TARGET, openRoad],
   ]);
 
   function handleMouseMove(e: MapMouseEvent) {

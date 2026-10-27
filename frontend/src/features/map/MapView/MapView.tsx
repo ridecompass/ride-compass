@@ -23,7 +23,6 @@ import MapNavigationControl from "@/features/map/MapNavigationControl/MapNavigat
 import MapLoadStatus from "@/features/map/MapView/MapLoadStatus";
 import { fitBoundsToRoute, flyToVisible, mapVisibleCenterOffset } from "@/features/map/MapView/mapCamera";
 import { bindMapTaps, type MapTapMode } from "@/features/map/MapView/mapTaps";
-import { roadWayId } from "@/features/map/MapView/roadFacts";
 import { rideZoomBase } from "@/features/map/MapView/rideZoom";
 import { useMapLifecycle } from "@/features/map/MapView/useMapLifecycle";
 import { useMapMarkers } from "@/features/map/MapView/useMapMarkers";
@@ -154,7 +153,7 @@ export default function MapView({
   } = useMapPopups(selectionOwner, selectedRouteSegment, onRouteSegmentSelect);
   const mapCatalog = useMapAxisCatalog();
   // 詳細を見ている道。強調も scene の一部として当てる。
-  const inspectedWayId = popup?.kind === "road" ? roadWayId(popup.properties) : null;
+  const inspectedShape = popup?.kind === "road" ? popup.shape : null;
   // 選んでいる区間（候補の同じ区間から引く。地図で押した区間は形を持たない写し）と、その形。
   const selectedRoute = routes.find((route) => route.id === selectedRouteId) ?? null;
   const selectedSegments = selectedRoute?.segments;
@@ -191,7 +190,7 @@ export default function MapView({
     selectedRouteId,
     spliceStretches,
     splicedRoute,
-    inspectedWayId,
+    inspectedShape,
     travelledKm: travelledKm === null ? null : shadedTravelledKm(travelledKm),
     selectedRouteSegment,
     // 区間を選んでいる間、その近くの点を描く。

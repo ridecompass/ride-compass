@@ -26,7 +26,7 @@ export function sceneState(overrides: SceneStateOverrides = {}): SceneState {
     spliceStretches: [],
     splicedRoute: null,
     tileVersions: READY_TILE_VERSIONS,
-    inspectedWayId: null,
+    inspectedShape: null,
     travelledKm: null,
     selectedRouteSegment: null,
     sidePointPath: null,
