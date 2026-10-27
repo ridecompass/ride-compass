@@ -1,18 +1,16 @@
 /**
- * `RouteForm/PointSearch.tsx`——地点を住所・施設で探す欄。打つ欄は住所・施設の名前を入れて、地図の真ん中を添えて引き、候補
- * （表示名・施設の辺り・地図の真ん中からの直線距離・種類・当たった段）を欄の下に並べ、選んだ候補を上げる。打ちかけでも、決まった
- * 文字数から、打つのが止まると引く（かな漢字の変換中は引かない）。文字数に足りなくなると候補を下げる。引いたあとに地図を
+ * `PlaceSearch/PlaceSearchBar.tsx`——地図の上端の、地点を住所・施設で探す欄。打つ欄は住所・施設の名前を入れて、地図の真ん中を添えて
+ * 引き、候補（表示名・施設の辺り・地図の真ん中からの直線距離・種類・当たった段）を欄の下に並べ、選んだ候補を上げる。打ちかけでも、
+ * 決まった文字数から、打つのが止まると引く（かな漢字の変換中は引かない）。文字数に足りなくなると候補を下げる。引いたあとに地図を
  * 動かしても引き直さない。引けないとき・当たらないときはそう出す。打つ欄を押すと保存した地点を出し、打った文字を名前に含むものに
- * 絞り、選んだ地点を上げる。狭い画面では、欄を押してから閉じるまで欄を上側に出したままにし、その間は地図で置く待ちでも欄の空の
- * 案内に地図で置く案内を出さない。住所・施設の候補か履歴を選ぶと履歴に残し、次に欄を押すと保存した地点の下に新しい順に出し、
- * 打った文字で絞り、1件ずつ消せる。
+ * 絞り、選んだ地点を上げる。住所・施設の候補か履歴を選ぶと履歴に残し、次に欄を押すと保存した地点の下に新しい順に出し、打った文字で
+ * 絞り、1件ずつ消せる。✕・Escape で閉じると打った文字を消す。
  *
  * ここで見ないもの:
- * - 置いた地点の辺り・代表の位置と、置いた地点の保存 → `RouteForm/PointDetail.test.tsx`
- * - 地点ごとの呼び名・出どころ・名前・地図で置く操作・消す・「現在地に戻す」・上限、候補を選んだあとに打った文字と一覧を消すこと →
- *   `RouteForm/RouteForm.pointDetail.test.tsx`
+ * - どの地点の役割で開くか・選んだ候補をその役割で置くこと・ブラウザの「戻る」で閉じること → `app/page.places.test.tsx`
  * - 選んだ候補を置いたあとに、置ける状態を解くこと → `features/route/useGenerationConditions.points.test.ts`
- * - 狭い画面で、候補が出ている間に欄と候補をキーボードの上の見える範囲へ出すこと（レイアウトの実寸） → `e2e/destination.spec.ts`
+ * - スマホで「戻る」が検索だけを閉じてアプリから離れないこと・候補をキーボードの上の見える範囲に収めること（実際のブラウザの履歴と
+ *   レイアウトの実寸） → `e2e/destination.spec.ts`
  * - 打ちかけの語の続きの候補・施設の候補とその並びを返すこと → backend の `tests/test_place_search_route.py`
  * - 保存した地点の一覧の読み方、履歴の上限・同じ位置の置き換え・保存した地点と同じ位置を出さないこと →
  *   `features/route/savedPlaces.test.ts`
@@ -20,6 +18,7 @@
  * 差し替えたもの: 検索の口の応答（網の層）。保存した地点と履歴は本物の置き場（この端末の保存）を通す。
  */
 import { act, fireEvent, screen, render, within } from "@testing-library/react";
+import { createRef } from "react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -31,7 +30,7 @@ import { AZA_CANDIDATE as AZA, FACILITY_CANDIDATE as FACILITY } from "@/testing/
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 import type { Coordinates } from "@/types/route";
 
-import PointSearch from "./PointSearch";
+import PlaceSearchBar from "./PlaceSearchBar";
 
 /** 地図の真ん中（東京駅）。丸の内二丁目まで直線で0.4km、浅草寺まで4.6km。 */
 const TOKYO_STATION: Coordinates = { latitude: 35.681, longitude: 139.767 };
@@ -50,23 +49,21 @@ function storeSavedPlaces(places: SavedPlace[]) {
   window.localStorage.setItem(SAVED_PLACES_STORAGE_KEY, JSON.stringify(places));
 }
 
-function WithSavedPlaces(props: Omit<React.ComponentProps<typeof PointSearch>, "savedPlaces">) {
-  return <PointSearch {...props} savedPlaces={useSavedPlaces()} />;
+function WithSavedPlaces(props: Omit<React.ComponentProps<typeof PlaceSearchBar>, "savedPlaces">) {
+  return <PlaceSearchBar {...props} savedPlaces={useSavedPlaces()} />;
 }
 
-function renderSearch({ mapCenter = TOKYO_STATION, placing = false } = {}) {
+function renderSearch({ mapCenter = TOKYO_STATION } = {}) {
   const onChoose = vi.fn();
+  const inputRef = createRef<HTMLInputElement>();
   const search = (center: Coordinates) => (
     <WithSavedPlaces
       title="目的地"
-      placed={false}
-      actions={null}
-      placingHint="地図をタップ"
       chooseResult=""
       full={false}
-      placing={placing}
       mapCenter={center}
       onChoose={onChoose}
+      inputRef={inputRef}
     />
   );
   const { rerender } = render(search(mapCenter));
@@ -92,7 +89,7 @@ async function searchFor(text: string) {
   await userEvent.type(searchBox(), `${text}{Enter}`);
 }
 
-describe("PointSearch 打つ欄", () => {
+describe("PlaceSearchBar 打つ欄", () => {
   it("入れた住所・施設の候補を地図の真ん中からの距離・種類・当たった段（施設は辺りも）つきで並べ、選んだ候補を上げる", async () => {
     const sent = onBackend("GET", "/api/place-search", () => Response.json({ candidates: [AZA, FACILITY] }));
     const { onChoose } = renderSearch();
@@ -210,9 +207,25 @@ describe("PointSearch 打つ欄", () => {
     await searchFor("丸の内");
     expect(await screen.findByRole("alert")).toHaveTextContent("対象範囲を読めませんでした");
   });
+  it.each([
+    ["✕", () => userEvent.click(screen.getByRole("button", { name: "目的地の候補を閉じる" }))],
+    ["Escape", () => userEvent.keyboard("{Escape}")],
+  ])("%sで閉じると、候補の一覧を閉じて打った文字を消し、選ばない", async (_, closeSearch) => {
+    onBackend("GET", "/api/place-search", () => Response.json({ candidates: [AZA] }));
+    const { onChoose } = renderSearch();
+    await searchFor("丸の内");
+    await screen.findByRole("list", { name: "地点の候補" });
+
+    await closeSearch();
+
+    expect(screen.queryByRole("list", { name: "地点の候補" })).toBeNull();
+    expect(searchBox()).toHaveValue("");
+    expect(searchBox()).not.toHaveFocus();
+    expect(onChoose).not.toHaveBeenCalled();
+  });
 });
 
-describe("PointSearch 保存した地点", () => {
+describe("PlaceSearchBar 保存した地点", () => {
   const CAFE: SavedPlace = { ...FACILITY, name: "いつものカフェ" };
   const HOME: SavedPlace = { kind: "facility", level: "point", name: "自宅", area: null, ...NEAR_SENSOJI };
 
@@ -238,7 +251,7 @@ describe("PointSearch 保存した地点", () => {
   });
 });
 
-describe("PointSearch 検索の履歴", () => {
+describe("PlaceSearchBar 検索の履歴", () => {
   const history = () => screen.getByRole("list", { name: "検索の履歴" });
   const rows = () =>
     within(history())
@@ -284,49 +297,5 @@ describe("PointSearch 検索の履歴", () => {
     await userEvent.click(searchBox());
 
     expect(screen.queryByRole("list", { name: "検索の履歴" })).toBeNull();
-  });
-});
-
-describe("PointSearch 狭い画面", () => {
-  beforeEach(() => {
-    document.documentElement.style.setProperty("--is-mobile", "1");
-    return () => document.documentElement.style.removeProperty("--is-mobile");
-  });
-
-  it("欄を押してから閉じるまでは、打った文字に当たる候補が無くても欄を上側に出したままにする", async () => {
-    storeSavedPlaces([{ ...FACILITY, name: "いつものカフェ" }]);
-    onBackend("GET", "/api/place-search", () => Response.json({ candidates: [AZA] }));
-    renderSearch();
-    const raised = () => screen.queryByText("目的地を探す");
-
-    await userEvent.click(searchBox());
-    expect(raised()).not.toBeNull();
-
-    // 変換中の文字は引かず、保存した地点にも当たらない。
-    fireEvent.compositionStart(searchBox());
-    fireEvent.input(searchBox(), { target: { value: "あ" }, isComposing: true });
-    expect(screen.queryByRole("list", { name: "保存した地点" })).toBeNull();
-    expect(raised()).not.toBeNull();
-
-    fireEvent.input(searchBox(), { target: { value: "浅草" }, isComposing: true });
-    fireEvent.compositionEnd(searchBox());
-    await screen.findByRole("list", { name: "地点の候補" });
-    await userEvent.clear(searchBox());
-    expect(screen.queryByRole("list", { name: "地点の候補" })).toBeNull();
-    expect(raised()).not.toBeNull();
-
-    await userEvent.click(screen.getByRole("button", { name: "目的地の候補を閉じる" }));
-    expect(raised()).toBeNull();
-  });
-
-  it("地図で置く待ちでも、上側に出している間は地図が隠れているので、欄の空の案内に地図で置く案内を出さない", async () => {
-    renderSearch({ placing: true });
-    expect(searchBox()).toHaveAttribute("placeholder", "地図をタップ");
-
-    await userEvent.click(searchBox());
-    expect(searchBox()).toHaveAttribute("placeholder", "住所・施設で探す");
-
-    await userEvent.click(screen.getByRole("button", { name: "目的地の候補を閉じる" }));
-    expect(searchBox()).toHaveAttribute("placeholder", "地図をタップ");
   });
 });

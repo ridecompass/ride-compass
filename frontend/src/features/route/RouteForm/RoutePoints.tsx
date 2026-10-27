@@ -7,9 +7,9 @@ import { Toggle } from "@/components/ui/Toggle/Toggle";
 import { waypointsFull, type GenerationConditionsState } from "@/features/route/useGenerationConditions";
 import type { SavedPlacesState } from "@/features/route/useSavedPlaces";
 import { cn } from "@/lib/cn";
-import type { Coordinates, PinRole, PlaceCandidate } from "@/types/route";
+import type { Coordinates, PlaceCandidate } from "@/types/route";
 
-import { MAP_PLACED, pointNames } from "@/features/route/pointNames";
+import { MAP_PLACED, pointNames, pointTitle } from "@/features/route/pointNames";
 
 import PointDetail from "./PointDetail";
 import PointOrder from "./PointOrder";
@@ -46,11 +46,9 @@ interface RoutePointsProps {
   onOriginReset: () => void;
   /** 出発地が、探して置いたときの位置のままなら、その候補。 */
   originFound: PlaceCandidate | null;
-  /** 地図でいま見ている所の真ん中。探す施設の候補は、ここから近い順に並ぶ。 */
-  mapCenter: Coordinates;
-  /** 探して選んだ候補を、その役割の地点として置く（経由地は`waypointIndex`番目を置き直し、無ければ足す）。 */
-  onPlaceFound: (role: PinRole, candidate: PlaceCandidate, waypointIndex: number | null) => void;
-  /** 保存した地点（詳しくの打つ欄の候補と、置いた地点の保存）。 */
+  /** 地図の上端の地点の検索の欄を、選んでいる地点の役割で開く。 */
+  onSearchOpen: () => void;
+  /** 保存した地点（置いた地点の保存）。 */
   savedPlaces: SavedPlacesState;
   /** 地図をタップすると選んでいる地点を置くか（ルート設定が地図で効いている間）。 */
   placing: boolean;
@@ -73,8 +71,7 @@ export default function RoutePoints({
   originAtHere,
   onOriginReset,
   originFound,
-  mapCenter,
-  onPlaceFound,
+  onSearchOpen,
   savedPlaces,
   placing,
 }: RoutePointsProps) {
@@ -104,13 +101,12 @@ export default function RoutePoints({
   const destinationName = loop ? `${originName}[周回]` : names.destination;
 
   function renderDetail() {
-    const common = { originLocated, mapCenter, savedPlaces };
+    const common = { originLocated, onSearchOpen, savedPlaces, placing, title: pointTitle(target) };
     if (target.role === "origin") {
       return (
         <PointDetail
           {...common}
           role="origin"
-          title="出発地"
           source={originManual ? sourceOf(originFound) : undefined}
           name={originName}
           found={originFound}
@@ -128,9 +124,6 @@ export default function RoutePoints({
               <LocateIcon />
             </Button>
           }
-          chooseResult="出発地にします"
-          placing={placing}
-          onChoose={(candidate) => onPlaceFound("origin", candidate, null)}
         />
       );
     }
@@ -140,7 +133,6 @@ export default function RoutePoints({
         <PointDetail
           {...common}
           role="destination"
-          title="目的地"
           source={set ? sourceOf(destinationFound) : undefined}
           name={destinationName}
           found={destinationFound}
@@ -158,9 +150,6 @@ export default function RoutePoints({
               <RemovePointIcon />
             </Button>
           }
-          chooseResult="目的地にします"
-          placing={placing}
-          onChoose={(candidate) => onPlaceFound("destination", candidate, null)}
         />
       );
     }
@@ -170,25 +159,20 @@ export default function RoutePoints({
         <PointDetail
           {...common}
           role="waypoint"
-          title="新しい経由地"
           found={null}
           at={null}
           placed={false}
           placingHint={waypointCount > 0 ? `地図をタップ[${waypointCount}地点]` : "地図をタップ"}
-          chooseResult="経由地に足します"
           full={full}
-          placing={placing}
-          onChoose={(candidate) => onPlaceFound("waypoint", candidate, null)}
         />
       );
     }
-    const title = `経由地${index + 1}`;
+    const { title } = common;
     const found = foundAt(waypoints[index]);
     return (
       <PointDetail
         {...common}
         role="waypoint"
-        title={title}
         markLabel={String(index + 1)}
         source={sourceOf(found)}
         name={names.waypoints[index]}
@@ -206,9 +190,6 @@ export default function RoutePoints({
             <RemovePointIcon />
           </Button>
         }
-        chooseResult={`${title}を置き直します`}
-        placing={placing}
-        onChoose={(candidate) => onPlaceFound("waypoint", candidate, index)}
       />
     );
   }
@@ -257,7 +238,7 @@ export default function RoutePoints({
           <ClearPointsIcon size={18} />
         </Button>
       </div>
-      {/* 地点を選んでいる間は、詳しくの上に通る順の大きい丸の並びを出す（何も選んでいない・新しい経由地を置く間は、探す欄を上に残す）。 */}
+      {/* 地点を選んでいる間は、詳しくの上に通る順の大きい丸の並びを出す（何も選んでいない・新しい経由地を置く間は出さず、詳しくの高さを抑える）。 */}
       {pointChosen && waypointCount > 0 && !(target.role === "waypoint" && target.index === null) && (
         <PointOrder
           loop={loop}

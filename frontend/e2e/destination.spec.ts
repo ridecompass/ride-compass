@@ -95,10 +95,10 @@ async function showKeyboard(page: Page): Promise<number> {
   }, KEYBOARD_HEIGHT);
 }
 
-// 狭い画面では、欄を押すと欄のあった位置からせり上がって、打つ欄と候補を画面の上側へ出し、候補はキーボードの上までの中で
-// 送る。せり上がりが欄の位置から始まること、候補が多くてもキーボードに覆われずに末尾まで押せて、押した候補が目的地になることを
-// 実ブラウザの寸法で見る（単体テストはレイアウトの実寸を持たない）。
-test("モバイル: 目的地を探すと候補を画面の上側でキーボードに隠れずに選べ、選ぶと地点の並びにその名前が出る", async ({
+// 狭い画面では、地点の詳しくの探すボタンで地図の上端の欄を開き、候補は欄のすぐ下からキーボードの上までの中で送る。
+// 候補が多くてもキーボードに覆われずに末尾まで押せて、押した候補が目的地になることを実ブラウザの寸法で見る（単体テストは
+// レイアウトの実寸を持たない）。
+test("モバイル: 目的地を探すと候補を地図の上端の欄の下でキーボードに隠れずに選べ、選ぶと地点の並びにその名前が出る", async ({
   page,
 }) => {
   const candidates = Array.from({ length: 30 }, (_, index) => ({
@@ -117,29 +117,13 @@ test("モバイル: 目的地を探すと候補を画面の上側でキーボー
   const settings = await openMobileSheet(page, "ルート設定");
   await settings.getByRole("button", { name: "周回", pressed: true }).click();
   await settings.getByRole("button", { name: "目的地: 未設定", exact: true }).click();
-  const searchBox = settings.getByRole("searchbox", { name: "目的地を住所・施設で探す" });
-  await searchBox.scrollIntoViewIfNeeded();
-  const fieldTop = (await searchBox.boundingBox())!.y;
-  await searchBox.click();
-  // 上側へは、欄のあった位置からせり上がって開く（一瞬で画面が切り替わらない）。動きを始めに止めて欄の位置を測り、終わらせる。
-  const risingFrom = await searchBox.evaluate((input) => {
-    const rising = document
-      .getAnimations()
-      .filter((animation) => (animation.effect as KeyframeEffect | null)?.target?.contains(input));
-    rising.forEach((animation) => {
-      animation.pause();
-      animation.currentTime = 0;
-    });
-    const top = rising.length > 0 ? input.getBoundingClientRect().top : null;
-    rising.forEach((animation) => animation.finish());
-    return top;
-  });
-  expect(risingFrom).not.toBeNull();
-  expect(Math.abs(risingFrom! - fieldTop)).toBeLessThan(2);
+  await settings.getByRole("button", { name: "目的地を探す" }).click();
+  const searchBox = page.getByRole("searchbox", { name: "目的地を住所・施設で探す" });
+  await expect(searchBox).toBeFocused();
   const keyboardTop = await showKeyboard(page);
   await searchBox.fill("浅草寺");
   await searchBox.press("Enter");
-  const list = settings.getByRole("list", { name: "地点の候補" });
+  const list = page.getByRole("list", { name: "地点の候補" });
   await expect(list).toBeVisible();
   const box = (await searchBox.boundingBox())!;
   expect(box.y).toBeGreaterThanOrEqual(0);
@@ -153,4 +137,35 @@ test("モバイル: 目的地を探すと候補を画面の上側でキーボー
   await choice.click();
 
   await expect(settings.getByRole("button", { name: `目的地: ${candidate.name}` })).toBeVisible();
+});
+
+// 検索を開いている間のブラウザの「戻る」は、アプリから離れずに検索だけを閉じ、ルート設定のシートに戻る。閉じたあと（「戻る」でも ✕ でも）の「戻る」は
+// 履歴に余分な項目を残さず、アプリの前の頁へ戻る。履歴の項目の積み・戻しは実ブラウザの履歴でしか見えないので、ここで見る。
+test("モバイル: 検索を開いている間の「戻る」は検索だけを閉じてシートに戻り、閉じたあとの「戻る」はアプリから離れる", async ({
+  page,
+}) => {
+  // アプリの前の頁を作る（離れたことを URL で読む）。
+  await page.goto("about:blank");
+  await openMobileApp(page);
+  const appUrl = page.url();
+  const settings = await openMobileSheet(page, "ルート設定");
+  await settings.getByRole("button", { name: "周回", pressed: true }).click();
+  await settings.getByRole("button", { name: "目的地: 未設定", exact: true }).click();
+  const searchButton = settings.getByRole("button", { name: "目的地を探す" });
+  const searchBox = page.getByRole("searchbox", { name: "目的地を住所・施設で探す" });
+  const closeButton = page.getByRole("button", { name: "目的地の候補を閉じる" });
+
+  await searchButton.click();
+  await expect(closeButton).toBeVisible();
+  await page.goBack();
+  await expect(closeButton).toBeHidden();
+  await expect(searchBox).not.toBeFocused();
+  await expect(settings).toBeVisible();
+  expect(page.url()).toBe(appUrl);
+
+  await searchButton.click();
+  await closeButton.click();
+  await expect(closeButton).toBeHidden();
+  await page.goBack();
+  await expect(page).toHaveURL("about:blank");
 });

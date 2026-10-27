@@ -4,8 +4,9 @@
  * やめられる。
  *
  * ここで見ないもの:
- * - 住所・施設で探す欄とその候補・保存した地点の候補・狭い画面で欄を上側に出すこと → `RouteForm/PointSearch.test.tsx`
- * - 地点ごとの呼び名・出どころ・名前・地図で置く操作・消す・「現在地に戻す」・上限 → `RouteForm/RouteForm.pointDetail.test.tsx`
+ * - 住所・施設で探す欄とその候補・保存した地点の候補 → `PlaceSearch/PlaceSearchBar.test.tsx`。探すボタンで欄を開くこと →
+ *   `app/page.places.test.tsx`
+ * - 地点ごとの呼び名・出どころ・名前・探すボタンの文言・消す・「現在地に戻す」・上限 → `RouteForm/RouteForm.pointDetail.test.tsx`
  * - 置いた地点へ地図を寄せること・地図の上でピンを動かすこと → `e2e/destination.spec.ts`
  * - 位置の辺りの決め方 → backend の `tests/test_place_search_route.py`
  * - 出発地・経由地・目的地のどの位置を渡すか（現在地を取れていない出発地は渡さない） → `RouteForm/RouteForm.pointDetail.test.tsx`
@@ -55,17 +56,11 @@ function renderDetail({ found = null as PlaceCandidate | null, at = null as Coor
       found={found}
       at={at}
       placed={found !== null}
-      chooseResult=""
       placing={false}
       originLocated
-      mapCenter={NEAR_SENSOJI}
-      onChoose={vi.fn()}
+      onSearchOpen={vi.fn()}
     />,
   );
-}
-
-function searchBox() {
-  return screen.getByRole("searchbox", { name: "目的地を住所・施設で探す" });
 }
 
 describe("PointDetail 置いた地点", () => {
@@ -115,13 +110,7 @@ describe("PointDetail 保存した地点", () => {
     await userEvent.type(nameInput, CAFE.name);
     await userEvent.click(within(dialog).getByRole("button", { name: "保存" }));
 
-    await userEvent.click(searchBox());
-    expect(within(screen.getByRole("list", { name: "保存した地点" })).getByRole("button")).toHaveTextContent(
-      `${CAFE.name}${CAFE.area}`,
-    );
-
     await userEvent.click(screen.getByRole("button", { name: `「${CAFE.name}」の保存をやめる` }));
-    expect(screen.queryByRole("list", { name: "保存した地点" })).toBeNull();
     expect(screen.getByRole("button", { name: "地点を保存" })).toBeInTheDocument();
   });
 

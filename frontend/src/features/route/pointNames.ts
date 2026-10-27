@@ -1,4 +1,4 @@
-import type { Coordinates, PlaceCandidate } from "@/types/route";
+import type { Coordinates, PlaceCandidate, PointTarget } from "@/types/route";
 
 /** 地図で置いた地点の名前（探して置いた名前の無い地点）と、その出どころ。 */
 export const MAP_PLACED = "地図で選んだ地点";
@@ -46,4 +46,18 @@ export function pointNames(inputs: PointNamesInputs): { origin: string; waypoint
     waypoints: found.waypoints.map((name) => name ?? MAP_PLACED),
     destination: destination === null ? "未設定" : (found.destination ?? MAP_PLACED),
   };
+}
+
+/** 地点の呼び名（出発地／経由地2／目的地／新しい経由地）。 */
+export function pointTitle(target: PointTarget): string {
+  if (target.role === "origin") return "出発地";
+  if (target.role === "destination") return "目的地";
+  return target.index === null ? "新しい経由地" : `経由地${target.index + 1}`;
+}
+
+/** 探した候補を選ぶと、その地点に何が起きるか。 */
+export function chooseResultOf(target: PointTarget): string {
+  if (target.role === "origin") return "出発地にします";
+  if (target.role === "destination") return "目的地にします";
+  return target.index === null ? "経由地に足します" : `${pointTitle(target)}を置き直します`;
 }

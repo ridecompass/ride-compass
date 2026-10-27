@@ -6,7 +6,7 @@ import { useState } from "react";
 import { Badge } from "@/components/ui/Badge/Badge";
 import { Button } from "@/components/ui/Button/Button";
 import { DialogContent, DialogRoot } from "@/components/ui/Dialog/Dialog";
-import { SavedPlaceIcon, SavePlaceIcon } from "@/components/ui/icons/lucideIcons";
+import { SavedPlaceIcon, SavePlaceIcon, SearchPlaceIcon } from "@/components/ui/icons/lucideIcons";
 import { Input } from "@/components/ui/Input/Input";
 import { textVariants } from "@/components/ui/Text/Text";
 import { isRepresentative } from "@/features/route/PlaceSearch/PlaceCandidates";
@@ -18,8 +18,6 @@ import { getQueryClient } from "@/lib/queryClient";
 import type { Coordinates, PinRole, PlaceCandidate } from "@/types/route";
 
 import PointMark from "@/components/PinMark/PointMark";
-
-import PointSearch from "./PointSearch";
 
 interface PointDetailProps {
   role: PinRole;
@@ -35,33 +33,29 @@ interface PointDetailProps {
   found: PlaceCandidate | null;
   /** 地点の位置。置いていない・現在地を取れていなければnull。辺りの無い地点は、ここから辺りを引いて出す。 */
   at: Coordinates | null;
-  /** 地点が置いてあるか。打つ欄の誘いを「置き直す」にする。 */
+  /** 地点が置いてあるか。探すボタンの文言を「置き直す」にする。 */
   placed: boolean;
-  /** 打つ欄の右に並べる操作（消す・現在地に戻す。どれもアイコンだけの形）。要らない間も出し入れせず、押せない形で
+  /** 探すボタンの右に並べる操作（消す・現在地に戻す。どれもアイコンだけの形）。要らない間も出し入れせず、押せない形で
    * 渡す（押した直後に並びが動くと、続けて押したときに別の操作に当たる）。 */
   extra?: React.ReactNode;
-  /** 地図をタップするとこの地点を置く間に、打つ欄の中に出す文言。置いた数を隠さないため、経由地を足す間は件数を添える。 */
+  /** 地図をタップするとこの地点を置く間に、探すボタンに添える文言。置いた数を隠さないため、経由地を足す間は件数を添える。 */
   placingHint?: string;
-  /** 候補を選ぶと何が起きるか（「目的地にします」等）。 */
-  chooseResult: string;
   /** 上限まで置いてあり、これ以上置けない（地図でも探してもの両方）。 */
   full?: boolean;
   /** 地図をタップするとこの地点を置くか（ルート設定が地図で効いている間）。 */
   placing: boolean;
   /** 出発地の印を、実際の位置（現在地か置いた地点）の色で出すか。 */
   originLocated: boolean;
-  /** 地図でいま見ている所の真ん中。施設の候補はここから近い順に並ぶ。 */
-  mapCenter: Coordinates;
-  /** 探して選んだ候補（保存した地点も）を、この地点として置く。 */
-  onChoose: (candidate: PlaceCandidate) => void;
-  /** 保存した地点の一覧と保存・削除。打つ欄を押すと候補に出し、置いた地点を保存する。 */
+  /** 地図の上端の地点の検索の欄を、この地点の役割で開く。 */
+  onSearchOpen: () => void;
+  /** 保存した地点の一覧と保存・削除。置いた地点を保存する。 */
   savedPlaces: SavedPlacesState;
 }
 
 /**
  * 押した地点の詳しく: どの地点か・どうやって置いたか・名前・辺り（探した施設は候補の辺り、地図で選んだ地点・現在地・辺りの
- * 無い施設は位置から引いた辺り。探した住所は名前が住所なので出さない）と、住所・施設の名前を打って置き直す欄と、消す・現在地に
- * 戻す・置いた地点の保存（保存した地点なら保存をやめる）。
+ * 無い施設は位置から引いた辺り。探した住所は名前が住所なので出さない）と、地図の上端の検索の欄をこの地点の役割で開くボタンと、
+ * 消す・現在地に戻す・置いた地点の保存（保存した地点なら保存をやめる）。
  */
 export default function PointDetail({
   role,
@@ -74,12 +68,10 @@ export default function PointDetail({
   placed,
   extra,
   placingHint = "地図をタップ",
-  chooseResult,
   full = false,
   placing,
   originLocated,
-  mapCenter,
-  onChoose,
+  onSearchOpen,
   savedPlaces,
 }: PointDetailProps) {
   // 探した住所は名前が辺りを含み、代表の位置なら行きたい所そのものでもないので、辺りは引かない。
@@ -153,49 +145,49 @@ export default function PointDetail({
         </div>
       </div>
 
-      <PointSearch
-        title={title}
-        placed={placed}
-        actions={
-          <>
-            {extra}
-            {savedHere !== null ? (
-              <Button
-                size="panelIcon"
-                className="ml-auto flex-none"
-                aria-label={`「${savedHere.name}」の保存をやめる`}
-                onClick={() => savedPlaces.remove(savedHere)}
-                usage="保存した地点から外します。置いた地点はそのまま残ります。"
-              >
-                <SavedPlaceIcon />
-              </Button>
-            ) : (
-              <Button
-                size="panelIcon"
-                className="ml-auto flex-none"
-                aria-label="地点を保存"
-                disabled={at === null}
-                aria-haspopup="dialog"
-                aria-expanded={naming}
-                onClick={() => {
-                  setPlaceNameDraft(null);
-                  setNaming(true);
-                }}
-                usage="この地点に名前を付けてこの端末に保存します。保存した地点は、地点の打つ欄を押すと候補に出ます。"
-              >
-                <SavePlaceIcon />
-              </Button>
-            )}
-          </>
-        }
-        placingHint={placingHint}
-        chooseResult={chooseResult}
-        full={full}
-        placing={placing}
-        mapCenter={mapCenter}
-        onChoose={onChoose}
-        savedPlaces={savedPlaces}
-      />
+      <div className="flex items-center gap-1">
+        <Button
+          size="sm"
+          className="min-w-0 flex-auto justify-start gap-1.5"
+          aria-label={`${title}を探す`}
+          disabled={full}
+          onClick={onSearchOpen}
+          usage={`地図の上端の欄で、住所・施設の名前を打って${title}を探します。`}
+        >
+          <SearchPlaceIcon size={14} />
+          <span className="min-w-0 truncate">
+            {placing ? `${placingHint}か、住所・施設で探す` : placed ? "住所・施設で置き直す" : "住所・施設で探す"}
+          </span>
+        </Button>
+        {extra}
+        {savedHere !== null ? (
+          <Button
+            size="panelIcon"
+            className="flex-none"
+            aria-label={`「${savedHere.name}」の保存をやめる`}
+            onClick={() => savedPlaces.remove(savedHere)}
+            usage="保存した地点から外します。置いた地点はそのまま残ります。"
+          >
+            <SavedPlaceIcon />
+          </Button>
+        ) : (
+          <Button
+            size="panelIcon"
+            className="flex-none"
+            aria-label="地点を保存"
+            disabled={at === null}
+            aria-haspopup="dialog"
+            aria-expanded={naming}
+            onClick={() => {
+              setPlaceNameDraft(null);
+              setNaming(true);
+            }}
+            usage="この地点に名前を付けてこの端末に保存します。保存した地点は、地点の検索の欄を押すと候補に出ます。"
+          >
+            <SavePlaceIcon />
+          </Button>
+        )}
+      </div>
       <DialogRoot open={naming} onOpenChange={setNaming}>
         <DialogContent title="地点を保存">
           <form

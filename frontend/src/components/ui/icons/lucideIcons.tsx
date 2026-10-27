@@ -135,6 +135,8 @@ export const NotFetchedIcon = fromLucide(CloudOff);
 export const BackToNowIcon = fromLucide(History);
 /** 地図で選んだ道の評価を調べる。 */
 export const InspectRoadIcon = fromLucide(Search);
+/** 地点を住所・施設で探す。 */
+export const SearchPlaceIcon = fromLucide(Search);
 /** 選んだ区間へ地図を寄せる。 */
 export const ShowSectionOnMapIcon = fromLucide(ZoomIn);
 /** 編集で作ったルートの元にしたルートを見る。 */
