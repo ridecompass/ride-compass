@@ -9,7 +9,13 @@ import palette from "@/types/generated/palette.json";
 
 /** 形を書く座標の一辺（SVGのviewBoxと同じ単位）。画面での大きさは源泉の`iconSizePx`が決める。 */
 export const FRAME = 24;
-export const BOX_PATH = "M6 1h12a5 5 0 0 1 5 5v12a5 5 0 0 1-5 5H6a5 5 0 0 1-5-5V6a5 5 0 0 1 5-5Z";
+const BOX_PATH = "M6 1h12a5 5 0 0 1 5 5v12a5 5 0 0 1-5 5H6a5 5 0 0 1-5-5V6a5 5 0 0 1 5-5Z";
+/** 絵の枠。押せる点（名前のある点）は角丸の四角、押せない点（名前の無い点）は丸——枠の形で押せるかを、絵記号で何の点かを表す。 */
+export type PointFrame = "box" | "circle";
+export const FRAME_PATHS: Record<PointFrame, string> = {
+  box: BOX_PATH,
+  circle: "M12 1a11 11 0 1 0 0 22a11 11 0 1 0 0-22Z",
+};
 /** 四角の縁取りは丸い点の縁取りと同じ画面上の太さにする。 */
 export const BOX_STROKE = (mapDisplay.point.strokeWidthPx * FRAME) / mapDisplay.point.iconSizePx;
 /** 絵記号は四角の内側へ縮めて載せる。 */
@@ -32,20 +38,38 @@ export const GLYPH_PATHS: Record<PointGlyph, string> = {
   mountain: "M2.5 19L9 8l4 6.5L15.5 11l6 8Z",
   bed: "M3 7v12 M3 15h18v4 M21 15v-3a3 3 0 0 0-3-3h-7v6 M7 12h.01",
   gate: "M3 6c6 1 12 1 18 0 M5 10h14 M7 6.5V21 M17 6.5V21",
+  signal: "M8.5 3h7v18h-7Z M12 7h.01 M12 12h.01 M12 17h.01",
+  crosswalk: "M5 5v14 M9.67 5v14 M14.33 5v14 M19 5v14",
+  octagon: "M8 3h8l5 5v8l-5 5H8l-5-5V8Z",
+  yield: "M4 5h16L12 20Z",
+  cross: "M5 5l14 14 M19 5L5 19",
+  barrier: "M3 9h18v5H3Z M6 14v6 M18 14v6",
+  hump: "M2 18c4 0 5-7 10-7s6 7 10 7",
+  bicycle:
+    "M2.5 17a3.5 3.5 0 1 0 7 0a3.5 3.5 0 1 0-7 0 M14.5 17a3.5 3.5 0 1 0 7 0a3.5 3.5 0 1 0-7 0 M6 17l3.5-8h6l2.5 8 M9.5 9l3 8H6 M14 6h2.5",
+  alert: "M12 5v9 M12 19h.01",
 };
 
 /** 絵記号の点の見本。地図と同じ形・同じ大きさ。 */
-export function PointIconSwatch({ color, glyph }: { color: string; glyph: PointGlyph }) {
+export function PointIconSwatch({
+  color,
+  glyph,
+  frame = "box",
+}: {
+  color: string;
+  glyph: PointGlyph;
+  frame?: PointFrame;
+}) {
   const size = mapDisplay.point.iconSizePx;
   return (
     <svg
       aria-hidden="true"
-      className={cn("rounded-[4px]", LEGEND_SWATCH_RING_CLASS)}
+      className={cn(frame === "box" ? "rounded-[4px]" : "rounded-full", LEGEND_SWATCH_RING_CLASS)}
       width={size}
       height={size}
       viewBox={`0 0 ${FRAME} ${FRAME}`}
     >
-      <path d={BOX_PATH} fill={color} stroke={palette.semantic.mark_stroke} strokeWidth={BOX_STROKE} />
+      <path d={FRAME_PATHS[frame]} fill={color} stroke={palette.semantic.mark_stroke} strokeWidth={BOX_STROKE} />
       <path
         d={GLYPH_PATHS[glyph]}
         transform={`translate(${GLYPH_OFFSET} ${GLYPH_OFFSET}) scale(${GLYPH_SCALE})`}

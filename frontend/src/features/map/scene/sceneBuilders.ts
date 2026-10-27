@@ -40,6 +40,8 @@ export function layerSpec(spec: {
   readonly sourceLayer?: string;
   readonly paint?: Readonly<Record<string, unknown>>;
   readonly layout?: Readonly<Record<string, unknown>>;
+  readonly minzoom?: number;
+  readonly maxzoom?: number;
 }): LayerSpecification {
   const { sourceLayer, ...rest } = spec;
   return {

@@ -65,6 +65,7 @@ function pointAxisLegend(layer: (typeof POINT_LAYERS)[number], axis: PointAxis, 
             description: category.description,
             color: category.color,
             ...("glyph" in category ? { glyph: category.glyph } : {}),
+            ...("glyph" in category && layer.point_name_property === null ? { roundFrame: true as const } : {}),
           }
         : {
             key: category.key,
