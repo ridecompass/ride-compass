@@ -155,7 +155,8 @@ export default function PointDetail({
           usage={`地図の上端の欄で、住所・施設の名前を打って${title}を探します。`}
         >
           <SearchPlaceIcon size={14} />
-          <span className="min-w-0 truncate">
+          {/* 狭い幅では省かずに折り返す（「地図をタップか、住所・施設で探す」は幅 390 で1行に収まらない）。 */}
+          <span className="min-w-0 whitespace-normal text-left leading-tight">
             {placing ? `${placingHint}か、住所・施設で探す` : placed ? "住所・施設で置き直す" : "住所・施設で探す"}
           </span>
         </Button>
