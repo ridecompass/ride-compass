@@ -50,6 +50,8 @@ NOT_DEPLOYED = (
     "backend/scripts/schema_shape.py",
     # 本番でルートを作る確かめ。デプロイのあとと定時に、ランナーから本番を外から叩く（像の中では動かさない）。
     "backend/scripts/prod_route_check.py",
+    # 本番の点のタイルの確かめ。デプロイのあとと定時に、ランナーから本番を外から叩く（像の中では動かさない）。
+    "backend/scripts/prod_point_tile_check.py",
     # 本番のDBのバックアップの止まりの見張り。定時に、ランナーから本番の`/health`を読む（像の中では動かさない）。
     "backend/scripts/prod_backup_check.py",
     "backend/app/domain/warning_display.py",

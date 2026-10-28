@@ -219,6 +219,13 @@ jobs:
         if: steps.gate.outputs.deploy == 'true'
         timeout-minutes: 3
         run: python backend/scripts/prod_route_check.py
+      # 出したbackendで、点の密な所の点のタイルが上限の中で空でなく返るかを外から見る。DBの上限で空へ倒れたタイルは
+      # 点の無い所と同じ見た目で、画面からは気づけない。上のルートの確かめとは別の段にし、互いの失敗で飛ばさない。
+      # 何を見るか・上限の根拠は docs/architecture/tech-stack.md「本番の点のタイルの確かめ」。
+      - name: 本番の点の密な所の点のタイルを見る
+        if: ${{ !cancelled() && steps.gate.outputs.deploy == 'true' && steps.deploy.outcome == 'success' }}
+        timeout-minutes: 3
+        run: python backend/scripts/prod_point_tile_check.py
       # 本番のスキーマと、今出したコードのORMの宣言の差を測る。新しいコードの読み書きを壊しうる差があれば終了コード1で
       # ジョブを失敗させ、本番が宣言より多く持つだけの差はログに出すだけにする（分け方は backend/scripts/schema_gap.py の
       # モジュールの説明）。差の行はログに出る。差は人が本番で埋めるもので、

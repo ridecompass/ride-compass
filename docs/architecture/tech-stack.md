@@ -256,6 +256,25 @@ backendが先に配信すると、そのプロパティの有無を見ている�
   断らせる。上限の距離は混んでいれば作れないことを画面が断っている（`domain/route_request.py: BUSY_SAFE_DISTANCE_KM`）ので、
   確かめが通らなくても利用者への約束が破れたとは読めず、確かめの持ち時間の中で上限の距離を作れる所要も未計測である。
 
+## 本番の点のタイルの確かめ
+
+**本番のbackendで、点の密な所の点のタイルが上限の中で空でなく返るかを外から見る。** タイルを作る問い合わせがDBの上限
+（`infrastructure/database.py`の`command_timeout`）を超えると、配信は空のタイルへ倒れる。空のタイルは点の無い所と同じ見た目で、
+画面を見ても不具合と気づきにくい。点のタイルのテストは小さな見本の点で束ね方を見ていて、テストのDBに本番の規模の点は無いので、
+作る時間はこの確かめでしか見ない。`backend/scripts/prod_point_tile_check.py`が、点の層（`infrastructure/point_tile_layers.py: POINT_TILE_LAYERS`）
+ごと・配る倍率ごとに、点の密な所（`prod_point_tile_check.py: DENSE_POINT`）を含む1枚を公開の口で取り、200で返らない・空のタイル
+（`infrastructure/vector_tile.py: encode_empty_tile`の形）・`prod_point_tile_check.py: TILE_LIMIT_SECONDS`（10）秒を超えたのどれかなら、
+層・倍率・時間・大きさを出して失敗にする。本番には書き込まない。
+
+- **回すのは2か所。** `deploy-backend.yml`が出したあと（上の「本番でルートを作る確かめ」と別の段で、互いの失敗で飛ばさない）と、
+  `prod-route-check.yml`が毎日1回（ジョブ`point-tiles`）。点の数は取込・派生の作り直しでデプロイを伴わずに増える。
+- **配信のディスクのキャッシュに当たったタイルは、作る時間を測らない。** 作れたタイルは世代ごとにディスクへ残り、
+  空へ倒れたタイルは残さない（`infrastructure/region_tile_cache.py: serve_region_tile`）。束ねるSQLを変えると世代が変わるので、
+  デプロイのあとの確かめは作り直しを測り、毎日の確かめは空へ倒れ続けるタイルを拾う。
+- **上限**: 2026-10-28に本番のDBで新宿駅の真ん中を含むタイルを作った所要は、点の層と倍率のどれも1.4秒以内（ridecompass/ride-compass#1395の
+  直したSQL。直す前の補給・停止要因のz12は33.8秒で、配信は20.6秒で17バイトの空のタイルを返した）。同じ日に直したSQLを出したあと、
+  公開の口から取った所要は0.5〜3.1秒（一番遅いのは約1.3MBの立ち寄り先のz12）。上限は作り直しの所要の約7倍で、DBの上限より短くし、空へ倒れる手前の遅さも拾う。
+
 ## CIの実行枠（リポジトリがpublicである間の前提）
 
 **GitHub Actionsの実行時間は、リポジトリがpublicである間は課金も分数の上限も無い。** GitHubの
