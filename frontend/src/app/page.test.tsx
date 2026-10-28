@@ -44,7 +44,7 @@ import {
   section,
   serveHome,
   serveRoadsAt,
-  longPressMap,
+  rightClickMap,
 } from "@/testing/homePage";
 import { mapOnScreen } from "@/testing/maplibre";
 import type { Coordinates } from "@/types/route";
@@ -150,7 +150,7 @@ describe("ルートを作る", () => {
 
     serveRoadsAt([{ at: HERE, properties: { osm_way_id: 1, feature_key: "1" } }]);
     await user.click(screen.getByRole("button", { name: "パネルを閉じる" }));
-    longPressMap(HERE);
+    rightClickMap(HERE);
     await user.click(await screen.findByRole("button", { name: "この道の評価を見る" }));
     expect(await screen.findByRole("region", { name: "難易度" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "パネルを開く" }));

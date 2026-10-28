@@ -1,4 +1,4 @@
-import type { Map as MapLibreMap, MapGeoJSONFeature, MapMouseEvent, MapTouchEvent } from "maplibre-gl";
+import type { Map as MapLibreMap, MapGeoJSONFeature, MapMouseEvent, MapTouchEvent, Subscription } from "maplibre-gl";
 
 import type {
   Coordinates,
@@ -27,6 +27,7 @@ import type { MapPopupControls } from "@/features/map/MapView/useMapPopups";
 import { pointMembers, pointPlaceName, type PointLayer } from "@/lib/mapDisplay/pointLayers";
 import { projectOnEdge, type EdgeProjection } from "@/lib/localPlane";
 import geoConfig from "@/types/generated/geo-config.json";
+import { LONG_PRESS_MS, MapGestures, TAP_CONFIRM_MS, type MapGestureAction } from "@/features/map/MapView/mapGestures";
 
 /**
  * 地図を押したときの意味。地点: 選んでいる地点を置く・ピンを押すとその地点を選ぶ。乗り換え: 乗り換える区間を選ぶ。開く: 押した物
@@ -44,14 +45,6 @@ const OPENABLE_TARGETS: Record<MapTapMode, ReadonlySet<string>> = {
 
 /** 押した所から道を拾う幅（画素）。指の幅ほどずれても、その道を押したとみなす。 */
 const ROAD_REACH_PX = 20;
-/** タップを1回のタップと確かめるまで待つ時間（ms）。この間に次の押しが来たら、ダブルタップ（地図の拡大）として開かない。
- * MapLibre がダブルタップとみなす間（タップを数える部品の`MAX_TAP_INTERVAL`。公開の設定ではない）と同じ長さ。 */
-export const TAP_CONFIRM_MS = 500;
-/** 押してから離すまでに指がこれより動いたら、地図をずらす操作でタップではない。MapLibre の`clickTolerance`の既定で、MapLibre は
- * これより動いた指で地図をずらし、長押しも取り消す。 */
-const TAP_TOLERANCE_PX = 3;
-/** 指を離したあとブラウザが続けて出す、互換のマウスの出来事を、指の押しの続きとみなす時間（ms）。 */
-const TOUCH_COMPAT_MOUSE_MS = 1000;
 /** MapLibre が世界を描く1枚のタイルの画素（ズーム0で世界がこの幅になる）。 */
 const MAPLIBRE_TILE_PX = 512;
 
@@ -119,99 +112,55 @@ function isOpenable(feature: MapGeoJSONFeature, target: string): boolean {
   return point !== undefined && pointPlaceName(point, feature.properties) !== null;
 }
 
-/** 1回の押し（指を置いてから離すまで、またはマウスのボタンを押してから離すまで）の、地図を動かす操作だったかの印。 */
-interface Press {
-  readonly start: { readonly x: number; readonly y: number };
-  /** 押し始めに、利用者の操作で地図が流れていた（流れている地図を指で止めた）。 */
-  readonly startedWhileMoving: boolean;
-  /** 前のタップを確かめる間に押した（ダブルタップの2回目）。 */
-  readonly second: boolean;
-  moved: boolean;
-  multi: boolean;
-  longPressed: boolean;
-}
+/** 押した所（緯度経度と、地図の左上からの画素）。マウスの出来事も指の出来事も持つ。 */
+type PointedAt = Pick<MapMouseEvent, "lngLat" | "point">;
 
 /** 地図を押す・なぞる操作を結ぶ。状態は押した瞬間に`current`から読む。外すときは返した関数を呼ぶ。
  *
- * 地図を動かす操作（指でずらす・2本の指で広げる・ダブルタップで拡大する・流れている地図を止める）は、どれも小窓を開かない。点・区間・
- * 地点を置く操作はタップで、地図を動かす操作に当たらない1回だけを、ダブルタップでないと確かめてから（`TAP_CONFIRM_MS`）受ける。
- * 道はどこを押しても近くにあるので、タップでは開かず、長押し（PC は右クリック）で開く。長押しは MapLibre の`contextmenu`を使う——
- * 指1本で動かさずに押し続けると出し、指が動くか2本目が乗ると取り消す（iPhone の Safari のように長押しの出来事を持たない
- * ブラウザでも、MapLibre が自分の時計で数える）。 */
+ * 地図に触れた操作がタップか長押しか地図を動かす操作かは`features/map/MapView/mapGestures.ts: MapGestures`が決め、ここは地図の
+ * 出来事をそこへ渡し、決まった操作を開く手続きへ渡す。渡す出来事は MapLibre の型が約束するもの（`touchstart`・`touchmove`・
+ * `touchend`・`touchcancel`と、その`TouchEvent.touches`・`mousedown`・`click`・`contextmenu`（マウスの右ボタン）・`movestart`・`moveend`
+ * と、利用者の操作かを示す`originalEvent`）。 */
 export function bindMapTaps(map: MapLibreMap, latest: { readonly current: MapTapState }, popups: MapPopupControls) {
-  let press: Press | null = null;
-  /** 確かめている途中のタップ。 */
-  let pendingTap: ReturnType<typeof setTimeout> | null = null;
-  /** 利用者の操作で地図が動いている間か。 */
-  let userMoving = false;
-  let lastTouchAt = Number.NEGATIVE_INFINITY;
+  const gestures = new MapGestures();
+  let tapTimer: ReturnType<typeof setTimeout> | undefined;
+  let longPressTimer: ReturnType<typeof setTimeout> | undefined;
 
-  function cancelPendingTap(): boolean {
-    if (pendingTap === null) return false;
-    clearTimeout(pendingTap);
-    pendingTap = null;
-    return true;
+  // 部品が返したことをする。タップは確かめの時まで、指の長押しは長押しの時まで待ち、まだ生きているかを部品に聞いてから開く。待つ間は
+  // 押した所だけを持ち、タップの地物は押した瞬間に読む（待つ間に地図が動けば、部品がその操作を取り消す）。
+  function act(action: MapGestureAction | null, e: PointedAt) {
+    if (action === null || latest.current.tapsLocked) return;
+    const pressed: PointedAt = { point: e.point, lngLat: e.lngLat };
+    if (action === "longPress") {
+      handleLongPress(pressed);
+    } else if (action === "waitLongPress") {
+      clearTimeout(longPressTimer);
+      longPressTimer = setTimeout(() => gestures.confirmLongPress() && handleLongPress(pressed), LONG_PRESS_MS);
+    } else {
+      const features = interactiveFeaturesAt(pressed.point);
+      clearTimeout(tapTimer);
+      tapTimer = setTimeout(() => gestures.confirmTap() && handleTap(pressed, features), TAP_CONFIRM_MS);
+    }
   }
 
-  function startPress(point: { x: number; y: number }) {
-    const second = cancelPendingTap();
-    press = { start: point, startedWhileMoving: userMoving, second, moved: false, multi: false, longPressed: false };
-  }
+  // 渡す地図の出来事は、MapLibre の型が約束するものだけ。
+  const touch = (type: "touchstart" | "touchmove" | "touchend" | "touchcancel") => (e: MapTouchEvent) =>
+    act(gestures.handle({ type, at: e.point, fingers: e.points.length }), e);
+  const subscriptions: Subscription[] = [
+    map.on("touchstart", touch("touchstart")),
+    map.on("touchmove", touch("touchmove")),
+    map.on("touchend", touch("touchend")),
+    map.on("touchcancel", touch("touchcancel")),
+    map.on("mousedown", (e) => act(gestures.handle({ type: "mousedown", at: e.point }), e)),
+    map.on("click", (e) => act(gestures.handle({ type: "click" }), e)),
+    map.on("contextmenu", (e) => act(gestures.handle({ type: "contextmenu" }), e)),
+    map.on("movestart", (e) => gestures.handle({ type: "movestart", byUser: e.originalEvent !== undefined })),
+    map.on("moveend", () => gestures.handle({ type: "moveend" })),
+  ];
 
-  /** 今の押しが、地図を動かす操作のどれかだったか。 */
-  function pressWasMapGesture(): boolean {
-    return (
-      press !== null && (press.moved || press.multi || press.startedWhileMoving || press.second || press.longPressed)
-    );
-  }
-
-  function handleTouchStart(e: MapTouchEvent) {
-    lastTouchAt = e.originalEvent.timeStamp;
-    if (e.originalEvent.touches.length === 1) startPress(e.point);
-    else if (press !== null) press.multi = true;
-  }
-
-  function handleTouchMove(e: MapTouchEvent) {
-    if (press === null) return;
-    if (e.originalEvent.touches.length > 1) press.multi = true;
-    if (Math.hypot(e.point.x - press.start.x, e.point.y - press.start.y) > TAP_TOLERANCE_PX) press.moved = true;
-  }
-
-  function handleMouseDown(e: MapMouseEvent) {
-    // 指を離したあとの互換のマウスの出来事は、指の押しの続き（指の押しの印を消さない）。
-    if (e.originalEvent.timeStamp - lastTouchAt < TOUCH_COMPAT_MOUSE_MS) return;
-    startPress(e.point);
-  }
-
-  function handleMoveStart(e: { originalEvent?: Event }) {
-    if (e.originalEvent === undefined) return;
-    userMoving = true;
-    // タップを確かめる間に地図を動かし始めたら（1回押してすぐ押したまま上下に動かす拡大等）、そのタップは開かない。
-    cancelPendingTap();
-  }
-
-  function handleMoveEnd() {
-    userMoving = false;
-  }
-
-  // 地図を動かす操作に当たらないタップだけを、ダブルタップでないと確かめてから受ける。押した所の地物は押した瞬間に読む——待つ間に
-  // 地図が動けば、確かめるのを取り消す。
-  function handleClick(e: MapMouseEvent) {
-    if (latest.current.tapsLocked || pressWasMapGesture()) return;
-    const features = interactiveFeaturesAt(e.point);
-    cancelPendingTap();
-    pendingTap = setTimeout(() => {
-      pendingTap = null;
-      handleTap(e, features);
-    }, TAP_CONFIRM_MS);
-  }
-
-  // 長押し（PC は右クリック）は、開く意味の間だけ受け、押した物の小窓を開き、開ける物が無ければ押した所に近い道を開く。
-  function handleLongPress(e: MapMouseEvent) {
-    if (press !== null) press.longPressed = true;
-    cancelPendingTap();
+  // 長押しは、開く意味の間だけ受け、押した物の小窓を開き、開ける物が無ければ押した所に近い道を開く。
+  function handleLongPress(e: PointedAt) {
     if (latest.current.tapsLocked || latest.current.tapMode !== "open") return;
-    if (press !== null && (press.multi || press.startedWhileMoving)) return;
     roadAsk += 1;
     const features = interactiveFeaturesAt(e.point);
     const hit = openableFeatureAmong(features);
@@ -243,7 +192,7 @@ export function bindMapTaps(map: MapLibreMap, latest: { readonly current: MapTap
   // 地点の意味の間は、地物を開かずに、押した所へ選んでいる地点を置く（道の上を目的地にしたいこともある）。名前のある
   // 点（店など）の上なら、その点の位置へ、その点の候補として置く。ほかの意味の間は、その意味が開ける地物だけを開き、
   // 開ける物の無い所を押すと小窓を閉じる。
-  function handleTap(e: MapMouseEvent, features: readonly MapGeoJSONFeature[]) {
+  function handleTap(e: PointedAt, features: readonly MapGeoJSONFeature[]) {
     if (latest.current.tapsLocked) return;
     // 近い道を問うている間に押し直したら、その答えは捨てる（後から開くと、押し直した物の小窓を上書きする）。
     roadAsk += 1;
@@ -264,7 +213,7 @@ export function bindMapTaps(map: MapLibreMap, latest: { readonly current: MapTap
 
   function openHit(
     hit: { feature: MapGeoJSONFeature; target: string },
-    e: MapMouseEvent,
+    e: PointedAt,
     features: readonly MapGeoJSONFeature[],
   ) {
     const open = OPEN_BY_HIT_TARGET.get(hit.target);
@@ -274,7 +223,7 @@ export function bindMapTaps(map: MapLibreMap, latest: { readonly current: MapTap
 
   // 押した所に描かれている名前のある点を、束ねた点の中まで全部並べる（重なった点は、上の1つだけでなく中が分かるように）。点の
   // 位置は押した所でなく点そのもの（外の地図で探す位置。押した所は絵の端のことがある）。小窓は押した代表点の位置へ出す。
-  function openPoint(_feature: MapGeoJSONFeature, _e: MapMouseEvent, features: readonly MapGeoJSONFeature[]) {
+  function openPoint(_feature: MapGeoJSONFeature, _e: PointedAt, features: readonly MapGeoJSONFeature[]) {
     const points = features.flatMap((feature) => {
       const layer = pointLayerAt(feature);
       if (layer === undefined || feature.geometry.type !== "Point" || !isOpenable(feature, POINT_HIT_TARGET)) return [];
@@ -306,7 +255,7 @@ export function bindMapTaps(map: MapLibreMap, latest: { readonly current: MapTap
 
   // 押した所に近い道を backend に問い、近い順の先頭の道の小窓を開く。道のタイルが無い引いた縮尺では問わない。拾う幅は
   // 画面の画素で決め、押した所の緯度と倍率で地面の m に直す。
-  async function openRoadAt(e: MapMouseEvent) {
+  async function openRoadAt(e: PointedAt) {
     const ask = roadAsk;
     if (map.getZoom() < ROAD_TILE_MIN_ZOOM) return;
     const lngLat: [number, number] = [e.lngLat.lng, e.lngLat.lat];
@@ -341,7 +290,7 @@ export function bindMapTaps(map: MapLibreMap, latest: { readonly current: MapTap
   }
 
   // 押した区間は、選んでいる候補の同じ番号の区間（地図の区間の線は番号と塗る値だけを持つ）。
-  function openRouteSegment(feature: MapGeoJSONFeature, e: MapMouseEvent) {
+  function openRouteSegment(feature: MapGeoJSONFeature, e: PointedAt) {
     const index = feature.properties[ROUTE_SEGMENT_INDEX_PROPERTY];
     const segment = typeof index === "number" ? latest.current.selectedRoute?.segments[index] : undefined;
     if (segment === undefined) return;
@@ -359,7 +308,7 @@ export function bindMapTaps(map: MapLibreMap, latest: { readonly current: MapTap
   /** scene の当たり判定の対象ごとの、押した地物を開く手続き。 */
   const OPEN_BY_HIT_TARGET = new Map<
     string,
-    (feature: MapGeoJSONFeature, e: MapMouseEvent, features: readonly MapGeoJSONFeature[]) => void
+    (feature: MapGeoJSONFeature, e: PointedAt, features: readonly MapGeoJSONFeature[]) => void
   >([
     [ROUTE_HIT_TARGET_SPLICE_BAND, openSpliceStretch],
     [ROUTE_HIT_TARGET_SEGMENT, openRouteSegment],
@@ -376,23 +325,10 @@ export function bindMapTaps(map: MapLibreMap, latest: { readonly current: MapTap
     map.getCanvas().style.cursor = hit !== null ? "pointer" : "";
   }
 
-  map.on("touchstart", handleTouchStart);
-  map.on("touchmove", handleTouchMove);
-  map.on("mousedown", handleMouseDown);
-  map.on("movestart", handleMoveStart);
-  map.on("moveend", handleMoveEnd);
-  map.on("click", handleClick);
-  map.on("contextmenu", handleLongPress);
-  map.on("mousemove", handleMouseMove);
+  subscriptions.push(map.on("mousemove", handleMouseMove));
   return () => {
-    cancelPendingTap();
-    map.off("touchstart", handleTouchStart);
-    map.off("touchmove", handleTouchMove);
-    map.off("mousedown", handleMouseDown);
-    map.off("movestart", handleMoveStart);
-    map.off("moveend", handleMoveEnd);
-    map.off("click", handleClick);
-    map.off("contextmenu", handleLongPress);
-    map.off("mousemove", handleMouseMove);
+    clearTimeout(tapTimer);
+    clearTimeout(longPressTimer);
+    for (const subscription of subscriptions) subscription.unsubscribe();
   };
 }

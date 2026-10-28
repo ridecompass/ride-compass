@@ -2,14 +2,15 @@
  * `app/page.tsx`——トップページのうち、地図の小窓。
  *
  * 見ること: 「ルート結果」を開いていても、区間・道・地図の点のどれを押しても小窓は1つだけで、最後に押した物の中身を出すこと。
- * 点・区間はタップで開き、道はタップでは開かず、長押しで、道の層を出していなくても押した所に近い道（backend の答え）を開き、道の
- * タイルを読まずにその道の線を強調すること。地図を動かす操作（ずらす・2本の指・ダブルタップ・流れている地図を止める）は、小窓を開かないこと。
+ * 点・区間はタップで開き、道はタップでは開かず、長押し（ここでは同じに受けるマウスの右ボタン）で、道の層を出していなくても押した所に近い
+ * 道（backend の答え）を開き、道のタイルを読まずにその道の線を強調すること。
  * 名前の無い点は押せる物に数えず下の物を開き、重なった名前のある点と、束ねた代表点の中の点は全部並べること。区間の中身から点を開くと区間へ戻れ、道へ
  * 入れ替えると区間の選びを外し、開ける物の無い所を押すと閉じること。道の小窓を別の道へ押し替えると、前の道で押した評価を
  * 新しい道へ持ち越さないこと。区間の小窓が上の帯と難易度の塊の形で出て、寄せるアイコンで寄せること。
  *
  * ここで見ないもの: 区間の近くの施設の小窓（区間へ戻る）は`app/page.map.test.tsx`の「区間の近くの施設」が、地図を押したときの
- * 意味をどのパネルが決めるかは同じファイルの「地図で扱えること」が見る。
+ * 意味をどのパネルが決めるかは同じファイルの「地図で扱えること」が見る。触れた操作がタップか長押しか地図を動かす操作か（指の長押し・
+ * ずらす・2本の指・ダブルタップ・流れている地図を止める）は`features/map/MapView/mapGestures.test.ts`が見る。
  *
  * 差し替えたもの: backend の応答（網の層）、位置情報の取得、地図の描画（`maplibre-gl`）。子の部品は本物を描く。
  */
@@ -29,7 +30,7 @@ import {
   clickMap,
   clickSegment,
   generate,
-  longPressMap,
+  rightClickMap,
   renderHome,
   route,
   selectedPointMarks,
@@ -37,8 +38,6 @@ import {
   serveRoadsAt,
 } from "@/testing/homePage";
 import { mapOnScreen, type PointedFeature } from "@/testing/maplibre";
-import { TAP_CONFIRM_MS } from "@/features/map/MapView/mapTaps";
-import { act } from "@testing-library/react";
 import { inspectorResult } from "@/testing/roadInspector";
 import { makeRouteSegment } from "@/testing/routeFixtures";
 import { settle } from "@/testing/settle";
@@ -102,7 +101,7 @@ describe("地図の小窓", () => {
     await user.click(within(header("点の小窓の上の帯")!).getByRole("button", { name: "‹ 区間" }));
     expect(header("区間の小窓の上の帯")).toBeInTheDocument();
 
-    longPressMap(ELSEWHERE);
+    rightClickMap(ELSEWHERE);
     expect(await screen.findByRole("button", { name: "この道の評価を見る" })).toBeInTheDocument();
     expect(header("区間の小窓の上の帯")).toBeNull();
     expect(
@@ -140,7 +139,7 @@ describe("地図の小窓", () => {
         .getAllByRole("link")
         .map((link) => link.textContent),
     ).toEqual(["角の店", "駅前の店"]);
-    longPressMap(ELSEWHERE, [toilet]);
+    rightClickMap(ELSEWHERE, [toilet]);
     expect(await screen.findByRole("button", { name: "この道の評価を見る" })).toBeInTheDocument();
     // 道はタップでは開かない（近くに道があっても、開ける物の無い所をタップすると閉じる）。
     await clickMap(ELSEWHERE, [toilet]);
@@ -148,7 +147,7 @@ describe("地図の小窓", () => {
     expect(header("道の小窓の上の帯")).toBeNull();
 
     // 近くに道の無い所を長押ししても開かない。
-    longPressMap(HERE);
+    rightClickMap(HERE);
     await settle();
     expect(header("道の小窓の上の帯")).toBeNull();
     expect(mapOnScreen().sourceFeatures("road-inspected")).toEqual([]);
@@ -191,56 +190,13 @@ describe("地図の小窓", () => {
     ]);
     const { user } = renderHome();
     await user.click(screen.getByRole("button", { name: "パネルを閉じる" }));
-    longPressMap(HERE);
+    rightClickMap(HERE);
     await user.click(await screen.findByRole("button", { name: "この道の評価を見る" }));
     expect(await screen.findByRole("region", { name: "難易度" })).toBeInTheDocument();
 
-    longPressMap(ELSEWHERE);
+    rightClickMap(ELSEWHERE);
     expect(await screen.findByRole("button", { name: "この道の評価を見る" })).toBeInTheDocument();
     await settle();
     expect(asked).toEqual([expect.objectContaining({ osm_way_id: 1 })]);
-  });
-});
-
-// 都市部ではどこを押しても点か道に重なるので、地図を動かすために触っただけで小窓が開くと、地図を動かすたびに小窓が出る。
-describe("地図を動かす操作と小窓", () => {
-  const SHOP: PointedFeature = {
-    layer: sceneLayerId(POINT_TILE_SOURCES.poi.sourceId, "supply_poi"),
-    properties: { name: "角の店", kind: "convenience" },
-    geometry: { type: "Point", coordinates: [ELSEWHERE.longitude, ELSEWHERE.latitude] },
-  };
-  const touch = (type: string, x: number, fingers = 1) =>
-    mapOnScreen().emit(type, {
-      point: { x, y: 0 },
-      originalEvent: { timeStamp: performance.now(), touches: Array.from({ length: fingers }, () => ({})) },
-    });
-  const tap = () => mapOnScreen().click(ELSEWHERE, [SHOP]);
-
-  it.each<[string, boolean, () => void]>([
-    ["指を置いて離しただけ", true, () => (touch("touchstart", 0), tap())],
-    ["指を置いてずらした", false, () => (touch("touchstart", 0), touch("touchmove", 10), tap())],
-    ["2本の指で触った", false, () => (touch("touchstart", 0), touch("touchstart", 0, 2), tap())],
-    ["ダブルタップした", false, () => (touch("touchstart", 0), tap(), touch("touchstart", 0), tap())],
-    [
-      "流れている地図を指で止めた",
-      false,
-      () => (
-        mapOnScreen().emit("movestart", { originalEvent: {} }),
-        touch("touchstart", 0),
-        mapOnScreen().emit("moveend"),
-        tap()
-      ),
-    ],
-  ])("%sときは、点の小窓を開くか: %s", async (_, opens, operate) => {
-    const { user } = renderHome();
-    await user.click(screen.getByRole("button", { name: "地図に出す情報" }));
-    await user.click(screen.getByRole("checkbox", { name: "補給・休憩ポイント" }));
-    await user.keyboard("{Escape}");
-    await user.click(screen.getByRole("button", { name: "パネルを閉じる" }));
-
-    act(operate);
-    await act(() => new Promise((resolve) => setTimeout(resolve, TAP_CONFIRM_MS)));
-
-    expect(screen.queryByRole("group", { name: "点の小窓の上の帯" }) !== null).toBe(opens);
   });
 });

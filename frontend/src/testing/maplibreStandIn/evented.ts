@@ -14,13 +14,14 @@ export interface PointedFeature {
 export class Evented {
   private listeners: Listener[] = [];
 
+  /** 購読する。MapLibre と同じく、外す口（`Subscription`）を返す。 */
   on(type: string, layerIdOrHandler: string | Handler, handler?: Handler) {
-    this.listeners.push(
+    const listener: Listener =
       typeof layerIdOrHandler === "string"
         ? { type, layerId: layerIdOrHandler, handler: handler!, once: false }
-        : { type, handler: layerIdOrHandler, once: false },
-    );
-    return this;
+        : { type, handler: layerIdOrHandler, once: false };
+    this.listeners.push(listener);
+    return { unsubscribe: () => (this.listeners = this.listeners.filter((entry) => entry !== listener)) };
   }
 
   once(type: string, handler: Handler) {
