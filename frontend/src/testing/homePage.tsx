@@ -3,7 +3,7 @@
 // テストの中で使う（差し替えはテストのファイルが`vi.mock`で宣言する）。
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { expect, onTestFinished } from "vitest";
+import { expect, onTestFinished, vi } from "vitest";
 
 import Home from "@/app/page";
 import { CLIENT_TUNING_IDS } from "@/lib/axisCatalog";
@@ -18,7 +18,7 @@ import {
 } from "@/testing/catalogAxes";
 import { serveGenerationJobs } from "@/testing/generationJobs";
 import { installGeolocation } from "@/testing/geolocation";
-import { TAP_CONFIRM_MS } from "@/features/map/MapView/mapTaps";
+import { TAP_CONFIRM_MS } from "@/features/map/MapView/mapGestures";
 import { mapOnScreen, type PointedFeature } from "@/testing/maplibre";
 import { makeGenerationConditions, makeRouteCandidate, makeRouteSegment } from "@/testing/routeFixtures";
 import regionTileConfig from "@/types/generated/region-tile-config.json";
@@ -208,16 +208,23 @@ export function marksAt(point: Coordinates) {
     .filter((mark) => mark.coordinates.latitude === point.latitude && mark.coordinates.longitude === point.longitude);
 }
 
-/** 地図を押す。`features`はそこに描かれている地物。 */
-/** 地図をタップする。小窓はタップを1回のタップと確かめてから開くので、その間を本物の時間で待つ。 */
+/** 地図をタップする。`features`はそこに描かれている地物。小窓はタップを1回のタップと確かめてから開くので、押す間だけ時計を
+ * 偽にして、確かめの時まで進める。 */
 export async function clickMap(at: Coordinates, features: PointedFeature[] = []) {
-  act(() => mapOnScreen().click(at, features));
-  await act(() => new Promise((resolve) => setTimeout(resolve, TAP_CONFIRM_MS)));
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
+  try {
+    act(() => {
+      mapOnScreen().click(at, features);
+      vi.advanceTimersByTime(TAP_CONFIRM_MS);
+    });
+  } finally {
+    vi.useRealTimers();
+  }
 }
 
-/** 地図を長押しする。 */
-export function longPressMap(at: Coordinates, features: PointedFeature[] = []) {
-  act(() => mapOnScreen().longPress(at, features));
+/** 地図をマウスの右ボタンで押す（指の長押しと同じく、長押しとして受ける）。 */
+export function rightClickMap(at: Coordinates, features: PointedFeature[] = []) {
+  act(() => mapOnScreen().rightClick(at, features));
 }
 
 /** 地図に描いた区間を押す。 */

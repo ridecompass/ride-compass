@@ -288,8 +288,8 @@ export class StandInMap extends Evented {
     this.pointAt("click", lngLat, features);
   }
 
-  /** `lngLat` を長押しする（MapLibre の`contextmenu`。指の長押しも PC の右クリックも同じ出来事）。`features` は`click`と同じ。 */
-  longPress(lngLat: Coordinates, features: readonly PointedFeature[]) {
+  /** `lngLat` をマウスの右ボタンで押す（MapLibre の`contextmenu`）。`features` は`click`と同じ。 */
+  rightClick(lngLat: Coordinates, features: readonly PointedFeature[]) {
     this.pointAt("contextmenu", lngLat, features);
   }
 

@@ -42,7 +42,8 @@
 | `features/map/scene/applyMapScene.ts` | 宣言を地図へ当てる唯一の実装（`features/map/scene/applyMapScene.ts: addImage`/`features/map/scene/applyMapScene.ts: addSource`/`features/map/scene/applyMapScene.ts: addLayer`/`features/map/scene/applyMapScene.ts: setPaintProperty`/`features/map/scene/applyMapScene.ts: setFilter`/`features/map/scene/applyMapScene.ts: setFeatureState`）。前回の宣言との差分だけを当て、段の順に差し込む |
 | `features/map/MapView/MapView.tsx`（静的レイヤーの箇所のみ） | 画面の状態をsceneの入力へ渡し、組んだ宣言を地図へ当てる配線。レイヤーの描画コードは持たない |
 | `features/map/MapView/useMapScene.ts` | 地図に載るもの全部の入力から scene を組む唯一の口と、そこから押せるレイヤーを引く |
-| `features/map/MapView/mapTaps.ts` | 地図を押す・なぞる操作。押した所で一番上の地物を、そのレイヤーが宣言した当たり判定の対象（`hitTargets`）のうち、地図を押したときの意味（`features/map/MapView/mapTaps.ts: MapTapMode`）が開ける対象で開く手続きへ振り分け、長押しで開ける物が無ければ押した所に近い道を backend に問う。地図を動かす操作とタップ・長押しを分ける（下記「地図を押したときと地図の小窓」の「押したとき」） |
+| `features/map/MapView/mapTaps.ts` | 地図を押す・なぞる操作。押した所で一番上の地物を、そのレイヤーが宣言した当たり判定の対象（`hitTargets`）のうち、地図を押したときの意味（`features/map/MapView/mapTaps.ts: MapTapMode`）が開ける対象で開く手続きへ振り分け、長押しで開ける物が無ければ押した所に近い道を backend に問う。地図の出来事（MapLibre の型が約束するものだけ）を判断の部品へ渡し、決まった操作を開く手続きへ渡す |
+| `features/map/MapView/mapGestures.ts` | 地図に触れた操作が、タップか長押しか地図を動かす操作かの判断（下記「地図を押したときと地図の小窓」の「押したとき」）。地図にもブラウザにも触れず、出来事を時刻と一緒に受けて、判断の時が来たら返す |
 | `features/map/MapView/useMapPopups.tsx` | 地図の小窓（点・道・区間）の状態と開閉と置き方。**小窓はいつも1つ**で、点と道は押して開き、区間は選んでいる区間から導く（押して開いた中身が無ければ区間の中身。区間の選びが変わると、その区間に属さない中身を閉じる）。MapLibreのPopupを1つ器にしてportalで描き、どの小窓も指す地点・押した物の形・間の幅だけで置く（決まりは下記「地図を押したときと地図の小窓」）。選択の持ち主が変わると押して開いた中身を閉じ、閉じる（×・何も無い所を押す）と区間の選びも外す |
 | `features/map/MapView/popupPlacement.ts` | 線を囲む枠にかぶらない小窓の置き場（画面のpxで、上・下・右・左の順に、見えている所に収まる最初の側と、その側の向き（MapLibreの`anchor`））。見えている所が無い地図（描く前・隠れている間）では選ばない |
 | `features/map/MapView/layerDataSources.ts` | レイヤーのデータ取得状態の算出元（`features/map/MapView/layerDataSources.ts: buildLayerDataSources`）。レイヤーカタログの情報源の名前を、取得を見るMapLibreのソースへ引く |
@@ -392,8 +393,9 @@ MSMを配るOpen-MeteoのCC BY 4.0も、リンク付きのクレジット・ラ�
 「押す」はタップ（地点を置く・点・区間・候補の線・乗り換えの帯）と長押し（道。PC は右クリック）の2つで、**地図を動かす操作は、どれも押したことにしない**
 ——都市部ではどこを触っても点か道に重なるので、地図を動かすために触っただけで小窓が開くと、動かすたびに小窓が出る。タップとみなすのは、1本の指で、
 離すまでに MapLibre が地図をずらす幅（`clickTolerance`の既定）より動かさず、押し始めに地図が利用者の操作で流れておらず（流れている地図を止めた触れではなく）、
-長押しにもならなかった押しで、次の押しが来ない（ダブルタップの拡大でない）と確かめてから受ける（`features/map/MapView/mapTaps.ts: TAP_CONFIRM_MS`。
-MapLibre がダブルタップとみなす間と同じ長さで、その分だけ小窓が遅れて開く）。長押しは MapLibre の`contextmenu`（指1本で動かさずに押し続けると出す）を使い、
+長押しにもならなかった押しで、次の押しが来ない（ダブルタップの拡大でない）と確かめてから受ける（`features/map/MapView/mapGestures.ts: TAP_CONFIRM_MS`。
+MapLibre がダブルタップとみなす間と同じ長さで、その分だけ小窓が遅れて開く）。長押しは、指1本を動かさずに置き続けた押し（`features/map/MapView/mapGestures.ts: LONG_PRESS_MS`）と、
+マウスの右ボタン（MapLibre の`contextmenu`。型の文書が約束するのは右ボタンとメニューのキーだけなので、指で押している間に来たものは受けない）で、
 押した物の小窓を開き、開ける物が無ければ下の道を開く。走行中に地図への触れを受け付けないロックをしている間は、何を押しても開かず閉じない（[ページ構成](page-composition.md)「走行モード」の「ロック」）。
 
 **押せる物は、情報を足す物だけ。** 名前のある点（「表示」の層の点と、区間の付近に描いた点。どちらも同じ点）・道・選んでいるルートの区間・候補の線。

@@ -48,8 +48,8 @@ export interface MapOnScreen {
   loadStyle(layers: readonly StyleLayer[] | undefined): void;
   /** `lngLat` を押す。`features` はそこに描かれている地物。 */
   click(lngLat: Coordinates, features?: readonly PointedFeature[]): void;
-  /** `lngLat` を長押しする（PC は右クリック）。`features` は`click`と同じ。 */
-  longPress(lngLat: Coordinates, features?: readonly PointedFeature[]): void;
+  /** `lngLat` をマウスの右ボタンで押す。`features` は`click`と同じ。 */
+  rightClick(lngLat: Coordinates, features?: readonly PointedFeature[]): void;
   /** タイルのソース`sourceId`に、地図が読み込んだ点の地物を置く。 */
   placeTileFeatures(sourceId: string, features: readonly GeoJSON.Feature<GeoJSON.Point>[]): void;
   /** レイヤー`layerId`が描く、置いたタイルの点の地物。 */
@@ -100,7 +100,7 @@ function onScreen(map: StandInMap): MapOnScreen {
     emit: (type, event) => map.emit(type, event),
     loadStyle: (layers) => map.content.loadStyle(layers),
     click: (lngLat, features = []) => map.click(lngLat, features),
-    longPress: (lngLat, features = []) => map.longPress(lngLat, features),
+    rightClick: (lngLat, features = []) => map.rightClick(lngLat, features),
     placeTileFeatures: (sourceId, features) => map.placeTileFeatures(sourceId, features),
     drawnTileFeatures: (layerId) => map.drawnTileFeatures(layerId),
     visibleLayerIds: () => map.content.layerOrder().filter((id) => map.content.layer(id)?.visibility !== "none"),
