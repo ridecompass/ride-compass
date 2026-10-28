@@ -1,22 +1,39 @@
 // 地図の式（色・線種・凡例の行の述語）を、MapLibreと同じ評価器で1本の地物に当てる。式の形ではなく、その地物が
-// どう描かれるか・どの行に当てはまるかを見るために使う。ズームは式が読まない値で固定する。
+// どう描かれるか・どの行に当てはまるかを見るために使う。ズームは既定で固定し、ズームで変わる式は`evaluateExpressionAtZoom`で倍率を名指す。
 import { createExpression, featureFilter, type FilterSpecification } from "@maplibre/maplibre-gl-style-spec";
 
 const GLOBALS = { zoom: 14 } as never;
 
-/** 式を、地物のプロパティ（と feature-state・地図全体の global-state）へ当てた値。式として読めなければ、評価器の指摘を
- * 並べて投げる。 */
+/** 式を評価器に読ませたもの。式として読めなければ、評価器の指摘を並べて投げる。 */
+function compile(expression: unknown, globalState: Record<string, unknown>) {
+  const compiled = createExpression(expression, "paint", null, globalState);
+  if (compiled.result !== "success") {
+    throw new Error(compiled.value.map((error) => `${error.key}: ${error.message}`).join("; "));
+  }
+  return compiled.value;
+}
+
+/** 式を、地物のプロパティ（と feature-state・地図全体の global-state）へ当てた値。 */
 export function evaluateExpression(
   expression: unknown,
   properties: Record<string, unknown>,
   state: Record<string, unknown> = {},
   globalState: Record<string, unknown> = {},
 ): unknown {
-  const compiled = createExpression(expression, "paint", null, globalState);
-  if (compiled.result !== "success") {
-    throw new Error(compiled.value.map((error) => `${error.key}: ${error.message}`).join("; "));
-  }
-  return compiled.value.evaluateWithoutErrorHandling(GLOBALS, { type: 2, properties } as never, state);
+  return compile(expression, globalState).evaluateWithoutErrorHandling(
+    GLOBALS,
+    { type: 2, properties } as never,
+    state,
+  );
+}
+
+/** 式を、地図の倍率`zoom`で地物のプロパティへ当てた値。 */
+export function evaluateExpressionAtZoom(
+  expression: unknown,
+  properties: Record<string, unknown>,
+  zoom: number,
+): unknown {
+  return compile(expression, {}).evaluateWithoutErrorHandling({ zoom } as never, { type: 2, properties } as never);
 }
 
 /** 絞り（凡例の行の述語・レイヤーの`filter`）が、そのプロパティの地物に当てはまるか。`geometry`は地物の形

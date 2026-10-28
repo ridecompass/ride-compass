@@ -1,19 +1,21 @@
 // @vitest-environment node
-/** 点のタイルが束ねた代表点のうち2点以上を束ねたものに、点の右へ数を出すこと。押せる点（名前のある点）と押せない点を
- * 絵の枠の形で描き分け、名前を持たない層は引いた縮尺で丸い点に描くこと。
+/** 点の層の印が、MapLibre の既定のまま重なるものを地図に省かせること。2点以上を束ねた代表点に、点の右へ数を出すこと。
+ * 押せる点（名前のある点）と押せない点を絵の枠の形で描き分け、名前を持たない層は引いた縮尺で丸い点に描くこと。
  *
  * ここで見ないもの:
  * - 凡例の見本と地図の点の色・絵の一致、凡例の行ごとの絞り込み → `scene/legends.test.ts`
  * - 束ねること・数を数えること（backend の点のタイル） → `backend/tests/test_point_tiles.py`
+ * - 重なった印を実際に省くこと（MapLibre の配置） → 地図の道具の約束で、ここでは省かせる設定を見る
  */
 import { describe, expect, it } from "vitest";
 
-import { evaluateExpression as evaluate, matchesFilter } from "@/testing/mapExpressions";
+import { evaluateExpressionAtZoom as evaluateAt } from "@/testing/mapExpressions";
 import { mapDisplay } from "@/types/generated/mapDisplay";
 
 import { POINT_LAYERS, type PointLayer } from "@/lib/mapDisplay/pointLayers";
 
-import { POINT_ICONS, pointGroup } from "./points";
+import { POINT_DOTS, POINT_ICONS, POINT_IMAGES, pointGroup } from "./points";
+import { sidePointGroup } from "./sidePoints";
 
 const TILES = {
   urls: {
@@ -25,36 +27,79 @@ const TILES = {
   maxZoom: 14,
 };
 
+/** 点のタイルを作る縮尺から、寄せきった地図までの倍率。 */
+const ZOOMS = [10, 12, 14, 15, 16, 17, 18, 20];
+/** 寄せた地図の倍率（名前の無い点だけの層も絵記号で描く）。 */
+const NEAR_ZOOM = 20;
+
+const POINT_SCENE_LAYERS = pointGroup.build({ tiles: TILES, visible: {}, hiddenKeys: {} }).layers;
+const SIDE_POINT_SCENE_LAYERS = sidePointGroup.build({
+  path: [
+    [139.7, 35.6],
+    [139.71, 35.61],
+  ],
+  tilesReady: true,
+}).layers;
+
 function layerOf(role: string) {
-  const layer = pointGroup.build({ tiles: TILES, visible: {}, hiddenKeys: {} }).layers.find((l) => l.role === role);
+  const layer = POINT_SCENE_LAYERS.find((l) => l.role === role);
   if (layer === undefined) throw new Error(`${role} の層が無い`);
   return layer;
 }
 
-/** そのレイヤーの先頭の行に入る点で、`count`点を束ねた代表点のプロパティ。 */
-function representative(layer: PointLayer, count: number): Record<string, unknown> {
-  const axis = layer.display_axes[0];
-  return { [axis.property]: axis.categories[0].values[0], [mapDisplay.point.countProperty]: count };
+function layoutOf(role: string): Record<string, unknown> {
+  return layerOf(role).layout as Record<string, unknown>;
 }
+
+/** そのレイヤーの先頭の行に入る点で、`count`点を束ねた代表点のプロパティ（`count`を持たない点は1点）。 */
+function representative(layer: PointLayer, count?: number): Record<string, unknown> {
+  const axis = layer.display_axes[0];
+  return {
+    [axis.property]: axis.categories[0].values[0],
+    ...(count === undefined ? {} : { [mapDisplay.point.countProperty]: count }),
+  };
+}
+
+describe("重なった印", () => {
+  const registered = new Set(POINT_IMAGES.map((image) => image.id));
+
+  it("点の層と区間の近くの点の層がある", () => {
+    expect([POINT_SCENE_LAYERS.length, SIDE_POINT_SCENE_LAYERS.length]).toEqual([
+      POINT_LAYERS.length,
+      POINT_LAYERS.length,
+    ]);
+  });
+
+  // 丸のレイヤー（circle）は MapLibre の重なりの判定に加わらないので、どの倍率でも登録した絵の印で描く。重なりの設定
+  // （`icon-allow-overlap`等）は既定（ぶつかる印は描かない）を上書きしない。
+  it.each([...POINT_SCENE_LAYERS, ...SIDE_POINT_SCENE_LAYERS].map((layer) => [layer.role, layer] as const))(
+    "%s は、どの倍率でも登録した絵の印で描き、重なりの判定を既定のまま使う",
+    (_, entry) => {
+      const layer = POINT_LAYERS.find((c) => [c.attr_id, `side-${c.attr_id}`].includes(entry.role)) as PointLayer;
+      const layout = entry.layout as Record<string, unknown>;
+      expect(entry.type).toBe("symbol");
+      expect(Object.keys(layout).filter((key) => /overlap|placement|optional|sort-key/.test(key))).toEqual([]);
+      for (const zoom of ZOOMS) {
+        expect(registered).toContain(evaluateAt(layout["icon-image"], representative(layer), zoom));
+      }
+    },
+  );
+});
 
 describe("束ねた点の数", () => {
   it.each(POINT_LAYERS.map((layer) => [layer.attr_id, layer] as const))(
     "%s は、2点以上を束ねた代表点にだけ数を出す",
     (attrId, layer) => {
-      const count = layerOf(`${attrId}:count`);
-      const shown = (n: number) => matchesFilter(count.filter, representative(layer, n), 1);
-
-      expect([shown(1), shown(2)]).toEqual([false, true]);
-      expect(evaluate((count.layout as Record<string, unknown>)["text-field"], representative(layer, 12))).toBe("12");
+      const layout = layoutOf(attrId);
+      const text = (count?: number) => evaluateAt(layout["text-field"], representative(layer, count), 14);
+      expect([text(), text(1), text(12)]).toEqual(["", "", "12"]);
     },
   );
 });
 
-/** 絵の枠の形（押せるか）。 */
+/** 寄せた地図での絵の枠の形（押せるか）。 */
 function frameOf(layer: PointLayer, properties: Record<string, unknown>) {
-  const iconImage = (layerOf(layer.attr_id).layout as Record<string, unknown>)["icon-image"];
-  const axis = layer.display_axes[0];
-  const id = evaluate(iconImage, { [axis.property]: axis.categories[0].values[0], ...properties });
+  const id = evaluateAt(layoutOf(layer.attr_id)["icon-image"], { ...representative(layer), ...properties }, NEAR_ZOOM);
   return POINT_ICONS.find((icon) => icon.id === id)?.frame;
 }
 
@@ -82,13 +127,12 @@ describe("押せる点の枠", () => {
 
   // 名前を持たない層の点は全部押せない。引いた縮尺で道沿いの点を全部絵にすると地図が絵で埋まるので、引いた縮尺は丸い点で描く。
   it.each(UNNAMED_LAYERS.map((layer) => [layer.attr_id, layer] as const))(
-    "%s は、丸い枠の絵で描き、絵を描き始める縮尺より引いた所では丸い点で描く",
+    "%s は、寄せた地図では丸い枠の絵で描き、引いた地図では丸い点で描く",
     (attrId, layer) => {
-      const glyph = layerOf(attrId);
-      const dot = layerOf(`${attrId}:dot`);
-      expect(frameOf(layer, {})).toBe("circle");
-      expect(glyph.minzoom).toBeTypeOf("number");
-      expect([dot.type, glyph.type, dot.maxzoom]).toEqual(["circle", "symbol", glyph.minzoom]);
+      const dotAt14 = POINT_DOTS.some(
+        (dot) => dot.id === evaluateAt(layoutOf(attrId)["icon-image"], representative(layer), 14),
+      );
+      expect([frameOf(layer, {}), dotAt14]).toEqual(["circle", true]);
     },
   );
 });

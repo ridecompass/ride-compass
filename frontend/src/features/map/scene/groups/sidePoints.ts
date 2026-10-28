@@ -12,15 +12,7 @@ import { SIDE_POINT_MAX_DISTANCE_M } from "@/lib/mapDisplay/sidePoints";
 
 import { declareGroup, type SceneLayerEntry } from "@/features/map/scene/mapSceneGroups";
 import { sceneLayerId } from "@/features/map/scene/sceneBuilders";
-import {
-  baseFilter,
-  POINT_HIT_TARGET,
-  POINT_IMAGES,
-  POINT_TILE_SOURCES,
-  pointCountEntry,
-  pointDotEntry,
-  pointLook,
-} from "./points";
+import { baseFilter, POINT_HIT_TARGET, POINT_IMAGES, POINT_TILE_SOURCES, pointLook } from "./points";
 
 function roleOf(layer: PointLayer): string {
   return `side-${layer.attr_id}`;
@@ -64,7 +56,5 @@ export const sidePointGroup = declareGroup<SidePointState>(({ path, tilesReady }
     hitTargets: [POINT_HIT_TARGET],
     filter: sidePointFilter(layer, path),
   }));
-  const counts = points.map((entry, i) => pointCountEntry(entry, POINT_LAYERS[i]));
-  const dots = points.flatMap((entry, i) => pointDotEntry(entry, POINT_LAYERS[i]) ?? []);
-  return { sources: [], layers: [...dots, ...points, ...counts], images: POINT_IMAGES };
+  return { sources: [], layers: points, images: POINT_IMAGES };
 });
