@@ -27,7 +27,7 @@ import type { MapPopupControls } from "@/features/map/MapView/useMapPopups";
 import { pointMembers, pointPlaceName, type PointLayer } from "@/lib/mapDisplay/pointLayers";
 import { projectOnEdge, type EdgeProjection } from "@/lib/localPlane";
 import geoConfig from "@/types/generated/geo-config.json";
-import { LONG_PRESS_MS, MapGestures, TAP_CONFIRM_MS, type MapGestureAction } from "@/features/map/MapView/mapGestures";
+import { LONG_PRESS_MS, MapGestures, type MapGestureAction } from "@/features/map/MapView/mapGestures";
 
 /**
  * 地図を押したときの意味。地点: 選んでいる地点を置く・ピンを押すとその地点を選ぶ。乗り換え: 乗り換える区間を選ぶ。開く: 押した物
@@ -123,7 +123,6 @@ type PointedAt = Pick<MapMouseEvent, "lngLat" | "point">;
  * と、利用者の操作かを示す`originalEvent`）。 */
 export function bindMapTaps(map: MapLibreMap, latest: { readonly current: MapTapState }, popups: MapPopupControls) {
   const gestures = new MapGestures();
-  let tapTimer: ReturnType<typeof setTimeout> | undefined;
   let longPressTimer: ReturnType<typeof setTimeout> | undefined;
 
   // 部品が返したことをする。タップは確かめの時まで、指の長押しは長押しの時まで待ち、まだ生きているかを部品に聞いてから開く。待つ間は
@@ -137,9 +136,7 @@ export function bindMapTaps(map: MapLibreMap, latest: { readonly current: MapTap
       clearTimeout(longPressTimer);
       longPressTimer = setTimeout(() => gestures.confirmLongPress() && handleLongPress(pressed), LONG_PRESS_MS);
     } else {
-      const features = interactiveFeaturesAt(pressed.point);
-      clearTimeout(tapTimer);
-      tapTimer = setTimeout(() => gestures.confirmTap() && handleTap(pressed, features), TAP_CONFIRM_MS);
+      handleTap(pressed, interactiveFeaturesAt(pressed.point));
     }
   }
 
@@ -327,7 +324,6 @@ export function bindMapTaps(map: MapLibreMap, latest: { readonly current: MapTap
 
   subscriptions.push(map.on("mousemove", handleMouseMove));
   return () => {
-    clearTimeout(tapTimer);
     clearTimeout(longPressTimer);
     for (const subscription of subscriptions) subscription.unsubscribe();
   };

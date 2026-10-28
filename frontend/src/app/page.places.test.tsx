@@ -49,7 +49,7 @@ describe("地図に置く地点", () => {
   it("ピンを押しただけでは消えず、ルート設定ではその地点を選んで詳しくを出し、閉じている間は呼び名しか無いピンは小窓を開かず押せる見た目にもしない", async () => {
     const { user } = renderHome();
     await selectDestination(user);
-    await clickMap(DESTINATION);
+    clickMap(DESTINATION);
     await user.click(screen.getByRole("button", { name: "出発地: 現在地" }));
 
     const [destinationPin] = marksAt(DESTINATION);
@@ -80,12 +80,12 @@ describe("地図に置く地点", () => {
 
     await user.click(screen.getByRole("button", { name: "経由地を足す" }));
     // 押した所は絵の端でも、点そのものの位置へ置く。
-    await clickMap(ELSEWHERE, pointed);
+    clickMap(ELSEWHERE, pointed);
     expect(marksAt(shop)).toHaveLength(1);
     expect(screen.getByRole("button", { name: "経由地1: 角の店" })).toBeInTheDocument();
 
     await selectDestination(user);
-    await clickMap(shop, pointed);
+    clickMap(shop, pointed);
     expect(marksAt(shop)).toHaveLength(2);
     expect(screen.getByRole("button", { name: "目的地: 角の店" })).toBeInTheDocument();
     // 地図の印は役割の名前で見分けられ、地点の並びの印と同じ記号を描く。
@@ -99,12 +99,12 @@ describe("地図に置く地点", () => {
     expect(destinationMark.querySelector("svg")?.innerHTML).toBe(listedDestination?.innerHTML);
 
     await user.click(screen.getByRole("button", { name: "パネルを閉じる" }));
-    await clickMap(ELSEWHERE, pointed);
+    clickMap(ELSEWHERE, pointed);
     expect(marksAt(shop)).toHaveLength(2);
 
     // 閉じている間、名前のある点は小窓を開く（地点は置かない）。ピンは押せる物に数えない（呼び名と名前は、ピンの形と地点の並びで分かる）。
     expect(screen.getByRole("group", { name: "点の小窓の上の帯" })).toBeInTheDocument();
-    await clickMap(ELSEWHERE);
+    clickMap(ELSEWHERE);
     expect(destinationMark.style.cursor).toBe("default");
     await user.click(destinationMark);
     expect(screen.queryByRole("group", { name: /小窓の上の帯$/ })).toBeNull();
@@ -117,7 +117,7 @@ describe("地図に置く地点", () => {
       "経由地1",
       async (user: User) => {
         await user.click(screen.getByRole("button", { name: "経由地を足す" }));
-        await clickMap(ELSEWHERE);
+        clickMap(ELSEWHERE);
         return screen.getByRole("button", { name: "経由地1: 地図で選んだ地点" });
       },
       "経由地1: 浅草寺",
@@ -182,12 +182,12 @@ describe("地図に置く地点", () => {
   it("周回にすると置いた目的地を地図にも地点の並びにも出さず、地図を押しても目的地にせず、周回を外すとその目的地が戻る", async () => {
     const { user } = renderHome();
     await selectDestination(user);
-    await clickMap(DESTINATION);
+    clickMap(DESTINATION);
 
     await user.click(screen.getByRole("button", { name: "周回", pressed: false }));
     expect(marksAt(DESTINATION)).toEqual([]);
     expect(screen.getByText("終点: 現在地[周回]")).toBeInTheDocument();
-    await clickMap(ELSEWHERE);
+    clickMap(ELSEWHERE);
     expect(screen.getByText("終点: 地図で選んだ地点[周回]")).toBeInTheDocument();
     expect(marksAt(DESTINATION)).toEqual([]);
 
@@ -199,7 +199,7 @@ describe("地図に置く地点", () => {
   it("名前を付けて保存した地点は、目的地を消したあとも探すボタンから選び直せ、「保存済み」の「地点」から呼び出すと条件タブへ移って置く", async () => {
     const { user } = renderHome();
     await selectDestination(user);
-    await clickMap(DESTINATION);
+    clickMap(DESTINATION);
     await user.click(screen.getByRole("button", { name: "地点を保存" }));
     const dialog = screen.getByRole("dialog", { name: "地点を保存" });
     const nameInput = within(dialog).getByRole("textbox", { name: "保存する地点の名前" });

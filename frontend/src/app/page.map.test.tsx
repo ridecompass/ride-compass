@@ -61,25 +61,25 @@ describe("地図で扱えること", () => {
   it("地図を押したときの意味は効いているパネルで決まる: 「ルート設定」の条件タブは選んでいる地点を置き、ほかのタブ・閉じている間は置かない", async () => {
     const { user } = renderHome();
     await selectDestination(user);
-    await clickMap(DESTINATION);
+    clickMap(DESTINATION);
     expect(marksAt(DESTINATION)).toEqual([expect.objectContaining({ draggable: true })]);
     expect(screen.getByRole("button", { name: "目的地を消す" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "経由地を足す" }));
     await user.click(screen.getByRole("tab", { name: "重み" }));
-    await clickMap(ELSEWHERE);
+    clickMap(ELSEWHERE);
     expect(marksAt(ELSEWHERE)).toEqual([]);
     expect(marksAt(DESTINATION)).toEqual([expect.objectContaining({ draggable: false })]);
 
     await user.click(screen.getByRole("tab", { name: "条件" }));
     await user.click(screen.getByRole("button", { name: "パネルを閉じる" }));
     expect(screen.queryByRole("button", { name: "ルート設定" })).toBeNull();
-    await clickMap(ELSEWHERE);
+    clickMap(ELSEWHERE);
     expect(marksAt(ELSEWHERE)).toEqual([]);
     expect(marksAt(DESTINATION)).toEqual([expect.objectContaining({ draggable: false })]);
 
     await user.click(screen.getByRole("button", { name: "パネルを開く" }));
-    await clickMap(ELSEWHERE);
+    clickMap(ELSEWHERE);
     expect(marksAt(ELSEWHERE)).toEqual([expect.objectContaining({ draggable: true })]);
     expect(screen.getByRole("button", { name: "経由地1: 地図で選んだ地点" })).toBeInTheDocument();
   });
@@ -98,7 +98,7 @@ describe("地図で扱えること", () => {
     const [secondLine] = mapOnScreen()
       .sourceFeatures("route-candidates")
       .filter((line) => line.properties?.routeId === SECOND.id);
-    await clickMap(ELSEWHERE, [
+    clickMap(ELSEWHERE, [
       {
         layer: "route-candidates-candidateHit",
         properties: secondLine.properties ?? {},
@@ -110,7 +110,7 @@ describe("地図で扱えること", () => {
 
     await user.click(screen.getByRole("button", { name: "出発地: 現在地" }));
     expect(section("ルート設定")).toHaveAccessibleDescription("地図で操作中");
-    await clickMap(ELSEWHERE);
+    clickMap(ELSEWHERE);
     expect(marksAt(ELSEWHERE)).toHaveLength(1);
   });
 
@@ -121,16 +121,16 @@ describe("地図で扱えること", () => {
     await waitFor(() => expect(candidateTabs()).toHaveLength(1));
     const [drawnSegment] = mapOnScreen().sourceFeatures("route-segments");
 
-    await clickSegment(drawnSegment, HERE);
+    clickSegment(drawnSegment, HERE);
     expect(screen.getByRole("group", { name: "区間の小窓の上の帯" })).toBeInTheDocument();
-    await clickMap(ELSEWHERE);
+    clickMap(ELSEWHERE);
 
     await user.click(screen.getByRole("button", { name: "出発地: 現在地" }));
-    await clickSegment(drawnSegment, HERE);
+    clickSegment(drawnSegment, HERE);
     expect(screen.queryByRole("group", { name: "区間の小窓の上の帯" })).toBeNull();
 
     await user.click(screen.getByRole("button", { name: "パネルを閉じる" }));
-    await clickSegment(drawnSegment, HERE);
+    clickSegment(drawnSegment, HERE);
     expect(screen.getByRole("group", { name: "区間の小窓の上の帯" })).toBeInTheDocument();
   });
 
@@ -158,12 +158,12 @@ describe("地図で扱えること", () => {
     expect(selectedSectionOnMap()).toEqual([]);
 
     const [drawnSegment] = mapOnScreen().sourceFeatures("route-segments");
-    await clickSegment(drawnSegment, HERE);
+    clickSegment(drawnSegment, HERE);
     expect(selectedSectionOnMap()).toEqual([curved.geometry!.coordinates]);
     const [pin] = selectedPointMarks();
     expect(pin.element.querySelector("path")).toHaveAttribute("fill", palette.semantic.selected_point);
 
-    await clickMap(ELSEWHERE);
+    clickMap(ELSEWHERE);
     expect(selectedSectionOnMap()).toEqual([]);
     expect(selectedPointMarks()).toEqual([]);
   });
@@ -179,7 +179,7 @@ describe("地図で扱えること", () => {
       properties: { name: "角の店", kind: "convenience" },
       geometry: { type: "Point", coordinates: [DESTINATION.longitude, DESTINATION.latitude] },
     };
-    await clickMap(DESTINATION, [shop]);
+    clickMap(DESTINATION, [shop]);
     jobs.respond(
       [FIRST],
       makeGenerationConditions({ latitude: HERE.latitude, longitude: HERE.longitude, destination: DESTINATION }),
@@ -189,7 +189,7 @@ describe("地図で扱えること", () => {
     const [drawnSegment] = mapOnScreen().sourceFeatures("route-segments");
 
     // 「ルート結果」で選んだ区間は、「ルート設定」の見るだけのタブへ移ると小窓に出ず、戻っても選ばれていない。
-    await clickSegment(drawnSegment, HERE);
+    clickSegment(drawnSegment, HERE);
     await user.click(screen.getByRole("tab", { name: "重み" }));
     expect(screen.queryByRole("group", { name: "区間の小窓の上の帯" })).toBeNull();
     await user.click(candidateTabs()[0]);
@@ -197,13 +197,13 @@ describe("地図で扱えること", () => {
 
     // 見るだけのタブで開いた点の小窓は、「ルート結果」へ移ると消える。
     await user.click(screen.getByRole("tab", { name: "重み" }));
-    await clickMap(DESTINATION, [shop]);
+    clickMap(DESTINATION, [shop]);
     expect(screen.getByRole("link", { name: "角の店" })).toBeInTheDocument();
     await user.click(candidateTabs()[0]);
     expect(screen.queryByRole("link", { name: "角の店" })).toBeNull();
 
     // 閉じるだけなら、「ルート結果」で選んだ区間を地図の小窓で読める。
-    await clickSegment(drawnSegment, HERE);
+    clickSegment(drawnSegment, HERE);
     await user.click(screen.getByRole("button", { name: "パネルを閉じる" }));
     expect(screen.getByRole("group", { name: "区間の小窓の上の帯" })).toBeInTheDocument();
   });
@@ -238,7 +238,7 @@ describe("ルートを収める", () => {
     const [secondLine] = mapOnScreen()
       .sourceFeatures("route-candidates")
       .filter((line) => line.properties?.routeId === SECOND.id);
-    await clickMap(ELSEWHERE, [
+    clickMap(ELSEWHERE, [
       {
         layer: "route-candidates-candidateHit",
         properties: secondLine.properties ?? {},
@@ -311,7 +311,7 @@ describe("区間の近くの施設", () => {
     act(() => mapOnScreen().moveTo(ROUTE_VIEW, 14));
     const [, second] = mapOnScreen().sourceFeatures("route-segments");
     // 区間の中ほど（1.5km）を押す。施設の位置は、ここから見た前後で出る。
-    await clickSegment(second, { latitude: 35.7, longitude: 139.715 });
+    clickSegment(second, { latitude: 35.7, longitude: 139.715 });
   }
 
   it("区間を選んでいる間は、地図で押してもグラフで選んでも、区間の線から近い点を「表示」に関わらず点の層ごとに描き、選びを外すと消す", async () => {
@@ -328,7 +328,7 @@ describe("区間の近くの施設", () => {
       "point-accident-side-accident_point": [[139.715, 35.7]],
     });
 
-    await clickMap(ELSEWHERE);
+    clickMap(ELSEWHERE);
     expect(sidePointsOnMap()).toEqual({});
 
     fireEvent.keyDown(screen.getByRole("slider", { name: /^道のりに沿った難易度/ }), { key: "Home" });
@@ -345,7 +345,7 @@ describe("区間の近くの施設", () => {
       return { layer, properties: feature.properties ?? {}, geometry: feature.geometry };
     };
 
-    await clickMap(ELSEWHERE, [drawn("point-poi-side-supply_poi", "ファミリーマート")]);
+    clickMap(ELSEWHERE, [drawn("point-poi-side-supply_poi", "ファミリーマート")]);
     expect(screen.getByRole("link", { name: "ファミリーマート" }).closest("li")!.textContent).toBe(
       "ファミリーマート押した地点から 200m手前道からの距離 8m",
     );
@@ -355,7 +355,7 @@ describe("区間の近くの施設", () => {
     expect(screen.getByRole("group", { name: "区間の小窓の上の帯" })).toBeInTheDocument();
 
     const [, second] = mapOnScreen().sourceFeatures("route-segments");
-    await clickMap(ELSEWHERE, [
+    clickMap(ELSEWHERE, [
       drawn("point-poi-side-supply_poi", undefined),
       { layer: "route-segments-detailHit", properties: second.properties ?? {}, geometry: second.geometry },
     ]);
@@ -379,11 +379,11 @@ describe("区間の近くの施設", () => {
     const second = mapOnScreen()
       .sourceFeatures("route-segments")
       .find((feature) => feature.properties?.[ROUTE_SEGMENT_INDEX_PROPERTY] === 1)!;
-    await clickSegment(second, { latitude: 35.7, longitude: 139.715 });
+    clickSegment(second, { latitude: 35.7, longitude: 139.715 });
     const familyMart = mapOnScreen()
       .drawnTileFeatures("point-poi-side-supply_poi")
       .find((feature) => feature.properties?.name === "ファミリーマート")!;
-    await clickMap(ELSEWHERE, [
+    clickMap(ELSEWHERE, [
       { layer: "point-poi-side-supply_poi", properties: familyMart.properties ?? {}, geometry: familyMart.geometry },
     ]);
 
