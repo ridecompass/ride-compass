@@ -316,10 +316,9 @@ type PointMark = {
   readonly halfWidthPx: number;
 };
 
-/** 点の層の印。重なる印は地図が省き、件数の多い代表点を先に残す（省いた点は、寄せて重ならなくなると出る）。重なりは
- * 点の層どうし・区間の近くの点とも判定する。件数の順は層の中だけで効き、層どうしでは前面に積む層が先に残る（MapLibre の
- * `symbol-sort-key`は層の中の順）。2点以上を束ねた代表点は印の右に数を出し、数が重なるときは数だけを省く。押せない点
- * （名前の無い点）は丸い枠で少し薄く描く。名前の無い点だけの層は、`UNNAMED_GLYPH_MIN_ZOOM`より引いた縮尺で丸い点で描く。 */
+/** 点の層の印。重なりは MapLibre の既定のまま（ほかの記号とぶつかる印は描かず、寄せて重ならなくなると出る）で、点の層どうし・
+ * 区間の近くの点・基礎地図の文字とも判定する。2点以上を束ねた代表点は、同じ印の文字として右に数を出す（数だけが残ることは無い）。
+ * 押せない点（名前の無い点）は丸い枠で少し薄く描く。名前の無い点だけの層は、`UNNAMED_GLYPH_MIN_ZOOM`より引いた縮尺で丸い点で描く。 */
 export function pointLook(layer: PointLayer): Pick<SceneLayerEntry, "type" | "paint" | "layout"> {
   const glyphs = glyphCategories(layer);
   const opacity = POINT.opacityByLayer[layer.attr_id] ?? 1;
@@ -354,15 +353,11 @@ export function pointLook(layer: PointLayer): Pick<SceneLayerEntry, "type" | "pa
     layout: {
       "icon-image": byZoom((mark) => mark.image),
       "icon-size": byZoom((mark) => mark.size),
-      "icon-allow-overlap": false,
-      "icon-ignore-placement": false,
-      "symbol-sort-key": ["-", COUNT],
       "text-field": ["case", [">", COUNT, 1], ["to-string", COUNT], ""],
       "text-font": COUNT_TEXT_FONT,
       "text-size": COUNT_TEXT_SIZE_PX,
       "text-anchor": "left",
       "text-offset": byZoom((mark) => ["literal", [mark.halfWidthPx / COUNT_TEXT_SIZE_PX, 0]]),
-      "text-optional": true,
     },
   };
 }

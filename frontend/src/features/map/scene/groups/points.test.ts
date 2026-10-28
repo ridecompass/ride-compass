@@ -1,5 +1,5 @@
 // @vitest-environment node
-/** 点の層の印が、重なるものを地図に省かせ、件数の多い代表点を先に残すこと。2点以上を束ねた代表点に、点の右へ数を出すこと。
+/** 点の層の印が、MapLibre の既定のまま重なるものを地図に省かせること。2点以上を束ねた代表点に、点の右へ数を出すこと。
  * 押せる点（名前のある点）と押せない点を絵の枠の形で描き分け、名前を持たない層は引いた縮尺で丸い点に描くこと。
  *
  * ここで見ないもの:
@@ -70,39 +70,29 @@ describe("重なった印", () => {
     ]);
   });
 
-  // 丸のレイヤー（circle）は MapLibre の重なりの判定に加わらないので、どの倍率でも登録した絵の印で描く。
+  // 丸のレイヤー（circle）は MapLibre の重なりの判定に加わらないので、どの倍率でも登録した絵の印で描く。重なりの設定
+  // （`icon-allow-overlap`等）は既定（ぶつかる印は描かない）を上書きしない。
   it.each([...POINT_SCENE_LAYERS, ...SIDE_POINT_SCENE_LAYERS].map((layer) => [layer.role, layer] as const))(
-    "%s は、どの倍率でも登録した絵の印で描き、重なる印を地図に省かせる",
+    "%s は、どの倍率でも登録した絵の印で描き、重なりの判定を既定のまま使う",
     (_, entry) => {
       const layer = POINT_LAYERS.find((c) => [c.attr_id, `side-${c.attr_id}`].includes(entry.role)) as PointLayer;
       const layout = entry.layout as Record<string, unknown>;
       expect(entry.type).toBe("symbol");
-      expect([layout["icon-allow-overlap"], layout["icon-ignore-placement"]]).toEqual([false, false]);
+      expect(Object.keys(layout).filter((key) => /overlap|placement|optional|sort-key/.test(key))).toEqual([]);
       for (const zoom of ZOOMS) {
         expect(registered).toContain(evaluateAt(layout["icon-image"], representative(layer), zoom));
       }
-    },
-  );
-
-  it.each(POINT_LAYERS.map((layer) => [layer.attr_id, layer] as const))(
-    "%s は、件数の多い代表点から先に残す",
-    (attrId, layer) => {
-      const key = (count?: number) => evaluateAt(layoutOf(attrId)["symbol-sort-key"], representative(layer, count), 14);
-      // MapLibre は並びの鍵の小さい印から置く。
-      expect(key(30)).toBeLessThan(key(2) as number);
-      expect(key(2)).toBeLessThan(key() as number);
     },
   );
 });
 
 describe("束ねた点の数", () => {
   it.each(POINT_LAYERS.map((layer) => [layer.attr_id, layer] as const))(
-    "%s は、2点以上を束ねた代表点にだけ数を出し、数が重なるときは数だけを省く",
+    "%s は、2点以上を束ねた代表点にだけ数を出す",
     (attrId, layer) => {
       const layout = layoutOf(attrId);
       const text = (count?: number) => evaluateAt(layout["text-field"], representative(layer, count), 14);
       expect([text(), text(1), text(12)]).toEqual(["", "", "12"]);
-      expect(layout["text-optional"]).toBe(true);
     },
   );
 });
