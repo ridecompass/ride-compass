@@ -1,4 +1,4 @@
-import type { Map as MapLibreMap, MapGeoJSONFeature, MapMouseEvent, MapTouchEvent } from "maplibre-gl";
+import type { Map as MapLibreMap, MapGeoJSONFeature, MapMouseEvent, MapTouchEvent, Subscription } from "maplibre-gl";
 
 import type {
   Coordinates,
@@ -27,7 +27,7 @@ import type { MapPopupControls } from "@/features/map/MapView/useMapPopups";
 import { pointMembers, pointPlaceName, type PointLayer } from "@/lib/mapDisplay/pointLayers";
 import { projectOnEdge, type EdgeProjection } from "@/lib/localPlane";
 import geoConfig from "@/types/generated/geo-config.json";
-import { MapGestures } from "@/features/map/MapView/mapGestures";
+import { LONG_PRESS_MS, MapGestures, TAP_CONFIRM_MS, type MapGestureAction } from "@/features/map/MapView/mapGestures";
 
 /**
  * 地図を押したときの意味。地点: 選んでいる地点を置く・ピンを押すとその地点を選ぶ。乗り換え: 乗り換える区間を選ぶ。開く: 押した物
@@ -123,81 +123,46 @@ type PointedAt = Pick<MapMouseEvent, "lngLat" | "point">;
  * と、利用者の操作かを示す`originalEvent`）。 */
 export function bindMapTaps(map: MapLibreMap, latest: { readonly current: MapTapState }, popups: MapPopupControls) {
   const gestures = new MapGestures();
-  let dueTimer: ReturnType<typeof setTimeout> | null = null;
-  /** 確かめを待つタップの、押した瞬間の出来事と、そこに描かれていた地物（待つ間に地図が動けば、部品が確かめを取り消す）。 */
-  let tapped: { e: PointedAt; features: readonly MapGeoJSONFeature[] } | null = null;
-  /** 長押しを数えている指の、置いた瞬間の出来事。 */
-  let held: MapTouchEvent | null = null;
+  let tapTimer: ReturnType<typeof setTimeout> | undefined;
+  let longPressTimer: ReturnType<typeof setTimeout> | undefined;
 
-  /** 部品が次に判断する時刻に、判断を受けに戻る。 */
-  function scheduleDue() {
-    if (dueTimer !== null) clearTimeout(dueTimer);
-    dueTimer = null;
-    const dueAt = gestures.nextDueAt();
-    if (dueAt === null) return;
-    dueTimer = setTimeout(
-      () => {
-        dueTimer = null;
-        const gesture = gestures.due(performance.now());
-        if (gesture === "tap" && tapped !== null) handleTap(tapped.e, tapped.features);
-        if (gesture === "longPress" && held !== null) {
-          handleLongPress(held, interactiveFeaturesAt(held.point));
-        }
-        scheduleDue();
-      },
-      Math.max(0, dueAt - performance.now()),
-    );
+  // 部品が返したことをする。タップは確かめの時まで、指の長押しは長押しの時まで待ち、まだ生きているかを部品に聞いてから開く。待つ間は
+  // 押した所だけを持ち、タップの地物は押した瞬間に読む（待つ間に地図が動けば、部品がその操作を取り消す）。
+  function act(action: MapGestureAction | null, e: PointedAt) {
+    if (action === null || latest.current.tapsLocked) return;
+    const pressed: PointedAt = { point: e.point, lngLat: e.lngLat };
+    if (action === "longPress") {
+      handleLongPress(pressed);
+    } else if (action === "waitLongPress") {
+      clearTimeout(longPressTimer);
+      longPressTimer = setTimeout(() => gestures.confirmLongPress() && handleLongPress(pressed), LONG_PRESS_MS);
+    } else {
+      const features = interactiveFeaturesAt(pressed.point);
+      clearTimeout(tapTimer);
+      tapTimer = setTimeout(() => gestures.confirmTap() && handleTap(pressed, features), TAP_CONFIRM_MS);
+    }
   }
 
-  function handleTouchStart(e: MapTouchEvent) {
-    held = e;
-    gestures.touchStart(e.point, e.originalEvent.touches.length, performance.now());
-    scheduleDue();
-  }
-
-  function handleTouchMove(e: MapTouchEvent) {
-    gestures.touchMove(e.point, e.originalEvent.touches.length);
-    scheduleDue();
-  }
-
-  function handleTouchEnd(e: MapTouchEvent) {
-    gestures.touchEnd(e.originalEvent.touches.length);
-    scheduleDue();
-  }
-
-  function handleMouseDown(e: MapMouseEvent) {
-    gestures.mouseDown(e.point);
-    scheduleDue();
-  }
-
-  function handleMoveStart(e: { originalEvent?: Event }) {
-    if (e.originalEvent === undefined) return;
-    gestures.userMoveStart();
-    scheduleDue();
-  }
-
-  function handleMoveEnd(e: { originalEvent?: Event }) {
-    if (e.originalEvent === undefined) return;
-    gestures.userMoveEnd();
-  }
-
-  // 押した所の地物は押した瞬間に読む（確かめを待つ間に地図が動けば、確かめは取り消される）。
-  function handleClick(e: MapMouseEvent) {
-    if (latest.current.tapsLocked) return;
-    const features = interactiveFeaturesAt(e.point);
-    if (gestures.click(performance.now())) tapped = { e, features };
-    scheduleDue();
-  }
-
-  function handleContextMenu(e: MapMouseEvent) {
-    if (gestures.contextMenu()) handleLongPress(e, interactiveFeaturesAt(e.point));
-    scheduleDue();
-  }
+  // 渡す地図の出来事は、MapLibre の型が約束するものだけ。
+  const touch = (type: "touchstart" | "touchmove" | "touchend" | "touchcancel") => (e: MapTouchEvent) =>
+    act(gestures.handle({ type, at: e.point, fingers: e.points.length }), e);
+  const subscriptions: Subscription[] = [
+    map.on("touchstart", touch("touchstart")),
+    map.on("touchmove", touch("touchmove")),
+    map.on("touchend", touch("touchend")),
+    map.on("touchcancel", touch("touchcancel")),
+    map.on("mousedown", (e) => act(gestures.handle({ type: "mousedown", at: e.point }), e)),
+    map.on("click", (e) => act(gestures.handle({ type: "click" }), e)),
+    map.on("contextmenu", (e) => act(gestures.handle({ type: "contextmenu" }), e)),
+    map.on("movestart", (e) => gestures.handle({ type: "movestart", byUser: e.originalEvent !== undefined })),
+    map.on("moveend", () => gestures.handle({ type: "moveend" })),
+  ];
 
   // 長押しは、開く意味の間だけ受け、押した物の小窓を開き、開ける物が無ければ押した所に近い道を開く。
-  function handleLongPress(e: PointedAt, features: readonly MapGeoJSONFeature[]) {
+  function handleLongPress(e: PointedAt) {
     if (latest.current.tapsLocked || latest.current.tapMode !== "open") return;
     roadAsk += 1;
+    const features = interactiveFeaturesAt(e.point);
     const hit = openableFeatureAmong(features);
     if (hit !== null) {
       openHit(hit, e, features);
@@ -360,27 +325,10 @@ export function bindMapTaps(map: MapLibreMap, latest: { readonly current: MapTap
     map.getCanvas().style.cursor = hit !== null ? "pointer" : "";
   }
 
-  map.on("touchstart", handleTouchStart);
-  map.on("touchmove", handleTouchMove);
-  map.on("touchend", handleTouchEnd);
-  map.on("touchcancel", handleTouchEnd);
-  map.on("mousedown", handleMouseDown);
-  map.on("movestart", handleMoveStart);
-  map.on("moveend", handleMoveEnd);
-  map.on("click", handleClick);
-  map.on("contextmenu", handleContextMenu);
-  map.on("mousemove", handleMouseMove);
+  subscriptions.push(map.on("mousemove", handleMouseMove));
   return () => {
-    if (dueTimer !== null) clearTimeout(dueTimer);
-    map.off("touchstart", handleTouchStart);
-    map.off("touchmove", handleTouchMove);
-    map.off("touchend", handleTouchEnd);
-    map.off("touchcancel", handleTouchEnd);
-    map.off("mousedown", handleMouseDown);
-    map.off("movestart", handleMoveStart);
-    map.off("moveend", handleMoveEnd);
-    map.off("click", handleClick);
-    map.off("contextmenu", handleContextMenu);
-    map.off("mousemove", handleMouseMove);
+    clearTimeout(tapTimer);
+    clearTimeout(longPressTimer);
+    for (const subscription of subscriptions) subscription.unsubscribe();
   };
 }

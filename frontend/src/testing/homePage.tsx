@@ -211,14 +211,16 @@ export function marksAt(point: Coordinates) {
 /** 地図をタップする。`features`はそこに描かれている地物。小窓はタップを1回のタップと確かめてから開くので、押す間だけ時計を
  * 偽にして、確かめの時まで進める。 */
 export async function clickMap(at: Coordinates, features: PointedFeature[] = []) {
-  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
+  // 呼んだテストが既に偽の時計を使っていれば、その時計のまま進める（点けも消しもしない）。
+  const faked = vi.isFakeTimers();
+  if (!faked) vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
   try {
     act(() => {
       mapOnScreen().click(at, features);
       vi.advanceTimersByTime(TAP_CONFIRM_MS);
     });
   } finally {
-    vi.useRealTimers();
+    if (!faked) vi.useRealTimers();
   }
 }
 

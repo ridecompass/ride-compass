@@ -2,169 +2,127 @@
  * 地図に触れた操作が、小窓を開く「タップ」か「長押し」か、地図を動かす操作（ずらす・2本の指・ダブルタップで拡大する・流れている地図を
  * 止める）かの判断（決まりは`docs/modules/frontend/static-map-layers.md`「地図を押したときと地図の小窓」の「押したとき」）。
  *
- * 地図にもブラウザにも触れず、出来事を時刻と一緒に受け、判断の時が来たら`due`で返す。時刻は出来事の`timeStamp`と`performance.now()`
- * の同じ物差し（ms）。
+ * 地図にもブラウザにも時計にも触れず、MapLibre の地図の出来事を受けて、呼ぶ側がすることを返す。待つのは呼ぶ側で、待ち終えたら
+ * `confirmTap`・`confirmLongPress`で、待っていた操作がまだ生きているかを聞く。出来事の並びは W3C の仕様が決めるものを前提にする
+ * （Touch Events: 2本目の指は`touchstart`を出し、指の操作をクリックと解釈したら`touchend`のあとに`mousedown`・`mouseup`・`click`を
+ * この順に出す。UI Events: `click`の前にはいつも`mousedown`が来る）。
  */
 
 type Point = { readonly x: number; readonly y: number };
 
-/** 小窓を開く操作。 */
-export type MapGesture = "tap" | "longPress";
+/** 受ける地図の出来事。`fingers`は今触れている指の数（MapLibre の`MapTouchEvent.points`）。`contextmenu`はマウスの右ボタン（MapLibre の
+ * 型が約束するのは右ボタンとメニューのキーだけ）。`byUser`は利用者の操作で動いたか（元の出来事を持つか）。 */
+export type MapGestureEvent =
+  | {
+      readonly type: "touchstart" | "touchmove" | "touchend" | "touchcancel";
+      readonly at: Point;
+      readonly fingers: number;
+    }
+  | { readonly type: "mousedown"; readonly at: Point }
+  | { readonly type: "click" | "contextmenu" | "moveend" }
+  | { readonly type: "movestart"; readonly byUser: boolean };
+
+/** 呼ぶ側がすること。`waitTap`はタップの確かめの時まで、`waitLongPress`は長押しの時まで待つ。`longPress`はすぐ長押しとして開く。 */
+export type MapGestureAction = "waitTap" | "waitLongPress" | "longPress";
 
 /** タップを1回のタップと確かめるまで待つ時間（ms）。この間に次の押しが来たら、ダブルタップ（地図の拡大）として開かない。MapLibre が
  * ダブルタップとみなす間（タップを数える部品の`MAX_TAP_INTERVAL`。公開の設定ではない）と同じ長さ。 */
 export const TAP_CONFIRM_MS = 500;
-/** 指を動かさずに押し続けて長押しとみなすまでの時間（ms）。 */
+/** 指を動かさずに置き続けて長押しとみなすまでの時間（ms）。 */
 export const LONG_PRESS_MS = 500;
-/** 押してから離すまでに指がこれより動いたら、地図をずらす操作。MapLibre の地図の設定`clickTolerance`の既定で、MapLibre はこれより
- * 動いた指で地図をずらす。 */
+/** 押してから離すまでに指がこれより動いたら、地図をずらす操作。地図を作るときに MapLibre の`clickTolerance`へも渡し、MapLibre が
+ * 地図をずらし始める幅と同じにする（`features/map/baseMap.ts: createBaseMap`）。 */
 export const TAP_TOLERANCE_PX = 3;
 
 interface Press {
   readonly start: Point;
-  readonly touch: boolean;
-  /** 押し始めに、利用者の操作で地図が流れていた（流れている地図を止めた）。 */
-  readonly startedWhileMoving: boolean;
-  /** 前のタップを確かめる間に押した（ダブルタップの2回目）。 */
-  readonly second: boolean;
-  /** 指を置いている間。 */
+  /** 指を置いている間（指の押しだけ）。 */
   held: boolean;
-  moved: boolean;
-  multi: boolean;
-  longPressed: boolean;
-  /** 長押しになる時刻。指1本を動かさずに置いている間だけ。 */
-  longPressAt: number | null;
+  /** タップにも長押しにもしない押し（ずらした・2本の指・流れている地図を止めた・ダブルタップの2回目・長押しになった）。 */
+  spent: boolean;
 }
 
-/** 1つの地図の押しの判断。押しごとに、地図を動かす操作だったかの印を持つ。 */
+/** 1つの地図の押しの判断。 */
 export class MapGestures {
   private press: Press | null = null;
-  /** 確かめを待つタップの、確かめが済む時刻。 */
-  private pendingTapDueAt: number | null = null;
+  /** 確かめを待つタップがある。 */
+  private tapPending = false;
   private userMoving = false;
-  /** 指の押しのあとに来る互換のマウスの出来事を待っている間。W3C の Touch Events は、指の操作をクリックと解釈したら`touchend`のあと
-   * に`mousedown`・`mouseup`・`click`をこの順に出すと決めている（時間の決まりは無い）ので、指の押しのあとの最初の`mousedown`は、
-   * その押しの続きとみなす。 */
+  /** 指の押しのあとに来る互換のマウスの出来事を待っている間。指の押しのあとの最初の`mousedown`は、その押しの続き。 */
   private awaitingCompatMouse = false;
 
-  /** 指を置いた。`fingers`は今触れている指の数（`TouchEvent.touches`）。 */
-  touchStart(at: Point, fingers: number, time: number) {
-    this.awaitingCompatMouse = false;
-    if (this.press?.held === true || fingers > 1) {
-      this.markMulti();
-      return;
-    }
-    const press = this.startPress(at, true);
-    if (!press.startedWhileMoving) press.longPressAt = time + LONG_PRESS_MS;
-  }
-
-  touchMove(at: Point, fingers: number) {
+  /** 出来事を受け、呼ぶ側がすることを返す。 */
+  handle(event: MapGestureEvent): MapGestureAction | null {
     const press = this.press;
-    if (press === null || !press.held) return;
-    if (fingers > 1) this.markMulti();
-    if (Math.hypot(at.x - press.start.x, at.y - press.start.y) > TAP_TOLERANCE_PX) {
-      press.moved = true;
-      press.longPressAt = null;
+    switch (event.type) {
+      case "touchstart":
+        this.awaitingCompatMouse = false;
+        if (event.fingers > 1) {
+          this.spend();
+          return null;
+        }
+        return this.startPress(event.at, true) ? "waitLongPress" : null;
+      case "touchmove":
+        if (press?.held === true && !press.spent) {
+          if (Math.hypot(event.at.x - press.start.x, event.at.y - press.start.y) > TAP_TOLERANCE_PX) this.spend();
+        }
+        return null;
+      case "touchend":
+      case "touchcancel":
+        // `fingers`は残って触れている指の数で、0になったら押しが終わる。互換のマウスの出来事は、指を離したとき（中断でなく）だけ来る。
+        if (press?.held === true && event.fingers === 0) {
+          press.held = false;
+          this.awaitingCompatMouse = event.type === "touchend";
+        }
+        return null;
+      case "mousedown":
+        if (this.awaitingCompatMouse) this.awaitingCompatMouse = false;
+        else this.startPress(event.at, false);
+        return null;
+      case "movestart":
+        if (!event.byUser) return null;
+        this.userMoving = true;
+        // タップを確かめる間に地図を動かし始めたら（1回押してすぐ押したまま上下に動かす拡大等）、そのタップは開かない。
+        this.tapPending = false;
+        return null;
+      case "moveend":
+        this.userMoving = false;
+        return null;
+      case "click":
+        if (press?.spent === true) return null;
+        this.tapPending = true;
+        return "waitTap";
+      case "contextmenu":
+        // 指を置いている間の右ボタンの出来事は受けない（指の長押しは`waitLongPress`で数える）。
+        if (press?.held === true) return null;
+        this.tapPending = false;
+        return "longPress";
     }
   }
 
-  /** 指を離した（`touchend`・`touchcancel`）。`fingers`は残って触れている指の数で、0になったら押しが終わる。 */
-  touchEnd(fingers: number) {
-    const press = this.press;
-    if (press === null || !press.held || fingers > 0) return;
-    press.held = false;
-    press.longPressAt = null;
-    this.awaitingCompatMouse = true;
+  /** タップの確かめの時が来た。待っていたタップがまだ生きていれば true。 */
+  confirmTap(): boolean {
+    const pending = this.tapPending;
+    this.tapPending = false;
+    return pending;
   }
 
-  mouseDown(at: Point) {
-    if (this.awaitingCompatMouse) {
-      this.awaitingCompatMouse = false;
-      return;
-    }
-    this.startPress(at, false);
-  }
-
-  /** 地図が利用者の操作で動き始めた。 */
-  userMoveStart() {
-    this.userMoving = true;
-    // タップを確かめる間に地図を動かし始めたら（1回押してすぐ押したまま上下に動かす拡大等）、そのタップは開かない。
-    this.pendingTapDueAt = null;
-  }
-
-  userMoveEnd() {
-    this.userMoving = false;
-  }
-
-  /** 押して同じ所で離した（MapLibre の`click`）。地図を動かす操作でなければ、確かめを待つタップにして true を返す。 */
-  click(time: number): boolean {
-    const press = this.press;
-    if (
-      press !== null &&
-      (press.moved || press.multi || press.startedWhileMoving || press.second || press.longPressed)
-    ) {
-      return false;
-    }
-    if (this.pendingTapDueAt !== null) {
-      // 確かめる間の2回目のクリック（押しの始まりを知らせないダブルクリック）。
-      this.pendingTapDueAt = null;
-      return false;
-    }
-    this.pendingTapDueAt = time + TAP_CONFIRM_MS;
+  /** 長押しの時が来た。指を動かさずに置き続けていれば true（その押しはもうタップにしない）。 */
+  confirmLongPress(): boolean {
+    if (this.press?.held !== true || this.press.spent) return false;
+    this.spend();
     return true;
   }
 
-  /** マウスの右ボタンを押した（MapLibre の`contextmenu`）。長押しとして受けるなら true。指を置いている間は受けない（指の長押しは
-   * `due`が数える）。 */
-  contextMenu(): boolean {
-    if (this.press?.touch === true && this.press.held) return false;
-    this.pendingTapDueAt = null;
-    if (this.press !== null) this.press.longPressed = true;
-    return true;
+  /** 押しを始め、タップにも長押しにもなりうる押しなら true。確かめる間に押したらダブルタップの2回目、押し始めに地図が流れていたら
+   * 流れを止めた触れで、どちらもならない。 */
+  private startPress(at: Point, held: boolean): boolean {
+    this.press = { start: at, held, spent: this.tapPending || this.userMoving };
+    this.tapPending = false;
+    return !this.press.spent;
   }
 
-  /** 次に判断の時が来る時刻。待つものが無ければnull。 */
-  nextDueAt(): number | null {
-    const times = [this.pendingTapDueAt, this.press?.longPressAt].filter((t): t is number => t != null);
-    return times.length === 0 ? null : Math.min(...times);
-  }
-
-  /** 時刻`now`までに判断の時が来た操作。 */
-  due(now: number): MapGesture | null {
-    const press = this.press;
-    if (press?.longPressAt != null && now >= press.longPressAt) {
-      press.longPressAt = null;
-      press.longPressed = true;
-      this.pendingTapDueAt = null;
-      return "longPress";
-    }
-    if (this.pendingTapDueAt !== null && now >= this.pendingTapDueAt) {
-      this.pendingTapDueAt = null;
-      return "tap";
-    }
-    return null;
-  }
-
-  private startPress(at: Point, touch: boolean): Press {
-    const second = this.pendingTapDueAt !== null;
-    this.pendingTapDueAt = null;
-    this.press = {
-      start: at,
-      touch,
-      startedWhileMoving: this.userMoving,
-      second,
-      held: touch,
-      moved: false,
-      multi: false,
-      longPressed: false,
-      longPressAt: null,
-    };
-    return this.press;
-  }
-
-  private markMulti() {
-    if (this.press === null) return;
-    this.press.multi = true;
-    this.press.longPressAt = null;
+  private spend() {
+    if (this.press !== null) this.press.spent = true;
   }
 }

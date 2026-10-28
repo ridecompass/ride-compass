@@ -306,7 +306,10 @@ export class StandInMap extends Evented {
     );
     this.pointed = withGeometry;
     try {
-      this.fire(type, { lngLat: { lng: lngLat.longitude, lat: lngLat.latitude }, point: { x: 0, y: 0 } }, withGeometry);
+      // UI Events は、`click`・`contextmenu`の前にいつも`mousedown`を出す。
+      const event = { lngLat: { lng: lngLat.longitude, lat: lngLat.latitude }, point: { x: 0, y: 0 } };
+      this.fire("mousedown", event, withGeometry);
+      this.fire(type, event, withGeometry);
     } finally {
       this.pointed = [];
     }

@@ -1,6 +1,7 @@
 import * as maplibregl from "maplibre-gl";
 import type { Map as MapLibreMap } from "maplibre-gl";
 
+import { TAP_TOLERANCE_PX } from "@/features/map/MapView/mapGestures";
 import { configureMaplibreWorker } from "@/features/map/maplibreWorker";
 import { mapStyleUrl } from "@/features/map/regionApi";
 import { debugLog } from "@/lib/debugLog";
@@ -37,6 +38,8 @@ export function createBaseMap({
     maxPitch: 0,
     touchPitch: false,
     pitchWithRotate: false,
+    // 地図をずらし始める幅を、押したかの判断（地図を動かす操作でない押し）と同じにする。
+    clickTolerance: TAP_TOLERANCE_PX,
     // 常に使うデータの出典は、どのレイヤーを出しているかと関係なく出す（宣言はbackend）。
     interactive: !inset,
     attributionControl: inset ? false : { compact: true, customAttribution: [...mapDisplay.alwaysShownAttributions] },
