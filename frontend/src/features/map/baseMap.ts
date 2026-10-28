@@ -40,6 +40,8 @@ export function createBaseMap({
     pitchWithRotate: false,
     // 地図をずらし始める幅を、押したかの判断（地図を動かす操作でない押し）と同じにする。
     clickTolerance: TAP_TOLERANCE_PX,
+    // ダブルタップ（ダブルクリック）では拡大しない。拡大するなら、タップで小窓を開く前に、2回目が来ないと確かめる待ちが要る。
+    doubleClickZoom: false,
     // 常に使うデータの出典は、どのレイヤーを出しているかと関係なく出す（宣言はbackend）。
     interactive: !inset,
     attributionControl: inset ? false : { compact: true, customAttribution: [...mapDisplay.alwaysShownAttributions] },

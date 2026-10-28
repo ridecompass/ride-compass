@@ -91,11 +91,11 @@ describe("地図の小窓", () => {
     const [drawnSegment] = mapOnScreen().sourceFeatures("route-segments");
     const header = (name: string) => screen.queryByRole("group", { name });
 
-    await clickSegment(drawnSegment, HERE);
+    clickSegment(drawnSegment, HERE);
     expect(header("区間の小窓の上の帯")).toBeInTheDocument();
 
     // 区間の中身から点を開くと、区間の選びを残し、「‹ 区間」で区間の中身へ戻れる。
-    await clickMap(ELSEWHERE, [shop]);
+    clickMap(ELSEWHERE, [shop]);
     expect(screen.getByRole("link", { name: "角の店" })).toBeInTheDocument();
     expect(selectedPointMarks()).toHaveLength(1);
     await user.click(within(header("点の小窓の上の帯")!).getByRole("button", { name: "‹ 区間" }));
@@ -126,14 +126,14 @@ describe("地図の小窓", () => {
     expect(selectedPointMarks()).toEqual([]);
 
     // 重なった名前のある点は全部並べ、名前の無い点は飛ばす。名前の無い点だけの所は、下の道を開く。
-    await clickMap(ELSEWHERE, [toilet, shop, cafe]);
+    clickMap(ELSEWHERE, [toilet, shop, cafe]);
     expect(
       within(header("点の小窓の上の帯")!.parentElement!)
         .getAllByRole("link")
         .map((link) => link.textContent),
     ).toEqual(["角の店", "峠の茶屋"]);
     // 束ねた代表点は、中の店を1行ずつ並べる。
-    await clickMap(ELSEWHERE, [bundled]);
+    clickMap(ELSEWHERE, [bundled]);
     expect(
       within(header("点の小窓の上の帯")!.parentElement!)
         .getAllByRole("link")
@@ -142,7 +142,7 @@ describe("地図の小窓", () => {
     rightClickMap(ELSEWHERE, [toilet]);
     expect(await screen.findByRole("button", { name: "この道の評価を見る" })).toBeInTheDocument();
     // 道はタップでは開かない（近くに道があっても、開ける物の無い所をタップすると閉じる）。
-    await clickMap(ELSEWHERE, [toilet]);
+    clickMap(ELSEWHERE, [toilet]);
     await settle();
     expect(header("道の小窓の上の帯")).toBeNull();
 
@@ -166,7 +166,7 @@ describe("地図の小窓", () => {
     await user.click(screen.getByRole("button", { name: "パネルを閉じる" }));
 
     const fitsBefore = mapOnScreen().fits().length;
-    await clickSegment(mapOnScreen().sourceFeatures("route-segments")[0], HERE);
+    clickSegment(mapOnScreen().sourceFeatures("route-segments")[0], HERE);
 
     expect(screen.getByRole("group", { name: "区間の小窓の上の帯" })).toHaveTextContent(
       "ルートの何km地点 1.0km到達予想 09:30着",

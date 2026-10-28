@@ -263,7 +263,7 @@ describe("画面の枠", () => {
     await user.click(screen.getByRole("button", { name: "現在地に移動" }));
     expect(screen.getByText(/現在地を取得できませんでした/)).toBeInTheDocument();
 
-    await clickMap(HERE);
+    clickMap(HERE);
     await waitFor(() => expect(missing()).toHaveAccessibleName(/警報/));
     expect(missing()).not.toHaveAccessibleName(/現在地/);
   });
@@ -288,7 +288,7 @@ describe("画面の枠", () => {
 
   it("「現在地に移動」は現在地を取り直して地図を寄せ、出発地は変えずに現在地に点を出す", async () => {
     const { user } = renderHome();
-    await clickMap(ELSEWHERE);
+    clickMap(ELSEWHERE);
     expect(marksAt(ELSEWHERE)).toHaveLength(1);
 
     await user.click(screen.getByRole("button", { name: "現在地に移動" }));

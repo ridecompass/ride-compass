@@ -186,7 +186,7 @@ describe("ルートを作る", () => {
     };
     const origin = (body: Record<string, unknown>) => ({ latitude: body.latitude, longitude: body.longitude });
 
-    await clickMap(PLACED);
+    clickMap(PLACED);
     await saveAs("置いた所");
     await user.click(screen.getByRole("button", { name: "出発地を現在地に戻す" }));
 

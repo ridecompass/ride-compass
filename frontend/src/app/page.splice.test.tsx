@@ -68,7 +68,7 @@ describe("区間の乗り換え", () => {
   /** 目的地を置いて2本の候補を作る。 */
   async function generateTwo(user: User) {
     await selectDestination(user);
-    await clickMap(DESTINATION);
+    clickMap(DESTINATION);
     jobs.respond([BASE, OTHER], DESTINATION_CONDITIONS);
     await generate(user);
   }
@@ -86,11 +86,11 @@ describe("区間の乗り換え", () => {
     expect(screen.queryByRole("button", { name: "GPX出力" })).toBeNull();
     expect(routeLinesOnMap()).toHaveLength(2);
     expect(routeLinesOnMap()).toEqual(expect.arrayContaining([BASE.geometry.coordinates, OTHER.geometry.coordinates]));
-    await clickMap(ELSEWHERE);
+    clickMap(ELSEWHERE);
     expect(marksAt(ELSEWHERE)).toEqual([]);
     expect(marksAt(DESTINATION)).toEqual([expect.objectContaining({ draggable: false })]);
 
-    await clickSegment(mapOnScreen().sourceFeatures("route-segments")[0], ELSEWHERE);
+    clickSegment(mapOnScreen().sourceFeatures("route-segments")[0], ELSEWHERE);
     await user.click(screen.getByRole("button", { name: "編集をやめて候補へ戻る" }));
     expect(selectedPointMarks()).toEqual([]);
 
@@ -108,7 +108,7 @@ describe("区間の乗り換え", () => {
     const [band] = mapOnScreen().sourceFeatures("route-splice-bands");
     const [segment] = mapOnScreen().sourceFeatures("route-segments");
     // 一番上に描かれた地物から並べる（帯は区間の上に重ねて描く）。
-    await clickMap(HERE, [
+    clickMap(HERE, [
       { layer: "route-splice-bands-spliceBandHit", properties: band.properties ?? {}, geometry: band.geometry },
       { layer: "route-segments-detailHit", properties: segment.properties ?? {}, geometry: segment.geometry },
     ]);
@@ -130,7 +130,7 @@ describe("区間の乗り換え", () => {
     expect(routeLinesOnMap()).toHaveLength(2);
     await startEditing(user);
     const [band] = mapOnScreen().sourceFeatures("route-splice-bands");
-    await clickMap(HERE, [
+    clickMap(HERE, [
       { layer: "route-splice-bands-spliceBandHit", properties: band.properties ?? {}, geometry: band.geometry },
     ]);
     jobs.respond(
