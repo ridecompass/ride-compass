@@ -52,6 +52,7 @@ description: "検査とテストを手元・作業ブランチのCI・masterのC
 | 作業ブランチ（`orch/**`）のCI | 必須チェックのワークフロー（名前と、変更ごとにどのジョブを走らせるかの決め方は[tech-stack.md](../../../docs/architecture/tech-stack.md)「CIの実行枠（リポジトリがpublicである間の前提）」。Pull Requestで走り、作業ブランチへのpushでは走らない） | 静的検査とフルスイート（Linuxでの結果）。masterと合わせた版で、masterへ入れてよいかの判定 |
 | masterのCI | 同じワークフロー | 作業ブランチで個別に通ったコミットを組み合わせた木の検査。`ci.yml`の`ci-ok`（文書とゲートの検査も含む全部の結論）が通るまでbackend・frontendのデプロイは起動しない |
 | 本番 | `backend/scripts/prod_route_check.py`（backendを出したあとと毎日1回。[tech-stack.md](../../../docs/architecture/tech-stack.md)「本番でルートを作る確かめ」） | 本物の応答で、ルートを作ってレンズを替える操作が壊れていないか。デプロイを伴わない本番の値の変化も拾う |
+| 本番 | `backend/scripts/prod_point_tile_check.py`（backendを出したあとと毎日1回。[tech-stack.md](../../../docs/architecture/tech-stack.md)「本番の点のタイルの確かめ」） | 点の密な所の点のタイルが、上限の中で空でなく返るか。テストのDBに無い本番の規模の点で、タイルを作る時間を見る |
 
 - **コミット・pushの直前（gitのフック）には検査を置かない。** 何を見ているかの正本は`scripts/review_checks.py`と各CIの段で、ここへ写さない。
 
