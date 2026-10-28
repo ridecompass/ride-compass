@@ -68,9 +68,7 @@ def _clustered_mvt_sql(points: str, rows: tuple[str, ...], properties: tuple[str
     行をまたいで束ねない——凡例で行を隠したときに、代表点ごと消えたり件数が合わなくなったりする。代表点は束ねた点の1つで、
     重心へ動かさない（名前と位置で外の地図を開く）。
     """
-    same_row = " AND ".join(f"celled.{c} IS NOT DISTINCT FROM clusters.{c}" for c in rows)
-    row_columns = ", ".join(rows)
-    celled_rows = ", ".join(f"celled.{c}" for c in rows)
+    row_columns = ", ".join(f"celled.{c}" for c in rows)
     selected = ", ".join(f"celled.{c} AS {c}" for c in properties)
     return f"""(
         WITH points AS ({points}),
@@ -84,24 +82,25 @@ def _clustered_mvt_sql(points: str, rows: tuple[str, ...], properties: tuple[str
                    floor((ST_Y(m.geom) - ST_YMin(grid.env)) * grid.cells
                          / (ST_YMax(grid.env) - ST_YMin(grid.env))) AS cell_y
             FROM points CROSS JOIN grid CROSS JOIN LATERAL (SELECT ST_Transform(points.geom, 3857) AS geom) m
-        ),
-        clusters AS (
-            SELECT {row_columns}, cell_x, cell_y, count(*) AS count,
-                   (json_agg(json_build_array(name, round(ST_X(geom)::numeric, 6), round(ST_Y(geom)::numeric, 6))
-                             ORDER BY name, ST_X(geom), ST_Y(geom)) FILTER (WHERE name IS NOT NULL))::text AS members
-            FROM celled
-            GROUP BY {row_columns}, cell_x, cell_y
         )
         SELECT ST_AsMVT(mvt.*, :layer_name, :extent, 'geom') FROM (
-            SELECT DISTINCT ON ({celled_rows}, celled.cell_x, celled.cell_y)
+            -- 升ごとの件数と中身は、升の点の行へ窓関数で載せる。升の集計と点を結び付け直すと、凡例の行（NULLを含みうる）を
+            -- IS NOT DISTINCT FROM で比べることになり、PostgreSQL は総当たりでしか結べず、点の密なタイルで時間切れになる。
+            SELECT DISTINCT ON ({row_columns}, celled.cell_x, celled.cell_y)
                 ST_AsMVTGeom(celled.geom_3857, ST_TileEnvelope(:z, :x, :y), :extent, {TILE_BUFFER}, true) AS geom,
                 {selected},
                 celled.name AS name,
-                clusters.count AS {POINT_COUNT_PROPERTY},
-                CASE WHEN clusters.count > 1 THEN clusters.members END AS {POINT_MEMBERS_PROPERTY}
+                count(*) OVER cell AS {POINT_COUNT_PROPERTY},
+                CASE WHEN count(*) OVER cell > 1 THEN
+                    (json_agg(json_build_array(celled.name, round(ST_X(celled.geom)::numeric, 6),
+                                               round(ST_Y(celled.geom)::numeric, 6)))
+                         FILTER (WHERE celled.name IS NOT NULL) OVER members)::text
+                END AS {POINT_MEMBERS_PROPERTY}
             FROM celled
-            JOIN clusters ON {same_row} AND celled.cell_x = clusters.cell_x AND celled.cell_y = clusters.cell_y
-            ORDER BY {celled_rows}, celled.cell_x, celled.cell_y,
+            WINDOW cell AS (PARTITION BY {row_columns}, celled.cell_x, celled.cell_y),
+                   members AS (cell ORDER BY celled.name, ST_X(celled.geom), ST_Y(celled.geom)
+                               ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING)
+            ORDER BY {row_columns}, celled.cell_x, celled.cell_y,
                      {preference}, ST_X(celled.geom), ST_Y(celled.geom)
         ) mvt
         WHERE mvt.geom IS NOT NULL
