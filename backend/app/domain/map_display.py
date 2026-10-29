@@ -224,6 +224,8 @@ class MapLayerSpec(NamedTuple):
     #: 値の無い道の行（データなし・該当なし）を、最初は凡例で隠しておくか。値のある道が少なく、無い道の線が
     #: 地図を覆う道の線の層だけが持つ（利用者は凡例のチェックで出せる）。
     hide_missing_rows: bool = False
+    #: 描き始める縮尺。情報源がタイルを配る縮尺より寄ってから描く層だけが持つ。
+    draw_min_zoom: int | None = None
 
 
 def _tile_layer(
@@ -235,8 +237,9 @@ def _tile_layer(
     label: str | None = None,
     hide_missing_rows: bool = False,
 ) -> MapLayerSpec:
-    """タイルで配る一次属性のレイヤー。情報源は属性自身が宣言するタイルの系統。"""
-    tile_kind = PRIMARY_ATTRIBUTES_BY_ID[attr_id].tile_kind
+    """タイルで配る一次属性のレイヤー。情報源と描き始める縮尺は属性自身の宣言から決める。"""
+    attr = PRIMARY_ATTRIBUTES_BY_ID[attr_id]
+    tile_kind = attr.tile_kind
     assert tile_kind is not None, attr_id
     return MapLayerSpec(
         tile_kind,
@@ -245,6 +248,7 @@ def _tile_layer(
         description=description,
         panel_hint=panel_hint,
         hide_missing_rows=hide_missing_rows,
+        draw_min_zoom=attr.point_min_zoom,
     )
 
 
@@ -682,10 +686,10 @@ ROAD_INSPECTED_WIDTH_PX = 8
 #: 乗り換え帯の破線（`ROUTE_SPLICE_DASH`）より細かく刻み、操作の状態と見分けられるようにする。
 NO_DATA_DASH: tuple[float, ...] = (1, 2)
 
-#: 丸い点の既定の半径。行ごとの大きさは表示の行（`DisplayCategorySpec.radius_px`）が持つ。
+#: 点の大きさを決める軸で、半径（`DisplayCategorySpec.radius_px`）を宣言しない行の半径。点の絵の大きさは行の半径の比で決まる。
 POINT_RADIUS_PX = 4
 POINT_STROKE_WIDTH_PX = 1
-#: 絵記号で描く点（行が`glyph`を持つ軸）の一辺。丸い点より大きくし、中の絵を読める大きさにする。
+#: 点の絵の一辺。中の絵を読める大きさにする。
 POINT_ICON_SIZE_PX = 20
 POINT_OPACITY = 0.9
 #: 点のタイルが近い点を1つの代表点に束ねる升目の数（タイルの一辺を等分する数）。升目はタイルの端に揃うので、隣り合うタイルで

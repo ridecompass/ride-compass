@@ -3,7 +3,7 @@
 入口は一次属性の宣言（`PrimaryAttributeSpec`）と表示の軸（`DisplayAxisSpec`）の組み立て。
 
 ここで見ないもの:
-- 一次属性の宣言の検証のうち、点の不透明度を点だけに付けること
+- 一次属性の宣言の検証のうち、点の描き方（不透明度・描き始める縮尺・重なったとき残す順）を点だけに付けること
 - 属性をまたぐ宣言の関係（色相の起点・点の行と種別）→ `test_primary_attributes.py`
 """
 
@@ -20,6 +20,11 @@ def _rows(*keys: str, glyphs=None, radii=None) -> tuple[DisplayCategorySpec, ...
         DisplayCategorySpec(key=key, label=key, values=(key,), description="d", glyph=glyph, radius_px=radius)
         for key, glyph, radius in zip(keys, glyphs, radii, strict=True)
     )
+
+
+def _marks(*keys: str, radii=None) -> tuple[DisplayCategorySpec, ...]:
+    """点の先頭の軸の行（行ごとに違う絵記号を持つ）。"""
+    return _rows(*keys, glyphs=keys, radii=radii)
 
 
 def _axis(categories, palette="nominal", **fields) -> DisplayAxisSpec:
@@ -58,28 +63,28 @@ def test_an_axis_the_map_cannot_paint_one_way_is_refused(build):
 @pytest.mark.parametrize(
     "build",
     [
-        pytest.param(lambda: _attribute(_axis(_rows("a"), palette=None)), id="先頭の軸が色を持たない"),
-        pytest.param(lambda: _attribute(_axis(_rows("a")), _axis(_rows("b"))), id="2本目の軸が色を持つ"),
+        pytest.param(lambda: _attribute(_axis(_marks("a"), palette=None)), id="先頭の軸が色を持たない"),
+        pytest.param(lambda: _attribute(_axis(_marks("a")), _axis(_rows("b"))), id="2本目の軸が色を持つ"),
         pytest.param(lambda: _attribute(_axis(_rows("a")), geometry="area"), id="面が行を持つ"),
-        pytest.param(lambda: _attribute(_axis(_rows("a")), tile_kind=None), id="読むタイルが無い"),
+        pytest.param(lambda: _attribute(_axis(_marks("a")), tile_kind=None), id="読むタイルが無い"),
         pytest.param(
-            lambda: _attribute(_axis(_rows("a", "b", glyphs=("g", None)))), id="絵記号が一部の行にだけある"),
+            lambda: _attribute(_axis(_rows("a", "b", glyphs=("g", None)))), id="点の行に絵記号の無い行がある"),
         pytest.param(lambda: _attribute(_axis(_rows("a", "b", glyphs=("g", "g")))), id="絵記号が重なる"),
         pytest.param(lambda: _attribute(_axis(_rows("a", glyphs=("g",))), geometry="line"), id="線に絵記号"),
         pytest.param(
-            lambda: _attribute(_axis(_rows("a")), _axis(_rows("b", glyphs=("g",)), palette=None)),
+            lambda: _attribute(_axis(_marks("a")), _axis(_rows("b", glyphs=("g",)), palette=None)),
             id="2本目の軸に絵記号",
         ),
         pytest.param(
-            lambda: _attribute(_axis(_rows("a", radii=(4,))), _axis(_rows("b", radii=(6,)), palette=None)),
+            lambda: _attribute(_axis(_marks("a", radii=(4,))), _axis(_rows("b", radii=(6,)), palette=None)),
             id="半径を持つ軸が2本",
         ),
         pytest.param(lambda: _attribute(_axis(_rows("a", radii=(4,))), geometry="line"), id="線に半径"),
-        pytest.param(lambda: _attribute(_axis(_rows("a", "b", radii=(4, 4)))), id="半径が行の間で重なる"),
+        pytest.param(lambda: _attribute(_axis(_marks("a", "b", radii=(4, 4)))), id="半径が行の間で重なる"),
     ],
 )
 def test_an_attribute_the_map_cannot_draw_one_way_is_refused(build):
-    """地図は先頭の軸で塗り、絵記号は点の先頭の軸の行ごとの形として、半径は1本の軸から描く。外れた宣言は地図に出ないか、
+    """地図は先頭の軸で塗り、点は先頭の軸の行ごとの絵記号で、大きさは1本の軸から描く。外れた宣言は地図に出ないか、
     形・大きさがどの行のものか決まらない。"""
     with pytest.raises(ValidationError):
         build()
@@ -87,5 +92,5 @@ def test_an_attribute_the_map_cannot_draw_one_way_is_refused(build):
 
 def test_an_attribute_the_map_draws_one_way_is_accepted():
     attribute = _attribute(
-        _axis(_rows("a", "b", glyphs=("g", "h"))), _axis(_rows("x", "y", radii=(4, 6)), palette=None, key="size"))
+        _axis(_marks("a", "b")), _axis(_rows("x", "y", radii=(4, 6)), palette=None, key="size"))
     assert len(attribute.display_axes) == 2

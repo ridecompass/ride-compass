@@ -113,6 +113,7 @@ export const mapDisplay = {
       "kind": "static",
       "dataNature": "raw",
       "defaultOn": false,
+      "drawMinZoom": null,
       "description": [
         "国土地理院の色別標高図を重ねる"
       ],
@@ -129,6 +130,7 @@ export const mapDisplay = {
       "kind": "static",
       "dataNature": "raw",
       "defaultOn": false,
+      "drawMinZoom": null,
       "description": [
         "斜面に陰影を付ける[平地は塗らない]"
       ],
@@ -145,6 +147,7 @@ export const mapDisplay = {
       "kind": "static",
       "dataNature": "raw",
       "defaultOn": false,
+      "drawMinZoom": null,
       "description": [
         "周囲の緑・水辺・農地を面で重ねる[建物は塗らない]"
       ],
@@ -167,6 +170,7 @@ export const mapDisplay = {
       "kind": "static",
       "dataNature": "raw",
       "defaultOn": false,
+      "drawMinZoom": 15,
       "description": [
         "信号、横断歩道、一時停止、徐行、踏切、車止め・ゲート、ハンプ・狭さくの位置を種別ごとに表示"
       ],
@@ -188,6 +192,7 @@ export const mapDisplay = {
       "kind": "static",
       "dataNature": "raw",
       "defaultOn": false,
+      "drawMinZoom": null,
       "description": [
         "コンビニ、飲料自販機、自販機(中身不明)、トイレ、給水、駐輪場の位置を種別ごとに表示"
       ],
@@ -204,6 +209,7 @@ export const mapDisplay = {
       "kind": "static",
       "dataNature": "raw",
       "defaultOn": false,
+      "drawMinZoom": null,
       "description": [
         "飲食店、銭湯・温泉、自転車、景色・名所、宿、寺社の位置を群ごとに表示"
       ],
@@ -220,6 +226,7 @@ export const mapDisplay = {
       "kind": "static",
       "dataNature": "raw",
       "defaultOn": false,
+      "drawMinZoom": 15,
       "description": [
         "警察庁交通事故統計オープンデータ",
         {
@@ -248,6 +255,7 @@ export const mapDisplay = {
       "kind": "static",
       "dataNature": "dynamic",
       "defaultOn": false,
+      "drawMinZoom": null,
       "description": [
         "気象庁の降水ナウキャスト・降水短時間予報・線状降水帯予測マップ・線状降水帯の雨域と、数値予報モデルMSMの格子点の降水量を重ねて表示[実況〜60分先は5分刻み、60分〜15時間先は気象庁の降水短時間予報、15時間〜48時間先はズーム8以上で格子点の値を1時間刻みで。線状降水帯予測マップは現在〜3時間先、線状降水帯の雨域は実況〜30分先の間だけ追加で重畳]"
       ],
@@ -264,6 +272,7 @@ export const mapDisplay = {
       "kind": "static",
       "dataNature": "dynamic",
       "defaultOn": false,
+      "drawMinZoom": null,
       "description": [
         "気象庁の数値予報モデルMSMの格子点の風向・風速を、格子点の位置に矢印で表示[48時間先まで。予報ではなく誤差を含みうる]"
       ],
@@ -280,6 +289,7 @@ export const mapDisplay = {
       "kind": "static",
       "dataNature": "dynamic",
       "defaultOn": true,
+      "drawMinZoom": null,
       "description": [
         "気象庁の雷ナウキャスト・竜巻発生確度・落雷[発生地点]・大雨キキクル・土砂災害キキクル・浸水キキクル・洪水キキクル[河川]をまとめて表示[雷ナウキャスト・竜巻発生確度は時刻に連動、落雷[発生地点]は直近の観測、大雨キキクル・土砂災害キキクル・浸水キキクル・洪水キキクル[河川]は現在の危険度のみ]"
       ],
@@ -296,6 +306,7 @@ export const mapDisplay = {
       "kind": "dynamic",
       "dataNature": "raw",
       "defaultOn": true,
+      "drawMinZoom": null,
       "description": [
         "選択中ルート沿いの情報",
         {
@@ -315,14 +326,16 @@ export const mapDisplay = {
       "category": null,
       "kind": "static",
       "dataNature": "dynamic",
-      "defaultOn": false
+      "defaultOn": false,
+      "drawMinZoom": null
     },
     "road": {
       "dataSource": "road_surface",
       "category": null,
       "kind": "static",
       "dataNature": "raw",
-      "defaultOn": false
+      "defaultOn": false,
+      "drawMinZoom": null
     }
   },
   "weatherLayerGroups": [

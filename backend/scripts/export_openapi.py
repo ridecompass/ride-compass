@@ -227,6 +227,7 @@ def _map_layer_entry(spec: MapLayerSpec) -> dict:
         "kind": spec.kind,
         "dataNature": spec.data_nature,
         "defaultOn": spec.default_on,
+        "drawMinZoom": spec.draw_min_zoom,
     }
 
 

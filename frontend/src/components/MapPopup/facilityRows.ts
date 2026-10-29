@@ -18,7 +18,7 @@ export type Facility = {
   readonly key: string;
   /** 地図の印の色と絵記号（先頭の軸の行）。 */
   readonly color: string;
-  readonly glyph?: PointGlyph;
+  readonly glyph: PointGlyph;
   /** 区分の名前（軸の並びで「・」でつなぐ。引けない値は「不明」）。名前の無い施設は、これを名前の代わりに出す。 */
   readonly kindLabel: string;
   /** 施設の名前。名前のある施設は、名前を外の地図で探すリンクにする。 */
@@ -57,7 +57,7 @@ export function facilityOf(
   return {
     key: [layer.attr_id, kindLabel, name ?? "", ...facts, lngLat[0].toFixed(6), lngLat[1].toFixed(6)].join("|"),
     color: first !== undefined && "color" in first ? first.color : palette.semantic.no_data,
-    ...(first !== undefined && "glyph" in first && "color" in first ? { glyph: first.glyph } : {}),
+    glyph: first !== undefined && "glyph" in first ? first.glyph : "question",
     kindLabel,
     name,
     mapUrl: name === null ? null : externalMapSearchUrl(name, lngLat),

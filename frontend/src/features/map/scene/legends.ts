@@ -9,11 +9,12 @@ import { NO_DATA_LEGEND_BAND } from "@/lib/mapDisplay/mapColorLegend";
 import { ROAD_OTHER_KEY, roadTrackRows } from "@/lib/mapDisplay/roadTracks";
 import type { RoadMapLayerView } from "@/types/route";
 
+import { mapDisplay } from "@/types/generated/mapDisplay";
 import palette from "@/types/generated/palette.json";
 import weatherScales from "@/types/generated/weather-scales.json";
 
 import { pointAxisKey } from "@/features/map/scene/groups/points";
-import { POINT_LAYERS, pointCategoryRadiusPx, type PointAxis } from "@/lib/mapDisplay/pointLayers";
+import { POINT_LAYERS, pointIconScales, type PointAxis } from "@/lib/mapDisplay/pointLayers";
 import { DISASTER_ELEMENTS, DISASTER_LAYER_ID, type DisasterElement } from "@/features/map/layers/dynamicWeather";
 
 /** 凡例1本ぶん。1つのチップが複数の軸を持つことがある（事故は当事者と重大度）。 */
@@ -50,14 +51,15 @@ export function initiallyHiddenLegendKeys(
   );
 }
 
-/** 点の凡例。**色見本を出すのは、地図の色式が読む先頭の軸だけ**——2本目以降（重大度）は
- * 地図では大きさだけで表れるので、見本も色を持たない灰で、地図と同じ大きさにする。絵記号で描く行は見本も絵記号にする。 */
+/** 点の凡例。**色見本を出すのは、地図の色式が読む先頭の軸だけ**で、見本は地図と同じ絵にする。2本目以降（重大度）は
+ * 地図では大きさだけで表れるので、見本も色を持たない灰で、地図の絵と同じ大きさにする。 */
 function pointAxisLegend(layer: (typeof POINT_LAYERS)[number], axis: PointAxis, index: number): SceneLegendAxis {
+  const scales = pointIconScales(axis);
   return {
     layerId: layer.attr_id,
     axisId: pointAxisKey(layer, axis),
     label: axis.label,
-    entries: axis.categories.map((category) =>
+    entries: axis.categories.map((category, i) =>
       index === 0 && "color" in category
         ? {
             key: category.key,
@@ -65,14 +67,13 @@ function pointAxisLegend(layer: (typeof POINT_LAYERS)[number], axis: PointAxis, 
             description: category.description,
             color: category.color,
             ...("glyph" in category ? { glyph: category.glyph } : {}),
-            ...("glyph" in category && layer.point_name_property === null ? { roundFrame: true as const } : {}),
           }
         : {
             key: category.key,
             label: category.label,
             description: category.description,
             color: palette.semantic.legend_size_only,
-            diameterPx: 2 * pointCategoryRadiusPx(category),
+            diameterPx: mapDisplay.point.iconSizePx * scales[i],
           },
     ),
   };

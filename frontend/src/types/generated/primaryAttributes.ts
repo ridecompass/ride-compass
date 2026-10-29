@@ -7,6 +7,8 @@ export const primaryAttributes = [
     "point_facts": [],
     "tile_kind": null,
     "point_name_property": null,
+    "point_min_zoom": null,
+    "point_priority": 0,
     "display_axes": []
   },
   {
@@ -16,6 +18,8 @@ export const primaryAttributes = [
     "point_facts": [],
     "tile_kind": null,
     "point_name_property": null,
+    "point_min_zoom": null,
+    "point_priority": 0,
     "display_axes": []
   },
   {
@@ -25,6 +29,8 @@ export const primaryAttributes = [
     "point_facts": [],
     "tile_kind": null,
     "point_name_property": null,
+    "point_min_zoom": null,
+    "point_priority": 0,
     "display_axes": []
   },
   {
@@ -34,6 +40,8 @@ export const primaryAttributes = [
     "point_facts": [],
     "tile_kind": null,
     "point_name_property": null,
+    "point_min_zoom": null,
+    "point_priority": 0,
     "display_axes": []
   },
   {
@@ -43,6 +51,8 @@ export const primaryAttributes = [
     "point_facts": [],
     "tile_kind": null,
     "point_name_property": null,
+    "point_min_zoom": null,
+    "point_priority": 0,
     "display_axes": []
   },
   {
@@ -52,6 +62,8 @@ export const primaryAttributes = [
     "point_facts": [],
     "tile_kind": null,
     "point_name_property": null,
+    "point_min_zoom": null,
+    "point_priority": 0,
     "display_axes": []
   },
   {
@@ -61,6 +73,8 @@ export const primaryAttributes = [
     "point_facts": [],
     "tile_kind": null,
     "point_name_property": null,
+    "point_min_zoom": null,
+    "point_priority": 0,
     "display_axes": []
   },
   {
@@ -70,6 +84,8 @@ export const primaryAttributes = [
     "point_facts": [],
     "tile_kind": null,
     "point_name_property": null,
+    "point_min_zoom": null,
+    "point_priority": 0,
     "display_axes": []
   },
   {
@@ -79,6 +95,8 @@ export const primaryAttributes = [
     "point_facts": [],
     "tile_kind": null,
     "point_name_property": null,
+    "point_min_zoom": null,
+    "point_priority": 0,
     "display_axes": []
   },
   {
@@ -88,6 +106,8 @@ export const primaryAttributes = [
     "point_facts": [],
     "tile_kind": null,
     "point_name_property": null,
+    "point_min_zoom": null,
+    "point_priority": 0,
     "display_axes": []
   },
   {
@@ -97,6 +117,8 @@ export const primaryAttributes = [
     "point_facts": [],
     "tile_kind": null,
     "point_name_property": null,
+    "point_min_zoom": null,
+    "point_priority": 0,
     "display_axes": []
   },
   {
@@ -106,6 +128,8 @@ export const primaryAttributes = [
     "point_facts": [],
     "tile_kind": "poi",
     "point_name_property": null,
+    "point_min_zoom": 15,
+    "point_priority": 0,
     "display_axes": [
       {
         "key": "kind",
@@ -139,7 +163,7 @@ export const primaryAttributes = [
               "stop"
             ],
             "description": "一時停止の標識がある所[OSM の highway=stop]。",
-            "glyph": "octagon",
+            "glyph": "stop_sign",
             "color": "#736134"
           },
           {
@@ -160,7 +184,7 @@ export const primaryAttributes = [
               "railway_crossing"
             ],
             "description": "線路（路面電車を含む）を渡る所。車道の踏切も歩道・自転車道の踏切も入る[OSM の railway タグ]。",
-            "glyph": "cross",
+            "glyph": "railway",
             "color": "#016f6b"
           },
           {
@@ -200,6 +224,8 @@ export const primaryAttributes = [
     ],
     "tile_kind": "accident",
     "point_name_property": null,
+    "point_min_zoom": 15,
+    "point_priority": -1,
     "display_axes": [
       {
         "key": "party",
@@ -213,7 +239,7 @@ export const primaryAttributes = [
               true
             ],
             "description": "当事者に自転車が含まれる事故[警察庁の交通事故統計の当事者種別]。",
-            "glyph": "bicycle",
+            "glyph": "bicycle_crash",
             "color": "#5791ba"
           },
           {
@@ -223,7 +249,7 @@ export const primaryAttributes = [
               false
             ],
             "description": "当事者に自転車が含まれない事故（車どうし・車と歩行者など）。",
-            "glyph": "alert",
+            "glyph": "crash",
             "color": "#a7865c"
           }
         ],
@@ -264,6 +290,8 @@ export const primaryAttributes = [
     "point_facts": [],
     "tile_kind": null,
     "point_name_property": null,
+    "point_min_zoom": null,
+    "point_priority": 0,
     "display_axes": []
   },
   {
@@ -273,6 +301,8 @@ export const primaryAttributes = [
     "point_facts": [],
     "tile_kind": null,
     "point_name_property": null,
+    "point_min_zoom": null,
+    "point_priority": 0,
     "display_axes": []
   },
   {
@@ -282,6 +312,8 @@ export const primaryAttributes = [
     "point_facts": [],
     "tile_kind": "poi",
     "point_name_property": "name",
+    "point_min_zoom": null,
+    "point_priority": 0,
     "display_axes": [
       {
         "key": "kind",
@@ -360,6 +392,8 @@ export const primaryAttributes = [
     "point_facts": [],
     "tile_kind": "stop_place",
     "point_name_property": "name",
+    "point_min_zoom": null,
+    "point_priority": 0,
     "display_axes": [
       {
         "key": "group",

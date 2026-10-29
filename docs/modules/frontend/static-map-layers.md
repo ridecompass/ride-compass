@@ -19,11 +19,12 @@
 | `features/map/scene/groups/roadLines.ts` | 道路の線（例: 路面の種類・トンネル・自転車レーン）を、backendの配る層の値（feature-state）と`roadTracks.ts`の行から式へ組んだ配色と、詳細を見ている1本の強調。**線レイヤーで分類を運ぶのは色だけで、太さは情報を持たず、線種が運ぶのは値が無いこと（タグが無い道＝「データなし」の破線）だけ**——1本の線へ複数の分類を載せると、色の意味が他方のON/OFFで入れ替わる。同時表示は横へ平行に割り付けて分ける |
 | `features/map/useRoadClasses.ts` | 道路の線を塗る道ごとの層の値を、表示中のタイルを1枚ずつ問い合わせて取り（[評価軸の色分け](map-axis-coloring.md)の`features/map/tileQueries.ts`）、取得中・失敗とともに返す（道の線の層が1つも出ていない間は取らない） |
 | `lib/mapDisplay/pointLayers.ts` | 点で描く属性（`lib/mapDisplay/pointLayers.ts: POINT_LAYERS`）と、点の値が入る行（`lib/mapDisplay/pointLayers.ts: pointCategoryOf`）・大きさの軸と行の半径・点の名前（`lib/mapDisplay/pointLayers.ts: pointPlaceName`）・束ねた代表点の中の名前のある点（`lib/mapDisplay/pointLayers.ts: pointMembers`）。地図の点・地図の凡例・点のポップアップ・道のりのグラフの印が同じ宣言を読むので、同じ点が地図とグラフで同じ色・呼び名になる |
-| `features/map/scene/groups/points.ts` | 停止要因POI・補給休憩POI・事故・立ち寄り先の分類・配色・点の形（丸い点か絵記号か）・束ねた点の数の文字と、同じタイルを分け合う条件 |
+| `features/map/scene/groups/points.ts` | 停止要因POI・補給休憩POI・事故・立ち寄り先の分類・配色・点の絵と枠・描き始める縮尺と積む順・束ねた点の数の文字と、同じタイルを分け合う条件 |
 | `features/map/scene/groups/sidePoints.ts` | 選んだ区間の近くの点を、点の層のタイルから点の層と同じ色・絵記号で描く印と、近いかの絞り込み（下記「選んだ区間の近くの点」） |
 | `lib/mapDisplay/sidePoints.ts` | 近くの点の距離の上限（backendの`domain/map_display.py: SEGMENT_NEARBY_POINT_MAX_DISTANCE_M`を生成物から読む）・区間の小窓に並べる点の層（補給・立ち寄り先）・地図に出す・消すの区分の鍵と、点の位置を区間に当てた道のりと道からの距離 |
 | `features/map/layers/pointIcon.ts` | 絵記号で描く点の、地図へ登録する画素。形は見本（`components/PointIconSwatch/PointIconSwatch.tsx`）の宣言を読む。**単体テストは持たない**（`sdfIcon.ts`と同じく、テスト環境のcanvasは2D描画を実装せず、形は座標の宣言そのもの） |
-| `components/PointIconSwatch/PointIconSwatch.tsx` | 地図の点の見本。絵記号で描く点の絵の形（行の色の枠——押せる点は角丸四角、押せない点は丸——と白い絵記号）の宣言を持ち、地図へ登録する画素（`pointIcon.ts`）と見本（`PointIconSwatch`）が同じ宣言を読む。絵記号を持たない点の見本（`PointDotSwatch`。地図の丸い点と同じ色・直径）も持つ。地図の凡例と区間の近くの施設のチップ（ルートの機能）が出すので共有の層に置く。絵記号の名前は源泉の行が持ち、描き方の無い名前は型検査が落とす |
+| `components/PointIconSwatch/PointIconSwatch.tsx` | 地図の点の見本。点の絵の形（行の色の枠——押せる点は角丸四角、押せない点は丸——に載せる白い線の絵記号と、枠を持たない標識の絵）の宣言と、
+それを描く部品の列（`components/PointIconSwatch/PointIconSwatch.tsx: pointIconParts`）を持ち、地図へ登録する画素（`pointIcon.ts`）と見本（`PointIconSwatch`）が同じ列を描く。地図の凡例と区間の近くの施設のチップ（ルートの機能）が出すので共有の層に置く。絵記号の名前は源泉の行が持ち、描き方の無い名前は型検査が落とす |
 | `features/map/scene/groups/areaRasters.ts` | 面（色別標高図・土地被覆・起伏の陰影） |
 | `features/map/scene/legends.ts` | 上の宣言から凡例の行を作る（色と分類の正本はグループにしかない）。災害チップの要素ごとの表示切替の行も、源泉の要素の宣言（backend `domain/weather_elements.py: WEATHER_ELEMENTS`の`features/map/scene/legends.ts: label`、色見本は塗る段`level_scale`）から作る |
 | `features/map/scene/mapSceneGroups.ts` | 家族（面・道路の線・点・評価軸・ルート・気象）を「いまの状態から、載っているべきレイヤーの並びを返す」1つの形で宣言する型と、それらを1つのsceneへ畳む`features/map/scene/mapSceneGroups.ts: composeScene`（同じソースを名乗る家族を1本へまとめる） |
@@ -509,9 +510,10 @@ ON/OFFから行う（画面の側は下敷きの有無を知らない）。
 ONにしても何も塗られない。「データが無い地域」と区別できるよう案内を出す。
 
 対象は**最小ズームを持つ情報源を読むレイヤー**で、閾値は情報源の側で源泉が宣言する
-（backendの`domain/map_display.py: MAP_LAYER_DATA_SOURCES`。記述子の`tileMinZoom`へ入る）
+（backendの`domain/map_display.py: MAP_LAYER_DATA_SOURCES`）
 ——レイヤーごとに書くと、同じタイルを読むレイヤーの1つだけ書き忘れても型が通り、そのチップ
-だけ案内が出ない。`features/map/view/useMapView.ts`が、地図から届く表示範囲（パン・ズームが確定する
+だけ案内が出ない。配信より寄ってから描く層（停止要因・事故。下記「点の形も源泉が決める」）は、描き始める縮尺も同じ案内に数える
+（`domain/map_display.py: MapLayerSpec.draw_min_zoom`。記述子の`minZoom`は配信の縮尺と描き始める縮尺の寄った方）。`features/map/view/useMapView.ts`が、地図から届く表示範囲（パン・ズームが確定する
 たびに届く）の`zoom`で`mapLayers.ts: tileZoomTooWideLayerIds(zoom)`を引き、そのチップへ
 `TILE_ZOOM_TOO_WIDE_NOTICE`を出す——ズームは表示範囲の通知に含まれているため、地図から別の
 通知として上げない。▶の中身は**案内文があれば案内文、無ければ凡例**
@@ -715,7 +717,7 @@ backendが200で応答する窓では、カタログは取得済みなのに世�
 （当事者）で塗り、重大度は点の大きさだけで示す。2本目以降の軸に色を配ると、地図のどこにも
 塗られない色が凡例にだけ並ぶ。点の大きさは、行に半径（`radius_px`）を宣言した軸が決め、半径を宣言できるのは
 点の軸のうち1本だけ（backendの`test_registry.py`が確かめる）。凡例の重大度の行は、色を持たない灰の見本を地図の点と同じ
-大きさで出す（大きさは地図の半径と同じ関数`points.ts: pointCategoryRadiusPx`から取る）。
+大きさで出す（大きさは地図と同じ関数`lib/mapDisplay/pointLayers.ts: pointIconScales`から取る）。
 
 **凡例の色見本は、パネルへ直に、地図と同じ形で置く**（道の線の行は線、点の行は点、絵記号で描く点の行は同じ絵記号）。線の行は線の形のまま
 地図の線より太く出す（凡例の行の`line`）——地図と同じ太さでは、見本を囲む輪（下）に挟まれて色の部分が細く残り読めない。点の見本は
@@ -800,21 +802,25 @@ E2Eの`e2e/map-runtime.spec.ts`「宣言された地図レイヤーを全部ON�
 歩道・自転車道用の踏切）は1行へまとめる。色分け式には各種別がそのまま載るため、地図の
 見た目とポップアップの語彙は種別ごとに正しく出る。
 
-**点の形も源泉が決める。** 先頭の軸の行が絵記号の名前（`domain/registry.py: DisplayCategorySpec.glyph`）を持つレイヤーは、行の色の
-枠に白い絵記号を載せた記号で描き（例: 補給・休憩のコンビニ＝袋・トイレ＝WC、停止要因の信号・踏切、事故の自転車）、持たないレイヤーは丸い点で描く。
+**点の形も源泉が決める。** 点は先頭の軸の行が持つ絵記号の名前（`domain/registry.py: DisplayCategorySpec.glyph`。点の先頭の軸の行の全部が持つ）で描く。
+名前のプロパティを持つレイヤー（補給・休憩等）は、行の色の枠に白い線の絵記号を載せる（例: コンビニ＝袋・トイレ＝WC）。
 **枠の形は押せるかを示す**: 名前のある点（押せる点。上記「地図を押したときと地図の小窓」）は角丸四角、名前の無い点は丸い枠で少し薄く描く
 （`scene/groups/points.ts: iconImageExpression`。名前の有無は点ごとに式で決める）。名前のプロパティを持たないレイヤー（停止要因・事故）は
-点が全部押せないので、丸い枠の絵だけを持ち、引いた縮尺（`scene/groups/points.ts: UNNAMED_GLYPH_MIN_ZOOM`より前）では絵記号でなく行の色の丸い点で
-描く——道に沿って並ぶ信号や事故を全部絵にすると、引いた地図が絵で埋まる。事故の重大度は、丸い点では
-半径で、絵記号では絵の大きさで示す。凡例は、そのレイヤーの見本を丸い枠で出す。
-絵は行ごとにsceneの絵として宣言し（`scene/groups/points.ts: POINT_IMAGES`）、記号は行の値から絵の名前を引く。丸い点も行の色と半径ごとの絵
-（`scene/groups/points.ts: POINT_DOTS`）として描く——丸のレイヤー（`circle`）は MapLibre の重なりの判定に加わらない。
+点が全部押せないので、枠を持たない、日本の道路標識に似せた絵で描く（例: 一時停止＝赤い逆三角に「止」、踏切＝黄色のひし形に電車。
+絵の形は`components/PointIconSwatch/PointIconSwatch.tsx: POINT_GLYPHS`が持ち、色は`domain/display_palette.py: SEMANTIC_COLORS`の標識の色を読む）。
+この層は、宣言した描き始める縮尺（`domain/registry.py: PrimaryAttributeSpec.point_min_zoom`）より引いた縮尺では描かない——道に沿って並ぶ
+信号や事故を引いた縮尺で描くと、地図が絵で埋まる。区間の近くの点も同じ縮尺から描く。
+事故の重大度は絵の大きさで示し（`lib/mapDisplay/pointLayers.ts: pointIconScales`。凡例の見本も同じ倍率を読む）、凡例の見本も地図と同じ絵で出す。
+絵は行ごとにsceneの絵として宣言し（`scene/groups/points.ts: POINT_IMAGES`）、記号は行の値から絵の名前を引く——丸のレイヤー（`circle`）は
+MapLibre の重なりの判定に加わらないので、点はどれも絵の印で描く。
 近い点はタイルの側で凡例の行ごとに代表点へ束ねて届く（[静的道路属性](../backend/static-road-attributes.md)「点のタイル」）。
 **重なる印は地図が省く**: 点の層は MapLibre の重なりの既定（ほかの記号とぶつかる印は描かない）を上書きしない（`scene/groups/points.ts: pointLook`）。
 束ねは層ごと・凡例の行ごとなので、層をいくつも出すと1つの升に行の数だけ代表点が重なるが、地図はそのうち先に置いた印だけを描く。
-省いた点は寄せて重ならなくなると出て、押せるのは描かれた点だけである。点は基礎地図の文字とも重なりを判定する。
-2点以上を束ねた代表点には点の右へ数を出す（同じ印の文字なので、印が省かれれば数も出ない。数は押せない）。絵記号は行の全部に付けるか、どれにも付けない——一部の行だけ形が違うと、形が分類の意味を持って
-しまう（backendの`test_registry.py`が確かめる）。地図が行の値ごとに見本と同じ色・同じ絵記号の絵を引くことは
+省いた点は寄せて重ならなくなると出て、押せるのは描かれた点だけである。印は上に積んだ層から置かれるので、宣言の残す順
+（`domain/registry.py: PrimaryAttributeSpec.point_priority`）の大きい層を上に積む（`scene/groups/points.ts: STACKED_POINT_LAYERS`。区間の近くの点も同じ）。
+停止要因と事故が重なると、停止要因を残す。点は基礎地図の文字とも重なりを判定する。
+2点以上を束ねた代表点には点の右へ数を出す（同じ印の文字なので、印が省かれれば数も出ない。数は押せない）。絵記号は点の先頭の軸の行の全部に、行ごとに違う絵で付ける——絵の無い行は描けず、一部の行だけ形が違うと、形が分類の意味を
+持ってしまう（backendの`test_registry.py`が確かめる）。地図が行の値ごとに見本と同じ色・同じ絵記号の絵を引くことは
 `scene/legends.test.ts`が確かめる。
 
 **点の不透明度はレイヤーごとに源泉が宣言する**（一次属性の行の`point_opacity`、無ければ既定。`domain/map_display.py: POINT_OPACITY_BY_ATTR`。生成物`mapDisplay.point.opacityByLayer`）。

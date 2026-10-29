@@ -32,7 +32,7 @@ function renderSwatch(entry: LegendEntry) {
   if (entry.glyph !== undefined) {
     return (
       <span aria-hidden="true" className="inline-flex w-6 flex-shrink-0 items-center justify-center">
-        <PointIconSwatch color={entry.color} glyph={entry.glyph} frame={entry.roundFrame ? "circle" : "box"} />
+        <PointIconSwatch color={entry.color} glyph={entry.glyph} />
       </span>
     );
   }
