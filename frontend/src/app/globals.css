@@ -10,8 +10,10 @@
 @theme static {
   /* スマホ幅の境目。**この値を持つのはここだけ**——メディアクエリはカスタム
    * プロパティを条件に使えないので、各ファイルは`theme()`で引く（ビルド時に
-   * 実値へ置き換わる）。JS側は値を持たず、`--is-mobile`の旗を読む。 */
-  --breakpoint-mobile: 640px;
+   * 実値へ置き換わる）。JS側は値を持たず、`--is-mobile`の旗を読む。
+   * 値はデスクトップの配置が始まる幅で、これより狭ければスマホ幅（640pxまで）。Tailwindの`max-mobile:`も
+   * 同じ「これより狭い」で判定するので、メディアクエリも`width <`で書く（`max-width`は境目を含んで割れる）。 */
+  --breakpoint-mobile: 641px;
 
   --radius-sm: 6px;
   --radius-md: 10px;
