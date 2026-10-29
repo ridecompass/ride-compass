@@ -7,7 +7,7 @@
     .venv\\Scripts\\python.exe -m app.batch.derive_cli
 
 **入力が前回の作り直しと同じ段は流さない。** 段の出力は、読むソースの取込・読む前の段の出力・較正値・書く表の列・
-段のコード・実行環境の版（Python・ライブラリ・DB）だけで決まる（乱数・時刻・外部への問い合わせを読まない）ので、段ごとにこれらから指紋を作って
+段のコード・段のコードが読み込むライブラリの版・実行環境の版（Python・DB）だけで決まる（乱数・時刻・外部への問い合わせを読まない）ので、段ごとにこれらから指紋を作って
 （`stage_fingerprints`）派生の記録（`derived_stages`）と比べ、同じ段の表は作業用のスキーマに作らず、`public`の前回の表を
 そのまま読み、入れ替えでも残す。前の段の指紋も入力に入れるので、流した段を読む後ろの段は必ず流れる——外部キーで
 表を指す段も、指す表を書く段を前の段に挙げるので、指される表を作り直せば一緒に作り直す。全部の段が同じなら、
@@ -155,7 +155,7 @@ def stage_fingerprints(runs: Mapping[str, int], tuning: Mapping[str, float],
                        columns: Mapping[str, frozenset[str]], database: str) -> dict[str, str]:
     """段ごとの入力の指紋（段の名前 → 指紋）。区間ごとに写す段は、前の段を除いた入力の指紋も`_outside_key`の名前で持つ。
     `runs`は全ソースの成功した最新の取込、`columns`は派生の表の宣言の列、`database`はDBの版（PostgreSQLとPostGIS）。"""
-    runtime = {"python": sys.version, "libraries": library_versions(), "database": database}
+    runtime = {"python": sys.version, "database": database}
     fingerprints: dict[str, str] = {}
     for stage in STAGES:
         inputs = {
@@ -164,6 +164,7 @@ def stage_fingerprints(runs: Mapping[str, int], tuning: Mapping[str, float],
             "tuning": {param: tuning[param] for param in sorted(stage.tuning.values())},
             "columns": {table: sorted(columns[table]) for table in stage.tables},
             "code": code_fingerprint(stage.module.__name__),
+            "libraries": library_versions(stage.module.__name__),
             "runtime": runtime,
         }
         if stage.per_edge:
@@ -288,6 +289,7 @@ async def _build_road_network(database_url: str, schema: str | None, revision: i
                 "accident_years": await repository.get_accident_years_covered(),
                 "tuning": await repository.get_network_tuning(),
                 "code": code_fingerprint(road_network_store.__name__),
+                "libraries": library_versions(road_network_store.__name__),
             })
             pending = road_network_store.reuse_pending(inputs, revision)
             if pending is not None:

@@ -6,14 +6,19 @@
 たどるのはソースの文（AST）で、関数の中の`import`も数える（重いライブラリを使うときだけ読むモジュールが、
 関数の中で読み込む）。`from <パッケージ> import <名前>`は、名前がモジュールならそのモジュールも数える。
 パッケージを読むと`__init__.py`が走るので、たどったモジュールの親のパッケージも数える。`app`の外
-（標準ライブラリ・依存のライブラリ）はたどらない——ライブラリの版は、使う側が別に数える（`library_versions`）。
+（標準ライブラリ・依存のライブラリ）はたどらない——たどったモジュールが読み込むライブラリは、版を別に数える
+（`library_versions`）。
 """
 
 import ast
 import functools
 import hashlib
 import importlib.metadata
+from collections.abc import Iterable
 from pathlib import Path
+
+from packaging.requirements import Requirement
+from packaging.utils import canonicalize_name
 
 #: `app`のパッケージを置いた場所（`backend/`）。モジュールの名前はここから読むファイルへ移す。
 ROOT = Path(__file__).resolve().parents[2]
@@ -35,7 +40,7 @@ def _in_app(name: str) -> bool:
 
 
 def _imported(name: str, path: Path) -> frozenset[str]:
-    """`path`（モジュール`name`）が読み込む`app`の中のモジュールの名前（モジュールでない名前も混ざる）。"""
+    """`path`（モジュール`name`）が読み込むモジュールの絶対の名前（モジュールでない名前も混ざる）。"""
     package = name if path.name == "__init__.py" else name.rpartition(".")[0]
     return _imported_by_source(package, path.read_bytes())
 
@@ -57,7 +62,7 @@ def _imported_by_source(package: str, source: bytes) -> frozenset[str]:
                 module = node.module or ""
             found.add(module)
             found.update(f"{module}.{alias.name}" for alias in node.names)
-    return frozenset(module for module in found if _in_app(module))
+    return frozenset(found)
 
 
 def _with_parents(name: str) -> list[str]:
@@ -78,7 +83,8 @@ def reachable_modules(module: str) -> dict[str, Path]:
             continue
         seen[name] = path
         for imported in _imported(name, path):
-            pending.extend(_with_parents(imported))
+            if _in_app(imported):
+                pending.extend(_with_parents(imported))
     return seen
 
 
@@ -91,8 +97,54 @@ def code_fingerprint(module: str) -> str:
     return digest.hexdigest()
 
 
-# 読み込んだライブラリはプロセスの間に替わらないので、1プロセスで1度だけ読む。
+def library_versions(module: str) -> tuple[str, ...]:
+    """`module`からたどれるモジュールが読み込むライブラリと、それらが依存するライブラリの名前と版（`<名前>==<版>`）。
+
+    読み込むライブラリは、たどったモジュールの`import`の先頭の名前を、入っている配布物へ移して決める。読み込まない
+    ライブラリ（`app`のほかの所だけが使うもの）の版が変わっても、指紋は変わらない。
+    """
+    names = {imported.partition(".")[0] for name, path in reachable_modules(module).items()
+             for imported in _imported(name, path) if not _in_app(imported)}
+    return _distribution_versions({dist for name in names for dist in _packages().get(name, ())})
+
+
+# 入っている配布物はプロセスの間に替わらないので、全部の配布物のファイルの一覧を読むのは1プロセスで1度だけにする。
 @functools.cache
-def library_versions() -> tuple[str, ...]:
-    """入っているライブラリの名前と版（`<名前>==<版>`）。"""
-    return tuple(sorted(f"{dist.metadata['Name']}=={dist.version}" for dist in importlib.metadata.distributions()))
+def _packages() -> dict[str, list[str]]:
+    """`import`の先頭の名前 → それを入れた配布物の名前。"""
+    return dict(importlib.metadata.packages_distributions())
+
+
+def _distribution_versions(roots: Iterable[str]) -> tuple[str, ...]:
+    """配布物`roots`と、その依存を入っている分だけたどった配布物の名前と版。
+
+    依存の宣言は、追加の機能（extra）の名前の条件付きで書かれる。`roots`はどの追加の機能を入れたかが`import`から
+    分からず（`sqlalchemy`の非同期の口は追加の機能`asyncio`の依存`greenlet`を読む）、宣言の全部の追加の機能の依存を
+    数える。その先は、依存の宣言が求めた追加の機能だけを数える——入っていない配布物は数えないので、多く数えるのは
+    入っている分だけで、多く数えても段が余計に流れるだけで済む。
+    """
+    root_keys = {canonicalize_name(name) for name in roots}
+    found: dict[str, str] = {}
+    # 配布物 → 依存を数えた追加の機能。後から別の追加の機能を求められたら、その分の依存も数える。
+    counted: dict[str, frozenset[str]] = {}
+    pending: list[tuple[str, frozenset[str]]] = [(name, frozenset()) for name in root_keys]
+    while pending:
+        name, extras = pending.pop()
+        key = canonicalize_name(name)
+        if key in counted and extras <= counted[key]:
+            continue
+        try:
+            dist = importlib.metadata.distribution(name)
+        except importlib.metadata.PackageNotFoundError:
+            continue
+        found[key] = f"{dist.metadata['Name']}=={dist.version}"
+        if key in root_keys:
+            extras = frozenset(dist.metadata.get_all("Provides-Extra") or ())
+        extras |= counted.get(key, frozenset())
+        counted[key] = extras
+        for line in dist.requires or ():
+            requirement = Requirement(line)
+            if requirement.marker is None or any(requirement.marker.evaluate({"extra": extra})
+                                                  for extra in ("", *extras)):
+                pending.append((requirement.name, frozenset(requirement.extras)))
+    return tuple(sorted(found.values()))

@@ -1062,7 +1062,7 @@ ST_AsMVT丸ごと生成。列は材料の値式から組む。[評価・スコ�
 鍵で新しい表から形（`get_edges_with_geometry`）を引く（[静的道路属性](static-road-attributes.md)「派生」）。
 
 **派生の作り直しは、配列の入力が前回と同じなら配列を作らない。** 入力は、読み出しの文が読む表を書く段の指紋・文が直に読む
-ソースの取込・事故の収録年数・配列を組むコード（`batch/derive_cli.py: network_inputs`。読む表は文を書き写さずPostgreSQLの
+ソースの取込・事故の収録年数・配列を組むコードとそれが読み込むライブラリの版（`batch/derive_cli.py: network_inputs`。読む表は文を書き写さずPostgreSQLの
 計画から読む（`RoadGraphRepository.network_relations`））で、その指紋を置き場の`manifest.json`に書く。今の形で最も新しい置き場が
 同じ指紋なら、その配列をハードリンクで新しい世代の名前へ出し直す（`reuse_pending`。中身は前の世代と同じ）。どの段も書かず
 生データでもない表を文が読むと、入力を導くところで作り直しが止まる——その表の変化が指紋に出ず、古い配列を使い回すため。
