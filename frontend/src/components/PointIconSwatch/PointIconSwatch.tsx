@@ -15,7 +15,7 @@ const circle = (x: number, y: number, r: number) =>
 /** 線の絵の枠。押せる点（名前のある点）は角丸の四角、押せない点（名前の無い点）は丸——枠の形で押せるかを、絵記号で何の点かを表す。
  * 標識の絵は枠を持たない。 */
 export type PointFrame = "box" | "circle";
-export const FRAME_PATHS: Record<PointFrame, string> = {
+const FRAME_PATHS: Record<PointFrame, string> = {
   box: BOX_PATH,
   circle: circle(12, 12, 11),
 };
@@ -42,7 +42,7 @@ export type IconPart =
 
 /** 点の絵の形。線の絵は行の色の枠に白い線で載せ、標識の絵は色を持つ部品を順に描く（枠も行の色も使わない）。名前を持たない層
  * （押せない点だけの層）の絵は標識の絵で、日本の道路標識・信号機に似せて何の点かを直感的に読ませる。 */
-export type PointGlyphShape = { readonly line: string } | { readonly sign: readonly IconPart[] };
+type PointGlyphShape = { readonly line: string } | { readonly sign: readonly IconPart[] };
 
 const SIGN = palette.semantic;
 const DOWN_TRIANGLE = "M1.2 2.4H22.8L12 22.8Z";
