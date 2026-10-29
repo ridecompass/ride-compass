@@ -14,7 +14,7 @@ from app.domain.registry import DisplayAxisSpec, DisplayCategorySpec, PrimaryAtt
 
 
 def _attribute(attr_id: str, hue_slot: int = 0, values: tuple[str, ...] = ("a",)) -> PrimaryAttributeSpec:
-    rows = tuple(DisplayCategorySpec(key=v, label=v, values=(v,), description="d") for v in values)
+    rows = tuple(DisplayCategorySpec(key=v, label=v, values=(v,), description="d", glyph=v) for v in values)
     axis = DisplayAxisSpec(key="k", property="k", palette="nominal", hue_slot=hue_slot, categories=rows)
     return PrimaryAttributeSpec(attr_id=attr_id, label=attr_id, geometry="point", display_axes=(axis,), tile_kind="poi")
 

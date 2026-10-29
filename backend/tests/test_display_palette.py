@@ -77,11 +77,17 @@ def over_ground(color: str, opacity: float) -> str:
     )
 
 
-def axis(key: str, count: int, **fields) -> DisplayAxisSpec:
+def axis(key: str, count: int, glyphs: bool = False, **fields) -> DisplayAxisSpec:
+    """`glyphs`は行ごとに違う絵記号を付ける（点の先頭の軸）。"""
     return DisplayAxisSpec(
         key=key,
         property=key,
-        categories=tuple(DisplayCategorySpec(key=f"{key}{i}", label=f"行{i}", values=(f"v{i}",), description=f"行{i}の道") for i in range(count)),
+        categories=tuple(
+            DisplayCategorySpec(
+                key=f"{key}{i}", label=f"行{i}", values=(f"v{i}",), description=f"行{i}の道", glyph=f"g{i}" if glyphs else None
+            )
+            for i in range(count)
+        ),
         **fields,
     )
 
@@ -95,7 +101,7 @@ def test_only_the_first_axis_with_a_palette_gets_colors():
         attr_id="attr_a",
         label="属性A",
         geometry="point",
-        display_axes=(axis("main", 3, palette="nominal", hue_slot=4), axis("size", 2)),
+        display_axes=(axis("main", 3, glyphs=True, palette="nominal", hue_slot=4), axis("size", 2)),
         tile_kind="poi",
     )
 
@@ -107,7 +113,7 @@ def test_only_the_first_axis_with_a_palette_gets_colors():
 
 
 def test_a_glyph_reaches_the_screen_only_on_rows_that_declare_one():
-    """画面は行が`glyph`の鍵を持つかで絵記号の点か丸い点かを分ける。持たない行に空の値を配ると、丸い点の行まで絵記号になる。"""
+    """画面は行が`glyph`の鍵を持つかで凡例の見本を絵にするかを分ける。持たない行に空の値を配ると、大きさだけを示す行まで絵の見本になる。"""
     with_glyphs = DisplayAxisSpec(
         key="main",
         property="main",

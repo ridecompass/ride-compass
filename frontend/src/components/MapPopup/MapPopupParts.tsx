@@ -6,7 +6,7 @@
 import type { ReactNode } from "react";
 
 import AxisContributionBar, { hasAnyContribution } from "@/components/AxisContributionBar/AxisContributionBar";
-import { PointDotSwatch, PointIconSwatch } from "@/components/PointIconSwatch/PointIconSwatch";
+import { PointIconSwatch } from "@/components/PointIconSwatch/PointIconSwatch";
 import { legendChipsClass } from "@/components/ui/AxisLegend/axisLegend";
 import { Button } from "@/components/ui/Button/Button";
 import { OffRoadDistanceIcon, SelectedSpotIcon } from "@/components/ui/icons/lucideIcons";
@@ -49,10 +49,10 @@ export function BackToSegmentButton({ onBack }: { onBack: () => void }) {
 }
 
 /** 地図の印と同じ見本。読み上げと長押しの説明に区分の名前を持たせる。 */
-function KindSwatch({ color, glyph, label }: { color: string; glyph?: PointGlyph; label: string }) {
+function KindSwatch({ color, glyph, label }: { color: string; glyph: PointGlyph; label: string }) {
   return (
     <span role="img" aria-label={label} title={label} className="inline-flex flex-none items-center">
-      {glyph === undefined ? <PointDotSwatch color={color} /> : <PointIconSwatch color={color} glyph={glyph} />}
+      <PointIconSwatch color={color} glyph={glyph} />
     </span>
   );
 }

@@ -81,7 +81,7 @@ PRIMARY_ATTRIBUTES: tuple[PrimaryAttributeSpec, ...] = (
                         glyph="signal",
                     ),
                     _kind_row("crossing", "横断歩道", ("crossing",), "信号の無い横断歩道", glyph="crosswalk"),
-                    _kind_row("stop", "一時停止", ("stop",), "一時停止の標識がある所", glyph="octagon"),
+                    _kind_row("stop", "一時停止", ("stop",), "一時停止の標識がある所", glyph="stop_sign"),
                     _kind_row("give_way", "徐行", ("give_way",), "相手に道を譲る（徐行する）標識がある所", glyph="yield"),
                     # 車道用と歩道・自転車道用の踏切は、利用者から見れば同じ「線路を渡る点」。
                     _kind_row(
@@ -89,7 +89,7 @@ PRIMARY_ATTRIBUTES: tuple[PrimaryAttributeSpec, ...] = (
                         "踏切",
                         ("level_crossing", "railway_crossing"),
                         "線路（路面電車を含む）を渡る所。車道の踏切も歩道・自転車道の踏切も入る",
-                        glyph="cross",
+                        glyph="railway",
                     ),
                     _kind_row(
                         "barrier",
@@ -108,6 +108,7 @@ PRIMARY_ATTRIBUTES: tuple[PrimaryAttributeSpec, ...] = (
                 ),
             ),
         ),
+        point_min_zoom=15,
     ),
     ATTR_ACCIDENT_POINT := PrimaryAttributeSpec(
         attr_id="accident_point",
@@ -131,14 +132,14 @@ PRIMARY_ATTRIBUTES: tuple[PrimaryAttributeSpec, ...] = (
                         label="自転車関連",
                         values=(True,),
                         description="当事者に自転車が含まれる事故[警察庁の交通事故統計の当事者種別]。",
-                        glyph="bicycle",
+                        glyph="bicycle_crash",
                     ),
                     DisplayCategorySpec(
                         key="other",
                         label="その他",
                         values=(False,),
                         description="当事者に自転車が含まれない事故（車どうし・車と歩行者など）。",
-                        glyph="alert",
+                        glyph="crash",
                     ),
                 ),
             ),
@@ -167,6 +168,9 @@ PRIMARY_ATTRIBUTES: tuple[PrimaryAttributeSpec, ...] = (
         point_facts=(PointFactSpec(property="occurred_year", label="発生年"),),
         # 事故は面的に多く、同じ濃さだと停止要因の点が埋もれる。
         point_opacity=0.75,
+        point_min_zoom=15,
+        # 重なると停止要因の点を残す（走る前に知りたいのは、どこで止まるか）。
+        point_priority=-1,
     ),
     ATTR_INTERSECTION := PrimaryAttributeSpec(attr_id="intersection", label="交差点", geometry="point"),
     ATTR_LANDCOVER := PrimaryAttributeSpec(attr_id="landcover", label="緑と水", geometry="area"),

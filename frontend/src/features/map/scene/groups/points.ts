@@ -10,8 +10,9 @@
  * 取る。行が種別を取りこぼすと、その種別の点は地図から消える——行と種別の一覧が一致することは
  * backendのテスト（`test_primary_attributes.py`）が全種別で確かめる。
  *
- * 点の形も源泉が決める。先頭の軸の行が絵記号（`glyph`）を持つレイヤーは、行の色の角丸四角に絵記号を載せた
- * 記号で描き、持たないレイヤーは丸い点で描く。重なる印は地図が省く（`pointLook`）。
+ * 点の形も源泉が決める。点は先頭の軸の行が持つ絵記号（`glyph`。形は`components/PointIconSwatch/PointIconSwatch.tsx: POINT_GLYPHS`）
+ * で描く。描き始める縮尺（`point_min_zoom`）と、重なったときどの層の印を残すか（`point_priority`）も源泉の宣言を読む。
+ * 重なる印は地図が省く（`pointLook`）。
  *
  * 近い点はタイルの側で1つの代表点に束ねてあり、代表点は束ねた点の数を持つ（`mapDisplay.point.countProperty`）。2点以上を
  * 束ねた代表点は、点の右に数を出す。
@@ -32,15 +33,15 @@ import type { PointGlyph } from "@/lib/mapDisplay/legendFilter";
 import {
   isPointTileLayer,
   POINT_LAYERS,
-  pointCategoryRadiusPx,
+  pointIconScales,
   sizeAxis,
   type PointAxis,
   type PointLayer,
   type PointTileLayer,
 } from "@/lib/mapDisplay/pointLayers";
 
-import { drawPointDot, drawPointIcon } from "@/features/map/layers/pointIcon";
-import type { PointFrame } from "@/components/PointIconSwatch/PointIconSwatch";
+import { drawPointIcon } from "@/features/map/layers/pointIcon";
+import { POINT_GLYPHS, type PointFrame } from "@/components/PointIconSwatch/PointIconSwatch";
 import type { MapSceneImage } from "@/features/map/scene/mapScene";
 import { declareGroup, type SceneLayerEntry, type SceneSourceEntry } from "@/features/map/scene/mapSceneGroups";
 
@@ -176,15 +177,16 @@ function glyphCategories(layer: PointLayer): readonly GlyphCategory[] {
 
 /** 地図へ登録する絵の名前。**登録側と参照側が同じ1つを使う**（綴りがずれると点が出ない）。 */
 function pointIconId(layer: PointLayer, category: GlyphCategory, frame: PointFrame): string {
-  return `point-icon:${layer.attr_id}:${category.key}:${frame}`;
+  const look = "sign" in POINT_GLYPHS[category.glyph] ? "sign" : frame;
+  return `point-icon:${layer.attr_id}:${category.key}:${look}`;
 }
 
-/** 層の点が使う枠。名前を持つ層は押せる点（四角）と押せない点（丸）の両方、名前を持たない層は丸だけ。 */
+/** 層の点が使う枠。名前を持つ層は押せる点（四角）と押せない点（丸）の両方、名前を持たない層は丸だけ。標識の絵は枠に依らない。 */
 function layerFrames(layer: PointLayer): readonly PointFrame[] {
   return layer.point_name_property === null ? ["circle"] : ["box", "circle"];
 }
 
-/** 絵記号で描く点の絵（名前・下地の色・絵記号・枠）。 */
+/** 点の絵（名前・下地の色・絵記号・枠）。 */
 export const POINT_ICONS: readonly { id: string; color: string; glyph: PointGlyph; frame: PointFrame }[] =
   POINT_LAYERS.flatMap((layer) =>
     glyphCategories(layer).flatMap((category) =>
@@ -208,7 +210,8 @@ function iconImageExpression(layer: PointLayer, categories: readonly GlyphCatego
   return named === null ? imageOf("circle") : ["case", named, imageOf("box"), imageOf("circle")];
 }
 
-/** 名前の無い点（押せない点）の濃さの割合。押せるかは主に枠の形（`PointFrame`）で見分け、濃さは控えめに添える。 */
+/** 名前を持つ層の、名前の無い点（押せない点）の濃さの割合。押せるかは主に枠の形（`PointFrame`）で見分け、濃さは控えめに添える。
+ * 名前を持たない層の点は全部押せないので、薄くしない。 */
 const UNNAMED_OPACITY_RATIO = 0.8;
 
 /** 名前のある点か（名前の欄が空でないか、束ねた中の名前のある点の欄を持つか）。押せる点を描き分けるため、
@@ -219,86 +222,36 @@ function namedExpression(layer: PointLayer): unknown | null {
   return ["any", ["all", ["has", nameProperty], ["!=", ["get", nameProperty], ""]], ["has", POINT.membersProperty]];
 }
 
-/** 名前のある点は`value`のまま、名前の無い点は`ratio`を掛けた値。 */
+/** 名前のある点と名前を持たない層の点は`value`のまま、名前を持つ層の名前の無い点は`ratio`を掛けた値。 */
 function byNamed(layer: PointLayer, value: unknown, ratio: number): unknown {
   const named = namedExpression(layer);
+  if (named === null) return value;
   const unnamed = typeof value === "number" ? value * ratio : ["*", value, ratio];
-  return named === null ? unnamed : ["case", named, value, unnamed];
+  return ["case", named, value, unnamed];
 }
 
-/** 絵記号の点の大きさの倍率。点の大きさを持つ軸（事故の重大度等）があれば、いちばん大きい行を1倍にし、ほかは半径の比で
- * 小さくする（絵が小さくなりすぎないよう、半径の比の半分だけ縮める）。 */
+/** 点の大きさの倍率。点の大きさを持つ軸（事故の重大度等）があれば、行ごとの倍率。 */
 function iconScaleExpression(layer: PointLayer): unknown {
   const axis = sizeAxis(layer);
   if (axis === undefined) return 1;
-  const largest = Math.max(...axis.categories.map(pointCategoryRadiusPx));
-  const cases = axis.categories.flatMap((category) => [
-    categoryMatch(axis, category),
-    0.5 + (0.5 * pointCategoryRadiusPx(category)) / largest,
-  ]);
-  return ["case", ...cases, 1];
+  const scales = pointIconScales(axis);
+  return ["case", ...axis.categories.flatMap((category, i) => [categoryMatch(axis, category), scales[i]]), 1];
 }
 
-/** 名前の無い点だけの層（停止要因・事故等）が絵記号で描き始める縮尺。これより引いた縮尺では区分の色の丸で描く——引いた縮尺で
- * 道に沿って並ぶ点を全部絵記号にすると、地図が絵で埋まる。 */
-const UNNAMED_GLYPH_MIN_ZOOM = 17;
-
-/** 丸い点で描く縮尺を持つ層か。絵記号を持たない層はどの縮尺でも、名前の無い点だけの層は`UNNAMED_GLYPH_MIN_ZOOM`より引いた
- * 縮尺で丸い点で描く。 */
-function drawsDots(layer: PointLayer): boolean {
-  return glyphCategories(layer).length === 0 || layer.point_name_property === null;
-}
-
-/** 丸い点の半径の候補。点の大きさを持つ軸の行の半径と、どの行にも入らない点の既定の半径。 */
-function dotRadii(layer: PointLayer): readonly number[] {
-  const axis = sizeAxis(layer);
-  return [...new Set([POINT.radiusPx, ...(axis?.categories.map(pointCategoryRadiusPx) ?? [])])];
-}
-
-/** 地図へ登録する丸い点の絵の名前。**登録側と参照側が同じ1つを使う**（綴りがずれると点が出ない）。 */
-function pointDotId(layer: PointLayer, category: PointAxis["categories"][number], radiusPx: number): string {
-  return `point-dot:${layer.attr_id}:${category.key}:${radiusPx}`;
-}
-
-/** 丸い点の絵（名前・色・半径）。重なった印を地図に省かせるため、丸い点も絵の印で描く——丸のレイヤー（`circle`）は
- * MapLibre の重なりの判定に加わらない。 */
-export const POINT_DOTS: readonly { id: string; color: string; radiusPx: number }[] = POINT_LAYERS.filter(
-  drawsDots,
-).flatMap((layer) =>
-  layer.display_axes[0].categories.flatMap((category) =>
-    dotRadii(layer).map((radiusPx) => ({ id: pointDotId(layer, category, radiusPx), color: category.color, radiusPx })),
-  ),
+/** 積む順（下から）に並べた点の層。重なった印は上に積んだ層の印から置かれるので、残す順（`point_priority`）の大きい層を上に積む。
+ * 同じ順の層は宣言の順のまま。 */
+export const STACKED_POINT_LAYERS: readonly PointLayer[] = [...POINT_LAYERS].sort(
+  (a, b) => a.point_priority - b.point_priority,
 );
 
 /** 色を焼き込んだ絵なので、記号のレイヤーは色を付けない。 */
-export const POINT_IMAGES: readonly MapSceneImage[] = [
-  ...POINT_ICONS.map((icon) => ({ id: icon.id, draw: () => drawPointIcon(icon.color, icon.glyph, icon.frame) })),
-  ...POINT_DOTS.map((dot) => ({ id: dot.id, draw: () => drawPointDot(dot.color, dot.radiusPx) })),
-].map(({ id, draw }) => ({
-  id,
+export const POINT_IMAGES: readonly MapSceneImage[] = POINT_ICONS.map((icon) => ({
+  id: icon.id,
   draw: () => {
-    const { data, pixelRatio } = draw();
+    const { data, pixelRatio } = drawPointIcon(icon.color, icon.glyph, icon.frame);
     return { data, options: { pixelRatio } };
   },
 }));
-
-/** 丸い点の絵の名前の式。色は先頭の軸の行、半径は点の大きさを持つ軸の行で決まる。 */
-function dotImageExpression(layer: PointLayer): unknown {
-  const axis = layer.display_axes[0];
-  const size = sizeAxis(layer);
-  const imageOf = (category: PointAxis["categories"][number]) =>
-    size === undefined
-      ? pointDotId(layer, category, POINT.radiusPx)
-      : [
-          "case",
-          ...size.categories.flatMap((row) => [
-            categoryMatch(size, row),
-            pointDotId(layer, category, pointCategoryRadiusPx(row)),
-          ]),
-          pointDotId(layer, category, POINT.radiusPx),
-        ];
-  return ["case", ...axis.categories.flatMap((category) => [categoryMatch(axis, category), imageOf(category)]), ""];
-}
 
 /** 束ねた点の数の字の大きさ（画素）。 */
 const COUNT_TEXT_SIZE_PX = 12;
@@ -307,57 +260,27 @@ const COUNT_TEXT_FONT = ["Noto Sans Bold"];
 
 const COUNT = ["to-number", ["get", POINT.countProperty], 1];
 
-/** 印の描き方のうち、丸い点と絵記号で違うもの。 */
-type PointMark = {
-  readonly image: unknown;
-  readonly size: unknown;
-  readonly opacity: unknown;
-  /** 印の中心から右の縁までの画素（数をその右に出す）。 */
-  readonly halfWidthPx: number;
-};
-
 /** 点の層の印。重なりは MapLibre の既定のまま（ほかの記号とぶつかる印は描かず、寄せて重ならなくなると出る）で、点の層どうし・
  * 区間の近くの点・基礎地図の文字とも判定する。2点以上を束ねた代表点は、同じ印の文字として右に数を出す（数だけが残ることは無い）。
- * 押せない点（名前の無い点）は丸い枠で少し薄く描く。名前の無い点だけの層は、`UNNAMED_GLYPH_MIN_ZOOM`より引いた縮尺で丸い点で描く。 */
-export function pointLook(layer: PointLayer): Pick<SceneLayerEntry, "type" | "paint" | "layout"> {
-  const glyphs = glyphCategories(layer);
-  const opacity = POINT.opacityByLayer[layer.attr_id] ?? 1;
-  const dot: PointMark = {
-    image: dotImageExpression(layer),
-    size: 1,
-    opacity,
-    halfWidthPx: Math.max(...dotRadii(layer)),
-  };
-  const glyph: PointMark | null =
-    glyphs.length === 0
-      ? null
-      : {
-          image: iconImageExpression(layer, glyphs),
-          size: iconScaleExpression(layer),
-          opacity: byNamed(layer, opacity, UNNAMED_OPACITY_RATIO),
-          halfWidthPx: POINT.iconSizePx / 2,
-        };
-  const byZoom = (pick: (mark: PointMark) => unknown): unknown => {
-    if (glyph === null) return pick(dot);
-    if (!drawsDots(layer)) return pick(glyph);
-    return ["step", ["zoom"], pick(dot), UNNAMED_GLYPH_MIN_ZOOM, pick(glyph)];
-  };
+ * 名前を持つ層の押せない点（名前の無い点）は丸い枠で少し薄く描く。描き始める縮尺を宣言した層は、それより引いた縮尺では描かない。 */
+export function pointLook(layer: PointLayer): Pick<SceneLayerEntry, "type" | "paint" | "layout" | "minzoom"> {
   return {
     type: "symbol",
+    ...(layer.point_min_zoom === null ? {} : { minzoom: layer.point_min_zoom }),
     paint: {
-      "icon-opacity": byZoom((mark) => mark.opacity),
+      "icon-opacity": byNamed(layer, POINT.opacityByLayer[layer.attr_id] ?? 1, UNNAMED_OPACITY_RATIO),
       "text-color": palette.semantic.mark_glyph,
       "text-halo-color": palette.semantic.mark_halo,
       "text-halo-width": 1.5,
     },
     layout: {
-      "icon-image": byZoom((mark) => mark.image),
-      "icon-size": byZoom((mark) => mark.size),
+      "icon-image": iconImageExpression(layer, glyphCategories(layer)),
+      "icon-size": iconScaleExpression(layer),
       "text-field": ["case", [">", COUNT, 1], ["to-string", COUNT], ""],
       "text-font": COUNT_TEXT_FONT,
       "text-size": COUNT_TEXT_SIZE_PX,
       "text-anchor": "left",
-      "text-offset": byZoom((mark) => ["literal", [mark.halfWidthPx / COUNT_TEXT_SIZE_PX, 0]]),
+      "text-offset": ["literal", [POINT.iconSizePx / 2 / COUNT_TEXT_SIZE_PX, 0]],
     },
   };
 }
@@ -373,7 +296,7 @@ export const pointGroup = declareGroup<PointState>((state) => {
     tiles: tiles.urls[name],
   }));
 
-  const points: readonly SceneLayerEntry[] = POINT_LAYERS.map((layer) => ({
+  const points: readonly SceneLayerEntry[] = STACKED_POINT_LAYERS.map((layer) => ({
     role: layer.attr_id,
     tier: "point",
     source: POINT_TILE_SOURCES[layer.tile_kind].sourceId,

@@ -36,11 +36,10 @@ class DisplayCategorySpec(StrictModel):
     values: tuple[str | bool, ...]
     #: 凡例の行の（i）から開く、この行に何が入るかの説明。利用者の言葉で書き、OSMのタグは括弧で添える程度にする。
     description: str = Field(min_length=1)
-    #: 点を、行の色の角丸四角に白い絵記号を載せた形で描くときの絵の名前（`None`は丸い点）。絵の描き方は画面が持つ。
-    #: 色だけでは、同時に出る点のレイヤーどうしを軸の中ほど離せないので、形でも分けるレイヤーに付ける。
-    #: 付けるのは点の先頭の軸で、その軸の行の全部に付ける（一部の行だけ形が違うと、形が分類の意味を持ってしまう）。
+    #: 地図の点を描く絵の名前。絵の描き方は画面が持つ。色だけでは、同時に出る点のレイヤーどうしを見分けられないので、形でも分ける。
+    #: 点の先頭の軸の行の全部に、行ごとに違う絵を付ける（絵の無い行は描けず、一部の行だけ形が違うと形が分類の意味を持ってしまう）。
     glyph: str | None = None
-    #: 丸い点で描くときの、この行の点の半径（`None`は既定の半径）。付けた軸が点の大きさを決める軸になる。
+    #: この行の点の大きさ（`None`は既定の大きさ）。付けた軸が点の大きさを決める軸になる。
     #: 付けるのは点の軸のうち1本だけ（2本に付けると、1つの点の大きさがどちらの軸の行で決まるかが無くなる）。
     radius_px: int | None = None
 
@@ -126,11 +125,17 @@ class PrimaryAttributeSpec(StrictModel):
     point_opacity: float | None = Field(default=None, gt=0, le=1)
     #: 点の名前（店名等）を持つタイルのプロパティ。名前のある点を押すと、名前と、名前と位置で外の地図を開く導線を出す。
     point_name_property: str | None = None
+    #: 地図に点を描き始める縮尺。これより引いた縮尺では描かない。道に沿って密に並び、引いた縮尺で描くと地図が点で埋まる属性だけが持つ。
+    point_min_zoom: int | None = Field(default=None, ge=0)
+    #: 地図で点の印が重なったとき、どの属性の印を残すか。大きい属性の印を残し、同じなら宣言の後の属性の印を残す。
+    point_priority: int = 0
 
     @model_validator(mode="after")
-    def _point_opacity_is_for_points(self) -> "PrimaryAttributeSpec":
-        if self.point_opacity is not None and self.geometry != "point":
-            raise ValueError(f"点でない一次属性'{self.attr_id}'に点の不透明度がある")
+    def _point_display_is_for_points(self) -> "PrimaryAttributeSpec":
+        if self.geometry != "point" and (
+            self.point_opacity is not None or self.point_min_zoom is not None or self.point_priority != 0
+        ):
+            raise ValueError(f"点でない一次属性'{self.attr_id}'に点の描き方がある")
         return self
 
     @model_validator(mode="after")
@@ -154,10 +159,10 @@ class PrimaryAttributeSpec(StrictModel):
         glyphs = [category.glyph for category in first.categories]
         if any(category.glyph is not None for spec in rest for category in spec.categories):
             raise ValueError(f"'{self.attr_id}'の2本目以降の軸の絵記号は地図に描かれない")
-        if any(glyph is not None for glyph in glyphs) and (
-            self.geometry != "point" or None in glyphs or len(glyphs) != len(set(glyphs))
-        ):
-            raise ValueError(f"'{self.attr_id}'の絵記号は、点の先頭の軸の行の全部に、行ごとに違う絵で付ける")
+        if self.geometry == "point" and (None in glyphs or len(glyphs) != len(set(glyphs))):
+            raise ValueError(f"'{self.attr_id}'の点の先頭の軸の行の全部に、行ごとに違う絵記号を付ける")
+        if self.geometry != "point" and any(glyph is not None for glyph in glyphs):
+            raise ValueError(f"'{self.attr_id}'は点でないので、絵記号を持たない")
         sized = [spec for spec in self.display_axes if any(c.radius_px is not None for c in spec.categories)]
         if len(sized) > 1 or (sized and self.geometry != "point"):
             raise ValueError(f"'{self.attr_id}'の点の半径を持つ軸は、点の軸の1本だけ")

@@ -102,6 +102,9 @@ def nominal_colors(hue_slot: int, count: int, tone: str | None) -> list[str]:
     return [_fit_chroma(lightness, chroma, start + 360.0 * i / count) for i in range(count)]
 
 
+#: 信号の停止の赤。自転車が関わる事故の印も同じ赤にし、その他の事故と見分ける。
+_STOP_RED = "#e2453c"
+
 #: 役割ごとの色。名前は「どこで使うか」ではなく「何を意味するか」で付ける——使い場所で
 #: 名前を付けると、同じ意味の色が使い場所の数だけ増える。
 SEMANTIC_COLORS: dict[str, str] = {
@@ -160,6 +163,20 @@ SEMANTIC_COLORS: dict[str, str] = {
     # 現在地の青のどれとも重ならない朱色、縁取りはルートの線の下に敷いても線の色（評価・候補・乗り換え）に溶けない紫にする。
     "selected_point": "#ff4d1a",
     "selected_section": "#7c3aed",
+    # 停止要因の点の絵。日本の道路標識・信号機の色に寄せ、何の点かを形と色で直感的に読ませる（点の区分の色とは別）。
+    "sign_regulatory": "#d8262e",
+    "sign_regulatory_text": "#1a3c8c",
+    "sign_instruction": "#1f5fbf",
+    "sign_warning": "#f5c518",
+    "sign_ink": "#222222",
+    "sign_face": "#ffffff",
+    "sign_post": "#555555",
+    "signal_go": "#1ea56c",
+    "signal_caution": "#f2c230",
+    "signal_stop": _STOP_RED,
+    # 事故の点の絵（ぶつかった印）。
+    "crash": "#f08a24",
+    "crash_bicycle": _STOP_RED,
 }
 
 def resolved_display_axes(attr: PrimaryAttributeSpec) -> list[dict]:

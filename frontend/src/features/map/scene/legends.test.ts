@@ -2,10 +2,11 @@
 /** 凡例の見本が、地図に実際に描かれるものだけを示すこと。 */
 import { describe, expect, it } from "vitest";
 
-import { POINT_DOTS, POINT_ICONS, pointAxisKey, pointGroup } from "@/features/map/scene/groups/points";
+import { POINT_ICONS, pointAxisKey, pointGroup } from "@/features/map/scene/groups/points";
 import { POINT_LAYERS } from "@/lib/mapDisplay/pointLayers";
 import { LEGEND_NO_DATA_KEY } from "@/lib/mapDisplay/mapColorLegend";
 import { evaluateExpressionAtZoom as evaluateAt, matchesFilter } from "@/testing/mapExpressions";
+import { mapDisplay } from "@/types/generated/mapDisplay";
 
 import { ROAD_OTHER_KEY } from "@/lib/mapDisplay/roadTracks";
 import { roadClass, roadMapLayer } from "@/testing/catalogAxes";
@@ -40,8 +41,7 @@ function pointLayerOf(role: string, hiddenKeys: Readonly<Record<string, readonly
   return layer;
 }
 
-/** 引いた地図の倍率（名前の無い点だけの層も丸い点で描く）と、寄せた地図の倍率（どの層も絵記号で描く）。 */
-const LOW_ZOOM = 14;
+/** 寄せた地図の倍率（どの層も描く）。 */
 const NEAR_ZOOM = 20;
 
 describe("点の凡例", () => {
@@ -50,23 +50,21 @@ describe("点の凡例", () => {
   it.each(axes)("$axisId の見本は地図の点に現れる", (axis) => {
     const pointLayer = POINT_LAYERS.find((candidate) => candidate.attr_id === axis.layerId);
     if (pointLayer === undefined) throw new Error(`${axis.layerId} の点のレイヤーが無い`);
-    const iconImage = (pointLayerOf(axis.layerId).layout as Record<string, unknown>)["icon-image"];
+    const layout = pointLayerOf(axis.layerId).layout as Record<string, unknown>;
     const [colorAxis] = pointLayer.display_axes;
     const ownAxis = pointLayer.display_axes.find((candidate) => pointAxisKey(pointLayer, candidate) === axis.axisId);
     for (const entry of axis.entries) {
       if (entry.glyph !== undefined) {
         expect(POINT_ICONS).toContainEqual(expect.objectContaining({ color: entry.color, glyph: entry.glyph }));
-      } else if (entry.diameterPx === undefined) {
-        expect(POINT_DOTS.map((dot) => dot.color)).toContain(entry.color);
       } else {
-        // 点の大きさの見本は、引いた縮尺で描く丸い点の半径に現れる。
+        // 点の大きさの見本は、地図の絵記号の大きさに現れる。
         const category = ownAxis?.categories.find((candidate) => candidate.key === entry.key);
         const properties = {
           [colorAxis.property]: colorAxis.categories[0].values[0],
           ...(ownAxis === undefined || category === undefined ? {} : { [ownAxis.property]: category.values[0] }),
         };
-        const id = evaluateAt(iconImage, properties, LOW_ZOOM);
-        expect(POINT_DOTS.find((dot) => dot.id === id)?.radiusPx).toBe(entry.diameterPx / 2);
+        const scale = evaluateAt(layout["icon-size"], properties, NEAR_ZOOM) as number;
+        expect(scale * mapDisplay.point.iconSizePx).toBeCloseTo(entry.diameterPx!);
       }
     }
   });

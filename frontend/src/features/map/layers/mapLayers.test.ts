@@ -128,15 +128,27 @@ describe("出せない理由の案内", () => {
     expect(gated).not.toContain("elevation");
   });
 
-  it("タイルの最小ズーム未満のレイヤーだけを、ズーム不足として出す", () => {
-    const tileLayers = withoutAxes.filter((entry) => entry.tileMinZoom !== undefined);
+  it("最小ズーム未満のレイヤーだけを、ズーム不足として出す", () => {
+    const tileLayers = withoutAxes.filter((entry) => entry.minZoom !== undefined);
     expect(tileLayers).not.toHaveLength(0);
-    const lowest = Math.min(...tileLayers.map((entry) => entry.tileMinZoom!));
+    const lowest = Math.min(...tileLayers.map((entry) => entry.minZoom!));
     expect(tileZoomTooWideLayerIds(withoutAxes, lowest)).toEqual(
-      tileLayers.filter((entry) => entry.tileMinZoom! > lowest).map((entry) => entry.id),
+      tileLayers.filter((entry) => entry.minZoom! > lowest).map((entry) => entry.id),
     );
     expect(tileZoomTooWideLayerIds(withoutAxes, lowest - 0.1)).toEqual(tileLayers.map((entry) => entry.id));
   });
+
+  // 配信の縮尺より寄ってから描く層は、配信が届いても描かれない間、ONにしても何も出ない。
+  it.each(mapDisplay.layers.filter((layer) => layer.drawMinZoom !== null))(
+    "$id は、描き始める縮尺より引いた縮尺でズーム不足として出す",
+    (declared) => {
+      const zoom = declared.drawMinZoom!;
+      expect([
+        tileZoomTooWideLayerIds(withoutAxes, zoom - 0.1).includes(declared.id),
+        tileZoomTooWideLayerIds(withoutAxes, zoom).includes(declared.id),
+      ]).toEqual([true, false]);
+    },
+  );
 });
 
 describe("deriveFetchLayerStatus（自前で取るレイヤーの取得状態）", () => {

@@ -82,13 +82,13 @@ export interface ChipLayerDescriptor {
   /** 表示の設定パネルで項目の(i)が出す、descriptionより詳しい説明。 */
   panelHint?: string;
   defaultOn?: boolean;
-  /** このズーム未満では配信元のタイルが要求されない（ONにしても何も出ない。チップに案内を出す）。 */
-  tileMinZoom?: number;
+  /** このズーム未満では、配信元がタイルを配らないか、層が描かない（ONにしても何も出ない。チップに案内を出す）。 */
+  minZoom?: number;
 }
 
 type LayerDeclaration = Pick<
   ChipLayerDescriptor,
-  "dataSource" | "kind" | "category" | "dataNature" | "defaultOn" | "tileMinZoom"
+  "dataSource" | "kind" | "category" | "dataNature" | "defaultOn" | "minZoom"
 >;
 
 /** 軸スタジオ由来のレイヤー。チップに出ない（表示はレンズだけが決める）ので、名前・アイコン・説明を持たず、
@@ -100,22 +100,24 @@ export interface AxisStudioLayerDescriptor extends LayerDeclaration {
 
 export type MapLayerDescriptor = ChipLayerDescriptor | AxisStudioLayerDescriptor;
 
-/** 源泉が宣言する、描き方以外のもの（種別・情報源・性質・既定表示）。最小ズームは情報源が持つ。 */
+/** 源泉が宣言する、描き方以外のもの（種別・情報源・性質・既定表示）。最小ズームは、情報源が配る縮尺と層が描き始める縮尺の寄った方。 */
 function declaredLayer(spec: {
   dataSource: MapLayerDataSource;
   category: MapLayerCategory | null;
   kind: MapLayerKind;
   dataNature: MapLayerDataNature;
   defaultOn: boolean;
+  drawMinZoom: number | null;
 }): LayerDeclaration {
-  const minZoom = mapDisplay.layerDataSources.find((source) => source.key === spec.dataSource)!.minZoom;
+  const sourceMinZoom = mapDisplay.layerDataSources.find((source) => source.key === spec.dataSource)!.minZoom;
+  const minZooms = [sourceMinZoom, spec.drawMinZoom].filter((zoom): zoom is number => zoom !== null);
   return {
     dataSource: spec.dataSource,
     kind: spec.kind,
     category: spec.category ?? undefined,
     dataNature: spec.dataNature,
     defaultOn: spec.defaultOn,
-    tileMinZoom: minZoom ?? undefined,
+    minZoom: minZooms.length === 0 ? undefined : Math.max(...minZooms),
   };
 }
 
@@ -220,10 +222,10 @@ export function tileVersionGatedLayerIds(layers: readonly MapLayerDescriptor[]):
     .map((layer) => layer.id);
 }
 
-/** そのズームではタイルが要求されず、ONにしても何も出ないレイヤー。軸のレイヤーはチップが無く案内の出し先が無いので含めない。 */
+/** そのズームでは描かれず、ONにしても何も出ないレイヤー。軸のレイヤーはチップが無く案内の出し先が無いので含めない。 */
 export function tileZoomTooWideLayerIds(layers: readonly MapLayerDescriptor[], zoom: number): readonly MapLayerId[] {
   return layers
-    .filter((layer) => !isAxisStudioLayer(layer) && layer.tileMinZoom !== undefined && zoom < layer.tileMinZoom)
+    .filter((layer) => !isAxisStudioLayer(layer) && layer.minZoom !== undefined && zoom < layer.minZoom)
     .map((layer) => layer.id);
 }
 
