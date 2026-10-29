@@ -310,8 +310,6 @@ export function useGenerationConditions({ onOriginPlace }: GenerationConditionsI
     removeWaypoint,
     moveWaypoint,
     reorderPoints,
-    /** 地点を選んで出しているか（何も選んでいない間の`selectedPoint`は出発地）。 */
-    pointChosen: chosenPoint !== null,
     /** 生成と画面（地点の並び・地図のピン）が使う目的地（周回の間はnull）。 */
     destination,
     setDestination,

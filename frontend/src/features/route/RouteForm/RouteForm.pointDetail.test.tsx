@@ -1,7 +1,7 @@
 /**
  * `RouteForm/PointDetail.tsx`を`RouteForm`の中で使う所——押した地点の詳しくに、どの地点の何を渡すか。`RouteForm`を描いて確かめる。
  *
- * 見るもの: 押した地点の詳しく（呼び名・出どころ・名前・その位置から引いた辺り）、出発地の印の色、地図で置ける間の探すボタンの
+ * 見るもの: 押した地点の詳しく（呼び名・出どころ・名前（地図で置いた地点・現在地は、その位置から引いた辺り））、出発地の印の色、地図で置ける間の探すボタンの
  * 文言、消す/現在地に戻す操作。
  *
  * ここで見ないもの: 探すボタンで地図の上端の欄を開き、選んだ候補をその地点として置くこと → `app/page.places.test.tsx`。
@@ -86,10 +86,10 @@ describe("RouteForm 地点の詳しく", () => {
   );
 
   it.each([
-    ["出発地: 現在地", "出発地", ORIGIN],
-    ["経由地2: 地図で選んだ地点", "経由地2", waypointsOf(2)[1]],
-    ["目的地: 地図で選んだ地点", "目的地", DESTINATION],
-  ])("押した地点（%s）の詳しくに、その位置から引いた辺りを出す", async (chip, title, point) => {
+    ["出発地: 現在地", "出発地", ORIGIN, "現在地（押した地点の辺り）"],
+    ["経由地2: 地図で選んだ地点", "経由地2", waypointsOf(2)[1], "押した地点の辺り"],
+    ["目的地: 地図で選んだ地点", "目的地", DESTINATION, "押した地点の辺り"],
+  ])("押した地点（%s）の詳しくは、その位置から引いた辺りで呼ぶ", async (chip, title, point, name) => {
     onBackend("GET", "/api/place-area", ({ query }) =>
       Response.json({ area: query.latitude === String(point.latitude) ? "押した地点の辺り" : "ほかの地点の辺り" }),
     );
@@ -97,7 +97,9 @@ describe("RouteForm 地点の詳しく", () => {
 
     await userEvent.click(button(chip));
 
-    expect(await within(detail(title)).findByText("押した地点の辺り")).toBeInTheDocument();
+    // 名前が辺りを含むので、辺りの行は重ねて出さない。
+    expect(await within(detail(title)).findByText(name)).toBeInTheDocument();
+    expect(within(detail(title)).getAllByText(/押した地点の辺り/)).toHaveLength(1);
   });
 
   it("現在地を取れていない出発地は、仮の位置の辺りを引かない", async () => {

@@ -10,8 +10,8 @@ import { SavedPlaceIcon, SavePlaceIcon, SearchPlaceIcon } from "@/components/ui/
 import { Input } from "@/components/ui/Input/Input";
 import { textVariants } from "@/components/ui/Text/Text";
 import { isRepresentative } from "@/features/route/PlaceSearch/PlaceCandidates";
-import { areaAt } from "@/features/route/placeSearchApi";
 import { savedPlaceAt } from "@/features/route/savedPlaces";
+import { placeAreaQuery } from "@/features/route/usePlaceAreas";
 import type { SavedPlacesState } from "@/features/route/useSavedPlaces";
 import { cn } from "@/lib/cn";
 import { getQueryClient } from "@/lib/queryClient";
@@ -77,16 +77,11 @@ export default function PointDetail({
   // 探した住所は名前が辺りを含み、代表の位置なら行きたい所そのものでもないので、辺りは引かない。
   const representative = found !== null && isRepresentative(found);
   const areaPoint = found?.kind !== "address" && found?.area == null ? at : null;
-  const placedArea = useQuery(
-    {
-      queryKey: ["place-area", areaPoint?.latitude, areaPoint?.longitude],
-      queryFn: () => areaAt(areaPoint!),
-      enabled: areaPoint !== null,
-    },
-    getQueryClient(),
-  );
+  const placedArea = useQuery(placeAreaQuery(areaPoint), getQueryClient());
   // 引けない間・引けなかったときは辺りを出さない（名前と出どころは出ている）。
   const area = found?.area ?? (areaPoint !== null ? (placedArea.data ?? null) : null);
+  // 地図で置いた地点・現在地は名前が辺りを含むので、辺りの行を重ねて出さない。
+  const areaLine = area !== null && !(name?.includes(area) ?? false) ? area : null;
 
   // 置いた地点の保存。名前の欄には、探して置いた候補の名前か辺り（地図で選んだ地点・現在地は辺りのほうが見分けやすい）を入れておく。
   const savedHere = at !== null ? savedPlaceAt(savedPlaces.places, at) : null;
@@ -133,10 +128,10 @@ export default function PointDetail({
               <span className={textVariants({ variant: "note" })}>{source}</span>
             )}
           </p>
-          {(area !== null || representative) && (
+          {(areaLine !== null || representative) && (
             <p className="flex min-w-0 flex-wrap items-center gap-1">
-              {area !== null && (
-                <span className={cn(textVariants({ variant: "note" }), "[overflow-wrap:anywhere]")}>{area}</span>
+              {areaLine !== null && (
+                <span className={cn(textVariants({ variant: "note" }), "[overflow-wrap:anywhere]")}>{areaLine}</span>
               )}
               {/* 当たった範囲の中ほどの位置で、行きたい所そのものではない（ピンを直すのは地図の上）。 */}
               {representative && <Badge variant="warning">代表の位置</Badge>}

@@ -1,6 +1,7 @@
 // 意味の決まった汎用の形（lucide-react）を、自前の形と同じ呼び方と線の太さへ包んで書き出す。
 import {
   ArrowUp,
+  ArrowUpDown,
   Bike,
   CircleQuestionMark,
   Clock,
@@ -14,6 +15,7 @@ import {
   EllipsisVertical,
   Footprints,
   Gauge,
+  GripVertical,
   GitCommitHorizontal,
   History,
   Import,
@@ -121,6 +123,10 @@ export const ClearPointsIcon = fromLucide(MapPinX);
 export const DistanceTargetIcon = fromLucide(Ruler);
 /** 置いた地点を1つ消す。保存したものを消す`DeleteSavedIcon`と同じく、消す操作はごみ箱の形にそろえる。 */
 export const RemovePointIcon = fromLucide(Trash);
+/** 置いた地点の編集（通る順の入れ替えと消すこと）を開く。 */
+export const EditPointsIcon = fromLucide(ArrowUpDown);
+/** 押さえたまま上下へ動かして、行の順を入れ替える所。 */
+export const ReorderHandleIcon = fromLucide(GripVertical);
 /** 利用者が変えられない選び方（いつも決まった値の行）。 */
 export const LockedIcon = fromLucide(Lock);
 /** 走行中の地図への触れを受け付けないロックの間。 */

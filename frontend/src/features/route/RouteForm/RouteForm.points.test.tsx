@@ -1,17 +1,17 @@
 /**
- * `RouteForm/RoutePoints.tsx`・`RouteForm/PointStrip.tsx`・`RouteForm/PointOrder.tsx`——周回の切り替えと地点の並びと通る順の並び。`RouteForm`の中に置かれる子なので、`RouteForm`を描いて確かめる。
+ * `RouteForm/RoutePoints.tsx`・`RouteForm/PointStrip.tsx`・`RouteForm/PointEditList.tsx`——周回の切り替えと地点の並びと地点の編集。`RouteForm`の中に置かれる子なので、`RouteForm`を描いて確かめる。
  *
  * 見るもの: 周回の切り替え（押している状態と、押して上げる値）、地点の並び（出発地・経由地の番号の丸・終点。周回の間の終点は
- * 出発地の印と名前で押せない）、押した地点を選んで上げること、経由地の番号の丸を押さえて動かす並び替え、
- * 地点を選んでいる間に出す通る順の大きい丸の並び（出発地・経由地・目的地を押さえて動かす並び替え）、経由地を足す操作の上限、並びに出ている地点を全部消す操作。
+ * 出発地の印と名前で押せない）、押した地点を選んで上げること、経由地を足す操作の上限、並びに出ている地点を全部消す操作、
+ * 地点の編集（地点を名前の行で通る順に並べ、掴む所を押さえて動かす・矢印のキーで動かす並び替え、行の消すボタン、何が起きたかの文）。
  *
  * ここで見ないもの: 選んでいる地点をどう決めるか（何も選んでいない・選んだ経由地が消えた・探して足した経由地を選ぶ）
  * → `features/route/useGenerationConditions.points.test.ts`。押した地点の詳しくの中身 → `RouteForm/RouteForm.pointDetail.test.tsx`。
  * 並べ替えで地点の役割がどう変わるか → `features/route/useGenerationConditions.points.test.ts`。
- * 並びに入りきらないときに両端の札を印だけにすること・通る順の丸を縮めること（テスト環境はレイアウトの実寸を持たない）→ `e2e/all-states.spec.ts`の
+ * 並びに入りきらないときに両端の札を印だけにすること・経由地の番号の丸を縮めること（テスト環境はレイアウトの実寸を持たない）→ `e2e/all-states.spec.ts`の
  * 省略の検査（名前を途中で切っていないこと）。印の役割ごとの背景色（書いた定数をそのまま渡す）。
  *
- * 差し替えたもの: 辺りの口の応答（網の層）。辺り無しと答える。
+ * 差し替えたもの: 辺りの口の応答（網の層）。辺り無しと答え、地点の編集では位置ごとの辺りを答える。
  */
 import { fireEvent, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -20,7 +20,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PIN_MARK_COLOR } from "@/components/PinMark/PinMark";
 import { onBackend, serveAxisCatalog } from "@/testing/backendServer";
 import { catalogResponse } from "@/testing/catalogAxes";
-import { DESTINATION, ORIGIN, button, detail, order, renderForm, strip, waypointsOf } from "@/testing/routeForm";
+import { DESTINATION, ORIGIN, button, detail, editList, renderForm, strip, waypointsOf } from "@/testing/routeForm";
 import { AZA_CANDIDATE as AZA, FACILITY_CANDIDATE as FACILITY } from "@/testing/routeFixtures";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 
@@ -89,37 +89,6 @@ describe("RouteForm 地点の並び", () => {
     },
   );
 
-  // 丸の幅はテスト環境に無いレイアウトの実寸なので、押さえた丸の幅をテストが決める。入る所は、離したときに丸いくつ分動いたかで決まる。
-  it.each([
-    { label: "丸1つ分より半分多く左へ動かすと、1つ前へ動かす", from: 2, dx: -45, to: 1 },
-    { label: "並びの端より先へ動かすと、端へ動かす", from: 1, dx: 200, to: 2 },
-  ])(
-    "経由地の番号の丸を押さえたまま動かして離すと、その順へ動かすことを上げ、丸を選ばない: $label",
-    ({ from, dx, to }) => {
-      const { reorderPoints, selectPoint } = renderForm({ waypoints: waypointsOf(3) });
-      const mark = button(`経由地${from + 1}: 地図で選んだ地点`);
-      vi.spyOn(mark, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 0, 30, 30));
-
-      fireEvent.pointerDown(mark, { pointerId: 1, isPrimary: true, clientX: 115 });
-      fireEvent.pointerMove(mark, { pointerId: 1, isPrimary: true, clientX: 115 + dx });
-      fireEvent.pointerUp(mark, { pointerId: 1, isPrimary: true, clientX: 115 + dx });
-      fireEvent.click(mark);
-
-      // 通る順の並びの番目は、先頭の出発地の分だけ経由地の番号より1つ後ろ。
-      expect(reorderPoints).toHaveBeenCalledExactlyOnceWith(from + 1, to + 1, ORIGIN);
-      expect(selectPoint).not.toHaveBeenCalled();
-    },
-  );
-
-  it("経由地の番号の丸を押しただけなら、順を変えずにその経由地を選ぶ", async () => {
-    const { reorderPoints, selectPoint } = renderForm({ waypoints: waypointsOf(3) });
-
-    await userEvent.click(button("経由地2: 地図で選んだ地点"));
-
-    expect(selectPoint).toHaveBeenLastCalledWith({ role: "waypoint", index: 1 });
-    expect(reorderPoints).not.toHaveBeenCalled();
-  });
-
   it("全部消す操作を押すと上げる", async () => {
     const { clearPoints } = renderForm({ waypoints: waypointsOf(2), destination: DESTINATION });
 
@@ -129,99 +98,183 @@ describe("RouteForm 地点の並び", () => {
   });
 });
 
-describe("RouteForm 通る順の並び", () => {
-  /** 通る順の並びの丸の名前。 */
-  const orderNames = () =>
-    within(order() as HTMLElement)
-      .getAllByRole("button")
-      .map((mark) => mark.getAttribute("aria-label"));
-
-  it.each([
-    {
-      label: "目的地を置いていなければ、末尾に空の目的地の丸を出す",
-      loop: false,
-      destination: null,
-      names: ["出発地: 現在地（1番目）", "経由地1: 地図で選んだ地点（2番目）", "目的地: 未設定（3番目）"],
-    },
-    {
-      label: "周回の間は、目的地の丸を出さない",
-      loop: true,
-      destination: DESTINATION,
-      names: ["出発地: 現在地（1番目）", "経由地1: 地図で選んだ地点（2番目）"],
-    },
-  ])(
-    "地点を押すと、詳しくの上に出発地・経由地・目的地の丸を通る順に並べ、動かし方を添える: $label",
-    async ({ loop, destination, names }) => {
-      renderForm({ loop, destination, waypoints: waypointsOf(1) });
-      expect(order()).toBeNull();
-
-      await userEvent.click(button("経由地1: 地図で選んだ地点"));
-
-      expect(orderNames()).toEqual(names);
-      expect(
-        within(order() as HTMLElement).getByRole("button", { name: "経由地1: 地図で選んだ地点（2番目）" }),
-      ).toHaveAttribute("aria-pressed", "true");
-      expect(screen.getByText(/^丸を押さえたまま左右へ動かすと、通る順を入れ替えます/)).toBeInTheDocument();
-    },
-  );
-
-  it("新しい経由地を置く間は、通る順の並びを出さない（探す欄を上に残す）", async () => {
-    renderForm({ waypoints: waypointsOf(1) });
-
-    await userEvent.click(button("経由地を足す"));
-
-    expect(order()).toBeNull();
+describe("RouteForm 地点の編集", () => {
+  /** 地図で置いた地点・現在地の辺り（位置の緯度ごと）。 */
+  const AREAS: Record<string, string> = {
+    [String(ORIGIN.latitude)]: "王子",
+    [String(waypointsOf(2)[0].latitude)]: "浅草",
+    [String(waypointsOf(2)[1].latitude)]: "上野",
+    [String(DESTINATION.latitude)]: "品川",
+  };
+  beforeEach(() => {
+    onBackend("GET", "/api/place-area", ({ query }) => Response.json({ area: AREAS[String(query.latitude)] ?? null }));
   });
 
-  // 丸の幅はテスト環境に無いレイアウトの実寸なので、押さえた丸の幅をテストが決める。
+  /** 編集の行の名前（通る順）。 */
+  const rowNames = () =>
+    within(editList() as HTMLElement)
+      .getAllByRole("listitem")
+      .map((row) => row.getAttribute("aria-label"));
+
+  /** 並びの下の、何が起きたかの文。 */
+  const note = () => editList()?.nextElementSibling?.textContent;
+
+  async function openEdit() {
+    await userEvent.click(button("編集"));
+    await within(editList() as HTMLElement).findByRole("listitem", { name: "出発地: 現在地（王子）" });
+  }
+
+  // 行の高さはテスト環境に無いレイアウトの実寸なので、テストが決める（高さ44・間6で、上から50ずつ）。
+  function drag(title: string, dy: number) {
+    const rows = within(editList() as HTMLElement).getAllByRole("listitem");
+    rows.forEach((row, index) => vi.spyOn(row, "getBoundingClientRect").mockReturnValue(new DOMRect(0, index * 50, 300, 44)));
+    const handle = button(`${title}を動かす`);
+    const y = rows.findIndex((row) => row.contains(handle)) * 50 + 22;
+    fireEvent.pointerDown(handle, { pointerId: 1, isPrimary: true, clientY: y });
+    fireEvent.pointerMove(handle, { pointerId: 1, isPrimary: true, clientY: y + dy });
+    fireEvent.pointerUp(handle, { pointerId: 1, isPrimary: true, clientY: y + dy });
+  }
+
   it.each([
-    { label: "経由地を先頭へ動かす", originLocated: true, destination: null, from: 2, dx: -100, to: 0 },
-    { label: "目的地を間へ動かす", originLocated: true, destination: DESTINATION, from: 3, dx: -88, to: 1 },
-    { label: "経由地を空の目的地の席へ動かす", originLocated: true, destination: null, from: 1, dx: 100, to: 3 },
-    { label: "仮の出発地の前へは入れない", originLocated: false, destination: null, from: 2, dx: -100, to: 1 },
+    [false, 0, null, true],
+    [false, 1, null, false],
+    [false, 0, DESTINATION, false],
+    [true, 0, DESTINATION, true],
+  ])("周回か（%s）・経由地が%i件・目的地が%oなら、編集を押せない（%s）", (loop, waypointCount, destination, disabled) => {
+    renderForm({ loop, waypoints: waypointsOf(waypointCount), destination });
+
+    expect(button("編集")).toHaveProperty("disabled", disabled);
+  });
+
+  it.each([
+    {
+      label: "目的地を置いていなければ、空の目的地の行を出す",
+      loop: false,
+      destination: null,
+      names: ["出発地: 現在地（王子）", "経由地1: 浅草", "経由地2: 上野", "目的地: 未設定"],
+    },
+    {
+      label: "周回の間は、目的地の行を出さない",
+      loop: true,
+      destination: DESTINATION,
+      names: ["出発地: 現在地（王子）", "経由地1: 浅草", "経由地2: 上野"],
+    },
   ])(
-    "通る順の丸を押さえたまま動かして離すと、その順へ動かすことを上げ、丸を選ばない: $label",
-    ({ originLocated, destination, from, dx, to }) => {
-      const { reorderPoints, selectPoint } = renderForm({
-        originLocated,
-        destination,
-        waypoints: waypointsOf(2),
-        selectedPoint: { role: "waypoint", index: 0 },
-        pointChosen: true,
-      });
-      const mark = within(order() as HTMLElement).getAllByRole("button")[from];
-      vi.spyOn(mark, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 0, 44, 44));
+    "編集を押すと、詳しくの代わりに地点を通る順に名前の行で並べ、地図で置いた地点は辺りで呼ぶ: $label",
+    async ({ loop, destination, names }) => {
+      renderForm({ loop, destination, waypoints: waypointsOf(2) });
+      expect(editList()).toBeNull();
 
-      fireEvent.pointerDown(mark, { pointerId: 1, isPrimary: true, clientX: 120 });
-      fireEvent.pointerMove(mark, { pointerId: 1, isPrimary: true, clientX: 120 + dx });
-      fireEvent.pointerUp(mark, { pointerId: 1, isPrimary: true, clientX: 120 + dx });
-      fireEvent.click(mark);
+      await openEdit();
 
-      expect(reorderPoints).toHaveBeenCalledExactlyOnceWith(from, to, ORIGIN);
-      expect(selectPoint).not.toHaveBeenCalled();
+      expect(rowNames()).toEqual(names);
+      expect(button("編集")).toHaveAttribute("aria-pressed", "true");
+      expect(screen.queryByRole("region", { name: "出発地" })).toBeNull();
     },
   );
 
   it.each([
-    { label: "置いていない目的地の丸", originLocated: true, from: 3, target: { role: "destination" } },
-    { label: "仮の地点のままの出発地の丸", originLocated: false, from: 0, target: { role: "origin" } },
-  ])("押さえて動かしても動かさず、押すと選ぶ丸: $label", ({ originLocated, from, target }) => {
-    const { reorderPoints, selectPoint } = renderForm({
-      originLocated,
-      waypoints: waypointsOf(2),
-      selectedPoint: { role: "waypoint", index: 0 },
-      pointChosen: true,
-    });
-    const mark = within(order() as HTMLElement).getAllByRole("button")[from];
-    vi.spyOn(mark, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 0, 44, 44));
+    {
+      label: "経由地を先頭へ動かす",
+      originLocated: true,
+      destination: null,
+      title: "経由地2",
+      dy: -120,
+      to: 0,
+      text: "「上野」を経由地2から出発地へ動かしました。前の出発地・経由地1は経由地1・経由地2になりました。",
+    },
+    {
+      label: "目的地を間へ動かす",
+      originLocated: true,
+      destination: DESTINATION,
+      title: "目的地",
+      dy: -120,
+      to: 1,
+      text: "「品川」を目的地から経由地1へ動かしました。前の経由地1・経由地2は経由地2・目的地になりました。",
+    },
+    {
+      label: "経由地を空の目的地の席へ動かす",
+      originLocated: true,
+      destination: null,
+      title: "経由地1",
+      dy: 120,
+      to: 3,
+      text: "「浅草」を経由地1から目的地へ動かしました。前の経由地2は経由地1になりました。",
+    },
+    {
+      label: "仮の出発地の前へは入れない",
+      originLocated: false,
+      destination: null,
+      title: "経由地2",
+      dy: -120,
+      to: 1,
+      text: "「上野」を経由地2から経由地1へ動かしました。前の経由地1は経由地2になりました。",
+    },
+  ])(
+    "行の掴む所を押さえたまま上下へ動かして離すと、その順へ動かすことを上げ、何がどこへ動いたかを書く: $label",
+    async ({ originLocated, destination, title, dy, to, text }) => {
+      const { reorderPoints } = renderForm({ originLocated, destination, waypoints: waypointsOf(2) });
+      await userEvent.click(button("編集"));
+      await within(editList() as HTMLElement).findByRole("listitem", { name: "経由地2: 上野" });
+      const from = rowNames().findIndex((name) => name?.startsWith(`${title}:`));
 
-    fireEvent.pointerDown(mark, { pointerId: 1, isPrimary: true, clientX: 120 });
-    fireEvent.pointerMove(mark, { pointerId: 1, isPrimary: true, clientX: 20 });
-    fireEvent.pointerUp(mark, { pointerId: 1, isPrimary: true, clientX: 20 });
-    fireEvent.click(mark);
+      drag(title, dy);
 
-    expect(reorderPoints).not.toHaveBeenCalled();
-    expect(selectPoint).toHaveBeenLastCalledWith(target);
+      expect(reorderPoints).toHaveBeenCalledExactlyOnceWith(from, to, ORIGIN);
+      expect(note()).toBe(text);
+    },
+  );
+
+  it.each([
+    { label: "置いていない目的地", loop: false, originLocated: true, waypointCount: 2, title: "目的地" },
+    { label: "仮の地点のままの出発地", loop: false, originLocated: false, waypointCount: 2, title: "出発地" },
+    { label: "周回の間に、仮の出発地のほかに1つだけある経由地", loop: true, originLocated: false, waypointCount: 1, title: "経由地1" },
+  ])("動かせない行の掴む所は押せない: $label", async ({ loop, originLocated, waypointCount, title }) => {
+    renderForm({ loop, originLocated, waypoints: waypointsOf(waypointCount) });
+
+    await userEvent.click(button("編集"));
+
+    expect(button(`${title}を動かす`)).toBeDisabled();
+  });
+
+  it("掴む所で上下の矢印のキーを押すと、1つずつ動かす", async () => {
+    const { reorderPoints } = renderForm({ destination: DESTINATION, waypoints: waypointsOf(2) });
+    await openEdit();
+
+    button("経由地1を動かす").focus();
+    await userEvent.keyboard("{ArrowDown}");
+
+    expect(reorderPoints).toHaveBeenCalledExactlyOnceWith(1, 2, ORIGIN);
+  });
+
+  it.each([
+    { title: "経由地1", raised: "removeWaypoint", args: [0], text: "経由地1「浅草」を消しました。後ろの経由地の番号を1つ詰めました。" },
+    { title: "目的地", raised: "clearDestination", args: [], text: "目的地「品川」を消しました。" },
+  ] as const)("行の消すボタンで、その地点を消して書く: $title", async ({ title, raised, args, text }) => {
+    const handlers = renderForm({ destination: DESTINATION, waypoints: waypointsOf(2) });
+    await openEdit();
+
+    await userEvent.click(button(`${title}を消す`));
+
+    expect(handlers[raised]).toHaveBeenCalledExactlyOnceWith(...args);
+    expect(note()).toBe(text);
+  });
+
+  it("出発地の行は消せない（消すボタンを出さない）", async () => {
+    renderForm({ waypoints: waypointsOf(1) });
+    await openEdit();
+
+    expect(screen.queryByRole("button", { name: "出発地を消す" })).toBeNull();
+  });
+
+  it("並びの札を押すと、編集を閉じてその地点の詳しくを出す", async () => {
+    renderForm({ waypoints: waypointsOf(2) });
+    await openEdit();
+
+    await userEvent.click(button("経由地2: 地図で選んだ地点"));
+
+    expect(editList()).toBeNull();
+    expect(detail("経由地2")).toBeInTheDocument();
   });
 });
 

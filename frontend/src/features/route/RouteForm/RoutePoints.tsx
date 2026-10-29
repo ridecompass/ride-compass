@@ -1,18 +1,21 @@
 "use client";
 
+import { useState } from "react";
+
 import { Button } from "@/components/ui/Button/Button";
 import { LocateIcon, LoopRouteIcon } from "@/components/ui/icons/icons";
-import { ClearPointsIcon, RemovePointIcon } from "@/components/ui/icons/lucideIcons";
+import { ClearPointsIcon, EditPointsIcon, RemovePointIcon } from "@/components/ui/icons/lucideIcons";
 import { Toggle } from "@/components/ui/Toggle/Toggle";
 import { waypointsFull, type GenerationConditionsState } from "@/features/route/useGenerationConditions";
+import { usePlaceAreas } from "@/features/route/usePlaceAreas";
 import type { SavedPlacesState } from "@/features/route/useSavedPlaces";
 import { cn } from "@/lib/cn";
-import type { Coordinates, PlaceCandidate } from "@/types/route";
+import type { Coordinates, PlaceCandidate, PointTarget } from "@/types/route";
 
 import { MAP_PLACED, pointNames, pointTitle } from "@/features/route/pointNames";
 
 import PointDetail from "./PointDetail";
-import PointOrder from "./PointOrder";
+import PointEditList from "./PointEditList";
 import PointStrip, { pressableClass } from "./PointStrip";
 
 type RoutePointsConditions = Pick<
@@ -27,7 +30,6 @@ type RoutePointsConditions = Pick<
   | "clearPoints"
   | "selectedPoint"
   | "selectPoint"
-  | "pointChosen"
   | "foundAt"
 >;
 
@@ -60,8 +62,9 @@ function sourceOf(found: PlaceCandidate | null): string {
 }
 
 /**
- * 周回の切り替えと、出発地・経由地・終点。「周回 出発地 › ①②③… ＋ › 終点」を1行に並べ、押した地点の詳しくを下に出す。周回の間の終点は出発地の印と
- * 「◯◯[周回]」で、押せない（目的地を置く操作を出さない）。周回を外すと終点は目的地の札になる。
+ * 周回の切り替えと、出発地・経由地・終点。「周回 出発地 › ①②③… ＋ › 終点 編集」を1行に並べ、押した地点の詳しくを下に出す。周回の間の終点は出発地の印と
+ * 「◯◯[周回]」で、押せない（目的地を置く操作を出さない）。周回を外すと終点は目的地の札になる。「編集」を押している間は、詳しくの代わりに
+ * 地点を名前の行で並べ、通る順の入れ替えと消すことをそこでする。
  */
 export default function RoutePoints({
   conditions,
@@ -86,7 +89,6 @@ export default function RoutePoints({
     clearPoints,
     selectedPoint,
     selectPoint,
-    pointChosen,
     foundAt,
   } = conditions;
   const waypointCount = waypoints.length;
@@ -95,10 +97,35 @@ export default function RoutePoints({
   // 選んでいる地点の詳しくを出す（地図のタップもこの地点を置く）。
   const target = selectedPoint;
 
-  const names = pointNames({ waypoints, destination, foundAt, originFound, originManual, originLocated });
-  const originName = names.origin;
+  // 地点の編集（通る順の入れ替えと消すこと）。開いている間は、詳しくの代わりに地点を名前の行で縦に並べる。動かす・消すものが
+  // 無くなったら閉じる。
+  const [editOpen, setEditOpen] = useState(false);
+  const editable = waypointCount > 0 || (!loop && destination !== null);
+  const editing = editOpen && editable;
+  const choosePoint = (point: PointTarget) => {
+    setEditOpen(false);
+    selectPoint(point);
+  };
+
+  // 名前を持たない地点（地図で置いた地点・現在地）は辺りで呼ぶ。辺りを引くのは、名前を出す詳しくの地点と、編集で並べる地点だけ。
+  // 取れていない現在地は仮の位置なので引かない。
+  const originPlaced = originLocated ? origin : null;
+  const placedPoints = [originPlaced, ...waypoints, destination].filter((point) => point !== null);
+  const targetPoint =
+    target.role === "origin"
+      ? originPlaced
+      : target.role === "destination"
+        ? destination
+        : target.index === null
+          ? null
+          : waypoints[target.index];
+  const areaOf = usePlaceAreas(editing ? placedPoints : targetPoint === null ? [] : [targetPoint]);
+
+  const nameInputs = { waypoints, destination, foundAt, originFound, originManual, originLocated };
+  const names = pointNames(nameInputs);
+  const areaNames = pointNames({ ...nameInputs, areas: { origin, areaOf } });
   const destinationFound = foundAt(destination);
-  const destinationName = loop ? `${originName}[周回]` : names.destination;
+  const destinationName = loop ? `${names.origin}[周回]` : names.destination;
 
   function renderDetail() {
     const common = { originLocated, onSearchOpen, savedPlaces, placing, title: pointTitle(target) };
@@ -108,7 +135,7 @@ export default function RoutePoints({
           {...common}
           role="origin"
           source={originManual ? sourceOf(originFound) : undefined}
-          name={originName}
+          name={areaNames.origin}
           found={originFound}
           at={originLocated ? origin : null}
           placed
@@ -134,7 +161,7 @@ export default function RoutePoints({
           {...common}
           role="destination"
           source={set ? sourceOf(destinationFound) : undefined}
-          name={destinationName}
+          name={areaNames.destination}
           found={destinationFound}
           at={destination}
           placed={set}
@@ -175,7 +202,7 @@ export default function RoutePoints({
         role="waypoint"
         markLabel={String(index + 1)}
         source={sourceOf(found)}
-        name={names.waypoints[index]}
+        name={areaNames.waypoints[index]}
         found={found}
         at={waypoints[index]}
         placed
@@ -212,15 +239,28 @@ export default function RoutePoints({
         </Toggle>
         <PointStrip
           loop={loop}
-          originName={originName}
+          originName={names.origin}
           destinationName={destinationName}
           waypointNames={names.waypoints}
           full={full}
           originLocated={originLocated}
           selectedPoint={selectedPoint}
-          selectPoint={selectPoint}
-          reorderWaypoint={(from, to) => reorderPoints(from + 1, to + 1, origin)}
+          selectPoint={choosePoint}
         />
+        <Toggle
+          variant="plain"
+          className={cn(
+            pressableClass,
+            "min-h-6 flex-none gap-0.5 rounded-sm px-1.5 text-[length:var(--font-size-md)] text-[var(--color-muted)] aria-pressed:text-[var(--color-accent-strong)]",
+          )}
+          pressed={editing}
+          disabled={!editable}
+          onClick={() => setEditOpen(!editing)}
+          usage="押している間は、地点を名前で縦に並べ、通る順を入れ替えたり消したりできます。もう一度押すと閉じます。"
+        >
+          <EditPointsIcon />
+          編集
+        </Toggle>
         {/* 消すものが無い間も押せない状態で残す（置き場が動くと、並びの名前の出し分けが揺れる）。周回の間は並びに出ている
             経由地だけを消し、覚えている目的地は残す。 */}
         <Button
@@ -238,20 +278,22 @@ export default function RoutePoints({
           <ClearPointsIcon size={18} />
         </Button>
       </div>
-      {/* 地点を選んでいる間は、詳しくの上に通る順の大きい丸の並びを出す（何も選んでいない・新しい経由地を置く間は出さず、詳しくの高さを抑える）。 */}
-      {pointChosen && waypointCount > 0 && !(target.role === "waypoint" && target.index === null) && (
-        <PointOrder
+      {editing ? (
+        <PointEditList
           loop={loop}
-          originName={originName}
           originLocated={originLocated}
-          waypointNames={names.waypoints}
-          destinationName={destination === null ? null : names.destination}
-          selectedPoint={selectedPoint}
-          selectPoint={selectPoint}
+          originName={areaNames.origin}
+          waypointNames={areaNames.waypoints}
+          destinationName={destination === null ? null : areaNames.destination}
           reorderPoints={(from, to) => reorderPoints(from, to, origin)}
+          removePoint={(point) => {
+            if (point.role === "destination") clearDestination();
+            else if (point.role === "waypoint" && point.index !== null) removeWaypoint(point.index);
+          }}
         />
+      ) : (
+        renderDetail()
       )}
-      {renderDetail()}
     </div>
   );
 }
