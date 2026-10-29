@@ -127,7 +127,9 @@ describe("RouteForm 地点の編集", () => {
   // 行の高さはテスト環境に無いレイアウトの実寸なので、テストが決める（高さ44・間6で、上から50ずつ）。
   function drag(title: string, dy: number) {
     const rows = within(editList() as HTMLElement).getAllByRole("listitem");
-    rows.forEach((row, index) => vi.spyOn(row, "getBoundingClientRect").mockReturnValue(new DOMRect(0, index * 50, 300, 44)));
+    rows.forEach((row, index) =>
+      vi.spyOn(row, "getBoundingClientRect").mockReturnValue(new DOMRect(0, index * 50, 300, 44)),
+    );
     const handle = button(`${title}を動かす`);
     const y = rows.findIndex((row) => row.contains(handle)) * 50 + 22;
     fireEvent.pointerDown(handle, { pointerId: 1, isPrimary: true, clientY: y });
@@ -140,11 +142,14 @@ describe("RouteForm 地点の編集", () => {
     [false, 1, null, false],
     [false, 0, DESTINATION, false],
     [true, 0, DESTINATION, true],
-  ])("周回か（%s）・経由地が%i件・目的地が%oなら、編集を押せない（%s）", (loop, waypointCount, destination, disabled) => {
-    renderForm({ loop, waypoints: waypointsOf(waypointCount), destination });
+  ])(
+    "周回か（%s）・経由地が%i件・目的地が%oなら、編集を押せない（%s）",
+    (loop, waypointCount, destination, disabled) => {
+      renderForm({ loop, waypoints: waypointsOf(waypointCount), destination });
 
-    expect(button("編集")).toHaveProperty("disabled", disabled);
-  });
+      expect(button("編集")).toHaveProperty("disabled", disabled);
+    },
+  );
 
   it.each([
     {
@@ -228,7 +233,13 @@ describe("RouteForm 地点の編集", () => {
   it.each([
     { label: "置いていない目的地", loop: false, originLocated: true, waypointCount: 2, title: "目的地" },
     { label: "仮の地点のままの出発地", loop: false, originLocated: false, waypointCount: 2, title: "出発地" },
-    { label: "周回の間に、仮の出発地のほかに1つだけある経由地", loop: true, originLocated: false, waypointCount: 1, title: "経由地1" },
+    {
+      label: "周回の間に、仮の出発地のほかに1つだけある経由地",
+      loop: true,
+      originLocated: false,
+      waypointCount: 1,
+      title: "経由地1",
+    },
   ])("動かせない行の掴む所は押せない: $label", async ({ loop, originLocated, waypointCount, title }) => {
     renderForm({ loop, originLocated, waypoints: waypointsOf(waypointCount) });
 
@@ -248,7 +259,12 @@ describe("RouteForm 地点の編集", () => {
   });
 
   it.each([
-    { title: "経由地1", raised: "removeWaypoint", args: [0], text: "経由地1「浅草」を消しました。後ろの経由地の番号を1つ詰めました。" },
+    {
+      title: "経由地1",
+      raised: "removeWaypoint",
+      args: [0],
+      text: "経由地1「浅草」を消しました。後ろの経由地の番号を1つ詰めました。",
+    },
     { title: "目的地", raised: "clearDestination", args: [], text: "目的地「品川」を消しました。" },
   ] as const)("行の消すボタンで、その地点を消して書く: $title", async ({ title, raised, args, text }) => {
     const handlers = renderForm({ destination: DESTINATION, waypoints: waypointsOf(2) });

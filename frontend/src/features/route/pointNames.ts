@@ -50,7 +50,8 @@ export function pointNames(inputs: PointNamesInputs): { origin: string; waypoint
   const current = originArea === null ? "現在地" : `現在地（${originArea}）`;
   return {
     origin:
-      found.origin ?? (originManual ? (originArea ?? MAP_PLACED) : originLocated ? current : "現在地を取得できていません"),
+      found.origin ??
+      (originManual ? (originArea ?? MAP_PLACED) : originLocated ? current : "現在地を取得できていません"),
     waypoints: found.waypoints.map((name, index) => name ?? placed(waypoints[index])),
     destination: destination === null ? "未設定" : (found.destination ?? placed(destination)),
   };
