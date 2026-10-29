@@ -37,7 +37,6 @@ type RouteFormConditions = Pick<
   | "waypoints"
   | "removeWaypoint"
   | "reorderPoints"
-  | "pointChosen"
   | "destination"
   | "clearDestination"
   | "clearPoints"

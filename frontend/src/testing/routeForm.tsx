@@ -32,7 +32,6 @@ const BASE = {
   originLocated: true,
   originAtHere: true,
   selectedPoint: { role: "origin" },
-  pointChosen: false,
   placing: false,
   foundAt: () => null,
   originFound: null,
@@ -51,20 +50,16 @@ export function waypointsOf(count: number) {
 /** 選んでいる地点を持つ親の代わり（選ぶと上げ、その地点を選んだことにして詳しくを出し直す）。 */
 function Selecting({
   initial,
-  initiallyChosen,
   onSelect,
   children,
 }: {
   initial: PointTarget;
-  initiallyChosen: boolean;
   onSelect: (target: PointTarget) => void;
-  children: (selected: PointTarget, chosen: boolean, select: (target: PointTarget) => void) => ReactNode;
+  children: (selected: PointTarget, select: (target: PointTarget) => void) => ReactNode;
 }) {
   const [selected, setSelected] = useState(initial);
-  const [chosen, setChosen] = useState(initiallyChosen);
-  return children(selected, chosen, (target) => {
+  return children(selected, (target) => {
     setSelected(target);
-    setChosen(true);
     onSelect(target);
   });
 }
@@ -102,7 +97,6 @@ export function renderForm(options: Options = {}, tab: SettingsTab = "generate")
       placing,
       selectedPoint,
       selectPoint,
-      pointChosen,
       ...conditions
     } = {
       ...BASE,
@@ -111,11 +105,11 @@ export function renderForm(options: Options = {}, tab: SettingsTab = "generate")
       ...changed,
     };
     return (
-      <Selecting initial={selectedPoint} initiallyChosen={pointChosen} onSelect={selectPoint}>
-        {(selected, chosen, select) => (
+      <Selecting initial={selectedPoint} onSelect={selectPoint}>
+        {(selected, select) => (
           <Tabs value={nextTab}>
             <RouteForm
-              conditions={{ ...conditions, selectedPoint: selected, pointChosen: chosen, selectPoint: select }}
+              conditions={{ ...conditions, selectedPoint: selected, selectPoint: select }}
               origin={origin}
               originManual={originManual}
               originLocated={originLocated}
@@ -165,7 +159,7 @@ export function strip() {
     .map((chip) => chip.getAttribute("aria-label"));
 }
 
-/** 通る順の大きい丸の並び（出ていなければnull）。 */
-export function order() {
-  return screen.queryByRole("group", { name: "通る順" });
+/** 地点の編集の、通る順の名前の行（出ていなければnull）。 */
+export function editList() {
+  return screen.queryByRole("list", { name: "通る順" });
 }

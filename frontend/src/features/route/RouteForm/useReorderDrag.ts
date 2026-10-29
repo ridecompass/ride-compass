@@ -1,91 +1,85 @@
 "use client";
 
-import { useRef, useState, type PointerEvent } from "react";
+import { useState, type PointerEvent } from "react";
 
 import { reorderedIndex } from "@/features/route/useGenerationConditions";
 import { TAP_SLOP_PX } from "@/lib/tapSlop";
 
-/** 押さえている丸（何番目か・押さえた指・押さえた所からの横の動き・丸1つ分の幅）。 */
-interface MarkDrag {
+/** 押さえている行（何番目か・押さえた指・押さえた所からの縦の動き・押さえた時の各行の縦の中ほど・ほかの行が空ける幅）。 */
+interface RowDrag {
   from: number;
   pointerId: number;
-  startX: number;
-  dx: number;
-  step: number;
-  /** 押した所から動かしたか（動かしたら、離しても押したことにしない）。 */
+  startY: number;
+  dy: number;
+  centers: number[];
+  shift: number;
+  /** 押した所から動かしたか（動かすまでは行をずらさない）。 */
   moved: boolean;
 }
 
 interface ReorderDragOptions {
-  /** 並べた丸の数。 */
+  /** 並べた行の数。 */
   count: number;
-  /** 入れられる一番前の番目（それより前の丸は動かない）。 */
+  /** 入れられる一番前の番目（それより前の行は動かない）。 */
   first?: number;
-  /** `index`番目の丸を押さえて動かせるか（`first`より前の丸は、これによらず動かない）。 */
-  movable?: (index: number) => boolean;
-  /** `from`番目を`to`番目へ動かす（押さえたまま左右へ動かして離したとき）。 */
+  /** `from`番目を`to`番目へ動かす（押さえたまま上下へ動かして離したとき）。 */
   onReorder: (from: number, to: number) => void;
 }
 
 /**
- * 隙間なく同じ幅で並ぶ丸を、押さえたまま左右へ動かして並べ替える。押さえた丸は指に付き、ほかの丸は入る所を空け、離した所へ
- * 動かす。入る所は動かした丸の数で決まる。押しただけなら、丸のclickをそのまま通す。
+ * 縦に並ぶ行を、掴む所を押さえたまま上下へ動かして並べ替える。押さえた行は指に付き、ほかの行は入る所を空け、離した所へ動かす。
+ * 行の高さは名前の折り返しで揃わないので、入る所は押さえた時の各行の中ほどと、動かしている行の中ほどを比べて決める。
  */
-export function useReorderDrag({ count, first = 0, movable = () => true, onReorder }: ReorderDragOptions) {
-  const [drag, setDrag] = useState<MarkDrag | null>(null);
-  // 動かして離したあとに届くclickで、押した丸を選ばない（同じ操作の終わりにclickが飛ぶ）。clickが来ないまま次に押したときは、
-  // その押した操作のclickを捨てないよう、押すたびに戻す。
-  const swallowClickRef = useRef(false);
-  const dropIndex = (current: MarkDrag) =>
-    Math.min(count - 1, Math.max(first, current.from + Math.round(current.dx / current.step)));
+export function useReorderDrag({ count, first = 0, onReorder }: ReorderDragOptions) {
+  const [drag, setDrag] = useState<RowDrag | null>(null);
+  const dropIndex = (current: RowDrag) => {
+    const center = current.centers[current.from] + current.dy;
+    const before = current.centers.filter((other, index) => index !== current.from && other < center).length;
+    return Math.min(count - 1, Math.max(first, before));
+  };
 
   const shown = drag?.moved ? drag : null;
   const shownDrop = shown === null ? null : dropIndex(shown);
 
   return {
-    /** `index`番目の丸を押さえた。 */
-    press(index: number, event: PointerEvent<HTMLElement>) {
-      swallowClickRef.current = false;
-      if (!event.isPrimary || index < first || count - first < 2 || !movable(index)) return;
+    /** `index`番目の行の掴む所を押さえた。`rows`は並びの行の今の枠（上から順）。 */
+    press(index: number, event: PointerEvent<HTMLElement>, rows: DOMRect[]) {
+      if (!event.isPrimary || index < first || count - first < 2 || rows.length !== count) return;
       event.currentTarget.setPointerCapture(event.pointerId);
+      // 行の間の隙間は揃っているので、先頭の2行の間で測る。
+      const gap = count > 1 ? Math.max(0, rows[1].top - rows[0].bottom) : 0;
       setDrag({
         from: index,
         pointerId: event.pointerId,
-        startX: event.clientX,
-        dx: 0,
-        step: event.currentTarget.getBoundingClientRect().width,
+        startY: event.clientY,
+        dy: 0,
+        centers: rows.map((row) => row.top + row.height / 2),
+        shift: rows[index].height + gap,
         moved: false,
       });
     },
     move(event: PointerEvent<HTMLElement>) {
-      if (drag === null || event.pointerId !== drag.pointerId || drag.step <= 0) return;
-      const dx = event.clientX - drag.startX;
-      setDrag({ ...drag, dx, moved: drag.moved || Math.abs(dx) > TAP_SLOP_PX });
+      if (drag === null || event.pointerId !== drag.pointerId) return;
+      const dy = event.clientY - drag.startY;
+      setDrag({ ...drag, dy, moved: drag.moved || Math.abs(dy) > TAP_SLOP_PX });
     },
     release(event: PointerEvent<HTMLElement>) {
       if (drag === null || event.pointerId !== drag.pointerId) return;
       setDrag(null);
       if (!drag.moved) return;
-      swallowClickRef.current = true;
       const to = dropIndex(drag);
       if (to !== drag.from) onReorder(drag.from, to);
     },
     cancel() {
       setDrag(null);
     },
-    /** 丸のclickが、押した操作か（動かして離した終わりのclickなら偽で、選ばない）。 */
-    pressed() {
-      if (!swallowClickRef.current) return true;
-      swallowClickRef.current = false;
-      return false;
-    },
-    /** 指に付いて動いている丸の番目。 */
+    /** 指に付いて動いている行の番目。 */
     dragging: shown?.from ?? null,
-    /** `index`番目の丸を、いまの位置からどれだけ横へずらして描くか。 */
+    /** `index`番目の行を、いまの位置からどれだけ縦へずらして描くか。 */
     offsetOf(index: number) {
       if (shown === null || shownDrop === null) return 0;
-      if (index === shown.from) return shown.dx;
-      return (reorderedIndex(index, shown.from, shownDrop) - index) * shown.step;
+      if (index === shown.from) return shown.dy;
+      return (reorderedIndex(index, shown.from, shownDrop) - index) * shown.shift;
     },
   };
 }

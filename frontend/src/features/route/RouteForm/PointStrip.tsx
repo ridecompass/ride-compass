@@ -8,8 +8,6 @@ import type { PointTarget } from "@/types/route";
 
 import PointMark from "@/components/PinMark/PointMark";
 
-import { useReorderDrag } from "./useReorderDrag";
-
 interface PointStripProps {
   /** 出発地へ戻る周回か。周回の間の終点は出発地で、押せない。 */
   loop: boolean;
@@ -27,8 +25,6 @@ interface PointStripProps {
   selectedPoint: PointTarget;
   /** 押した地点を選ぶ。 */
   selectPoint: (target: PointTarget) => void;
-  /** 経由地の`from`番目を`to`番目へ動かす（番号の丸を押さえたまま左右へ動かして離したとき）。 */
-  reorderWaypoint: (from: number, to: number) => void;
 }
 
 /** 押している間の枠（地点の札と、並びの左の周回の切り替え）。 */
@@ -38,7 +34,7 @@ export const pressableClass =
 /** 札の印と名前の間（札の`gap-1`）。 */
 const NAME_GAP_PX = 4;
 
-/** 経由地の番号の丸の径。押さえたまま動かすので、並びに入りきる間は両端の札の印より大きくする。 */
+/** 経由地の番号の丸の径。押して選ぶ所なので、並びに入りきる間は両端の札の印より大きくする。 */
 const WAYPOINT_MARK_PX = 26;
 /** 大きい丸では並びに入りきらないときの径（押す所は`Button`の下限の24px四方に収まる）。 */
 const WAYPOINT_MARK_SMALL_PX = 18;
@@ -59,14 +55,13 @@ export default function PointStrip({
   originLocated,
   selectedPoint: target,
   selectPoint,
-  reorderWaypoint,
 }: PointStripProps) {
   const waypointCount = waypointNames.length;
   const isShown = (other: PointTarget) =>
     other.role === "waypoint" ? target.role === "waypoint" && target.index === other.index : other.role === target.role;
 
   // 並びが1行に入りきるように、両端の名前を隠し、それでも入らなければ経由地の丸を小さくする（途中で切った名前は読めない。
-  // 名前は押すと詳しくに出る）。丸は押さえて動かす所なので、入りきる間は大きく出す。出さない間も名前は札の中で幅を測れる形で
+  // 名前は押すと詳しくに出る）。丸は押して選ぶ所なので、入りきる間は大きく出す。出さない間も名前は札の中で幅を測れる形で
   // 置いてあり、戻したときの幅を足して入りきるかを見る。
   const stripRef = useRef<HTMLDivElement>(null);
   const [fitting, setFitting] = useState<StripFitting>("names");
@@ -102,9 +97,6 @@ export default function PointStrip({
     observer.observe(strip);
     return () => observer.disconnect();
   }, [fitting, originName, destinationName, waypointCount]);
-
-  // 経由地の番号の丸を押さえたまま左右へ動かして、通る順を入れ替える。
-  const drag = useReorderDrag({ count: waypointCount, onReorder: reorderWaypoint });
 
   const chipClass = cn("rounded-full", pressableClass);
   const arrow = (
@@ -155,7 +147,7 @@ export default function PointStrip({
     <div ref={stripRef} role="group" aria-label="地点の並び" className="flex min-w-0 flex-1 items-center gap-1">
       {endChip("origin", "出発地", originName)}
       {arrow}
-      {/* 番号の丸は隙間なく並べ、両端の名前に幅を残す。縦の動きはシート・パネルのスクロールへ渡し、横の動きで並び替える。 */}
+      {/* 番号の丸は隙間なく並べ、両端の名前に幅を残す。 */}
       <span className="flex flex-none items-center">
         {waypointNames.map((name, index) => (
           <Button
@@ -163,27 +155,10 @@ export default function PointStrip({
             variant="ghost"
             size="bare"
             shape="pill"
-            className={cn(
-              chipClass,
-              "touch-pan-y border-transparent p-px select-none [-webkit-touch-callout:none]",
-              // 引きずる丸は指に付けて遅らせず、ほかの丸は入る所を空けるときに滑らせる。
-              drag.dragging === index ? "relative z-10 scale-110" : "transition-transform",
-            )}
-            style={{ translate: `${drag.offsetOf(index)}px 0` }}
+            className={cn(chipClass, "border-transparent p-px")}
             aria-pressed={isShown({ role: "waypoint", index })}
             aria-label={`経由地${index + 1}: ${name}`}
-            onPointerDown={(event) => drag.press(index, event)}
-            onPointerMove={drag.move}
-            onPointerUp={drag.release}
-            onPointerCancel={drag.cancel}
-            onClick={() => {
-              if (drag.pressed()) selectPoint({ role: "waypoint", index });
-            }}
-            usage={
-              waypointCount < 2
-                ? undefined
-                : "押すと詳しくを出します。押さえたまま左右へ動かすと、通る順を入れ替えます。"
-            }
+            onClick={() => selectPoint({ role: "waypoint", index })}
           >
             <PointMark role="waypoint" label={String(index + 1)} originLocated={originLocated} size={markSize} />
           </Button>
