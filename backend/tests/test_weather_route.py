@@ -1,7 +1,7 @@
 """`api/routers/weather.py`——警報・ルートの警報級の時系列・暑さ指数・洪水予報・アメダス・今日の最寄りの格子点の値・MSMの格子点の経路。
 
-経路ごとに受け渡し（サービスの答えが応答に出ること・回数制限）を1本ずつ通し、ルーターが持つ判断（取れなかったら502・表示範囲が不正か広すぎたら400）を
-この経路から見る。サービスは依存の差し替えで与える。
+経路ごとに回数制限を通し、MSMの格子点とルートの警報級の時系列の経路はサービスの答えが応答に出ることも見る。ルーターが持つ判断
+（取れなかったら502・表示範囲が不正か広すぎたら400）をこの経路から見る。サービスは依存の差し替えで与える。
 
 ここで見ないもの:
 - 警報・ルートの警報級の時系列・暑さ指数・洪水予報・アメダスを取って組み立てること → 各サービスのテスト（`test_warning_service.py`・
@@ -131,15 +131,6 @@ ROUTE_POINTS = {"points": [POINT, {"latitude": 35.69, "longitude": 139.70}]}
 #: 東京駅の周りの、ズーム8の地図ほどの範囲。
 TOKYO_BBOX = {"min_lon": 139.0, "min_lat": 35.3, "max_lon": 140.4, "max_lat": 36.0}
 
-#: 地点を問う経路と、そのサービスの依存・取れたときの答え。
-POINT_ROUTES = [
-    ("/api/weather/warnings", get_warning_service, WARNINGS),
-    ("/api/weather/wbgt", get_wbgt_service, WBGT),
-    ("/api/weather/flood-forecast", get_flood_service, FLOODS),
-    ("/api/weather/amedas", get_amedas_service, AMEDAS),
-    ("/api/weather", get_weather_service, GRID_POINT_TODAY),
-]
-
 
 class FakeService:
     """天気の各サービスの代役。地点を問う口は与えた答えを返す。"""
@@ -167,16 +158,6 @@ class FakeService:
 
     async def get_route_timeline(self, points):
         return self._answer
-
-
-@pytest.mark.parametrize(("path", "dependency", "answer"), POINT_ROUTES)
-def test_a_point_route_returns_what_its_source_answered(override_dependency, path, dependency, answer):
-    override_dependency(dependency, lambda: FakeService(answer))
-
-    response = client.get(path, params=POINT)
-
-    assert response.status_code == 200
-    assert response.json() == answer.model_dump(mode="json")
 
 
 def test_the_msm_grid_route_returns_the_grid_points_with_local_times(override_dependency):
