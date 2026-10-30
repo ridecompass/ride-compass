@@ -1,8 +1,7 @@
 """`domain/route.py`——区間（交差点の間）を`SEGMENT_BIN_DISTANCE_KM`ごとのビンへ束ねる`aggregate_segments_into_bins`と、
 区間の値を候補全体へ畳む`merge_*`と、Edge単位の軸の生値を候補全体へ畳む`route_axis_raw_values`。
 
-入口は`aggregate_segments_into_bins`・`merge_axis_difficulties`・`merge_axis_contributions`・`merge_difficulty`・
-`merge_overall_difficulty`・`merge_material_values`・`merge_material_category_shares`・`route_axis_raw_values`。
+入口は`aggregate_segments_into_bins`・`merge_route_values`・`merge_material_values`・`merge_material_category_shares`・`route_axis_raw_values`。
 応答の型（`RouteCandidate`等）の検証はPydanticが持つ。
 
 密度の軸（区間が`DensityScoreInput`を持つ軸）は、停止密度の軸のように0から始まり上限で頭打ちになる直線で
@@ -71,9 +70,9 @@ def test_a_route_scores_a_density_axis_from_the_mean_count_over_its_bins():
     平均（50点）ではなく8回/kmの点数（72.7点）。"""
     bins = route.aggregate_segments_into_bins(_signal_segments([0.0625] * 16, [1] * 8 + [0] * 8, share=0.6))
 
-    assert route.merge_axis_difficulties(bins)["stops"] == 72.7
-    assert route.merge_axis_contributions(bins)["stops"] == pytest.approx(43.6)
-    overall = route.merge_overall_difficulty(bins)
+    assert route.merge_route_values(bins)["axis_difficulties"]["stops"] == 72.7
+    assert route.merge_route_values(bins)["axis_contributions"]["stops"] == pytest.approx(43.6)
+    overall = route.merge_route_values(bins)["overall_difficulty"]
     assert overall is not None
     assert overall.average == pytest.approx(51.6)
 
@@ -84,13 +83,13 @@ def test_a_route_scores_a_density_axis_the_same_however_its_road_is_cut():
     whole = route.aggregate_segments_into_bins(_signal_segments([0.1, 0.4], [1, 0], share=0.5))
     cut = route.aggregate_segments_into_bins(_signal_segments([0.01, 0.09, 0.4], [0.5, 0.5, 0], share=0.5))
 
-    assert route.merge_axis_difficulties(cut) == route.merge_axis_difficulties(whole)
-    assert route.merge_axis_contributions(cut) == route.merge_axis_contributions(whole)
+    assert route.merge_route_values(cut)["axis_difficulties"] == route.merge_route_values(whole)["axis_difficulties"]
+    assert route.merge_route_values(cut)["axis_contributions"] == route.merge_route_values(whole)["axis_contributions"]
 
 
 def test_the_load_of_a_route_is_its_rounded_average_over_every_segment_including_those_without_a_value():
     """欠損の区間を飛ばして積むと、データの無い区間が多いルートほど楽に見える。"""
-    overall = route.merge_overall_difficulty(_segments([1.0, 1.0, 2.0], difficulty=[10.0, None, 20.0]))
+    overall = route.merge_route_values(_segments([1.0, 1.0, 2.0], difficulty=[10.0, None, 20.0]))["overall_difficulty"]
 
     assert overall is not None
     # 平均 50/3 は 16.7 に丸め、総量はその 16.7 に全区間の 4km を掛ける（丸める前の平均なら 66.7）。
@@ -132,8 +131,8 @@ def test_difficulties_keep_one_decimal_and_physical_values_keep_four_significant
         material_values=[{"material_a": 1000.0}, {"material_a": 2000.0}],
     )
 
-    assert route.merge_axis_difficulties(segments) == {"axis_a": 16.7}
-    assert route.merge_axis_contributions(segments) == {"axis_a": 16.7}
+    assert route.merge_route_values(segments)["axis_difficulties"] == {"axis_a": 16.7}
+    assert route.merge_route_values(segments)["axis_contributions"] == {"axis_a": 16.7}
     assert route.merge_material_values(segments) == {"material_a": 1667.0}
 
 

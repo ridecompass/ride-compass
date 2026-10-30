@@ -22,7 +22,7 @@ from app.domain.jma_tile_specs import (
     read_target_times,
 )
 from app.domain.region import BoundingBox, tile_bounds_lonlat, tile_position, tiles_covering_bbox
-from app.domain.route import RouteSegmentDetail, merge_overall_difficulty
+from app.domain.route import RouteSegmentDetail, merge_route_values
 from app.domain.time_zone import jst_local_text
 from app.domain.way_value_formula import (
     FALSE,
@@ -428,7 +428,7 @@ def difficulty_expectations() -> dict[str, list[dict]]:
     rows = []
     for scene, parts in _ROUTES:
         segments = [_segment(distance_km, contributions) for distance_km, contributions in parts]
-        overall = merge_overall_difficulty(segments)
+        overall = merge_route_values(segments)["overall_difficulty"]
         rows.append(
             {
                 "scene": scene,

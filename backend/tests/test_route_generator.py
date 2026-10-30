@@ -12,8 +12,8 @@
 
 エンジンの代役は、各メソッドを`RoadGraphEngine`の同名メソッドの署名へ当ててから呼ぶ（`bound`）。応答を返すだけで、呼ばれ方を記録しない。
 代役が返す探索結果・経路は本物の型（`TracedLoop`・`LoopTurnaround`・`EvaluatedRoute`・`FixedLegs`）で作る。
-探索の文脈（`context`）は戦略層にとって中身を読まない値で、読むのは`destination_correction`の
-1属性だけのため、その属性だけを持つ器で渡す。
+探索の文脈（`context`）は戦略層にとって中身を読まない値で、読み書きするのは`destination_correction`と
+評価の段ごとの所要時間（`evaluate_steps_ms`）だけのため、その属性だけを持つ器で渡す。
 """
 
 import logging
@@ -96,7 +96,7 @@ class FakeEngine:
     def __init__(self, *, routes=None, context=..., prepare_error=None, turnarounds=(), similar=(),
                  fixed_error=None, via=(), fastest=None, build_error=None, drop_evaluated=False, closes=None):
         self.routes = routes or {}
-        self.context = SimpleNamespace(destination_correction=None) if context is ... else context
+        self.context = SimpleNamespace(destination_correction=None, evaluate_steps_ms={}) if context is ... else context
         self.prepare_error = prepare_error
         self.turnarounds = list(turnarounds)
         self.similar = set(similar)

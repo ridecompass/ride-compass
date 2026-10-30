@@ -161,27 +161,53 @@ def composite_difficulty_array(
     return composite_from_sums(weighted_scores, weight_sums), weight_sums
 
 
+def axis_weight_shares_at_rows(
+    axis_arrays: Mapping[str, np.ndarray],
+    weights: Mapping[str, float | np.ndarray],
+    weight_sums: np.ndarray,
+    rows: np.ndarray,
+) -> list[dict[str, float]]:
+    """行`rows`の区間ごとの、データのある軸の重みの割合（`重み ÷ weight_sums[row]`）。合成に入らない区間（重みの和が0）は空。
+
+    軸の得点にこれを掛けると寄与度になる（`axis_contributions_at_rows`）。区間をまたいで得点を作り直す
+    軸（`domain/route.py: DensityScoreInput`）は、作り直した得点にこれを掛けて寄与度を出す。
+    """
+    totals = np.asarray(weight_sums[rows], dtype=np.float64)
+    usable = (totals != 0) & ~np.isnan(totals)
+    shares: list[dict[str, float]] = [{} for _ in range(len(totals))]
+    with np.errstate(invalid="ignore", divide="ignore"):
+        for axis_id, arr in axis_arrays.items():
+            weight = weights.get(axis_id, 0.0)
+            weight_at = np.asarray(weight[rows] if isinstance(weight, np.ndarray) else weight, dtype=np.float64)
+            share = (weight_at / totals).tolist()
+            for position in np.flatnonzero(usable & ~np.isnan(arr[rows])).tolist():
+                shares[position][axis_id] = share[position]
+    return shares
+
+
+def axis_contributions_at_rows(
+    scores: Mapping[str, Sequence[float]], shares: Sequence[Mapping[str, float]]
+) -> list[dict[str, float]]:
+    """区間ごとの軸別寄与度（データのある軸の`得点 × 重みの割合`）。`scores`は軸→区間ごとの得点、`shares`は同じ並びの
+    `axis_weight_shares_at_rows`。
+
+    全区間ぶんは作らない——読むのは経路上の数百区間だけのため。全軸を足すと丸め前の
+    合成difficultyに一致する（合成とその内訳を食い違わせないための式）。区間の値は丸めない。
+    """
+    return [
+        {axis_id: float(scores[axis_id][position]) * share for axis_id, share in row_shares.items()}
+        for position, row_shares in enumerate(shares)
+    ]
+
+
 def axis_weight_shares_at_row(
     axis_arrays: Mapping[str, np.ndarray],
     weights: Mapping[str, float | np.ndarray],
     weight_sums: np.ndarray,
     row: int,
 ) -> dict[str, float]:
-    """1区間ぶんの、データのある軸の重みの割合（`重み ÷ weight_sums[row]`）。合成に入らない区間（重みの和が0）は空。
-
-    軸の得点にこれを掛けると寄与度になる（`axis_contributions_at_row`）。区間をまたいで得点を作り直す
-    軸（`domain/route.py: DensityScoreInput`）は、作り直した得点にこれを掛けて寄与度を出す。
-    """
-    total = float(weight_sums[row])
-    if total == 0 or math.isnan(total):
-        return {}
-    shares: dict[str, float] = {}
-    for axis_id, arr in axis_arrays.items():
-        if math.isnan(arr[row]):
-            continue
-        weight = weights.get(axis_id, 0.0)
-        shares[axis_id] = float(weight[row] if isinstance(weight, np.ndarray) else weight) / total
-    return shares
+    """1区間ぶんの`axis_weight_shares_at_rows`。"""
+    return axis_weight_shares_at_rows(axis_arrays, weights, weight_sums, np.array([row]))[0]
 
 
 def axis_contributions_at_row(
@@ -190,15 +216,12 @@ def axis_contributions_at_row(
     weight_sums: np.ndarray,
     row: int,
 ) -> dict[str, float]:
-    """1区間ぶんの軸別寄与度（データのある軸の`値 × 重み ÷ weight_sums[row]`）。
-
-    全区間ぶんは作らない——読むのは経路上の数百区間だけのため。全軸を足すと丸め前の
-    合成difficultyに一致する（合成とその内訳を食い違わせないための式）。区間の値は丸めない。
-    """
-    return {
-        axis_id: float(axis_arrays[axis_id][row]) * share
-        for axis_id, share in axis_weight_shares_at_row(axis_arrays, weights, weight_sums, row).items()
-    }
+    """1区間ぶんの`axis_contributions_at_rows`。"""
+    rows = np.array([row])
+    return axis_contributions_at_rows(
+        {axis_id: arr[rows].tolist() for axis_id, arr in axis_arrays.items()},
+        axis_weight_shares_at_rows(axis_arrays, weights, weight_sums, rows),
+    )[0]
 
 
 def composite_difficulty(
@@ -246,7 +269,7 @@ class OverallDifficulty(StrictModel):
     """ルート全体の難易度。
 
     `average`は区間の`difficulty`（絶対基準0-100）の距離加重平均（1kmあたりの回数で測る軸の分は、回数を平均して
-    から得点にする。`domain/route.py: merge_difficulty`）で、重み・条件が違う実験の間でも比較できる。`load`は難易度の総量（平均×距離km）で、平均が距離で正規化されるため
+    から得点にする。`domain/route.py: merge_difficulty_values`）で、重み・条件が違う実験の間でも比較できる。`load`は難易度の総量（平均×距離km）で、平均が距離で正規化されるため
     遠回りするほど下がるのに対し、総量は距離が伸びればそのまま増える——「走り切るのに
     どれだけしんどいか」に近く、遠回りが正直に不利に出る。総量は候補の順位付けには使わず、
     平均と併せて判断材料として示す。
@@ -256,7 +279,7 @@ class OverallDifficulty(StrictModel):
     load: float
 
 
-#: ルート全体の難易度の数え方を利用者に言う文（`domain/route.py: merge_overall_difficulty`の式の言い換え。式を変えたら、ここも変える）。
+#: ルート全体の難易度の数え方を利用者に言う文（`domain/route.py: merge_route_values`の式の言い換え。式を変えたら、ここも変える）。
 #: 画面は自分の部品（グラフ・内訳）を指す文だけを足す。
 OVERALL_DIFFICULTY_WORDING: dict[str, str] = {
     "average": (

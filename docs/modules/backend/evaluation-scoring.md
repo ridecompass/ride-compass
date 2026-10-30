@@ -233,7 +233,7 @@ bbox全体ぶんのコストをリクエストにつき1回だけnumpyで合成�
   時刻ビンごとに合成し直すときの、風に依らない計算の使い回しは[routing-engine.md](routing-engine.md)
   「レグ別コスト配列」節。
   同じコスト配列・軸別スコア配列は`_build_segment_details`（区間表示）からも参照され、
-  探索と表示の二重計算を避ける。区間の軸別寄与度（表示用）は`difficulty.py: axis_contributions_at_row`が
+  探索と表示の二重計算を避ける。区間の軸別寄与度（表示用）は`difficulty.py: axis_contributions_at_rows`が
   経路上の区間ぶんだけ、合成が返した重みの和（`AxisComposition.weight_sums`）を分母に求める
   ——全区間ぶんは作らない。**唯一の例外**（探索コストのみ補完・表示は変えない、
   `docs/architecture/design-principles.md`「探索コストと表示difficultyの一致」参照）: 重み付き軸が
@@ -247,12 +247,12 @@ bbox全体ぶんのコストをリクエストにつき1回だけnumpyで合成�
 ## ルート単位の集約（`domain/difficulty.py`）
 
 区間ごとのdifficultyをルート1本の値へまとめる2つの指標を持つ。どちらも
-`route_generator.py: SEGMENT_AGGREGATES`の宣言を`_evaluate_and_aggregate`が同じsegmentsへ同時に当てて付ける。
+`route.py: merge_route_values`が同じsegmentsから一緒に畳み、`_evaluate_and_aggregate`が候補へ付ける。
 
 | 指標 | 定義 | 性質 |
 |---|---|---|
-| `overall_difficulty.average` | 距離加重平均（`route.py: merge_difficulty`。密度の軸の分は下の「密度の軸」） | 距離で正規化されるため、遠回りして難所を避けるほど下がる。候補の並び順はこの昇順 |
-| `overall_difficulty.load` | 平均×距離合計（`route.py: merge_overall_difficulty`） | 距離が伸びればそのまま増える。「走り切るまでのしんどさ」に近く、遠回りが不利に出る |
+| `overall_difficulty.average` | 距離加重平均（`route.py: merge_difficulty_values`。密度の軸の分は下の「密度の軸」） | 距離で正規化されるため、遠回りして難所を避けるほど下がる。候補の並び順はこの昇順 |
+| `overall_difficulty.load` | 平均×距離合計（`route.py: merge_route_values`） | 距離が伸びればそのまま増える。「走り切るまでのしんどさ」に近く、遠回りが不利に出る |
 
 平均と総量は同じ区間から一緒に決まる（平均が出なければ総量も出ない）ため、1つの任意の項目
 `overall_difficulty`にまとめて返す。
@@ -270,13 +270,13 @@ bbox全体ぶんのコストをリクエストにつき1回だけnumpyで合成�
 信号が交差点の脇の短い区間に集まる幹線では、その区間が頭打ちになり、区間ごとの得点の平均が回数どおりの得点より低く出る。
 勾配のように密度でない材料の軸・他の軸を項に持つ軸は得点の平均のまま（短い急坂を平均でならすと坂のつらさが消える）。
 - 運び方: 静的スコア行列が密度の軸の横軸の値の列（`StaticEdgeScoreMatrix.density_axes`）を持ち、`LegCostArrays.density_axes`を
-  経て、`_build_segment_details`が区間ごとの値・丸めない距離・その軸の重みの割合（`difficulty.py: axis_weight_shares_at_row`）を
+  経て、`_build_segment_details`が区間ごとの値・丸めない距離・その軸の重みの割合（`difficulty.py: axis_weight_shares_at_rows`）を
   区間の器の内部の値（`RouteSegmentDetail._density_inputs`。応答に出ない）として載せる。距離を丸めないのは、応答の区間の距離が
   10m単位で、信号の脇の数mの区間が長さ0になって回数ごと消えるため。
-- 畳み方（`route.py`）: 得点は横軸の値の距離平均を折れ線に通した値（`merge_axis_difficulties`）、寄与度はその得点×重みの割合の
-  距離平均（`merge_axis_contributions`）、合成の難しさは区間の値の距離加重平均の、その軸の寄与度の項だけを作り直した寄与度へ
-  差し替えた値（`merge_difficulty`。寄与度の和と合成の難しさの関係を保つ）。ビンは区間から、候補はビンからもう一度同じ畳み方で作り、
-  ビンも中の区間の平均を内部の値として持つ。順回り・逆回りの比べ（`route_search.py: pick_better_candidate`）も同じ`merge_difficulty`を読む。
+- 畳み方（`route.py: merge_difficulty_values`）: 得点は横軸の値の距離平均を折れ線に通した値、寄与度はその得点×重みの割合の
+  距離平均、合成の難しさは区間の値の距離加重平均の、その軸の寄与度の項だけを作り直した寄与度へ
+  差し替えた値（寄与度の和と合成の難しさの関係を保つ）。ビンは区間から、候補はビンからもう一度同じ畳み方で作り、
+  ビンも中の区間の平均を内部の値として持つ。順回り・逆回りの比べ（`route_search.py: prefers_reverse`）も同じ畳み方でビンから候補の値を作る（`route.py: route_difficulty`）。
 - 探索の費用（`evaluation.py: compose_costs_from_axis_matrix`）: 密度の軸の得点は割増の倍率から外し、代わりに
   `P × 重みの割合 × 傾き/100 × 区間の回数 × 3600/想定速度`の秒を足す（回数は横軸の値×区間の長さ。`evaluation.py: density_costs`）。
   想定速度で走る時間に得点の割増を掛けたものに当たり、回数だけで決まる——区間の端の場所は端を持つ区間が0.5ずつ分け持つので

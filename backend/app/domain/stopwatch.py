@@ -11,3 +11,8 @@ def start_timer() -> float:
 def elapsed_ms(started: float) -> int:
     """`start_timer`から今までの所要時間（ミリ秒の整数）。"""
     return round((time.monotonic() - started) * 1000)
+
+
+def add_elapsed_ms(totals: dict[str, int], step: str, started: float) -> None:
+    """段ごとの所要時間の和`totals`の`step`に、`start_timer`の`started`から今までの所要時間を足す。"""
+    totals[step] = totals.get(step, 0) + elapsed_ms(started)
