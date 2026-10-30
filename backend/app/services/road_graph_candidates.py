@@ -129,7 +129,7 @@ def _segment_difficulties(reads: list[_RowRead], distances_km: list[float]) -> l
 
     探索が使った合成済みの配列（`context.legs`、区間の番号から行を引く）からそのまま読み、探索コストと表示を一致させる。
     """
-    difficulties: list[SegmentDifficulty | None] = [None] * len(distances_km)
+    difficulties: dict[int, SegmentDifficulty] = {}
     for read in reads:
         values = read.values
         scores = {axis_id: arr[read.value_rows].tolist() for axis_id, arr in values.axis_arrays.items()}
@@ -158,7 +158,7 @@ def _segment_difficulties(reads: list[_RowRead], distances_km: list[float]) -> l
                     if not math.isnan(inputs[position])
                 },
             )
-    return difficulties
+    return [difficulties[index] for index in range(len(distances_km))]
 
 
 @dataclass(frozen=True, slots=True)
