@@ -21,6 +21,7 @@ import logging
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
+from typing import NamedTuple
 
 import numpy as np
 
@@ -29,9 +30,12 @@ from app.domain.time_zone import JST, as_series_time
 from app.domain.traffic import highway_rank
 from app.domain.tuning import tuning_value
 from app.domain.errors import RoutingError
+from app.domain.axis_definitions import copy_axis_definitions
 from app.domain.evaluation import (
     StaticEdgeScoreMatrix,
+    StaticScoreTimings,
     build_static_edge_score_matrix,
+    static_score_material_ids,
 )
 from app.domain.hard_filters import compute_routable_nodes, compute_search_exclusion
 from app.domain.leg_costs import LegCostArrays, LegCostComposer
@@ -43,8 +47,8 @@ from app.domain.geo import (
     compass_degrees,
 )
 from app.domain.region import BoundingBox, bbox_covering_points
-from app.domain.rain import StationRainMaterials, rain_material_columns
-from app.domain.road_network import RoadSlice, material_arrays_of
+from app.domain.rain import NearestRainStations, StationRainMaterials
+from app.domain.road_network import RoadNetwork, RoadSlice, material_arrays_of
 from app.domain.route import (
     Coordinates,
     EvaluatedRoute,
@@ -127,14 +131,40 @@ logger = logging.getLogger("ridecompass.graph")
 
 
 
-def _static_score_matrix(road: RoadSlice, rain: StationRainMaterials | None) -> tuple[StaticEdgeScoreMatrix, int]:
-    """切り出した区間の材料に、区間の中点に最も近い雨量計の観測（雨の材料）を足して静的スコア行列を組む。
-    戻り値の2つ目は雨の材料を引くのにかかった時間（ms）。"""
-    materials = material_arrays_of(road)
+# 取込範囲全体の区間の中点ごとの最寄りの雨量計（`_nearest_rain_stations`）。道路網ごとに1つ持ち、道路網が替わったら作り直す。
+_rain_stations: tuple[RoadNetwork, NearestRainStations] | None = None
+
+
+def _nearest_rain_stations(network: RoadNetwork) -> NearestRainStations:
+    """別のスレッドが同時に作り直しても、どちらも同じ道路網の空の持ち主を作るだけなので、束縛の差し替えは1回で済ませる。"""
+    global _rain_stations
+    cached = _rain_stations
+    if cached is not None and cached[0] is network:
+        return cached[1]
+    stations = NearestRainStations(network.mid_lat, network.mid_lon)
+    _rain_stations = (network, stations)
+    return stations
+
+
+class _StaticScoreStages(NamedTuple):
+    matrix: StaticEdgeScoreMatrix
+    extract_ms: int
+    rain_ms: int
+    timings: StaticScoreTimings
+
+
+def _static_score_matrix(road: RoadSlice, rain: StationRainMaterials | None) -> _StaticScoreStages:
+    """切り出した区間の材料に、区間の中点に最も近い雨量計の観測（雨の材料）を足して静的スコア行列を組む。"""
+    # 軸の保存がこの間に`AXIS_DEFINITIONS`を差し替えても、切り出す材料と行列の列は1つの軸の集合から決める。
+    definitions = copy_axis_definitions()
     started = start_timer()
-    observed = {} if rain is None else rain_material_columns(rain, materials.mid_lat, materials.mid_lon)
+    materials = material_arrays_of(road, static_score_material_ids(definitions))
+    extract_ms = elapsed_ms(started)
+    started = start_timer()
+    observed = {} if rain is None else _nearest_rain_stations(road.network).rain_material_columns(rain, road.rows)
     rain_ms = elapsed_ms(started)
-    return build_static_edge_score_matrix(materials, observed), rain_ms
+    matrix, timings = build_static_edge_score_matrix(materials, observed, definitions)
+    return _StaticScoreStages(matrix, extract_ms, rain_ms, timings)
 
 
 @dataclass
@@ -259,7 +289,8 @@ class RoadGraphEngine:
             log_throttled_warning("engine:rain-materials", "雨の観測の履歴が無いか古いため、雨の材料を欠損として探索範囲を組む")
 
         materials_started = start_timer()
-        score_matrix, rain_ms = await asyncio.to_thread(_static_score_matrix, road, rain)
+        stages = await asyncio.to_thread(_static_score_matrix, road, rain)
+        score_matrix = stages.matrix
         materials_ms = elapsed_ms(materials_started)
         # 通過予定時刻の基準（出発時刻）。
         start = as_series_time(now)
@@ -295,10 +326,11 @@ class RoadGraphEngine:
 
         total_ms = elapsed_ms(stage_started)
         logger.info(
-            "_build_search_graph edges=%d nodes=%d slice_ms=%d weather_ms=%d materials_ms=%d rain_ms=%d cost_ms=%d "
-            "graph_ms=%d total_ms=%d rain_hour=%s time_varying=%s speed_kmh=%.1f detour_ratio=%.2f(%s) "
+            "_build_search_graph edges=%d nodes=%d slice_ms=%d weather_ms=%d materials_ms=%d extract_ms=%d rain_ms=%d "
+            "axes_ms=%d raw_ms=%d stack_ms=%d cost_ms=%d graph_ms=%d total_ms=%d rain_hour=%s time_varying=%s speed_kmh=%.1f detour_ratio=%.2f(%s) "
             "missing_axis_edges=%d missing_axis_distance_ratio=%.3f",
-            road.edge_count, road.node_count, slice_ms, weather_ms, materials_ms, rain_ms, cost_ms, graph_ms, total_ms,
+            road.edge_count, road.node_count, slice_ms, weather_ms, materials_ms, stages.extract_ms, stages.rain_ms,
+            stages.timings.axes_ms, stages.timings.raw_ms, stages.timings.stack_ms, cost_ms, graph_ms, total_ms,
             "none" if rain is None else rain.latest_hour.strftime("%Y-%m-%dT%H"),
             composer.time_varying, self._assumed_speed_kmh, composer.detour_ratio,
             "learned" if learned_detour_ratio is not None else "default",

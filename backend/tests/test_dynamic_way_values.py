@@ -20,7 +20,7 @@ import numpy as np
 import pytest
 
 from app.domain import map_paint, material_catalog
-from app.domain.attributes import CategoricalColumn, EdgeMaterialArrays
+from app.domain.attributes import CategoricalColumn, EdgeMaterialColumns
 from app.domain.axis_definitions import (
     CategoricalShape,
     PriorityCondition,
@@ -48,7 +48,7 @@ from app.domain.search_graph import EDGE_VALUE_DTYPE
 from app.domain.tuning import TUNING_VALUES
 from app.domain.way_value_formula import WayValueFormula, feature, way_values_from_formula
 from app.domain.wind import WIND_DIRECTION_LEAF, WIND_DRAG_RATIO_WAY_FORMULA, WIND_SPEED_LEAF
-from tests.axis_system_fixture import linear, replaced_axis_definitions, shaped_axis
+from tests.axis_system_fixture import linear, shaped_axis
 from tests.material_fixture import material, replace_material_catalog
 
 
@@ -98,14 +98,13 @@ KEYS = [f"feature-{row}" for row in range(len(NUM_A))]
 PUBLISHED_AXES = [axis_id for axis_id, axis in AXES.items() if axis.is_published]
 
 
-def _arrays() -> EdgeMaterialArrays:
+def _arrays() -> EdgeMaterialColumns:
     n = len(NUM_A)
     nan = np.full(n, np.nan)
-    return EdgeMaterialArrays(
-        numeric_ids=("num_a", "num_b", "bool_a"), numeric_values=np.column_stack([NUM_A, NUM_B, BOOL_A]),
-        categorical_ids=("cat_a",), categorical_columns=(CategoricalColumn.encode(CAT_A),),
+    return EdgeMaterialColumns(
+        columns={"num_a": np.asarray(NUM_A, dtype=float), "num_b": np.asarray(NUM_B, dtype=float),
+                 "bool_a": np.asarray(BOOL_A, dtype=float), "cat_a": CategoricalColumn.encode(CAT_A)},
         distance_m=np.full(n, 100.0), bearing_deg=nan, mid_lat=nan, mid_lon=nan,
-        start_elevation_m=nan, end_elevation_m=nan, elevation_gain_m=nan, elevation_loss_m=nan,
     )
 
 
@@ -115,14 +114,13 @@ def _arrays() -> EdgeMaterialArrays:
 @pytest.mark.parametrize("axis_id", PUBLISHED_AXES)
 def test_the_map_paints_the_same_value_the_search_scores(axis_id, as_difficulty):
     arrays = _arrays()
-    with replaced_axis_definitions(AXES):
-        matrix = build_static_edge_score_matrix(arrays, {})
+    matrix, _ = build_static_edge_score_matrix(arrays, {}, AXES)
 
-    painted = paint_feature_values(axis_id, AXES, KEYS, arrays.columns(), {}, as_difficulty=as_difficulty)
+    painted = paint_feature_values(axis_id, AXES, KEYS, arrays.columns, {}, as_difficulty=as_difficulty)
 
     paint = map_paint.map_paint(AXES[axis_id]).value
     if isinstance(paint, SignedMaterialMapValue) and not as_difficulty:
-        expected = arrays.columns()[paint.material]
+        expected = arrays.columns[paint.material]
     else:
         expected = matrix.axis_scores[:, matrix.axis_ids.index(axis_id)]
     assert np.isfinite(expected).any()
@@ -180,16 +178,13 @@ def _route_values(segments: FeatureSegments, grade: np.ndarray) -> dict[str, dic
     n = len(segments)
     nan = np.full(n, np.nan)
     owners = segments.feature_keys
-    arrays = EdgeMaterialArrays(
-        numeric_ids=("seg_cover", "seg_grade", "seg_count", "way_num"),
-        numeric_values=np.column_stack([segments.columns["seg_cover"], grade, segments.columns["seg_count"],
-                                        [WAY_NUM[owner] for owner in owners]]),
-        categorical_ids=(), categorical_columns=(),
+    arrays = EdgeMaterialColumns(
+        columns={"seg_cover": np.asarray(segments.columns["seg_cover"], dtype=float), "seg_grade": grade,
+                 "seg_count": np.asarray(segments.columns["seg_count"], dtype=float),
+                 "way_num": np.array([WAY_NUM[owner] for owner in owners], dtype=float)},
         distance_m=segments.distance_m, bearing_deg=nan, mid_lat=nan, mid_lon=nan,
-        start_elevation_m=nan, end_elevation_m=nan, elevation_gain_m=nan, elevation_loss_m=nan,
     )
-    with replaced_axis_definitions(FOLDED_AXES):
-        matrix = build_static_edge_score_matrix(arrays, {})
+    matrix, _ = build_static_edge_score_matrix(arrays, {}, FOLDED_AXES)
     details: dict[str, list[RouteSegmentDetail]] = {}
     for row, owner in enumerate(owners):
         distance_km = float(segments.distance_m[row]) / 1000
@@ -339,7 +334,7 @@ def _service_values(served, keys, leaves, conditions):
 @pytest.mark.parametrize("as_difficulty", [False, True])
 @pytest.mark.parametrize("axis_id", PUBLISHED_AXES)
 def test_the_formula_gives_the_value_the_map_is_served_for_a_way(axis_id, as_difficulty):
-    columns = _arrays().columns()
+    columns = _arrays().columns
     served = _served_for(axis_id, AXES, {"num_a": WIND, "num_b": GRADE})
     tile = {material: column for material, column in columns.items() if material not in served}
     leaves = _wind_and_grade_leaves()
@@ -355,7 +350,7 @@ def test_the_formula_gives_the_value_the_map_is_served_for_a_way(axis_id, as_dif
 # なると、同じ道・時刻・向き・速さで地図と内訳が食い違う。葉が地図へ出ると、予報の値をそのまま外へ出すことになる。
 @pytest.mark.parametrize("axis_id", PUBLISHED_AXES)
 def test_an_axis_reading_withheld_leaves_is_served_its_value_under_the_maps_conditions(axis_id):
-    columns = _arrays().columns()
+    columns = _arrays().columns
     served = _served_for(
         axis_id, AXES, {"num_a": ServedMaterialFormula(WIND_DRAG_RATIO_WAY_FORMULA, withholds_leaves=True), "num_b": GRADE})
     tile = {material: column for material, column in columns.items() if material not in served}

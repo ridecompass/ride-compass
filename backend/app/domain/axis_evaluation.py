@@ -1,12 +1,12 @@
 """評価軸の定義（`domain/axis_definitions.py: AxisDefinition`）を材料の値へ通し、要素ごとの得点・生値を求める。
 
-評価は`evaluate_axis_array`1本で、Pythonの値で持つ入口（`evaluate_axes_values`等）も配列にして通す。
+評価は`evaluate_axis`1本で、Pythonの値で持つ入口（`evaluate_axes_values`等）も配列にして通す。
 欠損値の表現はPythonの値で持つ入口がNone、配列がNaN。
 """
 
 import math
 from collections.abc import Collection, Iterable
-from typing import Mapping, Sequence, SupportsFloat, cast
+from typing import Mapping, NamedTuple, Sequence, SupportsFloat, cast
 
 import numpy as np
 
@@ -53,7 +53,7 @@ def _value_column(values: Sequence[object]) -> np.ndarray:
 def _python_value_columns(
     materials: Mapping[str, Sequence[object]], material_ids: Iterable[str], numeric_ids: Collection[str], length: int
 ) -> dict[str, np.ndarray]:
-    """Pythonの値の並び（欠損=None）を、`evaluate_axis_array`が材料の型ごとに受け取る形の配列へ
+    """Pythonの値の並び（欠損=None）を、`evaluate_axis`が材料の型ごとに受け取る形の配列へ
     並べ替える。`materials`に無い材料は全要素欠損。"""
     missing: Sequence[object] = [None] * length
     return {
@@ -123,14 +123,22 @@ def _axes_python_value_columns(materials: Mapping[str, Sequence[object]], length
 def evaluate_axes_array(
     materials: Mapping[str, MaterialColumn], definitions: dict[str, AxisDefinition]
 ) -> dict[str, np.ndarray]:
-    """`definitions`の全軸を依存順（内部軸→公開軸）で評価し、軸id→得点の辞書を返す。
+    """`definitions`の全軸の得点（軸id→得点）。評価は`evaluate_axes`。"""
+    return {axis_id: evaluated.score for axis_id, evaluated in evaluate_axes(materials, definitions).items()}
+
+
+def evaluate_axes(
+    materials: Mapping[str, MaterialColumn], definitions: dict[str, AxisDefinition]
+) -> dict[str, "AxisEvaluation"]:
+    """`definitions`の全軸を依存順（内部軸→公開軸）で評価し、軸id→評価の辞書を返す。
     評価した軸の得点は、後の軸の材料として読まれる（他の軸を材料にする軸）。
     """
     with_axes: dict[str, MaterialColumn] = dict(materials)
-    scores: dict[str, np.ndarray] = {}
+    evaluations: dict[str, AxisEvaluation] = {}
     for axis_id in topological_axis_order(definitions):
-        scores[axis_id] = with_axes[axis_id] = evaluate_axis_array(definitions[axis_id], with_axes)
-    return scores
+        evaluations[axis_id] = evaluate_axis(definitions[axis_id], with_axes)
+        with_axes[axis_id] = evaluations[axis_id].score
+    return evaluations
 
 
 def _term_values(materials: Mapping[str, MaterialColumn], material_id: str) -> np.ndarray:
@@ -145,8 +153,7 @@ def _breakpoint_raw_total_array(
     shape: BreakpointLinearShape, materials: Mapping[str, MaterialColumn]
 ) -> tuple[np.ndarray, np.ndarray]:
     """`terms`の重み付き和（`preprocess`まで適用）と、全termの材料が欠損している要素の
-    マスクを返す。折れ点を通す前の値で、`evaluate_axis_array`と`axis_raw_value_array`が
-    共有する。"""
+    マスクを返す。折れ点を通す前の値で、得点（`evaluate_axis`）と生値（`raw_values`等）が共有する。"""
     total: np.ndarray | None = None
     all_missing: np.ndarray | None = None
     for term in shape.terms:
@@ -165,27 +172,16 @@ def _breakpoint_raw_total_array(
     return total, all_missing
 
 
-def axis_raw_value_array(
-    definition: AxisDefinition, materials: Mapping[str, MaterialColumn]
-) -> np.ndarray | None:
-    """折れ点を通す前の生値（欠損=NaN）。`CategoricalShape`の軸はNoneを返す。
-
-    得点（0〜100）は目盛りの引き方に依存する相対評価のため、軸単体では経路の良し悪しを
-    判断できない。生値をその単位とともに添えると、他の軸を見ずに判断できる。
-    """
-    shape = definition.shape
-    if not isinstance(shape, BreakpointLinearShape):
-        return None
-    return _breakpoint_raw_value_array(shape, materials)
-
-
-def _breakpoint_raw_value_array(shape: BreakpointLinearShape, materials: Mapping[str, MaterialColumn]) -> np.ndarray:
-    total, all_missing = _breakpoint_raw_total_array(shape, materials)
+def _raw_value_of_total(total: np.ndarray, all_missing: np.ndarray) -> np.ndarray:
     return np.where(all_missing, np.nan, total)
 
 
+def _breakpoint_raw_value_array(shape: BreakpointLinearShape, materials: Mapping[str, MaterialColumn]) -> np.ndarray:
+    return _raw_value_of_total(*_breakpoint_raw_total_array(shape, materials))
+
+
 def raw_values(shape: AxisShape, materials: Mapping[str, Sequence[object]], length: int) -> list[float | None]:
-    """`axis_raw_value_array`をPythonの値の並び（`evaluate_axes_values`と同じ形）から求める。
+    """折れ点を通す前の生値（`AxisEvaluation.raw_value`）をPythonの値の並び（`evaluate_axes_values`と同じ形）から求める。
     保存前の`shape`も渡せるよう軸の定義ではなく形を受け取る。`CategoricalShape`は全要素None。"""
     if not isinstance(shape, BreakpointLinearShape):
         return [None] * length
@@ -194,8 +190,30 @@ def raw_values(shape: AxisShape, materials: Mapping[str, Sequence[object]], leng
     return _scores_or_none(_breakpoint_raw_value_array(shape, columns))
 
 
+class AxisEvaluation(NamedTuple):
+    """軸1本の評価（`evaluate_axis`）。"""
+
+    score: np.ndarray
+    # 折れ線の軸の項の重み付き和と、全項の材料が欠損の要素（`_breakpoint_raw_total_array`）。対応表の軸はNone。
+    term_total: tuple[np.ndarray, np.ndarray] | None
+
+    def raw_value(self) -> np.ndarray | None:
+        """折れ点を通す前の生値（欠損=NaN）。対応表の軸はNone。
+
+        得点（0〜100）は目盛りの引き方に依存する相対評価のため、軸単体では経路の良し悪しを
+        判断できない。生値をその単位とともに添えると、他の軸を見ずに判断できる。
+        """
+        return None if self.term_total is None else _raw_value_of_total(*self.term_total)
+
+
 def evaluate_axis_array(definition: AxisDefinition, materials: Mapping[str, MaterialColumn]) -> np.ndarray:
-    """材料の配列から要素ごとの軸の得点を求める（欠損=NaN）。軸の評価はこれ1本。
+    """材料の配列から要素ごとの軸の得点を求める（欠損=NaN）。評価は`evaluate_axis`。"""
+    return evaluate_axis(definition, materials).score
+
+
+def evaluate_axis(definition: AxisDefinition, materials: Mapping[str, MaterialColumn]) -> AxisEvaluation:
+    """材料の配列から要素ごとの軸の得点を求める（欠損=NaN）。軸の評価はこれ1本で、折れ線の軸は項の和を
+    1回だけ求めて得点と生値（`AxisEvaluation.raw_value`）に使う。
 
     `materials`は材料id→同じ長さの列（数値・真偽の材料はfloat配列で、真偽は1.0/0.0、
     欠損はNaN。categorical材料はルート選びでは`CategoricalColumn`、Pythonの値の入口では
@@ -210,8 +228,10 @@ def evaluate_axis_array(definition: AxisDefinition, materials: Mapping[str, Mate
     最優先になる）。
     """
     shape = definition.shape
+    term_total: tuple[np.ndarray, np.ndarray] | None = None
     if isinstance(shape, BreakpointLinearShape):
-        result = shape.score_array(*_breakpoint_raw_total_array(shape, materials))
+        term_total = _breakpoint_raw_total_array(shape, materials)
+        result = shape.score_array(*term_total)
     else:
         # CategoricalShape。真偽の材料の1.0/0.0の数値配列は真偽のキーとの一致が同じ答えになるため、
         # キーをfloatへ変えない。
@@ -219,4 +239,4 @@ def evaluate_axis_array(definition: AxisDefinition, materials: Mapping[str, Mate
     for override in reversed(definition.priority_overrides):
         mask = priority_override_mask(materials[override.material], override.equals)
         result = np.where(mask, override.value, result)
-    return result
+    return AxisEvaluation(result, term_total)

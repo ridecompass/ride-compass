@@ -12,16 +12,14 @@
 分類の材料は文字列のまま持たず、列ごとの語彙への番号で持つ（番号0は値なし）。
 """
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Collection, Iterable, Mapping
 from dataclasses import dataclass, fields
-from typing import Any
 
 import numpy as np
 
 from app.domain.attributes import (
-    EDGE_ROW_ARRAY_FIELDS,
     CategoricalColumn,
-    EdgeMaterialArrays,
+    EdgeMaterialColumns,
     ElevationAttribute,
     MaterialColumn,
 )
@@ -180,24 +178,30 @@ def slice_network(
     )
 
 
-def material_arrays_of(road: RoadSlice) -> EdgeMaterialArrays:
-    """切り出した区間の材料（行は`road.rows`の順）。分類の材料は語彙への番号のまま渡し、区分の列も分類の材料として足す。"""
+def material_arrays_of(road: RoadSlice, material_ids: Collection[str]) -> EdgeMaterialColumns:
+    """切り出した区間（行は`road.rows`の順）の、`material_ids`に当たる材料の列。分類の材料は語彙への番号のまま渡し、
+    区分の列はいつも分類の材料として足す。`material_ids`に当たらない道路網の材料は写さない。"""
     network, rows = road.network, road.rows
-    # 分類の材料は(区間, 列)の行列なので、行を1回だけ引いてから列へ分ける。
-    codes = np.asarray(network.categorical_codes[rows])
-
-    row_arrays: dict[str, Any] = {name: np.asarray(getattr(network, name)[rows]) for name in EDGE_ROW_ARRAY_FIELDS}
-    return EdgeMaterialArrays(
-        numeric_ids=network.numeric_ids,
-        categorical_ids=(*network.categorical_ids, *road.classes),
-        categorical_columns=(
-            *(
-                CategoricalColumn(np.ascontiguousarray(codes[:, column]), vocab)
-                for column, vocab in enumerate(network.categorical_vocab)
-            ),
-            *(column.take(rows) for column in road.classes.values()),
-        ),
-        **row_arrays,
+    numeric = [(column, m) for column, m in enumerate(network.numeric_ids) if m in material_ids]
+    categorical = [(column, m) for column, m in enumerate(network.categorical_ids) if m in material_ids]
+    columns: dict[str, MaterialColumn] = {}
+    # 材料は(区間, 列)の行列なので、行を1回だけ引いてから、読む列をそれぞれ連続した配列へ写す。
+    if numeric:
+        values = np.asarray(network.numeric_values[rows])[:, [column for column, _ in numeric]].T.copy()
+        columns.update((m, values[i]) for i, (_, m) in enumerate(numeric))
+    if categorical:
+        codes = np.asarray(network.categorical_codes[rows])[:, [column for column, _ in categorical]].T.copy()
+        columns.update(
+            (m, CategoricalColumn(codes[i], network.categorical_vocab[column]))
+            for i, (column, m) in enumerate(categorical)
+        )
+    columns.update((m, column.take(rows)) for m, column in road.classes.items())
+    return EdgeMaterialColumns(
+        columns=columns,
+        distance_m=np.asarray(network.distance_m[rows]),
+        bearing_deg=np.asarray(network.bearing_deg[rows]),
+        mid_lat=np.asarray(network.mid_lat[rows]),
+        mid_lon=np.asarray(network.mid_lon[rows]),
     )
 
 

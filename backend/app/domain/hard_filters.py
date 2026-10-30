@@ -49,6 +49,11 @@ HARD_FILTERS: dict[str, HardFilter] = {
 }
 
 
+def hard_filter_material_ids() -> frozenset[str]:
+    """0次ハードフィルタの条件が読む事実の鍵（材料id）。"""
+    return frozenset(fact_key for spec in HARD_FILTERS.values() for condition in spec.conditions for fact_key in condition)
+
+
 def hard_filtered(columns: Mapping[str, MaterialColumn], n: int) -> np.ndarray:
     """区間ごとに、0次ハードフィルタのどれかに当たるか。"""
     return conditions_match([c for spec in HARD_FILTERS.values() for c in spec.conditions], columns, n)

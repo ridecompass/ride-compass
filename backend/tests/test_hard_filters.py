@@ -9,22 +9,19 @@
 import numpy as np
 import pytest
 
-from app.domain.attributes import CategoricalColumn, EdgeMaterialArrays
+from app.domain.attributes import CategoricalColumn, EdgeMaterialColumns
 from app.domain.evaluation import build_static_edge_score_matrix
 from app.domain.hard_filters import compute_search_exclusion
 from app.domain.material_catalog import GRADIENT_PERCENT
 from app.domain.road_classes import class_material_id
 
-def edge(facts: dict[str, str] | None = None) -> EdgeMaterialArrays:
+def edge(facts: dict[str, str] | None = None) -> EdgeMaterialColumns:
     """平らな勾配と、分類の事実（材料のid→値。区分の列もここへ書く）だけを持つ区間1本。"""
     nan = np.full(1, np.nan)
     facts = facts or {}
-    return EdgeMaterialArrays(
-        numeric_ids=(GRADIENT_PERCENT,), numeric_values=np.array([[0.0]]),
-        categorical_ids=tuple(facts), categorical_columns=tuple(CategoricalColumn.encode([v]) for v in facts.values()),
+    return EdgeMaterialColumns(
+        columns={GRADIENT_PERCENT: np.zeros(1), **{m: CategoricalColumn.encode([v]) for m, v in facts.items()}},
         distance_m=np.full(1, 100.0), bearing_deg=nan, mid_lat=nan, mid_lon=nan,
-        start_elevation_m=nan, end_elevation_m=nan,
-        elevation_gain_m=nan, elevation_loss_m=nan,
     )
 
 
@@ -34,7 +31,7 @@ def edge(facts: dict[str, str] | None = None) -> EdgeMaterialArrays:
 )
 def test_the_level_chosen_for_a_row_decides_whether_its_segments_are_excluded_or_surcharged(level, excluded, avoided):
     """「通らない」を選んでも国道を通る・「通る」を選んでも国道を避けると、選んだ避け方が探索に効かない。"""
-    matrix = build_static_edge_score_matrix(edge(facts={class_material_id("kind"): "national"}), {})
+    matrix, _ = build_static_edge_score_matrix(edge(facts={class_material_id("kind"): "national"}), {}, {})
 
     masks = compute_search_exclusion(matrix, {"kind.national": level, "kind.local": "exclude", "other.national": "exclude"})
 
@@ -49,6 +46,6 @@ def test_the_level_chosen_for_a_row_decides_whether_its_segments_are_excluded_or
 ], ids=["高速道路", "自動車専用道路", "標識の無い国道", "自転車通行禁止"])
 def test_only_the_roads_cyclists_may_not_ride_are_always_excluded(tags, excluded):
     """自動車専用道路を通るルートを作ると走れず、標識の無い国道まで外すと遠回りになる。"""
-    matrix = build_static_edge_score_matrix(edge(facts=tags), {})
+    matrix, _ = build_static_edge_score_matrix(edge(facts=tags), {}, {})
 
     assert compute_search_exclusion(matrix, {}).excluded.tolist() == [excluded]

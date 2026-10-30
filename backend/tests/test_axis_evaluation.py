@@ -1,4 +1,4 @@
-"""`domain/axis_evaluation.py`——軸1本の評価（`evaluate_axis_array`）と生値（`axis_raw_value_array`・`raw_values`）。
+"""`domain/axis_evaluation.py`——軸1本の評価（`evaluate_axis`・`evaluate_axis_array`）と生値（`AxisEvaluation.raw_value`・`raw_values`）。
 
 ここで見ないもの:
 - 軸が軸を参照するときの並べ替え・軸の集合の評価（`evaluate_axes_array`等） → `test_axis_hierarchy.py`
@@ -65,5 +65,7 @@ class TestRawValues:
     def test_a_mapping_axis_has_no_raw_value(self):
         shape = CategoricalShape(material="cat", mapping={"x": 1.0})
 
-        assert axis_evaluation.axis_raw_value_array(shaped_axis(shape), {"cat": np.array(["x"], dtype=object)}) is None
+        evaluated = axis_evaluation.evaluate_axis(shaped_axis(shape), {"cat": np.array(["x"], dtype=object)})
+
+        assert evaluated.raw_value() is None
         assert axis_evaluation.raw_values(shape, {"cat": ["x", "y"]}, 2) == [None, None]
