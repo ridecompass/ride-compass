@@ -17,7 +17,8 @@ import { METERS_PER_DEGREE, longitudeScale } from "@/lib/localPlane";
 const OVERVIEW_ZOOM_STEPS = 4;
 /** 俯瞰図が映す範囲の1辺の下限（m）。MSMの格子点は約5kmおきなので、これより狭いと風の矢印が入らないことがある。 */
 const OVERVIEW_MIN_SPAN_M = 20_000;
-/** 俯瞰図の1辺（CSSのpx）。 */
+/** 俯瞰図の1辺（CSSのpx）。俯瞰図はこの径の丸で、丸の中だけを映す——四角のまま本体の地図と一緒に回すと、隅から格子点の記号が
+ * 出入りする。 */
 export const OVERVIEW_SIZE_PX = 130;
 /** 俯瞰図の地図を描く倍率。俯瞰図をこの倍の大きさの地図として描いて縮めると、地図は1段細かいタイルで描かれる
  * （約20km四方を映す粗い段のタイルには区の名前が無く、1段細かい段から載る）。px で決まる見た目は、この倍にして見た目の大きさを保つ。 */
@@ -30,7 +31,7 @@ export const OVERVIEW_MIN_ZOOM = 11;
 const TILE_SIZE_PX = 512;
 const EQUATOR_M = METERS_PER_DEGREE * 360;
 
-/** 緯度`latitude`で、ズーム`zoom`の俯瞰図の1辺が映す長さ（m）。 */
+/** 緯度`latitude`で、ズーム`zoom`の俯瞰図の1辺（丸の径）が映す長さ（m）。 */
 function overviewSpanM(latitude: number, zoom: number): number {
   return (OVERVIEW_SIZE_PX * EQUATOR_M * longitudeScale(latitude)) / (TILE_SIZE_PX * 2 ** zoom);
 }
@@ -71,19 +72,19 @@ function onStride(index: number, stride: number): boolean {
   return ((index % stride) + stride) % stride === 0;
 }
 
-/** 格子点に並ぶ記号を、ズーム`zoom`の地図の上で重ならないように間引く。粗い刻み（行・列の番号が2の冪の倍数の格子点）から細かい
+/** 格子点に並ぶ記号を、ズーム`zoom`の地図の上で重ならないように間引き、俯瞰図の丸（真ん中`center`）の中のものだけを残す。粗い刻み（行・列の番号が2の冪の倍数の格子点）から細かい
  * 刻みへ順に置き、置いた記号のどれとも、2つのうち大きい方の記号の1辺以上離れている記号だけを残す——一番大きな記号に合わせて
- * 全体を同じ数おきに間引くと、風の弱い所まで疎らになる。 */
+ * 全体を同じ数おきに間引くと、風の弱い所まで疎らになる。丸で絞るのは間引いたあとにする——先に絞ると、地図を動かすたびに残る記号が変わる。 */
 function thinnedGridMarks(
   payload: DynamicWeatherRenderPayload,
   markSizePx: (zoom: number, properties: Readonly<Record<string, unknown>>) => number,
   zoom: number,
-  latitude: number,
+  center: { latitude: number; longitude: number },
 ): DynamicWeatherRenderPayload {
   if (!("geojson" in payload) || payload.gridStepDeg === undefined) return payload;
   const pxPerLongitudeDeg = (TILE_SIZE_PX * 2 ** zoom) / 360;
   // メルカトルの地図では、緯度1度の幅は経度1度の幅の1/cos(緯度)倍。
-  const pxPerLatitudeDeg = pxPerLongitudeDeg / longitudeScale(latitude);
+  const pxPerLatitudeDeg = pxPerLongitudeDeg / longitudeScale(center.latitude);
   const { latitude: latitudeStep, longitude: longitudeStep } = payload.gridStepDeg;
   const marks = payload.geojson.features.flatMap((feature) => {
     if (feature.geometry.type !== "Point") return [];
@@ -114,19 +115,24 @@ function thinnedGridMarks(
         kept.push(mark);
     }
   }
-  const dropped = new Set(marks.filter((mark) => !kept.includes(mark)).map((mark) => mark.feature));
+  const centerX = center.longitude * pxPerLongitudeDeg;
+  const centerY = center.latitude * pxPerLatitudeDeg;
+  const inCircle = (mark: (typeof marks)[number]) =>
+    Math.hypot(mark.x - centerX, mark.y - centerY) <= OVERVIEW_SIZE_PX / 2;
+  const dropped = new Set(marks.filter((mark) => !kept.includes(mark) || !inCircle(mark)).map((mark) => mark.feature));
   return {
     ...payload,
     geojson: { ...payload.geojson, features: payload.geojson.features.filter((feature) => !dropped.has(feature)) },
   };
 }
 
-/** 俯瞰図に描く気象の中身。格子点に並ぶ記号は、俯瞰図のズーム`zoom`（緯度`latitude`）の上で重ならないように間引く——俯瞰図の記号は地名の場所を取らないので（`overviewScene`）記号どうしでも間引かれず、引くと格子点の全部の記号が
- * 重なって敷き詰められる。 */
+/** 俯瞰図に描く気象の中身。格子点に並ぶ記号は、俯瞰図のズーム`zoom`の上で重ならないように間引き、真ん中`center`の丸の中の
+ * ものだけにする（丸の中は回しても出入りしないので、地図が回っても描く記号の数は変わらない）——俯瞰図の記号は地名の場所を取らない
+ * ので（`overviewScene`）記号どうしでも間引かれず、引くと格子点の全部の記号が重なって敷き詰められる。 */
 export function overviewWeather(
   dynamicWeather: SceneLook["dynamicWeather"],
   zoom: number,
-  latitude: number,
+  center: { latitude: number; longitude: number },
 ): SceneLook["dynamicWeather"] {
   return Object.fromEntries(
     Object.entries(dynamicWeather).map(([group, sources]) => [
@@ -136,7 +142,7 @@ export function overviewWeather(
           Object.entries(sources).map(([source, state]) => {
             const markSizePx = weatherMarkSizePx({ group, source });
             if (state?.payload === undefined || markSizePx === undefined) return [source, state];
-            return [source, { ...state, payload: thinnedGridMarks(state.payload, markSizePx, zoom, latitude) }];
+            return [source, { ...state, payload: thinnedGridMarks(state.payload, markSizePx, zoom, center) }];
           }),
         ),
     ]),
@@ -153,11 +159,11 @@ export function overviewFrameSize(
   return { width: main.width * scale, height: main.height * scale };
 }
 
-/** 俯瞰図が映す範囲を覆う緯度経度の箱。俯瞰図は本体の地図と同じ向きに回るので、どの向きに回した正方形も覆う広さにする
+/** 俯瞰図が映す丸を覆う緯度経度の箱。丸はどの向きに回っても同じ範囲なので、箱は向きによらない
  * （向きで箱を変えると、走行中に進む向きが変わるたびに格子点を取り直す）。 */
 export function overviewBounds(viewport: MapViewport): MapViewport {
   const { latitude, longitude } = viewportCenter(viewport);
-  const halfM = (overviewSpanM(latitude, overviewZoom(latitude, viewport.zoom)) / 2) * Math.SQRT2;
+  const halfM = overviewSpanM(latitude, overviewZoom(latitude, viewport.zoom)) / 2;
   const halfLat = halfM / METERS_PER_DEGREE;
   const halfLon = halfM / (METERS_PER_DEGREE * longitudeScale(latitude));
   return {
