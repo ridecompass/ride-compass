@@ -1,7 +1,7 @@
 """`domain/rain.py`——1時間雨量の履歴から雨の材料の値を求め、道へ最寄りの雨量計の値を引く。
 
 入口は`rain_material_values`（観測所ごとの値）・`rain_material_columns`（地点ごとの値）・
-`is_rain_history_current`（配ってよい古さ）。
+`NearestRainStations`（決まった地点の並びの、引いた行の値）・`is_rain_history_current`（配ってよい古さ）。
 
 ここで見ないもの:
 - 履歴をRedisから組み立てること → `test_jma_amedas_service.py`
@@ -18,6 +18,7 @@ from app.domain import rain
 from app.domain.rain import (
     HOURS_SINCE_RAIN,
     RAIN_HISTORY_HOURS,
+    NearestRainStations,
     RAIN_HISTORY_MAX_AGE,
     StationRainMaterials,
     is_rain_history_current,
@@ -95,6 +96,26 @@ def test_each_place_reads_its_nearest_rain_gauge_even_when_it_is_missing():
 
     assert columns["rain_a"].tolist() == [1.0, 2.0, 1.0]
     np.testing.assert_array_equal(columns["rain_b"], [NAN, 5.0, NAN])
+
+
+def test_nearest_gauges_kept_for_the_places_follow_a_change_of_the_gauges():
+    """雨量計が増えた後も前に求めた最寄りを使い続けると、増えた雨量計のそばの道へ遠い雨量計の雨を塗る。"""
+    places = NearestRainStations(np.array([35.1, 35.9, 35.4]), np.array([139.0, 139.0, 139.0]))
+    before = StationRainMaterials(
+        latest_hour=datetime(2026, 7, 1, 12, 0),
+        latitudes=np.array([35.0, 36.0]),
+        longitudes=np.array([139.0, 139.0]),
+        values={"rain_a": np.array([1.0, 2.0])},
+    )
+    after = StationRainMaterials(
+        latest_hour=datetime(2026, 7, 1, 13, 0),
+        latitudes=np.array([35.0, 35.5, 36.0]),
+        longitudes=np.array([139.0, 139.0, 139.0]),
+        values={"rain_a": np.array([1.0, 3.0, 2.0])},
+    )
+
+    assert places.rain_material_columns(before, np.array([2, 0]))["rain_a"].tolist() == [1.0, 1.0]
+    assert places.rain_material_columns(after, np.array([0, 1, 2]))["rain_a"].tolist() == [1.0, 2.0, 3.0]
 
 
 @pytest.mark.parametrize(

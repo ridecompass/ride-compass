@@ -478,12 +478,16 @@ idの文字列や要求の形から決め直さない。
 （`RouteGenerator`）が候補0件として扱う。
 
 `_build_search_graph`は、まず気象の段で生成の時点の外部の観測と予報をまとめて読む（出発時点の天候・
-時別の風の予報・雨の観測の履歴。ログの`weather_ms`がこの段）。静的スコア行列は、切り出した区間の材料
-（`material_arrays_of`、分類の材料は語彙への番号のまま）に、区間の中点に最も近い雨量計の今の観測
-（雨の材料、`domain/rain.py: rain_material_columns`。地図の雨と同じ関数・同じ観測）を足して
-`build_static_edge_score_matrix`で求める。雨は出発時刻ではなく今の観測で、履歴は`WeatherService.get_station_rain_materials`が
+時別の風の予報・雨の観測の履歴。ログの`weather_ms`がこの段）。静的スコア行列は、切り出した区間の材料のうち
+軸の集合・所要時間・0次フィルタが読むものだけ（`domain/road_network.py: material_arrays_of`。読む材料は
+`domain/evaluation.py: static_score_material_ids`が決め、軸の集合は写しを1回取って切り出しと組み立ての両方へ渡す。
+分類の材料は語彙への番号のまま）に、区間の中点に最も近い雨量計の今の観測（雨の材料、地図の雨と同じ値・同じ観測）を
+足して`build_static_edge_score_matrix`で求める。最寄りの雨量計は、取込範囲全体の区間ごとの番号として道路網ごとに1つ
+持ち（`domain/rain.py: NearestRainStations`。有向の区間1本につき4バイト）、切り出しに入った区間の分だけ初めて引くときに
+求め、雨量計の位置の並びが替わったら求め直す。ログは材料の抜き出し（`extract_ms`）・雨（`rain_ms`）・軸の評価
+（`axes_ms`）・生値と密度の横軸（`raw_ms`）・表への詰め直し（`stack_ms`）を分けて出す。雨は出発時刻ではなく今の観測で、履歴は`WeatherService.get_station_rain_materials`が
 Redisから読み（実体の中に5分持つ）、無い・古ければ雨の材料は欠損のまま組む（WARNINGを抑制付きで出し、
-INFOサマリの`rain_hour=none`で分かる。雨を読む軸だけがその生成で「データなし」になる）。行列はキャッシュしない
+INFOサマリの`rain_hour=none`で分かる。雨を読む軸だけがその生成で「データなし」になる）。行列（最寄りの雨量計の番号を除く）はキャッシュしない
 ——軸定義の編集と雨の観測がそのまま次の生成に効き、軸定義の世代を突き合わせる仕組みが要らない。
 続けて0次フィルタの除外と道の行ごとの避け方（`compute_search_exclusion`）を決めて
 `LegCostComposer`を組む。合成器は`StaticEdgeScoreMatrix`（風などリクエストごとに変わる動的軸の列は

@@ -131,6 +131,24 @@ class EdgeMaterialArrays:
         }
 
 
+@dataclass(frozen=True)
+class EdgeMaterialColumns:
+    """点数の表を組む入力（`domain/evaluation.py: build_static_edge_score_matrix`）。切り出した区間の材料のうち、
+    読む材料の列だけを材料id→列で持つ。
+
+    数値の列はそれぞれ連続した配列で持つ（行列の列のビューは飛び飛びで、軸の評価の演算が遅くなる）。
+    """
+
+    columns: Mapping[str, MaterialColumn]
+    distance_m: np.ndarray  # dtype=float64
+    bearing_deg: np.ndarray  # dtype=float64, NaN=方位が決まらない
+    mid_lat: np.ndarray  # dtype=float64
+    mid_lon: np.ndarray  # dtype=float64
+
+    def __len__(self) -> int:
+        return len(self.distance_m)
+
+
 #: `EdgeMaterialArrays`のうち、区間の行をそのまま並べる配列の欄。区間の束を継ぐ・行を切り出す側はこれを回し、
 #: 欄の名前を並べ直さない。分類の材料は列ごとに語彙が違うので含めない。
 EDGE_ROW_ARRAY_FIELDS: tuple[str, ...] = tuple(

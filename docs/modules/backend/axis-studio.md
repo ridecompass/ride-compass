@@ -216,8 +216,10 @@ Pythonの値、ルート選びと地図の配信は材料の型ごとの配列�
 
 | 関数 | 用途 |
 |---|---|
-| `evaluate_axis_array(definition, materials)` | 軸の評価の本体（numpy配列、欠損はNaN）。どの入口もここを通る |
-| `evaluate_axes_array(materials, definitions)` | `definitions`の全軸を依存順（`topological_axis_order`、内部軸→公開軸）で評価し、軸id→得点の辞書を返す（評価した軸の得点は後の軸の材料として読まれる） |
+| `evaluate_axis(definition, materials)` | 軸の評価の本体（numpy配列、欠損はNaN）。どの入口もここを通る。折れ線の軸は項の和も返し、生値（`AxisEvaluation.raw_value`）は和を求め直さずそこから出す |
+| `evaluate_axis_array(definition, materials)` | `evaluate_axis`の得点だけ |
+| `evaluate_axes(materials, definitions)` | `definitions`の全軸を依存順に`evaluate_axis`へ通し、軸id→評価を返す |
+| `evaluate_axes_array(materials, definitions)` | `definitions`の全軸を依存順（`topological_axis_order`、内部軸→公開軸）で評価し、軸id→得点の辞書を返す（評価した軸の得点は後の軸の材料として読まれる。評価は`evaluate_axes`） |
 | `evaluate_axes_values(materials, length)` | `evaluate_axes_array`をPythonの値の並びから通し、公開軸だけの得点を返す（評価できない公開軸もキーを残してNone） |
 | `evaluate_axes_inputs(materials, length)` | 同じ入力から、公開軸ごとに得点へ写す前の値（折れ点の軸は生値、対応表の軸は引く材料の値）を返す。他の軸を読む軸の生値は、読んだ軸の得点から求める。飽和の計測が使う |
 | `raw_values(shape, materials, length)` | 折れ点を通す前の生値をPythonの値の並びから求める。保存前の`shape`を受け取れるため分布プレビューが使う |
@@ -258,7 +260,7 @@ Pythonの値、ルート選びと地図の配信は材料の型ごとの配列�
 
 - `AXIS_DEFINITIONS`はPython literalの初期値を持たない（空dictで開始）。DBが唯一の正本。
 - 差し替えはイベントループで動くので、ループの上で読む側は差し替えの途中を見ない。`asyncio.to_thread`の先で
-  軸を読む処理（静的スコア行列を組む`build_static_edge_score_matrix`・レグのコストを合成する`LegCostComposer`）は、入口で`copy_axis_definitions`の写しを
+  軸を読む処理（静的スコア行列を組む`RoadGraphEngine`・レグのコストを合成する`LegCostComposer`）は、入口で`copy_axis_definitions`の写しを
   1回取り、終わりまでその写しだけを読む——直に読むと、読む間の保存で鍵が欠ける・回している辞書の大きさが変わる・
   読むたびに軸の集合が食い違う。写しと差し替えは同じロックで排他にし、写しが差し替えの途中（空の辞書）を見ない。
 - `refresh_axis_definitions`はDB読み込み失敗・0行・値の不変条件（下の「軸の外に照らす値の不変条件」）に
