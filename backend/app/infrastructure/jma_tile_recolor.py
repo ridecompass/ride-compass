@@ -2,7 +2,8 @@
 
 配信元は降水の強さの段ごとに決まった色で塗ったパレット形式のPNGを配り、段の区切りはアプリの降水の段
 （`domain/weather_display.py: PRECIPITATION_COLOR_STOPS`）と同じなので、パレットの色を1対1で替えれば、地図の色と
-凡例（同じ段から組み立てる）が一致する。画素は書き換えずパレットだけを替え、パレット形式のまま配る。
+凡例（同じ段から組み立てる）が一致する。アプリが塗らない段（いちばん弱い段の下限より弱い雨）の色は透明にする。
+画素は書き換えずパレットとその透明度だけを替え、パレット形式のまま配る。
 """
 
 import io
@@ -19,8 +20,13 @@ from app.infrastructure.jma_tile_paths import read_jma_tile_path
 #: 気象庁の降水のタイル（降水ナウキャスト・降水短時間予報）が段を塗る色を、`PRECIPITATION_COLOR_STOPS`と同じ段の順に
 #: 並べたもの。配信元のタイルのパレットの色。
 JMA_PRECIPITATION_TILE_COLORS: tuple[str, ...] = (
-    "#f2f2ff", "#a0d2ff", "#218cff", "#0041ff", "#faf500", "#ff9900", "#ff2800", "#b40068",
+    "#a0d2ff", "#218cff", "#0041ff", "#faf500", "#ff9900", "#ff2800", "#b40068",
 )
+
+#: 気象庁の降水のタイルが、`PRECIPITATION_COLOR_STOPS`のいちばん弱い段より弱い雨を塗る色。アプリは塗らない。
+JMA_UNPAINTED_PRECIPITATION_TILE_COLOR = "#f2f2ff"
+
+_UNPAINTED = ImageColor.getrgb(JMA_UNPAINTED_PRECIPITATION_TILE_COLOR)
 
 _PRECIPITATION_COLORS: dict[tuple[int, ...], tuple[int, ...]] = {
     ImageColor.getrgb(jma): ImageColor.getrgb(stop.color)
@@ -28,7 +34,7 @@ _PRECIPITATION_COLORS: dict[tuple[int, ...], tuple[int, ...]] = {
 }
 
 #: 塗り替えの版。タイル本体のキャッシュの鍵に入れ、色の対応を変えたら前の色で保存したタイルを読まない。
-RECOLOR_VERSION = shape_digest(sorted(_PRECIPITATION_COLORS.items()))
+RECOLOR_VERSION = shape_digest([sorted(_PRECIPITATION_COLORS.items()), _UNPAINTED])
 
 
 def recolored(path: str, content: bytes) -> bytes:
@@ -57,7 +63,11 @@ def _recolor_palette(path: str, content: bytes) -> bytes:
         colors = cast(
             "list[tuple[int, tuple[int, int, int, int]]]", image.convert("RGBA").getcolors(maxcolors=256) or []
         )
-        unknown = {rgba[:3] for _count, rgba in colors if rgba[3] > 0 and rgba[:3] not in _PRECIPITATION_COLORS}
+        unknown = {
+            rgba[:3]
+            for _count, rgba in colors
+            if rgba[3] > 0 and rgba[:3] not in _PRECIPITATION_COLORS and rgba[:3] != _UNPAINTED
+        }
         if unknown:
             log_throttled_warning(
                 "jma:tile-recolor",
@@ -68,7 +78,22 @@ def _recolor_palette(path: str, content: bytes) -> bytes:
             )
         palette = image.getpalette() or []
         entries = [tuple(palette[i : i + 3]) for i in range(0, len(palette), 3)]
+        alphas = _palette_alphas(image.info.get("transparency"), len(entries))
+        for index, entry in enumerate(entries):
+            if entry == _UNPAINTED:
+                alphas[index] = 0
         image.putpalette([value for entry in entries for value in _PRECIPITATION_COLORS.get(entry, entry)])
         buffer = io.BytesIO()
-        image.save(buffer, format="PNG")
+        image.save(buffer, format="PNG", transparency=bytes(alphas))
     return buffer.getvalue()
+
+
+def _palette_alphas(transparency: object, count: int) -> list[int]:
+    """パレットの項目ごとの不透明度。PNGの透明度はパレットの頭から一部の項目だけを持つ（バイト列）か、
+    透明な項目の番号1つで来る。持たない項目は不透明。"""
+    alphas = [255] * count
+    if isinstance(transparency, bytes):
+        alphas[: len(transparency)] = transparency[:count]
+    elif isinstance(transparency, int) and transparency < count:
+        alphas[transparency] = 0
+    return alphas

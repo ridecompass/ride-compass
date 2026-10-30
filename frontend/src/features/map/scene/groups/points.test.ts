@@ -1,5 +1,5 @@
 // @vitest-environment node
-/** 点の層の印が、MapLibre の既定のまま重なるものを地図に省かせ、重なると残す順の大きい層の印を残すこと。宣言した縮尺から描くこと。
+/** 点の層の印が、MapLibre の既定のまま重なるものを地図に省かせ、重なるとユーザーが決めた順に印を残すこと。宣言した縮尺から描くこと。
  * 2点以上を束ねた代表点に、点の右へ数を出すこと。名前を持つ層は押せる点（名前のある点）と押せない点を絵の枠の形で描き分けること。
  *
  * ここで見ないもの:
@@ -69,7 +69,8 @@ describe("重なった印", () => {
     ]);
   });
 
-  // 登録していない名前の絵を引くと点が出ない。重なりの設定（`icon-allow-overlap`等）は既定（ぶつかる印は描かない）を上書きしない。
+  // 登録していない名前の絵を引くと点が出ない。重なりの設定（`icon-allow-overlap`等）は既定（ぶつかる印は描かない）を上書きしない
+  // ——上書きすると、重なった印が積み重なり、残す順も効かなくなる。
   // 描き始める縮尺を宣言した層は、それより引いた縮尺では描かない（区間の近くの点も同じ）。
   it.each([...POINT_SCENE_LAYERS, ...SIDE_POINT_SCENE_LAYERS].map((layer) => [layer.role, layer] as const))(
     "%s は、登録した絵の印で、宣言した縮尺から描き、重なりの判定を既定のまま使う",
@@ -77,26 +78,59 @@ describe("重なった印", () => {
       const layer = POINT_LAYERS.find((c) => [c.attr_id, `side-${c.attr_id}`].includes(entry.role)) as PointLayer;
       const layout = entry.layout as Record<string, unknown>;
       expect(entry.type).toBe("symbol");
-      expect(Object.keys(layout).filter((key) => /overlap|placement|optional|sort-key/.test(key))).toEqual([]);
+      expect(Object.keys(layout).filter((key) => /overlap|placement|optional/.test(key))).toEqual([]);
       expect(registered).toContain(evaluateAt(layout["icon-image"], representative(layer), NEAR_ZOOM));
       expect(entry.minzoom).toBe(layer.point_min_zoom ?? undefined);
     },
   );
 
-  // 上に積んだ層の印から先に置かれるので、重なると上の層の印が残る。宣言は残す順（`point_priority`）の大きい層の印を残すと約束する。
+  // 上に積んだ層の印から先に置かれるので、重なると上の層の印が残る。
   it.each([
     ["点の層", POINT_SCENE_LAYERS, ""],
     ["区間の近くの点の層", SIDE_POINT_SCENE_LAYERS, "side-"],
-  ] as const)("%s は、残す順の大きい層を上に積む", (_, entries, prefix) => {
-    const roles = entries.map((entry) => entry.role);
-    const pairs = POINT_LAYERS.flatMap((upper) =>
-      POINT_LAYERS.filter((lower) => upper.point_priority > lower.point_priority).map((lower) => [upper, lower]),
-    );
-    expect(pairs).not.toHaveLength(0);
-    for (const [upper, lower] of pairs) {
-      expect(roles.indexOf(prefix + upper.attr_id)).toBeGreaterThan(roles.indexOf(prefix + lower.attr_id));
-    }
+  ] as const)("%s は、停止要因・補給・立ち寄り先・事故の順に上から積む", (_, entries, prefix) => {
+    const fromTop = entries.map((entry) => entry.role).reverse();
+    expect(fromTop).toEqual(["stop_poi", "supply_poi", "stop_place", "accident_point"].map((id) => prefix + id));
   });
+});
+
+/** 同じ層の中で重なった印を置く順の鍵（小さい鍵の印から置かれて残る）。 */
+function sortKeyOf(layer: PointLayer, properties: Record<string, unknown>): number {
+  return evaluateAt(layoutOf(layer.attr_id)["symbol-sort-key"], properties, NEAR_ZOOM) as number;
+}
+
+describe("同じ層の中で重なった印", () => {
+  const ACCIDENT = POINT_LAYERS.find((layer) => layer.attr_id === "accident_point") as PointLayer;
+  const COUNT = mapDisplay.point.countProperty;
+
+  it("事故は、自転車・死亡 → 自転車でない・死亡 → 自転車・死亡以外 → 自転車でない・死亡以外の順に残り、その中は件数の多い印が残る", () => {
+    const accident = (involves_bicycle: boolean, fatal: boolean, count: number) =>
+      sortKeyOf(ACCIDENT, { involves_bicycle, fatal, [COUNT]: count });
+    const keys = [
+      accident(true, true, 1),
+      accident(false, true, 30),
+      accident(false, true, 1),
+      accident(true, false, 30),
+      accident(false, false, 30),
+      accident(false, false, 1),
+    ];
+    expect(keys).toEqual([...keys].sort((a, b) => a - b));
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+
+  // 行の順に依らず件数だけで決まることを、宣言の先頭の行の1点と最後の行の多い代表点で見る。
+  it.each(POINT_LAYERS.filter((layer) => layer.point_priority_axes.length === 0).map((l) => [l.attr_id, l] as const))(
+    "%s は、行に依らず束ねた件数の多い印が残る",
+    (_, layer) => {
+      const axis = layer.display_axes[0];
+      const at = (category: (typeof axis.categories)[number], count?: number) =>
+        sortKeyOf(layer, { [axis.property]: category.values[0], ...(count === undefined ? {} : { [COUNT]: count }) });
+      const [first, last] = [axis.categories[0], axis.categories[axis.categories.length - 1]];
+      expect(at(last, 2)).toBeLessThan(at(first));
+      expect(at(first, 2)).toBeLessThan(at(last));
+      expect(at(first, 30)).toBeLessThan(at(first, 2));
+    },
+  );
 });
 
 describe("束ねた点の数", () => {

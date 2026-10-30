@@ -8,8 +8,8 @@
 
 from app.domain.road_class_catalog import road_class_catalog
 from app.domain.map_display import MAP_LAYER_CATEGORIES
-from app.domain.road_classes import AvoidanceClassification, AvoidanceOverride, ConditionTerm
-from tests.road_class_fixture import classification, map_layer, road_classes
+from app.domain.road_classes import AvoidanceClassification, AvoidanceOverride
+from tests.road_class_fixture import classification, fact_is, map_layer, road_classes
 
 
 def test_layers_are_published_and_ordered() -> None:
@@ -35,19 +35,20 @@ def test_layers_are_published_and_ordered() -> None:
     ]
 
 
-def test_class_description_notes_its_conditions() -> None:
-    """区分の説明に、条件から組んだタグの注を足す（材料の宣言に無い事実は、材料のidのまま書く）。"""
-    conditions = [
-        {
-            "cat_a": ConditionTerm(fact_values=["x", "y"], negated=True, matches_absent=True),
-            "cat_b": ConditionTerm(fact_values=[], negated=True, matches_absent=False),
-        },
-        {"cat_c": ConditionTerm(fact_values=[], negated=False, matches_absent=True)},
-    ]
-    (layer,) = road_class_catalog(
-        road_classes({"k": classification({"a": conditions})}, map_layers={"k": map_layer()})
-    ).map_layers
-    assert layer.classes[0].description == "[cat_aがx・y以外か無い かつ cat_bがある、またはcat_cが無い]"
+def test_class_description_is_the_meaning_without_its_conditions() -> None:
+    """凡例の区分と除外の行の説明は意味の文だけで、条件（どのタグの道か）を含めない（条件は管理の経路でだけ見せる）。"""
+    kinds = classification({"a": [fact_is("cat_a", "x")]})
+    meant = kinds.classes["a"].model_copy(update={"description": "意味の文"})
+    catalog = road_class_catalog(
+        road_classes(
+            {"k": kinds.model_copy(update={"classes": {"a": meant}})},
+            map_layers={"k": map_layer()},
+            avoidance_classifications={"k": AvoidanceClassification(overrides={})},
+        )
+    )
+    (layer,) = catalog.map_layers
+    (row,) = catalog.avoidance.rows
+    assert (layer.classes[0].description, row.description) == ("意味の文", "意味の文")
 
 
 def test_avoidance_rows_are_grouped_under_their_map_layers() -> None:

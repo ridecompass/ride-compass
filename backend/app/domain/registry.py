@@ -129,13 +129,22 @@ class PrimaryAttributeSpec(StrictModel):
     point_min_zoom: int | None = Field(default=None, ge=0)
     #: 地図で点の印が重なったとき、どの属性の印を残すか。大きい属性の印を残し、同じなら宣言の後の属性の印を残す。
     point_priority: int = 0
+    #: 地図で同じ属性の印が重なったとき、どの印を残すかを先に決める軸（`DisplayAxisSpec.key`）。前の軸ほど強く、軸の中は行の
+    #: 宣言の順に残す。軸で決まらない印は、束ねた点の数の多い印を残す。
+    point_priority_axes: tuple[str, ...] = ()
 
     @model_validator(mode="after")
     def _point_display_is_for_points(self) -> "PrimaryAttributeSpec":
         if self.geometry != "point" and (
-            self.point_opacity is not None or self.point_min_zoom is not None or self.point_priority != 0
+            self.point_opacity is not None
+            or self.point_min_zoom is not None
+            or self.point_priority != 0
+            or self.point_priority_axes
         ):
             raise ValueError(f"点でない一次属性'{self.attr_id}'に点の描き方がある")
+        unknown = set(self.point_priority_axes) - {spec.key for spec in self.display_axes}
+        if unknown or len(self.point_priority_axes) != len(set(self.point_priority_axes)):
+            raise ValueError(f"'{self.attr_id}'の残す順を決める軸{self.point_priority_axes}が、表示の軸を1本ずつ指していない")
         return self
 
     @model_validator(mode="after")

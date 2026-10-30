@@ -1,17 +1,15 @@
 """道の区分の全体を、公開の軸カタログで配る形（解決した見せ方）へ組む。
 
-配るのは公開した分け方だけで、管理用の欄（公開か）は配らない。色・タグの注・層の説明のうち区分から組む部分は
+配るのは公開した分け方だけで、管理用の欄（公開か・条件）は配らない
+（条件は管理の経路でだけ見せ、区分の説明は意味の文だけにする）。色・層の説明のうち区分から組む部分は
 ここで決め、受け取る側は組み直さない。並びは`sort_order`の順で、振り分けには使わない。
 """
 
 from typing import Literal
 
 from app.domain.display_palette import nominal_colors, ordered_colors, ordered_ends_phrase
-from app.domain.material_catalog import material_spec
 from app.domain.road_avoidance import AVOIDANCE_LEVEL_LABELS, AVOIDANCE_LEVELS, AvoidanceLevel, avoidance_rows
 from app.domain.road_classes import (
-    Condition,
-    RoadClass,
     RoadClassDefinitions,
     by_sort_order,
     published_map_layers,
@@ -23,7 +21,6 @@ from app.domain.strict_model import StrictModel
 class RoadClassView(StrictModel):
     key: str
     label: str
-    #: 意味の文に、条件から組んだタグの注を足したもの。
     description: str
     color: str
 
@@ -91,31 +88,6 @@ class RoadClassCatalog(StrictModel):
 _AXES_SLOT = LayerTextSlotView(name="axes", before="評価軸", after="の材料の1つです。")
 
 
-def _fact_label(fact_key: str) -> str:
-    spec = material_spec(fact_key)
-    return fact_key if spec is None else spec.label
-
-
-def _term_note(fact_key: str, values: list[str], negated: bool, matches_absent: bool) -> str:
-    label = _fact_label(fact_key)
-    if values:
-        text = f"{label}が{'・'.join(values)}{'以外' if negated else ''}"
-        return text + ("か無い" if matches_absent else "")
-    return f"{label}が{'ある' if negated else '無い'}"
-
-
-def _conditions_note(conditions: list[Condition]) -> str:
-    return "、または".join(
-        " かつ ".join(_term_note(key, t.fact_values, t.negated, t.matches_absent) for key, t in condition.items())
-        for condition in conditions
-    )
-
-
-def _described(road_class: RoadClass) -> str:
-    note = _conditions_note(road_class.conditions)
-    return f"{road_class.description}[{note}]" if note else road_class.description
-
-
 def road_class_catalog(definitions: RoadClassDefinitions) -> RoadClassCatalog:
     layers = []
     for key, layer in published_map_layers(definitions):
@@ -142,7 +114,7 @@ def road_class_catalog(definitions: RoadClassDefinitions) -> RoadClassCatalog:
                     RoadClassView(
                         key=class_key,
                         label=road_class.label,
-                        description=_described(road_class),
+                        description=road_class.description,
                         color=color,
                     )
                     for (class_key, road_class), color in zip(classes, colors, strict=True)
@@ -155,7 +127,7 @@ def road_class_catalog(definitions: RoadClassDefinitions) -> RoadClassCatalog:
             key=row.key,
             section=row.classification_key,
             label=row.road_class.label,
-            description=_described(row.road_class),
+            description=row.road_class.description,
             default=row.default_level,
             former_keys=row.road_class.former_keys,
         )

@@ -31,7 +31,7 @@ const LAYER_OF_KIND = {
   gridFill: { tier: "area", type: "fill" },
   vectorTile: { tier: "observedLine", type: "line" },
   outline: { tier: "observedLine", type: "line" },
-  gridMark: { tier: "point", type: "symbol" },
+  gridMark: { tier: "weatherMark", type: "symbol" },
 } as const satisfies Record<WeatherRenderKind, Pick<SceneLayerEntry, "tier" | "type">>;
 
 /** ソースへ渡す中身。タイルのURLか、GeoJSONか。 */

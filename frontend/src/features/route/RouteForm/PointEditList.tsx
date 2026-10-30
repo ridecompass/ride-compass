@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, type KeyboardEvent } from "react";
+import { useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 
 import { Button } from "@/components/ui/Button/Button";
 import { RemovePointIcon, ReorderHandleIcon } from "@/components/ui/icons/lucideIcons";
@@ -36,10 +36,20 @@ interface LastChange {
   note: string;
 }
 
+/** 行が前の位置から今の位置へ滑って入る時間（ミリ秒）。 */
+const SLIDE_MS = 200;
+
+/** 操作の前の各行の上端（並びの順）と、操作のあとの各行が前の並びの何番目だったか。 */
+interface Slide {
+  tops: number[];
+  sources: number[];
+}
+
 /**
  * 地点の編集: 出発地・経由地・目的地を名前の行で通る順に縦へ並べ、行の掴む所を押さえて上下へ動かすと置いた位置の役割にし
  * （一番上が出発地、一番下が目的地）、行の消すボタンで消す。置いていない目的地は空の行で、動かせないが、経由地をそこへ動かすと
- * 目的地になる。動かしたあとは、動かした行を強調し、何がどこへ動いたかを並びの下に書く。
+ * 目的地になる。動かした・消したあとは、各行を前の位置から今の位置へ滑らせ、動かした行を強調する。何が起きたかの文は
+ * 読み上げにだけ渡す（画面には書かない）。
  */
 export default function PointEditList({
   loop,
@@ -63,13 +73,38 @@ export default function PointEditList({
   const movable = (index: number) => index >= first && names[index] !== null && count - first >= 2;
 
   const [lastChange, setLastChange] = useState<LastChange | null>(null);
+  const rowsRef = useRef<HTMLOListElement>(null);
+  const rows = () => [...(rowsRef.current?.children ?? [])] as HTMLElement[];
+  // 枠は描いている位置（指に付いてずれた分も含む）なので、離した所から滑らせ、元の位置へ戻る動きにならない。
+  const rowRects = () => rows().map((row) => row.getBoundingClientRect());
+  const slideRef = useRef<Slide | null>(null);
+  useLayoutEffect(() => {
+    const slide = slideRef.current;
+    slideRef.current = null;
+    if (slide === null || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    rows().forEach((row, index) => {
+      const source = slide.sources.at(index);
+      if (source === undefined) return;
+      const dy = slide.tops[source] - row.getBoundingClientRect().top;
+      if (dy !== 0)
+        row.animate([{ translate: `0 ${dy}px` }, { translate: "0 0" }], { duration: SLIDE_MS, easing: "ease-out" });
+    });
+  });
+  const remember = (sources: number[]) => {
+    slideRef.current = { tops: rowRects().map((rect) => rect.top), sources };
+  };
+
   const reorder = (from: number, to: number) => {
-    setLastChange(describeReorder(names, loop, from, to));
+    const change = describeReorder(names, loop, from, to);
+    remember(change.order);
+    setLastChange(change);
     reorderPoints(from, to);
   };
   const remove = (index: number) => {
     const target = targets[index];
     const later = target.role === "waypoint" && index < waypointNames.length;
+    // 経由地を消すと後ろの行が1つ上がる。目的地を消しても行は空の目的地として残る。
+    remember(targets.map((_, at) => (later && at >= index ? at + 1 : at)));
     setLastChange({
       movedTo: null,
       note: `${titleOf(target)}「${names[index]}」を消しました。${later ? "後ろの経由地の番号を1つ詰めました。" : ""}`,
@@ -77,9 +112,7 @@ export default function PointEditList({
     removePoint(target);
   };
 
-  const rowsRef = useRef<HTMLOListElement>(null);
   const drag = useReorderDrag({ count, first, onReorder: reorder });
-  const rowRects = () => [...(rowsRef.current?.children ?? [])].map((row) => row.getBoundingClientRect());
   // 掴む所は、上下の矢印のキーでも1つずつ動かせる（指で押さえて動かせない人のため）。
   const onHandleKey = (index: number, event: KeyboardEvent<HTMLElement>) => {
     const to = event.key === "ArrowUp" ? index - 1 : event.key === "ArrowDown" ? index + 1 : null;
@@ -104,7 +137,8 @@ export default function PointEditList({
                 lastChange?.movedTo === index
                   ? "border-2 border-[var(--color-accent)] bg-[var(--color-accent-bg)]"
                   : "border-[var(--color-border)]",
-                drag.dragging === index ? "relative z-10 shadow-md" : "transition-transform",
+                // 空ける動きは押さえている間だけ滑らせる。離したときに滑らせると、空けた行が元の位置へ戻ってから入れ替わって見える。
+                drag.dragging === index ? "relative z-10 shadow-md" : drag.dragging !== null && "transition-transform",
               )}
               style={{ translate: `0 ${drag.offsetOf(index)}px` }}
             >
@@ -170,11 +204,13 @@ export default function PointEditList({
           );
         })}
       </ol>
-      <p className={textVariants({ variant: "note" })} aria-live="polite">
-        {lastChange?.note ??
-          (loop
-            ? "行の右の掴む所を押さえて上下へ動かすと、通る順を入れ替えます（一番上が出発地）。"
-            : "行の右の掴む所を押さえて上下へ動かすと、通る順を入れ替えます（一番上が出発地、一番下が目的地）。")}
+      <p className={textVariants({ variant: "note" })}>
+        {loop
+          ? "行の右の掴む所を押さえて上下へ動かすと、通る順を入れ替えます（一番上が出発地）。"
+          : "行の右の掴む所を押さえて上下へ動かすと、通る順を入れ替えます（一番上が出発地、一番下が目的地）。"}
+      </p>
+      <p role="status" className="sr-only">
+        {lastChange?.note}
       </p>
     </div>
   );

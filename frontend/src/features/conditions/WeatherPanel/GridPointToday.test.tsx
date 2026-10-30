@@ -35,7 +35,7 @@ describe("GridPointToday", () => {
     render(<GridPointToday today={gridPointToday()} error={null} mapBearingDeg={0} />);
 
     const today = screen.getByRole("region", { name: "今日・最寄りの格子点の値" });
-    expect(today).toHaveTextContent("北東へ約3.2km");
+    expect(today).toHaveTextContent("北東3.2km先の格子点");
     expect(today).toHaveTextContent("17.6〜18.2℃");
     expect(today).toHaveTextContent("〜1.2mm");
     expect(today).toHaveTextContent("〜5.1m/s");

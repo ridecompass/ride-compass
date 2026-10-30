@@ -168,9 +168,19 @@ export function pointIconParts(color: string, glyph: PointGlyph, frame: PointFra
   ];
 }
 
-/** 点の見本。地図と同じ形・同じ大きさで、線の絵は押せる点の枠（角丸四角）で出す。 */
-export function PointIconSwatch({ color, glyph }: { color: string; glyph: PointGlyph }) {
-  const size = mapDisplay.point.iconSizePx;
+/** 点の絵の外形（標識の絵は最初の部品、線の絵は押せる点の枠）だけを色`color`で塗った部品。大きさだけで意味を示す行の見本が、
+ * 地図の点と同じ形で大小を見せるのに使う（中の印や行の色を載せると、先頭の軸のどれかの行に見える）。 */
+function pointOutlineParts(color: string, glyph: PointGlyph): readonly IconPart[] {
+  const [outline] = pointIconParts(color, glyph, "box");
+  if ("text" in outline) throw new Error(`絵の最初の部品が形でない: ${glyph}`);
+  return [{ ...outline, fill: color }];
+}
+
+/** 点の見本。地図と同じ形・同じ大きさで、線の絵は押せる点の枠（角丸四角）で出す。大きさ`sizePx`を渡すと、絵の外形だけを
+ * その大きさで出す（大きさで意味を示す行の見本）。 */
+export function PointIconSwatch({ color, glyph, sizePx }: { color: string; glyph: PointGlyph; sizePx?: number }) {
+  const size = sizePx ?? mapDisplay.point.iconSizePx;
+  const parts = sizePx === undefined ? pointIconParts(color, glyph, "box") : pointOutlineParts(color, glyph);
   return (
     <svg
       aria-hidden="true"
@@ -179,7 +189,7 @@ export function PointIconSwatch({ color, glyph }: { color: string; glyph: PointG
       height={size}
       viewBox={`0 0 ${FRAME} ${FRAME}`}
     >
-      {pointIconParts(color, glyph, "box").map((part, index) =>
+      {parts.map((part, index) =>
         "text" in part ? (
           <text
             key={index}

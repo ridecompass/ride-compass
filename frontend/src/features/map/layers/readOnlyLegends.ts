@@ -5,7 +5,7 @@ import { mapDisplay } from "@/types/generated/mapDisplay";
 import type { StaticMapLayerId } from "@/components/ui/icons/mapLayerIcons";
 import type { LegendEntry } from "@/lib/mapDisplay/legendFilter";
 import { LANDCOVER_PAINTED_CLASSES } from "@/lib/mapDisplay/landcoverClasses";
-import { PRECIPITATION_INTENSITY_LEVELS } from "./precipitationNowcast";
+import { PRECIPITATION_INTENSITY_LEVELS, PRECIPITATION_LEGEND_HEADING } from "./precipitationNowcast";
 import { WIND_SPEED_LEGEND_LEVELS } from "./windLayer";
 import { DISASTER_ELEMENTS } from "./dynamicWeather";
 
@@ -57,7 +57,7 @@ export const READ_ONLY_LEGENDS: Partial<Record<StaticMapLayerId, readonly ReadOn
   // 1つのチップのまま、時刻の段ごとに配信元を切り替える（段は源泉が宣言する）。
   precipitationNowcast: [
     {
-      label: "",
+      label: PRECIPITATION_LEGEND_HEADING,
       legend: PRECIPITATION_INTENSITY_LEVELS,
     },
     {

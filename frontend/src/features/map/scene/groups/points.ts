@@ -11,7 +11,8 @@
  * backendのテスト（`test_primary_attributes.py`）が全種別で確かめる。
  *
  * 点の形も源泉が決める。点は先頭の軸の行が持つ絵記号（`glyph`。形は`components/PointIconSwatch/PointIconSwatch.tsx: POINT_GLYPHS`）
- * で描く。描き始める縮尺（`point_min_zoom`）と、重なったときどの層の印を残すか（`point_priority`）も源泉の宣言を読む。
+ * で描く。描き始める縮尺（`point_min_zoom`）と、重なったときどの層の印を残すか（`point_priority`）・同じ層の中でどの印を残すか
+ * （`point_priority_axes`）も源泉の宣言を読む。
  * 重なる印は地図が省く（`pointLook`）。
  *
  * 近い点はタイルの側で1つの代表点に束ねてあり、代表点は束ねた点の数を持つ（`mapDisplay.point.countProperty`）。2点以上を
@@ -238,6 +239,19 @@ function iconScaleExpression(layer: PointLayer): unknown {
   return ["case", ...axis.categories.flatMap((category, i) => [categoryMatch(axis, category), scales[i]]), 1];
 }
 
+/** 同じ層の中で重なった印をどれから置くか（小さい値の印から置かれて残る）。宣言した軸（`point_priority_axes`）の行の順で
+ * 決め、前の軸ほど強い。軸で決まらない印は束ねた点の数の多い印から置く——数の項は 0 より大きく 1 未満なので、軸の順を越えない。 */
+function sortKeyExpression(layer: PointLayer): unknown {
+  let rank: unknown = 0;
+  for (const key of layer.point_priority_axes) {
+    const axis = layer.display_axes.find((candidate) => candidate.key === key) as PointAxis;
+    const n = axis.categories.length;
+    const index = ["case", ...axis.categories.flatMap((category, i) => [categoryMatch(axis, category), i]), n];
+    rank = ["+", ["*", rank, n + 1], index];
+  }
+  return ["+", rank, ["/", 1, ["+", COUNT, 1]]];
+}
+
 /** 積む順（下から）に並べた点の層。重なった印は上に積んだ層の印から置かれるので、残す順（`point_priority`）の大きい層を上に積む。
  * 同じ順の層は宣言の順のまま。 */
 export const STACKED_POINT_LAYERS: readonly PointLayer[] = [...POINT_LAYERS].sort(
@@ -261,7 +275,7 @@ const COUNT_TEXT_FONT = ["Noto Sans Bold"];
 const COUNT = ["to-number", ["get", POINT.countProperty], 1];
 
 /** 点の層の印。重なりは MapLibre の既定のまま（ほかの記号とぶつかる印は描かず、寄せて重ならなくなると出る）で、点の層どうし・
- * 区間の近くの点・基礎地図の文字とも判定する。2点以上を束ねた代表点は、同じ印の文字として右に数を出す（数だけが残ることは無い）。
+ * 区間の近くの点・基礎地図の文字とも判定する。同じ層の中で重なると、残す順（`sortKeyExpression`）の先の印を残す。2点以上を束ねた代表点は、同じ印の文字として右に数を出す（数だけが残ることは無い）。
  * 名前を持つ層の押せない点（名前の無い点）は丸い枠で少し薄く描く。描き始める縮尺を宣言した層は、それより引いた縮尺では描かない。 */
 export function pointLook(layer: PointLayer): Pick<SceneLayerEntry, "type" | "paint" | "layout" | "minzoom"> {
   return {
@@ -276,6 +290,7 @@ export function pointLook(layer: PointLayer): Pick<SceneLayerEntry, "type" | "pa
     layout: {
       "icon-image": iconImageExpression(layer, glyphCategories(layer)),
       "icon-size": iconScaleExpression(layer),
+      "symbol-sort-key": sortKeyExpression(layer),
       "text-field": ["case", [">", COUNT, 1], ["to-string", COUNT], ""],
       "text-font": COUNT_TEXT_FONT,
       "text-size": COUNT_TEXT_SIZE_PX,
