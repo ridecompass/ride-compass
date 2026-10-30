@@ -257,7 +257,7 @@ describe("地図に置く地点", () => {
     await user.click(within(card).getByRole("button", { name: "目的地にする" }));
     expect(candidatePoints()).toEqual([]);
     expect(marksAt(SENSOJI)).toHaveLength(1);
-    expect(within(sheet).getByRole("button", { name: "目的地: 浅草寺" })).toBeInTheDocument();
+    expect(within(sheet).getByRole("button", { name: "目的地: 浅草寺" })).toHaveAttribute("aria-pressed", "true");
 
     await user.click(within(sheet).getByRole("button", { name: "閉じる" }));
     await user.type(screen.getByRole("searchbox", { name: "目的地を住所・施設で探す" }), "雷門{Enter}");
