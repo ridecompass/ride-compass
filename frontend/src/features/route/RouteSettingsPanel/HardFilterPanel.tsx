@@ -27,7 +27,7 @@ interface HardFilterPanelProps {
 export default function HardFilterPanel({ avoidance, roadAvoidance, onRoadAvoidanceChange }: HardFilterPanelProps) {
   const { levels } = avoidance;
   const excludeLabel = levels.find(({ key }) => key === "exclude")?.label;
-  const levelOf = (row: AvoidanceRow) => avoidanceLevelOf(row, roadAvoidance, levels);
+  const levelOf = (row: AvoidanceRow) => avoidanceLevelOf(row, roadAvoidance);
   // 行を節ごとにまとめる（並びは節の並び、その中は行の並び）。
   const sections = avoidance.sections
     .map((section) => ({ ...section, rows: avoidance.rows.filter((row) => row.section === section.key) }))

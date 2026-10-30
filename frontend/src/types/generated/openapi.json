@@ -2480,13 +2480,6 @@
               "exclude"
             ],
             "title": "Default"
-          },
-          "former_keys": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Former Keys"
           }
         },
         "additionalProperties": false,
@@ -2496,8 +2489,7 @@
           "section",
           "label",
           "description",
-          "default",
-          "former_keys"
+          "default"
         ],
         "title": "AvoidanceRowView"
       },
@@ -5856,13 +5848,6 @@
             "type": "integer",
             "title": "Sort Order"
           },
-          "former_keys": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Former Keys"
-          },
           "conditions": {
             "items": {
               "additionalProperties": {
@@ -5880,7 +5865,6 @@
           "label",
           "description",
           "sort_order",
-          "former_keys",
           "conditions"
         ],
         "title": "RoadClass"

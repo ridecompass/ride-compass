@@ -58,14 +58,9 @@ def avoidance_rows(definitions: RoadClassDefinitions) -> list[AvoidanceRow]:
 def resolve_road_avoidance(
     requested: Mapping[str, AvoidanceLevel], definitions: RoadClassDefinitions
 ) -> dict[str, AvoidanceLevel]:
-    """要求の段を、今の行の鍵へ揃える。今の鍵が無い行は前の鍵の段のうち強い方を、どちらも無い行は既定の段を取る。
-    今の行でも前の鍵でもない鍵は読まない（区分を直す前に読み込んだ画面の要求も断らない）。"""
-    resolved: dict[str, AvoidanceLevel] = {}
-    for row in avoidance_rows(definitions):
-        # 前の鍵は区分のデータが持ち、入れてから3か月で外す（`domain/road_classes.py: RoadClass.former_keys`）。
-        keys = [row.key] if row.key in requested else [key for key in row.road_class.former_keys if key in requested]
-        resolved[row.key] = max((requested[key] for key in keys), key=AVOIDANCE_LEVELS.index, default=row.default_level)
-    return resolved
+    """要求の段を、今の行の鍵へ揃える。要求に無い行は既定の段を取り、今の行でない鍵は読まない（区分を直す前に読み込んだ画面の
+    要求も断らない）。"""
+    return {row.key: requested.get(row.key, row.default_level) for row in avoidance_rows(definitions)}
 
 
 @dataclass(frozen=True)

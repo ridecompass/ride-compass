@@ -198,7 +198,8 @@ describe("ルートを作る", () => {
   it("前に保存した設定は、「保存済み」の「プリセット」に出る", async () => {
     const stored = {
       name: "いつもの周回",
-      routeMode: "loop",
+      loop: true,
+      distanceTargeted: true,
       distance: "40",
       maxRoutes: "3",
       origin: null,
@@ -206,7 +207,7 @@ describe("ルートを作る", () => {
     };
     window.localStorage.setItem(
       "ridecompass:saved-conditions",
-      JSON.stringify([{ ...stored, destination: null, routePreference: null, hardFilters: {} }]),
+      JSON.stringify([{ ...stored, destination: null, routePreference: null, roadAvoidance: {} }]),
     );
     const { user } = renderHome();
 

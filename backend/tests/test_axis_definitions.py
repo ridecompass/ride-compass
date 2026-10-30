@@ -297,29 +297,27 @@ class TestAxisSet:
             axis_definitions.check_axis_set(definitions)
 
 
-#: 分け方`k`は、区分`paved`（前の鍵`k.sealed`と、ほかの分け方を指す`other.gravel`を持つ）と`unpaved`。
-RENAMED = road_classes({"k": classification({"paved": [], "unpaved": []}, former_keys={"paved": ["k.sealed", "other.gravel"]})})
+#: 分け方`k`は、区分`paved`と`unpaved`。
+CLASSES = road_classes({"k": classification({"paved": [], "unpaved": []})})
 
 
 @pytest.mark.parametrize(
     ("material_id", "mapping", "equals", "unknown"),
     [
-        (class_material_id("k"), {"paved": 1.0, "sealed": 2.0}, "unpaved", []),
-        # 前の鍵がほかの分け方を指す名は、この分け方の列の値だったことが無い。
-        (class_material_id("k"), {"gravel": 1.0}, "unpaved", [(class_material_id("k"), "gravel")]),
+        (class_material_id("k"), {"paved": 1.0, "sealed": 2.0}, "unpaved", [(class_material_id("k"), "sealed")]),
         (class_material_id("k"), {"paved": 1.0}, "dirt", [(class_material_id("k"), "dirt")]),
         # 分け方の無い材料と、区分から作らない材料は見ない。
         (class_material_id("gone"), {"x": 1.0}, "x", []),
         ("cat_a", {"x": 1.0}, "x", []),
     ],
 )
-def test_class_values_named_by_neither_current_nor_former_keys(material_id, mapping, equals, unknown):
-    """値ごとの点数のキーと0次条件の値のうち、今の区分の鍵にも前の鍵の区分の名にも無いものを挙げる（区分の入れ替えが断る文になる）。"""
+def test_class_values_not_named_by_a_class_key(material_id, mapping, equals, unknown):
+    """値ごとの点数のキーと0次条件の値のうち、区分の鍵に無いものを挙げる（区分の入れ替えが断る文になる）。"""
     axis = shaped_axis(
         CategoricalShape(material=material_id, mapping=mapping),
         priority_overrides=[PriorityCondition(material=material_id, equals=equals, value=0.0)],
     )
-    assert axis_definitions.unknown_class_values(axis, RENAMED) == unknown
+    assert axis_definitions.unknown_class_values(axis, CLASSES) == unknown
 
 
 class TestBreakpointShape:

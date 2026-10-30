@@ -112,7 +112,7 @@ JSONはリポジトリの外に置き、コミットしない（定義は較正�
   2つ以上の区分に当たる道は区分なし、知らない事実はどの道にも無い事実として扱う。
 - **コードの宣言と軸を名指す値は、入れ替えるときだけ確かめる**（構造仕様15）。事実・まとめ先・色の段・較正値の名が宣言に無い
   （`domain/road_classes.py: undeclared_references`）か、軸が材料に読む分け方が消える（`domain/axis_definitions.py: missing_class_materials`）か、
-  軸の値ごとの点数・0次条件が名指す区分の値が今の鍵にも前の鍵にも無くなる（`domain/axis_definitions.py: unknown_class_values`）
+  軸の値ごとの点数・0次条件が名指す区分の値が無くなる（`domain/axis_definitions.py: unknown_class_values`）
   入れ替えは断る。軸の書き込みと同じ鍵で直列にするので、確かめてから確定するまでの間に分け方を読む軸は増えない。
   起動時の読み込みは名を確かめず、宣言から消えた名を指す行は知らない値として倒す。
 - **管理APIは全体の読みと全体の入れ替えだけ**。入れ替えはadvisory lockで直列にした1つの取引で、表の制約・上の確かめに通らなければ
@@ -125,11 +125,8 @@ JSONはリポジトリの外に置き、コミットしない（定義は較正�
 - **地図の線の層の値もbackendが決める**（`domain/road_classes.py: layer_columns`）。値は区分の鍵か「データなし」で、地図の線
   （`/api/region/road-classes`）とルートの区間の帯が同じ値を読む。地図は条件を当てない。
 - **本番へは管理APIで全体を入れる**（`PUT /api/admin/road-classes`）。全体のJSONは本番の今の全体（`GET`）から作り、リポジトリの外に置く。
-- **前の鍵は3か月で外す**: 区分の鍵を改める・分ける・合わせるときは、今の区分に前の鍵（`domain/road_classes.py: RoadClass.former_keys`）を
-  足し、前の鍵で選んだ段を今の行へ引き継ぐ（`domain/road_avoidance.py: resolve_road_avoidance`）。区分の列を引く表（軸の値ごとの点数・
-  0次条件・転がり抵抗）も、今の鍵で引けない区分を前の鍵の区分の名で引く（`domain/road_classes.py: ClassColumn`）ので、区分を先に改め、
-  軸はあとで直せる。前の鍵は、その全体を本番へ入れてから3か月で外す。入れるときに、外す日を着手可能日時にした対話作業の issue を
-  起こす。外したあと、前の鍵だけを送る要求はその行を既定の段で読み、軸がまだ前の名を指していれば外す入れ替えは断られる。
+- **区分の鍵は読み替えない**: 区分の鍵を改める・分ける・合わせると、前の鍵で選んだ避け方は既定の段で読まれる
+  （`domain/road_avoidance.py: resolve_road_avoidance`）。軸が前の名を指していれば入れ替えは断られるので、軸を先に直す。
 
 ## データモデル（`domain/axis_definitions.py`）
 

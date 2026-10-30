@@ -145,14 +145,15 @@ test("モバイル: 「保存済み」の「プリセット」の一覧は、「
       "ridecompass:saved-conditions": JSON.stringify([
         {
           name: "いつもの周回",
-          routeMode: "loop",
+          loop: true,
+          distanceTargeted: true,
           distance: "40",
           maxRoutes: "3",
           origin: null,
           waypoints: [],
           destination: null,
           routePreference: null,
-          hardFilters: {},
+          roadAvoidance: {},
         },
       ]),
     },

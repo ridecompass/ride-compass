@@ -26,17 +26,14 @@ def fact_is(fact_key: str, *values: str) -> Condition:
     return {fact_key: ConditionTerm(fact_values=list(values), negated=False, matches_absent=False)}
 
 
-def classification(classes: Mapping[str, list[Condition]], *, former_keys: Mapping[str, list[str]] | None = None) -> RoadClassification:
+def classification(classes: Mapping[str, list[Condition]]) -> RoadClassification:
     """区分の鍵→条件から、公開した分け方を作る。並びは`classes`の順。"""
     return RoadClassification(
         label="分け方",
         description="",
         is_published=True,
         classes={
-            key: RoadClass(
-                label=f"区分{key}", description="", sort_order=position,
-                former_keys=list((former_keys or {}).get(key, [])), conditions=conditions,
-            )
+            key: RoadClass(label=f"区分{key}", description="", sort_order=position, conditions=conditions)
             for position, (key, conditions) in enumerate(classes.items())
         },
     )

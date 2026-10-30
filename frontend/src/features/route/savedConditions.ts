@@ -1,9 +1,9 @@
-import { avoidanceLevelOf, readRoadAvoidance, withCurrentRoadKeys } from "@/features/route/roadAvoidance";
+import { avoidanceLevelOf, readRoadAvoidance } from "@/features/route/roadAvoidance";
 import { alignRoutePreference } from "@/features/route/routePreferenceSync";
 import { totalWeight } from "@/features/route/routeWeightShare";
 import type { AxisCatalog } from "@/lib/axisCatalog";
 import { isCoordinates, readStoredList, withEntryFirst } from "@/lib/storedList";
-import type { Coordinates, RoadAvoidanceOverride, RoadAvoidanceView, RoutePreferenceWeights } from "@/types/route";
+import type { Coordinates, RoadAvoidanceOverride, RoutePreferenceWeights } from "@/types/route";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 
 /** 生成の条件（「ルート設定」の入力）。いまの条件・保存・呼び出しが同じこの形を使う。出発地は位置の持ち主が持つので含まず、
@@ -75,50 +75,27 @@ function isWeights(value: unknown): value is RoutePreferenceWeights {
 
 const coordinatesOrNull = (value: unknown) => (value === null || isCoordinates(value) ? value : undefined);
 
-// 全長の目標の有無を持たない件は、前に周回・目的地のモードで保存した件。周回は距離で作り、経由地・目的地を置いてあっても
-// 隠して使わず、目的地は距離を決めずに作っていた。一覧を読むと今の形で書き戻す（`useSavedConditions.ts`の`rewrite`）ので、
-// この読み替えは一覧をまだ開いていない端末のためだけにあり、2027-01-10に、これを読む分岐ごと消す。
-function savedMode(entry: Record<string, unknown>): "loop" | "destination" | null {
-  if (entry.distanceTargeted !== undefined) return null;
-  return entry.routeMode === "loop" || entry.routeMode === "destination" ? entry.routeMode : null;
-}
+const isBoolean = (value: unknown) => (typeof value === "boolean" ? value : undefined);
 
 // 保存した1件の項目ごとの読み方。今の画面が受け付けない値はundefinedを返し、その件を捨てる。キーは保存の形と同じ型の
-// 写像なので、形に項目を足すと読み方が要る（前に保存した件はその項目を持たないので、読み方が扱いを決める。2つ目の引数は
-// 保存した1件の全体）。重みの軸は読むときに揃えず、呼び出して「重み」へ入れたあと、いつもの保存値と同じく軸カタログの
-// 公開軸へ揃える。
+// 写像なので、形に項目を足すと読み方が要る。前の形で保存した件は読み替えずに捨てる。重みの軸は読むときに揃えず、
+// 呼び出して「重み」へ入れたあと、いつもの保存値と同じく軸カタログの公開軸へ揃える。
 const SAVED_FIELD_READERS: {
-  [K in keyof SavedCondition]-?: (value: unknown, entry: Record<string, unknown>) => SavedCondition[K] | undefined;
+  [K in keyof SavedCondition]-?: (value: unknown) => SavedCondition[K] | undefined;
 } = {
   name: (value) => (typeof value === "string" && value.trim() !== "" ? value : undefined),
-  // 周回かを持たない件は、目的地の有無で周回を決めていた頃の件で、目的地を持たなければ周回として読む（その頃の生成と同じ形）。
-  // 目的地の有無で読む分岐は2027-01-19に消す。
-  loop: (value, entry) => {
-    if (value === undefined) return savedMode(entry) === "loop" || entry.destination === null;
-    return typeof value === "boolean" ? value : undefined;
-  },
-  distanceTargeted: (value, entry) => {
-    if (typeof value === "boolean") return value;
-    const mode = savedMode(entry);
-    return mode === null ? undefined : mode === "loop";
-  },
+  loop: isBoolean,
+  distanceTargeted: isBoolean,
   distance: (value) => (typeof value === "string" ? (acceptedDistanceInput(value) ?? undefined) : undefined),
   maxRoutes: (value) => (typeof value === "string" ? (acceptedMaxRoutesInput(value) ?? undefined) : undefined),
   origin: coordinatesOrNull,
-  waypoints: (value, entry) => {
-    if (!Array.isArray(value) || value.length > routeGenerateConfig.max_waypoints || !value.every(isCoordinates)) {
-      return undefined;
-    }
-    return savedMode(entry) === "loop" ? [] : value;
-  },
-  destination: (value, entry) => {
-    const destination = coordinatesOrNull(value);
-    return destination !== undefined && savedMode(entry) === "loop" ? null : destination;
-  },
+  waypoints: (value) =>
+    Array.isArray(value) && value.length <= routeGenerateConfig.max_waypoints && value.every(isCoordinates)
+      ? value
+      : undefined,
+  destination: coordinatesOrNull,
   routePreference: (value) => (value === null || isWeights(value) ? value : undefined),
-  // 避け方を持たない件は、行ごとに選べるようになる前に保存した件で、どの行も選んでいない（既定の段）として読む。
-  // この読み替えは2027-01-18に消し、避け方を持たない件を捨てる。
-  roadAvoidance: readRoadAvoidance,
+  roadAvoidance: (value) => (typeof value === "object" && value !== null ? readRoadAvoidance(value) : undefined),
 };
 
 // 1件を今の画面が受け付ける形で読む。読めない件はnull（ほかの件は残す）。
@@ -127,7 +104,7 @@ function readSavedCondition(value: unknown): SavedCondition | null {
   const entry = value as Record<string, unknown>;
   const read: Record<string, unknown> = {};
   for (const [key, readField] of Object.entries(SAVED_FIELD_READERS)) {
-    const field = readField(entry[key], entry);
+    const field = readField(entry[key]);
     if (field === undefined) return null;
     read[key] = field;
   }
@@ -195,7 +172,7 @@ function exclusionsDescription(roadAvoidance: RoadAvoidanceOverride, catalog: Ax
   const { levels, rows } = catalog.roadClasses.avoidance;
   const parts = levels.toReversed().flatMap(({ key: level, label: levelLabel }) => {
     const labels = rows
-      .filter((row) => level !== "pass" && avoidanceLevelOf(row, roadAvoidance, levels) === level)
+      .filter((row) => level !== "pass" && avoidanceLevelOf(row, roadAvoidance) === level)
       .map(({ label }) => label);
     return labels.length === 0 ? [] : [`${levelLabel} ${labels.join("・")}`];
   });
@@ -221,16 +198,4 @@ export function originDescription(fixed: boolean): string {
 /** 保存した一覧へ1件を入れる。同じ名前の件は上書きする。 */
 export function withSavedCondition(list: SavedCondition[], entry: SavedCondition): SavedCondition[] {
   return withEntryFirst(list, entry, (saved) => saved.name === entry.name);
-}
-
-/** 保存した一覧の避け方を今の行の鍵へ書き直す（`withCurrentRoadKeys`）。書き直す件が無ければ同じ一覧を返す。 */
-export function savedWithCurrentRoadKeys(
-  list: SavedCondition[],
-  view: Pick<RoadAvoidanceView, "rows" | "levels">,
-): SavedCondition[] {
-  const rewritten = list.map((entry) => {
-    const roadAvoidance = withCurrentRoadKeys(entry.roadAvoidance, view);
-    return roadAvoidance === entry.roadAvoidance ? entry : { ...entry, roadAvoidance };
-  });
-  return rewritten.some((entry, index) => entry !== list[index]) ? rewritten : list;
 }

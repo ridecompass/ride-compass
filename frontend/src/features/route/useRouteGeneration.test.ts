@@ -53,7 +53,7 @@ describe("送る要求", () => {
     act(() => rendered.result.current.conditions.selectPoint({ role: "waypoint", index: null }));
     act(() => rendered.result.current.conditions.placeAtSelected(B, null));
     act(() => rendered.result.current.conditions.placeAtSelected(A, null));
-    // 選んでいない行と前の鍵はbackendが今の行へ揃えるので、選んだ段をそのまま送る。
+    // 選んでいない行はbackendが今の行へ揃えるので、選んだ段をそのまま送る。
     const avoidance = { gravel: "exclude", "retired.row": "avoid" } as const;
     act(() => rendered.result.current.conditions.setRoadAvoidance(avoidance));
     backend.respond([route("r1")]);

@@ -22,16 +22,6 @@ from app.domain.jma_tile_specs import (
     read_target_times,
 )
 from app.domain.region import BoundingBox, tile_bounds_lonlat, tile_position, tiles_covering_bbox
-from app.domain.road_avoidance import AvoidanceLevel, resolve_road_avoidance
-from app.domain.road_class_catalog import road_class_catalog
-from app.domain.road_classes import (
-    EMPTY_ROAD_CLASSES,
-    AvoidanceClassification,
-    AvoidanceOverride,
-    RoadClass,
-    RoadClassification,
-    RoadMapLayer,
-)
 from app.domain.route import RouteSegmentDetail, merge_overall_difficulty
 from app.domain.time_zone import jst_local_text
 from app.domain.way_value_formula import (
@@ -548,70 +538,6 @@ def way_value_expectations() -> dict[str, list[dict]]:
     }
 
 
-def _road_class(sort_order: int, former_keys: list[str]) -> RoadClass:
-    return RoadClass(label="", description="", sort_order=sort_order, former_keys=former_keys, conditions=[])
-
-
-# 除外タブに出す分け方は地図の線の層でもある。層の見せ方は表に出ない。
-_MAP_LAYER = RoadMapLayer(
-    group_key="", sort_order=0, icon_key="", summary="", panel_hint="", palette="ordered",
-    hue_slot=None, tone=None, no_data_fact_key=None, hides_unclassified=False,
-)
-
-
-# 前の鍵の付き方が分かれる区分: 分けた区分（1つの前の鍵を2つの行が持ち、片方は既定が「なるべく避ける」）・合わせた区分
-# （前の鍵を2つ持つ）・前の鍵を持たない区分。
-_AVOIDANCE_DEFINITIONS = EMPTY_ROAD_CLASSES.model_copy(
-    update={
-        "classifications": {
-            "kind": RoadClassification(
-                label="",
-                description="",
-                is_published=True,
-                classes={
-                    "split_a": _road_class(0, ["old.split"]),
-                    "split_b": _road_class(1, ["old.split"]),
-                    "merged": _road_class(2, ["old.x", "old.y"]),
-                    "plain": _road_class(3, []),
-                },
-            )
-        },
-        "map_layers": {"kind": _MAP_LAYER},
-        "avoidance_classifications": {
-            "kind": AvoidanceClassification(
-                overrides={"split_b": AvoidanceOverride(default_level="avoid", selectable=True)},
-            )
-        },
-    }
-)
-
-# 要求の場面: （場面, 行の鍵 → 選んだ段）。
-_AVOIDANCE_REQUESTS: list[tuple[str, dict[str, AvoidanceLevel]]] = [
-    ("何も選んでいない", {}),
-    ("今の鍵だけ", {"kind.split_a": "exclude", "kind.plain": "avoid"}),
-    ("分けた区分の前の鍵は、分けてできたどの行にも効く", {"old.split": "exclude"}),
-    ("前の鍵の段は既定より弱くても効く", {"old.split": "pass"}),
-    ("合わせた区分の前の鍵は強い方（前に書いた方が強い）", {"old.x": "exclude", "old.y": "pass"}),
-    ("合わせた区分の前の鍵は強い方（後に書いた方が強い）", {"old.x": "pass", "old.y": "avoid"}),
-    ("今の鍵が前の鍵に勝つ", {"kind.split_b": "pass", "old.split": "exclude"}),
-    ("今の行でも前の鍵でもない鍵は読まない", {"gone.a": "exclude"}),
-]
-
-
-def road_avoidance_expectations() -> dict[str, list[dict]]:
-    """要求の避け方を今の行へ揃えた段。行と段は軸カタログが配る形で出す。"""
-    avoidance = road_class_catalog(_AVOIDANCE_DEFINITIONS).avoidance
-    return {
-        "levels": [level.model_dump() for level in avoidance.levels],
-        "rows": [row.model_dump() for row in avoidance.rows],
-        "resolve_road_avoidance": [
-            {"scene": scene, "requested": requested,
-             "resolved": resolve_road_avoidance(requested, _AVOIDANCE_DEFINITIONS)}
-            for scene, requested in _AVOIDANCE_REQUESTS
-        ],
-    }
-
-
 #: 組の名前 → 表を作る関数。組を足すときはここに1行足す（書き出しと置き場の名前はこれから決まる）。
 EXPECTATIONS: dict[str, Callable[[], dict[str, list[dict]]]] = {
     "geo": geo_expectations,
@@ -620,5 +546,4 @@ EXPECTATIONS: dict[str, Callable[[], dict[str, list[dict]]]] = {
     "difficulty": difficulty_expectations,
     "jma": jma_expectations,
     "way-value": way_value_expectations,
-    "road-avoidance": road_avoidance_expectations,
 }

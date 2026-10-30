@@ -116,7 +116,7 @@ export const AVOIDANCE_LEVELS: RoadAvoidanceView["levels"] = [
   { key: "exclude", label: "通らない" },
 ];
 
-/** 避け方を選べる行1つ。既定は「通る」で、前の鍵は無い。 */
+/** 避け方を選べる行1つ。既定は「通る」。 */
 export function avoidanceRow(
   key: string,
   section: string,
@@ -128,7 +128,6 @@ export function avoidanceRow(
     label: key,
     description: "",
     default: "pass",
-    former_keys: [],
     ...overrides,
   };
 }
