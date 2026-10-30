@@ -31,6 +31,7 @@ from app.domain.search_graph import (
     CsrGraphStructure,
     build_lazy_road_graph,
     build_search_graph_statics,
+    kernel_array,
     run_starts,
 )
 from app.domain.turn_structure import TurnExpandedStructure, build_turn_expanded_structure, current_turn_cost
@@ -342,17 +343,6 @@ def _retrace_free_nodes(
 Heap = tuple[np.ndarray, np.ndarray, np.ndarray, bool]
 
 
-def _kernel_array(values: np.ndarray, dtype: type) -> np.ndarray:
-    """JITした探索へ渡す配列を、1つの型（dtype・C順・書き込み可）へ揃える。揃っている配列は写さない。
-
-    numbaは引数の型（dtype・並び・読み取り専用か）ごとに別々にコンパイルする。揃えずに渡すと、
-    イメージの組み立てで焼いたコンパイル結果（`compile_search_kernels`）と型の違う呼び出しが、
-    本番の最初のルート生成でコンパイルを払う。
-    """
-    array: np.ndarray = np.ascontiguousarray(values, dtype=dtype)
-    return array if array.flags.writeable else array.copy()
-
-
 @njit(cache=True, inline="always")
 def empty_heap(capacity: int, carries_g: bool) -> Heap:
     """空のヒープを作る。`carries_g`はキーが`g`と別の値になる探索（A*のキーは`g`＋下界）だけが立てる。
@@ -593,11 +583,11 @@ def build_turn_expanded_tree(
         )
     started = start_timer()
     state_cost, predecessor, state_length_m, state_seconds = _turn_expanded_dijkstra(
-        _kernel_array(indptr, SEARCH_INDEX_DTYPE), _kernel_array(target_state, SEARCH_INDEX_DTYPE),
-        _kernel_array(transition_seconds, EDGE_VALUE_DTYPE),
-        _kernel_array(cost_bins, EDGE_VALUE_DTYPE), _kernel_array(seconds_bins, EDGE_VALUE_DTYPE),
-        _kernel_array(edge_length_m, np.float64), float(bin_seconds),
-        _kernel_array(entry_state_indices, np.int64), float(cost_limit),
+        kernel_array(indptr, SEARCH_INDEX_DTYPE), kernel_array(target_state, SEARCH_INDEX_DTYPE),
+        kernel_array(transition_seconds, EDGE_VALUE_DTYPE),
+        kernel_array(cost_bins, EDGE_VALUE_DTYPE), kernel_array(seconds_bins, EDGE_VALUE_DTYPE),
+        kernel_array(edge_length_m, np.float64), float(bin_seconds),
+        kernel_array(entry_state_indices, np.int64), float(cost_limit),
         len(entry_state_indices) + HEAP_INITIAL_SLACK,
     )
     dijkstra_ms = elapsed_ms(started)
@@ -953,11 +943,11 @@ def turn_expanded_shortest_path(
     )
     capacity = len(origin_states) + HEAP_INITIAL_SLACK
     predecessor, goal_state = _turn_expanded_astar(
-        _kernel_array(structure.indptr, SEARCH_INDEX_DTYPE), _kernel_array(structure.target_state, SEARCH_INDEX_DTYPE),
-        _kernel_array(structure.turn_seconds, EDGE_VALUE_DTYPE), _kernel_array(structure.edge_to, np.int64),
-        _kernel_array(cost_bins, EDGE_VALUE_DTYPE), _kernel_array(seconds_bins, EDGE_VALUE_DTYPE), float(bin_seconds),
-        _kernel_array(node_heuristic, np.float64),
-        _kernel_array(origin_states, np.int64), int(goal_node_index), capacity,
+        kernel_array(structure.indptr, SEARCH_INDEX_DTYPE), kernel_array(structure.target_state, SEARCH_INDEX_DTYPE),
+        kernel_array(structure.turn_seconds, EDGE_VALUE_DTYPE), kernel_array(structure.edge_to, np.int64),
+        kernel_array(cost_bins, EDGE_VALUE_DTYPE), kernel_array(seconds_bins, EDGE_VALUE_DTYPE), float(bin_seconds),
+        kernel_array(node_heuristic, np.float64),
+        kernel_array(origin_states, np.int64), int(goal_node_index), capacity,
     )
     if goal_state < 0:
         return None

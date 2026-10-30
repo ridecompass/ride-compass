@@ -16,3 +16,8 @@ def elapsed_ms(started: float) -> int:
 def add_elapsed_ms(totals: dict[str, int], step: str, started: float) -> None:
     """段ごとの所要時間の和`totals`の`step`に、`start_timer`の`started`から今までの所要時間を足す。"""
     totals[step] = totals.get(step, 0) + elapsed_ms(started)
+
+
+def steps_note(totals: dict[str, int]) -> str:
+    """段ごとの所要時間の和`totals`（`add_elapsed_ms`）を、ログの行の欄（段の名前_ms=ミリ秒）にする。"""
+    return " ".join(f"{step}_ms={ms}" for step, ms in totals.items())

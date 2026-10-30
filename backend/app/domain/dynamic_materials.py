@@ -5,7 +5,6 @@ Edgeへ永続保存せず、リクエストのたびに風・走行速度・通�
 更新の頻度も違うため、評価本体（`domain/evaluation.py`）から分けてある。
 """
 
-from datetime import datetime
 from dataclasses import dataclass
 from functools import cached_property
 from typing import Callable, Mapping
@@ -32,12 +31,11 @@ class DynamicAxisRequestContext:
     # 走行速度（m/s、リクエスト単位）。既定値を置かないのは、走行速度に依存する材料へ
     # 伝播漏れがあったとき既定値で黙って計算せず、構築時点で失敗させるため。
     travel_speed_ms: float
-    # 時刻依存の材料向け: 格子点ごとの時別予報系列と、各Edgeの通過予定時刻（`start`からの経過
-    # 時間[h]、`bearing_deg`と同じ行順）と、各Edgeに最も近い格子点の番号（同じ行順）。4つとも揃っていれば
-    # Edgeごとに通過予定時刻の値を引き、揃っていなければ`departure_wind`（出発時点のスナップショット）を全Edgeへ一様に使う。
+    # 時刻依存の材料向け: 格子点ごとの時別予報系列と、通過の時刻に引く予報の時刻の添字（`WindForecastSeries.time_index`。
+    # 全Edgeに1つか、`bearing_deg`と同じ行順）と、各Edgeに最も近い格子点の番号（同じ行順）。3つとも揃っていれば
+    # Edgeごとにその時刻の値を引き、揃っていなければ`departure_wind`（出発時点のスナップショット）を全Edgeへ一様に使う。
     wind_series: WindForecastSeries | None
-    start: datetime | None
-    passage_hours: np.ndarray | None
+    forecast_index: int | np.ndarray | None
     wind_points: np.ndarray | None
 
     @cached_property
@@ -46,11 +44,8 @@ class DynamicAxisRequestContext:
         揃っていればEdgeごとにその時刻の風、揃っていなければ出発時点のスナップショットの風で求める。風が無ければNone。
 
         風の材料と走行モデルが同じ値を読むため、予報の引き当てと三角関数はcontext1つにつき1回にする。"""
-        if (
-            self.wind_series is not None and self.start is not None and self.passage_hours is not None
-            and self.wind_points is not None
-        ):
-            speed, direction = self.wind_series.sample(self.start, self.passage_hours, self.wind_points)
+        if self.wind_series is not None and self.forecast_index is not None and self.wind_points is not None:
+            speed, direction = self.wind_series.at(self.forecast_index, self.wind_points)
         elif self.departure_wind is not None:
             speed = np.asarray(self.departure_wind.speed_ms, dtype=float)
             direction = np.asarray(self.departure_wind.direction_deg, dtype=float)

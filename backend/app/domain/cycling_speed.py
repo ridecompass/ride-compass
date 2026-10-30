@@ -27,6 +27,7 @@ from numba import njit
 from app.domain.attributes import CategoricalColumn
 from app.domain.material_catalog import GRADIENT_PERCENT
 from app.domain.road_classes import class_material_id, current_road_classes
+from app.domain.search_graph import kernel_array
 from app.domain.traffic import stop_count_material_ids
 from app.domain.tuning import TUNING_PARAMETERS_BY_ID, tuning_value
 from app.domain.wind import kmh_to_ms
@@ -175,11 +176,9 @@ class SegmentSpeedModel:
         if rolling_crr.shape != grade.shape:
             raise ValueError(f"区間の配列の長さが揃っていません grade={grade.shape} crr={rolling_crr.shape}")
         self._shape = grade.shape
-        # JITへ渡す配列と値は型（dtype・C順・書き込み可）を揃える。型ごとに別にコンパイルされ、イメージで焼いた
-        # 結果（`domain/routing.py: compile_search_kernels`）と違う型は、本番の最初の生成でコンパイルを払う。
-        self._power = np.array(climb_power_w(wheel_power_w(profile), grade), dtype=np.float32)
+        self._power = kernel_array(climb_power_w(wheel_power_w(profile), grade), np.float32)
         weight_n = np.float32(profile.mass_kg * GRAVITY_M_S2)
-        self._constant_force = np.array(rolling_crr * weight_n + weight_n * grade, dtype=np.float32)
+        self._constant_force = kernel_array(rolling_crr * weight_n + weight_n * grade, np.float32)
         self._drag_coefficient = np.float32(0.5 * AIR_DENSITY_KG_M3 * profile.cda_m2)
         self._lowest_ms = np.float32(kmh_to_ms(tuning_value("speed.walking_kmh")))
         self._highest_ms = np.float32(kmh_to_ms(top_speed_kmh(profile.cruise_speed_kmh)))
@@ -191,8 +190,8 @@ class SegmentSpeedModel:
         走行方程式`P = 抵抗力(v) × v`を`v`について解く。3次方程式になるため、二分法で挟んでから
         解を返す（ニュートン法は抵抗力が0を跨ぐ下り坂で発散しうるため、区間を確実に狭める方を採る）。
         """
-        headwind = np.ascontiguousarray(headwind_ms, dtype=np.float32)
-        cross = np.ascontiguousarray(crosswind_ms, dtype=np.float32)
+        headwind = kernel_array(headwind_ms, np.float32)
+        cross = kernel_array(crosswind_ms, np.float32)
         mismatched = {
             name: array.shape
             for name, array in (("headwind_ms", headwind), ("crosswind_ms", cross))
@@ -201,7 +200,5 @@ class SegmentSpeedModel:
         if mismatched:
             raise ValueError(f"区間の配列の長さが揃っていません grade={self._shape} {mismatched}")
         return _segment_speeds(
-            self._power, self._constant_force, self._drag_coefficient, self._lowest_ms, self._highest_ms,
-            headwind if headwind.flags.writeable else headwind.copy(),
-            cross if cross.flags.writeable else cross.copy(),
+            self._power, self._constant_force, self._drag_coefficient, self._lowest_ms, self._highest_ms, headwind, cross,
         )

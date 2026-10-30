@@ -51,6 +51,17 @@ SEARCH_INDEX_DTYPE = np.int32
 EDGE_VALUE_DTYPE = np.float32
 
 
+def kernel_array(values: np.ndarray, dtype: type) -> np.ndarray:
+    """JITした関数へ渡す配列を、1つの型（dtype・C順・書き込み可）へ揃える。揃っている配列は写さない。
+
+    numbaは引数の型（dtype・並び・読み取り専用か）ごとに別々にコンパイルする。揃えずに渡すと、
+    イメージの組み立てで焼いたコンパイル結果（`domain/routing.py: compile_search_kernels`）と型の違う呼び出しが、
+    本番の最初のルート生成でコンパイルを払う。
+    """
+    array: np.ndarray = np.ascontiguousarray(values, dtype=dtype)
+    return array if array.flags.writeable else array.copy()
+
+
 @dataclass
 class CsrGraphStructure:
     """`LazyRoadGraph`と同じNode/区間の番号を持つCSR（圧縮行格納）表現の**構造のみ**。
