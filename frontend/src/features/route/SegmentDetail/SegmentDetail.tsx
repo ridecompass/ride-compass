@@ -19,7 +19,6 @@ import {
 import { useAxisCatalog } from "@/hooks/useAxisCatalog";
 import { cn } from "@/lib/cn";
 import type { RoadTrackRow } from "@/lib/mapDisplay/roadTracks";
-import { isUnclassifiedRow } from "@/lib/mapDisplay/roadTracks";
 import { formatJstHourMinute } from "@/lib/time";
 import type { SelectedRouteSegment } from "@/types/route";
 
@@ -70,7 +69,7 @@ export default function SegmentDetail({
 }) {
   const axisCatalog = useAxisCatalog();
   const { segment } = selection;
-  // 区間の層の値。値の無い線の層と、区分の付かない行（データなし・該当なし）は出さない。
+  // 区間の層の値。値の無い線の層は出さない。
   const { lines, bands } = useMemo(() => {
     const found = {
       lines: [] as { layer: LineLayer; mean: number; steepestClimb: number | null }[],
@@ -81,9 +80,7 @@ export default function SegmentDetail({
         const grades = segmentGrades(segment, layer);
         if (grades !== null) found.lines.push({ layer, ...grades });
       } else {
-        for (const { row, share } of segmentBandShares(segment, layer)) {
-          if (!isUnclassifiedRow(row)) found.bands.push({ layer, row, share });
-        }
+        for (const { row, share } of segmentBandShares(segment, layer)) found.bands.push({ layer, row, share });
       }
     }
     return found;

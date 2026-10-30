@@ -7,7 +7,7 @@ import type { MapIconComponent } from "@/components/ui/icons/icons";
 import { MAP_LAYER_ICONS, roadLayerIcon } from "@/components/ui/icons/mapLayerIcons";
 import { LANDCOVER_CLASSES } from "@/lib/mapDisplay/landcoverClasses";
 import { NO_DATA_LEGEND_BAND } from "@/lib/mapDisplay/mapColorLegend";
-import { roadTrackRowOf, roadTrackRows, type RoadTrackRow } from "@/lib/mapDisplay/roadTracks";
+import { isUnclassifiedRow, roadTrackRowOf, roadTrackRows, type RoadTrackRow } from "@/lib/mapDisplay/roadTracks";
 import type { RouteStretch } from "@/lib/routeDistance";
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import type { RoadMapLayerView, RouteSegmentDetail } from "@/types/route";
@@ -221,7 +221,8 @@ export function layerBand(columns: readonly RouteStretch<LayerSegment>[], layer:
   return pieces;
 }
 
-/** 区間に占める区分の行と割合（0〜1）を、割合の多い順に。値の無い道も、その行（データなし）として数える。 */
+/** 区間の区分の付く道に占める、区分の行と割合（0〜1）を、割合の多い順に。どの区分にも入らない道（その他・該当なし・データなし）は
+ * 行にも分母にも数えない。整数の%に丸めて0%になる行は出さない。 */
 export function segmentBandShares(
   segment: LayerSegment,
   layer: BandLayer,
@@ -230,12 +231,16 @@ export function segmentBandShares(
   let totalKm = 0;
   for (const { distance_km, value } of segment.road_classes[layer.id] ?? []) {
     const row = layer.draw.rowOf(value);
+    if (isUnclassifiedRow(row)) continue;
     const counted = kmByRow.get(row.key);
     kmByRow.set(row.key, { row, km: (counted?.km ?? 0) + distance_km });
     totalKm += distance_km;
   }
   if (totalKm <= 0) return [];
-  return [...kmByRow.values()].map(({ row, km }) => ({ row, share: km / totalKm })).sort((a, b) => b.share - a.share);
+  return [...kmByRow.values()]
+    .map(({ row, km }) => ({ row, share: km / totalKm }))
+    .filter(({ share }) => Math.round(share * 100) >= 1)
+    .sort((a, b) => b.share - a.share);
 }
 
 /** 凡例に出す行。このルートの帯に現れる行だけを、宣言の並びで。 */

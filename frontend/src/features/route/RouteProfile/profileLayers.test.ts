@@ -209,18 +209,27 @@ describe("layerBand", () => {
 describe("segmentBandShares", () => {
   it.each<[string, Stretch[] | undefined, [string, number][]]>([
     [
-      "同じ行をまとめて多い順に並べ、層に無い区分の鍵はその他に数える",
+      "区分の付く道だけで割り、同じ行をまとめて多い順に並べる。どの区分にも入らない道は数えない",
       [
         { distance_km: 0.3, value: "paved" },
-        { distance_km: 0.1, value: "unknown_class" },
-        { distance_km: 0.6, value: "paved" },
+        { distance_km: 0.4, value: "unknown_class" },
+        { distance_km: 0.1, value: "gravel" },
+        { distance_km: 0.4, value: "paved" },
       ],
       [
-        ["paved", 0.9],
-        ["other", 0.1],
+        ["paved", 0.875],
+        ["gravel", 0.125],
       ],
     ],
-    ["区分の並びの無い区間は、何も出さない", undefined, []],
+    [
+      "整数の%に丸めて0%になる行は出さない",
+      [
+        { distance_km: 1, value: "paved" },
+        { distance_km: 0.004, value: "soil" },
+      ],
+      [["paved", 0.996016]],
+    ],
+    ["区分の付く道の無い区間は、何も出さない", [{ distance_km: 1, value: null }], []],
   ])("%s", (_, stretches, shares) => {
     const segment = makeRouteSegment({ road_classes: stretches === undefined ? {} : { surface: stretches } });
     const found = segmentBandShares(segment, surface).map(({ row, share }) => [row.key, Number(share.toFixed(6))]);
