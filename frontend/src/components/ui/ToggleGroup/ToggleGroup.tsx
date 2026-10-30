@@ -45,7 +45,7 @@ interface ToggleGroupProps extends VariantProps<typeof groupVariants> {
   "aria-label": string;
   className?: string;
   /** 使い方の文（`Button`の`usage`と同じ）。文を持たない選択肢を押したときも、これを出す。 */
-  usage?: string;
+  usage: string | null;
   /** 選んでいる項目をもう一度押すと外せる（`onValueChange`へ空文字を渡す）。無ければ外せない。 */
   deselectable?: boolean;
   children: React.ReactNode;
@@ -72,7 +72,7 @@ export function ToggleGroup({
           onValueChange(next);
         }}
         className={cn(groupVariants({ variant: v }), className)}
-        data-usage={usage}
+        data-usage={usage ?? undefined}
         {...props}
       >
         {children}

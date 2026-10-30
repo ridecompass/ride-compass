@@ -121,7 +121,9 @@ describe("UsageGuide", () => {
         <>
           <Tabs defaultValue="generate">
             <TabsList>
-              <TabsTrigger value="generate">条件</TabsTrigger>
+              <TabsTrigger value="generate" usage={null}>
+                条件
+              </TabsTrigger>
               <TabsTrigger value="weights" usage="重みを決めます。">
                 重み
               </TabsTrigger>

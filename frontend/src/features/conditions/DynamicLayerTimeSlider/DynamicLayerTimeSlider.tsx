@@ -58,7 +58,7 @@ export default function DynamicLayerTimeSlider({
             value={step}
             onValueChange={onStepChange}
             aria-label={`${ariaLabel}の刻み`}
-            usage="目盛りの1コマの刻みを選びます。"
+            usage="目盛りの1コマの刻みを選びます。切り替えると、出発時刻は今の時刻へ戻ります。"
             className="pointer-events-auto"
           >
             {steps.map((option) => (
@@ -70,6 +70,7 @@ export default function DynamicLayerTimeSlider({
         </div>
         <div className="flex items-center gap-2">
           <Button
+            usage="出発時刻を、目盛りの1コマ前へ動かします。"
             variant="stepper"
             size="sm"
             className="pointer-events-auto touch-none"
@@ -81,6 +82,7 @@ export default function DynamicLayerTimeSlider({
             ‹
           </Button>
           <Ruler
+            usage="目盛りをなぞって出発時刻を選びます。"
             frames={frames}
             index={index}
             onIndexChange={onIndexChange}
@@ -88,6 +90,7 @@ export default function DynamicLayerTimeSlider({
             className="pointer-events-auto min-w-30 flex-1 touch-none"
           />
           <Button
+            usage="出発時刻を、目盛りの1コマ次へ動かします。"
             variant="stepper"
             size="sm"
             className="pointer-events-auto touch-none"
@@ -105,7 +108,7 @@ export default function DynamicLayerTimeSlider({
             onClick={onNow}
             disabled={index === currentIndex}
             aria-label={`${ariaLabel}を現在に戻す`}
-            usage="送った時刻を、いまの時刻に戻します。"
+            usage="送った時刻を、いまの時刻に戻し、いまの時刻に合わせ続けます。"
           >
             <BackToNowIcon />
           </Button>

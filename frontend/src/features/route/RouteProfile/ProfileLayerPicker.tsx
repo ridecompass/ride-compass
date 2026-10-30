@@ -50,7 +50,10 @@ export default function ProfileLayerPicker({ available, layers, shown }: Profile
         className="max-h-[var(--radix-popover-content-available-height)] w-64 overflow-y-auto rounded-sm px-3 py-2.5"
       >
         <p className="mb-1 font-semibold">グラフに出す情報</p>
-        <ul className="flex flex-col gap-1 text-[length:var(--font-size-sm)]">
+        <ul
+          className="flex flex-col gap-1 text-[length:var(--font-size-sm)]"
+          data-usage="チェックした情報を、グラフに重ねて出します。"
+        >
           {available.map((layer) => {
             const band = bandPiecesOf.get(layer.id);
             return (

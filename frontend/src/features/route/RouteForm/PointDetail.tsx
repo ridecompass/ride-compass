@@ -195,11 +195,17 @@ export default function PointDetail({
           >
             <Input
               aria-label="保存する地点の名前"
+              data-usage="保存する地点の名前です。そのまま保存もできます。"
               className="min-w-0 flex-auto"
               value={placeNameDraft ?? suggestedPlaceName}
               onChange={(event) => setPlaceNameDraft(event.target.value)}
             />
-            <Button type="submit" size="sm" className="flex-none">
+            <Button
+              usage="この名前で地点をこの端末に保存します。同じ名前があれば上書きします。"
+              type="submit"
+              size="sm"
+              className="flex-none"
+            >
               {overwritingPlace ? "上書き保存" : "保存"}
             </Button>
           </form>

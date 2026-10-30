@@ -190,6 +190,7 @@ export default function UsageGuide({ onEnd }: UsageGuideProps) {
           <div className="flex items-start justify-between gap-2">
             <p className="m-0 font-semibold">{target?.name ?? "この部品"}</p>
             <Button
+              usage={null}
               variant="ghost"
               size="bare"
               className="px-1"
@@ -205,6 +206,7 @@ export default function UsageGuide({ onEnd }: UsageGuideProps) {
           </p>
           {target?.opens && (
             <Button
+              usage={null}
               size="xs"
               className="self-start"
               // 中を展開して説明だけを閉じ、中の部品を選ぶ続きへ戻る。開いた先は、終えたあとも開いたまま残る。

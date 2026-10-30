@@ -162,6 +162,7 @@ export default function RideModeButton({
           >
             <p className={textVariants({ variant: "hint" })}>{WAKE_LOCK_UNAVAILABLE}</p>
             <Button
+              usage="このお知らせを閉じます。"
               variant="ghost"
               size="iconRound"
               onClick={() => setWakeNoticeClosed(true)}

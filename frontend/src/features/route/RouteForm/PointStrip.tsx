@@ -118,6 +118,7 @@ export default function PointStrip({
   );
   const endChip = (role: "origin" | "destination", title: string, name: string) => (
     <Button
+      usage="この地点を選び、並びの下に詳しくを出します。"
       variant="ghost"
       size="bare"
       shape="pill"
@@ -151,6 +152,7 @@ export default function PointStrip({
       <span className="flex flex-none items-center">
         {waypointNames.map((name, index) => (
           <Button
+            usage="この経由地を選び、並びの下に詳しくを出します。"
             key={index}
             variant="ghost"
             size="bare"

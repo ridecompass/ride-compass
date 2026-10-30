@@ -258,6 +258,7 @@ function OpenBottomSheet({
         <div className="flex flex-shrink-0 items-center gap-2">
           {headerAction}
           <Button
+            usage="シートを閉じて、地図を広く見せます。下のタブを押すと、また開きます。"
             variant="ghost"
             size="icon"
             onClick={onClose}

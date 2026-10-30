@@ -45,7 +45,14 @@ beforeEach(() => {
 function renderRuler(index: number, disabled?: boolean) {
   const onIndexChange = vi.fn();
   const view = render(
-    <Ruler frames={FRAMES} index={index} onIndexChange={onIndexChange} ariaLabel="距離" disabled={disabled} />,
+    <Ruler
+      frames={FRAMES}
+      index={index}
+      onIndexChange={onIndexChange}
+      ariaLabel="距離"
+      usage={null}
+      disabled={disabled}
+    />,
   );
   return { onIndexChange, ...view };
 }
@@ -113,7 +120,7 @@ describe("Ruler Emblaとのつなぎ", () => {
     const { rerender, onIndexChange } = renderRuler(0);
     embla.scrollTo.mockClear();
     act(() => embla.select(2));
-    const props = { frames: FRAMES, onIndexChange, ariaLabel: "距離" };
+    const props = { frames: FRAMES, onIndexChange, ariaLabel: "距離", usage: null };
     rerender(<Ruler {...props} index={2} />);
     expect(embla.scrollTo).not.toHaveBeenCalled();
     rerender(<Ruler {...props} index={0} />);

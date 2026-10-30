@@ -48,7 +48,7 @@ export function ReportCard<T extends { computed_at: string }>({
         <InfoPopover triggerAriaLabel={`${title}の説明`}>{info}</InfoPopover>
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        <Button onClick={() => fetchReport.mutate()} disabled={fetchReport.isPending}>
+        <Button usage={null} onClick={() => fetchReport.mutate()} disabled={fetchReport.isPending}>
           {fetchReport.isPending ? "集計中…" : report ? "再集計する" : "集計する"}
         </Button>
         {report && (

@@ -96,6 +96,7 @@ export function SaveConditionsButton({
                 [
                   "出発地",
                   <ToggleGroup
+                    usage="保存するプリセットの出発地を、呼び出した時の現在地にするか、今の出発地に固定するかを選びます。"
                     key="origin"
                     aria-label="保存する出発地"
                     value={fixOrigin ? "fixed" : "current"}
@@ -205,10 +206,11 @@ export default function SavedConditionsPanel({ saved, onRecall, onRemove }: Save
               ]}
             />
             <div className="mt-3 flex justify-end gap-2">
-              <Button size="sm" onClick={() => setRecalling(null)}>
+              <Button usage="反映せずに、この窓を閉じます。" size="sm" onClick={() => setRecalling(null)}>
                 キャンセル
               </Button>
               <Button
+                usage="このプリセットの値で、各タブの値と地図の地点を入れ替えます。"
                 variant="primary"
                 size="sm"
                 onClick={() => {

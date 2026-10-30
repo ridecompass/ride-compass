@@ -20,7 +20,7 @@ describe("Button", () => {
     const onSubmit = vi.fn((event: React.FormEvent) => event.preventDefault());
     render(
       <form onSubmit={onSubmit}>
-        <Button>保存</Button>
+        <Button usage={null}>保存</Button>
       </form>,
     );
 

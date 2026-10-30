@@ -46,7 +46,14 @@ export default function FirstVisitIntro({ isMobile, locationUnknown }: FirstVisi
         <h2 id={TITLE_ID} className={cn(textVariants({ variant: "heading" }), "m-0")}>
           RideCompass
         </h2>
-        <Button variant="ghost" size="bare" className="px-1" aria-label="案内を閉じる" onClick={() => setClosed(true)}>
+        <Button
+          usage="案内を閉じます。"
+          variant="ghost"
+          size="bare"
+          className="px-1"
+          aria-label="案内を閉じる"
+          onClick={() => setClosed(true)}
+        >
           ✕
         </Button>
       </div>
@@ -88,7 +95,13 @@ export default function FirstVisitIntro({ isMobile, locationUnknown }: FirstVisi
           ）の「使い方を見る」から、部品を押して見られます。
         </li>
       </ul>
-      <Button variant="primary" size="sm" className="self-end" onClick={() => setClosed(true)}>
+      <Button
+        usage="案内を閉じて、地図を使い始めます。"
+        variant="primary"
+        size="sm"
+        className="self-end"
+        onClick={() => setClosed(true)}
+      >
         はじめる
       </Button>
     </section>
