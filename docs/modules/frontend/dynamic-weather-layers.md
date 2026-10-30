@@ -126,7 +126,8 @@ scene/applyMapScene.ts  … 前回の宣言との差だけを地図へ当てる
 （`WIND_SPEED_LEGEND_LEVELS`・`PRECIPITATION_INTENSITY_LEVELS`）はこの配列から帯の範囲を書き出す。気象庁のタイルで描く降水
 （降水ナウキャスト・降水短時間予報）は、backendの中継が同じ段の色へ塗り替えて配る
 （[気象・動的レイヤー](../backend/weather-dynamic-layers.md)「降水のタイルの塗り替え」）ので、MSMの格子点の升目の塗りも含めて、
-地図に出る色と凡例の行は1対1で対応する。
+地図に出る色と凡例の行は1対1で対応する。降水はいちばん弱い段の下限より弱い雨を塗らず（升目は塗りのfilterで落とし、気象庁のタイルは
+中継が透明にする）、凡例はその行を持たずに見出し（`precipitationNowcast.ts: PRECIPITATION_LEGEND_HEADING`）で断る。
 
 **連続補間（`interpolate`）で塗ってはいけない。** 凡例が並べられるのは帯ごとの色見本1つ
 だけで、それは帯の端の色でしかない。帯の中ほどの値はどの見本とも違う色になり、「この色は

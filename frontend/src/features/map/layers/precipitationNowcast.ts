@@ -15,8 +15,11 @@ import type { MsmGridForecast } from "@/types/weather";
 export const PRECIPITATION_COLOR_STOPS: readonly { mmPerHour: number; color: string; name: string }[] =
   weatherScales.precipitation.map((stop) => ({ mmPerHour: stop.value, color: stop.color, name: stop.name }));
 
-// 格子の塗り（gridFill）でこの値未満は「降っていない」として塗らない。境はbackendの宣言が持つ。
-export const PRECIPITATION_NONE_THRESHOLD_MM = weatherScales.precipitation_none_below_mm;
+// いちばん弱い段の下限。これ未満の雨は格子の塗り（gridFill）でも気象庁のタイル（中継が透明にする）でも塗らない。
+export const PRECIPITATION_PAINTED_FROM_MM = PRECIPITATION_COLOR_STOPS[0].mmPerHour;
+
+/** 降水強度の凡例（地図チップ）の見出し。塗らない弱い雨は行を持たないので、見出しで断る。 */
+export const PRECIPITATION_LEGEND_HEADING = `${PRECIPITATION_PAINTED_FROM_MM}mm/h未満は塗らない`;
 
 /** 降水強度の凡例（地図チップ）。色の段1つにつき1行。 */
 export const PRECIPITATION_INTENSITY_LEVELS: readonly MapColorLegendBand[] = buildRangeLegendBands(
@@ -24,11 +27,13 @@ export const PRECIPITATION_INTENSITY_LEVELS: readonly MapColorLegendBand[] = bui
   PRECIPITATION_COLOR_STOPS.map((stop) => stop.color),
   "mm/h",
   PRECIPITATION_COLOR_STOPS.map((stop) => stop.name),
+  "",
+  PRECIPITATION_PAINTED_FROM_MM,
 );
 
 /** 時刻の位置`timeIndex`の降水量を、格子点ごとに1色で塗る升目にする。升目は格子点を中心に、応答の格子点の間隔の
  * 半分ずつ広げる（隣の升目と隙間も重なりも無く接する）。升目の中は格子点の値のまま塗り、補間しない。値が欠けた格子点は
- * 飛ばす（1点の欠損で全体を落とさない）。「ほぼ降水なし」の間引き（PRECIPITATION_NONE_THRESHOLD_MM）はここでは
+ * 飛ばす（1点の欠損で全体を落とさない）。塗らない弱い雨の間引き（PRECIPITATION_PAINTED_FROM_MM）はここでは
  * 行わない（MapLibre側のfilterに任せる）。 */
 export function precipitationCells(grid: MsmGridForecast, timeIndex: number): DynamicWeatherRenderPayload {
   return {
