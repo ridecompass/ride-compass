@@ -71,7 +71,7 @@ function addPointMarker(
     const lngLat = marker.getLngLat();
     handlers.onMove({ latitude: lngLat.lat, longitude: lngLat.lng });
   });
-  bindDragAwareClick(marker, element, handlers.onPress);
+  bindMarkerClick(element, handlers.onPress);
   return marker;
 }
 
@@ -80,21 +80,11 @@ function pinCursor(editable: boolean): string {
   return editable ? "grab" : "default";
 }
 
-// マーカーをドラッグした直後は、同じ操作の終わりにclickも飛ぶ。つかんで動かしただけで
-// 選び直しや小窓が起きないよう、ドラッグ由来の1回を読み飛ばす。
-/** 印を押したとき。`onClick`が押しを受けた（true）ときと、つかんで動かした直後の押しは地図へ通さない。受けなければ地図へ通し、
- * 印の下の物を地図の押しとして開かせる（印は地図の器の中にあり、止めなければ地図の押しになる）。 */
-function bindDragAwareClick(marker: maplibregl.Marker, element: HTMLElement, onClick: () => boolean): void {
-  let dragged = false;
-  marker.on("dragstart", () => {
-    dragged = true;
-  });
+/** 印を押したとき。`onClick`が押しを受けた（true）ときは地図へ通さない。受けなければ地図へ通し、印の下の物を地図の押しとして
+ * 開かせる（印は地図の器の中にあり、止めなければ地図の押しになる）。つかんで動かした終わりの押しは、MapLibre の`Marker`が動かす間
+ * 印に押しを当てないので来ない。 */
+function bindMarkerClick(element: HTMLElement, onClick: () => boolean): void {
   element.addEventListener("click", (event) => {
-    if (dragged) {
-      dragged = false;
-      event.stopPropagation();
-      return;
-    }
     if (onClick()) event.stopPropagation();
   });
 }

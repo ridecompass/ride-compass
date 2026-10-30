@@ -18,7 +18,7 @@ import {
 } from "@/testing/catalogAxes";
 import { serveGenerationJobs } from "@/testing/generationJobs";
 import { installGeolocation } from "@/testing/geolocation";
-import { TAP_CONFIRM_MS } from "@/features/map/MapView/mapGestures";
+import { TAP_CONFIRM_MS } from "@/features/map/MapView/mapTaps";
 import { mapOnScreen, type PointedFeature } from "@/testing/maplibre";
 import { makeGenerationConditions, makeRouteCandidate, makeRouteSegment } from "@/testing/routeFixtures";
 import regionTileConfig from "@/types/generated/region-tile-config.json";
@@ -214,11 +214,13 @@ export function clickMap(at: Coordinates, features: PointedFeature[] = []) {
   pressMap(() => mapOnScreen().click(at, features));
 }
 
-/** 地図の同じ所を続けて2回タップする。 */
+/** 地図の同じ所を続けて2回タップする。MapLibre はダブルクリックで地図の拡大を始め、利用者の操作で動いた出来事を出す。 */
 export function doubleClickMap(at: Coordinates, features: PointedFeature[] = []) {
   pressMap(() => {
     mapOnScreen().click(at, features);
     mapOnScreen().click(at, features);
+    mapOnScreen().emit("movestart", { originalEvent: new MouseEvent("dblclick") });
+    mapOnScreen().emit("moveend");
   });
 }
 
