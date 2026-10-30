@@ -437,6 +437,17 @@ Execution Time: 1605.6 ms      （jit=off なら 678.6 ms）
 `ALTER DATABASE`の設定は**新規接続から効く**。稼働中のコンテナの既存接続には次の
 デプロイまで反映されない。
 
+## 本番VMの自動更新の時刻
+
+**自動更新（`unattended-upgrade`）は毎日 04:30（日本時間）に、ずらさずに回す。** Ubuntu の既定（`apt-daily-upgrade.timer` の
+06:00 UTC から最大60分のずらし）のままだと、ライブラリを入れたあとの起こし直し（Ubuntu 24.04 の `needrestart` は既定で自動）が
+PostgreSQL を毎日決まらない時刻に十数秒止め、走っている派生の作り直しと利用者の要求を切る。利用の少ない時刻で、毎日 03:17 からの
+DB のバックアップの書き出しの後に置く。派生の作り直しは、この時刻を避けて流す。
+
+VM の上書きは `/etc/systemd/system/apt-daily-upgrade.timer.d/override.conf`（`OnCalendar=*-*-* 04:30:00 Asia/Tokyo`・
+`RandomizedDelaySec=0`）で、デプロイは届けない（VM で手で置いた）。消して `systemctl daemon-reload` を打てば Ubuntu の既定へ戻る。
+VM が止まっていて時刻を逃した回は、`Persistent=true`（既定）で起動のときに回る。
+
 ## 本番Redisの設定
 
 Redisは「TTL付きキャッシュ、または実データ源へのフォールバックが必ず効くcache-aside」
