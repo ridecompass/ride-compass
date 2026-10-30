@@ -18,7 +18,7 @@ import {
 } from "@/testing/catalogAxes";
 import { serveGenerationJobs } from "@/testing/generationJobs";
 import { installGeolocation } from "@/testing/geolocation";
-import { DOUBLE_TAP_MS } from "@/features/map/MapView/mapGestures";
+import { TAP_CONFIRM_MS } from "@/features/map/MapView/mapGestures";
 import { mapOnScreen, type PointedFeature } from "@/testing/maplibre";
 import { makeGenerationConditions, makeRouteCandidate, makeRouteSegment } from "@/testing/routeFixtures";
 import regionTileConfig from "@/types/generated/region-tile-config.json";
@@ -223,16 +223,14 @@ export function doubleClickMap(at: Coordinates, features: PointedFeature[] = [])
 }
 
 function pressMap(press: () => void) {
-  // 呼んだテストが既に偽の時計を使っていれば、その時計のまま進める（点けも消しもしない）。
-  const faked = vi.isFakeTimers();
-  if (!faked) vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
   try {
     act(() => {
       press();
-      vi.advanceTimersByTime(DOUBLE_TAP_MS);
+      vi.advanceTimersByTime(TAP_CONFIRM_MS);
     });
   } finally {
-    if (!faked) vi.useRealTimers();
+    vi.useRealTimers();
   }
 }
 
