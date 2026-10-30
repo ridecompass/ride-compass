@@ -238,7 +238,7 @@ describe("線を決めて保存する", () => {
 
   it("密度の軸でも、保存済みの線が0から伸びる直線でなければ、置き換わることを言う", async () => {
     const edited = axis(DENSITY.axis_id, DENSITY.label, HAND_EDITED_LINE);
-    await openAxis(edited, [edited]);
+    await openAxis(edited);
     expect(await screen.findByText(/保存すると、上の値で作った線に置き換わります/)).toBeInTheDocument();
     expect(screen.getByLabelText("保存済みの線")).toBeInTheDocument();
   });
@@ -273,7 +273,7 @@ describe("地図の段の境界", () => {
 
   it("隣の境界との間が狭く、動かすと隣と重なるときは動かさない", async () => {
     const narrow = axis(SLOPE.axis_id, SLOPE.label, SLOPE_LINE, { display_thresholds_override: [10, 10.5, 11] });
-    await openAxis(narrow, [narrow]);
+    await openAxis(narrow);
     const middle = await screen.findByRole("slider", { name: "段の境界2" });
     fireEvent.keyDown(middle, { key: "ArrowUp" });
     fireEvent.keyDown(screen.getByRole("slider", { name: "段の境界2" }), { key: "ArrowDown" });

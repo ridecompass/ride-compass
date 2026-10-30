@@ -52,6 +52,7 @@ export default function AxisStudio({ calibrationMap }: { calibrationMap: Calibra
         <Disclosure
           open={openAxisId === def.axis_id}
           onOpenChange={(open) => setOpenAxisId(open ? def.axis_id : null)}
+          usage="この軸の較正を開きます。"
           triggerClassName="group flex min-w-0 flex-col"
           summary={
             <>
