@@ -11,7 +11,6 @@ paths:
   - "frontend/capture/**"
   - "frontend/playwright*.config.ts"
   - "frontend/src/structure/**"
-  - "tools/flow-gate/test/**"
 ---
 
 # テスト方針

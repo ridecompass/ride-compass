@@ -196,7 +196,7 @@ postgisの285件が4分23秒を占める。縮めるには**ワーカーごと�
 
 今のテストが、実装の1か所の書き換え（`<` を `<=` に・`+` を `-` に等）を見つけられるかを測り、テストを消す・足す判断の
 材料にする（結果から何を足す・消す・直すかは [testing-review.md](../../rules/testing-review.md)「テストを変異テストで見直す」）。台本は `backend/scripts/mutation/`（各ファイルの先頭に使い方）、回すのは
-`.github/workflows/mutation.yml`（手で起こす。全部の測り・当て直し・見直しを1回の起こしでつなぐ。段の中身は先頭のコメント）。
+`.github/workflows/mutation.yml`（毎月1日 02:23（日本時間）に定時で起き、手でも起こせる。全部の測り・当て直し・見直しを1回の起こしでつなぐ。段の中身は先頭のコメント）。
 3つの層（backend・frontend の単体テストと e2e）でテストを見直す1回の進め方（起こす・待つ・読む・候補を問う・行き先を決める）は [test-review/SKILL.md](../test-review/SKILL.md)。
 
 ```bash
@@ -204,7 +204,11 @@ gh workflow run mutation.yml -R ridecompass/ride-compass --ref master -f ref=<�
 ```
 
 - **測る版と台本は `ref` から読む**。台本を直した作業ブランチを `ref` に渡せば、ワークフローを変えずに直した台本で回る。
+  最初のジョブ（`version`）が `ref` をコミットの SHA に1度だけ決め、全部の段がその SHA を測る（途中で `ref` が進んでも段どうしの版がずれない）。
   `count` は1本あたりの件数（`0` で全部。通しで動くかの試しは `5`）。
+- **定時の測り**: 入力を持たず、master の最新を全部の件数で測る。どの issue にも属さない専用のレーン（鍵 `mutation`。
+  [tech-stack.md](../../../docs/architecture/tech-stack.md)「CIの実行枠」）で回り、全部を測り終えて重なりの候補があれば、
+  消すタスク（種類は保守）を起こす（[test-review/SKILL.md](../test-review/SKILL.md)「定期の測りから起きた消すタスク」）。
 - **一覧の口**: 測る版の `backend/scripts/mutation/` に一覧を置くと、その変異だけを回す（当て直しはせず、見直しの段は走らない）。
   - `only.txt`: 記録のテスト（その関数を通るテスト）で回す。テストを消したあと、消したテストが見つけていた変異を残る側が
     落とすかを確かめるときに使う。
@@ -220,7 +224,7 @@ gh workflow run mutation.yml -R ridecompass/ride-compass --ref master -f ref=<�
   `python scripts/mutation/review.py <表のファイル> <前回の見直しの場所> <書き出す場所>` を打つ。残したい数字は issue に書く。
 - **1本のランナーが「The runner has received a shutdown signal」で止まったら**、`gh run rerun <実行の id> -R ridecompass/ride-compass --failed`
   で、その本と続く段だけを同じ入力でやり直す。同じ所で止まり続けるなら、ジョブの記録の「始め」の行で走っていた変異を見る。
-- **frontend の単体テスト**: `.github/workflows/mutation-frontend.yml`（手で起こす。段の中身は先頭のコメント）が Stryker で測り、
+- **frontend の単体テスト**: `.github/workflows/mutation-frontend.yml`（毎月2日 02:23（日本時間）に定時で起き、手でも起こせる。版の決め方と定時の測りは backend と同じ。段の中身は先頭のコメント）が Stryker で測り、
   backend と同じ表の形にして同じ `review.py` で候補を出す（成果物 `mutation-frontend-review`）。台本は `frontend/scripts/mutation/`
   （Stryker の版と vitest の口の直しは `install.sh` の1か所。クラス名の値にしか届かない書き換えは `ignore-class-names.mjs` が外す）。
   範囲を絞って測るときは `-f mutate=<frontend からのパス,...>`（1本で回し、見直しは次の前回に残さない）。

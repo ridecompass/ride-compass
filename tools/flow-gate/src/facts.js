@@ -14,7 +14,8 @@ export const relationsOf = (body = false) => `blockedBy(first:20){nodes{number s
 const dropped = (x) => x.state === "CLOSED" && ["NOT_PLANNED", "DUPLICATE"].includes(x.stateReason);
 // issue の欄とラベルから、欄と待ちを組む（1件を決め直すときも、振り出しの一覧も同じ）。子（親を持つ issue）は、優先度・着手可能日時・
 // 急ぎ・保留を自分では持たず、親の値を見る（親が閉じていれば、閉じるのを待つ子なので振り出さない）。待つ相手は前提と子で、どちらも同じに扱う。
-export function taskOf(config, issue, now = new Date()) {
+export function taskOf(config, issue) {
+  const now = new Date();
   const f = config.fields;
   const own = valuesOf(issue);
   const parent = issue.parent;
@@ -39,9 +40,9 @@ export function runOf(title) {
   const [, number, kind, key] = /^#(\d+) (\S+)(?: (\S+))?/.exec(title) ?? [];
   return number ? { number: Number(number), kind, key } : null;
 }
-// master のコミットの件名「tasks#<番号>: …」（docs/conventions/flow.md「コミット」。Pull Request の題名がそのまま件名になり、push で動いた
-// 実行の名前にもなる）の issue の番号。番号の無い件名はタスクでないコミットで、null。
-export const subjectTask = (subject) => Number(/^tasks#(\d+): /.exec(subject)?.[1]) || null;
+// master のコミットの件名「tasks#<番号>: …」（複数は「tasks#12・tasks#13: …」。docs/conventions/flow.md「コミット」。Pull Request の題名がそのまま
+// 件名になり、push で動いた実行の名前にもなる）の issue の番号。番号の無い件名はタスクでないコミットで、空。
+export const subjectTasks = (subject) => /^(?:tasks#\d+・)*tasks#\d+: /.exec(subject ?? "")?.[0].match(/\d+/g).map(Number) ?? [];
 // 担当のワークフロー（config.workflow）の近ごろの実行（新しい順に100本）。動いているか・枠が埋まっているかは、出来事1件につき1回ここから読む。
 // status は GitHub の値のまま持つ（欄「実行の status」へ写す）。
 export async function recentRuns(gh, config) {
@@ -65,30 +66,26 @@ const query = () => `query($to:String!,$tn:String!,$n:Int!,$co:String!,$cn:Strin
 
 // 合格の結論（GitHub が必須の検査の合格に数えるもの: 成功・スキップ・中立）。
 const PASSED = ["SUCCESS", "SKIPPED", "NEUTRAL"];
-// コミットの検査。stage は最も新しい検査の実行の status（実行が無ければ null）、passed はその実行が終わって合格したか。実行の結論は
-// Pull Request では結論のジョブ（ci-ok）と同じ。
+// Pull Request の先頭のコミットの検査。stage は最も新しい検査の実行の status（実行が無ければ null）、passed はその実行が終わって合格したか。
+// 実行の結論は結論のジョブ（ci-ok）と同じ。
 function checksOf(config, commit) {
   const last = checkRuns(config, commit).reduce((a, s) => (a && a.createdAt > s.createdAt ? a : s), null);
-  const passed = PASSED.includes(last?.conclusion);
-  return { stage: last?.status ?? null, passed };
+  return { stage: last?.status ?? null, passed: PASSED.includes(last?.conclusion) };
 }
-// 本番に出たか（checksOf の形。unlisted は、自分のマージの実行がまだ一覧に出ていない）。master の push で動いた検査の実行（新しい順に100本）のうち、
-// 名前（コミットの件名）が numbers のどれかの番号の件名の一番新しいものと、それより後に作られたものは、その変更を判定とデプロイに入れる（ci.yml の
-// changes ジョブは、first-parent の祖先のうち検査が通った一番近いコミットと比べる）ので、どれかが合格していれば本番に出た（master の実行の結論は
-// デプロイも含む）。stage は、走っている一番新しい実行の status（どれも終わっていれば COMPLETED）。名前の合う実行が無ければ、
-// 自分のマージ（mergedAt）が一覧の一番古い実行より後ならまだ一覧に出ていない実行を待ち、一覧より前のマージと、マージの無い番号（子）は待たない。
-async function shippedChecks(gh, config, numbers, mergedAt) {
-  const { workflow_runs: runs } = await gh.rest("GET",
-    `/repos/${config.code}/actions/workflows/${config.checks.workflow}/runs?branch=${config.base}&event=push&per_page=100&exclude_pull_requests=true`);
-  const k = runs.findIndex((r) => numbers.includes(subjectTask(r.display_title)));
-  if (k < 0) {
-    const unlisted = Boolean(mergedAt) && (runs.length < 100 || Date.parse(mergedAt) > Date.parse(runs.at(-1).created_at));
-    return { stage: null, passed: !unlisted, unlisted };
-  }
-  const later = runs.slice(0, k + 1);
-  const running = later.find((r) => r.status !== "completed");
-  const passed = later.some((r) => PASSED.includes(r.conclusion?.toUpperCase()));
-  return { stage: (running?.status ?? "completed").toUpperCase(), passed, unlisted: false };
+// 自分か子（numbers）の変更が本番に出たか（checksOf の形。待つものが無ければ null）。master の後のコミットは前の変更を全部含み、master の検査の
+// 実行は通らなければ本番へ出さない（結論はデプロイも含む）ので、変更の入った時刻より後に作られた push の実行が、終わって合格していれば出た。
+// 変更の入った時刻は、件名が numbers の番号の実行のうち一番新しいものが作られた時刻で、無ければ自分のマージの時刻（mergedAt）。その時刻より後の
+// 実行がまだ無ければ（出来事が実行より先に届いた）待ち、一覧（新しい順に100本）より前に入った変更は待たない。
+async function deployOf(gh, config, numbers, mergedAt) {
+  const { workflow_runs: all } = await gh.rest("GET", `/repos/${config.code}/actions/workflows/${config.checks.workflow}/runs?branch=${config.base}&event=push&per_page=100`);
+  const runs = all.map((r) => ({ created: Date.parse(r.created_at), status: r.status.toUpperCase(), passed: PASSED.includes(r.conclusion?.toUpperCase()),
+    tasks: subjectTasks(r.display_title) }));
+  const mine = runs.filter((r) => r.tasks.some((n) => numbers.includes(n)));
+  const since = mine.length ? Math.max(...mine.map((r) => r.created)) : Date.parse(mergedAt);
+  if (!(since >= Math.min(...runs.map((r) => r.created)))) return null;
+  const after = runs.filter((r) => r.created >= since);
+  if (!after.length) return { stage: "QUEUED", passed: false };
+  return { stage: (after.find((r) => r.status !== "COMPLETED") ?? after[0]).status, passed: after.some((r) => r.passed) };
 }
 
 // 置き場のオーナーと名前（GraphQL の $o・$r）。
@@ -109,10 +106,10 @@ async function movedSince(gh, config, number, since) {
 
 // 担当の終わりのコメントの形（.github/claude-task/after.js が書き、ゲートと回答フォームが読む）。見出しの kind は担当の種類。
 export const endHead = (kind) => `### ${kind}担当の終わり`;
-export const END = /^### (\S+)担当の終わり/;
+const END = /^### (\S+)担当の終わり/;
 // 終わりのコメントの「読み始め」の行（担当の段が始まった時刻。それより前のユーザーの文を担当が読んでいる）。
 export const readFromLine = (at) => `読み始め: ${at}`;
-export const readFromOf = (body) => /^読み始め: (\S+)$/m.exec(body)?.[1] ?? null;
+const readFromOf = (body) => /^読み始め: (\S+)$/m.exec(body)?.[1] ?? null;
 // 終わりのコメントの「読み始めの完了の条件」の塊（担当の段が始まったときの本文の完了の条件を、文とチェックだけの1行ずつで写す）。本文が
 // 読めなければ読めなかったと書き、ゲートは約束が動いたと読まない。
 const START = "読み始めの完了の条件:";
@@ -196,15 +193,15 @@ export async function readFacts(gh, config, number, runs) {
   // 読むのに要求の要る事実は、決め方が使うときだけ読む（src/decide.js: Need。src/gate.js: settle が読んで決め直す）:
   // superseded は、答えのあとにユーザーがステータスを変えたか開き直したか（その答えはユーザーの次の決定で置き換わり、当て直さない）。
   // adoptAsked・droppedAsked は、採否・続行の問いを一度でも出したか（最近のコメントに無く、それより前があれば全部を読む）。
-  // ranMoved は、最後に終わった担当の実行で状態か約束が動いたか。shipped は、自分か子のマージの変更が本番に出たか（shippedChecks）。
-  const later = { shipped: () => shippedChecks(gh, config, [number, ...i.subIssues.nodes.map((x) => x.number)], merged?.mergedAt), superseded: () => movedSince(gh, config, number, answer.createdAt), droppedAsked: () => ever((x) => x.includes(asking)),
+  // ranMoved は、最後に終わった担当の実行で状態か約束が動いたか。deploy は、自分か子の変更が本番に出たか
+  // （deployOf。マージした issue と子を持つ issue だけが読む）。
+  const later = { deploy: () => (merged || i.subIssues.nodes.length ? deployOf(gh, config, [number, ...i.subIssues.nodes.map((x) => x.number)], merged?.mergedAt) : null), superseded: () => movedSince(gh, config, number, answer.createdAt), droppedAsked: () => ever((x) => x.includes(asking)),
     adoptAsked: () => ever((x) => x.startsWith(questionHead("採否"))), ranMoved: async () => handed > Date.parse(ended.from) || movedOf(gh, config, number, ended, conds) };
   return { ...task, later, author: i.author?.login, parent: p && { number: p.number }, origin: originOf(norm(i.body)), unread, answerRead, answerApplied, number,
     id: i.id, closedAs: i.stateReason, body: i.body, remaining: conds.filter((x) => !x.done), unbound: unboundSteps(i.body, number), question, dead, types, dialog,
     ids: { types: byName(t.issueTypes), labels: byName(t.labels) }, handed, ended: ended && { kind: ended.kind }, runs: held,
     // 閉じた・開き直したときに決め直す、矢印1本でつながる開いた issue（後・親・子）。
     near: [...i.blocking.nodes, ...(p ? [p] : []), ...i.subIssues.nodes].filter((x) => x.state === "OPEN").map((x) => x.number),
-    merged: Boolean(merged), children: i.subIssues.nodes.length,
     badQuestion: last && isQuestion(last) ? readProblems(config.questionForms, last, asker) : [], comments,
     pr: open && { id: open.id, draft: open.isDraft, checks: checksOf(config, head.commit), backToDraft: Boolean(drafted && drafted > head.commit.committedDate),
       conflicting: open.mergeable === "CONFLICTING" } }; // GitHub が計算中（UNKNOWN）の間は、ぶつかりに数えない

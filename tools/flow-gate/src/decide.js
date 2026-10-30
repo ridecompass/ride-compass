@@ -63,7 +63,7 @@ export function decide(f, config) {
 
 // 欄「実行の status」: ステータスが指す種類の、動いている実行の status（GitHub の値のまま。無ければ null）。検査は、最も新しい検査の実行の status。
 function runStatus(f, status) {
-  if (status === "検査") return (f.pr ? f.pr.checks : f.shipped).stage?.toLowerCase() ?? null; // 検査は走っている実行があるか、まだ一覧に出ていないときだけ
+  if (status === "検査") return (f.pr ? f.pr.checks : f.deploy).stage.toLowerCase(); // 検査は走っている実行があるときだけ
   return f.runs.find((r) => r.kind === status)?.status ?? null;
 }
 
@@ -137,9 +137,8 @@ function status(f, config) {
 // 次に結果を出すのが担当でも、待つ相手（着手可能日時・親の保留か閉じ）がある間は、担当は作らないので待機。
 const held = (f, t) => (DISPATCH.includes(t.status) && waiting(f) ? { ...t, status: "待機" } : t);
 
-// 検査は、走っている間（マージの実行がまだ一覧に出ていない間も）は検査、合格していなければ（不合格か、検査の実行が1本も無い）実装（検査が始まる形で
-// push するのも、直すのも実装担当）。
-const unchecked = (c) => ({ status: c.unlisted || (c.stage && c.stage !== "COMPLETED") ? "検査" : "実装" });
+// 検査は、走っている間は検査、合格していなければ（不合格か、検査の実行が1本も無い）実装（検査が始まる形で push するのも、直すのも実装担当）。
+const unchecked = (c) => ({ status: c.stage && c.stage !== "COMPLETED" ? "検査" : "実装" });
 
 // 1階: 成果物の事実と関係性から、次に結果を出す者の行為を決める（上から最初に当たる行）。次に結果を出すのが、いま手放した担当と
 // 同じ種類のまま（状態が動かず）、その実行で約束も動いていなければ、担当は責務を果たさずに終えた。
@@ -159,9 +158,9 @@ function rows(f) {
   // 待つ相手（前提・子）が開いている間は、確かめも完了もしない。見送りで閉じた相手がいれば、続けるかを一度だけ問う。
   if (f.blocked) return { status: "待機" };
   if (f.dropped.length && !need(f, "droppedAsked")) return { status: "回答", ask: { dropped: f.dropped } };
-  // 作る側の完了（自分か子のマージの変更を含む master の検査が通り、本番に出た。src/facts.js: readFacts の shipped）も約束のうち。マージのあとの
-  // 残りは、本番に出てから扱う（本番に出る前に確かめを問わない。原則2）。子の変更を待つので、親は自分の Pull Request が無くても待つ。
-  if ((f.merged || f.children) && !need(f, "shipped").passed) return unchecked(f.shipped);
+  // 作る側の完了（自分か子の変更を含む master の検査が通り、本番に出た）も約束のうち。マージのあとの残りは、本番に出てから扱う（本番に出る前に確かめを問わない。原則2）。
+  const deploy = need(f, "deploy");
+  if (deploy && !deploy.passed) return unchecked(deploy);
   if (f.remaining.every((c) => c.verify === "ユーザー")) return { status: "回答", ask: "確かめ" };
   return { status: "実装" };
 }

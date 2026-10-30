@@ -6,7 +6,7 @@
 //   規模と優先度の選択肢は設定（flow.config.json: fields）が持つ。
 //   --parent は子（種類は親と同じ。子と孫の決まりは tools/flow-gate/src/family.js）。--origin は要望ごとの切り出し（本文に分割元の行を置く）。
 import { readFileSync } from "node:fs";
-import { bot, config, graphql, graphqlData, isMain, isNumber, messages, usage } from "../../../../tools/flow-gate/src/bot.js";
+import { bot, config, graphql, graphqlData, isNumber, messages, usage } from "../../../../tools/flow-gate/src/bot.js";
 import { CHILD_FIELDS, NO_GRANDCHILD, makesGrandchild, originLine, originOf } from "../../../../tools/flow-gate/src/family.js";
 import { SET_FIELDS, fieldProblems, fieldValues } from "../../../../tools/flow-gate/src/fields.js";
 import { conditions, norm } from "../../../../tools/flow-gate/src/questions.js";
@@ -24,7 +24,7 @@ function typeProblems(body, type) {
 }
 
 // 本文と欄が決まりに合わない所（空なら合う）。child は子として作るとき。
-export function issueProblems(body, { type, child = false, size, priority, start }) {
+function issueProblems(body, { type, child = false, size, priority, start }) {
   const text = norm(body).trim();
   const problems = [];
   if (!text || text.startsWith("<details>")) problems.push("本文の頭に、畳まない要約が無い");
@@ -45,7 +45,7 @@ export function issueProblems(body, { type, child = false, size, priority, start
 }
 
 // 要望ごとの切り出しの本文に分割元の行を、要約の段落のあとへ置く（もうあれば置かない）。
-export function withOrigin(body, origin) {
+function withOrigin(body, origin) {
   const text = norm(body).trim();
   if (originOf(text) === Number(origin)) return text;
   const cut = text.indexOf("\n\n");
@@ -54,7 +54,7 @@ export function withOrigin(body, origin) {
 
 // 引数を読む。知らない口・値の無い口があれば null（打ち間違いで前提や親の無い issue を作らない）。
 const KEYS = ["title", "body-file", "type", "parent", "origin", "blocked-by", "blocking", "size", "priority", "start", "fill"];
-export function parseArgs(argv) {
+function parseArgs(argv) {
   const opts = {};
   for (let i = 0; i < argv.length; i += 2) {
     const key = argv[i].replace(/^--/, "");
@@ -115,7 +115,8 @@ function relate(gh, pairs) {
 }
 
 // 照らして作る。出す行（out）と、1 で終える理由（err）を返す。now は作る直前の時刻（作られたかを確かめるときの起点）。
-export function file(gh, opts, body, now = new Date()) {
+function file(gh, opts, body) {
+  const now = new Date();
   const { owner, name } = config.repos.tasks;
   const refs = { blockedBy: numbers(opts["blocked-by"]), blocking: numbers(opts.blocking), values: fieldsOf(opts) };
   const all = [...refs.blockedBy, ...refs.blocking];
@@ -209,7 +210,7 @@ function fill(gh, number, opts) {
 }
 
 // 作った issue の欄（issue fields）を1回で入れる。全部入れば null、落ちたら作った番号と入れ直すコマンドの文。
-export function fillFields(gh, number, values) {
+function fillFields(gh, number, values) {
   if (!values.length) return null;
   try {
     const id = JSON.parse(gh(["issue", "view", String(number), "-R", config.tasks, "--json", "id"])).id;
@@ -221,4 +222,4 @@ export function fillFields(gh, number, values) {
   }
 }
 
-if (isMain(import.meta.url)) await main();
+await main();

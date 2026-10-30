@@ -26,7 +26,7 @@ export async function handle(gh, { inbox }, config, name, payload) {
   if (!numbers.length) return; // 担当でないワークフローの出来事等。実行の一覧も読まない
   const runs = await recentRuns(gh, config);
   const settled = await Promise.all(numbers.map((n) => settle(gh, config, n, runs, moved)));
-  // 出来事が矢印の先も指す issue（around）と、ゲートがいま閉じた issue の矢印1本の先も、閉じるものが無くなるまで、振り出す前に決め直す
+  // 閉じた・開き直した issue（出来事が指すものと、ゲートがいま閉じたもの）の矢印1本の先も、閉じるものが無くなるまで、振り出す前に決め直す
   // （古いステータスで親を振り出さない）。先の番号は、決め直しで読んだ事実にある。
   const seen = new Set(numbers);
   const spreads = (s) => s.closedNow || (around && numbers.includes(s.number));

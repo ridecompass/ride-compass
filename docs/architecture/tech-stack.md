@@ -342,6 +342,7 @@ publicリポジトリで標準のGitHubホストランナーを使う実行を�
   レーンの数より多くは動かず、多い分は取り消されずに順に待つ。持ち主の数×レーンの数が組織の上限を超えた分は、ふつうの順番待ちになる。
   - 鍵は、Pull Request なら元のブランチ（タスクの作業ブランチ `orch/tasks-<番号>`）、push・定時・手の起こしなら ref の名前。
     担当（`claude-task.yml`）と変異テストの全部の測り（`mutation.yml`）は、起こすときの入力の issue から作業ブランチの名を組む。
+    変異テストの全部の測りの定時の起こし（`mutation.yml`・`mutation-frontend.yml`）は入力の issue を持たないので、どの issue にも属さない専用の鍵 `mutation` で動く。
     本番へ出す・公開するジョブは、どの ref から起こしても行き先が1つなので、鍵を master に決めてある。
   - レーンは決め打ちで、ジョブごと（matrix なら行ごと）にどのレーンかを書く。式に余りの演算が無く、空いたレーンを取り合う形は
     書けない。担当は持ち時間いっぱいまで動くので、レーン0を担当だけに与え、ほかのジョブはレーン1以降に置く（同じレーンに置くと、
@@ -367,7 +368,7 @@ CIだけに置いているため、CIの分数が尽きると検査そのもの�
 | 入れた場所 | 名前 | 中身（作った人・Resource owner・届く範囲・権限・期限） | 使う所 |
 |---|---|---|---|
 | ridecompass/ride-compassのActionsの秘密の値 | `CODE_TOKEN` | hidakagitが作ったfine-grained。Resource ownerはridecompassで、届くのはridecompass/ride-compassだけ。Actions・Contents・Issues・Pull requests・Variables・Workflowsは読み書き（Workflowsは2026-10-09に足した。担当が`.github/workflows/`を自分でpushする）、Commit statusesは読むだけ。期限は未記録 | `claude-task.yml`（checkout・Claudeの連携・ghの既定） |
-| 同 | `FLOW_BOT_TOKEN` | hidakagit-botが作ったfine-grained。届くのはridecompass/ride-compass-tasksだけ。Contentsは読み書き（担当の手番の記録をリリースへ置く）。期限2027-09-29 | 担当と流れの道具が置き場へ書く。開発機ではユーザー環境変数の同じ名前 |
+| 同 | `FLOW_BOT_TOKEN` | hidakagit-botが作ったfine-grained。届くのはridecompass/ride-compass-tasksだけ。Contentsは読み書き（担当の手番の記録をリリースへ置く）。期限2027-09-29 | 担当と流れの道具が置き場へ書く。変異テストの全部の測りの定時の起こしが、重なりの候補を消すタスクを置き場へ起こす。開発機ではユーザー環境変数の同じ名前 |
 | 同 | `CLAUDE_CODE_OAUTH_TOKEN` | Claudeの契約のトークン（GitHubのトークンではない） | `claude-task.yml` |
 | 同 | `CLOUDFLARE_API_TOKEN`・`CLOUDFLARE_ACCOUNT_ID` | Cloudflare | ゲートと回答フォームの公開（`ci.yml`の`deploy-gate`） |
 | 同 | `MAPILLARY_TOKEN` | hidakagitがMapillaryの開発者の画面で登録したアプリのClient Token（読むだけ。GitHubのトークンではない）。期限は未記録 | `claude-task.yml`（担当の環境変数。Mapillaryの街灯の点の付き方の測定） |

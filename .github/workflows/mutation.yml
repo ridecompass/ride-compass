@@ -2,10 +2,15 @@
 # 変異ごとに、その関数を通るテストを最後まで回して、どのテストが落ちたかを記録し、.claude/rules/testing.md「テストを変異テストで
 # 見直す」の候補を出す（tasks#661）。回し方と結果の読み方は .claude/skills/test-review/SKILL.md。
 #
-# - 手で起こす（gh workflow run mutation.yml、または Actions → Mutation → Run workflow）。測る版と台本は、起こすときに
-#   選んだ ref から読む（台本は backend/scripts/mutation/。台本を直すたびにこのファイルを変えずに済む）。測りは入力の issue の
-#   レーンで動くので、本はその issue のほかのジョブ（担当の Pull Request の CI 等）と枠を分け合い、レーンより多い本は空くまで待つ
-#   （レーンは docs/architecture/tech-stack.md「CIの実行枠」）。
+# - 毎月1日の 02:23（日本時間）に定期に起き、手でも起こせる（gh workflow run mutation.yml、または Actions → Mutation →
+#   Run workflow）。測る版と台本は、手で起こすときは選んだ ref、定期は master の先端から読む（台本は backend/scripts/mutation/。
+#   台本を直すたびにこのファイルを変えずに済む）。version が版をコミットに1度だけ決め、どの段もそのコミットを取り出す（本が
+#   始まる時刻は待ちでずれるので、ref の名前を本ごとに読むと、master が進んだ間に本ごとに違う版を測る）。
+# - 手で起こした測りは入力の issue のレーンで動くので、本はその issue のほかのジョブ（担当の Pull Request の CI 等）と枠を分け合う。
+#   定期の測りは、どの issue にも属さない専用のレーン（鍵 mutation）で動き、作業中のタスクの CI を待たせない。どちらもレーンより
+#   多い本は空くまで待つ（レーンは docs/architecture/tech-stack.md「CIの実行枠」）。
+# - 定期の測りが変異を回し終え、重なりの候補があれば、review が置き場へ候補を消すタスクを起こす（cleanup_issue.py。進め方は
+#   .claude/skills/test-review/SKILL.md「定期の測りから起きた消すタスク」）。
 # - 2段で回る:
 #   1. shard（15本）: 変異と、テストの当たる関数ごとの基準（変異を入れずに同じテストを2回）を1つの無作為の並び（種を固定）に
 #      して、行を順に配り、1本ずつ別のランナーで回す。1本の中ではテストDBを分けた4つの担い手で回す（CI の backend と同じ
@@ -25,6 +30,10 @@
 name: Mutation
 
 on:
+  schedule:
+    # backend と frontend（mutation-frontend.yml）は別の夜に回し、同時に動けるジョブの枠を取り合わない。毎時0分は混んで遅れるので外す。
+    - cron: "23 2 1 * *"
+      timezone: Asia/Tokyo
   workflow_dispatch:
     inputs:
       issue:
@@ -57,9 +66,25 @@ env:
   MUT_DB_PREFIX: mut_w
 
 jobs:
-  shard:
+  version:
     concurrency:
-      group: orch/tasks-${{ inputs.issue }}-lane-${{ matrix.lane }}
+      group: ${{ inputs.issue && format('orch/tasks-{0}', inputs.issue) || 'mutation' }}-lane-1
+      queue: max
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      sha: ${{ steps.sha.outputs.sha }}
+    steps:
+      - id: sha
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REF: ${{ inputs.ref || github.sha }}
+        run: echo "sha=$(gh api "repos/$GITHUB_REPOSITORY/commits/$REF" -q .sha)" >> "$GITHUB_OUTPUT"
+
+  shard:
+    needs: version
+    concurrency:
+      group: ${{ inputs.issue && format('orch/tasks-{0}', inputs.issue) || 'mutation' }}-lane-${{ matrix.lane }}
       queue: max
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 240
@@ -91,7 +116,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ inputs.ref }}
+          ref: ${{ needs.version.outputs.sha }}
       - id: mode
         name: 全部の測りか、一覧だけか
         run: |
@@ -112,7 +137,7 @@ jobs:
         working-directory: backend/mutants
         env:
           SHARD: ${{ matrix.shard }}
-          COUNT: ${{ inputs.count }}
+          COUNT: ${{ inputs.count || '0' }}
         run: |
           awk -v s="$SHARD" -v n="$SHARDS" '(NR - 1) % n == s' "$MUT_OUT/all.txt" > "$MUT_OUT/shard.txt"
           if [ "$COUNT" -gt 0 ]; then head -n "$COUNT" "$MUT_OUT/shard.txt" > "$MUT_OUT/shard.tmp" && mv "$MUT_OUT/shard.tmp" "$MUT_OUT/shard.txt"; fi
@@ -120,7 +145,7 @@ jobs:
       - name: 回す
         working-directory: backend/mutants
         env:
-          STOP_AFTER_MINUTES: ${{ inputs.stop_after }}
+          STOP_AFTER_MINUTES: ${{ inputs.stop_after || '120' }}
         run: |
           MUT_STOP_AFTER=$((STOP_AFTER_MINUTES * 60)) python ../scripts/mutation/runner.py "$MUT_OUT/shard.txt" "$MUT_OUT/results.jsonl" "$WORKERS"
           cp mutmut-stats.json "$MUT_OUT/"
@@ -157,10 +182,10 @@ jobs:
           if-no-files-found: warn
 
   review:
-    needs: shard
+    needs: [version, shard]
     if: needs.shard.outputs.full == 'true'
     concurrency:
-      group: orch/tasks-${{ inputs.issue }}-lane-1
+      group: ${{ inputs.issue && format('orch/tasks-{0}', inputs.issue) || 'mutation' }}-lane-1
       queue: max
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 30
@@ -173,7 +198,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ inputs.ref }}
+          ref: ${{ needs.version.outputs.sha }}
       - uses: ./.github/actions/python
       - uses: actions/download-artifact@v8
         with:
@@ -215,3 +240,19 @@ jobs:
           path: /tmp/review/
           retention-days: 90
           if-no-files-found: warn
+      - if: github.event_name == 'schedule' && steps.review.outputs.complete == 'true'
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      # shell を名指すと pipefail が付き、起票が落ちたら tee の成功で隠さずに段を落とす。
+      - name: 重なりの候補を消すタスクを起こす
+        if: github.event_name == 'schedule' && steps.review.outputs.complete == 'true'
+        shell: bash
+        env:
+          FLOW_BOT_TOKEN: ${{ secrets.FLOW_BOT_TOKEN }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          size=$(python scripts/mutation/cleanup_issue.py backend /tmp/review "$RUN_URL" /tmp/cleanup.md)
+          if [ -z "$size" ]; then echo "重なりの候補が無いので、消すタスクは起こさない。" >> "$GITHUB_STEP_SUMMARY"; exit 0; fi
+          node ../.claude/skills/file-issue/scripts/new-issue.mjs --type 保守 --body-file /tmp/cleanup.md --size "$size" --priority 低 \
+            --title "テストの重なりを消す（backend、$(TZ=Asia/Tokyo date +%Y-%m) の定期の測りから）" | tee -a "$GITHUB_STEP_SUMMARY"

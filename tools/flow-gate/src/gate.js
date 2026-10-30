@@ -3,7 +3,7 @@
 // （と、取り消す実行ごとに1回。Actions の取り消しは1回にまとめる口が無い）。
 import { Need, decide } from "./decide.js";
 import { batch } from "./github.js";
-import { readFacts, subjectTask } from "./facts.js";
+import { readFacts, subjectTasks } from "./facts.js";
 import { NO_GRANDCHILD, makesGrandchild } from "./family.js";
 import { askText, confirmConditions, droppedQuestion, isQuestionLabel, norm } from "./questions.js";
 
@@ -69,7 +69,7 @@ export const ignored = (config, name, p) => !ACTIONS[name]?.includes(p.action) |
 // 作業ブランチは接頭辞のあとが番号だけの枝（開発機の作業ツリーが使う、番号のあとに名前の付いた枝は、どの issue の出来事でもない）。
 const branch = (config, ref) => (ref?.startsWith(config.branchPrefix) && /^\d+$/.test(ref.slice(config.branchPrefix.length)) ? [Number(ref.slice(config.branchPrefix.length))] : []);
 
-// 出来事が指す issue。around は、矢印1本でつながる開いた issue（後・親・子）も決め直すとき（閉じた・開き直した・master の検査の実行が動いた）。
+// 出来事が指す issue。around は、閉じた・開き直したので矢印1本でつながる開いた issue（後・親・子）も決め直すとき。
 const ROUTES = {
   issues(gh, config, p) {
     // ユーザーが欄（ステータス等）を変えた。ゲートが事実へ戻したら知らせる。
@@ -94,12 +94,12 @@ const ROUTES = {
   issue_comment: (gh, config, p) => ({ numbers: [p.issue.number] }),
   pull_request: (gh, config, p) => ({ numbers: branch(config, p.pull_request.head.ref) }),
   // 検査の実行の出来事（申し込み・始まり・終わり）。作業ブランチの実行はブランチの名前から、master の実行（マージのコミットの検査）は
-  // 実行の名前（コミットの件名。src/facts.js: subjectTask）から、issue の番号を読む。master の検査の実行は、親の本番に出たかも決めるので、
-  // 矢印1本の先（親等）も決め直す。後の実行が覆う、前のマージの issue は定時の決め直しが拾う。
+  // 実行の名前（コミットの件名。src/facts.js: subjectTasks）から、issue の番号を読む。master の検査の実行は、その変更を待つ親も決め直すので、
+  // 矢印1本の先へ広げる。
   workflow_run(gh, config, p) {
     const w = p.workflow_run;
     if (w.head_branch !== config.base) return { numbers: branch(config, w.head_branch) };
-    return { numbers: [subjectTask(w.display_title)].filter(Boolean), around: w.path.endsWith(`/${config.checks.workflow}`) };
+    return { numbers: subjectTasks(w.display_title), around: w.path.endsWith(`/${config.checks.workflow}`) };
   },
 };
 export const route = (gh, config, name, p) => ROUTES[name](gh, config, p);

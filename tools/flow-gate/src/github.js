@@ -5,8 +5,9 @@ const b64url = (bytes) => btoa(String.fromCharCode(...new Uint8Array(bytes))).re
 const fail = (message, transient, retryAt) => Object.assign(new Error(message), { transient, retryAt });
 // 上限の応答（GitHub の公式の文書「Rate limits for the REST API」の「Exceeding the rate limit」）なら打ち直してよい時刻、そうでなければ null。上限は 403 か 429 で、
 // retry-after（秒）か x-ratelimit-remaining が 0（x-ratelimit-reset の時刻まで待つ）か、二次の上限の文で示す。どちらの時刻も無い二次の上限は、少なくとも1分待つ。
-function limitedUntil(status, headers, text, now = Date.now()) {
+function limitedUntil(status, headers, text) {
   if (status !== 403 && status !== 429) return null;
+  const now = Date.now();
   const after = headers.get("retry-after");
   if (after !== null) return now + Number(after) * 1000;
   if (headers.get("x-ratelimit-remaining") === "0") return Number(headers.get("x-ratelimit-reset")) * 1000 || now + 60e3;
