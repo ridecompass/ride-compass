@@ -9,6 +9,7 @@ export const primaryAttributes = [
     "point_name_property": null,
     "point_min_zoom": null,
     "point_priority": 0,
+    "point_priority_axes": [],
     "display_axes": []
   },
   {
@@ -20,6 +21,7 @@ export const primaryAttributes = [
     "point_name_property": null,
     "point_min_zoom": null,
     "point_priority": 0,
+    "point_priority_axes": [],
     "display_axes": []
   },
   {
@@ -31,6 +33,7 @@ export const primaryAttributes = [
     "point_name_property": null,
     "point_min_zoom": null,
     "point_priority": 0,
+    "point_priority_axes": [],
     "display_axes": []
   },
   {
@@ -42,6 +45,7 @@ export const primaryAttributes = [
     "point_name_property": null,
     "point_min_zoom": null,
     "point_priority": 0,
+    "point_priority_axes": [],
     "display_axes": []
   },
   {
@@ -53,6 +57,7 @@ export const primaryAttributes = [
     "point_name_property": null,
     "point_min_zoom": null,
     "point_priority": 0,
+    "point_priority_axes": [],
     "display_axes": []
   },
   {
@@ -64,6 +69,7 @@ export const primaryAttributes = [
     "point_name_property": null,
     "point_min_zoom": null,
     "point_priority": 0,
+    "point_priority_axes": [],
     "display_axes": []
   },
   {
@@ -75,6 +81,7 @@ export const primaryAttributes = [
     "point_name_property": null,
     "point_min_zoom": null,
     "point_priority": 0,
+    "point_priority_axes": [],
     "display_axes": []
   },
   {
@@ -86,6 +93,7 @@ export const primaryAttributes = [
     "point_name_property": null,
     "point_min_zoom": null,
     "point_priority": 0,
+    "point_priority_axes": [],
     "display_axes": []
   },
   {
@@ -97,6 +105,7 @@ export const primaryAttributes = [
     "point_name_property": null,
     "point_min_zoom": null,
     "point_priority": 0,
+    "point_priority_axes": [],
     "display_axes": []
   },
   {
@@ -108,6 +117,7 @@ export const primaryAttributes = [
     "point_name_property": null,
     "point_min_zoom": null,
     "point_priority": 0,
+    "point_priority_axes": [],
     "display_axes": []
   },
   {
@@ -119,6 +129,7 @@ export const primaryAttributes = [
     "point_name_property": null,
     "point_min_zoom": null,
     "point_priority": 0,
+    "point_priority_axes": [],
     "display_axes": []
   },
   {
@@ -129,7 +140,8 @@ export const primaryAttributes = [
     "tile_kind": "poi",
     "point_name_property": null,
     "point_min_zoom": 15,
-    "point_priority": 0,
+    "point_priority": 3,
+    "point_priority_axes": [],
     "display_axes": [
       {
         "key": "kind",
@@ -225,7 +237,11 @@ export const primaryAttributes = [
     "tile_kind": "accident",
     "point_name_property": null,
     "point_min_zoom": 15,
-    "point_priority": -1,
+    "point_priority": 0,
+    "point_priority_axes": [
+      "severity",
+      "party"
+    ],
     "display_axes": [
       {
         "key": "party",
@@ -292,6 +308,7 @@ export const primaryAttributes = [
     "point_name_property": null,
     "point_min_zoom": null,
     "point_priority": 0,
+    "point_priority_axes": [],
     "display_axes": []
   },
   {
@@ -303,6 +320,7 @@ export const primaryAttributes = [
     "point_name_property": null,
     "point_min_zoom": null,
     "point_priority": 0,
+    "point_priority_axes": [],
     "display_axes": []
   },
   {
@@ -313,7 +331,8 @@ export const primaryAttributes = [
     "tile_kind": "poi",
     "point_name_property": "name",
     "point_min_zoom": null,
-    "point_priority": 0,
+    "point_priority": 2,
+    "point_priority_axes": [],
     "display_axes": [
       {
         "key": "kind",
@@ -393,7 +412,8 @@ export const primaryAttributes = [
     "tile_kind": "stop_place",
     "point_name_property": "name",
     "point_min_zoom": null,
-    "point_priority": 0,
+    "point_priority": 1,
+    "point_priority_axes": [],
     "display_axes": [
       {
         "key": "group",

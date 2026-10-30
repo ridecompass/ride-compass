@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import { createRecordingMap } from "@/testing/mapTrace/recordingMap";
 import { CATALOG, DEDICATED_AXES, rebuild, ROAD_LAYERS } from "@/testing/sceneContract";
 import { AREA_SOURCE_ID } from "@/features/map/scene/groups/areaRasters";
+import { POINT_TILE_SOURCES } from "@/features/map/scene/groups/points";
 import { POINT_LAYERS } from "@/lib/mapDisplay/pointLayers";
 import { ROAD_LINE_SOURCE_ID } from "@/features/map/scene/groups/roadLines";
 import { pointLegendAxes, roadLegendAxes } from "@/features/map/scene/legends";
@@ -151,6 +152,28 @@ describe("レイヤーを横断する要求", () => {
     // feature-stateを読む式が実際にあること（0件なら、この検査は何も見ていない）。
     expect(stateReaders).toBeGreaterThan(0);
     expect(misplaced).toEqual([]);
+  });
+
+  // 記号は前面のレイヤーから場所を取り、ぶつかる後の記号は描かれない。点の印は、気象の格子の印（風の矢印等）と
+  // 基礎地図の文字（地名・道路名等）より前面に積まれていなければ、重なったときに消える。
+  it("点の印は、気象の格子の印と基礎地図の文字より前面に積まれる", () => {
+    const { map, handle } = createRecordingMap({ basemapLayerIds: ["basemap-label"] });
+    rebuild(map, everythingVisible());
+    const symbols = (addedLayers(handle) as { id: string; type: string; source: string }[]).filter(
+      (layer) => layer.type === "symbol",
+    );
+    const pointSources = new Set(Object.values(POINT_TILE_SOURCES).map((source) => source.sourceId as string));
+    const gridMarkCount = mapDisplay.weatherElements.filter((element) => element.kind === "gridMark").length;
+    const points = symbols.filter((layer) => pointSources.has(layer.source)).map((layer) => layer.id);
+    const weatherMarks = symbols
+      .filter((layer) => (layer.source as string).endsWith("-gridMark"))
+      .map((layer) => layer.id);
+    // 空振りしていないこと（どちらかが無ければ比較は常に通る）。
+    expect([points.length, weatherMarks.length]).toEqual([POINT_LAYERS.length, gridMarkCount]);
+
+    const order = handle.layerOrder();
+    const lowestPoint = Math.min(...points.map((id) => order.indexOf(id)));
+    for (const below of [...weatherMarks, "basemap-label"]) expect(order.indexOf(below)).toBeLessThan(lowestPoint);
   });
 
   // 世代が届く前にソースを作ると、世代の違う中身がブラウザのキャッシュへ載って以後ずっと残る。
