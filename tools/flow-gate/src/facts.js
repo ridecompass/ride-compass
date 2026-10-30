@@ -40,9 +40,9 @@ export function runOf(title) {
   const [, number, kind, key] = /^#(\d+) (\S+)(?: (\S+))?/.exec(title) ?? [];
   return number ? { number: Number(number), kind, key } : null;
 }
-// master のコミットの件名「tasks#<番号>: …」（docs/conventions/flow.md「コミット」。Pull Request の題名がそのまま件名になり、push で動いた
-// 実行の名前にもなる）の issue の番号。番号の無い件名はタスクでないコミットで、null。
-export const subjectTask = (subject) => Number(/^tasks#(\d+): /.exec(subject)?.[1]) || null;
+// master のコミットの件名「tasks#<番号>: …」（複数は「tasks#12・tasks#13: …」。docs/conventions/flow.md「コミット」。Pull Request の題名がそのまま
+// 件名になり、push で動いた実行の名前にもなる）の issue の番号。番号の無い件名はタスクでないコミットで、空。
+export const subjectTasks = (subject) => /^(?:tasks#\d+・)*tasks#\d+: /.exec(subject ?? "")?.[0].match(/\d+/g).map(Number) ?? [];
 // 担当のワークフロー（config.workflow）の近ごろの実行（新しい順に100本）。動いているか・枠が埋まっているかは、出来事1件につき1回ここから読む。
 // status は GitHub の値のまま持つ（欄「実行の status」へ写す）。
 export async function recentRuns(gh, config) {
@@ -61,52 +61,31 @@ const query = () => `query($to:String!,$tn:String!,$n:Int!,$co:String!,$cn:Strin
   comments(last:40){totalCount nodes{body createdAt author{login}}} ${FIELDS} ${relationsOf(true)} blocking(first:20){nodes{number state}}
   timelineItems(first:50,itemTypes:[ISSUE_TYPE_CHANGED_EVENT]){nodes{...on IssueTypeChangedEvent{prevIssueType{name} issueType{name}}}}}}
  c:repository(owner:$co,name:$cn){pullRequests(headRefName:$head,first:5,orderBy:{field:CREATED_AT,direction:DESC}){nodes{
-  id state isDraft mergeable merged createdAt mergedAt mergeCommit{oid ${SUITES}} commits(last:1){nodes{commit{committedDate ${SUITES}}}}
+  id state isDraft mergeable merged createdAt mergedAt commits(last:1){nodes{commit{committedDate ${SUITES}}}}
   timelineItems(last:1,itemTypes:[CONVERT_TO_DRAFT_EVENT]){nodes{...on ConvertToDraftEvent{createdAt}}}}}}}`;
 
 // 合格の結論（GitHub が必須の検査の合格に数えるもの: 成功・スキップ・中立）。
 const PASSED = ["SUCCESS", "SKIPPED", "NEUTRAL"];
-// コミットの検査。stage は最も新しい検査の実行の status（実行が無ければ null）、passed はその実行が終わって合格したか。実行の結論は
-// Pull Request では結論のジョブ（ci-ok）と同じで、master ではデプロイも含む（本番に出てから合格にする）。
-// cancelled は、その実行が取り消されたか（master では、後の push が待ちを置き換えた。.github/workflows/ci.yml の concurrency）。missed は、その実行が
-// 合格せずに終わったか（落ちた・取り消された）。
+// Pull Request の先頭のコミットの検査。stage は最も新しい検査の実行の status（実行が無ければ null）、passed はその実行が終わって合格したか。
+// 実行の結論は結論のジョブ（ci-ok）と同じ。
 function checksOf(config, commit) {
   const last = checkRuns(config, commit).reduce((a, s) => (a && a.createdAt > s.createdAt ? a : s), null);
-  const passed = PASSED.includes(last?.conclusion);
-  return { stage: last?.status ?? null, passed, cancelled: last?.conclusion === "CANCELLED", missed: last?.status === "COMPLETED" && !passed };
+  return { stage: last?.status ?? null, passed: PASSED.includes(last?.conclusion) };
 }
-// master の検査の実行が合格せずに終わった（落ちた・取り消された）コミットの変更は、後の master の実行が検査とデプロイの判定に入れる（ci.yml の
-// changes ジョブは、first-parent の祖先のうち検査が通った一番近いコミットと比べる）。その実行は、first-parent の子の側へ辿って、検査の実行が
-// 取り消されていない一番近いコミットのもの。それも落ちていれば、さらに後の実行も同じ変更を判定に入れるので、合格したか走っている実行まで辿る
-// （どれも落ちていれば一番後の落ちた実行）。FOLLOW はその辿る数で、辿り切れなければ、辿れた所までで読む。
-const FOLLOW = 10;
-// oid のコミットの代わりに検査を持つ後の master の実行（checksOf の形）。無ければ null。
-async function coveringChecks(gh, config, oid) {
-  const { owner, name } = config.repos.code;
-  // 比べる API は、oid に無く master にあるコミットを古い順に返す（GitHub の公式の文書「Compare two commits」）ので、子の側の近いものが先のページにある。
-  const { commits } = await gh.rest("GET", `/repos/${config.code}/compare/${oid}...${config.base}?per_page=100`);
-  const chain = [];
-  for (let at = oid; chain.length < FOLLOW;) {
-    const child = commits.find((c) => c.parents[0]?.sha === at);
-    if (!child) break;
-    chain.push(at = child.sha);
-  }
-  if (!chain.length) return null;
-  const { repository: r } = await gh.gql(`query($o:String!,$r:String!){repository(owner:$o,name:$r){${chain.map((sha, k) => `c${k}:object(oid:"${sha}"){...on Commit{${SUITES}}}`).join(" ")}}}`,
-    { o: owner, r: name });
-  const runs = chain.map((_, k) => r[`c${k}`]).filter((c) => checkRuns(config, c).length && !checksOf(config, c).cancelled).map((c) => checksOf(config, c));
-  return runs.find((c) => !c.missed) ?? runs.at(-1) ?? null;
-}
-// sha のコミットの master の実行が代わりに検査を持つ、first-parent の祖先のマージのコミットの issue の番号（上の coveringChecks の逆向き）。
-export async function coveredTasks(gh, config, sha) {
-  const { owner, name } = config.repos.code;
-  const { repository: { object: o } } = await gh.gql(`query($o:String!,$r:String!,$s:GitObjectID!){repository(owner:$o,name:$r){object(oid:$s){...on Commit{
-    history(first:${FOLLOW * 3}){nodes{oid messageHeadline parents(first:1){nodes{oid}} ${SUITES}}}}}}}`, { o: owner, r: name, s: sha });
-  const by = new Map((o?.history.nodes ?? []).map((n) => [n.oid, n]));
-  const up = (n) => by.get(n?.parents.nodes[0]?.oid);
-  const numbers = [];
-  for (let n = up(by.get(sha)); n && checksOf(config, n).missed && numbers.length < FOLLOW; n = up(n)) numbers.push(subjectTask(n.messageHeadline));
-  return numbers.filter(Boolean);
+// 自分か子（numbers）の変更が本番に出たか（checksOf の形。待つものが無ければ null）。master の後のコミットは前の変更を全部含み、master の検査の
+// 実行は通らなければ本番へ出さない（結論はデプロイも含む）ので、変更の入った時刻より後に作られた push の実行が、終わって合格していれば出た。
+// 変更の入った時刻は、件名が numbers の番号の実行のうち一番新しいものが作られた時刻で、無ければ自分のマージの時刻（mergedAt）。その時刻より後の
+// 実行がまだ無ければ（出来事が実行より先に届いた）待ち、一覧（新しい順に100本）より前に入った変更は待たない。
+async function deployOf(gh, config, numbers, mergedAt) {
+  const { workflow_runs: all } = await gh.rest("GET", `/repos/${config.code}/actions/workflows/${config.checks.workflow}/runs?branch=${config.base}&event=push&per_page=100`);
+  const runs = all.map((r) => ({ created: Date.parse(r.created_at), status: r.status.toUpperCase(), passed: PASSED.includes(r.conclusion?.toUpperCase()),
+    tasks: subjectTasks(r.display_title) }));
+  const mine = runs.filter((r) => r.tasks.some((n) => numbers.includes(n)));
+  const since = mine.length ? Math.max(...mine.map((r) => r.created)) : Date.parse(mergedAt);
+  if (!(since >= Math.min(...runs.map((r) => r.created)))) return null;
+  const after = runs.filter((r) => r.created >= since);
+  if (!after.length) return { stage: "QUEUED", passed: false };
+  return { stage: (after.find((r) => r.status !== "COMPLETED") ?? after[0]).status, passed: after.some((r) => r.passed) };
 }
 
 // 置き場のオーナーと名前（GraphQL の $o・$r）。
@@ -214,16 +193,15 @@ export async function readFacts(gh, config, number, runs) {
   // 読むのに要求の要る事実は、決め方が使うときだけ読む（src/decide.js: Need。src/gate.js: settle が読んで決め直す）:
   // superseded は、答えのあとにユーザーがステータスを変えたか開き直したか（その答えはユーザーの次の決定で置き換わり、当て直さない）。
   // adoptAsked・droppedAsked は、採否・続行の問いを一度でも出したか（最近のコメントに無く、それより前があれば全部を読む）。
-  // ranMoved は、最後に終わった担当の実行で状態か約束が動いたか。covering は、マージのコミットの検査の実行が合格せずに終わったとき、代わりに検査を持つ
-  // 後の master の実行（coveringChecks）。
-  const later = { covering: () => coveringChecks(gh, config, merged.mergeCommit.oid), superseded: () => movedSince(gh, config, number, answer.createdAt), droppedAsked: () => ever((x) => x.includes(asking)),
+  // ranMoved は、最後に終わった担当の実行で状態か約束が動いたか。deploy は、自分か子の変更が本番に出たか
+  // （deployOf。マージした issue と子を持つ issue だけが読む）。
+  const later = { deploy: () => (merged || i.subIssues.nodes.length ? deployOf(gh, config, [number, ...i.subIssues.nodes.map((x) => x.number)], merged?.mergedAt) : null), superseded: () => movedSince(gh, config, number, answer.createdAt), droppedAsked: () => ever((x) => x.includes(asking)),
     adoptAsked: () => ever((x) => x.startsWith(questionHead("採否"))), ranMoved: async () => handed > Date.parse(ended.from) || movedOf(gh, config, number, ended, conds) };
   return { ...task, later, author: i.author?.login, parent: p && { number: p.number }, origin: originOf(norm(i.body)), unread, answerRead, answerApplied, number,
     id: i.id, closedAs: i.stateReason, body: i.body, remaining: conds.filter((x) => !x.done), unbound: unboundSteps(i.body, number), question, dead, types, dialog,
     ids: { types: byName(t.issueTypes), labels: byName(t.labels) }, handed, ended: ended && { kind: ended.kind }, runs: held,
     // 閉じた・開き直したときに決め直す、矢印1本でつながる開いた issue（後・親・子）。
     near: [...i.blocking.nodes, ...(p ? [p] : []), ...i.subIssues.nodes].filter((x) => x.state === "OPEN").map((x) => x.number),
-    merged: Boolean(merged), mergeChecks: checksOf(config, merged?.mergeCommit),
     badQuestion: last && isQuestion(last) ? readProblems(config.questionForms, last, asker) : [], comments,
     pr: open && { id: open.id, draft: open.isDraft, checks: checksOf(config, head.commit), backToDraft: Boolean(drafted && drafted > head.commit.committedDate),
       conflicting: open.mergeable === "CONFLICTING" } }; // GitHub が計算中（UNKNOWN）の間は、ぶつかりに数えない

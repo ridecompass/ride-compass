@@ -3,7 +3,7 @@
 // （と、取り消す実行ごとに1回。Actions の取り消しは1回にまとめる口が無い）。
 import { Need, decide } from "./decide.js";
 import { batch } from "./github.js";
-import { coveredTasks, readFacts, subjectTask } from "./facts.js";
+import { readFacts, subjectTasks } from "./facts.js";
 import { NO_GRANDCHILD, makesGrandchild } from "./family.js";
 import { askText, confirmConditions, droppedQuestion, isQuestionLabel, norm } from "./questions.js";
 
@@ -94,13 +94,12 @@ const ROUTES = {
   issue_comment: (gh, config, p) => ({ numbers: [p.issue.number] }),
   pull_request: (gh, config, p) => ({ numbers: branch(config, p.pull_request.head.ref) }),
   // 検査の実行の出来事（申し込み・始まり・終わり）。作業ブランチの実行はブランチの名前から、master の実行（マージのコミットの検査）は
-  // 実行の名前（コミットの件名。src/facts.js: subjectTask）から、issue の番号を読む。master の検査の実行は、取り消された祖先のマージのコミットの
-  // 検査も代わりに持つので、その issue も決め直す（src/facts.js: coveredTasks）。
-  async workflow_run(gh, config, p) {
+  // 実行の名前（コミットの件名。src/facts.js: subjectTasks）から、issue の番号を読む。master の検査の実行は、その変更を待つ親も決め直すので、
+  // 矢印1本の先へ広げる。
+  workflow_run(gh, config, p) {
     const w = p.workflow_run;
     if (w.head_branch !== config.base) return { numbers: branch(config, w.head_branch) };
-    const covered = w.path.endsWith(`/${config.checks.workflow}`) ? await coveredTasks(gh, config, w.head_sha) : [];
-    return { numbers: [...new Set([subjectTask(w.display_title), ...covered])].filter(Boolean) };
+    return { numbers: subjectTasks(w.display_title), around: w.path.endsWith(`/${config.checks.workflow}`) };
   },
 };
 export const route = (gh, config, name, p) => ROUTES[name](gh, config, p);
