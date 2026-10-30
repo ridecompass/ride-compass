@@ -71,6 +71,25 @@ export function chooseResultOf(target: PointTarget): string {
   return target.index === null ? "経由地に足します" : `${pointTitle(target)}を置き直します`;
 }
 
+/** 探した候補をその地点に置くボタンの名前（出発地にする／経由地に足す／経由地2を置き直す／目的地にする）。 */
+export function placeLabelOf(target: PointTarget): string {
+  if (target.role === "origin") return "出発地にする";
+  if (target.role === "destination") return "目的地にする";
+  return target.index === null ? "経由地に足す" : `${pointTitle(target)}を置き直す`;
+}
+
+/** 見つけた地点（保存した地点・探した候補）を新しく置ける先と、置けないか。経由地は上限まで置いてあれば、目的地は周回の間は置けない。 */
+export function newPlacings({ waypointsFull, loop }: { waypointsFull: boolean; loop: boolean }): {
+  target: PointTarget;
+  disabled: boolean;
+}[] {
+  return [
+    { target: { role: "origin" }, disabled: false },
+    { target: { role: "waypoint", index: null }, disabled: waypointsFull },
+    { target: { role: "destination" }, disabled: loop },
+  ];
+}
+
 /** 通る順の並び（出発地・経由地・目的地。周回の間は目的地を除く）の`index`番目の呼び名。 */
 function orderTitle(index: number, count: number, loop: boolean): string {
   if (index === 0) return "出発地";

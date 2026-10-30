@@ -31,7 +31,7 @@ import { useAxisCatalog } from "@/hooks/useAxisCatalog";
 import type { useLocation } from "@/hooks/useLocation";
 import { cn } from "@/lib/cn";
 import { mapOverlayEdge } from "@/lib/mapOverlayEdges";
-import type { Coordinates } from "@/types/route";
+import type { CandidatesOnMap, Coordinates } from "@/types/route";
 import type { useRideGuidance } from "./useRideGuidance";
 
 interface HomeMapPaneProps {
@@ -49,6 +49,9 @@ interface HomeMapPaneProps {
   /** 地図を寄せる地点（住所の検索で置いた地点・取り直した現在地）。 */
   focusPoint: Coordinates | null;
   onFocusPoint: (point: Coordinates) => void;
+  /** 地点の検索で探した候補と、その点を押したとき。 */
+  placeCandidates: CandidatesOnMap | null;
+  onPlaceCandidatePick: (index: number) => void;
   isMobile: boolean;
   /** スマホで下のシートを開いているか。 */
   sheetOpen: boolean;
@@ -72,6 +75,8 @@ export default function HomeMapPane({
   selectionOwner,
   focusPoint,
   onFocusPoint,
+  placeCandidates,
+  onPlaceCandidatePick,
   isMobile,
   sheetOpen,
   usageGuideActive,
@@ -130,6 +135,8 @@ export default function HomeMapPane({
         onWaypointMove={conditions.moveWaypoint}
         onDestinationMove={conditions.setDestination}
         focusPoint={focusPoint}
+        placeCandidates={placeCandidates}
+        onPlaceCandidatePick={onPlaceCandidatePick}
         // 出発地のピンが現在地にあるときは、ピンが現在地を示すので点を重ねない。
         here={place.originAtHere ? null : place.here}
         ride={riding.map}

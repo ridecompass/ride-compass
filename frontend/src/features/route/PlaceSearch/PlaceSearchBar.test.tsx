@@ -4,10 +4,12 @@
  * 決まった文字数から、打つのが止まると引く（かな漢字の変換中は引かない）。文字数に足りなくなると候補を下げる。引いたあとに地図を
  * 動かしても引き直さない。引けないとき・当たらないときはそう出す。打つ欄を押すと保存した地点を出し、打った文字を名前に含むものに
  * 絞り、選んだ地点を上げる。住所・施設の候補か履歴を選ぶと履歴に残し、次に欄を押すと保存した地点の下に新しい順に出し、打った文字で
- * 絞り、1件ずつ消せる。✕・Escape で閉じると打った文字を消す。
+ * 絞り、1件ずつ消せる。✕・Escape で閉じると打った文字を消す。探す（Enter）と、候補に番号を付け、デスクトップは押した行を選んで置くボタンを
+ * 出し、スマホは下の札で1件ずつ見せて左右に送り、札のボタンで置く。
  *
  * ここで見ないもの:
- * - どの地点の役割で開くか・選んだ候補をその役割で置くこと・ブラウザの「戻る」で閉じること → `app/page.places.test.tsx`
+ * - どの地点の役割で開くか・選んだ候補をその役割で置くこと・ブラウザの「戻る」で閉じること・探した候補を地図に番号の点で出し、
+ *   点を押すとその候補を選ぶこと → `app/page.places.test.tsx`
  * - 選んだ候補を置いたあとに、置ける状態を解くこと → `features/route/useGenerationConditions.points.test.ts`
  * - スマホで「戻る」が検索だけを閉じてアプリから離れないこと・候補をキーボードの上の見える範囲に収めること（実際のブラウザの履歴と
  *   レイアウトの実寸） → `e2e/destination.spec.ts`
@@ -22,6 +24,8 @@ import { createRef } from "react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { usePlaceLookup } from "@/features/route/PlaceSearch/usePlaceLookup";
+import { newPlacings } from "@/features/route/pointNames";
 import type { SavedPlace } from "@/features/route/savedPlaces";
 import { SAVED_PLACES_STORAGE_KEY, useSavedPlaces } from "@/features/route/useSavedPlaces";
 
@@ -49,25 +53,35 @@ function storeSavedPlaces(places: SavedPlace[]) {
   window.localStorage.setItem(SAVED_PLACES_STORAGE_KEY, JSON.stringify(places));
 }
 
-function WithSavedPlaces(props: Omit<React.ComponentProps<typeof PlaceSearchBar>, "savedPlaces">) {
-  return <PlaceSearchBar {...props} savedPlaces={useSavedPlaces()} />;
+/** 欄の中身と候補の引き方・保存した地点は、ページと同じく包む側が持つ。 */
+function Search({
+  mapCenter,
+  ...props
+}: { mapCenter: Coordinates } & Omit<React.ComponentProps<typeof PlaceSearchBar>, "savedPlaces" | "lookup">) {
+  return <PlaceSearchBar {...props} lookup={usePlaceLookup(mapCenter)} savedPlaces={useSavedPlaces()} />;
 }
 
-function renderSearch({ mapCenter = TOKYO_STATION } = {}) {
+function renderSearch({ mapCenter = TOKYO_STATION, isMobile = false } = {}) {
   const onChoose = vi.fn();
+  const onPlace = vi.fn();
   const inputRef = createRef<HTMLInputElement>();
   const search = (center: Coordinates) => (
-    <WithSavedPlaces
+    <Search
       title="目的地"
       chooseResult=""
       full={false}
       mapCenter={center}
       onChoose={onChoose}
+      placings={newPlacings({ waypointsFull: false, loop: false })}
+      onPlace={onPlace}
+      onSearch={() => {}}
+      onClose={() => {}}
+      isMobile={isMobile}
       inputRef={inputRef}
     />
   );
   const { rerender } = render(search(mapCenter));
-  return { onChoose, moveMap: (center: Coordinates) => rerender(search(center)) };
+  return { onChoose, onPlace, moveMap: (center: Coordinates) => rerender(search(center)) };
 }
 
 function searchBox() {
@@ -90,22 +104,55 @@ async function searchFor(text: string) {
 }
 
 describe("PlaceSearchBar 打つ欄", () => {
-  it("入れた住所・施設の候補を地図の真ん中からの距離・種類・当たった段（施設は辺りも）つきで並べ、選んだ候補を上げる", async () => {
+  it("探すとキーボードを閉じ、住所・施設の候補に番号と地図の真ん中からの距離・種類・当たった段（施設は辺りも）を付けて並べ、押した行を選んで置くボタンで上げる", async () => {
     const sent = onBackend("GET", "/api/place-search", () => Response.json({ candidates: [AZA, FACILITY] }));
-    const { onChoose } = renderSearch();
+    const { onPlace } = renderSearch();
 
     await searchFor(" 丸の内 ");
 
     const list = await screen.findByRole("list", { name: "地点の候補" });
+    expect(searchBox()).not.toHaveFocus();
     expect(sent.map((request) => request.query)).toEqual([{ q: "丸の内", ...sentCenter(TOKYO_STATION) }]);
-    expect(
-      within(list)
-        .getAllByRole("button")
-        .map((row) => row.textContent),
-    ).toEqual([`${AZA.name}0.4km住所字・丁目`, `${FACILITY.name}${FACILITY.area}4.6km施設地点`]);
+    const rows = () => within(list).getAllByRole("button", { name: /km/ });
+    expect(rows().map((row) => row.textContent)).toEqual([
+      `1${AZA.name}0.4km住所字・丁目`,
+      `2${FACILITY.name}${FACILITY.area}4.6km施設地点`,
+    ]);
+    // 先頭の候補を選んでいる。
+    expect(rows().map((row) => row.getAttribute("aria-pressed"))).toEqual(["true", "false"]);
 
-    await userEvent.click(within(list).getByRole("button", { name: new RegExp(AZA.name) }));
-    expect(onChoose).toHaveBeenCalledExactlyOnceWith(AZA);
+    await userEvent.click(rows()[1]);
+    expect(rows().map((row) => row.getAttribute("aria-pressed"))).toEqual(["false", "true"]);
+    await userEvent.click(within(list).getByRole("button", { name: "経由地に足す" }));
+    expect(onPlace).toHaveBeenCalledExactlyOnceWith({ role: "waypoint", index: null }, FACILITY);
+    expect(screen.queryByRole("list", { name: "地点の候補" })).toBeNull();
+  });
+
+  it("スマホでは探した候補を下の札で1件ずつ見せ、‹ ›か左右に払って送り、札のボタンで上げる", async () => {
+    onBackend("GET", "/api/place-search", () => Response.json({ candidates: [AZA, FACILITY] }));
+    const { onPlace } = renderSearch({ isMobile: true });
+
+    await searchFor("丸の内");
+
+    const card = await screen.findByRole("region", { name: "探した候補" });
+    expect(screen.queryByRole("list", { name: "地点の候補" })).toBeNull();
+    expect(card).toHaveTextContent(`1 / 2: ${AZA.name}0.4km`);
+    expect(within(card).getByRole("button", { name: "前の候補" })).toBeDisabled();
+
+    await userEvent.click(within(card).getByRole("button", { name: "次の候補" }));
+    expect(card).toHaveTextContent(`2 / 2: ${FACILITY.name}`);
+    expect(within(card).getByRole("button", { name: "次の候補" })).toBeDisabled();
+    // 右へ払うと前の候補へ戻る。短い動きは送らない。
+    fireEvent.pointerDown(card, { clientX: 100 });
+    fireEvent.pointerUp(card, { clientX: 120 });
+    expect(card).toHaveTextContent(`2 / 2: ${FACILITY.name}`);
+    fireEvent.pointerDown(card, { clientX: 100 });
+    fireEvent.pointerUp(card, { clientX: 200 });
+    expect(card).toHaveTextContent(`1 / 2: ${AZA.name}`);
+
+    await userEvent.click(within(card).getByRole("button", { name: "目的地にする" }));
+    expect(onPlace).toHaveBeenCalledExactlyOnceWith({ role: "destination" }, AZA);
+    expect(screen.queryByRole("region", { name: "探した候補" })).toBeNull();
   });
 
   it("打ちかけでも、決まった文字数から、打つのが止まると引く", async () => {
@@ -178,7 +225,7 @@ describe("PlaceSearchBar 打つ欄", () => {
     moveMap(TOKYO_STATION);
     await waitPastLookUpDelay();
     expect(sent.map((request) => request.query)).toEqual([{ q: "浅草寺", ...sentCenter(NEAR_SENSOJI) }]);
-    expect(within(list).getByRole("button")).toHaveTextContent(`${FACILITY.name}${FACILITY.area}0.2km`);
+    expect(within(list).getByRole("button", { name: /km/ })).toHaveTextContent(`${FACILITY.name}${FACILITY.area}0.2km`);
   });
 
   it("同じ文字・同じ地図の真ん中で押し直すと引き直す（地図が動いて真ん中を作り直しても、位置が同じなら同じ真ん中）", async () => {
@@ -212,7 +259,7 @@ describe("PlaceSearchBar 打つ欄", () => {
     ["Escape", () => userEvent.keyboard("{Escape}")],
   ])("%sで閉じると、候補の一覧を閉じて打った文字を消し、選ばない", async (_, closeSearch) => {
     onBackend("GET", "/api/place-search", () => Response.json({ candidates: [AZA] }));
-    const { onChoose } = renderSearch();
+    const { onChoose, onPlace } = renderSearch();
     await searchFor("丸の内");
     await screen.findByRole("list", { name: "地点の候補" });
 
@@ -222,6 +269,7 @@ describe("PlaceSearchBar 打つ欄", () => {
     expect(searchBox()).toHaveValue("");
     expect(searchBox()).not.toHaveFocus();
     expect(onChoose).not.toHaveBeenCalled();
+    expect(onPlace).not.toHaveBeenCalled();
   });
 });
 
@@ -263,13 +311,10 @@ describe("PlaceSearchBar 検索の履歴", () => {
       Response.json({ candidates: request.query.q === "浅草寺" ? [FACILITY] : [AZA] }),
     );
     const { onChoose } = renderSearch();
-    for (const [text, name] of [
-      ["丸の内", AZA.name],
-      ["浅草寺", FACILITY.name],
-    ]) {
+    for (const text of ["丸の内", "浅草寺"]) {
       await searchFor(text);
       const list = await screen.findByRole("list", { name: "地点の候補" });
-      await userEvent.click(within(list).getByRole("button", { name: new RegExp(name) }));
+      await userEvent.click(within(list).getByRole("button", { name: "目的地にする" }));
     }
 
     await userEvent.click(searchBox());

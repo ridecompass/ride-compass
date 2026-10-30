@@ -5,6 +5,7 @@ import type { Map as MapLibreMap } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 
 import type {
+  CandidatesOnMap,
   Coordinates,
   LocationSource,
   PlaceCandidate,
@@ -25,6 +26,7 @@ import { fitBoundsToRoute, flyToVisible, mapVisibleCenterOffset } from "@/featur
 import { bindMapTaps, type MapTapMode } from "@/features/map/MapView/mapTaps";
 import { rideZoomBase } from "@/features/map/MapView/rideZoom";
 import { useMapLifecycle } from "@/features/map/MapView/useMapLifecycle";
+import { useCandidateMarkers } from "@/features/map/MapView/useCandidateMarkers";
 import { useMapMarkers } from "@/features/map/MapView/useMapMarkers";
 import { useMapPopupMount, useMapPopups } from "@/features/map/MapView/useMapPopups";
 import { useMapScene } from "@/features/map/MapView/useMapScene";
@@ -89,6 +91,10 @@ interface MapViewProps {
   segmentDetail: ReactNode | null;
   /** 地図を寄せる地点（住所の検索で置いた地点・取り直した現在地）。新しい値を渡すたびに寄せる。 */
   focusPoint: Coordinates | null;
+  /** 地点の検索で探した候補（地図に番号の点で出す）。探していなければnull。 */
+  placeCandidates: CandidatesOnMap | null;
+  /** 探した候補の点を押したとき（`placeCandidates.candidates`の添字）。 */
+  onPlaceCandidatePick: (index: number) => void;
   /** 走っていない間に点を出す現在地。出さなければnull（出発地のピンが現在地にあるとき等）。 */
   here: Coordinates | null;
   /** 走行モードの間だけ値がある。現在地の点を出し、追っている間は地図を現在地へ動かし続ける。 */
@@ -138,6 +144,8 @@ export default function MapView({
   onRouteSelect,
   segmentDetail,
   focusPoint,
+  placeCandidates,
+  onPlaceCandidatePick,
   here,
   ride,
   travelledKm,
@@ -254,6 +262,7 @@ export default function MapView({
     onRouteSegmentSelect,
   });
 
+  const candidateContents = useCandidateMarkers(mapRef, placeCandidates, onPlaceCandidatePick);
   const rideControls = useRideFollow(mapRef, ride, here, mapVisibleCenterOffset);
   const turnMarkContent = useTurnMark(mapRef, turnPoint);
   const focus = useSectionFocus(mapRef, {
@@ -324,6 +333,7 @@ export default function MapView({
       <MapLoadStatus loading={initialTilesLoading} failed={styleLoadFailed} />
       {popupContent}
       {markerContents}
+      {candidateContents}
       {turnMarkContent}
     </div>
   );
