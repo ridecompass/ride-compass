@@ -3,7 +3,8 @@
  *
  * 見るもの: 周回の切り替え（押している状態と、押して上げる値）、地点の並び（出発地・経由地の番号の丸・終点。周回の間の終点は
  * 出発地の印と名前で押せない）、押した地点を選んで上げること、経由地を足す操作の上限、並びに出ている地点を全部消す操作、
- * 地点の編集（地点を名前の行で通る順に並べ、掴む所を押さえて動かす・矢印のキーで動かす並び替え、行の消すボタン、何が起きたかの文）。
+ * 地点の編集（地点を名前の行で通る順に並べ、掴む所を押さえて動かす・矢印のキーで動かす並び替え、行の消すボタン、動かした行を前の位置から
+ * 滑らせること、何が起きたかの読み上げの文）。
  *
  * ここで見ないもの: 選んでいる地点をどう決めるか（何も選んでいない・選んだ経由地が消えた・探して足した経由地を選ぶ）
  * → `features/route/useGenerationConditions.points.test.ts`。押した地点の詳しくの中身 → `RouteForm/RouteForm.pointDetail.test.tsx`。
@@ -11,11 +12,12 @@
  * 並びに入りきらないときに両端の札を印だけにすること・経由地の番号の丸を縮めること（テスト環境はレイアウトの実寸を持たない）→ `e2e/all-states.spec.ts`の
  * 省略の検査（名前を途中で切っていないこと）。印の役割ごとの背景色（書いた定数をそのまま渡す）。
  *
- * 差し替えたもの: 辺りの口の応答（網の層）。辺り無しと答え、地点の編集では位置ごとの辺りを答える。
+ * 差し替えたもの: 辺りの口の応答（網の層）。辺り無しと答え、地点の編集では位置ごとの辺りを答える。地点の編集の行の枠と、行を滑らせる
+ * `Element.animate`（テスト環境はレイアウトと動きを持たない）。
  */
 import { fireEvent, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { PIN_MARK_COLOR } from "@/components/PinMark/PinMark";
 import { onBackend, serveAxisCatalog } from "@/testing/backendServer";
@@ -109,6 +111,9 @@ describe("RouteForm 地点の編集", () => {
   beforeEach(() => {
     onBackend("GET", "/api/place-area", ({ query }) => Response.json({ area: AREAS[String(query.latitude)] ?? null }));
   });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
 
   /** 編集の行の名前（通る順）。 */
   const rowNames = () =>
@@ -116,8 +121,8 @@ describe("RouteForm 地点の編集", () => {
       .getAllByRole("listitem")
       .map((row) => row.getAttribute("aria-label"));
 
-  /** 並びの下の、何が起きたかの文。 */
-  const note = () => editList()?.nextElementSibling?.textContent;
+  /** 何が起きたかの読み上げの文。 */
+  const note = () => within(editList()?.parentElement as HTMLElement).getByRole("status").textContent;
 
   async function openEdit() {
     await userEvent.click(button("編集"));
@@ -125,11 +130,16 @@ describe("RouteForm 地点の編集", () => {
   }
 
   // 行の高さはテスト環境に無いレイアウトの実寸なので、テストが決める（高さ44・間6で、上から50ずつ）。
-  function drag(title: string, dy: number) {
+  function layOutRows() {
     const rows = within(editList() as HTMLElement).getAllByRole("listitem");
     rows.forEach((row, index) =>
       vi.spyOn(row, "getBoundingClientRect").mockReturnValue(new DOMRect(0, index * 50, 300, 44)),
     );
+    return rows;
+  }
+
+  function drag(title: string, dy: number) {
+    const rows = layOutRows();
     const handle = button(`${title}を動かす`);
     const y = rows.findIndex((row) => row.contains(handle)) * 50 + 22;
     fireEvent.pointerDown(handle, { pointerId: 1, isPrimary: true, clientY: y });
@@ -248,14 +258,19 @@ describe("RouteForm 地点の編集", () => {
     expect(button(`${title}を動かす`)).toBeDisabled();
   });
 
-  it("掴む所で上下の矢印のキーを押すと、1つずつ動かす", async () => {
+  it("掴む所で上下の矢印のキーを押すと、1つずつ動かし、入れ替わった行を前の位置から滑らせる", async () => {
     const { reorderPoints } = renderForm({ destination: DESTINATION, waypoints: waypointsOf(2) });
     await openEdit();
+    const animate = vi.spyOn(Element.prototype, "animate");
+    // 地点を上げる先は差し替えなので、並びは描き変わらない。行の枠は動く前と同じで、入れ替わった2行が互いの位置から滑る。
+    const rows = layOutRows();
 
     button("経由地1を動かす").focus();
     await userEvent.keyboard("{ArrowDown}");
 
     expect(reorderPoints).toHaveBeenCalledExactlyOnceWith(1, 2, ORIGIN);
+    expect(animate.mock.contexts).toEqual([rows[1], rows[2]]);
+    expect(animate.mock.calls.map(([frames]) => (frames as Keyframe[])[0].translate)).toEqual(["0 50px", "0 -50px"]);
   });
 
   it.each([
