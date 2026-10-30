@@ -136,7 +136,7 @@ def test_the_gradient_in_percent_slows_the_rider_as_that_grade_and_a_missing_one
     five_percent = SegmentSpeedModel(
         RiderProfile(cruise_speed_kmh=CRUISE_KMH), np.array([0.05]), crr_for_surface(CategoricalColumn.encode(["paved"])))
 
-    assert climb == pytest.approx(five_percent.travel_seconds(np.array([1000.0]), np.zeros(1), np.zeros(1))[0])
+    assert climb == pytest.approx(1000.0 / five_percent.speed_ms(np.zeros(1), np.zeros(1))[0])
     assert missing == flat
 
 
@@ -341,6 +341,32 @@ def test_legs_with_the_same_bins_but_a_different_middle_are_not_mixed_up():
 
     assert shorter.cost_lazy.tolist() == shorter.cost_bins_lazy[2].tolist()
     assert longer.cost_lazy.tolist() == longer.cost_bins_lazy[3].tolist()
+
+
+@pytest.mark.parametrize(
+    "speeds_by_hour",
+    [
+        [float(h) for h in range(12)],  # 予報の時刻ごとに風が変わる（終盤は予報の端へ寄せる）
+        [6.0, 6.0],  # どのビンも予報の端の時刻を引き、ビンを分けるのは昼夜だけ
+    ],
+)
+def test_a_leg_sharing_hours_with_an_earlier_leg_gets_the_bins_of_its_own_hours(night_axis, speeds_by_hour):
+    """レグのどのビンも、その時刻だけを新しく合成したものと同じ（取り違えると、別の時刻の風・昼夜で探す）。
+    前のレグと時刻が重なっても、前のレグのビンを探索が書き換えても（帰りの探索はその場で書き換えて戻す）同じ。"""
+    def composer() -> LegCostComposer:
+        return _composer(
+            _matrix(1, axes={"axis_a": 0.0, NIGHT_AXIS: 100.0}), weights={"axis_a": 1.0, NIGHT_AXIS: 1.0},
+            penalty=0.5, series=_series(speeds_by_hour),
+        )
+    shared = composer()
+    earlier = shared.compose("outbound", 7.5, +1, duration_hours=3.0)
+    earlier.cost_bins_lazy[:] = 0.0
+
+    later = shared.compose("inbound", 9.5, +1, duration_hours=4.0)
+    alone = [composer().compose("bin", start, +1) for start in later.bin_start_hours]
+
+    assert later.cost_bins_lazy.tolist() == [leg.cost_lazy.tolist() for leg in alone]
+    assert later.travel_bins_lazy.tolist() == [leg.travel_seconds_lazy.tolist() for leg in alone]
 
 
 def test_a_tree_without_a_clock_reads_the_wind_at_each_segment_s_own_passage():

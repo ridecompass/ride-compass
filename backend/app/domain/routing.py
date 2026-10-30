@@ -23,6 +23,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 from numba import njit
+from app.domain.leg_costs import compile_leg_cost_kernels
 from app.domain.stopwatch import elapsed_ms, start_timer
 from app.domain.search_graph import (
     EDGE_VALUE_DTYPE,
@@ -965,6 +966,7 @@ def turn_expanded_shortest_path(
 
 def compile_search_kernels() -> None:
     """探索のJIT（出て戻れるNodeの集まり・来た道を戻らずに行き来できるNode・一対全木・木の経路どうしの重複率・2点間探索）を、最小の道路網で1回ずつ呼んでコンパイルする。
+    探索が読む費用を組み立てるJIT（`domain/leg_costs.py: compile_leg_cost_kernels`）も併せて焼く。
 
     `@njit(cache=True)`の結果はこのファイルの隣の`__pycache__`に残り、別のプロセスはそこから読む。
     イメージの組み立て（`backend/Dockerfile`）で呼び、入れ替えたコンテナの最初のルート生成が
@@ -989,3 +991,4 @@ def compile_search_kernels() -> None:
     overlap.accept(1)
     overlap.max_ratio(0)
     turn_expanded_shortest_path(structure, cost, np.zeros(2), origin_states, 0, edge_seconds=cost)
+    compile_leg_cost_kernels()
