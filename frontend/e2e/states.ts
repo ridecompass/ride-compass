@@ -30,14 +30,14 @@ export type WidthName = keyof typeof WIDTHS;
 /** アプリの段階。ルートを生成する前と後、区間を乗り換えた後で、画面に出る部品の集合が入れ替わる。 */
 export const PHASES = ["生成前", "生成後", "乗り換え後"] as const;
 
-/** 幅の分岐はCSSのブレークポイント1つだけで、デスクトップの幅はその1px外側（デスクトップのいちばん狭い幅）に置く。 */
+/** 幅の分岐はCSSのブレークポイント1つだけで、その値はデスクトップの配置が始まる幅。デスクトップの幅はその値（デスクトップのいちばん狭い幅）に置く。 */
 export async function assertWidthsStraddleBreakpoint(page: Page): Promise<void> {
   const breakpoint = await page.evaluate(() =>
     Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--breakpoint-mobile")),
   );
   expect(breakpoint, "--breakpoint-mobile が読めない").toBeGreaterThan(0);
-  expect(WIDTHS.mobile.width).toBeLessThanOrEqual(breakpoint);
-  expect(WIDTHS.desktop.width).toBe(breakpoint + 1);
+  expect(WIDTHS.mobile.width).toBeLessThan(breakpoint);
+  expect(WIDTHS.desktop.width).toBe(breakpoint);
 }
 
 async function settle(page: Page): Promise<string> {

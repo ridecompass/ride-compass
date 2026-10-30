@@ -107,7 +107,7 @@ async function rewriteRules(): Promise<{ source: string }[]> {
 // UIの中身とは無関係な段取り（シートを開く・生成の完了を待つ）で落ちて時間を使うため、
 // 1箇所へ集約する。
 
-/** スマホ縦持ち相当。useIsMobile（CSSの`--breakpoint-mobile`以下で立つ`--is-mobile`の旗）のモバイル分岐に入る幅。 */
+/** スマホ縦持ち相当。useIsMobile（CSSの`--breakpoint-mobile`より狭い幅で立つ`--is-mobile`の旗）のモバイル分岐に入る幅。 */
 export const MOBILE_VIEWPORT = { width: 390, height: 812 };
 
 /** モバイルの下部タブバーが持つシート。値はタブのラベル兼シートのアクセシブル名。 */
