@@ -1,6 +1,6 @@
 "use client";
 
-import { useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 
 import { Button } from "@/components/ui/Button/Button";
 import { RemovePointIcon, ReorderHandleIcon } from "@/components/ui/icons/lucideIcons";
@@ -39,6 +39,12 @@ interface LastChange {
 /** 行が前の位置から今の位置へ滑って入る時間（ミリ秒）。 */
 const SLIDE_MS = 200;
 
+/** 編集を開いたときに、動かせる行の掴む所を上下へ一度揺らす幅（px）と時間（ミリ秒）。 */
+const NUDGE_PX = 4;
+const NUDGE_MS = 600;
+
+const reducedMotion = () => window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+
 /** 操作の前の各行の上端（並びの順）と、操作のあとの各行が前の並びの何番目だったか。 */
 interface Slide {
   tops: number[];
@@ -48,8 +54,8 @@ interface Slide {
 /**
  * 地点の編集: 出発地・経由地・目的地を名前の行で通る順に縦へ並べ、行の掴む所を押さえて上下へ動かすと置いた位置の役割にし
  * （一番上が出発地、一番下が目的地）、行の消すボタンで消す。置いていない目的地は空の行で、動かせないが、経由地をそこへ動かすと
- * 目的地になる。動かした・消したあとは、各行を前の位置から今の位置へ滑らせ、動かした行を強調する。何が起きたかの文は
- * 読み上げにだけ渡す（画面には書かない）。
+ * 目的地になる。動かし方は文で書かず、開いたときに動かせる行の掴む所を上下へ一度揺らして見せる。動かした・消したあとは、
+ * 各行を前の位置から今の位置へ滑らせ、動かした行を強調する。何が起きたかの文は読み上げにだけ渡す（画面には書かない）。
  */
 export default function PointEditList({
   loop,
@@ -81,7 +87,7 @@ export default function PointEditList({
   useLayoutEffect(() => {
     const slide = slideRef.current;
     slideRef.current = null;
-    if (slide === null || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    if (slide === null || reducedMotion()) return;
     rows().forEach((row, index) => {
       const source = slide.sources.at(index);
       if (source === undefined) return;
@@ -90,6 +96,22 @@ export default function PointEditList({
         row.animate([{ translate: `0 ${dy}px` }, { translate: "0 0" }], { duration: SLIDE_MS, easing: "ease-out" });
     });
   });
+  useEffect(() => {
+    if (reducedMotion()) return;
+    rowsRef.current
+      ?.querySelectorAll("[data-reorder-handle]:not([disabled])")
+      .forEach((handle) =>
+        handle.animate(
+          [
+            { translate: "0 0" },
+            { translate: `0 -${NUDGE_PX}px` },
+            { translate: `0 ${NUDGE_PX}px` },
+            { translate: "0 0" },
+          ],
+          { duration: NUDGE_MS, easing: "ease-in-out" },
+        ),
+      );
+  }, []);
   const remember = (sources: number[]) => {
     slideRef.current = { tops: rowRects().map((rect) => rect.top), sources };
   };
@@ -190,6 +212,7 @@ export default function PointEditList({
                 size="bare"
                 className="size-11 flex-none touch-none items-center justify-center text-[var(--color-muted)] select-none [-webkit-touch-callout:none]"
                 aria-label={`${title}を動かす`}
+                data-reorder-handle
                 disabled={!movable(index)}
                 onPointerDown={(event) => drag.press(index, event, rowRects())}
                 onPointerMove={drag.move}
@@ -204,11 +227,6 @@ export default function PointEditList({
           );
         })}
       </ol>
-      <p className={textVariants({ variant: "note" })}>
-        {loop
-          ? "行の右の掴む所を押さえて上下へ動かすと、通る順を入れ替えます（一番上が出発地）。"
-          : "行の右の掴む所を押さえて上下へ動かすと、通る順を入れ替えます（一番上が出発地、一番下が目的地）。"}
-      </p>
       <p role="status" className="sr-only">
         {lastChange?.note}
       </p>

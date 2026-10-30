@@ -3,8 +3,8 @@
  *
  * 見るもの: 周回の切り替え（押している状態と、押して上げる値）、地点の並び（出発地・経由地の番号の丸・終点。周回の間の終点は
  * 出発地の印と名前で押せない）、押した地点を選んで上げること、経由地を足す操作の上限、並びに出ている地点を全部消す操作、
- * 地点の編集（地点を名前の行で通る順に並べ、掴む所を押さえて動かす・矢印のキーで動かす並び替え、行の消すボタン、動かした行を前の位置から
- * 滑らせること、何が起きたかの読み上げの文）。
+ * 地点の編集（地点を名前の行で通る順に並べ、開いたときに動かせる掴む所を揺らすこと、掴む所を押さえて動かす・矢印のキーで動かす並び替え、
+ * 行の消すボタン、動かした行を前の位置から滑らせること、何が起きたかの読み上げの文）。
  *
  * ここで見ないもの: 選んでいる地点をどう決めるか（何も選んでいない・選んだ経由地が消えた・探して足した経由地を選ぶ）
  * → `features/route/useGenerationConditions.points.test.ts`。押した地点の詳しくの中身 → `RouteForm/RouteForm.pointDetail.test.tsx`。
@@ -256,6 +256,20 @@ describe("RouteForm 地点の編集", () => {
     await userEvent.click(button("編集"));
 
     expect(button(`${title}を動かす`)).toBeDisabled();
+  });
+
+  it("編集を開くと、動かせる行の掴む所だけを上下へ揺らして動かせることを見せる", async () => {
+    renderForm({ waypoints: waypointsOf(2) });
+    const animate = vi.spyOn(Element.prototype, "animate");
+
+    await openEdit();
+
+    // 置いていない目的地の行は動かせないので揺らさない。
+    expect(animate.mock.contexts).toEqual([
+      button("出発地を動かす"),
+      button("経由地1を動かす"),
+      button("経由地2を動かす"),
+    ]);
   });
 
   it("掴む所で上下の矢印のキーを押すと、1つずつ動かし、入れ替わった行を前の位置から滑らせる", async () => {
