@@ -26,7 +26,7 @@ export type Facility = {
   readonly mapUrl: string | null;
   /** 宣言が点に添える事実（「<名前> <値>」）。値の無い事実は持たない。 */
   readonly facts: readonly string[];
-  /** ルートの上の位置（候補の始点からの道のりkm。画面には`FacilityOrigin`から見た前後で出す）と、道からの距離（m）。
+  /** ルートの上の位置（候補の始点からの道のりkm。画面には走行中の現在地から見た前後で出す）と、道からの距離（m）。
    * 区間の近くの点だけが持つ。 */
   readonly km: number | null;
   readonly offsetM: number | null;
@@ -75,15 +75,10 @@ export function distinctFacilities(facilities: readonly Facility[]): Facility[] 
   return [...byKey.values()].sort((a, b) => (a.km ?? 0) - (b.km ?? 0) || (a.offsetM ?? 0) - (b.offsetM ?? 0));
 }
 
-/** 施設の位置を、ルートの上のどこから見て言うか。走行中は現在地（`riding`）、ほかは区間の小窓を開いた地点。`km`は候補の始点からの
- * 道のり（施設の`km`と同じ物差し）。 */
-export type FacilityOrigin = { readonly km: number; readonly riding: boolean };
-
-/** 施設の位置を、基準の地点から見たルートの前後で言う（「300m先」「100m手前」。走行中の先は「あと1.2km」）。始点からの道のりの
- * kmは、利用者には何の値か分からないので出さない。 */
-export function facilityPosition(km: number, origin: FacilityOrigin): string {
-  const aheadKm = km - origin.km;
+/** 施設の位置を、走行中の現在地（`travelledKm`。候補の始点からの道のりで、施設の`km`と同じ物差し）から見たルートの前後で言う
+ * （「あと1.2km」「100m手前」）。始点からの道のりのkmは、利用者には何の値か分からないので出さない。 */
+export function facilityPosition(km: number, travelledKm: number): string {
+  const aheadKm = km - travelledKm;
   const distance = formatAlongDistance(Math.abs(aheadKm) * 1000);
-  if (aheadKm < 0) return `${distance}手前`;
-  return origin.riding ? `あと${distance}` : `${distance}先`;
+  return aheadKm < 0 ? `${distance}手前` : `あと${distance}`;
 }

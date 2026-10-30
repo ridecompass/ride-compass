@@ -35,7 +35,7 @@ import {
   rightClickMap,
   renderHome,
   route,
-  selectedPointMarks,
+  selectedSectionOnMap,
   serveHome,
   serveRoadsAt,
 } from "@/testing/homePage";
@@ -102,7 +102,7 @@ describe("地図の小窓", () => {
     expect(screen.getByRole("link", { name: "角の店" })).toBeInTheDocument();
     doubleClickMap(HERE);
     expect(screen.getByRole("link", { name: "角の店" })).toBeInTheDocument();
-    expect(selectedPointMarks()).toHaveLength(1);
+    expect(selectedSectionOnMap()).toHaveLength(1);
     await user.click(within(header("点の小窓の上の帯")!).getByRole("button", { name: "‹ 区間" }));
     expect(header("区間の小窓の上の帯")).toBeInTheDocument();
 
@@ -128,7 +128,7 @@ describe("地図の小窓", () => {
         .visibleLayerIds()
         .filter((id) => id.startsWith("road-tiles")),
     ).toEqual([]);
-    expect(selectedPointMarks()).toEqual([]);
+    expect(selectedSectionOnMap()).toEqual([]);
 
     // 重なった名前のある点は全部並べ、名前の無い点は飛ばす。名前の無い点だけの所は、下の道を開く。
     clickMap(ELSEWHERE, [toilet, shop, cafe]);
@@ -158,7 +158,7 @@ describe("地図の小窓", () => {
     expect(mapOnScreen().sourceFeatures("road-inspected")).toEqual([]);
   });
 
-  it("区間の小窓は、上の帯に何km地点と到達予想、その下に難易度の塊を出し、押しただけでは地図は動かず、寄せるアイコンで区間へ寄せる", async () => {
+  it("区間の小窓は、上の帯に到達予想、その下に難易度の塊を出し、押しただけでは地図は動かず、寄せるアイコンで区間へ寄せる", async () => {
     const segment = makeRouteSegment({
       cumulative_distance_km: 1,
       estimated_arrival_time: "2026-10-05T00:30:00Z",
@@ -173,9 +173,7 @@ describe("地図の小窓", () => {
     const fitsBefore = mapOnScreen().fits().length;
     clickSegment(mapOnScreen().sourceFeatures("route-segments")[0], HERE);
 
-    expect(screen.getByRole("group", { name: "区間の小窓の上の帯" })).toHaveTextContent(
-      "ルートの何km地点 1.0km到達予想 09:30着",
-    );
+    expect(screen.getByRole("group", { name: "区間の小窓の上の帯" })).toHaveTextContent("到達予想 09:30着");
     expect(screen.getByRole("region", { name: "難易度" })).toHaveTextContent(/^難易度42\.0\/100/);
 
     expect(mapOnScreen().fits()).toHaveLength(fitsBefore);

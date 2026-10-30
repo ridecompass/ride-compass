@@ -1,7 +1,7 @@
 // @vitest-environment node
 /**
- * `features/route/RouteProfile/profileLayers.ts`——道のりのグラフのレイヤの値を、区間の並びから折れ線・最高と最低・地点の値と、区分の帯・地点の行・凡例の行へ
- * 引く計算。
+ * `features/route/RouteProfile/profileLayers.ts`——道のりのグラフのレイヤの値を、区間の並びから折れ線・最高と最低・地点の値と、区分の帯・凡例の行へ
+ * 引く計算と、1つの区間の勾配・区分の割合。
  *
  * ここで見ないもの: 折れ線と帯を描くこと・タブとチップ・選んだものを覚えること → `RouteProfile.test.tsx`。
  */
@@ -13,12 +13,12 @@ import { makeRouteSegment } from "@/testing/routeFixtures";
 
 import {
   bandLegendRows,
-  bandRowAtKm,
   layerBand,
-  layerGradeAtKm,
   layerLine,
   layerValueAtKm,
   profileLayers,
+  segmentBandShares,
+  segmentGrades,
   type BandLayer,
   type LineLayer,
 } from "./profileLayers";
@@ -103,18 +103,13 @@ describe("layerLine", () => {
   });
 });
 
-describe("layerValueAtKm・layerGradeAtKm", () => {
+describe("layerValueAtKm", () => {
   it.each([
-    {
-      km: 0.75,
-      value: 30,
-      grade: 4,
-      why: "区間の中は、その地点の道の両端の間を距離で割り振り、勾配はその道の両端の差を道の長さで割る",
-    },
-    { km: 1.5, value: null, grade: null, why: "道の並びの無い区間" },
-    { km: 2.5, value: null, grade: null, why: "値の無い道" },
-    { km: 99, value: 60, grade: 1, why: "終わりより先は終点の道" },
-  ])("$why", ({ km, value, grade }) => {
+    { km: 0.75, value: 30, why: "区間の中は、その地点の道の両端の間を距離で割り振る" },
+    { km: 1.5, value: null, why: "道の並びの無い区間" },
+    { km: 2.5, value: null, why: "値の無い道" },
+    { km: 99, value: 60, why: "終わりより先は終点の道" },
+  ])("$why", ({ km, value }) => {
     const columns = stretches(
       [
         [
@@ -128,7 +123,52 @@ describe("layerValueAtKm・layerGradeAtKm", () => {
       [[[50, 60, 1]], 1],
     );
     expect(layerValueAtKm(columns, elevation, km)).toBe(value);
-    expect(layerGradeAtKm(columns, elevation, km)).toBe(grade);
+  });
+});
+
+describe("segmentGrades", () => {
+  const segment = (roads: Road[]) =>
+    makeRouteSegment({
+      elevations: roads.map(([start, end, roadKm]) => ({
+        distance_km: roadKm,
+        start_elevation_m: start,
+        end_elevation_m: end,
+      })),
+    });
+
+  it.each<{ roads: Road[]; grades: { mean: number; steepest: number } | null; why: string }>([
+    {
+      roads: [
+        [10, 20, 0.5],
+        [20, 40, 0.5],
+      ],
+      grades: { mean: 3, steepest: 4 },
+      why: "平均は上り下りの和を長さの和で割り、最大は一番きつい道の勾配",
+    },
+    {
+      roads: [
+        [50, 40, 0.2],
+        [40, 42, 0.8],
+      ],
+      grades: { mean: -0.8, steepest: -5 },
+      why: "下りの方がきつければ、最大は下りの勾配（負）",
+    },
+    {
+      roads: [
+        [null, 40, 1],
+        [40, 50, 1],
+      ],
+      grades: { mean: 1, steepest: 1 },
+      why: "値の無い道は数えない",
+    },
+    { roads: [[null, null, 1]], grades: null, why: "値のある道が無ければ出さない" },
+  ])("$why", ({ roads, grades }) => {
+    const found = segmentGrades(segment(roads), elevation);
+    if (grades === null) expect(found).toBeNull();
+    else {
+      expect(found!.mean).toBeCloseTo(grades.mean, 9);
+      expect(found!.steepest).toBeCloseTo(grades.steepest, 9);
+    }
   });
 });
 
@@ -180,22 +220,28 @@ describe("layerBand", () => {
   });
 });
 
-describe("bandRowAtKm", () => {
-  const pieces = layerBand(
-    classed("surface", [[{ distance_km: 1, value: "paved" }], 1], [[{ distance_km: 1, value: "gravel" }], 1]),
-    surface,
-  );
+describe("segmentBandShares", () => {
+  const shares = (id: string, stretches: Stretch[] | undefined) =>
+    segmentBandShares(
+      makeRouteSegment({ road_classes: stretches === undefined ? {} : { [id]: stretches } }),
+      band(id),
+    ).map(({ row, share }) => [row.key, Math.round(share * 1000) / 1000]);
 
-  it.each([
-    { km: 0.5, key: "paved", why: "部分の中はその部分の行" },
-    { km: 1, key: "gravel", why: "切れ目ちょうどは後の部分" },
-    { km: 99, key: "gravel", why: "終わりより先は終点の行" },
-  ])("$why", ({ km, key }) => {
-    expect(bandRowAtKm(pieces, km)).toEqual(row(surface, key));
+  it("区間に占める区分の割合を、同じ行をまとめて多い順に並べ、層に無い区分の鍵はその他の行に数える", () => {
+    expect(
+      shares("surface", [
+        { distance_km: 0.3, value: "paved" },
+        { distance_km: 0.1, value: "unknown_class" },
+        { distance_km: 0.6, value: "paved" },
+      ]),
+    ).toEqual([
+      ["paved", 0.9],
+      ["other", 0.1],
+    ]);
   });
 
-  it("部分が無ければ行も無い", () => {
-    expect(bandRowAtKm([], 0)).toBeNull();
+  it("区分の並びの無い区間は、何も出さない", () => {
+    expect(shares("surface", undefined)).toEqual([]);
   });
 });
 

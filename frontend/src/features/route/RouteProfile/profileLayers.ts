@@ -182,16 +182,20 @@ export function layerValueAtKm(
   return start === null || end === null ? null : start + (end - start) * hit.fraction;
 }
 
-/** 距離`km`の地点を通る道の勾配（%）。道の両端の値の差（m）を道の長さで割る。値の無い道ではnull。 */
-export function layerGradeAtKm(
-  columns: readonly RouteStretch<LayerSegment>[],
-  layer: LineLayer,
-  km: number,
-): number | null {
-  const hit = linePieceAtKm(columns, layer, km);
-  if (hit === null) return null;
-  const { start, end, distance_km } = hit.stretch;
-  return start === null || end === null ? null : ((end - start) / (distance_km * 1000)) * 100;
+/** 区間の勾配（%）。平均は値のある道の上り下りの和を道の長さの和で割り、最大は値のある道のうち傾きの大きさが一番大きい道の勾配
+ * （下りなら負）。値のある道が無ければnull。 */
+export function segmentGrades(segment: LayerSegment, layer: LineLayer): { mean: number; steepest: number } | null {
+  let rise = 0;
+  let meters = 0;
+  let steepest: number | null = null;
+  for (const { distance_km, start, end } of layer.draw.stretches(segment)) {
+    if (start === null || end === null || distance_km <= 0) continue;
+    const grade = ((end - start) / (distance_km * 1000)) * 100;
+    rise += end - start;
+    meters += distance_km * 1000;
+    if (steepest === null || Math.abs(grade) > Math.abs(steepest)) steepest = grade;
+  }
+  return steepest === null ? null : { mean: (rise / meters) * 100, steepest };
 }
 
 export type BandPiece = { readonly startKm: number; readonly endKm: number; readonly row: RoadTrackRow };
@@ -214,10 +218,21 @@ export function layerBand(columns: readonly RouteStretch<LayerSegment>[], layer:
   return pieces;
 }
 
-/** 距離`km`の地点の行。範囲の外は端の部分へ寄せる。部分が無ければnull。 */
-export function bandRowAtKm(pieces: readonly BandPiece[], km: number): RoadTrackRow | null {
-  if (pieces.length === 0) return null;
-  return (pieces.find((piece) => km < piece.endKm) ?? pieces[pieces.length - 1]).row;
+/** 区間に占める区分の行と割合（0〜1）を、割合の多い順に。値の無い道も、その行（データなし）として数える。 */
+export function segmentBandShares(
+  segment: LayerSegment,
+  layer: BandLayer,
+): { readonly row: RoadTrackRow; readonly share: number }[] {
+  const kmByRow = new Map<string, { row: RoadTrackRow; km: number }>();
+  let totalKm = 0;
+  for (const { distance_km, value } of segment.road_classes[layer.id] ?? []) {
+    const row = layer.draw.rowOf(value);
+    const counted = kmByRow.get(row.key);
+    kmByRow.set(row.key, { row, km: (counted?.km ?? 0) + distance_km });
+    totalKm += distance_km;
+  }
+  if (totalKm <= 0) return [];
+  return [...kmByRow.values()].map(({ row, km }) => ({ row, share: km / totalKm })).sort((a, b) => b.share - a.share);
 }
 
 /** 凡例に出す行。このルートの帯に現れる行だけを、宣言の並びで。 */

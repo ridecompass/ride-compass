@@ -167,7 +167,7 @@ describe("走行モードの操作", () => {
     expect(screen.getByRole("group", { name: "走りの数字" })).toBeInTheDocument();
   });
 
-  it("走行中に鍵のボタンでロックすると、地図を指で動かして休んでいれば追い直し、地図の手ぶりの操作を止め、地図や区間の印を押しても何も開かず閉じない。鍵を押して横に出る「ロックを外す」を押すと外れ、選ばずにいると時間で閉じ、案内を終えるとロックも外れる", async () => {
+  it("走行中に鍵のボタンでロックすると、地図を指で動かして休んでいれば追い直し、地図の手ぶりの操作を止め、地図を押しても何も開かず閉じない。鍵を押して横に出る「ロックを外す」を押すと外れ、選ばずにいると時間で閉じ、案内を終えるとロックも外れる", async () => {
     const geolocation = installGeolocation(HERE);
     const { user } = renderHome();
     jobs.respond([RIDDEN], LOOP_CONDITIONS);
@@ -196,11 +196,7 @@ describe("走行モードの操作", () => {
     expect(mapOnScreen().stoppedGestures()).toEqual(
       expect.arrayContaining(["dragPan", "touchZoomRotate", "doubleClickZoom"]),
     );
-    // 開いていた小窓は、区間の印を押しても地図の外れを押しても閉じず、ほかの物を押しても開かない。
-    const segmentMark = mapOnScreen()
-      .markers()
-      .find((mark) => mark.element.getAttribute("aria-label") === "選択中の区間")!;
-    act(() => segmentMark.element.click());
+    // 開いていた小窓は、地図の外れを押しても閉じず、ほかの物を押しても開かない。
     clickMap(ELSEWHERE);
     expect(segmentPopup()).toBeInTheDocument();
 

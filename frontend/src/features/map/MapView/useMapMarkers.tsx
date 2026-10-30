@@ -5,41 +5,12 @@ import { createPortal } from "react-dom";
 import * as maplibregl from "maplibre-gl";
 import type { Map as MapLibreMap, Marker } from "maplibre-gl";
 
-import type { Coordinates, LocationSource, PinRole, PointTarget, SelectedRouteSegment } from "@/types/route";
+import type { Coordinates, LocationSource, PinRole, PointTarget } from "@/types/route";
 import { originMarkColor, PIN_MARK_BACKGROUND, PinMark, pinMarkName } from "@/components/PinMark/PinMark";
-import palette from "@/types/generated/palette.json";
 import { runWhenStyleReady } from "@/features/map/layers/mapStyleOps";
 
 /** 出発地点を見せる倍率（地図を作ったとき・出発地点が変わったとき）。 */
 export const ORIGIN_ZOOM = 13;
-
-/** 選んだ地点の印の高さ（px）。印は下端の先で地点を指す。 */
-export const SELECTED_POINT_PIN_HEIGHT_PX = 40;
-
-// 選んだ地点の印の描画の座標。先（地点）を原点に置き、白い縁の太さぶんを枠に含める（先の丸い縁が枠の下端に来る）。
-const SELECTED_POINT_PIN_VIEW = { x: -30, y: -82, width: 60, height: 85 } as const;
-
-/** 選んだ地点の印: 白い縁と内の白い丸を持つ、塗りのしずく形。地図の線の色・現在地の青と重ならない色で塗る。 */
-function SelectedPointPin() {
-  const { x, y, width, height } = SELECTED_POINT_PIN_VIEW;
-  return (
-    <svg
-      width={Math.round((SELECTED_POINT_PIN_HEIGHT_PX * width) / height)}
-      height={SELECTED_POINT_PIN_HEIGHT_PX}
-      viewBox={`${x} ${y} ${width} ${height}`}
-      aria-hidden="true"
-    >
-      <path
-        d="M0 0 C-6 -16 -26 -30 -26 -52 A26 26 0 1 1 26 -52 C26 -30 6 -16 0 0Z"
-        fill={palette.semantic.selected_point}
-        stroke={palette.semantic.pin_face}
-        strokeWidth={6}
-        strokeLinejoin="round"
-      />
-      <circle cx={0} cy={-52} r={10} fill={palette.semantic.pin_face} />
-    </svg>
-  );
-}
 
 // 地点のピンの器: 白い丸（`PIN_MARK_BACKGROUND`）。出発地・経由地・目的地で同じ形にし、中の記号（PinMark）をReactでportalして
 // 描く。左右対称なので、アンカーは地点＝中心（"center"）。影はどの配色の上でも輪郭が消えないため、touch-action:noneは指の起点が
@@ -95,48 +66,33 @@ interface MapMarkersInputs {
   locationSource: LocationSource;
   waypoints: Coordinates[];
   destination: Coordinates | null;
-  selectedRouteSegment: SelectedRouteSegment | null;
   /** 地点をつかんで動かせるか。falseの間、印はつかめない（押すことはできる）。 */
   pointsEditable: boolean;
-  /** 走行中のロックの間か。ロックの間は、選んでいる区間の印を押しても選びを外さない。 */
-  tapsLocked: boolean;
   onOriginMove: (coordinates: Coordinates) => void;
   onWaypointMove: (index: number, coordinates: Coordinates) => void;
   onDestinationMove: (coordinates: Coordinates) => void;
   /** 動かせる間に地点の印を押したとき（その地点を選ぶ）。動かせない間の押しは地図へ通す。 */
   onPointSelect: (target: PointTarget) => void;
-  onRouteSegmentSelect: (selection: SelectedRouteSegment | null) => void;
 }
 
 /**
- * 地図の地点の印（出発地・経由地・目的地・選んでいる区間）の作成・位置の更新・ドラッグ・後始末。
- * 印の中身のうちReactで描くもの（出発地の印・区間の印）は、返すportalを地図の部品が描く。
+ * 地図の地点の印（出発地・経由地・目的地）の作成・位置の更新・ドラッグ・後始末。
+ * 印の中身（PinMark）は、返すportalを地図の部品が描く。
  */
 export function useMapMarkers(
   mapRef: RefObject<MapLibreMap | null>,
-  {
-    location,
-    locationSource,
-    waypoints,
-    destination,
-    selectedRouteSegment,
-    pointsEditable,
-    ...handlers
-  }: MapMarkersInputs,
+  { location, locationSource, waypoints, destination, pointsEditable, ...handlers }: MapMarkersInputs,
 ): ReactNode {
   const markerRef = useRef<Marker | null>(null);
   // 出発地点の印に当てた色の元。Markerは位置の更新で色を変えられないため、色が変わるときだけ作り直す。
   const appliedMarkerSourceRef = useRef<LocationSource | null>(null);
   const waypointMarkersRef = useRef<Marker[]>([]);
   const destinationMarkerRef = useRef<Marker | null>(null);
-  const selectedSegmentMarkerRef = useRef<Marker | null>(null);
   // 出発地点の印の器（Markerの要素）と、中身の印の色。
   const [originMark, setOriginMark] = useState<{ element: HTMLDivElement; color: string } | null>(null);
   // 経由地・目的地の印の器（Markerの要素）。中身の印はportalで描く。
   const [waypointMarks, setWaypointMarks] = useState<HTMLDivElement[]>([]);
   const [destinationMark, setDestinationMark] = useState<HTMLDivElement | null>(null);
-  // 選んでいる区間の印の器（Markerの要素）。中身の印はportalで描く。
-  const [selectedSegmentMark, setSelectedSegmentMark] = useState<HTMLDivElement | null>(null);
   // 印の操作（作ったときに一度だけ結ぶ）が、いまのpropsを読むための参照。
   const latestProps = { pointsEditable, location, waypoints, destination, ...handlers };
   const latest = useRef(latestProps);
@@ -159,7 +115,6 @@ export function useMapMarkers(
       appliedMarkerSourceRef.current = null;
       waypointMarkersRef.current = [];
       destinationMarkerRef.current = null;
-      selectedSegmentMarkerRef.current = null;
     },
     [],
   );
@@ -248,36 +203,6 @@ export function useMapMarkers(
     runWhenStyleReady(map, applyDestinationMarker);
   }, [mapRef, destination]);
 
-  // 選んでいる区間の印。選択が外れれば（どこで外しても）消える。
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-
-    const applySelectedSegmentMarker = () => {
-      selectedSegmentMarkerRef.current?.remove();
-      selectedSegmentMarkerRef.current = null;
-      setSelectedSegmentMark(null);
-      if (!selectedRouteSegment) return;
-
-      const el = document.createElement("div");
-      // 影はどの配色の上でも印を浮かせるため。touch-action:noneで、指の起点が印に乗ってもパンとして確定させる。
-      el.style.cssText =
-        "display:flex; cursor:pointer; filter:drop-shadow(0 2px 3px rgba(0,0,0,0.45)); touch-action:none;";
-      setSelectedSegmentMark(el);
-      el.setAttribute("aria-label", "選択中の区間");
-      el.addEventListener("click", (event) => {
-        event.stopPropagation();
-        if (latest.current.tapsLocked) return;
-        latest.current.onRouteSegmentSelect(null);
-      });
-      selectedSegmentMarkerRef.current = new maplibregl.Marker({ element: el, anchor: "bottom" })
-        .setLngLat([selectedRouteSegment.longitude, selectedRouteSegment.latitude])
-        .addTo(map);
-    };
-
-    runWhenStyleReady(map, applySelectedSegmentMarker);
-  }, [mapRef, selectedRouteSegment]);
-
   return (
     <>
       {originMark !== null &&
@@ -286,7 +211,6 @@ export function useMapMarkers(
         createPortal(<PinMark role="waypoint" label={String(index + 1)} size={20} />, element, `waypoint-${index}`),
       )}
       {destinationMark !== null && createPortal(<PinMark role="destination" size={20} />, destinationMark)}
-      {selectedSegmentMark !== null && createPortal(<SelectedPointPin />, selectedSegmentMark)}
     </>
   );
 }

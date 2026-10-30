@@ -194,13 +194,6 @@ export function selectedSectionOnMap(): unknown[] {
   return shown ? linesOn("route-selected-section") : [];
 }
 
-/** 地図に立てた、選んだ地点の印。 */
-export function selectedPointMarks() {
-  return mapOnScreen()
-    .markers()
-    .filter((mark) => mark.element.getAttribute("aria-label") === "選択中の区間");
-}
-
 /** 地図のその地点に置いた印。 */
 export function marksAt(point: Coordinates) {
   return mapOnScreen()

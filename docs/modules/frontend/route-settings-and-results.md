@@ -59,7 +59,7 @@
 | `features/route/RouteProfile/RouteProfile.tsx` | 候補の中身の先頭と走行中の地図の下に出す道のりのグラフ。「評価で塗る」（既定）と「表示」のタブを持つ（名前は地図の2つの入口と同じ`lib/screenNames.ts`から引き、絵も地図の「表示」のボタンと「評価で塗る」のピルと同じ`DisplayItemsIcon`・`EvaluationPaintIcon`を付ける。出す情報のボタンは`ChooseItemsIcon`）。タブの切り替えは、結果も走行中も文字の無い小さい絵だけにし（名前は読み上げに残す）、(i)・出す情報のボタンと並べて図の右上に重ねる。距離の目盛り（0・全長）は図の中の下の角に重ね、図の上下に段を取らない（スマホの低い高さで図を大きく見せる。図の左上は値の目盛りに空けておく）。走りながら遠目に読むので、走行中は距離の目盛り・図の下の文字を結果の図より大きくし（`features/route/ProfileChart/profileScale.ts: profileTextClass`）、「表示」の図には最初の折れ線の最高と最低の高さに単位つきの目盛り（「標高 32m」「12m」）を出す。結果も走行中もなぞって地点を選び（地図に印が出て、区間の小窓に中身が出る。図の下には出さない）、地点を選んでいる間は図の右上に「区間を地図で見る」（`features/route/SegmentDetail/SegmentDetail.tsx: SectionOnMapButton`）を置く。「評価で塗る」は難易度のグラフ（`DifficultyProfile`）で、(i) はこのルートで塗った区間のある軸の色と名前・値の無い区間の色・グラフの意味を出す。「表示」は、チップで選んだ情報（地図の「表示」とは別の選択）を同じ横軸に重ねた図（`features/route/RouteProfile/LayerProfile.tsx`）で、地点の選び方は「評価で塗る」と同じ。どちらのタブも、置いた経由地を通る距離（応答の`waypoint_distances_km`）に縦の線と地図のピンと同じ番号の印を出す |
 | `features/route/RouteProfile/LayerProfile.tsx` | 道のりのグラフの「表示」の図。選んだ情報を同じ横軸に重ね、各情報の最高・最低を1行で図の下に出す（地点を選んでいるかに関わらず出し、選んでも図の高さを変えない）。道の区分の情報（道路の種類・路面の種類・トンネル・緑と水等）は折れ線の下に1本ずつ帯で並べる。現在地の印は最初の折れ線のその地点の値の高さに置く |
 | `features/route/RouteProfile/ProfileLayerPicker.tsx` | 「表示」の図に重ねる情報を選ぶ一覧（図の右上の出す情報のボタンから開く）。ボタンに今重ねている数を出し、帯の情報の行には、帯に現れた行の凡例を添える |
-| `features/route/RouteProfile/profileLayers.ts` | 道のりのグラフに重ねられるレイヤの宣言（`features/route/RouteProfile/profileLayers.ts: profileLayers`）。レイヤごとに名前・描き方・区間の応答から値を引く所を1か所に持ち、レイヤを足すときはここへ1行足す。描き方は2つで、折れ線は区間の中の道ごとの両端の値（応答の`features/route/RouteProfile/profileLayers.ts: elevations`）を、道の距離の比で区間の長さへ割り振ってつなぎ、値の無い道・道の無い区間で線を切る。地点の勾配は、その地点の道の両端の差を道の長さで割る（`features/route/RouteProfile/profileLayers.ts: layerGradeAtKm`）。帯は区間の中の区分の値（応答の`features/route/RouteProfile/profileLayers.ts: road_classes`）を距離の比で並べ、隣どうしで同じ行になる部分をつなぐ。帯にできるのは軸カタログが配る道の線の層（`features/route/RouteProfile/profileLayers.ts: profileLayers`が受け取る）と「緑と水」で、行の色・呼び名・「該当なし」「データなし」の分け方は地図の凡例と同じ行（`lib/mapDisplay/roadTracks.ts: roadTrackRows`）から引き、アイコンは地図の「表示」の一覧と同じ引き方（`components/ui/icons/mapLayerIcons.ts: roadLayerIcon`・`mapLayerIcons.ts: MAP_LAYER_ICONS`）で引く。 |
+| `features/route/RouteProfile/profileLayers.ts` | 道のりのグラフに重ねられるレイヤの宣言（`features/route/RouteProfile/profileLayers.ts: profileLayers`）。レイヤごとに名前・描き方・区間の応答から値を引く所を1か所に持ち、レイヤを足すときはここへ1行足す。描き方は2つで、折れ線は区間の中の道ごとの両端の値（応答の`features/route/RouteProfile/profileLayers.ts: elevations`）を、道の距離の比で区間の長さへ割り振ってつなぎ、値の無い道・道の無い区間で線を切る。区間の小窓の勾配は、区間の中の値のある道の上り下りの和を長さの和で割った平均と、一番きつい道の勾配（`features/route/RouteProfile/profileLayers.ts: segmentGrades`）。帯は区間の中の区分の値（応答の`features/route/RouteProfile/profileLayers.ts: road_classes`）を距離の比で並べ、隣どうしで同じ行になる部分をつなぐ。区間の小窓の区分は、区間に占める行の割合の多い順（`profileLayers.ts: segmentBandShares`）。帯にできるのは軸カタログが配る道の線の層（`features/route/RouteProfile/profileLayers.ts: profileLayers`が受け取る）と「緑と水」で、行の色・呼び名・「該当なし」「データなし」の分け方は地図の凡例と同じ行（`lib/mapDisplay/roadTracks.ts: roadTrackRows`）から引き、アイコンは地図の「表示」の一覧と同じ引き方（`components/ui/icons/mapLayerIcons.ts: roadLayerIcon`・`mapLayerIcons.ts: MAP_LAYER_ICONS`）で引く。 |
 | `features/route/RouteProfile/useProfileLayers.ts` | グラフに出す情報（コードの名前はレイヤ）の選択。端末に覚え（既定は標高）、宣言から消えたレイヤは読むときに捨てる。ページが1つ持ち、結果と走行中の図が同じ選択を読む |
 | `features/route/ProfileChart/ProfileChart.tsx` | 道のりのグラフの枠（横軸の尺・横になぞる・押して地点を選ぶ・走行中の現在地・経由地の線と番号の印）。難易度のグラフとレイヤのグラフが中身だけを差し込む。押せる図は縦のなぞりをシート・パネルのスクロールへ渡し（`touch-action: pan-y`）、縦に動き出した操作では地点を選ばない。走行中は、現在地の距離に縦の線（折れ線の青と見分ける文字の色）と地図の現在地と同じ青の丸い印（高さは中身が渡す）を出し、走り終えた所は中身の色を抜いて地図の走り終えた線と同じ濃さへ薄め、残りは元の色のまま描く。走り終えた経由地の線と番号の印も同じ濃さまで薄める。中身が渡す値の目盛り（`features/route/ProfileChart/ProfileChart.tsx: valueTicks`）を図の左の端に重ねる。高さは置き場が CSS の変数`--profile-chart-height`で決め、無ければ走行中の地図の下に出す図の高さになる |
 | `features/route/ProfileChart/profileScale.ts` | 道のりのグラフの横軸の尺（`features/route/ProfileChart/profileScale.ts: useProfileScale`。右端は渡された距離とルートの長さの長い方）と描画の座標の大きさ、図の文字の大きさ（`features/route/ProfileChart/profileScale.ts: profileTextClass`）。枠と中身の両方が読む |
@@ -70,7 +70,7 @@
 | `features/route/WarningText/WarningText.tsx` | 表示中の結果について注意を促す1行（条件のずれ・目的地の補正・所要時間の前提の崩れ）。ルート結果と候補の中身が使う |
 | `features/route/GenerationNotice/GenerationNotice.tsx` | 押した「生成」が候補を出せなかった理由（入力の誤りか失敗・候補0件の理由）を知らせる窓。`app/page.tsx`がデスクトップとモバイルの両方に1つ置き、閉じると案内を消す |
 | `features/route/routePreferenceSync.ts` | 重みのキー集合を軸カタログの公開軸へ揃える関数（`useGenerationConditions.ts`が読むときに1回だけ通す）と、生成リクエストへ重みを載せるかの判定 |
-| `features/route/SegmentDetail/SegmentDetail.tsx` | 選んだ区間の地図の小窓の中身（道のりのグラフの表示の断面。下記「区間クリック詳細」）。上の帯に地点（何km地点）と到達予想、その下にグラフで選んでいる層の、選んだ地点の値（線の層は値と勾配、帯の層は区分のチップ）と、難易度の塊（`components/MapPopup/MapPopupParts.tsx: DifficultyBlock`）を出す（閉じる・寄せる操作は小窓が持つ）。到達予想の書き方（`features/route/SegmentDetail/SegmentDetail.tsx: formatSegmentArrivalTime`）と、グラフの右上の「区間を地図で見る」（`features/route/SegmentDetail/SegmentDetail.tsx: SectionOnMapButton`）もここが持つ |
+| `features/route/SegmentDetail/SegmentDetail.tsx` | 選んだ区間の地図の小窓の中身（道のりのグラフの表示の断面。下記「区間クリック詳細」）。上の帯に到達予想、その下にグラフで選んでいる層の区間の値（線の層は平均と最大の勾配、帯の層は区間に占める区分の割合のチップ）と、難易度の塊（`components/MapPopup/MapPopupParts.tsx: DifficultyBlock`）を出す（閉じる・寄せる操作は小窓が持つ）。到達予想の書き方（`features/route/SegmentDetail/SegmentDetail.tsx: formatSegmentArrivalTime`）と、グラフの右上の「区間を地図で見る」（`features/route/SegmentDetail/SegmentDetail.tsx: SectionOnMapButton`）もここが持つ |
 | `features/route/pointNames.ts` | 地点の名前（探して置いた候補の名前・辺り・「地図で選んだ地点」・「現在地」・「未設定」）と、通る順を入れ替えたときに何がどこへ動いたかの文と、候補を置くボタンの置ける先と文言（探した候補・保存した地点の呼び出しが使う）。探して・名前のある点を押して置いた地点の名前に、地点の並びは呼び名を補って出す（下記「地点の指定」） |
 | `features/route/RouteSplicePanel/RouteSplicePanel.tsx` | 区間の乗り換えの結果面（「ルート結果」が編集モードのときの中身）。**選ぶのは地図、パネルは結果だけ**——地図の破線が「いまの道から乗り換えられる先」・太い実線が「いま作っているルート」で、タップすると乗り換わり、その先の分かれ道が次の破線になる（次に選べる区間は`features/route/routeSplice.ts: buildSplicedShape`が組む「いまの組み合わせ」との差として求めるため、乗り換え先の道の上の分岐もそのまま現れる。候補どうしが同じ地点を通るかはbackendが返すNode id［`node_ids`］で判定し、**当てると一度通った地点へ戻る代替は選択肢に出さない**——backendは連結性しか見ず、折り返しも走れはするため落とさない）。パネルは元と編集後の指標の表（`SpliceMetricGrid.tsx`）と、軸別の寄与度の差の棒（`SpliceDeltaBar.tsx`）を出す。棒に出すのは差が下限に届いた軸だけで、差の大きい順に並べる。戻すのは見出し行の「1つ戻す」「全部戻す」で、巻き戻せるのは直前の1手ずつ（適用済みの範囲はその時点の経路に対する位置のため、途中だけは外せない）。評価した組み合わせが既にある候補と同じ道なら、その候補の一覧での名前で同じ道だと出し、見出し行の作成を外してその行に「「◯」に切り替える」を置く（押しても新しく足さずにその候補を選ぶので、押す前にそれと分かるようにする。押すと作成と同じく編集を閉じてその候補を選ぶ）。差分を見たのにどの軸の差も棒に出す下限に届かなければ、「差分を見る」を押す案内を残さず、どの軸もほぼ変わらないと出す（押しても何も変わらない案内にしない）。`edge_ids`が空の候補では「差が無い」と「そもそも出せない」を区別して伝える。使い方は画面へ書かず見出し脇の(i)の奥に置き、見出し行の操作（1つ戻す・全部戻す・差分を見る・作成）はパネルの他の操作と同じアイコンだけの形 |
 | `features/route/RouteSplicePanel/SpliceMetricGrid.tsx` | 編集面の指標の表。ルート結果と同じ指標（`features/route/routeEditDiff.ts: metricDifferences`。距離・所要・総合難易度・負荷）で元と編集後を**2列×2行**に並べる（1セルに「元→編集後 差」を収め、列見出しを持たない） |
@@ -312,21 +312,19 @@ useAxisCatalog() ──→ catalog.axes（公開軸一覧、is_published=Trueの
 地図上でルート線の区間を押すか、道のりのグラフをなぞって地点を選ぶと、`useRouteResults.ts: selectedRouteSegment` state
 （`{ segment: RouteSegmentDetail, latitude, longitude }`。押した所に最も近い区間の上の点）が入る。地図で区間を押して選べるのは、押した物の
 小窓を開く間（「ルート設定」の間と乗り換えを選んでいる間のほか。[地図: 静的レイヤー・道路表示](static-map-layers.md)「地図を押したときと地図の小窓」）。
-地図側はその点に選んだ地点の印を立て、その区間の範囲を縁取りで示し（下記）、地図の小窓に区間の中身（`features/route/SegmentDetail/SegmentDetail.tsx`）
-を出す。区間の中身は地図の小窓だけが出し、道のりのグラフの下には出さない（グラフを低く保つ）。
+地図側はその区間の範囲を縁取りで示し（下記）、地図の小窓を選んだ点に置いて区間の中身（`features/route/SegmentDetail/SegmentDetail.tsx`）
+を出す。区間の中身は地図の小窓だけが出し、道のりのグラフの下には出さない（グラフを低く保つ）。区間の中の1点を指す印は立てない——
+小窓の中身はどれも区間の値で、押した点の値を出さないので、指す点に意味が無い。
 
-地図の印と縁取りは、地図で押してもグラフで選んでも、結果でも走行中でも同じに出し、選択を外すと消す。
+縁取りは、地図で押してもグラフで選んでも、結果でも走行中でも同じに出し、選択を外すと消す。
 
-- **選んだ地点の印**（`features/map/MapView/useMapMarkers.tsx: SelectedPointPin`）: 白い縁と内の白い丸を持つ塗りのしずく形で、
-  先が地点を指す（Markerの`anchor: "bottom"`）。影を付けてどの配色の上でも浮かせ、色（`palette.semantic.selected_point`）は評価の配色・
-  ルートの線の色・現在地の青のどれとも重ならない朱色にする。押すと選択を外す。読み上げ名は「選択中の区間」。区間の小窓は
-  印の高さ（`useMapMarkers.tsx: SELECTED_POINT_PIN_HEIGHT_PX`）だけ空けて置く。
 - **選んだ区間の範囲の縁取り**（`scene/groups/routes.ts`の役割`selectedSection`）: グラフの区間の帯と同じ区間の形を、どのルートの線より
   後ろに太い半透明の線で敷き、線の外側へはみ出た所で範囲を示す（線の上に重ねると区間の色分けを隠す）。選んでいる区間が選んでいる候補の
   区間のときだけ敷く。
 
-中身は道のりのグラフの表示の断面で、区間の地点（区間の始まりの道のり）・到達予想時刻と、グラフで選んでいる層の、選んだ地点の値
-（線の層は値と勾配、帯の層は区分のチップ。どの分類にも入らない行〔`lib/mapDisplay/roadTracks.ts: isUnclassifiedRow`〕は出さない）、
+中身は道のりのグラフの表示の断面で、到達予想時刻と、グラフで選んでいる層の区間の値（線の層は区間の平均と最大の勾配
+〔`features/route/RouteProfile/profileLayers.ts: segmentGrades`〕、帯の層は区間に占める区分の割合の多い順のチップ
+〔`profileLayers.ts: segmentBandShares`〕。どの分類にも入らない行〔`lib/mapDisplay/roadTracks.ts: isUnclassifiedRow`〕は出さない）、
 区間の総合難易度（`RouteSegmentDetail.difficulty`。算出できなかった区間は「—」）と`AxisContributionBar`（区間の`axis_contributions`）。
 風の値は出さない（風の効きは難易度の内訳に入っている）。
 区間を選んでも（地図で押してもグラフで選んでも）地図は動かさない——グラフをなぞるたびに地図が跳ぶと、見ていた所を見失う。
@@ -342,8 +340,8 @@ useAxisCatalog() ──→ catalog.axes（公開軸一覧、is_published=Trueの
 
 **近くの点**は、生成の応答に載せず、区間を選んでいる間、地図が点の層のタイルのうち区間の線に近い点を描く（近さと描き方は
 [静的地図レイヤー](static-map-layers.md)「選んだ区間の近くの点」）。描いた点は「表示」の点と同じ点で、名前のある点を押すと点の小窓を開き、
-区間の小窓から開いたときは上の帯の「‹ 区間」で区間の中身へ戻れる。点の小窓の行の位置は、区間を選んでいる間は選んだ地点から見た前後
-（走行中は現在地からの残り）で出す（`lib/mapDisplay/sidePoints.ts: sidePointLocator`）。
+区間の小窓から開いたときは上の帯の「‹ 区間」で区間の中身へ戻れる。点の小窓の行には、走行中だけ現在地からの残り（「あと1.2km」）を
+出す（`lib/mapDisplay/sidePoints.ts: sidePointLocator`）。走っていない間は、ルートの上の前後の距離を出さない（起点にする点が無い）。
 
 ## 保存した条件（SavedConditionsPanel.tsx・useSavedConditions.ts）
 
