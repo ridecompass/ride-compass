@@ -1,6 +1,6 @@
-"""`domain/cycling_speed.py`——平地・無風の巡航速度から出力を逆算し、勾配・風・路面から区間ごとの速度と走行時間を解く走行モデル。
+"""`domain/cycling_speed.py`——平地・無風の巡航速度から出力を逆算し、勾配・風・路面から区間ごとの速度を解く走行モデル。
 
-入口は`RiderProfile`・`wheel_power_w`・`climb_power_w`・`top_speed_kmh`・`SegmentSpeedModel`（`speed_ms`・`travel_seconds`）・`crr_for_surface`。
+入口は`RiderProfile`・`wheel_power_w`・`climb_power_w`・`top_speed_kmh`・`SegmentSpeedModel`（`speed_ms`）・`crr_for_surface`。
 期待値は走行方程式（公開の物理）と、モデルが約束する性質（平地・無風なら巡航速度に戻る・向かい風で遅くなる・上下限で止まる）から書く。
 
 ここで見ないもの:
@@ -137,11 +137,10 @@ def test_the_limits_follow_the_values_changed_from_the_admin_screen(monkeypatch,
     [
         lambda: SegmentSpeedModel(RIDER, np.zeros(3), np.zeros(1)),
         lambda: SegmentSpeedModel(RIDER, np.zeros(3), np.zeros(3)).speed_ms(np.zeros(1), np.zeros(3)),
-        lambda: SegmentSpeedModel(RIDER, np.zeros(3), np.zeros(3)).travel_seconds(np.zeros(1), np.zeros(3), np.zeros(3)),
     ],
 )
 def test_arrays_of_different_lengths_are_refused_instead_of_spread_over_every_segment(call):
-    """長さ1の配列はnumpyが全区間へ黙って広げる。1区間の値が全区間に効く前に断る。"""
+    """長さの違う配列は区間の番号で読み違える。1区間の値が別の区間に効く前に断る。"""
     with pytest.raises(ValueError):
         call()
 
