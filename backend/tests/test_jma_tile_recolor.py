@@ -9,7 +9,11 @@
 import pytest
 
 from app.domain.weather_display import PRECIPITATION_COLOR_STOPS
-from app.infrastructure.jma_tile_recolor import JMA_PRECIPITATION_TILE_COLORS, recolored
+from app.infrastructure.jma_tile_recolor import (
+    JMA_PRECIPITATION_TILE_COLORS,
+    JMA_UNPAINTED_PRECIPITATION_TILE_COLOR,
+    recolored,
+)
 from tests.tile_images import palette_tile, pixels, rgba
 
 FRAME = "bosai/jmatile/data/nowc/20260101000000/none/20260101000500/surf"
@@ -25,6 +29,15 @@ def test_each_band_is_painted_with_the_legend_color_of_the_same_band():
 
     assert painted[0][3] == 0
     assert painted[1:] == [*(rgba(stop.color) for stop in PRECIPITATION_COLOR_STOPS), rgba(UNKNOWN)]
+
+
+def test_rain_weaker_than_the_weakest_band_is_left_unpainted():
+    """気象庁がほぼ白で描く弱い雨に色を付けると、気象庁の画面で降っていない所が地図では雨に見える。"""
+    tile = palette_tile([JMA_UNPAINTED_PRECIPITATION_TILE_COLOR, JMA_PRECIPITATION_TILE_COLORS[0]])
+
+    painted = pixels(recolored(PRECIPITATION, tile))
+
+    assert [pixel[3] for pixel in painted] == [0, 0, 255]
 
 
 @pytest.mark.parametrize(

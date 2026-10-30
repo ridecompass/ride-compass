@@ -5,7 +5,7 @@ import weatherScales from "@/types/generated/weather-scales.json";
 import type { FilterSpecification } from "maplibre-gl";
 
 import { LIDEN_ICON_SIZE_PX, createLidenIcon } from "@/features/map/layers/lidenIcon";
-import { PRECIPITATION_COLOR_STOPS, PRECIPITATION_NONE_THRESHOLD_MM } from "@/features/map/layers/precipitationNowcast";
+import { PRECIPITATION_COLOR_STOPS, PRECIPITATION_PAINTED_FROM_MM } from "@/features/map/layers/precipitationNowcast";
 import { WIND_ARROW_SIZE_PX, createWindArrowIcon } from "@/features/map/layers/windArrowIcon";
 import { WIND_CALM_THRESHOLD_MS, WIND_SPEED_COLOR_STOPS } from "@/features/map/layers/windLayer";
 
@@ -147,8 +147,8 @@ const DRAWINGS: { readonly [K in DrawnKey]: Drawing } = {
       ),
       "fill-opacity": AREA_OPACITY,
     },
-    // 降っていない格子まで塗ると、地図全体が薄く覆われて下が読めない。
-    filter: notBelowFilter("mmPerHour", PRECIPITATION_NONE_THRESHOLD_MM),
+    // いちばん弱い段の色は、その段の下限より弱い雨を塗るためのものではない（step式は下限より下も最初の色で塗る）。
+    filter: notBelowFilter("mmPerHour", PRECIPITATION_PAINTED_FROM_MM),
   },
   "windVector/arrow/gridMark": markDrawing({
     iconId: "weather-wind-arrow",
