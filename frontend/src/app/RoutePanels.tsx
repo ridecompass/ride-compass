@@ -63,6 +63,8 @@ interface RoutePanelsProps {
   onSettingsTabChange: (tab: SettingsTab) => void;
   /** 「ルート設定」の中身。 */
   settingsBody: ReactNode;
+  /** 「ルート設定」に探した候補の札が入っているか（入った・抜けたら、シートの高さを中身へ合わせ直す）。 */
+  settingsCardShown: boolean;
   /** 「このルートで走る」を押した。無ければボタンを出さない（もう走っている間）。 */
   onRide?: (routeId: string) => void;
 }
@@ -154,7 +156,7 @@ export function DesktopRoutePanels(props: RoutePanelsProps) {
  * 開いている間だけ出す（タブで2枚のシートを行き来し、閉じると地図に戻る）。
  */
 export function MobileRoutePanels(props: RoutePanelsProps) {
-  const { panels, isMobile, route, settingsTab, onSettingsTabChange, settingsBody } = props;
+  const { panels, isMobile, route, settingsTab, onSettingsTabChange, settingsBody, settingsCardShown } = props;
   if (!isMobile || !panels.panelsShown) return null;
   const outcome = outcomeParts(props);
   const outcomeTabSignal: OutcomeTabSignal | null = panels.unseenOutcome
@@ -200,7 +202,7 @@ export function MobileRoutePanels(props: RoutePanelsProps) {
           titleId={ROUTE_SETTINGS_SHEET_TITLE_ID}
           headerLead={<SettingsTabsList />}
           headerAction={<GenerateRouteActions generation={route.generation} />}
-          fitKey={settingsTab}
+          fitKey={`${settingsTab}:${settingsCardShown}`}
         >
           {settingsBody}
         </BottomSheet>

@@ -1,6 +1,5 @@
 "use client";
 
-import { Badge } from "@/components/ui/Badge/Badge";
 import { textVariants } from "@/components/ui/Text/Text";
 import ErrorText from "@/features/route/ErrorText/ErrorText";
 import { haversineKm } from "@/lib/geoDistance";
@@ -10,15 +9,6 @@ import type { Coordinates, PlaceCandidate } from "@/types/route";
 
 import type { usePlaceLookup } from "./usePlaceLookup";
 
-// 種類と段の名前はbackendの語彙（生成物）から読む。種類を足しても行の形は変わらない。
-const KIND_LABELS = Object.fromEntries(vocabulary.placeKinds.map((k) => [k.key, k.label])) as Record<
-  PlaceCandidate["kind"],
-  string
->;
-const LEVEL_LABELS = Object.fromEntries(vocabulary.placeMatchLevels.map((l) => [l.key, l.label])) as Record<
-  PlaceCandidate["level"],
-  string
->;
 // 住所の区画の段（backendの語彙の`area`）で当たった住所は、その範囲の代表の位置にすぎず、行きたい所から離れうる。
 const AREA_LEVELS: ReadonlySet<PlaceCandidate["level"]> = new Set(
   vocabulary.placeMatchLevels.filter((l) => l.area).map((l) => l.key),
@@ -66,8 +56,13 @@ export default function PlaceCandidates({ lookup, renderCandidate }: PlaceCandid
   );
 }
 
-/** 候補1件の中身（名前・辺り・`near`からの距離・種類と当たった段の札）。 */
-export function CandidateLabel({ candidate, near }: { candidate: PlaceCandidate; near: Coordinates }) {
+/** 候補までの、`near`からの直線距離（0.1km 単位）。 */
+export function distanceText(near: Coordinates, candidate: PlaceCandidate): string {
+  return `${haversineKm(near, candidate).toFixed(1)}km`;
+}
+
+/** 候補1件の中身（名前・辺り・`near`からの距離）。 */
+function CandidateLabel({ candidate, near }: { candidate: PlaceCandidate; near: Coordinates }) {
   return (
     <>
       <span className="min-w-0 flex-auto truncate">
@@ -77,9 +72,7 @@ export function CandidateLabel({ candidate, near }: { candidate: PlaceCandidate;
           <span className={cn("ml-1.5", textVariants({ variant: "note" }))}>{candidate.area}</span>
         )}
       </span>
-      <span className="flex-none tabular-nums">{haversineKm(near, candidate).toFixed(1)}km</span>
-      <Badge>{KIND_LABELS[candidate.kind]}</Badge>
-      <Badge variant="outline">{LEVEL_LABELS[candidate.level]}</Badge>
+      <span className="flex-none tabular-nums">{distanceText(near, candidate)}</span>
     </>
   );
 }

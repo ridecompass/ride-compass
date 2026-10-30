@@ -149,7 +149,7 @@ describe("地図に置く地点", () => {
       "目的地: 浅草寺",
     ],
   ] as const)(
-    "地点の並びで%sを押し、詳しくの探すボタンを押すと上端の欄がその役割で開き、探した候補をその役割のボタンだけで地図に立てる",
+    "地点の並びで%sを押し、詳しくの探すボタンを押すと上端の欄がその役割で開き、探した候補をその役割の札で地図に立てる",
     async (title, chipOf, placeLabel, placed) => {
       onBackend("GET", "/api/place-search", () => Response.json({ candidates: [SENSOJI] }));
       const { user } = renderHome();
@@ -160,11 +160,6 @@ describe("地図に置く地点", () => {
       expect(searchBox).toHaveFocus();
       await user.type(searchBox, "浅草寺{Enter}");
       const list = await screen.findByRole("list", { name: "地点の候補" });
-      expect(
-        within(list)
-          .getAllByRole("button", { name: /にする$|に足す$|を置き直す$/ })
-          .map((button) => button.textContent),
-      ).toEqual([placeLabel]);
       await user.click(within(list).getByRole("button", { name: placeLabel }));
 
       expect(marksAt(SENSOJI)).toHaveLength(1);
@@ -233,8 +228,6 @@ describe("地図に置く地点", () => {
     await user.click(candidatePoints()[1].element);
     expect(pressed()).toEqual(["false", "true"]);
     expect(within(list).getByRole("button", { name: /雷門/ })).toHaveAttribute("aria-pressed", "true");
-    // 上端の欄から探したら、出発地・経由地・目的地のどれにも置ける（周回の間は目的地に置けない）。
-    expect(within(list).getByRole("button", { name: "目的地にする" })).toBeDisabled();
     await user.click(within(list).getByRole("button", { name: "経由地に足す" }));
 
     expect(candidatePoints()).toEqual([]);
@@ -242,7 +235,7 @@ describe("地図に置く地点", () => {
     expect(screen.getByRole("button", { name: "経由地1: 雷門" })).toBeInTheDocument();
   });
 
-  it("スマホで探すと下のシートを閉じて候補を下の札で見せ、札を送ると札の候補の点を強調し、点を押すとその札へ送り、札のボタンで置く", async () => {
+  it("スマホで探すと、シートを開いていれば札をシートの地点の並びの下に、閉じていれば地図の下に出し、札を送ると札の候補の点を強調し、点を押すとその札へ送り、札の地点の並びで置いてもシートの開き閉じを変えない", async () => {
     useMobileLayout();
     onBackend("GET", "/api/place-search", () => Response.json({ candidates: [SENSOJI, KAMINARIMON] }));
     const { user } = renderHome();
@@ -250,9 +243,9 @@ describe("地図に置く地点", () => {
     await user.click(screen.getByRole("button", { name: "周回", pressed: true }));
 
     await user.type(screen.getByRole("searchbox", { name: "出発地を住所・施設で探す" }), "浅草{Enter}");
-    const card = await screen.findByRole("region", { name: "探した候補" });
+    const sheet = screen.getByRole("dialog", { name: "ルート設定" });
+    const card = await within(sheet).findByRole("region", { name: "探した候補" });
     const pressed = () => candidatePoints().map(({ element }) => element.getAttribute("aria-pressed"));
-    expect(screen.queryByRole("dialog", { name: "ルート設定" })).toBeNull();
     expect(card).toHaveTextContent("1 / 2: 浅草寺");
     expect(pressed()).toEqual(["true", "false"]);
 
@@ -264,7 +257,15 @@ describe("地図に置く地点", () => {
     await user.click(within(card).getByRole("button", { name: "目的地にする" }));
     expect(candidatePoints()).toEqual([]);
     expect(marksAt(SENSOJI)).toHaveLength(1);
-    expect(screen.getByRole("button", { name: "目的地: 浅草寺" })).toBeInTheDocument();
+    expect(within(sheet).getByRole("button", { name: "目的地: 浅草寺" })).toBeInTheDocument();
+
+    await user.click(within(sheet).getByRole("button", { name: "閉じる" }));
+    await user.type(screen.getByRole("searchbox", { name: "目的地を住所・施設で探す" }), "雷門{Enter}");
+    const floating = await screen.findByRole("region", { name: "探した候補" });
+    expect(screen.queryByRole("dialog", { name: "ルート設定" })).toBeNull();
+    await user.click(within(floating).getByRole("button", { name: "経由地に足す" }));
+    expect(screen.queryByRole("dialog", { name: "ルート設定" })).toBeNull();
+    expect(marksAt(SENSOJI)).toHaveLength(2);
   });
 
   it("周回にすると置いた目的地を地図にも地点の並びにも出さず、地図を押しても目的地にせず、周回を外すとその目的地が戻る", async () => {

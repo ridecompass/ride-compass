@@ -1,10 +1,10 @@
 /**
  * `PlaceSearch/PlaceSearchBar.tsx`——地図の上端の、地点を住所・施設で探す欄。打つ欄は住所・施設の名前を入れて、地図の真ん中を添えて
- * 引き、候補（表示名・施設の辺り・地図の真ん中からの直線距離・種類・当たった段）を欄の下に並べ、選んだ候補を上げる。打ちかけでも、
+ * 引き、候補（表示名・施設の辺り・地図の真ん中からの直線距離）を欄の下に並べ、選んだ候補を上げる。打ちかけでも、
  * 決まった文字数から、打つのが止まると引く（かな漢字の変換中は引かない）。文字数に足りなくなると候補を下げる。引いたあとに地図を
- * 動かしても引き直さない。引けないとき・当たらないときはそう出す。打つ欄を押すと保存した地点を出し、打った文字を名前に含むものに
+ * 動かしても引き直さず、虫眼鏡を押すとその時の地図の真ん中で引き直す。引けないとき・当たらないときはそう出す。打つ欄を押すと保存した地点を出し、打った文字を名前に含むものに
  * 絞り、選んだ地点を上げる。住所・施設の候補か履歴を選ぶと履歴に残し、次に欄を押すと保存した地点の下に新しい順に出し、打った文字で
- * 絞り、1件ずつ消せる。✕・Escape で閉じると打った文字を消す。探す（Enter）と、候補に番号を付け、デスクトップは押した行を選んで置くボタンを
+ * 絞り、1件ずつ消せる。✕・Escape で閉じると打った文字を消す。探す（Enter・虫眼鏡）と、候補に番号を付け、デスクトップは押した行を選んで置くボタンを
  * 出し、スマホは下の札で1件ずつ見せて左右に送り、札のボタンで置く。
  *
  * ここで見ないもの:
@@ -25,7 +25,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { usePlaceLookup } from "@/features/route/PlaceSearch/usePlaceLookup";
-import { newPlacings } from "@/features/route/pointNames";
+import { newPlacings, placeLabelOf } from "@/features/route/pointNames";
 import type { SavedPlace } from "@/features/route/savedPlaces";
 import { SAVED_PLACES_STORAGE_KEY, useSavedPlaces } from "@/features/route/useSavedPlaces";
 
@@ -72,11 +72,18 @@ function renderSearch({ mapCenter = TOKYO_STATION, isMobile = false } = {}) {
       full={false}
       mapCenter={center}
       onChoose={onChoose}
-      placings={newPlacings({ waypointsFull: false, loop: false })}
+      // 置く先のボタンは包む側が渡す（地点の並びの札は`app/page.places.test.tsx`が見る）。
+      placeTo={(place) =>
+        newPlacings({ waypointsFull: false, loop: false }).map(({ target }) => (
+          <button key={target.role} type="button" onClick={() => place(target)}>
+            {placeLabelOf(target)}
+          </button>
+        ))
+      }
       onPlace={onPlace}
       onSearch={() => {}}
-      onClose={() => {}}
       isMobile={isMobile}
+      cardIn="map"
       inputRef={inputRef}
     />
   );
@@ -104,7 +111,7 @@ async function searchFor(text: string) {
 }
 
 describe("PlaceSearchBar 打つ欄", () => {
-  it("探すとキーボードを閉じ、住所・施設の候補に番号と地図の真ん中からの距離・種類・当たった段（施設は辺りも）を付けて並べ、押した行を選んで置くボタンで上げる", async () => {
+  it("探すとキーボードを閉じ、住所・施設の候補に番号と地図の真ん中からの距離（施設は辺りも）を付けて並べ、押した行を選んで置くボタンで上げる", async () => {
     const sent = onBackend("GET", "/api/place-search", () => Response.json({ candidates: [AZA, FACILITY] }));
     const { onPlace } = renderSearch();
 
@@ -115,8 +122,8 @@ describe("PlaceSearchBar 打つ欄", () => {
     expect(sent.map((request) => request.query)).toEqual([{ q: "丸の内", ...sentCenter(TOKYO_STATION) }]);
     const rows = () => within(list).getAllByRole("button", { name: /km/ });
     expect(rows().map((row) => row.textContent)).toEqual([
-      `1${AZA.name}0.4km住所字・丁目`,
-      `2${FACILITY.name}${FACILITY.area}4.6km施設地点`,
+      `1${AZA.name}0.4km`,
+      `2${FACILITY.name}${FACILITY.area}4.6km`,
     ]);
     // 先頭の候補を選んでいる。
     expect(rows().map((row) => row.getAttribute("aria-pressed"))).toEqual(["true", "false"]);
@@ -214,7 +221,7 @@ describe("PlaceSearchBar 打つ欄", () => {
     expect(sent.map((request) => request.query)).toEqual([{ q: "丸の内", ...sentCenter(TOKYO_STATION) }]);
   });
 
-  it("引いたときの地図の真ん中から並べて距離を出し、引いたあとに地図を動かしても引き直さない", async () => {
+  it("引いたときの地図の真ん中から並べて距離を出し、引いたあとに地図を動かしても引き直さず、虫眼鏡を押すとその地図の真ん中で引き直す", async () => {
     const sent = onBackend("GET", "/api/place-search", () => Response.json({ candidates: [FACILITY] }));
     const { moveMap } = renderSearch();
 
@@ -226,6 +233,11 @@ describe("PlaceSearchBar 打つ欄", () => {
     await waitPastLookUpDelay();
     expect(sent.map((request) => request.query)).toEqual([{ q: "浅草寺", ...sentCenter(NEAR_SENSOJI) }]);
     expect(within(list).getByRole("button", { name: /km/ })).toHaveTextContent(`${FACILITY.name}${FACILITY.area}0.2km`);
+
+    await userEvent.click(screen.getByRole("button", { name: "探す" }));
+    await vi.waitFor(() => expect(sent).toHaveLength(2));
+    expect(sent[1].query).toEqual({ q: "浅草寺", ...sentCenter(TOKYO_STATION) });
+    expect(searchBox()).not.toHaveFocus();
   });
 
   it("同じ文字・同じ地図の真ん中で押し直すと引き直す（地図が動いて真ん中を作り直しても、位置が同じなら同じ真ん中）", async () => {
