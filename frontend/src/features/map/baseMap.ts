@@ -42,6 +42,8 @@ export function createBaseMap({
     clickTolerance: TAP_TOLERANCE_PX,
     // ダブルタップ（ダブルクリック）では拡大しない。拡大するなら、タップで小窓を開く前に、2回目が来ないと確かめる待ちが要る。
     doubleClickZoom: false,
+    // 基礎地図の文字は薄れさせずに出し入れする。薄れる間は地図全体を描き直し続け、ずらすたびにその分だけ操作が重くなる。
+    fadeDuration: 0,
     // 常に使うデータの出典は、どのレイヤーを出しているかと関係なく出す（宣言はbackend）。
     interactive: !inset,
     attributionControl: inset ? false : { compact: true, customAttribution: [...mapDisplay.alwaysShownAttributions] },
