@@ -109,7 +109,7 @@ Tailwindのユーティリティで書く。CSS Modulesは使わない（CSSの�
   属性で切り替えると、状態を見た目のために二重に持たない。親の状態で子を変えるときは`group`/`group-data-*`、
   祖先の属性で変えるときは`in-data-*`を使う。
 - 狭い画面だけの違いは`max-mobile:`（`--breakpoint-mobile`から導かれる）。
-- 押して動く部品（`Button`等）は、使い方の文を`usage`で受け取り
+- 押して動く部品（`Button`等）は、使い方の文を省けない引数`usage`で受け取り
   `data-usage`へ書く（[ページ全体構成](page-composition.md)「使い方の説明」）。
 - 部品の構造の目印が要るとき（テストが兄弟関係を見る等）は`data-slot`（shadcn/uiの慣習）を付ける。
 

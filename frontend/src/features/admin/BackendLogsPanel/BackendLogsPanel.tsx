@@ -94,7 +94,7 @@ export default function BackendLogsPanel() {
           className="w-24"
           aria-label="件数"
         />
-        <Button onClick={handleFetch} disabled={fetchLogs.isPending}>
+        <Button usage={null} onClick={handleFetch} disabled={fetchLogs.isPending}>
           {fetchLogs.isPending ? "取得中…" : "取得"}
         </Button>
       </div>
@@ -107,7 +107,7 @@ export default function BackendLogsPanel() {
           {/* 行ごとのdivを1件ずつドラッグ選択するのは手間なため、表示中の全行を
               まとめてクリップボードへコピーするボタンを用意する。 */}
           <div className="flex justify-end">
-            <Button variant="secondary" onClick={() => copy(lines.join("\n"))}>
+            <Button usage={null} variant="secondary" onClick={() => copy(lines.join("\n"))}>
               <CopyIcon size={14} />
               {copied ? "ログ全体をコピーしました" : "ログ全体をコピー"}
             </Button>

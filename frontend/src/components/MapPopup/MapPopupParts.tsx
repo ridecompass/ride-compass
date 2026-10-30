@@ -98,6 +98,7 @@ export function FacilityRows({
                 href={facility.mapUrl}
                 target="_blank"
                 rel="noopener noreferrer"
+                data-usage="この施設を、別のタブの地図で開きます。"
                 className="text-[var(--foreground)] underline"
               >
                 {facility.name}

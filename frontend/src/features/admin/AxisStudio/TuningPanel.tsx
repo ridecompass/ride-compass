@@ -143,6 +143,7 @@ export default function TuningPanel() {
         </span>
         {parameters && (
           <Button
+            usage={null}
             variant="primary"
             onClick={() => save.mutate(edited.map((parameter) => ({ parameter, next: drafts[parameter.id]! })))}
             disabled={save.isPending || edited.length === 0}
@@ -158,7 +159,7 @@ export default function TuningPanel() {
         <p className={cn(textVariants({ variant: "error" }), "flex flex-wrap items-center gap-2")}>
           {error}
           {parameters === null && (
-            <Button className="flex-none" size="sm" onClick={() => void query.refetch()}>
+            <Button usage={null} className="flex-none" size="sm" onClick={() => void query.refetch()}>
               読み込み直す
             </Button>
           )}

@@ -68,12 +68,14 @@ export default function DebugConsole({ open, onClose }: DebugConsoleProps) {
             onChange={(e) => setMinLevel(e.target.value as DebugLogLevel)}
             className="px-1 py-0.5 text-[length:var(--font-size-xs)]"
             aria-label="表示するログレベルの下限"
+            data-usage="出すログの重さの下限を選びます。下限より軽いログは隠れます。"
           >
             <option value="info">すべて</option>
             <option value="warn">警告以上</option>
             <option value="error">エラーのみ</option>
           </Select>
           <Button
+            usage="絞り込んで出ている行を、文字としてコピーします。"
             size="xs"
             // コピーするのは絞り込んで画面に出ている行だけ（絞って見つけた数行を渡せるように）。
             onClick={() => copy(visibleEntries.map(entryText).join("\n"))}
@@ -82,7 +84,7 @@ export default function DebugConsole({ open, onClose }: DebugConsoleProps) {
           >
             <CopyIcon size={14} />
           </Button>
-          <Button size="xs" onClick={clearDebugLog}>
+          <Button usage="これまでのログをすべて消します。" size="xs" onClick={clearDebugLog}>
             クリア
           </Button>
         </>

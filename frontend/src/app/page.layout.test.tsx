@@ -5,7 +5,7 @@
  * 開いたダイヤルで地図を回して北へ戻す。なぞる途中で閉じたら回さない）と拡大・縮小、地図を読み込み中の覆いが上限の時間で外れること、層の取得状態の数え直しと
  * 再描画の失敗の案内、区分の開閉の保存、左下の俯瞰図（気象の層を出して寄せると出て、道路を消した下地に同じ気象の層を描き、引くと消え、畳んだことを覚える）、
  * ヘッダーの「未取得」に並ぶ出所と「現在地に移動」の失敗、「現在地に移動」が出発地を変えずに地図を寄せて現在地に点を
- * 出すこと、メニューから入る使い方の説明（生成前の画面の「中を見る」で開いた浮きパネルの中の部品がどれも使い方の文を持つこと）とデバッグログ。
+ * 出すこと、メニューから入る使い方の説明とデバッグログ。
  *
  * ここで見ないもの: スマホの下部タブとシートは`app/page.mobile.test.tsx`が見る。
  *
@@ -28,14 +28,7 @@ import {
   section,
   serveHome,
   showRoadSurface,
-  useMobileLayout,
 } from "@/testing/homePage";
-import {
-  USAGE_OPENS_ATTRIBUTE,
-  USAGE_PART_SELECTOR,
-  isInUsageGuide,
-  usageTargetOf,
-} from "@/components/UsageGuide/usageTarget";
 import { LAYER_DATA_STATUS_LABELS } from "@/features/map/layers/mapLayers";
 import { LIBERTY_POI_LAYERS } from "@/testing/libertyPoiLayers";
 import { insetMapOnScreen, mapOnScreen } from "@/testing/maplibre";
@@ -313,45 +306,5 @@ describe("画面の枠", () => {
     expect(screen.getByText(/^デバッグログ\[/)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /^デバッグログ\[.*を閉じる$/ }));
     expect(screen.queryByText(/^デバッグログ\[/)).toBeNull();
-  });
-
-  // 浮きパネルの中の部品に文が無いと、説明を見る状態で押しても「説明はまだありません」と名前しか出ず、使い方を読めない。
-  it.each([
-    ["PC", () => {}],
-    ["スマホ", useMobileLayout],
-  ])("%s の生成前の画面で、「中を見る」で開いた浮きパネルの中の部品はどれも使い方の文を出す", async (_, layout) => {
-    layout();
-    const { user } = renderHome();
-    const enter = async () => {
-      await user.click(screen.getByRole("button", { name: "メニュー" }));
-      await user.click(screen.getByRole("button", { name: "使い方を見る" }));
-    };
-    await enter();
-    const outsideGuide = (element: Element) => !isInUsageGuide(element);
-    const openers = [...document.querySelectorAll(`[${USAGE_OPENS_ATTRIBUTE}]`)].filter(outsideGuide);
-    // 部品の集め方が空振りすると、何も見ずに通る。
-    expect(openers.length).toBeGreaterThan(3);
-
-    const missing: string[] = [];
-    let inside = 0;
-    for (const opener of openers) {
-      await user.click(opener);
-      await user.click(screen.getByRole("button", { name: "中を見る" }));
-      const opened = document.getElementById(opener.getAttribute("aria-controls") ?? "");
-      expect(opened).not.toBeNull();
-      const parts = [...opened!.querySelectorAll(USAGE_PART_SELECTOR)].filter(outsideGuide);
-      inside += parts.length;
-      // 部品を1つずつ押すと時間の上限を超えるので、説明の面が押された部品から文を引くのと同じ`usageTargetOf`で引く
-      // （文が無いときの「説明はまだありません」は`components/UsageGuide/UsageGuide.test.tsx`が見る）。
-      for (const part of parts) {
-        if (!usageTargetOf(part)?.usage)
-          missing.push(`${opener.getAttribute("aria-label") || opener.textContent} の中の ${part.textContent}`);
-      }
-      await user.click(screen.getByRole("button", { name: "やめる" }));
-      await user.keyboard("{Escape}");
-      await enter();
-    }
-    expect(inside).toBeGreaterThan(3);
-    expect(missing).toEqual([]);
   });
 });

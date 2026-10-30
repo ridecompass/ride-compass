@@ -85,7 +85,7 @@ export function BoundaryField({ boundary }: { boundary: BoundaryDraft }) {
 export function AutoBoundaryButton({ boundary }: { boundary: BoundaryDraft }) {
   if (boundary.thresholds === null) return null;
   return (
-    <Button size="sm" className="self-start" onClick={() => boundary.setList(null)}>
+    <Button usage={null} size="sm" className="self-start" onClick={() => boundary.setList(null)}>
       境界を自動に戻す
     </Button>
   );
@@ -127,10 +127,10 @@ export function SaveControls({
     <>
       {saveError && <p className={textVariants({ variant: "error" })}>{saveError}</p>}
       <div className="flex flex-wrap gap-2">
-        <Button size="sm" onClick={save} disabled={!changed || !valid || saving}>
+        <Button usage={null} size="sm" onClick={save} disabled={!changed || !valid || saving}>
           {saving ? "保存中…" : "保存する"}
         </Button>
-        <Button size="sm" onClick={onRevert} disabled={!changed || saving}>
+        <Button usage={null} size="sm" onClick={onRevert} disabled={!changed || saving}>
           元に戻す
         </Button>
       </div>

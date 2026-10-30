@@ -198,16 +198,11 @@ export default function RideConditionBar({
             }}
             className="h-8 tabular-nums"
           />
-          <div
-            className="contents"
-            data-usage="目盛りをなぞって出発時刻を選びます。‹ › で1つずつ動かし、「現在」で今の時刻に合わせ続ける状態へ戻します。刻みを切り替えると今の時刻へ戻ります。"
-          >
-            <DepartureRuler
-              departureTime={departureTime}
-              onDepartureTimeChange={onDepartureTimeChange}
-              onDepartureNow={onDepartureNow}
-            />
-          </div>
+          <DepartureRuler
+            departureTime={departureTime}
+            onDepartureTimeChange={onDepartureTimeChange}
+            onDepartureNow={onDepartureNow}
+          />
         </PopoverContent>
       </Popover>
 

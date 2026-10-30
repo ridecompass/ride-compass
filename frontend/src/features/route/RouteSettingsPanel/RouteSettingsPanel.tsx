@@ -178,7 +178,13 @@ export default function RouteSettingsPanel({
           role="status"
         >
           <span>{`${catalogFailure.label}を取得できませんでした。${catalogFailure.effect}`}</span>
-          <Button variant="warning" size="panelIcon" aria-label="再試行" onClick={retryAxisCatalogFetch}>
+          <Button
+            usage="取れなかった評価軸の一覧を、もう一度取りに行きます。"
+            variant="warning"
+            size="panelIcon"
+            aria-label="再試行"
+            onClick={retryAxisCatalogFetch}
+          >
             <RetryIcon />
           </Button>
         </p>

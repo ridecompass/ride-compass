@@ -63,6 +63,7 @@ export default function SavedPlacesPanel({ places, waypointsFull, loop, onRecall
             >
               {newPlacings({ waypointsFull, loop }).map(({ target, disabled }) => (
                 <Button
+                  usage="保存した地点を、この役で地図に置きます。"
                   key={target.role}
                   variant="menu"
                   size="sm"

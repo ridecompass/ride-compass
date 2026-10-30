@@ -108,11 +108,17 @@ export default function FloatingPanel({
           <div className="flex items-center gap-2">
             {headerButtons}
             {closeLabel ? (
-              <Button size="xs" onClick={onClose}>
+              <Button usage="このパネルを閉じます。" size="xs" onClick={onClose}>
                 {closeLabel}
               </Button>
             ) : (
-              <Button variant="ghost" size="xs" onClick={onClose} aria-label={`${title}を閉じる`}>
+              <Button
+                usage="このパネルを閉じます。"
+                variant="ghost"
+                size="xs"
+                onClick={onClose}
+                aria-label={`${title}を閉じる`}
+              >
                 ✕
               </Button>
             )}

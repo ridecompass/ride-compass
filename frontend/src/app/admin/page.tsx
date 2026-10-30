@@ -36,11 +36,21 @@ export default function AdminPage() {
 
       <Tabs className="flex flex-col gap-3" defaultValue="axisStudio">
         <TabsList>
-          <TabsTrigger value="axisStudio">軸スタジオ</TabsTrigger>
-          <TabsTrigger value="materials">材料</TabsTrigger>
-          <TabsTrigger value="tuning">較正値</TabsTrigger>
-          <TabsTrigger value="maintenance">データ保守</TabsTrigger>
-          <TabsTrigger value="developer">開発者</TabsTrigger>
+          <TabsTrigger usage={null} value="axisStudio">
+            軸スタジオ
+          </TabsTrigger>
+          <TabsTrigger usage={null} value="materials">
+            材料
+          </TabsTrigger>
+          <TabsTrigger usage={null} value="tuning">
+            較正値
+          </TabsTrigger>
+          <TabsTrigger usage={null} value="maintenance">
+            データ保守
+          </TabsTrigger>
+          <TabsTrigger usage={null} value="developer">
+            開発者
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent className={TAB_PANEL_CLASS} value="axisStudio">
@@ -66,6 +76,7 @@ export default function AdminPage() {
             <div className="inline-flex items-center gap-2">
               <DebugPanel />
               <Toggle
+                usage={null}
                 variant="plain"
                 className={buttonVariants({ size: "sm" })}
                 pressed={systemStatusOpen}

@@ -227,11 +227,15 @@ function RoadAttributeRows({
   for (const row of tagged.rows) if (!rows.some((shown) => shown.label === row.label)) rows.push(row);
   return (
     <details className="border-t border-[var(--color-border)] pt-1 [&_summary]:cursor-pointer">
-      <summary className={hintClass}>この道の属性</summary>
+      <summary className={hintClass} data-usage="この道の属性の一覧を開きます。">
+        この道の属性
+      </summary>
       <FactList rows={rows} />
       {tagged.raw.length > 0 && (
         <details>
-          <summary className={hintClass}>その他のタグ</summary>
+          <summary className={hintClass} data-usage="上に並べていない、この道のタグを開きます。">
+            その他のタグ
+          </summary>
           <FactList rows={tagged.raw} />
         </details>
       )}

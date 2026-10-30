@@ -34,7 +34,7 @@ interface RulerProps {
   /** 置き場の並べ方（幅・`touch-action`等）。 */
   className?: string;
   /** 長押しで出す使い方の説明。 */
-  usage?: string;
+  usage: string | null;
 }
 
 // 可変幅のコマ・ホイールの横スクロール・離した位置への吸着はEmblaが持ち、コマの中心を左端の目印へ合わせる。
@@ -120,7 +120,7 @@ export default function Ruler({
       aria-valuemax={frames.length - 1}
       aria-valuenow={index}
       aria-valuetext={frames[index].label}
-      data-usage={usage}
+      data-usage={usage ?? undefined}
     >
       <div className="flex h-full">
         {frames.map((f, i) => (

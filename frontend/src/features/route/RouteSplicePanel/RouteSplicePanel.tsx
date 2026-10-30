@@ -103,6 +103,7 @@ export default function RouteSplicePanel({
       {/* 狭いスマホの幅では、右の操作をまとめて次の行の右端へ折り返す。 */}
       <div className="flex flex-wrap items-center gap-x-1 gap-y-1.5">
         <Button
+          usage="区間の乗り換えの編集をやめて、候補へ戻ります。"
           variant="ghost"
           size="bare"
           className="-ml-2 px-0.5 text-[15px]"

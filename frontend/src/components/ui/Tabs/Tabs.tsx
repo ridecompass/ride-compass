@@ -69,7 +69,7 @@ export const TabsList = forwardRef<HTMLDivElement, TabsListProps>(function TabsL
 
 interface TabsTriggerProps extends React.ComponentPropsWithoutRef<typeof RadixTabs.Trigger> {
   /** 使い方の文（`Button`の`usage`と同じ）。 */
-  usage?: string;
+  usage: string | null;
 }
 
 export const TabsTrigger = forwardRef<HTMLButtonElement, TabsTriggerProps>(function TabsTrigger(
@@ -81,7 +81,7 @@ export const TabsTrigger = forwardRef<HTMLButtonElement, TabsTriggerProps>(funct
     <RadixTabs.Trigger
       ref={ref}
       className={cn(triggerVariants({ variant }), className)}
-      data-usage={usage}
+      data-usage={usage ?? undefined}
       {...props}
     />
   );
