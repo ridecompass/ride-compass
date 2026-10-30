@@ -26,7 +26,7 @@ from app.domain.axis_definitions import BreakpointLinearShape, MaterialTerm, cop
 from app.domain.cycling_speed import RiderProfile, SegmentSpeedModel, crr_for_surface
 from app.domain.difficulty import axis_weight_shares
 from app.domain.evaluation import DensityAxisColumn, StaticEdgeScoreMatrix
-from app.domain.leg_costs import LegCostComposer, LegValues
+from app.domain.leg_costs import LegCostArrays, LegCostComposer, LegValues
 from app.domain.msm import MsmBlock, MsmGrid
 from app.domain.road_avoidance import RoadAvoidanceMasks
 from app.domain.route import Coordinates
@@ -128,6 +128,13 @@ def _snapshot(matrix, **kwargs):
     return _composer(matrix, **kwargs).compose("leg", 0.0, +1)
 
 
+def _shown(matrix, **kwargs) -> tuple[LegCostArrays, LegValues]:
+    """`_snapshot`のレグと、その全区間の表示の値（区間の表示と同じく、レグのビンの時刻で合成し直したもの）。"""
+    composer = _composer(matrix, **kwargs)
+    leg = composer.compose("leg", 0.0, +1)
+    return leg, composer.values_at_rows(np.arange(len(matrix.distance_m)), leg.bin_times[0])
+
+
 def _shares(values: LegValues, rows) -> list[dict[str, float]]:
     """`values`の行`rows`の、データのある軸の重みの割合。"""
     return axis_weight_shares(
@@ -206,9 +213,9 @@ def test_the_cost_is_the_travel_time_raised_by_the_weighted_difficulty(wind_axis
     matrix = _matrix(2, axes={"axis_a": 20.0, "axis_b": 80.0, WIND_AXIS: np.nan})
     weights = {"axis_a": 1.0, "axis_b": 3.0, WIND_AXIS: wind_weight}
 
-    leg = _snapshot(matrix, weights=weights, penalty=0.5, series=_series([0.0, 0.0]))
+    leg, shown = _shown(matrix, weights=weights, penalty=0.5, series=_series([0.0, 0.0]))
 
-    assert leg.values.difficulty_array.tolist() == [difficulty, difficulty]
+    assert shown.difficulty_array.tolist() == [difficulty, difficulty]
     assert leg.cost_lazy == pytest.approx(leg.travel_seconds_lazy * (1 + 0.5 * difficulty / 100))
 
 
@@ -220,10 +227,10 @@ def test_the_cost_is_the_travel_time_raised_by_the_weighted_difficulty(wind_axis
 def test_a_segment_without_data_on_the_weighted_axes_is_raised_by_the_mean_difficulty_around_it(matrix, axis):
     """重みのある軸がどれも欠損の区間は、探索の範囲の距離平均のdifficultyで割増す（割増なしだとデータの無い道ほど
     安く見えて選ばれる）。表示のdifficultyは欠損のまま。密度の軸も、回数の無い区間は足す秒を持たずに割増だけを受ける。"""
-    leg = _snapshot(matrix, weights={axis: 1.0}, penalty=0.5)
+    leg, shown = _shown(matrix, weights={axis: 1.0}, penalty=0.5)
 
-    assert np.isnan(leg.values.difficulty_array[1])
-    assert leg.cost_lazy[1] == pytest.approx(leg.travel_seconds_lazy[1] * (1 + 0.5 * leg.values.difficulty_array[0] / 100))
+    assert np.isnan(shown.difficulty_array[1])
+    assert leg.cost_lazy[1] == pytest.approx(leg.travel_seconds_lazy[1] * (1 + 0.5 * shown.difficulty_array[0] / 100))
 
 
 
@@ -261,21 +268,21 @@ def test_a_density_axis_costs_the_same_along_a_route_however_its_road_is_cut(win
 def test_an_axis_that_reads_the_wind_scores_a_headwind_above_a_tailwind(wind_axis):
     matrix = _matrix(2, bearing=[NORTH, SOUTH], axes={WIND_AXIS: np.nan})
 
-    leg = _snapshot(matrix, weights={WIND_AXIS: 1.0}, departure_wind=_departure_wind(5.0, from_deg=NORTH))
+    _leg, shown = _shown(matrix, weights={WIND_AXIS: 1.0}, departure_wind=_departure_wind(5.0, from_deg=NORTH))
 
-    assert leg.values.axis_arrays[WIND_AXIS][0] > leg.values.axis_arrays[WIND_AXIS][1]
-    assert leg.values.material_arrays[WIND_DRAG][0] > 0 > leg.values.material_arrays[WIND_DRAG][1]
+    assert shown.axis_arrays[WIND_AXIS][0] > shown.axis_arrays[WIND_AXIS][1]
+    assert shown.material_arrays[WIND_DRAG][0] > 0 > shown.material_arrays[WIND_DRAG][1]
 
 
 def test_without_any_wind_the_wind_has_no_value_on_a_segment(wind_axis):
-    leg = _snapshot(_matrix(1, axes={WIND_AXIS: np.nan}), weights={WIND_AXIS: 1.0})
+    _leg, shown = _shown(_matrix(1, axes={WIND_AXIS: np.nan}), weights={WIND_AXIS: 1.0})
 
-    assert WIND_DRAG not in leg.values.material_arrays
-    assert np.isnan(leg.values.axis_arrays[WIND_AXIS][0])
+    assert WIND_DRAG not in shown.material_arrays
+    assert np.isnan(shown.axis_arrays[WIND_AXIS][0])
 
 
 def test_the_values_shown_on_a_segment_are_the_columns_of_their_own_ids():
-    leg = _snapshot(_matrix(
+    leg, shown = _shown(_matrix(
         2,
         raw_axes={"axis_a": [1.0, 2.0], "axis_b": [3.0, 4.0]},
         materials={"material_a": [5.0, np.nan], "material_b": [7.0, 8.0]},
@@ -283,12 +290,12 @@ def test_the_values_shown_on_a_segment_are_the_columns_of_their_own_ids():
     ))
 
     assert leg.axis_raw_arrays["axis_b"].tolist() == [3.0, 4.0]
-    assert leg.values.material_arrays["material_b"].tolist() == [7.0, 8.0]
+    assert shown.material_arrays["material_b"].tolist() == [7.0, 8.0]
     assert leg.categorical_material_arrays["category_a"].value_at(1) == "y"
-    assert leg.values.material_arrays["material_a"][0] == 5.0
+    assert shown.material_arrays["material_a"][0] == 5.0
     # 欠損と、合成に無い材料は値を持たない。
-    assert np.isnan(leg.values.material_arrays["material_a"][1])
-    assert "material_z" not in leg.values.material_arrays
+    assert np.isnan(shown.material_arrays["material_a"][1])
+    assert "material_z" not in shown.material_arrays
 
 
 # --- 探索の行順 ---------------------------------------------------------------
@@ -319,7 +326,7 @@ def test_without_an_hourly_forecast_every_leg_shares_one_composition():
     inbound = composer.compose("inbound", 2.0, -1, duration_hours=3.0)
 
     assert inbound is outbound
-    assert (len(outbound.cost_bins_lazy), outbound.bin_seconds, outbound.bin_times) == (1, np.inf, ())
+    assert (len(outbound.cost_bins_lazy), outbound.bin_seconds) == (1, np.inf)
 
 
 @pytest.mark.parametrize(
@@ -395,7 +402,7 @@ def test_a_tree_without_a_clock_reads_the_wind_at_each_segment_s_own_passage():
     leg = composer.compose("inbound", 3.0, -1, passage_hours=passage)
 
     assert leg.travel_seconds_lazy[1] > leg.travel_seconds_lazy[0]
-    assert (len(leg.cost_bins_lazy), leg.bin_times) == (1, ())
+    assert len(leg.cost_bins_lazy) == len(leg.bin_times) == 1
 
 
 def test_trees_without_a_clock_that_pass_at_different_hours_are_not_mixed_up():
@@ -411,7 +418,8 @@ def test_trees_without_a_clock_that_pass_at_different_hours_are_not_mixed_up():
 
 @pytest.mark.parametrize("wind_weight", [0.0, 1.0])
 def test_values_recomposed_for_the_rows_on_the_route_match_the_composition_used_by_the_search(wind_axis, wind_weight):
-    """表示は経路上の行だけをその時刻で合成し直す。探索が使った合成と同じ値になる（探索コストと表示の一致）。"""
+    """表示は経路上の行だけをその時刻で合成し直す。全区間で合成した値の同じ行と同じで、探索の費用の割増と同じ難易度に
+    なる（探索コストと表示の一致）。"""
     matrix = _matrix(
         3, bearing=[NORTH, SOUTH, 90.0], axes={"axis_a": [10.0, 50.0, 90.0], WIND_AXIS: np.nan},
         materials={"material_a": [1.0, 2.0, 3.0]},
@@ -421,14 +429,16 @@ def test_values_recomposed_for_the_rows_on_the_route_match_the_composition_used_
     leg = composer.compose("leg", 1.0, +1)
 
     values = composer.values_at_rows(np.array([2, 0]), leg.bin_times[0])
+    whole = composer.values_at_rows(np.arange(3), leg.bin_times[0])
 
-    assert values.difficulty_array.tolist() == leg.values.difficulty_array[[2, 0]].tolist()
-    assert values.weight_sums.tolist() == leg.values.weight_sums[[2, 0]].tolist()
+    assert leg.cost_lazy[[2, 0]] == pytest.approx(leg.travel_seconds_lazy[[2, 0]] * (1 + 0.5 * values.difficulty_array / 100))
+    assert values.difficulty_array.tolist() == whole.difficulty_array[[2, 0]].tolist()
+    assert values.weight_sums.tolist() == whole.weight_sums[[2, 0]].tolist()
     assert {a: v.tolist() for a, v in values.axis_arrays.items()} == {
-        a: v[[2, 0]].tolist() for a, v in leg.values.axis_arrays.items()}
+        a: v[[2, 0]].tolist() for a, v in whole.axis_arrays.items()}
     assert {m: v.tolist() for m, v in values.material_arrays.items()} == {
-        m: v[[2, 0]].tolist() for m, v in leg.values.material_arrays.items()}
-    assert _shares(values, np.arange(2)) == _shares(leg.values, np.array([2, 0]))
+        m: v[[2, 0]].tolist() for m, v in whole.material_arrays.items()}
+    assert _shares(values, np.arange(2)) == _shares(whole, np.array([2, 0]))
 
 
 # --- 昼夜 -----------------------------------------------------------------------

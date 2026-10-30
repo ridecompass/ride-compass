@@ -102,11 +102,11 @@ def evaluate_axes_inputs(materials: Mapping[str, Sequence[object]], length: int)
     inputs: dict[str, list[object]] = {}
     for axis_id in published:
         shape = AXIS_DEFINITIONS[axis_id].shape
-        raw = evaluations[axis_id].raw
-        if raw is not None:
+        if isinstance(shape, BreakpointLinearShape):
+            raw = evaluations[axis_id].raw
+            assert raw is not None  # 公開軸は生値も求めて評価している（`raw_axis_ids`）
             inputs[axis_id] = list(_scores_or_none(raw))
         else:
-            assert not isinstance(shape, BreakpointLinearShape)
             column = with_axes[shape.material]
             assert isinstance(column, np.ndarray)  # Pythonの値の入口は分類の番号の列を作らない
             inputs[axis_id] = [None if isinstance(v, float) and math.isnan(v) else v for v in column.tolist()]

@@ -187,8 +187,8 @@ def slice_network(
 
 class _SliceMaterials(Mapping[str, MaterialColumn]):
     """切り出した区間の材料id→列。列は読まれたときに1度だけ切り出す——読む材料を先に並べると、並べ忘れた材料が
-    黙って値の無い列になる。数値と分類の材料は、それぞれ区間の行を1度だけまとめて引いてから、読まれた列を連続した配列へ
-    写す（道路網の材料は区間×列の行列で、生成が読むのはそのほとんどの列のため）。
+    黙って値の無い列になる。数値と分類の材料は、それぞれ区間の行を1度だけまとめて引き、列ごとに値が連続するよう転置して
+    持ち、読まれた列はその行のビューで返す（道路網の材料は区間×列の行列で、生成が読むのはそのほとんどの列のため）。
 
     観測の材料は`observed`の列を返す。道路網にも観測にも無い材料はKeyError（値の無い列で埋めるのは読む側、
     `domain/evaluation.py: build_static_edge_score_matrix`）。
@@ -203,7 +203,7 @@ class _SliceMaterials(Mapping[str, MaterialColumn]):
         self._observed = observed
         self._numeric = {material_id: column for column, material_id in enumerate(network.numeric_ids)}
         self._categorical = {material_id: column for column, material_id in enumerate(network.categorical_ids)}
-        # 行列の名前→切り出した区間の行（`_gathered_column`）。
+        # 行列の名前→切り出した区間の行を転置した「列×区間」の行列（`_gathered_column`）。
         self._gathered: dict[str, np.ndarray] = {}
         self._loaded: dict[str, MaterialColumn] = {}
 
@@ -228,8 +228,8 @@ class _SliceMaterials(Mapping[str, MaterialColumn]):
     def _gathered_column(self, name: str, matrix: np.ndarray, column: int) -> np.ndarray:
         """道路網の区間×列の行列`matrix`（名前`name`）の列`column`を、切り出した区間の順の連続した配列で。"""
         if (gathered := self._gathered.get(name)) is None:
-            gathered = self._gathered[name] = np.asarray(matrix[self._road.rows])
-        return np.ascontiguousarray(gathered[:, column])
+            gathered = self._gathered[name] = np.ascontiguousarray(np.asarray(matrix[self._road.rows]).T)
+        return gathered[column]
 
     def _load(self, material_id: str) -> MaterialColumn | None:
         network = self._road.network

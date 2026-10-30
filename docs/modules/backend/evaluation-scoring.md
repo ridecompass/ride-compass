@@ -218,8 +218,8 @@ bbox全体ぶんのコストをリクエストにつき1回だけnumpyで合成�
   動的軸合成（`evaluate_dynamic_axis_arrays`）もここを通るため、式が乖離しない。
   `DynamicAxisRequestContext`は出発時点の風のスナップショット（`departure_wind`）・走行速度
   （`travel_speed_ms`、m/s。既定値を持たない必須フィールドで、伝播漏れは構築時点で
-  失敗する）に加え、時刻依存の材料向けに時別予報（`wind_series`、格子点ごと）・出発時刻
-  （`start`）・Edgeごとの通過予定時刻（`passage_hours`）と最寄りの格子点（`wind_points`。どちらも
+  失敗する）に加え、時刻依存の材料向けに時別予報（`wind_series`、格子点ごと）・通過する時刻の
+  予報の添字（`forecast_index`。全Edgeが同じ時刻なら数、Edgeごとの時刻なら配列）と最寄りの格子点（`wind_points`。配列は
   `bearing_deg`と同じ行順）を持つ。
   これらが揃えば風の材料はEdgeごとにその時刻の風で求め、揃わなければ
   スナップショットを全Edgeへ一様に使う。風は進行方向の成分と横成分に分けて

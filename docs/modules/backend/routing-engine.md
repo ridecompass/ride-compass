@@ -104,7 +104,7 @@ Edgeコストは「探索範囲の静的な公開軸×Edgeのスコア行列＋�
 使い回す。時刻で変わる公開軸（風に依存する軸と時間帯を持つ軸）の重みがすべて0なら、合成の難易度と割増の倍率・密度の軸の足す秒も
 時刻に依らないので1回だけ求め、ビンのコストは所要時間にその倍率を掛けて秒を足すだけになる（重みが0の軸は合成に何も足さない）。重みが
 あれば、時刻で変わらない軸の重み付き和を1回だけ求め、時刻で変わる軸だけをビンごとに足す（どちらの和も重みが0の軸を読まない）。
-ビンの中身を決めるのは、風の予報が引く時刻と、時間帯を持つ軸に重みがあればその時刻が夜かだけなので、同じ組のビン（`domain/leg_costs.py: BinTime`）はレグの向き・開始時刻が違っても1回だけ合成して使い回す。表示まで読む一式（`domain/leg_costs.py: LegValues`）を持つのはビンが1本のレグだけで、ビンが2本以上のレグは、経路をたどって決めたビンの時刻で経路上の行だけを合成し直す（`domain/leg_costs.py: LegCostComposer.values_at_rows`）。レグのビンの配列は使い回すビンの写しで、帰りの探索がその場で書き換えても、ほかのレグのビンは変わらない。1ビンの中でも、
+ビンの中身を決めるのは、風の予報が引く時刻と、時間帯を持つ軸に重みがあればその時刻が夜かだけなので、同じ組のビン（`domain/leg_costs.py: BinTime`）はレグの向き・開始時刻が違っても1回だけ合成して使い回す。レグは表示の値を持たず、区間の表示（`domain/leg_costs.py: LegValues`）は、経路をたどって決めたビンの時刻（`LegCostArrays.bin_times`）で経路上の行だけを合成し直して読む（`domain/leg_costs.py: LegCostComposer.values_at_rows`）——全区間ぶんの表示の値をレグごとに持つと、区間数×レグ数ぶん膨らむ。区間ごとの通過時刻で合成したレグも、その時刻を区間ごとの配列で持つ同じ形（`BinTime`）で表す。レグのビンの配列は使い回すビンの写しで、帰りの探索がその場で書き換えても、ほかのレグのビンは変わらない。1ビンの中でも、
 予報の引き当てと風の分解（方位との差の三角関数）は、風の材料と走行モデルが同じ値を読む
 （`DynamicAxisRequestContext.wind_components_ms`）。合成結果`LegCostArrays`は`cost_lazy`（区間の番号順）と表示用の
 `difficulty_array`/`axis_arrays`/`weight_sums`/`material_arrays`（動的材料id→
@@ -495,7 +495,7 @@ INFOサマリの`rain_hour=none`で分かる。雨を読む軸だけがその生
 NaN）へ動的軸（風、`domain/dynamic_materials.py: evaluate_dynamic_axis_arrays`。材料id→evaluator
 関数の登録制`DYNAMIC_MATERIAL_EVALUATORS`で軸名をハードコードしない汎用実装）と重み
 ベクトルを適用し、`compose_costs_from_axis_matrix`でコスト配列を1回だけ合成する。合成結果はレグ（往路/復路）ごとに`LegCostArrays`
-（`cost_lazy`[区間の番号順]と、ビンが1本のレグは表示の値`values`[切り出した区間の順]）へ
+（`cost_lazy`[区間の番号順]と、各ビンの時刻`bin_times`）へ
 まとまり、`RoadGraphContext.legs`が保持する（下記「レグ別コスト配列」節）。並行Edge
 （同一Node間の複数Edge）は、`build_lazy_road_graph`が元の行（切り出した区間の順＝道路網全体の行の昇順）が
 最も小さい1本を採る決定的な規則で解消する——コストはリクエストごとに変わるため、トポロジを組む時点では
@@ -741,8 +741,8 @@ segments構築はEdge単位の軽量な計算のため並行化してよい。�
 **区間を通る時刻**で昼夜を判定し、夜間軸の重みを区間ごとに決める——市民薄明の外（夜間）に通る区間では
 重みをそのまま、日中に通る区間では0倍にする。通る時刻は風と同じもの（上記「レグ内の時刻ビン」: ビンの
 開始時刻、目的地から遡る木は区間ごとの通過時刻、スナップショットは出発時刻）で、合成器が
-`_evaluate`の中で`domain/twilight.py: night_mask`と`domain/axis_definitions.py: time_scoped_weights`から
-区間ごとの重みの配列を作る（時間帯を持つ軸に重みがあるときだけ。無ければ昼夜は合成に効かないので、夜の判定を作らない）。`time_scoped_weights`が`AxisDefinition.time_scope`を持つ軸を汎用的に判定するため、
+時刻の入力（`domain/leg_costs.py: BinTime`）を作るときに`domain/twilight.py: night_mask`で夜かを決め、`_evaluate`の中で
+`domain/axis_definitions.py: time_scoped_weights`から重み（全区間が同じ時刻なら数、区間ごとの時刻なら配列）を作る（時間帯を持つ軸に重みがあるときだけ。無ければ昼夜は合成に効かないので、夜の判定を作らない）。`time_scoped_weights`が`AxisDefinition.time_scope`を持つ軸を汎用的に判定するため、
 軸idのハードコードは無い。探索のコストと区間の表示（合成difficulty・寄与度）は同じ重みの配列を読むので、
 日没をまたぐルートでは日没前の区間には夜間軸が寄与せず、日没後の区間には寄与する。
 

@@ -204,9 +204,10 @@ def time_binned_leg(travel_bins, bin_seconds):
     """`route_passages`が読む秒の列とビンの幅だけを持つレグ。ほかの列は区間の表示が読むもので、ここでは空。"""
     travel_bins = np.asarray(travel_bins, dtype=float)
     return LegCostArrays(
-        cost_lazy=travel_bins[0], travel_seconds_lazy=travel_bins[0], values=None,
+        cost_lazy=travel_bins[0], travel_seconds_lazy=travel_bins[0],
         axis_raw_arrays={}, density_axes={}, categorical_material_arrays={},
         cost_bins_lazy=travel_bins, travel_bins_lazy=travel_bins, bin_seconds=bin_seconds,
+        bin_times=(), missing_axis_edges=0, missing_axis_distance_m=0.0,
     )
 
 

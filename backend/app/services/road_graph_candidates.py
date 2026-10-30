@@ -95,15 +95,14 @@ async def evaluate_routes(
 
 @dataclass(frozen=True, slots=True)
 class _RowRead:
-    """経路の区間のうち、同じ値の組から読む区間。時刻で変わる値（難易度・軸・材料）は、探索がその区間に使った
-    ビンの値で、ビンが1本のレグはレグの表示の値、2本以上のレグは経路上の行だけをそのビンの時刻で合成し直した値
-    （`domain/leg_costs.py: LegCostComposer.values_for`）。時刻で変わらない値（密度の軸の横軸・生値・分類の材料）はレグの配列から読む。"""
+    """経路の区間のうち、同じ値の組から読む区間。時刻で変わる値（難易度・軸・材料）は、探索がその区間に使ったビンの時刻で
+    経路上の行だけを合成し直した値（`domain/leg_costs.py: LegCostComposer.values_at_rows`、`indices`と同じ並び）。時刻で
+    変わらない値（密度の軸の横軸・生値・分類の材料）はレグの配列から読む。"""
 
     values: LegValues
     leg: LegCostArrays
-    # 経路の中の区間の添字と、同じ並びの`values`の行・切り出した区間の順の行。
+    # 経路の中の区間の添字と、同じ並びの切り出した区間の順の行。
     indices: list[int]
-    value_rows: np.ndarray
     rows: np.ndarray
 
 
@@ -121,8 +120,8 @@ def _row_reads(
     for (leg_index, time_bin), indices in groups.items():
         leg = context.legs[leg_index]
         group_rows = np.array([rows[i] for i in indices], dtype=np.int64)
-        values, value_rows = context.composer.values_for(leg, group_rows, time_bin)
-        reads.append(_RowRead(values, leg, indices, value_rows, group_rows))
+        values = context.composer.values_at_rows(group_rows, leg.bin_times[time_bin])
+        reads.append(_RowRead(values, leg, indices, group_rows))
     return reads
 
 
@@ -136,43 +135,45 @@ def _per_segment(reads: list[_RowRead], count: int, values_of: Callable[[_RowRea
     return cast(list[_T], placed)
 
 
-def _present_at(columns: Mapping[str, list], position: int) -> dict:
-    """鍵→区間ごとの値の列から、区間`position`の値のある鍵だけ（NaN・Noneは値が無い）。"""
-    return {
-        key: column[position] for key, column in columns.items()
-        if column[position] is not None and not (isinstance(column[position], float) and math.isnan(column[position]))
-    }
+def _present_rows(columns: Mapping[str, list], count: int) -> list[dict]:
+    """鍵→`count`区間ぶんの値の列から、区間ごとの、値のある鍵だけの辞書（NaN・Noneは値が無い。NaNは自分と等しくない）。"""
+    keys = list(columns)
+    rows = zip(*columns.values()) if keys else [()] * count
+    return [{key: value for key, value in zip(keys, row) if value is not None and value == value} for row in rows]
 
 
-def _segment_difficulties(reads: list[_RowRead], distances_km: list[float]) -> list[SegmentDifficulty]:
-    """区間ごとの難しさの値（合成の難しさ・軸の得点・寄与度・密度の軸の横軸の値）。
+def _segment_difficulties(
+    reads: list[_RowRead], distances_km: list[float], rounded_km: list[float]
+) -> list[SegmentDifficulty]:
+    """区間ごとの難しさの値（合成の難しさ・軸の得点・寄与度・密度の軸の横軸の値）。`distances_km`は丸めない区間の距離、
+    `rounded_km`は応答の桁へ丸めた距離（`_Orientation.distances_km`）。
 
-    探索が使った合成済みの配列（`context.legs`、区間の番号から行を引く）からそのまま読み、探索コストと表示を一致させる。
+    探索が使ったビンの時刻で合成し直した値（`_RowRead.values`）を読み、探索コストと表示を一致させる。
     """
     def of(read: _RowRead) -> list[SegmentDifficulty]:
-        values, rows = read.values, read.value_rows
-        scores = {axis_id: arr[rows] for axis_id, arr in values.axis_arrays.items()}
-        weights = {axis_id: w[rows] if isinstance(w, np.ndarray) else w for axis_id, w in values.weights.items()}
-        # 密度の軸は、ビンと候補で得点を作り直すために横軸の値を載せる（点数と同じ区間が欠損になる）。
-        shares = axis_weight_shares(scores, weights, values.weight_sums[rows])
-        score_lists = {axis_id: score.tolist() for axis_id, score in scores.items()}
+        values, count = read.values, len(read.indices)
+        shares = axis_weight_shares(values.axis_arrays, values.weights, values.weight_sums)
+        score_lists = {axis_id: score.tolist() for axis_id, score in values.axis_arrays.items()}
         contributions = axis_contributions(score_lists, shares)
-        composite = values.difficulty_array[rows].tolist()
+        composite = values.difficulty_array.tolist()
+        # 密度の軸は、ビンと候補で得点を作り直すために横軸の値を載せる（点数と同じ区間が欠損になる）。
         density = {axis_id: column.inputs[read.rows].tolist() for axis_id, column in read.leg.density_axes.items()}
         difficulties = []
-        for position, index in enumerate(read.indices):
+        for position, (index, scores, inputs) in enumerate(
+            zip(read.indices, _present_rows(score_lists, count), _present_rows(density, count))
+        ):
             distance_km = distances_km[index]
             difficulties.append(SegmentDifficulty(
-                distance_km=round(distance_km, DISTANCE_KM_DECIMALS),
+                distance_km=rounded_km[index],
                 difficulty=None if math.isnan(composite[position]) else composite[position],
-                axis_difficulties=_present_at(score_lists, position),
+                axis_difficulties=scores,
                 axis_contributions=contributions[position],
                 density_inputs={
                     axis_id: DensityScoreInput(
                         value=value, distance_km=distance_km, weight_share=shares[position].get(axis_id),
                         shape=read.leg.density_axes[axis_id].shape,
                     )
-                    for axis_id, value in _present_at(density, position).items()
+                    for axis_id, value in inputs.items()
                 },
             ))
         return difficulties
@@ -193,6 +194,8 @@ class _Orientation:
     entries: list[int | None]
     passages: list[EdgePassage]
     reads: list[_RowRead]
+    # 区間の距離を応答の桁へ丸めた値（km）。区間の難しさと区間の器が同じ値を持ち、ビンの切り方が揃う。
+    distances_km: list[float]
     # ビンの難しさ（`domain/route.py: route_bins`）。向きの比べとビンの組み立てが同じ値を読む。
     bins: list[SegmentDifficulty]
 
@@ -212,8 +215,12 @@ def _orientation(
         [edge.distance_m for edge in edges_in_path], leg_of_edge, context.composer.speed_kmh,
     )
     reads = _row_reads(context, rows, leg_of_edge, passages)
-    bins = route_bins(_segment_difficulties(reads, [edge.distance_m / 1000 for edge in edges_in_path]))
-    return _Orientation(edges_in_path, path, leg_of_edge, waypoint_offsets, rows, entries, passages, reads, bins)
+    distances_km = [edge.distance_m / 1000 for edge in edges_in_path]
+    rounded_km = [round(distance_km, DISTANCE_KM_DECIMALS) for distance_km in distances_km]
+    bins = route_bins(_segment_difficulties(reads, distances_km, rounded_km))
+    return _Orientation(
+        edges_in_path, path, leg_of_edge, waypoint_offsets, rows, entries, passages, reads, rounded_km, bins
+    )
 
 
 def _build_best_candidate(
@@ -342,11 +349,11 @@ def _build_segment_details(
 
     def materials_of(read: _RowRead) -> list[dict[str, float]]:
         columns = {
-            material_id: array[read.value_rows].astype(float).tolist()
+            material_id: array.astype(float).tolist()
             for material_id in active_material_ids
             if (array := read.values.material_arrays.get(material_id)) is not None
         }
-        return [_present_at(columns, position) for position in range(len(read.indices))]
+        return _present_rows(columns, len(read.indices))
 
     def categories_of(read: _RowRead) -> list[dict[str, str]]:
         columns = {
@@ -354,12 +361,12 @@ def _build_segment_details(
             for material_id, column in read.leg.categorical_material_arrays.items()
             if material_id in active_material_ids
         }
-        return [_present_at(columns, position) for position in range(len(read.indices))]
+        return _present_rows(columns, len(read.indices))
 
     def raw_values_of(read: _RowRead) -> list[dict[str, float]]:
         # 折れ点を通す前の生値。静的スコア行列が持つ列をそのまま読む（動的材料を参照する軸は行列側で除外済み）。
         columns = {axis_id: arr[read.rows].tolist() for axis_id, arr in read.leg.axis_raw_arrays.items()}
-        return [_present_at(columns, position) for position in range(len(read.indices))]
+        return _present_rows(columns, len(read.indices))
 
     material_values = _per_segment(orientation.reads, count, materials_of)
     segment_categories = _per_segment(orientation.reads, count, categories_of)
@@ -368,7 +375,7 @@ def _build_segment_details(
     segments = []
     road_classes = SegmentClassReader.of(context.road)
     for index, (edge, row) in enumerate(zip(orientation.edges, orientation.rows)):
-        rounded_km = round(edge.distance_m / 1000, DISTANCE_KM_DECIMALS)
+        rounded_km = orientation.distances_km[index]
         elevation_attr = elevation_by_edge.get(edge.edge_id)
 
         gradient_percent = elevation_attr.average_grade if elevation_attr else None

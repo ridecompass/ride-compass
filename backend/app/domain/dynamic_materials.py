@@ -5,7 +5,6 @@ Edgeへ永続保存せず、リクエストのたびに風・走行速度・通�
 更新の頻度も違うため、評価本体（`domain/evaluation.py`）から分けてある。
 """
 
-from datetime import datetime
 from dataclasses import dataclass
 from functools import cached_property
 from typing import Callable, Mapping
@@ -32,29 +31,21 @@ class DynamicAxisRequestContext:
     # 走行速度（m/s、リクエスト単位）。既定値を置かないのは、走行速度に依存する材料へ
     # 伝播漏れがあったとき既定値で黙って計算せず、構築時点で失敗させるため。
     travel_speed_ms: float
-    # 時刻依存の材料向け: 格子点ごとの時別予報系列と、各Edgeの通過予定時刻（`start`からの経過
-    # 時間[h]、`bearing_deg`と同じ行順）と、各Edgeに最も近い格子点の番号（同じ行順）。4つとも揃っていれば
-    # Edgeごとに通過予定時刻の値を引き、揃っていなければ`departure_wind`（出発時点のスナップショット）を全Edgeへ一様に使う。
+    # 時刻依存の材料向け: 格子点ごとの時別予報系列と、通過する時刻の予報の添字（`WindForecastSeries.time_index`。全Edgeが
+    # 同じ時刻なら数、Edgeごとの時刻なら`bearing_deg`と同じ行順の配列）と、各Edgeに最も近い格子点の番号（同じ行順）。3つとも
+    # 揃っていればEdgeごとにその時刻の値を引き、揃っていなければ`departure_wind`（出発時点のスナップショット）を全Edgeへ一様に使う。
     wind_series: WindForecastSeries | None
-    start: datetime | None
-    passage_hours: np.ndarray | None
+    forecast_index: int | np.ndarray | None
     wind_points: np.ndarray | None
-    # 全Edgeが同じ時刻を通るときの、その時刻の予報の添字（`WindForecastSeries.time_index`）。あれば`passage_hours`の代わりに読む。
-    forecast_index: int | None = None
 
     @cached_property
     def wind_components_ms(self) -> tuple[np.ndarray, np.ndarray] | None:
-        """各Edgeの進行方向に対する風の成分（正が向かい風）と横成分（`wind_components`）。時別系列と通過予定時刻が
+        """各Edgeの進行方向に対する風の成分（正が向かい風）と横成分（`wind_components`）。時別系列と時刻の添字が
         揃っていればEdgeごとにその時刻の風、揃っていなければ出発時点のスナップショットの風で求める。風が無ければNone。
 
         風の材料と走行モデルが同じ値を読むため、予報の引き当てと三角関数はcontext1つにつき1回にする。"""
         if self.wind_series is not None and self.wind_points is not None and self.forecast_index is not None:
             speed, direction = self.wind_series.sample_at(self.forecast_index, self.wind_points)
-        elif (
-            self.wind_series is not None and self.start is not None and self.passage_hours is not None
-            and self.wind_points is not None
-        ):
-            speed, direction = self.wind_series.sample(self.start, self.passage_hours, self.wind_points)
         elif self.departure_wind is not None:
             speed = np.asarray(self.departure_wind.speed_ms, dtype=float)
             direction = np.asarray(self.departure_wind.direction_deg, dtype=float)

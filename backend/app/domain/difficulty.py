@@ -184,7 +184,7 @@ def axis_weight_shares(
 
 
 def axis_contributions(
-    scores: Mapping[str, Sequence[float]], shares: Sequence[Mapping[str, float]]
+    scores: Mapping[str, Sequence[float] | np.ndarray], shares: Sequence[Mapping[str, float]]
 ) -> list[dict[str, float]]:
     """区間ごとの軸別寄与度（データのある軸の`得点 × 重みの割合`）。`scores`は軸→区間ごとの得点、`shares`は同じ並びの
     `axis_weight_shares`。
@@ -212,9 +212,7 @@ def composite_difficulty(
         axis_id: np.array([np.nan if score is None else score], dtype=float) for axis_id, score in scores.items()
     }
     composite, weight_sums = composite_difficulty_array(axis_arrays, weights, 1)
-    at_row = axis_contributions(
-        {axis_id: arr.tolist() for axis_id, arr in axis_arrays.items()}, axis_weight_shares(axis_arrays, weights, weight_sums)
-    )[0]
+    at_row = axis_contributions(axis_arrays, axis_weight_shares(axis_arrays, weights, weight_sums))[0]
     value = float(composite[0])
     contributions = {axis_id: None if axis_id not in at_row else round_difficulty(at_row[axis_id]) for axis_id in scores}
     return (None if math.isnan(value) else value), contributions

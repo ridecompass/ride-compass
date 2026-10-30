@@ -124,8 +124,6 @@ _BBOX_MARGIN_MIN_KM = 2.0
 logger = logging.getLogger("ridecompass.graph")
 
 
-
-
 def _static_score_matrix(
     road: RoadSlice, rain: StationRainMaterials | None, steps_ms: dict[str, int]
 ) -> StaticEdgeScoreMatrix:
@@ -289,11 +287,7 @@ class RoadGraphEngine:
         cost_ms = elapsed_ms(cost_started)
         # 重み付き軸がすべてNaNのEdge比率（探索コストはbbox内平均difficultyで補完される。
         # 実際の発生頻度を把握するためのサマリ）。
-        outbound_values, _rows = composer.values_for(outbound, np.arange(len(composer.distance_m)), 0)
-        missing_axis_mask = np.isnan(outbound_values.difficulty_array)
-        missing_axis_distance_ratio = float(
-            score_matrix.distance_m[missing_axis_mask].sum() / float(score_matrix.distance_m.sum())
-        )
+        missing_axis_distance_ratio = outbound.missing_axis_distance_m / float(score_matrix.distance_m.sum())
 
         total_ms = elapsed_ms(stage_started)
         logger.info(
@@ -305,7 +299,7 @@ class RoadGraphEngine:
             "none" if rain is None else rain.latest_hour.strftime("%Y-%m-%dT%H"),
             composer.time_varying, self._assumed_speed_kmh, composer.detour_ratio,
             "learned" if learned_detour_ratio is not None else "default",
-            int(missing_axis_mask.sum()), missing_axis_distance_ratio,
+            outbound.missing_axis_edges, missing_axis_distance_ratio,
         )
 
         return _SearchGraph(

@@ -221,7 +221,6 @@ def empty_material_column(material_id: str, n: int) -> MaterialColumn | None:
     return np.full(n, np.nan)  # numeric・boolean（真偽も数値の行列と同じく1.0/0.0/NaNで持つ）
 
 
-
 class AxisComposition(NamedTuple):
     """`compose_costs_from_axis_matrix`の戻り値。区間ごとの費用は`所要時間 × multiplier + added_seconds`
     （ビンの仕上げのJIT、`domain/leg_costs.py: _bin_costs`が求める）。"""
@@ -234,43 +233,27 @@ class AxisComposition(NamedTuple):
     # 区間ごとの「データのある軸の重みの合計」。軸別寄与度（`difficulty.py: axis_weight_shares`）の分母。
     weight_sums: np.ndarray
 
-    def take(self, rows: np.ndarray) -> "AxisComposition":
-        """行`rows`だけの合成（区間ごとに独立に求めるので、全体の合成から取り出しても同じ値）。"""
-        return AxisComposition(*(values[rows] for values in self))
-
 
 class DensityCost(NamedTuple):
-    """密度の軸1本の、探索の費用で回数の足し算として持つ分（`compose_costs_from_axis_matrix`の`density`）。"""
+    """密度の軸の、探索の費用で回数の足し算として持つ分。軸1本ぶん（`density_costs`）と、それを重みで足した和（`density_sums`、
+    `compose_costs_from_axis_matrix`の`density`）の両方を表す。"""
 
     # 区間ごとの軸の点数（欠損=NaN）。合成の分母（重みの和）には入れ、割増の倍率からは外す。
     scores: np.ndarray
     # 区間ごとの、傾き × 回数 × 想定速度で1km走る秒（点数×秒）。`scores`と同じ区間が欠損になる。
     score_seconds: np.ndarray
 
-    def take(self, rows: np.ndarray) -> "DensityCost":
-        return DensityCost(self.scores[rows], self.score_seconds[rows])
-
-
-class DensitySums(NamedTuple):
-    """密度の軸の`DensityCost`を重みで足した和（`density_sums`）。合成（`compose_costs_from_axis_matrix`）が読む。"""
-
-    scores: np.ndarray
-    score_seconds: np.ndarray
-
-    def take(self, rows: np.ndarray) -> "DensitySums":
-        return DensitySums(self.scores[rows], self.score_seconds[rows])
-
 
 def density_sums(
     density: Mapping[str, DensityCost], weights: Mapping[str, float | np.ndarray], n: int
-) -> DensitySums | None:
+) -> DensityCost | None:
     """密度の軸ごとの`DensityCost`を、重みで足した和。密度の軸が無ければNone。重みが時刻で変わらなければ、時刻ビンの外で
     1度だけ求めて使い回す（`domain/leg_costs.py: LegCostComposer`）。"""
     if not density:
         return None
     scores, _ = axis_weighted_sums({a: d.scores for a, d in density.items()}, weights, n)
     score_seconds, _ = axis_weighted_sums({a: d.score_seconds for a, d in density.items()}, weights, n)
-    return DensitySums(scores, score_seconds)
+    return DensityCost(scores, score_seconds)
 
 
 def compose_costs_from_axis_matrix(
@@ -280,7 +263,7 @@ def compose_costs_from_axis_matrix(
     penalty_strength: float,
     *,
     static_sums: tuple[np.ndarray, np.ndarray] | None = None,
-    density: DensitySums | None,
+    density: DensityCost | None,
 ) -> AxisComposition:
     """`build_static_edge_score_matrix`/`evaluate_dynamic_axis_arrays`が求めた軸別
     スコア配列群から、重み付き合成のcost・composite difficulty配列を求める。

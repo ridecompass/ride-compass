@@ -49,7 +49,6 @@ HARD_FILTERS: dict[str, HardFilter] = {
 }
 
 
-
 def hard_filtered(columns: Mapping[str, MaterialColumn], n: int) -> np.ndarray:
     """区間ごとに、0次ハードフィルタのどれかに当たるか。"""
     return conditions_match([c for spec in HARD_FILTERS.values() for c in spec.conditions], columns, n)

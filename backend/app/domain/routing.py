@@ -62,13 +62,18 @@ def largest_strongly_connected_nodes(csr: CsrGraphStructure, passable: np.ndarra
     Nodeどうしの行き来はターンを展開しても変わらない。この集まりの中のNodeからは、集まりの中のどのNodeへも
     経路があり、集まりの外のNodeへ寄せた点は、出られないか戻れない。
     """
-    component = _strong_components(
-        kernel_array(csr.indptr, np.int64), kernel_array(csr.indices, np.int64),
-        kernel_array(np.asarray(passable)[csr.entry_edge_index], np.bool_),
-    )
+    component = _strong_components(*_passable_csr(csr, passable))
     if len(component) == 0:
         return np.zeros(0, dtype=bool)
     return component == int(np.argmax(np.bincount(component)))
+
+
+def _passable_csr(csr: CsrGraphStructure, passable: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """JITへ渡す、CSRの行の始まり・遷移先と、遷移ごとに通れるか（`passable`は区間ごと）。型は`kernel_array`で揃える。"""
+    return (
+        kernel_array(csr.indptr, np.int64), kernel_array(csr.indices, np.int64),
+        kernel_array(np.asarray(passable)[csr.entry_edge_index], np.bool_),
+    )
 
 
 @njit(cache=True, nogil=True)
@@ -147,9 +152,7 @@ def nodes_reached_without_retracing(
     外す理由にしない。
     """
     return _retrace_free_nodes(
-        kernel_array(csr.indptr, np.int64), kernel_array(csr.indices, np.int64),
-        kernel_array(np.asarray(passable)[csr.entry_edge_index], np.bool_), kernel_array(accessible, np.bool_),
-        kernel_array(terminals, np.int64),
+        *_passable_csr(csr, passable), kernel_array(accessible, np.bool_), kernel_array(terminals, np.int64),
     )
 
 
@@ -340,7 +343,6 @@ def _retrace_free_nodes(
 # 探索の優先度キュー（numpy配列のバイナリヒープ）。順位のキー・状態・積んだ時点のコスト`g`の列と、
 # `g`の列を使うか。`g`の列を使わないヒープはキーそのものを`g`として扱う。
 Heap = tuple[np.ndarray, np.ndarray, np.ndarray, bool]
-
 
 
 @njit(cache=True, inline="always")

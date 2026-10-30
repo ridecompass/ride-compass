@@ -72,7 +72,6 @@ def _pool_note(selected: int, pool_size: int) -> str:
     return f"pool={pool_size}" + (f" pool_unfilled={shortfall}" if shortfall > 0 else "")
 
 
-
 def _label(
     drafts: list[RouteDraft],
     kind: RouteKind,

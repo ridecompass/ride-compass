@@ -72,7 +72,6 @@ class DensityScoreInput:
         return self.shape.score_at(self.value)
 
 
-
 @dataclass(frozen=True, slots=True)
 class SegmentDifficulty:
     """区間・ビンの難しさの値（`RouteSegmentDetail`の同名の欄と、密度の軸の横軸の値）。難しさを畳む関数はこれだけを読む。
@@ -476,8 +475,7 @@ class RouteValues(NamedTuple):
 def _bin_difficulty(segment: RouteSegmentDetail) -> SegmentDifficulty:
     """ビン（`_merge_segment_bin`が組んだ区間）の難しさの値。"""
     return SegmentDifficulty(
-        distance_km=segment.distance_km, difficulty=segment.difficulty, axis_difficulties=segment.axis_difficulties,
-        axis_contributions=segment.axis_contributions, density_inputs=segment.density_inputs,
+        **{name: getattr(segment, name) for name in _BIN_DIFFICULTY_FIELDS}, density_inputs=segment.density_inputs
     )
 
 
