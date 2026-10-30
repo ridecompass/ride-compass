@@ -36,6 +36,11 @@ description: "テストを3つの層（backend・frontend の単体テストと 
 
 ### 2. 単体テストの測りを起こす
 
+全部の測りは毎月定時にも起きる（下の「定期の測りから起きた消すタスク」）。直近の定時の測り（`gh run list -R ridecompass/ride-compass
+--workflow <ワークフロー> --event schedule -L 1 --json databaseId,headSha,conclusion`）が成功で、測った版から見直したいテストが
+変わっていなければ、起こさずにその実行を 3 の待ち終えたものとして読む。その重なりの候補は定時の測りが起こした消すタスクが持つので、
+6 で消す子にしない。
+
     gh workflow run mutation.yml -R ridecompass/ride-compass --ref master -f ref=master -f issue=<記録する issue の番号>
     gh workflow run mutation-frontend.yml -R ridecompass/ride-compass --ref master -f ref=master -f issue=<記録する issue の番号>
 
@@ -175,3 +180,32 @@ testing.md の2問目（その答えはモジュールの外——利用者の�
 3. 記録する issue の完了の条件の済んだ行にチェックを付ける（全部済めばゲートが閉じる）。
    子の行は記録する issue に無い（子の本文にある）。ユーザーが確かめる行は残り、子が全部閉じるとゲートがユーザーに確かめを問う。終えたら持ちを手放す（dev-session「持つ」）。
 4. ユーザーへ報告する: 層ごと・観点ごとの数・決めたもの・起こした子とタスク・止めたならその理由。
+
+## 定期の測りから起きた消すタスク
+
+導く原則: 1・4・5。
+
+単体テストの変異テストの全部の測りは、毎月定時に起きる（backend は1日、frontend は2日の 02:23（日本時間）。.claude/skills/run-checks/SKILL.md
+「変異テストでテストの効きを測る」）。測り終えて重なりの候補があれば、測りの review の段が、種類が保守の「テストの重なりを消す（<層>、<年月> の定期の測りから）」を
+起こす（本文は `backend/scripts/mutation/cleanup_issue.py` が書く）。重なりの候補はユーザーに問わずに消すもの（.claude/rules/testing-review.md「重なり」）なので、
+このタスクの担当は、この節だけで始めから Pull Request まで進める。効き・書き方・隔離・e2e は、このタスクでは見ない（上の「テストの見直しを回す」が持つ）。
+
+1. **測りの見直しを取る**: 本文の背景にある実行の id と成果物の名前で、作業ツリーの外へ取る。
+
+       gh run download <実行の id> -R ridecompass/ride-compass -n <mutation-review か mutation-frontend-review> -D /tmp/review
+
+   `review.json` の `candidates.overlap` が候補（テスト・行数・高さ・`mutant`・`kept_test`・`previous`）、`report.json` が表。
+   候補は測った版（`measured`）のもので、master が進んで消えた・動いたテストは飛ばす。
+2. **分けるか決める**: 候補の `lines` の和が約600行を超えるなら、上の 6 の「消す子」のとおり、このタスクを親にしてテストのファイルの並びで子に分け、
+   子ごとに表と確かめを書いて、このタスクは子を待つ親にする（.claude/skills/file-issue/SKILL.md「分ける」）。600行までなら、このタスクで次へ進む。
+3. **1本ずつ読んで消す**: 上の 6 の「消す子」の確かめの 1〜3 のとおり。testing-review.md「重なり」の3に当たると分かって残したものは、
+   残した理由を Pull Request の本文に1行ずつ書く。`previous` の印が付いた候補（前の測りでも候補で中身が同じ）は、前の定期の消すタスクで
+   読んで残したものでありうる。そのタスクの Pull Request に残した理由があり、テストが変わっていなければ、同じ理由で残してよい。
+4. **検知率の前後を出す**: 消したテスト関数を、`review.json` の `test` の綴りのまま1行に1つ書いたファイルを作業ツリーの外に作り、
+   `backend/scripts/mutation/` で次を打つ。
+
+       python score.py /tmp/review/report.json <消したテスト関数の一覧>
+
+   消したあとの検知率は、消したテストだけが見つけていた変異を生き残りに数えた見積もりで、測り直した値ではない。
+5. **Pull Request の本文の検証に書く**: 6 の「消す子」の確かめの 4 に加えて、消したテスト関数の数と行数、4 の出力の1行を書く。ユーザーが
+   見るのはこの2つで、本文の完了の条件の「ユーザーが見た」の行がそれを問う。

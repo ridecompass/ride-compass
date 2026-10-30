@@ -71,3 +71,30 @@ def test_a_class_that_failed_to_collect_is_spread_to_its_tests(tmp_path):
 def test_a_mutmut_name_is_read_with_or_without_the_mutant_suffix(name, expected):
     """mutmut が付ける関数の名前（`app.x.x_f`・`app.x.xǁClsǁmethod`）を、変異の番号が付いても同じに読む。"""
     assert shared.split_name(name) == shared.split_name(f"{name}__mutmut_12") == expected
+
+
+def _report(*mutants):
+    """report.py の形の表。テストは1つのファイルの test_1（パラメータの組2つ）と test_2。"""
+    tests = [{"id": "1", "name": "test_1[a]"}, {"id": "2", "name": "test_1[b]"}, {"id": "3", "name": "test_2"}]
+    return {"testFiles": {"tests/test_a.py": {"tests": tests}},
+            "files": {"app/x.py": {"mutants": [{"status": s, "killedBy": k} for s, k in mutants]}}}
+
+
+@pytest.mark.parametrize(
+    ("status", "killed_by", "expected"),
+    [
+        ("Killed", ["1", "2"], (0, 1)),
+        ("Killed", ["1", "3"], (1, 1)),
+        ("Killed", [], (1, 1)),
+        ("Killed", ["1", "9"], (1, 1)),
+        ("Timeout", [], (1, 1)),
+        ("Survived", [], (0, 1)),
+        ("NoCoverage", [], (0, 0)),
+        ("Pending", [], (0, 0)),
+    ],
+    ids=["消すテストだけが見つける", "残すテストも見つける", "当て直しで落ちた", "一覧に無い名前も落とした", "時間切れ", "生き残り",
+         "どのテストも通らない", "回し終えていない"],
+)
+def test_the_score_after_removing_tests_loses_only_mutants_that_no_kept_test_finds(status, killed_by, expected):
+    """消したテストの抜けを、消したあとの検知率として見せる。数え損なうと、消して見つけられなくなった壊れ方を知らせない。"""
+    assert shared.score(_report((status, killed_by)), {"tests/test_a.py::test_1"}) == expected

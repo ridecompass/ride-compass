@@ -2,9 +2,14 @@
 # 最後まで回して、どのテストが落ちたかを記録し、backend と同じ表の形（Stryker の結果の JSON）と同じ台本で見直しの候補を出す
 # （.claude/rules/testing-review.md「テストを変異テストで見直す」）。Stryker と口の直しは frontend/scripts/mutation/install.sh。
 #
-# - 手で起こす（gh workflow run mutation-frontend.yml、または Actions → Mutation frontend → Run workflow）。測る版と台本は、
-#   起こすときに選んだ ref から読む（台本は frontend/scripts/mutation/ と backend/scripts/mutation/review.py）。測りは入力の issue の
-#   レーンで動き、レーンより多い本は空くまで待つ（レーンは docs/architecture/tech-stack.md「CIの実行枠」）。
+# - 毎月2日の 02:23（日本時間）に定期に起き、手でも起こせる（gh workflow run mutation-frontend.yml、または Actions → Mutation
+#   frontend → Run workflow）。測る版と台本は、手で起こすときは選んだ ref、定期は master の先端から読む（台本は
+#   frontend/scripts/mutation/ と backend/scripts/mutation/review.py）。version が版をコミットに1度だけ決め、どの段もそのコミットを
+#   取り出す（本が始まる時刻は待ちでずれ、ref の名前を本ごとに読むと、本ごとに違う版を測って plan.mjs の分け方がずれる）。
+# - 手で起こした測りは入力の issue のレーン、定期の測りはどの issue にも属さない専用のレーン（鍵 mutation）で動き、レーンより
+#   多い本は空くまで待つ（レーンは docs/architecture/tech-stack.md「CIの実行枠」）。
+# - 定期の測りが全部の本を回し終え、重なりの候補があれば、review が置き場へ候補を消すタスクを起こす
+#   （backend/scripts/mutation/cleanup_issue.py。進め方は .claude/skills/test-review/SKILL.md「定期の測りから起きた消すタスク」）。
 # - 2段で回る:
 #   1. shard（16本）: 書き換えるファイルを行数がそろうように分け（plan.mjs）、1本ずつ別のランナーで Stryker を回す。mutate に
 #      ファイルを渡すと、そのファイルだけを1本で回す（分けない）。
@@ -19,6 +24,10 @@
 name: Mutation frontend
 
 on:
+  schedule:
+    # backend（mutation.yml）の翌日に回し、同時に動けるジョブの枠を取り合わない。毎時0分は混んで遅れるので外す。
+    - cron: "23 2 2 * *"
+      timezone: Asia/Tokyo
   workflow_dispatch:
     inputs:
       issue:
@@ -48,10 +57,26 @@ env:
   SHARDS: 16
 
 jobs:
+  version:
+    concurrency:
+      group: ${{ inputs.issue && format('orch/tasks-{0}', inputs.issue) || 'mutation' }}-lane-1
+      queue: max
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      sha: ${{ steps.sha.outputs.sha }}
+    steps:
+      - id: sha
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REF: ${{ inputs.ref || github.sha }}
+        run: echo "sha=$(gh api "repos/$GITHUB_REPOSITORY/commits/$REF" -q .sha)" >> "$GITHUB_OUTPUT"
+
   shard:
+    needs: version
     if: inputs.compare == '' && inputs.mutate == ''
     concurrency:
-      group: orch/tasks-${{ inputs.issue }}-lane-${{ matrix.lane }}
+      group: ${{ inputs.issue && format('orch/tasks-{0}', inputs.issue) || 'mutation' }}-lane-${{ matrix.lane }}
       queue: max
     runs-on: ubuntu-latest
     timeout-minutes: 340
@@ -82,7 +107,7 @@ jobs:
     steps: &shard-steps
       - uses: actions/checkout@v5
         with:
-          ref: ${{ inputs.ref }}
+          ref: ${{ needs.version.outputs.sha }}
       - uses: actions/setup-node@v5
         with:
           node-version-file: frontend/package.json
@@ -108,9 +133,10 @@ jobs:
 
   # mutate に名指したファイルだけを1本で回す（手順は shard と同じ）。matrix の行を exclude の式で外す形では、本が1本も作られない。
   file:
+    needs: version
     if: inputs.compare == '' && inputs.mutate != ''
     concurrency:
-      group: orch/tasks-${{ inputs.issue }}-lane-${{ matrix.lane }}
+      group: ${{ inputs.issue && format('orch/tasks-{0}', inputs.issue) || 'mutation' }}-lane-${{ matrix.lane }}
       queue: max
     runs-on: ubuntu-latest
     timeout-minutes: 340
@@ -122,10 +148,10 @@ jobs:
     steps: *shard-steps
 
   review:
-    needs: [shard, file]
-    if: ${{ !cancelled() && inputs.compare == '' }}
+    needs: [version, shard, file]
+    if: ${{ !cancelled() && needs.version.result == 'success' && inputs.compare == '' }}
     concurrency:
-      group: orch/tasks-${{ inputs.issue }}-lane-1
+      group: ${{ inputs.issue && format('orch/tasks-{0}', inputs.issue) || 'mutation' }}-lane-1
       queue: max
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -138,7 +164,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ inputs.ref }}
+          ref: ${{ needs.version.outputs.sha }}
       - uses: actions/setup-node@v5
         with:
           node-version-file: frontend/package.json
@@ -181,11 +207,24 @@ jobs:
           path: /tmp/review/
           retention-days: 90
           if-no-files-found: warn
+      # shell を名指すと pipefail が付き、起票が落ちたら tee の成功で隠さずに段を落とす。
+      - name: 重なりの候補を消すタスクを起こす
+        if: github.event_name == 'schedule' && steps.review.outputs.complete == 'true' && needs.shard.result == 'success'
+        shell: bash
+        env:
+          FLOW_BOT_TOKEN: ${{ secrets.FLOW_BOT_TOKEN }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          size=$(cd ../backend/scripts/mutation && python3 cleanup_issue.py frontend /tmp/review "$RUN_URL" /tmp/cleanup.md)
+          if [ -z "$size" ]; then echo "重なりの候補が無いので、消すタスクは起こさない。" >> "$GITHUB_STEP_SUMMARY"; exit 0; fi
+          node ../.claude/skills/file-issue/scripts/new-issue.mjs --type 保守 --body-file /tmp/cleanup.md --size "$size" --priority 低 \
+            --title "テストの重なりを消す（frontend、$(TZ=Asia/Tokyo date +%Y-%m) の定期の測りから）" | tee -a "$GITHUB_STEP_SUMMARY"
 
   compare:
+    needs: version
     if: inputs.compare != ''
     concurrency:
-      group: orch/tasks-${{ inputs.issue }}-lane-1
+      group: ${{ inputs.issue && format('orch/tasks-{0}', inputs.issue) || 'mutation' }}-lane-1
       queue: max
     runs-on: ubuntu-latest
     timeout-minutes: 300
@@ -195,7 +234,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ inputs.ref }}
+          ref: ${{ needs.version.outputs.sha }}
       - uses: actions/setup-node@v5
         with:
           node-version-file: frontend/package.json
