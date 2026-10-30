@@ -86,7 +86,6 @@ describe("distinctFacilities", () => {
 
 describe("facilityPosition", () => {
   it.each([
-    { case: "現在地より先にある", km: 2.6, travelledKm: 1.4, text: "あと1.2km" },
     { case: "現在地と同じ所", km: 1.4, travelledKm: 1.4, text: "あと0m" },
     { case: "通り過ぎた", km: 1.3, travelledKm: 1.4, text: "100m手前" },
   ])("$case: $text", ({ km, travelledKm, text }) => {

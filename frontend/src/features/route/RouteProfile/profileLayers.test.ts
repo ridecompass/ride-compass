@@ -127,23 +127,23 @@ describe("layerValueAtKm", () => {
 });
 
 describe("segmentGrades", () => {
-  it.each<[string, Road[], { mean: number; steepest: number } | null]>([
+  it.each<[string, Road[], { mean: number; steepestClimb: number | null } | null]>([
     [
-      "上り下りの和を長さの和で割った平均と、一番きつい道の勾配。値の無い道は数えない",
+      "上り下りの和を長さの和で割った平均と、一番きつい上り。値の無い道は数えない",
       [
         [10, 20, 0.5],
         [20, 40, 0.5],
         [null, 99, 1],
       ],
-      { mean: 3, steepest: 4 },
+      { mean: 3, steepestClimb: 4 },
     ],
     [
-      "下りの方がきつければ、最大は下りの勾配（負）",
+      "上りの無い区間は、最大を出さない",
       [
         [50, 40, 0.2],
-        [40, 42, 0.8],
+        [40, 38, 0.8],
       ],
-      { mean: -0.8, steepest: -5 },
+      { mean: -1.2, steepestClimb: null },
     ],
     ["値のある道が無ければ出さない", [[null, null, 1]], null],
   ])("%s", (_, roads, grades) => {
@@ -153,8 +153,8 @@ describe("segmentGrades", () => {
       end_elevation_m: end,
     }));
     const found = segmentGrades(makeRouteSegment({ elevations }), elevation);
-    const rounded = found && { mean: Number(found.mean.toFixed(6)), steepest: Number(found.steepest.toFixed(6)) };
-    expect(rounded).toEqual(grades);
+    const round = (value: number | null) => (value === null ? null : Number(value.toFixed(6)));
+    expect(found && { mean: round(found.mean), steepestClimb: round(found.steepestClimb) }).toEqual(grades);
   });
 });
 

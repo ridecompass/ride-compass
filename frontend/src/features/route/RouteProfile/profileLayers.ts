@@ -182,20 +182,23 @@ export function layerValueAtKm(
   return start === null || end === null ? null : start + (end - start) * hit.fraction;
 }
 
-/** 区間の勾配（%）。平均は値のある道の上り下りの和を道の長さの和で割り、最大は値のある道のうち傾きの大きさが一番大きい道の勾配
- * （下りなら負）。値のある道が無ければnull。 */
-export function segmentGrades(segment: LayerSegment, layer: LineLayer): { mean: number; steepest: number } | null {
+/** 区間の勾配（%）。平均は値のある道の上り下りの和を道の長さの和で割り、最大は上りの道のうち一番きつい道の勾配（上りが無ければ
+ * null）。値のある道が無ければnull。 */
+export function segmentGrades(
+  segment: LayerSegment,
+  layer: LineLayer,
+): { mean: number; steepestClimb: number | null } | null {
   let rise = 0;
   let meters = 0;
-  let steepest: number | null = null;
+  let steepestClimb: number | null = null;
   for (const { distance_km, start, end } of layer.draw.stretches(segment)) {
     if (start === null || end === null || distance_km <= 0) continue;
     const grade = ((end - start) / (distance_km * 1000)) * 100;
     rise += end - start;
     meters += distance_km * 1000;
-    if (steepest === null || Math.abs(grade) > Math.abs(steepest)) steepest = grade;
+    if (grade > 0 && (steepestClimb === null || grade > steepestClimb)) steepestClimb = grade;
   }
-  return steepest === null ? null : { mean: (rise / meters) * 100, steepest };
+  return meters === 0 ? null : { mean: (rise / meters) * 100, steepestClimb };
 }
 
 export type BandPiece = { readonly startKm: number; readonly endKm: number; readonly row: RoadTrackRow };

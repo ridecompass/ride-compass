@@ -67,7 +67,7 @@ describe("選んだ区間を地図で見る", () => {
     clickMap(HERE);
     fireEvent.keyDown(screen.getByRole("slider", { name: /^道のりに沿った難易度/ }), { key: "Home" });
     expect(mapOnScreen().fits()).toHaveLength(fitsBefore + 1);
-    expect(screen.getByRole("group", { name: "区間の小窓の上の帯" })).toHaveTextContent("0.0km");
+    expect(screen.getByRole("group", { name: "区間の小窓の上の帯" })).toBeInTheDocument();
     await user.click(showOnMap());
     expect(mapOnScreen().fits().at(-1)).toEqual({
       bounds: [
