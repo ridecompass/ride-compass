@@ -4,9 +4,10 @@ import { useMemo, useRef, useState } from "react";
 import GenerationNotice from "@/features/route/GenerationNotice/GenerationNotice";
 import PlaceSearchBar from "@/features/route/PlaceSearch/PlaceSearchBar";
 import { usePlaceLookup } from "@/features/route/PlaceSearch/usePlaceLookup";
-import { chooseResultOf, newPlacings, pointTitle } from "@/features/route/pointNames";
+import { chooseResultOf, pointTitle } from "@/features/route/pointNames";
 import type { SettingsTab } from "@/features/route/RouteForm/RouteForm";
 import RouteSettingsForm from "@/features/route/RouteForm/RouteSettingsForm";
+import PointStrip from "@/features/route/RouteForm/PointStrip";
 import { useGenerationConditions, waypointsFull } from "@/features/route/useGenerationConditions";
 import { useSavedConditions } from "@/features/route/useSavedConditions";
 import { useSavedPlaces } from "@/features/route/useSavedPlaces";
@@ -73,26 +74,30 @@ export default function Home() {
   // 「ルート設定」のタブ。タブ列は見出し行、中身は本文に描くため、両方を囲むパネルの外で持つ。
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("generate");
 
+  // スマホで下のシートを開いているか。
+  const sheetOpen = isMobile && panels.mobileSheet !== null;
+  // スマホで閉じているシートは開かない（探す・置くとき、パネルの開き閉じは利用者に任せる）。
+  function showConditions() {
+    if (isMobile && !sheetOpen) return;
+    setSettingsTab("generate");
+    panels.showRouteSettings();
+  }
   // 探した・保存した地点を置いたら、置いた地点を選んで「ルート設定」の条件タブにその詳しくを見せる（ピンを地図でつかんで直す
   // ため。足した経由地は`conditions.placeFound`が選ぶ）。
   function placeFound(role: PinRole, candidate: PlaceCandidate, waypointIndex: number | null) {
     conditions.placeFound(role, candidate, waypointIndex);
     if (role !== "waypoint") conditions.selectPoint({ role });
     setFocusPoint({ latitude: candidate.latitude, longitude: candidate.longitude });
-    setSettingsTab("generate");
-    panels.showRouteSettings();
+    showConditions();
   }
   // 地図の上端の地点の検索の欄。ルート設定で選んでいる地点の役割で置く。
   const searchInputRef = useRef<HTMLInputElement>(null);
   const searchTarget = conditions.selectedPoint;
-  // 地点の詳しくの探すボタンで開いたときの、その地点（探した候補はその地点にだけ置く）。上端の欄から開いたらnull。
-  const [searchOpenedFor, setSearchOpenedFor] = useState<PointTarget | null>(null);
-  // 新しい経由地は、上限まで置いてあれば置けない。
-  const searchFullFor = (target: PointTarget) =>
-    target.role === "waypoint" && target.index === null && waypointsFull(conditions.waypoints);
   function placeAt(target: PointTarget, candidate: PlaceCandidate) {
     placeFound(target.role, candidate, target.role === "waypoint" ? target.index : null);
   }
+  // スマホで探した候補の札を入れる、パネルの地点の詳しくの所。
+  const [cardSlot, setCardSlot] = useState<HTMLElement | null>(null);
 
   // ルートを作る機能（結果・生成・区間の乗り換え）。
   const route = useRoutePlanner({
@@ -136,6 +141,7 @@ export default function Home() {
     profileLayers,
     settingsTab,
     onSettingsTabChange: setSettingsTab,
+    settingsCardShown: cardSlot !== null,
     settingsBody: (
       <RouteSettingsForm
         conditions={conditions}
@@ -147,13 +153,11 @@ export default function Home() {
         onOriginReset={resetOriginToCurrent}
         originFound={originFound}
         // クリックの中で同期して focus する（iOS は、利用者の操作の中で focus したときだけキーボードを出す）。
-        onSearchOpen={() => {
-          setSearchOpenedFor(searchTarget);
-          searchInputRef.current?.focus();
-        }}
+        onSearchOpen={() => searchInputRef.current?.focus()}
         onPlaceFound={placeFound}
         savedPlaces={savedPlaces}
         placing={tapMode === "points"}
+        foundCardSlot={isMobile && placeLookup.foundOnMap !== null ? setCardSlot : null}
       />
     ),
     // 「このルートで走る」は、その候補を選んで走行モードを始める（走り始めると作業台のシートは閉じる）。もう走っている間は
@@ -216,28 +220,35 @@ export default function Home() {
             placeCandidates={placeLookup.foundOnMap}
             onPlaceCandidatePick={placeLookup.pickFound}
             isMobile={isMobile}
-            sheetOpen={isMobile && panels.mobileSheet !== null}
+            sheetOpen={sheetOpen}
             usageGuideActive={usageGuideActive}
             onUsageGuideEnd={() => setUsageGuideActive(false)}
             searchBar={
               <PlaceSearchBar
                 title={pointTitle(searchTarget)}
                 chooseResult={chooseResultOf(searchTarget)}
-                full={searchFullFor(searchTarget)}
+                // 新しい経由地は、上限まで置いてあれば置けない。
+                full={
+                  searchTarget.role === "waypoint" && searchTarget.index === null && waypointsFull(conditions.waypoints)
+                }
                 lookup={placeLookup}
                 onChoose={(candidate) => placeAt(searchTarget, candidate)}
-                placings={
-                  searchOpenedFor === null
-                    ? newPlacings({ waypointsFull: waypointsFull(conditions.waypoints), loop: conditions.loop })
-                    : [{ target: searchOpenedFor, disabled: searchFullFor(searchOpenedFor) }]
-                }
+                // 探した候補は、地点の並びと同じ札で置く先を選ぶ。
+                placeTo={(place) => (
+                  <PointStrip
+                    conditions={conditions}
+                    originFound={originFound}
+                    originManual={originManual}
+                    originLocated={locationKnown}
+                    selectPoint={place}
+                    forPlacing
+                  />
+                )}
                 onPlace={placeAt}
-                // スマホは探した候補を地図の下の札で見せるので、下のシートを閉じて地図を空ける。
-                onSearch={() => {
-                  if (isMobile) panels.sharedSheetProps.onClose();
-                }}
-                onClose={() => setSearchOpenedFor(null)}
+                // スマホでシートを開いていれば、探した候補の札をルート設定の地点の詳しくの所へ出す。
+                onSearch={showConditions}
                 isMobile={isMobile}
+                cardIn={sheetOpen ? cardSlot : "map"}
                 savedPlaces={savedPlaces}
                 inputRef={searchInputRef}
               />

@@ -120,6 +120,7 @@ export function renderForm(options: Options = {}, tab: SettingsTab = "generate")
               onPlaceFound={onPlaceFound}
               savedPlaces={savedPlaces}
               placing={placing}
+              foundCardSlot={null}
               weightsPanel={weightsPanel}
               exclusionsPanel={exclusionsPanel}
               saveConditionsButton={saveConditionsButton}
