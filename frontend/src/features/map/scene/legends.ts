@@ -52,9 +52,10 @@ export function initiallyHiddenLegendKeys(
 }
 
 /** 点の凡例。**色見本を出すのは、地図の色式が読む先頭の軸だけ**で、見本は地図と同じ絵にする。2本目以降（重大度）は
- * 地図では大きさだけで表れるので、見本も色を持たない灰で、地図の絵と同じ大きさにする。 */
+ * 地図では大きさだけで表れるので、見本は先頭の軸の最初の行の絵の外形を、色を持たない灰で、地図の絵と同じ大きさにする。 */
 function pointAxisLegend(layer: (typeof POINT_LAYERS)[number], axis: PointAxis, index: number): SceneLegendAxis {
   const scales = pointIconScales(axis);
+  const shape = layer.display_axes[0].categories[0];
   return {
     layerId: layer.attr_id,
     axisId: pointAxisKey(layer, axis),
@@ -74,6 +75,7 @@ function pointAxisLegend(layer: (typeof POINT_LAYERS)[number], axis: PointAxis, 
             description: category.description,
             color: palette.semantic.legend_size_only,
             diameterPx: mapDisplay.point.iconSizePx * scales[i],
+            ...("glyph" in shape ? { glyph: shape.glyph } : {}),
           },
     ),
   };

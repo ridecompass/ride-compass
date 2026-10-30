@@ -3,7 +3,9 @@
 import { describe, expect, it } from "vitest";
 
 import { POINT_ICONS, pointAxisKey, pointGroup } from "@/features/map/scene/groups/points";
+import type { PointGlyph } from "@/lib/mapDisplay/legendFilter";
 import { POINT_LAYERS } from "@/lib/mapDisplay/pointLayers";
+import { pointIconParts } from "@/components/PointIconSwatch/PointIconSwatch";
 import { LEGEND_NO_DATA_KEY } from "@/lib/mapDisplay/mapColorLegend";
 import { evaluateExpressionAtZoom as evaluateAt, matchesFilter } from "@/testing/mapExpressions";
 import { mapDisplay } from "@/types/generated/mapDisplay";
@@ -54,10 +56,15 @@ describe("点の凡例", () => {
     const [colorAxis] = pointLayer.display_axes;
     const ownAxis = pointLayer.display_axes.find((candidate) => pointAxisKey(pointLayer, candidate) === axis.axisId);
     for (const entry of axis.entries) {
-      if (entry.glyph !== undefined) {
+      if (entry.diameterPx === undefined) {
         expect(POINT_ICONS).toContainEqual(expect.objectContaining({ color: entry.color, glyph: entry.glyph }));
       } else {
-        // 点の大きさの見本は、地図の絵記号の大きさに現れる。
+        // 点の大きさの見本は、地図のどの行の絵とも同じ外形で、地図の絵記号の大きさに現れる。
+        const outlineOf = (color: string, glyph: PointGlyph) =>
+          (pointIconParts(color, glyph, "box")[0] as { d: string }).d;
+        for (const drawn of colorAxis.categories) {
+          expect(entry.glyph && outlineOf(entry.color, entry.glyph)).toBe(outlineOf(drawn.color, drawn.glyph));
+        }
         const category = ownAxis?.categories.find((candidate) => candidate.key === entry.key);
         const properties = {
           [colorAxis.property]: colorAxis.categories[0].values[0],
@@ -70,7 +77,7 @@ describe("点の凡例", () => {
   });
 
   // 地図は行の値ごとに登録した絵を引く。見本と違う色・絵記号の絵を引くと、凡例と地図の点が食い違う。
-  const glyphAxes = axes.filter((axis) => axis.entries.some((entry) => entry.glyph !== undefined));
+  const glyphAxes = axes.filter((axis) => axis.entries.some((entry) => entry.diameterPx === undefined));
 
   it("絵記号で描く点のレイヤーがある", () => {
     expect(glyphAxes.length).toBeGreaterThan(0);
