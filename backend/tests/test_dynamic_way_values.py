@@ -8,7 +8,7 @@
 
 ここで見ないもの:
 - 塗る値の種類・段の境界・凡例の目盛り（`map_paint`） → `test_map_paint.py`
-- 折れ線の得点・対応表・0次条件の評価そのもの（`domain/axis_evaluation.py: evaluate_axis_array`） → `test_axis_definitions.py`
+- 折れ線の得点・対応表・0次条件の評価そのもの（`domain/axis_evaluation.py: evaluate_axis`） → `test_axis_definitions.py`
 - 軸から配るサービスを選ぶこと・要求の条件の組み立て・配信のAPI → `test_region_routes.py`
 - 木の演算そのもの → `test_way_value_formula.py`、風の材料の木 → `test_wind.py`
 - 区間の材料を読むこと → `test_feature_materials_in_tile.py`、勾配の区間ごとの向き → `test_gradient_way_service.py`
@@ -114,7 +114,7 @@ def _arrays() -> EdgeMaterialColumns:
 @pytest.mark.parametrize("axis_id", PUBLISHED_AXES)
 def test_the_map_paints_the_same_value_the_search_scores(axis_id, as_difficulty):
     arrays = _arrays()
-    matrix, _ = build_static_edge_score_matrix(arrays, {}, AXES)
+    matrix = build_static_edge_score_matrix(arrays, AXES, {})
 
     painted = paint_feature_values(axis_id, AXES, KEYS, arrays.columns, {}, as_difficulty=as_difficulty)
 
@@ -122,7 +122,7 @@ def test_the_map_paints_the_same_value_the_search_scores(axis_id, as_difficulty)
     if isinstance(paint, SignedMaterialMapValue) and not as_difficulty:
         expected = arrays.columns[paint.material]
     else:
-        expected = matrix.axis_scores[:, matrix.axis_ids.index(axis_id)]
+        expected = matrix.axis_scores[matrix.axis_ids.index(axis_id)]
     assert np.isfinite(expected).any()
     # 探索は得点を`EDGE_VALUE_DTYPE`の桁で持つので、その刻みで比べる。
     np.testing.assert_allclose([painted.get(key, np.nan) for key in KEYS], expected,
@@ -184,7 +184,7 @@ def _route_values(segments: FeatureSegments, grade: np.ndarray) -> dict[str, dic
                  "way_num": np.array([WAY_NUM[owner] for owner in owners], dtype=float)},
         distance_m=segments.distance_m, bearing_deg=nan, mid_lat=nan, mid_lon=nan,
     )
-    matrix, _ = build_static_edge_score_matrix(arrays, {}, FOLDED_AXES)
+    matrix = build_static_edge_score_matrix(arrays, FOLDED_AXES, {})
     details: dict[str, list[RouteSegmentDetail]] = {}
     for row, owner in enumerate(owners):
         distance_km = float(segments.distance_m[row]) / 1000
@@ -192,13 +192,13 @@ def _route_values(segments: FeatureSegments, grade: np.ndarray) -> dict[str, dic
             start_latitude=0.0, start_longitude=0.0, end_latitude=0.0, end_longitude=0.0,
             cumulative_distance_km=0.0, distance_km=distance_km, edge_start=0, edge_end=1, elevations=[],
             road_classes={}, axis_difficulties={axis_id: float(score) for axis_id, score
-                               in zip(matrix.axis_ids, matrix.axis_scores[row]) if not np.isnan(score)},
+                               in zip(matrix.axis_ids, matrix.axis_scores[:, row]) if not np.isnan(score)},
         ).with_density_inputs({
             axis_id: DensityScoreInput(value=float(column.inputs[row]), distance_km=distance_km, weight_share=None,
                                        shape=column.shape)
             for axis_id, column in matrix.density_axes.items() if not np.isnan(column.inputs[row])
         }))
-    return {owner: merge_route_values(segments)["axis_difficulties"] for owner, segments in details.items()}
+    return {owner: merge_route_values(segments).axis_difficulties for owner, segments in details.items()}
 
 
 # 引いた地図の道の色が、その道をルートとして走ったときのルートの値と同じ決まりで出る。食い違うと、地図で良く見えた道を

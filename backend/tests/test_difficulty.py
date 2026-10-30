@@ -1,7 +1,7 @@
 """`domain/difficulty.py`——軸の得点を合成した難易度と、区間からルートへの集約。
 
 入口は丸め（`round_difficulty`・`round_difficulty_array`）、合成（`composite_difficulty_array`・
-`axis_weighted_sums`・`axis_contributions_at_row`・`composite_difficulty`）、重みの割合（`weight_share`）、
+`axis_weighted_sums`・`axis_weight_shares`・`axis_contributions`・`composite_difficulty`）、重みの割合（`weight_share`）、
 距離での集約（`weighted_mean_by_distance`・`distance_weighted_difficulty_array`）。同じ計算を持つ2つの道（スカラーと配列・先に和を求めるかどうか）は、
 同じ入力で同じ答えになることを確かめる。
 
@@ -21,7 +21,8 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from app.domain.difficulty import (
-    axis_contributions_at_row,
+    axis_contributions,
+    axis_weight_shares,
     axis_weighted_sums,
     composite_difficulty,
     composite_difficulty_array,
@@ -99,7 +100,9 @@ def test_the_contributions_of_a_row_add_up_to_its_unrounded_composite(axes, data
     row = data.draw(st.integers(min_value=0, max_value=length - 1))
     _, weight_sums = composite_difficulty_array(arrays, weights, length)
 
-    contributions = axis_contributions_at_row(arrays, weights, weight_sums, row)
+    scores = {a: arr[row:row + 1] for a, arr in arrays.items()}
+    shares = axis_weight_shares(scores, weights, weight_sums[row:row + 1])
+    [contributions] = axis_contributions({a: s.tolist() for a, s in scores.items()}, shares)
 
     mean = _mean_of_axes_with_data(arrays, weights, row)
     if math.isnan(mean):

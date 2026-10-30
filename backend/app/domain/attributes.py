@@ -123,20 +123,12 @@ class EdgeMaterialArrays:
     def __len__(self) -> int:
         return len(self.distance_m)
 
-    def columns(self) -> dict[str, MaterialColumn]:
-        """材料id→その列。行列の列はビューのためコピーしない。"""
-        return {
-            **{m: self.numeric_values[:, i] for i, m in enumerate(self.numeric_ids)},
-            **dict(zip(self.categorical_ids, self.categorical_columns, strict=True)),
-        }
-
 
 @dataclass(frozen=True)
 class EdgeMaterialColumns:
-    """点数の表を組む入力（`domain/evaluation.py: build_static_edge_score_matrix`）。切り出した区間の材料のうち、
-    読む材料の列だけを材料id→列で持つ。
+    """点数の表を組む入力（`domain/evaluation.py: build_static_edge_score_matrix`）。切り出した区間の材料id→列と、区間の値。
 
-    数値の列はそれぞれ連続した配列で持つ（行列の列のビューは飛び飛びで、軸の評価の演算が遅くなる）。
+    材料の列は読まれたときに切り出し、数値の列はそれぞれ連続した配列で返す（`domain/road_network.py: material_arrays_of`）。
     """
 
     columns: Mapping[str, MaterialColumn]

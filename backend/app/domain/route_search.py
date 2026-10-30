@@ -359,8 +359,7 @@ def turn_waits_along(structure: TurnExpandedStructure, entries: Sequence[int | N
 
 def route_passages(
     legs: Sequence[LegCostArrays],
-    structure: TurnExpandedStructure,
-    entries: Sequence[int | None],
+    turn_waits: Sequence[float],
     path: Sequence[int],
     distances_m: Sequence[float],
     leg_of_edge: Sequence[int],
@@ -368,19 +367,18 @@ def route_passages(
 ) -> list[EdgePassage]:
     """経路を探索と同じ規則でたどり、区間ごとに時刻ビンと出発からの秒を決める。
 
-    `path`は区間の番号（探索の行）、`entries`はその遷移の位置（`TurnExpandedStructure.entries_along`）、
+    `path`は区間の番号（探索の行）、`turn_waits`はその遷移ごとの曲がる待ち（`turn_waits_along`）、
     `distances_m`は区間の長さ。
     探索（`domain/routing.py`の前向きDijkstra・A*）はレグの中の経過時間でビンを選ぶ: レグの最初の区間は
     ビン0、次の区間は前の区間を抜けた時点（曲がる待ちを足す前）の経過時間のビン。区間ごとの秒は、探索の
     コストの下地になっている配列（`LegCostArrays.travel_bins_lazy`、走行モデル＋停止の待ち）を
     そのビンで読む——表示の時刻と探索の時刻を別々に計算すると、片方だけ直したときに静かに食い違う。
-    出発からの秒は、レグをまたいで走行と曲がる待ち（`TurnExpandedStructure`）を積む。
+    出発からの秒は、レグをまたいで走行と曲がる待ち（`turn_waits`）を積む。
 
     走行時間が有限でない区間は巡航速度で走ったものとして数える——0にすると所要時間が
     実態より短く出る。
     """
     fallback_ms = kmh_to_ms(speed_kmh)
-    waits = turn_waits_along(structure, entries)
     passages: list[EdgePassage] = []
     elapsed = 0.0
     leg_elapsed = 0.0
@@ -400,7 +398,7 @@ def route_passages(
             seconds = distance_m / fallback_ms
         passages.append(EdgePassage(time_bin=time_bin, elapsed_seconds=elapsed, seconds=seconds))
         leg_elapsed += entry_wait + seconds
-        entry_wait = waits[i] if i < len(waits) else 0.0
+        entry_wait = turn_waits[i] if i < len(turn_waits) else 0.0
         elapsed += seconds + entry_wait
     return passages
 
@@ -411,7 +409,7 @@ def best_first(ranked: list[int], best: int) -> list[int]:
 
 
 def prefers_reverse(forward: Sequence[SegmentDifficulty], reverse: Sequence[SegmentDifficulty]) -> bool:
-    """周回を逆回りで返すか。区間の難しさの並びから求めた候補の合成の難しさ（`route_difficulty`）が小さい
+    """周回を逆回りで返すか。それぞれの向きのビンの難しさ（`domain/route.py: route_bins`）から畳んだ候補の合成の難しさ（`route_difficulty`）が小さい
     （走りやすい）向きを採る。逆回りが算出不能なら順回りを採る（比較不能を「逆回りの方が良い」とは読まない、安全側）。
     """
     forward_difficulty = route_difficulty(forward)

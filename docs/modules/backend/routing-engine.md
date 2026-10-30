@@ -33,7 +33,7 @@ road_graphエンジンは自前Road Graph（DB由来のノード/Edge）で経�
 大きさ×進行方向の相対風速に比例し、横風は相対風速の大きさにだけ効く——同じ強さの向かい風ほどは
 遅くならない。
 
-Edgeコストは「探索範囲の静的Edge×公開軸スコア行列＋リクエスト時ベクトル計算」方式で
+Edgeコストは「探索範囲の静的な公開軸×Edgeのスコア行列＋リクエスト時ベクトル計算」方式で
 算出する——探索が実際に訪れたEdgeに対してPythonのコスト計算コールバックを都度呼ぶのでは
 なく、`prepare`が対象bbox全体ぶんの
 コスト配列を1回だけnumpyで合成し、探索へは合成済みの配列をそのまま渡す（探索中にPythonの
@@ -104,7 +104,7 @@ Edgeコストは「探索範囲の静的Edge×公開軸スコア行列＋リク�
 使い回す。時刻で変わる公開軸（風に依存する軸と時間帯を持つ軸）の重みがすべて0なら、合成の難易度と割増の倍率・密度の軸の足す秒も
 時刻に依らないので1回だけ求め、ビンのコストは所要時間にその倍率を掛けて秒を足すだけになる（重みが0の軸は合成に何も足さない）。重みが
 あれば、時刻で変わらない軸の重み付き和を1回だけ求め、時刻で変わる軸だけをビンごとに足す（どちらの和も重みが0の軸を読まない）。
-ビンの中身を決めるのは、風の予報が引く時刻と、時間帯を持つ軸に重みがあればその時刻が夜かだけなので、同じ組のビンはレグの向き・開始時刻が違っても1回だけ合成して使い回す（`domain/leg_costs.py: LegCostComposer._bin_key`）。表示まで読む一式を持つのはレグの代表になったビンだけで、ほかのビンは探索の行順の費用と所要時間だけを持つ。レグのビンの配列は使い回すビンの写しで、帰りの探索がその場で書き換えても、ほかのレグのビンは変わらない。1ビンの中でも、
+ビンの中身を決めるのは、風の予報が引く時刻と、時間帯を持つ軸に重みがあればその時刻が夜かだけなので、同じ組のビン（`domain/leg_costs.py: BinTime`）はレグの向き・開始時刻が違っても1回だけ合成して使い回す。レグは表示の値を持たず、区間の表示（`domain/leg_costs.py: LegValues`）は、経路をたどって決めたビンの時刻（`LegCostArrays.bin_times`）で経路上の行だけを合成し直して読む（`domain/leg_costs.py: LegCostComposer.values_at_rows`）——全区間ぶんの表示の値をレグごとに持つと、区間数×レグ数ぶん膨らむ。区間ごとの通過時刻で合成したレグも、その時刻を区間ごとの配列で持つ同じ形（`BinTime`）で表す。レグのビンの配列は使い回すビンの写しで、帰りの探索がその場で書き換えても、ほかのレグのビンは変わらない。1ビンの中でも、
 予報の引き当てと風の分解（方位との差の三角関数）は、風の材料と走行モデルが同じ値を読む
 （`DynamicAxisRequestContext.wind_components_ms`）。合成結果`LegCostArrays`は`cost_lazy`（区間の番号順）と表示用の
 `difficulty_array`/`axis_arrays`/`weight_sums`/`material_arrays`（動的材料id→
@@ -148,7 +148,7 @@ Edgeごとの値で上書きする。`displayed_material_ids`は符号付き材�
 **周回の復路レグは迂回率を読まない**——総所要時間は目標距離÷仮定速度で決まる（距離
 フィルタが目標±許容を強制する）。運用時は`_build_search_graph`のINFOサマリ
 （`time_varying`・`speed_kmh`・`detour_ratio=値(learned|default)`）、
-`compose_leg_costs`ログ（`leg`・`mode`・`bins`・`reused_bins`＝使い回したビンの数・`compose_ms`と、その内訳の`setup_ms`＝要求に1回だけの準備・`speed_ms`＝走行モデル・`axes_ms`＝時刻で変わる軸と風の材料・`finish_ms`＝費用と所要時間の配列）、
+`compose_leg_costs`ログ（`leg`・`mode`・`bins`・`reused_bins`＝使い回したビンの数・`compose_ms`と、その内訳の`axes_ms`＝時刻で変わる軸と風の材料・`speed_ms`＝走行モデル・`finish_ms`＝費用と所要時間の配列。要求に1回だけの準備は、初めて読まれた段に入る）、
 `select_turnarounds`/`select_via_nodes`の`detour_ratio_median`で確認できる。
 
 `RouteGenerateRequest.waypoints`/`destination`（経由地・目的地指定）にも対応する
@@ -474,20 +474,19 @@ idの文字列や要求の形から決め直さない。
 画面が送る距離を使わない。
 
 `GraphService.get_search_slice`で探索範囲の区間（`domain/road_network.py: RoadSlice`）を受け取り、
-`_build_search_graph`がその材料から「Edge×公開軸」静的スコア行列（`StaticEdgeScoreMatrix`、行は切り出した
-区間の順）・探索用グラフ（`domain/search_graph.py: LazyRoadGraph`）・bbox全体ぶんのコスト配列を、`_build_search_structures`が最寄りNodeの索引（`NodeSpatialIndex`）・置いた点を寄せてよいNode・CSR・ターン構造を
+`_build_search_graph`がその材料から「公開軸×Edge」静的スコア行列（`StaticEdgeScoreMatrix`、軸・材料のidごとに、切り出した
+区間の順の値が連続する）・探索用グラフ（`domain/search_graph.py: LazyRoadGraph`）・bbox全体ぶんのコスト配列を、`_build_search_structures`が最寄りNodeの索引（`NodeSpatialIndex`）・置いた点を寄せてよいNode・CSR・ターン構造を
 リクエストごとに組む。データ未整備（取込の宣言した範囲の外）ならNoneを返し、呼び出し元
 （`RouteGenerator`）が候補0件として扱う。
 
 `_build_search_graph`は、まず気象の段で生成の時点の外部の観測と予報をまとめて読む（出発時点の天候・
-時別の風の予報・雨の観測の履歴。ログの`weather_ms`がこの段）。静的スコア行列は、切り出した区間の材料のうち
-軸の集合・所要時間・0次フィルタが読むものだけ（`domain/road_network.py: material_arrays_of`。読む材料は
-`domain/evaluation.py: static_score_material_ids`が決め、軸の集合は写しを1回取って切り出しと組み立ての両方へ渡す。
+時別の風の予報・雨の観測の履歴。ログの`weather_ms`がこの段）。静的スコア行列は、切り出した区間の材料
+（`domain/road_network.py: material_arrays_of`。軸の集合・所要時間・0次フィルタが読んだ材料だけを、読まれたときに切り出す。
 分類の材料は語彙への番号のまま）に、区間の中点に最も近い雨量計の今の観測（雨の材料、地図の雨と同じ値・同じ観測）を
 足して`build_static_edge_score_matrix`で求める。最寄りの雨量計は、取込範囲全体の区間ごとの番号として道路網ごとに1つ
 持ち（`domain/rain.py: NearestRainStations`。有向の区間1本につき4バイト）、切り出しに入った区間の分だけ初めて引くときに
-求め、雨量計の位置の並びが替わったら求め直す。ログは材料の抜き出し（`extract_ms`）・雨（`rain_ms`）・軸の評価
-（`axes_ms`）・生値と密度の横軸（`raw_ms`）・表への詰め直し（`stack_ms`）を分けて出す。雨は出発時刻ではなく今の観測で、履歴は`WeatherService.get_station_rain_materials`が
+求め、雨量計の位置の並びが替わったら求め直す。ログは`materials_ms`の内訳として、雨（`rain_ms`）・軸の評価
+（`axes_ms`。読まれた材料の切り出しと、生値・密度の横軸もここに入る）・表への詰め直し（`stack_ms`）を分けて出す。雨は出発時刻ではなく今の観測で、履歴は`WeatherService.get_station_rain_materials`が
 Redisから読み（実体の中に5分持つ）、無い・古ければ雨の材料は欠損のまま組む（WARNINGを抑制付きで出し、
 INFOサマリの`rain_hour=none`で分かる。雨を読む軸だけがその生成で「データなし」になる）。行列（最寄りの雨量計の番号を除く）はキャッシュしない
 ——軸定義の編集と雨の観測がそのまま次の生成に効き、軸定義の世代を突き合わせる仕組みが要らない。
@@ -496,7 +495,7 @@ INFOサマリの`rain_hour=none`で分かる。雨を読む軸だけがその生
 NaN）へ動的軸（風、`domain/dynamic_materials.py: evaluate_dynamic_axis_arrays`。材料id→evaluator
 関数の登録制`DYNAMIC_MATERIAL_EVALUATORS`で軸名をハードコードしない汎用実装）と重み
 ベクトルを適用し、`compose_costs_from_axis_matrix`でコスト配列を1回だけ合成する。合成結果はレグ（往路/復路）ごとに`LegCostArrays`
-（`cost_lazy`[区間の番号順]・`difficulty_array`・`axis_arrays`[切り出した区間の順]）へ
+（`cost_lazy`[区間の番号順]と、各ビンの時刻`bin_times`）へ
 まとまり、`RoadGraphContext.legs`が保持する（下記「レグ別コスト配列」節）。並行Edge
 （同一Node間の複数Edge）は、`build_lazy_road_graph`が元の行（切り出した区間の順＝道路網全体の行の昇順）が
 最も小さい1本を採る決定的な規則で解消する——コストはリクエストごとに変わるため、トポロジを組む時点では
@@ -742,8 +741,8 @@ segments構築はEdge単位の軽量な計算のため並行化してよい。�
 **区間を通る時刻**で昼夜を判定し、夜間軸の重みを区間ごとに決める——市民薄明の外（夜間）に通る区間では
 重みをそのまま、日中に通る区間では0倍にする。通る時刻は風と同じもの（上記「レグ内の時刻ビン」: ビンの
 開始時刻、目的地から遡る木は区間ごとの通過時刻、スナップショットは出発時刻）で、合成器が
-`_evaluate`の中で`domain/twilight.py: night_mask`と`domain/axis_definitions.py: time_scoped_weights`から
-区間ごとの重みの配列を作る（時間帯を持つ軸に重みがあるときだけ。無ければ昼夜は合成に効かないので、夜の判定を作らない）。`time_scoped_weights`が`AxisDefinition.time_scope`を持つ軸を汎用的に判定するため、
+時刻の入力（`domain/leg_costs.py: BinTime`）を作るときに`domain/twilight.py: night_mask`で夜かを決め、`_evaluate`の中で
+`domain/axis_definitions.py: time_scoped_weights`から重み（全区間が同じ時刻なら数、区間ごとの時刻なら配列）を作る（時間帯を持つ軸に重みがあるときだけ。無ければ昼夜は合成に効かないので、夜の判定を作らない）。`time_scoped_weights`が`AxisDefinition.time_scope`を持つ軸を汎用的に判定するため、
 軸idのハードコードは無い。探索のコストと区間の表示（合成difficulty・寄与度）は同じ重みの配列を読むので、
 日没をまたぐルートでは日没前の区間には夜間軸が寄与せず、日没後の区間には寄与する。
 
@@ -859,12 +858,12 @@ numbaでJITする探索とその部品はこのファイルにまとめて置く
   繋ぎ目の区間の対ごとにターンの費用を足して最小を採る。
 - **`turn_expanded_shortest_path`/`_turn_expanded_astar`**: 2点間探索。numbaでJITし、
   優先度キューをnumpy配列のバイナリヒープとして自前で持つ（numbaの`heapq`より速いため。下の部品の項）。
-- **JITのコンパイル（`compile_search_kernels`・`_kernel_array`）**: 一対全木・木の経路どうしの重複率・2点間探索のJITは`cache=True`で、
+- **JITのコンパイル（`compile_search_kernels`・`domain/search_graph.py: kernel_array`）**: 一対全木・木の経路どうしの重複率・2点間探索のJITは`cache=True`で、
   コンパイル結果を`routing.py`の隣の`__pycache__`に置き、別のプロセスはそこから読む。イメージの組み立て
   （`backend/Dockerfile`）が`compile_search_kernels`（最小の道路網でどれも1回ずつ呼ぶ。探索が読む費用を組み立てるJITは`domain/leg_costs.py: compile_leg_cost_kernels`を呼んで焼く）で焼き、入れ替えた
   コンテナの最初のルート生成はコンパイルを待たない。numbaは引数の型（dtype・並び・読み取り専用か）ごとに
   別々にコンパイルするため、探索の入口（`build_turn_expanded_tree`・`turn_expanded_shortest_path`）はJITへ渡す
-  配列を`_kernel_array`で1つの型へ揃える——揃えないと、焼いたものと型の違う呼び出しが本番で初めてコンパイルを払う。
+  配列を`kernel_array`で1つの型へ揃える（探索の費用を組み立てるJITと走行モデルも同じ関数で揃える）——揃えないと、焼いたものと型の違う呼び出しが本番で初めてコンパイルを払う。
   **生成の経路がPythonから呼ぶJITは、`compile_search_kernels`が呼ぶものだけにする**——焼くのはそこで
   Pythonから呼んだものだけで、探索の中へ展開する部品をPythonから直接呼ぶと、その部品だけ各コンテナの最初の
   生成でコンパイルを払う。探索と表示で共有する`time_bin_of`は素の関数とし、探索の中ではそれをJITした

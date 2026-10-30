@@ -21,7 +21,7 @@ import pytest
 from app.batch import derive_elevation, derive_topology
 from app.batch.dem_tile_store import PRODUCT_PRIORITY
 from app.batch.ingest import SourceRecord
-from app.domain.attributes import CategoricalColumn
+from app.domain.attributes import CategoricalColumn, EdgeMaterialArrays
 from app.domain.material_catalog import segment_material_ids
 from app.domain.region import EDGE_UNIT_MIN_ZOOM, BoundingBox
 from tests.conftest import raw_connection
@@ -65,6 +65,14 @@ async def _derive_world() -> None:
         await derive_counts_at_default_tuning(conn)
 
 
+def _columns(arrays: EdgeMaterialArrays) -> dict[str, np.ndarray | CategoricalColumn]:
+    """探索が読む材料の配列の、材料id→列。"""
+    return {
+        **dict(zip(arrays.numeric_ids, arrays.numeric_values.T)),
+        **dict(zip(arrays.categorical_ids, arrays.categorical_columns)),
+    }
+
+
 async def test_a_segment_on_the_map_has_the_materials_the_search_reads_for_it(road_graph_repository):
     """違うと、地図で良く見えた道を探索が避ける（同じ道に別の得点が付く）。"""
     await _derive_world()
@@ -76,7 +84,7 @@ async def test_a_segment_on_the_map_has_the_materials_the_search_reads_for_it(ro
     assert len(segments) == 3
     search = await road_graph_repository.get_edge_material_arrays(
         [way for way, _ in segments], [index for _, index in segments], [True] * len(segments), ACCIDENT_YEARS)
-    expected = search.columns()
+    expected = _columns(search)
     assert set(tile.columns) == set(expected)
     assert np.nanmax(expected["poi_crossing_per_km"]) > 0
     categorical = {material_id: column for material_id, column in tile.columns.items()
@@ -112,7 +120,7 @@ async def test_segments_of_a_way_on_the_zoomed_out_map_have_the_materials_the_se
     search = await road_graph_repository.get_edge_material_arrays(
         [edge["osm_way_id"] for edge in edges], [edge["segment_index"] for edge in edges], [True] * len(edges),
         ACCIDENT_YEARS)
-    expected = search.columns()
+    expected = _columns(search)
     assert set(segments.columns) == segment_material_ids()
     assert np.nanmax(segments.columns["gradient_percent"]) > 0
     for way in {edge["osm_way_id"] for edge in edges}:

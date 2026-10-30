@@ -2,9 +2,9 @@ import math
 from collections import defaultdict
 from dataclasses import dataclass, fields
 
-from typing import TYPE_CHECKING, Annotated, Any, Callable, Iterable, Literal, Mapping, Protocol, Sequence, TypeVar
+from typing import TYPE_CHECKING, Annotated, Any, Callable, Iterable, Literal, Mapping, NamedTuple, Sequence, TypeVar
 
-from pydantic import Field, PrivateAttr, WithJsonSchema
+from pydantic import ConfigDict, Field, PrivateAttr, WithJsonSchema
 
 from app.domain.difficulty import (
     OverallDifficulty,
@@ -62,7 +62,7 @@ class DensityScoreInput:
     # 平均の重みにする距離（km）。応答の`distance_km`は10m単位に丸めてあり、信号の脇の数mの区間が0になって
     # 回数ごと消えるため、丸めない距離を持つ。
     distance_km: float
-    # 重み ÷ データのある軸の重みの和（`difficulty.py: axis_weight_shares_at_rows`）。得点に掛けると寄与度になる。
+    # 重み ÷ データのある軸の重みの和（`difficulty.py: axis_weight_shares`）。得点に掛けると寄与度になる。
     # 合成に入らない区間（重みの和が0）だけを持つ範囲はNone。
     weight_share: float | None
     shape: "BreakpointLinearShape"
@@ -72,27 +72,12 @@ class DensityScoreInput:
         return self.shape.score_at(self.value)
 
 
-class _Difficulties(Protocol):
-    """難しさを畳める区間・ビン（`SegmentDifficulty`と`RouteSegmentDetail`）。"""
-
-    @property
-    def distance_km(self) -> float: ...
-    @property
-    def difficulty(self) -> float | None: ...
-    @property
-    def axis_difficulties(self) -> dict[str, float]: ...
-    @property
-    def axis_contributions(self) -> dict[str, float]: ...
-    @property
-    def density_inputs(self) -> dict[str, DensityScoreInput]: ...
-
-
 @dataclass(frozen=True, slots=True)
 class SegmentDifficulty:
-    """区間・ビンの難しさの値（`RouteSegmentDetail`の同名の欄と、密度の軸の横軸の値）。
+    """区間・ビンの難しさの値（`RouteSegmentDetail`の同名の欄と、密度の軸の横軸の値）。難しさを畳む関数はこれだけを読む。
 
-    区間の難しさだけを先に求めて周回の向きを決める（`route_difficulty`）ことと、区間の集まりの難しさを
-    1回で畳む（`merge_difficulty_values`）ことに使う。距離は区間の`distance_km`と同じ丸めた値。
+    区間の難しさをビンへ1回だけ畳み（`route_bins`）、そのビンで周回の向きを決め（`route_difficulty`）、ビンを組み立てる
+    （`aggregate_segments_into_bins`）。距離は区間の`distance_km`と同じ丸めた値。
     """
 
     distance_km: float
@@ -103,7 +88,8 @@ class SegmentDifficulty:
 
 
 class RoadClassStretch(StrictModel):
-    """区間の中で、道の区分が同じまま続く部分。"""
+    """区間の中で、道の区分が同じまま続く部分。区間では検証せずに組み（`model_construct`）、ビンでは`merge_road_classes`が
+    検証して作り直す。"""
 
     distance_km: float
     # 区分の鍵（`domain/route_road_classes.py: SegmentClassReader.values_at`）。どの区分にも入らない道はNone。
@@ -112,6 +98,9 @@ class RoadClassStretch(StrictModel):
 
 class ElevationStretch(StrictModel):
     """区間の中の道（Edge）1本の、走る向きの始まりと終わりの標高（m）。その道に標高が無ければどちらもNone。"""
+
+    # 区間では検証せずに組み（`model_construct`）、入れたビンを検証するときに検証する（`_merge_segment_bin`）。
+    model_config = ConfigDict(revalidate_instances="always")
 
     distance_km: float
     start_elevation_m: float | None
@@ -154,8 +143,8 @@ class RouteSegmentDetail(StrictModel):
     difficulty: float | None = None
     # 分け方（地図の道の線の層のid）と「緑と水」の層のid→区間の始まりから並べた、区分が同じまま続く部分。部分の距離の和は区間の距離と丸めの分だけずれうる。
     road_classes: dict[str, list[RoadClassStretch]]
-    # 密度の軸のid→区間をまたいで平均する値。応答には出さない（ビンと候補の値を作るための内部の値）。
-    # 区間はエンジンが載せ（`with_density_inputs`）、ビンは`_merge_segment_bin`が中の区間から作る。読むのは`density_inputs`。
+    # 密度の軸のid→区間をまたいで平均する値。応答には出さない（候補の値を作るための内部の値）。
+    # ビンは`_merge_segment_bin`が載せ（`with_density_inputs`）、候補の値（`merge_route_values`）が読む。
     _density_inputs: dict[str, DensityScoreInput] = PrivateAttr(default_factory=dict)
 
     def with_density_inputs(self, density_inputs: dict[str, DensityScoreInput]) -> "RouteSegmentDetail":
@@ -278,21 +267,29 @@ def along_route_km(distances_km: Iterable[float]) -> list[float]:
 SEGMENT_BIN_DISTANCE_KM = 0.5
 
 
-def aggregate_segments_into_bins(segments: list[RouteSegmentDetail]) -> list[RouteSegmentDetail]:
-    """連続するEdge単位の`RouteSegmentDetail`を、累積距離`SEGMENT_BIN_DISTANCE_KM`単位で
-    グルーピングし、1ビン1件の`RouteSegmentDetail`へ集約する。
+def route_bins(difficulties: Sequence[SegmentDifficulty]) -> list[SegmentDifficulty]:
+    """区間の難しさの並びを、累積距離`SEGMENT_BIN_DISTANCE_KM`ごとのビンの難しさへ畳む（`merge_difficulty_values`）。
+    区間の値は同じ切り方で`aggregate_segments_into_bins`が畳む。最後のビンは`SEGMENT_BIN_DISTANCE_KM`未満でも単独で残す
+    （切り捨てると経路全体の距離が合わなくなる）。"""
+    return [merge_difficulty_values(chunk) for chunk in _split_into_bins(difficulties, lambda d: d.distance_km)]
 
-    値の性質ごとに畳み方が違う: difficulty系と材料値は距離加重平均（値がNoneの区間は
-    除外し、残りの距離で再正規化）、位置はビンの始点・終点、距離は合計、geometryは
-    隣接区間の境界点を重複させずに連結する。
 
-    最後のビンは`SEGMENT_BIN_DISTANCE_KM`未満でも単独で残す（切り捨てると経路全体の距離が
-    合わなくなる）。
+def aggregate_segments_into_bins(
+    segments: list[RouteSegmentDetail], bins: Sequence[SegmentDifficulty]
+) -> list[RouteSegmentDetail]:
+    """連続するEdge単位の`RouteSegmentDetail`を、`route_bins`と同じ切り方でビンへ分け、1ビン1件の`RouteSegmentDetail`へ集約する。
+    ビンの難しさは`bins`（同じ区間の難しさから`route_bins`が畳んだもの）をそのまま載せる。
+
+    値の性質ごとに畳み方が違う: 材料値は距離加重平均（値がNoneの区間は除外し、残りの距離で再正規化）、
+    位置はビンの始点・終点、距離は合計、geometryは隣接区間の境界点を重複させずに連結する。
     """
-    return [_merge_segment_bin(bin_segments) for bin_segments in _split_into_bins(segments, lambda s: s.distance_km)]
+    chunks = _split_into_bins(segments, lambda s: s.distance_km)
+    return [_merge_segment_bin(chunk, difficulty) for chunk, difficulty in zip(chunks, bins, strict=True)]
 
 
 _T = TypeVar("_T")
+# 距離（`distance_km`）を持つ区間・ビン（`SegmentDifficulty`・`RouteSegmentDetail`）。
+_Distanced = TypeVar("_Distanced", SegmentDifficulty, RouteSegmentDetail)
 
 
 def _split_into_bins(items: Sequence[_T], distance_km: Callable[[_T], float]) -> list[list[_T]]:
@@ -345,8 +342,8 @@ def _round_significant(value: float) -> float:
 
 
 def _merge_axis_value_dict(
-    segments: Sequence[Any],
-    field_getter: Callable[[Any], dict[str, float]],
+    segments: Sequence[_Distanced],
+    field_getter: Callable[[_Distanced], dict[str, float]],
     round_value: Callable[[float], float] = round_difficulty,
 ) -> dict[str, float]:
     """区間の並びが持つキー→float辞書（`field_getter`で指定）を、キーごとに距離加重平均へ集約する
@@ -373,7 +370,7 @@ def _merge_weighted_dicts(
     return merged
 
 
-def _merge_density_inputs(segments: Sequence[_Difficulties]) -> dict[str, DensityScoreInput]:
+def _merge_density_inputs(segments: Sequence[SegmentDifficulty]) -> dict[str, DensityScoreInput]:
     """区間の`DensityScoreInput`を、軸ごとに（丸めない）距離で加重平均へ畳む。値を持たない区間はその軸の平均に入れない。"""
     merged: dict[str, DensityScoreInput] = {}
     for axis_id in {axis_id for s in segments for axis_id in s.density_inputs}:
@@ -404,7 +401,7 @@ def _summed_km(distances: Iterable[float]) -> float:
     return round(sum(distances), DISTANCE_KM_DECIMALS)
 
 
-def _merge_difficulty(segments: Sequence[_Difficulties], density_contributions: dict[str, float]) -> float | None:
+def _merge_difficulty(segments: Sequence[SegmentDifficulty], density_contributions: dict[str, float]) -> float | None:
     """区間の合成の難しさ（`difficulty`）を畳む。値のある区間が無ければNone。
 
     区間の合成の難しさの距離加重平均は、軸ごとの寄与度の平均に「その軸の寄与度を持つ区間の距離 ÷ 合成の難しさを
@@ -423,8 +420,8 @@ def _merge_difficulty(segments: Sequence[_Difficulties], density_contributions: 
     return round_difficulty(mean)
 
 
-def merge_difficulty_values(segments: Sequence[_Difficulties]) -> SegmentDifficulty:
-    """区間の並びの難しさの値を1回で畳む。ビン（`_merge_segment_bin`）と候補の全区間（`merge_route_values`）が使う。
+def merge_difficulty_values(segments: Sequence[SegmentDifficulty]) -> SegmentDifficulty:
+    """区間の並びの難しさの値を1回で畳む。ビン（`route_bins`）と候補の全ビン（`merge_route_values`）が使う。
 
     合成の難しさ・軸の得点・寄与度は距離加重平均。密度の軸の得点は、区間の得点の平均ではなく、横軸の値
     （1kmあたりの量）の距離平均を折れ線に通した得点にする——短い区間に回数が集まる道では、得点の平均が
@@ -443,11 +440,10 @@ def merge_difficulty_values(segments: Sequence[_Difficulties]) -> SegmentDifficu
     )
 
 
-def route_difficulty(segments: Sequence[_Difficulties]) -> float | None:
-    """区間（ビンへ畳む前）の並びを`aggregate_segments_into_bins`と同じ切り方でビンへ畳んでから畳んだ、候補の
-    合成の難しさ（`merge_route_values`の`overall_difficulty`の平均と同じ値）。値のある区間が無ければNone。"""
-    bins = [merge_difficulty_values(bin_segments) for bin_segments in _split_into_bins(segments, lambda s: s.distance_km)]
-    return _merge_difficulty(bins, _density_contributions(_merge_density_inputs(bins)))
+def route_difficulty(bins: Sequence[SegmentDifficulty]) -> float | None:
+    """ビン（`route_bins`）から畳んだ、候補の合成の難しさ（`merge_route_values`の`overall_difficulty`の平均と同じ値）。
+    値のある区間が無ければNone。"""
+    return merge_difficulty_values(bins).difficulty
 
 
 def route_axis_raw_values(edges: list[tuple[float, Mapping[str, float]]]) -> dict[str, float]:
@@ -467,8 +463,24 @@ def route_axis_raw_values(edges: list[tuple[float, Mapping[str, float]]]) -> dic
     )
 
 
-def merge_route_values(segments: list[RouteSegmentDetail]) -> dict[str, Any]:
-    """候補の全区間（ビン）を、候補単位の値（`RouteDraft`の欄名 → 値）へ畳む。辞書の欄はビンと同じ畳み方。
+class RouteValues(NamedTuple):
+    """候補単位の値（`RouteDraft`の同名の欄、`merge_route_values`）。"""
+
+    overall_difficulty: OverallDifficulty | None
+    axis_difficulties: dict[str, float]
+    axis_contributions: dict[str, float]
+    material_values: dict[str, float]
+
+
+def _bin_difficulty(segment: RouteSegmentDetail) -> SegmentDifficulty:
+    """ビン（`_merge_segment_bin`が組んだ区間）の難しさの値。"""
+    return SegmentDifficulty(
+        **{name: getattr(segment, name) for name in _BIN_DIFFICULTY_FIELDS}, density_inputs=segment.density_inputs
+    )
+
+
+def merge_route_values(segments: list[RouteSegmentDetail]) -> RouteValues:
+    """候補の全区間（ビン）を、候補単位の値へ畳む。辞書の欄はビンと同じ畳み方。
     候補の並び順・id等を読まないので、呼び出し側がそれらを付ける前でも後でも結果は変わらない。
     categorical材料の延長割合と軸の生値はここで畳まない——ビンの代表値からは正しい割合を作れず、生値は区間が持たない
     （ビンへ畳む前の区間から作って`EvaluatedRoute`に載せる）。
@@ -477,17 +489,17 @@ def merge_route_values(segments: list[RouteSegmentDetail]) -> dict[str, Any]:
     総量は丸めた平均（応答の`average`）に全区間の距離合計を掛ける——値の無い区間を飛ばして積むと
     「データが無い区間が多いほど総量が小さい」ことになり、欠損の多いルートが有利に見える。
     """
-    difficulty = merge_difficulty_values(segments)
+    difficulty = merge_difficulty_values([_bin_difficulty(segment) for segment in segments])
     average = difficulty.difficulty
-    return {
-        "overall_difficulty": (
+    return RouteValues(
+        overall_difficulty=(
             None if average is None
             else OverallDifficulty(average=average, load=round(average * sum(s.distance_km for s in segments), 1))
         ),
-        "axis_difficulties": difficulty.axis_difficulties,
-        "axis_contributions": difficulty.axis_contributions,
-        "material_values": merge_material_values(segments),
-    }
+        axis_difficulties=difficulty.axis_difficulties,
+        axis_contributions=difficulty.axis_contributions,
+        material_values=merge_material_values(segments),
+    )
 
 
 def merge_material_values(segments: Sequence[RouteSegmentDetail]) -> dict[str, float]:
@@ -538,7 +550,7 @@ def merge_road_classes(segments: list[RouteSegmentDetail]) -> dict[str, list[Roa
 
 
 #: ビンのフィールドと、ビンに入る区間の並びからその値を作る畳み方。`_merge_segment_bin`は
-#: この表と、難しさの値（`SegmentDifficulty`の欄、`merge_difficulty_values`）からビンを組み立てる。
+#: この表と、ビンの難しさの値（`SegmentDifficulty`の欄、`route_bins`）からビンを組み立てる。
 BIN_FIELD_MERGERS: dict[str, Callable[[list[RouteSegmentDetail]], object]] = {
     "geometry": _concat_segment_geometries,
     "start_latitude": lambda segments: segments[0].start_latitude,
@@ -554,7 +566,7 @@ BIN_FIELD_MERGERS: dict[str, Callable[[list[RouteSegmentDetail]], object]] = {
     "material_values": merge_material_values,
 }
 
-#: ビンの難しさの欄（`merge_difficulty_values`が1回で畳む）。密度の軸の横軸の値は応答の欄でないので除く。
+#: ビンの難しさの欄（`route_bins`が畳む）。密度の軸の横軸の値は応答の欄でないので除く。
 _BIN_DIFFICULTY_FIELDS = tuple(field.name for field in fields(SegmentDifficulty) if field.name != "density_inputs")
 
 
@@ -571,14 +583,14 @@ if undeclared := _undeclared_fields():
     )
 
 
-def _merge_segment_bin(segments: list[RouteSegmentDetail]) -> RouteSegmentDetail:
-    """ビンを組み立てる。区間は検証せずに組んだ値（`RouteSegmentDetail.model_construct`）でよく、検証はビンでだけ行う。"""
-    difficulty = merge_difficulty_values(segments)
+def _merge_segment_bin(segments: list[RouteSegmentDetail], difficulty: SegmentDifficulty) -> RouteSegmentDetail:
+    """ビンを組み立てる。区間は検証せずに組んだ値（`RouteSegmentDetail.model_construct`。難しさの欄は持たない）でよく、
+    検証はビンでだけ行う（中の標高・区分の部分も、ビンを検証するときに検証し直す）。"""
     merged = RouteSegmentDetail.model_validate(
         {name: merge(segments) for name, merge in BIN_FIELD_MERGERS.items()}
         | {name: getattr(difficulty, name) for name in _BIN_DIFFICULTY_FIELDS}
     )
-    # 候補の値はビンからもう一度畳むので、ビンにも中の区間の平均を載せる。
+    # 候補の値はビンから畳むので、ビンに中の区間の平均を載せる。
     return merged.with_density_inputs(difficulty.density_inputs)
 
 

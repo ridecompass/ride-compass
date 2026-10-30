@@ -26,7 +26,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, Protocol
 
-from app.domain.stopwatch import add_elapsed_ms, elapsed_ms, start_timer
+from app.domain.stopwatch import add_elapsed_ms, elapsed_ms, start_timer, steps_note
 from app.domain.errors import GENERATION_BUSY_MESSAGE, RoutingError, SearchAreaTooLargeError, SearchMemoryBusyError
 from app.domain.geo import haversine_distance_km
 from app.domain.loop_routing import TracedLoop
@@ -70,11 +70,6 @@ def _pool_note(selected: int, pool_size: int) -> str:
     """生成のログの行の、折返し点のプールの欄。届かなければ不足数を`pool_unfilled`で添える。"""
     shortfall = pool_size - selected
     return f"pool={pool_size}" + (f" pool_unfilled={shortfall}" if shortfall > 0 else "")
-
-
-def _evaluate_steps_note(context: "RoadGraphContext") -> str:
-    """生成のログの行の、評価の段ごとの所要時間の欄（`RoadGraphContext.evaluate_steps_ms`、段の名前_ms=ミリ秒）。"""
-    return " ".join(f"{step}_ms={ms}" for step, ms in context.evaluate_steps_ms.items())
 
 
 def _label(
@@ -371,7 +366,7 @@ class RouteGenerator:
                 f"evaluate_loopsの戻り値が入力と対応していません traced={len(traced)} candidates={len(candidates)}"
             )
         merge_started = start_timer()
-        drafts = [RouteDraft(**dict(candidate), **merge_route_values(candidate.segments)) for candidate in candidates]
+        drafts = [RouteDraft(**dict(candidate), **merge_route_values(candidate.segments)._asdict()) for candidate in candidates]
         add_elapsed_ms(context.evaluate_steps_ms, "merge", merge_started)
         return drafts
 
@@ -512,7 +507,7 @@ class RouteGenerator:
             "%s origin=%s %s -> candidates=%d %s repeated=%s "
             "prepare_ms=%d fixed_ms=%d finish_ms=%d evaluate_ms=%d (%s) total_ms=%d",
             finish.log_label, origin_label, finish.log_detail, len(candidates), selection.summary, repeated,
-            prepare_ms, fixed_ms, finish_ms, evaluate_ms, _evaluate_steps_note(context), elapsed_ms(started),
+            prepare_ms, fixed_ms, finish_ms, evaluate_ms, steps_note(context.evaluate_steps_ms), elapsed_ms(started),
         )
         return candidates
 

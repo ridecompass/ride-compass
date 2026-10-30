@@ -379,7 +379,7 @@ def axis_way_value_formula(
     - 条件で変わる材料を読まない軸は、値そのものが材料になる。
     - 条件で変わる材料がどれも道を辿る向きだけで決まる（`ServedMaterialFormula.by_direction`）軸は、順向き・逆向きに
       辿ったときの値が材料になり、木が向きで選ぶ。区間から畳む軸も、畳んだ値をこの形で配れる。
-    - ほかは、軸の評価（`domain/axis_evaluation.py: evaluate_axis_array`）のうち条件で変わる材料に届く項を木へ開く。
+    - ほかは、軸の評価（`domain/axis_evaluation.py: evaluate_axis`）のうち条件で変わる材料に届く項を木へ開く。
       条件で変わらない材料・軸の得点と、0次条件の当たりは材料になる。
 
     木にできない軸はNone——区間から畳む軸（畳みは区間ごとの木が要る）と、条件で変わる材料に届く分類の形・0次条件の軸。

@@ -31,6 +31,7 @@ from app.domain.search_graph import (
     CsrGraphStructure,
     build_lazy_road_graph,
     build_search_graph_statics,
+    kernel_array,
     run_starts,
 )
 from app.domain.turn_structure import TurnExpandedStructure, build_turn_expanded_structure, current_turn_cost
@@ -61,13 +62,18 @@ def largest_strongly_connected_nodes(csr: CsrGraphStructure, passable: np.ndarra
     Nodeどうしの行き来はターンを展開しても変わらない。この集まりの中のNodeからは、集まりの中のどのNodeへも
     経路があり、集まりの外のNodeへ寄せた点は、出られないか戻れない。
     """
-    passable_entries = np.asarray(passable, dtype=np.bool_)[csr.entry_edge_index]
-    component = _strong_components(
-        csr.indptr.astype(np.int64), csr.indices.astype(np.int64), passable_entries,
-    )
+    component = _strong_components(*_passable_csr(csr, passable))
     if len(component) == 0:
         return np.zeros(0, dtype=bool)
     return component == int(np.argmax(np.bincount(component)))
+
+
+def _passable_csr(csr: CsrGraphStructure, passable: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """JITへ渡す、CSRの行の始まり・遷移先と、遷移ごとに通れるか（`passable`は区間ごと）。型は`kernel_array`で揃える。"""
+    return (
+        kernel_array(csr.indptr, np.int64), kernel_array(csr.indices, np.int64),
+        kernel_array(np.asarray(passable)[csr.entry_edge_index], np.bool_),
+    )
 
 
 @njit(cache=True, nogil=True)
@@ -145,11 +151,8 @@ def nodes_reached_without_retracing(
     その手前の橋を往復するしかない。起点が袋小路の中にあると、一番大きな塊までの橋はどのNodeへ行き来するにも通るので
     外す理由にしない。
     """
-    within = np.asarray(accessible, dtype=np.bool_)
-    passable_entries = np.asarray(passable, dtype=np.bool_)[csr.entry_edge_index]
     return _retrace_free_nodes(
-        csr.indptr.astype(np.int64), csr.indices.astype(np.int64), passable_entries, within,
-        np.asarray(terminals, dtype=np.int64),
+        *_passable_csr(csr, passable), kernel_array(accessible, np.bool_), kernel_array(terminals, np.int64),
     )
 
 
@@ -340,17 +343,6 @@ def _retrace_free_nodes(
 # 探索の優先度キュー（numpy配列のバイナリヒープ）。順位のキー・状態・積んだ時点のコスト`g`の列と、
 # `g`の列を使うか。`g`の列を使わないヒープはキーそのものを`g`として扱う。
 Heap = tuple[np.ndarray, np.ndarray, np.ndarray, bool]
-
-
-def _kernel_array(values: np.ndarray, dtype: type) -> np.ndarray:
-    """JITした探索へ渡す配列を、1つの型（dtype・C順・書き込み可）へ揃える。揃っている配列は写さない。
-
-    numbaは引数の型（dtype・並び・読み取り専用か）ごとに別々にコンパイルする。揃えずに渡すと、
-    イメージの組み立てで焼いたコンパイル結果（`compile_search_kernels`）と型の違う呼び出しが、
-    本番の最初のルート生成でコンパイルを払う。
-    """
-    array: np.ndarray = np.ascontiguousarray(values, dtype=dtype)
-    return array if array.flags.writeable else array.copy()
 
 
 @njit(cache=True, inline="always")
@@ -593,11 +585,11 @@ def build_turn_expanded_tree(
         )
     started = start_timer()
     state_cost, predecessor, state_length_m, state_seconds = _turn_expanded_dijkstra(
-        _kernel_array(indptr, SEARCH_INDEX_DTYPE), _kernel_array(target_state, SEARCH_INDEX_DTYPE),
-        _kernel_array(transition_seconds, EDGE_VALUE_DTYPE),
-        _kernel_array(cost_bins, EDGE_VALUE_DTYPE), _kernel_array(seconds_bins, EDGE_VALUE_DTYPE),
-        _kernel_array(edge_length_m, np.float64), float(bin_seconds),
-        _kernel_array(entry_state_indices, np.int64), float(cost_limit),
+        kernel_array(indptr, SEARCH_INDEX_DTYPE), kernel_array(target_state, SEARCH_INDEX_DTYPE),
+        kernel_array(transition_seconds, EDGE_VALUE_DTYPE),
+        kernel_array(cost_bins, EDGE_VALUE_DTYPE), kernel_array(seconds_bins, EDGE_VALUE_DTYPE),
+        kernel_array(edge_length_m, np.float64), float(bin_seconds),
+        kernel_array(entry_state_indices, np.int64), float(cost_limit),
         len(entry_state_indices) + HEAP_INITIAL_SLACK,
     )
     dijkstra_ms = elapsed_ms(started)
@@ -953,11 +945,11 @@ def turn_expanded_shortest_path(
     )
     capacity = len(origin_states) + HEAP_INITIAL_SLACK
     predecessor, goal_state = _turn_expanded_astar(
-        _kernel_array(structure.indptr, SEARCH_INDEX_DTYPE), _kernel_array(structure.target_state, SEARCH_INDEX_DTYPE),
-        _kernel_array(structure.turn_seconds, EDGE_VALUE_DTYPE), _kernel_array(structure.edge_to, np.int64),
-        _kernel_array(cost_bins, EDGE_VALUE_DTYPE), _kernel_array(seconds_bins, EDGE_VALUE_DTYPE), float(bin_seconds),
-        _kernel_array(node_heuristic, np.float64),
-        _kernel_array(origin_states, np.int64), int(goal_node_index), capacity,
+        kernel_array(structure.indptr, SEARCH_INDEX_DTYPE), kernel_array(structure.target_state, SEARCH_INDEX_DTYPE),
+        kernel_array(structure.turn_seconds, EDGE_VALUE_DTYPE), kernel_array(structure.edge_to, np.int64),
+        kernel_array(cost_bins, EDGE_VALUE_DTYPE), kernel_array(seconds_bins, EDGE_VALUE_DTYPE), float(bin_seconds),
+        kernel_array(node_heuristic, np.float64),
+        kernel_array(origin_states, np.int64), int(goal_node_index), capacity,
     )
     if goal_state < 0:
         return None
@@ -970,7 +962,7 @@ def compile_search_kernels() -> None:
 
     `@njit(cache=True)`の結果はこのファイルの隣の`__pycache__`に残り、別のプロセスはそこから読む。
     イメージの組み立て（`backend/Dockerfile`）で呼び、入れ替えたコンテナの最初のルート生成が
-    コンパイルを待たないようにする。探索の入口が引数の型を揃える（`_kernel_array`）ため、ここで
+    コンパイルを待たないようにする。探索の入口が引数の型を揃える（`domain/search_graph.py: kernel_array`）ため、ここで
     作る入力は形が合えばよい。焼くのはここがPythonから呼ぶJITだけなので、本番の経路がPythonから呼ぶJITも
     ここで呼ぶものに限る（部品は探索の中へ展開し、Pythonからは素の関数を呼ぶ）。
     """

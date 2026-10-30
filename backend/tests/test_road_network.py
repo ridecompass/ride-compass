@@ -3,14 +3,13 @@
 入口は次のとおり。
 - `RoadNetwork`: 組み立てた時点で行数・列数の食い違いを断る
 - `slice_network`: 範囲に掛かる区間と、その両端のノードを取り出す
-- `road_class_columns`・`material_arrays_of`: 区分の列と、切り出した区間の材料
+- `road_class_columns`・`material_arrays_of`: 区分の列と、切り出した区間の材料・観測として受ける材料
 - `elevation_attribute`: 1区間の標高属性
 - `edge_row_of`: `(道, 区間番号, 向き)`から区間の行
 
 ここで見ないもの:
 - 道路網をDBから組み立てて置いておくこと → `test_road_network_store.py`
 - 材料の列の型（`EdgeMaterialArrays`・`CategoricalColumn`・`ElevationAttribute`）の振る舞い → `test_attributes.py`
-- 軸の集合から読む材料を決めて切り出すこと → `test_evaluation.py`
 - 切り出した範囲で経路を探すこと → `test_route_generation_behavior.py`
 
 道路網は`tests/east_west_network.py: network`。
@@ -23,6 +22,7 @@ import pytest
 from hypothesis import example, given
 from hypothesis import strategies as st
 
+from app.domain.material_catalog import GRADIENT_PERCENT
 from app.domain.road_classes import class_material_id
 from app.domain.road_network import (
     edge_row_of,
@@ -83,11 +83,16 @@ def test_the_materials_and_road_classes_of_a_slice_follow_its_rows():
     classes = road_class_columns(whole, road_classes({"k": classification({"is_y": [fact_is("cat_a", "y")]})}))
     road = slice_network(whole, classes, 139.015, 34.99, 139.11, 35.01)
 
-    columns = material_arrays_of(road, {"num_a", "cat_a"}).columns
+    columns = material_arrays_of(road, {}).columns
 
     assert columns["num_a"].tolist() == [20.0, 30.0]
     assert [columns["cat_a"].value_at(i) for i in range(2)] == ["y", None]
     assert [columns[class_material_id("k")].value_at(i) for i in range(2)] == ["is_y", None]
+
+
+def test_a_material_not_sourced_from_observation_is_refused_as_an_observed_column():
+    with pytest.raises(ValueError, match=GRADIENT_PERCENT):
+        material_arrays_of(slice_network(network(), ({}, {}), 138.9, 34.9, 139.2, 35.1), {GRADIENT_PERCENT: np.zeros(5)})
 
 
 def test_the_elevation_attribute_reads_the_average_grade_from_the_material():

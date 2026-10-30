@@ -232,7 +232,7 @@ def referenced_materials(shape: "AxisShape", priority_overrides: "Sequence[Prior
     `AxisDefinition.materials`がこれを返し、値の検査`check_axis_definition`と評価の材料の選び（地図の配信が読む
     葉の材料等）の**両方がそれを読む**。片方が`shape.terms`だけを見て他方が`priority_overrides`も見る、という状態に
     なると、検証を素通りした軸が実行時に落ちる（`priority_overrides`経由の静的材料が動的軸へ紛れ込み、
-    `domain/axis_evaluation.py: evaluate_axis_array`が`materials[override.material]`でKeyErrorになる）。
+    `domain/axis_evaluation.py: evaluate_axis`が`materials[override.material]`でKeyErrorになる）。
     """
     if isinstance(shape, BreakpointLinearShape):
         shape_materials = [term.material for term in shape.terms]
@@ -631,7 +631,7 @@ def _check_dynamic_and_static_materials_are_not_mixed(definition: AxisDefinition
 
     動的軸はリクエストごとに`evaluate_dynamic_axis_arrays`（domain/dynamic_materials.py）で
     再評価され、そこへ渡るのは「静的スコア行列の公開軸スコア」と「動的材料」だけである。
-    静的材料の配列は渡らないため、混在させた軸は`domain/axis_evaluation.py: evaluate_axis_array`が`materials[...]`で
+    静的材料の配列は渡らないため、混在させた軸は`domain/axis_evaluation.py: evaluate_axis`が`materials[...]`で
     KeyErrorになり、`/api/routes/generate`ごと失敗する。静的材料が必要なら、その部分を別の軸へ
     切り出し（公開軸として評価され、動的軸からは軸参照で読める）合成する。
 

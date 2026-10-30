@@ -155,8 +155,8 @@ way粒度の経路も**区間向けと同じ式**を使う。`way_from_clause`�
   静的材料と同じ軸に置けない。`axis_definitions.py: _check_dynamic_and_static_materials_are_not_mixed`）。
   観測の履歴が無ければ空で、その材料を読む軸はその生成で「データなし」になる。
 - **`compose_costs_from_axis_matrix`**: 軸別スコア配列群と重み辞書から合成difficulty
-  （`difficulty.py: composite_from_sums`）→割増の倍率と足す秒（`AxisComposition`。費用は`AxisComposition.cost`に
-  所要時間を渡して求める）まで配列演算で行う。costからdifficultyへの
+  （`difficulty.py: composite_from_sums`）→割増の倍率と足す秒（`AxisComposition`。費用は所要時間×倍率＋足す秒で、
+  ビンの仕上げのJIT（`domain/leg_costs.py: _bin_costs`）が求める）まで配列演算で行う。costからdifficultyへの
   逆算（折返し点・経由Nodeの並べ替えが使う）は同じファイルの`difficulty_from_cost`が持つ。密度の軸の分は、逆算では
   足した秒を所要時間で割った値として入る——回数 ÷ (所要時間 × 想定速度)の点数で、所要時間が想定速度で走る時間に
   近いほど、範囲の平均の密度に傾きを掛けた点数（頭打ちの無い直線）に近い。停止の待ちや上り坂で所要時間が延びた
@@ -173,11 +173,11 @@ way粒度の経路も**区間向けと同じ式**を使う。`way_from_clause`�
 仮数の整数で正確に比べて決め直す（配列のまま。要素ごとにPythonの`round()`を呼ぶと、
 小数1桁の得点を重み0.5ずつ足した軸・同じ重みの2軸の合成のように半数近くの要素が`.5`に乗る入力で、
 時刻のビンごとに評価し直す動的軸の合成が1回あたり数十ms重くなる）。軸1本の得点
-（`evaluate_axis_array`）も同じ`round_difficulty_array`で丸める。
+（`evaluate_axis`）も同じ`round_difficulty_array`で丸める。
 
-**暗黙の前提**: 軸が読む材料の配列は`MATERIAL_CATALOG`の全材料ぶん確保する
-（出どころがDBでない材料も既定値[NaN/False/値なし]で確保）。確保しないと、値式が無い材料を
-軸スタジオでGUI作成した軸を評価した際に`evaluate_axis_array`が`KeyError`で
+**暗黙の前提**: 軸が読む材料は、`MATERIAL_CATALOG`の材料なら道路網にも観測にも無くても既定値[NaN/False/値なし]の列で
+読める（`domain/evaluation.py: build_static_edge_score_matrix`が読まれた材料を埋める）。埋めないと、値式が無い材料を
+軸スタジオでGUI作成した軸を評価した際に`evaluate_axis`が`KeyError`で
 `/api/routes/generate`自体を落とす（Pythonの値の入口`evaluate_axes_values`は、無い材料を
 全要素欠損の列として埋めてから配列へ通す）。
 
@@ -189,13 +189,12 @@ bbox全体ぶんのコストをリクエストにつき1回だけnumpyで合成�
 `list.__getitem__`だけを渡す。
 
 - **`build_static_edge_score_matrix`**: 生成のたびに、切り出した探索範囲の材料
-  （`GraphService.get_search_slice`）と雨の観測（`RoadGraphEngine`の気象の段）から`StaticEdgeScoreMatrix`（Edge×公開軸の静的スコア行列＋distance_m・
-  bearing_deg・0次フィルタ判定用の生配列、行は切り出した区間の順）を構築する。キャッシュしない——
+  （`GraphService.get_search_slice`）と雨の観測（`RoadGraphEngine`の気象の段）から`StaticEdgeScoreMatrix`（公開軸×Edgeの静的スコア行列＋distance_m・
+  bearing_deg・0次フィルタ判定用の生配列。区間は切り出した区間の順で、行列は軸・材料のidごとに区間の値が連続する）を構築する。キャッシュしない——
   軸定義の編集がそのまま次の生成に効く。`asyncio.to_thread`の先で組むため、呼び手（`RoadGraphEngine`）が軸定義の写し
-  （`axis_definitions.py: copy_axis_definitions`）を1回取り、材料の切り出し（`static_score_material_ids`が読む材料を決める）と
-  組み立ての両方へ同じ写しを渡す（軸の保存と重なっても、読む材料と列は1つの軸の集合から決まる。[軸スタジオ](axis-studio.md)「ライフサイクル」）。
-  読む材料のうち切り出しにも観測にも無いものは欠損の列で埋めるので、読む材料の決め方から漏れた材料は、落ちずに
-  その材料を読む軸の「データなし」として現れる。折れ線の軸の項の和は軸ごとに1回だけ求め、点数・生値の列・密度の軸の
+  （`axis_definitions.py: copy_axis_definitions`）を1回取って組み立てへ渡し、行列はその写しを持つ（`StaticEdgeScoreMatrix.definitions`。
+  レグの合成も同じ写しを読むので、軸の保存と重なっても、読む材料と列と合成は1つの軸の集合から決まる。[軸スタジオ](axis-studio.md)「ライフサイクル」）。
+  材料の列は読まれたときに切り出す（`domain/road_network.py: material_arrays_of`）ので、読む材料を先に並べない。折れ線の軸の項の和は軸ごとに1回だけ求め、点数・生値の列・密度の軸の
   横軸で使い回す（`domain/axis_evaluation.py: AxisEvaluation`）。
   分類の材料（`highway`・路面の見込み等）は、道路網の置き場が持つ語彙への番号の列
   （`domain/attributes.py: CategoricalColumn`）のまま受け取って運ぶ。軸の対応表・0次条件・走行モデルの
@@ -209,7 +208,7 @@ bbox全体ぶんのコストをリクエストにつき1回だけnumpyで合成�
   `REQUEST_DYNAMIC_MATERIAL_IDS`（出どころ`MaterialSpec.source`が`"request"`の材料から導く）と1対1に揃える（式の実体は
   `domain/wind.py`にあり、ここは配線のみ）——
   `REQUEST_DYNAMIC_MATERIAL_IDS`自体が材料id集合として宣言されているため軸id単位では
-  なく材料id単位で登録する（`dynamic_axis_topological_order`・`evaluate_axis_array`
+  なく材料id単位で登録する（`dynamic_axis_topological_order`・`evaluate_axis`
   という既存の汎用トポロジカル合成が「動的材料さえ埋まればどんな軸[軸スタジオが
   動的材料を直接参照して作ったカスタム軸を含む]でも正しく合成する」ため、
   軸名のハードコードは呼び出し側に一切現れない）。動的材料を足すときは、材料の宣言に
@@ -219,8 +218,8 @@ bbox全体ぶんのコストをリクエストにつき1回だけnumpyで合成�
   動的軸合成（`evaluate_dynamic_axis_arrays`）もここを通るため、式が乖離しない。
   `DynamicAxisRequestContext`は出発時点の風のスナップショット（`departure_wind`）・走行速度
   （`travel_speed_ms`、m/s。既定値を持たない必須フィールドで、伝播漏れは構築時点で
-  失敗する）に加え、時刻依存の材料向けに時別予報（`wind_series`、格子点ごと）・出発時刻
-  （`start`）・Edgeごとの通過予定時刻（`passage_hours`）と最寄りの格子点（`wind_points`。どちらも
+  失敗する）に加え、時刻依存の材料向けに時別予報（`wind_series`、格子点ごと）・通過する時刻の
+  予報の添字（`forecast_index`。全Edgeが同じ時刻なら数、Edgeごとの時刻なら配列）と最寄りの格子点（`wind_points`。配列は
   `bearing_deg`と同じ行順）を持つ。
   これらが揃えば風の材料はEdgeごとにその時刻の風で求め、揃わなければ
   スナップショットを全Edgeへ一様に使う。風は進行方向の成分と横成分に分けて
@@ -236,7 +235,7 @@ bbox全体ぶんのコストをリクエストにつき1回だけnumpyで合成�
   時刻ビンごとに合成し直すときの、風に依らない計算の使い回しは[routing-engine.md](routing-engine.md)
   「レグ別コスト配列」節。
   同じコスト配列・軸別スコア配列は`_build_segment_details`（区間表示）からも参照され、
-  探索と表示の二重計算を避ける。区間の軸別寄与度（表示用）は`difficulty.py: axis_contributions_at_rows`が
+  探索と表示の二重計算を避ける。区間の軸別寄与度（表示用）は`difficulty.py: axis_contributions`が
   経路上の区間ぶんだけ、合成が返した重みの和（`AxisComposition.weight_sums`）を分母に求める
   ——全区間ぶんは作らない。**唯一の例外**（探索コストのみ補完・表示は変えない、
   `docs/architecture/design-principles.md`「探索コストと表示difficultyの一致」参照）: 重み付き軸が
@@ -273,8 +272,8 @@ bbox全体ぶんのコストをリクエストにつき1回だけnumpyで合成�
 信号が交差点の脇の短い区間に集まる幹線では、その区間が頭打ちになり、区間ごとの得点の平均が回数どおりの得点より低く出る。
 勾配のように密度でない材料の軸・他の軸を項に持つ軸は得点の平均のまま（短い急坂を平均でならすと坂のつらさが消える）。
 - 運び方: 静的スコア行列が密度の軸の横軸の値の列（`StaticEdgeScoreMatrix.density_axes`）を持ち、`LegCostArrays.density_axes`を
-  経て、`_build_segment_details`が区間ごとの値・丸めない距離・その軸の重みの割合（`difficulty.py: axis_weight_shares_at_rows`）を
-  区間の器の内部の値（`RouteSegmentDetail._density_inputs`。応答に出ない）として載せる。距離を丸めないのは、応答の区間の距離が
+  経て、`_build_segment_details`が区間ごとの値・丸めない距離・その軸の重みの割合（`difficulty.py: axis_weight_shares`）を
+  区間の難しさ（`route.py: SegmentDifficulty.density_inputs`）として載せ、ビンへ畳む（`route.py: route_bins`）。距離を丸めないのは、応答の区間の距離が
   10m単位で、信号の脇の数mの区間が長さ0になって回数ごと消えるため。
 - 畳み方（`route.py: merge_difficulty_values`）: 得点は横軸の値の距離平均を折れ線に通した値、寄与度はその得点×重みの割合の
   距離平均、合成の難しさは区間の値の距離加重平均の、その軸の寄与度の項だけを作り直した寄与度へ
