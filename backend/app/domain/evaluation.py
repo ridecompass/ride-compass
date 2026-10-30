@@ -208,7 +208,7 @@ class AxisComposition(NamedTuple):
     # 所要時間に足す秒（密度の軸の分。区間の回数に比例する）。
     added_seconds: np.ndarray
     difficulty: np.ndarray
-    # 区間ごとの「データのある軸の重みの合計」。軸別寄与度（`axis_contributions_at_row`）の分母。
+    # 区間ごとの「データのある軸の重みの合計」。軸別寄与度（`axis_weight_shares_at_rows`）の分母。
     weight_sums: np.ndarray
 
     def cost(self, seconds: np.ndarray) -> np.ndarray:

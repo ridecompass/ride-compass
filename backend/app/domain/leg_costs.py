@@ -32,7 +32,7 @@ from app.domain.cycling_speed import (
     crr_for_surface,
     rolling_resistance_material_id,
 )
-from app.domain.difficulty import axis_contributions_at_row, axis_weight_shares_at_row, axis_weighted_sums
+from app.domain.difficulty import axis_weighted_sums
 from app.domain.dynamic_materials import DynamicAxisRequestContext, evaluate_dynamic_axis_arrays
 from app.domain.evaluation import (
     AxisComposition,
@@ -64,24 +64,8 @@ MISSING_TRAVEL_DATA_WORDING = "坂の無い平地で、止まる所も無い道�
 logger = logging.getLogger("ridecompass.graph")
 
 
-class _AxisRowReader:
-    """軸の列・重み・重みの合計から、1行ぶんの軸別の値を引く（`LegCostArrays`と`RowValues`が共有する）。"""
-
-    axis_arrays: dict[str, np.ndarray]
-    weight_sums: np.ndarray
-    weights: Mapping[str, float | np.ndarray]
-
-    def axis_contributions_at(self, row: int) -> dict[str, float]:
-        """その区間の軸別寄与度（配列の行番号で引く）。"""
-        return axis_contributions_at_row(self.axis_arrays, self.weights, self.weight_sums, row)
-
-    def axis_weight_shares_at(self, row: int) -> dict[str, float]:
-        """その区間の、データのある軸の重みの割合（配列の行番号で引く）。"""
-        return axis_weight_shares_at_row(self.axis_arrays, self.weights, self.weight_sums, row)
-
-
 @dataclass
-class LegCostArrays(_AxisRowReader):
+class LegCostArrays:
     """1レグぶんの合成済みコスト配列一式。`cost_lazy`は区間の番号順（探索が使う
     行順）、それ以外は切り出した区間の順の表示用配列。レグごとに違うのは通過予定時刻で決まるもの（各Edgeの
     通過予定時刻の風と、時間帯を持つ軸の重み）だけで、静的軸の列は共有する。"""
@@ -90,7 +74,7 @@ class LegCostArrays(_AxisRowReader):
     difficulty_array: np.ndarray
     axis_arrays: dict[str, np.ndarray]
     # 区間ごとの「データのある軸の重みの合計」。軸別寄与度（表示用）はこれと`axis_arrays`から
-    # `axis_contributions_at`が読むときに1行だけ求める——全区間ぶん作っても、読むのは
+    # 経路上の行だけ求める（`difficulty.py: axis_weight_shares_at_rows`）——全区間ぶん作っても、読むのは
     # 経路上の数百区間だけのため。
     weight_sums: np.ndarray
     # 合成に使った重み。時間帯を持つ軸（`time_scope`）は、区間ごとの通過時刻で決めた重みの配列
@@ -130,7 +114,7 @@ class LegCostArrays(_AxisRowReader):
 
 
 @dataclass
-class RowValues(_AxisRowReader):
+class RowValues:
     """経路上の行だけを、ある時刻で合成し直した表示用の値。配列は`rows`と同じ並びで、`LegCostArrays`と
     同じ名前の属性を持つ（区間の組み立ては、どちらから読んでも同じ書き方になる）。"""
 
@@ -700,11 +684,3 @@ class LegCostComposer:
             bin_seconds=np.inf,
         )
 
-
-def material_value_at(leg: LegCostArrays | RowValues, material_id: str, row: int) -> float | None:
-    """レグの合成に使った材料配列から1行を読む（材料データ無し・欠損はNone）。"""
-    array = leg.material_arrays.get(material_id)
-    if array is None:
-        return None
-    value = float(array[row])
-    return None if math.isnan(value) else value

@@ -200,16 +200,6 @@ def axis_contributions_at_rows(
     ]
 
 
-def axis_weight_shares_at_row(
-    axis_arrays: Mapping[str, np.ndarray],
-    weights: Mapping[str, float | np.ndarray],
-    weight_sums: np.ndarray,
-    row: int,
-) -> dict[str, float]:
-    """1区間ぶんの`axis_weight_shares_at_rows`。"""
-    return axis_weight_shares_at_rows(axis_arrays, weights, weight_sums, np.array([row]))[0]
-
-
 def axis_contributions_at_row(
     axis_arrays: Mapping[str, np.ndarray],
     weights: Mapping[str, float | np.ndarray],

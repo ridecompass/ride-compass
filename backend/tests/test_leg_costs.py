@@ -2,7 +2,7 @@
 探索のコスト、区間の表示が読む値を合成する`LegCostComposer`。
 
 入口は`LegCostComposer`（`compose`・`values_at_rows`・`missing_travel_data_share`・`to_full_row_order`・
-`lazy_row`・`wind_unavailable`）と、`LegCostArrays`/`RowValues`の`axis_contributions_at`、`material_value_at`。
+`lazy_row`・`wind_unavailable`）。
 静的スコア行列は架空の軸・材料で組み、風に依る軸と夜だけ効く軸は軸の宣言（本番はDBが正本）を架空の1本へ差し替える。
 
 ここで見ないもの:
@@ -23,6 +23,7 @@ from app.domain import leg_costs
 from app.domain.attributes import CategoricalColumn
 from app.domain.axis_definitions import BreakpointLinearShape, MaterialTerm
 from app.domain.cycling_speed import RiderProfile, SegmentSpeedModel, crr_for_surface
+from app.domain.difficulty import axis_weight_shares_at_rows
 from app.domain.evaluation import DensityAxisColumn, StaticEdgeScoreMatrix
 from app.domain.leg_costs import LegCostComposer
 from app.domain.msm import MsmBlock, MsmGrid
@@ -253,7 +254,7 @@ def test_an_axis_that_reads_the_wind_scores_a_headwind_above_a_tailwind(wind_axi
     leg = _snapshot(matrix, weights={WIND_AXIS: 1.0}, departure_wind=_departure_wind(5.0, from_deg=NORTH))
 
     assert leg.axis_arrays[WIND_AXIS][0] > leg.axis_arrays[WIND_AXIS][1]
-    assert leg_costs.material_value_at(leg, WIND_DRAG, 0) > 0 > leg_costs.material_value_at(leg, WIND_DRAG, 1)
+    assert leg.material_arrays[WIND_DRAG][0] > 0 > leg.material_arrays[WIND_DRAG][1]
 
 
 def test_without_any_wind_the_wind_has_no_value_on_a_segment(wind_axis):
@@ -274,10 +275,10 @@ def test_the_values_shown_on_a_segment_are_the_columns_of_their_own_ids():
     assert leg.axis_raw_arrays["axis_b"].tolist() == [3.0, 4.0]
     assert leg.material_arrays["material_b"].tolist() == [7.0, 8.0]
     assert leg.categorical_material_arrays["category_a"].value_at(1) == "y"
-    assert leg_costs.material_value_at(leg, "material_a", 0) == 5.0
+    assert leg.material_arrays["material_a"][0] == 5.0
     # 欠損と、合成に無い材料は値を持たない。
-    assert leg_costs.material_value_at(leg, "material_a", 1) is None
-    assert leg_costs.material_value_at(leg, "material_z", 0) is None
+    assert np.isnan(leg.material_arrays["material_a"][1])
+    assert "material_z" not in leg.material_arrays
 
 
 # --- 探索の行順 ---------------------------------------------------------------
@@ -411,7 +412,8 @@ def test_values_recomposed_for_the_rows_on_the_route_match_the_composition_used_
         a: v[[2, 0]].tolist() for a, v in leg.axis_arrays.items()}
     assert {m: v.tolist() for m, v in values.material_arrays.items()} == {
         m: v[[2, 0]].tolist() for m, v in leg.material_arrays.items()}
-    assert values.axis_contributions_at(0) == leg.axis_contributions_at(2)
+    assert axis_weight_shares_at_rows(values.axis_arrays, values.weights, values.weight_sums, np.arange(2)) == (
+        axis_weight_shares_at_rows(leg.axis_arrays, leg.weights, leg.weight_sums, np.array([2, 0])))
 
 
 # --- 昼夜 -----------------------------------------------------------------------
@@ -457,8 +459,8 @@ def test_the_display_of_a_segment_weighs_the_night_axis_at_the_hour_it_is_ridden
     values = _night_composer().values_at_rows(np.array([0, 0]), np.array([8.5, 9.5]))
 
     assert values.difficulty_array.tolist() == [0.0, 50.0]
-    assert [values.axis_contributions_at(i) for i in (0, 1)] == [
-        {"axis_a": 0.0, NIGHT_AXIS: 0.0}, {"axis_a": 0.0, NIGHT_AXIS: 50.0}]
+    assert axis_weight_shares_at_rows(values.axis_arrays, values.weights, values.weight_sums, np.arange(2)) == [
+        {"axis_a": 1.0, NIGHT_AXIS: 0.0}, {"axis_a": 0.5, NIGHT_AXIS: 0.5}]
 
 
 # --- 所要時間の欠け ---------------------------------------------------
