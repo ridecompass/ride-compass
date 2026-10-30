@@ -17,7 +17,7 @@ from app.domain.geo import (
     km_per_degree_longitude,
 )
 from app.domain.leg_costs import LegCostArrays
-from app.domain.route import EvaluatedRoute, RouteDraft, merge_difficulty
+from app.domain.route import RouteDraft, SegmentDifficulty, route_difficulty
 from app.domain.turn_structure import TurnExpandedStructure
 from app.domain.route_diversity import pareto_layer_index
 from app.domain.routing import time_bin_of
@@ -352,14 +352,15 @@ class EdgePassage:
     seconds: float
 
 
-def turn_waits_along(structure: TurnExpandedStructure, path: Sequence[int]) -> list[float]:
-    """経路に沿った遷移ごとのターンの待ち（秒、区間の数−1個）。区間の番号がそのまま探索の状態。遷移が無ければ待ち0。"""
-    return [0.0 if entry is None else float(structure.turn_seconds[entry]) for entry in structure.entries_along(path)]
+def turn_waits_along(structure: TurnExpandedStructure, entries: Sequence[int | None]) -> list[float]:
+    """経路に沿った遷移ごとのターンの待ち（秒、区間の数−1個）。遷移が無ければ待ち0。"""
+    return [0.0 if entry is None else float(structure.turn_seconds[entry]) for entry in entries]
 
 
 def route_passages(
     legs: Sequence[LegCostArrays],
     structure: TurnExpandedStructure,
+    entries: Sequence[int | None],
     path: Sequence[int],
     distances_m: Sequence[float],
     leg_of_edge: Sequence[int],
@@ -367,7 +368,8 @@ def route_passages(
 ) -> list[EdgePassage]:
     """経路を探索と同じ規則でたどり、区間ごとに時刻ビンと出発からの秒を決める。
 
-    `path`は区間の番号（探索の行）、`distances_m`は区間の長さ。
+    `path`は区間の番号（探索の行）、`entries`はその遷移の位置（`TurnExpandedStructure.entries_along`）、
+    `distances_m`は区間の長さ。
     探索（`domain/routing.py`の前向きDijkstra・A*）はレグの中の経過時間でビンを選ぶ: レグの最初の区間は
     ビン0、次の区間は前の区間を抜けた時点（曲がる待ちを足す前）の経過時間のビン。区間ごとの秒は、探索の
     コストの下地になっている配列（`LegCostArrays.travel_bins_lazy`、走行モデル＋停止の待ち）を
@@ -378,7 +380,7 @@ def route_passages(
     実態より短く出る。
     """
     fallback_ms = kmh_to_ms(speed_kmh)
-    waits = turn_waits_along(structure, path)
+    waits = turn_waits_along(structure, entries)
     passages: list[EdgePassage] = []
     elapsed = 0.0
     leg_elapsed = 0.0
@@ -408,16 +410,13 @@ def best_first(ranked: list[int], best: int) -> list[int]:
     return [best, *(node for node in ranked if node != best)]
 
 
-def pick_better_candidate(forward: EvaluatedRoute, reverse: EvaluatedRoute) -> EvaluatedRoute:
-    """順方向・逆回り候補のうち、区間の合成difficultyの距離加重平均（`merge_difficulty`）が小さい
-    （走りやすい）方を採用する。逆回り側が算出不能（segments欠損等）なら順方向を採用する
-    （比較不能を「逆回りの方が良い」とは解釈しない、安全側）。
+def prefers_reverse(forward: Sequence[SegmentDifficulty], reverse: Sequence[SegmentDifficulty]) -> bool:
+    """周回を逆回りで返すか。区間の難しさの並びから求めた候補の合成の難しさ（`route_difficulty`）が小さい
+    （走りやすい）向きを採る。逆回りが算出不能なら順回りを採る（比較不能を「逆回りの方が良い」とは読まない、安全側）。
     """
-    forward_difficulty = merge_difficulty(forward.segments)
-    reverse_difficulty = merge_difficulty(reverse.segments)
-    if reverse_difficulty is not None and (forward_difficulty is None or reverse_difficulty < forward_difficulty):
-        return reverse
-    return forward
+    forward_difficulty = route_difficulty(forward)
+    reverse_difficulty = route_difficulty(reverse)
+    return reverse_difficulty is not None and (forward_difficulty is None or reverse_difficulty < forward_difficulty)
 
 
 def difficulty_order(candidate: RouteDraft) -> float:

@@ -43,7 +43,7 @@ from app.domain.dynamic_way_values import (
 from app.domain.evaluation import build_static_edge_score_matrix
 from app.domain.gradient import ROAD_BEARING_LEAF, gradient_by_direction
 from app.domain.map_paint import SignedMaterialMapValue
-from app.domain.route import DensityScoreInput, RouteSegmentDetail, merge_axis_difficulties
+from app.domain.route import DensityScoreInput, RouteSegmentDetail, merge_route_values
 from app.domain.search_graph import EDGE_VALUE_DTYPE
 from app.domain.tuning import TUNING_VALUES
 from app.domain.way_value_formula import WayValueFormula, feature, way_values_from_formula
@@ -198,7 +198,7 @@ def _route_values(segments: FeatureSegments, grade: np.ndarray) -> dict[str, dic
                                        shape=column.shape)
             for axis_id, column in matrix.density_axes.items() if not np.isnan(column.inputs[row])
         }))
-    return {owner: merge_axis_difficulties(segments) for owner, segments in details.items()}
+    return {owner: merge_route_values(segments)["axis_difficulties"] for owner, segments in details.items()}
 
 
 # 引いた地図の道の色が、その道をルートとして走ったときのルートの値と同じ決まりで出る。食い違うと、地図で良く見えた道を

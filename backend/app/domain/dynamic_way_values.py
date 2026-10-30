@@ -255,7 +255,7 @@ def paint_folded_feature_values(
     as_difficulty: bool,
 ) -> dict[str, float | None]:
     """道1本のフィーチャーごとに地図が軸`axis_id`について塗る値を、その道の区間をルートの区間に見立てて、ルートの値と
-    同じ決まり（`domain/route.py: merge_axis_difficulties`の、区間の得点の距離平均）で畳んで求める。
+    同じ決まり（`domain/route.py: merge_route_values`の軸の得点の、区間の得点の距離平均）で畳んで求める。
 
     区間の材料は、区間ごとに値が違いうる材料なら`segments`の区間の値（配信のサービスが配る材料は`served_segments`の
     区間の値）、ほかの材料は区間が属するフィーチャーの値（`paint_feature_values`と同じ`materials`・`served`）。

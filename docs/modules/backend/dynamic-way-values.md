@@ -143,7 +143,7 @@ frontendはどのクエリパラメータをどの軸のリクエストへ載せ
 
 道1本を1つのフィーチャーにするズーム（`EDGE_UNIT_MIN_ZOOM`より下）では、道1本の値を、その道を**ルートとして走ったときの
 ルートの値と同じ決まり**で出す——その道の区間をルートの区間に見立て、区間ごとに評価した得点を区間の長さで平均する
-（`domain/route.py: merge_axis_difficulties`）。道1本の材料で評価すると、区間ごとに値の違う材料（割合・勾配）では、
+（`domain/route.py: merge_difficulty_values`）。道1本の材料で評価すると、区間ごとに値の違う材料（割合・勾配）では、
 得点が折れ線を通る前に平均されて、走ったルートの値と食い違う。
 
 - **畳む軸**（`folds_segments`）: 密度の軸（`domain/axis_definitions.py: averages_density`）でなく、内部軸まで辿った葉の材料に

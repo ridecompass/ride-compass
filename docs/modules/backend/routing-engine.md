@@ -126,7 +126,7 @@ Edgeコストは「探索範囲の静的Edge×公開軸スコア行列＋リク�
 `RouteSegmentDetail.material_values`/`RouteCandidate.material_values`（重み>0の公開軸が
 参照する材料id→値、`AXIS_DEFINITIONS`の`materials`プロパティから導出、
 `evaluation.py: displayed_material_ids`が集合を決める）は、動的材料（風等）は`material_arrays`から
-（`material_value_at`）、静的材料は材料の列から読む。勾配（`gradient_percent`）だけは地図の配信と同じ桁へ丸めた
+（`road_graph_candidates.py: _build_segment_details`が経路上の行でまとめて）、静的材料は材料の列から読む。勾配（`gradient_percent`）だけは地図の配信と同じ桁へ丸めた
 Edgeごとの値で上書きする。`displayed_material_ids`は符号付き材料を塗る公開軸（`map_paint.py: map_paint`の`value`）の
 材料も重みに関わらずいつも含める（地図のレンズはルートを作ったあとにも切り替わり、作り直さずに
 区間の値で塗るため。レンズは要求に載らない）。
@@ -185,7 +185,8 @@ Nodeが出発地のNodeか（`road_graph_context.py: FixedLegs.closes`）の1つ
 終点）だけが、それまでに走った道すべて（前段の区間を含む。同じNode対の逆向きも）を避ける——帰りと同じ罰
 （`domain/route_search.py: retrace_penalized`、禁止ではない）を置いた写しで木・帰りを探す。前段の区間どうしは避けずに素直な道で結ぶ
 （遠回りすると置いた点の間が利用者の思う道でなくなる）。距離ありでも置いた点は型が運び、生成の入口`generate_loops`の`points`で渡る。
-1回の生成は、段ごとの所要時間（`prepare_ms`・`fixed_ms`・`finish_ms`・`evaluate_ms`・`total_ms`）と戦略の中間結果の
+1回の生成は、段ごとの所要時間（`prepare_ms`・`fixed_ms`・`finish_ms`・`evaluate_ms`・`total_ms`。評価の中は
+向きの選び・区間の組み立て・ビン・まとめ・区間の形の後付けに分けて`evaluate_ms`の後ろの括弧に並ぶ。`road_graph_context.py: RoadGraphContext.evaluate_steps_ms`）と戦略の中間結果の
 減り方、候補ごとの同じ道を2度目に走る距離の割合（`repeated`。`RoadGraphEngine.repeated_shares`）を持つ1行で残り、候補が0件ならWARNINGになる。
 
 候補の形は公開軸の重み配分で決まる（フロンティア方式）:
@@ -731,8 +732,9 @@ segments構築はEdge単位の軽量な計算のため並行化してよい。�
 順方向の探索結果から逆方向候補を
 **追加のDB/API呼び出し無しに代数的に導出**する: 標高の獲得/喪失を入れ替え、勾配の符号を
 反転し、既にhydrate済みのgeometryを再利用する（`_reverse_traced_edges`/
-`domain/attributes.py: ElevationAttribute.reversed_as`・`reverse_elevation_by_edge`）。両方向の`merge_difficulty`（候補の`overall_difficulty`の平均と同じ計算）を比較し、
-小さい方を採用する（`pick_better_candidate`）。経由地が2つ以上の経路・出発地と違う所で終わる経路ではこの逆回り合成をスキップする
+`domain/attributes.py: ElevationAttribute.reversed_as`・`reverse_elevation_by_edge`）。向きは、両方向の区間の難しさの並びだけを
+先に求め、候補の合成の難しさ（`domain/route.py: route_difficulty`）が小さい方を採る（`domain/route_search.py: prefers_reverse`）。
+区間の形・材料・ビンの組み立ては、採った向きでだけ行う。経由地が2つ以上の経路・出発地と違う所で終わる経路ではこの逆回り合成をスキップする
 ——置いた順は利用者の意図（夕食のあと銭湯）なので崩さない。
 
 ### 夜間軸の動的重み付け
@@ -958,14 +960,14 @@ numbaでJITする探索とその部品はこのファイルにまとめて置く
   符号付き材料（`gradient_percent`等）は符号付きが正準契約**——絶対値ではない。
   ルート線の色分けがこの符号を読む。`road_classes`は道の区分のレイヤごとに、区間の中で値が同じまま続く部分を並べる）・`EvaluatedRoute`（エンジンが評価した経路）・`RouteDraft`（`EvaluatedRoute`に区間から候補単位への集約を足した、並べる前の経路）・`RouteCandidate`（`RouteDraft`に
   応答のid・種類・最速の印・乗り換えの可否を足したもの）。
-- `aggregate_segments_into_bins`（500m区間ビニング）・`merge_axis_difficulties`・
-  `merge_axis_contributions`・`merge_difficulty`・`merge_overall_difficulty`・`merge_material_values`・
-  `merge_material_category_shares`・`route_axis_raw_values`・`_merge_segment_bin`。密度の軸は、得点ではなく
+- `aggregate_segments_into_bins`（500m区間ビニング）・`domain/route.py: merge_difficulty_values`（区間の並びの難しさの値を
+  1回で畳む）・`domain/route.py: merge_route_values`（候補の全区間を候補単位の値へ畳む）・`merge_material_category_shares`・
+  `route_axis_raw_values`・`_merge_segment_bin`。密度の軸は、得点ではなく
   区間の器の内部の値（`DensityScoreInput`）の回数を平均してから得点にする（[評価・スコアリング](evaluation-scoring.md)
   「ルート単位の集約」の「密度の軸」）。**`RouteSegmentDetail`の
   フィールドは、ビンへの畳み方（`BIN_FIELD_MERGERS`）を必ず宣言する**。`_merge_segment_bin`は
-  この表だけからビンを組み立て、辞書フィールドの畳み方（キーごとの距離加重平均、
-  `BIN_DICT_FIELD_MERGERS`）も、形・位置・距離のように個別に畳むものも同じ表に載る。
+  この表だけからビンを組み立て、難しさの値（`merge_difficulty_values`が1回で畳む）も、形・位置・距離のように
+  個別に畳むものも同じ表に載る。
   区間の中の道ごとの両端の標高（`elevations`）は平均せず、中の区間の並びをつなぐ（画面は道ごとの両端を結んで標高の線を描く）。
   道の区分（`road_classes`）は平均せず、中の区間の部分をつないで隣どうしの同じ値を1つにまとめる（`merge_road_classes`）。
   ほかのビンへ引き継げない値（平均できない分類値等）はこの器に載せず、ビニングの前に

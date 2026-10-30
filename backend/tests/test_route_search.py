@@ -22,7 +22,7 @@
   （`domain/cycling_speed.py`）・風（`domain/wind.py`）・0次フィルタ（`domain/hard_filters.py`）
   → それぞれの持ち主のテストが持つ。
 
-このファイルが組み立てて渡し、読むデータ型（探索構造・`EvaluatedRoute`等）は本物で作る——代役にしても
+このファイルが組み立てて渡し、読むデータ型（探索構造・`SegmentDifficulty`等）は本物で作る——代役にしても
 何も切り離せず、本物が変わったときに黙ってずれるだけになる。
 """
 
@@ -35,8 +35,7 @@ import pytest
 from app.domain.attributes import ElevationAttribute
 from app.domain.graph import LeanEdge
 from app.domain.route import (
-    EvaluatedRoute,
-    RouteSegmentDetail,
+    SegmentDifficulty,
     concat_edge_geometries,
     reverse_elevation_by_edge,
     route_elevation_gain,
@@ -45,7 +44,7 @@ from app.domain.route_search import (
     alternative_via_nodes,
     leg_of_edge_by_half,
     order_by_bearing_spread,
-    pick_better_candidate,
+    prefers_reverse,
     rank_by_pareto_layers,
     relay_band,
     distance_tolerance_km,
@@ -94,21 +93,9 @@ def turn_tree(state_count, *, node_cost, node_length_m, node_seconds, node_best_
     )
 
 
-def segment_detail(difficulty):
-    return RouteSegmentDetail(
-        start_latitude=35.0, start_longitude=139.0, end_latitude=35.0, end_longitude=139.0,
-        cumulative_distance_km=0.0, distance_km=1.0, edge_start=0, edge_end=1, elevations=[],
-        road_classes={}, difficulty=difficulty,
-    )
-
-
-def route_candidate(name, segments=()):
-    """`name`は候補を見分けるためだけの名前。"""
-    return EvaluatedRoute(
-        direction_label=name, distance_km=1.0, geometry={}, elevation_gain_m=None, segments=list(segments),
-        estimated_duration_seconds=None, wind_unavailable=False, missing_travel_data_share=None, axis_raw_values={},
-        material_category_shares={}, edge_ids=[], edge_point_offsets=[], node_ids=[], turns=[],
-        waypoint_distances_km=[],
+def segment_difficulty(difficulty):
+    return SegmentDifficulty(
+        distance_km=1.0, difficulty=difficulty, axis_difficulties={}, axis_contributions={}, density_inputs={}
     )
 
 
@@ -197,15 +184,14 @@ def test_leg_of_edge_by_half_switches_where_the_accumulated_weight_reaches_half(
         (None, 7.0, "reverse"),
     ],
 )
-def test_pick_better_candidate_takes_the_lower_difficulty(forward_difficulty, reverse_difficulty, picked):
-    """難易度は区間から求める。区間が無い候補は比較できない。"""
-    def candidate(name, difficulty):
-        return route_candidate(name, segments=[] if difficulty is None else [segment_detail(difficulty)])
+def test_prefers_reverse_takes_the_lower_difficulty(forward_difficulty, reverse_difficulty, picked):
+    """難易度は区間から求める。区間が無い向きは比較できない。"""
+    def segments(difficulty):
+        return [] if difficulty is None else [segment_difficulty(difficulty)]
 
-    forward = candidate("forward", forward_difficulty)
-    reverse = candidate("reverse", reverse_difficulty)
+    reverse = prefers_reverse(segments(forward_difficulty), segments(reverse_difficulty))
 
-    assert pick_better_candidate(forward, reverse).direction_label == picked
+    assert ("reverse" if reverse else "forward") == picked
 
 
 # --------------------------------------------------------------------------------------
@@ -240,7 +226,9 @@ def test_route_passages_reads_each_edge_in_the_time_bin_the_search_used():
         lazy.node_count, edge_seconds=travel_bins, bin_seconds=leg.bin_seconds,
     )
 
-    passages = route_passages([leg], structure, path, [100.0, 100.0], [0, 0], speed_kmh=20.0)
+    passages = route_passages(
+        [leg], structure, structure.entries_along(path), path, [100.0, 100.0], [0, 0], speed_kmh=20.0
+    )
 
     assert passages[-1].elapsed_seconds + passages[-1].seconds == pytest.approx(tree.state_seconds[states["BC"]])
 

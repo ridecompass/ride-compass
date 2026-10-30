@@ -150,7 +150,7 @@ def test_turns_along_a_path_are_the_turns_at_a_branch(nodes, edges, route, expec
     lazy, _, structure = build_all(graph, spec=TURN_SPEC)
     index = state_index(lazy)
 
-    turns = turn_structure.turns_along(structure, [index[edge_id] for edge_id in route])
+    turns = turn_structure.turns_along(structure, structure.entries_along([index[edge_id] for edge_id in route]))
 
     assert [(turn.index, turn.kind) for turn in turns] == expected
 
@@ -191,7 +191,7 @@ def test_a_turn_where_the_road_ahead_is_no_entry_is_still_a_turn_at_a_branch():
     lazy, _, structure = build_all(graph, spec=TURN_SPEC)
     index = state_index(lazy)
 
-    turns = turn_structure.turns_along(structure, [index["WC"], index["CN"]])
+    turns = turn_structure.turns_along(structure, structure.entries_along([index["WC"], index["CN"]]))
 
     assert [(turn.index, turn.kind) for turn in turns] == [(1, turn_structure.TurnKind.LEFT)]
     assert transition_seconds(lazy, structure)[("WC", "CN")] == pytest.approx(TURN_SPEC.left_seconds)

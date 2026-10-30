@@ -257,10 +257,11 @@ class PathTurn:
     kind: TurnKind
 
 
-def turns_along(structure: TurnExpandedStructure, path: Sequence[int]) -> list[PathTurn]:
-    """経路の案内する曲がり（左折・右折・Uターン。`turn_kind`が直進でない遷移）を、経路の順に。"""
+def turns_along(structure: TurnExpandedStructure, entries: Sequence[int | None]) -> list[PathTurn]:
+    """経路の案内する曲がり（左折・右折・Uターン。`turn_kind`が直進でない遷移）を、経路の順に。
+    `entries`は経路の遷移の位置（`TurnExpandedStructure.entries_along`）。"""
     turns: list[PathTurn] = []
-    for index, entry in enumerate(structure.entries_along(path), start=1):
+    for index, entry in enumerate(entries, start=1):
         if entry is None:
             continue
         kind = TurnKind(int(structure.turn_kind[entry]))

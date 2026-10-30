@@ -24,9 +24,9 @@ import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Protocol
 
-from app.domain.stopwatch import elapsed_ms, start_timer
+from app.domain.stopwatch import add_elapsed_ms, elapsed_ms, start_timer
 from app.domain.errors import GENERATION_BUSY_MESSAGE, RoutingError, SearchAreaTooLargeError, SearchMemoryBusyError
 from app.domain.geo import haversine_distance_km
 from app.domain.loop_routing import TracedLoop
@@ -44,12 +44,11 @@ if TYPE_CHECKING:
     from app.services.road_graph_context import FixedLegs, RoadGraphContext
     from app.services.road_graph_engine import RoadGraphEngine
 from app.domain.route import (
-    BIN_DICT_FIELD_MERGERS,
     Coordinates,
     RouteCandidate,
     RouteDraft,
     RouteKind,
-    merge_overall_difficulty,
+    merge_route_values,
 )
 
 logger = logging.getLogger("ridecompass.generate")
@@ -73,18 +72,9 @@ def _pool_note(selected: int, pool_size: int) -> str:
     return f"pool={pool_size}" + (f" pool_unfilled={shortfall}" if shortfall > 0 else "")
 
 
-#: 区間から候補単位へ集約する値（載せるフィールド → `segments`から作る関数）。
-#: **集約を1段増やすときはここへ1行足す**（design-principles.md 構造仕様8）。集約は候補の
-#: 並び順・id等を読まないため、呼び出し側がそれらを付ける前でも後でも結果は変わらない。
-#: 辞書のフィールドはビンと同じ畳み方。**categorical材料の延長割合はここで触らない**——`segments`は既に
-#: 約500m単位へ畳まれており、代表値からでは正しい割合を作れない（エンジンがビニングの
-#: 前に計算して`EvaluatedRoute`へ載せている。`road_graph_candidates.py: _build_candidate`）。
-#: 軸の生値（`axis_raw_values`）も区間が持たないため、同じくエンジンが載せる。
-SEGMENT_AGGREGATES: dict[str, Callable[[list[Any]], Any]] = {
-    # ルート単位の絶対基準。エンジン非依存のため、engine実装側には持たせない。
-    "overall_difficulty": merge_overall_difficulty,
-    **BIN_DICT_FIELD_MERGERS,
-}
+def _evaluate_steps_note(context: "RoadGraphContext") -> str:
+    """生成のログの行の、評価の段ごとの所要時間の欄（`RoadGraphContext.evaluate_steps_ms`、段の名前_ms=ミリ秒）。"""
+    return " ".join(f"{step}_ms={ms}" for step, ms in context.evaluate_steps_ms.items())
 
 
 def _label(
@@ -367,8 +357,8 @@ class RouteGenerator:
     ) -> list[RouteDraft]:
         """エンジンの評価を通し、区間から候補単位へ集約した`RouteDraft`を返す。
 
-        候補を返す経路はすべてここを通る。**集約を1段増やすときは`SEGMENT_AGGREGATES`へ
-        1行足せば全経路へ同時に効く**（design-principles.md 構造仕様8）。
+        候補を返す経路はすべてここを通る。区間からの集約（`domain/route.py: merge_route_values`）を
+        1段増やせば全経路へ同時に効く（design-principles.md 構造仕様8）。
 
         `evaluate_loops`は入力`traced`と**同じ件数・同じ順**で返すこと。この層は
         `TracedLoop.data`の中身を読まないため、位置以外で突き合わせる手段が無い。件数が
@@ -380,13 +370,10 @@ class RouteGenerator:
             raise RoutingError(
                 f"evaluate_loopsの戻り値が入力と対応していません traced={len(traced)} candidates={len(candidates)}"
             )
-        return [
-            RouteDraft(
-                **dict(candidate),
-                **{name: build(candidate.segments) for name, build in SEGMENT_AGGREGATES.items()},
-            )
-            for candidate in candidates
-        ]
+        merge_started = start_timer()
+        drafts = [RouteDraft(**dict(candidate), **merge_route_values(candidate.segments)) for candidate in candidates]
+        add_elapsed_ms(context.evaluate_steps_ms, "merge", merge_started)
+        return drafts
 
     async def _prepare(
         self,
@@ -523,9 +510,9 @@ class RouteGenerator:
         repeated = ",".join(f"{share:.2f}" for share in self._engine.repeated_shares(context, selection.traced))
         logger.info(
             "%s origin=%s %s -> candidates=%d %s repeated=%s "
-            "prepare_ms=%d fixed_ms=%d finish_ms=%d evaluate_ms=%d total_ms=%d",
+            "prepare_ms=%d fixed_ms=%d finish_ms=%d evaluate_ms=%d (%s) total_ms=%d",
             finish.log_label, origin_label, finish.log_detail, len(candidates), selection.summary, repeated,
-            prepare_ms, fixed_ms, finish_ms, evaluate_ms, elapsed_ms(started),
+            prepare_ms, fixed_ms, finish_ms, evaluate_ms, _evaluate_steps_note(context), elapsed_ms(started),
         )
         return candidates
 

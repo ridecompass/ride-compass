@@ -84,6 +84,9 @@ class RoadGraphContext:
     # 仕上げが目的地を一番近いNodeでなく出て戻れる最寄りNodeへ寄せた場合の
     # 実際の座標（寄せ直しが無ければNone）。仕上げの戻り値（経路の列）の外で生成器へ伝える。
     destination_correction: Coordinates | None = None
+    # 評価（`road_graph_candidates.py: evaluate_routes`と候補単位へのまとめ）の段ごとの所要時間（段の名前→ミリ秒、
+    # 候補をまたいだ和）。生成器が評価の時間と一緒にログの行へ出す。
+    evaluate_steps_ms: dict[str, int] = field(default_factory=dict)
 
 
 
