@@ -127,48 +127,34 @@ describe("layerValueAtKm", () => {
 });
 
 describe("segmentGrades", () => {
-  const segment = (roads: Road[]) =>
-    makeRouteSegment({
-      elevations: roads.map(([start, end, roadKm]) => ({
-        distance_km: roadKm,
-        start_elevation_m: start,
-        end_elevation_m: end,
-      })),
-    });
-
-  it.each<{ roads: Road[]; grades: { mean: number; steepest: number } | null; why: string }>([
-    {
-      roads: [
+  it.each<[string, Road[], { mean: number; steepest: number } | null]>([
+    [
+      "上り下りの和を長さの和で割った平均と、一番きつい道の勾配。値の無い道は数えない",
+      [
         [10, 20, 0.5],
         [20, 40, 0.5],
+        [null, 99, 1],
       ],
-      grades: { mean: 3, steepest: 4 },
-      why: "平均は上り下りの和を長さの和で割り、最大は一番きつい道の勾配",
-    },
-    {
-      roads: [
+      { mean: 3, steepest: 4 },
+    ],
+    [
+      "下りの方がきつければ、最大は下りの勾配（負）",
+      [
         [50, 40, 0.2],
         [40, 42, 0.8],
       ],
-      grades: { mean: -0.8, steepest: -5 },
-      why: "下りの方がきつければ、最大は下りの勾配（負）",
-    },
-    {
-      roads: [
-        [null, 40, 1],
-        [40, 50, 1],
-      ],
-      grades: { mean: 1, steepest: 1 },
-      why: "値の無い道は数えない",
-    },
-    { roads: [[null, null, 1]], grades: null, why: "値のある道が無ければ出さない" },
-  ])("$why", ({ roads, grades }) => {
-    const found = segmentGrades(segment(roads), elevation);
-    if (grades === null) expect(found).toBeNull();
-    else {
-      expect(found!.mean).toBeCloseTo(grades.mean, 9);
-      expect(found!.steepest).toBeCloseTo(grades.steepest, 9);
-    }
+      { mean: -0.8, steepest: -5 },
+    ],
+    ["値のある道が無ければ出さない", [[null, null, 1]], null],
+  ])("%s", (_, roads, grades) => {
+    const elevations = roads.map(([start, end, km]) => ({
+      distance_km: km,
+      start_elevation_m: start,
+      end_elevation_m: end,
+    }));
+    const found = segmentGrades(makeRouteSegment({ elevations }), elevation);
+    const rounded = found && { mean: Number(found.mean.toFixed(6)), steepest: Number(found.steepest.toFixed(6)) };
+    expect(rounded).toEqual(grades);
   });
 });
 
@@ -221,27 +207,24 @@ describe("layerBand", () => {
 });
 
 describe("segmentBandShares", () => {
-  const shares = (id: string, stretches: Stretch[] | undefined) =>
-    segmentBandShares(
-      makeRouteSegment({ road_classes: stretches === undefined ? {} : { [id]: stretches } }),
-      band(id),
-    ).map(({ row, share }) => [row.key, Math.round(share * 1000) / 1000]);
-
-  it("区間に占める区分の割合を、同じ行をまとめて多い順に並べ、層に無い区分の鍵はその他の行に数える", () => {
-    expect(
-      shares("surface", [
+  it.each<[string, Stretch[] | undefined, [string, number][]]>([
+    [
+      "同じ行をまとめて多い順に並べ、層に無い区分の鍵はその他に数える",
+      [
         { distance_km: 0.3, value: "paved" },
         { distance_km: 0.1, value: "unknown_class" },
         { distance_km: 0.6, value: "paved" },
-      ]),
-    ).toEqual([
-      ["paved", 0.9],
-      ["other", 0.1],
-    ]);
-  });
-
-  it("区分の並びの無い区間は、何も出さない", () => {
-    expect(shares("surface", undefined)).toEqual([]);
+      ],
+      [
+        ["paved", 0.9],
+        ["other", 0.1],
+      ],
+    ],
+    ["区分の並びの無い区間は、何も出さない", undefined, []],
+  ])("%s", (_, stretches, shares) => {
+    const segment = makeRouteSegment({ road_classes: stretches === undefined ? {} : { surface: stretches } });
+    const found = segmentBandShares(segment, surface).map(({ row, share }) => [row.key, Number(share.toFixed(6))]);
+    expect(found).toEqual(shares);
   });
 });
 

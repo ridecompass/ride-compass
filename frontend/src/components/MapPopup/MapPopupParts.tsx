@@ -65,7 +65,7 @@ function KindSwatch({ color, glyph, label }: { color: string; glyph: PointGlyph;
 }
 
 /** アイコンと値の小さな組。何の値かは読み上げと長押しの説明が持つ。 */
-export function IconValue({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
+function IconValue({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
   return (
     <span title={label} className={cn(hintClass, "inline-flex flex-none items-center gap-0.5 whitespace-nowrap")}>
       <span aria-hidden="true" className="inline-flex">
