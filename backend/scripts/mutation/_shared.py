@@ -130,6 +130,23 @@ def function_of_test(nodeid):
     return _PYTEST_PARAMS.sub(r"\1", nodeid)
 
 
+def score(report, removed=frozenset()):
+    """表（report.py の形）の全体の（見つけた変異, 回した変異）。数え方は review.py の層ごとの表と同じ。removed（テスト関数の名前）を
+    消したとして数えるときは、落としたテストが全部 removed の中にある変異を生き残りに数える。テスト全体の当て直しで落ちた変異
+    （killedBy が空）と、落としたテストに一覧に無い名前がある変異は、どのテストが見つけたか分からないので、見つけたままに数える。"""
+    name_of = {d["id"]: f"{path}::{d['name']}" for path, tf in report.get("testFiles", {}).items() for d in tf["tests"]}
+    detected = ran = 0
+    for f in report["files"].values():
+        for m in f["mutants"]:
+            if m["status"] not in ("Killed", "Timeout", "Survived", "RuntimeError"):
+                continue
+            ran += 1
+            ids = m.get("killedBy", ())
+            lost = bool(ids) and all(i in name_of and function_of_test(name_of[i]) in removed for i in ids)
+            detected += m["status"] in ("Killed", "Timeout") and not lost
+    return detected, ran
+
+
 def layer(path):
     """ファイル（表を書いた層の下からのパス）の層（app・src の直下のパッケージかモジュールの名前）。"""
     parts = path.split("/")
