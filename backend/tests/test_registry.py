@@ -81,11 +81,13 @@ def test_an_axis_the_map_cannot_paint_one_way_is_refused(build):
         ),
         pytest.param(lambda: _attribute(_axis(_rows("a", radii=(4,))), geometry="line"), id="線に半径"),
         pytest.param(lambda: _attribute(_axis(_marks("a", "b", radii=(4, 4)))), id="半径が行の間で重なる"),
+        pytest.param(lambda: _attribute(_axis(_marks("a")), point_priority_axes=("x",)), id="残す順が無い軸を指す"),
+        pytest.param(lambda: _attribute(_axis(_marks("a")), point_priority_axes=("k", "k")), id="残す順が同じ軸を2度指す"),
     ],
 )
 def test_an_attribute_the_map_cannot_draw_one_way_is_refused(build):
-    """地図は先頭の軸で塗り、点は先頭の軸の行ごとの絵記号で、大きさは1本の軸から描く。外れた宣言は地図に出ないか、
-    形・大きさがどの行のものか決まらない。"""
+    """地図は先頭の軸で塗り、点は先頭の軸の行ごとの絵記号で、大きさは1本の軸から描き、重なった印は宣言した軸の行の順に残す。
+    外れた宣言は地図に出ないか、形・大きさ・残す順がどの行のものか決まらない。"""
     with pytest.raises(ValidationError):
         build()
 

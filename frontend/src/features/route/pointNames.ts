@@ -98,7 +98,8 @@ function orderTitle(index: number, count: number, loop: boolean): string {
 }
 
 /**
- * 通る順の並びの`from`番目を`to`番目へ動かしたあと、動かした地点が並びの何番目にあるかと、何がどこへ動いたかを名前で言う文。
+ * 通る順の並びの`from`番目を`to`番目へ動かしたあと、動かした地点が並びの何番目にあるかと、各行が前の並びの何番目だったか
+ * （`order`）と、何がどこへ動いたかを名前で言う文。
  * `names`は並びの順の名前で、置いていない目的地はnull（経由地をそこへ動かすと目的地になり、空の席は並びから抜ける）。
  */
 export function describeReorder(
@@ -106,7 +107,7 @@ export function describeReorder(
   loop: boolean,
   from: number,
   to: number,
-): { movedTo: number; note: string } {
+): { movedTo: number; order: number[]; note: string } {
   const order = names.map((_, index) => index);
   order.splice(to, 0, ...order.splice(from, 1));
   // 空の目的地の席は、末尾に残るときだけ並びに残る（間に入ると、経由地には数えない）。
@@ -120,5 +121,5 @@ export function describeReorder(
     shifted.length === 0
       ? ""
       : `前の${shifted.map(before).join("・")}は${shifted.map((index) => titleAfter.get(index)).join("・")}になりました。`;
-  return { movedTo: kept.indexOf(from), note: moved + rest };
+  return { movedTo: kept.indexOf(from), order: kept, note: moved + rest };
 }
