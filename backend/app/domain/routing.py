@@ -62,9 +62,9 @@ def largest_strongly_connected_nodes(csr: CsrGraphStructure, passable: np.ndarra
     Nodeどうしの行き来はターンを展開しても変わらない。この集まりの中のNodeからは、集まりの中のどのNodeへも
     経路があり、集まりの外のNodeへ寄せた点は、出られないか戻れない。
     """
-    passable_entries = np.asarray(passable, dtype=np.bool_)[csr.entry_edge_index]
     component = _strong_components(
-        csr.indptr.astype(np.int64), csr.indices.astype(np.int64), passable_entries,
+        kernel_array(csr.indptr, np.int64), kernel_array(csr.indices, np.int64),
+        kernel_array(np.asarray(passable)[csr.entry_edge_index], np.bool_),
     )
     if len(component) == 0:
         return np.zeros(0, dtype=bool)
@@ -146,11 +146,10 @@ def nodes_reached_without_retracing(
     その手前の橋を往復するしかない。起点が袋小路の中にあると、一番大きな塊までの橋はどのNodeへ行き来するにも通るので
     外す理由にしない。
     """
-    within = np.asarray(accessible, dtype=np.bool_)
-    passable_entries = np.asarray(passable, dtype=np.bool_)[csr.entry_edge_index]
     return _retrace_free_nodes(
-        csr.indptr.astype(np.int64), csr.indices.astype(np.int64), passable_entries, within,
-        np.asarray(terminals, dtype=np.int64),
+        kernel_array(csr.indptr, np.int64), kernel_array(csr.indices, np.int64),
+        kernel_array(np.asarray(passable)[csr.entry_edge_index], np.bool_), kernel_array(accessible, np.bool_),
+        kernel_array(terminals, np.int64),
     )
 
 

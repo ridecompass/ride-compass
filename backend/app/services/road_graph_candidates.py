@@ -97,7 +97,7 @@ async def evaluate_routes(
 class _RowRead:
     """経路の区間のうち、同じ値の組から読む区間。時刻で変わる値（難易度・軸・材料）は、探索がその区間に使った
     ビンの値で、ビンが1本のレグはレグの表示の値、2本以上のレグは経路上の行だけをそのビンの時刻で合成し直した値
-    （`LegCostArrays.values`参照）。時刻で変わらない値（密度の軸の横軸・生値・分類の材料）はレグの配列から読む。"""
+    （`domain/leg_costs.py: LegCostComposer.values_for`）。時刻で変わらない値（密度の軸の横軸・生値・分類の材料）はレグの配列から読む。"""
 
     values: LegValues
     leg: LegCostArrays
@@ -114,20 +114,15 @@ def _row_reads(
     context: RoadGraphContext, rows: list[int], leg_of_edge: list[int], passages: list[EdgePassage]
 ) -> list[_RowRead]:
     """経路の区間を、読む値の組ごとにまとめる。同じレグ・同じビンの区間はまとめて1回で合成し直す。"""
-    groups: dict[tuple[int, int | None], list[int]] = {}
+    groups: dict[tuple[int, int], list[int]] = {}
     for index, (leg_index, passage) in enumerate(zip(leg_of_edge, passages)):
-        timed = len(context.legs[leg_index].bin_times) > 1
-        groups.setdefault((leg_index, passage.time_bin if timed else None), []).append(index)
+        groups.setdefault((leg_index, passage.time_bin), []).append(index)
     reads = []
     for (leg_index, time_bin), indices in groups.items():
         leg = context.legs[leg_index]
         group_rows = np.array([rows[i] for i in indices], dtype=np.int64)
-        if time_bin is None:
-            assert leg.values is not None  # 時刻ビンが1本のレグは表示の値を持つ
-            reads.append(_RowRead(leg.values, leg, indices, group_rows, group_rows))
-            continue
-        values = context.composer.values_at_rows(group_rows, leg.bin_times[time_bin])
-        reads.append(_RowRead(values, leg, indices, np.arange(len(group_rows)), group_rows))
+        values, value_rows = context.composer.values_for(leg, group_rows, time_bin)
+        reads.append(_RowRead(values, leg, indices, value_rows, group_rows))
     return reads
 
 

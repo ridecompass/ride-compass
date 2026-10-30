@@ -381,7 +381,7 @@ def density_costs(
 
 @dataclass(frozen=True, slots=True)
 class StaticEdgeScoreMatrix:
-    """探索範囲の区間ごとの「Edge×公開軸」の静的スコア行列＋探索の除外の材料・A*
+    """探索範囲の区間ごとの「公開軸×Edge」の静的スコア行列＋探索の除外の材料・A*
     ヒューリスティック用の生配列。全ての配列は同じ行順（切り出した区間の順）で揃う。
 
     行列は「id×区間」の向きで持つ（1つのidの区間の並びが連続する。読む側は軸・材料ごとに列を読むため）。

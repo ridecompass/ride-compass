@@ -89,10 +89,8 @@ class SegmentDifficulty:
 
 
 class RoadClassStretch(StrictModel):
-    """区間の中で、道の区分が同じまま続く部分。"""
-
-    # 区間では検証せずに組み（`model_construct`）、入れたビンを検証するときに検証する（`_merge_segment_bin`）。
-    model_config = ConfigDict(revalidate_instances="always")
+    """区間の中で、道の区分が同じまま続く部分。区間では検証せずに組み（`model_construct`）、ビンでは`merge_road_classes`が
+    検証して作り直す。"""
 
     distance_km: float
     # 区分の鍵（`domain/route_road_classes.py: SegmentClassReader.values_at`）。どの区分にも入らない道はNone。

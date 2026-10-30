@@ -189,8 +189,8 @@ bbox全体ぶんのコストをリクエストにつき1回だけnumpyで合成�
 `list.__getitem__`だけを渡す。
 
 - **`build_static_edge_score_matrix`**: 生成のたびに、切り出した探索範囲の材料
-  （`GraphService.get_search_slice`）と雨の観測（`RoadGraphEngine`の気象の段）から`StaticEdgeScoreMatrix`（Edge×公開軸の静的スコア行列＋distance_m・
-  bearing_deg・0次フィルタ判定用の生配列、行は切り出した区間の順）を構築する。キャッシュしない——
+  （`GraphService.get_search_slice`）と雨の観測（`RoadGraphEngine`の気象の段）から`StaticEdgeScoreMatrix`（公開軸×Edgeの静的スコア行列＋distance_m・
+  bearing_deg・0次フィルタ判定用の生配列。区間は切り出した区間の順で、行列は軸・材料のidごとに区間の値が連続する）を構築する。キャッシュしない——
   軸定義の編集がそのまま次の生成に効く。`asyncio.to_thread`の先で組むため、呼び手（`RoadGraphEngine`）が軸定義の写し
   （`axis_definitions.py: copy_axis_definitions`）を1回取って組み立てへ渡し、行列はその写しを持つ（`StaticEdgeScoreMatrix.definitions`。
   レグの合成も同じ写しを読むので、軸の保存と重なっても、読む材料と列と合成は1つの軸の集合から決まる。[軸スタジオ](axis-studio.md)「ライフサイクル」）。

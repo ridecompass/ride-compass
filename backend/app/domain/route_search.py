@@ -373,13 +373,12 @@ def route_passages(
     ビン0、次の区間は前の区間を抜けた時点（曲がる待ちを足す前）の経過時間のビン。区間ごとの秒は、探索の
     コストの下地になっている配列（`LegCostArrays.travel_bins_lazy`、走行モデル＋停止の待ち）を
     そのビンで読む——表示の時刻と探索の時刻を別々に計算すると、片方だけ直したときに静かに食い違う。
-    出発からの秒は、レグをまたいで走行と曲がる待ち（`TurnExpandedStructure`）を積む。
+    出発からの秒は、レグをまたいで走行と曲がる待ち（`turn_waits`）を積む。
 
     走行時間が有限でない区間は巡航速度で走ったものとして数える——0にすると所要時間が
     実態より短く出る。
     """
     fallback_ms = kmh_to_ms(speed_kmh)
-    waits = turn_waits
     passages: list[EdgePassage] = []
     elapsed = 0.0
     leg_elapsed = 0.0
@@ -399,7 +398,7 @@ def route_passages(
             seconds = distance_m / fallback_ms
         passages.append(EdgePassage(time_bin=time_bin, elapsed_seconds=elapsed, seconds=seconds))
         leg_elapsed += entry_wait + seconds
-        entry_wait = waits[i] if i < len(waits) else 0.0
+        entry_wait = turn_waits[i] if i < len(turn_waits) else 0.0
         elapsed += seconds + entry_wait
     return passages
 

@@ -2,6 +2,7 @@
 from dataclasses import dataclass
 
 import numpy as np
+from numpy.typing import ArrayLike
 
 
 @dataclass
@@ -51,12 +52,13 @@ SEARCH_INDEX_DTYPE = np.int32
 EDGE_VALUE_DTYPE = np.float32
 
 
-def kernel_array(values: np.ndarray, dtype: type) -> np.ndarray:
+def kernel_array(values: ArrayLike, dtype: type) -> np.ndarray:
     """JIT（numba）へ渡す配列を、1つの型（dtype・C順・書き込み可）へ揃える。揃っている配列は写さない。
 
     numbaは引数の型（dtype・並び・読み取り専用か）ごとに別々にコンパイルする。揃えずに渡すと、
     イメージの組み立てで焼いたコンパイル結果（`domain/routing.py: compile_search_kernels`）と型の違う呼び出しが、
-    本番の最初のルート生成でコンパイルを払う。JITへ配列を渡す所は、どれもこれを通す。
+    本番の最初のルート生成でコンパイルを払う。呼び手から受けた配列をJITへ渡す所は、どれもこれを通す（JITが返した配列は
+    型が決まっているので、そのまま渡してよい）。
     """
     array: np.ndarray = np.ascontiguousarray(values, dtype=dtype)
     return array if array.flags.writeable else array.copy()

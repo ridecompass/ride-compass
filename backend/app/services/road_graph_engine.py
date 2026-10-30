@@ -236,7 +236,7 @@ class RoadGraphEngine:
         雨の材料を読む軸はその生成で「データなし」になる。
 
         `GraphService.get_search_slice`が切り出した区間の材料と雨の観測から`StaticEdgeScoreMatrix`
-        （静的Edge×公開軸スコア行列）を組み、動的軸（風、`evaluate_dynamic_axis_arrays`）と重み
+        （静的な公開軸×Edgeのスコア行列）を組み、動的軸（風、`evaluate_dynamic_axis_arrays`）と重み
         ベクトルを適用してコスト配列を**bbox全体ぶん1回だけ**numpyで合成する。探索本体へは
         合成済みのnumpy配列をそのまま渡すだけにする。
         """
@@ -289,8 +289,8 @@ class RoadGraphEngine:
         cost_ms = elapsed_ms(cost_started)
         # 重み付き軸がすべてNaNのEdge比率（探索コストはbbox内平均difficultyで補完される。
         # 実際の発生頻度を把握するためのサマリ）。
-        assert outbound.values is not None  # 往路の1本目は時刻ビンが1本で、表示の値を持つ
-        missing_axis_mask = np.isnan(outbound.values.difficulty_array)
+        outbound_values, _rows = composer.values_for(outbound, np.arange(len(composer.distance_m)), 0)
+        missing_axis_mask = np.isnan(outbound_values.difficulty_array)
         missing_axis_distance_ratio = float(
             score_matrix.distance_m[missing_axis_mask].sum() / float(score_matrix.distance_m.sum())
         )

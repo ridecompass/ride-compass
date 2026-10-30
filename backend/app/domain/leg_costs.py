@@ -95,6 +95,15 @@ class LegValues:
     material_arrays: dict[str, np.ndarray]
 
 
+class _ComposedBin(NamedTuple):
+    """時刻ビン1本の合成（`LegCostComposer._bins`）。"""
+
+    cost: np.ndarray
+    travel: np.ndarray
+    # 表示の値。ビンが1本のレグのために合成したビンだけが持つ（全区間ぶんをビンごとに持つと、区間数×ビン数ぶん膨らむ）。
+    values: LegValues | None
+
+
 @dataclass
 class LegCostArrays:
     """1レグぶんの合成済みコスト配列一式。`cost_lazy`は区間の番号順（探索が使う行順）、それ以外は切り出した区間の順。
@@ -104,8 +113,8 @@ class LegCostArrays:
     # 決まるためどちらにも含まない。
     cost_lazy: np.ndarray
     travel_seconds_lazy: np.ndarray
-    # 区間の表示が読む値。時刻ビンが1本のレグだけが持つ。2本以上あるレグの区間は、経路をたどって決めたビンの時刻で
-    # 経路上の行だけを合成し直して読む（`LegCostComposer.values_at_rows`）——全区間ぶんをビンごとに持つと、区間数×ビン数ぶん膨らむ。
+    # 区間の表示が読む値。時刻ビンが1本のレグだけが持つ。読む側は`LegCostComposer.values_for`を通す（2本以上あるレグの区間は、
+    # 経路をたどって決めたビンの時刻で経路上の行だけを合成し直す）。
     values: LegValues | None
     # 折れ点を通す前の生値（静的スコア行列の列をそのまま指し、レグ間で共有する）。
     axis_raw_arrays: dict[str, np.ndarray]
@@ -318,9 +327,8 @@ class LegCostComposer:
         self._time_scope_weighted = any(weights.get(axis_id, 0.0) > 0 for axis_id in time_scoped_axes)
         self.time_varying = wind_series is not None or self._time_scope_weighted
         self._cache: dict[tuple, LegCostArrays] = {}
-        # 時刻ビン（`BinTime`が鍵）の探索の行順の費用と所要時間。同じ鍵のビンは、レグの向きや開始時刻が違っても
-        # 同じ中身なので、往路と帰りで使い回す。表示の値は持たない（`LegCostArrays.values`）。
-        self._bin_rows: dict[BinTime, tuple[np.ndarray, np.ndarray]] = {}
+        # 時刻ビン（`BinTime`が鍵）の合成。同じ鍵のビンは、レグの向きや開始時刻が違っても同じ中身なので、往路と帰りで使い回す。
+        self._bins: dict[BinTime, _ComposedBin] = {}
         # 風の予報の時刻の添字ごとの走行速度（昼夜だけが違うビンは同じ風なので、速度を解き直さない）。
         self._speeds: dict[int | None, np.ndarray] = {}
 
@@ -394,47 +402,38 @@ class LegCostComposer:
         started = start_timer()
         steps_ms: dict[str, int] = {}
         reused_bins = 0
-        values: LegValues | None = None
         bin_times: tuple[BinTime, ...] = ()
-        if not self.time_varying or passage_hours is not None or bin_count == 1:
-            # ビンが1本のレグ: 表示の値も持つので、使い回さずに合成する（あとのレグがこのビンの費用を使い回す）。
-            time: _Time = None
-            if passage_hours is not None:
-                time = passage_hours
-            elif self.time_varying:
-                bin_times = (self.bin_time(leg_start),)
-                time = bin_times[0]
-            cost, travel, values = self._compose_bin(time, steps_ms)
-            if isinstance(time, BinTime):
-                self._bin_rows[time] = (cost, travel)
-            bin_rows = [(cost, travel)]
+        if not self.time_varying or passage_hours is not None:
+            bins = [_ComposedBin(*self._compose_bin(passage_hours if self.time_varying else None, steps_ms))]
         else:
             bin_times = tuple(self.bin_time(leg_start + k * TIME_BIN_HOURS) for k in range(bin_count))
-            bin_rows = []
+            # ビンが1本のレグは表示の値も持つ。表示の値の無いビンは、使い回さずに値ごと合成し直す。
+            with_values = bin_count == 1
+            bins = []
             for time in bin_times:
-                rows = self._bin_rows.get(time)
-                if rows is None:
-                    cost, travel, _ = self._compose_bin(time, steps_ms)
-                    rows = self._bin_rows[time] = (cost, travel)
+                composed = self._bins.get(time)
+                if composed is None or (with_values and composed.values is None):
+                    cost, travel, values = self._compose_bin(time, steps_ms)
+                    composed = self._bins[time] = _ComposedBin(cost, travel, values if with_values else None)
                 else:
                     reused_bins += 1
-                bin_rows.append(rows)
-            # 代表はレグの中間地点が入るビン（ビンはレグの見込み時間より長く張られることがあり、
-            # 単純な中央の添字だと終盤のビンへ寄る）。
-            cost, travel = bin_rows[_representative_bin(bin_count, duration_hours)]
+                bins.append(composed)
+        # 代表はレグの中間地点が入るビン（ビンはレグの見込み時間より長く張られることがあり、
+        # 単純な中央の添字だと終盤のビンへ寄る）。
+        representative = bins[_representative_bin(len(bins), duration_hours)]
 
         finish_started = start_timer()
         leg = LegCostArrays(
-            cost_lazy=cost,
-            travel_seconds_lazy=travel,
-            values=values,
+            cost_lazy=representative.cost,
+            travel_seconds_lazy=representative.travel,
+            values=bins[0].values if len(bins) == 1 else None,
             axis_raw_arrays=self._axis_raw_arrays,
             density_axes=self._score_matrix.density_axes,
             categorical_material_arrays=self._categorical_material_arrays,
             # ビンの配列は写しにする——探索が帰りのビンを書き換えて戻す間も、使い回すビン（ほかのレグと共有する）は変えない。
-            cost_bins_lazy=np.vstack([bin_cost for bin_cost, _travel in bin_rows]),
-            travel_bins_lazy=np.vstack([bin_travel for _cost, bin_travel in bin_rows]),
-            bin_seconds=TIME_BIN_HOURS * 3600.0 if len(bin_rows) > 1 else np.inf,
+            cost_bins_lazy=np.vstack([composed.cost for composed in bins]),
+            travel_bins_lazy=np.vstack([composed.travel for composed in bins]),
+            bin_seconds=TIME_BIN_HOURS * 3600.0 if len(bins) > 1 else np.inf,
             bin_times=bin_times,
         )
         add_elapsed_ms(steps_ms, "finish", finish_started)
@@ -442,7 +441,7 @@ class LegCostComposer:
         logger.info(
             "compose_leg_costs leg=%s mode=%s bins=%d reused_bins=%d compose_ms=%d %s",
             label, "time_varying" if self.time_varying else "snapshot",
-            len(bin_rows), reused_bins, elapsed_ms(started), steps_note(steps_ms),
+            len(bins), reused_bins, elapsed_ms(started), steps_note(steps_ms),
         )
         return leg
 
@@ -569,6 +568,13 @@ class LegCostComposer:
     def values_at_rows(self, rows: np.ndarray, time: BinTime) -> LegValues:
         """経路上の行`rows`（切り出した区間の順の行番号）だけを、時刻ビンの時刻`time`（`LegCostArrays.bin_times`）で合成し直す。"""
         return self._evaluate(time, np.asarray(rows, dtype=np.int64)).values
+
+    def values_for(self, leg: LegCostArrays, rows: np.ndarray, time_bin: int) -> tuple[LegValues, np.ndarray]:
+        """レグ`leg`の時刻ビン`time_bin`で読む、行`rows`（切り出した区間の順）の表示の値と、その値の中で`rows`を引く行。
+        表示の値を持つレグはそれを読み、持たないレグはそのビンの時刻で`rows`だけを合成し直す（`values_at_rows`）。"""
+        if leg.values is not None:
+            return leg.values, rows
+        return self.values_at_rows(rows, leg.bin_times[time_bin]), np.arange(len(rows))
 
     @property
     def weights(self) -> dict[str, float]:

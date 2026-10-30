@@ -33,7 +33,7 @@ road_graphエンジンは自前Road Graph（DB由来のノード/Edge）で経�
 大きさ×進行方向の相対風速に比例し、横風は相対風速の大きさにだけ効く——同じ強さの向かい風ほどは
 遅くならない。
 
-Edgeコストは「探索範囲の静的Edge×公開軸スコア行列＋リクエスト時ベクトル計算」方式で
+Edgeコストは「探索範囲の静的な公開軸×Edgeのスコア行列＋リクエスト時ベクトル計算」方式で
 算出する——探索が実際に訪れたEdgeに対してPythonのコスト計算コールバックを都度呼ぶのでは
 なく、`prepare`が対象bbox全体ぶんの
 コスト配列を1回だけnumpyで合成し、探索へは合成済みの配列をそのまま渡す（探索中にPythonの
@@ -148,7 +148,7 @@ Edgeごとの値で上書きする。`displayed_material_ids`は符号付き材�
 **周回の復路レグは迂回率を読まない**——総所要時間は目標距離÷仮定速度で決まる（距離
 フィルタが目標±許容を強制する）。運用時は`_build_search_graph`のINFOサマリ
 （`time_varying`・`speed_kmh`・`detour_ratio=値(learned|default)`）、
-`compose_leg_costs`ログ（`leg`・`mode`・`bins`・`reused_bins`＝使い回したビンの数・`compose_ms`と、その内訳の`setup_ms`＝要求に1回だけの準備・`speed_ms`＝走行モデル・`axes_ms`＝時刻で変わる軸と風の材料・`finish_ms`＝費用と所要時間の配列）、
+`compose_leg_costs`ログ（`leg`・`mode`・`bins`・`reused_bins`＝使い回したビンの数・`compose_ms`と、その内訳の`axes_ms`＝時刻で変わる軸と風の材料・`speed_ms`＝走行モデル・`finish_ms`＝費用と所要時間の配列。要求に1回だけの準備は、初めて読まれた段に入る）、
 `select_turnarounds`/`select_via_nodes`の`detour_ratio_median`で確認できる。
 
 `RouteGenerateRequest.waypoints`/`destination`（経由地・目的地指定）にも対応する
@@ -474,8 +474,8 @@ idの文字列や要求の形から決め直さない。
 画面が送る距離を使わない。
 
 `GraphService.get_search_slice`で探索範囲の区間（`domain/road_network.py: RoadSlice`）を受け取り、
-`_build_search_graph`がその材料から「Edge×公開軸」静的スコア行列（`StaticEdgeScoreMatrix`、行は切り出した
-区間の順）・探索用グラフ（`domain/search_graph.py: LazyRoadGraph`）・bbox全体ぶんのコスト配列を、`_build_search_structures`が最寄りNodeの索引（`NodeSpatialIndex`）・置いた点を寄せてよいNode・CSR・ターン構造を
+`_build_search_graph`がその材料から「公開軸×Edge」静的スコア行列（`StaticEdgeScoreMatrix`、軸・材料のidごとに、切り出した
+区間の順の値が連続する）・探索用グラフ（`domain/search_graph.py: LazyRoadGraph`）・bbox全体ぶんのコスト配列を、`_build_search_structures`が最寄りNodeの索引（`NodeSpatialIndex`）・置いた点を寄せてよいNode・CSR・ターン構造を
 リクエストごとに組む。データ未整備（取込の宣言した範囲の外）ならNoneを返し、呼び出し元
 （`RouteGenerator`）が候補0件として扱う。
 
@@ -485,8 +485,8 @@ idの文字列や要求の形から決め直さない。
 分類の材料は語彙への番号のまま）に、区間の中点に最も近い雨量計の今の観測（雨の材料、地図の雨と同じ値・同じ観測）を
 足して`build_static_edge_score_matrix`で求める。最寄りの雨量計は、取込範囲全体の区間ごとの番号として道路網ごとに1つ
 持ち（`domain/rain.py: NearestRainStations`。有向の区間1本につき4バイト）、切り出しに入った区間の分だけ初めて引くときに
-求め、雨量計の位置の並びが替わったら求め直す。ログは材料の抜き出し（`extract_ms`）・雨（`rain_ms`）・軸の評価
-（`axes_ms`）・生値と密度の横軸（`raw_ms`）・表への詰め直し（`stack_ms`）を分けて出す。雨は出発時刻ではなく今の観測で、履歴は`WeatherService.get_station_rain_materials`が
+求め、雨量計の位置の並びが替わったら求め直す。ログは`materials_ms`の内訳として、雨（`rain_ms`）・軸の評価
+（`axes_ms`。読まれた材料の切り出しと、生値・密度の横軸もここに入る）・表への詰め直し（`stack_ms`）を分けて出す。雨は出発時刻ではなく今の観測で、履歴は`WeatherService.get_station_rain_materials`が
 Redisから読み（実体の中に5分持つ）、無い・古ければ雨の材料は欠損のまま組む（WARNINGを抑制付きで出し、
 INFOサマリの`rain_hour=none`で分かる。雨を読む軸だけがその生成で「データなし」になる）。行列（最寄りの雨量計の番号を除く）はキャッシュしない
 ——軸定義の編集と雨の観測がそのまま次の生成に効き、軸定義の世代を突き合わせる仕組みが要らない。
@@ -495,7 +495,7 @@ INFOサマリの`rain_hour=none`で分かる。雨を読む軸だけがその生
 NaN）へ動的軸（風、`domain/dynamic_materials.py: evaluate_dynamic_axis_arrays`。材料id→evaluator
 関数の登録制`DYNAMIC_MATERIAL_EVALUATORS`で軸名をハードコードしない汎用実装）と重み
 ベクトルを適用し、`compose_costs_from_axis_matrix`でコスト配列を1回だけ合成する。合成結果はレグ（往路/復路）ごとに`LegCostArrays`
-（`cost_lazy`[区間の番号順]・`difficulty_array`・`axis_arrays`[切り出した区間の順]）へ
+（`cost_lazy`[区間の番号順]と、ビンが1本のレグは表示の値`values`[切り出した区間の順]）へ
 まとまり、`RoadGraphContext.legs`が保持する（下記「レグ別コスト配列」節）。並行Edge
 （同一Node間の複数Edge）は、`build_lazy_road_graph`が元の行（切り出した区間の順＝道路網全体の行の昇順）が
 最も小さい1本を採る決定的な規則で解消する——コストはリクエストごとに変わるため、トポロジを組む時点では
