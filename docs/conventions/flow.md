@@ -259,5 +259,8 @@ issue に書き、git には写さない。master のコミットは Pull Reques
 
 設定は `flow.config.json`、決め方は `src/decide.js`、問いの形は `question_forms/` の種類ごとのファイルを直す（種類を足したら `src/config.js` にも並べる）。master に入ると `ci.yml` の `deploy-gate` が、
 master の先頭の版を `wrangler deploy`（Webhook）と `wrangler deploy --env form`（回答フォーム）で公開する（秘密の値の名前は `tools/flow-gate/wrangler.toml` の先頭）。
-決め方を変えた直後は、出来事の無い issue が次の出来事まで前の姿で残る。テストは `node --test tools/flow-gate/test/*.test.js`、構文と import の
-解決は `npm run lint`（`tools/flow-gate/eslint.config.js`。流れのスキルに同梱したスクリプトも照らす）で、CI（`ci.yml` の `flow-gate`）も同じ2つを流す。
+決め方を変えた直後は、出来事の無い issue が次の出来事まで前の姿で残る。構文と import の
+解決は `npm run lint`（`tools/flow-gate/eslint.config.js`。流れのスキルに同梱したスクリプトも照らす）で照らし、CI（`ci.yml` の `flow-gate`）も同じものを流す。
+**ゲートと流れのスキルに同梱したスクリプトには、テストを書かない**（`.claude/rules/testing.md` の「挙動を変えたら、入口で確かめる」も当てない）。
+ゲートは GitHub を読んで書くだけで、GitHub の代わりを作ると実装をもう一度書くことになり、守るものの無いテストがコードより速く増える。
+確かめは lint と、変えたあとに本番の issue で起きた動きで行う。

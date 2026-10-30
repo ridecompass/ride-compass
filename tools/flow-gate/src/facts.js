@@ -14,7 +14,8 @@ export const relationsOf = (body = false) => `blockedBy(first:20){nodes{number s
 const dropped = (x) => x.state === "CLOSED" && ["NOT_PLANNED", "DUPLICATE"].includes(x.stateReason);
 // issue の欄とラベルから、欄と待ちを組む（1件を決め直すときも、振り出しの一覧も同じ）。子（親を持つ issue）は、優先度・着手可能日時・
 // 急ぎ・保留を自分では持たず、親の値を見る（親が閉じていれば、閉じるのを待つ子なので振り出さない）。待つ相手は前提と子で、どちらも同じに扱う。
-export function taskOf(config, issue, now = new Date()) {
+export function taskOf(config, issue) {
+  const now = new Date();
   const f = config.fields;
   const own = valuesOf(issue);
   const parent = issue.parent;
@@ -126,10 +127,10 @@ async function movedSince(gh, config, number, since) {
 
 // 担当の終わりのコメントの形（.github/claude-task/after.js が書き、ゲートと回答フォームが読む）。見出しの kind は担当の種類。
 export const endHead = (kind) => `### ${kind}担当の終わり`;
-export const END = /^### (\S+)担当の終わり/;
+const END = /^### (\S+)担当の終わり/;
 // 終わりのコメントの「読み始め」の行（担当の段が始まった時刻。それより前のユーザーの文を担当が読んでいる）。
 export const readFromLine = (at) => `読み始め: ${at}`;
-export const readFromOf = (body) => /^読み始め: (\S+)$/m.exec(body)?.[1] ?? null;
+const readFromOf = (body) => /^読み始め: (\S+)$/m.exec(body)?.[1] ?? null;
 // 終わりのコメントの「読み始めの完了の条件」の塊（担当の段が始まったときの本文の完了の条件を、文とチェックだけの1行ずつで写す）。本文が
 // 読めなければ読めなかったと書き、ゲートは約束が動いたと読まない。
 const START = "読み始めの完了の条件:";

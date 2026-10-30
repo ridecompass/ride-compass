@@ -151,7 +151,7 @@ export function loadForms(texts) {
 }
 // 問いの頭の行と、問いの組み立て（rows は回答内容の節の行と属性、material は判断材料の節の名前と中身の並び）。
 export const questionHead = (kind) => `## 問い（${kind}）`;
-export const render = (kind, text, header, rows, material) => [`${questionHead(kind)}\n${text}`,
+const render = (kind, text, header, rows, material) => [`${questionHead(kind)}\n${text}`,
   header && [header, ...rows.flatMap((r) => [`- ${r.text}`, ...r.attrs.map(([n, v]) => `  - ${n}: ${v}`)])].join("\n"),
   `<details><summary>判断材料</summary>\n\n${material.map((s) => `**${s.name}**: ${s.value}`).join("\n\n")}\n</details>`].filter(Boolean).join("\n\n");
 

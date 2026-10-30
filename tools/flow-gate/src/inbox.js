@@ -11,7 +11,7 @@ export class Inbox {
 
   // やり直しを待つ出来事が残れば、次に起こす時刻を返す。limit 件を処理したら、まだあっても今の時刻を返して次の起こしに回す
   // （Worker の1回の起こしで外へ出せる要求の数には上限がある）。
-  async drain(retries, now = Date.now(), limit = Infinity) {
+  async drain(retries, now, limit) {
     for (let done = 0; ; ) {
       const queue = [...(await this.storage.list({ prefix: "q:" }))];
       const ready = queue.filter(([, e]) => !(e.after > now));
