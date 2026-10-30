@@ -27,7 +27,7 @@ import type { MapPopupControls } from "@/features/map/MapView/useMapPopups";
 import { pointMembers, pointPlaceName, type PointLayer } from "@/lib/mapDisplay/pointLayers";
 import { projectOnEdge, type EdgeProjection } from "@/lib/localPlane";
 import geoConfig from "@/types/generated/geo-config.json";
-import { DOUBLE_TAP_MS, LONG_PRESS_MS, MapGestures, type MapGestureAction } from "@/features/map/MapView/mapGestures";
+import { LONG_PRESS_MS, MapGestures, TAP_CONFIRM_MS, type MapGestureAction } from "@/features/map/MapView/mapGestures";
 
 /**
  * 地図を押したときの意味。地点: 選んでいる地点を置く・ピンを押すとその地点を選ぶ。乗り換え: 乗り換える区間を選ぶ。開く: 押した物
@@ -115,9 +115,6 @@ function isOpenable(feature: MapGeoJSONFeature, target: string): boolean {
 /** 押した所（緯度経度と、地図の左上からの画素）。マウスの出来事も指の出来事も持つ。 */
 type PointedAt = Pick<MapMouseEvent, "lngLat" | "point">;
 
-/** ダブルタップで拡大する動きの長さ（ms）。MapLibre の地図の設定`doubleClickZoom`が拡大するときの長さに揃える。 */
-const DOUBLE_TAP_ZOOM_MS = 300;
-
 /** 地図を押す・なぞる操作を結ぶ。状態は押した瞬間に`current`から読む。外すときは返した関数を呼ぶ。
  *
  * 地図に触れた操作がタップか長押しか地図を動かす操作かは`features/map/MapView/mapGestures.ts: MapGestures`が決め、ここは地図の
@@ -130,12 +127,8 @@ export function bindMapTaps(map: MapLibreMap, latest: { readonly current: MapTap
   let tapTimer: ReturnType<typeof setTimeout> | undefined;
 
   // 部品が返したことをする。何も無い所のタップは確かめの時まで、指の長押しは長押しの時まで待ち、まだ生きているかを部品に聞いてから
-  // 開く。待つ間は押した所だけを持ち、タップの地物は押した瞬間に読む（待つ間に地図が動けば、部品がその操作を取り消す）。
-  function act(
-    action: MapGestureAction | null,
-    e: PointedAt & { readonly originalEvent: Event },
-    features: readonly MapGeoJSONFeature[] = [],
-  ) {
+  // する。タップですることは押した瞬間に決める（待つ間に地図が動けば、部品がその操作を取り消す）。
+  function act(action: MapGestureAction | null, e: PointedAt, tap?: () => void) {
     if (action === null || latest.current.tapsLocked) return;
     const pressed: PointedAt = { point: e.point, lngLat: e.lngLat };
     if (action === "longPress") {
@@ -144,22 +137,17 @@ export function bindMapTaps(map: MapLibreMap, latest: { readonly current: MapTap
       clearTimeout(longPressTimer);
       longPressTimer = setTimeout(() => gestures.confirmLongPress() && handleLongPress(pressed), LONG_PRESS_MS);
     } else if (action === "tap") {
-      handleTap(pressed, features);
-    } else if (action === "waitTap") {
-      clearTimeout(tapTimer);
-      tapTimer = setTimeout(() => gestures.confirmTap() && handleTap(pressed, features), DOUBLE_TAP_MS);
+      handleTap(tap);
     } else {
-      // 元の出来事を渡し、利用者の操作で動いたとみなさせる（走行中に追うのを休む等）。
-      map.easeTo(
-        { zoom: map.getZoom() + 1, around: e.lngLat, duration: DOUBLE_TAP_ZOOM_MS },
-        { originalEvent: e.originalEvent },
-      );
+      clearTimeout(tapTimer);
+      tapTimer = setTimeout(() => gestures.confirmTap() && handleTap(tap), TAP_CONFIRM_MS);
     }
   }
 
-  // 渡す地図の出来事は、MapLibre の型が約束するものだけ。
+  // 渡す地図の出来事は、MapLibre の型が約束するものだけ。指の数は元の出来事の`touches`から数える（MapLibre の`points`は、`touchend`
+  // では離した指を数える）。
   const touch = (type: "touchstart" | "touchmove" | "touchend" | "touchcancel") => (e: MapTouchEvent) =>
-    act(gestures.handle({ type, at: e.point, fingers: e.points.length }), e);
+    act(gestures.handle({ type, at: e.point, fingers: e.originalEvent.touches.length }), e);
   const subscriptions: Subscription[] = [
     map.on("touchstart", touch("touchstart")),
     map.on("touchmove", touch("touchmove")),
@@ -167,8 +155,9 @@ export function bindMapTaps(map: MapLibreMap, latest: { readonly current: MapTap
     map.on("touchcancel", touch("touchcancel")),
     map.on("mousedown", (e) => act(gestures.handle({ type: "mousedown", at: e.point }), e)),
     map.on("click", (e) => {
-      const features = interactiveFeaturesAt(e.point);
-      act(gestures.handle({ type: "click", hitsTarget: hitsTarget(features) }), e, features);
+      // ロックの間は何もしないので、押した所の地物を引かない。
+      const tap = latest.current.tapsLocked ? null : tapAt(e);
+      act(gestures.handle({ type: "click", hitsTarget: tap?.hitsTarget ?? false }), e, tap?.run);
     }),
     map.on("contextmenu", (e) => act(gestures.handle({ type: "contextmenu" }), e)),
     map.on("movestart", (e) => gestures.handle({ type: "movestart", byUser: e.originalEvent !== undefined })),
@@ -209,30 +198,26 @@ export function bindMapTaps(map: MapLibreMap, latest: { readonly current: MapTap
   // 地点の意味の間は、地物を開かずに、押した所へ選んでいる地点を置く（道の上を目的地にしたいこともある）。名前のある
   // 点（店など）の上なら、その点の位置へ、その点の候補として置く。ほかの意味の間は、その意味が開ける地物だけを開き、
   // 開ける物の無い所を押すと小窓を閉じる。
-  /** タップが押せる物に当たったか（地点を置く間は名前のある地点、ほかの間は押して受ける物）。 */
-  function hitsTarget(features: readonly MapGeoJSONFeature[]) {
-    return latest.current.tapMode === "points"
-      ? features.some((feature) => namedSpotOf(feature) !== null)
-      : openableFeatureAmong(features) !== null;
+  /** タップですることと、それが押せる物（地点の意味の間は名前のある点、ほかの間は開ける地物）に当たったか。 */
+  function tapAt(e: PointedAt): { hitsTarget: boolean; run: () => void } {
+    const features = interactiveFeaturesAt(e.point);
+    if (latest.current.tapMode === "points") {
+      const spot = features.map(namedSpotOf).find((found) => found !== null) ?? null;
+      const at = spot ?? { latitude: e.lngLat.lat, longitude: e.lngLat.lng };
+      return {
+        hitsTarget: spot !== null,
+        run: () => latest.current.onPointPlace({ latitude: at.latitude, longitude: at.longitude }, spot),
+      };
+    }
+    const hit = openableFeatureAmong(features);
+    return { hitsTarget: hit !== null, run: () => (hit === null ? popups.close() : openHit(hit, e, features)) };
   }
 
-  function handleTap(e: PointedAt, features: readonly MapGeoJSONFeature[]) {
+  function handleTap(tap: (() => void) | undefined) {
     if (latest.current.tapsLocked) return;
     // 近い道を問うている間に押し直したら、その答えは捨てる（後から開くと、押し直した物の小窓を上書きする）。
     roadAsk += 1;
-    if (latest.current.tapMode === "points") {
-      const spot = features.map(namedSpotOf).find((found) => found !== null);
-      latest.current.onPointPlace(
-        spot !== undefined
-          ? { latitude: spot.latitude, longitude: spot.longitude }
-          : { latitude: e.lngLat.lat, longitude: e.lngLat.lng },
-        spot ?? null,
-      );
-      return;
-    }
-    const hit = openableFeatureAmong(features);
-    if (hit === null) popups.close();
-    else openHit(hit, e, features);
+    tap?.();
   }
 
   function openHit(

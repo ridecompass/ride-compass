@@ -7,7 +7,7 @@
  * 名前の無い点は押せる物に数えず下の物を開き、重なった名前のある点と、束ねた代表点の中の点は全部並べること。区間の中身から点を開くと区間へ戻れ、道へ
  * 入れ替えると区間の選びを外し、開ける物の無い所を押すと閉じること。道の小窓を別の道へ押し替えると、前の道で押した評価を
  * 新しい道へ持ち越さないこと。区間の小窓が上の帯と難易度の塊の形で出て、寄せるアイコンで寄せること。押せる物のタップは待たずに開き、
- * 何も無い所を続けて2回押すと閉じずに拡大すること。
+ * 何も無い所を続けて2回押しても閉じないこと。
  *
  * ここで見ないもの: 区間の近くの施設の小窓（区間へ戻る）は`app/page.map.test.tsx`の「区間の近くの施設」が、地図を押したときの
  * 意味をどのパネルが決めるかは同じファイルの「地図で扱えること」が見る。触れた操作がタップか長押しか地図を動かす操作か（指の長押し・
@@ -96,8 +96,11 @@ describe("地図の小窓", () => {
     clickSegment(drawnSegment, HERE);
     expect(header("区間の小窓の上の帯")).toBeInTheDocument();
 
-    // 区間の中身から点を開くと、区間の選びを残し、「‹ 区間」で区間の中身へ戻れる。
-    clickMap(ELSEWHERE, [shop]);
+    // 区間の中身から点を開くと、区間の選びを残し、「‹ 区間」で区間の中身へ戻れる。押せる物のタップは、時計を進めずに開く（何も無い所の
+    // タップだけを、ダブルタップの1回目でないと確かめるまで待つ）。何も無い所を続けて2回押しても（地図の拡大）、小窓は閉じない。
+    act(() => mapOnScreen().click(ELSEWHERE, [shop]));
+    expect(screen.getByRole("link", { name: "角の店" })).toBeInTheDocument();
+    doubleClickMap(HERE);
     expect(screen.getByRole("link", { name: "角の店" })).toBeInTheDocument();
     expect(selectedPointMarks()).toHaveLength(1);
     await user.click(within(header("点の小窓の上の帯")!).getByRole("button", { name: "‹ 区間" }));
@@ -153,31 +156,6 @@ describe("地図の小窓", () => {
     await settle();
     expect(header("道の小窓の上の帯")).toBeNull();
     expect(mapOnScreen().sourceFeatures("road-inspected")).toEqual([]);
-  });
-
-  it("押せる物のタップは待たずに開き、何も無い所を続けて2回押すと小窓を閉じずに1段拡大する", async () => {
-    const shop: PointedFeature = {
-      layer: sceneLayerId(POINT_TILE_SOURCES.poi.sourceId, "supply_poi"),
-      properties: { name: "角の店", kind: "convenience" },
-      geometry: { type: "Point", coordinates: [ELSEWHERE.longitude, ELSEWHERE.latitude] },
-    };
-    const { user } = renderHome();
-    await user.click(screen.getByRole("button", { name: "地図に出す情報" }));
-    await user.click(screen.getByRole("checkbox", { name: "補給・休憩ポイント" }));
-    await user.keyboard("{Escape}");
-    jobs.respond([FIRST], LOOP_CONDITIONS);
-    await generate(user);
-    await waitFor(() => expect(candidateTabs()).toHaveLength(1));
-    const shopLink = () => screen.queryByRole("link", { name: "角の店" });
-    const zoom = mapOnScreen().zoom();
-
-    // 時計を進めずに押して、もう開いている。
-    act(() => mapOnScreen().click(ELSEWHERE, [shop]));
-    expect(shopLink()).toBeInTheDocument();
-
-    doubleClickMap(HERE);
-    expect(mapOnScreen().zoom()).toBe(zoom + 1);
-    expect(shopLink()).toBeInTheDocument();
   });
 
   it("区間の小窓は、上の帯に何km地点と到達予想、その下に難易度の塊を出し、押しただけでは地図は動かず、寄せるアイコンで区間へ寄せる", async () => {
