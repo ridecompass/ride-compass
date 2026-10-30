@@ -41,19 +41,6 @@ export function fitBoundsToPoints(map: MapLibreMap, points: readonly Coordinates
   fitPaths(map, [points.map((point) => [point.longitude, point.latitude])], "地点", FOCUS_ZOOM);
 }
 
-/** 線を囲む枠（画面のpx）。 */
-export function pathScreenBox(map: MapLibreMap, path: readonly Position[]): ScreenBox {
-  const box = { left: Infinity, top: Infinity, right: -Infinity, bottom: -Infinity };
-  for (const [lng, lat] of path) {
-    const { x, y } = map.project([lng, lat]);
-    box.left = Math.min(box.left, x);
-    box.top = Math.min(box.top, y);
-    box.right = Math.max(box.right, x);
-    box.bottom = Math.max(box.bottom, y);
-  }
-  return box;
-}
-
 /** 地図の上に重ねた部品を避けた、見えている所（画面のpx）。 */
 export function visibleScreenBox(
   map: MapLibreMap,

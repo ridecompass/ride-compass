@@ -318,6 +318,11 @@
   border-left-color: color-mix(in srgb, var(--color-surface) 88%, transparent);
 }
 
+/* つまんでずらした・見えている所へ押し込めた小窓は、押した所を指さないので矢印を出さない。 */
+.map-popup-free .maplibregl-popup-tip {
+  display: none;
+}
+
 @media (max-width: theme(--breakpoint-mobile)) {
   /* 全<button>へ一律に44pxを掛けない（部品が意図して持つ大きさを詳細度で潰す）。44pxが要る主要な導線は、
      その部品自身が持つ（docs/modules/frontend/frontend-design-system.md 8節）。 */
