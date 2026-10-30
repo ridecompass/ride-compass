@@ -40,7 +40,8 @@ export function createBaseMap({
     pitchWithRotate: false,
     // 地図をずらし始める幅を、押したかの判断（地図を動かす操作でない押し）と同じにする。
     clickTolerance: TAP_TOLERANCE_PX,
-    // ダブルタップ（ダブルクリック）では拡大しない。拡大するなら、タップで小窓を開く前に、2回目が来ないと確かめる待ちが要る。
+    // MapLibre のダブルタップ（ダブルクリック）の拡大は使わない。2回目を待つ間（500ms）を変えられず、押せる物の上でも拡大する。
+    // ダブルタップの拡大は`features/map/MapView/mapTaps.ts: bindMapTaps`が、何も無い所を押したときだけする。
     doubleClickZoom: false,
     // 基礎地図の文字は薄れさせずに出し入れする。薄れる間は地図全体を描き直し続け、ずらすたびにその分だけ操作が重くなる。
     fadeDuration: 0,

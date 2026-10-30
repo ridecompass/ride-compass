@@ -187,7 +187,8 @@ export class StandInMap extends Evented {
     return this;
   }
 
-  easeTo(options: { bearing?: number } = {}) {
+  easeTo(options: { zoom?: number; bearing?: number } = {}) {
+    if (options.zoom !== undefined) this.zoom = options.zoom;
     if (options.bearing !== undefined) this.turn(options.bearing, {});
     return this;
   }

@@ -33,6 +33,12 @@ const POPUP_GAP_PX = 8;
 /** 小窓の幅の上限（Popup の`maxWidth`。`%`は地図の幅）。中身に合わせて広がり、地図の幅を超えるときだけ折り返す。 */
 const POPUP_MAX_WIDTH = "calc(100% - 1.5rem)";
 
+/**
+ * ずらした小窓が、見えている所に残す幅と高さ（px）。上の帯の右端の2つのアイコン（`MapPopupParts.tsx: PopupHeader`の右の空き）より広く
+ * 残し、つまんで戻せる所が見えているようにする。
+ */
+const DRAGGED_POPUP_KEEP_PX = 96;
+
 /** 押した所を指さない（ずらした・押し込めた）小窓に付ける印。矢印を隠す（`app/globals.css`）。 */
 const FREE_POPUP_CLASS = "map-popup-free";
 
@@ -239,8 +245,9 @@ export function useMapPopupMount(
     }
 
     // 小窓は押した所を指し、ずらすまでは向き（上下左右）をMapLibreが地図の枠に収まる側から選ぶ。ずらした後は、指す地点からのずれを
-    // 保つ（地図を動かすと一緒に動く）。どちらも、見えている所からはみ出す分は内側へ押し込める——MapLibreは向きを選ぶだけで中へは
-    // ずらさないので、上にも下にも収まらない背の高い小窓や、端へ寄せた小窓が画面の外へ出る。
+    // 保つ（地図を動かすと一緒に動く）。ずらす前は、見えている所からはみ出す分を内側へ押し込める——MapLibreは向きを選ぶだけで中へは
+    // ずらさないので、上にも下にも収まらない背の高い小窓や、端の近くで開いた小窓が画面の外へ出る。ずらした後は、上の帯の一部が
+    // 見えている所に残る分だけ押し込める——全体を押し込めると、地図の幅いっぱいの小窓は横へずらせない。
     function place() {
       const current = latest.current.onMap;
       if (current === null) return;
@@ -255,7 +262,11 @@ export function useMapPopupMount(
       } else placeFree(moved);
       popup.setLngLat(lngLat);
       const box = popupBox();
-      const inside = popupInsideVisible(box, visibleScreenBox(shownMap, padding));
+      const inside = popupInsideVisible(
+        box,
+        visibleScreenBox(shownMap, padding),
+        moved === null ? undefined : DRAGGED_POPUP_KEEP_PX,
+      );
       if (inside === null || (inside.left === box.left && inside.top === box.top)) return;
       const at = shownMap.project(lngLat);
       placeFree([inside.left - at.x, inside.top - at.y]);
@@ -330,11 +341,11 @@ export function useMapPopupMount(
     // すると横も切り取られるので、端に接する見本の枠（箱の1px外に描く`ring`）が欠けないよう、四辺に1pxの余白を置く。
     <div className="max-h-[min(24rem,50vh)] overflow-y-auto p-px text-[length:var(--font-size-md)] leading-[1.4]">
       {shape !== null && shape.length > 0 && (
-        // ×（MapLibreが本文の器の右上に置く）の左に並べる。
+        // ×（MapLibreが本文の器の右上に置く）の左に並べる。幅を×と同じに詰め、上の帯のつまめる所を広く残す。
         <Button
           variant="ghost"
           size="icon"
-          className="absolute top-0 right-11 size-11"
+          className="absolute top-0 right-8 h-11"
           aria-label="地図をここへ寄せる"
           usage="地図を、この小窓の物へ寄せます。押しただけでは地図は動きません。"
           onClick={() => onFocus(shape)}
