@@ -10,6 +10,7 @@
 ここで見ないもの:
 - 道路網をDBから組み立てて置いておくこと → `test_road_network_store.py`
 - 材料の列の型（`EdgeMaterialArrays`・`CategoricalColumn`・`ElevationAttribute`）の振る舞い → `test_attributes.py`
+- 軸の集合から読む材料を決めて切り出すこと → `test_evaluation.py`
 - 切り出した範囲で経路を探すこと → `test_route_generation_behavior.py`
 
 道路網は`tests/east_west_network.py: network`。
@@ -82,7 +83,7 @@ def test_the_materials_and_road_classes_of_a_slice_follow_its_rows():
     classes = road_class_columns(whole, road_classes({"k": classification({"is_y": [fact_is("cat_a", "y")]})}))
     road = slice_network(whole, classes, 139.015, 34.99, 139.11, 35.01)
 
-    columns = material_arrays_of(road).columns()
+    columns = material_arrays_of(road, {"num_a", "cat_a"}).columns
 
     assert columns["num_a"].tolist() == [20.0, 30.0]
     assert [columns["cat_a"].value_at(i) for i in range(2)] == ["y", None]

@@ -76,9 +76,42 @@ def rain_material_columns(
     stations: StationRainMaterials, latitudes: np.ndarray, longitudes: np.ndarray
 ) -> dict[str, np.ndarray]:
     """各地点の雨の材料の値（`RAIN_MATERIAL_IDS`→地点の並びの配列）。地点に最も近い雨量計の値で、
-    その雨量計が欠測ならNaN（次に近い雨量計では埋めない）。地図の配信とルートの評価が同じここを通る。"""
-    nearest = nearest_point_indices(latitudes, longitudes, stations.latitudes, stations.longitudes)
+    その雨量計が欠測ならNaN（次に近い雨量計では埋めない）。地図の配信とルートの評価（`NearestRainStations`）が同じ値を引く。"""
+    return _station_values(stations, nearest_point_indices(latitudes, longitudes, stations.latitudes, stations.longitudes))
+
+
+def _station_values(stations: StationRainMaterials, nearest: np.ndarray) -> dict[str, np.ndarray]:
     return {material_id: values[nearest] for material_id, values in stations.values.items()}
+
+
+class NearestRainStations:
+    """決まった地点の並び（`latitudes`・`longitudes`）の各地点に最も近い雨量計の番号を、引かれた地点の分だけ求めて持つ。
+
+    雨量計の位置の並びが替わったら、持っている番号を捨てて求め直す。同じ地点を別のスレッドが同時に求めても、
+    同じ並びから同じ番号を書くだけなので、錠を持たない。
+    """
+
+    def __init__(self, latitudes: np.ndarray, longitudes: np.ndarray):
+        self.latitudes = latitudes
+        self.longitudes = longitudes
+        # (雨量計の緯度, 経度, 地点ごとの最寄りの番号)。番号の-1はまだ求めていない地点。
+        self._nearest: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None
+
+    def rain_material_columns(self, stations: StationRainMaterials, rows: np.ndarray) -> dict[str, np.ndarray]:
+        """`rows`の地点の雨の材料の値（`RAIN_MATERIAL_IDS`→`rows`の並びの配列）。値は`rain_material_columns`と同じ。"""
+        nearest = self._nearest
+        if nearest is None or not (
+            np.array_equal(nearest[0], stations.latitudes) and np.array_equal(nearest[1], stations.longitudes)
+        ):
+            nearest = (stations.latitudes, stations.longitudes, np.full(len(self.latitudes), -1, dtype=np.int32))
+            self._nearest = nearest
+        indices = nearest[2]
+        missing = rows[indices[rows] < 0]
+        if len(missing) > 0:
+            indices[missing] = nearest_point_indices(
+                self.latitudes[missing], self.longitudes[missing], stations.latitudes, stations.longitudes
+            )
+        return _station_values(stations, indices[rows])
 
 
 def is_rain_history_current(latest_hour: datetime, now: datetime) -> bool:

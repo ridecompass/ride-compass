@@ -178,6 +178,11 @@ class WindForecastSeries:
         index = np.clip(raw, 0, len(self.times) - 1)
         return index, index != raw
 
+    def time_index(self, start: datetime, passage_hours: float) -> int:
+        """`start`から`passage_hours`時間後に`sample`が引く予報の時刻の添字。同じ添字の時刻は、どの格子点でも同じ風を引く。"""
+        index, _clamped = self._sample_index(start, np.array([passage_hours]))
+        return int(index[0])
+
     def sample(
         self, start: datetime, passage_hours: np.ndarray, points: np.ndarray
     ) -> tuple[np.ndarray, np.ndarray]:

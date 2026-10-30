@@ -5,7 +5,7 @@ Route Engineから独立させ、Route Engine自身は「勾配がきつい」�
 評価の中身を一切知らないようにする。
 
 評価は探索範囲ごとの静的スコア行列（`build_static_edge_score_matrix`）へ一本化してある。
-入力はDBが導出した材料の行列（`EdgeMaterialArrays`）で、このモジュールは材料の値を
+入力はDBが導出した材料の列（`EdgeMaterialColumns`）で、このモジュールは材料の値を
 どう求めるかを知らない。
 
 三次（重み付き合成）は`compose_costs_from_axis_matrix`が単独で使える——軸別スコアが
@@ -22,13 +22,13 @@ Score（難易度換算）は`domain/difficulty.py`（0-100、値が大きいほ
 """
 
 from dataclasses import dataclass
-from typing import Container, Mapping, NamedTuple
+from typing import Container, Iterable, Mapping, NamedTuple
 
 import numpy as np
 
 from app.domain.attributes import (
     CategoricalColumn,
-    EdgeMaterialArrays,
+    EdgeMaterialColumns,
     MaterialColumn,
 )
 from app.domain.axis_definitions import (
@@ -37,12 +37,11 @@ from app.domain.axis_definitions import (
     AxisDefinition,
     BreakpointLinearShape,
     averages_density,
-    copy_axis_definitions,
     density_slope,
     published_axis_definitions,
     published_axis_order,
 )
-from app.domain.axis_evaluation import axis_raw_value_array, evaluate_axes_array
+from app.domain.axis_evaluation import evaluate_axes
 from app.domain.axis_raw_value import axis_material_shares, raw_value_unit
 from app.domain.difficulty import (
     axis_weighted_sums,
@@ -52,15 +51,15 @@ from app.domain.difficulty import (
 )
 from app.domain.map_paint import SignedMaterialMapValue, map_paint
 from app.domain.material_catalog import (
-    all_material_specs,
     is_known_material,
     material_spec,
     materials_of_source,
 )
 from app.domain.cycling_speed import travel_model_material_ids
-from app.domain.hard_filters import hard_filtered
+from app.domain.hard_filters import hard_filter_material_ids, hard_filtered
 from app.domain.road_classes import CLASS_MATERIAL_PREFIX
 from app.domain.search_graph import EDGE_VALUE_DTYPE
+from app.domain.stopwatch import elapsed_ms, start_timer
 
 
 def has_route_facing_raw_value(definition: AxisDefinition) -> bool:
@@ -168,25 +167,37 @@ def displayed_material_ids(weights: Mapping[str, float]) -> set[str]:
     return material_ids
 
 
-def empty_material_arrays(n: int, present: Container[str]) -> dict[str, MaterialColumn]:
-    """`MATERIAL_CATALOG`のうち`present`に無い材料の配列を、材料ごとの既定値（NaN/値なし）で確保する。
+def empty_material_arrays(n: int, material_ids: Iterable[str], present: Container[str]) -> dict[str, MaterialColumn]:
+    """`material_ids`のうち`MATERIAL_CATALOG`にあり`present`に無い材料の配列を、材料ごとの既定値（NaN/値なし）で確保する。
 
     **SQL式（`value_sql`）を持たない材料の列も確保する**。持たない材料（出どころがDBでない材料）を
     `MaterialTerm`等で参照する軸は軸スタジオから素朴に作れてしまい
     （`axis_definitions.check_axis_definition`は`value_sql`の有無を見ない）、列が無いと
-    `evaluate_axis_array`の`materials[term.material]`がKeyErrorで/api/routes/generate
+    `evaluate_axis`の`materials[term.material]`がKeyErrorで/api/routes/generate
     自体を落とす。確保しておけば「材料はあるがデータが無い」という既存の意味論へ揃い、
     その軸だけ恒久的に欠損扱いになる。
     """
     arrays: dict[str, MaterialColumn] = {}
-    for spec in all_material_specs():
-        if spec.material_id in present:
+    for material_id in material_ids:
+        spec = material_spec(material_id)
+        if spec is None or material_id in present:
             continue
         if spec.dtype == "categorical":
-            arrays[spec.material_id] = CategoricalColumn(np.zeros(n, dtype=np.int16), (None,))
+            arrays[material_id] = CategoricalColumn(np.zeros(n, dtype=np.int16), (None,))
         else:  # numeric・boolean（真偽も数値の行列と同じく1.0/0.0/NaNで持つ）
-            arrays[spec.material_id] = np.full(n, np.nan)
+            arrays[material_id] = np.full(n, np.nan)
     return arrays
+
+
+def static_score_material_ids(definitions: dict[str, AxisDefinition]) -> frozenset[str]:
+    """点数の表（`build_static_edge_score_matrix`）が読む材料id。`definitions`の全軸が読む材料と、所要時間が読む材料と、
+    0次ハードフィルタの条件が読む材料。表を組む材料の列はこれだけを切り出し、無いものは欠損の列で埋める。
+    軸が読む軸のidも混ざるが、材料の列には当たらず、埋める側も材料カタログに無いidを飛ばす。"""
+    return frozenset((
+        *(material for definition in definitions.values() for material in definition.materials),
+        *travel_model_material_ids(),
+        *hard_filter_material_ids(),
+    ))
 
 
 class AxisComposition(NamedTuple):
@@ -429,14 +440,25 @@ def _stack_columns(columns: dict[str, np.ndarray], rows: int) -> tuple[list[str]
     return ids, matrix
 
 
+class StaticScoreTimings(NamedTuple):
+    """`build_static_edge_score_matrix`の段ごとの時間（ms）。"""
+
+    axes_ms: int  # 材料を埋め、全軸を評価する
+    raw_ms: int  # 軸の生値と、密度の軸の横軸の値
+    stack_ms: int  # 列を表へ詰め直し、除外と区分の列を揃える
+
+
 def build_static_edge_score_matrix(
-    materials: EdgeMaterialArrays, observed_materials: Mapping[str, np.ndarray]
-) -> StaticEdgeScoreMatrix:
+    materials: EdgeMaterialColumns,
+    observed_materials: Mapping[str, np.ndarray],
+    definitions: dict[str, AxisDefinition],
+) -> tuple[StaticEdgeScoreMatrix, StaticScoreTimings]:
     """切り出した範囲の材料から`StaticEdgeScoreMatrix`を構築する（生成のたびに1回）。
 
     材料はDBが導出済み（`MaterialSpec.value_sql`）で、事故の収録年数による正規化もその
-    導出の中で既に効いている。軸が読む材料の列は`MATERIAL_CATALOG`全材料ぶん確保する
-    （DBにも観測にも無い材料は`empty_material_arrays`で埋める）。
+    導出の中で既に効いている。`definitions`の軸が読む材料（`static_score_material_ids`）のうち、DBにも観測にも
+    無い材料は`empty_material_arrays`で埋める。`definitions`は呼び手が1回だけ写した軸の集合で、材料の切り出しも
+    同じ集合から決める（保存がその間に軸を差し替えても、行列の列と読む材料が1つの集合に揃う）。
 
     `observed_materials`は、DBではなく生成の時点の外部の観測から区間ごとに引いた材料（雨。材料id→
     切り出した区間の順の配列）。走行の向きにも通過の時刻にも依らないため、DBの材料と同じ列として
@@ -450,22 +472,22 @@ def build_static_edge_score_matrix(
     **動的材料（風）の列は常にNaN**。風は区間の通過時刻で変わるため、この行列では値を持てず、
     リクエスト時に`evaluate_dynamic_axis_arrays`が該当列を通過時刻ごとに上書きする。
     """
-    # 軸の保存がこの間に`AXIS_DEFINITIONS`を差し替えても、この行列の列は1つの軸の集合から組む。
-    definitions = copy_axis_definitions()
     n = len(materials)
     if unexpected := set(observed_materials) - materials_of_source("observation"):
         # DBの材料の列を観測で上書きすると、地図（値式）とルートで同じ材料の値が食い違う。
         raise ValueError(f"出どころが観測でない材料を観測の列として受けました: {sorted(unexpected)}")
-    material_arrays: dict[str, MaterialColumn] = {**materials.columns(), **observed_materials}
-    material_arrays.update(empty_material_arrays(n, material_arrays))
-    axis_scores_by_id = evaluate_axes_array(material_arrays, definitions)
+    started = start_timer()
+    material_arrays: dict[str, MaterialColumn] = {**materials.columns, **observed_materials}
+    material_arrays.update(empty_material_arrays(n, static_score_material_ids(definitions), material_arrays))
+    evaluations = evaluate_axes(material_arrays, definitions)
+    axes_ms = elapsed_ms(started)
     # 合成の対象（axis_arrays）は公開軸だけ。内部軸は公開軸の材料として読まれるだけで、
     # 利用者の重みの対象ではない。
-    axis_arrays = {axis_id: axis_scores_by_id[axis_id] for axis_id in published_axis_order(definitions)}
-    material_arrays_with_axes = {**material_arrays, **axis_scores_by_id}
+    axis_arrays = {axis_id: evaluations[axis_id].score for axis_id in published_axis_order(definitions)}
+    started = start_timer()
     axis_raw_arrays: dict[str, np.ndarray] = {}
     for axis_id in route_facing_raw_axis_ids(definitions):
-        raw = axis_raw_value_array(definitions[axis_id], material_arrays_with_axes)
+        raw = evaluations[axis_id].raw_value()
         assert raw is not None, f"route_facing_raw_axis_idsが返した{axis_id}の生値が作れない"
         axis_raw_arrays[axis_id] = raw
     density_axes: dict[str, DensityAxisColumn] = {}
@@ -473,10 +495,14 @@ def build_static_edge_score_matrix(
         definition = definitions[axis_id]
         if not averages_density(definition):
             continue
-        inputs = axis_raw_value_array(definition, material_arrays_with_axes)
-        # `averages_density`は折れ線の軸だけを通すので、横軸の値は必ず作れる。
+        # `averages_density`は折れ線の軸だけを通すので、横軸の値は必ず作れる。生値の列と同じ値は同じ配列を使う。
+        inputs = axis_raw_arrays.get(axis_id)
+        if inputs is None:
+            inputs = evaluations[axis_id].raw_value()
         assert isinstance(definition.shape, BreakpointLinearShape) and inputs is not None
         density_axes[axis_id] = DensityAxisColumn(shape=definition.shape, inputs=inputs)
+    raw_ms = elapsed_ms(started)
+    started = start_timer()
     material_value_arrays = {
         material_id: np.asarray(values, dtype=float)
         for material_id in route_facing_material_ids(definitions)
@@ -491,7 +517,7 @@ def build_static_edge_score_matrix(
     axis_ids, axis_scores = _stack_columns(axis_arrays, n)
     raw_axis_ids, axis_raw_values = _stack_columns(axis_raw_arrays, n)
     material_ids, material_values = _stack_columns(material_value_arrays, n)
-    return StaticEdgeScoreMatrix(
+    matrix = StaticEdgeScoreMatrix(
         axis_ids=axis_ids,
         axis_scores=axis_scores,
         raw_axis_ids=raw_axis_ids,
@@ -511,3 +537,4 @@ def build_static_edge_score_matrix(
         mid_lat=materials.mid_lat,
         mid_lon=materials.mid_lon,
     )
+    return matrix, StaticScoreTimings(axes_ms, raw_ms, elapsed_ms(started))

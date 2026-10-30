@@ -108,9 +108,9 @@ way粒度の経路も**区間向けと同じ式**を使う。`way_from_clause`�
 ## 材料の解決から合成コストまで（3段階）
 
 ```
-一次: 材料の値（DBが`MaterialSpec.value_sql`で導出、`EdgeMaterialArrays`）
+一次: 材料の値（DBが`MaterialSpec.value_sql`で導出、`EdgeMaterialColumns`）
         │  観測を引く材料（雨）は探索範囲を組むときに区間の中点に最も近い雨量計の今の観測を
-        │  列として足す（`RoadGraphEngine`の気象の段が観測を読み→`domain/rain.py: rain_material_columns`）
+        │  列として足す（`RoadGraphEngine`の気象の段が観測を読み→`domain/rain.py: NearestRainStations`）
         │  動的材料（風）だけはリクエスト時に`evaluate_dynamic_material_arrays`が
         │  bearing配列・天候・走行速度から求める
         ▼
@@ -140,7 +140,7 @@ way粒度の経路も**区間向けと同じ式**を使う。`way_from_clause`�
   「難易度100の道は体感で2倍の時間」を意味する。P=0で`cost=所要時間`（好みを一切考慮しない＝時間最短、
   `select_fastest_route`が返す基準線と同じ物差し）、Pを上げるほど悪路が強く避けられる。
   `cost >= 所要時間`という不変条件はP>=0の間常に成り立つ。
-- **`build_static_edge_score_matrix`**: `AXIS_DEFINITIONS`を軸ごとに適用して
+- **`build_static_edge_score_matrix`**: 渡された軸の集合を軸ごとに適用して
   difficulty配列を求める（`StaticEdgeScoreMatrix`: 公開軸別配列に加え、0次フィルタ判定用の
   0次ハードフィルタに当たる区間と区分の列も持つ——リクエストごとに変わる絞り込みと割り増しは
   `domain/hard_filters.py: compute_search_exclusion`が決めるため、ここでは確定させない）。所要時間が読む材料（勾配・路面・停止の密度。
@@ -191,9 +191,12 @@ bbox全体ぶんのコストをリクエストにつき1回だけnumpyで合成�
 - **`build_static_edge_score_matrix`**: 生成のたびに、切り出した探索範囲の材料
   （`GraphService.get_search_slice`）と雨の観測（`RoadGraphEngine`の気象の段）から`StaticEdgeScoreMatrix`（Edge×公開軸の静的スコア行列＋distance_m・
   bearing_deg・0次フィルタ判定用の生配列、行は切り出した区間の順）を構築する。キャッシュしない——
-  軸定義の編集がそのまま次の生成に効く。`asyncio.to_thread`の先で組むため、軸定義は入口で写し
-  （`axis_definitions.py: copy_axis_definitions`）を1回取り、組み終えるまでそれだけを読む（軸の保存と重なっても、
-  列は1つの軸の集合から組まれる。[軸スタジオ](axis-studio.md)「ライフサイクル」）。
+  軸定義の編集がそのまま次の生成に効く。`asyncio.to_thread`の先で組むため、呼び手（`RoadGraphEngine`）が軸定義の写し
+  （`axis_definitions.py: copy_axis_definitions`）を1回取り、材料の切り出し（`static_score_material_ids`が読む材料を決める）と
+  組み立ての両方へ同じ写しを渡す（軸の保存と重なっても、読む材料と列は1つの軸の集合から決まる。[軸スタジオ](axis-studio.md)「ライフサイクル」）。
+  読む材料のうち切り出しにも観測にも無いものは欠損の列で埋めるので、読む材料の決め方から漏れた材料は、落ちずに
+  その材料を読む軸の「データなし」として現れる。折れ線の軸の項の和は軸ごとに1回だけ求め、点数・生値の列・密度の軸の
+  横軸で使い回す（`domain/axis_evaluation.py: AxisEvaluation`）。
   分類の材料（`highway`・路面の見込み等）は、道路網の置き場が持つ語彙への番号の列
   （`domain/attributes.py: CategoricalColumn`）のまま受け取って運ぶ。軸の対応表・0次条件・走行モデルの
   転がり抵抗は、語彙の値ごとに1回引いた表を番号で配る——区間ごとに値の文字列へ戻して1件ずつ引くと、

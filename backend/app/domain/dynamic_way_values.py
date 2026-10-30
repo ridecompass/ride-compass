@@ -23,7 +23,7 @@ from app.domain.difficulty import round_difficulty, weighted_mean_by_distance
 from app.domain.evaluation import empty_material_arrays
 from app.domain.gradient import travel_direction_formula
 from app.domain.map_paint import SignedMaterialMapValue, map_paint
-from app.domain.material_catalog import segment_material_ids
+from app.domain.material_catalog import all_material_specs, segment_material_ids
 from app.domain.search_graph import EDGE_VALUE_DTYPE
 from app.domain.way_value_formula import (
     FALSE,
@@ -181,7 +181,7 @@ def _feature_columns(
             else:
                 column[row] = value
         columns[material_id] = column
-    columns.update(empty_material_arrays(n, columns))
+    columns.update(empty_material_arrays(n, (spec.material_id for spec in all_material_specs()), columns))
     return columns, undetermined
 
 
