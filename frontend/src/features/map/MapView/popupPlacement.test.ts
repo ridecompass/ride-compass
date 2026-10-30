@@ -27,6 +27,13 @@ describe("popupInsideVisible", () => {
     expect(popupInsideVisible(popupAt(-30, 300, 500, 700), VISIBLE)).toEqual({ left: 0, top: 50 });
   });
 
+  it("残す分を渡すと、左・右・下へはその分が見えている所に残るまで出られ、上の辺は見えている所に残す", () => {
+    expect(popupInsideVisible(popupAt(-100, 200), VISIBLE, 96)).toEqual({ left: -100, top: 200 });
+    expect(popupInsideVisible(popupAt(-150, 200, 500), VISIBLE, 96)).toEqual({ left: -150, top: 200 });
+    expect(popupInsideVisible(popupAt(-450, 560, 500), VISIBLE, 96)).toEqual({ left: -404, top: 504 });
+    expect(popupInsideVisible(popupAt(380, 20), VISIBLE, 96)).toEqual({ left: 304, top: 50 });
+  });
+
   it("見えている所が無い（描く前・隠れている地図）なら選ばない", () => {
     expect(popupInsideVisible(popupAt(100, 200), { left: 0, top: 50, right: 0, bottom: 600 })).toBeNull();
   });
