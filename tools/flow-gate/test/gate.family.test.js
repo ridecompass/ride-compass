@@ -12,7 +12,7 @@ const ACCEPT = "- [ ] 動く\n  - 確かめる: ユーザー\n"; // 親（要望
 const PART = "- [ ] 部品\n"; // 子（機能）の約束
 
 test("tasks#868 答えの無い問いが残っていても、完了の条件が全部済めば完成で閉じ、ボタンを外す（採否の問いも）", async () => {
-  const merged = { state: "MERGED", merged: true, mergeChecks: "SUCCESS", sha: "m1" };
+  const merged = { state: "MERGED", merged: true, mergeChecks: "SUCCESS" };
   const rows = [
     // [要求, タスク, 出来事, 期待するステータス]
     ["#865 イレギュラーを問うたあと、別の所で作って条件が全部済んだ", { body: withButton("- [x] 作る\n", config, 1), comments: [ASKED("イレギュラー")] }, ev.comment(1, config.claude), "完了"],
@@ -63,7 +63,7 @@ test("tasks#877 問いを出した事実が無くなったら、条件が残っ�
     // [要求, タスク, 出来事, 期待するステータス]
     ["見送りの前提について問うたあとで、前提が開き直された", { blockedBy: [7], comments: [ASK_DROPPED([7])] }, ev.issue(7, "reopened"), "待機"],
     ["イレギュラーを問うたあとで、作業ブランチの PR が開かれた", { comments: [END(0), ASKED("イレギュラー")], pr: { created: T(1), checks: "PENDING" } }, ev.pr(1, "opened"), "検査"],
-    ["イレギュラーを問うたあとで、問う前からあった PR がマージされた", { comments: [END(0, "検証"), ASKED("イレギュラー")], pr: { state: "MERGED", merged: true, mergeChecks: "SUCCESS", sha: "m1", mergedAt: T(1) } },
+    ["イレギュラーを問うたあとで、問う前からあった PR がマージされた", { comments: [END(0, "検証"), ASKED("イレギュラー")], pr: { state: "MERGED", merged: true, mergeChecks: "SUCCESS", mergedAt: T(1) } },
       ev.merge(1), "実装"],
     ["確かめを問うたあとで、Claude が確かめる条件が足された", { body: withButton(left, config, 1), comments: [ASKED("確かめ")] }, ev.issue(1, "edited", config.claude), "実装"],
     ["見送りの前提がまだ見送りのままなら待つ", { blockedBy: [8], comments: [ASK_DROPPED([8])] }, ev.comment(1, config.claude), "回答"],
@@ -101,7 +101,7 @@ test("tasks#824 継承: 子は優先度・着手可能日時・急ぎ・保留�
   await w.send(ev.issue(8, "opened"));
   assert.deepEqual([w.at(8).state, w.at(8).priority], ["OPEN", null], "作ったとたんに閉じず、優先度の欄は空のまま");
   assert.deepEqual(w.titles().sort(), ["#3 実装", "#8 実装"], "高い親の子を、低い親の子より先に振り出す（親は子を待つ）");
-  Object.assign(w.at(8), { body: "- [x] 部品\n", pr: { state: "MERGED", merged: true, mergeChecks: "SUCCESS", sha: "m8" } });
+  Object.assign(w.at(8), { body: "- [x] 部品\n", pr: { state: "MERGED", merged: true, mergeChecks: "SUCCESS" } });
   w.at(8).comments.push(END(0));
   await w.send(ev.run(w.run(8), "completed"));
   assert.deepEqual([w.at(8).state, w.at(8).reason], ["CLOSED", "COMPLETED"]);
@@ -204,7 +204,7 @@ test("tasks#824・#878・C4 記法: 条件はチェックの行から字下げ�
 test("tasks#878 確かめの問いの確かめることに、ユーザーが確かめる条件ごとの文と見る所と要点が並び、書かれていない条件はそう出る。答えは条件の文で当たる", async () => {
   const look = "[撮った画面](https://github.test/c) で、値の欄に区間の値が出ている";
   const w = world([{ n: 1, status: "検査", body: `- [x] 作る\n- [ ] 道を押すと値が出る\n  - 確かめる: ユーザー\n  - 見る所と要点: ${look}\n- [ ] 見た目\n  - 確かめる: ユーザー\n`,
-    pr: { state: "MERGED", merged: true, mergeChecks: "SUCCESS", sha: "m1" } }]);
+    pr: { state: "MERGED", merged: true, mergeChecks: "SUCCESS" } }]);
   await w.send(ev.merge(1));
   const asked = w.at(1).comments.at(-1);
   assert.deepEqual([w.at(1).status, head(w.at(1))], ["回答", "## 問い（確かめ）"], "条件を並べた確かめの問いは、形に合う");
@@ -243,4 +243,31 @@ test("tasks#1078 完了の条件が全部済んでも、本文の「やること
   w.at(1).body = body("完了の条件「作る」");
   await w.send(ev.issue(1, "edited", config.claude));
   assert.equal(w.at(1).state, "CLOSED", "実装担当が行き先を書いたら完成で閉じる");
+});
+
+test("tasks#1252 親は、子のマージの変更を含む master の検査の実行が通るまで、子が全部閉じても確かめを問わずに検査で待つ。自分のマージの実行がまだ一覧に出ていない間も検査で待つ", async () => {
+  const merged = (mergeChecks) => ({ state: "MERGED", merged: true, mergeChecks });
+  const rows = [
+    // [要求, 子の PR（無ければマージせずに済んだ子）, 後のマージのコミットの検査, 子が閉じたときの親のステータス]
+    ["子のマージの実行が走っている", merged("PENDING"), [], "検査"],
+    ["子のマージの実行が通った", merged("SUCCESS"), [], "回答"],
+    ["子のマージの実行が落ちた", merged("FAILURE"), [], "実装"],
+    ["子のマージの実行が取り消され、後の実行が通った", merged("CANCELLED"), ["SUCCESS"], "回答"],
+    ["子がマージせずに済んだ（待つ実行が無い）", null, [], "回答"],
+  ];
+  for (const [name, pr, later, status] of rows) {
+    const w = world([{ n: 1, status: "待機", body: ACCEPT }, { n: 2, parent: 1, status: "検査", body: PART, pr },
+      ...later.map((checks, k) => ({ n: k + 3, status: "検査", pr: merged(checks) }))]);
+    w.at(2).body = "- [x] 部品\n";
+    await w.send(ev.issue(2, "edited", config.claude)); // 子の条件が済み、ゲートが子を閉じて親を決め直す
+    assert.deepEqual([w.at(2).state, w.at(1).status, asked(w.at(1))], ["CLOSED", status, status === "回答" ? 1 : 0], name);
+  }
+  const w = world([{ n: 1, status: "待機", body: ACCEPT }, { n: 2, parent: 1, status: "検査", body: "- [x] 部品\n", pr: merged("PENDING") }]);
+  await w.send(ev.issue(2, "edited", config.claude));
+  w.at(2).pr.mergeChecks = "SUCCESS";
+  await w.send(ev.merge(2));
+  assert.deepEqual([w.at(1).status, head(w.at(1))], ["回答", "## 問い（確かめ）"], "子のマージの実行が通った知らせで、親に確かめを問う");
+  const own = world([{ n: 1, status: "検証", body: ACCEPT, pr: merged(undefined) }]);
+  await own.send(ev.pr(1, "closed"));
+  assert.deepEqual([own.at(1).status, own.at(1).run, asked(own.at(1))], ["検査", null, 0], "マージした直後で実行がまだ一覧に無ければ、検査で待つ");
 });

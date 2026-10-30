@@ -22,13 +22,12 @@ export const END = (start, kind = "実装", before = "") =>
   [`${endHead(kind)}\n\n要約（担当の最後の発言）:\n\n> 読んだ\n\n${readFromLine(T(start - 0.5))}`, ...(before ? ["", startBlock(before)] : [])].join("\n");
 // コミットに付いたワークフローの実行（check suite）。置いたときの値（SUCCESS・FAILURE・CANCELLED・PENDING）を、GitHub の status と conclusion の形にする
 // （PENDING は走っている）。state は検査のワークフロー（config.checks.workflow）の最も新しい実行（at に始まった）、before はそれより前に同じコミットで始まった検査の実行
-// （古い順。説明文を書き直して打ち直したもの等）、others はほかのワークフローの実行、tasks は担当のワークフローの実行（本番の担当は master の先頭で動く）。
+// （古い順。説明文を書き直して打ち直したもの等）。
 const outcome = (s) => (s === "PENDING" ? { status: "IN_PROGRESS", conclusion: null } : { status: "COMPLETED", conclusion: s });
 const suite = (file, s, at) => ({ ...outcome(s), createdAt: at, workflowRun: { file: { path: `.github/workflows/${file}` } } });
-const suites = (state, { at = T(-1), before = [], others = [], tasks = [] } = {}) => ({ nodes: [
+const suites = (state, { at = T(-1), before = [] } = {}) => ({ nodes: [
   ...before.map((s, k) => suite(config.checks.workflow, s, new Date(Date.parse(at) - (before.length - k) * 1000).toISOString())),
-  ...(state ? [suite(config.checks.workflow, state, at)] : []),
-  ...others.map((s) => suite("mutation-pr.yml", s, at)), ...tasks.map((s) => suite(config.workflow, s, at))] });
+  ...(state ? [suite(config.checks.workflow, state, at)] : [])] });
 const TYPES = ["保守", "不具合", "要望", "調査", config.dialogType];
 const LOGIN = Object.fromEntries(Object.entries(config.ids).map(([login, id]) => [id, login]));
 
@@ -49,14 +48,17 @@ export function world(list, { workflow = "active", last = [], steps = [] } = {})
     const p = i.parent && w.at(i.parent);
     return { blockedBy: blocked(i), subIssues: children(i), parent: p && { ...near(p.n), body: p.body, labels: names(p.labels), issueFieldValues: fields(p) } };
   };
-  // PR は、置いたときに決めた時刻（p.created・p.mergedAt）が無ければ、どのコメントより前に作られた。
-  const pull = (i, p) => ({ id: `PR${i.n}`, state: p.state ?? "OPEN", isDraft: p.draft, mergeable: p.mergeable ?? "MERGEABLE", merged: Boolean(p.merged), createdAt: p.created ?? T(-1), mergedAt: p.mergedAt ?? null,
-    mergeCommit: { oid: p.sha ?? `m${i.n}`, checkSuites: suites(p.mergeChecks, { others: p.mergeOthers, tasks: p.mergeTasks }) },
+  // PR は、置いたときに決めた時刻（p.created・p.mergedAt）が無ければ、どのコメントより前に作られ、マージされた。
+  const pull = (i, p) => ({ id: `PR${i.n}`, state: p.state ?? "OPEN", isDraft: p.draft, mergeable: p.mergeable ?? "MERGEABLE", merged: Boolean(p.merged), createdAt: p.created ?? T(-1),
+    mergedAt: p.mergedAt ?? (p.merged ? T(-1) : null),
     commits: { nodes: [{ commit: { oid: `c${i.n}`, committedDate: "2026-10-11T00:00:00Z", checkSuites: suites(p.checks, { at: p.checksAt ?? p.created, before: p.checksBefore }) } }] },
     timelineItems: { nodes: p.drafted ? [{ createdAt: "2026-10-11T01:00:00Z" }] : [] } });
-  // master のコミットは、マージした PR のマージのコミット（first-parent の親は、置いたときに決めた p.parent。無ければ世界の外のコミット）。
-  const master = () => [...w.issues.values()].filter((i) => i.pr?.merged).map((i) => ({ ...pull(i, i.pr).mergeCommit, parent: i.pr.parent ?? "m0",
-    messageHeadline: `tasks#${i.n}: 直した (#99)` }));
+  // master の push で動いた検査の実行（REST の形で新しい順）は、マージした PR のマージのコミットの検査（置いたときの p.mergeChecks。無ければまだ一覧に出ていない）。
+  // 実行はマージした時刻（p.mergedAt。無ければどのコメントより前で、番号の順）に作られた。
+  const masterRuns = () => [...w.issues.values()].filter((i) => i.pr?.merged && i.pr.mergeChecks)
+    .map((i) => ({ display_title: `tasks#${i.n}: 直した (#99)`, created_at: i.pr.mergedAt ?? new Date(Date.parse(T(-2)) + i.n).toISOString(),
+      ...Object.fromEntries(Object.entries(outcome(i.pr.mergeChecks)).map(([k, v]) => [k, v?.toLowerCase() ?? null])) }))
+    .sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
   const issueOf = (id) => w.at(Number(id.slice(1)));
   // 置き場のラベル: 決まったもの（急ぎ・開発機で作業中・問いのラベル）と、issue に付いたもの。
   const repoLabels = () => [...new Set([config.urgentLabel, config.devLabel, "要確認", ...Object.keys(config.questionForms).map((k) => `問い: ${k}`),
@@ -116,8 +118,6 @@ export function world(list, { workflow = "active", last = [], steps = [] } = {})
       return { repository: { issue: { subIssues: { nodes: kids(i.n) }, parent: i.parent && { subIssues: { nodes: kids(i.parent) } },
         timelineItems: { nodes: [...w.issues.values()].filter((k) => k.n !== i.n && k.body.includes(`#${i.n}`)).map((k) => ({ source: node(k) })) } } } };
     }
-    if (q.includes("history(first:")) return { repository: { object: master().some((c) => c.oid === v.s) ? { history: { nodes: master().map((c) => ({ ...c, parents: { nodes: [{ oid: c.parent }] } })) } } : null } };
-    if (q.includes(":object(oid:")) return { repository: Object.fromEntries([...q.matchAll(/(c\d+):object\(oid:"(\w+)"\)/g)].map(([, k, sha]) => [k, master().find((c) => c.oid === sha) ?? null])) };
     if (q.includes("c:issue(number:$c)")) return { repository: { p: { parent: w.at(v.p).parent && { number: w.at(v.p).parent } }, c: { subIssues: children(w.at(v.c)) } } };
     if (q.includes("issues(states:OPEN")) return { repository: { issues: { pageInfo: { hasNextPage: false }, nodes: [...w.issues.values()].filter((i) => i.state === "OPEN")
       .map((i) => ({ number: i.n, state: i.state, issueType: i.type && { name: i.type }, labels: names(i.labels), assignees: { nodes: i.assignees.map((login) => ({ login })) },
@@ -150,7 +150,7 @@ export function world(list, { workflow = "active", last = [], steps = [] } = {})
     if (path.includes("/runs?per_page=100")) return { workflow_runs: [...w.runs, ...last].reverse().map((r) => ({ id: r.id, display_title: r.display_title ?? "#99 実装",
       status: r.status ?? "completed", conclusion: r.conclusion ?? null, created_at: r.created_at ?? new Date().toISOString(), updated_at: r.updated_at ?? new Date().toISOString() })) };
     if (path.endsWith("/jobs")) return { jobs: [{ steps }] };
-    if (path.includes("/compare/")) return { commits: master().map((c) => ({ sha: c.oid, parents: [{ sha: c.parent }] })) };
+    if (path.includes(`/workflows/${config.checks.workflow}/runs?branch=${config.base}&event=push`)) return { workflow_runs: masterRuns() };
     if (path.endsWith("/dispatches")) { // 本物と同じく、振り出すと実行の申し込みの知らせが届く
       const r = { id: 100 + w.runs.length, display_title: `#${body.inputs.issue} ${body.inputs.kind} ${body.inputs.key}`, status: "queued" };
       w.runs.push(r);
@@ -185,10 +185,10 @@ export function world(list, { workflow = "active", last = [], steps = [] } = {})
 export const ev = {
   // 実行の申し込み・始まり・終わりの知らせ。実行の status は知らせのとおりに進む（終わったあとに届いた始まりの知らせでは戻らない）。
   run: (r, action) => (r.status = r.status === "completed" || action === "completed" ? "completed" : action === "in_progress" ? "in_progress" : r.status ?? "queued", ["workflow_run", { action, sender: { login: config.gateBot }, repository: code, workflow_run: { id: r.id, path: `.github/workflows/${config.workflow}`, display_title: r.display_title } }]),
-  ci: (branch, sha = "x", title = "検査") => ["workflow_run", { action: "completed", sender: { login: config.user }, repository: code,
-    workflow_run: { id: 1, path: ".github/workflows/ci.yml", head_branch: branch, head_sha: sha, display_title: title } }],
+  ci: (branch, title = "検査") => ["workflow_run", { action: "completed", sender: { login: config.user }, repository: code,
+    workflow_run: { id: 1, path: ".github/workflows/ci.yml", head_branch: branch, display_title: title } }],
   // master の検査の実行（実行の名前は、マージのコミットの件名「tasks#<番号>: …」）。
-  merge: (n) => ev.ci(config.base, `m${n}`, `tasks#${n}: 直した (#99)`),
+  merge: (n) => ev.ci(config.base, `tasks#${n}: 直した (#99)`),
   comment: (n, login = config.user) => ["issue_comment", { action: "created", sender: { login }, issue: { number: n }, repository: tasks }],
   issue: (n, action, login = config.user, more = {}) => ["issues", { action, sender: { login }, issue: { number: n, body: more.body }, changes: more.changes, repository: tasks }],
   pr: (n, action) => ["pull_request", { action, sender: { login: config.user }, repository: code, pull_request: { head: { ref: `${config.branchPrefix}${n}` } } }],

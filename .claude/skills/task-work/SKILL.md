@@ -45,8 +45,8 @@ description: "タスクを実装担当・検証担当として進める手順（
    - 1つの Pull Request に収まらないと分かったら、.claude/skills/file-issue/SKILL.md「分ける」のとおり約束の行を移管して終える（約束が動いたので、
      ゲートは絞った残りを次の実装担当へ渡す。docs/conventions/flow.md「issue のライフサイクル」の実行の終わり）。
    - マージのコミットの master の CI が落ちて戻ってきたら、マージのコミットとそれより後の master の実行の落ちたジョブ（`gh run list -R ridecompass/ride-compass --branch master`）を
-     読む。打ち直さない: ゲートは、マージのコミットの実行が合格せずに終わったら、その変更を含む後の master の実行（`tools/flow-gate/src/facts.js: coveringChecks`）で
-     読むので、一時の失敗は後の実行が通れば覆い、打ち直すと待っている後の実行が取り消されうる。この変更の誤りで落ちたなら、直す Pull Request を出す。
+     読む。打ち直さない: ゲートは、マージのコミットの実行より後に作られた master の実行のどれかが通れば本番に出たと読む（`tools/flow-gate/src/facts.js: shippedChecks`）
+     ので、一時の失敗は後の実行が通れば覆い、打ち直すと待っている後の実行が取り消されうる。この変更の誤りで落ちたなら、直す Pull Request を出す。
      この変更の誤りでない理由で落ち続ける（後の実行も同じ理由で落ちる）なら、原因を持つ issue（無ければ .claude/skills/file-issue/SKILL.md「起票する」のとおり起こす）を
      前提に張り（`GH_TOKEN=$FLOW_BOT_TOKEN gh issue edit <番号> -R ridecompass/ride-compass-tasks --add-blocked-by <原因の番号>`）、落ちたジョブと張った理由を経緯に書いて
      手放す（ゲートは前提が開いている間は待機にし、閉じたらまた決め直す）。どれもせずに手放すと、ゲートがイレギュラーを問う。

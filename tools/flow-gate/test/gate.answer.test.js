@@ -92,7 +92,7 @@ test("書いた文は Claude が読むまで決定を当てず、読んだあと
 });
 
 test("回答フォーム（合意したモック）: 回答内容（案と書く欄）と「この issue を」の次遷移のボタンを分けて出し、送った答えでゲートが決め直す", async () => {
-  const w = world([{ n: 1, status: "検査", body: CONFIRM, pr: { state: "MERGED", merged: true, mergeChecks: "SUCCESS", sha: "m1" } },
+  const w = world([{ n: 1, status: "検査", body: CONFIRM, pr: { state: "MERGED", merged: true, mergeChecks: "SUCCESS" } },
     { n: 2, author: config.claude, type: "要望" }, { n: 3, status: "実装" }, { n: 4, status: "回答", comments: [QUESTION] },
     { n: 5, status: "回答", comments: ["## 問い（判断）\nどうしますか？\n\n### 案\n- 案A\n- 案B\n"] }]);
   connect(w);
