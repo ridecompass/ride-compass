@@ -35,10 +35,7 @@ test("目的地を探して置いた地点は地図のその位置にピンが�
   const searchBox = page.getByRole("searchbox", { name: "目的地を住所・施設で探す" });
   await searchBox.fill("王子");
   await searchBox.press("Enter");
-  await page
-    .getByRole("list", { name: "地点の候補" })
-    .getByRole("button", { name: new RegExp(candidate.name) })
-    .click();
+  await page.getByRole("list", { name: "地点の候補" }).getByRole("button", { name: "目的地にする" }).click();
 
   // ピンの位置（印の要素の中心）が、地図がその地点を描く位置にある。寄せる動きが終わるまで待つ。
   const pin = page.getByRole("img", { name: "目的地", exact: true });
@@ -95,10 +92,10 @@ async function showKeyboard(page: Page): Promise<number> {
   }, KEYBOARD_HEIGHT);
 }
 
-// 狭い画面では、地点の詳しくの探すボタンで地図の上端の欄を開き、候補は欄のすぐ下からキーボードの上までの中で送る。
+// 狭い画面では、地点の詳しくの探すボタンで地図の上端の欄を開き、打ちかけの候補は欄のすぐ下からキーボードの上までの中で送る。
 // 候補が多くてもキーボードに覆われずに末尾まで押せて、押した候補が目的地になることを実ブラウザの寸法で見る（単体テストは
 // レイアウトの実寸を持たない）。
-test("モバイル: 目的地を探すと候補を地図の上端の欄の下でキーボードに隠れずに選べ、選ぶと地点の並びにその名前が出る", async ({
+test("モバイル: 目的地を打つと候補を地図の上端の欄の下でキーボードに隠れずに選べ、選ぶと地点の並びにその名前が出る", async ({
   page,
 }) => {
   const candidates = Array.from({ length: 30 }, (_, index) => ({
@@ -122,7 +119,6 @@ test("モバイル: 目的地を探すと候補を地図の上端の欄の下で
   await expect(searchBox).toBeFocused();
   const keyboardTop = await showKeyboard(page);
   await searchBox.fill("浅草寺");
-  await searchBox.press("Enter");
   const list = page.getByRole("list", { name: "地点の候補" });
   await expect(list).toBeVisible();
   const box = (await searchBox.boundingBox())!;

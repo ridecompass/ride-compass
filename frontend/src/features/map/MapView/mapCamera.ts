@@ -10,8 +10,8 @@ import { computePathBounds, visibleCenterOffset, visiblePadding } from "@/lib/ro
 
 import type { ScreenBox } from "./popupPlacement";
 
-// 住所の検索で置いた地点・取り直した現在地へ寄せる倍率。ピンを直せるように、街区が見分けられるまで寄る。選んだ区間を
-// 収めるときも、短い区間でこれより寄らない。
+// 住所の検索で置いた地点・取り直した現在地へ寄せる倍率。ピンを直せるように、街区が見分けられるまで寄る。選んだ区間・探した
+// 候補を収めるときも、短い区間・近い候補でこれより寄らない。
 const FOCUS_ZOOM = 16;
 
 /** 線を見えている所に収める。`maxZoom`を渡すと、それより寄らない。 */
@@ -34,6 +34,11 @@ export function fitBoundsToRoute(map: MapLibreMap, route: RouteCandidate) {
 /** 線（選んだ区間・押した道）の形を、見えている所に収める。 */
 export function fitBoundsToSection(map: MapLibreMap, path: readonly Position[]) {
   fitPaths(map, [path], "線", FOCUS_ZOOM);
+}
+
+/** 地点（探した候補）を全部、見えている所に収める。1件でも、ピンを直せる倍率より寄らない。 */
+export function fitBoundsToPoints(map: MapLibreMap, points: readonly Coordinates[]) {
+  fitPaths(map, [points.map((point) => [point.longitude, point.latitude])], "地点", FOCUS_ZOOM);
 }
 
 /** 線を囲む枠（画面のpx）。 */

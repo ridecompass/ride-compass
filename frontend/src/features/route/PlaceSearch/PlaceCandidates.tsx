@@ -6,7 +6,7 @@ import ErrorText from "@/features/route/ErrorText/ErrorText";
 import { haversineKm } from "@/lib/geoDistance";
 import { cn } from "@/lib/cn";
 import { vocabulary } from "@/types/generated/vocabulary";
-import type { PlaceCandidate } from "@/types/route";
+import type { Coordinates, PlaceCandidate } from "@/types/route";
 
 import type { usePlaceLookup } from "./usePlaceLookup";
 
@@ -31,14 +31,15 @@ export function isRepresentative(candidate: PlaceCandidate): boolean {
 
 interface PlaceCandidatesProps {
   lookup: ReturnType<typeof usePlaceLookup>;
-  /** 候補1件の行。中身（名前・辺り・距離・札）は`label`で渡す。 */
-  renderCandidate: (candidate: PlaceCandidate, label: React.ReactNode) => React.ReactNode;
+  /** 候補1件の行。中身（名前・辺り・距離・札）は`label`で渡す。`index`は並びの添字。 */
+  renderCandidate: (candidate: PlaceCandidate, label: React.ReactNode, index: number) => React.ReactNode;
 }
 
 /** 引いた候補の一覧。引いている間・引けない・当たらないときは、その文を出す。 */
 export default function PlaceCandidates({ lookup, renderCandidate }: PlaceCandidatesProps) {
   const { search, near } = lookup;
-  if (search.isFetching && !search.isPlaceholderData) {
+  // 探したあと（地図に出す候補）は、前の文字の候補を出しておかない（地図の点と番号が食い違う）。
+  if ((search.isFetching && !search.isPlaceholderData) || (lookup.searched && search.isPlaceholderData)) {
     return (
       <p role="status" className={textVariants({ variant: "hint" })}>
         探しています…
@@ -56,25 +57,29 @@ export default function PlaceCandidates({ lookup, renderCandidate }: PlaceCandid
   }
   return (
     <ul aria-label="地点の候補" className="flex flex-col gap-0.5">
-      {candidates.map((candidate) => (
+      {candidates.map((candidate, index) => (
         <li key={`${candidate.name}:${candidate.latitude}:${candidate.longitude}`}>
-          {renderCandidate(
-            candidate,
-            <>
-              <span className="min-w-0 flex-auto truncate">
-                {candidate.name}
-                {/* 施設の辺り。同じ名前のチェーンの店を見分ける。名前より控えめにし、狭い幅では先に切れる。 */}
-                {candidate.area !== null && (
-                  <span className={cn("ml-1.5", textVariants({ variant: "note" }))}>{candidate.area}</span>
-                )}
-              </span>
-              <span className="flex-none tabular-nums">{haversineKm(near, candidate).toFixed(1)}km</span>
-              <Badge>{KIND_LABELS[candidate.kind]}</Badge>
-              <Badge variant="outline">{LEVEL_LABELS[candidate.level]}</Badge>
-            </>,
-          )}
+          {renderCandidate(candidate, <CandidateLabel candidate={candidate} near={near} />, index)}
         </li>
       ))}
     </ul>
+  );
+}
+
+/** 候補1件の中身（名前・辺り・`near`からの距離・種類と当たった段の札）。 */
+export function CandidateLabel({ candidate, near }: { candidate: PlaceCandidate; near: Coordinates }) {
+  return (
+    <>
+      <span className="min-w-0 flex-auto truncate">
+        {candidate.name}
+        {/* 施設の辺り。同じ名前のチェーンの店を見分ける。名前より控えめにし、狭い幅では先に切れる。 */}
+        {candidate.area !== null && (
+          <span className={cn("ml-1.5", textVariants({ variant: "note" }))}>{candidate.area}</span>
+        )}
+      </span>
+      <span className="flex-none tabular-nums">{haversineKm(near, candidate).toFixed(1)}km</span>
+      <Badge>{KIND_LABELS[candidate.kind]}</Badge>
+      <Badge variant="outline">{LEVEL_LABELS[candidate.level]}</Badge>
+    </>
   );
 }

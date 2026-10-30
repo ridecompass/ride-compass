@@ -163,6 +163,10 @@ SEMANTIC_COLORS: dict[str, str] = {
     # 現在地の青のどれとも重ならない朱色、縁取りはルートの線の下に敷いても線の色（評価・候補・乗り換え）に溶けない紫にする。
     "selected_point": "#ff4d1a",
     "selected_section": "#7c3aed",
+    # 地点の検索で探した候補の番号の点。地点のピン（白い台）と見分けるよう塗りの丸にし、選んでいる候補はピンの役割の色・
+    # 選んだ地点の朱色・ルートの線の色のどれとも重ならない色で塗る。
+    "place_candidate": "#334155",
+    "place_candidate_picked": "#be185d",
     # 停止要因の点の絵。日本の道路標識・信号機の色に寄せ、何の点かを形と色で直感的に読ませる（点の区分の色とは別）。
     "sign_regulatory": "#d8262e",
     "sign_regulatory_text": "#1a3c8c",
