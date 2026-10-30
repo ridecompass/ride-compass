@@ -109,6 +109,8 @@ PRIMARY_ATTRIBUTES: tuple[PrimaryAttributeSpec, ...] = (
             ),
         ),
         point_min_zoom=15,
+        # 点の印が重なると、停止要因 → 補給 → 立ち寄り先 → 事故の順に残す（走る前に知りたいのは、どこで止まるか）。
+        point_priority=3,
     ),
     ATTR_ACCIDENT_POINT := PrimaryAttributeSpec(
         attr_id="accident_point",
@@ -169,8 +171,8 @@ PRIMARY_ATTRIBUTES: tuple[PrimaryAttributeSpec, ...] = (
         # 事故は面的に多く、同じ濃さだと停止要因の点が埋もれる。
         point_opacity=0.75,
         point_min_zoom=15,
-        # 重なると停止要因の点を残す（走る前に知りたいのは、どこで止まるか）。
-        point_priority=-1,
+        # 事故どうしが重なると、死亡事故を残し、その中で自転車の事故を残す。
+        point_priority_axes=("severity", "party"),
     ),
     ATTR_INTERSECTION := PrimaryAttributeSpec(attr_id="intersection", label="交差点", geometry="point"),
     ATTR_LANDCOVER := PrimaryAttributeSpec(attr_id="landcover", label="緑と水", geometry="area"),
@@ -225,6 +227,7 @@ PRIMARY_ATTRIBUTES: tuple[PrimaryAttributeSpec, ...] = (
         ),
         # 名前を持つのはコンビニの点だけ（OpenStreetMap の点の名前は焼かない）。
         point_name_property="name",
+        point_priority=2,
     ),
     # 群「コンビニ」は補給の点に出すので、ここの行に入れない。
     PrimaryAttributeSpec(
@@ -286,6 +289,7 @@ PRIMARY_ATTRIBUTES: tuple[PrimaryAttributeSpec, ...] = (
             ),
         ),
         point_name_property="name",
+        point_priority=1,
     ),
 )
 
