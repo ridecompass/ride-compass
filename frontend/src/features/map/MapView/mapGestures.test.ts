@@ -4,10 +4,11 @@
  *
  * 見るもの: 決まり（`docs/modules/frontend/static-map-layers.md`「地図を押したときと地図の小窓」の「押したとき」）のとおり、地図を動かす
  * 操作（ずらす・2本の指・流れている地図を止める）はタップにも長押しにもならず、それ以外の1回の押しは、離したときにタップとして、指1本を
- * 動かさずに置き続けると長押しとして受けること。マウスの右ボタンは長押しと同じに受けること。出来事の並びは、モジュールの先頭に書いた
+ * 動かさずに置き続けると長押しとして受けること。マウスの右ボタンは長押しと同じに受けること。何も無い所のタップだけ確かめを待ち、その間に
+ * 次の押しが来たらダブルタップとして受けること。出来事の並びは、モジュールの先頭に書いた
  * W3C の仕様が決めるもの。
  *
- * ここで見ないもの: 長押しを待つ時間と、地図の出来事を部品へ渡す結線と、決まった操作で開く物 → `app/page.popups.test.tsx`。
+ * ここで見ないもの: タップと長押しを待つ時間と、地図の出来事を部品へ渡す結線と、決まった操作で開く物・拡大 → `app/page.popups.test.tsx`。
  */
 import { describe, expect, it } from "vitest";
 
@@ -21,7 +22,8 @@ const touchStart = (n = 1): MapGestureEvent => ({ type: "touchstart", ...fingers
 const touchMove = (px: number): MapGestureEvent => ({ type: "touchmove", ...fingers(1, right(px)) });
 const touchEnd = (left = 0): MapGestureEvent => ({ type: "touchend", ...fingers(left) });
 const mouseDown: MapGestureEvent = { type: "mousedown", at: AT };
-const click: MapGestureEvent = { type: "click" };
+const click: MapGestureEvent = { type: "click", hitsTarget: true };
+const clickNothing: MapGestureEvent = { type: "click", hitsTarget: false };
 
 /** 出来事を順に渡し、最後の出来事で返ったことを返す。 */
 function play(g: MapGestures, ...events: MapGestureEvent[]) {
@@ -30,6 +32,7 @@ function play(g: MapGestures, ...events: MapGestureEvent[]) {
 
 /** 指1本を置いて動かさずに離す（指のクリックのあとの互換のマウスの出来事も続ける）。 */
 const FINGER_TAP = [touchStart(), touchEnd(), mouseDown, click];
+const FINGER_TAP_NOTHING = [touchStart(), touchEnd(), mouseDown, clickNothing];
 
 describe("タップ", () => {
   it.each<[string, MapGestureEvent[], boolean]>([
@@ -76,5 +79,39 @@ describe("長押し", () => {
       "longPress",
       null,
     ]);
+  });
+});
+
+describe("ダブルタップ", () => {
+  it("何も無い所のタップは確かめを待ち、次の押しが来なければタップとして受ける", () => {
+    const g = new MapGestures();
+    expect(play(g, ...FINGER_TAP_NOTHING)).toBe("waitTap");
+    expect(g.confirmTap()).toBe(true);
+  });
+
+  it.each<[string, MapGestureEvent[], ReturnType<MapGestures["handle"]>]>([
+    ["指で同じ所をもう一度押して離した", FINGER_TAP_NOTHING, "doubleTap"],
+    [
+      "もう一度押したまま、地図をずらす幅より動かした",
+      [touchStart(), touchMove(TAP_TOLERANCE_PX + 1), touchEnd(), click],
+      null,
+    ],
+  ])("確かめる間に%s: 1回目は受けない", (_, events, second) => {
+    const g = new MapGestures();
+    play(g, ...FINGER_TAP_NOTHING);
+    expect(play(g, ...events)).toBe(second);
+    expect(g.confirmTap()).toBe(false);
+  });
+
+  it("押せる物に当たったタップは待たずに受け、すぐ次に押してもタップのまま", () => {
+    const g = new MapGestures();
+    expect([play(g, ...FINGER_TAP), play(g, ...FINGER_TAP)]).toEqual(["tap", "tap"]);
+  });
+
+  it("ダブルタップの2回目の押しは、置き続けても長押しにしない", () => {
+    const g = new MapGestures();
+    play(g, ...FINGER_TAP_NOTHING);
+    expect(g.handle(touchStart())).toBeNull();
+    expect(g.confirmLongPress()).toBe(false);
   });
 });

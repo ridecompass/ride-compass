@@ -3,7 +3,7 @@
 // テストの中で使う（差し替えはテストのファイルが`vi.mock`で宣言する）。
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { expect, onTestFinished } from "vitest";
+import { expect, onTestFinished, vi } from "vitest";
 
 import Home from "@/app/page";
 import { CLIENT_TUNING_IDS } from "@/lib/axisCatalog";
@@ -18,6 +18,7 @@ import {
 } from "@/testing/catalogAxes";
 import { serveGenerationJobs } from "@/testing/generationJobs";
 import { installGeolocation } from "@/testing/geolocation";
+import { DOUBLE_TAP_MS } from "@/features/map/MapView/mapGestures";
 import { mapOnScreen, type PointedFeature } from "@/testing/maplibre";
 import { makeGenerationConditions, makeRouteCandidate, makeRouteSegment } from "@/testing/routeFixtures";
 import regionTileConfig from "@/types/generated/region-tile-config.json";
@@ -207,9 +208,32 @@ export function marksAt(point: Coordinates) {
     .filter((mark) => mark.coordinates.latitude === point.latitude && mark.coordinates.longitude === point.longitude);
 }
 
-/** 地図をタップする。`features`はそこに描かれている地物。 */
+/** 地図をタップする。`features`はそこに描かれている地物。何も無い所のタップはダブルタップの1回目でないと確かめてから受けるので、
+ * 押す間だけ時計を偽にして、確かめの時まで進める。 */
 export function clickMap(at: Coordinates, features: PointedFeature[] = []) {
-  act(() => mapOnScreen().click(at, features));
+  pressMap(() => mapOnScreen().click(at, features));
+}
+
+/** 地図の同じ所を続けて2回タップする。 */
+export function doubleClickMap(at: Coordinates, features: PointedFeature[] = []) {
+  pressMap(() => {
+    mapOnScreen().click(at, features);
+    mapOnScreen().click(at, features);
+  });
+}
+
+function pressMap(press: () => void) {
+  // 呼んだテストが既に偽の時計を使っていれば、その時計のまま進める（点けも消しもしない）。
+  const faked = vi.isFakeTimers();
+  if (!faked) vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  try {
+    act(() => {
+      press();
+      vi.advanceTimersByTime(DOUBLE_TAP_MS);
+    });
+  } finally {
+    if (!faked) vi.useRealTimers();
+  }
 }
 
 /** 地図をマウスの右ボタンで押す（指の長押しと同じく、長押しとして受ける）。 */
