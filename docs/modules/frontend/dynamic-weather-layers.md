@@ -126,7 +126,8 @@ scene/applyMapScene.ts  … 前回の宣言との差だけを地図へ当てる
 （`WIND_SPEED_LEGEND_LEVELS`・`PRECIPITATION_INTENSITY_LEVELS`）はこの配列から帯の範囲を書き出す。気象庁のタイルで描く降水
 （降水ナウキャスト・降水短時間予報）は、backendの中継が同じ段の色へ塗り替えて配る
 （[気象・動的レイヤー](../backend/weather-dynamic-layers.md)「降水のタイルの塗り替え」）ので、MSMの格子点の升目の塗りも含めて、
-地図に出る色と凡例の行は1対1で対応する。
+地図に出る色と凡例の行は1対1で対応する。降水はいちばん弱い段の下限より弱い雨を塗らず（升目は塗りのfilterで落とし、気象庁のタイルは
+中継が透明にする）、凡例はその行を持たずに見出し（`precipitationNowcast.ts: PRECIPITATION_LEGEND_HEADING`）で断る。
 
 **連続補間（`interpolate`）で塗ってはいけない。** 凡例が並べられるのは帯ごとの色見本1つ
 だけで、それは帯の端の色でしかない。帯の中ほどの値はどの見本とも違う色になり、「この色は
@@ -408,8 +409,9 @@ basetime・validtimeを含む）で持つため、フレームが進んで取得
 
 ## 俯瞰図
 
-本体の地図の左下に、今の画面のまわりを広く映す小さな地図を添える。
-今の画面より広い範囲の雨雲・風を見るためのもの。
+本体の地図の左下に、今の画面のまわりを広く映す小さな丸い地図を添える。
+今の画面より広い範囲の雨雲・風を見るためのもの。丸いのは、本体の地図と一緒に回っても映す範囲が変わらないようにするため——四角のまま回すと、
+隅から格子点の風の矢印が数本ずつ出入りする。「×」は丸の外の右上の隅に置き、ほかの隅は本体の地図への触れを通す。
 
 - **出す条件**: 気象の層を1つでも出していて、本体の地図のズームが`features/map/MapOverview/overview.ts: OVERVIEW_MIN_ZOOM`以上で、
   スマホで下のシートを開いていない間（`features/map/MapOverview/overview.ts: overviewShown`）。走行中も同じ条件で、走行中の地図の下端（`features/ride/RideBottom/RideBottom.tsx`）の上に積む。
@@ -418,7 +420,8 @@ basetime・validtimeを含む）で持つため、フレームが進んで取得
   （`features/map/MapOverview/overview.ts: overviewBasemapEdits`。森・水・土地の塗りは残す）。地名は日本語だけの小さな字にする（`features/map/MapOverview/overview.ts: OVERVIEW_PLACE_LABEL`）。その上に、本体の地図と同じ
   `dynamicWeather`から気象の家族だけの scene（`features/map/scene/buildScene.ts: buildOverviewScene`）を描くので、色・時刻・中身は本体の地図と揃う。
   気象の記号は地名の場所を取らない（`features/map/MapOverview/overview.ts: overviewScene`）——上に描く風の矢印の記号が先に場所を取ると、地名が衝突で全部押し出される。場所を取らない記号は記号どうしでも間引かれないので、
-  格子点に並ぶ記号（風の矢印）は、俯瞰図のズームの上で重ならないように間引く（`features/map/MapOverview/overview.ts: overviewWeather`）。
+  格子点に並ぶ記号（風の矢印）は、俯瞰図のズームの上で重ならないように間引き、丸の中の格子点のものだけを描く（`features/map/MapOverview/overview.ts: overviewWeather`）。
+  丸で絞るのは間引いたあと——先に絞ると、地図を動かすたびに残る記号が変わる。
   行・列の番号が粗い刻み（2の冪の倍数）の格子点から細かい刻みへ順に置き、置いた記号のどれとも、2つのうち大きい方の記号の1辺以上離れている記号だけを残す。
   最初の刻みは、格子点どうしが一番大きな記号の1辺以上離れる刻み。風の強い所は大きな矢印が疎らに、弱い所は小さな矢印が密に残る。
   記号の大きさは描き方の値から求め（`features/map/scene/groups/weather.ts: weatherMarkSizePx`）、
@@ -426,11 +429,11 @@ basetime・validtimeを含む）で持つため、フレームが進んで取得
 - **倍で描いて縮める**: 俯瞰図の地図は`features/map/MapOverview/overview.ts: OVERVIEW_RENDER_SCALE`倍の大きさの地図として描いてCSSで縮める。
   約20km四方を映す粗い段の基礎地図のタイルには区の名前が無く、1段細かい段から載るため。pxで決まる見た目（地名の字・気象の記号の大きさ等）は
   その倍にして見た目の大きさを保つ。基礎地図と配信元のタイルは1段細かい段のものを取る。
-- **範囲**: 中心と向きは本体の地図に合わせ、ズームは本体の地図より4段引いた値（今の画面の16倍の幅）で、1辺が約20kmより狭くならないようにする
+- **範囲**: 中心と向きは本体の地図に合わせ、ズームは本体の地図より4段引いた値（今の画面の16倍の幅）で、丸の径が約20kmより狭くならないようにする
   （`features/map/MapOverview/overview.ts: overviewZoom`）。ズーム13あたりまでは今の画面の枠がいつも同じ大きさで、それより寄せると下限に当たり枠が小さくなる。
   下限は、約5kmおきのMSMの格子点の風の矢印が俯瞰図に数本は入る広さ。今の画面の範囲は真ん中の枠で示す。俯瞰図は操作を受けない（`features/map/baseMap.ts: createBaseMap`の`inset`）。
 - **格子点**: MSMの格子点は本体の地図と1回の取得を共有し、俯瞰図を出すズームでは俯瞰図の範囲まで広げて取る
-  （`features/map/MapOverview/overview.ts: overviewBounds`）。広げる範囲は俯瞰図がどの向きに回っても覆う広さで、向きによらない——走行中に進む向きが変わるたびに取り直さない。配信元のタイルは俯瞰図の地図を描くズームのタイルを地図が取る。
+  （`features/map/MapOverview/overview.ts: overviewBounds`）。広げる範囲は俯瞰図の丸を覆う箱で、丸はどの向きでも同じ範囲なので向きによらない——走行中に進む向きが変わるたびに取り直さない。配信元のタイルは俯瞰図の地図を描くズームのタイルを地図が取る。
 
 ## 常設ヘッダーの天候表示（`WeatherPanel`）
 

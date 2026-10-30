@@ -81,7 +81,9 @@ describe("anyWeatherShown", () => {
 
 describe("overviewWeather", () => {
   // MSMの格子（緯度0.05度・経度0.0625度おき）の、北区のあたりの9×9の格子点。弱い風（2m/s）の中に、強い風（9m/s）の一角がある。
+  // 格子は俯瞰図の丸より広く、真ん中は格子の真ん中。
   const latitude = 35.75;
+  const center = { latitude, longitude: 139.75 };
   const gridStepDeg = { latitude: 0.05, longitude: 0.0625 };
   const features = Array.from({ length: 81 }, (_, i) => ({
     type: "Feature" as const,
@@ -100,14 +102,25 @@ describe("overviewWeather", () => {
     },
   };
   const arrowSizePx = weatherMarkSizePx({ group: "windVector", source: "arrow" })!;
+  const keptOf = (zoom: number) => {
+    const payload = overviewWeather(weather, zoom, center).windVector?.arrow?.payload;
+    return new Set(payload !== undefined && "geojson" in payload ? payload.geojson.features : []);
+  };
+  // 俯瞰図の地図（メルカトル）の上で、真ん中から格子点までの長さ（px）。
+  const pxFromCenter = (zoom: number, feature: (typeof features)[number]) => {
+    const pxPerDeg = (512 * 2 ** zoom) / 360;
+    return Math.hypot(
+      (feature.geometry.coordinates[0] - center.longitude) * pxPerDeg,
+      ((feature.geometry.coordinates[1] - center.latitude) * pxPerDeg) / longitudeScale(latitude),
+    );
+  };
 
   // 本体の倍率12では弱い風の矢印も格子点の間隔より大きく、14では強い風の矢印だけが格子点の間隔より大きい。
   it.each([12, 14])(
-    "本体の倍率%sで、俯瞰図の矢印はどの2本も大きい方の1辺以上離れ、落とした矢印はどれも残した矢印のどれかと重なる",
+    "本体の倍率%sで、俯瞰図の矢印はどの2本も大きい方の1辺以上離れ、丸の中で落とした矢印はどれも残した矢印のどれかと重なる",
     (mainZoom) => {
       const zoom = overviewZoom(latitude, mainZoom);
-      const payload = overviewWeather(weather, zoom, latitude).windVector?.arrow?.payload;
-      const kept = new Set(payload !== undefined && "geojson" in payload ? payload.geojson.features : []);
+      const kept = keptOf(zoom);
       // メルカトルの地図の上で、2本の矢印の真ん中どうしの長さが大きい方の1辺より短いか。
       const pxPerDeg = (512 * 2 ** zoom) / 360;
       const overlap = (a: (typeof features)[number], b: (typeof features)[number]) =>
@@ -119,9 +132,30 @@ describe("overviewWeather", () => {
 
       expect(keptFeatures.length).toBeGreaterThanOrEqual(4);
       expect(keptFeatures.filter((a) => keptFeatures.some((b) => a !== b && overlap(a, b)))).toEqual([]);
-      expect(features.filter((a) => !kept.has(a) && !keptFeatures.some((b) => overlap(a, b)))).toEqual([]);
+      expect(
+        features.filter(
+          (a) =>
+            pxFromCenter(zoom, a) <= OVERVIEW_SIZE_PX / 2 && !kept.has(a) && !keptFeatures.some((b) => overlap(a, b)),
+        ),
+      ).toEqual([]);
     },
   );
+
+  // 丸は回しても同じ範囲を映すので、丸の中だけを描けば、地図が回っても隅から矢印が出入りしない。
+  it("俯瞰図が回っても描く矢印の数が変わらないように、俯瞰図の丸（径が俯瞰図の1辺）の中の格子点の矢印だけを描く", () => {
+    const zoom = overviewZoom(latitude, 14);
+    const kept = [...keptOf(zoom)] as typeof features;
+    // 俯瞰図の四角の隅（丸の外）にも格子点がある。
+    const corners = features.filter(
+      (feature) =>
+        pxFromCenter(zoom, feature) > OVERVIEW_SIZE_PX / 2 &&
+        pxFromCenter(zoom, feature) <= (OVERVIEW_SIZE_PX / 2) * Math.SQRT2,
+    );
+
+    expect(corners.length).toBeGreaterThan(0);
+    expect(kept.length).toBeGreaterThan(0);
+    expect(kept.filter((feature) => pxFromCenter(zoom, feature) > OVERVIEW_SIZE_PX / 2)).toEqual([]);
+  });
 });
 
 describe("overviewFrameSize", () => {
@@ -136,10 +170,10 @@ describe("overviewBounds", () => {
   const widthM = (bounds: { west: number; east: number }) =>
     (bounds.east - bounds.west) * METERS_PER_DEGREE * longitudeScale(35.7);
 
-  // どの向きに回した正方形も覆う箱は、1辺の√2倍。向きで変わると、向きが変わるたびに格子点を取り直す。
-  it.each([0, 45])("向き%s°でも、本体の地図の真ん中を中心に1辺の√2倍の幅を覆う", (bearing) => {
+  // 俯瞰図の丸はどの向きでも同じ範囲なので、それを覆う箱は丸の径の幅。向きで変わると、向きが変わるたびに格子点を取り直す。
+  it.each([0, 45])("向き%s°でも、本体の地図の真ん中を中心に俯瞰図の丸の径の幅を覆う", (bearing) => {
     const bounds = overviewBounds({ ...viewport, bearing });
-    expect(widthM(bounds)).toBeCloseTo(20_000 * Math.SQRT2, -1);
+    expect(widthM(bounds)).toBeCloseTo(20_000, -1);
     expect((bounds.south + bounds.north) / 2).toBeCloseTo(35.7);
     expect((bounds.west + bounds.east) / 2).toBeCloseTo(139.7);
   });

@@ -34,7 +34,7 @@ interface MapOverviewProps {
   paneRef: RefObject<HTMLElement | null>;
 }
 
-/** 本体の地図の左下に添える、今の画面より広い範囲の俯瞰図。本体の地図で出している気象の層を同じ色で描き、今の画面の範囲を枠で
+/** 本体の地図の左下に添える、今の画面より広い範囲を丸く映す俯瞰図。本体の地図で出している気象の層を同じ色で描き、今の画面の範囲を枠で
  * 示す。「×」で丸いボタンに畳み、畳んだことは端末に覚える。出すかどうかは呼ぶ側が`overview.ts: overviewShown`で決める。 */
 export default function MapOverview(props: MapOverviewProps) {
   const [collapsed, setCollapsed] = useStoredBooleanState(COLLAPSED_STORAGE_KEY, false);
@@ -102,8 +102,15 @@ function OverviewMap({ viewport, dynamicWeather, paneRef, onCollapse }: MapOverv
   }, [center.longitude, center.latitude, renderZoom, viewport.bearing]);
 
   const scene = useMemo(
-    () => overviewScene(buildOverviewScene(weatherStateFrom(overviewWeather(dynamicWeather, zoom, center.latitude)))),
-    [dynamicWeather, zoom, center.latitude],
+    () =>
+      overviewScene(
+        buildOverviewScene(
+          weatherStateFrom(
+            overviewWeather(dynamicWeather, zoom, { latitude: center.latitude, longitude: center.longitude }),
+          ),
+        ),
+      ),
+    [dynamicWeather, zoom, center.latitude, center.longitude],
   );
   useEffect(() => {
     if (mapRef.current) applyScene(mapRef.current, scene);
@@ -119,33 +126,32 @@ function OverviewMap({ viewport, dynamicWeather, paneRef, onCollapse }: MapOverv
   const frame = paneSize === null ? null : overviewFrameSize(paneSize, viewport.zoom, zoom);
 
   return (
-    <section
-      aria-label="俯瞰図"
-      className="pointer-events-auto relative overflow-hidden rounded-md border border-[var(--color-border-strong)] shadow-float"
-      style={{ width: OVERVIEW_SIZE_PX, height: OVERVIEW_SIZE_PX }}
-    >
-      {/* 地図は倍の大きさで描いて縮める（`overview.ts: OVERVIEW_RENDER_SCALE`）。 */}
-      <div
-        ref={containerRef}
-        className="origin-top-left"
-        style={{
-          width: OVERVIEW_SIZE_PX * OVERVIEW_RENDER_SCALE,
-          height: OVERVIEW_SIZE_PX * OVERVIEW_RENDER_SCALE,
-          transform: `scale(${1 / OVERVIEW_RENDER_SCALE})`,
-        }}
-      />
-      {frame !== null && (
+    <section aria-label="俯瞰図" className="relative" style={{ width: OVERVIEW_SIZE_PX, height: OVERVIEW_SIZE_PX }}>
+      {/* 地図は丸く切り抜き、丸の外の隅は本体の地図への触れを通す（`overview.ts: OVERVIEW_SIZE_PX`）。 */}
+      <div className="pointer-events-auto relative size-full overflow-hidden rounded-full border border-[var(--color-border-strong)] shadow-float">
+        {/* 地図は倍の大きさで描いて縮める（`overview.ts: OVERVIEW_RENDER_SCALE`）。 */}
         <div
-          aria-hidden="true"
-          data-testid="map-overview-frame"
-          className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 border-2 border-[var(--color-accent-strong)] shadow-[0_0_0_1px_white]"
-          style={{ width: frame.width, height: frame.height }}
+          ref={containerRef}
+          className="origin-top-left"
+          style={{
+            width: OVERVIEW_SIZE_PX * OVERVIEW_RENDER_SCALE,
+            height: OVERVIEW_SIZE_PX * OVERVIEW_RENDER_SCALE,
+            transform: `scale(${1 / OVERVIEW_RENDER_SCALE})`,
+          }}
         />
-      )}
+        {frame !== null && (
+          <div
+            aria-hidden="true"
+            data-testid="map-overview-frame"
+            className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 border-2 border-[var(--color-accent-strong)] shadow-[0_0_0_1px_white]"
+            style={{ width: frame.width, height: frame.height }}
+          />
+        )}
+      </div>
       <Button
         variant="float"
         size="bare"
-        className="absolute top-1 right-1 size-6 rounded-full text-[length:var(--font-size-xs)]"
+        className="pointer-events-auto absolute top-0 right-0 size-6 rounded-full text-[length:var(--font-size-xs)]"
         aria-label="俯瞰図を畳む"
         usage="俯瞰図を小さな丸いボタンに畳みます。押すと戻ります。"
         onClick={onCollapse}
