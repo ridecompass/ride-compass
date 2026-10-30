@@ -19,7 +19,7 @@ from hypothesis import strategies as st
 
 from app.domain import route
 from app.domain.axis_definitions import BreakpointLinearShape, MaterialTerm
-from app.domain.route import DensityScoreInput, RouteSegmentDetail
+from app.domain.route import DensityScoreInput, RouteSegmentDetail, SegmentDifficulty
 
 WIDTH = route.SEGMENT_BIN_DISTANCE_KM
 #: 停止密度の軸の折れ線（1kmあたりの回数 → 点数。11回/kmで100点、その先は100点）。
@@ -44,35 +44,42 @@ def _segments(distances: list[float], **fields_per_segment) -> list[RouteSegment
     return segments
 
 
-def _signal_segments(distances: list[float], signals: list[float], share: float) -> list[RouteSegmentDetail]:
-    """信号の数で決まる停止密度の軸（`stops`）と、どの区間も20点の軸（`other`）を持つ区間。`share`は停止密度の軸の
-    重みの割合（`other`が残り）。区間の値はエンジンと同じく区間の点数・寄与度・合成から作る。"""
-    segments = []
-    for distance, count in zip(distances, signals, strict=True):
+def _binned(
+    segments: list[RouteSegmentDetail], difficulties: list[SegmentDifficulty] | None = None
+) -> list[RouteSegmentDetail]:
+    """区間を、区間の難しさ（`difficulties`。省くと値の無い難しさ）から畳んだビンの難しさとともにビンへ束ねる。"""
+    if difficulties is None:
+        difficulties = [SegmentDifficulty(s.distance_km, None, {}, {}, {}) for s in segments]
+    return route.aggregate_segments_into_bins(segments, route.route_bins(difficulties))
+
+
+def _signal_bins(distances: list[float], signals: list[float], share: float) -> list[RouteSegmentDetail]:
+    """信号の数で決まる停止密度の軸（`stops`）と、どの区間も20点の軸（`other`）を持つ区間を束ねたビン。`share`は停止密度の
+    軸の重みの割合（`other`が残り）。区間の難しさはエンジンと同じく区間の点数・寄与度・合成から作る。"""
+    rounded = [round(distance, route.DISTANCE_KM_DECIMALS) for distance in distances]
+    difficulties = []
+    for distance, distance_km, count in zip(distances, rounded, signals, strict=True):
         density = count / distance
         score = STOP_SHAPE.score_at(density)
-        fields = {
-            "axis_difficulties": {"stops": score, "other": 20.0},
-            "axis_contributions": {"stops": score * share, "other": 20.0 * (1 - share)},
-            "difficulty": score * share + 20.0 * (1 - share),
-        }
-        segments.append((distance, fields, DensityScoreInput(
-            value=density, distance_km=distance, weight_share=share, shape=STOP_SHAPE)))
-    built = _segments(
-        [round(distance, route.DISTANCE_KM_DECIMALS) for distance, _, _ in segments],
-        **{name: [fields.get(name) for _, fields, _ in segments] for name in segments[0][1]},
-    )
-    return [segment.with_density_inputs({"stops": density}) for segment, (_, _, density) in zip(built, segments)]
+        difficulties.append(SegmentDifficulty(
+            distance_km=distance_km,
+            difficulty=score * share + 20.0 * (1 - share),
+            axis_difficulties={"stops": score, "other": 20.0},
+            axis_contributions={"stops": score * share, "other": 20.0 * (1 - share)},
+            density_inputs={"stops": DensityScoreInput(
+                value=density, distance_km=distance, weight_share=share, shape=STOP_SHAPE)},
+        ))
+    return _binned(_segments(rounded), difficulties)
 
 
 def test_a_route_scores_a_density_axis_from_the_mean_count_over_its_bins():
     """候補はビンからもう一度畳む。信号の集まった500m（16回/km、頭打ちの100点）と信号の無い500m（0点）の候補は、点数の
     平均（50点）ではなく8回/kmの点数（72.7点）。"""
-    bins = route.aggregate_segments_into_bins(_signal_segments([0.0625] * 16, [1] * 8 + [0] * 8, share=0.6))
+    bins = _signal_bins([0.0625] * 16, [1] * 8 + [0] * 8, share=0.6)
 
-    assert route.merge_route_values(bins)["axis_difficulties"]["stops"] == 72.7
-    assert route.merge_route_values(bins)["axis_contributions"]["stops"] == pytest.approx(43.6)
-    overall = route.merge_route_values(bins)["overall_difficulty"]
+    assert route.merge_route_values(bins).axis_difficulties["stops"] == 72.7
+    assert route.merge_route_values(bins).axis_contributions["stops"] == pytest.approx(43.6)
+    overall = route.merge_route_values(bins).overall_difficulty
     assert overall is not None
     assert overall.average == pytest.approx(51.6)
 
@@ -80,16 +87,16 @@ def test_a_route_scores_a_density_axis_from_the_mean_count_over_its_bins():
 def test_a_route_scores_a_density_axis_the_same_however_its_road_is_cut():
     """信号1つのある100mの区間を、信号の所で10mと90mに切る（端の信号は両側が0.5回ずつ持つ）。ルートの値は回数だけで
     決まり、道の切り方で変わらない（探索の費用の側は`test_leg_costs.py`）。"""
-    whole = route.aggregate_segments_into_bins(_signal_segments([0.1, 0.4], [1, 0], share=0.5))
-    cut = route.aggregate_segments_into_bins(_signal_segments([0.01, 0.09, 0.4], [0.5, 0.5, 0], share=0.5))
+    whole = _signal_bins([0.1, 0.4], [1, 0], share=0.5)
+    cut = _signal_bins([0.01, 0.09, 0.4], [0.5, 0.5, 0], share=0.5)
 
-    assert route.merge_route_values(cut)["axis_difficulties"] == route.merge_route_values(whole)["axis_difficulties"]
-    assert route.merge_route_values(cut)["axis_contributions"] == route.merge_route_values(whole)["axis_contributions"]
+    assert route.merge_route_values(cut).axis_difficulties == route.merge_route_values(whole).axis_difficulties
+    assert route.merge_route_values(cut).axis_contributions == route.merge_route_values(whole).axis_contributions
 
 
 def test_the_load_of_a_route_is_its_rounded_average_over_every_segment_including_those_without_a_value():
     """欠損の区間を飛ばして積むと、データの無い区間が多いルートほど楽に見える。"""
-    overall = route.merge_route_values(_segments([1.0, 1.0, 2.0], difficulty=[10.0, None, 20.0]))["overall_difficulty"]
+    overall = route.merge_route_values(_segments([1.0, 1.0, 2.0], difficulty=[10.0, None, 20.0])).overall_difficulty
 
     assert overall is not None
     # 平均 50/3 は 16.7 に丸め、総量はその 16.7 に全区間の 4km を掛ける（丸める前の平均なら 66.7）。
@@ -97,7 +104,7 @@ def test_the_load_of_a_route_is_its_rounded_average_over_every_segment_including
 
 
 def test_a_bin_closes_as_soon_as_it_reaches_the_width_and_the_rest_stays():
-    bins = route.aggregate_segments_into_bins(_segments([WIDTH / 2, WIDTH / 2, 0.1]))
+    bins = _binned(_segments([WIDTH / 2, WIDTH / 2, 0.1]))
 
     assert [b.distance_km for b in bins] == [WIDTH, 0.1]
 
@@ -106,7 +113,7 @@ def test_a_bin_closes_as_soon_as_it_reaches_the_width_and_the_rest_stays():
 def test_bins_cover_the_route_without_gaps_or_overlaps(distances):
     segments = _segments(distances)
 
-    bins = route.aggregate_segments_into_bins(segments)
+    bins = _binned(segments)
 
     # 経路全体の距離が合う（ビンの距離は小数2桁へ丸める）。
     assert sum(b.distance_km for b in bins) == pytest.approx(sum(distances), abs=0.005 * len(bins))
@@ -131,8 +138,8 @@ def test_difficulties_keep_one_decimal_and_physical_values_keep_four_significant
         material_values=[{"material_a": 1000.0}, {"material_a": 2000.0}],
     )
 
-    assert route.merge_route_values(segments)["axis_difficulties"] == {"axis_a": 16.7}
-    assert route.merge_route_values(segments)["axis_contributions"] == {"axis_a": 16.7}
+    assert route.merge_route_values(segments).axis_difficulties == {"axis_a": 16.7}
+    assert route.merge_route_values(segments).axis_contributions == {"axis_a": 16.7}
     assert route.merge_material_values(segments) == {"material_a": 1667.0}
 
 
@@ -151,11 +158,11 @@ def test_route_raw_values_match_the_mean_over_the_bins_of_the_segments(edges):
     """
     segments = _segments([distance for distance, _ in edges], material_values=[values for _, values in edges])
 
-    assert route.route_axis_raw_values(edges) == route.merge_material_values(route.aggregate_segments_into_bins(segments))
+    assert route.route_axis_raw_values(edges) == route.merge_material_values(_binned(segments))
 
 
 def test_the_shape_of_a_bin_joins_the_segment_shapes_without_repeating_shared_points():
-    bins = route.aggregate_segments_into_bins(_segments(
+    bins = _binned(_segments(
         [0.1, 0.1, 0.1, 0.3],
         geometry=[
             {"type": "LineString", "coordinates": [[0.0, 0.0], [1.0, 0.0]]},
@@ -172,7 +179,7 @@ def test_a_bin_lists_the_road_classes_of_its_segments_joining_equal_neighbours_a
     """道のりのグラフはビンの部分を距離の比で並べて帯を描く。隣どうしの同じ値をつながないと同じ色の帯に境ができ、
     距離0の部分を残すと幅の無い帯が呼び名の行に出る。"""
     stretch = route.RoadClassStretch
-    bins = route.aggregate_segments_into_bins(_segments(
+    bins = _binned(_segments(
         [0.1, 0.0, 0.2, 0.3],
         road_classes=[
             {"surface": [stretch(distance_km=0.1, value="paved")]},

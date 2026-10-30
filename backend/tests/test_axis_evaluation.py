@@ -1,4 +1,4 @@
-"""`domain/axis_evaluation.py`——軸1本の評価（`evaluate_axis`・`evaluate_axis_array`）と生値（`AxisEvaluation.raw_value`・`raw_values`）。
+"""`domain/axis_evaluation.py`——軸1本の評価（`evaluate_axis`）と生値（`AxisEvaluation.raw`・`raw_values`）。
 
 ここで見ないもの:
 - 軸が軸を参照するときの並べ替え・軸の集合の評価（`evaluate_axes_array`等） → `test_axis_hierarchy.py`
@@ -29,18 +29,18 @@ class TestBreakpointScores:
     def test_a_missing_optional_material_adds_nothing(self):
         shape = linear(MaterialTerm(material="a", weight=2.0), MaterialTerm(material="b", required=False))
 
-        result = axis_evaluation.evaluate_axis_array(shaped_axis(shape), {"a": np.array([2.0]), "b": np.array([NAN])})
+        result = axis_evaluation.evaluate_axis(shaped_axis(shape), {"a": np.array([2.0]), "b": np.array([NAN])})
 
-        assert scores(result) == [40.0]
+        assert scores(result.score) == [40.0]
 
     def test_a_road_with_every_material_missing_is_unscored_even_when_all_are_optional(self):
         shape = linear(MaterialTerm(material="a", required=False), MaterialTerm(material="b", required=False))
 
-        result = axis_evaluation.evaluate_axis_array(
+        result = axis_evaluation.evaluate_axis(
             shaped_axis(shape), {"a": np.array([NAN, NAN]), "b": np.array([NAN, 0.0])}
         )
 
-        assert scores(result) == [None, 0.0]
+        assert scores(result.score) == [None, 0.0]
 
 
 class TestPriorityConditions:
@@ -53,19 +53,19 @@ class TestPriorityConditions:
             ],
         )
 
-        result = axis_evaluation.evaluate_axis_array(
+        result = axis_evaluation.evaluate_axis(
             definition,
             {"num_a": np.zeros(3), "flag": np.array([1.0, 0.0, NAN]), "cat": CategoricalColumn.encode(["x", "x", "y"])},
         )
 
-        assert scores(result) == [1.0, 2.0, 0.0]
+        assert scores(result.score) == [1.0, 2.0, 0.0]
 
 
 class TestRawValues:
     def test_a_mapping_axis_has_no_raw_value(self):
         shape = CategoricalShape(material="cat", mapping={"x": 1.0})
 
-        evaluated = axis_evaluation.evaluate_axis(shaped_axis(shape), {"cat": np.array(["x"], dtype=object)})
+        evaluated = axis_evaluation.evaluate_axis(shaped_axis(shape), {"cat": np.array(["x"], dtype=object)}, keep_raw=True)
 
-        assert evaluated.raw_value() is None
+        assert evaluated.raw is None
         assert axis_evaluation.raw_values(shape, {"cat": ["x", "y"]}, 2) == [None, None]

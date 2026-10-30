@@ -106,12 +106,14 @@ class NearestRainStations:
             nearest = (stations.latitudes, stations.longitudes, np.full(len(self.latitudes), -1, dtype=np.int32))
             self._nearest = nearest
         indices = nearest[2]
-        missing = rows[indices[rows] < 0]
-        if len(missing) > 0:
-            indices[missing] = nearest_point_indices(
+        picked = indices[rows]
+        unknown = picked < 0
+        if unknown.any():
+            missing = rows[unknown]
+            picked[unknown] = indices[missing] = nearest_point_indices(
                 self.latitudes[missing], self.longitudes[missing], stations.latitudes, stations.longitudes
             )
-        return _station_values(stations, indices[rows])
+        return _station_values(stations, picked)
 
 
 def is_rain_history_current(latest_hour: datetime, now: datetime) -> bool:

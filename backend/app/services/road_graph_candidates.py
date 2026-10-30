@@ -6,8 +6,10 @@
 
 import asyncio
 import math
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
+from typing import TypeVar, cast
 
 import numpy as np
 
@@ -15,8 +17,8 @@ from app.domain.attributes import ElevationAttribute
 from app.domain.evaluation import (
     displayed_material_ids,
 )
-from app.domain.difficulty import axis_contributions_at_rows, axis_weight_shares_at_rows
-from app.domain.leg_costs import LegCostArrays, RowValues
+from app.domain.difficulty import axis_contributions, axis_weight_shares
+from app.domain.leg_costs import LegCostArrays, LegValues
 from app.domain.gradient import GRADIENT_VALUE_DECIMALS
 from app.domain.material_catalog import GRADIENT_PERCENT
 from app.domain.geo import (
@@ -36,6 +38,7 @@ from app.domain.route import (
     DISTANCE_KM_DECIMALS,
     ELEVATION_M_DECIMALS,
     aggregate_segments_into_bins,
+    route_bins,
     along_route_km,
     concat_edge_geometries,
     merge_material_category_shares,
@@ -48,6 +51,7 @@ from app.domain.route_search import (
     prefers_reverse,
     reverse_leg_assignment,
     route_passages,
+    turn_waits_along,
 )
 from app.domain.stopwatch import add_elapsed_ms, start_timer
 from app.domain.turn_structure import TurnExpandedStructure, TurnKind, turns_along
@@ -92,15 +96,18 @@ async def evaluate_routes(
 @dataclass(frozen=True, slots=True)
 class _RowRead:
     """経路の区間のうち、同じ値の組から読む区間。時刻で変わる値（難易度・軸・材料）は、探索がその区間に使った
-    ビンの値で、ビンが1本のレグはレグの配列、2本以上のレグは経路上の行だけをそのビンの時刻で合成し直した値
-    （`LegCostArrays.bin_start_hours`参照）。時刻で変わらない値（密度の軸の横軸・生値・分類の材料）はレグの配列から読む。"""
+    ビンの値で、ビンが1本のレグはレグの表示の値、2本以上のレグは経路上の行だけをそのビンの時刻で合成し直した値
+    （`LegCostArrays.values`参照）。時刻で変わらない値（密度の軸の横軸・生値・分類の材料）はレグの配列から読む。"""
 
-    values: LegCostArrays | RowValues
+    values: LegValues
     leg: LegCostArrays
     # 経路の中の区間の添字と、同じ並びの`values`の行・切り出した区間の順の行。
     indices: list[int]
     value_rows: np.ndarray
     rows: np.ndarray
+
+
+_T = TypeVar("_T")
 
 
 def _row_reads(
@@ -109,19 +116,37 @@ def _row_reads(
     """経路の区間を、読む値の組ごとにまとめる。同じレグ・同じビンの区間はまとめて1回で合成し直す。"""
     groups: dict[tuple[int, int | None], list[int]] = {}
     for index, (leg_index, passage) in enumerate(zip(leg_of_edge, passages)):
-        timed = len(context.legs[leg_index].bin_start_hours) > 1
+        timed = len(context.legs[leg_index].bin_times) > 1
         groups.setdefault((leg_index, passage.time_bin if timed else None), []).append(index)
     reads = []
     for (leg_index, time_bin), indices in groups.items():
         leg = context.legs[leg_index]
         group_rows = np.array([rows[i] for i in indices], dtype=np.int64)
         if time_bin is None:
-            reads.append(_RowRead(leg, leg, indices, group_rows, group_rows))
+            assert leg.values is not None  # 時刻ビンが1本のレグは表示の値を持つ
+            reads.append(_RowRead(leg.values, leg, indices, group_rows, group_rows))
             continue
-        hours = np.full(len(group_rows), leg.bin_start_hours[time_bin])
-        values = context.composer.values_at_rows(group_rows, hours)
+        values = context.composer.values_at_rows(group_rows, leg.bin_times[time_bin])
         reads.append(_RowRead(values, leg, indices, np.arange(len(group_rows)), group_rows))
     return reads
+
+
+def _per_segment(reads: list[_RowRead], count: int, values_of: Callable[[_RowRead], list[_T]]) -> list[_T]:
+    """読む値の組ごとに求めた区間の値（`values_of`。`read.indices`と同じ並び）を、経路の区間の並びへ配る。"""
+    placed: list[_T | None] = [None] * count
+    for read in reads:
+        for index, value in zip(read.indices, values_of(read), strict=True):
+            placed[index] = value
+    assert all(value is not None for value in placed), "どの値の組にも入らない区間がある"
+    return cast(list[_T], placed)
+
+
+def _present_at(columns: Mapping[str, list], position: int) -> dict:
+    """鍵→区間ごとの値の列から、区間`position`の値のある鍵だけ（NaN・Noneは値が無い）。"""
+    return {
+        key: column[position] for key, column in columns.items()
+        if column[position] is not None and not (isinstance(column[position], float) and math.isnan(column[position]))
+    }
 
 
 def _segment_difficulties(reads: list[_RowRead], distances_km: list[float]) -> list[SegmentDifficulty]:
@@ -129,36 +154,35 @@ def _segment_difficulties(reads: list[_RowRead], distances_km: list[float]) -> l
 
     探索が使った合成済みの配列（`context.legs`、区間の番号から行を引く）からそのまま読み、探索コストと表示を一致させる。
     """
-    difficulties: dict[int, SegmentDifficulty] = {}
-    for read in reads:
-        values = read.values
-        scores = {axis_id: arr[read.value_rows].tolist() for axis_id, arr in values.axis_arrays.items()}
+    def of(read: _RowRead) -> list[SegmentDifficulty]:
+        values, rows = read.values, read.value_rows
+        scores = {axis_id: arr[rows] for axis_id, arr in values.axis_arrays.items()}
+        weights = {axis_id: w[rows] if isinstance(w, np.ndarray) else w for axis_id, w in values.weights.items()}
         # 密度の軸は、ビンと候補で得点を作り直すために横軸の値を載せる（点数と同じ区間が欠損になる）。
-        shares = axis_weight_shares_at_rows(values.axis_arrays, values.weights, values.weight_sums, read.value_rows)
-        contributions = axis_contributions_at_rows(scores, shares)
-        composite = values.difficulty_array[read.value_rows].tolist()
+        shares = axis_weight_shares(scores, weights, values.weight_sums[rows])
+        score_lists = {axis_id: score.tolist() for axis_id, score in scores.items()}
+        contributions = axis_contributions(score_lists, shares)
+        composite = values.difficulty_array[rows].tolist()
         density = {axis_id: column.inputs[read.rows].tolist() for axis_id, column in read.leg.density_axes.items()}
+        difficulties = []
         for position, index in enumerate(read.indices):
             distance_km = distances_km[index]
-            difficulties[index] = SegmentDifficulty(
+            difficulties.append(SegmentDifficulty(
                 distance_km=round(distance_km, DISTANCE_KM_DECIMALS),
                 difficulty=None if math.isnan(composite[position]) else composite[position],
-                axis_difficulties={
-                    axis_id: score[position] for axis_id, score in scores.items() if not math.isnan(score[position])
-                },
+                axis_difficulties=_present_at(score_lists, position),
                 axis_contributions=contributions[position],
                 density_inputs={
                     axis_id: DensityScoreInput(
-                        value=inputs[position],
-                        distance_km=distance_km,
-                        weight_share=shares[position].get(axis_id),
+                        value=value, distance_km=distance_km, weight_share=shares[position].get(axis_id),
                         shape=read.leg.density_axes[axis_id].shape,
                     )
-                    for axis_id, inputs in density.items()
-                    if not math.isnan(inputs[position])
+                    for axis_id, value in _present_at(density, position).items()
                 },
-            )
-    return [difficulties[index] for index in range(len(distances_km))]
+            ))
+        return difficulties
+
+    return _per_segment(reads, len(distances_km), of)
 
 
 @dataclass(frozen=True, slots=True)
@@ -174,7 +198,8 @@ class _Orientation:
     entries: list[int | None]
     passages: list[EdgePassage]
     reads: list[_RowRead]
-    difficulties: list[SegmentDifficulty]
+    # ビンの難しさ（`domain/route.py: route_bins`）。向きの比べとビンの組み立てが同じ値を読む。
+    bins: list[SegmentDifficulty]
 
 
 def _orientation(
@@ -188,14 +213,12 @@ def _orientation(
     entries = context.turn_structure.entries_along(path)
     # 経路を探索と同じ規則でたどった区間ごとの時刻。区間の到達予想と候補の所要時間が同じ時計を使う。
     passages = route_passages(
-        context.legs, context.turn_structure, entries, path,
+        context.legs, turn_waits_along(context.turn_structure, entries), path,
         [edge.distance_m for edge in edges_in_path], leg_of_edge, context.composer.speed_kmh,
     )
     reads = _row_reads(context, rows, leg_of_edge, passages)
-    difficulties = _segment_difficulties(reads, [edge.distance_m / 1000 for edge in edges_in_path])
-    return _Orientation(
-        edges_in_path, path, leg_of_edge, waypoint_offsets, rows, entries, passages, reads, difficulties
-    )
+    bins = route_bins(_segment_difficulties(reads, [edge.distance_m / 1000 for edge in edges_in_path]))
+    return _Orientation(edges_in_path, path, leg_of_edge, waypoint_offsets, rows, entries, passages, reads, bins)
 
 
 def _build_best_candidate(
@@ -207,7 +230,7 @@ def _build_best_candidate(
 ) -> EvaluatedRoute:
     """1候補ぶんの周回を組み立てる。
 
-    同じ周回の逆回りは追加のI/Oなしで評価できるため、両向きの区間の難しさから**難易度の小さい向きだけ**を
+    同じ周回の逆回りは追加のI/Oなしで評価できるため、両向きのビンの難しさから**難易度の小さい向きだけ**を
     組み立てる（両方向を別候補として並べない）。逆走は勾配・風で評点が変わるため常に意味がある。
     一方通行Edgeが1つでもあれば成立しないので、その場合は順方向のみ。
 
@@ -225,7 +248,7 @@ def _build_best_candidate(
             # 逆に回ると、経由地より前の区間は経由地より後の区間になる。
             [len(path) - offset for offset in traced.waypoint_offsets],
         )
-        if prefers_reverse(chosen.difficulties, reverse.difficulties):
+        if prefers_reverse(chosen.bins, reverse.bins):
             elevation_by_edge = reverse_elevation_by_edge(edges_in_path, reverse_edges, elevation_by_edge)
             chosen = reverse
     add_elapsed_ms(context.evaluate_steps_ms, "orient", orient_started)
@@ -275,7 +298,7 @@ def _build_candidate(
         list(zip((segment.distance_km for segment in segments), segment_raw_values))
     )
     # 返すsegmentsは集約する。Edge単位のままだとペイロードとフロントの描画費用が嵩む。
-    segments = aggregate_segments_into_bins(segments)
+    segments = aggregate_segments_into_bins(segments, orientation.bins)
     add_elapsed_ms(context.evaluate_steps_ms, "bins", bins_started)
 
     return EvaluatedRoute(
@@ -316,45 +339,41 @@ def _build_segment_details(
     categorical材料の値は平均できず区間の器（ビンへ畳まれる）に載せられないため、軸の生値は画面が
     候補全体の値しか読まないため、どちらも候補全体へ畳む`_build_candidate`へ並びのまま渡す。
 
-    難しさの値は向きを選ぶときに読んだもの（`_Orientation.difficulties`）、材料値は同じ値の組
-    （`_Orientation.reads`）から読む。区間は検証せずに組み、検証はビン（`domain/route.py: aggregate_segments_into_bins`）でだけ行う。
+    材料値は同じ値の組（`_Orientation.reads`）から読む。難しさの値は区間に載せず、ビンが向きを選ぶときに畳んだもの
+    （`_Orientation.bins`）を載せる。区間は検証せずに組み、検証はビン（`domain/route.py: aggregate_segments_into_bins`）でだけ行う。
     到達予想時刻は経路を探索と同じ規則でたどった時刻（`passages`）。
     """
     count = len(orientation.edges)
-    material_values: list[dict[str, float]] = [{}] * count
-    segment_categories: list[dict[str, str]] = [{}] * count
-    segment_raw_values: list[dict[str, float]] = [{}] * count
-    for read in orientation.reads:
-        materials = {
+
+    def materials_of(read: _RowRead) -> list[dict[str, float]]:
+        columns = {
             material_id: array[read.value_rows].astype(float).tolist()
             for material_id in active_material_ids
             if (array := read.values.material_arrays.get(material_id)) is not None
         }
-        categories = {
+        return [_present_at(columns, position) for position in range(len(read.indices))]
+
+    def categories_of(read: _RowRead) -> list[dict[str, str]]:
+        columns = {
             material_id: [column.vocab[code] for code in column.codes[read.rows].tolist()]
             for material_id, column in read.leg.categorical_material_arrays.items()
             if material_id in active_material_ids
         }
-        # 折れ点を通す前の生値。静的スコア行列が持つ列をそのまま読む
-        # （動的材料を参照する軸は行列側で除外済み）。
-        raw = {axis_id: arr[read.rows].tolist() for axis_id, arr in read.leg.axis_raw_arrays.items()}
-        for position, index in enumerate(read.indices):
-            material_values[index] = {
-                material_id: column[position] for material_id, column in materials.items()
-                if not math.isnan(column[position])
-            }
-            segment_categories[index] = {
-                material_id: column[position] for material_id, column in categories.items()
-                if column[position] is not None
-            }
-            segment_raw_values[index] = {
-                axis_id: column[position] for axis_id, column in raw.items() if not math.isnan(column[position])
-            }
+        return [_present_at(columns, position) for position in range(len(read.indices))]
+
+    def raw_values_of(read: _RowRead) -> list[dict[str, float]]:
+        # 折れ点を通す前の生値。静的スコア行列が持つ列をそのまま読む（動的材料を参照する軸は行列側で除外済み）。
+        columns = {axis_id: arr[read.rows].tolist() for axis_id, arr in read.leg.axis_raw_arrays.items()}
+        return [_present_at(columns, position) for position in range(len(read.indices))]
+
+    material_values = _per_segment(orientation.reads, count, materials_of)
+    segment_categories = _per_segment(orientation.reads, count, categories_of)
+    segment_raw_values = _per_segment(orientation.reads, count, raw_values_of)
 
     segments = []
     road_classes = SegmentClassReader.of(context.road)
-    for index, (edge, row, difficulty) in enumerate(zip(orientation.edges, orientation.rows, orientation.difficulties)):
-        rounded_km = difficulty.distance_km
+    for index, (edge, row) in enumerate(zip(orientation.edges, orientation.rows)):
+        rounded_km = round(edge.distance_m / 1000, DISTANCE_KM_DECIMALS)
         elevation_attr = elevation_by_edge.get(edge.edge_id)
 
         gradient_percent = elevation_attr.average_grade if elevation_attr else None
@@ -402,15 +421,12 @@ def _build_segment_details(
                     )
                 ],
                 estimated_arrival_time=arrival_time.isoformat(),
-                axis_difficulties=difficulty.axis_difficulties,
-                axis_contributions=difficulty.axis_contributions,
                 material_values=material_values[index],
-                difficulty=difficulty.difficulty,
                 road_classes={
                     layer: [RoadClassStretch.model_construct(distance_km=rounded_km, value=value)]
                     for layer, value in road_classes.values_at(row).items()
                 },
-            ).with_density_inputs(difficulty.density_inputs)
+            )
         )
 
     return segments, segment_categories, segment_raw_values

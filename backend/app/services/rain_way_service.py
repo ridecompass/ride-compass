@@ -1,7 +1,7 @@
 """鍵→動的値配信層（雨）。
 
-各フィーチャーは中ほどに最も近い雨量計の値を引く（`domain/rain.py: rain_material_columns`。ルートの区間も同じ関数で
-中点の値を引く）。値は今の観測で、
+各フィーチャーは中ほどに最も近い雨量計の値を引く（`domain/rain.py: rain_material_columns`。ルートの区間は同じ値を
+`domain/rain.py: NearestRainStations`で引く）。値は今の観測で、
 走行方位・時刻・想定速度には依らない。1つの実装が雨の材料すべてを担当し、どの材料を返すかは
 組み立てるときに受け取る——窓の長さの一覧（`RAIN_WINDOW_HOURS`）が増えても、ここは変わらない。
 

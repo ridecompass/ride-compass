@@ -428,7 +428,7 @@ def difficulty_expectations() -> dict[str, list[dict]]:
     rows = []
     for scene, parts in _ROUTES:
         segments = [_segment(distance_km, contributions) for distance_km, contributions in parts]
-        overall = merge_route_values(segments)["overall_difficulty"]
+        overall = merge_route_values(segments).overall_difficulty
         rows.append(
             {
                 "scene": scene,

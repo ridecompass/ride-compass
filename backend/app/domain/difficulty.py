@@ -161,35 +161,33 @@ def composite_difficulty_array(
     return composite_from_sums(weighted_scores, weight_sums), weight_sums
 
 
-def axis_weight_shares_at_rows(
-    axis_arrays: Mapping[str, np.ndarray],
+def axis_weight_shares(
+    scores: Mapping[str, np.ndarray],
     weights: Mapping[str, float | np.ndarray],
     weight_sums: np.ndarray,
-    rows: np.ndarray,
 ) -> list[dict[str, float]]:
-    """行`rows`の区間ごとの、データのある軸の重みの割合（`重み ÷ weight_sums[row]`）。合成に入らない区間（重みの和が0）は空。
+    """区間ごとの、データのある軸の重みの割合（`重み ÷ weight_sums`）。合成に入らない区間（重みの和が0）は空。
+    `scores`は軸→区間ごとの得点、`weights`の配列と`weight_sums`も同じ区間の並び（経路上の行だけを取り出したもの）。
 
-    軸の得点にこれを掛けると寄与度になる（`axis_contributions_at_rows`）。区間をまたいで得点を作り直す
+    軸の得点にこれを掛けると寄与度になる（`axis_contributions`）。区間をまたいで得点を作り直す
     軸（`domain/route.py: DensityScoreInput`）は、作り直した得点にこれを掛けて寄与度を出す。
     """
-    totals = np.asarray(weight_sums[rows], dtype=np.float64)
+    totals = np.asarray(weight_sums, dtype=np.float64)
     usable = (totals != 0) & ~np.isnan(totals)
     shares: list[dict[str, float]] = [{} for _ in range(len(totals))]
     with np.errstate(invalid="ignore", divide="ignore"):
-        for axis_id, arr in axis_arrays.items():
-            weight = weights.get(axis_id, 0.0)
-            weight_at = np.asarray(weight[rows] if isinstance(weight, np.ndarray) else weight, dtype=np.float64)
-            share = (weight_at / totals).tolist()
-            for position in np.flatnonzero(usable & ~np.isnan(arr[rows])).tolist():
+        for axis_id, score in scores.items():
+            share = (np.asarray(weights.get(axis_id, 0.0), dtype=np.float64) / totals).tolist()
+            for position in np.flatnonzero(usable & ~np.isnan(score)).tolist():
                 shares[position][axis_id] = share[position]
     return shares
 
 
-def axis_contributions_at_rows(
+def axis_contributions(
     scores: Mapping[str, Sequence[float]], shares: Sequence[Mapping[str, float]]
 ) -> list[dict[str, float]]:
     """区間ごとの軸別寄与度（データのある軸の`得点 × 重みの割合`）。`scores`は軸→区間ごとの得点、`shares`は同じ並びの
-    `axis_weight_shares_at_rows`。
+    `axis_weight_shares`。
 
     全区間ぶんは作らない——読むのは経路上の数百区間だけのため。全軸を足すと丸め前の
     合成difficultyに一致する（合成とその内訳を食い違わせないための式）。区間の値は丸めない。
@@ -200,25 +198,11 @@ def axis_contributions_at_rows(
     ]
 
 
-def axis_contributions_at_row(
-    axis_arrays: Mapping[str, np.ndarray],
-    weights: Mapping[str, float | np.ndarray],
-    weight_sums: np.ndarray,
-    row: int,
-) -> dict[str, float]:
-    """1区間ぶんの`axis_contributions_at_rows`。"""
-    rows = np.array([row])
-    return axis_contributions_at_rows(
-        {axis_id: arr[rows].tolist() for axis_id, arr in axis_arrays.items()},
-        axis_weight_shares_at_rows(axis_arrays, weights, weight_sums, rows),
-    )[0]
-
-
 def composite_difficulty(
     scores: Mapping[str, float | None], weights: Mapping[str, float]
 ) -> tuple[float | None, dict[str, float | None]]:
     """1区間ぶんの軸の得点（欠損=None）から、合成difficultyと軸ごとの寄与度（小数1桁）を返す。
-    計算は`composite_difficulty_array`・`axis_contributions_at_row`を長さ1で通す。
+    計算は`composite_difficulty_array`・`axis_contributions`を長さ1で通す。
 
     寄与度は`scores`と同じキーで、得点の無い軸（分母にも入らない）はNone。合成が求まらない
     （得点のある軸が無い・重みの合計が0）ときは合成も寄与度もすべてNone。各寄与度を丸めるため、
@@ -228,7 +212,9 @@ def composite_difficulty(
         axis_id: np.array([np.nan if score is None else score], dtype=float) for axis_id, score in scores.items()
     }
     composite, weight_sums = composite_difficulty_array(axis_arrays, weights, 1)
-    at_row = axis_contributions_at_row(axis_arrays, weights, weight_sums, 0)
+    at_row = axis_contributions(
+        {axis_id: arr.tolist() for axis_id, arr in axis_arrays.items()}, axis_weight_shares(axis_arrays, weights, weight_sums)
+    )[0]
     value = float(composite[0])
     contributions = {axis_id: None if axis_id not in at_row else round_difficulty(at_row[axis_id]) for axis_id in scores}
     return (None if math.isnan(value) else value), contributions

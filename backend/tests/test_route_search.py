@@ -51,6 +51,7 @@ from app.domain.route_search import (
     loop_to_outbound_ratios,
     reverse_leg_assignment,
     route_passages,
+    turn_waits_along,
     turnaround_ring_m,
 )
 from app.domain.leg_costs import LegCostArrays
@@ -203,9 +204,8 @@ def time_binned_leg(travel_bins, bin_seconds):
     """`route_passages`が読む秒の列とビンの幅だけを持つレグ。ほかの列は区間の表示が読むもので、ここでは空。"""
     travel_bins = np.asarray(travel_bins, dtype=float)
     return LegCostArrays(
-        cost_lazy=travel_bins[0], difficulty_array=np.zeros(0), axis_arrays={}, weight_sums=np.zeros(0),
-        weights={}, axis_raw_arrays={}, density_axes={}, material_arrays={}, categorical_material_arrays={},
-        travel_seconds_full=travel_bins[0], travel_seconds_lazy=travel_bins[0],
+        cost_lazy=travel_bins[0], travel_seconds_lazy=travel_bins[0], values=None,
+        axis_raw_arrays={}, density_axes={}, categorical_material_arrays={},
         cost_bins_lazy=travel_bins, travel_bins_lazy=travel_bins, bin_seconds=bin_seconds,
     )
 
@@ -227,7 +227,7 @@ def test_route_passages_reads_each_edge_in_the_time_bin_the_search_used():
     )
 
     passages = route_passages(
-        [leg], structure, structure.entries_along(path), path, [100.0, 100.0], [0, 0], speed_kmh=20.0
+        [leg], turn_waits_along(structure, structure.entries_along(path)), path, [100.0, 100.0], [0, 0], speed_kmh=20.0
     )
 
     assert passages[-1].elapsed_seconds + passages[-1].seconds == pytest.approx(tree.state_seconds[states["BC"]])

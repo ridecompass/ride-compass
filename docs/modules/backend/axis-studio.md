@@ -216,8 +216,7 @@ Pythonの値、ルート選びと地図の配信は材料の型ごとの配列�
 
 | 関数 | 用途 |
 |---|---|
-| `evaluate_axis(definition, materials)` | 軸の評価の本体（numpy配列、欠損はNaN）。どの入口もここを通る。折れ線の軸は項の和も返し、生値（`AxisEvaluation.raw_value`）は和を求め直さずそこから出す |
-| `evaluate_axis_array(definition, materials)` | `evaluate_axis`の得点だけ |
+| `evaluate_axis(definition, materials, keep_raw=)` | 軸の評価の本体（numpy配列、欠損はNaN）。どの入口もここを通る。折れ線の軸は項の和を1回だけ求め、`keep_raw`なら生値（`AxisEvaluation.raw`）も同じ和から出す |
 | `evaluate_axes(materials, definitions)` | `definitions`の全軸を依存順に`evaluate_axis`へ通し、軸id→評価を返す |
 | `evaluate_axes_array(materials, definitions)` | `definitions`の全軸を依存順（`topological_axis_order`、内部軸→公開軸）で評価し、軸id→得点の辞書を返す（評価した軸の得点は後の軸の材料として読まれる。評価は`evaluate_axes`） |
 | `evaluate_axes_values(materials, length)` | `evaluate_axes_array`をPythonの値の並びから通し、公開軸だけの得点を返す（評価できない公開軸もキーを残してNone） |
@@ -470,7 +469,7 @@ idのまま出す。書き込み時のガード・削除の断り（下の「書
 - リクエスト時に評価される動的材料（`REQUEST_DYNAMIC_MATERIAL_IDS`）と静的材料を同じ軸で
   混在させないこと。動的軸の再評価経路（`domain/dynamic_materials.py:
   evaluate_dynamic_axis_arrays`）へ渡るのは「探索範囲の静的スコア行列の公開軸スコア」と
-  「動的材料」だけで、静的材料の配列は渡らない——混在させた軸は`evaluate_axis_array`が
+  「動的材料」だけで、静的材料の配列は渡らない——混在させた軸は`evaluate_axis`が
   KeyErrorになり`/api/routes/generate`ごと失敗する。静的材料が必要なら別の軸へ切り出して
   軸参照で合成する。
   参照材料の導出は`AxisDefinition.materials`と同じ`referenced_materials`

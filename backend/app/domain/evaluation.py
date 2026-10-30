@@ -22,7 +22,7 @@ Score（難易度換算）は`domain/difficulty.py`（0-100、値が大きいほ
 """
 
 from dataclasses import dataclass
-from typing import Container, Iterable, Mapping, NamedTuple
+from typing import Container, Iterable, Iterator, Mapping, NamedTuple, cast
 
 import numpy as np
 
@@ -41,7 +41,7 @@ from app.domain.axis_definitions import (
     published_axis_definitions,
     published_axis_order,
 )
-from app.domain.axis_evaluation import evaluate_axes
+from app.domain.axis_evaluation import AxisEvaluation, evaluate_axes
 from app.domain.axis_raw_value import axis_material_shares, raw_value_unit
 from app.domain.difficulty import (
     axis_weighted_sums,
@@ -53,13 +53,12 @@ from app.domain.map_paint import SignedMaterialMapValue, map_paint
 from app.domain.material_catalog import (
     is_known_material,
     material_spec,
-    materials_of_source,
 )
 from app.domain.cycling_speed import travel_model_material_ids
-from app.domain.hard_filters import hard_filter_material_ids, hard_filtered
+from app.domain.hard_filters import hard_filtered
 from app.domain.road_classes import CLASS_MATERIAL_PREFIX
 from app.domain.search_graph import EDGE_VALUE_DTYPE
-from app.domain.stopwatch import elapsed_ms, start_timer
+from app.domain.stopwatch import add_elapsed_ms, start_timer
 
 
 def has_route_facing_raw_value(definition: AxisDefinition) -> bool:
@@ -177,43 +176,67 @@ def empty_material_arrays(n: int, material_ids: Iterable[str], present: Containe
     自体を落とす。確保しておけば「材料はあるがデータが無い」という既存の意味論へ揃い、
     その軸だけ恒久的に欠損扱いになる。
     """
-    arrays: dict[str, MaterialColumn] = {}
-    for material_id in material_ids:
-        spec = material_spec(material_id)
-        if spec is None or material_id in present:
-            continue
-        if spec.dtype == "categorical":
-            arrays[material_id] = CategoricalColumn(np.zeros(n, dtype=np.int16), (None,))
-        else:  # numeric・boolean（真偽も数値の行列と同じく1.0/0.0/NaNで持つ）
-            arrays[material_id] = np.full(n, np.nan)
-    return arrays
+    return {
+        material_id: column
+        for material_id in material_ids
+        if material_id not in present and (column := empty_material_column(material_id, n)) is not None
+    }
 
 
-def static_score_material_ids(definitions: dict[str, AxisDefinition]) -> frozenset[str]:
-    """点数の表（`build_static_edge_score_matrix`）が読む材料id。`definitions`の全軸が読む材料と、所要時間が読む材料と、
-    0次ハードフィルタの条件が読む材料。表を組む材料の列はこれだけを切り出し、無いものは欠損の列で埋める。
-    軸が読む軸のidも混ざるが、材料の列には当たらず、埋める側も材料カタログに無いidを飛ばす。"""
-    return frozenset((
-        *(material for definition in definitions.values() for material in definition.materials),
-        *travel_model_material_ids(),
-        *hard_filter_material_ids(),
-    ))
+class _ColumnsOrEmpty(Mapping[str, MaterialColumn]):
+    """材料id→列。`columns`に無い材料カタログの材料は、値の無い列（`empty_material_column`）を返す——読む材料を先に並べず、
+    読まれたときに埋める。並べ上げる（`iter`）のは`columns`の材料だけ。"""
+
+    def __init__(self, columns: Mapping[str, MaterialColumn], n: int) -> None:
+        self._columns = columns
+        self._n = n
+        self._empty: dict[str, MaterialColumn] = {}
+
+    def __getitem__(self, material_id: str) -> MaterialColumn:
+        try:
+            return self._columns[material_id]
+        except KeyError:
+            pass
+        if (column := self._empty.get(material_id)) is None:
+            column = empty_material_column(material_id, self._n)
+            if column is None:
+                raise KeyError(material_id) from None
+            self._empty[material_id] = column
+        return column
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._columns)
+
+    def __len__(self) -> int:
+        return len(self._columns)
+
+
+def empty_material_column(material_id: str, n: int) -> MaterialColumn | None:
+    """`MATERIAL_CATALOG`にある材料の、値の無い区間`n`本ぶんの列（`empty_material_arrays`の1材料ぶん）。カタログに無ければNone。"""
+    spec = material_spec(material_id)
+    if spec is None:
+        return None
+    if spec.dtype == "categorical":
+        return CategoricalColumn(np.zeros(n, dtype=np.int16), (None,))
+    return np.full(n, np.nan)  # numeric・boolean（真偽も数値の行列と同じく1.0/0.0/NaNで持つ）
+
 
 
 class AxisComposition(NamedTuple):
-    """`compose_costs_from_axis_matrix`の戻り値。費用は`cost`で、所要時間を渡して求める。"""
+    """`compose_costs_from_axis_matrix`の戻り値。区間ごとの費用は`所要時間 × multiplier + added_seconds`
+    （ビンの仕上げのJIT、`domain/leg_costs.py: _bin_costs`が求める）。"""
 
     # 所要時間に掛ける割増の倍率`1 + P × difficulty/100`（difficultyは密度の軸の点数を除いた合成）。
     multiplier: np.ndarray
     # 所要時間に足す秒（密度の軸の分。区間の回数に比例する）。
     added_seconds: np.ndarray
     difficulty: np.ndarray
-    # 区間ごとの「データのある軸の重みの合計」。軸別寄与度（`axis_weight_shares_at_rows`）の分母。
+    # 区間ごとの「データのある軸の重みの合計」。軸別寄与度（`difficulty.py: axis_weight_shares`）の分母。
     weight_sums: np.ndarray
 
-    def cost(self, seconds: np.ndarray) -> np.ndarray:
-        """区間ごとの所要時間（秒）から、体感の所要時間（探索の費用）を求める。"""
-        return seconds * self.multiplier + self.added_seconds
+    def take(self, rows: np.ndarray) -> "AxisComposition":
+        """行`rows`だけの合成（区間ごとに独立に求めるので、全体の合成から取り出しても同じ値）。"""
+        return AxisComposition(*(values[rows] for values in self))
 
 
 class DensityCost(NamedTuple):
@@ -224,6 +247,31 @@ class DensityCost(NamedTuple):
     # 区間ごとの、傾き × 回数 × 想定速度で1km走る秒（点数×秒）。`scores`と同じ区間が欠損になる。
     score_seconds: np.ndarray
 
+    def take(self, rows: np.ndarray) -> "DensityCost":
+        return DensityCost(self.scores[rows], self.score_seconds[rows])
+
+
+class DensitySums(NamedTuple):
+    """密度の軸の`DensityCost`を重みで足した和（`density_sums`）。合成（`compose_costs_from_axis_matrix`）が読む。"""
+
+    scores: np.ndarray
+    score_seconds: np.ndarray
+
+    def take(self, rows: np.ndarray) -> "DensitySums":
+        return DensitySums(self.scores[rows], self.score_seconds[rows])
+
+
+def density_sums(
+    density: Mapping[str, DensityCost], weights: Mapping[str, float | np.ndarray], n: int
+) -> DensitySums | None:
+    """密度の軸ごとの`DensityCost`を、重みで足した和。密度の軸が無ければNone。重みが時刻で変わらなければ、時刻ビンの外で
+    1度だけ求めて使い回す（`domain/leg_costs.py: LegCostComposer`）。"""
+    if not density:
+        return None
+    scores, _ = axis_weighted_sums({a: d.scores for a, d in density.items()}, weights, n)
+    score_seconds, _ = axis_weighted_sums({a: d.score_seconds for a, d in density.items()}, weights, n)
+    return DensitySums(scores, score_seconds)
+
 
 def compose_costs_from_axis_matrix(
     distance_m: np.ndarray,
@@ -232,7 +280,7 @@ def compose_costs_from_axis_matrix(
     penalty_strength: float,
     *,
     static_sums: tuple[np.ndarray, np.ndarray] | None = None,
-    density: Mapping[str, DensityCost],
+    density: DensitySums | None,
 ) -> AxisComposition:
     """`build_static_edge_score_matrix`/`evaluate_dynamic_axis_arrays`が求めた軸別
     スコア配列群から、重み付き合成のcost・composite difficulty配列を求める。
@@ -241,7 +289,7 @@ def compose_costs_from_axis_matrix(
     「difficulty 100の道は体感で何倍の時間に感じるか−1」を意味する（逆算は`difficulty_from_cost`）。
     costは丸めない——0.1秒は短い区間の所要時間の数%にあたり、逆算した値に丸めの差が現れる。
 
-    `density`は密度の軸（`axis_definitions.py: averages_density`）ぶんの点数と回数（`density_costs`）。密度の軸の
+    `density`は密度の軸（`axis_definitions.py: averages_density`）ぶんの点数と回数を重みで足した和（`density_sums`）。密度の軸の
     点数は割増の倍率から外し、代わりに`P × 重みの割合 × 傾き/100 × 回数 × 3600/想定速度`の秒を足す（理由は
     docs/modules/backend/evaluation-scoring.md「ルート単位の集約」の密度の軸）。重みの割合の分母は表示の合成と同じ
     （密度の軸の重みも入る）。表示の`difficulty`は密度の軸の点数を含めた合成のまま。
@@ -268,13 +316,11 @@ def compose_costs_from_axis_matrix(
     composite = composite_from_sums(weighted_scores, weight_sums)
     cost_composite = composite
     added_seconds = np.zeros(n)
-    if density:
-        density_scores, _ = axis_weighted_sums({a: d.scores for a, d in density.items()}, weights, n)
-        density_score_seconds, _ = axis_weighted_sums({a: d.score_seconds for a, d in density.items()}, weights, n)
-        cost_composite = composite_from_sums(weighted_scores - density_scores, weight_sums)
+    if density is not None:
+        cost_composite = composite_from_sums(weighted_scores - density.scores, weight_sums)
         with np.errstate(invalid="ignore", divide="ignore"):
             added_seconds = np.where(
-                weight_sums > 0, penalty_strength / 100 * density_score_seconds / weight_sums, 0.0)
+                weight_sums > 0, penalty_strength / 100 * density.score_seconds / weight_sums, 0.0)
 
     # costの算出にだけ、重み付き軸が全欠損のEdgeへbbox内平均difficultyを
     # 代入する（composite自体は表示用にNaNのまま返す、上のdocstring参照）。
@@ -338,7 +384,9 @@ class StaticEdgeScoreMatrix:
     """探索範囲の区間ごとの「Edge×公開軸」の静的スコア行列＋探索の除外の材料・A*
     ヒューリスティック用の生配列。全ての配列は同じ行順（切り出した区間の順）で揃う。
 
-    `axis_scores`の列（`axis_ids`）は風などREQUEST_DYNAMIC_MATERIAL_IDSに依存する軸を
+    行列は「id×区間」の向きで持つ（1つのidの区間の並びが連続する。読む側は軸・材料ごとに列を読むため）。
+
+    `axis_scores`の行（`axis_ids`）は風などREQUEST_DYNAMIC_MATERIAL_IDSに依存する軸を
     含む全公開軸だが、そのような軸の列は常にNaN（`build_static_edge_score_matrix`が
     動的材料の列をNaNで埋める）。リクエスト時に`evaluate_dynamic_axis_arrays`が該当列だけを
     実際の動的データ（風・走行速度）で上書きする。
@@ -347,8 +395,10 @@ class StaticEdgeScoreMatrix:
     動的材料と静的材料を混ぜる軸はこの形では表現できない。
     """
 
+    # 表を組んだ軸の集合（`build_static_edge_score_matrix`の`definitions`）。合成と動的な軸の評価も同じ集合を読む。
+    definitions: dict[str, AxisDefinition]
     axis_ids: list[str]
-    axis_scores: np.ndarray  # shape (区間, len(axis_ids))
+    axis_scores: np.ndarray  # shape (len(axis_ids), 区間)
     distance_m: np.ndarray
     bearing_deg: np.ndarray
     # 0次ハードフィルタに当たる区間と、区分の列（鍵は`domain/road_classes.py: class_material_id`）。リクエストごとに
@@ -361,10 +411,10 @@ class StaticEdgeScoreMatrix:
     mid_lon: np.ndarray
     # 折れ点を通す前の生値。単位が定まる軸（`axis_raw_value.py: raw_value_unit`）だけを持つ
     # ——単位の無い値を人へ見せても意味を取れないため運ばない。そのため`axis_ids`とは別の並びで、
-    # 対応する列は`raw_axis_ids`の順。軸単体で経路を判断するための絶対値。
+    # 対応する行は`raw_axis_ids`の順。軸単体で経路を判断するための絶対値。
     raw_axis_ids: list[str]
     axis_raw_values: np.ndarray
-    # 内訳として見せる材料と、所要時間が読む材料の値。対応する列は`material_ids`の順
+    # 内訳として見せる材料と、所要時間が読む材料の値。対応する行は`material_ids`の順
     # （`route_facing_material_ids`が列の集合と並びの唯一の定義元）。真偽値材料は0/1のfloatで
     # 持ち、距離加重平均が「該当区間の延長割合」になる。
     material_ids: list[str]
@@ -390,13 +440,13 @@ class StaticEdgeScoreMatrix:
             ("material_values", self.material_values, self.material_ids),
         )
         wrong_columns = {
-            name: (matrix.shape[1], len(ids)) for name, matrix, ids in matrices if matrix.shape[1] != len(ids)
+            name: (matrix.shape[0], len(ids)) for name, matrix, ids in matrices if matrix.shape[0] != len(ids)
         }
         if len(self.categorical_material_columns) != len(self.categorical_material_ids):
             wrong_columns["categorical_material_columns"] = (
                 len(self.categorical_material_columns), len(self.categorical_material_ids))
         if wrong_columns:
-            raise ValueError(f"静的スコア行列の列数がid列と違います（列数, id数）= {wrong_columns}")
+            raise ValueError(f"静的スコア行列のidの数が行列と違います（行列のidの数, id数）= {wrong_columns}")
         # 所要時間の入力が欠けた行列を通すと、読む側はその材料を区間ごとの欠損と区別できず、
         # 平地・待ち無しとして所要時間を黙って縮める。
         missing_inputs = set(travel_model_material_ids()) - {*self.material_ids, *self.categorical_material_ids}
@@ -411,7 +461,7 @@ class StaticEdgeScoreMatrix:
                 ("mid_lon", self.mid_lon),
                 ("hard_filtered", self.hard_filtered),
                 *((f"road_classes[{key}]", column.codes) for key, column in self.road_classes.items()),
-                *((name, matrix) for name, matrix, _ in matrices),
+                *((name, matrix.T) for name, matrix, _ in matrices),
                 *((f"categorical_material_columns[{material_id}]", column.codes) for material_id, column in zip(
                     self.categorical_material_ids, self.categorical_material_columns)),
                 *((f"density_axes[{axis_id}]", column.inputs) for axis_id, column in self.density_axes.items()),
@@ -423,47 +473,34 @@ class StaticEdgeScoreMatrix:
 
     def material_column(self, material_id: str) -> np.ndarray:
         """数値の材料の列。"""
-        return self.material_values[:, self.material_ids.index(material_id)]
+        return self.material_values[self.material_ids.index(material_id)]
 
     def axis_arrays(self) -> dict[str, np.ndarray]:
         """軸id→スコア配列。合成（`compose_costs_from_axis_matrix`）と動的軸の上書き
         （`evaluate_dynamic_axis_arrays`）はこの形で受け取る。"""
-        return {axis_id: self.axis_scores[:, i] for i, axis_id in enumerate(self.axis_ids)}
+        return dict(zip(self.axis_ids, self.axis_scores, strict=True))
 
 
 def _stack_columns(columns: dict[str, np.ndarray], rows: int) -> tuple[list[str], np.ndarray]:
-    """id→列の辞書を、idの並びと`(行, id)`の行列へ束ねる。"""
+    """id→列の辞書を、idの並びと`(id, 区間)`の行列へ束ねる。"""
     ids = list(columns)
-    matrix = np.empty((rows, len(ids)), dtype=EDGE_VALUE_DTYPE)
+    matrix = np.empty((len(ids), rows), dtype=EDGE_VALUE_DTYPE)
     for i, column_id in enumerate(ids):
-        matrix[:, i] = columns[column_id]
+        matrix[i] = columns[column_id]
     return ids, matrix
-
-
-class StaticScoreTimings(NamedTuple):
-    """`build_static_edge_score_matrix`の段ごとの時間（ms）。"""
-
-    axes_ms: int  # 材料を埋め、全軸を評価する
-    raw_ms: int  # 軸の生値と、密度の軸の横軸の値
-    stack_ms: int  # 列を表へ詰め直し、除外と区分の列を揃える
 
 
 def build_static_edge_score_matrix(
     materials: EdgeMaterialColumns,
-    observed_materials: Mapping[str, np.ndarray],
     definitions: dict[str, AxisDefinition],
-) -> tuple[StaticEdgeScoreMatrix, StaticScoreTimings]:
-    """切り出した範囲の材料から`StaticEdgeScoreMatrix`を構築する（生成のたびに1回）。
+    steps_ms: dict[str, int],
+) -> StaticEdgeScoreMatrix:
+    """切り出した範囲の材料から`StaticEdgeScoreMatrix`を構築する（生成のたびに1回）。段ごとの所要時間を`steps_ms`へ足す。
 
     材料はDBが導出済み（`MaterialSpec.value_sql`）で、事故の収録年数による正規化もその
-    導出の中で既に効いている。`definitions`の軸が読む材料（`static_score_material_ids`）のうち、DBにも観測にも
-    無い材料は`empty_material_arrays`で埋める。`definitions`は呼び手が1回だけ写した軸の集合で、材料の切り出しも
-    同じ集合から決める（保存がその間に軸を差し替えても、行列の列と読む材料が1つの集合に揃う）。
-
-    `observed_materials`は、DBではなく生成の時点の外部の観測から区間ごとに引いた材料（雨。材料id→
-    切り出した区間の順の配列）。走行の向きにも通過の時刻にも依らないため、DBの材料と同じ列として
-    軸の評価・生値・内訳へそのまま載る。観測が無ければ空で、その材料の列は欠損のまま。鍵は出どころが
-    観測（`MaterialSpec.source`）の材料に限る。
+    導出の中で既に効いている。読む材料は並べず、読まれた材料のうちDBにも観測にも無い材料カタログの材料を、
+    値の無い列（`empty_material_column`）で埋める。`definitions`は呼び手が1回だけ写した軸の集合で、表に持たせ、合成と動的な軸の評価も同じ集合を読む
+    （保存がその間に軸を差し替えても、表の列と読む軸が1つの集合に揃う）。
 
     重み付き合成は含まない——重みが定まった時点で呼び出し元が`compose_costs_from_axis_matrix`へ
     渡す。探索の除外は0次ハードフィルタの当たりと区分の列だけを持ち、リクエストごとに変わる絞り込みと割り増しは
@@ -473,54 +510,41 @@ def build_static_edge_score_matrix(
     リクエスト時に`evaluate_dynamic_axis_arrays`が該当列を通過時刻ごとに上書きする。
     """
     n = len(materials)
-    if unexpected := set(observed_materials) - materials_of_source("observation"):
-        # DBの材料の列を観測で上書きすると、地図（値式）とルートで同じ材料の値が食い違う。
-        raise ValueError(f"出どころが観測でない材料を観測の列として受けました: {sorted(unexpected)}")
+    columns = _ColumnsOrEmpty(materials.columns, n)
+    published = published_axis_order(definitions)
+    raw_axis_ids = route_facing_raw_axis_ids(definitions)
+    # 生値は、単位のある軸の列と、密度の軸の横軸の値（折れ線の軸だけが通る`averages_density`）にだけ要る。
+    density_axis_ids = [axis_id for axis_id in published if averages_density(definitions[axis_id])]
     started = start_timer()
-    material_arrays: dict[str, MaterialColumn] = {**materials.columns, **observed_materials}
-    material_arrays.update(empty_material_arrays(n, static_score_material_ids(definitions), material_arrays))
-    evaluations = evaluate_axes(material_arrays, definitions)
-    axes_ms = elapsed_ms(started)
+    evaluations = evaluate_axes(columns, definitions, raw_axis_ids={*raw_axis_ids, *density_axis_ids})
+    add_elapsed_ms(steps_ms, "axes", started)
+    started = start_timer()
     # 合成の対象（axis_arrays）は公開軸だけ。内部軸は公開軸の材料として読まれるだけで、
     # 利用者の重みの対象ではない。
-    axis_arrays = {axis_id: evaluations[axis_id].score for axis_id in published_axis_order(definitions)}
-    started = start_timer()
-    axis_raw_arrays: dict[str, np.ndarray] = {}
-    for axis_id in route_facing_raw_axis_ids(definitions):
-        raw = evaluations[axis_id].raw_value()
-        assert raw is not None, f"route_facing_raw_axis_idsが返した{axis_id}の生値が作れない"
-        axis_raw_arrays[axis_id] = raw
-    density_axes: dict[str, DensityAxisColumn] = {}
-    for axis_id in axis_arrays:
-        definition = definitions[axis_id]
-        if not averages_density(definition):
-            continue
-        # `averages_density`は折れ線の軸だけを通すので、横軸の値は必ず作れる。生値の列と同じ値は同じ配列を使う。
-        inputs = axis_raw_arrays.get(axis_id)
-        if inputs is None:
-            inputs = evaluations[axis_id].raw_value()
-        assert isinstance(definition.shape, BreakpointLinearShape) and inputs is not None
-        density_axes[axis_id] = DensityAxisColumn(shape=definition.shape, inputs=inputs)
-    raw_ms = elapsed_ms(started)
-    started = start_timer()
+    axis_arrays = {axis_id: evaluations[axis_id].score for axis_id in published}
+    axis_raw_arrays = {axis_id: _raw(evaluations, axis_id) for axis_id in raw_axis_ids}
+    density_axes = {
+        axis_id: DensityAxisColumn(shape=cast(BreakpointLinearShape, definitions[axis_id].shape), inputs=_raw(evaluations, axis_id))
+        for axis_id in density_axis_ids
+    }
     material_value_arrays = {
-        material_id: np.asarray(values, dtype=float)
+        material_id: values
         for material_id in route_facing_material_ids(definitions)
-        if isinstance(values := material_arrays.get(material_id), np.ndarray)
+        if isinstance(values := columns.get(material_id), np.ndarray)
     }
     categorical_material_columns = {
         material_id: column
         for material_id in route_facing_categorical_material_ids(definitions)
-        if isinstance(column := material_arrays.get(material_id), CategoricalColumn)
+        if isinstance(column := columns.get(material_id), CategoricalColumn)
     }
-
     axis_ids, axis_scores = _stack_columns(axis_arrays, n)
-    raw_axis_ids, axis_raw_values = _stack_columns(axis_raw_arrays, n)
+    raw_ids, axis_raw_values = _stack_columns(axis_raw_arrays, n)
     material_ids, material_values = _stack_columns(material_value_arrays, n)
     matrix = StaticEdgeScoreMatrix(
+        definitions=definitions,
         axis_ids=axis_ids,
         axis_scores=axis_scores,
-        raw_axis_ids=raw_axis_ids,
+        raw_axis_ids=raw_ids,
         axis_raw_values=axis_raw_values,
         material_ids=material_ids,
         material_values=material_values,
@@ -529,12 +553,19 @@ def build_static_edge_score_matrix(
         density_axes=density_axes,
         distance_m=materials.distance_m,
         bearing_deg=materials.bearing_deg,
-        hard_filtered=hard_filtered(material_arrays, n),
+        hard_filtered=hard_filtered(columns, n),
         road_classes={
-            material_id: column for material_id, column in material_arrays.items()
-            if material_id.startswith(CLASS_MATERIAL_PREFIX) and isinstance(column, CategoricalColumn)
+            material_id: column for material_id in columns
+            if material_id.startswith(CLASS_MATERIAL_PREFIX) and isinstance(column := columns[material_id], CategoricalColumn)
         },
         mid_lat=materials.mid_lat,
         mid_lon=materials.mid_lon,
     )
-    return matrix, StaticScoreTimings(axes_ms, raw_ms, elapsed_ms(started))
+    add_elapsed_ms(steps_ms, "stack", started)
+    return matrix
+
+
+def _raw(evaluations: Mapping[str, AxisEvaluation], axis_id: str) -> np.ndarray:
+    raw = evaluations[axis_id].raw
+    assert raw is not None, f"{axis_id}の生値が作れない（生値を持つのは折れ線の軸だけ）"
+    return raw

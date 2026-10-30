@@ -180,14 +180,15 @@ async def test_material_values_land_in_the_matrix_of_their_dtype():
 
     arrays = await repo.get_edge_material_arrays([1, 1, 1], [0, 1, 2], [True, True, True], 5)
 
-    assert arrays.columns()[numeric][0] == 1.5
+    numbers = arrays.numeric_values[:, [arrays.numeric_ids.index(numeric), arrays.numeric_ids.index(boolean)]].T
+    assert numbers[0][0] == 1.5
     # 欠損は0ではなくNaN。0で埋めると「値が無い」が「一番良い値」として採点される。
-    assert np.isnan(arrays.columns()[numeric][1])
+    assert np.isnan(numbers[0][1])
     # 真偽の欠損（道の生データが無い区間）も、非該当（0.0）ではなく不明（NaN）。
-    assert arrays.columns()[boolean][:2].tolist() == [1.0, 0.0]
-    assert np.isnan(arrays.columns()[boolean][2])
+    assert numbers[1][:2].tolist() == [1.0, 0.0]
+    assert np.isnan(numbers[1][2])
     # 分類の材料は語彙への番号の列で、値へ戻すと行ごとの値（値なしはNone）になる。
-    column = arrays.columns()[categorical]
+    column = arrays.categorical_columns[arrays.categorical_ids.index(categorical)]
     assert isinstance(column, CategoricalColumn)
     assert [column.value_at(row) for row in range(len(column))] == ["value_a", None, None]
 

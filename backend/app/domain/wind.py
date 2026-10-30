@@ -192,6 +192,11 @@ class WindForecastSeries:
         index, _clamped = self._sample_index(start, passage_hours)
         return self.speed_ms[points, index], self.direction_deg[points, index]
 
+    def sample_at(self, index: int, points: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """予報の時刻の添字`index`（`time_index`）の（風速, 風向）配列を、`points`の格子点ごとに返す。全区間が同じ時刻を通る
+        ときに、区間ごとの時刻から添字を引き直さずに済ませる。"""
+        return self.speed_ms[points, index], self.direction_deg[points, index]
+
     def covers(self, at: datetime) -> bool:
         """`at`に最も近い時刻が系列の範囲の中にあるか（端の値で延ばさずに引けるか）。"""
         _, clamped = self._sample_index(at, np.zeros(1))

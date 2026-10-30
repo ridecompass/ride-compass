@@ -13,7 +13,7 @@ from typing import Callable, Mapping
 import numpy as np
 
 from app.domain.axis_definitions import REQUEST_DYNAMIC_MATERIAL_IDS, AxisDefinition, dynamic_axis_topological_order
-from app.domain.axis_evaluation import evaluate_axis_array
+from app.domain.axis_evaluation import evaluate_axis
 from app.domain.material_catalog import WIND_DRAG_RATIO
 from app.domain.wind import DepartureWind, WindForecastSeries, wind_components, wind_drag_ratio_from_components
 
@@ -39,6 +39,8 @@ class DynamicAxisRequestContext:
     start: datetime | None
     passage_hours: np.ndarray | None
     wind_points: np.ndarray | None
+    # 全Edgeが同じ時刻を通るときの、その時刻の予報の添字（`WindForecastSeries.time_index`）。あれば`passage_hours`の代わりに読む。
+    forecast_index: int | None = None
 
     @cached_property
     def wind_components_ms(self) -> tuple[np.ndarray, np.ndarray] | None:
@@ -46,7 +48,9 @@ class DynamicAxisRequestContext:
         揃っていればEdgeごとにその時刻の風、揃っていなければ出発時点のスナップショットの風で求める。風が無ければNone。
 
         風の材料と走行モデルが同じ値を読むため、予報の引き当てと三角関数はcontext1つにつき1回にする。"""
-        if (
+        if self.wind_series is not None and self.wind_points is not None and self.forecast_index is not None:
+            speed, direction = self.wind_series.sample_at(self.forecast_index, self.wind_points)
+        elif (
             self.wind_series is not None and self.start is not None and self.passage_hours is not None
             and self.wind_points is not None
         ):
@@ -68,7 +72,7 @@ def _evaluate_wind_drag_ratio_array(context: DynamicAxisRequestContext) -> np.nd
 
 # 材料idから、リクエスト時点の幾何配列＋動的contextをベクトル評価する関数への唯一の
 # 登録点（式の実体は`domain/wind.py`にあり、ここは配線のみ）。軸idではなく材料idで
-# キーイングするのは、合成側（`dynamic_axis_topological_order`・`evaluate_axis_array`）が
+# キーイングするのは、合成側（`dynamic_axis_topological_order`・`domain/axis_evaluation.py: evaluate_axis`）が
 # 軸名をハードコードせず、動的材料さえ埋まればどんな軸でも合成できるため——軸スタジオで
 # 作られたカスタム軸もこの登録だけでカバーされる。
 DYNAMIC_MATERIAL_EVALUATORS: dict[str, Callable[[DynamicAxisRequestContext], np.ndarray]] = {
@@ -105,11 +109,11 @@ def evaluate_dynamic_axis_arrays(
     材料値を読めるようにするため）。
 
     `evaluate_dynamic_material_arrays`で動的材料を求め、そこから
-    `dynamic_axis_topological_order`の順で`evaluate_axis_array`を適用する。動的軸の軸名は
+    `dynamic_axis_topological_order`の順で`domain/axis_evaluation.py: evaluate_axis`を適用する。動的軸の軸名は
     ここにも現れない。軸は`definitions`（呼び出し側が取った`domain/axis_definitions.py: copy_axis_definitions`の写し）だけを読む。
     """
     materials_with_axes: dict[str, np.ndarray] = dict(static_axis_scores)
     materials_with_axes.update(evaluate_dynamic_material_arrays(context))
     for axis_id in dynamic_axis_topological_order(definitions):
-        materials_with_axes[axis_id] = evaluate_axis_array(definitions[axis_id], materials_with_axes)
+        materials_with_axes[axis_id] = evaluate_axis(definitions[axis_id], materials_with_axes).score
     return materials_with_axes

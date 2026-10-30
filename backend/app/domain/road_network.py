@@ -12,8 +12,9 @@
 分類の材料は文字列のまま持たず、列ごとの語彙への番号で持つ（番号0は値なし）。
 """
 
-from collections.abc import Collection, Iterable, Mapping
+from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass, fields
+from functools import cached_property
 
 import numpy as np
 
@@ -24,7 +25,8 @@ from app.domain.attributes import (
     MaterialColumn,
 )
 from app.domain.geo import LatLonPoint
-from app.domain.material_catalog import GRADIENT_PERCENT
+from app.domain.rain import NearestRainStations
+from app.domain.material_catalog import GRADIENT_PERCENT, materials_of_source
 from app.domain.road_classes import RoadClassDefinitions, class_columns, layer_columns
 
 
@@ -107,6 +109,11 @@ class RoadNetwork:
     def edge_count(self) -> int:
         return len(self.edge_way_id)
 
+    @cached_property
+    def nearest_rain_stations(self) -> NearestRainStations:
+        """区間の中点ごとの最寄りの雨量計（引かれた区間の分だけ求めて持つ）。道路網と同じ寿命で持つ。"""
+        return NearestRainStations(self.mid_lat, self.mid_lon)
+
 
 @dataclass(frozen=True, eq=False)
 class RoadSlice:
@@ -178,26 +185,67 @@ def slice_network(
     )
 
 
-def material_arrays_of(road: RoadSlice, material_ids: Collection[str]) -> EdgeMaterialColumns:
-    """切り出した区間（行は`road.rows`の順）の、`material_ids`に当たる材料の列。分類の材料は語彙への番号のまま渡し、
-    区分の列はいつも分類の材料として足す。`material_ids`に当たらない道路網の材料は写さない。"""
+class _SliceMaterials(Mapping[str, MaterialColumn]):
+    """切り出した区間の材料id→列。列は読まれたときに1度だけ切り出す——読む材料を先に並べると、並べ忘れた材料が
+    黙って値の無い列になる。数値の材料は、区間の行を1度だけまとめて引いてから、読まれた列を連続した配列へ写す
+    （道路網の材料は区間×列の行列で、生成が読むのはそのほとんどの列のため）。
+
+    観測の材料は`observed`の列を返す。道路網にも観測にも無い材料はKeyError（値の無い列で埋めるのは読む側、
+    `domain/evaluation.py: build_static_edge_score_matrix`）。
+    """
+
+    def __init__(self, road: RoadSlice, observed: Mapping[str, np.ndarray]) -> None:
+        if unexpected := set(observed) - materials_of_source("observation"):
+            # DBの材料の列を観測で上書きすると、地図（値式）とルートで同じ材料の値が食い違う。
+            raise ValueError(f"出どころが観測でない材料を観測の列として受けました: {sorted(unexpected)}")
+        network = road.network
+        self._road = road
+        self._observed = observed
+        self._numeric = {material_id: column for column, material_id in enumerate(network.numeric_ids)}
+        self._categorical = {material_id: column for column, material_id in enumerate(network.categorical_ids)}
+        self._numeric_rows: np.ndarray | None = None
+        self._loaded: dict[str, MaterialColumn] = {}
+
+    def _keys(self) -> dict[str, None]:
+        return dict.fromkeys((*self._numeric, *self._categorical, *self._road.classes, *self._observed))
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._keys())
+
+    def __len__(self) -> int:
+        return len(self._keys())
+
+    def __getitem__(self, material_id: str) -> MaterialColumn:
+        if (loaded := self._loaded.get(material_id)) is not None:
+            return loaded
+        column = self._load(material_id)
+        if column is None:
+            raise KeyError(material_id)
+        self._loaded[material_id] = column
+        return column
+
+    def _load(self, material_id: str) -> MaterialColumn | None:
+        network, rows = self._road.network, self._road.rows
+        if material_id in self._observed:
+            return self._observed[material_id]
+        if material_id in self._numeric:
+            if self._numeric_rows is None:
+                self._numeric_rows = np.asarray(network.numeric_values[rows])
+            return np.ascontiguousarray(self._numeric_rows[:, self._numeric[material_id]])
+        if material_id in self._categorical:
+            column = self._categorical[material_id]
+            return CategoricalColumn(np.asarray(network.categorical_codes[rows, column]), network.categorical_vocab[column])
+        if material_id in self._road.classes:
+            return self._road.classes[material_id].take(rows)
+        return None
+
+
+def material_arrays_of(road: RoadSlice, observed: Mapping[str, np.ndarray]) -> EdgeMaterialColumns:
+    """切り出した区間（行は`road.rows`の順）の材料と、区間ごとに引いた観測の材料（雨。材料id→切り出した区間の順の配列。
+    鍵は出どころが観測の材料に限る）。材料の列は読まれたときに切り出す（`_SliceMaterials`）。"""
     network, rows = road.network, road.rows
-    numeric = [(column, m) for column, m in enumerate(network.numeric_ids) if m in material_ids]
-    categorical = [(column, m) for column, m in enumerate(network.categorical_ids) if m in material_ids]
-    columns: dict[str, MaterialColumn] = {}
-    # 材料は(区間, 列)の行列なので、行を1回だけ引いてから、読む列をそれぞれ連続した配列へ写す。
-    if numeric:
-        values = np.asarray(network.numeric_values[rows])[:, [column for column, _ in numeric]].T.copy()
-        columns.update((m, values[i]) for i, (_, m) in enumerate(numeric))
-    if categorical:
-        codes = np.asarray(network.categorical_codes[rows])[:, [column for column, _ in categorical]].T.copy()
-        columns.update(
-            (m, CategoricalColumn(codes[i], network.categorical_vocab[column]))
-            for i, (column, m) in enumerate(categorical)
-        )
-    columns.update((m, column.take(rows)) for m, column in road.classes.items())
     return EdgeMaterialColumns(
-        columns=columns,
+        columns=_SliceMaterials(road, observed),
         distance_m=np.asarray(network.distance_m[rows]),
         bearing_deg=np.asarray(network.bearing_deg[rows]),
         mid_lat=np.asarray(network.mid_lat[rows]),

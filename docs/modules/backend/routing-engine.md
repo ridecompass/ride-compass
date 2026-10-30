@@ -104,7 +104,7 @@ Edgeコストは「探索範囲の静的Edge×公開軸スコア行列＋リク�
 使い回す。時刻で変わる公開軸（風に依存する軸と時間帯を持つ軸）の重みがすべて0なら、合成の難易度と割増の倍率・密度の軸の足す秒も
 時刻に依らないので1回だけ求め、ビンのコストは所要時間にその倍率を掛けて秒を足すだけになる（重みが0の軸は合成に何も足さない）。重みが
 あれば、時刻で変わらない軸の重み付き和を1回だけ求め、時刻で変わる軸だけをビンごとに足す（どちらの和も重みが0の軸を読まない）。
-ビンの中身を決めるのは、風の予報が引く時刻と、時間帯を持つ軸に重みがあればその時刻が夜かだけなので、同じ組のビンはレグの向き・開始時刻が違っても1回だけ合成して使い回す（`domain/leg_costs.py: LegCostComposer._bin_key`）。表示まで読む一式を持つのはレグの代表になったビンだけで、ほかのビンは探索の行順の費用と所要時間だけを持つ。レグのビンの配列は使い回すビンの写しで、帰りの探索がその場で書き換えても、ほかのレグのビンは変わらない。1ビンの中でも、
+ビンの中身を決めるのは、風の予報が引く時刻と、時間帯を持つ軸に重みがあればその時刻が夜かだけなので、同じ組のビン（`domain/leg_costs.py: BinTime`）はレグの向き・開始時刻が違っても1回だけ合成して使い回す。表示まで読む一式（`domain/leg_costs.py: LegValues`）を持つのはビンが1本のレグだけで、ビンが2本以上のレグは、経路をたどって決めたビンの時刻で経路上の行だけを合成し直す（`domain/leg_costs.py: LegCostComposer.values_at_rows`）。レグのビンの配列は使い回すビンの写しで、帰りの探索がその場で書き換えても、ほかのレグのビンは変わらない。1ビンの中でも、
 予報の引き当てと風の分解（方位との差の三角関数）は、風の材料と走行モデルが同じ値を読む
 （`DynamicAxisRequestContext.wind_components_ms`）。合成結果`LegCostArrays`は`cost_lazy`（区間の番号順）と表示用の
 `difficulty_array`/`axis_arrays`/`weight_sums`/`material_arrays`（動的材料id→
@@ -480,9 +480,8 @@ idの文字列や要求の形から決め直さない。
 （`RouteGenerator`）が候補0件として扱う。
 
 `_build_search_graph`は、まず気象の段で生成の時点の外部の観測と予報をまとめて読む（出発時点の天候・
-時別の風の予報・雨の観測の履歴。ログの`weather_ms`がこの段）。静的スコア行列は、切り出した区間の材料のうち
-軸の集合・所要時間・0次フィルタが読むものだけ（`domain/road_network.py: material_arrays_of`。読む材料は
-`domain/evaluation.py: static_score_material_ids`が決め、軸の集合は写しを1回取って切り出しと組み立ての両方へ渡す。
+時別の風の予報・雨の観測の履歴。ログの`weather_ms`がこの段）。静的スコア行列は、切り出した区間の材料
+（`domain/road_network.py: material_arrays_of`。軸の集合・所要時間・0次フィルタが読んだ材料だけを、読まれたときに切り出す。
 分類の材料は語彙への番号のまま）に、区間の中点に最も近い雨量計の今の観測（雨の材料、地図の雨と同じ値・同じ観測）を
 足して`build_static_edge_score_matrix`で求める。最寄りの雨量計は、取込範囲全体の区間ごとの番号として道路網ごとに1つ
 持ち（`domain/rain.py: NearestRainStations`。有向の区間1本につき4バイト）、切り出しに入った区間の分だけ初めて引くときに
@@ -859,12 +858,12 @@ numbaでJITする探索とその部品はこのファイルにまとめて置く
   繋ぎ目の区間の対ごとにターンの費用を足して最小を採る。
 - **`turn_expanded_shortest_path`/`_turn_expanded_astar`**: 2点間探索。numbaでJITし、
   優先度キューをnumpy配列のバイナリヒープとして自前で持つ（numbaの`heapq`より速いため。下の部品の項）。
-- **JITのコンパイル（`compile_search_kernels`・`_kernel_array`）**: 一対全木・木の経路どうしの重複率・2点間探索のJITは`cache=True`で、
+- **JITのコンパイル（`compile_search_kernels`・`domain/search_graph.py: kernel_array`）**: 一対全木・木の経路どうしの重複率・2点間探索のJITは`cache=True`で、
   コンパイル結果を`routing.py`の隣の`__pycache__`に置き、別のプロセスはそこから読む。イメージの組み立て
   （`backend/Dockerfile`）が`compile_search_kernels`（最小の道路網でどれも1回ずつ呼ぶ。探索が読む費用を組み立てるJITは`domain/leg_costs.py: compile_leg_cost_kernels`を呼んで焼く）で焼き、入れ替えた
   コンテナの最初のルート生成はコンパイルを待たない。numbaは引数の型（dtype・並び・読み取り専用か）ごとに
   別々にコンパイルするため、探索の入口（`build_turn_expanded_tree`・`turn_expanded_shortest_path`）はJITへ渡す
-  配列を`_kernel_array`で1つの型へ揃える——揃えないと、焼いたものと型の違う呼び出しが本番で初めてコンパイルを払う。
+  配列を`kernel_array`で1つの型へ揃える（探索の費用を組み立てるJITと走行モデルも同じ関数で揃える）——揃えないと、焼いたものと型の違う呼び出しが本番で初めてコンパイルを払う。
   **生成の経路がPythonから呼ぶJITは、`compile_search_kernels`が呼ぶものだけにする**——焼くのはそこで
   Pythonから呼んだものだけで、探索の中へ展開する部品をPythonから直接呼ぶと、その部品だけ各コンテナの最初の
   生成でコンパイルを払う。探索と表示で共有する`time_bin_of`は素の関数とし、探索の中ではそれをJITした
