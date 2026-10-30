@@ -14,7 +14,6 @@ import type {
   RoutePreferenceWeights,
   SelectedRouteSegment,
 } from "@/types/route";
-import type { FacilityOrigin } from "@/components/MapPopup/facilityRows";
 import type { RideConditions } from "@/features/map/regionApi";
 import { applyScene, type SpliceStretchInput } from "@/features/map/scene/applyToMap";
 import type { MapLook } from "@/features/map/view/mapLook";
@@ -173,20 +172,10 @@ export default function MapView({
     () => (selectedSection === null ? null : segmentPath(selectedSection)),
     [selectedSection],
   );
-  // 選んだ区間の道なりの形に地点を当てる（区間を選び直したときだけ組み直す）。点の小窓の点の位置と、その基準の地点が同じ当て方を使う。
+  // 選んだ区間の道なりの形に、点の小窓の点を当てる（区間を選び直したときだけ組み直す）。
   const locateOnSection = useMemo(
     () => (selectedSection === null ? null : sidePointLocator(selectedSection)),
     [selectedSection],
-  );
-  // 点の小窓で、点の位置を前後で言う基準。走行中は走った所、ほかは選んだ区間の地点。
-  const facilityOrigin = useMemo(
-    (): FacilityOrigin | null =>
-      travelledKm !== null
-        ? { km: travelledKm, riding: true }
-        : locateOnSection !== null && selectedRouteSegment !== null
-          ? { km: locateOnSection([selectedRouteSegment.longitude, selectedRouteSegment.latitude]).km, riding: false }
-          : null,
-    [travelledKm, locateOnSection, selectedRouteSegment],
   );
   const { scene, interactiveLayerIds } = useMapScene({
     look,
@@ -252,14 +241,11 @@ export default function MapView({
     locationSource,
     waypoints,
     destination,
-    selectedRouteSegment,
     pointsEditable: tapMode === "points" && !tapsLocked,
-    tapsLocked,
     onOriginMove,
     onWaypointMove,
     onDestinationMove,
     onPointSelect,
-    onRouteSegmentSelect,
   });
 
   const candidateContents = useCandidateMarkers(mapRef, placeCandidates, onPlaceCandidatePick);
@@ -279,7 +265,7 @@ export default function MapView({
     segmentPath: selectedSectionPath,
     rideConditions,
     routePreference,
-    facilityOrigin,
+    travelledKm,
     onBackToSegment: backToSegment,
     onFocus: focus,
   });

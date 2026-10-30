@@ -343,7 +343,9 @@ describe("RouteForm 周回", () => {
     renderForm({ loop: true, waypoints: waypointsOf(1), distanceTargeted: false });
 
     const end = screen.getByText("終点: 現在地[周回]").parentElement;
-    expect(end?.querySelector("svg")?.parentElement).toHaveStyle({ color: PIN_MARK_COLOR.origin });
+    expect(end?.querySelector("span[style*='color'] > svg")?.parentElement).toHaveStyle({
+      color: PIN_MARK_COLOR.origin,
+    });
     expect(strip()).toEqual(["出発地: 現在地", "経由地1: 地図で選んだ地点", "経由地を足す"]);
   });
 

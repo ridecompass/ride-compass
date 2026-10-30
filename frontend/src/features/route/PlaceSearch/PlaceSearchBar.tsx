@@ -15,7 +15,6 @@ import { textVariants } from "@/components/ui/Text/Text";
 import PlaceCandidateCard from "@/features/route/PlaceSearch/PlaceCandidateCard";
 import PlaceCandidates from "@/features/route/PlaceSearch/PlaceCandidates";
 import { PREDICTION_MIN_LENGTH, type usePlaceLookup } from "@/features/route/PlaceSearch/usePlaceLookup";
-import { placeLabelOf } from "@/features/route/pointNames";
 import { historyMatching, savedPlacesMatching } from "@/features/route/savedPlaces";
 import { usePlaceHistory } from "@/features/route/usePlaceHistory";
 import type { SavedPlacesState } from "@/features/route/useSavedPlaces";
@@ -36,16 +35,16 @@ interface PlaceSearchBarProps {
   lookup: ReturnType<typeof usePlaceLookup>;
   /** 打ちかけの候補・保存した地点・履歴から選んだ地点を、この地点として置く。 */
   onChoose: (candidate: PlaceCandidate) => void;
-  /** 探した（Enter・「検索」）候補を置ける先と、置けないか。置く先ごとにボタンを出す。 */
-  placings: readonly { target: PointTarget; disabled: boolean }[];
+  /** 探した（Enter・「検索」）候補を置く先のボタン。押した先を`place`へ渡す。 */
+  placeTo: (place: (target: PointTarget) => void) => React.ReactNode;
   /** 探した候補を`target`に置く。 */
   onPlace: (target: PointTarget, candidate: PlaceCandidate) => void;
   /** 探した（Enter・「検索」）とき。 */
   onSearch: () => void;
-  /** 閉じたとき（置いたときも）。 */
-  onClose: () => void;
-  /** スマホか。探した候補を、一覧ではなく地図の下の札で1件ずつ見せる。 */
+  /** スマホか。探した候補を、一覧ではなく札で1件ずつ見せる。 */
   isMobile: boolean;
+  /** スマホの札を出す所: 要素ならその中（パネルの中）、"map" なら地図の下に浮かべ、null なら出さない。 */
+  cardIn: HTMLElement | "map" | null;
   /** 保存した地点の一覧。欄を押すと候補に出す。 */
   savedPlaces: SavedPlacesState;
   /** 打つ欄。ほかの所（地点の詳しくの探すボタン）から focus して開く。 */
@@ -59,8 +58,8 @@ const LIST_BOTTOM_GAP_PX = 8;
  * 地図の上端の、住所・施設の名前を打って地点を置く欄と、その候補（欄のすぐ下に重ねる）。欄を押すと開き、保存した地点のうち
  * 打った文字を名前に含むものを住所・施設の候補の上に出し、その下に検索で選んだ地点の履歴を新しい順に出す。開いている間は
  * 履歴に1つ積み、ブラウザの「戻る」で閉じる。開いている間は根の要素に`data-open`を付ける（包む側が重なり順を上げる）。
- * 探す（Enter・「検索」）と、キーボードを閉じ、候補に地図の点と同じ番号を付けて出す。デスクトップは欄の下の一覧で、行（か地図の点）を
- * 押すとその候補を選んで置くボタンを出す。スマホは地図の下の札で1件ずつ見せ、札のボタンで置く。
+ * 探す（Enter・「検索」・虫眼鏡）と、キーボードを閉じ、候補に地図の点と同じ番号を付けて出す。デスクトップは欄の下の一覧で、行（か地図の点）を
+ * 押すとその候補を選んで置くボタンを出す。スマホは札で1件ずつ見せ（`cardIn`の所）、札のボタンで置く。
  */
 export default function PlaceSearchBar({
   title,
@@ -68,11 +67,11 @@ export default function PlaceSearchBar({
   full,
   lookup,
   onChoose,
-  placings,
+  placeTo,
   onPlace,
   onSearch,
-  onClose,
   isMobile,
+  cardIn,
   savedPlaces,
   inputRef,
 }: PlaceSearchBarProps) {
@@ -112,8 +111,8 @@ export default function PlaceSearchBar({
   function close() {
     lookup.close({ clearText: true });
     setBrowsing(false);
-    inputRef.current?.blur();
-    onClose();
+    // 欄は id で引く（置くボタンは描画の中で組むので、そこから呼ぶ処理は ref を読まない）。
+    document.getElementById(inputId)?.blur();
   }
   useCloseOnBack(browsing, close);
   // Escapeで閉じる（探したあとは欄から focus を外しているので、欄ではなくページで受ける）。
@@ -143,21 +142,11 @@ export default function PlaceSearchBar({
 
   /** 探した候補を置くボタン。 */
   function placeButtons(candidate: PlaceCandidate) {
-    return placings.map(({ target, disabled }) => (
-      <Button
-        key={target.role}
-        size="sm"
-        disabled={disabled}
-        usage={`この候補を${placeLabelOf(target).replace(/(にする|に足す|を置き直す)$/, "")}として置きます。`}
-        onClick={() => {
-          history.remember(candidate);
-          onPlace(target, candidate);
-          close();
-        }}
-      >
-        {placeLabelOf(target)}
-      </Button>
-    ));
+    return placeTo((target) => {
+      history.remember(candidate);
+      onPlace(target, candidate);
+      close();
+    });
   }
 
   return (
@@ -178,7 +167,17 @@ export default function PlaceSearchBar({
           onSearch();
         }}
       >
-        <SearchPlaceIcon size={16} />
+        <Button
+          type="submit"
+          variant="ghost"
+          size="icon"
+          disabled={full}
+          aria-label="探す"
+          className="size-7 flex-none text-[var(--foreground)]"
+          usage="打った文字で、いまの地図の真ん中から探します（地図を動かしてから押すと、その辺りで探し直します）。"
+        >
+          <SearchPlaceIcon size={16} />
+        </Button>
         <input
           ref={inputRef}
           id={inputId}
@@ -310,6 +309,7 @@ export default function PlaceSearchBar({
           near={lookup.near}
           onPick={lookup.pickFound}
           actions={placeButtons(found.candidates[found.picked])}
+          into={cardIn}
         />
       )}
     </div>

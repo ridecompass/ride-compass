@@ -54,6 +54,8 @@ interface RoutePointsProps {
   savedPlaces: SavedPlacesState;
   /** 地図をタップすると選んでいる地点を置くか（ルート設定が地図で効いている間）。 */
   placing: boolean;
+  /** 探した候補の札を入れる所を受け取る（スマホで札を出している間だけ。null なら地点の詳しくを出す）。 */
+  foundCardSlot: ((slot: HTMLElement | null) => void) | null;
 }
 
 /** どうやって置いた地点か。 */
@@ -77,6 +79,7 @@ export default function RoutePoints({
   onSearchOpen,
   savedPlaces,
   placing,
+  foundCardSlot,
 }: RoutePointsProps) {
   const {
     loop,
@@ -122,10 +125,8 @@ export default function RoutePoints({
   const areaOf = usePlaceAreas(editing ? placedPoints : targetPoint === null ? [] : [targetPoint]);
 
   const nameInputs = { waypoints, destination, foundAt, originFound, originManual, originLocated };
-  const names = pointNames(nameInputs);
   const areaNames = pointNames({ ...nameInputs, areas: { origin, areaOf } });
   const destinationFound = foundAt(destination);
-  const destinationName = loop ? `${names.origin}[周回]` : names.destination;
 
   function renderDetail() {
     const common = { originLocated, onSearchOpen, savedPlaces, placing, title: pointTitle(target) };
@@ -238,13 +239,10 @@ export default function RoutePoints({
           周回
         </Toggle>
         <PointStrip
-          loop={loop}
-          originName={names.origin}
-          destinationName={destinationName}
-          waypointNames={names.waypoints}
-          full={full}
+          conditions={conditions}
+          originFound={originFound}
+          originManual={originManual}
           originLocated={originLocated}
-          selectedPoint={selectedPoint}
           selectPoint={choosePoint}
         />
         <Toggle
@@ -278,7 +276,9 @@ export default function RoutePoints({
           <ClearPointsIcon size={18} />
         </Button>
       </div>
-      {editing ? (
+      {foundCardSlot !== null ? (
+        <div ref={foundCardSlot} />
+      ) : editing ? (
         <PointEditList
           loop={loop}
           originLocated={originLocated}

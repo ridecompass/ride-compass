@@ -8,7 +8,7 @@
  *
  * 差し替えたもの: 道の区分の層は軸カタログの応答としてテストが組む（本番の層は管理DBが持つ）。
  *
- * ここで見ないもの: タブ・難易度のグラフの見方・経由地の印 → `RouteProfile.test.tsx`。選んだ地点の層の値 → `SegmentDetail.test.tsx`。折れ線の点・帯の切れ目と
+ * ここで見ないもの: タブ・難易度のグラフの見方・経由地の印 → `RouteProfile.test.tsx`。選んだ区間の層の値 → `profileLayers.test.ts`。折れ線の点・帯の切れ目と
  * 地点の値・行の計算 → `profileLayers.test.ts`。選んだレイヤを覚えること → `useProfileLayers.test.ts`。
  */
 import { screen, waitFor, within } from "@testing-library/react";

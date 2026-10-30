@@ -16,7 +16,7 @@ import { cn } from "@/lib/cn";
 import type { PointGlyph } from "@/lib/mapDisplay/legendFilter";
 import { DIFFICULTY_SCALE_SUFFIX, formatDifficulty } from "@/lib/mapDisplay/valueScale";
 
-import { facilityPosition, type Facility, type FacilityOrigin } from "./facilityRows";
+import { facilityPosition, type Facility } from "./facilityRows";
 
 const hintClass = cn(textVariants({ variant: "hint" }), "m-0");
 
@@ -65,7 +65,7 @@ function KindSwatch({ color, glyph, label }: { color: string; glyph: PointGlyph;
 }
 
 /** アイコンと値の小さな組。何の値かは読み上げと長押しの説明が持つ。 */
-export function IconValue({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
+function IconValue({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
   return (
     <span title={label} className={cn(hintClass, "inline-flex flex-none items-center gap-0.5 whitespace-nowrap")}>
       <span aria-hidden="true" className="inline-flex">
@@ -77,14 +77,14 @@ export function IconValue({ icon, label, value }: { icon: ReactNode; label: stri
   );
 }
 
-/** 施設を1つ1行で並べる。左から地図の印の見本・名前（名前のある施設は外の地図で探すリンク）・基準の地点から見たルートの前後・
- * 道からの距離。長い名前は名前の列の中で折り返す（値の位置は動かない）。基準の地点（`origin`）が無ければ前後を出さない。 */
+/** 施設を1つ1行で並べる。左から地図の印の見本・名前（名前のある施設は外の地図で探すリンク）・走行中の現在地から見たルートの前後・
+ * 道からの距離。長い名前は名前の列の中で折り返す（値の位置は動かない）。走っていない間（`travelledKm`が無い）は前後を出さない。 */
 export function FacilityRows({
   facilities,
-  origin,
+  travelledKm,
 }: {
   facilities: readonly Facility[];
-  origin: FacilityOrigin | null;
+  travelledKm: number | null;
 }) {
   return (
     <ul className="m-0 flex list-none flex-col divide-y divide-[var(--color-border)] p-0 tabular-nums">
@@ -112,11 +112,11 @@ export function FacilityRows({
               </span>
             ))}
           </span>
-          {facility.km !== null && origin !== null && (
+          {facility.km !== null && travelledKm !== null && (
             <IconValue
               icon={<SelectedSpotIcon size={13} />}
-              label={origin.riding ? "現在地から" : "押した地点から"}
-              value={facilityPosition(facility.km, origin)}
+              label="現在地から"
+              value={facilityPosition(facility.km, travelledKm)}
             />
           )}
           {facility.offsetM !== null && (

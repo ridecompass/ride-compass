@@ -73,7 +73,7 @@ export interface MapTapState {
   onRouteSelect: (routeId: string) => void;
 }
 
-// 区間の当たり判定は見た目の線より広いため、押した地点の印を区間の線上の最寄りの点へ寄せる。区間の距離なら
+// 区間の当たり判定は見た目の線より広いため、区間の小窓を置く点を区間の線上の最寄りの点へ寄せる。区間の距離なら
 // 押した地点の緯度で平面へ落とした近似で足りる。
 function nearestPointOnLineString(
   coordinates: readonly (readonly [number, number])[],

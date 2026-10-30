@@ -69,6 +69,8 @@ interface RouteFormProps {
   savedPlaces: SavedPlacesState;
   /** 地図をタップすると選んでいる地点を置くか（ルート設定が地図で効いている間）。 */
   placing: boolean;
+  /** 探した候補の札を入れる所を受け取る（スマホで札を出している間だけ。null なら地点の詳しくを出す）。 */
+  foundCardSlot: ((slot: HTMLElement | null) => void) | null;
   /** 「重み」タブの中身。タブの列と「ルート生成」ボタンは見出しの行、検証は`useRouteFormSubmit`が持つ。 */
   weightsPanel: React.ReactNode;
   /** 「除外」タブの中身。 */
@@ -120,6 +122,7 @@ export default function RouteForm({
   onPlaceFound,
   savedPlaces,
   placing,
+  foundCardSlot,
   weightsPanel,
   exclusionsPanel,
   saveConditionsButton,
@@ -221,6 +224,7 @@ export default function RouteForm({
           onSearchOpen={onSearchOpen}
           savedPlaces={savedPlaces}
           placing={placing}
+          foundCardSlot={foundCardSlot}
         />
       </KeptTabContent>
 

@@ -27,7 +27,7 @@ const SURFACE_ROAD_CLASSES = [
   roadClass("gravel", { label: "砂利・未舗装", color: "#222222" }),
 ];
 /** 道の区分の層（軸カタログの応答の`road_classes.map_layers`）。区間の小窓のテストは、ここから選んでいる層を組む。 */
-export const ROAD_LAYERS = [
+const ROAD_LAYERS = [
   roadMapLayer("surface", { label: "路面の種類", has_no_data: true, classes: SURFACE_ROAD_CLASSES }),
   roadMapLayer("tunnel", { label: "トンネル", classes: [roadClass("tunnel", { label: "トンネル" })] }),
 ];

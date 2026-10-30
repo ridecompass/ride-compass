@@ -12,7 +12,7 @@ import {
   POPUP_HANDLE_ATTRIBUTE,
   PopupHeader,
 } from "@/components/MapPopup/MapPopupParts";
-import type { Facility, FacilityOrigin } from "@/components/MapPopup/facilityRows";
+import type { Facility } from "@/components/MapPopup/facilityRows";
 import { Button } from "@/components/ui/Button/Button";
 import { ShowSectionOnMapIcon } from "@/components/ui/icons/lucideIcons";
 import type { RoadTrackRow } from "@/lib/mapDisplay/roadTracks";
@@ -21,13 +21,11 @@ import type { RideConditions } from "@/features/map/regionApi";
 import type { TileXY } from "@/features/map/layers/dynamicWayValues";
 import RoadInspectorPopup from "@/features/map/MapView/RoadInspectorPopup";
 import type { RoadSurfacePopupProperties } from "@/features/map/MapView/roadFacts";
-import { SELECTED_POINT_PIN_HEIGHT_PX } from "@/features/map/MapView/useMapMarkers";
 import { visibleScreenBox } from "@/features/map/MapView/mapCamera";
 import { popupInsideVisible, type ScreenBox } from "@/features/map/MapView/popupPlacement";
 import { useAxisCatalog } from "@/hooks/useAxisCatalog";
 
 /** 押した物と小窓の間を空ける幅。区間は押した所に置く印（下端を地点に置いた絵）の高さだけ空ける。 */
-const SEGMENT_POPUP_GAP_PX = SELECTED_POINT_PIN_HEIGHT_PX + 2;
 const POPUP_GAP_PX = 8;
 
 /** 小窓の幅の上限（Popup の`maxWidth`。`%`は地図の幅）。中身に合わせて広がり、地図の幅を超えるときだけ折り返す。 */
@@ -149,8 +147,8 @@ interface MapPopupMountOptions {
   segmentPath: Shape | null;
   rideConditions: RideConditions;
   routePreference: RoutePreferenceWeights | null;
-  /** 施設の位置を前後で言う基準の地点。 */
-  facilityOrigin: FacilityOrigin | null;
+  /** 走行中の現在地の道のり（km）。施設の位置をここから見た前後で言う。走っていない間はnull。 */
+  travelledKm: number | null;
   /** 点の小窓から区間の中身へ戻る。 */
   onBackToSegment: () => void;
   /** 寄せるアイコンを押したとき。押した物の形へ地図を寄せる。 */
@@ -166,7 +164,7 @@ function targetOf(
     return {
       lngLat: [popup.segment.longitude, popup.segment.latitude],
       shape: segmentPath,
-      gapPx: SEGMENT_POPUP_GAP_PX,
+      gapPx: POPUP_GAP_PX,
     };
   }
   return { lngLat: popup.lngLat, shape: popup.shape, gapPx: POPUP_GAP_PX };
@@ -182,7 +180,7 @@ export function useMapPopupMount(
     segmentPath,
     rideConditions,
     routePreference,
-    facilityOrigin,
+    travelledKm,
     onBackToSegment,
     onFocus,
   }: MapPopupMountOptions,
@@ -368,7 +366,7 @@ export function useMapPopupMount(
       ) : onMap.kind === "segment" ? (
         segmentDetail
       ) : (
-        <PointContent popup={onMap} origin={facilityOrigin} onBack={onBackToSegment} />
+        <PointContent popup={onMap} travelledKm={travelledKm} onBack={onBackToSegment} />
       )}
     </div>,
     mount.container,
@@ -378,11 +376,11 @@ export function useMapPopupMount(
 /** 点の中身: 施設の行。区間を選んでいる間に開いたなら、上の帯に区間の中身へ戻る操作を置く。 */
 function PointContent({
   popup,
-  origin,
+  travelledKm,
   onBack,
 }: {
   popup: Extract<MapPopup, { kind: "point" }>;
-  origin: FacilityOrigin | null;
+  travelledKm: number | null;
   onBack: () => void;
 }) {
   return (
@@ -390,7 +388,7 @@ function PointContent({
       <PopupHeader label="点の小窓の上の帯">
         {popup.segment !== null && <BackToSegmentButton onBack={onBack} />}
       </PopupHeader>
-      <FacilityRows facilities={popup.facilities} origin={origin} />
+      <FacilityRows facilities={popup.facilities} travelledKm={travelledKm} />
     </div>
   );
 }

@@ -1,7 +1,7 @@
 // @vitest-environment node
 /**
- * `features/route/RouteProfile/profileLayers.ts`——道のりのグラフのレイヤの値を、区間の並びから折れ線・最高と最低・地点の値と、区分の帯・地点の行・凡例の行へ
- * 引く計算。
+ * `features/route/RouteProfile/profileLayers.ts`——道のりのグラフのレイヤの値を、区間の並びから折れ線・最高と最低・地点の値と、区分の帯・凡例の行へ
+ * 引く計算と、1つの区間の勾配・区分の割合。
  *
  * ここで見ないもの: 折れ線と帯を描くこと・タブとチップ・選んだものを覚えること → `RouteProfile.test.tsx`。
  */
@@ -13,12 +13,12 @@ import { makeRouteSegment } from "@/testing/routeFixtures";
 
 import {
   bandLegendRows,
-  bandRowAtKm,
   layerBand,
-  layerGradeAtKm,
   layerLine,
   layerValueAtKm,
   profileLayers,
+  segmentBandShares,
+  segmentGrades,
   type BandLayer,
   type LineLayer,
 } from "./profileLayers";
@@ -103,18 +103,13 @@ describe("layerLine", () => {
   });
 });
 
-describe("layerValueAtKm・layerGradeAtKm", () => {
+describe("layerValueAtKm", () => {
   it.each([
-    {
-      km: 0.75,
-      value: 30,
-      grade: 4,
-      why: "区間の中は、その地点の道の両端の間を距離で割り振り、勾配はその道の両端の差を道の長さで割る",
-    },
-    { km: 1.5, value: null, grade: null, why: "道の並びの無い区間" },
-    { km: 2.5, value: null, grade: null, why: "値の無い道" },
-    { km: 99, value: 60, grade: 1, why: "終わりより先は終点の道" },
-  ])("$why", ({ km, value, grade }) => {
+    { km: 0.75, value: 30, why: "区間の中は、その地点の道の両端の間を距離で割り振る" },
+    { km: 1.5, value: null, why: "道の並びの無い区間" },
+    { km: 2.5, value: null, why: "値の無い道" },
+    { km: 99, value: 60, why: "終わりより先は終点の道" },
+  ])("$why", ({ km, value }) => {
     const columns = stretches(
       [
         [
@@ -128,7 +123,38 @@ describe("layerValueAtKm・layerGradeAtKm", () => {
       [[[50, 60, 1]], 1],
     );
     expect(layerValueAtKm(columns, elevation, km)).toBe(value);
-    expect(layerGradeAtKm(columns, elevation, km)).toBe(grade);
+  });
+});
+
+describe("segmentGrades", () => {
+  it.each<[string, Road[], { mean: number; steepestClimb: number | null } | null]>([
+    [
+      "上り下りの和を長さの和で割った平均と、一番きつい上り。値の無い道は数えない",
+      [
+        [10, 20, 0.5],
+        [20, 40, 0.5],
+        [null, 99, 1],
+      ],
+      { mean: 3, steepestClimb: 4 },
+    ],
+    [
+      "上りの無い区間は、最大を出さない",
+      [
+        [50, 40, 0.2],
+        [40, 38, 0.8],
+      ],
+      { mean: -1.2, steepestClimb: null },
+    ],
+    ["値のある道が無ければ出さない", [[null, null, 1]], null],
+  ])("%s", (_, roads, grades) => {
+    const elevations = roads.map(([start, end, km]) => ({
+      distance_km: km,
+      start_elevation_m: start,
+      end_elevation_m: end,
+    }));
+    const found = segmentGrades(makeRouteSegment({ elevations }), elevation);
+    const round = (value: number | null) => (value === null ? null : Number(value.toFixed(6)));
+    expect(found && { mean: round(found.mean), steepestClimb: round(found.steepestClimb) }).toEqual(grades);
   });
 });
 
@@ -180,22 +206,34 @@ describe("layerBand", () => {
   });
 });
 
-describe("bandRowAtKm", () => {
-  const pieces = layerBand(
-    classed("surface", [[{ distance_km: 1, value: "paved" }], 1], [[{ distance_km: 1, value: "gravel" }], 1]),
-    surface,
-  );
-
-  it.each([
-    { km: 0.5, key: "paved", why: "部分の中はその部分の行" },
-    { km: 1, key: "gravel", why: "切れ目ちょうどは後の部分" },
-    { km: 99, key: "gravel", why: "終わりより先は終点の行" },
-  ])("$why", ({ km, key }) => {
-    expect(bandRowAtKm(pieces, km)).toEqual(row(surface, key));
-  });
-
-  it("部分が無ければ行も無い", () => {
-    expect(bandRowAtKm([], 0)).toBeNull();
+describe("segmentBandShares", () => {
+  it.each<[string, Stretch[] | undefined, [string, number][]]>([
+    [
+      "区分の付く道だけで割り、同じ行をまとめて多い順に並べる。どの区分にも入らない道は数えない",
+      [
+        { distance_km: 0.3, value: "paved" },
+        { distance_km: 0.4, value: "unknown_class" },
+        { distance_km: 0.1, value: "gravel" },
+        { distance_km: 0.4, value: "paved" },
+      ],
+      [
+        ["paved", 0.875],
+        ["gravel", 0.125],
+      ],
+    ],
+    [
+      "整数の%に丸めて0%になる行は出さない",
+      [
+        { distance_km: 1, value: "paved" },
+        { distance_km: 0.004, value: "soil" },
+      ],
+      [["paved", 0.996016]],
+    ],
+    ["区分の付く道の無い区間は、何も出さない", [{ distance_km: 1, value: null }], []],
+  ])("%s", (_, stretches, shares) => {
+    const segment = makeRouteSegment({ road_classes: stretches === undefined ? {} : { surface: stretches } });
+    const found = segmentBandShares(segment, surface).map(({ row, share }) => [row.key, Number(share.toFixed(6))]);
+    expect(found).toEqual(shares);
   });
 });
 
