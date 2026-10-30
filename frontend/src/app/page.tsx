@@ -3,13 +3,14 @@
 import { useMemo, useRef, useState } from "react";
 import GenerationNotice from "@/features/route/GenerationNotice/GenerationNotice";
 import PlaceSearchBar from "@/features/route/PlaceSearch/PlaceSearchBar";
-import { chooseResultOf, pointTitle } from "@/features/route/pointNames";
+import { usePlaceLookup } from "@/features/route/PlaceSearch/usePlaceLookup";
+import { chooseResultOf, newPlacings, pointTitle } from "@/features/route/pointNames";
 import type { SettingsTab } from "@/features/route/RouteForm/RouteForm";
 import RouteSettingsForm from "@/features/route/RouteForm/RouteSettingsForm";
 import { useGenerationConditions, waypointsFull } from "@/features/route/useGenerationConditions";
 import { useSavedConditions } from "@/features/route/useSavedConditions";
 import { useSavedPlaces } from "@/features/route/useSavedPlaces";
-import type { Coordinates, PinRole, PlaceCandidate } from "@/types/route";
+import type { Coordinates, PinRole, PlaceCandidate, PointTarget } from "@/types/route";
 import { useRoutePlanner } from "@/features/route/useRoutePlanner";
 import { useAxisCatalog } from "@/hooks/useAxisCatalog";
 import { CLIENT_TUNING_IDS, clientTuningValue } from "@/lib/axisCatalog";
@@ -84,6 +85,14 @@ export default function Home() {
   // 地図の上端の地点の検索の欄。ルート設定で選んでいる地点の役割で置く。
   const searchInputRef = useRef<HTMLInputElement>(null);
   const searchTarget = conditions.selectedPoint;
+  // 地点の詳しくの探すボタンで開いたときの、その地点（探した候補はその地点にだけ置く）。上端の欄から開いたらnull。
+  const [searchOpenedFor, setSearchOpenedFor] = useState<PointTarget | null>(null);
+  // 新しい経由地は、上限まで置いてあれば置けない。
+  const searchFullFor = (target: PointTarget) =>
+    target.role === "waypoint" && target.index === null && waypointsFull(conditions.waypoints);
+  function placeAt(target: PointTarget, candidate: PlaceCandidate) {
+    placeFound(target.role, candidate, target.role === "waypoint" ? target.index : null);
+  }
 
   // ルートを作る機能（結果・生成・区間の乗り換え）。
   const route = useRoutePlanner({
@@ -105,6 +114,9 @@ export default function Home() {
     now: ride.departure.now,
     routeWeights: route.routeWeights,
   });
+
+  // 地図は出発地を真ん中にして開くので、地図が範囲を知らせる前は出発地が真ん中。
+  const placeLookup = usePlaceLookup(mapView.center ?? location);
 
   const tapMode = mapTapModeOf(panels.activePanel, settingsTab, route.splice.editingRoute !== null);
   // 地図に出した一時の選択（選んだ区間・小窓）の持ち主。地図を押した意味は効いているパネルで決まるので、前に効いていたのと別の
@@ -135,7 +147,10 @@ export default function Home() {
         onOriginReset={resetOriginToCurrent}
         originFound={originFound}
         // クリックの中で同期して focus する（iOS は、利用者の操作の中で focus したときだけキーボードを出す）。
-        onSearchOpen={() => searchInputRef.current?.focus()}
+        onSearchOpen={() => {
+          setSearchOpenedFor(searchTarget);
+          searchInputRef.current?.focus();
+        }}
         onPlaceFound={placeFound}
         savedPlaces={savedPlaces}
         placing={tapMode === "points"}
@@ -198,6 +213,8 @@ export default function Home() {
             selectionOwner={mapSelectionOwner}
             focusPoint={focusPoint}
             onFocusPoint={setFocusPoint}
+            placeCandidates={placeLookup.foundOnMap}
+            onPlaceCandidatePick={placeLookup.pickFound}
             isMobile={isMobile}
             sheetOpen={isMobile && panels.mobileSheet !== null}
             usageGuideActive={usageGuideActive}
@@ -206,14 +223,21 @@ export default function Home() {
               <PlaceSearchBar
                 title={pointTitle(searchTarget)}
                 chooseResult={chooseResultOf(searchTarget)}
-                full={
-                  searchTarget.role === "waypoint" && searchTarget.index === null && waypointsFull(conditions.waypoints)
+                full={searchFullFor(searchTarget)}
+                lookup={placeLookup}
+                onChoose={(candidate) => placeAt(searchTarget, candidate)}
+                placings={
+                  searchOpenedFor === null
+                    ? newPlacings({ waypointsFull: waypointsFull(conditions.waypoints), loop: conditions.loop })
+                    : [{ target: searchOpenedFor, disabled: searchFullFor(searchOpenedFor) }]
                 }
-                // 地図は出発地を真ん中にして開くので、地図が範囲を知らせる前は出発地が真ん中。
-                mapCenter={mapView.center ?? location}
-                onChoose={(candidate) =>
-                  placeFound(searchTarget.role, candidate, searchTarget.role === "waypoint" ? searchTarget.index : null)
-                }
+                onPlace={placeAt}
+                // スマホは探した候補を地図の下の札で見せるので、下のシートを閉じて地図を空ける。
+                onSearch={() => {
+                  if (isMobile) panels.sharedSheetProps.onClose();
+                }}
+                onClose={() => setSearchOpenedFor(null)}
+                isMobile={isMobile}
                 savedPlaces={savedPlaces}
                 inputRef={searchInputRef}
               />
