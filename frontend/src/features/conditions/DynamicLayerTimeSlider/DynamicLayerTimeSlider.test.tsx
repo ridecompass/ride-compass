@@ -6,7 +6,7 @@ import type { RulerFrame } from "@/components/ui/Ruler/Ruler";
 import DynamicLayerTimeSlider from "./DynamicLayerTimeSlider";
 
 // ルーラーの操作（ドラッグ・キー・Emblaとのつなぎ）は`components/ui/Ruler/Ruler.test.tsx`が見る。
-// ここは選んだ時刻の文とボタンだけを見る。
+// ここは選んだ時刻の文・刻みの切り替え・ボタンだけを見る。
 vi.mock("embla-carousel-react", () => ({ default: () => [() => {}, undefined] }));
 vi.mock("embla-carousel-wheel-gestures", () => ({ WheelGesturesPlugin: () => ({}) }));
 
@@ -16,9 +16,15 @@ const FRAMES: RulerFrame[] = [
   { label: "9/24 11:00", major: true },
 ];
 
+const STEPS = [
+  { value: "fine", label: "5分" },
+  { value: "coarse", label: "1時間" },
+];
+
 function renderSlider(index: number, currentIndex = 0) {
   const onIndexChange = vi.fn();
   const onNow = vi.fn();
+  const onStepChange = vi.fn();
   const view = render(
     <DynamicLayerTimeSlider
       frames={FRAMES}
@@ -27,20 +33,36 @@ function renderSlider(index: number, currentIndex = 0) {
       currentIndex={currentIndex}
       onNow={onNow}
       ariaLabel="出発時刻"
+      steps={STEPS}
+      step="coarse"
+      onStepChange={onStepChange}
     />,
   );
-  return { onIndexChange, onNow, ...view };
+  return { onIndexChange, onNow, onStepChange, ...view };
 }
 
 describe("DynamicLayerTimeSlider 表示", () => {
-  it("選んだコマの日付つきの時刻を上に出し、読み上げにも同じ時刻を渡す", () => {
+  it("選んだコマの日付つきの時刻を上に出す", () => {
     renderSlider(1);
     expect(screen.getByText("9/24 10:00", { selector: "div" })).toBeInTheDocument();
-    expect(screen.getByRole("slider", { name: "出発時刻" })).toHaveAttribute("aria-valuetext", "9/24 10:00");
+  });
+
+  it("時刻の文字の隣に刻みの切り替えを出し、選んでいる刻みを示す", () => {
+    renderSlider(1);
+    const group = screen.getByRole("radiogroup", { name: "出発時刻の刻み" });
+    expect(group.previousElementSibling).toHaveTextContent("9/24 10:00");
+    expect(screen.getByRole("radio", { name: "1時間" })).toBeChecked();
+    expect(screen.getByRole("radio", { name: "5分" })).not.toBeChecked();
   });
 });
 
 describe("DynamicLayerTimeSlider 操作", () => {
+  it("刻みを押すと、その刻みを親へ知らせる", async () => {
+    const { onStepChange } = renderSlider(1);
+    await userEvent.click(screen.getByRole("radio", { name: "5分" }));
+    expect(onStepChange).toHaveBeenCalledWith("fine");
+  });
+
   it("‹・›で1コマずつ動かし、端ではそれ以上動かせない", async () => {
     const first = renderSlider(0);
     expect(screen.getByRole("button", { name: "出発時刻を1つ前へ" })).toBeDisabled();

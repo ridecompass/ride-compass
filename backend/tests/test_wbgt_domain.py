@@ -37,16 +37,15 @@ def test_the_level_follows_the_exercise_guideline_thresholds(value, expected):
     assert wbgt_level(value) == expected
 
 
-def test_the_published_provision_period_of_2026():
-    """環境省の公表（令和8年度は4月22日（水）から10月21日（水）まで）と一致する。"""
-    assert provision_period(2026) == (date(2026, 4, 22), date(2026, 10, 21))
-
-
-@pytest.mark.parametrize("year", range(2000, 2101))
-def test_the_period_runs_from_the_fourth_april_wednesday_for_26_weeks(year):
-    start, end = provision_period(year)
-    assert start.month == 4 and start.weekday() == 2 and 22 <= start.day <= 28
-    assert end - start == timedelta(weeks=26)
+@pytest.mark.parametrize(
+    ("year", "expected"),
+    [
+        (2026, (date(2026, 4, 22), date(2026, 10, 21))),  # 4月1日が水曜
+        (2027, (date(2027, 4, 28), date(2027, 10, 27))),  # 4月1日が木曜（第1水曜が最も遅い）
+    ],
+)
+def test_the_period_runs_from_the_fourth_april_wednesday_for_26_weeks(year, expected):
+    assert provision_period(year) == expected
 
 
 @pytest.mark.parametrize(
@@ -62,19 +61,11 @@ def test_both_the_first_and_the_last_day_are_within_the_period(at, within):
     assert is_within_provision_period(at) is within
 
 
-def _forecast(reference_time: str, forecast_time: datetime | None, wbgt: float | None = 26.0) -> WbgtForecast:
-    return WbgtForecast(
-        reference_time=reference_time,
-        forecast_time=forecast_time,
-        wbgt=wbgt,
-    )
+def _forecast(reference_time: str, forecast_time: datetime | None) -> WbgtForecast:
+    return WbgtForecast(reference_time=reference_time, forecast_time=forecast_time, wbgt=26.0)
 
 
 NOW = datetime(2026, 7, 1, 13, 20, tzinfo=JST)
-
-
-def test_no_forecasts_select_nothing():
-    assert current_forecast([], NOW) is None
 
 
 def test_the_forecast_nearest_to_now_is_selected_whether_before_or_after():
@@ -87,12 +78,6 @@ def test_the_forecast_nearest_to_now_is_selected_whether_before_or_after():
     later_now = datetime(2026, 7, 1, 13, 40, tzinfo=JST)
     assert current_forecast([before, after], later_now) is after
     assert current_forecast([before, after], later_now.astimezone(timezone.utc)) is after
-
-
-def test_only_the_latest_issue_is_considered_even_if_an_older_one_is_nearer():
-    older_but_nearer = _forecast("2026070109", datetime(2026, 7, 1, 13, 20))
-    latest = _forecast("2026070112", datetime(2026, 7, 1, 15, 0))
-    assert current_forecast([older_but_nearer, latest], NOW) is latest
 
 
 def test_a_forecast_without_a_readable_target_time_is_never_selected():

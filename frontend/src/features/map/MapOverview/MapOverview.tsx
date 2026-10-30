@@ -1,0 +1,163 @@
+"use client";
+
+import type { Map as MapLibreMap } from "maplibre-gl";
+import { type RefObject, useEffect, useMemo, useRef, useState } from "react";
+
+import { Button } from "@/components/ui/Button/Button";
+import { OverviewMapIcon } from "@/components/ui/icons/lucideIcons";
+import { createBaseMap } from "@/features/map/baseMap";
+import { runWhenStyleReady } from "@/features/map/layers/mapStyleOps";
+import {
+  OVERVIEW_PLACE_LABEL,
+  OVERVIEW_RENDER_SCALE,
+  OVERVIEW_SIZE_PX,
+  overviewBasemapEdits,
+  overviewFrameSize,
+  overviewRenderZoom,
+  overviewScene,
+  overviewWeather,
+  overviewZoom,
+} from "@/features/map/MapOverview/overview";
+import { applyScene, weatherStateFrom, type SceneLook } from "@/features/map/scene/applyToMap";
+import { buildOverviewScene } from "@/features/map/scene/buildScene";
+import { viewportCenter, type MapViewport } from "@/features/map/view/mapLook";
+import { useStoredBooleanState } from "@/hooks/useStoredState";
+
+const COLLAPSED_STORAGE_KEY = "ridecompass:map-overview-collapsed";
+/** 俯瞰図に残す高速道路の線の幅（px）。気象の色を覆わない細さにする。 */
+const MOTORWAY_WIDTH_PX = 1;
+
+interface MapOverviewProps {
+  viewport: MapViewport;
+  dynamicWeather: SceneLook["dynamicWeather"];
+  /** 本体の地図を収めた要素。その大きさから、俯瞰図の上の今の画面の枠を求める。 */
+  paneRef: RefObject<HTMLElement | null>;
+}
+
+/** 本体の地図の左下に添える、今の画面より広い範囲を丸く映す俯瞰図。本体の地図で出している気象の層を同じ色で描き、今の画面の範囲を枠で
+ * 示す。「×」で丸いボタンに畳み、畳んだことは端末に覚える。出すかどうかは呼ぶ側が`overview.ts: overviewShown`で決める。 */
+export default function MapOverview(props: MapOverviewProps) {
+  const [collapsed, setCollapsed] = useStoredBooleanState(COLLAPSED_STORAGE_KEY, false);
+  if (collapsed)
+    return (
+      <Button
+        variant="float"
+        size="iconRound"
+        className="size-9"
+        aria-label="俯瞰図を開く"
+        usage="今の画面のまわりの気象を、広く映した小さな地図で見ます。"
+        onClick={() => setCollapsed(false)}
+      >
+        <OverviewMapIcon />
+      </Button>
+    );
+  return <OverviewMap {...props} onCollapse={() => setCollapsed(true)} />;
+}
+
+function OverviewMap({ viewport, dynamicWeather, paneRef, onCollapse }: MapOverviewProps & { onCollapse: () => void }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<MapLibreMap | null>(null);
+  const [paneSize, setPaneSize] = useState<{ width: number; height: number } | null>(null);
+  const center = viewportCenter(viewport);
+  const zoom = overviewZoom(center.latitude, viewport.zoom);
+  const renderZoom = overviewRenderZoom(zoom);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const map = createBaseMap({
+      container: containerRef.current,
+      center: [center.longitude, center.latitude],
+      zoom: renderZoom,
+      inset: true,
+    });
+    map.setBearing(viewport.bearing);
+    runWhenStyleReady(map, () => {
+      const { hidden, places, motorways } = overviewBasemapEdits(map.getStyle().layers);
+      for (const layerId of hidden) map.setLayoutProperty(layerId, "visibility", "none");
+      for (const [layerId, filter] of places) {
+        map.setFilter(layerId, filter);
+        for (const [key, value] of Object.entries(OVERVIEW_PLACE_LABEL.layout))
+          map.setLayoutProperty(layerId, key as keyof typeof OVERVIEW_PLACE_LABEL.layout, value);
+        for (const [key, value] of Object.entries(OVERVIEW_PLACE_LABEL.paint))
+          map.setPaintProperty(layerId, key as keyof typeof OVERVIEW_PLACE_LABEL.paint, value);
+      }
+      for (const layerId of motorways)
+        map.setPaintProperty(layerId, "line-width", MOTORWAY_WIDTH_PX * OVERVIEW_RENDER_SCALE);
+    });
+    mapRef.current = map;
+    return () => {
+      map.remove();
+      mapRef.current = null;
+    };
+    // 地図は1度だけ作り、範囲は下で追う。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    mapRef.current?.jumpTo({
+      center: [center.longitude, center.latitude],
+      zoom: renderZoom,
+      bearing: viewport.bearing,
+    });
+  }, [center.longitude, center.latitude, renderZoom, viewport.bearing]);
+
+  const scene = useMemo(
+    () =>
+      overviewScene(
+        buildOverviewScene(
+          weatherStateFrom(
+            overviewWeather(dynamicWeather, zoom, { latitude: center.latitude, longitude: center.longitude }),
+          ),
+        ),
+      ),
+    [dynamicWeather, zoom, center.latitude, center.longitude],
+  );
+  useEffect(() => {
+    if (mapRef.current) applyScene(mapRef.current, scene);
+  }, [scene]);
+
+  useEffect(() => {
+    const pane = paneRef.current;
+    if (!pane) return;
+    const observer = new ResizeObserver(() => setPaneSize({ width: pane.clientWidth, height: pane.clientHeight }));
+    observer.observe(pane);
+    return () => observer.disconnect();
+  }, [paneRef]);
+  const frame = paneSize === null ? null : overviewFrameSize(paneSize, viewport.zoom, zoom);
+
+  return (
+    <section aria-label="俯瞰図" className="relative" style={{ width: OVERVIEW_SIZE_PX, height: OVERVIEW_SIZE_PX }}>
+      {/* 地図は丸く切り抜き、丸の外の隅は本体の地図への触れを通す（`overview.ts: OVERVIEW_SIZE_PX`）。 */}
+      <div className="pointer-events-auto relative size-full overflow-hidden rounded-full border border-[var(--color-border-strong)] shadow-float">
+        {/* 地図は倍の大きさで描いて縮める（`overview.ts: OVERVIEW_RENDER_SCALE`）。 */}
+        <div
+          ref={containerRef}
+          className="origin-top-left"
+          style={{
+            width: OVERVIEW_SIZE_PX * OVERVIEW_RENDER_SCALE,
+            height: OVERVIEW_SIZE_PX * OVERVIEW_RENDER_SCALE,
+            transform: `scale(${1 / OVERVIEW_RENDER_SCALE})`,
+          }}
+        />
+        {frame !== null && (
+          <div
+            aria-hidden="true"
+            data-testid="map-overview-frame"
+            className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 border-2 border-[var(--color-accent-strong)] shadow-[0_0_0_1px_white]"
+            style={{ width: frame.width, height: frame.height }}
+          />
+        )}
+      </div>
+      <Button
+        variant="float"
+        size="bare"
+        className="pointer-events-auto absolute top-0 right-0 size-6 rounded-full text-[length:var(--font-size-xs)]"
+        aria-label="俯瞰図を畳む"
+        usage="俯瞰図を小さな丸いボタンに畳みます。押すと戻ります。"
+        onClick={onCollapse}
+      >
+        ✕
+      </Button>
+    </section>
+  );
+}

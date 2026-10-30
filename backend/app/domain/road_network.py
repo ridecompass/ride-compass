@@ -12,13 +12,22 @@
 分類の材料は文字列のまま持たず、列ごとの語彙への番号で持つ（番号0は値なし）。
 """
 
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, fields
 from typing import Any
 
 import numpy as np
 
-from app.domain.attributes import EDGE_ROW_ARRAY_FIELDS, CategoricalColumn, EdgeMaterialArrays, ElevationAttribute
+from app.domain.attributes import (
+    EDGE_ROW_ARRAY_FIELDS,
+    CategoricalColumn,
+    EdgeMaterialArrays,
+    ElevationAttribute,
+    MaterialColumn,
+)
+from app.domain.geo import LatLonPoint
 from app.domain.material_catalog import GRADIENT_PERCENT
+from app.domain.road_classes import RoadClassDefinitions, class_columns, layer_columns
 
 
 @dataclass(frozen=True, eq=False)
@@ -32,6 +41,8 @@ class RoadNetwork:
     node_lon: np.ndarray  # float64
     node_has_signals: np.ndarray  # bool
     node_max_rank: np.ndarray  # int64
+    # そこに集まる道の本数（`road_nodes.branch_count`）。3本以上なら分かれ道。
+    node_branch_count: np.ndarray  # int16
 
     edge_way_id: np.ndarray  # int64
     edge_segment: np.ndarray  # int32
@@ -56,8 +67,6 @@ class RoadNetwork:
     categorical_ids: tuple[str, ...]
     categorical_codes: np.ndarray  # (区間, 列) int16。0は値なし
     categorical_vocab: tuple[tuple[str | None, ...], ...]  # 列ごとの語彙。先頭は必ずNone
-    route_flag_ids: tuple[str, ...]
-    route_flags: np.ndarray  # (区間, 列) bool
     distance_m: np.ndarray  # float64
     bearing_deg: np.ndarray  # float64, NaN=方位が決まらない
     mid_lat: np.ndarray
@@ -85,7 +94,6 @@ class RoadNetwork:
             for name, matrix, ids in (
                 ("numeric_values", self.numeric_values, self.numeric_ids),
                 ("categorical_codes", self.categorical_codes, self.categorical_ids),
-                ("route_flags", self.route_flags, self.route_flag_ids),
             )
             if matrix.shape[1] != len(ids)
         }
@@ -111,6 +119,9 @@ class RoadSlice:
     """
 
     network: RoadNetwork
+    #: 取込範囲全体の区分の列と地図の線の層ごとの値（`road_class_columns`）。区分の列は、切り出した区間の材料へ`rows`で引いて足す。
+    classes: Mapping[str, CategoricalColumn]
+    layers: Mapping[str, CategoricalColumn]
     rows: np.ndarray  # int64, 全体の区間の行
     nodes: np.ndarray  # int64, 全体のノードの行
     edge_from: np.ndarray  # int64, 切り出しの中のノード番号
@@ -133,8 +144,25 @@ class RoadSlice:
         return np.asarray(self.network.node_lon[self.nodes], dtype=np.float64)
 
 
+def road_class_columns(
+    network: RoadNetwork, definitions: RoadClassDefinitions
+) -> tuple[dict[str, CategoricalColumn], dict[str, CategoricalColumn]]:
+    """取込範囲全体の区間ごとの区分の列と、地図の線の層ごとの値（`domain/road_classes.py: class_columns`・`layer_columns`）。"""
+    facts: dict[str, MaterialColumn] = {
+        **{material_id: network.numeric_values[:, i] for i, material_id in enumerate(network.numeric_ids)},
+        **{
+            material_id: CategoricalColumn(network.categorical_codes[:, i], vocab)
+            for i, (material_id, vocab) in enumerate(zip(network.categorical_ids, network.categorical_vocab, strict=True))
+        },
+    }
+    classes = class_columns(definitions, facts, network.edge_count)
+    return classes, layer_columns(definitions, {**facts, **classes}, network.edge_count)
+
+
 def slice_network(
-    network: RoadNetwork, min_lon: float, min_lat: float, max_lon: float, max_lat: float
+    network: RoadNetwork,
+    classes: tuple[Mapping[str, CategoricalColumn], Mapping[str, CategoricalColumn]],
+    min_lon: float, min_lat: float, max_lon: float, max_lat: float,
 ) -> RoadSlice:
     """区間の形の外接矩形が範囲に重なる区間を取り出す。範囲の外へはみ出す区間も、端点ごと含む。"""
     overlaps = np.asarray(network.edge_max_lon) >= min_lon
@@ -146,14 +174,14 @@ def slice_network(
     head = np.asarray(network.edge_to[rows], dtype=np.int64)
     nodes, inverse = np.unique(np.concatenate([tail, head]), return_inverse=True)
     return RoadSlice(
-        network=network, rows=rows, nodes=nodes,
+        network=network, classes=classes[0], layers=classes[1], rows=rows, nodes=nodes,
         edge_from=inverse[: len(rows)].astype(np.int64, copy=False),
         edge_to=inverse[len(rows):].astype(np.int64, copy=False),
     )
 
 
 def material_arrays_of(road: RoadSlice) -> EdgeMaterialArrays:
-    """切り出した区間の材料（行は`road.rows`の順）。分類の材料は語彙への番号のまま渡す。"""
+    """切り出した区間の材料（行は`road.rows`の順）。分類の材料は語彙への番号のまま渡し、区分の列も分類の材料として足す。"""
     network, rows = road.network, road.rows
     # 分類の材料は(区間, 列)の行列なので、行を1回だけ引いてから列へ分ける。
     codes = np.asarray(network.categorical_codes[rows])
@@ -161,12 +189,14 @@ def material_arrays_of(road: RoadSlice) -> EdgeMaterialArrays:
     row_arrays: dict[str, Any] = {name: np.asarray(getattr(network, name)[rows]) for name in EDGE_ROW_ARRAY_FIELDS}
     return EdgeMaterialArrays(
         numeric_ids=network.numeric_ids,
-        categorical_ids=network.categorical_ids,
-        categorical_columns=tuple(
-            CategoricalColumn(np.ascontiguousarray(codes[:, column]), vocab)
-            for column, vocab in enumerate(network.categorical_vocab)
+        categorical_ids=(*network.categorical_ids, *road.classes),
+        categorical_columns=(
+            *(
+                CategoricalColumn(np.ascontiguousarray(codes[:, column]), vocab)
+                for column, vocab in enumerate(network.categorical_vocab)
+            ),
+            *(column.take(rows) for column in road.classes.values()),
         ),
-        route_flag_ids=network.route_flag_ids,
         **row_arrays,
     )
 
@@ -199,3 +229,15 @@ def edge_row_of(network: RoadNetwork, osm_way_id: int, segment_index: int, forwa
         if int(network.edge_segment[row]) == segment_index and bool(network.edge_forward[row]) == forward:
             return row
     return None
+
+
+def edge_endpoint_points(network: RoadNetwork, edges: Iterable[tuple[int, int, bool]]) -> list[LatLonPoint]:
+    """`(道, 区間番号, 向き)`の区間の両端の地点。道路網に無い区間は飛ばす。"""
+    points: list[LatLonPoint] = []
+    for edge in edges:
+        row = edge_row_of(network, *edge)
+        if row is None:
+            continue
+        for node in (int(network.edge_from[row]), int(network.edge_to[row])):
+            points.append(LatLonPoint(float(network.node_lat[node]), float(network.node_lon[node])))
+    return points

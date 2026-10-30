@@ -49,20 +49,6 @@ class Coordinates(StrictModel):
     longitude: Longitude
 
 
-class SegmentWind(StrictModel):
-    """区間の評価に使った風。
-
-    `forecast_at`はその予報の時刻（JSTのローカル時刻、分まで）。風の時別予報が無く出発時点の
-    値を使ったときはNone。`extended`は、予報を追える範囲（レグごとの時刻ビンの本数・予報の期間）の
-    先で、最後に追った時刻の予報をそのまま使った区間。
-    """
-
-    speed_ms: float
-    direction_deg: float
-    forecast_at: str | None = None
-    extended: bool = False
-
-
 @dataclass(frozen=True, slots=True)
 class DensityScoreInput:
     """密度の軸（`axis_definitions.py: averages_density`）の、区間をまたいで平均する値。
@@ -87,11 +73,11 @@ class DensityScoreInput:
 
 
 class RoadClassStretch(StrictModel):
-    """区間の中で、道の区分のレイヤの値が同じまま続く部分。"""
+    """区間の中で、道の区分が同じまま続く部分。"""
 
     distance_km: float
-    # 地図がそのレイヤを塗るのと同じ値（`domain/route_road_classes.py: RoadClassReader.values_at`）。値が無ければNone。
-    value: str | bool | None
+    # 区分の鍵（`domain/route_road_classes.py: SegmentClassReader.values_at`）。どの区分にも入らない道はNone。
+    value: str | None
 
 
 class ElevationStretch(StrictModel):
@@ -120,6 +106,9 @@ class RouteSegmentDetail(StrictModel):
     end_longitude: float
     cumulative_distance_km: float
     distance_km: float
+    # 区間が候補の`edge_ids`のどこにあたるか（`edge_ids[edge_start:edge_end]`が区間の道）。区間の近くの点を引く口へ渡す鍵の範囲。
+    edge_start: int
+    edge_end: int
     # 区間の中の道ごとの両端の標高を、通る順に。道の距離の和は区間の距離と丸めの分だけずれうる。
     elevations: list[ElevationStretch]
     estimated_arrival_time: str | None = None
@@ -133,9 +122,7 @@ class RouteSegmentDetail(StrictModel):
     # 重み>0の公開軸が参照する材料id→値。評価に使っていない軸の材料は出ない。
     material_values: dict[str, float] = Field(default_factory=dict)
     difficulty: float | None = None
-    # この区間の評価に使った風（到達予想の時刻に通るとして引いた予報）。風を持たない生成ではNone。
-    wind: SegmentWind | None = None
-    # 道の区分のレイヤのid→区間の始まりから並べた、値が同じまま続く部分。部分の距離の和は区間の距離と丸めの分だけずれうる。
+    # 分け方（地図の道の線の層のid）と「緑と水」の層のid→区間の始まりから並べた、区分が同じまま続く部分。部分の距離の和は区間の距離と丸めの分だけずれうる。
     road_classes: dict[str, list[RoadClassStretch]]
     # 密度の軸のid→区間をまたいで平均する値。応答には出さない（ビンと候補の値を作るための内部の値）。
     # 区間はエンジンが載せ（`with_density_inputs`）、ビンは`_merge_segment_bin`が中の区間から作る。
@@ -161,18 +148,6 @@ class RouteTurn(StrictModel):
     direction: Literal["left", "right", "uturn"]
     latitude: float
     longitude: float
-
-
-class RoutePoint(StrictModel):
-    """経路の近くの点（停止要因・補給・立ち寄り先・事故）を、経路が通る所に置いたもの。画面が道のりのグラフに印を出す。
-
-    `distance_km`は始点から通る所までの道のりで、区間の`distance_km`を始点から足した値と同じ物差し（`along_route_km`）。
-    `layer`は点の一次属性のid、`properties`はその点の表示軸・名前・事実の値（地図の点の地物と同じ鍵。値の無いものは持たない）。
-    """
-
-    distance_km: float
-    layer: str
-    properties: dict[str, str | int | float | bool]
 
 
 class EvaluatedRoute(StrictModel):
@@ -216,12 +191,10 @@ class EvaluatedRoute(StrictModel):
     # `edge_ids`が空の候補では空のまま。
     node_ids: list[str]
     # 経路が分かれ道で曲がる所（左折・右折・Uターン）を経路の順に。分かれ道の無い点の曲がりと、浅い分岐で
-    # いちばんまっすぐに近い道へ進む所は入れない（`domain/routing.py: turns_along`）。`edge_ids`が空の候補では空のまま。
+    # いちばんまっすぐに近い道へ進む所は入れない（`domain/turn_structure.py: turns_along`）。`edge_ids`が空の候補では空のまま。
     turns: list[RouteTurn]
-    # 経路の近くの点を通る順に（`domain/route_points.py: points_along_route`）。`edge_ids`が空の候補では空のまま。
-    points: list[RoutePoint]
     # 置いた経由地を通る所の始点からの道のり（km）を、置いた順に。区間の始まりの道のりと同じ物差し（`along_route_km`）。
-    # 置いた経由地を知らない経路（区間の乗り換えで組んだもの）では空のまま。
+    # 区間の乗り換えで組んだ経路が置いた経由地を1つでも通らなければ空のまま（何番目が何番目の経由地かを崩さないため、一部だけ抜かない）。
     waypoint_distances_km: list[float]
 
 
@@ -246,16 +219,15 @@ class RouteCandidate(RouteDraft):
     生成の応答は`overall_difficulty`の平均の昇順で候補を並べる。全区間のdifficultyが欠けていればNone。
     """
 
-    # 応答の中で一意のid・種類・最速の印・乗り換えの可否は、並べ終えた最後に`services/route_generator.py: _label`だけが付ける。
-    # エンジンが組み立てる時点（`RouteDraft`）では並びも種類も決まっていない。
+    # 応答の中で一意のid・種類・最速の印は、並べ終えた最後に`services/route_generator.py: _label`だけが付ける。
+    # エンジンが組み立てる時点（`RouteDraft`）では並びも種類も決まっていない。どの候補も区間の乗り換えの元にできる
+    # （合成の要求は終点を目的地、無ければ出発地として確かめる）。
     id: str
+    # 終点が出発地なら`loop`、ほかの所なら`destination`、区間を乗り換えて作った経路は`spliced`。
     kind: RouteKind
-    # 所要時間だけで探した1本（基準線）。経由地の無い目的地の生成で、比べる相手があるときだけ1本に付く。
+    # 所要時間だけで探した1本（基準線）。距離を決めずに出発地と違う所で終わる生成で、比べる相手があるときだけ1本に付く。
     # 画面はこの1本を一覧の「最速」に置き、時間の列の基準にする。
     is_fastest: bool
-    # この候補を元に区間を乗り換えられるか（目的地を持つ生成の候補だけ。合成の要求は目的地を要る:
-    # `api/routers/routes.py: RouteGenerateRequest._resolve_target`）。画面は生成の入力から決め直さずにこれを読む。
-    spliceable: bool
 
 
 def along_route_km(distances_km: Iterable[float]) -> list[float]:
@@ -511,7 +483,7 @@ def merge_road_classes(segments: list[RouteSegmentDetail]) -> dict[str, list[Roa
     """区間の並びの道の区分を、レイヤごとにつなぐ。距離0の部分を落とし、隣どうしで値が同じ部分は1つにまとめる。"""
     merged: dict[str, list[RoadClassStretch]] = {}
     for layer in segments[0].road_classes:
-        runs: list[tuple[str | bool | None, list[float]]] = []
+        runs: list[tuple[str | None, list[float]]] = []
         for stretch in (s for segment in segments for s in segment.road_classes[layer] if s.distance_km > 0):
             if runs and runs[-1][0] == stretch.value:
                 runs[-1][1].append(stretch.distance_km)
@@ -538,10 +510,10 @@ BIN_FIELD_MERGERS: dict[str, Callable[[list[RouteSegmentDetail]], object]] = {
     "end_longitude": lambda segments: segments[-1].end_longitude,
     "cumulative_distance_km": lambda segments: segments[0].cumulative_distance_km,
     "distance_km": lambda segments: _summed_km(s.distance_km for s in segments),
+    "edge_start": lambda segments: segments[0].edge_start,
+    "edge_end": lambda segments: segments[-1].edge_end,
     "elevations": lambda segments: [stretch for segment in segments for stretch in segment.elevations],
     "estimated_arrival_time": lambda segments: segments[0].estimated_arrival_time,
-    # 到達予想と同じく、ビンに入った先頭の区間の値（ビンの中で予報の時刻が変わっても、入るときの風を出す）。
-    "wind": lambda segments: segments[0].wind,
     "difficulty": merge_difficulty,
     "road_classes": merge_road_classes,
     **BIN_DICT_FIELD_MERGERS,

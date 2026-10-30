@@ -10,7 +10,6 @@
   "ids": { "hidakagit": "MDQ6VXNlcjY3MzE4OTE=", "hidakagit-bot": "U_kgDOE_ZrBg" },
   "urls": { "gate": "https://ridecompass-gate.h7g4bin.workers.dev", "form": "https://ride-compass-answer.h7g4bin.workers.dev" },
   "dialogType": "対話作業",
-  "dialogIdleHours": 3,
   "fields": {
     "status": {"name": "ステータス"},
     "run": {"name": "実行の status"},

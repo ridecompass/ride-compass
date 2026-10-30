@@ -1,6 +1,6 @@
 // 調査用デバッグモード。マップ表示イベント・外部API呼び出しをイベント単位でログする。
 // フレームワーク非依存のシングルトンとして持つことで、Reactコンポーネントだけでなく
-// services/配下のfetchラッパーやMapView.tsxのmapイベントハンドラからも直接呼べるようにする。
+// services/配下のfetchラッパーや地図のイベントハンドラからも直接呼べるようにする。
 
 import { readStoredValue, writeStoredValue } from "@/lib/safeStorage";
 

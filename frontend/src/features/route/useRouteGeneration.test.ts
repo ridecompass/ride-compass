@@ -1,115 +1,42 @@
 /**
  * ルート生成（`useRouteGeneration.ts`）——押した「生成」を検証して、いまの条件からbackendへ要求を送り、実行中の進み方・
- * 直近の案内（候補0件の理由・失敗の文言・入力の誤り）・表示中の候補を作った条件といまの条件のずれを返す。結果は
- * 所要時間の短い順に並べて渡し、押した1回の結果の種類（候補・候補0件・失敗）を知らせて、直近の結果（件数・0件の理由・
- * 失敗）を返す。
+ * 入力の誤り・表示中の候補を作った条件といまの条件のずれを返し、案内と生成の結果を消せる。
  *
  * ここで見ないもの:
+ * - 結果の並べ方と知らせ方・候補0件の理由・失敗の文言・目的地の補正・既定の配分で作ったこと → `useRouteGeneration.result.test.ts`
  * - 検証の文言の中身と、作るものが無いときの検証 → `RouteForm/useRouteFormSubmit.test.ts`
  * - 条件の値の持ち方（保存・地点の置き方・重みの揃え方） → `useGenerationConditions.test.ts`
  * - 入力から要求の形を組む細部（どの項目を比べないか・選んでいない出発時刻・キーの並びに依らない比較） →
  *   `generationRequest.test.ts`
- * - 所要時間の並べ方の細部（時間の無い候補の位置） → `routeTabLabel.test.ts`
  * - 要求の投げ方と見回り（ジョブの問い合わせ・打ち切り） → `routeApi.test.ts`
  * - 結果を一覧へ入れる・知らせを画面に出す → `useRouteResults.test.ts`・`app/page.test.tsx`
  *
- * 差し替えたもの: 生成のジョブと軸カタログの応答（網の層）。条件は
- * 本物の`useGenerationConditions`を同じ描画で通して作る（呼び出し側と同じく、補正した目的地はそこへ書き戻る）。
+ * 差し替えたもの: 生成のジョブと軸カタログの応答（網の層。`testing/routeGeneration.ts`）。条件は
+ * 本物の`useGenerationConditions`を同じ描画で通して作る。
  */
-import { act, renderHook, waitFor } from "@testing-library/react";
+import { act } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { heldReplies, onBackend } from "@/testing/backendServer";
-import { TWO_AXIS_CATALOG } from "@/testing/catalogAxes";
-import { serveGenerationJobs } from "@/testing/generationJobs";
-import { makeGenerationConditions, makeRouteCandidate } from "@/testing/routeFixtures";
-import routeGenerateConfig from "@/types/generated/route-generate-config.json";
-import type { Coordinates, GenerationConditions, RouteCandidate } from "@/types/route";
+import { heldReplies } from "@/testing/backendServer";
+import {
+  A,
+  B,
+  ORIGIN,
+  PROPS,
+  T1,
+  placeDestination,
+  renderGeneration,
+  route,
+  serveRouteGeneration,
+  submit,
+  used,
+} from "@/testing/routeGeneration";
 
-import { AVOIDABLE_ROWS, AVOIDANCE_LEVELS, DEFAULT_ROAD_AVOIDANCE } from "./roadAvoidance";
-import { useGenerationConditions } from "./useGenerationConditions";
-import { useRouteGeneration } from "./useRouteGeneration";
-
-const ORIGIN: Coordinates = { latitude: 35.68, longitude: 139.76 };
-const A: Coordinates = { latitude: 35.7, longitude: 139.8 };
-const B: Coordinates = { latitude: 35.71, longitude: 139.81 };
-const T1 = new Date("2026-10-04T09:00:00Z");
-const NO_ROUTES_MESSAGE = "条件に合うルート候補が見つかりませんでした。条件を変えて試してください。";
-
-interface Props {
-  originKnown: boolean;
-  departure: { at: Date; pinned: boolean };
-  assumedSpeedKmh: number;
-  hasRoutes: boolean;
-}
-
-const PROPS: Props = { originKnown: true, departure: { at: T1, pinned: false }, assumedSpeedKmh: 20, hasRoutes: true };
-
-function renderGeneration(props: Partial<Props> = {}) {
-  const onGenerated = vi.fn();
-  const onOutcome = vi.fn();
-  const rendered = renderHook(
-    (p: Props) => {
-      const conditions = useGenerationConditions({ onOriginPlace: () => {} });
-      const generation = useRouteGeneration({ conditions, origin: ORIGIN, ...p, onGenerated, onOutcome });
-      return { conditions, generation };
-    },
-    { initialProps: { ...PROPS, ...props } },
-  );
-  return { ...rendered, onGenerated, onOutcome };
-}
-
-type Rendered = ReturnType<typeof renderGeneration>;
-
-async function submit({ result }: Rendered) {
-  await act(() => result.current.generation.submit());
-}
-
-function route(id: string, seconds: number | null = null): RouteCandidate {
-  return makeRouteCandidate({ id, estimated_duration_seconds: seconds });
-}
-
-/** backendが返す生成の条件（`conditions`）。 */
-function used(overrides: Partial<GenerationConditions> = {}): GenerationConditions {
-  return makeGenerationConditions({
-    latitude: ORIGIN.latitude,
-    longitude: ORIGIN.longitude,
-    distance_km: 30,
-    distance_tolerance_km: routeGenerateConfig.default_distance_tolerance_km,
-    route_preference: { axis_a: 0.5, axis_b: 0.5 },
-    penalty_strength: 1,
-    max_routes: routeGenerateConfig.default_max_routes,
-    start_time: T1.toISOString(),
-    assumed_speed_kmh: 20,
-    generated_at: "2026-10-04T09:00:30Z",
-    ...overrides,
-  });
-}
-
-let jobs: ReturnType<typeof serveGenerationJobs>;
-
-function respond(routes: RouteCandidate[], conditions: GenerationConditions = used(), noCandidatesReason?: string) {
-  jobs.respond(routes, conditions, noCandidatesReason);
-}
-
-function sentRequest() {
-  return jobs.submitted.at(-1)?.body;
-}
-
-let catalog: ReturnType<typeof heldReplies>;
-
-/** 描画のときに投げた軸カタログの取得を届ける。 */
-async function loadCatalog(rendered: Rendered) {
-  await act(() => catalog.answer(0, Response.json(TWO_AXIS_CATALOG)));
-  await waitFor(() => expect(rendered.result.current.conditions.routePreference).toEqual({ axis_a: 0.4, axis_b: 0.6 }));
-}
+let backend: ReturnType<typeof serveRouteGeneration>;
 
 beforeEach(() => {
   window.localStorage.clear();
-  jobs = serveGenerationJobs();
-  // 既定は届かないまま（カタログを見るテストだけが`loadCatalog`で届ける）。
-  catalog = heldReplies();
-  onBackend("GET", "/api/axis-catalog", catalog.reply);
+  backend = serveRouteGeneration();
 });
 
 afterEach(() => {
@@ -122,25 +49,21 @@ describe("送る要求", () => {
     const { conditions } = rendered.result.current;
     act(() => conditions.setDistanceInput("42"));
     act(() => rendered.result.current.conditions.setMaxRoutesInput("3"));
-    act(() => rendered.result.current.conditions.setDestination(A));
+    placeDestination(rendered, A);
     act(() => rendered.result.current.conditions.selectPoint({ role: "waypoint", index: null }));
     act(() => rendered.result.current.conditions.placeAtSelected(B, null));
     act(() => rendered.result.current.conditions.placeAtSelected(A, null));
-    const [{ key: rowKey }] = AVOIDABLE_ROWS;
-    const avoidance = {
-      ...DEFAULT_ROAD_AVOIDANCE,
-      [rowKey]: AVOIDANCE_LEVELS.find(({ key }) => key !== DEFAULT_ROAD_AVOIDANCE[rowKey])!.key,
-    };
+    // 選んでいない行はbackendが今の行へ揃えるので、選んだ段をそのまま送る。
+    const avoidance = { gravel: "exclude", "retired.row": "avoid" } as const;
     act(() => rendered.result.current.conditions.setRoadAvoidance(avoidance));
-    respond([route("r1")]);
+    backend.respond([route("r1")]);
 
     await submit(rendered);
 
-    expect(sentRequest()).toEqual({
+    expect(backend.sentRequest()).toEqual({
       latitude: ORIGIN.latitude,
       longitude: ORIGIN.longitude,
       distance_km: 42,
-      distance_tolerance_km: routeGenerateConfig.default_distance_tolerance_km,
       road_avoidance: avoidance,
       max_routes: 3,
       assumed_speed_kmh: 20,
@@ -153,32 +76,20 @@ describe("送る要求", () => {
   it("全長の目標を外すと距離を送らず、置いた地点は同じに送る", async () => {
     const rendered = renderGeneration();
     act(() => rendered.result.current.conditions.setDistanceTargeted(false));
-    act(() => rendered.result.current.conditions.setDestination(A));
-    respond([route("r1")]);
+    placeDestination(rendered, A);
+    backend.respond([route("r1")]);
 
     await submit(rendered);
 
-    expect(sentRequest()).not.toHaveProperty("distance_km");
-    expect(sentRequest()).toMatchObject({ destination: A });
+    expect(backend.sentRequest()).not.toHaveProperty("distance_km");
+    expect(backend.sentRequest()).toMatchObject({ destination: A });
   });
 });
 
 describe("入力の誤り", () => {
-  it("出発地が仮の地点のままなら送らず、理由を案内に出して、押すたびに失敗として知らせる", async () => {
-    const rendered = renderGeneration({ originKnown: false });
-
-    await submit(rendered);
-    await submit(rendered);
-
-    const { generation } = rendered.result.current;
-    expect(jobs.submitted).toEqual([]);
-    expect(generation.outcome).toEqual({ kind: "failed", message: expect.stringMatching(/^現在地が分かりません/) });
-    expect(rendered.onOutcome.mock.calls).toEqual([["failed"], ["failed"]]);
-  });
-
   it("入力の誤りは、直前の生成の失敗の文言より先に出す", async () => {
     const rendered = renderGeneration();
-    jobs.fail("リクエストに失敗しました");
+    backend.jobs.fail("リクエストに失敗しました");
     await submit(rendered);
 
     rendered.rerender({ ...PROPS, originKnown: false });
@@ -194,7 +105,7 @@ describe("進み方", () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
     const rendered = renderGeneration();
     const job = heldReplies();
-    jobs.answerWith(job.reply);
+    backend.jobs.answerWith(job.reply);
     const flush = () => act(() => vi.advanceTimersByTimeAsync(0));
     let done: Promise<void> = Promise.resolve();
     act(() => {
@@ -229,126 +140,11 @@ describe("進み方", () => {
   });
 });
 
-describe("生成の結果", () => {
-  it("候補を所要時間の短い順に並べ、生成に使われた重みと一緒に渡して新しい結果として知らせる。案内・目的地の補正は出さない", async () => {
-    const rendered = renderGeneration();
-    respond([route("slow", 3600), route("fast", 1800)], used({ route_preference: { axis_a: 1 } }));
-
-    await submit(rendered);
-
-    expect(rendered.onGenerated).toHaveBeenCalledWith([route("fast", 1800), route("slow", 3600)], { axis_a: 1 });
-    expect(rendered.onOutcome).toHaveBeenCalledWith("fresh");
-    expect(rendered.result.current.generation.outcome).toBeNull();
-    expect(rendered.result.current.generation.destinationCorrected).toBe(false);
-  });
-
-  it.each([
-    {
-      label: "理由が届いたらその理由",
-      reason: "目的地へ行ける道が見つかりませんでした",
-      message: "目的地へ行ける道が見つかりませんでした",
-    },
-    { label: "理由が届かなければ決まった文言", reason: undefined, message: NO_ROUTES_MESSAGE },
-  ])("候補0件は、「$label」を案内に出して候補0件として知らせ、失敗とは扱わない", async ({ reason, message }) => {
-    const rendered = renderGeneration();
-    respond([], used(), reason);
-
-    await submit(rendered);
-
-    expect(rendered.onGenerated).toHaveBeenCalledWith([], used().route_preference);
-    expect(rendered.onOutcome).toHaveBeenCalledWith("empty");
-    expect(rendered.result.current.generation.outcome).toEqual({ kind: "empty", message });
-  });
-
-  it("生成が失敗したら文言を失敗として返して知らせ、結果は渡さない。次の生成で消す", async () => {
-    const message = "ルート生成がタイムアウトしました";
-    const rendered = renderGeneration();
-    jobs.fail(message);
-
-    await submit(rendered);
-
-    expect(rendered.result.current.generation.outcome).toEqual({ kind: "failed", message });
-    expect(rendered.onOutcome).toHaveBeenCalledWith("failed");
-    expect(rendered.onGenerated).not.toHaveBeenCalled();
-
-    jobs.keepRunning();
-    act(() => {
-      void rendered.result.current.generation.submit();
-    });
-    expect(rendered.result.current.generation.outcome).toBeNull();
-  });
-
-  it("backendが目的地を補正したら、置いた目的地を補正後の地点へ動かして知らせ、条件が変わったとは扱わない", async () => {
-    const rendered = renderGeneration();
-    act(() => rendered.result.current.conditions.setDestination(A));
-    respond([route("r1")], used({ destination: A, corrected_destination: B }));
-
-    await submit(rendered);
-
-    const { conditions, generation } = rendered.result.current;
-    expect(conditions.destination).toEqual(B);
-    expect(generation.destinationCorrected).toBe(true);
-    expect(generation.conditionsDirty).toBe(false);
-    expect(generation.generatedInput?.destination).toEqual(B);
-  });
-
-  it("生成を待つ間に目的地を置き直したら、補正後の地点で置き直した目的地を上書きせず、条件が変わったと返す", async () => {
-    const rendered = renderGeneration();
-    act(() => rendered.result.current.conditions.setDestination(A));
-    const job = heldReplies();
-    jobs.answerWith(job.reply);
-    let generating: Promise<void> = Promise.resolve();
-    act(() => {
-      generating = rendered.result.current.generation.submit();
-    });
-
-    const moved: Coordinates = { latitude: 35.72, longitude: 139.82 };
-    act(() => rendered.result.current.conditions.setDestination(moved));
-    await act(async () => {
-      await job.answer(
-        0,
-        Response.json({
-          status: "done",
-          result: {
-            routes: [route("r1")],
-            conditions: used({ destination: A, corrected_destination: B }),
-            no_candidates_reason: null,
-          },
-        }),
-      );
-      await generating;
-    });
-
-    const { conditions, generation } = rendered.result.current;
-    expect(conditions.destination).toEqual(moved);
-    expect(generation.generatedInput?.destination).toEqual(B);
-    expect(generation.conditionsDirty).toBe(true);
-  });
-
-  it("上書きした重みは軸カタログが届いていれば送り、届かず送れなかったときだけ既定の配分で作ったと返す", async () => {
-    const rendered = renderGeneration();
-    respond([route("r1")]);
-    await submit(rendered);
-    expect(rendered.result.current.generation.weightsNotApplied).toBe(false);
-
-    act(() => rendered.result.current.conditions.setWeightOverrideEnabled(true));
-    respond([route("r1")]);
-    await submit(rendered);
-    expect(rendered.result.current.generation.weightsNotApplied).toBe(true);
-
-    await loadCatalog(rendered);
-    respond([route("r1")]);
-    await submit(rendered);
-    expect(sentRequest()).toMatchObject({ route_preference: { axis_a: 0.4, axis_b: 0.6 } });
-    expect(rendered.result.current.generation.weightsNotApplied).toBe(false);
-  });
-});
-
 describe("条件のずれ", () => {
   it("作った後に条件を変えると、候補がある間だけずれていると返し、作り直すと消える", async () => {
     const rendered = renderGeneration();
     expect(rendered.result.current.generation.conditionsDirty).toBe(false);
-    respond([route("r1")]);
+    backend.respond([route("r1")]);
     await submit(rendered);
     expect(rendered.result.current.generation.conditionsDirty).toBe(false);
 
@@ -359,7 +155,7 @@ describe("条件のずれ", () => {
     expect(rendered.result.current.generation.conditionsDirty).toBe(false);
 
     rendered.rerender(PROPS);
-    respond([route("r1")]);
+    backend.respond([route("r1")]);
     await submit(rendered);
     expect(rendered.result.current.generation.conditionsDirty).toBe(false);
   });
@@ -368,13 +164,13 @@ describe("条件のずれ", () => {
 describe("消す", () => {
   it("案内を消す。実行中は何もしない", async () => {
     const rendered = renderGeneration();
-    jobs.fail("リクエストに失敗しました");
+    backend.jobs.fail("リクエストに失敗しました");
     await submit(rendered);
 
     act(() => rendered.result.current.generation.clearNotice());
     expect(rendered.result.current.generation.outcome).toBeNull();
 
-    jobs.keepRunning();
+    backend.jobs.keepRunning();
     act(() => {
       void rendered.result.current.generation.submit();
     });
@@ -382,21 +178,13 @@ describe("消す", () => {
     expect(rendered.result.current.generation.running).toBe(true);
   });
 
-  it("入力の誤りの案内も消す", async () => {
-    const rendered = renderGeneration({ originKnown: false });
-    await submit(rendered);
-
-    act(() => rendered.result.current.generation.clearNotice());
-    expect(rendered.result.current.generation.outcome).toBeNull();
-  });
-
   it("生成の結果（作った条件・補正・既定の配分・案内）を消す", async () => {
     const rendered = renderGeneration();
     act(() => rendered.result.current.conditions.setWeightOverrideEnabled(true));
     act(() => rendered.result.current.conditions.setDestination(A));
-    respond([route("r1")], used({ corrected_destination: B }));
+    backend.respond([route("r1")], used({ corrected_destination: B }));
     await submit(rendered);
-    jobs.fail("リクエストに失敗しました");
+    backend.jobs.fail("リクエストに失敗しました");
     await submit(rendered);
 
     act(() => rendered.result.current.generation.clear());

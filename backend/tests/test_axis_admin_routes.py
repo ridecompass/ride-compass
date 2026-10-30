@@ -14,7 +14,7 @@
 ここで見るのは、口ごとの受け渡し（無い軸・断られた書き込みを状態コードへ変えること）と、ルーターが自分で持つ
 検証（URLと本文の軸の一致）。下書きの道の点数は、同じ材料で組んだ配信のレンズの値と突き合わせる。
 
-**ルーターが名前空間に持つ外向きの参照は差し替える**——軸の集合。注入するサービス（軸の書き込み・
+**軸の集合は差し替える**（`tests/axis_system_fixture.py: replaced_axis_definitions`）。注入するサービス（軸の書き込み・
 分布の計算（DB）・下書きのレンズが読むタイルの材料）は依存の差し替えで与える。どれも読むだけなので、応答を差し替えるだけで呼ばれ方は見ない。
 材料カタログは本物を通し、材料は性質ごとに本物のカタログから選ぶ。
 """
@@ -27,27 +27,24 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.api.routers import axis_admin
-from app.domain.axis_definitions import AXIS_DEFINITIONS, REQUEST_DYNAMIC_MATERIAL_IDS, copy_axis_definitions
+from app.domain.axis_definitions import AXIS_DEFINITIONS
 from app.domain.dynamic_way_values import FeatureMaterials, WayValueQuery
 from app.domain.material_catalog import MATERIAL_CATALOG
 from app.domain.region import EDGE_UNIT_MIN_ZOOM
 from app.domain.value_distribution import ValueDistribution
 from app.services.dedicated_way_values import (
     DEDICATED_WAY_VALUE_SERVICES,
-    AxisWayValueLens,
     draft_axis_way_value_lens,
     services_by_material,
 )
 from tests.admin_auth import AUTH_HEADERS
 from tests.axis_system_fixture import replaced_axis_definitions
-
-
-def _static_materials(dtype: str) -> list[str]:
-    return [m for m, spec in MATERIAL_CATALOG.items() if spec.dtype == dtype and m not in REQUEST_DYNAMIC_MATERIAL_IDS]
+from tests.material_fixture import stored_materials
+from tests.way_value_lens_fixture import FakeFeatureMaterials, axis_way_value_lens
 
 
 BASE = "/api/admin/axis-definitions"
-NUM_A, NUM_B = _static_materials("numeric")[:2]
+NUM_A = stored_materials("numeric")[0]
 REFERENCED_AXIS = "ref"
 
 
@@ -131,12 +128,14 @@ def preview():
 
 
 @pytest.fixture
-def seams(monkeypatch):
-    monkeypatch.setattr(axis_admin, "AXIS_DEFINITIONS", {REFERENCED_AXIS: stored(REFERENCED_AXIS)})
+def referenced_axis():
+    """管理APIが照らす軸の集合（起動時にDBから読んだもの）は、ほかの軸が参照する軸1本だけ。"""
+    with replaced_axis_definitions({REFERENCED_AXIS: stored(REFERENCED_AXIS)}):
+        yield
 
 
 @pytest.fixture
-def app(registry, preview, seams):
+def app(registry, preview, referenced_axis):
     app = FastAPI()
     app.include_router(axis_admin.router)
     app.dependency_overrides[axis_admin.get_axis_registry_admin_service] = lambda: registry
@@ -268,7 +267,7 @@ class TestPreviews:
         }
 
     def test_scores_of_a_draft(self, client):
-        shape = {**linear_shape(NUM_A), "breakpoints": [[0, 0], [10, 100]]}
+        shape = linear_shape(NUM_A)
 
         body = client.post(BASE + "/preview-scores", json={"shape": shape, "xs": [2.5, 20.0]}).json()
 
@@ -276,7 +275,7 @@ class TestPreviews:
 
     def test_calibration_of_a_draft_answers_its_map_bands_and_whether_it_averages_density(self, client):
         """段の境界は下書きの折れ点から導いたもの。密度の軸の画面は、0点の端を動かさない。"""
-        additive = next(m for m in _static_materials("numeric") if MATERIAL_CATALOG[m].additive)
+        additive = next(m for m in stored_materials("numeric") if MATERIAL_CATALOG[m].additive)
         definition = payload(shape={**linear_shape(additive), "breakpoints": [[0, 0], [8, 100]]})
 
         body = client.post(BASE + "/preview-calibration", json={"definition": definition}).json()
@@ -285,21 +284,8 @@ class TestPreviews:
         assert body["map_paint"]["thresholds"] == [100.0]
 
 
-class FakeFeatureMaterials:
-    """タイルの材料を読む口（`services/feature_materials.py: FeatureMaterialService`）の代役。"""
-
-    def __init__(self, materials: FeatureMaterials):
-        self._materials = materials
-
-    async def materials(self, z, x, y):
-        return self._materials
-
-    async def segments(self, z, x, y):
-        return None
-
-
 #: タイルの材料から読む数値の材料（配信のサービスが配る材料を除く）。
-TILE_A, TILE_B = [m for m in _static_materials("numeric") if m not in services_by_material(DEDICATED_WAY_VALUE_SERVICES)][:2]
+TILE_A, TILE_B = [m for m in stored_materials("numeric") if m not in services_by_material(DEDICATED_WAY_VALUE_SERVICES)][:2]
 TILE = {"z": EDGE_UNIT_MIN_ZOOM, "x": 7275, "y": 3225}
 #: 軸`a`が読む材料の、タイルの道ごとの値。
 TILE_MATERIALS = FeatureMaterials(feature_keys=("1", "2"), columns={TILE_A: np.array([2.0, 5.0])})
@@ -314,7 +300,7 @@ def way_axes(app):
         lambda axis_id, shape: draft_axis_way_value_lens(axis_id, shape, materials, {}.__getitem__))
     with replaced_axis_definitions(axes):
         yield lambda: asyncio.run(
-            AxisWayValueLens("a", copy_axis_definitions(), materials, {}.__getitem__).values(
+            axis_way_value_lens("a", materials).values(
                 TILE["z"], TILE["x"], TILE["y"], WayValueQuery(at=None, bearing_deg=None, speed_kmh=None)))
 
 
@@ -324,7 +310,6 @@ def preview_body(shape, axis_id="a", **fields):
 
 # 較正の地図は、保存されている折れ点では地図の配信と同じ色で塗り、下書きを動かすとその折れ点の色へ変わる。下書きを
 # 問い合わせても、公開中の軸で塗る利用者の地図は変わらない。
-@pytest.mark.usefixtures("seams")
 class TestWayValuesPreview:
     def test_published_breakpoints_answer_what_the_map_serves(self, client, way_axes):
         served = way_axes()

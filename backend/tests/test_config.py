@@ -10,11 +10,11 @@ from app.config import Settings
 # （init値が.env/環境変数より優先される）。
 
 
-def test_cors_allowed_origins_list_splits_comma_separated_value():
-    result = Settings(cors_allowed_origins="http://a.example.com,http://b.example.com").cors_allowed_origins_list
-
-    assert result == ["http://a.example.com", "http://b.example.com"]
-
-
 def test_lulc_raster_paths_list_drops_empty_entries():
     assert Settings(lulc_raster_paths="a.tif,,b.tif").lulc_raster_paths_list == ["a.tif", "b.tif"]
+
+
+def test_cors_allowed_origins_list_ignores_spaces_and_empty_entries():
+    # 空白の付いた origin は要求の Origin と一致せず、そのフロントからの要求が全部 CORS で断られる。
+    settings = Settings(cors_allowed_origins="https://a.example, https://b.example,")
+    assert settings.cors_allowed_origins_list == ["https://a.example", "https://b.example"]

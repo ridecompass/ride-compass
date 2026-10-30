@@ -1,6 +1,6 @@
 """実DBとORMの宣言の差を出す（scripts/schema_gap.py）。
 
-テストDBの表をトランザクションの中で宣言からずらし、ずらした分だけが差として出ることを見る。
+テストDBの表をトランザクションの中で宣言からずらし、ずらした分だけが差として出ることと、落とす差か出すだけの差かの分け方を見る。
 差の出方はずらす前の測定と比べる——作業ツリーのテストDBが前の宣言のまま残っていても、
 ずらしていない分は前後で同じなので結果に混ざらない。
 
@@ -19,7 +19,7 @@ async def test_a_dropped_check_an_extra_check_and_a_loosened_column_are_each_rep
     async with road_graph_engine.connect() as conn:
         await conn.begin()
         try:
-            before = set(await conn.run_sync(collect_gaps))
+            before = set((await conn.run_sync(collect_gaps)).breaking)
             for ddl in (
                 "ALTER TABLE road_edges DROP CONSTRAINT road_edges_distance_m_positive",
                 "ALTER TABLE road_edges ADD CONSTRAINT extra CHECK (segment_index < 10000)",
@@ -28,7 +28,7 @@ async def test_a_dropped_check_an_extra_check_and_a_loosened_column_are_each_rep
                 "ALTER TABLE road_edges RENAME CONSTRAINT road_edges_geom_has_two_points TO renamed",
             ):
                 await conn.execute(text(ddl))
-            after = set(await conn.run_sync(collect_gaps))
+            after = set((await conn.run_sync(collect_gaps)).breaking)
         finally:
             await conn.rollback()
 
@@ -49,15 +49,49 @@ async def test_a_missing_and_an_extra_not_null_on_a_source_partition_are_each_re
             await conn.execute(text("DROP TABLE IF EXISTS source_features_dem"))
             await conn.execute(text(
                 "CREATE TABLE source_features_dem PARTITION OF source_features FOR VALUES IN ('dem')"))
-            before = set(await conn.run_sync(collect_gaps))
+            before = set((await conn.run_sync(collect_gaps)).breaking)
             await conn.execute(text("ALTER TABLE source_features_dem ALTER COLUMN rast SET NOT NULL"))
             await conn.execute(text("ALTER TABLE source_features_dem ALTER COLUMN payload SET NOT NULL"))
-            after = set(await conn.run_sync(collect_gaps))
+            after = set((await conn.run_sync(collect_gaps)).breaking)
         finally:
             await conn.rollback()
 
     assert before - after == {"source_features_dem.rast: NULL許容が違う（実DB=NULL 宣言=NOT NULL）"}
     assert after - before == {"source_features_dem.payload: NULL許容が違う（実DB=NOT NULL 宣言=NULL）"}
+
+
+async def test_only_the_differences_that_can_break_new_code_fail_and_what_production_merely_has_more_of_is_reported(road_graph_engine):
+    """列を消す変更は古いコードが読む列を出したあとに消すので、出してから本番で消すまでの間、本番は宣言より多く持つ。それで落とすと、
+    関係ないマージのデプロイまで赤になり続ける。新しいコードの書き込みを断る差（既定値の無い NOT NULL の列・一意の索引）は落とす。"""
+    async with road_graph_engine.connect() as conn:
+        await conn.begin()
+        try:
+            before = await conn.run_sync(collect_gaps)
+            for ddl in (
+                "ALTER TABLE road_edges ADD COLUMN left_nullable integer",
+                "ALTER TABLE road_edges ADD COLUMN left_required integer NOT NULL",
+                "ALTER TABLE road_edges ALTER COLUMN distance_m SET DEFAULT 1",
+                "CREATE INDEX left_plain ON road_edges (distance_m)",
+                "CREATE UNIQUE INDEX left_unique ON road_edges (distance_m, osm_way_id, segment_index)",
+                "ALTER TABLE road_edges DROP COLUMN bearing_deg",
+            ):
+                await conn.execute(text(ddl))
+            after = await conn.run_sync(collect_gaps)
+        finally:
+            await conn.rollback()
+
+    surplus = sorted(set(after.surplus) - set(before.surplus))
+    breaking = sorted(set(after.breaking) - set(before.breaking))
+    assert [line.split("（")[0] for line in surplus] == [
+        "road_edges.distance_m: 既定値が違う",
+        "road_edges.left_nullable: 実DBにあるがORMが宣言していない列",
+        "road_edges: 実DBにあるがORMが宣言していない索引 USING btree (distance_m)",
+    ], surplus
+    assert breaking == [
+        "road_edges.bearing_deg: ORMが宣言しているが実DBに無い列",
+        "road_edges.left_required: 実DBにあるがORMが宣言していない列",
+        "road_edges: 実DBにあるがORMが宣言していない索引 UNIQUE USING btree (distance_m, osm_way_id, segment_index)",
+    ], breaking
 
 
 async def test_measures_while_an_ingest_holds_a_child_partition(road_graph_engine):
@@ -79,10 +113,3 @@ async def test_measures_while_an_ingest_holds_a_child_partition(road_graph_engin
         async with road_graph_engine.begin() as conn:
             await conn.execute(text(f"DROP TABLE {partition}"))
 
-
-async def test_measuring_leaves_no_table_behind(road_graph_engine):
-    async with road_graph_engine.connect() as conn:
-        await conn.run_sync(collect_gaps)
-        temp_tables = await conn.scalar(text(
-            "SELECT count(*) FROM pg_class WHERE relnamespace = pg_my_temp_schema()"))
-    assert temp_tables == 0

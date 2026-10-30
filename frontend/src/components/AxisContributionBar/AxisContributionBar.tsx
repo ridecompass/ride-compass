@@ -15,7 +15,6 @@ import {
   legendIconClass,
   stackBarClass,
 } from "@/components/ui/AxisLegend/axisLegend";
-import { cn } from "@/lib/cn";
 
 interface AxisContributionBarProps {
   /** 帯に出す軸（順序と名前の正本）。寄与が無い軸はここで除くので、呼ぶ側で絞らなくてよい。 */
@@ -29,6 +28,9 @@ interface AxisContributionBarProps {
   legendAxes?: readonly CatalogAxis[];
   /** 凡例のチップを押して開く、その軸の詳細。nullを返した軸は凡例から落ちる。 */
   renderDetail: (axis: CatalogAxis) => ReactNode | null;
+  /** 軸のチップの後ろに並べるチップ（`li`。土地被覆等、同じ塊で読む値）。寄与が無いと帯ごと描かないので、そのときは
+   * 呼ぶ側が出す。 */
+  extraChips?: ReactNode;
 }
 
 const FALLBACK_COLOR = palette.semantic.neutral;
@@ -53,6 +55,7 @@ export default function AxisContributionBar({
   axisColors,
   legendAxes,
   renderDetail,
+  extraChips,
 }: AxisContributionBarProps) {
   if (!hasAnyContribution(axes, contributions)) return null;
   const rows = axes.filter((axis) => hasContribution(contributions, axis.axisId));
@@ -85,7 +88,7 @@ export default function AxisContributionBar({
             return (
               <li key={axis.axisId} className={legendChipClass}>
                 <InfoPopover
-                  triggerClassName={cn(legendChipBodyClass, "cursor-pointer [&>svg]:text-[var(--color-muted)]")}
+                  triggerClassName={`${legendChipBodyClass} cursor-pointer [&>svg]:text-[var(--color-muted)]`}
                   triggerAriaLabel={`${axis.label}の詳細`}
                   // 押せることを(i)で示す（輪郭の濃さだけでは伝わらない）。
                   triggerContent={
@@ -107,6 +110,7 @@ export default function AxisContributionBar({
               </li>
             );
           })}
+        {extraChips}
       </ul>
     </div>
   );

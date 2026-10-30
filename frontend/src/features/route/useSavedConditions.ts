@@ -38,9 +38,7 @@ export function useSavedConditions({
   const [saved, setSaved] = useStoredState<SavedCondition[]>(SAVED_CONDITIONS_STORAGE_KEY, [], {
     serialize: JSON.stringify,
     deserialize: readSavedConditions,
-    rewrite: true,
   });
-
   // 出発地は保存のときに固定するかを選ぶので、いまの条件には持たない。
   const { snapshot: current, restore } = conditions;
   const suggestedName = suggestedConditionName(current);

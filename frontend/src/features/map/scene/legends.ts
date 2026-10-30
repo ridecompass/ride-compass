@@ -6,15 +6,16 @@
  */
 import type { LegendEntry } from "@/lib/mapDisplay/legendFilter";
 import { NO_DATA_LEGEND_BAND } from "@/lib/mapDisplay/mapColorLegend";
-import { ROAD_OTHER_KEY, ROAD_TRACKS, roadTrackHasMissing, roadTrackRows } from "@/lib/mapDisplay/roadTracks";
+import { ROAD_OTHER_KEY, roadTrackRows } from "@/lib/mapDisplay/roadTracks";
+import type { RoadMapLayerView } from "@/types/route";
 
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import palette from "@/types/generated/palette.json";
 import weatherScales from "@/types/generated/weather-scales.json";
 
 import { pointAxisKey } from "@/features/map/scene/groups/points";
-import { POINT_LAYERS, pointCategoryRadiusPx, type PointAxis } from "@/lib/mapDisplay/pointLayers";
-import { DISASTER_ELEMENTS, DISASTER_LAYER_ID, type DisasterElement } from "@/features/map/scene/groups/weather";
+import { POINT_LAYERS, pointIconScales, type PointAxis } from "@/lib/mapDisplay/pointLayers";
+import { DISASTER_ELEMENTS, DISASTER_LAYER_ID, type DisasterElement } from "@/features/map/layers/dynamicWeather";
 
 /** 凡例1本ぶん。1つのチップが複数の軸を持つことがある（事故は当事者と重大度）。 */
 type SceneLegendAxis = {
@@ -27,36 +28,39 @@ type SceneLegendAxis = {
   readonly entries: readonly LegendEntry[];
 };
 
-export function roadLegendAxes(): readonly SceneLegendAxis[] {
-  return ROAD_TRACKS.map((track) => ({
-    layerId: track.attr_id,
-    axisId: track.attr_id,
-    // 見出しはチップ名で足りる（軸が1本しかない）。名前の正本は源泉。
+/** 道の線の層ごとの凡例。鍵は層の鍵（チップのidと、隠した行を覚えておく鍵を兼ねる）。 */
+export function roadLegendAxes(layers: readonly RoadMapLayerView[]): readonly SceneLegendAxis[] {
+  return layers.map((layer) => ({
+    layerId: layer.id,
+    axisId: layer.id,
+    // 見出しはチップ名で足りる（軸が1本しかない）。
     label: "",
-    entries: roadTrackRows(track).map((row) => ({ ...row, line: true as const })),
+    entries: roadTrackRows(layer).map((row) => ({ ...row, line: true as const })),
   }));
 }
 
-/** 最初に凡例で隠しておく行。源泉が`hideMissingRows`を宣言した道の線の、値の無い道の行（データなし、タグの不在も
- * 確定した値として載る属性では該当なし）。 */
-export function initiallyHiddenLegendKeys(): Readonly<Record<string, readonly string[]>> {
-  const hiding = new Set<string>(mapDisplay.layers.filter((layer) => layer.hideMissingRows).map((layer) => layer.id));
+/** 最初に凡例で隠しておく行。区分の外の道を隠す層（`hide_missing_rows`）の、値の無い道の行（データなしを分ける層では
+ * データなし、分けない層では該当なし）。 */
+export function initiallyHiddenLegendKeys(
+  layers: readonly RoadMapLayerView[],
+): Readonly<Record<string, readonly string[]>> {
   return Object.fromEntries(
-    ROAD_TRACKS.filter((track) => hiding.has(track.attr_id)).map((track) => [
-      track.attr_id,
-      [roadTrackHasMissing(track) ? NO_DATA_LEGEND_BAND.key : ROAD_OTHER_KEY],
-    ]),
+    layers
+      .filter((layer) => layer.hide_missing_rows)
+      .map((layer) => [layer.id, [layer.has_no_data ? NO_DATA_LEGEND_BAND.key : ROAD_OTHER_KEY]]),
   );
 }
 
-/** 点の凡例。**色見本を出すのは、地図の色式が読む先頭の軸だけ**——2本目以降（重大度）は
- * 地図では大きさだけで表れるので、見本も色を持たない灰で、地図と同じ大きさにする。絵記号で描く行は見本も絵記号にする。 */
+/** 点の凡例。**色見本を出すのは、地図の色式が読む先頭の軸だけ**で、見本は地図と同じ絵にする。2本目以降（重大度）は
+ * 地図では大きさだけで表れるので、見本は先頭の軸の最初の行の絵の外形を、色を持たない灰で、地図の絵と同じ大きさにする。 */
 function pointAxisLegend(layer: (typeof POINT_LAYERS)[number], axis: PointAxis, index: number): SceneLegendAxis {
+  const scales = pointIconScales(axis);
+  const shape = layer.display_axes[0].categories[0];
   return {
     layerId: layer.attr_id,
     axisId: pointAxisKey(layer, axis),
     label: axis.label,
-    entries: axis.categories.map((category) =>
+    entries: axis.categories.map((category, i) =>
       index === 0 && "color" in category
         ? {
             key: category.key,
@@ -70,7 +74,8 @@ function pointAxisLegend(layer: (typeof POINT_LAYERS)[number], axis: PointAxis, 
             label: category.label,
             description: category.description,
             color: palette.semantic.legend_size_only,
-            diameterPx: 2 * pointCategoryRadiusPx(category),
+            diameterPx: mapDisplay.point.iconSizePx * scales[i],
+            ...("glyph" in shape ? { glyph: shape.glyph } : {}),
           },
     ),
   };

@@ -6,7 +6,7 @@
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Annotated, TypeGuard
+from typing import Annotated
 
 from pydantic import Field
 from pydantic_core import PydanticCustomError
@@ -19,10 +19,10 @@ from app.domain.route_preference import RoutePreference
 # 長時間止まりうる。30km規模までの検証実績に余裕を見た値。経由地・目的地は出発地からこの
 # 距離の中に置く。
 MAX_ROUTE_DISTANCE_KM = 100
-# 目標距離からの許容差（km）。画面はこの既定値をそのまま送る——片方だけ変えると、画面の
-# 見込みと探索の範囲がずれる。
-DEFAULT_DISTANCE_TOLERANCE_KM = 5.0
-MAX_DISTANCE_TOLERANCE_KM = 50.0
+# 都心の出発地でも、同時に動く生成の上限の本数がそろって探索範囲を読める全長の目標（km）。探索範囲の区間数は目標の
+# 2乗で増え、これを超える目標はほかの生成と重なると`services/graph_service.py: SearchMemory`の予算を超えて混み合いで
+# 断られうる。受け付けは`MAX_ROUTE_DISTANCE_KM`まで残し、画面の全長の目標の説明がこの値を出す。
+BUSY_SAFE_DISTANCE_KM = 60
 # 経由地の数の上限。経由地ごとにレグの探索が1本増える。
 MAX_WAYPOINTS = 8
 # 区間の乗り換えで受け取るEdge idの上限。1本の候補が数百Edgeで、区間を差し替えても
@@ -41,6 +41,8 @@ MAX_ASSUMED_SPEED_KMH = 60.0
 # 想定速度の値の範囲。速度を受けるどの入口（ルート生成・地図の配信・区間インスペクタ）もこの型で書く。範囲の検査は
 # NaN・無限大も断る。
 AssumedSpeedKmh = Annotated[float, Field(ge=MIN_ASSUMED_SPEED_KMH, le=MAX_ASSUMED_SPEED_KMH)]
+
+
 def request_error(message: str) -> PydanticCustomError:
     """要求の誤り。文は画面の結果欄へそのまま出るので、利用者が読める日本語で書く
     （`ValueError`は「Value error, 」の前置きが付いて返る）。"""
@@ -63,9 +65,14 @@ def check_points_within_reach(farthest_km: float) -> None:
         raise request_error(f"経由地・目的地は出発地から{MAX_ROUTE_DISTANCE_KM}km以内に置いてください。")
 
 
+#: 距離も経由地も無く、終点が出発地と同じ要求（目的地を置かない・目的地が出発地へ寄る）を断る文。目的地が出発地へ寄るかは
+#: 道路網に寄せるまで分からないので、要求の検証（`nothing_to_generate_error`）が断れなかった分は生成が同じ文で断る。
+NOTHING_TO_GENERATE = "距離か、経由地・目的地を指定してください。"
+
+
 def nothing_to_generate_error() -> PydanticCustomError:
     """出発地だけで、距離も経由地・目的地も無い要求の誤り。"""
-    return request_error("距離か、経由地・目的地を指定してください。")
+    return request_error(NOTHING_TO_GENERATE)
 
 
 @dataclass(frozen=True)
@@ -96,17 +103,13 @@ class NoDistanceTarget:
     points: FixedPoints
 
 
-def spliceable(destination: Coordinates | None) -> TypeGuard[Coordinates]:
-    """目的地`destination`へ向かう候補が、走る途中で別の候補の区間へ乗り換えられるか。目的地を持つ候補だけが乗り換えられる。"""
-    # 周回は起点へ戻る制約があり、途中で別候補へ乗り換えると戻れる保証が無くなる。
-    return destination is not None
-
-
 @dataclass(frozen=True)
 class SplicedTarget:
-    """区間を差し替えて組み立てた経路を、探索せずに評価する。乗り換えられる候補（`spliceable`）だけが対象。"""
+    """区間を差し替えて組み立てた経路を、探索せずに評価する。経路は出発地から始まり、終点（目的地、無ければ出発地）で
+    終わらなければならない（周回の候補どうしを乗り換えた経路も、出発地へ戻ることを評価の前に確かめる）。置いた経由地は
+    探索に使わず、組んだ経路の中で通る所を求めるためだけに持つ。"""
 
-    destination: Coordinates
+    points: FixedPoints
     edge_ids: tuple[str, *tuple[str, ...]]
 
 
@@ -121,8 +124,6 @@ class RequestedConditions:
     assemble_route_generation_setup`）が決める。"""
 
     preference_override: RoutePreference | None
-    penalty_strength: float | None
-    max_average_grade_percent: float | None
-    # 道のレイヤの行→避け方の段（鍵は`domain/road_avoidance.py: AVOIDABLE_ROWS`と同じ集合）。
+    # 避け方を選べる行→段（`domain/road_avoidance.py: resolve_road_avoidance`が今の行へ揃える）。
     road_avoidance: Mapping[str, AvoidanceLevel]
     assumed_speed_kmh: float

@@ -7,12 +7,39 @@ import type { Map as MapLibreMap, Marker } from "maplibre-gl";
 
 import type { Coordinates, LocationSource, PinRole, PointTarget, SelectedRouteSegment } from "@/types/route";
 import { originMarkColor, PIN_MARK_BACKGROUND, PinMark, pinMarkName } from "@/components/PinMark/PinMark";
-import { SelectedSpotIcon } from "@/components/ui/icons/lucideIcons";
 import palette from "@/types/generated/palette.json";
 import { runWhenStyleReady } from "@/features/map/layers/mapStyleOps";
 
 /** 出発地点を見せる倍率（地図を作ったとき・出発地点が変わったとき）。 */
 export const ORIGIN_ZOOM = 13;
+
+/** 選んだ地点の印の高さ（px）。印は下端の先で地点を指す。 */
+export const SELECTED_POINT_PIN_HEIGHT_PX = 40;
+
+// 選んだ地点の印の描画の座標。先（地点）を原点に置き、白い縁の太さぶんを枠に含める（先の丸い縁が枠の下端に来る）。
+const SELECTED_POINT_PIN_VIEW = { x: -30, y: -82, width: 60, height: 85 } as const;
+
+/** 選んだ地点の印: 白い縁と内の白い丸を持つ、塗りのしずく形。地図の線の色・現在地の青と重ならない色で塗る。 */
+function SelectedPointPin() {
+  const { x, y, width, height } = SELECTED_POINT_PIN_VIEW;
+  return (
+    <svg
+      width={Math.round((SELECTED_POINT_PIN_HEIGHT_PX * width) / height)}
+      height={SELECTED_POINT_PIN_HEIGHT_PX}
+      viewBox={`${x} ${y} ${width} ${height}`}
+      aria-hidden="true"
+    >
+      <path
+        d="M0 0 C-6 -16 -26 -30 -26 -52 A26 26 0 1 1 26 -52 C26 -30 6 -16 0 0Z"
+        fill={palette.semantic.selected_point}
+        stroke={palette.semantic.pin_face}
+        strokeWidth={6}
+        strokeLinejoin="round"
+      />
+      <circle cx={0} cy={-52} r={10} fill={palette.semantic.pin_face} />
+    </svg>
+  );
+}
 
 // 地点のピンの器: 白い丸（`PIN_MARK_BACKGROUND`）。出発地・経由地・目的地で同じ形にし、中の記号（PinMark）をReactでportalして
 // 描く。左右対称なので、アンカーは地点＝中心（"center"）。影はどの配色の上でも輪郭が消えないため、touch-action:noneは指の起点が
@@ -24,7 +51,7 @@ function createPinElement(role: PinRole, label?: string): HTMLDivElement {
   el.style.cssText =
     `width:32px; height:32px; border-radius:50%; background:${PIN_MARK_BACKGROUND}; display:flex; ` +
     "align-items:center; justify-content:center; box-shadow:0 1px 4px rgba(0,0,0,0.4); " +
-    "touch-action:none; cursor:grab;";
+    "touch-action:none;";
   return el;
 }
 
@@ -34,33 +61,41 @@ function addPointMarker(
   point: Coordinates,
   element: HTMLDivElement,
   editable: boolean,
-  handlers: { onMove: (coordinates: Coordinates) => void; onClick: () => void },
+  handlers: { onMove: (coordinates: Coordinates) => void; onPress: () => boolean },
 ): Marker {
   const marker = new maplibregl.Marker({ element, anchor: "center", draggable: editable })
     .setLngLat([point.longitude, point.latitude])
     .addTo(map);
+  element.style.cursor = pinCursor(editable);
   marker.on("dragend", () => {
     const lngLat = marker.getLngLat();
     handlers.onMove({ latitude: lngLat.lat, longitude: lngLat.lng });
   });
-  bindDragAwareClick(marker, element, handlers.onClick);
+  bindDragAwareClick(marker, element, handlers.onPress);
   return marker;
+}
+
+/** 動かせる間はつかめる形。動かせない間、ピンは押せる物に数えない（位置と呼び名以上の情報を持たない）ので押せる形にしない。 */
+function pinCursor(editable: boolean): string {
+  return editable ? "grab" : "default";
 }
 
 // マーカーをドラッグした直後は、同じ操作の終わりにclickも飛ぶ。つかんで動かしただけで
 // 選び直しや小窓が起きないよう、ドラッグ由来の1回を読み飛ばす。
-function bindDragAwareClick(marker: maplibregl.Marker, element: HTMLElement, onClick: () => void): void {
+/** 印を押したとき。`onClick`が押しを受けた（true）ときと、つかんで動かした直後の押しは地図へ通さない。受けなければ地図へ通し、
+ * 印の下の物を地図の押しとして開かせる（印は地図の器の中にあり、止めなければ地図の押しになる）。 */
+function bindDragAwareClick(marker: maplibregl.Marker, element: HTMLElement, onClick: () => boolean): void {
   let dragged = false;
   marker.on("dragstart", () => {
     dragged = true;
   });
   element.addEventListener("click", (event) => {
-    event.stopPropagation();
     if (dragged) {
       dragged = false;
+      event.stopPropagation();
       return;
     }
-    onClick();
+    if (onClick()) event.stopPropagation();
   });
 }
 
@@ -73,11 +108,13 @@ interface MapMarkersInputs {
   selectedRouteSegment: SelectedRouteSegment | null;
   /** 地点をつかんで動かせるか。falseの間、印はつかめない（押すことはできる）。 */
   pointsEditable: boolean;
+  /** 走行中のロックの間か。ロックの間は、選んでいる区間の印を押しても選びを外さない。 */
+  tapsLocked: boolean;
   onOriginMove: (coordinates: Coordinates) => void;
   onWaypointMove: (index: number, coordinates: Coordinates) => void;
   onDestinationMove: (coordinates: Coordinates) => void;
-  /** 地点の印を押したとき（押した地点とその位置）。 */
-  onPointPress: (target: PointTarget, at: Coordinates) => void;
+  /** 動かせる間に地点の印を押したとき（その地点を選ぶ）。動かせない間の押しは地図へ通す。 */
+  onPointSelect: (target: PointTarget) => void;
   onRouteSegmentSelect: (selection: SelectedRouteSegment | null) => void;
 }
 
@@ -108,7 +145,7 @@ export function useMapMarkers(
   // 経由地・目的地の印の器（Markerの要素）。中身の印はportalで描く。
   const [waypointMarks, setWaypointMarks] = useState<HTMLDivElement[]>([]);
   const [destinationMark, setDestinationMark] = useState<HTMLDivElement | null>(null);
-  // 選んでいる区間の印の器（Markerの要素）。中身はアイコン集の形をportalで描く。
+  // 選んでいる区間の印の器（Markerの要素）。中身の印はportalで描く。
   const [selectedSegmentMark, setSelectedSegmentMark] = useState<HTMLDivElement | null>(null);
   // 印の操作（作ったときに一度だけ結ぶ）が、いまのpropsを読むための参照。
   const latestProps = { pointsEditable, location, waypoints, destination, ...handlers };
@@ -116,6 +153,12 @@ export function useMapMarkers(
   useEffect(() => {
     latest.current = latestProps;
   });
+  // 印を押したとき。動かせる間だけ受けてその地点を選び、受けなければ地図へ通す。
+  const pressPoint = (target: PointTarget) => {
+    if (!latest.current.pointsEditable) return false;
+    latest.current.onPointSelect(target);
+    return true;
+  };
   // 出発地点をドラッグで動かした直後の1回だけ、位置の更新でカメラを動かさない（その地点は既に画面に見えている）。
   const skipNextFlyToRef = useRef(false);
 
@@ -155,7 +198,7 @@ export function useMapMarkers(
             skipNextFlyToRef.current = true;
             latest.current.onOriginMove(coordinates);
           },
-          onClick: () => latest.current.onPointPress({ role: "origin" }, latest.current.location),
+          onPress: () => pressPoint({ role: "origin" }),
         });
         appliedMarkerSourceRef.current = locationSource;
       }
@@ -175,8 +218,7 @@ export function useMapMarkers(
       waypointMarkersRef.current = waypoints.map((point, index) =>
         addPointMarker(map, point, elements[index], latest.current.pointsEditable, {
           onMove: (coordinates) => latest.current.onWaypointMove(index, coordinates),
-          onClick: () =>
-            latest.current.onPointPress({ role: "waypoint", index }, latest.current.waypoints[index] ?? point),
+          onPress: () => pressPoint({ role: "waypoint", index }),
         }),
       );
       setWaypointMarks(elements);
@@ -188,9 +230,10 @@ export function useMapMarkers(
   // 印のつかめる/つかめないは、印を作り直さずに切り替える——出発地の印を作り直すeffect（上）はカメラ移動を伴うため、
   // パネルを切り替えるたびに地図が飛んでしまう。
   useEffect(() => {
-    markerRef.current?.setDraggable(pointsEditable);
-    waypointMarkersRef.current.forEach((marker) => marker.setDraggable(pointsEditable));
-    destinationMarkerRef.current?.setDraggable(pointsEditable);
+    for (const marker of [markerRef.current, ...waypointMarkersRef.current, destinationMarkerRef.current]) {
+      marker?.setDraggable(pointsEditable);
+      if (marker) marker.getElement().style.cursor = pinCursor(pointsEditable);
+    }
   }, [pointsEditable]);
 
   // 目的地の印。
@@ -208,7 +251,7 @@ export function useMapMarkers(
 
       destinationMarkerRef.current = addPointMarker(map, destination, element, latest.current.pointsEditable, {
         onMove: (coordinates) => latest.current.onDestinationMove(coordinates),
-        onClick: () => latest.current.onPointPress({ role: "destination" }, latest.current.destination ?? destination),
+        onPress: () => pressPoint({ role: "destination" }),
       });
     };
 
@@ -227,12 +270,14 @@ export function useMapMarkers(
       if (!selectedRouteSegment) return;
 
       const el = document.createElement("div");
-      // touch-action:noneで、指の起点が印に乗ってもパンとして確定させる。
-      el.style.cssText = `display:flex; color:${palette.semantic.inspected}; cursor:pointer; filter:drop-shadow(0 1px 2px rgba(0,0,0,0.5)); touch-action:none;`;
+      // 影はどの配色の上でも印を浮かせるため。touch-action:noneで、指の起点が印に乗ってもパンとして確定させる。
+      el.style.cssText =
+        "display:flex; cursor:pointer; filter:drop-shadow(0 2px 3px rgba(0,0,0,0.45)); touch-action:none;";
       setSelectedSegmentMark(el);
       el.setAttribute("aria-label", "選択中の区間");
       el.addEventListener("click", (event) => {
         event.stopPropagation();
+        if (latest.current.tapsLocked) return;
         latest.current.onRouteSegmentSelect(null);
       });
       selectedSegmentMarkerRef.current = new maplibregl.Marker({ element: el, anchor: "bottom" })
@@ -251,7 +296,7 @@ export function useMapMarkers(
         createPortal(<PinMark role="waypoint" label={String(index + 1)} size={20} />, element, `waypoint-${index}`),
       )}
       {destinationMark !== null && createPortal(<PinMark role="destination" size={20} />, destinationMark)}
-      {selectedSegmentMark !== null && createPortal(<SelectedSpotIcon size={26} />, selectedSegmentMark)}
+      {selectedSegmentMark !== null && createPortal(<SelectedPointPin />, selectedSegmentMark)}
     </>
   );
 }

@@ -34,7 +34,7 @@ export default function TileCachePanel() {
         {BASEMAP_BROWSER_CACHE}）。取込バッチや軸の変更を本番へ反映した直後など、 古いタイルを掴ませたくないときに使う。
       </p>
       <div className="flex flex-wrap items-center gap-2">
-        <Button onClick={() => clear.mutate()} disabled={clear.isPending}>
+        <Button usage={null} onClick={() => clear.mutate()} disabled={clear.isPending}>
           {clear.isPending ? "消去中…" : "タイルキャッシュを消去する"}
         </Button>
       </div>

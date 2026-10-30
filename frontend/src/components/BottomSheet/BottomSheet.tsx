@@ -6,6 +6,7 @@ import { textVariants } from "@/components/ui/Text/Text";
 import { useStoredState } from "@/hooks/useStoredState";
 import { cn } from "@/lib/cn";
 import { mapOverlayEdge } from "@/lib/mapOverlayEdges";
+import { TAP_SLOP_PX } from "@/lib/tapSlop";
 
 interface BottomSheetProps {
   open: boolean;
@@ -126,7 +127,13 @@ function OpenBottomSheet({
     setWorkingHeightVh(fittedVh);
   }, [autoFitHeight, fitKey]);
   // つまみのドラッグ。始めた指（pointerId）の動きだけを見る（別の指のmove/upに反応しない）。
-  const dragRef = useRef<{ pointerId: number; startClientY: number; startHeightVh: number } | null>(null);
+  // つまむ前のシートの中の高さ（`startWorkingHeightVh`）は、決めずに終えたときに戻す先。
+  const dragRef = useRef<{
+    pointerId: number;
+    startClientY: number;
+    startHeightVh: number;
+    startWorkingHeightVh: number | null;
+  } | null>(null);
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -156,22 +163,42 @@ function OpenBottomSheet({
   }
 
   function handleHandlePointerDown(e: React.PointerEvent<HTMLDivElement>) {
-    dragRef.current = { pointerId: e.pointerId, startClientY: e.clientY, startHeightVh: heightVh };
+    dragRef.current = {
+      pointerId: e.pointerId,
+      startClientY: e.clientY,
+      startHeightVh: heightVh,
+      startWorkingHeightVh: workingHeightVh,
+    };
     e.currentTarget.setPointerCapture(e.pointerId);
+  }
+
+  /** つまんだ指が今の位置にあるときの高さ。 */
+  function draggedHeightVh(drag: NonNullable<typeof dragRef.current>, clientY: number): number {
+    return clampSheetHeightVh(drag.startHeightVh + ((drag.startClientY - clientY) / window.innerHeight) * 100);
   }
 
   function handleHandlePointerMove(e: React.PointerEvent<HTMLDivElement>) {
     const drag = dragRef.current;
     if (!drag || e.pointerId !== drag.pointerId) return;
-    const deltaVh = ((drag.startClientY - e.clientY) / window.innerHeight) * 100;
-    setWorkingHeightVh(clampSheetHeightVh(drag.startHeightVh + deltaVh));
+    setWorkingHeightVh(draggedHeightVh(drag, e.clientY));
   }
 
+  // 離した位置から決める（最後の動きの描き直しが済む前に離しが届くことがある）。動かさずに離したなら決めない——決めると
+  // 開くたびに中身へ合わせるのが止まる。
   function handleHandlePointerUp(e: React.PointerEvent<HTMLDivElement>) {
     const drag = dragRef.current;
     if (!drag || e.pointerId !== drag.pointerId) return;
     dragRef.current = null;
-    choose(heightVh);
+    if (Math.abs(e.clientY - drag.startClientY) <= TAP_SLOP_PX) setWorkingHeightVh(drag.startWorkingHeightVh);
+    else choose(draggedHeightVh(drag, e.clientY));
+  }
+
+  // 端末がつまみの操作を取り上げた（OSのジェスチャー等）ら、つまむ前の高さへ戻す。
+  function handleHandlePointerCancel(e: React.PointerEvent<HTMLDivElement>) {
+    const drag = dragRef.current;
+    if (!drag || e.pointerId !== drag.pointerId) return;
+    dragRef.current = null;
+    setWorkingHeightVh(drag.startWorkingHeightVh);
   }
 
   function choose(vh: number) {
@@ -211,6 +238,7 @@ function OpenBottomSheet({
         onPointerDown={handleHandlePointerDown}
         onPointerMove={handleHandlePointerMove}
         onPointerUp={handleHandlePointerUp}
+        onPointerCancel={handleHandlePointerCancel}
         // つまみのtouchstartがシートの下スワイプの判定まで届くと、ドラッグの後の指離しで閉じてしまう。
         onTouchStart={(e) => e.stopPropagation()}
         onKeyDown={handleHandleKeyDown}
@@ -230,6 +258,7 @@ function OpenBottomSheet({
         <div className="flex flex-shrink-0 items-center gap-2">
           {headerAction}
           <Button
+            usage="シートを閉じて、地図を広く見せます。下のタブを押すと、また開きます。"
             variant="ghost"
             size="icon"
             onClick={onClose}

@@ -7,7 +7,7 @@ import { searchPlaces } from "@/features/route/placeSearchApi";
 import { getQueryClient } from "@/lib/queryClient";
 import { SECOND_MS } from "@/lib/duration";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
-import type { Coordinates } from "@/types/route";
+import type { CandidatesOnMap, Coordinates, PlaceCandidate } from "@/types/route";
 
 // 打ちかけで引き始める長さ（空白を除いた文字数）と、打つのが止まってから引くまでの間。口の回数制限はこの間から決まる。
 export const PREDICTION_MIN_LENGTH = routeGenerateConfig.place_prediction_min_length;
@@ -15,7 +15,7 @@ const PREDICTION_DELAY_MS = routeGenerateConfig.place_prediction_delay_seconds *
 
 /**
  * 住所か施設の名前を打つ欄の中身と、地点の検索の口の引き方。打ちかけでも打つのが止まってから引き、かな漢字の変換中は引かない。
- * 引くときに地図の真ん中を添える。
+ * 引くときに地図の真ん中を添える。探す（Enter・「検索」）と、引いた候補を地図に出す側へ渡す（打ち直す・閉じると下げる）。
  */
 export function usePlaceLookup(mapCenter: Coordinates) {
   const [text, setText] = useState("");
@@ -24,6 +24,10 @@ export function usePlaceLookup(mapCenter: Coordinates) {
   const [query, setQuery] = useState("");
   const [near, setNear] = useState(mapCenter);
   const lookUpTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  // 探した（Enter・「検索」）か。打ちかけの候補は地図に出さない（打つたびに地図が動くと、打っている所が見えなくなる）。
+  const [searched, setSearched] = useState(false);
+  // 選んでいる候補と、それを選んだときの候補の並び。引き直したら先頭を選ぶ。
+  const [pick, setPick] = useState<{ of: readonly PlaceCandidate[]; index: number } | null>(null);
 
   const search = useQuery(
     {
@@ -37,6 +41,11 @@ export function usePlaceLookup(mapCenter: Coordinates) {
   );
 
   useEffect(() => () => clearTimeout(lookUpTimer.current), []);
+
+  const found =
+    searched && !search.isPlaceholderData && search.data !== undefined && search.data.length > 0 ? search.data : null;
+  const foundOnMap: CandidatesOnMap | null =
+    found === null ? null : { candidates: found, picked: pick !== null && pick.of === found ? pick.index : 0 };
 
   function lookUp(trimmed: string) {
     setQuery(trimmed);
@@ -59,12 +68,21 @@ export function usePlaceLookup(mapCenter: Coordinates) {
     query,
     near,
     search,
+    /** 探したか（引いた候補を地図に出す側か。引いている間・当たらない間も）。 */
+    searched,
+    /** 地図に出す、探した候補（探していない・引いている間・当たらないときはnull）。 */
+    foundOnMap,
+    /** 地図に出した候補の`index`番目を選ぶ。 */
+    pickFound(index: number) {
+      if (found !== null) setPick({ of: found, index });
+    },
     /** 欄へ渡す値と打つ操作。 */
     inputProps() {
       return {
         value: text,
         onChange: (event: React.ChangeEvent<HTMLInputElement>) => {
           setText(event.target.value);
+          setSearched(false);
           if (!(event.nativeEvent as InputEvent).isComposing) scheduleLookUp(event.target.value);
         },
         onCompositionEnd: (event: React.CompositionEvent<HTMLInputElement>) =>
@@ -77,12 +95,16 @@ export function usePlaceLookup(mapCenter: Coordinates) {
       const trimmed = text.trim();
       if (trimmed === "") return;
       lookUp(trimmed);
-      if (trimmed === query && near === mapCenter) void search.refetch();
+      setSearched(true);
+      // 同じかは引く鍵と同じく位置の値で見る（地図は動くたびに真ん中を作り直すので、参照では同じ位置でも別になる）。
+      if (trimmed === query && near.latitude === mapCenter.latitude && near.longitude === mapCenter.longitude)
+        void search.refetch();
     },
     /** 引いた候補を下げる。`clearText`なら打った文字も消す。 */
     close({ clearText = false } = {}) {
       clearTimeout(lookUpTimer.current);
       setQuery("");
+      setSearched(false);
       if (clearText) setText("");
     },
   };

@@ -4,12 +4,13 @@
 軸スタジオ由来の軸はここに載らない（運用で増減し、出すかは軸自身の設定が決める）。
 """
 
-from typing import Literal, NamedTuple
+from collections import Counter
+from collections.abc import Iterable
+from typing import Literal, NamedTuple, get_args
 
-from app.domain.display_palette import ORDERED_END_COLOR_NAMES
-from app.domain.divided_carriageway import DIVIDED_ROAD_NOTE
 from app.domain.gsi_tiles import TERRAIN_MIN_ZOOM
-from app.domain.landcover import LANDCOVER_CLASSES, LANDCOVER_RING_OUTER_M, LANDCOVER_TILE_MIN_ZOOM
+from app.domain.landcover import LANDCOVER_CLASSES, LANDCOVER_TILE_MIN_ZOOM
+from app.domain.msm_grid import MSM_GRID_MIN_ZOOM
 from app.domain.place_search import ADDRESS_AREA_ATTRIBUTIONS
 from app.domain.primary_attributes import PRIMARY_ATTRIBUTES, PRIMARY_ATTRIBUTES_BY_ID
 from app.domain.registry import DisplayAxisSpec
@@ -78,29 +79,35 @@ class MapLayerDataSource(NamedTuple):
     min_zoom: int | None = None
 
 
-#: タイルで配る一次属性の系統（`tile_version_service.py: TILE_SHAPES`の名前）。
+#: タイルで配る一次属性の系統（`tile_version_service.py: TILE_SHAPES`の名前）。道の線の層の系統は区分の配りが持つ。
 #: 情報源の名前にそのまま使う——世代が届くまで要求できないのは、この名前の情報源だけ。
 _TILE_KINDS: tuple[str, ...] = tuple(
     dict.fromkeys(attr.tile_kind for attr in PRIMARY_ATTRIBUTES if attr.tile_kind is not None)
 )
 
+#: 道の線の層（管理DBの区分を描く）の絵の出所。
+ROAD_LAYER_DATA_SOURCE = "road_surface"
+
 #: レイヤーの絵がどこから来るか。取得状態（読み込み中・空・失敗）の判定はここから導く。
 #: 最小ズームは配信の性質なので情報源の側で持つ——レイヤーごとに書くと、同じタイルを
 #: 読むレイヤーの1つだけ書き忘れても型が通り、その行だけ案内が出ない。
 MAP_LAYER_DATA_SOURCES: tuple[MapLayerDataSource, ...] = (
-    *(MapLayerDataSource(kind, ROAD_TILE_MIN_ZOOM) for kind in _TILE_KINDS),
+    *(MapLayerDataSource(kind, ROAD_TILE_MIN_ZOOM) for kind in (ROAD_LAYER_DATA_SOURCE, *_TILE_KINDS)),
     MapLayerDataSource("gsiRelief"),
     MapLayerDataSource("gsiTerrain", TERRAIN_MIN_ZOOM),
     MapLayerDataSource("landcoverRaster", LANDCOVER_TILE_MIN_ZOOM),
     MapLayerDataSource("ownFetch"),
+    # MSMの格子点（`GET /api/weather/msm-grid`）。自前で取り、取得状態は取った側が出す。
+    MapLayerDataSource("msmGrid", MSM_GRID_MIN_ZOOM),
 )
 
-#: 数値予報モデルの計算値に添える断りの文。計算値を「予報」と呼ばない
+#: 数値予報モデルの値を画面に出すときに、同じ文として添える断り。大きな誤差を含む可能性と、予報ではないことの両方を言う
 #: （docs/architecture/data-sources.md「気象業務法の予報業務許可」節）。生成物（`mapDisplay.modelValueDisclaimer`）が画面へ届ける。
-MODEL_VALUE_DISCLAIMER = "予報ではなく、誤差を含みえます。"
+MODEL_VALUE_DISCLAIMER = "数値予報モデルの計算結果で、大きな誤差を含む可能性があります。予報ではありません。"
 
 #: 値の性質。生データか、時刻で中身が変わるか。
-MAP_LAYER_DATA_NATURES: tuple[str, ...] = ("raw", "dynamic")
+MapLayerDataNature = Literal["raw", "dynamic"]
+MAP_LAYER_DATA_NATURES: tuple[str, ...] = get_args(MapLayerDataNature)
 
 #: レイヤーの種別と、属するグループ。**種別を1つ足すときは必ず所属も決まる**。
 MAP_LAYER_CATEGORIES: tuple[LayerCategory, ...] = (
@@ -115,7 +122,8 @@ MAP_LAYER_CATEGORIES: tuple[LayerCategory, ...] = (
 
 #: 描き直しの種類。`dynamic`は選択中ルートにひもづくもの、`static`はそれ以外。
 #: **値が時間で変わるかとは別軸**——降水は中身が変わるがルートとは無関係なので`static`。
-MAP_LAYER_KINDS: tuple[str, ...] = ("static", "dynamic")
+MapLayerKind = Literal["static", "dynamic"]
+MAP_LAYER_KINDS: tuple[str, ...] = get_args(MapLayerKind)
 
 #: 利用者が作った線。属性でも配信でもないので、ここだけが名前を持つ。
 ROUTE_LAYER_ID = "route"
@@ -151,7 +159,7 @@ ALWAYS_SHOWN_ATTRIBUTIONS: tuple[str, ...] = (
     # Foursquare の行は Apache 2.0 で、ライセンスの写し・変えた旨・NOTICE の全文を渡す（frontend/public/licenses/）。
     '立ち寄り先: <a href="https://overturemaps.org/" target="_blank" rel="noreferrer">Overture Maps Foundation</a>'
     "の地点を、種類を選び近くの同じ店をまとめて加工。"
-    "Data from Meta, Microsoft, PinMeTo, DAC "
+    "Data from Meta, Microsoft, PinMeTo, DAC, Uberall, OpenTravel "
     '(<a href="https://cdla.dev/permissive-2-0/" target="_blank" rel="noreferrer">CDLA Permissive 2.0</a>), '
     "AllThePlaces "
     '(<a href="https://creativecommons.org/publicdomain/zero/1.0/" target="_blank" rel="noreferrer">CC0 1.0</a>), '
@@ -177,8 +185,9 @@ _MAP_LAYER_IDS: tuple[str, ...] = (*_static_layer_ids(), *WEATHER_LAYER_GROUPS, 
 
 #: 説明の文の差し込み口の名前。どれも軸カタログ（実行時の応答）から来る値で、画面が埋める。
 #: `axes`はそのレイヤーの元データを材料に持つ公開中の評価の名前、`accidentYears`は事故の収録年、
-#: `routeLenses`はルートの線を塗れるもの（公開中の評価と総合難易度）。
-LayerTextSlotName = Literal["axes", "accidentYears", "routeLenses"]
+#: `routeLenses`はルートの線を塗れるもの（公開中の評価と総合難易度）、`landcoverRingOuterM`は土地被覆の割合を数えた帯の
+#: 外の幅（m。作り直しに使った値）。
+LayerTextSlotName = Literal["axes", "accidentYears", "routeLenses", "landcoverRingOuterM"]
 
 
 class LayerTextSlot(NamedTuple):
@@ -200,8 +209,8 @@ class MapLayerSpec(NamedTuple):
     data_source: str
     #: 種別（`MAP_LAYER_CATEGORIES`の`key`）。どのグループにも属さないもの（ルート）はNone。
     category: str | None
-    kind: str = "static"
-    data_nature: str = "raw"
+    kind: MapLayerKind = "static"
+    data_nature: MapLayerDataNature = "raw"
     #: 利用者の操作を待たずに表示するか。**性質で決める**——明示的にONにして初めて出るのが
     #: 地図レイヤーの原則で、既定ONの根拠になるのは防災級の情報と、探索の結果そのものだけ。
     default_on: bool = False
@@ -215,6 +224,8 @@ class MapLayerSpec(NamedTuple):
     #: 値の無い道の行（データなし・該当なし）を、最初は凡例で隠しておくか。値のある道が少なく、無い道の線が
     #: 地図を覆う道の線の層だけが持つ（利用者は凡例のチェックで出せる）。
     hide_missing_rows: bool = False
+    #: 描き始める縮尺。情報源がタイルを配る縮尺より寄ってから描く層だけが持つ。
+    draw_min_zoom: int | None = None
 
 
 def _tile_layer(
@@ -226,8 +237,9 @@ def _tile_layer(
     label: str | None = None,
     hide_missing_rows: bool = False,
 ) -> MapLayerSpec:
-    """タイルで配る一次属性のレイヤー。情報源は属性自身が宣言するタイルの系統。"""
-    tile_kind = PRIMARY_ATTRIBUTES_BY_ID[attr_id].tile_kind
+    """タイルで配る一次属性のレイヤー。情報源と描き始める縮尺は属性自身の宣言から決める。"""
+    attr = PRIMARY_ATTRIBUTES_BY_ID[attr_id]
+    tile_kind = attr.tile_kind
     assert tile_kind is not None, attr_id
     return MapLayerSpec(
         tile_kind,
@@ -236,6 +248,7 @@ def _tile_layer(
         description=description,
         panel_hint=panel_hint,
         hide_missing_rows=hide_missing_rows,
+        draw_min_zoom=attr.point_min_zoom,
     )
 
 
@@ -252,15 +265,6 @@ def _point_kind_list(attr_id: str) -> str:
 def _row_label(attr_id: str, key: str) -> str:
     """説明へ差し込む凡例の行の名前（先頭の軸の行）。"""
     return next(category.label for category in _first_axis(attr_id).categories if category.key == key)
-
-
-def ordered_ends_text(axis: DisplayAxisSpec) -> str:
-    """順序のある分類の色の向きの文。並びの先頭の行ほど濃く、末尾の行ほど明るく塗る（`display_palette.py: ordered_colors`）
-    ので、両端の行の名前と色の呼び名から組む。"""
-    if axis.palette != "ordered":
-        raise ValueError(f"{axis.key}は順序のある分類ではない")
-    dark, light = ORDERED_END_COLOR_NAMES
-    return f"「{axis.categories[0].label}」ほど{dark}、「{axis.categories[-1].label}」ほど{light}"
 
 
 def size_text(attr_id: str) -> str:
@@ -304,6 +308,8 @@ def _source_jma_elements(source: str) -> tuple[str, ...]:
 #: 降水の段の境目（配信の宣言の、予測が届く先）。降水は近い段から高解像度降水ナウキャスト・降水短時間予報と継ぐ。
 _NOWCAST_REACH, _SHORT_RANGE_REACH = (forecast_reach(e) for e in _source_jma_elements("main"))
 _RAINBAND_AREA_REACH = forecast_reach(*_source_jma_elements("linearRainbandAreaForecast"))
+#: MSMの格子点の値を描く先（読み出しが予報を切る長さ）。
+_MSM_REACH = reach_text(MSM_FORECAST_HOURS * 60)
 
 
 def _label_list(labels: list[str]) -> str:
@@ -324,9 +330,15 @@ _DISASTER_FRAME_RULE_WORDING: dict[FrameRuleKind, tuple[str, str]] = {
 def _disaster_by_frame_rule() -> list[tuple[str, str, str]]:
     """災害の要素の名前を、描くコマの規則ごとにまとめた並び（要素の無い規則は出さない）。長い説明の`{reach}`には、
     その規則の要素の予測が届く先を入れる。"""
+    disaster = [element for element in WEATHER_ELEMENTS if element.group == "disaster"]
+    if unworded := sorted({element.frame_rule.kind for element in disaster} - set(_DISASTER_FRAME_RULE_WORDING)):
+        raise ValueError(f"災害の要素のコマの規則に、説明の語が無い: {unworded}")
+    # 災害の凡例は名前付きソースごとの行が（i）から説明を開く。要素の説明は省ける欄なので、ここで断る。
+    if undescribed := sorted(element.label for element in disaster if not (element.description or "").strip()):
+        raise ValueError(f"災害の要素に、凡例の行が開く説明が無い: {undescribed}")
     rows = []
     for kind, (brief, detail) in _DISASTER_FRAME_RULE_WORDING.items():
-        elements = [element for element in WEATHER_ELEMENTS if element.group == "disaster" and element.frame_rule.kind == kind]
+        elements = [element for element in disaster if element.frame_rule.kind == kind]
         if not elements:
             continue
         if "{reach}" in detail:
@@ -336,65 +348,6 @@ def _disaster_by_frame_rule() -> list[tuple[str, str, str]]:
 
 
 _DISASTER_BY_FRAME_RULE = _disaster_by_frame_rule()
-
-
-def msm_layer_specs(forecast_hours: int) -> dict[str, MapLayerSpec]:
-    """自前のMSM格子から描くレイヤー。先まで見られる長さは、読み出しが予報を切る長さ（時間）から言う。"""
-    reach = reach_text(forecast_hours * 60)
-    return {
-        # 降水短時間予報より先は数値予報モデル（MSM）の計算値なので「予報」と呼ばない
-        # （docs/architecture/data-sources.md「気象業務法の予報業務許可」節）。
-        "precipitationNowcast": MapLayerSpec(
-            "ownFetch",
-            "weather",
-            data_nature="dynamic",
-            label="降水ナウキャスト",
-            description=(
-                "気象庁の降水ナウキャスト・降水短時間予報・線状降水帯予測マップ・線状降水帯の雨域と、数値予報モデルが計算した降水量を重ねて表示"
-                f"[実況〜{_NOWCAST_REACH}先は5分刻み、{_NOWCAST_REACH}〜{_SHORT_RANGE_REACH}先は気象庁の降水短時間予報、"
-                f"{_SHORT_RANGE_REACH}〜{reach}先は気象庁の数値予報モデルMSMの計算値を1時間刻みで、予報ではなく誤差を含みうる。"
-                f"線状降水帯予測マップは現在〜{_LINEAR_RAINBAND_HOURS}時間先、線状降水帯の雨域は"
-                f"実況〜{_RAINBAND_AREA_REACH}先の間だけ追加で重畳]",
-            ),
-            panel_hint=(
-                "気象庁の高解像度降水ナウキャストです。ONにすると地図上に時刻スライダーが現れ、"
-                f"実況[直近]から{_NOWCAST_REACH}先までの雨雲の分布を切り替えて確認できます。{_NOWCAST_REACH}より先は、"
-                f"同じ気象庁の降水短時間予報へ自動的に切り替わり、{_SHORT_RANGE_REACH}先まで"
-                "確認できます——こちらは実況の外挿ではなく数値予報モデルによる予測のため、先に"
-                f"なるほど不確実性が増します。{_SHORT_RANGE_REACH}より先は、風と同じ仕組み[気象庁の数値予報モデルMSMが"
-                "格子点ごとに計算した降水量]で、格子を降水強度に応じた色で塗る表示へさらに切り替わり、"
-                f"{reach}先まで確認できます[降水短時間予報よりも粗い5kmメッシュのモデルの計算値で、予報ではなく"
-                f"誤差を含みえます]。加えて、現在〜{_LINEAR_RAINBAND_HOURS}時間先の"
-                f"間だけ、気象庁の線状降水帯予測マップを重ねて表示します[今後{_LINEAR_RAINBAND_HOURS}時間以内に大雨の"
-                "おそれがある領域を赤で示すもので、予測は格子単位のため矩形に見えます。"
-                "今まさに発生している線状降水帯の雨域を示すものではありません]。"
-                f"今まさに発生している線状降水帯は、実況から{_RAINBAND_AREA_REACH}先までの間、その雨域を赤い輪郭線で重ねます"
-                "[気象庁が線状降水帯を解析しているときだけ出ます]。"
-                f"非公式の内部APIを利用している実況・{_NOWCAST_REACH}先までの"
-                "部分・線状降水帯予測マップ・線状降水帯の雨域は、取得に失敗することがあります。",
-            ),
-        ),
-        # 「評価で塗る」の道路の塗り（向かい風・追い風）と見分けられる名前にする。
-        "windVector": MapLayerSpec(
-            "ownFetch",
-            "weather",
-            data_nature="dynamic",
-            label="風[矢印]",
-            description=(f"気象庁の数値予報モデルMSMが計算した風向・風速を矢印で表示[{reach}先まで。予報ではなく誤差を含みうる]",),
-            panel_hint=(
-                "気象庁MSM[メソ数値予報モデル、5kmメッシュ]が計算した風向・風速を格子点で矢印表示します。"
-                f"モデルの計算値で、{MODEL_VALUE_DISCLAIMER}"
-                "矢印の向きが風向、長さ・太さ・色の濃淡が風速の強さを表します。ごく弱い風の地点は"
-                "矢印を表示しません。ONにすると地図上に時刻スライダーが現れ、1時間刻みで切り替えられます"
-                f"[先まで見られる範囲は配信中の計算値の長さによって変わり、長くて{reach}先までです]。",
-                LayerTextSlot(
-                    "axes",
-                    "走行方位に対する向かい風/追い風の強さは、「評価で塗る」で評価軸",
-                    "を選ぶと別途確認できます。",
-                ),
-            ),
-        ),
-    }
 
 
 #: `_MAP_LAYER_IDS`の1つずつの宣言。並びが一覧の行の並び（種別の中の順）になる。**過不足は生成の時点で落ちる**（`MAP_LAYERS`）。
@@ -420,7 +373,9 @@ _LAYER_SPECS: dict[str, MapLayerSpec] = {
         description=(f"周囲の緑・水辺・農地を面で重ねる{f'[{_UNPAINTED_LANDCOVER}は塗らない]' if _UNPAINTED_LANDCOVER else ''}",),
         panel_hint=(
             "衛星画像から分類した10m四方ごとの土地の使われ方です。1区画に1種類だけが入るため、"
-            f"評価軸が使う「道路の周囲{LANDCOVER_RING_OUTER_M:g}mの割合」とは違い、混ざらずそのまま見えます。"
+            "評価軸が使う「道路の周囲",
+            LayerTextSlot("landcoverRingOuterM", after="m"),
+            "の割合」とは違い、混ざらずそのまま見えます。"
             + (
                 f"{_UNPAINTED_LANDCOVER}は塗りません——広い範囲を単色で覆い、基礎地図を隠すだけになるためです。"
                 f"地図の道を押して開く内訳には{_UNPAINTED_LANDCOVER}も出ます。"
@@ -428,68 +383,6 @@ _LAYER_SPECS: dict[str, MapLayerSpec] = {
                 else ""
             ),
         ),
-    ),
-    "highway": _tile_layer(
-        "highway",
-        "roadCondition",
-        description=(f"道路の種類を色で表示[{ordered_ends_text(_first_axis('highway'))}]",),
-        panel_hint=(
-            "OSMのhighwayタグを区分にまとめて塗り分けています。"
-            f"「{_first_axis('highway').categories[0].label}」が最も濃く、下位の道ほど明るい色です。"
-            "ほかの道路のレイヤーと一緒に表示すると、同じ道に線を横へ並べて描きます。",
-        ),
-    ),
-    "surface": _tile_layer(
-        "surface",
-        "roadCondition",
-        description=("路面の材質を色で表示[舗装・砂利・土など]",),
-        panel_hint=(
-            "OSMのsurfaceタグ[路面の材質]を区分にまとめて塗り分けています。"
-            f"区分に当てはまらない値の道は「{LEGEND_SHARED_ROWS["other"].label}」で出します。"
-            f"タグの無い道[{LEGEND_SHARED_ROWS["noData"].label}]は郊外ではほとんどの道に当たり、値のある道を埋もれさせるため、"
-            "最初は隠してあり、凡例のチェックで出せます"
-            f"[{LEGEND_SHARED_ROWS["noData"].label}は未舗装という意味ではありません]。",
-        ),
-        hide_missing_rows=True,
-    ),
-    "tracktype": _tile_layer(
-        "tracktype",
-        "roadCondition",
-        description=(f"農道・林道の路面の等級を色で表示[{ordered_ends_text(_first_axis('tracktype'))}]",),
-        panel_hint=(
-            "OSMのtracktypeタグ[農道・林道の路面の固さの等級]を塗り分けています。路面の材質[surfaceタグ]とは別のタグで、"
-            "材質のタグが無い農道・林道にも付いていることがあります。"
-            f"タグの無い道は「{LEGEND_SHARED_ROWS["noData"].label}」です。",
-        ),
-    ),
-    "tunnel": _tile_layer(
-        "tunnel",
-        "roadCondition",
-        description=("トンネル区間[OSMのtunnelタグ]を表示",),
-        panel_hint=("OSMのtunnelタグが該当する区間です。", LayerTextSlot("axes", "評価軸", "の材料の1つです。")),
-    ),
-    "oneway": _tile_layer(
-        "oneway",
-        "roadCondition",
-        description=("来た道を戻れない区間を表示",),
-        panel_hint=(
-            f"その向きにしか通れない区間です。{DIVIDED_ROAD_NOTE}は除いてあります。"
-            "ルート探索は一方通行の向きを守っています[逆走する経路は作りません]。",
-            LayerTextSlot("axes", "評価軸", "の材料の1つです。"),
-        ),
-    ),
-    # 当てはまらない道（大多数）を描くと地図が灰色の線で覆われるので、最初は隠す。
-    "cycleway": _tile_layer(
-        "cycleway",
-        "roadCondition",
-        label="自転車レーン",
-        description=(f"自転車の走る場所を色で表示[{'・'.join(c.label for c in _first_axis('cycleway').categories)}]",),
-        panel_hint=(
-            "OSMの自転車のためのタグから、自転車の走る場所を区分にまとめて塗り分けています。"
-            "1本の道が複数に当たれば、車道から分けられた方で出します。当てはまらない道は最初は隠してあり、凡例のチェックで出せます。",
-            LayerTextSlot("axes", "評価軸", "の材料の1つです。"),
-        ),
-        hide_missing_rows=True,
     ),
     "stop_poi": _tile_layer(
         "stop_poi",
@@ -536,7 +429,58 @@ _LAYER_SPECS: dict[str, MapLayerSpec] = {
             f"]の発生地点です。{size_text('accident_point')}",
         ),
     ),
-    **msm_layer_specs(MSM_FORECAST_HOURS),
+    "precipitationNowcast": MapLayerSpec(
+        "ownFetch",
+        "weather",
+        data_nature="dynamic",
+        label="降水ナウキャスト",
+        description=(
+            "気象庁の降水ナウキャスト・降水短時間予報・線状降水帯予測マップ・線状降水帯の雨域と、数値予報モデルMSMの格子点の"
+            "降水量を重ねて表示"
+            f"[実況〜{_NOWCAST_REACH}先は5分刻み、{_NOWCAST_REACH}〜{_SHORT_RANGE_REACH}先は気象庁の降水短時間予報、"
+            f"{_SHORT_RANGE_REACH}〜{_MSM_REACH}先はズーム{MSM_GRID_MIN_ZOOM}以上で格子点の値を1時間刻みで。"
+            f"線状降水帯予測マップは現在〜{_LINEAR_RAINBAND_HOURS}時間先、線状降水帯の雨域は"
+            f"実況〜{_RAINBAND_AREA_REACH}先の間だけ追加で重畳]",
+        ),
+        panel_hint=(
+            "気象庁の高解像度降水ナウキャストです。ONにすると地図上に時刻スライダーが現れ、"
+            f"実況[直近]から{_NOWCAST_REACH}先までの雨雲の分布を切り替えて確認できます。{_NOWCAST_REACH}より先は、"
+            f"同じ気象庁の降水短時間予報へ自動的に切り替わり、{_SHORT_RANGE_REACH}先まで"
+            "確認できます——こちらは実況の外挿ではなく数値予報モデルによる予測のため、先に"
+            f"なるほど不確実性が増します。{_SHORT_RANGE_REACH}より先は、ズーム{MSM_GRID_MIN_ZOOM}以上まで寄せると、"
+            "気象庁の数値予報モデルMSMの格子点[約5km間隔]の降水量で、格子点を中心にした升目を降水の強さの色で塗り、"
+            f"{_MSM_REACH}先まで1時間刻みで確認できます。升目の中は、どこもその格子点の値です[格子点が多い範囲では、"
+            f"格子点を一定の間隔おきに選び、升目を広げて塗ります]。{MODEL_VALUE_DISCLAIMER}"
+            "加えて、"
+            f"現在〜{_LINEAR_RAINBAND_HOURS}時間先の"
+            f"間だけ、気象庁の線状降水帯予測マップを重ねて表示します[今後{_LINEAR_RAINBAND_HOURS}時間以内に大雨の"
+            "おそれがある領域を赤で示すもので、予測は格子単位のため矩形に見えます。"
+            "今まさに発生している線状降水帯の雨域を示すものではありません]。"
+            f"今まさに発生している線状降水帯は、実況から{_RAINBAND_AREA_REACH}先までの間、その雨域を赤い輪郭線で重ねます"
+            "[気象庁が線状降水帯を解析しているときだけ出ます]。"
+            f"非公式の内部APIを利用している実況・{_NOWCAST_REACH}先までの"
+            "部分・線状降水帯予測マップ・線状降水帯の雨域は、取得に失敗することがあります。",
+        ),
+    ),
+    # 「評価で塗る」の道路の塗り（向かい風・追い風）と見分けられる名前にする。
+    "windVector": MapLayerSpec(
+        "msmGrid",
+        "weather",
+        data_nature="dynamic",
+        label="風[矢印]",
+        description=(
+            f"気象庁の数値予報モデルMSMの格子点の風向・風速を、格子点の位置に矢印で表示[{_MSM_REACH}先まで。"
+            "予報ではなく誤差を含みうる]",
+        ),
+        panel_hint=(
+            "気象庁MSM[メソ数値予報モデル]の格子点[約5km間隔]の風向・風速を、格子点の位置に矢印で表示します。"
+            "矢印の値は格子点の値そのもので、格子点の間の地点の風ではありません。"
+            f"格子点が多い範囲では、格子点を一定の間隔おきに選んで表示します。{MODEL_VALUE_DISCLAIMER}"
+            "矢印の向きが風の吹いていく向き、長さ・太さ・色の濃淡が風速の強さを表します。ごく弱い風の格子点は"
+            f"矢印を表示しません。ズーム{MSM_GRID_MIN_ZOOM}以上で表示され、ONにすると地図上に時刻スライダーが現れ、"
+            f"1時間刻みで切り替えられます[先まで見られる範囲は配信中の計算値の長さによって変わり、長くて{_MSM_REACH}先までです]。",
+        ),
+    ),
     # 予兆が出てからONにするのでは手遅れになるため既定ONにする。危険度が出ている間は広い範囲が
     # 塗られ、他の面レイヤー（緑と水・標高図）も基礎地図の色も覆われるが、危険度ゼロの領域は
     # 配信元のタイルが透明なので、影響が出るのは警戒度が上がっている間だけ。そのときは防災の
@@ -595,10 +539,58 @@ def _map_layers() -> tuple[tuple[str, MapLayerSpec], ...]:
 #: 地図に載るものの宣言（`_LAYER_SPECS`の順）。
 MAP_LAYERS: tuple[tuple[str, MapLayerSpec], ...] = _map_layers()
 
-#: 軸スタジオ由来の軸のレイヤー。路面タイルの道へ、道ごとに配る得点の色を塗る（得点は時刻で変わりうる）。
+#: 実行時に決まるレイヤーに共通の宣言。`dedicated`は軸スタジオ由来の軸のレイヤーで、路面タイルの道へ道ごとに配る
+#: 得点の色を塗る（得点は時刻で変わりうる）。`road`は道の線の層で、種別は層ごとに軸カタログの`road_classes`が配る。
 AXIS_LAYER_SPECS: dict[str, MapLayerSpec] = {
-    "dedicated": MapLayerSpec("road_surface", None, data_nature="dynamic"),
+    "dedicated": MapLayerSpec(ROAD_LAYER_DATA_SOURCE, None, data_nature="dynamic"),
+    "road": MapLayerSpec(ROAD_LAYER_DATA_SOURCE, None),
 }
+
+
+def check_map_layer_declarations(
+    groups: Iterable[OverlayGroup],
+    categories: Iterable[LayerCategory],
+    sources: Iterable[MapLayerDataSource],
+    specs: Iterable[MapLayerSpec],
+) -> None:
+    """宣言どうしが名前（`key`）で指し合う先が1つに決まることを確かめ、外れれば`ValueError`。
+
+    指した先が無いレイヤーは取得状態（読み込み中・空・失敗）を判定できず、一覧のどの群にも出ない。同じ名前が2つあると、
+    指した側はどちらか一方だけを読む。種別の無いグループのチップは押しても何も出ない。"""
+    groups, categories, sources, specs = tuple(groups), tuple(categories), tuple(sources), tuple(specs)
+    for name, declarations in (("グループ", groups), ("種別", categories), ("情報源", sources)):
+        repeated = sorted(key for key, n in Counter(d.key for d in declarations).items() if n > 1)
+        if repeated:
+            raise ValueError(f"{name}の名前が重なる: {repeated}")
+    group_keys = {group.key for group in groups}
+    category_keys = {category.key for category in categories}
+    source_keys = {source.key for source in sources}
+    if stray := sorted({category.group for category in categories} - group_keys):
+        raise ValueError(f"種別が宣言に無いグループを指す: {stray}")
+    if empty := sorted(group_keys - {category.group for category in categories}):
+        raise ValueError(f"種別の無いグループがある: {empty}")
+    if stray := sorted({spec.category for spec in specs if spec.category is not None} - category_keys):
+        raise ValueError(f"レイヤーが宣言に無い種別を指す: {stray}")
+    if stray := sorted({spec.data_source for spec in specs} - source_keys):
+        raise ValueError(f"レイヤーが宣言に無い情報源を指す: {stray}")
+
+
+check_map_layer_declarations(
+    MAP_OVERLAY_GROUPS,
+    MAP_LAYER_CATEGORIES,
+    MAP_LAYER_DATA_SOURCES,
+    (*_LAYER_SPECS.values(), *AXIS_LAYER_SPECS.values()),
+)
+
+
+def zoom_curve(*stops: tuple[float, float]) -> tuple[tuple[float, float], ...]:
+    """ズームから値への曲線（ズーム, 値）の並びを、そのまま返す。ズームが厳密に昇順でなければ`ValueError`。
+
+    地図の式（MapLibreの`interpolate`・`step`）は入力の段が厳密に昇順でないと式ごと失敗し、レイヤーが黙って消える。"""
+    zooms = [zoom for zoom, _ in stops]
+    if not zooms or zooms != sorted(set(zooms)):
+        raise ValueError(f"ズームが厳密に昇順でない: {zooms}")
+    return stops
 
 
 #: 利用者が作った線の太さ（px）。役割ごとに違うのは、同じ道の上へ重ねたときに
@@ -609,6 +601,8 @@ ROUTE_LINE_WIDTHS_PX: dict[str, float] = {
     "splice": 3,
     "composite": 7,
     "detail": 6,
+    # 選んだ区間の範囲の縁取り。選んだ候補の縁取り（`selectedHalo`）の外へはみ出す太さにする。
+    "selectedSection": 18,
 }
 
 #: 縁取りは線の両側へ一定を足す。**個別に書かない**——線の太さを変えたときに縁取りだけ
@@ -626,6 +620,7 @@ ROUTE_LINE_OPACITIES: dict[str, float] = {
     "candidate": 0.65,
     "arrowHalo": 0.95,
     "travelled": 0.35,
+    "selectedSection": 0.45,
 }
 
 #: 破線の刻み。実線との違いが読める最小の組み合わせ。
@@ -635,7 +630,7 @@ ROUTE_SPLICE_DASH: tuple[float, ...] = (2, 1.5)
 #: 周囲の道路だけが太くなり矢印が相対的に小さく見える。
 ROUTE_ARROW_SPACING_PX = 80
 ROUTE_ARROW_HALO_SCALE = 1.5
-ROUTE_ARROW_SIZE_BY_ZOOM: tuple[tuple[float, float], ...] = ((10, 0.6), (13, 0.8), (16, 1.2), (19, 1.6))
+ROUTE_ARROW_SIZE_BY_ZOOM = zoom_curve((10, 0.6), (13, 0.8), (16, 1.2), (19, 1.6))
 
 
 #: 面の濃さ。下限は「最も薄い階級が背景に対してΔE（CIE76）15以上」、上限は面の下にある
@@ -665,9 +660,9 @@ LIGHTNING_ICON_SCALE = 0.8
 #: 記号を拡大する曲線（ズーム→倍率）。**気象の記号はどれも同じ曲線で拡大する**——家族ごとに別の曲線を使うと、
 #: 同じ地図の中で拡大の速さが食い違う。`icon-size`は既定で画面上の固定ピクセルなので、曲線が無いと拡大するほど
 #: 周囲の道路・建物だけが大きく描かれ、記号が相対的に小さくなる。初期表示のズーム（13）を倍率1に置く。
-MARK_SIZE_BY_ZOOM: tuple[tuple[float, float], ...] = ((10, 0.75), (13, 1), (16, 1.5), (19, 2))
+MARK_SIZE_BY_ZOOM = zoom_curve((10, 0.75), (13, 1), (16, 1.5), (19, 2))
 #: 洪水の川筋の太さ（ズーム→px）。低いズームで目立たせすぎず、拡大するほど個々の川筋を追えるようにする。
-FLOOD_LINE_WIDTH_BY_ZOOM: tuple[tuple[float, float], ...] = ((6, 1.5), (10, 3), (14, 5))
+FLOOD_LINE_WIDTH_BY_ZOOM = zoom_curve((6, 1.5), (10, 3), (14, 5))
 #: 線状降水帯の雨域の輪郭線の太さ（px）と、下に敷く縁取りの太さ。配信元の公式の画面の描画定義の値
 #: （`strokeWidth`と、縁取りはその+2）で、ズームによらない。
 RAINBAND_OUTLINE_WIDTH_PX = 4
@@ -691,12 +686,24 @@ ROAD_INSPECTED_WIDTH_PX = 8
 #: 乗り換え帯の破線（`ROUTE_SPLICE_DASH`）より細かく刻み、操作の状態と見分けられるようにする。
 NO_DATA_DASH: tuple[float, ...] = (1, 2)
 
-#: 丸い点の既定の半径。行ごとの大きさは表示の行（`DisplayCategorySpec.radius_px`）が持つ。
+#: 点の大きさを決める軸で、半径（`DisplayCategorySpec.radius_px`）を宣言しない行の半径。点の絵の大きさは行の半径の比で決まる。
 POINT_RADIUS_PX = 4
 POINT_STROKE_WIDTH_PX = 1
-#: 絵記号で描く点（行が`glyph`を持つ軸）の一辺。丸い点より大きくし、中の絵を読める大きさにする。
+#: 点の絵の一辺。中の絵を読める大きさにする。
 POINT_ICON_SIZE_PX = 20
 POINT_OPACITY = 0.9
+#: 点のタイルが近い点を1つの代表点に束ねる升目の数（タイルの一辺を等分する数）。升目はタイルの端に揃うので、隣り合うタイルで
+#: 同じ点が別々の代表点にならない。地図は1つのタイルを一辺512画素から描くので、一辺の升目は32画素から（点の絵が重なり合わない幅）。
+#: 一番寄った縮尺のタイル（`domain/region.py: ROAD_TILE_MAX_ZOOM`）も同じ数で切る——それより寄った地図はこのタイルを引き伸ばして
+#: 描くので、升目を細かくすると、引き伸ばす前の升目が点の絵より小さくなり、隣り合う升目の代表点の絵が重なる。
+POINT_CLUSTER_CELLS_PER_TILE = 16
+#: 代表点が束ねた点の数を持つタイルのプロパティ。
+POINT_COUNT_PROPERTY = "count"
+#: 代表点が束ねた名前のある点（代表点そのものも入る）を持つタイルのプロパティ。2点以上を束ねたときだけ持ち、
+#: 値は`[名前, 経度, 緯度]`の並びのJSONの文字列（MVTの属性は配列を持てない）。
+POINT_MEMBERS_PROPERTY = "members"
+#: 区間を選んでいる間、地図の点のうち区間の近くに数える、区間の線からの地上の距離（m）。
+SEGMENT_NEARBY_POINT_MAX_DISTANCE_M = 100.0
 
 
 def _point_opacities() -> dict[str, float]:

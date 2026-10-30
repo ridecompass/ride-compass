@@ -1,4 +1,4 @@
-"""`scripts/review_checks.py`の差分の報告（`change`）と総量（`metrics`）と流れの摩擦の拾い方（`friction`）と、文書の整合（`docs`）の実在の母集団のテスト。
+"""`scripts/review_checks.py`の差分の報告（`change`）と総量（`metrics`）と流れの摩擦と保守の候補の拾い方（`friction`）と番の一覧の組み方（`turns`）と、文書の整合（`docs`）の実在の母集団のテスト。
 
 履歴は一時的なgitリポジトリで作る。
 
@@ -6,8 +6,8 @@
 ファイルを実在に数えることだけを通す（名指しの検査と食い違うと、同じファイルを片方だけが無いと言う）。`trigger`の中身と、`size`の表・発火は
 周期レビューで人が読む出力で、ここでは通さない。`trigger`が発火したときだけ出す形は、誰も読まないセッションの始まりの
 フックが使うので通す。`size`の「閾値の見直し」と、種類ごとの上限に当たるファイルへ置いた
-ファイルごとの閾値を無視することは、緩んだ閾値に誰も気づかなくなるので通す。`friction`の gh で置き場を読む部分は
-本物の置き場でしか通らないので、ここではコメントから行を拾う判断と、前のコメントを読みに行くかの判断だけを通す。
+ファイルごとの閾値を無視することは、緩んだ閾値に誰も気づかなくなるので通す。`friction`・`turns`の gh で置き場を読む部分は
+本物の置き場でしか通らないので、ここではコメントから行を拾う判断と、前のコメントを読みに行くかの判断と、読んだ issue から一覧の行を組む判断だけを通す。
 """
 
 import argparse
@@ -75,7 +75,7 @@ def test_change_splits_lines_by_kind_and_labels_the_size(repo, monkeypatch, caps
 def test_change_counts_the_working_tree_with_untracked_files(repo, monkeypatch, capsys, lines, label):
     base = _commit(repo, {"README.md": "x\n"})
     git(repo, "checkout", "-q", "-b", "work")
-    (repo / "app.py").write_text("a\n" * lines, encoding="utf-8")
+    (repo / "経路.py").write_text("a\n" * lines, encoding="utf-8")  # git が既定で引用符と8進で包む名前でも数える
 
     out = _run(monkeypatch, capsys, "change", "--base", base)
 
@@ -84,7 +84,7 @@ def test_change_counts_the_working_tree_with_untracked_files(repo, monkeypatch, 
 
 
 def test_metrics_counts_everything_outside_the_product_places_as_tooling(repo, capsys):
-    _commit(repo, {"backend/app/a.py": "a\n", "frontend/src/b.ts": "b\n"})
+    _commit(repo, {"backend/app/経路.py": "a\n", "frontend/src/b.ts": "b\n"})  # git が既定で引用符と8進で包む名前でも数える
     git(repo, "tag", "-a", "periodic-review/001", "-m", "r")
     (repo / "stop-dev.bat").write_bytes("rem 止める\r\n".encode("cp932") * 2)
     git(repo, "add", "stop-dev.bat")
@@ -185,6 +185,14 @@ def test_size_holds_code_to_the_kind_limit_beyond_the_external_maximum(repo, mon
     assert "種類ごとの上限に当たるファイルごとの閾値（無視した。上限は instruction_limits・code_limits だけ） 1件: app/over.ts" in out
 
 
+def test_code_churn_stops_when_the_change_since_the_review_cannot_be_measured(repo):
+    # 測れない差分（タグの版が手元の履歴に無い等）を0行と読むと、周期レビューの変更行数の発火を黙って逃す。
+    _commit(repo, {"backend/a.py": "a\n"})
+
+    with pytest.raises(RuntimeError):
+        rc.code_churn("0" * 40)
+
+
 @pytest.mark.parametrize("changed_lines, fired", [(rc.TRIGGER_IMPL_LINES - 1, False), (rc.TRIGGER_IMPL_LINES, True)])
 def test_trigger_for_the_session_start_says_nothing_until_it_fires(repo, capsys, changed_lines, fired):
     # セッションの始まりのフックは発火したときだけ文脈へ出す。発火を出し損ねると、周期レビューに誰も気づかない。
@@ -198,7 +206,7 @@ def test_trigger_for_the_session_start_says_nothing_until_it_fires(repo, capsys,
     assert ("判定: **該当（変更行数）**" in out) if fired else out == ""
 
 
-def test_friction_picks_the_lines_written_after_the_review_including_quoted_and_listed_ones():
+def test_friction_picks_the_friction_and_maintenance_lines_written_after_the_review_including_quoted_and_listed_ones():
     since = rc.dt.datetime(2026, 10, 7, 3, 39, 2, tzinfo=rc.dt.timezone.utc)
     comments = [
         {"createdAt": "2026-10-07T03:39:01Z", "body": "流れの摩擦: 前のレビューより前"},
@@ -207,15 +215,19 @@ def test_friction_picks_the_lines_written_after_the_review_including_quoted_and_
             "> 流れの摩擦: 引用\n"
             "> - 流れの摩擦: 引用の箇条書き\n"
             "- 流れの摩擦: 箇条書き\n"
+            "保守の候補: 地の文\n"
+            "> - 保守の候補: 引用の箇条書き\n"
             "本文の中の 流れの摩擦: は拾わない\n"
             "  - 流れの摩擦: 字下げは拾わない"
         )},
     ]
-    assert rc.friction_lines(805, comments, since) == [
+    assert rc.reported_lines(805, comments, since) == [
         "#805 流れの摩擦: 地の文",
         "#805 > 流れの摩擦: 引用",
         "#805 > - 流れの摩擦: 引用の箇条書き",
         "#805 - 流れの摩擦: 箇条書き",
+        "#805 保守の候補: 地の文",
+        "#805 > - 保守の候補: 引用の箇条書き",
     ]
 
 
@@ -251,3 +263,36 @@ def test_friction_reads_earlier_comments_only_while_they_can_be_after_the_review
 
     assert [c["createdAt"] for c in rc.comments_since(first, since, read_earlier)] == want
     assert len(asked) == reads
+
+
+def _issue(number: int, status: str, kind: str, labels: tuple[str, ...] = (), last: tuple[str, str] | None = None) -> dict:
+    """検索（`TURNS_SEARCH`）が返す issue の形。last は最後のコメントの（書いた名義, 本文）。"""
+    field = rc.FLOW_CONFIG["fields"]["status"]["name"]
+    return {"number": number, "title": f"題{number}", "issueType": {"name": kind}, "labels": {"nodes": [{"name": n} for n in labels]},
+            "issueFieldValues": {"nodes": [{"name": status, "field": {"name": field}}, {}]},
+            "comments": {"nodes": [{"author": {"login": last[0]}, "body": last[1]}] if last else []}}
+
+
+def test_turns_groups_the_users_turn_by_status_and_type_and_shows_questions_and_the_gates_last_notice():
+    """開発機のセッションの始まりに、聞かなくても誰の番で何を待っているかが分かる一覧。答えるもの（回答・保留）と開発機で進める対話作業が
+    混ざると、止まった対話作業が判断の問いの中に埋もれる。"""
+    gate = rc.FLOW_CONFIG["gateBot"].removesuffix("[bot]")
+    dialog = rc.FLOW_CONFIG["dialogType"]
+    lines = rc.turn_lines(
+        [_issue(12, "回答", "要望", ("問い: 確かめ",), (gate, "## 問い（確かめ）\n本文")),
+         _issue(3, "実装", dialog, last=(gate, "本文の「やること」の 1 が行き先を名指していないので、完成で閉じず\n続き")),
+         _issue(5, "実装", dialog, last=(rc.FLOW_CONFIG["claude"], "計測した")),
+         _issue(4, "回答", "要望", ("問い: 判断",))],
+        [_issue(9, "実装", "不具合")])
+    assert lines == [
+        f"ユーザーの番（担当者 {rc.FLOW_CONFIG['user']}）: 4件",
+        "  回答・要望",
+        "    #4 題4 [問い: 判断]",
+        "    #12 題12 [問い: 確かめ]",
+        f"  実装・{dialog}",
+        "    #3 題3 — 本文の「やること」の 1 が行き先を名指していないので、完成で閉じず",
+        "    #5 題5",
+        f"開発機が持っている（ラベル「{rc.FLOW_CONFIG['devLabel']}」）: 1件",
+        "    #9 題9",
+    ]
+    assert rc.turn_lines([], []) == [], "誰の番の issue も無ければ、セッションの始まりに何も出さない"

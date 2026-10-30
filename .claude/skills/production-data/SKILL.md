@@ -56,10 +56,14 @@ description: "本番の派生データを作り直す・本番へ軸定義の変
   担当は打たず、開発機の対話のセッションがユーザーがチャットで言ったときだけ打つ
   （[dev-session/SKILL.md](../dev-session/SKILL.md)「本番へ書く」）。差（項目ごとの「前 → 後」）と指紋をチャットで見せ、書くよう言われてから、同じ指紋で書く。宛先は
   リポジトリの`production-origins.json`から読み、認証情報は`backend/.env.oracle.local`の`ADMIN_BASIC_AUTH_USERNAME`・
-  `ADMIN_BASIC_AUTH_PASSWORD`に置く。JSONは`docs/records/`へ置かない（記録はタスクの issue に書く）。
+  `ADMIN_BASIC_AUTH_PASSWORD`に置く。JSONはリポジトリの外（作業ツリーの外の手元の置き場）に置き、コミットしない——軸の定義は較正の値を持ち、公開のリポジトリへ写さない（[data-sources.md](../../../docs/architecture/data-sources.md)「OSM から作った値と独自の層」）。記録はタスクの issue に書き、そこにも定義の値を写さない。
   本番の写しとして直し続けない（次に変えるときは本番の今の定義から新しいJSONを作る）。
 - 完了の条件: 道具が「反映を確かめました」を出したこと（管理APIと公開の軸カタログの両方で見ている）。
   画面で変えたときは、本番の`GET /api/axis-catalog`で変えた軸を確かめる。
+- 道の区分（分け方・区分の条件・地図の線の層・転がり抵抗の割り当て・除外タブの設定）も本番の表が正本で、本番の管理APIの
+  `PUT /api/admin/road-classes`で全体を入れ替える（仕組みは[axis-studio.md](../../../docs/modules/backend/axis-studio.md)「道の区分（`domain/road_classes.py`）」）。
+  JSONは本番の`GET /api/admin/road-classes`の今の全体から作り、打つ人・認証情報・JSONの置き場は軸の道具と同じ。表の制約に通らなければ
+  何も変えずに409を返す。完了の条件: `PUT`の応答が書いた全体と一致し、本番の`GET /api/axis-catalog`の`road_classes`に変えた分が出ていること。
 - 軸の評価の式（`backend/app/domain/`の軸の評価）だけを変えた変更は、本番に出たあとに全部の軸の張り付きを本番で1回測る
   （`backend`で`python scripts/run_probe.py scripts/measure_axis_saturation.py`。読むだけ）。落ちた絞り込み・二重に数えた値は
   エラーにもテストの失敗にもならず値の偏りとしてだけ現れ、式だけの変更は派生の表も変えない。本番を読めるのは開発機なので、

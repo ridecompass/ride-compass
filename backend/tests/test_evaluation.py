@@ -20,19 +20,14 @@ from app.domain.axis_definitions import (
 )
 from app.domain.evaluation import build_static_edge_score_matrix
 from app.domain.material_catalog import ACCIDENT_COUNT_PER_KM_YEAR, GRADIENT_PERCENT, WIND_DRAG_RATIO
-from tests.axis_system_fixture import replaced_axis_definitions
+from tests.axis_system_fixture import replaced_axis_definitions, shaped_axis
 
 
-def published_axis(axis_id: str, *materials: str) -> AxisDefinition:
-    """材料を2つ以上読む公開軸（内訳の材料が行列の列に載る）。"""
-    return AxisDefinition(
-        axis_id=axis_id,
-        shape=BreakpointLinearShape(
-            terms=[MaterialTerm(material=material) for material in materials], breakpoints=[(0.0, 0.0), (1.0, 100.0)]
-        ),
-        default_weight=1.0,
-        label="軸",
-        is_published=True,
+def reading_axis(axis_id: str, *materials: str, published: bool = True) -> AxisDefinition:
+    """材料を並べて読む軸。公開軸で材料が2つ以上なら、内訳の材料が行列の列に載る。"""
+    terms = [MaterialTerm(material=material) for material in materials]
+    return shaped_axis(
+        BreakpointLinearShape(terms=terms, breakpoints=[(0.0, 0.0), (1.0, 100.0)]), axis_id, is_published=published
     )
 
 
@@ -41,7 +36,6 @@ def no_materials(n: int) -> EdgeMaterialArrays:
     return EdgeMaterialArrays(
         numeric_ids=(), numeric_values=np.empty((n, 0)),
         categorical_ids=(), categorical_columns=(),
-        route_flag_ids=(), route_flags=np.empty((n, 0), dtype=bool),
         distance_m=np.full(n, 100.0), bearing_deg=nan, mid_lat=nan, mid_lon=nan,
         start_elevation_m=nan, end_elevation_m=nan,
         elevation_gain_m=nan, elevation_loss_m=nan,
@@ -71,8 +65,8 @@ def test_axes_saved_while_building_do_not_mix_into_the_matrix():
     途中で`AXIS_DEFINITIONS`を読み直すと、別スレッドで組む生成が保存の途中の辞書を読み、
     鍵が欠けて落ちる・軸の集合が食い違った行列になる。
     """
-    before = published_axis("before", "rain_1h_mm", "rain_3h_mm")
-    after = published_axis("after", "rain_6h_mm", "rain_12h_mm")
+    before = reading_axis("before", "rain_1h_mm", "rain_3h_mm")
+    after = reading_axis("after", "rain_6h_mm", "rain_12h_mm")
 
     with replaced_axis_definitions({"before": before}):
         matrix = build_static_edge_score_matrix(no_materials(2), ReplacingWhenRead({"after": after}))
@@ -91,7 +85,7 @@ def test_leaf_materials_go_to_the_column_of_their_kind_and_wind_stays_out():
         axis_id="road_kind", label="道路種別", default_weight=0.0, is_published=False,
         shape=CategoricalShape(material="highway", mapping={"primary": 50.0}),
     )
-    composite = published_axis("composite", WIND_DRAG_RATIO, "road_kind", GRADIENT_PERCENT)
+    composite = reading_axis("composite", WIND_DRAG_RATIO, "road_kind", GRADIENT_PERCENT)
 
     with replaced_axis_definitions({"road_kind": road_kind, "composite": composite}):
         matrix = build_static_edge_score_matrix(no_materials(2), {})
@@ -106,16 +100,9 @@ def test_internal_axes_no_published_axis_reads_stay_out_of_the_matrix():
 
     載ると、利用者が重みを付けられない軸がルートの点数と内訳に出る。
     """
-    def axis(axis_id: str, *materials: str, published: bool) -> AxisDefinition:
-        terms = [MaterialTerm(material=material) for material in materials]
-        return AxisDefinition(
-            axis_id=axis_id, label="軸", default_weight=1.0, is_published=published,
-            shape=BreakpointLinearShape(terms=terms, breakpoints=[(0.0, 0.0), (1.0, 100.0)]),
-        )
-
-    shown = axis("shown", GRADIENT_PERCENT, published=True)
-    unread = axis("unread", "maxspeed_kmh", published=False)
-    unread_pair = axis("unread_pair", "intersection_count_per_km", ACCIDENT_COUNT_PER_KM_YEAR, published=False)
+    shown = reading_axis("shown", GRADIENT_PERCENT)
+    unread = reading_axis("unread", "maxspeed_kmh", published=False)
+    unread_pair = reading_axis("unread_pair", "intersection_count_per_km", ACCIDENT_COUNT_PER_KM_YEAR, published=False)
 
     with replaced_axis_definitions({"shown": shown, "unread": unread, "unread_pair": unread_pair}):
         matrix = build_static_edge_score_matrix(no_materials(2), {})

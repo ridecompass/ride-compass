@@ -4,6 +4,7 @@
 // 値の対訳は生成物（materialCatalog）と点の分類の宣言から引く——
 // 手書きで持つと、同じ値を地図のポップアップと軸スタジオで別の呼び方をすることになる。
 
+import { PRIMARY_ATTRIBUTE_LABELS } from "@/features/map/layers/primaryAttributes";
 import materialCatalog from "@/types/generated/material-catalog.json";
 import regionTileConfig from "@/types/generated/region-tile-config.json";
 
@@ -30,7 +31,7 @@ export function roadFeatureKey(properties: RoadSurfacePopupProperties): string |
   return textColumn(properties, COLUMNS.feature_key);
 }
 
-interface RoadFactRow {
+export interface RoadFactRow {
   label: string;
   value: string;
 }
@@ -40,9 +41,9 @@ const materialLabel = (materialId: string) => MATERIALS.get(materialId)!.name;
 const valueLabel = (materialId: string, value: string) =>
   (MATERIALS.get(materialId)?.value_labels as Record<string, string> | undefined)?.[value] ?? value;
 
-/** 値の呼び名で出す事実（材料）。**路面の区分は値が無くても「不明」として出す**——
+/** 値の呼び名で出す事実（材料）。**路面の種類は値が無くても「不明」として出す**——
  * どの道でも最初に見たい項目で、行ごと消すと「舗装されていない」と読める。 */
-const ALWAYS_SHOWN_VALUE_MATERIAL = "surface_class";
+const ALWAYS_SHOWN_VALUE_MATERIAL = "surface";
 const VALUE_FACT_MATERIALS = ["tracktype", "smoothness"] as const;
 
 /** 当てはまるときだけ「あり」と出す事実（材料）。タイルのどの属性を読むかは材料の宣言が持つ。 */
@@ -66,14 +67,11 @@ export function roadDisplayName(properties: RoadSurfacePopupProperties): string 
 /** 「項目: 値」の行。**値を持たない項目は行ごと出さない**——「なし」を並べると、
  * 実際に該当する項目が同じ密度の中に埋もれる。 */
 export function roadFactRows(properties: RoadSurfacePopupProperties): RoadFactRow[] {
-  const surfaceClass = tileValue(properties, ALWAYS_SHOWN_VALUE_MATERIAL);
+  const surface = tileValue(properties, ALWAYS_SHOWN_VALUE_MATERIAL);
   const rows: RoadFactRow[] = [
     {
       label: materialLabel(ALWAYS_SHOWN_VALUE_MATERIAL),
-      value:
-        typeof surfaceClass === "string" && surfaceClass
-          ? valueLabel(ALWAYS_SHOWN_VALUE_MATERIAL, surfaceClass)
-          : "不明",
+      value: typeof surface === "string" && surface ? valueLabel(ALWAYS_SHOWN_VALUE_MATERIAL, surface) : "不明",
     },
   ];
   for (const material of VALUE_FACT_MATERIALS) {
@@ -86,4 +84,30 @@ export function roadFactRows(properties: RoadSurfacePopupProperties): RoadFactRo
     if (tileValue(properties, material)) rows.push({ label: materialLabel(material), value: "あり" });
   }
   return rows;
+}
+
+/** 上の帯に小さく添える、この道の事実の短い並び（路面・等級・状態の値と、当てはまるトンネル等の名前）。 */
+export function roadFactSummary(properties: RoadSurfacePopupProperties): string[] {
+  return roadFactRows(properties).map((row) => (row.value === "あり" ? row.label : row.value));
+}
+
+/** 材料の宣言をタイルの属性の名前（OSMのキーと同じ綴り）で引く。 */
+const MATERIAL_BY_TILE_PROPERTY = new Map(
+  materialCatalog.flatMap((material) => (material.tile_property === null ? [] : [[material.tile_property, material]])),
+);
+
+/** 評価を取ったときに届くタグ（OSMのキー→値）を、日本語で読める行と、そのままの値に分ける。材料の対訳がある値は材料の名前と
+ * 対訳で、数の値は一次属性の名前で行にする。ほかの値（英語の生の値・登録外のキー）は、キーと値のまま返す。 */
+export function roadTagRows(tags: Readonly<Record<string, string>>): { rows: RoadFactRow[]; raw: RoadFactRow[] } {
+  const rows: RoadFactRow[] = [];
+  const raw: RoadFactRow[] = [];
+  for (const [key, value] of Object.entries(tags)) {
+    const material = MATERIAL_BY_TILE_PROPERTY.get(key);
+    const translated = (material?.value_labels as Record<string, string> | undefined)?.[value];
+    const label = PRIMARY_ATTRIBUTE_LABELS[key];
+    if (material !== undefined && translated !== undefined) rows.push({ label: material.name, value: translated });
+    else if (label !== undefined && value !== "" && Number.isFinite(Number(value))) rows.push({ label, value });
+    else raw.push({ label: key, value });
+  }
+  return { rows, raw };
 }

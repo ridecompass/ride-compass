@@ -18,47 +18,27 @@
 // 作業ツリーの外に置いてよい（.ts も読める）。省略すると開いて1枚撮る。例は capture/examples/。
 // 撮る前に、宛先（本番の frontend・本物の backend）が応答するまで待ち、Playwright の Chromium と、Linux なら起こすのに要る依存と
 // 日本語のフォント（無いと文字が豆腐になる）を入れる。画像は <出力>/<版>/<幅>x<高さ>[-<テーマ>]/<番号>-<名前>.png
-// （幅・テーマだけを変えて同じ --out へ撮り直しても、前の画像を上書きしない）。
+// （幅・テーマだけを変えて同じ --out へ撮り直しても、前の画像を上書きしない。版・幅・テーマが同じなら、前の画像を消してから撮る）。
 
-import { execFileSync, spawn, spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
+import { execFileSync, spawn } from "node:child_process";
 import { existsSync, mkdirSync, openSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
+import { fileName } from "../capture/fileName.mjs";
+import { fail, frontendRoot, playwright, prepareBrowser, run } from "./capture/shell.mjs";
+import { builtWith, checkoutRef, worktreeFingerprint } from "./capture/versions.mjs";
 import { imageEnv, productionOrigins } from "./image.mjs";
 
-const frontendRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-const playwright = path.join(frontendRoot, "node_modules", "@playwright", "test", "cli.js");
 /** e2e/fixtures.ts: installApiMocks が待ち受ける向け先。ビルドの環境変数に別の向け先があっても、モックへ向ける。 */
 const MOCKED_API = "http://localhost:8000";
-/** frontend/e2e（3100）・e2e-live（3200）・devサーバー（3000）と取り合わないポート。 */
+/** frontend/e2e・e2e-live・devサーバーと取り合わないポート。 */
 const LOCAL_PORT = "3300";
-/** --backend の作業ツリーの backend のポート。backend の開発（8000）・e2e-live（serve_e2e_live.py）と取り合わない。 */
+/** --backend の作業ツリーの backend のポート。backend の開発・e2e-live（serve_e2e_live.py）と取り合わない。 */
 const WORKTREE_BACKEND_PORT = "8300";
 /** Render の無料のインスタンスは休止から起きるのに約1分かかる（https://render.com/docs/free）。その3倍まで待つ。 */
 const WAKE_LIMIT_MS = 3 * 60_000;
-
-function fail(message) {
-  console.error(`[capture] ${message}`);
-  process.exit(1);
-}
-
-/**
- * Windows の npm は .cmd で、.cmd はシェル越しでしか起こせない。シェル越しの引数は引用されず、空白を含むパス（例: process.execPath）は
- * 切れるので、絶対パスで渡す実行ファイルはシェルを通さない。
- */
-function run(command, args, { cwd = frontendRoot, env = {} } = {}) {
-  const result = spawnSync(command, args, {
-    cwd,
-    stdio: "inherit",
-    env: { ...process.env, ...env },
-    shell: process.platform === "win32" && !path.isAbsolute(command),
-  });
-  return result.status ?? 1;
-}
 
 /**
  * 手元で起動する版へ渡す環境変数。本番の像と同じ組（scripts/image.mjs: imageEnv）を、ビルド（NEXT_PUBLIC_ を埋め込む）と起動の
@@ -113,44 +93,12 @@ if (values.theme && !["light", "dark"].includes(values.theme)) fail(`--theme は
 const label = { production: "本番", worktree: "作業ツリー" }[values.app] ?? values.app;
 const out = path.join(
   path.resolve(values.out),
-  label.replace(/[\\/:*?"<>|\s]+/g, "_"),
+  fileName(label),
   `${width}x${height}${values.theme ? `-${values.theme}` : ""}`,
 );
+// 番号は撮るたびに1から振るので、前の実行の画像を残すと、段の少ない脚本で撮り直した後に前の段の画像が混ざる。
+rmSync(out, { recursive: true, force: true });
 mkdirSync(out, { recursive: true });
-
-/** Chromium を入れて起こせるかを試し、Linux なら起こすのに要る依存と日本語のフォントを入れる。 */
-function prepareBrowser() {
-  if (run(process.execPath, [playwright, "install", "chromium"]) !== 0) fail("Chromium を入れられない");
-  if (process.platform !== "linux") return;
-  const launches = () =>
-    spawnSync(
-      process.execPath,
-      [
-        "-e",
-        "require('@playwright/test').chromium.launch().then((b) => b.close()).then(() => process.exit(0), () => process.exit(1))",
-      ],
-      { cwd: frontendRoot },
-    ).status === 0;
-  if (!launches()) {
-    console.log("[capture] Chromium を起こせないので、起こすのに要る依存を入れる");
-    run("sudo", ["-n", process.execPath, playwright, "install-deps", "chromium"]);
-    if (!launches())
-      fail(
-        `Chromium を起こせない（sudo ${process.execPath} ${playwright} install-deps chromium を打ってから打ち直す）`,
-      );
-  }
-  const japanese = () => {
-    try {
-      return execFileSync("fc-list", [":lang=ja"], { encoding: "utf-8" }).trim().length > 0;
-    } catch {
-      return false;
-    }
-  };
-  if (japanese()) return;
-  console.log("[capture] 日本語のフォントが無いので fonts-noto-cjk を入れる");
-  run("sudo", ["-n", "apt-get", "install", "-y", "-q", "fonts-noto-cjk"]);
-  if (!japanese()) fail("日本語のフォントを入れられない（fonts-noto-cjk 等を入れてから打ち直す）");
-}
 
 /** 宛先が 200 の JSON を返すまで待つ。休止中の宛先は、起きるまで応答を待たせるか、起動待ちの画面（HTML）を返す。 */
 async function waitReady(name, url) {
@@ -171,66 +119,6 @@ async function waitReady(name, url) {
     await new Promise((resolve) => setTimeout(resolve, 5_000));
   }
   fail(`${name} が ${WAKE_LIMIT_MS / 60_000} 分たっても起きない（${url} の最後の応答: ${last}）`);
-}
-
-/** <git の版> の frontend を取り出して依存を入れ、そのディレクトリと版の commit を返す。 */
-function checkoutRef(ref) {
-  let commit;
-  try {
-    commit = execFileSync("git", ["rev-parse", "--verify", `${ref}^{commit}`], {
-      cwd: frontendRoot,
-      encoding: "utf-8",
-    }).trim();
-  } catch {
-    fail(`--app の版が無い: ${ref}（git fetch origin の後に打ち直す）`);
-  }
-  const dir = path.join(os.tmpdir(), `ridecompass-capture-${commit.slice(0, 12)}`, "frontend");
-  // 取り出しと依存の導入が両方通った後にだけ印を書く。途中で落ちた残り（欠けた展開・入れかけの node_modules）は消して始めから。
-  const ready = path.join(dir, ".capture-ready");
-  if (!existsSync(ready)) {
-    rmSync(dir, { recursive: true, force: true });
-    mkdirSync(dir, { recursive: true });
-    // git archive はサブディレクトリから打つとその下へ絞るので、リポジトリの根から打つ。
-    const archive = spawnSync("git", ["archive", `${commit}:frontend`], {
-      cwd: path.dirname(frontendRoot),
-      maxBuffer: 1 << 30,
-    });
-    if (archive.status !== 0) fail(`${ref} の frontend を取り出せない: ${archive.stderr}`);
-    // 展開の先は引数でなく作業ディレクトリで渡す: Git Bash の GNU tar は `C:` を含むパスを別のマシンの名前と読んで開けない。
-    const extract = spawnSync("tar", ["-x", "-f", "-"], { cwd: dir, input: archive.stdout });
-    if (extract.status !== 0) fail(`${ref} の frontend を展開できない: ${extract.stderr}`);
-    console.log(`[capture] ${ref}（${commit.slice(0, 12)}）の依存を入れる: ${dir}`);
-    if (run("npm", ["ci", "--prefer-offline", "--no-audit", "--no-fund"], { cwd: dir }) !== 0)
-      fail("依存を入れられない");
-    writeFileSync(ready, "");
-  }
-  return { dir, commit, source: commit };
-}
-
-/**
- * 作業ツリーの frontend の中身の指紋。git が無視しないファイル（コミットしていない変更・まだ足していないファイルも）の
- * パスと中身から作り、ビルドを使い回してよいかを見分ける。
- */
-function worktreeFingerprint() {
-  const hash = createHash("sha256");
-  const files = execFileSync("git", ["ls-files", "-z", "--cached", "--others", "--exclude-standard"], {
-    cwd: frontendRoot,
-    encoding: "utf-8",
-  });
-  for (const file of [...new Set(files.split("\0").filter(Boolean))].sort()) {
-    const full = path.join(frontendRoot, file);
-    hash.update(`${file}\0`);
-    // 消したがまだコミットしていないファイルは、git が一覧に出すが中身が無い。
-    hash.update(existsSync(full) ? readFileSync(full) : "(消した)");
-    hash.update("\0");
-  }
-  return hash.digest("hex");
-}
-
-/** ビルドの印（作った版の中身と埋め込んだ環境変数）。ほかの道具（e2e 等）の next build は .next を消してから作るので、印も消える。 */
-function builtWith(dir) {
-  const marker = path.join(dir, ".next", "capture-build");
-  return existsSync(path.join(dir, ".next", "BUILD_ID")) && existsSync(marker) ? readFileSync(marker, "utf-8") : null;
 }
 
 prepareBrowser();
@@ -281,6 +169,9 @@ if (values.backend.length > 0) {
     stdio: ["ignore", logFd, logFd],
   });
   process.on("exit", () => server.kill());
+  server.on("error", (error) => fail(`作業ツリーの backend を起こせない: ${error.message}`));
+  // 応答を待つ間に止まれば、待ちの上限まで待たずに止める（起動の失敗はログにある）。
+  server.on("exit", (code) => fail(`作業ツリーの backend が止まった（終了コード ${code}。ログ: ${log}）`));
   worktreeBackend = { origin, api, paths: values.backend };
   await waitReady("作業ツリーの backend", `${worktreeBackend.origin}/health`);
 }

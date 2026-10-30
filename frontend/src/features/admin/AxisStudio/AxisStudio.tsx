@@ -83,8 +83,12 @@ export default function AxisStudio({ calibrationMap }: { calibrationMap: Calibra
 
       <Tabs className="flex flex-col gap-2" defaultValue="draft">
         <TabsList>
-          <TabsTrigger value="draft">下書き（{draftDefs.length}）</TabsTrigger>
-          <TabsTrigger value="published">公開済み（{publishedDefs.length}）</TabsTrigger>
+          <TabsTrigger usage={null} value="draft">
+            下書き（{draftDefs.length}）
+          </TabsTrigger>
+          <TabsTrigger usage={null} value="published">
+            公開済み（{publishedDefs.length}）
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent className={cn(cardVariants({ variant: "outline" }), "flex flex-col gap-2")} value="draft">

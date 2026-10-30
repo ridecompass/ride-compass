@@ -63,7 +63,7 @@ BASEMAP = CachePolicy(max_age_seconds=10 * 60)
 #: 派生の作り直しまで答えが変わらない引き当て（地点の検索。住所（住所の区画の表）も施設（立ち寄り先の表）も
 #: 派生の作り直しのときにしか変わらない。施設を近い順に並べる点はURLに入るので、同じURLの答えは変わらない）。caching-retention.md「TTLの決め方」の「ほぼ不変なマスタ」。
 MASTER_LOOKUP = CachePolicy(max_age_seconds=24 * 60 * 60)
-#: 数分の再利用で表示が古くならないもの（例: 風グリッド・材料タイル・天候予報）。
+#: 数分の再利用で表示が古くならないもの（例: 材料タイル・MSMの格子点）。
 SHORT = CachePolicy(max_age_seconds=5 * 60)
 #: 数分で変わりうる警戒情報・実測値。
 VOLATILE = CachePolicy(max_age_seconds=2 * 60)
@@ -113,6 +113,7 @@ TILE_ROUTE_POLICIES: Final[tuple[tuple[str, CachePolicy], ...]] = (
     # 同じURLの内容が変わりうるため`immutable`は付けられない。
     ("/api/region/landcover-tiles/", BATCH_TILE),
     ("/api/region/way-materials/", SHORT),
+    ("/api/region/road-classes/", SHORT),
 )
 #: 地図タイル系の経路の接頭辞。アクセスログの高さを分ける（`infrastructure/request_log.py: access_level`）。
 TILE_PATH_PREFIXES: Final[tuple[str, ...]] = tuple(prefix for prefix, _ in TILE_ROUTE_POLICIES)
@@ -128,12 +129,14 @@ ROUTE_POLICIES: Final[tuple[tuple[str, CachePolicy], ...]] = (
     # カタログ・設定
     ("/api/axis-catalog", LIVE),
     # 天候（URLに緯度経度を含むため地点ごとに別エントリになる）
-    ("/api/weather/wind-grid", SHORT),
+    ("/api/weather", SHORT),
+    ("/api/weather/msm-grid", SHORT),
     ("/api/weather/warnings", VOLATILE),
     ("/api/weather/wbgt", VOLATILE),
     ("/api/weather/flood-forecast", VOLATILE),
     ("/api/weather/amedas", VOLATILE),
-    ("/api/weather", SHORT),
+    # ルートの形を本文で送るPOSTで、同じURLの応答を使い回させない。
+    ("/api/weather/route-warning-timeline", NO_STORE),
     # 地点の検索（URLに入力の文字列を含むため入力ごとに別エントリになる）
     ("/api/place-search", MASTER_LOOKUP),
     # 置いた位置の辺り（URLに緯度経度を含むため位置ごとに別エントリになる）
@@ -141,6 +144,8 @@ ROUTE_POLICIES: Final[tuple[tuple[str, CachePolicy], ...]] = (
     # ルート生成（POSTはそもそもキャッシュされないが、進捗のGETは明示的に禁じる）
     ("/api/routes/", NO_STORE),
     ("/api/region/axis-inspector", NO_STORE),
+    # 押した所を本文で送るPOSTで、同じURLの応答を使い回させない。
+    ("/api/region/roads-at", NO_STORE),
     # 管理・状態確認（認可必須の情報を中間キャッシュへ残さない）
     (ADMIN_PATH_PREFIX, NO_STORE),
     ("/api/debug/", NO_STORE),

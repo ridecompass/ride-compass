@@ -6,6 +6,7 @@
 
 ここで見ないもの:
 - HTTPの状態コードへの読み替え（404・502）とレート制限 → `test_basemap_routes.py`
+- 上流の失敗の種類（404・失敗の応答・通信の失敗）の見分け → `test_http_client.py`
 - ディスクの読み書きの失敗 → `test_tile_cache.py`（このクライアントには未キャッシュとして届く）
 - 読み書きをイベントループの外で行うこと → 結果に現れない順序の約束で、理由は実装の隣のコメントが持つ
 """
@@ -18,7 +19,6 @@ import pytest
 import respx
 
 from app.infrastructure import basemap_client
-from app.infrastructure.http_client import UPSTREAM_NOT_FOUND
 from tests.fake_http import client_for
 
 PROXY = "http://localhost:8000/api/basemap"
@@ -63,19 +63,6 @@ async def test_a_binary_part_is_relayed_untouched_and_served_from_disk_afterward
     assert first == later == (b"\x1a\x02tile", "application/x-protobuf")
 
 
-async def test_json_points_its_urls_at_this_server_but_keeps_upstream_names_in_text():
-    """MapLibreは相対URLをページのオリジンへ解決するため、上流のURLは自分への絶対URLへ置き換える。"""
-    router = respx.Router()
-    router.get(f"{UPSTREAM}/{STYLE}").respond(content=style_json(), headers={"content-type": "application/json"})
-
-    content, served_type = await client(router).get(STYLE)
-
-    style = json.loads(content)
-    assert served_type == "application/json"
-    assert style["sprite"] == f"{PROXY}/sprites/ofm_f384/ofm"
-    assert style["metadata"]["attribution"] == f"OpenFreeMap {UPSTREAM} © OpenMapTiles"
-
-
 async def test_changing_the_public_address_takes_effect_on_cached_json_without_asking_upstream():
     router = respx.Router()
     router.get(f"{UPSTREAM}/{STYLE}").respond(content=style_json(), headers={"content-type": "application/json"})
@@ -84,6 +71,8 @@ async def test_changing_the_public_address_takes_effect_on_cached_json_without_a
     content, _ = await client(unreachable(), proxy="https://ridecompass.example/api/basemap").get(STYLE)
 
     assert json.loads(content)["sprite"] == "https://ridecompass.example/api/basemap/sprites/ofm_f384/ofm"
+    # 地の文の上流の名前（出典の表記）は書き換えない。書き換えると利用条件に反する。
+    assert json.loads(content)["metadata"] == json.loads(style_json())["metadata"]
 
 
 async def test_json_left_under_the_plain_path_by_an_older_version_is_not_served():
@@ -99,25 +88,10 @@ async def test_json_left_under_the_plain_path_by_an_older_version_is_not_served(
     assert json.loads(content)["sprite"] == json.loads(again)["sprite"] == f"{PROXY}/sprites/ofm_f384/ofm"
 
 
-async def test_a_part_the_upstream_does_not_have_is_reported_as_missing_not_as_a_failure(warnings):
-    router = respx.Router()
-    router.get(f"{UPSTREAM}/fonts/Noto Sans Bold/65024-65279.pbf").respond(404)
-
-    result = await client(router).get("fonts/Noto Sans Bold/65024-65279.pbf")
-
-    assert result is UPSTREAM_NOT_FOUND
-    assert warnings() == []
-
-
-@pytest.mark.parametrize(
-    "answer",
-    [httpx.Response(503), httpx.ConnectTimeout("timed out")],
-    ids=["server-error", "transport-error"],
-)
-async def test_an_upstream_failure_gives_nothing_and_is_logged(answer, warnings):
+async def test_an_upstream_failure_gives_nothing_is_logged_and_is_not_remembered(warnings):
     router = respx.Router()
     route = router.get(f"{UPSTREAM}/{TILE}")
-    route.side_effect = [answer, httpx.Response(200, content=b"tile")]
+    route.side_effect = [httpx.Response(503), httpx.Response(200, content=b"tile")]
 
     assert await client(router).get(TILE) is None
     assert [r for r in warnings() if "basemap:openfreemap" in r.getMessage()]

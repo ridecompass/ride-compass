@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { debugLog } from "@/lib/debugLog";
+import type { LiveValue } from "@/lib/liveValue";
+import { recordRideFix, setRideMetricsStatus, startRideMetrics, stopRideMetrics } from "@/lib/rideMetrics";
 import { haversineKm } from "@/lib/geoDistance";
 import type { Coordinates } from "@/types/route";
 
@@ -23,21 +25,26 @@ interface RideOnMap {
   position: Coordinates | null;
   /** 進む向き（真北0・時計回りの度）。まだ分からなければnull。 */
   bearing: number | null;
-  /** スマホが向いている方角（真北0・時計回りの度。端末の読みは磁北が基準なので、現在地の偏角で直す）。読めなければnull。 */
-  facing: number | null;
+  /** スマホが向いている方角（真北0・時計回りの度。端末の読みは磁北が基準なので、現在地の偏角で直す）。読めなければnull。
+   * 1秒に何十回も変わるので、描き直さずに読む口で渡す。 */
+  facing: LiveValue<number | null>;
   following: boolean;
   /** 今の速さ（時速km）。分からなければnull。 */
   speedKmh: number | null;
   /** 進む向きを上にするか（偽なら北が上）。 */
   headingUp: boolean;
-  /** 利用者が地図を動かした（追うのを休む）。 */
+  /** 利用者が地図を動かした・区間を選んだ（追うのを休む）。 */
   onPause: () => void;
-  /** 北が上と進む向きが上を切り替える。 */
-  onToggleHeadingUp: () => void;
+  /** 区間の選びを外した（地図を動かして休んでいれば追い直す）。 */
+  onResume: () => void;
+  /** 進む向きを上にするかを選んだ。 */
+  onHeadingUpChange: (headingUp: boolean) => void;
   /** 追っている間の基準の倍率（速さで引く前）。この走行でまだ選んでいなければnull（地図が最初の段を使う）。 */
   zoomBase: number | null;
   /** 利用者が基準の倍率を選んだ（倍率のボタン・つまむ）。 */
   onZoomBaseChange: (zoom: number) => void;
+  /** 地図への触れを受け付けないロックの間か（雨粒を指の操作と取らないため）。 */
+  locked: boolean;
 }
 
 interface UseRideModeResult {
@@ -52,12 +59,20 @@ interface UseRideModeResult {
   accuracyM: number | null;
   /** 位置を受けている間、画面が自動で消えないよう頼めているか（画面が消えると位置も届かなくなる）。 */
   screenWakeLock: ScreenWakeLockStatus;
+  /** スマホの向きを読む許しを、利用者の操作の中で求め直す口。操作の外（読み込み直しの始め直し）で求めて聞けなかった間だけ値がある。 */
+  requestHeadingAgain: (() => void) | null;
   /** 止まっていれば始め、走行モードの間（休んでいても）は止める。 */
   press: () => void;
   /** 走行モードのまま休む: 位置を受けるのと画面を点けたままにする頼みをやめ、受けた位置を捨てる。止まっていても休める（読み込み直す前に休んでいた走行を戻す）。 */
   rest: () => void;
   /** 地図を指で動かして休んでいれば追い直し、休むを選んでいれば位置を受け直す。 */
   resume: () => void;
+  /** 地図への触れを受け付けないロックの間か。走行モードを止めると外れる。 */
+  locked: boolean;
+  /** ロックする。地図を指で動かして休んでいれば追い直す。 */
+  lock: () => void;
+  /** ロックを外す。 */
+  unlock: () => void;
   /** 走行モードの間だけ値がある。 */
   map: RideOnMap | null;
 }
@@ -99,6 +114,12 @@ type SpeedSource =
   | { from: "距離と時刻"; movedM: number; elapsedS: number; anchorAccuracyM: number | null }
   | { from: "止まっている" | "出せない" };
 
+/** 2つの位置の間の距離（m）が、2つの誤差の和の内か。内の動きは位置の揺れと見分けられない。 */
+function movedM(from: MotionAnchor, to: MotionAnchor): { movedM: number; withinError: boolean } {
+  const distance = haversineKm(from.at, to.at) * 1000;
+  return { movedM: distance, withinError: distance <= (from.accuracyM ?? 0) + (to.accuracyM ?? 0) };
+}
+
 /**
  * 新しい位置を受けたときの速さ（秒速m）と、次の測り始めの位置。位置が速さを持てばそれを使う。持たなければ、測り始めの
  * 位置から2つの位置の誤差の和を超えて動いたときだけ、その間の距離と時刻の差から出す。誤差の内の動きは位置の揺れと
@@ -112,17 +133,53 @@ function nextMotion(
   const here = { at: fix.at, timestamp: fix.timestamp, accuracyM: fix.accuracyM };
   if (fix.speedMs !== null) return { speedMs: fix.speedMs, anchor: here, source: { from: "端末" } };
   if (anchor === null) return { speedMs: null, anchor: here, source: { from: "出せない" } };
-  const movedM = haversineKm(anchor.at, fix.at) * 1000;
-  if (movedM <= (anchor.accuracyM ?? 0) + (fix.accuracyM ?? 0)) {
+  const moved = movedM(anchor, here);
+  if (moved.withinError) {
     return { speedMs: 0, anchor, source: { from: "止まっている" } };
   }
+  const movedDistanceM = moved.movedM;
   const elapsedS = (fix.timestamp - anchor.timestamp) / 1000;
   if (elapsedS <= 0) return { speedMs: null, anchor: here, source: { from: "出せない" } };
   return {
-    speedMs: movedM / elapsedS,
+    speedMs: movedDistanceM / elapsedS,
     anchor: here,
-    source: { from: "距離と時刻", movedM, elapsedS, anchorAccuracyM: anchor.accuracyM },
+    source: { from: "距離と時刻", movedM: movedDistanceM, elapsedS, anchorAccuracyM: anchor.accuracyM },
   };
+}
+
+// 位置が毎秒届くたびに走行の値を変えると、止まっていても地図が動き、画面が描き直され続ける（電池を食う）。次の
+// どれかに当たる位置だけを流し、ほかは速さと進む向きの読みにだけ使って捨てる。
+/** 誤差がこれより大きい位置は、どの横道にいるかを見分けられないので、流した位置がまだ新しい間は流さない（m）。 */
+const POOR_ACCURACY_M = 30;
+/** 誤差の大きい位置を流さずに待つ長さ（ms）。過ぎたら、誤差が大きくても流す（位置が来ないより良い）。 */
+const POOR_ACCURACY_WAIT_MS = 10_000;
+/** 速さがこれ以上変わったら流す（時速km）。地図は速さで倍率を変える（`rideZoom.ts`）ので、止まる・走り出すを遅れずに渡す。 */
+const SPEED_STEP_KMH = 5;
+/** 前に流してからこれだけ過ぎたら、動いていなくても流す（ms）。到着予想等は最後に位置を受けた時刻から読むので、止まって
+ * いる間も分の単位で進める。 */
+const MAX_SILENCE_MS = 30_000;
+
+/** これより遅い間は止まっていると読み、位置の揺れでは流さない（時速km）。GPS の揺れは2つの誤差の和を時に超えるので、
+ * 止まっている間も位置を比べると、ときどき地図が動く。 */
+const STOPPED_KMH = 2;
+
+function stopped(fix: Fix): boolean {
+  return fix.speedMs !== null && fix.speedMs * 3.6 < STOPPED_KMH;
+}
+
+/** 受けた位置`next`を走行の値へ流すか。`last`は前に流した位置。 */
+function shouldPublish(last: Fix | null, next: Fix): boolean {
+  if (last === null) return true;
+  const elapsedMs = next.fixedAtMs - last.fixedAtMs;
+  if (next.accuracyM !== null && next.accuracyM > POOR_ACCURACY_M && elapsedMs < POOR_ACCURACY_WAIT_MS) return false;
+  if (elapsedMs >= MAX_SILENCE_MS) return true;
+  const from = { at: last.position, timestamp: last.fixedAtMs, accuracyM: last.accuracyM };
+  const to = { at: next.position, timestamp: next.fixedAtMs, accuracyM: next.accuracyM };
+  if (!(stopped(last) && stopped(next)) && !movedM(from, to).withinError) return true;
+  if ((last.speedMs === null) !== (next.speedMs === null)) return true;
+  return (
+    last.speedMs !== null && next.speedMs !== null && Math.abs(next.speedMs - last.speedMs) * 3.6 >= SPEED_STEP_KMH
+  );
 }
 
 /**
@@ -136,14 +193,21 @@ export function useRideMode(plausibleMaxKmh: number | undefined): UseRideModeRes
   const [fix, setFix] = useState<Fix | null>(null);
   const [headingUp, setHeadingUp] = useState(false);
   const [zoomBase, setZoomBase] = useState<number | null>(null);
+  const [locked, setLocked] = useState(false);
   const watchId = useRef<number | null>(null);
   // 位置が速さを持たないときに、距離と時刻の差から速さを出す測り始めの位置（`nextMotion`）。
   const motion = useRef<MotionAnchor | null>(null);
+  // 受けたどの位置からも読み続ける進む向きと、最後に走行の値へ流した位置（`shouldPublish`）。
+  const travelReading = useRef<TravelBearing | null>(null);
+  const published = useRef<Fix | null>(null);
   // 位置を受ける口は始めたときに1度だけ渡すので、上限は描くたびに移して最新を読む。
   const plausibleMax = useRef(plausibleMaxKmh);
   useEffect(() => {
     plausibleMax.current = plausibleMaxKmh;
   }, [plausibleMaxKmh]);
+  useEffect(() => {
+    setRideMetricsStatus(status);
+  }, [status]);
   // 位置を受けている間だけ、向きを読み、画面を点けたままにする。
   const receiving = status !== "off" && status !== "resting";
   const device = useDeviceHeading(receiving);
@@ -162,15 +226,19 @@ export function useRideMode(plausibleMaxKmh: number | undefined): UseRideModeRes
       setStatus(next);
       setFix(null);
       motion.current = null;
+      travelReading.current = null;
+      published.current = null;
     },
     [stopWatching],
   );
 
-  // 次に始めるときは北を上・地図の最初の倍率から始める。
+  // 次に始めるときは北を上・地図の最初の倍率・ロックしない状態から始める。
   const stop = useCallback(() => {
     leave("off");
+    stopRideMetrics();
     setHeadingUp(false);
     setZoomBase(null);
+    setLocked(false);
   }, [leave]);
 
   const start = useCallback(() => {
@@ -182,6 +250,7 @@ export function useRideMode(plausibleMaxKmh: number | undefined): UseRideModeRes
     requestHeading();
     setError(null);
     setStatus("waiting");
+    startRideMetrics();
     debugLog("ride:mode", "始めた");
     watchId.current = navigator.geolocation.watchPosition(
       (received) => {
@@ -196,6 +265,7 @@ export function useRideMode(plausibleMaxKmh: number | undefined): UseRideModeRes
         });
         motion.current = next.anchor;
         debugLog("ride:position", "受け取った", { speed, accuracy, speedMs: next.speedMs });
+        recordRideFix(accuracyM, next.speedMs, received.timestamp);
         const speedKmh = next.speedMs === null ? null : next.speedMs * 3.6;
         const limit = plausibleMax.current;
         if (speedKmh !== null && limit !== undefined && speedKmh > limit) {
@@ -206,13 +276,18 @@ export function useRideMode(plausibleMaxKmh: number | undefined): UseRideModeRes
             "warn",
           );
         }
-        setFix((current) => ({
+        // 進む向きは流さない位置からも読む（向きは前に読んだ位置からの動きで出す）。
+        travelReading.current = nextTravelBearing(travelReading.current, { latitude, longitude, heading });
+        const candidate: Fix = {
           position: here,
           speedMs: next.speedMs,
-          travel: nextTravelBearing(current?.travel ?? null, { latitude, longitude, heading }),
+          travel: travelReading.current,
           fixedAtMs: received.timestamp,
           accuracyM,
-        }));
+        };
+        if (!shouldPublish(published.current, candidate)) return;
+        published.current = candidate;
+        setFix(candidate);
         setStatus((current) => (current === "waiting" ? "following" : current));
       },
       (failure) => {
@@ -237,10 +312,17 @@ export function useRideMode(plausibleMaxKmh: number | undefined): UseRideModeRes
     leave("resting");
     debugLog("ride:mode", "休んだ");
   }, [leave]);
+  const followAgain = useCallback(() => setStatus((current) => (current === "paused" ? "following" : current)), []);
   const resume = useCallback(() => {
     if (status === "resting") start();
-    else setStatus((current) => (current === "paused" ? "following" : current));
-  }, [status, start]);
+    else followAgain();
+  }, [status, start, followAgain]);
+  // ロックの間は地図を指で動かせず、追い直す「現在地へ戻る」も出ないままになるので、ロックするときに追い直す。
+  const lock = useCallback(() => {
+    setLocked(true);
+    followAgain();
+  }, [followAgain]);
+  const unlock = useCallback(() => setLocked(false), []);
 
   // 画面を離れたら受け取りをやめる。
   useEffect(() => stopWatching, [stopWatching]);
@@ -250,11 +332,23 @@ export function useRideMode(plausibleMaxKmh: number | undefined): UseRideModeRes
     () => setStatus((current) => (current === "off" || current === "resting" ? current : "paused")),
     [],
   );
-  const toggleHeadingUp = useCallback(() => setHeadingUp((current) => !current), []);
 
   const speedKmh = fix?.speedMs != null ? fix.speedMs * 3.6 : null;
   const position = fix?.position ?? null;
   const travel = fix?.travel ?? null;
+  // 端末の読みは磁北が基準なので、最後に流した位置の偏角で真北へ直して読ませる。
+  const deviceHeading = device.heading;
+  const facing = useMemo<LiveValue<number | null>>(
+    () => ({
+      current: () => {
+        const magnetic = deviceHeading.current();
+        const at = published.current?.position ?? null;
+        return magnetic !== null && at !== null ? trueHeadingDeg(magnetic, at) : null;
+      },
+      subscribe: deviceHeading.subscribe,
+    }),
+    [deviceHeading],
+  );
   const map = useMemo<RideOnMap | null>(
     () =>
       status === "off"
@@ -262,16 +356,18 @@ export function useRideMode(plausibleMaxKmh: number | undefined): UseRideModeRes
         : {
             position,
             bearing: travel?.bearing ?? null,
-            facing: device.heading !== null && position !== null ? trueHeadingDeg(device.heading, position) : null,
+            facing,
             following: status === "following",
             speedKmh,
             headingUp,
             onPause: pause,
-            onToggleHeadingUp: toggleHeadingUp,
+            onResume: followAgain,
+            onHeadingUpChange: setHeadingUp,
             zoomBase,
             onZoomBaseChange: setZoomBase,
+            locked,
           },
-    [status, position, travel, device.heading, speedKmh, headingUp, pause, toggleHeadingUp, zoomBase],
+    [status, position, travel, facing, speedKmh, headingUp, pause, followAgain, zoomBase, locked],
   );
 
   const screenWakeLock = useScreenWakeLock(receiving);
@@ -283,9 +379,13 @@ export function useRideMode(plausibleMaxKmh: number | undefined): UseRideModeRes
     fixedAtMs: fix?.fixedAtMs ?? null,
     accuracyM: fix?.accuracyM ?? null,
     screenWakeLock,
+    requestHeadingAgain: device.requestAgain,
     press,
     rest,
     resume,
+    locked,
+    lock,
+    unlock,
     map,
   };
 }

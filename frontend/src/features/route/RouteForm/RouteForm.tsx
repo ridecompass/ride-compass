@@ -14,9 +14,11 @@ import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
 import Ruler, { type RulerFrame } from "@/components/ui/Ruler/Ruler";
 import { textVariants } from "@/components/ui/Text/Text";
 import { panelIconToggleClass, Toggle } from "@/components/ui/Toggle/Toggle";
+import { useAxisCatalog } from "@/hooks/useAxisCatalog";
+import { CLIENT_TUNING_IDS, clientTuningValue } from "@/lib/axisCatalog";
 import { cn } from "@/lib/cn";
 
-/** 「ルート設定」区分のタブ。タブ列と選択状態はpage.tsxが持ち（見出し行に置くため）、
+/** 「ルート設定」区分のタブ。タブ列（`SettingsTabsList.tsx`）と選択状態は外が持ち（見出し行に置くため）、
  * ここは各タブの中身だけを描く。 */
 export type SettingsTab = "generate" | "weights" | "exclusions" | "saved";
 
@@ -28,10 +30,13 @@ type RouteFormConditions = Pick<
   | "setDistanceInput"
   | "maxRoutesInput"
   | "setMaxRoutesInput"
+  | "loop"
+  | "setLoop"
   | "distanceTargeted"
   | "setDistanceTargeted"
   | "waypoints"
   | "removeWaypoint"
+  | "reorderPoints"
   | "destination"
   | "clearDestination"
   | "clearPoints"
@@ -56,17 +61,15 @@ interface RouteFormProps {
   onOriginReset: () => void;
   /** 出発地が、探して置いたときの位置のままなら、その候補（名前を出す）。 */
   originFound: PlaceCandidate | null;
-  /** 地図でいま見ている所の真ん中。探す施設の候補は、ここから近い順に並ぶ。 */
-  mapCenter: Coordinates;
-  /** 探して選んだ候補を、その役割の地点として置く（経由地は`waypointIndex`番目を置き直し、無ければ足す）。 */
+  /** 地図の上端の地点の検索の欄を、選んでいる地点の役割で開く。 */
+  onSearchOpen: () => void;
+  /** 保存した候補を、その役割の地点として置き、置いた地点の詳しくを見せる（経由地は足す）。 */
   onPlaceFound: (role: PinRole, candidate: PlaceCandidate, waypointIndex: number | null) => void;
-  /** 保存した地点（地点の詳しくで保存して打つ欄の候補に出し、「保存済み」タブの「地点」に並べて呼び出す）。 */
+  /** 保存した地点（地点の詳しくで保存して検索の欄の候補に出し、「保存済み」タブの「地点」に並べて呼び出す）。 */
   savedPlaces: SavedPlacesState;
-  /** 「条件」タブへ移る（「保存済み」タブの「地点」から呼び出した地点を見せる）。 */
-  onPointsShow: () => void;
   /** 地図をタップすると選んでいる地点を置くか（ルート設定が地図で効いている間）。 */
   placing: boolean;
-  /** 「重み」タブの中身。タブの列と「ルート生成」ボタンは見出しの行（page.tsx）、検証は`useRouteFormSubmit`が持つ。 */
+  /** 「重み」タブの中身。タブの列と「ルート生成」ボタンは見出しの行、検証は`useRouteFormSubmit`が持つ。 */
   weightsPanel: React.ReactNode;
   /** 「除外」タブの中身。 */
   exclusionsPanel: React.ReactNode;
@@ -77,7 +80,6 @@ interface RouteFormProps {
 }
 
 const MAX_DISTANCE_KM = routeGenerateConfig.max_distance_km;
-const DISTANCE_TOLERANCE_KM = routeGenerateConfig.default_distance_tolerance_km;
 /** 全長の目標のルーラーのコマ。止まる刻みごとに1コマで（下限は1刻み分）、10kmごとに太い目盛りと数を付ける。 */
 const DISTANCE_FRAMES: RulerFrame[] = Array.from({ length: Math.floor(MAX_DISTANCE_KM / DISTANCE_STEP_KM) }, (_, i) => {
   const km = (i + 1) * DISTANCE_STEP_KM;
@@ -87,7 +89,7 @@ const DISTANCE_FRAMES: RulerFrame[] = Array.from({ length: Math.floor(MAX_DISTAN
 const MIN_ROUTES = routeGenerateConfig.min_routes;
 const MAX_ROUTES = routeGenerateConfig.max_routes;
 
-// forceMount+data-stateでの表示切替（ルート結果のタブと同じ方式）。
+// forceMount+data-stateでの表示切替。
 // 候補数等は`features/route/useGenerationConditions.ts`の制御stateのため非表示中も値は失われないが、
 // 重みタブ（RouteSettingsPanel）はドラッグ中の帯グラフ・チェックOFF前の
 // 重み記憶をローカルstateで持つため、タブ切替のたびにアンマウントすると失われる。
@@ -99,6 +101,13 @@ function KeptTabContent({ value, children }: { value: string; children: React.Re
   );
 }
 
+// 割合も長さも小数1桁へ丸める（0.15×100は15.000000000000002になる）。
+function toleranceSentence(ratio: number, distanceInput: string): string {
+  const percent = Math.round(ratio * 1000) / 10;
+  const km = Math.round(Number(distanceInput) * ratio * 10) / 10;
+  return `作る候補は、この長さの±${percent}%（${distanceInput}kmなら±${km}km）に入るものだけです。`;
+}
+
 export default function RouteForm({
   conditions,
   origin,
@@ -107,10 +116,9 @@ export default function RouteForm({
   originAtHere,
   onOriginReset,
   originFound,
-  mapCenter,
+  onSearchOpen,
   onPlaceFound,
   savedPlaces,
-  onPointsShow,
   placing,
   weightsPanel,
   exclusionsPanel,
@@ -120,13 +128,8 @@ export default function RouteForm({
   const { distanceTargeted, setDistanceTargeted, distanceInput, setDistanceInput, maxRoutesInput, setMaxRoutesInput } =
     conditions;
   const distanceToggleName = distanceTargeted ? "全長の目標をやめる" : "全長の目標を決める";
-
-  // 保存した地点を呼び出したら「条件」タブへ移り、置いた地点を選んで詳しくを出す（足した経由地は`onPlaceFound`が選ぶ）。
-  function recallSavedPlace(role: PinRole, place: PlaceCandidate) {
-    onPlaceFound(role, place, null);
-    if (role !== "waypoint") conditions.selectPoint({ role });
-    onPointsShow();
-  }
+  // 許容差は管理画面の較正値（目標の距離に対する割合）。引けない間は幅の文を出さない（較正したのとは別の数を出さない）。
+  const distanceToleranceRatio = clientTuningValue(useAxisCatalog(), CLIENT_TUNING_IDS.distanceToleranceRatio);
 
   // 範囲の端ではボタンを押せなくするので、足した値は範囲を出ない。
   function stepMaxRoutes(delta: number) {
@@ -138,9 +141,9 @@ export default function RouteForm({
       <KeptTabContent value="generate">
         {/* 全長の目標と候補数といまの設定の保存を1行に並べ、パネルの縦幅を詰める。ルーラーは残りの幅を取り、狭い幅では長い距離の側を
             見えない所へ置く（滑らせると出る）。全長の目標を外している間もルーラーと値は出したまま薄くする（入れ直すと
-            前の値に戻ることが見える）。 */}
-        <div className="mb-2 flex items-center gap-2">
-          <div className="flex min-w-0 flex-1 items-center gap-1.5">
+            前の値に戻ることが見える）。部品の間は詰めて、いちばん狭い幅でもルーラーに押せる幅（24px四方）を残す。 */}
+        <div className="mb-2 flex items-center gap-1.5">
+          <div className="flex min-w-0 flex-1 items-center gap-1">
             <Toggle
               variant="plain"
               className={cn(panelIconToggleClass, "flex-none")}
@@ -161,12 +164,21 @@ export default function RouteForm({
               usage="ルート全体の長さの目標を、目盛りを横に滑らせて決めます。"
             />
             <span
-              className={cn("min-w-[3.25em] flex-shrink-0 text-right tabular-nums", !distanceTargeted && "opacity-40")}
+              className={cn(
+                // 文字の大きさは地点の並びの札の名前とそろえる（`PointStrip.tsx: chipName`）。
+                "min-w-[3.25em] flex-shrink-0 text-right text-[length:var(--font-size-md)] tabular-nums",
+                !distanceTargeted && "opacity-40",
+              )}
             >
               {distanceInput}km
             </span>
             <InfoPopover triggerAriaLabel="全長の目標の説明" triggerClassName="flex-none">
-              {`ルート全体の長さの目標です。作る候補は、この長さの±${DISTANCE_TOLERANCE_KM}kmに入るものだけです。外すと長さを決めず、目的地（無ければ出発地）へ良い道で向かいます。`}
+              {[
+                "ルート全体の長さの目標です。",
+                distanceToleranceRatio === undefined ? "" : toleranceSentence(distanceToleranceRatio, distanceInput),
+                "外すと長さを決めず、目的地（周回なら経由地を回って出発地）へ良い道で向かいます。",
+                `${routeGenerateConfig.busy_safe_distance_km}kmより長い目標は、混み合っているときに作れないことがあります。`,
+              ].join("")}
             </InfoPopover>
           </div>
           <div className="flex flex-none items-center gap-1">
@@ -182,7 +194,7 @@ export default function RouteForm({
               >
                 ‹
               </Button>
-              <span className="min-w-[2.25em] text-center tabular-nums">{`${maxRoutesInput}件`}</span>
+              <span className="min-w-[2.25em] text-center text-[length:var(--font-size-md)] tabular-nums">{`${maxRoutesInput}件`}</span>
               <Button
                 variant="stepper"
                 size="sm"
@@ -206,8 +218,7 @@ export default function RouteForm({
           originAtHere={originAtHere}
           onOriginReset={onOriginReset}
           originFound={originFound}
-          mapCenter={mapCenter}
-          onPlaceFound={onPlaceFound}
+          onSearchOpen={onSearchOpen}
           savedPlaces={savedPlaces}
           placing={placing}
         />
@@ -238,7 +249,8 @@ export default function RouteForm({
             <SavedPlacesPanel
               places={savedPlaces.places}
               waypointsFull={waypointsFull(conditions.waypoints)}
-              onRecall={recallSavedPlace}
+              loop={conditions.loop}
+              onRecall={(role, place) => onPlaceFound(role, place, null)}
               onRemove={savedPlaces.remove}
             />
           </KeptTabContent>

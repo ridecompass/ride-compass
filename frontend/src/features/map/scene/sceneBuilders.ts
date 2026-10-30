@@ -40,6 +40,8 @@ export function layerSpec(spec: {
   readonly sourceLayer?: string;
   readonly paint?: Readonly<Record<string, unknown>>;
   readonly layout?: Readonly<Record<string, unknown>>;
+  readonly minzoom?: number;
+  readonly maxzoom?: number;
 }): LayerSpecification {
   const { sourceLayer, ...rest } = spec;
   return {
@@ -57,6 +59,17 @@ export function zoomScaleExpression(base: unknown, stops: readonly (readonly [nu
     ["zoom"],
     ...stops.flatMap(([zoom, factor]) => [zoom, typeof base === "number" ? base * factor : ["*", base, factor]]),
   ];
+}
+
+/** 地図の線形の補間の式（`["interpolate", ["linear"], 入力, ...stops]`）が、入力`x`で出す値。`stops`は入力の昇順で、
+ * 端より外は端の値。 */
+export function linearAt(stops: readonly (readonly [number, number])[], x: number): number {
+  const upper = stops.findIndex(([at]) => at >= x);
+  if (upper === -1) return stops[stops.length - 1][1];
+  if (upper === 0) return stops[0][1];
+  const [x0, y0] = stops[upper - 1];
+  const [x1, y1] = stops[upper];
+  return y0 + ((y1 - y0) * (x - x0)) / (x1 - x0);
 }
 
 /** 実行時に入れ替わる GeoJSON の中身。ソースを作り直さずに当て直す。

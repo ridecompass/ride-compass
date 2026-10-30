@@ -11,7 +11,6 @@ import {
   fetchJmaGeojson,
   fetchJmaTargetTimesFile,
   jmaFramesOf,
-  JMA_POINT_VALUE_PROPERTY,
   jmaPlaceholderTileUrl,
   jmaTilePayload,
   parseValidtime,
@@ -124,7 +123,7 @@ describe("コマのURL", () => {
     expect(ref?.frame).toEqual({ basetime: "00000000000000", member: "none", validtime: "00000000000000" });
   });
 
-  it("地物はそのコマの要素配下のGeoJSONを取り、どの地物にも記号の大きさを決める値を足す（元の属性は残す）", async () => {
+  it("地物はそのコマの要素配下のGeoJSONを取る", async () => {
     const url = `${PROXY}${delivery.urlTemplate}`
       .replace("{basetime}", frame.basetime)
       .replace("{member}", frame.member)
@@ -143,10 +142,7 @@ describe("コマのURL", () => {
     );
 
     const geojson = await fetchJmaGeojson(delivery, frame, "地点");
-    expect(geojson.features.map((feature) => feature.properties)).toEqual([
-      { type: 1, [JMA_POINT_VALUE_PROPERTY]: 1 },
-      { [JMA_POINT_VALUE_PROPERTY]: 1 },
-    ]);
+    expect(geojson.features.map((feature) => feature.properties)).toEqual([{ type: 1 }, null]);
   });
 });
 

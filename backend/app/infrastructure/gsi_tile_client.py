@@ -34,10 +34,12 @@ class GsiTileClient:
         self._http_client = http_client
         self._not_found_paths = not_found_paths
 
-    async def get(self, path: str) -> tuple[bytes, str] | UpstreamNotFound | None:
+    async def get(self, path: str, *, category: str) -> tuple[bytes, str] | UpstreamNotFound | None:
+        """`category`は運用の統計とWARNINGが数える名前で、製品ごとに呼び出し側が名乗る（色別標高図と標高タイルの
+        失敗を見分ける）。パスから作らない——パスは利用者の要求そのままで、名前の数に上限が無くなる。"""
         if path in self._not_found_paths:
             return UPSTREAM_NOT_FOUND
-        with log_external_call("gsi:relief-tile", path=path) as fields:
+        with log_external_call(category, path=path) as fields:
             # tile_cacheの読み書きは同期的なディスクI/O。basemap_client.pyと同じ理由
             # （多数のタイルリクエストが同時に来るとイベントループをブロックする）で
             # asyncio.to_threadへ逃がす。

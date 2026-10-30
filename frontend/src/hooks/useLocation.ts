@@ -116,6 +116,8 @@ export function useLocation(ridingAt: Coordinates | null): UseLocationResult {
     setOrigin({ point, source: "manual" });
   }, []);
 
+  // 走行モードが受けた位置も最後に取れた位置に数える（走行モードを抜けたあと、走り出す前の位置へ戻さない）。
+  if (ridingAt !== null && ridingAt !== here) setHere(ridingAt);
   const locationKnown = origin.source !== "default";
   const currentHere = ridingAt ?? here;
   const originAtHere =

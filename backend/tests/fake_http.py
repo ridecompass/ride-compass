@@ -1,4 +1,4 @@
-"""外部HTTPの代役。応答はrespxの経路（`respx.Router`）で決め、実装へは本物の`httpx.AsyncClient`を渡す。
+"""外部HTTPの代役。応答はrespxの経路（`respx.Router`）で決め、実装へは本物の`httpx.AsyncClient`（同期の道具へは`httpx.Client`）を渡す。
 
 経路は`httpx.MockTransport`へ差すので網へは出ず、既定の送り先（証明書の読み込みを伴い、
 1つ作るのに開発機で0.5秒かかる）も作らない。応答は本物の`httpx.Response`なので、
@@ -18,12 +18,18 @@ import httpx
 import respx
 
 
-def client_for(router: respx.Router) -> httpx.AsyncClient:
+def client_for(router: respx.Router, **client_options) -> httpx.AsyncClient:
+    """`router`へ要求を渡すクライアント。`client_options`は`httpx.AsyncClient`の引数（`timeout`等）。"""
     async def handler(request: httpx.Request) -> httpx.Response:
         await asyncio.sleep(0)
         return router.handler(request)
 
-    return httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    return httpx.AsyncClient(transport=httpx.MockTransport(handler), **client_options)
+
+
+def sync_client_for(router: respx.Router, **client_options) -> httpx.Client:
+    """`client_for`の同期版（同期の`httpx.Client`を受け取る道具向け）。"""
+    return httpx.Client(transport=httpx.MockTransport(router.handler), **client_options)
 
 
 def answering(*args, **kwargs) -> httpx.AsyncClient:

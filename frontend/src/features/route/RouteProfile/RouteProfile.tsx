@@ -3,57 +3,27 @@
 import { EVALUATION_PAINT_NAME, FACT_DISPLAY_NAME } from "@/lib/screenNames";
 import { useMemo, useState } from "react";
 
-import { Button } from "@/components/ui/Button/Button";
-import { Checkbox } from "@/components/ui/Checkbox/Checkbox";
 import { Dot } from "@/components/ui/Dot/Dot";
 import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
-import { Popover, PopoverContent, PopoverTrigger, POPOVER_COLLISION_PADDING_PX } from "@/components/ui/Popover/Popover";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs/Tabs";
-import { cn } from "@/lib/cn";
 import { DisplayItemsIcon } from "@/components/ui/icons/icons";
-import { ChooseItemsIcon, EvaluationPaintIcon } from "@/components/ui/icons/lucideIcons";
+import { EvaluationPaintIcon } from "@/components/ui/icons/lucideIcons";
 import DifficultyProfile from "@/features/route/DifficultyProfile/DifficultyProfile";
 import { profileBoxes } from "@/features/route/DifficultyProfile/profileGeometry";
-import ProfileChart, {
-  PROFILE_VIEW_HEIGHT,
-  profileTextClass,
-  useProfileScale,
-} from "@/features/route/ProfileChart/ProfileChart";
+import { useProfileScale } from "@/features/route/ProfileChart/profileScale";
 import type { CatalogAxis } from "@/lib/catalogAxis";
 import palette from "@/types/generated/palette.json";
-import type { RoutePoint, RouteSegmentDetail, SelectedRouteSegment } from "@/types/route";
+import type { RouteSegmentDetail, SelectedRouteSegment } from "@/types/route";
 
-import {
-  bandLegendRows,
-  bandRowAtKm,
-  layerBand,
-  layerLine,
-  layerMarks,
-  layerValueAtKm,
-  markLegendRows,
-  markNearKm,
-  PROFILE_LAYERS,
-  type BandLayer,
-  type BandPiece,
-  type LineLayer,
-  type PointLayer,
-  type PointMark,
-} from "./profileLayers";
-import RidingPointDetail from "./RidingPointDetail";
-import type { ProfileLayerSelection } from "./useProfileLayers";
+import LayerProfile, { type ShownLayers } from "./LayerProfile";
+import { layerBand, layerLine, type BandLayer, type LineLayer } from "./profileLayers";
+import ProfileLayerPicker from "./ProfileLayerPicker";
+import { SectionOnMapButton, type SectionOnMap } from "@/features/route/SegmentDetail/SegmentDetail";
 
-/** 折れ線の上下に空ける余白（描画の縦座標）。最高・最低の点が枠に貼り付かないようにする。 */
-const LINE_MARGIN = 8;
-/** 帯1本の高さと、帯どうしの間（描画の縦座標）。帯はグラフの下から積み、折れ線は残りの上の範囲に描く。 */
-const BAND_HEIGHT = 8;
-const BAND_GAP = 2;
-/** 選んだ地点の点とみなす、地点からの道のりの幅（横軸の全幅に対する割合）。指でなぞる細かさに合わせる。 */
-const MARK_PICK_WIDTH_RATIO = 0.02;
+import { useChosenProfileLayers, type ProfileLayerSelection } from "./useProfileLayers";
 
 interface RouteProfileProps {
   segments: readonly RouteSegmentDetail[];
-  /** ルートの近くの点（通る道のりの順）。 */
-  points: readonly RoutePoint[];
   /** ルートの総合難易度。値の無い区間をこの高さで描く。 */
   overallDifficulty: number | null;
   /** 難易度を下から積む軸の並び（カタログの順）と色。 */
@@ -62,28 +32,31 @@ interface RouteProfileProps {
   /** 横軸の右端の距離。 */
   scaleKm: number;
   selected: SelectedRouteSegment | null;
-  /** なぞる・押して離すと、その地点の区間を選ぶ。走行中は詳しくを閉じると null で外す。無ければ見るだけの図にする。 */
+  /** なぞる・押して離すと、その地点の区間を選ぶ。無ければ見るだけの図にする。 */
   onSelect?: (selection: SelectedRouteSegment | null) => void;
+  /** 地点を選んでいる間に右上に出す「区間を地図で見る」。無ければ出さない。 */
+  segmentOnMap?: SectionOnMap;
   /** 走行中の現在地のルートの上の距離。 */
   progressKm?: number | null;
   /** 置いた経由地を通る所のルートの上の距離（置いた順）。 */
   waypointKms: readonly number[];
   /** グラフに出す情報の選択（結果と走行中の図で1つを共有する）。 */
   layers: ProfileLayerSelection;
-  /** 走行中の地図の下の図。切り替えと見方・出す情報のボタンを図に重ねず、図の上の行に出し、選んだ地点の詳しくを図の下に出す。 */
+  /** 走行中の地図の下の図。目盛り・図の下の文字を大きくし、「表示」の図に値の目盛りを出す。 */
   riding?: boolean;
 }
 
-/** 道のりのグラフ。地図の2つの入口と同じ名前のタブで、「評価で塗る」は区間の難易度を、「表示」は選んだ情報（標高の折れ線・道の区分の帯等）を、同じ横軸で出す。 */
+/** 道のりのグラフ。地図の2つの入口と同じ名前のタブで、「評価で塗る」は区間の難易度を、「表示」は選んだ情報（標高の折れ線・道の区分の帯等）を、
+ * 同じ横軸で出す。選んだ地点の中身は地図の区間の小窓が出す。 */
 export default function RouteProfile({
   segments,
-  points,
   overallDifficulty,
   axes,
   axisColors,
   scaleKm,
   selected,
   onSelect,
+  segmentOnMap,
   progressKm = null,
   waypointKms,
   layers,
@@ -97,110 +70,32 @@ export default function RouteProfile({
     const { byAxis } = profileBoxes(scale.columns, axisOrder, overallDifficulty);
     return axes.filter((axis) => (byAxis.get(axis.axisId)?.length ?? 0) > 0);
   }, [scale, axes, axisOrder, overallDifficulty]);
-  const shownLayers = useMemo(() => {
-    const chosen = PROFILE_LAYERS.filter((layer) => layers.ids.includes(layer.id));
-    return {
+  const { available, chosen } = useChosenProfileLayers(layers.ids);
+  const shownLayers = useMemo(
+    (): ShownLayers => ({
       lines: chosen
         .filter((layer): layer is LineLayer => layer.draw.kind === "line")
         .map((layer) => ({ layer, ...layerLine(scale.columns, layer) })),
       bands: chosen
         .filter((layer): layer is BandLayer => layer.draw.kind === "band")
         .map((layer) => ({ layer, pieces: layerBand(scale.columns, layer) })),
-      marks: chosen
-        .filter((layer): layer is PointLayer => layer.draw.kind === "points")
-        .map((layer) => ({ layer, marks: layerMarks(points, layer) })),
-    };
-  }, [scale, layers.ids, points]);
-  // 点の印の行は帯の上に積む。
-  const rowCount = shownLayers.bands.length + shownLayers.marks.length;
-  const lineBottom = PROFILE_VIEW_HEIGHT - rowCount * (BAND_HEIGHT + BAND_GAP);
-  const rowTop = (row: number) => lineBottom + BAND_GAP + row * (BAND_HEIGHT + BAND_GAP);
-
-  function yOf(value: number, range: { min: number; max: number }): number {
-    const span = range.max - range.min;
-    if (span <= 0) return lineBottom / 2;
-    return lineBottom - LINE_MARGIN - ((value - range.min) / span) * (lineBottom - 2 * LINE_MARGIN);
-  }
-
-  // グラフの下には値の1行だけを出す（凡例は「グラフに出す情報」の一覧の行に出し、グラフの場所を取らない）。帯は地点を選んだときだけ。
-  function bandCaption(layer: BandLayer, pieces: readonly BandPiece[], pointKm: number | null) {
-    if (pieces.length === 0) return <p key={layer.id}>{layer.label}の値がありません。</p>;
-    const atPoint = pointKm === null ? null : bandRowAtKm(pieces, pointKm);
-    return atPoint === null ? null : <p key={layer.id}>{`${layer.label}・この地点 ${atPoint.label}`}</p>;
-  }
-  const bandPiecesOf = new Map(shownLayers.bands.map(({ layer, pieces }) => [layer.id, { layer, pieces }]));
-
-  function markCaption(layer: PointLayer, marks: readonly PointMark[], pointKm: number | null) {
-    if (marks.length === 0) return <p key={layer.id}>{layer.label}はルートの近くにありません。</p>;
-    const atPoint = pointKm === null ? null : markNearKm(marks, pointKm, scale.widthKm * MARK_PICK_WIDTH_RATIO);
-    if (atPoint === null) return null;
-    return (
-      <p
-        key={layer.id}
-      >{`${layer.label}・この地点 ${atPoint.kinds}${atPoint.name === null ? "" : ` ${atPoint.name}`}`}</p>
-    );
-  }
-  const marksOf = new Map(shownLayers.marks.map(({ layer, marks }) => [layer.id, { layer, marks }]));
-
-  // 現在地の印は、最初の折れ線（標高等）のその地点の値の高さに置く。
-  const firstLine = shownLayers.lines.find(({ range }) => range !== null);
-  const progressValue =
-    progressKm === null || firstLine === undefined ? null : layerValueAtKm(scale.columns, firstLine.layer, progressKm);
-  const progressMarkY = progressValue === null || firstLine?.range == null ? null : yOf(progressValue, firstLine.range);
-  // 走行中は図を遠目に読むので、最初の折れ線の最高と最低の高さに単位つきの目盛りを出す。
-  const valueTicks =
-    !riding || firstLine?.range == null
-      ? []
-      : [
-          {
-            y: yOf(firstLine.range.max, firstLine.range),
-            label: `${firstLine.layer.label} ${Math.round(firstLine.range.max)}${firstLine.layer.draw.unit}`,
-          },
-          {
-            y: yOf(firstLine.range.min, firstLine.range),
-            label: `${Math.round(firstLine.range.min)}${firstLine.layer.draw.unit}`,
-          },
-        ];
-  // 走行中は、なぞって選んだ地点の詳しく（標高・勾配・道の区分・区間の詳細）を図の下に出す（結果では区間の詳細を図の外に出す）。
-  function ridingPointDetail(pointKm: number | null) {
-    if (!riding || pointKm === null) return null;
-    return (
-      <div className="max-h-[40dvh] overflow-y-auto">
-        <RidingPointDetail columns={scale.columns} pointKm={pointKm} onClear={() => onSelect?.(null)} />
-      </div>
-    );
-  }
-  // 切り替えは地図の「表示」のボタンと「評価で塗る」のピルと同じ絵で出す。走行中は文字を出さず、絵を大きくする。
-  const triggerClass = riding ? "min-h-8 px-3" : "gap-1";
-  const triggerIconSize = riding ? 20 : 14;
-  const triggerLabelClass = riding ? "sr-only" : undefined;
-
+    }),
+    [chosen, scale],
+  );
   return (
     <Tabs value={tab} onValueChange={setTab} className="relative flex flex-col gap-1">
-      {/* 結果では、切り替えと見方・出す情報のボタンは図の上の角に重ね、図の上に段を取らない（スマホのシートの低い高さで図を
-          大きく見せる）。重ねた部品の外では、図をなぞって地点を選べる。 */}
-      <div
-        className={cn(
-          "flex items-start justify-between gap-1",
-          !riding && "pointer-events-none absolute inset-x-1 top-1 z-10 [&>*]:pointer-events-auto",
-        )}
-      >
+      {/* 切り替えと見方・出す情報のボタンは、結果も走行中も図の右上に重ね、図の上に段を取らない（スマホの低い高さで図を大きく
+          見せる）。図の左上は値の目盛りに空けておく。重ねた部品の外では、図をなぞって地点を選べる。切り替えは地図の「表示」の
+          ボタンと「評価で塗る」のピルと同じ絵だけで出し、名前は読み上げに残す。 */}
+      <div className="pointer-events-none absolute top-1 right-1 z-10 flex items-start gap-1 [&>*]:pointer-events-auto">
         <TabsList aria-label="道のりのグラフ" variant="overlay">
-          <TabsTrigger
-            value="layer"
-            className={triggerClass}
-            usage="選んだ情報（標高・道の区分等）を、道のりに沿って出します。"
-          >
-            <DisplayItemsIcon size={triggerIconSize} />
-            <span className={triggerLabelClass}>{FACT_DISPLAY_NAME}</span>
+          <TabsTrigger value="layer" usage="選んだ情報（標高・道の区分等）を、道のりに沿って出します。">
+            <DisplayItemsIcon size={14} />
+            <span className="sr-only">{FACT_DISPLAY_NAME}</span>
           </TabsTrigger>
-          <TabsTrigger
-            value="lens"
-            className={triggerClass}
-            usage="区間ごとの難易度を、評価軸の色で塗って道のりに沿って出します。"
-          >
-            <EvaluationPaintIcon size={triggerIconSize} />
-            <span className={triggerLabelClass}>{EVALUATION_PAINT_NAME}</span>
+          <TabsTrigger value="lens" usage="区間ごとの難易度を、評価軸の色で塗って道のりに沿って出します。">
+            <EvaluationPaintIcon size={14} />
+            <span className="sr-only">{EVALUATION_PAINT_NAME}</span>
           </TabsTrigger>
         </TabsList>
         {tab === "lens" && (
@@ -225,81 +120,9 @@ export default function RouteProfile({
             </p>
           </InfoPopover>
         )}
-        {tab === "layer" && (
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button
-                variant="float"
-                size="iconRound"
-                className="relative shadow-none"
-                aria-label="グラフに出す情報"
-                usage="グラフに重ねる情報（標高・道の区分等）を選ぶ一覧を開きます。数字は今重ねている数です。"
-              >
-                <ChooseItemsIcon size={16} />
-                {layers.ids.length > 0 && (
-                  <span
-                    aria-hidden="true"
-                    className="absolute -top-1 -right-1 h-3.5 min-w-3.5 rounded-full bg-[var(--color-accent)] px-0.5 text-center text-[0.55rem] leading-3.5 text-white"
-                  >
-                    {layers.ids.length}
-                  </span>
-                )}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent
-              side="bottom"
-              align="end"
-              collisionPadding={POPOVER_COLLISION_PADDING_PX}
-              className="max-h-[var(--radix-popover-content-available-height)] w-64 overflow-y-auto rounded-sm px-3 py-2.5"
-            >
-              <p className="mb-1 font-semibold">グラフに出す情報</p>
-              <ul className="flex flex-col gap-1 text-[length:var(--font-size-sm)]">
-                {PROFILE_LAYERS.map((layer) => {
-                  const band = bandPiecesOf.get(layer.id);
-                  const marked = marksOf.get(layer.id);
-                  return (
-                    <li key={layer.id}>
-                      <label className="flex cursor-pointer items-center gap-1.5">
-                        <Checkbox
-                          checked={layers.ids.includes(layer.id)}
-                          onCheckedChange={() => layers.toggle(layer.id)}
-                          aria-label={layer.label}
-                        />
-                        {layer.label}
-                      </label>
-                      {band !== undefined && band.pieces.length > 0 && (
-                        <ul
-                          aria-label={`${layer.label}の凡例`}
-                          className="ml-6 flex flex-wrap gap-x-2 text-[length:var(--font-size-xs)] text-[var(--color-muted)]"
-                        >
-                          {bandLegendRows(band.layer, band.pieces).map((row) => (
-                            <li key={row.key} className="flex items-center gap-1">
-                              <Dot tone="none" style={{ backgroundColor: row.color }} />
-                              <span>{row.label}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                      {marked !== undefined && marked.marks.length > 0 && (
-                        <ul
-                          aria-label={`${layer.label}の凡例`}
-                          className="ml-6 flex flex-wrap gap-x-2 text-[length:var(--font-size-xs)] text-[var(--color-muted)]"
-                        >
-                          {markLegendRows(marked.layer, marked.marks).map((row) => (
-                            <li key={row.key} className="flex items-center gap-1">
-                              <Dot tone="none" style={{ backgroundColor: row.color }} />
-                              <span>{row.label}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
-            </PopoverContent>
-          </Popover>
-        )}
+        {tab === "layer" && <ProfileLayerPicker available={available} layers={layers} shown={shownLayers} />}
+        {/* 選んだ地点の値は地図の区間の小窓が出す。地図は選んでも動かないので、ここから寄せる（地点が地図の外なら目立たせる）。 */}
+        {selected !== null && segmentOnMap !== undefined && <SectionOnMapButton onMap={segmentOnMap} />}
       </div>
       <TabsContent value="lens">
         <DifficultyProfile
@@ -313,97 +136,18 @@ export default function RouteProfile({
           progressKm={progressKm}
           waypointKms={waypointKms}
           riding={riding}
-          caption={ridingPointDetail}
         />
       </TabsContent>
       <TabsContent value="layer" className="flex flex-col gap-1">
-        <ProfileChart
+        <LayerProfile
           scale={scale}
-          label="道のりに沿った情報"
-          usage="横が道のり、縦が選んだ情報の値、下の帯が選んだ道の区分の色です。なぞるか押して離すと、その地点を地図に印で出し、下にその地点の値を出します。"
+          shown={shownLayers}
           selected={selected}
           onSelect={onSelect}
           progressKm={progressKm}
-          progressMarkY={progressMarkY}
-          valueTicks={valueTicks}
-          riding={riding}
           waypointKms={waypointKms}
-          caption={(pointKm) =>
-            riding && pointKm !== null ? (
-              ridingPointDetail(pointKm)
-            ) : (
-              <div className={cn(profileTextClass(riding), "text-[var(--color-muted)] tabular-nums")}>
-                {shownLayers.lines.length + rowCount === 0 ? (
-                  <p>出す情報を選んでください。</p>
-                ) : (
-                  shownLayers.lines.map(({ layer, range }) => {
-                    if (range === null) return <p key={layer.id}>{layer.label}の値がありません。</p>;
-                    const unit = layer.draw.unit;
-                    const atPoint = pointKm === null ? null : layerValueAtKm(scale.columns, layer, pointKm);
-                    return (
-                      <p key={layer.id}>
-                        {`${layer.label} 最高 ${Math.round(range.max)}${unit}・最低 ${Math.round(range.min)}${unit}`}
-                        {atPoint !== null && `・この地点 ${Math.round(atPoint)}${unit}`}
-                      </p>
-                    );
-                  })
-                )}
-                {shownLayers.bands.map(({ layer, pieces }) => bandCaption(layer, pieces, pointKm))}
-                {shownLayers.marks.map(({ layer, marks }) => markCaption(layer, marks, pointKm))}
-              </div>
-            )
-          }
-        >
-          {shownLayers.bands.map(({ layer, pieces }, index) => (
-            <g key={layer.id} data-layer={layer.id}>
-              {pieces.map((piece) => (
-                <rect
-                  key={piece.startKm}
-                  x={scale.xOf(piece.startKm)}
-                  y={rowTop(index)}
-                  width={scale.xOf(piece.endKm) - scale.xOf(piece.startKm)}
-                  height={BAND_HEIGHT}
-                  fill={piece.row.color}
-                />
-              ))}
-            </g>
-          ))}
-          {shownLayers.marks.map(({ layer, marks }, index) => {
-            const y = rowTop(shownLayers.bands.length + index) + BAND_HEIGHT / 2;
-            // 伸び縮みする描画の中で印の形を保つため、長さの無い線を伸びない太さの端の形で描く。
-            return (
-              <g key={layer.id} data-layer={layer.id}>
-                {marks.map((mark, markIndex) => (
-                  <line
-                    key={markIndex}
-                    x1={scale.xOf(mark.km)}
-                    x2={scale.xOf(mark.km)}
-                    y1={y}
-                    y2={y}
-                    stroke={mark.color}
-                    strokeWidth={mark.radiusPx * 2}
-                    strokeLinecap={mark.glyph === null ? "round" : "square"}
-                    vectorEffect="non-scaling-stroke"
-                  />
-                ))}
-              </g>
-            );
-          })}
-          {shownLayers.lines.flatMap(({ layer, runs, range }) =>
-            range === null
-              ? []
-              : runs.map((run, index) => (
-                  <polyline
-                    key={`${layer.id}-${index}`}
-                    points={run.map((point) => `${scale.xOf(point.km)},${yOf(point.value, range)}`).join(" ")}
-                    fill="none"
-                    className="stroke-[var(--color-accent-strong)]"
-                    strokeWidth={2}
-                    vectorEffect="non-scaling-stroke"
-                  />
-                )),
-          )}
-        </ProfileChart>
+          riding={riding}
+        />
       </TabsContent>
     </Tabs>
   );

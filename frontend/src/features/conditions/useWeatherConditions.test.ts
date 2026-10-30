@@ -3,18 +3,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { HttpResponse } from "msw";
 
+import { HOUR_MS } from "@/lib/duration";
 import { getQueryClient } from "@/lib/queryClient";
 import { heldReplies, inTurn, onBackend } from "@/testing/backendServer";
+import { makeRouteSegment } from "@/testing/routeFixtures";
 import { settle } from "@/testing/settle";
 
 import { useWeatherConditions } from "./useWeatherConditions";
 
 // 通信は網の層でテストが決める（応答の形はbackendの契約で、ここでは画面へ渡すまでを見る）。
-const WEATHER = "/api/weather";
 const AMEDAS = "/api/weather/amedas";
 const WARNINGS = "/api/weather/warnings";
 const WBGT = "/api/weather/wbgt";
 const FLOOD = "/api/weather/flood-forecast";
+const GRID_POINT_TODAY = "/api/weather";
+const ROUTE_TIMELINE = "/api/weather/route-warning-timeline";
 
 const TOKYO = { latitude: 35.68, longitude: 139.76 };
 const YOKOHAMA = { latitude: 35.44, longitude: 139.64 };
@@ -30,11 +33,11 @@ let observations: ReturnType<typeof onBackend>;
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
-  onBackend("GET", WEATHER, json({ precipitation_mm: 20 }));
   observations = onBackend("GET", AMEDAS, json({ temperature_c: 21 }));
   onBackend("GET", WARNINGS, json(NO_WARNINGS));
   onBackend("GET", WBGT, json(NO_WBGT));
   onBackend("GET", FLOOD, json(NO_FLOOD));
+  onBackend("GET", GRID_POINT_TODAY, json({ distance_km: 1 }));
 });
 
 afterEach(() => {
@@ -47,7 +50,7 @@ afterEach(() => {
 const fetched = () => vi.waitFor(() => expect(getQueryClient().isFetching()).toBe(0));
 
 function render(location = TOKYO, ready = true) {
-  return renderHook(({ location, ready }) => useWeatherConditions(location, ready, null), {
+  return renderHook(({ location, ready }) => useWeatherConditions(location, ready, null, null), {
     initialProps: { location, ready },
   });
 }
@@ -56,14 +59,14 @@ describe("useWeatherConditions 取得の時機", () => {
   it("位置が決まるまでは取りに行かない", async () => {
     const { result } = render(TOKYO, false);
     await settle();
-    expect(result.current).toMatchObject({ weather: null, amedas: null, warningBadgeItems: [] });
+    expect(result.current).toMatchObject({ amedas: null, warningBadgeItems: [] });
   });
 
-  it("位置が決まったら、予報・実測・警報・暑さ指数・氾濫予報をその位置で取る", async () => {
+  it("位置が決まったら、実測・最寄りの格子点の今日の値・警報・暑さ指数・氾濫予報をその位置で取る", async () => {
     // どの口も、問い合わせた緯度・経度を値に書いて返す。
     const at = ({ query }: { query: Record<string, string> }) => `${query.latitude},${query.longitude}`;
-    onBackend("GET", WEATHER, (request) => Response.json({ place: at(request) }));
     onBackend("GET", AMEDAS, (request) => Response.json({ place: at(request) }));
+    onBackend("GET", GRID_POINT_TODAY, (request) => Response.json({ place: at(request) }));
     onBackend("GET", WARNINGS, (request) =>
       Response.json({ warnings: [{ code: "03", name: `警報@${at(request)}`, level: "warning", additions: [] }] }),
     );
@@ -78,8 +81,8 @@ describe("useWeatherConditions 取得の時機", () => {
     const { result } = render();
     const tokyo = `${TOKYO.latitude},${TOKYO.longitude}`;
     await vi.waitFor(() => {
-      expect(result.current.weather).toEqual({ place: tokyo });
       expect(result.current.amedas).toEqual({ place: tokyo });
+      expect(result.current.gridPointToday).toEqual({ place: tokyo });
       expect(result.current.warningBadgeItems.map((item) => item.label)).toEqual([
         `警報@${tokyo}`,
         `暑さ指数@${tokyo}`,
@@ -89,7 +92,7 @@ describe("useWeatherConditions 取得の時機", () => {
   });
 
   it("位置が変わったら、緯度・経度のどちらだけの違いでも新しい位置で取り直す", async () => {
-    onBackend("GET", WEATHER, ({ query }) => Response.json({ place: `${query.latitude},${query.longitude}` }));
+    onBackend("GET", AMEDAS, ({ query }) => Response.json({ place: `${query.latitude},${query.longitude}` }));
     const { result, rerender } = render();
     await fetched();
     for (const moved of [
@@ -97,7 +100,7 @@ describe("useWeatherConditions 取得の時機", () => {
       { latitude: YOKOHAMA.latitude, longitude: YOKOHAMA.longitude },
     ]) {
       rerender({ location: moved, ready: true });
-      await vi.waitFor(() => expect(result.current.weather).toEqual({ place: `${moved.latitude},${moved.longitude}` }));
+      await vi.waitFor(() => expect(result.current.amedas).toEqual({ place: `${moved.latitude},${moved.longitude}` }));
     }
   });
 
@@ -110,13 +113,14 @@ describe("useWeatherConditions 取得の時機", () => {
     await vi.waitFor(() => expect(observations).toHaveLength(2));
   });
 
-  it("取り終えたら読み込み中を下ろし、位置を変えて取り直す間は前の位置の値のまま読み込み中にする", async () => {
+  it("位置を変えて取り直す間は、前の位置の値のまま", async () => {
     const { result, rerender } = render();
-    await vi.waitFor(() => expect(result.current.weatherLoading).toBe(false));
-    onBackend("GET", WEATHER, heldReplies().reply);
+    await fetched();
+    const held = heldReplies();
+    onBackend("GET", AMEDAS, held.reply);
     rerender({ location: YOKOHAMA, ready: true });
-    await vi.waitFor(() => expect(result.current.weatherLoading).toBe(true));
-    expect(result.current.weather).toEqual({ precipitation_mm: 20 });
+    await vi.waitFor(() => expect(held.arrived()).toBe(1));
+    expect(result.current.amedas).toEqual({ temperature_c: 21 });
   });
 });
 
@@ -154,7 +158,7 @@ describe("useWeatherConditions 走行中", () => {
   const NEAR_TOKYO = { latitude: TOKYO.latitude + 0.01, longitude: TOKYO.longitude + 0.01 };
 
   function renderRiding(position: typeof TOKYO) {
-    return renderHook(({ position }) => useWeatherConditions(YOKOHAMA, true, position), {
+    return renderHook(({ position }) => useWeatherConditions(YOKOHAMA, true, position, null), {
       initialProps: { position },
     });
   }
@@ -163,10 +167,7 @@ describe("useWeatherConditions 走行中", () => {
     observations = onBackend("GET", AMEDAS, ({ query }) =>
       Response.json({ place: `${query.latitude},${query.longitude}`, valid_area: AROUND_TOKYO }),
     );
-    // 予報は範囲を持たず、警報は東京の範囲を広く持つ（横浜も含む）。どちらも観測の範囲を出たことでは取り直さない。
-    const forecasts = onBackend("GET", WEATHER, ({ query }) =>
-      Response.json({ place: `${query.latitude},${query.longitude}` }),
-    );
+    // 警報は東京の範囲を広く持つ（横浜も含む）。観測の範囲を出たことでは取り直さない。
     const warnings = onBackend("GET", WARNINGS, json({ ...NO_WARNINGS, valid_area: AROUND_KANTO }));
     const { result, rerender } = renderRiding(TOKYO);
     await vi.waitFor(() =>
@@ -182,16 +183,13 @@ describe("useWeatherConditions 走行中", () => {
       expect(result.current.amedas).toMatchObject({ place: `${YOKOHAMA.latitude},${YOKOHAMA.longitude}` }),
     );
     await fetched();
-    expect(result.current.weather).toEqual({ place: `${TOKYO.latitude},${TOKYO.longitude}` });
-    expect(forecasts).toHaveLength(1);
     expect(warnings).toHaveLength(1);
   });
 
-  it("範囲の中にいても、範囲の無い予報も、取り直しの間隔が来たら今の位置で取り直す", async () => {
+  it("範囲の中にいても、取り直しの間隔が来たら今の位置で取り直す", async () => {
     observations = onBackend("GET", AMEDAS, ({ query }) =>
       Response.json({ place: `${query.latitude},${query.longitude}`, valid_area: AROUND_TOKYO }),
     );
-    onBackend("GET", WEATHER, ({ query }) => Response.json({ place: `${query.latitude},${query.longitude}` }));
     const { result, rerender } = renderRiding(TOKYO);
     await fetched();
     rerender({ position: NEAR_TOKYO });
@@ -199,10 +197,7 @@ describe("useWeatherConditions 走行中", () => {
 
     act(() => vi.advanceTimersByTime(10 * 60 * 1000));
     const near = `${NEAR_TOKYO.latitude},${NEAR_TOKYO.longitude}`;
-    await vi.waitFor(() => {
-      expect(result.current.amedas).toMatchObject({ place: near });
-      expect(result.current.weather).toEqual({ place: near });
-    });
+    await vi.waitFor(() => expect(result.current.amedas).toMatchObject({ place: near }));
     expect(observations).toHaveLength(2);
   });
 
@@ -227,22 +222,22 @@ describe("useWeatherConditions 失敗の扱い", () => {
   it("取り直しに失敗しても直前の値は残し、失敗の文言を添える。次に取れたら文言は消える", async () => {
     onBackend(
       "GET",
-      WEATHER,
+      AMEDAS,
       inTurn(
-        Response.json({ precipitation_mm: 20 }),
-        Response.json({ detail: "予報を取得できませんでした" }, { status: 502 }),
-        Response.json({ precipitation_mm: 20 }),
+        Response.json({ temperature_c: 21 }),
+        Response.json({ detail: "アメダス観測値の取得に失敗しました" }, { status: 502 }),
+        Response.json({ temperature_c: 21 }),
       ),
     );
     const { result } = render();
-    await vi.waitFor(() => expect(result.current.weather).toEqual({ precipitation_mm: 20 }));
+    await vi.waitFor(() => expect(result.current.amedas).toEqual({ temperature_c: 21 }));
 
     act(() => vi.advanceTimersByTime(10 * 60 * 1000));
-    await vi.waitFor(() => expect(result.current.weatherError).toBe("予報を取得できませんでした"));
-    expect(result.current.weather).toEqual({ precipitation_mm: 20 });
+    await vi.waitFor(() => expect(result.current.amedasError).toBe("アメダス観測値の取得に失敗しました"));
+    expect(result.current.amedas).toEqual({ temperature_c: 21 });
 
     act(() => vi.advanceTimersByTime(10 * 60 * 1000));
-    await vi.waitFor(() => expect(result.current.weatherError).toBeNull());
+    await vi.waitFor(() => expect(result.current.amedasError).toBeNull());
   });
 });
 
@@ -304,5 +299,80 @@ describe("useWeatherConditions 警報のバッジ", () => {
       ]),
     );
     expect(result.current.warningBadgeItems).toEqual([]);
+  });
+});
+
+describe("useWeatherConditions ルートの雷", () => {
+  // 10/21 18:00（日本時間）に出て、1kmを8時間で走るルート。点は0.25kmおきの5つで、0.5kmの点（2番）を22時に通る。
+  const ROUTE = {
+    segments: [
+      makeRouteSegment({
+        distance_km: 1,
+        geometry: {
+          type: "LineString",
+          coordinates: [
+            [139.76, 35.68],
+            [139.77, 35.68],
+          ],
+        },
+      }),
+    ],
+    clock: (km: number) => Date.parse("2026-10-21T18:00:00+09:00") + km * 8 * HOUR_MS,
+    fromKm: 0,
+  };
+  const slot = (start: string, end: string, code: string) => ({ start, end, code, advisory: code >= "20" });
+  // 2番から終わり（4番）まで、22時〜翌2時に通る区域。18〜21時と翌0〜3時が注意報級。
+  const TIMELINE = {
+    areas: [
+      {
+        area_code: "1310100",
+        area_name: "千代田区",
+        start_index: 2,
+        end_index: 4,
+        kinds: {
+          thunder: {
+            slots: [
+              slot("2026-10-21T18:00:00+09:00", "2026-10-21T21:00:00+09:00", "20"),
+              slot("2026-10-21T21:00:00+09:00", "2026-10-22T00:00:00+09:00", "01"),
+              slot("2026-10-22T00:00:00+09:00", "2026-10-22T03:00:00+09:00", "20"),
+            ],
+            additions: ["突風"],
+          },
+        },
+      },
+    ],
+  };
+
+  function renderWithRoute() {
+    return renderHook(() => useWeatherConditions(TOKYO, true, null, ROUTE));
+  }
+
+  it("ルートの区域を通る時刻に当たる注意報級の時間帯を、付加事項を添えて警告に並べる", async () => {
+    onBackend("POST", ROUTE_TIMELINE, json(TIMELINE));
+    const { result } = renderWithRoute();
+
+    await vi.waitFor(() =>
+      expect(result.current.warningBadgeItems).toEqual([
+        expect.objectContaining({
+          label: "雷（注意報級）千代田区",
+          level: "advisory",
+          title: "10/22 00:00〜03:00に通る見込み。付加事項: 突風",
+        }),
+      ]),
+    );
+  });
+
+  it("取れなければ、失敗として渡し、間隔ごとに取り直している間も渡したままにする（回復したように見せない）", async () => {
+    onBackend("POST", ROUTE_TIMELINE, failure("取得できませんでした。"));
+    const { result } = renderWithRoute();
+    const thunderFailure = [{ id: "route-thunder", label: "ルートの雷の見込み", detail: "取得できませんでした。" }];
+
+    await vi.waitFor(() => expect(result.current.warningFetchFailures).toMatchObject(thunderFailure));
+    await fetched();
+    const held = heldReplies();
+    onBackend("POST", ROUTE_TIMELINE, held.reply);
+    act(() => vi.advanceTimersByTime(10 * 60 * 1000));
+    await vi.waitFor(() => expect(held.arrived()).toBe(1));
+    expect(result.current.warningFetchFailures).toMatchObject(thunderFailure);
   });
 });

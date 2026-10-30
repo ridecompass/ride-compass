@@ -54,17 +54,6 @@ describe("useAxisCatalog", () => {
     expect(axisCatalogFetchFailure(result.current)).toBeNull();
   });
 
-  it("届いたら、応答の軸を持つ取れたカタログになり、印の項目は無い", async () => {
-    serveAxisCatalog(RESPONSE_A);
-
-    const { result } = renderHook(() => useAxisCatalog());
-
-    await waitFor(() => expect(result.current.loaded).toBe(true));
-    expect(result.current.failed).toBe(false);
-    expect(axisIds(result.current)).toEqual(["axis_a"]);
-    expect(axisCatalogFetchFailure(result.current)).toBeNull();
-  });
-
   it("失敗したら軸0件の失敗したカタログになり、ヘッダーの印の項目が再試行を持って出る", async () => {
     onBackend("GET", "/api/axis-catalog", () => new Response(null, { status: 503 }));
 

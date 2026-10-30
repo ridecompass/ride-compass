@@ -15,48 +15,62 @@
 
 | ファイル | 責務 |
 |---|---|
-| `lib/mapDisplay/roadTracks.ts` | 線で描く属性（`ROAD_TRACKS`）と、その凡例の行（分類・その他／該当なし・データなし）と、道の値が入る行（`roadTrackRowOf`）。地図の線・地図の凡例・道のりのグラフの帯が同じ行を読むので、同じ道が地図と帯で同じ色・呼び名になる |
-| `features/map/scene/groups/roadLines.ts` | 道路の線（例: 路面の種類・トンネル・自転車レーン）を`roadTracks.ts`の行から式へ組んだ配色と、詳細を見ている1本の強調。**線レイヤーで分類を運ぶのは色だけで、太さは情報を持たず、線種が運ぶのは値が無いこと（タグが無い道＝「データなし」の破線）だけ**——1本の線へ複数の分類を載せると、色の意味が他方のON/OFFで入れ替わる。同時表示は横へ平行に割り付けて分ける |
-| `lib/mapDisplay/pointLayers.ts` | 点で描く属性（`POINT_LAYERS`）と、点の値が入る行（`pointCategoryOf`）・大きさの軸と行の半径・点の名前（`pointPlaceName`）。地図の点・地図の凡例・点のポップアップ・道のりのグラフの印が同じ宣言を読むので、同じ点が地図とグラフで同じ色・呼び名になる |
-| `features/map/scene/groups/points.ts` | 停止要因POI・補給休憩POI・事故・立ち寄り先の分類・配色・点の形（丸い点か絵記号か）・重なった絵を間引く順と、同じタイルを分け合う条件 |
-| `features/map/layers/pointIcon.tsx` | 絵記号で描く点の絵の形（行の色の角丸四角と白い絵記号）。地図へ登録する画素と凡例の見本が同じ形の宣言を読む。絵記号の名前は源泉の行が持ち、描き方の無い名前は型検査が落とす。**単体テストは持たない**（`sdfIcon.ts`と同じく、テスト環境のcanvasは2D描画を実装せず、形は座標の宣言そのもの） |
+| `lib/mapDisplay/roadTracks.ts` | 道の線の層（軸カタログが配る`road_classes.map_layers`）の凡例の行（区分・その他／該当なし・データなし）と、道の区分が入る行（`lib/mapDisplay/roadTracks.ts: roadTrackRowOf`）。地図の線・地図の凡例・道のりのグラフの帯が同じ行を読むので、同じ道が地図と帯で同じ色・呼び名になる |
+| `features/map/scene/groups/roadLines.ts` | 道路の線（例: 路面の種類・トンネル・自転車レーン）を、backendの配る層の値（feature-state）と`roadTracks.ts`の行から式へ組んだ配色と、詳細を見ている1本の強調。**線レイヤーで分類を運ぶのは色だけで、太さは情報を持たず、線種が運ぶのは値が無いこと（タグが無い道＝「データなし」の破線）だけ**——1本の線へ複数の分類を載せると、色の意味が他方のON/OFFで入れ替わる。同時表示は横へ平行に割り付けて分ける |
+| `features/map/useRoadClasses.ts` | 道路の線を塗る道ごとの層の値を、表示中のタイルを1枚ずつ問い合わせて取り（[評価軸の色分け](map-axis-coloring.md)の`features/map/tileQueries.ts`）、取得中・失敗とともに返す（道の線の層が1つも出ていない間は取らない） |
+| `lib/mapDisplay/pointLayers.ts` | 点で描く属性（`lib/mapDisplay/pointLayers.ts: POINT_LAYERS`）と、点の値が入る行（`lib/mapDisplay/pointLayers.ts: pointCategoryOf`）・大きさの軸と行の半径・点の名前（`lib/mapDisplay/pointLayers.ts: pointPlaceName`）・束ねた代表点の中の名前のある点（`lib/mapDisplay/pointLayers.ts: pointMembers`）。地図の点・地図の凡例・点のポップアップ・道のりのグラフの印が同じ宣言を読むので、同じ点が地図とグラフで同じ色・呼び名になる |
+| `features/map/scene/groups/points.ts` | 停止要因POI・補給休憩POI・事故・立ち寄り先の分類・配色・点の絵と枠・描き始める縮尺と積む順・束ねた点の数の文字と、同じタイルを分け合う条件 |
+| `features/map/scene/groups/sidePoints.ts` | 選んだ区間の近くの点を、点の層のタイルから点の層と同じ色・絵記号で描く印と、近いかの絞り込み（下記「選んだ区間の近くの点」） |
+| `lib/mapDisplay/sidePoints.ts` | 近くの点の距離の上限（backendの`domain/map_display.py: SEGMENT_NEARBY_POINT_MAX_DISTANCE_M`を生成物から読む）・区間の小窓に並べる点の層（補給・立ち寄り先）・地図に出す・消すの区分の鍵と、点の位置を区間に当てた道のりと道からの距離 |
+| `features/map/layers/pointIcon.ts` | 絵記号で描く点の、地図へ登録する画素。形は見本（`components/PointIconSwatch/PointIconSwatch.tsx`）の宣言を読む。**単体テストは持たない**（`sdfIcon.ts`と同じく、テスト環境のcanvasは2D描画を実装せず、形は座標の宣言そのもの） |
+| `components/PointIconSwatch/PointIconSwatch.tsx` | 地図の点の見本。点の絵の形（行の色の枠——押せる点は角丸四角、押せない点は丸——に載せる白い線の絵記号と、枠を持たない標識の絵）の宣言と、
+それを描く部品の列（`components/PointIconSwatch/PointIconSwatch.tsx: pointIconParts`）を持ち、地図へ登録する画素（`pointIcon.ts`）と見本（`PointIconSwatch`）が同じ列を描く。地図の凡例と区間の近くの施設のチップ（ルートの機能）が出すので共有の層に置く。絵記号の名前は源泉の行が持ち、描き方の無い名前は型検査が落とす |
 | `features/map/scene/groups/areaRasters.ts` | 面（色別標高図・土地被覆・起伏の陰影） |
-| `features/map/scene/legends.ts` | 上の宣言から凡例の行を作る（色と分類の正本はグループにしかない）。災害チップの要素ごとの表示切替の行も、源泉の要素の宣言（backend `domain/weather_elements.py: WEATHER_ELEMENTS`の`label`、色見本は塗る段`level_scale`）から作る |
-| `features/map/scene/mapSceneGroups.ts` | 家族（面・道路の線・点・評価軸・ルート・気象）を「いまの状態から、載っているべきレイヤーの並びを返す」1つの形で宣言する型と、それらを1つのsceneへ畳む`composeScene`（同じソースを名乗る家族を1本へまとめる） |
+| `features/map/scene/legends.ts` | 上の宣言から凡例の行を作る（色と分類の正本はグループにしかない）。災害チップの要素ごとの表示切替の行も、源泉の要素の宣言（backend `domain/weather_elements.py: WEATHER_ELEMENTS`の`features/map/scene/legends.ts: label`、色見本は塗る段`level_scale`）から作る |
+| `features/map/scene/mapSceneGroups.ts` | 家族（面・道路の線・点・評価軸・ルート・気象）を「いまの状態から、載っているべきレイヤーの並びを返す」1つの形で宣言する型と、それらを1つのsceneへ畳む`features/map/scene/mapSceneGroups.ts: composeScene`（同じソースを名乗る家族を1本へまとめる） |
 | `features/map/scene/sceneBuilders.ts` | sceneを組み立てる道具のうち、どの家族でも同じ形になるもの（ソース名・レイヤーidを作る唯一の口。型で縛り、手で文字列を組み立てられないようにする） |
-| `features/map/scene/buildScene.ts` | 地図に載るもの全部を1つのsceneへ組み立てる唯一の口（`buildMapScene`）。受け取るのは実行時にしか決まらない値だけで、見た目の値は各グループが持つ。家族を1つ足すのはここの並びへ1行足すこと |
-| `features/map/scene/applyToMap.ts` | 画面の状態を地図へ当てる唯一の入口（状態→各家族の入力`sceneInputsFrom`→`buildMapScene`→`applyMapScene`）。作り直しも同じ道を通り、空から当て直すだけが違う。**再描画で失われる表示状態（filter・feature-state・visibility）を持つ描画は、ここから辿れる位置へ置く**——辿れないものは`setStyle()`後に作り直されない。**入力の型はsceneの側で宣言する**（`MapView`のpropsから借りると、sceneと`MapView`が互いをimportし合う） |
+| `features/map/scene/buildScene.ts` | 地図に載るもの全部を1つのsceneへ組み立てる唯一の口（`features/map/scene/buildScene.ts: buildMapScene`）。受け取るのは実行時にしか決まらない値だけで、見た目の値は各グループが持つ。家族を1つ足すのはここの並びへ1行足すこと |
+| `features/map/scene/applyToMap.ts` | 画面の状態を地図へ当てる唯一の入口（状態→各家族の入力`features/map/scene/applyToMap.ts: sceneInputsFrom`→`buildMapScene`→`features/map/scene/applyToMap.ts: applyMapScene`）。作り直しも同じ道を通り、空から当て直すだけが違う。**再描画で失われる表示状態（filter・feature-state・visibility）を持つ描画は、ここから辿れる位置へ置く**——辿れないものは`setStyle()`後に作り直されない。**入力の型はsceneの側で宣言する**（`MapView`のpropsから借りると、sceneと`MapView`が互いをimportし合う） |
 | `features/map/maplibreWorker.ts` | MapLibreのWorkerの場所を、ビルド前に静的配信へ複製したもの（`scripts/copy-maplibre-worker.mjs`）へ向ける。地図を作る前に呼ばないと、Workerがバンドラの解決できないURLを読みに行き、スタイル処理とタイル取得が止まる |
-| `lib/mapDisplay/tileVersionGated.ts` | タイルの世代が届くまで要求できない情報源の集合（`TILE_VERSION_GATED_SOURCES`）と、それを読むレイヤーを持つチップのグループの名前（`tileVersionGatedGroupLabels`）。地図のレイヤーと、軸一覧を取れないことを告げる文（`hooks/useAxisCatalog.ts`）が同じ集合を読む |
-| `lib/mapDisplay/legendFilter.ts` | 凡例の行の型（`LegendEntry`）と、凡例で隠した行を落とす絞り込み式の組み立て（ルート線のモードが使う） |
+| `lib/mapDisplay/tileVersionGated.ts` | タイルの世代が届くまで要求できない情報源の集合（`lib/mapDisplay/tileVersionGated.ts: TILE_VERSION_GATED_SOURCES`）と、それを読むレイヤーを持つチップのグループの名前（`lib/mapDisplay/tileVersionGated.ts: tileVersionGatedGroupLabels`）。地図のレイヤーと、軸一覧を取れないことを告げる文（`hooks/useAxisCatalog.ts`）が同じ集合を読む |
+| `lib/mapDisplay/legendFilter.ts` | 凡例の行の型（`lib/mapDisplay/legendFilter.ts: LegendEntry`）と、凡例で隠した行を落とす絞り込み式の組み立て（ルート線のモードが使う） |
 | `lib/mapDisplay/landcoverClasses.ts` | 土地被覆のクラス（表示名・色・割合列・地図に塗るか）。backendのレジストリ由来の生成物（`landcover-classes.json`）を読むだけの薄い層で、凡例（レイヤーの記述子）・区間インスペクタ（`RoadInspectorPopup.tsx`）・道のりのグラフの「緑と水」の帯が共有する。色は地図タイルの塗りと同じ値のため、凡例と地図がずれない。**凡例は塗るクラスだけ**（`LANDCOVER_PAINTED_CLASSES`）——塗らないクラスを並べると色見本があるのに地図のどこにも無い表になる。区間インスペクタは数値なので全クラスを出す |
 | `features/map/layers/primaryAttributes.ts` | 一次属性のカタログと、二次軸→一次属性の導出（軸増減時の観測データ連動表示に使用） |
-| `features/map/layers/mapLayers.ts` | レイヤーカタログ本体（`MapLayerDescriptor[]`）・地図上チップの最上位グループ（`MAP_OVERLAY_GROUP_ORDER`が正本。現在は道路/環境/スポット）判定・軸スタジオ由来レイヤーの除外判定（軸スタジオ由来のレイヤーはチップに出ないので、名前・アイコン・説明を持たず、idと源泉の宣言だけを持つ`AxisStudioLayerDescriptor`）・`deriveFetchLayerStatus`（MapLibreのソースイベントを経由しないレイヤーのデータ状態判定）。静的なレイヤーは源泉の宣言（生成物`mapDisplay.layers`）の並びを列挙して組み、足すのはアイコン（`STATIC_LAYER_ICONS`）と表示専用の凡例（`READ_ONLY_LEGENDS`）だけ。名前・略名・説明・(i)の文は源泉が持ち、説明の差し込み口だけを軸カタログの値で埋める（下記「説明文に評価の名前を書き込まない」）。**`layers/`は`scene/`を読まない**（`scene/`が`layers/`を読む一方向） |
-| `features/map/scene/mapScene.ts` | 地図に載っているべきものの宣言の型（ソース・レイヤー・feature-state）と、重なりの段（`MAP_SCENE_TIERS`）・押せるレイヤーの引き方 |
-| `features/map/scene/applyMapScene.ts` | 宣言を地図へ当てる唯一の実装（`addImage`/`addSource`/`addLayer`/`setPaintProperty`/`setFilter`/`setFeatureState`）。前回の宣言との差分だけを当て、段の順に差し込む |
-| `features/map/MapView/MapView.tsx`（静的レイヤーの箇所のみ） | 画面の状態をsceneの入力へ渡す配線・押した所で一番上の地物を、そのレイヤーが宣言した当たり判定の対象（`hitTargets`）で開く手続きへ振り分けること・ポップアップ・レイヤーのデータ取得状態の算出元（`buildLayerDataSources`）。レイヤーの描画コードは持たない |
-| `features/map/baseMap.ts` | 基礎地図のスタイル・出典の表記・MapLibreの部品の日本語の文言で地図を作る（`createBaseMap`）。一般の地図（`MapView.tsx`）と下書きの点数の地図が使い、載せるものはどちらも場面で当てる |
+| `features/map/layers/mapLayers.ts` | レイヤーカタログ本体（`MapLayerDescriptor[]`）・地図上チップの最上位グループ（`features/map/layers/mapLayers.ts: MAP_OVERLAY_GROUP_ORDER`が正本。現在は道路/環境/スポット）判定・軸スタジオ由来レイヤーの除外判定（軸スタジオ由来のレイヤーはチップに出ないので、名前・アイコン・説明を持たず、idと源泉の宣言だけを持つ`features/map/layers/mapLayers.ts: AxisStudioLayerDescriptor`）・`features/map/layers/mapLayers.ts: deriveFetchLayerStatus`（MapLibreのソースイベントを経由しないレイヤーのデータ状態判定）。静的なレイヤーは源泉の宣言（生成物`mapDisplay.ts: mapDisplay.layers`）の並びを列挙して組み、足すのはアイコン（`components/ui/icons/mapLayerIcons.ts: MAP_LAYER_ICONS`）と表示専用の凡例（`features/map/layers/readOnlyLegends.ts: READ_ONLY_LEGENDS`）だけ。名前・略名・説明・(i)の文は源泉が持ち、説明の差し込み口だけを軸カタログの値で埋める（下記「説明文に評価の名前を書き込まない」）。**`layers/`は`scene/`を読まない**（`scene/`が`layers/`を読む一方向） |
+| `features/map/layers/readOnlyLegends.ts` | 絞り込めない表示専用の凡例（`features/map/layers/readOnlyLegends.ts: READ_ONLY_LEGENDS`。土地被覆・降水ナウキャスト・風の矢印・災害）。災害の凡例は、同じ段で塗る要素の名前を見出しにして段を並べる |
+| `features/map/layers/layerText.ts` | チップの説明の文の差し込み口を埋める（`features/map/layers/layerText.ts: fillLayerText`。値が空の口は前後の文ごと出さない）と、事故の収録年の言い方（`features/map/layers/layerText.ts: coverageYearsLabel`） |
+| `features/map/scene/mapScene.ts` | 地図に載っているべきものの宣言の型（ソース・レイヤー・feature-state）と、重なりの段（`features/map/scene/mapScene.ts: MAP_SCENE_TIERS`）・押せるレイヤーの引き方 |
+| `features/map/scene/applyMapScene.ts` | 宣言を地図へ当てる唯一の実装（`features/map/scene/applyMapScene.ts: addImage`/`features/map/scene/applyMapScene.ts: addSource`/`features/map/scene/applyMapScene.ts: addLayer`/`features/map/scene/applyMapScene.ts: setPaintProperty`/`features/map/scene/applyMapScene.ts: setFilter`/`features/map/scene/applyMapScene.ts: setFeatureState`）。前回の宣言との差分だけを当て、段の順に差し込む |
+| `features/map/MapView/MapView.tsx`（静的レイヤーの箇所のみ） | 画面の状態をsceneの入力へ渡し、組んだ宣言を地図へ当てる配線。レイヤーの描画コードは持たない |
+| `features/map/MapView/useMapScene.ts` | 地図に載るもの全部の入力から scene を組む唯一の口と、そこから押せるレイヤーを引く |
+| `features/map/MapView/mapTaps.ts` | 地図を押す・なぞる操作。押した所で一番上の地物を、そのレイヤーが宣言した当たり判定の対象（`hitTargets`）のうち、地図を押したときの意味（`features/map/MapView/mapTaps.ts: MapTapMode`）が開ける対象で開く手続きへ振り分け、長押しで開ける物が無ければ押した所に近い道を backend に問う。地図の出来事（MapLibre の型が約束するものだけ）を判断の部品へ渡し、決まった操作を開く手続きへ渡す |
+| `features/map/MapView/mapGestures.ts` | 地図に触れた操作が、タップか長押しか地図を動かす操作かの判断（下記「地図を押したときと地図の小窓」の「押したとき」）。地図にもブラウザにも触れず、出来事を時刻と一緒に受けて、判断の時が来たら返す |
+| `features/map/MapView/useMapPopups.tsx` | 地図の小窓（点・道・区間）の状態と開閉と置き方。**小窓はいつも1つ**で、点と道は押して開き、区間は選んでいる区間から導く（押して開いた中身が無ければ区間の中身。区間の選びが変わると、その区間に属さない中身を閉じる）。MapLibreのPopupを1つ器にしてportalで描き、どの小窓も指す地点と間の幅だけで置く（決まりは下記「地図を押したときと地図の小窓」）。選択の持ち主が変わると押して開いた中身を閉じ、閉じる（×・何も無い所を押す）と区間の選びも外す |
+| `features/map/MapView/popupPlacement.ts` | 小窓を見えている所の内側へ押し込めたときの左上（画面のpx）。見えている所が無い地図（描く前・隠れている間）では動かさない |
+| `features/map/MapView/layerDataSources.ts` | レイヤーのデータ取得状態の算出元（`features/map/MapView/layerDataSources.ts: buildLayerDataSources`）。レイヤーカタログの情報源の名前を、取得を見るMapLibreのソースへ引く |
+| `features/map/baseMap.ts` | 基礎地図のスタイル・出典の表記・MapLibreの部品の日本語の文言で地図を作る（`features/map/baseMap.ts: createBaseMap`）。一般の地図（`MapView.tsx`）と下書きの点数の地図が使い、載せるものはどちらも場面で当てる。俯瞰図（`features/map/MapOverview/MapOverview.tsx`）は`inset`で、操作を受けず出典の表記を持たない地図として作る（出典は同じ画面の本体の地図が出す）。基礎地図の文字は薄れさせずに出し入れする（MapLibre の`fadeDuration`を0にする）——薄れる間は地図全体を描き直し続けるので、ずらすたびに操作が重くなる |
 | `features/map/DraftWayValuesMap/DraftWayValuesMap.tsx` | 下書きの点数の地図（管理画面の較正の画面が置く。[軸スタジオ](axis-studio.md)「較正の画面」）。下書きで求めた道の点数を、一般の地図と同じ場面の組み立て・道の線の塗り・凡例で塗る。点数は backend が走る条件を入れて求め終えた値なので、道ごとの材料1つとして載せ、それをそのまま道の値にする木（`scene/wayValueFormula.ts: featureValueFormula`）で塗る。下書きの中身と点数の求め方は知らず、置く側が渡す |
-| `features/map/layers/mapStyleOps.ts` | 地図インスタンスへの低水準操作（スタイル読み込み後の実行・面レイヤーと文字に場所を譲る点の差し込み位置・ズーム依存のicon-size式）。このアプリのどのレイヤーかを知らないものだけを置く |
-| `features/map/layers/routeArrowIcon.ts`・`components/ui/icons/icons.tsx`・`components/ui/icons/layerIcons.tsx`・`components/ui/icons/lucideIcons.tsx` | ルート矢印・アイコン集（下記「本モジュールとの関係」参照）。`icons.tsx`はアイコンの土台（大きさの受け口・線の様式）と、操作・地点の自前の形、`layerIcons.tsx`は地図のレイヤーと評価軸の自前の形、`lucideIcons.tsx`はlucideの形の包み |
-| `features/map/layers/sdfIcon.ts` | 地図の記号に使う単色シルエット（例: 風の矢印・ルート矢印）の描画の土台。白で塗った絵を`sdf: true`で登録し、色はicon-colorで付ける。canvasの2D描画が使えなければ投げる——空の絵を黙って返すと記号が地図から消えるだけで誰も気づけない。**単体テストは持たない**（テスト環境のcanvasは2D描画を実装しない。絵の中身は座標の宣言そのもので、写してもなにも守らない） |
-| `features/map/MapView/pointPopup.ts` | 点データ（事故・POI・立ち寄り先）をクリックしたときのポップアップ本文。「点の名前: 区分の名前」を、凡例と同じ点の宣言（`POINT_LAYERS`の`display_axes`）から組み、続けて宣言（`point_facts`）が点に添える事実（事故の発生年等）を値のあるものだけ並べる。宣言（`point_name_property`）が名前のプロパティを持ち、その点に名前があれば（立ち寄り先と補給のコンビニ）、先頭に名前を出し、末尾に名前と位置で外の地図（Google マップの検索）を別の画面で開く導線を置く——閉店にデータが追いついていないことがあるので、営業を外で確かめられるようにする。名前は`pointPlaceName`が引き、名前のある点の小窓に`MapView`が足す、経由地・目的地として置く操作（[ルート設定・結果パネル](route-settings-and-results.md)「地図の点の小窓から置く」）も同じ名前を使う。値をテキストノードで入れたDOMを組み、`Popup.setDOMContent()`へ渡す（下記「ポップアップへOSMタグの生値を出すときはHTMLとして解釈させない」） |
-| `features/map/MapView/RoadInspectorPopup.tsx` | 道をクリックしたときの詳細（**Reactで描き、MapLibreのPopupへportalで差し込む**）。開いたときに見せるのは名前と評価だけで、属性（タイルの事実と、評価を取ったときに届くタグ。**同じ項目は1度だけ**）と周囲の土地被覆は畳む——地図の上の小さな枠に収めるため。中身の高さには上限を付けて中でスクロールさせ、中身が伸び縮みしたら置く向きを決め直す（MapLibreのPopupは地図が動いたときにしか決め直さず、開いた後に伸びた中身が画面の外へはみ出す）。評価は押したときだけ取りに行き（backend `POST /api/region/axis-inspector`、[静的道路属性・タイル配信](../backend/static-road-attributes.md)参照。押した地物の鍵と押した点を送る）、応答の押した区間と道1本の値を、「押した区間」「この道全体」の見出しの下にそれぞれの軸ごとの効き方・合成・周囲の土地被覆として並べ（区間の値は寄せた地図の色、道1本の値は引いた地図の色と同じ値で、どちらの値かを取り違えると地図の色と窓の値が食い違って見える）、**利用者がいま設定している重み**（ルート生成へ送るのと同じ`routePreferenceToSend`の値）で計算させる——既定の重みで見せると、重みを0にした軸まで効いて見える。重みを変えたら、前の重みの評価を見せずに取り直しへ戻す。走行の条件は押したときのものに留める——出発時刻は「今」へ
+| `features/map/layers/mapStyleOps.ts` | 地図インスタンスへの低水準操作（スタイル読み込み後の実行・面レイヤーの差し込み位置・基礎地図の細い道の縁取りの描き替え・ズーム依存のicon-size式）。このアプリのどのレイヤーかを知らないものだけを置く |
+| `features/map/layers/routeArrowIcon.ts`・`components/ui/icons/icons.tsx`・`components/ui/icons/layerIcons.tsx`・`components/ui/icons/lucideIcons.tsx`・`components/ui/icons/mapLayerIcons.ts` | ルート矢印・アイコン集（下記「本モジュールとの関係」参照）。`icons.tsx`はアイコンの土台（大きさの受け口・線の様式）と、操作・地点の自前の形、`layerIcons.tsx`は地図のレイヤーと評価軸の自前の形、`lucideIcons.tsx`はlucideの形の包み、`mapLayerIcons.ts`は源泉が宣言するレイヤーごとのアイコンの表（地図の「表示」の一覧と、区間の小窓の層の値のチップが同じ表を引く。レイヤーを足すと型が書き忘れを止める） |
+| `features/map/layers/sdfIcon.ts` | 地図の記号に使う単色シルエット（例: ルート矢印・落雷の記号）の描画の土台。白で塗った絵を`sdf: true`で登録し、色はicon-colorで付ける。canvasの2D描画が使えなければ投げる——空の絵を黙って返すと記号が地図から消えるだけで誰も気づけない。**単体テストは持たない**（テスト環境のcanvasは2D描画を実装しない。絵の中身は座標の宣言そのもので、写してもなにも守らない） |
+| `components/MapPopup/MapPopupParts.tsx` | 地図の小窓（点・道・区間）を組む部品。どの小窓も「上の帯」（`components/MapPopup/MapPopupParts.tsx: PopupHeader`）と塊——難易度の塊（`components/MapPopup/MapPopupParts.tsx: DifficultyBlock`。難易度・寄与の帯・軸のチップに、同じ塊で読むチップ（風・土地被覆）を並べる）と施設の行（`components/MapPopup/MapPopupParts.tsx: FacilityRows`）——だけで組む。小窓ごとに別の組み方をすると、同じ値が小窓によって違う形に見える。上の帯は右端を寄せるアイコンと×の幅だけ空ける——×はMapLibreが本文の器の右上に置き、どの中身でも幅32px・高さ44pxの押す所を持つ（`app/globals.css`） |
+| `components/MapPopup/facilityRows.ts` | 点データ（事故・POI・立ち寄り先）を1施設1行で見せる行の中身（`components/MapPopup/facilityRows.ts: facilityOf`）。区分の名前を凡例と同じ点の宣言（`POINT_LAYERS`の`display_axes`）から引き、宣言（`point_facts`）が点に添える事実（事故の発生年等）を値のあるものだけ並べる。宣言（`point_name_property`）が名前のプロパティを持ち、その点に名前があれば（立ち寄り先と補給のコンビニ）、名前を外の地図（Google マップの検索）を別の画面で開くリンクにする——閉店にデータが追いついていないことがあるので、営業を外で確かめられるようにする。リンクは名前と座標を1つの検索語にした検索で開く（理由と形は`components/MapPopup/facilityRows.ts: externalMapSearchUrl`）。行の位置は、ルートの始点からの道のりでなく、基準の地点から見た前後（「300m先」「100m手前」。走行中は現在地からの「あと1.2km」）で出す（`components/MapPopup/facilityRows.ts: facilityPosition`）。基準の地点は、見るだけの間は区間で押した地点を区間の道なりに当てた所、走行中は現在地で、ページ（`app/HomeMapPane.tsx`）が1つ決めて地図の点の小窓と区分の一覧へ渡す。名前は`lib/mapDisplay/pointLayers.ts: pointPlaceName`が引き、地点を置く意味の間に名前のある点を押して地点を置くとき（`features/map/MapView/mapTaps.ts`）も同じ名前を使う。同じ場所に重なった同じ施設は1行にし、道のりの順（同じ位置なら道に近い順）に並べる（`components/MapPopup/facilityRows.ts: distinctFacilities`） |
+| `features/map/MapView/RoadInspectorPopup.tsx` | 道をクリックしたときの詳細（**Reactで描き、MapLibreのPopupへportalで差し込む**）。上の帯に、道の層を出していればその先頭の層の線と同じ見本（`features/map/scene/groups/roadLines.ts: shownRoadTrackOf`）・名前（名前の無い道は道の色の凡例の名前）・事実の要約（路面等）を出し、属性（タイルの事実と、評価を取ったときに届くタグ。**同じ項目は1度だけ**で、日本語の値だけを出し、英語の生の値と登録外のタグはその中の「その他のタグ」にさらに畳む）は畳む——地図の上の小さな枠に収めるため。中身の高さには上限を付けて中でスクロールさせ、中身が伸び縮みしたら置く向きを決め直す（MapLibreのPopupは地図が動いたときにしか決め直さず、開いた後に伸びた中身が画面の外へはみ出す）。評価は押したときだけ取りに行き（backend `POST /api/region/axis-inspector`、[静的道路属性・タイル配信](../backend/static-road-attributes.md)参照。押した地物の鍵と押したタイルを送る）、応答の押した物（その倍率で地図が塗る区間か道1本）の値を、難易度の塊（周囲の土地被覆は最も多いクラスのチップにし、押すと内訳を開く）1つとして出し（地図の線の色と窓の値が同じになる）、**利用者がいま設定している重み**（ルート生成へ送るのと同じ`routePreferenceToSend`の値）で計算させる——既定の重みで見せると、重みを0にした軸まで効いて見える。重みを変えたら、前の重みの評価を見せずに取り直しへ戻す。走行の条件は押したときのものに留める——出発時刻は「今」へ
 5分刻みで進むので、今の条件で引き直すと開いている間に評価が消える。評価は道・条件・重みをキーにキャッシュへ残り、
 同じ道を同じ条件・重みで開き直したときは押さずに前の評価を出す。軸ごとの効き方は**ルート結果と同じ`AxisContributionBar`**で、チップから開く軸の詳細も同じ`AxisDetail`で出す——同じものを別の見た目で見せると読み方を2つ覚えることになる。寄与度はbackendが返す値をそのまま使い、フロントで重みを掛け直さない。**デバッグログONのときだけ`osm_way_id`を出す**——値がおかしい道を見つけたとき、地図で押した1本をそのままbackendの調査へ渡せるようにする。一般の利用者には読めない値のため常時は出さない |
-| `features/map/MapView/roadFacts.ts` | クリックした道の「事実」（例: 道路名・路面の区分・農道・林道の等級・トンネル）をタイルのプロパティから組み立てる純関数。項目名と値の呼び名、タイルのどの属性を読むか（`tile_property`）は材料カタログ（生成物`material-catalog.json`）から引く。材料の外の列（識別子・道路名）の名前は生成物`region-tile-config.json`の`road_surface.properties`から引き、押した道のway_id・フィーチャーの鍵もここの関数（`roadWayId`・`roadFeatureKey`）で読む。該当しない項目は行ごと出さない（「なし」が並ぶと該当する項目が埋もれる）。路面の区分だけは値が無くても「不明」として出す——どの道でも最初に見たい項目で、行ごと消すと「舗装されていない」と読める |
-| `features/map/regionApi.ts`（`roadSurfaceTileUrl`/`pointTileUrl`とタイル世代の判定） | ベクタタイルのURLテンプレート（`fetchWayMaterials`は[地図: 軸・ルート色分け](map-axis-coloring.md)の管轄）。点のレイヤーはどれも1つの配信（backend `GET /api/region/point-tiles/{layer}/...`）で、URLはレイヤー名（生成物`region-tile-config.json`の`point_layers`の鍵。タイルの世代の系統の名前でもある）で組み、source-layer名も同じ一覧から読む。世代はbackendから実行時に届き、**全系統が揃ったもの（`completeTileVersions`だけが作る`TileVersions`）でしかURLを組み立てない** |
+| `features/map/MapView/roadFacts.ts` | クリックした道の「事実」（例: 道路名・路面の種類・農道・林道の等級・トンネル）をタイルのプロパティから組み立てる純関数。項目名と値の呼び名、タイルのどの属性を読むか（`features/map/MapView/roadFacts.ts: tile_property`）は材料カタログ（生成物`material-catalog.json`）から引く。材料の外の列（識別子・道路名）の名前は生成物`region-tile-config.json`の`region-tile-config.json: road_surface.properties`から引き、押した道のway_id・フィーチャーの鍵もここの関数（`roadWayId`・`roadFeatureKey`）で読む。該当しない項目は行ごと出さない（「なし」が並ぶと該当する項目が埋もれる）。路面の種類（材料`surface`。区分ではなくタグの値の呼び名）だけは値が無くても「不明」として出す——どの道でも最初に見たい項目で、行ごと消すと「舗装されていない」と読める |
+| `features/map/regionApi.ts`（`features/map/regionApi.ts: roadSurfaceTileUrl`/`features/map/regionApi.ts: pointTileUrl`とタイル世代の判定） | ベクタタイルのURLテンプレート（`features/map/regionApi.ts: fetchWayMaterials`は[地図: 軸・ルート色分け](map-axis-coloring.md)の管轄）。点のレイヤーはどれも1つの配信（backend `GET /api/region/point-tiles/{layer}/...`）で、URLはレイヤー名（生成物`region-tile-config.json`の`region-tile-config.json: point_layers`の鍵。タイルの世代の系統の名前でもある）で組み、source-layer名も同じ一覧から読む。世代はbackendから実行時に届き、**全系統が揃ったもの（`completeTileVersions`だけが作る`TileVersions`）でしかURLを組み立てない** |
 | `features/map/mapAxisCatalog.ts`・`useMapAxisCatalog.ts` | 軸カタログの応答のうち、地図が読むもの（公開中の軸・地図が塗る軸・推定指標のチップ・ルートの色分けモード・事故の収録年・タイルの世代と、それらから組んだレイヤーの一覧`layers`。一覧を組むのは応答1つにつき1回で、地図と`useMapView`は同じものを読む）を導く純関数と、共有の軸カタログと同じ取得（`hooks/useAxisCatalog.ts: useAxisCatalogSelect`）から引くフック。地図がソースを作れるかの判定と、チップの縮退表示は、どちらもここのタイルの世代1つを見る |
-| `lib/tileBaseUrl.ts` | タイル配信元オリジンの決定（既定はフロント自身のオリジン＝rewrites経由、`NEXT_PUBLIC_TILE_BASE_URL`設定時はbackend直接）。路面/POI/事故タイル・基礎地図スタイル（`features/map/regionApi.ts: mapStyleUrl`）・国土地理院色別標高図・JMA動的タイル（[動的気象レイヤー](dynamic-weather-layers.md)）が共通に使う |
-| `features/map/MapOverlayControls/MapOverlayControls.tsx` | 地図の左上の「表示」のボタンと、押すと開く地図に出す情報の一覧（下記「最上位グルーピング」）。群への束ね方と並びはレイヤーカタログ（`mapOverlayGroupFor`・`MAP_OVERLAY_GROUP_ORDER`）から導く。群の見出しで中身をたため、群ごとに一覧に並べる項目を選べる。末尾にまとめて戻す操作（下記「まとめて戻す操作」）を並べる |
-| `features/map/MapOverlayControls/OverlayLayerRow.tsx` | 一覧の1行（`OverlayLayerChip`）。行のチェックでON/OFFし、ⓘで説明を、▶で凡例の内訳か案内・取得状態を行のすぐ下に開く。絞り込みの合図（漏斗の印と`isLegendFiltered`）も持つ |
-| `features/map/MapOverlayControls/LegendDetails.tsx` | ▶の中の凡例の内訳（`LegendFilterSummaryAxis`）と、地図と同じ形の色見本。`axisId`を持つ軸はその場で絞り込める |
+| `lib/tileBaseUrl.ts` | タイル配信元オリジンの決定（既定はフロント自身のオリジン＝rewrites経由、`lib/tileBaseUrl.ts: NEXT_PUBLIC_TILE_BASE_URL`設定時はbackend直接）。路面/POI/事故タイル・基礎地図スタイル（`features/map/regionApi.ts: mapStyleUrl`）・国土地理院色別標高図・JMA動的タイル（[動的気象レイヤー](dynamic-weather-layers.md)）が共通に使う |
+| `features/map/MapOverlayControls/MapOverlayControls.tsx` | 地図の左上の「表示」のボタンと、押すと開く地図に出す情報の一覧（下記「最上位グルーピング」）。群への束ね方と並びはレイヤーカタログ（`features/map/MapOverlayControls/MapOverlayControls.tsx: mapOverlayGroupFor`・`mapLayers.ts: MAP_OVERLAY_GROUP_ORDER`）から導く。群の見出しで中身をたため、群ごとに一覧に並べる項目を選べる。末尾にまとめて戻す操作（下記「まとめて戻す操作」）を並べる |
+| `features/map/MapOverlayControls/OverlayLayerRow.tsx` | 一覧の1行（`features/map/MapOverlayControls/OverlayLayerRow.tsx: OverlayLayerChip`）。行のチェックでON/OFFし、ⓘで説明を、▶で凡例の内訳か案内・取得状態を行のすぐ下に開く。絞り込みの合図（漏斗の印と`features/map/MapOverlayControls/OverlayLayerRow.tsx: isLegendFiltered`）も持つ |
+| `features/map/MapOverlayControls/LegendDetails.tsx` | ▶の中の凡例の内訳（`features/map/MapOverlayControls/LegendDetails.tsx: LegendFilterSummaryAxis`）と、地図と同じ形の色見本。`features/map/MapOverlayControls/LegendDetails.tsx: axisId`を持つ軸はその場で絞り込める |
 | `features/map/MapOverlayControls/ItemChooser.tsx`・`useOverlayGroupChoices.ts` | 群ごとに一覧へ並べる項目を選ぶ一覧と、群のたたみ・外した項目の保存（下記「最上位グルーピング」の保存の鍵） |
 | `lib/backendRewrites.ts` | rewritesの向け先の組み立て（タイル類と地図の下地は`BACKEND_INTERNAL_URL`へ）と、開発機の画面を本番のデータで開く切り替えの判断（切り替えが入った開発サーバーのときだけ、タイルとAPIの`/prod/…`を本番のbackendへ向ける）・同じ Wi-Fi の端末から開くときの開発機の LAN の住所 |
 | `next.config.ts`（`frontend/`直下） | フロント自身のオリジンへ来たタイル類（基礎地図・路面・POI・事故等）の要求をbackendへ転送するrewrites（向け先は`lib/backendRewrites.ts`）と、その転送を打ち切るまでの時間（`experimental.proxyTimeout`）。開発機の画面を本番のデータで開く切り替え（[setup.md](../../architecture/setup.md)「開発機の画面を本番のデータで開く」）も読む。e2eのビルドで型の検査を外す設定（`typescript`）も持つ（[run-checks/SKILL.md](../../../.claude/skills/run-checks/SKILL.md)「E2E・画面の撮影の走らせ方」） |
 | `components/ui/InfoPopover/InfoPopover.tsx` | 見出し脇の(i)アイコン→ポップオーバーという外枠の共通部品（開閉state・開閉に追随するアクセシブル名「◯◯を表示/隠す」・任意の見出し文言を含む）。中身はchildrenで呼び出し側が渡す。(i)→Popoverを出す箇所（例: `RouteSettingsPanel`・軸スタジオの集計のカード）はこれを使い、組み立てを自前で持たない |
 | `features/map/LegendCheckboxList/LegendCheckboxList.tsx` | 凡例のチェックボックス一覧（チェックボックス+色スウォッチ+ラベル）の共通部品。リスト/行の見た目（class名）は呼び出し側が指定する（`LensControl`・`MapOverlayControls`の▶の内訳で共用） |
-| `features/map/LegendCheckboxList/LegendRow.tsx` | 凡例の1行と、行の右端の（i）から行のすぐ下に開く説明（`LegendEntry.description`）。絞り込める凡例（`LegendCheckboxList`）と表示専用の凡例（▶の内訳）が同じ部品を通る。浮きパネルにしないのは、凡例が浮きパネル（「表示」の一覧・「評価で塗る」の一覧）の中にあるため |
+| `features/map/LegendCheckboxList/LegendRow.tsx` | 凡例の1行と、行の右端の（i）から行のすぐ下に開く説明（`legendFilter.ts: LegendEntry.description`）。絞り込める凡例（`LegendCheckboxList`）と表示専用の凡例（▶の内訳）が同じ部品を通る。浮きパネルにしないのは、凡例が浮きパネル（「表示」の一覧・「評価で塗る」の一覧）の中にあるため |
 
 ## タイルの配信元（`lib/tileBaseUrl.ts`）
 
@@ -106,7 +120,7 @@ backendから取り、タイル本体はrewrites経由に戻る。
 
 源泉（backendの`domain/map_display.py: _LAYER_SPECS`）へ描き方以外の宣言（種別・情報源・性質・既定表示・名前・説明・(i)の文・最初に隠す行。
 一次属性を描くレイヤーの名前は属性の名前で、書かない）を1件、
-`mapLayers.ts`へアイコン（`STATIC_LAYER_ICONS`。表示専用の凡例があれば`READ_ONLY_LEGENDS`も）を1行足し、そのレイヤーの描き方を
+アイコンの表（`components/ui/icons/mapLayerIcons.ts: MAP_LAYER_ICONS`）へ1行足し（表示専用の凡例があれば`readOnlyLegends.ts`の`READ_ONLY_LEGENDS`へも）、そのレイヤーの描き方を
 家族の宣言（`features/map/scene/groups/*.ts`。道路の線なら`roadLines.ts`、点なら`points.ts`、
 面なら`areaRasters.ts`）へ足す。描き方の分類・色が源泉（backendの一次属性カタログ）の行で
 決まる家族では、源泉へ1行足せば宣言が導かれる。新しい家族そのものを足すときだけ、
@@ -128,20 +142,18 @@ backendから取り、タイル本体はrewrites経由に戻る。
 （[設計原則](../../architecture/design-principles.md)「1つの値の中で混ざるときは、部分ごとに問う」）。口を埋めるのは画面（`mapLayers.ts: buildMapLayers`）で、値が空の口は前後の文ごと出さない。
 評価に触れるときは、評価の名前を文に直書きせず、軸カタログから
 **そのレイヤーの元データを材料に持つ公開中の評価**を引いて差し込む。引き方は
-軸の`primaryAttributeIds`（一次属性を描くレイヤーは名前が属性idと同じ）と`weatherLayerGroups`（一次属性を
-持たない動的な材料の元データを描く気象のチップ。例: 風の材料と風の矢印）で、どちらもbackendが軸の材料から導く。
+軸の`primaryAttributeIds`（一次属性を描くレイヤーは名前が属性idと同じ）で、backendが軸の材料から導く。
 当てはまる評価が無ければ評価に触れる一文ごと出さない。評価は軸スタジオで公開・改名・撤去されるため、
 直書きした名前は運用で黙って嘘になる。ルートの説明が並べる色分けも、レンズの選択肢と同じ公開中の評価と総合難易度から作る。
 
 コードの宣言にある事実（凡例の行の名前・順序の色の両端の呼び名・点の大きさ・予測が届く先）も文に写さず、源泉が文を組むときに
-宣言から引く（`map_display.py: ordered_ends_text`・`size_text`・`_row_label`、`weather_elements.py: forecast_reach`）。
-凡例の行の説明の元のタグも、行の値（道路種別・等級）かタグ→種別の表（`domain/traffic.py: TAG_KIND_RULES`）と信号の読み替え（`kinds_shown_as`）から組む
-（`primary_attributes.py: _tag_row`・`_kind_row`）。凡例の見本が示す見た目（色の灰・破線）と、画面の部品の名前・位置は文に書かない。
+宣言から引く（`map_display.py: size_text`・`_row_label`、`weather_elements.py: forecast_reach`）。道の線の層の説明と行の説明は、
+管理DBの区分の名前と条件から組む（`domain/road_class_catalog.py: road_class_catalog`）。点の凡例の行の説明の元のタグは、
+タグ→種別の表（`domain/traffic.py: TAG_KIND_RULES`）と信号の読み替え（`kinds_shown_as`）から組む（`primary_attributes.py: _kind_row`）。凡例の見本が示す見た目（色の灰・破線）と、画面の部品の名前・位置は文に書かない。
 
 ## 表示専用の凡例（`MapLayerDescriptor.readOnlyLegend`）
 
-配信元が色を焼き込み済みでカテゴリ単位に選べないレイヤー（土地被覆・降水ナウキャスト・
-風の矢印等）は、▶パネルに出す凡例を`mapLayers.ts: READ_ONLY_LEGENDS`が宣言する。絞り込める凡例は`hiddenKeys`と保存先の
+配信元が色を焼き込み済みでカテゴリ単位に選べないレイヤー（土地被覆・降水ナウキャスト等）は、▶パネルに出す凡例を`readOnlyLegends.ts: READ_ONLY_LEGENDS`が宣言する。絞り込める凡例は`hiddenKeys`と保存先の
 `axisId`を持ち、`scene/legends.ts`が出す——**型の上で分けてあるので、ここへ絞り込める
 つもりの凡例を書いても黙って読み取り専用にはならない**。
 
@@ -160,8 +172,8 @@ backendから取り、タイル本体はrewrites経由に戻る。
 「データなし」も同じ行なので、レンズの凡例にも（i）が出る。数の範囲の段（降水・風・評価の段）と、名前が説明そのものの
 行（災害の段と、要素の説明を行の名前に出す線状降水帯）は（i）を出さない。説明が空でないことは、道と点の分類の行では源泉の型
 （`DisplayCategorySpec.description`の`min_length=1`）が、受け皿の行では`LEGEND_SHARED_ROWS`の宣言が保証する。
-源泉で説明を省ける災害の要素の行（`WeatherElement.description`は`str | None`）と土地被覆の凡例の全行は、テスト
-（`scene/legends.test.ts`・`layers/mapLayers.test.ts`）が確かめる。
+源泉で説明を省ける災害の要素の行（`WeatherElement.description`は`str | None`）は`domain/map_display.py: _disaster_by_frame_rule`が、
+土地被覆の凡例の全行は`domain/landcover.py: check_landcover_classes`が、読み込みの時点で断る。
 
 ## 表示層の実装（`scene/applyMapScene.ts`）
 
@@ -217,18 +229,20 @@ DOM/MapLibreを一切知らない。`MapView.tsx`は画面の状態をsceneの�
 作り直しの`applyScene`を呼ぶ。記録を落とすのは読み込まれたあと——`map.setStyle()`は既定で今のスタイルとの差分を当て、
 差分が届くまで`getStyle()`は今の（このアプリの層を足し、店・施設を隠した）スタイルを返すので、その間に決め直すと
 隠した後の絞りを配信元の絞りとして記録する（`maplibre-gl`の`Map.setStyle`は、`diff: false`を渡さなければ取ったスタイルを今のスタイルとの差分として当てる）。
+スタイルを取れなかったときは`style.load`が来ず今のスタイルが残るので、当て直さずに取り直しを終える（MapLibreはその失敗を、
+取りに行ったURLを持つ`error`の出来事でだけ知らせる）。そのとき地図の読み込みの失敗の案内を出し、押し直せば取り直して、取れたら
+案内を消す。取り直しの間のタイル1枚の失敗では案内を出さない（今のスタイルは残っている）。
 
 **暗黙の前提**: 建物を道路の手前へ動かすと、面レイヤーを1枚も出していないときの基礎地図も
 「建物の上に道路」へ変わる。この地図はpitchを持たないため影響は小さい。
 
-**重なった絵を省く点は基礎地図の文字より下に入る**（段`pointUnderLabels`。差し込み位置は`labelLayerAnchor`）。MapLibreは
-前面の層の記号から場所を取る（`maplibre-gl`の`src/style/pauseable_placement.ts`が並びの最後の層から置く）ので、文字より下にあれば
-文字（地名・駅名・通りの名前・病院や駅の印）が先に置かれ、文字と重なった絵のほうが省かれる。差し込み位置は**基礎地図が最後まで
-続けて描く記号の並びの頭**（最後の記号でない層の次）で、最初の記号の層ではない——libertyは道路網の途中に一方通行の矢印（記号）を
-描き、その後ろに橋の線・建物・境界を描くので、最初の記号の下に入れると橋の線が絵の上に描かれる。この位置もスタイルごとに
-`prepareBasemap`が1度だけ決める。道路網の位置と違って、このアプリのレイヤーが載る前（スタイルを読んだ直後）に求めることを
-前提にする（このアプリの線が最前面にあると、並びの頭が求まらない）。`prepareBasemap`は`applyScene`がsceneを当てる直前に呼ばれ、
-`map.setStyle()`はこのアプリのレイヤーごと差し替えるので、どちらの時機でも載っていない。
+**基礎地図の細い道の縁取りは、面の有無に関わらずいつも濃い灰で描く**（`palette.json: semantic.basemap_minor_road_casing`。
+`prepareBasemap`がスタイルごとに1度、`mapStyleOps.ts: MINOR_ROAD_CASING_LAYER_ID`に当たる層の`line-color`を描き替える）。libertyは
+引いた縮尺（z13.5より手前）の細い道を白い線を描かずに縁取りの線だけで描き、配信元の縁取りの薄い灰は、雨・色別標高図の面を
+重ねた地とほぼ同じ明るさになる（面は道路網の下に入るので、縁取りは面を重ねた地に載る）。描き替えた色は、面なしの地と雨の各段を
+重ねた地に対して線が見えるコントラスト比を割らないことを`tests/test_display_palette.py`が測る。色別標高図はタイルの画素ごとに
+色が違うので、そこでは測らない。層はidで名指す——縁取りかどうかはスキーマの語彙（`class`）では分からず、配信元のスタイルの
+層の並びにしか無い。スタイルが層を改名すると黙って当たらなくなる。
 
 同じ`prepareBasemap`が、基礎地図の店・施設（`source-layer`が`poi`のレイヤー全部。libertyでは`poi_r1`・`poi_r7`・
 `poi_r20`・`poi_transit`）の配信元の絞りを記録する。**このアプリの点の層の行が出ている間だけ、同じ種類の基礎地図の印を隠す**
@@ -256,26 +270,25 @@ DOM/MapLibreを一切知らない。`MapView.tsx`は画面の状態をsceneの�
 あり、かつ既に載っている最初のレイヤーの直下」へ差し込むため、宣言をどの順で並べても
 結果は変わる余地が無い（初回描画だけ重なりがずれて再描画で直る、という形の不具合が
 構造的に起きない）。段が決めるのはこのアプリが足したレイヤーどうしの前後だけで、
-基礎地図に対する位置は`areaLayerAnchor`・`labelLayerAnchor`が決める（上記）。
+基礎地図に対する位置は`areaLayerAnchor`が決める（上記）。
 
 
-「道路情報」の各軸は**それぞれ独立した線レイヤー**で、同じベクタソースを共有する。
-レイヤーidは一次属性idそのもの（対応表を持たない）。`scene/groups/roadLines.ts`は
-レイヤーごとに、そのレイヤーの軸の色式・不透明度式・凡例の絞り込みだけを宣言する——
-**どちらの色の意味も、もう一方のON/OFFでは変わらない**。太さは全レイヤー共通で
-源泉が配る値（`mapDisplay.road.lineWidthPx`）を使い、線種は値が無い道（「データなし」）の破線にだけ使う。両方ONのときは下記の並列トラックが横へ分ける。
+「道路情報」の各層（軸カタログの`road_classes.map_layers`。分け方1つが層1つ）は**それぞれ独立した線レイヤー**で、同じベクタソースを
+共有する。道ごとの層の値（区分の鍵か「データなし」）はbackendが決め、`/api/region/road-classes`でタイルごとに配る（ルートの区間の帯も
+同じ値を持つ）。地図は値を feature-state で受けて塗るだけで、区分の条件を当てない。`scene/groups/roadLines.ts`は層ごとに色式・
+不透明度式を宣言する——**どちらの色の意味も、もう一方のON/OFFでは変わらない**。太さは全レイヤー共通で源泉が配る値
+（`mapDisplay.road.lineWidthPx`）を使い、線種は「データなし」の破線にだけ使う。feature-state は絞り込みからも`line-dasharray`からも
+読めないので、凡例で隠した行は透明で落とし、データなしの道は破線だけの線を重ねて濃さで出し入れする。区分の外の道は値を
+持たないので、値を取っている間は値の無い道をどれも取得中の色（`palette.semantic.loading`）で描く。取得中・失敗は、出ている道の線の
+層のチップの状態ドットに出る。両方ONのときは下記の並列トラックが横へ分ける。
 
-分類に当てはまらない道は2種類を分ける。**タグが無い道は「データなし」**（値が無い。薄い灰の破線、刻みは
-`mapDisplay.noDataDash`）、**タグはあるが分類の外の値の道は「その他」**（値はある。薄い灰の実線）。
-どちらが現れうるかは源泉が属性ごとに配る（生成物`types/generated/primaryAttributes.ts: missing_semantics`。その値を
-タイルへ載せる材料の欠け方の宣言、`domain/material_catalog.py: display_axis_missing_semantics`）——
-トンネル・一方通行・自転車レーンのようにタグの不在も「該当しない」という確定した値として載る属性（`definite`）には
-値の無い道が現れないので、「データなし」の行も破線も持たず、分類の外の行を「該当なし」と呼ぶ。
+区分に当てはまらない道は2種類を分ける。**事実の無い道は「データなし」**（値が無い。薄い灰の破線、刻みは`mapDisplay.noDataDash`）、
+**事実はあるが区分の外の道は「その他」**（値はある。薄い灰の実線）。分けるかは層が決め（`has_no_data`）、分けない層は「データなし」の
+行も破線も持たず、区分の外の行を「該当なし」と呼ぶ。
 
-**値のある道が少ない層は、値の無い道の行を最初は凡例で隠して始める**（源泉の`MapLayerSpec.hide_missing_rows`。
-今は路面の「データなし」と自転車レーンの「該当なし」）。郊外では路面のタグが無い道が8〜10割あり、自転車レーンは
-当てはまる道が数％しか無いので、値の無い道の線が値のある道を埋もれさせる。隠す行の鍵は`scene/legends.ts: initiallyHiddenLegendKeys`が
-その属性の欠け方から決め（`unknown`ならデータなし、`definite`なら該当なし）、隠した行の保存先の既定にする。保存先は利用者が
+**値のある道が少ない層は、値の無い道の行を最初は凡例で隠して始める**（層の`hide_missing_rows`）。郊外では路面のタグが無い道が
+8〜10割あり、自転車レーンは当てはまる道が数％しか無いので、値の無い道の線が値のある道を埋もれさせる。隠す行の鍵は`scene/legends.ts: initiallyHiddenLegendKeys`が
+層から決め（データなしを分ける層ならデータなし、分けない層なら該当なし）、隠した行の保存先の既定にする。保存先は利用者が
 触った軸だけを空の並びも含めて覚え、触っていない軸（あとから足した層も）は最初に隠す行のまま読む
 （`view/legendFilters.ts: deserializeHiddenLegendKeys`）——空にした軸を保存先から消すと、出した行が次の訪問でまた隠れる。
 
@@ -336,7 +349,7 @@ MSMを配るOpen-MeteoのCC BY 4.0も、リンク付きのクレジット・ラ�
 ## スタイル取り直し後の作り直し（`applyScene`の`reset`）
 
 「地図の表示を再描画」は`map.setStyle()`でスタイル全体を差し替えるため、このアプリが
-足したsource/layerは一度すべて消える。`MapView.tsx`は`style.load`を待って、いまの宣言
+足したsource/layerは一度すべて消える。`MapView`は`style.load`を待って（`features/map/MapView/useMapLifecycle.ts`）、いまの宣言
 （`latest.current.scene`）を`applyScene(map, scene, { reset: true })`で空から当て直す——画面の状態が
 変わるたびに通る経路と同じ宣言・同じ適用で、前回との差分を取らないことだけが違う。
 
@@ -373,14 +386,55 @@ MSMを配るOpen-MeteoのCC BY 4.0も、リンク付きのクレジット・ラ�
 **綴りを手で書かない。** 家族の外でidが要るとき（押されたレイヤーの判定・テスト）は、
 その家族が出すソース名と役割を`sceneLayerId`へ渡して作る。
 
+## 地図を押したときと地図の小窓（`MapView/mapTaps.ts`・`MapView/useMapPopups.tsx`）
+
+地図を押したときの動きと地図の小窓は、この節の決まりだけで決まる。場合を足すときは、この節の決まりを書き換えてから足す（決まりの外に場合分けを重ねない）。
+
+**押したとき。** 押すことが別の操作になっている間（「ルート設定」を開いている間は押した所に地点を置き、ピンを押すとその地点を選ぶ。乗り換えを選んでいる間は乗り換え先の帯を選ぶ）を除き、どの画面の状態（パネルを閉じている間・「ルート結果」の間・走行中）でも同じに、押した物の小窓を開く。重なっていれば一番上に描かれた物を開き、何も無い所を押すと小窓を閉じる。候補の線を押すと、小窓は開かずにそのルートを選ぶ。
+「押す」はタップ（地点を置く・点・区間・候補の線・乗り換えの帯）と長押し（道。PC は右クリック）の2つで、**地図を動かす操作は、どれも押したことにしない**
+——都市部ではどこを触っても点か道に重なるので、地図を動かすために触っただけで小窓が開くと、動かすたびに小窓が出る。タップとみなすのは、1本の指で、
+離すまでに地図をずらす幅（`features/map/MapView/mapGestures.ts: TAP_TOLERANCE_PX`。地図を作るときに MapLibre の`clickTolerance`へも渡す）より動かさず、押し始めに地図が利用者の操作で流れておらず（流れている地図を止めた触れではなく）、
+長押しにもならなかった押し。押せる物（地点を置く間は名前のある地点、ほかの間は上の押して受ける物）に当たったタップは、離したときにすぐ受ける。
+何も無い所のタップは、ダブルタップの1回目でないと確かめる間（`features/map/MapView/mapGestures.ts: TAP_CONFIRM_MS`。MapLibre がダブルタップとみなす間）だけ
+待ってから受け、その間に次の押しが来るか地図が動き出したら受けない——押せる物に当たったタップまで待つと、その分だけ小窓が遅れて開く。ダブルタップ・ダブルクリックの
+拡大は MapLibre の標準の扱い（地図の設定`doubleClickZoom`）で、押せる物の上のダブルタップは、小窓を開いたうえで拡大する。長押しは、指1本を動かさずに置き続けた押し（`features/map/MapView/mapGestures.ts: LONG_PRESS_MS`）と、
+マウスの右ボタン（MapLibre の`contextmenu`。型の文書が約束するのは右ボタンとメニューのキーだけなので、指で押している間に来たものは受けない）で、
+押した物の小窓を開き、開ける物が無ければ下の道を開く。走行中に地図への触れを受け付けないロックをしている間は、何を押しても開かず閉じない（[ページ構成](page-composition.md)「走行モード」の「ロック」）。
+
+**押せる物は、情報を足す物だけ。** 名前のある点（「表示」の層の点と、区間の付近に描いた点。どちらも同じ点）・道・選んでいるルートの区間・候補の線。
+道だけは地図の線で当たりを取らない: 長押しした所にほかの押せる物が無ければ、押した所に近い道を backend に問い（`POST /api/region/roads-at`）、
+近い順の先頭の道の小窓を開く。道の層を出していなくても、凡例で隠した行の道でも押せ、道のタイルを読まない。拾う幅は指の幅（`features/map/MapView/mapTaps.ts: ROAD_REACH_PX`）を
+押した所の緯度と倍率で地面の m に直したもので、道のタイルの無い引いた縮尺（`features/map/regionApi.ts: ROAD_TILE_MIN_ZOOM`より前）では問わない。
+小窓は押した直後に閉じ、道が返ってから開く（問うている間に押し直したら、前の答えは捨てる）。押した道の強調は、返った道の線の形で描く——
+区間で塗る倍率では区間、引いた倍率では道1本が光り、小窓の値と同じ単位になる。名前の無い点と地点のピンは、位置と凡例（印の形と色）以上の情報を持たないので、押せる物に数えない——上を押すと、下にある物がそのまま開く。押せる点と押せない点は、印の枠の形で見分けられるようにする（下記「点で示すもの」の「点の形も源泉が決める」）。
+
+**小窓はいつも1つで、作りと置き方は同じ。** 最後に押した物の中身を出す。どの小窓も上の帯と塊で組み、右上に地図を寄せるアイコンと×（幅32px・高さ44px。間を詰めて上の帯のつまめる所を広く残す）を置く。どの小窓も押した所を指し、向き（地点の上・下・左・右のどちらに出すか）は MapLibre の Popup が地図の枠に収まる側を選ぶ（`anchor`を指定しない）。押した物に小窓がかぶったら、利用者が上の帯をつまんでずらす（`components/MapPopup/MapPopupParts.tsx: PopupHeader`。どの小窓も同じ）。ずらした小窓は、閉じるまで指す地点からのずれを保ち、地図を動かすと一緒に動き、押した所を指さないので矢印を出さず、四隅を同じに丸める。ずらす前は、見えている所からはみ出す分を内側へ押し込める（`MapView/popupPlacement.ts: popupInsideVisible`）——Popup は向きを選ぶだけで中へはずらさないので、上にも下にも収まらない背の高い小窓や、端の近くで開いた小窓が画面の外へ出る。ずらした後は、上の帯の一部（`MapView/useMapPopups.tsx: DRAGGED_POPUP_KEEP_PX`）が見えている所に残る分だけ押し込め、左・右・下へは外へ出てよい——全体を押し込めると、地図の幅いっぱいの小窓は横へずらせない。地図が動き終えたときと中身の大きさが変わったときに置き直す。幅を中身に合わせること（`maxWidth`）と、地図の上に重ねた部品を避けること（`padding`）は Popup の標準の設定で済ませる。名前は折り返さず、小窓の幅を中身に合わせて広げ、地図の幅を超えるときだけ空白で折る。高さには上限があり、あふれたら中でスクロールする。×・何も無い所を押す・パネルを切り替えると閉じる。区間の小窓を出している間に点を押すと、区間の選びを残し、点の小窓の上の帯に「‹ 区間」を置いて戻れるようにする。点のほかの物を押すと、区間の選びを外す。
+
+**小窓の中身。**
+
+- 点: 押した所に描かれている名前のある点を1施設1行で並べる。束ねた代表点は、中の名前のある点を全部並べる（`lib/mapDisplay/pointLayers.ts: pointMembers`。印は中の点ごとの位置に置く）。見本・名前（Googleマップを開くリンク）・道からの距離、区間を選んでいる間はその地点から見た前後。
+- 道: 上の帯に線の見本・名前・事実の要約、評価の塊（押すと取る）・土地被覆・畳んだ属性。
+- 区間: 地図の区間の線は、区間の番号（`features/map/scene/groups/routeSources.ts: ROUTE_SEGMENT_INDEX_PROPERTY`）と線を塗る値（色分けのモードの式と凡例の絞り込みが読む値）だけを持ち、押すと選んでいる候補の同じ番号の区間を引く（押したときにしか使わない詳しさを地物に載せない。[データモデル](../../architecture/data-model.md)）。中身は道のりのグラフの表示の断面。上の帯に何km地点・到達予想、グラフで選んでいる層のその地点の値（線の層の値と勾配・帯の層の区分）、難易度と軸ごとの寄与。風は難易度の内訳に入っているので、値を別に出さない。
+
+**区間を選んだとき。** 区間は地図で押しても、道のりのグラフで選んでも（押す・なぞる）同じに選ばれ、押した区間を強調し、押した所に印を置き、区間の小窓を出し、線から`lib/mapDisplay/sidePoints.ts: SIDE_POINT_MAX_DISTANCE_M`以内の点の層の点を、「表示」で出しているかに関わらず描く（下の「選んだ区間の近くの点」）。地図は動かさない。グラフの下には地点の詳しくを出さず、区間の中身は地図の区間の小窓だけが出す。選んだ地点が地図の見えている所の外にあれば、グラフの右上の寄せるボタンを色で目立たせて知らせる。
+
+**地図を寄せる。** 地図は押しただけでは動かず、寄せる操作のときだけ動く。小窓の寄せるアイコンは、点ならその点へ、区間ならその区間の形へ、道なら押した道の線へ寄せる。グラフの右上の寄せるボタンは、選んだ区間の形へ寄せる。ルート結果のカードを押すと、選び直しでも今選んでいるカードでも、そのルート全体へ収める（生成直後と同じ）。走行中に現在地を追っている間は、寄せるアイコンと寄せるボタンは追うのを休んで寄せ、休ませた後に小窓が閉じると（区間なら選びを外すと）追い直す。カードは収めない。寄せるのはどの小窓も同じ1つの手続き（`features/map/MapView/useSectionFocus.ts: useSectionFocus`）で、点は点へ寄せ、線は線を収める。
+
+## 選んだ区間の近くの点（`groups/sidePoints.ts`）
+
+区間を選んでいる間だけ、点の層のタイル（停止要因・補給・立ち寄り先・事故）のうち区間の線から`lib/mapDisplay/sidePoints.ts: SIDE_POINT_MAX_DISTANCE_M`以内の点を、点の層と同じ見た目（行の色の丸か、行の色に絵記号を載せた絵）で、「表示」で点の層を出しているかに関わらず描く。近いかは MapLibre の`distance`式で決める（backendへは問い合わせない）。描いた点は「表示」の点と同じ点で、押したときは上の「地図を押したときと地図の小窓」の決まりに従う。点の層の行（先頭の軸の行）に当たらない値の点は描かない。点の層と同じく、束ねた点には数を出す。点のタイルは路面のタイルと同じズーム（`features/map/regionApi.ts: ROAD_TILE_MIN_ZOOM`）から読むので、それより引いた地図では近くの点を描かない。
+
 ## 重なりの段（`scene/mapScene.ts: MAP_SCENE_TIERS`）
 
 **レイヤーは前後を個別に指定せず、段を選ぶ。** 隣り合う2枚の前後を宣言で決める形にすると、
 3枚目を足したときに既存の2枚の関係だけでは位置が決まらない。並びの正本は
-`MAP_SCENE_TIERS`で、面 → 文字に場所を譲る点 → 観測した事実の線 → レンズの線 → 点 → ルートの順。
+`MAP_SCENE_TIERS`で、面 → 観測した事実の線 → レンズの線 → 気象の格子の印 → 点 → ルート → 選んだ区間の近くの点の順。
+選んだ区間の近くの点は、その区間の縁取りと点の層の上に描く（区間の近くの何を見ているかを隠さない）。
+記号は前面のレイヤーから場所を取り、ぶつかる後の記号は描かれないので、段の順は重なった記号のどれを残すかも決める。気象の格子の印
+（風の矢印等）を点の下の段に置くのは、重なると点の印を残すため。
 
-**面は基礎地図の道路網より下へ、文字に場所を譲る点は基礎地図の文字より下へ入る**（`under`）。面を道路の上に置くと、
-どの道の話なのかが読めなくなる。重なった絵を省く点を文字より上に置くと、絵が文字を退けて地名が読めなくなる（上記）。
+**面は基礎地図の道路網より下へ入る**（`under`）。面を道路の上に置くと、
+どの道の話なのかが読めなくなる。
 ほかの線・点・ルートは基礎地図より前面。段の順が効くのは、基礎地図の同じ位置へ入る段どうしの前後だけ。
 
 **段を足すのは、上下関係が既存のどれとも違うときだけ。** 「この2枚だけ入れ替えたい」は
@@ -406,7 +460,7 @@ ON/OFFから行う（画面の側は下敷きの有無を知らない）。
 グループが返す宣言の一部として出す。宣言の外から`setPaintProperty`や`setFilter`で
 足す形を取らないため、**「当てた後に誰かが巻き戻す」という経路が無い**（当てるのは
 `applyMapScene`だけで、前回の宣言との差分しか触らない）。この性質は
-`scene/scene.state.contract.test.ts`の「スタイルを差し替えても、同じ状態を伝え直せば元へ戻る」で固定してある。
+`scene/scene.allLayers.contract.test.ts`の「スタイルを差し替えても、同じ状態を伝え直せば元へ戻る」で固定してある。
 
 ## 初期表示の覆い（`initialTilesLoading`）
 
@@ -419,12 +473,12 @@ ON/OFFから行う（画面の側は下敷きの有無を知らない）。
 
 ## レイヤーのデータ取得状態（地図上チップの状態ドット）
 
-`MapOverlayControls`の一覧の行は、`LayerDataStatus`（`mapLayers.ts`、"loading"/"empty"/"error"）を受け取り、
+`MapOverlayControls`の一覧の行は、`mapLayers.ts: LayerDataStatus`を受け取り、
 「表示ON かつ dataStatus が設定されている」間だけ行の名前の右へ小さな状態ドット（`ui/Dot`。`tone`が
 `LayerDataStatus`の値そのもの）を描画する（`on`/`active`がfalseの間は出さない）。
 
-ドットの意味（`mapLayers.ts: LAYER_DATA_STATUS_LABELS`）は、失敗・空の間▶パネルの
-凡例の上へ文として出す。凡例を持たないチップも、失敗・空の間は▶を出す——`title`だけでは
+ドットの意味（`mapLayers.ts: LAYER_DATA_STATUS_LABELS`）は、待ち以外の間▶パネルの
+凡例の上へ文として出す。凡例を持たないチップも、待ち以外の間は▶を出す——`title`だけでは
 スマホで読めない（規約は[ページ全体構成](page-composition.md)「失敗・空・待ちの伝え方」）。
 待ち（loading）は文にしない（`layerDataStatusNotice`）——凡例の絞り込みやON/OFFのたびに
 タイルが取り直され、開いたパネルの先頭に文が一瞬出ては消えて凡例が上下に揺れるため。
@@ -440,7 +494,7 @@ ON/OFFから行う（画面の側は下敷きの有無を知らない）。
 出所の異なる2つの`Partial<Record<MapLayerId, LayerDataStatus>>`をマージしたもので、
 内訳は次の2系統:
 
-- **`useMapView.ts: mapLayerStatus`**（`MapView.tsx: buildLayerDataSources`）:
+- **`useMapView.ts: mapLayerStatus`**（`features/map/MapView/layerDataSources.ts: buildLayerDataSources`）:
   road/POI/事故/標高等、MapLibreが自身のタイル取得として実行するレイヤー。ソースイベント
   （`sourcedata`/`sourcedataloading`/`error`）から算出する。
 - **`dynamicWeatherDataStatus`**（[動的気象レイヤー](dynamic-weather-layers.md)
@@ -460,9 +514,10 @@ ON/OFFから行う（画面の側は下敷きの有無を知らない）。
 ONにしても何も塗られない。「データが無い地域」と区別できるよう案内を出す。
 
 対象は**最小ズームを持つ情報源を読むレイヤー**で、閾値は情報源の側で源泉が宣言する
-（backendの`domain/map_display.py: MAP_LAYER_DATA_SOURCES`。記述子の`tileMinZoom`へ入る）
+（backendの`domain/map_display.py: MAP_LAYER_DATA_SOURCES`）
 ——レイヤーごとに書くと、同じタイルを読むレイヤーの1つだけ書き忘れても型が通り、そのチップ
-だけ案内が出ない。`features/map/view/useMapView.ts`が、地図から届く表示範囲（パン・ズームが確定する
+だけ案内が出ない。配信より寄ってから描く層（停止要因・事故。下記「点の形も源泉が決める」）は、描き始める縮尺も同じ案内に数える
+（`domain/map_display.py: MapLayerSpec.draw_min_zoom`。記述子の`minZoom`は配信の縮尺と描き始める縮尺の寄った方）。`features/map/view/useMapView.ts`が、地図から届く表示範囲（パン・ズームが確定する
 たびに届く）の`zoom`で`mapLayers.ts: tileZoomTooWideLayerIds(zoom)`を引き、そのチップへ
 `TILE_ZOOM_TOO_WIDE_NOTICE`を出す——ズームは表示範囲の通知に含まれているため、地図から別の
 通知として上げない。▶の中身は**案内文があれば案内文、無ければ凡例**
@@ -532,7 +587,7 @@ backendが200で応答する窓では、カタログは取得済みなのに世�
 材料の観測レイヤーは連動しない）。裏からONにされると、一覧を開くまで出した覚えの無いものが地図に出続ける。
 
 **レイヤーは地図の上に並べず、どの幅でも1つの「表示」のボタンから開く一覧に畳む**（ボタンは地図の左上、
-「評価で塗る」（`LensControl`）は地図の上の中央で、右の縦の列とも「表示」のボタンとも重ねない——「表示」のボタンはアイコンだけの、列と同じ幅にし（名前「表示」は説明に出す）、「表示」の横に収まらないほど地図が狭い間は、ピルを「表示」の下の段へ下げる。置き場は`page.tsx`が決める）。地図の上に群ごとの
+「評価で塗る」（`LensControl`）は地図の上端の検索の欄の下の段の中央で、右の縦の列とも「表示」のボタンとも重ねない——「表示」のボタンはアイコンだけの、列と同じ幅にし（名前「表示」は説明に出す）、「表示」の横に収まらないほど地図が狭い間は、ピルを「表示」の下の段へ下げる。置き場は`app/HomeMapPane.tsx`が決める）。地図の上に群ごとの
 チップを縦に並べると、スマホでは開いた群のチップが地図の左を縦に半分以上覆い、ルートを収めるときの左の余白にもなった。
 畳むと出し入れは「表示」→行の2回押しになるが、地図の上に残るのはボタン1つになる。ボタンには地図に出している件数と、
 どれかの行が凡例を絞り込んでいる合図（漏斗）を付ける——閉じている間も、何かが出ている・欠けていることが分かる。
@@ -603,12 +658,13 @@ backendが200で応答する窓では、カタログは取得済みなのに世�
 
 ## 道路の線に出す分類（`lib/mapDisplay/roadTracks.ts`）
 
-タイルには材料の値が焼き込まれている（例: `surface_class`［路面の区分］・`surface_estimate`［路面の見込み、
-線の分類としては未使用］・`highway`［道路種別］）。線で描くのは、分類と色を宣言した属性だけ
-（例: 路面の種類・農道・林道の等級・道路の種類・自転車レーン）。
+タイルには区分へ束ねる前の事実の値が焼き込まれている（例: `surface`［路面の種類］・`highway`［道路種別］）。線の層・区分・
+色・呼び名は管理DBの道の区分が持ち、軸カタログの`road_classes.map_layers`で配られる。画面は区分の条件をタイルの値へ当てて
+線を塗り、層をグループへ入れる鍵（中分類）とアイコンの鍵も配られた値から引く——知らない中分類の層はどのグループにも入れず、
+知らないアイコンの鍵には道路の絵を出す。区分を取れるまでは道の線の層を出さない。
 
 **線で描く分類を足すときは、「他の分類と独立して決まる事実」であること。** 粒度違い・合成の
-再掲（路面の区分を2値へ粗く束ねたもの、区分と等級を合成した`surface_estimate`）は足さない——「路面の種類=砂利」
+再掲（路面の区分を2値へ粗く束ねたもの、区分と等級を合成したもの）は足さない——「路面の種類=砂利」
 かつ「舗装/未舗装=未舗装」のような組み合わせは常に矛盾するか冗長になり、絞り込みとして
 情報を増やさない。路面の種類（surfaceタグ）と農道・林道の等級（tracktypeタグ）は別のタグで、
 片方だけが付いた道が多いため、別々の線として並べる。
@@ -618,13 +674,12 @@ backendが200で応答する窓では、カタログは取得済みなのに世�
 
 **分類は、OSMタグを網羅する体系ではなく「走りやすさの違いが出る単位」へ束ねたもの。**
 凡例が一目で読める数に抑え、稀な値は分類を持たない側（薄い表示）へ落とす。**値が一覧に
-無いのは見落としではなく、束ねないと決めた結果である。**路面の束ね方はbackendの区分の宣言
-（材料「路面の区分」）そのもので、地図の行はその値を1行ずつ塗る。
+無いのは見落としではなく、束ねないと決めた結果である。**束ね方は管理DBの区分そのもので、地図の行は区分を1行ずつ塗る。
 
 **線の束ね方から、生のタグの値の呼び名を導出しない。** 線の行は複数の生タグ値を1行へ
 束ねる（多対一。自転車レーンの行は複数のタグの組み合わせ）のに対し、軸スタジオは1値につき1ラベルを要る。粒度が違うので、値ラベルは
 `domain/material_catalog.py: MaterialSpec.value_labels`（生成物`material-catalog.json`）から引く。
-路面の区分は束ねた結果そのものが材料なので、行の名前と材料の値の呼び名は同じ宣言から来る。
+区分は材料に持たないので、行の名前は区分が、材料の値の呼び名は材料カタログが持つ。
 
 ## 地図全体で共有する配色の読み方
 
@@ -650,7 +705,7 @@ backendが200で応答する窓では、カタログは取得済みなのに世�
 近い色相が残るので、停止要因は暗い段、補給と事故は明るい段、立ち寄り先は鮮やかな段（明度は標準のまま彩度を上げる）に置く。
 明度は上を地色とのコントラストが、下を絵記号の白との見分けが決めるので、明度の段だけでは4つ目のレイヤーを離せない。色だけでは、レイヤーをまたいだ色の
 離れ具合は軸の中の基準（下記のΔE 20）まで届かない（最も近い組でΔE 14前後。補給と事故はどちらも明るい段で、
-色相の近い行どうしが残る）。そのため形でも分ける: 補給は丸い点ではなく絵記号で描き（下記「点で示すもの」）、事故の点は大きさと薄さもほかの点と違う。線のレイヤーは明度の段を
+色相の近い行どうしが残る）。そのため形でも分ける: どの点のレイヤーも行ごとの絵記号で描き（下記「点で示すもの」）、事故の点は大きさと薄さもほかの点と違う。線のレイヤーは明度の段を
 持たず標準の明度で塗り、線のレイヤーどうしの色は離さない（道路の種類と農道・林道の等級のように、同時に出る線どうしで
 同じ色が並ぶものがある）。同時に出る線は「並列トラック分離」節のとおり道の上の位置が分かれ、点のように同じ場所で重ならないため、
 どちらの線かはトラックの並びと凡例で読み分ける。
@@ -665,8 +720,8 @@ backendが200で応答する窓では、カタログは取得済みなのに世�
 **色を持つのは先頭の軸だけ。** 事故のように1つの点へ2つの見方があるとき、地図は先頭の軸
 （当事者）で塗り、重大度は点の大きさだけで示す。2本目以降の軸に色を配ると、地図のどこにも
 塗られない色が凡例にだけ並ぶ。点の大きさは、行に半径（`radius_px`）を宣言した軸が決め、半径を宣言できるのは
-点の軸のうち1本だけ（backendの`test_material_catalog.py`が確かめる）。凡例の重大度の行は、色を持たない灰の見本を地図の点と同じ
-大きさで出す（大きさは地図の半径と同じ関数`points.ts: pointCategoryRadiusPx`から取る）。
+点の軸のうち1本だけ（backendの`test_registry.py`が確かめる）。凡例の重大度の行は、地図の点と同じ絵の外形（事故は星形）を色を持たない灰で塗り、地図の点と同じ
+大きさで並べる（大きさは地図と同じ関数`lib/mapDisplay/pointLayers.ts: pointIconScales`から取る）。
 
 **凡例の色見本は、パネルへ直に、地図と同じ形で置く**（道の線の行は線、点の行は点、絵記号で描く点の行は同じ絵記号）。線の行は線の形のまま
 地図の線より太く出す（凡例の行の`line`）——地図と同じ太さでは、見本を囲む輪（下）に挟まれて色の部分が細く残り読めない。点の見本は
@@ -716,7 +771,7 @@ ON/OFFで入れ替わる）。
 
 **スタイル式の誤りは例外にならない。** `addLayer`や`setPaintProperty`が式を受け付けなくても
 JSの例外は飛ばず、`map.on("error")`にしか出ない。画面上は**そのレイヤーだけが黙って
-描かれない**。記録用の代役地図は式を検証しないため、`scene/scene.state.contract.test.ts`が
+描かれない**。記録用の代役地図は式を検証しないため、`scene/scene.allLayers.contract.test.ts`が
 出せるものを全部出した状態の宣言（凡例の絞り込みを含む）をMapLibreと同じ版のstyle検証
 （`@maplibre/maplibre-gl-style-spec: validateStyleMin`）へ通す。実際のアプリの配線（カタログ・
 タイル世代・保存されたレイヤーのON/OFFから組まれたもの）が本物の地図の`addLayer`を通ることは、
@@ -746,20 +801,34 @@ E2Eの`e2e/map-runtime.spec.ts`「宣言された地図レイヤーを全部ON�
 分類値の一覧はbackendが正で、フロントは色とラベルを与えるだけ。**backendが種別を1つ足した
 のにフロントが古いままだと、その地物は`baseFilter`に弾かれて地図から完全に消える**（凡例にも
 出ないため「データが無い」としか見えない）ため、分ける条件は源泉の表示の行（生成物
-`types/generated/primaryAttributes.ts: display_axes`の値）から導き、行と種別の一覧が一致することはbackendの
-テスト（`test_material_catalog.py`）が全種別で確かめる。凡例の行は種別と1対1ではない——利用者から見て区別する意味の無い種別（車道用の踏切と
+`types/generated/primaryAttributes.ts: display_axes`の値）から導き、行と種別の一覧が一致することはbackendが
+読み込みの時点に全種別で確かめる（`domain/primary_attributes.py: check_point_rows`）。凡例の行は種別と1対1ではない——利用者から見て区別する意味の無い種別（車道用の踏切と
 歩道・自転車道用の踏切）は1行へまとめる。色分け式には各種別がそのまま載るため、地図の
 見た目とポップアップの語彙は種別ごとに正しく出る。
 
-**点の形も源泉が決める。** 先頭の軸の行が絵記号の名前（`domain/registry.py: DisplayCategorySpec.glyph`）を持つレイヤーは、行の色の
-角丸四角に白い絵記号を載せた記号で描き（例: 補給・休憩のコンビニ＝袋・トイレ＝WC）、持たないレイヤーは丸い点で描く。
-絵は行ごとにsceneの絵として宣言し（`scene/groups/points.ts: POINT_IMAGES`）、記号は行の値から絵の名前を引く。丸い点と同じく、重なっても
-間引かずに全部描く。ただし源泉が間引きの順（一次属性の`point_thinning`）を宣言したレイヤー（立ち寄り先。街中は飲食店だけで
-絵が埋まる）は、重なった絵を省く。残す順は宣言の行の並び（地点の少ない群から）で、同じ行の中では宣言のプロパティ
-（確からしさ`confidence`）の大きい点を先に残す（`symbol-sort-key`）。自分どうしで省き合うには置いた絵がほかの記号を退ける
-必要がある（`icon-ignore-placement`を付けない）。ほかの記号を退けると基礎地図の文字まで退けてしまうので、このレイヤーは
-基礎地図の文字より下に積み（段`pointUnderLabels`）、文字と重なった絵のほうを省く。絵記号は行の全部に付けるか、どれにも付けない——一部の行だけ形が違うと、形が分類の意味を持って
-しまう（backendの`test_material_catalog.py`が確かめる）。地図が行の値ごとに見本と同じ色・同じ絵記号の絵を引くことは
+**点の形も源泉が決める。** 点は先頭の軸の行が持つ絵記号の名前（`domain/registry.py: DisplayCategorySpec.glyph`。点の先頭の軸の行の全部が持つ）で描く。
+名前のプロパティを持つレイヤー（補給・休憩等）は、行の色の枠に白い線の絵記号を載せる（例: コンビニ＝袋・トイレ＝WC）。
+**枠の形は押せるかを示す**: 名前のある点（押せる点。上記「地図を押したときと地図の小窓」）は角丸四角、名前の無い点は丸い枠で少し薄く描く
+（`scene/groups/points.ts: iconImageExpression`。名前の有無は点ごとに式で決める）。名前のプロパティを持たないレイヤー（停止要因・事故）は
+点が全部押せないので、枠を持たない、日本の道路標識に似せた絵で描く（例: 一時停止＝赤い逆三角に「止」、踏切＝黄色のひし形に電車。
+絵の形は`components/PointIconSwatch/PointIconSwatch.tsx: POINT_GLYPHS`が持ち、色は`domain/display_palette.py: SEMANTIC_COLORS`の標識の色を読む）。
+この層は、宣言した描き始める縮尺（`domain/registry.py: PrimaryAttributeSpec.point_min_zoom`）より引いた縮尺では描かない——道に沿って並ぶ
+信号や事故を引いた縮尺で描くと、地図が絵で埋まる。区間の近くの点も同じ縮尺から描く。
+事故の重大度は絵の大きさで示し（`lib/mapDisplay/pointLayers.ts: pointIconScales`。凡例の見本も同じ倍率を読む）、凡例の見本も地図と同じ絵で出す。
+絵は行ごとにsceneの絵として宣言し（`scene/groups/points.ts: POINT_IMAGES`）、記号は行の値から絵の名前を引く——丸のレイヤー（`circle`）は
+MapLibre の重なりの判定に加わらないので、点はどれも絵の印で描く。
+近い点はタイルの側で凡例の行ごとに代表点へ束ねて届く（[静的道路属性](../backend/static-road-attributes.md)「点のタイル」）。
+**重なる印は地図が省く**: 点の層は MapLibre の重なりの既定（ほかの記号とぶつかる印は描かない）を上書きしない（`scene/groups/points.ts: pointLook`）。
+束ねは層ごと・凡例の行ごとなので、層をいくつも出すと1つの升に行の数だけ代表点が重なるが、地図はそのうち先に置いた印だけを描く。
+省いた点は寄せて重ならなくなると出て、押せるのは描かれた点だけである。印は上に積んだ層から置かれるので、宣言の残す順
+（`domain/registry.py: PrimaryAttributeSpec.point_priority`）の大きい層を上に積む（`scene/groups/points.ts: STACKED_POINT_LAYERS`。区間の近くの点も同じ）。
+層どうしは停止要因 → 補給 → 立ち寄り先 → 事故の順に残す（走る前に知りたいのは、どこで止まるか）。
+同じ層の中は、残す順の鍵（`symbol-sort-key`。小さい鍵の印から置かれる）で決める。宣言した軸（`domain/registry.py: PrimaryAttributeSpec.point_priority_axes`）が
+あればその行の順（事故は死亡事故を先、その中で自転車の事故を先）、軸で決まらなければ束ねた点の数の多い印を先に残す（`scene/groups/points.ts: sortKeyExpression`）。
+鍵が式なので、地図は層のタイルをまたいで鍵の順に置く（MapLibre の `src/style/pauseable_placement.ts` が、鍵が定数でない層のタイルの印をまとめて並べる）。
+点は基礎地図の文字とも重なりを判定し、基礎地図より前面に積まれるので、点の印を残す。
+2点以上を束ねた代表点には点の右へ数を出す（同じ印の文字なので、印が省かれれば数も出ない。数は押せない）。絵記号は点の先頭の軸の行の全部に、行ごとに違う絵で付ける——絵の無い行は描けず、一部の行だけ形が違うと、形が分類の意味を
+持ってしまう（backendの`test_registry.py`が確かめる）。地図が行の値ごとに見本と同じ色・同じ絵記号の絵を引くことは
 `scene/legends.test.ts`が確かめる。
 
 **点の不透明度はレイヤーごとに源泉が宣言する**（一次属性の行の`point_opacity`、無ければ既定。`domain/map_display.py: POINT_OPACITY_BY_ATTR`。生成物`mapDisplay.point.opacityByLayer`）。
@@ -780,14 +849,14 @@ E2Eの`e2e/map-runtime.spec.ts`「宣言された地図レイヤーを全部ON�
 | レイヤー | ソース | 独立/共有 |
 |---|---|---|
 | 道路の線（例: 路面の種類・道路の種類・トンネル） | `ROAD_LINE_SOURCE_ID`（同じソースを分け合う） | 独立レイヤー（並列トラック対象） |
-| 点（例: 停止要因POI・補給休憩POI・事故） | 自分の`tile_kind`が指す点のタイルのソース（`points.ts: POINT_TILE_SOURCES`。生成物`region-tile-config.json`の`point_layers`から1タイルに1つ作り、source-layerも同じ一覧から引く） | 同じタイルを2つ以上のレイヤーが分け合うとき（例: 停止要因と補給）は、先頭の軸の値の集合で分ける（`baseFilter`）。1つしか読まないタイル（例: 事故）は独立 |
+| 点（例: 停止要因POI・補給休憩POI・事故） | 自分の`tile_kind`が指す点のタイルのソース（`points.ts: POINT_TILE_SOURCES`。生成物`region-tile-config.json`の`region-tile-config.json: point_layers`から1タイルに1つ作り、source-layerも同じ一覧から引く） | 同じタイルを2つ以上のレイヤーが分け合うとき（例: 停止要因と補給）は、先頭の軸の値の集合で分ける（`baseFilter`）。1つしか読まないタイル（例: 事故）は独立 |
 
 停止要因POIは**バックエンドで交差点単位にまとめられた点**が届く（[静的道路属性](../backend/static-road-attributes.md)）。
 1つの交差点に立つ複数の信号ノードは1点で、位置は交差点の真ん中になる。届く`kind`は取込時の
 値だが、横断歩道位置に立つ信号（`crossing`＋`crossing=*signals*`）は信号として届くため、
 凡例の「横断歩道」に残るのは信号を伴わない横断歩道だけである。まとめる単位は凡例の行で、
-凡例で同じ行に入る近くの点（車道用と歩道・自転車道用の踏切）は1点で届く。補給休憩POIはまとめずに
-1点ずつ届く。
+凡例で同じ行に入る近くの点（車道用と歩道・自転車道用の踏切）は1点で届く。補給休憩POIは交差点ではまとめない。
+どちらも、そのあとタイルの升目で凡例の行ごとに束ねて届く（上記）。
 
 自販機は「飲料自販機」と「自販機(中身不明)」の2つに分かれて届く。前者は`vending`タグで
 飲食物と分かるもの、後者はタグが無く判断できないもので、口に入らないものを売る機械は
@@ -832,9 +901,7 @@ E2Eの`e2e/map-runtime.spec.ts`「宣言された地図レイヤーを全部ON�
 対訳表に載らない値は生のまま出る（`roadFacts.ts: valueLabel`の`?? value`）。停止要因/補給POIの
 `kind`はOSMの生値ではなくbackendの分類器が付ける内部名なので、対訳が無ければ生値ではなく
 「不明」を出す（[design-principles.md](../../architecture/design-principles.md)UI仕様「内部名を画面に出さない」）。
-行き先は2通りあり、**どちらも値をテキストノードとして入れる**。道路の詳細はReactで描く
-（`RoadInspectorPopup.tsx`）。点データ（事故・POI）は`pointPopup.ts`がDOMを組み、
-`Popup.setDOMContent()`へ渡す。
+小窓の中身はどれもReactで描き（`useMapPopups.tsx`がPopupの器へportalで差し込む）、**値をテキストとして入れる**。
 
 **`Popup.setHTML()`は使わない**。MapLibreの`setHTML()`は受け取った文字列をサニタイズせず
 そのまま`innerHTML`へ入れる（APIの文書に「信頼できる内容にだけ使うこと」と明記され、
@@ -855,13 +922,13 @@ HTMLでもよい。第三者が書ける値——`?? 生値`の
   [ページ構成](page-composition.md)・[地図: 軸・ルート色分け](map-axis-coloring.md)に近い。
   区間クリック時の詳細表示（地点・到達予想時刻・軸別内訳）はボトムシート側
   （[ルート設定・結果パネル](route-settings-and-results.md)のRouteAxisProfile）が持ち、
-  地図上は、押された区間を`MapView.tsx: openRouteSegment`が選んだ区間として渡し、
-  `useMapMarkers.tsx: applySelectedSegmentMarker`が軽量なマーカーを立てるのみで
+  地図上は、押された区間を`features/map/MapView/mapTaps.ts: openRouteSegment`が選んだ区間として渡し、
+  `useMapMarkers.tsx: applySelectedSegmentMarker`が地点の印を立て、`scene/groups/routes.ts`が区間の範囲を縁取るのみで
   テキストポップアップを持たない。押された区間から読み戻す`feature.properties`は、軸別内訳等の
   入れ子のオブジェクトもオブジェクトのまま届く（MapLibre v6は内部表現へ移すときに印付きのJSON文字列へ
   直し、読み戻すときに自分で戻す。`maplibre-gl/src/util/vectortile_to_geojson.ts`）ので、読む側で戻さない。
 - アイコン集（`components/ui/icons/`）はこのモジュール（`MapOverlayControls`のアイコン辞書）専用ではなく、
-  [動的気象レイヤー](dynamic-weather-layers.md)の`WeatherPanel`/`TodayOutlook`からも
+  [動的気象レイヤー](dynamic-weather-layers.md)の`WeatherPanel`からも
   使われる、地図関連UI全体で共有するアイコン集である。天気・警告・操作のような意味の決まった
   汎用の形はlucide-reactの形を同じ呼び方（`size`だけ・既定16px）と同じ線の太さの比へ包んで書き出し、
   軸・レイヤー・区間の乗り換えのようなこのアプリ固有の概念の形だけを自前のSVGで持つ。組になって

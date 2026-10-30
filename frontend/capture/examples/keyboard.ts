@@ -1,6 +1,6 @@
 import type { CaptureScript } from "../context";
 
-// 脚本の例: スマホの幅で目的地の欄に打って候補が出たところを、キーボードが出た画面に見立てて撮る（候補は脚本が返す応答）。
+// 脚本の例: スマホの幅で目的地を探すボタンから地図の上端の欄に打って候補が出たところを、キーボードが出た画面に見立てて撮る（候補は脚本が返す応答）。
 // 地図の塗りは本物の backend でしか出ないので、作業ツリーの版を本物の backend へ向けて撮る。
 //   node frontend/scripts/capture.mjs --size 390x844 --api <本番の backend> --script frontend/capture/examples/keyboard.ts
 
@@ -18,11 +18,13 @@ const script: CaptureScript = async ({ page, fixtures, open, settle, shot, shotW
     routes: (p) => p.route("**/api/place-search*", (route) => route.fulfill({ json: { candidates } })),
   });
   const settings = await fixtures.openMobileSheet(page, "ルート設定");
+  await settings.getByRole("button", { name: "周回", pressed: true }).click();
   await settings.getByRole("button", { name: "目的地: 未設定", exact: true }).click();
-  const field = settings.getByRole("searchbox", { name: "目的地を住所・施設で探す" });
+  await settings.getByRole("button", { name: "目的地を探す" }).click();
+  const field = page.getByRole("searchbox", { name: "目的地を住所・施設で探す" });
   await field.fill("浅草");
   await field.press("Enter");
-  await expect(settings.getByRole("list", { name: "地点の候補" })).toBeVisible();
+  await expect(page.getByRole("list", { name: "地点の候補" })).toBeVisible();
   await settle();
   await shot("候補が出た");
   await shotWithKeyboard("候補が出た（キーボードあり）", field);

@@ -36,11 +36,10 @@ class DisplayCategorySpec(StrictModel):
     values: tuple[str | bool, ...]
     #: 凡例の行の（i）から開く、この行に何が入るかの説明。利用者の言葉で書き、OSMのタグは括弧で添える程度にする。
     description: str = Field(min_length=1)
-    #: 点を、行の色の角丸四角に白い絵記号を載せた形で描くときの絵の名前（`None`は丸い点）。絵の描き方は画面が持つ。
-    #: 色だけでは、同時に出る点のレイヤーどうしを軸の中ほど離せないので、形でも分けるレイヤーに付ける。
-    #: 付けるのは点の先頭の軸で、その軸の行の全部に付ける（一部の行だけ形が違うと、形が分類の意味を持ってしまう）。
+    #: 地図の点を描く絵の名前。絵の描き方は画面が持つ。色だけでは、同時に出る点のレイヤーどうしを見分けられないので、形でも分ける。
+    #: 点の先頭の軸の行の全部に、行ごとに違う絵を付ける（絵の無い行は描けず、一部の行だけ形が違うと形が分類の意味を持ってしまう）。
     glyph: str | None = None
-    #: 丸い点で描くときの、この行の点の半径（`None`は既定の半径）。付けた軸が点の大きさを決める軸になる。
+    #: この行の点の大きさ（`None`は既定の大きさ）。付けた軸が点の大きさを決める軸になる。
     #: 付けるのは点の軸のうち1本だけ（2本に付けると、1つの点の大きさがどちらの軸の行で決まるかが無くなる）。
     radius_px: int | None = None
 
@@ -50,16 +49,6 @@ class PointFactSpec(StrictModel):
 
     property: str
     label: str = Field(min_length=1)
-
-
-class PointThinningSpec(StrictModel):
-    """重なった点の絵を間引くときに、どれを残すかの順。先に並ぶ行の点ほど先に残し、同じ行の中では
-    `ratio_property`の値の大きい点を先に残す。"""
-
-    #: 先頭の軸の行の鍵の全部を、残す順に並べたもの。
-    rows: tuple[str, ...]
-    #: 0〜1の値を持つタイルのプロパティ。
-    ratio_property: str
 
 
 class DisplayAxisSpec(StrictModel):
@@ -89,6 +78,23 @@ class DisplayAxisSpec(StrictModel):
     tone: Literal["dark", "light", "vivid"] | None = None
     categories: tuple[DisplayCategorySpec, ...]
 
+    @model_validator(mode="after")
+    def _colors_follow_the_palette(self) -> "DisplayAxisSpec":
+        if self.palette is None and (self.hue_slot is not None or self.tone is not None):
+            raise ValueError(f"色を持たない軸'{self.key}'に色相の起点か段がある")
+        if self.palette == "nominal" and self.hue_slot is None:
+            raise ValueError(f"順序を持たない列挙の軸'{self.key}'に色相の起点が無い")
+        return self
+
+    @model_validator(mode="after")
+    def _rows_do_not_overlap(self) -> "DisplayAxisSpec":
+        # 2つの行に属する値は、地図ではどちらか一方の色でしか塗られない。凡例の絞り込みと点のまとめは行を鍵で持つ。
+        values = [value for category in self.categories for value in category.values]
+        keys = [category.key for category in self.categories]
+        if len(values) != len(set(values)) or len(keys) != len(set(keys)):
+            raise ValueError(f"軸'{self.key}'の行の値か鍵が重なる")
+        return self
+
 
 class PrimaryAttributeSpec(StrictModel):
     """一次属性の宣言。
@@ -117,25 +123,60 @@ class PrimaryAttributeSpec(StrictModel):
     tile_kind: TileKind | None = None
     #: 地図の点の不透明度。既定（`map_display.py: POINT_OPACITY`）と違う濃さで描く点の属性だけが持つ。
     point_opacity: float | None = Field(default=None, gt=0, le=1)
-    #: 重なった点の絵を間引く点の属性だけが持つ。持たない点は、重なっても全部描く。
-    #: 絵記号で描く点にだけ付ける（丸い点は地図が間引けない）。
-    point_thinning: PointThinningSpec | None = None
     #: 点の名前（店名等）を持つタイルのプロパティ。名前のある点を押すと、名前と、名前と位置で外の地図を開く導線を出す。
     point_name_property: str | None = None
+    #: 地図に点を描き始める縮尺。これより引いた縮尺では描かない。道に沿って密に並び、引いた縮尺で描くと地図が点で埋まる属性だけが持つ。
+    point_min_zoom: int | None = Field(default=None, ge=0)
+    #: 地図で点の印が重なったとき、どの属性の印を残すか。大きい属性の印を残し、同じなら宣言の後の属性の印を残す。
+    point_priority: int = 0
+    #: 地図で同じ属性の印が重なったとき、どの印を残すかを先に決める軸（`DisplayAxisSpec.key`）。前の軸ほど強く、軸の中は行の
+    #: 宣言の順に残す。軸で決まらない印は、束ねた点の数の多い印を残す。
+    point_priority_axes: tuple[str, ...] = ()
 
     @model_validator(mode="after")
-    def _point_opacity_is_for_points(self) -> "PrimaryAttributeSpec":
-        if self.point_opacity is not None and self.geometry != "point":
-            raise ValueError(f"点でない一次属性'{self.attr_id}'に点の不透明度がある")
+    def _point_display_is_for_points(self) -> "PrimaryAttributeSpec":
+        if self.geometry != "point" and (
+            self.point_opacity is not None
+            or self.point_min_zoom is not None
+            or self.point_priority != 0
+            or self.point_priority_axes
+        ):
+            raise ValueError(f"点でない一次属性'{self.attr_id}'に点の描き方がある")
+        unknown = set(self.point_priority_axes) - {spec.key for spec in self.display_axes}
+        if unknown or len(self.point_priority_axes) != len(set(self.point_priority_axes)):
+            raise ValueError(f"'{self.attr_id}'の残す順を決める軸{self.point_priority_axes}が、表示の軸を1本ずつ指していない")
         return self
 
     @model_validator(mode="after")
-    def _point_thinning_ranks_every_glyph_row(self) -> "PrimaryAttributeSpec":
-        if self.point_thinning is None:
+    def _only_the_first_axis_paints(self) -> "PrimaryAttributeSpec":
+        if not self.display_axes:
             return self
-        categories = self.display_axes[0].categories if self.display_axes else ()
-        if not categories or any(category.glyph is None for category in categories):
-            raise ValueError(f"'{self.attr_id}'の間引きは、絵記号で描く点にだけ付けられる")
-        if sorted(self.point_thinning.rows) != sorted(category.key for category in categories):
-            raise ValueError(f"'{self.attr_id}'の間引きの順は、先頭の軸の行の鍵を1度ずつ全部並べる")
+        if self.geometry == "area":
+            raise ValueError(f"面の一次属性'{self.attr_id}'は配信元の画像の色で塗り、行を持たない")
+        if self.tile_kind is None:
+            raise ValueError(f"地図へ出す一次属性'{self.attr_id}'に、読むタイルの系統が無い")
+        first, *rest = self.display_axes
+        if first.palette is None or any(spec.palette is not None for spec in rest):
+            raise ValueError(f"'{self.attr_id}'の色は先頭の軸だけが持つ")
         return self
+
+    @model_validator(mode="after")
+    def _glyphs_and_radii_mark_points_one_way(self) -> "PrimaryAttributeSpec":
+        if not self.display_axes:
+            return self
+        first, *rest = self.display_axes
+        glyphs = [category.glyph for category in first.categories]
+        if any(category.glyph is not None for spec in rest for category in spec.categories):
+            raise ValueError(f"'{self.attr_id}'の2本目以降の軸の絵記号は地図に描かれない")
+        if self.geometry == "point" and (None in glyphs or len(glyphs) != len(set(glyphs))):
+            raise ValueError(f"'{self.attr_id}'の点の先頭の軸の行の全部に、行ごとに違う絵記号を付ける")
+        if self.geometry != "point" and any(glyph is not None for glyph in glyphs):
+            raise ValueError(f"'{self.attr_id}'は点でないので、絵記号を持たない")
+        sized = [spec for spec in self.display_axes if any(c.radius_px is not None for c in spec.categories)]
+        if len(sized) > 1 or (sized and self.geometry != "point"):
+            raise ValueError(f"'{self.attr_id}'の点の半径を持つ軸は、点の軸の1本だけ")
+        radii = [c.radius_px for c in sized[0].categories if c.radius_px is not None] if sized else []
+        if len(radii) != len(set(radii)):
+            raise ValueError(f"'{self.attr_id}'の点の半径は、行ごとに違う大きさにする")
+        return self
+

@@ -33,6 +33,11 @@ describe("clampBoundaryDrag", () => {
     expect(clampBoundaryDrag(0.5, 0.5, -1, 1)).toEqual({ weightA: 0.01, weightB: 0.99 });
   });
 
+  it("2軸とも刻み1つに満たない（軸を入れたときの重みが、ほかの軸の合計の1%に満たない）なら、動かさない——動かすと片方が0以下になり、チェックOFFに化ける", () => {
+    for (const delta of [-0.01, 0, 0.01])
+      expect(clampBoundaryDrag(0.005, 0.005, delta, 1)).toEqual({ weightA: 0.005, weightB: 0.005 });
+  });
+
   it("どの合計・入力でも、2軸の合計は変わらず、%は整数の刻みで動き、どちらも合計の1%以上に収まる", () => {
     for (const total of [0.2, 1, 3]) {
       const step = weightStep(total);

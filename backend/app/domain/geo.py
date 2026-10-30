@@ -100,6 +100,8 @@ SIXTEEN_POINT_LABELS = [
     "北", "北北東", "北東", "東北東", "東", "東南東", "南東", "南南東",
     "南", "南南西", "南西", "西南西", "西", "西北西", "北西", "北北西",
 ]
+if len(set(SIXTEEN_POINT_LABELS)) != len(SIXTEEN_POINT_LABELS):
+    raise ValueError("16方位の呼び名が重なると、違う向きが画面で同じ名前になる")
 COMPASS_LABELS = SIXTEEN_POINT_LABELS[::2]
 
 
@@ -119,8 +121,8 @@ def bearing_sector(bearing_deg: float, count: int) -> int:
 
 
 def compass_degrees(bearing_deg: float) -> int:
-    """方位（度）を応答に載せる桁（0〜359の整数の度）へ丸める。"""
-    return int(round(bearing_deg)) % 360
+    """方位（度）を応答に載せる桁（0〜359の整数の度）へ丸める。境目は`bearing_sector`と同じく上へ倒す。"""
+    return math.floor(bearing_deg + 0.5) % 360
 
 
 def bearing_between(origin: LatLon, destination: LatLon) -> float:

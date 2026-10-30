@@ -1,5 +1,5 @@
-"""`app/main.py`のlifespan（起動・終了）: 軸定義を読めなければ起動しない・定期ジョブが起動直後にも走る・
-失敗した定期ジョブがプロジェクトの接頭辞のロガーに残る。
+"""`app/main.py`のlifespan（起動・終了）: 軸定義を読めなければ起動しない・起動で読み込んだものをGCの走査から外す・
+定期ジョブが起動直後にも走る・失敗した定期ジョブがプロジェクトの接頭辞のロガーに残る。
 
 ここで見ないもの: 定期ジョブそれぞれの中身（呼ぶ先のテスト）、CORSの結線（`test_main.py`）
 
@@ -10,6 +10,7 @@ DBを触る呼び出しはすべてスタブへ差し替え、実接続を残さ
 イベントループが閉じた後に接続の後始末が走り「Event loop is closed」になる）。
 """
 
+import gc
 import inspect
 import logging
 import threading
@@ -27,12 +28,6 @@ from tests.bound_fake import bound
 
 
 async def _noop(*args, **kwargs) -> None:
-    return None
-
-
-async def _noop_job(*args, **kwargs) -> None:
-    """スケジューラへ載せる代わりの何もしない仕事。`__module__`がこのテストファイルに
-    なることを、下の「本物が1本も載っていない」テストが手掛かりに使う。"""
     return None
 
 
@@ -59,10 +54,9 @@ def _harmless_startup(monkeypatch):
     構築を伴い、環境によっては1回あたり約1秒かかる。ジョブを無害化済みで返り値を
     実際には使わないため、安全にこのコストを避けられる。
     """
-    monkeypatch.setattr(main_module, "refresh_axis_definitions", bound(main_module.refresh_axis_definitions, _noop))
-    monkeypatch.setattr(main_module, "refresh_tuning_values", bound(main_module.refresh_tuning_values, _noop))
+    monkeypatch.setattr(main_module, "refresh_definitions", bound(main_module.refresh_definitions, _noop))
     for name in _startup_job_attribute_names():
-        monkeypatch.setattr(main_module, name, bound(getattr(main_module, name), _noop_job))
+        monkeypatch.setattr(main_module, name, bound(getattr(main_module, name), _noop))
     monkeypatch.setattr(main_module, "get_http_client", lambda timeout: None)
 
 
@@ -95,32 +89,34 @@ def lifespan_schedulers(monkeypatch) -> list[_RecordingScheduler]:
     return created
 
 
-def test_lifespan_fails_fast_when_refresh_axis_definitions_raises(monkeypatch):
+def test_lifespan_fails_fast_when_axis_definitions_cannot_be_loaded(monkeypatch):
     """`AxisDefinitionSyncError`はlifespan内で捕捉されず、アプリ起動自体が失敗する。"""
 
     async def _raise(*args, **kwargs):
         raise AxisDefinitionSyncError("boom")
 
-    monkeypatch.setattr(main_module, "refresh_axis_definitions", _raise)
+    monkeypatch.setattr(main_module, "refresh_definitions", _raise)
 
-    with pytest.raises(AxisDefinitionSyncError):
-        with TestClient(app):
-            pass
+    with pytest.raises(AxisDefinitionSyncError), TestClient(app):
+        pass
 
 
-def test_no_real_startup_job_is_scheduled_in_this_file(lifespan_schedulers):
-    """このファイルの実行で、本物の起動時ジョブが1本も載らないこと。
+def test_objects_loaded_at_startup_are_left_out_of_gc_collections(monkeypatch):
+    """起動で読み込んだものが走査に残ると、生成の間の世代2のGCが長くなり、その間タイルとポーリングに応えられない。
 
-    載ると、テストを流しただけで外部への実HTTP問い合わせや**開発機の実ディスクの削除**が
-    走る。無害化は`main.py`の宣言から導くが、**導出が空振りしても静かに通る**ため、
-    載った結果の側からも確かめる。
+    `gc.get_objects()`は凍らせたもの（恒久の世代）を返さないので、その中に無いことで走査の外を確かめる。
     """
-    with TestClient(app):
-        [scheduler] = lifespan_schedulers
-        scheduled = [(job.id, job.func) for job in scheduler.get_jobs()]
+    loaded: list[object] = []
 
-    assert scheduled, "起動時ジョブが1本も載っていない（導出が空振りしている可能性）"
-    assert [job_id for job_id, func in scheduled if func.__module__ != __name__] == []
+    async def _load(*args, **kwargs) -> None:
+        loaded.append({"axis": []})
+
+    monkeypatch.setattr(main_module, "refresh_definitions", bound(main_module.refresh_definitions, _load))
+
+    with TestClient(app):
+        [definitions] = loaded
+        assert not any(obj is definitions for obj in gc.get_objects())
+    assert any(obj is definitions for obj in gc.get_objects())
 
 
 def test_every_interval_job_also_runs_immediately_at_startup(lifespan_schedulers):

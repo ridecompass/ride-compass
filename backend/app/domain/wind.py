@@ -5,6 +5,7 @@ from datetime import datetime
 import numpy as np
 
 from app.domain.geo import haversine_distance_km, haversine_distance_km_array
+from app.domain.msm import MsmBlock
 from app.domain.route import Coordinates
 from app.domain.way_value_formula import (
     FALSE,
@@ -138,65 +139,6 @@ def wind_drag_ratio(wind_speed_ms: float, wind_direction_deg: float, travel_bear
     return float(wind_drag_ratio_array(wind_speed_ms, wind_direction_deg, travel_bearing_deg, travel_speed_ms))
 
 
-#: 道の風を引く予報の格子点の間隔（度）。MSMの格子（緯度0.05度・経度0.0625度、`domain/msm.py`）と同じ
-#: 細かさ——これより細かくしても補間の点が増えるだけで、予報の解像度は上がらない。MSMの格子が変わっても、値は
-#: 実際の格子（`MsmGrid`）から補間するので狂わず、細かさが合わなくなるだけのため、配信元のメタ情報からは導かない。
-WIND_FORECAST_LAT_STEP_DEG = 0.05
-WIND_FORECAST_LON_STEP_DEG = 0.0625
-
-
-def grid_index_at_or_below(value: float, step: float) -> int:
-    """緯度・経度0度から`step`ずつ数えた格子線のうち、`value`以下で最も近いものの番号。"""
-    # 割り算の丸めで格子線ちょうどの値が1本下へ落ちないよう、商を丸めてから切り捨てる。
-    return math.floor(round(value / step, 9))
-
-
-def _grid_line_at_or_below(value: float, step: float) -> float:
-    return grid_index_at_or_below(value, step) * step
-
-
-@dataclass(frozen=True)
-class WindLattice:
-    """風の予報を引く等間隔の格子点。点の番号は南の行から、各行の中は西から（行×列）。
-
-    道の風は、その道の中ほどに最も近い格子点から引く（`points_of`）。ルートを出す前の地図と
-    ルートの区間が同じ道で同じ予報の点を使うには、格子点が引く範囲に依らず決まっていなければ
-    ならない——そのため`covering`は格子を緯度・経度0度から間隔ずつ数えた固定の線に揃える。
-    """
-
-    south: float
-    west: float
-    lat_step: float
-    lon_step: float
-    rows: int
-    cols: int
-
-    @classmethod
-    def covering(
-        cls, south: float, west: float, north: float, east: float, lat_step: float, lon_step: float
-    ) -> "WindLattice":
-        """矩形を覆う固定の格子。南端・西端は手前の格子線から、北端・東端も格子の内側に入るよう
-        1つ先の点まで敷く。"""
-        grid_south = _grid_line_at_or_below(south, lat_step)
-        grid_west = _grid_line_at_or_below(west, lon_step)
-        return cls(
-            south=grid_south, west=grid_west, lat_step=lat_step, lon_step=lon_step,
-            rows=math.ceil((north - grid_south) / lat_step) + 1,
-            cols=math.ceil((east - grid_west) / lon_step) + 1,
-        )
-
-    def coordinates(self) -> tuple[np.ndarray, np.ndarray]:
-        """全格子点の（緯度, 経度）配列（点の番号の順）。"""
-        i, j = np.divmod(np.arange(self.rows * self.cols), self.cols)
-        return self.south + i * self.lat_step, self.west + j * self.lon_step
-
-    def points_of(self, latitudes: np.ndarray, longitudes: np.ndarray) -> np.ndarray:
-        """各地点に最も近い格子点の番号。格子の外の地点は端の格子点へ寄せる。"""
-        i = np.clip(np.rint((np.asarray(latitudes, dtype=float) - self.south) / self.lat_step), 0, self.rows - 1)
-        j = np.clip(np.rint((np.asarray(longitudes, dtype=float) - self.west) / self.lon_step), 0, self.cols - 1)
-        return i.astype(np.int64) * self.cols + j.astype(np.int64)
-
-
 @dataclass(frozen=True)
 class DepartureWind:
     """出発地点の出発時点の風（MSMの時系列の先頭）。時別の系列が無いとき、全区間へ一様に使う。"""
@@ -208,17 +150,18 @@ class DepartureWind:
 
 @dataclass(frozen=True)
 class WindForecastSeries:
-    """格子点ごとの時別風向・風速の予報系列（1時間刻み、`times`はタイムゾーン無しのローカル時刻[JST]）。探索前に
-    各Edgeの通過予定時刻へ対応する風を引くために使う。`speed_ms`・`direction_deg`は（格子点, 時刻）。
+    """MSMの格子点ごとの時別風向・風速の予報系列（1時間刻み、`times`はタイムゾーン無しのローカル時刻[JST]）。探索前に
+    各Edgeの通過予定時刻へ対応する風を引くために使う。`speed_ms`・`direction_deg`は（`lattice`の格子点, 時刻）で、
+    格子点の値のまま（補間していない）。
     """
 
     times: list[datetime]
     speed_ms: np.ndarray
     direction_deg: np.ndarray
-    lattice: WindLattice
+    lattice: MsmBlock
 
     def __post_init__(self) -> None:
-        expected = (self.lattice.rows * self.lattice.cols, len(self.times))
+        expected = (self.lattice.size, len(self.times))
         if len(self.times) < 2 or self.speed_ms.shape != expected or self.direction_deg.shape != expected:
             raise ValueError(
                 f"WindForecastSeries: speed_ms/direction_deg must have the shape {expected} with >= 2 times"
@@ -228,9 +171,10 @@ class WindForecastSeries:
             raise ValueError(f"WindForecastSeries: expected hourly steps, got {step_hours}h")
 
     def _sample_index(self, start: datetime, passage_hours: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-        """`start`から`passage_hours`時間後に最も近い時刻の添字と、系列の範囲の外で端へ寄せたか。"""
+        """`start`から`passage_hours`時間後に最も近い時刻の添字と、系列の範囲の外で端へ寄せたか。
+        ちょうど2つの時刻の中間は後の時刻へ倒す（`np.rint`の偶数丸めだと、中間が前後どちらへ倒れるかが時刻の偶奇で変わる）。"""
         start_offset_hours = (start - self.times[0]).total_seconds() / 3600
-        raw = np.rint(start_offset_hours + np.asarray(passage_hours, dtype=float)).astype(np.int64)
+        raw = np.floor(start_offset_hours + np.asarray(passage_hours, dtype=float) + 0.5).astype(np.int64)
         index = np.clip(raw, 0, len(self.times) - 1)
         return index, index != raw
 
@@ -242,11 +186,6 @@ class WindForecastSeries:
         ごとに返す。系列の範囲外は端の値へクランプする（探索では欠損より端の値の方が妥当）。"""
         index, _clamped = self._sample_index(start, passage_hours)
         return self.speed_ms[points, index], self.direction_deg[points, index]
-
-    def sampled_times(self, start: datetime, passage_hours: np.ndarray) -> tuple[list[datetime], np.ndarray]:
-        """`sample`が引く予報の時刻と、系列の範囲の外で端の時刻へ寄せたか（予報の先を延ばして使っている）。"""
-        index, clamped = self._sample_index(start, passage_hours)
-        return [self.times[i] for i in index], clamped
 
     def covers(self, at: datetime) -> bool:
         """`at`に最も近い時刻が系列の範囲の中にあるか（端の値で延ばさずに引けるか）。"""

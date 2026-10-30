@@ -10,11 +10,12 @@ from contextlib import contextmanager
 from typing import Any
 
 from app.domain.axis_definitions import (
-    AXIS_DEFINITIONS,
     AxisDefinition,
     AxisShape,
     BreakpointLinearShape,
     MaterialTerm,
+    copy_axis_definitions,
+    replace_axis_definitions,
 )
 
 
@@ -32,6 +33,17 @@ def axis_definition(axis_id: str, *, material: str = "material_a", **fields: Any
     )
 
 
+def linear(
+    *terms: str | MaterialTerm, breakpoints=((0.0, 0.0), (10.0, 100.0)), preprocess="identity"
+) -> BreakpointLinearShape:
+    """材料の項（idは重み1の項）を足し、折れ点で得点へ写す区分線形のshape。既定の折れ点は0〜10を0〜100へ写す。"""
+    return BreakpointLinearShape(
+        terms=[term if isinstance(term, MaterialTerm) else MaterialTerm(material=term) for term in terms],
+        breakpoints=list(breakpoints),
+        preprocess=preprocess,
+    )
+
+
 def shaped_axis(shape: AxisShape, axis_id: str = "axis_a", **fields: Any) -> AxisDefinition:
     """shape（得点の付け方）がテストの主題の軸を1本作る。重みと表示名は型を満たすための値。"""
     return AxisDefinition(axis_id=axis_id, shape=shape, default_weight=1.0, label="軸A", **fields)
@@ -43,18 +55,16 @@ def axis_definitions_snapshot():
 
     ブロック内で何を書き込むか（差し替えるか、そもそも書き込まないか）は呼び出し側の責務。
     """
-    original = dict(AXIS_DEFINITIONS)
+    original = copy_axis_definitions()
     try:
-        yield original
+        yield
     finally:
-        AXIS_DEFINITIONS.clear()
-        AXIS_DEFINITIONS.update(original)
+        replace_axis_definitions(original)
 
 
 @contextmanager
 def replaced_axis_definitions(definitions: Mapping[str, AxisDefinition]):
     """ブロックの間だけ`AXIS_DEFINITIONS`を`definitions`だけにする。"""
     with axis_definitions_snapshot():
-        AXIS_DEFINITIONS.clear()
-        AXIS_DEFINITIONS.update(definitions)
+        replace_axis_definitions(definitions)
         yield

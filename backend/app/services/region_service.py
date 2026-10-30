@@ -5,17 +5,11 @@ from functools import partial
 from app.domain.axis_definitions import copy_axis_definitions, published_axis_order
 from app.domain.axis_inspector import AxisInspectorResult, InspectorValues, inspector_values
 from app.domain.dynamic_way_values import MissingConditions, WayValueQuery
-from app.domain.geo import LatLon
 from app.domain.landcover import LandcoverPercentages
 from app.domain.route_preference import RoutePreference
-from app.domain.region import (
-    EDGE_UNIT_MIN_ZOOM,
-    BoundingBox,
-    edge_unit_tile,
-    tile_bounds_lonlat,
-    way_unit_tile,
-)
+from app.domain.region import ROADS_AT_LIMIT, BoundingBox, RoadAt, tile_bounds_lonlat
 from app.domain.registry import TileKind
+from app.domain.tuning import REBUILT_CLIENT_TUNING_IDS
 from app.infrastructure.database import DB_UNAVAILABLE_ERRORS
 from app.infrastructure.debug_log import log_external_call, log_throttled_warning, mark_failed
 from app.infrastructure.point_tile_layers import PointTileLayer
@@ -49,8 +43,8 @@ class InspectedFeature:
 class InspectedRoad:
     highway: str
     tags: dict[str, str]
-    segment: InspectedFeature
-    way: InspectedFeature
+    #: 押したフィーチャー（その倍率で地図が塗る単位）。
+    feature: InspectedFeature
 
 
 class RegionService:
@@ -90,7 +84,6 @@ class RegionService:
         kind: TileKind,
         empty_tile: bytes,
         external_call_name: str,
-        label: str,
         z: int,
         x: int,
         y: int,
@@ -106,15 +99,11 @@ class RegionService:
                 # いる（DBの往復1回分を節約。repository側のdocstring参照）。
                 tile_bytes = await read_tile(z, x, y, tile_bounds_lonlat(z, x, y))
             except DB_UNAVAILABLE_ERRORS as exc:
-                # 「取込範囲外」のWARNINGは出さない——その表記はDB障害に当てはまらず、失敗は記録の口が抜けるときに出る。
                 mark_failed(fields, exc)
                 return None
             if tile_bytes is None:
+                # 取込範囲外は取得できないのが正常な場合で、WARNINGにしない（地図を範囲の外へ動かすたびに出る）。
                 fields["postgis"] = "uncovered"
-                log_throttled_warning(
-                    f"{external_call_name}-uncovered", "[%s] %sタイルがPostGIS取込範囲外 z=%d x=%d y=%d",
-                    external_call_name, label, z, x, y,
-                )
                 return None
             fields["postgis"] = "hit"
             return tile_bytes
@@ -138,7 +127,6 @@ class RegionService:
             kind="road_surface",
             empty_tile=encode_empty_tile(ROAD_SURFACE_LAYER_NAME),
             external_call_name="region:road-surface-tile",
-            label="路面",
             z=z,
             x=x,
             y=y,
@@ -151,20 +139,16 @@ class RegionService:
             kind=layer.name,
             empty_tile=encode_empty_tile(layer.source_layer),
             external_call_name=f"region:{layer.name}-tile",
-            label=layer.name,
             z=z,
             x=x,
             y=y,
         )
 
-    async def inspected_road(
-        self, osm_way_id: int, feature_key: str, z: int, x: int, y: int, point: LatLon
-    ) -> InspectedRoad | None:
-        """区間インスペクタが評価する、押した道の区間と道1本のフィーチャーと、道の一次属性。
+    async def inspected_road(self, osm_way_id: int, feature_key: str, z: int, x: int, y: int) -> InspectedRoad | None:
+        """区間インスペクタが評価する、押したフィーチャー（タイル`(z, x, y)`が焼いた`feature_key`）と、道の一次属性。
 
         引き直しの鍵はタイルへ焼き込み済みのosm_way_idで、クリック地点の緯度経度から道を空間マッチで選ばない——交差点
-        付近など複数の道路が近接する場所で、実際にクリックされたフィーチャーとは別の道路を拾う。地点は、道1本で塗る倍率で
-        押したときに、その道の区間を選ぶのにだけ使う。
+        付近など複数の道路が近接する場所で、実際にクリックされたフィーチャーとは別の道路を拾う。
 
         該当way不在・DB例外はいずれもNoneへ倒す（タイル配信と同じグレースフルデグレード方針）。
         """
@@ -174,27 +158,28 @@ class RegionService:
                 if way_tags_result is None:
                     fields["lookup"] = "not_found"
                     return None
-                if z >= EDGE_UNIT_MIN_ZOOM:
-                    segment_key, segment_tile = feature_key, (z, x, y)
-                else:
-                    nearest = await self._repository.get_nearest_way_segment(
-                        osm_way_id, point.latitude, point.longitude)
-                    if nearest is None:
-                        fields["lookup"] = "not_found"
-                        return None
-                    segment_key, latitude, longitude = nearest
-                    segment_tile = edge_unit_tile(longitude, latitude)
-                way_key = str(osm_way_id)
-                segment = InspectedFeature(segment_key, segment_tile,
-                                           await self._repository.get_feature_landcover(osm_way_id, segment_key))
-                way = InspectedFeature(way_key, way_unit_tile(z, x, y),
-                                       await self._repository.get_feature_landcover(osm_way_id, way_key))
+                feature = InspectedFeature(feature_key, (z, x, y),
+                                           await self._repository.get_feature_landcover(osm_way_id, feature_key))
             except DB_UNAVAILABLE_ERRORS as exc:
                 mark_failed(fields, exc)
                 return None
             fields["lookup"] = "ok"
             highway, tags = way_tags_result
-            return InspectedRoad(highway, tags, segment, way)
+            return InspectedRoad(highway, tags, feature)
+
+    async def roads_at(self, lon: float, lat: float, z: int, radius_m: float) -> list[RoadAt]:
+        """押した所に近い道（近い順、最大`ROADS_AT_LIMIT`本）。道のタイルを読まずに道を押せるようにする。
+
+        DB例外は空へ倒す（押した所に道が無いのと同じに、小窓を開かない）。
+        """
+        with log_external_call("region:roads-at", z=z) as fields:
+            try:
+                roads = await self._repository.roads_at(lon, lat, z, radius_m, ROADS_AT_LIMIT)
+            except DB_UNAVAILABLE_ERRORS as exc:
+                mark_failed(fields, exc)
+                return []
+            fields["found"] = len(roads)
+            return roads
 
     async def get_accident_years(self) -> list[int]:
         """事故データの収録年。地図の説明文へ配る。
@@ -213,9 +198,21 @@ class RegionService:
             fields["years_covered"] = len(years)
             return years
 
+    async def get_rebuilt_client_tuning(self) -> dict[str, float]:
+        """フロントへ配る較正値のうち作り直しで効くもの（`REBUILT_CLIENT_TUNING_IDS`）の、作り直しに使った値。
+
+        DB例外は空へ倒す（画面は引けない値を文に出さない）。管理画面の今の値や既定で埋めると、派生の値と食い違う数を出す。
+        """
+        with log_external_call("region:rebuilt-client-tuning") as fields:
+            try:
+                return await self._repository.get_recorded_tuning(REBUILT_CLIENT_TUNING_IDS)
+            except DB_UNAVAILABLE_ERRORS as exc:
+                mark_failed(fields, exc)
+                return {}
+
     async def get_ingested_area(self) -> BoundingBox | None:
-        """サービスの対象範囲（取り込んだ道路の範囲）。風の格子と気象庁タイルのプリウォームが、ここから
-        範囲を引く——範囲を持つのは取込の宣言だけで、取込範囲を広げれば風とタイルも同じ範囲へ広がる。
+        """サービスの対象範囲（取り込んだ道路の範囲）。気象庁タイルのプリウォームが、ここから
+        範囲を引く——範囲を持つのは取込の宣言だけで、取込範囲を広げればタイルも同じ範囲へ広がる。
 
         道路をまだ取り込んでいない・DB例外のときはNone（どちらもWARNING）。
         """
@@ -232,8 +229,8 @@ class RegionService:
 
 
 class AxisInspectorService:
-    """区間インスペクタ。押した区間と、その区間を含む道1本の公開軸の得点を、地図の配信がそれぞれを塗るタイルの値
-    （`tile_axis_values`）から出す——地図の色と内訳の数字が、同じ評価の同じ値になる。"""
+    """区間インスペクタ。押したフィーチャー（その倍率で地図が塗る区間か道1本）の公開軸の得点を、地図の配信がそれを塗る
+    タイルの値（`tile_axis_values`）から出す——地図の色と内訳の数字が、同じ評価の同じ値になる。"""
 
     def __init__(
         self,
@@ -252,7 +249,6 @@ class AxisInspectorService:
         z: int,
         x: int,
         y: int,
-        point: LatLon,
         query: WayValueQuery,
         preference: RoutePreference | None,
     ) -> AxisInspectorResult | None:
@@ -261,7 +257,7 @@ class AxisInspectorService:
 
         `query`の条件が欠けて値の出ない軸は、評価できない軸になる（地図の配信なら欠けを断る）。
         """
-        road = await self._region_service.inspected_road(osm_way_id, feature_key, z, x, y, point)
+        road = await self._region_service.inspected_road(osm_way_id, feature_key, z, x, y)
         if road is None:
             return None
         definitions = copy_axis_definitions()
@@ -278,4 +274,4 @@ class AxisInspectorService:
             return inspector_values({axis_id: scores[axis_id] for axis_id in published}, feature.landcover, weights)
 
         return AxisInspectorResult(
-            highway=road.highway, tags=road.tags, segment=await values(road.segment), way=await values(road.way))
+            highway=road.highway, tags=road.tags, values=await values(road.feature))

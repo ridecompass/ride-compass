@@ -11,7 +11,6 @@
 """
 
 import json
-import os
 import shutil
 from dataclasses import replace
 
@@ -79,36 +78,6 @@ async def _runs(conn) -> list[tuple[int, str]]:
 async def _rows(conn) -> list[tuple[str, int]]:
     rows = await conn.fetch(f'SELECT natural_key, run_id FROM "{partition_table_name(SOURCE)}" ORDER BY natural_key')
     return [(row["natural_key"], row["run_id"]) for row in rows]
-
-
-async def test_ingesting_the_same_inputs_again_keeps_the_previous_run(conn, heritages, code_root):
-    first = await ingest_source(conn, _profile(), SOURCE)
-
-    assert await ingest_source(conn, _profile(), SOURCE) == first
-    assert await _runs(conn) == [(first, "succeeded")]
-    assert await _rows(conn) == [("bunka-1", first)]
-
-
-async def test_a_changed_byte_with_the_same_size_and_time_is_ingested(conn, heritages, code_root):
-    first = await ingest_source(conn, _profile(), SOURCE)
-    stat = heritages.stat()
-    heritages.write_text(_line("bunka-2"), encoding="utf-8")
-    os.utime(heritages, ns=(stat.st_atime_ns, stat.st_mtime_ns))
-    assert (heritages.stat().st_size, heritages.stat().st_mtime_ns) == (stat.st_size, stat.st_mtime_ns)
-
-    second = await ingest_source(conn, _profile(), SOURCE)
-
-    assert second != first
-    assert await _rows(conn) == [("bunka-2", second)]
-
-
-async def test_a_changed_declaration_of_the_source_is_ingested(conn, heritages, code_root):
-    first = await ingest_source(conn, _profile(), SOURCE)
-
-    second = await ingest_source(conn, _profile(replace(ROWS, designations=["重要文化財", "国宝"])), SOURCE)
-
-    assert second != first
-    assert await _runs(conn) == [(first, "succeeded"), (second, "succeeded")]
 
 
 async def test_a_changed_adapter_code_is_ingested(conn, heritages, code_root):

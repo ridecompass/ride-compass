@@ -29,7 +29,9 @@ export default function Error({ error, retry }: { error: Error & { digest?: stri
       <p style={{ color: "var(--color-muted)" }}>
         画面の表示中に問題が発生しました。再試行しても解決しない場合は、ページを再読み込みしてください。
       </p>
-      <Button onClick={() => retry()}>再試行</Button>
+      <Button usage={null} onClick={() => retry()}>
+        再試行
+      </Button>
     </div>
   );
 }

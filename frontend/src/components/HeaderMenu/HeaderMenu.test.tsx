@@ -4,18 +4,20 @@
  * 見るもの: メニューを開くと出る項目、「使い方を見る」を押すとメニューが閉じ、フォーカスが開くボタンへ戻ってから説明を見る状態に入る操作が上がること、
  * 「地図の表示を再描画」を押すと描き直しの操作が上がってメニューが閉じること、
  * デバッグログの項目がデバッグモードの間だけ出て、開閉の状態を名前で出し、押すと開閉の操作が上がること、
+ * 走行の記録が端末にあるときだけ「走行の記録をコピー」が出て、押すと記録を写すこと、
  * 「バージョン表示」を押すと、フロントの版の口（`/api/version`）が返した版が窓に出ること。
  *
  * ここで見ないもの: デバッグモードそのもののON/OFF → `features/admin/DebugPanel/DebugPanel.tsx`（このメニューは呼び出し側から受け取るだけ）。
  * 説明を見る状態で部品の使い方が出ること → `components/UsageGuide/UsageGuide.test.tsx`（メニューのボタンの使い方の文は宣言）。
  * 押下の状態（`aria-pressed`）——`components/ui/Toggle`へそのまま渡すだけ。
- * 版をどこから読むか → `app/api/version/route.test.ts`。
+ * 版をどこから読むか → `app/api/version/route.test.ts`。走行の記録の中身 → `lib/rideMetrics.test.ts`。
  */
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import type { FrontendVersion } from "@/services/versionApi";
+import { readRideMetrics, startRideMetrics, stopRideMetrics } from "@/lib/rideMetrics";
 import { onSameOrigin } from "@/testing/backendServer";
 
 import HeaderMenu from "./HeaderMenu";
@@ -85,6 +87,20 @@ describe("HeaderMenu", () => {
 
       expect(onToggleDebugConsole).toHaveBeenCalledTimes(1);
     });
+  });
+
+  it("走行の記録が端末にあるときだけ「走行の記録をコピー」を出し、押すと記録を写して写したことを名前で出す", async () => {
+    await openMenu();
+    expect(screen.queryByRole("button", { name: /走行の記録/ })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "メニュー" }));
+
+    startRideMetrics();
+    stopRideMetrics();
+    await userEvent.click(screen.getByRole("button", { name: "メニュー" }));
+    await userEvent.click(screen.getByRole("button", { name: "走行の記録をコピー" }));
+
+    expect(JSON.parse(await navigator.clipboard.readText())).toEqual(readRideMetrics());
+    expect(screen.getByRole("button", { name: "走行の記録をコピーしました" })).toBeInTheDocument();
   });
 
   describe("バージョン表示", () => {

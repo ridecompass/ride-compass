@@ -1,18 +1,12 @@
 "use client";
 
-import { Fragment } from "react";
-
 import ErrorText from "@/features/route/ErrorText/ErrorText";
 import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
 import { NewRouteIcon, RouteDiffIcon, UndoAllIcon, UndoIcon } from "@/components/ui/icons/icons";
 import type { CatalogAxis } from "@/lib/catalogAxis";
-import {
-  DELTA_TONE_CLASS,
-  deltaTone,
-  formatDelta,
-  formatMetric,
-  metricDifferences,
-} from "@/features/route/routeEditDiff";
+import { formatDelta } from "@/features/route/routeEditDiff";
+import SpliceDeltaBar, { type AxisDelta } from "@/features/route/RouteSplicePanel/SpliceDeltaBar";
+import SpliceMetricGrid from "@/features/route/RouteSplicePanel/SpliceMetricGrid";
 import { DIFFICULTY_DECIMALS } from "@/lib/mapDisplay/valueScale";
 import type { RouteCandidate } from "@/types/route";
 import { Button } from "@/components/ui/Button/Button";
@@ -63,7 +57,7 @@ function contributionDeltas(
   base: Record<string, number>,
   after: Record<string, number>,
   axes: readonly CatalogAxis[],
-): { axisId: string; label: string; delta: number }[] {
+): AxisDelta[] {
   return axes
     .map((axis) => ({
       axisId: axis.axisId,
@@ -97,28 +91,6 @@ export default function RouteSplicePanel({
   const unavailable = displayed.edge_ids.length === 0;
   const busy = previewing || applying;
   const deltas = preview ? contributionDeltas(displayed.axis_contributions, preview.axis_contributions, axes) : [];
-  const scale = deltas.reduce((max, item) => Math.max(max, Math.abs(item.delta)), 0);
-
-  // 1セルに「元→編集後 差」を収める（列見出しを持たないぶん1行減る）。
-  const metrics = metricDifferences(displayed, preview);
-  const halves = [metrics.slice(0, 2), metrics.slice(2)];
-
-  // 差の棒の片側（楽になった軸は中央から左へ、きつくなった軸は右へ積む）。
-  function renderDeltaHalf(side: "decrease" | "increase") {
-    return (
-      <div className={cn("flex min-w-0 flex-[1_1_50%]", side === "decrease" ? "justify-end" : "justify-start")}>
-        {deltas
-          .filter((item) => (side === "decrease" ? item.delta < 0 : item.delta > 0))
-          .map((item) => (
-            <span
-              key={item.axisId}
-              className="block h-full"
-              style={{ width: `${(Math.abs(item.delta) / scale) * 50}%`, background: axisColors[item.axisId] }}
-            />
-          ))}
-      </div>
-    );
-  }
 
   return (
     <section
@@ -131,6 +103,7 @@ export default function RouteSplicePanel({
       {/* 狭いスマホの幅では、右の操作をまとめて次の行の右端へ折り返す。 */}
       <div className="flex flex-wrap items-center gap-x-1 gap-y-1.5">
         <Button
+          usage="区間の乗り換えの編集をやめて、候補へ戻ります。"
           variant="ghost"
           size="bare"
           className="-ml-2 px-0.5 text-[15px]"
@@ -207,62 +180,10 @@ export default function RouteSplicePanel({
         <p className={textVariants({ variant: "hint" })}>この候補は通る道の並びを持たないため、区間を出せません。</p>
       ) : (
         <>
-          {/* 指標はルート結果と同じ項目。2列×2行で、元→編集後の位置を縦に揃える。 */}
-          <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[length:var(--font-size-md)]">
-            {halves.map((half, index) => (
-              // 5つの要素をこのgridの直接の子にする（行のラッパを挟むと列が行ごとに独立し、
-              // 「所要」と「28分」のように縦位置が揃わない）。
-              <dl
-                className="m-0 grid grid-cols-[max-content_minmax(0,max-content)_max-content_minmax(0,max-content)_max-content] items-baseline gap-x-1 gap-y-0.5"
-                key={index}
-              >
-                {half.map((metric) => {
-                  const tone = deltaTone(metric);
-                  return (
-                    <Fragment key={metric.label}>
-                      <dt className={textVariants({ variant: "note" })}>{metric.label}</dt>
-                      <dd className="m-0 text-right text-[var(--color-muted)]">
-                        {metric.base === null ? "—" : formatMetric(metric, metric.base)}
-                      </dd>
-                      {/* 評価前は矢印も出さない（行き先が無いのに→だけ残ると読み手が待たされる）。 */}
-                      <dd className={cn(textVariants({ variant: "note" }), "m-0")} aria-hidden="true">
-                        {metric.after !== null ? "→" : ""}
-                      </dd>
-                      <dd className={cn("m-0 font-bold", DELTA_TONE_CLASS)} {...tone}>
-                        {metric.after !== null ? formatMetric(metric, metric.after) : ""}
-                      </dd>
-                      <dd className={cn("m-0 text-[length:var(--font-size-xs)]", DELTA_TONE_CLASS)} {...tone}>
-                        {metric.delta !== null ? formatDelta(metric.delta, metric.digits) : ""}
-                      </dd>
-                    </Fragment>
-                  );
-                })}
-              </dl>
-            ))}
-          </div>
+          <SpliceMetricGrid displayed={displayed} preview={preview} />
 
           {/* 軸別は元・編集後の2本を並べず、差だけの1本にする。中央が0で、左が楽になった側。 */}
-          {deltas.length > 0 && (
-            <div className="mt-0.5 flex items-center gap-1.5">
-              <span className="text-[length:var(--font-size-sm)] leading-none font-bold text-[var(--color-accent)]">
-                −
-              </span>
-              <div
-                className="flex h-3 min-w-0 flex-1 items-stretch"
-                role="img"
-                aria-label={deltas
-                  .map((item) => `${item.label} ${formatDelta(item.delta, DIFFICULTY_DECIMALS)}`)
-                  .join("、")}
-              >
-                {renderDeltaHalf("decrease")}
-                <div className="-my-0.5 w-0.5 bg-[var(--foreground)]" />
-                {renderDeltaHalf("increase")}
-              </div>
-              <span className="text-[length:var(--font-size-sm)] leading-none font-bold text-[var(--color-route-splice)]">
-                ＋
-              </span>
-            </div>
-          )}
+          {deltas.length > 0 && <SpliceDeltaBar deltas={deltas} axisColors={axisColors} />}
 
           {sameRouteName !== null && (
             <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">

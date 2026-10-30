@@ -24,12 +24,8 @@ Pythonループは回さない）。ここは測り方の実装だけを持つ�
 
 from dataclasses import dataclass
 
-from app.domain.material_catalog import (
-    EdgeMaterialCoverageSpec,
-    WayMaterialCoverageSpec,
-    material_coverage_exclusions,
-    material_coverage_specs,
-)
+from app.domain.material_catalog import material_coverage_exclusions, material_coverage_specs
+from app.domain.material_coverage_spec import EdgeMaterialCoverageSpec, WayMaterialCoverageSpec
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 

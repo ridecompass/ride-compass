@@ -4,12 +4,8 @@
 - 延長で重み付けた分位点と標本の作り方 → `test_value_distribution.py`（軸スタジオの分布プレビューと共有する実装）
 """
 
-import sys
-from pathlib import Path
 
 import pytest
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 from measure_axis_saturation import (
     largest_single_input_share,

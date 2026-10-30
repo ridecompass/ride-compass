@@ -1,12 +1,13 @@
 import { expect, test } from "@playwright/test";
 import { installApiMocks, installMapFinder } from "./fixtures";
-import { scanLayout, scanOverflowingContent, scanPinch, scanSpacingUtilities, scanTruncatedText } from "./scans";
+import { scanPinch, scanSpacingUtilities } from "./componentScans";
+import { installPageHelpers } from "./pageHelpers";
+import { scanLayout, scanOverflowingContent, scanTruncatedText } from "./scans";
 import {
   PHASES,
   WIDTHS,
   assertWidthsStraddleBreakpoint,
   generate,
-  installPageHelpers,
   installScanMocks,
   openApp,
   resetPhase,

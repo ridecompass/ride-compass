@@ -37,6 +37,12 @@ describe("buildRangeLegendBands", () => {
     );
   });
 
+  it("最初の段の下限を渡すと、最初の段もその下限からの範囲にする（それより下を塗らない段の並び）", () => {
+    const bands = buildRangeLegendBands([5], COLORS.slice(0, 2), "mm/h", undefined, "", 1);
+
+    expect(bands.map((band) => band.label)).toEqual(["1〜5mm/h", "5mm/h以上"]);
+  });
+
   it("境界が無く段が1つなら、範囲の文字を空にする", () => {
     expect(buildRangeLegendBands([], ["#000001"], "%", undefined)).toEqual([
       { key: "step-0", label: "", color: "#000001" },

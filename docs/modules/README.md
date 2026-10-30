@@ -63,6 +63,7 @@
 | 壊れ方の確かめ（`scripts/break_tests.py`） | [.claude/rules/testing-review.md](../../.claude/rules/testing-review.md)「消す・まとめる前に、残す側が落ちるかを見る」 | 壊れ方の一覧の形・断る条件・前の版のテストの並べ方 |
 | チェックアウトの遅れの確かめ（`scripts/checkout_freshness.py`） | [architecture/setup.md](../architecture/setup.md)「開発機の本体のチェックアウトの遅れ」 | どの道具が遅れで止まるか・早送りを打つ条件 |
 | 本番でルートを作る確かめ（`backend/scripts/prod_route_check.py`） | [architecture/tech-stack.md](../architecture/tech-stack.md)「本番でルートを作る確かめ」 | 何を見て落とすか・どこから回すか・待ちの上限の根拠 |
+| 本番の点のタイルの確かめ（`backend/scripts/prod_point_tile_check.py`） | [architecture/tech-stack.md](../architecture/tech-stack.md)「本番の点のタイルの確かめ」 | 何を見て落とすか・どこから回すか・上限の根拠 |
 
 判断の目安は**「その制約を、コードだけを読んで知れるか」**。知れないならモジュール設計書の
 範囲外で、docs/architecture/側を見る。
@@ -88,8 +89,8 @@
 | [軸スタジオ管理画面](frontend/axis-studio.md) | `/admin`の軸CRUD UI |
 | [ルート設定・結果パネル](frontend/route-settings-and-results.md) | 重み設定・候補一覧・軸別内訳 |
 | [地図: 軸・ルート色分け](frontend/map-axis-coloring.md) | 式の木と道ごとの材料で塗る軸の描画 |
-| [地図: 動的気象レイヤー](frontend/dynamic-weather-layers.md) | 風・降水・キキクル等の地図表示 |
+| [地図: 動的気象レイヤー](frontend/dynamic-weather-layers.md) | 降水・キキクル等の地図表示 |
 | [地図: 静的レイヤー・道路表示](frontend/static-map-layers.md) | 路面・道路種別・自転車レーン・POI・事故の地図表示 |
-| [ページ全体構成・状態管理](frontend/page-composition.md) | `page.tsx`のコンポジション・永続化。特定モジュールの責務ではない共通部品（`BottomSheet`・`Disclosure`等）もここへ集約する |
+| [ページ全体構成・状態管理](frontend/page-composition.md) | `page.tsx`のコンポジション・永続化。特定モジュールの責務ではない共通部品（`BottomSheet.tsx: BottomSheet`・`Disclosure.tsx: Disclosure`等）もここへ集約する |
 | [デザイン基盤](frontend/frontend-design-system.md) | `components/ui/`・デザイントークン（`globals.css`）・見た目は部品が持ち画面は並べ方だけを書く決まり |
-| [開発者機能](frontend/developer-tools.md) | デバッグログ・システム状況 |
+| [開発者機能](frontend/developer-tools.md) | デバッグログ・システム状況・開発の道具（`frontend/scripts/`） |

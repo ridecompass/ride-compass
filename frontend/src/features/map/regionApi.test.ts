@@ -8,7 +8,7 @@
  * - タイルのオリジンの決め方 → `lib/tileBaseUrl.test.ts`
  * - パスの`{名前}`の埋め方 → `lib/apiPath.ts`を通る全URLが同じで、ここでは結果のURLだけを見る
  * - 失敗の文言の組み立て・通信の失敗とタイムアウトの包み直し → `lib/apiClient.test.ts`
- * - 軸カタログの応答から世代を引き、揃うまで地図を描かないこと → `features/map/view/useMapView.test.ts`
+ * - 軸カタログの応答から世代を引き、揃うまで地図を描かないこと → `features/map/view/useMapView.layerStatus.test.ts`
  * - 内訳・道ごとの材料を画面へ出すこと → `features/map/MapView/RoadInspectorPopup.test.tsx`・
  *   `features/map/useWayMaterials.test.ts`
  */
@@ -67,14 +67,12 @@ describe("押した道の内訳（fetchAxisInspector）", () => {
     z: 15,
     x: 1,
     y: 2,
-    latitude: 35.6,
-    longitude: 139.4,
     bearingDeg: 0,
     at: new Date("2026-10-01T00:30:00Z"),
     speedKmh: 20,
   };
 
-  it("押した地物・地点・重み・タイルと走行の条件を、backendの項目名で送る", async () => {
+  it("押した地物・重み・タイルと走行の条件を、backendの項目名で送る", async () => {
     const sent = onBackend("POST", "/api/region/axis-inspector", () => Response.json(null));
 
     await api.fetchAxisInspector(
@@ -84,8 +82,6 @@ describe("押した道の内訳（fetchAxisInspector）", () => {
         z: 15,
         x: 29100,
         y: 12900,
-        latitude: 35.68,
-        longitude: 139.77,
         bearingDeg: 270,
         at: new Date("2026-10-01T00:30:00Z"),
         speedKmh: 22,
@@ -96,7 +92,6 @@ describe("押した道の内訳（fetchAxisInspector）", () => {
     expect(sent[0].body).toEqual({
       osm_way_id: 123,
       feature_key: "123:4",
-      point: { latitude: 35.68, longitude: 139.77 },
       route_preference: { wind: 2, slope: 0 },
       z: 15,
       x: 29100,
@@ -108,7 +103,7 @@ describe("押した道の内訳（fetchAxisInspector）", () => {
   });
 
   it("重みが無ければ、その項目を送らない（重みはbackendの既定に任せる）", async () => {
-    const result = { way: { composite_difficulty: 42 } };
+    const result = { values: { composite_difficulty: 42 } };
     const sent = onBackend("POST", "/api/region/axis-inspector", () => Response.json(result));
 
     await expect(api.fetchAxisInspector(123, "123", CONDITIONS, null)).resolves.toEqual(result);
@@ -117,7 +112,6 @@ describe("押した道の内訳（fetchAxisInspector）", () => {
       {
         osm_way_id: 123,
         feature_key: "123",
-        point: { latitude: 35.6, longitude: 139.4 },
         z: 15,
         x: 1,
         y: 2,
@@ -130,27 +124,31 @@ describe("押した道の内訳（fetchAxisInspector）", () => {
 });
 
 describe("地図が塗る軸の道ごとの材料（fetchWayMaterials）", () => {
-  it("軸とタイルをパスへ、時刻を問い合わせへ載せ、道ごとの材料を返す", async () => {
+  it("軸とタイルをパスへ、走る条件を問い合わせへ載せ、道ごとの材料を返す", async () => {
     const sent = onBackend("GET", "/api/region/way-materials/:axisId/:z/:x/:y", () =>
       Response.json({ "101": { slope: 3.5 }, "102": { slope: -1 } }),
     );
 
-    const result = await api.fetchWayMaterials("axis_a", 15, 29100, 12900, new Date("2026-10-01T00:00:00Z"));
+    const result = await api.fetchWayMaterials("axis_a", 15, 29100, 12900, {
+      at: "2026-10-01T00:00:00.000Z",
+      bearing_deg: 90,
+      speed_kmh: 25,
+    });
 
-    expect(result).toEqual({ materials: { "101": { slope: 3.5 }, "102": { slope: -1 } }, error: false });
+    expect(result).toEqual({ values: { "101": { slope: 3.5 }, "102": { slope: -1 } }, error: false });
     expect(sent.map(({ method, path, query }) => ({ method, path, query }))).toEqual([
       {
         method: "GET",
         path: "/api/region/way-materials/axis_a/15/29100/12900",
-        query: { at: "2026-10-01T00:00:00.000Z" },
+        query: { at: "2026-10-01T00:00:00.000Z", bearing_deg: "90", speed_kmh: "25" },
       },
     ]);
   });
 
-  it("時刻を渡さなければ問い合わせに載せない", async () => {
+  it("条件を渡さなければ問い合わせに載せない", async () => {
     const sent = onBackend("GET", "/api/region/way-materials/:axisId/:z/:x/:y", () => Response.json({}));
 
-    await api.fetchWayMaterials("axis_a", 15, 1, 2, undefined);
+    await api.fetchWayMaterials("axis_a", 15, 1, 2, {});
 
     expect(sent.map(({ query }) => query)).toEqual([{}]);
   });
@@ -158,8 +156,8 @@ describe("地図が塗る軸の道ごとの材料（fetchWayMaterials）", () =>
   it("失敗は投げずに、空の材料と失敗の印で返す（色分けの失敗で道路や他のレイヤーを止めない）", async () => {
     onBackend("GET", "/api/region/way-materials/:axisId/:z/:x/:y", () => new Response(null, { status: 500 }));
 
-    await expect(api.fetchWayMaterials("axis_a", 15, 1, 2, undefined)).resolves.toEqual({
-      materials: {},
+    await expect(api.fetchWayMaterials("axis_a", 15, 1, 2, {})).resolves.toEqual({
+      values: {},
       error: true,
     });
   });

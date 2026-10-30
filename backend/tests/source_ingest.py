@@ -5,18 +5,17 @@
 でき、取込の側が変わってもテストは気づかない。
 
 差し替えるのはアダプタ（外部の形を開いて1件ずつ返す部分）だけで、テストが渡した1件ずつをそのまま返す。
-runの記録・パーティション・入れ替えは本物を通す。外部の形の読み方は各アダプタのテスト（例: `test_gsi_dem_tile.py`）が見る。
+runの記録・パーティション・入れ替えは本物を通す。外部の形の読み方は各アダプタのテスト（例: `test_npa_honhyo.py`）が見る。
 
 入れ直すと、そのソースの行は丸ごと入れ替わり、新しいrunになる（本番の取り直しと同じ）。行を変えたいテストは、
-変えた後の全行を渡して入れ直す。失敗したrunは、途中で例外を投げる`records`を渡して作る。
+変えた後の全行を渡して入れ直す。失敗したrunは、途中で例外を投げる`records`（`interrupted`）を渡して作る。
 """
 
 import atexit
-import io
 import os
 import tempfile
 import uuid
-from collections.abc import AsyncIterator, Callable, Iterable, Sequence
+from collections.abc import AsyncIterator, Callable, Iterable, Iterator, Sequence
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -27,6 +26,7 @@ import shapely
 from PIL import Image
 from shapely.geometry import LineString, Point, Polygon
 
+from app.batch import derive_counts, derive_nodes
 from app.batch.ingest import ADAPTERS, AdapterInputs, RegisteredAdapter, SourceRecord, ingest_source
 from app.batch.source_adapters.gsi_dem_tile import NODATA, SCALE, pack_elevations
 from app.batch.source_adapters.raster_wkb import tile_bbox_wkb, tile_raster_wkb
@@ -34,8 +34,10 @@ from app.batch.source_adapters.osm_pbf import way_payload
 from app.domain.address_area import standardize_address
 from app.batch.source_profile import NoFields, SourceProfile, SourceSpec, Target, load_source_profile
 from app.domain.region import BoundingBox, tile_bounds_lonlat, tiles_covering_bbox
+from app.domain.tuning import ACCIDENT_MATCH_DISTANCE_ID, STOP_CLUSTER_DISTANCE_ID, TUNING_PARAMETERS_BY_ID
 from app.infrastructure.source_models import WAY_KIND_TAG
 from tests.conftest import raw_connection
+from tests.tile_images import encode
 
 #: テストが渡した行を返すアダプタの名前。取込の間だけ`ADAPTERS`に置く。
 _ADAPTER = "given_records"
@@ -75,6 +77,19 @@ def zigzag_point(node_id: int, origin: tuple[float, float] = WAY_ORIGIN, step: f
     return (origin[0] + step * node_id, origin[1] + step * (node_id % 2))
 
 
+def zigzag_way_record(way_id: int, node_ids: Sequence[int], tags: dict[str, str] | None = None, *,
+                      origin: tuple[float, float] = WAY_ORIGIN, step: float = WAY_STEP) -> SourceRecord:
+    """ノードを`zigzag_point`に置いた道1本。同じノードidは、どの道でも同じ位置になる。"""
+    return way_record(way_id, [zigzag_point(n, origin, step) for n in node_ids], node_ids, tags)
+
+
+def parallel_way_record(way_id: int, tags: dict[str, str] | None = None) -> SourceRecord:
+    """東西に`WAY_STEP`の長さの道1本。`way_id`ごとに`WAY_STEP`ずつ北へずらすので、道どうしは交わらない。
+    ノードは`way_id * 10`と`way_id * 10 + 1`。"""
+    lon, lat = WAY_ORIGIN[0], WAY_ORIGIN[1] + WAY_STEP * way_id
+    return way_record(way_id, [(lon, lat), (lon + WAY_STEP, lat)], [way_id * 10, way_id * 10 + 1], tags)
+
+
 def point_record(key: int | str, lon: float, lat: float,
                  attrs: dict[str, Any] | None = None) -> SourceRecord:
     """点のソース（`osm_node`・`accident`）の1件。"""
@@ -82,42 +97,66 @@ def point_record(key: int | str, lon: float, lat: float,
                         attrs=attrs or {})
 
 
+def overture_place_record(key: int | str, lon: float, lat: float, name: str,
+                          hierarchy: Sequence[str] = ("food_and_drink", "cafe")) -> SourceRecord:
+    """Overture の地点（`overture_place`）の1件。`hierarchy`は分類の階層（既定は群「食べる・飲む」に入る分類）。"""
+    return point_record(key, lon, lat, {
+        "names": {"primary": name}, "confidence": 0.75,
+        "brand": {"names": {"primary": None}}, "taxonomy": {"hierarchy": list(hierarchy)}})
+
+
+def accident_record(key: int | str, lon: float, lat: float, *, party_a: str = "03", party_b: str = "03",
+                    fatal: bool = False, year: int | None = None) -> SourceRecord:
+    """事故（`accident`、本票の列名）の1件。`party_a`・`party_b`は当事者種別のコード（既定は自転車ではない種別）、
+    `year`を省くと発生年の列を持たない。"""
+    attrs = {"当事者種別（当事者A）": party_a, "当事者種別（当事者B）": party_b, "死者数": "001" if fatal else "000"}
+    if year is not None:
+        attrs["発生日時　　年"] = str(year)
+    return point_record(key, lon, lat, attrs)
+
+
+def interrupted(*records: SourceRecord) -> Iterator[SourceRecord]:
+    """`records`を返したあと、配信元が途中で切れたとして`OSError`を投げる取込の行。失敗したrunを作るのに渡す。"""
+    yield from records
+    raise OSError("配信元が途中で切れた")
+
+
+def _abr_place(lon: float, lat: float) -> dict[str, str]:
+    """`abr`の各段に共通の、代表点と廃止日の列。"""
+    return {"ablt_date": "", "rep_lon": str(lon), "rep_lat": str(lat), "rep_srid": "EPSG:6668"}
+
+
 def abr_prefecture_record(code: str, name: str, lon: float, lat: float) -> SourceRecord:
     """住所の生データ（`abr`）の都道府県1件。列は取込のアダプタ（`source_adapters/abr.py`）が入れる配布の列の名前。
     住所の区画の派生の段は`abr`の取込が無いと止まるので、派生を最初から流すテストは少なくともこれを取り込む。"""
-    return point_record(code, lon, lat, {"lg_code": code, "pref": name, "ablt_date": "",
-                                         "rep_lon": str(lon), "rep_lat": str(lat), "rep_srid": "EPSG:6668"})
+    return point_record(code, lon, lat, {"lg_code": code, "pref": name, **_abr_place(lon, lat)})
 
 
 def abr_city_record(code: str, prefecture: str, city: str, lon: float, lat: float, *, ward: str = "",
                     county: str = "") -> SourceRecord:
     """住所の生データ（`abr`）の市区町村1件（政令市の区は`ward`を持つ行）。"""
     return point_record(code, lon, lat, {"lg_code": code, "pref": prefecture, "county": county, "city": city,
-                                         "ward": ward, "ablt_date": "", "rep_lon": str(lon), "rep_lat": str(lat),
-                                         "rep_srid": "EPSG:6668"})
+                                         "ward": ward, **_abr_place(lon, lat)})
 
 
 def abr_town_record(code: str, town_id: str, town_type: str, city: tuple[str, str, str], lon: float, lat: float, *,
                     oaza: str = "", chome: str = "", koaza: str = "") -> SourceRecord:
     """住所の生データ（`abr`）の町字1件。`code`は属す市区町村（区）のコード、`city`はその (都道府県, 市, 区) の名前。"""
     prefecture, city_name, ward = city
-    return SourceRecord(
-        natural_key=f"{code}:{town_id}", geom_wkb=shapely.to_wkb(Point(lon, lat)),
-        attrs={"lg_code": code, "machiaza_id": town_id, "machiaza_type": town_type, "pref": prefecture, "county": "",
-               "city": city_name, "ward": ward, "oaza_cho": oaza, "chome": chome,
-               "chome_number": standardize_address(chome).rstrip("-"), "koaza": koaza, "ablt_date": "",
-               "rsdt_addr_flg": "0", "rep_lon": str(lon), "rep_lat": str(lat), "rep_srid": "EPSG:6668"})
+    return point_record(f"{code}:{town_id}", lon, lat, {
+        "lg_code": code, "machiaza_id": town_id, "machiaza_type": town_type, "pref": prefecture, "county": "",
+        "city": city_name, "ward": ward, "oaza_cho": oaza, "chome": chome,
+        "chome_number": standardize_address(chome).rstrip("-"), "koaza": koaza, "rsdt_addr_flg": "0",
+        **_abr_place(lon, lat)})
 
 
 def abr_block_record(town: SourceRecord, block_id: str, number: str, lon: float, lat: float) -> SourceRecord:
     """住所の生データ（`abr`）の住居表示の街区1件。`town`は属す町字（`abr_town_record`）、`number`は街区符号。"""
     code, town_id = town.attrs["lg_code"], town.attrs["machiaza_id"]
-    return SourceRecord(
-        natural_key=f"{code}:{town_id}:{block_id}", geom_wkb=shapely.to_wkb(Point(lon, lat)),
-        attrs={"lg_code": code, "machiaza_id": town_id, "blk_id": block_id, "city": town.attrs["city"],
-               "ward": town.attrs["ward"], "oaza_cho": town.attrs["oaza_cho"], "chome": town.attrs["chome"],
-               "koaza": town.attrs["koaza"], "blk_num": number, "rsdt_addr_flg": "1", "ablt_date": "",
-               "rep_lon": str(lon), "rep_lat": str(lat), "rep_srid": "EPSG:6668"})
+    return point_record(f"{code}:{town_id}:{block_id}", lon, lat, {
+        "lg_code": code, "machiaza_id": town_id, "blk_id": block_id, "city": town.attrs["city"],
+        "ward": town.attrs["ward"], "oaza_cho": town.attrs["oaza_cho"], "chome": town.attrs["chome"],
+        "koaza": town.attrs["koaza"], "blk_num": number, "rsdt_addr_flg": "1", **_abr_place(lon, lat)})
 
 
 def isj_block_record(prefecture: str, city: str, oaza: str, number: str, lon: float, lat: float, *,
@@ -152,9 +191,7 @@ def gsi_dem_png(meters: Sequence[Sequence[float | None]]) -> bytes:
     x = np.array([[1 << 23 if v is None else round(v * 100) % (1 << 24) for v in row] for row in meters],
                  dtype=np.int64)
     rgb = np.stack([(x >> 16) & 0xFF, (x >> 8) & 0xFF, x & 0xFF], axis=-1).astype(np.uint8)
-    buffer = io.BytesIO()
-    Image.fromarray(rgb, mode="RGB").save(buffer, format="PNG")
-    return buffer.getvalue()
+    return encode(Image.fromarray(rgb, mode="RGB"))
 
 
 #: 標高のタイル1枚の1辺の画素数。読み手はタイルの`attrs`の幅で画素の番地を出すので、配信元の幅に揃えなくてよい。
@@ -182,29 +219,50 @@ def dem_tile_records(product: str, zoom: int, bbox: BoundingBox,
     return records
 
 
-def _profile(source: str, bbox: tuple[float, float, float, float] | None, rows: Any) -> SourceProfile:
+async def derive_nodes_at_default_radius(conn: asyncpg.Connection) -> None:
+    """ノードの派生の段を、信号を区間へ寄せる半径を調整値の既定にして流す。"""
+    await derive_nodes.derive(conn, TUNING_PARAMETERS_BY_ID["signal.match_radius_m"].default)
+
+
+async def derive_counts_at_default_tuning(conn: asyncpg.Connection, **tuning: float) -> None:
+    """数の派生の段を、較正値の既定（`tuning`で上書きしたものはその値）で流す。"""
+    await derive_counts.derive(conn, **{
+        "cluster_distance_m": TUNING_PARAMETERS_BY_ID[STOP_CLUSTER_DISTANCE_ID].default,
+        "accident_fatal_weight": TUNING_PARAMETERS_BY_ID["accident.fatal_weight"].default,
+        "accident_match_distance_m": TUNING_PARAMETERS_BY_ID[ACCIDENT_MATCH_DISTANCE_ID].default,
+        **tuning,
+    })
+
+
+#: 範囲の宣言の形（(min_lat, min_lon, max_lat, max_lon)）か、同じ範囲の`BoundingBox`。
+Area = tuple[float, float, float, float] | BoundingBox
+
+
+def profile_within(bbox: Area) -> SourceProfile:
+    """本物の宣言のまま、全ソースの対象範囲だけを`bbox`にしたもの。"""
+    if isinstance(bbox, BoundingBox):
+        bbox = (bbox.min_latitude, bbox.min_longitude, bbox.max_latitude, bbox.max_longitude)
+    return replace(load_source_profile(None), target=Target(bbox=bbox))
+
+
+def _profile(source: str, bbox: Area | None, rows: Any) -> SourceProfile:
     """本物の宣言のまま、`source`のアダプタだけを差し替えたもの。runにはそのソースの本物の絞り込みが残る。"""
-    profile = load_source_profile(None)
+    profile = load_source_profile(None) if bbox is None else profile_within(bbox)
     spec: SourceSpec = replace(profile.source(source), adapter=_ADAPTER)
     if rows is not None:
         spec = replace(spec, rows=rows)
-    return replace(
-        profile,
-        target=profile.target if bbox is None else Target(bbox=bbox),
-        sources=tuple(spec if s.name == source else s for s in profile.sources),
-    )
+    return replace(profile, sources=tuple(spec if s.name == source else s for s in profile.sources))
 
 
 async def ingest_records(source: str, records: Iterable[SourceRecord], *,
                          conn: asyncpg.Connection | None = None,
-                         bbox: tuple[float, float, float, float] | None = None,
+                         bbox: Area | None = None,
                          rows: Any = None) -> int:
     """`records`を`source`の生データとして取り込み、`run_id`を返す。
 
     `conn`はトランザクションの外の接続（取込の入口の求め）。渡さなければ自分で開いて閉じる——SQLAlchemyの
-    セッションで書くテストは、取込を先に済ませてからセッションで読み書きする。`bbox`は取込の範囲の宣言
-    （(min_lat, min_lon, max_lat, max_lon)）で、省けば本物の宣言の範囲。`rows`はそのソースの絞り込みの宣言
-    （例: 事故の年`HonhyoRows`）で、省けば本物の宣言。
+    セッションで書くテストは、取込を先に済ませてからセッションで読み書きする。`bbox`は取込の範囲の宣言で、
+    省けば本物の宣言の範囲。`rows`はそのソースの絞り込みの宣言（例: 事故の年`HonhyoRows`）で、省けば本物の宣言。
     """
     async def read(spec: SourceSpec, profile: SourceProfile, inputs: AdapterInputs,
                    origin: dict[str, Any]) -> AsyncIterator[SourceRecord]:

@@ -12,20 +12,37 @@
 - 範囲の中で点の無いタイルを空のバイト列にすること → `test_road_graph_repository_contracts.py`
 - 自転車・死亡の判定の両側（自転車ではない軽車両・死者0） → `test_derive_counts.py`（同じ式で数える）
 - 立ち寄り先の群・絞り・まとめ → `test_stop_places.py`
+
+束ねる升目は、タイルの端から升目の幅で測った位置に点を置いて作る（升目の境目にちょうど乗った点は、どちらの升目に入るかが
+浮動小数の丸めで決まる）。
 """
 
 from collections import Counter
 
+import json
+
 import mapbox_vector_tile
 import pytest
 
-from app.batch import derive_nodes, derive_stop_places
-from app.domain.region import BoundingBox, tile_bounds_lonlat, tiles_covering_bbox
-from app.domain.tuning import TUNING_PARAMETERS_BY_ID
+from app.batch import derive_stop_places
+from app.domain.map_display import (
+    POINT_CLUSTER_CELLS_PER_TILE,
+    POINT_COUNT_PROPERTY,
+    POINT_MEMBERS_PROPERTY,
+)
+from app.domain.region import ROAD_TILE_MAX_ZOOM, BoundingBox, tile_bounds_lonlat, tile_position, tiles_covering_bbox
+from app.domain.tuning import STOP_CLUSTER_DISTANCE_ID
+from app.infrastructure import derived_data_meta
 from app.infrastructure.point_tile_layers import POINT_TILE_LAYERS
 from app.infrastructure.road_graph_repository import RoadGraphRepository
 from tests.conftest import raw_connection
-from tests.source_ingest import ingest_records, point_record
+from tests.source_ingest import (
+    accident_record,
+    derive_nodes_at_default_radius,
+    ingest_records,
+    overture_place_record,
+    point_record,
+)
 
 pytestmark = pytest.mark.asyncio(loop_scope="module")
 
@@ -33,9 +50,12 @@ Z = 16
 [(X, Y)] = tiles_covering_bbox(
     BoundingBox(min_latitude=35.6501, min_longitude=139.7001, max_latitude=35.6502, max_longitude=139.7002), Z)
 TILE = tile_bounds_lonlat(Z, X, Y)
-LON = (TILE.min_longitude + TILE.max_longitude) / 2
-LAT = (TILE.min_latitude + TILE.max_latitude) / 2
-#: まとめる距離（40m）より十分に近い／遠いずれ（度）。経度0.0001度は約9m、0.002度は約180m。
+#: 束ねる升目1つの幅（経度）。
+CELL = (TILE.max_longitude - TILE.min_longitude) / POINT_CLUSTER_CELLS_PER_TILE
+#: タイルの真ん中の升目の中の点。経度・緯度とも升目の境目から升目の幅の1/4ずつ離す（緯度の升目の高さは経度の幅に近い）。
+LON = (TILE.min_longitude + TILE.max_longitude) / 2 + CELL / 4
+LAT = (TILE.min_latitude + TILE.max_latitude) / 2 + CELL / 4
+#: まとめる距離（40m）より十分に近い／遠いずれ（度）。経度0.0001度は約9mで、束ねる升目の幅より狭い。0.002度は約180m。
 NEAR = 0.0001
 FAR = 0.002
 #: タイルを含む取込の範囲（(min_lat, min_lon, max_lat, max_lon)）と、含まない範囲。
@@ -57,12 +77,12 @@ async def _ingest_pois(nodes: list[tuple[float, float, dict[str, str]]], road_ar
     await ingest_records("osm_way", [], bbox=road_area)
     await ingest_records("osm_node", [point_record(i, lon, lat, tags) for i, (lon, lat, tags) in enumerate(nodes, 1)])
     async with raw_connection() as conn:
-        await derive_nodes.derive(conn, TUNING_PARAMETERS_BY_ID["signal.match_radius_m"].default)
+        await derive_nodes_at_default_radius(conn)
 
 
-async def _tile(repository: RoadGraphRepository, name: str, x: int = X) -> bytes | None:
+async def _tile(repository: RoadGraphRepository, name: str, x: int = X, *, z: int = Z, y: int = Y) -> bytes | None:
     layer = POINT_TILE_LAYERS[name]
-    return await repository.get_tile_mvt(layer.sql, layer.source_layer, Z, x, Y, tile_bounds_lonlat(Z, x, Y))
+    return await repository.get_tile_mvt(layer.sql, layer.source_layer, z, x, y, tile_bounds_lonlat(z, x, y))
 
 
 def _features(tile: bytes | None, name: str) -> list[dict]:
@@ -70,13 +90,6 @@ def _features(tile: bytes | None, name: str) -> list[dict]:
     decoded = mapbox_vector_tile.decode(tile)
     assert list(decoded) == [POINT_TILE_LAYERS[name].source_layer]
     return decoded[POINT_TILE_LAYERS[name].source_layer]["features"]
-
-
-def _overture_place(key: int, lon: float, name: str, hierarchy: tuple[str, ...] = ("food_and_drink", "cafe"),
-                    lat: float = LAT) -> object:
-    return point_record(key, lon, lat, {
-        "names": {"primary": name}, "confidence": 0.75,
-        "brand": {"names": {"primary": None}}, "taxonomy": {"hierarchy": list(hierarchy)}})
 
 
 async def _ingest_stop_places(places: list[object]) -> None:
@@ -139,11 +152,75 @@ async def test_stop_pois_farther_apart_than_the_merging_distance_stay_separate(r
     assert _kinds(await _tile(road_graph_repository, "poi")) == Counter({"barrier": 2})
 
 
-async def test_supply_pois_are_never_merged(road_graph_repository):
-    """補給の点は別々の実体なので、隣り合っていても1つずつ出す。"""
-    await _ingest_pois([(LON, LAT, TOILETS), (LON + NEAR, LAT, TOILETS)])
+async def test_stop_pois_merge_within_the_distance_the_counts_were_built_with(road_graph_repository):
+    """停止の点は、管理画面の今の上書きではなく、派生を作り直したときのまとめる距離でまとめる。地図の点の数が、停止回数として
+    数えた数と食い違わない。"""
+    await _ingest_pois([(LON, LAT, BOLLARD), (LON + CELL, LAT, BOLLARD)])
+    async with raw_connection() as conn:
+        await derived_data_meta.replace_tuning(conn, {STOP_CLUSTER_DISTANCE_ID: 5.0})
+        try:
+            tile = await _tile(road_graph_repository, "poi")
+        finally:
+            await derived_data_meta.replace_tuning(conn, {})
+
+    assert _kinds(tile) == Counter({"barrier": 2})
+
+
+async def test_supply_pois_are_not_merged_into_one_place(road_graph_repository):
+    """補給の点は別々の実体なので、隣り合っていても1つの所にまとめない（升目が違えば別の点のまま）。"""
+    await _ingest_pois([(LON, LAT, TOILETS), (LON + CELL, LAT, TOILETS)])
 
     assert _kinds(await _tile(road_graph_repository, "poi")) == Counter({"toilets": 2})
+
+
+async def test_points_of_the_same_legend_row_in_one_cell_become_one_point_counting_them(road_graph_repository):
+    """同じ升目の同じ行の点は、束ねた点の1つの位置に1点だけ描き、数と、名前のある点の名前と位置を名前の順に持つ。
+    押すと、中の店を1行ずつ並べられる。"""
+    first, second = (LON + CELL / 4, LAT), (LON, LAT + CELL / 4)
+    await _ingest_stop_places([
+        overture_place_record(1, *first, "店B"),
+        overture_place_record(2, *second, "店A"),
+    ])
+
+    [feature] = _features(await _tile(road_graph_repository, "stop_place"), "stop_place")
+
+    props = feature["properties"]
+    assert props[POINT_COUNT_PROPERTY] == 2
+    assert props["name"] in {"店A", "店B"}
+    assert json.loads(props[POINT_MEMBERS_PROPERTY]) == [
+        ["店A", pytest.approx(second[0], abs=1e-6), pytest.approx(second[1], abs=1e-6)],
+        ["店B", pytest.approx(first[0], abs=1e-6), pytest.approx(first[1], abs=1e-6)],
+    ]
+
+
+async def test_points_of_different_legend_rows_in_one_cell_stay_apart(road_graph_repository):
+    """凡例で行を隠したときに、ほかの行の点ごと消えない。"""
+    await ingest_records("accident", [
+        accident_record(1, LON, LAT, party_a="51"),
+        accident_record(2, LON + CELL / 4, LAT, fatal=True),
+    ])
+
+    features = _features(await _tile(road_graph_repository, "accident"), "accident")
+
+    assert sorted((f["properties"]["fatal"], f["properties"][POINT_COUNT_PROPERTY]) for f in features) == [
+        (False, 1), (True, 1)]
+
+
+async def test_the_most_zoomed_tile_is_cut_into_cells_as_wide_as_the_zoomed_out_ones(road_graph_repository):
+    """一番寄った縮尺のタイルも、引いた縮尺と同じ数の升目で束ねる。それより寄った地図はこのタイルを引き伸ばして描くので、
+    升目が細かいと隣り合う升目の代表点の絵が重なって描かれる。"""
+    x, y = (int(i) for i in tile_position(LON, LAT, ROAD_TILE_MAX_ZOOM))
+    tile = tile_bounds_lonlat(ROAD_TILE_MAX_ZOOM, x, y)
+    width = (tile.max_longitude - tile.min_longitude) / POINT_CLUSTER_CELLS_PER_TILE
+    lat = tile.min_latitude + width / 4
+    await ingest_records("accident", [
+        accident_record(1, tile.min_longitude + width / 4, lat),
+        accident_record(2, tile.min_longitude + width * 3 / 4, lat),
+    ])
+
+    [merged] = _features(await _tile(road_graph_repository, "accident", x, z=ROAD_TILE_MAX_ZOOM, y=y), "accident")
+
+    assert merged["properties"][POINT_COUNT_PROPERTY] == 2
 
 
 async def test_convenience_stores_come_from_the_stop_places_and_not_from_openstreetmap(road_graph_repository):
@@ -151,8 +228,8 @@ async def test_convenience_stores_come_from_the_stop_places_and_not_from_openstr
     ほかの群の立ち寄り先は補給の点に出ない。"""
     await _ingest_pois([(LON, LAT, {"shop": "convenience"}), (LON + FAR, LAT, TOILETS)])
     await _ingest_stop_places([
-        _overture_place(1, LON - FAR, "ローソン 渋谷店", ("shopping", "convenience_store")),
-        _overture_place(2, LON, "店2", lat=LAT + FAR),
+        overture_place_record(1, LON - FAR, LAT, "ローソン 渋谷店", ("shopping", "convenience_store")),
+        overture_place_record(2, LON, LAT + FAR, "店2"),
     ])
 
     assert _kinds(await _tile(road_graph_repository, "poi")) == Counter({"convenience": 1, "toilets": 1})
@@ -161,7 +238,7 @@ async def test_convenience_stores_come_from_the_stop_places_and_not_from_openstr
 async def test_only_a_convenience_store_carries_its_name(road_graph_repository):
     """コンビニは押すと店の名前で外の地図を開けるように名前を持つ。OpenStreetMap の点は名前を焼かない。"""
     await _ingest_pois([(LON + FAR, LAT, {**TOILETS, "name": "公園のトイレ"})])
-    await _ingest_stop_places([_overture_place(1, LON - FAR, "ローソン 渋谷店", ("shopping", "convenience_store"))])
+    await _ingest_stop_places([overture_place_record(1, LON - FAR, LAT, "ローソン 渋谷店", ("shopping", "convenience_store"))])
 
     names = {f["properties"]["kind"]: f["properties"].get("name") for f in _features(
         await _tile(road_graph_repository, "poi"), "poi")}
@@ -187,17 +264,9 @@ async def test_a_merged_point_on_a_tile_edge_is_drawn_once(road_graph_repository
 # --- 事故 --------------------------------------------------------------------
 
 
-def _accident(key: int, lon: float, lat: float, *, party_a: str = "03", party_b: str = "03",
-              deaths: str = "00", year: str = "2023") -> object:
-    return point_record(key, lon, lat, {
-        "当事者種別（当事者A）": party_a, "当事者種別（当事者B）": party_b,
-        "死者数": deaths, "発生日時　　年": year,
-    })
-
-
 async def test_accident_tiles_do_not_depend_on_the_imported_roads(road_graph_repository):
     """事故は対象範囲を一括で取り込むので、道を取り込んでいない所でも範囲の外にしない。タイルの外の事故は出ない。"""
-    await ingest_records("accident", [_accident(1, LON, LAT), _accident(2, LON + 10 * FAR, LAT)])
+    await ingest_records("accident", [accident_record(1, LON, LAT), accident_record(2, LON + 10 * FAR, LAT)])
 
     assert len(_features(await _tile(road_graph_repository, "accident"), "accident")) == 1
 
@@ -207,30 +276,30 @@ async def test_accident_tiles_do_not_depend_on_the_imported_roads(road_graph_rep
     [
         (dict(party_a="51"), dict(involves_bicycle=True, fatal=False)),
         (dict(party_b="52"), dict(involves_bicycle=True, fatal=False)),
-        (dict(deaths="01"), dict(involves_bicycle=False, fatal=True)),
+        (dict(fatal=True), dict(involves_bicycle=False, fatal=True)),
     ],
     ids=["bicycle_as_party_a", "e_bike_as_party_b", "fatal"],
 )
 async def test_an_accident_point_carries_bicycle_fatal_and_year(road_graph_repository, record, expected):
-    await ingest_records("accident", [_accident(1, LON, LAT, year="2021", **record)])
+    await ingest_records("accident", [accident_record(1, LON, LAT, year=2021, **record)])
 
     [feature] = _features(await _tile(road_graph_repository, "accident"), "accident")
 
-    assert feature["properties"] == {**expected, "occurred_year": 2021}
+    assert feature["properties"] == {**expected, "occurred_year": 2021, POINT_COUNT_PROPERTY: 1}
 
 
 # --- 立ち寄り先 ----------------------------------------------------------------
 
 
-async def test_a_stop_place_point_carries_its_group_confidence_and_name(road_graph_repository):
+async def test_a_stop_place_point_carries_its_group_and_name(road_graph_repository):
     """立ち寄り先は事故と同じく対象範囲を一括で取り込むので、道を取り込んでいない所でも出す。タイルの外の地点と、
     補給の点に出す群「コンビニ」は出ない。"""
     await _ingest_stop_places([
-        _overture_place(1, LON, "店1"),
-        _overture_place(2, LON + 10 * FAR, "店2"),
-        _overture_place(3, LON + FAR, "ローソン 渋谷店", ("shopping", "convenience_store")),
+        overture_place_record(1, LON, LAT, "店1"),
+        overture_place_record(2, LON + 10 * FAR, LAT, "店2"),
+        overture_place_record(3, LON + FAR, LAT, "ローソン 渋谷店", ("shopping", "convenience_store")),
     ])
 
     [feature] = _features(await _tile(road_graph_repository, "stop_place"), "stop_place")
 
-    assert feature["properties"] == {"group": "eat_drink", "confidence": 0.75, "name": "店1"}
+    assert feature["properties"] == {"group": "eat_drink", "name": "店1", POINT_COUNT_PROPERTY: 1}

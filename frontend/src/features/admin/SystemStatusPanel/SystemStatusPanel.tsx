@@ -91,7 +91,7 @@ export default function SystemStatusPanel({ open, onClose }: SystemStatusPanelPr
       widthRem={24}
       maxHeightPx={480}
       headerButtons={
-        <Button size="xs" onClick={fetchAll} disabled={loading}>
+        <Button usage={null} size="xs" onClick={fetchAll} disabled={loading}>
           {loading ? "更新中…" : "更新"}
         </Button>
       }

@@ -1,4 +1,5 @@
-"""派生データの世代（1行のみ、id=1固定）と、今の派生の表を作った取込（`derived_source_runs`）・列（`derived_columns`）。
+"""派生データの世代（1行のみ、id=1固定）と、今の派生の表を作った取込（`derived_source_runs`）・列（`derived_columns`）・
+較正値（`derived_tuning`）。
 
 派生の作り直し（`app/batch/derive_cli.py`）が作り直した表を入れ替えるたびにインクリメントする単調カウンタ。
 道路網全体の配列の置き場の名前（`road_network_store.py`）と、配信する地図タイルの世代
@@ -18,10 +19,11 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 
 import asyncpg
-from sqlalchemy import BigInteger, CheckConstraint, ForeignKey, Integer, String, select
+from sqlalchemy import BigInteger, CheckConstraint, Double, ForeignKey, Integer, String, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
 
+from app.domain.tuning import TUNING_PARAMETERS_BY_ID
 from app.infrastructure.orm_base import Base
 from app.infrastructure.source_models import succeeded_run_count
 
@@ -81,6 +83,27 @@ class DerivedStageRow(Base):
     fingerprint: Mapped[str] = mapped_column(String, nullable=False)
 
 
+class DerivedTuningRow(Base):
+    """今の`public`の派生の表と道路網の配列を作ったときの較正値（`derive_cli.py`が段と配列へ渡した値）。較正値ごとに1行。
+
+    派生の外で同じ値を読む所（地図の点のタイル・近くの点の読み出し・道路網の配列を作る読み出し）は、管理画面の今の上書きでは
+    なくこの値を読む——上書きを変えてから作り直すまでの間も、派生の表と同じ値で読む。`derived_source_runs`と同じく
+    作業用のスキーマで書き、表ごと入れ替えるので、派生の世代と一緒に変わる。
+    """
+
+    __tablename__ = "derived_tuning"
+
+    param_id: Mapped[str] = mapped_column(String, primary_key=True)
+    value: Mapped[float] = mapped_column(Double, nullable=False)
+
+
+def recorded_tuning_sql(param_id: str) -> str:
+    """作り直しに使った較正値を読むSQLの式。行が無ければ（記録より前に作った派生の表）宣言の既定で作ったとみなす。"""
+    default = TUNING_PARAMETERS_BY_ID[param_id].default
+    return (f"COALESCE((SELECT value FROM {DerivedTuningRow.__tablename__} WHERE param_id = '{param_id}'),"
+            f" {default!r}::double precision)")
+
+
 @dataclass(frozen=True)
 class DataRevisions:
     """派生データの世代と生データの世代。"""
@@ -132,6 +155,20 @@ async def read_stage_fingerprints(conn: asyncpg.Connection) -> dict[str, str]:
 async def replace_stage_fingerprints(conn: asyncpg.Connection, fingerprints: Mapping[str, str]) -> None:
     """段ごとの指紋を`fingerprints`へ置き換える。"""
     await _replace_rows(conn, DerivedStageRow.__tablename__, ("stage", "fingerprint"), fingerprints.items())
+
+
+async def read_tuning(conn: asyncpg.Connection, param_ids: Iterable[str]) -> dict[str, float]:
+    """`param_ids`の、作り直しに使った較正値（id → 値。行が無ければ`recorded_tuning_sql`のとおり既定）。"""
+    ids = list(param_ids)
+    row = await conn.fetchrow("SELECT " + ", ".join(f"{recorded_tuning_sql(param_id)}" for param_id in ids))
+    if row is None:
+        raise RuntimeError("較正値の記録の問い合わせが行を返さなかった")
+    return dict(zip(ids, row.values()))
+
+
+async def replace_tuning(conn: asyncpg.Connection, values: Mapping[str, float]) -> None:
+    """作り直しに使った較正値を`values`へ置き換える。"""
+    await _replace_rows(conn, DerivedTuningRow.__tablename__, ("param_id", "value"), values.items())
 
 
 async def _read_pairs(conn: asyncpg.Connection, table: str, key: str, value: str) -> dict:

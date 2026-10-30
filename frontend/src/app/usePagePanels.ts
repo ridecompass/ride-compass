@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useChosenSheetHeight } from "@/components/BottomSheet/BottomSheet";
 import { useStoredBooleanState } from "@/hooks/useStoredState";
-import type { MapTapMode } from "@/features/map/MapView/MapView";
+import type { MapTapMode } from "@/features/map/MapView/mapTaps";
 import type { SettingsTab } from "@/features/route/RouteForm/RouteForm";
 import type { RouteOutcomeKind } from "@/features/route/useRouteGeneration";
 
@@ -16,19 +16,11 @@ export type Panel = Exclude<MobileSheet, null>;
 
 /**
  * 地図を押したときの意味を、効いているパネルから決める（地図を触った副作用で、いま見ていない面の状態が変わらない）。
- * 「ルート設定」の条件タブは地点、「ルート結果」はルートと区間、編集中は乗り換える区間、効いているパネルが無ければ見るだけ
- * （走行中は何も開かず、地図は現在地を追うことに専念する）。走行中に開いたパネルの中は、走っていないときと同じに決める。
+ * 「ルート設定」の条件タブは地点、編集中は乗り換える区間、ほかは押した物を開く（走行中も同じ）。
  */
-export function mapTapModeOf(
-  panel: Panel | null,
-  settingsTab: SettingsTab,
-  editing: boolean,
-  riding: boolean,
-): MapTapMode {
+export function mapTapModeOf(panel: Panel | null, settingsTab: SettingsTab, editing: boolean): MapTapMode {
   if (editing) return "splice";
-  if (panel === "routeSettings") return settingsTab === "generate" ? "points" : "look";
-  if (panel === "routeOutcome") return "routes";
-  return riding ? "ride" : "look";
+  return panel === "routeSettings" && settingsTab === "generate" ? "points" : "open";
 }
 
 /**
@@ -132,6 +124,19 @@ export function usePagePanels({ navigating, isMobile }: { navigating: boolean; i
     setUnseenOutcome(null);
   };
 
+  // 「ルート設定」を地図で効く区分にして見せる（地点を置いたあと、置いた地点の詳しくを見せる）。走行中のデスクトップは帯の
+  // 「ルート」で出す左のパネルを出す。
+  const showRouteSettings = () => {
+    if (isMobile) {
+      setMobileSheet("routeSettings");
+      return;
+    }
+    setGenerateOpen(true);
+    setLastTouchedPanel("routeSettings");
+    setSidebarCollapsed(false);
+    if (navigating) setRidePanelOpen(true);
+  };
+
   // 2枚のシートが共有する開閉と高さ。
   const sharedSheetProps = {
     onClose: () => setMobileSheet(null),
@@ -151,6 +156,7 @@ export function usePagePanels({ navigating, isMobile }: { navigating: boolean; i
     mobileSheet,
     toggleMobileSheet,
     toggleRidePanel,
+    showRouteSettings,
     sharedSheetProps,
     panelsShown,
     desktopPanels,

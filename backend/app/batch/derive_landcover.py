@@ -22,13 +22,7 @@ import time
 import asyncpg
 
 from app.batch.common import affected_rows, copy_reused_sql, reused_edges_sql
-from app.domain.landcover import (
-    LANDCOVER_RING_INNER_M,
-    LANDCOVER_RING_OUTER_M,
-    PERCENT_CLASSES,
-    class_percentages_sql,
-    landcover_key,
-)
+from app.domain.landcover import PERCENT_CLASSES, class_percentages_sql, landcover_key
 from app.infrastructure.source_models import LANDCOVER_TILES_SQL
 
 logger = logging.getLogger("ridecompass.derive_landcover")
@@ -69,7 +63,7 @@ FROM ({class_percentages_sql(_COUNT_CLASSES)}) p
 """
 
 
-async def _derive_edges(conn: asyncpg.Connection, previous: str | None) -> None:
+async def _derive_edges(conn: asyncpg.Connection, previous: str | None, ring_outer_m: float, ring_inner_m: float) -> None:
     started = time.perf_counter()
     tiles = await conn.fetchval(f"SELECT count(*) FROM {LANDCOVER_TILES_SQL} t")
     if not tiles:
@@ -82,7 +76,7 @@ async def _derive_edges(conn: asyncpg.Connection, previous: str | None) -> None:
     if previous is not None:
         await conn.execute(copy_reused_sql("edge_landcover", _VALUE_COLUMNS, previous))
     logger.info("土地被覆: 形の変わらない区間 %d本へ前回の値を写し、%d本を数える", reused, edges - reused)
-    await conn.execute(_BUILD_RINGS, LANDCOVER_RING_OUTER_M, LANDCOVER_RING_INNER_M)
+    await conn.execute(_BUILD_RINGS, ring_outer_m, ring_inner_m)
     await conn.execute("CREATE INDEX ON _rings USING GIST (ring4326)")
     await conn.execute("ANALYZE _rings")
     logger.info("土地被覆: 帯 %d本を作った。重なる画素を数える",
@@ -110,10 +104,11 @@ GROUP BY m.osm_way_id
 """
 
 
-async def derive(conn: asyncpg.Connection, *, previous: str | None) -> None:
-    """`previous`は前回の表のスキーマ。Noneなら全区間を数える。"""
+async def derive(conn: asyncpg.Connection, *, previous: str | None, ring_outer_m: float, ring_inner_m: float) -> None:
+    """`previous`は前回の表のスキーマ。Noneなら全区間を数える。帯は道の中心線から`ring_inner_m`より外・`ring_outer_m`までで、
+    路面そのものの幅を除く。"""
     async with conn.transaction():
         await conn.execute("TRUNCATE edge_landcover, way_landcover")
-        await _derive_edges(conn, previous)
+        await _derive_edges(conn, previous, ring_outer_m, ring_inner_m)
         await conn.execute("ANALYZE edge_landcover")
         await conn.execute(_WAY_ROLLUP)

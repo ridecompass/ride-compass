@@ -1,17 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { generateInMobileSheet, openMobileSheet } from "../e2e/fixtures";
-import {
-  branch,
-  chooseLens,
-  currentLensLabel,
-  expectNoOwnFailures,
-  externalErrors,
-  fetchCatalog,
-  openLive,
-  reportExternal,
-  routeSegmentsPainted,
-  settleMap,
-} from "./live";
+import { branch, expectNoOwnFailures, externalErrors, fetchCatalog, openLive, reportExternal } from "./live";
+import { chooseLens, currentLensLabel, routeSegmentsPainted, settleMap } from "./mapReads";
 
 // S2 ルート生成（生成後）。実グラフでしか出ない探索の欠陥（並行する道・取込範囲の端で生成が落ちる）と、
 // 実データの区間を押したときの例外、作ったあとにレンズを替えるとルートの区間が全部「データなし」になる欠陥（実際の応答が

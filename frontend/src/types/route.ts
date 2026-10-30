@@ -23,10 +23,15 @@ export type RouteSegmentDetail = Schemas["RouteSegmentDetail"];
 
 export type RouteCandidate = Schemas["RouteCandidate"];
 export type RouteTurn = Schemas["RouteTurn"];
-export type RoutePoint = Schemas["RoutePoint"];
 /** 住所の検索で当たった地点の候補。 */
 export type PlaceCandidate = Schemas["PlaceCandidate"];
 export type OverallDifficulty = Schemas["OverallDifficulty"];
+
+/** 地図に番号の点で出す、地点の検索で探した候補と、選んでいる候補の番号（`candidates`の添字）。 */
+export interface CandidatesOnMap {
+  candidates: readonly PlaceCandidate[];
+  picked: number;
+}
 
 /** 地図上で押された区間と、押された地点（マーカーを置く位置）。区間は地図のfeatureのpropertiesから
  * 組み直すので、`segment.geometry`はnull。 */
@@ -47,6 +52,11 @@ export type GenerationConditions = Schemas["GenerationConditions"];
 
 export type AxisCatalogResponse = Schemas["AxisCatalogResponse"];
 export type AxisCatalogEntry = Schemas["AxisCatalogEntry"];
+/** 道の区分。正本は管理DBで、軸カタログが公開した分け方を解決した形で配る。 */
+export type RoadClassCatalog = Schemas["RoadClassCatalog"];
+export type RoadMapLayerView = Schemas["RoadMapLayerView"];
+export type RoadClassView = Schemas["RoadClassView"];
+export type RoadAvoidanceView = Schemas["RoadAvoidanceView"];
 
 // 軸スタジオが使う評価軸定義のCRUD型。/api/admin/axis-definitions。
 export type AxisDefinitionPayload = Schemas["AxisDefinitionPayload"];

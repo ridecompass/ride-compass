@@ -1,16 +1,18 @@
 /**
- * 生成の条件（`useGenerationConditions.ts`）——全長の目標を決めるか・距離・候補数・地点（出発地以外）・重み・道ごとの避け方と、地図の
- * タップで置く地点の選び（経由地は足すか、何番目を置き直すか）と、検索・名前のある点で置いた地点の候補（その位置のままの間だけ）を返す。保存する値（地点以外）は開き直しても残り、読むときに今の画面が受け付ける範囲・
+ * 生成の条件（`useGenerationConditions.ts`）——周回か・全長の目標を決めるか・距離・候補数・重み・道ごとの避け方と、周回の間に
+ * 覚えておく目的地を返す。保存する値（地点以外）は開き直しても残り、読むときに今の画面が受け付ける範囲・
  * 今の項目へ揃える。重みは軸カタログの公開軸へ揃えた値を返し、送るのは上書きを有効にしてカタログが届いた後だけ。
  *
  * ここで見ないもの:
+ * - 地点（出発地以外）の置き方・動かし方・消し方と、検索・名前のある点で置いた地点の候補 →
+ *   `useGenerationConditions.points.test.ts`
  * - 重みの揃え方の細部（増えた軸を既定の重みで補う・消えた軸を外す・取得が決まるまで揃えない） →
  *   `routePreferenceSync.test.ts`。ここでは揃えた値を返すことを1件ずつ見る
  * - 重みを送るかの判断（上書きしていない・カタログが届かない間は送らない） → `routePreferenceSync.test.ts`。
  *   ここでは開き直した後に送る重みを1件見る
  * - 保存の読み書きそのもの（読めない・書けない端末で既定値になる） → `hooks/useStoredState.test.ts`
  * - 地図で置いた出発地を位置の持ち主が受け取ったあと → `hooks/useLocation.test.ts`
- * - 地図のタップが選んだ地点を置く場面（「ルート設定」の「条件」タブが効いている間だけ） → `app/page.test.tsx`
+ * - 地図のタップが選んだ地点を置く場面（「ルート設定」の「条件」タブが効いている間だけ） → `app/page.map.test.tsx`
  * - 条件を生成へ送る形 → `useRouteGeneration.test.ts`
  *
  * 差し替えたもの: 軸カタログの応答（網の層）。保存はテスト環境の`localStorage`を
@@ -19,17 +21,15 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { AVOIDABLE_ROWS, AVOIDANCE_LEVELS, DEFAULT_ROAD_AVOIDANCE } from "@/features/route/roadAvoidance";
 import { heldReplies, onBackend, serveAxisCatalog } from "@/testing/backendServer";
 import { catalogEntry, catalogResponse, TWO_AXIS_CATALOG } from "@/testing/catalogAxes";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
-import type { Coordinates, PlaceCandidate } from "@/types/route";
+import type { Coordinates } from "@/types/route";
 
 import { useGenerationConditions } from "./useGenerationConditions";
 
 const A: Coordinates = { latitude: 35.1, longitude: 139.1 };
 const B: Coordinates = { latitude: 35.2, longitude: 139.2 };
-const C: Coordinates = { latitude: 35.3, longitude: 139.3 };
 
 function renderConditions() {
   const onOriginPlace = vi.fn();
@@ -41,15 +41,6 @@ function renderConditions() {
 function reopen(rendered: { unmount: () => void }) {
   rendered.unmount();
   return renderConditions();
-}
-
-/** 地点`at`で当たった施設の候補。 */
-function candidateAt(at: Coordinates, name: string): PlaceCandidate {
-  return { kind: "facility", level: "point", name, area: null, ...at };
-}
-
-function point(index: number): Coordinates {
-  return { latitude: 35 + index / 100, longitude: 139 };
 }
 
 beforeEach(() => {
@@ -69,136 +60,29 @@ describe("全長の目標", () => {
   });
 });
 
-describe("地点", () => {
-  it("何も選んでいなければ出発地を選んでいて、地図で置くと位置の持ち主へ渡す。自分では持たない", () => {
-    const { result, onOriginPlace } = renderConditions();
-    expect(result.current.selectedPoint).toEqual({ role: "origin" });
+describe("周回", () => {
+  it("既定は周回で、外したことは開き直しても残る", () => {
+    const first = renderConditions();
+    expect(first.result.current.loop).toBe(true);
 
-    act(() => result.current.placeAtSelected(A, null));
+    act(() => first.result.current.setLoop(false));
 
-    expect(onOriginPlace).toHaveBeenCalledWith(A);
-    expect(result.current.destination).toBeNull();
-    expect(result.current.waypoints).toEqual([]);
+    expect(reopen(first).result.current.loop).toBe(false);
   });
 
-  it("選んだ地点を置き、選んだままにする（続けて置くとその地点を置き直す）", () => {
+  it("周回の間に経由地と目的地を一度に消すと、経由地だけを消して覚えている目的地は残す", () => {
     const { result } = renderConditions();
-    act(() => result.current.selectPoint({ role: "destination" }));
-
-    act(() => result.current.placeAtSelected(A, null));
-    act(() => result.current.placeAtSelected(B, null));
-
-    expect(result.current.destination).toEqual(B);
-    expect(result.current.selectedPoint).toEqual({ role: "destination" });
-  });
-
-  it("新しい経由地を選ぶと置くたびに足し、生成が受け付ける数に達したらそれ以上は足さない", () => {
-    const max = routeGenerateConfig.max_waypoints;
-    const { result } = renderConditions();
-    act(() => result.current.selectPoint({ role: "waypoint", index: null }));
-
-    for (let i = 0; i <= max; i++) act(() => result.current.placeAtSelected(point(i), null));
-
-    expect(result.current.waypoints).toEqual([...Array(max).keys()].map(point));
-  });
-
-  it("番号を指した経由地を選ぶと、その経由地を置き直す", () => {
-    const { result } = renderConditions();
-    act(() => result.current.selectPoint({ role: "waypoint", index: null }));
-    act(() => result.current.placeAtSelected(A, null));
-    act(() => result.current.placeAtSelected(B, null));
-
-    act(() => result.current.selectPoint({ role: "waypoint", index: 0 }));
-    act(() => result.current.placeAtSelected(C, null));
-
-    expect(result.current.waypoints).toEqual([C, B]);
-  });
-
-  it("店など名前のある点に置くと、その点の候補として置く（名前はその位置のままの間だけ返す）", () => {
-    const { result } = renderConditions();
-    const shop = candidateAt(C, "着く店");
-    act(() => result.current.selectPoint({ role: "destination" }));
-
-    act(() => result.current.placeAtSelected(C, shop));
-    expect(result.current.destination).toEqual(C);
-    expect(result.current.foundAt(result.current.destination)).toEqual(shop);
-
-    act(() => result.current.placeAtSelected(point(0), null));
-    expect(result.current.foundAt(result.current.destination)).toBeNull();
-  });
-
-  it("選んだ経由地が消えたら、出発地を選んでいることに戻る", () => {
-    const { result } = renderConditions();
-    act(() => result.current.selectPoint({ role: "waypoint", index: null }));
-    act(() => result.current.placeAtSelected(A, null));
-    act(() => result.current.placeAtSelected(B, null));
-    act(() => result.current.selectPoint({ role: "waypoint", index: 1 }));
-
-    act(() => result.current.removeWaypoint(1));
-
-    expect(result.current.selectedPoint).toEqual({ role: "origin" });
-  });
-
-  it("経由地は位置を指して動かす・消せ、目的地も消せる", () => {
-    const { result } = renderConditions();
-    act(() => result.current.selectPoint({ role: "waypoint", index: null }));
-    act(() => result.current.placeAtSelected(A, null));
-    act(() => result.current.placeAtSelected(B, null));
+    act(() => result.current.setLoop(false));
     act(() => result.current.setDestination(A));
-
-    act(() => result.current.moveWaypoint(1, C));
-    expect(result.current.waypoints).toEqual([A, C]);
-
-    act(() => result.current.removeWaypoint(0));
-    act(() => result.current.clearDestination());
-    expect(result.current.waypoints).toEqual([C]);
-    expect(result.current.destination).toBeNull();
-  });
-
-  it("経由地と目的地は一度に消せ、出発地はそのまま残し、出発地を選んでいることに戻る", () => {
-    const { result, onOriginPlace } = renderConditions();
+    act(() => result.current.setLoop(true));
     act(() => result.current.selectPoint({ role: "waypoint", index: null }));
-    act(() => result.current.placeAtSelected(A, null));
     act(() => result.current.placeAtSelected(B, null));
-    act(() => result.current.setDestination(C));
 
     act(() => result.current.clearPoints());
+    act(() => result.current.setLoop(false));
 
     expect(result.current.waypoints).toEqual([]);
-    expect(result.current.destination).toBeNull();
-    expect(result.current.selectedPoint).toEqual({ role: "origin" });
-    expect(onOriginPlace).not.toHaveBeenCalled();
-  });
-
-  it("検索で選んだ地点はその役割で置く（経由地は番号を指せばそれを置き直し、指さなければ足してその経由地を選ぶ）", () => {
-    const { result, onOriginPlace } = renderConditions();
-    const originShop = candidateAt(A, "出発の店");
-    act(() => result.current.placeFound("origin", originShop, null));
-    expect(onOriginPlace).toHaveBeenCalledWith(A);
-    expect(result.current.foundAt({ ...A })).toEqual(originShop);
-
-    act(() => result.current.selectPoint({ role: "waypoint", index: null }));
-    act(() => result.current.placeFound("waypoint", candidateAt(B, "寄る店"), null));
-    expect(result.current.waypoints).toEqual([B]);
-    expect(result.current.selectedPoint).toEqual({ role: "waypoint", index: 0 });
-
-    act(() => result.current.placeFound("destination", candidateAt(C, "着く店"), null));
-    expect(result.current.destination).toEqual(C);
-
-    act(() => result.current.placeFound("waypoint", candidateAt(A, "寄り直す店"), 0));
-    expect(result.current.waypoints).toEqual([A]);
-  });
-
-  it("地点は保存せず、開き直すと置いていない状態から始まる", () => {
-    const first = renderConditions();
-    act(() => first.result.current.selectPoint({ role: "waypoint", index: null }));
-    act(() => first.result.current.placeAtSelected(A, null));
-    act(() => first.result.current.setDestination(B));
-
-    const { result } = reopen(first);
-
-    expect(result.current.waypoints).toEqual([]);
-    expect(result.current.destination).toBeNull();
+    expect(result.current.destination).toEqual(A);
   });
 });
 
@@ -215,7 +99,6 @@ describe("距離と候補数", () => {
   });
 
   it.each([
-    { label: "5km刻みの値", saved: "45", read: "45" },
     {
       label: "上限ちょうど",
       saved: String(routeGenerateConfig.max_distance_km),
@@ -281,62 +164,20 @@ describe("重み", () => {
 });
 
 describe("道ごとの避け方", () => {
-  const [{ key: rowKey }] = AVOIDABLE_ROWS;
-  const otherLevel = AVOIDANCE_LEVELS.find(({ key }) => key !== DEFAULT_ROAD_AVOIDANCE[rowKey])!.key;
-
   it("変えた避け方は開き直しても残る", () => {
     const first = renderConditions();
-    const changed = { ...DEFAULT_ROAD_AVOIDANCE, [rowKey]: otherLevel };
 
-    act(() => first.result.current.setRoadAvoidance(changed));
+    act(() => first.result.current.setRoadAvoidance({ gravel: "exclude" }));
 
-    expect(reopen(first).result.current.roadAvoidance).toEqual(changed);
+    expect(reopen(first).result.current.roadAvoidance).toEqual({ gravel: "exclude" });
   });
 
-  it("保存値は今の行へ揃え（今は無い行を落とし、無い行・読めない段は既定）、読めない保存値は既定に戻す", () => {
-    const [, { key: unreadableKey }] = AVOIDABLE_ROWS;
+  // 行は軸カタログが届くまで分からないので、鍵では落とさない（今の行へ揃えるのはbackend）。
+  it("保存値は段として読める鍵だけを残す", () => {
     window.localStorage.setItem(
       "ridecompass:road-avoidance",
-      JSON.stringify({ [rowKey]: otherLevel, [unreadableKey]: "retired_level", "retired.row": "exclude" }),
+      JSON.stringify({ gravel: "exclude", unpaved: "retired_level", "retired.row": "avoid" }),
     );
-    expect(renderConditions().result.current.roadAvoidance).toEqual({
-      ...DEFAULT_ROAD_AVOIDANCE,
-      [rowKey]: otherLevel,
-    });
-
-    window.localStorage.setItem("ridecompass:road-avoidance", "{broken");
-    expect(renderConditions().result.current.roadAvoidance).toEqual(DEFAULT_ROAD_AVOIDANCE);
-  });
-  it("保存が無ければ、国道・主要地方道をなるべく避け、ほかの道は通る", () => {
-    const avoided = ["highway.trunk", "highway.primary"];
-
-    expect(renderConditions().result.current.roadAvoidance).toEqual(
-      Object.fromEntries(AVOIDABLE_ROWS.map(({ key }) => [key, avoided.includes(key) ? "avoid" : "pass"])),
-    );
-  });
-
-  it("分ける前の行の鍵で保存した段は、分けてできたどの行にも引き継ぎ、分けたあとの鍵で保存した段を先に読む", () => {
-    window.localStorage.setItem(
-      "ridecompass:road-avoidance",
-      JSON.stringify({ "highway.arterial": "exclude", "highway.local": "avoid", "highway.cycleway": "exclude" }),
-    );
-    expect(renderConditions().result.current.roadAvoidance).toEqual({
-      ...DEFAULT_ROAD_AVOIDANCE,
-      "highway.trunk": "exclude",
-      "highway.primary": "exclude",
-      "highway.unclassified": "avoid",
-      "highway.residential": "avoid",
-      "highway.cycleway": "exclude",
-      "highway.footway": "exclude",
-    });
-
-    window.localStorage.setItem(
-      "ridecompass:road-avoidance",
-      JSON.stringify({ "highway.cycleway": "exclude", "highway.footway": "pass" }),
-    );
-    expect(renderConditions().result.current.roadAvoidance).toMatchObject({
-      "highway.cycleway": "exclude",
-      "highway.footway": "pass",
-    });
+    expect(renderConditions().result.current.roadAvoidance).toEqual({ gravel: "exclude", "retired.row": "avoid" });
   });
 });

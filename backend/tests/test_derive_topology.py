@@ -1,8 +1,7 @@
 """道路網の形の導出（`batch/derive_topology.py`）が、意図した形の派生を作ること。
 
 見るのは、切る位置・閉じた区間の切り直し・枝数・区間の形と、長さと方位の測り方。
-長さと方位は値そのものではなく性質を見る——長さは形状の測地線長であること、方位は始点→終点の
-方位であること。
+長さと方位は、緯線に沿って東へ延びる道（`PARALLEL_WAY`）の、座標から手で出せる値と比べる。
 
 ここで見ないもの:
 - 区間の端点がノードの行を持つこと——`road_edges`の端点の外部キー（`derived_models.py`）が断る
@@ -10,19 +9,20 @@
   落とす分岐を通さない
 """
 
+import math
+
 import pytest
 import pytest_asyncio
 
 from app.batch import derive_topology
-from tests.source_ingest import ingest_records, way_record
+from tests.source_ingest import WAY_ORIGIN, WAY_STEP, ingest_records, way_record
 
-# road_graph_session（conftest.py）と同じDBを使うため、.claude/rules/testing-backend.mdのパターン2どおり
+# moduleスコープのroad_graph_engine（conftest.py）の上のDBを使うため、.claude/rules/testing-backend.mdのパターン2どおり
 # loop_scope="module"が必須。
 pytestmark = pytest.mark.asyncio(loop_scope="module")
 
-#: 東京都心付近。座標そのものに意味は無く、測地線長が0にならない間隔であればよい。
-BASE_LON, BASE_LAT = 139.70, 35.68
-STEP = 0.001
+#: 座標そのものに意味は無く、測地線長が0にならない間隔であればよい。
+BASE_LON, BASE_LAT = WAY_ORIGIN
 
 #: (wayのid, 参照ノードid列)。ノード3は2本の道が通るので切る位置になる。
 #: ノード10で閉じる道は、中間でもう1回切られて自己ループでなくなる。
@@ -33,21 +33,30 @@ WAYS: tuple[tuple[int, list[int]], ...] = (
 )
 
 
+#: 緯線に沿って東へ延びる1区間の道（wayのid, 始点・終点のノードid, 緯度, 始点の経度, 経度の差）。
+#: 2点が同じ緯度にあり、長さと方位を楕円体の式から手で出せる。ほかの道と離すため緯度をずらす。
+PARALLEL_WAY = (400, [20, 21], 35.60, BASE_LON, 0.01)
+
+#: WGS84の長半径（m）と扁平率。
+WGS84_A, WGS84_F = 6378137.0, 1 / 298.257223563
+
+
 #: ノードidから座標を作る。閉じる道の終端だけ始点と同じ位置へ戻す。
 def _point(node_id: int, ordinal: int) -> tuple[float, float]:
     index = 0 if node_id == 10 and ordinal == 3 else node_id
-    return (BASE_LON + STEP * index, BASE_LAT + STEP * (index % 3))
+    return (BASE_LON + WAY_STEP * index, BASE_LAT + WAY_STEP * (index % 3))
 
 
 @pytest_asyncio.fixture(scope="module", loop_scope="module")
 async def topology_conn(derive_conn):
     """道を取り込み、区間まで作った状態。"""
-    conn = derive_conn
+    parallel_id, parallel_nodes, lat, lon, d_lon = PARALLEL_WAY
     await ingest_records("osm_way", [
-        way_record(way_id, [_point(n, i) for i, n in enumerate(node_ids)], node_ids)
-        for way_id, node_ids in WAYS], conn=conn)
-    await derive_topology.derive(conn)
-    return conn
+        *(way_record(way_id, [_point(n, i) for i, n in enumerate(node_ids)], node_ids) for way_id, node_ids in WAYS),
+        way_record(parallel_id, [(lon, lat), (lon + d_lon, lat)], parallel_nodes),
+    ], conn=derive_conn)
+    await derive_topology.derive(derive_conn)
+    return derive_conn
 
 
 async def test_splits_where_two_ways_pass_the_same_node(topology_conn):
@@ -83,31 +92,47 @@ async def test_branch_count_is_the_number_of_segment_ends_at_the_node(topology_c
         5: 1,
         10: 2,  # 閉じた道の両端
         11: 2,  # 切り直しで生まれた端点
+        20: 1,  # 緯線に沿う道の両端
+        21: 1,
         # ノード2・12は区間の端にならないので行が無い。
     }
+
+
+async def _parallel_edge(conn):
+    return await conn.fetchrow(
+        "SELECT distance_m, bearing_deg, reverse_bearing_deg FROM road_edges WHERE osm_way_id = $1", PARALLEL_WAY[0])
 
 
 async def test_distance_is_the_geodesic_length_of_the_geometry(topology_conn):
     """長さは形状から導ける値そのもの。測地線（楕円体）で測り、丸めない。
 
     丸めないのは、4.8 cmの区間が0へ落ちないようにするため。球で近似しないのは、
-    費用が変わらないのに近似になるため。
+    費用が変わらないのに近似になるため。期待値は緯線の弧長（卯酉線の曲率半径×cos緯度×経度の差）で、
+    1 kmに満たない区間では測地線長との差が1 mmに届かない。球で測ると2 mずれる。
     """
-    wrong = await topology_conn.fetchval(
-        "SELECT count(*) FROM road_edges"
-        " WHERE abs(distance_m - ST_Length(geom::geography)) > 0.001")
-    assert wrong == 0
+    _, _, lat, _, d_lon = PARALLEL_WAY
+    sin_lat = math.sin(math.radians(lat))
+    prime_vertical_radius = WGS84_A / math.sqrt(1 - WGS84_F * (2 - WGS84_F) * sin_lat**2)
+    expected = prime_vertical_radius * math.cos(math.radians(lat)) * math.radians(d_lon)
+
+    assert (await _parallel_edge(topology_conn))["distance_m"] == pytest.approx(expected, abs=0.01)
 
 
 async def test_bearings_are_measured_from_the_shape_ends(topology_conn):
-    """順方向は始点→終点、逆向きは終点→始点で測る（+180°の単純反転にしない）。"""
-    wrong = await topology_conn.fetchval("""
-        SELECT count(*) FROM road_edges WHERE
-          abs(bearing_deg - degrees(ST_Azimuth(ST_StartPoint(geom)::geography,
-                                               ST_EndPoint(geom)::geography))) > 0.001
-          OR abs(reverse_bearing_deg - degrees(ST_Azimuth(ST_EndPoint(geom)::geography,
-                                               ST_StartPoint(geom)::geography))) > 0.001""")
-    assert wrong == 0
+    """順方向は始点→終点、逆向きは終点→始点で測る（+180°の単純反転にしない）。
+
+    同じ緯度の2点を結ぶ測地線は極の側へ膨らむので、始点では真東より北へ、終点から戻る向きは真西より北へ、
+    同じ角だけ傾く（傾きは atan(sin緯度×tan(経度の差/2))）。+180°で反転すると逆向きが真西より南へ傾き、
+    経度緯度を平面として測ると傾きが0になる。
+    """
+    _, _, lat, _, d_lon = PARALLEL_WAY
+    tilt = math.degrees(math.atan(math.sin(math.radians(lat)) * math.tan(math.radians(d_lon / 2))))
+
+    edge = await _parallel_edge(topology_conn)
+    assert (edge["bearing_deg"], edge["reverse_bearing_deg"]) == (
+        pytest.approx(90 - tilt, abs=1e-4),
+        pytest.approx(270 + tilt, abs=1e-4),
+    )
 
 
 async def test_geometry_follows_the_shape_between_the_cut_points(topology_conn):

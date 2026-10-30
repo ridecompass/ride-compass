@@ -1,9 +1,8 @@
 """地域タイル（路面・点・土地被覆）のディスクの口。鍵（`cache_identity.py`）・キャッシュ確認→取得→書き戻しの骨格・
 旧世代の掃除を持ち、配信のサービスとは系統・世代・座標の値でやり取りする。
 
-取得不可の理由をどうWARNINGログへ出すか（文言・`fields`への記録内容）はタイル種別ごとに
-違う（「取込範囲外」「DB障害」等）ため、その判断とログ出力は呼び出し元が渡す
-`fetch_tile`の責務にしてある。
+取得不可の理由（「取込範囲外」「DB障害」等）はタイル種別ごとに違うため、それを`fields`へ記録するのは
+呼び出し元が渡す`fetch_tile`の責務にしてある。
 """
 
 import asyncio
@@ -85,6 +84,8 @@ async def serve_region_tile(
     """
     key = region_tile_key(kind, generation, z, x, y, extension)
     with log_external_call(external_call_name, z=z, x=x, y=y) as fields:
+        # ディスクの読み書きは同期のI/O。地図を開くと多数のタイルが同時に来るため、イベントループの上で行うと
+        # 同時に処理中の他の要求が止まる。
         cached = await asyncio.to_thread(tile_cache.get, key)
         if cached is not None:
             fields["cache"] = "hit"

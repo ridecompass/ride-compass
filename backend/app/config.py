@@ -4,7 +4,6 @@ from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.domain.place_search import PLACE_PREDICTION_DELAY_SECONDS
-from app.domain.weather_elements import MSM_FORECAST_HOURS
 
 # 相対パス".env"はプロセスのカレントディレクトリ基準になるため、backend/をcwdにしない
 # 起動方法では読み込まれない。このファイルの位置から解決してcwdへの依存を無くす。
@@ -37,21 +36,19 @@ class Settings(BaseSettings):
 
     # --- 認証なしエンドポイントのper-IPレート制限・同時実行上限 ---
     # 環境（本番/ローカル/負荷試験）ごとに調整したい運用値のため.envで上書きできる。
-    #
-    # /weatherは外部APIを叩かず、/generateほど高コストではない。
-    weather_rate_limit_per_minute: int = 60
-    # 風の格子点マップは1回で対象範囲（取り込んだ道路の範囲）全域ぶんの応答を組み立てる。値はローカルのMSM
-    # ファイルから読むため外部APIは消費しないが、応答サイズ（数百KB）と直列化コストが
-    # 地点数に比例するため/weather（1地点）より絞る。
-    wind_grid_rate_limit_per_minute: int = 20
-    # 詳細格子はパン・ズームのたびに（デバウンス済みとはいえ）呼ばれうるため高めにする。
-    wind_grid_detail_rate_limit_per_minute: int = 30
-    # /weather系のバッジ群。いずれも/weatherと同じ地点変更デバウンスを起点に呼ばれ、
+    # 地図のMSMの格子点は、地図を動かすたびに（間を置いてから）呼ばれる。値はローカルのMSMファイルから読むため外部APIは
+    # 消費しないが、応答の大きさが格子点の数×予報の時間数に比例する。
+    msm_grid_rate_limit_per_minute: int = 30
+    # /weather系のバッジ群。いずれも同じ地点変更デバウンスを起点に呼ばれ、
     # 外部への実リクエストは長寿命TTLキャッシュで大半が吸収される。
     weather_warnings_rate_limit_per_minute: int = 30
     weather_wbgt_rate_limit_per_minute: int = 30
     weather_flood_forecast_rate_limit_per_minute: int = 30
     weather_amedas_rate_limit_per_minute: int = 30
+    # ルートの警報級の時系列は、ルートが変わったときと一定の間ごとに呼ばれる。
+    weather_warning_timeline_rate_limit_per_minute: int = 30
+    # 今日の最寄りの格子点の値も同じ地点の変化を起点に呼ばれ、ローカルのMSMファイルから読む。
+    weather_rate_limit_per_minute: int = 30
     # 地点の検索は打つのが止まるたびに呼ばれる。止まってから引くまでの間で決まる1分あたりの最大に当たらない値。
     # 1件はDBの住所の区画の表と立ち寄り先の表を索引で引くだけ（時間は docs/modules/backend/place-search.md「引き方」）。
     place_search_rate_limit_per_minute: int = math.ceil(60 / PLACE_PREDICTION_DELAY_SECONDS)
@@ -59,7 +56,7 @@ class Settings(BaseSettings):
     place_area_rate_limit_per_minute: int = 60
     # ルート生成は最も高コストなエンドポイント（1件で数秒〜数十秒CPUを使い、探索範囲に比例して
     # メモリを使う）のため、per-IPレート制限に加えプロセス全体の同時実行数も絞る。
-    # 1回の生成が扱える探索範囲の上限（`graph_service`）は、メモリ上限をこの件数で割って決まる。
+    # 同時に動く生成は、この件数の枠とは別に、探索範囲の大きさに比例するメモリを分け合う（`services/graph_service.py: SearchMemory`）。
     generate_rate_limit_per_minute: int = 10
     generate_max_concurrent: int = 2
     # タイル処理の律速はDB側の同時クエリ負荷とSQLAlchemyの接続プール
@@ -70,6 +67,8 @@ class Settings(BaseSettings):
     # 区間インスペクタは道を押すたびの単発リクエストで、パン/ズームのたびに多数のz/x/y
     # タイルを連続要求するroad_tileとは負荷特性が異なるため別の上限を持つ。
     axis_inspector_rate_limit_per_minute: int = 120
+    # 押した所に近い道も、道を押すたびの単発リクエスト（区間インスペクタと同じ負荷特性）。
+    roads_at_rate_limit_per_minute: int = 120
     # 土地被覆ラスタタイルはDBを読まず、GeoTIFFの読み取り・再投影（GDAL）をスレッドプールで
     # 行う。律速がCPUとディスクI/Oになるため、DB向けのタイル上限とは別に持つ。
     # `asyncio.to_thread`の既定スレッドプールを1画面ぶんのタイルで埋めないための値。
@@ -91,7 +90,6 @@ class Settings(BaseSettings):
     # 配信元のrun更新は3時間ごとだが公開はrun初期時刻から数時間遅れるため、更新の有無を
     # これより短い間隔で確認する（内容が変わっていなければETagの条件付きGETで転送は起きない）。
     msm_sync_interval_minutes: int = 30
-    msm_forecast_hours: int = MSM_FORECAST_HOURS
 
     # 管理画面・管理APIのHTTP Basic認証（空文字のときの扱いはapi/admin_auth.py）。
     # frontend側も同じ資格情報を別の環境変数として持ち、同じ値を設定して運用する。
@@ -125,11 +123,16 @@ class Settings(BaseSettings):
 
     @property
     def cors_allowed_origins_list(self) -> list[str]:
-        return self.cors_allowed_origins.split(",")
+        return _comma_separated(self.cors_allowed_origins)
 
     @property
     def lulc_raster_paths_list(self) -> list[str]:
-        return [p for p in self.lulc_raster_paths.split(",") if p]
+        return _comma_separated(self.lulc_raster_paths)
+
+
+def _comma_separated(value: str) -> list[str]:
+    """カンマ区切りの設定値を、前後の空白と空の要素を落として分ける（手で書いた`.env`の「a, b」や末尾のカンマ）。"""
+    return [item for item in (part.strip() for part in value.split(",")) if item]
 
 
 settings = Settings()

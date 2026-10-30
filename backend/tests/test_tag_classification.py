@@ -138,10 +138,3 @@ async def test_the_map_and_the_count_read_the_same_signal(road_graph_engine, kin
     """地図へ出す種別と数える種別は同じ読み替えから導く。別々だと、見えている信号の数と停止の回数が合わない。"""
     assert await _read_kinds(road_graph_engine, traffic.stop_kind_sql, kind, has_traffic_signals) == on_map
     assert await _read_kinds(road_graph_engine, traffic.count_kind_sql, kind, has_traffic_signals) == counted_as
-
-
-async def test_a_kind_missing_from_the_map_falls_back_to_the_given_expression(road_graph_engine):
-    expression = traffic.kind_map_sql("'barrier'", {"crossing": "横断"}, otherwise="'その他'")
-
-    async with road_graph_engine.connect() as conn:
-        assert (await conn.execute(text(f"SELECT {expression}"))).scalar_one() == "その他"

@@ -1,6 +1,7 @@
 import { test } from "@playwright/test";
 import { pathToFileURL } from "node:url";
-import { captureContext, routeToWorktreeBackend, type CaptureScript, type WorktreeBackend } from "./context";
+import { captureContext, type CaptureScript } from "./context";
+import { routeToWorktreeBackend, type WorktreeBackend } from "./worktreeBackend";
 
 // 脚本で進めた画面を撮る段。入口は scripts/capture.mjs で、引数はそこが CAPTURE_OPTIONS に詰めて渡す。
 
@@ -20,7 +21,11 @@ test("画面を撮る", async ({ page }) => {
   await page.setViewportSize(options.viewport);
   if (options.theme) await page.emulateMedia({ colorScheme: options.theme });
   if (options.worktreeBackend) await routeToWorktreeBackend(page, options.worktreeBackend);
-  const context = captureContext(page, { out: options.out, mocked: options.mocked });
+  const context = captureContext(page, {
+    out: options.out,
+    mocked: options.mocked,
+    worktreeBackend: options.worktreeBackend,
+  });
   if (!options.script) {
     await context.open();
     await context.shot("画面");

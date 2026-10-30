@@ -194,12 +194,6 @@ def stop_count_material_ids() -> tuple[str, ...]:
     return tuple(poi_density_material_id(kind) for kind in POI_COUNT_KINDS)
 
 
-# 同じ場所にある同種の点を1つの停止としてまとめる距離（m）。日本のOSMは1つの信号交差点を
-# 流入路ごとの`highway=traffic_signals`と横断歩道位置の`highway=crossing`＋
-# `crossing=traffic_signals`という複数ノードで描くため、ノードを素直に数えると停止回数を
-# 上回る。集計時にこの距離でまとめてから数える。
-POI_CLUSTER_EPS_M = 40.0
-
 #: 道路網の上の1つの場所（停止要因のまとまり・交差点）を、そこに端を持つ区間1本が持つ割合。
 #: 場所へ入る区間と出る区間が半分ずつ持つので、経路がどう通っても合計1回になる。
 PLACE_SHARE_PER_END = 0.5
@@ -341,9 +335,6 @@ _DIRECTION_GROUPS: tuple[tuple[str, dict[str, str]], ...] = (
     ("oneway", _ONEWAY_DIRECTIONS),
     ("junction", {value: DIRECTION_FORWARD for value in sorted(ONEWAY_JUNCTION_VALUES)}),
 )
-
-#: 通行方向を決めるタグの名前（引き当ての順）。説明の文が引く。
-DIRECTION_TAG_KEYS: tuple[str, ...] = tuple(tag_key for tag_key, _values in _DIRECTION_GROUPS)
 
 #: (タグ名, 値, 通行方向, 優先順位)。
 DIRECTION_RULES: tuple[tuple[str, str, str, int], ...] = tuple(

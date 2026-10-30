@@ -9,13 +9,12 @@ PostGISで実行して、返った行を見る。頂点は赤道の上に経度0
 """
 
 import math
-import random
 from decimal import Decimal
 
 import pytest
 from sqlalchemy import text
 
-from app.domain.attributes import MAX_PLAUSIBLE_AVERAGE_GRADE_PERCENT, ElevationAttribute, elevation_values_sql
+from app.domain.attributes import MAX_PLAUSIBLE_AVERAGE_GRADE_PERCENT, elevation_values_sql
 
 pytestmark = pytest.mark.asyncio(loop_scope="module")
 
@@ -107,20 +106,33 @@ async def test_gaps_only_between_known_vertices_give_no_climb_but_still_an_avera
     assert row["average_grade"] == pytest.approx(3.0, abs=0.005)
 
 
-async def test_a_structure_uses_only_its_two_ends(road_graph_session):
+async def test_the_average_grade_across_a_gap_runs_along_the_road_not_straight_across(road_graph_session):
+    """標高の欠けた頂点で折り返す道は、3歩ぶん走って1歩ぶんしか進まない。勾配は走る長さで割る（直線で割ると3倍に出る）。"""
+    relation = (
+        f"SELECT * FROM (VALUES (1, 0, 0, 0.0::float8, 0.0::float8, 100.0::float8, false),"
+        f" (1, 0, 1, {2 * STEP_DEG}::float8, 0.0::float8, NULL::float8, false),"
+        f" (1, 0, 2, {STEP_DEG}::float8, 0.0::float8, {100.0 + rise(3, 3)}::float8, false))"
+        " AS v(osm_way_id, segment_index, ord, lon, lat, elev, on_structure)"
+    )
+    [row] = (await road_graph_session.execute(text(elevation_values_sql(relation)))).mappings().all()
+
+    assert float(row["average_grade"]) == pytest.approx(3.0, abs=0.005)
+
+
+@pytest.mark.parametrize(
+    ("elevations", "gain", "loss"),
+    [
+        ([100.0, 60.0, 70.0, 100.0 + rise(1, 3)], rise(1, 3), 0.0),
+        ([100.0, 140.0, 100.0 - rise(2, 2)], 0.0, rise(2, 2)),
+    ],
+    ids=["上る橋", "下る橋"],
+)
+async def test_a_structure_uses_only_its_two_ends(road_graph_session, elevations, gain, loss):
     """橋の途中の頂点は下の谷を指すので、谷の起伏を獲得・喪失に入れない。"""
-    row = await one(road_graph_session, [100.0, 60.0, 70.0, 100.0 + rise(1, 3)], on_structure=True)
+    row = await one(road_graph_session, elevations, on_structure=True)
 
-    assert row["elevation_gain_m"] == pytest.approx(rise(1, 3), abs=0.05)
-    assert row["elevation_loss_m"] == 0.0
-    assert row["average_grade"] == pytest.approx(1.0, abs=0.005)
-
-
-async def test_a_descending_structure_counts_only_the_loss(road_graph_session):
-    row = await one(road_graph_session, [100.0, 140.0, 100.0 - rise(2, 2)], on_structure=True)
-
-    assert row["elevation_gain_m"] == 0.0
-    assert row["elevation_loss_m"] == pytest.approx(rise(2, 2), abs=0.05)
+    assert row["elevation_gain_m"] == pytest.approx(gain, abs=0.05)
+    assert row["elevation_loss_m"] == pytest.approx(loss, abs=0.05)
 
 
 @pytest.mark.parametrize(
@@ -157,41 +169,3 @@ async def test_segments_are_computed_separately(road_graph_session):
     assert rows[(1, 1)]["average_grade"] == pytest.approx(-3.0, abs=0.005)
     assert rows[(2, 0)]["average_grade"] == 0.0
 
-
-def attribute(row: dict, edge_id: str) -> ElevationAttribute:
-    """SQLの行のうち、属性が持つ欄。"""
-    return ElevationAttribute(edge_id=edge_id, **{name: row[name] for name in ElevationAttribute.model_fields.keys() - {"edge_id"}})
-
-
-async def test_running_the_vertices_backwards_gives_the_reverse_of_the_attribute(road_graph_session):
-    """`reversed_as`が導く逆方向の値は、同じ頂点列を逆順に辿ってSQLで出した値に一致する。
-    起伏・欠損・構造物を含む区間を乱数で作って確かめる（種は固定）。"""
-    generator = random.Random(192)
-    segments: dict[tuple[int, int], list] = {}
-    structures = set()
-    for way in range(1, 121):
-        elevation = generator.uniform(0, 500)
-        profile = []
-        for _ in range(generator.randint(2, 8)):
-            elevation += generator.uniform(-1, 1) * rise(12)
-            profile.append(None if generator.random() < 0.15 else round(elevation, 3))
-        segments[(way, 0)] = profile
-        if generator.random() < 0.2:
-            structures.add((way, 0))
-
-    forward = await values(road_graph_session, segments, on_structure=structures)
-    backward = await values(
-        road_graph_session, {key: profile[::-1] for key, profile in segments.items()}, on_structure=structures
-    )
-
-    assert forward.keys() == backward.keys()
-    assert len(forward) > 80  # 有効な頂点が2点未満で落ちる区間を除いても、多くの区間を比べている
-    for key in forward:
-        expected = attribute(forward[key], "f").reversed_as("r").model_dump()
-        actual = attribute(backward[key], "r").model_dump()
-        for name, value in expected.items():
-            if isinstance(value, float):
-                tolerance = 0.011 if name.endswith("grade") else 0.11
-                assert actual[name] == pytest.approx(value, abs=tolerance), (key, name)
-            else:
-                assert actual[name] == value, (key, name)

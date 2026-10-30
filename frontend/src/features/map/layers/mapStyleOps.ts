@@ -1,6 +1,13 @@
 /** MapLibreの地図インスタンスに対する、どのレイヤーからも使う低水準の操作。 */
-import type { ExpressionSpecification, FilterSpecification, Map as MapLibreMap, StyleSpecification } from "maplibre-gl";
+import type {
+  ErrorEvent as MapLibreErrorEvent,
+  ExpressionSpecification,
+  FilterSpecification,
+  Map as MapLibreMap,
+  StyleSpecification,
+} from "maplibre-gl";
 import { debugLog } from "@/lib/debugLog";
+import palette from "@/types/generated/palette.json";
 
 /** 「面で塗る」レイヤー種。地図の一区画を色で覆い、下にあるものを隠す描き方をまとめて指す
  * （残りのline/symbol/circle/heatmapは線・記号として、面の上に乗って読まれる側）。 */
@@ -25,16 +32,6 @@ function areaLayerAnchorIndex(layers: readonly { id: string; "source-layer"?: st
   return layers.findIndex((layer) => layer["source-layer"] === ROAD_NETWORK_SOURCE_LAYER);
 }
 
-/** 文字に場所を譲る点を差し込む位置（このidのレイヤーの直前＝下へ入る）。基礎地図が最後まで続けて描く記号の並びの
- * 頭を返す。基礎地図は文字（地名・通りの名前・店や駅の印）を最後にまとめて描くが、その前にも記号を挟む（libertyでは道路網の
- * 途中に一方通行の矢印があり、その後ろに橋の線・建物・境界を描く）。最初の記号の層の下に入れると、その後ろの線と面が
- * 点の絵の上に描かれる。
- *
- * 求めるのはこのアプリのレイヤーが載る前（スタイルを読んだ直後）に限る——このアプリの線が最前面にあると、並びの頭が求まらない。 */
-function labelLayerAnchorIndex(layers: readonly { type: string }[]): number {
-  return layers.findLastIndex((layer) => layer.type !== "symbol") + 1;
-}
-
 /** 差し込み位置より後ろにある面レイヤーのid（追加順のまま）。基礎地図が道路より後ろに置いて
  * いる面（建物）を指す。 */
 function basemapAreaLayersAfter(layers: readonly { id: string; type: string }[], anchorIndex: number): string[] {
@@ -43,6 +40,11 @@ function basemapAreaLayersAfter(layers: readonly { id: string; type: string }[],
     .filter((layer) => AREA_LAYER_TYPES.has(layer.type))
     .map((layer) => layer.id);
 }
+
+/** 基礎地図（liberty）の細い道の縁取りの層のid。libertyは引いた縮尺の細い道を縁取りの線だけで描き、その薄い灰は
+ * 雨・標高の面を重ねた地と同じ明るさになって道の並びが消えるので、`prepareBasemap`が源泉の濃い灰へ描き替える。
+ * 配信元のスタイルの層のidで、スキーマの語彙ではない（スタイルが層を改名すると黙って当たらなくなる）。 */
+const MINOR_ROAD_CASING_LAYER_ID = /^(road|bridge|tunnel)_(minor|street|service_track|path_pedestrian)_casing$/;
 
 /** 基礎地図のベクタタイルが店・施設の点を収めているレイヤー名（OpenMapTilesスキーマ）。 */
 const POI_SOURCE_LAYER = "poi";
@@ -84,7 +86,6 @@ interface StyleReadyTag {
   __rcStyleReady?: boolean;
   __rcBasemapPrepared?: boolean;
   __rcAreaLayerAnchorId?: string;
-  __rcLabelLayerAnchorId?: string;
   /** 基礎地図の店・施設を描くレイヤーの配信元の絞り（id → 絞り）。 */
   __rcBasemapPoiFilters?: ReadonlyMap<string, FilterSpecification | undefined>;
 }
@@ -97,6 +98,7 @@ function tagOf(map: MapLibreMap): StyleReadyTag {
  * - 店・施設を描くレイヤーの配信元の絞りを記録する（隠すのは`hideBasemapPois`）
  * - 面レイヤーの差し込み位置を求めて記録し、基礎地図が道路より後ろに置いている面をその手前へ動かす
  * - 文字に場所を譲る点の差し込み位置を求めて記録する
+ * - 細い道の縁取りを源泉の濃い灰へ描き替える
  *
  * 建物を道路より前へ動かすと、基礎地図そのものの見た目も「建物の上に道路」へ変わる。
  * この地図はpitchを持たない（建物は平面の足元だけが描かれる）ため影響は小さく、面レイヤーが
@@ -120,8 +122,11 @@ export function prepareBasemap(map: MapLibreMap): void {
       "source-layer" in layer && layer["source-layer"] === POI_SOURCE_LAYER ? [[layer.id, layer.filter] as const] : [],
     ),
   );
-  tagged.__rcLabelLayerAnchorId = layers[labelLayerAnchorIndex(layers)]?.id;
-  debugLog("map:lifecycle", "文字に場所を譲る点の差し込み位置", { anchorId: tagged.__rcLabelLayerAnchorId ?? null });
+  const recolored = layers.filter((layer) => MINOR_ROAD_CASING_LAYER_ID.test(layer.id)).map((layer) => layer.id);
+  for (const layerId of recolored) {
+    map.setPaintProperty(layerId, "line-color", palette.semantic.basemap_minor_road_casing);
+  }
+  debugLog("map:lifecycle", "基礎地図の細い道の縁取りを描き替えた層", { layers: recolored });
   const anchorIndex = areaLayerAnchorIndex(layers);
   const anchorId = anchorIndex < 0 ? undefined : layers[anchorIndex].id;
   tagged.__rcAreaLayerAnchorId = anchorId;
@@ -145,20 +150,31 @@ export function areaLayerAnchor(map: MapLibreMap): string | undefined {
   return recordedAnchor(map, tagOf(map).__rcAreaLayerAnchorId);
 }
 
-/** 文字に場所を譲る点の差し込み位置（`recordedAnchor`）。 */
-export function labelLayerAnchor(map: MapLibreMap): string | undefined {
-  return recordedAnchor(map, tagOf(map).__rcLabelLayerAnchorId);
-}
-
 /** スタイルを`url`から取り直し、新しいスタイルが読み込まれたら（`style.load`）、次の`prepareBasemap`が新しいスタイルに
  * 対して改めて走るようにしてから`onLoaded`を呼ぶ。準備を解くのは読み込まれたあと——MapLibreの`setStyle`は既定で今の
  * スタイルとの差分を当て、差分が届くまで`getStyle()`は今の（このアプリの層を足し、店・施設を隠した）スタイルを返すので、
- * その間に準備し直すと、隠した後の絞りを配信元の絞りとして記録する。 */
-export function reloadStyle(map: MapLibreMap, url: string, onLoaded: () => void): void {
-  map.once("style.load", () => {
+ * その間に準備し直すと、隠した後の絞りを配信元の絞りとして記録する。
+ *
+ * `url`を取れなかったら`style.load`は来ず、今のスタイルがそのまま残るので、代わりに`onFailed`を呼ぶ。MapLibreは
+ * その失敗を、取りに行ったURLを持つ`error`の出来事でだけ知らせる。 */
+export function reloadStyle(
+  map: MapLibreMap,
+  url: string,
+  handlers: { readonly onLoaded: () => void; readonly onFailed: () => void },
+): void {
+  function handleLoad() {
+    map.off("error", handleError);
     tagOf(map).__rcBasemapPrepared = false;
-    onLoaded();
-  });
+    handlers.onLoaded();
+  }
+  function handleError(event: MapLibreErrorEvent) {
+    if ((event.error as { url?: unknown } | undefined)?.url !== url) return;
+    map.off("style.load", handleLoad);
+    map.off("error", handleError);
+    handlers.onFailed();
+  }
+  map.once("style.load", handleLoad);
+  map.on("error", handleError);
   map.setStyle(url);
 }
 

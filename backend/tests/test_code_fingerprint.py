@@ -1,7 +1,11 @@
-"""コードの指紋（`code_fingerprint.py`）が、モジュールから`import`でたどれる`app`の中のモジュールだけを数えること。
+"""コードの指紋（`code_fingerprint.py`）が、モジュールから`import`でたどれる`app`の中のモジュールと、それらが読み込む
+ライブラリだけを数えること。
 
-コードの置き場（`code_fingerprint.ROOT`）を一時ディレクトリへ移し、そこに小さな`app`を書いて見る。
+コードの置き場（`code_fingerprint.ROOT`）を一時ディレクトリへ移し、そこに小さな`app`を書いて見る。ライブラリは入っている
+本物を読ませ、版を変えたときだけ、配布物の読み出し（`importlib.metadata.distribution`）を差し替える。
 """
+
+import importlib.metadata
 
 import pytest
 
@@ -14,13 +18,13 @@ def app_root(monkeypatch, tmp_path):
         "app/__init__.py": "",
         "app/batch/__init__.py": "",
         # 関数の中の import・相対の import・`from <パッケージ> import <モジュール>` をたどる
-        "app/batch/adapter.py": "import json\nfrom app.batch import helper\n\ndef read():\n"
+        "app/batch/adapter.py": "import json\nimport numpy\nfrom app.batch import helper\n\ndef read():\n"
                                 "    from .lazy import VALUE\n    return VALUE\n",
         "app/batch/helper.py": "from app.domain.rules import LIMIT\n",
         "app/batch/lazy.py": "VALUE = 1\n",
         "app/domain/__init__.py": "",
-        "app/domain/rules.py": "LIMIT = 3\n",
-        "app/batch/unrelated.py": "OTHER = 2\n",
+        "app/domain/rules.py": "from pydantic import BaseModel\n\nLIMIT = 3\n",
+        "app/batch/unrelated.py": "import apscheduler\n\nOTHER = 2\n",
     }
     for name, text in files.items():
         path = tmp_path / name
@@ -36,14 +40,40 @@ def test_modules_reachable_by_import_are_counted(app_root):
         "app.domain.rules"]
 
 
-@pytest.mark.parametrize("changed, differs", [
-    ("app/batch/lazy.py", True),
-    ("app/domain/rules.py", True),
-    ("app/batch/unrelated.py", False),
-])
-def test_the_fingerprint_changes_only_with_a_reachable_module(app_root, changed, differs):
-    before = code_fingerprint.code_fingerprint("app.batch.adapter")
-    path = app_root / changed
-    path.write_text(path.read_text(encoding="utf-8") + "# 直した\n", encoding="utf-8")
+class _Bumped:
+    """版だけを上げた配布物。"""
 
-    assert (code_fingerprint.code_fingerprint("app.batch.adapter") != before) is differs
+    def __init__(self, dist: importlib.metadata.Distribution) -> None:
+        self._dist = dist
+
+    @property
+    def version(self) -> str:
+        return f"{self._dist.version}.post1"
+
+    def __getattr__(self, name: str):
+        return getattr(self._dist, name)
+
+
+def _bump(monkeypatch, bumped: str) -> None:
+    """配布物`bumped`の版を上げる。"""
+    read = importlib.metadata.distribution
+
+    def distribution(name: str):
+        dist = read(name)
+        return _Bumped(dist) if dist.metadata["Name"].lower() == bumped else dist
+
+    monkeypatch.setattr(importlib.metadata, "distribution", distribution)
+
+
+# 段が読み込むライブラリ・それが依存するライブラリの版が変わったら、段を流し直す。読み込まないライブラリの版だけが変われば、
+# 流し直さない（変われば、使わないライブラリの更新のたびに派生の作り直しが全段流れる）。
+@pytest.mark.parametrize(("bumped", "changes"), [
+    ("numpy", True),
+    # pydantic が依存する
+    ("annotated-types", True),
+    ("apscheduler", False),
+])
+def test_library_versions_change_only_with_libraries_the_module_reads(app_root, monkeypatch, bumped, changes):
+    before = code_fingerprint.library_versions("app.batch.adapter")
+    _bump(monkeypatch, bumped)
+    assert (code_fingerprint.library_versions("app.batch.adapter") != before) is changes

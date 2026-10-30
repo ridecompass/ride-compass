@@ -255,38 +255,7 @@
       "cobblestone": "玉石舗装",
       "unhewn_cobblestone": "玉石舗装[未加工]"
     },
-    "tile_property": null
-  },
-  {
-    "material_id": "surface_class",
-    "label": "路面の区分 - surface_class",
-    "name": "路面の区分",
-    "value_labels": {
-      "paved": "舗装",
-      "paving_stones": "敷石・レンガ",
-      "compacted": "締め固め・細砂利",
-      "gravel": "砂利・未舗装",
-      "soil": "土・草・泥・砂",
-      "cobblestone": "石畳",
-      "other": "その他"
-    },
-    "tile_property": "surface_class"
-  },
-  {
-    "material_id": "surface_estimate",
-    "label": "路面の見込み - surface_estimate",
-    "name": "路面の見込み",
-    "value_labels": {
-      "paved": "舗装",
-      "paving_stones": "敷石・レンガ",
-      "compacted": "締め固め・細砂利",
-      "gravel": "砂利・未舗装",
-      "soil": "土・草・泥・砂",
-      "cobblestone": "石畳",
-      "unknown_track": "不明[農道・林道]",
-      "unknown_road": "不明[一般の道]"
-    },
-    "tile_property": null
+    "tile_property": "surface"
   },
   {
     "material_id": "highway_is_cycleway",
@@ -324,15 +293,124 @@
     "tile_property": null
   },
   {
-    "material_id": "cycleway_class",
-    "label": "自転車の走る場所 - cycleway_class",
-    "name": "自転車の走る場所",
+    "material_id": "bicycle",
+    "label": "自転車の通行 - bicycle",
+    "name": "自転車の通行",
     "value_labels": {
-      "separated": "自転車道",
-      "lane": "自転車レーン",
-      "shared": "共用の道"
+      "yes": "通ってよい",
+      "no": "通行禁止",
+      "designated": "通行を指定",
+      "permissive": "所有者の許しで通ってよい",
+      "dismount": "降りて押して通る",
+      "use_sidepath": "並ぶ専用の道を使う",
+      "destination": "目的地へ行くときだけ通ってよい",
+      "private": "関係者だけ"
     },
-    "tile_property": "cycleway_class"
+    "tile_property": "bicycle"
+  },
+  {
+    "material_id": "foot",
+    "label": "歩行者の通行 - foot",
+    "name": "歩行者の通行",
+    "value_labels": {
+      "yes": "通ってよい",
+      "no": "通行禁止",
+      "designated": "通行を指定",
+      "permissive": "所有者の許しで通ってよい",
+      "dismount": "降りて押して通る",
+      "use_sidepath": "並ぶ専用の道を使う",
+      "destination": "目的地へ行くときだけ通ってよい",
+      "private": "関係者だけ"
+    },
+    "tile_property": "foot"
+  },
+  {
+    "material_id": "segregated",
+    "label": "歩行者との分離 - segregated",
+    "name": "歩行者との分離",
+    "value_labels": {
+      "yes": "歩行者と分けて通る",
+      "no": "歩行者と混ざって通る"
+    },
+    "tile_property": "segregated"
+  },
+  {
+    "material_id": "motorroad",
+    "label": "自動車専用道路 - motorroad",
+    "name": "自動車専用道路",
+    "value_labels": {
+      "yes": "自動車専用道路",
+      "no": "自動車専用でない"
+    },
+    "tile_property": "motorroad"
+  },
+  {
+    "material_id": "cycleway",
+    "label": "自転車の通り道[cycleway] - cycleway",
+    "name": "自転車の通り道[cycleway]",
+    "value_labels": {
+      "track": "自転車道[車道と分離]",
+      "lane": "自転車レーン",
+      "shared_lane": "車と共用の帯",
+      "share_busway": "バスと共用の帯",
+      "opposite_lane": "逆向きの自転車レーン",
+      "opposite": "自転車だけ逆向きに通れる",
+      "separate": "別の道として描いた自転車道",
+      "shoulder": "路肩",
+      "no": "なし"
+    },
+    "tile_property": "cycleway"
+  },
+  {
+    "material_id": "cycleway_left",
+    "label": "自転車の通り道[cycleway:left] - cycleway_left",
+    "name": "自転車の通り道[cycleway:left]",
+    "value_labels": {
+      "track": "自転車道[車道と分離]",
+      "lane": "自転車レーン",
+      "shared_lane": "車と共用の帯",
+      "share_busway": "バスと共用の帯",
+      "opposite_lane": "逆向きの自転車レーン",
+      "opposite": "自転車だけ逆向きに通れる",
+      "separate": "別の道として描いた自転車道",
+      "shoulder": "路肩",
+      "no": "なし"
+    },
+    "tile_property": "cycleway_left"
+  },
+  {
+    "material_id": "cycleway_right",
+    "label": "自転車の通り道[cycleway:right] - cycleway_right",
+    "name": "自転車の通り道[cycleway:right]",
+    "value_labels": {
+      "track": "自転車道[車道と分離]",
+      "lane": "自転車レーン",
+      "shared_lane": "車と共用の帯",
+      "share_busway": "バスと共用の帯",
+      "opposite_lane": "逆向きの自転車レーン",
+      "opposite": "自転車だけ逆向きに通れる",
+      "separate": "別の道として描いた自転車道",
+      "shoulder": "路肩",
+      "no": "なし"
+    },
+    "tile_property": "cycleway_right"
+  },
+  {
+    "material_id": "cycleway_both",
+    "label": "自転車の通り道[cycleway:both] - cycleway_both",
+    "name": "自転車の通り道[cycleway:both]",
+    "value_labels": {
+      "track": "自転車道[車道と分離]",
+      "lane": "自転車レーン",
+      "shared_lane": "車と共用の帯",
+      "share_busway": "バスと共用の帯",
+      "opposite_lane": "逆向きの自転車レーン",
+      "opposite": "自転車だけ逆向きに通れる",
+      "separate": "別の道として描いた自転車道",
+      "shoulder": "路肩",
+      "no": "なし"
+    },
+    "tile_property": "cycleway_both"
   },
   {
     "material_id": "smoothness",

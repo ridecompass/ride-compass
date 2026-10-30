@@ -1,15 +1,16 @@
 """`domain/dynamic_way_values.py`——ルートを出す前の地図が塗る値を、フィーチャーの材料と配信のサービスが配る値から
 求めること（`paint_feature_values`）と、道1本のフィーチャーの値を区間から畳むこと（`paint_folded_feature_values`）。
-地図へ配る軸の木（`axis_way_value_formula`）を道ごとの材料（`axis_way_materials`）で評価した値が、その塗りと合うこと。
+地図へ配る軸の木（`axis_way_value_formula`・`map_way_value_formula`）を道ごとの材料（`axis_way_materials`・
+`map_way_materials`）で評価した値が、その塗りと合うこと。
 
 材料カタログは本番の正本を読まず、性質だけを持つ架空の材料を使う（塗る値の種類は`domain/map_paint.py`を、区間ごとに
 値が違いうるか・密度の軸かは`domain/material_catalog.py`を通るので、両方の名前空間を差し替える）。
 
 ここで見ないもの:
 - 塗る値の種類・段の境界・凡例の目盛り（`map_paint`） → `test_map_paint.py`
-- 折れ線の得点・対応表・0次条件の評価そのもの（`domain/axis_definitions.py: evaluate_axis_array`） → `test_axis_definitions.py`
+- 折れ線の得点・対応表・0次条件の評価そのもの（`domain/axis_evaluation.py: evaluate_axis_array`） → `test_axis_definitions.py`
 - 軸から配るサービスを選ぶこと・要求の条件の組み立て・配信のAPI → `test_region_routes.py`
-- 木の演算そのもの → `test_way_value_formula.py`、勾配と風の材料の木 → `test_gradient.py`・`test_wind.py`
+- 木の演算そのもの → `test_way_value_formula.py`、風の材料の木 → `test_wind.py`
 - 区間の材料を読むこと → `test_feature_materials_in_tile.py`、勾配の区間ごとの向き → `test_gradient_way_service.py`
 """
 
@@ -21,9 +22,7 @@ import pytest
 from app.domain import map_paint, material_catalog
 from app.domain.attributes import CategoricalColumn, EdgeMaterialArrays
 from app.domain.axis_definitions import (
-    BreakpointLinearShape,
     CategoricalShape,
-    MaterialTerm,
     PriorityCondition,
 )
 from app.domain.difficulty import weighted_mean_by_distance
@@ -36,58 +35,41 @@ from app.domain.dynamic_way_values import (
     axis_with_dependencies,
     by_direction_material,
     leaf_materials,
+    map_way_materials,
+    map_way_value_formula,
     paint_feature_values,
     paint_folded_feature_values,
 )
 from app.domain.evaluation import build_static_edge_score_matrix
 from app.domain.gradient import ROAD_BEARING_LEAF, gradient_by_direction
 from app.domain.map_paint import SignedMaterialMapValue
-from app.domain.material_catalog import CoverageExcluded, MaterialSpec
 from app.domain.route import DensityScoreInput, RouteSegmentDetail, merge_axis_difficulties
+from app.domain.search_graph import EDGE_VALUE_DTYPE
+from app.domain.tuning import TUNING_VALUES
 from app.domain.way_value_formula import WayValueFormula, feature, way_values_from_formula
 from app.domain.wind import WIND_DIRECTION_LEAF, WIND_DRAG_RATIO_WAY_FORMULA, WIND_SPEED_LEAF
-from tests.axis_system_fixture import replaced_axis_definitions, shaped_axis
+from tests.axis_system_fixture import linear, replaced_axis_definitions, shaped_axis
+from tests.material_fixture import material, replace_material_catalog
 
 
-def _material(material_id, dtype="numeric", unit="", value_sql=None, additive=False) -> MaterialSpec:
-    return MaterialSpec(
-        material_id=material_id,
-        label=material_id,
-        description="架空の材料",
-        dtype=dtype,
-        unit=unit,
-        tile_property=None,
-        value_sql=value_sql or f"w.{material_id}",
-        additive=additive,
-        coverage=CoverageExcluded(reason="架空", missing_semantics="definite"),
-    )
-
-
-CATALOG = {spec.material_id: spec for spec in [
-    _material("num_a", unit="%"), _material("num_b"), _material("bool_a", dtype="boolean"),
-    _material("cat_a", dtype="categorical"),
+CATALOG = [
+    material("num_a", unit="%"), material("num_b"), material("bool_a", dtype="boolean"),
+    material("cat_a", dtype="categorical"),
     # 区間ごとに値が違いうる材料（値式が区間の値を読む）: 土地被覆のような割合・勾配のような向きのある値・1kmあたりの回数。
-    _material("seg_cover", value_sql="em.cover"), _material("seg_grade", unit="%", value_sql="em.grade"),
-    _material("seg_count", value_sql="em.count / (re.distance_m / 1000.0)", additive=True),
+    material("seg_cover", value_sql="em.cover"), material("seg_grade", unit="%", value_sql="em.grade"),
+    material("seg_count", value_sql="em.count / (re.distance_m / 1000.0)", additive=True),
     # 道1本で決まる材料（道のタグ）。
-    _material("way_num", value_sql="w.num"),
-]}
+    material("way_num", value_sql="w.num"),
+]
 
 
 @pytest.fixture
 def catalog(monkeypatch):
-    """材料カタログ（架空の材料だけ）。"""
-    monkeypatch.setattr(map_paint, "MATERIAL_CATALOG", CATALOG)
-    monkeypatch.setattr(material_catalog, "MATERIAL_CATALOG", CATALOG)
+    """材料カタログ（架空の材料を足したもの。所要時間が読む材料は本物の宣言を残す）。"""
+    replace_material_catalog(monkeypatch, [*material_catalog.MATERIAL_CATALOG.values(), *CATALOG])
 
 
 pytestmark = pytest.mark.usefixtures("catalog")
-
-
-def _line(*materials, breakpoints=((0.0, 0.0), (10.0, 100.0)), preprocess="identity") -> BreakpointLinearShape:
-    return BreakpointLinearShape(
-        terms=[MaterialTerm(material=m) for m in materials], breakpoints=list(breakpoints), preprocess=preprocess
-    )
 
 
 def _axis(axis_id, shape, **fields):
@@ -96,14 +78,14 @@ def _axis(axis_id, shape, **fields):
 
 #: 地図に出る軸の形を1本ずつ。どれも公開軸で、`axis_internal`だけが参照される内部軸。
 AXES = {axis.axis_id: axis for axis in [
-    _axis("axis_line", _line("num_a", "bool_a")),
+    _axis("axis_line", linear("num_a", "bool_a")),
     _axis("axis_categorical", CategoricalShape(material="cat_a", mapping={"x": 10.0, "y": 90.0})),
     _axis("axis_flag", CategoricalShape(material="bool_a", mapping={"true": 80.0, "false": 20.0})),
-    shaped_axis(_line("num_b"), axis_id="axis_internal"),
-    _axis("axis_reference", _line("axis_internal", "num_a", breakpoints=((0.0, 0.0), (200.0, 100.0)))),
-    _axis("axis_abs", _line("num_a", "num_b", preprocess="abs")),
-    _axis("axis_signed", _line("num_b", preprocess="abs")),
-    _axis("axis_condition", _line("num_a"), priority_overrides=[PriorityCondition(material="cat_a", equals="y", value=0.0)]),
+    shaped_axis(linear("num_b"), axis_id="axis_internal"),
+    _axis("axis_reference", linear("axis_internal", "num_a", breakpoints=((0.0, 0.0), (200.0, 100.0)))),
+    _axis("axis_abs", linear("num_a", "num_b", preprocess="abs")),
+    _axis("axis_signed", linear("num_b", preprocess="abs")),
+    _axis("axis_condition", linear("num_a"), priority_overrides=[PriorityCondition(material="cat_a", equals="y", value=0.0)]),
 ]}
 
 #: 欠けた値（NaN・値なし）と、正負の値・分類の値を混ぜた行。
@@ -111,6 +93,9 @@ NUM_A = [3.0, -12.0, np.nan, 7.5, 0.0]
 NUM_B = [-4.0, np.nan, 2.0, 15.0, 0.0]
 BOOL_A = [1.0, 0.0, np.nan, 1.0, 0.0]
 CAT_A = ["x", "y", None, "z", "y"]
+#: 行ごとの地物の鍵。
+KEYS = [f"feature-{row}" for row in range(len(NUM_A))]
+PUBLISHED_AXES = [axis_id for axis_id, axis in AXES.items() if axis.is_published]
 
 
 def _arrays() -> EdgeMaterialArrays:
@@ -119,7 +104,6 @@ def _arrays() -> EdgeMaterialArrays:
     return EdgeMaterialArrays(
         numeric_ids=("num_a", "num_b", "bool_a"), numeric_values=np.column_stack([NUM_A, NUM_B, BOOL_A]),
         categorical_ids=("cat_a",), categorical_columns=(CategoricalColumn.encode(CAT_A),),
-        route_flag_ids=(), route_flags=np.empty((n, 0), dtype=bool),
         distance_m=np.full(n, 100.0), bearing_deg=nan, mid_lat=nan, mid_lon=nan,
         start_elevation_m=nan, end_elevation_m=nan, elevation_gain_m=nan, elevation_loss_m=nan,
     )
@@ -128,14 +112,13 @@ def _arrays() -> EdgeMaterialArrays:
 # 地図の色と、探索が同じ道に付ける得点が、同じ材料なら同じになる。食い違うと、地図で良く見えた道を探索が避ける。
 # 符号付き材料を塗る軸は、得点ではなく材料の値（符号つき）を塗る。得点で求めると（区間インスペクタ）、どの軸も探索の得点。
 @pytest.mark.parametrize("as_difficulty", [False, True])
-@pytest.mark.parametrize("axis_id", [axis_id for axis_id, axis in AXES.items() if axis.is_published])
+@pytest.mark.parametrize("axis_id", PUBLISHED_AXES)
 def test_the_map_paints_the_same_value_the_search_scores(axis_id, as_difficulty):
     arrays = _arrays()
-    keys = [f"feature-{row}" for row in range(len(arrays))]
     with replaced_axis_definitions(AXES):
         matrix = build_static_edge_score_matrix(arrays, {})
 
-    painted = paint_feature_values(axis_id, AXES, keys, arrays.columns(), {}, as_difficulty=as_difficulty)
+    painted = paint_feature_values(axis_id, AXES, KEYS, arrays.columns(), {}, as_difficulty=as_difficulty)
 
     paint = map_paint.map_paint(AXES[axis_id]).value
     if isinstance(paint, SignedMaterialMapValue) and not as_difficulty:
@@ -143,31 +126,18 @@ def test_the_map_paints_the_same_value_the_search_scores(axis_id, as_difficulty)
     else:
         expected = matrix.axis_scores[:, matrix.axis_ids.index(axis_id)]
     assert np.isfinite(expected).any()
-    np.testing.assert_array_equal([painted.get(key, np.nan) for key in keys], expected)
-
-
-def test_values_from_a_service_replace_the_material_of_the_tile():
-    """配信のサービスが返さなかったフィーチャーは「データなし」、Noneで返したフィーチャーは「向きで決まらない」に
-    なり、地図で見分けられる。タイルの材料に同じ材料の値があっても、サービスの値で塗る。返さなかったフィーチャーを
-    先に置く（その後ろのフィーチャーの値を落とさないことも見る）。"""
-    keys = ["feature-2", "feature-0", "feature-1"]
-    tile = {"num_a": np.array([1.0, 1.0, 1.0])}
-
-    painted = paint_feature_values(
-        "axis_signed", AXES, keys, tile, {"num_b": {"feature-0": -4.0, "feature-1": None, "elsewhere": 9.0}},
-        as_difficulty=False,
-    )
-
-    assert painted == {"feature-0": -4.0, "feature-1": None}
+    # 探索は得点を`EDGE_VALUE_DTYPE`の桁で持つので、その刻みで比べる。
+    np.testing.assert_allclose([painted.get(key, np.nan) for key in KEYS], expected,
+                               rtol=np.finfo(EDGE_VALUE_DTYPE).eps, atol=0)
 
 
 #: 道1本の値を区間から畳む軸と、畳まない軸（密度の軸）。
 FOLDED_AXES = {axis.axis_id: axis for axis in [
-    _axis("axis_cover", _line("seg_cover", "way_num", breakpoints=((0.0, 0.0), (5.0, 80.0), (20.0, 100.0)))),
-    _axis("axis_density", _line("seg_count")),
-    shaped_axis(_line("seg_count"), axis_id="axis_internal_density"),
-    _axis("axis_composite", _line("axis_internal_density", "way_num", breakpoints=((0.0, 0.0), (30.0, 90.0), (60.0, 100.0)))),
-    _axis("axis_grade", _line("seg_grade", preprocess="abs", breakpoints=((0.0, 0.0), (3.0, 30.0), (10.0, 100.0)))),
+    _axis("axis_cover", linear("seg_cover", "way_num", breakpoints=((0.0, 0.0), (5.0, 80.0), (20.0, 100.0)))),
+    _axis("axis_density", linear("seg_count")),
+    shaped_axis(linear("seg_count"), axis_id="axis_internal_density"),
+    _axis("axis_composite", linear("axis_internal_density", "way_num", breakpoints=((0.0, 0.0), (30.0, 90.0), (60.0, 100.0)))),
+    _axis("axis_grade", linear("seg_grade", preprocess="abs", breakpoints=((0.0, 0.0), (3.0, 30.0), (10.0, 100.0)))),
 ]}
 
 #: 道ごとの区間（長さm・割合・向きを付けた勾配・1kmあたりの回数）。値の無い区間と、割合の値が1つも無い道（先頭）と、
@@ -214,7 +184,7 @@ def _route_values(segments: FeatureSegments, grade: np.ndarray) -> dict[str, dic
         numeric_ids=("seg_cover", "seg_grade", "seg_count", "way_num"),
         numeric_values=np.column_stack([segments.columns["seg_cover"], grade, segments.columns["seg_count"],
                                         [WAY_NUM[owner] for owner in owners]]),
-        categorical_ids=(), categorical_columns=(), route_flag_ids=(), route_flags=np.empty((n, 0), dtype=bool),
+        categorical_ids=(), categorical_columns=(),
         distance_m=segments.distance_m, bearing_deg=nan, mid_lat=nan, mid_lon=nan,
         start_elevation_m=nan, end_elevation_m=nan, elevation_gain_m=nan, elevation_loss_m=nan,
     )
@@ -225,7 +195,7 @@ def _route_values(segments: FeatureSegments, grade: np.ndarray) -> dict[str, dic
         distance_km = float(segments.distance_m[row]) / 1000
         details.setdefault(owner, []).append(RouteSegmentDetail(
             start_latitude=0.0, start_longitude=0.0, end_latitude=0.0, end_longitude=0.0,
-            cumulative_distance_km=0.0, distance_km=distance_km, elevations=[],
+            cumulative_distance_km=0.0, distance_km=distance_km, edge_start=0, edge_end=1, elevations=[],
             road_classes={}, axis_difficulties={axis_id: float(score) for axis_id, score
                                in zip(matrix.axis_ids, matrix.axis_scores[row]) if not np.isnan(score)},
         ).with_density_inputs({
@@ -334,6 +304,16 @@ CONDITIONS = [{"bearing_deg": 0.0, "speed_kmh": 20.0}, {"bearing_deg": 135.0, "s
               {"bearing_deg": 270.0, "speed_kmh": 12.0}]
 
 
+def _wind_and_grade_leaves() -> dict[str, np.ndarray]:
+    """行ごとの風と勾配の葉。風の無い道と勾配の無い道（feature-1）は値が無く、道の向きが90度の道（feature-2）は
+    走行方位0度で向きで決まらない。"""
+    return {
+        WIND_SPEED_LEAF: np.array([4.0, np.nan, 7.5, 2.0, 0.0]),
+        WIND_DIRECTION_LEAF: np.array([0.0, 200.0, 90.0, 315.0, 45.0]),
+        GRADE_LEAF: np.array(NUM_B), ROAD_BEARING_LEAF: np.array([10.0, 300.0, 90.0, 300.0, np.nan]),
+    }
+
+
 def _served_for(axis_id, definitions, served):
     return {material: formula for material, formula in served.items()
             if material in leaf_materials(axis_with_dependencies(axis_id, definitions))}
@@ -357,37 +337,66 @@ def _service_values(served, keys, leaves, conditions):
 # 食い違うと、向きを変えた地図と区間インスペクタが同じ道に違う値を出す。条件で変わる材料（風）を読む軸は木を開き、
 # 向きだけで決まる材料（勾配）を読む軸は順向き・逆向きの値を選び、どちらも読まない軸は値そのものを配る。
 @pytest.mark.parametrize("as_difficulty", [False, True])
-@pytest.mark.parametrize("axis_id", [axis_id for axis_id, axis in AXES.items() if axis.is_published])
+@pytest.mark.parametrize("axis_id", PUBLISHED_AXES)
 def test_the_formula_gives_the_value_the_map_is_served_for_a_way(axis_id, as_difficulty):
-    keys = [f"feature-{row}" for row in range(len(NUM_A))]
     columns = _arrays().columns()
     served = _served_for(axis_id, AXES, {"num_a": WIND, "num_b": GRADE})
     tile = {material: column for material, column in columns.items() if material not in served}
-    # 風の無い道と勾配の無い道（feature-1）は値が無く、道の向きが90度の道（feature-2）は走行方位0度で向きで決まらない。
-    leaves = {
-        WIND_SPEED_LEAF: np.array([4.0, np.nan, 7.5, 2.0, 0.0]),
-        WIND_DIRECTION_LEAF: np.array([0.0, 200.0, 90.0, 315.0, 45.0]),
-        GRADE_LEAF: np.array(NUM_B), ROAD_BEARING_LEAF: np.array([10.0, 300.0, 90.0, 300.0, np.nan]),
-    }
-    inputs = TileWayInputs(feature_keys=keys, materials=tile, leaves=leaves)
+    leaves = _wind_and_grade_leaves()
+    inputs = TileWayInputs(feature_keys=KEYS, materials=tile, leaves=leaves)
 
-    expected = [paint_feature_values(axis_id, AXES, keys, tile, _service_values(served, keys, leaves, conditions),
+    expected = [paint_feature_values(axis_id, AXES, KEYS, tile, _service_values(served, KEYS, leaves, conditions),
                                      as_difficulty=as_difficulty) for conditions in CONDITIONS]
 
     assert _tree_values(axis_id, AXES, served, inputs, as_difficulty) == expected
 
 
+# 葉を配らない材料（風）を読む軸は、地図の要求の条件で値まで求めて配る。地図の色が区間インスペクタ・探索の値と違う段に
+# なると、同じ道・時刻・向き・速さで地図と内訳が食い違う。葉が地図へ出ると、予報の値をそのまま外へ出すことになる。
+@pytest.mark.parametrize("axis_id", PUBLISHED_AXES)
+def test_an_axis_reading_withheld_leaves_is_served_its_value_under_the_maps_conditions(axis_id):
+    columns = _arrays().columns()
+    served = _served_for(
+        axis_id, AXES, {"num_a": ServedMaterialFormula(WIND_DRAG_RATIO_WAY_FORMULA, withholds_leaves=True), "num_b": GRADE})
+    tile = {material: column for material, column in columns.items() if material not in served}
+    leaves = _wind_and_grade_leaves()
+    inputs = TileWayInputs(feature_keys=KEYS, materials=tile, leaves=leaves)
+    formula = map_way_value_formula(axis_id, AXES, served)
+    assert formula is not None
+    formula = WayValueFormula.model_validate_json(formula.model_dump_json())
+
+    for conditions in CONDITIONS:
+        served_leaves = map_way_materials(axis_id, AXES, served, inputs, conditions)
+        expected = paint_feature_values(axis_id, AXES, KEYS, tile, _service_values(served, KEYS, leaves, conditions),
+                                        as_difficulty=False)
+        assert way_values_from_formula(formula, KEYS, served_leaves, conditions) == expected
+        if "num_a" in served:
+            assert not set(served_leaves) & {WIND_SPEED_LEAF, WIND_DIRECTION_LEAF}
+
+
 def test_the_formula_tells_a_way_undetermined_by_bearing_from_a_way_without_a_value():
     """向きで決まらない道は「向きで決まらない」、値の無い道は「データなし」と、木の値でも塗り分けられる。"""
-    keys = [f"feature-{row}" for row in range(len(NUM_A))]
     leaves = {GRADE_LEAF: np.array(NUM_B), ROAD_BEARING_LEAF: np.array([10.0, 300.0, 90.0, 300.0, np.nan])}
-    inputs = TileWayInputs(feature_keys=keys, materials={}, leaves=leaves)
+    inputs = TileWayInputs(feature_keys=KEYS, materials={}, leaves=leaves)
 
     values = _tree_values("axis_signed", AXES, {"num_b": GRADE}, inputs, as_difficulty=False)[0]
 
     assert values["feature-0"] == -4.0
     assert values["feature-2"] is None
     assert "feature-1" not in values
+
+
+@pytest.mark.parametrize(("band_deg", "expected"), [(None, -4.0), (25.0, None)])
+def test_the_band_undetermined_by_bearing_follows_the_calibrated_value(monkeypatch, band_deg, expected):
+    """管理画面で直角からの幅を広げると、次に組む木から、走行方位と70度の道も向きで決まらない道になる。"""
+    if band_deg is not None:
+        monkeypatch.setitem(TUNING_VALUES, "gradient.perpendicular_band_deg", band_deg)
+    leaves = {GRADE_LEAF: np.array(NUM_B), ROAD_BEARING_LEAF: np.full(len(NUM_A), 70.0)}
+    inputs = TileWayInputs(feature_keys=KEYS, materials={}, leaves=leaves)
+
+    values = _tree_values("axis_signed", AXES, {"num_b": GRADE}, inputs, as_difficulty=False)[0]
+
+    assert values["feature-0"] == expected
 
 
 # 引いた地図では、道1本の値を区間から畳む。勾配の軸は畳んだ順向き・逆向きの値を木が向きで選ぶ。区間も勾配も無い道

@@ -32,6 +32,13 @@ export function useCopyToClipboard(): {
     };
   }, []);
 
+  // 失敗したら前のコピーの「コピー済み」も消す（残すと、失敗の文と並んで成功したように見える）。
+  const fail = (err: unknown) => {
+    if (timerRef.current !== null) clearTimeout(timerRef.current);
+    setCopied(false);
+    setError(describeFailure(err));
+  };
+
   const copy = (text: string) => {
     setError(null);
     try {
@@ -42,9 +49,9 @@ export function useCopyToClipboard(): {
           if (timerRef.current !== null) clearTimeout(timerRef.current);
           timerRef.current = setTimeout(() => setCopied(false), COPIED_RESET_MS);
         })
-        .catch((err: unknown) => setError(describeFailure(err)));
+        .catch(fail);
     } catch (err) {
-      setError(describeFailure(err));
+      fail(err);
     }
   };
 

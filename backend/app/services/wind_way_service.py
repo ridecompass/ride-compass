@@ -3,7 +3,7 @@
 道ごとの材料は、その道の中ほどの風速・風向で、走行方位と想定速度には依らない。走行方位・想定速度は**ユーザーが
 指定した単一の値**（全道路共通）で、地図と配信が式の木（`domain/wind.py: WIND_DRAG_RATIO_WAY_FORMULA`）で当てる
 （ルートを出す前は道を走る向きが決まっていない）。予報の地点と時刻の選び方はルートの区間と同じ
-（`domain/wind.py: WindLattice`・`domain/wind.py: WindForecastSeries`）で、値の式もルートの区間と同じ式の木から
+（MSMの格子点、`domain/msm.py: MsmBlock`・`domain/wind.py: WindForecastSeries`）で、値の式もルートの区間と同じ式の木から
 組む（`domain/wind.py: wind_drag_ratio_formula`）。
 
 制御フローの詳細はdocs/modules/backend/dynamic-way-values.md「`WindWayService`」節参照。
@@ -21,7 +21,7 @@ from app.domain.time_zone import JST, as_series_time
 from app.domain.wind import WIND_DIRECTION_LEAF, WIND_DRAG_RATIO_WAY_FORMULA, WIND_SPEED_LEAF
 from app.infrastructure.debug_log import log_external_call, log_throttled_warning
 from app.infrastructure.road_graph_repository import RoadGraphRepository
-from app.services.feature_midpoints import feature_midpoint_arrays
+from app.services.feature_midpoints import TileMidpoints
 from app.services.weather_service import WeatherService
 
 _CATEGORY = "region:wind-way-penalty"
@@ -37,8 +37,8 @@ class WindConditions:
 
 
 class WindWayService:
-    def __init__(self, repository: RoadGraphRepository, weather_service: WeatherService):
-        self._repository = repository
+    def __init__(self, midpoints: TileMidpoints, weather_service: WeatherService):
+        self._midpoints = midpoints
         self._weather_service = weather_service
 
     #: 返す生値の材料id。この材料を参照する軸の配信を担当する。
@@ -47,13 +47,16 @@ class WindWayService:
     conditions_type = WindConditions
 
     @classmethod
-    def build(cls, repository: RoadGraphRepository, weather_service: WeatherService, material_id: str) -> "WindWayService":
+    def build(
+        cls, repository: RoadGraphRepository, weather_service: WeatherService, midpoints: TileMidpoints, material_id: str,
+    ) -> "WindWayService":
         """登録テーブルから呼ぶための統一シグネチャ。依存の要否はサービスごとに違い、風の材料は1つだけ。"""
-        return cls(repository=repository, weather_service=weather_service)
+        return cls(midpoints=midpoints, weather_service=weather_service)
 
     @classmethod
     def material_formula(cls, material_id: str) -> ServedMaterialFormula:
-        return ServedMaterialFormula(WIND_DRAG_RATIO_WAY_FORMULA)
+        # 葉は予報の風速・風向そのもので、道ごとの地点の予報として外へ出せない。
+        return ServedMaterialFormula(WIND_DRAG_RATIO_WAY_FORMULA, withholds_leaves=True)
 
     async def get_way_materials(self, z: int, x: int, y: int, at: datetime | None) -> dict[str, dict[str, float]]:
         """指定タイル内のフィーチャーごとの、時刻`at`（省略すると今）の風速（m/s）と風向（度）。
@@ -65,7 +68,7 @@ class WindWayService:
         bbox = tile_bounds_lonlat(z, x, y)
 
         with log_external_call(_CATEGORY, z=z, x=x, y=y) as fields:
-            features = await feature_midpoint_arrays(self._repository, z, x, y, bbox, fields)
+            features = await self._midpoints.arrays(z, x, y, fields)
             if features is None:
                 return {}
             keys, latitudes, longitudes = features
@@ -77,14 +80,14 @@ class WindWayService:
                 max_longitude=max(bbox.max_longitude, float(longitudes.max())),
             ))
             if series is None:
-                fields["wind_grid"] = "unavailable"
-                log_throttled_warning(_CATEGORY, "風の評価軸配信の風グリッド取得に失敗 z=%d x=%d y=%d", z, x, y)
+                fields["msm_grid_points"] = "unavailable"
+                log_throttled_warning(_CATEGORY, "風の評価軸配信のMSMの格子点の読み出しに失敗 z=%d x=%d y=%d", z, x, y)
                 return {}
             # ルートの区間は予報の先を端の値で延ばすが、地図では延ばした値を当てにならない色として
             # 見せないよう塗らない。
             if not series.covers(target):
-                fields["wind_grid"] = "out_of_range"
-                log_throttled_warning(_CATEGORY, "風の評価軸配信の時刻が風グリッド範囲外 z=%d x=%d y=%d", z, x, y)
+                fields["msm_grid_points"] = "out_of_range"
+                log_throttled_warning(_CATEGORY, "風の評価軸配信の時刻がMSMの格子点の予報の期間外 z=%d x=%d y=%d", z, x, y)
                 return {}
 
             speed, direction = series.sample(target, np.zeros(len(keys)), series.lattice.points_of(latitudes, longitudes))

@@ -93,6 +93,21 @@ def _tile_material_joins(expressions: Iterable[str]) -> str:
                     ) re
 """
 
+#: 路面タイルがフィーチャーごとに焼くプロパティの列（フィーチャーは別名`src`）。押した所に近い道（`ROADS_AT_SQL`）も
+#: 同じ列を返し、地図の小窓はどちらから来たプロパティも同じに読む。
+_FEATURE_PROPERTY_COLUMNS_SQL = f"""                    src.feature_key AS {ROAD_FEATURE_PROPERTIES['feature_key']},
+                    -- 区間インスペクタが、ポップアップに出た値と同じ行を曖昧さ無く引き
+                    -- 直すための識別子。空間マッチ（半径内最近傍）だと交差点付近で別の
+                    -- 道路を拾いうる。
+                    w.osm_way_id AS {ROAD_FEATURE_PROPERTIES['way_id']},
+                    -- 道路名・路線番号（表示専用）。材料の正規化はかけない——利用者へ
+                    -- そのまま見せる固有名詞のため。**第三者が編集できる生値で対訳表を
+                    -- 持たない**ため、埋め込む側は必ずエスケープする。
+                    NULLIF(btrim(w.tags->>'name'), '') AS {ROAD_FEATURE_PROPERTIES['name']},
+                    NULLIF(btrim(w.tags->>'ref'), '') AS {ROAD_FEATURE_PROPERTIES['ref']},
+{_MATERIAL_TILE_COLUMNS_SQL}"""
+_FEATURE_PROPERTY_JOINS_SQL = _tile_material_joins(material_tile_columns().values())
+
 # 路面タイル（MVT）をPostGIS側で丸ごと生成する。転送は完成済みタイル1個（数十KB）で済み、
 # エンコードはPostGISのC実装が担う。bbox内の全way行をPythonへ転送してshapelyでdecode→
 # encodeする構成だと、行転送とGILを握るCPU処理で数秒かかる。
@@ -114,23 +129,36 @@ ROAD_SURFACE_TILE_MVT_SQL = text(
                     ST_AsMVTGeom(
                         ST_Transform(src.geom, 3857), ST_TileEnvelope(:z, :x, :y), :extent, {TILE_BUFFER}, true
                     ) AS geom,
-                    src.feature_key AS {ROAD_FEATURE_PROPERTIES['feature_key']},
-                    -- 区間インスペクタが、ポップアップに出た値と同じ行を曖昧さ無く引き
-                    -- 直すための識別子。空間マッチ（半径内最近傍）だと交差点付近で別の
-                    -- 道路を拾いうる。
-                    w.osm_way_id AS {ROAD_FEATURE_PROPERTIES['way_id']},
-                    -- 道路名・路線番号（表示専用）。材料の正規化はかけない——利用者へ
-                    -- そのまま見せる固有名詞のため。**第三者が編集できる生値で対訳表を
-                    -- 持たない**ため、埋め込む側は必ずエスケープする。
-                    NULLIF(btrim(w.tags->>'name'), '') AS {ROAD_FEATURE_PROPERTIES['name']},
-                    NULLIF(btrim(w.tags->>'ref'), '') AS {ROAD_FEATURE_PROPERTIES['ref']},
-{_MATERIAL_TILE_COLUMNS_SQL}
+{_FEATURE_PROPERTY_COLUMNS_SQL}
                 FROM ({_TILE_FEATURE_SOURCE_SQL}) src
-                {_tile_material_joins(material_tile_columns().values())}
+                {_FEATURE_PROPERTY_JOINS_SQL}
             ) mvt
             WHERE mvt.geom IS NOT NULL
         ) END AS tile
     FROM coverage
+    """
+)
+
+
+# 押した所（`:lon`, `:lat`）から`:radius_m`以内の道のフィーチャーを、近い順に`:limit`本。フィーチャーの並び・単位
+# （ズーム`:z`で区間か道1本か）とプロパティの列は路面タイルと同じものを使う——地図が塗る線と押して開く小窓が、同じ
+# 鍵・同じ値を指す。`:xmin`〜`:ymax`は半径を覆う箱（空間の索引で絞るための前置フィルタ）で、距離そのものは地面の m で測る。
+# 形はタイルで切らない、そのフィーチャーの線の全体（押した物を強調し、小窓をかぶらない側に置くのに使う）。
+ROADS_AT_SQL = text(
+    f"""
+    SELECT
+        ST_AsGeoJSON(src.geom) AS shape,
+{_FEATURE_PROPERTY_COLUMNS_SQL}
+    FROM (
+        SELECT near.*, ST_Distance(near.geom::geography, pressed.geog) AS pressed_distance_m
+        FROM ({_TILE_FEATURE_SOURCE_SQL}) near
+        CROSS JOIN (SELECT ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography AS geog) pressed
+        WHERE ST_DWithin(near.geom::geography, pressed.geog, :radius_m)
+        ORDER BY pressed_distance_m, near.feature_key
+        LIMIT :limit
+    ) src
+    {_FEATURE_PROPERTY_JOINS_SQL}
+    ORDER BY src.pressed_distance_m, src.feature_key
     """
 )
 

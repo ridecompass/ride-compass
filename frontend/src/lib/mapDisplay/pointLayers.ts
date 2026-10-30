@@ -38,10 +38,15 @@ export function sizeAxis(layer: PointLayer): PointAxis | undefined {
   return layer.display_axes.find((axis) => axis.categories.some((category) => "radius_px" in category));
 }
 
-/** 行が地図に描かれる半径。**凡例の見本も同じ関数を読む**——凡例が別に大きさを持つと、
- * 地図と食い違う。半径を持たない行は既定の半径。 */
-export function pointCategoryRadiusPx(category: PointAxis["categories"][number]): number {
-  return "radius_px" in category ? category.radius_px : mapDisplay.point.radiusPx;
+/** 大きさで示す軸`axis`の行ごと（行の並びの順）の、点の絵の大きさの倍率。いちばん大きい行を1倍にし、ほかは行の半径の比で
+ * 小さくする（絵が小さくなりすぎないよう、半径の比の半分だけ縮める）。半径を持たない行は既定の半径。**凡例の見本も同じ関数を
+ * 読む**——凡例が別に大きさを持つと、地図と食い違う。 */
+export function pointIconScales(axis: PointAxis): readonly number[] {
+  const radii = axis.categories.map((category) =>
+    "radius_px" in category ? category.radius_px : mapDisplay.point.radiusPx,
+  );
+  const largest = Math.max(...radii);
+  return radii.map((radius) => 0.5 + (0.5 * radius) / largest);
 }
 
 /** 点の名前（`point_name_property`の値）。名前を宣言しない点・値の無い点はnull。 */
@@ -51,4 +56,19 @@ export function pointPlaceName(
 ): string | null {
   const name = layer.point_name_property === null ? undefined : properties[layer.point_name_property];
   return typeof name === "string" && name !== "" ? name : null;
+}
+
+/** 点が束ねた名前のある点の名前と位置（`mapDisplay.point.membersProperty`の値）。持たない点は、名前があれば自分（位置`at`）
+ * だけ、無ければ空。 */
+export function pointMembers(
+  layer: { point_name_property: string | null },
+  properties: Readonly<Record<string, unknown>>,
+  at: readonly [number, number],
+): { name: string; at: [number, number] }[] {
+  const members = properties[mapDisplay.point.membersProperty];
+  if (typeof members === "string") {
+    return (JSON.parse(members) as [string, number, number][]).map(([name, lng, lat]) => ({ name, at: [lng, lat] }));
+  }
+  const name = pointPlaceName(layer, properties);
+  return name === null ? [] : [{ name, at: [at[0], at[1]] }];
 }

@@ -28,7 +28,11 @@
     .venv\\Scripts\\python.exe scripts\\schema_gap.py --database-url ...
     .venv\\Scripts\\python.exe scripts\\run_probe.py scripts\\schema_gap.py   # 本番
 
-GAPが1件でもあれば終了コード1。
+差は2つに分ける。新しいコードの読み書きを壊しうる差（本番に足りない表・列・制約・索引、型・NULL許容・既定値の値の違い、
+本番だけが持つ制約・一意の索引、本番だけが持つNOT NULLで既定値の無い列）は落とす差で、1件でもあれば終了コード1。本番が宣言より
+多く持つだけで、新しいコードが読みも書きもしない差（宣言に無い表、NULLを許すか既定値のある宣言に無い列、宣言に無い既定値、一意でない索引）は
+出すだけで落とさない——古いコードが読む列を消すのは出したあとなので、出してから本番で消すまでの間も差は残る。それを消すのは、その差を持つ
+本番の作業の issue の約束で、デプロイの約束ではない。
 """
 
 import argparse
@@ -37,6 +41,7 @@ import re
 import sys
 from collections.abc import Iterable
 from pathlib import Path
+from typing import NamedTuple
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -130,32 +135,48 @@ class _Catalog:
                         for r in rows(_INDEXES) if r["table"] in self.tables}
 
 
-def _differences(actual: _Catalog, declared: _Catalog) -> list[str]:
-    lines = [f"{t}: ORMが宣言しているが実DBに無い表" for t in declared.tables.keys() - actual.tables.keys()]
-    lines += [f"{t}: 実DBにあるがORMが宣言していない表" for t in actual.tables.keys() - declared.tables.keys()]
+class Gaps(NamedTuple):
+    """実DBとORMの宣言の差。breaking は新しいコードの読み書きを壊しうる差（落とす）、surplus は本番が宣言より多く持つだけの差（出すだけ）。"""
+
+    breaking: list[str]
+    surplus: list[str]
+
+
+def _differences(actual: _Catalog, declared: _Catalog) -> Gaps:
+    breaking = [f"{t}: ORMが宣言しているが実DBに無い表" for t in declared.tables.keys() - actual.tables.keys()]
+    surplus = [f"{t}: 実DBにあるがORMが宣言していない表" for t in actual.tables.keys() - declared.tables.keys()]
     both = declared.tables.keys() & actual.tables.keys()
-    lines += [f"{t}: パーティションの切り方が違う（実DB={actual.tables[t] or 'なし'} ORM={declared.tables[t] or 'なし'}）"
-              for t in both if actual.tables[t] != declared.tables[t]]
+    breaking += [f"{t}: パーティションの切り方が違う（実DB={actual.tables[t] or 'なし'} ORM={declared.tables[t] or 'なし'}）"
+                 for t in both if actual.tables[t] != declared.tables[t]]
 
     for key in declared.columns.keys() | actual.columns.keys():
         if key[0] not in both:
             continue
         name = ".".join(key)
         if key not in actual.columns:
-            lines.append(f"{name}: ORMが宣言しているが実DBに無い列")
+            breaking.append(f"{name}: ORMが宣言しているが実DBに無い列")
         elif key not in declared.columns:
-            lines.append(f"{name}: 実DBにあるがORMが宣言していない列")
+            column = actual.columns[key]
+            # 新しいコードは宣言に無い列へ値を渡さないので、NOT NULLで既定値が無ければ書き込みが断られる。
+            writable = column["nullable"] == "NULL" or column["default"]
+            (surplus if writable else breaking).append(f"{name}: 実DBにあるがORMが宣言していない列")
         else:
-            lines += [f"{name}: {label}が違う（実DB={actual.columns[key][f] or 'なし'} "
-                      f"ORM={declared.columns[key][f] or 'なし'}）"
-                      for f, label in _COLUMN_FIELDS.items() if actual.columns[key][f] != declared.columns[key][f]]
+            for f, label in _COLUMN_FIELDS.items():
+                if actual.columns[key][f] == declared.columns[key][f]:
+                    continue
+                line = f"{name}: {label}が違う（実DB={actual.columns[key][f] or 'なし'} ORM={declared.columns[key][f] or 'なし'}）"
+                # 宣言に無い既定値は、どの書き手も値を省かない列にだけ残る（省く書き手の要る既定値は宣言が持つ）。
+                (surplus if f == "default" and not declared.columns[key][f] else breaking).append(line)
 
     for side, only in (("ORMが宣言しているが実DBに無い", declared.constraints - actual.constraints),
                        ("実DBにあるがORMが宣言していない", actual.constraints - declared.constraints),
-                       ("ORMが宣言しているが実DBに無い", declared.indexes - actual.indexes),
-                       ("実DBにあるがORMが宣言していない", actual.indexes - declared.indexes)):
-        lines += [f"{table}: {side}{kind} {definition}" for table, kind, definition in only if table in both]
-    return sorted(lines)
+                       ("ORMが宣言しているが実DBに無い", declared.indexes - actual.indexes)):
+        breaking += [f"{table}: {side}{kind} {definition}" for table, kind, definition in only if table in both]
+    # 本番だけが持つ索引は、一意なら新しいコードの書き込みを断りうるが、一意でなければ読み書きに効かない。
+    for table, kind, definition in actual.indexes - declared.indexes:
+        if table in both:
+            (breaking if definition.startswith("UNIQUE ") else surplus).append(f"{table}: 実DBにあるがORMが宣言していない{kind} {definition}")
+    return Gaps(sorted(breaking), sorted(surplus))
 
 
 def _nullable(not_null: bool) -> str:
@@ -176,7 +197,7 @@ def _partition_differences(conn: Connection) -> list[str]:
     return lines
 
 
-def collect_gaps(conn: Connection) -> list[str]:
+def collect_gaps(conn: Connection) -> Gaps:
     """`conn`のDBの`public`と、ORMの宣言を一時スキーマへ作ったものとの差。何も残さない。"""
     transaction = conn.begin_nested() if conn.in_transaction() else conn.begin()
     try:
@@ -185,12 +206,13 @@ def collect_gaps(conn: Connection) -> list[str]:
         declared_metadata().create_all(
             conn.execution_options(schema_translate_map={None: "pg_temp"}), checkfirst=False)
         temp: str = conn.execute(text("SELECT nspname FROM pg_namespace WHERE oid = pg_my_temp_schema()")).scalar_one()
-        return sorted(_differences(_Catalog(conn, "public"), _Catalog(conn, temp)) + _partition_differences(conn))
+        gaps = _differences(_Catalog(conn, "public"), _Catalog(conn, temp))
+        return Gaps(sorted(gaps.breaking + _partition_differences(conn)), gaps.surplus)
     finally:
         transaction.rollback()
 
 
-async def _collect(url: str) -> list[str]:
+async def _collect(url: str) -> Gaps:
     engine = create_async_engine(url)
     try:
         async with engine.connect() as conn:
@@ -206,11 +228,15 @@ def main() -> int:
     from _probe_env import probe_database_url
 
     gaps = asyncio.run(_collect(probe_database_url(args.database_url)))
-    if not gaps:
-        print("GAP なし（実DBとORMの宣言が一致している）")
+    if gaps.surplus:
+        print(f"本番が宣言より多く持つ差 {len(gaps.surplus)} 件（落とさない。消すのは、その差を持つ本番の作業）")
+        for gap in gaps.surplus:
+            print(f"  {gap}")
+    if not gaps.breaking:
+        print("GAP なし（新しいコードの読み書きを壊しうる差が無い）")
         return 0
-    print(f"GAP {len(gaps)} 件")
-    for gap in gaps:
+    print(f"GAP {len(gaps.breaking)} 件")
+    for gap in gaps.breaking:
         print(f"  {gap}")
     return 1
 

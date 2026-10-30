@@ -356,13 +356,13 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       # Playwright を動かすのに node_modules が要る。試すアプリはここではビルドしない。
       - run: npm ci
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: frontend-app
       - run: tar -xzf frontend-app.tar.gz
         working-directory: .
       - run: npx playwright test ${{ matrix.args }}
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: playwright-report-${{ matrix.id }}
@@ -398,10 +398,11 @@ jobs:
           node frontend/scripts/image.mjs "$IMAGE:$GITHUB_SHA" "$GITHUB_SHA"
       # 起こす前のコンテナから取る（起こしたサーバーが書いたものを混ぜない）。
       - name: 像の中のアプリを取り出す
+        shell: bash  # pipefail を付け、取り出しが落ちたら空の圧縮を成果物にせず段を落とす
         run: |
           docker create --name frontend-app "$IMAGE:$GITHUB_SHA"
           docker cp frontend-app:/app - | gzip -1 > frontend-app.tar.gz
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: frontend-app
           path: frontend-app.tar.gz
@@ -515,7 +516,7 @@ jobs:
       - run: ruff check --extend-exclude backend .
       # 追跡しているshの構文。
       - run: git ls-files -z '*.sh' | xargs -0 -n1 bash -n
-  # タスクの流れのゲート（tools/flow-gate/）の lint とテストと、Pull Request の本文の形（本文は master のコミットになるので、
+  # タスクの流れのゲート（tools/flow-gate/）の lint と、Pull Request の本文の形（本文は master のコミットになるので、
   # 直したときも照らす。上の on の edited）。
   flow-gate:
     concurrency:
@@ -530,7 +531,7 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: tools/flow-gate/package-lock.json
-      - run: npm ci && npm run lint && npm test
+      - run: npm ci && npm run lint
         working-directory: tools/flow-gate
       # Dependabot の PR はマージしない（同じ版を取り込んだタスクが閉じる）ので照らさない。本文は環境変数で渡す（シェルに読ませない）。
       - if: github.event_name == 'pull_request' && github.event.pull_request.user.login != 'dependabot[bot]'

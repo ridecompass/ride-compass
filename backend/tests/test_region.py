@@ -1,7 +1,7 @@
 """`domain/region.py`——緯度経度の矩形と、XYZタイル（Web Mercator）との行き来。
 
 入口は`BoundingBox`・`bbox_covering_points`・`parse_bbox`・`tile_bounds_lonlat`・`tile_bounds_3857`・
-`tiles_covering_bbox`・`way_unit_tile`・`edge_unit_tile`。期待値はWeb Mercatorの公開の定義（WGS84の長半径6378137m・緯度の限界±85.0511度）と、
+`tiles_covering_bbox`。期待値はWeb Mercatorの公開の定義（WGS84の長半径6378137m・緯度の限界±85.0511度）と、
 地球を半径6371kmの球とみなした距離から書き、実装の定数を掛け戻さない。
 
 ここで見ないもの:
@@ -19,17 +19,12 @@ from hypothesis import strategies as st
 from pydantic import ValidationError
 
 from app.domain.region import (
-    EDGE_UNIT_MIN_ZOOM,
-    ROAD_TILE_MAX_ZOOM,
-    ROAD_TILE_MIN_ZOOM,
     BoundingBox,
     bbox_covering_points,
-    edge_unit_tile,
     parse_bbox,
     tile_bounds_3857,
     tile_bounds_lonlat,
     tiles_covering_bbox,
-    way_unit_tile,
 )
 
 WGS84_SEMI_MAJOR_AXIS_M = 6378137.0
@@ -96,9 +91,13 @@ def mercator_m(longitude: float, latitude: float) -> tuple[float, float]:
     )
 
 
-tiles = st.integers(min_value=0, max_value=18).flatmap(
-    lambda z: st.tuples(st.just(z), st.integers(0, 2**z - 1), st.integers(0, 2**z - 1))
-)
+def tiles_at(min_zoom: int, max_zoom: int):
+    return st.integers(min_value=min_zoom, max_value=max_zoom).flatmap(
+        lambda z: st.tuples(st.just(z), st.integers(0, 2**z - 1), st.integers(0, 2**z - 1))
+    )
+
+
+tiles = tiles_at(0, 18)
 
 
 @given(tile=tiles)
@@ -136,47 +135,8 @@ def test_the_tiles_are_exactly_the_block_of_tiles_the_box_touches(bbox, z):
     # 四隅はどれも、覆うタイルのどれかの中（境目を含む）にある。
     for latitude in (bbox.min_latitude, bbox.max_latitude):
         for longitude in (bbox.min_longitude, bbox.max_longitude):
-            assert any(_contains(tile_bounds_lonlat(z, x, y), latitude, longitude) for x, y in covering)
+            assert any(tile_bounds_lonlat(z, x, y).contains(Point(latitude, longitude)) for x, y in covering)
     # 四方の端の列・行は、どれも矩形に触れている（余分な列・行が無い）。境目の上の点は東・南のタイルに入る。
     north_west, south_east = tile_bounds_lonlat(z, xs[0], ys[0]), tile_bounds_lonlat(z, xs[-1], ys[-1])
     assert north_west.max_longitude > bbox.min_longitude and south_east.min_longitude <= bbox.max_longitude
     assert north_west.min_latitude < bbox.max_latitude and south_east.max_latitude >= bbox.min_latitude
-
-
-def _contains(bounds: BoundingBox, latitude: float, longitude: float) -> bool:
-    return (
-        bounds.min_latitude <= latitude <= bounds.max_latitude
-        and bounds.min_longitude <= longitude <= bounds.max_longitude
-    )
-
-
-# --- 道1本・区間で焼くタイル ---
-
-road_tiles = st.integers(min_value=ROAD_TILE_MIN_ZOOM, max_value=ROAD_TILE_MAX_ZOOM).flatmap(
-    lambda z: st.tuples(st.just(z), st.integers(0, 2**z - 1), st.integers(0, 2**z - 1))
-)
-
-
-@given(tile=road_tiles)
-def test_the_way_unit_tile_is_the_tile_itself_or_the_closest_way_unit_tile_holding_it(tile):
-    """道を押したタイルの道1本の値は、そのタイルを覆う道1本のタイルから取る。覆わないタイルを選ぶと、押した道がそのタイルに
-    無く、道1本の値が出ない。"""
-    z, x, y = tile
-    unit = way_unit_tile(z, x, y)
-
-    if z < EDGE_UNIT_MIN_ZOOM:
-        assert unit == tile
-    else:
-        assert unit[0] == EDGE_UNIT_MIN_ZOOM - 1
-        outer, inner = tile_bounds_lonlat(*unit), tile_bounds_lonlat(z, x, y)
-        assert _contains(outer, inner.min_latitude, inner.min_longitude)
-        assert _contains(outer, inner.max_latitude, inner.max_longitude)
-
-
-@given(latitude=st.floats(min_value=20.0, max_value=46.0), longitude=st.floats(min_value=122.0, max_value=154.0))
-def test_the_edge_unit_tile_of_a_point_holds_the_point(latitude, longitude):
-    """区間の値は、区間の上の点を含む区間のタイルから取る。点を含まないタイルを選ぶと、区間がそのタイルに無い。"""
-    z, x, y = edge_unit_tile(longitude, latitude)
-
-    assert z == EDGE_UNIT_MIN_ZOOM
-    assert _contains(tile_bounds_lonlat(z, x, y), latitude, longitude)

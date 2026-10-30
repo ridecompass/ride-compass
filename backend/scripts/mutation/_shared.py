@@ -63,27 +63,33 @@ def read_results(path, results=None):
     """runner.py が書いた結果の JSONL を、変異（と基準）の名前ごとの記録へ足して返す。ファイルが無ければ足さない。"""
     results = {} if results is None else results
     if os.path.exists(path):
-        for line in open(path, encoding="utf-8"):
-            r = json.loads(line)
-            results[r["mutant"]] = r
+        with open(path, encoding="utf-8") as lines:
+            for line in lines:
+                r = json.loads(line)
+                results[r["mutant"]] = r
     return results
 
 
 def read_kills(directory, kills=None):
-    """runner.py が kills/ に書いた落ちたテストの記録を、変異の名前ごとのテストの集合へ足して返す。"""
+    """runner.py が kills/ に書いた落ちたテストの記録を、変異の名前ごとのテストの集合へ足して返す。
+
+    集める時点の失敗は、テストでなく集める単位（ファイル・クラス）の名前で記録されるので、`::` で終わる名前にして
+    expand がその下のテストへ広げる。
+    """
     kills = collections.defaultdict(set) if kills is None else kills
     for f in glob.glob(os.path.join(directory, "kills", "*.tsv")):
-        for line in open(f, encoding="utf-8"):
-            m, t, _when = line.rstrip("\n").split("\t")
-            kills[m].add(t)
+        with open(f, encoding="utf-8") as lines:
+            for line in lines:
+                m, t, when = line.rstrip("\n").split("\t")
+                kills[m].add(f"{t}::" if when == "collect" else t)
     return kills
 
 
 def expand(tests, fn, tbf):
-    """落ちた記録を、その関数を通るテストの名前にそろえる（集める時点の失敗はファイルで記録される）。"""
+    """落ちた記録を、その関数を通るテストの名前にそろえる（集める単位の記録は、その下のテストへ広げる）。"""
     out = set()
     for t in tests:
-        out |= {t} if "::" in t else {u for u in tbf.get(fn, ()) if u.startswith(t + "::")}
+        out |= {u for u in tbf.get(fn, ()) if u.startswith(t)} if t.endswith("::") else {t}
     return out
 
 
@@ -122,6 +128,23 @@ _PYTEST_PARAMS = re.compile(r"(::[A-Za-z_]\w*)\[.*\]$")
 def function_of_test(nodeid):
     """テスト関数（pytest のパラメータの組を外した名前。vitest の it.each の行の名前にある [] は外さない）。"""
     return _PYTEST_PARAMS.sub(r"\1", nodeid)
+
+
+def score(report, removed=frozenset()):
+    """表（report.py の形）の全体の（見つけた変異, 回した変異）。数え方は review.py の層ごとの表と同じ。removed（テスト関数の名前）を
+    消したとして数えるときは、落としたテストが全部 removed の中にある変異を生き残りに数える。テスト全体の当て直しで落ちた変異
+    （killedBy が空）と、落としたテストに一覧に無い名前がある変異は、どのテストが見つけたか分からないので、見つけたままに数える。"""
+    name_of = {d["id"]: f"{path}::{d['name']}" for path, tf in report.get("testFiles", {}).items() for d in tf["tests"]}
+    detected = ran = 0
+    for f in report["files"].values():
+        for m in f["mutants"]:
+            if m["status"] not in ("Killed", "Timeout", "Survived", "RuntimeError"):
+                continue
+            ran += 1
+            ids = m.get("killedBy", ())
+            lost = bool(ids) and all(i in name_of and function_of_test(name_of[i]) in removed for i in ids)
+            detected += m["status"] in ("Killed", "Timeout") and not lost
+    return detected, ran
 
 
 def layer(path):

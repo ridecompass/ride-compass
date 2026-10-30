@@ -3,18 +3,26 @@
  *
  * 見ること: 地図を押したときの意味は効いているパネルで決まり（「ルート設定」の条件タブは選んでいる地点を置く、
  * 「ルート結果」は候補の線でそのルートを選び区間でその中身を出す、閉じている間は押した物の中身を小窓に出すだけ）、PC で
- * 2つの区分を開いていれば最後に触った区分が効いてその題に添えること、ピンを押しても消えずルート設定ではその地点を選ぶこと、
- * 目的地の行で探して置いた地点と、名前のある点を押して置いた地点が地図に立ち、行にその名前が出ること、
- * 名前を付けて保存した地点を打つ欄から選び直せ、「保存済み」の「地点」から呼び出すと条件タブへ移って置くこと。
+ * 2つの区分を開いていれば最後に触った区分が効いてその題に添えること、区間を選んでいる間は地図にその区間の範囲の縁取りと
+ * 選んだ地点の印が出ること、効いているパネルが移ると前のパネルで地図に出した選択を外すこと。区間を押すと
+ * 地図が読み込んだ点のタイルのうち区間の線から近い点を地図に描き、押した区間の小窓にその中の補給・立ち寄り先を区分のチップで出し、
+ * チップでその区分の一覧（道のりの順）を開いて地図に出す・消せ、点を押すと1施設1行で名前・押した地点から見た前後・道からの距離を出すこと
+ * （グラフの下の地点の詳しくには出さず、グラフで地点を選んだときは小窓も点も出さず、点のタイルを読まないズームでは出さない）。走行中は施設の位置を
+ * 現在地からの残りで出すこと。施設の印を押すと
+ * 小窓を施設の中身へ入れ替えて印に枠を付け、区間へ戻れること。地図は選んでいるルート1本へ収め（生成直後は先頭、タブで
+ * 選び直すとその1本）、地図の候補の線を押して選んだときは収め直さないこと。
+ *
+ * ここで見ないもの: 地図に置く地点（ピン・名前のある点・目的地・保存した地点）は`app/page.places.test.tsx`が、小窓がいつも1つで
+ * 最後に押した物の中身を出すことと道の小窓は`app/page.popups.test.tsx`が見る。
  *
  * 差し替えたもの: backend の応答（網の層）、位置情報の取得、地図の描画（`maplibre-gl`）。子の部品は本物を描く。
  */
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { ROUTE_SEGMENT_INDEX_PROPERTY } from "@/features/map/scene/groups/routeSources";
 import { POINT_TILE_SOURCES } from "@/features/map/scene/groups/points";
 import { sceneLayerId } from "@/features/map/scene/sceneBuilders";
-import { onBackend } from "@/testing/backendServer";
 import {
   DESTINATION,
   ELSEWHERE,
@@ -29,13 +37,17 @@ import {
   linesOn,
   marksAt,
   renderHome,
+  route,
   section,
   selectDestination,
+  selectedPointMarks,
+  selectedSectionOnMap,
   serveHome,
 } from "@/testing/homePage";
+import { installGeolocation } from "@/testing/geolocation";
 import { mapOnScreen, type PointedFeature } from "@/testing/maplibre";
-import { makeGenerationConditions } from "@/testing/routeFixtures";
-import type { Coordinates } from "@/types/route";
+import { makeGenerationConditions, makeRouteSegment, routeThrough } from "@/testing/routeFixtures";
+import palette from "@/types/generated/palette.json";
 
 vi.mock("maplibre-gl", () => import("@/testing/maplibre"));
 
@@ -102,114 +114,7 @@ describe("地図で扱えること", () => {
     expect(marksAt(ELSEWHERE)).toHaveLength(1);
   });
 
-  it("ピンを押しただけでは消えず、ルート設定ではその地点を選んで詳しくを出し、閉じている間は呼び名と名前を小窓に出す", async () => {
-    const { user } = renderHome();
-    await selectDestination(user);
-    clickMap(DESTINATION);
-    await user.click(screen.getByRole("button", { name: "出発地: 現在地" }));
-
-    const [destinationPin] = marksAt(DESTINATION);
-    await user.click(destinationPin.element);
-    expect(marksAt(DESTINATION)).toHaveLength(1);
-    expect(screen.getByRole("region", { name: "目的地" })).toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "パネルを閉じる" }));
-    await user.click(destinationPin.element);
-    expect(marksAt(DESTINATION)).toHaveLength(1);
-    expect(screen.getByText("目的地: 地図で選んだ地点")).toBeInTheDocument();
-  });
-
-  it("名前のある点を押すと、選んでいる地点をその点へその名前で置き、地図と地点の並びに出す。閉じている間は置かない", async () => {
-    const shop: Coordinates = { latitude: 35.71, longitude: 139.71 };
-    const pointed = [
-      {
-        layer: sceneLayerId(POINT_TILE_SOURCES.poi.sourceId, "supply_poi"),
-        properties: { name: "角の店", kind: "convenience" },
-        geometry: { type: "Point", coordinates: [shop.longitude, shop.latitude] },
-      } satisfies PointedFeature,
-    ];
-    const { user } = renderHome();
-    await user.click(screen.getByRole("button", { name: "地図に出す情報" }));
-    await user.click(screen.getByRole("checkbox", { name: "補給・休憩ポイント" }));
-    await user.keyboard("{Escape}");
-
-    await user.click(screen.getByRole("button", { name: "経由地を足す" }));
-    // 押した所は絵の端でも、点そのものの位置へ置く。
-    clickMap(ELSEWHERE, pointed);
-    expect(marksAt(shop)).toHaveLength(1);
-    expect(screen.getByRole("button", { name: "経由地1: 角の店" })).toBeInTheDocument();
-
-    await selectDestination(user);
-    clickMap(shop, pointed);
-    expect(marksAt(shop)).toHaveLength(2);
-    expect(screen.getByRole("button", { name: "目的地: 角の店" })).toBeInTheDocument();
-    // 地図の印は役割の名前で見分けられ、地点の並びの印と同じ記号を描く。
-    const [waypointMark, destinationMark] = marksAt(shop).map(({ element }) => element);
-    expect(waypointMark).toHaveAccessibleName("経由地 1");
-    expect(destinationMark).toHaveAccessibleName("目的地");
-    expect(screen.getByRole("img", { name: "出発地" })).toBeInTheDocument();
-    const listedDestination = screen.getByRole("button", { name: "目的地: 角の店" }).querySelector("svg");
-    // 大きさは置き場ごとに違うので、記号の中身で比べる。
-    expect(listedDestination?.innerHTML).toBeTruthy();
-    expect(destinationMark.querySelector("svg")?.innerHTML).toBe(listedDestination?.innerHTML);
-
-    await user.click(screen.getByRole("button", { name: "パネルを閉じる" }));
-    clickMap(ELSEWHERE, pointed);
-    expect(marksAt(shop)).toHaveLength(2);
-  });
-
-  it("目的地を探して選んだ地点は地図に目的地として立ち、地点の並びにその名前が出る", async () => {
-    const candidate = {
-      kind: "facility",
-      level: "point",
-      name: "浅草寺",
-      area: "台東区浅草二丁目",
-      latitude: 35.7148,
-      longitude: 139.7967,
-    } as const;
-    onBackend("GET", "/api/place-search", () => Response.json({ candidates: [candidate] }));
-    const { user } = renderHome();
-    await user.click(screen.getByRole("button", { name: "目的地: 未設定" }));
-    const searchBox = screen.getByRole("searchbox", { name: "目的地を住所・施設で探す" });
-
-    await user.type(searchBox, "浅草寺{Enter}");
-    await user.click(await screen.findByRole("button", { name: new RegExp(candidate.name) }));
-
-    expect(marksAt(candidate)).toHaveLength(1);
-    expect(screen.getByRole("button", { name: `目的地: ${candidate.name}` })).toBeInTheDocument();
-  });
-
-  it("名前を付けて保存した地点は、目的地を消したあとも打つ欄を押して選び直せ、「保存済み」の「地点」から呼び出すと条件タブへ移って置く", async () => {
-    const { user } = renderHome();
-    await selectDestination(user);
-    clickMap(DESTINATION);
-    await user.click(screen.getByRole("button", { name: "地点を保存" }));
-    const dialog = screen.getByRole("dialog", { name: "地点を保存" });
-    const nameInput = within(dialog).getByRole("textbox", { name: "保存する地点の名前" });
-    await user.clear(nameInput);
-    await user.type(nameInput, "いつものカフェ");
-    await user.click(within(dialog).getByRole("button", { name: "保存" }));
-    await user.click(screen.getByRole("button", { name: "目的地を消す" }));
-    expect(marksAt(DESTINATION)).toEqual([]);
-
-    await user.click(screen.getByRole("searchbox", { name: "目的地を住所・施設で探す" }));
-    const saved = screen.getByRole("list", { name: "保存した地点" });
-    await user.click(within(saved).getByRole("button", { name: /いつものカフェ/ }));
-
-    expect(marksAt(DESTINATION)).toHaveLength(1);
-    expect(screen.getByRole("button", { name: "目的地: いつものカフェ" })).toBeInTheDocument();
-    await user.click(screen.getByRole("tab", { name: "保存済み" }));
-    await user.click(screen.getByRole("tab", { name: "地点" }));
-    await user.click(screen.getByRole("button", { name: "「いつものカフェ」を呼び出す" }));
-    const menu = screen.getByRole("dialog", { name: "「いつものカフェ」をどこに置くか" });
-    await user.click(within(menu).getByRole("button", { name: "経由地に足す" }));
-
-    expect(screen.getByRole("tab", { name: "条件" })).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByRole("region", { name: "経由地1" })).toHaveTextContent("いつものカフェ");
-    expect(marksAt(DESTINATION)).toHaveLength(2);
-  });
-
-  it("区間を押すと、「ルート結果」が効いている間はその中に、閉じている間は地図の小窓に中身を出し、「ルート設定」が効いている間は出さない", async () => {
+  it("区間を押すと、「ルート結果」が効いている間も閉じている間も地図の小窓に中身を出し、「ルート設定」が効いている間は出さない", async () => {
     const { user } = renderHome();
     jobs.respond([FIRST], LOOP_CONDITIONS);
     await generate(user);
@@ -217,22 +122,64 @@ describe("地図で扱えること", () => {
     const [drawnSegment] = mapOnScreen().sourceFeatures("route-segments");
 
     clickSegment(drawnSegment, HERE);
-    await user.click(screen.getByRole("button", { name: "区間の選択を解除" }));
+    expect(screen.getByRole("group", { name: "区間の小窓の上の帯" })).toBeInTheDocument();
+    clickMap(ELSEWHERE);
 
     await user.click(screen.getByRole("button", { name: "出発地: 現在地" }));
     clickSegment(drawnSegment, HERE);
-    expect(screen.queryByText(/km地点/)).toBeNull();
+    expect(screen.queryByRole("group", { name: "区間の小窓の上の帯" })).toBeNull();
 
     await user.click(screen.getByRole("button", { name: "パネルを閉じる" }));
     clickSegment(drawnSegment, HERE);
-    expect(screen.getByText(/km地点/)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "区間の選択を解除" })).toBeNull();
+    expect(screen.getByRole("group", { name: "区間の小窓の上の帯" })).toBeInTheDocument();
+  });
+
+  it("区間を選んでいる間は、地図にその区間の範囲の縁取りと選んだ地点の印を出し、外すと消す。地図で区間を押すと、縁取りは候補の区間の道なりの形になる（地図の区間の線は形の外の中身を持たない）", async () => {
+    // 道なりの形が、始点と終点を結ぶ直線と違う区間。
+    const curved = makeRouteSegment({
+      start_latitude: 35.7,
+      start_longitude: 139.7,
+      end_latitude: 35.7,
+      end_longitude: 139.71,
+      distance_km: 1,
+      geometry: {
+        type: "LineString",
+        coordinates: [
+          [139.7, 35.7],
+          [139.705, 35.702],
+          [139.71, 35.7],
+        ],
+      },
+    });
+    const { user } = renderHome();
+    jobs.respond([route("curved", { segments: [curved], geometry: curved.geometry! })], LOOP_CONDITIONS);
+    await generate(user);
+    await waitFor(() => expect(candidateTabs()).toHaveLength(1));
+    expect(selectedSectionOnMap()).toEqual([]);
+
+    const [drawnSegment] = mapOnScreen().sourceFeatures("route-segments");
+    clickSegment(drawnSegment, HERE);
+    expect(selectedSectionOnMap()).toEqual([curved.geometry!.coordinates]);
+    const [pin] = selectedPointMarks();
+    expect(pin.element.querySelector("path")).toHaveAttribute("fill", palette.semantic.selected_point);
+
+    clickMap(ELSEWHERE);
+    expect(selectedSectionOnMap()).toEqual([]);
+    expect(selectedPointMarks()).toEqual([]);
   });
 
   it("効いているパネルが別のパネルへ移ると、前のパネルで地図に出した選択（選んだ区間・小窓）を外し、閉じるだけなら外さない", async () => {
     const { user } = renderHome();
+    await user.click(screen.getByRole("button", { name: "地図に出す情報" }));
+    await user.click(screen.getByRole("checkbox", { name: "補給・休憩ポイント" }));
+    await user.keyboard("{Escape}");
     await selectDestination(user);
-    clickMap(DESTINATION);
+    const shop: PointedFeature = {
+      layer: sceneLayerId(POINT_TILE_SOURCES.poi.sourceId, "supply_poi"),
+      properties: { name: "角の店", kind: "convenience" },
+      geometry: { type: "Point", coordinates: [DESTINATION.longitude, DESTINATION.latitude] },
+    };
+    clickMap(DESTINATION, [shop]);
     jobs.respond(
       [FIRST],
       makeGenerationConditions({ latitude: HERE.latitude, longitude: HERE.longitude, destination: DESTINATION }),
@@ -244,20 +191,204 @@ describe("地図で扱えること", () => {
     // 「ルート結果」で選んだ区間は、「ルート設定」の見るだけのタブへ移ると小窓に出ず、戻っても選ばれていない。
     clickSegment(drawnSegment, HERE);
     await user.click(screen.getByRole("tab", { name: "重み" }));
-    expect(screen.queryByText(/km地点/)).toBeNull();
+    expect(screen.queryByRole("group", { name: "区間の小窓の上の帯" })).toBeNull();
     await user.click(candidateTabs()[0]);
-    expect(screen.queryByRole("button", { name: "区間の選択を解除" })).toBeNull();
+    expect(selectedPointMarks()).toEqual([]);
 
-    // 見るだけのタブで開いた地点の小窓は、「ルート結果」へ移ると消える。
+    // 見るだけのタブで開いた点の小窓は、「ルート結果」へ移ると消える。
     await user.click(screen.getByRole("tab", { name: "重み" }));
-    await user.click(marksAt(DESTINATION)[0].element);
-    expect(screen.getByText("目的地: 地図で選んだ地点")).toBeInTheDocument();
+    clickMap(DESTINATION, [shop]);
+    expect(screen.getByRole("link", { name: "角の店" })).toBeInTheDocument();
     await user.click(candidateTabs()[0]);
-    expect(screen.queryByText("目的地: 地図で選んだ地点")).toBeNull();
+    expect(screen.queryByRole("link", { name: "角の店" })).toBeNull();
 
     // 閉じるだけなら、「ルート結果」で選んだ区間を地図の小窓で読める。
     clickSegment(drawnSegment, HERE);
     await user.click(screen.getByRole("button", { name: "パネルを閉じる" }));
-    expect(screen.getByText(/km地点/)).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "区間の小窓の上の帯" })).toBeInTheDocument();
+  });
+});
+
+describe("ルートを収める", () => {
+  it("生成すると選んでいる先頭の1本へ収め、候補のタブ（今選んでいるタブも）を押すとその1本へ収め直し、地図の候補の線を押して選んだときは収め直さない", async () => {
+    const { user } = renderHome();
+    jobs.respond([FIRST, SECOND], LOOP_CONDITIONS);
+    await generate(user);
+    await waitFor(() => expect(candidateTabs()).toHaveLength(2));
+    // 先頭の1本は東へ、2本目は北へ伸びるので、全部の候補を収めると両方を含む四角になる。
+    await waitFor(() =>
+      expect(mapOnScreen().fits().at(-1)?.bounds).toEqual([
+        [139.7, 35.7],
+        [139.71, 35.7],
+      ]),
+    );
+
+    await user.click(candidateTabs()[1]);
+    expect(mapOnScreen().fits().at(-1)?.bounds).toEqual([
+      [139.7, 35.7],
+      [139.7, 35.71],
+    ]);
+
+    await user.click(candidateTabs()[0]);
+    // 今選んでいるカードを押しても、そのルートの全体へ収め直す。
+    const beforeSameCard = mapOnScreen().fits().length;
+    await user.click(candidateTabs()[0]);
+    expect(mapOnScreen().fits()).toHaveLength(beforeSameCard + 1);
+    const fitted = mapOnScreen().fits().length;
+    const [secondLine] = mapOnScreen()
+      .sourceFeatures("route-candidates")
+      .filter((line) => line.properties?.routeId === SECOND.id);
+    clickMap(ELSEWHERE, [
+      {
+        layer: "route-candidates-candidateHit",
+        properties: secondLine.properties ?? {},
+        geometry: secondLine.geometry,
+      },
+    ]);
+    expect(linesOn("route-selected")).toEqual([SECOND.geometry.coordinates]);
+    expect(mapOnScreen().fits()).toHaveLength(fitted);
+  });
+});
+
+describe("区間の近くの施設", () => {
+  // 東へ1kmずつ進む区間2つのルート。
+  const NEAR = route("near", {
+    ...routeThrough({ a: [139.7, 35.7], b: [139.71, 35.7], c: [139.72, 35.7] }, ["a", "b", "c"], [1, 1]),
+    distance_km: 2,
+  });
+  // 緯度の0.0001度は、地上で約11m。
+  const point = (lngLat: [number, number], properties: Record<string, unknown>): GeoJSON.Feature<GeoJSON.Point> => ({
+    type: "Feature",
+    geometry: { type: "Point", coordinates: lngLat },
+    properties,
+  });
+
+  /** 地図が読み込んだ点のタイル。2つ目の区間（東経139.71〜139.72）の近くに、補給（同じ所のコンビニ2つ・トイレ）・立ち寄り先・
+   * 停止要因・事故と、地図の点の層の行に当たらない値の点がある。区間から約220m離れたコンビニと、1つ目の区間の横の店は遠い。 */
+  function placeTiles() {
+    const map = mapOnScreen();
+    map.placeTileFeatures(POINT_TILE_SOURCES.poi.sourceId, [
+      point([139.713, 35.7001], { kind: "convenience", name: "ローソン 渋谷店" }),
+      point([139.713, 35.70007], { kind: "convenience", name: "ファミリーマート" }),
+      point([139.718, 35.7], { kind: "toilets" }),
+      point([139.719, 35.7], { kind: "vanished" }),
+      point([139.715, 35.702], { kind: "convenience", name: "遠いコンビニ" }),
+      point([139.705, 35.7], { kind: "convenience", name: "前の区間の店" }),
+      point([139.716, 35.7], { kind: "traffic_signals" }),
+    ]);
+    map.placeTileFeatures(POINT_TILE_SOURCES.stop_place.sourceId, [
+      point([139.712, 35.70005], { group: "eat_drink", name: "そば処" }),
+    ]);
+    map.placeTileFeatures(POINT_TILE_SOURCES.accident.sourceId, [
+      point([139.715, 35.7], { involves_bicycle: true, fatal: true }),
+    ]);
+  }
+
+  const ROUTE_VIEW = { west: 139.69, south: 35.69, east: 139.73, north: 35.71 };
+
+  /** 地図に描いた近くの点の、レイヤーごとの位置（描いていないレイヤーは載せない）。 */
+  function sidePointsOnMap() {
+    return Object.fromEntries(
+      mapOnScreen()
+        .visibleLayerIds()
+        // 点の層だけを見る（引いた縮尺の丸・束ねた数の字の層は、点に添える層）。
+        .filter((id) => id.includes("-side-") && !id.includes(":"))
+        .map((id) => [
+          id,
+          mapOnScreen()
+            .drawnTileFeatures(id)
+            .map((feature) => feature.geometry.coordinates),
+        ])
+        .filter(([, coordinates]) => coordinates.length > 0),
+    );
+  }
+
+  async function pressSecondSegment(user: Parameters<typeof generate>[0]) {
+    jobs.respond([NEAR], LOOP_CONDITIONS);
+    await generate(user);
+    await waitFor(() => expect(candidateTabs()).toHaveLength(1));
+    placeTiles();
+    act(() => mapOnScreen().moveTo(ROUTE_VIEW, 14));
+    const [, second] = mapOnScreen().sourceFeatures("route-segments");
+    // 区間の中ほど（1.5km）を押す。施設の位置は、ここから見た前後で出る。
+    clickSegment(second, { latitude: 35.7, longitude: 139.715 });
+  }
+
+  it("区間を選んでいる間は、地図で押してもグラフで選んでも、区間の線から近い点を「表示」に関わらず点の層ごとに描き、選びを外すと消す", async () => {
+    const { user } = renderHome();
+    await pressSecondSegment(user);
+    expect(sidePointsOnMap()).toEqual({
+      "point-poi-side-stop_poi": [[139.716, 35.7]],
+      "point-poi-side-supply_poi": [
+        [139.713, 35.7001],
+        [139.713, 35.70007],
+        [139.718, 35.7],
+      ],
+      "point-stop_place-side-stop_place": [[139.712, 35.70005]],
+      "point-accident-side-accident_point": [[139.715, 35.7]],
+    });
+
+    clickMap(ELSEWHERE);
+    expect(sidePointsOnMap()).toEqual({});
+
+    fireEvent.keyDown(screen.getByRole("slider", { name: /^道のりに沿った難易度/ }), { key: "Home" });
+    expect(sidePointsOnMap()).toEqual({ "point-poi-side-supply_poi": [[139.705, 35.7]] });
+  });
+
+  it("描いた名前のある点を押すと、押した地点から見た前後と道からの距離を添えた点の小窓を出して区間へ戻れ、名前の無い点だけの所を押すと下の区間を開く", async () => {
+    const { user } = renderHome();
+    await pressSecondSegment(user);
+    const drawn = (layer: string, name: string | undefined): PointedFeature => {
+      const feature = mapOnScreen()
+        .drawnTileFeatures(layer)
+        .find((candidate) => candidate.properties?.name === name)!;
+      return { layer, properties: feature.properties ?? {}, geometry: feature.geometry };
+    };
+
+    clickMap(ELSEWHERE, [drawn("point-poi-side-supply_poi", "ファミリーマート")]);
+    expect(screen.getByRole("link", { name: "ファミリーマート" }).closest("li")!.textContent).toBe(
+      "ファミリーマート押した地点から 200m手前道からの距離 8m",
+    );
+    await user.click(
+      within(screen.getByRole("group", { name: "点の小窓の上の帯" })).getByRole("button", { name: "‹ 区間" }),
+    );
+    expect(screen.getByRole("group", { name: "区間の小窓の上の帯" })).toBeInTheDocument();
+
+    const [, second] = mapOnScreen().sourceFeatures("route-segments");
+    clickMap(ELSEWHERE, [
+      drawn("point-poi-side-supply_poi", undefined),
+      { layer: "route-segments-detailHit", properties: second.properties ?? {}, geometry: second.geometry },
+    ]);
+    expect(screen.getByRole("group", { name: "区間の小窓の上の帯" })).toBeInTheDocument();
+  });
+
+  it("走行中は、描いた点の小窓の位置を、押した地点でなく現在地からの残りで出す", async () => {
+    const geolocation = installGeolocation(HERE);
+    const { user } = renderHome();
+    jobs.respond([NEAR], LOOP_CONDITIONS);
+    await generate(user);
+    await waitFor(() => expect(candidateTabs()).toHaveLength(1));
+    placeTiles();
+    act(() => mapOnScreen().moveTo(ROUTE_VIEW, 14));
+    await user.click(screen.getByRole("button", { name: "走行モード" }));
+    // 現在地は0.4kmの所。
+    geolocation.deliver({ latitude: 35.7, longitude: 139.704, accuracy: 20 });
+    await user.click(screen.getByRole("button", { name: "ルート" }));
+
+    // 走った所で線が分かれるので、2つ目の区間は始点からの道のりで引く。
+    const second = mapOnScreen()
+      .sourceFeatures("route-segments")
+      .find((feature) => feature.properties?.[ROUTE_SEGMENT_INDEX_PROPERTY] === 1)!;
+    clickSegment(second, { latitude: 35.7, longitude: 139.715 });
+    const familyMart = mapOnScreen()
+      .drawnTileFeatures("point-poi-side-supply_poi")
+      .find((feature) => feature.properties?.name === "ファミリーマート")!;
+    clickMap(ELSEWHERE, [
+      { layer: "point-poi-side-supply_poi", properties: familyMart.properties ?? {}, geometry: familyMart.geometry },
+    ]);
+
+    expect(screen.getByRole("link", { name: "ファミリーマート" }).closest("li")!.textContent).toBe(
+      "ファミリーマート現在地から あと900m道からの距離 8m",
+    );
   });
 });

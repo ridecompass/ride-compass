@@ -3,7 +3,7 @@
  * `features/route/RouteAxisProfile/axisRawValue.ts`——軸の生値と内訳を表示の文へ整える。
  * - `formatAxisRawValue`: 生値を単位付きで書き、総量の単位が来た軸だけ走行距離を掛けた総量（約N）を添える
  * - `formatMaterialBreakdown`: 真偽の材料は該当区間の延長割合、数値の材料は値と単位。カテゴリの材料と値の無い材料は出さない
- * - `formatCategoryBreakdown`: 受け取った並びの先頭の値を、対訳（無ければタグ値のまま）と割合で書く
+ * - `formatCategoryBreakdown`: 割合の最も大きい値を、対訳（無ければタグ値のまま）と割合で書く
  * 数値の桁は値の大きさで決まる（10以上は整数・1以上は小数1桁・1未満は有効数字2桁）。
  *
  * ここで見ないもの:
@@ -67,8 +67,10 @@ describe("formatCategoryBreakdown", () => {
   const entry = { label: "道の種類", valueLabels: { residential: "住宅街の道" } };
 
   it.each([
-    ["先頭の値を、対訳と割合で書く", entry, { residential: 0.624, primary: 0.376 }, "住宅街の道 62%"],
-    ["並べ替えずに先頭を出し、対訳の無い値はタグ値のまま", entry, { primary: 0.1, residential: 0.9 }, "primary 10%"],
+    ["割合の最大の値を、対訳と割合で書く", entry, { residential: 0.624, primary: 0.376 }, "住宅街の道 62%"],
+    // 整数に見える鍵はオブジェクトの並びで先頭へ来るので、並びの先頭を最大とみなすと小さい方を出す
+    ["整数に見えるタグ値が先頭に並んでも、割合の最大を出す", entry, { residential: 0.9, "3": 0.1 }, "住宅街の道 90%"],
+    ["対訳の無い値はタグ値のまま", entry, { primary: 0.9, residential: 0.1 }, "primary 90%"],
     ["対訳を持たない材料は、タグ値のまま書く", { label: "道の種類" }, { residential: 0.4 }, "residential 40%"],
     ["割合が来なければ出さない", entry, undefined, null],
   ])("%s", (_label, material, shares, text) => {

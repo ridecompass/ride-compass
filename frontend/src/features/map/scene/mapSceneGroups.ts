@@ -36,6 +36,9 @@ export type SceneLayerEntry = {
   readonly type: LayerSpecification["type"];
   readonly paint: Readonly<Record<string, unknown>>;
   readonly layout?: Readonly<Record<string, unknown>>;
+  /** 描く縮尺の範囲（MapLibre の層の`minzoom`・`maxzoom`。`maxzoom`の縮尺そのものは描かない）。作った後に変えない。 */
+  readonly minzoom?: number;
+  readonly maxzoom?: number;
   readonly visible: boolean;
   /** 押したときに拾う対象。空なら押せない。 */
   readonly hitTargets?: readonly string[];
@@ -107,6 +110,8 @@ function toSceneLayer(entry: SceneLayerEntry): MapSceneLayer {
       sourceLayer: entry.sourceLayer,
       paint: entry.paint,
       ...(entry.layout === undefined ? {} : { layout: entry.layout }),
+      ...(entry.minzoom === undefined ? {} : { minzoom: entry.minzoom }),
+      ...(entry.maxzoom === undefined ? {} : { maxzoom: entry.maxzoom }),
     }),
     tier: entry.tier,
     visible: entry.visible,

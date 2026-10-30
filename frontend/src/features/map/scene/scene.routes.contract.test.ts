@@ -15,7 +15,8 @@ import { describe, expect, it } from "vitest";
 import { createRecordingMap } from "@/testing/mapTrace/recordingMap";
 import { applyMapScene } from "@/features/map/scene/applyMapScene";
 import { EMPTY_MAP_SCENE, type MapScene } from "@/features/map/scene/mapScene";
-import { routeGroup, type RoutePath, type RouteState } from "@/features/map/scene/groups/routes";
+import { routeGroup, type RouteState } from "@/features/map/scene/groups/routes";
+import type { RoutePath } from "@/features/map/scene/groups/routeSources";
 import { composeScene } from "@/features/map/scene/mapSceneGroups";
 import { sceneLayerId } from "@/features/map/scene/sceneBuilders";
 
@@ -29,6 +30,7 @@ const NO_ROUTES: RouteState = {
   segmentColor: "#16a34a",
   spliceBands: [],
   composite: null,
+  selectedSection: null,
 };
 
 const DECLARED_LAYERS = routeGroup.build(NO_ROUTES).layers;
@@ -56,7 +58,7 @@ function bindCurrentImplementation(map: unknown) {
   return (next: Partial<RouteState>) => {
     state = { ...state, ...next };
     const scene = composeScene([routeGroup], state);
-    applyMapScene(map as never, { scene, previous, basemapAnchors: { roads: undefined, labels: undefined } });
+    applyMapScene(map as never, { scene, previous, basemapAnchors: { roads: undefined } });
     previous = scene;
   };
 }

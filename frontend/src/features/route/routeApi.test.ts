@@ -8,7 +8,8 @@
  *
  * ここで見ないもの:
  * - 失敗の文言の組み立て・通信の失敗とタイムアウトの包み直し → `lib/apiClient.test.ts`
- * - 送る値を組み立てること・結果と進み方を画面の状態にすること → `generationRequest.test.ts`・`useRouteGeneration.test.ts`
+ * - 送る値を組み立てること・結果と進み方を画面の状態にすること → `generationRequest.test.ts`・`useRouteGeneration.test.ts`・
+ *   `useRouteGeneration.result.test.ts`
  *
  * 差し替えたもの: 網（msw）と時計（`setTimeout`・`performance`）。
  */
@@ -25,7 +26,6 @@ const REQUEST: RouteGenerateRequest = {
   latitude: 35.68,
   longitude: 139.77,
   distance_km: 40,
-  distance_tolerance_km: 5,
   road_avoidance: {},
   max_routes: 3,
   assumed_speed_kmh: 22,

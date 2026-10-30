@@ -2,7 +2,8 @@
 # デプロイを伴わない変化（派生データの作り直し・取込・軸スタジオでの軸の変更・外部の観測の取込の止まり）で
 # 壊れたものを、次のデプロイを待たずに拾う。落ちたらGitHub Actionsの失敗の知らせが届く。
 # 何を見るか・上限の根拠は docs/architecture/tech-stack.md「本番でルートを作る確かめ」。
-# 同じ時刻に、本番のDBのバックアップが止まっていないかも見る（docs/modules/backend/cross-cutting-infrastructure.md「本番DBのバックアップ」）。
+# 同じ時刻に、本番の点の密な所の点のタイルが上限の中で空でなく返るか（docs/architecture/tech-stack.md「本番の点のタイルの確かめ」）と、
+# 本番のDBのバックアップが止まっていないかも見る（docs/modules/backend/cross-cutting-infrastructure.md「本番DBのバックアップ」）。
 name: Prod Route Check
 
 on:
@@ -30,6 +31,22 @@ jobs:
       - name: 本番でルートを作って区間の値を見る
         timeout-minutes: 3
         run: python backend/scripts/prod_route_check.py
+
+  # ルートの確かめとは別のジョブにし、互いの失敗で飛ばさない。点の層と空のタイルの形は、backendの宣言から読む。
+  point-tiles:
+    concurrency:
+      group: ${{ github.head_ref || github.ref_name }}-lane-4
+      queue: max
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/python
+        with:
+          requirements: requirements.txt
+      - name: 本番の点の密な所の点のタイルを見る
+        timeout-minutes: 3
+        run: python backend/scripts/prod_point_tile_check.py
 
   # ルートの確かめとは別のジョブにし、互いの失敗で飛ばさない。標準ライブラリだけで読むので、ランナーのPythonで打つ。
   backup:

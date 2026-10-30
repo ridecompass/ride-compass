@@ -27,7 +27,6 @@ z15のタイルTを4つの区画に分け、製品ごとに値のある区画を
 - 橋・トンネルとみなすタグの値の一つずつ——値の並びは`domain/material_sql.py`が持ち、ここは橋と
   トンネルの1つずつだけを通す
 - 橋・トンネルの区間の勾配の出し方 → `test_elevation_values.py`
-- 1枚の本文を画素の順に詰めること → `test_gsi_dem_tile.py`
 """
 
 from dataclasses import replace
@@ -39,12 +38,11 @@ import pytest_asyncio
 
 from app.batch import dem_tile_store, derive_elevation, derive_topology
 from app.batch.ingest import ingest_source
-from app.batch.source_profile import Target, load_source_profile
 from app.domain.region import tile_bounds_lonlat
 from tests.conftest import empty_ingested_tables
-from tests.source_ingest import gsi_dem_png, ingest_records, way_record
+from tests.source_ingest import gsi_dem_png, ingest_records, profile_within, way_record
 
-# road_graph_session（conftest.py）と同じDBを使うため、.claude/rules/testing-backend.mdのパターン2どおり
+# moduleスコープのroad_graph_engine（conftest.py）の上のDBを使うため、.claude/rules/testing-backend.mdのパターン2どおり
 # loop_scope="module"が必須。
 pytestmark = pytest.mark.asyncio(loop_scope="module")
 
@@ -105,7 +103,7 @@ def _profile(without: str | None = None):
     inset = 1e-6
     bbox = (bounds.min_latitude + inset, bounds.min_longitude + inset,
             bounds.max_latitude - inset, bounds.max_longitude - inset)
-    profile = replace(load_source_profile(None), target=Target(bbox=bbox))
+    profile = profile_within(bbox)
     return replace(profile, sources=tuple(
         replace(s, grid=replace(s.grid, products={
             product: zoom for product, zoom in s.grid.products.items() if product != without}))
@@ -139,14 +137,13 @@ def tile_root(tmp_path_factory):
 @pytest_asyncio.fixture(loop_scope="module")
 async def elevation_conn(derive_conn, tile_root):
     """テストごとに同じタイルから取り込み直す。製品を抜いて取り込み直すテストがあるため。"""
-    conn = derive_conn
-    await empty_ingested_tables(conn)
-    await _ingest_dem(conn, tile_root)
-    await ingest_records("osm_way", [_way(way_id, pixels) for way_id, pixels, _ in CASES], conn=conn)
-    async with conn.transaction():
-        await derive_topology.derive(conn)
-        await derive_elevation.derive(conn, previous=None)
-    return conn
+    await empty_ingested_tables(derive_conn)
+    await _ingest_dem(derive_conn, tile_root)
+    await ingest_records("osm_way", [_way(way_id, pixels) for way_id, pixels, _ in CASES], conn=derive_conn)
+    async with derive_conn.transaction():
+        await derive_topology.derive(derive_conn)
+        await derive_elevation.derive(derive_conn, previous=None)
+    return derive_conn
 
 
 async def test_each_pixel_takes_the_most_accurate_product_that_has_a_value(elevation_conn):
@@ -167,21 +164,20 @@ async def test_the_run_records_the_newest_last_modified_of_the_tiles_it_read(ele
 async def test_rerun_without_a_product_keeps_no_value_only_that_product_gave(elevation_conn, tile_root):
     """製品を抜いて流し直すと、その製品だけが値を持っていた区間は値を失い、ほかは変わらない。
     製品が1つも無くなれば、どの区間も値を持たない。"""
-    conn = elevation_conn
 
     async def elevations() -> dict[int, float | None]:
-        rows = await conn.fetch("SELECT osm_way_id, start_elevation_m, average_grade"
+        rows = await elevation_conn.fetch("SELECT osm_way_id, start_elevation_m, average_grade"
                                 " FROM road_edges LEFT JOIN edge_elevation USING (osm_way_id, segment_index)")
         assert all(r["average_grade"] is None for r in rows if r["start_elevation_m"] is None)
         return {r["osm_way_id"]: r["start_elevation_m"] for r in rows}
 
     async def rerun() -> dict[int, float | None]:
-        await derive_elevation.derive(conn, previous=None)
+        await derive_elevation.derive(elevation_conn, previous=None)
         return await elevations()
 
-    await _ingest_dem(conn, tile_root, without="dem")
+    await _ingest_dem(elevation_conn, tile_root, without="dem")
     without_dem = await rerun()
-    await ingest_records("dem", [], conn=conn)
+    await ingest_records("dem", [], conn=elevation_conn)
     without_any = await rerun()
 
     assert without_dem == {way_id: None if way_id == 4 else expected
@@ -193,23 +189,19 @@ async def test_rerun_without_a_product_keeps_no_value_only_that_product_gave(ele
 VALLEY_PIXELS = ((40, 40), (40, 200), (40, 44))
 
 
-@pytest.mark.parametrize(("structure", "climb"), [
-    ({"bridge": "viaduct"}, (0.0, 0.0)),
-    ({"tunnel": "yes"}, (0.0, 0.0)),
-])
-async def test_a_bridge_or_tunnel_does_not_climb_the_terrain_under_it(elevation_conn, structure, climb):
+@pytest.mark.parametrize("structure", [{"bridge": "viaduct"}, {"tunnel": "yes"}])
+async def test_a_bridge_or_tunnel_does_not_climb_the_terrain_under_it(elevation_conn, structure):
     """浮いた橋・地中のトンネルの区間は、下の地表の起伏を上り下りに数えない。同じ形のタグの無い道は数える。
     どちらの区間も、橋かトンネルだったかを値と一緒に持つ（前回の値を使い回してよいかを、形と並べて見分けるため）。"""
-    conn = elevation_conn
     await ingest_records("osm_way", [
         *(_way(way_id, pixels) for way_id, pixels, _ in CASES),
-        _way(11, VALLEY_PIXELS), _way(12, VALLEY_PIXELS, structure)], conn=conn)
-    async with conn.transaction():
-        await derive_topology.derive(conn)
-        await derive_elevation.derive(conn, previous=None)
+        _way(11, VALLEY_PIXELS), _way(12, VALLEY_PIXELS, structure)], conn=elevation_conn)
+    async with elevation_conn.transaction():
+        await derive_topology.derive(elevation_conn)
+        await derive_elevation.derive(elevation_conn, previous=None)
 
-    rows = await conn.fetch(
+    rows = await elevation_conn.fetch(
         "SELECT osm_way_id, elevation_gain_m, elevation_loss_m, on_structure FROM edge_elevation"
         " WHERE osm_way_id IN (11, 12)")
     assert {r["osm_way_id"]: (r["elevation_gain_m"], r["elevation_loss_m"], r["on_structure"]) for r in rows} == {
-        11: (10.0, 10.0, False), 12: (*climb, True)}
+        11: (10.0, 10.0, False), 12: (0.0, 0.0, True)}

@@ -2,16 +2,15 @@ import { expect, test, type Page } from "@playwright/test";
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import {
   branch,
-  chooseLens,
   expectNoOwnFailures,
   externalErrors,
   fetchCatalog,
   notApplicable,
   openLive,
   reportExternal,
-  settleMap,
   type Watch,
 } from "./live";
+import { chooseLens, settleMap } from "./mapReads";
 import { allLayersOn } from "../e2e/fixtures";
 
 // S3 時刻で変わる入力。実行した時刻に任せず、欠陥の境界から代表点を選ぶ: 日本時間とUTCで日付が異なる時間帯
@@ -89,7 +88,7 @@ test("S3 時刻で変わる入力", async ({ page }) => {
     (axis) => axis.dynamic_way_value_conditions.includes("at") && axis.way_value_formula !== null,
   );
   const statsBefore = await externalErrors();
-  const watch = await openLive(page, { storedState: allLayersOn() });
+  const watch = await openLive(page, { storedState: allLayersOn(catalog.road_classes.map_layers) });
   // 地図のタイルをブラウザのキャッシュから出さず、ズームごとに取り直させる（取り直した応答の中身を見る）。
   const client = await page.context().newCDPSession(page);
   await client.send("Network.setCacheDisabled", { cacheDisabled: true });

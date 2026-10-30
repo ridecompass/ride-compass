@@ -12,31 +12,16 @@
 import pytest
 from sqlalchemy import text
 
-from app.config import settings
 from app.infrastructure import database
-
-# 何も聞いていないポート。接続は張る段階ですぐに断られる。
-UNREACHABLE_DATABASE_URL = "postgresql+asyncpg://user:password@127.0.0.1:1/unreachable"
+from tests.conftest import UNREACHABLE_DATABASE_URL, app_database_at
 
 FACTORIES = [database.get_session_factory, database.get_route_generation_session_factory]
 
 
 @pytest.fixture
 async def unreachable_database(monkeypatch):
-    monkeypatch.setattr(settings, "database_url", UNREACHABLE_DATABASE_URL)
-    await database.dispose_engines()
-    yield
-    await database.dispose_engines()
-
-
-@pytest.mark.usefixtures("unreachable_database")
-def test_each_factory_is_built_once_and_the_two_do_not_share_a_pool():
-    """ルート生成は1件の間ずっと接続を持つので、タイル配信と接続を取り合わない。"""
-    tiles, route_generation = (factory() for factory in FACTORIES)
-
-    assert database.get_session_factory() is tiles
-    assert database.get_route_generation_session_factory() is route_generation
-    assert tiles.kw["bind"] is not route_generation.kw["bind"]
+    async with app_database_at(monkeypatch, UNREACHABLE_DATABASE_URL):
+        yield
 
 
 @pytest.mark.usefixtures("unreachable_database")

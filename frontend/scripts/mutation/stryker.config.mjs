@@ -12,5 +12,5 @@ export default {
   appendPlugins: ["./scripts/mutation/ignore-class-names.mjs"],
   ignorers: ["class-names"],
   // compare で testRunner を command にしたときに打つもの（書き換えごとにテスト全体を回す）。
-  commandRunner: { command: "npx vitest run" },
+  commandRunner: { command: "npx vitest run --config scripts/mutation/vitest.config.mts" },
 };

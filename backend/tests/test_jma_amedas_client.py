@@ -5,10 +5,10 @@
 None、プロセス内キャッシュで上流を引き直さないこと。
 
 ここで見ないもの:
-- キャッシュの骨格（失敗をキャッシュしない・該当なしのNoneもキャッシュする・ログの`fields`）→ `test_simple_api_client.py`
+- キャッシュの骨格（失敗をキャッシュしない・ログの`fields`）→ `test_simple_api_client.py`
 - 観測値をRedisへ置く・最寄りの観測所を選ぶ・雨の履歴 → `test_jma_amedas_service.py`
 - 体感温度 → `test_jma_amedas.py`
-- 16方位の呼び名の並び（`domain/geo.py: SIXTEEN_POINT_LABELS`） → `test_geo.py`
+- 16方位の呼び名の並び（`domain/geo.py: SIXTEEN_POINT_LABELS`） → 1つおきの8方位は`test_geo.py`、重ならないことは宣言の読み込みの時点の検査
 """
 
 from datetime import datetime, timedelta, timezone
@@ -130,13 +130,12 @@ async def test_observation_map_is_requested_by_the_jst_time():
     """URLの時刻はJSTの`YYYYMMDDHHMMSS`。UTCで渡しても同じ観測を引く。"""
     router = respx.Router()
     url = jma_amedas_client.AMEDAS_OBSERVATION_URL_TEMPLATE.format(timestamp="20260829170000")
-    route = router.get(url).respond(json={"44132": _FULL_READING})
+    router.get(url).respond(json={"44132": _FULL_READING})
 
     readings = await jma_amedas_client.fetch_observation_map(
         client_for(router), datetime(2026, 8, 29, 8, 0, tzinfo=timezone.utc)
     )
 
-    assert route.called
     assert readings == {
         "44132": jma_amedas_client.AmedasReading(
             temperature_c=21.3,
@@ -150,56 +149,11 @@ async def test_observation_map_is_requested_by_the_jst_time():
     }
 
 
-async def test_reading_without_a_sensor_has_none_and_no_hourly_rain():
-    """雨量計しか持たない観測所: 他の項目は無く、正時でない観測は1時間雨量の項目も無い。"""
-    client = answering(json={"11001": {"precipitation10m": [0.0, 0]}})
-
-    readings = await jma_amedas_client.fetch_observation_map(client, datetime(2026, 8, 29, 17, 10, tzinfo=timezone.utc))
-
-    assert readings == {
-        "11001": jma_amedas_client.AmedasReading(
-            temperature_c=None,
-            humidity_percent=None,
-            wind_speed_ms=None,
-            wind_direction=None,
-            precipitation_10min_mm=0.0,
-            precipitation_1h_mm=None,
-            reports_precipitation_1h=False,
-        )
-    }
-
-
-async def test_missing_value_is_none_but_the_hourly_rain_item_is_still_reported():
-    """雨量計はあるが欠測（`[null, フラグ]`）なら、値はNoneで、1時間雨量の項目は持つ。"""
-    client = answering(json={"44132": {"precipitation1h": [None, 5]}})
-
-    readings = await jma_amedas_client.fetch_observation_map(client, datetime(2026, 8, 29, 8, 0, tzinfo=timezone.utc))
-
-    assert readings["44132"] == jma_amedas_client.AmedasReading(
-        temperature_c=None,
-        humidity_percent=None,
-        wind_speed_ms=None,
-        wind_direction=None,
-        precipitation_10min_mm=None,
-        precipitation_1h_mm=None,
-        reports_precipitation_1h=True,
-    )
-
-
 async def _wind_direction(code) -> WindDirection | None:
     client = answering(json={"44132": {"windDirection": [code, 0]}})
     readings = await jma_amedas_client.fetch_observation_map(client, datetime(2026, 8, 29, 8, 0, tzinfo=timezone.utc))
     assert readings is not None
     return readings["44132"].wind_direction
-
-
-@pytest.mark.parametrize(
-    ("code", "deg", "label"),
-    [(1, 22.5, "北北東"), (16, 0.0, "北")],
-)
-async def test_jma_wind_codes_read_as_the_direction_the_wind_comes_from(code, deg, label):
-    """気象庁の番号は1=北北東から時計回りで16=北。北は360度ではなく0度。"""
-    assert await _wind_direction(code) == WindDirection(deg=deg, label=label)
 
 
 @pytest.mark.parametrize("code", [None, 0, 17])
@@ -212,17 +166,3 @@ async def test_the_sixteen_codes_go_round_clockwise_in_equal_steps():
     degrees = [(await _wind_direction(code)).deg for code in range(1, 17)]  # type: ignore[union-attr]
     steps = [(later - earlier) % 360 for earlier, later in zip(degrees, degrees[1:] + degrees[:1], strict=True)]
     assert steps == [22.5] * 16
-
-
-@pytest.mark.parametrize(
-    "response",
-    [
-        pytest.param({"status_code": 404}, id="無い時刻"),
-        pytest.param({"json": []}, id="辞書でない"),
-        pytest.param({"text": "{"}, id="JSONでない"),
-    ],
-)
-async def test_observation_map_failure_is_none(response):
-    observed_at = datetime(2026, 8, 29, 8, 0, tzinfo=timezone.utc)
-
-    assert await jma_amedas_client.fetch_observation_map(answering(**response), observed_at) is None

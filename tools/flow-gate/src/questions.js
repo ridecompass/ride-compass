@@ -49,6 +49,37 @@ export function conditions(body) {
   }
   return all;
 }
+// 本文の「やること」の節（.claude/skills/file-issue/SKILL.md「issue の形」）の項目。項目は節の中の字下げの無い番号付きの行から、次の項目の
+// 前までで、字下げした続きの行のうち「- 行き先: 」で始まる行が行き先。字下げの無い箇条の行（前提の1行等）は項目に数えない。
+// name は番号と文の頭（番号を振り直した並びが節に2つあっても見分ける）。
+const STEP = /^(\d+)\. (.+)$/;
+const TO = /^- 行き先: (.+)$/;
+function steps(body) {
+  const lines = bodyRest(body).split("\n");
+  const from = lines.findIndex((l) => l.trim().startsWith("<details><summary>やること</summary>"));
+  if (from < 0) return [];
+  const to = lines.findIndex((l, k) => k > from && l.trim() === "</details>");
+  const all = [];
+  for (const l of lines.slice(from + 1, to < 0 ? undefined : to)) {
+    const m = STEP.exec(l);
+    const t = TO.exec(l.trim());
+    if (m) all.push({ name: `${m[1]}「${m[2].slice(0, 20)}」`, to: [] });
+    else if (t && indent(l) && all.length) all.at(-1).to.push(t[1].trim());
+  }
+  return all;
+}
+// 行き先を名指していない「やること」の項目の name（ゲートは、これが残る間は完成で閉じない）。行き先は、今の完了の条件の文の頭に当たる
+// 「完了の条件「<条件の文の頭>」」か、ほかの issue の「#<番号>」か、理由を添えた「見送り（<理由>）」。
+export function unboundSteps(body, number) {
+  const texts = conditions(body).map((c) => c.text);
+  const named = (to) => {
+    const c = /^完了の条件「(.+)」$/.exec(to);
+    if (c) return texts.some((t) => t.startsWith(c[1]));
+    const n = /^#(\d+)(?!\d)/.exec(to);
+    return n ? Number(n[1]) !== number : /^見送り（.+）$/.test(to);
+  };
+  return steps(body).filter((s) => !s.to.some(named)).map((s) => s.name);
+}
 // 本文の、index の行のチェックに印を付ける（同じ文の条件が2つあっても、指した行にだけ付ける）。
 // 本文の完了の条件の行に値（チェック）を書いた本文。marks は [条件の行, 済んだか] の並び。本文の頭の回答のボタンは残す。
 export function markLines(body, marks) {
@@ -120,7 +151,7 @@ export function loadForms(texts) {
 }
 // 問いの頭の行と、問いの組み立て（rows は回答内容の節の行と属性、material は判断材料の節の名前と中身の並び）。
 export const questionHead = (kind) => `## 問い（${kind}）`;
-export const render = (kind, text, header, rows, material) => [`${questionHead(kind)}\n${text}`,
+const render = (kind, text, header, rows, material) => [`${questionHead(kind)}\n${text}`,
   header && [header, ...rows.flatMap((r) => [`- ${r.text}`, ...r.attrs.map(([n, v]) => `  - ${n}: ${v}`)])].join("\n"),
   `<details><summary>判断材料</summary>\n\n${material.map((s) => `**${s.name}**: ${s.value}`).join("\n\n")}\n</details>`].filter(Boolean).join("\n\n");
 

@@ -12,17 +12,15 @@
 
 import httpx
 import pytest
-import pytest_asyncio
 from sqlalchemy import event
 
 from app.batch import derive_topology
-from app.config import settings
 from app.domain.axis_definitions import AxisDefinition, BreakpointLinearShape, MaterialTerm
 from app.domain.region import EDGE_UNIT_MIN_ZOOM, tile_bounds_lonlat
 from app.infrastructure import database
 from app.main import app
 from tests.axis_system_fixture import replaced_axis_definitions
-from tests.conftest import postgis_database_url, raw_connection
+from tests.conftest import raw_connection
 from tests.source_ingest import ingest_records, way_record
 
 pytestmark = pytest.mark.asyncio(loop_scope="module")
@@ -53,15 +51,6 @@ WIND_AXIS = AxisDefinition(
 TILE = (EDGE_UNIT_MIN_ZOOM, 14551, 6447)
 
 
-@pytest_asyncio.fixture(loop_scope="module")
-async def app_on_test_database(road_graph_engine, monkeypatch):
-    """アプリのセッション工場を、表を作ったテストDBへ向ける。工場はプロセスに1つなので、作り直してから始め、閉じて終える。"""
-    monkeypatch.setattr(settings, "database_url", postgis_database_url())
-    await database.dispose_engines()
-    yield
-    await database.dispose_engines()
-
-
 @pytest.mark.usefixtures("app_on_test_database")
 async def test_one_inspection_holds_one_connection_at_a_time():
     bounds = tile_bounds_lonlat(*TILE)
@@ -89,10 +78,10 @@ async def test_one_inspection_holds_one_connection_at_a_time():
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
             response = await client.post(
                 "/api/region/axis-inspector",
-                json={"osm_way_id": 1, "feature_key": "1-0", "point": {"latitude": middle, "longitude": west},
+                json={"osm_way_id": 1, "feature_key": "1-0",
                       "z": TILE[0], "x": TILE[1], "y": TILE[2], "bearing_deg": 90.0, "speed_kmh": 20.0},
             )
 
     assert response.status_code == 200
-    assert response.json()["way"]["axes"]
+    assert response.json()["values"]["axes"]
     assert held["most"] == 1

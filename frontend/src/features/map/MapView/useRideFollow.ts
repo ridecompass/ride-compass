@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, type RefObject } from "react";
 import * as maplibregl from "maplibre-gl";
 import type { Map as MapLibreMap, Marker } from "maplibre-gl";
 
+import type { LiveValue } from "@/lib/liveValue";
 import type { Coordinates } from "@/types/route";
 
 import { nextRideZoom, rideZoomBase, rideZoomOut } from "./rideZoom";
@@ -13,25 +14,42 @@ export interface RideFollow {
   position: Coordinates | null;
   /** 進む向き（真北0・時計回りの度）。まだ分からなければnull。 */
   bearing: number | null;
-  /** スマホが向いている方角（真北0・時計回りの度）。読めなければnull（向きの印を出さない）。 */
-  facing: number | null;
+  /** スマホが向いている方角（真北0・時計回りの度）。読めなければnull（向きの印を出さない）。1秒に何十回も変わるので、
+   * 描き直さずに読む口で受け、現在地の印だけを回す。 */
+  facing: LiveValue<number | null>;
   following: boolean;
   /** 今の速さ（時速km）。分からなければnull。追っている間の倍率に使う。 */
   speedKmh: number | null;
   /** 進む向きを上にするか（偽なら北が上）。 */
   headingUp: boolean;
-  /** 利用者が地図を指で動かした・回した。 */
+  /** 利用者が地図を指で動かした・回した・区間を選んだ（追うのを休む）。 */
   onPause: () => void;
-  /** 走行モードの間に方位磁針を押した。 */
-  onToggleHeadingUp: () => void;
+  /** 区間の選びを外した（休んでいれば追い直す）。 */
+  onResume: () => void;
+  /** 進む向きを上にするかを選んだ。 */
+  onHeadingUpChange: (headingUp: boolean) => void;
   /** 追っている間の基準の倍率（速さで引く前）。この走行でまだ選んでいなければnull。 */
   zoomBase: number | null;
   /** 利用者が基準の倍率を選んだ（倍率のボタン・追っている間につまむ）。 */
   onZoomBaseChange: (zoom: number) => void;
+  /** 地図への触れを受け付けないロックの間か。 */
+  locked: boolean;
 }
 
 // 速さは位置ごとに揺れるので、新しい値をこの割合だけ混ぜてから倍率に使う（倍率がちらつかないように）。
 const SPEED_SMOOTHING = 0.3;
+
+// ロックの間に止める、地図の手ぶりの操作（MapLibreの各操作の入切の口）。
+const GESTURE_HANDLERS = [
+  "dragPan",
+  "dragRotate",
+  "scrollZoom",
+  "boxZoom",
+  "keyboard",
+  "doubleClickZoom",
+  "touchZoomRotate",
+  "touchPitch",
+] as const;
 
 const FACING_CONE_ATTRIBUTE = "data-facing-cone";
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -68,15 +86,15 @@ function isTwoFingerTouch(input: unknown): boolean {
 }
 
 /** 走行モードの間、現在地の点を出し、追っている間は地図の中心（と向き）を現在地へ動かし続ける。追っている間の2本指の
- * 操作は拡大・縮小だけにし、利用者が地図を指で動かすと追うのを休むよう知らせる。止めたら地図の向きを走る前に戻す。走っていない間は、`here`（取り直した現在地）に同じ点を出す。
+ * 操作は拡大・縮小だけにし、利用者が地図を指で動かすと追うのを休むよう知らせる。ロックの間は地図の手ぶりの操作を止める。止めたら地図の向きを走る前に戻す。走っていない間は、`here`（取り直した現在地）に同じ点を出す。
  * `visibleOffset`は、地図に重なる部品を避けて見えている所の中ほどへ寄せるための、中心からのずれ（px）。
- * 返すのは倍率のボタンを押したときの処理。 */
+ * 返すのは倍率のボタンと方位磁針を押したときの処理。 */
 export function useRideFollow(
   mapRef: RefObject<MapLibreMap | null>,
   ride: RideFollow | null,
   here: Coordinates | null,
   visibleOffset: (map: MapLibreMap) => [number, number],
-): () => void {
+): { onNextZoom: () => void; onCompass: () => void } {
   const latest = useRef(ride);
   // 追っている間の倍率の基準（速さで引く前）と、なめらかにした速さ、いま当てている引きの段の数。基準は、つまみ終えて
   // 寄せ直すときに新しい値が描き直しより先に要るので、受けた値とは別に手元に持つ。
@@ -125,19 +143,29 @@ export function useRideFollow(
     };
   }, [mapRef]);
 
-  // 追っている間は、2本指で回す・傾ける操作を止める（指がわずかにひねれば回り始め、2本指で縦に動かせば傾くので、
-  // 拡大・縮小のつもりの操作で地図が回る）。
+  // 追っている間は、2本指で回す操作を止める（指がわずかにひねれば回り始めるので、拡大・縮小のつもりの操作で地図が回る）。
   const following = ride?.following ?? false;
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !following) return;
     map.touchZoomRotate.disableRotation();
-    map.touchPitch.disable();
     return () => {
       map.touchZoomRotate.enableRotation();
-      map.touchPitch.enable();
     };
   }, [mapRef, following]);
+
+  // ロックの間は手ぶりの操作を止め、外したら止める前に効いていたものだけを戻す（傾けは地図を作るときから止めてある）。
+  // 追うのをやめると上で2本指で回す操作を戻すので、追っているかが変わるたびに止め直す（このeffectは上より後に置く）。
+  const locked = ride?.locked ?? false;
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !locked) return;
+    const stopped = GESTURE_HANDLERS.map((name) => map[name]).filter((handler) => handler.isEnabled());
+    for (const handler of stopped) handler.disable();
+    return () => {
+      for (const handler of stopped) handler.enable();
+    };
+  }, [mapRef, locked, following]);
 
   // 走り始めたときの地図の向きを覚え、止めたらそこへ戻す（進む向きを上にして回した地図を、作業台に持ち越さない）。
   // 戻すのは止めたときだけで、画面を離れて地図を片付けるときは動かさない。
@@ -178,8 +206,13 @@ export function useRideFollow(
     const dot = dotRef.current;
     if (!dot) return;
     const cone = dot.getElement().querySelector<SVGElement>(`[${FACING_CONE_ATTRIBUTE}]`);
-    cone?.setAttribute("visibility", facing === null ? "hidden" : "visible");
-    dot.setRotation(facing ?? 0);
+    const turn = () => {
+      const degrees = facing?.current() ?? null;
+      cone?.setAttribute("visibility", degrees === null ? "hidden" : "visible");
+      dot.setRotation(degrees ?? 0);
+    };
+    turn();
+    return facing?.subscribe(turn);
   }, [position, facing]);
   useEffect(
     () => () => {
@@ -227,11 +260,25 @@ export function useRideFollow(
   }, [mapRef, following, position, bearing, headingUp, speedKmh, zoomBase]);
 
   // 追っている間は基準が変わって寄せ直す。休んでいる間は追い直すまで中心を動かさず、倍率だけをその段へ寄せる。
-  return useCallback(() => {
+  const onNextZoom = useCallback(() => {
     const current = latest.current;
     if (!current) return;
     const next = nextRideZoom(rideZoomBase(current.zoomBase));
     current.onZoomBaseChange(next);
     if (!current.following) mapRef.current?.easeTo({ zoom: next });
   }, [mapRef]);
+
+  // 追っている間は北が上と進む向きが上を切り替える。追っていない間は、見ている所を動かさずに北が上へその場で戻す。
+  const onCompass = useCallback(() => {
+    const current = latest.current;
+    if (!current) return;
+    if (current.following) {
+      current.onHeadingUpChange(!current.headingUp);
+      return;
+    }
+    current.onHeadingUpChange(false);
+    mapRef.current?.jumpTo({ bearing: 0 });
+  }, [mapRef]);
+
+  return { onNextZoom, onCompass };
 }

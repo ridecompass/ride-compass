@@ -45,12 +45,11 @@ class RiskLevel(NamedTuple):
     color: str
 
 
-#: 降水の強さ（mm/h）。段の区切りは気象庁の降水のタイルと同じで、中継（`infrastructure/jma_tile_recolor.py`）がその色を
-#: ここの色へ塗り替えるため、気象庁のタイル・自前の格子の塗り・凡例が同じ段で読める。背景と同じ色にすると
-#: 「降っていない」と見分けが付かないため、いちばん弱い段も色を持つ。10mm/h以上の名前は気象庁「雨の強さと降り方」の
-#: 分類、それ未満は公式の区分が無いため自前で名付ける。
+#: 降水の強さ（mm/h）で、塗る段だけを持つ。段の区切りは気象庁の降水のタイルと同じで、中継（`infrastructure/jma_tile_recolor.py`）が
+#: その色をここの色へ塗り替えるため、気象庁のタイル・MSMの格子点の升目の塗り・凡例が同じ段で読める。いちばん弱い段の下限より
+#: 弱い雨は塗らない——気象庁の画面ではほぼ白で雨と読めない段で、色を付けると、気象庁やその配色に従う配信サイトで降っていない
+#: 所が雨に見える。10mm/h以上の名前は気象庁「雨の強さと降り方」の分類、それ未満は公式の区分が無いため自前で名付ける。
 PRECIPITATION_COLOR_STOPS: tuple[ValueColorStop, ...] = ascending_stops(
-    ValueColorStop(0, "#b8e6fd", "ごく弱い雨"),
     ValueColorStop(1, "#68ccfb", "弱い雨"),
     ValueColorStop(5, "#38bdf8", "ザーッ"),
     ValueColorStop(10, "#3b82f6", "やや強い雨"),

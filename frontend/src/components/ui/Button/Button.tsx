@@ -48,7 +48,7 @@ export const buttonVariants = cva(
         /** パネルの操作のボタン。アイコンだけを置き、名前は`aria-label`で渡す（長押し・マウスを重ねると、名前と使い方が
          * `components/UsageGuide/UsageTooltip.tsx`のツールチップに出る）。 */
         panelIcon: "rounded-sm px-1.5 py-1",
-        /** 上部の帯の印（警報・今日の見通し）。値の並びに混ざるので、枠の無い`ghost`と組む。 */
+        /** 上部の帯の印（警報）。値の並びに混ざるので、枠の無い`ghost`と組む。 */
         headerIcon: "size-7 rounded-sm",
         /** 小さい丸のアイコンボタン。 */
         iconRound: "size-6.5 rounded-full",
@@ -71,8 +71,11 @@ export const buttonVariants = cva(
 );
 
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement>, VariantProps<typeof buttonVariants> {
-  /** 使い方の文。説明を見る状態（`components/UsageGuide/UsageGuide.tsx`）でこの部品を押すと出る。 */
-  usage?: string;
+  /**
+   * 使い方の文。説明を見る状態（`components/UsageGuide/UsageGuide.tsx`）でこの部品を押すと出る。`null`は説明を見る状態の
+   * 無い画面（管理画面・エラー画面）と説明を見る状態自身の部品だけが渡す（`structure/usageText.test.ts`が見る）。
+   */
+  usage: string | null;
 }
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
@@ -84,7 +87,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       ref={ref}
       type={type}
       className={cn(buttonVariants({ variant, size, shape }), className)}
-      data-usage={usage}
+      data-usage={usage ?? undefined}
       {...props}
     />
   );

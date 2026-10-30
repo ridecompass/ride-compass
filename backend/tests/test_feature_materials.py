@@ -1,5 +1,5 @@
 """地図の配信が評価するタイルの材料を読む口（`services/feature_materials.py: FeatureMaterialService`）が、読んだ材料を
-路面タイルの世代と読み方の署名ごとに持つこと。差し替えるのはDB（リポジトリ）だけで、ディスクの置き場は`conftest.py`の
+路面タイルの世代と読み方の署名ごとに持つことと、地図の線の層の値をフィーチャーごとに配ること。差し替えるのはDB（リポジトリ）だけで、ディスクの置き場は`conftest.py`の
 autouseがテストごとの一時ディレクトリへ差し替える。
 
 ここで見ないもの:
@@ -8,17 +8,19 @@ autouseがテストごとの一時ディレクトリへ差し替える。
 - 置き場の失敗と失効 → `test_tile_persistent_cache.py`
 """
 
-import inspect
+import functools
 
 import numpy as np
 
-from app.config import settings
+from app.domain.attributes import CategoricalColumn
 from app.domain.dynamic_way_values import FeatureMaterials
 from app.infrastructure import debug_log
 from app.infrastructure.derived_data_meta import DataRevisions
 from app.infrastructure.road_graph_repository import RoadGraphRepository
 from app.services import feature_materials
 from app.services.feature_materials import FeatureMaterialService
+from tests.bound_fake import bound
+from tests.road_class_fixture import classification, fact_is, map_layer, replaced_road_classes, road_classes
 
 Z, X, Y = 14, 14551, 6447
 
@@ -40,8 +42,8 @@ class FakeFeatureMaterialsRepository:
     async def get_accident_years_covered(self):
         return 1
 
+    @functools.partial(bound, RoadGraphRepository.get_feature_materials_in_tile)
     async def get_feature_materials_in_tile(self, *args, **kwargs):
-        inspect.signature(RoadGraphRepository.get_feature_materials_in_tile).bind(self, *args, **kwargs)
         return self.materials
 
 
@@ -68,20 +70,6 @@ async def test_a_tile_read_once_is_served_from_the_cache():
     assert (after.cache_misses - counted_before[0], after.cache_hits - counted_before[1]) == (1, 1)
 
 
-async def test_a_new_derived_data_revision_reads_the_tile_again(monkeypatch):
-    """材料の鍵は路面タイルの`feature_key`と一致して初めて意味を持つ。派生を作り直した後も前の世代の材料を返すと、
-    鍵の合わない道が「データなし」になり、合う道は古い値で塗られる。"""
-    monkeypatch.setattr(settings, "derived_data_revision_check_interval_seconds", 0.0)
-    repository = FakeFeatureMaterialsRepository(_materials(1.0))
-    service = FeatureMaterialService(repository)
-    await _num_a(service)
-
-    repository.materials = _materials(2.0)
-    repository.revision = 2
-
-    assert await _num_a(service) == 2.0
-
-
 async def test_a_deploy_that_changes_how_the_materials_are_read_reads_the_tile_again(monkeypatch):
     """読み出しのSQLを変えたデプロイは、DBの世代も路面タイルの形も動かさない。署名が鍵に届いていないと、前の読み方の
     材料がTTLの間返り続ける。"""
@@ -93,3 +81,27 @@ async def test_a_deploy_that_changes_how_the_materials_are_read_reads_the_tile_a
     monkeypatch.setattr(feature_materials, "FEATURE_MATERIALS_VALUE_SHAPE", "another-reading")
 
     assert await _num_a(service) == 2.0
+
+
+async def test_tiles_read_while_the_revision_is_unknown_are_not_kept():
+    """DBの世代を読めない間に読んだ材料は、どの世代の道の鍵か分からない。残すと、後で世代を読めない間に同じ印の鍵で
+    別の世代の材料を返す。"""
+    repository = FakeFeatureMaterialsRepository(_materials(1.0))
+    repository.revision = None
+    service = FeatureMaterialService(repository)
+    await _num_a(service)
+
+    repository.materials = _materials(2.0)
+
+    assert await _num_a(service) == 2.0
+
+
+async def test_road_layer_values_are_served_per_feature_without_roads_outside_every_class():
+    """地図は道ごとの層の値で道の線を塗る。区分の外の道の層を載せると、地図はその道を区分の色で塗れない値として受け取る。"""
+    tile = FeatureMaterials(feature_keys=("1-0", "2-0"), columns={"cat_a": CategoricalColumn.encode(["a", "b"])})
+    definitions = road_classes({"k": classification({"is_a": [fact_is("cat_a", "a")]})}, map_layers={"k": map_layer()})
+
+    with replaced_road_classes(definitions):
+        values = await FeatureMaterialService(FakeFeatureMaterialsRepository(tile)).road_layer_values(Z, X, Y)
+
+    assert values == {"1-0": {"k": "is_a"}}

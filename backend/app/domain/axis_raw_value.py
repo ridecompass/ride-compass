@@ -13,7 +13,7 @@ from app.domain.axis_definitions import (
     AxisDefinition,
     BreakpointLinearShape,
 )
-from app.domain.material_catalog import MATERIAL_CATALOG, MaterialDType
+from app.domain.material_catalog import MaterialDType, known_material_spec, material_spec
 from app.domain.strict_model import StrictModel
 
 
@@ -36,7 +36,7 @@ def raw_value_unit(definition: AxisDefinition) -> str | None:
             continue
         if term.weight != 1.0:
             return None
-        spec = MATERIAL_CATALOG.get(term.material)
+        spec = material_spec(term.material)
         if spec is None or not spec.unit:
             return None
         specs.append(spec)
@@ -83,7 +83,7 @@ def _total_unit(definition: AxisDefinition) -> str | None:
     total_units = {
         spec.total_unit
         for term in shape.terms
-        if term.weight != 0 and (spec := MATERIAL_CATALOG.get(term.material)) is not None
+        if term.weight != 0 and (spec := material_spec(term.material)) is not None
     }
     if len(total_units) != 1:
         return None
@@ -151,7 +151,11 @@ def axis_material_shares(
 
 
 class AxisMaterialBreakdownEntry(StrictModel):
-    """合成軸の内訳1件（材料と、その材料が軸の生値に占める割合）。"""
+    """合成軸の内訳1件（材料。並びは軸の生値に占める割合の降順）。
+
+    割合そのものは載せない——材料の重みは較正の値で、認証の無い軸カタログに載るため
+    （`docs/architecture/data-sources.md`「OSM から作った値と独自の層」）。
+    """
 
     material_id: str
     #: 材料の表示名（`MaterialSpec.label`）。フロントは対応表を持たない。
@@ -160,8 +164,6 @@ class AxisMaterialBreakdownEntry(StrictModel):
     dtype: MaterialDType
     #: numeric材料の単位。真偽値材料は空文字。
     unit: str
-    #: 各階層で正規化した重みの積（0〜1）。並び順の根拠を画面側でも示せるよう返す。
-    share: float
     #: categorical材料の「タグ生値→論理名」対訳（`MaterialSpec.value_labels`）。
     #: ルート結果は`material_category_shares`の値をこれで日本語にする。他の型では空。
     #: 軸スタジオが使う`value_label()`の「論理名 - 物理名」形式にしないのは、走行中に見る
@@ -184,14 +186,13 @@ def axis_material_breakdown(
     """
     entries = []
     for share in axis_material_shares(definition, definitions):
-        spec = MATERIAL_CATALOG[share.material_id]
+        spec = known_material_spec(share.material_id)
         entries.append(
             AxisMaterialBreakdownEntry(
                 material_id=share.material_id,
                 label=spec.label,
                 dtype=spec.dtype,
                 unit=spec.unit,
-                share=round(share.share, 4),
                 value_labels=dict(spec.value_labels),
             )
         )

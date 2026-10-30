@@ -6,7 +6,7 @@
 いたのかまで無いと、次の一手が決まらない。ここで全部取る。
 
 psutilもpg_stat_statementsも使わない（依存と設定を増やさない）。自プロセスは
-`resource.getrusage`、DB側は`pg_stat_activity`の標本から見る:
+`time.process_time`と`resource.getrusage`、DB側は`pg_stat_activity`の標本から見る:
 
 - **待ち事象が無い`active`**は、そのバックエンドがCPUを回していることを意味する
 - **同じクエリが標本に現れた回数**は、そのクエリが占めた時間に比例する
@@ -15,13 +15,18 @@ psutilもpg_stat_statementsも使わない（依存と設定を増やさない�
 
 標本のクエリ文はPostgreSQLの設定（track_activity_query_size、既定1024バイト）で切られる。切られた文は
 計画を取れないので、占めた割合だけを出して計画は空にする——推測で埋めない。
+
+**OSが持たない値は「測れない」と出す。** Windowsには`resource`も`os.getloadavg`も無く、
+RSSとloadは`None`になる（0で埋めると、測った0と見分けが付かない）。
+
+RSSは`ru_maxrss`で、**プロセスが始まってからの最大**であり回ごとの値ではない（同じプロセスで
+冷えた回の後に回した温まった回にも、冷えた回の最大が出る）。名前もそう名乗る。
 """
 
 import asyncio
 import contextlib
 import os
 import re
-import resource
 import time
 from collections import Counter
 from collections.abc import AsyncIterator
@@ -41,8 +46,8 @@ _WHITESPACE = re.compile(r"\s+")
 @dataclass(frozen=True)
 class Sample:
     app_cpu_seconds: float
-    app_rss_mb: float
-    load1: float
+    process_peak_rss_mb: float | None
+    load1: float | None
     db_on_cpu: int
 
 
@@ -79,8 +84,8 @@ class ResourceTrace:
         return self.app_cpu_seconds / self.wall_seconds if self.wall_seconds else 0.0
 
     @property
-    def peak_rss_mb(self) -> float:
-        return max((s.app_rss_mb for s in self.samples), default=0.0)
+    def process_peak_rss_mb(self) -> float | None:
+        return max((s.process_peak_rss_mb for s in self.samples if s.process_peak_rss_mb is not None), default=None)
 
     @property
     def db_cpu_ratio(self) -> float:
@@ -90,8 +95,8 @@ class ResourceTrace:
         return sum(1 for s in self.samples if s.db_on_cpu > 0) / len(self.samples)
 
     @property
-    def peak_load1(self) -> float:
-        return max((s.load1 for s in self.samples), default=0.0)
+    def peak_load1(self) -> float | None:
+        return max((s.load1 for s in self.samples if s.load1 is not None), default=None)
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -99,8 +104,8 @@ class ResourceTrace:
             "app_cpu_seconds": round(self.app_cpu_seconds, 2),
             "app_cpu_ratio": round(self.app_cpu_ratio, 3),
             "db_cpu_ratio": round(self.db_cpu_ratio, 3),
-            "peak_rss_mb": round(self.peak_rss_mb, 1),
-            "peak_load1": round(self.peak_load1, 2),
+            "process_peak_rss_mb": _rounded(self.process_peak_rss_mb, 1),
+            "peak_load1": _rounded(self.peak_load1, 2),
             "sample_count": len(self.samples),
             "queries": [
                 {"share": q.share, "samples": q.samples, "query": q.query, "plan": q.plan}
@@ -113,7 +118,8 @@ class ResourceTrace:
             f"壁時計 {self.wall_seconds:7.1f}秒 / "
             f"Python側CPU {self.app_cpu_seconds:6.1f}秒（{self.app_cpu_ratio:.2f}コア相当） / "
             f"DBがCPUを回していた標本 {self.db_cpu_ratio * 100:5.1f}% / "
-            f"RSS最大 {self.peak_rss_mb:6.0f}MB / load最大 {self.peak_load1:.2f}"
+            f"RSS（プロセス開始からの最大） {_shown(self.process_peak_rss_mb, '6.0f', 'MB')} / "
+            f"load最大 {_shown(self.peak_load1, '.2f')}"
         )
 
     def query_lines(self) -> list[str]:
@@ -127,17 +133,30 @@ class ResourceTrace:
         return lines
 
 
-def _load1() -> float:
+def _rounded(value: float | None, digits: int) -> float | None:
+    return None if value is None else round(value, digits)
+
+
+def _shown(value: float | None, spec: str, unit: str = "") -> str:
+    return "測れない" if value is None else f"{value:{spec}}{unit}"
+
+
+def _load1() -> float | None:
+    if not hasattr(os, "getloadavg"):  # Windowsには無い
+        return None
     try:
         return os.getloadavg()[0]
     except OSError:
-        return 0.0
+        return None
 
 
-def _rusage() -> tuple[float, float]:
-    usage = resource.getrusage(resource.RUSAGE_SELF)
+def _process_peak_rss_mb() -> float | None:
+    try:
+        import resource  # Windowsには無いので、モジュールの読み込みを止めないよう使う所で読む
+    except ImportError:
+        return None
     # Linuxの`ru_maxrss`はキロバイト。
-    return usage.ru_utime + usage.ru_stime, usage.ru_maxrss / 1024
+    return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024
 
 
 _ACTIVITY_SQL = """
@@ -189,35 +208,41 @@ async def sample_resources(
     """囲んだ区間の資源の使われ方・DBが回していたクエリ・その実行計画を記録する。
 
     DBの標本は計測専用の接続から取る——計測対象の接続を借りると、計測自体が対象の
-    待ち行列へ並んでしまう。
+    待ち行列へ並んでしまう。標本は間隔ごとのほかに区間の始まりと終わりで1つずつ取る
+    （間隔ごとだけでは、区間の両端の間隔が標本に現れず、短い区間ほど割合とCPU時間がずれる）。
     """
     trace = ResourceTrace()
     connection = await asyncpg.connect(asyncpg_dsn)
     await connection.execute(_EXPLAIN_HELPER_SQL)
-    started = time.perf_counter()
     stop = asyncio.Event()
 
+    async def take_sample() -> None:
+        try:
+            rows = await connection.fetch(_ACTIVITY_SQL)
+        except (asyncpg.PostgresError, OSError):
+            rows = []
+        on_cpu = sum(1 for r in rows if r["wait_event"] is None)
+        for row in rows:
+            text = _WHITESPACE.sub(" ", (row["query"] or "")).strip()
+            if text:
+                trace.queries[text] += 1
+        trace.samples.append(Sample(
+            app_cpu_seconds=time.process_time(),
+            process_peak_rss_mb=_process_peak_rss_mb(),
+            load1=_load1(),
+            db_on_cpu=on_cpu,
+        ))
+
     async def loop() -> None:
-        while not stop.is_set():
-            try:
-                rows = await connection.fetch(_ACTIVITY_SQL)
-            except (asyncpg.PostgresError, OSError):
-                rows = []
-            on_cpu = sum(1 for r in rows if r["wait_event"] is None)
-            for row in rows:
-                text = _WHITESPACE.sub(" ", (row["query"] or "")).strip()
-                if text:
-                    trace.queries[text] += 1
-            cpu_seconds, rss_mb = _rusage()
-            trace.samples.append(Sample(
-                app_cpu_seconds=cpu_seconds,
-                app_rss_mb=rss_mb,
-                load1=_load1(),
-                db_on_cpu=on_cpu,
-            ))
+        while True:
             with contextlib.suppress(TimeoutError):
                 await asyncio.wait_for(stop.wait(), timeout=interval)
+            if stop.is_set():
+                return
+            await take_sample()
 
+    await take_sample()
+    started = time.perf_counter()
     task = asyncio.create_task(loop())
     try:
         yield trace
@@ -225,6 +250,7 @@ async def sample_resources(
         trace.wall_seconds = time.perf_counter() - started
         stop.set()
         await task
+        await take_sample()
         total = sum(trace.queries.values())
         for text, count in trace.queries.most_common(plan_limit):
             trace.query_plans.append(QueryShare(

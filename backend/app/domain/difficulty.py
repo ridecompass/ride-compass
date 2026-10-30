@@ -106,7 +106,8 @@ def _axis_terms(
     for axis_id, arr in axis_arrays.items():
         weight = weights.get(axis_id, 0.0)
         valid = ~np.isnan(arr)
-        score_terms.append(np.where(valid, arr * weight, 0.0))
+        # 点数の列はfloat32で持つことがあり、そのまま掛けると項もfloat32になって補償加算の精度を失う。
+        score_terms.append(np.where(valid, np.multiply(arr, weight, dtype=np.float64), 0.0))
         weight_terms.append(np.where(valid, weight, 0.0))
     return score_terms, weight_terms
 

@@ -1,11 +1,11 @@
 /**
- * 動的気象レイヤーのフックが、表示中のソースだけを配信元と backend から取り、選んだ時刻のコマの描画内容とチップの取得状態を
- * 返すことを見る（docs/modules/frontend/dynamic-weather-layers.md）。配信元の中継（時刻一覧・地物・タイル）は画面のオリジンへ、
- * 風の格子は backend へ出るので、どちらも網の層で応える。応答を与えていない要求はテストを落とすので、取りに行かないソースは
+ * 動的気象レイヤーのフックが、表示中のソースだけを配信元から取り、選んだ時刻のコマの描画内容とチップの取得状態を
+ * 返すことを見る（docs/modules/frontend/dynamic-weather-layers.md）。配信元の中継（時刻一覧・地物・タイル。画面のオリジンへ出る）と
+ * MSMの格子点（backendへ出る）は網の層で応える。応答を与えていない要求はテストを落とすので、取りに行かないソースは
  * 応答を与えないことで確かめる。
  *
  * ここで見ないもの: 時刻一覧の行の読み方・段のつなぎ方・コマの規則（`jmaDelivery.test.ts`・`weatherSources.test.ts`）、
- * 詳細格子（`useWeatherGrid.test.ts`）、タイルの失敗の記録（`jmaTileProtocol.test.ts`）とコマの突き合わせ（`dynamicWeather.test.ts`）。
+ * タイルの失敗の記録（`jmaTileProtocol.test.ts`）とコマの突き合わせ（`dynamicWeather.test.ts`）。
  */
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { HttpResponse } from "msw";
@@ -16,9 +16,11 @@ vi.mock("maplibre-gl", () => import("@/testing/maplibre"));
 import { jmaTilePayload } from "@/features/map/layers/jmaDelivery";
 import { registerJmaTileProtocol, withJmaTileProtocol } from "@/features/map/layers/jmaTileProtocol";
 import type { MapLayerVisibility } from "@/features/map/layers/mapLayers";
+import { MAP_FETCH_DEBOUNCE_MS } from "@/hooks/useDebouncedValue";
 import { heldReplies, inTurn, onBackend, onSameOrigin } from "@/testing/backendServer";
 import { protocolHandler } from "@/testing/maplibre";
 import { jmaDeliveryOf, jmaTileUrlAt } from "@/testing/jmaDeliveries";
+import { mapDisplay } from "@/types/generated/mapDisplay";
 
 import { useDynamicWeatherLayers } from "./useDynamicWeatherLayers";
 
@@ -35,34 +37,23 @@ const failure = () => new HttpResponse(null, { status: 500 });
 
 type Options = Parameters<typeof useDynamicWeatherLayers>[0];
 
-function render(shown: Partial<MapLayerVisibility>, hiddenSources: Options["hiddenSources"] = {}) {
+function render(
+  shown: Partial<MapLayerVisibility>,
+  hiddenSources: Options["hiddenSources"] = {},
+  mapViewport: Options["mapViewport"] = null,
+) {
   return renderHook(
-    ({ at }: { at: Date }) =>
+    ({ at = NOW, viewport = mapViewport }: { at?: Date; viewport?: Options["mapViewport"] }) =>
       useDynamicWeatherLayers({
         visibility: shown as MapLayerVisibility,
         hiddenSources,
-        mapViewport: null,
+        mapViewport: viewport,
         at,
         now: NOW,
       }),
-    { initialProps: { at: NOW } },
+    { initialProps: {} },
   );
 }
-
-/** 風の格子。点1つが、渡した日本時間の時刻ごとに風と降水の値を持つ。 */
-const windGrid = (...times: string[]) =>
-  Response.json({
-    times,
-    points: [
-      {
-        latitude: 35,
-        longitude: 139,
-        wind_speed_ms: times.map(() => 5),
-        wind_direction_deg: times.map(() => 90),
-        precipitation_mm: times.map(() => 3),
-      },
-    ],
-  });
 
 afterEach(() => {
   vi.useRealTimers();
@@ -86,7 +77,6 @@ describe("useDynamicWeatherLayers", () => {
     expect(result.current.dynamicWeatherDataStatus).toEqual({
       disaster: undefined,
       precipitationNowcast: undefined,
-      windVector: undefined,
     });
   });
 
@@ -110,7 +100,6 @@ describe("useDynamicWeatherLayers", () => {
     onSameOrigin("GET", timesPath("nowc/targetTimes_N1.json"), n1);
     onSameOrigin("GET", timesPath("nowc/targetTimes_N2.json"), failure);
     onSameOrigin("GET", timesPath("rasrf/targetTimes.json"), () => Response.json([]));
-    onBackend("GET", "/api/weather/wind-grid", () => windGrid());
 
     const { result } = render({ precipitationNowcast: true }, { precipitationNowcast: PRECIPITATION_EXCEPT_MAIN });
 
@@ -121,7 +110,7 @@ describe("useDynamicWeatherLayers", () => {
     );
   });
 
-  it("時刻一覧の取り直しに失敗している間は、前に届いた一覧で描かずに失敗にする", async () => {
+  it("時刻一覧の取り直しに失敗している間は、前に届いた一覧のコマで描き続け、失敗にする", async () => {
     vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"], shouldAdvanceTime: true });
     onSameOrigin("GET", timesPath("risk/targetTimes.json"), inTurn(Response.json(rows("rain_mesh")), failure()));
     const { result } = render({ disaster: true }, { disaster: DISASTER_NOWCAST });
@@ -130,7 +119,9 @@ describe("useDynamicWeatherLayers", () => {
     act(() => vi.advanceTimersByTime(jmaDeliveryOf("rain_mesh").refreshIntervalMs));
 
     await waitFor(() => expect(result.current.dynamicWeatherDataStatus.disaster).toBe("error"));
-    expect(result.current.dynamicWeather.disaster?.heavyRain?.payload).toBeUndefined();
+    expect(result.current.dynamicWeather.disaster?.heavyRain?.payload).toEqual(
+      jmaTilePayload("rasterTile", jmaDeliveryOf("rain_mesh"), FRAME),
+    );
   });
 
   it("地物で描く段は選んでいるコマの地物だけを描き、取れていない間は読み込み中、取れなければ失敗にする", async () => {
@@ -202,86 +193,134 @@ describe("useDynamicWeatherLayers", () => {
     });
   });
 
-  it.each([
-    {
-      name: "選んだ時刻の値があれば描く",
-      reply: () => windGrid("2026-10-07T12:00"),
-      status: undefined,
-      kinds: ["gridMark", "gridFill"],
-    },
-    { name: "取れなければ失敗にする", reply: failure, status: "error", kinds: [undefined, undefined] },
-    {
-      name: "選んだ時刻の値が無ければ空にする",
-      reply: () => windGrid("2026-10-07T15:00"),
-      status: "empty",
-      kinds: [undefined, undefined],
-    },
-  ])("格子を読むソースは風の格子から値ごとの描き方で描き、$name", async ({ reply, status, kinds }) => {
-    onBackend("GET", "/api/weather/wind-grid", reply);
-    onSameOrigin("GET", "/api/jma-tile/*", () => Response.json([]));
-
-    const { result } = render(
-      { windVector: true, precipitationNowcast: true },
-      { precipitationNowcast: PRECIPITATION_EXCEPT_MAIN },
+  it("MSMの格子点で描く段は、選んだ時刻の格子点の値を、矢印は格子点の位置に、降水は格子点を中心に格子点の間隔の升目に描く", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    // 配信元の段が空なので、降水の時系列は格子点の段だけになる。
+    for (const file of ["nowc/targetTimes_N1.json", "nowc/targetTimes_N2.json", "rasrf/targetTimes.json"]) {
+      onSameOrigin("GET", timesPath(file), () => Response.json([]));
+    }
+    // 時刻はNOWとその1時間後（日本時間の壁時計）。値の欠けた格子点は描かない。
+    onBackend("GET", "/api/weather/msm-grid", () =>
+      Response.json({
+        times: ["2026-10-07T12:00", "2026-10-07T13:00"],
+        latitude_step_deg: 0.1,
+        longitude_step_deg: 0.125,
+        points: [
+          {
+            latitude: 35.6,
+            longitude: 139.75,
+            wind_speed_ms: [2, 5.5],
+            wind_direction_deg: [0, 270],
+            precipitation_mm: [0, 3.2],
+          },
+          {
+            latitude: 35.7,
+            longitude: 139.875,
+            wind_speed_ms: [3, null],
+            wind_direction_deg: [90, 90],
+            precipitation_mm: [1, null],
+          },
+        ],
+      }),
     );
+    const zoom = mapDisplay.layerDataSources.find((source) => source.key === "msmGrid")!.minZoom!;
+    const viewport = { west: 139.7, south: 35.55, east: 139.9, north: 35.75, zoom, bearing: 0 };
 
-    expect(result.current.dynamicWeatherDataStatus.windVector).toBe("loading");
-    await waitFor(() => expect(result.current.dynamicWeatherDataStatus.windVector).not.toBe("loading"));
-    await waitFor(() => expect(result.current.dynamicWeatherDataStatus.precipitationNowcast).not.toBe("loading"));
-    expect(result.current.dynamicWeatherDataStatus).toMatchObject({ windVector: status, precipitationNowcast: status });
-    expect([
-      result.current.dynamicWeather.windVector?.arrow?.payload?.kind,
-      result.current.dynamicWeather.precipitationNowcast?.main?.payload?.kind,
-    ]).toEqual(kinds);
+    const { result, rerender } = render(
+      { precipitationNowcast: true, windVector: true },
+      { precipitationNowcast: PRECIPITATION_EXCEPT_MAIN },
+      viewport,
+    );
+    await vi.waitFor(() => expect(result.current.dynamicWeather.windVector?.arrow?.payload).toBeDefined());
+    rerender({ at: new Date("2026-10-07T04:00:00Z") });
+
+    expect(result.current.dynamicWeather.windVector?.arrow?.payload).toEqual({
+      kind: "gridMark",
+      geojson: {
+        type: "FeatureCollection",
+        features: [
+          {
+            type: "Feature",
+            geometry: { type: "Point", coordinates: [139.75, 35.6] },
+            properties: { speed: 5.5, bearing: 90 },
+          },
+        ],
+      },
+      gridStepDeg: { latitude: 0.1, longitude: 0.125 },
+    });
+    const cells = result.current.dynamicWeather.precipitationNowcast?.main?.payload;
+    expect(cells).toMatchObject({ kind: "gridFill", geojson: { features: [{ properties: { mmPerHour: 3.2 } }] } });
+    const ring =
+      cells?.kind === "gridFill" ? (cells.geojson.features[0].geometry as GeoJSON.Polygon).coordinates[0] : [];
+    const corners = ring.map(([lon, lat]) => [Number(lon.toFixed(6)), Number(lat.toFixed(6))]);
+    expect(corners).toEqual([
+      [139.6875, 35.55],
+      [139.8125, 35.55],
+      [139.8125, 35.65],
+      [139.6875, 35.65],
+      [139.6875, 35.55],
+    ]);
+    expect(cells?.kind === "gridFill" && cells.geojson.features).toHaveLength(1);
   });
 
-  it.each([
-    {
-      name: "災害の配信元のタイルだけを読むソース",
-      group: "disaster" as const,
-      source: "heavyRain",
-      delivery: "rain_mesh",
-      arrange: () => {
-        onSameOrigin("GET", timesPath("risk/targetTimes.json"), () => Response.json(rows("rain_mesh")));
-        return render({ disaster: true }, { disaster: DISASTER_NOWCAST });
-      },
-    },
-    {
-      name: "自前の格子の段も持つソースの、配信元のタイルの段",
-      group: "precipitationNowcast" as const,
-      source: "main",
-      delivery: "hrpns",
-      arrange: () => {
-        onSameOrigin("GET", timesPath("nowc/targetTimes_N1.json"), () => Response.json(rows("hrpns")));
-        onSameOrigin("GET", timesPath("nowc/targetTimes_N2.json"), () => Response.json([]));
-        onSameOrigin("GET", timesPath("rasrf/targetTimes.json"), () => Response.json([]));
-        onBackend("GET", "/api/weather/wind-grid", () => windGrid());
-        return render({ precipitationNowcast: true }, { precipitationNowcast: PRECIPITATION_EXCEPT_MAIN });
-      },
-    },
-  ])(
-    "描いているコマのタイルの配信が落ちている間は、そのチップを失敗にする（$name）",
-    async ({ group, source, delivery, arrange }) => {
-      const { result } = arrange();
-      await waitFor(() => expect(result.current.dynamicWeather[group]?.[source]?.payload).toBeDefined());
-      expect(result.current.dynamicWeatherDataStatus[group]).toBeUndefined();
-      registerJmaTileProtocol();
-      const requestTile = protocolHandler(withJmaTileProtocol("").split("://")[0]) as (
-        params: { url: string },
-        abort: AbortController,
-      ) => Promise<unknown>;
-      const template = jmaTilePayload("rasterTile", jmaDeliveryOf(delivery), FRAME).tileUrlTemplate;
-      const tile = jmaTileUrlAt(template, 5, 28, 12);
-      const tilePath = new URL(tile).pathname;
+  it("表示範囲が少し動くだけなら格子点を取り直さず、矢印を描き直さない。大きく動けば取り直す", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const sent = onBackend("GET", "/api/weather/msm-grid", () =>
+      Response.json({
+        times: ["2026-10-07T12:00"],
+        latitude_step_deg: 0.05,
+        longitude_step_deg: 0.0625,
+        points: [
+          { latitude: 35.65, longitude: 139.8125, wind_speed_ms: [4], wind_direction_deg: [0], precipitation_mm: [0] },
+        ],
+      }),
+    );
+    const zoom = mapDisplay.layerDataSources.find((source) => source.key === "msmGrid")!.minZoom!;
+    const viewport = { west: 139.7, south: 35.55, east: 139.9, north: 35.74, zoom, bearing: 0 };
+    const shifted = (deg: number) => ({
+      ...viewport,
+      west: viewport.west + deg,
+      east: viewport.east + deg,
+      south: viewport.south + deg,
+      north: viewport.north + deg,
+    });
+    const arrows = () => result.current.dynamicWeather.windVector?.arrow?.payload;
+    const { result, rerender } = render({ windVector: true }, {}, viewport);
+    await vi.waitFor(() => expect(arrows()).toBeDefined());
+    const drawn = arrows();
 
-      onSameOrigin("GET", tilePath, failure);
-      await act(() => requestTile({ url: withJmaTileProtocol(tile) }, new AbortController()));
-      expect(result.current.dynamicWeatherDataStatus[group]).toBe("error");
+    // 走行中に地図が現在地へ寄せ直すたびの、100mほどのずれ。取り直すと backend の回数の上限に当たり、断られた間は矢印が消える。
+    rerender({ viewport: shifted(0.001) });
+    await act(() => vi.advanceTimersByTimeAsync(MAP_FETCH_DEBOUNCE_MS));
+    expect(sent).toHaveLength(1);
+    expect(arrows()).toBe(drawn);
 
-      // 配信が戻れば外れる（記録はモジュールが持つので、後のテストへ残さない）。
-      onSameOrigin("GET", tilePath, () => new HttpResponse(new ArrayBuffer(0)));
-      await act(() => requestTile({ url: withJmaTileProtocol(tile) }, new AbortController()));
-      expect(result.current.dynamicWeatherDataStatus[group]).toBeUndefined();
-    },
-  );
+    rerender({ viewport: shifted(0.1) });
+    await act(() => vi.advanceTimersByTimeAsync(MAP_FETCH_DEBOUNCE_MS));
+    await vi.waitFor(() => expect(sent).toHaveLength(2));
+  });
+
+  it("描いているコマのタイルの配信が落ちている間は、そのチップを失敗にする", async () => {
+    onSameOrigin("GET", timesPath("risk/targetTimes.json"), () => Response.json(rows("rain_mesh")));
+    const { result } = render({ disaster: true }, { disaster: DISASTER_NOWCAST });
+    await waitFor(() => expect(result.current.dynamicWeather.disaster?.heavyRain?.payload).toBeDefined());
+    expect(result.current.dynamicWeatherDataStatus.disaster).toBeUndefined();
+    registerJmaTileProtocol();
+    const requestTile = protocolHandler(withJmaTileProtocol("").split("://")[0]) as (
+      params: { url: string },
+      abort: AbortController,
+    ) => Promise<unknown>;
+    const template = jmaTilePayload("rasterTile", jmaDeliveryOf("rain_mesh"), FRAME).tileUrlTemplate;
+    const tile = jmaTileUrlAt(template, 5, 28, 12);
+    const tilePath = new URL(tile).pathname;
+
+    onSameOrigin("GET", tilePath, failure);
+    await act(() => requestTile({ url: withJmaTileProtocol(tile) }, new AbortController()));
+    expect(result.current.dynamicWeatherDataStatus.disaster).toBe("error");
+
+    // 配信が戻れば外れる（記録はモジュールが持つので、後のテストへ残さない）。
+    onSameOrigin("GET", tilePath, () => new HttpResponse(new ArrayBuffer(0)));
+    await act(() => requestTile({ url: withJmaTileProtocol(tile) }, new AbortController()));
+    expect(result.current.dynamicWeatherDataStatus.disaster).toBeUndefined();
+  });
 });

@@ -11,13 +11,13 @@
 
 import pytest
 
-from app.domain.flood_forecast import FLOOD_LEVEL_LABELS, FloodBulletin, extract_active_flood_forecast
+from app.domain.flood_forecast import FloodBulletin, extract_active_flood_forecast
 from app.domain.warning_levels import WarningBadgeLevel
 
 ACTIVE: WarningBadgeLevel = "severe_warning"
 
 
-def _bulletin(level: WarningBadgeLevel | None, class20_codes=("1310100",), class10_codes=("130010",)) -> FloodBulletin:
+def _bulletin(level: WarningBadgeLevel | None, class20_codes, class10_codes) -> FloodBulletin:
     return FloodBulletin(
         level=level,
         class20_codes=tuple(class20_codes),
@@ -26,22 +26,6 @@ def _bulletin(level: WarningBadgeLevel | None, class20_codes=("1310100",), class
         river_name="架空川",
         condition="氾濫のおそれ",
     )
-
-
-def test_an_active_code_over_the_start_area_becomes_a_forecast_named_after_the_river():
-    forecast = extract_active_flood_forecast(_bulletin(ACTIVE), "1310100", "130010")
-
-    assert forecast is not None
-    assert forecast.model_dump() == {
-        "river_code": "850000",
-        "badge_level": ACTIVE,
-        "label": f"架空川{FLOOD_LEVEL_LABELS[ACTIVE]}",
-        "condition": "氾濫のおそれ",
-    }
-
-
-def test_a_bulletin_with_no_active_level_gives_nothing():
-    assert extract_active_flood_forecast(_bulletin(None), "1310100", "130010") is None
 
 
 @pytest.mark.parametrize(

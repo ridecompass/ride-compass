@@ -9,6 +9,7 @@ Esri×Impact Observatory Sentinel-2 10m Annual LULCの画素値ヒストグラ�
 """
 
 from dataclasses import dataclass, field
+from collections.abc import Sequence
 from typing import Annotated, Any
 
 from pydantic import Field, create_model
@@ -29,11 +30,6 @@ LULC_RANGELAND = 11
 
 # No Data(0)・Clouds(10)は分母（有効画素数）から除外する。
 LULC_INVALID_VALUES = frozenset({0, LULC_CLOUDS})
-
-#: 土地被覆を数える帯。中心線からこの距離までを見て、路面そのものの幅は除く。
-#: 材料の値を決める量であり、材料の説明文もこの値を読む。
-LANDCOVER_RING_OUTER_M = 100.0
-LANDCOVER_RING_INNER_M = 10.0
 
 # これ未満の有効画素数は「値なし」（行を作らない）。統計的に安定した割合と呼べる
 # 最低限の画素数（10m画素×20 = 2,000m2程度）。
@@ -110,6 +106,28 @@ LANDCOVER_CLASSES: tuple[LandcoverClass, ...] = (
         "一年中、雪か氷に覆われた所。",
     ),
 )
+
+
+
+def check_landcover_classes(classes: Sequence[LandcoverClass]) -> None:
+    """クラスの宣言が、画素・割合列・凡例のどこで読んでも1つのクラスに決まらなければ断る。
+
+    画素値が重なると1つの画素が2クラスに数えられ、割合列の名前が重なると材料の列がぶつかる。表示名・色が重なると
+    凡例と区間インスペクタで見分けられない。割合列の名前は材料の列の名前を導く接尾辞で終わる。凡例の行は（i）から説明を開く。
+    """
+    for attribute in ("value", "percent_field", "label", "color"):
+        values = [getattr(cls, attribute) for cls in classes]
+        if len(set(values)) != len(values):
+            raise ValueError(f"土地被覆のクラスの{attribute}が重なる")
+    if not all(cls.percent_field.endswith("_percent") for cls in classes):
+        raise ValueError("土地被覆の割合列の名前が`_percent`で終わらない")
+    if not all(cls.description.strip() for cls in classes):
+        raise ValueError("土地被覆のクラスに、凡例の行が開く説明が無い")
+    if {cls.value for cls in classes} & LULC_INVALID_VALUES:
+        raise ValueError("土地被覆のクラスが、どのクラスでもない画素値（No Data・Clouds）を持つ")
+
+
+check_landcover_classes(LANDCOVER_CLASSES)
 
 #: (割合列の名前, クラス値)。割合を出す対象は`LANDCOVER_CLASSES`が決め、ここはそれを
 #: SQLの列順（クラス値の昇順）へ並べ替えただけのもの。並びを表示順から切り離すのは、

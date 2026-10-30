@@ -6,10 +6,12 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/Popover
 import { Button } from "@/components/ui/Button/Button";
 import { DialogContent, DialogRoot } from "@/components/ui/Dialog/Dialog";
 import { LogIcon } from "@/components/ui/icons/icons";
-import { HelpIcon, MenuIcon, RedrawMapIcon, VersionIcon } from "@/components/ui/icons/lucideIcons";
+import { CopyIcon, HelpIcon, MenuIcon, RedrawMapIcon, VersionIcon } from "@/components/ui/icons/lucideIcons";
 import { textVariants } from "@/components/ui/Text/Text";
 import { Toggle } from "@/components/ui/Toggle/Toggle";
+import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
 import { getQueryClient } from "@/lib/queryClient";
+import { readRideMetrics } from "@/lib/rideMetrics";
 import { frontendVersionQuery } from "@/services/versionApi";
 
 interface HeaderMenuProps {
@@ -36,6 +38,9 @@ export default function HeaderMenu({
   // メニューが閉じきってから入る先（説明を見る状態・バージョンの窓）。
   const afterClose = useRef<"guide" | "version" | null>(null);
   const trigger = useRef<HTMLButtonElement>(null);
+  const { copied, error: copyError, copy } = useCopyToClipboard();
+  // 直近の走行の記録（`lib/rideMetrics.ts`）。メニューを開いたときに読む（走り終えてから開いて写す）。
+  const rideMetrics = open ? readRideMetrics() : null;
 
   return (
     <>
@@ -94,6 +99,19 @@ export default function HeaderMenu({
             <RedrawMapIcon size={15} />
             地図の表示を再描画
           </Button>
+          {rideMetrics !== null && (
+            // 写したことはメニューの中の名前で見せるので、押しても閉じない。
+            <Button
+              variant="menu"
+              size="sm"
+              usage="直近の走行の記録（電池・位置・地図の描き直し等の1分ごとの数）を写します。"
+              onClick={() => copy(JSON.stringify(rideMetrics))}
+            >
+              <CopyIcon size={15} />
+              {copied ? "走行の記録をコピーしました" : "走行の記録をコピー"}
+            </Button>
+          )}
+          {copyError !== null && <p className={textVariants({ variant: "error" })}>{copyError}</p>}
           {debugEnabled && (
             <Toggle
               variant="menu"

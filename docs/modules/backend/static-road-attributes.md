@@ -11,14 +11,14 @@ OSM由来の道路データ（PBF取込）・警察庁事故データ・土地�
 
 | レイヤー | ファイル |
 |---|---|
-| domain | `road.py`・`attributes.py`・`accident.py`・`stop_place.py`（立ち寄り先の群と、地点を群へ入れる語・同じ店をまとめる距離とチェーンの見分け方・言語違いの同じ場所を連絡先で寄せる群と距離・文化財の所有者から寺社を見分ける語）・`traffic.py`（OSMタグの解釈と分類。停止要因・補給POIの種別、通行方向、道の階級）・`landcover.py`（土地被覆クラス別割合の算出と、数える帯の幅。割合の列の名前の規則。評価軸の材料）・`divided_carriageway.py`（上下線が分かれた道の片側かのしきい値と判定のSQL式、一方通行の材料の値式）・`map_display.py`・`display_palette.py`（地図の束ね方・レイヤーごとの種別と情報源と既定表示と名前と説明と最初に凡例で隠す行・常に出す出典・描く寸法と配色。**本番プロセスは読まず**、`scripts/export_openapi.py`の生成物を経由してだけ画面へ届く。読み方は[地図: 静的レイヤー](../frontend/static-map-layers.md)）（[region.py](routing-engine.md)は別モジュール管轄）・`db_status.py`（本番DBの数を「注意が要るか」へ読むしきい値と判定） |
+| domain | `attributes.py`・`accident.py`・`stop_place.py`（立ち寄り先の群と、地点を群へ入れる語・同じ店をまとめる距離とチェーンの見分け方・言語違いの同じ場所を連絡先で寄せる群と距離・文化財の所有者から寺社を見分ける語）・`traffic.py`（OSMタグの解釈と分類。停止要因・補給POIの種別、通行方向、道の階級）・`landcover.py`（土地被覆クラス別割合の算出と、数える帯の幅。割合の列の名前の規則。評価軸の材料）・`divided_carriageway.py`（上下線が分かれた道の片側かのしきい値と判定のSQL式、一方通行の材料の値式）・`map_display.py`・`display_palette.py`（地図の束ね方・レイヤーごとの種別と情報源と既定表示と名前と説明と最初に凡例で隠す行・常に出す出典・描く寸法と配色。画面へは`scripts/export_openapi.py`の生成物を経由してだけ届く。本番プロセスは`map_display.py`の種別の鍵だけを、道の区分の入れ替えで地図の線の層のまとめ先を照らすのに読む（`road_classes.py: undeclared_references`）。`display_palette.py`は色の段を本番も読む。読み方は[地図: 静的レイヤー](../frontend/static-map-layers.md)）（[region.py](routing-engine.md)は別モジュール管轄）・`db_status.py`（本番DBの数を「注意が要るか」へ読むしきい値と判定） |
 | services | `region_service.py`・`landcover_tile_service.py`（土地被覆ラスタタイルの配信）・`derived_data_freshness_service.py`（派生データ鮮度台帳）・`tile_version_service.py`（配信するタイル世代の組み立て。形の署名とDBの派生データ・生データの世代から作る）・`derived_data_revision_service.py`（DBの派生データ・生データの世代をTTL付きで読み直す。別コンテナのバッチが書き直したことにbackendが気づく唯一の経路で、タイル世代の組み立て等の配信側が読む）・`db_status_service.py`（本番DBの数を読み、domainの`db_status.py`の判定で注意の印を付けたレポートにする。レポートの型は応答の型を兼ねる） |
-| infrastructure | `vector_tile.py`・`tile_cache.py`・`region_tile_cache.py`（地域タイルのディスクの口。鍵・キャッシュ確認→取得→書き戻しの骨格・旧世代の掃除）・`landcover_raster.py`（土地被覆GeoTIFFの読み取り・再投影・着色）・`source_models.py`（外部ソースの生データを、ソースによらない1つの形で持つ。点・線・ラスタのタイルを同じ骨格へ載せ、取込1回ぶんを`source_runs`が記録する。コードが名指すソース名と取込の状態の綴り［`Source`・`SourceRunStatus`］、ソースごとの生データを読む副問い合わせ、ソースの成功した最新の取込を指す副問い合わせ［`latest_succeeded_run_sql`。派生の基準・取込の範囲はここから読む］、全ソースの成功した最新の取込［`LATEST_SUCCEEDED_RUNS_SQL`。派生の作り直しが記録する］、成功した取込の数［`succeeded_run_count`。生データの世代］もここが持つ）・`derived_models.py`（生データから導いたもの。表は「書く段 × 行の母集団」ごとに分け、どの表も書く段は1つ）・`orm_base.py`（ORMの基底。どのモデルからも辿れる位置に置き、モデル同士がimportで絡まないようにする。全表を載せたmetadata［`declared_metadata`。importの有無で表が欠けないよう、全表を見る側はここを通す。importするモジュールの並び`TABLE_MODULES`の足し忘れは構造テストが落とす］と、派生の表の印［`DERIVED`。鮮度台帳が数える表と材料の式が読む列を持つ表はここから導く］もここが持つ）・`point_tile_layers.py`（点のタイルのレイヤーの宣言。名前・source-layer名・焼き込むSQL。配信・世代の表・生成物はここから組み立てる）・`derived_data_freshness.py`（派生データ鮮度台帳）・`db_status.py`（本番DBの状態＝取込runの最終実行・テーブルの実数と容量・統計とVACUUMの鮮度・接続）・`proj_data.py`（rasterioが参照するPROJデータをrasterio同梱のものへ固定する。別インストールの`proj.db`を掴むとEPSG解決が失敗するため、rasterioのimport前に呼ぶ） |
+| infrastructure | `vector_tile.py`・`tile_cache.py`・`region_tile_cache.py`（地域タイルのディスクの口。鍵・キャッシュ確認→取得→書き戻しの骨格・旧世代の掃除）・`landcover_raster.py`（土地被覆GeoTIFFの読み取り・再投影・着色）・`source_models.py`（外部ソースの生データを、ソースによらない1つの形で持つ。点・線・ラスタのタイルを同じ骨格へ載せ、取込1回ぶんを`source_models.py: source_runs`が記録する。コードが名指すソース名と取込の状態の綴り［`source_models.py: Source`・`source_models.py: SourceRunStatus`］、ソースごとの生データを読む副問い合わせ、ソースの成功した最新の取込を指す副問い合わせ［`source_models.py: latest_succeeded_run_sql`。派生の基準・取込の範囲はここから読む］、全ソースの成功した最新の取込［`source_models.py: LATEST_SUCCEEDED_RUNS_SQL`。派生の作り直しが記録する］、成功した取込の数［`source_models.py: succeeded_run_count`。生データの世代］もここが持つ）・`derived_models.py`（生データから導いたもの。表は「書く段 × 行の母集団」ごとに分け、どの表も書く段は1つ）・`orm_base.py`（ORMの基底。どのモデルからも辿れる位置に置き、モデル同士がimportで絡まないようにする。全表を載せたmetadata［`orm_base.py: declared_metadata`。importの有無で表が欠けないよう、全表を見る側はここを通す。importするモジュールの並び`orm_base.py: TABLE_MODULES`の足し忘れは構造テストが落とす］と、派生の表の印［`orm_base.py: DERIVED`。鮮度台帳が数える表と材料の式が読む列を持つ表はここから導く］もここが持つ）・`point_tile_layers.py`（点のタイルのレイヤーの宣言。名前・source-layer名・焼き込むSQL。配信・世代の表・生成物はここから組み立てる）・`derived_data_freshness.py`（派生データ鮮度台帳）・`db_status.py`（本番DBの状態＝取込runの最終実行・テーブルの実数と容量・統計とVACUUMの鮮度・接続）・`proj_data.py`（rasterioが参照するPROJデータをrasterio同梱のものへ固定する。別インストールの`proj.db`を掴むとEPSG解決が失敗するため、rasterioのimport前に呼ぶ） |
 | api | `region.py`（路面/点/動的材料/土地被覆タイル・区間インスペクタ）・`_tile_http.py`（タイルの口が共有する座標検証・応答組み立て・レート制限と同時実行の上限）・`derived_data_freshness.py`（`GET /api/admin/derived-data/freshness`、Basic認証必須）・`db_status.py`（`GET /api/admin/db-status`、同） |
-| batch | `ingest.py`（外部ソースの共通取込経路。アダプタから受けた1件ずつをステージングへ積み、そのソースのパーティションだけを入れ替え、`source_runs`へ適用した絞り込みごと記録する。runを開く記録と失敗の記録は入れ替えと別のトランザクションで書き、成功の記録は入れ替えと同じトランザクションで書く——失敗した取込は行を元のまま残して`failed`のrunが残り、`succeeded`のrunの行は必ず入っている。入力の指紋が成功した最新のrunと同じなら取り込まない［下の「データ取込」］）・`code_fingerprint.py`（モジュールから`import`でたどれる`app`の中のモジュールの中身から作る、コードの指紋）・`ingest_cli.py`（その入口）・`source_profile.py`／`source_profile.yaml`（取り込む母集団の宣言。実装には範囲を書かない。読む側が知らない欄があれば取込の前に止める）・`source_adapters/`（外部の形を開いて1件ずつ返すだけの実装。`overture_places.py`はOverture Mapsの地点のGeoParquet（DuckDBで読む。配信元は叩かず手元にあるものを読み、範囲・確からしさ・群の語・名前で母集団の外の地点を落とす）、`bunka_heritages.py`は国の文化財の建造物（ジャパンサーチの項目を1行1件のJSONで並べたもの。範囲・指定の別・位置の有無で落とし、寺社かは見ない）、`npa_honhyo.py`は警察庁の本票CSV（配信元は叩かず、手元にあるものを読む。無ければ何を流せばよいかを言って止まる。度分秒をつないだ数字列の緯度・経度を度へ読み、日本の範囲を外れた値は壊れた値として落とす）、`osm_pbf.py`はOSMのPBF（way・node。タグを絞らず全部持つ。PBFの読み取り自体は`pbf_source.py`が持ち、pyosmiumへの依存をそこへ閉じ込める）、`io_lulc_tile.py`は土地被覆ラスタをタイルへ切って、`gsi_dem_tile.py`は地理院の標高タイル——製品×タイル1枚を1行として返し、標高はint32（0.01m単位）で詰める。面のタイルは`raster_wkb.py`がPostGISの`raster`へ包む。位置・画素の大きさ・型・欠測値をその値自身に持たせ、読み手が属性から形を組み立てなくてよいようにする）・`derive_cli.py`（派生を作り直す入口。段の順番と、段ごとの入力（読むソース・前の段・書く表・較正値）の宣言はここだけが持つ。較正値は始めにDBの上書きから読み、段へ値で渡す。入力の指紋が前回と同じ段は流さず、流す段の表だけを作業用のスキーマで作り、道路網の配列まで作ってから`public`の表と入れ替えて世代を進める。配列も入力が前回と同じなら作らない）・`derive_topology.py`（生データから区間`road_edges`・区間を持つ道の鍵・区間の端点とその枝数を導く。切る位置は2本以上の道が通るノード）・`derive_nodes.py`（ノードの種別と、頂点の信号の有無・集まる道の最大階級。種別の判断は取込ではなくここで行うため、判断が変わっても生データは取り直さない）・`derive_counts.py`（区間と道に付く数の値。停止要因はまとまり1つを経路上で1回になるよう区間へ割り振り、道の値は区間の和から導くため地図と評価で食い違わない）・`derive_elevation.py`（標高のタイルを線へ落とす。区間の形状点で測る）・`derive_landcover.py`（土地被覆の画像を線へ落とす。中心線の周りの帯に落ちる画素を数える）・`derive_way_directions.py`（道1本の性質。通行方向をタグから決め、上下線分離は逆向きに並走する相方の有無で判定する）・`derive_stop_places.py`（立ち寄り先。下の「立ち寄り先」）・`common.py`（バッチ間共通ヘルパ。asyncpg用DSN変換・`SOURCE_DATA_LOCK`［取込と派生の作り直しが同時に走らないよう両方が取る鍵の名前。DBのバックアップも書き出す間は持つ］・`place_verified`［取得スクリプトが配布元から取ったものを置く共通の手順。読めるものは取り直さず、一時ファイル経由で置き、書き終えたら開いてみて開けなければ退ける。URLの1ファイルを写す`fetch_verified`はこの上に乗る］・`fetched_all`［取得スクリプトが取るものを全部試してから、全部を置けたかを返す。1つ置けなくても残りを取りに行く］・`fetch_timeout`［配布元から1つのファイルを取るときのタイムアウト。応答の途中で黙ってよい秒数だけを取得スクリプトが渡す］・`batch_session_factory`[エンジン生成と破棄。表を先に探すスキーマを指定できる]・`run_batch_cli`[DBを書く入口（例: `ingest_cli.py`・`derive_cli.py`・`scripts/bootstrap_database.py`）の骨格。ログの設定・`--database-url`の読み取りを持ち、入口は自分の引数と本体だけを書く]・`configure_cli_logging`[バッチと取得スクリプトが端末へ出すログの書式]）・`fetch_cli.py`（取得スクリプトの入口の骨格。ログの設定・`--profile`の読み取り・プロファイルにそのアダプタのソースが無ければ取らずに終えること・終了コード・通信の失敗の1行を持つ。プロファイルを読むとアダプタ全部が`import`でたどれるので、派生の段が読む`common.py`のコードの指紋へ入れないよう分けて置く）・`scripts/fetch_lulc_raster.py`（土地被覆ラスタの取得。デプロイが呼ぶ）・`scripts/fetch_osm_pbf.py`（OSMの抽出ファイルの取得）・`scripts/fetch_accident_csv.py`（警察庁の本票CSVの取得。年ごとに1ファイルで、要る年はプロファイルが持つ）・`scripts/fetch_overture_places.py`（Overture Mapsの地点の取得。S3の版ごとの配布から取込の範囲だけをDuckDBで切り出して1ファイルに置く。版はプロファイルが持つ）・`scripts/fetch_bunka_heritages.py`（国の文化財の建造物の取得。ジャパンサーチの全件取得の口で全国を1ファイルに置く。取った日はプロファイルが持つ）・`scripts/bootstrap_database.py`（まっさらなDBを使える状態まで立ち上げる。スキーマ→取込→派生の順はここだけが持ち、途中から流し直せる） |
+| batch | `ingest.py`（外部ソースの共通取込経路。アダプタから受けた1件ずつをステージングへ積み、そのソースのパーティションだけを入れ替え、`source_runs`へ適用した絞り込みごと記録する。runを開く記録と失敗の記録は入れ替えと別のトランザクションで書き、成功の記録は入れ替えと同じトランザクションで書く——失敗した取込は行を元のまま残して`failed`のrunが残り、`succeeded`のrunの行は必ず入っている。入力の指紋が成功した最新のrunと同じなら取り込まない［下の「データ取込」］）・`code_fingerprint.py`（モジュールから`import`でたどれる`app`の中のモジュールの中身から作る、コードの指紋と、それらが読み込むライブラリの版）・`ingest_cli.py`（その入口）・`source_profile.py`／`source_profile.yaml`（取り込む母集団の宣言。実装には範囲を書かない。読む側が知らない欄があれば取込の前に止める）・`source_adapters/`（外部の形を開いて1件ずつ返すだけの実装。`overture_places.py`はOverture Mapsの地点のGeoParquet（DuckDBで読む。配信元は叩かず手元にあるものを読み、範囲・確からしさ・群の語・名前で母集団の外の地点を落とす）、`bunka_heritages.py`は国の文化財の建造物（ジャパンサーチの項目を1行1件のJSONで並べたもの。範囲・指定の別・位置の有無で落とし、寺社かは見ない）、`npa_honhyo.py`は警察庁の本票CSV（配信元は叩かず、手元にあるものを読む。無ければ何を流せばよいかを言って止まる。度分秒をつないだ数字列の緯度・経度を度へ読み、日本の範囲を外れた値は壊れた値として落とす）、`osm_pbf.py`はOSMのPBF（way・node。タグを絞らず全部持つ。PBFの読み取り自体は`pbf_source.py`が持ち、pyosmiumへの依存をそこへ閉じ込める）、`io_lulc_tile.py`は土地被覆ラスタをタイルへ切って、`gsi_dem_tile.py`は地理院の標高タイル——製品×タイル1枚を1行として返し、標高はint32（0.01m単位）で詰める。面のタイルは`raster_wkb.py`がPostGISの`raster`へ包む。位置・画素の大きさ・型・欠測値をその値自身に持たせ、読み手が属性から形を組み立てなくてよいようにする）・`derive_cli.py`（派生を作り直す入口。段の順番と、段ごとの入力（読むソース・前の段・書く表・較正値）の宣言はここだけが持つ。較正値は始めにDBの上書きから読み、段へ値で渡す。入力の指紋が前回と同じ段は流さず、流す段の表だけを作業用のスキーマで作り、道路網の配列まで作ってから`public`の表と入れ替えて世代を進める。配列も入力が前回と同じなら作らない）・`derive_topology.py`（生データから区間`road_edges`・区間を持つ道の鍵・区間の端点とその枝数を導く。切る位置は2本以上の道が通るノード）・`derive_nodes.py`（ノードの種別と、頂点の信号の有無・集まる道の最大階級。種別の判断は取込ではなくここで行うため、判断が変わっても生データは取り直さない）・`derive_counts.py`（区間と道に付く数の値。停止要因はまとまり1つを経路上で1回になるよう区間へ割り振り、道の値は区間の和から導くため地図と評価で食い違わない）・`derive_elevation.py`（標高のタイルを線へ落とす。区間の形状点で測る）・`derive_landcover.py`（土地被覆の画像を線へ落とす。中心線の周りの帯に落ちる画素を数える）・`derive_way_directions.py`（道1本の性質。通行方向をタグから決め、上下線分離は逆向きに並走する相方の有無で判定する）・`derive_stop_places.py`（立ち寄り先。下の「立ち寄り先」）・`common.py`（バッチ間共通ヘルパ。asyncpg用DSN変換・`common.py: SOURCE_DATA_LOCK`［取込と派生の作り直しが同時に走らないよう両方が取る鍵の名前。DBのバックアップも書き出す間は持つ］・`common.py: place_verified`［取得スクリプトが配布元から取ったものを置く共通の手順。読めるものは取り直さず、一時ファイル経由で置き、書き終えたら開いてみて開けなければ退ける。URLの1ファイルを写す`common.py: fetch_verified`はこの上に乗る］・`common.py: fetched_all`［取得スクリプトが取るものを全部試してから、全部を置けたかを返す。1つ置けなくても残りを取りに行く］・`common.py: fetch_timeout`［配布元から1つのファイルを取るときのタイムアウト。応答の途中で黙ってよい秒数だけを取得スクリプトが渡す］・`common.py: batch_session_factory`[エンジン生成と破棄。表を先に探すスキーマを指定できる]・`common.py: run_batch_cli`[DBを書く入口（例: `ingest_cli.py`・`derive_cli.py`・`scripts/bootstrap_database.py`）の骨格。ログの設定・`--database-url`の読み取りを持ち、入口は自分の引数と本体だけを書く]・`configure_cli_logging`[バッチと取得スクリプトが端末へ出すログの書式]）・`fetch_cli.py`（取得スクリプトの入口の骨格。ログの設定・`--profile`の読み取り・プロファイルにそのアダプタのソースが無ければ取らずに終えること・終了コード・通信の失敗の1行を持つ。プロファイルを読むとアダプタ全部が`import`でたどれるので、派生の段が読む`common.py`のコードの指紋へ入れないよう分けて置く）・`scripts/fetch_lulc_raster.py`（土地被覆ラスタの取得。デプロイが呼ぶ）・`scripts/fetch_osm_pbf.py`（OSMの抽出ファイルの取得）・`scripts/fetch_accident_csv.py`（警察庁の本票CSVの取得。年ごとに1ファイルで、要る年はプロファイルが持つ）・`scripts/fetch_overture_places.py`（Overture Mapsの地点の取得。S3の版ごとの配布から取込の範囲だけをDuckDBで切り出して1ファイルに置く。版はプロファイルが持つ）・`scripts/fetch_bunka_heritages.py`（国の文化財の建造物の取得。ジャパンサーチの全件取得の口で全国を1ファイルに置く。取った日はプロファイルが持つ）・`scripts/bootstrap_database.py`（まっさらなDBを使える状態まで立ち上げる。スキーマ→取込→派生の順はここだけが持ち、途中から流し直せる） |
 
 `api/routers/region.py`のうち`GET /api/region/way-materials/...`エンドポイントは
-[動的材料・フィーチャー値配信](dynamic-way-values.md)の管轄、`domain/road.py`の
+[動的材料・フィーチャー値配信](dynamic-way-values.md)の管轄、`infrastructure/road_graph_repository.py`の
 `RoadGraphRepository`本体は[ルート生成エンジン](routing-engine.md)の
 管轄。本モジュールは同じ`region.py`ファイル内の路面/点/区間インスペクタ部分と、
 `vector_tile.py`・`tile_cache.py`等の周辺インフラを扱う。
@@ -51,7 +51,7 @@ OSM由来の道路データ（PBF取込）・警察庁事故データ・土地�
 
 **入力が前回と同じなら取り込まない**（`ingest.py: input_fingerprint`）。取込の行は、アダプタが読むファイルの中身・
 範囲とそのソース（と宣言を読むほかのソース。頂点のソースが読む道のソース等）の宣言・アダプタからたどれる`app`の中の
-コード（`code_fingerprint.py`。関数の中の`import`もたどる）・Pythonとライブラリの版だけで決まる。取込は始めにこれらの
+コード（`code_fingerprint.py`。関数の中の`import`もたどる）・そのコードが読み込むライブラリの版・Pythonの版だけで決まる。取込は始めにこれらの
 指紋を作り（ファイルは中身を全部読む——大きさと更新時刻が同じでも中身が同じとは言えない）、成功したrunの
 `origin.input_fingerprint`へ残す。そのソースの成功した最新のrunと指紋が同じなら、行を入れ替えず新しいrunも作らずに
 そのrunを返し、ログに前回の`run_id`を出す（最新のrunが失敗でも、失敗した取込は行を残さないので比べるのは成功した
@@ -117,38 +117,26 @@ OSMは**行だけを絞り、タグは絞らない**。タグは容量の1.9%し
 |---|---|---|---|
 | 取込 | `batch/source_profile.yaml` | DBへ入れるか | データ容量と、表示/探索の少なくとも一方で使うか |
 | 探索可否（0次フィルタ） | `domain/hard_filters.py: HARD_FILTERS` | 探索グラフへ入れるか | 法規・実務判断（[評価・スコアリング](evaluation-scoring.md)「0次ハードフィルタ」） |
-| 表示グルーピング | `domain/primary_attributes.py`（一次属性の`display_axes`。フロントは生成物`primaryAttributes.ts`で受け取る） | 地図でどの行に束ねるか・行の名前と、凡例の（i）から開く行の説明 | 地図の見やすさ |
+| 表示グルーピング | 管理DBの道の区分（`domain/road_classes.py: RoadClassDefinitions`。フロントは公開の軸カタログで受け取る） | 地図でどの行に束ねるか・行の名前と、凡例の（i）から開く行の説明 | 地図の見やすさ（デプロイを待たずに管理画面で直す） |
 
 **取込スコープと探索スコープは意図的に食い違う**（幹線国道は幹線道路の把握・回避判断の
 ために取り込むが、探索からは外す）。**表示グルーピングを取込プロファイルへ機械的に
 合わせることもしない**——取込スコープを広げたときに凡例が壊れないことを優先する。
 凡例に取込対象外の値が並ぶのは、この選択の結果である。
 
-路面（surface）は逆に**正準が1箇所**（`domain/road.py`）で、他はすべてそこから導く。
-タグの値を「走りやすさの違いが出る単位」の区分（`SURFACE_CLASSES`）へ束ねたものが材料「路面の区分」（`surface_class`）で、
-地図の表示行・区分の呼び名はこの宣言から組み立てる。区分は属するタグの値ごとに呼び名も持ち、材料「路面種別」（`surface`。
-束ねる前のタグの値）の対訳はそこから導く——対訳を別の表に持つと、区分へ足したタグの値が呼び名の
-無いまま生の値で画面に出る。区分に当てはまらない値は区分「その他」、タグの無い道は値を持たない
-——地図はこの2つを「その他」と「データなし」に分けて出す。
-同じタグを2つの区分へ書くと、読み込みの時点で止まる。
+路面（surface）・農道林道の等級（`tracktype`）は、タグの値をそのまま材料（`surface`・`tracktype`）として持ち、呼び名は
+材料カタログ（`domain/material_catalog.py: MaterialSpec.value_labels`）が持つ。値を「走りやすさの違いが出る単位」へ束ねるのは
+材料ではなく道の区分（管理DB。`domain/road_classes.py`）で、地図の線・凡例・除外・転がり抵抗はどれも区分から読む。
+束ねた結果を材料に持たない——束ね方を管理DBで直したとき、材料に焼いた束ね方だけが古いまま残る。
 
-農道・林道の等級（`tracktype`）は路面の区分とは**別の材料のまま持つ**。等級ごとの路面は区分と
-1対1にならない（本番で`grade2`の道のsurfaceは大半が砂利だが、舗装も混ざる）ため、地図で路面の区分として
-見せると実態とずれる。呼び名と並び（固い路面→柔らかい路面）は`domain/road.py: TRACK_GRADES`が持つ。
-
-**評価と所要時間が読むのは、2つを合成した材料「路面の見込み」（`surface_estimate`）**。surfaceの区分が
-あればそれ、無ければ等級から見込む区分（等級ごとの`surface_class`）、どちらも無ければ「不明」で、不明は
-農道・林道（`TRACK_HIGHWAY`）とそれ以外の道を分ける——タグの無い一般の道は、タグの付いた同じ種類の道が
-ほぼ舗装なので舗装の転がり抵抗で見積もり、タグの無い農道・林道は舗装も未舗装も多いので間の値を使う。
-surfaceの値がどの区分にも当てはまらない道（区分「その他」）も、等級が無ければ不明になる。見込みの値
-（`SURFACE_ESTIMATES`）は、区分の値と2つの不明で、どれも転がり抵抗の較正値のidを持つ。
-走行モデルの転がり抵抗は見込みから引く
-（`domain/cycling_speed.py: crr_for_surface`。値は較正値`speed.crr*`で、区分から較正値のidを引く）。
-路面を舗装／未舗装の2値へ束ねた材料は持たない——見込みの「不明」は2値のどちらにも倒せず、2値の材料を置くと
-軸と所要時間が同じ道を別の見なしで読む余地ができる。
-区分を足すなら、区分の宣言に転がり抵抗の較正値のidを書き、`domain/tuning.py`へその値を宣言する——
-等級の写し先・見込みの鍵の重なり・較正値の宣言漏れは、読み込みの時点で止まる。
-舗装質の軸がどの見込みにどの点数を付けるかは、軸の定義（本番DB）が持つ。
+**評価と所要時間は、道の区分の列を、区分から作る材料（`class:<分け方>`。`domain/material_catalog.py: material_spec`）として読む**。
+区分から作る材料は今の区分の分け方ごとに1つあり、値は区分の鍵で、どの区分にも入らない道は値を持たない。軸の定義は、ほかの材料と同じく
+この材料を指せる。そのため起動の時は、区分を読んでから軸の定義を読む。
+走行モデルの転がり抵抗は、転がり抵抗の表が指す分け方（`domain/road_classes.py: RoadClassDefinitions.rolling_resistance_classification`）の
+区分の列から引く（`domain/cycling_speed.py: crr_for_surface`。区分ごとの較正値のidは管理DBの転がり抵抗の表が持ち、値は較正値`speed.crr*`。
+表に無い区分と区分の外の道、表が分け方を指していないときは、基準の転がり抵抗）。
+路面を舗装／未舗装の2値へ束ねた材料は持たない——2値の材料を置くと、軸と所要時間が同じ道を別の見なしで読む余地ができる。
+舗装質の軸がどの区分にどの点数を付けるかは、軸の定義（本番DB）が持つ。
 
 ### 面のデータもタイル1枚=1行で持つ（`gsi_dem_tile.py`・`io_lulc_tile.py`）
 
@@ -176,7 +164,7 @@ int32の0.01m単位、土地被覆はuint8）で持つ。位置・画素の大�
 宣言の列・段のコード・実行環境の版（Python・ライブラリ・PostgreSQL・PostGIS）だけで決まる（どの段も乱数・時刻・外部への問い合わせを読まない）。入口は段ごとに
 これらから指紋を作り（`stage_fingerprints`。前の段の出力はその段の指紋で表す）、今の表を作ったときの指紋（`derived_data_meta.py:
 DerivedStageRow`、表`derived_stages`）と同じ段は流さず、その段の表は`public`の前回の表をそのまま読み・残し、ログに飛ばしたと出す。
-前の段の指紋も入力なので、流した段を読む後ろの段は必ず流れる。全部の段が同じなら、作業用のスキーマも道路網の配列も入れ替えも作らずに終える。
+前の段の指紋も入力なので、流した段を読む後ろの段は必ず流れる。全部の段が同じなら、作業用のスキーマも入れ替えも作らずに終える。ただし今の世代の道路網の置き場が無ければ（前の作り直しが表を入れ替えたあと、配列を付け替える前に落ちた）、配列だけを`public`の表から作って置く。
 段より細かくは比べない——交差点で切る・まとまりにする・上下線の相方・区画の木のように行どうしが読み合う段は、
 変わった行だけを作り直すと周りの行の値を言い切れない。
 
@@ -197,7 +185,8 @@ DerivedStageRow`、表`derived_stages`）と同じ段は流さず、その段の
 | 較正値 | 段へ渡す較正値の値（段の関数へ渡るのは宣言した較正値だけ） |
 | 書く表の列 | 書く派生の表のORMの宣言の列 |
 | 段のコード | 段のモジュールと、そこから`import`でたどれる`app`の中のモジュール全部の中身（`batch/code_fingerprint.py`） |
-| 実行環境の版 | Pythonの版・入っているライブラリの版（`batch/code_fingerprint.py: library_versions`）・DBの`version()`と`postgis_full_version()` |
+| 段が読み込むライブラリ | 段のコードが`import`するライブラリと、その依存を入っている分だけたどったライブラリの版（`batch/code_fingerprint.py: library_versions`）。ほかのライブラリの版だけが変わっても段は流れない |
+| 実行環境の版 | Pythonの版・DBの`version()`と`postgis_full_version()` |
 
 段の宣言（`DeriveStage`）は、読むソース・前の段・書く表・較正値を持つ。前の段には、読む表を書く段と、自分が書く表の行を
 入れる・消す段（区間・道・頂点の行を作り直し、それを外部キーで指す値の表を空にする`topology`等）を挙げる。どの表も書く段は1つ
@@ -207,7 +196,7 @@ DerivedStageRow`、表`derived_stages`）と同じ段は流さず、その段の
 パーティションを読まず取込の記録だけを読むもの（住所の段が読む道路の取込の範囲）はこの数に出ないので、宣言に手で入れる。
 
 **作り直しの途中は読み手に見せない。** 入口は流す段の表と作った取込・列の記録
-（`derived_source_runs`・`derived_columns`・`derived_stages`。下）を空で作業用のスキーマ（`derive_cli.py: _WORK_SCHEMA`）に作り、段はそこを書く。接続の`search_path`を
+（`derived_source_runs`・`derived_columns`・`derived_stages`・`derived_tuning`。下）を空で作業用のスキーマ（`derive_cli.py: _WORK_SCHEMA`）に作り、段はそこを書く。接続の`search_path`を
 作業用のスキーマ→`public`にするので、段のSQLは表の名前をそのまま書き、流さない段の表と生データは`public`から読む
 ——段のSQLへ`public.`を書くと、作り直しの途中の値がそのまま配られる（区間ごとに写す段が前回の値を読むのは、入口から
 受けたスキーマの表を読むだけで、書かない）。全段が終わったら、作業用の
@@ -225,6 +214,12 @@ DerivedStageRow`、表`derived_stages`）と同じ段は流さず、その段の
 - 入れ替えは表の排他ロックを取る。待つ間は後から来た読み手も後ろに並ぶため、待つのは数秒までにし、
   諦めて間を置いてやり直す（長く読む相手がいる間、タイル配信を止めないため）。
 - 同時に2本流すと作業用のスキーマを互いに消し合うため、2本目は始めずに止まる。
+
+**作り直しに使った較正値も記録する**（`derived_data_meta.py: DerivedTuningRow`、表`derived_tuning`）。段と道路網の配列が読む
+較正値を、取込の記録と同じく作業用のスキーマで書いて派生の表と一緒に入れ替える。派生の外で同じ値を読む所（地図の停止の点の
+まとめ方・ルートの印の事故の付け方と点のまとめ方・道路網の配列の曲がりの向き）は、管理画面の今の上書きではなくこの記録を
+SQLの中で読む——上書きを変えてから作り直すまでの間も、派生の表と食い違わない。記録に行が無い較正値（記録より前に作った派生）は
+宣言の既定で作ったとみなす。
 
 **どの取込から作ったかは、作り直しごとに全ソースぶんを記録する**（`derived_data_meta.py: DerivedSourceRunRow`、
 表`derived_source_runs`）。記録は「作り直しを始めた時点の、全ソースの成功した最新の取込」（`source_models.py:
@@ -255,8 +250,8 @@ LATEST_SUCCEEDED_RUNS_SQL`）で、段を流す前に作業用のスキーマの
 | `derive_topology.py` | 道を交差点で切って`road_edges`。切る位置は2本以上の道が通るノード。区間を持つ道の鍵（`road_ways`）と区間の端点（`road_nodes`）も作る |
 | `derive_nodes.py` | ノードの種別（`node_kinds`）と、頂点の信号の有無・集まる道の最大階級（`node_turns`） |
 | `derive_counts.py` | 区間と道に付く数の値（事故・停止要因・交差点。`edge_counts`・`way_counts`） |
-| `derive_elevation.py` | 標高のタイルを区間の形状点で引き、区間の標高と勾配にする（`edge_elevation`。区間が橋かトンネルだったかも書く） |
-| `derive_landcover.py` | 土地被覆の画像を区間の周りの帯で数え、区間と道の土地被覆の割合にする（`edge_landcover`・`way_landcover`） |
+| `derive_elevation.py` | 標高のタイルを区間の形状点で引き、区間の標高と勾配にする（`derive_elevation.py: edge_elevation`。区間が橋かトンネルだったかも書く） |
+| `derive_landcover.py` | 土地被覆の画像を区間の周りの帯で数え、区間と道の土地被覆の割合にする（`derive_landcover.py: edge_landcover`・`way_landcover`） |
 | `derive_way_directions.py` | 道1本の性質（通行方向・上下線分離。`way_directions`）。全部の道が行を持つことを、段の最後に数を比べて守る |
 | `derive_addresses.py` | 住所の区画`address_areas`・鍵・街区と地番（道の網を読まない。[地点の検索](place-search.md)「住所の区画の表」） |
 | `derive_stop_places.py` | 立ち寄り先`stop_places`（道の網もほかの段の表も読まない。施設の辺りに小地域の境界の生データを読む） |
@@ -340,7 +335,7 @@ OpenStreetMapの寺社の分類は、伝統的な寺社と新しい宗教団体�
 **「その区間を走って実際に遭遇する停止の回数」へ近づける。** 線から一定距離内にある点を
 素朴に数えると、走る道の上に無い点や、1つの信号交差点を描く複数ノードまで数えてしまう。
 
-- **同じ種別の点は先にまとめる**（`POI_CLUSTER_EPS_M`、`ST_ClusterDBSCAN`）。日本のOSMは
+- **同じ種別の点は先にまとめる**（まとめる距離は較正値の`stop.cluster_distance_m`、`ST_ClusterDBSCAN`）。日本のOSMは
   1つの信号交差点を流入路ごと・横断歩道位置ごとの複数ノードで描くため、素直に数えると
   停止回数を上回る。
 - **まとまり1つを、道路網の上の1つの場所として数える**。経路がその場所をどう通っても合計1回に
@@ -391,7 +386,7 @@ OpenStreetMapの寺社の分類は、伝統的な寺社と新しい宗教団体�
 事故点はOSMの要素ではないため、信号のように「wayの構成ノードか」では帰属を決められない。
 距離だけで数えると1つの事故が半径内の**すべての**道路へ計上され、静かな裏道が隣の幹線で
 起きた事故を相続する。最も近い1本の区間へ1件だけ付け、死亡事故は重みを掛ける
-（`domain/accident.py`: `ACCIDENT_MATCH_MAX_DISTANCE_M`・`ACCIDENT_FATAL_WEIGHT`）。帰属の距離より
+（帰属の距離と重みは較正値の`accident.match_max_distance_m`・`accident.fatal_weight`）。帰属の距離より
 遠い事故は、最も近い区間にも付けない（取り込んでいない道の上の事故を、隣の道が相続しないように）。
 近さは地上の距離（m）で比べる——緯度経度の度のまま比べると、経度1度が緯度1度より短いぶん東西に
 近い区間を遠く見る。
@@ -511,6 +506,12 @@ OSMは中央分離帯のある道路の上下線を別々のwayとして持ち�
 材料プロパティへ当てる（[地図: 軸・ルート色分け](../frontend/map-axis-coloring.md)）。
 この一方向のおかげで、軸の判定ロジックを変えてもタイル世代は動かない。
 
+**道の区分を決める事実は、区分へ束ねる前のタグの値のまま焼き、区分の結果は焼かない**（`domain/material_catalog.py: _tag_fact_material`。
+自転車・歩行者の通行・歩行者との分離・自動車専用道路・道に沿う自転車の通り道の各側等）。区分は束ねた後の解釈で管理DBが持つので、
+結果を焼くと束ね方を直すたびにタイルと道路網を作り直すことになる——束ねる前の値を並べて持てば、地図は配られた区分の条件を
+タイルの値へ当て、道路網は今ある列から区分の列を作る。タグの無い道では値がNULLで、`ST_AsMVT`はNULLの値を
+地物へ載せない（列の名前が層に1度載るだけ）ため、タイルが重くなるのはタグを持つ道の分だけである。
+
 **材料がタイルの外にある軸は、この方式に乗らない**（風のように外部条件で値が変わるもの）。
 そちらは[動的材料・フィーチャー値配信](dynamic-way-values.md)が別経路で配る。
 
@@ -518,8 +519,8 @@ OSMは中央分離帯のある道路の上下線を別々のwayとして持ち�
 
 `RegionService`（路面・点）と土地被覆の配信が共有する「ファイルキャッシュ確認
 →ミスなら`fetch_tile`呼び出し→取得成功ならキャッシュへ書いて返す→取得不可（None）なら
-空タイルを返す」という外側の骨格。取得不可の理由をどうWARNINGログへ出すかはタイル種別
-ごとに異なるため、その判断は引き続き呼び出し元の`fetch_tile`側が持つ。取得不可の場合は
+空タイルを返す」という外側の骨格。取得不可の理由はタイル種別ごとに異なるため、それを
+記録するのは呼び出し元の`fetch_tile`側が持つ。取得不可の場合は
 キャッシュへ書き込まない（後からPBF取込された際に正しいタイルを再生成できるようにする）。
 
 戻り値は`TileResponse`（本体＋`cacheable`）で、**取得不可の2種類を区別する**。
@@ -570,8 +571,8 @@ OSMは中央分離帯のある道路の上下線を別々のwayとして持ち�
 
 - **カバレッジはマーカーの表ではなく取込の宣言から決まる**（成功した最新の道路の取込の`source_runs.profile`の
   `target.bbox`）。道路網は取込・派生バッチが範囲全体ぶん先に作るため、タイル配信側に
-  「無ければ作る」経路は無い。同じ範囲を`RegionService.get_ingested_area`がサービスの対象範囲として返し、風の格子と気象庁タイルの
-  プリウォームが敷く範囲に使う（[気象・動的レイヤー](weather-dynamic-layers.md)「格子を敷く範囲」）。
+  「無ければ作る」経路は無い。同じ範囲を`RegionService.get_ingested_area`がサービスの対象範囲として返し、気象庁タイルの
+  プリウォームが敷く範囲に使う（[気象・動的レイヤー](weather-dynamic-layers.md)「JMAタイル系の共通プロキシ」の定期プリウォーム）。
 - **タイル世代**: 焼き込むMVT生成SQLから導く**形の署名**（`ROAD_SURFACE_TILE_SHAPE`等、
   `infrastructure/cache_identity.py`）と、**DBの世代**の2つで決まる（`<派生の世代>.<生データの世代>-<形の署名>`）。
   DBの世代は、派生の作り直しが進める派生の世代と、成功した取込の数（生データの世代）を合わせたもの。タイルは
@@ -586,7 +587,7 @@ OSMは中央分離帯のある道路の上下線を別々のwayとして持ち�
   ときだけ。frontendへは`export_openapi.py`が書き出す生成物経由で渡り、ドリフト検知
   テストが照合する。プロパティ削除を伴う変更はfrontendのデプロイより先に本番へ出さない
   （旧フロントの凡例フィルタが全地物に一致し、対象レイヤーが一時的に「不明」になる）。
-- **停止要因POIは数える側と同じ`POI_CLUSTER_EPS_M`でまとめてから焼き込む**。1つの信号
+- **停止要因POIは、数える側が派生を作り直したときのまとめる距離（「作り直しに使った較正値」）でまとめてから焼き込む**。1つの信号
   交差点を複数ノードで描くというOSMの書き方は表示にもそのまま効くため、生のまま出すと同じ
   交差点が複数の点になる。まとめた点の位置は構成ノードの重心＝交差点の真ん中になる。
   タイル境界で塊が切れないよう、クラスタ化はタイルの外側まで読んでから行い、重心がこの
@@ -636,12 +637,20 @@ OSMは中央分離帯のある道路の上下線を別々のwayとして持ち�
 - POIのタイルは`node_kinds`の種別に、補給休憩のコンビニとして立ち寄り先の群「コンビニ」の行（`stop_places`）を足して焼く
   （コンビニの出どころはOverture。上の「立ち寄り先」）。コンビニの点だけが店の名前（`name`）を持ち、OpenStreetMapの点は名前を焼かない。
   取込範囲の判定はPOIのまま当てる。立ち寄り先のタイルは群「コンビニ」の行を焼かない（補給休憩のタイルが出す）。
+- **どのレイヤーも、近い点を代表点に束ねて焼く**（`point_tile_layers.py: _clustered_mvt_sql`）。タイルを升目に切り
+  （一辺の数は`domain/map_display.py: POINT_CLUSTER_CELLS_PER_TILE`で、配る一番寄ったズームも同じ。それより寄った地図はそのタイルを引き伸ばして描くので、細かく切ると代表点の絵が重なる）、
+  凡例の同じ行に入る点だけを升目ごとに1つへ束ねる。升目はタイルの端に揃えるので、隣り合うタイルの縁で同じ点が別々に束ねられて食い違わない。
+  代表点は束ねた点の1つで（位置を重心へ動かさない。名前と位置で外の地図を開くため）、選ぶ順はレイヤーごとの宣言（事故は新しい年、
+  立ち寄り先は確からしさの大きい点）。代表点は束ねた点の数（`domain/map_display.py: POINT_COUNT_PROPERTY`）を持ち、2点以上なら
+  束ねた点のうち名前のあるものの名前と経度・緯度の並びをJSONの文字列で持つ（`domain/map_display.py: POINT_MEMBERS_PROPERTY`）。
+  名前の欄名は生成物`mapDisplay.point.countProperty`・`membersProperty`で配る。停止要因は、交差点ごとにまとめた後の点を束ねる。
+  確からしさは代表点を選ぶのにだけ使い、タイルへ焼かない。
 - レジストリに無い名前は404。
 - 古い世代・名前を変えた系統（例: `region/accidents/…`）のキャッシュは、定期の掃除が消す（下の「旧世代の掃除」）。
 
 ### 土地被覆ラスタタイル（`landcover_raster.py`・`landcover_tile_service.py`）
 
-道の周囲100mリングをクラス別の割合へ畳んだ値（`way_landcover.lc_*`）とは別に、**元の
+道の周りの帯をクラス別の割合へ畳んだ値（`way_landcover.lc_*`）とは別に、**元の
 ラスタをそのまま面として配る**。割合の混合をどう塗るかという問題が起きない代わりに、
 道路との対応は利用者が目で取る。
 
@@ -703,6 +712,7 @@ OSMは中央分離帯のある道路の上下線を別々のwayとして持ち�
 | `GET /api/region/road-surface-tiles/{z}/{x}/{y}.pbf` | 路面・道路種別等のMVTタイル |
 | `GET /api/region/point-tiles/{layer}/{z}/{x}/{y}.pbf` | 点のレイヤー（例: 停止要因・補給休憩のPOI`poi`、事故`accident`）のMVTタイル。`layer`はレジストリの名前で、無ければ404 |
 | `GET /api/region/landcover-tiles/{z}/{x}/{y}.png` | 土地被覆ラスタのPNGタイル |
+| `POST /api/region/roads-at` | 押した所に近い道のフィーチャー（近い順、上限は`domain/region.py: ROADS_AT_LIMIT`）。フィーチャーの単位とプロパティはそのズームの路面タイルと同じで（`infrastructure/road_tile_sql.py: ROADS_AT_SQL`がタイルと同じ並びと列を使う）、線の形はタイルで切らない全体。拾う距離は呼び手が送り、上限を`domain/region.py: ROADS_AT_MAX_RADIUS_M`が持つ。道が並ぶ所で選び直せるよう一覧で返す |
 | `POST /api/region/axis-inspector` | 区間インスペクタ（osm_way_id指定）。合成は送られた重み（`route_preference`、ルート生成と同じ形・同じ検証で公開軸をすべて明示）で計算し、省略すると既定の重み |
 
 MVTエンコードはPostGIS側（`ST_AsMVT`、`road_graph_repository.py`・`point_tile_layers.py`）で行う。タイル内の
@@ -729,12 +739,11 @@ PBF取込時にしか変わらないため、再訪時の同一タイル再取�
 
 | ファイル | 役割 |
 |---|---|
-| `road.py` | 路面を表すタグの読み方の正準定義（surfaceの区分`SURFACE_CLASSES`、tracktypeの等級`TRACK_GRADES`と、2つを合成した路面の見込み`SURFACE_ESTIMATES`）。材料の値式・PostGIS側MVT生成SQL・地図の表示行・値の呼び名・走行モデルの転がり抵抗が共有する単一ソース |
-| `attributes.py` | `ElevationAttribute`（同じ地形を逆方向に走った値も自分で導く`reversed_as`）・探索が読む材料の配列（`EdgeMaterialArrays`）と標高計算のSQL（[elevation.md](elevation.md)が主に扱う） |
-| `stop_place.py` | 立ち寄り先の群（`StopPlaceGroup`。点のタイルの属性`group`の値）・文化財の所有者から寺社を見分ける語と式・寺社をまとめる距離（`TEMPLE_SHRINE_SUFFIXES`・`temple_shrine_owner_sql`・`HERITAGE_MERGE_RADIUS_M`等）・Overtureの分類の語から群への表と式（`OVERTURE_GROUP_WORDS`・`overture_group_sql`。取込が落とす地点を決める`OVERTURE_GROUPED_WORDS`も）・同じ店をまとめる距離とチェーンの見分け方（`MERGE_RADIUS_M`・`CHAIN_WORDS`・`chain_text_sql`・`chain_sql`）・言語違いの同じ場所を連絡先で寄せる群と距離・日本語の名前か・連絡先の比べる形（`CONTACT_MERGE_RADIUS_M`・`japanese_name_sql`・`contacts_sql`）・表へ入れる地点（`kept_sql`）・ATMの地点の名前の直し（`store_name_sql`）・地点の検索で打った語を群として読む語と判断（`PLACE_GROUP_WORDS`・`queried_group`。使い方は[地点の検索](place-search.md)「引き方」）。配布の列の読み替えは`infrastructure/source_models.py: OVERTURE_PLACES_SOURCE_SQL`・`BUNKA_HERITAGES_SOURCE_SQL`が持つ |
+| `attributes.py` | `attributes.py: ElevationAttribute`（同じ地形を逆方向に走った値も自分で導く`attributes.py: reversed_as`）・探索が読む材料の配列（`attributes.py: EdgeMaterialArrays`）と標高計算のSQL（[elevation.md](elevation.md)が主に扱う） |
+| `stop_place.py` | 立ち寄り先の群（`stop_place.py: StopPlaceGroup`。点のタイルの属性`stop_place.py: group`の値）・文化財の所有者から寺社を見分ける語と式・寺社をまとめる距離（`stop_place.py: TEMPLE_SHRINE_SUFFIXES`・`stop_place.py: temple_shrine_owner_sql`・`stop_place.py: HERITAGE_MERGE_RADIUS_M`等）・Overtureの分類の語から群への表と式（`stop_place.py: OVERTURE_GROUP_WORDS`・`stop_place.py: overture_group_sql`。取込が落とす地点を決める`stop_place.py: OVERTURE_GROUPED_WORDS`も）・同じ店をまとめる距離とチェーンの見分け方（`stop_place.py: MERGE_RADIUS_M`・`stop_place.py: CHAIN_WORDS`・`stop_place.py: chain_text_sql`・`stop_place.py: chain_sql`）・言語違いの同じ場所を連絡先で寄せる群と距離・日本語の名前か・連絡先の比べる形（`stop_place.py: CONTACT_MERGE_RADIUS_M`・`stop_place.py: japanese_name_sql`・`stop_place.py: contacts_sql`）・表へ入れる地点（`stop_place.py: kept_sql`）・ATMの地点の名前の直し（`stop_place.py: store_name_sql`）・地点の検索で打った語を群として読む語と判断（`stop_place.py: PLACE_GROUP_WORDS`・`stop_place.py: queried_group`。使い方は[地点の検索](place-search.md)「引き方」）。配布の列の読み替えは`infrastructure/source_models.py: OVERTURE_PLACES_SOURCE_SQL`・`BUNKA_HERITAGES_SOURCE_SQL`が持つ |
 | `accident.py` | 警察庁の事故を道路へ帰属させ数えるときの判断。生データの列から判定を組み立てるSQL断片・自転車とみなす当事者種別・帰属の距離・重み付けの定数（本票の度分秒の読み取りは取込のアダプタ`npa_honhyo.py`が、本票の列名と当事者種別のコードの読み替えは`infrastructure/source_models.py`の事故の副問い合わせ（全件の`infrastructure/source_models.py: ACCIDENTS_SOURCE_SQL`と範囲で絞る`infrastructure/source_models.py: accidents_within_sql`が共有する）が持つ） |
-| `traffic.py` | OSMタグの解釈。停止要因POI・補給休憩POIの種別の引き当て（`TAG_KIND_RULES`・`tag_kind_sql`）、信号の判定（`TRAFFIC_SIGNAL_SQL`）、取込が道の頂点でなくても採る補給・休憩のタグ（`SUPPLY_POI_TAGS`・`has_supply_poi_tag`）、停止要因の数える種別への畳み方と信号の読み替え（`COUNT_KIND_OF`・`count_kind_sql`・`stop_kind_sql`・`kinds_shown_as`）、通行方向の解決（`DIRECTION_RULES`・`direction_sql`）と片方向にだけ通れるかの式（`one_way_sql`）・道の形の向きと逆向きのそれぞれに通れるか（`travel_allowed`）、交差点判定の次数しきい値、停止要因の場所・交差点を端で分け持つ割合（`PLACE_SHARE_PER_END`・`place_count_sql`）、交差点の階級（`HIGHWAY_RANK`）。取込のタグ（取込のアダプタが1件ずつ当てる）を除き、派生バッチへSQLとして渡す表と式で、タグを読むためだけに行を取り出さない |
-| `divided_carriageway.py` | 上下線が分かれた道の片側かのしきい値と判定のSQL式（`divided_sql`）。材料`oneway`の値式（`oneway_material_sql`。地図の一方通行と評価が同じ式を読む）は、片方向にだけ通れる道（`traffic.py: one_way_sql`）から上下線の片側を外す |
+| `traffic.py` | OSMタグの解釈。停止要因POI・補給休憩POIの種別の引き当て（`traffic.py: TAG_KIND_RULES`・`traffic.py: tag_kind_sql`）、信号の判定（`traffic.py: TRAFFIC_SIGNAL_SQL`）、取込が道の頂点でなくても採る補給・休憩のタグ（`traffic.py: SUPPLY_POI_TAGS`・`traffic.py: has_supply_poi_tag`）、停止要因の数える種別への畳み方と信号の読み替え（`traffic.py: COUNT_KIND_OF`・`traffic.py: count_kind_sql`・`traffic.py: stop_kind_sql`・`traffic.py: kinds_shown_as`）、通行方向の解決（`traffic.py: DIRECTION_RULES`・`traffic.py: direction_sql`）と片方向にだけ通れるかの式（`traffic.py: one_way_sql`）・道の形の向きと逆向きのそれぞれに通れるか（`traffic.py: travel_allowed`）、交差点判定の次数しきい値、停止要因の場所・交差点を端で分け持つ割合（`traffic.py: PLACE_SHARE_PER_END`・`traffic.py: place_count_sql`）、交差点の階級（`traffic.py: HIGHWAY_RANK`）。取込のタグ（取込のアダプタが1件ずつ当てる）を除き、派生バッチへSQLとして渡す表と式で、タグを読むためだけに行を取り出さない |
+| `divided_carriageway.py` | 上下線が分かれた道の片側かのしきい値と判定のSQL式（`divided_carriageway.py: divided_sql`）。材料`oneway`の値式（`divided_carriageway.py: oneway_material_sql`。地図の一方通行と評価が同じ式を読む）は、片方向にだけ通れる道（`traffic.py: one_way_sql`）から上下線の片側を外す |
 
 `traffic.py: TAG_KIND_RULES`は信号・横断歩道・一時停止・徐行（`highway=*`）・踏切
 （`railway=*`）・車止め（`barrier=*`）・減速構造（`traffic_calming=*`）を停止要因として、
@@ -778,5 +787,6 @@ PBF取込時にしか変わらないため、再訪時の同一タイル再取�
 - **土地被覆は、中心線の周りの帯に落ちる有効画素が足りない区間では値を持たない**
   （`lc_valid_pixels`も割合もNULL）。ラスタが覆っていない場所でもっともらしい
   数値を書かない。覆うラスタを足して派生を流し直せば値が付く。帯は中心線から
-  `domain/landcover.py: LANDCOVER_RING_OUTER_M`までで、`LANDCOVER_RING_INNER_M`より内側
-  （路面そのもの）の画素は数えない——道の周りの景色を表す値で、道の舗装の画素を混ぜない。
+  外の幅（`domain/tuning.py: LANDCOVER_RING_OUTER_ID`）までで、内の幅（`domain/tuning.py: LANDCOVER_RING_INNER_ID`）より内側
+  （路面そのもの）の画素は数えない——道の周りの景色を表す値で、道の舗装の画素を混ぜない。幅は派生の作り直しで効く較正値で、
+  地図の土地被覆の説明が出す幅は、`/api/axis-catalog`の`client_tuning`が配る作り直しに使った値で埋まる。

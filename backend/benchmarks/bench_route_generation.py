@@ -35,14 +35,14 @@ from app.api.dependencies import get_route_generation_setup_opener
 from app.batch.common import asyncpg_dsn
 from app.config import settings
 from app.infrastructure.axis_definition_repository import AxisDefinitionRepository
-from app.infrastructure.database import get_session_factory
-from app.services.axis_registry_service import refresh_axis_definitions
-from app.domain.road_avoidance import DEFAULT_ROAD_AVOIDANCE
+from app.infrastructure.database import get_route_generation_session_factory, get_session_factory
+from app.services.definitions_loading import refresh_definitions
 from app.domain.route import Coordinates
 from app.domain.time_zone import JST
 from app.domain.route_request import ASSUMED_SPEED_KMH
 from app.domain.route_request import DEFAULT_MAX_ROUTES
 from app.domain.route_request import FixedPoints, RequestedConditions
+from app.domain.route_search import distance_tolerance_km
 from benchmarks._resources import sample_resources
 from benchmarks.revision import announce_revision
 
@@ -115,7 +115,7 @@ def _stage_lines(stages: dict[str, dict[str, float | str]]) -> list[str]:
         times = " ".join(
             f"{k[:-3]}={float(v) / 1000:.2f}秒" for k, v in fields.items()
             if k.endswith("_ms") and _is_number(v))
-        others = " ".join(f"{k}={v}" for k, v in fields.items() if not k.endswith("_ms"))
+        others = " ".join(f"{k}={v}" for k, v in fields.items() if not (k.endswith("_ms") and _is_number(v)))
         lines.append(f"    {name:<42} {times}" + (f"  [{others}]" if others else ""))
     return lines
 
@@ -124,7 +124,10 @@ def _stage_lines(stages: dict[str, dict[str, float | str]]) -> list[str]:
 
 
 async def main() -> int:
-    logging.basicConfig(level=logging.WARNING, format="%(message)s")
+    # 段のロガーをINFOへ下げると、その記録は根の出力へも伝わる。出力の表を埋もれさせないよう、根の出力はWARNING以上だけにする。
+    stderr = logging.StreamHandler()
+    stderr.setLevel(logging.WARNING)
+    logging.basicConfig(level=logging.WARNING, format="%(message)s", handlers=[stderr])
     capture = _StageCapture()
     for name in STAGE_LOGGERS:
         logger = logging.getLogger(name)
@@ -141,13 +144,12 @@ async def main() -> int:
     print(f"\n=== {label} / {origin.latitude},{origin.longitude} / {distance_km}km / {runs}回 ===")
     records: list[dict[str, object]] = []
 
-    # 軸レジストリを読む前に組み立てると、既定の重みが空になる。
-    async with get_session_factory()() as axis_session:
-        await refresh_axis_definitions(AxisDefinitionRepository(axis_session))
+    # 定義を読む前に組み立てると、既定の重みが空になり、較正値も宣言の既定のままになる。
+    async with get_session_factory()() as session:
+        await refresh_definitions(session, AxisDefinitionRepository(session))
     # 評価条件を省いた生成の要求と、画面の既定の除外・避け方で組む。
-    async with get_route_generation_setup_opener()(RequestedConditions(
-        preference_override=None, penalty_strength=None, max_average_grade_percent=None,
-        road_avoidance=DEFAULT_ROAD_AVOIDANCE, assumed_speed_kmh=ASSUMED_SPEED_KMH,
+    async with get_route_generation_setup_opener(get_route_generation_session_factory())(RequestedConditions(
+        preference_override=None, road_avoidance={}, assumed_speed_kmh=ASSUMED_SPEED_KMH,
     )) as setup:
         generator = setup.generator
         for index in range(runs):
@@ -156,7 +158,7 @@ async def main() -> int:
             async with sample_resources(dsn) as trace:
                 started = time.perf_counter()
                 candidates = await generator.generate_loops(
-                    origin, distance_km=distance_km, distance_tolerance_km=5.0,
+                    origin, distance_km=distance_km, distance_tolerance_km=distance_tolerance_km(distance_km),
                     points=FixedPoints(waypoints=[], destination=None),
                     max_routes=DEFAULT_MAX_ROUTES, start_time=datetime.now(JST))
                 elapsed = time.perf_counter() - started

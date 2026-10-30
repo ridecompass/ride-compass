@@ -1,22 +1,11 @@
 import { expect, test } from "@playwright/test";
-import {
-  branch,
-  chooseLens,
-  currentLensLabel,
-  expectNoOwnFailures,
-  externalErrors,
-  fetchCatalog,
-  openLive,
-  renderedRoads,
-  reportExternal,
-  roadSourceId,
-  settleMap,
-} from "./live";
+import { branch, expectNoOwnFailures, externalErrors, fetchCatalog, openLive, reportExternal } from "./live";
+import { chooseLens, currentLensLabel, renderedRoads, roadSourceId, settleMap } from "./mapReads";
 import { allLayersOn, clickFeature } from "../e2e/fixtures";
 import materialCatalog from "@/types/generated/material-catalog.json";
 
-/** 道の詳細が必ず持つ行（路面の区分）の項目名。名前は材料カタログが持つ。 */
-const SURFACE_ROW_LABEL = materialCatalog.find((material) => material.material_id === "surface_class")!.name;
+/** 道の詳細が必ず持つ行（路面の種類）の項目名。名前は材料カタログが持つ。 */
+const SURFACE_ROW_LABEL = materialCatalog.find((material) => material.material_id === "surface")!.name;
 
 // S1 地図の描画（生成前）。実データが式・部品へ入って初めて壊れるもの（公開軸の道ごとの材料が届かず地図に出ない・
 // 巻き添えで消える、取得の失敗が空で返る、道を押すと例外で開かない）を見る。
@@ -28,7 +17,7 @@ test("S1 地図の描画（生成前）", async ({ page }) => {
   expect(axes.length, "公開軸が1件も無い").toBeGreaterThan(0);
   const statsBefore = await externalErrors();
 
-  const watch = await openLive(page, { storedState: allLayersOn() });
+  const watch = await openLive(page, { storedState: allLayersOn(catalog.road_classes.map_layers) });
   const source = await roadSourceId(page);
 
   // C: 地図のエラー（取得の失敗も含む）が0件。
@@ -77,7 +66,7 @@ test("S1 地図の描画（生成前）", async ({ page }) => {
       const errorsBefore = watch.pageErrors.length;
       await clickFeature(page, "road");
       await expect(popup).toBeVisible({ timeout: 10_000 });
-      // 開いたのが道の詳細であること（道の詳細は路面の区分の行を必ず持つ。属性は畳んで開くので、開いてから見る）。
+      // 開いたのが道の詳細であること（道の詳細は路面の種類の行を必ず持つ。属性は畳んで開くので、開いてから見る）。
       // 描画の例外はエラー境界（app/error.tsx）が受けてページの例外にならないので、中身が出たかで見る。
       await popup.getByText("この道の属性", { exact: true }).click();
       await expect(popup.getByText(SURFACE_ROW_LABEL, { exact: true })).toBeVisible();

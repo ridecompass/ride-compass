@@ -24,6 +24,23 @@ EDGE_UNIT_MIN_ZOOM = 14
 RoadTileZoom = Annotated[int, Field(ge=ROAD_TILE_MIN_ZOOM, le=ROAD_TILE_MAX_ZOOM)]
 TileIndex = Annotated[int, Field(ge=0)]
 
+#: 押した所に近い道を拾う距離の上限（m）。地図は指の幅を今の倍率で m に直して送り、道のタイルの最も引いた
+#: ズーム（z12）では約300mになる。上限は、それより広い範囲を探させないためのもの。
+ROADS_AT_MAX_RADIUS_M = 400.0
+RoadsAtRadiusM = Annotated[float, Field(gt=0, le=ROADS_AT_MAX_RADIUS_M)]
+#: 押した所に近い道を返す数の上限。車道と別に線を持つ歩道・側道のように道が並ぶ所で、どれを拾ったかを選び直せるよう
+#: 近い順に複数返す（画面は今は先頭の1本を開く）。
+ROADS_AT_LIMIT = 3
+
+
+class RoadAt(StrictModel):
+    """押した所に近い道のフィーチャー1つ。"""
+
+    #: 路面タイルがそのフィーチャーに焼くのと同じプロパティ（列名→値。値の無い列は省く——タイルも省く）。
+    properties: dict[str, str | int | float | bool]
+    #: フィーチャーの線の全体（経度, 緯度）。タイルで切らない。
+    shape: list[tuple[float, float]]
+
 
 def check_tile_index(z: int, x: int, y: int) -> None:
     """列・行がズーム`z`に在る範囲（2**z未満）か。外れたまま`tile_bounds_lonlat`へ渡すと在りもしない範囲を引き、
@@ -134,21 +151,6 @@ def tile_position(lon: float, lat: float, z: int) -> tuple[float, float]:
     lat_rad = math.radians(clamped_lat)
     y = (1.0 - math.log(math.tan(lat_rad) + 1.0 / math.cos(lat_rad)) / math.pi) / 2.0 * n
     return x, y
-
-
-def way_unit_tile(z: int, x: int, y: int) -> tuple[int, int, int]:
-    """タイル`(z, x, y)`の道を道1本のフィーチャーとして焼くタイル。道1本で焼くズームならそのタイル、区間で焼くズームなら
-    それを含む、道1本で焼く最も寄ったズームのタイル——中の道はどれもそのタイルにも在る。"""
-    if z < EDGE_UNIT_MIN_ZOOM:
-        return z, x, y
-    shift = z - (EDGE_UNIT_MIN_ZOOM - 1)
-    return EDGE_UNIT_MIN_ZOOM - 1, x >> shift, y >> shift
-
-
-def edge_unit_tile(lon: float, lat: float) -> tuple[int, int, int]:
-    """地点を含む、区間を1つのフィーチャーとして焼く最も引いたズームのタイル。"""
-    x, y = tile_position(lon, lat, EDGE_UNIT_MIN_ZOOM)
-    return EDGE_UNIT_MIN_ZOOM, int(x), int(y)
 
 
 def tile_position_sql(lon: str, lat: str, zoom: str) -> tuple[str, str]:

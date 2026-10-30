@@ -9,7 +9,7 @@
 このファイルで計算し、実装の換算式を使わない。
 
 ここで見ないもの:
-- 一次属性の表示の宣言そのものの不変条件（行の重なり・色相の起点・欠損の意味・種別の網羅）→ `test_material_catalog.py`
+- 一次属性の表示の宣言そのものの不変条件（行の重なり・色相の起点・種別の網羅）→ `test_registry.py`・`test_primary_attributes.py`、欠損の意味 → `test_material_catalog.py`
 - 地図のレイヤー・グループ・情報源の宣言 → `test_map_display.py`
 - 行の値が画面の塗り分けの式になること → 画面側のテスト
 """
@@ -21,14 +21,15 @@ import pytest
 
 from app.domain import display_palette
 from app.domain.display_palette import SEMANTIC_COLORS, nominal_colors, ordered_colors, resolved_display_axes
-from app.domain.map_display import ROAD_UNKNOWN_OPACITY
+from app.domain.map_display import AREA_OPACITY, ROAD_UNKNOWN_OPACITY
 from app.domain.primary_attributes import PRIMARY_ATTRIBUTES
 from app.domain.registry import DisplayAxisSpec, DisplayCategorySpec, PrimaryAttributeSpec
+from app.domain.weather_display import PRECIPITATION_COLOR_STOPS
 
 GROUND = SEMANTIC_COLORS["basemap_ground"]
 #: 分類色が地色から浮くコントラスト比（これを割ると「薄い＝対象外」と見分けられない）。
 CLASS_COLOR_CONTRAST = 3.0
-#: 値が無い道の線が、地色に対して見えるコントラスト比。
+#: 線が地に対して見えるコントラスト比（値が無い道の線・基礎地図の細い道の縁取り）。
 NO_DATA_LINE_CONTRAST = 1.5
 #: 軸の中の色の離れ具合。列挙はどの2行も、順序は隣どうし。
 NOMINAL_DELTA_E = 20.0
@@ -76,11 +77,17 @@ def over_ground(color: str, opacity: float) -> str:
     )
 
 
-def axis(key: str, count: int, **fields) -> DisplayAxisSpec:
+def axis(key: str, count: int, glyphs: bool = False, **fields) -> DisplayAxisSpec:
+    """`glyphs`は行ごとに違う絵記号を付ける（点の先頭の軸）。"""
     return DisplayAxisSpec(
         key=key,
         property=key,
-        categories=tuple(DisplayCategorySpec(key=f"{key}{i}", label=f"行{i}", values=(f"v{i}",), description=f"行{i}の道") for i in range(count)),
+        categories=tuple(
+            DisplayCategorySpec(
+                key=f"{key}{i}", label=f"行{i}", values=(f"v{i}",), description=f"行{i}の道", glyph=f"g{i}" if glyphs else None
+            )
+            for i in range(count)
+        ),
         **fields,
     )
 
@@ -94,7 +101,8 @@ def test_only_the_first_axis_with_a_palette_gets_colors():
         attr_id="attr_a",
         label="属性A",
         geometry="point",
-        display_axes=(axis("main", 3, palette="nominal", hue_slot=4), axis("size", 2)),
+        display_axes=(axis("main", 3, glyphs=True, palette="nominal", hue_slot=4), axis("size", 2)),
+        tile_kind="poi",
     )
 
     main, size = resolved_display_axes(attribute)
@@ -105,7 +113,7 @@ def test_only_the_first_axis_with_a_palette_gets_colors():
 
 
 def test_a_glyph_reaches_the_screen_only_on_rows_that_declare_one():
-    """画面は行が`glyph`の鍵を持つかで絵記号の点か丸い点かを分ける。持たない行に空の値を配ると、丸い点の行まで絵記号になる。"""
+    """画面は行が`glyph`の鍵を持つかで凡例の見本を絵にするかを分ける。持たない行に空の値を配ると、大きさだけを示す行まで絵の見本になる。"""
     with_glyphs = DisplayAxisSpec(
         key="main",
         property="main",
@@ -117,30 +125,13 @@ def test_a_glyph_reaches_the_screen_only_on_rows_that_declare_one():
         ),
     )
     attribute = PrimaryAttributeSpec(
-        attr_id="attr_a", label="属性A", geometry="point", display_axes=(with_glyphs, axis("size", 2))
+        attr_id="attr_a", label="属性A", geometry="point", display_axes=(with_glyphs, axis("size", 2)), tile_kind="poi"
     )
 
     main, size = resolved_display_axes(attribute)
 
     assert [c["glyph"] for c in main["categories"]] == ["bag", "drop"]
     assert all("glyph" not in c for c in size["categories"])
-
-
-def test_an_ordered_axis_is_colored_by_position():
-    attribute = PrimaryAttributeSpec(
-        attr_id="attr_a", label="属性A", geometry="line", display_axes=(axis("main", 4, palette="ordered"),)
-    )
-
-    [main] = resolved_display_axes(attribute)
-
-    assert [c["color"] for c in main["categories"]] == ordered_colors(4)
-
-
-def test_an_ordered_palette_goes_from_dark_to_light():
-    colors = ordered_colors(5)
-
-    lightness = [contrast(color, "#000000") for color in colors]
-    assert lightness == sorted(lightness)
 
 
 def test_an_ordered_axis_of_one_row_still_has_a_color():
@@ -153,7 +144,7 @@ def test_a_hue_slot_outside_the_wheel_is_refused(slot):
         nominal_colors(slot, 3, None)
 
 
-@pytest.mark.parametrize("tone", [None, "dark", "light"])
+@pytest.mark.parametrize("tone", list(display_palette.NOMINAL_TONES))
 def test_every_nominal_color_stands_out_from_the_ground(tone):
     """どの起点・行数・段でも、配る色は地色に対してコントラスト比3を割らない（明度の上限で守る）。"""
     colors = [
@@ -224,3 +215,10 @@ def test_a_road_without_a_value_is_still_visible_on_the_ground():
     assert contrast(line, GROUND) >= NO_DATA_LINE_CONTRAST
 
 
+def test_minor_road_casings_stay_visible_under_every_rain_band():
+    """細い道の縁取りは面の上に描かれず、面を重ねた地に載る。割ると、雨を出した所で細い道の並びが消える。"""
+    casing = SEMANTIC_COLORS["basemap_minor_road_casing"]
+    grounds = [GROUND, *(over_ground(stop.color, AREA_OPACITY) for stop in PRECIPITATION_COLOR_STOPS)]
+
+    for ground in grounds:
+        assert contrast(casing, ground) >= NO_DATA_LINE_CONTRAST, ground

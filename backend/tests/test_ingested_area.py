@@ -11,7 +11,7 @@
 import pytest
 
 from app.domain.region import BoundingBox
-from tests.source_ingest import ingest_records, point_record, way_record
+from tests.source_ingest import ingest_records, interrupted, point_record, way_record
 
 pytestmark = pytest.mark.asyncio(loop_scope="module")
 
@@ -26,23 +26,12 @@ _ELSEWHERE = _box(40.0, 141.0, 41.0, 142.0)
 
 
 async def _ingest_roads(area: BoundingBox) -> None:
-    await ingest_records("osm_way", [way_record(1, [(139.5, 35.5), (139.501, 35.5)], [10, 11])],
-                         bbox=(area.min_latitude, area.min_longitude, area.max_latitude, area.max_longitude))
+    await ingest_records("osm_way", [way_record(1, [(139.5, 35.5), (139.501, 35.5)], [10, 11])], bbox=area)
 
 
 async def _fail_to_ingest_roads(area: BoundingBox) -> None:
-    def records():
-        raise RuntimeError("取込の途中で落ちた")
-        yield
-
-    with pytest.raises(RuntimeError):
-        await ingest_records("osm_way", records(),
-                             bbox=(area.min_latitude, area.min_longitude, area.max_latitude, area.max_longitude))
-
-
-async def test_before_any_road_ingest_there_is_no_area_and_nothing_is_covered(road_graph_repository):
-    assert await road_graph_repository.get_ingested_area() is None
-    assert await road_graph_repository.is_covered(_AREA) is False
+    with pytest.raises(OSError):
+        await ingest_records("osm_way", interrupted(), bbox=area)
 
 
 async def test_the_area_is_the_one_declared_by_the_latest_successful_road_ingest(road_graph_repository):
@@ -50,9 +39,7 @@ async def test_the_area_is_the_one_declared_by_the_latest_successful_road_ingest
     await _ingest_roads(_AREA)
     # 後で失敗した道路の取込・別のソースの取込は、手元の道路データの範囲を変えない。
     await _fail_to_ingest_roads(_ELSEWHERE)
-    await ingest_records("accident", [point_record(1, 141.5, 40.5)],
-                         bbox=(_ELSEWHERE.min_latitude, _ELSEWHERE.min_longitude,
-                               _ELSEWHERE.max_latitude, _ELSEWHERE.max_longitude))
+    await ingest_records("accident", [point_record(1, 141.5, 40.5)], bbox=_ELSEWHERE)
 
     assert await road_graph_repository.get_ingested_area() == _AREA
     assert await road_graph_repository.is_covered(_box(30.2, 130.2, 30.8, 130.8)) is False

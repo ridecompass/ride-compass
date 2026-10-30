@@ -20,6 +20,7 @@
     "mark_glyph": "#ffffff",
     "lightning": "#facc15",
     "basemap_ground": "#f8f4f0",
+    "basemap_minor_road_casing": "#7a7874",
     "legend_size_only": "#6b7280",
     "hit": "#000000",
     "inspected": "#f59e0b",
@@ -28,6 +29,22 @@
     "pin_origin": "#e11d48",
     "pin_origin_unresolved": "#9ca3af",
     "pin_waypoint": "#2563eb",
-    "pin_destination": "#059669"
+    "pin_destination": "#059669",
+    "selected_point": "#ff4d1a",
+    "selected_section": "#7c3aed",
+    "place_candidate": "#334155",
+    "place_candidate_picked": "#be185d",
+    "sign_regulatory": "#d8262e",
+    "sign_regulatory_text": "#1a3c8c",
+    "sign_instruction": "#1f5fbf",
+    "sign_warning": "#f5c518",
+    "sign_ink": "#222222",
+    "sign_face": "#ffffff",
+    "sign_post": "#555555",
+    "signal_go": "#1ea56c",
+    "signal_caution": "#f2c230",
+    "signal_stop": "#e2453c",
+    "crash": "#f08a24",
+    "crash_bicycle": "#e2453c"
   }
 }

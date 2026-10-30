@@ -1,32 +1,33 @@
 "use client";
 
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { getQueryClient } from "@/lib/queryClient";
 import { leftTheArea } from "@/lib/validArea";
 import { SECOND_MS } from "@/lib/duration";
 import {
   getAmedasObservation,
-  getCurrentWeather,
   getFloodForecasts,
+  getGridPointToday,
   getWbgtStatus,
+  getRouteWarningTimeline,
   getWeatherWarnings,
 } from "@/services/weatherApi";
+import { routePointsEvery, type RouteSegmentShape } from "@/lib/routeDistance";
+import { routeThunderItems } from "@/features/conditions/routeThunder";
 import refreshIntervals from "@/types/generated/refresh-intervals.json";
 import type { Coordinates } from "@/types/route";
-import type { AmedasObservation, ValidArea, WeatherConditions } from "@/types/weather";
+import type { AmedasObservation, GridPointToday, ValidArea } from "@/types/weather";
 import type { WarningBadgeItem } from "@/features/conditions/WarningBadge/WarningBadge";
 import type { FetchFailure } from "@/types/fetchFailure";
 
 interface UseWeatherConditionsResult {
-  /** 「今日」のパネル（数値予報モデルの計算値）。常設のヘッダーは読まない（ヘッダーは実測）。 */
-  weather: WeatherConditions | null;
-  weatherLoading: boolean;
-  weatherError: string | null;
-  /** 最寄りのアメダスの実測（常設のヘッダー）。モデル側の成否・遅さに引きずられないよう別に取る。 */
+  /** 最寄りのアメダスの実測（常設のヘッダー）。 */
   amedas: AmedasObservation | null;
-  amedasLoading: boolean;
   amedasError: string | null;
+  /** 最寄りの格子点の今日の値（常設のヘッダーから開くパネル）。取り直しに失敗しても前の値を残す。 */
+  gridPointToday: GridPointToday | null;
+  gridPointTodayError: string | null;
   /** 警報・注意報・暑さ指数・河川氾濫予報のバッジ。 */
   warningBadgeItems: WarningBadgeItem[];
   /** 警告の取得に失敗した出所。 */
@@ -35,7 +36,6 @@ interface UseWeatherConditionsResult {
 
 interface LocationFetchState<T> {
   data: T | null;
-  loading: boolean;
   error: string | null;
 }
 
@@ -43,6 +43,25 @@ const validArea = (data: { valid_area?: ValidArea | null }) => data.valid_area;
 
 // 一定の間隔で取り直す（間隔はアメダスの更新に合わせる。警報は随時更新。一度きりだと、一時の失敗も残り続ける）。
 const WEATHER_REFRESH_INTERVAL_MS = refreshIntervals.amedas_seconds * SECOND_MS;
+
+// ルートの上に点を置く間隔（km）。区域（市町村）の境を通る所は、この幅でしか見分けない。
+const ROUTE_POINT_STEP_KM = 0.25;
+
+/** 警報級の時系列を読むルート。`clock`はルートの上の距離を通る時刻（ms）、`fromKm`より手前（もう走った所）は見ない。 */
+export interface WarningRoute {
+  segments: readonly RouteSegmentShape[];
+  clock: (km: number) => number;
+  fromKm: number;
+}
+
+/** 取得の失敗の文。値の無いまま取り直すと、取得の仕組みは失敗を消して「読み込み中」へ戻すので、取り直しが決着するまで
+ * 直前の失敗を持つ（消すと、間隔ごとに失敗の印が消えて回復したように見える）。 */
+function useHeldFailure({ error, status, fetchStatus }: Pick<UseQueryResult, "error" | "status" | "fetchStatus">) {
+  const failure = error?.message ?? null;
+  const [held, setHeld] = useState<string | null>(null);
+  if (fetchStatus === "idle" && held !== failure) setHeld(failure);
+  return status === "pending" ? held : failure;
+}
 
 /** 位置が決まるまで待ち、位置が変わるたびに取り直す。位置を変えて取り直している間と、取り直しに失敗した後は前の値を
  * 残し、失敗には`error`を添える（消したい呼ぶ側は`error`を見て自分で落とす）。`key`は取得の種類の名前（同じ位置の
@@ -63,7 +82,7 @@ function useLocationFetch<T>(
   const [anchor, setAnchor] = useState<Coordinates | null>(null);
   const riding = following !== null;
   const point = riding ? (anchor ?? following) : location;
-  const { data, error, isFetching, isPlaceholderData } = useQuery(
+  const { data, error, status, fetchStatus, isPlaceholderData } = useQuery(
     {
       // 走行中は鍵の地点と取る地点（間隔ごとの今の位置）が違うので、ふだんの取得と鍵を分ける。
       queryKey: ["location-weather", key, riding ? "following" : "fixed", point.latitude, point.longitude],
@@ -85,17 +104,50 @@ function useLocationFetch<T>(
   } else if (anchor === null || (data && area && leftTheArea(area, data.at, following))) {
     setAnchor(following);
   }
-  return { data: data?.value ?? null, loading: isFetching, error: error?.message ?? null };
+  return { data: data?.value ?? null, error: useHeldFailure({ error, status, fetchStatus }) };
 }
 
-/** 天気・観測・警報等を取る。ふだんは`location`（出発地）で取り、走行中は今の位置`following`で取る。 */
+/** ルートを通る時刻に当たる雷の注意報級の時間帯。ルートの形が変わるたびと、間隔ごとに取り直す。 */
+function useRouteThunder(route: WarningRoute | null): { items: WarningBadgeItem[]; error: string | null } {
+  const segments = route?.segments;
+  const sampled = useMemo(() => (segments ? routePointsEvery(segments, ROUTE_POINT_STEP_KM) : []), [segments]);
+  const pointsKey = useMemo(
+    () => sampled.map(({ point }) => `${point.latitude},${point.longitude}`).join(";"),
+    [sampled],
+  );
+  const query = useQuery(
+    {
+      queryKey: ["route-warning-timeline", pointsKey],
+      queryFn: () => getRouteWarningTimeline(sampled.map(({ point }) => point)),
+      enabled: sampled.length > 0,
+      refetchInterval: WEATHER_REFRESH_INTERVAL_MS,
+    },
+    getQueryClient(),
+  );
+  const { data } = query;
+  const error = useHeldFailure(query);
+  const items = useMemo(() => {
+    if (route === null || !data || error) return [];
+    return routeThunderItems(
+      data,
+      sampled.map(({ km }) => km),
+      route.clock,
+      route.fromKm,
+    );
+  }, [route, data, error, sampled]);
+  return { items, error: route === null ? null : error };
+}
+
+/** 天気・観測・警報等を取る。ふだんは`location`（出発地）で取り、走行中は今の位置`following`で取る。選んだルート`route`が
+ * あれば、それを通る時刻に当たる雷の注意報級の時間帯も警告に加える。 */
 export function useWeatherConditions(
   location: Coordinates,
   locationKnown: boolean,
   following: Coordinates | null,
+  route: WarningRoute | null,
 ): UseWeatherConditionsResult {
-  const weather = useLocationFetch("forecast", getCurrentWeather, location, locationKnown, following);
   const amedas = useLocationFetch("amedas", getAmedasObservation, location, locationKnown, following, validArea);
+  const gridPointToday = useLocationFetch("gridPointToday", getGridPointToday, location, locationKnown, following);
 
   // 警告は、取れない間その出所のバッジを出さず、失敗した出所を別に渡す（バッジが無いのを「警告なし」と読ませない）。
   // 空の応答は「出ていない」だけを表し、backendが配信元から取れなかったときも失敗（502）で届く。
@@ -106,6 +158,7 @@ export function useWeatherConditions(
   const weatherWarnings = warnings.error ? null : warnings.data;
   const wbgtStatus = wbgt.error ? null : wbgt.data;
   const floodForecasts = flood.error ? null : flood.data;
+  const routeThunder = useRouteThunder(route);
 
   const warningBadgeItems = useMemo<WarningBadgeItem[]>(() => {
     const jmaItems: WarningBadgeItem[] = weatherWarnings
@@ -137,8 +190,8 @@ export function useWeatherConditions(
       source: "flood",
       title: forecast.condition,
     }));
-    return [...jmaItems, ...wbgtItem, ...floodItems];
-  }, [weatherWarnings, wbgtStatus, floodForecasts]);
+    return [...jmaItems, ...wbgtItem, ...floodItems, ...routeThunder.items];
+  }, [weatherWarnings, wbgtStatus, floodForecasts, routeThunder.items]);
 
   const warningFetchFailures = useMemo<FetchFailure[]>(
     () =>
@@ -146,19 +199,18 @@ export function useWeatherConditions(
         { id: "jma", label: "警報・注意報", error: warnings.error },
         { id: "wbgt", label: "暑さ指数", error: wbgt.error },
         { id: "flood", label: "河川氾濫予報", error: flood.error },
+        { id: "route-thunder", label: "ルートの雷の見込み", error: routeThunder.error },
       ].flatMap(({ id, label, error }) =>
         error ? [{ id, label, detail: error, effect: "出ていてもバッジは表示されません。" }] : [],
       ),
-    [warnings.error, wbgt.error, flood.error],
+    [warnings.error, wbgt.error, flood.error, routeThunder.error],
   );
 
   return {
-    weather: weather.data,
-    weatherLoading: weather.loading,
-    weatherError: weather.error,
     amedas: amedas.data,
-    amedasLoading: amedas.loading,
     amedasError: amedas.error,
+    gridPointToday: gridPointToday.data,
+    gridPointTodayError: gridPointToday.error,
     warningBadgeItems,
     warningFetchFailures,
   };

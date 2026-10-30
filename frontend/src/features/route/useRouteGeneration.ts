@@ -15,7 +15,6 @@ import { generateRoutes, type GenerationProgress } from "@/features/route/routeA
 import { orderGenerated } from "@/features/route/routeTabLabel";
 import type { GenerationConditionsState } from "@/features/route/useGenerationConditions";
 import type { Coordinates, RouteCandidate, RoutePreferenceWeights } from "@/types/route";
-import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 
 /** 押した「生成」の直近の結果。失敗は前の候補を残したまま出すため、候補0件の理由と分けて持つ。 */
 export type GenerationNotice = { kind: "failed" | "empty"; message: string };
@@ -73,13 +72,13 @@ export function useRouteGeneration({
   const [generation, setGeneration] = useState<Generation>(GENERATION_IDLE);
   const [generatedConditions, setGeneratedConditions] = useState<GeneratedConditions | null>(null);
 
-  const { routePreferenceToSend } = conditions;
-  const { distanceTargeted, distance, waypoints, destination, maxRoutes, roadAvoidance } = conditions.snapshot;
+  // 目的地は周回の間を外した値（覚えている目的地は送らない）。
+  const { routePreferenceToSend, destination } = conditions;
+  const { loop, distanceTargeted, distance, waypoints, maxRoutes, roadAvoidance } = conditions.snapshot;
   // いまの条件から生成の入力を組み立てる。`destinationOverride`はbackendが補正した目的地。
   const buildCurrentGenerationInput = (destinationOverride?: Coordinates): GenerationInput => ({
     origin,
     distanceKm: distanceTargeted ? Number(distance) : null,
-    distanceToleranceKm: routeGenerateConfig.default_distance_tolerance_km,
     maxRoutes: Number(maxRoutes),
     assumedSpeedKmh,
     startTime: departure.at,
@@ -143,6 +142,7 @@ export function useRouteGeneration({
   }
 
   const routeFormSubmit = useRouteFormSubmit({
+    loop,
     distanceTargeted,
     waypointCount: waypoints.length,
     destinationSet: destination !== null,

@@ -6,7 +6,7 @@
  *
  * ここで見ないもの:
  * - 位置が分からない間に天候・警報を取らないこと、印の項目をヘッダーに並べること、取り直した現在地へ地図を寄せること
- *   → `app/page.test.tsx`
+ *   → `app/page.layout.test.tsx`
  *
  * 差し替えたもの: 位置情報の取得（`navigator.geolocation`。テスト環境に無いブラウザの機能）。要求ごとに、
  * テストが決めた時に成功か失敗で返す。
@@ -190,6 +190,16 @@ describe("出発地を現在地に戻す", () => {
     expect(result.current.location).toEqual(THERE);
     expect(result.current.locationSource).toBe("geolocation");
     expect(result.current.originAtHere).toBe(true);
+  });
+  it("走行モードを抜けたら、走行モードが最後に受けた位置を現在地のまま残す", () => {
+    const { result, rerender } = renderHook(({ ridingAt }) => useLocation(ridingAt), {
+      initialProps: { ridingAt: null as Coordinates | null },
+    });
+    requests[0].succeed(HERE);
+    rerender({ ridingAt: THERE });
+    rerender({ ridingAt: null });
+    expect(result.current.here).toEqual(THERE);
+    expect(result.current.originAtHere).toBe(false);
   });
 });
 

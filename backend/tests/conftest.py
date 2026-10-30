@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from app.batch.common import asyncpg_dsn
 from app.domain import stopwatch
 from app.infrastructure import (
+    database,
     debug_log,
     jma_area_boundaries,
     rate_limiter,
@@ -36,6 +37,7 @@ from app.infrastructure import (
 from app.infrastructure.derived_data_freshness import derived_tables
 from app.infrastructure.derived_data_meta import DerivedStageRow
 from app.infrastructure.orm_base import declared_metadata
+from app.infrastructure.source_models import SourceFeatureRow, SourceRunRow
 from app.infrastructure.road_graph_repository import (
     REQUIRED_EXTENSIONS,
     RoadGraphRepository,
@@ -101,6 +103,36 @@ def restore_debug_mode():
     yield
     settings.debug_mode = original_debug_mode
     logging.getLogger().setLevel(original_level)
+
+
+@pytest.fixture
+def override_dependency(monkeypatch):
+    """`app.main: app`の依存を差し替える口（`override_dependency(依存, 作る関数)`）。差し替えはテストを抜けるときに戻る。"""
+    from app.main import app
+
+    def override(dependency, provide) -> None:
+        monkeypatch.setitem(app.dependency_overrides, dependency, provide)
+
+    return override
+
+
+#: 何も聞いていないポートのDB。接続は張る段階ですぐに断られる。
+UNREACHABLE_DATABASE_URL = "postgresql+asyncpg://user:password@127.0.0.1:1/unreachable"
+
+
+@asynccontextmanager
+async def app_database_at(monkeypatch: pytest.MonkeyPatch, url: str):
+    """ブロックの間だけ、アプリのセッション工場（`infrastructure/database.py`）を`url`へ向ける。
+
+    工場はプロセスに1つなので、本番の寿命の口（`dispose_engines`）で作り直してから始め、同じ口で閉じて終える。
+    テストDBへ向けるなら`app_on_test_database`を取る。ほかの宛先は、使う側のイベントループの範囲のfixtureの中で開く。
+    """
+    monkeypatch.setattr(settings, "database_url", url)
+    await database.dispose_engines()
+    try:
+        yield
+    finally:
+        await database.dispose_engines()
 
 
 @pytest.fixture(autouse=True)
@@ -251,7 +283,7 @@ TEST_DATABASE_MAINTENANCE = f"{TEST_DATABASE_SERVER}/postgres"
 WORKTREE_ROOT = Path(__file__).resolve().parents[2]
 
 
-def default_test_database_name(root: Path) -> str:
+def default_test_database_name() -> str:
     """その作業ツリー専用のテストDB名。
 
     同じDBを複数のセッションが同時に書き換えると、変更と無関係なテストが落ちる
@@ -260,8 +292,8 @@ def default_test_database_name(root: Path) -> str:
     ——PostGIS拡張とテーブルの作成を毎回払わずに済む。ディレクトリ名だけでは別の場所に
     同名の作業ツリーがあると衝突するため、絶対パスのダイジェストを添える。
     """
-    slug = re.sub(r"[^a-z0-9]+", "_", root.name.lower()).strip("_")[:24] or "wt"
-    return f"{TEST_DATABASE_PREFIX}{slug}_{hashlib.sha1(str(root).encode('utf-8')).hexdigest()[:8]}"
+    slug = re.sub(r"[^a-z0-9]+", "_", WORKTREE_ROOT.name.lower()).strip("_")[:24] or "wt"
+    return f"{TEST_DATABASE_PREFIX}{slug}_{hashlib.sha1(str(WORKTREE_ROOT).encode('utf-8')).hexdigest()[:8]}"
 
 
 #: 同時に作ろうとして競り負けたときの例外。PostgreSQLは競争の負け側へ、宣言的な
@@ -361,7 +393,7 @@ def postgis_database_url() -> str:
         return _RESOLVED_DATABASE_URL
     # フックを経ていない呼び出し（pytest外からのimport等）。DBを作らずに行き先だけ答える。
     return os.environ.get("TEST_DATABASE_URL") or (
-        f"{TEST_DATABASE_SERVER}/{default_test_database_name(WORKTREE_ROOT)}"
+        f"{TEST_DATABASE_SERVER}/{default_test_database_name()}"
     )
 
 
@@ -378,8 +410,8 @@ async def raw_connection():
 
 #: 生データと、派生の段が書く表（表の印から導く）と段の指紋の記録。派生の段を生の接続で回すテストは、これを空にしてから
 #: 取り込む——記録が残ると、空にした表を作り直さずに段を飛ばしうる。
-INGESTED_TABLES = (*(table.name for table in derived_tables()), DerivedStageRow.__tablename__, "source_features",
-                   "source_runs")
+INGESTED_TABLES = (*(table.name for table in derived_tables()), DerivedStageRow.__tablename__,
+                   SourceFeatureRow.__tablename__, SourceRunRow.__tablename__)
 
 
 async def empty_ingested_tables(conn) -> None:
@@ -387,7 +419,7 @@ async def empty_ingested_tables(conn) -> None:
 
 
 def _prepare_worktree_database() -> str:
-    name = default_test_database_name(WORKTREE_ROOT)
+    name = default_test_database_name()
     try:
         created = asyncio.run(_create_database_if_absent(name, str(WORKTREE_ROOT)))
     except Exception as exc:  # 作れない理由はそのまま伝える
@@ -504,7 +536,8 @@ async def road_graph_engine():
     # ORMの宣言を一時に壊して回した）のまま走ってしまう。宣言と差があれば、表を消して今の宣言から作り直す。
     async with engine.connect() as conn:
         gaps = await conn.run_sync(collect_gaps)
-    if gaps:
+    # テストDBは宣言どおりであるべきなので、本番なら落とさない差（本番が多く持つだけの差）でも作り直す。
+    if gaps.breaking or gaps.surplus:
         await _clear_app_tables(postgis_database_url())
         await create_tables(engine)
     # 前の実行が片付けの前に殺されると（時間切れ・中断）、その行がDBに残る。残った行は
@@ -517,9 +550,16 @@ async def road_graph_engine():
 
 
 async def _delete_app_rows(engine) -> None:
-    async with engine.begin() as conn:
-        for table in reversed(declared_metadata().sorted_tables):
-            await conn.execute(table.delete())
+    """アプリの表の全行を、子の表から順に1回の往復で消す。
+
+    文をいくつも1回で送れるのは単純問い合わせ（引数を持たない`asyncpg.Connection.execute`）だけで、SQLAlchemyの
+    `execute`は1文ずつ準備して送る。単純問い合わせの文の並びは1つのトランザクションで走る。
+    """
+    statements = "; ".join(
+        str(table.delete().compile(dialect=engine.dialect)) for table in reversed(declared_metadata().sorted_tables))
+    async with engine.connect() as conn:
+        raw = await conn.get_raw_connection()
+        await raw.driver_connection.execute(statements)
 
 
 @pytest_asyncio.fixture(scope="module", loop_scope="module")
@@ -545,6 +585,13 @@ async def road_graph_session(road_graph_engine) -> AsyncSession:
         await session.rollback()
 
     await _delete_app_rows(road_graph_engine)
+
+
+@pytest_asyncio.fixture(loop_scope="module")
+async def app_on_test_database(road_graph_engine, monkeypatch):
+    """アプリのセッション工場を、表を作ったテストDBへ向ける（`app_database_at`）。"""
+    async with app_database_at(monkeypatch, postgis_database_url()):
+        yield
 
 
 @pytest_asyncio.fixture(loop_scope="module")

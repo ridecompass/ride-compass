@@ -1,14 +1,19 @@
 services:
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      # 画面のJSの宛先とrewrites（/api/basemap等の取り次ぎ）の宛先は、ビルドのときに焼き込まれるので、
+      # 実行時のenvironmentでは変わらない。
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8000
+        BACKEND_INTERNAL_URL: &backend-internal-url http://backend:8000
     ports:
       - "3000:3000"
     environment:
-      NEXT_PUBLIC_API_URL: http://localhost:8000
-      # Next.jsサーバー（コンテナ内）からバックエンドに到達するためのURL。
+      # Next.jsサーバー（コンテナ内）からバックエンドに到達するためのURL。管理画面の転送は実行時に読む。
       # ブラウザから見えるNEXT_PUBLIC_API_URL（localhost:8000）とは異なり、
-      # コンテナ間はサービス名で到達する必要がある（/api/basemapのプロキシ用）。
-      BACKEND_INTERNAL_URL: http://backend:8000
+      # コンテナ間はサービス名で到達する必要がある。
+      BACKEND_INTERNAL_URL: *backend-internal-url
     depends_on:
       - backend
 

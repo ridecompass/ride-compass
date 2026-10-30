@@ -11,8 +11,8 @@ Tailwindのユーティリティで書く。CSS Modulesは使わない（CSSの�
 
 | レイヤー | ファイル |
 |---|---|
-| components/ui（部品） | `Button/Button.tsx`（押すと1回動く。`variant`が役割、`size`が大きさ。`type`未指定時は`"button"`）・`Toggle/Toggle.tsx`（押して切り替える。押下状態は呼び出し側が持つ）・`ToggleGroup/ToggleGroup.tsx`（並んだ選択肢から1つを選ぶ。選んでいるものは外れない）・`Tabs/Tabs.tsx`（タブの列とタブの見た目。Root・ContentはRadixのものを出す）・`Popover/Popover.tsx`（押すと開く浮きパネル。中身はdocument.body直下へ描く。開くボタン`PopoverTrigger`は印`data-usage-opens`を付け、説明を見る状態がその説明に「中を見る」を出す。中身は、説明を見る状態の案内・説明の面を押すこと・そこへフォーカスが移ることでは閉じない。画面の端へ寄せて開くものが端と空ける幅は`POPOVER_COLLISION_PADDING_PX`）・`Input/Input.tsx`（1行・複数行・選択の入力欄。3つとも同じ枠）・`NumberInput/NumberInput.tsx`（入力途中の文字を部品が持つ数値欄。打つたびに渡すか、欄を離れたとき・Enterで渡すかを選ぶ）・`Text/Text.tsx`（文字の役割ごとの大きさ・太さ・色）・`Table/Table.tsx`（一覧表）・`Card/Card.tsx`（ひとまとまりの面）・`Callout/Callout.tsx`（本文の中の注意の1かたまり）・`Badge/Badge.tsx`（名前の横に添える札）・`GuideText/GuideText.tsx`（案内の文。アイコンだけの操作の名前をアイコンにして描く。5-1）・`Dot/Dot.tsx`（状態の小さな丸）・`LogLine/LogLine.tsx`（ログの1行）・`Dialog/Dialog.tsx`（`title`必須でアクセシブル名を型で強制。消す前の確認の窓`ConfirmDialog`も持つ）・`Checkbox/Checkbox.tsx`・`Ruler/Ruler.tsx`（目盛りを横に滑らせ、左端の目印に合わせたコマを選ぶ。目印より右だけを見せ、残りは滑らせて出す。ドラッグ・ホイール・吸着はEmbla、キー操作と`role="slider"`の読み上げは部品が持つ）・`AxisLegend/axisLegend.ts`（軸の帯グラフと軸チップの形。重み配分の設定とルート結果の内訳が共有する） |
-| lib | `cn.ts`（`clsx`で条件付きclassNameをまとめ、`tailwind-merge`で同じプロパティを指すクラスの後勝ちを解決する）・`paletteCssVariables.ts`（backendが配る色のうちCSSから参照するものを、CSS変数として流す） |
+| components/ui（部品） | `Button/Button.tsx`（押すと1回動く。`Button/Button.tsx: variant`が役割、`Button/Button.tsx: size`が大きさ。`type`未指定時は`"button"`）・`Toggle/Toggle.tsx`（押して切り替える。押下状態は呼び出し側が持つ）・`ToggleGroup/ToggleGroup.tsx`（並んだ選択肢から1つを選ぶ。選んでいるものは外れない）・`Tabs/Tabs.tsx`（タブの列とタブの見た目。Root・ContentはRadixのものを出す）・`Popover/Popover.tsx`（押すと開く浮きパネル。中身はdocument.body直下へ描く。開くボタン`Popover/Popover.tsx: PopoverTrigger`は印`data-usage-opens`を付け、説明を見る状態がその説明に「中を見る」を出す。中身は、説明を見る状態の案内・説明の面を押すこと・そこへフォーカスが移ることでは閉じない。画面の端へ寄せて開くものが端と空ける幅は`Popover/Popover.tsx: POPOVER_COLLISION_PADDING_PX`）・`Input/Input.tsx`（1行・複数行・選択の入力欄。3つとも同じ枠）・`NumberInput/NumberInput.tsx`（入力途中の文字を部品が持つ数値欄。打つたびに渡すか、欄を離れたとき・Enterで渡すかを選ぶ）・`Text/Text.tsx`（文字の役割ごとの大きさ・太さ・色）・`Table/Table.tsx`（一覧表）・`Card/Card.tsx`（ひとまとまりの面）・`Callout/Callout.tsx`（本文の中の注意の1かたまり）・`Badge/Badge.tsx`（名前の横に添える札）・`GuideText/GuideText.tsx`（案内の文。アイコンだけの操作の名前をアイコンにして描く。5-1）・`Dot/Dot.tsx`（状態の小さな丸）・`LogLine/LogLine.tsx`（ログの1行）・`Dialog/Dialog.tsx`（`Dialog/Dialog.tsx: title`必須でアクセシブル名を型で強制。消す前の確認の窓`Dialog/Dialog.tsx: ConfirmDialog`も持つ）・`Checkbox/Checkbox.tsx`・`Ruler/Ruler.tsx`（目盛りを横に滑らせ、左端の目印に合わせたコマを選ぶ。目印より右だけを見せ、残りは滑らせて出す。ドラッグ・ホイール・吸着はEmbla、キー操作と`role="slider"`の読み上げは部品が持つ）・`AxisLegend/axisLegend.ts`（軸の帯グラフと軸チップの形。重み配分の設定とルート結果の内訳が共有する） |
+| lib | `cn.ts`（`cn.ts: clsx`で条件付きclassNameをまとめ、`tailwind-merge`で同じプロパティを指すクラスの後勝ちを解決する）・`paletteCssVariables.ts`（backendが配る色のうちCSSから参照するものを、CSS変数として流す） |
 | app | `globals.css`（デザイントークン・`@theme`登録・リセット・レスポンシブレイアウト・MapLibreのDOM上書き。下記8節） |
 
 部品はいずれも`class-variance-authority`（variant管理）＋`cn()`を使うshadcn/ui方式
@@ -71,7 +71,7 @@ Tailwindのユーティリティで書く。CSS Modulesは使わない（CSSの�
 | `--z-map-popup` | 25 | MapLibreのポップアップ |
 | `--z-map-detail` | 30 | 地図内の詳細パネル |
 | `--z-bottom-sheet` | 45 | モバイルのBottomSheet・下部タブバー |
-| `--z-header-popover` | 46 | ヘッダー由来のポップオーバー（メニュー・警報バッジ・「今日」のパネル） |
+| `--z-header-popover` | 46 | ヘッダー由来のポップオーバー（メニュー・警報バッジ・観測のパネル） |
 | `--z-floating-panel` | 50 | 開発者向けFloatingPanel・`ui/Dialog` |
 | `--z-top-popover` | 60 | 開いた時点で必ず見えるべき浮きパネル（`ui/Popover`の既定・「表示」の一覧・レンズ一覧・走行条件） |
 | `--z-usage-guide` | 70 | 使い方の説明（案内の小窓・説明・部品の枠。開いているどの浮きパネルの部品を押しても、その上に出す） |
@@ -109,7 +109,7 @@ Tailwindのユーティリティで書く。CSS Modulesは使わない（CSSの�
   属性で切り替えると、状態を見た目のために二重に持たない。親の状態で子を変えるときは`group`/`group-data-*`、
   祖先の属性で変えるときは`in-data-*`を使う。
 - 狭い画面だけの違いは`max-mobile:`（`--breakpoint-mobile`から導かれる）。
-- 押して動く部品（`Button`等）は、使い方の文を`usage`で受け取り
+- 押して動く部品（`Button`等）は、使い方の文を省けない引数`usage`で受け取り
   `data-usage`へ書く（[ページ全体構成](page-composition.md)「使い方の説明」）。
 - 部品の構造の目印が要るとき（テストが兄弟関係を見る等）は`data-slot`（shadcn/uiの慣習）を付ける。
 
@@ -137,7 +137,7 @@ Tailwindのユーティリティで書く。CSS Modulesは使わない（CSSの�
   再試行等）に置くときも同じ形にする。この形にしないのは、✕（閉じる・選択の解除）と、画面の値を名前に含む操作
   （「「◯」に切り替える」）、窓の中の確かめるボタン（「保存」「消す」等）、メニューの項目、初回の案内の「はじめる」、
   画面全体の失敗の「再試行」だけ。タブの段は、アイコンに短い文字を添える。
-- **常設ヘッダーの帯は値とアイコンだけにする**: 帯の入口（「今日」のパネル・警報）と印（観測値を取れない等）は文字を出さず、
+- **常設ヘッダーの帯は値とアイコンだけにする**: 帯の入口（警報）と印（観測値を取れない等）は文字を出さず、
   `Button`の`size="headerIcon"`（帯の文字1行に収まる大きさ）のアイコンにする。警報はいちばん重い段の色のアイコン1つで示し、
   呼び名と件数は名前に出す。取れない理由のような長い文は、印の使い方の文（`data-usage`）に入れてツールチップで出す。
 - **押して切り替える操作（地点を地図で置く等）も同じ形**で、押している間はボタンをアクセント色で塗る。押している間・押せない間の
@@ -181,6 +181,7 @@ backendのdomainの宣言が持つ名前（ハードフィルタ・凡例の行�
 | 場所の事実（標高・道路の種類・スポット等）を地図・道のりのグラフに重ねること（地図の左上の入口と、道のりのグラフのタブの名前。`lib/screenNames.ts: FACT_DISPLAY_NAME`） | 表示（重ねる1つずつは「情報」） | レイヤ |
 | 0〜100の走りにくさ（評価軸ごとの値も、重みで合わせた値も） | 難易度（評価軸ごとは「この評価軸の難易度」） | 合成・スコア・コスト |
 | 候補の区間をほかの候補の道へ乗り換えて作ったルート | 合成ルート（作る操作は「ルートを合成」） | 難易度の意味では「合成」を使わない |
+| 出発地へ戻って終わるルート（目的地を置かない・目的地が出発地と同じ） | 周回（ルート設定の切り替えの名前。周回の間の終点の札では出発地の名前に添えて「現在地[周回]」） | ループ |
 | 地図に点で出す場所（停止要因・補給・事故） | スポット | POI |
 | 利用者が変えていないときに使う値 | 既定（既定の配分・既定値） | デフォルト・サーバー既定 |
 | ルートを作り、データを配る側 | アプリ（主語に要るときだけ） | サーバー・ジョブ |
@@ -237,7 +238,7 @@ styleでは`@media`が書けないための必然）・サードパーティ（M
 一律適用は、既に自前の意図したサイズを持つ部品（`Toggle`のチップ・`components/ui/Checkbox`
 等）を詳細度で潰す。
 
-**「本当にメインの導線」だけが個別に44pxを持つ**（例: モバイル下部タブ〔`page.tsx`〕のように、
+**「本当にメインの導線」だけが個別に44pxを持つ**（例: モバイル下部タブ〔`app/RoutePanels.tsx`〕のように、
 画面の切り替えそのものを担う操作）。補助的な
 ボタン（一括操作リンク・情報アイコン・開発者向けボタン等）は44pxへ揃えず自然なサイズのまま
 にする。ただし**どの押す所も24px四方を下回らない**（WCAG 2.2 達成基準 2.5.8）。押す部品の土台
@@ -282,7 +283,7 @@ E2E（ヘッドレスのChromium）が2つに分けて確かめる。地図のca
 ピンチを送って見る（下部シート・ポップオーバー・ヘッダーの中も含む）。ピンチの間はアプリのタッチ・ポインタ・入力の
 イベントを止める（指がつまみ・スライダーを動かして画面の状態を変えないように）ので、判定は上の`touch-action`の規則だけを
 見る——部品の処理が`preventDefault`で拡大を止めていても通らない。地図の上のピンチが地図を拡大することは
-`e2e/map-runtime.spec.ts`の「タッチ端末」が見る。iOS Safariの挙動は公式の文書とWebKitのソースを根拠にしている。
+`e2e/map-touch.spec.ts`が見る。iOS Safariの挙動は公式の文書とWebKitのソースを根拠にしている。
 
 ### `components/ui/`コンポーネント自身の自己防衛
 

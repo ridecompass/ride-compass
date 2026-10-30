@@ -13,6 +13,7 @@ import { axisLineGroup, type AxisLineState } from "@/features/map/scene/groups/a
 import { pointGroup, type PointState } from "@/features/map/scene/groups/points";
 import { roadLineGroup, type RoadLineState } from "@/features/map/scene/groups/roadLines";
 import { routeGroup, type RouteState } from "@/features/map/scene/groups/routes";
+import { sidePointGroup, type SidePointState } from "@/features/map/scene/groups/sidePoints";
 import { weatherGroup, type WeatherState } from "@/features/map/scene/groups/weather";
 
 export type SceneInputs = {
@@ -22,6 +23,7 @@ export type SceneInputs = {
   readonly point: PointState;
   readonly weather: WeatherState;
   readonly route: RouteState;
+  readonly sidePoint: SidePointState;
 };
 
 /** 家族ごとの状態を、全体の状態から選んで渡す。 */
@@ -36,8 +38,14 @@ const GROUPS: readonly SceneGroup<SceneInputs>[] = [
   selecting(pointGroup, (inputs) => inputs.point),
   selecting(weatherGroup, (inputs) => inputs.weather),
   selecting(routeGroup, (inputs) => inputs.route),
+  selecting(sidePointGroup, (inputs) => inputs.sidePoint),
 ];
 
 export function buildMapScene(inputs: SceneInputs): MapScene {
   return composeScene(GROUPS, inputs);
+}
+
+/** 俯瞰図（`MapOverview/MapOverview.tsx`）に載せる、気象の家族だけの scene。 */
+export function buildOverviewScene(weather: WeatherState): MapScene {
+  return composeScene([weatherGroup], weather);
 }

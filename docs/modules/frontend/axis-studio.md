@@ -19,30 +19,30 @@ APIを呼ぶ）・「データ保守」タブ（派生データ鮮度台帳の�
 | ファイル | 責務 |
 |---|---|
 | `features/admin/AxisStudio/AxisStudio.tsx` | トップレベル。軸の一覧（下書き・公開済みのタブ）を取り、押した行の下にその軸の較正を開く。開くのは1つだけで、閉じた軸の較正は描かず、分布・地図の段・地図を取りに行かない |
-| `features/admin/AxisStudio/AxisCalibration.tsx` | 1つの軸の較正（一覧の行を開いたところに出る）。数値の軸は0点・100点にする値（密度の軸は100点にする値だけ）を実データの分布を重ねた大きなグラフか数の入力で決め、対応表の軸は`CategoricalCalibration.tsx`へ渡す。数値の軸は下書きの点数で塗った地図を見ながら決める。地図は地図の機能の部品（`features/map/DraftWayValuesMap/DraftWayValuesMap.tsx`）で、機能どうしは互いを読まないため、組み立てるページ（`app/admin/page.tsx`）が`AxisStudio`へ差し込む（`AxisStudio/AxisCalibration.tsx: CalibrationMapSlot`） |
+| `features/admin/AxisStudio/AxisCalibration.tsx` | 1つの軸の較正（一覧の行を開いたところに出る）。数値の軸は0点・100点にする値（密度の軸は100点にする値だけ）を実データの分布を重ねた大きなグラフか数の入力で決め、対応表の軸は`CategoricalCalibration.tsx`へ渡す。数値の軸は下書きの点数で塗った地図を見ながら決める。地図は地図の機能の部品（`features/map/DraftWayValuesMap/DraftWayValuesMap.tsx`）で、機能どうしは互いを読まないため、組み立てるページ（`app/admin/page.tsx`）が`AxisStudio.tsx: AxisStudio`へ差し込む（`AxisStudio/AxisCalibration.tsx: CalibrationMapSlot`） |
 | `features/admin/AxisStudio/CategoricalCalibration.tsx` | 較正の画面の対応表の軸。種類ごとに点数の入力とその種類の道の延長の割合を並べ、点数を数で直す |
 | `features/admin/AxisStudio/calibrationParts.tsx` | 較正の画面で数値の軸と対応表の軸が共に使う部品。地図の段の境界の下書きと入力欄、段ごとの延長の下書きと保存済みの比べ、公開の状態のまま差し替える保存 |
 | `features/admin/AxisStudio/BreakpointCurveEditor.tsx` | 較正の画面の折れ点のSVGの曲線。動かせるのは0点・100点の端だけで、横（入力値）にだけ動く。背景へ実データの分布、前へ保存済みの線と動かせる段の境界を重ねる |
 | `features/admin/AxisStudio/curveDistributionOverlay.ts` | 曲線エディタの背景へ分布を重ねるための純粋関数（DOM非依存。階級のクリップ・按分、分位線、表示範囲外の割合） |
-| `features/admin/AxisStudio/scoreDistribution.ts` | 分布の階級の代表値（`binMidpoints`）と、地図の段ごとの延長割合（数値の軸は`mapBandShares`、対応表の軸は`categoryBandShares`）を求める純粋関数（DOM非依存） |
+| `features/admin/AxisStudio/scoreDistribution.ts` | 分布の階級の代表値（`features/admin/AxisStudio/scoreDistribution.ts: binMidpoints`）と、地図の段ごとの延長割合（数値の軸は`features/admin/AxisStudio/scoreDistribution.ts: mapBandShares`、対応表の軸は`features/admin/AxisStudio/scoreDistribution.ts: categoryBandShares`）を求める純粋関数（DOM非依存） |
 | `features/admin/AxisStudio/thresholdList.ts` | 地図の段の境界のまとめ入力の読み書きと、段の名前の上書きを段の数へ合わせる純粋関数（DOM非依存、`calibrationParts.tsx`が使う） |
 | `features/admin/adminApi.ts` | 管理画面のAPIクライアントをまとめたもの。管理API（backend `/api/admin/**`）は`lib/apiClient.ts: adminApiClient`で同一オリジンの口`/admin/api/**`へ投げ、backendのパスの`/api/admin`より後をそのまま使う（例: backend `GET /api/admin/db-status`は`/admin/api/db-status`）。パス・本文・応答の型は管理APIの宣言から決まり、宣言に無いパスは型検査で落ちる（[ページ全体構成](page-composition.md)）。待ち時間は呼び出しごとに決める（全表走査の集計は`lib/apiTimeouts.ts: API_TIMEOUT_MS`の`heavyAdmin`、分布は`lib/apiTimeouts.ts: API_TIMEOUT_MS`の`distribution`）。稼働状況の口（`/health`・`/api/debug/stats`）も同じファイルに置く（フロント自身の版の口`/api/version`は、一般の画面のメニューも読むので`services/versionApi.ts`） |
-| `app/admin/api/[...path]/route.ts` | 管理APIの転送の口。`/admin/api/<X>`への要求を、サーバーの環境変数から組み立てたBasic認証を付けてbackendの`/api/admin/<X>`へ、メソッド・クエリ・本文・応答の状態と本文ごとそのまま渡す。転送の待ち時間はどのクライアントよりも長く取り（`ADMIN_PROXY_TIMEOUT_MS`）、打ち切りはクライアントに任せる |
-| `proxy.ts` | `/admin`配下（画面と管理APIへの転送の口）の手前のBasic認証。ファイル名と`config.matcher`はNext.jsの規約で、`matcher`が認証を求める道を決める。資格情報が未設定なら、どの要求も拒む |
+| `app/admin/api/[...path]/route.ts` | 管理APIの転送の口。`/admin/api/<X>`への要求を、サーバーの環境変数から組み立てたBasic認証を付けてbackendの`/api/admin/<X>`へ、メソッド・クエリ・本文・応答の状態と本文ごとそのまま渡す。転送の待ち時間はどのクライアントよりも長く取り（`apiTimeouts.ts: ADMIN_PROXY_TIMEOUT_MS`）、打ち切りはクライアントに任せる |
+| `proxy.ts` | `/admin`配下（画面と管理APIへの転送の口）の手前のBasic認証。ファイル名と`proxy.ts: config.matcher`はNext.jsの規約で、`proxy.ts: matcher`が認証を求める道を決める。資格情報が未設定なら、どの要求も拒む |
 | `lib/adminBasicAuth.ts` | Basic認証の資格情報を環境変数から読む口。片方でも空なら未設定（`null`）とし、`proxy.ts`と転送の口が同じ結果を見る |
 | `features/admin/useSettledDraftQuery.ts` | 下書きから組んだ問い合わせの骨格（入力をJSONにして取得の鍵にし、落ち着いてから問い合わせ、今の入力と違う答えは出さない）。答えと一緒に、今の入力の問い合わせが失敗したかを返す（届く前と失敗はどちらも答えが無いため、呼ぶ側が分けて出せるように）。backendが判定・計算を持ち、画面は下書きを送るだけの取得（例: `useScoresPreview`）が使う |
 | `features/admin/useScoresPreview.ts` | 下書きの折れ点で、分布の階級の代表値がそれぞれ何点になるかを取得する（下書きが落ち着いてから問い合わせる。入力を変えた直後・失敗時は点数なしで、失敗したことも返す） |
 | `features/admin/useAxisValueDistribution.ts` | 下書きのshapeの生値分布を取得。取得キーに折れ点を含めないため、折れ点のドラッグ中は通信しない。取り直している間は前の分布を出したまま読み込み中にする |
 | `features/admin/useMaterialValueShares.ts` | 種類・はい/いいえの材料1件の、値ごとの道の延長の割合を取得（較正の画面）。画面を開いている間に取りに行くのは1回で、失敗したことも返す |
 | `features/admin/AxisStudio/breakpointTools.ts` | 3つの入力から折れ点を作ること・いまの折れ点から3つの入力を戻すこと・ドラッグの刻み幅（DOM非依存の純粋関数、較正の画面が使う） |
-| `features/admin/AxisStudio/MaterialCoveragePanel.tsx` | 「材料」タブ本体。材料ごとの欠損割合を「欠損時の扱い」でグループに分けた表（各グループ内は欠損割合降順）と集計対象外材料の理由一覧。グループの見出し・説明と母集団の名前はbackendの宣言（`domain/material_catalog.py: MISSING_SEMANTICS_DISPLAY`・`domain/material_catalog.py: POPULATION_LABELS`）が生成物`vocabulary.ts`で配る |
-| `features/admin/AxisStudio/DerivedDataFreshnessPanel.tsx` | 「データ保守」タブ本体。ソースごとの鮮度（成功した最新の取込と作り直しに使った取込）と、派生テーブルごとの列の比較（作ったときの列と今の宣言の列。値の列ごとの値なしの件数は参考）を、それぞれ1行へまとめて表示。対象の表・列はbackendが宣言から導く（表の印を持つ表が派生データ）。作り直しが要るかもbackendが決め（`needs_rebuild`）、画面は理由を問わずそれで数える |
+| `features/admin/AxisStudio/MaterialCoveragePanel.tsx` | 「材料」タブ本体。材料ごとの欠損割合を「欠損時の扱い」でグループに分けた表（各グループ内は欠損割合降順）と集計対象外材料の理由一覧。グループの見出し・説明と母集団の名前はbackendの宣言（`domain/material_coverage_spec.py: MISSING_SEMANTICS_DISPLAY`・`domain/material_coverage_spec.py: POPULATION_LABELS`）が生成物`vocabulary.ts`で配る |
+| `features/admin/AxisStudio/DerivedDataFreshnessPanel.tsx` | 「データ保守」タブ本体。ソースごとの鮮度（成功した最新の取込と作り直しに使った取込）と、派生テーブルごとの列の比較（作ったときの列と今の宣言の列。値の列ごとの値なしの件数は参考）を、それぞれ1行へまとめて表示。対象の表・列はbackendが宣言から導く（表の印を持つ表が派生データ）。作り直しが要るかもbackendが決め（`features/admin/AxisStudio/DerivedDataFreshnessPanel.tsx: needs_rebuild`）、画面は理由を問わずそれで数える |
 | `features/admin/AxisStudio/DbStatusPanel.tsx` | 「データ保守」タブ・本番DBの状態。取込runの最終実行・テーブルの実数と容量・統計とVACUUMの鮮度・接続を1件1行で出す |
 | `features/admin/AxisStudio/StatusRowList.tsx` | 上記2パネルが共有する点検の行の一覧（状態の丸・名前・規模、開くと項目と値）と、結果の一言（手当てが要れば目立たせる） |
-| `features/admin/AxisStudio/ReportCard.tsx` | 集計のパネル（材料の欠損割合・派生データ鮮度台帳・本番DBの状態）が共有するカード。見出しとⓘ・「集計する」ボタン・集計中と失敗の表示・集計の時刻（日本時間）を持ち、中身の描画は各パネルが渡す。件数と時点の書式（`formatCount`・`formatMoment`）もここに置く |
+| `features/admin/AxisStudio/ReportCard.tsx` | 集計のパネル（材料の欠損割合・派生データ鮮度台帳・本番DBの状態）が共有するカード。見出しとⓘ・「集計する」ボタン・集計中と失敗の表示・集計の時刻（日本時間）を持ち、中身の描画は各パネルが渡す。件数と時点の書式（`features/admin/AxisStudio/ReportCard.tsx: formatCount`・`features/admin/AxisStudio/ReportCard.tsx: formatMoment`）もここに置く |
 | `features/admin/AxisStudio/TileCachePanel.tsx` | 「データ保守」タブの2枚目。サーバー側のタイルファイルキャッシュ（基礎地図・路面と点のタイルが共有）を全消去する操作パネル。全利用者へ影響するため入口はここだけに持つ |
-| `features/admin/AxisStudio/TuningPanel.tsx` | 「較正値」タブ本体。走ってみて決める値をデプロイなしで編集する。**並べる項目はbackendが宣言から導く**ため画面側に一覧を持たず、効き方（`effect`）ごとに見出しを分けて「変えたのに効かない」群がそれと分かるようにする。1件=1行で、説明と既定値・範囲は(i)の奥（他の管理パネルと同じ省スペースの作り）。入力は打っただけでは送らず「DBへ保存」でまとめて書き、既定と同じ値にして保存した行は上書きを消す（DBへ残るのは動かしたぶんだけ）。保存を待つ間に打ち直した値は、未保存として残す |
-| `lib/axisMaterialsCatalog.ts` | 材料の一覧（`MATERIAL_CATALOG`。生成物`material-catalog.json`から作る）と、材料idを表示へ変える関数（`materialCatalogLabel`: 論理名 - 物理名） |
+| `features/admin/AxisStudio/TuningPanel.tsx` | 「較正値」タブ本体。走ってみて決める値をデプロイなしで編集する。**並べる項目はbackendが宣言から導く**ため画面側に一覧を持たず、効き方（`features/admin/AxisStudio/TuningPanel.tsx: effect`）ごとに見出しを分けて「変えたのに効かない」群がそれと分かるようにする。1件=1行で、説明と既定値・範囲は(i)の奥（他の管理パネルと同じ省スペースの作り）。入力は打っただけでは送らず「DBへ保存」でまとめて書き、既定と同じ値にして保存した行は上書きを消す（DBへ残るのは動かしたぶんだけ）。保存を待つ間に打ち直した値は、未保存として残す |
+| `lib/axisMaterialsCatalog.ts` | 材料の一覧（`lib/axisMaterialsCatalog.ts: MATERIAL_CATALOG`。生成物`material-catalog.json`から作る）と、材料idを表示へ変える関数（`materialCatalogLabel`: 論理名 - 物理名） |
 | `components/ui/icons/axisIconPalette.tsx` | 軸のアイコンの固定パレット（`icon_id`→アイコンコンポーネント） |
 
 ## AxisStudio.tsx（一覧）
@@ -152,7 +152,7 @@ backend `GET /api/admin/material-catalog/coverage`の
 レスポンス（`MaterialCoverageResponse`、生成型）をそのまま表にする。
 
 - 「欠損時の扱い」（`missing_semantics`）でグループに分けて表示する。見出し・説明・並びは
-  backendの宣言（`domain/material_catalog.py: MISSING_SEMANTICS_DISPLAY`、生成物`vocabulary.ts`）。例:
+  backendの宣言（`domain/material_coverage_spec.py: MISSING_SEMANTICS_DISPLAY`、生成物`vocabulary.ts`）。例:
   「評価に影響する欠損」（欠損区間ではその材料を使う軸が評価対象外）と「タグ不在を確定値として
   評価する材料（参考）」（欠損は「該当なし」を意味し評価に穴は開かない）。欠損割合の数字が同じでも
   意味が正反対のため同じ表へ並べない。各グループは`<section aria-label>`で、見出し＋1行の説明＋表。

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import { Button } from "@/components/ui/Button/Button";
 import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/Popover/Popover";
@@ -13,7 +13,7 @@ import { cn } from "@/lib/cn";
 import { LENS_LINK_CLASS, LENS_LINK_DESCRIPTION } from "@/lib/lensLink";
 import { mapOverlayEdge } from "@/lib/mapOverlayEdges";
 
-import { HEADING_LABELS, headingOf } from "../mapHeading";
+import { HEADING_LABELS, WAY_BEARING_STEP_DEG, headingOf } from "../mapHeading";
 import { nearestRideZoomStep } from "../MapView/rideZoom";
 
 interface MapNavigationControlProps {
@@ -27,8 +27,15 @@ interface MapNavigationControlProps {
   onResetNorth: () => void;
   /** いまの「評価で塗る」の周りの道の塗りが、地図の向きで決まっている。 */
   linked: boolean;
-  /** 走行モードの間だけ渡る。拡大・縮小の代わりに倍率のボタンを出し、方位磁針はダイヤルを開かず、北が上と進む向きが上を切り替える。 */
-  ride: { headingUp: boolean; onToggleHeadingUp: () => void; zoomBase: number; onNextZoom: () => void } | null;
+  /** 走行モードの間だけ渡る。拡大・縮小の代わりに倍率のボタンを出し、方位磁針はダイヤルを開かず、現在地を追っている間は北が上と
+   * 進む向きが上を切り替え、追っていない間は北が上に戻す。 */
+  ride: {
+    headingUp: boolean;
+    following: boolean;
+    onCompass: () => void;
+    zoomBase: number;
+    onNextZoom: () => void;
+  } | null;
 }
 
 const DIAL_SIZE_PX = 176;
@@ -105,10 +112,10 @@ export default function MapNavigationControl({
           variant="mapCtrl"
           size="mapCtrl"
           className={compassClassName}
-          aria-label={ride.headingUp ? "北を上にする（いまは進む向きが上）" : "進む向きを上にする（いまは北が上）"}
+          aria-label={rideCompassLabel(ride)}
           aria-description={linked ? LENS_LINK_DESCRIPTION : undefined}
-          usage="走っている間は、押すと北が上と進む向きが上を切り替えます。"
-          onClick={ride.onToggleHeadingUp}
+          usage="走っている間は、押すと北が上と進む向きが上を切り替えます。地図を指で動かしたあとは、押すとその場で北が上に戻ります。"
+          onClick={ride.onCompass}
         >
           {needle}
         </Button>
@@ -140,6 +147,12 @@ export default function MapNavigationControl({
   );
 }
 
+/** 走行中の方位磁針のボタンの名前。追っていない間は、押すと北が上に戻る。 */
+function rideCompassLabel({ headingUp, following }: { headingUp: boolean; following: boolean }): string {
+  if (headingUp) return "北を上にする（いまは進む向きが上）";
+  return following ? "進む向きを上にする（いまは北が上）" : "北を上にする";
+}
+
 /** 走行モードの倍率のボタン: 押すたびに基準の倍率を中→遠→近と回す。絵は基準の倍率にいちばん近い段。 */
 function RideZoomButton({ zoomBase, onNextZoom }: { zoomBase: number; onNextZoom: () => void }) {
   const step = nearestRideZoomStep(zoomBase);
@@ -167,6 +180,9 @@ interface HeadingDialProps {
 /** 地図と一緒に回る方位の輪。輪をなぞると地図が回り、真ん中の針を押すと北が上に戻る。 */
 function HeadingDial({ bearing, heading, onBearingChange, onResetNorth }: HeadingDialProps) {
   const dialRef = useRef<HTMLDivElement>(null);
+  // なぞっている間にwindowへ付けた受け手を外す。なぞる途中でダイヤルを閉じても（Escape等）外す。
+  const endDragRef = useRef<(() => void) | null>(null);
+  useEffect(() => () => endDragRef.current?.(), []);
   // 向きで値の変わる評価の名前は軸カタログから引く。無ければ評価に触れる文を出さない。
   const bearingAxes = axisNamesUsing(useAxisCatalog().axes, "bearing_deg");
 
@@ -190,7 +206,10 @@ function HeadingDial({ bearing, heading, onBearingChange, onResetNorth }: Headin
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
       window.removeEventListener("pointercancel", onUp);
+      endDragRef.current = null;
     };
+    endDragRef.current?.();
+    endDragRef.current = onUp;
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
     window.addEventListener("pointercancel", onUp);
@@ -212,7 +231,7 @@ function HeadingDial({ bearing, heading, onBearingChange, onResetNorth }: Headin
         <InfoPopover triggerAriaLabel="地図の向きの使い方">
           輪をなぞると地図が回り、真ん中の針を押すと北が上に戻ります。
           {bearingAxes &&
-            `${bearingAxes}で周りの道を塗るときと、道の評価を見るときの走る向きは、地図の上の向きを8方位に丸めた向きです。ルートの評価は、ルートを実際に走る向きで決まります。`}
+            `${bearingAxes}で周りの道を塗るときと、道の評価を見るときの走る向きは、地図の上の向きを${WAY_BEARING_STEP_DEG}°刻みに丸めた向きです。ルートの評価は、ルートを実際に走る向きで決まります。`}
         </InfoPopover>
         <span className="tabular-nums">
           <span className="text-[length:var(--font-size-md)] font-semibold text-[var(--color-accent)]">

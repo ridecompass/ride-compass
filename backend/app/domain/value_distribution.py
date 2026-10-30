@@ -6,7 +6,8 @@
 
 import numpy as np
 
-from app.domain.axis_definitions import AxisShape, mapping_key_of, raw_values, referenced_materials
+from app.domain.axis_definitions import AxisShape, mapping_key_of, referenced_materials
+from app.domain.axis_evaluation import raw_values
 from app.domain.strict_model import StrictModel
 
 # 生値のヒストグラムの階級数。フロントが折れ点を当てはめる粒度で、細かすぎても
@@ -44,8 +45,6 @@ class ValueShares(StrictModel):
     total_km: float
     shares: list[ValueShare]
 
-
-EMPTY_SHARES = ValueShares(sample_ways=0, total_km=0.0, shares=[])
 
 #: 分位点の名前と比率。名前は応答の`quantiles`の鍵で、生成物（`vocabulary.ts`）がこの並びで画面へ届ける。
 QUANTILE_TARGETS = [("p10", 0.10), ("p25", 0.25), ("p50", 0.50), ("p75", 0.75), ("p90", 0.90), ("p99", 0.99)]
@@ -112,8 +111,6 @@ def raw_value_distribution(shape: AxisShape, sample: list[tuple[float, dict[str,
 
 def weighted_value_shares(pairs: list[tuple[float, object]]) -> ValueShares:
     """`(長さm, 値)`から値ごとの延長の割合を求める。値は対応表のキーの綴りで数える（真偽は"true"/"false"）。"""
-    if not pairs:
-        return EMPTY_SHARES
     lengths: dict[str, float] = {}
     for length_m, value in pairs:
         key = mapping_key_of(value)

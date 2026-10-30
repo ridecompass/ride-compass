@@ -3,19 +3,27 @@
 // テストの中で使う（差し替えはテストのファイルが`vi.mock`で宣言する）。
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { expect, onTestFinished } from "vitest";
+import { expect, onTestFinished, vi } from "vitest";
 
 import Home from "@/app/page";
 import { CLIENT_TUNING_IDS } from "@/lib/axisCatalog";
 import { onBackend, onSameOrigin, serveAxisCatalog } from "@/testing/backendServer";
-import { catalogResponse, dedicatedEntry, MATERIAL_VALUE_FORMULA } from "@/testing/catalogAxes";
+import {
+  catalogResponse,
+  dedicatedEntry,
+  MATERIAL_VALUE_FORMULA,
+  roadClass,
+  roadClassCatalog,
+  roadMapLayer,
+} from "@/testing/catalogAxes";
 import { serveGenerationJobs } from "@/testing/generationJobs";
 import { installGeolocation } from "@/testing/geolocation";
+import { TAP_CONFIRM_MS } from "@/features/map/MapView/mapGestures";
 import { mapOnScreen, type PointedFeature } from "@/testing/maplibre";
 import { makeGenerationConditions, makeRouteCandidate, makeRouteSegment } from "@/testing/routeFixtures";
 import regionTileConfig from "@/types/generated/region-tile-config.json";
 import type { Coordinates, RouteCandidate } from "@/types/route";
-import type { AmedasObservation, WeatherConditions } from "@/types/weather";
+import type { AmedasObservation, GridPointToday } from "@/types/weather";
 
 export const HERE: Coordinates = { latitude: 35.7, longitude: 139.7 };
 export const DESTINATION: Coordinates = { latitude: 35.6, longitude: 139.73 };
@@ -33,19 +41,16 @@ const CATALOG = catalogResponse(
   {
     client_tuning: { [CLIENT_TUNING_IDS.minStretchKm]: 0.1 },
     tile_versions: Object.fromEntries(regionTileConfig.tile_version_kinds.map((kind) => [kind, "1-test"])),
+    // 道路のレイヤーは軸カタログが配る道の線の層で、一覧から出せる層が1つあればよい。
+    road_classes: roadClassCatalog({
+      map_layers: [
+        roadMapLayer("surface", { label: "路面の種類", category: "roadCondition", classes: [roadClass("paved")] }),
+      ],
+    }),
   },
 );
 
-// 予報と実測（ここでは中身を見ない）。
-const FORECAST: WeatherConditions = {
-  precipitation_mm: null,
-  twilight: null,
-  precipitation_max_mm: null,
-  wind_speed_max_ms: null,
-  temperature_range: null,
-  today_periods: [],
-  today_period_interval_hours: 2,
-};
+// 実測（ここでは中身を見ない）。
 const OBSERVATION: AmedasObservation = {
   station_name: "観測所",
   observed_at: "2026-01-01T12:00:00+09:00",
@@ -59,6 +64,22 @@ const OBSERVATION: AmedasObservation = {
   valid_area: null,
 };
 
+const GRID_POINT_TODAY: GridPointToday = {
+  latitude: 35.75,
+  longitude: 139.75,
+  distance_km: 1,
+  bearing_deg: 0,
+  times: [],
+  temperature_c: [],
+  precipitation_mm: [],
+  wind_speed_ms: [],
+  wind_direction_deg: [],
+  highest_hourly_temperature_c: null,
+  lowest_hourly_temperature_c: null,
+  highest_hourly_precipitation_mm: null,
+  highest_hourly_wind_speed_ms: null,
+};
+
 let jobs: ReturnType<typeof serveGenerationJobs>;
 
 /** ページが開いてすぐ読む backend の応答と現在地（`HERE`）を置き、ルート生成のジョブの代役を返す。テストごとに呼ぶ。 */
@@ -69,13 +90,33 @@ export function serveHome() {
   serveAxisCatalog(CATALOG);
   onSameOrigin("GET", "/api/jma-tile/*", () => Response.json([]));
   onBackend("GET", "/api/jma-tile-index", () => Response.json({ available: false, coverage: null, elements: {} }));
-  onBackend("GET", "/api/weather", () => Response.json(FORECAST));
   onBackend("GET", "/api/weather/amedas", () => Response.json(OBSERVATION));
+  onBackend("GET", "/api/weather", () => Response.json(GRID_POINT_TODAY));
   onBackend("GET", "/api/weather/warnings", () => Response.json({ warnings: [] }));
   onBackend("GET", "/api/weather/wbgt", () => Response.json({ reading: null }));
   onBackend("GET", "/api/weather/flood-forecast", () => Response.json({ forecasts: [] }));
+  onBackend("POST", "/api/weather/route-warning-timeline", () => Response.json({ areas: [] }));
   onBackend("GET", "/api/place-area", () => Response.json({ area: null }));
+  serveRoadsAt([]);
   return jobs;
+}
+
+/** 地図で押した所に近い道を問われたら、押した所が`at`の道を返す（ほかの所は道が無い）。道の形は`at`から東へ延ばした線。
+ * 届いた問いを順に積む配列を返す。 */
+export function serveRoadsAt(roads: readonly { at: Coordinates; properties: Record<string, unknown> }[]) {
+  return onBackend("POST", "/api/region/roads-at", ({ body }) => {
+    const pressed = body as { longitude: number; latitude: number };
+    const found = roads.filter(({ at }) => at.longitude === pressed.longitude && at.latitude === pressed.latitude);
+    return Response.json(
+      found.map(({ at, properties }) => ({
+        properties,
+        shape: [
+          [at.longitude, at.latitude],
+          [at.longitude + 0.001, at.latitude],
+        ],
+      })),
+    );
+  });
 }
 
 /** そのテストの間、スマホの配置にする。 */
@@ -113,6 +154,23 @@ export const SECOND = route("second", {
   },
 });
 
+// 東へ1km進む区間1つで、計画では4分かかるルート。走行モードのテストで、現在地をその真ん中（`RIDDEN_MIDDLE`）に置く。
+export const RIDDEN = route("ridden", {
+  segments: [
+    makeRouteSegment({
+      start_latitude: 35.7,
+      start_longitude: 139.7,
+      end_latitude: 35.7,
+      end_longitude: 139.71,
+      distance_km: 1,
+      estimated_arrival_time: "2026-10-13T09:00:00+09:00",
+    }),
+  ],
+  distance_km: 1,
+  estimated_duration_seconds: 4 * 60,
+});
+export const RIDDEN_MIDDLE: Coordinates = { latitude: 35.7, longitude: 139.705 };
+
 export const LOOP_CONDITIONS = makeGenerationConditions({ latitude: HERE.latitude, longitude: HERE.longitude });
 
 /** 地図のソースに載った線の座標。 */
@@ -130,6 +188,19 @@ export function routeLinesOnMap(): unknown[] {
   );
 }
 
+/** 地図に出ている、選んだ区間の範囲の縁取りの線（出ていなければ空）。 */
+export function selectedSectionOnMap(): unknown[] {
+  const shown = mapOnScreen().visibleLayerIds().includes("route-selected-section-selectedSection");
+  return shown ? linesOn("route-selected-section") : [];
+}
+
+/** 地図に立てた、選んだ地点の印。 */
+export function selectedPointMarks() {
+  return mapOnScreen()
+    .markers()
+    .filter((mark) => mark.element.getAttribute("aria-label") === "選択中の区間");
+}
+
 /** 地図のその地点に置いた印。 */
 export function marksAt(point: Coordinates) {
   return mapOnScreen()
@@ -137,9 +208,35 @@ export function marksAt(point: Coordinates) {
     .filter((mark) => mark.coordinates.latitude === point.latitude && mark.coordinates.longitude === point.longitude);
 }
 
-/** 地図を押す。`features`はそこに描かれている地物。 */
+/** 地図をタップする。`features`はそこに描かれている地物。何も無い所のタップはダブルタップの1回目でないと確かめてから受けるので、
+ * 押す間だけ時計を偽にして、確かめの時まで進める。 */
 export function clickMap(at: Coordinates, features: PointedFeature[] = []) {
-  act(() => mapOnScreen().click(at, features));
+  pressMap(() => mapOnScreen().click(at, features));
+}
+
+/** 地図の同じ所を続けて2回タップする。 */
+export function doubleClickMap(at: Coordinates, features: PointedFeature[] = []) {
+  pressMap(() => {
+    mapOnScreen().click(at, features);
+    mapOnScreen().click(at, features);
+  });
+}
+
+function pressMap(press: () => void) {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  try {
+    act(() => {
+      press();
+      vi.advanceTimersByTime(TAP_CONFIRM_MS);
+    });
+  } finally {
+    vi.useRealTimers();
+  }
+}
+
+/** 地図をマウスの右ボタンで押す（指の長押しと同じく、長押しとして受ける）。 */
+export function rightClickMap(at: Coordinates, features: PointedFeature[] = []) {
+  act(() => mapOnScreen().rightClick(at, features));
 }
 
 /** 地図に描いた区間を押す。 */
@@ -158,8 +255,10 @@ export function renderHome() {
 
 export type User = ReturnType<typeof userEvent.setup>;
 
-/** 地点の並びで目的地を押して選ぶ（「ルート設定」が効いている間、地図を押すと選んでいる地点を置く。何も押していなければ出発地）。 */
+/** 周回を外し、地点の並びで目的地を押して選ぶ（「ルート設定」が効いている間、地図を押すと選んでいる地点を置く。何も押していなければ
+ * 出発地。既定の周回の間は目的地を選べない）。 */
 export async function selectDestination(user: User) {
+  await user.click(screen.getByRole("button", { name: "周回", pressed: true }));
   await user.click(screen.getByRole("button", { name: "目的地: 未設定" }));
 }
 

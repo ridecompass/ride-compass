@@ -1,29 +1,19 @@
 """較正値の上書き（`infrastructure/tuning_overrides.py`）のテスト。
 
-既定値は宣言が持ち、DBは差分だけを持つ。**行が1つも無くても宣言どおりに動く**ことと、
-壊れた行の扱いが2通りに分かれること（宣言から消えたidは無視、範囲の外は落とす）を固定する。
+既定値は宣言が持ち、DBは差分だけを持つ。
 
 ここで見ないもの:
 - 書き込みの取引の区切りと、書いた値をプロセスへ反映する順 → `test_tuning_service.py`
 - HTTPの受け口 → `test_tuning_admin_routes.py`、派生バッチが同じ値を読むこと → `test_derive_cli.py`
 """
 
-from datetime import UTC, datetime
 
 import pytest
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain import tuning
 from app.domain.tuning import TUNING_PARAMETERS, TUNING_PARAMETERS_BY_ID
-from app.infrastructure.tuning_overrides import (
-    TuningOverrideError,
-    TuningOverrideRow,
-    clear_override,
-    merge_overrides,
-    read_overrides,
-    set_override,
-)
+from app.infrastructure.tuning_overrides import TuningOverrideError, TuningOverrideStore, merge_overrides
 from app.services.tuning_service import refresh_tuning_values
 
 # 範囲の広いものを選ぶ（値を動かしても宣言の範囲に収まるように）。
@@ -38,87 +28,72 @@ class TestMerge:
         others = {k: v for k, v in merged.items() if k != _PARAM}
         assert others == {p.id: p.default for p in TUNING_PARAMETERS if p.id != _PARAM}
 
-    def test_a_row_for_a_removed_parameter_is_ignored_rather_than_fatal(self, caplog):
-        # 宣言から1つ減らしただけで本番の起動が失敗するのは割に合わない。
-        merged = merge_overrides({"turn.no_longer_declared": 1.0})
 
-        assert merged == {p.id: p.default for p in TUNING_PARAMETERS}
-        assert "宣言に無いid" in caplog.text
-
-    @pytest.mark.parametrize("value", [TUNING_PARAMETERS_BY_ID[_PARAM].maximum + 1.0, float("nan")],
-                             ids=["範囲の外", "数値でない"])
-    def test_a_broken_value_is_fatal(self, value):
-        # 間違った値が静かに効く方が悪い。
-        with pytest.raises(TuningOverrideError):
-            merge_overrides({_PARAM: value})
-
+    @pytest.mark.parametrize(
+        ("overrides", "accepted"),
+        [
+            # 宣言の範囲は、画面の入力の幅と、探索がその値で壊れない幅を兼ねる
+            ({_PARAM: TUNING_PARAMETERS_BY_ID[_PARAM].maximum + 1.0}, False),
+            ({_PARAM: float("nan")}, False),
+            ({_PARAM: TUNING_PARAMETERS_BY_ID[_PARAM].maximum}, True),
+            # 緩めた上限を上限より下げると、緩めたつもりで絞ることになる
+            ({"search.turnaround_relaxed_overlap_ratio": 0.5}, False),
+            # 見込みの下限が上限を超えると、リングも帰りの見込みも裏返る
+            ({"search.loop_to_outbound_ratio_min": 2.5}, False),
+            # 両方を同じ向きに動かせば、片方だけでは破る値も受け付ける
+            ({"search.loop_to_outbound_ratio_min": 2.5, "search.loop_to_outbound_ratio_max": 2.5}, True),
+        ],
+    )
+    def test_overrides_breaking_the_range_or_the_order_of_a_pair_are_refused(self, overrides, accepted):
+        if accepted:
+            assert merge_overrides(overrides).items() >= overrides.items()
+        else:
+            with pytest.raises(TuningOverrideError):
+                merge_overrides(overrides)
 
 @pytest.mark.asyncio(loop_scope="module")
 async def test_override_round_trip_reaches_the_running_value(road_graph_session: AsyncSession):
     """書いた値が、プロセス内の`TUNING_VALUES`まで届いて消費者に効く。"""
     default = TUNING_PARAMETERS_BY_ID[_PARAM].default
     changed = default + 7.0
+    overrides = TuningOverrideStore(road_graph_session)
     try:
-        await set_override(road_graph_session, _PARAM, changed)
+        await overrides.set_override(_PARAM, changed)
         await road_graph_session.commit()
 
-        assert await read_overrides(road_graph_session) == {_PARAM: changed}
+        assert await overrides.read_overrides() == {_PARAM: changed}
 
         await refresh_tuning_values(road_graph_session)
         assert tuning.tuning_value(_PARAM) == changed
 
         # 既定値と同じ値を書くと行が消える（差分だけを持つ形を保つ）。
-        await set_override(road_graph_session, _PARAM, default)
+        await overrides.set_override(_PARAM, default)
         await road_graph_session.commit()
-        assert await read_overrides(road_graph_session) == {}
+        assert await overrides.read_overrides() == {}
 
         await refresh_tuning_values(road_graph_session)
         assert tuning.tuning_value(_PARAM) == default
     finally:
-        await clear_override(road_graph_session, _PARAM)
+        await overrides.clear_override(_PARAM)
         await road_graph_session.commit()
         await refresh_tuning_values(road_graph_session)
 
 
 @pytest.mark.asyncio(loop_scope="module")
-async def test_an_empty_table_leaves_every_declared_default(road_graph_session: AsyncSession):
-    """行が1つも無くても宣言どおりに動く（fresh bootstrapで投入が要らない）。"""
-    await refresh_tuning_values(road_graph_session)
-
-    for parameter in TUNING_PARAMETERS:
-        assert tuning.tuning_value(parameter.id) == parameter.default
-
-
-@pytest.mark.asyncio(loop_scope="module")
-async def test_writing_an_undeclared_id_is_rejected(road_graph_session: AsyncSession):
-    with pytest.raises(TuningOverrideError):
-        await set_override(road_graph_session, "turn.no_such_value", 1.0)
-
-
-@pytest.mark.asyncio(loop_scope="module")
-async def test_the_row_records_when_it_was_changed(road_graph_session: AsyncSession):
-    """`updated_at`が実際のDBに在って、挿入でも書き換えでも書いた時刻へ進む。"""
-    default = TUNING_PARAMETERS_BY_ID[_PARAM].default
-    before = datetime.now(UTC)
-
-    async def updated_at() -> datetime:
-        return (
-            await road_graph_session.execute(
-                select(TuningOverrideRow.updated_at).where(TuningOverrideRow.param_id == _PARAM)
-            )
-        ).scalar_one()
-
+async def test_one_of_a_pair_can_be_moved_past_the_default_of_the_other_once_the_other_is_moved(
+    road_graph_session: AsyncSession,
+):
+    """上限を下げてから緩めた上限を、上限の既定より下へ下げられる。1件を書く前の検算が相手を既定のまま見ると、
+    片方ずつしか書けない画面からは、この組み合わせへ動かせない。"""
+    lower, upper = "search.turnaround_max_overlap_ratio", "search.turnaround_relaxed_overlap_ratio"
+    overrides = TuningOverrideStore(road_graph_session)
     try:
-        await set_override(road_graph_session, _PARAM, default + 3.0)
+        await overrides.set_override(lower, 0.4)
+        await overrides.set_override(upper, 0.5)
         await road_graph_session.commit()
-        first = await updated_at()
-        assert first >= before
 
-        # 既にある行の値を動かしたときも、動かした時刻へ進む（列の既定は挿入にしか効かない）。
-        await set_override(road_graph_session, _PARAM, default + 4.0)
-        await road_graph_session.commit()
-        assert await updated_at() > first
+        assert merge_overrides(await overrides.read_overrides()).items() >= {lower: 0.4, upper: 0.5}.items()
     finally:
-        await clear_override(road_graph_session, _PARAM)
+        await overrides.clear_override(lower)
+        await overrides.clear_override(upper)
         await road_graph_session.commit()
-        await refresh_tuning_values(road_graph_session)

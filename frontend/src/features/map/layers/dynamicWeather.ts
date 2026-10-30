@@ -13,6 +13,16 @@ interface DynamicWeatherSourceState {
 /** 動的気象のチップ（1つのチップが複数の名前付きソースを束ねる。どれがチップかは源泉が決める）。 */
 export type DynamicWeatherLayerId = (typeof mapDisplay.weatherLayerGroups)[number];
 
+/** 災害のチップのid（源泉の気象のグループの名前）。 */
+export const DISASTER_LAYER_ID = "disaster" as const;
+
+export type DisasterElement = Extract<(typeof mapDisplay.weatherElements)[number], { group: typeof DISASTER_LAYER_ID }>;
+
+/** 災害のチップに載る要素。並びは源泉の宣言のまま。 */
+export const DISASTER_ELEMENTS: readonly DisasterElement[] = mapDisplay.weatherElements.filter(
+  (element): element is DisasterElement => element.group === DISASTER_LAYER_ID,
+);
+
 /** 配信元のタイルで描く描き方。それ以外の描き方は、中身をGeoJSONで持つ。 */
 export type TileRenderKind = "rasterTile" | "vectorTile";
 
@@ -22,7 +32,13 @@ type TileRenderPayload = { kind: TileRenderKind; tileUrlTemplate: string };
 /** 1コマの描画内容。表示層はkindだけで描き方を決める（どの配信元由来かはデータ層が吸収済み）。
  * GeoJSONの`outline`は配信元が配る領域の輪郭線で、属性は読まず線として描くだけ。 */
 export type DynamicWeatherRenderPayload =
-  TileRenderPayload | { kind: "gridFill" | "gridMark" | "outline"; geojson: GeoJSON.FeatureCollection };
+  | TileRenderPayload
+  | {
+      kind: "gridFill" | "gridMark" | "outline";
+      geojson: GeoJSON.FeatureCollection;
+      /** 地物が格子点に並ぶなら、格子点どうしの緯度・経度の間隔（度）。 */
+      gridStepDeg?: { latitude: number; longitude: number };
+    };
 
 /** 配信元のタイルで描く描き方か。 */
 export function isTileRenderKind(kind: DynamicWeatherRenderPayload["kind"]): kind is TileRenderKind {
@@ -98,15 +114,21 @@ export function gridToFeatureCollection<TPoint, TValue, TGeometry extends GeoJSO
   return { type: "FeatureCollection", features };
 }
 
-/** 格子点を中心とする1辺`spacingDeg`の正方形（閉じたリング）。 */
-export function gridCellRing(latitude: number, longitude: number, spacingDeg: number): GeoJSON.Position[] {
-  const half = spacingDeg / 2;
+/** 格子点を中心に、緯度・経度の間隔の半分ずつ広げた升目（閉じたリング）。 */
+export function gridCellRing(
+  latitude: number,
+  longitude: number,
+  latitudeStepDeg: number,
+  longitudeStepDeg: number,
+): GeoJSON.Position[] {
+  const halfLat = latitudeStepDeg / 2;
+  const halfLon = longitudeStepDeg / 2;
   return [
-    [longitude - half, latitude - half],
-    [longitude + half, latitude - half],
-    [longitude + half, latitude + half],
-    [longitude - half, latitude + half],
-    [longitude - half, latitude - half],
+    [longitude - halfLon, latitude - halfLat],
+    [longitude + halfLon, latitude - halfLat],
+    [longitude + halfLon, latitude + halfLat],
+    [longitude - halfLon, latitude + halfLat],
+    [longitude - halfLon, latitude - halfLat],
   ];
 }
 

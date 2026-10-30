@@ -1,15 +1,25 @@
 // @vitest-environment node
 /**
- * `features/route/savedPlaces.ts`——保存した地点の一覧を読む・一覧への入れ方・打った文字での絞り込み。読むときは、今の画面が
- * 受け付けない件だけを捨ててほかの件を残す。同じ名前か同じ位置で保存すると置き換える。
+ * `features/route/savedPlaces.ts`——保存した地点の一覧を読む・一覧への入れ方・打った文字での絞り込みと、検索で選んだ地点の
+ * 履歴への入れ方・消し方・出す件の絞り込み。読むときは、今の画面が受け付けない件だけを捨ててほかの件を残す。同じ名前か同じ位置で
+ * 保存すると置き換える。履歴は同じ位置を置き換え、上限を超えた古い件を捨て、保存した地点と同じ位置の件を出さない。
  *
  * ここで見ないもの:
- * - 一覧をどこに出し、選ぶと何が起きるか → `RouteForm/PointDetail.test.tsx`
+ * - 一覧をどこに出し、選ぶと何が起きるか → `PlaceSearch/PlaceSearchBar.test.tsx`
  * - 一覧として読めない保存値・入れた件を先頭に置くこと → `lib/storedList.test.ts`
  */
 import { describe, expect, it } from "vitest";
 
-import { readSavedPlaces, savedPlacesMatching, withSavedPlace, type SavedPlace } from "./savedPlaces";
+import {
+  historyMatching,
+  PLACE_HISTORY_LIMIT,
+  readSavedPlaces,
+  savedPlacesMatching,
+  withHistoryPlace,
+  withoutHistoryPlaceAt,
+  withSavedPlace,
+  type SavedPlace,
+} from "./savedPlaces";
 
 const CAFE: SavedPlace = {
   kind: "facility",
@@ -66,5 +76,31 @@ describe("savedPlacesMatching", () => {
 
     expect(savedPlacesMatching([CAFE, HOME, shop], " shop ")).toEqual([shop]);
     expect(savedPlacesMatching([CAFE, HOME, shop], "")).toEqual([CAFE, HOME, shop]);
+  });
+});
+
+describe("履歴", () => {
+  it("入れた件を先頭に置き、同じ位置の件を置き換え、上限を超えた古い件を捨てる", () => {
+    const full = Array.from({ length: PLACE_HISTORY_LIMIT }, (_, i) => ({
+      ...HOME,
+      name: `地点${i}`,
+      latitude: 35 + i / 100,
+    }));
+    const again = { ...full[3], name: "名前を変えて選び直した地点" };
+
+    expect(withHistoryPlace(full, again)).toEqual([again, ...full.slice(0, 3), ...full.slice(4)]);
+    expect(withHistoryPlace(full, CAFE)).toEqual([CAFE, ...full.slice(0, -1)]);
+  });
+
+  it("消すと、その位置の件だけが無くなる", () => {
+    expect(withoutHistoryPlaceAt([CAFE, HOME], { latitude: HOME.latitude, longitude: HOME.longitude })).toEqual([CAFE]);
+  });
+
+  it("打った文字を名前に含み、保存した地点と同じ位置でないものだけを出す", () => {
+    const savedHere = { ...CAFE, name: "前に検索で選んだカフェ" };
+    const shop = { ...HOME, name: "Bike Shop", latitude: 35.8 };
+
+    expect(historyMatching([savedHere, HOME, shop], [CAFE], "")).toEqual([HOME, shop]);
+    expect(historyMatching([savedHere, HOME, shop], [CAFE], "shop")).toEqual([shop]);
   });
 });

@@ -1,19 +1,21 @@
 // @vitest-environment node
-/** 重なった点の絵を間引くレイヤーが、源泉の宣言の順（先に並ぶ行・同じ行の中では割合の大きい点）で点を残し、
- * 基礎地図の文字と重なれば文字に場所を譲ること。
+/** 点の層の印が、MapLibre の既定のまま重なるものを地図に省かせ、重なるとユーザーが決めた順に印を残すこと。宣言した縮尺から描くこと。
+ * 2点以上を束ねた代表点に、点の右へ数を出すこと。名前を持つ層は押せる点（名前のある点）と押せない点を絵の枠の形で描き分けること。
  *
  * ここで見ないもの:
  * - 凡例の見本と地図の点の色・絵の一致、凡例の行ごとの絞り込み → `scene/legends.test.ts`
- * - 地図が重なった絵を実際に省くこと（MapLibreの置き方そのもの。上の層の記号から置く）
- * - 文字に場所を譲る段が基礎地図の文字の下へ入ること → `scene/applyMapScene.test.ts`
+ * - 束ねること・数を数えること（backend の点のタイル） → `backend/tests/test_point_tiles.py`
+ * - 重なった印を実際に省くこと（MapLibre の配置） → 地図の道具の約束で、ここでは省かせる設定を見る
  */
 import { describe, expect, it } from "vitest";
 
-import { evaluateExpression as evaluate } from "@/testing/mapExpressions";
+import { evaluateExpressionAtZoom as evaluateAt } from "@/testing/mapExpressions";
+import { mapDisplay } from "@/types/generated/mapDisplay";
 
-import { POINT_LAYERS } from "@/lib/mapDisplay/pointLayers";
+import { POINT_LAYERS, type PointLayer } from "@/lib/mapDisplay/pointLayers";
 
-import { pointGroup } from "./points";
+import { POINT_ICONS, POINT_IMAGES, pointGroup } from "./points";
+import { sidePointGroup } from "./sidePoints";
 
 const TILES = {
   urls: {
@@ -25,8 +27,21 @@ const TILES = {
   maxZoom: 14,
 };
 
+/** 点のタイルを作る縮尺から、寄せきった地図までの倍率。 */
+/** 寄せた地図の倍率。 */
+const NEAR_ZOOM = 20;
+
+const POINT_SCENE_LAYERS = pointGroup.build({ tiles: TILES, visible: {}, hiddenKeys: {} }).layers;
+const SIDE_POINT_SCENE_LAYERS = sidePointGroup.build({
+  path: [
+    [139.7, 35.6],
+    [139.71, 35.61],
+  ],
+  tilesReady: true,
+}).layers;
+
 function layerOf(role: string) {
-  const layer = pointGroup.build({ tiles: TILES, visible: {}, hiddenKeys: {} }).layers.find((l) => l.role === role);
+  const layer = POINT_SCENE_LAYERS.find((l) => l.role === role);
   if (layer === undefined) throw new Error(`${role} の層が無い`);
   return layer;
 }
@@ -35,46 +50,123 @@ function layoutOf(role: string): Record<string, unknown> {
   return layerOf(role).layout as Record<string, unknown>;
 }
 
-const THINNED = POINT_LAYERS.flatMap((layer) =>
-  layer.point_thinning === null ? [] : [[layer.attr_id, layer] as const],
-);
+/** そのレイヤーの先頭の行に入る点で、`count`点を束ねた代表点のプロパティ（`count`を持たない点は1点）。 */
+function representative(layer: PointLayer, count?: number): Record<string, unknown> {
+  const axis = layer.display_axes[0];
+  return {
+    [axis.property]: axis.categories[0].values[0],
+    ...(count === undefined ? {} : { [mapDisplay.point.countProperty]: count }),
+  };
+}
 
-describe("重なった点の間引き", () => {
-  it("間引く点のレイヤーがある", () => {
-    expect(THINNED.length).toBeGreaterThan(0);
+describe("重なった印", () => {
+  const registered = new Set(POINT_IMAGES.map((image) => image.id));
+
+  it("点の層と区間の近くの点の層がある", () => {
+    expect([POINT_SCENE_LAYERS.length, SIDE_POINT_SCENE_LAYERS.length]).toEqual([
+      POINT_LAYERS.length,
+      POINT_LAYERS.length,
+    ]);
   });
 
-  it.each(THINNED)("%s は、先に並ぶ行の点を、同じ行の中では割合の大きい点を先に残す", (attrId, layer) => {
-    const thinning = layer.point_thinning!;
-    const axis = layer.display_axes[0];
-    const layout = layoutOf(attrId);
-    expect(layout["icon-allow-overlap"]).toBe(false);
-    expect(layout["icon-ignore-placement"]).toBe(false);
+  // 登録していない名前の絵を引くと点が出ない。重なりの設定（`icon-allow-overlap`等）は既定（ぶつかる印は描かない）を上書きしない
+  // ——上書きすると、重なった印が積み重なり、残す順も効かなくなる。
+  // 描き始める縮尺を宣言した層は、それより引いた縮尺では描かない（区間の近くの点も同じ）。
+  it.each([...POINT_SCENE_LAYERS, ...SIDE_POINT_SCENE_LAYERS].map((layer) => [layer.role, layer] as const))(
+    "%s は、登録した絵の印で、宣言した縮尺から描き、重なりの判定を既定のまま使う",
+    (_, entry) => {
+      const layer = POINT_LAYERS.find((c) => [c.attr_id, `side-${c.attr_id}`].includes(entry.role)) as PointLayer;
+      const layout = entry.layout as Record<string, unknown>;
+      expect(entry.type).toBe("symbol");
+      expect(Object.keys(layout).filter((key) => /overlap|placement|optional/.test(key))).toEqual([]);
+      expect(registered).toContain(evaluateAt(layout["icon-image"], representative(layer), NEAR_ZOOM));
+      expect(entry.minzoom).toBe(layer.point_min_zoom ?? undefined);
+    },
+  );
 
-    // 鍵の小さい点ほど先に置かれ、重なったほかの点を退ける。
-    const sortKey = (rowKey: string, ratio: number) => {
-      const value = axis.categories.find((category) => category.key === rowKey)!.values[0];
-      return evaluate(layout["symbol-sort-key"], {
-        [axis.property]: value,
-        [thinning.ratio_property]: ratio,
-      }) as number;
-    };
-    const keys = thinning.rows.flatMap((rowKey) => [sortKey(rowKey, 1), sortKey(rowKey, 0.5), sortKey(rowKey, 0)]);
+  // 上に積んだ層の印から先に置かれるので、重なると上の層の印が残る。
+  it.each([
+    ["点の層", POINT_SCENE_LAYERS, ""],
+    ["区間の近くの点の層", SIDE_POINT_SCENE_LAYERS, "side-"],
+  ] as const)("%s は、停止要因・補給・立ち寄り先・事故の順に上から積む", (_, entries, prefix) => {
+    const fromTop = entries.map((entry) => entry.role).reverse();
+    expect(fromTop).toEqual(["stop_poi", "supply_poi", "stop_place", "accident_point"].map((id) => prefix + id));
+  });
+});
+
+/** 同じ層の中で重なった印を置く順の鍵（小さい鍵の印から置かれて残る）。 */
+function sortKeyOf(layer: PointLayer, properties: Record<string, unknown>): number {
+  return evaluateAt(layoutOf(layer.attr_id)["symbol-sort-key"], properties, NEAR_ZOOM) as number;
+}
+
+describe("同じ層の中で重なった印", () => {
+  const ACCIDENT = POINT_LAYERS.find((layer) => layer.attr_id === "accident_point") as PointLayer;
+  const COUNT = mapDisplay.point.countProperty;
+
+  it("事故は、自転車・死亡 → 自転車でない・死亡 → 自転車・死亡以外 → 自転車でない・死亡以外の順に残り、その中は件数の多い印が残る", () => {
+    const accident = (involves_bicycle: boolean, fatal: boolean, count: number) =>
+      sortKeyOf(ACCIDENT, { involves_bicycle, fatal, [COUNT]: count });
+    const keys = [
+      accident(true, true, 1),
+      accident(false, true, 30),
+      accident(false, true, 1),
+      accident(true, false, 30),
+      accident(false, false, 30),
+      accident(false, false, 1),
+    ];
     expect(keys).toEqual([...keys].sort((a, b) => a - b));
     expect(new Set(keys).size).toBe(keys.length);
   });
 
-  it.each(THINNED)("%s は、基礎地図の文字に場所を譲る（文字より下に積み、文字が先に置かれる）", (attrId) => {
-    expect(layerOf(attrId).tier).toBe("pointUnderLabels");
+  // 行の順に依らず件数だけで決まることを、宣言の先頭の行の1点と最後の行の多い代表点で見る。
+  it.each(POINT_LAYERS.filter((layer) => layer.point_priority_axes.length === 0).map((l) => [l.attr_id, l] as const))(
+    "%s は、行に依らず束ねた件数の多い印が残る",
+    (_, layer) => {
+      const axis = layer.display_axes[0];
+      const at = (category: (typeof axis.categories)[number], count?: number) =>
+        sortKeyOf(layer, { [axis.property]: category.values[0], ...(count === undefined ? {} : { [COUNT]: count }) });
+      const [first, last] = [axis.categories[0], axis.categories[axis.categories.length - 1]];
+      expect(at(last, 2)).toBeLessThan(at(first));
+      expect(at(first, 2)).toBeLessThan(at(last));
+      expect(at(first, 30)).toBeLessThan(at(first, 2));
+    },
+  );
+});
+
+describe("束ねた点の数", () => {
+  it.each(POINT_LAYERS.map((layer) => [layer.attr_id, layer] as const))(
+    "%s は、2点以上を束ねた代表点にだけ数を出す",
+    (attrId, layer) => {
+      const layout = layoutOf(attrId);
+      const text = (count?: number) => evaluateAt(layout["text-field"], representative(layer, count), 14);
+      expect([text(), text(1), text(12)]).toEqual(["", "", "12"]);
+    },
+  );
+});
+
+/** 寄せた地図での絵の枠の形（押せるか）。 */
+function frameOf(layer: PointLayer, properties: Record<string, unknown>) {
+  const id = evaluateAt(layoutOf(layer.attr_id)["icon-image"], { ...representative(layer), ...properties }, NEAR_ZOOM);
+  return POINT_ICONS.find((icon) => icon.id === id)?.frame;
+}
+
+const NAMED_LAYERS = POINT_LAYERS.filter((layer) => layer.point_name_property !== null);
+
+describe("押せる点の枠", () => {
+  it("名前を持つ層がある", () => {
+    expect(NAMED_LAYERS).not.toHaveLength(0);
   });
 
-  it("間引かない絵の点は、重なっても全部描く", () => {
-    const unthinned = POINT_LAYERS.filter(
-      (layer) => layer.point_thinning === null && layer.display_axes[0].categories.some((c) => "glyph" in c),
-    );
-    expect(unthinned.length).toBeGreaterThan(0);
-    for (const layer of unthinned) {
-      expect(layoutOf(layer.attr_id)).toMatchObject({ "icon-allow-overlap": true, "icon-ignore-placement": true });
-    }
-  });
+  it.each(NAMED_LAYERS.map((layer) => [layer.attr_id, layer] as const))(
+    "%s は、名前のある点と名前のある点を束ねた代表点を角丸四角、名前の無い点を丸い枠で描く",
+    (_, layer) => {
+      const name = layer.point_name_property as string;
+      expect([
+        frameOf(layer, { [name]: "店" }),
+        frameOf(layer, { [mapDisplay.point.membersProperty]: "[]" }),
+        frameOf(layer, { [name]: "" }),
+        frameOf(layer, {}),
+      ]).toEqual(["box", "box", "circle", "circle"]);
+    },
+  );
 });

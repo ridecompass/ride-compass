@@ -1,15 +1,13 @@
-"""`domain/geo.py`——球面の距離・方位・方位の呼び名と、多数の地点それぞれの最寄りの点。
+"""`domain/geo.py`——方位とその呼び名と、多数の地点それぞれの最寄りの点。
 
-入口は`km_per_degree_longitude`・`degrees_covering_m`・`compass_label`・`bearing_between`（と配列版）・`haversine_distance_km`（と配列版）・
-`nearest_point_indices`・`nearest_point_index`。距離の性質（同じ点で0・三角不等式）・方位が別の道で求めた向きと合うこと・最寄りが本当に最も近いことは
-hypothesisで任意の地点について確かめ、絶対値は公開の事実（子午線の4分の1はおよそ1万km）と突き合わせる。
+入口は`compass_label`・`compass_degrees`・`bearing_between_array`・`nearest_point_indices`・`nearest_point_index`。方位が別の道で求めた向きと合うこと・
+最寄りが本当に最も近いことはhypothesisで任意の地点について確かめ、方位の呼び名は区分の表で確かめる。
 
 ここで見ないもの:
 - 方位の呼び名と距離を画面の計算と揃えること → 生成物`geo-expectations.json`を通す画面のテスト
 - 最寄りの点を雨・アメダス・暑さ指数の値へ使うこと → それぞれのサービスのテスト
 """
 
-import math
 from typing import NamedTuple
 
 import numpy as np
@@ -30,49 +28,6 @@ longitudes = st.floats(min_value=-180.0, max_value=180.0)
 points = st.builds(Point, latitude=latitudes, longitude=longitudes)
 
 
-# --- km_per_degree_longitude ---
-
-
-@given(latitude=st.floats(min_value=-80.0, max_value=80.0))
-def test_the_rough_length_of_a_degree_stays_within_one_percent_of_the_true_distance(latitude):
-    """目安の値（索引の区切り・矩形の余白）が、実際の距離から1%以上ずれない。赤道上の経度1度は緯度1度と同じ長さなので、
-    緯度1度の目安もここで見る。"""
-    true_km = geo.haversine_distance_km(Point(latitude, 0.0), Point(latitude, 1.0))
-
-    assert geo.km_per_degree_longitude(latitude) == pytest.approx(true_km, rel=0.01)
-
-
-
-# --- degrees_covering_m ---
-
-# WGS84の楕円体（PostGISのgeographyが距離を測る面）の長半径（m）と離心率の2乗。
-_WGS84_SEMI_MAJOR_M = 6378137.0
-_WGS84_ECCENTRICITY_SQUARED = 0.00669437999014
-
-
-def _wgs84_degree_lengths_m(latitude: float) -> tuple[float, float]:
-    """楕円体の上の、緯度`latitude`での緯度1度・経度1度の長さ（m）。"""
-    phi = math.radians(latitude)
-    denominator = 1 - _WGS84_ECCENTRICITY_SQUARED * math.sin(phi) ** 2
-    meridian_m = _WGS84_SEMI_MAJOR_M * (1 - _WGS84_ECCENTRICITY_SQUARED) / denominator ** 1.5
-    prime_vertical_m = _WGS84_SEMI_MAJOR_M / math.sqrt(denominator)
-    return math.radians(1) * meridian_m, math.radians(1) * prime_vertical_m * math.cos(phi)
-
-
-@given(latitude=st.floats(min_value=-geo.COVERED_LATITUDE_LIMIT, max_value=geo.COVERED_LATITUDE_LIMIT))
-@example(latitude=0.0)
-@example(latitude=geo.COVERED_LATITUDE_LIMIT)
-def test_the_box_in_degrees_is_no_narrower_than_the_radius_up_to_the_latitude_limit(latitude):
-    """箱が距離より狭いと、SQLの前置フィルタが距離の判定の内側の行を黙って落とす。緯度1度は赤道で、
-    経度1度は上限の緯度で最も短い。"""
-    radius_m = 100.0
-    degrees = geo.degrees_covering_m(radius_m)
-    latitude_degree_m, longitude_degree_m = _wgs84_degree_lengths_m(latitude)
-
-    assert degrees * latitude_degree_m >= radius_m
-    assert degrees * longitude_degree_m >= radius_m
-
-
 # --- compass_label ---
 
 
@@ -90,9 +45,11 @@ def test_compass_label_names_the_eight_point_sector(bearing, label):
     assert geo.compass_label(bearing) == label
 
 
-def test_every_sixteen_point_name_is_different():
-    """同じ呼び名が2つあると、違う向きが画面で同じ名前になる（8方位の呼び名はこの1つおき）。"""
-    assert len(set(geo.SIXTEEN_POINT_LABELS)) == len(geo.SIXTEEN_POINT_LABELS)
+
+@pytest.mark.parametrize(("bearing", "degrees"), [(0.5, 1), (2.5, 3)])
+def test_compass_degrees_rounds_a_half_degree_up_like_the_sector(bearing, degrees):
+    """ちょうど半端の度は、区分（`compass_label`）と同じく上へ倒す。偶数丸めだと、応答の度が値の偶奇で前後に倒れる。"""
+    assert geo.compass_degrees(bearing) == degrees
 
 
 # --- bearing_between ---
@@ -125,36 +82,6 @@ def test_the_bearing_agrees_with_the_direction_on_the_tangent_plane(origin, dest
         length = np.hypot(toward_north, toward_east)
         angle = np.radians(bearing)
         assert (length * np.cos(angle), length * np.sin(angle)) == pytest.approx((toward_north, toward_east), abs=1e-9)
-
-
-def test_bearing_between_the_same_point_is_north():
-    assert geo.bearing_between(Point(35.0, 139.0), Point(35.0, 139.0)) == 0.0
-
-
-# --- haversine_distance_km ---
-
-
-def test_a_quarter_meridian_is_about_ten_thousand_kilometers():
-    """メートルは子午線の赤道から極までを1万kmとして決められた（球で近似するので1%以内で合わせる）。"""
-    assert geo.haversine_distance_km(Point(0.0, 0.0), Point(90.0, 0.0)) == pytest.approx(10000.0, rel=0.01)
-
-
-def test_haversine_distance_km_array_answers_each_point_in_the_shape_given():
-    distances = geo.haversine_distance_km_array(np.array([0.0, 90.0]), np.array([0.0, 0.0]), Point(0.0, 0.0))
-
-    np.testing.assert_allclose(distances, [0.0, geo.haversine_distance_km(Point(90.0, 0.0), Point(0.0, 0.0))])
-
-
-@given(a=points)
-def test_the_distance_from_a_point_to_itself_is_zero(a):
-    """経路探索の見積もり（目的地までの球面距離）は、目的地で0でなければならない。"""
-    assert geo.haversine_distance_km(a, a) == 0.0
-
-
-@given(a=points, b=points, c=points)
-def test_distance_satisfies_the_triangle_inequality(a, b, c):
-    """経路探索の見積もりが、寄り道した見積もりより大きくならない（崩れると探索が最短を取り逃す）。"""
-    assert geo.haversine_distance_km(a, c) <= geo.haversine_distance_km(a, b) + geo.haversine_distance_km(b, c) + 1e-6
 
 
 # --- nearest_point_indices・nearest_point_index ---
@@ -228,10 +155,6 @@ def test_no_locations_give_no_indices():
     indices = geo.nearest_point_indices(np.array([]), np.array([]), np.array([35.0]), np.array([139.0]))
 
     assert indices.shape == (0,)
-
-
-def test_nearest_point_index_has_no_answer_without_points():
-    assert geo.nearest_point_index(Point(35.0, 139.0), []) is None
 
 
 @pytest.mark.parametrize("candidates", [[Point(0.0, 1.0), Point(0.0, -1.0)], [Point(0.0, -1.0), Point(0.0, 1.0)]])

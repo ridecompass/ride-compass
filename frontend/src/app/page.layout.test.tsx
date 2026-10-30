@@ -1,48 +1,44 @@
 /**
- * `app/page.tsx`——トップページの画面の枠（地図の上の操作・スマホのシート・ヘッダー・メニュー）。
+ * `app/page.tsx`——トップページの画面の枠（地図の上の操作・ヘッダー・メニュー）。
  *
  * 見ること: 地図の表示をまとめて戻す操作（「表示」の一覧の末尾と右上のメニュー）、右上の方位磁針（地図の北を指し、
- * 開いたダイヤルで地図を回して北へ戻す）と拡大・縮小、スマホの下部タブとシート（1枚ずつ開く・地点を扱える間・結果の合図・
- * 候補が届いた時点で「ルート設定」を開いていれば「ルート結果」へ移ってそこから全消去でき、ほかのときは移らず合図を出すこと・
- * 候補を出せなかった理由の1行・決めた高さを2枚のシートで分け合うこと）、区分の開閉の保存、ヘッダーの「未取得」に並ぶ
- * 出所と「現在地に移動」の失敗、「現在地に移動」が出発地を変えずに地図を寄せて現在地に点を出すこと、メニューから入る
- * 使い方の説明とデバッグログ。
+ * 開いたダイヤルで地図を回して北へ戻す。なぞる途中で閉じたら回さない）と拡大・縮小、地図を読み込み中の覆いが上限の時間で外れること、層の取得状態の数え直しと
+ * 再描画の失敗の案内、区分の開閉の保存、左下の俯瞰図（気象の層を出して寄せると出て、道路を消した下地に同じ気象の層を描き、引くと消え、畳んだことを覚える）、
+ * ヘッダーの「未取得」に並ぶ出所と「現在地に移動」の失敗、「現在地に移動」が出発地を変えずに地図を寄せて現在地に点を
+ * 出すこと、メニューから入る使い方の説明とデバッグログ。
  *
- * ここで見ないもの: シートの高さの決め方・覚え方は`components/BottomSheet/BottomSheet.test.tsx`、ルートを収めるときに
- * シートを避けることは実寸が要るので`e2e/mobile.spec.ts`が見る。
+ * ここで見ないもの: スマホの下部タブとシートは`app/page.mobile.test.tsx`が見る。
  *
  * 差し替えたもの: backend の応答（網の層）、位置情報の取得、地図の描画（`maplibre-gl`）。子の部品は本物を描く。
  */
-import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { setDebugEnabled } from "@/lib/debugLog";
+import { HOUR_MS, SECOND_MS } from "@/lib/duration";
+import refreshIntervals from "@/types/generated/refresh-intervals.json";
 import { heldReplies, onBackend } from "@/testing/backendServer";
 import { installGeolocation } from "@/testing/geolocation";
 import {
   ELSEWHERE,
-  FIRST,
   HERE,
-  LOOP_CONDITIONS,
   clickMap,
-  confirmClear,
-  generate,
   marksAt,
   renderHome,
-  routeLinesOnMap,
   section,
   serveHome,
   showRoadSurface,
-  useMobileLayout,
 } from "@/testing/homePage";
-import { mapOnScreen } from "@/testing/maplibre";
+import { LAYER_DATA_STATUS_LABELS } from "@/features/map/layers/mapLayers";
+import { LIBERTY_POI_LAYERS } from "@/testing/libertyPoiLayers";
+import { insetMapOnScreen, mapOnScreen } from "@/testing/maplibre";
+
+import Home from "./page";
 
 vi.mock("maplibre-gl", () => import("@/testing/maplibre"));
 
-let jobs: ReturnType<typeof serveHome>;
-
 beforeEach(() => {
-  jobs = serveHome();
+  serveHome();
 });
 
 afterEach(() => {
@@ -131,105 +127,58 @@ describe("画面の枠", () => {
     );
   });
 
-  it("スマホでは下部タブでシートを1枚ずつ開き、地図で地点を扱えるのは「ルート設定」の条件タブを開いている間だけ。結果の合図は「ルート結果」を開くまで残り、押した結果が候補を出せなかった理由（候補0件の理由・入力の誤り）はシートでなく窓で出し、閉じると消える。候補0件の合図は成功と見分ける", async () => {
-    installGeolocation(null);
-    useMobileLayout();
+  it("輪をなぞっている途中でダイヤルを閉じても、その後の指の動きで地図は回らない", async () => {
     const { user } = renderHome();
-    const settingsTab = () => screen.getByRole("button", { name: "ルート設定", expanded: false });
-    const outcomeTab = screen.getByRole("button", { name: "ルート結果" });
-    // 現在地が取れないので、地図の印は出発地の1つだけ。
-    const originMark = () => mapOnScreen().markers()[0];
-    expect(screen.queryByRole("dialog")).toBeNull();
-    expect(originMark().draggable).toBe(false);
-
-    await user.click(settingsTab());
-    const settingsSheet = screen.getByRole("dialog", { name: "ルート設定" });
-    await user.click(within(settingsSheet).getByRole("button", { name: "ルート生成" }));
-    const notice = screen.getByRole("dialog", { name: "ルートを作れませんでした" });
-    expect(notice).toHaveAccessibleDescription(/^現在地が分かりません/);
-    expect(within(settingsSheet).queryByText(/^現在地が分かりません/)).toBeNull();
-    expect(outcomeTab).toHaveAccessibleDescription("生成に失敗しました");
-    await user.click(within(notice).getByRole("button", { name: "閉じる" }));
-    expect(screen.queryByRole("dialog", { name: "ルートを作れませんでした" })).toBeNull();
-
-    expect(originMark().draggable).toBe(true);
-    await user.click(within(settingsSheet).getByRole("tab", { name: "重み" }));
-    expect(originMark().draggable).toBe(false);
-    await user.click(within(settingsSheet).getByRole("tab", { name: "条件" }));
-    clickMap(HERE);
-    jobs.respond([FIRST], LOOP_CONDITIONS);
-    expect(await generate(user)).toMatchObject({ latitude: HERE.latitude, longitude: HERE.longitude });
-    const outcomeSheet = await screen.findByRole("dialog", { name: "ルート結果" });
-    await user.click(within(outcomeSheet).getByRole("button", { name: "閉じる" }));
-    expect(screen.queryByRole("dialog")).toBeNull();
-
-    await user.click(settingsTab());
-    act(() => screen.getByRole("slider", { name: "全長の目標" }).focus());
-    await user.keyboard("{ArrowRight}");
-    expect(outcomeTab).toHaveAccessibleDescription("生成条件が変更されています");
-    jobs.respond([], LOOP_CONDITIONS, "起点の近くに道路データがありません");
-    await generate(user);
-    await waitFor(() => expect(outcomeTab).toHaveAccessibleDescription("候補が見つかりませんでした"));
-    const empty = screen.getByRole("dialog", { name: "候補が見つかりませんでした" });
-    expect(empty).toHaveAccessibleDescription("起点の近くに道路データがありません");
-    await user.click(within(empty).getByRole("button", { name: "閉じる" }));
-    await user.click(screen.getByRole("button", { name: "ルート設定", expanded: true }));
-    expect(screen.queryByRole("dialog")).toBeNull();
+    await user.click(screen.getByRole("button", { name: "地図の向き" }));
+    const dial = await screen.findByRole("slider", { name: "地図の向き" });
+    const center = dial.getBoundingClientRect();
+    fireEvent.pointerDown(dial, { clientX: center.left, clientY: center.top - 50 });
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("slider", { name: "地図の向き" })).toBeNull();
+    fireEvent.pointerMove(window, { clientX: center.left + 50, clientY: center.top });
+    expect(mapOnScreen().bearing()).toBe(0);
   });
 
-  it("スマホで「ルート設定」から作って候補が出たら「ルート結果」のシートへ移り（開いたので結果の合図は点かない）、そこから候補を全消去できる", async () => {
-    useMobileLayout();
-    const { user } = renderHome();
-    const outcomeTab = screen.getByRole("button", { name: "ルート結果" });
-    await user.click(screen.getByRole("button", { name: "ルート設定" }));
-    jobs.respond([FIRST], LOOP_CONDITIONS);
-    await generate(user);
-
-    const outcomeSheet = await screen.findByRole("dialog", { name: "ルート結果" });
-    expect(screen.queryByRole("dialog", { name: "ルート設定" })).toBeNull();
-    expect(outcomeTab).not.toHaveAccessibleDescription();
-    await user.click(within(outcomeSheet).getByRole("button", { name: "候補を全消去" }));
-    await confirmClear(user);
-    expect(within(outcomeSheet).queryByRole("tablist", { name: "ルート結果" })).toBeNull();
-    expect(routeLinesOnMap()).toEqual([]);
+  it("基礎地図が描けず（`load`が来ず）ても、地図を読み込み中の覆いは上限の時間で外れる", () => {
+    vi.useFakeTimers();
+    try {
+      render(<Home />);
+      expect(screen.getByText("地図を読み込み中…")).toBeInTheDocument();
+      act(() => vi.runOnlyPendingTimers());
+      expect(screen.queryByText("地図を読み込み中…")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
-  it.each([
-    { leave: "シートを閉じる", outcomeSheetOpen: false },
-    { leave: "「ルート結果」へ切り替える", outcomeSheetOpen: true },
-  ])(
-    "スマホで「ルート設定」から作ったあと、待つ間に（$leave）候補が出てもシートは移らず「ルート結果」のタブに合図が出る",
-    async ({ outcomeSheetOpen }) => {
-      useMobileLayout();
-      const { user } = renderHome();
-      const outcomeTab = screen.getByRole("button", { name: "ルート結果" });
-      await user.click(screen.getByRole("button", { name: "ルート設定" }));
-      const job = heldReplies();
-      jobs.answerWith(job.reply);
-      await generate(user);
-      const settingsSheet = screen.getByRole("dialog", { name: "ルート設定" });
-      await user.click(outcomeSheetOpen ? outcomeTab : within(settingsSheet).getByRole("button", { name: "閉じる" }));
+  it("地図の出来事のたびに数え直す層の取得状態は、軸カタログが届いてから足された道の層も数える", async () => {
+    const { user } = renderHome();
+    await showRoadSurface(user);
+    act(() => mapOnScreen().emit("idle"));
+    await user.click(screen.getByRole("button", { name: "地図に出す情報" }));
+    const row = screen.getByRole("checkbox", { name: "路面の種類" }).closest("label");
+    expect(row?.getAttribute("title")).toContain(LAYER_DATA_STATUS_LABELS.loading);
+  });
 
-      await job.answer(0, Response.json({ status: "done", result: { routes: [FIRST], conditions: LOOP_CONDITIONS } }));
-      await waitFor(() => expect(outcomeTab).toHaveAccessibleDescription("新しい結果があります"));
-      expect(screen.queryByRole("dialog", { name: "ルート設定" })).toBeNull();
-      expect(screen.queryByRole("dialog", { name: "ルート結果" }) !== null).toBe(outcomeSheetOpen);
-    },
-  );
+  it("再描画でスタイルが取れなかったら読み込みの失敗を出し、もう一度押すと取り直し、取れたら消す。取り直しの間のタイル1枚の失敗では出さない", async () => {
+    const { user } = renderHome();
+    const failure = () => screen.queryByText(/地図の読み込みに失敗しました/);
+    const redraw = async () => {
+      await user.click(screen.getByRole("button", { name: "メニュー" }));
+      await user.click(screen.getByRole("button", { name: "地図の表示を再描画" }));
+    };
+    const before = mapOnScreen().styles.length;
+    await redraw();
+    act(() => mapOnScreen().emit("error", { error: new Error("タイル1枚の失敗"), sourceId: "road-tiles" }));
+    expect(failure()).toBeNull();
+    // MapLibreは取り直しの要求の失敗を、取りに行ったURLを持つ出来事で知らせ、"style.load"は出さない。
+    act(() => mapOnScreen().emit("error", { error: { url: mapOnScreen().styles.at(-1) } }));
+    expect(failure()).toBeInTheDocument();
 
-  it("スマホのシートの高さは、確定した値を2枚のシートで共有し、次に開いたときも使う", async () => {
-    useMobileLayout();
-    const { user, unmount } = renderHome();
-    await user.click(screen.getByRole("button", { name: "ルート設定" }));
-    const handle = screen.getByRole("separator", { name: "パネルの高さを変更" });
-    handle.focus();
-    await user.keyboard("{ArrowUp}");
-    expect(handle).toHaveAttribute("aria-valuenow", "55");
-    unmount();
-
-    renderHome();
-    await user.click(screen.getByRole("button", { name: "ルート結果" }));
-    expect(screen.getByRole("separator", { name: "パネルの高さを変更" })).toHaveAttribute("aria-valuenow", "55");
+    await redraw();
+    expect(mapOnScreen().styles).toHaveLength(before + 2);
+    act(() => mapOnScreen().emit("style.load"));
+    expect(failure()).toBeNull();
   });
 
   it("区分の開閉は、次に開いたときも同じになる", async () => {
@@ -240,6 +189,59 @@ describe("画面の枠", () => {
     renderHome();
     expect(section("ルート設定")).toHaveAttribute("aria-expanded", "false");
     expect(section("ルート結果")).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("気象の層を出して寄せると、左下に道路を消した俯瞰図が出て同じ気象の層を描き、引くと消える。「×」で丸いボタンに畳み、次に開いたときも畳んだまま", async () => {
+    // 時刻は日本時間の壁時計で、今の時刻を含む1時間から2日分。
+    const times = Array.from(
+      { length: 48 },
+      (_, hour) => new Date(Date.now() + (9 + hour) * HOUR_MS).toISOString().slice(0, 13) + ":00",
+    );
+    onBackend("GET", "/api/weather/msm-grid", () =>
+      Response.json({
+        times,
+        latitude_step_deg: 0.05,
+        longitude_step_deg: 0.0625,
+        points: [
+          {
+            latitude: 35.7,
+            longitude: 139.7,
+            wind_speed_ms: times.map(() => 6),
+            wind_direction_deg: times.map(() => 90),
+            precipitation_mm: times.map(() => 0),
+          },
+        ],
+      }),
+    );
+    const { user, unmount } = renderHome();
+    await user.click(screen.getByRole("button", { name: "地図に出す情報" }));
+    await user.click(screen.getByRole("checkbox", { name: "風[矢印]" }));
+    await user.keyboard("{Escape}");
+    const near = { west: 139.68, south: 35.69, east: 139.72, north: 35.71 };
+    act(() => mapOnScreen().moveTo(near, 12));
+    expect(await screen.findByRole("region", { name: "俯瞰図" })).toBeInTheDocument();
+    const inset = insetMapOnScreen()!;
+    act(() => inset.loadStyle(LIBERTY_POI_LAYERS));
+    act(() => inset.emit("load"));
+    const weatherOnMain = () =>
+      mapOnScreen()
+        .visibleLayerIds()
+        .filter((id) => inset.visibleLayerIds().includes(id));
+    await waitFor(() => expect(weatherOnMain()).not.toEqual([]));
+    // 俯瞰図に描くのは基礎地図の道路・店を除いたものと、本体の地図と同じ気象の層だけ。
+    expect(inset.visibleLayerIds()).toEqual(weatherOnMain());
+
+    act(() => mapOnScreen().moveTo(near, 10));
+    expect(screen.queryByRole("region", { name: "俯瞰図" })).toBeNull();
+    act(() => mapOnScreen().moveTo(near, 12));
+    await user.click(await screen.findByRole("button", { name: "俯瞰図を畳む" }));
+    expect(screen.queryByRole("region", { name: "俯瞰図" })).toBeNull();
+    unmount();
+
+    const again = renderHome();
+    act(() => mapOnScreen().moveTo(near, 12));
+    await again.user.click(await screen.findByRole("button", { name: "俯瞰図を開く" }));
+    expect(screen.getByRole("region", { name: "俯瞰図" })).toBeInTheDocument();
   });
 
   it("ヘッダーの「未取得」に、現在地・軸の一覧・警報の取れないものが並ぶ。「現在地に移動」が取れなければ地図の上に理由を出す", async () => {
@@ -257,6 +259,24 @@ describe("画面の枠", () => {
     clickMap(HERE);
     await waitFor(() => expect(missing()).toHaveAccessibleName(/警報/));
     expect(missing()).not.toHaveAccessibleName(/現在地/);
+  });
+
+  it("ヘッダーの観測値の失敗の印は、間隔ごとに取り直している間も出したままにする", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    try {
+      onBackend("GET", "/api/weather/amedas", () => Response.json({ detail: "失敗" }, { status: 502 }));
+      renderHome();
+      const mark = () => screen.queryByRole("img", { name: "観測値を取得できません" });
+      await waitFor(() => expect(mark()).not.toBeNull());
+
+      const held = heldReplies();
+      onBackend("GET", "/api/weather/amedas", held.reply);
+      act(() => vi.advanceTimersByTime(refreshIntervals.amedas_seconds * SECOND_MS));
+      await waitFor(() => expect(held.arrived()).toBe(1));
+      expect(mark()).not.toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("「現在地に移動」は現在地を取り直して地図を寄せ、出発地は変えずに現在地に点を出す", async () => {

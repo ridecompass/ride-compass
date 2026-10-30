@@ -1,33 +1,42 @@
-"""`domain/road_avoidance.py`——道のレイヤの凡例の行ごとの避け方と、区間がどの行に当たるか。
-
-行が当たるかを求めるSQLの式は、テスト用DBで道ごとに評価して見る（道は取込の入口`tests/source_ingest.py`から入れ、
-読み手と同じ副問い合わせ`infrastructure/source_models.py: WAYS_SOURCE_SQL`で読む）。
+"""`domain/road_avoidance.py: resolve_road_avoidance`——要求の避け方を、今の区分の行へ揃える規則。
 
 ここで見ないもの:
-- 段の結果が除外・勾配の上限と合わさって探索から除く区間になること、選べない行の道（高速道路）を除くこと → `test_hard_filters.py`
+- 段の結果がいつも除く道と合わさって探索から除く区間になること → `test_hard_filters.py`
+- 選べる行の並びと、除外タブへ配る形 → `test_road_class_catalog.py`
 - 割り増しが区間の費用に掛かること → `test_leg_costs.py`
 """
 
 import pytest
-from sqlalchemy import text
 
-from app.domain.road_avoidance import AVOIDABLE_ROWS
-from app.infrastructure.source_models import WAYS_SOURCE_SQL
-from tests.source_ingest import ingest_records, way_record
+from app.domain.road_avoidance import resolve_road_avoidance
+from app.domain.road_classes import AvoidanceClassification, AvoidanceOverride
+from tests.road_class_fixture import classification, map_layer, road_classes
+
+DEFINITIONS = road_classes(
+    {
+        "kind": classification({"a": [], "b": [], "fixed": []}),
+        "draft": classification({"a": []}).model_copy(update={"is_published": False}),
+    },
+    map_layers={"kind": map_layer(0), "draft": map_layer(1)},
+    avoidance_classifications={
+        "kind": AvoidanceClassification(overrides={
+            "b": AvoidanceOverride(default_level="avoid", selectable=True),
+            "fixed": AvoidanceOverride(default_level=None, selectable=False),
+        }),
+        "draft": AvoidanceClassification(overrides={}),
+    },
+)
 
 
-@pytest.mark.asyncio(loop_scope="module")
-@pytest.mark.parametrize(("highway", "row"), [
-    ("trunk", "highway.trunk"), ("primary", "highway.primary"),
-    ("secondary", "highway.secondary"), ("unclassified", "highway.unclassified"), ("residential", "highway.residential"),
-    ("cycleway", "highway.cycleway"), ("path", "highway.footway"),
-], ids=["国道", "主要地方道", "一般県道", "1車線の一般道", "住宅街の道", "自転車専用道", "山の小道"])
-async def test_a_road_matches_only_the_row_of_its_kind(road_graph_session, highway, row):
-    """国道を除いたつもりで国道を通る、県道まで除いて経路が遠回りになる、または歩道を除くと自転車専用道まで除かれる。"""
-    await ingest_records("osm_way", [way_record(1, [(139.70, 35.68), (139.701, 35.68)], [10, 11], {"highway": highway})])
-    keys = [key for key in AVOIDABLE_ROWS if key.startswith("highway.")]
-    columns = ", ".join(f"({AVOIDABLE_ROWS[key].match_sql})" for key in keys)
-
-    matched = (await road_graph_session.execute(text(f"SELECT {columns} FROM {WAYS_SOURCE_SQL} w"))).one()
-
-    assert [key for key, hit in zip(keys, matched, strict=True) if hit] == [row]
+@pytest.mark.parametrize(
+    ("requested", "expected"),
+    [
+        ({}, {"kind.a": "pass", "kind.b": "avoid"}),
+        ({"kind.a": "exclude", "kind.b": "pass"}, {"kind.a": "exclude", "kind.b": "pass"}),
+        ({"kind.fixed": "exclude", "draft.a": "exclude", "gone.a": "exclude"}, {"kind.a": "pass", "kind.b": "avoid"}),
+    ],
+    ids=["省いた行は既定", "今の行の段", "選べない・公開していない・知らない行は読まない"],
+)
+def test_requested_levels_are_aligned_to_the_current_rows(requested, expected):
+    """選んだ段を落とすと、避けたはずの道を通る。選べない行を読むと、画面に出ない段が探索に効く。"""
+    assert resolve_road_avoidance(requested, DEFINITIONS) == expected

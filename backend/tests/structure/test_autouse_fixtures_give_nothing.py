@@ -28,7 +28,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from tests.structure.source_symbols import Scope, SourceTree, Symbol, replacement_of, scanned_tests
+from tests.structure.source_symbols import Scope, SourceTree, Symbol, called_name, replacement_of, scanned_tests, write_files
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent
 TEMPORARY = {"tmp_path", "tmp_path_factory"}
@@ -204,8 +204,7 @@ class Reader:
         """（書いた場所, 書いた値, 書き先の式, 書き先が今指しているもの）。"""
         local_names = set(frame.locals()) - frame.parameters()
         for node in _own_nodes(frame.function):
-            if isinstance(node, ast.Call) and isinstance(node.func, (ast.Attribute, ast.Name)):
-                name = node.func.attr if isinstance(node.func, ast.Attribute) else node.func.id
+            if isinstance(node, ast.Call) and (name := called_name(node)):
                 args = node.args
                 found = replacement_of(frame.scope, node) if name == "setattr" and len(args) in (2, 3) else None
                 if found is not None:
@@ -296,7 +295,7 @@ def test_autouse_fixtures_give_nothing() -> None:
 
 
 def _backend(tmp_path: Path, test_source: str) -> Path:
-    for relative, text in {
+    return write_files(tmp_path, {
         "app/__init__.py": "",
         "app/store.py": "import time\nfrom cachetools import TTLCache\n\nCACHE = TTLCache(maxsize=1, ttl=60)\ncurrent = None\n",
         "tests/__init__.py": "",
@@ -310,10 +309,7 @@ def _backend(tmp_path: Path, test_source: str) -> Path:
             "    store.current = value\n    yield\n    store.current = original\n"
         ),
         "tests/test_sample.py": test_source,
-    }.items():
-        (tmp_path / relative).parent.mkdir(parents=True, exist_ok=True)
-        (tmp_path / relative).write_text(text, encoding="utf-8")
-    return tmp_path
+    })
 
 
 def test_detects_fixtures_that_give_something_and_passes_those_that_give_nothing(tmp_path: Path) -> None:

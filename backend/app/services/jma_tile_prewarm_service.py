@@ -33,7 +33,6 @@ from app.domain.jma_tile_specs import (
     jma_tile_path,
     jma_tile_spec,
     read_target_times,
-    tile_extension,
     with_interpolated_zooms,
 )
 from app.domain.region import BoundingBox, tiles_covering_bbox
@@ -46,7 +45,6 @@ from app.domain.weather_elements import (
 )
 from app.infrastructure.http_client import UpstreamNotFound
 from app.infrastructure.jma_tile_client import JmaTileClient, get_target_times
-from app.infrastructure.jma_tile_content import is_empty_tile
 from app.infrastructure.jma_tile_index import JmaTileIndex, JmaTileIndexCoverage, JmaTileIndexElement, set_index
 
 logger = logging.getLogger("ridecompass.jma_tile_prewarm_service")
@@ -172,42 +170,36 @@ async def prewarm_jma_tiles(client: JmaTileClient, area: BoundingBox) -> None:
     errors = 0
     total_bytes = 0
     semaphore = asyncio.Semaphore(_MAX_CONCURRENCY)
-    # 在否インデックス（infrastructure/jma_tile_index.py）。取得したタイルが空かどうかを
-    # ここで判定して集める——プリウォームは既に全タイルを取得しているため、判定のための
-    # 追加の取得は発生しない。
+    # 在否インデックス（infrastructure/jma_tile_index.py）。取得の結果が空かどうかで集める——プリウォームは
+    # 既に全タイルを取得しているため、判定のための追加の取得は発生しない。
     present: dict[str, dict[int, list[list[int]]]] = {}
 
     async def _fetch_one(tile: JmaTile) -> None:
         nonlocal fetched, empty, errors, total_bytes
         async with semaphore:
             result = await client.get(jma_tile_path(tile))
-        if result is None:
-            errors += 1
-            return
         if isinstance(result, UpstreamNotFound):
-            # 描くものが無いと確認済み（上流の404、または前回の取得で空と分かってフラグで
-            # 保持されているもの）。平常時はこれが大半のため、失敗として数えない。
+            # 描くものが無いと確認済み（上流の404か、中身が空のタイル）。平常時はこれが大半のため、失敗として数えない。
             empty += 1
             return
-        fetched += 1
-        content = result[0]
-        total_bytes += len(content)
-        if is_empty_tile(content, tile_extension(jma_tile_spec(tile.element_id))):
-            empty += 1
-            return
+        if result is None:
+            # 取れなかったタイルは空かどうか分からないので、中身ありとして載せる——載せないと、画面はそのタイルを
+            # 空と見なして取りに来ない。
+            errors += 1
+        else:
+            fetched += 1
+            total_bytes += len(result[0])
         present.setdefault(tile.element_id, {}).setdefault(tile.z, []).append([tile.x, tile.y])
 
     await asyncio.gather(*(_fetch_one(tile) for tile in all_tiles))
     await _store_index(area, layer_frames, present)
 
-    non_empty = sum(len(coords) for zooms in present.values() for coords in zooms.values())
     logger.info(
-        "jma tile prewarm 完了 tiles=%d fetched=%d empty=%d errors=%d non_empty=%d total_bytes=%d elapsed_ms=%d",
+        "jma tile prewarm 完了 tiles=%d fetched=%d empty=%d errors=%d total_bytes=%d elapsed_ms=%d",
         len(all_tiles),
         fetched,
         empty,
         errors,
-        non_empty,
         total_bytes,
         elapsed_ms(started),
     )
