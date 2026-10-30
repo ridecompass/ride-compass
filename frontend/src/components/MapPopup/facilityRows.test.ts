@@ -2,7 +2,7 @@
 /**
  * `components/MapPopup/facilityRows.ts`——地図の点を1施設1行で見せる行の中身が、区分の名前（凡例と同じ宣言）を並べ、引けない値を
  * 「不明」にし、宣言が点に添える事実を値のあるものだけ並べ、名前のある点には名前と座標を1つの検索語にした外の地図の検索を持たせること。
- * 同じ場所の同じ施設を1行にし、道のりの順に並べること。施設の位置を、基準の地点から見た前後（走行中は残り）で言うこと。
+ * 同じ場所の同じ施設を1行にし、道のりの順に並べること。施設の位置を、走行中の現在地から見た前後（残りか手前）で言うこと。
  *
  * 点の宣言は架空のもので与える（実在の区分の名前をテストへ書き写さない）。
  *
@@ -86,12 +86,9 @@ describe("distinctFacilities", () => {
 
 describe("facilityPosition", () => {
   it.each([
-    { case: "押した地点より先", km: 1.8, origin: { km: 1.5, riding: false }, text: "300m先" },
-    { case: "押した地点より手前", km: 1.3, origin: { km: 1.5, riding: false }, text: "200m手前" },
-    { case: "押した地点と同じ所", km: 1.5, origin: { km: 1.5, riding: false }, text: "0m先" },
-    { case: "走行中に先にある", km: 2.6, origin: { km: 1.4, riding: true }, text: "あと1.2km" },
-    { case: "走行中に通り過ぎた", km: 1.3, origin: { km: 1.4, riding: true }, text: "100m手前" },
-  ])("$case: $text", ({ km, origin, text }) => {
-    expect(facilityPosition(km, origin)).toBe(text);
+    { case: "現在地と同じ所", km: 1.4, travelledKm: 1.4, text: "あと0m" },
+    { case: "通り過ぎた", km: 1.3, travelledKm: 1.4, text: "100m手前" },
+  ])("$case: $text", ({ km, travelledKm, text }) => {
+    expect(facilityPosition(km, travelledKm)).toBe(text);
   });
 });

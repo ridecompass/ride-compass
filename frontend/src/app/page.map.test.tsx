@@ -3,10 +3,10 @@
  *
  * 見ること: 地図を押したときの意味は効いているパネルで決まり（「ルート設定」の条件タブは選んでいる地点を置く、
  * 「ルート結果」は候補の線でそのルートを選び区間でその中身を出す、閉じている間は押した物の中身を小窓に出すだけ）、PC で
- * 2つの区分を開いていれば最後に触った区分が効いてその題に添えること、区間を選んでいる間は地図にその区間の範囲の縁取りと
- * 選んだ地点の印が出ること、効いているパネルが移ると前のパネルで地図に出した選択を外すこと。区間を押すと
+ * 2つの区分を開いていれば最後に触った区分が効いてその題に添えること、区間を選んでいる間は地図にその区間の範囲の縁取りが
+ * 出ること、効いているパネルが移ると前のパネルで地図に出した選択を外すこと。区間を押すと
  * 地図が読み込んだ点のタイルのうち区間の線から近い点を地図に描き、押した区間の小窓にその中の補給・立ち寄り先を区分のチップで出し、
- * チップでその区分の一覧（道のりの順）を開いて地図に出す・消せ、点を押すと1施設1行で名前・押した地点から見た前後・道からの距離を出すこと
+ * チップでその区分の一覧（道のりの順）を開いて地図に出す・消せ、点を押すと1施設1行で名前・道からの距離を出すこと
  * （グラフの下の地点の詳しくには出さず、グラフで地点を選んだときは小窓も点も出さず、点のタイルを読まないズームでは出さない）。走行中は施設の位置を
  * 現在地からの残りで出すこと。施設の印を押すと
  * 小窓を施設の中身へ入れ替えて印に枠を付け、区間へ戻れること。地図は選んでいるルート1本へ収め（生成直後は先頭、タブで
@@ -40,14 +40,12 @@ import {
   route,
   section,
   selectDestination,
-  selectedPointMarks,
   selectedSectionOnMap,
   serveHome,
 } from "@/testing/homePage";
 import { installGeolocation } from "@/testing/geolocation";
 import { mapOnScreen, type PointedFeature } from "@/testing/maplibre";
 import { makeGenerationConditions, makeRouteSegment, routeThrough } from "@/testing/routeFixtures";
-import palette from "@/types/generated/palette.json";
 
 vi.mock("maplibre-gl", () => import("@/testing/maplibre"));
 
@@ -134,7 +132,7 @@ describe("地図で扱えること", () => {
     expect(screen.getByRole("group", { name: "区間の小窓の上の帯" })).toBeInTheDocument();
   });
 
-  it("区間を選んでいる間は、地図にその区間の範囲の縁取りと選んだ地点の印を出し、外すと消す。地図で区間を押すと、縁取りは候補の区間の道なりの形になる（地図の区間の線は形の外の中身を持たない）", async () => {
+  it("区間を選んでいる間は、地図にその区間の範囲の縁取りを出し、外すと消す。地図で区間を押すと、縁取りは候補の区間の道なりの形になる（地図の区間の線は形の外の中身を持たない）", async () => {
     // 道なりの形が、始点と終点を結ぶ直線と違う区間。
     const curved = makeRouteSegment({
       start_latitude: 35.7,
@@ -160,12 +158,9 @@ describe("地図で扱えること", () => {
     const [drawnSegment] = mapOnScreen().sourceFeatures("route-segments");
     clickSegment(drawnSegment, HERE);
     expect(selectedSectionOnMap()).toEqual([curved.geometry!.coordinates]);
-    const [pin] = selectedPointMarks();
-    expect(pin.element.querySelector("path")).toHaveAttribute("fill", palette.semantic.selected_point);
 
     clickMap(ELSEWHERE);
     expect(selectedSectionOnMap()).toEqual([]);
-    expect(selectedPointMarks()).toEqual([]);
   });
 
   it("効いているパネルが別のパネルへ移ると、前のパネルで地図に出した選択（選んだ区間・小窓）を外し、閉じるだけなら外さない", async () => {
@@ -193,7 +188,7 @@ describe("地図で扱えること", () => {
     await user.click(screen.getByRole("tab", { name: "重み" }));
     expect(screen.queryByRole("group", { name: "区間の小窓の上の帯" })).toBeNull();
     await user.click(candidateTabs()[0]);
-    expect(selectedPointMarks()).toEqual([]);
+    expect(selectedSectionOnMap()).toEqual([]);
 
     // 見るだけのタブで開いた点の小窓は、「ルート結果」へ移ると消える。
     await user.click(screen.getByRole("tab", { name: "重み" }));
@@ -310,7 +305,7 @@ describe("区間の近くの施設", () => {
     placeTiles();
     act(() => mapOnScreen().moveTo(ROUTE_VIEW, 14));
     const [, second] = mapOnScreen().sourceFeatures("route-segments");
-    // 区間の中ほど（1.5km）を押す。施設の位置は、ここから見た前後で出る。
+    // 区間の中ほど（1.5km）を押す。
     clickSegment(second, { latitude: 35.7, longitude: 139.715 });
   }
 
@@ -335,7 +330,7 @@ describe("区間の近くの施設", () => {
     expect(sidePointsOnMap()).toEqual({ "point-poi-side-supply_poi": [[139.705, 35.7]] });
   });
 
-  it("描いた名前のある点を押すと、押した地点から見た前後と道からの距離を添えた点の小窓を出して区間へ戻れ、名前の無い点だけの所を押すと下の区間を開く", async () => {
+  it("描いた名前のある点を押すと、道からの距離を添えた点の小窓を出して区間へ戻れ、名前の無い点だけの所を押すと下の区間を開く", async () => {
     const { user } = renderHome();
     await pressSecondSegment(user);
     const drawn = (layer: string, name: string | undefined): PointedFeature => {
@@ -347,7 +342,7 @@ describe("区間の近くの施設", () => {
 
     clickMap(ELSEWHERE, [drawn("point-poi-side-supply_poi", "ファミリーマート")]);
     expect(screen.getByRole("link", { name: "ファミリーマート" }).closest("li")!.textContent).toBe(
-      "ファミリーマート押した地点から 200m手前道からの距離 8m",
+      "ファミリーマート道からの距離 8m",
     );
     await user.click(
       within(screen.getByRole("group", { name: "点の小窓の上の帯" })).getByRole("button", { name: "‹ 区間" }),

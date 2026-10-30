@@ -120,9 +120,7 @@ export default function HomeMapPane({
         onSegmentOutsideChange={results.setSegmentOutsideMap}
         // 選んでいる区間の小窓（道のりのグラフの表示の断面）。
         segmentDetail={
-          selection !== null && selected !== null ? (
-            <SegmentDetail selection={selection} segments={selected.segments} layers={chosenLayers} />
-          ) : null
+          selection !== null && selected !== null ? <SegmentDetail selection={selection} layers={chosenLayers} /> : null
         }
         onRouteSelect={results.selectRoute}
         waypoints={conditions.waypoints}

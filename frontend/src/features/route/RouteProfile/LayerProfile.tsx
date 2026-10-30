@@ -91,7 +91,7 @@ export default function LayerProfile({
       valueTicks={valueTicks}
       riding={riding}
       waypointKms={waypointKms}
-      // 出している情報の全体の要約（最高・最低、値が無い・近くに無い）。選んだ地点の値は地図の区間の小窓が出す。
+      // 出している情報の全体の要約（最高・最低、値が無い・近くに無い）。選んだ区間の値は地図の区間の小窓が出す。
       caption={
         <div className={cn(profileTextClass(riding), "text-[var(--color-muted)] tabular-nums")}>
           {shown.lines.length + rowCount === 0 ? (
