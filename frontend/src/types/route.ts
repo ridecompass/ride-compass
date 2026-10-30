@@ -27,6 +27,12 @@ export type RouteTurn = Schemas["RouteTurn"];
 export type PlaceCandidate = Schemas["PlaceCandidate"];
 export type OverallDifficulty = Schemas["OverallDifficulty"];
 
+/** 地図に番号の点で出す、地点の検索で探した候補と、選んでいる候補の番号（`candidates`の添字）。 */
+export interface CandidatesOnMap {
+  candidates: readonly PlaceCandidate[];
+  picked: number;
+}
+
 /** 地図上で押された区間と、押された地点（マーカーを置く位置）。区間は地図のfeatureのpropertiesから
  * 組み直すので、`segment.geometry`はnull。 */
 export interface SelectedRouteSegment {

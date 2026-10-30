@@ -8,13 +8,7 @@ import type { Map as MapLibreMap, Marker } from "maplibre-gl";
 import { CandidateMark } from "@/components/CandidateMark/CandidateMark";
 import { runWhenStyleReady } from "@/features/map/layers/mapStyleOps";
 import { fitBoundsToPoints } from "@/features/map/MapView/mapCamera";
-import type { PlaceCandidate } from "@/types/route";
-
-/** 地図に番号の点で出す、探した候補と、選んでいる候補の番号（`candidates`の添字）。 */
-export interface CandidatesOnMap {
-  candidates: readonly PlaceCandidate[];
-  picked: number;
-}
+import type { CandidatesOnMap } from "@/types/route";
 
 /**
  * 地点の検索で探した候補を、地図に番号の点で出す。新しく探すたびに、候補が全部入る所へ地図を動かす（候補の一覧・札が

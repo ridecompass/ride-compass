@@ -15,7 +15,6 @@ import MapOverlayControls from "@/features/map/MapOverlayControls/MapOverlayCont
 import MapOverview from "@/features/map/MapOverview/MapOverview";
 import { anyWeatherShown, overviewShown } from "@/features/map/MapOverview/overview";
 import MapView from "@/features/map/MapView/MapView";
-import type { CandidatesOnMap } from "@/features/map/MapView/useCandidateMarkers";
 import type { MapTapMode } from "@/features/map/MapView/mapTaps";
 import type { useMapView } from "@/features/map/view/useMapView";
 import RideBottom from "@/features/ride/RideBottom/RideBottom";
@@ -32,7 +31,7 @@ import { useAxisCatalog } from "@/hooks/useAxisCatalog";
 import type { useLocation } from "@/hooks/useLocation";
 import { cn } from "@/lib/cn";
 import { mapOverlayEdge } from "@/lib/mapOverlayEdges";
-import type { Coordinates } from "@/types/route";
+import type { CandidatesOnMap, Coordinates } from "@/types/route";
 import type { useRideGuidance } from "./useRideGuidance";
 
 interface HomeMapPaneProps {

@@ -5,6 +5,7 @@ import type { Map as MapLibreMap } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 
 import type {
+  CandidatesOnMap,
   Coordinates,
   LocationSource,
   PlaceCandidate,
@@ -25,7 +26,7 @@ import { fitBoundsToRoute, flyToVisible, mapVisibleCenterOffset } from "@/featur
 import { bindMapTaps, type MapTapMode } from "@/features/map/MapView/mapTaps";
 import { rideZoomBase } from "@/features/map/MapView/rideZoom";
 import { useMapLifecycle } from "@/features/map/MapView/useMapLifecycle";
-import { useCandidateMarkers, type CandidatesOnMap } from "@/features/map/MapView/useCandidateMarkers";
+import { useCandidateMarkers } from "@/features/map/MapView/useCandidateMarkers";
 import { useMapMarkers } from "@/features/map/MapView/useMapMarkers";
 import { useMapPopupMount, useMapPopups } from "@/features/map/MapView/useMapPopups";
 import { useMapScene } from "@/features/map/MapView/useMapScene";

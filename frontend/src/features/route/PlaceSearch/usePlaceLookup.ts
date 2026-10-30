@@ -3,12 +3,11 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 
-import type { CandidatesOnMap } from "@/features/map/MapView/useCandidateMarkers";
 import { searchPlaces } from "@/features/route/placeSearchApi";
 import { getQueryClient } from "@/lib/queryClient";
 import { SECOND_MS } from "@/lib/duration";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
-import type { Coordinates, PlaceCandidate } from "@/types/route";
+import type { CandidatesOnMap, Coordinates, PlaceCandidate } from "@/types/route";
 
 // 打ちかけで引き始める長さ（空白を除いた文字数）と、打つのが止まってから引くまでの間。口の回数制限はこの間から決まる。
 export const PREDICTION_MIN_LENGTH = routeGenerateConfig.place_prediction_min_length;
