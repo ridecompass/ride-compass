@@ -1,19 +1,19 @@
-/* --space-1〜4（0.25/0.5/0.75/1rem）はTailwind既定のスペーシング（0.25rem単位）と同じ刻みなので、
-   p-2・gap-3等の既定ユーティリティがそのままトークンの値にそろう。 */
 @import "tailwindcss";
 
 /* components/ui配下がTailwindユーティリティ(rounded-sm/md/lg, shadow-float)として
-   使えるようにする登録。値は後方のroot要素の定義と必ず一致させること(変更時は両方直す。
-   root要素側を動かさない理由と、colorトークンをここに含めない理由は
+   使えるようにする登録。staticにして、ユーティリティを使わない部品が読むvar()の値も
+   root要素へ必ず出す(colorトークンをここに含めない理由は
    docs/modules/frontend/frontend-design-system.md「Design Token」)。
    このコメント内で「コロン」の直後に続けてroot要素セレクタ名を書くと、Lightning CSS
    (Tailwind v4のCSSエンジン)が@theme直前のコメント境界を誤認識しビルドエラーになる。
    セレクタ名を書く場合は「root要素」のように文字だけで表現する。 */
-@theme {
+@theme static {
   /* スマホ幅の境目。**この値を持つのはここだけ**——メディアクエリはカスタム
    * プロパティを条件に使えないので、各ファイルは`theme()`で引く（ビルド時に
-   * 実値へ置き換わる）。JS側は値を持たず、`--is-mobile`の旗を読む。 */
-  --breakpoint-mobile: 640px;
+   * 実値へ置き換わる）。JS側は値を持たず、`--is-mobile`の旗を読む。
+   * 値はデスクトップの配置が始まる幅で、これより狭ければスマホ幅（640pxまで）。Tailwindの`max-mobile:`も
+   * 同じ「これより狭い」で判定するので、メディアクエリも`width <`で書く（`max-width`は境目を含んで割れる）。 */
+  --breakpoint-mobile: 641px;
 
   --radius-sm: 6px;
   --radius-md: 10px;
@@ -56,8 +56,6 @@
   --color-group-environment: #b45309;
   --color-group-spot: #db2777;
 
-  --shadow-float: 0 1px 4px rgba(0, 0, 0, 0.3);
-
   --space-1: 0.25rem;
   --space-2: 0.5rem;
   --space-3: 0.75rem;
@@ -66,10 +64,6 @@
   --font-size-xs: 0.75rem;
   --font-size-sm: 0.8rem;
   --font-size-md: 0.85rem;
-
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 16px;
 
   /* モバイルの下部タブバーの高さ。下部シートはこの高さぶん上に置き、タブバーの上に乗せる。 */
   --mobile-tabbar-height: 3.5rem;
@@ -123,8 +117,8 @@
     --color-accent-bg: #16233d;
     --color-muted: #a1a1a6;
     --color-muted-strong: #c7c7cc;
-    /* ライトの#b45309は暗いサーフェス（--color-surface）上で約2.85:1しか出ず、
-     * 0.65rem級の小さい文字ではWCAG AAの4.5:1に届かない。明るい側へ振って8.5:1にする。 */
+    /* ライトの#b45309は暗いサーフェス（--color-surface）上で、0.65rem級の小さい文字に要る
+     * WCAG AAの4.5:1に届かないので、明るい側へ振る。 */
     --color-warning-strong: #fbbf24;
     --color-warning-soft: rgba(251, 191, 36, 0.18);
     --color-accent-soft: rgba(96, 165, 250, 0.18);
@@ -144,7 +138,7 @@
 /* スマホ幅では共通トークンの余白・文字の大きさを全体に詰める。タップ領域（チェックボックスの1.4rem・
    主要な導線の44px）とiOSの自動ズーム防止（入力欄の16px）はトークンを読まない値なので、ここを
    詰めても変わらない。 */
-@media (max-width: theme(--breakpoint-mobile)) {
+@media (width < theme(--breakpoint-mobile)) {
   :root {
     --is-mobile: 1;
     --space-1: 0.2rem;
@@ -329,7 +323,7 @@
   border-radius: var(--radius-md);
 }
 
-@media (max-width: theme(--breakpoint-mobile)) {
+@media (width < theme(--breakpoint-mobile)) {
   /* 全<button>へ一律に44pxを掛けない（部品が意図して持つ大きさを詳細度で潰す）。44pxが要る主要な導線は、
      その部品自身が持つ（docs/modules/frontend/frontend-design-system.md 8節）。 */
 
@@ -357,7 +351,7 @@
    付けるクラスで、地図の外の同名の要素を巻き込まないための限定子。帰属表示は地図の右下・左下に
    絶対配置されるので、スマホ幅では下部タブバーに隠れる。重なり順で競わせず、タブバーの高さぶん
    底上げする。 */
-@media (max-width: theme(--breakpoint-mobile)) {
+@media (width < theme(--breakpoint-mobile)) {
   .app-map-pane .maplibregl-ctrl-bottom-left,
   .app-map-pane .maplibregl-ctrl-bottom-right {
     margin-bottom: var(--mobile-tabbar-height);

@@ -1,0 +1,11 @@
+# 像に入れるのはDockerfileが写すものだけなので、手元で育つものをビルドへ送らない。
+# __pycache__は手元の版のnumbaのキャッシュを含み、像の中でコンパイルした結果を上書きしうる。
+data
+.venv
+**/__pycache__
+.pytest_cache
+.hypothesis
+.testmondata*
+mutants
+setup.cfg
+.env
