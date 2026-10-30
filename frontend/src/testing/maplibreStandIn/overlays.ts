@@ -64,19 +64,29 @@ export class Marker extends Evented {
 
 export class Popup extends Evented {
   /** MapLibre と同じく、置き直すたびに読む設定（向き`anchor`等）。 */
-  readonly options: { anchor?: string; offset?: number; [key: string]: unknown };
+  readonly options: { anchor?: string; offset?: unknown; [key: string]: unknown };
   private lngLat: LngLat = { lng: 0, lat: 0 };
   private content: Node | null = null;
   private onMap = false;
 
-  constructor(options: { anchor?: string; offset?: number; [key: string]: unknown } = {}) {
+  constructor(options: { anchor?: string; offset?: unknown; [key: string]: unknown } = {}) {
     super();
     this.options = { ...options };
   }
 
-  /** MapLibre と同じく、指す物から離す幅を置き換える。 */
-  setOffset(offset: number) {
+  /** MapLibre と同じく、指す物から離す幅（数か、ずらす量`[x, y]`）を置き換える。 */
+  setOffset(offset: number | [number, number]) {
     this.options.offset = offset;
+    return this;
+  }
+
+  addClassName(className: string) {
+    if (this.content instanceof HTMLElement) this.content.classList.add(className);
+    return this;
+  }
+
+  removeClassName(className: string) {
+    if (this.content instanceof HTMLElement) this.content.classList.remove(className);
     return this;
   }
 

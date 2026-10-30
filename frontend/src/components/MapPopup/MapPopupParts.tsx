@@ -20,13 +20,20 @@ import { facilityPosition, type Facility, type FacilityOrigin } from "./facility
 
 const hintClass = cn(textVariants({ variant: "hint" }), "m-0");
 
-/** 小窓の上の帯。右端は、小窓の器の右上に重なる寄せるアイコンと×（どちらも44px四方）の幅だけ空ける。 */
+/** 小窓をつまんでずらす所（上の帯）の印。 */
+export const POPUP_HANDLE_ATTRIBUTE = "data-popup-handle";
+
+/**
+ * 小窓の上の帯。つまんで小窓をずらす所で、触れても中身をスクロールせず文字を選ばない。右端は、小窓の器の右上に重なる寄せるアイコンと
+ * ×（どちらも44px四方）の幅だけ空ける。
+ */
 export function PopupHeader({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div
       role="group"
       aria-label={label}
-      className="flex min-h-7 min-w-0 items-center gap-1.5 pr-[5.5rem] text-[length:var(--font-size-md)] tabular-nums"
+      {...{ [POPUP_HANDLE_ATTRIBUTE]: "" }}
+      className="flex min-h-7 min-w-0 cursor-grab touch-none items-center gap-1.5 pr-[5.5rem] text-[length:var(--font-size-md)] tabular-nums select-none"
     >
       {children}
     </div>
