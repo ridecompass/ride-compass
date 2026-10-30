@@ -57,49 +57,21 @@ describe("readSavedConditions", () => {
     ["上限を超える経由地", { waypoints: Array(routeGenerateConfig.max_waypoints + 1).fill(POINT) }],
     ["数でない重み", { routePreference: { axis_a: "0.7" } }],
     ["負の重み", { routePreference: { axis_a: -0.1 } }],
+    // 値がundefinedの欄はJSONに書かれない。
+    ["避け方を持たない", { roadAvoidance: undefined }],
   ])("%sの件だけを捨て、ほかの件は残す", (_, broken) => {
     const other = { ...ENTRY, name: "別の件" };
 
     expect(readSavedConditions(JSON.stringify([{ ...ENTRY, ...broken }, other]))).toEqual([other]);
   });
 
-  it.each([
-    // 周回は経由地・目的地を置いてあっても隠して使わなかったので、読み替えると外す。
-    { routeMode: "loop", read: { loop: true, distanceTargeted: true, waypoints: [], destination: null } },
-    { routeMode: "destination", read: { loop: false, distanceTargeted: false } },
-    { routeMode: "zigzag", read: null },
-  ])(
-    "前にモードで保存した件は、$routeMode を今の形へ読み替える（読めないモードの件は捨てる）",
-    ({ routeMode, read }) => {
-      // 値がundefinedの欄はJSONに書かれない（前の形は周回か・全長の目標の有無を持たない）。
-      const before = { ...ENTRY, loop: undefined, distanceTargeted: undefined, routeMode };
-
-      expect(readSavedConditions(JSON.stringify([before]))).toEqual(read === null ? [] : [{ ...ENTRY, ...read }]);
-    },
-  );
-
-  it.each([
-    [null, true],
-    [POINT, false],
-  ])("周回かを持たない件は、目的地（%o）を持たなければ周回（%s）として読む", (destination, loop) => {
-    const before = { ...ENTRY, loop: undefined, distanceTargeted: true, destination };
-
-    expect(readSavedConditions(JSON.stringify([before]))).toEqual([
-      { ...ENTRY, loop, distanceTargeted: true, destination },
-    ]);
-  });
-
-  // 行は軸カタログが届くまで分からず、今の行に無い鍵も前の鍵として読まれうるので、鍵では落とさない。
-  it("避け方は段として読める鍵だけを残し、避け方を持たない件は何も選んでいない", () => {
-    const [read, older] = readSavedConditions(
-      JSON.stringify([
-        { ...ENTRY, roadAvoidance: { gravel: "exclude", retired_row: "avoid", unpaved: "never" } },
-        { ...ENTRY, name: "避け方を持たない件", roadAvoidance: undefined },
-      ]),
+  // 行は軸カタログが届くまで分からないので、鍵では落とさない。
+  it("避け方は段として読める鍵だけを残す", () => {
+    const [read] = readSavedConditions(
+      JSON.stringify([{ ...ENTRY, roadAvoidance: { gravel: "exclude", retired_row: "avoid", unpaved: "never" } }]),
     )!;
 
     expect(read.roadAvoidance).toEqual({ gravel: "exclude", retired_row: "avoid" });
-    expect(older.roadAvoidance).toEqual({});
   });
 });
 
@@ -133,7 +105,7 @@ describe("describeConditions", () => {
           levels: AVOIDANCE_LEVELS,
           rows: [
             avoidanceRow("gravel", "surface", { label: "砂利" }),
-            avoidanceRow("unpaved", "surface", { label: "未舗装", default: "avoid", former_keys: ["dirt"] }),
+            avoidanceRow("unpaved", "surface", { label: "未舗装", default: "avoid" }),
             avoidanceRow("private", "access", { label: "私道", default: "exclude" }),
           ],
         },
@@ -169,12 +141,7 @@ describe("describeConditions", () => {
       CATALOG,
       "通らない 砂利／なるべく避ける 未舗装",
     ],
-    [
-      "選んでいない行は前の鍵に選んだ段で読み、通る行しか無ければ無いと出す",
-      { dirt: "pass", private: "pass" },
-      CATALOG,
-      "なし",
-    ],
+    ["通る行しか無ければ無いと出す", { unpaved: "pass", private: "pass" }, CATALOG, "なし"],
     ["軸カタログが届く前は、行が分からないので無いと出す", { gravel: "exclude" }, EMPTY_CATALOG, "なし"],
   ] as const)("除外: %s", (_, roadAvoidance, catalog, expected) => {
     expect(describeConditions({ ...ENTRY, roadAvoidance }, catalog).exclusions).toBe(expected);

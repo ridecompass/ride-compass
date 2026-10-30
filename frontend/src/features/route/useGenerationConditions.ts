@@ -1,10 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import { useAxisCatalog } from "@/hooks/useAxisCatalog";
 import { useStoredBooleanState, useStoredJsonState, useStoredState } from "@/hooks/useStoredState";
-import { readRoadAvoidance, withCurrentRoadKeys } from "@/features/route/roadAvoidance";
+import { readRoadAvoidance } from "@/features/route/roadAvoidance";
 import { alignRoutePreference, routePreferenceToSend } from "@/features/route/routePreferenceSync";
 import {
   acceptedDistanceInput,
@@ -229,13 +229,6 @@ export function useGenerationConditions({ onOriginPlace }: GenerationConditionsI
       deserialize: (raw) => readRoadAvoidance(JSON.parse(raw)),
     },
   );
-  // 軸カタログが届いたら、前の鍵に選んだ段を今の鍵へ書き直して保存へ書き戻す。
-  const avoidanceView = axisCatalog.roadClasses.avoidance;
-  useEffect(() => {
-    if (axisCatalog.loaded && withCurrentRoadKeys(roadAvoidance, avoidanceView) !== roadAvoidance) {
-      setRoadAvoidance((prev) => withCurrentRoadKeys(prev, avoidanceView));
-    }
-  }, [axisCatalog.loaded, avoidanceView, roadAvoidance, setRoadAvoidance]);
 
   // いまの条件を、保存・呼び出しと同じ形1つで返す（保存・生成の入力・保存の説明はこれを読む）。
   const snapshot: GenerationConditionsSnapshot = useMemo(

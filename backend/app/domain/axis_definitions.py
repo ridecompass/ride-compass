@@ -52,7 +52,6 @@ from app.domain.road_classes import (
     CLASS_MATERIAL_PREFIX,
     RoadClassDefinitions,
     class_material_id,
-    class_value_names,
     classification_materials,
 )
 from app.domain.strict_model import StrictModel
@@ -544,10 +543,10 @@ def missing_class_materials(definition: AxisDefinition, road_classes: RoadClassD
 
 
 def unknown_class_values(definition: AxisDefinition, road_classes: RoadClassDefinitions) -> list[tuple[str, str]]:
-    """軸が区分から作る材料（`class:<分け方>`）の値として名指す名（値ごとの点数のキー・0次条件の値）のうち、その分け方の今の鍵にも
-    前の鍵の区分の名にも無いもの（材料id・名の組）。そうした名はどの道にも当たらず、点数が黙って抜ける。分け方の無い材料は
+    """軸が区分から作る材料（`class:<分け方>`）の値として名指す名（値ごとの点数のキー・0次条件の値）のうち、その分け方の区分の鍵に
+    無いもの（材料id・名の組）。そうした名はどの道にも当たらず、点数が黙って抜ける。分け方の無い材料は
     `missing_class_materials`が拾うので、ここでは見ない。"""
-    names = {class_material_id(key): class_value_names(key, c) for key, c in road_classes.classifications.items()}
+    names = {class_material_id(key): set(c.classes) for key, c in road_classes.classifications.items()}
     shape = definition.shape
     refs = [(shape.material, mapping_key_of(key)) for key in shape.mapping] if isinstance(shape, CategoricalShape) else []
     refs += [(cond.material, cond.equals) for cond in definition.priority_overrides]

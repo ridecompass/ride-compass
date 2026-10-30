@@ -22,14 +22,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { heldReplies, onBackend, serveAxisCatalog } from "@/testing/backendServer";
-import {
-  AVOIDANCE_LEVELS,
-  avoidanceRow,
-  catalogEntry,
-  catalogResponse,
-  roadClassCatalog,
-  TWO_AXIS_CATALOG,
-} from "@/testing/catalogAxes";
+import { catalogEntry, catalogResponse, TWO_AXIS_CATALOG } from "@/testing/catalogAxes";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 import type { Coordinates } from "@/types/route";
 
@@ -179,37 +172,12 @@ describe("道ごとの避け方", () => {
     expect(reopen(first).result.current.roadAvoidance).toEqual({ gravel: "exclude" });
   });
 
-  // 行は軸カタログが届くまで分からず、今の行に無い鍵も前の鍵として読まれうるので、鍵では落とさない（今の行へ揃えるのはbackend）。
+  // 行は軸カタログが届くまで分からないので、鍵では落とさない（今の行へ揃えるのはbackend）。
   it("保存値は段として読める鍵だけを残す", () => {
     window.localStorage.setItem(
       "ridecompass:road-avoidance",
       JSON.stringify({ gravel: "exclude", unpaved: "retired_level", "retired.row": "avoid" }),
     );
     expect(renderConditions().result.current.roadAvoidance).toEqual({ gravel: "exclude", "retired.row": "avoid" });
-  });
-
-  it("軸カタログが届くと、前の鍵に選んだ段を今の鍵へ移して保存へ書き戻す", async () => {
-    window.localStorage.setItem(
-      "ridecompass:road-avoidance",
-      JSON.stringify({ dirt: "avoid", mud: "exclude", gravel: "avoid", "retired.row": "avoid" }),
-    );
-    serveAxisCatalog(
-      catalogResponse([], {
-        road_classes: roadClassCatalog({
-          avoidance: {
-            levels: AVOIDANCE_LEVELS,
-            rows: [
-              avoidanceRow("unpaved", "surface", { former_keys: ["dirt", "mud"] }),
-              avoidanceRow("gravel", "surface"),
-            ],
-          },
-        }),
-      }),
-    );
-    const { result } = renderConditions();
-
-    const rewritten = { unpaved: "exclude", gravel: "avoid", "retired.row": "avoid" };
-    await waitFor(() => expect(result.current.roadAvoidance).toEqual(rewritten));
-    expect(JSON.parse(window.localStorage.getItem("ridecompass:road-avoidance")!)).toEqual(rewritten);
   });
 });

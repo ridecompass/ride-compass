@@ -3,7 +3,6 @@
 区分・地図の線の層・転がり抵抗・除外の設定の正本はこの表で、コードは写しを持たない。**表の中で閉じる形は表の制約だけが守る**
 （docs/architecture/design-principles.md 構造仕様15。コードの宣言と軸を名指す値は、書く側が確かめる）。外部キーは全部トランザクションの終わりまで遅らせ、全体を1回で
 入れ替える書き込み（`infrastructure/road_class_repository.py: replace_road_class_rows`）を、入れ替えた後の形で確かめる。
-改名は「新しい鍵＋前の鍵」でしかしないので、`ON UPDATE CASCADE`は置かない。
 """
 
 from typing import Any, Literal, TypedDict
@@ -85,7 +84,6 @@ class RoadClassRow(Base):
     #: 意味の文だけ。
     description: Mapped[str] = mapped_column(String, nullable=False)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False)
-    former_keys: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=False)
     condition_rows: Mapped[list["RoadClassConditionRow"]] = _children(None, "RoadClassConditionRow.condition_id")
 
     @property

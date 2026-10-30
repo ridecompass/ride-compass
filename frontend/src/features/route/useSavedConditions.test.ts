@@ -14,14 +14,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { serveAxisCatalog } from "@/testing/backendServer";
-import {
-  AVOIDANCE_LEVELS,
-  avoidanceRow,
-  catalogResponse,
-  roadClassCatalog,
-  TWO_AXIS_CATALOG,
-} from "@/testing/catalogAxes";
-import routeGenerateConfig from "@/types/generated/route-generate-config.json";
+import { TWO_AXIS_CATALOG } from "@/testing/catalogAxes";
 import type { Coordinates } from "@/types/route";
 
 import { useGenerationConditions } from "./useGenerationConditions";
@@ -30,7 +23,6 @@ import { useSavedConditions } from "./useSavedConditions";
 const A: Coordinates = { latitude: 35.1, longitude: 139.1 };
 const B: Coordinates = { latitude: 35.2, longitude: 139.2 };
 const ORIGIN: Coordinates = { latitude: 35.3, longitude: 139.3 };
-const STORAGE_KEY = "ridecompass:saved-conditions";
 
 interface OriginProps {
   origin: Coordinates | null;
@@ -122,25 +114,6 @@ describe("保存して呼び出す", () => {
     expect(renderSaved().result.current.saved.saved.map((entry) => entry.name)).toEqual(["周回 30km"]);
   });
 
-  it("前にモードで保存した一覧は、開くと今の形で書き戻す", () => {
-    const before = {
-      name: "いつもの周回",
-      routeMode: "loop",
-      distance: "40",
-      maxRoutes: "3",
-      origin: null,
-      waypoints: [A],
-      destination: null,
-      routePreference: null,
-      hardFilters: { motorway: true, no_bicycle: true },
-    };
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify([before]));
-
-    const { result } = renderSaved();
-
-    expect(JSON.parse(window.localStorage.getItem(STORAGE_KEY)!)).toEqual(result.current.saved.saved);
-  });
-
   it("消すとその件だけが一覧から外れる", () => {
     const { result } = renderSaved();
     act(() => result.current.saved.save("A", false));
@@ -149,39 +122,6 @@ describe("保存して呼び出す", () => {
     act(() => result.current.saved.remove("A"));
 
     expect(result.current.saved.saved.map((entry) => entry.name)).toEqual(["B"]);
-  });
-});
-
-describe("道の区分の前の鍵", () => {
-  it("軸カタログが届くと、保存した件の前の鍵に選んだ段を今の鍵へ移して保存へ書き戻す", async () => {
-    const entry = {
-      name: "砂利を避ける",
-      loop: true,
-      distanceTargeted: true,
-      distance: "30",
-      maxRoutes: String(routeGenerateConfig.default_max_routes),
-      origin: null,
-      waypoints: [],
-      destination: null,
-      routePreference: null,
-      roadAvoidance: { dirt: "exclude" },
-    };
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify([entry]));
-    serveAxisCatalog(
-      catalogResponse([], {
-        road_classes: roadClassCatalog({
-          avoidance: {
-            levels: AVOIDANCE_LEVELS,
-            rows: [avoidanceRow("unpaved", "surface", { former_keys: ["dirt"] })],
-          },
-        }),
-      }),
-    );
-    const { result } = renderSaved();
-
-    const rewritten = [{ ...entry, roadAvoidance: { unpaved: "exclude" } }];
-    await waitFor(() => expect(result.current.saved.saved).toEqual(rewritten));
-    expect(JSON.parse(window.localStorage.getItem(STORAGE_KEY)!)).toEqual(rewritten);
   });
 });
 

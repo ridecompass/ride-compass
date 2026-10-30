@@ -54,8 +54,8 @@ def _check_writable(definitions: RoadClassDefinitions, axes: dict[str, AxisDefin
             for material, name in unknown
         )
         raise RoadClassRejectedError(
-            f"軸が名指す区分が、今の鍵にも前の鍵にも無くなるため確定しません（{reasons}）。"
-            "区分の鍵を改めるときは前の鍵を残すか、先に軸の値を直してください"
+            f"軸が名指す区分が無くなるため確定しません（{reasons}）。"
+            "区分の鍵を改めるときは、先に軸の値を直してください"
         )
 
 

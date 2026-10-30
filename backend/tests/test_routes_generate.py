@@ -301,16 +301,15 @@ async def test_the_defaults_that_were_applied_are_echoed(client):
 
 
 async def test_the_overrides_that_were_sent_are_echoed(client):
-    """保存したレスポンスの条件をそのまま送り直せば、同じ条件で生成し直せる。避け方は、区分を分け直す前の鍵で送っても
-    今の行の鍵で返る。"""
+    """保存したレスポンスの条件をそのまま送り直せば、同じ条件で生成し直せる。"""
     definitions = road_classes(
-        {"kind": classification({"local": [fact_is(HIGHWAY, "residential")]}, former_keys={"local": ["old.local"]})},
+        {"kind": classification({"local": [fact_is(HIGHWAY, "residential")]})},
         map_layers={"kind": map_layer()},
         avoidance_classifications={"kind": AvoidanceClassification(overrides={})},
     )
     with replaced_road_classes(definitions):
         conditions = (await _generate(
-            client, route_preference={AVOID_AXIS: 2.0}, road_avoidance={"old.local": "avoid"}, assumed_speed_kmh=25.0,
+            client, route_preference={AVOID_AXIS: 2.0}, road_avoidance={"kind.local": "avoid"}, assumed_speed_kmh=25.0,
         ))["result"]["conditions"]
 
     assert conditions["route_preference"] == {AVOID_AXIS: 2.0}

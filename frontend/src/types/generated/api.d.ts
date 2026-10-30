@@ -786,8 +786,6 @@ export interface components {
              * @enum {string}
              */
             default: "pass" | "avoid" | "exclude";
-            /** Former Keys */
-            former_keys: string[];
         };
         /** AvoidanceSectionView */
         AvoidanceSectionView: {
@@ -1795,8 +1793,6 @@ export interface components {
             description: string;
             /** Sort Order */
             sort_order: number;
-            /** Former Keys */
-            former_keys: string[];
             /** Conditions */
             conditions: {
                 [key: string]: components["schemas"]["ConditionTerm"];

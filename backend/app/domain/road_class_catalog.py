@@ -68,7 +68,6 @@ class AvoidanceRowView(StrictModel):
     label: str
     description: str
     default: AvoidanceLevel
-    former_keys: list[str]
 
 
 class RoadAvoidanceView(StrictModel):
@@ -129,7 +128,6 @@ def road_class_catalog(definitions: RoadClassDefinitions) -> RoadClassCatalog:
             label=row.road_class.label,
             description=row.road_class.description,
             default=row.default_level,
-            former_keys=row.road_class.former_keys,
         )
         for row in avoidance
     ]

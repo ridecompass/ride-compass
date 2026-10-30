@@ -12,9 +12,6 @@ interface UseStoredStateOptions<T> {
   /** 変わるたびに、その時点のdeserializeで読み直す（省略時はマウントの1回だけ）。deserializeが実行時に届く一覧
    * （軸カタログ等）で復元する値を決めるとき、届いたことを渡す。 */
   reloadKey?: unknown;
-  /** 読めた値を今のserializeで書き戻す（保存と違う文字列になるときだけ）。前の形の保存を、読んだときに今の形へ直す。
-   * reloadKeyで読み直す値は、届く前の一覧で読み落とした分まで書き戻して失うので選ばない。 */
-  rewrite?: boolean;
 }
 
 type StoredStateSetter<T> = (value: T | ((prev: T) => T)) => void;
@@ -35,7 +32,7 @@ function restore<T>(raw: string | null, deserialize: (raw: string) => T | null):
 export function useStoredState<T>(
   key: string,
   defaultValue: T,
-  { serialize, deserialize, reloadKey, rewrite = false }: UseStoredStateOptions<T>,
+  { serialize, deserialize, reloadKey }: UseStoredStateOptions<T>,
 ): [T, StoredStateSetter<T>] {
   const [value, setValue] = useState(defaultValue);
   // serializeは描画ごとに別の関数で届くが、setterの参照は安定させたい（ほかの依存に使われる）。
@@ -45,15 +42,7 @@ export function useStoredState<T>(
   });
 
   useIsomorphicLayoutEffect(() => {
-    const raw = readStoredValue(key);
-    const restored = restore(raw, deserialize);
-    if (rewrite && restored !== null) {
-      try {
-        const current = serializeRef.current(restored);
-        if (current !== raw) writeStoredValue(key, current);
-      } catch {}
-    }
-    setValue(restored ?? defaultValue);
+    setValue(restore(readStoredValue(key), deserialize) ?? defaultValue);
     // defaultValueは依存に入れない（呼び出し側が描画ごとに新しいリテラルを渡すため、入れると読み直しが止まらない）。
   }, [key, reloadKey]);
 
