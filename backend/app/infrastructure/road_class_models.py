@@ -82,7 +82,7 @@ class RoadClassRow(Base):
     classification_key: Mapped[str] = mapped_column(String, _classification_fk(ondelete="CASCADE"), primary_key=True)
     class_key: Mapped[str] = mapped_column(String, primary_key=True)
     label: Mapped[str] = mapped_column(String, nullable=False)
-    #: 意味の文だけ。タグの注は配るときに条件から組む。
+    #: 意味の文だけ。
     description: Mapped[str] = mapped_column(String, nullable=False)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False)
     former_keys: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=False)
