@@ -25,7 +25,7 @@ function decimal(value: number | null): string {
   return value == null ? "-" : value.toFixed(1);
 }
 
-/** 降っていない量は「-」にして、降る時間を目で拾えるようにする。 */
+/** 降っていない量は「-」にして（表では薄くする）、降る時間を目で拾えるようにする。 */
 function precipitation(value: number | null): string {
   return value == null || value < weatherScales.precipitation_none_below_mm ? "-" : value.toFixed(1);
 }
@@ -40,7 +40,7 @@ function RowHead({ name, children }: { name: string; children: ReactNode }) {
   );
 }
 
-// 値は利用者の地点ではなく、最寄りの格子点の値そのもの。地点の値と読ませないよう、格子点の方位と距離を見出しの隣に置く。
+// 値は利用者の地点ではなく、最寄りの格子点の値そのもの。地点の値と読ませないよう、格子点の方位と距離を見出し「今日」の隣に置く。
 // 最も高い・低い値は、並べた1時間ごとの値の幅として出し、日の最高・最低気温と読める名前にしない。
 export default function GridPointToday({ today, error, mapBearingDeg }: GridPointTodayProps) {
   if (!today) {
@@ -56,14 +56,15 @@ export default function GridPointToday({ today, error, mapBearingDeg }: GridPoin
 
   return (
     <section aria-label="今日・最寄りの格子点の値" className="mt-2 border-t border-[var(--color-border)] pt-2">
-      <div className="flex items-center justify-between gap-2">
-        <p className={cn(textVariants({ variant: "note" }), "font-bold tracking-wide")}>今日・最寄りの格子点の値</p>
-        <span className="inline-flex flex-shrink-0 items-center gap-0.5 rounded-full border border-[var(--color-border)] px-1.5 text-[length:var(--font-size-xs)] tabular-nums">
+      <p className={cn(textVariants({ variant: "note" }), "flex items-center gap-2")}>
+        <span className="font-bold tracking-wide">今日</span>
+        <span className="inline-flex items-center gap-0.5 tabular-nums">
           <SelectedSpotIcon size={12} />
-          {cardinalLabel(today.bearing_deg)}へ約{today.distance_km.toFixed(1)}km
+          {cardinalLabel(today.bearing_deg)}
+          {today.distance_km.toFixed(1)}km先の格子点
         </span>
-      </div>
-      <p className="mt-1 flex flex-wrap gap-x-3 font-semibold tabular-nums">
+      </p>
+      <p className="mt-1 grid grid-cols-3 font-semibold tabular-nums">
         <span className="sr-only">1時間ごとの値の幅: </span>
         <span className="inline-flex items-center gap-0.5">
           <ThermometerIcon size={14} />
@@ -80,8 +81,8 @@ export default function GridPointToday({ today, error, mapBearingDeg }: GridPoin
           <span className="sr-only">風速 最も強い1時間 </span>〜{decimal(today.highest_hourly_wind_speed_ms)}m/s
         </span>
       </p>
-      <div className="mt-1 overflow-x-auto [scrollbar-width:thin]">
-        <table className="border-separate border-spacing-x-1.5 text-center tabular-nums">
+      <div className="mt-2 overflow-x-auto [scrollbar-width:thin]">
+        <table className="border-separate border-spacing-x-1.5 border-spacing-y-0.5 text-center tabular-nums">
           <thead>
             <tr className="text-[length:var(--font-size-xs)] text-[var(--color-muted)]">
               <th scope="col" className="sticky left-0 bg-[var(--color-surface)]">
@@ -107,9 +108,14 @@ export default function GridPointToday({ today, error, mapBearingDeg }: GridPoin
               <RowHead name="降水量（mm）">
                 <RaindropIcon size={14} />
               </RowHead>
-              {today.precipitation_mm.map((value, index) => (
-                <td key={today.times[index]}>{precipitation(value)}</td>
-              ))}
+              {today.precipitation_mm.map((value, index) => {
+                const shown = precipitation(value);
+                return (
+                  <td key={today.times[index]} className={cn(shown === "-" && "text-[var(--color-muted)]")}>
+                    {shown}
+                  </td>
+                );
+              })}
             </tr>
             <tr>
               <RowHead name="風速（m/s）">
