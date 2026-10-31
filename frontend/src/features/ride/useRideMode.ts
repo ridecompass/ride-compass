@@ -6,9 +6,8 @@ import { debugLog } from "@/lib/debugLog";
 import type { LiveValue } from "@/lib/liveValue";
 import { recordRideFix, setRideMetricsStatus, startRideMetrics, stopRideMetrics } from "@/lib/rideMetrics";
 import { haversineKm } from "@/lib/geoDistance";
-import type { Coordinates } from "@/types/route";
-
 import { trueHeadingDeg } from "@/lib/magneticDeclination";
+import type { Coordinates } from "@/types/route";
 
 import { nextTravelBearing, type TravelBearing } from "./travelBearing";
 import { useDeviceHeading } from "./useDeviceHeading";
@@ -20,7 +19,7 @@ import { useScreenWakeLock, type ScreenWakeLockStatus } from "./useScreenWakeLoc
  */
 export type RideStatus = "off" | "waiting" | "following" | "paused" | "resting";
 
-/** 地図へ渡す走行モードの値。地図はこれで現在地の点を出し、追っている間は中心と向きを動かす。 */
+/** 地図へ渡す走行モードの値。 */
 interface RideOnMap {
   position: Coordinates | null;
   /** 進む向き（真北0・時計回りの度）。まだ分からなければnull。 */
@@ -85,8 +84,8 @@ const PERMISSION_DENIED = 1;
 /** 最後に受けた位置から読むもの。 */
 interface Fix {
   position: Coordinates;
-  /** 速さ（秒速m）。位置が持たず、前の位置からも出せなければnull。 */
-  speedMs: number | null;
+  /** 速さ（時速km）。位置が持たず、前の位置からも出せなければnull。 */
+  speedKmh: number | null;
   travel: TravelBearing | null;
   /** 測った時刻（エポックからのms）。 */
   fixedAtMs: number;
@@ -134,16 +133,13 @@ function nextMotion(
   if (fix.speedMs !== null) return { speedMs: fix.speedMs, anchor: here, source: { from: "端末" } };
   if (anchor === null) return { speedMs: null, anchor: here, source: { from: "出せない" } };
   const moved = movedM(anchor, here);
-  if (moved.withinError) {
-    return { speedMs: 0, anchor, source: { from: "止まっている" } };
-  }
-  const movedDistanceM = moved.movedM;
+  if (moved.withinError) return { speedMs: 0, anchor, source: { from: "止まっている" } };
   const elapsedS = (fix.timestamp - anchor.timestamp) / 1000;
   if (elapsedS <= 0) return { speedMs: null, anchor: here, source: { from: "出せない" } };
   return {
-    speedMs: movedDistanceM / elapsedS,
+    speedMs: moved.movedM / elapsedS,
     anchor: here,
-    source: { from: "距離と時刻", movedM: movedDistanceM, elapsedS, anchorAccuracyM: anchor.accuracyM },
+    source: { from: "距離と時刻", movedM: moved.movedM, elapsedS, anchorAccuracyM: anchor.accuracyM },
   };
 }
 
@@ -153,10 +149,10 @@ function nextMotion(
 const POOR_ACCURACY_M = 30;
 /** 誤差の大きい位置を流さずに待つ長さ（ms）。過ぎたら、誤差が大きくても流す（位置が来ないより良い）。 */
 const POOR_ACCURACY_WAIT_MS = 10_000;
-/** 速さがこれ以上変わったら流す（時速km）。地図は速さで倍率を変える（`rideZoom.ts`）ので、止まる・走り出すを遅れずに渡す。 */
+/** 速さがこれ以上変わったら流す（時速km）。止まる・走り出すを遅れずに渡す。 */
 const SPEED_STEP_KMH = 5;
-/** 前に流してからこれだけ過ぎたら、動いていなくても流す（ms）。到着予想等は最後に位置を受けた時刻から読むので、止まって
- * いる間も分の単位で進める。 */
+/** 前に流してからこれだけ過ぎたら、動いていなくても流す（ms）。最後に位置を受けた時刻（`fixedAtMs`）を、止まっている間も
+ * 分の単位で進める。 */
 const MAX_SILENCE_MS = 30_000;
 
 /** これより遅い間は止まっていると読み、位置の揺れでは流さない（時速km）。GPS の揺れは2つの誤差の和を時に超えるので、
@@ -164,7 +160,7 @@ const MAX_SILENCE_MS = 30_000;
 const STOPPED_KMH = 2;
 
 function stopped(fix: Fix): boolean {
-  return fix.speedMs !== null && fix.speedMs * 3.6 < STOPPED_KMH;
+  return fix.speedKmh !== null && fix.speedKmh < STOPPED_KMH;
 }
 
 /** 受けた位置`next`を走行の値へ流すか。`last`は前に流した位置。 */
@@ -176,10 +172,8 @@ function shouldPublish(last: Fix | null, next: Fix): boolean {
   const from = { at: last.position, timestamp: last.fixedAtMs, accuracyM: last.accuracyM };
   const to = { at: next.position, timestamp: next.fixedAtMs, accuracyM: next.accuracyM };
   if (!(stopped(last) && stopped(next)) && !movedM(from, to).withinError) return true;
-  if ((last.speedMs === null) !== (next.speedMs === null)) return true;
-  return (
-    last.speedMs !== null && next.speedMs !== null && Math.abs(next.speedMs - last.speedMs) * 3.6 >= SPEED_STEP_KMH
-  );
+  if ((last.speedKmh === null) !== (next.speedKmh === null)) return true;
+  return last.speedKmh !== null && next.speedKmh !== null && Math.abs(next.speedKmh - last.speedKmh) >= SPEED_STEP_KMH;
 }
 
 /**
@@ -280,7 +274,7 @@ export function useRideMode(plausibleMaxKmh: number | undefined): UseRideModeRes
         travelReading.current = nextTravelBearing(travelReading.current, { latitude, longitude, heading });
         const candidate: Fix = {
           position: here,
-          speedMs: next.speedMs,
+          speedKmh,
           travel: travelReading.current,
           fixedAtMs: received.timestamp,
           accuracyM,
@@ -333,7 +327,7 @@ export function useRideMode(plausibleMaxKmh: number | undefined): UseRideModeRes
     [],
   );
 
-  const speedKmh = fix?.speedMs != null ? fix.speedMs * 3.6 : null;
+  const speedKmh = fix?.speedKmh ?? null;
   const position = fix?.position ?? null;
   const travel = fix?.travel ?? null;
   // 端末の読みは磁北が基準なので、最後に流した位置の偏角で真北へ直して読ませる。

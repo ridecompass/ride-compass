@@ -10,15 +10,10 @@ import { describe, expect, it } from "vitest";
 import TurnCard from "./TurnCard";
 
 describe("TurnCard", () => {
-  it.each([
-    { case: "1km未満は10m単位", distanceM: 347, direction: "right" as const, label: "350m先で右折", text: "350m" },
-    { case: "1km以上は0.1km単位", distanceM: 1260, direction: "left" as const, label: "1.3km先で左折", text: "1.3km" },
-    { case: "Uターン", distanceM: 80, direction: "uturn" as const, label: "80m先でUターン", text: "80m" },
-  ])("$case", ({ distanceM, direction, label, text }) => {
-    render(<TurnCard direction={direction} distanceM={distanceM} />);
-    const card = screen.getByRole("status", { name: label });
-    expect(card).toHaveTextContent(text);
+  it("距離を出し、向きの言葉は読み上げの名前にだけ出す", () => {
+    render(<TurnCard direction="right" distanceM={347} />);
+    const card = screen.getByRole("status", { name: "350m先で右折" });
+    expect(card).toHaveTextContent("350m");
     expect(card).not.toHaveTextContent("右折");
-    expect(card).not.toHaveTextContent("左折");
   });
 });

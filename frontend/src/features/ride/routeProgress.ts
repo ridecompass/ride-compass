@@ -46,7 +46,6 @@ export function locateOnRoute(projected: readonly TrackProjection[], previousKm:
  * 分からなければ、外れていないとみなす。
  */
 export function offRoute(projected: readonly TrackProjection[], accuracyM: number | null): boolean {
-  if (accuracyM === null) return false;
-  if (projected.length === 0) return false;
+  if (accuracyM === null || projected.length === 0) return false;
   return Math.min(...projected.map(({ offsetM }) => offsetM)) > accuracyM;
 }
