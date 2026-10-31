@@ -261,7 +261,7 @@ class AxisInspectorService:
             published, definitions, self._feature_materials, self._build_service, *feature.tile, query,
             feature_key=feature.key, as_difficulty=True,
         )
-        scores = {axis_id: None if isinstance(painted[axis_id], MissingConditions) else painted[axis_id].get(feature.key)
+        scores = {axis_id: None if isinstance(by_key := painted[axis_id], MissingConditions) else by_key.get(feature.key)
                   for axis_id in published}
         return AxisInspectorResult(
             highway=road.highway, tags=road.tags, values=inspector_values(scores, feature.landcover, weights))
