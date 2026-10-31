@@ -1,10 +1,4 @@
-/** scene を組み立てる道具。
- *
- * 型の契約は`mapScene.ts`が持ち、ここはそれを作るときに**どの家族でも同じ形になるもの**
- * だけを置く。家族に固有のもの（どんな色で塗るか・何を宣言するか）はここへ入れない。
- */
-import type { LayerSpecification } from "maplibre-gl";
-
+/** scene を組み立てる道具のうち、どの家族でも同じ形になるもの。 */
 import type { MapSceneSourceContent } from "./mapScene";
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import type { LegendEntry } from "@/lib/mapDisplay/legendFilter";
@@ -26,28 +20,6 @@ export function sceneSourceId(name: string): SceneSourceId {
  * どのレイヤーがどのデータを描いているかが id から読める。 */
 export function sceneLayerId(source: SceneSourceId, role: string): string {
   return `${source}-${role}`;
-}
-
-/**
- * MapLibre のレイヤー宣言。`LayerSpecification` は `type` ごとの合併型のため、
- * paint/layout を外から受け取る形では合併型として組み立て直せない。
- * **この取り替えはここ1箇所だけに置く**。
- */
-export function layerSpec(spec: {
-  readonly id: string;
-  readonly type: LayerSpecification["type"];
-  readonly source: string;
-  readonly sourceLayer?: string;
-  readonly paint?: Readonly<Record<string, unknown>>;
-  readonly layout?: Readonly<Record<string, unknown>>;
-  readonly minzoom?: number;
-  readonly maxzoom?: number;
-}): LayerSpecification {
-  const { sourceLayer, ...rest } = spec;
-  return {
-    ...rest,
-    ...(sourceLayer === undefined ? {} : { "source-layer": sourceLayer }),
-  } as unknown as LayerSpecification;
 }
 
 /** 大きさを、ズームで決まる倍率で伸縮させる式。`base`は定数でも値から決まる式でもよい。倍率の曲線（`stops`、
