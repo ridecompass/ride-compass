@@ -21,11 +21,11 @@ GEOMETRIC_GAP_M = 15.0
 
 #: 「逆向き」と見なす進行方位の差の許容（度、180度からのずれ）。カーブの途中で上下線の
 #: 向きがずれるぶんを吸収する。
-BEARING_TOLERANCE_DEG = 45.0
+_BEARING_TOLERANCE_DEG = 45.0
 
 #: 「全長にわたって寄り添う」を確かめる標本点の位置（線長に対する割合）。端点ちょうどは
 #: 交差点で他の道と接するため、少し内側から取る。
-SAMPLE_FRACTIONS = (0.05, 0.25, 0.5, 0.75, 0.95)
+_SAMPLE_FRACTIONS = (0.05, 0.25, 0.5, 0.75, 0.95)
 
 #: OSMが「上下線が分かれている」と言っている`carriageway`の値。
 TAG_VALUES = ("dual", "triple", "2")
@@ -50,7 +50,7 @@ def facts_sql(way: str, direction: str) -> str:
 
 def _antiparallel_sql(row: str) -> str:
     """`row`と相方`b`が逆向きに並走しているか。"""
-    return f"abs(((b.travel_deg - {row}.travel_deg)::numeric % 360 + 360) % 360 - 180) < {BEARING_TOLERANCE_DEG}"
+    return f"abs(((b.travel_deg - {row}.travel_deg)::numeric % 360 + 360) % 360 - 180) < {_BEARING_TOLERANCE_DEG}"
 
 
 def divided_sql(row: str, candidates: str) -> str:
@@ -59,7 +59,7 @@ def divided_sql(row: str, candidates: str) -> str:
     `row`と相方の候補の関係`candidates`は、どちらも`osm_way_id`・`geom`・`direction`・`highway`と
     `facts_sql`の列を持つ。
     """
-    fractions = ", ".join(str(f) for f in SAMPLE_FRACTIONS)
+    fractions = ", ".join(str(f) for f in _SAMPLE_FRACTIONS)
     # 前置フィルタの箱は距離の判定より必ず広く取る——箱の方が狭いと、箱の大きさが距離の実効の上限になる。
     named_deg = degrees_covering_m(NAMED_GAP_M)
     geometric_deg = degrees_covering_m(GEOMETRIC_GAP_M)

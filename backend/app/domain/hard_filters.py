@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from app.domain.evaluation import StaticEdgeScoreMatrix
 
 
-class HardFilter(NamedTuple):
+class _HardFilter(NamedTuple):
     #: 画面に出す名前と説明。フィルタと同じ行に持つ——名前だけ別の表にすると、フィルタを
     #: 足したときに名前の無い行ができ、画面に内部名が出る。
     label: str
@@ -35,13 +35,13 @@ def _tag_is(fact_key: str, *values: str) -> Condition:
 
 
 # 自転車が走ってはいけない道。どれもいつも除き、要求では入り切りを受けない。
-HARD_FILTERS: dict[str, HardFilter] = {
-    "motorway": HardFilter(
+HARD_FILTERS: dict[str, _HardFilter] = {
+    "motorway": _HardFilter(
         "高速道路・自動車専用道路",
         "高速道路と、自動車専用の標識のある一般道（バイパス等）。自転車は通れないので、いつも経路から外します。",
         [_tag_is("highway", "motorway", "motorway_link"), _tag_is("motorroad", "yes")],
     ),
-    "no_bicycle": HardFilter(
+    "no_bicycle": _HardFilter(
         "自転車通行禁止",
         "自転車の通行が禁止された道。いつも経路から外します。",
         [_tag_is("bicycle", "no")],

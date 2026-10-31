@@ -663,10 +663,8 @@ def _walk_predecessors(predecessors: Sequence[int] | np.ndarray, state_index: in
 
 
 def _walk_from_source(predecessors: Sequence[int] | np.ndarray, state_index: int) -> list[int]:
-    """前向きの探索で、始点→`state_index`の経路を進行順に返す（前任者をたどった列を反転する）。"""
-    edges = _walk_predecessors(predecessors, state_index)
-    edges.reverse()
-    return edges
+    """前向きの探索で、始点→`state_index`の経路を進行順に返す。"""
+    return _walk_predecessors(predecessors, state_index)[::-1]
 
 
 def turn_expanded_path_from_state(tree: TurnExpandedTree, state_index: int) -> list[int]:

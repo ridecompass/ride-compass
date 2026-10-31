@@ -66,7 +66,7 @@ def _round_difficulty_on_half(values: np.ndarray, lower: np.ndarray) -> np.ndarr
 
 def weight_share(weight: float, other_weights: Iterable[float]) -> float | None:
     """重み`weight`の軸を、ほかの軸（`other_weights`）と並べて合成したときに占める割合
-    （`composite_difficulty_array`が重みの合計で割るのと同じ分母）。合計が0以下ならNone。"""
+    （`composite_from_sums`の分母）。合計が0以下ならNone。"""
     total = weight + sum(other_weights)
     return None if total <= 0 else weight / total
 
@@ -127,7 +127,7 @@ def composite_weighted_sums(
     axis_arrays: Mapping[str, np.ndarray],
     weights: Mapping[str, float | np.ndarray],
     length: int,
-    static_sums: tuple[np.ndarray, np.ndarray] | None,
+    static_sums: tuple[np.ndarray, np.ndarray] | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """合成の`(重み付きスコアの和, データのある軸の重みの和)`。`static_sums`は`axis_arrays`に**含めなかった**軸ぶんの
     和（`axis_weighted_sums`）。"""
@@ -146,19 +146,6 @@ def composite_from_sums(weighted_scores: np.ndarray, weight_sums: np.ndarray) ->
         composite = weighted_scores / weight_sums
     composite = np.where(weight_sums == 0, np.nan, composite)
     return round_difficulty_array(composite)
-
-
-def composite_difficulty_array(
-    axis_arrays: Mapping[str, np.ndarray],
-    weights: Mapping[str, float | np.ndarray],
-    length: int,
-    static_sums: tuple[np.ndarray, np.ndarray] | None = None,
-) -> tuple[np.ndarray, np.ndarray]:
-    """軸別の得点の配列から、区間ごとの合成difficulty（`composite_from_sums`）と、その分母の
-    「データのある軸の重みの合計」を返す。`static_sums`は`composite_weighted_sums`と同じ。
-    """
-    weighted_scores, weight_sums = composite_weighted_sums(axis_arrays, weights, length, static_sums)
-    return composite_from_sums(weighted_scores, weight_sums), weight_sums
 
 
 def axis_weight_shares(
@@ -202,7 +189,7 @@ def composite_difficulty(
     scores: Mapping[str, float | None], weights: Mapping[str, float]
 ) -> tuple[float | None, dict[str, float | None]]:
     """1区間ぶんの軸の得点（欠損=None）から、合成difficultyと軸ごとの寄与度（小数1桁）を返す。
-    計算は`composite_difficulty_array`・`axis_contributions`を長さ1で通す。
+    計算は配列の合成と`axis_contributions`を長さ1で通す。
 
     寄与度は`scores`と同じキーで、得点の無い軸（分母にも入らない）はNone。合成が求まらない
     （得点のある軸が無い・重みの合計が0）ときは合成も寄与度もすべてNone。各寄与度を丸めるため、
@@ -211,7 +198,8 @@ def composite_difficulty(
     axis_arrays = {
         axis_id: np.array([np.nan if score is None else score], dtype=float) for axis_id, score in scores.items()
     }
-    composite, weight_sums = composite_difficulty_array(axis_arrays, weights, 1)
+    weighted_scores, weight_sums = composite_weighted_sums(axis_arrays, weights, 1)
+    composite = composite_from_sums(weighted_scores, weight_sums)
     at_row = axis_contributions(axis_arrays, axis_weight_shares(axis_arrays, weights, weight_sums))[0]
     value = float(composite[0])
     contributions = {axis_id: None if axis_id not in at_row else round_difficulty(at_row[axis_id]) for axis_id in scores}
