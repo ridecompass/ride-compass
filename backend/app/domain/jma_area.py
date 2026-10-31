@@ -5,8 +5,6 @@ JMA警報API（r8スキーマ）は府県予報区単位（例: 東京都全体�
 持つ（例: 東京地方 vs 伊豆諸島北部 vs 小笠原諸島）。地点を正しい細分区域まで解決する
 ために、気象庁が公開する地域マスタ（area.json）の親子関係
 （class20=市区町村等 → class15 → class10=一次細分区域 → offices=府県予報区）を辿る。
-地点→class20は区域の境界（`infrastructure/jma_area_boundaries.py`）が引き、area.jsonの形は
-`infrastructure/jma_warning_client.py`が`AreaMaster`へ解く。
 """
 
 from __future__ import annotations

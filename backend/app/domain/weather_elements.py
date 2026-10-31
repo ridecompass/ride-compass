@@ -239,7 +239,7 @@ class WeatherDelivery(NamedTuple):
     url_template: str
     reader: TargetTimesReader
     refresh_interval_seconds: int
-    #: 配信の遅れ（`domain/jma_tile_specs.py: JmaElement.data_delay_minutes`）。
+    #: 配信の遅れ（分）。
     data_delay_minutes: int
 
 
@@ -268,8 +268,7 @@ def stage_first_frames(stage_frames: Sequence[Sequence[JmaFrame]]) -> list[JmaFr
     時系列に1コマも残らない段はNone。
 
     各段は前の段までの最後のコマより後の時刻だけを継ぎ、途中の段が空なら、その前の段の直後から次の段が継ぐ。
-    画面も同じつなぎ方で時系列を作る。同じコマになることは、場面ごとの段とこの関数の答えを
-    `scripts/cross_language_expectations.py: jma_expectations`が表にして配り、画面のテストが通す。"""
+    画面も同じつなぎ方で時系列を作る。"""
     first_frames: list[JmaFrame | None] = []
     last_validtime = ""
     for frames in stage_frames:
