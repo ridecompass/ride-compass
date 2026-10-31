@@ -7,7 +7,7 @@
  * 探している間のブラウザの「戻る」で検索だけを閉じること、周回の間は置いた目的地を地図にも行にも出さず地図を押しても目的地にしないで、
  * 外すと戻すこと、名前を付けて保存した地点を検索の欄から選び直せ、「保存済み」の「地点」から呼び出すと条件タブへ移って置くこと。
  * 上端の欄で探すと候補を地図に番号の点で出して全部が入る所へ寄せ、点を押すとその候補を選び（デスクトップは一覧の行、スマホは下の札）、
- * 置くボタンで出発地・経由地・目的地に置くこと。
+ * 置くボタンで出発地・経由地・目的地に置くこと。スマホでシートの中の札と地点の編集が同じ所を取り合うとき、後から押したほうを出すこと。
  *
  * ここで見ないもの: 地図を押したときの意味をどのパネルが決めるか・区間を押したときは`app/page.map.test.tsx`が見る。
  *
@@ -284,6 +284,32 @@ describe("地図に置く地点", () => {
 
     expect(marksAt(SENSOJI)).toHaveLength(1);
     expect(within(sheet).getByRole("button", { name: "経由地1: 浅草寺" })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("スマホで札を出している間に「編集」を押すと、探した候補を下げて打った文字を残し、通る順を出す。編集の間に探すと、編集を閉じて札を出す", async () => {
+    useMobileLayout();
+    onBackend("GET", "/api/place-search", () => Response.json({ candidates: [SENSOJI] }));
+    const { user } = renderHome();
+    await user.click(screen.getByRole("button", { name: "ルート設定" }));
+    const sheet = screen.getByRole("dialog", { name: "ルート設定" });
+    await user.click(within(sheet).getByRole("button", { name: "経由地を足す" }));
+    clickMap(ELSEWHERE);
+    const searchBox = screen.getByRole("searchbox", { name: /を住所・施設で探す$/ });
+    await user.type(searchBox, "浅草寺{Enter}");
+    await within(sheet).findByRole("region", { name: "探した候補" });
+    const edit = within(sheet).getByRole("button", { name: "編集" });
+
+    await user.click(edit);
+    expect(within(sheet).queryByRole("region", { name: "探した候補" })).toBeNull();
+    expect(candidatePoints()).toEqual([]);
+    expect(searchBox).toHaveValue("浅草寺");
+    expect(edit).toHaveAttribute("aria-pressed", "true");
+    expect(within(sheet).getByRole("list", { name: "通る順" })).toBeInTheDocument();
+
+    await user.type(searchBox, "{Enter}");
+    await within(sheet).findByRole("region", { name: "探した候補" });
+    expect(edit).toHaveAttribute("aria-pressed", "false");
+    expect(within(sheet).queryByRole("list", { name: "通る順" })).toBeNull();
   });
 
   it("周回にすると置いた目的地を地図にも地点の並びにも出さず、地図を押しても目的地にせず、周回を外すとその目的地が戻る", async () => {

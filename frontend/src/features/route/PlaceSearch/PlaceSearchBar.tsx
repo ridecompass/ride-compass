@@ -82,7 +82,7 @@ export default function PlaceSearchBar({
   const listing = lookup.query !== "" && !carded;
   const history = usePlaceHistory();
   // 欄を押してから、選ぶ・閉じるまでの間は、保存した地点と履歴を候補に出す（探した候補を地図に出している間は出さない）。
-  const [browsing, setBrowsing] = useState(false);
+  const { browsing } = lookup;
   const inputProps = lookup.inputProps();
   const offering = browsing && !lookup.searched;
   const savedMatches = offering ? savedPlacesMatching(savedPlaces.places, inputProps.value) : [];
@@ -110,7 +110,6 @@ export default function PlaceSearchBar({
   // 閉じたら欄から focus を外す（残すと、次に欄や探すボタンを押しても focus が動かず開かない）。
   function close() {
     lookup.close({ clearText: true });
-    setBrowsing(false);
     // 欄は id で引く（置くボタンは描画の中で組むので、そこから呼ぶ処理は ref を読まない）。
     document.getElementById(inputId)?.blur();
   }
@@ -189,7 +188,7 @@ export default function PlaceSearchBar({
           // 欄の高さいっぱいを押せるようにする。ブラウザの消すボタンは隠す（右の✕が文字を消して閉じるので、並べるとどちらを押すか迷う）。
           className="min-w-0 flex-auto self-stretch bg-transparent text-[length:var(--font-size-md)] text-[var(--foreground)] outline-none placeholder:text-[var(--color-muted)] [&::-webkit-search-cancel-button]:appearance-none"
           {...inputProps}
-          onFocus={() => setBrowsing(true)}
+          onFocus={lookup.browse}
           data-usage={`住所か施設の名前を入れて探します。${PREDICTION_MIN_LENGTH}文字から、打つのを止めると候補が出ます。候補を選ぶと${chooseResult}。`}
         />
         {browsing && (

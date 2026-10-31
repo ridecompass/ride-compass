@@ -33,6 +33,14 @@ type RoutePointsConditions = Pick<
   | "foundAt"
 >;
 
+/** 地点の詳しくの所に出す、探した候補の札。 */
+export interface FoundCard {
+  /** 札を入れる所を受け取る。 */
+  slot: (slot: HTMLElement | null) => void;
+  /** 探した候補を下げる（地図の点と札を消し、検索の欄の文字は残す）。 */
+  dismiss: () => void;
+}
+
 interface RoutePointsProps {
   conditions: RoutePointsConditions;
   /** 出発地の位置（現在地か、地図で置いた地点）。 */
@@ -54,8 +62,8 @@ interface RoutePointsProps {
   savedPlaces: SavedPlacesState;
   /** 地図をタップすると選んでいる地点を置くか（ルート設定が地図で効いている間）。 */
   placing: boolean;
-  /** 探した候補の札を入れる所を受け取る（スマホで札を出している間だけ。null なら地点の詳しくを出す）。 */
-  foundCardSlot: ((slot: HTMLElement | null) => void) | null;
+  /** 探した候補の札（スマホで札を出している間だけ。null なら地点の詳しくを出す）。 */
+  foundCard: FoundCard | null;
 }
 
 /** どうやって置いた地点か。 */
@@ -79,7 +87,7 @@ export default function RoutePoints({
   onSearchOpen,
   savedPlaces,
   placing,
-  foundCardSlot,
+  foundCard,
 }: RoutePointsProps) {
   const {
     loop,
@@ -101,8 +109,16 @@ export default function RoutePoints({
   const target = selectedPoint;
 
   // 地点の編集（通る順の入れ替えと消すこと）。開いている間は、詳しくの代わりに地点を名前の行で縦に並べる。動かす・消すものが
-  // 無くなったら閉じる。
+  // 無くなったら閉じる。探した候補の札とは同じ所を取り合うので、後から出したほうを出す: 札が出たら編集を閉じ、札の間に
+  // 「編集」を押したら探した候補を下げる。
   const [editOpen, setEditOpen] = useState(false);
+  const cardSlot = foundCard?.slot ?? null;
+  const cardShown = cardSlot !== null;
+  const [cardWasShown, setCardWasShown] = useState(cardShown);
+  if (cardShown !== cardWasShown) {
+    setCardWasShown(cardShown);
+    if (cardShown) setEditOpen(false);
+  }
   const editable = waypointCount > 0 || (!loop && destination !== null);
   const editing = editOpen && editable;
   const choosePoint = (point: PointTarget) => {
@@ -253,7 +269,10 @@ export default function RoutePoints({
           )}
           pressed={editing}
           disabled={!editable}
-          onClick={() => setEditOpen(!editing)}
+          onClick={() => {
+            foundCard?.dismiss();
+            setEditOpen(!editing);
+          }}
           usage="押している間は、地点を名前で縦に並べ、通る順を入れ替えたり消したりできます。もう一度押すと閉じます。"
         >
           <EditPointsIcon />
@@ -276,8 +295,8 @@ export default function RoutePoints({
           <ClearPointsIcon size={18} />
         </Button>
       </div>
-      {foundCardSlot !== null ? (
-        <div ref={foundCardSlot} />
+      {cardSlot !== null ? (
+        <div ref={cardSlot} />
       ) : editing ? (
         <PointEditList
           loop={loop}
