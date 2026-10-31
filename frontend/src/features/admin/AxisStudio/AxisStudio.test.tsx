@@ -1,10 +1,10 @@
 /**
- * `AxisStudio.tsx`——軸スタジオの一覧: 下書き・公開済みの一覧と、その行に出すもの。
+ * `AxisStudio.tsx`——軸スタジオの一覧: 下書き・公開済みの一覧と、その行に出すもの、行を開いて出す較正。
  *
  * 管理APIは網の層で応える。材料は本物の一覧（生成物）を通す。
  *
  * ここで見ないもの:
- * - 較正の画面 → `AxisCalibration.test.tsx`（下書きの点数の地図は`app/admin/page.calibration.test.tsx`）
+ * - 開いた較正の中身 → `AxisCalibration.test.tsx`（下書きの点数の地図は`app/admin/page.calibration.test.tsx`）
  */
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -12,7 +12,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { MATERIAL_CATALOG } from "@/lib/axisMaterialsCatalog";
 import { onSameOrigin } from "@/testing/backendServer";
-import type { AxisDefinitionResponse } from "@/types/route";
+import type { AxisDefinitionPayload, AxisDefinitionResponse } from "@/types/route";
 
 import AxisStudio from "./AxisStudio";
 
@@ -105,5 +105,33 @@ describe("一覧", () => {
 
     const summary = `推定 ・ 重み0.25 ・ 土台の軸・${material.label}・unknown_id`;
     expect(await screen.findByText(new RegExp(summary.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")))).toBeInTheDocument();
+  });
+});
+
+describe("行を開く", () => {
+  /** 較正が開いた軸の地図の段と分布を取りに行く要求。どちらも断り、較正は取れなかったことを出す。 */
+  function serveCalibrationPreview() {
+    onSameOrigin("POST", "/admin/api/axis-definitions/preview-distribution", () => failure("代役"));
+    return onSameOrigin("POST", "/admin/api/axis-definitions/preview-calibration", () => failure("代役"));
+  }
+  const row = (label: string) => screen.getByRole("button", { name: new RegExp(`^${label}\\s*axis_`) });
+
+  it("押した行の下にその軸の較正を開き、別の行を開くと前の行を閉じる。閉じた行の軸は取りに行かない", async () => {
+    const previews = serveCalibrationPreview();
+    const user = await renderStudio();
+    await openPublishedTab(user);
+    expect(previews).toHaveLength(0);
+
+    await user.click(row("公開の軸"));
+    expect(row("公開の軸")).toHaveAttribute("aria-expanded", "true");
+    await screen.findByText("この軸の地図の段を求められませんでした。");
+    expect(previews.map(({ body }) => (body as { definition: AxisDefinitionPayload }).definition.axis_id)).toEqual([
+      PUBLISHED.axis_id,
+    ]);
+
+    await user.click(row("公開の軸2"));
+    expect(row("公開の軸")).toHaveAttribute("aria-expanded", "false");
+    expect(row("公開の軸2")).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getAllByText("この軸の地図の段を求められませんでした。")).toHaveLength(1);
   });
 });

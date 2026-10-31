@@ -1,5 +1,5 @@
 /**
- * `AxisCalibration.tsx`——較正の画面: 軸を選び、数値の軸は0点・100点の端（密度の軸は100点の端だけ）を、対応表の軸は
+ * `AxisCalibration.tsx`——1つの軸の較正: 数値の軸は0点・100点の端（密度の軸は100点の端だけ）を、対応表の軸は
  * 種類ごとの点数を、地図の段の境界と合わせて動かし、段ごとの延長を下書きと保存済みで見比べて、公開の状態のまま保存する。
  *
  * 管理APIは網の層で応える。点数は折れ点ごとに決めた値を返す代役で（計算はbackendの`score_at`が持つ）、地図の段は
@@ -10,6 +10,7 @@
  * - 3つの入力から作る折れ点 → `breakpointTools.test.ts`（期待値は`generateBreakpoints`から引く）
  * - 地図の段の求め方 → backendの`test_axis_admin_routes.py`
  * - 種類ごとの延長の集め方 → backendの`test_value_distribution.py`
+ * - 一覧の行を開いて軸を選ぶこと → `AxisStudio.test.tsx`
  * - 下書きの点数の地図（別の機能の部品で、組み立てるページが渡す） → `app/admin/page.calibration.test.tsx`
  */
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
@@ -122,11 +123,10 @@ beforeEach(() => {
 
 const NO_MAP = () => null;
 
-async function openAxis(def: AxisDefinitionResponse, definitions = [SLOPE, DENSITY, HAND_EDITED, SIGNED]) {
+async function openAxis(def: AxisDefinitionResponse) {
   const user = userEvent.setup();
   const onSaved = vi.fn(async () => {});
-  render(<AxisCalibration definitions={definitions} onSaved={onSaved} calibrationMap={NO_MAP} />);
-  await user.selectOptions(screen.getByRole("combobox", { name: "較正する軸" }), def.axis_id);
+  render(<AxisCalibration definition={def} onSaved={onSaved} calibrationMap={NO_MAP} />);
   await screen.findByRole("img");
   return { user, onSaved };
 }
@@ -137,25 +137,6 @@ async function savedPayload(): Promise<AxisDefinitionPayload> {
   await waitFor(() => expect(updated).toHaveLength(1));
   return updated[0].body as AxisDefinitionPayload;
 }
-
-describe("軸を選ぶ", () => {
-  it("数値の軸も対応表の軸も、公開中か下書きかを添えて並べる", () => {
-    render(
-      <AxisCalibration
-        definitions={[SLOPE, { ...DENSITY, is_published: false }, CATEGORICAL]}
-        onSaved={vi.fn()}
-        calibrationMap={NO_MAP}
-      />,
-    );
-    const options = within(screen.getByRole("combobox", { name: "較正する軸" })).getAllByRole("option");
-    expect(options.map((option) => option.textContent)).toEqual([
-      "軸を選ぶ",
-      "急さ（公開中）",
-      "信号の多さ（下書き）",
-      "路面（公開中）",
-    ]);
-  });
-});
 
 describe("線を決めて保存する", () => {
   it("数の入力で100点にする値を変えると、その値で作った線を、公開の状態と応答だけの欄を除いた定義で保存し、知らせる", async () => {
@@ -257,7 +238,7 @@ describe("線を決めて保存する", () => {
 
   it("密度の軸でも、保存済みの線が0から伸びる直線でなければ、置き換わることを言う", async () => {
     const edited = axis(DENSITY.axis_id, DENSITY.label, HAND_EDITED_LINE);
-    await openAxis(edited, [edited]);
+    await openAxis(edited);
     expect(await screen.findByText(/保存すると、上の値で作った線に置き換わります/)).toBeInTheDocument();
     expect(screen.getByLabelText("保存済みの線")).toBeInTheDocument();
   });
@@ -292,7 +273,7 @@ describe("地図の段の境界", () => {
 
   it("隣の境界との間が狭く、動かすと隣と重なるときは動かさない", async () => {
     const narrow = axis(SLOPE.axis_id, SLOPE.label, SLOPE_LINE, { display_thresholds_override: [10, 10.5, 11] });
-    await openAxis(narrow, [narrow]);
+    await openAxis(narrow);
     const middle = await screen.findByRole("slider", { name: "段の境界2" });
     fireEvent.keyDown(middle, { key: "ArrowUp" });
     fireEvent.keyDown(screen.getByRole("slider", { name: "段の境界2" }), { key: "ArrowDown" });
@@ -346,8 +327,7 @@ describe("対応表の軸", () => {
   async function openCategorical() {
     const user = userEvent.setup();
     const onSaved = vi.fn(async () => {});
-    render(<AxisCalibration definitions={[SLOPE, CATEGORICAL]} onSaved={onSaved} calibrationMap={NO_MAP} />);
-    await user.selectOptions(screen.getByRole("combobox", { name: "較正する軸" }), CATEGORICAL.axis_id);
+    render(<AxisCalibration definition={CATEGORICAL} onSaved={onSaved} calibrationMap={NO_MAP} />);
     const rows = await screen.findByRole("region", { name: "種類ごとの点数" });
     return { user, onSaved, rows };
   }
