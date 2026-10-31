@@ -207,6 +207,11 @@ def place_count_sql(inside_ends: str) -> str:
     return f"CASE {inside_ends} WHEN 0 THEN 1.0 WHEN 1 THEN {PLACE_SHARE_PER_END} ELSE 0 END"
 
 
+def stop_cluster_sql(geom: str, eps_m: str, partition: str) -> str:
+    """停止要因の点`geom`を`partition`ごとに`eps_m`以内で連なるまとまりへ分ける窓の式。間隔は地面の m 以下になる Web Mercator の m。"""
+    return f"ST_ClusterDBSCAN(ST_Transform({geom}, 3857), eps := {eps_m}, minpoints := 1) OVER (PARTITION BY {partition})"
+
+
 # コンビニは OpenStreetMap からは取らない——補給の点のコンビニは Overture の地点（`domain/stop_place.py`の群
 # 「コンビニ」）から出し、1つの種類を2つの出どころから出さない。
 _SupplyPoiKind = Literal["vending_drinks", "vending_unknown", "toilets", "drinking_water", "bicycle_parking"]

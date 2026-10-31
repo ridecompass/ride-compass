@@ -32,7 +32,7 @@ from app.domain.map_display import (
 from app.domain.primary_attributes import PRIMARY_ATTRIBUTES, stop_poi_map_group_sql
 from app.domain.registry import PrimaryAttributeSpec, TileKind
 from app.domain.stop_place import StopPlaceGroup
-from app.domain.traffic import STOP_POI_KINDS, stop_kind_sql
+from app.domain.traffic import STOP_POI_KINDS, stop_cluster_sql, stop_kind_sql
 from app.domain.tuning import STOP_CLUSTER_DISTANCE_ID
 from app.infrastructure.cache_identity import shape_digest
 from app.infrastructure.derived_data_meta import recorded_tuning_sql
@@ -115,10 +115,9 @@ _POI_GROUP_EXPR = stop_poi_map_group_sql("nm")
 #: 地面の1mを覆う度。クラスタ化のためにタイルの外側も読む幅は、まとめる距離からSQLの中で作る。
 _DEGREES_PER_M = degrees_covering_m(1.0)
 
-# 停止要因POI・補給POIを1タイルへ焼き込む。停止要因は数える側（`batch/derive_counts.py`）と同じく、派生を作り直したときの
-# まとめる距離で1つの所にまとめてから、ほかの点と同じく升目で束ねる。タイル境界で塊が切れると、同じ交差点が隣り合うタイルで
-# 別々の点になるので、境目の外へまとめる距離ずつ2つ先まで連なる点を読む（塊の間隔はWeb Mercatorのmで測り、その1mは地面では
-# 1m以下なので、地面のmで覆えば足りる）。
+# 停止要因POI・補給POIを1タイルへ焼き込む。停止要因は派生を作り直したときのまとめる距離で`domain/traffic.py: stop_cluster_sql`で
+# まとめてから、ほかの点と同じく升目で束ねる。タイル境界で塊が切れると同じ交差点が隣り合うタイルで別々の点になるので、境目の外へ
+# まとめる距離ずつ2つ先まで連なる点を読む（式の間隔は地面のm以下なので、地面のmで覆えば足りる）。
 _POI_POINTS_SQL = f"""
     SELECT grouped.kind, grouped.map_group, grouped.name, grouped.geom
     FROM (
@@ -134,10 +133,7 @@ _POI_POINTS_SQL = f"""
                    -- 停止要因はまとめてから出す（同じ交差点が複数の点に
                    -- ならないように）。補給POIは別々の実体なのでまとめない。
                    CASE WHEN nm.kind = ANY(:stop_kinds) THEN
-                       'c' || ST_ClusterDBSCAN(
-                           ST_Transform(p.geom, 3857),
-                           eps := (SELECT eps_m FROM cluster), minpoints := 1
-                       ) OVER (PARTITION BY {_POI_GROUP_EXPR})
+                       'c' || {stop_cluster_sql("p.geom", "(SELECT eps_m FROM cluster)", _POI_GROUP_EXPR)}
                    ELSE 'n' || p.osm_node_id END AS cluster_key,
                    NULL::text AS name
             FROM {NODES_SOURCE_SQL} p
