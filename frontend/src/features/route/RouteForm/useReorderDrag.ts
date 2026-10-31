@@ -46,8 +46,8 @@ export function useReorderDrag({ count, first = 0, onReorder }: ReorderDragOptio
     press(index: number, event: PointerEvent<HTMLElement>, rows: DOMRect[]) {
       if (!event.isPrimary || index < first || count - first < 2 || rows.length !== count) return;
       event.currentTarget.setPointerCapture(event.pointerId);
-      // 行の間の隙間は揃っているので、先頭の2行の間で測る。
-      const gap = count > 1 ? Math.max(0, rows[1].top - rows[0].bottom) : 0;
+      // 行の間の隙間は揃っているので、先頭の2行の間で測る（上で2行以上あることを確かめてある）。
+      const gap = Math.max(0, rows[1].top - rows[0].bottom);
       setDrag({
         from: index,
         pointerId: event.pointerId,

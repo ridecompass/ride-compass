@@ -159,7 +159,6 @@ export default function PointDetail({
         {savedHere !== null ? (
           <Button
             size="panelIcon"
-            className="flex-none"
             aria-label={`「${savedHere.name}」の保存をやめる`}
             onClick={() => savedPlaces.remove(savedHere)}
             usage="保存した地点から外します。置いた地点はそのまま残ります。"
@@ -169,7 +168,6 @@ export default function PointDetail({
         ) : (
           <Button
             size="panelIcon"
-            className="flex-none"
             aria-label="地点を保存"
             disabled={at === null}
             aria-haspopup="dialog"
@@ -204,7 +202,6 @@ export default function PointDetail({
               usage="この名前で地点をこの端末に保存します。同じ名前があれば上書きします。"
               type="submit"
               size="sm"
-              className="flex-none"
             >
               {overwritingPlace ? "上書き保存" : "保存"}
             </Button>
