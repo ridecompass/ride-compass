@@ -17,8 +17,6 @@ const WEATHER_GRID_REFRESH_INTERVAL_MS = refreshIntervals.msm_seconds * SECOND_M
 // この未満のズームでは格子点を取らない。境は源泉の情報源の宣言が持つ。
 const MSM_GRID_MIN_ZOOM = mapDisplay.layerDataSources.find((source) => source.key === "msmGrid")!.minZoom!;
 
-const MSM_GRID_KEY = "msm-grid";
-
 interface UseWeatherGridResult {
   /** 表示範囲（俯瞰図を出すズームでは俯瞰図の範囲も）の中のMSMの格子点の予報。まだ取れていない・取らない間はnull。取ってから時間が経つと先頭の時刻が過去に
    * なる（落とすのは時系列を作る側）。 */
@@ -66,7 +64,7 @@ export function useWeatherGrid(enabled: boolean, mapViewport: MapViewport | null
   const bbox = fetching ? gridBbox(debouncedMapViewport) : null;
   const query = useQuery(
     {
-      queryKey: [MSM_GRID_KEY, bbox],
+      queryKey: ["msm-grid", bbox],
       queryFn: () => getMsmGrid(bbox!),
       enabled: fetching,
       refetchInterval: WEATHER_GRID_REFRESH_INTERVAL_MS,

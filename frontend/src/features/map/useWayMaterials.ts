@@ -1,13 +1,5 @@
 "use client";
 
-// 地図が塗る軸の、道ごとの材料の取得・状態管理。
-// viewportと走る条件をデバウンスしてから、表示中のタイルを軸ごとに1枚ずつ取る（`tileQueries.ts`）——パン・ズーム・
-// 回転のたびに個別の道を都度問い合わせない。取得対象の軸が0件の間はfetchせず、結果も空へ戻す。走る条件は、軸が材料の
-// 要求へ載せると宣言したもの（`wayMaterialConditions`）だけを載せ、ほかの条件を変えても取り直さない（色は地図が式で求め直す）。
-//
-// 対象の軸ごとに別インスタンスを持たず、1つのフックが軸の配列を受け取って全軸ぶんを賄う
-// （Reactのフック規則により、実行時に増減しうる軸の件数だけフックを呼ぶことはできない）。
-
 import { useQueries, type QueryObserverResult } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
 import { mergeTileValues, NO_VIEWPORT_TILES, tilesCoveringViewport } from "@/features/map/layers/dynamicWayValues";
@@ -26,18 +18,13 @@ import { MAP_FETCH_DEBOUNCE_MS, useDebouncedValue } from "@/hooks/useDebouncedVa
 import { getQueryClient } from "@/lib/queryClient";
 
 interface WayMaterialsFetch {
-  /** feature_key→材料（複数タイルを統合済み。鍵は路面タイルの`feature_key`と同じ文字列）。 */
+  /** feature_key→材料（表示中のタイルを統合済み）。 */
   materials: WayMaterials;
-  /** 表示中のタイルのどれかを取っている最中か。falseへ戻るまでの間、
-   * まだ一度も材料を受け取っていない道は「取得中」、フェッチ完了後になお値を持たない道は
-   * 「その範囲に値が無い」と呼び出し側が区別できるようにする。 */
+  /** 表示中のタイルのどれかを取っている最中か。 */
   loading: boolean;
-  /** 表示中のタイルのどれかの取得が通信失敗（HTTPエラー・ネットワークエラー）したか。falseは「本当にその範囲に
-   * 道が無い」場合と区別する。 */
+  /** 表示中のタイルのどれかの取得が通信失敗したか（正常に空を返したタイルは数えない）。 */
   error: boolean;
-  /** 一度でも取得を試みて完了したか（成否は問わない）。対象軸に含まれていない間はfalseのまま。
-   * 「まだ取りに行っていない」と「取得したが値が無かった」を呼び出し側が区別するために使う
-   * （`mapLayers.ts: deriveFetchLayerStatus`）。 */
+  /** 一度でも取得を終えたか（成否は問わない）。「まだ取りに行っていない」と「取ったが値が無かった」を分ける。 */
   hasFetched: boolean;
   /** 上限で画面の端のタイルを取らなかったか。 */
   truncated: boolean;
@@ -68,11 +55,9 @@ function axisFetch(results: readonly TileResult[], truncated: boolean): WayMater
   };
 }
 
-/** `axes`（材料を取る軸。呼び出し側がuseMemoで安定した参照を渡すこと）について、現在のビューポート（デバウンス済み）を
- * 覆う道路タイルを1枚ずつ取得し、軸id→結果のMapを返す。取り直している軸は前の材料を残したまま`loading`を立てる。
- *
- * `conditions`（走る条件。呼び出し側がuseMemoで安定した参照を渡すこと）は全軸で共有の入力で、実際にリクエストへ
- * 載るのは軸ごとに宣言した名前（`wayMaterialConditions`）だけ——載せない入力は問い合わせの鍵からも外れる。 */
+/** 地図が塗る軸の道ごとの材料を、間引いた表示範囲を覆うタイルごとに取り、軸id→結果のMapを返す。軸の件数は実行時に
+ * 増減するので、軸ごとにフックを呼ばず配列で受ける。`axes`と`conditions`は呼び出し側がuseMemoで安定した参照を渡すこと。
+ * 要求と問い合わせの鍵へ載せる走る条件は、軸が宣言した名前（`wayMaterialConditions`）だけ。 */
 export function useWayMaterials(
   axes: readonly DedicatedWayValueAxis[],
   mapViewport: MapViewport | null,

@@ -91,7 +91,7 @@ def _total_unit(definition: AxisDefinition) -> str | None:
 
 
 @dataclass(frozen=True, slots=True)
-class AxisMaterialShare:
+class _AxisMaterialShare:
     """軸が参照する材料1件と、それが軸の生値に占める正規化重み。"""
 
     material_id: str
@@ -111,7 +111,7 @@ def _shape_terms(definition: AxisDefinition) -> list[tuple[str, float]]:
 
 def axis_material_shares(
     definition: AxisDefinition, definitions: Mapping[str, AxisDefinition]
-) -> list[AxisMaterialShare]:
+) -> list[_AxisMaterialShare]:
     """単位が定まらない軸のために、軸を材料まで分解して占有率を出す。参照先の軸は`definitions`から引く。
 
     辿る先は必ず材料で、途中の軸の得点は結果に含めない——較正に依存する数字を内訳へ
@@ -125,7 +125,7 @@ def axis_material_shares(
     材料1件へ分解される軸は空を返す。分解しても情報が増えず、符号を畳む前処理は材料の
     単位では効かないため、登りと下りが相殺された平均を見せることになる。
     """
-    shares: dict[str, AxisMaterialShare] = {}
+    shares: dict[str, _AxisMaterialShare] = {}
 
     def walk(current: AxisDefinition, inherited: float, depth: int, visited: frozenset[str]) -> None:
         if current.axis_id in visited:
@@ -141,7 +141,7 @@ def axis_material_shares(
             if referenced_axis is not None:
                 walk(referenced_axis, share, depth + 1, next_visited)
             elif ref not in shares:
-                shares[ref] = AxisMaterialShare(material_id=ref, share=share, depth=depth)
+                shares[ref] = _AxisMaterialShare(material_id=ref, share=share, depth=depth)
 
     walk(definition, 1.0, 0, frozenset())
     if len(shares) <= 1:
@@ -178,11 +178,7 @@ def axis_material_breakdown(
 
     分解の葉はどれもカタログの材料である——軸の集合は、軸が指すidを材料か同じ集合の軸に限る検査
     （`domain/axis_definitions.py: check_axis_definition`）を通ったものだけが入る。
-
-    categorical材料（`highway`等）も含めて返す——値ごとの延長割合を運ぶ器はまだ無いが、
-    内訳の並び自体は軸定義から決まるため、運搬側の都合で並びを変えると軸定義との
-    対応が読めなくなる。値が来ない材料を
-    フロントが飛ばす形にする。
+    categorical材料（`highway`等）も含めて返す——並びは軸定義から決まる。
     """
     entries = []
     for share in axis_material_shares(definition, definitions):

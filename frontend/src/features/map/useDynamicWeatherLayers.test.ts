@@ -30,6 +30,8 @@ const FRAME = { basetime: BASETIME, member: "none", validtime: BASETIME };
 const DISASTER_RISK = ["heavyRain", "landslide", "inundation", "flood"];
 const DISASTER_NOWCAST = ["thunder", "tornado", "liden"];
 const PRECIPITATION_EXCEPT_MAIN = ["linearRainband", "linearRainbandArea", "linearRainbandAreaForecast"];
+/** MSMの格子点を取り始めるズーム。 */
+const GRID_ZOOM = mapDisplay.layerDataSources.find((source) => source.key === "msmGrid")!.minZoom!;
 
 const timesPath = (file: string) => `/api/jma-tile/bosai/jmatile/data/${file}`;
 const rows = (...elements: string[]) => [{ ...FRAME, elements }];
@@ -223,8 +225,7 @@ describe("useDynamicWeatherLayers", () => {
         ],
       }),
     );
-    const zoom = mapDisplay.layerDataSources.find((source) => source.key === "msmGrid")!.minZoom!;
-    const viewport = { west: 139.7, south: 35.55, east: 139.9, north: 35.75, zoom, bearing: 0 };
+    const viewport = { west: 139.7, south: 35.55, east: 139.9, north: 35.75, zoom: GRID_ZOOM, bearing: 0 };
 
     const { result, rerender } = render(
       { precipitationNowcast: true, windVector: true },
@@ -275,8 +276,7 @@ describe("useDynamicWeatherLayers", () => {
         ],
       }),
     );
-    const zoom = mapDisplay.layerDataSources.find((source) => source.key === "msmGrid")!.minZoom!;
-    const viewport = { west: 139.7, south: 35.55, east: 139.9, north: 35.74, zoom, bearing: 0 };
+    const viewport = { west: 139.7, south: 35.55, east: 139.9, north: 35.74, zoom: GRID_ZOOM, bearing: 0 };
     const shifted = (deg: number) => ({
       ...viewport,
       west: viewport.west + deg,

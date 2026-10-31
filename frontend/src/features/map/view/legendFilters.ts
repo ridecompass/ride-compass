@@ -33,12 +33,6 @@ export function presentHiddenKeys(legend: readonly { key: string }[], hidden: re
   return hidden.filter((key) => legend.some((entry) => entry.key === key));
 }
 
-/** 保存値を、最初に隠す行の上に重ねる。保存値に無い軸（触ったことの無い軸・あとから届いた層）は最初に隠す行のままにする。
- * 最初に隠す行は軸カタログが届いてから決まるので、保存値を読む時点ではなく使う時点で重ねる。 */
-export function hiddenOverInitial(initial: HiddenLegendKeys, stored: HiddenLegendKeys): HiddenLegendKeys {
-  return { ...initial, ...stored };
-}
-
 /** 保存値のうち、文字列の配列の鍵だけを読む（読めない保存値の例外は`useStoredState`が既定値へ倒す）。 */
 export function deserializeHiddenLegendKeys(raw: string): HiddenLegendKeys | null {
   const parsed: unknown = JSON.parse(raw);

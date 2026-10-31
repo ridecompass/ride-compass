@@ -32,8 +32,8 @@ from app.domain.traffic import stop_count_material_ids
 from app.domain.tuning import TUNING_PARAMETERS_BY_ID, tuning_value
 from app.domain.wind import kmh_to_ms
 
-AIR_DENSITY_KG_M3 = 1.225
-GRAVITY_M_S2 = 9.80665
+_AIR_DENSITY_KG_M3 = 1.225
+_GRAVITY_M_S2 = 9.80665
 
 # 走ってみて決める値（CdA・Crr・質量・速度の上下限・登りの出力の増え方等）は
 # `domain/tuning.py`が宣言し、ここでは読むだけにする。定数として持つと、宣言と二重に
@@ -41,7 +41,7 @@ GRAVITY_M_S2 = 9.80665
 
 # 速度を挟み込む二分法の反復回数。初期区間は押して歩く速度〜速度の上限（`top_speed_kmh`。巡航速度の上限は
 # `domain/route_request.py: MAX_ASSUMED_SPEED_KMH`）で、12回で幅は初期区間の4096分の1（巡航速度が上限でも0.01km/h程度）まで縮む。粗くすると平地・無風で巡航速度に一致しなくなる。
-SPEED_SOLVE_ITERATIONS = 12
+_SPEED_SOLVE_ITERATIONS = 12
 
 #: 区間ごとに速度を変える道と天気の条件の、画面で呼ぶ名前（走行方程式の重力・空気抵抗・転がり抵抗の順）。
 #: 画面の所要時間の説明はこの並びを差し込む。方程式に条件を足したら、ここにも足す。
@@ -99,8 +99,8 @@ class RiderProfile:
 def wheel_power_w(profile: RiderProfile) -> float:
     """平地・無風の巡航速度からホイール出力（W）を逆算する。"""
     speed = profile.cruise_speed_ms
-    drag = 0.5 * AIR_DENSITY_KG_M3 * profile.cda_m2 * speed * speed
-    rolling = profile.crr * profile.mass_kg * GRAVITY_M_S2
+    drag = 0.5 * _AIR_DENSITY_KG_M3 * profile.cda_m2 * speed * speed
+    rolling = profile.crr * profile.mass_kg * _GRAVITY_M_S2
     return (drag + rolling) * speed
 
 
@@ -147,7 +147,7 @@ def _segment_speeds(
         high = highest_ms
         headwind = headwind_ms[i]
         cross_squared = crosswind_ms[i] * crosswind_ms[i]
-        for _ in range(SPEED_SOLVE_ITERATIONS):
+        for _ in range(_SPEED_SOLVE_ITERATIONS):
             middle = (low + high) * half
             along = middle + headwind
             required = (np.sqrt(along * along + cross_squared) * along * drag_coefficient + constant_force[i]) * middle
@@ -178,9 +178,9 @@ class SegmentSpeedModel:
         self._shape = grade.shape
         # JITへ渡す値は型を揃える（配列は`kernel_array`、数はnumpyのfloat32）。
         self._power = kernel_array(climb_power_w(wheel_power_w(profile), grade), np.float32)
-        weight_n = np.float32(profile.mass_kg * GRAVITY_M_S2)
+        weight_n = np.float32(profile.mass_kg * _GRAVITY_M_S2)
         self._constant_force = kernel_array(rolling_crr * weight_n + weight_n * grade, np.float32)
-        self._drag_coefficient = np.float32(0.5 * AIR_DENSITY_KG_M3 * profile.cda_m2)
+        self._drag_coefficient = np.float32(0.5 * _AIR_DENSITY_KG_M3 * profile.cda_m2)
         self._lowest_ms = np.float32(kmh_to_ms(tuning_value("speed.walking_kmh")))
         self._highest_ms = np.float32(kmh_to_ms(top_speed_kmh(profile.cruise_speed_kmh)))
 

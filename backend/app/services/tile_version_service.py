@@ -17,7 +17,7 @@
 相乗りさせ、取得を増やさない）。フロントはタイルURLのクエリへ入れてブラウザのキャッシュを
 分ける。
 
-世代そのものの読み直しは`derived_data_revision_service`が持つ。ここはTTLを持たず、読む前に
+世代そのものの読み直しは`services/derived_data_revision_service.py: current_revisions`が持つ。ここはTTLを持たず、読む前に
 読み直しを促すだけ。
 
 **世代を使う経路（カタログ・タイルの配信）はどれも、読む前に自分で促す。** 促す場所を1つに寄せると、
@@ -29,17 +29,11 @@
 import asyncio
 
 from app.domain.registry import TileKind
-from app.infrastructure.cache_identity import DataRevisions, tile_version
+from app.infrastructure.cache_identity import tile_version
 from app.infrastructure.point_tile_layers import POINT_TILE_LAYERS
 from app.infrastructure.region_tile_cache import prune_other_generations
 from app.infrastructure.road_tile_sql import ROAD_SURFACE_TILE_SHAPE
 from app.services import derived_data_revision_service
-
-
-async def _fresh_revisions(repository) -> DataRevisions | None:
-    """TTLが切れていれば読み直してから、いまの世代を返す。"""
-    await derived_data_revision_service.refresh_current_revisions(repository)
-    return derived_data_revision_service.current_revisions()
 
 
 async def served_tile_version(repository, shape: str) -> str:
@@ -51,7 +45,7 @@ async def served_tile_version(repository, shape: str) -> str:
 
     `repository`はDBの世代を読める口（`get_data_revisions`）。
     """
-    return tile_version(await _fresh_revisions(repository), shape)
+    return tile_version(await derived_data_revision_service.current_revisions(repository), shape)
 
 
 #: 配信するタイルの系統と、その形の署名。フロントが受け取る辞書のキーでもある。点のレイヤーは
@@ -68,7 +62,7 @@ async def current_tile_versions(repository) -> dict[TileKind, str]:
     `repository`はDBの世代を読める口（`get_data_revisions`）。TTLの内側なら
     読み直さないため、リクエストごとに呼んでよい。
     """
-    revisions = await _fresh_revisions(repository)
+    revisions = await derived_data_revision_service.current_revisions(repository)
     return {name: tile_version(revisions, shape) for name, shape in TILE_SHAPES.items()}
 
 

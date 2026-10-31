@@ -12,7 +12,7 @@ from app.domain.strict_model import StrictModel
 
 # 生値のヒストグラムの階級数。フロントが折れ点を当てはめる粒度で、細かすぎても
 # 画面上の意味が増えない。
-HISTOGRAM_BINS = 60
+_HISTOGRAM_BINS = 60
 
 
 class ValueDistribution(StrictModel):
@@ -28,10 +28,10 @@ class ValueDistribution(StrictModel):
     bins: list[tuple[float, float, float]]
 
 
-EMPTY_DISTRIBUTION = ValueDistribution(sample_ways=0, total_km=0.0, quantiles={}, bins=[])
+_EMPTY_DISTRIBUTION = ValueDistribution(sample_ways=0, total_km=0.0, quantiles={}, bins=[])
 
 
-class ValueShare(StrictModel):
+class _ValueShare(StrictModel):
     #: 対応表（`CategoricalShape.mapping`）のキーと同じ綴りの値の名前。
     value: str
     #: その値を持つ道の延長が、値を持つ道の延長の全体に占める割合。
@@ -43,7 +43,7 @@ class ValueShares(StrictModel):
 
     sample_ways: int
     total_km: float
-    shares: list[ValueShare]
+    shares: list[_ValueShare]
 
 
 #: 分位点の名前と比率。名前は応答の`quantiles`の鍵で、生成物（`vocabulary.ts`）がこの並びで画面へ届ける。
@@ -65,7 +65,7 @@ def weighted_quantiles(
 def weighted_distribution(pairs: list[tuple[float, float]]) -> ValueDistribution:
     """`(長さm, 値)`から延長で重み付けた分布を組み立てる。"""
     if not pairs:
-        return EMPTY_DISTRIBUTION
+        return _EMPTY_DISTRIBUTION
     lengths, values = np.asarray(pairs, dtype=float).T
     total_m = float(lengths.sum())
     quantiles = weighted_quantiles(pairs, QUANTILE_TARGETS, digits=3)
@@ -78,15 +78,12 @@ def weighted_distribution(pairs: list[tuple[float, float]]) -> ValueDistribution
     # 上端の外れ値でヒストグラムが潰れないよう、p99の少し上までを描画範囲にする
     # （下端側は分位を持たないためデータ下端をそのまま使う）。
     upper = quantiles["p99"] * 1.2 if quantiles["p99"] > 0 else max(0.0, float(values.max()))
-    span = upper - lower
-    if span <= 0:
-        # 全サンプルが同じ値（かつ0）のとき。幅0だと除算できないため名目上の1を置く。
-        span = 1.0
-    width = span / HISTOGRAM_BINS
+    # 全サンプルが0のときは幅0で除算できないため、名目上の1を置く。
+    width = ((upper - lower) or 1.0) / _HISTOGRAM_BINS
     # 描画範囲の外（p99の上の外れ値）は端の階級へ寄せる。捨てると割合の合計が1に満たない。
-    indices = np.clip(((values - lower) / width).astype(int), 0, HISTOGRAM_BINS - 1)
-    buckets = np.bincount(indices, weights=lengths, minlength=HISTOGRAM_BINS)
-    edges = lower + np.arange(HISTOGRAM_BINS + 1) * width
+    indices = np.clip(((values - lower) / width).astype(int), 0, _HISTOGRAM_BINS - 1)
+    buckets = np.bincount(indices, weights=lengths, minlength=_HISTOGRAM_BINS)
+    edges = lower + np.arange(_HISTOGRAM_BINS + 1) * width
     bins = [
         (round(float(low), 4), round(float(high), 4), round(float(b) / total_m, 5))
         for low, high, b in zip(edges[:-1], edges[1:], buckets, strict=True)
@@ -120,7 +117,7 @@ def weighted_value_shares(pairs: list[tuple[float, object]]) -> ValueShares:
         sample_ways=len(pairs),
         total_km=round(total_m / 1000, 1),
         shares=[
-            ValueShare(value=key, share=round(length_m / total_m, 5))
+            _ValueShare(value=key, share=round(length_m / total_m, 5))
             for key, length_m in sorted(lengths.items(), key=lambda item: (-item[1], item[0]))
         ],
     )
