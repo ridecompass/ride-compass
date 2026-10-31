@@ -69,32 +69,28 @@ export const POINT_GLYPHS: Record<PointGlyph, PointGlyphShape> = {
   mountain: { line: "M2.5 19L9 8l4 6.5L15.5 11l6 8Z" },
   bed: { line: "M3 7v12 M3 15h18v4 M21 15v-3a3 3 0 0 0-3-3h-7v6 M7 12h.01" },
   gate: { line: "M3 6c6 1 12 1 18 0 M5 10h14 M7 6.5V21 M17 6.5V21" },
-  // 横長の信号機（青・黄・赤）。
+  // 両端の丸い横長の信号機（青・黄・赤）。押せる点の角丸四角と形で見分けるよう、四角い箱にしない。
   signal: {
     sign: [
       {
-        d: "M4.2 6h15.6a3.6 3.6 0 0 1 3.6 3.6v4.8a3.6 3.6 0 0 1-3.6 3.6H4.2a3.6 3.6 0 0 1-3.6-3.6V9.6A3.6 3.6 0 0 1 4.2 6Z",
+        d: "M6 6.4h12a5.6 5.6 0 0 1 0 11.2H6a5.6 5.6 0 0 1 0-11.2Z",
         fill: SIGN.sign_ink,
         stroke: SIGN.sign_face,
         width: 1.2,
       },
-      { d: circle(5.4, 12, 2.9), fill: SIGN.signal_go },
+      { d: circle(6, 12, 2.9), fill: SIGN.signal_go },
       { d: circle(12, 12, 2.9), fill: SIGN.signal_caution },
-      { d: circle(18.6, 12, 2.9), fill: SIGN.signal_stop },
+      { d: circle(18, 12, 2.9), fill: SIGN.signal_stop },
     ],
   },
-  // 青い四角に白い縞（横断歩道の指示標識）。
+  // 路面の白黒の縞（横断歩道）。押せる点の角丸四角と形で見分けるよう、囲む四角を持たない。
   crosswalk: {
     sign: [
       {
-        d: "M4.8 1.2h14.4a3.6 3.6 0 0 1 3.6 3.6v14.4a3.6 3.6 0 0 1-3.6 3.6H4.8a3.6 3.6 0 0 1-3.6-3.6V4.8a3.6 3.6 0 0 1 3.6-3.6Z",
-        fill: SIGN.sign_instruction,
-        stroke: SIGN.sign_face,
-        width: 1.2,
-      },
-      {
-        d: "M4.2 6h2.4v12H4.2Z M8.52 6h2.4v12h-2.4Z M12.84 6h2.4v12h-2.4Z M17.16 6h2.4v12h-2.4Z",
+        d: "M2.6 4h3.4v16H2.6Z M7.9 4h3.4v16H7.9Z M13.2 4h3.4v16h-3.4Z M18.5 4h3.4v16h-3.4Z",
         fill: SIGN.sign_face,
+        stroke: SIGN.sign_ink,
+        width: 1.3,
       },
     ],
   },

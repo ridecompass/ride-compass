@@ -168,7 +168,6 @@ SEMANTIC_COLORS: dict[str, str] = {
     # 停止要因の点の絵。日本の道路標識・信号機の色に寄せ、何の点かを形と色で直感的に読ませる（点の区分の色とは別）。
     "sign_regulatory": "#d8262e",
     "sign_regulatory_text": "#1a3c8c",
-    "sign_instruction": "#1f5fbf",
     "sign_warning": "#f5c518",
     "sign_ink": "#222222",
     "sign_face": "#ffffff",
