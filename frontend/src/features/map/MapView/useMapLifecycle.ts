@@ -155,9 +155,8 @@ export function useMapLifecycle(
       layerDataStatusRef.current.settleViewport();
       reportViewport();
     }
-    // 読み込み済みになった直後の一瞬は地物がまだ引けず、そこで数えると「空」に確定しうるため、"idle"でも数え直す。
-    // "idle"では取得失敗を解除しない（settleViewportを呼ばない）——範囲が変わらなくても来るうえ、失敗したタイルも
-    // 「読み込み済み」に数えられるため、続いている障害を「データなし」に化けさせる。
+    // 読み込み済みになった直後の一瞬は地物がまだ引けず、そこで数えると「空」に確定しうるため、"idle"でも数え直す（取得失敗の印は
+    // 外さない。`useLayerDataStatus.ts: settleViewport`）。
     function handleIdleRecompute() {
       layerDataStatusRef.current.recompute();
     }

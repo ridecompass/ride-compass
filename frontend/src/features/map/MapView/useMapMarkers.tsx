@@ -42,22 +42,17 @@ function addPointMarker(
     const lngLat = marker.getLngLat();
     handlers.onMove({ latitude: lngLat.lat, longitude: lngLat.lng });
   });
-  bindMarkerClick(element, handlers.onPress);
+  // 押しを受けた（true）ときは地図へ通さない。受けなければ地図へ通し、印の下の物を地図の押しとして開かせる（印は地図の器の中に
+  // あり、止めなければ地図の押しになる）。つかんで動かした終わりの押しは、MapLibre の`Marker`が動かす間印に押しを当てないので来ない。
+  element.addEventListener("click", (event) => {
+    if (handlers.onPress()) event.stopPropagation();
+  });
   return marker;
 }
 
 /** 動かせる間はつかめる形。動かせない間、ピンは押せる物に数えない（位置と呼び名以上の情報を持たない）ので押せる形にしない。 */
 function pinCursor(editable: boolean): string {
   return editable ? "grab" : "default";
-}
-
-/** 印を押したとき。`onClick`が押しを受けた（true）ときは地図へ通さない。受けなければ地図へ通し、印の下の物を地図の押しとして
- * 開かせる（印は地図の器の中にあり、止めなければ地図の押しになる）。つかんで動かした終わりの押しは、MapLibre の`Marker`が動かす間
- * 印に押しを当てないので来ない。 */
-function bindMarkerClick(element: HTMLElement, onClick: () => boolean): void {
-  element.addEventListener("click", (event) => {
-    if (onClick()) event.stopPropagation();
-  });
 }
 
 interface MapMarkersInputs {
@@ -94,7 +89,7 @@ export function useMapMarkers(
   const [waypointMarks, setWaypointMarks] = useState<HTMLDivElement[]>([]);
   const [destinationMark, setDestinationMark] = useState<HTMLDivElement | null>(null);
   // 印の操作（作ったときに一度だけ結ぶ）が、いまのpropsを読むための参照。
-  const latestProps = { pointsEditable, location, waypoints, destination, ...handlers };
+  const latestProps = { pointsEditable, ...handlers };
   const latest = useRef(latestProps);
   useEffect(() => {
     latest.current = latestProps;

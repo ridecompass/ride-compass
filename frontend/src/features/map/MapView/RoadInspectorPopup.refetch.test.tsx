@@ -9,19 +9,20 @@ import { describe, expect, it } from "vitest";
 import { AXES, AXIS_COLORS, inspectorResult, openEvaluation, RIDE, serveInspector } from "@/testing/roadInspector";
 import RoadInspectorPopup from "./RoadInspectorPopup";
 
+const props = {
+  properties: { osm_way_id: 1, feature_key: "1" },
+  track: null,
+  axes: AXES,
+  axisColors: AXIS_COLORS,
+  ...RIDE,
+};
+
 describe("評価の重み", () => {
   const WEIGHTS = { axis_sample: 0, night: 1 };
 
   it("重みを変えたら、前の重みで取った評価を見せずに取り直しへ戻る", async () => {
     const user = userEvent.setup();
     serveInspector(inspectorResult());
-    const props = {
-      properties: { osm_way_id: 1, feature_key: "1" },
-      track: null,
-      axes: AXES,
-      axisColors: AXIS_COLORS,
-      ...RIDE,
-    };
     const { rerender } = render(<RoadInspectorPopup {...props} routePreference={WEIGHTS} />);
     await openEvaluation(user);
     await screen.findByRole("region", { name: "難易度" });
@@ -35,13 +36,6 @@ describe("評価の重み", () => {
 
 describe("評価の走行の条件", () => {
   const CONDITIONS = RIDE.conditions;
-  const props = {
-    properties: { osm_way_id: 1, feature_key: "1" },
-    track: null,
-    axes: AXES,
-    axisColors: AXIS_COLORS,
-    ...RIDE,
-  };
 
   it("開いている間に出発時刻が進んでも、押したときの条件で取った評価を出し続ける", async () => {
     const user = userEvent.setup();
