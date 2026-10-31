@@ -231,7 +231,7 @@ localStorageキーは`ridecompass:route-style-mode`。今のカタログに無�
 境界の判定は`>= lower`・`< upper`のため、最上位帯は「以上」であって「超」ではない。
 - `routeStyleModes.ts: DIFFICULTY_MODE`（総合難易度）だけがフロントの固定モード——特定のaxis_idに紐づかず
   全軸の重み付き合成コストそのものを表示するため、軸スタジオと同期する対象にならない。
-- 既定のモード（`view/lens.ts: DEFAULT_ROUTE_STYLE_MODE_ID`）は総合難易度。
+- 既定のモード（`lib/mapDisplay/routeStyleModes.ts: LENS_DIFFICULTY_ID`）は総合難易度。
 - **候補は地図では選ばない**: 未選択候補の線（役割`candidateLine`、細い参考線）は当たり判定を
   持たず、押すと下の道の詳細が開く。候補の切り替えは一覧のタブだけで行う——複数の候補が同じ道を
   通る所で、区間の詳細を見ようとして別の候補へ切り替わらないようにする。ルートの当たり判定は

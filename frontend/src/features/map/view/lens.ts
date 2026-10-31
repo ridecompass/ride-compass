@@ -11,12 +11,8 @@ import {
 } from "@/lib/mapDisplay/mapColorLegend";
 import { valueBands } from "@/lib/mapDisplay/valueScale";
 import type { LegendEntry } from "@/lib/mapDisplay/legendFilter";
-import {
-  LENS_DIFFICULTY_ID,
-  LENS_NEUTRAL_COLOR,
-  type LensId,
-  type RouteStyleMode,
-} from "@/lib/mapDisplay/routeStyleModes";
+import { LENS_NEUTRAL_COLOR, type LensId, type RouteStyleMode } from "@/lib/mapDisplay/routeStyleModes";
+import type { MapAxisCatalog } from "@/features/map/mapAxisCatalog";
 import type { LensOption } from "@/features/map/LensControl/LensRow";
 import { evaluationConditions, type CatalogAxis } from "@/lib/catalogAxis";
 
@@ -51,10 +47,7 @@ export function lensPremises(paintedAxis: LensId | null, axes: readonly CatalogA
 export function lensLegend(
   lens: LensId,
   hasDetail: boolean,
-  catalog: {
-    routeStyleModes: readonly RouteStyleMode[];
-    dedicatedAxes: readonly DedicatedWayValueAxis[];
-  },
+  catalog: Pick<MapAxisCatalog, "routeStyleModes" | "dedicatedAxes">,
 ): readonly LegendEntry[] {
   if (hasDetail) return catalog.routeStyleModes.find((mode) => mode.id === lens)?.legend ?? [];
   const axis = catalog.dedicatedAxes.find((candidate) => candidate.axisId === lens);
@@ -91,9 +84,6 @@ function dedicatedWayValueLegend(axis: DedicatedWayValueAxis): MapColorLegendBan
   const bands = valueBands(axis.display).map(({ key, label, color }) => ({ key, label, color }));
   return [...bands, ...(axis.undeterminedByBearing ? [UNDETERMINED_LEGEND_BAND] : []), NO_DATA_LEGEND_BAND];
 }
-
-// 既定のレンズは総合難易度（軸の公開状態に依存せず常に存在するモード）。
-export const DEFAULT_ROUTE_STYLE_MODE_ID: LensId = LENS_DIFFICULTY_ID;
 
 export function isRouteStyleModeId(
   modes: readonly RouteStyleMode[],

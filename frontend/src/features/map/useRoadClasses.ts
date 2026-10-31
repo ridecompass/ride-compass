@@ -13,7 +13,7 @@ import type { MapViewport } from "@/features/map/view/mapLook";
 import { MAP_FETCH_DEBOUNCE_MS, useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { getQueryClient } from "@/lib/queryClient";
 
-export interface RoadClassesFetch {
+interface RoadClassesFetch {
   /** 届いたタイルの道ごとの層の値。 */
   values: RoadClassValues;
   /** 表示中のタイルのどれかを取っている最中か。 */
