@@ -474,7 +474,7 @@ idのまま出す。書き込み時のガード・削除の断り（下の「書
   軸参照で合成する。
   参照材料の導出は`AxisDefinition.materials`と同じ`referenced_materials`
   （`domain/axis_definitions.py`）を使い、**shapeの種別を問わず`priority_overrides`が
-  参照する材料も含める**。動的軸かどうかを判定する`_axes_depending_on_materials`が
+  参照する材料も含める**。動的軸かどうかを判定する`domain/axis_definitions.py: dynamic_axis_topological_order`が
   同じ導出を根拠にしているため、検証側だけ`shape.terms`に絞ると素通りした軸が実行時に落ちる。
 - 密度の軸（`domain/axis_definitions.py: averages_density`。1kmあたりの回数・件数の材料`MaterialSpec.additive`だけを
   項に持ち、前処理の無い軸）の折れ点は、(0, 0)ともう1点の2つに限る（点数は回数に比例し、もう1点より先はその点数で

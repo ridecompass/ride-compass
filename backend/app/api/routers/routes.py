@@ -57,14 +57,10 @@ _running_generate_tasks: set[asyncio.Task] = set()
 
 
 class RoutePreferenceWeights(RootModel[dict[str, float]]):
-    """Edge評価・区間難易度（絶対評価、難易度合成）の重み。
-    キーはaxis_id（`domain/axis_definitions.py: AXIS_DEFINITIONS`）で、
-    `domain/route_preference.py: RoutePreference`と同じ。
+    """Edge評価・区間難易度（絶対評価、難易度合成）の重み。キーはaxis_id。
 
-    軸ごとの固定フィールドではなくaxis_idキーの辞書にすることで、軸の増減でこのモデルの
-    改修が不要になる。API境界では「キー省略時に既定値が黙って入る」ことを避けるため、
-    公開軸のaxis_idを全部明示することを検証で強制する（上書きするなら全軸を明示する、
-    という方針）。値の不変条件（公開軸のidだけ・有限かつ非負）は`check_axis_weights`。
+    「キー省略時に既定値が黙って入る」ことを避けるため、公開軸のaxis_idを全部明示することを
+    検証で強制する。値の不変条件（公開軸のidだけ・有限かつ非負）は`check_axis_weights`。
     """
 
     @model_validator(mode="after")

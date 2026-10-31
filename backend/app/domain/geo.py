@@ -111,17 +111,17 @@ def compass_label(bearing_deg: float) -> str:
     画面も同じ角度を名付けるので、境界を含む入力とこの関数の答えを
     `scripts/cross_language_expectations.py: geo_expectations`が表にして配り、画面のテストが通す。
     """
-    return COMPASS_LABELS[bearing_sector(bearing_deg, len(COMPASS_LABELS))]
+    return COMPASS_LABELS[_bearing_sector(bearing_deg, len(COMPASS_LABELS))]
 
 
-def bearing_sector(bearing_deg: float, count: int) -> int:
+def _bearing_sector(bearing_deg: float, count: int) -> int:
     """任意の角度（0=北、時計回り）を、北を中心にした`count`等分の区分の番号（0〜count-1）へ丸める。
     境界は上の区分へ倒す（組み込みの`round`は偶数丸めで、境界の区分の幅が揃わない）。"""
     return math.floor((bearing_deg % 360) / (360 / count) + 0.5) % count
 
 
 def compass_degrees(bearing_deg: float) -> int:
-    """方位（度）を応答に載せる桁（0〜359の整数の度）へ丸める。境目は`bearing_sector`と同じく上へ倒す。"""
+    """方位（度）を応答に載せる桁（0〜359の整数の度）へ丸める。境目は`_bearing_sector`と同じく上へ倒す。"""
     return math.floor(bearing_deg + 0.5) % 360
 
 

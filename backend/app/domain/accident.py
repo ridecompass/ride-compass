@@ -21,7 +21,7 @@ class PartyType(StrEnum):
 
 
 #: 自転車関連事故とみなす当事者種別。軽車両－その他（手押し車等）は自転車ではないため含めない。
-BICYCLE_PARTY_TYPES: frozenset[PartyType] = frozenset({PartyType.BICYCLE, PartyType.POWER_ASSISTED_BICYCLE})
+_BICYCLE_PARTY_TYPES: frozenset[PartyType] = frozenset({PartyType.BICYCLE, PartyType.POWER_ASSISTED_BICYCLE})
 
 
 # --- 生データの列から判定する式 -----------------------------------------------
@@ -32,7 +32,7 @@ BICYCLE_PARTY_TYPES: frozenset[PartyType] = frozenset({PartyType.BICYCLE, PartyT
 
 FATAL_SQL = "coalesce(a.deaths, 0) > 0"
 
-_BICYCLE_PARTY_LIST = sql_literals(sorted(BICYCLE_PARTY_TYPES))
+_BICYCLE_PARTY_LIST = sql_literals(sorted(_BICYCLE_PARTY_TYPES))
 #: 当事者のどちらかが自転車なら自転車関連事故とみなす式。
 BICYCLE_SQL = f"(a.party_type_a IN ({_BICYCLE_PARTY_LIST}) OR a.party_type_b IN ({_BICYCLE_PARTY_LIST}))"
 
