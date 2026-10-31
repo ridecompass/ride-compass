@@ -129,3 +129,28 @@ test("走行モードの間、地図は届いた位置を同じ所に描き続�
   expect(Math.hypot(after!.x - before.x, after!.y - before.y)).toBeLessThan(1);
   expect(await dotOffsetFrom(page, lastRidden)).toBeLessThan(2);
 });
+
+test("走行モードで寄せている最中に地図の幅が変わっても、届いた位置は次に届いた位置と同じ所に描かれる", async ({
+  page,
+  context,
+}) => {
+  await installApiMocks(page);
+  await context.setGeolocation(START);
+  await seedStoredState(page, INTRO_CLOSED);
+  await page.addInitScript(installMapFinder);
+  await page.goto("/");
+  await expect(page.getByText("地図を読み込み中…")).toBeHidden({ timeout: 15_000 });
+  await page.getByRole("button", { name: "走行モード" }).click();
+  await settledScreenPoint(page, START);
+
+  // 走り出すと左のパネルが消えて地図が広がり、最初の位置へ寄せる最中に地図の大きさが変わりうる。
+  const whileResizing = moved(START, 0, 200);
+  await deliverPosition(page, context, whileResizing);
+  expect(await page.evaluate(() => window.__liveMap().isMoving())).toBe(true);
+  const viewport = page.viewportSize()!;
+  await page.setViewportSize({ width: viewport.width - 300, height: viewport.height });
+  const drawn = await settledScreenPoint(page, whileResizing);
+  const next = moved(whileResizing, 0, 200);
+  await deliverPosition(page, context, next);
+  await expectDrawnAt(page, next, drawn);
+});
