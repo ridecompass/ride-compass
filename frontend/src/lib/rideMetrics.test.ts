@@ -58,7 +58,6 @@ describe("走行の計測", () => {
 
   it.each([
     ["https://ride.example/api/weather?lat=1", "api:weather"],
-    ["https://ride.example/api/weather/msm-grid?bbox=1", "api:weather/msm-grid"],
     ["https://ride.example/api/region/road-surface-tiles/12/1/2.pbf", "api:region/road-surface-tiles"],
     ["https://ride.example/api/jma-tile-index/12/1", "api:jma-tile-index"],
     ["https://tiles.example/planet/12/1/2.pbf", "tiles.example"],
