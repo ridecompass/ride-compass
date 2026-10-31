@@ -7128,6 +7128,10 @@
       },
       "TimelineKindLevels": {
         "properties": {
+          "advisory_label": {
+            "type": "string",
+            "title": "Advisory Label"
+          },
           "slots": {
             "items": {
               "$ref": "#/components/schemas/TimelineSlotLevel"
@@ -7146,6 +7150,7 @@
         "additionalProperties": false,
         "type": "object",
         "required": [
+          "advisory_label",
           "slots",
           "additions"
         ],
