@@ -1,14 +1,7 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type BrowserContext, type Page } from "@playwright/test";
 import { moved } from "@/testing/movedPoint";
 
-import {
-  INTRO_CLOSED,
-  MAIN_MAP_CANVAS,
-  MOBILE_VIEWPORT,
-  installApiMocks,
-  installMapFinder,
-  seedStoredState,
-} from "./fixtures";
+import { MAIN_MAP_CANVAS, MOBILE_VIEWPORT, openMapApp } from "./fixtures";
 import { START, deliverPosition, expectDrawnAt, settledScreenPoint, settledZoom } from "./rideMap";
 
 // 2本指でつまむ・広げる操作は、MapLibre が先に指の重心のずれを移動として受け、倍率が変わるのはそのあとになり、指がひねれば
@@ -26,20 +19,13 @@ test.describe("タッチ端末", () => {
     // 誤差の内の動きは地図へ流れないので、誤差を小さくし、それを超える数mずつの動きで届ける。動きは時速15km（倍率に速さの
     // 引きが混ざり始める速さ。`rideZoom.ts: RIDE_ZOOM_SLOW_KMH`）に届かない遅さに保つ。
     const at = (point: { latitude: number; longitude: number }) => ({ ...point, accuracy: 1 });
-    await installApiMocks(page);
-    await context.setGeolocation(at(START));
-    await seedStoredState(page, INTRO_CLOSED);
-    await page.addInitScript(installMapFinder);
-    await page.goto("/");
-    await expect(page.getByText("地図を読み込み中…")).toBeHidden({ timeout: 15_000 });
+    await openMapApp(page, { routes: () => context.setGeolocation(at(START)) });
     await page.getByRole("button", { name: "走行モード" }).click();
     const anchor = await settledScreenPoint(page, START);
     const zoom = () => page.evaluate(() => window.__liveMap().getZoom());
     const backToHere = page.getByRole("button", { name: "現在地へ戻る" });
 
-    // 走っている間は拡大・縮小の代わりに倍率のボタンを出し、押すたびに中→遠→近→中と基準の倍率を替える（速さ0なので引かない）。
-    await expect(page.getByRole("button", { name: "拡大" })).toBeHidden();
-    await expect(page.getByRole("button", { name: "縮小" })).toBeHidden();
+    // 走っている間の倍率のボタンは、押すたびに中→遠→近→中と基準の倍率を替える（速さ0なので引かない）。
     const zoomButton = page.getByRole("button", { name: /^倍率/ });
     expect(await settledZoom(page)).toBeCloseTo(17, 2);
     for (const expected of [15, 18, 17]) {
@@ -50,11 +36,7 @@ test.describe("タッチ端末", () => {
     await expect(backToHere).toBeHidden();
     const followedZoom = await zoom();
 
-    const client = await context.newCDPSession(page);
-    const touch = (type: "touchStart" | "touchMove", points: { x: number; y: number }[]) =>
-      client.send("Input.dispatchTouchEvent", { type, touchPoints: points.map((p, id) => ({ ...p, id })) });
-    const canvas = (await page.locator(MAIN_MAP_CANVAS).boundingBox())!;
-    const center = { x: canvas.x + canvas.width / 2, y: canvas.y + canvas.height / 2 };
+    const { touch, release, center, dragOneFinger } = await fingersOnMap(page, context);
     const fingers = (gap: number, dx: number, turnDeg: number) => {
       const [x, y] = [Math.cos((turnDeg * Math.PI) / 180) * (gap / 2), Math.sin((turnDeg * Math.PI) / 180) * (gap / 2)];
       return [
@@ -78,7 +60,7 @@ test.describe("タッチ端末", () => {
       await touch("touchMove", fingers(gapAt(step), 6, turnAt(step)));
     // 指を離すと北が上へ寄せ直すので、回っていないことは指を置いたまま見る。
     expect(await page.evaluate(() => window.__liveMap().getBearing())).toBeCloseTo(0, 1);
-    await client.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    await release();
 
     // 指を離したあとの慣性で倍率がどれだけ進むかは指の動きの速さで変わるので、落ち着いた倍率を読む。つまむ前の倍率へ
     // 戻していれば、つまんだ分（log2(3) 段から、拡大・縮小と見なすまでの遊びを引いた分）だけ下がっていない。
@@ -96,17 +78,15 @@ test.describe("タッチ端末", () => {
     // 1本指でたたいてから触れたまま滑らせる拡大・縮小でも休まない。
     const beforeTapDrag = await zoom();
     await touch("touchStart", [center]);
-    await client.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    await release();
     await touch("touchStart", [center]);
     for (let step = 1; step <= 10; step += 1) await touch("touchMove", [{ x: center.x, y: center.y + step * 10 }]);
-    await client.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    await release();
     expect(Math.abs((await settledZoom(page)) - beforeTapDrag)).toBeGreaterThan(0.5);
     await expect(backToHere).toBeHidden();
 
     // 1本指で動かすと休む。
-    await touch("touchStart", [center]);
-    for (let step = 1; step <= 10; step += 1) await touch("touchMove", [{ x: center.x - step * 10, y: center.y }]);
-    await client.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    await dragOneFinger();
     await expect(backToHere).toBeVisible();
   });
 
@@ -118,29 +98,14 @@ test.describe("タッチ端末", () => {
     browserName,
   }) => {
     test.skip(browserName !== "chromium", "指ごとのタッチの列はCDP（Chromiumだけの口）でしか送れない");
-    await installApiMocks(page);
-    await context.setGeolocation({ ...START, accuracy: 50 });
-    await seedStoredState(page, INTRO_CLOSED);
-    await page.addInitScript(installMapFinder);
-    await page.goto("/");
-    await expect(page.getByText("地図を読み込み中…")).toBeHidden({ timeout: 15_000 });
+    await openMapApp(page, { routes: () => context.setGeolocation({ ...START, accuracy: 50 }) });
     await page.getByRole("button", { name: "走行モード" }).click();
     const anchor = await settledScreenPoint(page, START);
     const zoom = await settledZoom(page);
     const backToHere = page.getByRole("button", { name: "現在地へ戻る" });
     await page.getByRole("button", { name: "ロック" }).click();
 
-    const client = await context.newCDPSession(page);
-    const touch = (type: "touchStart" | "touchMove", points: { x: number; y: number }[]) =>
-      client.send("Input.dispatchTouchEvent", { type, touchPoints: points.map((p, id) => ({ ...p, id })) });
-    const release = () => client.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
-    const canvas = (await page.locator(MAIN_MAP_CANVAS).boundingBox())!;
-    const center = { x: canvas.x + canvas.width / 2, y: canvas.y + canvas.height / 2 };
-    const dragOneFinger = async () => {
-      await touch("touchStart", [center]);
-      for (let step = 1; step <= 10; step += 1) await touch("touchMove", [{ x: center.x - step * 10, y: center.y }]);
-      await release();
-    };
+    const { touch, release, center, dragOneFinger } = await fingersOnMap(page, context);
 
     await dragOneFinger();
     for (let step = 0; step <= 10; step += 1) {
@@ -165,3 +130,19 @@ test.describe("タッチ端末", () => {
     await expect(backToHere).toBeVisible();
   });
 });
+
+/** 地図のcanvasの中心へ、指ごとのタッチ（CDP）を送る口。 */
+async function fingersOnMap(page: Page, context: BrowserContext) {
+  const client = await context.newCDPSession(page);
+  const touch = (type: "touchStart" | "touchMove", points: { x: number; y: number }[]) =>
+    client.send("Input.dispatchTouchEvent", { type, touchPoints: points.map((p, id) => ({ ...p, id })) });
+  const release = () => client.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  const canvas = (await page.locator(MAIN_MAP_CANVAS).boundingBox())!;
+  const center = { x: canvas.x + canvas.width / 2, y: canvas.y + canvas.height / 2 };
+  const dragOneFinger = async () => {
+    await touch("touchStart", [center]);
+    for (let step = 1; step <= 10; step += 1) await touch("touchMove", [{ x: center.x - step * 10, y: center.y }]);
+    await release();
+  };
+  return { touch, release, center, dragOneFinger };
+}

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { INTRO_CLOSED, installApiMocks, openMobileApp, openMobileSheet, seedStoredState } from "./fixtures";
+import { openMapApp, openMobileApp, openMobileSheet } from "./fixtures";
 import { WIDTHS } from "./states";
 
 // 地図の右の列（拡大・縮小か走行中の倍率から、走行モードまで）のボタンが、ほかの部品の下に潜らず押せ、継ぎ目の間隔が揃うこと（パターン4 観点1）。
@@ -65,24 +65,19 @@ test("スマホ: ルート設定のシートを開いても、地図の右の列
   page,
 }) => {
   await openMobileApp(page);
-  await expect(page.getByText("地図を読み込み中…")).toBeHidden({ timeout: 15_000 });
   await openMobileSheet(page, "ルート設定");
   await expectColumnSound(page, NOT_RIDING);
 });
 
 test("PC: 地図の右の列のボタンはほかの部品の下に潜らず、継ぎ目の間隔が揃う", async ({ page }) => {
-  await installApiMocks(page);
   await page.setViewportSize(WIDTHS.desktop);
-  await seedStoredState(page, INTRO_CLOSED);
-  await page.goto("/");
-  await expect(page.getByText("地図を読み込み中…")).toBeHidden({ timeout: 15_000 });
+  await openMapApp(page);
   await expectColumnSound(page, NOT_RIDING);
 });
 
 // 走行モードの間は、拡大・縮小の代わりに倍率のボタン1つを方位磁針の上に置き、その下に走行モードのボタンを積む。
 test("スマホ: 走行モードの間も、地図の右の列のボタンはほかの部品の下に潜らず、継ぎ目の間隔が揃う", async ({ page }) => {
   await openMobileApp(page);
-  await expect(page.getByText("地図を読み込み中…")).toBeHidden({ timeout: 15_000 });
   await page.getByRole("button", { name: "走行モード" }).click();
   await expect(page.getByRole("button", { name: /^倍率/ })).toBeVisible();
   await expectColumnSound(page, { head: [], compass: "進む向きを上にする（いまは北が上）", stacked: 1 });
@@ -94,7 +89,6 @@ test("スマホ: ルート設定のシートを開いたまま「表示」の一
   page,
 }) => {
   await openMobileApp(page);
-  await expect(page.getByText("地図を読み込み中…")).toBeHidden({ timeout: 15_000 });
   const sheet = await openMobileSheet(page, "ルート設定");
   await page.getByRole("button", { name: "地図に出す情報", exact: true }).click();
   const last = page
