@@ -34,22 +34,20 @@ class FakeRepository:
 async def test_second_call_within_ttl_does_not_read_db():
     # TTL内は問い合わせない。ここが効かないと、タイルの世代を配るたびにDB往復が1回増える。
     repository = FakeRepository(7)
-    await derived_data_revision_service.refresh_current_revisions(repository)
+    await derived_data_revision_service.current_revisions(repository)
 
     repository.revision = 8
-    await derived_data_revision_service.refresh_current_revisions(repository)
 
-    assert derived_data_revision_service.current_revisions() == DataRevisions(derived=7, imported=3)
+    assert await derived_data_revision_service.current_revisions(repository) == DataRevisions(derived=7, imported=3)
 
 
 
 async def test_unreadable_db_keeps_the_last_revisions(monotonic_clock):
     # DBの一時的な断で例外を送り出すと、タイルの世代を決める経路ごとタイルの配信が止まる。
     repository = FakeRepository(7)
-    await derived_data_revision_service.refresh_current_revisions(repository)
+    await derived_data_revision_service.current_revisions(repository)
 
     repository.error = OSError("connection refused")
     monotonic_clock.advance(settings.derived_data_revision_check_interval_seconds)
-    await derived_data_revision_service.refresh_current_revisions(repository)
 
-    assert derived_data_revision_service.current_revisions() == DataRevisions(derived=7, imported=3)
+    assert await derived_data_revision_service.current_revisions(repository) == DataRevisions(derived=7, imported=3)

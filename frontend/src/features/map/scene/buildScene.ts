@@ -4,7 +4,7 @@
  * 表示・絞り込みが1箇所で決まる（家族を1つ足すのは、下の並びへ1行足すこと）。
  *
  * 受け取るのは**実行時にしか決まらない値だけ**——タイルの配信先と世代・取得した中身・
- * 表示ON/OFF・凡例で隠した行・実行時に増える軸。見た目の値は各グループが持つ。
+ * 表示ON/OFF・凡例で隠した行・実行時に増える軸。
  */
 import type { MapScene } from "./mapScene";
 import { composeScene, type SceneGroup } from "./mapSceneGroups";

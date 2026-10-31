@@ -12,7 +12,7 @@ from app.domain.strict_model import StrictModel
 
 #: 一次属性の値が載る図形。線=道の一部、点=地点、面=空間に広がる値。
 #: **地図へ出すかどうかはこれとは別で、画面側が決める**（点である交差点は出していない）。
-PrimaryAttributeGeometry = Literal["line", "point", "area"]
+_PrimaryAttributeGeometry = Literal["line", "point", "area"]
 
 #: DBから焼いて配るタイルの系統。配信のパス・世代の表（`services/tile_version_service.py: TILE_SHAPES`）・
 #: ディスクの鍵・点のレイヤーの名前（`infrastructure/point_tile_layers.py`）が、この名前でつながる。
@@ -106,7 +106,7 @@ class PrimaryAttributeSpec(StrictModel):
     attr_id: str
     #: 空を許すと、地図チップ・サイドバーが名前を引けない属性を登録できてしまう。
     label: str = Field(min_length=1)
-    geometry: PrimaryAttributeGeometry
+    geometry: _PrimaryAttributeGeometry
     display_axes: tuple[DisplayAxisSpec, ...] = ()
     #: 点を押したときに区分の行に続けて出す事実。値がその点に無ければ出さない。
     point_facts: tuple[PointFactSpec, ...] = ()

@@ -124,7 +124,7 @@ class JmaTileClient:
     async def store(self, path: str, content: bytes, content_type: str) -> tuple[bytes, str] | UpstreamNotFound:
         """上流フェッチを伴わずに生成したタイルをキャッシュへ書き戻す。
 
-        奇数ズームの補間結果（`services/jma_tile_interpolation_service.py: interpolated_tile`）のように、上流に実体が無く
+        奇数ズームの補間結果（`services/jma_tile_proxy_service.py: proxied_tile`）のように、上流に実体が無く
         アプリ側で組み立てたタイルを、次回以降そのまま返せるようにするための入口。
         書き込み先は`fetch`と同じ（`targetTimes*.json`はプロセス内、それ以外はRedis）。
         戻り値は、次に`get_cached`が返すのと同じ形（中身が空なら`UPSTREAM_NOT_FOUND`）。

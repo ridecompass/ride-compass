@@ -59,7 +59,7 @@ from app.domain.wind import WIND_DIRECTION_LEAF, WIND_SPEED_LEAF
 from app.services.dedicated_way_values import AxisWayValueLens
 from app.services.weather_service import WeatherService
 from app.main import app
-from app.domain.landcover import LANDCOVER_TILE_MAX_ZOOM, LANDCOVER_TILE_MIN_ZOOM
+from app.domain.landcover import LANDCOVER_TILE_MAX_ZOOM
 from tests.way_value_lens_fixture import FakeFeatureMaterials, axis_way_value_lens
 from tests.axis_system_fixture import axis_definition, replaced_axis_definitions
 from tests.bound_fake import bound
@@ -145,13 +145,13 @@ def test_region_tiles_hand_the_services_mvt_over(override_dependency, path, cach
 @pytest.mark.parametrize(
     ("path", "body"),
     [
-        (f"/api/region/road-surface-tiles/{ROAD_TILE_MIN_ZOOM - 1}/0/0.pbf", None),
         (f"/api/region/road-surface-tiles/{ROAD_TILE_MAX_ZOOM + 1}/0/0.pbf", None),
         ("/api/region/road-surface-tiles/14/-1/6447.pbf", None),
         (f"/api/region/road-surface-tiles/14/{2**14}/6447.pbf", None),
         (f"/api/region/road-surface-tiles/14/14551/{2**14}.pbf", None),
         (f"/api/region/point-tiles/{POINT_LAYER}/{ROAD_TILE_MIN_ZOOM - 1}/0/0.pbf", None),
         (f"/api/region/point-tiles/{POINT_LAYER}/14/{2**14}/6447.pbf", None),
+        (f"/api/region/landcover-tiles/{LANDCOVER_TILE_MAX_ZOOM + 1}/1/1.png", None),
         (f"/api/region/landcover-tiles/10/{2**10}/403.png", None),
         (f"/api/region/way-materials/{SIGNED}/{ROAD_TILE_MIN_ZOOM - 1}/0/0", None),
         (f"/api/region/way-materials/{SIGNED}/14/{2**14}/6447", None),
@@ -424,20 +424,6 @@ def test_landcover_tile_endpoint_without_raster_reports_unavailable(landcover_ti
     landcover_tiles["result"] = None
 
     assert client.get("/api/region/landcover-tiles/10/905/403.png").status_code == 503
-
-
-@pytest.mark.usefixtures("landcover_tiles")
-@pytest.mark.parametrize(
-    ("z", "status"),
-    [
-        (LANDCOVER_TILE_MIN_ZOOM - 1, 422),
-        (LANDCOVER_TILE_MIN_ZOOM, 200),
-        (LANDCOVER_TILE_MAX_ZOOM, 200),
-        (LANDCOVER_TILE_MAX_ZOOM + 1, 422),
-    ],
-)
-def test_landcover_tile_endpoint_serves_only_its_own_zoom_range(z, status):
-    assert client.get(f"/api/region/landcover-tiles/{z}/1/1.png").status_code == status
 
 
 #: 重みを送る検査に使う公開軸。

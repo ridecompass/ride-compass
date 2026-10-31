@@ -1,26 +1,14 @@
 """評価軸の定義データ（ADR: docs/records/decisions/t221-axis-registry.md）。
 
 「一次属性由来の材料 → 軸別difficulty(0-100)」変換を、コード（軸ごとの関数）ではなく
-**データ（`AXIS_DEFINITIONS`）**として宣言する。変換の計算自体は2テンプレート
+**データ（`AXIS_DEFINITIONS`）**として宣言する。変換の計算自体はテンプレート
 （`domain/axis_templates.py`）が担い、本モジュールは「どの材料を・どのテンプレートに・
 どのパラメータで通すか」だけを持つ。
 
-- 既存テンプレート＋既存材料の組み合わせで表現できる新しい軸は、`AXIS_DEFINITIONS`へ
-  1エントリ追加するだけで、区間インスペクタ・地図の値配信・ルート選び
-  （`build_static_edge_score_matrix`）のすべてへ同時に反映される。評価は
-  `domain/axis_evaluation.py: evaluate_axis`1本で、Pythonの値で持つ入口も配列にして通す。
 - 材料（material）はOSM生タグそのものではなく「評価直前まで解決済みの値」
-  （勾配%・風ペナルティm/s・路面の見込み・km正規化済み密度・レシピ計算済みレベル・
-  タグ由来フラグ）。材料の解決（抽出）は呼び出し元の責務で、材料idごとの意味は
-  材料カタログ（`domain/material_catalog.py: MATERIAL_CATALOG`の`description`）が持つ。
-- 0次ハードフィルタは軸単位ではなく独立した仕組み（`domain/hard_filters.py`）のため、
-  本定義には持たない。
-- `axis_definitions`DBテーブルが全軸の唯一の正本。起動時（`app/services/
-  axis_registry_service.py: refresh_axis_definitions`）にDBから読み込みこのモジュール
-  レベルdictへpushするまでは空のまま。本モジュールが持つのは型定義（`AxisDefinition`等）
-  と軸の集合の検査・並べ方の純粋関数のみで、実データは持たない。**行データ
-  （軸の新規追加・既存軸の値変更）は`api/routers/axis_admin.py`経由（create/update/
-  unpublish→再publish）で行う**。
+  （勾配%・路面の見込み・km正規化済み密度・タグ由来フラグ等）。材料の解決（抽出）は呼び出し元の責務。
+- `axis_definitions`DBテーブルが全軸の唯一の正本。本モジュールが持つのは型定義（`AxisDefinition`等）
+  と軸の集合の検査・並べ方の純粋関数で、実データは持たない。
 
 得点の丸めは区分線形補間系のみ小数1桁で（`BreakpointLinearShape.score_array`）、
 Pythonの`round()`と同じ値へ丸める（`difficulty.py: round_difficulty_array`。2進の実際の値で丸める）。
@@ -215,9 +203,6 @@ class PriorityCondition(StrictModel):
     自転車通行禁止（`bicycle=no`）はこれとは異なり、既存の0次ハードフィルタ
     （`no_bicycle`）で道路そのものが探索から除外されるため、この機構は使わない
     （「探索除外」と「評価の優先確定」は別の概念）。
-
-    軸固有のPythonコードへベタ書きせず`AxisDefinition`が共通で持つ宣言にしてあるため、
-    同型のケースはコード変更なしに表現できる。
     """
 
     model_config = _AXIS_MODEL_CONFIG
@@ -255,7 +240,7 @@ def _strictly_ascending(values: Sequence[float]) -> bool:
     return all(a < b for a, b in pairwise(values))
 
 
-#: 材料の型の呼び名。軸スタジオの材料の選択肢の分け方と同じ語にする。
+#: 材料の型の、利用者が読む呼び名。
 _DTYPE_NAMES: dict[material_catalog.MaterialDType, str] = {
     "numeric": "数値",
     "boolean": "はい・いいえ",
@@ -283,13 +268,7 @@ def named_references(refs: Iterable[str], axes: Mapping[str, "AxisDefinition"]) 
 class AxisDefinition(StrictModel):
     """1つの評価軸の宣言（ADRの`AxisDefinition`スキーマ）。
 
-    `default_weight`はAPIリクエストで上書きされなかった場合の既定の合成重み
-    （`RoutePreference`の既定値の単一ソース）。
-
-    `label`/`description`/`category`は一般向けのルート設定画面が
-    `GET /api/axis-catalog`経由で表示する（`registry.py`側の表示レジストリ
-    [地図レイヤー専用]とは別物——あちらはPython宣言のみでDB化されておらず、GUIで作った
-    軸を表現できないため、ルーティング計算を駆動するこちら側に単一ソースを置く）。
+    `default_weight`はAPIリクエストで上書きされなかった場合の既定の合成重み。
     `category`は観測（タグ・POI等の一次属性を直接読む、または単純なフラグ加算のみの軸）／
     推定（複数材料をレシピ・判定式で合成する軸）／動的（時々刻々変わる外部データ由来の軸）
     を区別する。
@@ -300,11 +279,7 @@ class AxisDefinition(StrictModel):
     混ぜ込まれる。`domain/axis_evaluation.py: evaluate_axes_array`が依存順に評価して結果を`materials`へ書き足す）。これにより
     「highway基準値」「自転車インフラ」等の細かい推定軸（`is_published=False`、
     一般ユーザーには非公開）を、さらに1段合成した「翻訳結果」として公開軸
-    （`is_published=True`）を作る、という階層構造を表現できる。`materials`プロパティは
-    材料id・軸id両方を区別なく返すため、材料の排他帰属チェック
-    （`check_material_exclusivity`）は`MATERIAL_CATALOG`に実在するものだけを対象に
-    絞り、軸参照は対象外とする（複数の公開軸が同じ内部軸を参照するのは意図的な共有で
-    あり、材料の二重計上とは別の話のため）。
+    （`is_published=True`）を作る、という階層構造を表現できる。
     """
 
     model_config = _AXIS_MODEL_CONFIG
@@ -321,12 +296,8 @@ class AxisDefinition(StrictModel):
     # そのまま読む）「動的」（気象等、時々刻々変わる外部データ由来）はどちらも材料そのものの性質で、
     # 材料を組み合わせて判定式を作る仕組みからは生み出せない。
     category: AxisCategory = "推定"
-    # 公開済み軸は一般向け`GET /api/axis-catalog`（一般ユーザーの保存設定が
-    # axis_idキーで再現されるため、公開後の破壊的変更・削除は他ユーザーの設定を黙って
-    # 壊す）に出る一方、下書き軸は管理API（軸スタジオ）でのみ見える。既定Falseは
-    # 「新規作成した軸はまず下書き」という安全側の初期値。このフラグは
-    # 「内部軸（他の軸から参照される専用、恒久的に非公開のまま運用）」の表現にも流用する
-    # （新フィールドを増やさず既存の仕組みを再利用する）。
+    # 公開済み軸だけが利用者に出る。既定Falseは「新規作成した軸はまず下書き」という安全側の初期値。
+    # 内部軸（他の軸から参照される専用、恒久的に非公開のまま運用）もこのフラグで表す。
     is_published: bool = False
     # 0次条件（軸の通常計算より前に評価される優先確定ルール）。空リストは
     # 「無し」（shapeだけで評価）で、対象外の軸の挙動には影響しない。
@@ -337,9 +308,7 @@ class AxisDefinition(StrictModel):
     time_scope: TimeScope = "always"
     """この軸の重みが常に有効か、特定の時間帯でのみ有効かの宣言。
     「`time_scope != "always"`な軸の重みを、その時間帯に区間を通るときだけ残し、ほかは0倍にする」
-    という汎用ロジック（`domain/axis_definitions.py: time_scoped_weights`参照）が、このフィールドだけを
-    見て判定する。別の時間帯を足すときもこのLiteralへ値を1つ増やすだけで、エンジン側の
-    コード変更は要らない。"""
+    という汎用ロジック（`time_scoped_weights`）が、このフィールドだけを見て判定する。"""
     display_thresholds_override: list[float] | None = Field(default=None, min_length=1)
     """地図の色分けしきい値だけを差し替える軽量な上書き。未設定なら軸の形から段の境界を導く
     （`domain/map_paint.py: map_paint`）。
@@ -350,10 +319,7 @@ class AxisDefinition(StrictModel):
     値は地図が塗る値の目盛り——得点（0〜100）、符号付きの材料を塗る軸はその材料の値。"""
     display_band_labels_override: list[str] | None = None
     """地図の色分け段階に添える体感ラベル。未設定は
-    段階の数値レンジ表記（例:「2〜6」）のみを凡例に出す。
-
-    `display_thresholds_override`と対になる概念（どちらも「地図の色分け段階の見せ方」の
-    軸ごとの好み）。"""
+    段階の数値レンジ表記（例:「2〜6」）のみを凡例に出す。"""
 
     @field_validator("display_thresholds_override")
     @classmethod
@@ -402,18 +368,12 @@ class AxisDefinition(StrictModel):
 
     @property
     def materials(self) -> list[str]:
-        """この軸が参照する材料id・軸idの一覧（shapeから導出。二重管理しない。
-        `priority_overrides`が参照する材料も含む）。呼び出し側が材料か軸かを
-        区別する必要がある場合は`material_catalog.is_known_material`で判別する
-        （`check_material_exclusivity`参照）。"""
+        """この軸が参照する材料id・軸idの一覧（`priority_overrides`が参照する材料も含む）。材料か軸かは
+        `material_catalog.is_known_material`で判別する。"""
         return referenced_materials(self.shape, self.priority_overrides)
 
 
-# `axis_definitions`DBテーブルが唯一の正本で、起動時（app/services/
-# axis_registry_service.py: refresh_axis_definitions）にDBから読み込みこの辞書を
-# in-placeで書き換えるまでは空のまま。新規軸の追加・既存軸の変更は`api/routers/
-# axis_admin.py`経由で行う
-# （モジュールdocstring参照）。
+# `axis_definitions`DBテーブルが唯一の正本で、`replace_axis_definitions`で書き換えるまでは空のまま。
 AXIS_DEFINITIONS: dict[str, AxisDefinition] = {}
 
 # 差し替え（`replace_axis_definitions`）と写し（`copy_axis_definitions`）を互いに排他にする。
@@ -423,7 +383,7 @@ _AXIS_DEFINITIONS_LOCK = threading.Lock()
 
 
 def replace_axis_definitions(definitions: Mapping[str, AxisDefinition]) -> None:
-    """`AXIS_DEFINITIONS`の中身を`definitions`へ差し替える（同じdictのまま。モジュールdocstring参照）。"""
+    """`AXIS_DEFINITIONS`の中身を`definitions`へ差し替える（読む側が同じdictを持ち続けるので、置き換えない）。"""
     with _AXIS_DEFINITIONS_LOCK:
         AXIS_DEFINITIONS.clear()
         AXIS_DEFINITIONS.update(definitions)
@@ -464,10 +424,7 @@ def check_material_exclusivity(candidate: AxisDefinition, existing: dict[str, Ax
 
     `existing`に`candidate.axis_id`と同じキーが含まれていても（更新時、自分自身との
     比較になるため）スキップする。重複が見つかれば`AxisMaterialConflictError`を送出する
-    （登録は行わない、呼び出し元の責務）。
-
-    複数軸が参照してよい共通コンテキスト（距離等）の材料は無いため、`shared`相当の
-    フラグは持たない。
+    （登録は行わない）。
 
     `candidate.materials`は材料idと軸id（軸の階層構造、他の軸への参照）を
     区別せずに返すため、`MATERIAL_CATALOG`に実在するものだけを検査対象とする
@@ -641,7 +598,7 @@ def _check_dynamic_and_static_materials_are_not_mixed(definition: AxisDefinition
     切り出し（公開軸として評価され、動的軸からは軸参照で読める）合成する。
 
     参照材料は`definition.materials`（`priority_overrides`が参照する材料も含む）——動的軸かどうかを
-    判定する`_axes_depending_on_materials`が同じ導出を根拠にしているため、ここだけ`shape.terms`に
+    判定する`dynamic_axis_topological_order`が同じ導出を根拠にしているため、ここだけ`shape.terms`に
     絞ると検証を素通りした軸が実行時に落ちる。
     """
     materials = set(definition.materials)
@@ -793,40 +750,19 @@ def check_axis_set(definitions: dict[str, AxisDefinition]) -> None:
 REQUEST_DYNAMIC_MATERIAL_IDS = material_catalog.materials_of_source("request")
 
 
-def _axes_depending_on_materials(
-    material_ids: frozenset[str], definitions: dict[str, AxisDefinition]
-) -> set[str]:
-    """`definitions`内の各軸が、`material_ids`のいずれかを直接、または他の軸を介して
-    間接的に参照しているかを固定点反復で判定する。"""
-    dynamic: set[str] = set()
-    changed = True
-    while changed:
-        changed = False
-        for axis_id, definition in definitions.items():
-            if axis_id in dynamic:
-                continue
-            if any(m in material_ids or m in dynamic for m in definition.materials):
-                dynamic.add(axis_id)
-                changed = True
-    return dynamic
-
-
 @cached(cache=LRUCache(maxsize=64), key=_topological_axis_order_cache_key)
 def dynamic_axis_topological_order(definitions: dict[str, AxisDefinition]) -> list[str]:
     """`definitions`内の軸のうち`REQUEST_DYNAMIC_MATERIAL_IDS`へ直接・間接に依存する軸を、
     依存順（`topological_axis_order`のサブセット）で返す。
 
-    `evaluate_dynamic_axis_arrays`（domain/dynamic_materials.py）が、探索範囲の材料から
-    求めた静的軸別スコア行列（この関数が返す軸id集合には含まれない
-    列はNaN）はそのまま使い、この関数が返す軸だけをリクエスト時に動的材料（風等）を
-    組み込んで再評価するために使う。軸スタジオが新しく作る軸が風（または風に依存する
-    既存軸）を参照した場合も、ハードコード無しでこの集合へ自動的に含まれる。
-
-    `topological_axis_order`と同じ理由（タイル読込時・リクエスト時の両方で呼ばれる）で
-    プロセス内メモリへ内容ベースのキーでメモ化する。
+    依存順に1回なめるので、軸を介した間接の依存は、読まれる軸が先に判定済みになっている。
+    タイル読込時・リクエスト時の両方で呼ばれるので、内容ベースのキーでメモ化する。
     """
-    dynamic_ids = _axes_depending_on_materials(REQUEST_DYNAMIC_MATERIAL_IDS, definitions)
-    return [axis_id for axis_id in topological_axis_order(definitions) if axis_id in dynamic_ids]
+    dynamic: list[str] = []
+    for axis_id in topological_axis_order(definitions):
+        if any(m in REQUEST_DYNAMIC_MATERIAL_IDS or m in dynamic for m in definitions[axis_id].materials):
+            dynamic.append(axis_id)
+    return dynamic
 
 
 def published_axis_order(definitions: dict[str, AxisDefinition]) -> list[str]:
@@ -845,10 +781,7 @@ def published_axis_definitions(definitions: Mapping[str, AxisDefinition] | None 
 
 
 def default_axis_weights() -> dict[str, float]:
-    """axis_idキーの既定重み辞書（APIで上書きされる前の値、`RoutePreference`の
-    既定値）。値は各軸の`default_weight`で、`GET /api/axis-catalog`が軸ごとに配る
-    `default_weight`と同じ。公開軸だけを持つ（`published_axis_definitions`）。
-    `RoutePreference`のバリデーション（未知のaxis_idを拒否）もこの集合と整合させる。"""
+    """公開軸のaxis_idキーの既定重み辞書（APIで上書きされる前の値）。値は各軸の`default_weight`。"""
     return {definition.axis_id: definition.default_weight for definition in published_axis_definitions()}
 
 
@@ -869,9 +802,6 @@ def time_scoped_weights(
     その時間帯に当たる区間（`active_scopes`の真偽の配列。区間の並び）でだけ残し、ほかの区間では
     0.0にした配列へ置き換えた新しい辞書を返す（`weights`自体は変更しない）。`active_scopes`に無い
     時間帯は、どの区間も当たらないとして扱う。
-
-    エンジン側は「この性質を持つ軸を探して掛け替える」という汎用ロジックだけを持つため、
-    軸を足すときに要るのはその軸の`time_scope`を設定することだけになる。
 
     `weights`に無いaxis_id（内部軸・非公開化された軸等）は重みを持たないため、キーを足さずに
     無視する。"""

@@ -22,7 +22,7 @@ def _shared_ratio(lengths: np.ndarray, shared_mask: np.ndarray) -> float:
 
 
 T = TypeVar("T")
-T_contra = TypeVar("T_contra", contravariant=True)
+_T_contra = TypeVar("_T_contra", contravariant=True)
 
 
 def _pareto_front_mask(
@@ -128,14 +128,14 @@ def pareto_layer_index(
     return layer
 
 
-class OverlapMeasure(Protocol[T_contra]):
+class OverlapMeasure(Protocol[_T_contra]):
     """`select_diverse_by_overlap`が候補の重複率を測る相手。採用済みの集合を持ち、採用のたびに足す。"""
 
-    def max_ratio(self, item: T_contra) -> float | None:
+    def max_ratio(self, item: _T_contra) -> float | None:
         """`item`の経路が採用済みのそれぞれと共有する部分の距離加重割合（候補側の距離で割る）の最大。
         採用済みが無ければ0。経路にならない`item`はNone。"""
 
-    def accept(self, item: T_contra) -> None:
+    def accept(self, item: _T_contra) -> None:
         """`item`を採用済みに足す（`max_ratio`がNoneでなかった`item`だけを渡す）。"""
 
 

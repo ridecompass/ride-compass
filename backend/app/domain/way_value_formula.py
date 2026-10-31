@@ -26,7 +26,7 @@ from app.domain.strict_model import StrictModel
 _NODE_CONFIG = ConfigDict(frozen=True, allow_inf_nan=False)
 
 #: 木が読む要求の条件の名前。地図の配信の要求のクエリパラメータの名前でもある。
-FormulaConditionName = Literal["bearing_deg", "speed_kmh"]
+_FormulaConditionName = Literal["bearing_deg", "speed_kmh"]
 
 
 class Constant(StrictModel):
@@ -59,7 +59,7 @@ class Condition(StrictModel):
     model_config = _NODE_CONFIG
 
     op: Literal["condition"] = "condition"
-    name: FormulaConditionName
+    name: _FormulaConditionName
 
 
 class Unary(StrictModel):
@@ -147,7 +147,7 @@ def feature(name: str) -> FeatureValue:
     return FeatureValue(name=name)
 
 
-def condition(name: FormulaConditionName) -> Condition:
+def condition(name: _FormulaConditionName) -> Condition:
     return Condition(name=name)
 
 

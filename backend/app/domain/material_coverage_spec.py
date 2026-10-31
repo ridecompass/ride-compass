@@ -24,7 +24,7 @@ def labeled_every_value[K: str, V](literal_type: object, labels: dict[K, V]) -> 
 #: 母集団の表示名（管理画面の欠損率）。
 POPULATION_LABELS: dict[Population, str] = labeled_every_value(Population, {"way": "Way", "edge": "Edge"})
 
-class MissingSemanticsDisplay(NamedTuple):
+class _MissingSemanticsDisplay(NamedTuple):
     title: str
     hint: str
     #: 欠損が評価に穴を開けるか。開けない扱いの欠損率は参考として、画面は薄く出す。
@@ -33,11 +33,11 @@ class MissingSemanticsDisplay(NamedTuple):
 
 #: 欠損の扱いの見出しと説明（管理画面の欠損率）。意味が正反対のため、画面は同じ表へ並べず見出しで分ける。
 #: 並びが画面の並び順。
-MISSING_SEMANTICS_DISPLAY: dict[MissingSemantics, MissingSemanticsDisplay] = labeled_every_value(MissingSemantics, {
-    "unknown": MissingSemanticsDisplay(
+MISSING_SEMANTICS_DISPLAY: dict[MissingSemantics, _MissingSemanticsDisplay] = labeled_every_value(MissingSemantics, {
+    "unknown": _MissingSemanticsDisplay(
         "評価に影響する欠損", "元データが無い区間では、この材料を使う軸が評価対象外になる。", True
     ),
-    "definite": MissingSemanticsDisplay(
+    "definite": _MissingSemanticsDisplay(
         "タグ不在を確定値として評価する材料（参考）", "欠損は「該当なし」を意味し、評価に穴は開かない。", False
     ),
 })

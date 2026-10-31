@@ -4,7 +4,7 @@
  * やめられる。
  *
  * ここで見ないもの:
- * - 住所・施設で探す欄とその候補・保存した地点の候補 → `PlaceSearch/PlaceSearchBar.test.tsx`。探すボタンで欄を開くこと →
+ * - 住所・施設で探す欄とその候補・保存した地点の候補 → `PlaceSearch/PlaceSearch.test.tsx`。探すボタンで欄を開くこと →
  *   `app/page.places.test.tsx`
  * - 地点ごとの呼び名・出どころ・名前・探すボタンの文言・消す・「現在地に戻す」・上限 → `RouteForm/RouteForm.pointDetail.test.tsx`
  * - 置いた地点へ地図を寄せること・地図の上でピンを動かすこと → `e2e/destination.spec.ts`
