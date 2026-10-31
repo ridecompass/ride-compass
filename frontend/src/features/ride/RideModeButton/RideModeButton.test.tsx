@@ -40,11 +40,11 @@ describe("RideModeButton", () => {
   });
 
   it.each([
-    { status: "following", choice: "休む", chosen: "onRest" },
-    { status: "resting", choice: "続きから走る", chosen: "onResume" },
+    { status: "following", choice: "休む", chosen: "onRest", other: "onResume" },
+    { status: "resting", choice: "続きから走る", chosen: "onResume", other: "onRest" },
   ] as const)(
     "$status: 押すと「$choice」か案内を終えるかを選ばせ、選んだ方だけを知らせて閉じる",
-    async ({ status, choice, chosen }) => {
+    async ({ status, choice, chosen, other }) => {
       const handlers = { onPress: vi.fn(), onRest: vi.fn(), onResume: vi.fn() };
       render(<RideModeButton {...props({ status, ...handlers })} />);
       const button = screen.getByRole("button", { name: "走行モード" });
@@ -54,9 +54,8 @@ describe("RideModeButton", () => {
       expect(button).toHaveAttribute("aria-expanded", "true");
       await userEvent.click(screen.getByRole("button", { name: choice }));
       expect(handlers[chosen]).toHaveBeenCalledTimes(1);
-      for (const name of ["onPress", "onRest", "onResume"] as const) {
-        if (name !== chosen) expect(handlers[name]).not.toHaveBeenCalled();
-      }
+      expect(handlers.onPress).not.toHaveBeenCalled();
+      expect(handlers[other]).not.toHaveBeenCalled();
       expect(screen.queryByRole("button", { name: "案内を終える" })).toBeNull();
 
       await userEvent.click(button);
