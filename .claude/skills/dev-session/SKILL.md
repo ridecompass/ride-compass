@@ -15,7 +15,7 @@ description: "開発機の対話のセッションでタスクを進める決ま
 | タスクを持つ | 担当の実行がある間、ゲートがその担当の種類（実装・検証）にして振り出さない | ラベル「開発機で作業中」を付けて持つ（下の「持つ」） |
 | 依存 | 担当のワークフローが入れてある | 要る道具を動かすときだけ、作業ツリーごとに `npm ci --prefix frontend` から入れる（docs/architecture/setup.md「作業ツリーどうしで node_modules を共有しない」）。backend は .claude/skills/run-checks/SKILL.md「開発機でのbackendテストの回し方」 |
 | 本番 | 接続情報を持たない（`docs/conventions/flow.md`「自動で進めないもの」） | 読める（`run_probe.py`）。書くのは下の「本番へ書く」 |
-| マージ | 検証担当がマージする | 検証担当と同じ確かめ（.claude/skills/task-work/SKILL.md「検証担当」の1〜5）を自分でして、満たしていれば聞かずにマージする。ワークフローのファイル（`.github/workflows/`）を変える Pull Request は、開発機の gh のトークンに `workflow` の権限が無いので、ユーザーがブラウザでマージする |
+| マージ | 検証担当がマージする | 検証担当と同じ確かめ（.claude/skills/task-work/SKILL.md「検証担当」の1〜5）を自分でして、満たしていれば聞かずにマージする |
 | 答え | 回答フォーム | ユーザーがチャットで決めたことを、Claude が issue に記録する（.claude/skills/ask/SKILL.md「答え」。答えを待つ問いがあれば `answer.mjs` で） |
 
 - **決まりの出どころ**: どちらも CLAUDE.md と、そこから指す docs/・`.claude/` の rules・skills・commands と `.claude/settings.json` のフックを読む。
@@ -25,6 +25,10 @@ description: "開発機の対話のセッションでタスクを進める決ま
   （`tools/flow-gate/flow.config.json: devLabel`）を付ける（付いている間は振り出されず、担当者は Claude）。担当の実行が動いている（欄「実行の status」がある）
   なら、終わるまで触らない。触り終えたら、やったことをそのタスクの issue に書き、ラベルを外す（外し忘れると、タスクは振り出されないまま残る）。
   対話作業の issue（開発機でしかできない約束のある作業）も同じに持ち、果たした条件にチェックを付ける（条件が全部済めばゲートが閉じる）。
+- **待ちを見張る**: Pull Request の CI・マージのコミットの master の CI・担当の実行・本番への反映を待つときは、止まって待たずに裏で見張り
+  （`gh pr checks <番号> -R ridecompass/ride-compass --watch`、`gh run watch <id> -R ridecompass/ride-compass --exit-status`、担当の実行は
+  `gh run list -R ridecompass/ride-compass -w claude-task.yml` を終わるまで繰り返す）、通れば次の手（マージ・確かめ）へ進み、区切りごとに知らせる。
+  デスクトップアプリの CI の見張りは、CI が通っても会話を起こさない。
 - **裏の作業役に任せる**: その場で手順を書き起こさず、task-work の担当の手順で進めるよう渡し、対話作業の issue を閉じない・問いを書かない、とだけ足す。
 - **戻せない操作**（本番への書き込み・消す）は、対象・中身・差（前 → 後）・戻せないことと、それで何が起きうるかをチャットで見せ、
   ユーザーの言葉をもらってから進める。
