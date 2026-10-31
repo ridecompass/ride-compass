@@ -7,7 +7,7 @@
  *
  * ここで見ないもの:
  * - 区間の長さの積み上げ・区間の中の割合から地点を出すこと → `lib/routeDistance.test.ts`
- * - 長方形を絵にすること・押した位置から距離を出すこと・選んだ地点を区間の選択にすること → `DifficultyProfile.test.tsx`
+ * - 長方形を絵にすること → `DifficultyProfile.test.tsx`。押した位置から距離を出すこと・選んだ地点を区間の選択にすること → `ProfileChart.test.tsx`
  */
 import { describe, expect, it } from "vitest";
 
@@ -107,17 +107,13 @@ describe("columnAtKm", () => {
     segment({ distance_km: 2 }),
   ]);
 
-  it("距離が入る柱と、柱の中の割合", () => {
-    expect(columnAtKm(columns, 0.25)).toEqual({ column: columns[0], fraction: 0.25 });
-  });
-
-  it("柱の境目ちょうどは後ろの柱の始まりで、長さの無い柱は選ばない", () => {
-    expect(columnAtKm(columns, 1)).toEqual({ column: columns[2], fraction: 0 });
-  });
-
-  it("範囲の外は端の柱へ寄せ、割合は0〜1に収める", () => {
-    expect(columnAtKm(columns, -0.5)).toEqual({ column: columns[0], fraction: 0 });
-    expect(columnAtKm(columns, 10)).toEqual({ column: columns[2], fraction: 1 });
+  it.each([
+    { km: 0.25, column: 0, fraction: 0.25, why: "距離が入る柱と、柱の中の割合" },
+    { km: 1, column: 2, fraction: 0, why: "柱の境目ちょうどは後ろの柱の始まりで、長さの無い柱は選ばない" },
+    { km: -0.5, column: 0, fraction: 0, why: "始点より手前は始めの柱へ寄せる" },
+    { km: 10, column: 2, fraction: 1, why: "終点より先は終わりの柱へ寄せる" },
+  ])("$why", ({ km, column, fraction }) => {
+    expect(columnAtKm(columns, km)).toEqual({ column: columns[column], fraction });
   });
 
   it("長さのある柱が無ければnull", () => {

@@ -105,8 +105,10 @@ describe("ProfileChart", () => {
     expect(slider?.querySelector("rect")).toHaveAttribute("width", "500");
   });
 
-  it("Home・Endで道のりの始点・終点を選ぶ", () => {
+  it("Home・Endで道のりの始点・終点を選び、矢印・Home・End以外のキーでは選ばない", () => {
     const { slider, onSelect } = renderProfile();
+    fireEvent.keyDown(slider!, { key: "Enter" });
+    expect(onSelect).not.toHaveBeenCalled();
     fireEvent.keyDown(slider!, { key: "End" });
     expect(lastSelection(onSelect)).toEqual({ segment: MISSING, longitude: 139.02 });
     fireEvent.keyDown(slider!, { key: "Home" });
@@ -146,12 +148,6 @@ describe("ProfileChart", () => {
     expect(slider).toHaveAttribute("aria-valuenow", "2");
   });
 
-  it("矢印・Home・End以外のキーでは選ばない", () => {
-    const { slider, onSelect } = renderProfile();
-    fireEvent.keyDown(slider!, { key: "Enter" });
-    expect(onSelect).not.toHaveBeenCalled();
-  });
-
   it("図で動かしていない地点（地図で押した所）でも、選ばれた区間の選んだ地点に線を引く", () => {
     const { slider, rerender } = renderProfile();
     fireEvent.keyDown(slider!, { key: "End" });
@@ -167,9 +163,11 @@ describe("ProfileChart", () => {
     expect(within(container).getByRole("img", { name: LABEL })).not.toHaveAttribute("tabindex");
   });
 
-  it("押したまま横へ動かすとその地点を選び、離した地点も選ぶ", () => {
+  it("押したまま横へ動かすとその地点を選び、離した地点も選ぶ。ボタンを押していない動きでは選ばない", () => {
     const { slider, onSelect } = renderProfile();
     layOut(slider!);
+    fireEvent.pointerMove(slider!, { pointerId: 1, clientX: 150, buttons: 0 });
+    expect(onSelect).not.toHaveBeenCalled();
     fireEvent.pointerDown(slider!, { pointerId: 1, clientX: 140, clientY: 10, buttons: 1 });
     fireEvent.pointerMove(slider!, { pointerId: 1, clientX: 150, clientY: 12, buttons: 1 });
     expect(lastSelection(onSelect).segment).toBe(FIRST);
@@ -193,13 +191,6 @@ describe("ProfileChart", () => {
     fireEvent.pointerDown(slider!, { pointerId: 2, clientX: 150, clientY: 10, buttons: 1 });
     fireEvent.pointerUp(slider!, { pointerId: 2, clientX: 150, clientY: 10 });
     expect(onSelect).toHaveBeenCalledTimes(1);
-  });
-
-  it("ボタンを押していない動きでは選ばない", () => {
-    const { slider, onSelect } = renderProfile();
-    layOut(slider!);
-    fireEvent.pointerMove(slider!, { pointerId: 1, clientX: 150, buttons: 0 });
-    expect(onSelect).not.toHaveBeenCalled();
   });
 
   it("グラフの上で2本目の指が加わった操作は、全部の指が離れるまで選ばない", () => {
