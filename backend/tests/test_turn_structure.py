@@ -22,24 +22,19 @@ from tests.search_graph_world import (
 )
 
 
-def transition_kinds(lazy, structure):
-    """`(遷移元edge_id, 遷移先edge_id) -> 曲がりの種類`。"""
+def transitions(lazy, structure):
+    """`(遷移元edge_id, 遷移先edge_id) -> (曲がりの種類, ターンの秒数)`。"""
     out = {}
     for source in range(structure.state_count):
         for entry in range(int(structure.indptr[source]), int(structure.indptr[source + 1])):
             target = int(structure.target_state[entry])
-            out[(lazy.edge_ids[source], lazy.edge_ids[target])] = turn_structure.TurnKind(int(structure.turn_kind[entry]))
+            out[(lazy.edge_ids[source], lazy.edge_ids[target])] = (
+                turn_structure.TurnKind(int(structure.turn_kind[entry])), float(structure.turn_seconds[entry]))
     return out
 
 
 def transition_seconds(lazy, structure):
-    """`(遷移元edge_id, 遷移先edge_id) -> ターンの秒数`。"""
-    out = {}
-    for source in range(structure.state_count):
-        for entry in range(int(structure.indptr[source]), int(structure.indptr[source + 1])):
-            target = int(structure.target_state[entry])
-            out[(lazy.edge_ids[source], lazy.edge_ids[target])] = float(structure.turn_seconds[entry])
-    return out
+    return {pair: seconds for pair, (_kind, seconds) in transitions(lazy, structure).items()}
 
 
 def rank_array(lazy, by_edge_id):
@@ -83,22 +78,12 @@ def test_turn_transitions_lead_to_every_outgoing_edge_and_classify_the_turn(edge
     """
     graph = make_graph(PLUS_NODES, edges)
     lazy, _, structure = build_all(graph, spec=TURN_SPEC)
-    from_west = {
-        target: seconds for (source, target), seconds in transition_seconds(lazy, structure).items()
-        if source == "WC"
-    }
-    assert from_west == pytest.approx({
-        "CE": 0.0,
-        "CN": TURN_SPEC.left_seconds,
-        "CS": TURN_SPEC.right_seconds,
-        "CW": TURN_SPEC.uturn_seconds,
-    })
-    kinds = {target: kind for (source, target), kind in transition_kinds(lazy, structure).items() if source == "WC"}
-    assert kinds == {
-        "CE": turn_structure.TurnKind.STRAIGHT,
-        "CN": turn_structure.TurnKind.LEFT,
-        "CS": turn_structure.TurnKind.RIGHT,
-        "CW": turn_structure.TurnKind.UTURN,
+    from_west = {target: turn for (source, target), turn in transitions(lazy, structure).items() if source == "WC"}
+    assert from_west == {
+        "CE": (turn_structure.TurnKind.STRAIGHT, 0.0),
+        "CN": (turn_structure.TurnKind.LEFT, pytest.approx(TURN_SPEC.left_seconds)),
+        "CS": (turn_structure.TurnKind.RIGHT, pytest.approx(TURN_SPEC.right_seconds)),
+        "CW": (turn_structure.TurnKind.UTURN, pytest.approx(TURN_SPEC.uturn_seconds)),
     }
 
 
