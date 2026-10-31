@@ -115,7 +115,7 @@ async def region_way_materials(
 ) -> dict[str, dict[str, float]]:
     """ルート未確定時の地図が公開軸の値を求めるための、指定タイル内のフィーチャーごとの道ごとの材料（材料の名前→値。
     値の無い材料は載せない）。値は軸カタログの木（`way_value_formula`）へ、木が読む走る条件とともに入れると、探索と同じ
-    評価の値（区間インスペクタの得点と同じ値）になる（`services/dedicated_way_values.py: tile_axis_way_materials`）。
+    評価の値（区間インスペクタの得点と同じ値）になる（`services/dedicated_way_values.py: AxisWayValueLens.way_materials`）。
     ルート確定後はルート自身の`axis_difficulties`（`RouteSegmentDetail`）で塗るため、この口を呼ばない。
 
     パスパラメータは**軸id**（`axis_definitions.axis_id`）で、材料id（`wind_drag_ratio`等）とは別の名前空間である。

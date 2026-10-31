@@ -10,10 +10,10 @@ from app.infrastructure.database import DB_UNAVAILABLE_ERRORS
 from app.infrastructure.debug_log import mark_failed
 from app.infrastructure.road_graph_repository import RoadGraphRepository
 
-Features = TypeVar("Features", bound=Sized)
+_Features = TypeVar("_Features", bound=Sized)
 
 
-async def tile_features(read: Awaitable[Features | None], fields: dict[str, Any]) -> Features | None:
+async def tile_features(read: Awaitable[_Features | None], fields: dict[str, Any]) -> _Features | None:
     """タイル内のフィーチャーの値（鍵→値・フィーチャーごとの材料）を読む。
 
     DB障害・取込範囲外・フィーチャーが無いタイルは None（どれだったかは`fields`へ記録する）。
@@ -31,7 +31,7 @@ async def tile_features(read: Awaitable[Features | None], fields: dict[str, Any]
 
 
 #: 鍵の並びと、同じ並びの緯度・経度の配列。
-MidpointArrays = tuple[list[str], np.ndarray, np.ndarray]
+_MidpointArrays = tuple[list[str], np.ndarray, np.ndarray]
 
 
 class TileMidpoints:
@@ -44,9 +44,9 @@ class TileMidpoints:
 
     def __init__(self, repository: RoadGraphRepository):
         self._repository = repository
-        self._read: dict[tuple[int, int, int], tuple[MidpointArrays | None, dict[str, Any]]] = {}
+        self._read: dict[tuple[int, int, int], tuple[_MidpointArrays | None, dict[str, Any]]] = {}
 
-    async def arrays(self, z: int, x: int, y: int, fields: dict[str, Any]) -> MidpointArrays | None:
+    async def arrays(self, z: int, x: int, y: int, fields: dict[str, Any]) -> _MidpointArrays | None:
         """DB障害・取込範囲外・フィーチャーが無いタイルは None（どれだったかは`fields`へ記録する。使い回すときも、
         読んだときと同じものを記録する）。"""
         tile = (z, x, y)
@@ -57,7 +57,7 @@ class TileMidpoints:
         fields.update(recorded)
         return arrays
 
-    async def _read_arrays(self, z: int, x: int, y: int, fields: dict[str, Any]) -> MidpointArrays | None:
+    async def _read_arrays(self, z: int, x: int, y: int, fields: dict[str, Any]) -> _MidpointArrays | None:
         midpoints = await tile_features(
             self._repository.get_feature_midpoints_in_tile(z, x, y, tile_bounds_lonlat(z, x, y)), fields)
         if midpoints is None:

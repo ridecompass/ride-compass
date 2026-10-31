@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from functools import partial
 
 from app.domain.axis_definitions import copy_axis_definitions, published_axis_order
-from app.domain.axis_inspector import AxisInspectorResult, InspectorValues, inspector_values
+from app.domain.axis_inspector import AxisInspectorResult, inspector_values
 from app.domain.dynamic_way_values import MissingConditions, WayValueQuery
 from app.domain.landcover import LandcoverPercentages
 from app.domain.route_preference import RoutePreference
@@ -30,7 +30,7 @@ _TileReader = Callable[[int, int, int, BoundingBox], Awaitable[bytes | None]]
 
 
 @dataclass(frozen=True)
-class InspectedFeature:
+class _InspectedFeature:
     """区間インスペクタが評価するフィーチャー1つ。"""
 
     key: str
@@ -40,11 +40,11 @@ class InspectedFeature:
 
 
 @dataclass(frozen=True)
-class InspectedRoad:
+class _InspectedRoad:
     highway: str
     tags: dict[str, str]
     #: 押したフィーチャー（その倍率で地図が塗る単位）。
-    feature: InspectedFeature
+    feature: _InspectedFeature
 
 
 class RegionService:
@@ -84,9 +84,7 @@ class RegionService:
         kind: TileKind,
         empty_tile: bytes,
         external_call_name: str,
-        z: int,
-        x: int,
-        y: int,
+        z: int, x: int, y: int,
     ) -> TileResponse:
         async def fetch_tile(fields: dict) -> bytes | None:
             """PostGIS側（ST_AsMVT）でタイル1枚分のMVTを丸ごと生成する。
@@ -111,9 +109,7 @@ class RegionService:
         return await serve_region_tile(
             kind=kind,
             generation=await served_tile_version(self._repository, TILE_SHAPES[kind]),
-            z=z,
-            x=x,
-            y=y,
+            z=z, x=x, y=y,
             extension="pbf",
             empty_tile=empty_tile,
             content_type=MVT_CONTENT_TYPE,
@@ -127,9 +123,7 @@ class RegionService:
             kind="road_surface",
             empty_tile=encode_empty_tile(ROAD_SURFACE_LAYER_NAME),
             external_call_name="region:road-surface-tile",
-            z=z,
-            x=x,
-            y=y,
+            z=z, x=x, y=y,
         )
 
     async def get_point_tile(self, layer: PointTileLayer, z: int, x: int, y: int) -> TileResponse:
@@ -139,12 +133,10 @@ class RegionService:
             kind=layer.name,
             empty_tile=encode_empty_tile(layer.source_layer),
             external_call_name=f"region:{layer.name}-tile",
-            z=z,
-            x=x,
-            y=y,
+            z=z, x=x, y=y,
         )
 
-    async def inspected_road(self, osm_way_id: int, feature_key: str, z: int, x: int, y: int) -> InspectedRoad | None:
+    async def inspected_road(self, osm_way_id: int, feature_key: str, z: int, x: int, y: int) -> _InspectedRoad | None:
         """区間インスペクタが評価する、押したフィーチャー（タイル`(z, x, y)`が焼いた`feature_key`）と、道の一次属性。
 
         引き直しの鍵はタイルへ焼き込み済みのosm_way_idで、クリック地点の緯度経度から道を空間マッチで選ばない——交差点
@@ -158,14 +150,14 @@ class RegionService:
                 if way_tags_result is None:
                     fields["lookup"] = "not_found"
                     return None
-                feature = InspectedFeature(feature_key, (z, x, y),
-                                           await self._repository.get_feature_landcover(osm_way_id, feature_key))
+                feature = _InspectedFeature(feature_key, (z, x, y),
+                                            await self._repository.get_feature_landcover(osm_way_id, feature_key))
             except DB_UNAVAILABLE_ERRORS as exc:
                 mark_failed(fields, exc)
                 return None
             fields["lookup"] = "ok"
             highway, tags = way_tags_result
-            return InspectedRoad(highway, tags, feature)
+            return _InspectedRoad(highway, tags, feature)
 
     async def roads_at(self, lon: float, lat: float, z: int, radius_m: float) -> list[RoadAt]:
         """押した所に近い道（近い順、最大`ROADS_AT_LIMIT`本）。道のタイルを読まずに道を押せるようにする。
@@ -264,14 +256,12 @@ class AxisInspectorService:
         published = published_axis_order(definitions)
         weights = preference or RoutePreference()
 
-        async def values(feature: InspectedFeature) -> InspectorValues:
-            painted = await tile_axis_values(
-                published, definitions, self._feature_materials, self._build_service, *feature.tile, query,
-                feature_key=feature.key, as_difficulty=True,
-            )
-            scores = {axis_id: None if isinstance(by_key, MissingConditions) else by_key.get(feature.key)
-                      for axis_id, by_key in painted.items()}
-            return inspector_values({axis_id: scores[axis_id] for axis_id in published}, feature.landcover, weights)
-
+        feature = road.feature
+        painted = await tile_axis_values(
+            published, definitions, self._feature_materials, self._build_service, *feature.tile, query,
+            feature_key=feature.key, as_difficulty=True,
+        )
+        scores = {axis_id: None if isinstance(painted[axis_id], MissingConditions) else painted[axis_id].get(feature.key)
+                  for axis_id in published}
         return AxisInspectorResult(
-            highway=road.highway, tags=road.tags, values=await values(road.feature))
+            highway=road.highway, tags=road.tags, values=inspector_values(scores, feature.landcover, weights))
