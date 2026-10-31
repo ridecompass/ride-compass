@@ -133,13 +133,20 @@ export function useRideFollow(
       baseZoom.current = shown.getZoom() + appliedZoomOut.current;
       latest.current.onZoomBaseChange(baseZoom.current);
     }
+    // 寄せる動きは、寄せ始めの地図の大きさで決めた画面の点へ寄せ続ける。寄せる最中や寄せる前の大きさの変わり（走り出して
+    // パネルが消えた等）を MapLibre が受けたら、今の大きさで寄せ直す。
+    function followAfterResize() {
+      if (latest.current?.following && !gesture.current) followCamera.current?.();
+    }
     map.on("movestart", onUserMoveStart);
     map.on("zoomend", rebaseOnUserZoom);
     map.on("moveend", onUserMoveEnd);
+    map.on("resize", followAfterResize);
     return () => {
       map.off("movestart", onUserMoveStart);
       map.off("zoomend", rebaseOnUserZoom);
       map.off("moveend", onUserMoveEnd);
+      map.off("resize", followAfterResize);
     };
   }, [mapRef]);
 
