@@ -179,12 +179,12 @@ def empty_material_arrays(n: int, material_ids: Iterable[str], present: Containe
     return {
         material_id: column
         for material_id in material_ids
-        if material_id not in present and (column := empty_material_column(material_id, n)) is not None
+        if material_id not in present and (column := _empty_material_column(material_id, n)) is not None
     }
 
 
 class _ColumnsOrEmpty(Mapping[str, MaterialColumn]):
-    """材料id→列。`columns`に無い材料カタログの材料は、値の無い列（`empty_material_column`）を返す——読む材料を先に並べず、
+    """材料id→列。`columns`に無い材料カタログの材料は、値の無い列（`_empty_material_column`）を返す——読む材料を先に並べず、
     読まれたときに埋める。並べ上げる（`iter`）のは`columns`の材料だけ。"""
 
     def __init__(self, columns: Mapping[str, MaterialColumn], n: int) -> None:
@@ -198,7 +198,7 @@ class _ColumnsOrEmpty(Mapping[str, MaterialColumn]):
         except KeyError:
             pass
         if (column := self._empty.get(material_id)) is None:
-            column = empty_material_column(material_id, self._n)
+            column = _empty_material_column(material_id, self._n)
             if column is None:
                 raise KeyError(material_id) from None
             self._empty[material_id] = column
@@ -211,7 +211,7 @@ class _ColumnsOrEmpty(Mapping[str, MaterialColumn]):
         return len(self._columns)
 
 
-def empty_material_column(material_id: str, n: int) -> MaterialColumn | None:
+def _empty_material_column(material_id: str, n: int) -> MaterialColumn | None:
     """`MATERIAL_CATALOG`にある材料の、値の無い区間`n`本ぶんの列（`empty_material_arrays`の1材料ぶん）。カタログに無ければNone。"""
     spec = material_spec(material_id)
     if spec is None:
@@ -472,7 +472,7 @@ def build_static_edge_score_matrix(
 
     材料はDBが導出済み（`MaterialSpec.value_sql`）で、事故の収録年数による正規化もその
     導出の中で既に効いている。読む材料は並べず、読まれた材料のうちDBにも観測にも無い材料カタログの材料を、
-    値の無い列（`empty_material_column`）で埋める。`definitions`は呼び手が1回だけ写した軸の集合で、表に持たせ、合成と動的な軸の評価も同じ集合を読む
+    値の無い列（`_empty_material_column`）で埋める。`definitions`は呼び手が1回だけ写した軸の集合で、表に持たせ、合成と動的な軸の評価も同じ集合を読む
     （保存がその間に軸を差し替えても、表の列と読む軸が1つの集合に揃う）。
 
     重み付き合成は含まない——重みが定まった時点で呼び出し元が`compose_costs_from_axis_matrix`へ
