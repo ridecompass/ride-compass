@@ -21,7 +21,7 @@ import { useMapAxisCatalog } from "@/features/map/useMapAxisCatalog";
 import { useJmaTileIndex } from "@/features/map/useJmaTileIndex";
 import MapNavigationControl from "@/features/map/MapNavigationControl/MapNavigationControl";
 import MapLoadStatus from "@/features/map/MapView/MapLoadStatus";
-import { fitBoundsToRoute, flyToVisible, mapVisibleCenterOffset } from "@/features/map/MapView/mapCamera";
+import { fitBoundsToRoute, flyToVisible } from "@/features/map/MapView/mapCamera";
 import { bindMapTaps, type MapTapMode } from "@/features/map/MapView/mapTaps";
 import { rideZoomBase } from "@/features/map/MapView/rideZoom";
 import { useMapLifecycle } from "@/features/map/MapView/useMapLifecycle";
@@ -249,7 +249,7 @@ export default function MapView({
   });
 
   const candidateContents = useCandidateMarkers(mapRef, placeCandidates, onPlaceCandidatePick);
-  const rideControls = useRideFollow(mapRef, ride, here, mapVisibleCenterOffset);
+  const rideControls = useRideFollow(mapRef, ride, here);
   const turnMarkContent = useTurnMark(mapRef, turnPoint);
   const focus = useSectionFocus(mapRef, {
     sectionPath: selectedSectionPath,

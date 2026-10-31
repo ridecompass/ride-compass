@@ -4,7 +4,7 @@
  * 集める。2本が同じ地点を通る所では、どちらの断片も下限の長さ以上のときだけ区間を割る。一度通った地点へ戻る道は出さず、
  * 同じ区間を同じ道へ替えるものは1つにまとめ、元の範囲が重なるものを同じ組にする。
  *
- * 経路はbackendの契約どおりの形を`testing/routeFixtures.ts: routeThrough`で地点の並びから組む。
+ * 経路は`testing/stretchShapes.ts`で地点の並びから組む。
  *
  * ここで見ないもの:
  * - 別の道を通る区間の対応づけと、乗り換えを当てた経路の形 → `routeSplice.test.ts`
@@ -12,49 +12,10 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { routeEdgeKms } from "@/lib/routeDistance";
-import { routeThrough, type Places } from "@/testing/routeFixtures";
-
-import { stretchAlternativeGroups } from "./stretchAlternatives";
-
-// 東西に並ぶ元の道（A〜F）と、その北（P〜S）・南（U〜W）の地点。隣どうしは東西に約0.91km。
-const PLACES: Places = {
-  A: [139.0, 35.0],
-  B: [139.01, 35.0],
-  C: [139.02, 35.0],
-  D: [139.03, 35.0],
-  E: [139.04, 35.0],
-  F: [139.05, 35.0],
-  P: [139.01, 35.01],
-  Q: [139.02, 35.01],
-  R: [139.03, 35.01],
-  S: [139.04, 35.01],
-  U: [139.01, 34.99],
-  W: [139.03, 34.99],
-};
-
-/** 地点の並びから、乗り換えの関数が受け取る形を組む。 */
-function shape(names: string) {
-  const route = routeThrough(PLACES, [...names]);
-  return {
-    edgeIds: route.edge_ids,
-    coordinates: route.geometry.coordinates,
-    edgePointOffsets: route.edge_point_offsets,
-    nodeIds: route.node_ids,
-    edgeKms: routeEdgeKms(route.segments, route.edge_point_offsets),
-  };
-}
-
-function candidate(id: string, names: string) {
-  return { id, shape: shape(names) };
-}
-
-function groupsFor(base: string, candidates: ReturnType<typeof candidate>[], minSplitLengthKm = 0.1) {
-  return stretchAlternativeGroups(shape(base), candidates, minSplitLengthKm);
-}
+import { candidate, groupsFor } from "@/testing/stretchShapes";
 
 /** 組ごとに「元の範囲 → 候補id:乗り換え先のEdge」を並べる。 */
-function summary(groups: ReturnType<typeof stretchAlternativeGroups>) {
+function summary(groups: ReturnType<typeof groupsFor>) {
   return groups.map((group) => ({
     stretch: [group.stretch.start, group.stretch.end],
     options: group.options.map(
