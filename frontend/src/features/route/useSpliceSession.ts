@@ -17,8 +17,6 @@ import type { RouteCandidate } from "@/types/route";
 type SpliceTask = { status: "idle"; error: string | null } | { status: "previewing" } | { status: "applying" };
 const SPLICE_IDLE: SpliceTask = { status: "idle", error: null };
 
-/** 失敗の文言だけを消す（処理中なら何もしない）。 */
-const withoutError = (task: SpliceTask): SpliceTask => (task.status === "idle" ? SPLICE_IDLE : task);
 /** backendが組み合わせたルートを0本で返し、理由も付けなかったときの文言。 */
 const NOT_EVALUATED = "組み合わせたルートを評価できませんでした";
 
@@ -42,11 +40,11 @@ interface SpliceSession {
 }
 const NO_ALTERNATIVES: StretchAlternative[] = [];
 
-/** 適用した乗り換えを入れ替え、前の失敗の文言を消す。 */
+/** 適用した乗り換えを入れ替え、前の失敗の文言を消す（処理中の状態は残す）。 */
 const withApplied = (session: SpliceSession, applied: StretchAlternative[]): SpliceSession => ({
   ...session,
   applied,
-  task: withoutError(session.task),
+  task: session.task.status === "idle" ? SPLICE_IDLE : session.task,
 });
 
 const sameEdges = (a: readonly string[], b: readonly string[]) =>
