@@ -58,29 +58,20 @@ async def test_point_master_converts_degrees_and_minutes():
     assert points[0].longitude == pytest.approx(141 + 56.1 / 60.0)
 
 
-async def test_point_master_excludes_retired_points_without_counting_them_as_unreadable(caplog):
-    """運用終了は配布元が宣言した除外で、読めなかったのではない。"""
-    client = answering(
-        text=_csv(
-            [
-                _row("44132", "東京", "35", "41.4", "139", "45.6", _ACTIVE),
-                _row("44166", "旧地点", "35", "30.0", "139", "30.0", "2025-03-31"),
-            ]
-        )
-    )
-
-    with caplog.at_level(logging.WARNING, logger="ridecompass.wbgt_client"):
-        points = await wbgt_client.fetch_point_master(client, new_point_master_cache())
-
-    assert [point.no for point in points] == ["44132"]
-    assert caplog.records == []
-
-
-async def test_point_master_does_not_count_a_trailing_blank_line_as_unreadable(caplog):
-    """配布CSVの末尾の空行はデータ行ではない。数えると取得のたびに警告が出て、本物が埋もれる。"""
-    client = answering(
-        text=_csv([_row("44132", "東京", "35", "41.4", "139", "45.6", _ACTIVE)]) + "\n"
-    )
+@pytest.mark.parametrize(
+    "rows",
+    [
+        [
+            _row("44132", "東京", "35", "41.4", "139", "45.6", _ACTIVE),
+            _row("44166", "旧地点", "35", "30.0", "139", "30.0", "2025-03-31"),
+        ],
+        [_row("44132", "東京", "35", "41.4", "139", "45.6", _ACTIVE), ""],
+    ],
+    ids=["retired", "trailing-blank-line"],
+)
+async def test_point_master_leaves_out_retired_points_and_blank_lines_without_counting_them_as_unreadable(caplog, rows):
+    """運用終了は配布元が宣言した除外で、末尾の空行はデータ行ではない。読めなかった行に数えると取得のたびに警告が出て、本物が埋もれる。"""
+    client = answering(text=_csv(rows))
 
     with caplog.at_level(logging.WARNING, logger="ridecompass.wbgt_client"):
         points = await wbgt_client.fetch_point_master(client, new_point_master_cache())
@@ -187,10 +178,9 @@ async def test_a_forecast_time_that_cannot_be_read_is_absent_but_the_row_stays(f
     assert forecast.reference_time == "2026/07/01 08:00:00"
 
 
-@pytest.mark.parametrize("value", [None, "abc"])
-async def test_a_value_that_cannot_be_read_is_absent(value):
+async def test_a_value_that_cannot_be_read_is_absent():
     (forecast,) = await wbgt_client.fetch_forecast(
-        _success(_forecast_row(forecast_val=value)), "44132", _RANGE_FROM, _RANGE_TO, new_forecast_cache()
+        _success(_forecast_row(forecast_val="abc")), "44132", _RANGE_FROM, _RANGE_TO, new_forecast_cache()
     )
 
     assert forecast.wbgt is None

@@ -6,6 +6,7 @@
  * ここで見ないもの:
  * - 1つの位置から距離を選ぶ決まり（最も近い点・続く側・前へ進んだ側） → `routeProgress.test.ts`
  * - ルートを外れたかの決め方（端末の位置の誤差を超えて離れたか） → `routeProgress.test.ts`
+ * - 外れている間は外れた点で止め、戻ったら戻った点から続けること → `app/page.ride.test.tsx`
  */
 import { renderHook } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
@@ -74,24 +75,6 @@ describe("useRouteProgress", () => {
       expect(result.current).toEqual(expected);
     },
   );
-
-  it("ルートを外れている間は外れた点で止めて外れたと出し、戻ったら戻った点から続ける", () => {
-    const segments = outAndBack();
-    const { result, rerender } = renderProgress({ route: segments, position: QUARTER, accuracyM: ACCURACY_M });
-    expect(result.current).toEqual({ km: expect.closeTo(0.5), offRoute: false });
-
-    // 1km の所の北へ誤差より遠く離れた。最も近い点（1km）へは当てず、外れた点（0.5km）で止める。
-    rerender({
-      route: segments,
-      position: moved({ latitude: 35, longitude: 139.01 }, ACCURACY_M * 10),
-      accuracyM: ACCURACY_M,
-    });
-    expect(result.current).toEqual({ km: expect.closeTo(0.5), offRoute: true });
-
-    // 回り道して、外れた点より先（1.5km）で戻った。
-    rerender({ route: segments, position: { latitude: 35, longitude: 139.015 }, accuracyM: ACCURACY_M });
-    expect(result.current).toEqual({ km: expect.closeTo(1.5), offRoute: false });
-  });
 
   it("ルートの外から走り始めたら、ルートへ当てるまでは距離を出さず外れたと出す", () => {
     const { result } = renderProgress({

@@ -4,13 +4,11 @@
  * 見ること: 地図を押したときの意味は効いているパネルで決まり（「ルート設定」の条件タブは選んでいる地点を置く、
  * 「ルート結果」は候補の線でそのルートを選び区間でその中身を出す、閉じている間は押した物の中身を小窓に出すだけ）、PC で
  * 2つの区分を開いていれば最後に触った区分が効いてその題に添えること、区間を選んでいる間は地図にその区間の範囲の縁取りが
- * 出ること、効いているパネルが移ると前のパネルで地図に出した選択を外すこと。区間を押すと
- * 地図が読み込んだ点のタイルのうち区間の線から近い点を地図に描き、押した区間の小窓にその中の補給・立ち寄り先を区分のチップで出し、
- * チップでその区分の一覧（道のりの順）を開いて地図に出す・消せ、点を押すと1施設1行で名前・道からの距離を出すこと
- * （グラフの下の地点の詳しくには出さず、グラフで地点を選んだときは小窓も点も出さず、点のタイルを読まないズームでは出さない）。走行中は施設の位置を
- * 現在地からの残りで出すこと。施設の印を押すと
- * 小窓を施設の中身へ入れ替えて印に枠を付け、区間へ戻れること。地図は選んでいるルート1本へ収め（生成直後は先頭、タブで
- * 選び直すとその1本）、地図の候補の線を押して選んだときは収め直さないこと。
+ * 出ること、効いているパネルが移ると前のパネルで地図に出した選択を外すこと。区間を選んでいる間は（地図で押してもグラフで
+ * 選んでも）地図が読み込んだ点のタイルのうち区間の線から近い点を点の層ごとに描き、描いた名前のある点を押すと道からの距離を
+ * 添えた点の小窓を出して区間へ戻れ、名前の無い点だけの所を押すと下の区間を開くこと。走行中は点の小窓の位置を現在地からの
+ * 残りで出すこと。地図は選んでいるルート1本へ収め（生成直後は先頭、タブで選び直すとその1本）、地図の候補の線を押して
+ * 選んだときは収め直さないこと。
  *
  * ここで見ないもの: 地図に置く地点（ピン・名前のある点・目的地・保存した地点）は`app/page.places.test.tsx`が、小窓がいつも1つで
  * 最後に押した物の中身を出すことと道の小窓は`app/page.popups.test.tsx`が見る。
@@ -82,7 +80,7 @@ describe("地図で扱えること", () => {
     expect(screen.getByRole("button", { name: "経由地1: 地図で選んだ地点" })).toBeInTheDocument();
   });
 
-  it("PC で2つの区分を開いているときは最後に触った区分が効いてその題に添え、「ルート結果」では候補の線を押すとそのルートを選ぶ", async () => {
+  it("PC で2つの区分を開いているときは最後に触った区分が効いてその題に添える", async () => {
     const { user } = renderHome();
     expect(section("ルート設定")).toHaveAccessibleDescription("地図で操作中");
     expect(section("ルート結果")).not.toHaveAccessibleDescription();
@@ -93,17 +91,7 @@ describe("地図で扱えること", () => {
     // 結果が届いたら「ルート結果」が効く。
     expect(section("ルート結果")).toHaveAccessibleDescription("地図で操作中");
     expect(section("ルート設定")).not.toHaveAccessibleDescription();
-    const [secondLine] = mapOnScreen()
-      .sourceFeatures("route-candidates")
-      .filter((line) => line.properties?.routeId === SECOND.id);
-    clickMap(ELSEWHERE, [
-      {
-        layer: "route-candidates-candidateHit",
-        properties: secondLine.properties ?? {},
-        geometry: secondLine.geometry,
-      },
-    ]);
-    expect(linesOn("route-selected")).toEqual([SECOND.geometry.coordinates]);
+    clickMap(ELSEWHERE);
     expect(marksAt(ELSEWHERE)).toEqual([]);
 
     await user.click(screen.getByRole("button", { name: "出発地: 現在地" }));

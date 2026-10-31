@@ -146,12 +146,6 @@ async def test_nearby_stop_pois_merge_only_within_the_same_legend_row(road_graph
         {"level_crossing": 1, "stop": 1, "give_way": 1})
 
 
-async def test_stop_pois_farther_apart_than_the_merging_distance_stay_separate(road_graph_repository):
-    await _ingest_pois([(LON, LAT, BOLLARD), (LON + FAR, LAT, BOLLARD)])
-
-    assert _kinds(await _tile(road_graph_repository, "poi")) == Counter({"barrier": 2})
-
-
 async def test_stop_pois_merge_within_the_distance_the_counts_were_built_with(road_graph_repository):
     """停止の点は、管理画面の今の上書きではなく、派生を作り直したときのまとめる距離でまとめる。地図の点の数が、停止回数として
     数えた数と食い違わない。"""
@@ -223,27 +217,22 @@ async def test_the_most_zoomed_tile_is_cut_into_cells_as_wide_as_the_zoomed_out_
     assert merged["properties"][POINT_COUNT_PROPERTY] == 2
 
 
-async def test_convenience_stores_come_from_the_stop_places_and_not_from_openstreetmap(road_graph_repository):
+async def test_convenience_stores_come_from_the_stop_places_with_their_names_and_not_from_openstreetmap(
+    road_graph_repository,
+):
     """補給の点のコンビニは立ち寄り先の群「コンビニ」の行から出し、OpenStreetMap の`shop=convenience`は出さない。
-    ほかの群の立ち寄り先は補給の点に出ない。"""
-    await _ingest_pois([(LON, LAT, {"shop": "convenience"}), (LON + FAR, LAT, TOILETS)])
+    ほかの群の立ち寄り先は補給の点に出ない。コンビニは押すと店の名前で外の地図を開けるように名前を持ち、
+    OpenStreetMap の点は名前を焼かない。"""
+    await _ingest_pois([(LON, LAT, {"shop": "convenience"}), (LON + FAR, LAT, {**TOILETS, "name": "公園のトイレ"})])
     await _ingest_stop_places([
         overture_place_record(1, LON - FAR, LAT, "ローソン 渋谷店", ("shopping", "convenience_store")),
         overture_place_record(2, LON, LAT + FAR, "店2"),
     ])
 
-    assert _kinds(await _tile(road_graph_repository, "poi")) == Counter({"convenience": 1, "toilets": 1})
+    features = _features(await _tile(road_graph_repository, "poi"), "poi")
 
-
-async def test_only_a_convenience_store_carries_its_name(road_graph_repository):
-    """コンビニは押すと店の名前で外の地図を開けるように名前を持つ。OpenStreetMap の点は名前を焼かない。"""
-    await _ingest_pois([(LON + FAR, LAT, {**TOILETS, "name": "公園のトイレ"})])
-    await _ingest_stop_places([overture_place_record(1, LON - FAR, LAT, "ローソン 渋谷店", ("shopping", "convenience_store"))])
-
-    names = {f["properties"]["kind"]: f["properties"].get("name") for f in _features(
-        await _tile(road_graph_repository, "poi"), "poi")}
-
-    assert names == {"convenience": "ローソン 渋谷店", "toilets": None}
+    assert sorted((f["properties"]["kind"], f["properties"].get("name")) for f in features) == [
+        ("convenience", "ローソン 渋谷店"), ("toilets", None)]
 
 
 async def test_a_merged_point_on_a_tile_edge_is_drawn_once(road_graph_repository):

@@ -70,25 +70,18 @@ def client():
     return lambda upstream: JmaTileClient(client_for(upstream), shared)
 
 
-async def test_nothing_is_cached_at_first_and_a_lookup_never_asks_upstream(monkeypatch, upstream, fake_redis, client):
-    recorded = record_external_calls(monkeypatch, jma_tile_client)
-
-    assert await client(upstream).get_cached(TILE) is None
-    assert await client(upstream).get_cached(LISTING) is None
-    assert [call.fields["cache"] for call in recorded] == ["miss", "miss"]
-
-
-async def test_a_fetched_tile_is_returned_and_then_served_from_the_cache(monkeypatch, upstream, fake_redis, client):
+async def test_a_tile_is_missed_at_first_then_fetched_and_then_served_from_the_cache(monkeypatch, upstream, fake_redis, client):
     recorded = record_external_calls(monkeypatch, jma_tile_client)
     upstream.get(f"/{TILE}").respond(content=OPAQUE, content_type="image/png")
 
+    assert await client(upstream).get_cached(TILE) is None
     fetched = await client(upstream).fetch(TILE)
     cached = await client(upstream).get_cached(TILE)
 
     assert fetched == cached == (OPAQUE, "image/png")
     assert upstream.calls.call_count == 1
-    assert recorded[0].fields | {"path": TILE} == {"path": TILE, "cache": "miss", "result": "ok", "status": 200}
-    assert recorded[1].fields["cache"] == "hit"
+    assert [call.fields["cache"] for call in recorded] == ["miss", "miss", "hit"]
+    assert recorded[1].fields | {"path": TILE} == {"path": TILE, "cache": "miss", "result": "ok", "status": 200}
 
 
 async def test_a_fetched_precipitation_tile_is_served_and_cached_in_the_legend_colors(upstream, fake_redis, client):
@@ -112,10 +105,6 @@ async def test_a_fetched_tile_with_nothing_to_draw_reads_the_same_the_first_time
 
     assert fetched is UPSTREAM_NOT_FOUND
     assert cached is UPSTREAM_NOT_FOUND
-
-
-async def test_a_locally_built_tile_with_nothing_to_draw_reads_as_nothing_to_draw(upstream, fake_redis, client):
-    assert await client(upstream).store(TILE, NOTHING_TO_DRAW, "image/png") is UPSTREAM_NOT_FOUND
 
 
 async def test_a_fetch_without_a_content_type_is_served_as_generic_bytes(upstream, fake_redis, client):

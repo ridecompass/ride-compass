@@ -34,8 +34,8 @@ describe("TileCachePanel", () => {
     expect(sent).toHaveLength(1);
   });
 
-  it("失敗したら理由を出し、押し直して成功すれば理由は消える", async () => {
-    onSameOrigin("POST", REFRESH, inTurn(failed("タイルキャッシュの消去に失敗しました"), cleared()));
+  it("押し直すたびに前の結果を消す: 失敗なら理由を、成功なら消したことだけを出す", async () => {
+    onSameOrigin("POST", REFRESH, inTurn(failed("タイルキャッシュの消去に失敗しました"), cleared(), failed("timeout")));
     const user = userEvent.setup();
     render(<TileCachePanel />);
 
@@ -45,14 +45,6 @@ describe("TileCachePanel", () => {
     await user.click(screen.getByRole("button", { name: CLEAR }));
     expect(await screen.findByText(/^消去しました。/)).toBeInTheDocument();
     expect(screen.queryByText("タイルキャッシュの消去に失敗しました")).not.toBeInTheDocument();
-  });
-
-  it("成功のあとに押し直して失敗したら、前の成功の表示は消す", async () => {
-    onSameOrigin("POST", REFRESH, inTurn(cleared(), failed("timeout")));
-    const user = userEvent.setup();
-    render(<TileCachePanel />);
-    await user.click(screen.getByRole("button", { name: CLEAR }));
-    await screen.findByText(/^消去しました。/);
 
     await user.click(screen.getByRole("button", { name: CLEAR }));
     expect(await screen.findByText("timeout")).toBeInTheDocument();
