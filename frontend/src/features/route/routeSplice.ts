@@ -135,7 +135,7 @@ export function buildSplicedShape(
       ...targetShape.nodeIds.slice(alternative.targetStretch.start, alternative.targetStretch.end),
       ...current.nodeIds.slice(alternative.stretch.end),
     ];
-    // 継ぎ目の点は両者で同じ座標のため、後ろ側の先頭を落として重複させない。
+    // 両端の継ぎ目の点は相手側のものだけを残し、重複させない。
     const coordinates = [
       ...current.coordinates.slice(0, head),
       ...targetShape.coordinates.slice(from, to + 1),

@@ -1,7 +1,7 @@
 /**
  * `features/route/RouteProfile/useProfileLayers.ts`——道のりのグラフに重ねるレイヤの選択と、端末に覚えること。
  *
- * ここで見ないもの: チップで選ぶ画面 → `RouteProfile.test.tsx`。保存・復元の仕組み → `hooks/useStoredState.ts`。
+ * ここで見ないもの: 一覧で選ぶ画面 → `RouteProfile.layers.test.tsx`。保存・復元の仕組み → `hooks/useStoredState.ts`。
  */
 import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it } from "vitest";

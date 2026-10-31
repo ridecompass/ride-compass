@@ -17,7 +17,7 @@ interface RouteOutcomeHeaderActionsProps {
 /**
  * 「ルート結果」の見出しの操作。選んでいる候補1本への操作（走る・合成・GPX）を、候補すべてに効く全消去の手前に並べる
  * （中身の中に置くと、狭い高さで候補の切り替えとグラフの場所を取る）。候補1本への操作は、編集の間は出さない（中身が編集面に
- * なり、相手の候補が選べない）。候補がある間だけ描く。
+ * なり、相手の候補が選べない）。
  */
 export default function RouteOutcomeHeaderActions({ planner, onRide }: RouteOutcomeHeaderActionsProps) {
   const { results, splice } = planner;

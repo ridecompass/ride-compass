@@ -14,11 +14,9 @@ from typing import TypeVar, cast
 import numpy as np
 
 from app.domain.attributes import ElevationAttribute
-from app.domain.evaluation import (
-    displayed_material_ids,
-)
+from app.domain.evaluation import DensityAxisColumn, displayed_material_ids
 from app.domain.difficulty import axis_contributions, axis_weight_shares
-from app.domain.leg_costs import LegCostArrays, LegValues
+from app.domain.leg_costs import LegValues
 from app.domain.gradient import GRADIENT_VALUE_DECIMALS
 from app.domain.material_catalog import GRADIENT_PERCENT
 from app.domain.geo import (
@@ -38,6 +36,7 @@ from app.domain.route import (
     DISTANCE_KM_DECIMALS,
     ELEVATION_M_DECIMALS,
     aggregate_segments_into_bins,
+    route_bin_slices,
     route_bins,
     along_route_km,
     concat_edge_geometries,
@@ -82,9 +81,7 @@ async def evaluate_routes(
         [hydrated[topology[index].edge_id] for index in t.data] for t in traced
     ]
     add_elapsed_ms(context.evaluate_steps_ms, "hydrate", hydrate_started)
-    # 表示する材料は共有の軸定義（`domain/axis_definitions.py: AXIS_DEFINITIONS`）から決まるので、
-    # 軸の差し替えと同じイベントループの上で1回だけ決め、スレッドの先では読ませない。
-    active_material_ids = displayed_material_ids(context.composer.weights)
+    active_material_ids = displayed_material_ids(context.composer.weights, context.composer.axis_definitions)
     return await asyncio.to_thread(
         lambda: [
             _build_best_candidate(context, t, edges_in_path, start_time, active_material_ids)
@@ -97,10 +94,9 @@ async def evaluate_routes(
 class _RowRead:
     """経路の区間のうち、同じ値の組から読む区間。時刻で変わる値（難易度・軸・材料）は、探索がその区間に使ったビンの時刻で
     経路上の行だけを合成し直した値（`domain/leg_costs.py: LegCostComposer.values_at_rows`、`indices`と同じ並び）。時刻で
-    変わらない値（密度の軸の横軸・生値・分類の材料）はレグの配列から読む。"""
+    変わらない値（密度の軸の横軸・生値・分類の材料）は合成器の列を`rows`で読む。"""
 
     values: LegValues
-    leg: LegCostArrays
     # 経路の中の区間の添字と、同じ並びの切り出した区間の順の行。
     indices: list[int]
     rows: np.ndarray
@@ -118,10 +114,9 @@ def _row_reads(
         groups.setdefault((leg_index, passage.time_bin), []).append(index)
     reads = []
     for (leg_index, time_bin), indices in groups.items():
-        leg = context.legs[leg_index]
         group_rows = np.array([rows[i] for i in indices], dtype=np.int64)
-        values = context.composer.values_at_rows(group_rows, leg.bin_times[time_bin])
-        reads.append(_RowRead(values, leg, indices, group_rows))
+        values = context.composer.values_at_rows(group_rows, context.legs[leg_index].bin_times[time_bin])
+        reads.append(_RowRead(values, indices, group_rows))
     return reads
 
 
@@ -143,7 +138,7 @@ def _present_rows(columns: Mapping[str, list], count: int) -> list[dict]:
 
 
 def _segment_difficulties(
-    reads: list[_RowRead], distances_km: list[float], rounded_km: list[float]
+    reads: list[_RowRead], density_axes: Mapping[str, DensityAxisColumn], distances_km: list[float], rounded_km: list[float]
 ) -> list[SegmentDifficulty]:
     """区間ごとの難しさの値（合成の難しさ・軸の得点・寄与度・密度の軸の横軸の値）。`distances_km`は丸めない区間の距離、
     `rounded_km`は応答の桁へ丸めた距離（`_Orientation.distances_km`）。
@@ -157,7 +152,7 @@ def _segment_difficulties(
         contributions = axis_contributions(score_lists, shares)
         composite = values.difficulty_array.tolist()
         # 密度の軸は、ビンと候補で得点を作り直すために横軸の値を載せる（点数と同じ区間が欠損になる）。
-        density = {axis_id: column.inputs[read.rows].tolist() for axis_id, column in read.leg.density_axes.items()}
+        density = {axis_id: column.inputs[read.rows].tolist() for axis_id, column in density_axes.items()}
         difficulties = []
         for position, (index, scores, inputs) in enumerate(
             zip(read.indices, _present_rows(score_lists, count), _present_rows(density, count))
@@ -171,7 +166,7 @@ def _segment_difficulties(
                 density_inputs={
                     axis_id: DensityScoreInput(
                         value=value, distance_km=distance_km, weight_share=shares[position].get(axis_id),
-                        shape=read.leg.density_axes[axis_id].shape,
+                        shape=density_axes[axis_id].shape,
                     )
                     for axis_id, value in inputs.items()
                 },
@@ -196,7 +191,9 @@ class _Orientation:
     reads: list[_RowRead]
     # 区間の距離を応答の桁へ丸めた値（km）。区間の難しさと区間の器が同じ値を持ち、ビンの切り方が揃う。
     distances_km: list[float]
-    # ビンの難しさ（`domain/route.py: route_bins`）。向きの比べとビンの組み立てが同じ値を読む。
+    # ビンの範囲（`domain/route.py: route_bin_slices`）と、ビンの難しさ（`domain/route.py: route_bins`）。向きの比べと
+    # ビンの組み立てが同じ値を読む。
+    bin_slices: list[slice]
     bins: list[SegmentDifficulty]
 
 
@@ -217,9 +214,10 @@ def _orientation(
     reads = _row_reads(context, rows, leg_of_edge, passages)
     distances_km = [edge.distance_m / 1000 for edge in edges_in_path]
     rounded_km = [round(distance_km, DISTANCE_KM_DECIMALS) for distance_km in distances_km]
-    bins = route_bins(_segment_difficulties(reads, distances_km, rounded_km))
+    bin_slices = route_bin_slices(rounded_km)
+    bins = route_bins(_segment_difficulties(reads, context.composer.density_axes, distances_km, rounded_km), bin_slices)
     return _Orientation(
-        edges_in_path, path, leg_of_edge, waypoint_offsets, rows, entries, passages, reads, rounded_km, bins
+        edges_in_path, path, leg_of_edge, waypoint_offsets, rows, entries, passages, reads, rounded_km, bin_slices, bins
     )
 
 
@@ -297,10 +295,10 @@ def _build_candidate(
         zip((segment.distance_km for segment in segments), segment_categories)
     )
     axis_raw_values = route_axis_raw_values(
-        list(zip((segment.distance_km for segment in segments), segment_raw_values))
+        list(zip((segment.distance_km for segment in segments), segment_raw_values)), orientation.bin_slices
     )
     # 返すsegmentsは集約する。Edge単位のままだとペイロードとフロントの描画費用が嵩む。
-    segments = aggregate_segments_into_bins(segments, orientation.bins)
+    segments = aggregate_segments_into_bins(segments, orientation.bins, orientation.bin_slices)
     add_elapsed_ms(context.evaluate_steps_ms, "bins", bins_started)
 
     return EvaluatedRoute(
@@ -358,14 +356,14 @@ def _build_segment_details(
     def categories_of(read: _RowRead) -> list[dict[str, str]]:
         columns = {
             material_id: [column.vocab[code] for code in column.codes[read.rows].tolist()]
-            for material_id, column in read.leg.categorical_material_arrays.items()
+            for material_id, column in context.composer.categorical_material_arrays.items()
             if material_id in active_material_ids
         }
         return _present_rows(columns, len(read.indices))
 
     def raw_values_of(read: _RowRead) -> list[dict[str, float]]:
         # 折れ点を通す前の生値。静的スコア行列が持つ列をそのまま読む（動的材料を参照する軸は行列側で除外済み）。
-        columns = {axis_id: arr[read.rows].tolist() for axis_id, arr in read.leg.axis_raw_arrays.items()}
+        columns = {axis_id: arr[read.rows].tolist() for axis_id, arr in context.composer.axis_raw_arrays.items()}
         return _present_rows(columns, len(read.indices))
 
     material_values = _per_segment(orientation.reads, count, materials_of)

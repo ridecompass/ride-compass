@@ -3,16 +3,12 @@
 対応表の網羅性を機械的に検証することで、新しいエンドポイントを追加したときの
 「ポリシーの決め忘れ」と、リファクタで消えたパスの「死んだエントリ」の両方を落とす。
 
-ここで見ないもの: 表の各行の秒数（宣言の書き写しになる）
+ここで見ないもの: 表の各行の秒数（宣言の書き写しになる）、`Cache-Control`の書式 → `test_jma_tile_routes.py`
 """
 
 from fastapi.routing import APIRoute
 
-from app.api.cache_policy import (
-    ROUTE_POLICIES,
-    CachePolicy,
-    policy_for_path,
-)
+from app.api.cache_policy import ROUTE_POLICIES, policy_for_path
 from app.main import app
 
 
@@ -33,8 +29,3 @@ def test_every_policy_entry_matches_a_real_route():
 
 def test_policy_for_path_returns_none_for_unknown_path():
     assert policy_for_path("/api/does-not-exist") is None
-
-
-def test_cache_policy_header_formats():
-    assert CachePolicy(max_age_seconds=60, immutable=True).header() == "public, max-age=60, immutable"
-    assert CachePolicy(max_age_seconds=None).header() == "no-store"

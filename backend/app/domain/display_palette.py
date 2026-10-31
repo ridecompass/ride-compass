@@ -21,7 +21,7 @@ _MAX_LIGHTNESS = 58.0
 _ORDERED_HUE_RANGE_DEG = (350.0, 205.0)
 _ORDERED_LIGHTNESS_RANGE = (26.0, 56.0)
 #: 上の範囲の両端（並びの先頭・末尾の行）の色を、画面で呼ぶ名前。地図の説明の文が差し込む。範囲を変えたら、ここも変える。
-ORDERED_END_COLOR_NAMES: tuple[str, str] = ("濃い赤紫", "明るい水色")
+_ORDERED_END_COLOR_NAMES: tuple[str, str] = ("濃い赤紫", "明るい水色")
 #: 目標の彩度。暗い側の色相によってはsRGBに収まらないので、収まるところまで下げる（`_fit_chroma`）。
 _ORDERED_CHROMA = 45.0
 
@@ -77,8 +77,6 @@ def _fit_chroma(lightness: float, chroma: float, hue_deg: float) -> str:
 
 def ordered_colors(count: int) -> list[str]:
     """順序のある分類の色。並びの位置が意味を持つので、行数ぶんを一度に作る。"""
-    if count <= 0:
-        return []
     (l_low, l_high), (h_start, h_end) = _ORDERED_LIGHTNESS_RANGE, _ORDERED_HUE_RANGE_DEG
     positions = [0.5] if count == 1 else [i / (count - 1) for i in range(count)]
     return [
@@ -88,7 +86,7 @@ def ordered_colors(count: int) -> list[str]:
 
 def ordered_ends_phrase(first_label: str, last_label: str) -> str:
     """順序のある分類の、先頭の行と末尾の行の名前から組む色の向きの文。"""
-    dark, light = ORDERED_END_COLOR_NAMES
+    dark, light = _ORDERED_END_COLOR_NAMES
     return f"「{first_label}」ほど{dark}、「{last_label}」ほど{light}"
 
 

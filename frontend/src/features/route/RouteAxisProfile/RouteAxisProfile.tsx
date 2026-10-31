@@ -25,26 +25,19 @@ interface RouteAxisProfileProps {
   /** RouteCandidate.axis_difficulties（axis_id→距離加重平均の難易度0-100）。評価できなかった
    * 軸はキー自体を持たない。 */
   axisDifficulties: Record<string, number>;
-  /** RouteCandidate.axis_contributions（axis_id→重み付き寄与度0-100、合計はoverallDifficultyと
-   * 一致する）。backendは公開軸すべてにキーを返す（重み0の軸は値0.0）ため、値0の軸は
-   * AxisContributionBar側で表示から除く（本コンポーネント側での絞り込みは行わない）。 */
+  /** RouteCandidate.axis_contributions（axis_id→重み付き寄与度0-100、合計はoverallDifficultyの平均と一致する）。 */
   axisContributions: Record<string, number>;
-  /** RouteCandidate.axis_raw_values（axis_id→折れ点を通す前の生値）。単位が定まる軸だけが
-   * 値を持つ。得点は目盛りの引き方に依存する相対評価のため、軸単体で経路を判断するには
-   * この絶対値が要る。 */
+  /** RouteCandidate.axis_raw_values（axis_id→折れ点を通す前の生値）。単位が定まる軸だけが値を持つ。 */
   axisRawValues: Record<string, number>;
-  /** RouteCandidate.material_values（材料id→距離加重平均の値）。生値の単位が定まらない軸は、
-   * 軸の内訳（CatalogAxis.materialBreakdown）が挙げる材料の値をここから引いて出す。
-   * 真偽値材料は0/1で運ばれるため、平均がそのまま該当区間の延長割合になる。 */
+  /** RouteCandidate.material_values（材料id→距離加重平均の値）。軸の内訳（CatalogAxis.materialBreakdown）が挙げる
+   * 材料の値をここから引く。 */
   materialValues: Record<string, number>;
   /** RouteCandidate.material_category_shares（categorical材料id→{値: 延長割合}）。
    * 数値として平均できない材料の内訳はここから引く。 */
   materialCategoryShares: Record<string, Record<string, number>>;
   /** 経路の走行距離（km）。単位が「◯◯/km」の軸で、生値から経路全体の実数を出すのに使う。 */
   distanceKm: number | null;
-  /** RouteCandidate.overall_difficulty。平均は内訳の合計（絶対基準0-100）。総量（平均×距離km）は、平均が距離で
-   * 正規化されるのに対し距離が伸びればそのまま増えるため「遠回りした分だけ増えるしんどさ」を表す。候補間の
-   * 相対比較に使う値で単位を持たない。 */
+  /** RouteCandidate.overall_difficulty（平均と総量）。 */
   overallDifficulty: OverallDifficulty | null;
   /** RouteCandidate.estimated_duration_seconds（走行＋停止＋ターンの見積もり）。 */
   estimatedDurationSeconds: number | null;
@@ -81,15 +74,12 @@ export default function RouteAxisProfile({
   // 何が効いたか」が読めなくなる（設計原則「消さずに薄くする」の例外）。
   const renderAxisDetail = (axis: CatalogAxis) => {
     if ((weights[axis.axisId] ?? 0) <= 0) return null;
-    // 折れ点を通す前の生値。単位が定まらない軸（合成軸等）はbackendがrawValueUnitを
-    // 返さないため何も出ない。
     const rawText = formatAxisRawValue(
       axisRawValues[axis.axisId],
       axis.rawValueUnit,
       axis.rawValueTotalUnit,
       distanceKm,
     );
-    // backendがmaterialBreakdownで並び順ごと返すため、ここでは並べ替えない。
     const breakdownTexts = axis.materialBreakdown
       .map((entry) =>
         entry.dtype === "categorical"
@@ -157,9 +147,7 @@ export default function RouteAxisProfile({
           </div>
           {/* 所要時間の前提が崩れていることは、所要時間のすぐ下で知らせる（黙って短い所要時間を見せない）。
               値の無い区間は丸めて1%以上のときだけ出す——0%を並べても判断の材料にならない。 */}
-          {windUnavailable && (
-            <WarningText>風のモデルの計算値を使えなかったため、無風として所要時間を出しています</WarningText>
-          )}
+          {windUnavailable && <WarningText>{routeGenerateConfig.missing_wind_wording}</WarningText>}
           {missingPct >= 1 && (
             <WarningText>{`データの無い区間が${missingPct}%[${routeGenerateConfig.missing_travel_data_wording}]`}</WarningText>
           )}

@@ -736,7 +736,6 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
             ),
     ),
     # --- 停止要因POIの種別別密度。`domain/traffic.py: POI_COUNT_KINDS`から生成する ---
-    # 材料を1件ずつ手書きせず一覧から作るため、キーを増やすときに触るのはその一覧だけで済む。
     **{
         poi_density_material_id(kind): MaterialSpec(
             material_id=poi_density_material_id(kind),

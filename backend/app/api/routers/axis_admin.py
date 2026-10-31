@@ -1,9 +1,7 @@
-"""評価軸定義のCRUD管理API（ADR: docs/records/decisions/t221-axis-registry.md）。
+"""評価軸定義のCRUD管理API。
 
-`domain/axis_definitions.py: AXIS_DEFINITIONS`をDBの内容と同期させる書き込み口。
-ルート生成の振る舞いを直接変えられるため、他のエンドポイントと異なり認可を要求する
-（require_admin_basic_auth）。軸の定義ファイルを入れる`backend/scripts/axis_apply.py`と、軸スタジオの較正の画面
-（frontend `/admin`）は、このAPIを通して軸を足す・直す・公開/非公開を変える・消す。
+`domain/axis_definitions.py: AXIS_DEFINITIONS`をDBの内容と同期させる書き込み口で、軸を足す・直す・公開/非公開を変える・消す。
+ルート生成の振る舞いを直接変えられるため、認可を要求する。
 """
 
 from collections.abc import Mapping
@@ -18,7 +16,7 @@ from app.api.dependencies import (
     get_axis_registry_admin_service,
     get_draft_way_value_lens_builder,
 )
-from app.api.routers._tile_http import check_tile_rate_limit, region_tile_semaphore
+from app.api.routers._tile_http import check_tile_rate_limit, missing_conditions_error, region_tile_semaphore
 from app.domain.value_distribution import ValueDistribution
 from app.services.axis_preview_service import AxisPreviewService
 from app.services.dedicated_way_values import DraftWayValueLensBuilder
@@ -134,9 +132,7 @@ async def update_axis_definition(
     service: AxisRegistryAdminService = Depends(get_axis_registry_admin_service),
 ) -> AxisDefinitionResponse:
     if payload.axis_id != axis_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="axis_idはURLとボディで一致させてください"
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="axis_idはURLとボディで一致させてください")
     definition = payload.to_definition()
     try:
         definitions = await service.update(axis_id, definition)
@@ -272,15 +268,14 @@ async def preview_way_values(
     """編集中の折れ点で、タイルのフィーチャーごとに地図が塗る値を返す。保存していない下書きの`shape`で、軸スタジオの
     較正の地図が塗る。
 
-    鍵と値の意味は、地図が道ごとの材料（`/api/region/way-materials`）を軸の木（`way_value_formula`）で評価した値と同じで、
-    同じ材料・同じ評価から`shape`だけを差し替えて求める（`services/dedicated_way_values.py: draft_axis_way_value_lens`）。
-    保存されている折れ点を渡せば、地図が塗る値と同じになる。
+    鍵と値の意味は、道ごとの材料（`/api/region/way-materials`）を軸の木（`way_value_formula`）で評価した値で、
+    `shape`だけを差し替えて求める。保存されている折れ点を渡せば、地図が塗る値と同じになる。
     下書きの値は持たず、配信の値・材料のキャッシュは変わらない。公開していない軸も求める。
 
     条件で変わる材料（向きで符号の変わる勾配・風・雨）を読む軸も扱い、条件の欄（`bearing_deg`・`at`・`speed_kmh`）は
     配信と同じ型の検証・要る欄の判定（欠けると422）・省いたときの扱いに従う。無い軸は404、保存できない下書き
     （参照先の無い材料・輪になる組み合わせ等）はその理由の文で422。レート制限の上限・座標の検証・DB接続プールの
-    semaphore（`_tile_http.py: region_tile_semaphore`）は配信と同じものを使う。
+    semaphoreは配信と共有する。
     """
     try:
         lens = build_lens(payload.axis_id, payload.shape)
@@ -293,6 +288,5 @@ async def preview_way_values(
     async with region_tile_semaphore:
         values = await lens.values(payload.z, payload.x, payload.y, query)
     if isinstance(values, MissingConditions):
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"この軸には{'・'.join(values.names)}が必須です。")
+        raise missing_conditions_error(values)
     return values

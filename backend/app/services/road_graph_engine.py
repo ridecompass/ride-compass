@@ -58,7 +58,6 @@ from app.domain.route_search import (
     loop_max_overlap_ratio,
     order_by_bearing_spread,
     rank_by_pareto_layers,
-    retrace_penalized,
     relay_band,
     turnaround_band,
     turnaround_ring_m,
@@ -674,14 +673,8 @@ class RoadGraphEngine:
         """前段の道と往路（最後の固定点からの一対全木上の経路、`select_loop_turnarounds`で確定済み）に、それまでに
         走った道を避けた帰り（中継点→終点のA*）を継いで1本にする。
 
-        帰りの探索の間だけ、走った区間（前段＋往路）＋同一Node対の逆方向Edgeのコストを
-        走った道を帰りで通る罰（`domain/route_search.py: retrace_penalized`）へ**差し替え**、探索後に元へ戻す。配列ごとコピーすると
-        候補の数だけbbox全体ぶんの複製を払うため、触るのは走った区間の列だけにする。時刻ビンを
-        張った帰りでは全ビンの同じ列をまとめて差し替える——どの時刻に通っても「走った道を
-        なぞる」ことに変わりはない。
-
-        **差し替え・探索・戻すは1つのスレッドの中で続けて行い、間にawaitを挟まないこと。** 共有のコスト配列を
-        書き換えるため、この間に他のコルーチンへ制御が渡ると別の候補が書き換え後の値を見る。
+        帰りの探索は、走った区間（前段＋往路）＋同一Node対の逆方向Edgeに走った道を避ける罰を置いた写し（`avoiding_traveled`）で
+        探す。時刻ビンを張った帰りでは全ビンの同じ列に置く——どの時刻に通っても「走った道をなぞる」ことに変わりはない。
 
         倍率は有限のため、帰りが走った道を戻る以外に道が無い区間（袋小路・起点付近の単一の道）は
         そのまま通れる。
@@ -690,26 +683,18 @@ class RoadGraphEngine:
         leg_index = len(fixed.segments)
         # 帰りレグのコスト配列（select_loop_turnaroundsが合成済み）。
         inbound_leg = context.legs[leg_index + 1]
-        cost_bins = inbound_leg.cost_bins_lazy
 
         penalized_columns = traveled_columns(context, [*fixed.edges, *data.outbound_edge_indices])
         heuristic = heuristic_to(context, fixed.end_node)
 
-        def search_avoiding_traveled() -> list[int] | None:
-            original = cost_bins[:, penalized_columns]
-            try:
-                cost_bins[:, penalized_columns] = retrace_penalized(original)
-                return turn_expanded_shortest_path(
-                    context.turn_structure, cost_bins, heuristic,
-                    origin_states(context.statics, data.node),
-                    fixed.end_node,
-                    inbound_leg.travel_bins_lazy, inbound_leg.bin_seconds,
-                )
-            finally:
-                cost_bins[:, penalized_columns] = original
-
         trace_started = start_timer()
-        return_edge_index_list = await asyncio.to_thread(search_avoiding_traveled)
+        return_edge_index_list = await asyncio.to_thread(
+            lambda: turn_expanded_shortest_path(
+                context.turn_structure, avoiding_traveled(inbound_leg.cost_bins_lazy, penalized_columns), heuristic,
+                origin_states(context.statics, data.node), fixed.end_node,
+                inbound_leg.travel_bins_lazy, inbound_leg.bin_seconds,
+            )
+        )
         trace_wall_ms = elapsed_ms(trace_started)
         if return_edge_index_list is None:
             raise RoutingError(f"turnaround bearing={turnaround.bearing}: no return path found")

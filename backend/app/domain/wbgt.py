@@ -31,7 +31,7 @@ _LEVEL_THRESHOLDS: list[tuple[float, WarningBadgeLevel, str]] = [
 ]
 
 
-#: 段階ごとの表示名（警戒度バッジが出す語。domain/warning_display.py）。
+#: 段階ごとの表示名（警戒度バッジが出す語）。
 WBGT_LEVEL_LABELS: dict[WarningBadgeLevel, str] = {level: label for _, level, label in _LEVEL_THRESHOLDS}
 
 
@@ -98,14 +98,10 @@ def current_forecast(forecasts: list[WbgtForecast], now: datetime) -> WbgtForeca
     if not forecasts:
         return None
     latest_reference_time = max(forecast.reference_time for forecast in forecasts)
-
     now_naive = as_series_time(now)
-    best: WbgtForecast | None = None
-    best_diff: float | None = None
-    for forecast in forecasts:
-        if forecast.reference_time != latest_reference_time or forecast.forecast_time is None:
-            continue
-        diff = abs((forecast.forecast_time - now_naive).total_seconds())
-        if best_diff is None or diff < best_diff:
-            best, best_diff = forecast, diff
-    return best
+    gaps = [
+        (abs(f.forecast_time - now_naive), f)
+        for f in forecasts
+        if f.reference_time == latest_reference_time and f.forecast_time is not None
+    ]
+    return min(gaps, key=lambda gap: gap[0], default=(None, None))[1]
