@@ -1,5 +1,5 @@
 /**
- * 区間の乗り換えの編集（`useSpliceSession.ts`）の入口と編集——候補が2本以上あり、候補を選んでいて、
+ * 区間の乗り換えの編集（`useSpliceSession.ts`）の入口と編集——候補（周回も目的地ルートも）が2本以上あり、候補を選んでいて、
  * 区間を割る下限を引けるときだけ始められる。始めると元の候補を編集面と地図（いま作っているルート）へ渡し、他の候補が別の道を
  * 通る区間を乗り換え先として地図へ出す。乗り換え・1つ戻す・全部戻す・やめるができる。編集は始めたときの生成に結びつき、
  * 抜けると中身ごと消える。
@@ -13,7 +13,7 @@
  * - 地図に帯が出る・消えることとタップ → `app/page.splice.test.tsx`（帯の色・線の形は`features/map/scene/groups/routes.ts`の宣言）
  * - 作った経路を結果へ足す・既存の候補を選ぶ → `useRouteResults.test.ts`・`app/page.splice.test.tsx`
  *
- * 差し替えたもの: 軸カタログの応答（網の層。`testing/spliceSession.ts`）。
+ * 差し替えたもの: 評価（生成のジョブ）と軸カタログの応答（網の層。`testing/spliceSession.ts`）。
  *
  * 通さない分岐（どれも入口から作れない）:
  * - 生成の入力が無いときの`start`: 始められるのは表示中の候補を作った生成があるときだけで、入口（`canStart`）が出ない
@@ -25,18 +25,23 @@
 import { act, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 
+import type { GenerationInput } from "@/features/route/generationRequest";
 import { serveAxisCatalog } from "@/testing/backendServer";
 import { catalogEntry, catalogResponse } from "@/testing/catalogAxes";
 import { makeRouteCandidate } from "@/testing/routeFixtures";
 import {
   BASE,
   BASIS,
+  ELSEWHERE,
   PROPS,
   SPLICE_CATALOG,
   VIA_Q,
   VIA_Q_R,
+  evaluated,
   line,
+  press,
   renderSplice,
+  serveSpliceEvaluations,
   startEditing,
   startWithCatalog,
   tapStretch,
@@ -46,7 +51,10 @@ import type { RouteCandidate } from "@/types/route";
 
 const CATALOG_WITHOUT_MIN_STRETCH = catalogResponse([catalogEntry({ axis_id: "axis_a", default_weight: 1 })]);
 
+let evaluations: ReturnType<typeof serveSpliceEvaluations>;
+
 beforeEach(() => {
+  evaluations = serveSpliceEvaluations();
   serveAxisCatalog(SPLICE_CATALOG);
 });
 
@@ -60,6 +68,22 @@ describe("入口", () => {
       rendered.rerender({ ...PROPS, ...props });
       expect(rendered.result.current.canStart).toBe(false);
     }
+  });
+
+  it("周回の候補からも始められ、組み合わせた経路を目的地を付けずに評価へ送る（終点は出発地）", async () => {
+    const loop = (candidate: RouteCandidate): RouteCandidate => ({ ...candidate, kind: "loop" });
+    const loopBasis: GenerationInput = { ...BASIS, distanceKm: 30, destination: null };
+    const rendered = renderSplice({ routes: [loop(BASE), loop(VIA_Q)], generatedInput: loopBasis });
+    await waitFor(() => expect(rendered.result.current.canStart).toBe(true));
+    await startEditing(rendered);
+    tapStretch(rendered);
+    evaluations.respond([evaluated(ELSEWHERE)]);
+
+    await press(rendered.result.current.panel?.onPreview);
+
+    expect(evaluations.submitted).toHaveLength(1);
+    expect(evaluations.submitted[0].body).toMatchObject({ spliced_edge_ids: VIA_Q.edge_ids });
+    expect(evaluations.submitted[0].body).not.toHaveProperty("destination");
   });
 
   it("区間を割る下限を引けない間は始められず、始めても乗り換え先を作らない（較正と別の切り方で出さない）", async () => {
