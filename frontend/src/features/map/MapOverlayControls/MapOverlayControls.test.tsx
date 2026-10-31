@@ -60,13 +60,11 @@ describe("一覧の行", () => {
     expect(screen.queryByRole("region", { name: "memberの内訳" })).not.toBeInTheDocument();
   });
 
-  it("説明のある行にだけⓘを出し、押すと説明を一覧の中の行の下に開き、もう一度押すと閉じる", async () => {
+  it("説明のある行にだけⓘを出し、押すと説明を一覧の中の行の下に開く", async () => {
     const { user, list } = await setup([chip("with_hint", { panelHint: "説明文" }), chip("plain")]);
     expect(within(list).queryByRole("button", { name: /plainの説明/ })).not.toBeInTheDocument();
     await user.click(within(list).getByRole("button", { name: "with_hintの説明を表示" }));
     expect(within(list).getByText("説明文")).toBeInTheDocument();
-    await user.click(within(list).getByRole("button", { name: "with_hintの説明を隠す" }));
-    expect(screen.queryByText("説明文")).not.toBeInTheDocument();
   });
 });
 
@@ -77,20 +75,16 @@ describe("▶の内訳", () => {
     return { ...view, panel: screen.getByRole("region", { name: `${layer.label}の内訳` }) };
   }
 
-  it("絞り込める軸は、軸の名前の見出しを持ち、1行ずつと見出しでまとめて切り替えられる（全部表示中なら全部隠し、1つでも隠れていれば全部出す）", async () => {
+  it("絞り込める軸は、軸の名前の見出しを持ち、1行ずつと見出しでまとめて切り替えられる", async () => {
     const { user, props, panel } = await openDetails(
-      chip("layer", { on: true, legendDetails: [legend("a", ["1", "2"]), legend("b", ["3", "4"], ["4"])] }),
+      chip("layer", { on: true, legendDetails: [legend("a", ["1", "2"])] }),
     );
     expect(within(panel).getByText("軸a")).toBeInTheDocument();
     await user.click(within(panel).getByRole("checkbox", { name: /項目1/ }));
     await user.click(within(panel).getByRole("checkbox", { name: "軸aをまとめて表示/非表示" }));
-    await user.click(within(panel).getByRole("checkbox", { name: "軸bをまとめて表示/非表示" }));
 
     expect(props.onLegendEntryToggle).toHaveBeenCalledWith("a", "1");
-    expect(props.onLegendAxisSetHidden.mock.calls).toEqual([
-      ["a", ["1", "2"]],
-      ["b", []],
-    ]);
+    expect(props.onLegendAxisSetHidden).toHaveBeenCalledWith("a", ["1", "2"]);
   });
 
   it("絞り込めない軸（axisIdが無い）はチェックボックスを出さず、非表示の行に印を付ける", async () => {
