@@ -46,8 +46,7 @@ from app.domain.strict_model import StrictModel
 router = APIRouter()
 logger = logging.getLogger("ridecompass.generate")
 
-# ルート生成の同時実行上限（settings.generate_max_concurrent、config.pyのコメント参照）。
-# 上限を超えた分は待たせず429で即座に返し、ブラウザのリトライや連打で外部サービスへの
+# ルート生成の同時実行上限。上限を超えた分は待たせず429で即座に返し、ブラウザのリトライや連打で外部サービスへの
 # 負荷が積み上がることを防ぐ。
 _generate_semaphore = asyncio.Semaphore(settings.generate_max_concurrent)
 
@@ -57,14 +56,10 @@ _running_generate_tasks: set[asyncio.Task] = set()
 
 
 class RoutePreferenceWeights(RootModel[dict[str, float]]):
-    """Edge評価・区間難易度（絶対評価、難易度合成）の重み。
-    キーはaxis_id（`domain/axis_definitions.py: AXIS_DEFINITIONS`）で、
-    `domain/route_preference.py: RoutePreference`と同じ。
+    """Edge評価・区間難易度（絶対評価、難易度合成）の重み。キーはaxis_id。
 
-    軸ごとの固定フィールドではなくaxis_idキーの辞書にすることで、軸の増減でこのモデルの
-    改修が不要になる。API境界では「キー省略時に既定値が黙って入る」ことを避けるため、
-    公開軸のaxis_idを全部明示することを検証で強制する（上書きするなら全軸を明示する、
-    という方針）。値の不変条件（公開軸のidだけ・有限かつ非負）は`check_axis_weights`。
+    「キー省略時に既定値が黙って入る」ことを避けるため、公開軸のaxis_idを全部明示することを
+    検証で強制する。値の不変条件（公開軸のidだけ・有限かつ非負）は`check_axis_weights`。
     """
 
     @model_validator(mode="after")
@@ -207,9 +202,7 @@ class GenerationConditions(StrictModel):
 class RouteGenerateResponse(StrictModel):
     routes: list[RouteCandidate]
     conditions: GenerationConditions
-    # routesが空のとき、原因の要約（RouteGenerator.last_no_candidates_reason、
-    # route_generator.pyのlogger.warning行と同じ情報源）。ユーザーが原因を推測できず
-    # SSHでサーバーログを見る以外に切り分け手段が無い状態を避けるための情報。
+    # routesが空のとき、原因の要約。サーバーログを見ずに利用者が原因を切り分けられるようにする。
     # routesが1件以上あるときは常にNone。
     no_candidates_reason: str | None
 
@@ -290,8 +283,7 @@ async def get_generate_job(job_id: str) -> RouteGenerateJobStatusResponse:
     if record is None:
         raise HTTPException(
             status_code=404,
-            detail="ルート生成の結果が見つかりません[完了から時間が経って消えたか、"
-            "アプリが再起動した可能性があります]",
+            detail="ルート生成の結果が見つかりません[完了から時間が経って消えたか、アプリが再起動した可能性があります]",
         )
     if isinstance(record, job_registry.JobDone):
         return RouteGenerateJobDone(result=record.result)

@@ -9,12 +9,9 @@
 
 import argparse
 import logging
-import sys
 from collections.abc import Coroutine
 from pathlib import Path
 from typing import Any
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import asyncpg
 

@@ -41,8 +41,6 @@ class RoutePreference(StrictModel):
     """Evaluation Engineが使う、axis_idをキーとする重み辞書。
 
     部分指定を許し、不足キーは各軸の`default_weight`で補完する。値の不変条件は`check_axis_weights`。
-    **API境界の「上書きするなら全軸を明示する」検証は`api/routers/routes.py:
-    RoutePreferenceWeights`が担う**（省略時にクラス既定値が黙って入ることを避けるため）。
     """
 
     weights: dict[str, float] = Field(default_factory=default_axis_weights)

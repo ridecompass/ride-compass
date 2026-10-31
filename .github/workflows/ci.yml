@@ -231,10 +231,8 @@ jobs:
       # 層の向き（上の層だけが下の層を読む）を止める。契約はbackend/.importlinter、各層が持つものは
       # docs/architecture/directory-layout.md。
       - run: lint-imports
-      # -n auto（pytest-xdist）でCPUコア数ぶん並列化する。
-      # PostGIS統合テストは全ファイルxdist_group="postgis"で同一workerへ固定済み
-      # （同じridecompass_test DBへの同時TRUNCATEレースを防ぐ、.claude/rules/testing-backend.mdパターン2）
-      # なので、それら以外のテストだけが安全に並列化される。上記コメント参照:
+      # -n auto（pytest-xdist）でCPUコア数ぶん並列化する。PostGIS統合テストは、ワーカーごとに TEST_DATABASE_URL の DB を
+      # 複製した DB を使い、ファイルごとに1つのワーカーへ寄る（backend/tests/conftest.py: pytest_collection_finish）。
       # 実行順はpytest-randomlyがばらす。-qでは種が見出しに出ないため、runのIDを種に渡す——落ちた並びは
       # 手元で --randomly-seed=<runのID> を付けて同じ順に並べ直せる。
       - run: python -m pytest -q -n auto --dist loadgroup --randomly-seed=${{ github.run_id }}

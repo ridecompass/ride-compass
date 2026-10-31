@@ -408,7 +408,7 @@ get_way_materials(z, x, y, at)   … atは読まない
   値の定義（窓の中に欠測があれば値なし、止んでからの時間の上限）は材料カタログの説明と`domain/rain.py`が持つ。
 
 各サービスとも`get_way_materials(z, x, y, at)`が`{道ごとの材料の名前: {feature_key: 値}}`を返す同じ形で、地図のレンズと
-区間インスペクタと道ごとの材料の口から材料非依存に呼ばれる（`services/dedicated_way_values.py: tile_axis_values`・`tile_axis_way_materials`）。
+区間インスペクタと道ごとの材料の口から材料非依存に呼ばれる（`services/dedicated_way_values.py: tile_axis_values`・`services/dedicated_way_values.py: AxisWayValueLens.way_materials`）。
 材料の値は、その材料の木（`material_formula`）を道ごとの材料と要求の条件で評価して求める（上の「地図へ配る式の木」）。
 
 各サービスが例外を空dictへ倒すのは**DB障害だけ**（`database.py: DB_UNAVAILABLE_ERRORS`。

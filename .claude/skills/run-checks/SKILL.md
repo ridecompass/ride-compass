@@ -184,9 +184,9 @@ PYTHONUTF8=1 backend/.venv/Scripts/python.exe -m pytest backend/tests/<テスト
 
 環境ごとに必要な作業（開発機で一度だけ付ける権限・拡張）と、作業ツリーを消したあとの残骸の片付けは付録にある。
 
-**postgisを並列化しても速くならない**: DBを使うテストは`xdist_group(name="postgis")`により1ワーカーへ固定される
-（同じDBへの同時TRUNCATEを避けるため）。実測で直列6分20秒（2,189件）に対し`-n auto --dist loadgroup`は7分00秒で、
-postgisの285件が4分23秒を占める。縮めるには**ワーカーごとに**DBを分ける必要があり、それ自体が別タスク。
+**postgisは`-n auto --dist loadgroup`で並列に回る**: pytest-xdistのワーカーは、それぞれ自分のDB（この実行のDBの名前に
+`_<ワーカー>`を付けたもの）を作って使い、DBを使うテストはファイルごとに1つのワーカーへ寄る（`tests/conftest.py: pytest_collection_finish`）。
+ワーカーのDBを作れない環境では、共有のDBへ退避せずに止まる（`-n`を外せば1つのDBで回る）。
 
 **`-m postgis`はCIが通し**、完了条件には含めない（手元で回すかは上の「手元の検査の回し方」）。作業ツリー専用のDBを
 作れない環境では共有のDB（`backend/tests/database_names.py: SHARED_TEST_DATABASE`）へ退避するため、並行セッションと衝突しうる

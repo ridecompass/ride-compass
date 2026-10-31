@@ -1,3 +1,4 @@
+import { samePosition } from "@/lib/geoDistance";
 import { isCoordinates, readStoredList, withEntryFirst } from "@/lib/storedList";
 import { vocabulary } from "@/types/generated/vocabulary";
 import type { Coordinates, PlaceCandidate } from "@/types/route";
@@ -24,8 +25,6 @@ function readSavedPlace(value: unknown): SavedPlace | null {
 export function readSavedPlaces(raw: string): SavedPlace[] | null {
   return readStoredList(raw, readSavedPlace);
 }
-
-const samePosition = (a: Coordinates, b: Coordinates) => a.latitude === b.latitude && a.longitude === b.longitude;
 
 /** 保存した地点のうち、位置`at`にあるもの。 */
 export function savedPlaceAt(list: SavedPlace[], at: Coordinates): SavedPlace | null {

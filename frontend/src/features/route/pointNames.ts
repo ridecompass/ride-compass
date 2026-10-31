@@ -18,42 +18,23 @@ interface PointNamesInputs {
   areas?: { origin: Coordinates; areaOf: (at: Coordinates) => string | null };
 }
 
-/** 地点の名前のうち、探して・名前のある点で置いた地点の名前（無ければnull。地図で置いた地点・現在地は名前を持たない）。 */
-function placeNames({
-  waypoints,
-  destination,
-  foundAt,
-  originFound,
-}: Pick<PointNamesInputs, "waypoints" | "destination" | "foundAt" | "originFound">): {
-  origin: string | null;
-  waypoints: (string | null)[];
-  destination: string | null;
-} {
-  return {
-    origin: originFound?.name ?? null,
-    waypoints: waypoints.map((point) => foundAt(point)?.name ?? null),
-    destination: destination === null ? null : (foundAt(destination)?.name ?? null),
-  };
-}
-
 /**
  * 地点の名前。探して置いた地点は候補の名前、地図で置いた地点は辺り（引けていなければ「地図で選んだ地点」）、手で置いていない出発地は
  * 「現在地（辺り）」（取れていなければそう言う——「現在地」と出ている出発地は、本当に取れた位置である）、目的地が無ければ「未設定」。
  * 辺りは`areas`を渡したときだけ使う。
  */
 export function pointNames(inputs: PointNamesInputs): { origin: string; waypoints: string[]; destination: string } {
-  const { waypoints, originManual, originLocated, destination, areas } = inputs;
-  const found = placeNames(inputs);
+  const { waypoints, destination, foundAt, originFound, originManual, originLocated, areas } = inputs;
   const areaOf = (at: Coordinates) => areas?.areaOf(at) ?? null;
   const placed = (at: Coordinates) => areaOf(at) ?? MAP_PLACED;
   const originArea = areas === undefined ? null : areaOf(areas.origin);
   const current = originArea === null ? "現在地" : `現在地（${originArea}）`;
   return {
     origin:
-      found.origin ??
+      originFound?.name ??
       (originManual ? (originArea ?? MAP_PLACED) : originLocated ? current : "現在地を取得できていません"),
-    waypoints: found.waypoints.map((name, index) => name ?? placed(waypoints[index])),
-    destination: destination === null ? "未設定" : (found.destination ?? placed(destination)),
+    waypoints: waypoints.map((point) => foundAt(point)?.name ?? placed(point)),
+    destination: destination === null ? "未設定" : (foundAt(destination)?.name ?? placed(destination)),
   };
 }
 

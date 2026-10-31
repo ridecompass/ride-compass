@@ -34,7 +34,7 @@ type RoutePointsConditions = Pick<
 >;
 
 /** 地点の詳しくの所に出す、探した候補の札。 */
-export interface FoundCard {
+interface FoundCard {
   /** 札を入れる所を受け取る。 */
   slot: (slot: HTMLElement | null) => void;
   /** 探した候補を下げる（地図の点と札を消し、検索の欄の文字は残す）。 */
@@ -65,6 +65,12 @@ interface RoutePointsProps {
   /** 探した候補の札（スマホで札を出している間だけ。null なら地点の詳しくを出す）。 */
   foundCard: FoundCard | null;
 }
+
+/** 並びの両脇の切り替え（周回・編集）。 */
+const toggleClass = cn(
+  pressableClass,
+  "min-h-6 rounded-sm px-1.5 text-[length:var(--font-size-md)] text-[var(--color-muted)] aria-pressed:text-[var(--color-accent-strong)]",
+);
 
 /** どうやって置いた地点か。 */
 function sourceOf(found: PlaceCandidate | null): string {
@@ -98,15 +104,11 @@ export default function RoutePoints({
     destination,
     clearDestination,
     clearPoints,
-    selectedPoint,
+    selectedPoint: target,
     selectPoint,
     foundAt,
   } = conditions;
   const waypointCount = waypoints.length;
-  const full = waypointsFull(waypoints);
-
-  // 選んでいる地点の詳しくを出す（地図のタップもこの地点を置く）。
-  const target = selectedPoint;
 
   // 地点の編集（通る順の入れ替えと消すこと）。開いている間は、詳しくの代わりに地点を名前の行で縦に並べる。動かす・消すものが
   // 無くなったら閉じる。探した候補の札とは同じ所を取り合うので、後から出したほうを出す: 札が出たら編集を閉じ、札の間に
@@ -159,7 +161,6 @@ export default function RoutePoints({
           extra={
             <Button
               size="panelIcon"
-              className="flex-none"
               aria-label="出発地を現在地に戻す"
               disabled={originAtHere}
               onClick={onOriginReset}
@@ -185,7 +186,6 @@ export default function RoutePoints({
           extra={
             <Button
               size="panelIcon"
-              className="flex-none"
               aria-label="目的地を消す"
               disabled={!set}
               onClick={clearDestination}
@@ -207,7 +207,7 @@ export default function RoutePoints({
           at={null}
           placed={false}
           placingHint={waypointCount > 0 ? `地図をタップ[${waypointCount}地点]` : "地図をタップ"}
-          full={full}
+          full={waypointsFull(waypoints)}
         />
       );
     }
@@ -226,7 +226,6 @@ export default function RoutePoints({
         extra={
           <Button
             size="panelIcon"
-            className="flex-none"
             aria-label={`${title}を消す`}
             onClick={() => removeWaypoint(index)}
             usage={`置いた${title}を消します。ほかの経由地の番号は詰めます。`}
@@ -243,10 +242,7 @@ export default function RoutePoints({
       <div className="flex min-w-0 items-center gap-1">
         <Toggle
           variant="plain"
-          className={cn(
-            pressableClass,
-            "min-h-6 flex-none rounded-sm px-1.5 text-[length:var(--font-size-md)] text-[var(--color-muted)] aria-pressed:text-[var(--color-accent-strong)]",
-          )}
+          className={toggleClass}
           pressed={loop}
           onClick={() => setLoop(!loop)}
           usage="押している間は、出発地へ戻る周回を作ります（変えられるのは経由地だけ）。外すと目的地へ向かいます。"
@@ -263,10 +259,7 @@ export default function RoutePoints({
         />
         <Toggle
           variant="plain"
-          className={cn(
-            pressableClass,
-            "min-h-6 flex-none gap-0.5 rounded-sm px-1.5 text-[length:var(--font-size-md)] text-[var(--color-muted)] aria-pressed:text-[var(--color-accent-strong)]",
-          )}
+          className={cn(toggleClass, "gap-0.5")}
           pressed={editing}
           disabled={!editable}
           onClick={() => {
@@ -282,7 +275,6 @@ export default function RoutePoints({
             経由地だけを消し、覚えている目的地は残す。 */}
         <Button
           size="panelIcon"
-          className="flex-none"
           aria-label={loop ? "経由地を全部消す" : "経由地と目的地を全部消す"}
           disabled={waypointCount === 0 && destination === null}
           onClick={clearPoints}

@@ -1,10 +1,7 @@
-// 風の矢印アイコン。どのレイヤーへ使うかは描き方の宣言（`features/map/scene/groups/weather.ts`）
-// が持つ。
+// 風の矢印アイコン。
 
 import { drawSdfIcon } from "@/features/map/layers/sdfIcon";
 
-// 矢印は白いシルエットをsdf:trueで登録し、icon-colorで着色する。向き（icon-rotate）・長さと太さ（icon-size。
-// アイコン全体を一様に拡縮するので両方同時に変わる）・色（icon-color）を、描く側が風速から決められる。
 export const WIND_ARROW_SIZE_PX = 32;
 
 interface Point2D {
@@ -22,8 +19,8 @@ function cubicBezierPoint(p0: Point2D, p1: Point2D, p2: Point2D, p3: Point2D, t:
 
 /** 3次ベジェ曲線p0→p3ぶんの帯（先端に向けて太さがwidthStart→widthEndへ線形に変わる
  * リボン状の塗り）を描く。曲線の接線に垂直な方向へオフセットした左右の縁を辿って
- * 1つの閉じたパスにする（オフセット曲線の厳密解ではなく、区間を細かく刻んだ近似）。
- * 気流のストリームライン（風であることを地図上のオブジェクトと区別して表す）を描くための汎用ヘルパー。 */
+ * 1つの閉じたパスにする（オフセット曲線の厳密解ではなく、区間を細かく刻んだ近似）。Canvasの線は太さを途中で
+ * 変えられないので、帯を塗りで描く。 */
 function fillTaperedRibbon(
   ctx: CanvasRenderingContext2D,
   p0: Point2D,
@@ -58,12 +55,8 @@ function fillTaperedRibbon(
   ctx.fill();
 }
 
-// 風チップボタン（lucideIcons.tsx: WindIcon、渦を巻く3本の曲線）と同じ「曲線=風」という
-// 視覚言語を地図上でも踏襲する。道路・POI等の地図上オブジェクトのアイコン
-// （layerIcons.tsx）は直線・単純な多角形が主体のため、曲線を基調にするだけでも見分けがつきやすい。
+/** 曲線を束ねた矢印（地図の上の直線・多角形の記号と見分けられる）。北（画像の上）を向けて描く。 */
 export function createWindArrowIcon(): ImageData {
-  // 北（画像上方向）を向くアイコンとして描き、実際の向きはicon-rotate（風向から計算した
-  // bearing、windLayer.ts参照）で回転させる。
   return drawSdfIcon(WIND_ARROW_SIZE_PX, (ctx) => {
     // 主流線: 緩やかなS字を描きながら下（尾）から上（矢じりの根元）へ伸びる帯。
     // 尾は太く、矢じりに近づくほど細くなる（風上から風下へ流れていく感覚を出す）。

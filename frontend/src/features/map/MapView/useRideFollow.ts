@@ -5,6 +5,7 @@ import * as maplibregl from "maplibre-gl";
 import type { Map as MapLibreMap, Marker } from "maplibre-gl";
 
 import type { LiveValue } from "@/lib/liveValue";
+import { visibleCenterOffset } from "@/lib/routeFit";
 import type { Coordinates } from "@/types/route";
 
 import { nextRideZoom, rideZoomBase, rideZoomOut } from "./rideZoom";
@@ -87,13 +88,12 @@ function isTwoFingerTouch(input: unknown): boolean {
 
 /** 走行モードの間、現在地の点を出し、追っている間は地図の中心（と向き）を現在地へ動かし続ける。追っている間の2本指の
  * 操作は拡大・縮小だけにし、利用者が地図を指で動かすと追うのを休むよう知らせる。ロックの間は地図の手ぶりの操作を止める。止めたら地図の向きを走る前に戻す。走っていない間は、`here`（取り直した現在地）に同じ点を出す。
- * `visibleOffset`は、地図に重なる部品を避けて見えている所の中ほどへ寄せるための、中心からのずれ（px）。
+ * 現在地は、地図に重なる部品を避けて見えている所の中ほどへ寄せる。
  * 返すのは倍率のボタンと方位磁針を押したときの処理。 */
 export function useRideFollow(
   mapRef: RefObject<MapLibreMap | null>,
   ride: RideFollow | null,
   here: Coordinates | null,
-  visibleOffset: (map: MapLibreMap) => [number, number],
 ): { onNextZoom: () => void; onCompass: () => void } {
   const latest = useRef(ride);
   // 追っている間の倍率の基準（速さで引く前）と、なめらかにした速さ、いま当てている引きの段の数。基準は、つまみ終えて
@@ -133,13 +133,20 @@ export function useRideFollow(
       baseZoom.current = shown.getZoom() + appliedZoomOut.current;
       latest.current.onZoomBaseChange(baseZoom.current);
     }
+    // 寄せる動きは、寄せ始めの地図の大きさで決めた画面の点へ寄せ続ける。寄せる最中や寄せる前の大きさの変わり（走り出して
+    // パネルが消えた等）を MapLibre が受けたら、今の大きさで寄せ直す。
+    function followAfterResize() {
+      if (latest.current?.following && !gesture.current) followCamera.current?.();
+    }
     map.on("movestart", onUserMoveStart);
     map.on("zoomend", rebaseOnUserZoom);
     map.on("moveend", onUserMoveEnd);
+    map.on("resize", followAfterResize);
     return () => {
       map.off("movestart", onUserMoveStart);
       map.off("zoomend", rebaseOnUserZoom);
       map.off("moveend", onUserMoveEnd);
+      map.off("resize", followAfterResize);
     };
   }, [mapRef]);
 
@@ -252,11 +259,9 @@ export function useRideFollow(
         center,
         bearing: headingUp ? (bearing ?? map.getBearing()) : 0,
         zoom: (baseZoom.current ?? map.getZoom()) - appliedZoomOut.current,
-        offset: visibleOffset(map),
+        offset: visibleCenterOffset(map.getCanvas()),
       });
     if (!gesture.current) followCamera.current();
-    // visibleOffsetは寄せる瞬間の覆いを測るだけで、変わっても動かし直さない。
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapRef, following, position, bearing, headingUp, speedKmh, zoomBase]);
 
   // 追っている間は基準が変わって寄せ直す。休んでいる間は追い直すまで中心を動かさず、倍率だけをその段へ寄せる。

@@ -4,6 +4,7 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 
 import { searchPlaces } from "@/features/route/placeSearchApi";
+import { samePosition } from "@/lib/geoDistance";
 import { getQueryClient } from "@/lib/queryClient";
 import { SECOND_MS } from "@/lib/duration";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
@@ -67,6 +68,7 @@ export function usePlaceLookup(mapCenter: Coordinates) {
   }
 
   return {
+    text,
     query,
     near,
     search,
@@ -104,9 +106,7 @@ export function usePlaceLookup(mapCenter: Coordinates) {
       if (trimmed === "") return;
       lookUp(trimmed);
       setSearched(true);
-      // 同じかは引く鍵と同じく位置の値で見る（地図は動くたびに真ん中を作り直すので、参照では同じ位置でも別になる）。
-      if (trimmed === query && near.latitude === mapCenter.latitude && near.longitude === mapCenter.longitude)
-        void search.refetch();
+      if (trimmed === query && samePosition(near, mapCenter)) void search.refetch();
     },
     /** 引いた候補を下げて検索を閉じる。`clearText`なら打った文字も消す。 */
     close({ clearText = false } = {}) {

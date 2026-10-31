@@ -19,7 +19,9 @@
 | `features/route/RouteForm/useReorderDrag.ts` | 縦に並ぶ高さの揃わない行を、掴む所を押さえたまま上下へ動かす並べ替え（指に付ける・入る所を空ける・離した所を決める）。入る所は押さえた時の各行の中ほどで決める |
 | `features/route/usePlaceAreas.ts` | 地点の位置から引いた辺り（`GET /api/place-area`）を、位置ごとの問い合わせで引く。詳しくと地点の編集が同じ位置の問い合わせを使い回す |
 | `features/route/RouteForm/PointDetail.tsx` | 押した地点の詳しく: 呼び名・名前・出どころ・辺りと、地図の上端の検索の欄をこの地点の役割で開く探すボタン（地図で置く間はその案内を添える）・消す／現在地に戻す・置いた地点の保存（下記「地点の指定」「保存した地点」） |
-| `features/route/PlaceSearch/PlaceSearchBar.tsx` | 地図の上端の、住所や施設の名前を打つ欄（候補は欄のすぐ下に重ね、見えている範囲の下端までで送る。探す前に欄を押すと保存した地点と検索の履歴も出す。探したあとは番号付きの候補の一覧と、スマホでは札を出す。開いている間はブラウザの「戻る」で閉じる）。置く地点は選んでいる地点で、呼び名を欄の案内に出す（下記「住所・施設で探す」「保存した地点」） |
+| `features/route/PlaceSearch/PlaceSearch.tsx` | 地図の上端の、住所や施設で地点を探す欄と候補（候補は欄のすぐ下に重ね、見えている範囲の下端までで送る。探す前に欄を押すと保存した地点と検索の履歴も出す。探したあとは番号付きの候補の一覧と、スマホでは札を出す。開いている間はブラウザの「戻る」・Escapeで閉じる。選んだ候補を置き、履歴に残す）。置く地点は選んでいる地点（下記「住所・施設で探す」「保存した地点」） |
+| `features/route/PlaceSearch/PlaceSearchBar.tsx` | 住所や施設の名前を打つ欄（探すボタン・閉じるボタン）。呼び名を欄の案内に出す（下記「住所・施設で探す」） |
+| `features/route/PlaceSearch/KnownPlaces.tsx` | 探す前に欄を押すと出す、保存した地点・検索の履歴の一覧（履歴は1件ずつ消せる。下記「保存した地点」） |
 | `features/route/PlaceSearch/PlaceCandidateCard.tsx` | スマホで探した候補を1枚ずつ見せる札（パネルの中か地図の下）。左右に払うか左右の端の‹ ›で隣の候補へ送り、置くボタンを並べる（下記「住所・施設で探す」） |
 | `hooks/useCloseOnBack.ts` | 開いている間、履歴に印を付けた項目を URL を変えずに1つ積み、ブラウザの「戻る」で閉じる。「戻る」以外で閉じたら積んだ項目を戻す（下記「住所・施設で探す」） |
 | `components/PinMark/PointMark.tsx` | 並びの札・詳しく・道のりのグラフの経由地の印に出す、地図のピンと同じ図形の丸（`components/PinMark/PinMark.tsx`の中身に背景色を付けたもの。ルートの機能と地図の機能の両方が描くので共有の層に置く） |
@@ -31,7 +33,7 @@
 | `features/route/SavedList/SavedList.tsx` | 「保存済み」タブの一覧（地点・プリセット）の形: 空の案内と保存の仕方の(i)・行の枠・消す操作と確認の窓。行の名前の欄と行ごとの操作（「呼び出す」）は使う側が渡す |
 | `features/route/useSavedPlaces.ts` | 保存した地点の一覧（この端末の`localStorage`）と、保存・削除 |
 | `features/route/savedPlaces.ts` | 保存した地点の形（探した候補と同じ形）と、保存値の読み方（今の画面が受け付けない件だけを捨てる）・同じ名前と同じ位置の置き換え・打った文字での絞り込み。検索で選んだ地点の履歴の入れ方（同じ位置の置き換えと件数の上限）・消し方・出す件（保存した地点と同じ位置を除く） |
-| `features/route/usePlaceHistory.ts` | 検索で選んだ地点の履歴（この端末の`localStorage`。保存した地点と同じ読み方）と、入れる・1件を消す。地図の上端の検索の欄（`PlaceSearch/PlaceSearchBar.tsx`）が使う |
+| `features/route/usePlaceHistory.ts` | 検索で選んだ地点の履歴（この端末の`localStorage`。保存した地点と同じ読み方）と、入れる・1件を消す。地図の上端の検索の欄（`PlaceSearch/PlaceSearch.tsx`）が使う |
 | `features/route/SavedConditionsPanel/SavedConditionsPanel.tsx` | 「条件」タブの1行目に置くアイコンの「いまの設定を保存」（`features/route/SavedConditionsPanel/SavedConditionsPanel.tsx: SaveConditionsButton`。窓に保存する条件・出発地の扱いの切り替え・重み・除外と、名前の欄・保存のボタン）と、「保存済み」タブの「プリセット」の中身の保存した設定の一覧（行は名前と、アイコンの「呼び出す」「消す」。呼び出すは窓で中身を見せて「反映する」で呼び出し、消すは確認の窓で「消す」を押すと消す。無ければ無いと出し、保存の仕方は(i)の奥。下記「保存した条件」） |
 | `features/route/useSavedConditions.ts` | 保存した条件の一覧（この端末の`localStorage`）と、いまの条件（`useGenerationConditions.ts: snapshot`）の保存（出発地を固定するかを受け取る）・呼び出し・削除。呼び出すと`useGenerationConditions.ts: restore`で条件を入れ替え、出発地は位置の持ち主（`hooks/useLocation.ts`）へ渡す |
 | `features/route/savedConditions.ts` | 生成の条件の形（`features/route/savedConditions.ts: GenerationConditionsSnapshot`。いまの条件・保存・呼び出しが同じ形を使い、保存の1件はそれに名前と出発地を足す）と、保存値の読み方（項目ごとの読み方の表で読み、今の画面が受け付けない件だけを捨てる）・仮の名前・何が保存されるかの説明（`features/route/savedConditions.ts: describeConditions`。重みは軸ごとの割合）・同じ名前の上書き。距離・候補数として受け付ける範囲（`features/route/savedConditions.ts: acceptedDistanceInput`・`features/route/savedConditions.ts: acceptedMaxRoutesInput`）もここが持ち、`useGenerationConditions.ts`の保存値の読み直しと共有する。距離の刻み（`DISTANCE_STEP_KM`。5km刻みで、下限も1刻み分）は画面だけの値で、`RouteForm`のルーラーのコマも読み、保存値は刻みの近い方へ寄せて読む。候補数の下限・上限は生成物`route-generate-config.json`から読む |
@@ -49,8 +51,8 @@
 | `features/map/MapView/useCandidateMarkers.tsx` | 地点の検索で探した候補を地図に番号の点で出し、新しく探すたびに全部が入る所へ地図を動かすフック。点を押すとその候補を選ぶ（下記「住所・施設で探す」） |
 | `components/CandidateMark/CandidateMark.tsx` | 探した候補の番号の印。地図の点・欄の下の一覧の行・下の札が同じ図形を使う（下記「住所・施設で探す」） |
 | `features/map/MapView/useMapMarkers.tsx` | 地図の地点の印（出発地・経由地・目的地）と選んでいる区間の印の作成・位置の更新・ドラッグ・後始末を1か所に持つフック。`MapView`は地図を作ったあとに呼ぶだけ（下記「地点の指定」「区間クリック詳細」） |
-| `features/route/PlaceSearch/usePlaceLookup.ts` | 住所・施設の名前を打つ欄の中身と引き方（打ちかけで間を置いて引く・変換中は引かない・引いたときの地図の真ん中を添える・探したあとに地図へ出す候補と選んでいる候補）。地図の上端の検索の欄（`PlaceSearch/PlaceSearchBar.tsx`）が使う（下記「住所・施設で探す」） |
-| `features/route/PlaceSearch/PlaceCandidates.tsx` | 引いた候補の一覧（表示名・施設の辺り・引いたときの地図の真ん中からの直線距離）と、引いている間・引けない・当たらないときの文。候補を押したときの形は使う側（地図の上端の検索の欄）が持つ。置いた地点が当たった範囲の代表の位置にすぎないか（`features/route/PlaceSearch/PlaceCandidates.tsx: isRepresentative`）もここが決める |
+| `features/route/PlaceSearch/usePlaceLookup.ts` | 住所・施設の名前を打つ欄の中身と引き方（打ちかけで間を置いて引く・変換中は引かない・引いたときの地図の真ん中を添える・探したあとに地図へ出す候補と選んでいる候補）。地図の上端の検索の欄（`PlaceSearch/PlaceSearch.tsx`）が使う（下記「住所・施設で探す」） |
+| `features/route/PlaceSearch/PlaceCandidates.tsx` | 引いた候補の一覧（表示名・施設の辺り・引いたときの地図の真ん中からの直線距離）と、引いている間・引けない・当たらないときの文。打ちかけの候補は押すと選び、探した候補は番号を付けて押した行に置くボタンを出す（置くボタンと置いたあとは使う側（地図の上端の検索の欄）が持つ）。置いた地点が当たった範囲の代表の位置にすぎないか（`features/route/PlaceSearch/PlaceCandidates.tsx: isRepresentative`）もここが決める |
 | `features/route/placeSearchApi.ts` | 地点の検索の口（`GET /api/place-search`）と置いた位置の辺りの口（`GET /api/place-area`）を叩く薄いラッパー（[地点の検索（backend）](../backend/place-search.md)） |
 | `hooks/useAxisCatalog.ts` | `GET /api/axis-catalog`の取得。機能をまたいで読むカタログ（軸一覧・既定重み・軸ラベル・識別色・較正値）を`hooks/useAxisCatalog.ts: useAxisCatalog`が返す。1つの機能だけが読む形は、その機能が同じ取得の応答から`hooks/useAxisCatalog.ts: useAxisCatalogSelect`で導く（地図の表示の軸・タイルの世代は[地図: 静的レイヤー・道路表示](static-map-layers.md)の`features/map/useMapAxisCatalog.ts`）——共有のカタログへ相乗りさせると、読み手が1機能だけの知識を共有の層が運ぶ |
 | `lib/axisCatalog.ts` | 上記フックが返すカタログを、応答から導く純関数（`lib/axisCatalog.ts: axisCatalogFromResponse`）と、画面が読む較正値（`lib/axisCatalog.ts: CLIENT_TUNING_IDS`・`lib/axisCatalog.ts: clientTuningValue`。並べるidは生成物`route-generate-config.json`に在るものだけを型が通す）。フックが持つのは「いつ取りに行き、誰と共有するか」だけ |
@@ -65,7 +67,7 @@
 | `features/route/ProfileChart/profileScale.ts` | 道のりのグラフの横軸の尺（`features/route/ProfileChart/profileScale.ts: useProfileScale`。右端は渡された距離とルートの長さの長い方）と描画の座標の大きさ、図の文字の大きさ（`features/route/ProfileChart/profileScale.ts: profileTextClass`）。枠と中身の両方が読む |
 | `features/route/ProfileChart/useProfileGesture.ts` | 道のりのグラフの上で地点を選ぶ指（マウス）の操作。1本の指で横になぞるか押して離したときだけ選び、押しただけ・2本目の指が加わった操作（図の外に触れた指も、画面全体の指を窓の捕捉の段で数えて含める）・縦に動き出した操作では選ばない |
 | `features/route/ProfileChart/ProfileMarks.tsx` | 道のりのグラフの上に重ねる印と文字（経由地の番号・現在地の丸・値の目盛り・距離の目盛り）。図の絵は横へ伸ばして描くので、形の崩れる印と文字は図の上に重ねた要素で出す |
-| `features/route/DifficultyProfile/DifficultyProfile.tsx`・`profileGeometry.ts` | 道のりのグラフの「評価で塗る」に出す、道のりに沿った難易度のグラフ。横が始点からの距離、縦が区間ごとの難易度で、区間ごとの階段を軸の寄与で色分けして下から積む。区間はbackendがEdgeを約500mのビンへ畳んだもの（`aggregate_segments_into_bins`）で、Edge 1本ずつではない。**塗った面積がルートの負荷にほぼ一致する**——値の無い区間はルートの総合難易度の高さで灰色に描く（負荷は「値のある区間の距離加重平均×全長」で、値の無い区間を平均として数えるため）。ほぼなのは、ビンの中で値の無いEdgeがそのビンの平均で数えられるためと、1kmあたりの回数で測る評価軸はルート全体の回数の平均から点数にし直すため（backend: `domain/route.py: merge_difficulty_values`）。横軸の右端は**一覧の中で最も長い候補の距離**で、候補どうしで面積を見比べられる。押したまま動かす（キーボードは矢印・Home・End）と、その距離の区間と、区間の道なりの形の上で距離の割合ぶん進んだ地点を選ぶ——選択は地図で区間を押したときと同じ`selectedRouteSegment`で、地図に地点の印と区間の縁取りが出て下に区間の詳細が出る。グラフ自体は区間を選んでいる間も残る。選ぶ受け口を渡さなければ、押せない見るだけの図になる。走行モードでは現在地の距離を受け取り、枠へ渡す（距離の決め方はpage-composition.md「走行モード」）。現在地の印はその距離の柱の上端に置く |
+| `features/route/DifficultyProfile/DifficultyProfile.tsx`・`profileGeometry.ts` | 道のりのグラフの「評価で塗る」に出す、道のりに沿った難易度のグラフ。横が始点からの距離、縦が区間ごとの難易度で、区間ごとの階段を軸の寄与で色分けして下から積む。区間はbackendがEdgeを約500mのビンへ畳んだもの（`aggregate_segments_into_bins`）で、Edge 1本ずつではない。**塗った面積がルートの負荷にほぼ一致する**——値の無い区間はルートの総合難易度の高さで灰色に描く（負荷は「値のある区間の距離加重平均×全長」で、値の無い区間を平均として数えるため）。ほぼなのは、ビンの中で値の無いEdgeがそのビンの平均で数えられるためと、1kmあたりの回数で測る評価軸はルート全体の回数の平均から点数にし直すため（backend: `domain/route.py: merge_difficulty_values`）。横軸の右端は**一覧の中で最も長い候補の距離**で、候補どうしで面積を見比べられる。押したまま動かす（キーボードは矢印・Home・End）と、その距離の区間と、区間の道なりの形の上で距離の割合ぶん進んだ地点を選ぶ——選択は地図で区間を押したときと同じ`selectedRouteSegment`で、地図に地点の印と区間の縁取りと区間の小窓が出る。グラフ自体は区間を選んでいる間も残る。選ぶ受け口を渡さなければ、押せない見るだけの図になる。走行モードでは現在地の距離を受け取り、枠へ渡す（距離の決め方はpage-composition.md「走行モード」）。現在地の印はその距離の柱の上端に置く |
 | `features/route/ErrorText/ErrorText.tsx` | 操作した箇所の直下に出すエラー文言（`role=alert`）。ルート結果と区間の乗り換えの面が使う |
 | `features/route/WarningText/WarningText.tsx` | 表示中の結果について注意を促す1行（条件のずれ・目的地の補正・所要時間の前提の崩れ）。ルート結果と候補の中身が使う |
 | `features/route/GenerationNotice/GenerationNotice.tsx` | 押した「生成」が候補を出せなかった理由（入力の誤りか失敗・候補0件の理由）を知らせる窓。`app/page.tsx`がデスクトップとモバイルの両方に1つ置き、閉じると案内を消す |
@@ -386,7 +388,7 @@ useAxisCatalog() ──→ catalog.axes（公開軸一覧、is_published=Trueの
   段として読める鍵だけを残す。重みは「重み」へ入れたあと、いつもの保存値と同じく軸カタログの公開軸へ揃える
   （「RouteSettingsPanel.tsx」）。
 
-## 保存した地点（SavedPlacesPanel.tsx・useSavedPlaces.ts・usePlaceHistory.ts・PointDetail.tsx・PlaceSearchBar.tsx）
+## 保存した地点（SavedPlacesPanel.tsx・useSavedPlaces.ts・usePlaceHistory.ts・PointDetail.tsx・PlaceSearch.tsx・KnownPlaces.tsx）
 
 よく行く場所に名前を付けてこの端末に保存し、探し直さずに出発地・経由地・目的地に置ける（保存先は保存した条件と同じく
 この端末の`localStorage`だけ）。保存は地点を置く所（条件タブの押した地点の詳しく）で行い、呼び出しは地図の上端の検索の欄と、
@@ -601,7 +603,7 @@ page-composition.md「生成に関するフィードバックの置き場」）�
 #### 住所・施設で探す（`PlaceSearch/usePlaceLookup.ts`・`PlaceSearch/PlaceCandidates.tsx`・`PlaceSearch/PlaceCandidateCard.tsx`）
 
 地点は地図のタップのほかに、住所か施設（立ち寄り先の表のお店・施設）の名前で探して置ける（[地点の検索（backend）](../backend/place-search.md)）。探す欄は
-**地図の上端にいつも1つ出す**（`PlaceSearch/PlaceSearchBar.tsx`。パネルを閉じていても、地図を見たまま探せる）。置く地点は「ルート設定」で
+**地図の上端にいつも1つ出す**（`PlaceSearch/PlaceSearch.tsx`。パネルを閉じていても、地図を見たまま探せる）。置く地点は「ルート設定」で
 選んでいる地点（何も選んでいなければ出発地）で、欄の案内と読み上げ名にその呼び名を出す（「目的地を住所・施設で探す」）。詳しくの探すボタンは
 この欄へ focus を移して開く（iOS はキーボードを、押した操作の中で focus したときだけ出すので、押した処理の中で同期して移す）。
 選んで置くと、置いたピンを詳しくで確かめて直せるように「ルート設定」の「条件」タブを開き、置いた地点を選ぶ（`app/page.tsx`。経由地は

@@ -35,8 +35,6 @@ class TurnCostSpec:
     # 渡る場合と、右左折で入る場合）。信号のある交差点の待ちは停止密度の材料が走行モデルへ
     # 運ぶ（`domain/traffic.py: stop_seconds`）ため、そちらで数え、ここでは足さない
     # ——両方で足すと同じ待ちを二重に数える（`docs/architecture/design-principles.md`構造仕様13）。
-    # ここが担うのは「信号が無いのに上位の道を渡る・そこへ入る」ときの、車列の切れ目を
-    # 待つ時間である。
     major_crossing_seconds: float
     major_turn_seconds: float
 
@@ -209,15 +207,11 @@ def build_turn_expanded_structure(
     np.maximum.at(node_rank, edge_to, edge_rank)
     np.maximum.at(node_rank, edge_from, edge_rank)
     node_rank = np.maximum(node_rank, node_db_rank)
-    # 「自分より上位」だけでなく「そもそも待ちの要る階級か」も見る
-    # （`MAJOR_CROSSING_MIN_RANK`、domain/traffic.py）。
     via_node = edge_to[source]
     target_node_rank = node_rank[via_node]
     crosses_major = (
         (target_node_rank > edge_rank[source])
         & (target_node_rank >= MAJOR_CROSSING_MIN_RANK)
-        # 信号のある交差点では足さない（待ちは停止密度の材料が走行モデルへ運ぶ）。
-        # 未集計なら全ノードが「信号なし」で、この列の導入前と同じ結果になる。
         & ~node_has_signal[via_node]
     )
     turn_seconds = turn_seconds + np.where(
@@ -250,21 +244,21 @@ def _guided_turn_kinds(
 
 
 @dataclass(frozen=True)
-class PathTurn:
+class _PathTurn:
     """経路の中の、案内する曲がり。`index`は曲がった先の区間の、経路の中の位置（`path[index]`へ入るところで曲がる）。"""
 
     index: int
     kind: TurnKind
 
 
-def turns_along(structure: TurnExpandedStructure, entries: Sequence[int | None]) -> list[PathTurn]:
+def turns_along(structure: TurnExpandedStructure, entries: Sequence[int | None]) -> list[_PathTurn]:
     """経路の案内する曲がり（左折・右折・Uターン。`turn_kind`が直進でない遷移）を、経路の順に。
     `entries`は経路の遷移の位置（`TurnExpandedStructure.entries_along`）。"""
-    turns: list[PathTurn] = []
+    turns: list[_PathTurn] = []
     for index, entry in enumerate(entries, start=1):
         if entry is None:
             continue
         kind = TurnKind(int(structure.turn_kind[entry]))
         if kind != TurnKind.STRAIGHT:
-            turns.append(PathTurn(index=index, kind=kind))
+            turns.append(_PathTurn(index=index, kind=kind))
     return turns

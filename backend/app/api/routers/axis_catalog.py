@@ -2,22 +2,15 @@
 
 一般向けのルート設定画面が、評価軸の一覧
 （label/description/category/default_weight）を取得するための読み取り専用・認可不要の
-エンドポイント。書き込みは`api/routers/axis_admin.py`（認可必須）が担う。
-
-軸スタジオが管理API経由でDBへ書き込んだ軸も、`AXIS_DEFINITIONS`のpush型更新
-（services/axis_registry_service.py）により、コード変更・再デプロイなしにここへ反映される。
-ビルド時の生成物は軸を持たない（`export_openapi.py`が`domain/registry.py`から書き出すのは
-一次属性の語彙まで）ため、フロントが軸を知る経路はこのAPIだけ。
+エンドポイント。軸は`AXIS_DEFINITIONS`（プロセス内）から読むので、管理APIで書いた軸も再デプロイなしにここへ出る。
+ビルド時の生成物は軸を持たないため、軸を配るのはこのAPIだけ。
 
 **公開済み軸のみを返す**: `is_published=False`（下書き）の軸は
 一般ユーザーの目に触れさせない（下書き軸が一般UIに漏れると、まだ検証・命名が
 固まっていない軸を一般ユーザーが選んでしまい、その後の破壊的変更・削除ができなく
-なる——公開の意味が失われる）。下書き軸の一覧・編集は認可必須の
-`GET /api/admin/axis-definitions`（軸スタジオ）側で行う。
+なる——公開の意味が失われる）。下書き軸の一覧は認可必須の`GET /api/admin/axis-definitions`が返す。
 
-**`map_paint`フィールド**: `domain/map_paint.py: map_paint()`
-（プロセス内メモリのみを見る純粋関数、DB/IO無し）を軸ごとに呼んで含める。これにより、
-軸スタジオでの公開操作（is_publishedの切替）が、地図の塗りへ**再デプロイなしに即座に**反映される。
+**`map_paint`フィールド**: 軸ごとに求めて含めるので、公開の切替が地図の塗りへ**再デプロイなしに即座に**反映される。
 """
 
 from fastapi import APIRouter, Depends
@@ -56,7 +49,7 @@ class AxisCatalogEntry(StrictModel):
     description: str
     category: AxisCategory
     default_weight: float
-    # 未設定はフロント側の汎用のアイコンに委ねる（domain/axis_definitions.py: AxisDefinition.icon_idのdocstring参照）。
+    # 未設定なら、アイコンの選び方は受け取る側に任せる。
     icon_id: str | None
     # この軸が参照する材料を、対応する一次属性id（domain/registry.py:
     # PrimaryAttributeSpec.attr_id。ビルド時の生成物が配る一次属性と同じ名前空間）へ
@@ -121,11 +114,7 @@ class AxisCatalogResponse(StrictModel):
 
 @router.get("/api/axis-catalog", response_model=AxisCatalogResponse)
 async def get_axis_catalog(region_service: RegionService = Depends(get_region_service)) -> AxisCatalogResponse:
-    # AXIS_DEFINITIONSは常に最新（起動時＋管理API書き込み直後にin-place更新済み、
-    # services/axis_registry_service.py参照）のため、DBへは触れずプロセス内の値を
-    # そのまま返す（評価ホットパスと同じ同期アクセス方式）。map_paint()・
-    # primary_attribute_ids_for()も同様にプロセス内メモリだけを見る純粋関数のため、
-    # リクエスト毎に呼んでもコストは無視できる。事故の収録年・作り直しで効く較正値・タイルの世代だけがDBを見る。
+    # 軸はプロセス内の値をそのまま返す。事故の収録年・作り直しで効く較正値・タイルの世代だけがDBを見る。
     accident_years = await region_service.get_accident_years()
     rebuilt_tuning = await region_service.get_rebuilt_client_tuning()
     tile_versions = await region_service.tile_versions()
