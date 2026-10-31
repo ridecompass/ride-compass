@@ -268,6 +268,24 @@ describe("地図に置く地点", () => {
     expect(marksAt(SENSOJI)).toHaveLength(2);
   });
 
+  it("札の置く先で置いてある経由地の丸を押すと、その経由地を候補へ置き直して選ぶ", async () => {
+    useMobileLayout();
+    onBackend("GET", "/api/place-search", () => Response.json({ candidates: [SENSOJI] }));
+    const { user } = renderHome();
+    await user.click(screen.getByRole("button", { name: "ルート設定" }));
+    const sheet = screen.getByRole("dialog", { name: "ルート設定" });
+    await user.click(within(sheet).getByRole("button", { name: "経由地を足す" }));
+    clickMap(ELSEWHERE);
+    await user.click(within(sheet).getByRole("button", { name: "出発地: 現在地" }));
+
+    await user.type(screen.getByRole("searchbox", { name: "出発地を住所・施設で探す" }), "浅草寺{Enter}");
+    const card = await within(sheet).findByRole("region", { name: "探した候補" });
+    await user.click(within(card).getByRole("button", { name: "経由地1を置き直す" }));
+
+    expect(marksAt(SENSOJI)).toHaveLength(1);
+    expect(within(sheet).getByRole("button", { name: "経由地1: 浅草寺" })).toHaveAttribute("aria-pressed", "true");
+  });
+
   it("周回にすると置いた目的地を地図にも地点の並びにも出さず、地図を押しても目的地にせず、周回を外すとその目的地が戻る", async () => {
     const { user } = renderHome();
     await selectDestination(user);
