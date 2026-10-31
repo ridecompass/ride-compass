@@ -319,7 +319,14 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { id: webkit, lane: 2, timeout: 30, args: "--project=webkit e2e/ride-mode.spec.ts --repeat-each=20" }
+          - { id: chromium, lane: 1, timeout: 50, args: '--project=chromium --grep-invert "全状態の走査"' }
+          - { id: webkit, lane: 2, timeout: 5, args: "--project=webkit" }
+          - { id: scan-mobile-1, lane: 3, timeout: 40, args: '--project=chromium -g "全状態の走査: mobile" --shard=1/3' }
+          - { id: scan-mobile-2, lane: 4, timeout: 40, args: '--project=chromium -g "全状態の走査: mobile" --shard=2/3' }
+          - { id: scan-mobile-3, lane: 1, timeout: 40, args: '--project=chromium -g "全状態の走査: mobile" --shard=3/3' }
+          - { id: scan-desktop-1, lane: 2, timeout: 40, args: '--project=chromium -g "全状態の走査: desktop" --shard=1/3' }
+          - { id: scan-desktop-2, lane: 3, timeout: 40, args: '--project=chromium -g "全状態の走査: desktop" --shard=2/3' }
+          - { id: scan-desktop-3, lane: 4, timeout: 40, args: '--project=chromium -g "全状態の走査: desktop" --shard=3/3' }
     name: e2e (${{ matrix.id }})
     concurrency:
       group: ${{ github.head_ref || github.ref_name }}-lane-${{ matrix.lane }}
