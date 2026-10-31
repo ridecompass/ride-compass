@@ -9,11 +9,7 @@ from app.domain.search_graph import run_starts
 
 def overlap_ratio(candidate_edges: np.ndarray, accepted_edges: np.ndarray, edge_length_m: np.ndarray) -> float:
     """`candidate_edges`（Edge index配列）のうち`accepted_edges`と共有する部分の距離加重
-    割合（0〜1）。候補1件対採用済み1件向けの定義。
-
-    `EdgeSetOverlap`も同じ割合の式（`_shared_ratio`）を呼ぶ（同じ定義を2箇所に書かない
-    ——書けば、片方だけ変えても何も落ちない）。
-    """
+    割合（0〜1）。候補1件対採用済み1件向けの定義。"""
     if len(candidate_edges) == 0:
         return 0.0
     lengths = edge_length_m[candidate_edges]
@@ -21,7 +17,7 @@ def overlap_ratio(candidate_edges: np.ndarray, accepted_edges: np.ndarray, edge_
 
 
 def _shared_ratio(lengths: np.ndarray, shared_mask: np.ndarray) -> float:
-    """共有部分の距離加重割合。`overlap_ratio`と`EdgeSetOverlap`が共有する唯一の定義。"""
+    """共有部分の距離加重割合。"""
     return float(lengths[shared_mask].sum()) / float(lengths.sum())
 
 
@@ -104,7 +100,7 @@ def pareto_layer_index(
         return layer
     a = np.asarray(minimize_a, dtype=float)
     b = np.asarray(minimize_b, dtype=float)
-    # 層max_items未満に入りえない点を先に落とす（上記「計算量の要点」参照）。落とす単位は
+    # 層max_items未満に入りえない点を先に落とす。落とす単位は
     # 点ではなく「aの段階×bの丸め値」のグループ——同値の点同士は互いを支配しないため
     # 同じ層に入る。点単位で数えると、完全に対称な候補群（全方位が等距離・同難易度の
     # 地形）がmax_items件で切られ、残りが層に入れないまま最後尾へ回ってしまう。

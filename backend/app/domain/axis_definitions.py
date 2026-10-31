@@ -28,6 +28,7 @@ Pythonの`round()`と同じ値へ丸める（`difficulty.py: round_difficulty_ar
 
 import threading
 from collections.abc import Iterable
+from itertools import pairwise
 from typing import Annotated, Literal, Mapping, Sequence, cast
 
 import numpy as np
@@ -106,8 +107,8 @@ class BreakpointLinearShape(StrictModel):
         崩れた折れ線は例外を出さず、全区間へ無警告で誤った得点を返し続ける。
         """
         xs = [x for x, _ in value]
-        if any(b <= a for a, b in zip(xs, xs[1:])):
-            raise axis_error(f"折れ点は横軸の値が小さい順に並べてください（同じ値は使えません）: {xs}")
+        if not _strictly_ascending(xs):
+            raise _axis_error(f"折れ点は横軸の値が小さい順に並べてください（同じ値は使えません）: {xs}")
         return value
 
     def score_at(self, x: float) -> float:
@@ -177,7 +178,7 @@ class CategoricalShape(StrictModel):
     @classmethod
     def _mapping_must_not_be_empty(cls, value: object) -> object:
         if value == {}:
-            raise axis_error("値ごとのスコアを少なくとも1件設定してください。")
+            raise _axis_error("値ごとのスコアを少なくとも1件設定してください。")
         return value
 
 
@@ -244,10 +245,14 @@ def referenced_materials(shape: "AxisShape", priority_overrides: "Sequence[Prior
     return list(dict.fromkeys([*shape_materials, *override_materials]))
 
 
-def axis_error(message: str) -> PydanticCustomError:
+def _axis_error(message: str) -> PydanticCustomError:
     """軸の検証の誤り。文は管理画面の保存の誤りにそのまま出るので、利用者が読める日本語で書く
     （`ValueError`は「Value error, 」の前置きが付いて返る）。"""
     return PydanticCustomError("axis_definition", message)
+
+
+def _strictly_ascending(values: Sequence[float]) -> bool:
+    return all(a < b for a, b in pairwise(values))
 
 
 #: 材料の型の呼び名。軸スタジオの材料の選択肢の分け方と同じ語にする。
@@ -359,14 +364,14 @@ class AxisDefinition(StrictModel):
     @classmethod
     def _label_must_not_be_empty(cls, value: object) -> object:
         if value == "":
-            raise axis_error("表示名を入力してください。")
+            raise _axis_error("表示名を入力してください。")
         return value
 
     @field_validator("display_thresholds_override", mode="before")
     @classmethod
     def _thresholds_override_must_not_be_empty(cls, value: object) -> object:
         if value == []:
-            raise axis_error("色分けのしきい値を1件以上入力するか、上書きをオフにしてください。")
+            raise _axis_error("色分けのしきい値を1件以上入力するか、上書きをオフにしてください。")
         return value
 
     @staticmethod
@@ -374,8 +379,8 @@ class AxisDefinition(StrictModel):
         """受け取る側は段の境界を昇順の前提で読む（地図はMapLibreの`step` expressionで塗り、
         そのstopは昇順でなければならない）。降順・同値が混じると、地図とルート線が別の段で塗られる。
         """
-        if any(b <= a for a, b in zip(value, value[1:])):
-            raise axis_error(f"色分けのしきい値は小さい順に並べてください（同じ値は使えません）: {value}")
+        if not _strictly_ascending(value):
+            raise _axis_error(f"色分けのしきい値は小さい順に並べてください（同じ値は使えません）: {value}")
         return value
 
     @model_validator(mode="after")
@@ -386,10 +391,10 @@ class AxisDefinition(StrictModel):
         if self.display_band_labels_override is None:
             return self
         if self.display_thresholds_override is None:
-            raise axis_error("段のラベルを上書きするときは、色分けのしきい値も上書きしてください（段の数が決まらないため）。")
+            raise _axis_error("段のラベルを上書きするときは、色分けのしきい値も上書きしてください（段の数が決まらないため）。")
         expected = len(self.display_thresholds_override) + 1
         if len(self.display_band_labels_override) != expected:
-            raise axis_error(
+            raise _axis_error(
                 f"段のラベルは{expected}件にしてください（しきい値{len(self.display_thresholds_override)}件で"
                 f"段は{expected}つ。いまは{len(self.display_band_labels_override)}件）。"
             )
@@ -576,7 +581,7 @@ def check_axis_definition(definition: AxisDefinition, axes: Mapping[str, AxisDef
     検証に置かないのは、保存済みの行を読み出す管理APIの一覧・単体取得が、通らなくなった行（材料を
     カタログから外した後の軸等）もそのまま見せて直させる必要があるため。
 
-    `axes`は、材料idでない参照を軸の参照として受け入れる軸（誤りの文ではその表示名で名指す）。誤りは`axis_error`。
+    `axes`は、材料idでない参照を軸の参照として受け入れる軸（誤りの文ではその表示名で名指す）。誤りは`_axis_error`。
     """
     _check_dynamic_and_static_materials_are_not_mixed(definition)
     _check_references(definition, axes)
@@ -620,7 +625,7 @@ def _check_density_axis_is_a_line(definition: AxisDefinition) -> None:
         return
     breakpoints = cast(BreakpointLinearShape, definition.shape).breakpoints
     if len(breakpoints) != 2 or tuple(breakpoints[0]) != (0.0, 0.0):
-        raise axis_error(
+        raise _axis_error(
             "1kmあたりの回数・件数の材料だけを組み合わせる軸は、折れ点を「0のとき0点」ともう1点の2つにしてください"
             f"（点数を回数に比例させ、もう1点より先はその点数で止めるため）。いまの折れ点: {[tuple(p) for p in breakpoints]}"
         )
@@ -644,7 +649,7 @@ def _check_dynamic_and_static_materials_are_not_mixed(definition: AxisDefinition
     # 軸参照（他の軸のaxis_id）は静的材料ではないため除く。
     static = {m for m in materials if material_catalog.is_known_material(m)} - REQUEST_DYNAMIC_MATERIAL_IDS
     if dynamic and static:
-        raise axis_error(
+        raise _axis_error(
             f"時刻で変わる材料{named_references(sorted(dynamic), {})}と、変わらない材料{named_references(sorted(static), {})}は"
             "1つの軸で組み合わせられません（時刻で変わる評価には、時刻で変わる材料と公開軸の点数しか届かないため）。"
             "変わらない材料で別の軸を作り、「ほかの軸」として組み合わせてください。"
@@ -673,13 +678,16 @@ def _check_references(definition: AxisDefinition, axes: Mapping[str, AxisDefinit
     expected_dtypes: tuple[material_catalog.MaterialDType, ...] = (
         ("numeric", "boolean") if isinstance(shape, BreakpointLinearShape) else ("boolean", "categorical")
     )
-    unknown = sorted({m for m in materials if not material_catalog.is_known_material(m) and m not in axes})
+    def unknown_of(refs: Iterable[str]) -> list[str]:
+        return sorted({m for m in refs if not material_catalog.is_known_material(m) and m not in axes})
+
+    unknown = unknown_of(materials)
     if unknown:
-        raise axis_error(f"存在しない材料・軸を指しています（{', '.join(unknown)}）。点数の決め方で選び直してください。")
+        raise _axis_error(f"存在しない材料・軸を指しています（{', '.join(unknown)}）。点数の決め方で選び直してください。")
     mismatched = sorted({m for m in materials if material_catalog.is_known_material(m) and material_catalog.material_dtype(m) not in expected_dtypes})
     if mismatched:
         kinds = "・".join(_DTYPE_NAMES[dtype] for dtype in expected_dtypes)
-        raise axis_error(
+        raise _axis_error(
             f"材料{named_references(mismatched, axes)}は、この点数の決め方には使えません（使えるのは{kinds}の材料）。"
         )
     if isinstance(shape, CategoricalShape) and material_catalog.is_known_material(shape.material):
@@ -688,29 +696,23 @@ def _check_references(definition: AxisDefinition, axes: Mapping[str, AxisDefinit
         expected_key_type = bool if dtype == "boolean" else str
         if key_types and key_types != {expected_key_type}:
             keys = "「はい」「いいえ」" if dtype == "boolean" else "値の名前"
-            raise axis_error(
+            raise _axis_error(
                 f"{named_references([shape.material], axes)}は{_DTYPE_NAMES[dtype]}の材料なので、"
                 f"値ごとの点数の行は{keys}で書いてください。"
             )
-    unknown_override_materials = sorted(
-        {
-            cond.material
-            for cond in definition.priority_overrides
-            if not material_catalog.is_known_material(cond.material) and cond.material not in axes
-        }
-    )
+    unknown_override_materials = unknown_of(cond.material for cond in definition.priority_overrides)
     if unknown_override_materials:
-        raise axis_error(f"優先条件が存在しない材料・軸を指しています（{', '.join(unknown_override_materials)}）。")
+        raise _axis_error(f"優先条件が存在しない材料・軸を指しています（{', '.join(unknown_override_materials)}）。")
     for cond in definition.priority_overrides:
         override_dtype = material_catalog.material_dtype(cond.material)
         if override_dtype not in ("boolean", "categorical"):
             kind = "軸" if override_dtype is None else "数値の材料"
-            raise axis_error(
+            raise _axis_error(
                 f"優先条件は、はい・いいえか種類の材料にだけ置けます（{named_references([cond.material], axes)}は{kind}です）。"
             )
         expected_type = bool if override_dtype == "boolean" else str
         if not isinstance(flag_or_value_name(cond.equals), expected_type):
-            raise axis_error(
+            raise _axis_error(
                 f"優先条件の値「{cond.equals}」は{named_references([cond.material], axes)}の値として読めません"
                 "（はい・いいえの材料は\"true\"か\"false\"、種類の材料は値の名前で書いてください）。"
             )

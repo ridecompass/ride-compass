@@ -29,7 +29,7 @@ TileIndex = Annotated[int, Field(ge=0)]
 ROADS_AT_MAX_RADIUS_M = 400.0
 RoadsAtRadiusM = Annotated[float, Field(gt=0, le=ROADS_AT_MAX_RADIUS_M)]
 #: 押した所に近い道を返す数の上限。車道と別に線を持つ歩道・側道のように道が並ぶ所で、どれを拾ったかを選び直せるよう
-#: 近い順に複数返す（画面は今は先頭の1本を開く）。
+#: 近い順に複数返す。
 ROADS_AT_LIMIT = 3
 
 

@@ -437,7 +437,7 @@ idの文字列ではなく宣言そのもので指す。材料が指す要素に
 ### 検証の文
 
 **検証の文は管理画面の保存の誤りにそのまま出る**（画面は軸の不変条件を写さない）。文は利用者が読める
-日本語で書き、`axis_definitions.py: axis_error`（`PydanticCustomError`）で返す——`ValueError`は
+日本語で書き、`axis_definitions.py: _axis_error`（`PydanticCustomError`）で返す——`ValueError`は
 「Value error, 」の前置きが付いて返る。組み込みの制約（空・件数）が英語の文を返すもののうち画面で
 起きるもの（表示名が空・しきい値の上書きが0件）は、制約より先に動く検証（`mode="before"`）で日本語にする
 （制約そのものは契約に載せるため残す）。

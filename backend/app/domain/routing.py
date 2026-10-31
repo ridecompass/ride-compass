@@ -342,11 +342,11 @@ def _retrace_free_nodes(
 
 # 探索の優先度キュー（numpy配列のバイナリヒープ）。順位のキー・状態・積んだ時点のコスト`g`の列と、
 # `g`の列を使うか。`g`の列を使わないヒープはキーそのものを`g`として扱う。
-Heap = tuple[np.ndarray, np.ndarray, np.ndarray, bool]
+_Heap = tuple[np.ndarray, np.ndarray, np.ndarray, bool]
 
 
 @njit(cache=True, inline="always")
-def empty_heap(capacity: int, carries_g: bool) -> Heap:
+def empty_heap(capacity: int, carries_g: bool) -> _Heap:
     """空のヒープを作る。`carries_g`はキーが`g`と別の値になる探索（A*のキーは`g`＋下界）だけが立てる。
 
     容量は最低1にする——伸長は要素数を倍にするため、容量0からは伸びない。
@@ -368,7 +368,7 @@ def _grown(values: np.ndarray, size: int) -> np.ndarray:
 
 
 @njit(cache=True, inline="always")
-def heap_push(heap: Heap, size: int, key: float, state: int, g: float = math.nan) -> tuple[Heap, int]:
+def heap_push(heap: _Heap, size: int, key: float, state: int, g: float = math.nan) -> tuple[_Heap, int]:
     """エントリを1つ積み、（伸ばしたかもしれない）ヒープと新しい要素数を返す。`g`は`g`の列を
     使うヒープにだけ渡す（使わないヒープでは取り出しがキーを`g`として返す）。
 
@@ -401,7 +401,7 @@ def heap_push(heap: Heap, size: int, key: float, state: int, g: float = math.nan
 
 
 @njit(cache=True, inline="always")
-def heap_pop(heap: Heap, size: int) -> tuple[float, int, int]:
+def heap_pop(heap: _Heap, size: int) -> tuple[float, int, int]:
     """キー最小のエントリを取り出し、その`g`・状態と新しい要素数を返す。空で呼ばない。"""
     heap_key, heap_state, heap_g, carries_g = heap
     g = heap_g[0] if carries_g else heap_key[0]
@@ -670,8 +670,7 @@ def _walk_from_source(predecessors: Sequence[int] | np.ndarray, state_index: int
 
 
 def turn_expanded_path_from_state(tree: TurnExpandedTree, state_index: int) -> list[int]:
-    """前向き木で、始点→`state_index`の経路をEdge index列（進行順）で返す。状態がそのまま
-    Edge indexのため、`(parent, current)`からEdgeを引き直す必要がない。"""
+    """前向き木で、始点→`state_index`の経路をEdge index列（進行順）で返す。"""
     return _walk_from_source(tree.predecessor_list, state_index)
 
 

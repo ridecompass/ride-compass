@@ -67,7 +67,7 @@ async def select_via_nodes(
     両方の木で帰りと同じ罰を置く。
 
     1. 全Nodeについて経由路長`len_f+len_b`・合成コスト`cost_f+cost_b`をベクトル計算し、
-       合成コスト最小のNode（"最良路"）の長さの`domain/route_search.py: alternative_max_stretch`倍以内の
+       合成コスト最小のNode（"最良路"）の長さの較正値`search.alternative_max_stretch`倍以内の
        Nodeだけを候補にする。
     2. 平均difficulty`(合成コスト/経由路長-1)/P`昇順に並べる。ただし最良路のNodeは常に
        先頭へ回す——合成コスト最小であっても、伸び率の許す範囲でより平均difficultyの

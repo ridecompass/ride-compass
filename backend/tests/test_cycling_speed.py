@@ -108,10 +108,10 @@ def test_a_crosswind_slows_the_rider_less_than_a_headwind_of_the_same_strength()
     assert headwind < crosswind < calm
 
 
-@pytest.mark.parametrize("flat_power_w", [60.0])
-def test_a_climb_adds_the_declared_watts_per_percent_whatever_the_flat_power(flat_power_w):
+def test_a_climb_adds_the_declared_watts_per_percent_whatever_the_flat_power():
     """管理画面の「登りの出力の増え方」（W/%）のとおり、勾配2%なら値の2倍のWを足す。平地の出力に比例させると、
     巡航が速い人ほど坂で平地並みの速度を保ち、所要時間が短く出る。"""
+    flat_power_w = 60.0
     power = cycling_speed.climb_power_w(flat_power_w, np.array([0.02]))
 
     assert power[0] - flat_power_w == pytest.approx(2 * cycling_speed.tuning_value("speed.climb_power_per_grade"))

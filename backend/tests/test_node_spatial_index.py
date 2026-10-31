@@ -51,28 +51,23 @@ def test_nearest_node_is_none_when_the_index_has_no_nodes():
 
 
 @pytest.mark.parametrize(
-    "point",
+    ("point", "expected"),
     [
-        coords(35.0650, 139.0050),   # 緯度が索引の上端より2セル外
-        coords(34.9750, 139.0050),   # 緯度が下端より2セル外
-        coords(35.0050, 139.0350),   # 経度が右端より2セル外
-        coords(35.0050, 138.9750),   # 経度が左端より2セル外
+        (coords(35.0650, 139.0050), None),   # 緯度が索引の上端より2セル外
+        (coords(34.9750, 139.0050), None),   # 緯度が下端より2セル外
+        (coords(35.0050, 139.0350), None),   # 経度が右端より2セル外
+        (coords(35.0050, 138.9750), None),   # 経度が左端より2セル外
+        (coords(35.0550, 139.0000), "far"),  # 縁を1セルだけ外した点（地図の端をクリックした場合）は、すぐ隣の道へ寄せる
     ],
 )
-def test_nearest_node_is_none_far_outside_the_indexed_area(point):
+def test_nearest_node_is_none_far_outside_the_indexed_area(point, expected):
     """索引が覆う範囲の外を指した点には寄せない。
 
     ここを通すと、何十kmも離れた道へ黙って寄せた結果が「利用者が指した地点」として扱われ、
     指した覚えのない場所を通るルートになる。
     """
     index = node_index_of(SNAP_GRAPH)
-    assert node_spatial_index.find_nearest_node_indexed(index, point, max_distance_km=WIDER_THAN_THE_AREA_KM) is None
-
-
-def test_nearest_node_tolerates_a_point_just_outside_the_indexed_area():
-    """範囲の縁を1セルだけ外した点は、すぐ隣の道へ寄せる（地図の端をクリックした場合）。"""
-    index = node_index_of(SNAP_GRAPH)
-    assert nearest(SNAP_GRAPH, index, coords(35.0550, 139.0000), max_distance_km=WIDER_THAN_THE_AREA_KM) == "far"
+    assert nearest(SNAP_GRAPH, index, point, max_distance_km=WIDER_THAN_THE_AREA_KM) == expected
 
 
 def test_nearest_node_is_none_when_no_node_is_allowed():
