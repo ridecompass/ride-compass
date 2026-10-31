@@ -39,8 +39,8 @@ class DifficultyMapValue(StrictModel):
 
 
 class SignedMaterialMapValue(StrictModel):
-    """地図が材料1つの符号付きの生値を塗る。単一材料の絶対値を評価する軸（勾配のように
-    向きの符号が意味を持つ）で、難易度へ写すと符号が失われる。"""
+    """地図が材料1つの符号付きの生値を塗る。進行方向で符号の変わる材料（勾配）1つの軸で、難易度へ写すと
+    登りか下りかが失われる。"""
 
     kind: Literal["signed_material"] = "signed_material"
     #: 生値を塗る材料のid。画面は軸の形から読み直さない。
@@ -122,7 +122,10 @@ def map_paint(definition: AxisDefinition) -> MapPaint:
 
 
 def _map_value(definition: AxisDefinition) -> MapValue:
-    """**`terms[0].material`は材料idと軸idの2つの名前空間を跨ぐ**（`axis_definitions.py`）。
+    """項が材料1つで、その材料が進行方向で符号の変わる値（`MaterialSpec.direction_signed`）なら、その生値を塗る。
+    前処理（`abs`で上りも下りも測るか、`identity`で上りだけ測るか）は点数の付け方で、塗り方を変えない。
+
+    **`terms[0].material`は材料idと軸idの2つの名前空間を跨ぐ**（`axis_definitions.py`）。
     材料を指しているときだけ生値を塗れる——軸を指す項の値は参照先の得点で、符号にも単位にも
     材料の意味が無い。0次条件を持つ軸も生値を塗らない——条件の当たる道でも生値は生値のままで、
     評価（条件の値）と食い違う。"""
@@ -130,9 +133,9 @@ def _map_value(definition: AxisDefinition) -> MapValue:
     if (
         not definition.priority_overrides
         and isinstance(shape, BreakpointLinearShape)
-        and shape.preprocess == "abs"
         and len(shape.terms) == 1
-        and material_spec(shape.terms[0].material) is not None
+        and (spec := material_spec(shape.terms[0].material)) is not None
+        and spec.direction_signed
     ):
         material = shape.terms[0].material
         return SignedMaterialMapValue(
@@ -143,14 +146,15 @@ def _map_value(definition: AxisDefinition) -> MapValue:
 
 
 def _signed_thresholds_from_breakpoints(shape: BreakpointLinearShape) -> list[float]:
-    """符号付き材料の段の境界を、軸自身の折れ線の節から作る。
+    """符号付き材料の段の境界を、軸自身の折れ線の正の側の節から作る。
 
     **段の並びをどこかに固定で持たない。** 折れ線の節は「この材料のどの値から効きが
     変わるか」を軸が宣言したもので、段の境界として意味がある。固定の一覧を別に持つと、
     軸を直しても段が追従せず、しかもその一覧を誰が決めたのかが辿れなくなる。
 
-    軸は`|値|`を評価している（`preprocess="abs"`）ので、段も0対称に開く——正負で
-    別の切り方をする根拠を軸は持たない。
+    段は0対称に開く——材料の符号は走る向きで、同じ坂を逆に走ると符号だけが反転する。上りだけを
+    測る軸（`preprocess="identity"`）も、下りの段を正の側の節で切る。負の側の節（下りを0点に
+    張り付ける節等）は下りの効きの変わり目を言わないので使わない。
     """
     knots = sorted({x for x, _ in shape.breakpoints if x > 0})
     return [-x for x in reversed(knots)] + knots

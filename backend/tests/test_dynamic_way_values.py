@@ -53,10 +53,10 @@ from tests.material_fixture import material, replace_material_catalog
 
 
 CATALOG = [
-    material("num_a", unit="%"), material("num_b"), material("bool_a", dtype="boolean"),
+    material("num_a", unit="%"), material("num_b", direction_signed=True), material("bool_a", dtype="boolean"),
     material("cat_a", dtype="categorical"),
     # 区間ごとに値が違いうる材料（値式が区間の値を読む）: 土地被覆のような割合・勾配のような向きのある値・1kmあたりの回数。
-    material("seg_cover", value_sql="em.cover"), material("seg_grade", unit="%", value_sql="em.grade"),
+    material("seg_cover", value_sql="em.cover"), material("seg_grade", unit="%", value_sql="em.grade", direction_signed=True),
     material("seg_count", value_sql="em.count / (re.distance_m / 1000.0)", additive=True),
     # 道1本で決まる材料（道のタグ）。
     material("way_num", value_sql="w.num"),
