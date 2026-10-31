@@ -1,13 +1,14 @@
 "use client";
 
+import type { ComponentProps } from "react";
+
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs/Tabs";
-import type { Coordinates, PinRole, PlaceCandidate } from "@/types/route";
+import type { PinRole, PlaceCandidate } from "@/types/route";
 import { waypointsFull, type GenerationConditionsState } from "@/features/route/useGenerationConditions";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 import { DISTANCE_STEP_KM } from "@/features/route/savedConditions";
 import SavedPlacesPanel from "@/features/route/SavedPlacesPanel/SavedPlacesPanel";
-import type { SavedPlacesState } from "@/features/route/useSavedPlaces";
-import RoutePoints, { type FoundCard } from "./RoutePoints";
+import RoutePoints from "./RoutePoints";
 import { Button } from "@/components/ui/Button/Button";
 import { DistanceTargetIcon } from "@/components/ui/icons/lucideIcons";
 import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
@@ -22,56 +23,23 @@ import { cn } from "@/lib/cn";
  * ここは各タブの中身だけを描く。 */
 export type SettingsTab = "generate" | "weights" | "exclusions" | "saved";
 
-/** 「条件」タブが読む生成の条件（`features/route/useGenerationConditions.ts`の返り値をそのまま渡す）。距離・候補数は
- * 文字列のまま持つ——生成条件のdirty判定（`features/route/useRouteGeneration.ts`）に使うため。 */
-type RouteFormConditions = Pick<
-  GenerationConditionsState,
-  | "distanceInput"
-  | "setDistanceInput"
-  | "maxRoutesInput"
-  | "setMaxRoutesInput"
-  | "loop"
-  | "setLoop"
-  | "distanceTargeted"
-  | "setDistanceTargeted"
-  | "waypoints"
-  | "removeWaypoint"
-  | "reorderPoints"
-  | "destination"
-  | "clearDestination"
-  | "clearPoints"
-  | "selectedPoint"
-  | "selectPoint"
-  | "foundAt"
->;
+type RoutePointsProps = ComponentProps<typeof RoutePoints>;
 
-interface RouteFormProps {
-  /** 生成の条件と、それを変える操作。 */
-  conditions: RouteFormConditions;
-  /** 出発地の位置（現在地か、地図で置いた地点）。 */
-  origin: Coordinates;
-  /** 出発地を地図で置き直してあるか（falseなら現在地のまま）。 */
-  originManual: boolean;
-  /** 出発地が実際の位置か（現在地を取れたか、地図で置いたか）。falseの間は地図のピンと同じく印を灰色にし、
-   * 名前も「現在地」と出さない（位置が仮の地点のままであることを、パネルと地図で示す）。 */
-  originLocated: boolean;
-  /** 出発地が、最後に取れた現在地にあるか（真なら「出発地を現在地に戻す」を押せなくする）。 */
-  originAtHere: boolean;
-  /** 出発地を現在地へ戻す（現在地の取得もこの操作が兼ねる）。 */
-  onOriginReset: () => void;
-  /** 出発地が、探して置いたときの位置のままなら、その候補（名前を出す）。 */
-  originFound: PlaceCandidate | null;
-  /** 地図の上端の地点の検索の欄を、選んでいる地点の役割で開く。 */
-  onSearchOpen: () => void;
+interface RouteFormProps extends Omit<RoutePointsProps, "conditions"> {
+  /** 生成の条件と、それを変える操作。距離・候補数は入力のままの文字列で受け取り、文字列で上げる。 */
+  conditions: RoutePointsProps["conditions"] &
+    Pick<
+      GenerationConditionsState,
+      | "distanceInput"
+      | "setDistanceInput"
+      | "maxRoutesInput"
+      | "setMaxRoutesInput"
+      | "distanceTargeted"
+      | "setDistanceTargeted"
+    >;
   /** 保存した候補を、その役割の地点として置き、置いた地点の詳しくを見せる（経由地は足す）。 */
   onPlaceFound: (role: PinRole, candidate: PlaceCandidate, waypointIndex: number | null) => void;
-  /** 保存した地点（地点の詳しくで保存して検索の欄の候補に出し、「保存済み」タブの「地点」に並べて呼び出す）。 */
-  savedPlaces: SavedPlacesState;
-  /** 地図をタップすると選んでいる地点を置くか（ルート設定が地図で効いている間）。 */
-  placing: boolean;
-  /** 探した候補の札（スマホで札を出している間だけ。null なら地点の詳しくを出す）。 */
-  foundCard: FoundCard | null;
-  /** 「重み」タブの中身。タブの列と「ルート生成」ボタンは見出しの行、検証は`useRouteFormSubmit`が持つ。 */
+  /** 「重み」タブの中身。 */
   weightsPanel: React.ReactNode;
   /** 「除外」タブの中身。 */
   exclusionsPanel: React.ReactNode;
@@ -112,21 +80,12 @@ function toleranceSentence(ratio: number, distanceInput: string): string {
 
 export default function RouteForm({
   conditions,
-  origin,
-  originManual,
-  originLocated,
-  originAtHere,
-  onOriginReset,
-  originFound,
-  onSearchOpen,
   onPlaceFound,
-  savedPlaces,
-  placing,
-  foundCard,
   weightsPanel,
   exclusionsPanel,
   saveConditionsButton,
   savedConditionsPanel,
+  ...points
 }: RouteFormProps) {
   const { distanceTargeted, setDistanceTargeted, distanceInput, setDistanceInput, maxRoutesInput, setMaxRoutesInput } =
     conditions;
@@ -149,7 +108,7 @@ export default function RouteForm({
           <div className="flex min-w-0 flex-1 items-center gap-1">
             <Toggle
               variant="plain"
-              className={cn(panelIconToggleClass, "flex-none")}
+              className={panelIconToggleClass}
               pressed={distanceTargeted}
               aria-label={distanceToggleName}
               onClick={() => setDistanceTargeted(!distanceTargeted)}
@@ -213,19 +172,7 @@ export default function RouteForm({
           <div className="flex-none">{saveConditionsButton}</div>
         </div>
 
-        <RoutePoints
-          conditions={conditions}
-          origin={origin}
-          originManual={originManual}
-          originLocated={originLocated}
-          originAtHere={originAtHere}
-          onOriginReset={onOriginReset}
-          originFound={originFound}
-          onSearchOpen={onSearchOpen}
-          savedPlaces={savedPlaces}
-          placing={placing}
-          foundCard={foundCard}
-        />
+        <RoutePoints conditions={conditions} {...points} />
       </KeptTabContent>
 
       <KeptTabContent value="weights">{weightsPanel}</KeptTabContent>
@@ -251,11 +198,11 @@ export default function RouteForm({
           </TabsList>
           <KeptTabContent value="places">
             <SavedPlacesPanel
-              places={savedPlaces.places}
+              places={points.savedPlaces.places}
               waypointsFull={waypointsFull(conditions.waypoints)}
               loop={conditions.loop}
               onRecall={(role, place) => onPlaceFound(role, place, null)}
-              onRemove={savedPlaces.remove}
+              onRemove={points.savedPlaces.remove}
             />
           </KeptTabContent>
           <KeptTabContent value="conditions">{savedConditionsPanel}</KeptTabContent>

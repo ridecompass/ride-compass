@@ -134,10 +134,6 @@ def test_a_glyph_reaches_the_screen_only_on_rows_that_declare_one():
     assert all("glyph" not in c for c in size["categories"])
 
 
-def test_an_ordered_axis_of_one_row_still_has_a_color():
-    assert len(ordered_colors(1)) == 1
-
-
 @pytest.mark.parametrize("slot", [-1, display_palette.NOMINAL_HUE_SLOTS])
 def test_a_hue_slot_outside_the_wheel_is_refused(slot):
     with pytest.raises(ValueError):

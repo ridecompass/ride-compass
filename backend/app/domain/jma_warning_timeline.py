@@ -2,26 +2,25 @@
 
 気象庁は府県予報区ごとに、二次細分区域（市町村等）と一次細分区域のそれぞれについて、種別（雷危険度・濃霧危険度等）ごとに
 時間帯（コマ）ごとの段のコードを出す。段は気象庁が出したまま扱い、補間も読み替えもしない（気象庁が出したものをそのまま
-重ねる表示に留めるため。docs/architecture/data-sources.md「気象業務法の予報業務許可」）。応答の形は
-`infrastructure/jma_warning_timeline_client.py`がここの型へ解く。
+重ねる表示に留めるため。docs/architecture/data-sources.md「気象業務法の予報業務許可」）。
 """
 
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from enum import StrEnum
 
 
 class TimelineKind(StrEnum):
-    """画面へ出す種別。種別を足すときは、ここと`TIMELINE_KIND_TYPES`へ1つずつ足す。"""
+    """画面へ出す種別。種別を足すときは、ここと`_TIMELINE_KIND_TYPES`へ1つずつ足す。"""
 
     THUNDER = "thunder"
 
 
 #: 種別 → 時系列の`significancyParts`の`type`（気象庁の表の種別の名前）。
-TIMELINE_KIND_TYPES: dict[TimelineKind, str] = {
+_TIMELINE_KIND_TYPES: dict[TimelineKind, str] = {
     TimelineKind.THUNDER: "雷危険度",
 }
 
@@ -29,12 +28,12 @@ TIMELINE_KIND_TYPES: dict[TimelineKind, str] = {
 LAND_AREA_NAME = "陸上"
 
 #: 段のコードの十の位がこれ以上なら注意報級。気象庁のページの「注意報級以上」の絞り込みと同じ境目。
-ADVISORY_TENS_DIGIT = 2
+_ADVISORY_TENS_DIGIT = 2
 
 
 def is_advisory_level(code: str) -> bool:
     """段のコード（`01`・`20`等の2桁の数字）が注意報級以上か。"""
-    return int(code) // 10 >= ADVISORY_TENS_DIGIT
+    return int(code) // 10 >= _ADVISORY_TENS_DIGIT
 
 
 @dataclass(frozen=True)
@@ -67,7 +66,7 @@ class WarningTimeline:
     def levels_for(self, class20_code: str, class10_code: str, kind: TimelineKind) -> TimelineLevels | None:
         """区域の種別の段の並び。二次細分区域に無ければ一次細分区域で引き、どちらにも無ければNone。区域の中を所で
         分けているなら、走る所（陸上）の並びを選ぶ。それ以外の所（海上・山沿い等）だけなら選ばない。"""
-        kind_type = TIMELINE_KIND_TYPES[kind]
+        kind_type = _TIMELINE_KIND_TYPES[kind]
         for levels in (self.class20_levels.get(class20_code), self.class10_levels.get(class10_code)):
             candidates = [entry for entry in levels or () if entry.kind_type == kind_type]
             for area_name in (None, LAND_AREA_NAME):
@@ -91,16 +90,11 @@ def route_passes(codes: Sequence[str | None]) -> list[RoutePass]:
     区域に入らない点は飛ばす。同じ区域を離れてまた通れば、別の通過にする。境目はルートの点の間のどこかにあり、
     点の番号で区切るので、通過の端は辺1本分までずれる。"""
     passes: list[RoutePass] = []
-    last_index = None
     for index, code in enumerate(codes):
         if code is None:
             continue
-        last_index = index
-        if passes and passes[-1].class20_code == code:
-            continue
         if passes:
-            passes[-1] = RoutePass(passes[-1].class20_code, passes[-1].start_index, index)
-        passes.append(RoutePass(code, index, index))
-    if passes and last_index is not None:
-        passes[-1] = RoutePass(passes[-1].class20_code, passes[-1].start_index, last_index)
+            passes[-1] = replace(passes[-1], end_index=index)
+        if not passes or passes[-1].class20_code != code:
+            passes.append(RoutePass(code, index, index))
     return passes

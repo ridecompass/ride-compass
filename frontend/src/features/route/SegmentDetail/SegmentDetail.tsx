@@ -27,12 +27,10 @@ const isLineLayer = (layer: ProfileLayer): layer is LineLayer => layer.draw.kind
 /** 勾配（%）を符号つきで。 */
 const formatGrade = (grade: number) => `${grade >= 0 ? "+" : ""}${grade.toFixed(1)}%`;
 
-/** 区間へ入る見込みの時刻（日本時間）。無い・読めない時刻は「不明」。 */
-function formatSegmentArrivalTime(iso: string | null): string {
-  if (!iso) return "不明";
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "不明";
-  return formatJstHourMinute(date);
+/** 区間へ入る見込みの時刻（日本時間）。無い・読めない時刻は null。 */
+function formatSegmentArrivalTime(iso: string | null): string | null {
+  const date = new Date(iso ?? NaN);
+  return Number.isNaN(date.getTime()) ? null : formatJstHourMinute(date);
 }
 
 /** 「区間を地図で見る」。区間を選んでも地図は動かないので、地図を区間へ寄せるのは押したときだけ（道のりのグラフの右上）。 */
@@ -89,7 +87,7 @@ export default function SegmentDetail({
   return (
     <div className="flex flex-col gap-2 tabular-nums">
       <PopupHeader label="区間の小窓の上の帯">
-        {arrival !== "不明" && (
+        {arrival !== null && (
           <span className={cn(textVariants({ variant: "hint" }), "whitespace-nowrap")}>
             <span className="sr-only">到達予想 </span>
             {arrival}着

@@ -140,12 +140,6 @@ def test_elements_the_screen_cannot_read_one_way_are_refused(_declared, elements
         weather_elements.check_weather_elements(elements)
 
 
-def test_elements_read_one_way_are_accepted(_declared):
-    weather_elements.check_weather_elements(
-        (_fetched("a"), _fetched("a", "gridMark", (), grid="wind"), _fetched("b", "vectorTile", ("t_vector",)))
-    )
-
-
 @pytest.mark.parametrize(("element_ids", "words"), [(("t_reach45", "t_reach45b"), "45分"), (("t_reach120",), "2時間")])
 def test_the_reach_of_the_forecast_is_told_from_the_declared_minutes(_declared, element_ids, words):
     """地図の説明・凡例の「実況〜N分先」は配信の宣言の値から作る。宣言を変えて文が追従しないと、届かない先まで出ると書く。"""

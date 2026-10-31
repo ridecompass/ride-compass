@@ -32,7 +32,6 @@ from app.domain.attributes import (
     MaterialColumn,
 )
 from app.domain.axis_definitions import (
-    AXIS_DEFINITIONS,
     REQUEST_DYNAMIC_MATERIAL_IDS,
     AxisDefinition,
     BreakpointLinearShape,
@@ -135,8 +134,9 @@ def _route_facing_leaf_material_ids(definitions: dict[str, AxisDefinition], *, c
     return list(seen)
 
 
-def displayed_material_ids(weights: Mapping[str, float]) -> set[str]:
-    """区間表示へ載せるべき材料id。軸名のハードコードは持たない。
+def displayed_material_ids(weights: Mapping[str, float], definitions: Mapping[str, AxisDefinition]) -> set[str]:
+    """区間表示へ載せるべき材料id。軸名のハードコードは持たない。`definitions`は表の列を決めた軸の集合
+    （`StaticEdgeScoreMatrix.definitions`）で、生成の途中で軸の保存が入れ替わっても、表の列と載せる材料が1つの集合に揃う。
 
     重み>0の公開軸が参照する材料に加え、符号付き材料を塗る公開軸の材料は**重みに関わらず**
     いつも含める。符号付き材料は難易度0-100へ変換すると符号（登り/下り）が失われるため、
@@ -151,15 +151,15 @@ def displayed_material_ids(weights: Mapping[str, float]) -> set[str]:
     for axis_id, weight in weights.items():
         if weight <= 0:
             continue
-        definition = AXIS_DEFINITIONS.get(axis_id)
+        definition = definitions.get(axis_id)
         if definition is None:
             continue
         material_ids.update(m for m in definition.materials if is_known_material(m))
         # 軸参照を辿った先の材料（合成軸の内訳、`axis_material_shares`）。
         # `definition.materials`は1段しか見ないため、これが無いと車の圧迫感のように
         # 内部軸を経由する軸の内訳が1件も運ばれない。
-        material_ids.update(entry.material_id for entry in axis_material_shares(definition, AXIS_DEFINITIONS))
-    for definition in published_axis_definitions(AXIS_DEFINITIONS):
+        material_ids.update(entry.material_id for entry in axis_material_shares(definition, definitions))
+    for definition in published_axis_definitions(definitions):
         value = map_paint(definition).value
         if isinstance(value, SignedMaterialMapValue) and is_known_material(value.material):
             material_ids.add(value.material)
@@ -179,12 +179,12 @@ def empty_material_arrays(n: int, material_ids: Iterable[str], present: Containe
     return {
         material_id: column
         for material_id in material_ids
-        if material_id not in present and (column := empty_material_column(material_id, n)) is not None
+        if material_id not in present and (column := _empty_material_column(material_id, n)) is not None
     }
 
 
 class _ColumnsOrEmpty(Mapping[str, MaterialColumn]):
-    """材料id→列。`columns`に無い材料カタログの材料は、値の無い列（`empty_material_column`）を返す——読む材料を先に並べず、
+    """材料id→列。`columns`に無い材料カタログの材料は、値の無い列（`_empty_material_column`）を返す——読む材料を先に並べず、
     読まれたときに埋める。並べ上げる（`iter`）のは`columns`の材料だけ。"""
 
     def __init__(self, columns: Mapping[str, MaterialColumn], n: int) -> None:
@@ -198,7 +198,7 @@ class _ColumnsOrEmpty(Mapping[str, MaterialColumn]):
         except KeyError:
             pass
         if (column := self._empty.get(material_id)) is None:
-            column = empty_material_column(material_id, self._n)
+            column = _empty_material_column(material_id, self._n)
             if column is None:
                 raise KeyError(material_id) from None
             self._empty[material_id] = column
@@ -211,7 +211,7 @@ class _ColumnsOrEmpty(Mapping[str, MaterialColumn]):
         return len(self._columns)
 
 
-def empty_material_column(material_id: str, n: int) -> MaterialColumn | None:
+def _empty_material_column(material_id: str, n: int) -> MaterialColumn | None:
     """`MATERIAL_CATALOG`にある材料の、値の無い区間`n`本ぶんの列（`empty_material_arrays`の1材料ぶん）。カタログに無ければNone。"""
     spec = material_spec(material_id)
     if spec is None:
@@ -448,10 +448,6 @@ class StaticEdgeScoreMatrix:
         if wrong_rows:
             raise ValueError(f"静的スコア行列の行数が区間数と違います 区間={rows} {wrong_rows}")
 
-    def material_column(self, material_id: str) -> np.ndarray:
-        """数値の材料の列。"""
-        return self.material_values[self.material_ids.index(material_id)]
-
     def axis_arrays(self) -> dict[str, np.ndarray]:
         """軸id→スコア配列。合成（`compose_costs_from_axis_matrix`）と動的軸の上書き
         （`evaluate_dynamic_axis_arrays`）はこの形で受け取る。"""
@@ -476,7 +472,7 @@ def build_static_edge_score_matrix(
 
     材料はDBが導出済み（`MaterialSpec.value_sql`）で、事故の収録年数による正規化もその
     導出の中で既に効いている。読む材料は並べず、読まれた材料のうちDBにも観測にも無い材料カタログの材料を、
-    値の無い列（`empty_material_column`）で埋める。`definitions`は呼び手が1回だけ写した軸の集合で、表に持たせ、合成と動的な軸の評価も同じ集合を読む
+    値の無い列（`_empty_material_column`）で埋める。`definitions`は呼び手が1回だけ写した軸の集合で、表に持たせ、合成と動的な軸の評価も同じ集合を読む
     （保存がその間に軸を差し替えても、表の列と読む軸が1つの集合に揃う）。
 
     重み付き合成は含まない——重みが定まった時点で呼び出し元が`compose_costs_from_axis_matrix`へ

@@ -50,7 +50,8 @@ def _binned(
     """区間を、区間の難しさ（`difficulties`。省くと値の無い難しさ）から畳んだビンの難しさとともにビンへ束ねる。"""
     if difficulties is None:
         difficulties = [SegmentDifficulty(s.distance_km, None, {}, {}, {}) for s in segments]
-    return route.aggregate_segments_into_bins(segments, route.route_bins(difficulties))
+    slices = route.route_bin_slices([s.distance_km for s in segments])
+    return route.aggregate_segments_into_bins(segments, route.route_bins(difficulties, slices), slices)
 
 
 def _signal_bins(distances: list[float], signals: list[float], share: float) -> list[RouteSegmentDetail]:
@@ -158,7 +159,8 @@ def test_route_raw_values_match_the_mean_over_the_bins_of_the_segments(edges):
     """
     segments = _segments([distance for distance, _ in edges], material_values=[values for _, values in edges])
 
-    assert route.route_axis_raw_values(edges) == route.merge_material_values(_binned(segments))
+    slices = route.route_bin_slices([distance for distance, _ in edges])
+    assert route.route_axis_raw_values(edges, slices) == route.merge_material_values(_binned(segments))
 
 
 def test_the_shape_of_a_bin_joins_the_segment_shapes_without_repeating_shared_points():

@@ -12,7 +12,6 @@
 そのまま読み、入れ替えでも残す。前の段の指紋も入力に入れるので、流した段を読む後ろの段は必ず流れる——外部キーで
 表を指す段も、指す表を書く段を前の段に挙げるので、指される表を作り直せば一緒に作り直す。全部の段が同じなら、
 作業用のスキーマも入れ替えも作らずに終え、道路網の配列は今の世代の置き場が無いときだけ`public`の表から作って置く。
-段は単独の入口を持たない。
 
 **道路網の配列も、入力が前回と同じなら作らない。** 配列の入力は、配列の読み出しが読む表を書く段の指紋・直に読むソースの取込・
 事故の収録年数・配列が読む較正値・配列を組むコードで（`network_inputs`）、前回の置き場の入力と同じなら、その配列を新しい世代の
@@ -52,8 +51,6 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import ModuleType
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import asyncpg
 

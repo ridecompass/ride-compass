@@ -2,8 +2,6 @@
 //
 // 得点（0〜100）は目盛りの引き方に依存する相対評価のため、軸単体では経路の良し悪しを
 // 判断できない。生値を単位付きで添えると、他の軸を見ずに判断できる。
-// 単位が定まらない軸（合成軸・真偽値の軸）はbackendが軸カタログの`raw_value_units.unit`にnullを返すため、
-// ここへは来ない。
 
 import type { AxisMaterialBreakdown } from "@/lib/catalogAxis";
 
@@ -42,13 +40,9 @@ function formatNumber(value: number): string {
 }
 
 /**
- * 内訳1件を人が読める文へ整える（例:「街灯あり 68%」「制限速度 42km/h」）。出す先は
- * 軸の説明ポップオーバーで、パネルの行には出さない（設計原則「数値は3層で見せる」）。
- *
- * 表記は材料の型から決まり、軸ごとの対応表を持たない。真偽値材料の値は0/1で運ばれる
- * （backendの`route_facing_material_ids`）ため、距離加重平均がそのまま該当区間の
- * 延長割合になる。値が来ない材料（categorical材料は数値列に載らない）はnullを返し、
- * 呼び出し側が飛ばす。
+ * 内訳1件を人が読める文へ整える（例:「街灯あり 68%」「制限速度 42km/h」）。表記は材料の型から決まり、軸ごとの対応表を
+ * 持たない。真偽値材料の値は0/1なので、距離加重平均がそのまま該当区間の延長割合になる。値が来ない材料と categorical
+ * 材料はnullを返す。
  */
 export function formatMaterialBreakdown(
   entry: Pick<AxisMaterialBreakdown, "label" | "dtype" | "unit">,

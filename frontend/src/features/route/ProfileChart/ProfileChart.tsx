@@ -20,7 +20,7 @@ interface ProfileChartProps {
   scale: ProfileScale;
   /** 図の名前。押せる図では、動かすとその地点を地図に出すことを添える。 */
   label: string;
-  /** 押せる図の使い方の文。 */
+  /** 押せる図の使い方の文のうち、図の読み方。選ぶ操作の文は後ろに足す。 */
   usage: string;
   selected: SelectedRouteSegment | null;
   /** なぞる・押して離すと、その地点の区間を選ぶ。無ければ押せない見るだけの図にする。 */
@@ -42,8 +42,8 @@ interface ProfileChartProps {
 }
 
 /** 道のりに沿った図の枠。横が距離で、選んだ区間の帯・走行中の現在地・動かした地点の線を中身の上に引き、下に距離の目盛りを
- * 出す。1本の指（マウス）で横になぞるか押して離すと、その距離の地点を選ぶ（地図に印が出て、下にその区間の詳細が出る。
- * 選ばない操作は`features/route/ProfileChart/useProfileGesture.ts: useProfileGesture`が決める）。高さは置き場が CSS の変数
+ * 出す。1本の指（マウス）で横になぞるか押して離すと、その距離の地点を選ぶ（選ばない操作は
+ * `features/route/ProfileChart/useProfileGesture.ts: useProfileGesture`が決める）。高さは置き場が CSS の変数
  * `--profile-chart-height` で決める（無ければ走行中の地図の下に出す図の高さ）。 */
 export default function ProfileChart({
   scale,
@@ -86,17 +86,14 @@ export default function ProfileChart({
 
   function handleKeyDown(event: KeyboardEvent<SVGSVGElement>) {
     const step = routeKm * KEY_STEP_RATIO;
-    const next =
-      event.key === "ArrowRight"
-        ? positionKm + step
-        : event.key === "ArrowLeft"
-          ? positionKm - step
-          : event.key === "Home"
-            ? 0
-            : event.key === "End"
-              ? routeKm
-              : null;
-    if (next === null) return;
+    const targets: Partial<Record<string, number>> = {
+      ArrowRight: positionKm + step,
+      ArrowLeft: positionKm - step,
+      Home: 0,
+      End: routeKm,
+    };
+    const next = targets[event.key];
+    if (next === undefined) return;
     event.preventDefault();
     selectAt(next);
   }
@@ -118,7 +115,7 @@ export default function ProfileChart({
                 role: "slider",
                 tabIndex: 0,
                 "aria-label": `${label}（動かすと、その地点を地図に出す）`,
-                "data-usage": usage,
+                "data-usage": `${usage}なぞるか押して離すと、その地点を地図に印で出し、地図にその区間の小窓を出します。`,
                 "aria-valuemin": 0,
                 "aria-valuemax": roundToDigits(routeKm, 1),
                 "aria-valuenow": roundToDigits(positionKm, 1),

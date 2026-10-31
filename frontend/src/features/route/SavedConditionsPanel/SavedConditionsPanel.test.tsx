@@ -172,19 +172,18 @@ describe("保存した設定", () => {
   });
 
   it("窓の「反映する」を押したときだけ呼び出し、反映したことを出す", async () => {
-    const entry = TRIP;
     const { onRecall } = renderPanel([LOOP, TRIP]);
-    const recallDialog = () => screen.getByRole("dialog", { name: `「${entry.name}」を反映します` });
+    const recallDialog = () => screen.getByRole("dialog", { name: "「週末」を反映します" });
 
-    await userEvent.click(screen.getByRole("button", { name: `「${entry.name}」を呼び出す` }));
+    await userEvent.click(screen.getByRole("button", { name: "「週末」を呼び出す" }));
     await userEvent.click(within(recallDialog()).getByRole("button", { name: "キャンセル" }));
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(onRecall).not.toHaveBeenCalled();
 
-    await userEvent.click(screen.getByRole("button", { name: `「${entry.name}」を呼び出す` }));
+    await userEvent.click(screen.getByRole("button", { name: "「週末」を呼び出す" }));
     await userEvent.click(within(recallDialog()).getByRole("button", { name: "反映する" }));
 
-    expect(onRecall).toHaveBeenCalledExactlyOnceWith(entry);
+    expect(onRecall).toHaveBeenCalledExactlyOnceWith(TRIP);
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(screen.getByRole("status")).toHaveTextContent("「週末」を反映しました。");
   });

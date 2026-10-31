@@ -1,7 +1,7 @@
 """タイルを配るエンドポイントで共通のHTTP層。
 
 タイルのrouterが、座標検証・応答の組み立て・地域タイルのレート制限と同時実行の上限をそれぞれ個別に持つのを避けるため
-共有する。レート制限の数え方は全router共通の`app.api.rate_limit.enforce_rate_limit`が持つ。
+共有する。
 """
 
 import asyncio
@@ -21,6 +21,7 @@ from app.api.cache_policy import (
     CachePolicy,
 )
 from app.config import settings
+from app.domain.dynamic_way_values import MissingConditions
 from app.domain.region import check_tile_index
 from app.infrastructure.http_client import UpstreamNotFound
 from app.infrastructure.media_types import MVT_CONTENT_TYPE
@@ -28,19 +29,16 @@ from app.infrastructure.region_tile_cache import TileResponse
 
 T = TypeVar("T")
 
-# 地域タイル（路面・点）の同時実行上限
-# （settings.road_tile_max_concurrent、値の根拠はconfig.py参照）。
+# 地域タイル（路面・点）の同時実行上限。
 #
 # 上限超過分は即座に429を返すルート生成とは異なり、こちらは「待たせて全件処理する」
 # （semaphoreの取得をブロックさせる）方式にしている。MapLibreは失敗したタイル要求を
 # 自動再試行しないため、429にすると1画面に収まる範囲で上限を超えるタイル（皇居周辺のような
-# 広い範囲では珍しくない）が永久に空白のまま描画されなくなる（詳細は
-# docs/modules/backend/static-road-attributes.md参照）。/healthはこのsemaphoreを
+# 広い範囲では珍しくない）が永久に空白のまま描画されなくなる。/healthはこのsemaphoreを
 # 経由しない別の同期ハンドラのため、待機中のタイル要求に巻き込まれず応答し続けられる。
 #
 # 点のタイルも同じDB接続プールを取り合うため、専用semaphoreを新設せずこれを
-# 共有する（プール上限15接続に対し、独立semaphoreを追加すると種類ごとのタイルの同時実行数の
-# 合計がプール上限を超えうる）。
+# 共有する（独立semaphoreを追加すると、種類ごとのタイルの同時実行数の合計がプール上限を超えうる）。
 region_tile_semaphore = asyncio.Semaphore(settings.road_tile_max_concurrent)
 
 
@@ -66,12 +64,17 @@ def validate_tile_coords(z: int, x: int, y: int) -> None:
         ) from None
 
 
+def missing_conditions_error(missing: MissingConditions) -> HTTPException:
+    """道ごとの値に要る条件の欄が欠けた要求を断る422。"""
+    return HTTPException(status_code=422, detail=f"この軸には{'・'.join(missing.names)}が必須です。")
+
+
 def tile_response(tile: TileResponse, media_type: str = MVT_CONTENT_TYPE) -> Response:
     """タイル応答を組み立てる。
 
     通常は`api/cache_policy.py`の対応表（`BATCH_TILE`）がミドルウェアで`Cache-Control`を
     付けるが、一時的な失敗で空タイルを返した場合だけは`no-store`を明示して、その空白が
-    利用者のブラウザへ1時間残らないようにする（`TileResponse`のdocstring参照）。
+    利用者のブラウザへ残らないようにする。
     """
     headers = None if tile.cacheable else {"Cache-Control": NO_STORE.header()}
     return Response(content=tile.content, media_type=media_type, headers=headers)

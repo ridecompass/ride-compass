@@ -102,9 +102,7 @@ async def get_flood_forecast(
 ) -> FloodForecasts:
     """出発地点近傍のJMA指定河川洪水予報（レベル2〜5）をバッジ用に返す。
     地点解決か洪水予報自体の取得に失敗したら502（空の応答は「予報なし」だけを表す）。"""
-    enforce_rate_limit(
-        http_request, "weather-flood-forecast", settings.weather_flood_forecast_rate_limit_per_minute
-    )
+    enforce_rate_limit(http_request, "weather-flood-forecast", settings.weather_flood_forecast_rate_limit_per_minute)
     return _or_502(
         await flood_service.get_forecasts(Coordinates(latitude=latitude, longitude=longitude)),
         _BADGE_SOURCE_UNAVAILABLE,
@@ -119,7 +117,6 @@ async def get_amedas(
     amedas_service: JmaAmedasService = Depends(get_amedas_service),
 ) -> AmedasObservation:
     """出発地点近傍の最寄りアメダス観測所の直近観測値を返す。
-    観測値本体はRedis Hash（TTL 15分）でキャッシュされる（infrastructure/jma_amedas_store.py参照）。
     観測所解決・取得のいずれかに失敗した場合は502を返す。"""
     enforce_rate_limit(http_request, "amedas", settings.weather_amedas_rate_limit_per_minute)
     return _or_502(
