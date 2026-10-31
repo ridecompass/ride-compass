@@ -18,11 +18,13 @@ from app.domain.axis_definitions import (
     MaterialTerm,
     PriorityCondition,
 )
+from app.domain.material_catalog import GRADIENT_PERCENT
 from app.domain.map_paint import (
     DEFAULT_DIFFICULTY_BOUNDARIES,
     MapLegendScale,
     map_paint,
 )
+from app.domain.route import RouteSegmentDetail
 from tests.axis_system_fixture import linear, shaped_axis
 from tests.material_fixture import material, replace_material_catalog
 
@@ -32,6 +34,7 @@ CATALOG = [
     material("count_a", unit="件"),
     material("rain_live", unit="mm"),
     material("num_live", unit="%"),
+    material(GRADIENT_PERCENT, unit="%"),
     material("num_other"),
     material("flag", "boolean"),
     material("kind", "categorical"),
@@ -183,3 +186,19 @@ def test_bands_that_cannot_be_written_as_a_quantity_are_written_as_scores(defini
 def test_a_signed_material_axis_is_written_in_the_material_unit():
     assert map_paint(SIGNED).legend == MapLegendScale(boundaries=[-6.0, -2.0, 2.0, 6.0], unit="%")
 
+
+
+@pytest.mark.parametrize(
+    ("material_id", "expected"),
+    [(GRADIENT_PERCENT, 8.0), ("num_live", 0.5)],
+)
+def test_the_route_lens_paints_the_sustained_slope_only_for_the_gradient(material_id, expected):
+    """勾配のレンズでルートの線を区間の平均で塗ると、登って下る区間が平坦の色になる。ほかの材料には続く坂の斜度が無い。"""
+    definition = shaped_axis(linear(material_id, breakpoints=((0.0, 0.0), (6.0, 100.0)), preprocess="abs"))
+    segment = RouteSegmentDetail(
+        start_latitude=35.0, start_longitude=139.0, end_latitude=35.0, end_longitude=139.01,
+        cumulative_distance_km=0.0, distance_km=0.5, edge_start=0, edge_end=1, elevations=[], road_classes={},
+        material_values={GRADIENT_PERCENT: 0.5, "num_live": 0.5}, sustained_gradient_percent=8.0,
+    )
+
+    assert map_paint(definition).value.segment_value(definition.axis_id, segment) == expected

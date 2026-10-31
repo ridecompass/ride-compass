@@ -132,6 +132,8 @@ TURN_BEARING_DISTANCE_ID = "turn.bearing_distance_m"
 #: 土地被覆を数える帯の外・内の幅のid。外の幅は地図の説明の文にも出る。
 LANDCOVER_RING_OUTER_ID = "landcover.ring_outer_m"
 LANDCOVER_RING_INNER_ID = "landcover.ring_inner_m"
+#: ルートの区間の続く坂の斜度を測る窓の幅のid。
+SUSTAINED_GRADE_WINDOW_ID = "gradient.sustained_window_m"
 
 
 TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
@@ -402,6 +404,12 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
         "勾配を示さない直角からの幅", "度", 15.0, 0.0, 45.0, TuningEffect.CLIENT_RELOAD,
         "走る向きに対して直角からこの角度以内の道は、どちら向きに辿るか決まらないため、その向きでの勾配を示さない"
         "（地図では向きで決まらない道として塗る）。広げるほど勾配を示さない道が増える。",
+    ),
+    TuningParameter(
+        SUSTAINED_GRADE_WINDOW_ID,
+        "続く坂の斜度を測る幅", "m", 100.0, 10.0, 1000.0, TuningEffect.IMMEDIATE,
+        "ルートの区間の勾配の色と「最大」は、区間の標高の断面でこの幅の窓をずらして取った斜度のうち、登りの最大"
+        "（登りが無ければ下りの最大）にする。狭めるほど短い急な所が色に出るが、標高データの誤差による跳ね上がりも拾う。",
     ),
     # --- 画面が使う値（カタログ取得でフロントへ配る） ---
     TuningParameter(

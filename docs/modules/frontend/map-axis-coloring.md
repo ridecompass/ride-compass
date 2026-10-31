@@ -108,10 +108,11 @@ localStorageキーは`ridecompass:route-style-mode`。今のカタログに無�
 どの軸も、`signed_material`種の軸の材料は`material_values`へいつも載せる（backend側は
 `evaluation.py: displayed_material_ids`、[routing-engine.md](../backend/routing-engine.md)参照）。
 
-`map_paint.value.kind==="signed_material"`の場合、値は`axis_difficulties[axis_id]`ではなく
-`material_values`からbackendが名指す材料（軸カタログの`map_paint.value.material`。生材料、例: `gradient_percent`）を
-`["get", material, ["get", "material_values"]]`で直接読む——向き（登り/下り）は
-絶対値化されたdifficultyでは表現できないため。
+`map_paint.value.kind==="signed_material"`の場合、ルート線の値は`axis_difficulties[axis_id]`ではなく
+backendが名指す区間の欄（軸カタログの`map_paint.value.route_segment_field`）を直接読む——向き（登り/下り）は
+絶対値化されたdifficultyでは表現できないため。欄が`material_values`なら名指す材料（`map_paint.value.material`。生材料）の
+区間の平均を、勾配の軸は区間の続く坂の斜度（`sustained_gradient_percent`）を読む（区間の平均は区間の中の上りと下りが打ち消し合い、
+登って下る区間が平坦の色になる）。
 
 **タイルへ焼くのは材料タグ（生の属性）までで、重み・折れ点・段の色は実行時にブラウザの式へ
 組む。** 最終値をタイルへ焼くと、軸を1本調整するたびに全域のタイルを作り直すことになる。

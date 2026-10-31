@@ -2102,6 +2102,8 @@ export interface components {
             edge_end: number;
             /** Elevations */
             elevations: components["schemas"]["ElevationStretch"][];
+            /** Sustained Gradient Percent */
+            sustained_gradient_percent: number | null;
             /** Estimated Arrival Time */
             estimated_arrival_time: string | null;
             /** Axis Difficulties */
@@ -2167,6 +2169,11 @@ export interface components {
             kind: "signed_material";
             /** Material */
             material: string;
+            /**
+             * Route Segment Field
+             * @enum {string}
+             */
+            route_segment_field: "material_values" | "sustained_gradient_percent";
         };
         /** SourceEntry */
         SourceEntry: {

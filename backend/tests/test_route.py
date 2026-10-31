@@ -20,6 +20,7 @@ from hypothesis import strategies as st
 from app.domain import route
 from app.domain.axis_definitions import BreakpointLinearShape, MaterialTerm
 from app.domain.route import DensityScoreInput, RouteSegmentDetail, SegmentDifficulty
+from app.domain.tuning import SUSTAINED_GRADE_WINDOW_ID, TUNING_VALUES
 
 WIDTH = route.SEGMENT_BIN_DISTANCE_KM
 #: 停止密度の軸の折れ線（1kmあたりの回数 → 点数。11回/kmで100点、その先は100点）。
@@ -161,6 +162,41 @@ def test_route_raw_values_match_the_mean_over_the_bins_of_the_segments(edges):
 
     slices = route.route_bin_slices([distance for distance, _ in edges])
     assert route.route_axis_raw_values(edges, slices) == route.merge_material_values(_binned(segments))
+
+
+def _profile(*stretches: tuple[float, float | None, float | None]) -> list[RouteSegmentDetail]:
+    """道1本ずつの区間（道の長さkm, 始まりの標高, 終わりの標高）。"""
+    return _segments(
+        [distance for distance, _, _ in stretches],
+        elevations=[[route.ElevationStretch(distance_km=distance, start_elevation_m=start, end_elevation_m=end)]
+                    for distance, start, end in stretches],
+    )
+
+
+@pytest.mark.parametrize(
+    ("segments", "window_m", "expected"),
+    [
+        # 150mの8%の坂のあとに10mで4m上がる跳ね上がり。窓が100mなら坂の8%、10mなら跳ね上がりの40%。
+        pytest.param(_profile((0.15, 0.0, 12.0), (0.1, 12.0, 12.0), (0.01, 12.0, 16.0), (0.24, 16.0, 16.0)), 100.0, 8.0,
+                     id="短い跳ね上がりは窓に薄まる"),
+        pytest.param(_profile((0.15, 0.0, 12.0), (0.1, 12.0, 12.0), (0.01, 12.0, 16.0), (0.24, 16.0, 16.0)), 10.0, 40.0,
+                     id="窓を狭めると跳ね上がりが出る"),
+        pytest.param(_profile((0.2, 0.0, 16.0), (0.2, 16.0, 0.0)), 100.0, 8.0, id="登って下っても打ち消し合わない"),
+        pytest.param(_profile((0.25, 20.0, 15.0), (0.25, 15.0, 5.0)), 100.0, -4.0, id="登りが無ければ下りの最大"),
+        # 標高の無い道を挟んだ継ぎ目の22mの差は坂に数えない。
+        pytest.param(_profile((0.1, 0.0, 8.0), (0.1, None, None), (0.1, 30.0, 38.0)), 100.0, 8.0, id="標高の無い道は飛ばす"),
+        pytest.param(_profile((0.05, 0.0, 2.0)), 100.0, 4.0, id="窓より短ければ全体の平均"),
+        pytest.param(_profile((0.1, None, None)), 100.0, None, id="標高が無ければ値が無い"),
+    ],
+)
+def test_a_bin_shows_the_steepest_slope_that_lasts_the_window(monkeypatch, segments, window_m, expected):
+    """勾配のレンズの色と区間の小窓の「最大」はこの値を出す。平均では登って下る区間が平坦に見え、道1本の勾配では
+    数十mの跳ね上がり（標高データの誤差を含む）で急に見える。"""
+    monkeypatch.setitem(TUNING_VALUES, SUSTAINED_GRADE_WINDOW_ID, window_m)
+
+    [bin_] = _binned(segments)
+
+    assert bin_.sustained_gradient_percent == expected
 
 
 def test_the_shape_of_a_bin_joins_the_segment_shapes_without_repeating_shared_points():

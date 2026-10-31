@@ -23,13 +23,14 @@ NOW = datetime(2026, 10, 10, 7, 0, tzinfo=check.JST)
 GRADIENT = {
     "axis_id": "gradient",
     "label": "勾配",
-    "map_paint": {"value": {"kind": "signed_material", "material": "gradient_percent"}},
+    "map_paint": {"value": {
+        "kind": "signed_material", "material": "gradient_percent", "route_segment_field": "sustained_gradient_percent"}},
 }
 RAIN = {"axis_id": "rain_24h", "label": "雨", "map_paint": {"value": {"kind": "difficulty"}}}
 CATALOG = {"axes": [GRADIENT, RAIN]}
 
 
-def _segment(**values: dict[str, float]) -> dict:
+def _segment(**values: dict[str, float] | float) -> dict:
     """応答の区間（JSON）。値の欄は渡したものだけを持つ。"""
     segment = RouteSegmentDetail(
         start_latitude=35.0, start_longitude=139.0, end_latitude=35.0, end_longitude=139.001,
@@ -87,12 +88,12 @@ def test_splice_problems(result, fails):
         # 塗る値が1つの区間にでもあれば、その軸は塗れる。
         (
             _result(
-                _segment(material_values={"gradient_percent": 2.0}),
+                _segment(sustained_gradient_percent=2.0),
                 _segment(axis_difficulties={"rain_24h": 10.0}),
             ),
             [],
         ),
-        # 勾配のレンズは材料の生値で塗る。難易度だけがあっても全区間が「データなし」になる。
+        # 勾配のレンズは区間の続く坂の斜度で塗る。難易度だけがあっても全区間が「データなし」になる。
         (
             _result(_segment(axis_difficulties={"gradient": 5.0, "rain_24h": 10.0})),
             ["「勾配」（gradient）"],
@@ -130,7 +131,7 @@ print(json.dumps([check.generation_request(datetime.fromisoformat(now)), check.p
 
 def test_reads_backend_declarations_without_the_generated_files():
     """生成物は画面の読み方の写しで、backendの宣言と食い違っても、本番の確かめは宣言の側で要求を作り値を読む。"""
-    result = _result(_segment(material_values={"gradient_percent": 2.0}), _segment(axis_difficulties={"gradient": 5.0}))
+    result = _result(_segment(sustained_gradient_percent=2.0), _segment(axis_difficulties={"gradient": 5.0}))
     run = subprocess.run(
         [sys.executable, "-c", _WITHOUT_GENERATED, str(GENERATED)],
         input=json.dumps([CATALOG, result, NOW.isoformat()]), capture_output=True, text=True, cwd=BACKEND, check=True,

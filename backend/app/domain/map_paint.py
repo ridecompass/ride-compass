@@ -11,7 +11,7 @@ from pydantic import Field, model_validator
 
 from app.domain.axis_definitions import AxisDefinition, BreakpointLinearShape, CategoricalShape
 from app.domain.axis_raw_value import raw_value_unit
-from app.domain.material_catalog import material_spec
+from app.domain.material_catalog import GRADIENT_PERCENT, material_spec
 from app.domain.route import RouteSegmentDetail
 from app.domain.strict_model import StrictModel
 
@@ -45,9 +45,14 @@ class SignedMaterialMapValue(StrictModel):
     kind: Literal["signed_material"] = "signed_material"
     #: 生値を塗る材料のid。画面は軸の形から読み直さない。
     material: str
+    #: ルートの区間をレンズで塗るときに読む区間の欄。`material_values`はその材料の区間の距離加重平均で、勾配の材料だけは
+    #: 区間の続く坂の斜度（`sustained_gradient_percent`）を塗る——平均は区間の中の上りと下りが打ち消し合う。
+    route_segment_field: Literal["material_values", "sustained_gradient_percent"]
 
     def segment_value(self, axis_id: str, segment: RouteSegmentDetail) -> float | None:
         """ルートの区間をこの軸のレンズで塗る値。値が無ければNone。"""
+        if self.route_segment_field == "sustained_gradient_percent":
+            return segment.sustained_gradient_percent
         return segment.material_values.get(self.material)
 
 
@@ -129,7 +134,11 @@ def _map_value(definition: AxisDefinition) -> MapValue:
         and len(shape.terms) == 1
         and material_spec(shape.terms[0].material) is not None
     ):
-        return SignedMaterialMapValue(material=shape.terms[0].material)
+        material = shape.terms[0].material
+        return SignedMaterialMapValue(
+            material=material,
+            route_segment_field="sustained_gradient_percent" if material == GRADIENT_PERCENT else "material_values",
+        )
     return DifficultyMapValue()
 
 

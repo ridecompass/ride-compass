@@ -311,7 +311,7 @@ DB側の値が変わっても追従しない。軸の中身が主題でないテ
 
 | 欄 | 意味 |
 |---|---|
-| `value` | 塗る値の種類（`DifficultyMapValue`・`SignedMaterialMapValue`の判別共用体）。0次条件（`priority_overrides`）を持たず、`BreakpointLinearShape`かつ`preprocess="abs"`かつterms単数で、その項が材料（`MATERIAL_CATALOG`にある）を指すなら符号付き材料（生値を塗る材料を名指す）、それ以外は難易度。項は軸を指すこともあり、その値は参照先の得点で符号にも単位にも材料の意味が無い。0次条件を持つ軸の生値は、条件の当たる道でも生値のままで評価と食い違う |
+| `value` | 塗る値の種類（`DifficultyMapValue`・`SignedMaterialMapValue`の判別共用体）。0次条件（`priority_overrides`）を持たず、`BreakpointLinearShape`かつ`preprocess="abs"`かつterms単数で、その項が材料（`MATERIAL_CATALOG`にある）を指すなら符号付き材料（生値を塗る材料を名指す）、それ以外は難易度。符号付き材料は、ルート線が読む区間の欄（`route_segment_field`）も名指す（勾配は区間の続く坂の斜度、ほかは区間の材料の平均）。項は軸を指すこともあり、その値は参照先の得点で符号にも単位にも材料の意味が無い。0次条件を持つ軸の生値は、条件の当たる道でも生値のままで評価と食い違う |
 | `unit` | 符号付き材料なら材料カタログの`unit`、難易度は空文字 |
 | `thresholds` | `value`のスケールでの段の境界（下記） |
 | `band_labels` | 段ごとの体感ラベル（`display_band_labels_override`をそのまま）。上書きの無い軸はnull |
