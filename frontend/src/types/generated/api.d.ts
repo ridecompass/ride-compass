@@ -2196,6 +2196,8 @@ export interface components {
         TimelineKind: "thunder";
         /** TimelineKindLevels */
         TimelineKindLevels: {
+            /** Advisory Label */
+            advisory_label: string;
             /** Slots */
             slots: components["schemas"]["TimelineSlotLevel"][];
             /** Additions */
