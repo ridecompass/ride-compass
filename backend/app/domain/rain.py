@@ -60,7 +60,7 @@ def rain_material_values(hourly_mm: np.ndarray) -> dict[str, np.ndarray]:
     さかのぼって雨を見つける前に欠測に当たれば値を持たず、全部さかのぼって雨が無ければ
     `RAIN_HISTORY_HOURS`（それ以上）になる。
     """
-    values ={rain_window_material_id(hours): hourly_mm[:, -hours:].sum(axis=1) for hours in RAIN_WINDOW_HOURS}
+    values = {rain_window_material_id(hours): hourly_mm[:, -hours:].sum(axis=1) for hours in RAIN_WINDOW_HOURS}
     newest_first = hourly_mm[:, ::-1]
     rained = newest_first >= PRECIPITATION_MIN_MM
     missing = np.isnan(newest_first)
@@ -76,7 +76,7 @@ def rain_material_columns(
     stations: StationRainMaterials, latitudes: np.ndarray, longitudes: np.ndarray
 ) -> dict[str, np.ndarray]:
     """各地点の雨の材料の値（`RAIN_MATERIAL_IDS`→地点の並びの配列）。地点に最も近い雨量計の値で、
-    その雨量計が欠測ならNaN（次に近い雨量計では埋めない）。地図の配信とルートの評価（`NearestRainStations`）が同じ値を引く。"""
+    その雨量計が欠測ならNaN（次に近い雨量計では埋めない）。"""
     return _station_values(stations, nearest_point_indices(latitudes, longitudes, stations.latitudes, stations.longitudes))
 
 

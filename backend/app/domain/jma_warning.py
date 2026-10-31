@@ -1,9 +1,4 @@
-"""JMA警報・注意報の判断——どの種別をサイクリングに関わるとして出すかと、種別の名称から導く警戒の段。
-
-配信元のコード→種別の名称・状態の文字列→発表中か、の読み替えは取りに行く層（`jma_warning_client.py`）が持ち、
-ここへは読み替えた値（`AreaWarningKind`）で届く。1地点ぶんの警報は種類ごとの複数の電文
-（VPWW55〜61）に分かれて届くため、電文配列の全件を走査する（warning_service.py参照）。
-"""
+"""JMA警報・注意報の判断——どの種別をサイクリングに関わるとして出すかと、種別の名称から導く警戒の段。"""
 
 from __future__ import annotations
 
@@ -37,7 +32,7 @@ NOT_RELEVANT_TO_CYCLING: frozenset[str] = frozenset({
     "高潮危険警報",
 })
 
-#: 段階ごとの呼び名（種別の名称の末尾の語。警戒度バッジもこの語を出す。domain/warning_display.py）。
+#: 段階ごとの呼び名（種別の名称の末尾の語。警戒度バッジもこの語を出す）。
 JMA_LEVEL_LABELS: dict[WarningBadgeLevel, str] = {
     "advisory": "注意報",
     "warning": "警報",
@@ -91,30 +86,18 @@ class WarningBulletin:
         return kinds if kinds is not None else self.class10_kinds.get(class10_code)
 
 
-def extract_active_warnings(kinds: Iterable[AreaWarningKind]) -> list[ActiveWarning]:
-    """電文の1地域ぶんの種別から、サイクリングに関連し現在発表中の警報・注意報だけを取り出す。"""
-    return [
-        ActiveWarning(code=kind.code, name=kind.name, level=warning_level(kind.name), additions=list(kind.additions))
-        for kind in kinds
-        if kind.active and kind.name not in NOT_RELEVANT_TO_CYCLING
-    ]
-
-
 def collect_active_warnings(
     bulletins: Iterable[WarningBulletin], class20_code: str, class10_code: str
 ) -> list[ActiveWarning]:
-    """電文の一覧から、対象エリアぶんのアクティブな警報を返す。
+    """電文の一覧から、対象エリアぶんの、サイクリングに関連し現在発表中の警報・注意報を返す。
 
     警報の種類ごとに電文が分かれているため、同じコードが複数の電文に現れうる。codeで重複を除く。
     """
     collected: dict[str, ActiveWarning] = {}
-
     for bulletin in bulletins:
-        kinds = bulletin.kinds_for(class20_code, class10_code)
-        if kinds is None:
-            continue
-
-        for item in extract_active_warnings(kinds):
-            collected[item.code] = item
-
+        for kind in bulletin.kinds_for(class20_code, class10_code) or ():
+            if kind.active and kind.name not in NOT_RELEVANT_TO_CYCLING:
+                collected[kind.code] = ActiveWarning(
+                    code=kind.code, name=kind.name, level=warning_level(kind.name), additions=list(kind.additions)
+                )
     return list(collected.values())
