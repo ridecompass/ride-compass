@@ -11,15 +11,16 @@ from app.domain import route_diversity
 # --- overlap_ratio ---
 
 
-def test_overlap_ratio_of_an_empty_candidate_is_zero():
-    lengths = np.array([10.0, 10.0])
-    assert route_diversity.overlap_ratio(np.array([], dtype=np.int64), np.array([0]), lengths) == 0.0
-
-
-def test_overlap_ratio_weights_by_distance_not_by_edge_count():
-    """共有の割合は本数ではなく距離で測る（短い区間を1本共有しても重複とは呼ばない）。"""
+@pytest.mark.parametrize(
+    ("candidate", "expected"),
+    [
+        (np.array([], dtype=np.int64), 0.0),
+        (np.array([0, 1]), 0.9),  # 本数ではなく距離で測る（短い区間を1本共有しても重複とは呼ばない）
+    ],
+)
+def test_overlap_ratio_weights_shared_edges_by_distance(candidate, expected):
     lengths = np.array([10.0, 90.0])
-    assert route_diversity.overlap_ratio(np.array([0, 1]), np.array([1]), lengths) == pytest.approx(0.9)
+    assert route_diversity.overlap_ratio(candidate, np.array([1]), lengths) == pytest.approx(expected)
 
 
 # --- pareto_layer_index ---

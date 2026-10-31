@@ -97,17 +97,10 @@ class DisplayAxisSpec(StrictModel):
 
 
 class PrimaryAttributeSpec(StrictModel):
-    """一次属性の宣言。
+    """一次属性の宣言。`label`はユーザー向け正式名称の単一ソース。
 
-    `label`はユーザー向け正式名称の単一ソース。`export_openapi.py`が`primaryAttributes.ts`へ
-    書き出す。
-
-    `geometry`は値が載る図形で、フロントはこれを読んでレイヤーの描き方（線・点・面）を
-    決める。持たせないと、どの属性をどう描くかを画面側が手で並べた表で持つことになる。
-
-    `display_axes`は地図に出す束ね方・行の名前・色。**画面はこれを受け取って塗るだけ**で、
-    分類も名前も色も持たない（評価軸の色と段を`axis-catalog`が配るのと同じ形）。空なら
-    地図に線・点としては出さない（幾何を持つことと、地図へ出すことは別）。
+    `geometry`は値が載る図形で、レイヤーの描き方（線・点・面）を決める。`display_axes`は地図に出す束ね方・
+    行の名前・色。空なら地図に線・点としては出さない（幾何を持つことと、地図へ出すことは別）。
     """
 
     attr_id: str
@@ -148,7 +141,7 @@ class PrimaryAttributeSpec(StrictModel):
         return self
 
     @model_validator(mode="after")
-    def _only_the_first_axis_paints(self) -> "PrimaryAttributeSpec":
+    def _display_axes_mark_one_way(self) -> "PrimaryAttributeSpec":
         if not self.display_axes:
             return self
         if self.geometry == "area":
@@ -158,13 +151,6 @@ class PrimaryAttributeSpec(StrictModel):
         first, *rest = self.display_axes
         if first.palette is None or any(spec.palette is not None for spec in rest):
             raise ValueError(f"'{self.attr_id}'の色は先頭の軸だけが持つ")
-        return self
-
-    @model_validator(mode="after")
-    def _glyphs_and_radii_mark_points_one_way(self) -> "PrimaryAttributeSpec":
-        if not self.display_axes:
-            return self
-        first, *rest = self.display_axes
         glyphs = [category.glyph for category in first.categories]
         if any(category.glyph is not None for spec in rest for category in spec.categories):
             raise ValueError(f"'{self.attr_id}'の2本目以降の軸の絵記号は地図に描かれない")

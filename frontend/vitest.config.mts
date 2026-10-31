@@ -37,7 +37,6 @@ export default defineConfig({
     // 対象のパターンに入らないテストファイルを黙って外しうるため使わない。docblockの無いファイルは既定の
     // happy-domで動くので、DOMを後から使い始めても黙って壊れない（.claude/rules/testing-frontend.md「パターン3」）。
     setupFiles: ["./vitest.setup.ts"],
-    css: true,
     // frontend/e2e/・frontend/e2e-live/・frontend/capture/はPlaywright（別ランナー）専用のため、
     // vitestのデフォルトテスト探索（*.spec.ts）から除外する。
     // .claude/worktrees/配下は並行セッションが作るgit worktree（他ブランチのfrontend/を丸ごと含む）で、

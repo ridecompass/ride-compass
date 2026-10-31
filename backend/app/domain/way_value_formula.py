@@ -12,6 +12,7 @@
 """
 
 from collections.abc import Callable, Mapping, Sequence
+from functools import reduce
 from typing import Annotated, Literal, Union
 
 import numpy as np
@@ -129,6 +130,10 @@ class WayValueFormula(StrictModel):
     value: FormulaNode
     undetermined: FormulaNode
 
+    def names_read(self, leaf: type[FeatureValue | Condition]) -> set[str]:
+        """木が読む道ごとの材料（`FeatureValue`）か要求の条件（`Condition`）の名前。"""
+        return _names_read(self.value, leaf) | _names_read(self.undetermined, leaf)
+
 
 TRUE = Constant(value=1.0)
 FALSE = Constant(value=0.0)
@@ -168,36 +173,18 @@ def case(when: FormulaNode, then: FormulaNode, otherwise: FormulaNode) -> Case:
 
 def any_of(nodes: Sequence[FormulaNode]) -> FormulaNode:
     """どれかが真なら真（空なら偽）。"""
-    if not nodes:
-        return FALSE
-    out = nodes[0]
-    for node in nodes[1:]:
-        out = Binary(op="or", left=out, right=node)
-    return out
+    return reduce(lambda left, right: Binary(op="or", left=left, right=right), nodes) if nodes else FALSE
 
 
 def all_of(nodes: Sequence[FormulaNode]) -> FormulaNode:
     """どれもが真なら真（空なら真）。"""
-    if not nodes:
-        return TRUE
-    out = nodes[0]
-    for node in nodes[1:]:
-        out = Binary(op="and", left=out, right=node)
-    return out
+    return reduce(lambda left, right: Binary(op="and", left=left, right=right), nodes) if nodes else TRUE
 
 
-def feature_names(node: FormulaNode) -> set[str]:
-    """木が読む道ごとの材料の名前。"""
-    if isinstance(node, FeatureValue):
+def _names_read(node: FormulaNode, leaf: type[FeatureValue | Condition]) -> set[str]:
+    if isinstance(node, leaf):
         return {node.name}
-    return set().union(*(feature_names(child) for child in _children(node)))
-
-
-def condition_names(node: FormulaNode) -> set[str]:
-    """木が読む要求の条件の名前。"""
-    if isinstance(node, Condition):
-        return {node.name}
-    return set().union(*(condition_names(child) for child in _children(node)))
+    return set().union(*(_names_read(child, leaf) for child in _children(node)))
 
 
 def _children(node: FormulaNode) -> tuple[FormulaNode, ...]:

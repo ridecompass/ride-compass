@@ -1,16 +1,13 @@
 """本番DBの状態を読み取る専用リポジトリ（読み取りのみ、書き込みは一切しない）。
 
-`GET /api/admin/db-status`（`api/routers/db_status.py`）のデータ源。
-`derived_data_freshness.py`が「派生データが生データの世代に追いついているか」を見るのに対し、
-本モジュールは**その判定の土台が健全か**を見る——取込runそのものが失敗していないか、行が
-本当に入っているか、プランナが使う統計が取れているか、トランザクションが放置されていないか。
+取込runそのものが失敗していないか、行が本当に入っているか、プランナが使う統計が取れているか、
+トランザクションが放置されていないかを見る。
 
 全テーブルの行数は統計値（`n_live_tup`）ではなく**実数**を数える。統計は
 ANALYZEされていないテーブルでは桁が変わるほどずれるため、「取り込んだつもりが入っていない」の
 検出には使えない。1クエリで全テーブルぶんを数えるために
 `query_to_xml`を使う（テーブル名は`pg_stat_user_tables`由来の`regclass`を文字列にしたもので、識別子として
-引用されるため外部入力の連結にはならない）。DB全体の走査を伴うので、呼び出しは管理APIの
-ボタン押下時のみ。
+引用されるため外部入力の連結にはならない）。DB全体を走査するので、要求のたびに呼ぶ口へ置かない。
 """
 
 from dataclasses import dataclass
@@ -123,8 +120,7 @@ class DbStatusCounts:
     database_bytes: int
 
 
-#: ソースごとの最新run（成否を問わない）と、成功した最新run。取込の記録は`source_runs`
-#: 1つだけなので、ソースが増えても宣言は要らない。
+#: ソースごとの最新run（成否を問わない）と、成功した最新run。
 _IMPORT_RUNS_SQL = f"""
 SELECT r.*, s.run_id AS latest_succeeded_id, s.finished_at AS latest_succeeded_finished_at
 FROM (SELECT DISTINCT ON (source)
@@ -142,8 +138,7 @@ ORDER BY r.source
 
 
 class DbStatusQuery:
-    """読み取り専用。全表走査を伴うため管理API専用（`api/dependencies.py`が長い
-    command_timeoutのセッションを渡す）。"""
+    """読み取り専用。全表を走査するので、長いcommand_timeoutのセッションを渡す。"""
 
     def __init__(self, session: AsyncSession):
         self._session = session

@@ -34,7 +34,7 @@ def get_session_factory() -> async_sessionmaker[AsyncSession]:
 # ルート生成と、全表走査を伴う管理APIの集計が使う。生成は1件の間ずっと1本の接続を持つため、
 # タイル配信とはプールを分ける。上限が長いのは集計がタイル配信用の20秒では最後まで走らない
 # ためで、生成のクエリ（取込範囲の判定・確定した経路の形の取り直し）はこの上限に近づかない。
-ROUTE_GENERATION_COMMAND_TIMEOUT_SECONDS = 180
+_ROUTE_GENERATION_COMMAND_TIMEOUT_SECONDS = 180
 
 _route_generation_session_factory: async_sessionmaker[AsyncSession] | None = None
 
@@ -42,12 +42,12 @@ _route_generation_session_factory: async_sessionmaker[AsyncSession] | None = Non
 def get_route_generation_session_factory() -> async_sessionmaker[AsyncSession]:
     global _route_generation_session_factory
     if _route_generation_session_factory is None:
-        _route_generation_session_factory = _new_session_factory(ROUTE_GENERATION_COMMAND_TIMEOUT_SECONDS)
+        _route_generation_session_factory = _new_session_factory(_ROUTE_GENERATION_COMMAND_TIMEOUT_SECONDS)
     return _route_generation_session_factory
 
 
 async def dispose_engines() -> None:
-    """プロセス終了時に`process_resources.py: close_process_resources`から呼ぶ。次の取得で作り直す。"""
+    """エンジンを閉じる。次の取得で作り直す。"""
     global _session_factory, _route_generation_session_factory
     for factory in (_session_factory, _route_generation_session_factory):
         if factory is not None:

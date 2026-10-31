@@ -7,7 +7,7 @@
 import math
 from collections import ChainMap
 from collections.abc import Collection, Iterable, MutableMapping
-from typing import Mapping, NamedTuple, Sequence, SupportsFloat, cast
+from typing import Mapping, NamedTuple, Sequence, cast
 
 import numpy as np
 
@@ -38,9 +38,8 @@ def priority_override_mask(values: MaterialColumn, equals: str) -> np.ndarray:
 
 
 def _numeric_column(values: Sequence[object]) -> np.ndarray:
-    """項の材料の値の並び（欠損=None）を数値の配列へ（真偽は1.0/0.0、欠損はNaN）。項の材料は
-    numeric/booleanに限られる（`domain/axis_definitions.py: check_axis_definition`）。"""
-    return np.array([np.nan if v is None else float(cast(SupportsFloat, v)) for v in values], dtype=float)
+    """項の材料の値の並び（欠損=None）を数値の配列へ（真偽は1.0/0.0、欠損はNaN）。"""
+    return np.array(values, dtype=float)
 
 
 def _value_column(values: Sequence[object]) -> np.ndarray:
@@ -168,7 +167,6 @@ def _breakpoint_raw_total_array(
     all_missing: np.ndarray | None = None
     for term in shape.terms:
         values = _term_values(materials, term.material)
-        # 項の材料は数値・真偽とも数値の配列で届き、NaNが欠損を表す。
         missing = np.isnan(values)
         all_missing = missing if all_missing is None else all_missing & missing
         if not term.required:

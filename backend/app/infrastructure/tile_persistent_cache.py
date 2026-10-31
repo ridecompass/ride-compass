@@ -7,6 +7,7 @@
 世代・失効は鍵と`expire`で呼び出し側が表す。容量上限を超えればライブラリが古いものから退避する。
 """
 
+import asyncio
 import logging
 import time
 from typing import Any
@@ -14,6 +15,7 @@ from typing import Any
 import diskcache
 
 from app.config import settings
+from app.infrastructure.cache_identity import is_known_tile_version
 from app.infrastructure.data_paths import DATA_DIR
 from app.infrastructure.debug_log import log_throttled_warning
 
@@ -22,6 +24,10 @@ logger = logging.getLogger("ridecompass.tile_persistent_cache")
 CACHE_DIR = DATA_DIR / "tile_persistent_cache"
 
 _CATEGORY = "cache:tile-persistent"
+
+# 路面タイルの世代を鍵に持つ値は、派生の表と生データが変われば世代ごと読まれなくなる。鮮度の制約が無いので、
+# 失っても読み直すだけのものとして長く持ち、DBへの再問い合わせを抑える。
+_TILE_ENTRY_TTL_SECONDS = 24 * 3600
 
 _opened_cache: diskcache.Cache | None = None
 
@@ -42,7 +48,7 @@ def cache() -> diskcache.Cache:
 
 
 def close() -> None:
-    """開いたキャッシュを閉じる（プロセスの終わりに`process_resources.py`が呼ぶ）。次の読み書きで開き直す。"""
+    """開いたキャッシュを閉じる。次の読み書きで開き直す。"""
     global _opened_cache
     if _opened_cache is not None:
         _opened_cache.close()
@@ -77,3 +83,16 @@ def set_by_key(key: tuple, value: Any, *, expire: float) -> None:
     except Exception as exc:  # OSError（ディスクフル）・pickle化不能のいずれも吸収する
         log_throttled_warning(_CATEGORY, "tile persistent cache write failed key=%r error=%r", key, exc)
 
+
+
+async def get_tile_entry(key: tuple) -> Any | None:
+    """`set_tile_entry`で書いた値を読む。"""
+    return await asyncio.to_thread(get_by_key, key)
+
+
+async def set_tile_entry(key: tuple, value: Any, *, surface_tile_version: str) -> None:
+    """路面タイルの世代（`surface_tile_version`。鍵にも入れる）に結んだ値を書く。世代を読めていない
+    （`cache_identity.py: is_known_tile_version`が偽）ときは書かない——どの世代の鍵の値か分からないまま残すと、
+    後で同じ印の鍵で別の世代の値を返す。"""
+    if is_known_tile_version(surface_tile_version):
+        await asyncio.to_thread(set_by_key, key, value, expire=_TILE_ENTRY_TTL_SECONDS)

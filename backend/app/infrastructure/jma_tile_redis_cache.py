@@ -15,8 +15,7 @@ from app.infrastructure.redis_json_cache import UNAVAILABLE, get_bytes, set_byte
 # 保存するのは中継が塗り替えたあとのタイルなので、塗り替えの版を鍵に入れる。
 _KEY_PREFIX = f"jma:tile:{RECOLOR_VERSION}"
 _CATEGORY = "cache:jma-tile-redis"
-# プリウォーム間隔（jma_tile_prewarm_service.py、10分）より余裕を持たせ、1回のプリウォーム
-# 失敗・遅延で即座に空にならないようにする。
+# プリウォームの間隔より余裕を持たせ、1回のプリウォームの失敗・遅延で即座に空にならないようにする。
 TTL_SECONDS = 20 * 60
 
 
@@ -38,19 +37,16 @@ def _decode(raw: bytes) -> tuple[bytes, str] | UpstreamNotFound:
 
 
 async def get(path: str) -> tuple[bytes, str] | UpstreamNotFound | None:
-    """Redisキャッシュ済みなら(内容, Content-Type)または`UPSTREAM_NOT_FOUND`を返す。
-    未キャッシュ・Redis障害時はNone（呼び出し元は通常のオンデマンドフェッチへ
-    フォールバックする）。"""
+    """Redisキャッシュ済みなら(内容, Content-Type)または`UPSTREAM_NOT_FOUND`。未キャッシュ・Redis障害時はNone。"""
     cached = await get_bytes(_key(path), decode=_decode, category=_CATEGORY, path=path)
     return None if cached is UNAVAILABLE else cached
 
 
 async def set(path: str, content: bytes, content_type: str) -> tuple[bytes, str] | UpstreamNotFound:
-    """取得できたタイルをRedisへ書き戻し、次に`get`が返すのと同じ形で返す（呼び出し元は書いたその場でもこれを返す）。
+    """取得できたタイルをRedisへ書き戻し、次に`get`が返すのと同じ形で返す。
 
-    中身が空なら実体ではなく`UPSTREAM_NOT_FOUND`と同じフラグで持つ。実体を保持しても
-    返す先が無い——クライアントは在否インデックス（`jma_tile_index.py`）を見て
-    空のタイルを要求しないため、保持した実体が使われるのは索引が届く前だけである。
+    中身が空なら実体ではなく`UPSTREAM_NOT_FOUND`と同じフラグで持つ（空のタイルは在否インデックスから外れ、
+    実体が読まれるのはインデックスが届く前だけ）。
     """
     if is_empty_tile(content, _extension(path)):
         await set_empty(path)

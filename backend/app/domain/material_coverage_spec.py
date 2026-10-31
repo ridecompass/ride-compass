@@ -12,7 +12,6 @@ Population = Literal["way", "edge"]
 MissingSemantics = Literal["unknown", "definite"]
 
 
-
 def labeled_every_value[K: str, V](literal_type: object, labels: dict[K, V]) -> dict[K, V]:
     """`Literal`の値の全部に見出しを付けた表を、そのまま返す。過不足があれば`ValueError`。
 
@@ -78,9 +77,7 @@ class CoverageExcluded:
     `WayMaterialCoverageSpec`/`EdgeMaterialCoverageSpec`とこの型のいずれかを必ず持つため、
     「どちらの一覧にも載っていない材料」は型として作れない。
 
-    測らない材料も`missing_semantics`は持つ。**欠損率を測るかと、値が無いときにどう
-    扱うかは別の問い**で、後者は地図の表示（`domain/material_catalog.py: display_axis_missing_semantics`）が全材料について読む
-    ——3つの型のうち1つだけがこの宣言を欠くと、そこだけ答えを作り出すことになる。"""
+    測らない材料も`missing_semantics`は持つ（欠損率を測るかと、値が無いときにどう扱うかは別の問い）。"""
 
     reason: str
     missing_semantics: MissingSemantics

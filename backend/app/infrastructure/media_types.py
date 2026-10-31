@@ -5,7 +5,5 @@
 外部から取ってそのまま返すタイルは、配信元が返した値を使う（ここの値で上書きしない）。
 """
 
-# MVT（Mapbox Vector Tile）。
 MVT_CONTENT_TYPE = "application/vnd.mapbox-vector-tile"
-# ラスタタイル（土地被覆・Terrain-RGB）。
 PNG_CONTENT_TYPE = "image/png"

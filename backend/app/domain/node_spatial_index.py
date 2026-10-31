@@ -28,8 +28,7 @@ class NodeSpatialIndex:
     cell_starts: list[int]
     #: 非空セルが占める範囲（最小・最大のセル座標）。Nodeが1つも無ければNone。
     #: **探索の打ち切りに要る**——この外側にはどれだけ広げてもセルが1つも無い。
-    #: 既定値を持たせない: 省略できると、渡し忘れた索引が黙って「Nodeが無い」ふるまいに
-    #: なる（`build_node_spatial_index`が唯一の作り手）。
+    #: 既定値を持たせない: 省略できると、渡し忘れた索引が黙って「Nodeが無い」ふるまいになる。
     cell_bounds: tuple[int, int, int, int] | None
 
 

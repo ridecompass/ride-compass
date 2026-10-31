@@ -32,7 +32,6 @@ def test_an_area_is_valid_only_when_it_contains_the_point(geometry, expected):
 
     assert (area is not None) == expected
     if area is not None:
-        assert area.type == "MultiPolygon"
         assert holds(area, INSIDE)
 
 

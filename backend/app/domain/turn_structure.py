@@ -142,12 +142,6 @@ def _turn_kinds(delta: np.ndarray, is_uturn: np.ndarray, branch: np.ndarray, spe
     return np.where(is_uturn, TurnKind.UTURN, kinds).astype(np.int8)
 
 
-def _turn_seconds_for(kinds: np.ndarray, spec: TurnCostSpec) -> np.ndarray:
-    """遷移ごとのターンの時間損失（秒）。"""
-    by_kind = np.array([0.0, spec.left_seconds, spec.right_seconds, spec.uturn_seconds])
-    return by_kind[kinds]
-
-
 def build_turn_expanded_structure(
     csr: CsrGraphStructure,
     lazy_graph: LazyRoadGraph,
@@ -197,7 +191,7 @@ def build_turn_expanded_structure(
     branch = node_branch_count[edge_to[source]] >= 3
     wait_kind = _turn_kinds(delta, is_uturn, branch, spec)
     straight = wait_kind == TurnKind.STRAIGHT
-    turn_seconds = _turn_seconds_for(wait_kind, spec)
+    turn_seconds = np.array([0.0, spec.left_seconds, spec.right_seconds, spec.uturn_seconds])[wait_kind]
 
     # ノードの階級は、読み込んだ部分グラフに現れる道から導く。DB側の事前集計値
     # （`node_turns.max_highway_rank`）があれば大きい方を採る——bboxの外へはみ出した

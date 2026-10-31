@@ -61,8 +61,7 @@ def _evaluate_wind_drag_ratio_array(context: DynamicAxisRequestContext) -> np.nd
     return wind_drag_ratio_from_components(*components, context.travel_speed_ms)
 
 
-# 材料idから、リクエスト時点の幾何配列＋動的contextをベクトル評価する関数への唯一の
-# 登録点（式の実体は`domain/wind.py`にあり、ここは配線のみ）。軸idではなく材料idで
+# 材料idから、リクエスト時点の幾何配列＋動的contextをベクトル評価する関数への登録点。軸idではなく材料idで
 # キーイングするのは、合成側（`dynamic_axis_topological_order`・`domain/axis_evaluation.py: evaluate_axis`）が
 # 軸名をハードコードせず、動的材料さえ埋まればどんな軸でも合成できるため——軸スタジオで
 # 作られたカスタム軸もこの登録だけでカバーされる。
@@ -81,9 +80,7 @@ if set(DYNAMIC_MATERIAL_EVALUATORS) != set(REQUEST_DYNAMIC_MATERIAL_IDS):
 
 def evaluate_dynamic_material_arrays(context: DynamicAxisRequestContext) -> dict[str, np.ndarray]:
     """`REQUEST_DYNAMIC_MATERIAL_IDS`の全材料を`context`から評価する（材料id→配列、
-    `context.bearing_deg`と同じ行順）。動的材料を評価する唯一の経路で、
-    静的行列への動的軸合成（`evaluate_dynamic_axis_arrays`）も、ルートを出す前の地図へ配る値も
-    ここを通る。"""
+    `context.bearing_deg`と同じ行順）。"""
     return {
         material_id: DYNAMIC_MATERIAL_EVALUATORS[material_id](context)
         for material_id in REQUEST_DYNAMIC_MATERIAL_IDS

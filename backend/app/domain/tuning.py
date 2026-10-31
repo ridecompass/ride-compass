@@ -462,8 +462,7 @@ def tuning_value(param_id: str) -> float:
 
 
 def tuning_parameters_by_effect() -> list[TuningParameter]:
-    """較正値の宣言を効き方の順（`TuningEffect`の宣言順）に並べる。同じ効き方の中は宣言順のまま。
-    管理画面はこの順のまままとめるだけで、並び順の知識を持たない。"""
+    """較正値の宣言を効き方の順（`TuningEffect`の宣言順）に並べる。同じ効き方の中は宣言順のまま。"""
     effects = list(TuningEffect)
     return sorted(TUNING_PARAMETERS, key=lambda parameter: effects.index(parameter.effect))
 
