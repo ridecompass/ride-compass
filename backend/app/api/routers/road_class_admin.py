@@ -1,6 +1,6 @@
 """道の区分の管理API。区分・地図の線の層・転がり抵抗・除外の設定の全体を1回で読み、1回で書く。
 
-書く全体を断ったら（表の制約・コードの宣言に無い名・次の起動で読み込めない軸）、409で断りの文を返す（`services/road_class_service.py`）。
+書く全体を断ったら（表の制約・コードの宣言に無い名・次の起動で読み込めない軸）、409で断りの文を返す。
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -16,7 +16,9 @@ router = APIRouter(
 
 
 @router.get("", response_model=RoadClassDefinitions)
-async def read_road_classes(service: RoadClassAdminService = Depends(get_road_class_admin_service)) -> RoadClassDefinitions:
+async def read_road_classes(
+    service: RoadClassAdminService = Depends(get_road_class_admin_service),
+) -> RoadClassDefinitions:
     return await service.read()
 
 

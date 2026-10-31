@@ -44,7 +44,7 @@ MAP_OVERLAY_GROUPS: tuple[OverlayGroup, ...] = (
 )
 
 
-class LegendSharedRow(NamedTuple):
+class _LegendSharedRow(NamedTuple):
     label: str
     #: 凡例の行の（i）から開く説明。
     description: str
@@ -52,20 +52,20 @@ class LegendSharedRow(NamedTuple):
 
 #: 行の宣言に当てはまらない道の受け皿の行。道の属性・評価軸・ルートのどの凡例でも同じ意味なので、名前と説明を
 #: ここだけが持つ（鍵は画面が引く名前）。
-LEGEND_SHARED_ROWS: dict[str, LegendSharedRow] = {
-    "other": LegendSharedRow(
+LEGEND_SHARED_ROWS: dict[str, _LegendSharedRow] = {
+    "other": _LegendSharedRow(
         "その他",
         "値は書かれているが、上のどの行にも当てはまらない道（まれな種類など）。",
     ),
-    "notApplicable": LegendSharedRow(
+    "notApplicable": _LegendSharedRow(
         "該当なし",
         "この種類に当たらない道（例: トンネルの凡例では、トンネルでない道）。",
     ),
-    "noData": LegendSharedRow(
+    "noData": _LegendSharedRow(
         "データなし",
         "元にする地図のデータに値が無く、どの行にも分けられない道。道が無いのではなく、値が分からない。",
     ),
-    "undetermined": LegendSharedRow(
+    "undetermined": _LegendSharedRow(
         "向きで決まらない",
         "地図の上の向き（走っている間は進む向き）とほぼ直角に交わり、その向きでは値が決まらない道"
         "（勾配なら、登りか下りかが決まらない）。"
@@ -86,13 +86,13 @@ _TILE_KINDS: tuple[str, ...] = tuple(
 )
 
 #: 道の線の層（管理DBの区分を描く）の絵の出所。
-ROAD_LAYER_DATA_SOURCE = "road_surface"
+_ROAD_LAYER_DATA_SOURCE = "road_surface"
 
 #: レイヤーの絵がどこから来るか。取得状態（読み込み中・空・失敗）の判定はここから導く。
 #: 最小ズームは配信の性質なので情報源の側で持つ——レイヤーごとに書くと、同じタイルを
 #: 読むレイヤーの1つだけ書き忘れても型が通り、その行だけ案内が出ない。
 MAP_LAYER_DATA_SOURCES: tuple[MapLayerDataSource, ...] = (
-    *(MapLayerDataSource(kind, ROAD_TILE_MIN_ZOOM) for kind in (ROAD_LAYER_DATA_SOURCE, *_TILE_KINDS)),
+    *(MapLayerDataSource(kind, ROAD_TILE_MIN_ZOOM) for kind in (_ROAD_LAYER_DATA_SOURCE, *_TILE_KINDS)),
     MapLayerDataSource("gsiRelief"),
     MapLayerDataSource("gsiTerrain", TERRAIN_MIN_ZOOM),
     MapLayerDataSource("landcoverRaster", LANDCOVER_TILE_MIN_ZOOM),
@@ -126,10 +126,10 @@ MapLayerKind = Literal["static", "dynamic"]
 MAP_LAYER_KINDS: tuple[str, ...] = get_args(MapLayerKind)
 
 #: 利用者が作った線。属性でも配信でもないので、ここだけが名前を持つ。
-ROUTE_LAYER_ID = "route"
+_ROUTE_LAYER_ID = "route"
 
 #: 陰影は属性ではなく標高の別の描き方。源泉に属性として現れないのが正しい。
-HILLSHADE_LAYER_ID = "hillshade"
+_HILLSHADE_LAYER_ID = "hillshade"
 
 #: 地図へ常に出す出典（HTML）。路面の色・評価・ルートの計算・常設の表示（ヘッダーの天気・警戒度バッジ）へ常に使う
 #: データで、どのレイヤーを表示しているかと関係なく出典が要る（レイヤーのソースに付けると、そのレイヤーを消したとき
@@ -176,11 +176,11 @@ ALWAYS_SHOWN_ATTRIBUTIONS: tuple[str, ...] = (
 def _static_layer_ids() -> tuple[str, ...]:
     """地図へ出す一次属性（線・点は行の定義を持つもの、面は幾何が面のもの）＋描き方の派生。"""
     shown = [attr.attr_id for attr in PRIMARY_ATTRIBUTES if attr.display_axes or attr.geometry == "area"]
-    return (*shown, HILLSHADE_LAYER_ID)
+    return (*shown, _HILLSHADE_LAYER_ID)
 
 
 #: 地図に載るものの名前。軸スタジオ由来の軸は実行時に増えるためここには現れない。
-_MAP_LAYER_IDS: tuple[str, ...] = (*_static_layer_ids(), *WEATHER_LAYER_GROUPS, ROUTE_LAYER_ID)
+_MAP_LAYER_IDS: tuple[str, ...] = (*_static_layer_ids(), *WEATHER_LAYER_GROUPS, _ROUTE_LAYER_ID)
 
 
 #: 説明の文の差し込み口の名前。どれも軸カタログ（実行時の応答）から来る値で、画面が埋める。
@@ -267,7 +267,7 @@ def _row_label(attr_id: str, key: str) -> str:
     return next(category.label for category in _first_axis(attr_id).categories if category.key == key)
 
 
-def size_text(attr_id: str) -> str:
+def _size_text(attr_id: str) -> str:
     """大きさで示す見方の文。半径を宣言した軸の、半径の最も大きい行の名前から組む。"""
     attribute = PRIMARY_ATTRIBUTES_BY_ID[attr_id]
     axis = next(
@@ -359,7 +359,7 @@ _LAYER_SPECS: dict[str, MapLayerSpec] = {
         panel_hint=("国土地理院の色別標高図を重ねる",),
     ),
     # 標高図（何mか）と区別できる名前にする（坂の在りかだけを塗る）。
-    HILLSHADE_LAYER_ID: MapLayerSpec(
+    _HILLSHADE_LAYER_ID: MapLayerSpec(
         "gsiTerrain",
         "terrain",
         label="起伏",
@@ -426,7 +426,7 @@ _LAYER_SPECS: dict[str, MapLayerSpec] = {
         panel_hint=(
             "警察庁が公開する交通事故統計オープンデータ[本票",
             LayerTextSlot("accidentYears", "、"),
-            f"]の発生地点です。{size_text('accident_point')}",
+            f"]の発生地点です。{_size_text('accident_point')}",
         ),
     ),
     "precipitationNowcast": MapLayerSpec(
@@ -504,7 +504,7 @@ _LAYER_SPECS: dict[str, MapLayerSpec] = {
         ),
     ),
     # 候補を出したら見えている必要がある（探索の結果そのもの）。
-    ROUTE_LAYER_ID: MapLayerSpec(
+    _ROUTE_LAYER_ID: MapLayerSpec(
         "ownFetch",
         None,
         kind="dynamic",
@@ -542,8 +542,8 @@ MAP_LAYERS: tuple[tuple[str, MapLayerSpec], ...] = _map_layers()
 #: 実行時に決まるレイヤーに共通の宣言。`dedicated`は軸スタジオ由来の軸のレイヤーで、路面タイルの道へ道ごとに配る
 #: 得点の色を塗る（得点は時刻で変わりうる）。`road`は道の線の層で、種別は層ごとに軸カタログの`road_classes`が配る。
 AXIS_LAYER_SPECS: dict[str, MapLayerSpec] = {
-    "dedicated": MapLayerSpec(ROAD_LAYER_DATA_SOURCE, None, data_nature="dynamic"),
-    "road": MapLayerSpec(ROAD_LAYER_DATA_SOURCE, None),
+    "dedicated": MapLayerSpec(_ROAD_LAYER_DATA_SOURCE, None, data_nature="dynamic"),
+    "road": MapLayerSpec(_ROAD_LAYER_DATA_SOURCE, None),
 }
 
 
@@ -607,9 +607,9 @@ ROUTE_LINE_WIDTHS_PX: dict[str, float] = {
 
 #: 縁取りは線の両側へ一定を足す。**個別に書かない**——線の太さを変えたときに縁取りだけ
 #: 古い値で残ると、線が縁からはみ出す。
-CASING_MARGIN_PX = 4
+_CASING_MARGIN_PX = 4
 ROUTE_CASING_WIDTHS_PX: dict[str, float] = {
-    role: ROUTE_LINE_WIDTHS_PX[role] + CASING_MARGIN_PX for role in ("composite", "detail")
+    role: ROUTE_LINE_WIDTHS_PX[role] + _CASING_MARGIN_PX for role in ("composite", "detail")
 }
 
 #: 線の濃さ（役割ごと）。候補の参考線は選んだ候補より薄くする。`travelled`は走行中に走り終えた区間で、

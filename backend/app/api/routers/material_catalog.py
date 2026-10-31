@@ -1,17 +1,15 @@
 """材料カタログの管理画面向けAPI（いずれもHTTP Basic認可要）。
 
 材料の一覧そのものはAPIで配らない。コードが宣言した材料（`domain/material_catalog.py: MATERIAL_CATALOG`）は
-再デプロイでしか変わらず、ビルド時の生成物（`export_openapi.py`が書き出す`material-catalog.json`）が持つ。
+再デプロイでしか変わらず、ビルド時の生成物（`material-catalog.json`）が持つ。
 道の区分から作る材料（`class:<分け方>`）は管理DBの区分から実行時に決まり、生成物に載らない。
 ここに置くのは、実データを読まないと答えられないものだけ。
 
 `GET /api/admin/material-catalog/{material_id}/value-shares`は、種類・はい/いいえの材料の値ごとの道の延長の割合を、
-軸スタジオの分布と同じ道の標本から返す（較正の画面が対応表の軸の点数を延長を見ながら決める）。
+軸スタジオの分布と同じ道の標本から返す。
 
-`GET /api/admin/material-catalog/coverage`（Basic認証必須）は、材料ごとの欠損割合
-（元データ[タグ・派生テーブル行]が無いWay/Edgeの割合）を全材料ぶん返す管理画面向けの
-集計API（`services/material_coverage_service.py`・`infrastructure/material_coverage.py`）。
-認可を要求する理由は`get_material_coverage`のdocstring参照。
+`GET /api/admin/material-catalog/coverage`は、材料ごとの欠損割合
+（元データ[タグ・派生テーブル行]が無いWay/Edgeの割合）を全材料ぶん返す。
 """
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -81,6 +79,6 @@ async def get_material_coverage(
 
     読み取り専用のAPIだがBasic認証を要求する:
     道の生データと区間の材料の全表走査を伴う重いクエリで、認可なしに公開すると
-    繰り返し呼ばれるだけでDBを圧迫できてしまう（管理画面`/admin`からのみ使う想定）。
+    繰り返し呼ばれるだけでDBを圧迫できてしまう。
     """
     return await service.get_material_coverage()

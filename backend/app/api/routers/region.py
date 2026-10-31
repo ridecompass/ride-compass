@@ -12,7 +12,13 @@ from app.api.dependencies import (
     get_region_service,
 )
 from app.api.rate_limit import enforce_rate_limit
-from app.api.routers._tile_http import check_tile_rate_limit, region_tile_semaphore, tile_response, validate_tile_coords
+from app.api.routers._tile_http import (
+    check_tile_rate_limit,
+    missing_conditions_error,
+    region_tile_semaphore,
+    tile_response,
+    validate_tile_coords,
+)
 from app.api.routers.routes import RoutePreferenceWeights
 from app.config import settings
 from app.domain.dynamic_way_values import MissingConditions, WayValueQuery
@@ -48,10 +54,7 @@ async def region_road_surface_tile(
 ) -> Response:
     check_tile_rate_limit(request, "road-tile")
     validate_tile_coords(z, x, y)
-    # 同時実行数の上限（`_tile_http.py: region_tile_semaphore`のコメント参照）は、超過分を待たせて
-    # 全件処理する（即座に429で拒否しない）。キャッシュヒットは軽量（実測数ms）なので
-    # すぐ解放され、実質的に重い（PostGIS問い合わせを伴う）リクエストだけが待ち行列の
-    # 原因になる。
+    # 上限を超えた分は429にせず待たせる。キャッシュヒットはすぐ解放するので、待ち行列を作るのはPostGIS問い合わせを伴う要求だけ。
     async with region_tile_semaphore:
         tile = await region_service.get_road_surface_tile(z, x, y)
     return tile_response(tile)
@@ -115,8 +118,7 @@ async def region_way_materials(
 ) -> dict[str, dict[str, float]]:
     """ルート未確定時の地図が公開軸の値を求めるための、指定タイル内のフィーチャーごとの道ごとの材料（材料の名前→値。
     値の無い材料は載せない）。値は軸カタログの木（`way_value_formula`）へ、木が読む走る条件とともに入れると、探索と同じ
-    評価の値（区間インスペクタの得点と同じ値）になる（`services/dedicated_way_values.py: AxisWayValueLens.way_materials`）。
-    ルート確定後はルート自身の`axis_difficulties`（`RouteSegmentDetail`）で塗るため、この口を呼ばない。
+    評価の値（区間インスペクタの得点と同じ値）になる。
 
     パスパラメータは**軸id**（`axis_definitions.axis_id`）で、材料id（`wind_drag_ratio`等）とは別の名前空間である。
     受け取る条件（`at`・`bearing_deg`・`speed_kmh`）は軸カタログの`dynamic_way_value_material_conditions`の名前だけを
@@ -124,9 +126,7 @@ async def region_way_materials(
     ——その軸では向き・速さも要り、欠けると422。時刻を省くと現在時刻[Asia/Tokyo]。公開軸でないaxis_idと、木の無い軸
     （軸カタログの`way_value_formula`がnull）は404。
 
-    静的な路面タイル（`/api/region/road-surface-tiles`、MVT）とは別経路——受け取る側は同じz/x/yについて両方を取り、
-    フィーチャーの鍵で突き合わせて重ねる。タイルの材料と勾配の道ごとの材料はタイル単位でディスクへ持つため、パン・
-    ズームで同じタイルが再び視界に入っても、DBへの再問い合わせは発生しない（風は計算が軽いため持たない）。
+    鍵は、静的な路面タイル（`/api/region/road-surface-tiles`、MVT）の同じz/x/yのフィーチャーの鍵で、突き合わせて重ねられる。
     路面・点のタイルと同じレート制限・座標検証・DB接続プールのsemaphoreを共有する（MVTエンコードは伴わないが、
     同じPostGISコネクションプールを取り合うため）。
     """
@@ -140,7 +140,7 @@ async def region_way_materials(
     if materials is None:
         raise HTTPException(status_code=404, detail="この軸は道ごとの材料を配りません。")
     if isinstance(materials, MissingConditions):
-        raise HTTPException(status_code=422, detail=f"この軸には{'・'.join(materials.names)}が必須です。")
+        raise missing_conditions_error(materials)
     return materials
 
 
@@ -218,11 +218,15 @@ async def region_axis_inspector(
     進行方向に依存する軸（勾配・風）は、地図が指定している走行方位・時刻・想定速度から算出する。時刻・速度を
     送らなければ、それを要る軸は得点がnullで返る。
     """
-    # 道を押すたびの単発リクエストのためタイル向けcheck_tile_rate_limit
-    # （road_tile_rate_limit_per_minuteと結合）を流用せず、専用の設定値を直接使う
-    # （config.py: axis_inspector_rate_limit_per_minuteのコメント参照）。
+    # 道を押すたびの単発リクエストなので、タイル向けの上限を流用せず専用の上限を使う。
     enforce_rate_limit(http_request, "axis-inspector", settings.axis_inspector_rate_limit_per_minute)
     preference = None if body.route_preference is None else body.route_preference.to_preference()
     return await axis_inspector.inspect(
-        body.osm_way_id, body.feature_key, body.z, body.x, body.y,
-        WayValueQuery(at=body.at, bearing_deg=body.bearing_deg, speed_kmh=body.speed_kmh), preference)
+        body.osm_way_id,
+        body.feature_key,
+        body.z,
+        body.x,
+        body.y,
+        WayValueQuery(at=body.at, bearing_deg=body.bearing_deg, speed_kmh=body.speed_kmh),
+        preference,
+    )
