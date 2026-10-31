@@ -12,7 +12,6 @@ import math
 import sys
 from datetime import datetime, timedelta, timezone
 
-import numba
 import numpy as np
 import pytest
 from hypothesis import example, given
@@ -698,6 +697,7 @@ def test_shortest_path_stays_exact_while_the_queue_grows():
 # --- 探索のJITの型 ---
 
 
+@pytest.mark.jit
 def test_searches_compile_nothing_after_baking_whatever_arrays_the_caller_passes():
     """イメージの組み立てで焼いたコンパイル結果（`compile_search_kernels`）は、型の同じ呼び出しにしか効かない。
     探索の入口が型を揃えるため、呼び出し側の配列のdtype・並び・読み取り専用かに依らず、焼いた後の探索は
@@ -705,8 +705,6 @@ def test_searches_compile_nothing_after_baking_whatever_arrays_the_caller_passes
 
     コンパイルはnumbaの出来事（`numba:compile`）で数える。ディスクのキャッシュから読んだ型は出来事を出さないが、
     キャッシュは`routing.py`を書き換えると無効になるため、型を揃え損ねた変更は最初の実行でここに出る。"""
-    if numba.config.DISABLE_JIT:
-        pytest.skip("JITを切って測っている（numbaの型がそもそも無い）")
     routing.compile_search_kernels()
     lazy, statics, structure = build_all(make_grid(3))
     state_count = structure.state_count
@@ -736,14 +734,13 @@ def test_searches_compile_nothing_after_baking_whatever_arrays_the_caller_passes
     assert compiled.buffer == []
 
 
-async def test_route_generation_calls_from_python_only_the_jit_that_the_image_bakes(monkeypatch):
+@pytest.mark.jit
+async def test_route_generation_calls_from_python_only_the_jit_that_the_image_bakes(monkeypatch, road_network_root):
     """イメージに焼くのは`compile_search_kernels`がPythonから呼ぶJITだけ。生成の経路がPythonからそれ以外のJIT
     （探索の中へ展開する部品等）を呼ぶと、コンテナの最初の生成がそのコンパイルを払う。
 
     `app`の全モジュールが持つJITの関数を、Pythonからの呼び出しを記録する包みへ差し替えて数える。探索の中から
     の呼び出しはコンパイル済みの本体どうしで結ばれ、包みを通らない。"""
-    if numba.config.DISABLE_JIT:
-        pytest.skip("JITを切って測っている（numbaの型がそもそも無い）")
     routing.compile_search_kernels()  # 包む前に本体を用意する（包んだ後にコンパイルすると、部品の代わりに包みを読む）
     called: set[str] = set()
 
@@ -769,7 +766,7 @@ async def test_route_generation_calls_from_python_only_the_jit_that_the_image_ba
         ),
     )
     with avoid_axis_declared():
-        generator = generator_for(monkeypatch, grid_network(), 0.0, wind)
+        generator = generator_for(road_network_root, grid_network(), 0.0, wind)
         departure = datetime(2026, 9, 22, 8, tzinfo=timezone(timedelta(hours=9)))
         assert await generator.generate_loops(
                 at(CENTER), 4.0, 1.5, points=NO_POINTS, max_routes=3, start_time=departure)
