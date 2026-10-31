@@ -1,15 +1,17 @@
 """ルート生成を公開の入口から確かめるテストが共有する、小さな道路網とその渡し口。
 
-3×3の格子（1辺約1km。長さの要るテストには大きな格子・任意の道と地点の道路網も）を`RoadNetwork`で組み、プロセス境界（DB・道路網の置き場・天気の予報ファイル）だけを代役にして、
+3×3の格子（1辺約1km。長さの要るテストには大きな格子・任意の道と地点の道路網も）を`RoadNetwork`で組み、プロセス境界（DB・天気の予報ファイル）だけを代役にし、道路網は本番と同じ置き場（一時ディレクトリ）から読ませて、
 本物の`GraphService`・エンジンの組み立て（`services/route_generation_setup.py: assemble_route_generation_setup`）・戦略層を通す。
 
 使う側: `test_route_generation_behavior.py`（戦略層の入口）・`test_routes_generate.py`（HTTPの入口）・
 `test_routing.py`（生成の経路がPythonから呼ぶJIT）・`test_route_generator.py`（経由地の無い周回の指定だけ）。
 """
 
-from collections.abc import Callable
+import itertools
+import shutil
 from contextlib import contextmanager
 from dataclasses import replace
+from pathlib import Path
 
 import numpy as np
 
@@ -24,7 +26,6 @@ from app.domain.road_network import RoadNetwork
 from app.domain.route import Coordinates
 from app.domain.route_preference import RoutePreference
 from app.domain.route_request import FixedPoints, RequestedConditions
-from app.domain.tuning import TUNING_VALUES
 from app.domain.wind import WindForecastSeries
 from app.infrastructure import road_network_store
 from app.services.graph_service import GraphService, SearchMemory
@@ -213,19 +214,25 @@ class Weather:
         return await self._rain.get_station_rain_materials(now)
 
 
-def serve_road_network(monkeypatch, current: Callable[[], RoadNetwork]) -> None:
-    """道路網全体の配列を置き場から読まず、`current`が返すものとして読ませる（`road_network_store.current`の差し替え）。"""
-    monkeypatch.setattr(road_network_store, "current", current)
+#: 置くたびに進める道路網の世代。置き場は世代で見分けるので、中身を変えて置くたびに世代を変える。
+_REVISIONS = itertools.count(1)
+
+
+def serve_road_network(root: Path, network: RoadNetwork | None) -> None:
+    """道路網全体の配列を、本番と同じ置き場（`road_network_store.save`）へ新しい世代として置く。`root`は
+    `conftest.py: road_network_root`の置き場。`network`がNoneなら置き場を空にする（道路網が無い本番の状態）。"""
+    if network is None:
+        shutil.rmtree(root, ignore_errors=True)
+    else:
+        road_network_store.save(replace(network, revision=next(_REVISIONS)))
 
 
 def generator_for(
-    monkeypatch, network: RoadNetwork, avoid_weight: float, wind: WindForecastSeries | None,
+    root: Path, network: RoadNetwork, avoid_weight: float, wind: WindForecastSeries | None,
     *, assumed_speed_kmh: float = 20.0, road_avoidance: dict[str, AvoidanceLevel] | None = None,
 ):
-    """道路網を全体の配列として読ませ、本物の`GraphService`とエンジンの上に戦略層（`RouteGenerator`）を組む。
-    主観と時間の換算レートは1（難易度100の道が体感で2倍の時間）にする。"""
-    serve_road_network(monkeypatch, lambda: network)
-    monkeypatch.setitem(TUNING_VALUES, "evaluation.penalty_strength", 1.0)
+    """道路網を全体の配列として置き場へ置き、本物の`GraphService`とエンジンの上に戦略層（`RouteGenerator`）を組む。"""
+    serve_road_network(root, network)
     return assemble_route_generation_setup(
         GraphService(NetworkRepository(network), SearchMemory()), Weather(wind),
         RequestedConditions(

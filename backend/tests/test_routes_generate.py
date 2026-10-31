@@ -22,6 +22,7 @@ import logging
 import re
 from contextlib import asynccontextmanager
 from datetime import datetime
+from pathlib import Path
 
 import httpx
 import pytest
@@ -29,11 +30,11 @@ import pytest
 from app.api import dependencies
 from app.config import settings
 from app.domain.graph import node_key
+from app.domain.road_network import RoadNetwork
 from app.domain.road_classes import AvoidanceClassification
 from app.domain.route_request import ASSUMED_SPEED_KMH, DEFAULT_MAX_ROUTES, MAX_SPLICED_EDGES, MAX_WAYPOINTS
 from app.domain.tuning import TUNING_VALUES
 from app.infrastructure import rate_limiter
-from app.infrastructure.road_network_store import RoadNetworkUnavailableError
 from app.main import app
 from app.services.graph_service import GraphService, SearchMemory
 from app.services.route_generation_setup import assemble_route_generation_setup
@@ -78,17 +79,18 @@ def _point(osm_node_id):
 
 
 class World:
-    """道路網の置き場と天気の代役。`network`を差し替えると次の生成から効く。"""
+    """道路網の置き場と天気の代役。`serve`で置いた道路網（Noneなら置き場が空）が次の生成から効く。
+    区間の形を返すDBの代役（`NetworkRepository`）は、最後に置いた道路網を読む。"""
 
-    def __init__(self):
-        self.network = grid_network()
-        self.unavailable = False
+    def __init__(self, root: Path):
+        self._root = root
         self.weather = Weather()
+        self.serve(grid_network())
 
-    def current(self):
-        if self.unavailable:
-            raise RoadNetworkUnavailableError("道路網の置き場がありません")
-        return self.network
+    def serve(self, network: RoadNetwork | None) -> None:
+        if network is not None:
+            self.network = network
+        serve_road_network(self._root, network)
 
 
 class GatedWeather(Weather):
@@ -104,15 +106,14 @@ class GatedWeather(Weather):
 
 
 @pytest.fixture
-def world(override_dependency, monkeypatch):
+def world(override_dependency, road_network_root):
     """格子の道路網・天気の代役と、避けたい材料を読む公開軸1本（`avoid_axis_declared`）。"""
-    world = World()
+    world = World(road_network_root)
 
     @asynccontextmanager
     async def open_setup(requested):
         yield assemble_route_generation_setup(GraphService(NetworkRepository(world.network), SearchMemory()), world.weather, requested)
 
-    serve_road_network(monkeypatch, world.current)
     override_dependency(dependencies.get_route_generation_setup_opener, lambda: open_setup)
     with avoid_axis_declared():
         yield world
@@ -247,7 +248,7 @@ async def test_a_spliced_route_outside_the_search_area_fails_as_an_error_of_the_
     """探索の範囲が送られた区間を覆わなかったら、利用者への理由（つながっていない等）にせず、ERRORを残してジョブを失敗させる
     ——理由にすると、範囲の誤りが利用者の操作の誤りに見え、本番で気付けない。範囲を作る側が送られた区間を取りこぼした状態は、
     区間の両端を引く口（`GraphService.edge_endpoints`）を空にして作る。"""
-    world.network = LATTICE
+    world.serve(LATTICE)
     monkeypatch.setattr(GraphService, "edge_endpoints", bound(GraphService.edge_endpoints, lambda self, edge_ids: []))
 
     with caplog.at_level(logging.ERROR):
@@ -260,7 +261,7 @@ async def test_a_spliced_route_outside_the_search_area_fails_as_an_error_of_the_
 async def test_a_distance_with_placed_points_is_the_length_of_the_whole_route(client, world, monkeypatch):
     """経由地を置いても、距離は全長の目標として効く（夕食と銭湯に寄って30kmの周回）。
     探索は置いた点の近くに限らず、全長の目標に足りる広さで探す。"""
-    world.network = LATTICE
+    world.serve(LATTICE)
     tolerance_ratio = 0.2
     monkeypatch.setitem(TUNING_VALUES, "search.distance_tolerance_ratio", tolerance_ratio)
     origin, waypoint, target = (1, 1), (1, 2), 12.0
@@ -346,7 +347,7 @@ async def test_the_departure_time_is_read_in_japan_time(client, sent, applied):
 
 
 async def test_a_destination_moved_to_the_nearest_reachable_road_is_echoed(client, world):
-    world.network = grid_network(island=True)
+    world.serve(grid_network(island=True))
 
     conditions = (await _generate(
         client, **_point(SOUTH_WEST), destination=_point(91), distance_km=None,
@@ -393,7 +394,7 @@ async def test_a_job_that_is_not_known_is_404(client):
 
 async def test_a_failed_job_says_so_without_leaking_its_internals(client, world):
     """例外の中身（接続先・SQL）はログだけに残す。失敗しても同時実行の枠は返る（上限より多く続けて投げても受け付ける）。"""
-    world.unavailable = True
+    world.serve(None)
 
     statuses = [await _generate(client) for _ in range(settings.generate_max_concurrent + 1)]
 

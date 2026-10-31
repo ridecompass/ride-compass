@@ -38,6 +38,7 @@ from app.infrastructure.derived_data_freshness import derived_tables
 from app.infrastructure.derived_data_meta import DerivedStageRow
 from app.infrastructure.orm_base import declared_metadata
 from app.infrastructure.source_models import SourceFeatureRow, SourceRunRow
+from app.infrastructure.tuning_overrides import TuningOverrideStore
 from app.infrastructure.road_graph_repository import (
     REQUIRED_EXTENSIONS,
     RoadGraphRepository,
@@ -406,6 +407,18 @@ async def raw_connection():
         yield conn
     finally:
         await conn.close()
+
+
+async def override_tuning(param_id: str, value: float) -> None:
+    """較正値の上書きを本番の書き口（`TuningOverrideStore.set_override`）でテストDBへ書いて確定する。プロセス内の今の値へは
+    反映しない（DBから読む側を確かめるため）。"""
+    engine = create_async_engine(postgis_database_url())
+    try:
+        async with AsyncSession(engine) as session:
+            await TuningOverrideStore(session).set_override(param_id, value)
+            await session.commit()
+    finally:
+        await engine.dispose()
 
 
 #: 生データと、派生の段が書く表（表の印から導く）と段の指紋の記録。派生の段を生の接続で回すテストは、これを空にしてから
