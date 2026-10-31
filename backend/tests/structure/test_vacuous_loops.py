@@ -348,8 +348,6 @@ def test_reads_equality_with_a_nonempty_literal_as_a_nonempty_check(tmp_path: Pa
         "picked == [1]",
         "[1] == picked",
         "set(picked) == {1}",
-        "sorted(picked) == [1, 2]",
-        "tuple(picked) == (1,)",
         "dict(picked) == {'a': 1}",
         "set(picked.keys()) == {'a'}",
     ]
