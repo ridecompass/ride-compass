@@ -1,6 +1,6 @@
 /** ルートの線のソース（候補・選択中・区間・乗り換えの帯・合成ルート・選んだ区間）。どのレイヤーがどのソースを
  * どの順に描くかは`scene/groups/routes.ts: routeGroup`が決める。 */
-import type { Feature, FeatureCollection, LineString, Position } from "geojson";
+import type { Feature, LineString, Position } from "geojson";
 
 import type { SceneSourceEntry } from "@/features/map/scene/mapSceneGroups";
 import { sceneSourceId, type SceneSourceId } from "@/features/map/scene/sceneBuilders";
