@@ -88,7 +88,6 @@ describe("BottomSheet", () => {
         <BottomSheet
           open
           title="ルート結果"
-          titleId="sheet-title"
           headerAction={null}
           chosenHeightVh={50}
           onClose={onClose}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button/Button";
 import { textVariants } from "@/components/ui/Text/Text";
 import { useStoredState } from "@/hooks/useStoredState";
@@ -13,7 +13,6 @@ interface BottomSheetProps {
   onClose: () => void;
   /** 見出し（シートのアクセシブル名にもなる）。 */
   title: string;
-  titleId: string;
   /** 見出しの行の右、閉じるボタンの手前に置く操作。 */
   headerAction: React.ReactNode;
   /** 見出しのすぐ右に置くもの（中身を切り替えるタブ等、右の操作と役割が違うもの）。 */
@@ -90,7 +89,6 @@ export default function BottomSheet({ open, ...props }: BottomSheetProps) {
 function OpenBottomSheet({
   onClose,
   title,
-  titleId,
   headerAction,
   headerLead,
   children,
@@ -98,6 +96,7 @@ function OpenBottomSheet({
   onHeightChoose,
   fitKey,
 }: Omit<BottomSheetProps, "open">) {
+  const titleId = useId();
   // 中身に合わせた高さ・ドラッグの途中の高さ。持ち主へ上げないので、動かす間に持ち主は描き直されない。
   const [workingHeightVh, setWorkingHeightVh] = useState<number | null>(null);
   const heightVh = workingHeightVh ?? chosenHeightVh ?? DEFAULT_SHEET_HEIGHT_VH;
