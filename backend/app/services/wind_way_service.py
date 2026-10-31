@@ -50,7 +50,6 @@ class WindWayService:
     def build(
         cls, repository: RoadGraphRepository, weather_service: WeatherService, midpoints: TileMidpoints, material_id: str,
     ) -> "WindWayService":
-        """登録テーブルから呼ぶための統一シグネチャ。依存の要否はサービスごとに違い、風の材料は1つだけ。"""
         return cls(midpoints=midpoints, weather_service=weather_service)
 
     @classmethod

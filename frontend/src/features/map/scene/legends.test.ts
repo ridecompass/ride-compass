@@ -33,13 +33,17 @@ const TILES = {
   maxZoom: 14,
 };
 
-function pointLayersOf(layerId: string, hiddenKeys: Readonly<Record<string, readonly string[]>> = {}) {
-  return pointGroup.build({ tiles: TILES, visible: { [layerId]: true }, hiddenKeys }).layers;
+function pointLayerOf(role: string, hiddenKeys: Readonly<Record<string, readonly string[]>> = {}) {
+  const layers = pointGroup.build({ tiles: TILES, visible: { [role]: true }, hiddenKeys }).layers;
+  const layer = layers.find((l) => l.role === role);
+  if (layer === undefined) throw new Error(`${role} の層が無い`);
+  return layer;
 }
 
-function pointLayerOf(role: string, hiddenKeys: Readonly<Record<string, readonly string[]>> = {}) {
-  const layer = pointLayersOf(role, hiddenKeys).find((l) => l.role === role);
-  if (layer === undefined) throw new Error(`${role} の層が無い`);
+/** 凡例の軸が属する、点のレイヤーの宣言。 */
+function declaredPointLayer(axis: { layerId: string }) {
+  const layer = POINT_LAYERS.find((candidate) => candidate.attr_id === axis.layerId);
+  if (layer === undefined) throw new Error(`${axis.layerId} の点のレイヤーが無い`);
   return layer;
 }
 
@@ -50,8 +54,7 @@ describe("点の凡例", () => {
   const axes = pointLegendAxes();
 
   it.each(axes)("$axisId の見本は地図の点に現れる", (axis) => {
-    const pointLayer = POINT_LAYERS.find((candidate) => candidate.attr_id === axis.layerId);
-    if (pointLayer === undefined) throw new Error(`${axis.layerId} の点のレイヤーが無い`);
+    const pointLayer = declaredPointLayer(axis);
     const layout = pointLayerOf(axis.layerId).layout as Record<string, unknown>;
     const [colorAxis] = pointLayer.display_axes;
     const ownAxis = pointLayer.display_axes.find((candidate) => pointAxisKey(pointLayer, candidate) === axis.axisId);
@@ -85,9 +88,7 @@ describe("点の凡例", () => {
 
   it.each(glyphAxes)("$axisId: 行の値の点は、見本と同じ色・同じ絵記号の絵で描かれ、行ごとに違う絵になる", (axis) => {
     const layer = pointLayerOf(axis.layerId);
-    const pointLayer = POINT_LAYERS.find((candidate) => candidate.attr_id === axis.layerId);
-    if (pointLayer === undefined) throw new Error(`${axis.layerId} の点のレイヤーが無い`);
-    const [colorAxis] = pointLayer.display_axes;
+    const [colorAxis] = declaredPointLayer(axis).display_axes;
     const iconImage = (layer.layout as Record<string, unknown>)["icon-image"];
     const drawn = colorAxis.categories.map((category) => {
       const entry = axis.entries.find((candidate) => candidate.key === category.key);
@@ -127,12 +128,12 @@ describe("最初に隠す行", () => {
   });
 });
 
-type LegendAxis = ReturnType<typeof roadLegendAxes>[number];
+type LegendAxis = ReturnType<typeof pointLegendAxes>[number];
 
 function pointSamples(axis: LegendAxis): Map<string, Record<string, unknown>[]> {
-  const layer = POINT_LAYERS.find((candidate) => candidate.attr_id === axis.layerId);
-  const own = layer?.display_axes.find((candidate) => pointAxisKey(layer, candidate) === axis.axisId);
-  if (layer === undefined || own === undefined) throw new Error(`${axis.axisId} の点の軸が無い`);
+  const layer = declaredPointLayer(axis);
+  const own = layer.display_axes.find((candidate) => pointAxisKey(layer, candidate) === axis.axisId);
+  if (own === undefined) throw new Error(`${axis.axisId} の点の軸が無い`);
   // 他の軸は先頭の行の値にしておく（隠すのはこの軸の行だけなので、他の軸では落ちない）。
   const rest = Object.fromEntries(layer.display_axes.map((other) => [other.property, other.categories[0].values[0]]));
   return new Map(
@@ -143,22 +144,17 @@ function pointSamples(axis: LegendAxis): Map<string, Record<string, unknown>[]> 
   );
 }
 
-function pointFilter(axis: LegendAxis, hidden: readonly string[]): unknown {
-  return pointLayerOf(axis.layerId, { [axis.axisId]: hidden }).filter;
-}
-
 // 凡例に出す行はどれも、チェックを外すとその行の地物だけが地図から消える。
 describe("凡例の行ごとの絞り込み", () => {
-  const cases = [
-    ...pointLegendAxes().map((axis) => ({ axis, samples: pointSamples(axis), filterOf: pointFilter })),
-  ].flatMap(({ axis, samples, filterOf }) =>
-    axis.entries.map((entry) => ({
+  const cases = pointLegendAxes().flatMap((axis) => {
+    const samples = pointSamples(axis);
+    return axis.entries.map((entry) => ({
       axisId: axis.axisId,
       key: entry.key,
       samples,
-      filter: filterOf(axis, [entry.key]),
-    })),
-  );
+      filter: pointLayerOf(axis.layerId, { [axis.axisId]: [entry.key] }).filter,
+    }));
+  });
 
   // 絞り込みが無い（undefined）レイヤーは、matchesFilter が全部通すものとして読む。
   it.each(cases)("$axisId の「$key」を隠すと、その行の地物だけが消える", ({ key, samples, filter }) => {

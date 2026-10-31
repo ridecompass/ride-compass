@@ -162,36 +162,28 @@ async def test_a_loop_is_generated_when_neither_destination_nor_waypoints_are_gi
     assert result["no_candidates_reason"] is None
 
 
-async def test_a_destination_route_ends_at_the_destination_with_up_to_the_requested_count(client):
-    result = (await _generate(
-        client, **_point(SOUTH_WEST), destination=_point(NORTH_EAST), distance_km=None, max_routes=2,
-    ))["result"]
+@pytest.mark.parametrize(
+    ("ending", "end"),
+    [
+        pytest.param({"destination": _point(NORTH_EAST)}, NORTH_EAST, id="目的地ルートは目的地で終わる"),
+        pytest.param({"waypoints": [_point(NORTH_EAST)]}, SOUTH_WEST, id="経由地ルートは出発地へ戻る"),
+    ],
+)
+async def test_a_route_with_a_destination_or_waypoints_ends_where_it_should_with_up_to_the_requested_count(
+    client, ending, end,
+):
+    result = (await _generate(client, **_point(SOUTH_WEST), **ending, distance_km=None, max_routes=2))["result"]
 
     assert 1 <= len(result["routes"]) <= 2
     assert result["conditions"]["max_routes"] == 2
     # 全長の目標が無ければ、許容も置かない
     assert result["conditions"]["distance_km"] is None and result["conditions"]["distance_tolerance_km"] is None
-    assert all(_ends(route) == (node_key(SOUTH_WEST), node_key(NORTH_EAST)) for route in result["routes"])
+    assert all(_ends(route) == (node_key(SOUTH_WEST), node_key(end)) for route in result["routes"])
 
 
-async def test_a_waypoint_route_returns_to_the_origin_with_up_to_the_requested_count(client):
-    result = (await _generate(
-        client, **_point(SOUTH_WEST), waypoints=[_point(NORTH_EAST)], distance_km=None, max_routes=2,
-    ))["result"]
-
-    assert 1 <= len(result["routes"]) <= 2
-    assert result["conditions"]["max_routes"] == 2
-    assert all(_ends(route) == (node_key(SOUTH_WEST), node_key(SOUTH_WEST)) for route in result["routes"])
-
-
-@pytest.mark.parametrize(
-    "body",
-    [
-        pytest.param({**_point(SOUTH_WEST), "destination": _point(NORTH_EAST), "distance_km": None}, id="目的地ルート"),
-    ],
-)
-async def test_a_spliced_route_is_evaluated_as_sent(client, body):
+async def test_a_spliced_route_is_evaluated_as_sent(client):
     """区間を差し替えた経路は探索し直さず、そのまま1件として評価して返す。"""
+    body = {**_point(SOUTH_WEST), "destination": _point(NORTH_EAST), "distance_km": None}
     (route, *_) = (await _generate(client, **body, max_routes=1))["result"]["routes"]
 
     spliced = (await _generate(client, **body, spliced_edge_ids=route["edge_ids"]))["result"]

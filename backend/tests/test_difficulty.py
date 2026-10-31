@@ -1,6 +1,6 @@
 """`domain/difficulty.py`——軸の得点を合成した難易度と、区間からルートへの集約。
 
-入口は丸め（`round_difficulty`・`round_difficulty_array`）、合成（`composite_difficulty_array`・
+入口は丸め（`round_difficulty`・`round_difficulty_array`）、合成（`composite_weighted_sums`・`composite_from_sums`・
 `axis_weighted_sums`・`axis_weight_shares`・`axis_contributions`・`composite_difficulty`）、重みの割合（`weight_share`）、
 距離での集約（`weighted_mean_by_distance`・`distance_weighted_difficulty_array`）。同じ計算を持つ2つの道（スカラーと配列・先に和を求めるかどうか）は、
 同じ入力で同じ答えになることを確かめる。
@@ -25,7 +25,8 @@ from app.domain.difficulty import (
     axis_weight_shares,
     axis_weighted_sums,
     composite_difficulty,
-    composite_difficulty_array,
+    composite_from_sums,
+    composite_weighted_sums,
     distance_weighted_difficulty_array,
     round_difficulty,
     round_difficulty_array,
@@ -86,11 +87,11 @@ def test_summing_some_axes_first_gives_the_same_composite(axes, data):
     length, arrays, weights = axes
     first = data.draw(st.sets(st.sampled_from(sorted(arrays))) if arrays else st.just(set()))
 
-    whole = composite_difficulty_array(arrays, weights, length)
+    whole = composite_weighted_sums(arrays, weights, length)
     static_sums = axis_weighted_sums({a: arrays[a] for a in first}, weights, length)
-    split = composite_difficulty_array({a: v for a, v in arrays.items() if a not in first}, weights, length, static_sums)
+    split = composite_weighted_sums({a: v for a, v in arrays.items() if a not in first}, weights, length, static_sums)
 
-    np.testing.assert_array_equal(split[0], whole[0])
+    np.testing.assert_array_equal(composite_from_sums(*split), composite_from_sums(*whole))
     np.testing.assert_array_equal(split[1], whole[1])
 
 
@@ -98,7 +99,7 @@ def test_summing_some_axes_first_gives_the_same_composite(axes, data):
 def test_the_contributions_of_a_row_add_up_to_its_unrounded_composite(axes, data):
     length, arrays, weights = axes
     row = data.draw(st.integers(min_value=0, max_value=length - 1))
-    _, weight_sums = composite_difficulty_array(arrays, weights, length)
+    _, weight_sums = composite_weighted_sums(arrays, weights, length)
 
     scores = {a: arr[row:row + 1] for a, arr in arrays.items()}
     shares = axis_weight_shares(scores, weights, weight_sums[row:row + 1])

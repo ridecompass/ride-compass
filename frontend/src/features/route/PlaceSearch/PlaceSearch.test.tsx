@@ -1,5 +1,5 @@
 /**
- * `PlaceSearch/PlaceSearchBar.tsx`——地図の上端の、地点を住所・施設で探す欄。打つ欄は住所・施設の名前を入れて、地図の真ん中を添えて
+ * `PlaceSearch/PlaceSearch.tsx`——地図の上端の、地点を住所・施設で探す欄。打つ欄は住所・施設の名前を入れて、地図の真ん中を添えて
  * 引き、候補（表示名・施設の辺り・地図の真ん中からの直線距離）を欄の下に並べ、選んだ候補を上げる。打ちかけでも、
  * 決まった文字数から、打つのが止まると引く（かな漢字の変換中は引かない）。文字数に足りなくなると候補を下げる。引いたあとに地図を
  * 動かしても引き直さず、虫眼鏡を押すとその時の地図の真ん中で引き直す。引けないとき・当たらないときはそう出す。打つ欄を押すと保存した地点を出し、打った文字を名前に含むものに
@@ -34,7 +34,7 @@ import { AZA_CANDIDATE as AZA, FACILITY_CANDIDATE as FACILITY } from "@/testing/
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 import type { Coordinates } from "@/types/route";
 
-import PlaceSearchBar from "./PlaceSearchBar";
+import PlaceSearch from "./PlaceSearch";
 
 /** 地図の真ん中（東京駅）。丸の内二丁目まで直線で0.4km、浅草寺まで4.6km。 */
 const TOKYO_STATION: Coordinates = { latitude: 35.681, longitude: 139.767 };
@@ -57,8 +57,8 @@ function storeSavedPlaces(places: SavedPlace[]) {
 function Search({
   mapCenter,
   ...props
-}: { mapCenter: Coordinates } & Omit<React.ComponentProps<typeof PlaceSearchBar>, "savedPlaces" | "lookup">) {
-  return <PlaceSearchBar {...props} lookup={usePlaceLookup(mapCenter)} savedPlaces={useSavedPlaces()} />;
+}: { mapCenter: Coordinates } & Omit<React.ComponentProps<typeof PlaceSearch>, "savedPlaces" | "lookup">) {
+  return <PlaceSearch {...props} lookup={usePlaceLookup(mapCenter)} savedPlaces={useSavedPlaces()} />;
 }
 
 function renderSearch({ mapCenter = TOKYO_STATION, isMobile = false } = {}) {
@@ -110,7 +110,7 @@ async function searchFor(text: string) {
   await userEvent.type(searchBox(), `${text}{Enter}`);
 }
 
-describe("PlaceSearchBar 打つ欄", () => {
+describe("PlaceSearch 打つ欄", () => {
   it("探すとキーボードを閉じ、住所・施設の候補に番号と地図の真ん中からの距離（施設は辺りも）を付けて並べ、押した行を選んで置くボタンで上げる", async () => {
     const sent = onBackend("GET", "/api/place-search", () => Response.json({ candidates: [AZA, FACILITY] }));
     const { onPlace } = renderSearch();
@@ -285,7 +285,7 @@ describe("PlaceSearchBar 打つ欄", () => {
   });
 });
 
-describe("PlaceSearchBar 保存した地点", () => {
+describe("PlaceSearch 保存した地点", () => {
   const CAFE: SavedPlace = { ...FACILITY, name: "いつものカフェ" };
   const HOME: SavedPlace = { kind: "facility", level: "point", name: "自宅", area: null, ...NEAR_SENSOJI };
 
@@ -311,7 +311,7 @@ describe("PlaceSearchBar 保存した地点", () => {
   });
 });
 
-describe("PlaceSearchBar 検索の履歴", () => {
+describe("PlaceSearch 検索の履歴", () => {
   const history = () => screen.getByRole("list", { name: "検索の履歴" });
   const rows = () =>
     within(history())
