@@ -12,8 +12,7 @@
 拾わない形:
 - 列の並びに差し込みのあるSQL（`{", ".join(columns)}`）、`*`・`**`で渡す作り手・`.values`は、どの列を書いたかが
   読めないので、どちらの側にも数えない。表の名前に差し込みのあるSQL（パーティションへの書き込み）は表に結ばない。
-- 作り手のクラスを値として渡して呼ぶ形（`_row(Row, ...)`）は書き手に数えない。省く書き手が読めない形しかない列は
-  `UNREADABLE_WRITERS`に、書き手を名指して載せる。
+- 作り手のクラスを値として渡して呼ぶ形（`_row(Row, ...)`）は書き手に数えない。
 - `Table(...)`で宣言した表の列は見ない。
 
 ここで見ないもの:
@@ -31,11 +30,6 @@ from pathlib import Path
 from tests.structure.source_symbols import Scope, SourceTree, called_name, write_files
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent
-
-#: 既定値を使う書き手が読めない形でしかない列（`<表>.<列>` → その書き手）。載せた列に、省くと読める書き手が
-#: 現れるか、列が既定値を失うと落ちる。
-UNREADABLE_WRITERS = {
-}
 
 _INSERT = re.compile(r'INSERT\s+INTO\s+("?)([^\s"(]+)\1\s*\(([^)]*)\)', re.IGNORECASE)
 #: f-stringの差し込みの位置に置く印。SQLの識別子には現れない。
@@ -120,8 +114,8 @@ def _orm_writer(scope: Scope, call: ast.Call, tables: dict[tuple[str, str], str]
     return _Writer(table, _keywords(call)) if table else None
 
 
-def column_default_violations(root: Path, unreadable: dict[str, str]) -> dict[str, str]:
-    """省くと読める書き手のいない既定値の列と、載せる理由の無くなった`unreadable`の行（`<表>.<列>` → 理由）。"""
+def column_default_violations(root: Path) -> list[str]:
+    """省くと読める書き手のいない既定値の列（`<表>.<列>`）。"""
     source = SourceTree(root)
     modules = _app_modules(source)
     tables: dict[tuple[str, str], str] = {}
@@ -149,34 +143,25 @@ def column_default_violations(root: Path, unreadable: dict[str, str]) -> dict[st
             for writer in writers:
                 if writer.columns is not None:
                     readable[writer.table].append(writer.columns)
-    out: dict[str, str] = {}
-    for table, columns in defaulted.items():
-        for column in columns:
-            key = f"{table}.{column}"
-            omitted = any(column not in written for written in readable[table])
-            if key in unreadable:
-                if omitted:
-                    out[key] = "省くと読める書き手があるので、UNREADABLE_WRITERSから外す"
-            elif not omitted:
-                out[key] = "省くと読める書き手がいない"
-    for key in unreadable.keys() - {f"{t}.{c}" for t, columns in defaulted.items() for c in columns}:
-        out[key] = "既定値を持たないので、UNREADABLE_WRITERSから外す"
-    return out
+    return sorted(
+        f"{table}.{column}"
+        for table, columns in defaulted.items()
+        for column in columns
+        if not any(column not in written for written in readable[table])
+    )
 
 
 def test_column_defaults_are_used_by_some_writer() -> None:
-    violations = column_default_violations(BACKEND_ROOT, UNREADABLE_WRITERS)
+    violations = column_default_violations(BACKEND_ROOT)
 
-    assert violations == {}, (
+    assert violations == [], (
         "表の列の既定値を、省いて書く書き手のいる列にだけ置く。どの書き手も値を渡す列は既定値を外し、"
-        "既定値の残る本番の表は人がDROP DEFAULTする:\n  "
-        + "\n  ".join(f"{column}（{reason}）" for column, reason in sorted(violations.items()))
+        "既定値の残る本番の表は人がDROP DEFAULTする:\n  " + "\n  ".join(violations)
     )
 
 
 def test_detects_a_default_no_writer_omits(tmp_path: Path) -> None:
-    """どの読める書き手も値を渡す列を落とし、省く書き手のある列と、読めない書き手は落とさない。読めない書き手の表は、
-    載せた列を落とさず、省くと読める書き手がある列・既定値の無い列を載せていたら落とす。"""
+    """どの読める書き手も値を渡す列を落とし、省く書き手のある列は落とさない。読めない書き手は、どちらの側にも数えない。"""
     write_files(tmp_path, {
         "app/infrastructure/models.py": (
             "from sqlalchemy.orm import mapped_column\n\n\n"
@@ -202,11 +187,4 @@ def test_detects_a_default_no_writer_omits(tmp_path: Path) -> None:
         ),
     })
 
-    unreadable = {"ways.kind": "writers.py: write", "axes.updated_at": "writers.py: write", "axes.axis_id": "writers.py: write"}
-
-    assert column_default_violations(tmp_path, unreadable) == {
-        "axes.label": "省くと読める書き手がいない",
-        "ways.direction": "省くと読める書き手がいない",
-        "axes.updated_at": "省くと読める書き手があるので、UNREADABLE_WRITERSから外す",
-        "axes.axis_id": "既定値を持たないので、UNREADABLE_WRITERSから外す",
-    }
+    assert column_default_violations(tmp_path) == ["axes.label", "ways.direction", "ways.kind"]
