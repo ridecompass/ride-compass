@@ -249,5 +249,5 @@ backend `POST /api/admin/basemap/refresh`を呼び、
 frontendのこの画面は、backendの[軸スタジオ・評価軸定義（backend）](../backend/axis-studio.md)が
 定義する`AxisDefinitionPayload`のバリデーション規則（display_thresholds_overrideの
 昇順・shape.breakpointsのx昇順・材料/軸参照の既知性等）を写さない。backendは検証の文を利用者が読める
-日本語で返し（`axis_definitions.py: axis_error`。`ValueError`だと「Value error, 」の前置きが付く）、
+日本語で返し（`axis_definitions.py: _axis_error`。`ValueError`だと「Value error, 」の前置きが付く）、
 画面は保存の誤りとしてそのまま出す。写すと、backendの条件を変えたとき画面だけが古い条件で止める。

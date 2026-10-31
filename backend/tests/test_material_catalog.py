@@ -61,23 +61,12 @@ def catalog(monkeypatch):
     [
         {"total_unit": "回"},  # 掛ける相手の単位が無い
         {"value_labels": {"a": "あ"}},  # 対訳は分類の値にだけ付く
-    ],
-)
-def test_a_declaration_that_does_not_fit_its_dtype_is_refused(fields):
-    fields.setdefault("dtype", "numeric")
-    with pytest.raises(ValidationError):
-        spec("x", **fields)
-
-
-@pytest.mark.parametrize(
-    "fields",
-    [
         {"value_sql": None},  # DBが値を求めない静的材料は、全区間で値が欠ける
         {"source": "request", "value_sql": "w.x", "coverage": EXCLUDED},  # DBの列にも載り、要求の値と2つの出どころを持つ
         {"source": "observation", "value_sql": None},  # DBに無い値の欠損率を数える
     ],
 )
-def test_a_declaration_that_does_not_fit_its_source_is_refused(fields):
+def test_a_declaration_that_does_not_fit_its_dtype_or_source_is_refused(fields):
     with pytest.raises(ValidationError):
         spec("x", **fields)
 

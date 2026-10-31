@@ -27,6 +27,8 @@ from app.domain.material_catalog import all_material_specs, segment_material_ids
 from app.domain.search_graph import EDGE_VALUE_DTYPE
 from app.domain.way_value_formula import (
     FALSE,
+    Condition,
+    FeatureValue,
     FormulaNode,
     Interpolate,
     Missing,
@@ -37,11 +39,9 @@ from app.domain.way_value_formula import (
     all_of,
     any_of,
     case,
-    condition_names,
     const,
     evaluate_formula,
     feature,
-    feature_names,
     mul,
     way_values_from_formula,
 )
@@ -193,6 +193,12 @@ def _searched_scores(scores: np.ndarray) -> np.ndarray:
     return np.asarray(scores, dtype=EDGE_VALUE_DTYPE).astype(float)
 
 
+def _signed_material(axis_id: str, definitions: Mapping[str, AxisDefinition], *, as_difficulty: bool) -> str | None:
+    """地図が軸`axis_id`について得点ではなく符号付き材料の値を塗るなら、その材料。"""
+    paint = map_paint(definitions[axis_id]).value
+    return paint.material if isinstance(paint, SignedMaterialMapValue) and not as_difficulty else None
+
+
 def paint_feature_values(
     axis_id: str,
     definitions: Mapping[str, AxisDefinition],
@@ -213,9 +219,9 @@ def paint_feature_values(
     決まらない）は、Noneのまま返す（地図上は「向きで決まらない」）。
     """
     columns, undetermined = _feature_columns(feature_keys, materials, served)
-    paint = map_paint(definitions[axis_id]).value
-    if isinstance(paint, SignedMaterialMapValue) and not as_difficulty:
-        painted = np.asarray(columns[paint.material], dtype=float)
+    signed_material = _signed_material(axis_id, definitions, as_difficulty=as_difficulty)
+    if signed_material is not None:
+        painted = np.asarray(columns[signed_material], dtype=float)
     else:
         painted = evaluate_axes_array(columns, axis_with_dependencies(axis_id, definitions))[axis_id]
     out: dict[str, float | None] = {}
@@ -255,7 +261,7 @@ def paint_folded_feature_values(
     as_difficulty: bool,
 ) -> dict[str, float | None]:
     """道1本のフィーチャーごとに地図が軸`axis_id`について塗る値を、その道の区間をルートの区間に見立てて、ルートの値と
-    同じ決まり（`domain/route.py: merge_route_values`の軸の得点の、区間の得点の距離平均）で畳んで求める。
+    同じ決まり（`domain/route.py: merge_route_values`）で畳んで求める。
 
     区間の材料は、区間ごとに値が違いうる材料なら`segments`の区間の値（配信のサービスが配る材料は`served_segments`の
     区間の値）、ほかの材料は区間が属するフィーチャーの値（`paint_feature_values`と同じ`materials`・`served`）。
@@ -286,9 +292,13 @@ def paint_folded_feature_values(
     by_feature: dict[int, list[int]] = {}
     for index, row in enumerate(owner.tolist()):
         by_feature.setdefault(row, []).append(index)
-    paint = map_paint(definitions[axis_id]).value
-    signed = np.asarray(segment_columns[paint.material], dtype=float) if isinstance(
-        paint, SignedMaterialMapValue) and not as_difficulty else None
+    signed_material = _signed_material(axis_id, definitions, as_difficulty=as_difficulty)
+    signed = None if signed_material is None else np.asarray(segment_columns[signed_material], dtype=float)
+
+    def distance_mean(values: np.ndarray, indexes: list[int]) -> float | None:
+        return weighted_mean_by_distance(
+            [(None if np.isnan(values[i]) else float(values[i]), float(distance_km[i])) for i in indexes])
+
     out: dict[str, float | None] = {}
     for row, key in enumerate(feature_keys):
         indexes = by_feature.get(row)
@@ -299,16 +309,14 @@ def paint_folded_feature_values(
             if key in whole:
                 out[key] = whole[key]
             continue
-        mean = weighted_mean_by_distance(
-            [(None if np.isnan(scores[i]) else float(scores[i]), float(distance_km[i])) for i in indexes])
+        mean = distance_mean(scores, indexes)
         if mean is None:
             continue
         score = round_difficulty(mean)
         if signed is None:
             out[key] = score
             continue
-        direction = weighted_mean_by_distance(
-            [(None if np.isnan(signed[i]) else float(signed[i]), float(distance_km[i])) for i in indexes])
+        direction = distance_mean(signed, indexes)
         # `signed_material`は折れ線の軸にしか付かない。
         magnitude = cast(BreakpointLinearShape, definitions[axis_id].shape).smallest_magnitude_at(score)
         out[key] = -magnitude if direction is not None and direction < 0 else magnitude
@@ -326,11 +334,6 @@ class ServedMaterialFormula:
     #: 道ごとの材料（葉）を地図へ配らないか。葉を道ごとに読める形で外へ出せない材料（気象の予報の値そのもの等）は、
     #: 地図の要求の条件で値まで求めてから配る（`map_way_value_formula`）。
     withholds_leaves: bool = False
-
-    @property
-    def reads_conditions(self) -> bool:
-        """値が要求の条件（走行方位・想定速度）で変わるか。"""
-        return bool(condition_names(self.formula.value) | condition_names(self.formula.undetermined))
 
 
 def by_direction_material(forward: FormulaNode, backward: FormulaNode) -> ServedMaterialFormula:
@@ -361,7 +364,11 @@ _PRIORITY_LEAF_PREFIX = "axis:priority:"
 
 
 def _dependent_materials(served: Mapping[str, ServedMaterialFormula]) -> list[str]:
-    return sorted(material for material, formula in served.items() if formula.reads_conditions)
+    """値が要求の条件（走行方位・想定速度）で変わる材料。"""
+    return sorted(
+        material for material, served_formula in served.items()
+        if served_formula.formula.names_read(Condition)
+    )
 
 
 def _reads_by_direction_only(served: Mapping[str, ServedMaterialFormula], dependent: Sequence[str]) -> bool:
@@ -431,11 +438,8 @@ def axis_way_value_formula(
             node = case(feature(f"{_PRIORITY_LEAF_PREFIX}{key}:{index}"), const(override.value), node)
         return node
 
-    paint = map_paint(definitions[axis_id]).value
-    if isinstance(paint, SignedMaterialMapValue) and not as_difficulty:
-        value = material_node(paint.material)
-    else:
-        value = score_node(axis_id)
+    signed_material = _signed_material(axis_id, definitions, as_difficulty=as_difficulty)
+    value = material_node(signed_material) if signed_material is not None else score_node(axis_id)
     if value is None:
         return None
     return WayValueFormula(
@@ -483,11 +487,6 @@ def _painted_column(feature_keys: Sequence[str], painted: Mapping[str, float | N
     return np.array([np.nan if (value := painted.get(key)) is None else value for key in feature_keys], dtype=float)
 
 
-def _leaf_names(formulas: Sequence[ServedMaterialFormula]) -> set[str]:
-    return {name for formula in formulas
-            for name in feature_names(formula.formula.value) | feature_names(formula.formula.undetermined)}
-
-
 def axis_way_materials(
     axis_id: str, definitions: Mapping[str, AxisDefinition], served: Mapping[str, ServedMaterialFormula],
     inputs: TileWayInputs, *, as_difficulty: bool,
@@ -498,7 +497,7 @@ def axis_way_materials(
     if not dependent:
         painted = _paint(axis_id, definitions, inputs, _served_values(served, inputs, {}), as_difficulty=as_difficulty)
         return {_FIXED_LEAF: _painted_column(inputs.feature_keys, painted)}
-    service_leaves = _leaf_names([served[material] for material in dependent])
+    service_leaves = {name for material in dependent for name in served[material].formula.names_read(FeatureValue)}
     out = {name: np.asarray(inputs.leaves[name], dtype=float) for name in service_leaves if name in inputs.leaves}
     if _reads_by_direction_only(served, dependent):
         for side, name in enumerate((_FORWARD_LEAF, _BACKWARD_LEAF)):
@@ -514,7 +513,7 @@ def axis_way_materials(
     columns.update({material: np.full(len(inputs.feature_keys), np.nan) for material in dependent})
     with_axes: dict[str, MaterialColumn] = {
         **columns, **evaluate_axes_array(columns, axis_with_dependencies(axis_id, definitions))}
-    for name in feature_names(formula.value) - service_leaves:
+    for name in formula.names_read(FeatureValue) - service_leaves:
         if name.startswith(_PRIORITY_LEAF_PREFIX):
             key, index = name.removeprefix(_PRIORITY_LEAF_PREFIX).rsplit(":", 1)
             override = definitions[key].priority_overrides[int(index)]

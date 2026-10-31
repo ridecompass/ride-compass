@@ -98,7 +98,7 @@ class EdgeMaterialArrays:
     材料ごとに別々の配列を持たず、`StaticEdgeScoreMatrix`と同じ「値の行列＋idの並び」の形に
     する。材料が増えてもフィールドは増えず、列の追加は`*_ids`が1つ伸びるだけになる。
     数値と分類の2つに分かれるのは、カテゴリを数値の行列へ混ぜられないため（真偽の材料は数値の行列に
-    1.0/0.0/NaNで載る。分け方は`material_catalog.material_array_columns`が唯一の判定）。
+    1.0/0.0/NaNで載る。分け方は`material_catalog.material_array_columns`が決める）。
     カテゴリは列ごとに語彙が違うため、行列ではなく列ごとの`CategoricalColumn`で持つ。
 
     標高の列は**材料ではない表示用の値**で、経路が確定したあとの区間について
