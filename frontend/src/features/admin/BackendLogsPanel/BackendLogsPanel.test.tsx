@@ -25,52 +25,30 @@ function echoQuery() {
 }
 
 describe("BackendLogsPanel", () => {
-  // ログの口へ応答を与えないので、取りに行けば応答の無い要求としてテストが落ちる（`vitest.setup.ts`）。
-  it("開いただけでは取りに行かない", () => {
-    render(<BackendLogsPanel />);
-    expect(screen.getByRole("button", { name: "取得" })).toBeInTheDocument();
-  });
-
-  it("既定はWARNING以上・200件・絞り込みなしで取る", async () => {
-    const sentQuery = echoQuery();
-    const user = userEvent.setup();
-    render(<BackendLogsPanel />);
-
-    await user.click(screen.getByRole("button", { name: "取得" }));
-
-    expect(await sentQuery()).toEqual({ min_level: "WARNING", limit: "200" });
-  });
-
   it.each([
-    ["すべてのレベル", { contains: "jma-tile", limit: "200" }],
-    ["ERROR以上", { contains: "jma-tile", min_level: "ERROR", limit: "200" }],
+    ["既定のまま", {}, { min_level: "WARNING", limit: "200" }],
+    ["すべてのレベル", { contains: "  jma-tile  ", level: "すべてのレベル" }, { contains: "jma-tile", limit: "200" }],
+    ["ERROR以上", { contains: "jma-tile", level: "ERROR" }, { contains: "jma-tile", min_level: "ERROR", limit: "200" }],
+    ["件数が正の数でない", { limit: "0" }, { min_level: "WARNING" }],
   ])(
-    "部分一致は前後の空白を落とし、選んだレベル（%s）以上で取る。すべてのレベルならレベルで絞らない",
-    async (level, query) => {
+    "押したとき、入れた絞り込みを問い合わせにする（%s）: 部分一致は前後の空白を落とし、すべてのレベル・正でない件数では絞らない",
+    async (_case, input: { contains?: string; level?: string; limit?: string }, query) => {
       const sentQuery = echoQuery();
       const user = userEvent.setup();
       render(<BackendLogsPanel />);
 
-      await user.type(screen.getByPlaceholderText(/絞り込み/), "  jma-tile  ");
-      await user.selectOptions(screen.getByRole("combobox", { name: "最小レベル" }), level);
+      if (input.contains) await user.type(screen.getByPlaceholderText(/絞り込み/), input.contains);
+      if (input.level) await user.selectOptions(screen.getByRole("combobox", { name: "最小レベル" }), input.level);
+      if (input.limit) {
+        const limit = screen.getByRole("spinbutton", { name: "件数" });
+        await user.clear(limit);
+        await user.type(limit, input.limit);
+      }
       await user.click(screen.getByRole("button", { name: "取得" }));
 
       expect(await sentQuery()).toEqual(query);
     },
   );
-
-  it("件数が正の数でないときは件数で絞らない", async () => {
-    const sentQuery = echoQuery();
-    const user = userEvent.setup();
-    render(<BackendLogsPanel />);
-
-    const limit = screen.getByRole("spinbutton", { name: "件数" });
-    await user.clear(limit);
-    await user.type(limit, "0");
-    await user.click(screen.getByRole("button", { name: "取得" }));
-
-    expect(await sentQuery()).not.toHaveProperty("limit");
-  });
 
   it("取得中はボタンを押せず、終わると戻る", async () => {
     const held = heldReplies();

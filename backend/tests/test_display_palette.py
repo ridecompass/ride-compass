@@ -95,8 +95,9 @@ def axis(key: str, count: int, glyphs: bool = False, **fields) -> DisplayAxisSpe
 # --- 色の配り方 -------------------------------------------------------------------
 
 
-def test_only_the_first_axis_with_a_palette_gets_colors():
-    """2本目の軸（大きさで示す重大度等）に色を配ると、地図のどこにも塗られない色が凡例にだけ並ぶ。"""
+def test_only_the_first_axis_with_a_palette_gets_colors_and_only_declared_glyphs_reach_the_screen():
+    """2本目の軸（大きさで示す重大度等）に色を配ると、地図のどこにも塗られない色が凡例にだけ並ぶ。画面は行が`glyph`の
+    鍵を持つかで凡例の見本を絵にするかを分けるので、持たない行に空の値を配ると、大きさだけを示す行まで絵の見本になる。"""
     attribute = PrimaryAttributeSpec(
         attr_id="attr_a",
         label="属性A",
@@ -108,30 +109,9 @@ def test_only_the_first_axis_with_a_palette_gets_colors():
     main, size = resolved_display_axes(attribute)
 
     assert [c["color"] for c in main["categories"]] == nominal_colors(4, 3, None)
-    assert all("color" not in c for c in size["categories"])
+    assert [c["glyph"] for c in main["categories"]] == ["g0", "g1", "g2"]
+    assert all("color" not in c and "glyph" not in c for c in size["categories"])
     assert "palette" not in main and "hue_slot" not in main
-
-
-def test_a_glyph_reaches_the_screen_only_on_rows_that_declare_one():
-    """画面は行が`glyph`の鍵を持つかで凡例の見本を絵にするかを分ける。持たない行に空の値を配ると、大きさだけを示す行まで絵の見本になる。"""
-    with_glyphs = DisplayAxisSpec(
-        key="main",
-        property="main",
-        palette="nominal",
-        hue_slot=4,
-        categories=(
-            DisplayCategorySpec(key="a", label="行a", values=("a",), description="行aの点", glyph="bag"),
-            DisplayCategorySpec(key="b", label="行b", values=("b",), description="行bの点", glyph="drop"),
-        ),
-    )
-    attribute = PrimaryAttributeSpec(
-        attr_id="attr_a", label="属性A", geometry="point", display_axes=(with_glyphs, axis("size", 2)), tile_kind="poi"
-    )
-
-    main, size = resolved_display_axes(attribute)
-
-    assert [c["glyph"] for c in main["categories"]] == ["bag", "drop"]
-    assert all("glyph" not in c for c in size["categories"])
 
 
 @pytest.mark.parametrize("slot", [-1, display_palette.NOMINAL_HUE_SLOTS])

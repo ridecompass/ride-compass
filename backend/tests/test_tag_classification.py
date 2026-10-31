@@ -18,35 +18,31 @@ from app.domain import traffic
 pytestmark = pytest.mark.asyncio(loop_scope="module")
 
 
-async def _kinds(engine, tags_by_id: dict[int, dict[str, str]]) -> dict[int, str]:
-    """点（id → タグ）を`tag_kind_sql`へ通し、id → 種別を返す。当たらない点はキーを持たない。"""
-    rows = ", ".join(f"(CAST(:id{i} AS bigint), CAST(:tags{i} AS jsonb))" for i in range(len(tags_by_id)))
-    params = {}
-    for i, (node_id, tags) in enumerate(tags_by_id.items()):
-        params[f"id{i}"] = node_id
-        params[f"tags{i}"] = json.dumps(tags)
-    source = f"SELECT * FROM (VALUES {rows}) AS t(id, tags)"
-    async with engine.connect() as conn:
-        result = (await conn.execute(text(traffic.tag_kind_sql(source)), params)).all()
-    kinds = {row.id: row.kind for row in result}
-    assert len(kinds) == len(result), "1つの点に種別が2つ付いた"
-    return kinds
-
-
 async def _kind(engine, tags: dict[str, str]) -> str | None:
-    return (await _kinds(engine, {1: tags})).get(1)
+    """点を`tag_kind_sql`へ通し、種別を返す。当たらない点は None。"""
+    source = "SELECT * FROM (VALUES (CAST(1 AS bigint), CAST(:tags AS jsonb))) AS t(id, tags)"
+    async with engine.connect() as conn:
+        result = (await conn.execute(text(traffic.tag_kind_sql(source)), {"tags": json.dumps(tags)})).all()
+    assert len(result) <= 1, "1つの点に種別が2つ付いた"
+    return result[0].kind if result else None
 
 
-async def test_a_tag_in_the_rules_gives_its_kind(road_graph_engine):
-    """種別は値で決まる。同じ`crossing`でも、線路の上なら踏切として数える側の種別になる。"""
-    assert await _kinds(road_graph_engine, {
-        1: {"highway": "crossing"},
-        2: {"railway": "crossing"},
-    }) == {1: "crossing", 2: "railway_crossing"}
-
-
-async def test_values_are_matched_ignoring_case_and_surrounding_spaces(road_graph_engine):
-    assert await _kind(road_graph_engine, {"highway": " Give_Way "}) == "give_way"
+@pytest.mark.parametrize(
+    ("tags", "expected"),
+    [
+        # 種別は値で決まる。同じ`crossing`でも、線路の上なら踏切として数える側の種別になる。
+        ({"highway": "crossing"}, "crossing"),
+        ({"railway": "crossing"}, "railway_crossing"),
+        # 値は大文字小文字と前後の空白を問わない。
+        ({"highway": " Give_Way "}, "give_way"),
+        # 止まりも補給もしない点は返さない。
+        ({"amenity": "vending_machine", "vending": "cigarettes"}, None),
+        # コンビニは OpenStreetMap からは取らない（Overture の地点から出す）。
+        ({"shop": "convenience"}, None),
+    ],
+)
+async def test_a_tag_in_the_rules_gives_its_kind(road_graph_engine, tags, expected):
+    assert await _kind(road_graph_engine, tags) == expected
 
 
 @pytest.mark.parametrize(
@@ -61,15 +57,6 @@ async def test_values_are_matched_ignoring_case_and_surrounding_spaces(road_grap
 )
 async def test_a_point_with_two_meanings_gets_the_one_that_stops_the_rider(road_graph_engine, tags, expected):
     assert await _kind(road_graph_engine, tags) == expected
-
-
-async def test_points_that_neither_stop_nor_supply_are_not_returned(road_graph_engine):
-    assert await _kinds(road_graph_engine, {
-        1: {},
-        2: {"amenity": "vending_machine", "vending": "cigarettes"},
-        # コンビニは OpenStreetMap からは取らない（Overture の地点から出す）。
-        3: {"shop": "convenience"},
-    }) == {}
 
 
 @pytest.mark.parametrize(

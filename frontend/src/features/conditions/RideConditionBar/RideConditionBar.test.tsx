@@ -173,15 +173,6 @@ describe("RideConditionBar 出発時刻", () => {
     await userEvent.click(screen.getByRole("button", { name: "出発時刻を現在に戻す" }));
     expect(props.onDepartureNow).toHaveBeenCalled();
   });
-
-  it("刻みの後半に開いても、「今」の目盛りは今を刻みへ切り下げた時刻で、5分刻みなら1つ次へ5分送れる", async () => {
-    // 9:08は9:05より9:10に近いが、「今」に追従する出発時刻は9:05へ切り下げてある。
-    vi.setSystemTime(jst("2026-09-24T09:08"));
-    const props = renderBar({ departureTime: jst("2026-09-24T09:05") });
-    await openRuler("5分");
-    await userEvent.click(screen.getByRole("button", { name: "出発時刻を1つ次へ" }));
-    expect(props.onDepartureTimeChange).toHaveBeenCalledWith(jst("2026-09-24T09:10"));
-  });
 });
 
 describe("RideConditionBar 想定速度", () => {

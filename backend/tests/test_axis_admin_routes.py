@@ -156,16 +156,13 @@ class TestRead:
 
         assert [(item["axis_id"], item["label"]) for item in body] == [("a", "軸A"), ("b", "軸B")]
 
-    def test_get_returns_the_axis(self, client, registry):
-        registry.axes["a"] = stored()
-
-        assert client.get(BASE + "/a").json()["axis_id"] == "a"
-
     def test_an_axis_whose_material_left_the_catalog_can_still_be_read(self, client, registry):
         """読み出しは保存済みの内容を返すだけで、書き込み時の検証をやり直さない。"""
         registry.axes["a"] = stored(shape=linear_shape("retired"))
 
-        assert client.get(BASE + "/a").status_code == 200
+        response = client.get(BASE + "/a")
+
+        assert (response.status_code, response.json()["axis_id"]) == (200, "a")
 
 
 class TestWrite:

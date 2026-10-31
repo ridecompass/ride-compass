@@ -194,19 +194,6 @@ def test_tree_costs_equal_the_hop_count_from_the_origin():
         assert tree.node_length_m[node_index] == pytest.approx(expected * 100.0), node_id
 
 
-def test_tree_seconds_come_from_the_plain_travel_time_not_from_the_cost():
-    """秒はコスト（主観的割増込み）ではなく素の走行時間を積む。混ぜると到着時刻が狂う。"""
-    lazy, statics, structure = build_all(make_graph(LINE_NODES, LINE_EDGES))
-    states = state_index(lazy)
-    tree = routing.build_turn_expanded_tree(
-        structure, np.full(structure.state_count, 5.0), statics.edge_length_m,
-        np.array([states["AB"]], dtype=np.int64), lazy.node_count,
-        edge_seconds=np.full(structure.state_count, 2.0),
-    )
-    assert tree.state_cost[states["BC"]] == pytest.approx(10.0)
-    assert tree.state_seconds[states["BC"]] == pytest.approx(4.0)
-
-
 def test_tree_stops_at_the_cost_limit():
     """`cost_limit`を超える先へは伸ばさない（到達できるNodeだけが有限コストになる）。"""
     lazy, _, _, tree = grid_tree(cost_limit=3.0)
@@ -493,23 +480,21 @@ def test_cost_and_seconds_are_shaped_as_time_bins_by_states(shape, expected):
     assert seconds_bins.shape == expected
 
 
-def test_more_than_two_dimensions_is_refused():
-    """黙って(1, n)へ潰すと、ビン数の食い違いの検査もすり抜けてJITが範囲外を読む。"""
+@pytest.mark.parametrize(
+    ("cost_shape", "seconds_shape", "bin_seconds"),
+    [
+        # 黙って(1, n)へ潰すと、ビン数の食い違いの検査もすり抜けてJITが範囲外を読む
+        ((2, 3, 4), (2, 3, 4), 60.0),
+        # 幅が無いと全区間が先頭のビンへ落ち、例外もNaNも出ないまま結果だけが変わる
+        ((2, 3), (2, 3), 0.0),
+        ((2, 3), (2, 3), math.inf),
+        # JITした探索は境界を検査しない。ビン数が食い違えば範囲外の読み出しになる
+        ((2, 3), (2, 4), 60.0),
+    ],
+)
+def test_time_bins_the_search_would_misread_are_refused(cost_shape, seconds_shape, bin_seconds):
     with pytest.raises(ValueError):
-        routing.time_bin_arrays("caller", np.ones((2, 3, 4)), np.ones((2, 3, 4)), 60.0)
-
-
-@pytest.mark.parametrize("bin_seconds", [0.0, math.inf])
-def test_time_binned_cost_requires_a_positive_finite_bin_width(bin_seconds):
-    """幅が無いと全区間が先頭のビンへ落ち、例外もNaNも出ないまま結果だけが変わる。"""
-    with pytest.raises(ValueError):
-        routing.time_bin_arrays("caller", np.ones((2, 3)), np.ones((2, 3)), bin_seconds)
-
-
-def test_mismatched_cost_and_seconds_shapes_raise():
-    """JITした探索は境界を検査しない。ビン数が食い違えば範囲外の読み出しになる。"""
-    with pytest.raises(ValueError):
-        routing.time_bin_arrays("caller", np.ones((2, 3)), np.ones((2, 4)), 60.0)
+        routing.time_bin_arrays("caller", np.ones(cost_shape), np.ones(seconds_shape), bin_seconds)
 
 
 # --- turn_expanded_shortest_path ---

@@ -124,21 +124,18 @@ def test_concat_edge_geometries_offsets_slice_back_to_each_edge():
 # --------------------------------------------------------------------------------------
 
 
-def test_route_elevation_gain_sums_only_present_values():
-    """標高の無い区間は集計の母集団から外す。"""
-
+@pytest.mark.parametrize(
+    ("gains", "expected"),
+    [
+        ({"e1": 10.0, "e4": 2.0}, 12.0),  # 標高の無い区間は集計の母集団から外す
+        ({}, None),  # 標高が1つも取れなかった経路は、0mではなく「取れなかった」として返す
+    ],
+)
+def test_route_elevation_gain_sums_only_present_values(gains, expected):
     edges = [lean_edge("e1"), lean_edge("e2"), lean_edge("e3"), lean_edge("e4")]
-    attributes = {
-        "e1": elevation("e1", elevation_gain_m=10.0),
-        "e4": elevation("e4", elevation_gain_m=2.0),
-    }
+    attributes = {edge_id: elevation(edge_id, elevation_gain_m=gain) for edge_id, gain in gains.items()}
 
-    assert route_elevation_gain(edges, attributes) == 12.0
-
-
-def test_route_elevation_gain_without_any_value_is_none_not_zero():
-    """標高が1つも取れなかった経路は、0mではなく「取れなかった」として返す。"""
-    assert route_elevation_gain([lean_edge("e1")], {}) is None
+    assert route_elevation_gain(edges, attributes) == expected
 
 
 def test_reverse_elevation_by_edge_pairs_the_path_in_reverse_order():
@@ -238,44 +235,29 @@ def test_route_passages_reads_each_edge_in_the_time_bin_the_search_used():
 # --------------------------------------------------------------------------------------
 
 
-def make_junction(count):
-    return NodeJunction(
-        cost=np.full(count, np.inf), length_m=np.zeros(count), seconds=np.zeros(count),
-        forward_state=np.full(count, -1, dtype=np.int64),
-        backward_state=np.full(count, -1, dtype=np.int64),
+@pytest.mark.parametrize(
+    ("node_best_state", "expected"),
+    [
+        # 1つでも繋ぎ目側の値が残ると、difficultyの逆算が別経路のコストと秒で行われる
+        (3, (5.0, 60.0, 4.0, 3, -1)),
+        # 前向きの木が着いていなければ、繋ぎ目の値に触れない
+        (-1, (999.0, 111.0, 222.0, -1, 42)),
+    ],
+)
+def test_add_terminal_candidate_copies_every_field_from_the_forward_tree(node_best_state, expected):
+    junction = NodeJunction(
+        cost=np.array([np.inf, 999.0]), length_m=np.array([0.0, 111.0]), seconds=np.array([0.0, 222.0]),
+        forward_state=np.array([-1, -1], dtype=np.int64), backward_state=np.array([-1, 42], dtype=np.int64),
     )
-
-
-def test_add_terminal_candidate_copies_every_field_from_the_forward_tree():
-    """1つでも繋ぎ目側の値が残ると、difficultyの逆算が別経路のコストと秒で行われる。"""
-    junction = make_junction(2)
-    junction.cost[1] = 999.0
-    junction.length_m[1] = 111.0
-    junction.seconds[1] = 222.0
-    junction.backward_state[1] = 42
     forward = turn_tree(
-        4, node_cost=[0.0, 5.0], node_length_m=[0.0, 60.0], node_seconds=[0.0, 4.0], node_best_state=[-1, 3],
+        4, node_cost=[0.0, 5.0], node_length_m=[0.0, 60.0], node_seconds=[0.0, 4.0],
+        node_best_state=[-1, node_best_state],
     )
 
     add_terminal_candidate(junction, forward, 1)
 
-    assert junction.cost[1] == 5.0
-    assert junction.length_m[1] == 60.0
-    assert junction.seconds[1] == 4.0
-    assert junction.forward_state[1] == 3
-    assert junction.backward_state[1] == -1
-
-
-def test_add_terminal_candidate_does_nothing_when_the_forward_tree_never_arrived():
-    junction = make_junction(2)
-    forward = turn_tree(
-        4, node_cost=[0.0, np.inf], node_length_m=[0.0, np.nan], node_seconds=[0.0, np.nan], node_best_state=[-1, -1],
-    )
-
-    add_terminal_candidate(junction, forward, 1)
-
-    assert not np.isfinite(junction.cost[1])
-    assert junction.forward_state[1] == -1
+    assert (junction.cost[1], junction.length_m[1], junction.seconds[1], junction.forward_state[1],
+            junction.backward_state[1]) == expected
 
 
 # --------------------------------------------------------------------------------------

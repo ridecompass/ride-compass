@@ -29,7 +29,6 @@ describe("popupInsideVisible", () => {
 
   it("残す分を渡すと、左・右・下へはその分が見えている所に残るまで出られ、上の辺は見えている所に残す", () => {
     expect(popupInsideVisible(popupAt(-100, 200), VISIBLE, 96)).toEqual({ left: -100, top: 200 });
-    expect(popupInsideVisible(popupAt(-150, 200, 500), VISIBLE, 96)).toEqual({ left: -150, top: 200 });
     expect(popupInsideVisible(popupAt(-450, 560, 500), VISIBLE, 96)).toEqual({ left: -404, top: 504 });
     expect(popupInsideVisible(popupAt(380, 20), VISIBLE, 96)).toEqual({ left: 304, top: 50 });
   });

@@ -1,11 +1,11 @@
 /**
  * `features/route/RouteCandidateActions/RouteCandidateActions.tsx`——選んでいる候補1本への操作（走る・合成・GPX出力）。
  *
- * 見るもの: 走るを押すとその候補のidで走行モードを始める操作が上がり、受け口が無ければ出さないこと、合成は始められる
+ * 見るもの: 走るの受け口が無ければ走るを出さないこと、合成は始められる
  * ときだけ出し、押すとその候補で編集を始めて押していた区間を外すこと、GPX出力はその候補を書き出すこと。
  *
- * ここで見ないもの: どの候補が相手か・編集中に出さないこと・走ったあとシートを閉じること → `app/page.tsx`（見出しの行に置く
- * `RouteOutcomeHeaderActions.tsx`ごと見る）。使い方の文——受け取った値を文へそのまま入れるだけ。
+ * ここで見ないもの: どの候補が相手か・走るを押すとその候補で走り始めること・編集中に出さないこと・走ったあとシートを閉じること
+ * → `app/page.tsx`（見出しの行に置く`RouteOutcomeHeaderActions.tsx`ごと見る）。使い方の文——受け取った値を文へそのまま入れるだけ。
  *
  * 差し替えたもの: GPXのファイルを落とす関数（`features/route/gpxExport.ts: downloadGpx`）。
  */
@@ -41,13 +41,6 @@ function renderActions(props: Partial<ComponentProps<typeof RouteCandidateAction
 }
 
 describe("RouteCandidateActions", () => {
-  it("走るを押すと、その候補のidで走行モードを始める操作を上げる", async () => {
-    const onRide = vi.fn();
-    renderActions({ onRide });
-    await userEvent.click(screen.getByRole("button", { name: "このルートで走る" }));
-    expect(onRide).toHaveBeenCalledWith("slow");
-  });
-
   it("合成は始められるときだけ出し、押すとその候補で編集を始めて押していた区間を外す", async () => {
     const { splice, onClearSegment } = renderActions({ splice: { canStart: true, start: vi.fn() } });
     await userEvent.click(screen.getByRole("button", { name: "ルートを合成" }));

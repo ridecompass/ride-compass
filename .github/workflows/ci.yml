@@ -43,6 +43,9 @@
 #   像を広げずにビルドしていた形）から同じ決め方で決めた。
 #   段1のジョブの持ち時間だけは、重い検査を始めるまでの待ちの予算として、2026-10-11 に測った成功した実行（Pull Requestの
 #   直近60件とmasterへのpushの直近60件）の最長の1.3〜3.4倍を分単位へ切り上げた値に詰めてある（短いジョブほど、分単位の切り上げで倍率が大きくなる）。
+#   frontend は 2026-10-31 に3分で切られるようになり、同じ決め方で測り直した（Pull Requestとmasterへのpushの実行31回の
+#   成功した22回。最長180秒）。遅い回はどの段も一様に約1.5倍延び（ランナーの速さの揺れ）、速くする手（npm ci の audit を
+#   止める・vitest のワーカーをコア数いっぱいにする）で縮む見込みは約1割なので、上げて4分にした。
 #   docs-consistency・doc-reading-tests・repo-wide・flow-gate は、2026-10-14 に測った成功した実行（マージした Pull Request の
 #   直近40件。最長はそれぞれ9秒・50秒・13秒・19秒）から同じ決め方で決めた。段1の検査が延びると、その分
 #   だけ通る版の待ちが延びる。持ち時間で切られたら、上げる前に検査を速くするか段2へ移せないかを見て、上げるならその理由を
@@ -280,7 +283,7 @@ jobs:
       group: ${{ github.head_ref || github.ref_name }}-lane-2
       queue: max
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 4
     defaults:
       run:
         working-directory: frontend
@@ -291,7 +294,8 @@ jobs:
           node-version-file: frontend/package.json
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - run: npm ci
+      # 脆弱性の報告（audit）と寄付の案内（fund）は検査の結果に効かず、auditの網への往復だけがかかる。
+      - run: npm ci --no-audit --no-fund
       # 書式。設定はfrontend/.prettierrc.json・.prettierignore（生成物は外してある）。
       - run: npm run format:check
       - run: npm run lint
@@ -303,7 +307,8 @@ jobs:
       # 失敗する。next typegenはフルビルドなしで型だけを生成する。
       - run: npx next typegen
       - run: npx tsc --noEmit
-      - run: npm test
+      # vitestの既定のワーカー数は「コア数−1」。このジョブでは他に動くものが無いので、コア数いっぱいに使う（手元の4コアで約15%縮む）。
+      - run: npm test -- --maxWorkers=100%
 
   # 同じ像の中のアプリを、ブラウザと spec の組ごとに別のジョブで並べて走らせる。組を足すときは matrix の行を足す。
   # - Chromium: 全状態の走査を除くspec。

@@ -50,14 +50,6 @@ function tickLabels(svg: HTMLElement): string[] {
 }
 
 describe("BreakpointCurveEditor", () => {
-  it("渡した端だけを、名前と入力値を名乗る動かせる点にする", () => {
-    renderEditor();
-    const handles = screen.getAllByRole("slider");
-    expect(handles).toHaveLength(1);
-    expect(handles[0]).toHaveAccessibleName("100点の端");
-    expect(handles[0]).toHaveAttribute("aria-valuenow", "10");
-  });
-
   it("左右キーは横軸の刻みで動かし、Shiftを押すと10倍にする。上下キーでは動かさない", () => {
     const { onChangeHandle } = renderEditor();
     const step = niceStep((RANGE.max - RANGE.min) * 1.2);

@@ -399,7 +399,7 @@ def test_region_way_materials_serve_every_published_axis(override_dependency, ma
 @pytest.fixture
 def landcover_tiles(override_dependency):
     """配信の口が呼ぶタイルの取得（サービス）の代役。返す値は`result`で決め、呼ばれた座標を`calls`に残す。"""
-    state = {"result": TileResponse(b"png-bytes"), "calls": []}
+    state = {"result": None, "calls": []}
 
     async def fake(z, x, y):
         state["calls"].append((z, x, y))
@@ -410,20 +410,21 @@ def landcover_tiles(override_dependency):
     yield state
 
 
-def test_landcover_tile_endpoint_returns_the_tile_as_png(landcover_tiles):
+# ラスタが1枚も無いのは「範囲外で空」ではない。空を返すと、地図のチップは正常なのに白紙になる。
+@pytest.mark.parametrize(("result", "status", "content_type", "body"), [
+    (TileResponse(b"png-bytes"), 200, "image/png", "png-bytes"),
+    (None, 503, "application/json", '{"detail":"土地被覆データが利用できません"}'),
+], ids=["tile", "no-raster"])
+def test_landcover_tile_endpoint_returns_the_tile_as_png_or_reports_no_raster(
+        landcover_tiles, result, status, content_type, body):
+    landcover_tiles["result"] = result
+
     response = client.get("/api/region/landcover-tiles/10/905/403.png")
 
-    assert response.status_code == 200
-    assert response.headers["content-type"] == "image/png"
-    assert response.content == b"png-bytes"
+    assert response.status_code == status
+    assert response.headers["content-type"] == content_type
+    assert response.text == body
     assert landcover_tiles["calls"] == [(10, 905, 403)]
-
-
-def test_landcover_tile_endpoint_without_raster_reports_unavailable(landcover_tiles):
-    # ラスタが1枚も無いのは「範囲外で空」ではない。空を返すと、地図のチップは正常なのに白紙になる
-    landcover_tiles["result"] = None
-
-    assert client.get("/api/region/landcover-tiles/10/905/403.png").status_code == 503
 
 
 #: 重みを送る検査に使う公開軸。

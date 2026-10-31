@@ -24,13 +24,12 @@ RASTER = service.landcover_raster
 
 
 class Raster:
-    """ラスタの口の代役。開けているパスと、描いた絵を持つ。"""
+    """ラスタの口の代役。開けているパスを持ち、描いた絵として z/x/y を返す。"""
 
     def __init__(self, opened: list[str]):
         self.opened = list(opened)
-        self.rendered: list[tuple[int, int, int]] = []
-        #: 描いた絵。None は範囲外で描けないこと。
-        self.drawn: bytes | None = b"png-bytes"
+        #: False なら範囲外で描けない。
+        self.inside = True
 
     def has_sources(self) -> bool:
         return bool(self.opened)
@@ -39,8 +38,7 @@ class Raster:
         return list(self.opened)
 
     def render_tile(self, z, x, y):
-        self.rendered.append((z, x, y))
-        return self.drawn
+        return f"{z}/{x}/{y}".encode() if self.inside else None
 
 
 @pytest.fixture
@@ -71,15 +69,14 @@ def served(monkeypatch):
 async def test_a_tile_is_drawn_from_the_raster_through_the_cache(raster, served):
     response = await service.get_landcover_tile(10, 905, 403)
 
-    assert response == service.TileResponse(content=b"png-bytes")
-    assert raster.rendered == [(10, 905, 403)]
+    assert response == service.TileResponse(content=b"10/905/403")
     assert (served[0]["z"], served[0]["x"], served[0]["y"]) == (10, 905, 403)
 
 
 async def test_outside_the_rasters_the_tile_is_the_clear_image_of_the_raster(raster):
     """範囲外で描けないときは、ラスタの塗りと同じ形の透明なPNGを返し、ブラウザに持たせてよい。
     キャッシュの骨格は本物を通す（空のタイルはディスクへ書かないので、ほかのテストへ残らない）。"""
-    raster.drawn = None
+    raster.inside = False
 
     response = await service.get_landcover_tile(10, 905, 403)
 
