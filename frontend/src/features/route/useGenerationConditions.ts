@@ -152,15 +152,17 @@ export function useGenerationConditions({ onOriginPlace }: GenerationConditionsI
     },
     [selectedPoint, onOriginPlace, moveWaypoint, addWaypoint, waypoints],
   );
-  // 探して選んだ地点を置く（経由地は`waypointIndex`番目を置き直し、無ければ足して、足した経由地を選ぶ——どこに置いたかを
+  // 探して選んだ地点を置く（経由地は`waypointIndex`番目を置き直し、無ければ足して、置いた経由地を選ぶ——どこに置いたかを
   // 詳しくで確かめられる）。足すのは生成が受け付ける数まで（開いた候補の一覧からは、数に達した後にも選べる）。
   const placeFound = useCallback(
     (role: PinRole, candidate: PlaceCandidate, waypointIndex: number | null) => {
       const point = { latitude: candidate.latitude, longitude: candidate.longitude };
       if (role === "origin") onOriginPlace(point);
       else if (role === "destination") setDestination(point);
-      else if (waypointIndex !== null) moveWaypoint(waypointIndex, point);
-      else if (!waypointsFull(waypoints)) {
+      else if (waypointIndex !== null) {
+        moveWaypoint(waypointIndex, point);
+        setChosenPoint({ role: "waypoint", index: waypointIndex });
+      } else if (!waypointsFull(waypoints)) {
         addWaypoint(point);
         setChosenPoint({ role: "waypoint", index: waypoints.length });
       } else return;
