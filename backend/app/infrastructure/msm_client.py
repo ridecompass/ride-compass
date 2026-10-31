@@ -373,7 +373,8 @@ class _Selection(Protocol):
 
 def _read_block(variable: str, chunk_number: int, selection: _Selection, t0: int, t1: int) -> np.ndarray:
     with OmFileReader(str(_synced_chunk_path(variable, chunk_number))) as reader:
-        return np.asarray(reader[selection.lat_slice, selection.lon_slice, t0:t1], dtype=np.float64)
+        block = np.asarray(reader[selection.lat_slice, selection.lon_slice, t0:t1], dtype=np.float64)
+    return block
 
 
 # 配信元メタ情報のcrs_wktが持つ範囲指定。WKTのBBOXは南・西・北・東の順に並ぶ。
