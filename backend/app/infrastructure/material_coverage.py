@@ -66,8 +66,6 @@ def _way_coverage_sql():
         f"count(*) FILTER (WHERE {spec.missing_condition}) AS {material_id}"
         for material_id, spec in _WAY_SPECS.items()
     )
-    # 元データの引き方は`domain/material_sql.py`が持つ。ここで書き写すと、生データの
-    # 置き場が変わったときにこの1本だけが古いテーブルを指したまま残る。
     sql = (  # 固定の内部辞書のみ使用
         f"SELECT count(*) AS total{', ' + columns if columns else ''} FROM {WAYS_SOURCE_SQL} AS w"
     )

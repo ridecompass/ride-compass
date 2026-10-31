@@ -62,6 +62,9 @@ MAX_TIME_BINS = 4
 #: 停止要因の件数の欠けを0件に置き換える）。置き換え方を変えたら、ここも変える。
 MISSING_TRAVEL_DATA_WORDING = "坂の無い平地で、止まる所も無い道として所要時間を出しています"
 
+#: 風の予報が無く（`LegCostComposer.wind_unavailable`）、所要時間を無風で計算したことを利用者に言う文。
+MISSING_WIND_WORDING = "風のモデルの計算値を使えなかったため、無風として所要時間を出しています"
+
 logger = logging.getLogger("ridecompass.graph")
 
 

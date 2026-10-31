@@ -157,9 +157,7 @@ export default function RouteAxisProfile({
           </div>
           {/* 所要時間の前提が崩れていることは、所要時間のすぐ下で知らせる（黙って短い所要時間を見せない）。
               値の無い区間は丸めて1%以上のときだけ出す——0%を並べても判断の材料にならない。 */}
-          {windUnavailable && (
-            <WarningText>風のモデルの計算値を使えなかったため、無風として所要時間を出しています</WarningText>
-          )}
+          {windUnavailable && <WarningText>{routeGenerateConfig.missing_wind_wording}</WarningText>}
           {missingPct >= 1 && (
             <WarningText>{`データの無い区間が${missingPct}%[${routeGenerateConfig.missing_travel_data_wording}]`}</WarningText>
           )}
