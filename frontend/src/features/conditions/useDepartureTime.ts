@@ -5,8 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { floorToDepartureStep } from "@/features/conditions/rideConditions";
 import { SECOND_MS } from "@/lib/duration";
 
-// 「今」は出発時刻として選べる値の刻みで進める。これより細かく進めてもどの気象レイヤーが選ぶ
-// フレームも変わらないまま、時刻をキーに持つ取得（`features/map/useWayMaterials.ts: useWayMaterials`）だけが無効化される。
+// 「今」は出発時刻として選べる値の刻みで進め、刻みの中では同じ値を保つ（時刻を鍵に持つ読み手を無駄に取り直させない）。
 // 刻みの境界を跨いだかを見に行く間隔。刻みそのものより短くないと境界を跨ぎ越す。
 const NOW_POLL_INTERVAL_MS = 30 * SECOND_MS;
 
@@ -15,12 +14,11 @@ function steppedNow(): Date {
 }
 
 interface DepartureTime {
-  /** 出発時刻。気象レイヤーの表示時刻・専用配信軸の`at`・生成リクエストの`start_time`が同じ値を読む。 */
+  /** 出発時刻。 */
   at: Date;
   /** 刻みへ丸めた現在時刻。 */
   now: Date;
-  /** 利用者が選んだ時刻か。falseの間の`at`は「今」に張り付いて進むため、利用者が決めた条件
-   * としては扱えない（`features/route/generationRequest.ts`の比較キー参照）。 */
+  /** 利用者が選んだ時刻か。falseの間の`at`は「今」に張り付いて進み、利用者が決めた条件ではない。 */
   pinned: boolean;
   setAt: (time: Date) => void;
   /** 「今」への追従へ戻す。 */

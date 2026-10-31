@@ -156,6 +156,24 @@ describe("RideConditionBar 出発時刻", () => {
     expect(props.onDepartureTimeChange).not.toHaveBeenCalled();
   });
 
+  it("目盛りの端では1コマ送りを押せず、「現在に戻す」は文字の無いアイコンで、今のコマを見ていない間だけ押せる", async () => {
+    renderBar();
+    await openRuler();
+    expect(screen.getByText("9/24 09:05", { selector: "div" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "出発時刻を1つ前へ" })).toBeDisabled();
+    const backToNow = screen.getByRole("button", { name: "出発時刻を現在に戻す" });
+    expect(backToNow).toBeDisabled();
+    expect(backToNow).toHaveTextContent(/^$/);
+    cleanup();
+
+    // 予報を読む先より後の出発時刻は、最後の目盛りに寄る。
+    const props = renderBar({ departureTime: jst("2026-12-31T00:00") });
+    await openRuler();
+    expect(screen.getByRole("button", { name: "出発時刻を1つ次へ" })).toBeDisabled();
+    await userEvent.click(screen.getByRole("button", { name: "出発時刻を現在に戻す" }));
+    expect(props.onDepartureNow).toHaveBeenCalled();
+  });
+
   it("刻みの後半に開いても、「今」の目盛りは今を刻みへ切り下げた時刻で、5分刻みなら1つ次へ5分送れる", async () => {
     // 9:08は9:05より9:10に近いが、「今」に追従する出発時刻は9:05へ切り下げてある。
     vi.setSystemTime(jst("2026-09-24T09:08"));
