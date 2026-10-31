@@ -15,8 +15,7 @@ const fetchNow = (request: Request) => fetch(request);
 /** backendを直接呼ぶ口。 */
 export const backendApi = createClient<paths>({ baseUrl: API_BASE_URL, fetch: fetchNow });
 
-/** backendの管理API`/api/admin<X>`だけを持つ契約。管理画面は同一オリジンの口`/admin/api<X>`を叩く
- * （`app/admin/api/[...path]/route.ts`。/adminのBasic認証をそのまま使う）。 */
+/** backendの管理API`/api/admin<X>`だけを持つ契約。管理画面は同一オリジンの口`/admin/api<X>`を叩く。 */
 type AdminPaths = {
   [P in keyof paths as P extends `${typeof BACKEND_ADMIN_PREFIX}${infer Rest}` ? Rest : never]: paths[P];
 };
@@ -89,10 +88,7 @@ export async function requestApi<R extends ApiResult>(
   function transportFailure(error: unknown): Error {
     // AbortSignal.timeout由来の中断はDOMException("TimeoutError")として送出される（fetch仕様）。
     const isTimeout = error instanceof DOMException && error.name === "TimeoutError";
-    // error.cause: ブラウザによっては（常にではない）fetch失敗の追加ヒントが入ることがある。
-    // ただしCORS/CSP/拡張機能ブロック等の「本当の理由」はセキュリティ上の理由でfetch()の
-    // 仕様としてJSへ一切渡されないため、これを足しても取れないケースの方が多い——その場合の
-    // 唯一の手掛かりはブラウザ自身が出すネイティブなコンソールログ（アプリのdebugLogとは別）。
+    // CORS・CSP・拡張機能による遮断の理由はfetchの仕様でJSへ渡らず、ブラウザのコンソールにだけ出る。
     const cause = typeof error === "object" && error !== null && "cause" in error ? error.cause : undefined;
     debugLog(
       category,
