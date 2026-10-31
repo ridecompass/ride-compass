@@ -93,7 +93,7 @@ localStorageは指紋に入れない。
 ### 書き方
 
 1. **「見たい画面まで進める段取り」は`e2e/fixtures.ts`のヘルパーを使い、テストごとに
-   書き直さない。** `openMobileApp`（モック登録・390x812・goto）→`openMobileSheet`（タブを押して開く。
+   書き直さない。** `openMobileApp`（モック登録・390x812・goto・地図の読み込み待ち。ほかの幅は`openMapApp`）→`openMobileSheet`（タブを押して開く。
    開くまで再試行する）→`generateRoutes`（距離指定→生成→完了待ち）の順に呼ぶ。保存される画面状態（レイヤーのON/OFF等）は
    クリックで作らず`seedStoredState`でlocalStorageへ与える。
 2. **レイアウトの溢れは座標・幅を実測して押さえる。** role・名前で見つかることを「押せる」ことの確かめにしない。

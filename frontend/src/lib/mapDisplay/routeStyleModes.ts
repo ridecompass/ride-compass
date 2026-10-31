@@ -82,8 +82,7 @@ const DIFFICULTY_MODE: RouteStyleMode = buildRangeSteppedMode({
   paint: DIFFICULTY_PAINT,
 });
 
-/** 総合難易度のモードの名前。`LensControl`のピル（評価軸を選んでいないルートの後）はここから引く
- * （同じ語彙をUI側でも直書きすると、モード名を変えたときに片方だけ古いまま残る）。 */
+/** 総合難易度のモードの名前。 */
 export const DIFFICULTY_LENS_LABEL = DIFFICULTY_MODE.label;
 
 /** ルートの線の色分けのモード: 公開軸すべて（重みが0の軸も選べる）＋総合難易度（評価軸を選んでいないとき）。 */

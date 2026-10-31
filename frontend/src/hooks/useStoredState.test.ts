@@ -128,7 +128,6 @@ describe("useStoredJsonState", () => {
     expect(second.result.current[0]).toEqual({ size: 3 });
   });
 
-  // 変換が投げる保存値を既定値へ倒すのはこのフックで、保存した一覧の読み方（`lib/storedList.ts`）はそれに任せている。
   it("JSONとして読めない保存値は、既定値として扱う", () => {
     window.localStorage.setItem(KEY, "{");
     const { result } = renderHook(() => useStoredJsonState(KEY, { size: 1 }));

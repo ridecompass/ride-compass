@@ -1,8 +1,4 @@
-/** 走行条件（出発時刻・想定速度）の整形と丸め。
- *
- * **画面部品ではなくここに置く**——値の整形・丸めは「描くもの」の持ち物ではない。
- * 部品に置くと、確かめる側が部品へ口を開けることになる。
- */
+/** 走行条件（出発時刻）の整形と丸め。 */
 import { MINUTE_MS } from "@/lib/duration";
 import { formatJstMinute, isSameJstDay, jstParts } from "@/lib/time";
 
@@ -15,7 +11,7 @@ export function floorToDepartureStep(ms: number): number {
 }
 
 /** 出発時刻の表示ラベルを、日付と時刻に分けたもの。`now`と同じ日（日本時間）は`["9:30"]`、別日は`["9/6", "9:30"]`。
- * 時は0埋めしない（`lib/time.ts: formatJstHourMinute`は0埋めする）——札は地図右上のアイコン列の幅に収める。 */
+ * 時は0埋めしない——札は地図右上のアイコン列の幅に収める。 */
 export function departureLabelParts(time: Date, now: Date): string[] {
   const { month, day, hour } = jstParts(time);
   const hm = `${hour}:${formatJstMinute(time)}`;

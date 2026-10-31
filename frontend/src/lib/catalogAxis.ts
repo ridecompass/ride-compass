@@ -21,7 +21,7 @@ export interface CatalogAxis {
   axisId: string;
   label: string;
   description: string;
-  /** 軸のアイコン（`components/ui/icons/axisIconPalette.tsx: axisIconFor`が引く）。未設定は汎用のアイコン。 */
+  /** 軸のアイコンのid。未設定は汎用のアイコン。 */
   iconId?: string;
   mapValueKind: MapValueKind;
   mapValueUnit: string;
