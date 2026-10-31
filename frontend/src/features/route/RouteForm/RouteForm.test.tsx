@@ -49,16 +49,13 @@ describe("RouteForm 候補数", () => {
     expect(setMaxRoutesInput.mock.calls).toEqual([["9"], ["7"]]);
   });
 
-  it("1件では減らせない", () => {
-    renderForm({ maxRoutesInput: "1" });
+  it.each([
+    ["1", "候補数を減らす"],
+    [String(routeGenerateConfig.max_routes), "候補数を増やす"],
+  ])("%s件では「%s」を押せない", (maxRoutesInput, name) => {
+    renderForm({ maxRoutesInput });
 
-    expect(screen.getByRole("button", { name: "候補数を減らす" })).toBeDisabled();
-  });
-
-  it("上限では増やせない", () => {
-    renderForm({ maxRoutesInput: String(routeGenerateConfig.max_routes) });
-
-    expect(screen.getByRole("button", { name: "候補数を増やす" })).toBeDisabled();
+    expect(screen.getByRole("button", { name })).toBeDisabled();
   });
 });
 

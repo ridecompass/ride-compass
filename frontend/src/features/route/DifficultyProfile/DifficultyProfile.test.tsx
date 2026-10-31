@@ -12,9 +12,11 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
+import { useProfileScale } from "@/features/route/ProfileChart/profileScale";
 import { makeRouteSegment } from "@/testing/routeFixtures";
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import palette from "@/types/generated/palette.json";
+import type { RouteSegmentDetail } from "@/types/route";
 import DifficultyProfile from "./DifficultyProfile";
 
 // 1kmずつの2区間。後ろは値の無い区間。
@@ -37,7 +39,15 @@ const MISSING = makeRouteSegment({
 });
 const COLORS = { axis_a: "rgb(10, 20, 30)", axis_b: "rgb(40, 50, 60)" };
 
-type Props = React.ComponentProps<typeof DifficultyProfile>;
+type Props = Omit<React.ComponentProps<typeof DifficultyProfile>, "scale"> & {
+  segments: readonly RouteSegmentDetail[];
+  scaleKm: number;
+};
+
+/** 横軸を道のりのグラフと同じく`useProfileScale`で組んで描く。 */
+function Profile({ segments, scaleKm, ...props }: Props) {
+  return <DifficultyProfile scale={useProfileScale(segments, scaleKm)} {...props} />;
+}
 
 function profileProps(props: Partial<Props> = {}): Props {
   return {
@@ -48,13 +58,15 @@ function profileProps(props: Partial<Props> = {}): Props {
     scaleKm: 2,
     selected: null,
     onSelect: vi.fn(),
+    progressKm: null,
     waypointKms: [],
+    riding: false,
     ...props,
   };
 }
 
 function renderProfile(props: Partial<Props> = {}) {
-  return render(<DifficultyProfile {...profileProps(props)} />);
+  return render(<Profile {...profileProps(props)} />);
 }
 
 /** 塗りの`path`を、塗りの色ごとに`d`で。 */
@@ -132,10 +144,10 @@ describe("DifficultyProfile", () => {
       mark: { left: "12.5%", top: "40%" },
     });
 
-    rerender(<DifficultyProfile {...profileProps({ scaleKm: 4, progressKm: 3 })} />);
+    rerender(<Profile {...profileProps({ scaleKm: 4, progressKm: 3 })} />);
     expect(progress()).toMatchObject({ travelledWidth: "500", mark: { left: "50%", top: "70%" } });
 
-    rerender(<DifficultyProfile {...profileProps({ scaleKm: 4, progressKm: null })} />);
+    rerender(<Profile {...profileProps({ scaleKm: 4, progressKm: null })} />);
     expect(progress()).toMatchObject({ travelledWidth: null, aheadPaths: 0, mark: null });
     expect(container.querySelectorAll("path")).toHaveLength(drawnPaths);
   });

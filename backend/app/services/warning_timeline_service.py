@@ -23,13 +23,13 @@ from app.infrastructure.jma_warning_client import fetch_area_data
 from app.infrastructure.jma_warning_timeline_client import fetch_warning_timeline
 
 #: 1回に受けるルートの点の数の上限。点の間を詰めすぎた要求で区域の引き当てを重くしない。
-ROUTE_TIMELINE_MAX_POINTS = 10_000
+_ROUTE_TIMELINE_MAX_POINTS = 10_000
 
 
 class RouteTimelineRequest(StrictModel):
     """ルートを通る順に並べた点。"""
 
-    points: list[Coordinates] = Field(min_length=1, max_length=ROUTE_TIMELINE_MAX_POINTS)
+    points: list[Coordinates] = Field(min_length=1, max_length=_ROUTE_TIMELINE_MAX_POINTS)
 
 
 class TimelineSlotLevel(StrictModel):

@@ -138,7 +138,7 @@ class RouteSegmentDetail(StrictModel):
     # 全軸を合計するとdifficulty（丸め前）と一致するため、フロントは内訳を独自に
     # 再計算せずこれを表示する。
     axis_contributions: dict[str, float] = Field(default_factory=dict)
-    # 重み>0の公開軸が参照する材料id→値。評価に使っていない軸の材料は出ない。
+    # 材料id→値。載せる材料は`domain/evaluation.py: displayed_material_ids`が選ぶ。
     material_values: dict[str, float] = Field(default_factory=dict)
     difficulty: float | None = None
     # 分け方（地図の道の線の層のid）と「緑と水」の層のid→区間の始まりから並べた、区分が同じまま続く部分。部分の距離の和は区間の距離と丸めの分だけずれうる。
@@ -267,46 +267,43 @@ def along_route_km(distances_km: Iterable[float]) -> list[float]:
 SEGMENT_BIN_DISTANCE_KM = 0.5
 
 
-def route_bins(difficulties: Sequence[SegmentDifficulty]) -> list[SegmentDifficulty]:
-    """区間の難しさの並びを、累積距離`SEGMENT_BIN_DISTANCE_KM`ごとのビンの難しさへ畳む（`merge_difficulty_values`）。
-    区間の値は同じ切り方で`aggregate_segments_into_bins`が畳む。最後のビンは`SEGMENT_BIN_DISTANCE_KM`未満でも単独で残す
-    （切り捨てると経路全体の距離が合わなくなる）。"""
-    return [merge_difficulty_values(chunk) for chunk in _split_into_bins(difficulties, lambda d: d.distance_km)]
+def route_bin_slices(distances_km: Sequence[float]) -> list[slice]:
+    """連続する区間（距離km）を、累積距離が`SEGMENT_BIN_DISTANCE_KM`に達するごとに切ったビンの添字の範囲。最後のビンは
+    `SEGMENT_BIN_DISTANCE_KM`未満でも単独で残す（切り捨てると経路全体の距離が合わなくなる）。区間の難しさ（`route_bins`）・
+    区間の値（`aggregate_segments_into_bins`）・軸の生値（`route_axis_raw_values`）は、どれもこの範囲で畳む。"""
+    slices: list[slice] = []
+    start = 0
+    current_bin_distance = 0.0
+    for index, distance_km in enumerate(distances_km):
+        current_bin_distance += distance_km
+        if current_bin_distance >= SEGMENT_BIN_DISTANCE_KM:
+            slices.append(slice(start, index + 1))
+            start = index + 1
+            current_bin_distance = 0.0
+    if start < len(distances_km):
+        slices.append(slice(start, len(distances_km)))
+    return slices
+
+
+def route_bins(difficulties: Sequence[SegmentDifficulty], slices: Sequence[slice]) -> list[SegmentDifficulty]:
+    """区間の難しさの並びを、ビン（`route_bin_slices`）ごとの難しさへ畳む（`merge_difficulty_values`）。"""
+    return [merge_difficulty_values(difficulties[chunk]) for chunk in slices]
 
 
 def aggregate_segments_into_bins(
-    segments: list[RouteSegmentDetail], bins: Sequence[SegmentDifficulty]
+    segments: list[RouteSegmentDetail], bins: Sequence[SegmentDifficulty], slices: Sequence[slice]
 ) -> list[RouteSegmentDetail]:
-    """連続するEdge単位の`RouteSegmentDetail`を、`route_bins`と同じ切り方でビンへ分け、1ビン1件の`RouteSegmentDetail`へ集約する。
+    """連続するEdge単位の`RouteSegmentDetail`を、ビン（`route_bin_slices`）ごとに1件の`RouteSegmentDetail`へ集約する。
     ビンの難しさは`bins`（同じ区間の難しさから`route_bins`が畳んだもの）をそのまま載せる。
 
     値の性質ごとに畳み方が違う: 材料値は距離加重平均（値がNoneの区間は除外し、残りの距離で再正規化）、
     位置はビンの始点・終点、距離は合計、geometryは隣接区間の境界点を重複させずに連結する。
     """
-    chunks = _split_into_bins(segments, lambda s: s.distance_km)
-    return [_merge_segment_bin(chunk, difficulty) for chunk, difficulty in zip(chunks, bins, strict=True)]
+    return [_merge_segment_bin(segments[chunk], difficulty) for chunk, difficulty in zip(slices, bins, strict=True)]
 
 
-_T = TypeVar("_T")
 # 距離（`distance_km`）を持つ区間・ビン（`SegmentDifficulty`・`RouteSegmentDetail`）。
 _Distanced = TypeVar("_Distanced", SegmentDifficulty, RouteSegmentDetail)
-
-
-def _split_into_bins(items: Sequence[_T], distance_km: Callable[[_T], float]) -> list[list[_T]]:
-    """連続する`items`を、累積距離が`SEGMENT_BIN_DISTANCE_KM`に達するごとに切る。最後の端数も1つのビンにする。"""
-    bins: list[list[_T]] = []
-    current_bin: list[_T] = []
-    current_bin_distance = 0.0
-    for item in items:
-        current_bin.append(item)
-        current_bin_distance += distance_km(item)
-        if current_bin_distance >= SEGMENT_BIN_DISTANCE_KM:
-            bins.append(current_bin)
-            current_bin = []
-            current_bin_distance = 0.0
-    if current_bin:
-        bins.append(current_bin)
-    return bins
 
 
 def _append_continuing(coordinates: list[list[float]], points: list[list[float]]) -> None:
@@ -446,18 +443,16 @@ def route_difficulty(bins: Sequence[SegmentDifficulty]) -> float | None:
     return merge_difficulty_values(bins).difficulty
 
 
-def route_axis_raw_values(edges: list[tuple[float, Mapping[str, float]]]) -> dict[str, float]:
+def route_axis_raw_values(edges: list[tuple[float, Mapping[str, float]]], slices: Sequence[slice]) -> dict[str, float]:
     """Edge単位の（距離km, axis_id→生値）を、候補全体の`RouteCandidate.axis_raw_values`へ畳む。
 
-    区間（`aggregate_segments_into_bins`）と同じ切り方でビンへ畳んでから、ビンを距離加重平均する——
+    区間と同じビン（`route_bin_slices`）へ畳んでから、ビンを距離加重平均する——
     ほかの候補単位の値（`axis_difficulties`等）がビンへ畳んだ区間から作られるのと、平均の取り方を揃える。
-    距離はビンの区間の`distance_km`と同じ丸めた値を渡すこと。
     """
-    bins = _split_into_bins(edges, lambda edge: edge[0])
     return _merge_weighted_dicts(
         [
-            (_summed_km(distance for distance, _ in bin_edges), _merge_weighted_dicts(bin_edges, _round_significant))
-            for bin_edges in bins
+            (_summed_km(distance for distance, _ in edges[chunk]), _merge_weighted_dicts(edges[chunk], _round_significant))
+            for chunk in slices
         ],
         _round_significant,
     )

@@ -24,6 +24,7 @@
     "missing": "値の無い区間は、平均の難易度の区間として数えます。"
   },
   "missing_travel_data_wording": "坂の無い平地で、止まる所も無い道として所要時間を出しています",
+  "missing_wind_wording": "風のモデルの計算値を使えなかったため、無風として所要時間を出しています",
   "client_tuning": {
     "landcover.ring_outer_m": 100.0,
     "speed.cda_m2": 0.32,

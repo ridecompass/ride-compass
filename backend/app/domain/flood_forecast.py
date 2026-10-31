@@ -1,7 +1,4 @@
-"""JMA指定河川洪水予報の判断——出発地点にかかる発表中の予報を取り出し、段に河川名を付けて呼ぶ。
-
-電文のコード（`item.code`）→段の読み替えは取りに行く層（`flood_client.py`）が持ち、ここへは読み替えた段で届く。
-"""
+"""JMA指定河川洪水予報の判断——出発地点にかかる発表中の予報を取り出し、段に河川名を付けて呼ぶ。"""
 
 from __future__ import annotations
 
@@ -10,7 +7,7 @@ from dataclasses import dataclass
 from app.domain.warning_levels import WarningBadgeLevel
 from app.domain.strict_model import StrictModel
 
-#: 段階ごとの表示名（河川名の後ろに付ける語。警戒度バッジもこの語を出す。domain/warning_display.py）。
+#: 段階ごとの表示名（河川名の後ろに付ける語。警戒度バッジもこの語を出す）。
 #: バッジの段の語彙はJMA警報と共有するが、軸は別。
 FLOOD_LEVEL_LABELS: dict[WarningBadgeLevel, str] = {
     "advisory": "氾濫注意報",
@@ -46,8 +43,7 @@ def extract_active_flood_forecast(
 ) -> ActiveFloodForecast | None:
     """電文1件から、出発地点に該当し現在アクティブな氾濫予報を取り出す。
 
-    地点の該当判定は出発地点のclass20（優先）またはclass10が電文の対象の区域に含まれるかで行う
-    （行政区画の親子関係を辿る`jma_area.resolve_area`で解決済みの値を渡す想定）。
+    地点の該当判定は出発地点のclass20（優先）またはclass10が電文の対象の区域に含まれるかで行う。
     """
     if bulletin.level is None:
         return None
