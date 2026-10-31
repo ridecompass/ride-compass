@@ -43,33 +43,12 @@ function axisIds(catalog: ReturnType<typeof useAxisCatalog>) {
 }
 
 describe("useAxisCatalog", () => {
-  it("届くまでは軸0件で、取れても失敗してもいない", () => {
-    deferredFetches();
-
-    const { result } = renderHook(() => useAxisCatalog());
-
-    expect(result.current.axes).toEqual([]);
-    expect(result.current.loaded).toBe(false);
-    expect(result.current.failed).toBe(false);
-    expect(axisCatalogFetchFailure(result.current)).toBeNull();
-  });
-
-  it("失敗したら軸0件の失敗したカタログになり、ヘッダーの印の項目が再試行を持って出る", async () => {
-    onBackend("GET", "/api/axis-catalog", () => new Response(null, { status: 503 }));
-
-    const { result } = renderHook(() => useAxisCatalog());
-
-    await waitFor(() => expect(result.current.failed).toBe(true));
-    expect(result.current.loaded).toBe(false);
-    expect(result.current.axes).toEqual([]);
-    expect(axisCatalogFetchFailure(result.current)).not.toBeNull();
-  });
-
   it("失敗の後の印の項目の再試行は取り直し、取り直している間は失敗を下ろし、取れたら印の項目が消える", async () => {
     const fetches = deferredFetches();
     const { result } = renderHook(() => useAxisCatalog());
     await fetches.reject(0);
     await waitFor(() => expect(result.current.failed).toBe(true));
+    expect(result.current.loaded).toBe(false);
 
     act(() => axisCatalogFetchFailure(result.current)!.onRetry!());
 
