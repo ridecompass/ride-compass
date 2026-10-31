@@ -16,34 +16,19 @@ from app.domain import traffic
 pytestmark = pytest.mark.asyncio(loop_scope="module")
 
 
-async def _directions(engine, tags_by_id: dict[int, dict[str, str]]) -> dict[int, str]:
-    rows = ", ".join(f"(CAST(:id{i} AS bigint), CAST(:tags{i} AS jsonb))" for i in range(len(tags_by_id)))
-    params = {}
-    for i, (way_id, tags) in enumerate(tags_by_id.items()):
-        params |= {f"id{i}": way_id, f"tags{i}": json.dumps(tags)}
-    source = f"SELECT * FROM (VALUES {rows}) AS t(id, tags)"
-    async with engine.connect() as conn:
-        result = (await conn.execute(text(traffic.direction_sql(source)), params)).all()
-    directions = {row.id: row.direction for row in result}
-    assert len(directions) == len(result), "1本の道に向きが2つ付いた"
-    return directions
-
-
 async def _direction(engine, tags: dict[str, str]) -> str:
-    return (await _directions(engine, {1: tags}))[1]
-
-
-async def test_every_way_gets_a_direction_and_untagged_ways_are_two_way(road_graph_engine):
-    """道は必ずどちらかに通れる。当たる規則が無い道も、結果から落ちずに両方向になる。"""
-    assert await _directions(road_graph_engine, {
-        1: {},
-        2: {"oneway": "yes"},
-    }) == {1: "both", 2: "forward"}
+    source = "SELECT * FROM (VALUES (CAST(1 AS bigint), CAST(:tags AS jsonb))) AS t(id, tags)"
+    async with engine.connect() as conn:
+        result = (await conn.execute(text(traffic.direction_sql(source)), {"tags": json.dumps(tags)})).all()
+    assert len(result) == 1, "道が結果から落ちたか、1本の道に向きが2つ付いた"
+    return result[0].direction
 
 
 @pytest.mark.parametrize(
     ("tags", "expected"),
     [
+        # 当たる規則が無い道も、結果から落ちずに両方向になる。
+        ({}, "both"),
         ({"oneway": " TRUE "}, "forward"),
         ({"oneway": "-1"}, "backward"),
         # 時間帯で向きが変わる等、向きを言い切れない値は一方通行にしない。
