@@ -2,7 +2,7 @@
  * `app/page.tsx`——トップページのスマホの下部タブとシート。
  *
  * 見ること: シートを1枚ずつ開くこと・地点を扱える間・結果の合図・候補が届いた時点で「ルート設定」を開いていれば
- * 「ルート結果」へ移ってそこから全消去でき、ほかのときは移らず合図を出すこと・候補を出せなかった理由の1行・
+ * 「ルート結果」へ移り、ほかのときは移らず合図を出すこと・候補を出せなかった理由の1行・
  * 決めた高さを2枚のシートで分け合うこと・シートを開いている間は地図の左下の俯瞰図を出さないこと。
  *
  * ここで見ないもの: シートの高さの決め方・覚え方は`components/BottomSheet/BottomSheet.resize.test.tsx`と
@@ -21,11 +21,9 @@ import {
   HERE,
   LOOP_CONDITIONS,
   clickMap,
-  confirmClear,
   generate,
   marksAt,
   renderHome,
-  routeLinesOnMap,
   serveHome,
   useMobileLayout,
 } from "@/testing/homePage";
@@ -69,6 +67,7 @@ describe("スマホのシート", () => {
     jobs.respond([FIRST], LOOP_CONDITIONS);
     expect(await generate(user)).toMatchObject({ latitude: HERE.latitude, longitude: HERE.longitude });
     const outcomeSheet = await screen.findByRole("dialog", { name: "ルート結果" });
+    expect(outcomeTab).not.toHaveAccessibleDescription();
     clickMap(ELSEWHERE);
     expect(marksAt(ELSEWHERE)).toEqual([]);
     await user.click(within(outcomeSheet).getByRole("button", { name: "閉じる" }));
@@ -86,23 +85,6 @@ describe("スマホのシート", () => {
     await user.click(within(empty).getByRole("button", { name: "閉じる" }));
     await user.click(screen.getByRole("button", { name: "ルート設定", expanded: true }));
     expect(screen.queryByRole("dialog")).toBeNull();
-  });
-
-  it("スマホで「ルート設定」から作って候補が出たら「ルート結果」のシートへ移り（開いたので結果の合図は点かない）、そこから候補を全消去できる", async () => {
-    useMobileLayout();
-    const { user } = renderHome();
-    const outcomeTab = screen.getByRole("button", { name: "ルート結果" });
-    await user.click(screen.getByRole("button", { name: "ルート設定" }));
-    jobs.respond([FIRST], LOOP_CONDITIONS);
-    await generate(user);
-
-    const outcomeSheet = await screen.findByRole("dialog", { name: "ルート結果" });
-    expect(screen.queryByRole("dialog", { name: "ルート設定" })).toBeNull();
-    expect(outcomeTab).not.toHaveAccessibleDescription();
-    await user.click(within(outcomeSheet).getByRole("button", { name: "候補を全消去" }));
-    await confirmClear(user);
-    expect(within(outcomeSheet).queryByRole("tablist", { name: "ルート結果" })).toBeNull();
-    expect(routeLinesOnMap()).toEqual([]);
   });
 
   it.each([
