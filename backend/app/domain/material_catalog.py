@@ -368,6 +368,27 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
                 missing_semantics="unknown",
             ),
     ),
+    # 勾配の材料と分けて持つ理由と、逆向きの区間で下りの量になることは docs/modules/backend/elevation.md「向きと標高」。
+    "elevation_gain_m_per_km": MaterialSpec(
+        material_id="elevation_gain_m_per_km",
+        label="登りの量",
+        description=(
+            "国土地理院の標高データから求めた、進行方向に1kmあたり登る高さ（m）。道の中の細かい上り下りの登りを"
+            "すべて積み、下りは数えません。橋・トンネルは両端の標高だけで数えます。"
+        ),
+        dtype="numeric",
+        unit="m/km",
+        additive=True,
+        total_unit="m",
+        tile_property=None,
+        primary_attribute=ATTR_ELEVATION,
+        value_sql=per_km_value_sql("em.elevation_gain_m"),
+        coverage=EdgeMaterialCoverageSpec(
+            present_condition="em.elevation_gain_m IS NOT NULL",
+            source="区間の標高の表（edge_elevation）に行があるか",
+            missing_semantics="unknown",
+        ),
+    ),
     WIND_DRAG_RATIO: MaterialSpec(
         material_id=WIND_DRAG_RATIO,
         label="風の追加負荷(倍率)",
