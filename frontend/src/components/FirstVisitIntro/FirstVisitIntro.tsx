@@ -1,19 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { Button } from "@/components/ui/Button/Button";
 import { GuideText } from "@/components/ui/GuideText/GuideText";
 import { cardVariants } from "@/components/ui/Card/Card";
 import { textVariants } from "@/components/ui/Text/Text";
 import { MenuIcon } from "@/components/ui/icons/lucideIcons";
-import { ORIGIN_MARK_FALLBACK_COLOR, PIN_MARK_BACKGROUND, PinMark } from "@/components/PinMark/PinMark";
+import { originMarkColor, PIN_MARK_BACKGROUND, PinMark } from "@/components/PinMark/PinMark";
 import { useStoredBooleanState } from "@/hooks/useStoredState";
 import { useIsomorphicLayoutEffect } from "@/hooks/useIsomorphicLayoutEffect";
 import { cn } from "@/lib/cn";
 
 const FIRST_VISIT_INTRO_STORAGE_KEY = "ridecompass:first-visit-intro-closed";
-
-const TITLE_ID = "first-visit-intro-title";
 
 interface FirstVisitIntroProps {
   /** 最初の一手の場所を、スマホ（下部タブ）とPC（左のパネル）で言い分ける。 */
@@ -30,20 +28,21 @@ interface FirstVisitIntroProps {
 export default function FirstVisitIntro({ isMobile, locationUnknown }: FirstVisitIntroProps) {
   const [closed, setClosed] = useStoredBooleanState(FIRST_VISIT_INTRO_STORAGE_KEY, false);
   const [mounted, setMounted] = useState(false);
+  const titleId = useId();
   useIsomorphicLayoutEffect(() => setMounted(true), []);
 
   if (!mounted || closed) return null;
 
   return (
     <section
-      aria-labelledby={TITLE_ID}
+      aria-labelledby={titleId}
       className={cn(
         cardVariants({ variant: "float" }),
         "absolute top-16 left-1/2 z-[var(--z-map-detail)] flex w-[min(24rem,calc(100%-2*var(--space-3)))] -translate-x-1/2 flex-col gap-2 p-3",
       )}
     >
       <div className="flex items-start justify-between gap-2">
-        <h2 id={TITLE_ID} className={cn(textVariants({ variant: "heading" }), "m-0")}>
+        <h2 id={titleId} className={cn(textVariants({ variant: "heading" }), "m-0")}>
           RideCompass
         </h2>
         <Button
@@ -66,7 +65,7 @@ export default function FirstVisitIntro({ isMobile, locationUnknown }: FirstVisi
             className="inline-flex shrink-0 rounded-full p-0.5 shadow-sm"
             style={{ background: PIN_MARK_BACKGROUND }}
           >
-            <PinMark role="origin" size={14} originColor={locationUnknown ? ORIGIN_MARK_FALLBACK_COLOR : undefined} />
+            <PinMark role="origin" size={14} originColor={originMarkColor(!locationUnknown)} />
           </span>
           <span>
             <GuideText

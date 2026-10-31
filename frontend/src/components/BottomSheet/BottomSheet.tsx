@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useId, useLayoutEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button/Button";
 import { textVariants } from "@/components/ui/Text/Text";
 import { useStoredState } from "@/hooks/useStoredState";
@@ -104,10 +104,6 @@ function OpenBottomSheet({
   const sheetRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
-  const onCloseRef = useRef(onClose);
-  useEffect(() => {
-    onCloseRef.current = onClose;
-  });
 
   // 開いたときの中身に合う高さ（印があればその下端まで）へ合わせる（高すぎると空白で地図を隠す）。開いている間は合わせ直さない（候補や区間を
   // 押すたびに地図の見える範囲が動かないように）。実寸が取れない環境では何もしない。
@@ -134,13 +130,14 @@ function OpenBottomSheet({
     startWorkingHeightVh: number | null;
   } | null>(null);
 
+  const handleKeyDown = useEffectEvent((e: KeyboardEvent) => {
+    // シートの中から開いた窓（Radix）は、捕捉の段で受けたEscで自分を閉じて既定の動きを止める。そのEscでシートまで閉じない。
+    if (e.key === "Escape" && !e.defaultPrevented) onClose();
+  });
   useEffect(() => {
-    function handleKeyDown(e: KeyboardEvent) {
-      // シートの中から開いた窓（Radix）は、捕捉の段で受けたEscで自分を閉じて既定の動きを止める。そのEscでシートまで閉じない。
-      if (e.key === "Escape" && !e.defaultPrevented) onCloseRef.current();
-    }
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
+    const listener = (e: KeyboardEvent) => handleKeyDown(e);
+    document.addEventListener("keydown", listener);
+    return () => document.removeEventListener("keydown", listener);
   }, []);
 
   function handleTouchStart(e: React.TouchEvent) {

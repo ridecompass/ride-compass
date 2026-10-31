@@ -37,8 +37,6 @@ export const AXIS_ICON_PALETTE: Record<string, MapIconComponent> = {
   layers: LayersStackIcon,
 };
 
-/** icon_idからアイコンコンポーネントを引く。未知/未設定はAxisRampIcon（汎用フォールバック）。 */
 export function axisIconFor(iconId: string | null | undefined): MapIconComponent {
-  if (iconId == null) return AxisRampIcon;
-  return AXIS_ICON_PALETTE[iconId] ?? AxisRampIcon;
+  return AXIS_ICON_PALETTE[iconId ?? ""] ?? AxisRampIcon;
 }

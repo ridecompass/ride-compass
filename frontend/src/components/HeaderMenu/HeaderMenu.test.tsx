@@ -74,16 +74,10 @@ describe("HeaderMenu", () => {
     it.each([
       [false, "デバッグログを表示"],
       [true, "デバッグログを隠す"],
-    ])("開いている（%s）かを、名前で出す", async (open, name) => {
-      await openMenu({ debugEnabled: true, debugConsoleOpen: open });
+    ])("開いている（%s）かを名前で出し、押すと開閉の操作が上がる", async (open, name) => {
+      const { onToggleDebugConsole } = await openMenu({ debugEnabled: true, debugConsoleOpen: open });
 
-      expect(screen.getByRole("button", { name })).toBeInTheDocument();
-    });
-
-    it("押すと、開閉の操作が上がる", async () => {
-      const { onToggleDebugConsole } = await openMenu({ debugEnabled: true });
-
-      await userEvent.click(screen.getByRole("button", { name: "デバッグログを表示" }));
+      await userEvent.click(screen.getByRole("button", { name }));
 
       expect(onToggleDebugConsole).toHaveBeenCalledTimes(1);
     });
