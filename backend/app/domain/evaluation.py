@@ -32,7 +32,6 @@ from app.domain.attributes import (
     MaterialColumn,
 )
 from app.domain.axis_definitions import (
-    AXIS_DEFINITIONS,
     REQUEST_DYNAMIC_MATERIAL_IDS,
     AxisDefinition,
     BreakpointLinearShape,
@@ -135,8 +134,9 @@ def _route_facing_leaf_material_ids(definitions: dict[str, AxisDefinition], *, c
     return list(seen)
 
 
-def displayed_material_ids(weights: Mapping[str, float]) -> set[str]:
-    """区間表示へ載せるべき材料id。軸名のハードコードは持たない。
+def displayed_material_ids(weights: Mapping[str, float], definitions: Mapping[str, AxisDefinition]) -> set[str]:
+    """区間表示へ載せるべき材料id。軸名のハードコードは持たない。`definitions`は表の列を決めた軸の集合
+    （`StaticEdgeScoreMatrix.definitions`）で、生成の途中で軸の保存が入れ替わっても、表の列と載せる材料が1つの集合に揃う。
 
     重み>0の公開軸が参照する材料に加え、符号付き材料を塗る公開軸の材料は**重みに関わらず**
     いつも含める。符号付き材料は難易度0-100へ変換すると符号（登り/下り）が失われるため、
@@ -151,15 +151,15 @@ def displayed_material_ids(weights: Mapping[str, float]) -> set[str]:
     for axis_id, weight in weights.items():
         if weight <= 0:
             continue
-        definition = AXIS_DEFINITIONS.get(axis_id)
+        definition = definitions.get(axis_id)
         if definition is None:
             continue
         material_ids.update(m for m in definition.materials if is_known_material(m))
         # 軸参照を辿った先の材料（合成軸の内訳、`axis_material_shares`）。
         # `definition.materials`は1段しか見ないため、これが無いと車の圧迫感のように
         # 内部軸を経由する軸の内訳が1件も運ばれない。
-        material_ids.update(entry.material_id for entry in axis_material_shares(definition, AXIS_DEFINITIONS))
-    for definition in published_axis_definitions(AXIS_DEFINITIONS):
+        material_ids.update(entry.material_id for entry in axis_material_shares(definition, definitions))
+    for definition in published_axis_definitions(definitions):
         value = map_paint(definition).value
         if isinstance(value, SignedMaterialMapValue) and is_known_material(value.material):
             material_ids.add(value.material)
@@ -453,10 +453,6 @@ class StaticEdgeScoreMatrix:
         }
         if wrong_rows:
             raise ValueError(f"静的スコア行列の行数が区間数と違います 区間={rows} {wrong_rows}")
-
-    def material_column(self, material_id: str) -> np.ndarray:
-        """数値の材料の列。"""
-        return self.material_values[self.material_ids.index(material_id)]
 
     def axis_arrays(self) -> dict[str, np.ndarray]:
         """軸id→スコア配列。合成（`compose_costs_from_axis_matrix`）と動的軸の上書き
