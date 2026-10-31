@@ -332,30 +332,23 @@ def test_without_an_hourly_forecast_every_leg_shares_one_composition():
 
 
 @pytest.mark.parametrize(
-    ("duration_hours", "bin_starts"),
+    ("offset", "direction", "duration_hours", "bin_starts"),
     [
-        (None, (1.0,)),  # 見込み時間が無ければ、レグ全体を開始時刻で1本
-        (0.0, (1.0,)),
-        (2.5, (1.0, 2.0, 3.0)),
-        (10.0, tuple(1.0 + k for k in range(leg_costs.MAX_TIME_BINS))),  # 上限で打ち切る
+        (1.0, +1, None, (1.0,)),  # 見込み時間が無ければ、レグ全体を開始時刻で1本
+        (1.0, +1, 0.0, (1.0,)),
+        (1.0, +1, 2.5, (1.0, 2.0, 3.0)),
+        (1.0, +1, 10.0, tuple(1.0 + k for k in range(leg_costs.MAX_TIME_BINS))),  # 上限で打ち切る
+        (5.0, -1, 2.0, (3.0, 4.0)),  # 起点へ向かうレグは、その時刻で終わる
     ],
 )
-def test_a_leg_is_cut_into_hourly_bins_over_its_expected_duration(duration_hours, bin_starts):
+def test_a_leg_is_cut_into_hourly_bins_over_its_expected_duration(offset, direction, duration_hours, bin_starts):
     composer = _composer(_matrix(1), series=_series([0.0] * 12))
 
-    leg = composer.compose("leg", 1.0, +1, duration_hours=duration_hours)
+    leg = composer.compose("leg", offset, direction, duration_hours=duration_hours)
 
     assert leg.bin_times == tuple(composer.bin_time(start) for start in bin_starts)
     assert len(leg.cost_bins_lazy) == len(leg.travel_bins_lazy) == len(bin_starts)
     assert leg.bin_seconds == (np.inf if len(bin_starts) == 1 else leg_costs.TIME_BIN_HOURS * 3600.0)
-
-
-def test_a_leg_toward_the_anchor_ends_at_its_offset():
-    composer = _composer(_matrix(1), series=_series([0.0] * 12))
-
-    leg = composer.compose("leg", 5.0, -1, duration_hours=2.0)
-
-    assert leg.bin_times == (composer.bin_time(3.0), composer.bin_time(4.0))
 
 
 def test_legs_with_the_same_bins_but_a_different_middle_are_not_mixed_up():
@@ -461,16 +454,9 @@ def _night_composer(n: int = 1) -> LegCostComposer:
     )
 
 
-def test_the_night_axis_weighs_only_in_the_bins_ridden_in_the_dark(night_axis):
-    """16時30分・17時30分・18時30分に始まるビンのうち、日没の後の最後だけに効く。"""
-    leg = _night_composer().compose("leg", 7.5, +1, duration_hours=3.0)
-
-    ratio = leg.cost_bins_lazy[:, 0] / leg.travel_bins_lazy[:, 0]
-    assert ratio.tolist() == pytest.approx([1.0, 1.0, 1.25])
-
-
 def test_the_night_axis_keeps_weighing_by_the_hour_after_the_axes_are_saved_during_composition(night_axis):
-    """合成の途中で軸の保存が軸の集合を差し替えても、作った時点の軸の集合で昼夜を決める（合成は別スレッドでも走る）。"""
+    """16時30分・17時30分・18時30分に始まるビンのうち、日没の後の最後だけに効く。合成の途中で軸の保存が軸の集合を
+    差し替えても、作った時点の軸の集合で昼夜を決める（合成は別スレッドでも走る）。"""
     composer = _night_composer()
 
     with replaced_axis_definitions({}):
