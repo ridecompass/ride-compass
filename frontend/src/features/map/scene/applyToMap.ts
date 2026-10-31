@@ -139,6 +139,7 @@ function routeStateFrom(props: SceneWiringProps): RouteState {
         difficulty: segment.difficulty,
         axis_difficulties: segment.axis_difficulties,
         material_values: segment.material_values,
+        sustained_gradient_percent: segment.sustained_gradient_percent,
       };
       const travelled = { ...properties, travelled: true };
       const km = props.travelledKm;

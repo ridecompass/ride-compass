@@ -13,6 +13,7 @@ import { describe, expect, it } from "vitest";
 import { LIBERTY_POI_LAYERS } from "@/testing/libertyPoiLayers";
 import { evaluateExpression, matchesFilter } from "@/testing/mapExpressions";
 import { createRecordingMap, type StyleLayer } from "@/testing/mapTrace/recordingMap";
+import { catalogEntry } from "@/testing/catalogAxes";
 import { rebuild, ROAD_LAYERS, roadLayerId, shown } from "@/testing/sceneContract";
 import { AREA_SOURCE_ID } from "@/features/map/scene/groups/areaRasters";
 import { POINT_TILE_SOURCES, pointAxisKey } from "@/features/map/scene/groups/points";
@@ -22,7 +23,9 @@ import { applyScene, sceneInputsFrom } from "@/features/map/scene/applyToMap";
 import { sceneState } from "@/testing/sceneState";
 import { buildMapScene } from "@/features/map/scene/buildScene";
 import { sceneLayerId } from "@/features/map/scene/sceneBuilders";
+import { routeStyleModesFromCatalogAxes } from "@/lib/mapDisplay/routeStyleModes";
 import { mapDisplay } from "@/types/generated/mapDisplay";
+import palette from "@/types/generated/palette.json";
 
 const areaLayerId = (role: keyof typeof AREA_SOURCE_ID) => sceneLayerId(AREA_SOURCE_ID[role], role);
 const pointLayerId = (role: string) =>
@@ -187,5 +190,43 @@ describe("状態を地図へ伝えた結果", () => {
         ]);
       }
     });
+
+    // 勾配は区間の平均だと登って下る区間が平坦の色になるので、backendが続く坂の斜度の欄を名指す。
+    it.each([
+      ["material_values", { material_values: { grade: -5 }, sustained_gradient_percent: 5 }],
+      ["sustained_gradient_percent", { material_values: { grade: 5 }, sustained_gradient_percent: -5 }],
+    ] as const)(
+      "生値を塗るレンズは、backendが名指す区間の欄（%s）の値でルート線を塗る（負の値は下りの色）",
+      (field, values) => {
+        const axis = catalogEntry({
+          axis_id: "slope",
+          map_paint: {
+            value: { kind: "signed_material", material: "grade", route_segment_field: field },
+            thresholds: [-2, 2],
+            legend: { boundaries: [-2, 2], unit: "%" },
+          },
+        });
+        const { map, handle } = createRecordingMap();
+        rebuild(
+          map,
+          sceneState({
+            look: { layerVisibility: { route: true }, lens: "slope" },
+            catalog: { routeStyleModes: routeStyleModesFromCatalogAxes([axis]) },
+            routes: [
+              { ...route, segments: [{ ...segment(139.7, 139.72), axis_difficulties: { slope: 99 }, ...values }] },
+            ] as never,
+            selectedRouteId: "a",
+          }),
+        );
+
+        const layer = handle.layer(handle.layerOrder().find((id) => id.endsWith("-detailLine"))!)!;
+        const { features } = handle.sourceContent(layer.source!)!.data as {
+          features: { properties: Record<string, unknown> }[];
+        };
+        expect(evaluateExpression(layer.paint["line-color"], features[0].properties)).toBe(
+          palette.semantic.signed_descent,
+        );
+      },
+    );
   });
 });
