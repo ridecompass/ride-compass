@@ -131,18 +131,14 @@ describe("RouteSettingsPanel 軸のチップ", () => {
     expect(chip("勾配を無効にする")).toHaveTextContent("29%");
   });
 
-  it("有効な軸を押すと重みを0にして上げ、上書きしていなければ上書きの状態にする", async () => {
+  it("有効な軸を押すと重みを0にして上げる", async () => {
     serveCatalog();
-    const { onRoutePreferenceChange, onOverrideEnabledChange } = renderPanel(
-      { width: 0.5, traffic: 0.3, slope: 0.2, light: 0 },
-      false,
-    );
+    const { onRoutePreferenceChange } = renderPanel({ width: 0.5, traffic: 0.3, slope: 0.2, light: 0 });
     await chipsShown();
 
     await userEvent.click(chip("道幅を無効にする"));
 
     expect(onRoutePreferenceChange).toHaveBeenCalledExactlyOnceWith({ width: 0, traffic: 0.3, slope: 0.2, light: 0 });
-    expect(onOverrideEnabledChange).toHaveBeenCalledExactlyOnceWith(true);
   });
 
   it("既定の重みが0の軸を有効にすると、backendが宣言する入れたときの重みにする", async () => {
