@@ -19,16 +19,13 @@ class AxisInspectorAxis(StrictModel):
     axis_id: str
     #: 材料が足りず評価できなければNone。
     difficulty: float | None
-    # この軸が合成スコアへ持ち込んでいる量（重み付き寄与度、`composite_difficulty`と同じ
-    # 分母で正規化した値）。ルート結果の`axis_contributions`と同じ読み方にするため、
-    # 重みを掛ける計算はサーバー側に置く。
+    # この軸が合成スコアへ持ち込んでいる量（`composite_difficulty`の重み付き寄与度）。
     contribution: float | None
 
 
 class InspectorComposite(StrictModel):
-    """取得できた軸だけの加重平均（`composite_difficulty`と同じ「データ無しは除外し残りの重みで
-    再正規化」方針）と、それが公開軸全体の重み合計のうち何割の軸から出たか（0-1）。フロントは
-    「◯%相当の軸のみで算出」という参考値である旨を示すために割合を使う。"""
+    """取得できた軸だけの加重平均（`composite_difficulty`）と、それが公開軸全体の重み合計のうち何割の軸から
+    出たか（0-1）。"""
 
     value: float
     covered_weight_fraction: float

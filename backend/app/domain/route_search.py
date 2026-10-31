@@ -56,17 +56,6 @@ def distance_tolerance_km(distance_km: float) -> float:
     return distance_km * tuning_value("search.distance_tolerance_ratio")
 
 
-def pareto_distance_quantum_m() -> float:
-    """候補選定（`pareto_layer_index`）で「実質同じ」とみなす往路の距離の粒度（m）。難易度の粒度は難易度の桁
-    （`DIFFICULTY_QUANTUM`）。"""
-    return tuning_value("search.pareto_distance_quantum_m")
-
-
-def alternative_max_stretch() -> float:
-    """距離なしの仕上げ（via-node方式）で、via-node候補（前向き木＋後ろ向き木の合成経路）の長さが、最も合成コストの
-    低い経路の長さの何倍までを候補にするか。"""
-    return tuning_value("search.alternative_max_stretch")
-
 #: 利用者が置いた点（出発地・経由地・目的地）を、出て戻れるNodeへ寄せてよい上限（km）。狙いは、道のすぐそばに
 #: 置いた点や、置いた先が本線から孤立した小塊・一方通行の袋だった点をすぐ近くの本線へ移すことなので、それより遠くへ
 #: 動かすと利用者が指した覚えのない場所を通るルートになる（目的地の補正後の座標は`corrected_destination`として
@@ -130,10 +119,9 @@ def relay_band(
     中継点ごとの全長の見込み（前段`fixed_m`＋往路`outbound_m`＋帰りの最短`return_shortest_m`×帰りの比）が目標±許容に
     収まる中継点を帯に入れる。帰りは走った道を避けて探すので最短より長くなる。帰りの比は周回の比の見込み
     （`loop_to_outbound_ratios`）から1を引いたもので、周回の帰り（≈往路×(比−1)）と同じ見込みを置く（別に持つと、
-    周回と目的地で帰りの見込みが食い違う）。見込みの幅が許容の幅より広い中継点は、全長を見込みの中央の1点として見る
-    （`turnaround_ring_m`が範囲の反転で比の見込みの中央へ置き直すのと同じ）。届かない（長さが有限でない）中継点は帯に入らない。
-    鍵は全長の見込みの中央（帰りの比の下限と上限の平均）と目標のずれ（m）で、周回のリング中心からのずれと同じく
-    目標より短すぎる経路も長すぎる経路も対称に扱う。
+    周回と目的地で帰りの見込みが食い違う）。見込みの幅が許容の幅より広い中継点は、全長を見込みの中央の1点として見る。
+    届かない（長さが有限でない）中継点は帯に入らない。鍵は全長の見込みの中央と目標のずれ（m）で、目標より短すぎる経路も
+    長すぎる経路も対称に扱う。
     """
     loop_min, loop_max = loop_to_outbound_ratios()
     return_min, return_max = loop_min - 1.0, loop_max - 1.0
@@ -222,7 +210,7 @@ def rank_by_pareto_layers(
     difficulty_key = round_difficulty_array(difficulty)
     layer = pareto_layer_index(
         distance_key, difficulty,
-        quantum_a=pareto_distance_quantum_m(), quantum_b=DIFFICULTY_QUANTUM, max_items=max_items,
+        quantum_a=tuning_value("search.pareto_distance_quantum_m"), quantum_b=DIFFICULTY_QUANTUM, max_items=max_items,
     )
     layer_key = np.where(layer >= 0, layer, np.iinfo(np.int32).max)
     keys = (ids, distance_key, difficulty_key, layer_key) if tie_by_distance else (ids, difficulty_key, layer_key)
@@ -461,7 +449,8 @@ def by_closeness_to_target(loops: list[TracedLoop], target_km: float) -> list[Tr
 
 def alternative_via_nodes(cost: np.ndarray, length_m: np.ndarray, reachable: np.ndarray) -> tuple[int, np.ndarray]:
     """目的地ルートの最良路の経由Node（合成コスト最小）と、代替経路の候補にする経由Node
-    （最良路の長さの`alternative_max_stretch`倍以内）。`reachable`が1つ以上あること。"""
+    （最良路の長さの`search.alternative_max_stretch`倍以内）。`reachable`が1つ以上あること。"""
     best_index = int(np.argmin(np.where(reachable, cost, np.inf)))
-    within_stretch = reachable & (length_m <= float(length_m[best_index]) * alternative_max_stretch())
+    max_stretch = tuning_value("search.alternative_max_stretch")
+    within_stretch = reachable & (length_m <= float(length_m[best_index]) * max_stretch)
     return best_index, np.flatnonzero(within_stretch)

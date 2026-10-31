@@ -3,18 +3,13 @@
 すべて純関数・unknown安全（タグが無い/未知の値は`None`または`"unknown"`を返し、
 根拠のない推測はしない）。OSMタグからこれらの分類を導く規則の正本はここ1箇所。
 
-道路種別・制限速度等から走りにくさを組み立てるのは軸定義（DBが正本、軸スタジオから増減する）の
-側で、ここは材料の分類までを持つ。自転車インフラは正規化フラグ材料（`domain/material_catalog.py`が宣言する
-`highway_is_cycleway`等）の組み合わせで表す。
-
 分類のほかに、**所要時間モデルのパラメータ**も持つ（`stop_seconds`: 停止要因1回あたりの
-時間損失、`HIGHWAY_RANK`: 交差点で優先関係を判定するための階級順）。読むのは
-走行時間の合成（`domain/leg_costs.py`）と交差点のターンの費用（`services/road_graph_engine.py`）で、評価軸の重み付けとは別の関心事
+時間損失、`HIGHWAY_RANK`: 交差点で優先関係を判定するための階級順）。評価軸の重み付けとは別の関心事
 ——軸は「その道を走るときのつらさ」、こちらは「そこを通るのにかかる時間」を表す。
 """
 
 from collections.abc import Mapping
-from typing import Literal, TypeVar, get_args
+from typing import Literal, get_args
 
 from app.domain.tuning import TUNING_PARAMETERS_BY_ID, stop_seconds_parameter_id, tuning_value
 
@@ -33,10 +28,7 @@ _StopPoiKind = Literal[
 ]
 
 _HIGHWAY_STOP_KINDS: dict[str, _StopPoiKind] = {
-    "traffic_signals": "traffic_signals",
-    "crossing": "crossing",
-    "stop": "stop",
-    "give_way": "give_way",
+    kind: kind for kind in ("traffic_signals", "crossing", "stop", "give_way")
 }
 
 # 踏切。`level_crossing`は車道が線路を渡る踏切、`crossing`は歩道・自転車道が渡る踏切で、
@@ -207,6 +199,11 @@ def place_count_sql(inside_ends: str) -> str:
     return f"CASE {inside_ends} WHEN 0 THEN 1.0 WHEN 1 THEN {PLACE_SHARE_PER_END} ELSE 0 END"
 
 
+def stop_cluster_sql(geom: str, eps_m: str, partition: str) -> str:
+    """停止要因の点`geom`を`partition`ごとに`eps_m`以内で連なるまとまりへ分ける窓の式。間隔は地面の m 以下になる Web Mercator の m。"""
+    return f"ST_ClusterDBSCAN(ST_Transform({geom}, 3857), eps := {eps_m}, minpoints := 1) OVER (PARTITION BY {partition})"
+
+
 # コンビニは OpenStreetMap からは取らない——補給の点のコンビニは Overture の地点（`domain/stop_place.py`の群
 # 「コンビニ」）から出し、1つの種類を2つの出どころから出さない。
 _SupplyPoiKind = Literal["vending_drinks", "vending_unknown", "toilets", "drinking_water", "bicycle_parking"]
@@ -367,9 +364,6 @@ def travel_allowed(direction: str) -> tuple[bool, bool]:
 _SIGNAL_READ_KINDS: tuple[_StopPoiKind, ...] = ("traffic_signals", "crossing")
 _SIGNAL_KIND: _StopPoiKind = "traffic_signals"
 
-_Kind = TypeVar("_Kind", bound=str)
-
-
 def stop_kind_sql(alias: str) -> str:
     """`node_kinds`の別名`alias`の行の種別を、信号の読み替えを済ませて返すSQL式。
 
@@ -386,7 +380,7 @@ def kinds_shown_as(kind: str) -> tuple[str, ...]:
     return _SIGNAL_READ_KINDS if kind == _SIGNAL_KIND else (kind,)
 
 
-def kind_map_sql(kind_sql: str, mapping: Mapping[_Kind, str], *, otherwise: str = "NULL") -> str:
+def kind_map_sql[K: str](kind_sql: str, mapping: Mapping[K, str], *, otherwise: str = "NULL") -> str:
     """種別の式`kind_sql`を表`mapping`で読み替えるSQL式。表に無い種別は`otherwise`。"""
     whens = " ".join(
         f"WHEN {_quote(kind)} THEN {_quote(mapped)}" for kind, mapped in sorted(mapping.items()))

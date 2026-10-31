@@ -824,7 +824,7 @@ segments構築はEdge単位の軽量な計算のため並行化してよい）�
   同じくEdge重みは持たず、遷移とターンの秒だけを持つ。グラフを物理的に展開せず遷移を
   `CsrGraphStructure`から導く。
   `edge_bearings`（区間の端のそばの方位を区間の番号順に並べる。道路網の列に値が無い区間だけ両端Nodeの座標から補う）・
-  `_turn_kinds`（方位差と分かれ道か→待ちの分け方）と`_turn_seconds_for`（種類→秒）が入力になる。
+  `_turn_kinds`（方位差と分かれ道か→待ちの分け方。分けた種類ごとに`TurnCostSpec`の秒を引く）が入力になる。
   **ターンの費用に効く入力はすべて引数で必須**——既定を持たせると、渡し忘れが
   「上位の道の横断に待ちが付かない」構造を黙って作る。
 
@@ -874,7 +874,7 @@ numbaでJITする探索とその部品はこのファイルにまとめて置く
   「積んだ時点のコスト`g`」。A*はキーに`g＋下界`を積むため`g`の列を持ち（`best[state]`は
   最新の`g`で、積んだ時点の`g`とは別物なので省けない）、Dijkstraはキーが`g`そのものなので
   列を持たず、`heap_push`へ`g`を渡さない（取り出しはキーを`g`として返す）。ヒープは列と
-  「`g`の列を持つか」の組（`Heap`）で持ち、列の有無を容量や配列の長さから推さない。部品は1組
+  「`g`の列を持つか」の組（`_Heap`）で持ち、列の有無を容量や配列の長さから推さない。部品は1組
   だけにする。容量は最低1にする（伸長は要素数を倍にするため、0からは伸びない）。
   `heap_push`は満杯なら倍へ伸ばした組を返すため、呼び出し側は戻り値の組で持ち替える。
   `_time_bin_of_kernel`は経過時間が落ちる時刻ビンを端へ寄せて返す（区間の表示も経路をたどって同じ本体の
@@ -1023,7 +1023,7 @@ numbaでJITする探索とその部品はこのファイルにまとめて置く
 区間（`road_edges`）は**向きを持たない1本1行**で、有向の枝は道路網全体の配列を作るときに組む
 （`road_network_store.py`。一方通行は`way_directions.direction`を見て走れる向きの枝だけを
 作る。向きごとに通れるかは`domain/traffic.py: travel_allowed`が決める）。DBへ向きを伝えるのは`(osm_way_id, segment_index, forward)`の3つ組で、向きで変わる値
-（方位・標高）はSQLが入れ替え・符号反転して返す（`material_joins.py: reversed_material_expression`）。材料の値の
+（方位・標高）はSQLが入れ替え・符号反転して返す（`material_joins.py: reversed_partner`）。材料の値の
 求め方は`domain/material_sql.py`・`domain/material_catalog.py`が持ち、リポジトリは式が前提に
 する別名（`w`/`re`/`em`/`wm`）のFROM句を組み立てるだけで式を書かない（`em`・`wm`は`material_joins.py: material_from_clause`）。
 

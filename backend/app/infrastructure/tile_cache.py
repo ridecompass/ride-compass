@@ -70,7 +70,7 @@ def clear_all() -> None:
 
 
 def close() -> None:
-    """開いたキャッシュを閉じる（プロセスの終わりに`process_resources.py`が呼ぶ）。次の読み書きで開き直す。"""
+    """開いたキャッシュを閉じる。次の読み書きで開き直す。"""
     global _opened_cache
     if _opened_cache is not None:
         _opened_cache.close()

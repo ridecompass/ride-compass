@@ -35,7 +35,7 @@ from app.domain.dynamic_way_values import (
 )
 from app.domain.material_catalog import MATERIAL_CATALOG, segment_material_ids
 from app.domain.region import EDGE_UNIT_MIN_ZOOM
-from app.domain.way_value_formula import FALSE, WayValueFormula, condition_names, feature_names
+from app.domain.way_value_formula import FALSE, Condition, FeatureValue, WayValueFormula
 from app.infrastructure.road_graph_repository import RoadGraphRepository
 from app.services.axis_registry_service import check_loadable_after_write
 from app.services.feature_midpoints import TileMidpoints
@@ -93,10 +93,6 @@ DEDICATED_WAY_VALUE_SERVICES: tuple[DedicatedWayValueServiceType, ...] = (
 )
 
 
-def _leaf_names(formula: ServedMaterialFormula) -> set[str]:
-    return feature_names(formula.formula.value) | feature_names(formula.formula.undetermined)
-
-
 def services_by_material(
     services: Iterable[DedicatedWayValueServiceType],
 ) -> dict[str, DedicatedWayValueServiceType]:
@@ -121,7 +117,7 @@ def services_by_material(
     # 道ごとの材料は名前で1つの列に集まる。別の材料の葉と同じ名前・自分のでない材料idと同じ名前だと、別の値を読む。
     owner: dict[str, str] = {}
     for material_id, service in by_material.items():
-        for name in _leaf_names(service.material_formula(material_id)):
+        for name in service.material_formula(material_id).formula.names_read(FeatureValue):
             if (name in MATERIAL_CATALOG and name != material_id) or owner.setdefault(name, material_id) != material_id:
                 raise RuntimeError(f"way material '{name}' of '{material_id}' collides with another material")
     # 条件の欄は要求（`WayValueQuery`）の同じ名前の欄から組み立て、欄の名前は`WayValueConditionName`として地図へ配る。
@@ -298,10 +294,6 @@ async def tile_axis_values(
     return out
 
 
-def _formula_reads(formula: WayValueFormula) -> set[str]:
-    return set(condition_names(formula.value) | condition_names(formula.undetermined))
-
-
 class AxisWayValueLens:
     """地図のレンズが塗る1つの軸の、値を求める道ごとの材料と、それを軸の木で評価した値（フィーチャーの鍵→値）。
 
@@ -338,7 +330,7 @@ class AxisWayValueLens:
         formula = map_way_value_formula(axis_id, definitions, served)
         if formula is None:
             return None
-        missing = _missing_conditions(axis_id, definitions, query, read_later=_formula_reads(formula))
+        missing = _missing_conditions(axis_id, definitions, query, read_later=formula.names_read(Condition))
         if missing is not None:
             return missing
         inputs = (await _tile_way_inputs(
@@ -412,7 +404,7 @@ def dedicated_way_value_layers() -> dict[str, DedicatedWayValueLayer]:
         served = _served_formulas(axis_id, definitions)
         formula = map_way_value_formula(axis_id, definitions, served)
         conditions = _condition_names(_SERVICES_BY_MATERIAL[material].conditions_type for material in served)
-        read = set() if formula is None else _formula_reads(formula)
+        read = set() if formula is None else formula.names_read(Condition)
         out[axis_id] = DedicatedWayValueLayer(
             conditions=conditions,
             formula=formula,

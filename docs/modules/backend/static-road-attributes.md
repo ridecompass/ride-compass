@@ -335,7 +335,7 @@ OpenStreetMapの寺社の分類は、伝統的な寺社と新しい宗教団体�
 **「その区間を走って実際に遭遇する停止の回数」へ近づける。** 線から一定距離内にある点を
 素朴に数えると、走る道の上に無い点や、1つの信号交差点を描く複数ノードまで数えてしまう。
 
-- **同じ種別の点は先にまとめる**（まとめる距離は較正値の`stop.cluster_distance_m`、`ST_ClusterDBSCAN`）。日本のOSMは
+- **同じ種別の点は先にまとめる**（まとめる距離は較正値の`stop.cluster_distance_m`、式は`domain/traffic.py: stop_cluster_sql`）。日本のOSMは
   1つの信号交差点を流入路ごと・横断歩道位置ごとの複数ノードで描くため、素直に数えると
   停止回数を上回る。
 - **まとまり1つを、道路網の上の1つの場所として数える**。経路がその場所をどう通っても合計1回に
@@ -587,7 +587,7 @@ OSMは中央分離帯のある道路の上下線を別々のwayとして持ち�
   ときだけ。frontendへは`export_openapi.py`が書き出す生成物経由で渡り、ドリフト検知
   テストが照合する。プロパティ削除を伴う変更はfrontendのデプロイより先に本番へ出さない
   （旧フロントの凡例フィルタが全地物に一致し、対象レイヤーが一時的に「不明」になる）。
-- **停止要因POIは、数える側が派生を作り直したときのまとめる距離（「作り直しに使った較正値」）でまとめてから焼き込む**。1つの信号
+- **停止要因POIは、数える側と同じ式（`traffic.py: stop_cluster_sql`）と、数える側が派生を作り直したときのまとめる距離（「作り直しに使った較正値」）でまとめてから焼き込む**。1つの信号
   交差点を複数ノードで描くというOSMの書き方は表示にもそのまま効くため、生のまま出すと同じ
   交差点が複数の点になる。まとめた点の位置は構成ノードの重心＝交差点の真ん中になる。
   タイル境界で塊が切れないよう、クラスタ化はタイルの外側まで読んでから行い、重心がこの
@@ -742,7 +742,7 @@ PBF取込時にしか変わらないため、再訪時の同一タイル再取�
 | `attributes.py` | `attributes.py: ElevationAttribute`（同じ地形を逆方向に走った値も自分で導く`attributes.py: reversed_as`）・DBと道路網の置き場が運ぶ材料の配列（`attributes.py: EdgeMaterialArrays`）と、静的スコア行列を組む入力（`attributes.py: EdgeMaterialColumns`）と標高計算のSQL（[elevation.md](elevation.md)が主に扱う） |
 | `stop_place.py` | 立ち寄り先の群（`stop_place.py: StopPlaceGroup`。点のタイルの属性`stop_place.py: group`の値）・文化財の所有者から寺社を見分ける語と式・寺社をまとめる距離（`stop_place.py: TEMPLE_SHRINE_SUFFIXES`・`stop_place.py: temple_shrine_owner_sql`・`stop_place.py: HERITAGE_MERGE_RADIUS_M`等）・Overtureの分類の語から群への表と式（`stop_place.py: OVERTURE_GROUP_WORDS`・`stop_place.py: overture_group_sql`。取込が落とす地点を決める`stop_place.py: OVERTURE_GROUPED_WORDS`も）・同じ店をまとめる距離とチェーンの見分け方（`stop_place.py: MERGE_RADIUS_M`・`stop_place.py: CHAIN_WORDS`・`stop_place.py: chain_text_sql`・`stop_place.py: chain_sql`）・言語違いの同じ場所を連絡先で寄せる群と距離・日本語の名前か・連絡先の比べる形（`stop_place.py: CONTACT_MERGE_RADIUS_M`・`stop_place.py: japanese_name_sql`・`stop_place.py: contacts_sql`）・表へ入れる地点（`stop_place.py: kept_sql`）・ATMの地点の名前の直し（`stop_place.py: store_name_sql`）・地点の検索で打った語を群として読む語と判断（`stop_place.py: PLACE_GROUP_WORDS`・`stop_place.py: queried_group`。使い方は[地点の検索](place-search.md)「引き方」）。配布の列の読み替えは`infrastructure/source_models.py: OVERTURE_PLACES_SOURCE_SQL`・`BUNKA_HERITAGES_SOURCE_SQL`が持つ |
 | `accident.py` | 警察庁の事故を道路へ帰属させ数えるときの判断。生データの列から判定を組み立てるSQL断片・自転車とみなす当事者種別・帰属の距離・重み付けの定数（本票の度分秒の読み取りは取込のアダプタ`npa_honhyo.py`が、本票の列名と当事者種別のコードの読み替えは`infrastructure/source_models.py`の事故の副問い合わせ（全件の`infrastructure/source_models.py: ACCIDENTS_SOURCE_SQL`と範囲で絞る`infrastructure/source_models.py: accidents_within_sql`が共有する）が持つ） |
-| `traffic.py` | OSMタグの解釈。停止要因POI・補給休憩POIの種別の引き当て（`traffic.py: TAG_KIND_RULES`・`traffic.py: tag_kind_sql`）、信号の判定（`traffic.py: TRAFFIC_SIGNAL_SQL`）、取込が道の頂点でなくても採る補給・休憩のタグ（`traffic.py: SUPPLY_POI_TAGS`・`traffic.py: has_supply_poi_tag`）、停止要因の数える種別への畳み方と信号の読み替え（`traffic.py: COUNT_KIND_OF`・`traffic.py: count_kind_sql`・`traffic.py: stop_kind_sql`・`traffic.py: kinds_shown_as`）、通行方向の解決（`traffic.py: DIRECTION_RULES`・`traffic.py: direction_sql`）と片方向にだけ通れるかの式（`traffic.py: one_way_sql`）・道の形の向きと逆向きのそれぞれに通れるか（`traffic.py: travel_allowed`）、交差点判定の次数しきい値、停止要因の場所・交差点を端で分け持つ割合（`traffic.py: PLACE_SHARE_PER_END`・`traffic.py: place_count_sql`）、交差点の階級（`traffic.py: HIGHWAY_RANK`）。取込のタグ（取込のアダプタが1件ずつ当てる）を除き、派生バッチへSQLとして渡す表と式で、タグを読むためだけに行を取り出さない |
+| `traffic.py` | OSMタグの解釈。停止要因POI・補給休憩POIの種別の引き当て（`traffic.py: TAG_KIND_RULES`・`traffic.py: tag_kind_sql`）、信号の判定（`traffic.py: TRAFFIC_SIGNAL_SQL`）、取込が道の頂点でなくても採る補給・休憩のタグ（`traffic.py: SUPPLY_POI_TAGS`・`traffic.py: has_supply_poi_tag`）、停止要因の数える種別への畳み方と信号の読み替え（`traffic.py: COUNT_KIND_OF`・`traffic.py: count_kind_sql`・`traffic.py: stop_kind_sql`・`traffic.py: kinds_shown_as`）、通行方向の解決（`traffic.py: DIRECTION_RULES`・`traffic.py: direction_sql`）と片方向にだけ通れるかの式（`traffic.py: one_way_sql`）・道の形の向きと逆向きのそれぞれに通れるか（`traffic.py: travel_allowed`）、交差点判定の次数しきい値、停止要因の場所・交差点を端で分け持つ割合（`traffic.py: PLACE_SHARE_PER_END`・`traffic.py: place_count_sql`）、停止要因の点のまとめ方（`traffic.py: stop_cluster_sql`）、交差点の階級（`traffic.py: HIGHWAY_RANK`）。取込のタグ（取込のアダプタが1件ずつ当てる）を除き、派生バッチへSQLとして渡す表と式で、タグを読むためだけに行を取り出さない |
 | `divided_carriageway.py` | 上下線が分かれた道の片側かのしきい値と判定のSQL式（`divided_carriageway.py: divided_sql`）。材料`oneway`の値式（`divided_carriageway.py: oneway_material_sql`。地図の一方通行と評価が同じ式を読む）は、片方向にだけ通れる道（`traffic.py: one_way_sql`）から上下線の片側を外す |
 
 `traffic.py: TAG_KIND_RULES`は信号・横断歩道・一時停止・徐行（`highway=*`）・踏切

@@ -17,7 +17,7 @@ from app.infrastructure.simple_api_client import cached_fetch, get_json
 
 JMA_WARNING_TIMELINE_URL_TEMPLATE = "https://www.jma.go.jp/bosai/warning_timeline/data/{office_code}.json"
 
-# 時系列は警報・注意報の発表と同じ時に出し直されるため、警報の電文のキャッシュと同じ程度の短さにする。
+# 時系列は警報・注意報の発表のたびに出し直される。
 _TIMELINE_CACHE_TTL_SECONDS = 10 * 60
 
 # コマの長さ（ISO 8601の期間）。気象庁は時間の単位でしか出さない。
@@ -27,8 +27,7 @@ logger = logging.getLogger("ridecompass.jma_warning_timeline_client")
 
 
 def new_timeline_cache() -> TTLCache:
-    """`fetch_warning_timeline`へ渡すキャッシュ。リクエストをまたいで持つのは組み立てる側（`api/dependencies.py`）。"""
-    # maxsizeは府県予報区（約50）に十分な余裕を持たせた上限で、鮮度はTTLが持つ。
+    """`fetch_warning_timeline`へ渡すキャッシュ。府県予報区（約50）が退避されない大きさで、鮮度はTTLで保つ。"""
     return TTLCache(maxsize=256, ttl=_TIMELINE_CACHE_TTL_SECONDS)
 
 

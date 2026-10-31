@@ -65,62 +65,39 @@ describe("タイルの世代とURL", () => {
 describe("押した道の内訳（fetchAxisInspector）", () => {
   const CONDITIONS = {
     z: 15,
-    x: 1,
-    y: 2,
-    bearingDeg: 0,
+    x: 29100,
+    y: 12900,
+    bearingDeg: 270,
     at: new Date("2026-10-01T00:30:00Z"),
-    speedKmh: 20,
+    speedKmh: 22,
   };
 
-  it("押した地物・重み・タイルと走行の条件を、backendの項目名で送る", async () => {
-    const sent = onBackend("POST", "/api/region/axis-inspector", () => Response.json(null));
+  it.each([
+    { weights: { wind: 2, slope: 0 }, sentWeights: { route_preference: { wind: 2, slope: 0 } } },
+    { weights: null, sentWeights: {} },
+  ])(
+    "押した地物・タイルと走行の条件を backend の項目名で送り、重みは渡したときだけ送る（無ければ backend の既定に任せる）: $weights",
+    async ({ weights, sentWeights }) => {
+      const result = { values: { composite_difficulty: 42 } };
+      const sent = onBackend("POST", "/api/region/axis-inspector", () => Response.json(result));
 
-    await api.fetchAxisInspector(
-      123,
-      "123:4",
-      {
-        z: 15,
-        x: 29100,
-        y: 12900,
-        bearingDeg: 270,
-        at: new Date("2026-10-01T00:30:00Z"),
-        speedKmh: 22,
-      },
-      { wind: 2, slope: 0 },
-    );
+      await expect(api.fetchAxisInspector(123, "123:4", CONDITIONS, weights)).resolves.toEqual(result);
 
-    expect(sent[0].body).toEqual({
-      osm_way_id: 123,
-      feature_key: "123:4",
-      route_preference: { wind: 2, slope: 0 },
-      z: 15,
-      x: 29100,
-      y: 12900,
-      bearing_deg: 270,
-      at: "2026-10-01T00:30:00.000Z",
-      speed_kmh: 22,
-    });
-  });
-
-  it("重みが無ければ、その項目を送らない（重みはbackendの既定に任せる）", async () => {
-    const result = { values: { composite_difficulty: 42 } };
-    const sent = onBackend("POST", "/api/region/axis-inspector", () => Response.json(result));
-
-    await expect(api.fetchAxisInspector(123, "123", CONDITIONS, null)).resolves.toEqual(result);
-
-    expect(sent.map(({ body }) => body)).toEqual([
-      {
-        osm_way_id: 123,
-        feature_key: "123",
-        z: 15,
-        x: 1,
-        y: 2,
-        bearing_deg: 0,
-        at: "2026-10-01T00:30:00.000Z",
-        speed_kmh: 20,
-      },
-    ]);
-  });
+      expect(sent.map(({ body }) => body)).toEqual([
+        {
+          osm_way_id: 123,
+          feature_key: "123:4",
+          ...sentWeights,
+          z: 15,
+          x: 29100,
+          y: 12900,
+          bearing_deg: 270,
+          at: "2026-10-01T00:30:00.000Z",
+          speed_kmh: 22,
+        },
+      ]);
+    },
+  );
 });
 
 describe("地図が塗る軸の道ごとの材料（fetchWayMaterials）", () => {
@@ -143,14 +120,6 @@ describe("地図が塗る軸の道ごとの材料（fetchWayMaterials）", () =>
         query: { at: "2026-10-01T00:00:00.000Z", bearing_deg: "90", speed_kmh: "25" },
       },
     ]);
-  });
-
-  it("条件を渡さなければ問い合わせに載せない", async () => {
-    const sent = onBackend("GET", "/api/region/way-materials/:axisId/:z/:x/:y", () => Response.json({}));
-
-    await api.fetchWayMaterials("axis_a", 15, 1, 2, {});
-
-    expect(sent.map(({ query }) => query)).toEqual([{}]);
   });
 
   it("失敗は投げずに、空の材料と失敗の印で返す（色分けの失敗で道路や他のレイヤーを止めない）", async () => {

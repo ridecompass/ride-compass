@@ -24,7 +24,7 @@ from app.domain.axis_definitions import (
     MaterialTerm,
 )
 from app.domain.tuning import LANDCOVER_RING_OUTER_ID
-from app.domain.way_value_formula import WayValueFormula, condition_names
+from app.domain.way_value_formula import Condition, WayValueFormula
 from app.infrastructure.derived_data_meta import DataRevisions
 from app.main import app
 from app.services.region_service import RegionService
@@ -196,7 +196,7 @@ def test_get_axis_catalog_names_what_the_map_sends_and_shows_for_an_axis(
     assert entry["dynamic_way_value_undetermined_by_bearing"] is undetermined
     # 地図は道ごとの材料をこの木で評価する。材料の要求へ載せない条件は、木が読まないと色に効かない。
     formula = WayValueFormula.model_validate(entry["way_value_formula"])
-    assert condition_names(formula.value) | condition_names(formula.undetermined) == conditions - requested
+    assert formula.names_read(Condition) == conditions - requested
 
 
 @pytest.mark.usefixtures("catalog_axes")
