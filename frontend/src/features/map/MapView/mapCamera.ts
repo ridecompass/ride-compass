@@ -70,11 +70,7 @@ export function flyToVisible(map: MapLibreMap, point: Coordinates) {
     map.flyTo({
       center: [point.longitude, point.latitude],
       zoom: FOCUS_ZOOM,
-      offset: mapVisibleCenterOffset(map),
+      offset: visibleCenterOffset(map.getCanvas()),
     });
   });
-}
-
-export function mapVisibleCenterOffset(map: MapLibreMap): [number, number] {
-  return visibleCenterOffset(map.getCanvas());
 }

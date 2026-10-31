@@ -11,6 +11,7 @@ import { describe, expect, it } from "vitest";
 
 import { weatherMarkSizePx } from "@/features/map/scene/groups/weather";
 import { METERS_PER_DEGREE, longitudeScale } from "@/lib/localPlane";
+import { groundMetersPerPixel, pixelsPerLongitudeDegree } from "@/lib/mapScale";
 import { lineLayer, scene } from "@/testing/mapSceneDeclarations";
 
 import {
@@ -27,9 +28,7 @@ import {
 } from "./overview";
 
 describe("overviewZoom", () => {
-  // MapLibreのズームzの1pxの長さは、赤道の長さ×cos(緯度)÷(512×2^z)。
-  const spanM = (latitude: number, zoom: number) =>
-    ((METERS_PER_DEGREE * 360 * longitudeScale(latitude)) / (512 * 2 ** zoom)) * OVERVIEW_SIZE_PX;
+  const spanM = (latitude: number, zoom: number) => groundMetersPerPixel(latitude, zoom) * OVERVIEW_SIZE_PX;
 
   it("本体の地図より4段引く（今の画面の16倍の幅を映す）", () => {
     expect(overviewZoom(35.68, 11)).toBe(7);
@@ -106,14 +105,13 @@ describe("overviewWeather", () => {
     const payload = overviewWeather(weather, zoom, center).windVector?.arrow?.payload;
     return new Set(payload !== undefined && "geojson" in payload ? payload.geojson.features : []);
   };
-  // 俯瞰図の地図（メルカトル）の上で、真ん中から格子点までの長さ（px）。
-  const pxFromCenter = (zoom: number, feature: (typeof features)[number]) => {
-    const pxPerDeg = (512 * 2 ** zoom) / 360;
-    return Math.hypot(
-      (feature.geometry.coordinates[0] - center.longitude) * pxPerDeg,
-      ((feature.geometry.coordinates[1] - center.latitude) * pxPerDeg) / longitudeScale(latitude),
-    );
+  // 俯瞰図の地図（メルカトル）の上で、2点の間の長さ（px）。
+  const pxBetween = (zoom: number, [ax, ay]: readonly number[], [bx, by]: readonly number[]) => {
+    const pxPerDeg = pixelsPerLongitudeDegree(zoom);
+    return Math.hypot((ax - bx) * pxPerDeg, ((ay - by) * pxPerDeg) / longitudeScale(latitude));
   };
+  const pxFromCenter = (zoom: number, feature: (typeof features)[number]) =>
+    pxBetween(zoom, feature.geometry.coordinates, [center.longitude, center.latitude]);
 
   // 本体の倍率12では弱い風の矢印も格子点の間隔より大きく、14では強い風の矢印だけが格子点の間隔より大きい。
   it.each([12, 14])(
@@ -121,13 +119,10 @@ describe("overviewWeather", () => {
     (mainZoom) => {
       const zoom = overviewZoom(latitude, mainZoom);
       const kept = keptOf(zoom);
-      // メルカトルの地図の上で、2本の矢印の真ん中どうしの長さが大きい方の1辺より短いか。
-      const pxPerDeg = (512 * 2 ** zoom) / 360;
+      // 2本の矢印の真ん中どうしの長さが大きい方の1辺より短いか。
       const overlap = (a: (typeof features)[number], b: (typeof features)[number]) =>
-        Math.hypot(
-          (a.geometry.coordinates[0] - b.geometry.coordinates[0]) * pxPerDeg,
-          ((a.geometry.coordinates[1] - b.geometry.coordinates[1]) * pxPerDeg) / longitudeScale(latitude),
-        ) < Math.max(arrowSizePx(zoom, a.properties), arrowSizePx(zoom, b.properties));
+        pxBetween(zoom, a.geometry.coordinates, b.geometry.coordinates) <
+        Math.max(arrowSizePx(zoom, a.properties), arrowSizePx(zoom, b.properties));
       const keptFeatures = features.filter((feature) => kept.has(feature));
 
       expect(keptFeatures.length).toBeGreaterThanOrEqual(4);

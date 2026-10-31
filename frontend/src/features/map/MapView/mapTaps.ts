@@ -26,7 +26,7 @@ import { distinctFacilities, facilityOf } from "@/components/MapPopup/facilityRo
 import type { MapPopupControls } from "@/features/map/MapView/useMapPopups";
 import { pointMembers, pointPlaceName, type PointLayer } from "@/lib/mapDisplay/pointLayers";
 import { projectOnEdge, type EdgeProjection } from "@/lib/localPlane";
-import geoConfig from "@/types/generated/geo-config.json";
+import { groundMetersPerPixel } from "@/lib/mapScale";
 import { MapGestures, type MapGestureAction } from "@/features/map/MapView/mapGestures";
 
 /**
@@ -45,14 +45,6 @@ const OPENABLE_TARGETS: Record<MapTapMode, ReadonlySet<string>> = {
 
 /** 押した所から道を拾う幅（画素）。指の幅ほどずれても、その道を押したとみなす。 */
 const ROAD_REACH_PX = 20;
-/** MapLibre が世界を描く1枚のタイルの画素（ズーム0で世界がこの幅になる）。 */
-const MAPLIBRE_TILE_PX = 512;
-
-/** 緯度`lat`・ズーム`zoom`の地図で、画面の`px`画素が地面の何 m に当たるか。 */
-function groundMetersOf(px: number, lat: number, zoom: number): number {
-  const equatorM = 2 * Math.PI * geoConfig.earth_radius_km * 1000;
-  return (px * equatorM * Math.cos((lat * Math.PI) / 180)) / (MAPLIBRE_TILE_PX * 2 ** zoom);
-}
 
 /** 押した瞬間に読む、いまの画面の状態と知らせ先。 */
 export interface MapTapState {
@@ -138,7 +130,7 @@ export function bindMapTaps(map: MapLibreMap, latest: { readonly current: MapTap
   function act(action: MapGestureAction | null, e: PointedAt, tap?: () => void) {
     if (action === null || latest.current.tapsLocked) return;
     if (action === "longPress") {
-      handleLongPress({ point: e.point, lngLat: e.lngLat });
+      handleLongPress(e);
     } else if (action === "tap") {
       handleTap(tap);
     } else {
@@ -176,7 +168,7 @@ export function bindMapTaps(map: MapLibreMap, latest: { readonly current: MapTap
 
   // 長押しは、開く意味の間だけ受け、押した物の小窓を開き、開ける物が無ければ押した所に近い道を開く。
   function handleLongPress(e: PointedAt) {
-    if (latest.current.tapsLocked || latest.current.tapMode !== "open") return;
+    if (latest.current.tapMode !== "open") return;
     roadAsk += 1;
     const features = interactiveFeaturesAt(e.point);
     const hit = openableFeatureAmong(features);
@@ -279,7 +271,7 @@ export function bindMapTaps(map: MapLibreMap, latest: { readonly current: MapTap
     if (map.getZoom() < ROAD_TILE_MIN_ZOOM) return;
     const lngLat: [number, number] = [e.lngLat.lng, e.lngLat.lat];
     const tile = tileContainingLonLat(lngLat[0], lngLat[1], map.getZoom(), ROAD_TILE_MIN_ZOOM, ROAD_TILE_MAX_ZOOM);
-    const reachM = groundMetersOf(ROAD_REACH_PX, lngLat[1], map.getZoom());
+    const reachM = ROAD_REACH_PX * groundMetersPerPixel(lngLat[1], map.getZoom());
     // 取れなかった内訳は`requestApi`が記録する。押すたびの補助の操作なので、道が無いのと同じに閉じる。
     const road = await fetchRoadsAt(lngLat, tile.z, reachM).then(
       (roads) => roads[0] ?? null,

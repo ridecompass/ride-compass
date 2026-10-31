@@ -148,7 +148,6 @@ function FeatureValues({
   // 合成に使えた軸の重みの割合（%）。出すのと同じ丸めで100%に届かないときだけ、一部の軸だけの値だと添える。
   const coveredWeightPercent =
     values.composite_difficulty != null ? Math.round(values.composite_difficulty.covered_weight_fraction * 100) : null;
-  const landcover = <LandcoverChip landcover={values.landcover} />;
 
   return (
     <DifficultyBlock
@@ -166,7 +165,7 @@ function FeatureValues({
         if (found === undefined || found.difficulty === null) return null;
         return <AxisDetail axis={axis} difficulty={found.difficulty} />;
       }}
-      extraChips={values.landcover === null ? undefined : landcover}
+      extraChips={values.landcover === null ? undefined : <LandcoverChip landcover={values.landcover} />}
     />
   );
 }
@@ -187,8 +186,7 @@ function FactList({ rows }: { rows: readonly RoadFactRow[] }) {
 
 /** 道路の周りの帯の土地被覆のチップ。最も多いクラスだけを見せ、押すと割合の大きい順に開く（0%のクラスは出さない。
  * 割合は合計100%）。 */
-function LandcoverChip({ landcover }: { landcover: InspectorValues["landcover"] }) {
-  if (landcover === null) return null;
+function LandcoverChip({ landcover }: { landcover: NonNullable<InspectorValues["landcover"]> }) {
   const rows = LANDCOVER_CLASSES.map((cls) => ({
     label: cls.label,
     value: landcover[cls.percentField as keyof typeof landcover] as number,

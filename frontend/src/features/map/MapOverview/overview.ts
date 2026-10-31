@@ -12,6 +12,7 @@ import { weatherMarkSizePx } from "@/features/map/scene/groups/weather";
 import type { MapScene } from "@/features/map/scene/mapScene";
 import { viewportCenter, type MapViewport } from "@/features/map/view/mapLook";
 import { METERS_PER_DEGREE, longitudeScale } from "@/lib/localPlane";
+import { groundMetersPerPixel, pixelsPerLongitudeDegree } from "@/lib/mapScale";
 
 /** 俯瞰図のズームを本体の地図から引く段数。1段で幅が2倍になるので、今の画面の2^この値倍の幅を映す。 */
 const OVERVIEW_ZOOM_STEPS = 4;
@@ -27,13 +28,9 @@ const RENDER_ZOOM_OFFSET = Math.log2(OVERVIEW_RENDER_SCALE);
 /** 本体の地図がこのズーム以上の間だけ俯瞰図を出す（これより引くと、本体の地図が俯瞰図と同じほど広く映す）。 */
 export const OVERVIEW_MIN_ZOOM = 11;
 
-// MapLibreのタイルの1辺（px）。ズームzの1pxの長さは、赤道の長さ×cos(緯度)÷(この値×2^z)。
-const TILE_SIZE_PX = 512;
-const EQUATOR_M = METERS_PER_DEGREE * 360;
-
 /** 緯度`latitude`で、ズーム`zoom`の俯瞰図の1辺（丸の径）が映す長さ（m）。 */
 function overviewSpanM(latitude: number, zoom: number): number {
-  return (OVERVIEW_SIZE_PX * EQUATOR_M * longitudeScale(latitude)) / (TILE_SIZE_PX * 2 ** zoom);
+  return OVERVIEW_SIZE_PX * groundMetersPerPixel(latitude, zoom);
 }
 
 /** 本体の地図がズーム`mainZoom`のときの俯瞰図のズーム。`OVERVIEW_ZOOM_STEPS`段引き、1辺が`OVERVIEW_MIN_SPAN_M`より狭くならないようにする。 */
@@ -82,7 +79,7 @@ function thinnedGridMarks(
   center: { latitude: number; longitude: number },
 ): DynamicWeatherRenderPayload {
   if (!("geojson" in payload) || payload.gridStepDeg === undefined) return payload;
-  const pxPerLongitudeDeg = (TILE_SIZE_PX * 2 ** zoom) / 360;
+  const pxPerLongitudeDeg = pixelsPerLongitudeDegree(zoom);
   // メルカトルの地図では、緯度1度の幅は経度1度の幅の1/cos(緯度)倍。
   const pxPerLatitudeDeg = pxPerLongitudeDeg / longitudeScale(center.latitude);
   const { latitude: latitudeStep, longitude: longitudeStep } = payload.gridStepDeg;
@@ -243,9 +240,9 @@ function renderScaled(value: unknown): unknown {
   if (!Array.isArray(value)) return ["*", value, OVERVIEW_RENDER_SCALE];
   const isZoom = (input: unknown) => Array.isArray(input) && input.length === 1 && input[0] === "zoom";
   // ["interpolate", 補間, ["zoom"], ズーム, 値, ...]・["step", ["zoom"], 値, ズーム, 値, ...]
-  const stopsFrom =
-    value[0] === "interpolate" && isZoom(value[2]) ? 3 : value[0] === "step" && isZoom(value[1]) ? 3 : null;
-  if (stopsFrom === null) return ["*", value, OVERVIEW_RENDER_SCALE];
+  const byZoom = (value[0] === "interpolate" && isZoom(value[2])) || (value[0] === "step" && isZoom(value[1]));
+  if (!byZoom) return ["*", value, OVERVIEW_RENDER_SCALE];
+  const stopsFrom = 3;
   const scaled: unknown[] = value.slice(0, stopsFrom);
   if (value[0] === "step") scaled[2] = renderScaled(value[2]);
   for (let i = stopsFrom; i + 1 < value.length; i += 2)

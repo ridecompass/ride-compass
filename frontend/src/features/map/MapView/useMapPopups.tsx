@@ -25,7 +25,7 @@ import { visibleScreenBox } from "@/features/map/MapView/mapCamera";
 import { popupInsideVisible, type ScreenBox } from "@/features/map/MapView/popupPlacement";
 import { useAxisCatalog } from "@/hooks/useAxisCatalog";
 
-/** 押した物と小窓の間を空ける幅。区間は押した所に置く印（下端を地点に置いた絵）の高さだけ空ける。 */
+/** 押した物と小窓の間を空ける幅（px）。 */
 const POPUP_GAP_PX = 8;
 
 /** 小窓の幅の上限（Popup の`maxWidth`。`%`は地図の幅）。中身に合わせて広がり、地図の幅を超えるときだけ折り返す。 */
@@ -155,19 +155,11 @@ interface MapPopupMountOptions {
   onFocus: (shape: Shape) => void;
 }
 
-/** 小窓が指す地点・押した物の形（引けなければnull）・指す地点との間を空ける幅。どの小窓もこれだけで置く。 */
-function targetOf(
-  popup: MapPopup,
-  segmentPath: Shape | null,
-): { lngLat: [number, number]; shape: Shape | null; gapPx: number } {
-  if (popup.kind === "segment") {
-    return {
-      lngLat: [popup.segment.longitude, popup.segment.latitude],
-      shape: segmentPath,
-      gapPx: POPUP_GAP_PX,
-    };
-  }
-  return { lngLat: popup.lngLat, shape: popup.shape, gapPx: POPUP_GAP_PX };
+/** 小窓が指す地点と、押した物の形（引けなければnull）。どの小窓もこれだけで置く。 */
+function targetOf(popup: MapPopup, segmentPath: Shape | null): { lngLat: [number, number]; shape: Shape | null } {
+  return popup.kind === "segment"
+    ? { lngLat: [popup.segment.longitude, popup.segment.latitude], shape: segmentPath }
+    : { lngLat: popup.lngLat, shape: popup.shape };
 }
 
 /** 小窓を地図へ載せ、中身をportalで描く。返した要素を地図の部品の中に置く。 */
@@ -204,15 +196,15 @@ export function useMapPopupMount(
     const first = latest.current.onMap;
     if (!map || mountKey === null || first === null) return;
     const container = document.createElement("div");
-    const { lngLat: firstLngLat, gapPx } = targetOf(first, latest.current.segmentPath);
+    const { lngLat: firstLngLat } = targetOf(first, latest.current.segmentPath);
     // 地図を押して閉じるのは押した手続き（`mapTaps.ts`）が決めるので、MapLibreには閉じさせない。地図の上に重ねた部品の下には、
-    // 標準の`padding`で入れない。間の幅は器の間は変わらない（区間の器は区間の中身にだけ使う）。
+    // 標準の`padding`で入れない。
     const popup = new maplibregl.Popup({
       closeButton: true,
       closeOnClick: false,
       maxWidth: POPUP_MAX_WIDTH,
       padding: visiblePadding(map.getCanvas()),
-      offset: gapPx,
+      offset: POPUP_GAP_PX,
     })
       .setLngLat(firstLngLat)
       .setDOMContent(container)
@@ -256,7 +248,7 @@ export function useMapPopupMount(
       if (moved === null) {
         popup.options.anchor = undefined;
         popup.removeClassName(FREE_POPUP_CLASS);
-        popup.setOffset(gapPx);
+        popup.setOffset(POPUP_GAP_PX);
       } else placeFree(moved);
       popup.setLngLat(lngLat);
       const box = popupBox();
