@@ -70,14 +70,12 @@ def _latest_directory() -> Path | None:
 
     世代が読めなかったDBで作ったもの（`-rx`）は、世代のあるものより古いとみなす。
     """
-    best: tuple[int, Path] | None = None
-    for path, match in _directories():
-        if match["shape"] != NETWORK_SHAPE:
-            continue
-        revision = -1 if match["revision"] == "x" else int(match["revision"])
-        if best is None or revision > best[0]:
-            best = (revision, path)
-    return None if best is None else best[1]
+    candidates = (
+        (-1 if match["revision"] == "x" else int(match["revision"]), path)
+        for path, match in _directories()
+        if match["shape"] == NETWORK_SHAPE
+    )
+    return max(candidates, key=lambda candidate: candidate[0], default=(None, None))[1]
 
 
 def save(network: RoadNetwork) -> Path:

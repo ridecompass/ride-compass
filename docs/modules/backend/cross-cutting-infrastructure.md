@@ -363,11 +363,11 @@ lifespanが起動時に使うtimeout値を事前ウォームアップするの�
 ## 応答のgzip圧縮（`response_compression.py`）
 
 `ContentTypeGZipMiddleware`はStarletteの`GZipMiddleware`を、応答の`content-type`が
-`COMPRESSIBLE_CONTENT_TYPES`（JSON・MVT・protobuf・JavaScript）または`text/*`のときだけ
+JSON・MVT・protobuf・JavaScript等（`response_compression.py: _COMPRESSIBLE_CONTENT_TYPES`）または`text/*`のときだけ
 圧縮するよう絞ったもの。basemap/JMA/国土地理院のラスタタイル（PNG等）は圧縮済み形式のため
 素通しする。`Accept-Encoding: gzip`を持つリクエストで、本文が`DEFAULT_MINIMUM_SIZE`
 （1000バイト）以上の応答が対象。`compresslevel`は3（圧縮はイベントループ上で同期的に
-走るため、縮小率がほぼ変わらない高レベルは使わない）。`Vary: Accept-Encoding`は
+走るため、縮小率がほぼ変わらない高レベルは使わない。z12の路面タイル約680KBで、level 3は約57%・level 9は約55%へ縮み、所要は6倍近く違う）。`Vary: Accept-Encoding`は
 Starlette側が付与する。
 
 ## 応答のCache-Control（`api/cache_policy.py`）

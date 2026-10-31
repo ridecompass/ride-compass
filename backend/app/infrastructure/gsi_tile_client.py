@@ -40,9 +40,7 @@ class GsiTileClient:
         if path in self._not_found_paths:
             return UPSTREAM_NOT_FOUND
         with log_external_call(category, path=path) as fields:
-            # tile_cacheの読み書きは同期的なディスクI/O。basemap_client.pyと同じ理由
-            # （多数のタイルリクエストが同時に来るとイベントループをブロックする）で
-            # asyncio.to_threadへ逃がす。
+            # tile_cacheの読み書きは同期的なディスクI/Oなので、多数のタイル要求でイベントループを止めないよう別スレッドへ逃がす。
             cached = await asyncio.to_thread(tile_cache.get, path)
             if cached is not None:
                 fields["cache"] = "hit"

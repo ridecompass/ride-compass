@@ -1,14 +1,10 @@
 """点データのタイル（停止要因・補給休憩のPOI・事故・立ち寄り先）のレイヤーの宣言。
 
-点のレイヤーは`GET /api/region/point-tiles/{layer}/...`の1つの配信（`services/region_service.py:
-RegionService.get_point_tile`）で配り、レイヤーごとに違うのは焼き込むSQLとsource-layer名だけである。
-**点のレイヤーを足すのは、ここへ1エントリ足すことだけ**——配信・世代の表（`services/tile_version_service.py:
-TILE_SHAPES`）・生成物（`region-tile-config.json`の`point_layers`）はここから組み立てる。
+レイヤーごとに違うのは焼き込むSQLとsource-layer名だけで、点のレイヤーを足すのはここへ1エントリ足すことだけである。
 
 どのSQLも`(covered, tile)`の1行を返す。取込範囲を判定するレイヤーは`source_models.py: COVERAGE_SQL`を
 読み、判定しないレイヤー（事故・立ち寄り先は対象範囲を一括で取り込むため「範囲の一部だけ取得済み」が無い）は`covered`を
-常に真にする。`:layer_name`・`:extent`・タイル座標（`:z`・`:x`・`:y`・`:xmin`等）は読み出しの側
-（`road_graph_repository.py: RoadGraphRepository.get_tile_mvt`）が渡す。
+常に真にする。`:layer_name`・`:extent`・タイル座標（`:z`・`:x`・`:y`・`:xmin`等）は読み出しの側が渡す。
 
 どのレイヤーも、タイルの中の近い点を凡例の行ごとに1つの代表点へ束ねて焼き、代表点は束ねた点の数
 （`domain/map_display.py: POINT_COUNT_PROPERTY`）と、2点以上なら束ねた名前のある点の名前と位置
@@ -24,11 +20,7 @@ from sqlalchemy.dialects.postgresql import ARRAY
 
 from app.domain.accident import BICYCLE_SQL, FATAL_SQL
 from app.domain.geo import degrees_covering_m
-from app.domain.map_display import (
-    POINT_CLUSTER_CELLS_PER_TILE,
-    POINT_COUNT_PROPERTY,
-    POINT_MEMBERS_PROPERTY,
-)
+from app.domain.map_display import POINT_CLUSTER_CELLS_PER_TILE, POINT_COUNT_PROPERTY, POINT_MEMBERS_PROPERTY
 from app.domain.primary_attributes import PRIMARY_ATTRIBUTES, stop_poi_map_group_sql
 from app.domain.registry import PrimaryAttributeSpec, TileKind
 from app.domain.stop_place import StopPlaceGroup
@@ -36,8 +28,7 @@ from app.domain.traffic import STOP_POI_KINDS, stop_cluster_sql, stop_kind_sql
 from app.domain.tuning import STOP_CLUSTER_DISTANCE_ID
 from app.infrastructure.cache_identity import shape_digest
 from app.infrastructure.derived_data_meta import recorded_tuning_sql
-from app.infrastructure.source_models import COVERAGE_SQL
-from app.infrastructure.source_models import NODES_SOURCE_SQL, accidents_within_sql
+from app.infrastructure.source_models import COVERAGE_SQL, NODES_SOURCE_SQL, accidents_within_sql
 from app.infrastructure.vector_tile import ROAD_SURFACE_LAYER_NAME, TILE_BUFFER
 
 

@@ -81,7 +81,7 @@ def write_boundaries(path: Path, areas: dict[str, BaseGeometry]) -> None:
 
 
 @cached(cache=LRUCache(maxsize=1), lock=threading.Lock())
-def load_boundaries(path: Path) -> AreaBoundaries:
+def _load_boundaries(path: Path) -> AreaBoundaries:
     started = start_timer()
     payload: dict[str, str] = json.loads(path.read_text(encoding="utf-8"))
     boundaries = AreaBoundaries(list(payload), list(shapely.from_wkb(list(payload.values()))))
@@ -108,7 +108,7 @@ async def find_class20_code(lat: float, lon: float) -> str | None:
 
 async def _load_boundaries_or_raise() -> AreaBoundaries:
     try:
-        return await asyncio.to_thread(load_boundaries, BOUNDARY_PATH)
+        return await asyncio.to_thread(_load_boundaries, BOUNDARY_PATH)
     except (OSError, ValueError, shapely.errors.GEOSException) as exc:
         log_throttled_warning(
             "weather:jma-area-boundaries",
@@ -127,7 +127,7 @@ async def find_class20_codes(points: list[tuple[float, float]]) -> list[str | No
 
 async def area_shape(class20_code: str) -> BaseGeometry | None:
     """区域（area.jsonのclass20）の境界。無いコードならNone。境界は`find_class20_code`が読み込んだあとに呼ぶ。"""
-    boundaries = await asyncio.to_thread(load_boundaries, BOUNDARY_PATH)
+    boundaries = await asyncio.to_thread(_load_boundaries, BOUNDARY_PATH)
     return boundaries.shape(class20_code)
 
 

@@ -35,9 +35,9 @@ class FakeRepository:
 
 
 @pytest.fixture
-def road_network(monkeypatch):
+def road_network(road_network_root):
     """取込範囲全体の道路網は`east_west_network.network()`。"""
-    serve_road_network(monkeypatch, network)
+    serve_road_network(road_network_root, network())
 
 
 async def test_the_range_is_cut_along_the_bbox_itself(road_network):

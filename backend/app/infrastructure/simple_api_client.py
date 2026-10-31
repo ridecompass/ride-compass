@@ -1,21 +1,14 @@
 """シンプルな外部APIクライアント（TTLCacheのみ、再試行を持たない）が共有する
 「キャッシュ参照→fetch→エラー処理→キャッシュ書き戻し」の骨格。
-
-TTLCache以外のキャッシュへ持つクライアント（`jma_tile_client.py`・`basemap_client.py`等）は
-形が違うため、この骨格には乗らない。
 """
 
 import asyncio
 from collections.abc import Awaitable, Callable, Hashable
-from typing import TypeVar
 
 import httpx
 from cachetools import TTLCache
 
 from app.infrastructure.debug_log import log_external_call, mark_failed
-
-T = TypeVar("T")
-J = TypeVar("J", dict, list)
 
 #: 「まだ引いていない」を表す番兵。`None`は上流が返す正常な答え（該当なし）であり、
 #: 未取得と同じ値にすると該当なしがTTLの間ずっとキャッシュされず、毎回上流を叩く。
@@ -27,13 +20,10 @@ _in_flight: dict[tuple[int, Hashable], asyncio.Task] = {}
 
 
 class UnexpectedShapeError(ValueError):
-    """fetchが返した内容の形が想定と異なる場合に送出する。
-
-    `catch`の指定に関わらず、常にNoneへ倒して失敗として記録する。
-    """
+    """fetchが返した内容の形が想定と異なる場合に送出する（`catch`の指定に関わらずNoneへ倒す）。"""
 
 
-async def get_json(client: httpx.AsyncClient, url: str, expected: type[J], shape_error_prefix: str) -> J:
+async def get_json[J: (dict, list)](client: httpx.AsyncClient, url: str, expected: type[J], shape_error_prefix: str) -> J:
     """`url`をGETしてJSONを読む。`expected`の型でなければ`UnexpectedShapeError`
     （文は`<shape_error_prefix> <届いた型の名前>`）。"""
     response = await client.get(url)
@@ -44,7 +34,7 @@ async def get_json(client: httpx.AsyncClient, url: str, expected: type[J], shape
     return payload
 
 
-async def cached_fetch(
+async def cached_fetch[T](
     category: str,
     fetch: Callable[[], Awaitable[T]],
     *,
@@ -81,7 +71,7 @@ async def cached_fetch(
         return data
 
 
-def _shared_fetch(fetch: Callable[[], Awaitable[T]], cache: TTLCache, key: Hashable, fields: dict) -> asyncio.Task:
+def _shared_fetch[T](fetch: Callable[[], Awaitable[T]], cache: TTLCache, key: Hashable, fields: dict) -> asyncio.Task:
     """`cache`の`key`へ取りに行っている最中の取得を返す。無ければ始める（その要求をミスとして記録する）。"""
     flight_key = (id(cache), key)
     task = _in_flight.get(flight_key)
