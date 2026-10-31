@@ -7,6 +7,8 @@
 - 停止要因の点を地図でまとめるSQL → タイルを焼くテスト（`test_road_graph_repository_contracts.py`）
 """
 
+from contextlib import nullcontext
+
 import pytest
 
 from app.domain.primary_attributes import check_point_rows, check_primary_attributes
@@ -20,26 +22,20 @@ def _attribute(attr_id: str, hue_slot: int = 0, values: tuple[str, ...] = ("a",)
 
 
 @pytest.mark.parametrize(
-    "attributes",
+    ("attributes", "refused"),
     [
-        pytest.param((_attribute("a", 0), _attribute("a", 1)), id="同じidが2度"),
-        pytest.param((_attribute("a", 0), _attribute("b", 0)), id="色相の起点が重なる"),
+        pytest.param((_attribute("a", 0), _attribute("a", 1)), True, id="同じidが2度"),
+        pytest.param((_attribute("a", 0), _attribute("b", 0)), True, id="色相の起点が重なる"),
+        pytest.param((_attribute("a", 0), _attribute("b", 1)), False, id="見分けられる"),
     ],
 )
-def test_attributes_that_cannot_be_told_apart_are_refused(attributes):
-    with pytest.raises(ValueError):
+def test_attributes_that_cannot_be_told_apart_are_refused(attributes, refused):
+    with pytest.raises(ValueError) if refused else nullcontext():
         check_primary_attributes(attributes)
 
 
-def test_attributes_told_apart_are_accepted():
-    check_primary_attributes((_attribute("a", 0), _attribute("b", 1)))
-
-
-def test_point_rows_that_do_not_match_the_kinds_drawn_are_refused():
+@pytest.mark.parametrize(("drawn", "refused"), [({"a", "b", "c"}, True), ({"a", "b"}, False)], ids=["行に無い種別", "行と同じ種別"])
+def test_point_rows_that_do_not_match_the_kinds_drawn_are_refused(drawn, refused):
     """行に無い種別の点は地図から消える。"""
-    with pytest.raises(ValueError, match="食い違う"):
-        check_point_rows(_attribute("p", values=("a", "b")), {"a", "b", "c"})
-
-
-def test_point_rows_matching_the_kinds_drawn_are_accepted():
-    check_point_rows(_attribute("p", values=("a", "b")), {"a", "b"})
+    with pytest.raises(ValueError, match="食い違う") if refused else nullcontext():
+        check_point_rows(_attribute("p", values=("a", "b")), drawn)
