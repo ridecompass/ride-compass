@@ -174,7 +174,7 @@ def retrace_penalized(costs: np.ndarray) -> np.ndarray:
 
 
 @dataclass(frozen=True)
-class CandidateRanking:
+class _CandidateRanking:
     """`rank_by_pareto_layers`の結果。`layer_key`・`difficulty_key`は渡した候補の位置ごと。"""
 
     #: 渡した候補の位置を、並べた順に`max_examined`件まで（Noneなら全件）。
@@ -208,7 +208,7 @@ def rank_by_pareto_layers(
     max_items: int,
     max_examined: int | None,
     tie_by_distance: bool,
-) -> CandidateRanking:
+) -> _CandidateRanking:
     """候補（折返し点・経由Node）を「距離の鍵」「難易度」の2指標で非優越ソートし、パレート層の順に並べる。
 
     難易度は`(cost/seconds - 1)/P`（コスト式の逆算）。難易度だけで並べると、難易度が距離加重
@@ -226,7 +226,7 @@ def rank_by_pareto_layers(
     )
     layer_key = np.where(layer >= 0, layer, np.iinfo(np.int32).max)
     keys = (ids, distance_key, difficulty_key, layer_key) if tie_by_distance else (ids, difficulty_key, layer_key)
-    return CandidateRanking(np.lexsort(keys)[:max_examined], layer_key, difficulty_key)
+    return _CandidateRanking(np.lexsort(keys)[:max_examined], layer_key, difficulty_key)
 
 
 def order_by_bearing_spread(

@@ -343,17 +343,18 @@ async def _clear_app_tables(url: str) -> None:
         await conn.close()
 
 
-async def _create_database_if_absent(name: str, owner_path: str) -> bool:
+async def _create_database_if_absent(name: str, owner_path: str | None, template: str = TEMPLATE_TEST_DATABASE) -> bool:
     conn = await asyncpg.connect(asyncpg_dsn(TEST_DATABASE_MAINTENANCE))
     try:
         if await conn.fetchval("SELECT 1 FROM pg_database WHERE datname = $1", name):
             return False
-        await _ensure_template_database(conn)
+        if template == TEMPLATE_TEST_DATABASE:
+            await _ensure_template_database(conn)
         for _ in range(10):
             try:
                 # CREATE DATABASEはトランザクションの中で実行できないため、asyncpgの
                 # 暗黙のトランザクションに入らない単発のexecuteで発行する。
-                await conn.execute(f'CREATE DATABASE "{name}" TEMPLATE "{TEMPLATE_TEST_DATABASE}"')
+                await conn.execute(f'CREATE DATABASE "{name}" TEMPLATE "{template}"')
                 break
             except ALREADY_CREATED:
                 return False  # 別のセッションが同時に作った。それを使う
@@ -362,10 +363,11 @@ async def _create_database_if_absent(name: str, owner_path: str) -> bool:
                 # 掃除だけで、すぐ離れる。
                 await asyncio.sleep(0.5)
         else:
-            raise RuntimeError(f"複製元 {TEMPLATE_TEST_DATABASE} が使用中のままで複製できません")
+            raise RuntimeError(f"複製元 {template} が使用中のままで複製できません")
         # **なぜこのDBがあるのかをDB自身に持たせる**。作業ツリーが消えたら、この記録だけを
         # 見て捨ててよいと判断できる（残骸を名前から推測しない）。
-        await conn.execute(f"COMMENT ON DATABASE \"{name}\" IS $rc${owner_path}$rc$")
+        if owner_path is not None:
+            await conn.execute(f"COMMENT ON DATABASE \"{name}\" IS $rc${owner_path}$rc$")
     finally:
         await conn.close()
     await _clear_app_tables(f"{TEST_DATABASE_SERVER}/{name}")
@@ -443,14 +445,15 @@ _RUNNING_ITEM: pytest.Item | None = None
 
 @pytest.hookimpl(tryfirst=True)
 def pytest_collection_modifyitems(config, items):
-    """テストDBへつなぐテストに、DBの印（`-m`で選ぶ`postgis`と、1つのワーカーへ寄せる`xdist_group`）を付ける。
+    """テストDBへつなぐテストに、DBの印（`-m`で選ぶ`postgis`と、ファイルごとに1つのワーカーへ寄せる`xdist_group`）を付ける。
 
+    ファイルごとに寄せるのは、エンジンと表の用意（`road_graph_engine`）がファイル単位で1回だけ走るようにするため。
     先に動くのは、`-m`の選り分けとpytest-xdistの`--dist loadgroup`が同じフックで印を読むから。
     """
     for item in items:
         if DATABASE_FIXTURE in getattr(item, "fixturenames", ()):
             item.add_marker(pytest.mark.postgis)
-            item.add_marker(pytest.mark.xdist_group(name="postgis"))
+            item.add_marker(pytest.mark.xdist_group(name=item.nodeid.split("::", 1)[0]))
 
 
 @contextmanager
@@ -482,15 +485,35 @@ def pytest_collection_finish(session):
     ここで済ませるのは、**同期のまま・イベントループの外で・1回だけ**行える唯一の場所だから
     （`asyncio.run`は実行中のループの中からは呼べず、フィクスチャの中では遅い）。
     `-m`の選り分けのあとに動くので、`-m "not postgis"`の実行には接続を1本も足さない。
+    pytest-xdistのワーカーは、それぞれ自分のDBを使う（同じDBの表を別のワーカーのテストが空にし合わないように）。
     """
     global _RESOLVED_DATABASE_URL
     explicit = os.environ.get("TEST_DATABASE_URL")
-    if explicit:
+    if not any(item.get_closest_marker("postgis") for item in session.items):
         _RESOLVED_DATABASE_URL = explicit
         return
-    if not any(item.get_closest_marker("postgis") for item in session.items):
-        return
-    _RESOLVED_DATABASE_URL = _prepare_worktree_database()
+    worker = os.environ.get("PYTEST_XDIST_WORKER")
+    if worker is None:
+        _RESOLVED_DATABASE_URL = explicit or _prepare_worktree_database()
+    else:
+        _RESOLVED_DATABASE_URL = _prepare_worker_database(explicit, worker)
+
+
+def _prepare_worker_database(explicit: str | None, worker: str) -> str:
+    """ワーカーのDB（`<この実行のDB>_<ワーカー>`）を、無ければ作る。
+
+    明示されたDBは、それ自体を複製する（拡張を入れたのはそのDBだけ）。作業ツリーのDBは、作業ツリーのDBと同じ
+    複製元から作る——作業ツリーのDBを複製すると、別のセッションがそこへつないでいる間は複製できない。
+    作れなければ落とす: 共有のDBへ退避すると、ワーカー同士が同じ表を空にし合い、変更と無関係なテストが落ちる。
+    """
+    server, base = (explicit.rsplit("/", 1) if explicit else (TEST_DATABASE_SERVER, default_test_database_name()))
+    name = f"{base}_{worker}"
+    try:
+        asyncio.run(_create_database_if_absent(name, None if explicit else str(WORKTREE_ROOT),
+                                               base if explicit else TEMPLATE_TEST_DATABASE))
+    except Exception as exc:  # 作れない理由はそのまま伝える
+        pytest.exit(f"ワーカーのテストDB {name} を用意できない（-n を外せば1つのDBで回る）: {exc}", returncode=1)
+    return f"{server}/{name}"
 
 
 # ローカル環境では新規DB接続の確立自体に1〜2秒かかり（asyncpgの接続確立のコストで、

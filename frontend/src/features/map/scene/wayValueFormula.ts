@@ -26,7 +26,7 @@ type NodeOf<Op extends FormulaOp> = FormulaNode extends infer Node
 type ConditionName = NodeOf<"condition">["name"];
 
 /** 木の葉を、地図のどの値から読むか。材料は道ごとの feature-state、条件は地図全体の global-state。 */
-export interface FormulaInputs {
+interface FormulaInputs {
   readonly featureStateKey: (name: string) => string;
   readonly globalStateKey: (name: ConditionName) => string;
 }

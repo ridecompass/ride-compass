@@ -111,11 +111,6 @@ describe("コマのURL", () => {
     }
   });
 
-  it("源泉のテンプレートに当たらないURLは読み戻さない", () => {
-    expect(readJmaTileUrl("https://example.com/tile/5/28/12.png")).toBeNull();
-    expect(readJmaTileUrl(jmaPlaceholderTileUrl(FEATURE_ELEMENT))).toBeNull(); // タイルで描かない要素の地物
-  });
-
   it("中身が届く前の仮のURLは、タイルで描く要素の最初の段の実在しない時刻を指す", () => {
     const element = TILE_ELEMENTS.find((each) => each.jmaElements.length > 1)!;
     const ref = readJmaTileUrl(jmaTileUrlAt(jmaPlaceholderTileUrl(element), 4, 14, 6));

@@ -1,5 +1,9 @@
 "use client";
 
+import { useEffect, useRef } from "react";
+
+import { CandidateMark } from "@/components/CandidateMark/CandidateMark";
+import { Button } from "@/components/ui/Button/Button";
 import { textVariants } from "@/components/ui/Text/Text";
 import ErrorText from "@/features/route/ErrorText/ErrorText";
 import { haversineKm } from "@/lib/geoDistance";
@@ -21,12 +25,27 @@ export function isRepresentative(candidate: PlaceCandidate): boolean {
 
 interface PlaceCandidatesProps {
   lookup: ReturnType<typeof usePlaceLookup>;
-  /** 候補1件の行。中身（名前・辺り・距離・札）は`label`で渡す。`index`は並びの添字。 */
-  renderCandidate: (candidate: PlaceCandidate, label: React.ReactNode, index: number) => React.ReactNode;
+  /** 打ちかけの候補を選ぶ。 */
+  onChoose: (candidate: PlaceCandidate) => void;
+  /** 探した候補を置くボタン（選んでいる行に出す）。 */
+  placeButtons: (candidate: PlaceCandidate) => React.ReactNode;
+  /** 打ちかけの候補を選ぶと何が起きるか（行の使い方の説明に出す）。 */
+  chooseResult: string;
 }
 
-/** 引いた候補の一覧。引いている間・引けない・当たらないときは、その文を出す。 */
-export default function PlaceCandidates({ lookup, renderCandidate }: PlaceCandidatesProps) {
+/**
+ * 引いた候補の一覧。引いている間・引けない・当たらないときは、その文を出す。打ちかけの候補は押すと選び、探した候補は地図の点と
+ * 同じ番号を付け、押した行を選んで置くボタンを出す（地図の点を押して選んだときも、その行を一覧の見えている所へ送る）。
+ */
+export default function PlaceCandidates({ lookup, onChoose, placeButtons, chooseResult }: PlaceCandidatesProps) {
+  const found = lookup.foundOnMap;
+  const pickedRowRef = useRef<HTMLDivElement | null>(null);
+  const pickedIndex = found?.picked ?? null;
+  useEffect(() => {
+    // テスト環境は`scrollIntoView`を持たない。
+    pickedRowRef.current?.scrollIntoView?.({ block: "nearest" });
+  }, [pickedIndex]);
+
   const { search, near } = lookup;
   // 探したあと（地図に出す候補）は、前の文字の候補を出しておかない（地図の点と番号が食い違う）。
   if ((search.isFetching && !search.isPlaceholderData) || (lookup.searched && search.isPlaceholderData)) {
@@ -47,11 +66,35 @@ export default function PlaceCandidates({ lookup, renderCandidate }: PlaceCandid
   }
   return (
     <ul aria-label="地点の候補" className="flex flex-col gap-0.5">
-      {candidates.map((candidate, index) => (
-        <li key={`${candidate.name}:${candidate.latitude}:${candidate.longitude}`}>
-          {renderCandidate(candidate, <CandidateLabel candidate={candidate} near={near} />, index)}
-        </li>
-      ))}
+      {candidates.map((candidate, index) => {
+        const picked = found !== null && index === found.picked;
+        return (
+          <li key={`${candidate.name}:${candidate.latitude}:${candidate.longitude}`}>
+            <div
+              ref={picked ? pickedRowRef : undefined}
+              className={cn("flex flex-col gap-1 rounded-sm", picked && "bg-[var(--color-surface-2)] pb-1.5")}
+            >
+              <Button
+                variant="menu"
+                size="sm"
+                className="w-full"
+                aria-pressed={found === null ? undefined : picked}
+                onClick={() => (found === null ? onChoose(candidate) : lookup.pickFound(index))}
+                usage={
+                  found === null
+                    ? `この候補を選ぶと${chooseResult}。`
+                    : "この候補を選び、地図の点を大きくして、置くボタンを出します。"
+                }
+              >
+                {found !== null && <CandidateMark number={index + 1} picked={picked} />}
+                <PlaceName place={candidate} className="truncate" />
+                <span className="flex-none tabular-nums">{distanceText(near, candidate)}</span>
+              </Button>
+              {picked && <div className="flex flex-wrap gap-1.5 px-2">{placeButtons(candidate)}</div>}
+            </div>
+          </li>
+        );
+      })}
     </ul>
   );
 }
@@ -61,18 +104,12 @@ export function distanceText(near: Coordinates, candidate: PlaceCandidate): stri
   return `${haversineKm(near, candidate).toFixed(1)}km`;
 }
 
-/** 候補1件の中身（名前・辺り・`near`からの距離）。 */
-function CandidateLabel({ candidate, near }: { candidate: PlaceCandidate; near: Coordinates }) {
+/** 地点の名前と、あれば辺り（同じ名前のチェーンの店を見分ける。名前より控えめにする）。 */
+export function PlaceName({ place, className }: { place: PlaceCandidate; className: string }) {
   return (
-    <>
-      <span className="min-w-0 flex-auto truncate">
-        {candidate.name}
-        {/* 施設の辺り。同じ名前のチェーンの店を見分ける。名前より控えめにし、狭い幅では先に切れる。 */}
-        {candidate.area !== null && (
-          <span className={cn("ml-1.5", textVariants({ variant: "note" }))}>{candidate.area}</span>
-        )}
-      </span>
-      <span className="flex-none tabular-nums">{distanceText(near, candidate)}</span>
-    </>
+    <span className={cn("min-w-0 flex-auto", className)}>
+      {place.name}
+      {place.area !== null && <span className={cn("ml-1.5", textVariants({ variant: "note" }))}>{place.area}</span>}
+    </span>
   );
 }

@@ -225,43 +225,33 @@ def test_crossing_a_higher_ranked_road_adds_a_wait_split_by_straight_or_turning(
     assert seconds[("WC", "CW")] == pytest.approx(TURN_SPEC.uturn_seconds)
 
 
-def test_crossing_wait_needs_the_rank_to_reach_the_major_threshold():
-    """「自分より上位」だけでは足りない——待ちの要る階級に達していなければ足さない。"""
+@pytest.mark.parametrize(
+    ("crossing_rank", "entering_rank", "signal", "db_rank", "expected"),
+    [
+        # 「自分より上位」だけでは足りない——待ちの要る階級に達していなければ足さない。
+        (MAJOR - 1, MAJOR - 2, False, 0, 0.0),
+        # 信号のある交差点の待ちは停止密度の材料が運ぶ。ここで足すと同じ待ちを二重に数える。
+        (MAJOR, MAJOR - 1, True, 0, 0.0),
+        # bboxの外へはみ出した上位の道は部分グラフに現れない。DB側の集計値があれば大きい方を採る。
+        (MAJOR - 1, MAJOR - 1, False, MAJOR, TURN_SPEC.major_crossing_seconds),
+    ],
+)
+def test_crossing_wait_follows_the_node_rank_and_signal(crossing_rank, entering_rank, signal, db_rank, expected):
     graph = make_graph(PLUS_NODES, PLUS_EDGES)
     lazy = lazy_of(graph)
-    _, _, structure = build_all(
-        graph, spec=TURN_SPEC, edge_rank=_plus_ranks(lazy, MAJOR - 1, MAJOR - 2)
-    )
-    assert transition_seconds(lazy, structure)[("WC", "CE")] == pytest.approx(0.0)
-
-
-def test_crossing_wait_is_not_added_where_a_signal_exists():
-    """信号のある交差点の待ちは停止密度の材料が運ぶ。ここで足すと同じ待ちを二重に数える。"""
-    graph = make_graph(PLUS_NODES, PLUS_EDGES)
-    lazy = lazy_of(graph)
+    center = lazy.node_id_to_index["C"]
     signals = np.zeros(lazy.node_count, dtype=bool)
-    signals[lazy.node_id_to_index["C"]] = True
+    signals[center] = signal
+    node_db_rank = np.zeros(lazy.node_count, dtype=np.int64)
+    node_db_rank[center] = db_rank
     _, _, structure = build_all(
-        graph, spec=TURN_SPEC, edge_rank=_plus_ranks(lazy, MAJOR, MAJOR - 1), node_has_signal=signals
+        graph,
+        spec=TURN_SPEC,
+        edge_rank=_plus_ranks(lazy, crossing_rank, entering_rank),
+        node_has_signal=signals,
+        node_db_rank=node_db_rank,
     )
-    assert transition_seconds(lazy, structure)[("WC", "CE")] == pytest.approx(0.0)
-
-
-def test_db_node_rank_raises_a_rank_the_partial_graph_cannot_show():
-    """bboxの外へはみ出した上位の道は部分グラフに現れない。DB側の集計値があれば大きい方を採る。
-
-    未集計の0で導出した階級を打ち消さないことは、DB側の値を0で埋めた上のテストが見る。
-    """
-    graph = make_graph(PLUS_NODES, PLUS_EDGES)
-    lazy = lazy_of(graph)
-    db_rank = np.zeros(lazy.node_count, dtype=np.int64)
-    db_rank[lazy.node_id_to_index["C"]] = MAJOR
-    _, _, structure = build_all(
-        graph, spec=TURN_SPEC, edge_rank=_plus_ranks(lazy, MAJOR - 1, MAJOR - 1), node_db_rank=db_rank
-    )
-    assert transition_seconds(lazy, structure)[("WC", "CE")] == pytest.approx(
-        TURN_SPEC.major_crossing_seconds
-    )
+    assert transition_seconds(lazy, structure)[("WC", "CE")] == pytest.approx(expected)
 
 
 def test_node_rank_comes_from_roads_that_leave_the_node_too():

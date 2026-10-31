@@ -17,7 +17,7 @@ import { READ_ONLY_LEGENDS, type ReadOnlyLegendBlock } from "./readOnlyLegends";
 import { coverageYearsLabel, fillLayerText } from "./layerText";
 
 /** 地図に載るものの名前。静的な一覧は源泉が持ち、道の線の層（鍵は層のデータが決める）と軸スタジオ由来のものは実行時に決まる。 */
-export type MapLayerId = StaticMapLayerId | DedicatedWayValueMapLayerId | string;
+export type MapLayerId = StaticMapLayerId | string;
 
 // 選んだルートに付くデータ（選び直すたびに描き直す）か、地域に固定のデータ（表示の切り替えだけ）か。値が時間で
 // 変わるかは別の`dataNature`が表す（降水ナウキャストは地域に固定で、値が時間で変わる）。
@@ -93,7 +93,7 @@ type LayerDeclaration = Pick<
 
 /** 軸スタジオ由来のレイヤー。チップに出ない（表示はレンズだけが決める）ので、名前・アイコン・説明を持たず、
  * 地図の組み立てが情報源を引くためのidと源泉の宣言だけを持つ。 */
-export interface AxisStudioLayerDescriptor extends LayerDeclaration {
+interface AxisStudioLayerDescriptor extends LayerDeclaration {
   id: MapLayerId;
   axisStudioLayer: true;
 }
@@ -271,8 +271,6 @@ export function deriveFetchLayerStatus(
   return undefined;
 }
 
-type DedicatedWayValueMapLayerId = `${string}Axis`;
-
-function dedicatedWayValueMapLayerId(axisId: string): DedicatedWayValueMapLayerId {
+function dedicatedWayValueMapLayerId(axisId: string): MapLayerId {
   return `${axisId}Axis`;
 }
