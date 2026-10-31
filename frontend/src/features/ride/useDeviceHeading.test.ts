@@ -3,6 +3,8 @@
  * 走行モードの間だけ読む。iPhone では始める操作の中で許しを求め、断られたら方角を出さない。操作の外で求めて聞けなかったら、
  * 求め直す口を出す。
  *
+ * ここで見ないもの: 求め直す口で許されたら現在地の印に向きを出すこと → `app/page.ride.test.tsx`
+ *
  * 差し替えたもの: 端末の向きの出来事（`deviceorientationabsolute`・`deviceorientation`）と、iPhone の許しを求める口
  * （`DeviceOrientationEvent.requestPermission`）。どちらもテスト環境に無いブラウザの機能。
  */
@@ -96,24 +98,15 @@ describe("useDeviceHeading", () => {
     expect(result.current.requestAgain).toBeNull();
   });
 
-  it("iPhone で操作の外で求めて聞けなかったら、求め直す口を出し、それで許されたら方角を出して口を消す", async () => {
+  it("iPhone で操作の外で求めて聞けなかったら、位置を受けている間だけ求め直す口を出す", async () => {
     setRequestPermission(UNASKED);
     const { result, rerender } = renderHook(({ active }) => useDeviceHeading(active), {
       initialProps: { active: true },
     });
     await act(async () => result.current.request());
-    orient("deviceorientation", { webkitCompassHeading: 90, alpha: 0 });
-    expect(result.current.heading.current()).toBeNull();
+    expect(result.current.requestAgain).not.toBeNull();
     // 位置を受けていない間は、求め直しても読まないので出さない。
     rerender({ active: false });
     expect(result.current.requestAgain).toBeNull();
-    rerender({ active: true });
-    expect(result.current.requestAgain).not.toBeNull();
-
-    setRequestPermission("granted");
-    await act(async () => result.current.requestAgain?.());
-    expect(result.current.requestAgain).toBeNull();
-    orient("deviceorientation", { webkitCompassHeading: 90, alpha: 0 });
-    expect(result.current.heading.current()).toBeCloseTo(90, 6);
   });
 });
