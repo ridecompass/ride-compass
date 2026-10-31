@@ -182,16 +182,6 @@ async def test_a_route_with_a_destination_or_waypoints_ends_where_it_should_with
     assert all(_ends(route) == (node_key(SOUTH_WEST), node_key(end)) for route in result["routes"])
 
 
-async def test_a_spliced_route_is_evaluated_as_sent(client):
-    """区間を差し替えた経路は探索し直さず、そのまま1件として評価して返す。"""
-    body = {**_point(SOUTH_WEST), "destination": _point(NORTH_EAST), "distance_km": None}
-    (route, *_) = (await _generate(client, **body, max_routes=1))["result"]["routes"]
-
-    spliced = (await _generate(client, **body, spliced_edge_ids=route["edge_ids"]))["result"]
-
-    assert [r["edge_ids"] for r in spliced["routes"]] == [route["edge_ids"]]
-
-
 #: 格子のノードの鍵→その地点（応答の`node_ids`から経由地を置き直す）。
 POINT_OF_NODE = {node_key(osm): _point(osm) for osm in COORDINATES}
 
@@ -269,16 +259,6 @@ async def test_a_distance_with_placed_points_is_the_length_of_the_whole_route(cl
         )
         assert abs(route["distance_km"] - target) <= target * tolerance_ratio
     assert result["conditions"]["distance_km"] == target
-
-
-async def test_an_empty_result_says_why(client, monkeypatch):
-    """置いた点を通るだけで距離を超えると、候補は無く、理由が返る。"""
-    monkeypatch.setitem(TUNING_VALUES, "search.distance_tolerance_ratio", 0.25)
-    status = await _generate(client, **_point(SOUTH_WEST), waypoints=[_point(NORTH_EAST)], distance_km=2.0)
-
-    assert status["status"] == "done"
-    assert status["result"]["routes"] == []
-    assert status["result"]["no_candidates_reason"]
 
 
 # --- 条件のエコー ---

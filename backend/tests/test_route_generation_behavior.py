@@ -173,15 +173,6 @@ async def test_motorway_is_never_used_even_when_short(engine_over):
         assert not set(ways_of(candidate)) & motorway
 
 
-async def test_segments_cover_the_whole_route(engine_over):
-    generator = engine_over(grid_network())
-
-    (candidate, *_) = await generator.generate_via_waypoints(
-        at(SOUTH_WEST), [], destination=at(NORTH_EAST), max_routes=1, start_time=DEPARTURE)
-
-    assert math.isclose(sum(s.distance_km for s in candidate.segments), candidate.distance_km, abs_tol=0.02)
-
-
 async def test_spliced_route_is_evaluated_as_sent(engine_over):
     generator = engine_over(grid_network())
     (candidate, *_) = await generator.generate_via_waypoints(
@@ -834,7 +825,7 @@ async def test_turns_are_listed_where_the_route_changes_direction_at_a_branch(en
 async def test_a_segment_and_a_turn_sit_where_the_segments_before_them_add_up_to(engine_over):
     """区間の始まりの道のり（`cumulative_distance_km`）と曲がる所の道のりは、手前の区間の`distance_km`を始点から足した値に
     載る——別の積み方だと、同じ地点の距離が「km地点」・道のりのグラフ・曲がる所までの残りで食い違う。格子の1辺は区間の
-    まとめる幅より長いので、区間は辺ごとに分かれ、曲がる所はどれかの区間の始まりに来る。"""
+    まとめる幅より長いので、区間は辺ごとに分かれ、曲がる所はどれかの区間の始まりに来る。区間を足し切ると経路の全長になる。"""
     generator = engine_over(grid_network())
 
     candidates = await generator.generate_via_waypoints(
@@ -844,6 +835,7 @@ async def test_a_segment_and_a_turn_sit_where_the_segments_before_them_add_up_to
     for candidate in candidates:
         added_up = list(accumulate((segment.distance_km for segment in candidate.segments), initial=0.0))
         assert [segment.cumulative_distance_km for segment in candidate.segments] == pytest.approx(added_up[:-1])
+        assert added_up[-1] == pytest.approx(candidate.distance_km, abs=0.02)
         segment_at = {(s.start_latitude, s.start_longitude): i for i, s in enumerate(candidate.segments)}
         for turn in candidate.turns:
             assert turn.distance_km == pytest.approx(added_up[segment_at[(turn.latitude, turn.longitude)]])
