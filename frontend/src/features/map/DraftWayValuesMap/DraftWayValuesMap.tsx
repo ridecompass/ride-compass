@@ -11,7 +11,7 @@ import type { Map as MapLibreMap } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { createBaseMap } from "@/features/map/baseMap";
+import { createBaseMap, viewportOf } from "@/features/map/baseMap";
 import {
   mergeTileValues,
   NO_VIEWPORT_TILES,
@@ -22,7 +22,6 @@ import { LAYER_DATA_STATUS_LABELS, type MapLayerVisibility } from "@/features/ma
 import type { RoadMapLayerView } from "@/types/route";
 import type { MapViewport } from "@/features/map/view/mapLook";
 import LegendCheckboxList from "@/features/map/LegendCheckboxList/LegendCheckboxList";
-import { LEGEND_SWATCH_CLASS } from "@/features/map/LensControl/LensControl";
 import { ORIGIN_ZOOM } from "@/features/map/MapView/useMapMarkers";
 import { ROAD_TILE_MAX_ZOOM, ROAD_TILE_MIN_ZOOM } from "@/features/map/regionApi";
 import { applyScene, sceneInputsFrom, type HiddenLegendKeys } from "@/features/map/scene/applyToMap";
@@ -223,16 +222,8 @@ export default function DraftWayValuesMap<Draft>({
     });
     mapRef.current = map;
     function reportViewport() {
-      const bounds = map.getBounds();
-      if (!bounds) return;
-      setViewport({
-        west: bounds.getWest(),
-        south: bounds.getSouth(),
-        east: bounds.getEast(),
-        north: bounds.getNorth(),
-        zoom: map.getZoom(),
-        bearing: map.getBearing(),
-      });
+      const viewport = viewportOf(map);
+      if (viewport) setViewport(viewport);
     }
     map.on("load", reportViewport);
     map.on("moveend", reportViewport);
@@ -262,9 +253,6 @@ export default function DraftWayValuesMap<Draft>({
           legend={legend}
           hiddenKeys={hiddenKeysOf(hiddenLegendKeys, axisId)}
           onToggle={(key) => setHiddenLegendKeys((store) => toggleHiddenKey(store, axisId, key))}
-          listClassName="m-0 flex list-none flex-col gap-0.5 p-0"
-          rowClassName="flex items-center gap-1.5 text-[length:var(--font-size-sm)]"
-          swatchClassName={LEGEND_SWATCH_CLASS}
         />
       </div>
       {truncated && <p className={textVariants({ variant: "hint" })}>{LAYER_DATA_STATUS_LABELS.partial}</p>}

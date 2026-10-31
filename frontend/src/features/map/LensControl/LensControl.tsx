@@ -3,7 +3,6 @@
 import { Popover, PopoverContent, PopoverTrigger, POPOVER_COLLISION_PADDING_PX } from "@/components/ui/Popover/Popover";
 import { useState } from "react";
 import LegendCheckboxList from "@/features/map/LegendCheckboxList/LegendCheckboxList";
-import { hiddenAfterToggleAll } from "@/features/map/view/legendFilters";
 import { LEGEND_SWATCH_RING_CLASS, legendSwatchBackground, type LegendEntry } from "@/lib/mapDisplay/legendFilter";
 import { LAYER_DATA_STATUS_LABELS, layerDataStatusNotice, type LayerDataStatus } from "@/features/map/layers/mapLayers";
 import {
@@ -52,23 +51,9 @@ const LENS_SCREEN_NAME = EVALUATION_PAINT_NAME;
 /** 評価軸を選んでいないルートの前のピルの名前（道路は塗らない）。 */
 const UNSELECTED_LABEL = "評価軸を選ぶ";
 
-/** 凡例の段の見本（開いた先の凡例の行）。 */
-export const LEGEND_SWATCH_CLASS = "inline-block h-1.5 w-2.5 flex-shrink-0 rounded-[1px]";
-
-function LensSwatch({ color }: { color: string }) {
-  return (
-    <span
-      aria-hidden="true"
-      className={cn("size-2.5 flex-shrink-0 rounded-full", LEGEND_SWATCH_RING_CLASS)}
-      style={{ background: color }}
-    />
-  );
-}
-
 /**
  * レンズ（地図を何で塗るか）の唯一の入口。地図の上のピルが今のレンズを示し、押すと一覧を開く。置き場は呼び出し側が決める。
- * 一覧は「表示」の一覧（`MapOverlayControls.tsx`）と同じ形と操作にそろえる——縦の1行、(i) で行の下に開く説明、▶ で行の下に
- * 開く凡例、選んでも閉じない、下の解除のボタン。チェックの代わりに1つだけ選ぶ印を出し、選んでいる行をもう一度押すと外れる。
+ * 一覧は選んでも閉じず、選んでいる行をもう一度押すと外れる。
  */
 export default function LensControl({
   lens,
@@ -106,24 +91,12 @@ export default function LensControl({
         data-usage="チェックを外した段階は、地図から隠れます。見出しのチェックで、その全部をまとめて切り替えます。"
       >
         {legend.length > 0 && (
-          <>
-            <label className="flex cursor-pointer items-center gap-1.5">
-              <Checkbox
-                checked={hiddenLegendKeys.length === 0}
-                onCheckedChange={() => onSetHiddenLegendKeys(hiddenAfterToggleAll(legend, hiddenLegendKeys))}
-                aria-label="凡例の全段階をまとめて表示/非表示"
-              />
-              <span className="text-[length:var(--font-size-xs)] font-bold text-[var(--color-neutral)]">凡例</span>
-            </label>
-            <LegendCheckboxList
-              legend={legend}
-              hiddenKeys={hiddenLegendKeys}
-              onToggle={onToggleLegendKey}
-              listClassName="m-0 flex list-none flex-col gap-0.5 p-0"
-              rowClassName="flex items-center gap-1.5 text-[length:var(--font-size-sm)]"
-              swatchClassName={LEGEND_SWATCH_CLASS}
-            />
-          </>
+          <LegendCheckboxList
+            legend={legend}
+            hiddenKeys={hiddenLegendKeys}
+            onToggle={onToggleLegendKey}
+            onSetHidden={onSetHiddenLegendKeys}
+          />
         )}
         {premises.map((premise) => (
           <p key={premise} className="m-0 text-[length:var(--font-size-xs)] text-[var(--color-neutral)]">
@@ -148,7 +121,11 @@ export default function LensControl({
           >
             {/* 道のりのグラフの「評価で塗る」の切り替えと同じ絵で、どちらも同じ入口と分かるようにする。 */}
             <EvaluationPaintIcon size={14} />
-            <LensSwatch color={pillColor} />
+            <span
+              aria-hidden="true"
+              className={cn("size-2.5 flex-shrink-0 rounded-full", LEGEND_SWATCH_RING_CLASS)}
+              style={{ background: pillColor }}
+            />
             <span className="flex-shrink-0 font-semibold">{pillLabel}</span>
             {dataStatus && <Dot aria-hidden="true" tone={dataStatus} />}
             {/* 段の数に依らず固定の幅で等分し、段の多い軸でもピルを横に伸ばさない。地図が狭いときは名前より先に縮める。 */}

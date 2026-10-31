@@ -66,16 +66,17 @@ export default function MapNavigationControl({
   const heading = headingOf(bearing);
   // 北が上でないことを縁で示す（走行モードの間は、進む向きが上の間）。
   const turned = ride !== null ? ride.headingUp : heading.degrees !== 0;
-  const compassClassName = cn(
-    "rounded-t-none border-t border-[var(--color-border)] shadow-none",
-    turned && "shadow-[inset_0_0_0_2px_var(--color-accent)]",
-    linked && LENS_LINK_CLASS,
-  );
-  const needle = (
-    <span aria-hidden="true" className="inline-flex" style={{ transform: `rotate(${-bearing}deg)` }}>
-      <CompassNeedleIcon />
-    </span>
-  );
+  const compassProps = {
+    variant: "mapCtrl",
+    size: "mapCtrl",
+    className: cn(
+      "rounded-t-none border-t border-[var(--color-border)] shadow-none",
+      turned && "shadow-[inset_0_0_0_2px_var(--color-accent)]",
+      linked && LENS_LINK_CLASS,
+    ),
+    "aria-description": linked ? LENS_LINK_DESCRIPTION : undefined,
+    children: <Needle bearing={bearing} />,
+  } as const;
   return (
     <div
       className="absolute top-[var(--map-ctrl-margin)] right-[var(--map-ctrl-margin)] z-[var(--z-map-control)] flex flex-col rounded-[4px] shadow-[0_0_0_2px_rgba(0,0,0,0.1)]"
@@ -109,29 +110,19 @@ export default function MapNavigationControl({
       )}
       {ride !== null ? (
         <Button
-          variant="mapCtrl"
-          size="mapCtrl"
-          className={compassClassName}
+          {...compassProps}
           aria-label={rideCompassLabel(ride)}
-          aria-description={linked ? LENS_LINK_DESCRIPTION : undefined}
           usage="走っている間は、押すと北が上と進む向きが上を切り替えます。地図を指で動かしたあとは、押すとその場で北が上に戻ります。"
           onClick={ride.onCompass}
-        >
-          {needle}
-        </Button>
+        />
       ) : (
         <Popover>
           <PopoverTrigger asChild>
             <Button
-              variant="mapCtrl"
-              size="mapCtrl"
-              className={compassClassName}
+              {...compassProps}
               aria-label="地図の向き"
-              aria-description={linked ? LENS_LINK_DESCRIPTION : undefined}
               usage="針は地図の北を指します。押すと、地図を回すダイヤルが開きます。"
-            >
-              {needle}
-            </Button>
+            />
           </PopoverTrigger>
           <PopoverContent className="p-2" side="left" align="start" sideOffset={8}>
             <HeadingDial
@@ -144,6 +135,15 @@ export default function MapNavigationControl({
         </Popover>
       )}
     </div>
+  );
+}
+
+/** 地図の北を指す針。 */
+function Needle({ bearing, size }: { bearing: number; size?: number }) {
+  return (
+    <span aria-hidden="true" className="inline-flex" style={{ transform: `rotate(${-bearing}deg)` }}>
+      <CompassNeedleIcon size={size} />
+    </span>
   );
 }
 
@@ -307,9 +307,7 @@ function HeadingDial({ bearing, heading, onBearingChange, onResetNorth }: Headin
           usage="押すと北が上に戻ります。"
           onClick={onResetNorth}
         >
-          <span aria-hidden="true" className="inline-flex" style={{ transform: `rotate(${-bearing}deg)` }}>
-            <CompassNeedleIcon size={28} />
-          </span>
+          <Needle bearing={bearing} size={28} />
         </Button>
       </div>
     </div>

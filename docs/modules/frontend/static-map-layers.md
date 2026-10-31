@@ -48,7 +48,7 @@
 | `features/map/MapView/useMapPopups.tsx` | 地図の小窓（点・道・区間）の状態と開閉と置き方。**小窓はいつも1つ**で、点と道は押して開き、区間は選んでいる区間から導く（押して開いた中身が無ければ区間の中身。区間の選びが変わると、その区間に属さない中身を閉じる）。MapLibreのPopupを1つ器にしてportalで描き、どの小窓も指す地点と間の幅だけで置く（決まりは下記「地図を押したときと地図の小窓」）。選択の持ち主が変わると押して開いた中身を閉じ、閉じる（×・何も無い所を押す）と区間の選びも外す |
 | `features/map/MapView/popupPlacement.ts` | 小窓を見えている所の内側へ押し込めたときの左上（画面のpx）。見えている所が無い地図（描く前・隠れている間）では動かさない |
 | `features/map/MapView/layerDataSources.ts` | レイヤーのデータ取得状態の算出元（`features/map/MapView/layerDataSources.ts: buildLayerDataSources`）。レイヤーカタログの情報源の名前を、取得を見るMapLibreのソースへ引く |
-| `features/map/baseMap.ts` | 基礎地図のスタイル・出典の表記・MapLibreの部品の日本語の文言で地図を作る（`features/map/baseMap.ts: createBaseMap`）。一般の地図（`MapView.tsx`）と下書きの点数の地図が使い、載せるものはどちらも場面で当てる。俯瞰図（`features/map/MapOverview/MapOverview.tsx`）は`inset`で、操作を受けず出典の表記を持たない地図として作る（出典は同じ画面の本体の地図が出す）。基礎地図の文字は薄れさせずに出し入れする（MapLibre の`fadeDuration`を0にする）——薄れる間は地図全体を描き直し続けるので、ずらすたびに操作が重くなる |
+| `features/map/baseMap.ts` | 基礎地図のスタイル・出典の表記・MapLibreの部品の日本語の文言で地図を作る（`features/map/baseMap.ts: createBaseMap`）。一般の地図（`MapView.tsx`）と下書きの点数の地図が使い、載せるものはどちらも場面で当てる。地図が今見ている範囲の読み取り（`features/map/baseMap.ts: viewportOf`）も両方が使う。俯瞰図（`features/map/MapOverview/MapOverview.tsx`）は`inset`で、操作を受けず出典の表記を持たない地図として作る（出典は同じ画面の本体の地図が出す）。基礎地図の文字は薄れさせずに出し入れする（MapLibre の`fadeDuration`を0にする）——薄れる間は地図全体を描き直し続けるので、ずらすたびに操作が重くなる |
 | `features/map/DraftWayValuesMap/DraftWayValuesMap.tsx` | 下書きの点数の地図（管理画面の較正の画面が置く。[軸スタジオ](axis-studio.md)「較正の画面」）。下書きで求めた道の点数を、一般の地図と同じ場面の組み立て・道の線の塗り・凡例で塗る。点数は backend が走る条件を入れて求め終えた値なので、道ごとの材料1つとして載せ、それをそのまま道の値にする木（`scene/wayValueFormula.ts: featureValueFormula`）で塗る。下書きの中身と点数の求め方は知らず、置く側が渡す |
 | `features/map/layers/mapStyleOps.ts` | 地図インスタンスへの低水準操作（スタイル読み込み後の実行・面レイヤーの差し込み位置・基礎地図の細い道の縁取りの描き替え・ズーム依存のicon-size式）。このアプリのどのレイヤーかを知らないものだけを置く |
 | `features/map/layers/routeArrowIcon.ts`・`components/ui/icons/icons.tsx`・`components/ui/icons/layerIcons.tsx`・`components/ui/icons/lucideIcons.tsx`・`components/ui/icons/mapLayerIcons.ts` | ルート矢印・アイコン集（下記「本モジュールとの関係」参照）。`icons.tsx`はアイコンの土台（大きさの受け口・線の様式）と、操作・地点の自前の形、`layerIcons.tsx`は地図のレイヤーと評価軸の自前の形、`lucideIcons.tsx`はlucideの形の包み、`mapLayerIcons.ts`は源泉が宣言するレイヤーごとのアイコンの表（地図の「表示」の一覧と、区間の小窓の層の値のチップが同じ表を引く。レイヤーを足すと型が書き忘れを止める） |
@@ -69,8 +69,8 @@
 | `lib/backendRewrites.ts` | rewritesの向け先の組み立て（タイル類と地図の下地は`BACKEND_INTERNAL_URL`へ）と、開発機の画面を本番のデータで開く切り替えの判断（切り替えが入った開発サーバーのときだけ、タイルとAPIの`/prod/…`を本番のbackendへ向ける）・同じ Wi-Fi の端末から開くときの開発機の LAN の住所 |
 | `next.config.ts`（`frontend/`直下） | フロント自身のオリジンへ来たタイル類（基礎地図・路面・POI・事故等）の要求をbackendへ転送するrewrites（向け先は`lib/backendRewrites.ts`）と、その転送を打ち切るまでの時間（`experimental.proxyTimeout`）。開発機の画面を本番のデータで開く切り替え（[setup.md](../../architecture/setup.md)「開発機の画面を本番のデータで開く」）も読む。e2eのビルドで型の検査を外す設定（`typescript`）も持つ（[run-checks/SKILL.md](../../../.claude/skills/run-checks/SKILL.md)「E2E・画面の撮影の走らせ方」） |
 | `components/ui/InfoPopover/InfoPopover.tsx` | 見出し脇の(i)アイコン→ポップオーバーという外枠の共通部品（開閉state・開閉に追随するアクセシブル名「◯◯を表示/隠す」・任意の見出し文言を含む）。中身はchildrenで呼び出し側が渡す。(i)→Popoverを出す箇所（例: `RouteSettingsPanel`・軸スタジオの集計のカード）はこれを使い、組み立てを自前で持たない |
-| `features/map/LegendCheckboxList/LegendCheckboxList.tsx` | 凡例のチェックボックス一覧（チェックボックス+色スウォッチ+ラベル）の共通部品。リスト/行の見た目（class名）は呼び出し側が指定する（`LensControl`・`MapOverlayControls`の▶の内訳で共用） |
-| `features/map/LegendCheckboxList/LegendRow.tsx` | 凡例の1行と、行の右端の（i）から行のすぐ下に開く説明（`legendFilter.ts: LegendEntry.description`）。絞り込める凡例（`LegendCheckboxList`）と表示専用の凡例（▶の内訳）が同じ部品を通る。浮きパネルにしないのは、凡例が浮きパネル（「表示」の一覧・「評価で塗る」の一覧）の中にあるため |
+| `features/map/LegendCheckboxList/LegendCheckboxList.tsx` | 凡例のチェックボックスの縦の一覧（チェックボックス+色見本+ラベル）と、渡されたときは先頭の全段階をまとめて切り替える見出しのチェックの共通部品（`LensControl`・`MapOverlayControls`の▶の内訳・下書きの点数の地図で共用）。見本は呼び出し側が描き替えられる |
+| `features/map/LegendCheckboxList/LegendRow.tsx` | 凡例の1行と、行の右端の（i）から行のすぐ下に開く説明（`legendFilter.ts: LegendEntry.description`）。絞り込める凡例（`LegendCheckboxList`）と表示専用の凡例（▶の内訳）が同じ部品を通る。浮きパネルにしないのは、凡例が浮きパネル（「表示」の一覧・「評価で塗る」の一覧）の中にあるため。行の（i）と説明の開閉（`features/map/LegendCheckboxList/LegendRow.tsx: useRowDescription`）と、▶と凡例の開閉（`features/map/LegendCheckboxList/LegendRow.tsx: useRowPanel`）も持ち、「表示」の一覧の行と「評価で塗る」の一覧の行が同じ形で使う |
 
 ## タイルの配信元（`lib/tileBaseUrl.ts`）
 
@@ -620,7 +620,7 @@ backendが200で応答する窓では、カタログは取得済みなのに世�
 鍵を指す。書き換える場所は▶パネル（`MapOverlayControls`）だけではない——レンズの凡例
 （`LensControl`）も同じキーの状態を書き換える（保存先が1つなので、片方で隠した段は
 もう片方でも隠れたままになる。[地図: 軸・ルート色分け](map-axis-coloring.md)参照）。
-描画にはどちらも`LegendCheckboxList`を使う。軸の名前を持たない凡例（ルートの線）の、全段階をまとめて切り替える行の名前は、
+描画にはどちらも`LegendCheckboxList`を使い、全段階をまとめて切り替える見出しのチェックもそこが持つ。軸の名前を持たない凡例（ルートの線）の、全段階をまとめて切り替える行の名前は、
 レンズの凡例と同じ「凡例」にする（同じ状態を操作する行が、置き場ごとに違う名前にならないように）。
 
 `axisId`を持たない軸は読み取り専用の凡例として描画される。配信元が色を焼き込み済みの
