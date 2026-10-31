@@ -86,26 +86,17 @@ function straightLine(count: number, stepEastM: number, stepNorthM: number): Geo
 }
 
 describe("downloadGpx", () => {
-  it("候補のidを名前に持つGPXのファイルを落とし、落としたあとはリンクを外してURLを捨てる", () => {
-    downloadGpx(
-      candidate([
-        [139.7, 35.6],
-        [139.71, 35.61],
-      ]),
-    );
-    expect(downloads).toEqual([expect.objectContaining({ fileName: "ridecompass-route-1.gpx", attached: true })]);
-    expect(downloads[0].blob.type).toBe("application/gpx+xml");
-    expect(document.querySelectorAll("a[download]")).toHaveLength(0);
-    expect(URL.revokeObjectURL).toHaveBeenCalledWith(downloads[0].href);
-  });
-
-  it("GPX 1.1のトラック1本に、方位と距離（小数1桁）の名前と、経路の点を順に並べる", async () => {
+  it("候補のidを名前に持つGPX 1.1のファイルを落とし、トラック1本に方位と距離（小数1桁）の名前と経路の点を順に並べ、落としたあとはリンクを外してURLを捨てる", async () => {
     const coordinates = [
       [139.7, 35.6],
       [139.705, 35.602],
       [139.71, 35.61],
     ];
     const { doc, points } = await exportGpx(candidate(coordinates));
+    expect(downloads[0]).toEqual(expect.objectContaining({ fileName: "ridecompass-route-1.gpx", attached: true }));
+    expect(downloads[0].blob.type).toBe("application/gpx+xml");
+    expect(document.querySelectorAll("a[download]")).toHaveLength(0);
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith(downloads[0].href);
     expect(doc.documentElement.tagName).toBe("gpx");
     expect(doc.documentElement.getAttribute("version")).toBe("1.1");
     expect(doc.getElementsByTagName("trk")).toHaveLength(1);

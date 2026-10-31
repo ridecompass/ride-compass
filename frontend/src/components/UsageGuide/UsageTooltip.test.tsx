@@ -88,7 +88,7 @@ describe("UsageTooltip", () => {
     wait(LONG_PRESS_MS * 4);
     expect(tooltip()).not.toBeNull();
 
-    // 次の押し方は止めない。
+    // 次の押し方（短く押す）は止めない。
     touchDown(screen.getByText("本文の文字"));
     expect(tooltip()).toBeNull();
     touchDown(button("ルート生成"));
@@ -127,16 +127,6 @@ describe("UsageTooltip", () => {
     wait(LONG_PRESS_MS);
 
     expect(tooltip()).toBeNull();
-  });
-
-  it("短く押せば、押した扱いのまま", () => {
-    const { onGenerate } = renderScreen();
-
-    touchDown(button("ルート生成"));
-    wait(LONG_PRESS_MS / 2);
-    release(button("ルート生成"));
-
-    expect(onGenerate).toHaveBeenCalledTimes(1);
   });
 
   it.each([

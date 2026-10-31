@@ -204,50 +204,70 @@ def test_an_msm_grid_range_that_is_inverted_or_too_wide_is_refused(override_depe
     assert response.json() == {"detail": detail}
 
 
-@pytest.mark.parametrize(("path", "params", "dependency", "detail"), [
-    ("/api/weather/warnings", POINT, get_warning_service, "取得できませんでした。"),
-    ("/api/weather/wbgt", POINT, get_wbgt_service, "取得できませんでした。"),
-    ("/api/weather/flood-forecast", POINT, get_flood_service, "取得できませんでした。"),
-    ("/api/weather/amedas", POINT, get_amedas_service, "アメダス観測値の取得に失敗しました"),
-    ("/api/weather", POINT, get_weather_service, "気象データの取得に失敗しました"),
-    ("/api/weather/msm-grid", TOKYO_BBOX, get_weather_service, "気象データの取得に失敗しました"),
+@pytest.mark.parametrize(("method", "path", "call", "dependency", "detail"), [
+    ("GET", "/api/weather/warnings", {"params": POINT}, get_warning_service, "取得できませんでした。"),
+    ("GET", "/api/weather/wbgt", {"params": POINT}, get_wbgt_service, "取得できませんでした。"),
+    ("GET", "/api/weather/flood-forecast", {"params": POINT}, get_flood_service, "取得できませんでした。"),
+    ("GET", "/api/weather/amedas", {"params": POINT}, get_amedas_service, "アメダス観測値の取得に失敗しました"),
+    ("GET", "/api/weather", {"params": POINT}, get_weather_service, "気象データの取得に失敗しました"),
+    ("GET", "/api/weather/msm-grid", {"params": TOKYO_BBOX}, get_weather_service, "気象データの取得に失敗しました"),
+    (
+        "POST", "/api/weather/route-warning-timeline", {"json": ROUTE_POINTS},
+        get_warning_timeline_service, "取得できませんでした。",
+    ),
 ])
 def test_a_source_that_could_not_be_obtained_is_a_failure_not_an_empty_answer(
-    override_dependency, path, params, dependency, detail
+    override_dependency, method, path, call, dependency, detail
 ):
-    """空の応答は「出ていない」を表す。取れなかったことを同じ空で返すと、画面は出ていないと見せる。"""
+    """空の応答は「出ていない」を表す（ルートの警報級の時系列なら「どの区域にも入らない」）。取れなかったことを同じ空で
+    返すと、画面は出ていないと見せる。"""
     override_dependency(dependency, lambda: FakeService(None))
 
-    response = client.get(path, params=params)
+    response = client.request(method, path, **call)
 
     assert response.status_code == 502
     assert response.json() == {"detail": detail}
 
 
-@pytest.mark.parametrize(("path", "params", "dependency", "answer", "key", "limit"), [
+@pytest.mark.parametrize(("method", "path", "call", "dependency", "answer", "key", "limit"), [
     (
-        "/api/weather/warnings", POINT, get_warning_service, WARNINGS,
+        "GET", "/api/weather/warnings", {"params": POINT}, get_warning_service, WARNINGS,
         "weather-warnings", settings.weather_warnings_rate_limit_per_minute,
     ),
-    ("/api/weather/wbgt", POINT, get_wbgt_service, WBGT, "weather-wbgt", settings.weather_wbgt_rate_limit_per_minute),
     (
-        "/api/weather/flood-forecast", POINT, get_flood_service, FLOODS,
+        "GET", "/api/weather/wbgt", {"params": POINT}, get_wbgt_service, WBGT,
+        "weather-wbgt", settings.weather_wbgt_rate_limit_per_minute,
+    ),
+    (
+        "GET", "/api/weather/flood-forecast", {"params": POINT}, get_flood_service, FLOODS,
         "weather-flood-forecast", settings.weather_flood_forecast_rate_limit_per_minute,
     ),
-    ("/api/weather/amedas", POINT, get_amedas_service, AMEDAS, "amedas", settings.weather_amedas_rate_limit_per_minute),
-    ("/api/weather", POINT, get_weather_service, GRID_POINT_TODAY, "weather", settings.weather_rate_limit_per_minute),
     (
-        "/api/weather/msm-grid", TOKYO_BBOX, get_weather_service, MSM_GRID,
+        "GET", "/api/weather/amedas", {"params": POINT}, get_amedas_service, AMEDAS,
+        "amedas", settings.weather_amedas_rate_limit_per_minute,
+    ),
+    (
+        "GET", "/api/weather", {"params": POINT}, get_weather_service, GRID_POINT_TODAY,
+        "weather", settings.weather_rate_limit_per_minute,
+    ),
+    (
+        "GET", "/api/weather/msm-grid", {"params": TOKYO_BBOX}, get_weather_service, MSM_GRID,
         "msm-grid", settings.msm_grid_rate_limit_per_minute,
     ),
+    (
+        "POST", "/api/weather/route-warning-timeline", {"json": ROUTE_POINTS}, get_warning_timeline_service,
+        ROUTE_TIMELINE, "weather-warning-timeline", settings.weather_warning_timeline_rate_limit_per_minute,
+    ),
 ])
-def test_each_route_is_rate_limited_per_client(override_dependency, path, params, dependency, answer, key, limit):
+def test_each_route_is_rate_limited_per_client(
+    override_dependency, method, path, call, dependency, answer, key, limit
+):
     override_dependency(dependency, lambda: FakeService(answer))
     for _ in range(limit - 1):
         rate_limiter.check_rate_limit(f"{key}:testclient", limit)
 
-    assert client.get(path, params=params).status_code == 200
-    assert client.get(path, params=params).status_code == 429
+    assert client.request(method, path, **call).status_code == 200
+    assert client.request(method, path, **call).status_code == 429
 
 
 def test_the_route_warning_timeline_route_returns_what_its_source_answered(override_dependency):
@@ -258,22 +278,3 @@ def test_the_route_warning_timeline_route_returns_what_its_source_answered(overr
     assert response.status_code == 200
     assert RouteWarningTimeline.model_validate(response.json()) == ROUTE_TIMELINE
 
-
-def test_route_warning_timeline_that_could_not_be_obtained_is_a_failure_not_an_empty_answer(override_dependency):
-    """空の通過は「ルートがどの区域にも入らない」を表す。取れなかったことを同じ空で返すと、画面は注意報級の時間帯が無いと見せる。"""
-    override_dependency(get_warning_timeline_service, lambda: FakeService(None))
-
-    response = client.post("/api/weather/route-warning-timeline", json=ROUTE_POINTS)
-
-    assert response.status_code == 502
-    assert response.json() == {"detail": "取得できませんでした。"}
-
-
-def test_the_route_warning_timeline_route_is_rate_limited_per_client(override_dependency):
-    override_dependency(get_warning_timeline_service, lambda: FakeService(ROUTE_TIMELINE))
-    limit = settings.weather_warning_timeline_rate_limit_per_minute
-    for _ in range(limit - 1):
-        rate_limiter.check_rate_limit("weather-warning-timeline:testclient", limit)
-
-    assert client.post("/api/weather/route-warning-timeline", json=ROUTE_POINTS).status_code == 200
-    assert client.post("/api/weather/route-warning-timeline", json=ROUTE_POINTS).status_code == 429

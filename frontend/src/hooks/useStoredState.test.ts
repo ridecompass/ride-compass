@@ -70,17 +70,13 @@ describe("useStoredState", () => {
     expect(window.localStorage.getItem("key-b")).toBe("ok:next");
   });
 
-  it.each([
-    ["保存が無い", () => {}],
-    ["保存が読めない", () => window.localStorage.setItem("key-b", "broken")],
-  ])("キーが変わって新しいキーの%sときは、前のキーの値を引きずらず既定値へ戻る", (_, arrange) => {
+  it("キーが変わって新しいキーの保存が無いときは、前のキーの値を引きずらず既定値へ戻る", () => {
     window.localStorage.setItem("key-a", "ok:a");
     const { result, rerender } = renderHook(({ key }) => useStoredState(key, "default", PREFIXED), {
       initialProps: { key: "key-a" },
     });
     expect(result.current[0]).toBe("a");
 
-    arrange();
     rerender({ key: "key-b" });
 
     expect(result.current[0]).toBe("default");

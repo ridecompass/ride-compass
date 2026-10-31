@@ -9,6 +9,7 @@
 """
 
 import numpy as np
+import pytest
 import rasterio
 from rasterio.transform import from_origin
 
@@ -34,28 +35,23 @@ def _geotiff_bytes(tmp_path) -> bytes:
     return path.read_bytes()
 
 
-def test_downloads_missing_raster_from_the_bucket(tmp_path, monkeypatch, respx_mock):
+@pytest.mark.parametrize(
+    ("readable", "status", "kept"),
+    [
+        (True, 0, True),
+        # ラスタとして読めない応答（配布元のエラー本文等）を「取得済み」にしない。残すと次の実行が再取得せず、壊れたラスタを読み続ける。
+        (False, 1, False),
+    ],
+)
+def test_downloads_the_raster_from_the_bucket_and_keeps_only_a_readable_one(
+        tmp_path, monkeypatch, respx_mock, readable, status, kept):
     # バケット内のキーは設定されたパスのファイル名そのもの（ゾーン・年は設定側の決定）。
     respx_mock.get(f"{fetch_lulc_raster.BUCKET_BASE_URL}/54S_2024.tif").respond(
-        content=_geotiff_bytes(tmp_path)
+        content=_geotiff_bytes(tmp_path) if readable else b"<Error>NoSuchKey</Error>"
     )
     destination = tmp_path / "raster" / "54S_2024.tif"
     monkeypatch.setattr(settings, "lulc_raster_paths", str(destination))
 
-    assert fetch_lulc_raster.main() == 0
+    assert fetch_lulc_raster.main() == status
 
-    assert destination.exists()
-
-
-def test_does_not_leave_a_broken_file_behind(tmp_path, monkeypatch, respx_mock):
-    """ラスタとして読めない応答（配布元のエラー本文等）を「取得済み」にしない。
-
-    残すと次の実行が再取得せず、壊れたラスタを読み続ける。
-    """
-    respx_mock.get(f"{fetch_lulc_raster.BUCKET_BASE_URL}/54S_2024.tif").respond(content=b"<Error>NoSuchKey</Error>")
-    destination = tmp_path / "54S_2024.tif"
-    monkeypatch.setattr(settings, "lulc_raster_paths", str(destination))
-
-    assert fetch_lulc_raster.main() == 1
-
-    assert not destination.exists()
+    assert destination.exists() == kept
