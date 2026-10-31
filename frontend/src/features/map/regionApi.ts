@@ -89,7 +89,7 @@ export interface AxisInspectorConditions extends RideConditions {
 
 export type AxisInspectorResult = components["schemas"]["AxisInspectorResult"];
 
-export type RoadAt = components["schemas"]["RoadAt"];
+type RoadAt = components["schemas"]["RoadAt"];
 
 /** 押した所から`radiusM`以内の道（近い順）。プロパティはズーム`z`の路面タイルと同じ。 */
 export async function fetchRoadsAt(
