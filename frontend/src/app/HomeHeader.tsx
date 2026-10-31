@@ -68,53 +68,49 @@ export default function HomeHeader({
     <>
       <header className="flex flex-shrink-0 flex-nowrap items-center gap-2 overflow-x-auto border-b border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {ride !== null ? (
-          <>
-            <RideBar
-              remaining={ride.remaining}
-              offRoute={ride.offRoute}
-              mapBearingDeg={mapBearingDeg}
-              speedKmh={ride.speedKmh}
-              wind={observedWind(amedas)}
-            />
-            <div className="ml-auto flex flex-shrink-0 items-center gap-2">
-              <WarningBadgeList items={warningBadgeItems} failures={headerFetchFailures} />
-              <Button
-                size="panelIcon"
-                onClick={onToggleRidePanel}
-                aria-label="ルート"
-                aria-expanded={panelsShown}
-                usage="走行モードのまま「ルート設定」と「ルート結果」を開きます。候補を選び直す・作り直すと、走行モードはその候補を追います。もう一度押すと閉じます。"
-              >
-                <RouteIcon size={18} />
-              </Button>
-            </div>
-          </>
+          <RideBar
+            remaining={ride.remaining}
+            offRoute={ride.offRoute}
+            mapBearingDeg={mapBearingDeg}
+            speedKmh={ride.speedKmh}
+            wind={observedWind(amedas)}
+          />
         ) : (
-          <>
-            {/* 観測のバーは左端に固定して常に見せる。入り切らないときに隠れるのは警報の側。 */}
-            <div className="left-0 flex flex-shrink-0 items-center gap-2 sticky z-1 bg-[var(--color-surface)]">
-              <WeatherPanel
-                amedas={amedas}
-                error={amedasError}
-                today={gridPointToday}
-                todayError={gridPointTodayError}
-                mapBearingDeg={mapBearingDeg}
+          // 観測のバーは左端に固定して常に見せる。入り切らないときに隠れるのは警報の側。
+          <div className="left-0 flex flex-shrink-0 items-center gap-2 sticky z-1 bg-[var(--color-surface)]">
+            <WeatherPanel
+              amedas={amedas}
+              error={amedasError}
+              today={gridPointToday}
+              todayError={gridPointTodayError}
+              mapBearingDeg={mapBearingDeg}
+            />
+          </div>
+        )}
+        <div className="ml-auto flex flex-shrink-0 items-center gap-2">
+          <WarningBadgeList items={warningBadgeItems} failures={headerFetchFailures} />
+          {ride !== null ? (
+            <Button
+              size="panelIcon"
+              onClick={onToggleRidePanel}
+              aria-label="ルート"
+              aria-expanded={panelsShown}
+              usage="走行モードのまま「ルート設定」と「ルート結果」を開きます。候補を選び直す・作り直すと、走行モードはその候補を追います。もう一度押すと閉じます。"
+            >
+              <RouteIcon size={18} />
+            </Button>
+          ) : (
+            <div className="right-0 flex items-center sticky z-1 bg-[var(--color-surface)]">
+              <HeaderMenu
+                debugEnabled={debugEnabled}
+                debugConsoleOpen={debugConsoleOpen}
+                onToggleDebugConsole={() => setDebugConsoleOpen((v) => !v)}
+                onStartUsageGuide={onStartUsageGuide}
+                onRedrawMap={onRedrawMap}
               />
             </div>
-            <div className="ml-auto flex flex-shrink-0 items-center gap-2">
-              <WarningBadgeList items={warningBadgeItems} failures={headerFetchFailures} />
-              <div className="right-0 flex items-center sticky z-1 bg-[var(--color-surface)]">
-                <HeaderMenu
-                  debugEnabled={debugEnabled}
-                  debugConsoleOpen={debugConsoleOpen}
-                  onToggleDebugConsole={() => setDebugConsoleOpen((v) => !v)}
-                  onStartUsageGuide={onStartUsageGuide}
-                  onRedrawMap={onRedrawMap}
-                />
-              </div>
-            </div>
-          </>
-        )}
+          )}
+        </div>
       </header>
       <DebugConsole open={debugConsoleOpen} onClose={() => setDebugConsoleOpen(false)} />
     </>

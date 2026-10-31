@@ -22,10 +22,7 @@ import { cardVariants } from "@/components/ui/Card/Card";
 
 const TAB_PANEL_CLASS = cn(cardVariants({ variant: "outline" }), "flex flex-col gap-3");
 
-// 軸スタジオ・開発者向け機能をまとめた独立URLの管理画面。一般向けメイン
-// ページ（/）とはURLレベルで分離しており、権限制御はこのルーティング境界
-// （src/proxy.ts、matcher: ["/admin","/admin/:path*"]）にHTTP Basic認証として敷いている
-// （環境変数ADMIN_BASIC_AUTH_USERNAME/PASSWORD未設定時は常に到達不可）。
+// 軸スタジオ・開発者向け機能をまとめた管理画面。認証はこのページの外（URLの境界）が持つ。
 export default function AdminPage() {
   const debugEnabled = useDebugEnabled();
   const [systemStatusOpen, setSystemStatusOpen] = useState(false);
@@ -88,12 +85,7 @@ export default function AdminPage() {
             <BackendStatus />
           </div>
           {debugEnabled && (
-            // デバッグログ（地図の表示イベント・API呼び出しのライブログ）はDebugConsole
-            // 自体が地図インスタンスに紐づく情報のため、地図の無いこのページへ置いても
-            // 記録先lib/debugLog.tsがタブ間で共有されず実質機能しない。「/admin=デバッグ
-            // モードの設定」「/=地図を操作しながら見るライブログ本体」という役割分担にし、
-            // 閲覧はトップページ（/）で行う（デバッグモードのON/OFF自体は上のDebugPanelが
-            // localStorage経由でトップページと共有する）。
+            // ログは地図を操作しながら見るもので、地図の無いこのページには出さない。
             <p className={textVariants({ variant: "hint" })}>
               デバッグログの表示はトップページ（/）のヘッダーアイコンで行えます。
             </p>

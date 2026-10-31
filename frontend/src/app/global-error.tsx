@@ -1,12 +1,6 @@
 "use client";
 
-// error.tsxはルートレイアウト自体のレンダリングエラーは捕捉できない
-// （layout.tsxの外側を置き換えるため、独自のhtml/bodyタグが必要）。
-// この最外殻が無いと、レイアウト自体が壊れた場合に完全な白画面になる。
-//
-// **色はトークン（var(--color-muted)等）を使わず直値で書く**。layout.tsxごと置き換わる
-// ため`globals.css`が読み込まれておらず、トークンは未定義＝色指定が丸ごと無効になる
-// （error.tsxはlayout配下なのでトークンを使える）。
+// ルートのレイアウトごと置き換わり`globals.css`を読まないので、トークンもTailwindのクラスも効かない。見た目は直値で書く。
 export default function GlobalError({ retry }: { error: Error & { digest?: string }; retry: () => void }) {
   return (
     <html lang="ja">

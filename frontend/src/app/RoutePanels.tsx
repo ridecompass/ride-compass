@@ -20,10 +20,6 @@ import { cn } from "@/lib/cn";
 import { mapOverlayEdge } from "@/lib/mapOverlayEdges";
 import type { usePagePanels } from "./usePagePanels";
 
-// 区分の見出しのDOM id（モバイルのシート）。
-const ROUTE_SETTINGS_SHEET_TITLE_ID = "route-settings-sheet-title";
-const ROUTE_OUTCOME_SHEET_TITLE_ID = "route-outcome-sheet-title";
-
 /** モバイルの下部タブ（シートと同じ並び）。 */
 const MOBILE_TABS = [
   {
@@ -199,7 +195,6 @@ export function MobileRoutePanels(props: RoutePanelsProps) {
           {...panels.sharedSheetProps}
           open={panels.mobileSheet === "routeSettings"}
           title="ルート設定"
-          titleId={ROUTE_SETTINGS_SHEET_TITLE_ID}
           headerLead={<SettingsTabsList />}
           headerAction={<GenerateRouteActions generation={route.generation} />}
           fitKey={`${settingsTab}:${settingsCardShown}`}
@@ -212,7 +207,6 @@ export function MobileRoutePanels(props: RoutePanelsProps) {
         {...panels.sharedSheetProps}
         open={panels.mobileSheet === "routeOutcome"}
         title="ルート結果"
-        titleId={ROUTE_OUTCOME_SHEET_TITLE_ID}
         headerAction={outcome.actions ?? undefined}
       >
         {outcome.body}

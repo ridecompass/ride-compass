@@ -1,22 +1,15 @@
 import { NextResponse } from "next/server";
 
-// プロセス（Next.jsサーバー）起動時刻。モジュール読み込み時（＝プロセス起動時）に
-// 一度だけ評価される。Renderはデプロイのたびにプロセスを再起動するため、直近デプロイの
-// おおよその時刻としても使える（backend/app/version.pyのSTARTED_ATと同じ考え方）。
+// サーバーのプロセスが起きた時刻（モジュールを読み込んだとき1回だけ決まる）。
 const STARTED_AT = new Date().toISOString();
 
-// レスポンスをビルド時に静的最適化・キャッシュさせず、リクエストのたびに評価する
-// （commitは環境変数なので実質不変だが、/healthと同じ「デプロイ確認用エンドポイント」
-// という性質上、常にサーバーの現在の状態を返すことを明示しておく）。
+// 応答をビルドの時点で固めず、動いているプロセスの値を返す。
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   return NextResponse.json({
     status: "ok",
-    // 本番の像を作るときにdeploy-frontend.ymlが`GIT_COMMIT`（像にしたコミットのフルSHA）を入れる
-    // （frontend/Dockerfile）。手元や、コミットを渡さずに作った像では空か未設定なのでnull。
-    // バックエンドの/healthと同じ確認方法: 手元のgit rev-parse HEADと比較する
-    // （詳細はdocs/architecture/tech-stack.md「デプロイの反映確認」参照）。
+    // 像にしたコミットのフルSHA。渡さずに作った像と手元では null。
     commit: process.env.GIT_COMMIT || null,
     started_at: STARTED_AT,
   });
