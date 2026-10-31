@@ -5,10 +5,11 @@
  * （docs/architecture/design-principles.md 構造仕様1）——差し替えた経路の評価はbackendが
  * 既存候補と同じ経路で行う。
  *
- * 区間ごとに全候補から乗り換え先を集めるのは`features/route/stretchAlternatives.ts`。
- * `edge_ids`を持つ候補は、`edge_point_offsets`・`node_ids`もEdgeの数より1件多く必ず持つ（backendの
- * `services/road_graph_engine.py`が同じ箇所で組む）ので、ここでは欠けを見ない。
+ * `edge_ids`を持つ候補は、`edge_point_offsets`・`node_ids`もEdgeの数より1件多く持つ前提で、欠けを見ない。
  */
+import { routeEdgeKms } from "@/lib/routeDistance";
+import type { RouteCandidate } from "@/types/route";
+
 /** 表示中の候補が、比較相手と別の道を通る区間。`edge_ids`における`[start, end)`。 */
 export interface RouteStretch {
   start: number;
@@ -72,16 +73,28 @@ export function pairedStretches(displayed: readonly string[], target: readonly s
   return onDisplayed.map((stretch, index) => ({ displayed: stretch, target: onTarget[index] }));
 }
 
-/** 区間を割るために要る経路の形（`RouteCandidate`の一部。lib側は候補の型に依存しない）。 */
-export interface RouteGeometryShape {
+/** 経路の形。元ルート・乗り換え先・乗り換えを適用した後の経路が同じ形を持ち、次に選べる区間の計算と地図の描画が
+ * 同じものを見る。 */
+export interface SplicedRouteShape {
+  edgeIds: string[];
   coordinates: readonly GeoJSON.Position[];
   /** Edge iの始点が`coordinates`の何番目か（末尾に終点を持つ）。backendの`edge_point_offsets`。 */
   edgePointOffsets: readonly number[];
   /** Edge iの始点のNode id（末尾に終点を持つ）。backendの`node_ids`。 */
   nodeIds: readonly string[];
-  /** Edge iの始点のルートの上の距離（km。末尾に全体）。`lib/routeDistance.ts: routeEdgeKms`が区間から求める。 */
+  /** Edge iの始点のルートの上の距離（km。末尾に全体）。道のりのグラフと同じ物差しで区間から求める。 */
   edgeKms: readonly number[];
 }
+
+export const routeShape = (
+  route: Pick<RouteCandidate, "edge_ids" | "geometry" | "edge_point_offsets" | "node_ids" | "segments">,
+): SplicedRouteShape => ({
+  edgeIds: route.edge_ids,
+  coordinates: route.geometry.coordinates,
+  edgePointOffsets: route.edge_point_offsets,
+  nodeIds: route.node_ids,
+  edgeKms: routeEdgeKms(route.segments, route.edge_point_offsets),
+});
 
 /** ある区間を、どの候補のどの道へ差し替えられるか。 */
 export interface StretchAlternative {
@@ -92,12 +105,6 @@ export interface StretchAlternative {
   /** 相手側の範囲（地図へ相手の道を描くために要る）。 */
   targetStretch: RouteStretch;
   /** 差し替え後に通るEdge id列。 */
-  edgeIds: string[];
-}
-
-/** 経路の形（Edge id列＋区間を割るための形）。元ルート・乗り換え先・乗り換えを適用した後の経路が同じ形を持ち、
- * 次に選べる区間の計算と地図の描画が同じものを見る。 */
-export interface SplicedRouteShape extends RouteGeometryShape {
   edgeIds: string[];
 }
 
@@ -114,55 +121,49 @@ export interface SplicedRouteShape extends RouteGeometryShape {
 export function buildSplicedShape(
   base: SplicedRouteShape,
   applied: readonly StretchAlternative[],
-  shapeOf: (candidateId: string) => RouteGeometryShape | undefined,
+  shapeOf: (candidateId: string) => SplicedRouteShape | undefined,
 ): SplicedRouteShape {
   let current = base;
-  for (const alternative of applied) {
-    const targetShape = shapeOf(alternative.candidateId);
-    if (!targetShape) continue;
-    const { start: from, end: to } = stretchCoordinateRange(targetShape.edgePointOffsets, alternative.targetStretch);
-    const { start: head, end: tail } = stretchCoordinateRange(current.edgePointOffsets, alternative.stretch);
-    const edgeIds = [
-      ...current.edgeIds.slice(0, alternative.stretch.start),
-      ...alternative.edgeIds,
-      ...current.edgeIds.slice(alternative.stretch.end),
+  for (const { candidateId, stretch, targetStretch, edgeIds: inserted } of applied) {
+    const target = shapeOf(candidateId);
+    if (!target) continue;
+    const { start: from, end: to } = stretchCoordinateRange(target.edgePointOffsets, targetStretch);
+    const { start: head, end: tail } = stretchCoordinateRange(current.edgePointOffsets, stretch);
+    // Edge・Node・距離は同じ位置で継ぐ。継ぎ目のNodeは両者で同じ（共有地点でしか乗り換えないため）なので、
+    // 相手側は差し替える区間の始点だけを取り、終点はこちら側の続きが持つ。後ろ側は伸び縮みした分だけずらす。
+    const pointShift = to - from - (tail - head);
+    const kmShift =
+      target.edgeKms[targetStretch.end] -
+      target.edgeKms[targetStretch.start] -
+      (current.edgeKms[stretch.end] - current.edgeKms[stretch.start]);
+    const splice = <T>(own: readonly T[], theirs: readonly T[], shiftTail = (value: T) => value) => [
+      ...own.slice(0, stretch.start),
+      ...theirs,
+      ...own.slice(stretch.end).map(shiftTail),
     ];
-    // Node idもEdge idと同じ位置で継ぐ。継ぎ目のNodeは両者で同じ（共有地点でしか
-    // 乗り換えないため）なので、相手側は差し替える区間の始点だけを取り、終点は
-    // こちら側の続きが持つ。
-    const nodeIds = [
-      ...current.nodeIds.slice(0, alternative.stretch.start),
-      ...targetShape.nodeIds.slice(alternative.targetStretch.start, alternative.targetStretch.end),
-      ...current.nodeIds.slice(alternative.stretch.end),
-    ];
-    // 両端の継ぎ目の点は相手側のものだけを残し、重複させない。
-    const coordinates = [
-      ...current.coordinates.slice(0, head),
-      ...targetShape.coordinates.slice(from, to + 1),
-      ...current.coordinates.slice(tail + 1),
-    ];
-    const inserted = to - from;
-    const removed = tail - head;
-    const shift = inserted - removed;
-    const edgePointOffsets = [
-      ...current.edgePointOffsets.slice(0, alternative.stretch.start),
-      ...targetShape.edgePointOffsets
-        .slice(alternative.targetStretch.start, alternative.targetStretch.end)
-        .map((offset) => offset - from + head),
-      ...current.edgePointOffsets.slice(alternative.stretch.end).map((offset) => offset + shift),
-    ];
-    // 距離も同じ位置で継ぎ、後ろ側は差し替えで伸び縮みした分だけずらす。
-    const baseKm = current.edgeKms;
-    const targetKm = targetShape.edgeKms;
-    const { start: s, end: e } = alternative.stretch;
-    const { start: ts, end: te } = alternative.targetStretch;
-    const stretchShift = targetKm[te] - targetKm[ts] - (baseKm[e] - baseKm[s]);
-    const edgeKms = [
-      ...baseKm.slice(0, s),
-      ...targetKm.slice(ts, te).map((km) => km - targetKm[ts] + baseKm[s]),
-      ...baseKm.slice(e).map((km) => km + stretchShift),
-    ];
-    current = { edgeIds, coordinates, edgePointOffsets, nodeIds, edgeKms };
+    const targetSlice = <T>(values: readonly T[]) => values.slice(targetStretch.start, targetStretch.end);
+    current = {
+      edgeIds: splice(current.edgeIds, inserted),
+      nodeIds: splice(current.nodeIds, targetSlice(target.nodeIds)),
+      // 両端の継ぎ目の点は相手側のものだけを残し、重複させない。
+      coordinates: [
+        ...current.coordinates.slice(0, head),
+        ...target.coordinates.slice(from, to + 1),
+        ...current.coordinates.slice(tail + 1),
+      ],
+      edgePointOffsets: splice(
+        current.edgePointOffsets,
+        targetSlice(target.edgePointOffsets).map((offset) => offset - from + head),
+        (offset) => offset + pointShift,
+      ),
+      edgeKms: splice(
+        current.edgeKms,
+        targetSlice(target.edgeKms).map(
+          (km) => km - target.edgeKms[targetStretch.start] + current.edgeKms[stretch.start],
+        ),
+        (km) => km + kmShift,
+      ),
+    };
   }
   return current;
 }
