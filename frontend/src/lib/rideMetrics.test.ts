@@ -2,12 +2,11 @@
  * `lib/rideMetrics.ts`——走行の計測。走行モードの間だけ、1分ごとの行にして端末に残す。
  *
  * ここで見ないもの: 標準の観測の口（電池・Long Tasks・通信）の値。テスト環境に無いので、その項目は null・0 のまま残ることだけを見る。
+ * 地図が描き続けた理由の内訳も見ない。MapLibre の非公開の値を読み、地図の代役（`testing/maplibre.ts`）はそれを持たないので、模擬走行（`capture/ride-simulation.ts`）の記録で見る。
  */
-import type { Map as MapLibreMap } from "maplibre-gl";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
-  bindRideMetrics,
   countRideMetric,
   formatRideMetrics,
   readRideMetrics,
@@ -57,39 +56,6 @@ describe("走行の計測", () => {
     stopRideMetrics();
     startRideMetrics();
     expect(readRideMetrics()?.rows).toEqual([]);
-  });
-
-  it("描いたコマを、次のコマも描く理由ごとに数え、どれにも当たらないコマを end に数える", () => {
-    const listeners: Record<string, () => void> = {};
-    const fading = { hasTransition: () => true };
-    const settled = { hasTransition: () => false };
-    const map = {
-      on: (type: string, listener: () => void) => (listeners[type] = listener),
-      off: () => {},
-      isMoving: () => false,
-      getZoom: () => 15,
-      getLayersOrder: () => [],
-      _sourcesDirty: false,
-      _styleDirty: false,
-      _placementDirty: false,
-      _crossFadingFactor: 1,
-      _repaint: false,
-      painter: {},
-      style: { hasTransitions: () => false, tileManagers: { hillshade: fading, roads: settled }, _layers: {} },
-    };
-    const unbind = bindRideMetrics(map as unknown as MapLibreMap);
-    startRideMetrics();
-    listeners.render();
-    map._placementDirty = true;
-    listeners.render();
-    map.style.hasTransitions = () => true;
-    listeners.render();
-    vi.advanceTimersByTime(60_000);
-    unbind();
-
-    expect(readRideMetrics()?.rows[0]).toEqual(
-      expect.objectContaining({ mapRenders: 3, renderReasons: { end: 1, placement: 2, "fade:hillshade": 1 } }),
-    );
   });
 
   it("写す形は、始まりと端末の行・列の名前の行・1分1行の CSV で、時刻は日本時間・無い値は - ・数の表は多い順に 名前=数", () => {
