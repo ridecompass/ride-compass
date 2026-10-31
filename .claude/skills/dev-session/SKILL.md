@@ -22,7 +22,7 @@ description: "開発機の対話のセッションでタスクを進める決ま
   権限だけは使う人が決めるもので、担当は `.github/claude-task/settings.json`、開発機はユーザー自身の `~/.claude/settings.json` が持つ
   （`docs/conventions/flow.md`「担当の権限」）。開発機にしか無い置き場（ユーザーの CLAUDE.md・`.claude/settings.local.json`・自動の記憶）には決まりを置かない。
 - **持つ**: タスクを触る（issue へ書く・作業ブランチへ push する・Pull Request を出す・マージする）前に、そのタスクにラベル「開発機で作業中」
-  （`tools/flow-gate/flow.config.json: devLabel`）を付ける（付いている間は振り出されず、担当者は Claude）。担当の実行が動いている（欄「実行の status」がある）
+  （`tools/flow-gate/flow.config.json: devLabel`）を付ける（付いている間は振り出されず、担当者は Claude）。自分で起こして持つ issue は、起こすときに `new-issue.mjs --hold` で付ける。担当の実行が動いている（欄「実行の status」がある）
   なら、終わるまで触らない。触り終えたら、やったことをそのタスクの issue に書き、ラベルを外す（外し忘れると、タスクは振り出されないまま残る）。
   対話作業の issue（開発機でしかできない約束のある作業）も同じに持ち、果たした条件にチェックを付ける（条件が全部済めばゲートが閉じる）。
 - **待ちを見張る**: Pull Request の CI・マージのコミットの master の CI・担当の実行・本番への反映を待つときは、止まって待たずに裏で見張り
