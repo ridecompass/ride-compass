@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState } from "react";
 import GenerationNotice from "@/features/route/GenerationNotice/GenerationNotice";
-import PlaceSearchBar from "@/features/route/PlaceSearch/PlaceSearchBar";
+import PlaceSearch from "@/features/route/PlaceSearch/PlaceSearch";
 import { usePlaceLookup } from "@/features/route/PlaceSearch/usePlaceLookup";
 import { chooseResultOf, pointTitle } from "@/features/route/pointNames";
 import type { SettingsTab } from "@/features/route/RouteForm/RouteForm";
@@ -226,7 +226,7 @@ export default function Home() {
             usageGuideActive={usageGuideActive}
             onUsageGuideEnd={() => setUsageGuideActive(false)}
             searchBar={
-              <PlaceSearchBar
+              <PlaceSearch
                 title={pointTitle(searchTarget)}
                 chooseResult={chooseResultOf(searchTarget)}
                 // 新しい経由地は、上限まで置いてあれば置けない。
