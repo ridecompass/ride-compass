@@ -349,6 +349,7 @@ MaterialSpec]`が単一ソース。
 | `unit` | 値の単位（凡例・数値表示用、無次元・真偽値・カテゴリ値は空文字）。生成物`material-catalog.json`がfrontendへ届け、frontendは単位を持たない（唯一の正）。**`material-catalog.json: label`へ単位を書かない**——ラベルと単位を別々に組み立てる画面で「制限速度(km/h) 35km/h」のように二重になる |
 | `additive` | 同じ単位の他の材料と**足し合わせて意味を持つ量**か（示量／示強の区別）。個数と、それを同じ距離で割った密度はTrue。%・km/h・倍率のような割合・率はFalse。`raw_value_unit`が2項以上の和を見せてよいかの判定に使う |
 | `total_unit` | 生値へ走行距離を掛けた**総量**を出すときの単位（出す意味が無ければ`None`）。`additive`とは別の問い——事故密度（件/[km・年]）は足せるが、総量に比べる尺度が無い。|
+| `direction_signed` | 値が進行方向で符号の変わる量か（勾配）。地図は、この材料1つを項にした折れ線の軸を、前処理に依らず符号付きの生値で塗る（[軸スタジオ](axis-studio.md)「地図が塗るもの」） |
 | `tile_property` | MVTタイルへ既に焼き込み済みのプロパティ名。`None`はタイルに載らない材料。列は`value_sql`から組む（上の「タイルへ焼く列」） |
 | `primary_attribute` | 対応する一次属性（`PRIMARY_ATTRIBUTES`の宣言そのもの。idの文字列では指さない。[軸スタジオ](axis-studio.md)「一次属性の語彙」節）。材料idと一次属性id（frontendの`primaryAttributes.ts`が使う名前空間）は名前が異なるため明示的に対応させる |
 | `source` | 値の出どころ（`"db"`・`"request"`・`"observation"`）。DB（`value_sql`で求める）・要求の向きや時刻で決まる値（風）・生成の時点の外部の観測（雨）。動的材料の集合（`REQUEST_DYNAMIC_MATERIAL_IDS`）や観測の材料の集合は、この欄から`domain/material_catalog.py: materials_of_source`で導く |

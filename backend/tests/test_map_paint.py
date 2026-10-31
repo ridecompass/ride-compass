@@ -21,7 +21,10 @@ from app.domain.axis_definitions import (
 from app.domain.material_catalog import GRADIENT_PERCENT
 from app.domain.map_paint import (
     DEFAULT_DIFFICULTY_BOUNDARIES,
+    DifficultyMapValue,
     MapLegendScale,
+    MapPaint,
+    SignedMaterialMapValue,
     map_paint,
 )
 from app.domain.route import RouteSegmentDetail
@@ -33,8 +36,8 @@ CATALOG = [
     material("num_a"),
     material("count_a", unit="件"),
     material("rain_live", unit="mm"),
-    material("num_live", unit="%"),
-    material(GRADIENT_PERCENT, unit="%"),
+    material("num_live", unit="%", direction_signed=True),
+    material(GRADIENT_PERCENT, unit="%", direction_signed=True),
     material("num_other"),
     material("flag", "boolean"),
     material("kind", "categorical"),
@@ -183,8 +186,38 @@ def test_bands_that_cannot_be_written_as_a_quantity_are_written_as_scores(defini
     assert paint.legend == MapLegendScale(boundaries=paint.thresholds, unit=None)
 
 
-def test_a_signed_material_axis_is_written_in_the_material_unit():
-    assert map_paint(SIGNED).legend == MapLegendScale(boundaries=[-6.0, -2.0, 2.0, 6.0], unit="%")
+# --- 塗る値の種類 ---
+
+
+@pytest.mark.parametrize(
+    ("preprocess", "breakpoints"),
+    [
+        ("abs", ((0.0, 0.0), (2.0, 30.0), (6.0, 100.0))),
+        ("identity", ((0.0, 0.0), (2.0, 30.0), (6.0, 100.0))),
+        # 下りを0点に張り付ける負の側の節は、下りの段を切らない。
+        ("identity", ((-10.0, 0.0), (0.0, 0.0), (2.0, 30.0), (6.0, 100.0))),
+    ],
+    ids=["上りも下りも測る", "上りだけ測る", "上りだけ測り、下りの節を持つ"],
+)
+def test_a_gradient_axis_paints_the_signed_gradient_in_bands_cut_at_its_climbing_knots_on_both_sides(
+    preprocess, breakpoints
+):
+    """勾配の軸は、上りだけを測っても、登り・下りの色で塗る。得点で塗ると、地図の道もルートの線も下りが平坦の色になる。"""
+    paint = map_paint(shaped_axis(linear(GRADIENT_PERCENT, breakpoints=breakpoints, preprocess=preprocess)))
+
+    assert paint == MapPaint(
+        value=SignedMaterialMapValue(material=GRADIENT_PERCENT, route_segment_field="sustained_gradient_percent"),
+        unit="%",
+        thresholds=[-6.0, -2.0, 2.0, 6.0],
+        legend=MapLegendScale(boundaries=[-6.0, -2.0, 2.0, 6.0], unit="%"),
+        band_labels=None,
+    )
+
+
+@pytest.mark.parametrize("preprocess", ["abs", "identity"])
+def test_an_axis_of_a_material_whose_sign_is_not_the_direction_paints_its_score(preprocess):
+    """符号の無い量（件数等）の絶対値を測る軸の生値を塗っても、凡例の負の段に入る道が無い。"""
+    assert map_paint(shaped_axis(linear("count_a", preprocess=preprocess))).value == DifficultyMapValue()
 
 
 
