@@ -26,6 +26,8 @@ export function usePlaceLookup(mapCenter: Coordinates) {
   const lookUpTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   // 探した（Enter・「検索」）か。打ちかけの候補は地図に出さない（打つたびに地図が動くと、打っている所が見えなくなる）。
   const [searched, setSearched] = useState(false);
+  // 欄を押してから、選ぶ・閉じるまでの間か（閉じる操作はページの他の所からも来る）。
+  const [browsing, setBrowsing] = useState(false);
   // 選んでいる候補と、それを選んだときの候補の並び。引き直したら先頭を選ぶ。
   const [pick, setPick] = useState<{ of: readonly PlaceCandidate[]; index: number } | null>(null);
 
@@ -70,6 +72,12 @@ export function usePlaceLookup(mapCenter: Coordinates) {
     search,
     /** 探したか（引いた候補を地図に出す側か。引いている間・当たらない間も）。 */
     searched,
+    /** 欄を押してから、選ぶ・閉じるまでの間か。 */
+    browsing,
+    /** 欄を押した。 */
+    browse() {
+      setBrowsing(true);
+    },
     /** 地図に出す、探した候補（探していない・引いている間・当たらないときはnull）。 */
     foundOnMap,
     /** 地図に出した候補の`index`番目を選ぶ。 */
@@ -100,11 +108,12 @@ export function usePlaceLookup(mapCenter: Coordinates) {
       if (trimmed === query && near.latitude === mapCenter.latitude && near.longitude === mapCenter.longitude)
         void search.refetch();
     },
-    /** 引いた候補を下げる。`clearText`なら打った文字も消す。 */
+    /** 引いた候補を下げて検索を閉じる。`clearText`なら打った文字も消す。 */
     close({ clearText = false } = {}) {
       clearTimeout(lookUpTimer.current);
       setQuery("");
       setSearched(false);
+      setBrowsing(false);
       if (clearText) setText("");
     },
   };

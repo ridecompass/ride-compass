@@ -157,7 +157,9 @@ export default function Home() {
         onPlaceFound={placeFound}
         savedPlaces={savedPlaces}
         placing={tapMode === "points"}
-        foundCardSlot={isMobile && placeLookup.foundOnMap !== null ? setCardSlot : null}
+        foundCard={
+          isMobile && placeLookup.foundOnMap !== null ? { slot: setCardSlot, dismiss: () => placeLookup.close() } : null
+        }
       />
     ),
     // 「このルートで走る」は、その候補を選んで走行モードを始める（走り始めると作業台のシートは閉じる）。もう走っている間は
