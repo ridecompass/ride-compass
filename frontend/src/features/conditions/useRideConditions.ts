@@ -10,10 +10,7 @@ import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 // 走行条件のうち想定速度だけを保つ（出発時刻は行くたびに変わる）。
 const ASSUMED_SPEED_STORAGE_KEY = "ridecompass:assumed-speed-kmh";
 
-/**
- * 走行条件（出発時刻・想定速度）。地図の見え方・生成リクエスト・道の詳細が同じ値を読む。
- * 想定速度は区間の通過予定時刻・到達予想時刻の基準になるため、どのモードの生成でも送る。
- */
+/** 走行条件（出発時刻・想定速度）。`ride`はどちらも変わらない間は同じ値を返す。 */
 export function useRideConditions() {
   const departure = useDepartureTime();
   const [speedKmh, setSpeedKmh] = useStoredState<number>(
