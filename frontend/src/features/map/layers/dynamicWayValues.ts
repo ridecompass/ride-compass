@@ -12,7 +12,7 @@ export interface TileXY {
 // （backend/app/config.py: road_tile_rate_limit_per_minute）ので、1画面で使い切らず、続けて動かす分を残す。
 const MAX_TILES_PER_FETCH = 96;
 
-export interface ViewportTiles {
+interface ViewportTiles {
   readonly tiles: readonly TileXY[];
   /** 上限で画面の端のタイルを落としたか（落とした所の道には色が付かない）。 */
   readonly truncated: boolean;

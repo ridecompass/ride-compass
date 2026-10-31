@@ -136,7 +136,7 @@ def services_by_material(
 _SERVICES_BY_MATERIAL = services_by_material(DEDICATED_WAY_VALUE_SERVICES)
 
 
-def served_materials(axis_id: str, definitions: Mapping[str, AxisDefinition]) -> list[str]:
+def _served_materials(axis_id: str, definitions: Mapping[str, AxisDefinition]) -> list[str]:
     """軸が内部軸まで辿って読む材料のうち、配信のサービスが値を配る材料（材料idの順）。"""
     leaves = leaf_materials(axis_with_dependencies(axis_id, definitions))
     return sorted(material for material in leaves if material in _SERVICES_BY_MATERIAL)
@@ -144,7 +144,7 @@ def served_materials(axis_id: str, definitions: Mapping[str, AxisDefinition]) ->
 
 def _served_formulas(axis_id: str, definitions: Mapping[str, AxisDefinition]) -> dict[str, ServedMaterialFormula]:
     return {material: _SERVICES_BY_MATERIAL[material].material_formula(material)
-            for material in served_materials(axis_id, definitions)}
+            for material in _served_materials(axis_id, definitions)}
 
 
 def _condition_names(kinds: Iterable[type]) -> list[WayValueConditionName]:
@@ -197,7 +197,7 @@ async def _tile_way_inputs(
     道1本を1つのフィーチャーにするズームで、区間から畳む軸（`folds_segments`）は、フィーチャーごとの区間の材料も読む。
     `feature_key`を渡すと、そのフィーチャーだけを読む。
     """
-    served_ids = {axis_id: served_materials(axis_id, definitions) for axis_id in axis_ids}
+    served_ids = {axis_id: _served_materials(axis_id, definitions) for axis_id in axis_ids}
     services = {material: build_service(material)
                 for material in dict.fromkeys(material for ids in served_ids.values() for material in ids)}
     way_materials = {material: await service.get_way_materials(z, x, y, at) for material, service in services.items()}
@@ -249,7 +249,7 @@ def _missing_conditions(
     axis_id: str, definitions: Mapping[str, AxisDefinition], query: WayValueQuery, *, read_later: Iterable[str] = (),
 ) -> MissingConditions | None:
     """軸の葉の材料を配るサービスが受け取る条件のうち、`query`に欠けたもの（`read_later`の名前は数えない）。"""
-    names = [name for material in served_materials(axis_id, definitions)
+    names = [name for material in _served_materials(axis_id, definitions)
              if isinstance(missing := assemble_conditions(_SERVICES_BY_MATERIAL[material].conditions_type, query),
                            MissingConditions)
              for name in missing.names if name not in set(read_later)]
@@ -298,44 +298,8 @@ async def tile_axis_values(
     return out
 
 
-#: フィーチャーの鍵→道ごとの材料の名前→値。値の無い材料は載せない。
-TileAxisWayMaterials = dict[str, dict[str, float]]
-
-
 def _formula_reads(formula: WayValueFormula) -> set[str]:
     return set(condition_names(formula.value) | condition_names(formula.undetermined))
-
-
-async def tile_axis_way_materials(
-    axis_id: str,
-    definitions: Mapping[str, AxisDefinition],
-    feature_materials: FeatureMaterialSource,
-    build_service: MaterialServiceBuilder,
-    z: int,
-    x: int,
-    y: int,
-    query: WayValueQuery,
-) -> TileAxisWayMaterials | MissingConditions | None:
-    """タイル`(z, x, y)`のフィーチャーごとに、地図へ配る軸の木（`map_way_value_formula`）が読む道ごとの材料。木の無い軸は
-    None。要る条件のうち木が読まないもの（材料を求めるのに読むもの）が欠けていれば、何も読まずに欠けた条件を返す。"""
-    served = _served_formulas(axis_id, definitions)
-    formula = map_way_value_formula(axis_id, definitions, served)
-    if formula is None:
-        return None
-    missing = _missing_conditions(axis_id, definitions, query, read_later=_formula_reads(formula))
-    if missing is not None:
-        return missing
-    inputs = (await _tile_way_inputs(
-        [axis_id], definitions, feature_materials, build_service, z, x, y, query.at, None))[axis_id]
-    if inputs is None:
-        return {}
-    columns = map_way_materials(axis_id, definitions, served, inputs, _formula_conditions(query))
-    out: TileAxisWayMaterials = {}
-    for row, key in enumerate(inputs.feature_keys):
-        values = {name: float(column[row]) for name, column in columns.items() if not np.isnan(column[row])}
-        if values:
-            out[key] = values
-    return out
 
 
 class AxisWayValueLens:
@@ -365,10 +329,29 @@ class AxisWayValueLens:
 
     async def way_materials(
         self, z: int, x: int, y: int, query: WayValueQuery,
-    ) -> TileAxisWayMaterials | MissingConditions | None:
-        """`tile_axis_way_materials`。"""
-        return await tile_axis_way_materials(
-            self._axis_id, self._definitions, self._feature_materials, self._build_service, z, x, y, query)
+    ) -> dict[str, dict[str, float]] | MissingConditions | None:
+        """タイル`(z, x, y)`のフィーチャーの鍵→地図へ配る軸の木（`map_way_value_formula`）が読む道ごとの材料の名前→値。
+        値の無い材料は載せない。木の無い軸はNone。要る条件のうち木が読まないもの（材料を求めるのに読むもの）が欠けていれば、
+        何も読まずに欠けた条件を返す。"""
+        axis_id, definitions = self._axis_id, self._definitions
+        served = _served_formulas(axis_id, definitions)
+        formula = map_way_value_formula(axis_id, definitions, served)
+        if formula is None:
+            return None
+        missing = _missing_conditions(axis_id, definitions, query, read_later=_formula_reads(formula))
+        if missing is not None:
+            return missing
+        inputs = (await _tile_way_inputs(
+            [axis_id], definitions, self._feature_materials, self._build_service, z, x, y, query.at, None))[axis_id]
+        if inputs is None:
+            return {}
+        columns = map_way_materials(axis_id, definitions, served, inputs, _formula_conditions(query))
+        out: dict[str, dict[str, float]] = {}
+        for row, key in enumerate(inputs.feature_keys):
+            values = {name: float(column[row]) for name, column in columns.items() if not np.isnan(column[row])}
+            if values:
+                out[key] = values
+        return out
 
 
 def axis_way_value_lens(
@@ -413,7 +396,7 @@ class DedicatedWayValueLayer:
     #: 値に効く条件の名前。軸の葉の材料を配るサービスが受け取る条件の型の欄すべて——既定値のある欄（風の時刻）も含む。
     #: 葉の材料にサービスの材料が無ければ空。
     conditions: list[WayValueConditionName]
-    #: 地図が塗る値を、道ごとの材料（`tile_axis_way_materials`）と要求の条件から求める木。木にできない軸はNone。
+    #: 地図が塗る値を、道ごとの材料（`AxisWayValueLens.way_materials`）と要求の条件から求める木。木にできない軸はNone。
     formula: WayValueFormula | None
     #: `conditions`のうち、道ごとの材料の要求へ載せるもの（木が読まないもの）。ほかは木へ入れる。
     material_conditions: list[WayValueConditionName]

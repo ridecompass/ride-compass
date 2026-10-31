@@ -3,6 +3,7 @@
 import { useCallback, useMemo, useState } from "react";
 
 import { useAxisCatalog } from "@/hooks/useAxisCatalog";
+import { samePosition } from "@/lib/geoDistance";
 import { useStoredBooleanState, useStoredJsonState, useStoredState } from "@/hooks/useStoredState";
 import { readRoadAvoidance } from "@/features/route/roadAvoidance";
 import { alignRoutePreference, routePreferenceToSend } from "@/features/route/routePreferenceSync";
@@ -172,10 +173,7 @@ export function useGenerationConditions({ onOriginPlace }: GenerationConditionsI
   /** 地点`at`が検索で置いたときの位置のままなら、その候補。 */
   const foundAt = useCallback(
     (at: Coordinates | null): PlaceCandidate | null =>
-      at === null
-        ? null
-        : (found.findLast((candidate) => candidate.latitude === at.latitude && candidate.longitude === at.longitude) ??
-          null),
+      at === null ? null : (found.findLast((candidate) => samePosition(candidate, at)) ?? null),
     [found],
   );
   // 並びに出ている経由地と目的地を一度に消す（周回の間に覚えている目的地は消さない）。選んでいる地点も出発地に戻す（消した地点を

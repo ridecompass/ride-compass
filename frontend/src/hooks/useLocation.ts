@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { samePosition } from "@/lib/geoDistance";
 import type { FetchFailure } from "@/types/fetchFailure";
 import type { Coordinates, LocationSource } from "@/types/route";
 
@@ -121,10 +122,7 @@ export function useLocation(ridingAt: Coordinates | null): UseLocationResult {
   const locationKnown = origin.source !== "default";
   const currentHere = ridingAt ?? here;
   const originAtHere =
-    origin.source === "geolocation" &&
-    currentHere !== null &&
-    currentHere.latitude === origin.point.latitude &&
-    currentHere.longitude === origin.point.longitude;
+    origin.source === "geolocation" && currentHere !== null && samePosition(currentHere, origin.point);
   const locationFailure = useMemo<FetchFailure | null>(
     () =>
       locationReady && !locationKnown

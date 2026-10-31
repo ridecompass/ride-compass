@@ -15,7 +15,6 @@ import type { Map as MapLibreMap } from "maplibre-gl";
 
 import type { MapLayerVisibility } from "@/features/map/layers/mapLayers";
 import type { DedicatedWayValueAxis } from "@/lib/mapDisplay/axisLayers";
-import type { CatalogAxis } from "@/lib/catalogAxis";
 import { debugLog } from "@/lib/debugLog";
 import type {
   DynamicWeatherGroupState,
@@ -81,8 +80,7 @@ export interface SceneLook {
   readonly hiddenLegendKeys: HiddenLegendKeys;
 }
 
-/** 地図に載るもの全部の入力。**実行時にしか決まらない値だけ**をここで集め、見た目は
- * 各グループが持つ。**sceneの側で宣言する**——上位の画面部品のpropsから借りると、
+/** 地図に載るもの全部の入力。**実行時にしか決まらない値だけ**をここで集める。**sceneの側で宣言する**——上位の画面部品のpropsから借りると、
  * sceneと画面部品が互いをimportし合い、sceneの語彙が画面部品の都合で決まる。 */
 type SceneWiringProps = {
   readonly look: SceneLook;
@@ -111,11 +109,6 @@ type SceneWiringProps = {
 
 const NO_KEYS: readonly string[] = [];
 const NO_MATERIALS: WayMaterials = new Map();
-
-/** 道の線を塗る評価軸は、レンズが塗っている1本だけ。密度の軸は線を塗らず、材料の点で見せる。 */
-function isAxisShown(look: Pick<SceneLook, "paintedAxisId">, axis: Pick<CatalogAxis, "axisId">): boolean {
-  return axis.axisId === look.paintedAxisId;
-}
 
 function routeStateFrom(props: SceneWiringProps): RouteState {
   const { look } = props;
@@ -191,7 +184,8 @@ function axisStateFrom(props: SceneWiringProps, sourceLayer: string | null): Axi
     const fetched = look.wayMaterials.get(axis.axisId);
     return {
       axisId: axis.axisId,
-      visible: isAxisShown(look, axis),
+      // 道の線を塗る評価軸は、レンズが塗っている1本だけ。
+      visible: axis.axisId === look.paintedAxisId,
       bands: valueBands(axis.display),
       formula: axis.wayValueFormula,
       materials: fetched?.materials ?? NO_MATERIALS,
@@ -221,9 +215,8 @@ export function weatherStateFrom(dynamicWeather: SceneLook["dynamicWeather"]): W
 
 /** 点のタイルごとのURL。 */
 function pointTileUrls(versions: TileVersions): Record<PointTileLayer, readonly string[]> {
-  const urls = {} as Record<PointTileLayer, readonly string[]>;
-  for (const name of POINT_TILE_LAYERS) urls[name] = [pointTileUrl(versions, name)];
-  return urls;
+  const urls = POINT_TILE_LAYERS.map((name) => [name, [pointTileUrl(versions, name)]]);
+  return Object.fromEntries(urls) as Record<PointTileLayer, readonly string[]>;
 }
 
 export function sceneInputsFrom(props: SceneWiringProps): SceneInputs {
@@ -253,7 +246,7 @@ export function sceneInputsFrom(props: SceneWiringProps): SceneInputs {
     axis: axisStateFrom(props, roadTiles?.sourceLayer ?? null),
     point: {
       tiles: versions === null ? null : { urls: pointTileUrls(versions), ...zoom },
-      visible: props.look.layerVisibility,
+      visible,
       hiddenKeys,
     },
     weather: weatherStateFrom(props.look.dynamicWeather),

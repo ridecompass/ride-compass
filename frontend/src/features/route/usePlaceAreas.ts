@@ -1,6 +1,7 @@
 import { queryOptions, useQueries } from "@tanstack/react-query";
 
 import { areaAt } from "@/features/route/placeSearchApi";
+import { samePosition } from "@/lib/geoDistance";
 import { getQueryClient } from "@/lib/queryClient";
 import type { Coordinates } from "@/types/route";
 
@@ -17,7 +18,7 @@ export function placeAreaQuery(at: Coordinates | null) {
 export function usePlaceAreas(points: readonly Coordinates[]): (at: Coordinates) => string | null {
   const results = useQueries({ queries: points.map((at) => placeAreaQuery(at)) }, getQueryClient());
   return (at) => {
-    const index = points.findIndex((point) => point.latitude === at.latitude && point.longitude === at.longitude);
+    const index = points.findIndex((point) => samePosition(point, at));
     return index < 0 ? null : (results[index].data ?? null);
   };
 }

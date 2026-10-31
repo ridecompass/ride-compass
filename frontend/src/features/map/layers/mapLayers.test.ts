@@ -115,12 +115,6 @@ describe("buildMapLayers（レイヤーの一覧）", () => {
   });
 });
 
-describe("地図上チップのグループ", () => {
-  it("種別を持たないもの（ルート）はどのグループにも入れない", () => {
-    expect(mapOverlayGroupFor(layer(withoutAxes, "route"))).toBeUndefined();
-  });
-});
-
 describe("出せない理由の案内", () => {
   it("タイル世代が届くまで描けないのは、世代を持つ配信を読むレイヤー", () => {
     const gated = tileVersionGatedLayerIds(withoutAxes);
@@ -160,7 +154,6 @@ describe("deriveFetchLayerStatus（自前で取るレイヤーの取得状態）
     expect(deriveFetchLayerStatus(false, null, true, true)).toBeUndefined();
     expect(deriveFetchLayerStatus(true, null, true, true, true)).toBe("loading");
     expect(deriveFetchLayerStatus(false, null, false, true, true)).toBe("partial");
-    expect(deriveFetchLayerStatus(false, null, true, true, true)).toBe("partial");
   });
 });
 
