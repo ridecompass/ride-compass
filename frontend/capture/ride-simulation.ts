@@ -127,7 +127,12 @@ const script: CaptureScript = async ({ page, fixtures, open, shot, expect }) => 
   await page.evaluate(() => window.clearInterval((window as unknown as { __simTimer: number }).__simTimer));
   await shot("模擬走行の終わり");
   await page.getByRole("button", { name: "走行モード" }).click();
-  const record = await page.evaluate(() => window.localStorage.getItem("ridecompass:ride-metrics"));
+  await page.getByRole("dialog", { name: "走行モードの続け方" }).getByRole("button", { name: "案内を終える" }).click();
+  // 走行の記録は、利用者と同じくメニューの「走行の記録をコピー」で写して読む。
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.getByRole("button", { name: "メニュー" }).click();
+  await page.getByRole("button", { name: "走行の記録をコピー" }).click();
+  const record = await page.evaluate(() => navigator.clipboard.readText());
   const cpu = Object.fromEntries(
     ["TaskDuration", "ScriptDuration", "LayoutDuration", "RecalcStyleDuration", "JSHeapUsedSize"].map((name) => [
       name,
@@ -136,11 +141,11 @@ const script: CaptureScript = async ({ page, fixtures, open, shot, expect }) => 
         : Math.round(((after[name] ?? 0) - (before[name] ?? 0)) * 1000),
     ]),
   );
-  // 出力の1行目は条件と CPU の時間（ms。メモリは MB）、2行目は走行の記録の JSON。
+  // 出力の1行目は条件と CPU の時間（ms。メモリは MB）、続けて写した走行の記録。
   console.log(
     `[ride-simulation] ${JSON.stringify({ minutes, stopMinutes, speedKmh, slowdown, layers, zoom, cpuMs: cpu })}`,
   );
-  console.log(`[ride-simulation:record] ${record}`);
+  console.log(record);
 };
 
 export default script;

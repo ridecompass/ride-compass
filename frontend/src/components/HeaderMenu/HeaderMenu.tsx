@@ -11,7 +11,7 @@ import { textVariants } from "@/components/ui/Text/Text";
 import { Toggle } from "@/components/ui/Toggle/Toggle";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
 import { getQueryClient } from "@/lib/queryClient";
-import { readRideMetrics } from "@/lib/rideMetrics";
+import { formatRideMetrics, readRideMetrics } from "@/lib/rideMetrics";
 import { frontendVersionQuery } from "@/services/versionApi";
 
 interface HeaderMenuProps {
@@ -105,7 +105,7 @@ export default function HeaderMenu({
               variant="menu"
               size="sm"
               usage="直近の走行の記録（電池・位置・地図の描き直し等の1分ごとの数）を写します。"
-              onClick={() => copy(JSON.stringify(rideMetrics))}
+              onClick={() => copy(formatRideMetrics(rideMetrics))}
             >
               <CopyIcon size={15} />
               {copied ? "走行の記録をコピーしました" : "走行の記録をコピー"}

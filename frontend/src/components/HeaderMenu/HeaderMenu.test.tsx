@@ -17,7 +17,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import type { FrontendVersion } from "@/services/versionApi";
-import { readRideMetrics, startRideMetrics, stopRideMetrics } from "@/lib/rideMetrics";
+import { formatRideMetrics, readRideMetrics, startRideMetrics, stopRideMetrics } from "@/lib/rideMetrics";
 import { onSameOrigin } from "@/testing/backendServer";
 
 import HeaderMenu from "./HeaderMenu";
@@ -93,7 +93,7 @@ describe("HeaderMenu", () => {
     await userEvent.click(screen.getByRole("button", { name: "メニュー" }));
     await userEvent.click(screen.getByRole("button", { name: "走行の記録をコピー" }));
 
-    expect(JSON.parse(await navigator.clipboard.readText())).toEqual(readRideMetrics());
+    expect(await navigator.clipboard.readText()).toBe(formatRideMetrics(readRideMetrics()!));
     expect(screen.getByRole("button", { name: "走行の記録をコピーしました" })).toBeInTheDocument();
   });
 
