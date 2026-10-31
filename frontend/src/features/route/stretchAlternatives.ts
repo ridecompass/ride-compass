@@ -2,12 +2,10 @@
  *
  * 区間を細かく割るときだけ座標（`geometry.coordinates`と`edge_point_offsets`）も読む
  * ——2本が交差・接触する地点はEdge idの一致では分からないため（`splitPairedStretch`）。
- * 別の道を通る区間の対応づけと、乗り換えを当てた経路の形は`features/route/routeSplice.ts`が持つ。
  */
 import {
   pairedStretches,
   type PairedStretch,
-  type RouteGeometryShape,
   type RouteStretch,
   type SplicedRouteShape,
   type StretchAlternative,
@@ -16,7 +14,7 @@ import {
 /**
  * 1つの区間を、**元と相手が同じ地点を通る所**で細かく割る。
  *
- * `differingStretches`はEdge idの一致だけで「同じ道」を判定するため、2本が同じノードで
+ * 対応づけた区間はEdge idの一致だけで「同じ道」を判定するため、2本が同じノードで
  * 交差・接触していても、そこで同じEdgeを通っていなければ1本の長い区間になる。交差した
  * ノードは乗り換えられる地点なので、そこで割ると区間ごとに別の候補を選べる。
  *
@@ -25,8 +23,8 @@ import {
  * 判定する——グラフが持つ同一性をそのまま使う。
  */
 function splitPairedStretch(
-  base: RouteGeometryShape,
-  target: RouteGeometryShape,
+  base: SplicedRouteShape,
+  target: SplicedRouteShape,
   pair: PairedStretch,
   minLengthKm: number,
 ): PairedStretch[] {
@@ -114,10 +112,7 @@ function createsRevisit(
 export function stretchAlternativeGroups(
   baseShape: SplicedRouteShape,
   candidates: readonly { id: string; shape: SplicedRouteShape }[],
-  // 割る下限（km）は**省略できない**。backendの較正値（`domain/tuning.py`が宣言し、
-  // 起動時のカタログ取得で届く）で、ここに既定を持つと**届かなかったときに下限なし＝
-  // 共有地点すべてで区間を割る**という、較正したのとは別の切り方で黙って動く。
-  // backend側の`tuning_value`は宣言に無いidをその場で落とす。受ける側も同じにする。
+  // 割る下限（km）は較正値なので既定を持たない（既定で動くと、較正したのとは別の切り方になる）。
   minSplitLengthKm: number,
 ): StretchGroup[] {
   const alternatives: StretchAlternative[] = [];
