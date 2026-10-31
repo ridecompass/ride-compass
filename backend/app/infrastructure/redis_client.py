@@ -28,9 +28,8 @@ def get_redis_client_or_none() -> redis.Redis | None:
     """共有クライアント。値は生のバイト列で読み書きし、文字列（JSON等）は使う側がその場でデコードする。
     取得できなければNone（呼び出し元は未キャッシュ扱いで進む）。
 
-    `redis.from_url()`はURLスキーム不正（`settings.redis_url`の設定ミス）等で同期的に
-    例外を送出する。呼び出し元のtry/exceptはRedisコマンドの周りにあり、クライアント生成
-    自体の例外はその外で起きるため、ここで捕まえないとタイル配信・ルート生成ごと落ちる。
+    `redis.from_url()`はURLスキーム不正（`settings.redis_url`の設定ミス）等で同期的に送出するので、
+    ここで捕まえる（コマンドの失敗だけを想定した使う側を、生成の失敗で落とさない）。
     """
     global _client
     try:
@@ -49,7 +48,7 @@ def get_redis_client_or_none() -> redis.Redis | None:
 
 
 async def close_redis_client() -> None:
-    """プロセス終了時に`process_resources.py: close_process_resources`から呼ぶ。次の取得で作り直す。"""
+    """閉じる。次の取得で作り直す。"""
     global _client
     if _client is not None:
         await _client.aclose()

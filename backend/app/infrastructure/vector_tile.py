@@ -2,9 +2,8 @@ from functools import cache
 
 import mapbox_vector_tile
 
-# レイヤー名とextentはPostGIS側のST_AsMVT呼び出し（`road_graph_repository.py`の路面のMVT生成SQL）と
-# 空タイル生成の両方が共有する。手で揃えると片方だけ変えたときにクライアントがレイヤーを見失う。
-# 点のレイヤー名は`point_tile_layers.py`の宣言が持つ。
+# レイヤー名とextentはPostGIS側のST_AsMVTと空タイルの生成の両方が読む。手で揃えると片方だけ変えたときに
+# クライアントがレイヤーを見失う。
 TILE_EXTENT = 4096
 # PostGIS側の`ST_AsMVTGeom`がタイルの境の外に残す幅（`TILE_EXTENT`と同じタイル座標の単位）。
 TILE_BUFFER = 256

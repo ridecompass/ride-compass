@@ -25,7 +25,7 @@ def get_http_client(timeout: float | httpx.Timeout) -> httpx.AsyncClient:
 
 
 async def close_all_http_clients() -> None:
-    """プロセス終了時に`process_resources.py: close_process_resources`から呼ぶ。"""
+    """共有のクライアントを全部閉じる。次の取得で作り直す。"""
     for client in _clients.values():
         await client.aclose()
     _clients.clear()

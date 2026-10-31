@@ -1023,7 +1023,7 @@ numbaでJITする探索とその部品はこのファイルにまとめて置く
 区間（`road_edges`）は**向きを持たない1本1行**で、有向の枝は道路網全体の配列を作るときに組む
 （`road_network_store.py`。一方通行は`way_directions.direction`を見て走れる向きの枝だけを
 作る。向きごとに通れるかは`domain/traffic.py: travel_allowed`が決める）。DBへ向きを伝えるのは`(osm_way_id, segment_index, forward)`の3つ組で、向きで変わる値
-（方位・標高）はSQLが入れ替え・符号反転して返す（`material_joins.py: reversed_material_expression`）。材料の値の
+（方位・標高）はSQLが入れ替え・符号反転して返す（`material_joins.py: reversed_partner`）。材料の値の
 求め方は`domain/material_sql.py`・`domain/material_catalog.py`が持ち、リポジトリは式が前提に
 する別名（`w`/`re`/`em`/`wm`）のFROM句を組み立てるだけで式を書かない（`em`・`wm`は`material_joins.py: material_from_clause`）。
 

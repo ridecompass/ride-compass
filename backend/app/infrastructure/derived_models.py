@@ -61,7 +61,7 @@ _LANDCOVER_COLUMNS = tuple(
 _PERCENT_SUM_TOLERANCE = 0.1
 
 
-def count_checks(table: str) -> tuple[CheckConstraint, ...]:
+def _count_checks(table: str) -> tuple[CheckConstraint, ...]:
     """数の表（区間・道）の「値が不整合になりえない」制約。読み出し側が毎回この条件を書かずに済むように、入れられない側で止める。"""
     return tuple(CheckConstraint(f"{column} >= 0", name=f"{table}_{column}_not_negative")
                  for column in _COUNT_COLUMNS)
@@ -225,7 +225,7 @@ class EdgeCountsRow(_EdgeKey, _Counts, Base):
     """区間に付く数（事故・交差点・停止要因）。全区間が行を持つ。"""
 
     __tablename__ = "edge_counts"
-    __table_args__ = (_edge_key("edge_counts"), *count_checks("edge_counts"), {"info": DERIVED})
+    __table_args__ = (_edge_key("edge_counts"), *_count_checks("edge_counts"), {"info": DERIVED})
 
 
 class WayDirectionRow(_WayKey, Base):
@@ -258,7 +258,7 @@ class WayCountsRow(_WayKey, _Counts, Base):
     """道1本の数（区間の和）。全部の道が行を持つ。"""
 
     __tablename__ = "way_counts"
-    __table_args__ = (*count_checks("way_counts"), {"info": DERIVED})
+    __table_args__ = (*_count_checks("way_counts"), {"info": DERIVED})
 
 
 class NodeKindRow(Base):
@@ -352,10 +352,6 @@ class AddressBlockRow(Base):
     geom: Mapped[object] = mapped_column(Geometry("POINT", srid=4326, spatial_index=False), nullable=False)
 
 
-#: 立ち寄り先の表へ地点を入れるソース。
-STOP_PLACE_SOURCES: frozenset[str] = frozenset({Source.OVERTURE_PLACE, Source.BUNKA_HERITAGE})
-
-
 class StopPlaceRow(Base):
     """立ち寄り先1つ。群へ入れ、近くの同じ店をまとめたあとの地点（`batch/derive_stop_places.py`）。
 
@@ -365,7 +361,7 @@ class StopPlaceRow(Base):
 
     __tablename__ = "stop_places"
     __table_args__ = (
-        vocabulary_check("stop_places", "source", STOP_PLACE_SOURCES),
+        vocabulary_check("stop_places", "source", frozenset({Source.OVERTURE_PLACE, Source.BUNKA_HERITAGE})),
         vocabulary_check("stop_places", "place_group", frozenset(StopPlaceGroup)),
         CheckConstraint("confidence BETWEEN 0 AND 1", name="stop_places_confidence_is_ratio"),
         # タイルが範囲で引く。

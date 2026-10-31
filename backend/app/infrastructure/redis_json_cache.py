@@ -126,9 +126,7 @@ async def get_hash(
     return await _get(read, decode, category, log_fields)
 
 
-async def set_hashes(
-    hashes: Mapping[str, Mapping[str, str]], *, ttl_seconds: int, category: str, **log_fields: Any
-) -> None:
+async def set_hashes(hashes: Mapping[str, Mapping[str, str]], *, ttl_seconds: int, category: str) -> None:
     """キーごとのHashを、TTLとともに1往復（pipeline）で書く。Redis障害時は黙って諦める。"""
 
     async def write(client: redis.Redis) -> None:
@@ -138,4 +136,4 @@ async def set_hashes(
             pipe.expire(key, ttl_seconds)
         await pipe.execute()
 
-    await _set(write, category, log_fields)
+    await _set(write, category, {})

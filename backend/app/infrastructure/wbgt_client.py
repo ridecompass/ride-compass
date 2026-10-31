@@ -2,10 +2,8 @@
 
 情報提供地点マスタ（CSV）と暑さ指数（WBGT）予測値取得WebAPI（JSON、典拠は
 `man15NH/wbgt_data_api_service_manual.pdf`）を叩く。サイト側の利用上の注意
-（wbgt_data_download.php）に「自動化ツールからの高頻度アクセスは控えて」と明記されて
-いるため、再試行は設けずTTLキャッシュで呼び出し頻度自体を抑える。取得失敗はNoneを返し、
-呼び出し元（wbgt_service.py）が「警告なし」と分けて返す。応答の形（CSVの列・JSONのキー・
-度と分の座標・10倍された暑さ指数）はここで解き、呼び出し元へは`WbgtPoint`・`WbgtForecast`で渡す。
+（wbgt_data_download.php）が自動化ツールからの高頻度アクセスを控えるよう求めるため、再試行は設けず
+TTLキャッシュで呼び出し頻度自体を抑える。取得失敗はNoneを返す。
 """
 
 import csv
@@ -20,46 +18,36 @@ from app.domain.time_zone import JST
 from app.domain.wbgt import WbgtForecast, WbgtPoint
 from app.infrastructure.simple_api_client import UnexpectedShapeError, cached_fetch
 
-# ファイル名に更新日が埋め込まれた命名規則（環境省サイト側の運用）のため、地点構成が
-# 変わった際はURLごと差し替えが必要になる（自動追従の仕組みは無い。年1回程度の更新
-# 頻度と見込まれるため、遭遇したら気づいて直す前提でハードコードする）。
+# ファイル名に更新日が入るため、地点構成が変わったらURLごと差し替える（自動では追従しない）。
 WBGT_POINT_MASTER_URL = "https://www.wbgt.env.go.jp/man15NH/wbgt_point_master-20260515.csv"
 WBGT_FORECAST_API_URL = "https://www.wbgt.env.go.jp/api/v1/getForecastData"
 
-# 地点構成は年1回程度しか変わらないため長いTTL（jma_warning_client.pyのarea.jsonと同じ思想）。
+# 地点構成は年1回程度しか変わらない。予測値は3時間刻みでしか更新されない。
 _POINT_MASTER_CACHE_TTL_SECONDS = 24 * 60 * 60
-# 予測値は3時間刻みでしか更新されないため、サイト側の注意書き（高頻度アクセスを控える）
-# に配慮して1時間TTLとする。
 _FORECAST_CACHE_TTL_SECONDS = 60 * 60
 
 logger = logging.getLogger("ridecompass.wbgt_client")
 
-_POINT_MASTER_CACHE_KEY = "point_master"
-
 
 def new_point_master_cache() -> TTLCache:
-    """`fetch_point_master`へ渡すキャッシュ。リクエストをまたいで持つのは組み立てる側（`api/dependencies.py`）。"""
+    """`fetch_point_master`へ渡すキャッシュ。"""
     return TTLCache(maxsize=1, ttl=_POINT_MASTER_CACHE_TTL_SECONDS)
 
 
 def new_forecast_cache() -> TTLCache:
-    """`fetch_forecast`へ渡すキャッシュ。リクエストをまたいで持つのは組み立てる側（`api/dependencies.py`）。"""
-    # forecast_no単位の粒度でキャッシュする（地点ごとに問い合わせ元の緯度経度は丸められて
-    # 同じ地点へ収束するため、地点番号キーで十分にキャッシュが効く）。maxsizeは全国の
-    # 情報提供地点数（約840地点）に十分な余裕を持たせた値。
+    """`fetch_forecast`へ渡すキャッシュ。鍵は地点番号で、全国の地点（約840）が退避されない大きさ。"""
     return TTLCache(maxsize=2048, ttl=_FORECAST_CACHE_TTL_SECONDS)
 
 
 async def fetch_point_master(client: httpx.AsyncClient, cache: TTLCache) -> list[WbgtPoint] | None:
-    """情報提供地点マスタ（全国約840地点）を取得する。運用終了済み地点
-    （End Year-End Month-End Dayが"9999-99-99"以外）は除外する。"""
+    """情報提供地点マスタのうち運用中の地点を取得する。"""
 
     async def fetch() -> list[WbgtPoint]:
         response = await client.get(WBGT_POINT_MASTER_URL)
         response.raise_for_status()
         return _parse_point_master(response.text)
 
-    return await cached_fetch("weather:wbgt-point-master", fetch, cache=cache, key=_POINT_MASTER_CACHE_KEY)
+    return await cached_fetch("weather:wbgt-point-master", fetch, cache=cache)
 
 
 def _parse_point_master(csv_text: str) -> list[WbgtPoint]:
@@ -128,17 +116,9 @@ def _parse_forecast(entry: dict) -> WbgtForecast | None:
 async def fetch_forecast(
     client: httpx.AsyncClient, wbgt_no: str, range_from: datetime, range_to: datetime, cache: TTLCache
 ) -> list[WbgtForecast] | None:
-    """指定地点の暑さ指数予測値列（3時間刻み、翌々日まで）を取得する。
-
-    `range_from`/`range_to`は発表時刻=reference_timeの検索範囲（呼び出し元が「現在時刻を
-    含む直近N時間」を渡す想定。配信元へはJSTのYYYYMMDDHHMMSSで渡す）。date_search_type=3
-    （特定時刻）は指定時刻ちょうどに発表（reference_time）が存在しないと空を返す
-    厳格な一致検索（20:00:00ちょうどを指定すると20時発表がまだ無く空、19:00:00なら
-    19時発表がヒットする、等）。発表は概ね毎時行われるが遅延もありうるため、
-    date_search_type=1（連続期間指定）で直近の発表を幅広く取得し、複数の発表回
-    （reference_time）が返ってきた場合は呼び出し元（wbgt_service.py）が最新の発表回
-    だけを使う。
-    """
+    """指定地点の暑さ指数予測値列を取得する。`range_from`/`range_to`は発表時刻（reference_time）の検索範囲で、
+    範囲の中の発表回をすべて返す。date_search_type=3（特定時刻）は指定時刻ちょうどの発表が無いと空を返し、
+    発表は遅れうるので、連続期間指定（1）で取る。"""
     params: dict[str, str | int] = {
         "location_type": 1,
         "date_search_type": 1,
@@ -162,13 +142,7 @@ async def fetch_forecast(
             if isinstance(entry, dict) and (forecast := _parse_forecast(entry)) is not None
         ]
 
-    return await cached_fetch(
-        "weather:wbgt-forecast",
-        fetch,
-        cache=cache,
-        key=wbgt_no,
-        wbgt_no=wbgt_no,
-    )
+    return await cached_fetch("weather:wbgt-forecast", fetch, cache=cache, key=wbgt_no, wbgt_no=wbgt_no)
 
 
 def _query_time(at: datetime) -> str:

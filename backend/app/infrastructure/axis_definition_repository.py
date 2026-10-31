@@ -1,7 +1,6 @@
 """評価軸定義（axis_definitions）のPostGIS永続化層。
 
-書き込みメソッドは一切commitしない（road_graph_repository.pyと同じ規約。呼び出し側
-[services/axis_registry_service.py]が操作のまとまりごとに`commit()`を呼んで確定する）。
+書き込みメソッドは一切commitしない（呼び出し側が操作のまとまりごとに`commit()`を呼んで確定する）。
 
 JSONB列との(逆)シリアライズはPydanticへそのまま委ねる。`CategoricalShape.mapping`の
 `dict[bool | str, float]`キーは`mode="json"`でJSON文字列("true"/"false"、または通常の
@@ -60,9 +59,7 @@ class AxisDefinitionRepository:
         }
 
     async def list_all_with_sort_order(self) -> dict[str, tuple[AxisDefinition, int]]:
-        """`list_all()`と同じ全件だが、各軸のsort_orderも保持する。
-        `AxisRegistryAdminService.create`/`update`が「既存軸の列挙」と「更新対象1件の
-        sort_order取得」の両方をこの1回のSELECTから賄う。"""
+        """`list_all()`の全件に、各軸のsort_orderを添えたもの。"""
         rows = (
             (await self._session.execute(select(AxisDefinitionRow).order_by(AxisDefinitionRow.sort_order)))
             .scalars()

@@ -15,7 +15,7 @@ from fastapi.responses import PlainTextResponse
 from app.domain.stopwatch import elapsed_ms, start_timer
 from app.domain.time_zone import JST
 
-access_logger = logging.getLogger("ridecompass.access")
+_access_logger = logging.getLogger("ridecompass.access")
 
 
 #: ログ1行の書式。`%(correlation_id)s`は`format_log_lines`が付けるフィルタが入れる。
@@ -83,7 +83,7 @@ def request_log_middleware(tile_path_prefixes: tuple[str, ...]) -> Callable[...,
         try:
             response = await call_next(request)
         except Exception:
-            access_logger.exception(
+            _access_logger.exception(
                 "%s %s -> unhandled exception after %dms client=%s",
                 request.method,
                 request.url.path,
@@ -91,7 +91,7 @@ def request_log_middleware(tile_path_prefixes: tuple[str, ...]) -> Callable[...,
                 client,
             )
             raise
-        access_logger.log(
+        _access_logger.log(
             access_level(request.url.path, response.status_code, tile_path_prefixes),
             "%s %s -> %d in %dms client=%s",
             request.method,
