@@ -10,6 +10,7 @@
 - 後から書いた値が前の値を置き換えること → Redisの`SET`の振る舞いで、ここに判断が無い
 """
 
+import pytest
 from PIL import Image
 
 from app.infrastructure import jma_tile_redis_cache
@@ -40,17 +41,19 @@ async def test_each_path_keeps_its_own_entry(fake_redis):
     assert await jma_tile_redis_cache.get(OTHER_TILE) is None
 
 
-async def test_a_tile_with_nothing_to_draw_comes_back_as_the_flag(fake_redis):
-    await jma_tile_redis_cache.set(TILE, png(0), "image/png")
+@pytest.mark.parametrize(
+    ("path", "content", "content_type"),
+    [
+        (TILE, png(0), "image/png"),
+        # ベクタは長さで空を見る。画像として読もうとすると、空のベクタも「中身あり」で実体を持つ。
+        (VECTOR_TILE, b"", "application/x-protobuf"),
+    ],
+    ids=["transparent_raster", "empty_vector"],
+)
+async def test_a_tile_with_nothing_to_draw_comes_back_as_the_flag(fake_redis, path, content, content_type):
+    await jma_tile_redis_cache.set(path, content, content_type)
 
-    assert await jma_tile_redis_cache.get(TILE) is UPSTREAM_NOT_FOUND
-
-
-async def test_a_vector_tile_is_judged_as_a_vector_by_its_path(fake_redis):
-    """ベクタは長さで空を見る。画像として読もうとすると、空のベクタも「中身あり」で実体を持つ。"""
-    await jma_tile_redis_cache.set(VECTOR_TILE, b"", "application/x-protobuf")
-
-    assert await jma_tile_redis_cache.get(VECTOR_TILE) is UPSTREAM_NOT_FOUND
+    assert await jma_tile_redis_cache.get(path) is UPSTREAM_NOT_FOUND
 
 
 async def test_tiles_and_flags_are_forgotten_after_twenty_minutes(fake_redis, clock):
@@ -64,4 +67,3 @@ async def test_tiles_and_flags_are_forgotten_after_twenty_minutes(fake_redis, cl
     clock.tick(2)
     assert await jma_tile_redis_cache.get(TILE) is None
     assert await jma_tile_redis_cache.get(OTHER_TILE) is None
-
