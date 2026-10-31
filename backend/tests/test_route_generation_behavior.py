@@ -89,12 +89,12 @@ def avoid_axis():
 
 
 @pytest.fixture
-def engine_over(monkeypatch, avoid_axis):
+def engine_over(road_network_root, avoid_axis):
     """道路網から、本物のエンジンの上に戦略層（`RouteGenerator`）を組む。軸は`avoid_axis`の1本。"""
 
     def build(network: RoadNetwork, *, avoid_weight: float = 0.0, wind: WindForecastSeries | None = None,
               **conditions):
-        return generator_for(monkeypatch, network, avoid_weight, wind, **conditions)
+        return generator_for(road_network_root, network, avoid_weight, wind, **conditions)
 
     return build
 
