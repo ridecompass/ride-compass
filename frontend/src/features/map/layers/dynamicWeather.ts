@@ -1,6 +1,5 @@
-// 動的気象レイヤー（時刻で中身が変わる格子・タイルのレイヤー）のデータ層。共通の契約（格子の共有・表現の種類・
-// 時刻の1本のスライダー・データの差はデータ層で吸収）と、要素を足す手順は
-// docs/modules/frontend/dynamic-weather-layers.mdが持つ。
+// 動的気象レイヤー（時刻で中身が変わる格子・タイルのレイヤー）のデータ層の型と、コマ選び・格子の地物化の部品。
+// 共通の契約はdocs/modules/frontend/dynamic-weather-layers.md「共通契約」。
 
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import { nearestTimeIndex } from "@/lib/time";

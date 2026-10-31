@@ -139,15 +139,11 @@ export function prepareBasemap(map: MapLibreMap): void {
   debugLog("map:lifecycle", "面レイヤーの差し込み位置", { anchorId, lowered });
 }
 
-/** `prepareBasemap`が記録した位置。記録が無い・今のスタイルに無いときは
+/** 面レイヤーの差し込み位置（`prepareBasemap`が記録したもの）。記録が無い・今のスタイルに無いときは
  * undefined（差し込まず最前面へ）——**今のスタイルに無いidを`addLayer`へ渡すと例外になる**。 */
-function recordedAnchor(map: MapLibreMap, anchorId: string | undefined): string | undefined {
-  return anchorId !== undefined && map.getLayer(anchorId) ? anchorId : undefined;
-}
-
-/** 面レイヤーの差し込み位置（`recordedAnchor`）。 */
 export function areaLayerAnchor(map: MapLibreMap): string | undefined {
-  return recordedAnchor(map, tagOf(map).__rcAreaLayerAnchorId);
+  const anchorId = tagOf(map).__rcAreaLayerAnchorId;
+  return anchorId !== undefined && map.getLayer(anchorId) ? anchorId : undefined;
 }
 
 /** スタイルを`url`から取り直し、新しいスタイルが読み込まれたら（`style.load`）、次の`prepareBasemap`が新しいスタイルに
