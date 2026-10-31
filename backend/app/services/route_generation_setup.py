@@ -26,7 +26,7 @@ from app.services.weather_service import WeatherService
 
 
 @dataclass(frozen=True)
-class AppliedConditions:
+class _AppliedConditions:
     """実際に適用された評価条件。レスポンスの条件エコーにもそのまま使う。"""
 
     route_preference: RoutePreference
@@ -43,7 +43,7 @@ class RouteGenerationSetup:
     """組み立て済みのエンジンと、実際に適用された評価条件。"""
 
     generator: RouteGenerator
-    conditions: AppliedConditions
+    conditions: _AppliedConditions
 
 
 def assemble_route_generation_setup(
@@ -56,7 +56,7 @@ def assemble_route_generation_setup(
     省略された評価条件の既定はここで1度だけ決める。以後は解決済みの値だけを回し、
     レスポンスのconditionsへも同じ値をエコーする（画面が見る値と探索が使う値を分けない）。
     """
-    applied = AppliedConditions(
+    applied = _AppliedConditions(
         route_preference=requested.preference_override or RoutePreference(),
         penalty_strength=tuning_value("evaluation.penalty_strength"),
         assumed_speed_kmh=requested.assumed_speed_kmh,
@@ -74,7 +74,7 @@ def assemble_route_generation_setup(
 
 
 @dataclass(frozen=True)
-class GeneratedRoutes:
+class _GeneratedRoutes:
     """1回の生成の候補と、それに実際に適用された条件。"""
 
     candidates: list[RouteCandidate]
@@ -86,7 +86,7 @@ class GeneratedRoutes:
     max_routes: int
     # 使った目標距離からの許容差（目標に対する割合の較正値から決めた長さ）。全長の目標が無ければNone。
     distance_tolerance_km: float | None
-    conditions: AppliedConditions
+    conditions: _AppliedConditions
 
 
 async def generate_route_candidates(
@@ -96,7 +96,7 @@ async def generate_route_candidates(
     target: RouteTarget,
     start_time: datetime,
     max_routes: int,
-) -> GeneratedRoutes:
+) -> _GeneratedRoutes:
     """`open_setup`で組んだエンジンで、対象（距離あり・距離なし・差し替えた経路）の候補を作る。
 
     仕上げの戦略は要求の検証が型で選び済みで、ここは型ごとの入口へ渡すだけ（距離の有無を見直さない）。
@@ -132,7 +132,7 @@ async def generate_route_candidates(
                 )
             case _:
                 assert_never(target)
-        return GeneratedRoutes(
+        return _GeneratedRoutes(
             candidates=candidates,
             no_candidates_reason=generator.last_no_candidates_reason if not candidates else None,
             corrected_destination=generator.last_destination_correction,
