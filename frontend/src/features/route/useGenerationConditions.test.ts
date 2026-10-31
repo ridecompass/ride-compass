@@ -1,10 +1,10 @@
 /**
- * 生成の条件（`useGenerationConditions.ts`）——周回か・全長の目標を決めるか・距離・候補数・重み・道ごとの避け方と、周回の間に
- * 覚えておく目的地を返す。保存する値（地点以外）は開き直しても残り、読むときに今の画面が受け付ける範囲・
+ * 生成の条件（`useGenerationConditions.ts`）——周回か・全長の目標を決めるか・距離・候補数・重み・道ごとの避け方を返す。
+ * 保存する値（地点以外）は開き直しても残り、読むときに今の画面が受け付ける範囲・
  * 今の項目へ揃える。重みは軸カタログの公開軸へ揃えた値を返し、送るのは上書きを有効にしてカタログが届いた後だけ。
  *
  * ここで見ないもの:
- * - 地点（出発地以外）の置き方・動かし方・消し方と、検索・名前のある点で置いた地点の候補 →
+ * - 地点（出発地以外）の置き方・動かし方・消し方と、検索・名前のある点で置いた地点の候補と、周回の間に覚えておく目的地 →
  *   `useGenerationConditions.points.test.ts`
  * - 重みの揃え方の細部（増えた軸を既定の重みで補う・消えた軸を外す・取得が決まるまで揃えない） →
  *   `routePreferenceSync.test.ts`。ここでは揃えた値を返すことを1件ずつ見る
@@ -24,12 +24,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { heldReplies, onBackend, serveAxisCatalog } from "@/testing/backendServer";
 import { catalogEntry, catalogResponse, TWO_AXIS_CATALOG } from "@/testing/catalogAxes";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
-import type { Coordinates } from "@/types/route";
 
 import { useGenerationConditions } from "./useGenerationConditions";
-
-const A: Coordinates = { latitude: 35.1, longitude: 139.1 };
-const B: Coordinates = { latitude: 35.2, longitude: 139.2 };
 
 function renderConditions() {
   const onOriginPlace = vi.fn();
@@ -60,21 +56,6 @@ describe("周回と全長の目標", () => {
     act(() => first.result.current[set](false));
 
     expect(reopen(first).result.current[read]).toBe(false);
-  });
-
-  it("周回の間に経由地と目的地を一度に消すと、経由地だけを消して覚えている目的地は残す", () => {
-    const { result } = renderConditions();
-    act(() => result.current.setLoop(false));
-    act(() => result.current.setDestination(A));
-    act(() => result.current.setLoop(true));
-    act(() => result.current.selectPoint({ role: "waypoint", index: null }));
-    act(() => result.current.placeAtSelected(B, null));
-
-    act(() => result.current.clearPoints());
-    act(() => result.current.setLoop(false));
-
-    expect(result.current.waypoints).toEqual([]);
-    expect(result.current.destination).toEqual(A);
   });
 });
 
