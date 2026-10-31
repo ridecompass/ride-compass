@@ -133,8 +133,8 @@ export function useRideFollow(
       baseZoom.current = shown.getZoom() + appliedZoomOut.current;
       latest.current.onZoomBaseChange(baseZoom.current);
     }
-    // 寄せる動きは、寄せ始めの地図の大きさで決めた画面の点へ寄せ続ける。寄せる最中や寄せる前の大きさの変わり（走り出して
-    // パネルが消えた等）を MapLibre が受けたら、今の大きさで寄せ直す。
+    // 寄せる先の画面の点（見えている所の中ほど）は地図の大きさで変わる（背が低いと重ねた部品を避ける余白が縮む）。大きさの
+    // 変わり（端末を横にした等）を MapLibre が受けたら、次の位置が届くのを待たずに今の大きさで寄せ直す。
     function followAfterResize() {
       if (latest.current?.following && !gesture.current) followCamera.current?.();
     }
@@ -260,6 +260,8 @@ export function useRideFollow(
         bearing: headingUp ? (bearing ?? map.getBearing()) : 0,
         zoom: (baseZoom.current ?? map.getZoom()) - appliedZoomOut.current,
         offset: visibleCenterOffset(map.getCanvas()),
+        // 位置は毎秒届くので、滑らかに動かすと動く間ずっと途中のコマを描き、走行中の電池を食う（page-composition.md「走行の値へ流す位置」）。
+        duration: 0,
       });
     if (!gesture.current) followCamera.current();
   }, [mapRef, following, position, bearing, headingUp, speedKmh, zoomBase]);
