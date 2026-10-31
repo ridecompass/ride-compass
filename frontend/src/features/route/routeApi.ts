@@ -14,15 +14,11 @@ import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 interface GenerateRoutesResult {
   routes: RouteCandidate[];
   conditions: GenerationConditions;
-  /** routesが空のときの原因（backend: RouteGenerator.last_no_candidates_reason）。
-   * SSHでサーバーログを見なくても、GUI（呼び出し側のエラーメッセージ・デバッグログ）まで
-   * 届ける。 */
+  /** routesが空のときに、backendが返した原因。 */
   noCandidatesReason?: string;
 }
 
-/** ルート生成の進捗。プロパティの粒度は「待ち/実行中」＋フロント側で計算する経過時間
- * のみ（prepare/trace/evaluateのステージ別進捗はエンジン内部への侵襲的な変更が要るため
- * 対象外）。 */
+/** ルート生成の進捗（待ちか実行中かと、受け付けからの経過時間）。 */
 export interface GenerationProgress {
   status: "queued" | "running";
   elapsedMs: number;
@@ -83,9 +79,7 @@ export async function generateRoutes(
       throw new Error("ルート生成がタイムアウトしました");
     }
     // 初回は待たずに問い合わせる（1秒足らずで終わる生成を毎回待たせない）。
-    if (pollCount > 0) {
-      await sleep(POLL_INTERVAL_MS);
-    }
+    if (pollCount > 0) await sleep(POLL_INTERVAL_MS);
 
     let status: RouteGenerateJobStatusResponse;
     try {

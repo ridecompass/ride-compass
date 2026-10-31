@@ -57,6 +57,9 @@ const done = (routes = [makeRouteCandidate({ id: "r1" })], noCandidatesReason: s
     result: { routes, conditions: CONDITIONS, no_candidates_reason: noCandidatesReason },
   });
 
+const failure = () => new Response(null, { status: 503 });
+const failures = (count: number) => Array.from({ length: count }, failure);
+
 const polled = (sent: SentRequest[]) => sent.filter((request) => request.path === JOB_PATH).length;
 
 beforeEach(() => {
@@ -120,19 +123,7 @@ describe("generateRoutes", () => {
   });
 
   it("問い合わせの失敗は取り直し、途中で成功すれば失敗の数を数え直す", async () => {
-    const failure = () => new Response(null, { status: 503 });
-    const sent = stubJob([
-      failure(),
-      failure(),
-      failure(),
-      failure(),
-      pending("running"),
-      failure(),
-      failure(),
-      failure(),
-      failure(),
-      done(),
-    ]);
+    const sent = stubJob([...failures(4), pending("running"), ...failures(4), done()]);
     const result = generateRoutes(REQUEST);
 
     await vi.advanceTimersByTimeAsync(1500 * 9);
@@ -141,13 +132,7 @@ describe("generateRoutes", () => {
   });
 
   it("問い合わせに5回続けて失敗したら、最後の失敗の文言を句点を重ねずに添えて投げる", async () => {
-    const sent = stubJob([
-      new Response(null, { status: 503 }),
-      new Response(null, { status: 503 }),
-      new Response(null, { status: 503 }),
-      new Response(null, { status: 503 }),
-      Response.json({ detail: "混雑しています。" }, { status: 503 }),
-    ]);
+    const sent = stubJob([...failures(4), Response.json({ detail: "混雑しています。" }, { status: 503 })]);
     const result = generateRoutes(REQUEST);
     const rejected = expect(result).rejects.toThrow(
       "ルート生成の状況確認に続けて失敗しました: 混雑しています。時間をおいて再度お試しください。",
