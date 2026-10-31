@@ -5,6 +5,7 @@
 
 import type { MapIconComponent } from "@/components/ui/icons/icons";
 import { MAP_LAYER_ICONS, roadLayerIcon } from "@/components/ui/icons/mapLayerIcons";
+import { columnAtKm } from "@/features/route/DifficultyProfile/profileGeometry";
 import { LANDCOVER_CLASSES } from "@/lib/mapDisplay/landcoverClasses";
 import { NO_DATA_LEGEND_BAND } from "@/lib/mapDisplay/mapColorLegend";
 import { isUnclassifiedRow, roadTrackRowOf, roadTrackRows, type RoadTrackRow } from "@/lib/mapDisplay/roadTracks";
@@ -161,24 +162,15 @@ export function layerLine(
   return { runs, range: values.length === 0 ? null : { min: Math.min(...values), max: Math.max(...values) } };
 }
 
-/** 距離`km`の地点を通る道の部分と、その中の位置（0〜1）。範囲の外は端の部分へ寄せる。 */
-function linePieceAtKm(columns: readonly RouteStretch<LayerSegment>[], layer: LineLayer, km: number) {
-  const pieces = linePieces(columns, layer);
-  if (pieces.length === 0) return null;
-  const piece = pieces.find((candidate) => km < candidate.endKm) ?? pieces[pieces.length - 1];
-  const fraction = Math.min(1, Math.max(0, (km - piece.startKm) / (piece.endKm - piece.startKm)));
-  return { stretch: piece.stretch, fraction };
-}
-
 /** 距離`km`の地点の値。道の中は両端の間を距離で割り振り、範囲の外は端の道へ寄せる。値の無い道ではnull。 */
 export function layerValueAtKm(
   columns: readonly RouteStretch<LayerSegment>[],
   layer: LineLayer,
   km: number,
 ): number | null {
-  const hit = linePieceAtKm(columns, layer, km);
+  const hit = columnAtKm(linePieces(columns, layer), km);
   if (hit === null) return null;
-  const { start, end } = hit.stretch;
+  const { start, end } = hit.column.stretch;
   return start === null || end === null ? null : start + (end - start) * hit.fraction;
 }
 

@@ -126,11 +126,10 @@ export default function RouteProfile({
       </div>
       <TabsContent value="lens">
         <DifficultyProfile
-          segments={segments}
+          scale={scale}
           overallDifficulty={overallDifficulty}
           axisOrder={axisOrder}
           axisColors={axisColors}
-          scaleKm={scaleKm}
           selected={selected}
           onSelect={onSelect}
           progressKm={progressKm}
