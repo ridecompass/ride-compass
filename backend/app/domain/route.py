@@ -138,7 +138,7 @@ class RouteSegmentDetail(StrictModel):
     # 全軸を合計するとdifficulty（丸め前）と一致するため、フロントは内訳を独自に
     # 再計算せずこれを表示する。
     axis_contributions: dict[str, float] = Field(default_factory=dict)
-    # 重み>0の公開軸が参照する材料id→値。評価に使っていない軸の材料は出ない。
+    # 材料id→値。載せる材料は`domain/evaluation.py: displayed_material_ids`が選ぶ。
     material_values: dict[str, float] = Field(default_factory=dict)
     difficulty: float | None = None
     # 分け方（地図の道の線の層のid）と「緑と水」の層のid→区間の始まりから並べた、区分が同じまま続く部分。部分の距離の和は区間の距離と丸めの分だけずれうる。

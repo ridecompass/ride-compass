@@ -20,8 +20,7 @@ export interface LegendFilterSummaryAxis {
   label: string;
   legend: readonly LegendEntry[];
   hiddenKeys: readonly string[];
-  /** 非表示キーの保存先の軸id。**これを持つ軸だけが絞り込める**——配信元が色を焼き込み済みで
-   * カテゴリ単位に絞れない軸（降水・風・災害の危険度等）は持たず、読み取り専用の凡例になる。 */
+  /** 非表示キーの保存先の軸id。**これを持つ軸だけが絞り込め**、持たない軸は読み取り専用の凡例になる。 */
   axisId?: string;
 }
 

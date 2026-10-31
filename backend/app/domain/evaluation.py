@@ -266,11 +266,10 @@ def compose_costs_from_axis_matrix(
     density: DensityCost | None,
 ) -> AxisComposition:
     """`build_static_edge_score_matrix`/`evaluate_dynamic_axis_arrays`が求めた軸別
-    スコア配列群から、重み付き合成のcost・composite difficulty配列を求める。
+    スコア配列群から、重み付き合成のdifficultyと、費用を求めるための割増の倍率・足す秒を求める（費用そのものは返さない）。
 
     費用は**体感の所要時間**`所要時間 × (1 + P × difficulty/100) + 密度の軸の分`で、`penalty_strength`は
     「difficulty 100の道は体感で何倍の時間に感じるか−1」を意味する（逆算は`difficulty_from_cost`）。
-    costは丸めない——0.1秒は短い区間の所要時間の数%にあたり、逆算した値に丸めの差が現れる。
 
     `density`は密度の軸（`axis_definitions.py: averages_density`）ぶんの点数と回数を重みで足した和（`density_sums`）。密度の軸の
     点数は割増の倍率から外し、代わりに`P × 重みの割合 × 傾き/100 × 回数 × 3600/想定速度`の秒を足す（理由は
@@ -284,15 +283,12 @@ def compose_costs_from_axis_matrix(
 
     0次フィルタ・避け方による除外と割り増しは呼び出し元の責務（`domain/hard_filters.py:
     compute_search_exclusion`、Edgeの通行可否そのものであり軸別スコアの合成とは独立した判定のため）。戻り値の
-    difficultyはNaN=データ無し、costは除外も割り増しも考慮しない「仮に許可された場合のコスト」、
-    weight_sumsは軸別寄与度の分母。
+    difficultyはNaN=データ無しで、倍率と足す秒は除外も割り増しも考慮しない「仮に許可された場合」の値。
 
-    重み付き軸がすべてデータ欠損（composite=NaN）のEdgeは、costの算出だけ`distance_m`
+    重み付き軸がすべてデータ欠損（composite=NaN）のEdgeは、倍率の算出だけ`distance_m`
     加重の`domain/difficulty.py: distance_weighted_difficulty_array`で求めたbbox内平均
-    difficultyを代入する（呼び出し元のリクエストごとに実データから求まる値で、
-    固定定数は使わない）。戻り値の`composite_difficulty`（表示用）はこの代入の影響を
-    受けず、欠損なら常にNaNのまま返す。bbox内が全Edge欠損
-    （代入する平均値自体が無い）ならcost=所要時間（割増なし）。
+    difficultyを代入する（固定定数は使わない）。戻り値の`difficulty`（表示用）はこの代入の影響を
+    受けず、欠損なら常にNaNのまま返す。bbox内が全Edge欠損（代入する平均値自体が無い）なら倍率は1（割増なし）。
     """
     n = len(distance_m)
     weighted_scores, weight_sums = composite_weighted_sums(axis_arrays, weights, n, static_sums)
@@ -305,8 +301,6 @@ def compose_costs_from_axis_matrix(
             added_seconds = np.where(
                 weight_sums > 0, penalty_strength / 100 * density.score_seconds / weight_sums, 0.0)
 
-    # costの算出にだけ、重み付き軸が全欠損のEdgeへbbox内平均difficultyを
-    # 代入する（composite自体は表示用にNaNのまま返す、上のdocstring参照）。
     bbox_mean = distance_weighted_difficulty_array(composite, distance_m)
     if bbox_mean is None:
         cost_difficulty = cost_composite
