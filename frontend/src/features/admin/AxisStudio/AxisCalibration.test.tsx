@@ -110,7 +110,9 @@ beforeEach(() => {
     const signed = definition.axis_id === SIGNED.axis_id;
     return Response.json({
       map_paint: {
-        value: signed ? { kind: "signed_material", material: "speed_limit" } : { kind: "difficulty" },
+        value: signed
+          ? { kind: "signed_material", material: "speed_limit", route_segment_field: "material_values" }
+          : { kind: "difficulty" },
         unit: "",
         thresholds,
         legend: { boundaries: thresholds, unit: signed ? "%" : null },

@@ -6852,6 +6852,17 @@
             "type": "array",
             "title": "Elevations"
           },
+          "sustained_gradient_percent": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sustained Gradient Percent"
+          },
           "estimated_arrival_time": {
             "anyOf": [
               {
@@ -6919,6 +6930,7 @@
           "edge_start",
           "edge_end",
           "elevations",
+          "sustained_gradient_percent",
           "estimated_arrival_time",
           "axis_difficulties",
           "axis_contributions",
@@ -7046,13 +7058,22 @@
           "material": {
             "type": "string",
             "title": "Material"
+          },
+          "route_segment_field": {
+            "type": "string",
+            "enum": [
+              "material_values",
+              "sustained_gradient_percent"
+            ],
+            "title": "Route Segment Field"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
           "kind",
-          "material"
+          "material",
+          "route_segment_field"
         ],
         "title": "SignedMaterialMapValue"
       },

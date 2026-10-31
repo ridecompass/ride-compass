@@ -101,25 +101,32 @@ describe("難易度で塗る軸のモード", () => {
 });
 
 describe("材料の値をそのまま塗る軸のモード（符号付き材料）", () => {
-  const axis = catalogEntry({
-    axis_id: "slope",
-    label: "勾配",
-    map_paint: {
-      value: { kind: "signed_material", material: "grade" },
-      thresholds: [-2, 2],
-      legend: { boundaries: [-2, 2], unit: "%" },
-    },
-  });
-  const mode = modeOf([axis], "slope");
-  const segmentOf = (value: unknown) => ({ material_values: { grade: value }, axis_difficulties: { slope: 99 } });
+  const axisReading = (routeSegmentField: "material_values" | "sustained_gradient_percent") =>
+    catalogEntry({
+      axis_id: "slope",
+      label: "勾配",
+      map_paint: {
+        value: { kind: "signed_material", material: "grade", route_segment_field: routeSegmentField },
+        thresholds: [-2, 2],
+        legend: { boundaries: [-2, 2], unit: "%" },
+      },
+    });
+  const mode = modeOf([axisReading("material_values")], "slope");
 
   it("名前は軸の名前のままで、凡例の範囲は材料の単位で書く", () => {
     expect(mode.label).toBe("勾配");
     expect(mode.legend.map((row) => row.label)).toEqual(["-2%未満", "-2〜2%", "2%以上", "データなし"]);
   });
 
-  it("軸の難易度ではなく、区間の材料の値で塗る（負の値は下りの色）", () => {
-    expect(drawn(mode, segmentOf(-5)).color).toBe(palette.semantic.signed_descent);
+  // 勾配は区間の平均だと登って下る区間が平坦の色になるので、backendが続く坂の斜度の欄を名指す。
+  it.each([
+    ["material_values", { material_values: { grade: -5 }, sustained_gradient_percent: 5 }],
+    ["sustained_gradient_percent", { material_values: { grade: 5 }, sustained_gradient_percent: -5 }],
+  ] as const)("軸の難易度ではなく、backendが名指す区間の欄（%s）の値で塗る（負の値は下りの色）", (field, segment) => {
+    const painted = modeOf([axisReading(field)], "slope");
+    expect(drawn(painted, { ...segment, axis_difficulties: { slope: 99 } }).color).toBe(
+      palette.semantic.signed_descent,
+    );
   });
 });
 
