@@ -148,7 +148,7 @@ way粒度の経路も**区間向けと同じ式**を使う。`way_from_clause`�
   欠けた材料の待ち・坂が全区間で黙って0秒になる。区間ごとの値の欠け（NaN）は平地・待ち無しとして
   扱い、`missing_travel_data_share`で数える。動的材料
   （出どころが要求の材料、`REQUEST_DYNAMIC_MATERIAL_IDS`、風）の列はNaNのままで、それに依存する軸の列も自然に
-  NaNへ伝播する（動的軸の特別扱いが不要）。観測を引く材料（雨、`observed_materials`。鍵は出どころが観測の材料に
+  NaNへ伝播する（動的軸の特別扱いが不要）。観測を引く材料（雨、`road_network.py: material_arrays_of`の`observed`。鍵は出どころが観測の材料に
   限り、それ以外は断る）はDBの材料と
   同じ列として重ねる——向きにも通過の時刻にも依らず、生成1回につき1つの値で済むため、軸の得点・
   生値（mm）・内訳にDBの材料と同じ経路で載り、道の材料と1つの軸で組み合わせることもできる（動的材料は
@@ -271,7 +271,7 @@ bbox全体ぶんのコストをリクエストにつき1回だけnumpyで合成�
 始まる直線で、もう1点より先は頭打ちになる（軸の検査が断る。[軸スタジオ](axis-studio.md)「軸の外に照らす値の不変条件」）。
 信号が交差点の脇の短い区間に集まる幹線では、その区間が頭打ちになり、区間ごとの得点の平均が回数どおりの得点より低く出る。
 勾配のように密度でない材料の軸・他の軸を項に持つ軸は得点の平均のまま（短い急坂を平均でならすと坂のつらさが消える）。
-- 運び方: 静的スコア行列が密度の軸の横軸の値の列（`StaticEdgeScoreMatrix.density_axes`）を持ち、`LegCostArrays.density_axes`を
+- 運び方: 静的スコア行列が密度の軸の横軸の値の列（`StaticEdgeScoreMatrix.density_axes`）を持ち、合成器（`leg_costs.py: LegCostComposer.density_axes`）を
   経て、`_build_segment_details`が区間ごとの値・丸めない距離・その軸の重みの割合（`difficulty.py: axis_weight_shares`）を
   区間の難しさ（`route.py: SegmentDifficulty.density_inputs`）として載せ、ビンへ畳む（`route.py: route_bins`）。距離を丸めないのは、応答の区間の距離が
   10m単位で、信号の脇の数mの区間が長さ0になって回数ごと消えるため。

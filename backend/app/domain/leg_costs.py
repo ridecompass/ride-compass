@@ -36,7 +36,6 @@ from app.domain.difficulty import axis_weighted_sums
 from app.domain.dynamic_materials import DynamicAxisRequestContext, evaluate_dynamic_axis_arrays
 from app.domain.evaluation import (
     AxisComposition,
-    DensityAxisColumn,
     DensityCost,
     StaticEdgeScoreMatrix,
     compose_costs_from_axis_matrix,
@@ -118,20 +117,14 @@ class _ComposedBin(NamedTuple):
 
 @dataclass
 class LegCostArrays:
-    """1レグぶんの合成済みコスト配列一式。`cost_lazy`は区間の番号順（探索が使う行順）、それ以外は切り出した区間の順。
-    レグごとに違うのは通過予定時刻で決まるもの（各Edgeの通過予定時刻の風と、時間帯を持つ軸の重み）だけで、静的な列は共有する。"""
+    """1レグぶんの合成済みコスト配列一式（区間の番号順、探索が使う行順）。通過予定時刻で決まるもの（各Edgeの通過予定時刻の風と、
+    時間帯を持つ軸の重み）だけを持ち、時刻で変わらない列は合成器（`LegCostComposer`）が持つ。探索はどの配列も書き換えない
+    ——時刻ビンの配列はほかのレグと共有する。"""
 
     # 代表ビン（`_representative_bin`。時刻ラベルを持てない探索が読む）の費用と所要時間。ターンの待ちは遷移ごとに
     # 決まるためどちらにも含まない。
     cost_lazy: np.ndarray
     travel_seconds_lazy: np.ndarray
-    # 折れ点を通す前の生値（静的スコア行列の列をそのまま指し、レグ間で共有する）。
-    axis_raw_arrays: dict[str, np.ndarray]
-    # 密度の軸の横軸の値の列（`StaticEdgeScoreMatrix.density_axes`をそのまま指し、レグ間で共有する）。
-    density_axes: dict[str, DensityAxisColumn]
-    # categorical材料id→語彙への番号の列（静的スコア行列の列をそのまま指し、レグ間で共有する）。区間表示の内訳が
-    # 値ごとの延長割合を出すために保持する。
-    categorical_material_arrays: dict[str, CategoricalColumn]
     # レグの中を経過時間で区切ったビンごとの配列（`(ビン, Edge)`、`cost_lazy`と同じ列順）。
     # 到達時刻をラベルとして持ち回れる探索はこちらを使い、**風をレグ内の実際の経過時間で
     # 引き直す**。時変化しないレグは1本（`cost_lazy`と同じ内容）。
@@ -158,6 +151,11 @@ def _representative_bin(bin_count: int, duration_hours: float | None) -> int:
     if duration_hours is None:
         raise ValueError(f"見込み時間が無いのにビンが{bin_count}本ある")
     return min(bin_count - 1, int((duration_hours / 2) / TIME_BIN_HOURS))
+
+
+def _stacked(arrays: list[np.ndarray]) -> np.ndarray:
+    """ビンの配列を`(ビン, Edge)`へ並べる。1本なら写さずに指す——ビンはほかのレグと共有するので、読み手は書き換えない。"""
+    return arrays[0][np.newaxis] if len(arrays) == 1 else np.vstack(arrays)
 
 
 def _array_digest(values: np.ndarray) -> str:
@@ -275,22 +273,25 @@ class LegCostComposer:
         twilight_origin: Coordinates,
     ) -> None:
         self._score_matrix = score_matrix
-        self._axis_raw_arrays = dict(zip(score_matrix.raw_axis_ids, score_matrix.axis_raw_values, strict=True))
+        # 時刻で変わらない、区間の表示が読む列（静的スコア行列の列をそのまま指す。切り出した区間の順）: 折れ点を通す前の生値・
+        # 密度の軸の横軸の値・categorical材料の語彙への番号の列（値ごとの延長割合を出す）。
+        self.axis_raw_arrays = dict(zip(score_matrix.raw_axis_ids, score_matrix.axis_raw_values, strict=True))
+        self.density_axes = score_matrix.density_axes
         # 内訳として見せる静的材料と所要時間が読む材料の値（`route_facing_material_ids`の列をそのまま指す）。
         self._static_material_arrays = dict(zip(score_matrix.material_ids, score_matrix.material_values, strict=True))
-        # 同じくcategorical材料（語彙への番号の列で別に運ぶ、`route_facing_categorical_material_ids`）。
-        self._categorical_material_arrays = dict(
+        self.categorical_material_arrays = dict(
             zip(score_matrix.categorical_material_ids, score_matrix.categorical_material_columns, strict=True)
         )
         self._static_axis_scores = score_matrix.axis_arrays()
-        # 合成は`asyncio.to_thread`の先でも走るので、軸の集合は表を組んだ時点の写しだけを読む。
-        self._axis_definitions = score_matrix.definitions
+        # 合成は`asyncio.to_thread`の先でも走るので、軸の集合は表を組んだ時点の写しだけを読む。区間に載せる材料の集合も
+        # これから決める（`domain/evaluation.py: displayed_material_ids`）。
+        self.axis_definitions = score_matrix.definitions
         # 時刻で変わる公開軸（風に依存する軸と、時間帯を持つ軸）と、それ以外。ビンごとの合成では後者の
         # 重み付き和を使い回す——合成の時間は軸数にほぼ比例するため、毎回全軸を足し直すと本数ぶん効く。
-        dynamic_axes = set(dynamic_axis_topological_order(self._axis_definitions))
+        dynamic_axes = set(dynamic_axis_topological_order(self.axis_definitions))
         time_scoped_axes = {
             axis_id for axis_id in score_matrix.axis_ids
-            if (definition := self._axis_definitions.get(axis_id)) is not None and definition.time_scope != "always"
+            if (definition := self.axis_definitions.get(axis_id)) is not None and definition.time_scope != "always"
         }
         # 重みが0の軸は合成に何も足さない（項は得点も重みも0）ので、和の計算へ通さない。表示が読む`axis_arrays`は全軸を持つ。
         weighted_axis_ids = [a for a in score_matrix.axis_ids if weights.get(a, 0.0) != 0.0]
@@ -351,7 +352,7 @@ class LegCostComposer:
         # 材料の列はfloat32で持つ。走行モデルの計算はfloat64で行う。
         grade = np.nan_to_num(self._static_material_arrays[GRADIENT_PERCENT].astype(np.float64)) / 100.0
         rolling = rolling_resistance_material_id()
-        surface = self._categorical_material_arrays.get(rolling) if rolling is not None else None
+        surface = self.categorical_material_arrays.get(rolling) if rolling is not None else None
         if surface is None:  # 転がり抵抗の表が分け方を指していない: どの区間も基準の転がり抵抗
             surface = CategoricalColumn(np.zeros(len(distance_m), dtype=np.int16), (None,))
         model = SegmentSpeedModel(RiderProfile(cruise_speed_kmh=self.speed_kmh), grade, crr_for_surface(surface))
@@ -439,12 +440,8 @@ class LegCostComposer:
         leg = LegCostArrays(
             cost_lazy=representative.cost,
             travel_seconds_lazy=representative.travel,
-            axis_raw_arrays=self._axis_raw_arrays,
-            density_axes=self._score_matrix.density_axes,
-            categorical_material_arrays=self._categorical_material_arrays,
-            # ビンの配列は写しにする——探索が帰りのビンを書き換えて戻す間も、使い回すビン（ほかのレグと共有する）は変えない。
-            cost_bins_lazy=np.vstack([composed.cost for composed in bins]),
-            travel_bins_lazy=np.vstack([composed.travel for composed in bins]),
+            cost_bins_lazy=_stacked([composed.cost for composed in bins]),
+            travel_bins_lazy=_stacked([composed.travel for composed in bins]),
             bin_seconds=TIME_BIN_HOURS * 3600.0 if len(bins) > 1 else np.inf,
             bin_times=bin_times,
             missing_axis_edges=representative.missing_axis_edges,
@@ -517,7 +514,7 @@ class LegCostComposer:
         """時間帯を持つ軸の重みを、時刻の昼夜で決めた重み（全区間が同じ時刻なら数、区間ごとの時刻なら区間の配列）。"""
         if not self._time_scope_weighted:
             return self._weights
-        scoped = time_scoped_weights(self._weights, {"night_only": np.asarray(time.night)}, self._axis_definitions)
+        scoped = time_scoped_weights(self._weights, {"night_only": np.asarray(time.night)}, self.axis_definitions)
         return {axis_id: float(weight) if np.ndim(weight) == 0 else weight for axis_id, weight in scoped.items()}
 
     def _evaluate(self, time: BinTime, rows: np.ndarray | None = None) -> _Evaluated:
@@ -533,7 +530,7 @@ class LegCostComposer:
             wind_points=None if self._wind_points is None else take(self._wind_points),
         )
         static_scores = {axis_id: take(values) for axis_id, values in self._static_axis_scores.items()}
-        resolved = evaluate_dynamic_axis_arrays(static_scores, dynamic_context, self._axis_definitions)
+        resolved = evaluate_dynamic_axis_arrays(static_scores, dynamic_context, self.axis_definitions)
         wind = dynamic_context.wind_components_ms
         if wind is None:
             headwind = crosswind = np.zeros(len(bearing))

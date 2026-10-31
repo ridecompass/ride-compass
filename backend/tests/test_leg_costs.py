@@ -282,16 +282,18 @@ def test_without_any_wind_the_wind_has_no_value_on_a_segment(wind_axis):
 
 
 def test_the_values_shown_on_a_segment_are_the_columns_of_their_own_ids():
-    leg, shown = _shown(_matrix(
+    matrix = _matrix(
         2,
         raw_axes={"axis_a": [1.0, 2.0], "axis_b": [3.0, 4.0]},
         materials={"material_a": [5.0, np.nan], "material_b": [7.0, 8.0]},
         categories={"category_a": ["x", "y"]},
-    ))
+    )
+    composer = _composer(matrix)
+    _leg, shown = _shown(matrix)
 
-    assert leg.axis_raw_arrays["axis_b"].tolist() == [3.0, 4.0]
+    assert composer.axis_raw_arrays["axis_b"].tolist() == [3.0, 4.0]
     assert shown.material_arrays["material_b"].tolist() == [7.0, 8.0]
-    assert leg.categorical_material_arrays["category_a"].value_at(1) == "y"
+    assert composer.categorical_material_arrays["category_a"].value_at(1) == "y"
     assert shown.material_arrays["material_a"][0] == 5.0
     # 欠損と、合成に無い材料は値を持たない。
     assert np.isnan(shown.material_arrays["material_a"][1])
@@ -376,15 +378,14 @@ def test_legs_with_the_same_bins_but_a_different_middle_are_not_mixed_up():
 )
 def test_a_leg_sharing_hours_with_an_earlier_leg_gets_the_bins_of_its_own_hours(night_axis, speeds_by_hour):
     """レグのどのビンも、その時刻だけを新しく合成したものと同じ（取り違えると、別の時刻の風・昼夜で探す）。
-    前のレグと時刻が重なっても、前のレグのビンを探索が書き換えても（帰りの探索はその場で書き換えて戻す）同じ。"""
+    前のレグと時刻が重なっても同じ。"""
     def composer() -> LegCostComposer:
         return _composer(
             _matrix(1, axes={"axis_a": 0.0, NIGHT_AXIS: 100.0}), weights={"axis_a": 1.0, NIGHT_AXIS: 1.0},
             penalty=0.5, series=_series(speeds_by_hour),
         )
     shared = composer()
-    earlier = shared.compose("outbound", 7.5, +1, duration_hours=3.0)
-    earlier.cost_bins_lazy[:] = 0.0
+    shared.compose("outbound", 7.5, +1, duration_hours=3.0)
 
     later = shared.compose("inbound", 9.5, +1, duration_hours=4.0)
     starts = [9.5 + k * leg_costs.TIME_BIN_HOURS for k in range(len(later.bin_times))]
