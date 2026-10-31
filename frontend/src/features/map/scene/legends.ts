@@ -2,7 +2,6 @@
  *
  * 分類と色は、道は`lib/mapDisplay/roadTracks.ts: roadTrackRows`、点はグループ（`groups/*.ts`）の宣言、災害は源泉の気象の段、値が無い行は
  * `NO_DATA_LEGEND_BAND`から引く——凡例が別に色を持つと、地図とチップの色が静かに食い違う。
- * 評価軸の凡例はここではなく`features/map/view/lens.ts`が、地図の線と同じ段の関数から作る。
  */
 import type { LegendEntry } from "@/lib/mapDisplay/legendFilter";
 import { NO_DATA_LEGEND_BAND } from "@/lib/mapDisplay/mapColorLegend";
@@ -60,24 +59,18 @@ function pointAxisLegend(layer: (typeof POINT_LAYERS)[number], axis: PointAxis, 
     layerId: layer.attr_id,
     axisId: pointAxisKey(layer, axis),
     label: axis.label,
-    entries: axis.categories.map((category, i) =>
-      index === 0 && "color" in category
-        ? {
-            key: category.key,
-            label: category.label,
-            description: category.description,
-            color: category.color,
-            ...("glyph" in category ? { glyph: category.glyph } : {}),
-          }
+    entries: axis.categories.map((category, i) => ({
+      key: category.key,
+      label: category.label,
+      description: category.description,
+      ...(index === 0 && "color" in category
+        ? { color: category.color, ...("glyph" in category ? { glyph: category.glyph } : {}) }
         : {
-            key: category.key,
-            label: category.label,
-            description: category.description,
             color: palette.semantic.legend_size_only,
             diameterPx: mapDisplay.point.iconSizePx * scales[i],
             ...("glyph" in shape ? { glyph: shape.glyph } : {}),
-          },
-    ),
+          }),
+    })),
   };
 }
 

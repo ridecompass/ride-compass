@@ -46,25 +46,22 @@ describe("useMapView", () => {
     expect(result.current.look.paintedAxisId).toBeNull();
   });
 
-  it.each([{ name: "取れなければ失敗", reply: () => new HttpResponse(null, { status: 500 }), status: "error" }])(
-    "塗っている軸だけ表示範囲の材料を取り、塗りに効く走る条件と、取得の状態（$name）をレンズに出す",
-    async ({ reply, status }) => {
-      serve([DEDICATED, OTHER_DEDICATED]);
-      onBackend("GET", "/api/region/way-materials/axis_wind/:z/:x/:y", reply);
-      const { result } = renderMapView();
-      await waitFor(() => expect(result.current.lensControl.axisOptions).toHaveLength(2));
+  it("塗っている軸だけ表示範囲の材料を取り、塗りに効く走る条件と、取れなかったことをレンズに出す", async () => {
+    serve([DEDICATED, OTHER_DEDICATED]);
+    onBackend("GET", "/api/region/way-materials/axis_wind/:z/:x/:y", () => new HttpResponse(null, { status: 500 }));
+    const { result } = renderMapView();
+    await waitFor(() => expect(result.current.lensControl.axisOptions).toHaveLength(2));
 
-      act(() => result.current.lensControl.onLensChange("axis_wind"));
-      act(() => result.current.look.onViewportChange(VIEWPORT));
+    act(() => result.current.lensControl.onLensChange("axis_wind"));
+    act(() => result.current.look.onViewportChange(VIEWPORT));
 
-      expect(result.current.lensConditions).toEqual(["bearing_deg"]);
-      // 表示範囲は間引いてから取るので、その軸の結果が出て取り終えるまで待つ。
-      await waitFor(() => expect(result.current.look.wayMaterials.get("axis_wind")?.loading).toBe(false), {
-        timeout: 3000,
-      });
-      expect(result.current.lensControl.dataStatus).toBe(status);
-    },
-  );
+    expect(result.current.lensConditions).toEqual(["bearing_deg"]);
+    // 表示範囲は間引いてから取るので、その軸の結果が出て取り終えるまで待つ。
+    await waitFor(() => expect(result.current.look.wayMaterials.get("axis_wind")?.loading).toBe(false), {
+      timeout: 3000,
+    });
+    expect(result.current.lensControl.dataStatus).toBe("error");
+  });
 
   it("走る向きは地図の上の向きを [0, 360) の10°刻みへ丸めて地図へ渡し、材料の要求へ向きを載せない軸は向きを変えても取り直さない。走行中は実際に走る向きと速度を渡す", async () => {
     serve([DEDICATED]);
@@ -135,24 +132,23 @@ describe("useMapView", () => {
     expect(result.current.overlayControls.anyLegendHidden).toBe(true);
   });
 
-  it.each([{ layer: "surface", row: "データなし", key: LEGEND_NO_DATA_KEY }])(
-    "値の無い道の行を最初は隠す層（$layer）は、「$row」を地図でも凡例でも隠して始め、凡例で出すと次に開いたときも出たまま",
-    async ({ layer, key }) => {
-      serve();
-      const first = renderMapView();
-      const hiddenOf = (result: { current: ReturnType<typeof useMapView> }) => ({
-        legend: chip(result, layer)?.legendDetails?.[0].hiddenKeys,
-        map: result.current.look.hiddenLegendKeys[layer],
-      });
-      await waitFor(() => expect(hiddenOf(first.result)).toEqual({ legend: [key], map: [key] }));
+  it("値の無い道の行を最初は隠す層は、「データなし」を地図でも凡例でも隠して始め、凡例で出すと次に開いたときも出たまま", async () => {
+    serve();
+    const first = renderMapView();
+    const hiddenOf = (result: { current: ReturnType<typeof useMapView> }) => ({
+      legend: chip(result, "surface")?.legendDetails?.[0].hiddenKeys,
+      map: result.current.look.hiddenLegendKeys.surface,
+    });
+    await waitFor(() =>
+      expect(hiddenOf(first.result)).toEqual({ legend: [LEGEND_NO_DATA_KEY], map: [LEGEND_NO_DATA_KEY] }),
+    );
 
-      act(() => first.result.current.overlayControls.onLegendAxisSetHidden(layer, []));
-      first.unmount();
+    act(() => first.result.current.overlayControls.onLegendAxisSetHidden("surface", []));
+    first.unmount();
 
-      const { result } = renderMapView();
-      await waitFor(() => expect(hiddenOf(result)).toEqual({ legend: [], map: [] }));
-    },
-  );
+    const { result } = renderMapView();
+    await waitFor(() => expect(hiddenOf(result)).toEqual({ legend: [], map: [] }));
+  });
 
   it("災害のチップの凡例で隠した情報は描かず、絞り込み中に数える", () => {
     serve();

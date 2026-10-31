@@ -1,5 +1,4 @@
-/** 軸カタログの応答（`GET /api/axis-catalog`）のうち、地図だけが読むものを導く。機能をまたいで読む形は
- * `lib/axisCatalog.ts`が同じ応答から導き、取得は両者で1つを共有する（`useMapAxisCatalog.ts`）。 */
+/** 軸カタログの応答（`GET /api/axis-catalog`）のうち、地図だけが読むものを導く。 */
 import { dedicatedWayValueAxesFromCatalogAxes, type DedicatedWayValueAxis } from "@/lib/mapDisplay/axisLayers";
 import {
   ROUTE_STYLE_MODES_WITHOUT_AXES,
@@ -14,8 +13,7 @@ import type { AxisCatalogResponse, RoadMapLayerView } from "@/types/route";
 export interface MapAxisCatalog {
   /** 公開中の軸（共有の軸カタログと同じ導出）。地図の説明文が評価の名前を差し込み、レンズが選択肢を作る。 */
   axes: readonly CatalogAxis[];
-  /** 道ごとの得点で地図を塗る軸。レイヤー登録・カタログ・可視性・フェッチの
-   * 全てがこの一覧から導出される。 */
+  /** 道ごとの得点で地図を塗る軸。 */
   dedicatedAxes: readonly DedicatedWayValueAxis[];
   /** ルート地図の色分けモード一覧。公開軸を無条件で含む。取得できるまでは軸に依らない
    * モードだけ（`ROUTE_STYLE_MODES_WITHOUT_AXES`）。 */

@@ -4,8 +4,7 @@
  * 「いまの状態から、載っているべきレイヤーの並びを返す」1つの形**で表す。役割が固定の
  * ものは固定の並びを返し、実行時に増減するものは状態から導いた並びを返す。
  *
- * 見た目の値はこのファイルが持つ（呼び出し側は埋めない）。外から来る値——実行時に
- * 増減する軸・タイルの配信先と世代・取得した中身——だけを状態として受け取る。
+ * 状態として受け取るのは外から来る値——実行時に増減する軸・タイルの配信先と世代・取得した中身——だけ。
  */
 import type { FilterSpecification, LayerSpecification } from "maplibre-gl";
 
@@ -20,7 +19,7 @@ import type {
   MapSceneSource,
   MapSceneTier,
 } from "./mapScene";
-import { geojsonContent, layerSpec, sceneLayerId, type SceneSourceId, tilesContent } from "./sceneBuilders";
+import { geojsonContent, sceneLayerId, type SceneSourceId, tilesContent } from "./sceneBuilders";
 
 /** レイヤー1枚ぶんの宣言。id は役割から決まる。
  *
@@ -103,16 +102,17 @@ export function composeScene<State>(groups: readonly SceneGroup<State>[], state:
 
 function toSceneLayer(entry: SceneLayerEntry): MapSceneLayer {
   return {
-    spec: layerSpec({
+    // `LayerSpecification` は `type` ごとの合併型のため、paint/layout を外から受け取る形では合併型として組み立て直せない。
+    spec: {
       id: sceneLayerId(entry.source, entry.role),
       type: entry.type,
       source: entry.source,
-      sourceLayer: entry.sourceLayer,
+      ...(entry.sourceLayer === undefined ? {} : { "source-layer": entry.sourceLayer }),
       paint: entry.paint,
       ...(entry.layout === undefined ? {} : { layout: entry.layout }),
       ...(entry.minzoom === undefined ? {} : { minzoom: entry.minzoom }),
       ...(entry.maxzoom === undefined ? {} : { maxzoom: entry.maxzoom }),
-    }),
+    } as unknown as LayerSpecification,
     tier: entry.tier,
     visible: entry.visible,
     hitTargets: entry.hitTargets ?? [],

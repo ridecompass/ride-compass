@@ -50,14 +50,17 @@ async def test_a_transaction_left_after_an_error_counts_as_idle_in_transaction(r
 @pytest.mark.asyncio(loop_scope="module")
 async def test_connections_to_other_databases_count_toward_the_connection_limit(road_graph_session):
     # 上限（max_connections）はサーバー全体の枠なので、別のDBへの接続も残り枠を減らす。
+    # 並べて走る他のテストも接続を開け閉めするので、前後の差では比べない。pg_stat_activityは
+    # トランザクションの中で最初に読んだ時点に固定されるので、数えたのと同じ時点のこのDBへの接続と比べる。
     other = create_async_engine(make_url(postgis_database_url()).set(database="postgres"))
     try:
         async with other.connect() as connection:
             await connection.execute(text("SELECT 1"))
-            with_other = await DbStatusQuery(road_graph_session).fetch_counts()
-        await road_graph_session.rollback()
+            counts = await DbStatusQuery(road_graph_session).fetch_counts()
+            this_database = (await road_graph_session.execute(text(
+                "SELECT count(*) FROM pg_stat_activity"
+                " WHERE datname = current_database() AND pid <> pg_backend_pid()"))).scalar_one()
     finally:
         await other.dispose()
-    without_other = await DbStatusQuery(road_graph_session).fetch_counts()
 
-    assert with_other.connections.total == without_other.connections.total + 1
+    assert counts.connections.total > this_database

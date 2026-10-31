@@ -1,9 +1,7 @@
 """材料の値をSQLで導出する式の、単一の情報源。
 
-材料が何から導かれるかはdomainの知識のため、式をここに置く。参照する側
-（タイル配信・材料の読み出し・欠損割合集計・派生バッチ）はいずれもRoad Graphの
-オブジェクトを構築せずDBを直接引く。同じ判定式を呼び出し側ごとに独立して書くと
-ドリフトするため、ここへ集約する。表を読む文（生データの表から`w`を作る副問い合わせ等）は
+材料が何から導かれるかはdomainの知識のため、式をここに置く。同じ判定式を呼び出し側ごとに
+独立して書くとドリフトするため、ここへ集約する。表を読む文（生データの表から`w`を作る副問い合わせ等）は
 実行する層が持ち、ここは別名の列に対する式だけを持つ。
 
 式はテーブルのエイリアスを固定で参照する。FROM句は読み出し側が組み立てる（`em`・`wm`は
@@ -98,12 +96,8 @@ IS_BRIDGE_SQL = tag_absent_is_false_sql(f"{BRIDGE_NORMALIZED_SQL} IN ({sql_liter
 IS_TUNNEL_SQL = tag_absent_is_false_sql(f"{TUNNEL_NORMALIZED_SQL} IN ({sql_literals(TUNNEL_STRUCTURE_VALUES)})")
 
 
-def _cycleway_tags_include_sql(*values: str) -> str:
-    return f"{_CYCLEWAY_TAGS_ARRAY_SQL} && ARRAY[{sql_literals(values)}]"
-
-
 def cycleway_has_value_sql(*values: str) -> str:
-    return tag_absent_is_false_sql(_cycleway_tags_include_sql(*values))
+    return tag_absent_is_false_sql(f"{_CYCLEWAY_TAGS_ARRAY_SQL} && ARRAY[{sql_literals(values)}]")
 
 
 #: 自転車のためのタグの値。条件の式と説明の文の両方がここから作る。
