@@ -7,6 +7,7 @@ import type { Map as MapLibreMap } from "maplibre-gl";
 
 import { MINUTE_MS } from "@/lib/duration";
 import { readStoredValue, writeStoredValue } from "@/lib/safeStorage";
+import { formatJstHourMinute, toJstLocalValue } from "@/lib/time";
 
 const STORAGE_KEY = "ridecompass:ride-metrics";
 /** 残す行の上限（1分1行で10時間）。 */
@@ -33,6 +34,8 @@ type RideMetricsRow = {
   fixGapMaxS: number | null;
   speedAvgKmh: number | null;
 } & Record<RideMetricCount, number> & {
+    /** 描いたコマを、次のコマも描く理由ごとに数えたもの（`renderReasons`）。 */
+    renderReasons: Record<string, number>;
     /** 1分の終わりの地図の倍率と、載っている層の数。 */
     zoom: number | null;
     layers: number | null;
@@ -59,6 +62,7 @@ type RideMetricsLog = {
 type Counting = {
   startedMs: number;
   counts: Record<RideMetricCount, number>;
+  renderReasons: Record<string, number>;
   fixes: number;
   accuracies: number[];
   speeds: number[];
@@ -100,6 +104,7 @@ function freshMinute(nowMs: number): Counting {
       tilesLoaded: 0,
       pageRenders: 0,
     },
+    renderReasons: {},
     fixes: 0,
     accuracies: [],
     speeds: [],
@@ -170,6 +175,7 @@ function closeMinute(nowMs: number): void {
     fixGapMaxS: minute.fixGapMaxMs === null ? null : round1(minute.fixGapMaxMs / 1000),
     speedAvgKmh: average(minute.speeds),
     ...minute.counts,
+    renderReasons: minute.renderReasons,
     ...mapState(recording.map),
     requests: minute.requests,
     transferKb: Math.round(minute.transferBytes / 1024),
@@ -331,11 +337,41 @@ export function setRideMetricsStatus(status: string): void {
   if (recording !== null) recording.status = status;
 }
 
+/** 描いたコマのあと、地図が次のコマも描く理由。MapLibre 6.11 の `Map._render` の終わりの判定（非公開の値）を写し、
+ * 移り変わり中のものはソース・層の id を添える。どれにも当たらなければ `end`（そこで描き止み、次は外から頼まれて描く）。
+ * `moving` は、カメラが動いている間（指で動かす・時間をかけて寄せる）に描いたコマ。 */
+function renderReasons(map: MapLibreMap): string[] {
+  const reasons: string[] = [];
+  if (map.isMoving()) reasons.push("moving");
+  if (map._sourcesDirty) reasons.push("sources");
+  if (map._styleDirty) reasons.push("style");
+  if (map._placementDirty) reasons.push("placement");
+  if (map._crossFadingFactor !== 1) reasons.push("crossFade");
+  if (map._repaint) reasons.push("repaint");
+  if (map.painter?.renderToTexture?.needsFollowUpFrame) reasons.push("terrain");
+  const style = map.style;
+  if (style?.hasTransitions()) {
+    const before = reasons.length;
+    for (const [id, manager] of Object.entries(style.tileManagers))
+      if (manager.hasTransition()) reasons.push(`fade:${id}`);
+    for (const [id, layer] of Object.entries(style._layers))
+      if (layer.hasTransition()) reasons.push(`transition:${id}`);
+    // 光・空・投影の移り変わり。
+    if (reasons.length === before) reasons.push("transition");
+  }
+  return reasons.length === 0 ? ["end"] : reasons;
+}
+
 /** 地図の描き直し・動き・タイルの読み込みを数える口を地図へ張る。外すときは返した関数を呼ぶ。 */
 export function bindRideMetrics(map: MapLibreMap): () => void {
   boundMap = map;
   if (recording !== null) recording.map = map;
-  const onRender = () => countRideMetric("mapRenders");
+  const onRender = () => {
+    if (recording === null) return;
+    countRideMetric("mapRenders");
+    const { renderReasons: counted } = recording.minute;
+    for (const reason of renderReasons(map)) counted[reason] = (counted[reason] ?? 0) + 1;
+  };
   const onMoveEnd = () => countRideMetric("mapMoves");
   const onData = (event: { dataType?: string; tile?: unknown }) => {
     if (event.dataType === "source" && event.tile !== undefined) countRideMetric("tilesLoaded");
@@ -361,4 +397,35 @@ export function readRideMetrics(): RideMetricsLog | null {
   } catch {
     return null;
   }
+}
+
+/** 区切りの文字（`,`・`;`・`=`・改行）を空白に替える。 */
+const plain = (text: string) => text.replace(/[,;=\r\n]/g, " ");
+
+/** 1つの欄。無い値は `-`、真偽は 1・0、数の表は多い順に `名前=数` を `;` でつなぐ。 */
+function cell(column: string, value: unknown): string {
+  if (column === "at" && typeof value === "string") return formatJstHourMinute(new Date(value));
+  if (value === null || value === undefined) return "-";
+  if (typeof value === "boolean") return value ? "1" : "0";
+  if (Array.isArray(value))
+    return (value as { source: string; ms: number }[]).map(({ source, ms }) => `${plain(source)}=${ms}`).join(";");
+  if (typeof value === "object")
+    return Object.entries(value as Record<string, number>)
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, count]) => `${plain(name)}=${count}`)
+      .join(";");
+  return plain(String(value));
+}
+
+/** 写す形。1行目に始まりと端末、2行目に列の名前（行の項目の名前と順）、続けて1分1行の CSV（時刻は日本時間）。
+ * 項目を名前つきで行ごとに繰り返さないので、長い走行でも貼れる長さに収まる。 */
+export function formatRideMetrics(log: RideMetricsLog): string {
+  const { device } = log;
+  // 前の版の記録には無い項目もあるので、どれかの行にある項目を、初めて出た順に並べる。
+  const columns = [...new Set(log.rows.flatMap((row) => Object.keys(row)))];
+  const head = `# 走行の記録 ${toJstLocalValue(new Date(log.startedAt))} JST ${device.screen} x${device.pixelRatio} ${plain(device.userAgent)}`;
+  const lines = log.rows.map((row) =>
+    columns.map((column) => cell(column, (row as Record<string, unknown>)[column])).join(","),
+  );
+  return [head, columns.join(","), ...lines].join("\n");
 }
