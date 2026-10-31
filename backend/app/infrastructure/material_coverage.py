@@ -1,9 +1,8 @@
 """材料ごとの欠損割合（カバレッジ）を集計クエリで求める読み取り専用リポジトリ。
 
-`GET /api/admin/material-catalog/coverage`（`api/routers/material_catalog.py`）のデータ源。
 材料ごとに元データの置き場所が異なる（道の生データのタグ・区間の材料の列）ため、「どの母集団の、どの条件が成り立てば欠損か」を
 材料ごとの宣言（`MaterialSpec.coverage`）から受け取り、集計クエリで数える（Edge/Way単位の
-Pythonループは回さない）。ここは測り方の実装だけを持つ。
+Pythonループは回さない）。
 
 母集団は2種類:
 
@@ -32,8 +31,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.infrastructure.material_joins import edge_material_table
 from app.infrastructure.source_models import WAYS_SOURCE_SQL
 
-# 材料ごとの宣言は`MaterialSpec.coverage`が持つ（材料を1つ増やすとき触るのは1か所）。
-# ここは測り方の実装だけを持ち、宣言は持たない。
 MATERIAL_COVERAGE_SPECS = material_coverage_specs()
 MATERIAL_COVERAGE_EXCLUSIONS = material_coverage_exclusions()
 

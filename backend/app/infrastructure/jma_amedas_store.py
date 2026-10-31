@@ -1,7 +1,6 @@
 """アメダスの観測値と1時間雨量の履歴をRedisに置く・読む。
 
-鍵・項目名・TTL・保存した形の検査はここが持ち、呼び出し元（`services/jma_amedas_service.py`）とは
-`AmedasObservation`・`RainHistory`の値でやり取りする。保存した形の不一致は「無い」へ倒す（fail-open）。
+`AmedasObservation`・`RainHistory`の値で読み書きする。保存した形の不一致は「無い」へ倒す（fail-open）。
 
 観測値は観測所ごとのHashに置き、全観測所を1往復で書く。履歴は1キーのJSONに置く。どちらも`redis_json_cache`を通す。
 """

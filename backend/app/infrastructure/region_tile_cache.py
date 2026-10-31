@@ -76,7 +76,7 @@ async def serve_region_tile(
 
     取得不可が一時的な失敗（`fetch_tile`が`debug_log.py: mark_failed`で失敗を記録した場合）
     だったときは`cacheable=False`で返す。呼び出し元のルーターはこれを見て
-    `Cache-Control: no-store`を明示する（`TileResponse`のdocstring参照）。
+    `Cache-Control: no-store`を明示する。
 
     世代を読めていない（`cache_identity.py: is_known_tile_version`が偽）ときはディスクへ書かずに返す。
     **どの世代の中身か分からないまま焼いたタイルを残さない**ため——残すと後で世代が判明しても正しいものと区別できない
