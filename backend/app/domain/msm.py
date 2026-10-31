@@ -1,8 +1,5 @@
 """気象庁MSM（メソ数値予報モデル）格子の幾何と補間。
 
-外部I/Oを持たない純関数のみを置く。実データの同期・読み出しと、配信元のメタ情報（格子の範囲の
-表記等）の解釈は`infrastructure/msm_client.py`が担う。
-
 MSMは緯度・経度方向で間隔の異なる等間隔格子（緯度0.05度・経度0.0625度）。値の読み方は2つある:
 画面と公開の口へ出す値は格子点の値をそのまま使い（`MsmBlock`・`MsmGridPoints`）、画面に出さない計算に使う
 任意地点の値は周囲4格子点からの双一次補間で求める（`MsmWindow`）。補間した値を地点の値として出すと、気象業務法の
@@ -204,18 +201,13 @@ class MsmBlock:
         cols = np.arange(-(-self.col0 // stride) * stride, self.col0 + self.cols, stride) - self.col0
         return MsmThinnedPoints(block=self, points=(rows[:, None] * self.cols + cols[None, :]).ravel(), stride=stride)
 
-    def _nearest_rows_cols(self, latitudes: np.ndarray, longitudes: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-        i = np.rint((np.asarray(latitudes, dtype=float) - self.grid.latitude_of(self.row0)) / self.grid.d_lat)
-        j = np.rint((np.asarray(longitudes, dtype=float) - self.grid.longitude_of(self.col0)) / self.grid.d_lon)
-        return i, j
-
     def points_of(self, latitudes: np.ndarray, longitudes: np.ndarray) -> np.ndarray:
         """各地点に最も近い格子点の番号。並びの外の地点は端の格子点へ寄せる。"""
-        i, j = self._nearest_rows_cols(latitudes, longitudes)
+        i = np.rint((np.asarray(latitudes, dtype=float) - self.grid.latitude_of(self.row0)) / self.grid.d_lat)
+        j = np.rint((np.asarray(longitudes, dtype=float) - self.grid.longitude_of(self.col0)) / self.grid.d_lon)
         i = np.clip(i, 0, self.rows - 1).astype(np.int64)
         j = np.clip(j, 0, self.cols - 1).astype(np.int64)
         return i * self.cols + j
-
 
 
 @dataclass(frozen=True)

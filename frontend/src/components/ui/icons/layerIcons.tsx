@@ -119,7 +119,7 @@ export function AccidentDensityAxisIcon({ size = 16 }: IconProps) {
   );
 }
 
-/** 道路の種類（「道路情報」から論理分割した1軸）: 消失点へ向かう道路と車線の破線 */
+/** 道路の種類: 消失点へ向かう道路と車線の破線 */
 export function RoadIcon({ size = 16 }: IconProps) {
   return (
     <svg width={size} height={size} {...svgProps}>
