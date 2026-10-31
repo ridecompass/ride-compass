@@ -30,57 +30,53 @@ export default function SavedPlacesPanel({ places, waypointsFull, loop, onRecall
   const [recalling, setRecalling] = useState<string | null>(null);
 
   return (
-    <div className="flex flex-col gap-3">
-      <SavedList
-        items={places}
-        noun="地点"
-        howToSave="条件タブで地点を押し、「地点を保存」で保存します。保存した地点は、ここで行の「呼び出す」を押すと出発地・経由地・目的地にできます。"
-        renderMain={(place) => (
-          <span className="min-w-0 flex-auto [overflow-wrap:anywhere]">
-            <span className="font-semibold">{place.name}</span>
-            {place.area !== null && (
-              <span className={cn("ml-1.5", textVariants({ variant: "note" }))}>{place.area}</span>
-            )}
-          </span>
-        )}
-        renderActions={(place) => (
-          <Popover open={recalling === place.name} onOpenChange={(open) => setRecalling(open ? place.name : null)}>
-            <PopoverTrigger asChild>
-              <Button
-                size="panelIcon"
-                aria-label={`「${place.name}」を呼び出す`}
-                usage="この地点を、出発地・経由地・目的地のどれにするかを選んで置きます。置くと条件タブへ移ります。"
-              >
-                <RecallSavedIcon size={18} />
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent
-              className="flex flex-col px-1 py-1"
-              side="bottom"
-              align="end"
-              collisionPadding={POPOVER_COLLISION_PADDING_PX}
-              aria-label={`「${place.name}」をどこに置くか`}
+    <SavedList
+      items={places}
+      noun="地点"
+      howToSave="条件タブで地点を押し、「地点を保存」で保存します。保存した地点は、ここで行の「呼び出す」を押すと出発地・経由地・目的地にできます。"
+      renderMain={(place) => (
+        <span className="min-w-0 flex-auto [overflow-wrap:anywhere]">
+          <span className="font-semibold">{place.name}</span>
+          {place.area !== null && <span className={cn("ml-1.5", textVariants({ variant: "note" }))}>{place.area}</span>}
+        </span>
+      )}
+      renderActions={(place) => (
+        <Popover open={recalling === place.name} onOpenChange={(open) => setRecalling(open ? place.name : null)}>
+          <PopoverTrigger asChild>
+            <Button
+              size="panelIcon"
+              aria-label={`「${place.name}」を呼び出す`}
+              usage="この地点を、出発地・経由地・目的地のどれにするかを選んで置きます。置くと条件タブへ移ります。"
             >
-              {newPlacings({ waypointsFull, loop }).map(({ target, disabled }) => (
-                <Button
-                  usage="保存した地点を、この役で地図に置きます。"
-                  key={target.role}
-                  variant="menu"
-                  size="sm"
-                  disabled={disabled}
-                  onClick={() => {
-                    setRecalling(null);
-                    onRecall(target.role, place);
-                  }}
-                >
-                  {placeLabelOf(target)}
-                </Button>
-              ))}
-            </PopoverContent>
-          </Popover>
-        )}
-        onRemove={onRemove}
-      />
-    </div>
+              <RecallSavedIcon size={18} />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent
+            className="flex flex-col px-1 py-1"
+            side="bottom"
+            align="end"
+            collisionPadding={POPOVER_COLLISION_PADDING_PX}
+            aria-label={`「${place.name}」をどこに置くか`}
+          >
+            {newPlacings({ waypointsFull, loop }).map(({ target, disabled }) => (
+              <Button
+                usage="保存した地点を、この役で地図に置きます。"
+                key={target.role}
+                variant="menu"
+                size="sm"
+                disabled={disabled}
+                onClick={() => {
+                  setRecalling(null);
+                  onRecall(target.role, place);
+                }}
+              >
+                {placeLabelOf(target)}
+              </Button>
+            ))}
+          </PopoverContent>
+        </Popover>
+      )}
+      onRemove={onRemove}
+    />
   );
 }
