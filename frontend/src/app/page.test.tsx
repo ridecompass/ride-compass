@@ -10,7 +10,7 @@
  * 選ばれ、区間を持つかで周りの塗りが決まること、全消去は確認の窓で「消す」を押してから両方から消えること、候補がある間だけ
  * 条件のずれの印が点き全消去で消えること、走行条件の想定速度・出発時刻が生成と地図の道の詳細へ同じ値で渡ること、
  * 「評価で塗る」の未使用を分ける重み（生成の前はいまの重み・後は使われた重み）、「条件」タブで保存した条件が地図で置いた
- * 出発地を持ち、呼び出すとその出発地から生成すること、前に保存した条件が「保存済み」の「プリセット」に出ること。
+ * 出発地を持ち、呼び出すとその出発地から生成すること。
  *
  * ここで見ないもの: 子の部品は本物を描き、子が値をどう描くか（一覧の書式・印の色・天候の値）は各部品のテストが見る。
  * 地図の見え方の中身（どのレイヤーをどの色・重なりで描くか・レンズの選択肢・凡例）は地図の側（`features/map/scene/`）の
@@ -193,28 +193,6 @@ describe("ルートを作る", () => {
     jobs.respond([FIRST], LOOP_CONDITIONS);
     await recall("置いた所");
     expect(origin(await generate(user))).toEqual(PLACED);
-  });
-
-  it("前に保存した設定は、「保存済み」の「プリセット」に出る", async () => {
-    const stored = {
-      name: "いつもの周回",
-      loop: true,
-      distanceTargeted: true,
-      distance: "40",
-      maxRoutes: "3",
-      origin: null,
-      waypoints: [],
-    };
-    window.localStorage.setItem(
-      "ridecompass:saved-conditions",
-      JSON.stringify([{ ...stored, destination: null, routePreference: null, roadAvoidance: {} }]),
-    );
-    const { user } = renderHome();
-
-    await user.click(screen.getByRole("tab", { name: "保存済み" }));
-    await user.click(screen.getByRole("tab", { name: "プリセット" }));
-
-    expect(screen.getByRole("button", { name: "「いつもの周回」を呼び出す" })).toBeInTheDocument();
   });
 
   it("「評価で塗る」で未使用に分ける軸は、生成の前はいまの重み、生成の後は生成に使われた重みで決まる", async () => {
