@@ -49,7 +49,7 @@ description: "テストを3つの層（backend・frontend の単体テストと 
   空のままにする（`mutate` で範囲を絞った測りは、次の見直しの前回に残らない）。
 - 起こした実行の id は、`gh run list -R ridecompass/ride-compass --workflow <ワークフロー> -L 1 --json databaseId,createdAt,status` で
   取り、`createdAt` が起こした時刻のあとであることを見る。
-- 同じワークフローが動いていれば、終わるまで待ってから始まる（ワークフローごとの `concurrency`）。待ちは `queue: max` で並び、
+- 同じ issue の同じワークフローが動いていれば、終わるまで待ってから始まる（ワークフローと issue ごとの `concurrency`）。待ちは `queue: max` で並び、
   あとから起こした実行が前の待ちを取り消さない。
 - 測りの本は issue のレーン（担当のレーンのほか）に載り、レーンより多い本は前の本が終わるまで待つ。その間、同じ issue の
   Pull Request の CI も同じレーンで待つ。ほかの issue の担当・CI とは、組織で同時に動かせるジョブの枠を分け合う。担当や CI が
