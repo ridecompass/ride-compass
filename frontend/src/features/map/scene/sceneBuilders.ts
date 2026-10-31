@@ -5,7 +5,7 @@
  */
 import type { LayerSpecification } from "maplibre-gl";
 
-import type { MapSceneSourceContent } from "./mapScene";
+import type { MapSceneFeatureStates, MapSceneFeatureStateValue, MapSceneSourceContent } from "./mapScene";
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import type { LegendEntry } from "@/lib/mapDisplay/legendFilter";
 
@@ -96,6 +96,29 @@ export function tilesContent(tiles: readonly string[]): MapSceneSourceContent {
       (source as { setTiles: (tiles: string[]) => void }).setTiles([...tiles]);
     },
   };
+}
+
+const featureStatesByInput = new WeakMap<object, MapSceneFeatureStates>();
+
+/** 地物ごとの値（地物id → 名前 → 値）を、名前ごとの feature-state（`stateKey(名前)` → 地物id → 値）へ移す。同じ入力からは
+ * 同じ参照を返す——当てる側は参照が同じなら地物ごとに比べ直さない。入力1つに`stateKey`は1つだけ使う（覚えるのは入力ごと）。 */
+export function featureStatesByName<V extends MapSceneFeatureStateValue>(
+  byFeature: ReadonlyMap<string, Readonly<Record<string, V>>>,
+  stateKey: (name: string) => string,
+): ReadonlyMap<string, ReadonlyMap<string, V>> {
+  const cached = featureStatesByInput.get(byFeature);
+  if (cached !== undefined) return cached as ReadonlyMap<string, ReadonlyMap<string, V>>;
+  const states = new Map<string, Map<string, V>>();
+  for (const [featureId, values] of byFeature) {
+    for (const [name, value] of Object.entries(values)) {
+      const key = stateKey(name);
+      let byId = states.get(key);
+      if (byId === undefined) states.set(key, (byId = new Map()));
+      byId.set(featureId, value);
+    }
+  }
+  featureStatesByInput.set(byFeature, states);
+  return states;
 }
 
 /** 値がどれかに入るかの式。 */
