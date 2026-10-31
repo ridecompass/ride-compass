@@ -27,6 +27,7 @@ from app.domain.traffic import (
     count_kind_sql,
     place_count_sql,
     poi_count_column,
+    stop_cluster_sql,
 )
 
 logger = logging.getLogger("ridecompass.derive_counts")
@@ -41,8 +42,7 @@ WITH classified AS (
     WHERE {count_kind_sql("nm")} IS NOT NULL
 )
 SELECT osm_node_id, count_kind, geom,
-       ST_ClusterDBSCAN(ST_Transform(geom, 3857), eps := $1, minpoints := 1)
-           OVER (PARTITION BY count_kind) AS cluster_id
+       {stop_cluster_sql("geom", "$1", "count_kind")} AS cluster_id
 FROM classified
 """
 

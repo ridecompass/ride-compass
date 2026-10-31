@@ -38,20 +38,12 @@ import { WAY_BEARING_STEP_DEG } from "@/features/map/mapHeading";
 
 import {
   deserializeHiddenLegendKeys,
-  hiddenOverInitial,
   hiddenKeysOf,
   presentHiddenKeys,
   toggleHiddenKey,
   withHiddenKeys,
 } from "./legendFilters";
-import {
-  DEFAULT_ROUTE_STYLE_MODE_ID,
-  isRouteStyleModeId,
-  lensPremises,
-  lensLegend,
-  lensOptions,
-  paintedAxisId,
-} from "./lens";
+import { isRouteStyleModeId, lensPremises, lensLegend, lensOptions, paintedAxisId } from "./lens";
 import type { HiddenLegendKeys, MapLook } from "./mapLook";
 import { deserializeLayerVisibility, overlayChips } from "./overlayChips";
 
@@ -116,7 +108,7 @@ export function useMapView({
     [mapCatalog.layers, storedVisibility],
   );
   // 軸を指す保存値はカタログが届いて初めて読めるため、届いた時点で読み直す。
-  const [lens, setLens] = useStoredState<LensId>("ridecompass:route-style-mode", DEFAULT_ROUTE_STYLE_MODE_ID, {
+  const [lens, setLens] = useStoredState<LensId>("ridecompass:route-style-mode", LENS_DIFFICULTY_ID, {
     serialize: (value) => value,
     deserialize: (raw) => (isRouteStyleModeId(mapCatalog.routeStyleModes, raw) ? raw : null),
     reloadKey: catalog.loaded,
@@ -127,10 +119,12 @@ export function useMapView({
     NO_STORED_VALUES,
     { serialize: JSON.stringify, deserialize: deserializeHiddenLegendKeys },
   );
+  // 保存値を最初に隠す行の上に重ねる（保存値に無い軸は最初に隠す行のまま）。最初に隠す行は軸カタログが届いてから
+  // 決まるので、保存値を読む時点ではなく使う時点で重ねる。
   const initialHidden = useMemo(() => initiallyHiddenLegendKeys(mapCatalog.roadLayers), [mapCatalog.roadLayers]);
-  const hidden = useMemo(() => hiddenOverInitial(initialHidden, storedHidden), [initialHidden, storedHidden]);
+  const hidden = useMemo(() => ({ ...initialHidden, ...storedHidden }), [initialHidden, storedHidden]);
   const setHidden = (update: (current: HiddenLegendKeys) => HiddenLegendKeys) =>
-    setStoredHidden((prev) => update(hiddenOverInitial(initialHidden, prev)));
+    setStoredHidden((prev) => update({ ...initialHidden, ...prev }));
   const [viewport, setViewport] = useState<MapViewport | null>(null);
   const [mapLayerStatus, setMapLayerStatus] = useState<LayerDataStatusByLayer>({});
   const [refreshToken, setRefreshToken] = useState(0);
@@ -222,7 +216,7 @@ export function useMapView({
     versionMissingLayerIds: mapCatalog.tileVersions ? [] : tileVersionGatedLayerIds(mapCatalog.layers),
     catalogSettled: catalog.loaded || catalog.failed,
   });
-  const setRouteShown = (on: boolean) => setLayerVisibility((prev) => ({ ...prev, [ROUTE_LAYER_ID]: on }));
+  const setShown = (id: string, on: boolean) => setLayerVisibility((prev) => ({ ...prev, [id]: on }));
   const setHiddenFor = (axisId: string, keys: readonly string[]) =>
     setHidden((prev) => withHiddenKeys(prev, axisId, keys));
   const toggleHiddenFor = (axisId: string, key: string) => setHidden((prev) => toggleHiddenKey(prev, axisId, key));
@@ -260,9 +254,9 @@ export function useMapView({
       route: {
         shown: layerVisibility[ROUTE_LAYER_ID] === true,
         selectable: hasSelectedRoute,
-        onChange: setRouteShown,
+        onChange: (on) => setShown(ROUTE_LAYER_ID, on),
       },
-      onToggle: (id, on) => setLayerVisibility((prev) => ({ ...prev, [id]: on })),
+      onToggle: setShown,
       onLegendEntryToggle: toggleHiddenFor,
       onLegendAxisSetHidden: setHiddenFor,
       onHideAllLayers: () =>
