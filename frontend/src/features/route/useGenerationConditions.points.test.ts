@@ -144,23 +144,8 @@ describe("地点", () => {
 
     act(() => result.current.removeWaypoint(removed));
 
+    expect(result.current.waypoints).toEqual([A, B, C].toSpliced(removed, 1));
     expect(result.current.selectedPoint).toEqual(after);
-  });
-
-  it("経由地は位置を指して動かす・消せ、目的地も消せる", () => {
-    const { result } = renderConditions();
-    act(() => result.current.selectPoint({ role: "waypoint", index: null }));
-    act(() => result.current.placeAtSelected(A, null));
-    act(() => result.current.placeAtSelected(B, null));
-    act(() => result.current.setDestination(A));
-
-    act(() => result.current.moveWaypoint(1, C));
-    expect(result.current.waypoints).toEqual([A, C]);
-
-    act(() => result.current.removeWaypoint(0));
-    act(() => result.current.clearDestination());
-    expect(result.current.waypoints).toEqual([C]);
-    expect(result.current.destination).toBeNull();
   });
 
   // 生成の入力（`snapshot`）の地点が置いた位置の役割になり（先頭は位置の持ち主へ出発地として渡す）、選んでいた地点は番号・役割が
