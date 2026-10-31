@@ -36,10 +36,13 @@ export interface RoadFactRow {
   value: string;
 }
 
+type Material = (typeof materialCatalog)[number];
 const MATERIALS = new Map(materialCatalog.map((material) => [material.material_id, material]));
 const materialLabel = (materialId: string) => MATERIALS.get(materialId)!.name;
-const valueLabel = (materialId: string, value: string) =>
-  (MATERIALS.get(materialId)?.value_labels as Record<string, string> | undefined)?.[value] ?? value;
+/** 材料の値の対訳。対訳が無ければundefined。 */
+const translatedValue = (material: Material | undefined, value: string) =>
+  (material?.value_labels as Record<string, string> | undefined)?.[value];
+const valueLabel = (materialId: string, value: string) => translatedValue(MATERIALS.get(materialId), value) ?? value;
 
 /** 値の呼び名で出す事実（材料）。**路面の種類は値が無くても「不明」として出す**——
  * どの道でも最初に見たい項目で、行ごと消すと「舗装されていない」と読める。 */
@@ -103,7 +106,7 @@ export function roadTagRows(tags: Readonly<Record<string, string>>): { rows: Roa
   const raw: RoadFactRow[] = [];
   for (const [key, value] of Object.entries(tags)) {
     const material = MATERIAL_BY_TILE_PROPERTY.get(key);
-    const translated = (material?.value_labels as Record<string, string> | undefined)?.[value];
+    const translated = translatedValue(material, value);
     const label = PRIMARY_ATTRIBUTE_LABELS[key];
     if (material !== undefined && translated !== undefined) rows.push({ label: material.name, value: translated });
     else if (label !== undefined && value !== "" && Number.isFinite(Number(value))) rows.push({ label, value });

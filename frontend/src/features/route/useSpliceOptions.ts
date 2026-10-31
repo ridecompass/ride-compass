@@ -2,9 +2,9 @@
 
 import { useMemo } from "react";
 
-import { routeEdgeKms } from "@/lib/routeDistance";
 import {
   buildSplicedShape,
+  routeShape,
   stretchCoordinateRange,
   type SplicedRouteShape,
   type StretchAlternative,
@@ -13,14 +13,6 @@ import { stretchAlternativeGroups } from "@/features/route/stretchAlternatives";
 import type { RouteCandidate } from "@/types/route";
 
 const NO_OPTIONS: StretchAlternative[] = [];
-
-const shapeOfRoute = (route: RouteCandidate): SplicedRouteShape => ({
-  edgeIds: route.edge_ids,
-  coordinates: route.geometry.coordinates as GeoJSON.Position[],
-  edgePointOffsets: route.edge_point_offsets,
-  edgeKms: routeEdgeKms(route.segments, route.edge_point_offsets),
-  nodeIds: route.node_ids,
-});
 
 /**
  * 区間の乗り換えの編集で、いまの組み合わせ（元＋適用した乗り換え）と、そこから次に選べる乗り換え先と地図の帯を導く。
@@ -34,7 +26,7 @@ export function useSpliceOptions(
 ) {
   // どれも地図へ渡す値。描画のたびに作り直すと地図の反映があらゆる再描画で走る（候補1本に数千件のEdge id）。
   const candidateShapes = useMemo(
-    () => new Map<string, SplicedRouteShape>(routes.map((route) => [route.id, shapeOfRoute(route)])),
+    () => new Map<string, SplicedRouteShape>(routes.map((route) => [route.id, routeShape(route)])),
     [routes],
   );
   // いまの組み合わせ（元＋適用した乗り換え）。次に選べる区間も評価へ送るEdge列もこれを見る（乗り換えた先の道の

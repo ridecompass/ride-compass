@@ -8,14 +8,14 @@
  *
  * ここで見ないもの:
  * - 表の答えが正しいこと → backendのテスト（`domain/region.py`）
- * - ズームの丸め・範囲を覆うタイルの番号の範囲（表の`tiles_covering_bbox`） → `dynamicWayValues.test.ts`
+ * - 点を含むタイルの番号・ズームの丸め・範囲を覆うタイルの番号の範囲（表の`tiles_covering_bbox`） → `dynamicWayValues.test.ts`
  * - 在否インデックスの網羅範囲との交差 → `jmaTileIndex.test.ts`
  */
 import { describe, expect, it } from "vitest";
 
 import regionExpectations from "@/types/generated/region-expectations.json";
 
-import { lonLatToTileIndex, lonLatToTilePosition, tileBoundsLonLat } from "./webMercatorTile";
+import { lonLatToTilePosition, tileBoundsLonLat } from "./webMercatorTile";
 
 /** 表の答えは小数9桁へ丸めてあるので、その手前の桁までを比べる。 */
 const TILE_DIGITS = 8;
@@ -43,17 +43,5 @@ describe("tileBoundsLonLat（タイル→緯度経度の範囲）", () => {
       expect(north, JSON.stringify(row)).toBeCloseTo(row.bounds.max_latitude, TILE_DIGITS);
       expect(south, JSON.stringify(row)).toBeCloseTo(row.bounds.min_latitude, TILE_DIGITS);
     }
-  });
-});
-
-describe("lonLatToTileIndex と tileBoundsLonLat", () => {
-  it("点を含むタイルは、その点を範囲に含む", () => {
-    const [lon, lat, z] = [139.767, 35.681, 14];
-    const [x, y] = lonLatToTileIndex(lon, lat, z);
-    const { west, east, north, south } = tileBoundsLonLat(z, x, y);
-    expect(west).toBeLessThanOrEqual(lon);
-    expect(lon).toBeLessThan(east);
-    expect(south).toBeLessThan(lat);
-    expect(lat).toBeLessThanOrEqual(north);
   });
 });

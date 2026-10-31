@@ -50,14 +50,11 @@ const EDIT_METRICS: readonly EditMetric[] = [
 ];
 
 /** 指標1つの元・編集後と差（編集後 − 元）。値を持たない側があれば差はnull。 */
-export interface MetricDifference {
-  label: string;
-  digits: number;
-  unit: string;
+export type MetricDifference = Omit<EditMetric, "value"> & {
   base: number | null;
   after: number | null;
   delta: number | null;
-}
+};
 
 /** 元との差。 */
 export interface EditDifference {
