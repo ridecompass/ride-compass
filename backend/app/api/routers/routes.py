@@ -46,8 +46,7 @@ from app.domain.strict_model import StrictModel
 router = APIRouter()
 logger = logging.getLogger("ridecompass.generate")
 
-# ルート生成の同時実行上限（settings.generate_max_concurrent、config.pyのコメント参照）。
-# 上限を超えた分は待たせず429で即座に返し、ブラウザのリトライや連打で外部サービスへの
+# ルート生成の同時実行上限。上限を超えた分は待たせず429で即座に返し、ブラウザのリトライや連打で外部サービスへの
 # 負荷が積み上がることを防ぐ。
 _generate_semaphore = asyncio.Semaphore(settings.generate_max_concurrent)
 
@@ -203,9 +202,7 @@ class GenerationConditions(StrictModel):
 class RouteGenerateResponse(StrictModel):
     routes: list[RouteCandidate]
     conditions: GenerationConditions
-    # routesが空のとき、原因の要約（RouteGenerator.last_no_candidates_reason、
-    # route_generator.pyのlogger.warning行と同じ情報源）。ユーザーが原因を推測できず
-    # SSHでサーバーログを見る以外に切り分け手段が無い状態を避けるための情報。
+    # routesが空のとき、原因の要約。サーバーログを見ずに利用者が原因を切り分けられるようにする。
     # routesが1件以上あるときは常にNone。
     no_candidates_reason: str | None
 
@@ -286,8 +283,7 @@ async def get_generate_job(job_id: str) -> RouteGenerateJobStatusResponse:
     if record is None:
         raise HTTPException(
             status_code=404,
-            detail="ルート生成の結果が見つかりません[完了から時間が経って消えたか、"
-            "アプリが再起動した可能性があります]",
+            detail="ルート生成の結果が見つかりません[完了から時間が経って消えたか、アプリが再起動した可能性があります]",
         )
     if isinstance(record, job_registry.JobDone):
         return RouteGenerateJobDone(result=record.result)

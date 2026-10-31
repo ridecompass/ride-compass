@@ -107,14 +107,11 @@ export default function RouteSettingsPanel({
       applied = next;
       handlePairWeightChange(axisIdA, next.weightA, axisIdB, next.weightB);
     };
-    const handleWindowPointerUp = () => {
-      window.removeEventListener("pointermove", handleWindowPointerMove);
-      window.removeEventListener("pointerup", handleWindowPointerUp);
-      window.removeEventListener("pointercancel", handleWindowPointerUp);
-    };
-    window.addEventListener("pointermove", handleWindowPointerMove);
-    window.addEventListener("pointerup", handleWindowPointerUp);
-    window.addEventListener("pointercancel", handleWindowPointerUp);
+    const listening = new AbortController();
+    const { signal } = listening;
+    window.addEventListener("pointermove", handleWindowPointerMove, { signal });
+    window.addEventListener("pointerup", () => listening.abort(), { signal });
+    window.addEventListener("pointercancel", () => listening.abort(), { signal });
   }
 
   function handleBoundaryKeyDown(

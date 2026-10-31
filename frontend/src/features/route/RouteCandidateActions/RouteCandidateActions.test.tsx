@@ -48,11 +48,6 @@ describe("RouteCandidateActions", () => {
     expect(onRide).toHaveBeenCalledWith("slow");
   });
 
-  it("走る受け口が無ければ、走るを出さない", () => {
-    renderActions();
-    expect(screen.queryByRole("button", { name: "このルートで走る" })).not.toBeInTheDocument();
-  });
-
   it("合成は始められるときだけ出し、押すとその候補で編集を始めて押していた区間を外す", async () => {
     const { splice, onClearSegment } = renderActions({ splice: { canStart: true, start: vi.fn() } });
     await userEvent.click(screen.getByRole("button", { name: "ルートを合成" }));
@@ -60,8 +55,9 @@ describe("RouteCandidateActions", () => {
     expect(onClearSegment).toHaveBeenCalled();
   });
 
-  it("編集を始められない生成では合成を出さない", () => {
+  it("走る受け口が無ければ走るを、編集を始められなければ合成を出さない", () => {
     renderActions();
+    expect(screen.queryByRole("button", { name: "このルートで走る" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "ルートを合成" })).not.toBeInTheDocument();
   });
 

@@ -1,10 +1,6 @@
-// 道のりに沿った難易度のグラフの形と、グラフ上の距離が入る区間を引く計算。
-//
-// 横が始点からの距離、縦が区間ごとの難易度（0〜100）。区間はbackendがEdgeを約500mのビンへ畳んだもの
-// （`domain/route.py: aggregate_segments_into_bins`）で、区間の中では値が一定なので、形は区間ごとの階段になる。
-// **塗った面積がルートの負荷とほぼ一致する**ように、値の無い区間はルートの平均の高さで描く——負荷は値の無い区間を
-// 平均として数える（backend `domain/route.py: merge_route_values`）。一致が「ほぼ」なのは、ビンの中で値の無いEdgeが
-// そのビンの平均で数えられるためと、1kmあたりの回数で測る評価軸はルート全体の回数の平均から点数にし直すため。
+// 道のりに沿った難易度のグラフの形と、グラフ上の距離が入る区間を引く計算。横が始点からの距離、縦が区間ごとの難易度
+// （0〜100）で、区間の中では値が一定なので、形は区間ごとの階段になる。値の無い区間をルートの平均の高さで描くのは、塗った
+// 面積をルートの負荷にほぼ一致させるため（docs/modules/frontend/route-settings-and-results.md の DifficultyProfile の行）。
 
 import type { RouteStretch } from "@/lib/routeDistance";
 import type { RouteSegmentDetail } from "@/types/route";
@@ -47,8 +43,8 @@ export function profileBoxes(
   return { byAxis, missing };
 }
 
-/** 距離`km`が入っている柱と、その区間の中の割合（0〜1）。範囲の外は端の区間へ寄せる。区間が無ければnull。 */
-export function columnAtKm<S extends RouteStretch<unknown>>(
+/** 距離`km`が入っている柱と、その柱の中の割合（0〜1）。範囲の外は端の柱へ寄せる。長さのある柱が無ければnull。 */
+export function columnAtKm<S extends { readonly startKm: number; readonly endKm: number }>(
   columns: readonly S[],
   km: number,
 ): { column: S; fraction: number } | null {

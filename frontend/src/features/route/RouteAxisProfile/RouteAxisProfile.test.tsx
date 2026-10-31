@@ -17,6 +17,7 @@ import { describe, expect, it } from "vitest";
 
 import { catalogAxisFromEntry } from "@/lib/catalogAxis";
 import { catalogEntry } from "@/testing/catalogAxes";
+import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 import RouteAxisProfile from "./RouteAxisProfile";
 
 const A = catalogAxisFromEntry(catalogEntry({ axis_id: "axis_a", label: "軸A", description: "軸Aの説明" }));
@@ -77,12 +78,10 @@ describe("RouteAxisProfile", () => {
 
   it("風の値を使えなかった候補にだけ、無風として出した所要時間だと注記する", () => {
     const { unmount } = renderProfile({ windUnavailable: true });
-    expect(
-      screen.getByText("風のモデルの計算値を使えなかったため、無風として所要時間を出しています"),
-    ).toBeInTheDocument();
+    expect(screen.getByText(routeGenerateConfig.missing_wind_wording)).toBeInTheDocument();
     unmount();
     renderProfile({ windUnavailable: false });
-    expect(screen.queryByText(/無風として/)).not.toBeInTheDocument();
+    expect(screen.queryByText(routeGenerateConfig.missing_wind_wording)).not.toBeInTheDocument();
   });
 
   it.each([

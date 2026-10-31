@@ -104,12 +104,11 @@ Edgeコストは「探索範囲の静的な公開軸×Edgeのスコア行列＋�
 使い回す。時刻で変わる公開軸（風に依存する軸と時間帯を持つ軸）の重みがすべて0なら、合成の難易度と割増の倍率・密度の軸の足す秒も
 時刻に依らないので1回だけ求め、ビンのコストは所要時間にその倍率を掛けて秒を足すだけになる（重みが0の軸は合成に何も足さない）。重みが
 あれば、時刻で変わらない軸の重み付き和を1回だけ求め、時刻で変わる軸だけをビンごとに足す（どちらの和も重みが0の軸を読まない）。
-ビンの中身を決めるのは、風の予報が引く時刻と、時間帯を持つ軸に重みがあればその時刻が夜かだけなので、同じ組のビン（`domain/leg_costs.py: BinTime`）はレグの向き・開始時刻が違っても1回だけ合成して使い回す。レグは表示の値を持たず、区間の表示（`domain/leg_costs.py: LegValues`）は、経路をたどって決めたビンの時刻（`LegCostArrays.bin_times`）で経路上の行だけを合成し直して読む（`domain/leg_costs.py: LegCostComposer.values_at_rows`）——全区間ぶんの表示の値をレグごとに持つと、区間数×レグ数ぶん膨らむ。区間ごとの通過時刻で合成したレグも、その時刻を区間ごとの配列で持つ同じ形（`BinTime`）で表す。レグのビンの配列は使い回すビンの写しで、帰りの探索がその場で書き換えても、ほかのレグのビンは変わらない。1ビンの中でも、
+ビンの中身を決めるのは、風の予報が引く時刻と、時間帯を持つ軸に重みがあればその時刻が夜かだけなので、同じ組のビン（`domain/leg_costs.py: BinTime`）はレグの向き・開始時刻が違っても1回だけ合成して使い回す。レグは表示の値を持たず、区間の表示（`domain/leg_costs.py: LegValues`）は、経路をたどって決めたビンの時刻（`LegCostArrays.bin_times`）で経路上の行だけを合成し直して読む（`domain/leg_costs.py: LegCostComposer.values_at_rows`）——全区間ぶんの表示の値をレグごとに持つと、区間数×レグ数ぶん膨らむ。区間ごとの通過時刻で合成したレグも、その時刻を区間ごとの配列で持つ同じ形（`BinTime`）で表す。レグのビンの配列は使い回すビンを指すことがあるので、探索はどのレグの配列も書き換えない。1ビンの中でも、
 予報の引き当てと風の分解（方位との差の三角関数）は、風の材料と走行モデルが同じ値を読む
-（`DynamicAxisRequestContext.wind_components_ms`）。合成結果`LegCostArrays`は`cost_lazy`（区間の番号順）と表示用の
-`difficulty_array`/`axis_arrays`/`weight_sums`/`material_arrays`（動的材料id→
-切り出した区間の順の配列の辞書、`evaluate_dynamic_material_arrays`が返す全材料のうち値がある
-ものだけ）を持ち、`RoadGraphContext.legs`に添字順で並ぶ。`compose`は
+（`DynamicAxisRequestContext.wind_components_ms`）。合成結果`LegCostArrays`は通過予定時刻で決まる配列（ビンごとのコスト・所要時間と各ビンの時刻）だけを持ち、
+時刻で変わらない列（軸の生値・カテゴリの材料・密度の軸の横軸の値）は合成器（`domain/leg_costs.py: LegCostComposer`）が
+1つだけ持つ。レグは`RoadGraphContext.legs`に添字順で並ぶ。`compose`は
 `DynamicAxisRequestContext`へ風の入力と走行速度（`speed_kmh`を`kmh_to_ms`でm/sへ変換）を
 渡し、風の材料（`wind_drag_ratio`）はこのcontextから求まる:
 
@@ -122,11 +121,11 @@ Edgeコストは「探索範囲の静的な公開軸×Edgeのスコア行列＋�
 | 距離なし（`select_via_nodes`） | 同上 | 前向き木（同上） | 後ろ向き木（基準点=終点、`offset=前段の見込み＋直線距離×迂回率÷速度`、`-1`） |
 
 `TracedLoop.leg_of_edge`が経路上の各Edgeのレグ添字を運び、`_build_segment_details`は
-そのレグの配列から値を読む（探索と表示の一致、[設計原則](../../architecture/design-principles.md)10）。
+そのレグのビンの時刻で合成し直した値を読む（探索と表示の一致、[設計原則](../../architecture/design-principles.md)10）。
 `RouteSegmentDetail.material_values`/`RouteCandidate.material_values`（重み>0の公開軸が
-参照する材料id→値、`AXIS_DEFINITIONS`の`materials`プロパティから導出、
-`evaluation.py: displayed_material_ids`が集合を決める）は、動的材料（風等）は`material_arrays`から
-（`road_graph_candidates.py: _build_segment_details`が経路上の行でまとめて）、静的材料は材料の列から読む。勾配（`gradient_percent`）だけは地図の配信と同じ桁へ丸めた
+参照する材料id→値。集合は`evaluation.py: displayed_material_ids`が、表の列を決めた軸定義
+（`evaluation.py: StaticEdgeScoreMatrix.definitions`）から決める——生成の途中で軸の集合が差し替わっても、表に無い材料を読まない）は、
+動的材料（風等）は合成し直した値から（`road_graph_candidates.py: _build_segment_details`が経路上の行でまとめて）、静的材料は材料の列から読む。勾配（`gradient_percent`）だけは地図の配信と同じ桁へ丸めた
 Edgeごとの値で上書きする。`displayed_material_ids`は符号付き材料を塗る公開軸（`map_paint.py: map_paint`の`value`）の
 材料も重みに関わらずいつも含める（地図のレンズはルートを作ったあとにも切り替わり、作り直さずに
 区間の値で塗るため。レンズは要求に載らない）。
@@ -264,8 +263,7 @@ RouteGenerator.generate_loops(origin, distance_km, distance_tolerance_km, max_ro
   `data.outbound_length_m`として持つ）。
 - `TracedLoop.bearing`は出発地から見た中継点の方位で、名前（`direction_label`）にだけ使う。出発地と違う所で終わる候補・
   距離なしの代わりの道はNone。逆回りを作るかは`TracedLoop.reversible`（下の`_build_best_candidate`）。
-- 候補は折返し点候補のランク順に逐次処理する（復路探索が共有`cost_lazy`を一時的に
-  書き換えるため`asyncio.gather`による並列化の余地は無い）。距離フィルタ合格が
+- 候補は折返し点候補のランク順に逐次処理する。距離フィルタ合格が
   `max_routes`件に達した時点で処理を打ち切る。
 - 候補0件になった理由は`RouteGenerator.last_no_candidates_reason`に人間可読な文字列で
   残り、`RouteGenerateResponse.no_candidates_reason`としてクライアントへ返る。文は利用者の語で書き、
@@ -499,8 +497,8 @@ NaN）へ動的軸（風、`domain/dynamic_materials.py: evaluate_dynamic_axis_a
 まとまり、`RoadGraphContext.legs`が保持する（下記「レグ別コスト配列」節）。並行Edge
 （同一Node間の複数Edge）は、`build_lazy_road_graph`が元の行（切り出した区間の順＝道路網全体の行の昇順）が
 最も小さい1本を採る決定的な規則で解消する——コストはリクエストごとに変わるため、トポロジを組む時点では
-コストで選べない。同じ`LegCostArrays`は`_build_segment_details`（区間表示）からも区間の番号→切り出した
-区間の行（`_slice_row`）で参照され、探索コストと表示の二重計算を避ける。
+コストで選べない。`_build_segment_details`（区間表示）は区間の番号→切り出した
+区間の行（`road_graph_context.py: slice_row_of`）で、同じ合成器から経路上の行だけを読む。
 
 **走行モデルが読む入力は軸の構成に依存しない**。読む材料は`domain/cycling_speed.py: travel_model_material_ids`が
 1つに宣言し、静的スコア行列はその列をいつも持つ（欠けた行列は組み立てで断る）。勾配（0次フィルタの勾配しきい値と
@@ -640,13 +638,11 @@ Nodeごとのコストは、そのNodeへ入る区間の最小を採る（木を
 
 往路は一対全木上の経路そのもの（`turn_expanded_path_edge_indices`で復元、A*での再探索はしない
 ——同じコスト配列でA*をかけ直しても同じ経路になるため）。帰りの探索の間だけ、走った区間（前段＋往路）＋
-同一Node対の逆方向Edgeのコストを共有`cost_lazy`上で較正値の倍率を掛けた値（`domain/route_search.py: retrace_penalized`）へ
-**差し替え**（infにはしない——帰りが走った道を戻る以外に道が無い区間[袋小路等]は通れる必要が
-ある）、A*（向かう先は1回の生成で決まっているため、ヒューリスティック配列は向かう先ごとに1回だけ計算し、
-区間の探索・最速の経路・全候補の帰りの探索で共有する。`road_graph_context.py: RoadGraphContext.heuristics`）で探索した後、
-`try`/`finally`で元の値へ復元する。差し替え・探索・戻すはイベントループの外の1つのスレッドの中で続けて行い、間にawaitを
-挟まない（間に他のコルーチンへ制御が渡ると、別の候補が書き換え後の値を見る）。候補は呼び出し側が1本ずつawaitする
-直列実行である前提の上で安全（並列化すると共有`cost_lazy`の書き換えが競合するため両立しない）。
+同一Node対の逆方向Edgeのコストに較正値の倍率を掛けた写し（`road_graph_context.py: avoiding_traveled`。倍率は`domain/route_search.py: retrace_penalized`）で
+A*（向かう先は1回の生成で決まっているため、ヒューリスティック配列は向かう先ごとに1回だけ計算し、
+区間の探索・最速の経路・全候補の帰りの探索で共有する。`road_graph_context.py: RoadGraphContext.heuristics`）を探す
+（infにはしない——帰りが走った道を戻る以外に道が無い区間[袋小路等]は通れる必要がある）。レグのビンはほかのレグと
+共有するので書き換えない。
 
 ### `select_via_nodes`（距離なしのvia-node方式代替経路）
 
@@ -713,10 +709,8 @@ A*のヒューリスティックも秒の下界にする（直線距離÷出せ�
 `GraphService.get_edges_with_geometry`を**1回のクエリ**で呼んで実ジオメトリを取得する（棄却済み候補への
 DB問い合わせを避ける2段階分割を維持したまま、候補ごとには問い合わせない）。
 取得後は候補ごとに`_build_best_candidate`を`asyncio.gather`で並行評価する（標高取得・
-segments構築はEdge単位の軽量な計算のため並行化してよい。復路探索のような共有状態の
-書き換えを伴わない）。`_build_segment_details`は、探索コスト算出時に`prepare`が既に
-合成済みの`LegCostArrays`から値を読み（ビンが2本以上あるレグは上記「レグ内の時刻ビン」のとおり
-経路上の行だけを合成し直す）、`RouteSegmentDetail`列へ組み立てる（標高・路面等の表示専用
+segments構築はEdge単位の軽量な計算のため並行化してよい）。`_build_segment_details`は、
+レグのビンの時刻で経路上の行だけを合成し直した値を読み（上記「レグ内の時刻ビン」）、`RouteSegmentDetail`列へ組み立てる（標高・路面等の表示専用
 フィールドはEdge単位の軽量な計算のまま）。
 
 **戻り値は入力の`traced`と同じ件数・同じ順**（位置で対応づける契約）。戦略層は

@@ -5,7 +5,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from
 import { Button } from "@/components/ui/Button/Button";
 import { RemovePointIcon, ReorderHandleIcon } from "@/components/ui/icons/lucideIcons";
 import { textVariants } from "@/components/ui/Text/Text";
-import { describeReorder } from "@/features/route/pointNames";
+import { describeReorder, pointTitle } from "@/features/route/pointNames";
 import { cn } from "@/lib/cn";
 import type { PointTarget } from "@/types/route";
 
@@ -74,8 +74,6 @@ export default function PointEditList({
   const names: (string | null)[] = [originName, ...waypointNames, ...(loop ? [] : [destinationName])];
   const count = targets.length;
   const first = originLocated ? 0 : 1;
-  const titleOf = (target: PointTarget) =>
-    target.role === "origin" ? "出発地" : target.role === "destination" ? "目的地" : `経由地${(target.index ?? 0) + 1}`;
   const movable = (index: number) => index >= first && names[index] !== null && count - first >= 2;
 
   const [lastChange, setLastChange] = useState<LastChange | null>(null);
@@ -129,7 +127,7 @@ export default function PointEditList({
     remember(targets.map((_, at) => (later && at >= index ? at + 1 : at)));
     setLastChange({
       movedTo: null,
-      note: `${titleOf(target)}「${names[index]}」を消しました。${later ? "後ろの経由地の番号を1つ詰めました。" : ""}`,
+      note: `${pointTitle(target)}「${names[index]}」を消しました。${later ? "後ろの経由地の番号を1つ詰めました。" : ""}`,
     });
     removePoint(target);
   };
@@ -147,7 +145,7 @@ export default function PointEditList({
     <div className="flex flex-col gap-1">
       <ol ref={rowsRef} aria-label="通る順" className="flex flex-col gap-0.5">
         {targets.map((target, index) => {
-          const title = titleOf(target);
+          const title = pointTitle(target);
           const name = names[index];
           const removable = target.role !== "origin";
           return (
@@ -192,7 +190,7 @@ export default function PointEditList({
                 <Button
                   variant="ghost"
                   size="bare"
-                  className="size-11 flex-none"
+                  className="size-11"
                   aria-label={`${title}を消す`}
                   disabled={name === null}
                   onClick={() => remove(index)}
@@ -210,7 +208,7 @@ export default function PointEditList({
               <Button
                 variant="ghost"
                 size="bare"
-                className="size-11 flex-none touch-none items-center justify-center text-[var(--color-muted)] select-none [-webkit-touch-callout:none]"
+                className="size-11 touch-none items-center justify-center text-[var(--color-muted)] select-none [-webkit-touch-callout:none]"
                 aria-label={`${title}を動かす`}
                 data-reorder-handle
                 disabled={!movable(index)}

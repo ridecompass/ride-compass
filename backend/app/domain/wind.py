@@ -26,7 +26,7 @@ from app.domain.way_value_formula import (
 #: 出発時の風（`DepartureWind`）の風速・風向を応答に載せる桁。
 DEPARTURE_WIND_DECIMALS = 1
 #: 風の材料（向かい風の抗力比）を地図へ配る桁。
-WIND_DRAG_RATIO_DECIMALS = 3
+_WIND_DRAG_RATIO_DECIMALS = 3
 
 # 道なり距離／直線距離の比の想定値。探索前に各Edgeの通過予定時刻を「基準点からの直線距離
 # ×この比÷仮定速度」で推定するときに使う。風の時間解像度は1時間のため、この比のばらつきに
@@ -34,11 +34,11 @@ WIND_DRAG_RATIO_DECIMALS = 3
 ROUTE_DETOUR_RATIO = 1.3
 
 #: 時速（km/h）を秒速（m/s）へ直す割る数。
-KMH_PER_MS = 3.6
+_KMH_PER_MS = 3.6
 
 
 def kmh_to_ms(speed_kmh: float) -> float:
-    return speed_kmh / KMH_PER_MS
+    return speed_kmh / _KMH_PER_MS
 
 
 def detour_ratio_or_default(learned: float | None) -> float:
@@ -58,7 +58,7 @@ WIND_DRAG_REFERENCE_SPEED_KMH = 20.0
 WIND_DRAG_REFERENCE_SPEED_MS = kmh_to_ms(WIND_DRAG_REFERENCE_SPEED_KMH)
 
 
-def wind_component_formulas(
+def _wind_component_formulas(
     wind_speed_ms: FormulaNode, wind_direction_deg: FormulaNode, travel_bearing_deg: FormulaNode
 ) -> tuple[FormulaNode, FormulaNode]:
     """風を進行方向の成分（正が向かい風）と横成分へ分解する木（m/s）。"""
@@ -69,7 +69,7 @@ def wind_component_formulas(
 
 
 def wind_drag_ratio_formula(headwind_ms: FormulaNode, crosswind_ms: FormulaNode, travel_speed_ms: FormulaNode) -> FormulaNode:
-    """風の追加負荷（材料`wind_drag_ratio`、無次元）を、風を分解した成分（`wind_component_formulas`）から求める木。
+    """風の追加負荷（材料`wind_drag_ratio`、無次元）を、風を分解した成分（`_wind_component_formulas`）から求める木。
     相対風速ベクトルの二乗則で、無風時に対する進行方向の空気抵抗の増分を`WIND_DRAG_REFERENCE_SPEED_MS`での無風時の
     抵抗を1とする倍率にしたもの。走行速度v・風速w・風向と走行方位の差dとして:
 
@@ -93,26 +93,25 @@ WIND_DIRECTION_LEAF = "wind_direction_deg"
 
 
 def _wind_drag_ratio_way_formula() -> WayValueFormula:
-    headwind, crosswind = wind_component_formulas(
+    headwind, crosswind = _wind_component_formulas(
         feature(WIND_SPEED_LEAF), feature(WIND_DIRECTION_LEAF), condition("bearing_deg"))
-    travel_speed = div(condition("speed_kmh"), const(KMH_PER_MS))
+    travel_speed = div(condition("speed_kmh"), const(_KMH_PER_MS))
     return WayValueFormula(
-        value=Round(arg=wind_drag_ratio_formula(headwind, crosswind, travel_speed), decimals=WIND_DRAG_RATIO_DECIMALS),
+        value=Round(arg=wind_drag_ratio_formula(headwind, crosswind, travel_speed), decimals=_WIND_DRAG_RATIO_DECIMALS),
         undetermined=FALSE,
     )
 
 
-#: 地図へ配る風の材料の値（`WIND_DRAG_RATIO_DECIMALS`桁）。道ごとの風（`WIND_SPEED_LEAF`・`WIND_DIRECTION_LEAF`）と、
+#: 地図へ配る風の材料の値（`_WIND_DRAG_RATIO_DECIMALS`桁）。道ごとの風（`WIND_SPEED_LEAF`・`WIND_DIRECTION_LEAF`）と、
 #: 要求の走行方位・想定速度から求める。走行方位で値の決まらない道は無い。
 WIND_DRAG_RATIO_WAY_FORMULA = _wind_drag_ratio_way_formula()
 
-_HEADWIND, _CROSSWIND = wind_component_formulas(feature("speed"), feature("direction"), feature("bearing"))
+_HEADWIND, _CROSSWIND = _wind_component_formulas(feature("speed"), feature("direction"), feature("bearing"))
 _WIND_DRAG_RATIO = wind_drag_ratio_formula(feature("headwind"), feature("crosswind"), feature("travel_speed"))
 
 
 def wind_components(wind_speed_ms, wind_direction_deg, travel_bearing_deg) -> tuple[np.ndarray, np.ndarray]:
-    """`wind_component_formulas`を値で評価する（m/s）。走行モデル（`domain/cycling_speed.py`）が空気抵抗を求めるのに
-    使う。引数はスカラーまたはnumpyの規則で揃う配列。"""
+    """`_wind_component_formulas`を値で評価する（m/s）。引数はスカラーまたはnumpyの規則で揃う配列。"""
     inputs = {"speed": wind_speed_ms, "direction": wind_direction_deg, "bearing": travel_bearing_deg}
     return evaluate_formula(_HEADWIND, inputs, {}), evaluate_formula(_CROSSWIND, inputs, {})
 

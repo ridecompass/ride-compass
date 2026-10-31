@@ -14,25 +14,24 @@ router = APIRouter()
 
 _RELIEF_PREFIX = "/api/gsi-relief-tile"
 #: 色別標高図は上流のパスをそのまま中継する。
-RELIEF_ROUTE = f"{_RELIEF_PREFIX}/{{path:path}}"
+_RELIEF_ROUTE = f"{_RELIEF_PREFIX}/{{path:path}}"
 #: 画面が要求するURL（生成物で届く）。ルートの接頭辞と上流のパスから決まる（別々に書かない）。
 RELIEF_TILE_URL = f"{_RELIEF_PREFIX}/{RELIEF_UPSTREAM_PATH}"
 #: 標高タイルは変換して配るため、上流のパスではなく自前のルートを持ち、それが画面の要求するURLになる。
-TERRAIN_ROUTE = "/api/gsi-terrain-tile/{z}/{x}/{y}.png"
-TERRAIN_TILE_URL = TERRAIN_ROUTE
+TERRAIN_TILE_URL = "/api/gsi-terrain-tile/{z}/{x}/{y}.png"
 
 
-@router.get(RELIEF_ROUTE)
+@router.get(_RELIEF_ROUTE)
 async def gsi_relief_tile_proxy(
     path: str, request: Request, gsi_tile_client: GsiTileClient = Depends(get_gsi_tile_client)
 ) -> Response:
-    # 認証なしで叩けるプロキシへの簡易な歯止め（basemap_proxy/jma_tile_proxyと同じ方針）。
+    # 認証なしで叩けるプロキシへの簡易な歯止め。
     enforce_rate_limit(request, "gsi-relief-tile", settings.gsi_tile_rate_limit_per_minute)
     content, content_type = GSI_TILE_REPLIES.found(await gsi_tile_client.get(path, category="gsi:relief-tile"))
     return Response(content=content, media_type=content_type)
 
 
-@router.get(TERRAIN_ROUTE)
+@router.get(TERRAIN_TILE_URL)
 async def gsi_terrain_tile(
     z: TerrainTileZoom,
     x: TileIndex,
