@@ -9,7 +9,7 @@ import { getDebugStats } from "@/features/admin/adminApi";
 import { frontendVersionQuery } from "@/services/versionApi";
 import { getQueryClient } from "@/lib/queryClient";
 import { Button } from "@/components/ui/Button/Button";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table/Table";
+import { Table, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table/Table";
 import { Badge } from "@/components/ui/Badge/Badge";
 import { textVariants } from "@/components/ui/Text/Text";
 import { cn } from "@/lib/cn";
@@ -135,7 +135,7 @@ export default function SystemStatusPanel({ open, onClose }: SystemStatusPanelPr
                   <TableHeader>最大</TableHeader>
                 </TableRow>
               </TableHead>
-              <TableBody>
+              <tbody>
                 {externalEntries.map(([category, s]) => {
                   // エラー件数の下に原因別件数を1行に1つずつ小さく添える。一覧に列を増やさずに「429かタイムアウトか」等を
                   // 読めるようにする（titleはスマホで出ない）。
@@ -165,7 +165,7 @@ export default function SystemStatusPanel({ open, onClose }: SystemStatusPanelPr
                     </TableRow>
                   );
                 })}
-              </TableBody>
+              </tbody>
             </Table>
           </>
         )}

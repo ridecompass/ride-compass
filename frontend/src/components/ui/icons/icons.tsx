@@ -31,11 +31,7 @@ export const svgProps = {
 export function EnvironmentDataIcon({ size = 16 }: IconProps) {
   return (
     <svg width={size} height={size} {...svgProps}>
-      <path
-        d="M6 15a3.3 3.3 0 0 1 .4-6.58A4.6 4.6 0 0 1 15.3 9.6 3 3 0 0 1 14.7 15H6Z"
-
-        strokeLinejoin="round"
-      />
+      <path d="M6 15a3.3 3.3 0 0 1 .4-6.58A4.6 4.6 0 0 1 15.3 9.6 3 3 0 0 1 14.7 15H6Z" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -45,12 +41,7 @@ export function EnvironmentDataIcon({ size = 16 }: IconProps) {
 export function SpotDataIcon({ size = 16 }: IconProps) {
   return (
     <svg width={size} height={size} {...svgProps}>
-      <path
-        d="M10 18s6-6.7 6-11a6 6 0 0 0-12 0c0 4.3 6 11 6 11Z"
-
-        strokeLinejoin="round"
-        strokeLinecap="butt"
-      />
+      <path d="M10 18s6-6.7 6-11a6 6 0 0 0-12 0c0 4.3 6 11 6 11Z" strokeLinejoin="round" strokeLinecap="butt" />
       <circle cx="10" cy="7" r="1.8" fill="currentColor" stroke="none" />
     </svg>
   );
@@ -60,11 +51,7 @@ export function SpotDataIcon({ size = 16 }: IconProps) {
 export function RouteIcon({ size = 16 }: IconProps) {
   return (
     <svg width={size} height={size} {...svgProps}>
-      <path
-        d="M3.5 16c2.8-1 2.8-5.2 6-6s3.2-5.2 6-6"
-
-        strokeDasharray="0.2 3"
-      />
+      <path d="M3.5 16c2.8-1 2.8-5.2 6-6s3.2-5.2 6-6" strokeDasharray="0.2 3" />
       <circle cx="3.5" cy="16" r="1.6" fill="currentColor" stroke="none" />
       <circle cx="15.5" cy="4" r="1.6" fill="currentColor" stroke="none" />
     </svg>
@@ -98,18 +85,8 @@ export function LogIcon({ size = 16 }: IconProps) {
 export function RouteSpliceIcon({ size = 16 }: IconProps) {
   return (
     <svg width={size} height={size} {...svgProps}>
-      <path
-        d="M3 15.5c2.6 0 3.4-3 5-5.5s2.4-5.5 5-5.5"
-
-        strokeWidth="1.2"
-
-        opacity="0.55"
-      />
-      <path
-        d="M3 15.5c2.6 0 4.6 0 6.2-2.2 1.6-2.2 2-8.8 4.6-8.8"
-
-        strokeWidth="1.8"
-      />
+      <path d="M3 15.5c2.6 0 3.4-3 5-5.5s2.4-5.5 5-5.5" strokeWidth="1.2" opacity="0.55" />
+      <path d="M3 15.5c2.6 0 4.6 0 6.2-2.2 1.6-2.2 2-8.8 4.6-8.8" strokeWidth="1.8" />
       <circle cx="3" cy="15.5" r="1.5" fill="currentColor" stroke="none" />
       <circle cx="13.8" cy="4.5" r="1.5" fill="currentColor" stroke="none" />
     </svg>
