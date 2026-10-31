@@ -14,18 +14,12 @@ from app.infrastructure.http_client import UPSTREAM_NOT_FOUND, UpstreamNotFound,
 from app.infrastructure.jma_tile_paths import is_final_absence
 from app.infrastructure.jma_tile_recolor import recolored
 
-# JMA bosai のタイル/時刻一覧API（降水ナウキャスト・キキクル等）を透過的にプロキシする。
-# targetTimes.json（同じURLのまま更新される時刻一覧）とタイル本体（basetime/validtimeが
-# 確定した時点で内容が不変）でキャッシュ戦略を分ける
-# （詳細はdocs/modules/backend/weather-dynamic-layers.md）。
 UPSTREAM_HOST = "https://www.jma.go.jp"
 
 
 # targetTimes*.jsonは5〜10分おきに更新される。TTLは更新間隔より十分短く、かつ同一TTL窓内の
 # 多数ユーザーがキャッシュを共有できる程度の長さにする。
 _TARGET_TIMES_TTL_SECONDS = 2 * 60
-# targetTimes_N1.json / targetTimes_N2.json / targetTimes_N3.json / targetTimes.json のいずれも
-# 末尾がtargetTimes*.jsonという共通パターンを持つ。
 _TARGET_TIMES_PATTERN = re.compile(r"targetTimes[^/]*\.json$")
 
 
@@ -33,8 +27,7 @@ def is_target_times_path(path: str) -> bool:
     """パスが時刻一覧（targetTimes*.json）を指すかどうか。
 
     タイル本体のURLは`basetime`/`validtime`を含み内容が確定して以後変化しないのに対し、
-    時刻一覧は同じURLのまま内容が更新される。この違いでキャッシュ戦略（保存先・TTL・
-    `api/routers/jma_tile.py`が返すHTTPキャッシュヘッダ）が分かれる。
+    時刻一覧は同じURLのまま内容が更新される。この違いでキャッシュの保存先・TTLが分かれる。
     """
     return _TARGET_TIMES_PATTERN.search(path) is not None
 
@@ -42,9 +35,7 @@ def is_target_times_path(path: str) -> bool:
 class JmaTileSharedState:
     """`JmaTileClient`がリクエストをまたいで持つもの（時刻一覧のキャッシュと、上流への間隔の起点）。
 
-    クライアントはリクエストごとに使い捨てで作られるため、組み立てる側（`api/dependencies.py`）が
-    プロセスに1つ持って渡す。プロセスをまたいでは効かないため、ワーカーを複数にした起動は
-    `single_process.py`が止める。
+    クライアントはリクエストごとに使い捨てなので、プロセスに1つ持って渡す。プロセスをまたいでは効かない。
     """
 
     def __init__(self) -> None:
@@ -54,10 +45,8 @@ class JmaTileSharedState:
         self._last_fetch_at: float | None = None
 
     async def wait_for_upstream_rate_limit(self) -> None:
-        """JMA非公式APIへの実フェッチを秒間`settings.jma_tile_upstream_max_requests_per_second`回までに
-        抑える——直前の実フェッチから`1/jma_tile_upstream_max_requests_per_second`秒未満しか
-        経っていなければ、その差分だけ待つ。キャッシュヒット（get_cached）はこの待機の
-        対象外——実際にJMAへ問い合わせる直前（fetch）でのみ呼ぶ。"""
+        """JMA非公式APIへの実フェッチを秒間`settings.jma_tile_upstream_max_requests_per_second`回までに抑える。
+        実際にJMAへ問い合わせる直前でだけ呼ぶ。"""
         min_interval = 1.0 / settings.jma_tile_upstream_max_requests_per_second
         async with self._rate_limit_lock:
             now = time.monotonic()
@@ -94,12 +83,8 @@ class JmaTileClient:
 
     async def fetch(self, path: str) -> tuple[bytes, str] | UpstreamNotFound | None:
         """キャッシュを一切参照せず外部フェッチのみ行い、結果をキャッシュへ書き戻す。
-        呼び出し側の歯止め（レート制限）は、ここを呼ぶ前に済んでいる前提。
-        実際にJMAへ問い合わせる直前で`JmaTileSharedState.wait_for_upstream_rate_limit`を待つ（プリウォーム
-        バッチ・オンデマンドのfetch双方が経由するこの関数1箇所に置くことで、呼び出し元を
-        問わずJMAへの総リクエスト数を一律に抑える）。待機自体は「実フェッチ」の所要時間
-        ではないため、`log_external_call`の計測（elapsed_ms）に含めないよう、
-        `with`ブロックへ入る前に済ませる。
+        呼び出し側の歯止め（レート制限）は、ここを呼ぶ前に済んでいる前提。上流への間隔の待ちは、呼び出し元を
+        問わず総リクエスト数を抑えるためここに置き、実フェッチの所要時間に含めないよう`with`の前で待つ。
 
         上流の404は`UPSTREAM_NOT_FOUND`を返す（疎な格子状タイルでは珍しくない正常系、配信前の
         地物では毎回の配信の間に必ず起きる正常系のため、WARNINGを出さない）。他の失敗はNoneを返す。
@@ -124,9 +109,7 @@ class JmaTileClient:
     async def store(self, path: str, content: bytes, content_type: str) -> tuple[bytes, str] | UpstreamNotFound:
         """上流フェッチを伴わずに生成したタイルをキャッシュへ書き戻す。
 
-        奇数ズームの補間結果（`services/jma_tile_interpolation_service.py: interpolated_tile`）のように、上流に実体が無く
-        アプリ側で組み立てたタイルを、次回以降そのまま返せるようにするための入口。
-        書き込み先は`fetch`と同じ（`targetTimes*.json`はプロセス内、それ以外はRedis）。
+        上流に実体が無くアプリ側で組み立てたタイルを、次回以降そのまま返せるようにするための入口。
         戻り値は、次に`get_cached`が返すのと同じ形（中身が空なら`UPSTREAM_NOT_FOUND`）。
         """
         if is_target_times_path(path):

@@ -9,9 +9,7 @@ from cachetools import LRUCache
 
 TileSet = frozenset[tuple[int, int, int]]
 
-MAX_ENTRIES = 64
-
-_detour_ratios: LRUCache = LRUCache(maxsize=MAX_ENTRIES)
+_detour_ratios: LRUCache = LRUCache(maxsize=64)
 
 
 def get_detour_ratio(tile_set: TileSet) -> float | None:

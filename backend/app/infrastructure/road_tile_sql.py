@@ -1,7 +1,6 @@
 """地図のタイル（路面のMVT）と、タイルと同じフィーチャーごとに値を配る読み出しのSQL。
 
 どの読み出しも、フィーチャーの並びを`_TILE_FEATURE_SOURCE_SQL`から引き、鍵は路面のタイルが焼く`feature_key`と同じものになる。
-流すのは`road_graph_repository.py: RoadGraphRepository`。
 """
 
 from collections.abc import Iterable
@@ -24,8 +23,7 @@ from app.infrastructure.material_joins import material_from_clause
 from app.infrastructure.source_models import COVERAGE_SQL, WAYS_SOURCE_SQL, ways_lookup_sql
 from app.infrastructure.vector_tile import ROAD_FEATURE_PROPERTIES, TILE_BUFFER
 
-#: どちらの単位も`feature_key`という同じ名前で出す。フロントは`promoteId`でこれを
-#: feature.idへ昇格させるだけでよく、中身がway_idか区間の鍵かを知らなくてよい。
+#: どちらの単位も`feature_key`という同じ名前で出し、受け取る側は中身がway_idか区間の鍵かを知らなくてよい。
 #:
 #: 空間フィルタは各枝の中に置く。外へ出すとroad_edges全件に対して走り、タイルの中身に
 #: 依存しない固定コストになる。
@@ -309,14 +307,11 @@ FEATURE_SEGMENTS_IN_TILE_SQL = text(
 
 
 #: タイルのディスク／Redisキャッシュの鍵に入る**形の署名**。焼き込むSQLから導出するため、
-#: 列や分類タグを変えれば自動的に別の鍵になる。DBの中身が作り直されたことは署名では表せず、
-#: そちらは`services/tile_version_service.py`が世代の変化として扱う。
+#: 列や分類タグを変えれば自動的に別の鍵になる。DBの中身が作り直されたことは署名では表せない。
 ROAD_SURFACE_TILE_SHAPE = shape_digest(ROAD_SURFACE_TILE_MVT_SQL)
-#: 勾配の入力を取り出すSQLの形の署名。勾配のタイル値のキャッシュの鍵に入る
-#: （`services/gradient_way_service.py: GRADIENT_VALUE_SHAPE`）。
+#: 勾配の入力を取り出すSQLの形の署名。勾配のタイル値のキャッシュの鍵に入る。
 FEATURE_GRADIENT_INPUTS_SHAPE = shape_digest(FEATURE_GRADIENT_INPUTS_IN_TILE_SQL)
-#: フィーチャーごとの材料を読むSQLの形の署名。材料のタイル値のキャッシュの鍵に入る
-#: （`services/feature_materials.py: FEATURE_MATERIALS_VALUE_SHAPE`）。
+#: フィーチャーごとの材料を読むSQLの形の署名。材料のタイル値のキャッシュの鍵に入る。
 FEATURE_MATERIALS_SHAPE = shape_digest(FEATURE_MATERIALS_IN_TILE_SQL)
-#: フィーチャーごとの区間の材料を読むSQLの形の署名（`services/feature_materials.py: FEATURE_SEGMENTS_VALUE_SHAPE`）。
+#: フィーチャーごとの区間の材料を読むSQLの形の署名。
 FEATURE_SEGMENTS_SHAPE = shape_digest(FEATURE_SEGMENTS_IN_TILE_SQL)

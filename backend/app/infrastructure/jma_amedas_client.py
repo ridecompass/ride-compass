@@ -1,10 +1,4 @@
-"""JMAアメダス観測値APIのクライアント。
-
-`jma_warning_client.py`と同じ「JMA公式の非公開だが広く使われているエンドポイント」を使う。
-応答の形（キー名・[度, 分]の座標・[値, 品質フラグ]の観測値・16方位のコード）はここで解き、呼び出し元
-（`jma_amedas_service.py`）へは`AmedasStation`・`AmedasReading`の値で渡す。
-取得失敗時はNoneを返し、呼び出し元が「観測値なし」として扱う。
-"""
+"""JMAアメダス観測値API（公式だが非公開のエンドポイント）のクライアント。取得失敗はNoneを返す。"""
 
 from dataclasses import dataclass
 from datetime import datetime
@@ -17,9 +11,6 @@ from app.domain.jma_amedas import WindDirection
 from app.domain.time_zone import JST
 from app.infrastructure.simple_api_client import UnexpectedShapeError, cached_fetch, get_json
 
-# 観測所マスタは`amedastable.json`（`amedas.json`ではない）。最新時刻は`latest_time.txt`
-# （ISO時刻文字列1個のプレーンテキスト、JSON配列ではない。fetch_latest_observation_time
-# 参照）。
 AMEDAS_STATION_TABLE_URL = "https://www.jma.go.jp/bosai/amedas/const/amedastable.json"
 AMEDAS_LATEST_TIME_URL = "https://www.jma.go.jp/bosai/amedas/data/latest_time.txt"
 AMEDAS_OBSERVATION_URL_TEMPLATE = "https://www.jma.go.jp/bosai/amedas/data/map/{timestamp}.json"
@@ -27,23 +18,18 @@ AMEDAS_OBSERVATION_URL_TEMPLATE = "https://www.jma.go.jp/bosai/amedas/data/map/{
 #: 気象庁アメダスの配信間隔（毎正時から10分おき）。
 AMEDAS_REFRESH_INTERVAL_MINUTES = 10
 
-# 観測所マスタ（緯度経度）は行政区画変更等でしか変わらない静的に近いデータのため、
-# jma_warning_client.pyのarea.jsonと同じ長寿命TTL。
+# 観測所マスタは行政区画変更等でしか変わらない。最新観測時刻は10分更新の鮮度に合わせる。
 _STATION_TABLE_CACHE_TTL_SECONDS = 24 * 60 * 60
-# 最新観測時刻の一覧は10分更新のアメダスの鮮度に合わせた短いTTL。
 _LATEST_TIME_CACHE_TTL_SECONDS = 5 * 60
-
-_STATION_TABLE_CACHE_KEY = "stations"
-_LATEST_TIME_CACHE_KEY = "latest_time"
 
 
 def new_station_table_cache() -> TTLCache:
-    """`fetch_station_table`へ渡すキャッシュ。リクエストをまたいで持つのは組み立てる側（`api/dependencies.py`）。"""
+    """`fetch_station_table`へ渡すキャッシュ。"""
     return TTLCache(maxsize=1, ttl=_STATION_TABLE_CACHE_TTL_SECONDS)
 
 
 def new_latest_time_cache() -> TTLCache:
-    """`fetch_latest_observation_time`へ渡すキャッシュ。リクエストをまたいで持つのは組み立てる側（`api/dependencies.py`）。"""
+    """`fetch_latest_observation_time`へ渡すキャッシュ。"""
     return TTLCache(maxsize=1, ttl=_LATEST_TIME_CACHE_TTL_SECONDS)
 
 
@@ -92,9 +78,7 @@ def _parse_station_table(payload: dict) -> dict[str, AmedasStation]:
 
 def _first_value(pair: list | None) -> float | None:
     """[値, 品質フラグ]から値を取り出す。品質フラグの意味は判定せず、値の有無だけを見る。"""
-    if not pair:
-        return None
-    return pair[0]
+    return pair[0] if pair else None
 
 
 def _wind_direction(code: float | None) -> WindDirection | None:
@@ -130,15 +114,11 @@ async def fetch_station_table(client: httpx.AsyncClient, cache: TTLCache) -> dic
         payload = await get_json(client, AMEDAS_STATION_TABLE_URL, dict, "station table is")
         return _parse_station_table(payload)
 
-    return await cached_fetch("weather:jma-amedas-stations", fetch, cache=cache, key=_STATION_TABLE_CACHE_KEY)
+    return await cached_fetch("weather:jma-amedas-stations", fetch, cache=cache)
 
 
 async def fetch_latest_observation_time(client: httpx.AsyncClient, cache: TTLCache) -> datetime | None:
-    """最新の観測時刻を返す。
-
-    レスポンスはJSON配列ではなく、ISO時刻文字列1個だけのプレーンテキスト
-    （例: "2026-08-29T17:00:00+09:00"）。
-    """
+    """最新の観測時刻を返す。応答はISO時刻文字列1個だけのプレーンテキスト（JSONではない）。"""
 
     async def fetch() -> datetime:
         response = await client.get(AMEDAS_LATEST_TIME_URL)
@@ -154,13 +134,7 @@ async def fetch_latest_observation_time(client: httpx.AsyncClient, cache: TTLCac
 
     # 応答はプレーンテキストで`.json()`を呼ばず、読めない時刻は`UnexpectedShapeError`へ直すため、
     # ほかにValueErrorの発生源が無い。
-    return await cached_fetch(
-        "weather:jma-amedas-latest-time",
-        fetch,
-        cache=cache,
-        key=_LATEST_TIME_CACHE_KEY,
-        catch=(httpx.HTTPError,),
-    )
+    return await cached_fetch("weather:jma-amedas-latest-time", fetch, cache=cache, catch=(httpx.HTTPError,))
 
 
 async def fetch_observation_map(

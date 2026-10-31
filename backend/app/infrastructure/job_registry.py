@@ -1,11 +1,7 @@
 """汎用の非同期ジョブレジストリ（プロセス内メモリのみ）。
 
-数十秒かかりうる処理をバックグラウンドジョブ化し、フロントがポーリングで完了を待てる
-ようにする。**単一プロセスデプロイ前提**で、ワーカーを複数にすると他プロセスの
-ジョブが見えない。
-
-`result`が`Any`なのは、呼び出し元（`api/routers/routes.py`）の型をこのモジュールが
-知らずに済ませるため（循環importの回避）。
+数十秒かかりうる処理をバックグラウンドジョブ化し、ポーリングで完了を待てるようにする。
+`result`が`Any`なのは、呼び出し元の型をこのモジュールが知らずに済ませるため（循環importの回避）。
 """
 
 import time
@@ -13,9 +9,8 @@ import uuid
 from dataclasses import dataclass
 from typing import Any, Literal
 
-# 完了したジョブを保持する時間。掃除は次の`create_job()`のついでに行う（`rate_limiter.py`と
-# 同じ方式で、定期タスクを持たない）。フロントはこれを生成物`route-generate-config.json`から
-# 受け取り、ポーリングの打ち切りに使う——短くすると待機上限も一緒に縮む。
+# 完了したジョブを保持する時間。掃除は次の`create_job()`のついでに行い、定期タスクを持たない。
+# 生成物`route-generate-config.json`でポーリングの打ち切りとして配る——短くすると待機上限も一緒に縮む。
 # **動かす前に docs/modules/frontend/route-settings-and-results.md「生成を待つ時間・投げる
 # 回数の根拠」を読む**。
 JOB_TTL_SECONDS = 600.0

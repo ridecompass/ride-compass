@@ -4,9 +4,7 @@
 動く**——`axis_definitions`のような「行そのものが定義」の形と違い、fresh bootstrap
 （CI・新規環境・disaster recovery）でスナップショットの投入が要らない。
 
-ここは行の読み書きと、宣言の範囲での検算までを持ち、**プロセス内の`TUNING_VALUES`へは書かない**。
-プロセスへの反映は`services/tuning_service.py`だけが行う（webアプリ）。派生バッチは同じ値を
-ここから読んで段へ値で渡し、プロセスへは反映しない（`batch/derive_cli.py`）。
+行の読み書きと宣言の範囲での検算を持ち、プロセス内の`domain/tuning.py: TUNING_VALUES`へは書かない。
 
 **壊れた行の扱いは2通りに分ける。**
 

@@ -1,10 +1,8 @@
 """派生データの世代（1行のみ、id=1固定）と、今の派生の表を作った取込（`derived_source_runs`）・列（`derived_columns`）・
 較正値（`derived_tuning`）。
 
-派生の作り直し（`app/batch/derive_cli.py`）が作り直した表を入れ替えるたびにインクリメントする単調カウンタ。
-道路網全体の配列の置き場の名前（`road_network_store.py`）と、配信する地図タイルの世代
-（`tile_version_service.py`）が、中身が作り直されたかをこの値で見分ける。タイルは生データも
-直接読むため、生データの世代と一緒に読む（`get_revisions`）。
+世代は、派生の作り直しが作り直した表を入れ替えるたびに進める単調カウンタで、読み手は中身が作り直されたかをこの値で
+見分ける。生データの世代と一緒に読める（`get_revisions`）。
 
 **作り直しに使った取込の記録（`derived_source_runs`）では代用できない。** 同じ取込runのままバッチをもう一度
 回す（バッチ側のバグ修正後の再実行、`derive_cli.py`の再実行）と値は変わりうるのに、
@@ -149,7 +147,8 @@ async def replace_columns(conn: asyncpg.Connection, columns: Mapping[str, frozen
 
 async def read_stage_fingerprints(conn: asyncpg.Connection) -> dict[str, str]:
     """今の派生の表を作ったときの段ごとの指紋（段の名前 → 指紋）。"""
-    return await _read_pairs(conn, DerivedStageRow.__tablename__, "stage", "fingerprint")
+    rows = await conn.fetch(f"SELECT stage, fingerprint FROM {DerivedStageRow.__tablename__}")
+    return {row["stage"]: row["fingerprint"] for row in rows}
 
 
 async def replace_stage_fingerprints(conn: asyncpg.Connection, fingerprints: Mapping[str, str]) -> None:
@@ -160,7 +159,7 @@ async def replace_stage_fingerprints(conn: asyncpg.Connection, fingerprints: Map
 async def read_tuning(conn: asyncpg.Connection, param_ids: Iterable[str]) -> dict[str, float]:
     """`param_ids`の、作り直しに使った較正値（id → 値。行が無ければ`recorded_tuning_sql`のとおり既定）。"""
     ids = list(param_ids)
-    row = await conn.fetchrow("SELECT " + ", ".join(f"{recorded_tuning_sql(param_id)}" for param_id in ids))
+    row = await conn.fetchrow("SELECT " + ", ".join(recorded_tuning_sql(param_id) for param_id in ids))
     if row is None:
         raise RuntimeError("較正値の記録の問い合わせが行を返さなかった")
     return dict(zip(ids, row.values()))
@@ -169,10 +168,6 @@ async def read_tuning(conn: asyncpg.Connection, param_ids: Iterable[str]) -> dic
 async def replace_tuning(conn: asyncpg.Connection, values: Mapping[str, float]) -> None:
     """作り直しに使った較正値を`values`へ置き換える。"""
     await _replace_rows(conn, DerivedTuningRow.__tablename__, ("param_id", "value"), values.items())
-
-
-async def _read_pairs(conn: asyncpg.Connection, table: str, key: str, value: str) -> dict:
-    return {row[key]: row[value] for row in await conn.fetch(f"SELECT {key}, {value} FROM {table}")}
 
 
 async def _replace_rows(conn: asyncpg.Connection, table: str, columns: tuple[str, str], rows: Iterable) -> None:

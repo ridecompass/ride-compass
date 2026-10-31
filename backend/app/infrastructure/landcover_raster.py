@@ -39,7 +39,7 @@ from rasterio.windows import Window, transform as window_transform  # noqa: E402
 logger = logging.getLogger("ridecompass.landcover_raster")
 
 TILE_SIZE = 256
-TILE_CRS = "EPSG:3857"
+_TILE_CRS = "EPSG:3857"
 
 # 1回の読み取りで扱う元画素の上限（1辺）。低ズームのタイルほど元画素を多く覆うため、
 # これを超える場合は間引いて読む（GDAL側で間引かれ、メモリは常にこの辺長の2乗で収まる）。
@@ -99,7 +99,7 @@ def _open_sources() -> list[_RasterSource]:
 
 
 def close_sources() -> None:
-    """開いたラスタを閉じる。プロセス終了時に`process_resources.py: close_process_resources`から呼ぶ。次の読み取りで開き直す。"""
+    """開いたラスタを閉じる。次の読み取りで開き直す。"""
     global _opened_sources
     with _sources_lock:
         for source in _opened_sources or []:
@@ -133,11 +133,8 @@ def _read_decimated(source: _RasterSource, bounds: tuple[float, float, float, fl
             # 重なりが空（rasterioは幅か高さが0の重なりも空として送出する）。ゾーン単位のラスタに
             # 対しては、覆っていないタイルの方が普通に多い。
             return None
-        scale = max(window.width, window.height) / _MAX_SOURCE_READ_SIDE
-        if scale > 1:
-            out_shape = (max(1, int(window.height / scale)), max(1, int(window.width / scale)))
-        else:
-            out_shape = (int(window.height), int(window.width))
+        scale = max(1, max(window.width, window.height) / _MAX_SOURCE_READ_SIDE)
+        out_shape = (max(1, int(window.height / scale)), max(1, int(window.width / scale)))
         data = dataset.read(1, window=window, out_shape=out_shape, resampling=Resampling.nearest)
         base = window_transform(window, dataset.transform)
     # 間引いて読むと1画素が覆う実距離が伸びる。読んだ配列の形へtransformを合わせないと、
@@ -186,7 +183,7 @@ def tile_classes(z: int, x: int, y: int) -> "np.ndarray | None":
         dataset = source.dataset
         # densify_pts: 投影をまたぐと矩形の辺は直線でなくなる。角だけで変換すると、
         # 辺のふくらみぶんが読み取り範囲から落ちてタイルの縁が欠ける。
-        src_bounds = transform_bounds(TILE_CRS, dataset.crs, *bounds, densify_pts=21)
+        src_bounds = transform_bounds(_TILE_CRS, dataset.crs, *bounds, densify_pts=21)
         read = _read_decimated(source, src_bounds)
         if read is None:
             continue
@@ -198,7 +195,7 @@ def tile_classes(z: int, x: int, y: int) -> "np.ndarray | None":
             src_transform=src_transform,
             src_crs=dataset.crs,
             dst_transform=dst_transform,
-            dst_crs=TILE_CRS,
+            dst_crs=_TILE_CRS,
             resampling=Resampling.nearest,
             src_nodata=0,
             dst_nodata=0,
@@ -207,9 +204,7 @@ def tile_classes(z: int, x: int, y: int) -> "np.ndarray | None":
         # 既に描けている画素を消さないようにする）。
         classes = np.where(classes == 0, patch, classes)
 
-    if not classes.any():
-        return None
-    return classes
+    return classes if classes.any() else None
 
 
 def render_tile(z: int, x: int, y: int) -> bytes | None:
