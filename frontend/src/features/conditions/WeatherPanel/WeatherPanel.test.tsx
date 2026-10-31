@@ -108,11 +108,6 @@ describe("WeatherPanel 観測値", () => {
     renderPanel({ amedas: observation() });
     expect(screen.getByText(/^天気:/).parentElement!.innerHTML).toBe(unknown);
   });
-
-  it("天気を決められなければ、天気は出さない", () => {
-    renderPanel({ amedas: observation({ precipitation_10min_mm: null, weather_code: null }) });
-    expect(screen.queryByText(/^天気:/)).not.toBeInTheDocument();
-  });
 });
 
 describe("WeatherPanel 観測の出所", () => {

@@ -5,12 +5,12 @@
 
 import type { Map as MapLibreMap } from "maplibre-gl";
 
+import { MINUTE_MS } from "@/lib/duration";
 import { readStoredValue, writeStoredValue } from "@/lib/safeStorage";
 
 const STORAGE_KEY = "ridecompass:ride-metrics";
 /** 残す行の上限（1分1行で10時間）。 */
 const MAX_ROWS = 600;
-const MINUTE_MS = 60_000;
 /** 1分の行に残す、時間を使ったスクリプトの数。 */
 const TOP_SCRIPTS = 3;
 
@@ -50,7 +50,7 @@ type RideMetricsRow = {
     heapMb: number | null;
   };
 
-export type RideMetricsLog = {
+type RideMetricsLog = {
   startedAt: string;
   device: { userAgent: string; pixelRatio: number; screen: string };
   rows: RideMetricsRow[];

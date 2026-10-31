@@ -138,6 +138,13 @@ async function movedOf(gh, config, number, ended, now) {
   return gone.every((c) => made.some((x) => x.text === c.text));
 }
 
+// 担当の実行の間（from より後）に、Claude が前提を張ったか。張って本番の出来事等を待つのは、待つ相手を名指して手放したことで、動いた担当に数える。
+async function blockedDuring(gh, config, number, from) {
+  const { repository: { issue: i } } = await gh.gql(`query($o:String!,$r:String!,$n:Int!,$s:DateTime!){repository(owner:$o,name:$r){issue(number:$n){
+    timelineItems(since:$s,first:20,itemTypes:[BLOCKED_BY_ADDED_EVENT]){nodes{...on BlockedByAddedEvent{actor{login}}}}}}}`, { ...repo(config), n: number, s: from });
+  return i.timelineItems.nodes.some((e) => e.actor?.login === config.claude);
+}
+
 // GraphQL の一覧の名前から ID を引く表。
 export const byName = (list) => Object.fromEntries(list.nodes.map((x) => [x.name, x.id]));
 
@@ -193,10 +200,10 @@ export async function readFacts(gh, config, number, runs) {
   // 読むのに要求の要る事実は、決め方が使うときだけ読む（src/decide.js: Need。src/gate.js: settle が読んで決め直す）:
   // superseded は、答えのあとにユーザーがステータスを変えたか開き直したか（その答えはユーザーの次の決定で置き換わり、当て直さない）。
   // adoptAsked・droppedAsked は、採否・続行の問いを一度でも出したか（最近のコメントに無く、それより前があれば全部を読む）。
-  // ranMoved は、最後に終わった担当の実行で状態か約束が動いたか。deploy は、自分か子の変更が本番に出たか
+  // ranMoved は、最後に終わった担当の実行で状態か約束が動いたか（前提を張ったのも数える）。deploy は、自分か子の変更が本番に出たか
   // （deployOf。マージした issue と子を持つ issue だけが読む）。
   const later = { deploy: () => (merged || i.subIssues.nodes.length ? deployOf(gh, config, [number, ...i.subIssues.nodes.map((x) => x.number)], merged?.mergedAt) : null), superseded: () => movedSince(gh, config, number, answer.createdAt), droppedAsked: () => ever((x) => x.includes(asking)),
-    adoptAsked: () => ever((x) => x.startsWith(questionHead("採否"))), ranMoved: async () => handed > Date.parse(ended.from) || movedOf(gh, config, number, ended, conds) };
+    adoptAsked: () => ever((x) => x.startsWith(questionHead("採否"))), ranMoved: async () => handed > Date.parse(ended.from) || (await blockedDuring(gh, config, number, ended.from)) || movedOf(gh, config, number, ended, conds) };
   return { ...task, later, author: i.author?.login, parent: p && { number: p.number }, origin: originOf(norm(i.body)), unread, answerRead, answerApplied, number,
     id: i.id, closedAs: i.stateReason, body: i.body, remaining: conds.filter((x) => !x.done), unbound: unboundSteps(i.body, number), question, dead, types, dialog,
     ids: { types: byName(t.issueTypes), labels: byName(t.labels) }, handed, ended: ended && { kind: ended.kind }, runs: held,

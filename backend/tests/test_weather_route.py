@@ -113,6 +113,7 @@ ROUTE_TIMELINE = RouteWarningTimeline(
             end_index=1,
             kinds={
                 "thunder": TimelineKindLevels(
+                    advisory_label="雷（注意報級）",
                     slots=[
                         TimelineSlotLevel(
                             start=datetime(2026, 10, 21, 18, 0, tzinfo=JST),

@@ -41,8 +41,7 @@ export function buildDepartureTimeline(anchor: Date, step: DepartureStep): Date[
   return times;
 }
 
-/** DynamicLayerTimeSlider向けのラベル列。ラベルの書式は気象レイヤーの共有タイムラインと
- * 同じものを使う（`lib/time.ts`）。コマの幅は刻みの中で揃える（ルーラーは大きい目盛りのコマを広げるので、
+/** DynamicLayerTimeSlider向けのラベル列。コマの幅は刻みの中で揃える（ルーラーは大きい目盛りのコマを広げるので、
  * 1時間刻みは全部を大きい目盛りに、5分刻みは全部を小さい目盛りにする）。5分刻みの目盛りには分を、
  * 正時には時刻を書き、1時間刻みは日本時間の偶数時だけ時刻を書く。 */
 export function buildDepartureFrames(timeline: readonly Date[], step: DepartureStep): RulerFrame[] {

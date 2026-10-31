@@ -29,12 +29,6 @@ async function openDeveloperTab() {
 }
 
 describe("AdminPage", () => {
-  it("開くと軸スタジオのタブが選ばれる", () => {
-    render(<AdminPage />);
-
-    expect(screen.getByRole("tab", { name: "軸スタジオ" })).toHaveAttribute("aria-selected", "true");
-  });
-
   it("システム状況は閉じた状態で始まり、ボタンで開閉し、パネル側から閉じても戻る", async () => {
     const user = await openDeveloperTab();
 

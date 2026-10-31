@@ -11,28 +11,14 @@ import { renderHook } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { moved } from "@/testing/movedPoint";
-import { makeRouteSegment } from "@/testing/routeFixtures";
+import { routeThrough } from "@/testing/routeFixtures";
 import type { Coordinates, RouteSegmentDetail } from "@/types/route";
 
 import { useRouteProgress } from "./useRouteProgress";
 
-// 北緯35度の上を、東へ経度0.02度進んで同じ道を戻る往復（行きは0〜2km、帰りは2〜4km）。
+// 北緯35度の上を、東へ経度0.02度進んで同じ道を戻る往復（行きは0〜2km、帰りは2〜4km）。呼ぶたびに別のルートの形を返す。
 function outAndBack(): RouteSegmentDetail[] {
-  const east = {
-    type: "LineString" as const,
-    coordinates: [
-      [139, 35],
-      [139.02, 35],
-    ],
-  };
-  const west = {
-    type: "LineString" as const,
-    coordinates: [
-      [139.02, 35],
-      [139, 35],
-    ],
-  };
-  return [makeRouteSegment({ distance_km: 2, geometry: east }), makeRouteSegment({ distance_km: 2, geometry: west })];
+  return routeThrough({ WEST: [139, 35], EAST: [139.02, 35] }, ["WEST", "EAST", "WEST"], [2, 2]).segments;
 }
 
 const QUARTER: Coordinates = { latitude: 35, longitude: 139.005 };
@@ -77,16 +63,17 @@ describe("useRouteProgress", () => {
     expect(result.current.km).toBeNull();
   });
 
-  it("このルートで当てた位置がまだ無ければ、渡された距離（読み込み直す前に当てた位置）から続く側を選ぶ", () => {
-    // 帰り道の3.5km（行きの0.5kmと同じ地点）で読み込み直した。
-    const { result } = renderProgress({ route: outAndBack(), position: QUARTER, accuracyM: ACCURACY_M, startKm: 3.4 });
-    expect(result.current.km).toBeCloseTo(3.5);
-  });
-
-  it("このルートで当てた位置も現在地もまだ無ければ、渡された距離（読み込み直す前に当てた位置）を出す", () => {
-    const { result } = renderProgress({ route: outAndBack(), position: null, accuracyM: null, startKm: 3.4 });
-    expect(result.current).toEqual({ km: 3.4, offRoute: false });
-  });
+  // 帰り道の3.5km（行きの0.5kmと同じ地点）で読み込み直した。
+  it.each([
+    { case: "現在地から続く側を選ぶ", position: QUARTER, expected: { km: expect.closeTo(3.5), offRoute: false } },
+    { case: "現在地がまだ無ければ、その距離を出す", position: null, expected: { km: 3.4, offRoute: false } },
+  ])(
+    "このルートで当てた位置がまだ無ければ、渡された距離（読み込み直す前に当てた位置）を前の位置にする: $case",
+    ({ position, expected }) => {
+      const { result } = renderProgress({ route: outAndBack(), position, accuracyM: ACCURACY_M, startKm: 3.4 });
+      expect(result.current).toEqual(expected);
+    },
+  );
 
   it("ルートを外れている間は外れた点で止めて外れたと出し、戻ったら戻った点から続ける", () => {
     const segments = outAndBack();

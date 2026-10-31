@@ -18,7 +18,7 @@ import { mapDisplay } from "@/types/generated/mapDisplay";
 import palette from "@/types/generated/palette.json";
 import regionTileConfig from "@/types/generated/region-tile-config.json";
 
-import { sceneSourceId } from "@/features/map/scene/sceneBuilders";
+import { featureStatesByName, sceneSourceId } from "@/features/map/scene/sceneBuilders";
 import { LEGEND_NO_DATA_KEY } from "@/lib/mapDisplay/mapColorLegend";
 import { ROAD_OTHER_KEY, roadTrackRowOf, type RoadTrackRow } from "@/lib/mapDisplay/roadTracks";
 import type { RoadMapLayerView } from "@/types/route";
@@ -101,25 +101,6 @@ function opacityExpression(layer: RoadMapLayerView): unknown {
     : ["match", valueOf(layer), keys, ROAD.knownOpacity, ROAD.unknownOpacity];
 }
 
-const statesByValues = new WeakMap<RoadClassValues, Map<string, Map<string, string>>>();
-
-/** 道ごとの層の値を、層ごとの feature-state へ移す。同じ値の結果からは同じ参照を返す——当てる側は参照が同じなら道ごとに
- * 比べ直さない。 */
-function classStates(values: RoadClassValues): ReadonlyMap<string, ReadonlyMap<string, string>> {
-  const cached = statesByValues.get(values);
-  if (cached !== undefined) return cached;
-  const states = new Map<string, Map<string, string>>();
-  for (const [featureKey, byLayer] of values) {
-    for (const [layerId, value] of Object.entries(byLayer)) {
-      let byFeature = states.get(stateKey(layerId));
-      if (byFeature === undefined) states.set(stateKey(layerId), (byFeature = new Map()));
-      byFeature.set(featureKey, value);
-    }
-  }
-  statesByValues.set(values, states);
-  return states;
-}
-
 /** 出ている本数から、対称に割り付けた横位置。1本なら0。 */
 function offsetsFor(visibleCount: number): readonly number[] {
   return Array.from({ length: visibleCount }, (_, index) => (index - (visibleCount - 1) / 2) * ROAD.trackOffsetStepPx);
@@ -160,7 +141,7 @@ export const roadLineGroup = declareGroup<RoadLineState>((state) => {
       },
       sourceLayer: tiles.sourceLayer,
       tiles: tiles.urls,
-      featureStates: classStates(state.classes),
+      featureStates: featureStatesByName(state.classes, stateKey),
     },
   ];
 

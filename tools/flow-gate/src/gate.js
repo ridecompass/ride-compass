@@ -3,8 +3,9 @@
 // （と、取り消す実行ごとに1回。Actions の取り消しは1回にまとめる口が無い）。
 import { Need, decide } from "./decide.js";
 import { batch } from "./github.js";
-import { readFacts, subjectTasks } from "./facts.js";
+import { byName, readFacts, subjectTasks } from "./facts.js";
 import { NO_GRANDCHILD, makesGrandchild } from "./family.js";
+import { fieldValues } from "./fields.js";
 import { askText, confirmConditions, droppedQuestion, isQuestionLabel, norm } from "./questions.js";
 
 // 決めた問い（種類の名前か、見送りの相手を持つもの）の文。確かめに並べる条件は、書く本文（決めた本文）から取る。
@@ -69,6 +70,31 @@ export const ignored = (config, name, p) => !ACTIONS[name]?.includes(p.action) |
 // 作業ブランチは接頭辞のあとが番号だけの枝（開発機の作業ツリーが使う、番号のあとに名前の付いた枝は、どの issue の出来事でもない）。
 const branch = (config, ref) => (ref?.startsWith(config.branchPrefix) && /^\d+$/.test(ref.slice(config.branchPrefix.length)) ? [Number(ref.slice(config.branchPrefix.length))] : []);
 
+// master の検査が落ちたと数える結論（取り消しは後の push に押されたもので、落ちに数えない）。
+const FAILED = ["failure", "timed_out", "startup_failure"];
+// master の最新のコミットの検査（push の実行）が落ちたら、落ちた master を直す issue を1件だけ置き、その番号を返す（開いていれば使い回す）。
+// マージしたタスクは落ちても検査で待つ（src/decide.js: rows）ので、落ちた master の持ち主はこの issue の担当になる。最新でないコミットの落ちは、
+// 後の実行が通れば覆うので置かない。
+async function masterFailure(gh, config, w) {
+  if (!FAILED.includes(w.conclusion) || w.event !== "push") return null;
+  if ((await gh.rest("GET", `/repos/${config.code}/commits/${config.base}`)).sha !== w.head_sha) return null;
+  const { title, type } = config.masterFailure;
+  const { owner: o, name: n } = config.repos.tasks;
+  const r = await gh.gql(`query($o:String!,$n:String!,$q:String!){repository(owner:$o,name:$n){id issueTypes(first:50){nodes{id name}}}
+    search(query:$q,type:ISSUE,first:10){nodes{...on Issue{number title}}}}`, { o, n, q: `repo:${config.tasks} is:issue is:open in:title "${title}"` });
+  const found = r.search.nodes.find((x) => x.title === title);
+  if (found) return found.number;
+  const body = `master の検査（${config.checks.workflow}）の最新の実行が落ちている。落ちたジョブを読んで直す。` +
+    "変更と関係なく揺れて落ちた・外の要因で落ちたなら、打ち直して通す（本番への書き込み待ち等で担当に直せなければ、原因を持つ issue を前提に張る）。\n\n" +
+    "<details><summary>不具合: 起きていること</summary>\n\n" +
+    `- 落ちた実行: ${w.html_url}（${w.display_title}）\n` +
+    "- master の検査が通るまで、マージしたタスクは本番に出たと読まれず、検査で待つ（tools/flow-gate/src/decide.js）。\n\n</details>\n\n" +
+    "<details><summary>完了の条件</summary>\n\n- [ ] master の最新のコミットの検査の実行が通っている\n\n</details>\n";
+  const made = await gh.gql("mutation($in:CreateIssueInput!){createIssue(input:$in){issue{number}}}", { in: { repositoryId: r.repository.id, title, body,
+    issueTypeId: byName(r.repository.issueTypes)[type], issueFields: fieldValues(config, [["size", "S"], ["priority", "高"]]) } });
+  return made.createIssue.issue.number;
+}
+
 // 出来事が指す issue。around は、閉じた・開き直したので矢印1本でつながる開いた issue（後・親・子）も決め直すとき。
 const ROUTES = {
   issues(gh, config, p) {
@@ -95,11 +121,13 @@ const ROUTES = {
   pull_request: (gh, config, p) => ({ numbers: branch(config, p.pull_request.head.ref) }),
   // 検査の実行の出来事（申し込み・始まり・終わり）。作業ブランチの実行はブランチの名前から、master の実行（マージのコミットの検査）は
   // 実行の名前（コミットの件名。src/facts.js: subjectTasks）から、issue の番号を読む。master の検査の実行は、その変更を待つ親も決め直すので、
-  // 矢印1本の先へ広げる。
-  workflow_run(gh, config, p) {
+  // 矢印1本の先へ広げる。master の最新の検査が落ちて終わったら、落ちを直す issue（masterFailure）も決め直す。
+  async workflow_run(gh, config, p) {
     const w = p.workflow_run;
     if (w.head_branch !== config.base) return { numbers: branch(config, w.head_branch) };
-    return { numbers: subjectTasks(w.display_title), around: w.path.endsWith(`/${config.checks.workflow}`) };
+    const checks = w.path.endsWith(`/${config.checks.workflow}`);
+    const failure = checks && p.action === "completed" ? await masterFailure(gh, config, w) : null;
+    return { numbers: [...subjectTasks(w.display_title), ...(failure ? [failure] : [])], around: checks };
   },
 };
 export const route = (gh, config, name, p) => ROUTES[name](gh, config, p);

@@ -2,7 +2,7 @@
 // next.config.ts は Next.js のパスの別名より前に読まれるので、ここは相対 import だけで書く。
 import type { NetworkInterfaceInfo } from "node:os";
 
-export interface Rewrite {
+interface Rewrite {
   source: string;
   destination: string;
 }

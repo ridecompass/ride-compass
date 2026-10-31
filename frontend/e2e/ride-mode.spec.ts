@@ -3,7 +3,7 @@ import { trueHeadingDeg } from "@/lib/magneticDeclination";
 import { moved } from "@/testing/movedPoint";
 import { RIDE_ZOOM_MAX_OUT, RIDE_ZOOM_STEPS } from "@/features/map/MapView/rideZoom";
 
-import { INTRO_CLOSED, MAIN_MAP_CANVAS, installApiMocks, installMapFinder, seedStoredState } from "./fixtures";
+import { MAIN_MAP_CANVAS, openMapApp } from "./fixtures";
 import {
   START,
   buttonLook,
@@ -25,13 +25,7 @@ test("走行モードの間、地図は届いた位置を同じ所に描き続�
   context,
   browserName,
 }) => {
-  // 共通の段取りが位置を許して初期の地点に置くので、そのあとに走り出す位置へ置き直す。
-  await installApiMocks(page);
-  await context.setGeolocation(START);
-  await seedStoredState(page, INTRO_CLOSED);
-  await page.addInitScript(installMapFinder);
-  await page.goto("/");
-  await expect(page.getByText("地図を読み込み中…")).toBeHidden({ timeout: 15_000 });
+  await openMapApp(page, { routes: () => context.setGeolocation(START) });
 
   // 走行モードの入切と休んでいる間は、ボタンの面の色と縁で見分けられる（パターン4 観点3: 地図の操作のボタンの既定の面に負けない）。
   const rideButton = page.getByRole("button", { name: "走行モード" });
@@ -134,12 +128,7 @@ test("走行モードで寄せている最中に地図の幅が変わっても�
   page,
   context,
 }) => {
-  await installApiMocks(page);
-  await context.setGeolocation(START);
-  await seedStoredState(page, INTRO_CLOSED);
-  await page.addInitScript(installMapFinder);
-  await page.goto("/");
-  await expect(page.getByText("地図を読み込み中…")).toBeHidden({ timeout: 15_000 });
+  await openMapApp(page, { routes: () => context.setGeolocation(START) });
   await page.getByRole("button", { name: "走行モード" }).click();
   await settledScreenPoint(page, START);
 

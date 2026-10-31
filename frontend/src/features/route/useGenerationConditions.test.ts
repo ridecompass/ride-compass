@@ -49,25 +49,17 @@ beforeEach(() => {
   onBackend("GET", "/api/axis-catalog", heldReplies().reply);
 });
 
-describe("全長の目標", () => {
-  it("既定は決める形で、外したことは開き直しても残る", () => {
+describe("周回と全長の目標", () => {
+  it.each([
+    { label: "周回", read: "loop", set: "setLoop" },
+    { label: "全長の目標", read: "distanceTargeted", set: "setDistanceTargeted" },
+  ] as const)("$labelは既定で入っていて、外したことは開き直しても残る", ({ read, set }) => {
     const first = renderConditions();
-    expect(first.result.current.distanceTargeted).toBe(true);
+    expect(first.result.current[read]).toBe(true);
 
-    act(() => first.result.current.setDistanceTargeted(false));
+    act(() => first.result.current[set](false));
 
-    expect(reopen(first).result.current.distanceTargeted).toBe(false);
-  });
-});
-
-describe("周回", () => {
-  it("既定は周回で、外したことは開き直しても残る", () => {
-    const first = renderConditions();
-    expect(first.result.current.loop).toBe(true);
-
-    act(() => first.result.current.setLoop(false));
-
-    expect(reopen(first).result.current.loop).toBe(false);
+    expect(reopen(first).result.current[read]).toBe(false);
   });
 
   it("周回の間に経由地と目的地を一度に消すと、経由地だけを消して覚えている目的地は残す", () => {

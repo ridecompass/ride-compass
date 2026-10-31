@@ -4,7 +4,6 @@ import {
   clickFeature,
   doneJobFixture,
   generateRoutes,
-  installMapFinder,
   openMobileApp,
   routeGenerateResponseFixture,
 } from "./fixtures";
@@ -28,7 +27,6 @@ test("モバイル: 生成したルートを地図へ収めると、開いた「
     ...route,
     geometry: { type: "LineString" as const, coordinates: NORTH_SOUTH_ROUTE },
   }));
-  await page.addInitScript(installMapFinder);
   await openMobileApp(page, {
     routes: (page) =>
       page.route("**/api/routes/generate/*", (route) =>
@@ -153,7 +151,6 @@ test.describe("タッチ端末", () => {
 // 観点3（カスケードの勝ち負け）: 地図で押した区間の小窓の×は、MapLibreの既定の大きさに負けず、指で押せる幅32px・高さ44pxを持つ。
 // ×の寸法はMapLibreのCSSとアプリのCSSの勝ち負けで決まり、実ブラウザでしか決まらない。
 test("モバイル: 地図で押した区間の小窓の×は、幅32px・高さ44pxの押す所を持つ", async ({ page }) => {
-  await page.addInitScript(installMapFinder);
   await openMobileApp(page);
   await generateRoutes(page);
   // 「ルート結果」を閉じて見るだけの間にすると、押した区間の中身を小窓に出す。

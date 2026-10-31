@@ -27,8 +27,6 @@ import {
 } from "@/testing/routeGeneration";
 import type { Coordinates } from "@/types/route";
 
-const NO_ROUTES_MESSAGE = "条件に合うルート候補が見つかりませんでした。条件を変えて試してください。";
-
 let backend: ReturnType<typeof serveRouteGeneration>;
 
 beforeEach(() => {
@@ -53,19 +51,19 @@ describe("生成の結果", () => {
     expect(rendered.result.current.generation.destinationCorrected).toBe(false);
   });
 
-  it.each([{ label: "理由が届かなければ決まった文言", reason: undefined, message: NO_ROUTES_MESSAGE }])(
-    "候補0件は、「$label」を案内に出して候補0件として知らせ、失敗とは扱わない",
-    async ({ reason, message }) => {
-      const rendered = renderGeneration();
-      backend.respond([], used(), reason);
+  it("候補0件は、理由が届かなければ決まった文言を案内に出して候補0件として知らせ、失敗とは扱わない", async () => {
+    const rendered = renderGeneration();
+    backend.respond([], used());
 
-      await submit(rendered);
+    await submit(rendered);
 
-      expect(rendered.onGenerated).toHaveBeenCalledWith([], used().route_preference);
-      expect(rendered.onOutcome).toHaveBeenCalledWith("empty");
-      expect(rendered.result.current.generation.outcome).toEqual({ kind: "empty", message });
-    },
-  );
+    expect(rendered.onGenerated).toHaveBeenCalledWith([], used().route_preference);
+    expect(rendered.onOutcome).toHaveBeenCalledWith("empty");
+    expect(rendered.result.current.generation.outcome).toEqual({
+      kind: "empty",
+      message: "条件に合うルート候補が見つかりませんでした。条件を変えて試してください。",
+    });
+  });
 
   it("生成が失敗したら文言を失敗として返して知らせ、結果は渡さない。次の生成で消す", async () => {
     const message = "ルート生成がタイムアウトしました";

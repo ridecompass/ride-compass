@@ -13,33 +13,14 @@ import { describe, expect, it } from "vitest";
 
 import { projectOnTrack, routeTrack } from "@/lib/routeDistance";
 import { moved } from "@/testing/movedPoint";
-import { makeRouteSegment } from "@/testing/routeFixtures";
+import { routeThrough } from "@/testing/routeFixtures";
 
 import { ROUTE_MATCH_SLACK_M, locateOnRoute, offRoute } from "./routeProgress";
 
 // 北緯35度の上を、東へ経度0.02度進んで同じ道を戻る往復（片道 2km として、行きは0〜2km、帰りは2〜4km）。
-const OUT_AND_BACK = routeTrack([
-  makeRouteSegment({
-    distance_km: 2,
-    geometry: {
-      type: "LineString",
-      coordinates: [
-        [139, 35],
-        [139.02, 35],
-      ],
-    },
-  }),
-  makeRouteSegment({
-    distance_km: 2,
-    geometry: {
-      type: "LineString",
-      coordinates: [
-        [139.02, 35],
-        [139, 35],
-      ],
-    },
-  }),
-]);
+const WEST: readonly [number, number] = [139, 35];
+const EAST: readonly [number, number] = [139.02, 35];
+const OUT_AND_BACK = routeTrack(routeThrough({ WEST, EAST }, ["WEST", "EAST", "WEST"], [2, 2]).segments);
 
 // 道の上の、始点から東へ経度0.005度（片道の4分の1）の地点。
 const QUARTER_WAY = { latitude: 35, longitude: 139.005 };
@@ -64,39 +45,15 @@ describe("locateOnRoute", () => {
   it("続く側が最も近い点より余裕以上に遠ければ、最も近い点へ移る", () => {
     // 行きの道の北へ余裕の2倍だけずらした帰りの道（折り返しで北へ上がってから戻る）。前の位置は行き。
     const north = moved(QUARTER_WAY, 2 * ROUTE_MATCH_SLACK_M).latitude;
-    const apart = routeTrack([
-      makeRouteSegment({
-        distance_km: 2,
-        geometry: {
-          type: "LineString",
-          coordinates: [
-            [139, 35],
-            [139.02, 35],
-          ],
-        },
-      }),
-      makeRouteSegment({
-        distance_km: (2 * ROUTE_MATCH_SLACK_M) / 1000,
-        geometry: {
-          type: "LineString",
-          coordinates: [
-            [139.02, 35],
-            [139.02, north],
-          ],
-        },
-      }),
-      makeRouteSegment({
-        distance_km: 2,
-        geometry: {
-          type: "LineString",
-          coordinates: [
-            [139.02, north],
-            [139, north],
-          ],
-        },
-      }),
-    ]);
-    const backQuarterKm = 2 + (2 * ROUTE_MATCH_SLACK_M) / 1000 + 1.5;
+    const turnKm = (2 * ROUTE_MATCH_SLACK_M) / 1000;
+    const apart = routeTrack(
+      routeThrough(
+        { WEST, EAST, EAST_N: [139.02, north], WEST_N: [139, north] },
+        ["WEST", "EAST", "EAST_N", "WEST_N"],
+        [2, turnKm, 2],
+      ).segments,
+    );
+    const backQuarterKm = 2 + turnKm + 1.5;
     // 帰りの道の上（行きより余裕だけ遠い所より北）なら帰りへ移り、行きと帰りへの隔たりの差が余裕より小さい所なら行きに留まる。
     expect(locateOnRoute(projectOnTrack(apart, moved(QUARTER_WAY, 2 * ROUTE_MATCH_SLACK_M)), 0.4)).toBeCloseTo(
       backQuarterKm,

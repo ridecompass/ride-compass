@@ -79,23 +79,17 @@ function sourcesFor(state: AreaRasterState): readonly SceneSourceEntry[] {
 
 function layersFor(state: AreaRasterState): readonly SceneLayerEntry[] {
   const visible = (role: AreaRasterRole) => state.visible[role] === true;
+  const raster = (role: "elevation" | "landcover"): SceneLayerEntry => ({
+    role,
+    tier: "area",
+    source: AREA_SOURCE_ID[role],
+    type: "raster",
+    paint: { "raster-opacity": AREA_OPACITY },
+    visible: visible(role),
+  });
   return [
-    {
-      role: "elevation",
-      tier: "area",
-      source: AREA_SOURCE_ID.elevation,
-      type: "raster",
-      paint: { "raster-opacity": AREA_OPACITY },
-      visible: visible("elevation"),
-    },
-    {
-      role: "landcover",
-      tier: "area",
-      source: AREA_SOURCE_ID.landcover,
-      type: "raster",
-      paint: { "raster-opacity": AREA_OPACITY },
-      visible: visible("landcover"),
-    },
+    raster("elevation"),
+    raster("landcover"),
     {
       role: "hillshade",
       tier: "area",

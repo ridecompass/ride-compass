@@ -22,9 +22,9 @@ describe("headingFromOrientation: 端末の向きの読みから、画面の上�
     },
     { case: "読みが無い", reading: { alpha: null }, absolute: true, angle: 0, heading: null },
   ])("$case", ({ reading, absolute, angle, heading }) => {
-    const result = headingFromOrientation(reading, absolute, angle);
-    if (heading === null) expect(result).toBeNull();
-    else expect(result).toBeCloseTo(heading, 6);
+    expect(headingFromOrientation(reading, absolute, angle)).toEqual(
+      heading === null ? null : expect.closeTo(heading, 6),
+    );
   });
 });
 

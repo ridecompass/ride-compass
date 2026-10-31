@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import {
   LAYER_DATA_STATUS_LABELS,
   layerDataStatusNotice,
@@ -8,10 +8,9 @@ import {
   type MapLayerCategory,
   type MapLayerId,
 } from "@/features/map/layers/mapLayers";
-import { DescriptionToggle, RowDescription } from "@/features/map/LegendCheckboxList/LegendRow";
+import { useRowDescription, useRowPanel } from "@/features/map/LegendCheckboxList/LegendRow";
 import { Checkbox } from "@/components/ui/Checkbox/Checkbox";
 import type { MapIconComponent } from "@/components/ui/icons/icons";
-import { Button } from "@/components/ui/Button/Button";
 import { cn } from "@/lib/cn";
 import { Dot } from "@/components/ui/Dot/Dot";
 import LegendDetails, { type LegendFilterSummaryAxis } from "./LegendDetails";
@@ -62,17 +61,12 @@ export function isLegendFiltered(layer: OverlayLayerChip): boolean {
   return layer.on && (layer.legendDetails ?? []).some((axis) => axis.hiddenKeys.length > 0);
 }
 
-/** 状態のドットの意味を文で読ませる置き場は▶の中（`title`はスマホでは出ない）。 */
-function dataStatusNotice(layer: OverlayLayerChip): string | null {
-  if (!layer.on) return null;
-  return layerDataStatusNotice(layer.dataStatus);
-}
-
 /** ▶の中身。無ければ▶自体を出さない（開いても空になる）。 */
 function panelContentFor(layer: OverlayLayerChip, handlers: LegendHandlers): ReactNode {
   if (layer.notice)
     return <p className="m-0 text-[length:var(--font-size-sm)] text-[var(--foreground)]">{layer.notice}</p>;
-  const status = dataStatusNotice(layer);
+  // 状態のドットの意味を文で読ませる置き場は▶の中（`title`はスマホでは出ない）。
+  const status = layer.on ? layerDataStatusNotice(layer.dataStatus) : null;
   const axes = layer.legendDetails ?? [];
   if (!status && axes.length === 0) return null;
   return (
@@ -102,11 +96,8 @@ export default function OverlayLayerRow({
   handlers: LegendHandlers;
   onToggle: (id: MapLayerId, on: boolean) => void;
 }) {
-  const [hintOpen, setHintOpen] = useState(false);
-  const [panelOpen, setPanelOpen] = useState(false);
-  const hintId = useId();
-  const panelId = useId();
-  const panel = panelContentFor(layer, handlers);
+  const hint = useRowDescription(layer.label, layer.panelHint, "この情報の説明を、行のすぐ下に開きます。");
+  const panel = useRowPanel(layer.label, panelContentFor(layer, handlers));
   const showStatusDot = layer.on && layer.dataStatus != null;
   const filtered = isLegendFiltered(layer);
   const notes = [
@@ -128,47 +119,11 @@ export default function OverlayLayerRow({
           {showStatusDot && <Dot aria-hidden="true" tone={layer.dataStatus} />}
           {filtered && <FilteredMark />}
         </label>
-        {layer.panelHint && (
-          <DescriptionToggle
-            label={layer.label}
-            open={hintOpen}
-            descriptionId={hintId}
-            usage="この情報の説明を、行のすぐ下に開きます。"
-            onToggle={() => setHintOpen((current) => !current)}
-          />
-        )}
-        {panel && (
-          <Button
-            variant="float"
-            size="iconRound"
-            className="group text-[var(--color-neutral)] shadow-none aria-expanded:border-[var(--color-accent)] aria-expanded:text-[var(--foreground)]"
-            aria-expanded={panelOpen}
-            aria-controls={panelOpen ? panelId : undefined}
-            aria-label={`${layer.label}の凡例`}
-            title="凡例"
-            onClick={() => setPanelOpen((current) => !current)}
-            usage="凡例を行のすぐ下に開きます。チェックを外した段階は地図から隠れます。"
-          >
-            <span
-              aria-hidden="true"
-              className="inline-block text-[0.6rem] leading-none transition-transform duration-150 group-aria-expanded:rotate-90"
-            >
-              ▶
-            </span>
-          </Button>
-        )}
+        {hint.toggle}
+        {panel.toggle}
       </div>
-      {hintOpen && <RowDescription id={hintId}>{layer.panelHint}</RowDescription>}
-      {panel && panelOpen && (
-        <div
-          id={panelId}
-          role="region"
-          aria-label={`${layer.label}の内訳`}
-          className="mt-0.5 mb-1.5 ml-6 border-l-2 border-[var(--color-border)] pl-2"
-        >
-          {panel}
-        </div>
-      )}
+      {hint.text}
+      {panel.region}
     </li>
   );
 }

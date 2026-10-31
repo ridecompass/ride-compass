@@ -4,6 +4,7 @@ import type { Map as MapLibreMap } from "maplibre-gl";
 import { TAP_TOLERANCE_PX } from "@/features/map/MapView/mapGestures";
 import { configureMaplibreWorker } from "@/features/map/maplibreWorker";
 import { mapStyleUrl } from "@/features/map/regionApi";
+import type { MapViewport } from "@/features/map/view/mapLook";
 import { debugLog } from "@/lib/debugLog";
 import { mapDisplay } from "@/types/generated/mapDisplay";
 
@@ -61,4 +62,18 @@ export function createBaseMap({
   map.on("styledata", collapseAttribution);
   map.on("sourcedata", collapseAttribution);
   return map;
+}
+
+/** 地図が今見ている範囲。範囲を読めなければnull。 */
+export function viewportOf(map: MapLibreMap): MapViewport | null {
+  const bounds = map.getBounds();
+  if (!bounds) return null;
+  return {
+    west: bounds.getWest(),
+    south: bounds.getSouth(),
+    east: bounds.getEast(),
+    north: bounds.getNorth(),
+    zoom: map.getZoom(),
+    bearing: map.getBearing(),
+  };
 }

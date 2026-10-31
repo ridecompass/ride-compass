@@ -1,13 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import {
-  INTRO_CLOSED,
-  KEYBOARD_HEIGHT,
-  installApiMocks,
-  installMapFinder,
-  openMobileApp,
-  openMobileSheet,
-  seedStoredState,
-} from "./fixtures";
+import { KEYBOARD_HEIGHT, openMapApp, openMobileApp, openMobileSheet } from "./fixtures";
 
 // 目的地を探して置く操作の、実ブラウザでしか出ない挙動（パターン4 観点1・2）。
 
@@ -23,12 +15,9 @@ test("目的地を探して置いた地点は地図のその位置にピンが�
     latitude: 35.7536,
     longitude: 139.7378,
   };
-  await installApiMocks(page);
-  await page.route("**/api/place-search*", (route) => route.fulfill({ json: { candidates: [candidate] } }));
-  await seedStoredState(page, INTRO_CLOSED);
-  await page.addInitScript(installMapFinder);
-  await page.goto("/");
-  await expect(page.getByText("地図を読み込み中…")).toBeHidden({ timeout: 15_000 });
+  await openMapApp(page, {
+    routes: (p) => p.route("**/api/place-search*", (route) => route.fulfill({ json: { candidates: [candidate] } })),
+  });
 
   await page.getByRole("button", { name: "周回", pressed: true }).click();
   await page.getByRole("button", { name: "目的地: 未設定", exact: true }).click();

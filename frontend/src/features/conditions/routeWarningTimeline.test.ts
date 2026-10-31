@@ -1,6 +1,6 @@
 // @vitest-environment node
 /**
- * `features/conditions/routeThunder.ts`——区域の通過と気象庁の雷の段から、通る時刻に当たる注意報級の時間帯を選ぶ。
+ * `features/conditions/routeWarningTimeline.ts`——区域の通過と気象庁の警報級の時系列の段から、通る時刻に当たる注意報級の時間帯を選ぶ。
  *
  * ここで見ないもの:
  * - 段のコードから注意報級かを決めること → backend（`advisory`を受け取るだけ）
@@ -12,7 +12,7 @@ import { describe, expect, it } from "vitest";
 import { HOUR_MS } from "@/lib/duration";
 import type { components } from "@/types/generated/api";
 
-import { routeThunderItems } from "./routeThunder";
+import { routeWarningTimelineItems } from "./routeWarningTimeline";
 
 type RouteWarningTimeline = components["schemas"]["RouteWarningTimeline"];
 
@@ -21,8 +21,9 @@ const FIRST_SLOT_AT = Date.parse("2026-10-21T18:00:00+09:00");
 const iso = (ms: number) => new Date(ms).toISOString();
 
 /** 段の並び（"20"以上が注意報級）を、18時からの3時間のコマにする。 */
-function thunder(codes: string[], additions: string[] = []) {
+function levels(codes: string[], additions: string[] = [], advisoryLabel = "雷（注意報級）") {
   return {
+    advisory_label: advisoryLabel,
     slots: codes.map((code, index) => ({
       start: iso(FIRST_SLOT_AT + index * 3 * HOUR_MS),
       end: iso(FIRST_SLOT_AT + (index + 1) * 3 * HOUR_MS),
@@ -42,7 +43,7 @@ function timeline(
       area_name: `区域${index}`,
       start_index: start,
       end_index: end,
-      kinds: { thunder: thunder(codes, additions) },
+      kinds: { thunder: levels(codes, additions) },
     })),
   };
 }
@@ -51,10 +52,10 @@ function timeline(
 const POINT_KMS = Array.from({ length: 13 }, (_, km) => km);
 const clock = (km: number) => FIRST_SLOT_AT + km * HOUR_MS;
 
-describe("routeThunderItems", () => {
+describe("routeWarningTimelineItems", () => {
   it("通る間に当たる注意報級のコマを、時間帯と付加事項を添えて出す", () => {
     // 区域0を18〜19時、区域1を19〜22時に通る。区域1は21〜24時が注意報級。
-    const items = routeThunderItems(
+    const items = routeWarningTimelineItems(
       timeline(
         { start: 0, end: 1, codes: ["01", "01"] },
         { start: 1, end: 4, codes: ["01", "20"], additions: ["突風", "ひょう"] },
@@ -88,14 +89,14 @@ describe("routeThunderItems", () => {
       titles: ["10/21 21:00〜10/22 00:00"],
     },
   ])("$case", ({ codes, end, titles }) => {
-    const items = routeThunderItems(timeline({ start: 0, end, codes }), POINT_KMS, clock, 0);
+    const items = routeWarningTimelineItems(timeline({ start: 0, end, codes }), POINT_KMS, clock, 0);
 
     expect(items.map((item) => item.title)).toEqual(titles.map((range) => `${range}に通る見込み`));
   });
 
   it("走行中は、もう走った所の通過を見ず、走っている区域はこの先だけを見る", () => {
     // 4km（22時）まで来た。区域0（0〜2km）は通り終え、区域1（2〜8km、20時〜翌2時）は22時から先だけを見る。
-    const items = routeThunderItems(
+    const items = routeWarningTimelineItems(
       timeline({ start: 0, end: 2, codes: ["20"] }, { start: 2, end: 8, codes: ["20", "01", "20", "01"] }),
       POINT_KMS,
       clock,
@@ -107,10 +108,20 @@ describe("routeThunderItems", () => {
     ]);
   });
 
+  it("backendが配る種別を全部、backendの名前で出す", () => {
+    const area = timeline({ start: 0, end: 2, codes: ["20"] });
+    area.areas[0].kinds.snow = levels(["20"], [], "大雪（注意報級）");
+
+    expect(routeWarningTimelineItems(area, POINT_KMS, clock, 0).map((item) => item.label)).toEqual([
+      "雷（注意報級）区域0",
+      "大雪（注意報級）区域0",
+    ]);
+  });
+
   it("区域を離れてまた通っても、同じ時間帯は1件にする", () => {
     const again = timeline({ start: 0, end: 1, codes: ["20"] }, { start: 1, end: 2, codes: ["01"] });
     again.areas.push({ ...again.areas[0], start_index: 2, end_index: 2 });
 
-    expect(routeThunderItems(again, POINT_KMS, clock, 0)).toHaveLength(1);
+    expect(routeWarningTimelineItems(again, POINT_KMS, clock, 0)).toHaveLength(1);
   });
 });

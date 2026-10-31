@@ -5,37 +5,22 @@
  * ここで見ないもの:
  * - 1つの位置から距離を選ぶ決まり・外れたときの止め方 → `routeProgress.test.ts`・`useRouteProgress.test.ts`
  * - 保存の書き方・期限・復元の知らせ → `rideSession.test.ts`・`useRideSession.test.ts`
+ * - 当てた位置が保存に載り、読み込み直したあと続きから案内すること → `app/page.rideControl.test.tsx`
  */
 import { renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { makeRouteCandidate, makeRouteSegment } from "@/testing/routeFixtures";
+import { makeRouteCandidate, routeThrough } from "@/testing/routeFixtures";
 import type { Coordinates, RouteCandidate } from "@/types/route";
 
-import {
-  RIDE_PROGRESS_STORAGE_KEY,
-  RIDE_ROUTE_STORAGE_KEY,
-  readRideSession,
-  writeRideProgress,
-  writeRideRoute,
-} from "./rideSession";
+import { RIDE_PROGRESS_STORAGE_KEY, RIDE_ROUTE_STORAGE_KEY, writeRideProgress, writeRideRoute } from "./rideSession";
 import { useRideProgress } from "./useRideProgress";
 
 // 北緯35度の上を、東へ経度0.02度進んで同じ道を戻る往復（行きは0〜2km、帰りは2〜4km）。
 function outAndBack(id: string): RouteCandidate {
-  const line = (from: number, to: number) => ({
-    type: "LineString" as const,
-    coordinates: [
-      [from, 35],
-      [to, 35],
-    ],
-  });
   return makeRouteCandidate({
     id,
-    segments: [
-      makeRouteSegment({ distance_km: 2, geometry: line(139, 139.02) }),
-      makeRouteSegment({ distance_km: 2, geometry: line(139.02, 139) }),
-    ],
+    ...routeThrough({ WEST: [139, 35], EAST: [139.02, 35] }, ["WEST", "EAST", "WEST"], [2, 2]),
   });
 }
 
@@ -49,33 +34,15 @@ afterEach(() => {
 
 type Props = { route: RouteCandidate | null; riding: boolean; position: Coordinates | null };
 
-function render(onRestore: (route: RouteCandidate) => void = () => {}) {
+function render() {
   return renderHook(
     ({ route, riding, position }: Props) =>
-      useRideProgress({
-        route,
-        riding,
-        resting: false,
-        position,
-        accuracyM: 20,
-        onRestore: (session) => onRestore(session.route),
-      }),
+      useRideProgress({ route, riding, resting: false, position, accuracyM: 20, onRestore: () => {} }),
     { initialProps: { route: null, riding: false, position: null } as Props },
   );
 }
 
 describe("useRideProgress", () => {
-  it("当てた位置を一時保存に載せる", () => {
-    const { rerender } = render();
-    rerender({ route: ROUTE, riding: true, position: QUARTER });
-    const stored = readRideSession(
-      window.localStorage.getItem(RIDE_ROUTE_STORAGE_KEY),
-      window.localStorage.getItem(RIDE_PROGRESS_STORAGE_KEY),
-      Date.now(),
-    );
-    expect(stored?.km).toBeCloseTo(0.5);
-  });
-
   it("帰り道で読み込み直して戻したルートは、前に当てた位置から続く側に当て、別のルートでは始点に近い側から当てる", () => {
     window.localStorage.setItem(RIDE_ROUTE_STORAGE_KEY, writeRideRoute(ROUTE));
     window.localStorage.setItem(

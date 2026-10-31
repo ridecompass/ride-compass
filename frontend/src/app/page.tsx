@@ -71,7 +71,6 @@ export default function Home() {
   const isMobile = useIsMobile();
   const panels = usePagePanels({ navigating, isMobile });
 
-  // 「ルート設定」のタブ。タブ列は見出し行、中身は本文に描くため、両方を囲むパネルの外で持つ。
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("generate");
 
   // スマホで下のシートを開いているか。
