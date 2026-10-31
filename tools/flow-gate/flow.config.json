@@ -24,6 +24,7 @@
   "branchPrefix": "orch/tasks-",
   "workflow": "claude-task.yml",
   "checks": { "workflow": "ci.yml" },
+  "masterFailure": { "title": "master の検査が落ちている", "type": "不具合" },
   "slots": { "実装": 6, "検証": 4 },
   "quotaStep": "利用の上限で止まった",
   "pauseMinutes": 60,

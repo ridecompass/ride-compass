@@ -159,8 +159,10 @@ function rows(f) {
   if (f.blocked) return { status: "待機" };
   if (f.dropped.length && !need(f, "droppedAsked")) return { status: "回答", ask: { dropped: f.dropped } };
   // 作る側の完了（自分か子の変更を含む master の検査が通り、本番に出た）も約束のうち。マージのあとの残りは、本番に出てから扱う（本番に出る前に確かめを問わない。原則2）。
+  // 落ちても実装へ戻さず、後の実行が通るまで検査で待つ。落ちた master を直すのは、ゲートが起こす master の落ちの issue の担当（src/gate.js: masterFailure）で、
+  // 落ちた理由がこの変更の誤りかをゲートは見分けられず、この issue の担当にはできることが無いことが多い（原則9）。
   const deploy = need(f, "deploy");
-  if (deploy && !deploy.passed) return unchecked(deploy);
+  if (deploy && !deploy.passed) return { status: "検査" };
   if (f.remaining.every((c) => c.verify === "ユーザー")) return { status: "回答", ask: "確かめ" };
   return { status: "実装" };
 }
