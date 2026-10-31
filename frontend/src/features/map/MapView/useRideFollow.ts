@@ -260,6 +260,8 @@ export function useRideFollow(
         bearing: headingUp ? (bearing ?? map.getBearing()) : 0,
         zoom: (baseZoom.current ?? map.getZoom()) - appliedZoomOut.current,
         offset: visibleCenterOffset(map.getCanvas()),
+        // 位置は毎秒届くので、滑らかに動かすと動く間ずっと途中のコマを描き、走行中の電池を食う（page-composition.md「走行の値へ流す位置」）。
+        duration: 0,
       });
     if (!gesture.current) followCamera.current();
   }, [mapRef, following, position, bearing, headingUp, speedKmh, zoomBase]);
