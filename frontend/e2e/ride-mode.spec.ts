@@ -124,7 +124,7 @@ test("走行モードの間、地図は届いた位置を同じ所に描き続�
   expect(await dotOffsetFrom(page, lastRidden)).toBeLessThan(2);
 });
 
-test("走行モードで寄せている最中に地図の幅が変わっても、届いた位置は次に届いた位置と同じ所に描かれる", async ({
+test("走行モードで地図の大きさが変わって見えている所の中ほどが動いても、届いた位置は次に届いた位置と同じ所に描かれる", async ({
   page,
   context,
 }) => {
@@ -132,12 +132,11 @@ test("走行モードで寄せている最中に地図の幅が変わっても�
   await page.getByRole("button", { name: "走行モード" }).click();
   await settledScreenPoint(page, START);
 
-  // 走り出すと左のパネルが消えて地図が広がり、最初の位置へ寄せる最中に地図の大きさが変わりうる。
+  // 端末を横にすると背が低くなり、重ねた部品を避ける余白が縮んで、見えている所の中ほどが動く。
   const whileResizing = moved(START, 0, 200);
   await deliverPosition(page, context, whileResizing);
-  expect(await page.evaluate(() => window.__liveMap().isMoving())).toBe(true);
   const viewport = page.viewportSize()!;
-  await page.setViewportSize({ width: viewport.width - 300, height: viewport.height });
+  await page.setViewportSize({ width: viewport.width, height: 300 });
   const drawn = await settledScreenPoint(page, whileResizing);
   const next = moved(whileResizing, 0, 200);
   await deliverPosition(page, context, next);
