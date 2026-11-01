@@ -64,12 +64,18 @@ function buildRangeSteppedMode(options: {
 }
 
 // 公開軸1本のモード。塗る値の種類・単位・しきい値はbackendが決め、ルート前の専用配信の塗りと同じ尺度・配色になる。
-// 生値を塗る材料はbackendが名指す（`map_paint.value.material`）。
+// 生値を塗るときに区間のどの欄を読むかはbackendが名指す（`map_paint.value.route_segment_field`と`material`）。
 function routeColorableModeFromAxis(axis: AxisCatalogEntry): RouteStyleMode {
   const mapValue = axis.map_paint.value;
   const painted =
     mapValue.kind === "signed_material"
-      ? { label: axis.label, valueExpression: ["get", mapValue.material, ["get", "material_values"]] }
+      ? {
+          label: axis.label,
+          valueExpression:
+            mapValue.route_segment_field === "material_values"
+              ? ["get", mapValue.material, ["get", "material_values"]]
+              : ["get", mapValue.route_segment_field],
+        }
       : { label: `${axis.label}の影響`, valueExpression: ["get", axis.axis_id, ["get", "axis_difficulties"]] };
   return buildRangeSteppedMode({ id: axis.axis_id, ...painted, paint: mapPaintDeclarationOf(axis.map_paint) });
 }

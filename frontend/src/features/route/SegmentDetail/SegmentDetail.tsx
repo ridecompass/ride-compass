@@ -70,7 +70,7 @@ export default function SegmentDetail({
   // 区間の層の値。値の無い線の層は出さない。
   const { lines, bands } = useMemo(() => {
     const found = {
-      lines: [] as { layer: LineLayer; mean: number; steepestClimb: number | null }[],
+      lines: [] as { layer: LineLayer; mean: number; sustained: number | null }[],
       bands: [] as { layer: BandLayer; row: RoadTrackRow; share: number }[],
     };
     for (const layer of layers) {
@@ -96,15 +96,15 @@ export default function SegmentDetail({
       </PopupHeader>
       {(lines.length > 0 || bands.length > 0) && (
         <div role="group" aria-label="グラフの層の値" className="flex flex-col gap-1">
-          {lines.map(({ layer, mean, steepestClimb }) => (
+          {lines.map(({ layer, mean, sustained }) => (
             <span key={layer.id} className="inline-flex items-center gap-1.5">
               <span aria-hidden="true" className="inline-flex text-[var(--color-muted)]">
                 <GradientAxisIcon size={14} />
               </span>
               <span className="sr-only">{layer.label}の勾配 </span>
               <span className="font-semibold">平均 {formatGrade(mean)}</span>
-              {steepestClimb !== null && (
-                <span className={textVariants({ variant: "hint" })}>最大 {formatGrade(steepestClimb)}</span>
+              {sustained !== null && (
+                <span className={textVariants({ variant: "hint" })}>最大 {formatGrade(sustained)}</span>
               )}
             </span>
           ))}

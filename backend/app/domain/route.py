@@ -4,6 +4,7 @@ from dataclasses import dataclass, fields
 
 from typing import TYPE_CHECKING, Annotated, Any, Callable, Iterable, Literal, Mapping, NamedTuple, Sequence, TypeVar
 
+import numpy as np
 from pydantic import ConfigDict, Field, PrivateAttr, WithJsonSchema
 
 from app.domain.difficulty import (
@@ -13,8 +14,10 @@ from app.domain.difficulty import (
 )
 from app.domain.attributes import ElevationAttribute
 from app.domain.geo import Latitude, Longitude
+from app.domain.gradient import GRADIENT_VALUE_DECIMALS
 from app.domain.graph import LeanEdge
 from app.domain.strict_model import StrictModel
+from app.domain.tuning import SUSTAINED_GRADE_WINDOW_ID, tuning_value
 
 if TYPE_CHECKING:
     # 軸の定義は材料の宣言を経てこのモジュールを読み込むので、実行時には読み込まない（循環する）。
@@ -130,6 +133,8 @@ class RouteSegmentDetail(StrictModel):
     edge_end: int
     # 区間の中の道ごとの両端の標高を、通る順に。道の距離の和は区間の距離と丸めの分だけずれうる。
     elevations: list[ElevationStretch]
+    # 区間の続く坂の斜度（%、走る向きの符号つき）。`sustained_gradient_percent`が`elevations`から作る。標高のある道が無ければNone。
+    sustained_gradient_percent: float | None = None
     estimated_arrival_time: str | None = None
     # axis_id→difficulty(0-100)。以降の辞書フィールドはすべて「データ無しはキーを
     # 持たない」規約で、評価できなかった軸・値の無い材料はキー自体を含めない。
@@ -544,6 +549,35 @@ def merge_road_classes(segments: list[RouteSegmentDetail]) -> dict[str, list[Roa
     return merged
 
 
+def sustained_gradient_percent(elevations: Sequence[ElevationStretch]) -> float | None:
+    """区間の続く坂の斜度（%、走る向きの符号つき）。標高のある道（長さ0の道を除く）の上り下りを通る順につないだ断面で、
+    幅W（較正値`gradient.sustained_window_m`、呼ばれた時点で読む）の窓をずらして取った（窓の高低差÷W）のうち、登りがあれば
+    登りの最大、無ければ下りの最大（最も負の値）。断面がWより短ければ断面全体の平均。標高のある道が無ければNone。
+
+    道どうしの継ぎ目の標高の差（標高の無い道を挟んだ所等）は断面に入れず、各道の中の上り下りだけを積む——継ぎ目の差を
+    入れると、長さの無い所に段ができて窓の斜度が跳ねる。
+    """
+    lengths, rises = [], []
+    for stretch in elevations:
+        if stretch.start_elevation_m is None or stretch.end_elevation_m is None or stretch.distance_km <= 0:
+            continue
+        lengths.append(stretch.distance_km * 1000)
+        rises.append(stretch.end_elevation_m - stretch.start_elevation_m)
+    if not lengths:
+        return None
+    xs = np.concatenate(([0.0], np.cumsum(lengths)))
+    heights = np.concatenate(([0.0], np.cumsum(rises)))
+    total = float(xs[-1])
+    window = tuning_value(SUSTAINED_GRADE_WINDOW_ID)
+    if total <= window:
+        return round(float(heights[-1]) / total * 100, GRADIENT_VALUE_DECIMALS)
+    # 窓の高低差は窓の始まりについて折れ線なので、最大・最小は窓の端が断面の折れ点に重なる所のどれかで取る。
+    starts = np.clip(np.concatenate((xs, xs - window)), 0.0, total - window)
+    grades = (np.interp(starts + window, xs, heights) - np.interp(starts, xs, heights)) / window * 100
+    steepest = float(grades.max()) if grades.max() > 0 else float(grades.min())
+    return round(steepest, GRADIENT_VALUE_DECIMALS)
+
+
 #: ビンのフィールドと、ビンに入る区間の並びからその値を作る畳み方。`_merge_segment_bin`は
 #: この表と、ビンの難しさの値（`SegmentDifficulty`の欄、`route_bins`）からビンを組み立てる。
 BIN_FIELD_MERGERS: dict[str, Callable[[list[RouteSegmentDetail]], object]] = {
@@ -556,6 +590,8 @@ BIN_FIELD_MERGERS: dict[str, Callable[[list[RouteSegmentDetail]], object]] = {
     "edge_start": lambda segments: segments[0].edge_start,
     "edge_end": lambda segments: segments[-1].edge_end,
     "elevations": lambda segments: [stretch for segment in segments for stretch in segment.elevations],
+    "sustained_gradient_percent": lambda segments: sustained_gradient_percent(
+        [stretch for segment in segments for stretch in segment.elevations]),
     "estimated_arrival_time": lambda segments: segments[0].estimated_arrival_time,
     "road_classes": merge_road_classes,
     "material_values": merge_material_values,

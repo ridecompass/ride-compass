@@ -962,6 +962,10 @@ numbaでJITする探索とその部品はこのファイルにまとめて置く
   この表だけからビンを組み立て、難しさの値（`merge_difficulty_values`が1回で畳む）も、形・位置・距離のように
   個別に畳むものも同じ表に載る。
   区間の中の道ごとの両端の標高（`elevations`）は平均せず、中の区間の並びをつなぐ（画面は道ごとの両端を結んで標高の線を描く）。
+  ビンの続く坂の斜度（`domain/route.py: sustained_gradient_percent`）は、つないだ標高の断面から作る。勾配の材料の区間の平均
+  （`material_values`）は登って下る区間で打ち消し合い、道1本の勾配は数十mの道の跳ね上がり（標高データの誤差を含む）を拾うので、
+  勾配のレンズの色と区間の小窓の「最大」はこの値を読む（`domain/map_paint.py: SignedMaterialMapValue.route_segment_field`）。
+  窓の幅は較正値で、ルートを作るたびに読む。
   道の区分（`road_classes`）は平均せず、中の区間の部分をつないで隣どうしの同じ値を1つにまとめる（`merge_road_classes`）。
   ほかのビンへ引き継げない値（平均できない分類値等）はこの器に載せず、ビニングの前に
   候補全体へ畳む（`merge_material_category_shares`）。宣言の無いフィールドは

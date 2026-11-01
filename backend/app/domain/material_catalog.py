@@ -180,6 +180,9 @@ class MaterialSpec(StrictModel):
     # `additive`（足し合わせて意味を持つか）とは別の問い: 事故密度は足せるが、総量は読めない。
     # 単位が「◯◯/km」であることだけを条件にすると、この区別が付かない。
     total_unit: str | None = None
+    # 値が進行方向で符号の変わる量か（勾配: 登りプラス・下りマイナス。同じ道を逆に走ると符号だけが反転する）。
+    # 符号が向きを表すので、得点へ写すと登りか下りかが消える。
+    direction_signed: bool = False
     # MVTタイルへ既に焼き込み済みのプロパティ名。Noneは「タイル非依存」（GSI標高の都度取得、
     # 気象の動的取得、レシピ合成値等）。
     # タイルの列は、この名前と`value_sql`から組み立てる（`tile_column_sql`）。
@@ -356,6 +359,7 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
         description="国土地理院の標高データから算出した進行方向の勾配（%）。登り坂はプラス、下り坂はマイナスです。",
         dtype="numeric",
         unit="%",
+        direction_signed=True,
         # 進行方向で符号が変わる（登りプラス・下りマイナス）ため、1本のWayに往復2つの値を
         # 持ちうる。方向を持たないMVTプロパティ1個には焼き込めないので、地図へは
         # `services/gradient_way_service.py`のフィーチャー→値配信で乗せる。
@@ -367,6 +371,27 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
                 source="edge_elevation.average_grade の有無",
                 missing_semantics="unknown",
             ),
+    ),
+    # 勾配の材料と分けて持つ理由と、逆向きの区間で下りの量になることは docs/modules/backend/elevation.md「向きと標高」。
+    "elevation_gain_m_per_km": MaterialSpec(
+        material_id="elevation_gain_m_per_km",
+        label="登りの量",
+        description=(
+            "国土地理院の標高データから求めた、進行方向に1kmあたり登る高さ（m）。道の中の細かい上り下りの登りを"
+            "すべて積み、下りは数えません。橋・トンネルは両端の標高だけで数えます。"
+        ),
+        dtype="numeric",
+        unit="m/km",
+        additive=True,
+        total_unit="m",
+        tile_property=None,
+        primary_attribute=ATTR_ELEVATION,
+        value_sql=per_km_value_sql("em.elevation_gain_m"),
+        coverage=EdgeMaterialCoverageSpec(
+            present_condition="em.elevation_gain_m IS NOT NULL",
+            source="区間の標高の表（edge_elevation）に行があるか",
+            missing_semantics="unknown",
+        ),
     ),
     WIND_DRAG_RATIO: MaterialSpec(
         material_id=WIND_DRAG_RATIO,

@@ -9,6 +9,7 @@
  * - 値で段を引く式と「データなし」の分け方は、どのモードも同じ組み立てを通るので、軸の難易度で塗るモードで両側を見て、
  *   ほかのモードはどの値で塗るかだけを見る
  * - 区間が持つ値（総合難易度・軸ごとの難易度・材料の値）を作ること → backendのルート生成のテスト
+ * - 生値を塗るモードが区間のどの欄の値で塗るか（区間の地物に載る欄で決まる） → `features/map/scene/scene.state.contract.test.ts`
  * - モードを選ぶ画面と、選んだモードの式を地図へ渡すこと → `features/map/LensControl/LensControl.test.tsx`・
  *   `features/map/view/lens.test.ts`
  */
@@ -105,21 +106,16 @@ describe("材料の値をそのまま塗る軸のモード（符号付き材料�
     axis_id: "slope",
     label: "勾配",
     map_paint: {
-      value: { kind: "signed_material", material: "grade" },
+      value: { kind: "signed_material", material: "grade", route_segment_field: "material_values" },
       thresholds: [-2, 2],
       legend: { boundaries: [-2, 2], unit: "%" },
     },
   });
   const mode = modeOf([axis], "slope");
-  const segmentOf = (value: unknown) => ({ material_values: { grade: value }, axis_difficulties: { slope: 99 } });
 
   it("名前は軸の名前のままで、凡例の範囲は材料の単位で書く", () => {
     expect(mode.label).toBe("勾配");
     expect(mode.legend.map((row) => row.label)).toEqual(["-2%未満", "-2〜2%", "2%以上", "データなし"]);
-  });
-
-  it("軸の難易度ではなく、区間の材料の値で塗る（負の値は下りの色）", () => {
-    expect(drawn(mode, segmentOf(-5)).color).toBe(palette.semantic.signed_descent);
   });
 });
 
