@@ -6,7 +6,7 @@ import { START, deliverPosition, expectDrawnAt, settledScreenPoint, settledZoom 
 
 // 2本指でつまむ・広げる操作は、MapLibre が先に指の重心のずれを移動として受け、倍率が変わるのはそのあとになり、指がひねれば
 // 回し始める。出来事の並び（移動の始まり→拡大の始まり）と回すかどうかは実ブラウザの MapLibre でしか出ないので、ここで
-// 指ごとのタッチを送って見る（パターン4 観点2）。倍率のボタンが地図の倍率まで届くことも、速さを0にできるここで見る。
+// 指ごとのタッチを送って見る（パターン4 観点2）。倍率のボタンが地図の倍率まで届くことも、ここで見る。
 test.describe("タッチ端末", () => {
   test.use({ viewport: MOBILE_VIEWPORT, isMobile: true, hasTouch: true });
 
@@ -16,8 +16,7 @@ test.describe("タッチ端末", () => {
     browserName,
   }) => {
     test.skip(browserName !== "chromium", "指ごとのタッチの列はCDP（Chromiumだけの口）でしか送れない");
-    // 誤差の内の動きは地図へ流れないので、誤差を小さくし、それを超える数mずつの動きで届ける。動きは時速15km（倍率に速さの
-    // 引きが混ざり始める速さ。`rideZoom.ts: RIDE_ZOOM_SLOW_KMH`）に届かない遅さに保つ。
+    // 誤差の内の動きは地図へ流れないので、誤差を小さくし、それを超える数mずつの動きで届ける。
     const at = (point: { latitude: number; longitude: number }) => ({ ...point, accuracy: 1 });
     await openMapApp(page, { routes: () => context.setGeolocation(at(START)) });
     await page.getByRole("button", { name: "走行モード" }).click();
@@ -25,7 +24,7 @@ test.describe("タッチ端末", () => {
     const zoom = () => page.evaluate(() => window.__liveMap().getZoom());
     const backToHere = page.getByRole("button", { name: "現在地へ戻る" });
 
-    // 走っている間の倍率のボタンは、押すたびに中→遠→近→中と基準の倍率を替える（速さ0なので引かない）。
+    // 走っている間の倍率のボタンは、押すたびに中→遠→近→中と倍率を替える。
     const zoomButton = page.getByRole("button", { name: /^倍率/ });
     expect(await settledZoom(page)).toBeCloseTo(17, 2);
     for (const expected of [15, 18, 17]) {

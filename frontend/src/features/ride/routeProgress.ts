@@ -7,9 +7,10 @@
 import type { TrackProjection } from "@/lib/routeDistance";
 
 /**
- * 最も近い点からの隔たりの差がこれより小さい点は、同じ近さとして前の位置から続く側を選ぶ（m）。端末の位置の誤差と、
- * 往復で上下線を分けて走る道の行きと帰りの間隔より大きくする。大きくするほど、別の所を通る点まで続く側の候補に残り、
- * ルートを外れて別の所へ移ったときに最も近い点へ移るのが遅れる。
+ * ルートの線（道の中心）と、その道を走る現在地の隔たりとして見込む幅（m）。最も近い点からの隔たりの差がこれより小さい点は、
+ * 同じ近さとして前の位置から続く側を選び、位置の誤差よりこれだけ遠く離れるまではルートを外れたとしない。端末の位置の誤差と、
+ * 往復で上下線を分けて走る道の行きと帰りの間隔・広い道の中心から端までより大きくする。大きくするほど、別の所を通る点まで
+ * 続く側の候補に残り、ルートを外れて別の所へ移ったときに最も近い点へ移るのも、外れたと出すのも遅れる。
  */
 export const ROUTE_MATCH_SLACK_M = 30;
 
@@ -41,11 +42,12 @@ export function locateOnRoute(projected: readonly TrackProjection[], previousKm:
 }
 
 /**
- * 現在地が、ルートから外れているか。`projected`は現在地をルートの辺へ射影したもの（`projectOnTrack`）。端末が位置と一緒に返す誤差`accuracyM`（m）を超えてルートから離れていれば
- * 外れている。誤差は測った位置がどれだけ確かかという端末の事実で、外れの境目をこちらで決めた数字にしない。誤差が
- * 分からなければ、外れていないとみなす。
+ * 現在地が、ルートから外れているか。`projected`は現在地をルートの辺へ射影したもの（`projectOnTrack`）。端末が位置と一緒に
+ * 返す誤差`accuracyM`（m）に`ROUTE_MATCH_SLACK_M`を足した幅を超えてルートから離れていれば外れている。誤差だけを
+ * 境目にすると、線は道の中心を通るので、広い道の端を走るだけで外れたと出る（tasks#1212）。誤差が分からなければ、
+ * 外れていないとみなす。
  */
 export function offRoute(projected: readonly TrackProjection[], accuracyM: number | null): boolean {
   if (accuracyM === null || projected.length === 0) return false;
-  return Math.min(...projected.map(({ offsetM }) => offsetM)) > accuracyM;
+  return Math.min(...projected.map(({ offsetM }) => offsetM)) > accuracyM + ROUTE_MATCH_SLACK_M;
 }

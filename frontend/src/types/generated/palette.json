@@ -50,6 +50,7 @@
       0.07,
       0.85
     ],
-    "saturation_scale": 0.6
+    "saturation_scale": 0.6,
+    "icon_opacity_scale": 0.5
   }
 }

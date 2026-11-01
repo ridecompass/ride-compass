@@ -29,7 +29,7 @@ import {
   serveHome,
   showRoadSurface,
 } from "@/testing/homePage";
-import { themedColors } from "@/features/map/basemapTheme";
+import { themedPaint } from "@/features/map/basemapTheme";
 import { LAYER_DATA_STATUS_LABELS } from "@/features/map/layers/mapLayers";
 import { LIBERTY_POI_LAYERS } from "@/testing/libertyPoiLayers";
 import { insetMapOnScreen, mapOnScreen } from "@/testing/maplibre";
@@ -202,7 +202,7 @@ describe("画面の枠", () => {
     expect(ground()).toBe("#f8f4f0");
 
     await fromMenu("地図を暗くする");
-    const dark = themedColors("dark", basemap[0].paint)["background-color"];
+    const dark = themedPaint("dark", basemap[0].paint)["background-color"];
     expect(ground()).toBe(dark);
     await redraw();
     expect(ground()).toBe(dark);

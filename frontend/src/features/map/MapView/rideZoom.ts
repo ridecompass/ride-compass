@@ -1,5 +1,5 @@
-// 走行モードで追っている間の倍率。基準の倍率は倍率のボタンで段を回して選び、速く走るほど先が見えるようそこから引き、
-// ゆっくりになると基準の倍率へ戻す。
+// 走行モードで追っている間の倍率。倍率のボタンで段を回して選ぶ（速さでは変えない——走る速さで倍率がじわじわ動くと
+// 読みにくい。tasks#1212）。
 
 /** 走行モードの倍率のボタンが回す基準の倍率（押す順）。走り始めは先頭の中（数十m先の曲がり角が地図の上で見分けられる。
  * 17で1pxが約1m）。`reach`は絵の角の広がり。 */
@@ -9,12 +9,6 @@ export const RIDE_ZOOM_STEPS = [
   { reach: "near", label: "近", zoom: 18 },
 ] as const;
 export type RideZoomStep = (typeof RIDE_ZOOM_STEPS)[number];
-/** これより遅い間は引かない（時速km）。 */
-export const RIDE_ZOOM_SLOW_KMH = 15;
-/** これより速い間は、いちばん引いたまま（時速km）。 */
-export const RIDE_ZOOM_FAST_KMH = 35;
-/** いちばん引いたときに、基準の倍率から下げる段の数（1段で見える範囲が縦横2倍）。 */
-export const RIDE_ZOOM_MAX_OUT = 2;
 
 /** 追っている間の基準の倍率。この走行でまだ選んでいなければ（`chosen`がnull）最初の段。 */
 export function rideZoomBase(chosen: number | null): number {
@@ -33,11 +27,4 @@ export function nearestRideZoomStep(zoom: number): RideZoomStep {
 export function nextRideZoom(zoom: number): number {
   const index = RIDE_ZOOM_STEPS.indexOf(nearestRideZoomStep(zoom));
   return RIDE_ZOOM_STEPS[(index + 1) % RIDE_ZOOM_STEPS.length].zoom;
-}
-
-/** 走る速さに応じて、基準の倍率からどれだけ引くか（段の数）。速さが分からなければ引かない。 */
-export function rideZoomOut(speedKmh: number | null): number {
-  if (speedKmh === null) return 0;
-  const ratio = (speedKmh - RIDE_ZOOM_SLOW_KMH) / (RIDE_ZOOM_FAST_KMH - RIDE_ZOOM_SLOW_KMH);
-  return Math.min(1, Math.max(0, ratio)) * RIDE_ZOOM_MAX_OUT;
 }

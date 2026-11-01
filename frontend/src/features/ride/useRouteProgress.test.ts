@@ -5,7 +5,7 @@
  *
  * ここで見ないもの:
  * - 1つの位置から距離を選ぶ決まり（最も近い点・続く側・前へ進んだ側） → `routeProgress.test.ts`
- * - ルートを外れたかの決め方（端末の位置の誤差を超えて離れたか） → `routeProgress.test.ts`
+ * - ルートを外れたかの決め方（端末の位置の誤差と線へ当てる余裕の和を超えて離れたか） → `routeProgress.test.ts`
  * - 外れている間は外れた点で止め、戻ったら戻った点から続けること → `app/page.ride.test.tsx`
  */
 import { renderHook } from "@testing-library/react";

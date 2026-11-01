@@ -184,6 +184,9 @@ SEMANTIC_COLORS: dict[str, str] = {
 #: 掛けないと、反転した暗い色が地図の上で浮く。
 BASEMAP_DARK_LIGHTNESS_RANGE: tuple[float, float] = (0.07, 0.85)
 BASEMAP_DARK_SATURATION_SCALE = 0.6
+#: 暗い地図の基礎地図の絵の印（道の番号の標識・バス停・施設の印等）の不透明度に掛ける割合。絵は画像で色を変えられないので、
+#: 透かして暗い地へ沈める（1のままだと白い標識が暗い地図の上で光る）。
+BASEMAP_DARK_ICON_OPACITY_SCALE = 0.5
 
 
 def resolved_display_axes(attr: PrimaryAttributeSpec) -> list[dict]:

@@ -38,7 +38,7 @@ interface RideOnMap {
   onResume: () => void;
   /** 進む向きを上にするかを選んだ。 */
   onHeadingUpChange: (headingUp: boolean) => void;
-  /** 追っている間の基準の倍率（速さで引く前）。この走行でまだ選んでいなければnull（地図が最初の段を使う）。 */
+  /** 追っている間の倍率。この走行でまだ選んでいなければnull（地図が最初の段を使う）。 */
   zoomBase: number | null;
   /** 利用者が基準の倍率を選んだ（倍率のボタン・つまむ）。 */
   onZoomBaseChange: (zoom: number) => void;
