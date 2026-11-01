@@ -8,7 +8,7 @@ import type { LiveValue } from "@/lib/liveValue";
 import { visibleCenterOffset } from "@/lib/routeFit";
 import type { Coordinates } from "@/types/route";
 
-import { nextRideZoom, rideZoomBase, rideZoomOut } from "./rideZoom";
+import { nextRideZoom, rideZoomBase } from "./rideZoom";
 
 /** 走行モードで地図が受ける値（走行モードの間だけ渡る）。 */
 export interface RideFollow {
@@ -19,8 +19,6 @@ export interface RideFollow {
    * 描き直さずに読む口で受け、現在地の印だけを回す。 */
   facing: LiveValue<number | null>;
   following: boolean;
-  /** 今の速さ（時速km）。分からなければnull。追っている間の倍率に使う。 */
-  speedKmh: number | null;
   /** 進む向きを上にするか（偽なら北が上）。 */
   headingUp: boolean;
   /** 利用者が地図を指で動かした・回した・区間を選んだ（追うのを休む）。 */
@@ -29,16 +27,13 @@ export interface RideFollow {
   onResume: () => void;
   /** 進む向きを上にするかを選んだ。 */
   onHeadingUpChange: (headingUp: boolean) => void;
-  /** 追っている間の基準の倍率（速さで引く前）。この走行でまだ選んでいなければnull。 */
+  /** 追っている間の倍率。この走行でまだ選んでいなければnull。 */
   zoomBase: number | null;
   /** 利用者が基準の倍率を選んだ（倍率のボタン・追っている間につまむ）。 */
   onZoomBaseChange: (zoom: number) => void;
   /** 地図への触れを受け付けないロックの間か。 */
   locked: boolean;
 }
-
-// 速さは位置ごとに揺れるので、新しい値をこの割合だけ混ぜてから倍率に使う（倍率がちらつかないように）。
-const SPEED_SMOOTHING = 0.3;
 
 // ロックの間に止める、地図の手ぶりの操作（MapLibreの各操作の入切の口）。
 const GESTURE_HANDLERS = [
@@ -96,11 +91,8 @@ export function useRideFollow(
   here: Coordinates | null,
 ): { onNextZoom: () => void; onCompass: () => void } {
   const latest = useRef(ride);
-  // 追っている間の倍率の基準（速さで引く前）と、なめらかにした速さ、いま当てている引きの段の数。基準は、つまみ終えて
-  // 寄せ直すときに新しい値が描き直しより先に要るので、受けた値とは別に手元に持つ。
+  // 追っている間の倍率。つまみ終えて寄せ直すときに新しい値が描き直しより先に要るので、受けた値とは別に手元に持つ。
   const baseZoom = useRef<number | null>(null);
-  const smoothedSpeed = useRef<number | null>(null);
-  const appliedZoomOut = useRef(0);
   // 利用者が休まずに続ける操作（拡大・縮小・2本指）の最中か。最中にカメラを動かすとMapLibreが操作を打ち切る。
   const gesture = useRef(false);
   // 最後に届いた位置へカメラを寄せる。操作の最中に届いた位置へは、操作が終わってから寄せる。
@@ -127,10 +119,10 @@ export function useRideFollow(
       gesture.current = false;
       if (latest.current?.following) followCamera.current?.();
     }
-    // 追っている間に利用者が拡大・縮小したら、その倍率を基準にし直す（速さの分の引きはその上に重ねる）。
+    // 追っている間に利用者が拡大・縮小したら、その倍率で追い続ける。
     function rebaseOnUserZoom(event: { originalEvent?: unknown }) {
       if (event.originalEvent === undefined || !latest.current?.following) return;
-      baseZoom.current = shown.getZoom() + appliedZoomOut.current;
+      baseZoom.current = shown.getZoom();
       latest.current.onZoomBaseChange(baseZoom.current);
     }
     // 寄せる先の画面の点（見えている所の中ほど）は地図の大きさで変わる（背が低いと重ねた部品を避ける余白が縮む）。大きさの
@@ -230,41 +222,30 @@ export function useRideFollow(
   );
 
   // 追っている間、届いた位置へ中心を、進む向きが上なら向きも動かす（向きがまだ分からなければ今の向きのまま）。
-  // 倍率は基準から速さの分だけ引く（速いほど先が見える）。速さは位置が届くたびに1回だけ混ぜる（基準の倍率が変わって
-  // 寄せ直すときには混ぜない）。
   const headingUp = ride?.headingUp ?? false;
   const bearing = ride?.bearing ?? null;
-  const speedKmh = ride?.speedKmh ?? null;
   const zoomBase = ride !== null ? rideZoomBase(ride.zoomBase) : null;
   useEffect(() => {
-    if (!following) {
-      smoothedSpeed.current = null;
-      gesture.current = false;
-      return;
-    }
-    if (speedKmh === null) return;
-    const previous = smoothedSpeed.current;
-    smoothedSpeed.current = previous === null ? speedKmh : previous + SPEED_SMOOTHING * (speedKmh - previous);
-  }, [following, position, speedKmh]);
+    if (!following) gesture.current = false;
+  }, [following]);
   useEffect(() => {
     baseZoom.current = zoomBase;
   }, [zoomBase]);
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !following || position === null) return;
-    appliedZoomOut.current = rideZoomOut(smoothedSpeed.current);
     const center: [number, number] = [position.longitude, position.latitude];
     followCamera.current = () =>
       map.easeTo({
         center,
         bearing: headingUp ? (bearing ?? map.getBearing()) : 0,
-        zoom: (baseZoom.current ?? map.getZoom()) - appliedZoomOut.current,
+        zoom: baseZoom.current ?? map.getZoom(),
         offset: visibleCenterOffset(map.getCanvas()),
         // 位置は毎秒届くので、滑らかに動かすと動く間ずっと途中のコマを描き、走行中の電池を食う（page-composition.md「走行の値へ流す位置」）。
         duration: 0,
       });
     if (!gesture.current) followCamera.current();
-  }, [mapRef, following, position, bearing, headingUp, speedKmh, zoomBase]);
+  }, [mapRef, following, position, bearing, headingUp, zoomBase]);
 
   // 追っている間は基準が変わって寄せ直す。休んでいる間は追い直すまで中心を動かさず、倍率だけをその段へ寄せる。
   const onNextZoom = useCallback(() => {

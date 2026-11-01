@@ -1,30 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 
-import {
-  RIDE_ZOOM_FAST_KMH,
-  RIDE_ZOOM_MAX_OUT,
-  RIDE_ZOOM_SLOW_KMH,
-  RIDE_ZOOM_STEPS,
-  nearestRideZoomStep,
-  nextRideZoom,
-  rideZoomOut,
-} from "./rideZoom";
-
-describe("rideZoomOut: 走る速さに応じて、基準の倍率からどれだけ引くか", () => {
-  it.each([
-    { case: "速さが分からなければ引かない", speedKmh: null, out: 0 },
-    { case: "ゆっくりの間は引かない", speedKmh: RIDE_ZOOM_SLOW_KMH - 5, out: 0 },
-    {
-      case: "間の速さでは、速さに比例して引く",
-      speedKmh: (RIDE_ZOOM_SLOW_KMH + RIDE_ZOOM_FAST_KMH) / 2,
-      out: RIDE_ZOOM_MAX_OUT / 2,
-    },
-    { case: "速い間は、いちばん引いたまま", speedKmh: RIDE_ZOOM_FAST_KMH + 5, out: RIDE_ZOOM_MAX_OUT },
-  ])("$case", ({ speedKmh, out }) => {
-    expect(rideZoomOut(speedKmh)).toBeCloseTo(out, 6);
-  });
-});
+import { RIDE_ZOOM_STEPS, nearestRideZoomStep, nextRideZoom } from "./rideZoom";
 
 describe("倍率のボタン: 押すたびに基準の倍率を中・遠・近の段で回し、段の間の倍率では一番近い段の絵を出して次の段へ進む", () => {
   const [middle, far, near] = RIDE_ZOOM_STEPS;

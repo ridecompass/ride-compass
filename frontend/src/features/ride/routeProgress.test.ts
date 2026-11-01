@@ -67,8 +67,18 @@ describe("locateOnRoute", () => {
 
 describe("offRoute", () => {
   it.each([
-    { case: "ルートからの隔たりが位置の誤差の内", meters: 15, accuracyM: 20, expected: false },
-    { case: "ルートからの隔たりが位置の誤差を超える", meters: 25, accuracyM: 20, expected: true },
+    {
+      case: "ルートからの隔たりが位置の誤差を超えても、線へ当てる余裕の内",
+      meters: 20 + ROUTE_MATCH_SLACK_M - 5,
+      accuracyM: 20,
+      expected: false,
+    },
+    {
+      case: "ルートからの隔たりが位置の誤差と線へ当てる余裕の和を超える",
+      meters: 20 + ROUTE_MATCH_SLACK_M + 5,
+      accuracyM: 20,
+      expected: true,
+    },
     { case: "位置の誤差が分からない", meters: 500, accuracyM: null, expected: false },
   ])("$case", ({ meters, accuracyM, expected }) => {
     expect(offRoute(projectOnTrack(OUT_AND_BACK, moved(QUARTER_WAY, meters)), accuracyM)).toBe(expected);

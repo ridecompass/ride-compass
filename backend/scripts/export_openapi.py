@@ -129,6 +129,7 @@ from app.domain.weather_display import (
     WIND_SPEED_COLOR_STOPS,
 )
 from app.domain.display_palette import (
+    BASEMAP_DARK_ICON_OPACITY_SCALE,
     BASEMAP_DARK_LIGHTNESS_RANGE,
     BASEMAP_DARK_SATURATION_SCALE,
     SEMANTIC_COLORS,
@@ -344,6 +345,7 @@ def main() -> None:
             "basemap_dark": {
                 "lightness_range": list(BASEMAP_DARK_LIGHTNESS_RANGE),
                 "saturation_scale": BASEMAP_DARK_SATURATION_SCALE,
+                "icon_opacity_scale": BASEMAP_DARK_ICON_OPACITY_SCALE,
             },
         },
     )

@@ -1,5 +1,6 @@
-/** 暗い地図は、配信元の基礎地図のスタイルの塗りの色を、backendが宣言した規則
- * （`domain/display_palette.py: BASEMAP_DARK_LIGHTNESS_RANGE`・`BASEMAP_DARK_SATURATION_SCALE`）で暗くして作る。 */
+/** 暗い地図は、配信元の基礎地図のスタイルの塗りの色と絵の印の不透明度を、backendが宣言した規則
+ * （`domain/display_palette.py: BASEMAP_DARK_LIGHTNESS_RANGE`・`BASEMAP_DARK_SATURATION_SCALE`・
+ * `BASEMAP_DARK_ICON_OPACITY_SCALE`）で暗くして作る。 */
 import type { MapTheme } from "@/lib/mapTheme";
 import { hexToRgb, rgbToHsl } from "@/lib/rgbHsl";
 import palette from "@/types/generated/palette.json";
@@ -7,6 +8,7 @@ import palette from "@/types/generated/palette.json";
 const {
   lightness_range: [LIGHTNESS_LOW, LIGHTNESS_HIGH],
   saturation_scale: SATURATION_SCALE,
+  icon_opacity_scale: ICON_OPACITY_SCALE,
 } = palette.basemap_dark;
 
 const RGB = /^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*(?:,\s*([\d.]+)\s*)?\)$/i;
@@ -44,9 +46,17 @@ function darkenValue(value: unknown): unknown {
   return value;
 }
 
-/** 基礎地図の層の色の塗り（`*-color`の名前→値）を地の明るさに合わせる。暗い地図では、色相を残して明るさを反転し、決めた範囲へ
- * 収め、彩度を抑える（式の中の色も、式の形を保ったまま）。 */
-export function themedColors(theme: MapTheme, colors: Readonly<Record<string, unknown>>): Record<string, unknown> {
-  if (theme === "light") return { ...colors };
-  return Object.fromEntries(Object.entries(colors).map(([name, value]) => [name, darkenValue(value)]));
+/** 絵の印の不透明度を暗い地図の値へ。配信元は数で書く（書かなければ既定の1）ので、式はそのまま返す。 */
+function dimIcon(value: unknown): unknown {
+  return typeof value === "number" ? value * ICON_OPACITY_SCALE : value;
+}
+
+/** 基礎地図の層の塗りのうち地の明るさで変えるもの（色の塗り`*-color`と、絵の印の`icon-opacity`。名前→値）を地の明るさに
+ * 合わせる。暗い地図では、色は色相を残して明るさを反転し、決めた範囲へ収め、彩度を抑える（式の中の色も、式の形を保ったまま）。
+ * 絵の印は画像で色を変えられないので、透かして沈める。 */
+export function themedPaint(theme: MapTheme, paint: Readonly<Record<string, unknown>>): Record<string, unknown> {
+  if (theme === "light") return { ...paint };
+  return Object.fromEntries(
+    Object.entries(paint).map(([name, value]) => [name, name === "icon-opacity" ? dimIcon(value) : darkenValue(value)]),
+  );
 }

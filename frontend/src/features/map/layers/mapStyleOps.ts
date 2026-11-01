@@ -6,7 +6,7 @@ import type {
   Map as MapLibreMap,
   StyleSpecification,
 } from "maplibre-gl";
-import { themedColors } from "@/features/map/basemapTheme";
+import { themedPaint } from "@/features/map/basemapTheme";
 import type { MapTheme } from "@/lib/mapTheme";
 import { debugLog } from "@/lib/debugLog";
 import palette from "@/types/generated/palette.json";
@@ -91,7 +91,7 @@ interface StyleReadyTag {
   /** 基礎地図の店・施設を描くレイヤーの配信元の絞り（id → 絞り）。 */
   __rcBasemapPoiFilters?: ReadonlyMap<string, FilterSpecification | undefined>;
   /** 基礎地図の層の、明るい地図の色の塗り（id → `*-color`の名前 → 値）。 */
-  __rcBasemapColors?: ReadonlyMap<string, Readonly<Record<string, unknown>>>;
+  __rcBasemapPaint?: ReadonlyMap<string, Readonly<Record<string, unknown>>>;
   /** 基礎地図の色の塗りへ今当てている地の明るさ。 */
   __rcBasemapTheme?: MapTheme;
 }
@@ -134,15 +134,18 @@ export function prepareBasemap(map: MapLibreMap): void {
     map.setPaintProperty(layerId, "line-color", palette.semantic.basemap_minor_road_casing);
   }
   debugLog("map:lifecycle", "基礎地図の細い道の縁取りを描き替えた層", { layers: recolored });
-  // ラスタの層は画像なので記録しない（libertyでは縮尺7未満だけに出る陰影の画像で、暗い地図でも明るいまま）。
-  tagged.__rcBasemapColors = new Map(
+  // ラスタの層は画像なので記録しない（libertyでは縮尺7未満だけに出る陰影の画像で、暗い地図でも明るいまま）。絵の印（道の番号の
+  // 標識・バス停等）は不透明度を記録する（書かれていなければ既定の1）。
+  tagged.__rcBasemapPaint = new Map(
     layers.flatMap((layer) => {
-      if (layer.type === "raster" || layer.paint === undefined) return [];
-      const colors = Object.fromEntries(
-        Object.entries(layer.paint).filter(([name]) => name.endsWith("-color")),
+      if (layer.type === "raster") return [];
+      const paint = Object.fromEntries(
+        Object.entries(layer.paint ?? {}).filter(([name]) => name.endsWith("-color")),
       ) as Record<string, unknown>;
-      if (recolored.includes(layer.id)) colors["line-color"] = palette.semantic.basemap_minor_road_casing;
-      return Object.keys(colors).length === 0 ? [] : [[layer.id, colors] as const];
+      if (recolored.includes(layer.id)) paint["line-color"] = palette.semantic.basemap_minor_road_casing;
+      if (layer.type === "symbol" && layer.layout?.["icon-image"] !== undefined)
+        paint["icon-opacity"] = layer.paint?.["icon-opacity"] ?? 1;
+      return Object.keys(paint).length === 0 ? [] : [[layer.id, paint] as const];
     }),
   );
   tagged.__rcBasemapTheme = "light";
@@ -158,21 +161,21 @@ export function prepareBasemap(map: MapLibreMap): void {
   debugLog("map:lifecycle", "面レイヤーの差し込み位置", { anchorId, lowered });
 }
 
-/** 基礎地図の色の塗りを地の明るさに合わせる（`prepareBasemap`が記録した明るい地図の色から求める）。今当てている明るさと同じなら
+/** 基礎地図の色の塗りと絵の印の不透明度を地の明るさに合わせる（`prepareBasemap`が記録した明るい地図の値から求める）。今当てている明るさと同じなら
  * 何もしない——塗りが式で道の種類ごとに色を分ける層は、塗りを変えるとタイルを組み直すため。 */
 export function themeBasemap(map: MapLibreMap, theme: MapTheme): void {
   const tagged = tagOf(map);
-  const colors = tagged.__rcBasemapColors;
-  if (colors === undefined || tagged.__rcBasemapTheme === theme) return;
-  for (const [layerId, paint] of colors)
-    for (const [name, value] of Object.entries(themedColors(theme, paint)))
+  const recorded = tagged.__rcBasemapPaint;
+  if (recorded === undefined || tagged.__rcBasemapTheme === theme) return;
+  for (const [layerId, paint] of recorded)
+    for (const [name, value] of Object.entries(themedPaint(theme, paint)))
       map.setPaintProperty(
         layerId,
         name as Parameters<MapLibreMap["setPaintProperty"]>[1],
         value as Parameters<MapLibreMap["setPaintProperty"]>[2],
       );
   tagged.__rcBasemapTheme = theme;
-  debugLog("map:lifecycle", "基礎地図の地の明るさ", { theme, layers: colors.size });
+  debugLog("map:lifecycle", "基礎地図の地の明るさ", { theme, layers: recorded.size });
 }
 
 /** 面レイヤーの差し込み位置（`prepareBasemap`が記録したもの）。記録が無い・今のスタイルに無いときは
