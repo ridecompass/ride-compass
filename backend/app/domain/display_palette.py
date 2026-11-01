@@ -178,6 +178,14 @@ SEMANTIC_COLORS: dict[str, str] = {
     "crash_bicycle": _STOP_RED,
 }
 
+#: 暗い地図の基礎地図。配信元のスタイル（liberty）の塗りの色を、色相を残して明るさを反転して作る（反転の式は画面の
+#: `features/map/basemapTheme.ts: darkColor`）。明るさの範囲は、HSLの明るさ（0〜1）で、最も明るい塗り（地色）と最も暗い塗り
+#: （文字）の行き先。下端はまぶしさを抑えるため黒の手前に置き、上端は1にすると反転した文字が白く光るので抑える。彩度の割合を
+#: 掛けないと、反転した暗い色が地図の上で浮く。
+BASEMAP_DARK_LIGHTNESS_RANGE: tuple[float, float] = (0.07, 0.85)
+BASEMAP_DARK_SATURATION_SCALE = 0.6
+
+
 def resolved_display_axes(attr: PrimaryAttributeSpec) -> list[dict]:
     """行の色を解決した表示定義。**色は宣言に無い**ので、配る直前にここで決める。
 

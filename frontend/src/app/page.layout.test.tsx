@@ -3,7 +3,7 @@
  *
  * 見ること: 地図の表示をまとめて戻す操作（「表示」の一覧の末尾と右上のメニュー）、右上の方位磁針（地図の北を指し、
  * 開いたダイヤルで地図を回して北へ戻す。なぞる途中で閉じたら回さない）と拡大・縮小、地図を読み込み中の覆いが上限の時間で外れること、層の取得状態の数え直しと
- * 再描画の失敗の案内、区分の開閉の保存、左下の俯瞰図（気象の層を出して寄せると出て、道路を消した下地に同じ気象の層を描き、引くと消え、畳んだことを覚える）、
+ * 再描画の失敗の案内、メニューで地図を暗くすること（基礎地図の色を暗くし、描き直しても保ち、覚える）、区分の開閉の保存、左下の俯瞰図（気象の層を出して寄せると出て、道路を消した下地に同じ気象の層を描き、引くと消え、畳んだことを覚える）、
  * ヘッダーの「未取得」に並ぶ出所と「現在地に移動」の失敗、「現在地に移動」が出発地を変えずに地図を寄せて現在地に点を
  * 出すこと、メニューから入る使い方の説明とデバッグログ。
  *
@@ -29,6 +29,7 @@ import {
   serveHome,
   showRoadSurface,
 } from "@/testing/homePage";
+import { themedColors } from "@/features/map/basemapTheme";
 import { LAYER_DATA_STATUS_LABELS } from "@/features/map/layers/mapLayers";
 import { LIBERTY_POI_LAYERS } from "@/testing/libertyPoiLayers";
 import { insetMapOnScreen, mapOnScreen } from "@/testing/maplibre";
@@ -179,6 +180,37 @@ describe("画面の枠", () => {
     expect(mapOnScreen().styles).toHaveLength(before + 2);
     act(() => mapOnScreen().emit("style.load"));
     expect(failure()).toBeNull();
+  });
+
+  it("メニューの「地図を暗くする」で基礎地図の色を暗くし、地図を描き直しても暗いまま。次に開いたときも暗い地図を選んだまま", async () => {
+    const { user, unmount } = renderHome();
+    const basemap = [{ id: "background", type: "background", paint: { "background-color": "#f8f4f0" } }];
+    const ground = () => mapOnScreen().layerPaint("background")?.["background-color"];
+    const fromMenu = async (name: string) => {
+      await user.click(screen.getByRole("button", { name: "メニュー" }));
+      await user.click(screen.getByRole("button", { name }));
+      await user.keyboard("{Escape}");
+    };
+    const redraw = async () => {
+      await fromMenu("地図の表示を再描画");
+      act(() => {
+        mapOnScreen().loadStyle(basemap);
+        mapOnScreen().emit("style.load");
+      });
+    };
+    await redraw();
+    expect(ground()).toBe("#f8f4f0");
+
+    await fromMenu("地図を暗くする");
+    const dark = themedColors("dark", basemap[0].paint)["background-color"];
+    expect(ground()).toBe(dark);
+    await redraw();
+    expect(ground()).toBe(dark);
+    unmount();
+
+    const again = renderHome();
+    await again.user.click(screen.getByRole("button", { name: "メニュー" }));
+    expect(screen.getByRole("button", { name: "地図を暗くする" })).toHaveAttribute("aria-pressed", "true");
   });
 
   it("区分の開閉は、次に開いたときも同じになる", async () => {

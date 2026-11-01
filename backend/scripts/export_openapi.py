@@ -129,6 +129,8 @@ from app.domain.weather_display import (
     WIND_SPEED_COLOR_STOPS,
 )
 from app.domain.display_palette import (
+    BASEMAP_DARK_LIGHTNESS_RANGE,
+    BASEMAP_DARK_SATURATION_SCALE,
     SEMANTIC_COLORS,
     resolved_display_axes,
 )
@@ -339,6 +341,10 @@ def main() -> None:
         PALETTE_PATH,
         {
             "semantic": SEMANTIC_COLORS,
+            "basemap_dark": {
+                "lightness_range": list(BASEMAP_DARK_LIGHTNESS_RANGE),
+                "saturation_scale": BASEMAP_DARK_SATURATION_SCALE,
+            },
         },
     )
     # 地図に出すものの最上位の束ね方（domain/map_display.py）。並びが「表示」の一覧の並び順。

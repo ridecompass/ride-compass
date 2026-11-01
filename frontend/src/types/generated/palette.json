@@ -44,5 +44,12 @@
     "signal_stop": "#e2453c",
     "crash": "#f08a24",
     "crash_bicycle": "#e2453c"
+  },
+  "basemap_dark": {
+    "lightness_range": [
+      0.07,
+      0.85
+    ],
+    "saturation_scale": 0.6
   }
 }

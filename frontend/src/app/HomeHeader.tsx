@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import DebugConsole from "@/components/DebugConsole/DebugConsole";
 import HeaderMenu from "@/components/HeaderMenu/HeaderMenu";
+import type { MapTheme } from "@/lib/mapTheme";
 import { Button } from "@/components/ui/Button/Button";
 import { RouteIcon } from "@/components/ui/icons/icons";
 import WarningBadgeList from "@/features/conditions/WarningBadge/WarningBadge";
@@ -28,6 +29,8 @@ interface HomeHeaderProps {
   locationFailure: FetchFailure | null;
   mapBearingDeg: number;
   onRedrawMap: () => void;
+  mapTheme: MapTheme;
+  onMapThemeChange: (theme: MapTheme) => void;
   onStartUsageGuide: () => void;
   /** 走行中にパネルを出しているか。 */
   panelsShown: boolean;
@@ -44,6 +47,8 @@ export default function HomeHeader({
   locationFailure,
   mapBearingDeg,
   onRedrawMap,
+  mapTheme,
+  onMapThemeChange,
   onStartUsageGuide,
   panelsShown,
   onToggleRidePanel,
@@ -107,6 +112,8 @@ export default function HomeHeader({
                 onToggleDebugConsole={() => setDebugConsoleOpen((v) => !v)}
                 onStartUsageGuide={onStartUsageGuide}
                 onRedrawMap={onRedrawMap}
+                mapTheme={mapTheme}
+                onMapThemeChange={onMapThemeChange}
               />
             </div>
           )}
