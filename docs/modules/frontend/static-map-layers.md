@@ -50,7 +50,8 @@
 | `features/map/MapView/layerDataSources.ts` | レイヤーのデータ取得状態の算出元（`features/map/MapView/layerDataSources.ts: buildLayerDataSources`）。レイヤーカタログの情報源の名前を、取得を見るMapLibreのソースへ引く |
 | `features/map/baseMap.ts` | 基礎地図のスタイル・出典の表記・MapLibreの部品の日本語の文言で地図を作る（`features/map/baseMap.ts: createBaseMap`）。一般の地図（`MapView.tsx`）と下書きの点数の地図が使い、載せるものはどちらも場面で当てる。地図が今見ている範囲の読み取り（`features/map/baseMap.ts: viewportOf`）も両方が使う。俯瞰図（`features/map/MapOverview/MapOverview.tsx`）は`inset`で、操作を受けず出典の表記を持たない地図として作る（出典は同じ画面の本体の地図が出す）。基礎地図の文字は薄れさせずに出し入れする（MapLibre の`fadeDuration`を0にする）——薄れる間は地図全体を描き直し続けるので、ずらすたびに操作が重くなる |
 | `features/map/DraftWayValuesMap/DraftWayValuesMap.tsx` | 下書きの点数の地図（管理画面の較正の画面が置く。[軸スタジオ](axis-studio.md)「較正の画面」）。下書きで求めた道の点数を、一般の地図と同じ場面の組み立て・道の線の塗り・凡例で塗る。点数は backend が走る条件を入れて求め終えた値なので、道ごとの材料1つとして載せ、それをそのまま道の値にする木（`scene/wayValueFormula.ts: featureValueFormula`）で塗る。下書きの中身と点数の求め方は知らず、置く側が渡す |
-| `features/map/layers/mapStyleOps.ts` | 地図インスタンスへの低水準操作（スタイル読み込み後の実行・面レイヤーの差し込み位置・基礎地図の細い道の縁取りの描き替え・ズーム依存のicon-size式）。このアプリのどのレイヤーかを知らないものだけを置く |
+| `features/map/basemapTheme.ts`・`lib/mapTheme.ts` | 基礎地図の色の塗りを地の明るさに合わせる（下記「暗い地図」）。地の明るさの型は、メニュー（`components/`）も読むので`lib/`に置く |
+| `features/map/layers/mapStyleOps.ts` | 地図インスタンスへの低水準操作（スタイル読み込み後の実行・面レイヤーの差し込み位置・基礎地図の細い道の縁取りの描き替え・基礎地図の地の明るさ・ズーム依存のicon-size式）。このアプリのどのレイヤーかを知らないものだけを置く |
 | `features/map/layers/routeArrowIcon.ts`・`components/ui/icons/icons.tsx`・`components/ui/icons/layerIcons.tsx`・`components/ui/icons/lucideIcons.tsx`・`components/ui/icons/mapLayerIcons.ts` | ルート矢印・アイコン集（下記「本モジュールとの関係」参照）。`icons.tsx`はアイコンの土台（大きさの受け口・線の様式）と、操作・地点の自前の形、`layerIcons.tsx`は地図のレイヤーと評価軸の自前の形、`lucideIcons.tsx`はlucideの形の包み、`mapLayerIcons.ts`は源泉が宣言するレイヤーごとのアイコンの表（地図の「表示」の一覧と、区間の小窓の層の値のチップが同じ表を引く。レイヤーを足すと型が書き忘れを止める） |
 | `features/map/layers/sdfIcon.ts` | 地図の記号に使う単色シルエット（例: ルート矢印・落雷の記号）の描画の土台。白で塗った絵を`sdf: true`で登録し、色はicon-colorで付ける。canvasの2D描画が使えなければ投げる——空の絵を黙って返すと記号が地図から消えるだけで誰も気づけない。**単体テストは持たない**（テスト環境のcanvasは2D描画を実装しない。絵の中身は座標の宣言そのもので、写してもなにも守らない） |
 | `components/MapPopup/MapPopupParts.tsx` | 地図の小窓（点・道・区間）を組む部品。どの小窓も「上の帯」（`components/MapPopup/MapPopupParts.tsx: PopupHeader`）と塊——難易度の塊（`components/MapPopup/MapPopupParts.tsx: DifficultyBlock`。難易度・寄与の帯・軸のチップに、同じ塊で読むチップ（風・土地被覆）を並べる）と施設の行（`components/MapPopup/MapPopupParts.tsx: FacilityRows`）——だけで組む。小窓ごとに別の組み方をすると、同じ値が小窓によって違う形に見える。上の帯は右端を寄せるアイコンと×の幅だけ空ける——×はMapLibreが本文の器の右上に置き、どの中身でも幅32px・高さ44pxの押す所を持つ（`app/globals.css`） |
@@ -640,6 +641,28 @@ backendが200で応答する窓では、カタログは取得済みなのに世�
 **レイヤーソースの表示切替**に使う（`useDynamicWeatherLayers`が非表示キーを見て各ソースの
 `visible`を決める、[動的気象レイヤー](dynamic-weather-layers.md)参照）。UIとしては
 他の絞り込みと同じチェックボックス行で、反映先だけが異なる。
+
+## 暗い地図
+
+夜のまぶしさを抑え、有機ELの画面で電池の減りを抑えるため、地図を暗い色で出せる。いつ暗くするかは、今は利用者が
+画面の右上のメニューの「地図を暗くする」で選び、端末に覚える（`features/map/view/useMapView.ts: mapTheme`）。自動で切り替える
+（端末の暗い表示・走行モード・夜等）かは決めていない。
+
+- **基礎地図は、配信元のスタイル（liberty）の塗りの色を規則で暗くする**（`features/map/basemapTheme.ts: themedColors`）。
+  色の塗り（`*-color`。式の中の色も）を、色相を残して明るさを反転し、決めた範囲へ収め、彩度を抑えた色へ置き換える。規則の値は
+  backendの宣言（`domain/display_palette.py: BASEMAP_DARK_LIGHTNESS_RANGE`・`BASEMAP_DARK_SATURATION_SCALE`）が持ち、生成物
+  `palette.json`の`basemap_dark`で届く。層ごとの対応表は持たないので、配信元がスタイルを直せば暗い地図にもそのまま入る。
+  色として読むのは16進・`rgb()`・`hsl()`の形だけ（libertyの色の塗りはこの形だけで書かれている）——色の名前（`red`等）は式の中の
+  分類名・属性名と見分けられないので読まず、明るいまま残る。ラスタの層（libertyでは縮尺7未満の陰影の画像）は画像なので変えない。
+  OpenFreeMapの暗いスタイル（`dark`）は使わない——町名が縮尺14〜15で消え、道の名前と川が地とほぼ同じ暗さで、店・施設の層が無い
+  （配信元も未完成としている）。
+- **店・施設を隠すのと同じ道で当てる**。`mapStyleOps.ts: prepareBasemap`が、スタイルごとに1度、基礎地図の層の色の塗りを明るい地図の
+  色として記録し（細い道の縁取りは描き替えたあとの色、俯瞰図は町名の色を上書きしたあとの色）、`applyScene`が当てるたびに
+  `mapStyleOps.ts: themeBasemap`が記録から地の明るさの色を`setPaintProperty`で当てる（今当てている明るさと同じなら何もしない）。
+  スタイルを差し替えると基礎地図は明るい地図へ戻るが、作り直し（下の「スタイル取り直し後の作り直し」）が同じ道で当て直す。
+  スタイルは取り直さない。本体の地図は、起動したときも場面が当たる`load`まで「地図を読み込み中…」の覆いが隠すので、明るい地図は見えない（覆いの無い俯瞰図は、出た直後に明るい地図が一瞬見えうる）。
+- **このアプリが重ねる色は、まだ明るい地に合わせたまま**（`domain/display_palette.py`の分類色の明度の上限は、明るい地色に対する
+  コントラストで決めている）。評価の最も悪い濃い赤・順序のある分類の暗い端・選んだルートの縁取りの紺等は暗い地に沈む。
 
 ## まとめて戻す操作
 

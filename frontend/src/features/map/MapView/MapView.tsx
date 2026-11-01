@@ -214,7 +214,7 @@ export default function MapView({
 
   // スタイルを差し替えた後、いまの宣言を空から当て直す。
   const redrawFromCurrentProps = useCallback((map: MapLibreMap) => {
-    applyScene(map, latest.current.scene, { reset: true });
+    applyScene(map, latest.current.scene, { basemapTheme: latest.current.look.mapTheme, reset: true });
   }, []);
 
   const getLook = useCallback(() => latest.current.look, []);
@@ -283,10 +283,10 @@ export default function MapView({
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    applyScene(map, scene);
+    applyScene(map, scene, { basemapTheme: look.mapTheme });
     // 表示をONにしたレイヤーの状態をすぐ出す（タイルがキャッシュ済みだとsourcedataが来ない）。
     recomputeLayerDataStatus();
-  }, [scene, recomputeLayerDataStatus]);
+  }, [scene, look.mapTheme, recomputeLayerDataStatus]);
 
   // 選んでいるルートの全体へ収める（生成した・カードを押した・乗り換えで作ったとき）。追っている間（追う側が地図を動かす）は収めない。
   useEffect(() => {

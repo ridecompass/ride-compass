@@ -6,6 +6,7 @@ import { type RefObject, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button/Button";
 import { OverviewMapIcon } from "@/components/ui/icons/lucideIcons";
 import { createBaseMap } from "@/features/map/baseMap";
+import type { MapTheme } from "@/lib/mapTheme";
 import { runWhenStyleReady } from "@/features/map/layers/mapStyleOps";
 import {
   OVERVIEW_PLACE_LABEL,
@@ -30,6 +31,8 @@ const MOTORWAY_WIDTH_PX = 1;
 interface MapOverviewProps {
   viewport: MapViewport;
   dynamicWeather: SceneLook["dynamicWeather"];
+  /** 本体の地図と同じ地の明るさで描く。 */
+  theme: MapTheme;
   /** 本体の地図を収めた要素。その大きさから、俯瞰図の上の今の画面の枠を求める。 */
   paneRef: RefObject<HTMLElement | null>;
 }
@@ -54,7 +57,13 @@ export default function MapOverview(props: MapOverviewProps) {
   return <OverviewMap {...props} onCollapse={() => setCollapsed(true)} />;
 }
 
-function OverviewMap({ viewport, dynamicWeather, paneRef, onCollapse }: MapOverviewProps & { onCollapse: () => void }) {
+function OverviewMap({
+  viewport,
+  dynamicWeather,
+  theme,
+  paneRef,
+  onCollapse,
+}: MapOverviewProps & { onCollapse: () => void }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const [paneSize, setPaneSize] = useState<{ width: number; height: number } | null>(null);
@@ -113,8 +122,8 @@ function OverviewMap({ viewport, dynamicWeather, paneRef, onCollapse }: MapOverv
     [dynamicWeather, zoom, center.latitude, center.longitude],
   );
   useEffect(() => {
-    if (mapRef.current) applyScene(mapRef.current, scene);
-  }, [scene]);
+    if (mapRef.current) applyScene(mapRef.current, scene, { basemapTheme: theme });
+  }, [scene, theme]);
 
   useEffect(() => {
     const pane = paneRef.current;
