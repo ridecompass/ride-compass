@@ -3,6 +3,8 @@
 # PGDGの版（本番もPGDGの版を使っている）。版の正本は docs/architecture/tech-stack.md「DBの版」。
 # postgis/postgisのイメージはamd64しか配っていないため、arm64ではサービスコンテナにできない。
 # 接続先はこの action だけが持ち、TEST_DATABASE_SERVER・TEST_DATABASE_URL・DATABASE_URL として後の段へ渡す。
+# 入れるのに約30秒かかり、DB を使わない段（依存の用意・静的検査）と重ねられるので、phase で裏で始めて後で待つ形も選べる
+# （ci.yml の backend）。裏の処理は段をまたいで動き続け、ジョブの終わりにランナーが止める。
 name: PostgreSQL + PostGIS（本番と同じ版）
 description: 本番と同じ版の PostgreSQL + PostGIS を入れ、テスト用の DB を作って接続先を環境変数で渡す
 
@@ -13,32 +15,51 @@ inputs:
   copy-prefix:
     description: 複製する DB の名前の頭（<頭><0からの番号>）
     default: ""
+  phase:
+    description: all は入れ終わるまで待つ。start は裏で入れ始めてすぐ返し、DB を使う段の前に同じ action を wait で呼んで待つ
+    default: all
 
 runs:
   using: composite
   steps:
     # ランナーに入っている別の版のクラスタは5432番を塞ぐため、先に落とす。
-    - shell: bash
+    - if: inputs.phase != 'wait'
+      shell: bash
       env:
         COPIES: ${{ inputs.copies }}
         COPY_PREFIX: ${{ inputs.copy-prefix }}
+        PHASE: ${{ inputs.phase }}
       run: |
         role=ridecompass
         db=ridecompass_test
-        pg_lsclusters -h | while read -r ver name _; do sudo pg_dropcluster --stop "$ver" "$name"; done
-        sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
-        sudo apt-get install -y --no-install-recommends postgresql-18 postgresql-18-postgis-3
-        sudo pg_ctlcluster 18 main start
-        sudo -u postgres psql -v ON_ERROR_STOP=1 -c "CREATE ROLE $role LOGIN SUPERUSER PASSWORD '$role'"
-        sudo -u postgres createdb -O "$role" "$db"
-        sudo -u postgres psql -v ON_ERROR_STOP=1 -d "$db" -c "CREATE EXTENSION postgis" -c "CREATE EXTENSION postgis_raster"
-        echo "::notice title=DB::$(sudo -u postgres psql -d "$db" -Atc "SELECT version() || ' / PostGIS ' || postgis_lib_version() || ' / GEOS ' || postgis_geos_version() || ' / PROJ ' || split_part(postgis_proj_version(), ' ', 1) || ' / ' || postgis_gdal_version()")"
-        for i in $(seq 0 $((COPIES - 1))); do
-          sudo -u postgres createdb -O "$role" -T "$db" "${COPY_PREFIX}$i"
-        done
+        setup() {
+          pg_lsclusters -h | while read -r ver name _; do sudo pg_dropcluster --stop "$ver" "$name"; done
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y --no-install-recommends postgresql-18 postgresql-18-postgis-3
+          sudo pg_ctlcluster 18 main start
+          sudo -u postgres psql -v ON_ERROR_STOP=1 -c "CREATE ROLE $role LOGIN SUPERUSER PASSWORD '$role'"
+          sudo -u postgres createdb -O "$role" "$db"
+          sudo -u postgres psql -v ON_ERROR_STOP=1 -d "$db" -c "CREATE EXTENSION postgis" -c "CREATE EXTENSION postgis_raster"
+          echo "::notice title=DB::$(sudo -u postgres psql -d "$db" -Atc "SELECT version() || ' / PostGIS ' || postgis_lib_version() || ' / GEOS ' || postgis_geos_version() || ' / PROJ ' || split_part(postgis_proj_version(), ' ', 1) || ' / ' || postgis_gdal_version()")"
+          for i in $(seq 0 $((COPIES - 1))); do
+            sudo -u postgres createdb -O "$role" -T "$db" "${COPY_PREFIX}$i"
+          done
+        }
         server="postgresql+asyncpg://$role:$role@localhost:5432"
         {
           echo "TEST_DATABASE_SERVER=$server"
           echo "TEST_DATABASE_URL=$server/$db"
           echo "DATABASE_URL=$server/$db"
         } >> "$GITHUB_ENV"
+        if [ "$PHASE" = start ]; then
+          # 出力を段から外さないと、段が裏の処理の終わりまで返らない。終わりの値と出力は wait が読む。
+          (set +e; (set -e; setup) > "$RUNNER_TEMP/postgis.log" 2>&1 < /dev/null; echo $? > "$RUNNER_TEMP/postgis.tmp"; mv "$RUNNER_TEMP/postgis.tmp" "$RUNNER_TEMP/postgis.status") &
+        else
+          setup
+        fi
+    - if: inputs.phase == 'wait'
+      shell: bash
+      run: |
+        while [ ! -s "$RUNNER_TEMP/postgis.status" ]; do sleep 1; done
+        cat "$RUNNER_TEMP/postgis.log"
+        exit "$(cat "$RUNNER_TEMP/postgis.status")"
