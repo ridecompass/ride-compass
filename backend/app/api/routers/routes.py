@@ -14,6 +14,7 @@ from app.api.dependencies import (
 )
 from app.api.rate_limit import client_id, enforce_rate_limit
 from app.config import settings
+from app.domain.cost_preference import CostPreference
 from app.domain.road_avoidance import AvoidanceLevel
 from app.domain.route_preference import RoutePreference, check_axis_weights, published_axis_ids
 from app.domain.route_request import (
@@ -85,10 +86,9 @@ class RouteGenerateRequest(StrictModel):
     # 全長の目標距離（±目標に較正値`search.distance_tolerance_ratio`を掛けた長さ）。経由地・目的地を置いても同じ意味で、省略すると全長の目標を置かない
     # （置いた点へ良い道で向かう）。
     distance_km: float | None = Field(default=None, gt=0, le=MAX_ROUTE_DISTANCE_KM)
-    # 評価重みのリクエスト単位の上書き。省略時はAXIS_DEFINITIONS由来の既定値
-    # （`RoutePreference()`）を使う。
-    # 実際に適用された値はレスポンスのconditionsへエコーされる。
-    route_preference: RoutePreferenceWeights | None = None
+    # 代償の全体に掛けるつまみと、費用の軸ごとの倍率（書いていない軸は標準）。省略は標準。実際に適用された値は
+    # レスポンスのconditionsへエコーされる。
+    cost_preference: CostPreference = Field(default_factory=CostPreference)
     # 道の区分ごとの避け方。
     road_avoidance: RoadAvoidanceOverride
     # 返す候補の上限件数。距離があれば距離フィルタ合格の候補を試した順にこの件数、距離が無ければ
@@ -134,6 +134,11 @@ class RouteGenerateRequest(StrictModel):
     def _start_time_in_jst(cls, value: datetime) -> datetime:
         return as_jst(value)
 
+    @field_validator("cost_preference")
+    @classmethod
+    def _multipliers_of_current_cost_axes(cls, value: CostPreference) -> CostPreference:
+        return value.check_cost_axis_ids()
+
     _target: RouteTarget = PrivateAttr()
 
     @model_validator(mode="after")
@@ -165,9 +170,8 @@ class RouteGenerateRequest(StrictModel):
 class GenerationConditions(StrictModel):
     """この生成に実際に適用された条件のエコー（再現用）。
 
-    route_preference は「リクエストで上書きされた値」または「既定値」のうち実際に
-    使われた方。レスポンスJSONを保存すれば、同じ条件をroute_preferenceとしてそのまま
-    再送して再現できる。
+    cost_preference は今の費用の軸を全部書いた形。レスポンスJSONを保存すれば、同じ条件をcost_preferenceとして
+    そのまま再送して再現できる。
     """
 
     latitude: float
@@ -176,9 +180,7 @@ class GenerationConditions(StrictModel):
     distance_km: float | None
     # 使った目標距離からの許容差（km。目標に対する割合の較正値から決めた長さ）。全長の目標が無ければNone。
     distance_tolerance_km: float | None
-    route_preference: RoutePreferenceWeights
-    # 主観的割増と時間の換算レート（P、較正値）。
-    penalty_strength: float
+    cost_preference: CostPreference
     # 道の区分ごとの避け方（実際に適用された値）。
     road_avoidance: RoadAvoidanceOverride
     # 候補数の上限。
@@ -306,17 +308,13 @@ async def _run_generate_job(job_id: str, request: RouteGenerateRequest, open_set
     `_generate_semaphore`は投稿時点の`generate_routes`側で既に取得済み（TOCTOUレース
     対応）。ここでは成否によらず必ずfinallyで解放する。"""
     try:
-        # 重みの上書き（省略時はエンジンを組む側で既定値を読む）。
-        # 適用された値はconditionsへエコーする。
-        preference_override = request.route_preference.to_preference() if request.route_preference else None
-
         job_registry.set_running(job_id)
         target = request.target
         generated = await generate_route_candidates(
             partial(
                 open_setup,
                 RequestedConditions(
-                    preference_override=preference_override,
+                    cost_preference=request.cost_preference,
                     road_avoidance=dict(request.road_avoidance.root),
                     assumed_speed_kmh=request.assumed_speed_kmh,
                 ),
@@ -335,8 +333,7 @@ async def _run_generate_job(job_id: str, request: RouteGenerateRequest, open_set
                 longitude=request.longitude,
                 distance_km=target.distance_km if isinstance(target, DistanceTarget) else None,
                 distance_tolerance_km=generated.distance_tolerance_km,
-                route_preference=RoutePreferenceWeights(applied.route_preference.weights),
-                penalty_strength=applied.penalty_strength,
+                cost_preference=applied.cost_preference,
                 road_avoidance=RoadAvoidanceOverride(dict(applied.road_avoidance)),
                 max_routes=generated.max_routes,
                 start_time=request.start_time,

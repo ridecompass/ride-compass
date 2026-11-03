@@ -4495,6 +4495,56 @@
         ],
         "title": "CostBreakdown"
       },
+      "CostPreference-Input": {
+        "properties": {
+          "strength": {
+            "type": "number",
+            "maximum": 2.0,
+            "minimum": 0.0,
+            "title": "Strength",
+            "default": 1.0
+          },
+          "multipliers": {
+            "additionalProperties": {
+              "type": "number",
+              "maximum": 2.0,
+              "minimum": 0.0
+            },
+            "type": "object",
+            "title": "Multipliers"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "CostPreference"
+      },
+      "CostPreference-Output": {
+        "properties": {
+          "strength": {
+            "type": "number",
+            "maximum": 2.0,
+            "minimum": 0.0,
+            "title": "Strength",
+            "default": 1.0
+          },
+          "multipliers": {
+            "additionalProperties": {
+              "type": "number",
+              "maximum": 2.0,
+              "minimum": 0.0
+            },
+            "type": "object",
+            "title": "Multipliers"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "strength",
+          "multipliers"
+        ],
+        "title": "CostPreference"
+      },
       "DbStatusReport": {
         "properties": {
           "computed_at": {
@@ -4872,12 +4922,8 @@
             ],
             "title": "Distance Tolerance Km"
           },
-          "route_preference": {
-            "$ref": "#/components/schemas/RoutePreferenceWeights"
-          },
-          "penalty_strength": {
-            "type": "number",
-            "title": "Penalty Strength"
+          "cost_preference": {
+            "$ref": "#/components/schemas/CostPreference-Output"
           },
           "road_avoidance": {
             "$ref": "#/components/schemas/RoadAvoidanceOverride"
@@ -4941,8 +4987,7 @@
           "longitude",
           "distance_km",
           "distance_tolerance_km",
-          "route_preference",
-          "penalty_strength",
+          "cost_preference",
           "road_avoidance",
           "max_routes",
           "start_time",
@@ -7387,15 +7432,8 @@
             ],
             "title": "Distance Km"
           },
-          "route_preference": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/RoutePreferenceWeights"
-              },
-              {
-                "type": "null"
-              }
-            ]
+          "cost_preference": {
+            "$ref": "#/components/schemas/CostPreference-Input"
           },
           "road_avoidance": {
             "$ref": "#/components/schemas/RoadAvoidanceOverride"

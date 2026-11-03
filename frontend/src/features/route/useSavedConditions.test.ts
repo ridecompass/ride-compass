@@ -8,13 +8,12 @@
  * - 一覧の表示と押した操作・出発地を固定するかの既定 → `SavedConditionsPanel/SavedConditionsPanel.test.tsx`
  * - 出発地を受け取ったあと（地図で置いた出発地・現在地の取り直し） → `hooks/useLocation.test.ts`
  *
- * 差し替えたもの: 軸カタログの応答（網の層）。保存はテスト環境の`localStorage`を本物のまま使う。
+ * 差し替えたもの: 費用の軸の一覧の応答（網の層）。保存はテスト環境の`localStorage`を本物のまま使う。
  */
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { serveAxisCatalog } from "@/testing/backendServer";
-import { TWO_AXIS_CATALOG } from "@/testing/catalogAxes";
+import { serveCostAxisCatalog } from "@/testing/costAxes";
 import type { Coordinates } from "@/types/route";
 
 import { useGenerationConditions } from "./useGenerationConditions";
@@ -47,13 +46,12 @@ function renderSaved(initialOrigin: OriginProps = { origin: ORIGIN, originManual
 
 beforeEach(() => {
   window.localStorage.clear();
-  serveAxisCatalog(TWO_AXIS_CATALOG);
+  serveCostAxisCatalog();
 });
 
 describe("保存して呼び出す", () => {
   it("保存したあとに変えた条件が、呼び出すと保存した値へ戻る", async () => {
     const { result } = renderSaved();
-    await waitFor(() => expect(result.current.conditions.routePreference).toEqual({ axis_a: 0.4, axis_b: 0.6 }));
     act(() => result.current.conditions.selectPoint({ role: "waypoint", index: null }));
     act(() => {
       result.current.conditions.setLoop(false);
@@ -61,8 +59,7 @@ describe("保存して呼び出す", () => {
       result.current.conditions.setMaxRoutesInput("3");
       result.current.conditions.placeAtSelected(A, null);
       result.current.conditions.setDestination(B);
-      result.current.conditions.setRoutePreference({ axis_a: 0.7, axis_b: 0.3 });
-      result.current.conditions.setWeightOverrideEnabled(true);
+      result.current.conditions.setCostPreference({ strength: 0.5, multipliers: { ascent: 2 } });
       result.current.conditions.setRoadAvoidance({ gravel: "exclude" });
     });
     act(() => result.current.saved.save("荒川へ", false));
@@ -74,11 +71,12 @@ describe("保存して呼び出す", () => {
       result.current.conditions.setMaxRoutesInput("5");
       result.current.conditions.removeWaypoint(0);
       result.current.conditions.clearDestination();
-      result.current.conditions.setWeightOverrideEnabled(false);
+      result.current.conditions.setCostPreference({ strength: 1, multipliers: {} });
       result.current.conditions.setRoadAvoidance({});
     });
     act(() => result.current.saved.recall(result.current.saved.saved[0]));
 
+    await waitFor(() => expect(result.current.conditions.multipliersNotSent).toBe(false));
     const conditions = result.current.conditions;
     expect(conditions.loop).toBe(false);
     expect(conditions.distanceTargeted).toBe(false);
@@ -87,23 +85,8 @@ describe("保存して呼び出す", () => {
     expect(conditions.waypoints).toEqual([A]);
     expect(conditions.destination).toEqual(B);
     expect(conditions.selectedPoint).toEqual({ role: "origin" });
-    expect(conditions.routePreferenceToSend).toEqual({ axis_a: 0.7, axis_b: 0.3 });
+    expect(conditions.costPreferenceToSend).toEqual({ strength: 0.5, multipliers: { ascent: 2 } });
     expect(conditions.roadAvoidance).toEqual({ gravel: "exclude" });
-  });
-
-  it("重みを上書きせずに保存した条件は、呼び出すと上書きをやめ、重みのタブは送らない間に効く既定の重みを出す", async () => {
-    const { result } = renderSaved();
-    act(() => result.current.saved.save("既定の重み", false));
-    act(() => {
-      result.current.conditions.setRoutePreference({ axis_a: 0.7, axis_b: 0.3 });
-      result.current.conditions.setWeightOverrideEnabled(true);
-    });
-    await waitFor(() => expect(result.current.conditions.routePreferenceToSend).not.toBeNull());
-
-    act(() => result.current.saved.recall(result.current.saved.saved[0]));
-
-    expect(result.current.conditions.routePreferenceToSend).toBeNull();
-    expect(result.current.conditions.routePreference).toEqual({ axis_a: 0.4, axis_b: 0.6 });
   });
 
   it("名前が空なら仮の名前で保存し、一覧は開き直しても残る", () => {

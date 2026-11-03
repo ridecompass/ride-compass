@@ -63,15 +63,15 @@ describe("候補が無い間", () => {
 
 describe("候補の上の知らせ", () => {
   it.each([true, false])(
-    "条件のずれ・既定の配分で作ったこと・目的地の補正を、それぞれの間だけ知らせる（当たる: %s）",
+    "条件のずれ・標準の倍率で作ったこと・目的地の補正を、それぞれの間だけ知らせる（当たる: %s）",
     (on) => {
       renderOutcome({
         results: resultsOf({ generated: [FAST] }),
-        generation: generationOf({ conditionsDirty: on, weightsNotApplied: on, destinationCorrected: on }),
+        generation: generationOf({ conditionsDirty: on, multipliersNotApplied: on, destinationCorrected: on }),
       });
       for (const text of [
         "生成条件が変更されています",
-        "重み配分を反映できず、既定の配分で作りました。",
+        "軸ごとの倍率を反映できず、標準の倍率で作りました。",
         /近くのアクセス可能な地点へ補正しました/,
       ]) {
         expect(screen.queryByText(text) !== null).toBe(on);

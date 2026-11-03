@@ -9,14 +9,14 @@
  * 送ること、結果が出たら閉じていた「ルート結果」を開くこと、候補が「ルート結果」と地図の両方へ出て、選んだ候補が地図でも
  * 選ばれ、区間を持つかで周りの塗りが決まること、全消去は確認の窓で「消す」を押してから両方から消えること、候補がある間だけ
  * 条件のずれの印が点き全消去で消えること、走行条件の想定速度・出発時刻が生成と地図の道の詳細へ同じ値で渡ること、
- * 「評価で塗る」の未使用を分ける重み（生成の前はいまの重み・後は使われた重み）、「条件」タブで保存した条件が地図で置いた
+ * 「条件」タブの負担の強さと「負担」タブの軸ごとの倍率が生成の要求に載ること、「評価で塗る」の未使用を分ける重み、「条件」タブで保存した条件が地図で置いた
  * 出発地を持ち、呼び出すとその出発地から生成すること。
  *
  * ここで見ないもの: 子の部品は本物を描き、子が値をどう描くか（一覧の書式・印の色・天候の値）は各部品のテストが見る。
  * 地図の見え方の中身（どのレイヤーをどの色・重なりで描くか・レンズの選択肢・凡例）は地図の側（`features/map/scene/`）の
  * テストが見て、ここでは地図に何が載ったか（線のソースの地物・レイヤーの表示・印）と、地図の操作で何が起きるかだけを見る。
  * 機能の状態の移り変わり（生成の検証と要求の形・候補の並び・地点の置き方・レイヤーと凡例の状態）は各フックのテストが
- * 見る。子へ渡す受け口へフックの関数や値をそのまま渡す所（重み・除外の入力・経由地を地図で動かす・消す・「現在地に戻す」・
+ * 見る。子へ渡す受け口へフックの関数や値をそのまま渡す所（除外の入力・経由地を地図で動かす・消す・「現在地に戻す」・
  * 保存した条件を呼び出して現在地へ戻す・実行中の「ルート生成」・取り直している間の「現在地に移動」・まとめてレイヤーを消す
  * 操作を押せるか）は1行の委譲なので見ない。
  *
@@ -29,6 +29,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { heldReplies, onBackend, serveAxisCatalog } from "@/testing/backendServer";
 import { catalogEntry, catalogResponse } from "@/testing/catalogAxes";
+import { serveCostAxisCatalog } from "@/testing/costAxes";
 import {
   FIRST,
   HERE,
@@ -196,7 +197,22 @@ describe("ルートを作る", () => {
     expect(origin(await generate(user))).toEqual(PLACED);
   });
 
-  it("「評価で塗る」で未使用に分ける軸は、生成の前はいまの重み、生成の後は生成に使われた重みで決まる", async () => {
+  it("「条件」タブで選んだ負担の強さと、「負担」タブで選んだ軸ごとの倍率が、生成の要求に載る", async () => {
+    serveCostAxisCatalog();
+    const { user } = renderHome();
+    await user.click(
+      within(screen.getByRole("radiogroup", { name: "負担の強さ" })).getByRole("radio", { name: "強め" }),
+    );
+    await user.click(screen.getByRole("tab", { name: "負担" }));
+    await user.click(
+      within(await screen.findByRole("radiogroup", { name: "振動の倍率" })).getByRole("radio", { name: "無視" }),
+    );
+
+    jobs.respond([FIRST], LOOP_CONDITIONS);
+    expect((await generate(user)).cost_preference).toEqual({ strength: 1.5, multipliers: { vibration: 0 } });
+  });
+
+  it("「評価で塗る」で未使用に分ける軸は、軸カタログの既定の重みで決まる", async () => {
     serveAxisCatalog(
       catalogResponse([
         catalogEntry({ axis_id: "axis_a", label: "軸A", default_weight: 1 }),
@@ -216,15 +232,8 @@ describe("ルートを作る", () => {
       await user.keyboard("{Escape}");
       return unused;
     };
-    const beforeGeneration = await unusedAxes();
-    expect(beforeGeneration).toContain("軸B");
-    expect(beforeGeneration).not.toContain("軸A");
-
-    jobs.respond([FIRST], { ...LOOP_CONDITIONS, route_preference: { axis_a: 0, axis_b: 1 } });
-    await generate(user);
-    await waitFor(() => expect(candidateTabs()).toHaveLength(1));
-    const afterGeneration = await unusedAxes();
-    expect(afterGeneration).toContain("軸A");
-    expect(afterGeneration).not.toContain("軸B");
+    const unused = await unusedAxes();
+    expect(unused).toContain("軸B");
+    expect(unused).not.toContain("軸A");
   });
 });

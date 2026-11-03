@@ -21,10 +21,11 @@ from app.domain.graph import edge_key, node_key, parse_edge_key
 from app.domain.material_catalog import GRADIENT_PERCENT
 from app.domain.landcover import LANDCOVER_CLASSES
 from app.domain.traffic import stop_count_material_ids
+from app.domain.cost_preference import CostPreference
 from app.domain.road_avoidance import AvoidanceLevel
 from app.domain.road_network import RoadNetwork
 from app.domain.route import Coordinates
-from app.domain.route_preference import RoutePreference
+from app.domain.axis_definitions import AXIS_DEFINITIONS, AxisDefinition
 from app.domain.route_request import FixedPoints, RequestedConditions
 from app.domain.wind import WindForecastSeries
 from app.infrastructure import road_network_store
@@ -238,7 +239,7 @@ def serve_road_network(root: Path, network: RoadNetwork | None) -> None:
 
 
 def generator_for(
-    root: Path, network: RoadNetwork, avoid_weight: float, wind: WindForecastSeries | None,
+    root: Path, network: RoadNetwork, wind: WindForecastSeries | None,
     *, assumed_speed_kmh: float = 20.0, road_avoidance: dict[str, AvoidanceLevel] | None = None,
 ):
     """道路網を全体の配列として置き場へ置き、本物の`GraphService`とエンジンの上に戦略層（`RouteGenerator`）を組む。"""
@@ -246,16 +247,26 @@ def generator_for(
     return assemble_route_generation_setup(
         GraphService(NetworkRepository(network), SearchMemory()), Weather(wind),
         RequestedConditions(
-            preference_override=RoutePreference(weights={AVOID_AXIS: avoid_weight}),
-            road_avoidance=road_avoidance or {}, assumed_speed_kmh=assumed_speed_kmh,
+            cost_preference=CostPreference(), road_avoidance=road_avoidance or {}, assumed_speed_kmh=assumed_speed_kmh,
         ),
     ).generator
 
 
+def _avoid_axis(weight: float) -> AxisDefinition:
+    return axis_definition(AVOID_AXIS, material=BAD_MATERIAL, is_published=True, default_weight=weight)
+
+
 @contextmanager
 def avoid_axis_declared():
-    """避けたい材料が1の区間ほど難しいと評価する公開軸を1本だけ宣言する。"""
-    with replaced_axis_definitions({AVOID_AXIS: axis_definition(AVOID_AXIS, material=BAD_MATERIAL, is_published=True)}):
+    """避けたい材料が1の区間ほど難しいと評価する公開軸を1本だけ宣言する（重み0）。"""
+    with replaced_axis_definitions({AVOID_AXIS: _avoid_axis(0.0)}):
+        yield
+
+
+@contextmanager
+def avoid_axis_weighted(weight: float):
+    """今の軸の定義のうち、避けたい材料の軸の既定の重みだけを`weight`にする（点数の割増の式は既定の重みで探す）。"""
+    with replaced_axis_definitions({**AXIS_DEFINITIONS, AVOID_AXIS: _avoid_axis(weight)}):
         yield
 
 

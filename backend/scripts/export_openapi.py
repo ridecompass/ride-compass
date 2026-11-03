@@ -153,7 +153,7 @@ from app.domain.primary_attributes import PRIMARY_ATTRIBUTES
 from app.domain.region import MAX_MERCATOR_LATITUDE, ROAD_TILE_MAX_ZOOM, ROAD_TILE_MIN_ZOOM
 from app.domain.leg_costs import MISSING_TRAVEL_DATA_WORDING, MISSING_WIND_WORDING
 from app.config import Settings
-from app.domain.route_preference import ENABLED_AXIS_WEIGHT
+from app.domain.cost_preference import COST_MULTIPLIER_LEVELS, COST_STRENGTH_LEVELS, STANDARD_COST_FACTOR
 from app.domain.tuning import client_tuning_defaults
 from app.domain.weather import PRECIPITATION_MIN_MM
 from app.infrastructure.msm_client import DEFAULT_UPDATE_INTERVAL_SECONDS as MSM_UPDATE_INTERVAL_SECONDS
@@ -588,7 +588,10 @@ def main() -> None:
             # 住所の検索の欄が打ちかけで引き始める長さと、打つのが止まってから引くまでの間。口の回数制限はこの間から導く。
             "place_prediction_min_length": PLACE_PREDICTION_MIN_LENGTH,
             "place_prediction_delay_seconds": PLACE_PREDICTION_DELAY_SECONDS,
-            "enabled_axis_weight": ENABLED_AXIS_WEIGHT,
+            # 代償の全体に掛けるつまみと、費用の軸ごとの倍率の標準と、画面が選ばせる段。
+            "standard_cost_factor": STANDARD_COST_FACTOR,
+            "cost_strength_levels": [level._asdict() for level in COST_STRENGTH_LEVELS],
+            "cost_multiplier_levels": [level._asdict() for level in COST_MULTIPLIER_LEVELS],
             "min_assumed_speed_kmh": MIN_ASSUMED_SPEED_KMH,
             "max_assumed_speed_kmh": MAX_ASSUMED_SPEED_KMH,
             # フロントのポーリングの打ち切り。backendが結果を持つ時間より長く待つと、
@@ -607,7 +610,7 @@ def main() -> None:
             # フロントが使う較正値の**既定**（`domain/tuning.py`の宣言そのまま）。フロントはidの型にだけ使い、
             # 値は読まない——効いている値はGET /api/axis-catalogが返し、取れるまではその値を使う機能を出さない。
             "client_tuning": client_tuning_defaults(),
-            # 0次ハードフィルタ。除外タブにいつも「通らない」の行として見せる（要求では受けない）。選べる行と段は
+            # 0次ハードフィルタ。回避タブにいつも「通らない」の行として見せる（要求では受けない）。選べる行と段は
             # 管理DBの道の区分から、GET /api/axis-catalogが配る。
             "hard_filters": [
                 {"key": name, "label": spec.label, "description": spec.description}

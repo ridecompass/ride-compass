@@ -19,6 +19,7 @@ from contextlib import contextmanager
 import math
 import re
 from datetime import datetime, timedelta
+from contextlib import ExitStack
 from itertools import accumulate, combinations
 
 import numpy as np
@@ -61,6 +62,7 @@ from tests.route_world import (
     WAYS,
     at,
     avoid_axis_declared,
+    avoid_axis_weighted,
     edges_of,
     generator_for,
     grid_network,
@@ -88,13 +90,17 @@ def avoid_axis():
 
 @pytest.fixture
 def engine_over(road_network_root, avoid_axis):
-    """道路網から、本物のエンジンの上に戦略層（`RouteGenerator`）を組む。軸は`avoid_axis`の1本。"""
+    """道路網から、本物のエンジンの上に戦略層（`RouteGenerator`）を組む。軸は`avoid_axis`の1本で、`avoid_weight`はその既定の重み
+    （生成の要求は軸の重みを持たない）。"""
+    with ExitStack() as weights:
 
-    def build(network: RoadNetwork, *, avoid_weight: float = 0.0, wind: WindForecastSeries | None = None,
-              **conditions):
-        return generator_for(road_network_root, network, avoid_weight, wind, **conditions)
+        def build(network: RoadNetwork, *, avoid_weight: float = 0.0, wind: WindForecastSeries | None = None,
+                  **conditions):
+            if avoid_weight:
+                weights.enter_context(avoid_axis_weighted(avoid_weight))
+            return generator_for(road_network_root, network, wind, **conditions)
 
-    return build
+        yield build
 
 
 # ---------------------------------------------------------------------------------------

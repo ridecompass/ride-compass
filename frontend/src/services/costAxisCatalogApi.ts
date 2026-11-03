@@ -1,6 +1,5 @@
 import { backendApi, getOptions, requestApi } from "@/lib/apiClient";
 import { API_TIMEOUT_MS } from "@/lib/apiTimeouts";
-import type { CostAxisCatalogResponse } from "@/types/route";
 
 // 費用の軸の一覧の取得。認可不要の読み取り専用API。管理APIで書いた定義も、この取得だけでフロントへ届く。
 // 定義がまだ無い間（backendは404で返す）はnull。

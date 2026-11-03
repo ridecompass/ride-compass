@@ -14,7 +14,7 @@ import {
 import { generateRoutes, type GenerationProgress } from "@/features/route/routeApi";
 import { orderGenerated } from "@/features/route/routeTabLabel";
 import type { GenerationConditionsState } from "@/features/route/useGenerationConditions";
-import type { Coordinates, RouteCandidate, RoutePreferenceWeights } from "@/types/route";
+import type { Coordinates, RouteCandidate } from "@/types/route";
 
 /** 押した「生成」の直近の結果。失敗は前の候補を残したまま出すため、候補0件の理由と分けて持つ。 */
 export type GenerationNotice = { kind: "failed" | "empty"; message: string };
@@ -31,8 +31,8 @@ interface GeneratedConditions {
   key: string;
   /** 目的地が道路網から外れていて、backendが最寄りの行ける地点へ補正したか。 */
   destinationCorrected: boolean;
-  /** 利用者が重みを上書きしていたのに、軸カタログが無く送れなかったか（backendの既定の配分で探した）。 */
-  weightsNotApplied: boolean;
+  /** 利用者が軸ごとの倍率を変えていたのに、費用の軸の一覧が無く送れなかったか（標準の倍率で探した）。 */
+  multipliersNotApplied: boolean;
   /** 送った入力そのもの。乗り換えで合成した経路も同じ条件で評価する。 */
   input: GenerationInput;
 }
@@ -46,8 +46,8 @@ export interface RouteGenerationInputs {
   assumedSpeedKmh: number;
   /** 候補が並んでいるか（「条件が変わった」は比べる候補があるときだけ出す）。 */
   hasRoutes: boolean;
-  /** 生成の結果（最速の1本を先頭に、残りを所要時間の短い順に並べた候補と、backendが生成に使った重み）。候補0件でも呼ぶ。 */
-  onGenerated: (routes: RouteCandidate[], routePreference: RoutePreferenceWeights) => void;
+  /** 生成の結果（最速の1本を先頭に、残りを所要時間の短い順に並べた候補）。候補0件でも呼ぶ。 */
+  onGenerated: (routes: RouteCandidate[]) => void;
   /** 押した「生成」の結果（候補・候補0件・失敗・入力の誤り）。どれも「ルート結果」でしか中身が見えない。 */
   onOutcome: (outcome: RouteOutcomeKind) => void;
 }
@@ -83,7 +83,7 @@ export function useRouteGeneration({
   }, [runningSince]);
 
   // 目的地は周回の間を外した値（覚えている目的地は送らない）。
-  const { routePreferenceToSend, destination } = conditions;
+  const { costPreferenceToSend, destination } = conditions;
   const { loop, distanceTargeted, distance, waypoints, maxRoutes, roadAvoidance } = conditions.snapshot;
   // いまの条件から生成の入力を組み立てる。`destinationOverride`はbackendが補正した目的地。
   const buildCurrentGenerationInput = (destinationOverride?: Coordinates): GenerationInput => ({
@@ -94,7 +94,7 @@ export function useRouteGeneration({
     startTime: departure.at,
     startTimePinned: departure.pinned,
     roadAvoidance,
-    routePreference: routePreferenceToSend,
+    costPreference: costPreferenceToSend,
     waypoints,
     destination: destinationOverride ?? destination,
   });
@@ -126,13 +126,13 @@ export function useRouteGeneration({
         conditions.setDestination((current) => (current === generationInput.destination ? corrected : current));
       }
       // 一覧は最速の1本を先頭に、残りは所要時間の短い順。
-      onGenerated(orderGenerated(candidates), used.route_preference);
+      onGenerated(orderGenerated(candidates));
       // 補正があったら補正後の地点で入力を組み直す（ピンも動かしたので、直後に「条件が変わった」にならない）。
       const generatedInput = corrected ? buildCurrentGenerationInput(corrected) : generationInput;
       setGeneratedConditions({
         key: generationConditionsKey(generatedInput),
         destinationCorrected: Boolean(corrected),
-        weightsNotApplied: conditions.weightOverrideEnabled && generatedInput.routePreference === null,
+        multipliersNotApplied: conditions.multipliersNotSent,
         input: generatedInput,
       });
       // 候補が出たことは「ルート結果」の一覧と合図で分かるので、案内は候補0件のときだけ持つ。
@@ -204,7 +204,7 @@ export function useRouteGeneration({
     outcome,
     conditionsDirty,
     destinationCorrected: generatedConditions?.destinationCorrected ?? false,
-    weightsNotApplied: generatedConditions?.weightsNotApplied ?? false,
+    multipliersNotApplied: generatedConditions?.multipliersNotApplied ?? false,
     /** 表示中の候補を作った生成の入力（生成していなければnull）。 */
     generatedInput: generatedConditions?.input ?? null,
     clearNotice,

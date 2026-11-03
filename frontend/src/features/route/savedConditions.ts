@@ -1,9 +1,9 @@
 import { avoidanceLevelOf, readRoadAvoidance } from "@/features/route/roadAvoidance";
-import { alignRoutePreference } from "@/features/route/routePreferenceSync";
-import { totalWeight } from "@/features/route/routeWeightShare";
+import { costPreferenceDescription, readCostPreference } from "@/features/route/costPreference";
+import type { CostAxisCatalog } from "@/hooks/useCostAxisCatalog";
 import type { AxisCatalog } from "@/lib/axisCatalog";
 import { isCoordinates, readStoredList, withEntryFirst } from "@/lib/storedList";
-import type { Coordinates, RoadAvoidanceOverride, RoutePreferenceWeights } from "@/types/route";
+import type { Coordinates, CostPreference, RoadAvoidanceOverride } from "@/types/route";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 
 /** 生成の条件（「ルート設定」の入力）。いまの条件・保存・呼び出しが同じこの形を使う。出発地は位置の持ち主が持つので含まず、
@@ -20,8 +20,8 @@ export interface GenerationConditionsSnapshot {
   waypoints: Coordinates[];
   /** 置いた目的地（周回の間は覚えておくだけで使わない）。 */
   destination: Coordinates | null;
-  /** 上書きした重み。nullは上書きしない（backendの既定の配分）。 */
-  routePreference: RoutePreferenceWeights | null;
+  /** 代償の全体に掛けるつまみと、費用の軸ごとの倍率。 */
+  costPreference: CostPreference;
   /** 道の区分の行ごとに選んだ避け方（選んでいない行は無い）。 */
   roadAvoidance: RoadAvoidanceOverride;
 }
@@ -56,22 +56,13 @@ export function acceptedMaxRoutesInput(raw: string): string | null {
     : null;
 }
 
-function isWeights(value: unknown): value is RoutePreferenceWeights {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    !Array.isArray(value) &&
-    Object.values(value).every((weight) => typeof weight === "number" && Number.isFinite(weight) && weight >= 0)
-  );
-}
-
 const coordinatesOrNull = (value: unknown) => (value === null || isCoordinates(value) ? value : undefined);
 
 const isBoolean = (value: unknown) => (typeof value === "boolean" ? value : undefined);
 
 // 保存した1件の項目ごとの読み方。今の画面が受け付けない値はundefinedを返し、その件を捨てる。キーは保存の形と同じ型の
-// 写像なので、形に項目を足すと読み方が要る。前の形で保存した件は読み替えずに捨てる。重みの軸は読むときに揃えず、
-// 呼び出して「重み」へ入れたあと、いつもの保存値と同じく軸カタログの公開軸へ揃える。
+// 写像なので、形に項目を足すと読み方が要る。前の形で保存した件は読み替えずに捨てる——ただしつまみと倍率は、読めなければ
+// 件を捨てずに標準に戻す（割合の重みで保存した件も、場所と条件はそのまま呼び出せる）。消えた軸の倍率は送るときに外す。
 const SAVED_FIELD_READERS: {
   [K in keyof SavedCondition]-?: (value: unknown) => SavedCondition[K] | undefined;
 } = {
@@ -86,7 +77,7 @@ const SAVED_FIELD_READERS: {
       ? value
       : undefined,
   destination: coordinatesOrNull,
-  routePreference: (value) => (value === null || isWeights(value) ? value : undefined),
+  costPreference: readCostPreference,
   roadAvoidance: (value) => (typeof value === "object" && value !== null ? readRoadAvoidance(value) : undefined),
 };
 
@@ -129,8 +120,8 @@ export function suggestedConditionName(conditions: GenerationConditionsSnapshot)
 interface ConditionsDescription {
   /** 周回か目的地か・全長の目標・経由地・候補数。 */
   route: string;
-  /** 使う軸ごとの割合（重みの合計に占める%。「重み」タブのチップと同じ数）。 */
-  weights: string;
+  /** つまみと、標準でない軸の倍率（全部標準なら「標準」）。 */
+  costPreference: string;
   /** 「通らない」を選んだ行と、なるべく避ける行の名前（いつも通らない固定の行は含めない）。 */
   exclusions: string;
 }
@@ -145,18 +136,6 @@ function routeDescription(conditions: GenerationConditionsSnapshot): string {
   ]
     .filter((part) => part !== null)
     .join("・");
-}
-
-// 上書きしない重みは、生成のときbackendの既定の配分で探すので、軸カタログが配る既定の重みを割合にして見せる。
-// 上書きした重みは、呼び出して送るときと同じく公開軸へ揃えてから割合にする。上書きしたかは出さない（残るのは割合だけ）。
-function weightsDescription(routePreference: RoutePreferenceWeights | null, catalog: AxisCatalog): string {
-  const weights = alignRoutePreference(routePreference ?? catalog.defaultWeights, catalog);
-  const total = totalWeight(weights);
-  const shares = catalog.axes
-    .filter((axis) => weights[axis.axisId] > 0)
-    .map((axis) => ({ label: axis.label, pct: Math.round((weights[axis.axisId] / total) * 100) }))
-    .sort((a, b) => b.pct - a.pct);
-  return shares.length === 0 ? "—" : shares.map(({ label, pct }) => `${label} ${pct}%`).join("・");
 }
 
 // 段ごとに「段の名前 行の名前・…」を、強い段から並べる。行と段は軸カタログが配るもので、届く前は「なし」になる。
@@ -174,10 +153,11 @@ function exclusionsDescription(roadAvoidance: RoadAvoidanceOverride, catalog: Ax
 export function describeConditions(
   conditions: GenerationConditionsSnapshot,
   catalog: AxisCatalog,
+  costCatalog: CostAxisCatalog,
 ): ConditionsDescription {
   return {
     route: routeDescription(conditions),
-    weights: weightsDescription(conditions.routePreference, catalog),
+    costPreference: costPreferenceDescription(conditions.costPreference, costCatalog),
     exclusions: exclusionsDescription(conditions.roadAvoidance, catalog),
   };
 }

@@ -31,10 +31,8 @@ export default function RouteSettingsForm({ savedConditions, ...props }: RouteSe
       {...props}
       weightsPanel={
         <RouteSettingsPanel
-          routePreference={conditions.routePreference}
-          onRoutePreferenceChange={conditions.setRoutePreference}
-          overrideEnabled={conditions.weightOverrideEnabled}
-          onOverrideEnabledChange={conditions.setWeightOverrideEnabled}
+          costPreference={conditions.costPreference}
+          onCostPreferenceChange={conditions.setCostPreference}
         />
       }
       exclusionsPanel={

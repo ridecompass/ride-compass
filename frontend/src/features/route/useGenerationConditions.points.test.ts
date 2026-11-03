@@ -50,7 +50,7 @@ function point(index: number): Coordinates {
 
 beforeEach(() => {
   window.localStorage.clear();
-  onBackend("GET", "/api/axis-catalog", heldReplies().reply);
+  onBackend("GET", "/api/cost-axes", heldReplies().reply);
 });
 
 describe("地点", () => {

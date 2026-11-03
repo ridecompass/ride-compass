@@ -113,20 +113,29 @@ describe("useStoredState", () => {
   });
 });
 
+/** 大きさの数を持つものだけを読む。 */
+const readSize = (stored: unknown) =>
+  typeof stored === "object" && stored !== null && "size" in stored && typeof stored.size === "number"
+    ? { size: stored.size }
+    : null;
+
 describe("useStoredJsonState", () => {
   it("JSON で保存し、開き直すと同じ値へ戻る", () => {
-    const first = renderHook(() => useStoredJsonState(KEY, { size: 1 }));
+    const first = renderHook(() => useStoredJsonState(KEY, { size: 1 }, readSize));
     act(() => first.result.current[1]({ size: 3 }));
     first.unmount();
 
-    const second = renderHook(() => useStoredJsonState(KEY, { size: 1 }));
+    const second = renderHook(() => useStoredJsonState(KEY, { size: 1 }, readSize));
 
     expect(second.result.current[0]).toEqual({ size: 3 });
   });
 
-  it("JSONとして読めない保存値は、既定値として扱う", () => {
-    window.localStorage.setItem(KEY, "{");
-    const { result } = renderHook(() => useStoredJsonState(KEY, { size: 1 }));
+  it.each([
+    ["JSONとして読めない", "{"],
+    ["読み方が受け付けない", JSON.stringify({ size: "3" })],
+  ])("%s保存値は、既定値として扱う", (_, saved) => {
+    window.localStorage.setItem(KEY, saved);
+    const { result } = renderHook(() => useStoredJsonState(KEY, { size: 1 }, readSize));
 
     expect(result.current[0]).toEqual({ size: 1 });
   });

@@ -1,13 +1,13 @@
 /**
  * `SavedConditionsPanel.tsx`——「条件」タブの「いまの設定を保存」と、「保存済み」タブの「プリセット」の保存した設定の一覧。
- * - 「いまの設定を保存」——押すと窓で保存する条件・重みの割合・除外と出発地の扱いを並べ、
+ * - 「いまの設定を保存」——押すと窓で保存する条件・負担・回避と出発地の扱いを並べ、
  *   名前の欄に仮の名前を入れて出し、そのまま・書き換えて保存でき、保存すると窓を閉じる。出発地は固定するかを選べ、選ぶまでは
  *   地図で置いたかで決まる。同じ名前があれば上書きと分かるように出す。
  * - 保存した設定の一覧——名前だけで並べる。
  *   「呼び出す」は窓で中身を見せて「反映する」を押したときだけ呼び出し、「消す」は確認の窓で「消す」を押したときだけ消す。
  *
  * ここで見ないもの:
- * - 説明の文の作り方（割合・除外の名前） → `savedConditions.test.ts`
+ * - 説明の文の作り方（負担・回避の名前） → `savedConditions.test.ts`
  * - 保存・呼び出し・削除で条件と一覧がどう変わるか → `useSavedConditions.test.ts`
  * - (i)の奥の文（書いた文をそのまま出す）
  * - 無ければ無いと出して保存の仕方を(i)に置くこと（一覧の部品 `SavedList/SavedList.tsx` が持つ） → `SavedPlacesPanel/SavedPlacesPanel.test.tsx`
@@ -20,6 +20,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { GenerationConditionsSnapshot, SavedCondition } from "@/features/route/savedConditions";
 import { serveAxisCatalog } from "@/testing/backendServer";
+import { serveCostAxisCatalog } from "@/testing/costAxes";
 import { catalogEntry, catalogResponse } from "@/testing/catalogAxes";
 
 import SavedConditionsPanel, { SaveConditionsButton } from "./SavedConditionsPanel";
@@ -31,7 +32,7 @@ const CURRENT: GenerationConditionsSnapshot = {
   maxRoutes: "8",
   waypoints: [],
   destination: null,
-  routePreference: null,
+  costPreference: { strength: 1, multipliers: {} },
   roadAvoidance: {},
 };
 const LOOP: SavedCondition = { ...CURRENT, name: "朝の荒川", origin: null };
@@ -44,7 +45,7 @@ const TRIP: SavedCondition = {
   origin: POINT,
   waypoints: [POINT, POINT],
   destination: POINT,
-  routePreference: { axis_a: 1, axis_b: 3 },
+  costPreference: { strength: 1, multipliers: { vibration: 2 } },
 };
 
 function renderSaveButton(
@@ -84,17 +85,18 @@ beforeEach(() => {
       catalogEntry({ axis_id: "axis_b", label: "軸B", default_weight: 1 }),
     ]),
   );
+  serveCostAxisCatalog();
 });
 
 describe("保存", () => {
-  it("押すまで中身を出さず、押すと窓で、いまの設定の条件と重みの割合を並べる", async () => {
+  it("押すまで中身を出さず、押すと窓で、いまの設定の条件と倍率を並べる", async () => {
     renderSaveButton();
     expect(screen.queryByText("周回 40km・候補 8本")).not.toBeInTheDocument();
 
     const dialog = await openSaveDialog();
 
     expect(within(dialog).getByText("周回 40km・候補 8本")).toBeInTheDocument();
-    expect(await within(dialog).findByText("軸A 50%・軸B 50%")).toBeInTheDocument();
+    expect(await within(dialog).findByText("標準")).toBeInTheDocument();
   });
 
   it("仮の名前が入った欄をそのまま保存でき、書き換えればその名前で保存し、保存すると窓を閉じる", async () => {
@@ -157,7 +159,7 @@ describe("保存", () => {
 });
 
 describe("保存した設定", () => {
-  it("行は名前だけを出し、条件・出発地・重み・除外は呼び出しの窓で読める", async () => {
+  it("行は名前だけを出し、条件・出発地・倍率・除外は呼び出しの窓で読める", async () => {
     renderPanel([LOOP, TRIP]);
 
     const trip = screen.getAllByRole("listitem")[1];
@@ -168,7 +170,7 @@ describe("保存した設定", () => {
     const dialog = screen.getByRole("dialog", { name: "「週末」を反映します" });
     expect(within(dialog).getByText("目的地へ・経由 2地点・候補 8本")).toBeInTheDocument();
     expect(within(dialog).getByText("保存した地点に固定")).toBeInTheDocument();
-    expect(await within(dialog).findByText("軸B 75%・軸A 25%")).toBeInTheDocument();
+    expect(await within(dialog).findByText("振動 ×2")).toBeInTheDocument();
   });
 
   it("窓の「反映する」を押したときだけ呼び出し、反映したことを出す", async () => {

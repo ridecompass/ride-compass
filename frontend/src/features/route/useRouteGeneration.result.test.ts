@@ -1,14 +1,14 @@
 /**
- * ルート生成（`useRouteGeneration.ts`）の結果——候補は所要時間の短い順に並べて生成に使われた重みと一緒に渡し、押した1回の
+ * ルート生成（`useRouteGeneration.ts`）の結果——候補は所要時間の短い順に並べて渡し、押した1回の
  * 結果の種類（候補・候補0件・失敗）を知らせて、直近の結果（件数・0件の理由・失敗）を返す。backendが目的地を補正したら
- * 置いた目的地を動かし、上書きした重みを送れなかったときは既定の配分で作ったと返す。
+ * 置いた目的地を動かし、変えた倍率を送れなかったときは標準の倍率で作ったと返す。
  *
  * ここで見ないもの:
  * - 送る要求・入力の誤り・進み方・条件のずれ・消す → `useRouteGeneration.test.ts`
  * - 所要時間の並べ方の細部（時間の無い候補の位置） → `routeTabLabel.test.ts`
  * - 結果を一覧へ入れる・知らせを画面に出す → `useRouteResults.test.ts`・`app/page.test.tsx`
  *
- * 差し替えたもの: 生成のジョブと軸カタログの応答（網の層。`testing/routeGeneration.ts`）。条件は
+ * 差し替えたもの: 生成のジョブと費用の軸の一覧の応答（網の層。`testing/routeGeneration.ts`）。条件は
  * 本物の`useGenerationConditions`を同じ描画で通して作る（呼び出し側と同じく、補正した目的地はそこへ書き戻る）。
  */
 import { act } from "@testing-library/react";
@@ -39,13 +39,13 @@ afterEach(() => {
 });
 
 describe("生成の結果", () => {
-  it("候補を所要時間の短い順に並べ、生成に使われた重みと一緒に渡して新しい結果として知らせる。案内・目的地の補正は出さない", async () => {
+  it("候補を所要時間の短い順に並べて渡し、新しい結果として知らせる。案内・目的地の補正は出さない", async () => {
     const rendered = renderGeneration();
-    backend.respond([route("slow", 3600), route("fast", 1800)], used({ route_preference: { axis_a: 1 } }));
+    backend.respond([route("slow", 3600), route("fast", 1800)], used());
 
     await submit(rendered);
 
-    expect(rendered.onGenerated).toHaveBeenCalledWith([route("fast", 1800), route("slow", 3600)], { axis_a: 1 });
+    expect(rendered.onGenerated).toHaveBeenCalledWith([route("fast", 1800), route("slow", 3600)]);
     expect(rendered.onOutcome).toHaveBeenCalledWith("fresh");
     expect(rendered.result.current.generation.outcome).toBeNull();
     expect(rendered.result.current.generation.destinationCorrected).toBe(false);
@@ -57,7 +57,7 @@ describe("生成の結果", () => {
 
     await submit(rendered);
 
-    expect(rendered.onGenerated).toHaveBeenCalledWith([], used().route_preference);
+    expect(rendered.onGenerated).toHaveBeenCalledWith([]);
     expect(rendered.onOutcome).toHaveBeenCalledWith("empty");
     expect(rendered.result.current.generation.outcome).toEqual({
       kind: "empty",
@@ -130,21 +130,22 @@ describe("生成の結果", () => {
     expect(generation.conditionsDirty).toBe(true);
   });
 
-  it("上書きした重みは軸カタログが届いていれば送り、届かず送れなかったときだけ既定の配分で作ったと返す", async () => {
+  it("変えた倍率は費用の軸の一覧が届いていれば送り、届かず送れなかったときだけ標準の倍率で作ったと返す", async () => {
     const rendered = renderGeneration();
     backend.respond([route("r1")]);
     await submit(rendered);
-    expect(rendered.result.current.generation.weightsNotApplied).toBe(false);
+    expect(rendered.result.current.generation.multipliersNotApplied).toBe(false);
 
-    act(() => rendered.result.current.conditions.setWeightOverrideEnabled(true));
+    act(() => rendered.result.current.conditions.setCostPreference({ strength: 1.5, multipliers: { ascent: 2 } }));
     backend.respond([route("r1")]);
     await submit(rendered);
-    expect(rendered.result.current.generation.weightsNotApplied).toBe(true);
+    expect(backend.sentRequest()).toMatchObject({ cost_preference: { strength: 1.5, multipliers: {} } });
+    expect(rendered.result.current.generation.multipliersNotApplied).toBe(true);
 
     await backend.loadCatalog(rendered);
     backend.respond([route("r1")]);
     await submit(rendered);
-    expect(backend.sentRequest()).toMatchObject({ route_preference: { axis_a: 0.4, axis_b: 0.6 } });
-    expect(rendered.result.current.generation.weightsNotApplied).toBe(false);
+    expect(backend.sentRequest()).toMatchObject({ cost_preference: { strength: 1.5, multipliers: { ascent: 2 } } });
+    expect(rendered.result.current.generation.multipliersNotApplied).toBe(false);
   });
 });

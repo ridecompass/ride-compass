@@ -62,7 +62,7 @@ describe("地図で扱えること", () => {
     expect(screen.getByRole("button", { name: "目的地を消す" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "経由地を足す" }));
-    await user.click(screen.getByRole("tab", { name: "重み" }));
+    await user.click(screen.getByRole("tab", { name: "負担" }));
     clickMap(ELSEWHERE);
     expect(marksAt(ELSEWHERE)).toEqual([]);
     expect(marksAt(DESTINATION)).toEqual([expect.objectContaining({ draggable: false })]);
@@ -173,13 +173,13 @@ describe("地図で扱えること", () => {
 
     // 「ルート結果」で選んだ区間は、「ルート設定」の見るだけのタブへ移ると小窓に出ず、戻っても選ばれていない。
     clickSegment(drawnSegment, HERE);
-    await user.click(screen.getByRole("tab", { name: "重み" }));
+    await user.click(screen.getByRole("tab", { name: "負担" }));
     expect(screen.queryByRole("group", { name: "区間の小窓の上の帯" })).toBeNull();
     await user.click(candidateTabs()[0]);
     expect(selectedSectionOnMap()).toEqual([]);
 
     // 見るだけのタブで開いた点の小窓は、「ルート結果」へ移ると消える。
-    await user.click(screen.getByRole("tab", { name: "重み" }));
+    await user.click(screen.getByRole("tab", { name: "負担" }));
     clickMap(DESTINATION, [shop]);
     expect(screen.getByRole("link", { name: "角の店" })).toBeInTheDocument();
     await user.click(candidateTabs()[0]);

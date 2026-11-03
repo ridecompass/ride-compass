@@ -9,10 +9,10 @@
 道路網の置き場・レート制限の記録。
 
 ここで見ないもの:
-- 経路の中身（周回が閉じる・一方通行・重みの効き等） → `test_route_generation_behavior.py`
+- 経路の中身（周回が閉じる・一方通行・重みの効き等） → `test_route_generation_behavior.py`。ここではつまみと倍率が費用の式まで
+  届くことだけを、避ける道を通るかで見る
 - 候補の並べ方・理由の文面 → `test_route_generator.py`
 - レート制限の数え方そのもの → `test_rate_limiter.py`
-- 重みの値の検査（公開軸のidだけ・非負） → `test_route_preference.py`。ここでは寄せていることを1行で見る
 - 項目ごとの値の範囲（距離・件数等の`Field`の制約）→ 型の宣言が持つ
 - 本物の開き方（`api/dependencies.py`がDBのセッションと天気を開いて渡すだけの結線。判断を持たない）
 """
@@ -29,7 +29,8 @@ import pytest
 
 from app.api import dependencies
 from app.config import settings
-from app.domain.graph import node_key
+from app.domain.cost_axes import EFFORT_AXES, CostAxisDefinitions, replace_cost_axes
+from app.domain.graph import node_key, parse_edge_key
 from app.domain.road_network import RoadNetwork
 from app.domain.road_classes import AvoidanceClassification
 from app.domain.route_request import ASSUMED_SPEED_KMH, DEFAULT_MAX_ROUTES, MAX_SPLICED_EDGES, MAX_WAYPOINTS
@@ -42,11 +43,12 @@ from app.services.route_generation_setup import assemble_route_generation_setup
 from tests.bound_fake import bound
 from tests.road_class_fixture import classification, fact_is, map_layer, replaced_road_classes, road_classes
 from tests.route_world import (
-    AVOID_AXIS,
+    BAD_MATERIAL,
     CENTER,
     COORDINATES,
     HIGHWAY,
     NORTH_EAST,
+    SOUTH_EAST,
     SOUTH_WEST,
     NetworkRepository,
     Weather,
@@ -118,6 +120,24 @@ def world(override_dependency, road_network_root):
     override_dependency(dependencies.get_route_generation_setup_opener, lambda: open_setup)
     with avoid_axis_declared():
         yield world
+
+
+#: 避けたい材料の道を重く見る道の負担の軸のid。
+BAD_AXIS = "bad"
+_PRESENTATION = {"label": "軸", "description": "", "icon_id": "icon", "lens": {"thresholds": [], "band_labels": ["段"]}}
+
+
+@pytest.fixture
+def cost_axes():
+    """体力の軸と、避けたい材料の道（1kmあたり重さ10）を重く見る道の負担の軸1本。"""
+    replace_cost_axes(CostAxisDefinitions.model_validate({
+        "effort": {axis_id: _PRESENTATION for axis_id in EFFORT_AXES},
+        "burden": {BAD_AXIS: {**_PRESENTATION, "burden": {
+            "kind": "linear", "material": BAD_MATERIAL, "points": [(0.0, 0.0), (1.0, 10.0)]}}},
+        "total_lens": _PRESENTATION,
+    }))
+    yield
+    replace_cost_axes(None)
 
 
 @pytest.fixture
@@ -269,13 +289,13 @@ async def test_the_defaults_that_were_applied_are_echoed(client):
     """画面が見る値と探索が使った値を分けない。省略した項目も、実際に使った値で返す。"""
     conditions = (await _generate(client))["result"]["conditions"]
 
-    assert conditions["route_preference"] == {AVOID_AXIS: 0.0}
+    assert conditions["cost_preference"] == {"strength": 1.0, "multipliers": {}}
     assert conditions["waypoints"] is None and conditions["destination"] is None
     assert conditions["corrected_destination"] is None
 
 
-async def test_the_overrides_that_were_sent_are_echoed(client):
-    """保存したレスポンスの条件をそのまま送り直せば、同じ条件で生成し直せる。"""
+async def test_the_overrides_that_were_sent_are_echoed(client, cost_axes):
+    """保存したレスポンスの条件をそのまま送り直せば、同じ条件で生成し直せる。書いていない軸の倍率は標準で返る。"""
     definitions = road_classes(
         {"kind": classification({"local": [fact_is(HIGHWAY, "residential")]})},
         map_layers={"kind": map_layer()},
@@ -283,29 +303,47 @@ async def test_the_overrides_that_were_sent_are_echoed(client):
     )
     with replaced_road_classes(definitions):
         conditions = (await _generate(
-            client, route_preference={AVOID_AXIS: 2.0}, road_avoidance={"kind.local": "avoid"}, assumed_speed_kmh=25.0,
+            client, cost_preference={"strength": 2.0, "multipliers": {BAD_AXIS: 0.5}},
+            road_avoidance={"kind.local": "avoid"}, assumed_speed_kmh=25.0,
         ))["result"]["conditions"]
 
-    assert conditions["route_preference"] == {AVOID_AXIS: 2.0}
+    assert conditions["cost_preference"] == {
+        "strength": 2.0, "multipliers": {**{axis_id: 1.0 for axis_id in EFFORT_AXES}, BAD_AXIS: 0.5}}
     assert conditions["road_avoidance"] == {"kind.local": "avoid"}
     assert conditions["assumed_speed_kmh"] == 25.0
 
 
-@pytest.mark.parametrize(("field", "tuning_id", "values", "applied"), [
-    ("penalty_strength", "evaluation.penalty_strength", (0.37, 0.61), (0.37, 0.61)),
-    # 許容は割合の較正値で、目標4kmに掛けた長さを使って返す
-    ("distance_tolerance_km", "search.distance_tolerance_ratio", (0.25, 0.5), (1.0, 2.0)),
-])
-async def test_the_calibrated_value_at_the_time_of_generation_is_applied(
-    client, monkeypatch, field, tuning_id, values, applied,
-):
-    """管理画面で変えた較正値は、プロセスを入れ替えずに次の生成から効き、使った値として返る。"""
+async def test_the_calibrated_tolerance_at_the_time_of_generation_is_applied(client, monkeypatch):
+    """管理画面で変えた較正値は、プロセスを入れ替えずに次の生成から効き、使った値として返る。許容は割合の較正値で、
+    目標4kmに掛けた長さを使って返す。"""
     echoed = []
-    for value in values:
-        monkeypatch.setitem(TUNING_VALUES, tuning_id, value)
-        echoed.append((await _generate(client))["result"]["conditions"][field])
+    for value in (0.25, 0.5):
+        monkeypatch.setitem(TUNING_VALUES, "search.distance_tolerance_ratio", value)
+        echoed.append((await _generate(client))["result"]["conditions"]["distance_tolerance_km"])
 
-    assert tuple(echoed) == pytest.approx(applied)
+    assert tuple(echoed) == pytest.approx((1.0, 2.0))
+
+
+# --- つまみと倍率 ---
+
+
+@pytest.mark.parametrize(("cost_preference", "avoided"), [
+    pytest.param({}, True, id="標準では避ける"),
+    pytest.param({"multipliers": {BAD_AXIS: 0.0}}, False, id="軸の倍率0は数えない"),
+    pytest.param({"strength": 0.0}, False, id="つまみ0は所要時間だけで選ぶ"),
+])
+async def test_the_strength_and_the_multipliers_weigh_the_cost_of_the_roads(client, world, cost_axes, cost_preference,
+                                                                            avoided):
+    """南の道（南西→南東の最短2km）だけが避けたい材料を持つ。代償を数えるなら北へ回る道（4km）を選び、数えなければ南の道を選ぶ。
+    候補は代償の最も小さい1本（と、それと違えば最速の1本）。"""
+    bad = {100, 101}
+    world.serve(grid_network(bad_ways=bad))
+
+    routes = (await _generate(
+        client, destination=_point(SOUTH_EAST), distance_km=None, max_routes=1, cost_preference=cost_preference,
+    ))["result"]["routes"]
+
+    assert any(not {parse_edge_key(edge_id)[0] for edge_id in route["edge_ids"]} & bad for route in routes) == avoided
 
 
 @pytest.mark.parametrize(("sent", "applied"), [
@@ -333,12 +371,8 @@ async def test_a_destination_moved_to_the_nearest_reachable_road_is_echoed(clien
 # --- 要求の検証 ---
 
 
-@pytest.mark.parametrize("body", [
-    {"route_preference": {}},                                        # 公開軸を全部書いていない
-    {"route_preference": {AVOID_AXIS: -1.0}},                        # 値の検査（`check_axis_weights`）へ寄せている
-])
-async def test_a_request_outside_what_can_be_generated_is_refused_before_any_job(client, body):
-    response = await _post(client, **body)
+async def test_a_multiplier_for_an_axis_that_is_not_a_cost_axis_is_refused_before_any_job(client, cost_axes):
+    response = await _post(client, cost_preference={"multipliers": {"unknown": 1.0}})
 
     assert response.status_code == 422
 
