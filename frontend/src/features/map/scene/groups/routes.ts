@@ -6,6 +6,7 @@
  */
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import palette from "@/types/generated/palette.json";
+import type { SemanticColors } from "@/lib/mapTheme";
 import type { ExpressionSpecification, FilterSpecification } from "maplibre-gl";
 
 import { createRouteArrowIcon, ROUTE_ARROW_ICON_ID } from "@/features/map/layers/routeArrowIcon";
@@ -56,6 +57,8 @@ export type RouteState = {
   readonly composite: RouteShape | null;
   /** 選んだ地点を含む区間の形。選んでいなければnull。 */
   readonly selectedSection: RoutePath | null;
+  /** 線を塗る役割の色。地図の地の明るさに合う組。 */
+  readonly semantic: SemanticColors;
 };
 
 /** 進行方向の矢印の絵。色を持たないシルエットで、色はレイヤーが決める。 */
@@ -135,19 +138,19 @@ export const routeGroup = declareGroup<RouteState>((state) => {
       "selectedSection",
       SOURCE.selectedSection,
       {
-        "line-color": palette.semantic.selected_section,
+        "line-color": state.semantic.selected_section,
         "line-width": ROUTE.lineWidthsPx.selectedSection,
         "line-opacity": ROUTE.opacities.selectedSection,
       },
       { visible: state.visible && state.selectedSection !== null, layout: ROUND_CAP },
     ),
     lineLayer("selectedHalo", SOURCE.selected, {
-      "line-color": palette.semantic.route_selected_halo,
+      "line-color": state.semantic.route_selected_halo,
       "line-width": ROUTE.lineWidthsPx.selectedHalo,
       "line-opacity": ROUTE.opacities.selectedHalo,
     }),
     lineLayer("candidateLine", SOURCE.candidates, {
-      "line-color": palette.semantic.route_candidate,
+      "line-color": state.semantic.route_candidate,
       "line-width": ROUTE.lineWidthsPx.candidate,
       "line-opacity": ROUTE.opacities.candidate,
     }),
@@ -157,7 +160,7 @@ export const routeGroup = declareGroup<RouteState>((state) => {
       "spliceBandLine",
       SOURCE.spliceBands,
       {
-        "line-color": palette.semantic.route_splice,
+        "line-color": state.semantic.route_splice,
         "line-width": ROUTE.lineWidthsPx.splice,
         "line-opacity": ROUTE.opacities.splice,
         "line-dasharray": [...ROUTE.spliceDash],
@@ -167,18 +170,18 @@ export const routeGroup = declareGroup<RouteState>((state) => {
     lineLayer(
       "compositeCasing",
       SOURCE.composite,
-      { "line-color": palette.semantic.route_casing, "line-width": ROUTE.casingWidthsPx.composite },
+      { "line-color": state.semantic.route_casing, "line-width": ROUTE.casingWidthsPx.composite },
       { layout: ROUND_CAP },
     ),
     lineLayer(
       "compositeLine",
       SOURCE.composite,
-      { "line-color": palette.semantic.route_splice, "line-width": ROUTE.lineWidthsPx.composite },
+      { "line-color": state.semantic.route_splice, "line-width": ROUTE.lineWidthsPx.composite },
       { layout: ROUND_CAP },
     ),
     withBandFilter(
       lineLayer("detailCasing", SOURCE.segments, {
-        "line-color": palette.semantic.route_casing,
+        "line-color": state.semantic.route_casing,
         "line-width": ROUTE.casingWidthsPx.detail,
         "line-opacity": TRAVELLED_OPACITY,
       }),
@@ -195,8 +198,8 @@ export const routeGroup = declareGroup<RouteState>((state) => {
     // 帯の当たり判定は区間の当たり判定より前面——区間の当たり判定はルート全体を覆うため、
     // 後ろだと帯を一度も押せない。
     hitLayer("spliceBandHit", SOURCE.spliceBands, ROUTE_HIT_TARGET_SPLICE_BAND),
-    arrowLayer("arrowHalo", ROUTE.arrowHaloScale, palette.semantic.route_arrow_halo, ROUTE.opacities.arrowHalo),
-    arrowLayer("arrow", 1, palette.semantic.route_arrow, 1),
+    arrowLayer("arrowHalo", ROUTE.arrowHaloScale, state.semantic.route_arrow_halo, ROUTE.opacities.arrowHalo),
+    arrowLayer("arrow", 1, state.semantic.route_arrow, 1),
   ];
 
   return { sources, layers, images: [ROUTE_ARROW_IMAGE] };

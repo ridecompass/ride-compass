@@ -3,31 +3,20 @@
 
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import type { components } from "@/types/generated/api";
-import palette from "@/types/generated/palette.json";
 import { hexToRgb, rgbToHsl } from "@/lib/rgbHsl";
+import { semanticColorsOn, type MapTheme } from "@/lib/mapTheme";
 import { bandLabelsForBandCount, buildRangeLegendBands, type MapColorLegendBand } from "./mapColorLegend";
 
 /** 地図がその軸について塗る値の種類（正本はbackend）。`difficulty`は評価済みの0〜100、`signed_material`は
  * 向きの符号が意味を持つ材料1つの生値（勾配等）。 */
 export type MapValueKind = components["schemas"]["MapPaint"]["value"]["kind"];
 
-const COLOR_EASY = palette.semantic.evaluation_good;
-/** 符号付き材料の負側（下り坂等、走行が楽になる側）の色。 */
-const COLOR_SIGNED_LOW = palette.semantic.signed_descent;
-/** 平坦の色は難易度の「易しい」と同じにして、楽な区間の色を種類をまたいで揃える。 */
-const COLOR_SIGNED_FLAT = COLOR_EASY;
-
-/** 評価の配色（易しい→難しい）。色相だけでなく明度も動かし（緑→黄→赤→暗赤）、段を増やしても隣が見分けられる
+/** 評価の配色（易しい→難しい）。色相だけでなく明度も動かし（緑→黄→赤→最も悪い側）、段を増やしても隣が見分けられる
  * ようにする。難易度の段と、符号付き材料の上り側が同じものを使う。 */
-const EVALUATION_ANCHORS: readonly string[] = [
-  COLOR_EASY,
-  palette.semantic.evaluation_mid,
-  palette.semantic.evaluation_bad,
-  palette.semantic.evaluation_extreme,
-];
-
-/** 符号付き材料は0（平坦）を境に2方向の配色へ分ける（2色の補間1本だと0付近の段が端の色に寄る）。 */
-const SIGNED_DESCENT_ANCHORS: readonly string[] = [COLOR_SIGNED_LOW, COLOR_SIGNED_FLAT];
+function evaluationAnchors(ground: MapTheme): readonly string[] {
+  const semantic = semanticColorsOn(ground);
+  return [semantic.evaluation_good, semantic.evaluation_mid, semantic.evaluation_bad, semantic.evaluation_extreme];
+}
 
 /** 凡例が段の境界を書く目盛り（正本はbackend）。`unit`がnullなら境界は得点（0〜100）。 */
 type MapLegendScale = components["schemas"]["MapLegendScale"];
@@ -61,19 +50,24 @@ export function formatLoad(value: number): string {
 }
 
 /** 地図が値を塗る宣言。`boundaries`は塗る値の目盛りの境界で、凡例は`legend`の同じ番号の境界で範囲を書く（雨は得点で
- * 塗り、量で書く）。`bandLabels`は段ごとの体感ラベル（未設定なら数値の範囲だけ）。軸もルートの総合難易度もこの形で持ち、
- * 段は`valueBands`だけが求める。 */
+ * 塗り、量で書く）。`bandLabels`は段ごとの体感ラベル（未設定なら数値の範囲だけ）。`ground`は色を載せる地の明るさ
+ * （省けば明るい地）。軸もルートの総合難易度もこの形で持ち、段は`valueBands`だけが求める。 */
 export interface MapPaintDeclaration {
   kind: MapValueKind;
+  ground?: MapTheme;
   boundaries: readonly number[];
   legend: MapLegendScale;
   bandLabels?: readonly string[] | null;
 }
 
 /** 軸カタログの行の`map_paint`から塗る宣言を作る。境界は宣言の無い軸の既定もbackendが解いて入れる。 */
-export function mapPaintDeclarationOf(paint: components["schemas"]["MapPaint"]): MapPaintDeclaration {
+export function mapPaintDeclarationOf(
+  paint: components["schemas"]["MapPaint"],
+  ground: MapTheme = "light",
+): MapPaintDeclaration {
   return {
     kind: paint.value.kind,
+    ground,
     boundaries: paint.thresholds,
     legend: paint.legend,
     bandLabels: paint.band_labels ?? undefined,
@@ -152,20 +146,23 @@ function interpolateColorStops(anchors: readonly string[], count: number): strin
 }
 
 /** 符号付き材料の段の色。0を含む段（境界にちょうど0があるときは0から始まる段）を平坦にし、その手前と先を
- * それぞれの配色で補間する。 */
-function signedBandColors(boundaries: readonly number[]): string[] {
+ * それぞれの配色で補間する（2色の補間1本だと0付近の段が端の色に寄る）。手前は下り（走行が楽になる側）の色から平坦へ寄せ、
+ * 平坦の色は難易度の「易しい」と同じにして、楽な区間の色を種類をまたいで揃える。 */
+function signedBandColors(boundaries: readonly number[], ground: MapTheme): string[] {
   const bandCount = boundaries.length + 1;
   const firstPositive = boundaries.findIndex((boundary) => boundary > 0);
   const flatIndex = firstPositive < 0 ? bandCount - 1 : firstPositive;
-  const descent = interpolateColorStops(SIGNED_DESCENT_ANCHORS, flatIndex + 1).slice(0, flatIndex);
-  const climb = interpolateColorStops(EVALUATION_ANCHORS, bandCount - flatIndex).slice(1);
-  return [...descent, COLOR_SIGNED_FLAT, ...climb];
+  const semantic = semanticColorsOn(ground);
+  const flat = semantic.evaluation_good;
+  const descent = interpolateColorStops([semantic.signed_descent, flat], flatIndex + 1).slice(0, flatIndex);
+  const climb = interpolateColorStops(evaluationAnchors(ground), bandCount - flatIndex).slice(1);
+  return [...descent, flat, ...climb];
 }
 
-/** 値の種類と段の境界から、段ごとの色を求める。 */
-export function bandColorsFor(kind: MapValueKind, boundaries: readonly number[]): string[] {
-  if (kind === "signed_material") return signedBandColors(boundaries);
-  return interpolateColorStops(EVALUATION_ANCHORS, boundaries.length + 1);
+/** 値の種類と段の境界から、地`ground`（省けば明るい地）の上に塗る段ごとの色を求める。 */
+export function bandColorsFor(kind: MapValueKind, boundaries: readonly number[], ground: MapTheme = "light"): string[] {
+  if (kind === "signed_material") return signedBandColors(boundaries, ground);
+  return interpolateColorStops(evaluationAnchors(ground), boundaries.length + 1);
 }
 
 /** 段1つ。`lowerBound`は段の下限（最も低い段は-∞）で、判定は`>= 下限`・`< 次の下限`。 */
@@ -176,8 +173,8 @@ export interface ValueBand extends MapColorLegendBand {
 /** 塗る宣言から段の並び（低い段から）を求める。鍵・範囲の文字・体感ラベル・色をここで一度に決める。体感ラベルは件数が
  * 段の数と合うときだけ添える（`bandLabelsForBandCount`）。 */
 export function valueBands(paint: MapPaintDeclaration): ValueBand[] {
-  const { kind, boundaries, legend, bandLabels } = paint;
-  const colors = bandColorsFor(kind, boundaries);
+  const { kind, boundaries, legend, bandLabels, ground } = paint;
+  const colors = bandColorsFor(kind, boundaries, ground);
   const labels = bandLabelsForBandCount(bandLabels, colors.length);
   const isScore = legend.unit === null;
   const unit = legend.unit ?? SCORE_UNIT;

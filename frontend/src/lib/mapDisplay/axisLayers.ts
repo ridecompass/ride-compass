@@ -4,6 +4,7 @@ import { mapPaintDeclarationOf, type MapPaintDeclaration } from "./valueScale";
 import { catalogAxisFromEntry, type CatalogAxis, type WayValueCondition } from "@/lib/catalogAxis";
 import type { components } from "@/types/generated/api";
 import type { AxisCatalogEntry } from "@/types/route";
+import type { MapTheme } from "@/lib/mapTheme";
 
 /** 道ごとの値（軸カタログの式の木 `way_value_formula` へ、`GET /api/region/way-materials/{axis_id}/...` の材料と走る
  * 条件を入れたもの）で塗る軸。公開中の軸は全部これになる。 */
@@ -18,13 +19,17 @@ export interface DedicatedWayValueAxis extends CatalogAxis {
   wayMaterialConditions: readonly WayValueCondition[];
 }
 
-export function dedicatedWayValueAxesFromCatalogAxes(axes: readonly AxisCatalogEntry[]): DedicatedWayValueAxis[] {
+/** `ground`は塗る地図の地の明るさ（省けば明るい地図）。 */
+export function dedicatedWayValueAxesFromCatalogAxes(
+  axes: readonly AxisCatalogEntry[],
+  ground: MapTheme = "light",
+): DedicatedWayValueAxis[] {
   return axes.map((axis) => {
     const base = catalogAxisFromEntry(axis);
     return {
       ...base,
       undeterminedByBearing: axis.dynamic_way_value_undetermined_by_bearing,
-      display: mapPaintDeclarationOf(axis.map_paint),
+      display: mapPaintDeclarationOf(axis.map_paint, ground),
       wayValueFormula: axis.way_value_formula,
       wayMaterialConditions: axis.dynamic_way_value_material_conditions,
     };

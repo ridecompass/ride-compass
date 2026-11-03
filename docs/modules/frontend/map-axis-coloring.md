@@ -230,7 +230,7 @@ backendが名指す区間の欄（軸カタログの`map_paint.value.route_segme
 
 段の範囲を文字にするのは`mapColorLegend.ts: rangeStepLabel`だけ。**語は述語に合わせる**——
 境界の判定は`>= lower`・`< upper`のため、最上位帯は「以上」であって「超」ではない。
-- `routeStyleModes.ts: DIFFICULTY_MODE`（総合難易度）だけがフロントの固定モード——特定のaxis_idに紐づかず
+- 総合難易度（`routeStyleModes.ts: routeStyleModesFromCatalogAxes` が軸の後ろに足す）だけがフロントの固定モード——特定のaxis_idに紐づかず
   全軸の重み付き合成コストそのものを表示するため、軸スタジオと同期する対象にならない。
 - 既定のモード（`lib/mapDisplay/routeStyleModes.ts: LENS_DIFFICULTY_ID`）は総合難易度。
 - **候補は地図では選ばない**: 未選択候補の線（役割`candidateLine`、細い参考線）は当たり判定を

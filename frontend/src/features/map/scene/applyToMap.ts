@@ -21,7 +21,7 @@ import type {
   DynamicWeatherLayerId,
   DynamicWeatherRenderPayload,
 } from "@/features/map/layers/dynamicWeather";
-import type { MapTheme } from "@/lib/mapTheme";
+import { semanticColorsOn, type MapTheme } from "@/lib/mapTheme";
 import {
   areaLayerAnchor,
   hideBasemapPois,
@@ -85,6 +85,8 @@ export interface SceneLook {
   /** 道の値の式が読む走る条件。 */
   readonly wayConditions: WayConditions;
   readonly hiddenLegendKeys: HiddenLegendKeys;
+  /** 地図の地の明るさ。 */
+  readonly mapTheme: MapTheme;
 }
 
 /** 地図に載るもの全部の入力。**実行時にしか決まらない値だけ**をここで集める。**sceneの側で宣言する**——上位の画面部品のpropsから借りると、
@@ -170,6 +172,7 @@ function routeStateFrom(props: SceneWiringProps): RouteState {
     })),
     composite: composite !== null && composite.length > 1 ? { path: composite } : null,
     selectedSection: pickedSegment === null ? null : segmentPath(pickedSegment),
+    semantic: semanticColorsOn(look.mapTheme),
   };
 }
 

@@ -5995,6 +5995,10 @@
           "color": {
             "type": "string",
             "title": "Color"
+          },
+          "color_on_dark": {
+            "type": "string",
+            "title": "Color On Dark"
           }
         },
         "additionalProperties": false,
@@ -6003,7 +6007,8 @@
           "key",
           "label",
           "description",
-          "color"
+          "color",
+          "color_on_dark"
         ],
         "title": "RoadClassView"
       },
