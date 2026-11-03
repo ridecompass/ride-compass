@@ -26,7 +26,7 @@ export const DEFAULT_DIFFICULTY_BOUNDARIES: readonly number[] = mapDisplay.value
 
 /** 難易度（得点・寄与・平均とその差）を書く桁。backendが区別する桁で、候補の並びを決める差が画面でも読める。
  * 画面の難易度の数字はどれもこの桁で書く。 */
-export const DIFFICULTY_DECIMALS: number = mapDisplay.valueScale.difficultyDecimals;
+const DIFFICULTY_DECIMALS: number = mapDisplay.valueScale.difficultyDecimals;
 
 /** 難易度（得点・寄与・平均）を`DIFFICULTY_DECIMALS`の桁で書く。 */
 export function formatDifficulty(value: number): string {

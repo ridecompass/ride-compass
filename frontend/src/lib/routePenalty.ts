@@ -22,7 +22,7 @@ export interface PenaltyRow {
 }
 
 /** 回避指定の行のid。軸のidと同じ並びに置くので、軸には無い綴りにする。 */
-export const AVOIDANCE_ROW_ID = "<avoidance>";
+const AVOIDANCE_ROW_ID = "<avoidance>";
 
 /** 内訳の秒の和（軸ごとの秒と回避指定の秒）。所要時間に足すと、候補を並べた費用になる。 */
 export function penaltyTotalSeconds(penalty: CostBreakdown): number {

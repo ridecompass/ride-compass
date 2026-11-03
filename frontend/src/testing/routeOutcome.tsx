@@ -8,7 +8,7 @@ import { vi } from "vitest";
 
 import RouteOutcome from "@/features/route/RouteOutcome/RouteOutcome";
 import type { RouteResults } from "@/features/route/useRouteResults";
-import { catalogEntry, catalogOf, catalogResponse } from "@/testing/catalogAxes";
+import { catalogEntry, catalogResponse } from "@/testing/catalogAxes";
 import { makeRouteCandidate } from "@/testing/routeFixtures";
 import type { RouteCandidate } from "@/types/route";
 
@@ -17,7 +17,6 @@ const ENTRIES = [
   catalogEntry({ axis_id: "axis_b", label: "軸B" }),
   catalogEntry({ axis_id: "axis_c", label: "軸C" }),
 ];
-export const CATALOG = catalogOf(ENTRIES);
 export const CATALOG_RESPONSE = catalogResponse(ENTRIES);
 
 export function route(id: string, overrides: Partial<RouteCandidate> = {}): RouteCandidate {

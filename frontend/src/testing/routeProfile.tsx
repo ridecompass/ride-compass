@@ -9,19 +9,11 @@ import { vi } from "vitest";
 import RouteProfile from "@/features/route/RouteProfile/RouteProfile";
 import { FACT_DISPLAY_NAME } from "@/lib/screenNames";
 import { serveAxisCatalog } from "@/testing/backendServer";
-import {
-  catalogEntry,
-  catalogOf,
-  catalogResponse,
-  roadClass,
-  roadClassCatalog,
-  roadMapLayer,
-} from "@/testing/catalogAxes";
+import { catalogEntry, catalogResponse, roadClass, roadClassCatalog, roadMapLayer } from "@/testing/catalogAxes";
 import { makeRouteSegment } from "@/testing/routeFixtures";
 import type { RouteSegmentDetail } from "@/types/route";
 
 const ENTRIES = [catalogEntry({ axis_id: "axis_a", label: "坂" }), catalogEntry({ axis_id: "axis_b", label: "路面" })];
-export const CATALOG = catalogOf(ENTRIES);
 const SURFACE_ROAD_CLASSES = [
   roadClass("paved", { label: "舗装", color: "#111111" }),
   roadClass("gravel", { label: "砂利・未舗装", color: "#222222" }),
