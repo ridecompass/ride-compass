@@ -110,17 +110,13 @@ class CostAxisDefinitions(StrictModel):
             raise ValueError(f"道の負担の軸のidが体力の軸と重なる: {clash}")
         return self
 
-    def axis_ids(self) -> list[str]:
-        """軸のidの並び（体力の軸をコードの表の順、続けて道の負担の軸）。"""
-        return [*EFFORT_AXES, *self.burden]
 
-
-def check_cost_axes(definitions: CostAxisDefinitions, road_classes: RoadClassDefinitions) -> list[str]:
-    """型の外で決まる不備（材料が在るか・材料の型に合うか・区分の重さに漏れや知らない区分が無いか）。不備が無ければ空。
-    管理APIの書き込みと起動時の読み込みの両方が通す（復元した行は起動時に初めて検査を通る）。道の区分を書き換えたときも、
-    今の軸の定義を新しい区分で通し直す。"""
+def check_cost_axes(definitions: CostAxisDefinitions | None, road_classes: RoadClassDefinitions) -> list[str]:
+    """型の外で決まる不備（材料が在るか・材料の型に合うか・区分の重さに漏れや知らない区分が無いか）。不備が無ければ空
+    （定義が無ければ通る）。管理APIの書き込みと起動時の読み込みの両方が通す（復元した行は起動時に初めて検査を通る）。道の
+    区分を書き換えたときも、今の軸の定義を新しい区分で通し直す。"""
     problems: list[str] = []
-    for axis_id, axis in definitions.burden.items():
+    for axis_id, axis in ({} if definitions is None else definitions.burden).items():
         burden = axis.burden
         if burden.material.startswith(CLASS_MATERIAL_PREFIX):
             classification = road_classes.classifications.get(burden.material.removeprefix(CLASS_MATERIAL_PREFIX))
@@ -163,11 +159,6 @@ def replace_cost_axes(definitions: CostAxisDefinitions | None) -> None:
     _current = definitions
 
 
-
-def burden_material_ids(definitions: CostAxisDefinitions | None) -> tuple[tuple[str, ...], tuple[str, ...]]:
-    """軸の定義の道の負担の軸が読む材料id（`(数値の材料, 区分の材料)`。重複を除き、軸の順）。静的スコア行列はこれらを軸の
-    構成と無関係に列として運び、欠けは取込の範囲全体の分布で埋める。"""
-    materials = [] if definitions is None else [axis.burden.material for axis in definitions.burden.values()]
-    unique = tuple(dict.fromkeys(materials))
-    return (tuple(m for m in unique if not m.startswith(CLASS_MATERIAL_PREFIX)),
-            tuple(m for m in unique if m.startswith(CLASS_MATERIAL_PREFIX)))
+def burden_material_ids(definitions: CostAxisDefinitions | None) -> tuple[str, ...]:
+    """軸の定義の道の負担の軸が読む材料id（重複を除き、軸の順）。静的スコア行列はこれらを軸の構成と無関係に列として運ぶ。"""
+    return () if definitions is None else tuple(dict.fromkeys(axis.burden.material for axis in definitions.burden.values()))

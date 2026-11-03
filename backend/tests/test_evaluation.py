@@ -40,7 +40,7 @@ def no_materials(n: int, columns: Mapping[str, np.ndarray] | None = None) -> Edg
 
 
 def build(materials: EdgeMaterialColumns, definitions: dict[str, AxisDefinition]):
-    return build_static_edge_score_matrix(materials, definitions, {}, None)
+    return build_static_edge_score_matrix(materials, definitions, {}, ())
 
 
 class ReplacingWhenRead(Mapping[str, np.ndarray]):

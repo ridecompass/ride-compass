@@ -26,15 +26,15 @@ import numpy as np
 
 from app.domain.stopwatch import add_elapsed_ms, elapsed_ms, start_timer, steps_note
 from app.domain.time_zone import JST, as_series_time
-from app.domain.traffic import highway_rank, stop_count_material_ids
+from app.domain.traffic import highway_rank
 from app.domain.tuning import tuning_value
 from app.domain.errors import RoutingError
 from app.domain.axis_definitions import copy_axis_definitions
 from app.domain.evaluation import StaticEdgeScoreMatrix, build_static_edge_score_matrix
 from app.domain.hard_filters import compute_routable_nodes, compute_search_exclusion
 from app.domain.leg_costs import LegCostArrays, LegCostComposer
-from app.domain.cost_axes import CostAxisDefinitions, burden_material_ids, current_cost_axes
-from app.domain.ledger_costs import LedgerParameters, current_ledger_parameters
+from app.domain.cost_axes import burden_material_ids, current_cost_axes
+from app.domain.ledger_costs import current_ledger_parameters
 from app.domain.route_preference import RoutePreference
 from app.domain.road_avoidance import AvoidanceLevel, RoadAvoidanceMasks
 from app.domain.geo import (
@@ -126,14 +126,14 @@ logger = logging.getLogger("ridecompass.graph")
 
 
 def _static_score_matrix(
-    road: RoadSlice, rain: StationRainMaterials | None, steps_ms: dict[str, int], cost_axes: CostAxisDefinitions | None,
+    road: RoadSlice, rain: StationRainMaterials | None, steps_ms: dict[str, int], cost_material_ids: tuple[str, ...],
 ) -> StaticEdgeScoreMatrix:
     """切り出した区間の材料に、区間の中点に最も近い雨量計の観測（雨の材料）を足して静的スコア行列を組む。段ごとの時間を`steps_ms`へ足す。"""
     started = start_timer()
     observed = {} if rain is None else road.network.nearest_rain_stations.rain_material_columns(rain, road.rows)
     add_elapsed_ms(steps_ms, "rain", started)
     # 軸の保存がこの間に`AXIS_DEFINITIONS`を差し替えても、表の列と、合成・動的な軸の評価が読む軸は1つの写しから決める。
-    return build_static_edge_score_matrix(material_arrays_of(road, observed), copy_axis_definitions(), steps_ms, cost_axes)
+    return build_static_edge_score_matrix(material_arrays_of(road, observed), copy_axis_definitions(), steps_ms, cost_material_ids)
 
 
 @dataclass
@@ -227,12 +227,6 @@ class RoadGraphEngine:
         # 組み立てた時点で1回だけ写す（無ければ軸の点数の割増の式で組む）。
         self._cost_axes = current_cost_axes()
 
-    def _ledger_setup(self) -> tuple[CostAxisDefinitions, LedgerParameters] | None:
-        """費目の帳簿の式で組むときの軸の定義と式の値。費用の軸の定義が表に無ければNone（軸の点数の割増の式で組む）——
-        切り替えは、本番の表へ費用の軸の定義を入れることで起きる。つまみは割増の強さの較正値、倍率はどの軸も標準の1。"""
-        axes = self._cost_axes
-        return None if axes is None else (axes, current_ledger_parameters(self._penalty_strength, {}))
-
     async def _build_search_graph(
         self, bbox: BoundingBox, origin: Coordinates, now: datetime
     ) -> _SearchGraph | None:
@@ -268,7 +262,8 @@ class RoadGraphEngine:
 
         materials_started = start_timer()
         materials_steps_ms: dict[str, int] = {}
-        score_matrix = await asyncio.to_thread(_static_score_matrix, road, rain, materials_steps_ms, self._cost_axes)
+        score_matrix = await asyncio.to_thread(_static_score_matrix, road, rain, materials_steps_ms,
+                                               burden_material_ids(self._cost_axes))
         materials_ms = elapsed_ms(materials_started)
         # 通過予定時刻の基準（出発時刻）。
         start = as_series_time(now)
@@ -282,7 +277,10 @@ class RoadGraphEngine:
         # 迂回率は同じ探索範囲で前回の往路木から学習した値があればそれを使う（無ければ既定値）。
         learned_detour_ratio = detour_ratio_cache.get_detour_ratio(tile_set)
 
-        burden_numeric, burden_classes = burden_material_ids(self._cost_axes)
+        # 費目の帳簿の式（費用の軸の定義が表にあるときだけ。無ければ軸の点数の割増の式）——切り替えは、本番の表へ費用の軸の
+        # 定義を入れることで起きる。つまみは割増の強さの較正値、倍率はどの軸も標準の1。
+        cost_axes = self._cost_axes
+        ledger = None if cost_axes is None else (cost_axes, current_ledger_parameters(self._penalty_strength, {}))
 
         def compose_outbound() -> tuple[RoadAvoidanceMasks, LegCostComposer, LegCostArrays]:
             search_masks = compute_search_exclusion(score_matrix, self._road_avoidance)
@@ -292,8 +290,8 @@ class RoadGraphEngine:
                 wind_series, start, self._assumed_speed_kmh, lazy_graph.edge_rows,
                 detour_ratio=detour_ratio_or_default(learned_detour_ratio),
                 twilight_origin=origin,
-                material_fills=material_fills(road, (*stop_count_material_ids(), *burden_numeric), burden_classes),
-                ledger=self._ledger_setup(),
+                material_fills=material_fills(road.network, road.classes, burden_material_ids(cost_axes)),
+                ledger=ledger,
             )
             return search_masks, composer, composer.compose("outbound", 0.0, +1)
 

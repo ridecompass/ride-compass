@@ -26,8 +26,9 @@ from app.domain.axis_definitions import BreakpointLinearShape, MaterialTerm, cop
 from app.domain.difficulty import axis_weight_shares
 from app.domain.evaluation import DensityAxisColumn, StaticEdgeScoreMatrix
 from app.domain.cost_axes import EFFORT_AXES, CostAxisDefinitions
-from app.domain.ledger_costs import LedgerParameters, MaterialFills
+from app.domain.ledger_costs import LedgerParameters
 from app.domain.leg_costs import LegCostArrays, LegCostComposer, LegValues
+from app.domain.road_network import MaterialFills
 from app.domain.msm import MsmBlock, MsmGrid
 from app.domain.road_avoidance import RoadAvoidanceMasks
 from app.domain.route import Coordinates

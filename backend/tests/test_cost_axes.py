@@ -34,7 +34,6 @@ def test_a_definition_with_every_effort_axis_and_a_burden_axis_over_every_class_
     definitions = CostAxisDefinitions.model_validate(_definitions(vibration=VIBRATION))
 
     assert check_cost_axes(definitions, SURFACE) == []
-    assert definitions.axis_ids() == [*EFFORT_AXES, "vibration"]
 
 
 @pytest.mark.parametrize(

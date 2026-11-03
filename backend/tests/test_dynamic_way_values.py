@@ -116,7 +116,7 @@ def _arrays() -> EdgeMaterialColumns:
 @pytest.mark.parametrize("axis_id", PUBLISHED_AXES)
 def test_the_map_paints_the_same_value_the_search_scores(axis_id, as_difficulty):
     arrays = _arrays()
-    matrix = build_static_edge_score_matrix(arrays, AXES, {}, None)
+    matrix = build_static_edge_score_matrix(arrays, AXES, {}, ())
 
     painted = paint_feature_values(axis_id, AXES, KEYS, arrays.columns, {}, as_difficulty=as_difficulty)
 
@@ -187,7 +187,7 @@ def _route_values(segments: FeatureSegments, grade: np.ndarray) -> dict[str, dic
         distance_m=segments.distance_m, bearing_deg=nan, mid_lat=nan, mid_lon=nan,
         elevation_profiles=grade_profiles(np.zeros(n), segments.distance_m),
     )
-    matrix = build_static_edge_score_matrix(arrays, FOLDED_AXES, {}, None)
+    matrix = build_static_edge_score_matrix(arrays, FOLDED_AXES, {}, ())
     details: dict[str, list[RouteSegmentDetail]] = {}
     for row, owner in enumerate(owners):
         distance_km = float(segments.distance_m[row]) / 1000

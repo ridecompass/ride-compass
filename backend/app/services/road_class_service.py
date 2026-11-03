@@ -10,12 +10,11 @@ from sqlalchemy.exc import DataError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.axis_definitions import AxisDefinition, missing_class_materials, named_references, unknown_class_values
-from app.domain.cost_axes import CostAxisDefinitions
+from app.domain.cost_axes import CostAxisDefinitions, check_cost_axes
 from app.domain.road_classes import RoadClassDefinitions, replace_road_classes, undeclared_references
 from app.infrastructure.axis_definition_repository import AxisDefinitionRepository
 from app.infrastructure.cost_axis_repository import read_cost_axes
 from app.infrastructure.road_class_repository import read_road_classes, replace_road_class_rows
-from app.services.cost_axis_service import check_cost_axes_against
 
 logger = logging.getLogger("ridecompass.road_classes")
 
@@ -61,7 +60,7 @@ def _check_writable(definitions: RoadClassDefinitions, axes: dict[str, AxisDefin
             f"軸が名指す区分が無くなるため確定しません（{reasons}）。"
             "区分の鍵を改めるときは、先に軸の値を直してください"
         )
-    cost_axis_problems = check_cost_axes_against(cost_axes, definitions)
+    cost_axis_problems = check_cost_axes(cost_axes, definitions)
     if cost_axis_problems:
         raise RoadClassRejectedError(
             f"費用の軸の定義が新しい区分に合わなくなるため確定しません（{'／'.join(cost_axis_problems)}）。"

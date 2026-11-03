@@ -92,15 +92,13 @@ def test_the_materials_and_road_classes_of_a_slice_follow_its_rows():
     assert [columns[class_material_id("k")].value_at(i) for i in range(2)] == ["is_y", None]
 
 
-def test_the_fills_are_the_distributions_of_the_whole_network_not_of_the_slice():
-    """欠けを埋める平均は取込範囲全体の距離で重みを付けたもの（値の無い区間を除く）。切り出した範囲で求めると、同じ道の
-    費用が探索の範囲で変わる。"""
+def test_the_fills_are_the_distance_weighted_distributions_of_the_whole_network():
+    """欠けを埋める平均は取込範囲全体の距離で重みを付けたもの（値の無い区間を除く）。"""
     whole = network()
     rules = {"is_x": [fact_is("cat_a", "x")], "is_y": [fact_is("cat_a", "y")]}
     classes = road_class_columns(whole, road_classes({"k": classification(rules)}))
-    east = slice_network(whole, classes, 139.09, 34.99, 139.15, 35.01)
 
-    fills = material_fills(east, ["num_a", GRADIENT_PERCENT], [class_material_id("k")])
+    fills = material_fills(whole, classes[0], [class_material_id("k")])
 
     # 区間の距離は100〜500m。num_aは0〜40、勾配は3番目の区間だけ値が無い。区分は道30の1区間目だけ値が無い。
     assert fills.numeric_means == pytest.approx({"num_a": 40000 / 1500, GRADIENT_PERCENT: 1550 / 1200})

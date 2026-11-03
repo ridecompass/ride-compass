@@ -22,7 +22,7 @@ Score（難易度換算）は`domain/difficulty.py`（0-100、値が大きいほ
 """
 
 from dataclasses import dataclass
-from typing import Container, Iterable, Iterator, Mapping, NamedTuple, cast
+from typing import Container, Iterable, Iterator, Mapping, NamedTuple, Sequence, cast
 
 import numpy as np
 
@@ -53,7 +53,6 @@ from app.domain.material_catalog import (
     is_known_material,
     material_spec,
 )
-from app.domain.cost_axes import CostAxisDefinitions, burden_material_ids
 from app.domain.cycling_speed import travel_model_material_ids
 from app.domain.elevation_profile import ElevationProfiles
 from app.domain.hard_filters import hard_filtered
@@ -471,7 +470,7 @@ def build_static_edge_score_matrix(
     materials: EdgeMaterialColumns,
     definitions: dict[str, AxisDefinition],
     steps_ms: dict[str, int],
-    cost_axes: CostAxisDefinitions | None,
+    cost_material_ids: Sequence[str],
 ) -> StaticEdgeScoreMatrix:
     """切り出した範囲の材料から`StaticEdgeScoreMatrix`を構築する（生成のたびに1回）。段ごとの所要時間を`steps_ms`へ足す。
 
@@ -505,16 +504,15 @@ def build_static_edge_score_matrix(
         axis_id: DensityAxisColumn(shape=cast(BreakpointLinearShape, definitions[axis_id].shape), inputs=_raw(evaluations, axis_id))
         for axis_id in density_axis_ids
     }
-    # 費用の軸の定義（`cost_axes`。呼び手が1回の生成の写しを渡す）の道の負担の材料も、軸の構成と無関係に運ぶ。
-    burden_numeric, burden_classes = burden_material_ids(cost_axes)
+    # 費用の式が読む材料（`cost_material_ids`。道の負担の軸の材料）も、軸の構成と無関係に運ぶ。数値か区分かは列の型で分ける。
     material_value_arrays = {
         material_id: values
-        for material_id in dict.fromkeys((*route_facing_material_ids(definitions), *burden_numeric))
+        for material_id in dict.fromkeys((*route_facing_material_ids(definitions), *cost_material_ids))
         if isinstance(values := columns.get(material_id), np.ndarray)
     }
     categorical_material_columns = {
         material_id: column
-        for material_id in dict.fromkeys((*route_facing_categorical_material_ids(definitions), *burden_classes))
+        for material_id in dict.fromkeys((*route_facing_categorical_material_ids(definitions), *cost_material_ids))
         if isinstance(column := columns.get(material_id), CategoricalColumn)
     }
     axis_ids, axis_scores = _stack_columns(axis_arrays, n)

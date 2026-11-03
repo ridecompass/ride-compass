@@ -26,7 +26,6 @@ from app.domain.attributes import (
 )
 from app.domain.elevation_profile import ElevationProfiles, GradeDistribution
 from app.domain.geo import LatLonPoint
-from app.domain.ledger_costs import MaterialFills
 from app.domain.rain import NearestRainStations
 from app.domain.material_catalog import GRADIENT_PERCENT, materials_of_source
 from app.domain.road_classes import RoadClassDefinitions, class_columns, layer_columns
@@ -132,24 +131,18 @@ class RoadNetwork:
         return ElevationProfiles(self.edge_profile_start, self.edge_profile_points, self.edge_forward,
                                  self.profile_elevation_m, distribution)
 
-    def numeric_material_means(self, material_ids: Iterable[str]) -> dict[str, float]:
-        """数値の材料ごとの、取込の範囲全体の距離で重みを付けた平均（値の無い区間を除く）。道路網と同じ寿命で、材料ごとに
-        1回だけ求める。道路網に無い材料は返さない。"""
-        cache = self._fill_cache
-        means: dict[str, float] = {}
-        for material_id in material_ids:
-            if material_id not in cache and material_id in self.numeric_ids:
-                values = self.numeric_values[:, self.numeric_ids.index(material_id)]
-                known = ~np.isnan(values)
-                total = float(self.distance_m[known].sum())
-                cache[material_id] = float((values[known] * self.distance_m[known]).sum()) / total if total > 0 else np.nan
-            if material_id in cache:
-                means[material_id] = cache[material_id]
-        return means
-
     @cached_property
-    def _fill_cache(self) -> dict[str, float]:
-        return {}
+    def numeric_means(self) -> dict[str, float]:
+        """数値の材料ごとの、取込範囲全体の距離で重みを付けた平均（値の無い区間を除く。値が1つも無ければNaN）。欠けた材料を
+        埋める（`MaterialFills`）。道路網と同じ寿命で1回だけ求める。"""
+        means: dict[str, float] = {}
+        for column, material_id in enumerate(self.numeric_ids):
+            values = np.asarray(self.numeric_values[:, column], dtype=np.float64)
+            known = ~np.isnan(values)
+            distance = self.distance_m[known]
+            total = float(distance.sum())
+            means[material_id] = float((values[known] * distance).sum()) / total if total > 0 else np.nan
+        return means
 
     @cached_property
     def nearest_rain_stations(self) -> NearestRainStations:
@@ -191,21 +184,35 @@ class RoadSlice:
         return np.asarray(self.network.node_lon[self.nodes], dtype=np.float64)
 
 
-def material_fills(road: "RoadSlice", numeric_ids: Iterable[str], class_ids: Iterable[str]) -> MaterialFills:
-    """取込の範囲全体の材料の分布（欠けを埋める平均。`domain/ledger_costs.py: MaterialFills`）。数値の材料は道路網の距離で
-    重みを付けた平均、区分の材料（`class:<分け方>`）は取込の範囲全体の区分の列（`RoadSlice.classes`）の値ごとの距離の割合
-    （値の無い区間を除く）。"""
-    distance = road.network.distance_m
+@dataclass(frozen=True)
+class MaterialFills:
+    """取込範囲全体の材料の分布で、欠けた材料を埋める（探索の範囲で埋めると、同じ道の費用が探索の範囲で変わる）。
+    `numeric_means`は数値の材料の距離で重みを付けた平均、`class_shares`は区分の材料の値ごとの距離の割合（値の無い道を除いて
+    和が1）。"""
+
+    numeric_means: Mapping[str, float]
+    class_shares: Mapping[str, Mapping[str, float]]
+
+    def fill(self, material_id: str, values: np.ndarray) -> np.ndarray:
+        """数値の材料`material_id`の値の欠けを平均で埋める（平均を持たない材料はNaNのまま）。"""
+        values = np.asarray(values, dtype=np.float64)
+        return np.where(np.isnan(values), self.numeric_means.get(material_id, np.nan), values)
+
+
+def material_fills(network: RoadNetwork, classes: Mapping[str, CategoricalColumn],
+                   class_ids: Iterable[str]) -> MaterialFills:
+    """取込範囲全体の材料の分布。数値の材料は全部（`RoadNetwork.numeric_means`）、区分の材料は`class_ids`の分だけ、取込範囲
+    全体の区分の列（`classes`。`road_class_columns`）の値ごとの距離の割合を求める。"""
     shares: dict[str, dict[str, float]] = {}
     for material_id in class_ids:
-        column = road.classes.get(material_id)
+        column = classes.get(material_id)
         if column is None:
             continue
-        lengths = np.bincount(column.codes.astype(np.int64), weights=distance, minlength=len(column.vocab))
+        lengths = np.bincount(column.codes, weights=network.distance_m, minlength=len(column.vocab))
         total = float(lengths[1:].sum())
         shares[material_id] = {
             str(value): float(length) / total for value, length in zip(column.vocab[1:], lengths[1:]) if total > 0 and length > 0}
-    return MaterialFills(numeric_means=road.network.numeric_material_means(numeric_ids), class_shares=shares)
+    return MaterialFills(numeric_means=network.numeric_means, class_shares=shares)
 
 
 def road_class_columns(
