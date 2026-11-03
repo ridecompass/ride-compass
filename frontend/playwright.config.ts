@@ -45,8 +45,8 @@ export default defineConfig({
   // 再試行しない（.claude/rules/testing-scaffold.md「テストの足場で、本来のNGを覆わない」）。
   retries: 0,
   // 1つのサーバーへ複数のChromiumが同時に地図（MapLibre・WASM）を読みに行くと、開発機では
-  // ページ遷移とフックが30秒の枠を超える。CIのランナーはジョブ専有なので既定のまま。
-  workers: process.env.CI ? undefined : 1,
+  // ページ遷移とフックが30秒の枠を超える。CIのランナーはジョブ専有なので、コアの数いっぱいに並べる。
+  workers: process.env.CI ? "100%" : 1,
   // CIは失敗時にplaywright-reportをartifactとして上げる（ci.yml）。
   reporter: process.env.CI ? [["line"], ["html", { open: "never" }]] : "html",
   use: {

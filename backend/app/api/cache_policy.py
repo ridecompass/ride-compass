@@ -126,6 +126,8 @@ ROUTE_POLICIES: Final[tuple[tuple[str, CachePolicy], ...]] = (
     *TILE_ROUTE_POLICIES,
     # カタログ・設定
     ("/api/axis-catalog", LIVE),
+    # 管理APIで書いた費用の軸の定義が、再デプロイなしに画面へ出るまでの遅れを軸カタログと揃える。
+    ("/api/cost-axes", LIVE),
     # 天候（URLに緯度経度を含むため地点ごとに別エントリになる）
     ("/api/weather", SHORT),
     ("/api/weather/msm-grid", SHORT),

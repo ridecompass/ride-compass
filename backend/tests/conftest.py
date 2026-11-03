@@ -458,15 +458,14 @@ _RUNNING_ITEM: pytest.Item | None = None
 
 @pytest.hookimpl(tryfirst=True)
 def pytest_collection_modifyitems(config, items):
-    """テストDBへつなぐテストに、DBの印（`-m`で選ぶ`postgis`と、ファイルごとに1つのワーカーへ寄せる`xdist_group`）を付ける。
+    """テストDBへつなぐテストに、DBの印（`-m`で選ぶ`postgis`）を付ける。先に動くのは、`-m`の選り分けが同じフックで印を読むから。
 
-    ファイルごとに寄せるのは、エンジンと表の用意（`road_graph_engine`）がファイル単位で1回だけ走るようにするため。
-    先に動くのは、`-m`の選り分けとpytest-xdistの`--dist loadgroup`が同じフックで印を読むから。
+    ファイルをワーカーへ寄せはしない。ワーカーはそれぞれ自分のDBを使い（`pytest_collection_finish`）、ファイル単位の
+    用意（`road_graph_engine`）もワーカーごとに作るので、1つのファイルが2つのワーカーに分かれても、用意が2回走るだけになる。
     """
     for item in items:
         if DATABASE_FIXTURE in getattr(item, "fixturenames", ()):
             item.add_marker(pytest.mark.postgis)
-            item.add_marker(pytest.mark.xdist_group(name=item.nodeid.split("::", 1)[0]))
 
 
 @contextmanager
