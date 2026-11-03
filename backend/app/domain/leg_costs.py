@@ -202,7 +202,8 @@ class _TravelInputs:
 def stop_cost_seconds(profile: RiderProfile, penalty_strength: float) -> float:
     """止まる出来事1回（止まる換算）が費用に足す秒: 漕ぎ出しで平地の出力を越えて踏む体力を、平地の出力で割って秒にし、
     つまみ（`penalty_strength`）を掛けたもの。時間は足さない（所要時間は割合 × 待ちで別に数える）。曲がる所の費用が読む
-    （`domain/turn_structure.py: build_turn_expanded_structure`）。軸ごとの倍率と体力の重みは #1339 の費用の式で足す。"""
+    （`domain/turn_structure.py: build_turn_expanded_structure`）。区間の止まる出来事の漕ぎ出しは、まだ費用に入れない
+    （区間の費用は停止の軸が持つため、足すと同じ損を2回数える）。"""
     return penalty_strength * kickoff_extra_j(profile) / wheel_power_w(profile)
 
 

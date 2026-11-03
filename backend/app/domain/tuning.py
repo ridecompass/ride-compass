@@ -118,20 +118,31 @@ def _stop_parameters(kind: str, share: float, wait: float, description: str) -> 
     )
 
 
+def turn_seconds_parameter_id(name: str) -> str:
+    """曲がる所の出来事の名前（`left`・`major_crossing`等）から、止まった（減速した）ときの待ちの較正値のid。"""
+    return f"turn.{name}_seconds"
+
+
+def turn_share_parameter_id(name: str) -> str:
+    """曲がる所の出来事の名前から、止まる割合の較正値のid。"""
+    return f"turn.{name}_share"
+
+
 def _turn_parameters(name: str, label: str, share: float, wait: float, maximum: float,
                      description: str) -> tuple[TuningParameter, TuningParameter]:
     """曲がる所の出来事1種類ぶんの宣言（割合と、止まった・減速したときの待ち）。"""
     return (
         TuningParameter(
-            f"turn.{name}_share", f"{label}の割合", "", share, 0.0, 1.0, TuningEffect.TURN_STRUCTURE,
+            turn_share_parameter_id(name), f"{label}の割合", "", share, 0.0, 1.0, TuningEffect.TURN_STRUCTURE,
             "通るたびに止まる（減速する）割合。所要時間と漕ぎ出しの体力に同じ割合を使う。",
         ),
-        TuningParameter(f"turn.{name}_seconds", label, "秒", wait, 0.0, maximum, TuningEffect.TURN_STRUCTURE, description),
+        TuningParameter(turn_seconds_parameter_id(name), label, "秒", wait, 0.0, maximum, TuningEffect.TURN_STRUCTURE,
+                        description),
     )
 
 
 #: 説明の文が名指す較正値のid。宣言と説明が同じ綴りを引く。
-_MAJOR_CROSSING_ID = "turn.major_crossing_seconds"
+_MAJOR_CROSSING_ID = turn_seconds_parameter_id("major_crossing")
 _STOP_ID = stop_seconds_parameter_id("stop")
 _SIGNAL_ID = stop_seconds_parameter_id("signal")
 _CRR_ID = "speed.crr"

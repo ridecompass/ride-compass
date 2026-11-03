@@ -131,7 +131,7 @@ def pushed_power_w(flat_power_w: float, extra_force_n: float) -> tuple[float, fl
 def kickoff_extra_j(profile: RiderProfile) -> float:
     """止まる出来事1回の漕ぎ出しで、平地の出力を越えて踏む体力（J）。止まった所から巡航速度まで、平地の出力の上限倍率
     （`speed.max_climb_power_ratio`）で踏んで加速する前提で、要る運動エネルギー½mv²のうち平地の出力を越えた分
-    （1 − 1/上限倍率。既定の2.5倍なら6割）。"""
+    （1 − 1/上限倍率）。"""
     speed = profile.cruise_speed_ms
     return 0.5 * profile.mass_kg * speed * speed * (1.0 - 1.0 / tuning_value("speed.max_climb_power_ratio"))
 

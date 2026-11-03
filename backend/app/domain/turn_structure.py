@@ -12,7 +12,7 @@ import numpy as np
 from app.domain.geo import LatLonPoint, bearing_between
 from app.domain.search_graph import EDGE_VALUE_DTYPE, SEARCH_INDEX_DTYPE, CsrGraphStructure, LazyRoadGraph
 from app.domain.traffic import MAJOR_CROSSING_MIN_RANK, StopEvent, slowed_speed_ratio
-from app.domain.tuning import tuning_value
+from app.domain.tuning import turn_seconds_parameter_id, turn_share_parameter_id, tuning_value
 
 
 @dataclass(frozen=True)
@@ -38,7 +38,7 @@ class TurnCostSpec:
 
 
 def _turn_event(name: str, slows_only: bool) -> StopEvent:
-    return StopEvent(share=tuning_value(f"turn.{name}_share"), wait_seconds=tuning_value(f"turn.{name}_seconds"),
+    return StopEvent(share=tuning_value(turn_share_parameter_id(name)), wait_seconds=tuning_value(turn_seconds_parameter_id(name)),
                      slows_only=slows_only)
 
 
@@ -220,10 +220,11 @@ def build_turn_expanded_structure(
         & (target_node_rank >= MAJOR_CROSSING_MIN_RANK)
         & ~node_has_signal[via_node]
     )
+    # 上位の道の待ちは曲がりの待ちに足す。漕ぎ出しは同じ所で1回しか起きないので、重なる出来事の大きい方だけを数える。
     major = crosses_major & ~is_uturn & branch
     for event, applies in ((spec.major_crossing, major & straight), (spec.major_turn, major & ~straight)):
         turn_seconds = turn_seconds + np.where(applies, event.expected_seconds, 0.0)
-        turn_stops = turn_stops + np.where(applies, event.stop_equivalents(spec.slowed_speed_ratio), 0.0)
+        turn_stops = np.where(applies, np.maximum(turn_stops, event.stop_equivalents(spec.slowed_speed_ratio)), turn_stops)
 
     return TurnExpandedStructure(
         state_count=state_count, indptr=new_indptr.astype(SEARCH_INDEX_DTYPE),

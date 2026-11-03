@@ -261,6 +261,19 @@ def test_node_rank_comes_from_roads_that_leave_the_node_too():
     )
 
 
+def test_a_turn_onto_a_major_road_waits_for_both_but_kicks_off_once():
+    """信号の無い交差点で上位の道へ曲がると、曲がりの待ちと上位の道の待ちを足すが、止まるのは1回なので漕ぎ出しは1回ぶん
+    （重なる出来事の大きい方）だけ費用に足す。"""
+    graph = make_graph(PLUS_NODES, PLUS_EDGES)
+    lazy = lazy_of(graph)
+    _, _, structure = build_all(graph, spec=TURN_SPEC, edge_rank=_plus_ranks(lazy, MAJOR, MAJOR - 1), stop_cost_seconds=4.0)
+    entry = _entries(lazy, structure)[("WC", "CS")]  # 右折で上位の道へ
+
+    assert float(structure.turn_seconds[entry]) == pytest.approx(
+        TURN_SPEC.right.expected_seconds + TURN_SPEC.major_turn.expected_seconds)
+    assert float(structure.turn_cost[entry]) == pytest.approx(float(structure.turn_seconds[entry]) + 4.0)
+
+
 def test_reverse_transitions_flip_direction_and_carry_the_original_wait():
     """後ろ向きの遷移は向きだけを反転し、ターンの時間と費用は元の進行方向の値のまま運ぶ。"""
     graph = make_graph(PLUS_NODES, PLUS_EDGES)
