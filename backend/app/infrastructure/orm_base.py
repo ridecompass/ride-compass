@@ -24,6 +24,7 @@ class Base(DeclarativeBase):
 #: 中身は同じ実行でほかに誰がimportしたかで変わるので、テストの集まりの中では欠けが出ない）。
 TABLE_MODULES = (
     "app.infrastructure.axis_definition_models",
+    "app.infrastructure.cost_axis_models",
     "app.infrastructure.derived_data_meta",
     "app.infrastructure.derived_models",
     "app.infrastructure.road_class_models",

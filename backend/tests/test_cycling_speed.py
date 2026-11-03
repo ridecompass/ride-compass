@@ -133,7 +133,7 @@ def test_more_resistance_adds_the_declared_watts_per_newton_whatever_the_flat_po
 
 
 def _ride(profile: RiderProfile, grade: float = 0.0, headwind: float = 0.0, crr: float | None = None):
-    return _model(profile, grade, crr).ride(np.array([headwind]), np.array([0.0]))
+    return _model(profile, grade, crr).ride(np.array([headwind]), np.array([0.0]), 0.0)
 
 
 @pytest.mark.parametrize(
@@ -167,6 +167,19 @@ def test_the_pushed_watts_are_shared_by_the_resistances_that_grew_and_add_up_to_
     assert gravity > 0 and air > 0
 
 
+def test_the_effort_weight_grows_with_the_power_the_rider_wants_over_the_flat_power():
+    """体力の重みは、上限で切る前の踏みたい出力と平地の出力の比の指数乗。1乗なら、平地の出力の2倍踏みたい坂の体力は2倍に
+    数える（0乗なら事実の量そのもの）。上限を越えて踏みたい急な坂ほど重い。"""
+    flat_power_w = cycling_speed.wheel_power_w(RIDER)
+    model = _model(RIDER, 0.03)
+    facts, weighted = (model.ride(np.zeros(1), np.zeros(1), exponent) for exponent in (0.0, 1.0))
+    extra_n = RIDER.mass_kg * 9.80665 * 0.03  # 標準重力加速度
+    desired, _ = cycling_speed.pushed_power_w(flat_power_w, extra_n)
+
+    assert float(weighted.gravity_extra_j[0]) == pytest.approx(float(facts.gravity_extra_j[0]) * desired / flat_power_w)
+    assert float(weighted.seconds[0]) == pytest.approx(float(facts.seconds[0]))
+
+
 def test_a_tailwind_takes_from_the_push_on_a_climb():
     """抵抗の増減は符号つきで足す。追い風の登りは、無風の登りより踏み増しが小さい。"""
     calm = _ride(RIDER, grade=0.03)
@@ -190,7 +203,7 @@ def test_the_stops_on_a_road_go_to_the_inertia_item_of_the_effort_ledger():
     model = SegmentSpeedModel(RIDER, road_profiles([0.0, 0.0], [0.0, 0.0]), np.full(2, 500.0), np.full(2, RIDER.crr),
                               np.array([2.5, 0.0]))
 
-    ride = model.ride(np.zeros(2), np.zeros(2))
+    ride = model.ride(np.zeros(2), np.zeros(2), 0.0)
 
     assert ride.inertia_extra_j.tolist() == pytest.approx([2.5 * cycling_speed.kickoff_extra_j(RIDER), 0.0])
     assert ride.seconds[0] == pytest.approx(ride.seconds[1])

@@ -329,6 +329,23 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
         "登りでこれ以下になったら押して歩くとみなす。",
         shown_to_users=True,
     ),
+    TuningParameter(
+        "cost.effort_alpha",
+        "体力の換算", "倍", 1.0, 0.0, 10.0, TuningEffect.IMMEDIATE,
+        "平地の出力を越えて踏んだ体力を、平地をその秒だけ走る体力とみなした秒に掛ける倍率（費用の式のα）。全部の体力の軸に"
+        "共通。",
+    ),
+    TuningParameter(
+        "cost.burden_seconds_per_km",
+        "道の負担の換算", "秒/km", 180.0, 0.0, 3600.0, TuningEffect.IMMEDIATE,
+        "重さ1の道に換算した1kmを、何秒の損とみなすか（費用の式のβ）。既定は時速20kmで1km走る時間。全部の道の負担の軸に共通。",
+    ),
+    TuningParameter(
+        "cost.effort_weight_exponent",
+        "体力の重みの曲がり方", "", 1.0, 0.0, 4.0, TuningEffect.IMMEDIATE,
+        "踏みたい出力（上限で切る前）と平地の出力の比を何乗して体力の重みにするか。0で重みを掛けない。上げるほど、上限を"
+        "越えて踏みたい急な坂・強い向かい風を重く数える。",
+    ),
     # 既定は、巡航20km/hの人（総質量80kg）が勾配5%で時速10km前後になるという実感に合わせた（勾配1%あたり15W）。
     TuningParameter(
         "speed.extra_power_per_force",
