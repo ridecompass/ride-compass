@@ -224,7 +224,7 @@ def test_region_axis_inspector_hands_the_pressed_feature_and_the_maps_conditions
         composite_difficulty=InspectorComposite(value=75.0, covered_weight_fraction=1.0),
         landcover=None,
     )
-    result = AxisInspectorResult(highway="primary", tags={}, values=values)
+    result = AxisInspectorResult(highway="primary", tags={}, values=values, lens=None)
     fake = FakeAxisInspector(result)
     override_dependency(get_axis_inspector_service, lambda: fake)
     response = client.post(

@@ -10,7 +10,7 @@ const COST_AXIS_CATALOG_QUERY_KEY = ["cost-axis-catalog"] as const;
 type CostAxisEntry = CostAxisCatalogResponse["axes"][number];
 
 /** 費用の軸1本（`GET /api/cost-axes`の1行を画面が読む形へ移したもの）。 */
-export interface CostAxis {
+interface CostAxis {
   /** 軸id。倍率の辞書のキーで、地図のレンズのidでもある。 */
   axisId: string;
   /** 軸の費目を書く帳簿。 */
