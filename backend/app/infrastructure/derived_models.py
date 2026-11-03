@@ -207,10 +207,10 @@ class EdgeElevationRow(_EdgeKey, Base):
     end_elevation_m: Mapped[float] = mapped_column(REAL, nullable=False)
     elevation_gain_m: Mapped[float] = mapped_column(REAL, nullable=False)
     elevation_loss_m: Mapped[float] = mapped_column(REAL, nullable=False)
-    # 標高が付いた区間でも、両端の差が道としてありえない勾配になる区間は平均勾配を持たない
+    # 標高が付いた区間でも、勾配として数える点の間が無い区間は平均勾配を持たない
     # （`domain/attributes.py: elevation_values_sql`）。
     average_grade: Mapped[float | None] = mapped_column(REAL, nullable=True)
-    #: 順方向に走ったときの、断面の刻みの間で一番急な登りと下りの勾配（%、どちらも0以上）。隣り合う2点の組が
+    #: 順方向に走ったときの、断面の刻みの間で一番急な登りと下りの勾配（%、どちらも0以上）。勾配として数える点の間が
     #: 無い区間は持たない（`domain/attributes.py: elevation_values_sql`）。逆向きは2列を入れ替えて読む。
     steepest_gain_percent: Mapped[float | None] = mapped_column(REAL, nullable=True)
     steepest_loss_percent: Mapped[float | None] = mapped_column(REAL, nullable=True)

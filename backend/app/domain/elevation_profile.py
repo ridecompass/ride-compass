@@ -22,9 +22,9 @@ import numpy as np
 from numba import njit
 
 #: 舗装された公道としてありうる勾配の上限（%）。世界でも最急の公道が35%前後のため、これを超える値は道の起伏ではなく
-#: 標高データの読み違い（両端が路面でない地物を指した等）である。区間の要約の列（平均勾配・一番急な所）も、点の間も、
-#: これを超える勾配を値として持たない——0次ハードフィルタは値の無い区間を除外しない（`domain/hard_filters.py`）ので、
-#: 誤った値で黙って経路から外すより安全側になる。
+#: 標高データの読み違い（両端が路面でない地物を指した等）である。点の間の勾配がこれを超えたら、その間を勾配として
+#: 数えない——0次ハードフィルタは値の無い区間を除外しない（`domain/hard_filters.py`）ので、誤った値で黙って経路から
+#: 外すより安全側になる。
 MAX_PLAUSIBLE_GRADE_PERCENT = 40.0
 _MAX_PLAUSIBLE_GRADE = MAX_PLAUSIBLE_GRADE_PERCENT / 100.0
 
@@ -64,7 +64,8 @@ class ElevationProfiles:
 @njit(cache=True, nogil=True)
 def interval_grade(lower_m: float, upper_m: float, length_m: float) -> float:
     """点の間の、順方向に読んだ勾配（小数）。どちらかの端に値が無いか、公道としてありえない勾配ならNaN（標高の無い間）。
-    長さ0の間（長さ0の区間）も勾配を持たない——走る長さが無いので、所要時間にも標高の無い長さにも効かない。"""
+    長さ0の間（長さ0の区間）も勾配を持たない——走る長さが無いので、所要時間にも標高の無い長さにも効かない。
+    区間の要約の列を出す派生のSQL（`domain/attributes.py: elevation_values_sql`）も、同じ条件で数える間を決める。"""
     if not length_m > 0:
         return np.nan
     grade = (upper_m - lower_m) / length_m
