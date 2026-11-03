@@ -2484,7 +2484,9 @@ export interface operations {
     };
     get_generate_job_api_routes_generate__job_id__get: {
         parameters: {
-            query?: never;
+            query?: {
+                wait_seconds?: number;
+            };
             header?: never;
             path: {
                 job_id: string;

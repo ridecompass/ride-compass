@@ -102,6 +102,18 @@
               "type": "string",
               "title": "Job Id"
             }
+          },
+          {
+            "name": "wait_seconds",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 10,
+              "minimum": 0,
+              "default": 0,
+              "title": "Wait Seconds"
+            }
           }
         ],
         "responses": {

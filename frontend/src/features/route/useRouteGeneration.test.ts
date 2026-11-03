@@ -100,9 +100,9 @@ describe("入力の誤り", () => {
 });
 
 describe("進み方", () => {
-  it("実行中は進み方を文言で返し、順番待ちかを見分けられる。終わると実行中でなくなる", async () => {
+  it("実行中は押してからの経過を応答を待たずに1秒ごとに数え、順番待ちかを見分けられる。終わると実行中でなくなる", async () => {
     // 問い合わせの間隔と経過時間は時計で進める。
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "performance"] });
     const rendered = renderGeneration();
     const job = heldReplies();
     backend.jobs.answerWith(job.reply);
@@ -112,20 +112,18 @@ describe("進み方", () => {
       done = rendered.result.current.generation.submit();
     });
     expect(rendered.result.current.generation.running).toBe(true);
-    expect(rendered.result.current.generation.progressLabel).toBeUndefined();
+    expect(rendered.result.current.generation.progressLabel).toBe("生成中...(0秒経過)");
+
+    // backendが終わるまで待って返さない間も、経過は進む。
+    await act(() => vi.advanceTimersByTimeAsync(3000));
+    expect(rendered.result.current.generation.progressLabel).toBe("生成中...(3秒経過)");
 
     await job.answer(0, Response.json({ status: "queued" }));
     await flush();
     expect(rendered.result.current.generation.progressLabel).toBe("順番待ち...");
 
-    await act(() => vi.advanceTimersByTimeAsync(2600));
-    await job.answer(1, Response.json({ status: "running" }));
-    await flush();
-    expect(rendered.result.current.generation.progressLabel).toBe("生成中...(3秒経過)");
-
-    await act(() => vi.advanceTimersByTimeAsync(1500));
     await job.answer(
-      2,
+      1,
       Response.json({
         status: "done",
         result: { routes: [route("r1")], conditions: used(), no_candidates_reason: null },

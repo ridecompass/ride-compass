@@ -4,7 +4,7 @@ from functools import partial
 from datetime import datetime
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import Field, PrivateAttr, RootModel, field_validator, model_validator
 
 from app.domain.time_zone import JST, as_jst
@@ -278,7 +278,12 @@ async def generate_routes(
 
 
 @router.get("/api/routes/generate/{job_id}", response_model=RouteGenerateJobStatusResponse)
-async def get_generate_job(job_id: str) -> RouteGenerateJobStatusResponse:
+async def get_generate_job(
+    job_id: str,
+    # 終わるまで待つ上限（秒）。終われば待たずに返し、過ぎても終わらなければ待ちの応答を返す。0ならすぐ返す。
+    wait_seconds: Annotated[int, Query(ge=0, le=job_registry.JOB_WAIT_MAX_SECONDS)] = 0,
+) -> RouteGenerateJobStatusResponse:
+    await job_registry.wait_until_finished(job_id, wait_seconds)
     record = job_registry.get_job(job_id)
     if record is None:
         raise HTTPException(

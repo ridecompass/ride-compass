@@ -1,6 +1,6 @@
 """`api/routers/routes.py`——ルート生成のHTTPの入口。
 
-確かめるのは、HTTPから見える振る舞いだけ: 要求の検証（422）、ジョブの投稿と取得（202・404）、生成の種類
+確かめるのは、HTTPから見える振る舞いだけ: 要求の検証（422）、ジョブの投稿と取得（202・404。終わるまで待つ取得を含む）、生成の種類
 （周回・目的地・経由地・区間の乗り換え。距離と置いた点の組み合わせ）の振り分け、実際に使った条件のエコー、候補0件の理由、失敗の伝え方、
 同時実行とレート制限（429）。
 
@@ -35,6 +35,7 @@ from app.domain.road_classes import AvoidanceClassification
 from app.domain.route_request import ASSUMED_SPEED_KMH, DEFAULT_MAX_ROUTES, MAX_SPLICED_EDGES, MAX_WAYPOINTS
 from app.domain.tuning import TUNING_VALUES
 from app.infrastructure import rate_limiter
+from app.infrastructure.job_registry import JOB_WAIT_MAX_SECONDS
 from app.main import app
 from app.services.graph_service import GraphService, SearchMemory
 from app.services.route_generation_setup import assemble_route_generation_setup
@@ -362,6 +363,26 @@ async def test_a_request_the_screen_can_send_is_refused_in_words_the_rider_reads
 
 async def test_a_job_that_is_not_known_is_404(client):
     assert (await client.get("/api/routes/generate/no-such-job")).status_code == 404
+
+
+async def test_a_poll_that_may_wait_returns_when_the_job_finishes_or_at_the_limit(client, world):
+    """待つ上限を渡した問い合わせは、終わればその場で結果を返し、上限までに終わらなければ待ちの応答を返す
+    （画面は固定の間隔で聞き直さずに済む）。"""
+    # 待っている問い合わせが上限で切れる前に生成を終わらせるため、JITのコンパイルを先に済ませておく。
+    assert (await _generate(client))["status"] == "done"
+    world.weather = GatedWeather()
+    job_id = (await _post(client)).json()["job_id"]
+    url = f"/api/routes/generate/{job_id}"
+
+    assert (await client.get(url, params={"wait_seconds": 1})).json() == {"status": "running"}
+
+    poll = asyncio.create_task(client.get(url, params={"wait_seconds": JOB_WAIT_MAX_SECONDS}))
+    await asyncio.sleep(0.1)
+    assert not poll.done()
+    world.weather.gate.set()
+    assert (await _wait(client, job_id))["status"] == "done"
+    # 終わった合図で起きるなら、完了が見えた直後に返る（上限まで待ち続けない）。
+    assert (await asyncio.wait_for(poll, timeout=1)).json()["status"] == "done"
 
 
 async def test_a_failed_job_says_so_without_leaking_its_internals(client, world):
