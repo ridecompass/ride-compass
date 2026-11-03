@@ -222,13 +222,17 @@ def _span_seconds(span_row: np.ndarray, span_length: np.ndarray, speeds: np.ndar
 
 @njit(cache=True, nogil=True)
 def _span_work(span_row: np.ndarray, span_length: np.ndarray, span_grade: np.ndarray, speeds: np.ndarray,
-               powers: np.ndarray, crr: np.ndarray, air_extra_n: np.ndarray, rider: np.ndarray, rows: int) -> np.ndarray:
+               powers: np.ndarray, static_extra: np.ndarray, crr: np.ndarray, air_extra_n: np.ndarray, rider: np.ndarray,
+               rows: int, weight_exponent: float) -> np.ndarray:
     """平地の出力を越えて踏んだ体力（J）を、区間の行ごとに重力・空気・転がりの分へ足す（`(3, 行数)`、float64）。
 
     越えて踏んだ出力（実際に踏む出力−平地の出力）は、平地より増えた抵抗のうち正のものの比で配る——上限で頭打ちになった
-    ときも同じ比。"""
+    ときも同じ比。点の間ごとに、上限で切る前の踏みたい出力と平地の出力の比の`weight_exponent`乗を重みとして掛ける
+    （0なら重みを掛けない事実の量）——上限を越えて踏みたい坂ほど重い。"""
     work = np.zeros((3, rows))
     weight = np.float64(rider[_RIDER_WEIGHT])
+    flat_power = np.float64(rider[_RIDER_FLAT_POWER])
+    per_force = np.float64(rider[_RIDER_POWER_PER_FORCE])
     for i in range(len(span_row)):
         row = span_row[i]
         parts = (max(weight * span_grade[i], 0.0), max(np.float64(air_extra_n[row]), 0.0),
@@ -236,7 +240,10 @@ def _span_work(span_row: np.ndarray, span_length: np.ndarray, span_grade: np.nda
         total = parts[0] + parts[1] + parts[2]
         if total <= 0.0:
             continue
-        excess_j = (np.float64(powers[i]) - rider[_RIDER_FLAT_POWER]) * np.float64(span_length[i]) / np.float64(speeds[i])
+        excess_j = (np.float64(powers[i]) - flat_power) * np.float64(span_length[i]) / np.float64(speeds[i])
+        if weight_exponent != 0.0:
+            desired = flat_power + per_force * max(np.float64(static_extra[i]) + np.float64(air_extra_n[row]), 0.0)
+            excess_j *= (desired / flat_power) ** weight_exponent
         for k in range(3):
             work[k, row] += excess_j * parts[k] / total
     return work
@@ -304,11 +311,13 @@ class SegmentSpeedModel:
         speeds, _powers, _air = self._solve(headwind_ms, crosswind_ms)
         return _span_seconds(self._span_row, self._span_length, speeds, self._rows)
 
-    def ride(self, headwind_ms: np.ndarray, crosswind_ms: np.ndarray) -> SegmentRide:
-        """区間ごとの走行時間と、平地の出力を越えて踏んだ体力の費目ごとの内訳。"""
+    def ride(self, headwind_ms: np.ndarray, crosswind_ms: np.ndarray, weight_exponent: float) -> SegmentRide:
+        """区間ごとの走行時間と、平地の出力を越えて踏んだ体力の費目ごとの内訳。体力には、点の間ごとに踏みたい出力（上限で切る前）
+        と平地の出力の比の`weight_exponent`乗の重みを掛ける（0なら事実の量そのもの。慣性の漕ぎ出しは重みを掛けない——上限で
+        踏む前提の量なので、重みは費用の式が掛ける）。"""
         speeds, powers, air_extra_n = self._solve(headwind_ms, crosswind_ms)
-        work = _span_work(self._span_row, self._span_length, self._span_grade, speeds, powers, self._crr, air_extra_n,
-                          self._rider, self._rows)
+        work = _span_work(self._span_row, self._span_length, self._span_grade, speeds, powers, self._static_extra,
+                          self._crr, air_extra_n, self._rider, self._rows, float(weight_exponent))
         return SegmentRide(seconds=_span_seconds(self._span_row, self._span_length, speeds, self._rows),
                            gravity_extra_j=work[0], air_extra_j=work[1], rolling_extra_j=work[2],
                            inertia_extra_j=np.asarray(self._kickoffs, dtype=np.float64) * self._kickoff_extra_j)

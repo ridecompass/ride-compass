@@ -7,7 +7,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, func
+from sqlalchemy import Boolean, CheckConstraint, DateTime
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -20,7 +20,7 @@ class CostAxisDefinitionsRow(Base):
     __tablename__ = "cost_axis_definitions"
     __table_args__ = (CheckConstraint("only_one", name="cost_axis_definitions_only_one_check"),)
 
-    only_one: Mapped[bool] = mapped_column(Boolean, primary_key=True, server_default="true")
+    only_one: Mapped[bool] = mapped_column(Boolean, primary_key=True)
     definitions: Mapped[dict] = mapped_column(JSONB, nullable=False)
     #: いつこの全体へ書き換えたか。DBの時計（`now()`）で揃える。
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

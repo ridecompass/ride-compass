@@ -25,6 +25,8 @@ from app.domain.attributes import CategoricalColumn
 from app.domain.axis_definitions import BreakpointLinearShape, MaterialTerm, copy_axis_definitions
 from app.domain.difficulty import axis_weight_shares
 from app.domain.evaluation import DensityAxisColumn, StaticEdgeScoreMatrix
+from app.domain.cost_axes import EFFORT_AXES, CostAxisDefinitions
+from app.domain.ledger_costs import LedgerParameters, MaterialFills
 from app.domain.leg_costs import LegCostArrays, LegCostComposer, LegValues
 from app.domain.msm import MsmBlock, MsmGrid
 from app.domain.road_avoidance import RoadAvoidanceMasks
@@ -56,6 +58,9 @@ def wind_axis():
     with replaced_axis_definitions({WIND_AXIS: axis_definition(WIND_AXIS, material=WIND_DRAG, is_published=True)}):
         yield
 
+
+#: 取込の範囲全体の分布を持たない（欠けた材料は今までどおり0の扱い）。
+NO_FILLS = MaterialFills(numeric_means={}, class_shares={})
 
 def _column(values, n: int) -> np.ndarray:
     return np.asarray(values if isinstance(values, (list, tuple, np.ndarray)) else [values] * n, dtype=float)
@@ -110,7 +115,7 @@ def _series(speeds_by_hour: list[float], from_deg: float = NORTH) -> WindForecas
 
 
 def _composer(matrix: StaticEdgeScoreMatrix, *, weights=None, penalty=0.0, excluded=None, avoided=None,
-              departure_wind=None, series=None, lazy=None) -> LegCostComposer:
+              departure_wind=None, series=None, lazy=None, fills=NO_FILLS, ledger=None) -> LegCostComposer:
     n = len(matrix.distance_m)
     none = np.zeros(n, dtype=bool)
     masks = RoadAvoidanceMasks(
@@ -121,6 +126,7 @@ def _composer(matrix: StaticEdgeScoreMatrix, *, weights=None, penalty=0.0, exclu
         matrix, weights or {}, penalty, masks, AVOID_MULTIPLIER,
         departure_wind, series, START, CRUISE_KMH,
         np.arange(n) if lazy is None else np.asarray(lazy), detour_ratio=1.3, twilight_origin=PLACE,
+        material_fills=fills, ledger=ledger,
     )
 
 
@@ -155,6 +161,36 @@ def test_the_travel_time_runs_the_points_of_the_road_profile_not_its_average_gra
     up_and_down, flat = _snapshot(matrix).travel_seconds_lazy
 
     assert up_and_down > flat * 1.1
+
+
+def test_the_ledger_formula_adds_the_penalty_of_each_road_to_its_travel_time():
+    """費目の帳簿の式では、費用 ＝ 所要時間 ＋ つまみ × 代償（平らな舗装の道は代償0、砂利の道は道の負担の分だけ高い）。
+    所要時間は式に依らない。"""
+    lens = {"thresholds": [1.0], "band_labels": ["a", "b"]}
+    presentation = {"label": "x", "description": "", "icon_id": "i", "lens": lens}
+    axes = CostAxisDefinitions.model_validate({
+        "effort": {axis_id: presentation for axis_id in EFFORT_AXES},
+        "burden": {"vibration": {**presentation, "burden": {
+            "kind": "categorical", "material": "class:surface_estimate", "per_km": {"paved": 0.0, "gravel": 1.0}}}},
+    })
+    parameters = LedgerParameters(strength=0.5, multipliers={}, effort_alpha=1.0, burden_seconds_per_km=100.0,
+                                  effort_weight_exponent=0.0)
+    matrix = _matrix(2, distance=1000.0, categories={"class:surface_estimate": ["paved", "gravel"]})
+
+    leg = _snapshot(matrix, ledger=(axes, parameters))
+    plain = _snapshot(matrix)
+
+    assert leg.travel_seconds_lazy.tolist() == pytest.approx(plain.travel_seconds_lazy.tolist())
+    assert (leg.cost_lazy - leg.travel_seconds_lazy).tolist() == pytest.approx([0.0, 0.5 * 100.0 * 1.0 * 1.0])
+
+
+def test_a_segment_without_a_stop_count_waits_the_mean_of_the_whole_network():
+    """停止要因の数の無い区間は、取込の範囲全体の平均の密度で待つ（0とみなすと、数の無い道が止まらない速い道に見える）。"""
+    fills = MaterialFills(numeric_means={STOP_DENSITY["signal"]: 2.0}, class_shares={})
+    leg = _snapshot(_matrix(3, distance=500.0, materials={STOP_DENSITY["signal"]: [2.0, np.nan, 0.0]}), fills=fills)
+
+    assert leg.travel_seconds_lazy[1] == pytest.approx(leg.travel_seconds_lazy[0])
+    assert leg.travel_seconds_lazy[1] > leg.travel_seconds_lazy[2]
 
 
 def test_each_stop_on_a_segment_adds_its_share_of_the_wait():

@@ -26,6 +26,7 @@ from app.domain.attributes import (
 )
 from app.domain.elevation_profile import ElevationProfiles, GradeDistribution
 from app.domain.geo import LatLonPoint
+from app.domain.ledger_costs import MaterialFills
 from app.domain.rain import NearestRainStations
 from app.domain.material_catalog import GRADIENT_PERCENT, materials_of_source
 from app.domain.road_classes import RoadClassDefinitions, class_columns, layer_columns
@@ -130,6 +131,39 @@ class RoadNetwork:
                                          np.asarray(self.profile_distribution_share))
         return ElevationProfiles(self.edge_profile_start, self.edge_profile_points, self.edge_forward,
                                  self.profile_elevation_m, distribution)
+
+    def material_fills(self, numeric_ids: Iterable[str], class_ids: Iterable[str]) -> MaterialFills:
+        """取込の範囲全体の材料の分布（欠けを埋める平均。`domain/ledger_costs.py: MaterialFills`）。数値の材料は距離で重みを
+        付けた平均（値の無い区間を除く）、区分の材料は値ごとの距離の割合（値の無い区間を除く）。道路網と同じ寿命で、材料ごとに
+        1回だけ求める。"""
+        cache = self._fill_cache
+        numeric: dict[str, float] = {}
+        for material_id in numeric_ids:
+            if ("numeric", material_id) not in cache and material_id in self.numeric_ids:
+                values = self.numeric_values[:, self.numeric_ids.index(material_id)]
+                known = ~np.isnan(values)
+                total = float(self.distance_m[known].sum())
+                cache["numeric", material_id] = (
+                    float((values[known] * self.distance_m[known]).sum()) / total if total > 0 else np.nan)
+            if ("numeric", material_id) in cache:
+                numeric[material_id] = cache["numeric", material_id]
+        shares: dict[str, dict[str, float]] = {}
+        for material_id in class_ids:
+            if ("class", material_id) not in cache and material_id in self.categorical_ids:
+                column = self.categorical_ids.index(material_id)
+                lengths = np.bincount(self.categorical_codes[:, column].astype(np.int64), weights=self.distance_m,
+                                      minlength=len(self.categorical_vocab[column]))
+                total = float(lengths[1:].sum())
+                cache["class", material_id] = {
+                    value: float(length) / total
+                    for value, length in zip(self.categorical_vocab[column][1:], lengths[1:]) if total > 0 and length > 0}
+            if ("class", material_id) in cache:
+                shares[material_id] = cache["class", material_id]
+        return MaterialFills(numeric_means=numeric, class_shares=shares)
+
+    @cached_property
+    def _fill_cache(self) -> dict[tuple[str, str], object]:
+        return {}
 
     @cached_property
     def nearest_rain_stations(self) -> NearestRainStations:

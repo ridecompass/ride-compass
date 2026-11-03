@@ -17,7 +17,7 @@ async def read_cost_axes(session: AsyncSession) -> CostAxisDefinitions | None:
 
 async def replace_cost_axes_row(session: AsyncSession, definitions: CostAxisDefinitions) -> None:
     """全体を入れ替える（行が無ければ入れる）。"""
-    values = {"only_one": True, "definitions": definitions.model_dump(mode="json")}
+    values = {"only_one": True, "definitions": definitions.model_dump(mode="json"), "updated_at": func.now()}
     statement = insert(CostAxisDefinitionsRow).values(values)
     await session.execute(statement.on_conflict_do_update(
         index_elements=["only_one"], set_={"definitions": statement.excluded.definitions, "updated_at": func.now()}))

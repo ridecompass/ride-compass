@@ -158,3 +158,9 @@ def replace_cost_axes(definitions: CostAxisDefinitions | None) -> None:
     """プロセス内の全体を差し替える。束縛を1回替えるだけなので、別スレッドの読みは前か後の全体のどちらかを見る。"""
     global _current
     _current = definitions
+
+
+def cost_axis_material_ids() -> tuple[str, ...]:
+    """今の費用の軸の定義が読む材料id（道の負担の軸の材料）。静的スコア行列は、軸の構成と無関係にこれらを列として運ぶ。"""
+    definitions = _current
+    return () if definitions is None else tuple(dict.fromkeys(a.burden.material for a in definitions.burden.values()))

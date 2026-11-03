@@ -33,6 +33,8 @@ from app.domain.axis_definitions import copy_axis_definitions
 from app.domain.evaluation import StaticEdgeScoreMatrix, build_static_edge_score_matrix
 from app.domain.hard_filters import compute_routable_nodes, compute_search_exclusion
 from app.domain.leg_costs import LegCostArrays, LegCostComposer
+from app.domain.cost_axes import CostAxisDefinitions, current_cost_axes
+from app.domain.ledger_costs import LedgerParameters, current_ledger_parameters, fill_class_ids, fill_numeric_ids
 from app.domain.route_preference import RoutePreference
 from app.domain.road_avoidance import AvoidanceLevel, RoadAvoidanceMasks
 from app.domain.geo import (
@@ -222,6 +224,12 @@ class RoadGraphEngine:
         # 交差点でのターンの費用（秒）。較正値のため、組み立てた時点の値で1回の生成を通す。
         self._turn_cost = current_turn_cost()
 
+    def _ledger_setup(self) -> tuple[CostAxisDefinitions, LedgerParameters] | None:
+        """費目の帳簿の式で組むときの軸の定義と式の値。費用の軸の定義が表に無ければNone（軸の点数の割増の式で組む）——
+        切り替えは、本番の表へ費用の軸の定義を入れることで起きる。つまみは割増の強さの較正値、倍率はどの軸も標準の1。"""
+        axes = current_cost_axes()
+        return None if axes is None else (axes, current_ledger_parameters(self._penalty_strength, {}))
+
     async def _build_search_graph(
         self, bbox: BoundingBox, origin: Coordinates, now: datetime
     ) -> _SearchGraph | None:
@@ -279,6 +287,8 @@ class RoadGraphEngine:
                 wind_series, start, self._assumed_speed_kmh, lazy_graph.edge_rows,
                 detour_ratio=detour_ratio_or_default(learned_detour_ratio),
                 twilight_origin=origin,
+                material_fills=road.network.material_fills(fill_numeric_ids(), fill_class_ids()),
+                ledger=self._ledger_setup(),
             )
             return search_masks, composer, composer.compose("outbound", 0.0, +1)
 
@@ -408,7 +418,7 @@ class RoadGraphEngine:
             node_lon=search.node_lon,
             statics=statics,
             turn_structure=turn_structure,
-            transition_cost=turn_structure.turn_seconds,
+            transition_cost=search.composer.transition_costs(turn_structure.turn_seconds, turn_structure.turn_kickoffs),
             tile_set=search.tile_set,
         )
 

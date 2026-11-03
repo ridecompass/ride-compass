@@ -53,6 +53,7 @@ from app.domain.material_catalog import (
     is_known_material,
     material_spec,
 )
+from app.domain.cost_axes import cost_axis_material_ids
 from app.domain.cycling_speed import travel_model_material_ids
 from app.domain.elevation_profile import ElevationProfiles
 from app.domain.hard_filters import hard_filtered
@@ -125,7 +126,7 @@ def route_facing_categorical_material_ids(definitions: dict[str, AxisDefinition]
 def _route_facing_leaf_material_ids(definitions: dict[str, AxisDefinition], *, categorical: bool) -> list[str]:
     """所要時間が読む材料と公開軸の葉の材料のうち、categoricalかどうかが`categorical`に合うもの（動的材料を除く）を安定順で並べる。"""
     seen: dict[str, None] = {}
-    for material_id in (*travel_model_material_ids(), *_published_axis_leaf_material_ids(definitions)):
+    for material_id in (*travel_model_material_ids(), *cost_axis_material_ids(), *_published_axis_leaf_material_ids(definitions)):
         spec = material_spec(material_id)
         if spec is None or (spec.dtype == "categorical") != categorical:
             continue
