@@ -218,7 +218,10 @@ jobs:
         working-directory: backend
     steps:
       - uses: actions/checkout@v5
+      # DB を使うのは pytest だけなので、入れるのを裏で始め（約30秒）、依存の用意と静的検査に重ねる。
       - uses: ./.github/actions/postgis
+        with:
+          phase: start
       # requirements-batch.txt（-r requirements.txtを内包し、取込バッチの依存を足す）を入れる。
       # 本番のイメージ（backend/Dockerfile）と同じ組で、tests/には取込バッチ（app/batch/）の
       # テストがあり無条件でosmiumをimportするため、requirements.txtだけでは収集で失敗する。
@@ -229,16 +232,34 @@ jobs:
       # 実行の速いものから）。設定はbackend/ruff.toml。対象はbackendの下のPythonすべてで、backendの外は
       # repo-wideジョブが見る。
       - run: python -m ruff check .
+      # mypy の解析結果（backend/.mypy_cache）は、master の実行が残した一番新しいものを読み、変わったファイルとそれを
+      # 読むものだけを見直す（無ければ全部を見る。全部で約20秒）。残すのは master の push だけにする——Pull Request の
+      # 実行が残したものはその Pull Request からしか読めず（公式の文書「Dependency caching」の Restrictions for accessing a cache）、
+      # 置き場の容量を食うだけ。
+      - uses: actions/cache/restore@v6
+        with:
+          path: backend/.mypy_cache
+          key: mypy-${{ runner.arch }}-${{ github.sha }}
+          restore-keys: mypy-${{ runner.arch }}-
       # 関数の宣言と違う型の値を渡す呼び出しを止める。対象と設定はbackend/mypy.ini。
       - run: python -m mypy
+      - if: github.event_name == 'push'
+        uses: actions/cache/save@v6
+        with:
+          path: backend/.mypy_cache
+          key: mypy-${{ runner.arch }}-${{ github.sha }}
       # 層の向き（上の層だけが下の層を読む）を止める。契約はbackend/.importlinter、各層が持つものは
       # docs/architecture/directory-layout.md。
       - run: lint-imports
+      - uses: ./.github/actions/postgis
+        with:
+          phase: wait
       # -n auto（pytest-xdist）でCPUコア数ぶん並列化する。PostGIS統合テストは、ワーカーごとに TEST_DATABASE_URL の DB を
       # 複製した DB を使い、ファイルごとに1つのワーカーへ寄る（backend/tests/conftest.py: pytest_collection_finish）。
       # 実行順はpytest-randomlyがばらす。-qでは種が見出しに出ないため、runのIDを種に渡す——落ちた並びは
-      # 手元で --randomly-seed=<runのID> を付けて同じ順に並べ直せる。
-      - run: python -m pytest -q -n auto --dist loadgroup --randomly-seed=${{ github.run_id }}
+      # 手元で --randomly-seed=<runのID> を付けて同じ順に並べ直せる。所要の長い順に20件をログへ出し、ジョブが延びたときに
+      # どのテストが延ばしたかを測り直さずに読めるようにする。
+      - run: python -m pytest -q -n auto --dist loadgroup --randomly-seed=${{ github.run_id }} --durations=20
 
   api-contract:
     needs: changes
