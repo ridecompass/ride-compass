@@ -43,15 +43,7 @@ export const CLIMB = makeRouteSegment({
   distance_km: 1,
   difficulty: 40,
   axis_contributions: { axis_a: 40 },
-  elevations: [
-    {
-      distance_km: 1,
-      start_elevation_m: 12,
-      end_elevation_m: 31.6,
-      steepest_gain_percent: 2,
-      steepest_loss_percent: 0,
-    },
-  ],
+  elevations: [{ distance_km: 1, start_elevation_m: 12, end_elevation_m: 31.6 }],
   start_latitude: 35,
   start_longitude: 139,
   end_latitude: 35,

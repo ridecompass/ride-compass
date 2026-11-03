@@ -1286,10 +1286,6 @@ export interface components {
             start_elevation_m: number | null;
             /** End Elevation M */
             end_elevation_m: number | null;
-            /** Steepest Gain Percent */
-            steepest_gain_percent: number | null;
-            /** Steepest Loss Percent */
-            steepest_loss_percent: number | null;
         };
         /** ExternalCallStats */
         ExternalCallStats: {

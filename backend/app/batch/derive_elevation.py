@@ -38,7 +38,7 @@ from app.infrastructure.source_models import DEM_TILES_SQL, WAYS_SOURCE_SQL
 logger = logging.getLogger("ridecompass.derive_elevation")
 
 _SHAPES = f"""CREATE TEMP TABLE _shape ON COMMIT DROP AS
-SELECT e.osm_way_id, e.segment_index, e.geom,
+SELECT e.osm_way_id, e.segment_index, e.geom, e.distance_m,
        ({IS_TUNNEL_SQL} OR {IS_BRIDGE_SQL}) AS on_structure
 FROM road_edges e JOIN {WAYS_SOURCE_SQL} w ON w.osm_way_id = e.osm_way_id
 """
@@ -51,11 +51,11 @@ FROM road_edges e JOIN {WAYS_SOURCE_SQL} w ON w.osm_way_id = e.osm_way_id
 #: （`CREATE TABLE AS`は文の引数を取らない）ので、数として埋める。
 _VERTICES = """
 CREATE TEMP TABLE _vertex ON COMMIT DROP AS
-SELECT row_number() OVER () AS vid, s.osm_way_id, s.segment_index, i AS ord,
+SELECT row_number() OVER () AS vid, s.osm_way_id, s.segment_index, i AS ord, s.distance_m * i / k.steps AS along_m,
        ST_X(p.geom) AS lon, ST_Y(p.geom) AS lat, s.on_structure
 FROM _shape s
 CROSS JOIN LATERAL (SELECT CASE WHEN s.on_structure THEN 1
-                                ELSE greatest(1, ceil(ST_Length(s.geom::geography) / {step_m}))::int END AS steps) k
+                                ELSE greatest(1, ceil(s.distance_m / {step_m}))::int END AS steps) k
 CROSS JOIN LATERAL generate_series(0, k.steps) AS i
 CROSS JOIN LATERAL (SELECT ST_LineInterpolatePoint(s.geom::geography, i::float8 / k.steps)::geometry AS geom) p
 WHERE NOT EXISTS (SELECT 1 FROM _reused r
@@ -102,18 +102,19 @@ WHERE elev IS NOT NULL
 """
 
 _VERTEX_ELEVATIONS = """
-SELECT v.osm_way_id, v.segment_index, v.ord, v.lon, v.lat, v.on_structure, e.elev
+SELECT v.osm_way_id, v.segment_index, v.ord, v.along_m, v.on_structure, e.elev
 FROM _vertex v LEFT JOIN _vertex_elev e ON e.vid = v.vid
 """
 
 _ELEVATION_COLUMNS = ("start_elevation_m", "end_elevation_m", "elevation_gain_m", "elevation_loss_m",
                       "average_grade", "steepest_gain_percent", "steepest_loss_percent", "on_structure")
 
-#: 値の出た区間だけを入れる。
-_INSERT_ELEVATION = f"""
+def _insert_elevation_sql(profile_step_m: float) -> str:
+    """値の出た区間だけを入れる。"""
+    return f"""
 INSERT INTO edge_elevation (osm_way_id, segment_index, {", ".join(_ELEVATION_COLUMNS)})
 SELECT osm_way_id, segment_index, {", ".join(_ELEVATION_COLUMNS)}
-FROM ({elevation_values_sql(_VERTEX_ELEVATIONS)}) v
+FROM ({elevation_values_sql(_VERTEX_ELEVATIONS, profile_step_m)}) v
 """
 
 
@@ -173,7 +174,7 @@ async def _derive_elevation(conn: asyncpg.Connection, previous: str | None, prof
         logger.info("標高: %s（z%d）で頂点 %d点に値が付いた / 残り %d/%d点",
                     product, zoom, filled, remaining, vertices)
         await conn.execute("ANALYZE _vertex_elev")
-    updated = affected_rows(await conn.execute(_INSERT_ELEVATION))
+    updated = affected_rows(await conn.execute(_insert_elevation_sql(profile_step_m)))
 
     logger.info("標高: 計算した区間 %d/%d本に値が付いた / %.1f秒",
                 updated, edges - reused, time.perf_counter() - started)

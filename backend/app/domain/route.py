@@ -98,8 +98,7 @@ class RoadClassStretch(StrictModel):
 
 
 class ElevationStretch(StrictModel):
-    """区間の中の道（Edge）1本の、走る向きの始まりと終わりの標高（m）と、その道の断面で一番急な登りと下りの勾配
-    （%、どちらも0以上。`domain/attributes.py: elevation_values_sql`）。その道に値が無ければNone。"""
+    """区間の中の道（Edge）1本の、走る向きの始まりと終わりの標高（m）。その道に標高が無ければどちらもNone。"""
 
     # 区間では検証せずに組み（`model_construct`）、入れたビンを検証するときに検証する（`_merge_segment_bin`）。
     model_config = ConfigDict(revalidate_instances="always")
@@ -107,8 +106,6 @@ class ElevationStretch(StrictModel):
     distance_km: float
     start_elevation_m: float | None
     end_elevation_m: float | None
-    steepest_gain_percent: float | None = None
-    steepest_loss_percent: float | None = None
 
 
 class RouteSegmentDetail(StrictModel):
@@ -134,7 +131,8 @@ class RouteSegmentDetail(StrictModel):
     edge_end: int
     # 区間の中の道ごとの両端の標高を、通る順に。道の距離の和は区間の距離と丸めの分だけずれうる。
     elevations: list[ElevationStretch]
-    # 区間の続く坂の斜度（%、走る向きの符号つき）。`sustained_gradient_percent`が`elevations`から作る。標高のある道が無ければNone。
+    # 区間の続く坂の斜度（%、走る向きの符号つき）。道の一番急な登りと下りから`steepest_signed_percent`が作り、ビンへは
+    # `merge_sustained_gradients`で畳む。値が無ければNone。
     sustained_gradient_percent: float | None = None
     estimated_arrival_time: str | None = None
     # axis_id→difficulty(0-100)。以降の辞書フィールドはすべて「データ無しはキーを
@@ -550,18 +548,22 @@ def merge_road_classes(segments: list[RouteSegmentDetail]) -> dict[str, list[Roa
     return merged
 
 
-def sustained_gradient_percent(elevations: Sequence[ElevationStretch]) -> float | None:
-    """区間の続く坂の斜度（%、走る向きの符号つき）。区間の中の道の断面で一番急な勾配のうち、登りがあれば登りの最大、
-    無ければ下りの最大（負の値）。ならす幅は道の断面の刻みで、区間の中で計算し直さず道の値（区間の標高の表）から出す。
-    値のある道が無ければNone。
-    """
-    known = [stretch for stretch in elevations
-             if stretch.steepest_gain_percent is not None and stretch.steepest_loss_percent is not None]
-    if not known:
+def steepest_signed_percent(gain_percent: float | None, loss_percent: float | None) -> float | None:
+    """道1本の続く坂の斜度（%、走る向きの符号つき）。一番急な登りがあればその値、無ければ一番急な下りを負の値で。
+    ならす幅は道の断面の刻みで、区間の中で計算し直さず道の値（区間の標高の表）から出す。値が無ければNone。"""
+    if gain_percent is None or loss_percent is None:
         return None
-    climb = max(stretch.steepest_gain_percent for stretch in known)
-    steepest = climb if climb > 0 else -max(stretch.steepest_loss_percent for stretch in known)
+    steepest = gain_percent if gain_percent > 0 else -loss_percent if loss_percent > 0 else 0.0
     return round(steepest, GRADIENT_VALUE_DECIMALS)
+
+
+def merge_sustained_gradients(segments: Sequence["RouteSegmentDetail"]) -> float | None:
+    """区間の続く坂の斜度をビンへ畳む。登りの区間があれば登りの最大、無ければ一番急な下り（最も負の値）。
+    区間の値は「登りがあれば登り」で作ってあるので、区間の値だけから道全体で同じ決まりの値になる。値が無ければNone。"""
+    values = [segment.sustained_gradient_percent for segment in segments if segment.sustained_gradient_percent is not None]
+    if not values:
+        return None
+    return max(values) if max(values) > 0 else min(values)
 
 
 #: ビンのフィールドと、ビンに入る区間の並びからその値を作る畳み方。`_merge_segment_bin`は
@@ -576,8 +578,7 @@ BIN_FIELD_MERGERS: dict[str, Callable[[list[RouteSegmentDetail]], object]] = {
     "edge_start": lambda segments: segments[0].edge_start,
     "edge_end": lambda segments: segments[-1].edge_end,
     "elevations": lambda segments: [stretch for segment in segments for stretch in segment.elevations],
-    "sustained_gradient_percent": lambda segments: sustained_gradient_percent(
-        [stretch for segment in segments for stretch in segment.elevations]),
+    "sustained_gradient_percent": merge_sustained_gradients,
     "estimated_arrival_time": lambda segments: segments[0].estimated_arrival_time,
     "road_classes": merge_road_classes,
     "material_values": merge_material_values,

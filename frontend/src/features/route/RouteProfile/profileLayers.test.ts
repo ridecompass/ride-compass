@@ -48,8 +48,6 @@ function stretches(...segments: [Road[], number][]) {
           distance_km: roadKm,
           start_elevation_m: start,
           end_elevation_m: end,
-          steepest_gain_percent: null,
-          steepest_loss_percent: null,
         })),
       }),
     ),
@@ -148,8 +146,6 @@ describe("segmentGrades", () => {
       distance_km: km,
       start_elevation_m: start,
       end_elevation_m: end,
-      steepest_gain_percent: null,
-      steepest_loss_percent: null,
     }));
     const found = segmentGrades(makeRouteSegment({ elevations, sustained_gradient_percent: sustained }), elevation);
     expect(found && { ...found, mean: Number(found.mean.toFixed(6)) }).toEqual(grades);

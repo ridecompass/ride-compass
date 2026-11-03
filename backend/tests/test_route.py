@@ -163,30 +163,34 @@ def test_route_raw_values_match_the_mean_over_the_bins_of_the_segments(edges):
     assert route.route_axis_raw_values(edges, slices) == route.merge_material_values(_binned(segments))
 
 
-def _profile(*steepest: tuple[float | None, float | None]) -> list[RouteSegmentDetail]:
-    """道1本ずつの区間（道の一番急な登り, 下り）。道の長さはどれも0.1km。"""
-    return _segments(
-        [0.1] * len(steepest),
-        elevations=[[route.ElevationStretch(distance_km=0.1, start_elevation_m=None, end_elevation_m=None,
-                                            steepest_gain_percent=gain, steepest_loss_percent=loss)]
-                    for gain, loss in steepest],
-    )
+@pytest.mark.parametrize(
+    ("gain", "loss", "expected"),
+    [
+        pytest.param(8.0, 12.0, 8.0, id="登りがあれば下りより急でも登り"),
+        pytest.param(0.0, 4.0, -4.0, id="登りが無ければ下りを負の値で"),
+        pytest.param(0.0, 0.0, 0.0, id="平らなら0（-0にしない）"),
+        pytest.param(None, 3.0, None, id="値が無ければ値が無い"),
+    ],
+)
+def test_a_road_shows_its_steepest_climb_or_else_its_steepest_descent(gain, loss, expected):
+    # 文字の形まで比べる（-0.0は0.0と等しいが、画面に「-0%」と出る）。
+    assert repr(route.steepest_signed_percent(gain, loss)) == repr(expected)
 
 
 @pytest.mark.parametrize(
-    ("segments", "expected"),
+    ("sustained", "expected"),
     [
-        pytest.param(_profile((8.0, 0.0), (0.0, 8.0)), 8.0, id="登って下っても打ち消し合わない"),
-        pytest.param(_profile((3.0, 0.0), (8.0, 1.0), (0.0, 12.0)), 8.0, id="登りがあれば下りより急でも登りの最大"),
-        pytest.param(_profile((0.0, 2.0), (0.0, 4.0)), -4.0, id="登りが無ければ下りの最大"),
-        pytest.param(_profile((None, None), (5.0, 0.0)), 5.0, id="値の無い道は飛ばす"),
-        pytest.param(_profile((None, None)), None, id="値が無ければ値が無い"),
+        pytest.param([8.0, -12.0], 8.0, id="登って下っても打ち消し合わない"),
+        pytest.param([3.0, 8.0, -12.0], 8.0, id="登りがあれば下りより急でも登りの最大"),
+        pytest.param([-2.0, -4.0, 0.0], -4.0, id="登りが無ければ一番急な下り"),
+        pytest.param([None, 5.0], 5.0, id="値の無い区間は飛ばす"),
+        pytest.param([None], None, id="値が無ければ値が無い"),
     ],
 )
-def test_a_bin_shows_the_steepest_slope_of_its_roads(segments, expected):
+def test_a_bin_shows_the_steepest_slope_of_its_roads(sustained, expected):
     """勾配のレンズの色と区間の小窓の「最大」はこの値を出す。平均では登って下る区間が平坦に見える。ならす幅は道の断面の
     刻みが持つ（`test_elevation_values.py`）。"""
-    [bin_] = _binned(segments)
+    [bin_] = _binned(_segments([0.1] * len(sustained), sustained_gradient_percent=sustained))
 
     assert bin_.sustained_gradient_percent == expected
 

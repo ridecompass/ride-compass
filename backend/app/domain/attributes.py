@@ -155,18 +155,19 @@ EDGE_ROW_ARRAY_FIELDS: tuple[str, ...] = tuple(
 )
 
 
-def elevation_values_sql(vertices: str) -> str:
+def elevation_values_sql(vertices: str, step_m: float) -> str:
     """区間の点列（標高の断面）から、標高と勾配の値を出すSQL。
 
-    `vertices`は`(osm_way_id, segment_index, ord, lon, lat, elev, on_structure)`を返す関係。
-    `elev`がNULLの頂点は評価から外す。**外した後に隣り合う2点でも、元の点列では間に欠損を
+    `vertices`は`(osm_way_id, segment_index, ord, along_m, elev, on_structure)`を返す関係。`along_m`は区間の始まりから
+    道に沿って測った点の位置（m）で、距離はすべてこの差で測る——点どうしを直線で測ると、曲がった区間で道のりより短く出て
+    勾配が大きく出る。`elev`がNULLの点は評価から外す。**外した後に隣り合う2点でも、元の点列では間に欠損を
     挟んでいることがある**——そのまま隣接扱いすると、欠損区間の起伏が均された差として
-    混入する。平均勾配の距離（座標は欠損の頂点も持つ）は元の点列に沿って測り、獲得/消失と一番急な勾配
-    （欠損を挟むと信頼できない）は元の点列でも真に隣接していたペアだけから出す。
+    混入する。獲得/消失と一番急な勾配（欠損を挟むと信頼できない）は元の点列でも真に隣接していたペアだけから出す。
 
     一番急な勾配（`steepest_gain_percent`・`steepest_loss_percent`）は、隣り合う2点の間の勾配のうち、登りと下りの
-    それぞれの最大の大きさ（どちらも0以上）。点の間隔が勾配をならす幅になる——間隔を決めるのは点列を作る側。
-    公道としてありえない勾配の間は、標高データの読み違いとして最大に数えない。隣り合う2点の組が無い区間は値を持たない。
+    それぞれの最大の大きさ（どちらも0以上）。**ならす幅は`step_m`（断面の刻み）で、間が刻みより短ければ高低差を刻みの幅で
+    割る**——刻みより短い区間の両端の差（数十mの道の跳ね上がり）を、その短さのまま勾配にしない。
+    公道としてありえない勾配の間は、標高データの読み違いとして最大に数えない。数えられる間が無い区間は値を持たない。
 
     `on_structure`（橋・高架・トンネル）は**両端だけ**を使う。配信元のDEMは地表面の値で
     構造物の高さを反映しないため（https://maps.gsi.go.jp/development/hyokochi.html に明記）、
@@ -180,50 +181,33 @@ WITH v AS ({vertices}),
 known AS (SELECT * FROM v WHERE elev IS NOT NULL),
 ends AS (
     SELECT osm_way_id, segment_index, bool_or(on_structure) AS on_structure,
-           count(*) AS n, min(ord) AS first_ord, max(ord) AS last_ord,
+           count(*) AS n, max(along_m) - min(along_m) AS total_d,
            (array_agg(elev ORDER BY ord))[1] AS start_e,
            (array_agg(elev ORDER BY ord DESC))[1] AS end_e
     FROM known GROUP BY osm_way_id, segment_index),
-stepped AS (
-    SELECT osm_way_id, segment_index, ord, elev, lon, lat,
-           lag(ord)  OVER w AS prev_ord,
-           lag(elev) OVER w AS prev_elev,
-           lag(lon)  OVER w AS prev_lon,
-           lag(lat)  OVER w AS prev_lat
-    FROM known WINDOW w AS (PARTITION BY osm_way_id, segment_index ORDER BY ord)),
 pairs AS (
-    SELECT osm_way_id, segment_index, elev - prev_elev AS diff,
-           ord - prev_ord = 1 AS adjacent,
-           ST_Distance(ST_MakePoint(prev_lon, prev_lat)::geography, ST_MakePoint(lon, lat)::geography) AS d
-    FROM stepped WHERE prev_ord IS NOT NULL),
+    SELECT osm_way_id, segment_index,
+           elev - lag(elev) OVER w AS diff,
+           ord - lag(ord) OVER w = 1 AS adjacent,
+           along_m - lag(along_m) OVER w AS d
+    FROM known WINDOW w AS (PARTITION BY osm_way_id, segment_index ORDER BY ord)),
 graded AS (
     SELECT osm_way_id, segment_index, diff, adjacent,
-           CASE WHEN adjacent AND d > 0 THEN diff / d * 100 END AS g
-    FROM pairs),
+           CASE WHEN adjacent AND d > 0 THEN diff / greatest(d, {float(step_m)}) * 100 END AS g
+    FROM pairs WHERE diff IS NOT NULL),
 agg AS (
     SELECT osm_way_id, segment_index,
            coalesce(sum(greatest(diff, 0))  FILTER (WHERE adjacent), 0) AS gain,
            coalesce(sum(greatest(-diff, 0)) FILTER (WHERE adjacent), 0) AS loss,
-           count(g) > 0 AS graded,
-           coalesce(max(g)  FILTER (WHERE g BETWEEN 0 AND {MAX_PLAUSIBLE_AVERAGE_GRADE_PERCENT}), 0) AS steepest_up,
-           coalesce(max(-g) FILTER (WHERE -g BETWEEN 0 AND {MAX_PLAUSIBLE_AVERAGE_GRADE_PERCENT}), 0) AS steepest_down
+           max(greatest(g, 0))  FILTER (WHERE abs(g) <= {MAX_PLAUSIBLE_AVERAGE_GRADE_PERCENT}) AS steepest_up,
+           max(greatest(-g, 0)) FILTER (WHERE abs(g) <= {MAX_PLAUSIBLE_AVERAGE_GRADE_PERCENT}) AS steepest_down
     FROM graded GROUP BY osm_way_id, segment_index),
-walked AS (
-    SELECT osm_way_id, segment_index, ord,
-           ST_Distance(ST_MakePoint(lag(lon) OVER w, lag(lat) OVER w)::geography,
-                       ST_MakePoint(lon, lat)::geography) AS d
-    FROM v WINDOW w AS (PARTITION BY osm_way_id, segment_index ORDER BY ord)),
-span AS (
-    SELECT e.osm_way_id, e.segment_index, sum(k.d) AS total_d
-    FROM ends e JOIN walked k USING (osm_way_id, segment_index)
-    WHERE k.ord > e.first_ord AND k.ord <= e.last_ord
-    GROUP BY e.osm_way_id, e.segment_index),
 raw AS (
     SELECT e.osm_way_id, e.segment_index, e.on_structure, e.start_e, e.end_e,
-           a.gain, a.loss, a.graded, a.steepest_up, a.steepest_down,
+           a.gain, a.loss, a.steepest_up, a.steepest_down,
            CASE WHEN abs(s.g) <= {MAX_PLAUSIBLE_AVERAGE_GRADE_PERCENT} THEN s.g END AS avg_g
-    FROM ends e JOIN agg a USING (osm_way_id, segment_index) JOIN span d USING (osm_way_id, segment_index),
-         LATERAL (SELECT CASE WHEN d.total_d > 0 THEN (e.end_e - e.start_e) / d.total_d * 100 END AS g) s
+    FROM ends e JOIN agg a USING (osm_way_id, segment_index),
+         LATERAL (SELECT CASE WHEN e.total_d > 0 THEN (e.end_e - e.start_e) / e.total_d * 100 END AS g) s
     WHERE e.n >= 2)
 SELECT osm_way_id, segment_index,
        round(start_e::numeric, 1) AS start_elevation_m,
@@ -233,10 +217,12 @@ SELECT osm_way_id, segment_index,
        round((CASE WHEN on_structure THEN greatest(start_e - end_e, 0)
                    ELSE loss END)::numeric, 1)  AS elevation_loss_m,
        round(avg_g::numeric, {AVERAGE_GRADE_DECIMALS}) AS average_grade,
-       round((CASE WHEN on_structure THEN abs(avg_g) * (avg_g > 0)::int
-                   WHEN graded THEN steepest_up END)::numeric, {AVERAGE_GRADE_DECIMALS}) AS steepest_gain_percent,
-       round((CASE WHEN on_structure THEN abs(avg_g) * (avg_g < 0)::int
-                   WHEN graded THEN steepest_down END)::numeric, {AVERAGE_GRADE_DECIMALS}) AS steepest_loss_percent,
+       round((CASE WHEN NOT on_structure THEN steepest_up
+                   WHEN avg_g IS NOT NULL THEN greatest(avg_g, 0) END)::numeric, {AVERAGE_GRADE_DECIMALS})
+           AS steepest_gain_percent,
+       round((CASE WHEN NOT on_structure THEN steepest_down
+                   WHEN avg_g IS NOT NULL THEN greatest(-avg_g, 0) END)::numeric, {AVERAGE_GRADE_DECIMALS})
+           AS steepest_loss_percent,
        on_structure
 FROM raw
 """

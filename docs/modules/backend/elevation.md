@@ -38,8 +38,10 @@ edge_elevation（start/end・gain/loss・average・一番急な登りと下り�
 刻みを変えたら派生を作り直す（`TuningEffect.DERIVE_REBUILD`）。
 
 **一番急な登りと下り**（`steepest_gain_percent`・`steepest_loss_percent`）は、隣り合う刻みの間の勾配の最大の大きさで、
-平均（`average_grade`）と違い、区間の中で登って下っても打ち消し合わない。ルートの区間の勾配の色と小窓の「最大」はこれを読む
-（`domain/route.py: sustained_gradient_percent`）。区間の中で計算し直さず、道の値を同じ所から読む。
+平均（`average_grade`）と違い、区間の中で登って下っても打ち消し合わない。刻みより短い区間の両端の差は刻みの幅で割る——
+数十mの道の跳ね上がりを、その短さのまま急な坂にしない。ルートの区間の勾配の色と小窓の「最大」はこれを読む
+（`domain/route.py: steepest_signed_percent`）。区間の中で計算し直さず、道の値を同じ所から読む。距離は点の道のりの位置の差で
+測る（点どうしの直線で測ると、曲がった区間で勾配が大きく出る）。
 
 ## 勾配を出さない区間
 

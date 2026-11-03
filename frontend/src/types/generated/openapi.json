@@ -4203,28 +4203,6 @@
               }
             ],
             "title": "End Elevation M"
-          },
-          "steepest_gain_percent": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Steepest Gain Percent"
-          },
-          "steepest_loss_percent": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Steepest Loss Percent"
           }
         },
         "additionalProperties": false,
@@ -4232,9 +4210,7 @@
         "required": [
           "distance_km",
           "start_elevation_m",
-          "end_elevation_m",
-          "steepest_gain_percent",
-          "steepest_loss_percent"
+          "end_elevation_m"
         ],
         "title": "ElevationStretch"
       },
