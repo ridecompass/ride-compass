@@ -86,7 +86,7 @@ def tag_note(tag: str, *values: str) -> str:
 
 # 橋・トンネルとみなすのは、道が地面から浮いているか地中にある値だけ（値の意味は OSM wiki の
 # Key:bridge・Key:tunnel）。地図の「橋・高架」「トンネル」と、勾配で地表を拾わない区間
-# （`attributes.py: elevation_values_sql` の on_structure）が同じ道を指すよう、両方がここを読む。
+# （`batch/derive_elevation.py` が両端だけを引く区間）が同じ道を指すよう、両方がここを読む。
 # 建物の下の通路（building_passage）・道の下の水路（culvert）・水面すれすれの低い橋
 # （low_water_crossing）は道が地表にあり、載っていない値も普通の道として扱う——知らない値を
 # 構造物に入れると、地図に誤った橋・トンネルが出る。

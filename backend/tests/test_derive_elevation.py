@@ -26,7 +26,7 @@ z15のタイルTを4つの区画に分け、製品ごとに値のある区画を
 ここで見ないもの:
 - 橋・トンネルとみなすタグの値の一つずつ——値の並びは`domain/material_sql.py`が持ち、ここは橋と
   トンネルの1つずつだけを通す
-- 橋・トンネルの区間の勾配の出し方 → `test_elevation_values.py`
+- 点の間から勾配と獲得標高を出すこと → `test_elevation_values.py`
 """
 
 from dataclasses import replace

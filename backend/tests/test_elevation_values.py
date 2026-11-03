@@ -6,14 +6,17 @@ PostGISで実行して、返った行を見る。点は道に沿って1歩（`ST
 ここで見ないもの:
 - 区間ごとの頂点列と標高を作り、結果を派生の表へ書くこと → `test_derive_elevation.py`
 - `ElevationAttribute.reversed_as`そのものの入れ替え → `test_attributes.py`
+- 橋・トンネルの区間を両端の2点だけで測ること → `test_derive_elevation.py`
 """
 
 from decimal import Decimal
 
 from app.domain.attributes import elevation_values_sql
-from app.domain.elevation_profile import MAX_PLAUSIBLE_GRADE_PERCENT
+from app.domain.elevation_profile import FLAT, MAX_PLAUSIBLE_GRADE_PERCENT, flatten_spans
+import numpy as np
 import pytest
 from sqlalchemy import text
+from tests.profile_fixture import profiles
 
 
 pytestmark = pytest.mark.asyncio(loop_scope="module")
@@ -26,16 +29,15 @@ def rise(percent: float, steps: int = 1) -> float:
     return STEP_M * steps * percent / 100
 
 
-async def values(session, segments: dict[tuple[int, int], list], on_structure=frozenset(), along=None) -> dict:
+async def values(session, segments: dict[tuple[int, int], list], along=None) -> dict:
     """`{(道, 区間番号): [点ごとの標高（Noneは欠損）]}`をSQLへ通し、`{(道, 区間番号): 行}`で返す。点の道のりの位置は
     `along`（`{(道, 区間番号): [位置]}`）が持つ区間はその値、ほかは1歩おき。"""
     rows = []
     for (way, segment), elevations in segments.items():
-        structure = "true" if (way, segment) in on_structure else "false"
         positions = (along or {}).get((way, segment), [ord_ * STEP_M for ord_ in range(len(elevations))])
         for ord_, (elev, along_m) in enumerate(zip(elevations, positions, strict=True)):
             elev_sql = "NULL" if elev is None else repr(float(elev))
-            rows.append(f"({way}, {segment}, {ord_}, {along_m}::float8, {elev_sql}::float8, {structure})")
+            rows.append(f"({way}, {segment}, {ord_}, {along_m}::float8, {elev_sql}::float8, false)")
     relation = (f"SELECT * FROM (VALUES {', '.join(rows)})"
                 " AS v(osm_way_id, segment_index, ord, along_m, elev, on_structure)")
     result = await session.execute(text(elevation_values_sql(relation, f"{STEP_M}::float8")))
@@ -49,9 +51,8 @@ async def values(session, segments: dict[tuple[int, int], list], on_structure=fr
     }
 
 
-async def one(session, elevations, on_structure=False, along=None) -> dict:
-    rows = await values(session, {(1, 0): elevations}, on_structure={(1, 0)} if on_structure else frozenset(),
-                        along=None if along is None else {(1, 0): along})
+async def one(session, elevations, along=None) -> dict:
+    rows = await values(session, {(1, 0): elevations}, along=None if along is None else {(1, 0): along})
     return rows[(1, 0)]
 
 
@@ -72,16 +73,6 @@ async def test_values_are_rounded_to_a_tenth_of_a_metre_and_a_hundredth_of_a_per
     assert row["average_grade"] == 3.33
 
 
-async def test_a_vertex_without_elevation_is_left_out(road_graph_session):
-    """欠損を挟んだ2点の差は獲得・喪失に入れない。両端の値と平均勾配は欠損の外から出る。"""
-    row = await one(road_graph_session, [100.0, None, 100.0 + rise(5, 2), 100.0 + rise(5, 2) + rise(1)])
-
-    assert row["start_elevation_m"] == 100.0
-    assert row["elevation_gain_m"] == pytest.approx(rise(1), abs=0.05)
-    assert row["elevation_loss_m"] == 0.0
-    assert row["average_grade"] == pytest.approx((rise(5, 2) + rise(1)) / (3 * STEP_M) * 100, abs=0.005)
-
-
 async def test_missing_first_and_last_vertices_move_the_ends_inward(road_graph_session):
     row = await one(road_graph_session, [None, 50.0, 50.0 + rise(2), None])
 
@@ -96,13 +87,6 @@ async def test_a_segment_with_fewer_than_two_known_vertices_has_no_row(road_grap
     )
 
     assert set(rows) == {(3, 0)}
-
-
-async def test_gaps_only_between_known_vertices_give_no_climb_but_still_an_average(road_graph_session):
-    row = await one(road_graph_session, [100.0, None, 100.0 + rise(3, 2)])
-
-    assert (row["elevation_gain_m"], row["elevation_loss_m"]) == (0.0, 0.0)
-    assert row["average_grade"] == pytest.approx(3.0, abs=0.005)
 
 
 async def test_grades_are_measured_along_the_road(road_graph_session):
@@ -123,34 +107,18 @@ async def test_a_rise_over_less_than_the_step_is_spread_over_the_step(road_graph
 
 
 @pytest.mark.parametrize(
-    ("elevations", "gain", "loss"),
-    [
-        ([100.0, 60.0, 70.0, 100.0 + rise(1, 3)], rise(1, 3), 0.0),
-        ([100.0, 140.0, 100.0 - rise(2, 2)], 0.0, rise(2, 2)),
-    ],
-    ids=["上る橋", "下る橋"],
-)
-async def test_a_structure_uses_only_its_two_ends(road_graph_session, elevations, gain, loss):
-    """橋の途中の頂点は下の谷を指すので、谷の起伏を獲得・喪失に入れない。"""
-    row = await one(road_graph_session, elevations, on_structure=True)
-
-    assert row["elevation_gain_m"] == pytest.approx(gain, abs=0.05)
-    assert row["elevation_loss_m"] == pytest.approx(loss, abs=0.05)
-
-
-@pytest.mark.parametrize(
     ("percent", "kept"),
     [
         (MAX_PLAUSIBLE_GRADE_PERCENT - 0.5, True),
         (MAX_PLAUSIBLE_GRADE_PERCENT + 0.5, False),
     ],
 )
-async def test_an_implausible_average_grade_has_no_value(road_graph_session, percent, kept):
-    """平均勾配が公道としてありえない区間は、平均勾配を持たない。獲得・喪失と両端の標高はそのまま出る。"""
+async def test_an_implausible_step_is_not_counted(road_graph_session, percent, kept):
+    """公道としてありえない勾配の間は、標高データの読み違いとして平均勾配にも獲得にも数えない。"""
     row = await one(road_graph_session, [0.0, rise(percent)])
 
     assert (row["average_grade"] is not None) is kept
-    assert row["elevation_gain_m"] + row["elevation_loss_m"] == pytest.approx(abs(rise(percent)), abs=0.05)
+    assert row["elevation_gain_m"] == pytest.approx(rise(percent) if kept else 0.0, abs=0.05)
 
 
 async def test_a_road_longer_than_the_step_is_graded_at_its_own_point_spacing(road_graph_session):
@@ -159,13 +127,6 @@ async def test_a_road_longer_than_the_step_is_graded_at_its_own_point_spacing(ro
     row = await one(road_graph_session, [0.0, 6.0, 6.0], along=[0.0, spacing, 2 * spacing])
 
     assert row["steepest_gain_percent"] == pytest.approx(6.0 / spacing * 100, abs=0.005)
-
-
-async def test_vertices_at_the_same_place_give_no_grade(road_graph_session):
-    row = await one(road_graph_session, [10.0, 12.0], along=[0.0, 0.0])
-
-    assert row["elevation_gain_m"] == 2.0
-    assert row["average_grade"] is None
 
 
 async def test_the_steepest_climb_and_descent_are_taken_between_neighbouring_points(road_graph_session):
@@ -182,34 +143,6 @@ async def test_a_road_that_only_climbs_has_no_steepest_descent(road_graph_sessio
     assert (row["steepest_gain_percent"], row["steepest_loss_percent"]) == (pytest.approx(4.0, abs=0.005), 0.0)
 
 
-async def test_an_implausible_step_does_not_count_as_the_steepest(road_graph_session):
-    """公道としてありえない勾配の間は、標高データの読み違いとして一番急な勾配に数えない。数えられる間が1つも無ければ、
-    平らとは言えないので値を持たない。"""
-    implausible = rise(MAX_PLAUSIBLE_GRADE_PERCENT + 5)
-    rows = await values(road_graph_session, {(1, 0): [0.0, rise(3), rise(3) + implausible], (2, 0): [0.0, implausible]})
-
-    assert rows[(1, 0)]["steepest_gain_percent"] == pytest.approx(3.0, abs=0.005)
-    assert (rows[(2, 0)]["steepest_gain_percent"], rows[(2, 0)]["steepest_loss_percent"]) == (None, None)
-
-
-async def test_the_steepest_slopes_skip_a_gap(road_graph_session):
-    """欠損を挟んだ2点の間は勾配を測れないので、隣り合う組が無ければ一番急な勾配を持たない。"""
-    row = await one(road_graph_session, [100.0, None, 100.0 + rise(9, 2)])
-
-    assert (row["steepest_gain_percent"], row["steepest_loss_percent"]) == (None, None)
-
-
-@pytest.mark.parametrize(("elevations", "gain", "loss"), [([100.0, 60.0, 100.0 + rise(4, 2)], 4.0, 0.0),
-                                                         ([100.0, 140.0, 100.0 - rise(2, 2)], 0.0, 2.0)],
-                         ids=["上る橋", "下る橋"])
-async def test_a_structure_takes_its_steepest_slope_from_its_two_ends(road_graph_session, elevations, gain, loss):
-    """橋の途中の点は下の谷を指すので、両端の差の勾配だけを一番急な勾配にする。"""
-    row = await one(road_graph_session, elevations, on_structure=True)
-
-    assert row["steepest_gain_percent"] == pytest.approx(gain, abs=0.005)
-    assert row["steepest_loss_percent"] == pytest.approx(loss, abs=0.005)
-
-
 async def test_segments_are_computed_separately(road_graph_session):
     rows = await values(road_graph_session, {(1, 0): [0.0, rise(3)], (1, 1): [0.0, -rise(3)], (2, 0): [5.0, 5.0]})
 
@@ -217,3 +150,34 @@ async def test_segments_are_computed_separately(road_graph_session):
     assert rows[(1, 1)]["average_grade"] == pytest.approx(-3.0, abs=0.005)
     assert rows[(2, 0)]["average_grade"] == 0.0
 
+
+@pytest.mark.parametrize(
+    ("elevations", "length_m"),
+    [
+        ([0.0, 50.0, 50.0], 2 * STEP_M),
+        ([10.0, None, 12.0], 2 * STEP_M),
+        ([10.0, 12.0], 0.0),
+        ([0.0, rise(MAX_PLAUSIBLE_GRADE_PERCENT + 5) / 4], STEP_M / 4),
+        ([100.0, 100.0 + rise(3), None, 100.0 + rise(8), 100.0 + rise(6), 100.0 + rise(6) + rise(45)], 5 * STEP_M),
+    ],
+    ids=["ありえない間", "値の無い点", "長さ0", "刻みより短いありえない間", "混ざった道"],
+)
+async def test_the_summary_counts_the_same_steps_as_the_travel_time(road_graph_session, elevations, length_m):
+    """地図の色・0次ハードフィルタ・区間の詳細が読む要約の列と、所要時間が走る点の間とが、同じ間を勾配として数える——
+    食い違うと、同じ道を地図と所要時間が別の勾配で見る。所要時間の側は、区間の長さを点の数で等しく割った間を読むので、
+    SQLへも等しい間隔の位置で渡す。刻みより短い区間も、刻みでならす前の勾配で数えるかを決める。"""
+    count = len(elevations)
+    row = await one(road_graph_session, elevations, along=[length_m * i / (count - 1) for i in range(count)])
+    built = profiles(elevations)
+    _, lengths, grades = flatten_spans(built.start, built.points, built.forward, built.elevation_m,
+                                       np.array([length_m]), np.zeros(1), FLAT.grade, FLAT.share)
+    rises = lengths.astype(np.float64) * grades
+
+    assert row["elevation_gain_m"] == pytest.approx(rises.clip(min=0).sum(), abs=0.05)
+    assert row["elevation_loss_m"] == pytest.approx((-rises).clip(min=0).sum(), abs=0.05)
+    if len(lengths) == 0:
+        assert (row["average_grade"], row["steepest_gain_percent"], row["steepest_loss_percent"]) == (None, None, None)
+    else:
+        assert row["average_grade"] == pytest.approx(rises.sum() / lengths.sum() * 100, abs=0.005)
+        assert row["steepest_gain_percent"] == pytest.approx(max(grades.max(), 0) * 100, abs=0.005)
+        assert row["steepest_loss_percent"] == pytest.approx(max(-grades.min(), 0) * 100, abs=0.005)
