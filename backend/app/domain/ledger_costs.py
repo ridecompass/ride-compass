@@ -74,15 +74,37 @@ class LedgerCosts:
         #: 体力1J（重み付き）あたりの代償の秒。区間の体力と曲がる所の漕ぎ出しに同じ換算で掛ける。
         self._seconds_per_j = parameters.strength * parameters.effort_alpha / flat_power_w
         self._kickoff_seconds = self._seconds_per_j * self._item_multipliers["inertia"] * kickoff_j
-        self._burden_seconds = parameters.strength * parameters.burden_seconds_per_km * sum(
-            (multiplier(axis_id) * np.asarray(burden_km[axis_id], dtype=np.float64) for axis_id in axes.burden), 0.0)
+        #: 道の負担の軸ごとの、区間ごとの代償の秒と、その和（探索が足す分）。
+        self._burden_axis_seconds = {
+            axis_id: parameters.strength * parameters.burden_seconds_per_km * multiplier(axis_id)
+            * np.asarray(burden_km[axis_id], dtype=np.float64)
+            for axis_id in axes.burden
+        }
+        self._burden_seconds = sum(self._burden_axis_seconds.values(), np.float64(0.0))
+
+    def _effort_seconds(self, ride: SegmentRide) -> dict[str, np.ndarray]:
+        """体力の軸ごとの、区間ごとの代償の秒（つまみ × α × 倍率 × 体力 ÷ 平地の出力）。`ride`は重みを掛けた体力の内訳。"""
+        return {
+            axis_id: self._seconds_per_j * self._item_multipliers[item] * getattr(ride, f"{item}_extra_j")
+            for axis_id, item in EFFORT_AXES.items()
+        }
 
     def penalty_seconds(self, ride: SegmentRide) -> np.ndarray:
         """区間ごとの代償の秒（所要時間に足す分。つまみ × (α × 体力 ＋ 道の負担)）。`ride`は重みを掛けた体力の内訳。"""
-        m = self._item_multipliers
-        effort_j = (m["gravity"] * ride.gravity_extra_j + m["air"] * ride.air_extra_j
-                    + m["rolling"] * ride.rolling_extra_j + m["inertia"] * ride.inertia_extra_j)
-        return self._seconds_per_j * effort_j + self._burden_seconds
+        return np.asarray(sum(self._effort_seconds(ride).values()) + self._burden_seconds, dtype=np.float64)
+
+    def row_seconds(self, model: SegmentSpeedModel, headwind_ms: np.ndarray, crosswind_ms: np.ndarray,
+                    rows: np.ndarray) -> tuple[np.ndarray, dict[str, np.ndarray]]:
+        """区間の行`rows`だけを風の成分（`rows`の並び）で走ったときの`(走行時間, 軸ごとの代償の秒)`。軸ごとの和は、同じ風の
+        `bin_seconds`の代償の秒のその行。"""
+        ride = model.ride(headwind_ms, crosswind_ms, self._weight_exponent, rows)
+        burden = {axis_id: seconds[rows] for axis_id, seconds in self._burden_axis_seconds.items()}
+        return ride.seconds, self._effort_seconds(ride) | burden
+
+    @property
+    def kickoff_axis_seconds(self) -> tuple[str, float]:
+        """曲がる所の漕ぎ出し1回の代償の秒と、それを持つ軸（慣性の費目の軸）。"""
+        return next(axis_id for axis_id, item in EFFORT_AXES.items() if item == "inertia"), self._kickoff_seconds
 
     def bin_seconds(self, model: SegmentSpeedModel, headwind_ms: np.ndarray,
                     crosswind_ms: np.ndarray) -> tuple[np.ndarray, np.ndarray]:

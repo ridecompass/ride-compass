@@ -27,6 +27,7 @@ from app.domain.axis_definitions import (
     time_scoped_weights,
 )
 from app.domain.cycling_speed import (
+    BASE_CRR_ID,
     RiderProfile,
     SegmentSpeedModel,
     crr_for_surface,
@@ -50,6 +51,7 @@ from app.domain.road_avoidance import RoadAvoidanceMasks
 from app.domain.route import Coordinates
 from app.domain.search_graph import EDGE_VALUE_DTYPE, kernel_array
 from app.domain.traffic import POI_COUNT_KINDS, stop_count_material_ids, stop_event
+from app.domain.tuning import tuning_value
 from app.domain.twilight import night_mask
 from app.domain.wind import DepartureWind, WindForecastSeries, kmh_to_ms
 
@@ -105,6 +107,26 @@ class LegValues:
     # 内訳表示用の静的材料（`route_facing_material_ids`、静的スコア行列の列）の両方を持つ。区間表示・`material_values`の
     # 集計が、探索コストの合成と同じ入力から求めた値を読むために保持する。
     material_arrays: dict[str, np.ndarray]
+    # 区間ごとの進行方向への向かい風成分（m/s、風が無ければ0）。
+    headwind_ms: np.ndarray
+    # 費目の帳簿の式の、軸id→区間ごとの代償の秒（`domain/ledger_costs.py: LedgerCosts.row_seconds`）と、避け方の倍率が
+    # 区間の所要時間と代償に上乗せした秒。帳簿の式で組んでいなければ空とNone。
+    penalty_by_axis: dict[str, np.ndarray]
+    avoidance_seconds: np.ndarray | None
+
+
+@dataclass(frozen=True)
+class RowFacts:
+    """区間ごとの、時刻に依らない事実の量（`LegCostComposer.row_facts`。配列は渡した行の並び）。所要時間と費用が読むのと同じ値。"""
+
+    # 止まる出来事を、止まってから漕ぎ出す回数に換えて足したもの（`domain/traffic.py: StopEvent.kickoffs`の和）。
+    stops: np.ndarray
+    # 標高の無い長さ（m。所要時間は道路網全体の坂の割合で走る）。
+    unknown_elevation_m: np.ndarray
+    # 基準の路面より転がり抵抗が大きいか。
+    rough: np.ndarray
+    # 道の負担の軸id→その軸の1kmあたりの重さが0より大きいか。帳簿の式で組んでいなければ空。
+    burdened: dict[str, np.ndarray]
 
 
 class _ComposedBin(NamedTuple):
@@ -198,6 +220,9 @@ class _TravelInputs:
     model: SegmentSpeedModel
     distance_m: np.ndarray  # 区間ごと
     wait_seconds: np.ndarray
+    # 止まる出来事の漕ぎ出しの回数（`StopEvent.kickoffs`の和）と、転がり抵抗（区間ごと）。
+    stops: np.ndarray
+    crr: np.ndarray
 
 
 @njit(cache=True, nogil=True)
@@ -394,9 +419,10 @@ class LegCostComposer:
             count = np.nan_to_num(np.where(np.isnan(density), fill, density)) * distance_km
             waits += count * event.expected_seconds
             kickoffs += count * event.kickoffs
+        crr = crr_for_surface(surface)
         model = SegmentSpeedModel(RiderProfile(cruise_speed_kmh=self.speed_kmh), self._score_matrix.elevation_profiles,
-                                  distance_m, crr_for_surface(surface), kickoffs)
-        return _TravelInputs(model, distance_m, waits)
+                                  distance_m, crr, kickoffs)
+        return _TravelInputs(model, distance_m, waits, kickoffs, crr)
 
     def bin_time(self, hours: float) -> BinTime:
         """全区間を出発から`hours`時間後の時刻で合成するビンの、時刻の入力（`BinTime`）。"""
@@ -592,7 +618,20 @@ class LegCostComposer:
         rows = np.asarray(rows, dtype=np.int64)
         evaluated = self._evaluate(time.take(rows), rows)
         resolved = evaluated.resolved
+        penalty_by_axis: dict[str, np.ndarray] = {}
+        avoidance_seconds = None
+        ledger = self._ledger
+        if ledger is not None:
+            inputs = self._travel_inputs
+            travel_seconds, penalty_by_axis = ledger.row_seconds(
+                inputs.model, evaluated.headwind_ms, evaluated.crosswind_ms, rows)
+            # 探索の費用の式（`_bin_costs`）の、避け方の倍率が掛かる前の秒に、倍率の1を越えた分を掛けたもの。
+            avoidance_seconds = (self._cost_scale[rows] - 1.0) * (
+                travel_seconds + inputs.wait_seconds[rows] + sum(penalty_by_axis.values(), np.zeros(len(rows))))
         return LegValues(
+            headwind_ms=evaluated.headwind_ms,
+            penalty_by_axis=penalty_by_axis,
+            avoidance_seconds=avoidance_seconds,
             difficulty_array=evaluated.composed.difficulty,
             # evaluate_dynamic_axis_arraysは内部軸も含めうるため、公開軸だけを見せる。
             axis_arrays={axis_id: resolved[axis_id] for axis_id in self._score_matrix.axis_ids},
@@ -675,14 +714,37 @@ class LegCostComposer:
             return None
         axes, parameters = self._ledger_setup
         distance_km = self._travel_inputs.distance_m / 1000.0
-        burden_km = {
-            axis_id: burden_per_km(axis.burden, self._static_material_arrays, self.categorical_material_arrays,
-                                   self._material_fills) * distance_km
-            for axis_id, axis in axes.burden.items()
-        }
+        burden_km = {axis_id: per_km * distance_km for axis_id, per_km in self._burden_per_km.items()}
         model = self._travel_inputs.model
         return LedgerCosts(axes, parameters, model.flat_power_w,
                            model.kickoff_effort_j(parameters.effort_weight_exponent), burden_km)
+
+    @cached_property
+    def _burden_per_km(self) -> dict[str, np.ndarray]:
+        """道の負担の軸id→区間ごとの1kmあたりの重さ（帳簿の式で組んでいなければ空）。"""
+        if self._ledger_setup is None:
+            return {}
+        return {
+            axis_id: burden_per_km(axis.burden, self._static_material_arrays, self.categorical_material_arrays,
+                                   self._material_fills)
+            for axis_id, axis in self._ledger_setup[0].burden.items()
+        }
+
+    def row_facts(self, rows: np.ndarray) -> RowFacts:
+        """切り出した区間の順の行`rows`の、時刻に依らない事実の量。"""
+        inputs = self._travel_inputs
+        return RowFacts(
+            stops=inputs.stops[rows],
+            unknown_elevation_m=inputs.model.unknown_m[rows],
+            rough=inputs.crr[rows] > tuning_value(BASE_CRR_ID),
+            burdened={axis_id: per_km[rows] > 0.0 for axis_id, per_km in self._burden_per_km.items()},
+        )
+
+    @property
+    def turn_kickoff_penalty(self) -> tuple[str, float] | None:
+        """曲がる所の漕ぎ出し1回の代償の秒と、それを持つ軸（帳簿の式で組んでいなければNone）。"""
+        ledger = self._ledger
+        return None if ledger is None else ledger.kickoff_axis_seconds
 
     def transition_costs(self, turn_seconds: np.ndarray, turn_kickoffs: np.ndarray) -> np.ndarray:
         """曲がる所の費用（秒、遷移ごと）。費目の帳簿の式なら時間に漕ぎ出しの代償を足し、そうでなければ時間そのもの。"""
