@@ -15,7 +15,7 @@ from app.domain.geo import (
     km_per_degree_longitude,
 )
 from app.domain.leg_costs import LegCostArrays, LegCostComposer
-from app.domain.route import RouteDraft
+from app.domain.route import EvaluatedRoute
 from app.domain.route_diversity import pareto_layer_index
 from app.domain.routing import time_bin_of
 from app.domain.tuning import tuning_value
@@ -430,7 +430,7 @@ def prefers_reverse(forward_cost: float, reverse_cost: float) -> bool:
     return reverse_cost < forward_cost
 
 
-def candidate_order(candidate: RouteDraft, *, loop: bool) -> float:
+def candidate_order(candidate: EvaluatedRoute, *, loop: bool) -> float:
     """候補を返す並びの鍵。目的地は費用の小さい順、周回（出発地へ戻る経路）は1kmあたりの代償の秒の小さい順で、先頭が
     最も良い候補という契約で配る。代償は`PENALTY_PER_KM_QUANTUM`の刻みで同点になる。所要時間の無い候補は周回の末尾へ回す。"""
     if not loop:
@@ -442,8 +442,8 @@ def candidate_order(candidate: RouteDraft, *, loop: bool) -> float:
 
 
 def keep_routes_with_baseline(
-    candidates: list[RouteDraft], baseline: RouteDraft | None, max_routes: int, *, loop: bool
-) -> tuple[list[RouteDraft], RouteDraft | None]:
+    candidates: list[EvaluatedRoute], baseline: EvaluatedRoute | None, max_routes: int, *, loop: bool
+) -> tuple[list[EvaluatedRoute], EvaluatedRoute | None]:
     """候補を`candidate_order`で並べて`max_routes`件へ切り、残った候補と、印を付ける基準線（所要時間だけで選んだ経路）を返す。
 
     超えたぶんは並びの後ろから切るが、基準線は並びで最下位でも残す。ただし`max_routes`が1のときは
