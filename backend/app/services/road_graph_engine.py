@@ -32,7 +32,8 @@ from app.domain.errors import RoutingError
 from app.domain.axis_definitions import copy_axis_definitions
 from app.domain.evaluation import StaticEdgeScoreMatrix, build_static_edge_score_matrix
 from app.domain.hard_filters import compute_routable_nodes, compute_search_exclusion
-from app.domain.leg_costs import LegCostArrays, LegCostComposer
+from app.domain.cycling_speed import RiderProfile
+from app.domain.leg_costs import LegCostArrays, LegCostComposer, stop_cost_seconds
 from app.domain.route_preference import RoutePreference
 from app.domain.road_avoidance import AvoidanceLevel, RoadAvoidanceMasks
 from app.domain.geo import (
@@ -358,6 +359,7 @@ class RoadGraphEngine:
             np.asarray(network.node_has_signals[road.nodes], dtype=bool),
             np.asarray(network.node_max_rank[road.nodes], dtype=np.int64),
             np.asarray(network.node_branch_count[road.nodes], dtype=np.int16),
+            stop_cost_seconds(RiderProfile(cruise_speed_kmh=self._assumed_speed_kmh), self._penalty_strength),
         )
 
     async def prepare(

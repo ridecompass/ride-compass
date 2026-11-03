@@ -253,7 +253,7 @@ def test_tree_cost_bound_covers_the_waits_and_the_dearest_time_bin():
         structure, cost, statics.edge_length_m, out_states(lazy, "a"), lazy.node_count,
         cost_limit=bound, edge_seconds=np.ones((2, structure.state_count)), bin_seconds=1.5,
     )
-    assert tree.state_cost[last] == pytest.approx(10.0 * 3 + 100.0 + 2 * TURN_SPEC.left_seconds + TURN_SPEC.right_seconds)
+    assert tree.state_cost[last] == pytest.approx(10.0 * 3 + 100.0 + 2 * TURN_SPEC.left.expected_seconds + TURN_SPEC.right.expected_seconds)
 
 
 def test_tree_never_enters_a_non_finite_cost_edge():
@@ -287,10 +287,11 @@ def test_tree_marks_unreachable_states_and_nodes():
     assert routing.turn_expanded_path_edge_indices(tree, isolated) is None
 
 
-def test_tree_adds_the_turn_wait_to_both_cost_and_seconds():
-    """繋ぎ目のターンの待ちは、コストにも所要時間にも入る。"""
+def test_tree_adds_the_turn_cost_to_the_cost_and_the_turn_time_to_the_seconds():
+    """ターンは、木のコストには費用（時間＋漕ぎ出しの代償）、所要時間には時間で入る。所要時間は利用者の好み（漕ぎ出しの
+    代償の秒）で変わらない。"""
     graph = make_graph(PLUS_NODES, PLUS_EDGES)
-    lazy, statics, structure = build_all(graph, spec=TURN_SPEC)
+    lazy, statics, structure = build_all(graph, spec=TURN_SPEC, stop_cost_seconds=4.0)
     states = state_index(lazy)
     cost = np.ones(structure.state_count)
     seconds = np.full(structure.state_count, 10.0)
@@ -298,8 +299,9 @@ def test_tree_adds_the_turn_wait_to_both_cost_and_seconds():
         structure, cost, statics.edge_length_m, np.array([states["WC"]], dtype=np.int64),
         lazy.node_count, edge_seconds=seconds, bin_seconds=1000.0,
     )
-    assert tree.state_cost[states["CN"]] == pytest.approx(1.0 + TURN_SPEC.left_seconds + 1.0)
-    assert tree.state_seconds[states["CN"]] == pytest.approx(10.0 + TURN_SPEC.left_seconds + 10.0)
+    left_kickoffs = 1 - 0.5 ** 2  # 左折は減速だけの出来事
+    assert tree.state_cost[states["CN"]] == pytest.approx(1.0 + TURN_SPEC.left.expected_seconds + left_kickoffs * 4.0 + 1.0)
+    assert tree.state_seconds[states["CN"]] == pytest.approx(10.0 + TURN_SPEC.left.expected_seconds + 10.0)
 
 
 def _line_bins():
@@ -435,7 +437,7 @@ def test_junction_includes_the_turn_cost_at_the_meeting_node():
         structure, forward, backward, lazy.node_count
     )
     center = lazy.node_id_to_index["C"]
-    assert junction.cost[center] == pytest.approx(1.0 + TURN_SPEC.left_seconds + 1.0)
+    assert junction.cost[center] == pytest.approx(1.0 + TURN_SPEC.left.expected_seconds + 1.0)
     assert junction.forward_state[center] == states["WC"]
     assert junction.backward_state[center] == states["CN"]
     assert junction.length_m[center] == pytest.approx(200.0)

@@ -48,8 +48,8 @@ class TuningEffect(Enum):
 
     #: 次のリクエストから効く（リクエストごとのコスト合成が読む）。
     IMMEDIATE = ("immediate", "次のルート生成から効く")
-    #: 探索木のプロセス内キャッシュが値で鍵を持つため、作り直しは自動で起きる。
-    TURN_STRUCTURE = ("turn_structure", "次のルート生成から効く（1回だけ遅い）")
+    #: 曲がる所の待ちと割合。ルート生成ごとに曲がる所の構造（`domain/turn_structure.py`）を組むときに読む。
+    TURN_STRUCTURE = ("turn_structure", "次のルート生成から効く（曲がる所）")
     #: 派生の作り直し（`batch/derive_cli.py`）をやり直さないと効かない。派生バッチは作り直しを始めるときに上書きを読み、
     #: 段の較正値は段の入力なので読む段から後ろが流れ、道路網の配列の較正値は配列を作り直させる。派生の外で同じ値を読む所は、
     #: 作り直しに使った値（`infrastructure/derived_data_meta.py: DerivedTuningRow`）を読む。
@@ -94,21 +94,39 @@ class TuningParameter:
 
 
 def stop_seconds_parameter_id(kind: str) -> str:
-    """停止要因の種別から較正値のid（綴りを組み立てる場所を1つにする）。"""
+    """停止要因の種別から、止まったときの待ちの較正値のid（綴りを組み立てる場所を1つにする）。"""
     return f"stop.{kind}_seconds"
 
 
-def _stop_parameter(kind: str, default: float, description: str) -> TuningParameter:
-    """停止要因1種別ぶんの宣言。idは種別の綴りから導く（`POI_COUNT_KINDS`と1対1）。"""
-    return TuningParameter(
-        id=stop_seconds_parameter_id(kind),
-        label="停止の待ち",
-        unit="秒",
-        default=default,
-        minimum=0.0,
-        maximum=300.0,
-        effect=TuningEffect.IMMEDIATE,
-        description=description,
+def stop_share_parameter_id(kind: str) -> str:
+    """停止要因の種別から、止まる割合の較正値のid。"""
+    return f"stop.{kind}_share"
+
+
+def _stop_parameters(kind: str, share: float, wait: float, description: str) -> tuple[TuningParameter, TuningParameter]:
+    """停止要因1種別ぶんの宣言（止まる割合と、止まったときの待ち）。idは種別の綴りから導く（`POI_COUNT_KINDS`と1対1）。
+    所要時間は 割合 × 待ち、漕ぎ出しの体力は割合ぶん数える（`domain/traffic.py: StopEvent`）。"""
+    return (
+        TuningParameter(
+            id=stop_share_parameter_id(kind), label="止まる割合", unit="", default=share, minimum=0.0, maximum=1.0,
+            effect=TuningEffect.IMMEDIATE, description="通るたびに止まる（減速する）割合。所要時間と漕ぎ出しの体力に同じ割合を使う。",
+        ),
+        TuningParameter(
+            id=stop_seconds_parameter_id(kind), label="止まったときの待ち", unit="秒", default=wait, minimum=0.0,
+            maximum=300.0, effect=TuningEffect.IMMEDIATE, description=description,
+        ),
+    )
+
+
+def _turn_parameters(name: str, label: str, share: float, wait: float, maximum: float,
+                     description: str) -> tuple[TuningParameter, TuningParameter]:
+    """曲がる所の出来事1種類ぶんの宣言（割合と、止まった・減速したときの待ち）。"""
+    return (
+        TuningParameter(
+            f"turn.{name}_share", f"{label}の割合", "", share, 0.0, 1.0, TuningEffect.TURN_STRUCTURE,
+            "通るたびに止まる（減速する）割合。所要時間と漕ぎ出しの体力に同じ割合を使う。",
+        ),
+        TuningParameter(f"turn.{name}_seconds", label, "秒", wait, 0.0, maximum, TuningEffect.TURN_STRUCTURE, description),
     )
 
 
@@ -137,21 +155,19 @@ ELEVATION_PROFILE_STEP_ID = "elevation.profile_step_m"
 
 
 TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
-    # --- ターンの費用（方位差だけで決まる） ---
-    TuningParameter(
-        "turn.left_seconds",
-        "左折", "秒", 2.0, 0.0, 120.0, TuningEffect.TURN_STRUCTURE,
-        "左折1回の損失。探索のコストも秒で、走行時間と直接比べられる。",
+    # --- 曲がる所の出来事（方位差で決まる。割合 × 待ちが所要時間、割合が漕ぎ出しの体力） ---
+    *_turn_parameters(
+        "left", "左折", 1.0, 2.0, 120.0,
+        "左折で減速して失う時間（止まらず減速する出来事）。",
     ),
-    TuningParameter(
-        "turn.right_seconds",
-        "右折", "秒", 12.0, 0.0, 120.0, TuningEffect.TURN_STRUCTURE,
-        "右折1回の損失。対向を待つぶん左折より大きい。",
+    *_turn_parameters(
+        "right", "右折", 1.0, 12.0, 120.0,
+        "右折で止まって待つ時間。自転車は交差点の側端に沿って曲がる（道路交通法第34条第3項。二段階右折）ので、"
+        "止まる出来事として数える。",
     ),
-    TuningParameter(
-        "turn.uturn_seconds",
-        "Uターン", "秒", 60.0, 0.0, 600.0, TuningEffect.TURN_STRUCTURE,
-        "折り返し1回の損失。実質的に選ばせないための大きな値。",
+    *_turn_parameters(
+        "uturn", "Uターン", 1.0, 60.0, 600.0,
+        "折り返し1回で止まって失う時間。実質的に選ばせないための大きな値。",
     ),
     TuningParameter(
         "turn.straight_max_deg",
@@ -159,36 +175,38 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
         TuningEffect.TURN_STRUCTURE,
         "この角度までの曲がりは直進とみなし、費用を足さない。",
     ),
-    TuningParameter(
-        _MAJOR_CROSSING_ID,
-        "上位の道の横断", "秒", 8.0, 0.0, 300.0,
-        TuningEffect.TURN_STRUCTURE,
+    *_turn_parameters(
+        "major_crossing", "上位の道の横断", 1.0, 8.0, 300.0,
         "信号の無い交差点で、上位の階級の道を直進で渡るときに足す。"
         f"一時停止で止まるぶん（{_STOP_ID}）とは別で、義務の停止を超えて相手の"
         "流れが途切れるのを待つぶんを表す（止まること自体は交通ルール上、車が来ていなくても"
         f"発生する）。信号のある交差点では足さない——{_SIGNAL_ID}が赤で待つ時間、"
         "すなわち渡れるようになるまでの待ちそのものを表すため。",
     ),
-    TuningParameter(
-        "turn.major_turn_seconds",
-        "上位の道への右左折", "秒", 15.0, 0.0, 300.0,
-        TuningEffect.TURN_STRUCTURE,
+    *_turn_parameters(
+        "major_turn", "上位の道への右左折", 1.0, 15.0, 300.0,
         "信号の無い交差点で、上位の階級の道へ右左折で入るときに足す。",
     ),
-    # --- 停止要因の待ち（種別はPOI_COUNT_KINDSが正本） ---
-    _stop_parameter("signal", 21.0,
-                    "一般的な信号サイクルからの見積もり。赤で待つ時間、すなわち渡れるように"
-                    "なるまでの待ちそのものを表すため、信号のある交差点では"
-                    f"{_MAJOR_CROSSING_ID}を足さない。"),
-    _stop_parameter("crossing", 0.0,
-                    "自転車が止まる前提を置いていない。"),
-    _stop_parameter("stop", 8.0,
-                    "標識・標示で減速して止まるぶん。交通ルール上、車が来ていなくても止まる"
-                    "ため相手の交通と無関係に発生する。相手の流れが途切れるのを待つぶんは"
-                    f"含まず、そちらは{_MAJOR_CROSSING_ID}が上位の道を渡るときだけ"
-                    "足す。"),
-    _stop_parameter("level_crossing", 25.0, "遮断機の待ちを含む見積もり。"),
-    _stop_parameter("barrier", 8.0, "ボラード等で減速するぶん。"),
+    # --- 停止要因（種別はPOI_COUNT_KINDSが正本。割合 × 待ちが所要時間、割合が漕ぎ出しの体力） ---
+    *_stop_parameters("signal", 0.5, 42.0,
+                      "赤で止まったときに青まで待つ時間（一般的な信号サイクルからの見積もり）。止まる割合は赤の割合。"
+                      "渡れるようになるまでの待ちそのものを表すため、信号のある交差点では"
+                      f"{_MAJOR_CROSSING_ID}を足さない。"),
+    *_stop_parameters("crossing", 0.0, 5.0,
+                      "歩行者に譲って止まったときの待ち。自転車が止まる前提は置いていない（割合0）。"),
+    *_stop_parameters("stop", 1.0, 8.0,
+                      "標識・標示で減速して止まるぶん。交通ルール上、車が来ていなくても止まる"
+                      "ため相手の交通と無関係に発生する。相手の流れが途切れるのを待つぶんは"
+                      f"含まず、そちらは{_MAJOR_CROSSING_ID}が上位の道を渡るときだけ"
+                      "足す。"),
+    *_stop_parameters("level_crossing", 1.0, 25.0,
+                      "踏切の直前で止まり（道路交通法第33条）、遮断機の待ちを含む見積もり。"),
+    *_stop_parameters("barrier", 1.0, 8.0, "ボラード等で減速して失う時間（止まらず減速する出来事）。"),
+    TuningParameter(
+        "stop.slowed_speed_ratio", "減速の出来事で残る速さの割合", "", 0.5, 0.0, 1.0, TuningEffect.IMMEDIATE,
+        "止まらず減速する出来事（左折・車止め等）で、巡航速度のうち残る速さの割合。漕ぎ出しの体力は、止まる出来事の"
+        "（1 − 割合²）倍になる。",
+    ),
     # --- 交差点と停止の点 ---
     TuningParameter(
         "signal.match_radius_m",

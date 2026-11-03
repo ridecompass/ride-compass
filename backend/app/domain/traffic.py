@@ -3,15 +3,21 @@
 すべて純関数・unknown安全（タグが無い/未知の値は`None`または`"unknown"`を返し、
 根拠のない推測はしない）。OSMタグからこれらの分類を導く規則の正本はここ1箇所。
 
-分類のほかに、**所要時間モデルのパラメータ**も持つ（`stop_seconds`: 停止要因1回あたりの
-時間損失、`HIGHWAY_RANK`: 交差点で優先関係を判定するための階級順）。評価軸の重み付けとは別の関心事
+分類のほかに、**所要時間モデルのパラメータ**も持つ（`StopEvent`・`stop_event`: 止まる出来事の割合と待ち、
+`HIGHWAY_RANK`: 交差点で優先関係を判定するための階級順）。評価軸の重み付けとは別の関心事
 ——軸は「その道を走るときのつらさ」、こちらは「そこを通るのにかかる時間」を表す。
 """
 
 from collections.abc import Mapping
+from dataclasses import dataclass
 from typing import Literal, get_args
 
-from app.domain.tuning import TUNING_PARAMETERS_BY_ID, stop_seconds_parameter_id, tuning_value
+from app.domain.tuning import (
+    TUNING_PARAMETERS_BY_ID,
+    stop_seconds_parameter_id,
+    stop_share_parameter_id,
+    tuning_value,
+)
 
 # 交差点判定の次数しきい値（この数以上の異なる隣接Nodeを持つNodeを交差点とみなす）。
 INTERSECTION_DEGREE_THRESHOLD = 3
@@ -149,26 +155,58 @@ if _UNFOLDED_STOP_KINDS or _UNKNOWN_COUNT_KINDS:
 # 宣言の欠けは「その種別の待ちが0秒」として所要時間から見分けられずに消える。
 _UNDECLARED_STOP_KINDS = tuple(
     kind for kind in POI_COUNT_KINDS
-    if stop_seconds_parameter_id(kind) not in TUNING_PARAMETERS_BY_ID
+    if not {stop_seconds_parameter_id(kind), stop_share_parameter_id(kind)} <= TUNING_PARAMETERS_BY_ID.keys()
 )
 if _UNDECLARED_STOP_KINDS:
     raise RuntimeError(
         f"停止要因の較正値が`domain/tuning.py`に宣言されていない種別: {_UNDECLARED_STOP_KINDS}")
 
 
-def stop_seconds_subjects() -> dict[str, tuple[str, ...]]:
-    """停止の待ちの較正値のid → 数える種別の名前。管理画面が較正値の名前へ添える。"""
-    return {stop_seconds_parameter_id(kind): (label,) for kind, label in POI_COUNT_KINDS.items()}
+def stop_parameter_subjects() -> dict[str, tuple[str, ...]]:
+    """停止要因の較正値（割合・待ち）のid → 数える種別の名前。管理画面が較正値の名前へ添える。"""
+    return {
+        parameter_id: (label,)
+        for kind, label in POI_COUNT_KINDS.items()
+        for parameter_id in (stop_share_parameter_id(kind), stop_seconds_parameter_id(kind))
+    }
 
 
-# 停止要因1回あたりの時間損失（秒）は**待ちの期待値＋減速と再加速のロス**の合計で、
-# 所要時間へそのまま足す量。信号の無い横断歩道が0なのは、自転車が止まらず通過できるため。
-def stop_seconds(kind: str) -> float:
-    """停止要因の種別から1回あたりの時間損失（秒）。
+#: 止まらず減速するだけの停止要因（`POI_COUNT_KINDS`のキー）。ほかの種別は止まる。
+SLOWING_POI_KINDS = frozenset({"barrier"})
 
-    秒数は`domain/tuning.py`が宣言する（走ってみて決める値のため、管理画面から変えられる）。
-    """
-    return tuning_value(stop_seconds_parameter_id(kind))
+
+@dataclass(frozen=True)
+class StopEvent:
+    """止まる出来事1種類（停止要因・曲がる所）。止まる割合と、止まった（減速した）ときに失う時間（秒）と、止まらず減速する
+    だけか。割合と待ちは種類ごとの較正値で、所要時間と漕ぎ出しの体力に同じ割合を使う——時間だけ割合を掛けて体力は
+    毎回数えると、同じ出来事を時間と体力で別の回数として数える。"""
+
+    share: float
+    wait_seconds: float
+    slows_only: bool
+
+    @property
+    def expected_seconds(self) -> float:
+        """1回通るときに失う時間の期待値（割合 × 待ち）。"""
+        return self.share * self.wait_seconds
+
+    def stop_equivalents(self, slowed_speed_ratio: float) -> float:
+        """1回通るときの、漕ぎ出しの体力を止まる出来事の回数に換えた期待値。減速だけの出来事は、巡航速度の
+        `slowed_speed_ratio`倍から戻すので、止まってからの漕ぎ出しの（1 − 割合²）倍。"""
+        return self.share * ((1.0 - slowed_speed_ratio ** 2) if self.slows_only else 1.0)
+
+
+def stop_event(kind: str) -> StopEvent:
+    """停止要因の種別（`POI_COUNT_KINDS`のキー）の止まる出来事。値は`domain/tuning.py`が宣言する（走ってみて決める値の
+    ため、管理画面から変えられる）。"""
+    return StopEvent(share=tuning_value(stop_share_parameter_id(kind)),
+                     wait_seconds=tuning_value(stop_seconds_parameter_id(kind)),
+                     slows_only=kind in SLOWING_POI_KINDS)
+
+
+def slowed_speed_ratio() -> float:
+    """止まらず減速する出来事で、巡航速度のうち残る速さの割合（較正値）。"""
+    return tuning_value("stop.slowed_speed_ratio")
 
 
 def poi_count_column(kind: str) -> str:

@@ -30,7 +30,9 @@ from app.domain.cycling_speed import (
     RiderProfile,
     SegmentSpeedModel,
     crr_for_surface,
+    kickoff_extra_j,
     rolling_resistance_material_id,
+    wheel_power_w,
 )
 from app.domain.difficulty import axis_weighted_sums
 from app.domain.dynamic_materials import DynamicAxisRequestContext, evaluate_dynamic_axis_arrays
@@ -46,7 +48,7 @@ from app.domain.evaluation import (
 from app.domain.road_avoidance import RoadAvoidanceMasks
 from app.domain.route import Coordinates
 from app.domain.search_graph import EDGE_VALUE_DTYPE, kernel_array
-from app.domain.traffic import POI_COUNT_KINDS, stop_count_material_ids, stop_seconds
+from app.domain.traffic import POI_COUNT_KINDS, slowed_speed_ratio, stop_count_material_ids, stop_event
 from app.domain.twilight import night_mask
 from app.domain.wind import DepartureWind, WindForecastSeries, kmh_to_ms
 
@@ -197,6 +199,13 @@ class _TravelInputs:
     wait_seconds: np.ndarray
 
 
+def stop_cost_seconds(profile: RiderProfile, penalty_strength: float) -> float:
+    """止まる出来事1回（止まる換算）が費用に足す秒: 漕ぎ出しで平地の出力を越えて踏む体力を、平地の出力で割って秒にし、
+    つまみ（`penalty_strength`）を掛けたもの。時間は足さない（所要時間は割合 × 待ちで別に数える）。曲がる所の費用が読む
+    （`domain/turn_structure.py: build_turn_expanded_structure`）。軸ごとの倍率と体力の重みは #1339 の費用の式で足す。"""
+    return penalty_strength * kickoff_extra_j(profile) / wheel_power_w(profile)
+
+
 @njit(cache=True, nogil=True)
 def _bin_costs(
     travel_seconds: np.ndarray,
@@ -250,7 +259,7 @@ def compile_leg_cost_kernels() -> None:
     （`domain/routing.py: compile_search_kernels`がイメージの組み立てで呼ぶ）。"""
     flat = ElevationProfiles(np.zeros(1, dtype=np.int64), np.full(1, 2, dtype=np.int32), np.ones(1, dtype=bool),
                              np.zeros(2, dtype=np.float32), GradeDistribution(np.zeros(1), np.ones(1)))
-    model = SegmentSpeedModel(RiderProfile(cruise_speed_kmh=20.0), flat, np.ones(1), np.zeros(1))
+    model = SegmentSpeedModel(RiderProfile(cruise_speed_kmh=20.0), flat, np.ones(1), np.zeros(1), np.zeros(1))
     seconds = model.travel_seconds(np.zeros(1), np.zeros(1))
     composed = AxisComposition(np.ones(1), np.zeros(1), np.zeros(1), np.zeros(1))
     _bin_cost_arrays(seconds, np.zeros(1), np.zeros(1, dtype=bool), np.ones(1), composed, np.zeros(1, dtype=int), 1)
@@ -354,21 +363,26 @@ class LegCostComposer:
 
     @cached_property
     def _travel_inputs(self) -> _TravelInputs:
-        """所要時間のうち風に依らない入力: 走行モデル（断面・路面・巡航速度）と、区間の長さ（m、float64）と、区間にある
-        停止要因の待ちの秒（`domain/traffic.py: stop_seconds`）。どれも静的材料だけから決まるため、リクエストに1回だけ求める。
-        ターンの待ちは遷移ごとに決まるためここには含まない（探索側が足す）。"""
+        """所要時間のうち風に依らない入力: 走行モデル（断面・路面・巡航速度・止まる出来事の回数の換算）と、区間の長さ（m、
+        float64）と、区間にある停止要因で失う時間の期待値（秒。割合 × 待ち。`domain/traffic.py: StopEvent`）。どれも静的材料
+        だけから決まるため、リクエストに1回だけ求める。ターンは遷移ごとに決まるためここには含まない（探索側が足す）。"""
         distance_m = np.asarray(self._score_matrix.distance_m, dtype=np.float64)
         rolling = rolling_resistance_material_id()
         surface = self.categorical_material_arrays.get(rolling) if rolling is not None else None
         if surface is None:  # 転がり抵抗の表が分け方を指していない: どの区間も基準の転がり抵抗
             surface = CategoricalColumn(np.zeros(len(distance_m), dtype=np.int16), (None,))
-        model = SegmentSpeedModel(RiderProfile(cruise_speed_kmh=self.speed_kmh), self._score_matrix.elevation_profiles,
-                                  distance_m, crr_for_surface(surface))
-        stops = np.zeros(len(distance_m))
+        waits = np.zeros(len(distance_m))
+        stop_equivalents = np.zeros(len(distance_m))
         distance_km = distance_m / 1000.0
+        slowed = slowed_speed_ratio()
         for kind, material_id in zip(POI_COUNT_KINDS, stop_count_material_ids(), strict=True):
-            stops += np.nan_to_num(self._static_material_arrays[material_id]) * distance_km * stop_seconds(kind)
-        return _TravelInputs(model, distance_m, stops)
+            event = stop_event(kind)
+            count = np.nan_to_num(self._static_material_arrays[material_id]) * distance_km
+            waits += count * event.expected_seconds
+            stop_equivalents += count * event.stop_equivalents(slowed)
+        model = SegmentSpeedModel(RiderProfile(cruise_speed_kmh=self.speed_kmh), self._score_matrix.elevation_profiles,
+                                  distance_m, crr_for_surface(surface), stop_equivalents)
+        return _TravelInputs(model, distance_m, waits)
 
     def bin_time(self, hours: float) -> BinTime:
         """全区間を出発から`hours`時間後の時刻で合成するビンの、時刻の入力（`BinTime`）。"""

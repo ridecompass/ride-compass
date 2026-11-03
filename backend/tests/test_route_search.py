@@ -211,7 +211,8 @@ def test_route_passages_reads_each_edge_in_the_time_bin_the_search_used():
     """曲がる待ちで次のビンへ押し出された時刻で区間の秒を引くと、表示の所要時間と風が、探索がその経路を
     選んだ根拠とずれる。"""
     lazy, statics, structure = build_all(make_graph(LINE_NODES, LINE_EDGES))
-    structure = replace(structure, turn_seconds=np.full_like(structure.turn_seconds, 20.0))
+    structure = replace(structure, turn_seconds=np.full_like(structure.turn_seconds, 20.0),
+                        turn_cost=np.full_like(structure.turn_cost, 20.0))
     states = state_index(lazy)
     travel_bins = np.full((4, structure.state_count), 10.0)
     # 1つ目の区間を抜けるのは10秒（ビン0）で、曲がる待ちを足すと30秒（ビン2）になる。

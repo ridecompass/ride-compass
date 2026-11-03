@@ -269,7 +269,7 @@ async def select_fastest_route(context: RoadGraphContext, fixed: FixedLegs) -> T
             turn_expanded_shortest_path,
             context.turn_structure, time_bins, heuristic_to(context, to_node),
             origin_states(context.statics, from_node), to_node,
-            time_bins, leg.bin_seconds,
+            time_bins, leg.bin_seconds, fastest=True,
         )
         if not edges:
             logger.debug("select_fastest_route to_node=%s", node_key_of(context.road, to_node))
