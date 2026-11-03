@@ -20,6 +20,7 @@ from app.api.routers import (
     place_search,
     region,
     cost_axis_admin,
+    cost_axis_catalog,
     road_class_admin,
     routes,
     tuning_admin,
@@ -40,6 +41,7 @@ api_router.include_router(tuning_admin.router)
 api_router.include_router(road_class_admin.router)
 api_router.include_router(cost_axis_admin.router)
 api_router.include_router(axis_catalog.router)
+api_router.include_router(cost_axis_catalog.router)
 api_router.include_router(material_catalog.router)
 api_router.include_router(debug_admin.router)
 api_router.include_router(derived_data_freshness.router)
