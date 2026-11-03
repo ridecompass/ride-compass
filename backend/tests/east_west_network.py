@@ -76,4 +76,6 @@ def network() -> RoadNetwork:
         end_elevation_m=np.array([22.0, 10.0, 5.0, NAN, 10.0]),
         elevation_gain_m=np.array([12.0, 0.0, 0.0, NAN, 3.0]),
         elevation_loss_m=np.array([0.0, 12.0, 0.0, NAN, 0.0]),
+        steepest_gain_percent=np.array([12.0, 0.0, 0.0, NAN, 3.0]),
+        steepest_loss_percent=np.array([0.0, 12.0, 0.0, NAN, 0.0]),
     )

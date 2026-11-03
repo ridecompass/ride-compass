@@ -20,6 +20,8 @@ def climb() -> ElevationAttribute:
         elevation_gain_m=25.0,
         elevation_loss_m=5.0,
         average_grade=4.0,
+        steepest_gain_percent=9.0,
+        steepest_loss_percent=2.0,
     )
 
 
@@ -33,4 +35,6 @@ def test_the_reverse_turns_climbs_into_descents():
         "elevation_gain_m": 5.0,
         "elevation_loss_m": 25.0,
         "average_grade": -4.0,
+        "steepest_gain_percent": 2.0,
+        "steepest_loss_percent": 9.0,
     }

@@ -95,7 +95,7 @@ def test_a_material_not_sourced_from_observation_is_refused_as_an_observed_colum
         material_arrays_of(slice_network(network(), ({}, {}), 138.9, 34.9, 139.2, 35.1), {GRADIENT_PERCENT: np.zeros(5)})
 
 
-def test_the_elevation_attribute_reads_the_average_grade_from_the_material():
+def test_the_elevation_attribute_reads_the_average_grade_from_the_material_and_the_steepest_slopes():
     attribute = elevation_attribute(network(), 0, "10:0:f")
 
     assert attribute is not None
@@ -106,6 +106,8 @@ def test_the_elevation_attribute_reads_the_average_grade_from_the_material():
         "elevation_gain_m": 12.0,
         "elevation_loss_m": 0.0,
         "average_grade": 3.0,
+        "steepest_gain_percent": 12.0,
+        "steepest_loss_percent": 0.0,
     }
 
 

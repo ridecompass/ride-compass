@@ -36,11 +36,11 @@ import asyncpg
 import pytest
 import pytest_asyncio
 
-from app.batch import dem_tile_store, derive_elevation, derive_topology
+from app.batch import dem_tile_store, derive_topology
 from app.batch.ingest import ingest_source
 from app.domain.region import tile_bounds_lonlat
 from tests.conftest import empty_ingested_tables
-from tests.source_ingest import gsi_dem_png, ingest_records, profile_within, way_record
+from tests.source_ingest import derive_elevation_at_default_step, gsi_dem_png, ingest_records, profile_within, way_record
 
 # moduleスコープのroad_graph_engine（conftest.py）の上のDBを使うため、.claude/rules/testing-backend.mdのパターン2どおり
 # loop_scope="module"が必須。
@@ -142,7 +142,7 @@ async def elevation_conn(derive_conn, tile_root):
     await ingest_records("osm_way", [_way(way_id, pixels) for way_id, pixels, _ in CASES], conn=derive_conn)
     async with derive_conn.transaction():
         await derive_topology.derive(derive_conn)
-        await derive_elevation.derive(derive_conn, previous=None)
+        await derive_elevation_at_default_step(derive_conn)
     return derive_conn
 
 
@@ -172,7 +172,7 @@ async def test_rerun_without_a_product_keeps_no_value_only_that_product_gave(ele
         return {r["osm_way_id"]: r["start_elevation_m"] for r in rows}
 
     async def rerun() -> dict[int, float | None]:
-        await derive_elevation.derive(elevation_conn, previous=None)
+        await derive_elevation_at_default_step(elevation_conn)
         return await elevations()
 
     await _ingest_dem(elevation_conn, tile_root, without="dem")
@@ -198,10 +198,25 @@ async def test_a_bridge_or_tunnel_does_not_climb_the_terrain_under_it(elevation_
         _way(11, VALLEY_PIXELS), _way(12, VALLEY_PIXELS, structure)], conn=elevation_conn)
     async with elevation_conn.transaction():
         await derive_topology.derive(elevation_conn)
-        await derive_elevation.derive(elevation_conn, previous=None)
+        await derive_elevation_at_default_step(elevation_conn)
 
     rows = await elevation_conn.fetch(
         "SELECT osm_way_id, elevation_gain_m, elevation_loss_m, on_structure FROM edge_elevation"
         " WHERE osm_way_id IN (11, 12)")
     assert {r["osm_way_id"]: (r["elevation_gain_m"], r["elevation_loss_m"], r["on_structure"]) for r in rows} == {
         11: (10.0, 10.0, False), 12: (0.0, 0.0, True)}
+
+
+@pytest.mark.parametrize(("profile_step_m", "climb"), [(50.0, (10.0, 10.0)), (5000.0, (0.0, 0.0))],
+                         ids=["刻みが細かい", "刻みが区間より長い"])
+async def test_the_profile_step_decides_how_fine_a_rise_and_fall_is_counted(elevation_conn, profile_step_m, climb):
+    """谷を渡って戻る区間（約770m）の上り下りは、刻みで区間に沿って引いた点で数える。刻みが区間より長ければ両端の
+    2点だけになり、刻みより細かい起伏は数えない。"""
+    await ingest_records("osm_way", [_way(11, VALLEY_PIXELS)], conn=elevation_conn)
+    async with elevation_conn.transaction():
+        await derive_topology.derive(elevation_conn)
+        await derive_elevation_at_default_step(elevation_conn, profile_step_m=profile_step_m)
+
+    row = await elevation_conn.fetchrow(
+        "SELECT elevation_gain_m, elevation_loss_m FROM edge_elevation WHERE osm_way_id = 11")
+    assert (row["elevation_gain_m"], row["elevation_loss_m"]) == climb

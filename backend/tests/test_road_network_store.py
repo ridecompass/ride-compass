@@ -91,6 +91,8 @@ def _network(revision: int | None, distance_m: float = 100.0) -> RoadNetwork:
         end_elevation_m=np.array([12.0, np.nan]),
         elevation_gain_m=np.array([2.0, np.nan]),
         elevation_loss_m=np.array([0.0, np.nan]),
+        steepest_gain_percent=np.array([4.0, np.nan]),
+        steepest_loss_percent=np.array([0.0, np.nan]),
     )
 
 
@@ -249,7 +251,7 @@ def _batch(distance_m: list[float], surface: list[str | None]) -> EdgeMaterialAr
         categorical_ids=("surface",), categorical_columns=(CategoricalColumn.encode(surface),),
         distance_m=np.array(distance_m), bearing_deg=nan, mid_lat=nan, mid_lon=nan,
         start_elevation_m=nan, end_elevation_m=nan,
-        elevation_gain_m=nan, elevation_loss_m=nan,
+        elevation_gain_m=nan, elevation_loss_m=nan, steepest_gain_percent=nan, steepest_loss_percent=nan,
     )
 
 

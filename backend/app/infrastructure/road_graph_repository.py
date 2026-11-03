@@ -175,6 +175,8 @@ _EXTRA_MATERIAL_ARRAY_COLUMNS: dict[str, str] = {
     "end_elevation_m": "em.end_elevation_m",
     "elevation_gain_m": "em.elevation_gain_m",
     "elevation_loss_m": "em.elevation_loss_m",
+    "steepest_gain_percent": "em.steepest_gain_percent",
+    "steepest_loss_percent": "em.steepest_loss_percent",
 }
 
 #: 列の並びは渡した3つ組の位置で固定する。**road_edgesへLEFT JOINする**——行が無い区間で
@@ -465,14 +467,7 @@ class RoadGraphRepository:
             numeric_ids=numeric_ids, numeric_values=numeric_values,
             categorical_ids=categorical_ids,
             categorical_columns=tuple(CategoricalColumn.encode(raw[material_id]) for material_id in categorical_ids),
-            distance_m=_float_array(raw["distance_m"]),
-            bearing_deg=_float_array(raw["bearing_deg"]),
-            mid_lat=_float_array(raw["mid_lat"]),
-            mid_lon=_float_array(raw["mid_lon"]),
-            start_elevation_m=_float_array(raw["start_elevation_m"]),
-            end_elevation_m=_float_array(raw["end_elevation_m"]),
-            elevation_gain_m=_float_array(raw["elevation_gain_m"]),
-            elevation_loss_m=_float_array(raw["elevation_loss_m"]),
+            **{name: _float_array(raw[name]) for name in _EXTRA_MATERIAL_ARRAY_COLUMNS},
         )
 
     async def sample_way_material_values(

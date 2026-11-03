@@ -9,7 +9,7 @@
 
 | レイヤー | ファイル |
 |---|---|
-| domain | `attributes.py`（`attributes.py: elevation_values_sql`。区間の頂点列から標高・勾配を出すSQLを組み立てる） |
+| domain | `attributes.py`（`attributes.py: elevation_values_sql`。区間の断面の点列から標高・勾配を出すSQLを組み立てる） |
 | batch | `source_adapters/gsi_dem_tile.py`（取込。手元へ写したタイルを製品ごとに読み、int32へ詰める。配信元は叩かない）・`dem_tile_store.py`（写したタイルの置き場と、配信元のURL・画素の値を採る製品の順・その製品に無いことの印）・`scripts/fetch_dem_tiles.py`（取得。プロファイルが挙げた製品ごとに、手元に無い分だけ取りに行く。取込と分けてあるので、失敗しても欠けた分だけ取り直せる）・`source_adapters/raster_wkb.py`（画素の並びをPostGISの`raster`へ包む）・`derive_elevation.py`（派生） |
 
 ## 3段に分かれている
@@ -19,16 +19,29 @@
    │ source_adapters/gsi_dem_tile.py: 製品ごとにint32へ詰めて、製品×タイル1枚=1行
    ▼
 source_features(source='dem')          ← 生データ。取り直さない限り変わらない
-   │ derive_elevation.py: 区間の形状点で、画素ごとに製品を選んで標高を読み、勾配を出す
+   │ derive_elevation.py: 区間を等しい刻みに分けた点で、画素ごとに製品を選んで標高を読み、勾配を出す
    ▼
-edge_elevation（start/end・gain/loss・average・橋かトンネルか）
+edge_elevation（start/end・gain/loss・average・一番急な登りと下り・橋かトンネルか）
    │ 探索フェーズが材料として読む（road_graph_repository.py）
    ▼
 経路の集計（domain/route.py: route_elevation_gain）
 ```
 
 値の出し方そのものは`domain/attributes.py: elevation_values_sql`が持つ。派生バッチは
-頂点ごとの画素を読む関係を渡して実行するだけで、上限も欠測の扱いもそこには無い。
+点ごとの画素を読む関係を渡して実行するだけで、上限も欠測の扱いもそこには無い。
+
+## 断面の刻み
+
+標高を引く点は、OSMの形状点ではなく、区間を較正値`elevation.profile_step_m`以下の等しい道のりに刻んだ点である。形状点で引くと、
+点の間隔が描き手ごとにばらつき、細かく描いた道ほど標高データの揺らぎを登りとして積む。刻みは勾配をならす幅にもなる——
+狭めるほど短い起伏まで登りに数えるが、道の脇の地形（堤防の斜面等）を拾った跳ね上がりも出る。刻みより短い区間は両端の2点だけを使う。
+刻みを変えたら派生を作り直す（`TuningEffect.DERIVE_REBUILD`）。
+
+**一番急な登りと下り**（`steepest_gain_percent`・`steepest_loss_percent`）は、隣り合う刻みの間の勾配の最大の大きさで、
+平均（`average_grade`）と違い、区間の中で登って下っても打ち消し合わない。刻みより短い区間の両端の差は刻みの幅で割る——
+数十mの道の跳ね上がりを、その短さのまま急な坂にしない。ルートの区間の勾配の色と小窓の「最大」はこれを読む
+（`domain/route.py: steepest_signed_percent`）。区間の中で計算し直さず、道の値を同じ所から読む。距離は点の道のりの位置の差で
+測る（点どうしの直線で測ると、曲がった区間で勾配が大きく出る）。
 
 ## 勾配を出さない区間
 
@@ -116,9 +129,8 @@ DEMが返すのは地表面の標高で、桁や坑道の高さではない—�
 各製品をその最大ズームで取り、派生はその製品のズームで頂点の番地を出す。DEM10Bをz15で
 求めると、配信元は全タイルで404を返す。
 
-**DEM1A（1mメッシュ、z17）は取らない。** 標高を拾うのはOSMの形状点で、その間隔（多くは5m超）
-に対して1m格子にしても拾う点が増えない。効くのは区間内のサンプリングを5m未満へ細かくした
-ときで、タイル数はz15の16倍になる。
+**DEM1A（1mメッシュ、z17）は取らない。** 標高を拾うのは断面の刻み（上の「断面の刻み」）の点で、その間隔に対して
+1m格子にしても拾う点が増えない。効くのは刻みを5m未満へ細かくしたときで、タイル数はz15の16倍になる。
 
 **`dem`（サフィックス無し）はDEM5A/5B/5Cを統合したものではない。** DEM10B相当の別データ
 セットで、同じタイルでも`dem5a`と違う値を返す。`dem5a`/`dem5b`/`dem5c`はそれぞれ独立に
