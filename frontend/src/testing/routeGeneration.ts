@@ -6,7 +6,7 @@ import { expect, vi } from "vitest";
 import { useGenerationConditions } from "@/features/route/useGenerationConditions";
 import { useRouteGeneration } from "@/features/route/useRouteGeneration";
 import { heldReplies, onBackend } from "@/testing/backendServer";
-import { serveCostAxisCatalog, TWO_COST_AXES } from "@/testing/costAxes";
+import { TWO_COST_AXES } from "@/testing/costAxes";
 import { serveGenerationJobs } from "@/testing/generationJobs";
 import { makeGenerationConditions, makeRouteCandidate } from "@/testing/routeFixtures";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
@@ -82,7 +82,7 @@ export function used(overrides: Partial<GenerationConditions> = {}): GenerationC
 export function serveRouteGeneration() {
   const jobs = serveGenerationJobs();
   const catalog = heldReplies();
-  serveCostAxisCatalog(catalog.reply);
+  onBackend("GET", "/api/cost-axes", catalog.reply);
   return {
     jobs,
     respond(routes: RouteCandidate[], conditions: GenerationConditions = used(), noCandidatesReason?: string) {

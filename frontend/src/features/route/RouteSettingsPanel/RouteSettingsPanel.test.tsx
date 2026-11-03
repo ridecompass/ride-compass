@@ -14,7 +14,7 @@ import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 
-import { inTurn } from "@/testing/backendServer";
+import { inTurn, onBackend } from "@/testing/backendServer";
 import { serveCostAxisCatalog, TWO_COST_AXES } from "@/testing/costAxes";
 import type { CostPreference } from "@/types/route";
 
@@ -43,7 +43,7 @@ const levelsOf = async (name: string) => within(await screen.findByRole("radiogr
 
 describe("費用の軸の一覧", () => {
   it("定義がまだ無い間は選べないことを案内し、取れなかったとは知らせない", async () => {
-    serveCostAxisCatalog(() => new Response(null, { status: 404 }));
+    serveCostAxisCatalog(null);
     renderPanel();
 
     expect(await screen.findByText(/まだ選べません/)).toBeInTheDocument();
@@ -51,7 +51,7 @@ describe("費用の軸の一覧", () => {
   });
 
   it("取れなければ標準の倍率で作ることを知らせ、再試行で取れたら軸ごとの倍率を出す", async () => {
-    serveCostAxisCatalog(inTurn(new Response(null, { status: 503 }), Response.json(TWO_COST_AXES)));
+    onBackend("GET", "/api/cost-axes", inTurn(new Response(null, { status: 503 }), Response.json(TWO_COST_AXES)));
     renderPanel();
 
     expect(await screen.findByRole("status")).toHaveTextContent("標準の倍率で作ります");

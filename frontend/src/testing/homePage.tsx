@@ -96,7 +96,7 @@ export function serveHome() {
   installGeolocation(HERE);
   jobs = serveGenerationJobs();
   serveAxisCatalog(CATALOG);
-  serveCostAxisCatalog();
+  serveCostAxisCatalog(null);
   onSameOrigin("GET", "/api/jma-tile/*", () => Response.json([]));
   onBackend("GET", "/api/jma-tile-index", () => Response.json({ available: false, coverage: null, elements: {} }));
   onBackend("GET", "/api/weather/amedas", () => Response.json(OBSERVATION));

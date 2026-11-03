@@ -39,11 +39,14 @@ const ENTRY: SavedCondition = {
   roadAvoidance: { gravel: "avoid" },
 };
 
+const NO_BANDS = { thresholds: [], band_labels: ["段"] };
+
 const COST_CATALOG: CostAxisCatalog = {
   axes: [
-    { axisId: "ascent", label: "登坂", description: "", iconId: "" },
-    { axisId: "vibration", label: "振動", description: "", iconId: "" },
+    { axisId: "ascent", ledger: "effort", label: "登坂", description: "", iconId: "", lens: NO_BANDS },
+    { axisId: "vibration", ledger: "burden", label: "振動", description: "", iconId: "", lens: NO_BANDS },
   ],
+  avoidanceLabel: "回避指定",
   loaded: true,
   failed: false,
 };

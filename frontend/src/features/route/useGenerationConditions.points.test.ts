@@ -14,12 +14,11 @@
 import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { heldReplies } from "@/testing/backendServer";
+import { heldReplies, onBackend } from "@/testing/backendServer";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 import type { Coordinates, PlaceCandidate, PointTarget } from "@/types/route";
 
 import { useGenerationConditions } from "./useGenerationConditions";
-import { serveCostAxisCatalog } from "@/testing/costAxes";
 
 const A: Coordinates = { latitude: 35.1, longitude: 139.1 };
 const B: Coordinates = { latitude: 35.2, longitude: 139.2 };
@@ -51,7 +50,7 @@ function point(index: number): Coordinates {
 
 beforeEach(() => {
   window.localStorage.clear();
-  serveCostAxisCatalog(heldReplies().reply);
+  onBackend("GET", "/api/cost-axes", heldReplies().reply);
 });
 
 describe("地点", () => {

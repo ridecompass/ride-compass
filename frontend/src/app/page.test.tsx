@@ -29,6 +29,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { heldReplies, onBackend, serveAxisCatalog } from "@/testing/backendServer";
 import { catalogEntry, catalogResponse } from "@/testing/catalogAxes";
+import { serveCostAxisCatalog } from "@/testing/costAxes";
 import {
   FIRST,
   HERE,
@@ -196,6 +197,7 @@ describe("ルートを作る", () => {
   });
 
   it("「条件」タブで選んだ負担の強さと、「負担」タブで選んだ軸ごとの倍率が、生成の要求に載る", async () => {
+    serveCostAxisCatalog();
     const { user } = renderHome();
     await user.click(within(screen.getByRole("radiogroup", { name: "負担の強さ" })).getByRole("radio", { name: "強め" }));
     await user.click(screen.getByRole("tab", { name: "負担" }));
