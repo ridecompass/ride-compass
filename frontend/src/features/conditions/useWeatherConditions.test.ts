@@ -302,7 +302,7 @@ describe("useWeatherConditions 警報のバッジ", () => {
   });
 });
 
-describe("useWeatherConditions ルートの雷", () => {
+describe("useWeatherConditions ルートの警報級の時系列", () => {
   // 10/21 18:00（日本時間）に出て、1kmを8時間で走るルート。点は0.25kmおきの5つで、0.5kmの点（2番）を22時に通る。
   const ROUTE = {
     segments: [
@@ -331,6 +331,7 @@ describe("useWeatherConditions ルートの雷", () => {
         end_index: 4,
         kinds: {
           thunder: {
+            advisory_label: "雷（注意報級）",
             slots: [
               slot("2026-10-21T18:00:00+09:00", "2026-10-21T21:00:00+09:00", "20"),
               slot("2026-10-21T21:00:00+09:00", "2026-10-22T00:00:00+09:00", "01"),
@@ -365,14 +366,16 @@ describe("useWeatherConditions ルートの雷", () => {
   it("取れなければ、失敗として渡し、間隔ごとに取り直している間も渡したままにする（回復したように見せない）", async () => {
     onBackend("POST", ROUTE_TIMELINE, failure("取得できませんでした。"));
     const { result } = renderWithRoute();
-    const thunderFailure = [{ id: "route-thunder", label: "ルートの雷の見込み", detail: "取得できませんでした。" }];
+    const timelineFailure = [
+      { id: "route-timeline", label: "ルートの注意報級の見込み", detail: "取得できませんでした。" },
+    ];
 
-    await vi.waitFor(() => expect(result.current.warningFetchFailures).toMatchObject(thunderFailure));
+    await vi.waitFor(() => expect(result.current.warningFetchFailures).toMatchObject(timelineFailure));
     await fetched();
     const held = heldReplies();
     onBackend("POST", ROUTE_TIMELINE, held.reply);
     act(() => vi.advanceTimersByTime(10 * 60 * 1000));
     await vi.waitFor(() => expect(held.arrived()).toBe(1));
-    expect(result.current.warningFetchFailures).toMatchObject(thunderFailure);
+    expect(result.current.warningFetchFailures).toMatchObject(timelineFailure);
   });
 });

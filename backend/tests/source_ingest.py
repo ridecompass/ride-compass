@@ -26,7 +26,7 @@ import shapely
 from PIL import Image
 from shapely.geometry import LineString, Point, Polygon
 
-from app.batch import derive_counts, derive_nodes
+from app.batch import derive_counts, derive_elevation, derive_nodes
 from app.batch.ingest import ADAPTERS, AdapterInputs, RegisteredAdapter, SourceRecord, ingest_source
 from app.batch.source_adapters.gsi_dem_tile import NODATA, SCALE, pack_elevations
 from app.batch.source_adapters.raster_wkb import tile_bbox_wkb, tile_raster_wkb
@@ -34,7 +34,12 @@ from app.batch.source_adapters.osm_pbf import way_payload
 from app.domain.address_area import standardize_address
 from app.batch.source_profile import NoFields, SourceProfile, SourceSpec, Target, load_source_profile
 from app.domain.region import BoundingBox, tile_bounds_lonlat, tiles_covering_bbox
-from app.domain.tuning import ACCIDENT_MATCH_DISTANCE_ID, STOP_CLUSTER_DISTANCE_ID, TUNING_PARAMETERS_BY_ID
+from app.domain.tuning import (
+    ACCIDENT_MATCH_DISTANCE_ID,
+    ELEVATION_PROFILE_STEP_ID,
+    STOP_CLUSTER_DISTANCE_ID,
+    TUNING_PARAMETERS_BY_ID,
+)
 from app.infrastructure.source_models import WAY_KIND_TAG
 from tests.conftest import raw_connection
 from tests.tile_images import encode
@@ -222,6 +227,13 @@ def dem_tile_records(product: str, zoom: int, bbox: BoundingBox,
 async def derive_nodes_at_default_radius(conn: asyncpg.Connection) -> None:
     """ノードの派生の段を、信号を区間へ寄せる半径を調整値の既定にして流す。"""
     await derive_nodes.derive(conn, TUNING_PARAMETERS_BY_ID["signal.match_radius_m"].default)
+
+
+async def derive_elevation_at_default_step(conn: asyncpg.Connection, **tuning: float) -> None:
+    """標高の派生の段を、前回の値を写さずに、断面の刻みを較正値の既定（`tuning`で上書きしたものはその値）にして流す。"""
+    await derive_elevation.derive(
+        conn, previous=None,
+        **{"profile_step_m": TUNING_PARAMETERS_BY_ID[ELEVATION_PROFILE_STEP_ID].default, **tuning})
 
 
 async def derive_counts_at_default_tuning(conn: asyncpg.Connection, **tuning: float) -> None:

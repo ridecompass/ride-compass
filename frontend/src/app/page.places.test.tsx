@@ -223,7 +223,7 @@ describe("地図に置く地点", () => {
       }),
     ]);
     const pressed = () => candidatePoints().map(({ element }) => element.getAttribute("aria-pressed"));
-    expect(pressed()).toEqual(["true", "false"]);
+    await waitFor(() => expect(pressed()).toEqual(["true", "false"]));
 
     await user.click(candidatePoints()[1].element);
     expect(pressed()).toEqual(["false", "true"]);
@@ -247,7 +247,7 @@ describe("地図に置く地点", () => {
     const card = await within(sheet).findByRole("region", { name: "探した候補" });
     const pressed = () => candidatePoints().map(({ element }) => element.getAttribute("aria-pressed"));
     expect(card).toHaveTextContent("1 / 2: 浅草寺");
-    expect(pressed()).toEqual(["true", "false"]);
+    await waitFor(() => expect(pressed()).toEqual(["true", "false"]));
 
     await user.click(within(card).getByRole("button", { name: "次の候補" }));
     expect(pressed()).toEqual(["false", "true"]);

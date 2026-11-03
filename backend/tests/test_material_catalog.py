@@ -19,6 +19,8 @@
 - カタログを配るAPI → `test_material_catalog_routes.py`・`test_axis_catalog_routes.py`
 """
 
+from contextlib import nullcontext
+
 import pytest
 from pydantic import ValidationError
 
@@ -64,17 +66,13 @@ def catalog(monkeypatch):
         {"value_sql": None},  # DBが値を求めない静的材料は、全区間で値が欠ける
         {"source": "request", "value_sql": "w.x", "coverage": EXCLUDED},  # DBの列にも載り、要求の値と2つの出どころを持つ
         {"source": "observation", "value_sql": None},  # DBに無い値の欠損率を数える
+        # 地図の表示の軸は材料を一次属性の宣言そのもので照らすので、同じ`attr_id`の写しは表に無いものとして断る。
+        {"primary_attribute": ATTR_A.model_copy()},
     ],
 )
 def test_a_declaration_that_does_not_fit_its_dtype_or_source_is_refused(fields):
     with pytest.raises(ValidationError):
         spec("x", **fields)
-
-
-def test_a_material_pointing_to_an_attribute_outside_the_table_is_refused():
-    """地図の表示の軸は材料を一次属性の宣言そのもので照らすので、同じ`attr_id`の写しを指す材料も表に無いものとして断る。"""
-    with pytest.raises(ValidationError):
-        spec("x", primary_attribute=ATTR_A.model_copy())
 
 
 @pytest.mark.parametrize(
@@ -121,21 +119,21 @@ def test_a_display_axis_takes_the_missing_semantics_of_the_material_on_its_tile_
 
 
 @pytest.mark.parametrize(
-    "catalog_",
+    ("catalog_", "refused"),
     [
-        pytest.param({"num_a": spec("num_b")}, id="鍵と材料のidが食い違う"),
+        pytest.param({"num_a": spec("num_b")}, True, id="鍵と材料のidが食い違う"),
         pytest.param(
             {"num_a": spec("num_a", tile_property="t"), "num_b": spec("num_b", tile_property="t")},
+            True,
             id="同じタイルの列に2つの材料",
+        ),
+        pytest.param(
+            {"num_a": spec("num_a", tile_property="t"), "num_b": spec("num_b", tile_property="u")},
+            False,
+            id="材料ごとに1つの列",
         ),
     ],
 )
-def test_a_catalog_handing_out_a_material_two_ways_is_refused(catalog_):
-    with pytest.raises(ValueError):
+def test_a_catalog_handing_out_a_material_two_ways_is_refused(catalog_, refused):
+    with pytest.raises(ValueError) if refused else nullcontext():
         material_catalog.check_material_catalog(catalog_)
-
-
-def test_a_catalog_handing_out_each_material_one_way_is_accepted():
-    material_catalog.check_material_catalog(
-        {"num_a": spec("num_a", tile_property="t"), "num_b": spec("num_b", tile_property="u")})
-

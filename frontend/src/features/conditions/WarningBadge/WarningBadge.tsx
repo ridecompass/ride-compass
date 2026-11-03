@@ -10,13 +10,7 @@ import { cn } from "@/lib/cn";
 import { textVariants } from "@/components/ui/Text/Text";
 import type { FetchFailure } from "@/types/fetchFailure";
 
-// JMA警報・注意報バッジとWBGT警告が共有する表示コンポーネント。
-// 「地図レイヤーではなく警告バッジ」という表現形式を揃えるため、JMA固有の型
-// （ActiveWarning）ではなく汎用のitem形にしている。
-// levelは4段階で、出所をまたいで共通（呼び名は出所ごと）。
-
-/** **正本はbackend**（`domain/warning_levels.py`）。契約から引く——写すと、階級が
- * 1つ増えたとき片側だけ知っている状態になる。 */
+// 警告の出所をまたいで共有するバッジ。段階は出所をまたいで共通で、呼び名は出所ごと。
 type WarningBadgeLevel = NonNullable<components["schemas"]["ActiveWarning"]["level"]>;
 
 // バッジの出所。同じ段階でも出所ごとに呼び名が違う（backendの宣言が持つ）。
@@ -27,7 +21,7 @@ export interface WarningBadgeItem {
   label: string;
   level: WarningBadgeLevel;
   source: WarningBadgeSource;
-  /** 補足（付随事項・値・状況の文等）。詳細パネル（下記）へ本文として出す。 */
+  /** 補足（付随事項・値・状況の文等）。詳細パネルへ本文として出す。 */
   title?: string;
 }
 
@@ -36,7 +30,7 @@ interface WarningBadgeListProps {
   failures: readonly FetchFailure[];
 }
 
-// 段階の並び（軽い→重い）と、出所ごとの呼び名・色は、backendの宣言（domain/warning_display.py）が配る。
+// 段階の並び（軽い→重い）と、出所ごとの呼び名・色は、生成物の語彙から引く。
 const LEVEL_ORDER: readonly WarningBadgeLevel[] = vocabulary.warningBadge.jma.map((entry) => entry.level);
 
 function levelDisplay(item: WarningBadgeItem): { label: string; color: string } {
@@ -50,8 +44,7 @@ const DETAIL_PANEL_PROPS = {
   align: "end",
 } as const;
 
-// 複数件のitemsのうち最も警戒度が高いitemを1つ返す（LEVEL_ORDERの並び=警戒度の昇順）。
-// サマリーボタンの語彙は出所（source）によって変わるため、レベルだけでなくitem自体を返す。
+// 最も警戒度が高いitem（同じなら先の方）。呼び名は出所で変わるため、段階ではなくitemを返す。
 function highestLevelItem(items: readonly WarningBadgeItem[]): WarningBadgeItem {
   return items.reduce<WarningBadgeItem>(
     (highest, item) => (LEVEL_ORDER.indexOf(item.level) > LEVEL_ORDER.indexOf(highest.level) ? item : highest),
@@ -59,11 +52,8 @@ function highestLevelItem(items: readonly WarningBadgeItem[]): WarningBadgeItem 
   );
 }
 
-// 警告バッジは「最も警戒度が高いレベルの色のアイコン1つを常時出し、タップで全件の詳細
-// （Radix Popover）を開く」形式にしてある。全件表示という安全側の方針自体は変えず（警報の
-// 存在に気づけないことを避ける）、アイコンの色だけで「今の最高警戒度」が常に分かり、
-// 呼び名と件数は名前（読み上げと長押しのツールチップ）に出す。内訳は開かないと見えないぶん、
-// 常時全件表示より一歩踏み込む操作が要るという妥当なトレードオフ。
+// 最も警戒度が高い段階の色のアイコン1つを常時出し、呼び名と件数は名前に、全件はタップで開く詳細に出す
+// （警報の存在に気づけないことを避けつつ、ヘッダーの幅に収める）。
 export default function WarningBadgeList({ items, failures }: WarningBadgeListProps) {
   return (
     <>

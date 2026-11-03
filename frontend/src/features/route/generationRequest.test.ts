@@ -41,7 +41,7 @@ describe("buildGenerateRequest", () => {
     });
   });
 
-  it("目標距離が無ければ距離を載せず、置いた経由地と目的地を送る", () => {
+  it("目標距離が無ければ距離を載せず、置いた経由地と目的地と、上書きした重みを送る", () => {
     const waypoints = [
       { latitude: 35.7, longitude: 139.8 },
       { latitude: 35.71, longitude: 139.81 },
@@ -51,14 +51,11 @@ describe("buildGenerateRequest", () => {
       distanceKm: null,
       waypoints,
       destination: { latitude: 35.75, longitude: 139.85 },
+      routePreference: { wind: 0.4, slope: 0.6 },
     });
     expect(request).not.toHaveProperty("distance_km");
     expect(request.waypoints).toEqual(waypoints);
     expect(request.destination).toEqual({ latitude: 35.75, longitude: 139.85 });
-  });
-
-  it("重みを上書きしていれば重みを送る", () => {
-    const request = buildGenerateRequest({ ...LOOP, routePreference: { wind: 0.4, slope: 0.6 } });
     expect(request.route_preference).toEqual({ wind: 0.4, slope: 0.6 });
   });
 });

@@ -63,14 +63,23 @@ def test_a_tile_is_served_as_png(override_dependency, path, upstream, served):
     assert response.content == served
 
 
+# 整備区域外（珍しくない正常系）は上流障害の502にしない。`raster-dem`は整備区域外のタイルも視界へ入るたび要求し、
+# サーバー側が同じ事実をプロセス内に持って上流へ問い合わせ直さなくても、ブラウザからの要求は減らない——沿岸部を連続して
+# パンする利用者は404だけでレート制限に達しうるので、恒久404はブラウザにも覚えさせる。502は一時的なので覚えさせない。
 @pytest.mark.parametrize("path", [RELIEF_TILE, TERRAIN_TILE])
-def test_an_upstream_failure_is_502(override_dependency, path):
-    _answer(override_dependency, None)
+@pytest.mark.parametrize(("result", "status", "detail", "cache_control"), [
+    (None, 502, "地理院タイルの取得に失敗しました", None),
+    (UPSTREAM_NOT_FOUND, 404, "指定されたタイルは存在しません", GSI_TILE_NOT_FOUND.header()),
+], ids=["failed", "outside"])
+def test_a_tile_outside_the_coverage_is_told_apart_from_an_upstream_failure(
+        override_dependency, path, result, status, detail, cache_control):
+    _answer(override_dependency, result)
 
     response = client.get(path)
 
-    assert response.status_code == 502
-    assert response.json() == {"detail": "地理院タイルの取得に失敗しました"}
+    assert response.status_code == status
+    assert response.json() == {"detail": detail}
+    assert response.headers.get("cache-control") == cache_control
 
 
 @pytest.mark.parametrize(
@@ -87,23 +96,6 @@ def test_an_upstream_failure_is_counted_under_its_own_product(override_dependenc
     named = {word for record in caplog.records if record.levelno >= logging.WARNING
              for word in record.getMessage().split() if word.startswith("[gsi:")}
     assert named == {f"[{category}]"}
-
-
-@pytest.mark.parametrize("path", [RELIEF_TILE, TERRAIN_TILE])
-def test_整備区域外は404で返し_ブラウザへもキャッシュさせる(override_dependency, path):
-    """整備区域外（珍しくない正常系）は上流障害の502にしない。
-
-    `raster-dem`は整備区域外のタイルも視界へ入るたび要求する。サーバー側は同じ事実をプロセス内に
-    持って上流へ問い合わせ直さないが、それだけではブラウザからの要求は減らない——沿岸部を連続して
-    パンする利用者は404だけでレート制限に達しうる。恒久404はブラウザにも伝える。
-    """
-    _answer(override_dependency, UPSTREAM_NOT_FOUND)
-
-    response = client.get(path)
-
-    assert response.status_code == 404
-    assert response.json() == {"detail": "指定されたタイルは存在しません"}
-    assert response.headers["cache-control"] == GSI_TILE_NOT_FOUND.header()
 
 
 @pytest.mark.parametrize(

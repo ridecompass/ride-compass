@@ -35,6 +35,7 @@ from app.infrastructure import road_network_store
 from app.infrastructure.road_graph_repository import RoadGraphRepository
 from tests.conftest import postgis_database_url, raw_connection
 from tests.source_ingest import abr_prefecture_record, ingest_records, point_record, way_record, zigzag_point
+from tests.profile_fixture import two_point_profiles
 
 #: DBから組むテストの印（テスト用DBへ繋ぎ、接続とイベントループをファイルで共有する。testing-backend.md パターン2）。
 _ON_TEST_DB = (pytest.mark.asyncio(loop_scope="module"), pytest.mark.usefixtures("road_graph_session"))
@@ -91,6 +92,9 @@ def _network(revision: int | None, distance_m: float = 100.0) -> RoadNetwork:
         end_elevation_m=np.array([12.0, np.nan]),
         elevation_gain_m=np.array([2.0, np.nan]),
         elevation_loss_m=np.array([0.0, np.nan]),
+        steepest_gain_percent=np.array([4.0, np.nan]),
+        steepest_loss_percent=np.array([0.0, np.nan]),
+        **two_point_profiles(np.array([10.0, np.nan]), np.array([12.0, np.nan]), np.array([True, False])),
     )
 
 
@@ -249,7 +253,7 @@ def _batch(distance_m: list[float], surface: list[str | None]) -> EdgeMaterialAr
         categorical_ids=("surface",), categorical_columns=(CategoricalColumn.encode(surface),),
         distance_m=np.array(distance_m), bearing_deg=nan, mid_lat=nan, mid_lon=nan,
         start_elevation_m=nan, end_elevation_m=nan,
-        elevation_gain_m=nan, elevation_loss_m=nan,
+        elevation_gain_m=nan, elevation_loss_m=nan, steepest_gain_percent=nan, steepest_loss_percent=nan,
     )
 
 

@@ -14,13 +14,9 @@ function hiddenKeyOf(group: MapOverlayGroup, id: MapLayerId): string {
   return `${group}:${id}`;
 }
 
-function readStringArray(raw: string): string[] | null {
-  return readStoredList(raw, (value) => (typeof value === "string" ? value : null));
-}
-
 const storedStringArray = {
   serialize: (values: readonly string[]) => JSON.stringify(values),
-  deserialize: readStringArray,
+  deserialize: (raw: string) => readStoredList(raw, (value) => (typeof value === "string" ? value : null)),
 };
 
 /** 群のたたみと、群ごとに一覧へ並べる項目の選び方。どちらも保存し、次の訪問でも保つ。 */

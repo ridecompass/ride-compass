@@ -127,34 +127,28 @@ describe("layerValueAtKm", () => {
 });
 
 describe("segmentGrades", () => {
-  it.each<[string, Road[], { mean: number; steepestClimb: number | null } | null]>([
+  // 最大は区間の続く坂の斜度（backendが区間ごとに作る）で、道1本の勾配から作り直さない——作り直すと数十mの跳ね上がりを拾う。
+  it.each<[string, Road[], number | null, { mean: number; sustained: number | null } | null]>([
     [
-      "上り下りの和を長さの和で割った平均と、一番きつい上り。値の無い道は数えない",
+      "上り下りの和を長さの和で割った平均と、区間の続く坂の斜度。値の無い道は数えない",
       [
         [10, 20, 0.5],
         [20, 40, 0.5],
         [null, 99, 1],
       ],
-      { mean: 3, steepestClimb: 4 },
+      3.5,
+      { mean: 3, sustained: 3.5 },
     ],
-    [
-      "上りの無い区間は、最大を出さない",
-      [
-        [50, 40, 0.2],
-        [40, 38, 0.8],
-      ],
-      { mean: -1.2, steepestClimb: null },
-    ],
-    ["値のある道が無ければ出さない", [[null, null, 1]], null],
-  ])("%s", (_, roads, grades) => {
+    ["上りの無い区間は、下りの続く坂の斜度を出す", [[50, 40, 1]], -1.5, { mean: -1, sustained: -1.5 }],
+    ["値のある道が無ければ出さない", [[null, null, 1]], null, null],
+  ])("%s", (_, roads, sustained, grades) => {
     const elevations = roads.map(([start, end, km]) => ({
       distance_km: km,
       start_elevation_m: start,
       end_elevation_m: end,
     }));
-    const found = segmentGrades(makeRouteSegment({ elevations }), elevation);
-    const round = (value: number | null) => (value === null ? null : Number(value.toFixed(6)));
-    expect(found && { mean: round(found.mean), steepestClimb: round(found.steepestClimb) }).toEqual(grades);
+    const found = segmentGrades(makeRouteSegment({ elevations, sustained_gradient_percent: sustained }), elevation);
+    expect(found && { ...found, mean: Number(found.mean.toFixed(6)) }).toEqual(grades);
   });
 });
 

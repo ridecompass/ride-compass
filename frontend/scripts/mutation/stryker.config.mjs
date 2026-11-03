@@ -8,6 +8,10 @@ export default {
   coverageAnalysis: "perTest",
   // 最初に落ちたテストで止めず、落ちたテストを全部 killedBy に載せる。
   disableBail: true,
+  // 書き換えごとの持ち時間は「倍率 × 通るテストの最初の1回の所要 + timeoutMS + 最初の1回の余分」。画面のテストは書き換えで
+  // 落ちるとき待ちの上限（findBy 等）まで待って最初の1回より遅くなり、並んだ口どうしが CPU を取り合うと、既定の倍率では
+  // 落ちる前に打ち切られて時間切れに数えられる。止まらない繰り返しは、書き換えを通った回数の上限で持ち時間より先に打ち切られる。
+  timeoutFactor: 4,
   reporters: ["json", "clear-text", "progress-append-only"],
   appendPlugins: ["./scripts/mutation/ignore-class-names.mjs"],
   ignorers: ["class-names"],

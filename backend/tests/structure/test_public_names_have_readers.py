@@ -143,7 +143,7 @@ def test_public_names_have_readers() -> None:
 
 
 def test_detects_names_without_readers(tmp_path: Path) -> None:
-    """検査が効いていること。落とす側は、読み手の無い値・関数と、テストが読むだけの値・モジュールの状態を書く関数。
+    """検査が効いていること。落とす側は、読み手の無い値と、テストが読むだけの値・モジュールの状態を書く関数。
     落とさない側は、別のモジュール・同じモジュール・`Dockerfile`が読む名前、`app`の口のデコレータと表の宣言、
     テストが算術の項に使う値・差し替える値・呼ぶ計算。"""
     subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
@@ -156,7 +156,6 @@ def test_detects_names_without_readers(tmp_path: Path) -> None:
             "UNREAD = 1\nCOUNTER = 2\nREAD_ELSEWHERE = 3\n"
             "COMPARED_IN_TEST = 4\nLIMIT = 5\nROOT = 'r'\nIN_DOCKERFILE = 6\nIN_DOCS = 7\n"
             "_PRIVATE = 8\n\n\n"
-            "def unread_function():\n    return 0\n\n\n"
             "def compute(x):\n    return x\n\n\n"
             "def reset_state():\n    global COUNTER\n    COUNTER = COUNTER + 1\n\n\n"
             "@register\ndef handler():\n    return 0\n\n\n"
@@ -181,7 +180,6 @@ def test_detects_names_without_readers(tmp_path: Path) -> None:
         "app/models.py: UNREAD",
         "app/models.py: COMPARED_IN_TEST",
         "app/models.py: IN_DOCS",
-        "app/models.py: unread_function",
         "app/models.py: reset_state",
         "app/models.py: UnreadValue",
     ]

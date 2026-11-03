@@ -6,6 +6,7 @@ import type { CaptureScript } from "./context";
 // （電池の減りそのものと、スマホの GPU・画面の消費は測れない）。
 //   node frontend/scripts/capture.mjs --script frontend/capture/ride-simulation.ts --api <本番の backend> --size 390x812
 // 走る長さ（分）・速さ（km/h）・CPU を遅くする倍率は、環境変数 RIDE_SIM_MINUTES・RIDE_SIM_SPEED_KMH・RIDE_SIM_CPU_SLOWDOWN で変える。
+// 地図の明るさ（light・dark）は RIDE_SIM_MAP_THEME、
 // 走り終えたあとに同じ所で止まっている長さ（分。信号待ち・休憩に見立て、位置のぶれと向きの出来事は続ける）は RIDE_SIM_STOP_MINUTES、
 // 出しておく層（「表示」の層の id をカンマで区切る。例: precipitationNowcast,windVector）は RIDE_SIM_LAYERS で選ぶ。
 // 走行モードを始めたあとの地図の縮尺（利用者が引いて走る形）は RIDE_SIM_ZOOM で選ぶ（省けば走行モードが決めた縮尺のまま）。
@@ -55,7 +56,10 @@ const script: CaptureScript = async ({ page, fixtures, open, shot, expect }) => 
   const slowdown = Number(process.env.RIDE_SIM_CPU_SLOWDOWN ?? 1);
   const stopMinutes = Number(process.env.RIDE_SIM_STOP_MINUTES ?? 0);
   const layers = (process.env.RIDE_SIM_LAYERS ?? "").split(",").filter((id) => id !== "");
+  const mapTheme = process.env.RIDE_SIM_MAP_THEME ?? "light";
 
+  // 地図の明るさは、メニューの「地図を暗くする」が端末に残す値を開く前に置いて選ぶ（`view/useMapView.ts: mapTheme`）。
+  await page.addInitScript((theme) => localStorage.setItem("ridecompass:map-theme", theme), mapTheme);
   await open({ layers });
   await fixtures.generateRoutes(page, { distanceKm: 10 });
   // 結果のシートが地図の上の走行モードのボタンを覆うので閉じる。
@@ -127,7 +131,12 @@ const script: CaptureScript = async ({ page, fixtures, open, shot, expect }) => 
   await page.evaluate(() => window.clearInterval((window as unknown as { __simTimer: number }).__simTimer));
   await shot("模擬走行の終わり");
   await page.getByRole("button", { name: "走行モード" }).click();
-  const record = await page.evaluate(() => window.localStorage.getItem("ridecompass:ride-metrics"));
+  await page.getByRole("dialog", { name: "走行モードの続け方" }).getByRole("button", { name: "案内を終える" }).click();
+  // 走行の記録は、利用者と同じくメニューの「走行の記録をコピー」で写して読む。
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.getByRole("button", { name: "メニュー" }).click();
+  await page.getByRole("button", { name: "走行の記録をコピー" }).click();
+  const record = await page.evaluate(() => navigator.clipboard.readText());
   const cpu = Object.fromEntries(
     ["TaskDuration", "ScriptDuration", "LayoutDuration", "RecalcStyleDuration", "JSHeapUsedSize"].map((name) => [
       name,
@@ -136,11 +145,11 @@ const script: CaptureScript = async ({ page, fixtures, open, shot, expect }) => 
         : Math.round(((after[name] ?? 0) - (before[name] ?? 0)) * 1000),
     ]),
   );
-  // 出力の1行目は条件と CPU の時間（ms。メモリは MB）、2行目は走行の記録の JSON。
+  // 出力の1行目は条件と CPU の時間（ms。メモリは MB）、続けて写した走行の記録。
   console.log(
     `[ride-simulation] ${JSON.stringify({ minutes, stopMinutes, speedKmh, slowdown, layers, zoom, cpuMs: cpu })}`,
   );
-  console.log(`[ride-simulation:record] ${record}`);
+  console.log(record);
 };
 
 export default script;

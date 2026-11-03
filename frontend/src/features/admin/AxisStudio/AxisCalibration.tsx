@@ -8,7 +8,6 @@
 import { useMemo, useState, type ReactNode } from "react";
 
 import { Callout } from "@/components/ui/Callout/Callout";
-import { cardVariants } from "@/components/ui/Card/Card";
 import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
 import { Select } from "@/components/ui/Input/Input";
 import { NumberInput } from "@/components/ui/NumberInput/NumberInput";
@@ -72,49 +71,30 @@ export type CalibrationMapSlot = (props: {
   paint: MapPaintDeclaration;
 }) => ReactNode;
 
+/** 1つの軸の較正。軸の一覧の行を開いたところに置く。 */
 export function AxisCalibration({
-  definitions,
+  definition,
   onSaved,
   calibrationMap,
 }: {
-  definitions: readonly AxisDefinitionResponse[];
+  definition: AxisDefinitionResponse;
   onSaved: () => Promise<void>;
   calibrationMap: CalibrationMapSlot;
 }) {
-  const [axisId, setAxisId] = useState("");
-  const selected = definitions.find((def) => def.axis_id === axisId) ?? null;
-
-  return (
-    <section className={cn(cardVariants({ variant: "outline" }), "flex flex-col gap-2")} aria-label="較正">
-      <p className={textVariants({ variant: "heading" })}>較正</p>
-      <p className={textVariants({ variant: "hint" })}>
-        数値の軸の0点・100点にする値、対応表の軸の種類ごとの点数と、地図の段の境界を、実データの分布と段ごとの延長を見ながら決めます。公開中の軸は公開したまま保存されます。
-      </p>
-      <Select aria-label="較正する軸" value={axisId} onChange={(e) => setAxisId(e.target.value)}>
-        <option value="">軸を選ぶ</option>
-        {definitions.map((def) => (
-          <option key={def.axis_id} value={def.axis_id}>
-            {`${def.label}（${def.is_published ? "公開中" : "下書き"}）`}
-          </option>
-        ))}
-      </Select>
-      {/* 保存し直した定義が届いたら作り直し、下書きを保存済みの値から始め直す。 */}
-      {selected &&
-        (isNumeric(selected) ? (
-          <NumericCalibrationBody
-            key={JSON.stringify(selected)}
-            saved={selected}
-            onSaved={onSaved}
-            calibrationMap={calibrationMap}
-          />
-        ) : (
-          <CategoricalCalibrationBody
-            key={JSON.stringify(selected)}
-            saved={selected as CategoricalDefinition}
-            onSaved={onSaved}
-          />
-        ))}
-    </section>
+  // 保存し直した定義が届いたら作り直し、下書きを保存済みの値から始め直す。
+  return isNumeric(definition) ? (
+    <NumericCalibrationBody
+      key={JSON.stringify(definition)}
+      saved={definition}
+      onSaved={onSaved}
+      calibrationMap={calibrationMap}
+    />
+  ) : (
+    <CategoricalCalibrationBody
+      key={JSON.stringify(definition)}
+      saved={definition as CategoricalDefinition}
+      onSaved={onSaved}
+    />
   );
 }
 

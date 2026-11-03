@@ -90,7 +90,7 @@ export function catalogResponse(
 
 /** 区分1つ。 */
 export function roadClass(key: string, overrides: Partial<RoadClassView> = {}): RoadClassView {
-  return { key, label: key, description: "", color: "#000000", ...overrides };
+  return { key, label: key, description: "", color: "#000000", color_on_dark: "#ffffff", ...overrides };
 }
 
 /** 道の線の層1つ。区分は無い。 */

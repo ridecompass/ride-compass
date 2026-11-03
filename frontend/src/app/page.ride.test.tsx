@@ -212,6 +212,9 @@ describe("走行モード", () => {
 
     geolocation.deliver({ ...RIDDEN_MIDDLE, accuracy: 20 });
     const card = screen.getByRole("status", { name: "300m先で右折" });
+    // カードは距離だけを文字で出し、向きの言葉は読み上げの名前にだけ出す。
+    expect(card).toHaveTextContent("300m");
+    expect(card).not.toHaveTextContent("右折");
     const [mark] = marksAt(turnPoint).map((mark) => mark.element);
     expect(mark).toHaveAccessibleName("曲がる所: 右折");
     expect(arrowPaths(mark)).toEqual(arrowPaths(card));

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { MAIN_MAP_CANVAS, MOBILE_VIEWPORT, installMapFinder, openMobileApp } from "./fixtures";
+import { MAIN_MAP_CANVAS, MOBILE_VIEWPORT, openMobileApp } from "./fixtures";
 import { pinchOpen } from "./componentScans";
 
 // 地図の上で始めたピンチは、ページではなく地図を拡大する（パターン4 観点2）。地図のcanvas以外の部品から
@@ -11,9 +11,7 @@ test.describe("タッチ端末", () => {
 
   test("地図の上で始めたピンチは、ページではなく地図を拡大する", async ({ page, browserName }) => {
     test.skip(browserName !== "chromium", "2本指のタッチはCDP（Chromiumだけの口）でしか送れない");
-    await page.addInitScript(installMapFinder);
     await openMobileApp(page);
-    await expect(page.getByText("地図を読み込み中…")).toBeHidden({ timeout: 15_000 });
     const zoom = () => page.evaluate(() => window.__liveMap().getZoom());
     const zoomBefore = await zoom();
 

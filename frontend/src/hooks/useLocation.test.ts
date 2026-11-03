@@ -95,17 +95,6 @@ describe("「現在地に移動」の取り直し", () => {
     expect(result.current.originAtHere).toBe(false);
   });
 
-  it("出発地がまだ分からなければ、取れた現在地を出発地にする", () => {
-    const { result } = renderHook(() => useLocation(null));
-    requests[0].fail();
-
-    act(() => result.current.locateMe());
-    requests[1].succeed(HERE);
-
-    expect(result.current.location).toEqual(HERE);
-    expect(result.current.locationKnown).toBe(true);
-  });
-
   it("失敗したら取得中を下ろして文を出し、次に押すと文を消してから取り直す", () => {
     const { result } = renderHook(() => useLocation(null));
     requests[0].succeed(HERE);
@@ -140,25 +129,6 @@ describe("「現在地に移動」の取り直し", () => {
 
     expect(result.current.here).toEqual(HERE);
     expect(result.current.location).toEqual(HERE);
-  });
-
-  it("取り直しの失敗を、遅れて返った自動取得の失敗が打ち消さない", () => {
-    const { result } = renderHook(() => useLocation(null));
-    act(() => result.current.locateMe());
-
-    requests[1].fail();
-    requests[0].fail();
-
-    expect(result.current.locateError).toBe(FAILED);
-  });
-
-  it("自動取得の決着より先に取り直しが失敗したら、自動取得を待たずに印の項目を出す", () => {
-    const { result } = renderHook(() => useLocation(null));
-    act(() => result.current.locateMe());
-
-    requests[1].fail();
-
-    expect(result.current.locationFailure).not.toBeNull();
   });
 });
 

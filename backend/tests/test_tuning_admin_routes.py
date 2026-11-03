@@ -101,7 +101,7 @@ def test_list_shows_the_current_value_and_whether_it_is_overridden(client, decla
 
 
 def test_list_names_the_surfaces_and_stop_kinds_that_use_a_value(client, declarations, monkeypatch):
-    stop = _declared(tuning.stop_seconds_parameter_id("k"), tuning.TuningEffect.IMMEDIATE)
+    stop = _declared(tuning.event_seconds_parameter_id("stop", "k"), tuning.TuningEffect.IMMEDIATE)
     _declare(monkeypatch, *declarations, stop)
     monkeypatch.setitem(TUNING_VALUES, stop.id, 1.0)
     monkeypatch.setattr(traffic, "POI_COUNT_KINDS", {"k": "種別K"})

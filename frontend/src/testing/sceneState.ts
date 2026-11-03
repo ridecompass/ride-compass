@@ -39,6 +39,7 @@ export function sceneState(overrides: SceneStateOverrides = {}): SceneState {
       wayMaterials: new Map(),
       wayConditions: {},
       hiddenLegendKeys: {},
+      mapTheme: "light",
       ...look,
       layerVisibility: (look.layerVisibility ?? {}) as MapLayerVisibility,
     },

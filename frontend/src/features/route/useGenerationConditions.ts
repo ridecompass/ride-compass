@@ -10,7 +10,6 @@ import { alignRoutePreference, routePreferenceToSend } from "@/features/route/ro
 import {
   acceptedDistanceInput,
   acceptedMaxRoutesInput,
-  destinationInUse,
   type GenerationConditionsSnapshot,
 } from "@/features/route/savedConditions";
 import type {
@@ -79,7 +78,7 @@ export function useGenerationConditions({ onOriginPlace }: GenerationConditionsI
   // 置いた目的地（周回の間は覚えておくだけ）。生成と画面が読むのは、周回の間を外した`destination`（下の返り値）。
   const [placedDestination, setDestination] = useState<Coordinates | null>(null);
   const clearDestination = useCallback(() => setDestination(null), []);
-  const destination = destinationInUse({ loop, destination: placedDestination });
+  const destination = loop ? null : placedDestination;
 
   // 選んでいる地点（地図のタップが置く地点）。何も選んでいない・周回で目的地を使わない間は出発地——
   // 周回を作る人が地図を触っても目的地が置かれず、詳しくに出ている地点と置かれる地点がいつも同じになる。

@@ -3,8 +3,6 @@
 import { LEGEND_SWATCH_RING_CLASS, legendSwatchBackground, type LegendEntry } from "@/lib/mapDisplay/legendFilter";
 import LegendCheckboxList from "@/features/map/LegendCheckboxList/LegendCheckboxList";
 import LegendRow from "@/features/map/LegendCheckboxList/LegendRow";
-import { hiddenAfterToggleAll } from "@/features/map/view/legendFilters";
-import { Checkbox } from "@/components/ui/Checkbox/Checkbox";
 import { cn } from "@/lib/cn";
 import { badgeVariants } from "@/components/ui/Badge/Badge";
 import { PointIconSwatch } from "@/components/PointIconSwatch/PointIconSwatch";
@@ -71,28 +69,15 @@ export default function LegendDetails({
       {axes.map(({ axisId, ...axis }, axisIndex) => (
         <div key={axisId ?? axisIndex} className="flex flex-col gap-1">
           {axisId ? (
-            <>
-              <label className="flex cursor-pointer items-center gap-1.5">
-                <Checkbox
-                  checked={axis.hiddenKeys.length === 0}
-                  onCheckedChange={() => onAxisSetHidden(axisId, hiddenAfterToggleAll(axis.legend, axis.hiddenKeys))}
-                  aria-label={axis.label ? `${axis.label}をまとめて表示/非表示` : "凡例の全段階をまとめて表示/非表示"}
-                />
-                <span className="text-[length:var(--font-size-xs)] font-bold text-[var(--color-neutral)]">
-                  {/* 軸の名前が無いのは、軸が1本だけでチップ名で足りる凡例（道の線）。地図の色分けと同じ名前にする。 */}
-                  {axis.label || "凡例"}
-                </span>
-              </label>
-              <LegendCheckboxList
-                legend={axis.legend}
-                hiddenKeys={axis.hiddenKeys}
-                onToggle={(key) => onEntryToggle(axisId, key)}
-                listClassName="m-0 flex list-none flex-col gap-0.5 p-0"
-                rowClassName="flex items-center gap-1.5 text-[length:var(--font-size-sm)]"
-                rowFallbackClassName={FALLBACK_ROW_CLASS}
-                renderSwatch={renderSwatch}
-              />
-            </>
+            <LegendCheckboxList
+              legend={axis.legend}
+              hiddenKeys={axis.hiddenKeys}
+              onToggle={(key) => onEntryToggle(axisId, key)}
+              onSetHidden={(hiddenKeys) => onAxisSetHidden(axisId, hiddenKeys)}
+              heading={axis.label}
+              rowFallbackClassName={FALLBACK_ROW_CLASS}
+              renderSwatch={renderSwatch}
+            />
           ) : (
             <>
               {axis.label && (

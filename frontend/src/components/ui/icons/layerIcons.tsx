@@ -5,11 +5,7 @@ import { svgProps, type IconProps } from "./icons";
 export function ElevationIcon({ size = 16 }: IconProps) {
   return (
     <svg width={size} height={size} {...svgProps}>
-      <path
-        d="M1.5 15.5 6 8l3 3.5 2.5-4 5.5 8H1.5Z"
-
-        strokeLinejoin="round"
-      />
+      <path d="M1.5 15.5 6 8l3 3.5 2.5-4 5.5 8H1.5Z" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -20,11 +16,7 @@ export function HillshadeIcon({ size = 16 }: IconProps) {
   return (
     <svg width={size} height={size} {...svgProps}>
       <path d="M1.5 15.5 6 8l3 3.5 2.5-4 5.5 8H1.5Z" fill="currentColor" opacity="0.28" stroke="none" />
-      <path
-        d="M1.5 15.5 6 8l3 3.5 2.5-4 5.5 8H1.5Z"
-
-        strokeLinejoin="round"
-      />
+      <path d="M1.5 15.5 6 8l3 3.5 2.5-4 5.5 8H1.5Z" strokeLinejoin="round" />
       <path d="M6 8 1.5 15.5h4.7Z" fill="currentColor" stroke="none" />
       <path d="M11.5 7.5 9 11.5h5Z" fill="currentColor" stroke="none" />
     </svg>
@@ -73,11 +65,7 @@ export function GradientAxisIcon({ size = 16 }: IconProps) {
 export function SurfaceQualityAxisIcon({ size = 16 }: IconProps) {
   return (
     <svg width={size} height={size} {...svgProps}>
-      <path
-        d="M2 14c1.8-3.4 3.6-3.4 5.4 0s3.6 3.4 5.4 0 3.6-3.4 5.4 0"
-
-        strokeLinejoin="round"
-      />
+      <path d="M2 14c1.8-3.4 3.6-3.4 5.4 0s3.6 3.4 5.4 0 3.6-3.4 5.4 0" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -129,7 +117,7 @@ export function RoadIcon({ size = 16 }: IconProps) {
   );
 }
 
-/** 路面の種類（「道路情報」から論理分割した1軸）: 材質のテクスチャを表す帯+点の並び */
+/** 路面の種類: 材質のテクスチャを表す帯+点の並び */
 export function RoadSurfaceIcon({ size = 16 }: IconProps) {
   return (
     <svg width={size} height={size} {...svgProps}>

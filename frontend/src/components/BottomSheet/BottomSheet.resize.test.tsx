@@ -24,7 +24,6 @@ function OwnedSheet({ onRender }: { onRender: () => void }) {
     <BottomSheet
       open
       title="ルート設定"
-      titleId="sheet-title"
       headerAction={null}
       onClose={() => {}}
       chosenHeightVh={chosenHeightVh}

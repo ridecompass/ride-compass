@@ -46,6 +46,7 @@ export interface StyleLayer {
   readonly type: string;
   readonly "source-layer"?: string;
   readonly filter?: unknown;
+  readonly paint?: Readonly<Record<string, unknown>>;
 }
 
 /**
@@ -61,7 +62,7 @@ export function createRecordingMap(options: { basemapLayerIds?: readonly string[
       sourceLayer: layer["source-layer"],
       ...(layer.filter === undefined ? {} : { filter: layer.filter }),
       visibility: "visible",
-      paint: {},
+      paint: { ...layer.paint },
       layout: {},
     }));
   let layers = fromStyle((options.basemapLayerIds ?? []).map((id) => ({ id, type: "background" })));
@@ -107,11 +108,12 @@ export function createRecordingMap(options: { basemapLayerIds?: readonly string[
       styleLoading
         ? undefined
         : {
-            layers: layers.map(({ id, type, sourceLayer, filter }) => ({
+            layers: layers.map(({ id, type, sourceLayer, filter, paint }) => ({
               id,
               type,
               ...(sourceLayer === undefined ? {} : { "source-layer": sourceLayer }),
               ...(filter === undefined ? {} : { filter }),
+              ...(Object.keys(paint).length === 0 ? {} : { paint: { ...paint } }),
             })),
           },
     getLayer: (id: string) => layers[indexOf(id)],

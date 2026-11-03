@@ -43,7 +43,7 @@ describe("同じ軸の同じ段は、ルートを出す前と後で同じ行", (
     dedicatedEntry("signed", [-6, -2, 2, 6], {
       ...PAINTED,
       map_paint: {
-        value: { kind: "signed_material", material: "grade" },
+        value: { kind: "signed_material", material: "grade", route_segment_field: "material_values" },
         legend: { boundaries: [-6, -2, 2, 6], unit: "%" },
       },
     }),

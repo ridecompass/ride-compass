@@ -2,7 +2,7 @@
 
 import type { ComponentProps } from "react";
 
-import Disclosure from "@/components/Disclosure/Disclosure";
+import Disclosure, { DisclosureChevron } from "@/components/Disclosure/Disclosure";
 import { textVariants } from "@/components/ui/Text/Text";
 import { cn } from "@/lib/cn";
 
@@ -29,10 +29,7 @@ export default function SectionDisclosure({ title, active, ...props }: SectionDi
       bodyClassName="flex flex-col gap-2"
       summary={
         <>
-          <span
-            aria-hidden="true"
-            className="size-2 flex-shrink-0 -rotate-45 border-r-2 border-b-2 border-[var(--color-neutral)] transition-transform duration-150 group-data-[state=open]:rotate-45"
-          />
+          <DisclosureChevron />
           {title}
         </>
       }

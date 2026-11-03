@@ -1,37 +1,16 @@
-"""`infrastructure/job_registry.py`——プロセス内のジョブ台帳（作る・状態を進める・引く・終わったものを掃除する）。
+"""`infrastructure/job_registry.py`——プロセス内のジョブ台帳が、終わったジョブを保持時間だけ引かせ、過ぎたら掃除すること。
 
 台帳はプロセス大域にあり、前のテストのジョブが残っていてもよい（どのテストも自分の作ったジョブだけを引く）。
 時計は`clock`で進める。
 
 ここで見ないもの:
-- ジョブの状態がポーリングの応答（待ち・結果・失敗・404）へどう出るか → `test_routes_generate.py`
+- 状態を進めること（値を入れるだけ）と、それがポーリングの応答（待ち・結果・失敗・404）へどう出るか → `test_routes_generate.py`
 """
 
 import pytest
 
 from app.infrastructure import job_registry
 from app.infrastructure.job_registry import JOB_TTL_SECONDS
-
-
-def test_a_job_that_runs_and_finishes_carries_its_result():
-    job_id = job_registry.create_job()
-
-    job_registry.set_running(job_id)
-    assert job_registry.get_job(job_id).status == "running"
-
-    job_registry.set_done(job_id, {"routes": []})
-    record = job_registry.get_job(job_id)
-    assert (record.status, record.result) == ("done", {"routes": []})
-
-
-def test_a_job_that_fails_carries_the_reason():
-    job_id = job_registry.create_job()
-    job_registry.set_running(job_id)
-
-    job_registry.set_failed(job_id, "ルート生成に失敗しました")
-
-    record = job_registry.get_job(job_id)
-    assert (record.status, record.error) == ("failed", "ルート生成に失敗しました")
 
 
 @pytest.mark.parametrize(

@@ -77,7 +77,7 @@ describe("Ruler 表示", () => {
 });
 
 describe("Ruler 操作", () => {
-  it("矢印キーで1コマ、Home・Endで端へ動かす。もう動けない向きと他のキーでは何もしない", async () => {
+  it("矢印キーで1コマ、Home・Endで端へ動かす。他のキーでは何もしない", async () => {
     const { onIndexChange } = renderRuler(1);
     act(() => ruler().focus());
     for (const key of ["{ArrowRight}", "{ArrowLeft}", "{Home}", "{End}", "{Enter}"]) await userEvent.keyboard(key);

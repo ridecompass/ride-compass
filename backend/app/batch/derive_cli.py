@@ -78,6 +78,7 @@ from app.infrastructure import derived_data_meta, road_network_store
 from app.infrastructure.derived_data_freshness import declared_columns
 from app.domain.tuning import (
     ACCIDENT_MATCH_DISTANCE_ID,
+    ELEVATION_PROFILE_STEP_ID,
     LANDCOVER_RING_INNER_ID,
     LANDCOVER_RING_OUTER_ID,
     STOP_CLUSTER_DISTANCE_ID,
@@ -134,7 +135,7 @@ STAGES: tuple[DeriveStage, ...] = (
                  "accident_match_distance_m": ACCIDENT_MATCH_DISTANCE_ID}),
     # 標高の段は、道から区間が橋かトンネルかだけを読み、その値を区間ごとに表へ残す。
     DeriveStage("elevation", derive_elevation, frozenset({Source.OSM_WAY, Source.DEM}), ("topology",), ("edge_elevation",),
-                per_edge=True, compared=frozenset({Source.OSM_WAY})),
+                {"profile_step_m": ELEVATION_PROFILE_STEP_ID}, per_edge=True, compared=frozenset({Source.OSM_WAY})),
     DeriveStage("landcover", derive_landcover, frozenset({Source.LULC}), ("topology",), ("edge_landcover", "way_landcover"),
                 {"ring_outer_m": LANDCOVER_RING_OUTER_ID, "ring_inner_m": LANDCOVER_RING_INNER_ID}, per_edge=True),
     DeriveStage("directions", derive_way_directions, frozenset({Source.OSM_WAY}), ("topology",), ("way_directions",)),

@@ -8,9 +8,7 @@ interface CatalogWeights {
 /** 重みのキーを軸カタログの公開軸へ揃えた値。backendの`route_preference`の検証はキーの完全一致を求め
  * （`api/routers/routes.py`）、どちら向きにずれても生成が422になる。カタログに増えた軸は既定の重みで補い、
  * 消えた軸（公開を取り下げた軸）は外す。**取得が決まるまでは揃えない**——軸0件のまま揃えると、保存済みの
- * 重みを全部消す。揃える必要が無ければ渡した値をそのまま返す。
- *
- * 画面の重み（重みタブ・送る値・道の評価・結果の表示）はどれもこの関数を1回通した値を読む。 */
+ * 重みを全部消す。揃える必要が無ければ渡した値をそのまま返す。 */
 export function alignRoutePreference(
   routePreference: RoutePreferenceWeights,
   catalog: CatalogWeights,

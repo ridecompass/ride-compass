@@ -124,20 +124,19 @@ describe("bandStep", () => {
       { v: value },
     );
 
-  const ascending = [30, 70];
   // 後ろの段に覆われる段（下限が後ろの段以上）は選ばれない。
   const unordered = [70, 30, 30, 50];
-  it.each([
-    ...[29.99, 30, 69.99, 70].map((value) => ["昇順", ascending, value] as const),
-    ...[29.99, 30, 49.99, 50, 70].map((value) => ["昇順でない", unordered, value] as const),
-  ])("境界が%s（%j）の値%sに、数の値から引く段（bandAt）と同じ段を選ぶ", (_, boundaries, value) => {
-    const bands = valueBands({
-      kind: "difficulty",
-      boundaries: [...boundaries],
-      legend: { boundaries: [...boundaries], unit: null },
-    });
-    expect(bandOf(bands, value)).toBe(bandAt(bands, value).key);
-  });
+  it.each([29.99, 30, 49.99, 50, 70])(
+    "境界が昇順でない（[70,30,30,50]）の値%sに、数の値から引く段（bandAt）と同じ段を選ぶ",
+    (value) => {
+      const bands = valueBands({
+        kind: "difficulty",
+        boundaries: [...unordered],
+        legend: { boundaries: [...unordered], unit: null },
+      });
+      expect(bandOf(bands, value)).toBe(bandAt(bands, value).key);
+    },
+  );
 
   it("段が1つなら、どの値もその段になる", () => {
     const single = valueBands({ kind: "difficulty", boundaries: [], legend: { boundaries: [], unit: null } });

@@ -49,8 +49,9 @@ on:
 permissions:
   contents: read
 
+# 同じ issue の測りだけを1本ずつにする（前後の版の測りが同じ issue で並ぶ）。ほかの issue の測りは待たずに並べ、ジョブの本は issue のレーンが数える。
 concurrency:
-  group: mutation-frontend
+  group: mutation-frontend-${{ inputs.issue || 'schedule' }}
   queue: max
 
 env:

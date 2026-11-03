@@ -14,7 +14,7 @@ import {
   getWeatherWarnings,
 } from "@/services/weatherApi";
 import { routePointsEvery, type RouteSegmentShape } from "@/lib/routeDistance";
-import { routeThunderItems } from "@/features/conditions/routeThunder";
+import { routeWarningTimelineItems } from "@/features/conditions/routeWarningTimeline";
 import refreshIntervals from "@/types/generated/refresh-intervals.json";
 import type { Coordinates } from "@/types/route";
 import type { AmedasObservation, GridPointToday, ValidArea } from "@/types/weather";
@@ -107,8 +107,8 @@ function useLocationFetch<T>(
   return { data: data?.value ?? null, error: useHeldFailure({ error, status, fetchStatus }) };
 }
 
-/** ルートを通る時刻に当たる雷の注意報級の時間帯。ルートの形が変わるたびと、間隔ごとに取り直す。 */
-function useRouteThunder(route: WarningRoute | null): { items: WarningBadgeItem[]; error: string | null } {
+/** ルートを通る時刻に当たる、警報級の時系列の注意報級の時間帯。ルートの形が変わるたびと、間隔ごとに取り直す。 */
+function useRouteWarningTimeline(route: WarningRoute | null): { items: WarningBadgeItem[]; error: string | null } {
   const segments = route?.segments;
   const sampled = useMemo(() => (segments ? routePointsEvery(segments, ROUTE_POINT_STEP_KM) : []), [segments]);
   const pointsKey = useMemo(
@@ -128,7 +128,7 @@ function useRouteThunder(route: WarningRoute | null): { items: WarningBadgeItem[
   const error = useHeldFailure(query);
   const items = useMemo(() => {
     if (route === null || !data || error) return [];
-    return routeThunderItems(
+    return routeWarningTimelineItems(
       data,
       sampled.map(({ km }) => km),
       route.clock,
@@ -139,7 +139,7 @@ function useRouteThunder(route: WarningRoute | null): { items: WarningBadgeItem[
 }
 
 /** 天気・観測・警報等を取る。ふだんは`location`（出発地）で取り、走行中は今の位置`following`で取る。選んだルート`route`が
- * あれば、それを通る時刻に当たる雷の注意報級の時間帯も警告に加える。 */
+ * あれば、それを通る時刻に当たる注意報級の時間帯も警告に加える。 */
 export function useWeatherConditions(
   location: Coordinates,
   locationKnown: boolean,
@@ -158,7 +158,7 @@ export function useWeatherConditions(
   const weatherWarnings = warnings.error ? null : warnings.data;
   const wbgtStatus = wbgt.error ? null : wbgt.data;
   const floodForecasts = flood.error ? null : flood.data;
-  const routeThunder = useRouteThunder(route);
+  const routeTimeline = useRouteWarningTimeline(route);
 
   const warningBadgeItems = useMemo<WarningBadgeItem[]>(() => {
     const jmaItems: WarningBadgeItem[] = weatherWarnings
@@ -190,8 +190,8 @@ export function useWeatherConditions(
       source: "flood",
       title: forecast.condition,
     }));
-    return [...jmaItems, ...wbgtItem, ...floodItems, ...routeThunder.items];
-  }, [weatherWarnings, wbgtStatus, floodForecasts, routeThunder.items]);
+    return [...jmaItems, ...wbgtItem, ...floodItems, ...routeTimeline.items];
+  }, [weatherWarnings, wbgtStatus, floodForecasts, routeTimeline.items]);
 
   const warningFetchFailures = useMemo<FetchFailure[]>(
     () =>
@@ -199,11 +199,11 @@ export function useWeatherConditions(
         { id: "jma", label: "警報・注意報", error: warnings.error },
         { id: "wbgt", label: "暑さ指数", error: wbgt.error },
         { id: "flood", label: "河川氾濫予報", error: flood.error },
-        { id: "route-thunder", label: "ルートの雷の見込み", error: routeThunder.error },
+        { id: "route-timeline", label: "ルートの注意報級の見込み", error: routeTimeline.error },
       ].flatMap(({ id, label, error }) =>
         error ? [{ id, label, detail: error, effect: "出ていてもバッジは表示されません。" }] : [],
       ),
-    [warnings.error, wbgt.error, flood.error, routeThunder.error],
+    [warnings.error, wbgt.error, flood.error, routeTimeline.error],
   );
 
   return {

@@ -100,7 +100,7 @@ async def select_via_nodes(
         lambda: build_turn_expanded_tree(
             context.turn_structure, avoiding_traveled(outbound.cost_bins_lazy, traveled), context.statics.edge_length_m,
             origin_states(context.statics, start_node), context.statics.csr.node_count,
-            edge_seconds=outbound.travel_bins_lazy, bin_seconds=outbound.bin_seconds,
+            edge_seconds=outbound.travel_bins_lazy, bin_seconds=outbound.bin_seconds, transition_cost=context.transition_cost
         )
     )
 
@@ -136,7 +136,7 @@ async def select_via_nodes(
         lambda: build_turn_expanded_tree(
             context.turn_structure, avoiding_traveled(inbound.cost_lazy, traveled), context.statics.edge_length_m,
             destination_states(context.turn_structure, destination_index),
-            context.statics.csr.node_count, reverse=True, edge_seconds=inbound.travel_seconds_lazy,
+            context.statics.csr.node_count, reverse=True, edge_seconds=inbound.travel_seconds_lazy, transition_cost=context.transition_cost
         )
     )
     tree_ms = elapsed_ms(tree_started)
@@ -145,7 +145,7 @@ async def select_via_nodes(
     junction_started = start_timer()
     junction = await asyncio.to_thread(
         combine_forward_backward_at_nodes,
-        context.turn_structure, forward_tree, backward_tree, context.statics.csr.node_count,
+        context.turn_structure, forward_tree, backward_tree, context.statics.csr.node_count, transition_cost=context.transition_cost
     )
     junction_ms = elapsed_ms(junction_started)
     # 終点そのものを経由Nodeとする経路（＝経由せず直行する経路）も候補に含める。
@@ -269,7 +269,7 @@ async def select_fastest_route(context: RoadGraphContext, fixed: FixedLegs) -> T
             turn_expanded_shortest_path,
             context.turn_structure, time_bins, heuristic_to(context, to_node),
             origin_states(context.statics, from_node), to_node,
-            time_bins, leg.bin_seconds,
+            time_bins, leg.bin_seconds, transition_cost=context.turn_structure.turn_seconds,
         )
         if not edges:
             logger.debug("select_fastest_route to_node=%s", node_key_of(context.road, to_node))

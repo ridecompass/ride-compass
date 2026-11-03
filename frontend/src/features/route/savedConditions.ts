@@ -9,7 +9,7 @@ import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 /** 生成の条件（「ルート設定」の入力）。いまの条件・保存・呼び出しが同じこの形を使う。出発地は位置の持ち主が持つので含まず、
  * その日の走行条件（出発時刻・想定速度）と、生成した候補も持たない。 */
 export interface GenerationConditionsSnapshot {
-  /** 周回か（終点を出発地にする）。周回の間も`destination`は覚えておき、外すと戻す（`destinationInUse`）。 */
+  /** 周回か（終点を出発地にする）。周回の間も`destination`は覚えておき、外すと戻す。 */
   loop: boolean;
   /** 全長の目標を決めるか。外している間も距離の入力は残す（入れ直すと前の値に戻る）。 */
   distanceTargeted: boolean;
@@ -24,14 +24,6 @@ export interface GenerationConditionsSnapshot {
   routePreference: RoutePreferenceWeights | null;
   /** 道の区分の行ごとに選んだ避け方（選んでいない行は無い）。 */
   roadAvoidance: RoadAvoidanceOverride;
-}
-
-/** 生成と画面が使う目的地。周回の間は置いた目的地を使わない（null。終点は出発地）。 */
-export function destinationInUse({
-  loop,
-  destination,
-}: Pick<GenerationConditionsSnapshot, "loop" | "destination">): Coordinates | null {
-  return loop ? null : destination;
 }
 
 /** 名前を付けて保存した生成の条件。 */

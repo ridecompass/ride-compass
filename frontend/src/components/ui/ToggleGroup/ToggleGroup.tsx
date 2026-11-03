@@ -7,8 +7,6 @@ import { cn } from "@/lib/cn";
 
 // 並んだ選択肢から1つを選ぶ。選択状態（role="radio"・aria-checked・data-state）と矢印キーでの
 // 移動はRadix ToggleGroupが持つ。
-//
-// 選んでいるものをもう一度押しても外れない（「選ばない」が無い選択）。
 const groupVariants = cva("inline-flex", {
   variants: {
     variant: {

@@ -93,7 +93,7 @@ export default function RouteOutcome({ results, generation, splice, routeWeights
     return (
       <p className={textVariants({ variant: "hint" })}>
         {generation.running ? (
-          (generation.progressLabel ?? "生成中...")
+          generation.progressLabel
         ) : (
           <GuideText text="「ルート設定」の「ルート生成」を押すと候補がここに並びます" />
         )}

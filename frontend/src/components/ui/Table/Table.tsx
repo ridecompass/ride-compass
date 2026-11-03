@@ -13,10 +13,6 @@ export function TableHead({ className, ...props }: React.HTMLAttributes<HTMLTabl
   return <thead className={cn("bg-[var(--color-surface-2)]", className)} {...props} />;
 }
 
-export function TableBody(props: React.HTMLAttributes<HTMLTableSectionElement>) {
-  return <tbody {...props} />;
-}
-
 export function TableRow({ className, ...props }: React.HTMLAttributes<HTMLTableRowElement>) {
   return <tr className={cn("border-b border-[var(--color-border-muted)] last:border-b-0", className)} {...props} />;
 }

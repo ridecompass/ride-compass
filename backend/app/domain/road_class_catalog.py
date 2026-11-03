@@ -23,6 +23,8 @@ class RoadClassView(StrictModel):
     label: str
     description: str
     color: str
+    #: 暗い地図の上に塗る色。
+    color_on_dark: str
 
 
 class LayerTextSlotView(StrictModel):
@@ -94,10 +96,11 @@ def road_class_catalog(definitions: RoadClassDefinitions) -> RoadClassCatalog:
         classes = by_sort_order(classification.classes)
         labels = [road_class.label for _, road_class in classes]
         if layer.palette == "ordered":
-            colors = ordered_colors(len(classes))
+            colors, colors_on_dark = ordered_colors(len(classes)), ordered_colors(len(classes), on_dark=True)
             part = ordered_ends_phrase(labels[0], labels[-1]) if labels else ""
         else:
             colors = nominal_colors(layer.hue_slot or 0, len(classes), layer.tone)
+            colors_on_dark = nominal_colors(layer.hue_slot or 0, len(classes), layer.tone, on_dark=True)
             part = "・".join(labels)
         layers.append(
             RoadMapLayerView(
@@ -115,8 +118,9 @@ def road_class_catalog(definitions: RoadClassDefinitions) -> RoadClassCatalog:
                         label=road_class.label,
                         description=road_class.description,
                         color=color,
+                        color_on_dark=color_on_dark,
                     )
-                    for (class_key, road_class), color in zip(classes, colors, strict=True)
+                    for (class_key, road_class), color, color_on_dark in zip(classes, colors, colors_on_dark, strict=True)
                 ],
             )
         )

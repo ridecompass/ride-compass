@@ -268,6 +268,8 @@ def frontend_findings() -> dict[str, list[str]]:
 
 
 def main() -> int:
+    # 文に端末の文字コード（Windows の既定は cp932）で出せない文字があると途中で落ち、母集団が黙って欠ける。
+    sys.stdout.reconfigure(encoding="utf-8")
     found = backend_findings(generated_names())
     for kind, lines in frontend_findings().items():
         found.setdefault(kind, []).extend(lines)

@@ -15,20 +15,14 @@ const TURNS = [
 
 describe("nextTurn", () => {
   it.each([
-    { case: "最初の曲がる所を過ぎた", progressKm: 1.2, expected: { ...TURNS[1], distanceM: 2300 } },
+    {
+      case: "最初の曲がる所を過ぎた",
+      progressKm: 1.2,
+      expected: { direction: "right", latitude: 35.2, longitude: 139.2, distanceM: expect.closeTo(2300, 6) },
+    },
     { case: "曲がる所を全部過ぎた", progressKm: 3.5, expected: null },
     { case: "現在地をまだルートへ当てていない", progressKm: null, expected: null },
   ])("$case", ({ progressKm, expected }) => {
-    const turn = nextTurn(TURNS, progressKm);
-    if (expected === null) {
-      expect(turn).toBeNull();
-      return;
-    }
-    expect(turn).toMatchObject({
-      direction: expected.direction,
-      latitude: expected.latitude,
-      longitude: expected.longitude,
-    });
-    expect(turn?.distanceM).toBeCloseTo(expected.distanceM, 6);
+    expect(nextTurn(TURNS, progressKm)).toEqual(expected);
   });
 });

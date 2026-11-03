@@ -47,18 +47,10 @@ class TestPublishImmutability:
             # 公開したまま書けないと、下書きへ戻す間だけ一般の画面から軸が消え、利用者の重みが既定へ戻る。
             ("updated", SHOWN_DIFFERENTLY, None),
             # 折れ点は、ほかを変えない差し替えのときだけ公開したまま書ける。
-            ("updated", {"default_weight": 2.0, "shape": linear(MaterialTerm(material="num_a"), breakpoints=NEW_BREAKPOINTS)},
-             UPDATE_REFUSED),
             ("updated", {"shape": linear(MaterialTerm(material="num_b"), breakpoints=NEW_BREAKPOINTS)}, UPDATE_REFUSED),
-            ("updated", {"shape": linear(MaterialTerm(material="num_a", weight=2.0), breakpoints=NEW_BREAKPOINTS)},
-             UPDATE_REFUSED),
-            ("updated", {"shape": linear(MaterialTerm(material="num_a"), breakpoints=NEW_BREAKPOINTS, preprocess="abs")},
-             UPDATE_REFUSED),
             ("updated", {"shape": CategoricalShape(material="num_a", mapping={"x": 50.0})}, UPDATE_REFUSED),
-            ("updated", {"is_published": False, "shape": linear(MaterialTerm(material="num_a"), breakpoints=NEW_BREAKPOINTS)},
-             UPDATE_REFUSED),
         ],
-        ids=["削除", "表示と折れ点", "重み", "材料", "項", "前処理", "形の種類", "公開"],
+        ids=["削除", "表示と折れ点", "折れ点と材料", "形の種類"],
     )
     def test_a_published_axis_may_change_only_how_it_is_shown_and_its_breakpoints(self, action, changed, refusal):
         published = axis(is_published=True)

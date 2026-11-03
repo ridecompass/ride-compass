@@ -18,6 +18,7 @@ from hypothesis import example, given
 from hypothesis import strategies as st
 
 from app.domain import route
+from app.domain.attributes import ElevationAttribute
 from app.domain.axis_definitions import BreakpointLinearShape, MaterialTerm
 from app.domain.route import DensityScoreInput, RouteSegmentDetail, SegmentDifficulty
 
@@ -161,6 +162,42 @@ def test_route_raw_values_match_the_mean_over_the_bins_of_the_segments(edges):
 
     slices = route.route_bin_slices([distance for distance, _ in edges])
     assert route.route_axis_raw_values(edges, slices) == route.merge_material_values(_binned(segments))
+
+
+@pytest.mark.parametrize(
+    ("gain", "loss", "expected"),
+    [
+        pytest.param(8.0, 12.0, 8.0, id="登りがあれば下りより急でも登り"),
+        pytest.param(0.0, 4.0, -4.0, id="登りが無ければ下りを負の値で"),
+        pytest.param(0.0, 0.0, 0.0, id="平らなら0（-0にしない）"),
+        pytest.param(None, 3.0, None, id="値が無ければ値が無い"),
+    ],
+)
+def test_a_road_shows_its_steepest_climb_or_else_its_steepest_descent(gain, loss, expected):
+    elevation = ElevationAttribute(edge_id="1:0:f", start_elevation_m=0.0, end_elevation_m=0.0, elevation_gain_m=0.0,
+                                   elevation_loss_m=0.0, average_grade=None,
+                                   steepest_gain_percent=gain, steepest_loss_percent=loss)
+
+    # 文字の形まで比べる（-0.0は0.0と等しいが、画面に「-0%」と出る）。
+    assert repr(route.steepest_signed_percent(elevation)) == repr(expected)
+
+
+@pytest.mark.parametrize(
+    ("sustained", "expected"),
+    [
+        pytest.param([8.0, -12.0], 8.0, id="登って下っても打ち消し合わない"),
+        pytest.param([3.0, 8.0, -12.0], 8.0, id="登りがあれば下りより急でも登りの最大"),
+        pytest.param([-2.0, -4.0, 0.0], -4.0, id="登りが無ければ一番急な下り"),
+        pytest.param([None, 5.0], 5.0, id="値の無い区間は飛ばす"),
+        pytest.param([None], None, id="値が無ければ値が無い"),
+    ],
+)
+def test_a_bin_shows_the_steepest_slope_of_its_roads(sustained, expected):
+    """勾配のレンズの色と区間の小窓の「最大」はこの値を出す。平均では登って下る区間が平坦に見える。ならす幅は道の断面の
+    刻みが持つ（`test_elevation_values.py`）。"""
+    [bin_] = _binned(_segments([0.1] * len(sustained), sustained_gradient_percent=sustained))
+
+    assert bin_.sustained_gradient_percent == expected
 
 
 def test_the_shape_of_a_bin_joins_the_segment_shapes_without_repeating_shared_points():

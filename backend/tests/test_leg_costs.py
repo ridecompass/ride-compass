@@ -20,25 +20,27 @@ import numpy as np
 import pytest
 from numba.core import event
 
-from app.domain import leg_costs
+from app.domain import leg_costs, traffic
 from app.domain.attributes import CategoricalColumn
 from app.domain.axis_definitions import BreakpointLinearShape, MaterialTerm, copy_axis_definitions
-from app.domain.cycling_speed import RiderProfile, SegmentSpeedModel, crr_for_surface
 from app.domain.difficulty import axis_weight_shares
 from app.domain.evaluation import DensityAxisColumn, StaticEdgeScoreMatrix
+from app.domain.cost_axes import EFFORT_AXES, CostAxisDefinitions
+from app.domain.ledger_costs import LedgerParameters
 from app.domain.leg_costs import LegCostArrays, LegCostComposer, LegValues
+from app.domain.road_network import MaterialFills
 from app.domain.msm import MsmBlock, MsmGrid
 from app.domain.road_avoidance import RoadAvoidanceMasks
 from app.domain.route import Coordinates
 from app.domain.search_graph import EDGE_VALUE_DTYPE
 from app.domain.wind import DepartureWind, WindForecastSeries
 from tests.axis_system_fixture import axis_definition, replaced_axis_definitions
+from tests.profile_fixture import grade_profiles, profiles
 
 START = datetime(2026, 10, 3, 9, 0)
 CRUISE_KMH = 20.0
 AVOID_MULTIPLIER = 3.0
 SURFACE = "class:rolling"
-GRADIENT = leg_costs.GRADIENT_PERCENT
 WIND_DRAG = next(iter(leg_costs.REQUEST_DYNAMIC_MATERIAL_IDS))
 STOP_DENSITY = dict(zip(leg_costs.POI_COUNT_KINDS, leg_costs.stop_count_material_ids(), strict=True))
 WIND_AXIS = "axis_wind"
@@ -58,6 +60,9 @@ def wind_axis():
         yield
 
 
+#: 取込の範囲全体の分布を持たない（欠けた材料は今までどおり0の扱い）。
+NO_FILLS = MaterialFills(numeric_means={}, class_shares={})
+
 def _column(values, n: int) -> np.ndarray:
     return np.asarray(values if isinstance(values, (list, tuple, np.ndarray)) else [values] * n, dtype=float)
 
@@ -69,7 +74,7 @@ def _matrix(n: int, *, distance=1000.0, gradient=0.0, bearing=NORTH, surface="pa
 
     `signals_per_km`を渡すと、その信号の密度で待ちが入り、密度の軸`STOP_AXIS`（折れ線は`STOP_LINE`）が点数を持つ。"""
     axes, raw_axes = dict(axes or {}), raw_axes or {}
-    materials = {GRADIENT: gradient, **dict.fromkeys(STOP_DENSITY.values(), 0.0), **(materials or {})}
+    materials = {**dict.fromkeys(STOP_DENSITY.values(), 0.0), **(materials or {})}
     density_axes = {}
     if signals_per_km is not None:
         signals = _column(signals_per_km, n)
@@ -90,6 +95,7 @@ def _matrix(n: int, *, distance=1000.0, gradient=0.0, bearing=NORTH, surface="pa
         categorical_material_ids=list(categories),
         categorical_material_columns=[CategoricalColumn.encode(v) for v in categories.values()],
         density_axes=density_axes,
+        elevation_profiles=grade_profiles(_column(gradient, n), _column(distance, n)),
     )
 
 
@@ -110,7 +116,7 @@ def _series(speeds_by_hour: list[float], from_deg: float = NORTH) -> WindForecas
 
 
 def _composer(matrix: StaticEdgeScoreMatrix, *, weights=None, penalty=0.0, excluded=None, avoided=None,
-              departure_wind=None, series=None, lazy=None) -> LegCostComposer:
+              departure_wind=None, series=None, lazy=None, fills=NO_FILLS, ledger=None) -> LegCostComposer:
     n = len(matrix.distance_m)
     none = np.zeros(n, dtype=bool)
     masks = RoadAvoidanceMasks(
@@ -121,6 +127,7 @@ def _composer(matrix: StaticEdgeScoreMatrix, *, weights=None, penalty=0.0, exclu
         matrix, weights or {}, penalty, masks, AVOID_MULTIPLIER,
         departure_wind, series, START, CRUISE_KMH,
         np.arange(n) if lazy is None else np.asarray(lazy), detour_ratio=1.3, twilight_origin=PLACE,
+        material_fills=fills, ledger=ledger,
     )
 
 
@@ -147,22 +154,52 @@ def _shares(values: LegValues, rows) -> list[dict[str, float]]:
 # --- 所要時間 -------------------------------------------------------------
 
 
-def test_the_gradient_in_percent_slows_the_rider_as_that_grade_and_a_missing_one_counts_as_flat():
-    """勾配の材料は%で、走行モデルは割合で読む。読み違えると、坂の所要時間が別の勾配の坂のものになる。"""
-    leg = _snapshot(_matrix(3, gradient=[5.0, np.nan, 0.0]))
-    climb, missing, flat = leg.travel_seconds_lazy
-    five_percent = SegmentSpeedModel(
-        RiderProfile(cruise_speed_kmh=CRUISE_KMH), np.array([0.05]), crr_for_surface(CategoricalColumn.encode(["paved"])))
+def test_the_travel_time_runs_the_points_of_the_road_profile_not_its_average_grade():
+    """所要時間は行列の区間の断面を点の間ごとに走る。600mで18m登って18m下る道は、平均勾配は平地と同じ0%でも、
+    平地より時間がかかる（勾配の材料の平均を読むと同じ時間になる）。"""
+    matrix = dataclasses.replace(_matrix(2, distance=600.0), elevation_profiles=profiles([0.0, 18.0, 0.0], [0.0, 0.0, 0.0]))
 
-    assert climb == pytest.approx(1000.0 / five_percent.speed_ms(np.zeros(1), np.zeros(1))[0])
-    assert missing == flat
+    up_and_down, flat = _snapshot(matrix).travel_seconds_lazy
+
+    assert up_and_down > flat * 1.1
 
 
-def test_each_stop_on_a_segment_adds_its_wait():
-    """2回/kmの信号がある500mの区間は、信号1回ぶん待つ。密度の値が無い区間は待たない。"""
+def test_the_ledger_formula_adds_the_penalty_of_each_road_to_its_travel_time():
+    """費目の帳簿の式では、費用 ＝ 所要時間 ＋ つまみ × 代償（平らな舗装の道は代償0、砂利の道は道の負担の分だけ高い）。
+    所要時間は式に依らない。"""
+    lens = {"thresholds": [1.0], "band_labels": ["a", "b"]}
+    presentation = {"label": "x", "description": "", "icon_id": "i", "lens": lens}
+    axes = CostAxisDefinitions.model_validate({
+        "effort": {axis_id: presentation for axis_id in EFFORT_AXES},
+        "burden": {"vibration": {**presentation, "burden": {
+            "kind": "categorical", "material": "class:surface_estimate", "per_km": {"paved": 0.0, "gravel": 1.0}}}},
+    })
+    parameters = LedgerParameters(strength=0.5, multipliers={}, effort_alpha=1.0, burden_seconds_per_km=100.0,
+                                  effort_weight_exponent=0.0)
+    matrix = _matrix(2, distance=1000.0, categories={"class:surface_estimate": ["paved", "gravel"]})
+
+    leg = _snapshot(matrix, ledger=(axes, parameters))
+    plain = _snapshot(matrix)
+
+    assert leg.travel_seconds_lazy.tolist() == pytest.approx(plain.travel_seconds_lazy.tolist())
+    assert (leg.cost_lazy - leg.travel_seconds_lazy).tolist() == pytest.approx([0.0, 0.5 * 100.0 * 1.0 * 1.0])
+
+
+def test_a_segment_without_a_stop_count_waits_the_mean_of_the_whole_network():
+    """停止要因の数の無い区間は、取込の範囲全体の平均の密度で待つ（0とみなすと、数の無い道が止まらない速い道に見える）。"""
+    fills = MaterialFills(numeric_means={STOP_DENSITY["signal"]: 2.0}, class_shares={})
+    leg = _snapshot(_matrix(3, distance=500.0, materials={STOP_DENSITY["signal"]: [2.0, np.nan, 0.0]}), fills=fills)
+
+    assert leg.travel_seconds_lazy[1] == pytest.approx(leg.travel_seconds_lazy[0])
+    assert leg.travel_seconds_lazy[1] > leg.travel_seconds_lazy[2]
+
+
+def test_each_stop_on_a_segment_adds_its_share_of_the_wait():
+    """2回/kmの信号がある500mの区間は、信号1回ぶん、止まる割合 × 止まったときの待ちを足す。密度の値が無い区間は待たない。"""
     leg = _snapshot(_matrix(3, distance=500.0, materials={STOP_DENSITY["signal"]: [2.0, 0.0, np.nan]}))
 
-    assert leg.travel_seconds_lazy[0] - leg.travel_seconds_lazy[1] == pytest.approx(leg_costs.stop_seconds("signal"))
+    assert leg.travel_seconds_lazy[0] - leg.travel_seconds_lazy[1] == pytest.approx(
+        traffic.stop_event("stop", "signal").expected_seconds)
     assert leg.travel_seconds_lazy[2] == leg.travel_seconds_lazy[1]
 
 
@@ -332,30 +369,23 @@ def test_without_an_hourly_forecast_every_leg_shares_one_composition():
 
 
 @pytest.mark.parametrize(
-    ("duration_hours", "bin_starts"),
+    ("offset", "direction", "duration_hours", "bin_starts"),
     [
-        (None, (1.0,)),  # 見込み時間が無ければ、レグ全体を開始時刻で1本
-        (0.0, (1.0,)),
-        (2.5, (1.0, 2.0, 3.0)),
-        (10.0, tuple(1.0 + k for k in range(leg_costs.MAX_TIME_BINS))),  # 上限で打ち切る
+        (1.0, +1, None, (1.0,)),  # 見込み時間が無ければ、レグ全体を開始時刻で1本
+        (1.0, +1, 0.0, (1.0,)),
+        (1.0, +1, 2.5, (1.0, 2.0, 3.0)),
+        (1.0, +1, 10.0, tuple(1.0 + k for k in range(leg_costs.MAX_TIME_BINS))),  # 上限で打ち切る
+        (5.0, -1, 2.0, (3.0, 4.0)),  # 起点へ向かうレグは、その時刻で終わる
     ],
 )
-def test_a_leg_is_cut_into_hourly_bins_over_its_expected_duration(duration_hours, bin_starts):
+def test_a_leg_is_cut_into_hourly_bins_over_its_expected_duration(offset, direction, duration_hours, bin_starts):
     composer = _composer(_matrix(1), series=_series([0.0] * 12))
 
-    leg = composer.compose("leg", 1.0, +1, duration_hours=duration_hours)
+    leg = composer.compose("leg", offset, direction, duration_hours=duration_hours)
 
     assert leg.bin_times == tuple(composer.bin_time(start) for start in bin_starts)
     assert len(leg.cost_bins_lazy) == len(leg.travel_bins_lazy) == len(bin_starts)
     assert leg.bin_seconds == (np.inf if len(bin_starts) == 1 else leg_costs.TIME_BIN_HOURS * 3600.0)
-
-
-def test_a_leg_toward_the_anchor_ends_at_its_offset():
-    composer = _composer(_matrix(1), series=_series([0.0] * 12))
-
-    leg = composer.compose("leg", 5.0, -1, duration_hours=2.0)
-
-    assert leg.bin_times == (composer.bin_time(3.0), composer.bin_time(4.0))
 
 
 def test_legs_with_the_same_bins_but_a_different_middle_are_not_mixed_up():
@@ -461,16 +491,9 @@ def _night_composer(n: int = 1) -> LegCostComposer:
     )
 
 
-def test_the_night_axis_weighs_only_in_the_bins_ridden_in_the_dark(night_axis):
-    """16時30分・17時30分・18時30分に始まるビンのうち、日没の後の最後だけに効く。"""
-    leg = _night_composer().compose("leg", 7.5, +1, duration_hours=3.0)
-
-    ratio = leg.cost_bins_lazy[:, 0] / leg.travel_bins_lazy[:, 0]
-    assert ratio.tolist() == pytest.approx([1.0, 1.0, 1.25])
-
-
 def test_the_night_axis_keeps_weighing_by_the_hour_after_the_axes_are_saved_during_composition(night_axis):
-    """合成の途中で軸の保存が軸の集合を差し替えても、作った時点の軸の集合で昼夜を決める（合成は別スレッドでも走る）。"""
+    """16時30分・17時30分・18時30分に始まるビンのうち、日没の後の最後だけに効く。合成の途中で軸の保存が軸の集合を
+    差し替えても、作った時点の軸の集合で昼夜を決める（合成は別スレッドでも走る）。"""
     composer = _night_composer()
 
     with replaced_axis_definitions({}):

@@ -156,16 +156,13 @@ class TestRead:
 
         assert [(item["axis_id"], item["label"]) for item in body] == [("a", "軸A"), ("b", "軸B")]
 
-    def test_get_returns_the_axis(self, client, registry):
-        registry.axes["a"] = stored()
-
-        assert client.get(BASE + "/a").json()["axis_id"] == "a"
-
     def test_an_axis_whose_material_left_the_catalog_can_still_be_read(self, client, registry):
         """読み出しは保存済みの内容を返すだけで、書き込み時の検証をやり直さない。"""
         registry.axes["a"] = stored(shape=linear_shape("retired"))
 
-        assert client.get(BASE + "/a").status_code == 200
+        response = client.get(BASE + "/a")
+
+        assert (response.status_code, response.json()["axis_id"]) == (200, "a")
 
 
 class TestWrite:
@@ -284,8 +281,11 @@ class TestPreviews:
         assert body["map_paint"]["thresholds"] == [100.0]
 
 
-#: タイルの材料から読む数値の材料（配信のサービスが配る材料を除く）。
-TILE_A, TILE_B = [m for m in stored_materials("numeric") if m not in services_by_material(DEDICATED_WAY_VALUE_SERVICES)][:2]
+#: タイルの材料から読む数値の材料（配信のサービスが配る材料を除く）。折れ点を自由に置ける軸にするため、足せる材料（密度の軸になる）も除く。
+TILE_A, TILE_B = [
+    m for m in stored_materials("numeric")
+    if m not in services_by_material(DEDICATED_WAY_VALUE_SERVICES) and not MATERIAL_CATALOG[m].additive
+][:2]
 TILE = {"z": EDGE_UNIT_MIN_ZOOM, "x": 7275, "y": 3225}
 #: 軸`a`が読む材料の、タイルの道ごとの値。
 TILE_MATERIALS = FeatureMaterials(feature_keys=("1", "2"), columns={TILE_A: np.array([2.0, 5.0])})

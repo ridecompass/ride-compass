@@ -7,32 +7,18 @@
  */
 import type { FilterSpecification } from "maplibre-gl";
 
-import { POINT_LAYERS, type PointLayer } from "@/lib/mapDisplay/pointLayers";
+import type { PointLayer } from "@/lib/mapDisplay/pointLayers";
 import { SIDE_POINT_MAX_DISTANCE_M } from "@/lib/mapDisplay/sidePoints";
 
 import { declareGroup, type SceneLayerEntry } from "@/features/map/scene/mapSceneGroups";
-import { sceneLayerId } from "@/features/map/scene/sceneBuilders";
-import {
-  baseFilter,
-  POINT_HIT_TARGET,
-  POINT_IMAGES,
-  POINT_TILE_SOURCES,
-  pointLook,
-  STACKED_POINT_LAYERS,
-} from "./points";
+import { baseFilter, POINT_IMAGES, pointLayerLookup, pointLook, STACKED_POINT_LAYERS } from "./points";
 
 function roleOf(layer: PointLayer): string {
   return `side-${layer.attr_id}`;
 }
 
-const LAYER_BY_SCENE_ID = new Map(
-  POINT_LAYERS.map((layer) => [sceneLayerId(POINT_TILE_SOURCES[layer.tile_kind].sourceId, roleOf(layer)), layer]),
-);
-
 /** 押された地物のレイヤーidが近くの点の印なら、その点の宣言。 */
-export function sidePointLayerOfSceneLayer(sceneLayerIdOfFeature: string): PointLayer | undefined {
-  return LAYER_BY_SCENE_ID.get(sceneLayerIdOfFeature);
-}
+export const sidePointLayerOfSceneLayer = pointLayerLookup(roleOf);
 
 export type SidePointState = {
   /** 選んでいる区間の線。選んでいなければnull。 */
@@ -56,11 +42,8 @@ export const sidePointGroup = declareGroup<SidePointState>(({ path, tilesReady }
   const points: readonly SceneLayerEntry[] = STACKED_POINT_LAYERS.map((layer) => ({
     role: roleOf(layer),
     tier: "sidePoint",
-    source: POINT_TILE_SOURCES[layer.tile_kind].sourceId,
-    sourceLayer: POINT_TILE_SOURCES[layer.tile_kind].sourceLayer,
     ...pointLook(layer),
     visible: true,
-    hitTargets: [POINT_HIT_TARGET],
     filter: sidePointFilter(layer, path),
   }));
   return { sources: [], layers: points, images: POINT_IMAGES };

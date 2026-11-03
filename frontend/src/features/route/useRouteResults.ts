@@ -72,16 +72,23 @@ export function useRouteResults() {
   /** 選んでいるルートの全体へ地図を収める。 */
   const focusRoute = useCallback(() => setRouteFocus({}), []);
 
+  const selectAndFocus = useCallback(
+    (routeId: string, reused: boolean) => {
+      select(routeId, reused);
+      focusRoute();
+    },
+    [select, focusRoute],
+  );
+
   /** 区間の乗り換えで作ったルートを足して選ぶ。idは画面が振る（backendは同じ値を毎回返す）。 */
   const addEdit = useCallback(
     (route: RouteCandidate, originId: string) => {
       const number = nextEditNumber.current++;
       const id = `${EDIT_ID_PREFIX}-${number}`;
       setEdits((current) => [...current, { route: { ...route, id }, originId, number }]);
-      select(id, false);
-      focusRoute();
+      selectAndFocus(id, false);
     },
-    [select, focusRoute],
+    [selectAndFocus],
   );
 
   /** 候補・選択・使われた重みを消す。 */
@@ -91,22 +98,10 @@ export function useRouteResults() {
   const selectRoute = useCallback((routeId: string) => select(routeId, false), [select]);
 
   /** ルートを選び、その全体へ地図を収める。 */
-  const showRoute = useCallback(
-    (routeId: string) => {
-      select(routeId, false);
-      focusRoute();
-    },
-    [select, focusRoute],
-  );
+  const showRoute = useCallback((routeId: string) => selectAndFocus(routeId, false), [selectAndFocus]);
 
   /** 乗り換えで作った経路が既にある候補と同じ道だったので、足さずにその候補を選んで収める。 */
-  const selectReused = useCallback(
-    (routeId: string) => {
-      select(routeId, true);
-      focusRoute();
-    },
-    [select, focusRoute],
-  );
+  const selectReused = useCallback((routeId: string) => selectAndFocus(routeId, true), [selectAndFocus]);
 
   const routes = useMemo(() => [...generated, ...edits.map((edit) => edit.route)], [generated, edits]);
   const selectedCandidate = routes.find((route) => route.id === selectedRouteId) ?? null;

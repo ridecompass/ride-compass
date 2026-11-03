@@ -203,7 +203,7 @@ axis_id → get_dedicated_way_value_service(axis_id) が今の軸の集合の写
   変わらない。時刻は時刻に依る材料（風）の時刻。風の軸の応答は道ごとの抵抗の難易度だけで、風速・風向を含まない。
 - 応答を軸カタログの`way_value_formula`へ走る条件とともに入れた値が、**地図が塗る値**。`map_paint`の塗る値が難易度の軸
   （風等）は軸定義（breakpoints・priority_overrides・参照する内部軸）で評価した難易度0〜100、
-  符号付き材料の軸（勾配: 単一材料・`preprocess="abs"`）は符号付き材料生値のまま。
+  符号付き材料の軸（勾配のように進行方向で符号の変わる材料1つの軸）は符号付き材料生値のまま。
   ルート確定後のルート線色分け（`axis_difficulties`／符号付き材料の直読み）と同じ
   スケールになる。
 - 段階の境界も`map_paint`が同じスケールへ揃えて返す（[axis-studio.md](axis-studio.md)「地図が塗るもの」）。

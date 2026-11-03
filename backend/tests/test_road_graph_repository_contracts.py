@@ -230,6 +230,17 @@ async def test_paired_edge_columns_are_not_swapped():
     assert (arrays.start_elevation_m[0], arrays.end_elevation_m[0]) == (10.0, 12.0)
 
 
+async def test_an_edge_without_an_elevation_row_has_no_profile_points():
+    """断面の点は区間ごとに渡した順に返し、標高の行が無い区間は点を持たない（点が2つ未満の区間は、所要時間が全体の
+    勾配の分布で埋める）。"""
+    repo, _ = _repo([_Row(elevation_profile_m=[1.0, np.nan, 3.0]), _Row(elevation_profile_m=None)])
+
+    known, missing = await repo.get_edge_elevation_profiles([1, 2], [0, 0])
+
+    assert np.array_equal(known, [1.0, np.nan, 3.0], equal_nan=True)
+    assert len(missing) == 0
+
+
 # --- way粒度の読み出し --------------------------------------------------------
 
 

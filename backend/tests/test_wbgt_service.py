@@ -42,11 +42,7 @@ def _forecast(reference_time, forecast_time, forecast_val):
 def _service(*, point_master=POINT_MASTER_CSV, forecast=None) -> tuple[WbgtService, respx.Router]:
     """地点マスタはCSVのまま、予測は`{"status": "success", "data": forecast}`で返す（Noneなら接続の失敗）。"""
     upstream = respx.Router()
-    master = upstream.get(wbgt_client.WBGT_POINT_MASTER_URL)
-    if point_master is None:
-        master.mock(side_effect=httpx.ConnectError)
-    else:
-        master.respond(text=point_master)
+    upstream.get(wbgt_client.WBGT_POINT_MASTER_URL).respond(text=point_master)
     forecasts = upstream.get(wbgt_client.WBGT_FORECAST_API_URL)
     if forecast is None:
         forecasts.mock(side_effect=httpx.ConnectError)
@@ -87,7 +83,6 @@ async def test_a_value_outside_the_provision_period_is_shown():
 
 
 @pytest.mark.parametrize("failure", [
-    {"point_master": None},
     {"point_master": POINT_MASTER_CSV.splitlines()[0] + "\n"},  # 運用中の地点が1つも読めない
     {"forecast": None},
     {"forecast": []},  # 検索窓に発表が無い

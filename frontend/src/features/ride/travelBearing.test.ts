@@ -44,9 +44,7 @@ describe("nextTravelBearing: 地図を進む向きへ回すときの向き", () 
       bearing: null,
     },
   ])("$case", ({ fix: current, previous, bearing }) => {
-    const next = nextTravelBearing(previous, current);
-    if (bearing === null) expect(next.bearing).toBeNull();
-    else expect(next.bearing).toBeCloseTo(bearing, 0);
+    expect(nextTravelBearing(previous, current).bearing).toEqual(bearing === null ? null : expect.closeTo(bearing, 0));
   });
 
   it("止まっている間は、測り始めの点を動かさない（少しずつ動いても、合わせた距離で向きを出す）", () => {

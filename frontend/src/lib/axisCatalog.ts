@@ -1,8 +1,4 @@
-/** `GET /api/axis-catalog`の応答から、画面が読む形の軸カタログを導く。
- *
- * **フックではなくここに置く**——導出は純関数で、フックが持っているのは「いつ取りに行き、
- * 誰と共有するか」だけ。同居させると、導出を確かめたい側がストアごと引き回すことになる。
- */
+/** `GET /api/axis-catalog`の応答から、画面が読む形の軸カタログを導く。 */
 import { catalogAxisFromEntry, type CatalogAxis } from "@/lib/catalogAxis";
 import type { AxisCatalogResponse, RoadClassCatalog, RoutePreferenceWeights } from "@/types/route";
 
@@ -22,18 +18,10 @@ export interface AxisCatalog {
   clientTuning: Readonly<Record<string, number>>;
   /** 道の区分（地図の線の層・除外タブの行）。正本は管理DBで、**取得できるまでは層も行も0件**。 */
   roadClasses: RoadClassCatalog;
-  /** GET /api/axis-catalogの取得が成功し、他フィールドが実際のDB由来の値であることを表す。
-   * falseの間（未取得・取得失敗）は他フィールドが空のため、「軸スタジオの現在の公開軸集合と
-   * 一致している」ことを要求する処理（route_preferenceのキー整合等）は、このフラグで
-   * 未確定状態を区別しなければならない。取得成功時にaxesが0件（全軸非公開）であっても
-   * trueになる——0件も確定した実際の状態である。 */
+  /** 取得が成功したか。falseの間は他の欄が空なので、公開軸の集合と揃うことを要る処理はこれで未確定を区別する。
+   * 成功して軸が0件（全軸非公開）でもtrue。 */
   loaded: boolean;
-  /** GET /api/axis-catalogの取得を試みて失敗し、まだ一度も成功していないことを表す。
-   * `loaded`とは同時にtrueにならない（未取得=両方false、成功=loadedのみ、失敗=failedのみ）。
-   * この状態では他フィールドが空のため、`loaded`を要求する処理
-   * （route_preferenceの送信）は黙って省略される。利用者へ何も知らせないと
-   * 「重みを設定したのに反映されない」ことに気づけないため、UIはこのフラグで失敗と
-   * 再試行導線を見せる（常設ヘッダーの「未取得」の印と、重みタブ）。 */
+  /** 取得に失敗し、まだ一度も成功していないか（`loaded`と同時にtrueにならない）。 */
   failed: boolean;
 }
 
@@ -43,16 +31,16 @@ type ClientTuningId = keyof (typeof import("@/types/generated/route-generate-con
 /** フロントが読む較正値のid。**ここに並んだidは、ビルド時生成物に在るものだけを型が通す**——backendの宣言から
  * 消す/綴りを変えると、フロントは引けないまま、その値を使う機能を黙って出さなくなるため。 */
 export const CLIENT_TUNING_IDS = {
-  /** 区間を割る下限（km）。これ未満の共有区間では割らない（`features/route/routeSplice.ts`）。 */
+  /** 区間を割る下限（km）。これ未満の共有区間では割らない。 */
   minStretchKm: "splice.min_stretch_km",
-  /** 走行モデルの標準値。想定速度の説明文に出す（`features/conditions/RideConditionBar`）。 */
+  /** 走行モデルの標準値。想定速度の説明文に出す。 */
   massKg: "speed.mass_kg",
   cdaM2: "speed.cda_m2",
   maxDescentKmh: "speed.max_descent_kmh",
   walkingKmh: "speed.walking_kmh",
-  /** 全長の目標からの許容差（目標の距離に対する割合）。全長の目標の説明文に出す（`features/route/RouteForm`）。 */
+  /** 全長の目標からの許容差（目標の距離に対する割合）。全長の目標の説明文に出す。 */
   distanceToleranceRatio: "search.distance_tolerance_ratio",
-  /** 土地被覆を数える帯の外の幅（m）。作り直しに使った値が届く。土地被覆の層の説明文に出す（`features/map/layers/mapLayers.ts`）。 */
+  /** 土地被覆を数える帯の外の幅（m）。作り直しに使った値が届く。土地被覆の層の説明文に出す。 */
   landcoverRingOuterM: "landcover.ring_outer_m",
 } as const satisfies Record<string, ClientTuningId>;
 

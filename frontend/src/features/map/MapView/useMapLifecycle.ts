@@ -5,7 +5,7 @@ import type * as maplibregl from "maplibre-gl";
 import type { ErrorEvent as MapLibreErrorEvent, Map as MapLibreMap } from "maplibre-gl";
 
 import type { Coordinates } from "@/types/route";
-import { createBaseMap } from "@/features/map/baseMap";
+import { createBaseMap, viewportOf } from "@/features/map/baseMap";
 import { mapStyleUrl } from "@/features/map/regionApi";
 import { isStyleReady, reloadStyle } from "@/features/map/layers/mapStyleOps";
 import { registerJmaTileProtocol } from "@/features/map/layers/jmaTileProtocol";
@@ -126,16 +126,8 @@ export function useMapLifecycle(
     }
     // 見えている範囲だけを取りに行くレイヤーへ、今の範囲を渡す（間引きは受け取る側）。
     function reportViewport() {
-      const bounds = map.getBounds();
-      if (!bounds) return;
-      getLook().onViewportChange({
-        west: bounds.getWest(),
-        south: bounds.getSouth(),
-        east: bounds.getEast(),
-        north: bounds.getNorth(),
-        zoom: map.getZoom(),
-        bearing: map.getBearing(),
-      });
+      const viewport = viewportOf(map);
+      if (viewport) getLook().onViewportChange(viewport);
     }
     function handleMoveEnd() {
       const bounds = map.getBounds();

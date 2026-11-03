@@ -48,6 +48,13 @@ function segments(): HTMLElement[] {
   return Array.from(screen.getByRole("img", { name: "難易度の内訳" }).children) as HTMLElement[];
 }
 
+/** 凡例のチップを並んだ順に、ボタンの名前と出す値の組で。 */
+function chipRows(): [string | null, string | null][] {
+  return within(screen.getByRole("list"))
+    .getAllByRole("listitem")
+    .map((item) => [within(item).getByRole("button").getAttribute("aria-label"), item.textContent]);
+}
+
 /** 凡例のチップに付いた軸の色。 */
 function chipColor(chip: HTMLElement): string {
   const icon = chip.querySelector<HTMLElement>('[aria-hidden="true"]');
@@ -73,12 +80,16 @@ describe("AxisContributionBar", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it("寄与のある軸だけを`axes`の順に帯へ積み、長さと名前・値を添える", () => {
+  it("寄与のある軸だけを`axes`の順に帯へ積んで長さと名前・値を添え、凡例を渡さなければ同じ軸をチップにして値を出す", () => {
     renderBar({ contributions: { axis_c: 12.34, axis_b: 0, axis_a: 30 } });
 
     expect(segments().map((segment) => [segment.title, segment.style.width])).toEqual([
       ["軸A 30.0", "30%"],
       ["軸C 12.3", "12.34%"],
+    ]);
+    expect(chipRows()).toEqual([
+      ["軸Aの詳細を表示", "30.0"],
+      ["軸Cの詳細を表示", "12.3"],
     ]);
   });
 
@@ -105,25 +116,10 @@ describe("AxisContributionBar", () => {
     expect(chipColor(chip("軸B"))).toBe(b.style.background);
   });
 
-  it("凡例の軸を渡さなければ、帯に積んだ軸だけを詳細を開くチップにして値を出す", () => {
-    renderBar({ contributions: { axis_a: 30, axis_c: 12.34 } });
-
-    const chips = within(screen.getByRole("list")).getAllByRole("listitem");
-    expect(
-      chips.map((item) => [within(item).getByRole("button").getAttribute("aria-label"), item.textContent]),
-    ).toEqual([
-      ["軸Aの詳細を表示", "30.0"],
-      ["軸Cの詳細を表示", "12.3"],
-    ]);
-  });
-
   it("凡例の軸を渡すと、その順にすべて並べ、寄与の無い軸は値を出さない", () => {
     renderBar({ contributions: { axis_a: 30 }, legendAxes: [C, A, B] });
 
-    const chips = within(screen.getByRole("list")).getAllByRole("listitem");
-    expect(
-      chips.map((item) => [within(item).getByRole("button").getAttribute("aria-label"), item.textContent]),
-    ).toEqual([
+    expect(chipRows()).toEqual([
       ["軸Cの詳細を表示", ""],
       ["軸Aの詳細を表示", "30.0"],
       ["軸Bの詳細を表示", ""],
@@ -137,10 +133,6 @@ describe("AxisContributionBar", () => {
       renderDetail: (axis) => (axis.axisId === "axis_b" ? null : `${axis.label}の中身`),
     });
 
-    const chips = within(screen.getByRole("list")).getAllByRole("listitem");
-    expect(chips.map((item) => within(item).getByRole("button").getAttribute("aria-label"))).toEqual([
-      "軸Aの詳細を表示",
-      "軸Cの詳細を表示",
-    ]);
+    expect(chipRows().map(([name]) => name)).toEqual(["軸Aの詳細を表示", "軸Cの詳細を表示"]);
   });
 });

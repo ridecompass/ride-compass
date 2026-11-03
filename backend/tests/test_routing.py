@@ -12,7 +12,6 @@ import math
 import sys
 from datetime import datetime, timedelta, timezone
 
-import numba
 import numpy as np
 import pytest
 from hypothesis import example, given
@@ -175,7 +174,7 @@ def grid_tree(**kwargs):
     tree = routing.build_turn_expanded_tree(
         structure, cost, statics.edge_length_m, out_states(lazy, "n0_0"),
         lazy.node_count, **kwargs,
-        edge_seconds=np.ones(structure.state_count),
+        edge_seconds=np.ones(structure.state_count), transition_cost=structure.turn_seconds
     )
     return lazy, statics, structure, tree
 
@@ -193,19 +192,6 @@ def test_tree_costs_equal_the_hop_count_from_the_origin():
         expected = hops if hops else 2
         assert tree.node_cost[node_index] == pytest.approx(expected), node_id
         assert tree.node_length_m[node_index] == pytest.approx(expected * 100.0), node_id
-
-
-def test_tree_seconds_come_from_the_plain_travel_time_not_from_the_cost():
-    """秒はコスト（主観的割増込み）ではなく素の走行時間を積む。混ぜると到着時刻が狂う。"""
-    lazy, statics, structure = build_all(make_graph(LINE_NODES, LINE_EDGES))
-    states = state_index(lazy)
-    tree = routing.build_turn_expanded_tree(
-        structure, np.full(structure.state_count, 5.0), statics.edge_length_m,
-        np.array([states["AB"]], dtype=np.int64), lazy.node_count,
-        edge_seconds=np.full(structure.state_count, 2.0),
-    )
-    assert tree.state_cost[states["BC"]] == pytest.approx(10.0)
-    assert tree.state_seconds[states["BC"]] == pytest.approx(4.0)
 
 
 def test_tree_stops_at_the_cost_limit():
@@ -234,11 +220,11 @@ def test_tree_cost_bound_cuts_no_state_within_the_length(seed, length_m):
     def tree(**kwargs):
         return routing.build_turn_expanded_tree(
             structure, cost, edge_length_m, seeds, lazy.node_count,
-            edge_seconds=np.ones((2, states)), bin_seconds=30.0, **kwargs,
+            edge_seconds=np.ones((2, states)), bin_seconds=30.0, **kwargs, transition_cost=structure.turn_seconds
         )
 
     full = tree()
-    bound = routing.tree_cost_bound(structure, cost, edge_length_m, length_m)
+    bound = routing.tree_cost_bound(structure, cost, edge_length_m, length_m, transition_cost=structure.turn_seconds)
     within = np.isfinite(full.state_cost) & (full.state_length_m <= length_m)
     assert (full.state_cost[within] <= bound).all()
     cut = tree(cost_limit=bound)
@@ -262,12 +248,12 @@ def test_tree_cost_bound_covers_the_waits_and_the_dearest_time_bin():
     cost = np.full((2, structure.state_count), 10.0)
     cost[:, [states["bx"], states["cx"], states["dx"]]] = np.inf
     cost[1, last] = 100.0
-    bound = routing.tree_cost_bound(structure, cost, statics.edge_length_m, 400.0)
+    bound = routing.tree_cost_bound(structure, cost, statics.edge_length_m, 400.0, transition_cost=structure.turn_seconds)
     tree = routing.build_turn_expanded_tree(
         structure, cost, statics.edge_length_m, out_states(lazy, "a"), lazy.node_count,
-        cost_limit=bound, edge_seconds=np.ones((2, structure.state_count)), bin_seconds=1.5,
+        cost_limit=bound, edge_seconds=np.ones((2, structure.state_count)), bin_seconds=1.5, transition_cost=structure.turn_seconds
     )
-    assert tree.state_cost[last] == pytest.approx(10.0 * 3 + 100.0 + 2 * TURN_SPEC.left_seconds + TURN_SPEC.right_seconds)
+    assert tree.state_cost[last] == pytest.approx(10.0 * 3 + 100.0 + 2 * TURN_SPEC.left.expected_seconds + TURN_SPEC.right.expected_seconds)
 
 
 def test_tree_never_enters_a_non_finite_cost_edge():
@@ -280,7 +266,7 @@ def test_tree_never_enters_a_non_finite_cost_edge():
     tree = routing.build_turn_expanded_tree(
         structure, cost, statics.edge_length_m, out_states(lazy, "n0_0"),
         lazy.node_count,
-        edge_seconds=np.ones(structure.state_count),
+        edge_seconds=np.ones(structure.state_count), transition_cost=structure.turn_seconds
     )
     assert not np.isfinite(tree.state_cost[blocked])
     assert tree.node_cost[lazy.node_id_to_index["n0_1"]] == pytest.approx(3.0)
@@ -293,7 +279,7 @@ def test_tree_marks_unreachable_states_and_nodes():
     tree = routing.build_turn_expanded_tree(
         structure, cost, statics.edge_length_m, out_states(lazy, "A"),
         lazy.node_count,
-        edge_seconds=np.ones(structure.state_count),
+        edge_seconds=np.ones(structure.state_count), transition_cost=structure.turn_seconds
     )
     isolated = lazy.node_id_to_index["Z"]
     assert tree.node_cost[isolated] == math.inf
@@ -301,8 +287,9 @@ def test_tree_marks_unreachable_states_and_nodes():
     assert routing.turn_expanded_path_edge_indices(tree, isolated) is None
 
 
-def test_tree_adds_the_turn_wait_to_both_cost_and_seconds():
-    """繋ぎ目のターンの待ちは、コストにも所要時間にも入る。"""
+def test_tree_adds_the_transition_cost_to_the_cost_and_the_turn_time_to_the_seconds():
+    """ターンは、木のコストには呼び手が渡す遷移の費用、所要時間には構造のターンの時間で入る。所要時間は遷移の費用
+    （利用者ごとに変わる）で変わらない。"""
     graph = make_graph(PLUS_NODES, PLUS_EDGES)
     lazy, statics, structure = build_all(graph, spec=TURN_SPEC)
     states = state_index(lazy)
@@ -310,10 +297,10 @@ def test_tree_adds_the_turn_wait_to_both_cost_and_seconds():
     seconds = np.full(structure.state_count, 10.0)
     tree = routing.build_turn_expanded_tree(
         structure, cost, statics.edge_length_m, np.array([states["WC"]], dtype=np.int64),
-        lazy.node_count, edge_seconds=seconds, bin_seconds=1000.0,
+        lazy.node_count, edge_seconds=seconds, bin_seconds=1000.0, transition_cost=structure.turn_seconds + 4.0,
     )
-    assert tree.state_cost[states["CN"]] == pytest.approx(1.0 + TURN_SPEC.left_seconds + 1.0)
-    assert tree.state_seconds[states["CN"]] == pytest.approx(10.0 + TURN_SPEC.left_seconds + 10.0)
+    assert tree.state_cost[states["CN"]] == pytest.approx(1.0 + TURN_SPEC.left.expected_seconds + 4.0 + 1.0)
+    assert tree.state_seconds[states["CN"]] == pytest.approx(10.0 + TURN_SPEC.left.expected_seconds + 10.0)
 
 
 def _line_bins():
@@ -340,7 +327,7 @@ def test_tree_picks_the_time_bin_by_elapsed_seconds(bin_seconds, expected):
     lazy, statics, structure, states, cost, seconds = _line_bins()
     tree = routing.build_turn_expanded_tree(
         structure, cost, statics.edge_length_m, np.array([states["AB"]], dtype=np.int64),
-        lazy.node_count, edge_seconds=seconds, bin_seconds=bin_seconds,
+        lazy.node_count, edge_seconds=seconds, bin_seconds=bin_seconds, transition_cost=structure.turn_seconds
     )
     assert tree.state_cost[states["BC"]] == pytest.approx(expected)
 
@@ -353,7 +340,7 @@ def test_reverse_tree_measures_the_cost_from_each_state_to_the_destination():
     tree = routing.build_turn_expanded_tree(
         structure, np.ones(structure.state_count), statics.edge_length_m,
         np.array([states["BC"]], dtype=np.int64), lazy.node_count, reverse=True,
-        edge_seconds=np.ones(structure.state_count),
+        edge_seconds=np.ones(structure.state_count), transition_cost=structure.turn_seconds
     )
     assert tree.state_cost[states["AB"]] == pytest.approx(2.0)
     assert tree.node_cost[lazy.node_id_to_index["A"]] == pytest.approx(2.0)
@@ -366,7 +353,7 @@ def test_reverse_tree_rejects_time_bins():
     with pytest.raises(ValueError):
         routing.build_turn_expanded_tree(
             structure, cost, statics.edge_length_m, np.array([states["BC"]], dtype=np.int64),
-            lazy.node_count, reverse=True, edge_seconds=seconds, bin_seconds=5.0,
+            lazy.node_count, reverse=True, edge_seconds=seconds, bin_seconds=5.0, transition_cost=structure.turn_seconds
         )
 
 
@@ -380,7 +367,7 @@ def test_forward_path_runs_from_the_tree_source_to_the_state():
     tree = routing.build_turn_expanded_tree(
         structure, np.ones(structure.state_count), statics.edge_length_m,
         np.array([states["AB"]], dtype=np.int64), lazy.node_count,
-        edge_seconds=np.ones(structure.state_count),
+        edge_seconds=np.ones(structure.state_count), transition_cost=structure.turn_seconds
     )
     assert routing.turn_expanded_path_from_state(tree, states["BC"]) == [states["AB"], states["BC"]]
     assert routing.turn_expanded_path_edge_indices(tree, lazy.node_id_to_index["C"]) == [
@@ -396,7 +383,7 @@ def test_backward_path_is_already_in_travel_order():
     tree = routing.build_turn_expanded_tree(
         structure, np.ones(structure.state_count), statics.edge_length_m,
         np.array([states["BC"]], dtype=np.int64), lazy.node_count, reverse=True,
-        edge_seconds=np.ones(structure.state_count),
+        edge_seconds=np.ones(structure.state_count), transition_cost=structure.turn_seconds
     )
     assert routing.turn_expanded_path_from_state_to_source(tree, states["AB"]) == [
         states["AB"], states["BC"],
@@ -413,7 +400,7 @@ def test_tree_path_overlap_measures_what_the_edge_sets_of_the_paths_share(costs,
     lazy, statics, structure = build_all(make_grid(4))
     cost = np.resize(np.asarray(costs), structure.state_count)
     tree = routing.build_turn_expanded_tree(
-        structure, cost, cost * 100.0, out_states(lazy, "n1_1"), lazy.node_count, edge_seconds=cost,
+        structure, cost, cost * 100.0, out_states(lazy, "n1_1"), lazy.node_count, edge_seconds=cost, transition_cost=structure.turn_seconds
     )
     overlap = routing.TreePathOverlap(tree)
     accepted_paths = []
@@ -438,18 +425,18 @@ def test_junction_includes_the_turn_cost_at_the_meeting_node():
     forward = routing.build_turn_expanded_tree(
         structure, cost, statics.edge_length_m, np.array([states["WC"]], dtype=np.int64),
         lazy.node_count,
-        edge_seconds=np.ones(structure.state_count),
+        edge_seconds=np.ones(structure.state_count), transition_cost=structure.turn_seconds
     )
     backward = routing.build_turn_expanded_tree(
         structure, cost, statics.edge_length_m, np.array([states["CN"]], dtype=np.int64),
         lazy.node_count, reverse=True,
-        edge_seconds=np.ones(structure.state_count),
+        edge_seconds=np.ones(structure.state_count), transition_cost=structure.turn_seconds
     )
     junction = routing.combine_forward_backward_at_nodes(
-        structure, forward, backward, lazy.node_count
+        structure, forward, backward, lazy.node_count, transition_cost=structure.turn_seconds
     )
     center = lazy.node_id_to_index["C"]
-    assert junction.cost[center] == pytest.approx(1.0 + TURN_SPEC.left_seconds + 1.0)
+    assert junction.cost[center] == pytest.approx(1.0 + TURN_SPEC.left.expected_seconds + 1.0)
     assert junction.forward_state[center] == states["WC"]
     assert junction.backward_state[center] == states["CN"]
     assert junction.length_m[center] == pytest.approx(200.0)
@@ -463,14 +450,14 @@ def test_junction_leaves_unreachable_nodes_empty():
     node_count = lazy.node_count
     forward = routing.build_turn_expanded_tree(
         structure, cost, statics.edge_length_m, np.array([states["AB"]], dtype=np.int64), node_count,
-        edge_seconds=np.ones(structure.state_count),
+        edge_seconds=np.ones(structure.state_count), transition_cost=structure.turn_seconds
     )
     backward = routing.build_turn_expanded_tree(
         structure, cost, statics.edge_length_m, np.array([states["BC"]], dtype=np.int64),
         node_count, reverse=True,
-        edge_seconds=np.ones(structure.state_count),
+        edge_seconds=np.ones(structure.state_count), transition_cost=structure.turn_seconds
     )
-    junction = routing.combine_forward_backward_at_nodes(structure, forward, backward, node_count)
+    junction = routing.combine_forward_backward_at_nodes(structure, forward, backward, node_count, transition_cost=structure.turn_seconds)
     isolated = lazy.node_id_to_index["Z"]
     assert junction.cost[isolated] == math.inf
     assert np.isnan(junction.length_m[isolated])
@@ -494,23 +481,21 @@ def test_cost_and_seconds_are_shaped_as_time_bins_by_states(shape, expected):
     assert seconds_bins.shape == expected
 
 
-def test_more_than_two_dimensions_is_refused():
-    """黙って(1, n)へ潰すと、ビン数の食い違いの検査もすり抜けてJITが範囲外を読む。"""
+@pytest.mark.parametrize(
+    ("cost_shape", "seconds_shape", "bin_seconds"),
+    [
+        # 黙って(1, n)へ潰すと、ビン数の食い違いの検査もすり抜けてJITが範囲外を読む
+        ((2, 3, 4), (2, 3, 4), 60.0),
+        # 幅が無いと全区間が先頭のビンへ落ち、例外もNaNも出ないまま結果だけが変わる
+        ((2, 3), (2, 3), 0.0),
+        ((2, 3), (2, 3), math.inf),
+        # JITした探索は境界を検査しない。ビン数が食い違えば範囲外の読み出しになる
+        ((2, 3), (2, 4), 60.0),
+    ],
+)
+def test_time_bins_the_search_would_misread_are_refused(cost_shape, seconds_shape, bin_seconds):
     with pytest.raises(ValueError):
-        routing.time_bin_arrays("caller", np.ones((2, 3, 4)), np.ones((2, 3, 4)), 60.0)
-
-
-@pytest.mark.parametrize("bin_seconds", [0.0, math.inf])
-def test_time_binned_cost_requires_a_positive_finite_bin_width(bin_seconds):
-    """幅が無いと全区間が先頭のビンへ落ち、例外もNaNも出ないまま結果だけが変わる。"""
-    with pytest.raises(ValueError):
-        routing.time_bin_arrays("caller", np.ones((2, 3)), np.ones((2, 3)), bin_seconds)
-
-
-def test_mismatched_cost_and_seconds_shapes_raise():
-    """JITした探索は境界を検査しない。ビン数が食い違えば範囲外の読み出しになる。"""
-    with pytest.raises(ValueError):
-        routing.time_bin_arrays("caller", np.ones((2, 3)), np.ones((2, 4)), 60.0)
+        routing.time_bin_arrays("caller", np.ones(cost_shape), np.ones(seconds_shape), bin_seconds)
 
 
 # --- turn_expanded_shortest_path ---
@@ -526,7 +511,7 @@ def test_shortest_path_returns_edge_indices_in_travel_order():
         structure, np.ones(structure.state_count),
         np.zeros(lazy.node_count), out_states(lazy, "n0_0"),
         lazy.node_id_to_index[goal],
-        edge_seconds=np.ones(structure.state_count),
+        edge_seconds=np.ones(structure.state_count), transition_cost=structure.turn_seconds
     )
     assert path is not None
     assert len(path) == last * 2
@@ -551,7 +536,7 @@ def test_shortest_path_ignores_non_finite_costs_among_seeds_and_successors():
     path = routing.turn_expanded_shortest_path(
         structure, cost, np.zeros(lazy.node_count), out_states(lazy, "C"),
         lazy.node_id_to_index["E"],
-        edge_seconds=np.ones(structure.state_count),
+        edge_seconds=np.ones(structure.state_count), transition_cost=structure.turn_seconds
     )
     assert path == [states["CE"]]
 
@@ -563,7 +548,7 @@ def test_shortest_path_is_none_when_the_goal_cannot_be_reached():
     path = routing.turn_expanded_shortest_path(
         structure, np.ones(structure.state_count), np.zeros(lazy.node_count),
         np.array([states["AB"]], dtype=np.int64), lazy.node_id_to_index["Z"],
-        edge_seconds=np.ones(structure.state_count),
+        edge_seconds=np.ones(structure.state_count), transition_cost=structure.turn_seconds
     )
     assert path is None
 
@@ -603,7 +588,7 @@ def test_shortest_path_pays_for_turns_not_only_for_edges():
     path = routing.turn_expanded_shortest_path(
         structure, cost, np.zeros(lazy.node_count),
         out_states(lazy, "A"), lazy.node_id_to_index["C"],
-        edge_seconds=np.ones(structure.state_count),
+        edge_seconds=np.ones(structure.state_count), transition_cost=structure.turn_seconds
     )
     assert path == [states["AB"], states["BC"]]
 
@@ -620,7 +605,7 @@ def test_shortest_path_reads_the_cost_of_the_bin_it_arrives_in(bin_seconds, expe
     seconds = np.full((2, structure.state_count), 10.0)
     path = routing.turn_expanded_shortest_path(
         structure, cost, np.zeros(lazy.node_count), out_states(lazy, "A"),
-        lazy.node_id_to_index["C"], edge_seconds=seconds, bin_seconds=bin_seconds,
+        lazy.node_id_to_index["C"], edge_seconds=seconds, bin_seconds=bin_seconds, transition_cost=structure.turn_seconds
     )
     assert path is not None
     assert graph.edges[lazy.edge_ids[path[0]]].to_node_id == expected_middle
@@ -690,7 +675,7 @@ def test_shortest_path_stays_exact_while_the_queue_grows():
     heuristic[lazy.node_id_to_index["L0"]] = 2.0
     path = routing.turn_expanded_shortest_path(
         structure, cost, heuristic, out_states(lazy, "O"), lazy.node_id_to_index["G"],
-        edge_seconds=np.ones(structure.state_count),
+        edge_seconds=np.ones(structure.state_count), transition_cost=structure.turn_seconds
     )
     assert path == [states["OH"], states["HL0"], states["L0G"]]
 
@@ -698,6 +683,7 @@ def test_shortest_path_stays_exact_while_the_queue_grows():
 # --- 探索のJITの型 ---
 
 
+@pytest.mark.jit
 def test_searches_compile_nothing_after_baking_whatever_arrays_the_caller_passes():
     """イメージの組み立てで焼いたコンパイル結果（`compile_search_kernels`）は、型の同じ呼び出しにしか効かない。
     探索の入口が型を揃えるため、呼び出し側の配列のdtype・並び・読み取り専用かに依らず、焼いた後の探索は
@@ -705,8 +691,6 @@ def test_searches_compile_nothing_after_baking_whatever_arrays_the_caller_passes
 
     コンパイルはnumbaの出来事（`numba:compile`）で数える。ディスクのキャッシュから読んだ型は出来事を出さないが、
     キャッシュは`routing.py`を書き換えると無効になるため、型を揃え損ねた変更は最初の実行でここに出る。"""
-    if numba.config.DISABLE_JIT:
-        pytest.skip("JITを切って測っている（numbaの型がそもそも無い）")
     routing.compile_search_kernels()
     lazy, statics, structure = build_all(make_grid(3))
     state_count = structure.state_count
@@ -722,28 +706,27 @@ def test_searches_compile_nothing_after_baking_whatever_arrays_the_caller_passes
         for cost in costs:
             routing.build_turn_expanded_tree(
                 structure, cost, statics.edge_length_m.astype(np.float32), origin_states, lazy.node_count,
-                edge_seconds=cost, bin_seconds=3600.0,
+                edge_seconds=cost, bin_seconds=3600.0, transition_cost=structure.turn_seconds
             )
             routing.turn_expanded_shortest_path(
                 structure, cost, np.zeros(lazy.node_count, dtype=np.float32), origin_states,
-                lazy.node_id_to_index["n2_2"], edge_seconds=cost, bin_seconds=3600.0,
+                lazy.node_id_to_index["n2_2"], edge_seconds=cost, bin_seconds=3600.0, transition_cost=structure.turn_seconds
             )
         routing.build_turn_expanded_tree(
             structure, costs[0], statics.edge_length_m, origin_states, lazy.node_count,
-            reverse=True, edge_seconds=costs[0],
+            reverse=True, edge_seconds=costs[0], transition_cost=structure.turn_seconds
         )
 
     assert compiled.buffer == []
 
 
-async def test_route_generation_calls_from_python_only_the_jit_that_the_image_bakes(monkeypatch):
+@pytest.mark.jit
+async def test_route_generation_calls_from_python_only_the_jit_that_the_image_bakes(monkeypatch, road_network_root):
     """イメージに焼くのは`compile_search_kernels`がPythonから呼ぶJITだけ。生成の経路がPythonからそれ以外のJIT
     （探索の中へ展開する部品等）を呼ぶと、コンテナの最初の生成がそのコンパイルを払う。
 
     `app`の全モジュールが持つJITの関数を、Pythonからの呼び出しを記録する包みへ差し替えて数える。探索の中から
     の呼び出しはコンパイル済みの本体どうしで結ばれ、包みを通らない。"""
-    if numba.config.DISABLE_JIT:
-        pytest.skip("JITを切って測っている（numbaの型がそもそも無い）")
     routing.compile_search_kernels()  # 包む前に本体を用意する（包んだ後にコンパイルすると、部品の代わりに包みを読む）
     called: set[str] = set()
 
@@ -769,7 +752,7 @@ async def test_route_generation_calls_from_python_only_the_jit_that_the_image_ba
         ),
     )
     with avoid_axis_declared():
-        generator = generator_for(monkeypatch, grid_network(), 0.0, wind)
+        generator = generator_for(road_network_root, grid_network(), 0.0, wind)
         departure = datetime(2026, 9, 22, 8, tzinfo=timezone(timedelta(hours=9)))
         assert await generator.generate_loops(
                 at(CENTER), 4.0, 1.5, points=NO_POINTS, max_routes=3, start_time=departure)

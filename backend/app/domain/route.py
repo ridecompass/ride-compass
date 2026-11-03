@@ -13,6 +13,7 @@ from app.domain.difficulty import (
 )
 from app.domain.attributes import ElevationAttribute
 from app.domain.geo import Latitude, Longitude
+from app.domain.gradient import GRADIENT_VALUE_DECIMALS
 from app.domain.graph import LeanEdge
 from app.domain.strict_model import StrictModel
 
@@ -130,6 +131,9 @@ class RouteSegmentDetail(StrictModel):
     edge_end: int
     # 区間の中の道ごとの両端の標高を、通る順に。道の距離の和は区間の距離と丸めの分だけずれうる。
     elevations: list[ElevationStretch]
+    # 区間の続く坂の斜度（%、走る向きの符号つき）。道の一番急な登りと下りから`steepest_signed_percent`が作り、ビンへは
+    # `merge_sustained_gradients`で畳む。値が無ければNone。
+    sustained_gradient_percent: float | None = None
     estimated_arrival_time: str | None = None
     # axis_id→difficulty(0-100)。以降の辞書フィールドはすべて「データ無しはキーを
     # 持たない」規約で、評価できなかった軸・値の無い材料はキー自体を含めない。
@@ -544,6 +548,29 @@ def merge_road_classes(segments: list[RouteSegmentDetail]) -> dict[str, list[Roa
     return merged
 
 
+def steepest_signed_percent(elevation: ElevationAttribute | None) -> float | None:
+    """道1本の続く坂の斜度（%、走る向きの符号つき）。一番急な登りがあればその値、無ければ一番急な下りを負の値で、
+    どちらも無ければ0（-0にしない）。ならす幅は道の断面の刻みで、区間の中で計算し直さず道の値（区間の標高の表）から出す。
+    値が無ければNone。"""
+    if elevation is None or elevation.steepest_gain_percent is None or elevation.steepest_loss_percent is None:
+        return None
+    if elevation.steepest_gain_percent > 0:
+        return round(elevation.steepest_gain_percent, GRADIENT_VALUE_DECIMALS)
+    if elevation.steepest_loss_percent > 0:
+        return round(-elevation.steepest_loss_percent, GRADIENT_VALUE_DECIMALS)
+    return 0.0
+
+
+def merge_sustained_gradients(segments: Sequence[RouteSegmentDetail]) -> float | None:
+    """区間の続く坂の斜度をビンへ畳む。登りの区間があれば登りの最大、無ければ一番急な下り（最も負の値）。
+    区間の値は「登りがあれば登り」で作ってあるので、区間の値だけから道全体で同じ決まりの値になる。値が無ければNone。"""
+    values = [segment.sustained_gradient_percent for segment in segments if segment.sustained_gradient_percent is not None]
+    if not values:
+        return None
+    steepest_climb = max(values)
+    return steepest_climb if steepest_climb > 0 else min(values)
+
+
 #: ビンのフィールドと、ビンに入る区間の並びからその値を作る畳み方。`_merge_segment_bin`は
 #: この表と、ビンの難しさの値（`SegmentDifficulty`の欄、`route_bins`）からビンを組み立てる。
 BIN_FIELD_MERGERS: dict[str, Callable[[list[RouteSegmentDetail]], object]] = {
@@ -556,6 +583,7 @@ BIN_FIELD_MERGERS: dict[str, Callable[[list[RouteSegmentDetail]], object]] = {
     "edge_start": lambda segments: segments[0].edge_start,
     "edge_end": lambda segments: segments[-1].edge_end,
     "elevations": lambda segments: [stretch for segment in segments for stretch in segment.elevations],
+    "sustained_gradient_percent": merge_sustained_gradients,
     "estimated_arrival_time": lambda segments: segments[0].estimated_arrival_time,
     "road_classes": merge_road_classes,
     "material_values": merge_material_values,

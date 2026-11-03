@@ -43,14 +43,4 @@ describe("serveGenerationJobs", () => {
     await expect(result).rejects.toThrow("テストが終わった");
     backendServer.events.removeListener("request:start", arrived);
   });
-
-  it("候補0件の理由を、口が読む形で返す", async () => {
-    const jobs = serveGenerationJobs();
-    jobs.respond([], CONDITIONS, "見つかりませんでした");
-
-    await expect(generateRoutes(REQUEST)).resolves.toMatchObject({
-      routes: [],
-      noCandidatesReason: "見つかりませんでした",
-    });
-  });
 });

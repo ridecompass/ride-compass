@@ -1,6 +1,6 @@
 """`api/routers/routes.py`——ルート生成のHTTPの入口。
 
-確かめるのは、HTTPから見える振る舞いだけ: 要求の検証（422）、ジョブの投稿と取得（202・404）、生成の種類
+確かめるのは、HTTPから見える振る舞いだけ: 要求の検証（422）、ジョブの投稿と取得（202・404。終わるまで待つ取得を含む）、生成の種類
 （周回・目的地・経由地・区間の乗り換え。距離と置いた点の組み合わせ）の振り分け、実際に使った条件のエコー、候補0件の理由、失敗の伝え方、
 同時実行とレート制限（429）。
 
@@ -22,6 +22,7 @@ import logging
 import re
 from contextlib import asynccontextmanager
 from datetime import datetime
+from pathlib import Path
 
 import httpx
 import pytest
@@ -29,11 +30,12 @@ import pytest
 from app.api import dependencies
 from app.config import settings
 from app.domain.graph import node_key
+from app.domain.road_network import RoadNetwork
 from app.domain.road_classes import AvoidanceClassification
 from app.domain.route_request import ASSUMED_SPEED_KMH, DEFAULT_MAX_ROUTES, MAX_SPLICED_EDGES, MAX_WAYPOINTS
 from app.domain.tuning import TUNING_VALUES
 from app.infrastructure import rate_limiter
-from app.infrastructure.road_network_store import RoadNetworkUnavailableError
+from app.infrastructure.job_registry import JOB_WAIT_MAX_SECONDS
 from app.main import app
 from app.services.graph_service import GraphService, SearchMemory
 from app.services.route_generation_setup import assemble_route_generation_setup
@@ -78,17 +80,18 @@ def _point(osm_node_id):
 
 
 class World:
-    """道路網の置き場と天気の代役。`network`を差し替えると次の生成から効く。"""
+    """道路網の置き場と天気の代役。`serve`で置いた道路網（Noneなら置き場が空）が次の生成から効く。
+    区間の形を返すDBの代役（`NetworkRepository`）は、最後に置いた道路網を読む。"""
 
-    def __init__(self):
-        self.network = grid_network()
-        self.unavailable = False
+    def __init__(self, root: Path):
+        self._root = root
         self.weather = Weather()
+        self.serve(grid_network())
 
-    def current(self):
-        if self.unavailable:
-            raise RoadNetworkUnavailableError("道路網の置き場がありません")
-        return self.network
+    def serve(self, network: RoadNetwork | None) -> None:
+        if network is not None:
+            self.network = network
+        serve_road_network(self._root, network)
 
 
 class GatedWeather(Weather):
@@ -104,15 +107,14 @@ class GatedWeather(Weather):
 
 
 @pytest.fixture
-def world(override_dependency, monkeypatch):
+def world(override_dependency, road_network_root):
     """格子の道路網・天気の代役と、避けたい材料を読む公開軸1本（`avoid_axis_declared`）。"""
-    world = World()
+    world = World(road_network_root)
 
     @asynccontextmanager
     async def open_setup(requested):
         yield assemble_route_generation_setup(GraphService(NetworkRepository(world.network), SearchMemory()), world.weather, requested)
 
-    serve_road_network(monkeypatch, world.current)
     override_dependency(dependencies.get_route_generation_setup_opener, lambda: open_setup)
     with avoid_axis_declared():
         yield world
@@ -181,16 +183,6 @@ async def test_a_route_with_a_destination_or_waypoints_ends_where_it_should_with
     assert all(_ends(route) == (node_key(SOUTH_WEST), node_key(end)) for route in result["routes"])
 
 
-async def test_a_spliced_route_is_evaluated_as_sent(client):
-    """区間を差し替えた経路は探索し直さず、そのまま1件として評価して返す。"""
-    body = {**_point(SOUTH_WEST), "destination": _point(NORTH_EAST), "distance_km": None}
-    (route, *_) = (await _generate(client, **body, max_routes=1))["result"]["routes"]
-
-    spliced = (await _generate(client, **body, spliced_edge_ids=route["edge_ids"]))["result"]
-
-    assert [r["edge_ids"] for r in spliced["routes"]] == [route["edge_ids"]]
-
-
 #: 格子のノードの鍵→その地点（応答の`node_ids`から経由地を置き直す）。
 POINT_OF_NODE = {node_key(osm): _point(osm) for osm in COORDINATES}
 
@@ -239,7 +231,7 @@ async def test_a_spliced_route_outside_the_search_area_fails_as_an_error_of_the_
     """探索の範囲が送られた区間を覆わなかったら、利用者への理由（つながっていない等）にせず、ERRORを残してジョブを失敗させる
     ——理由にすると、範囲の誤りが利用者の操作の誤りに見え、本番で気付けない。範囲を作る側が送られた区間を取りこぼした状態は、
     区間の両端を引く口（`GraphService.edge_endpoints`）を空にして作る。"""
-    world.network = LATTICE
+    world.serve(LATTICE)
     monkeypatch.setattr(GraphService, "edge_endpoints", bound(GraphService.edge_endpoints, lambda self, edge_ids: []))
 
     with caplog.at_level(logging.ERROR):
@@ -252,7 +244,7 @@ async def test_a_spliced_route_outside_the_search_area_fails_as_an_error_of_the_
 async def test_a_distance_with_placed_points_is_the_length_of_the_whole_route(client, world, monkeypatch):
     """経由地を置いても、距離は全長の目標として効く（夕食と銭湯に寄って30kmの周回）。
     探索は置いた点の近くに限らず、全長の目標に足りる広さで探す。"""
-    world.network = LATTICE
+    world.serve(LATTICE)
     tolerance_ratio = 0.2
     monkeypatch.setitem(TUNING_VALUES, "search.distance_tolerance_ratio", tolerance_ratio)
     origin, waypoint, target = (1, 1), (1, 2), 12.0
@@ -268,16 +260,6 @@ async def test_a_distance_with_placed_points_is_the_length_of_the_whole_route(cl
         )
         assert abs(route["distance_km"] - target) <= target * tolerance_ratio
     assert result["conditions"]["distance_km"] == target
-
-
-async def test_an_empty_result_says_why(client, monkeypatch):
-    """置いた点を通るだけで距離を超えると、候補は無く、理由が返る。"""
-    monkeypatch.setitem(TUNING_VALUES, "search.distance_tolerance_ratio", 0.25)
-    status = await _generate(client, **_point(SOUTH_WEST), waypoints=[_point(NORTH_EAST)], distance_km=2.0)
-
-    assert status["status"] == "done"
-    assert status["result"]["routes"] == []
-    assert status["result"]["no_candidates_reason"]
 
 
 # --- 条件のエコー ---
@@ -338,7 +320,7 @@ async def test_the_departure_time_is_read_in_japan_time(client, sent, applied):
 
 
 async def test_a_destination_moved_to_the_nearest_reachable_road_is_echoed(client, world):
-    world.network = grid_network(island=True)
+    world.serve(grid_network(island=True))
 
     conditions = (await _generate(
         client, **_point(SOUTH_WEST), destination=_point(91), distance_km=None,
@@ -383,9 +365,29 @@ async def test_a_job_that_is_not_known_is_404(client):
     assert (await client.get("/api/routes/generate/no-such-job")).status_code == 404
 
 
+async def test_a_poll_that_may_wait_returns_when_the_job_finishes_or_at_the_limit(client, world):
+    """待つ上限を渡した問い合わせは、終わればその場で結果を返し、上限までに終わらなければ待ちの応答を返す
+    （画面は固定の間隔で聞き直さずに済む）。"""
+    # 待っている問い合わせが上限で切れる前に生成を終わらせるため、JITのコンパイルを先に済ませておく。
+    assert (await _generate(client))["status"] == "done"
+    world.weather = GatedWeather()
+    job_id = (await _post(client)).json()["job_id"]
+    url = f"/api/routes/generate/{job_id}"
+
+    assert (await client.get(url, params={"wait_seconds": 1})).json() == {"status": "running"}
+
+    poll = asyncio.create_task(client.get(url, params={"wait_seconds": JOB_WAIT_MAX_SECONDS}))
+    await asyncio.sleep(0.1)
+    assert not poll.done()
+    world.weather.gate.set()
+    assert (await _wait(client, job_id))["status"] == "done"
+    # 終わった合図で起きるなら、完了が見えた直後に返る（上限まで待ち続けない）。
+    assert (await asyncio.wait_for(poll, timeout=1)).json()["status"] == "done"
+
+
 async def test_a_failed_job_says_so_without_leaking_its_internals(client, world):
     """例外の中身（接続先・SQL）はログだけに残す。失敗しても同時実行の枠は返る（上限より多く続けて投げても受け付ける）。"""
-    world.unavailable = True
+    world.serve(None)
 
     statuses = [await _generate(client) for _ in range(settings.generate_max_concurrent + 1)]
 

@@ -64,18 +64,13 @@ describe("FloatingPanel", () => {
     expect(view.container).toBeEmptyDOMElement();
   });
 
-  it("閉じるボタンを押すと、閉じる操作が上がる", async () => {
-    const { onClose } = renderPanel();
+  it.each([
+    ["文字を渡さなければ✕", undefined, "デバッグログを閉じる"],
+    ["文字を渡せばその文字", "やめる", "やめる"],
+  ])("閉じるボタン（%s）を押すと、閉じる操作が上がる", async (_, closeLabel, name) => {
+    const { onClose } = renderPanel({ closeLabel });
 
-    await userEvent.click(screen.getByRole("button", { name: "デバッグログを閉じる" }));
-
-    expect(onClose).toHaveBeenCalledTimes(1);
-  });
-
-  it("閉じるボタンの文字を渡すと、その文字のボタンで閉じる操作が上がる", async () => {
-    const { onClose } = renderPanel({ closeLabel: "やめる" });
-
-    await userEvent.click(screen.getByRole("button", { name: "やめる" }));
+    await userEvent.click(screen.getByRole("button", { name }));
 
     expect(onClose).toHaveBeenCalledTimes(1);
   });

@@ -56,7 +56,9 @@ describe("走行モードの操作", () => {
     const moveMapByHand = () =>
       act(() => mapOnScreen().emit("movestart", { originalEvent: new MouseEvent("mousedown") }));
     const rideButton = () => screen.getByRole("button", { name: "走行モード" });
+    expect(rideButton()).toHaveAttribute("aria-pressed", "false");
     await first.user.click(rideButton());
+    expect(rideButton()).toHaveAttribute("aria-pressed", "true");
     geolocation.deliver({ ...RIDDEN_MIDDLE, accuracy: 20 });
     expect(screen.getByRole("group", { name: "走りの数字" })).toHaveTextContent("残り: 0.5km");
     expect(backToHere()).toBeNull();
@@ -95,6 +97,7 @@ describe("走行モードの操作", () => {
     await user.click(screen.getByRole("button", { name: "案内を終える" }));
     expect(screen.queryByRole("group", { name: "走りの数字" })).toBeNull();
     expect(geolocation.watching()).toBe(0);
+    expect(rideButton()).toHaveAttribute("aria-pressed", "false");
   });
 
   it("走行モードのまま帯の「ルート」で左のパネルを出し、候補を選び直す・作り直すと、走行モードはその候補を追い続け、地図をその候補へ収め直さない", async () => {

@@ -1,7 +1,2 @@
-// ブラウザからbackendへ到達するためのベースURL。services/配下のAPI呼び出し
-// （routeApi.ts等）が共有する単一ソース。
-//
-// サーバー側専用のBACKEND_INTERNAL_URL（backendInternalUrl.ts）とは別物——こちらは
-// ブラウザから直接叩くための公開URL（NEXT_PUBLIC_接頭辞）で、Docker Compose環境等で
-// サーバー側到達用のURLと値が異なりうる。
+// ブラウザからbackendへ届く公開URL。
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";

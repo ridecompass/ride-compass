@@ -17,7 +17,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import type { FrontendVersion } from "@/services/versionApi";
-import { readRideMetrics, startRideMetrics, stopRideMetrics } from "@/lib/rideMetrics";
+import { formatRideMetrics, readRideMetrics, startRideMetrics, stopRideMetrics } from "@/lib/rideMetrics";
 import { onSameOrigin } from "@/testing/backendServer";
 
 import HeaderMenu from "./HeaderMenu";
@@ -33,6 +33,8 @@ async function openMenu(props: Partial<React.ComponentProps<typeof HeaderMenu>> 
       onToggleDebugConsole={onToggleDebugConsole}
       onStartUsageGuide={onStartUsageGuide}
       onRedrawMap={onRedrawMap}
+      mapTheme="light"
+      onMapThemeChange={() => {}}
       {...props}
     />,
   );
@@ -74,16 +76,10 @@ describe("HeaderMenu", () => {
     it.each([
       [false, "デバッグログを表示"],
       [true, "デバッグログを隠す"],
-    ])("開いている（%s）かを、名前で出す", async (open, name) => {
-      await openMenu({ debugEnabled: true, debugConsoleOpen: open });
+    ])("開いている（%s）かを名前で出し、押すと開閉の操作が上がる", async (open, name) => {
+      const { onToggleDebugConsole } = await openMenu({ debugEnabled: true, debugConsoleOpen: open });
 
-      expect(screen.getByRole("button", { name })).toBeInTheDocument();
-    });
-
-    it("押すと、開閉の操作が上がる", async () => {
-      const { onToggleDebugConsole } = await openMenu({ debugEnabled: true });
-
-      await userEvent.click(screen.getByRole("button", { name: "デバッグログを表示" }));
+      await userEvent.click(screen.getByRole("button", { name }));
 
       expect(onToggleDebugConsole).toHaveBeenCalledTimes(1);
     });
@@ -99,7 +95,7 @@ describe("HeaderMenu", () => {
     await userEvent.click(screen.getByRole("button", { name: "メニュー" }));
     await userEvent.click(screen.getByRole("button", { name: "走行の記録をコピー" }));
 
-    expect(JSON.parse(await navigator.clipboard.readText())).toEqual(readRideMetrics());
+    expect(await navigator.clipboard.readText()).toBe(formatRideMetrics(readRideMetrics()!));
     expect(screen.getByRole("button", { name: "走行の記録をコピーしました" })).toBeInTheDocument();
   });
 

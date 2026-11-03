@@ -1,15 +1,15 @@
 /**
  * `features/route/EditDifference/EditDifference.tsx`——編集で作ったルートの中身の先頭に出す「元との違い」。
  *
- * 見るもの: 元の名前と距離・変えた区間の数（元と編集後で対応づけられなければ数と区間の並びを出さずにそう言う）、指標ごとの差の書き方（桁・単位・値の無い側があれば「—」）と増減の印
- * （表示する桁で丸めた値で決める）、変えた区間ごとの元の位置と長さの差、「元を見る」で元へ切り替える操作が上がること。
+ * 見るもの: 変えた区間の数（元と編集後で対応づけられなければ数と区間の並びを出さずにそう言う）、指標ごとの差の書き方（桁・単位・値の無い側があれば「—」）と増減の印
+ * （表示する桁で丸めた値で決める）、変えた区間ごとの元の位置と長さの差。
  *
  * ここで見ないもの: 差の求め方（Edge id列の差・区間からの距離） → `features/route/routeEditDiff.ts`。
+ * 元の名前と距離・「元を見る」で元へ切り替えること → `features/route/RouteOutcome/RouteOutcome.selected.test.tsx`。
  * 増減の印の色 → スタイル（テスト環境はTailwindを通さない）。
  */
 import { render, screen, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { makeRouteCandidate, routeThrough, type Places } from "@/testing/routeFixtures";
 import type { RouteCandidate } from "@/types/route";
@@ -49,9 +49,7 @@ function edited(overrides: Partial<RouteCandidate> = {}): RouteCandidate {
 }
 
 function renderDifference(props: Partial<React.ComponentProps<typeof EditDifference>> = {}) {
-  const onShowOrigin = vi.fn();
-  render(<EditDifference originName="2" origin={origin()} edited={edited()} onShowOrigin={onShowOrigin} {...props} />);
-  return { onShowOrigin };
+  render(<EditDifference originName="2" origin={origin()} edited={edited()} onShowOrigin={() => {}} {...props} />);
 }
 
 /** 指標の見出し（`dt`）の隣の値（`dd`）。 */
@@ -61,12 +59,6 @@ function metric(label: string): HTMLElement {
 }
 
 describe("EditDifference", () => {
-  it("元の名前と距離（小数1桁）、変えた区間の数を出す", () => {
-    renderDifference({ originName: "最速" });
-    expect(screen.getByText("元: 最速 10.0km")).toBeInTheDocument();
-    expect(screen.getByText("から1区間")).toBeInTheDocument();
-  });
-
   it("差は指標ごとの桁と単位で符号付きに書き、増えたら悪化・減ったら改善の印、表示する桁で0に丸まれば「±0」で印を付けない", () => {
     renderDifference();
     expect(metric("距離")).toHaveTextContent("+2.3km");
@@ -86,8 +78,9 @@ describe("EditDifference", () => {
     expect(metric("所要")).toHaveAttribute("data-better", "false");
   });
 
-  it("変えた区間ごとに、元の何km〜何kmかと長さの差を出す", () => {
+  it("変えた区間の数と、区間ごとに元の何km〜何kmかと長さの差を出す", () => {
     renderDifference();
+    expect(screen.getByText("から1区間")).toBeInTheDocument();
     const item = screen.getByRole("listitem");
     expect(item).toHaveTextContent("1.1〜2.2km");
     expect(item).toHaveTextContent("+2.2km");
@@ -100,11 +93,5 @@ describe("EditDifference", () => {
     expect(screen.queryByText(/区間$/)).not.toBeInTheDocument();
     expect(screen.queryByRole("listitem")).not.toBeInTheDocument();
     expect(metric("距離")).toHaveTextContent("+2.3km");
-  });
-
-  it("「元を見る」で元のルートへ切り替える操作を上げる", async () => {
-    const { onShowOrigin } = renderDifference();
-    await userEvent.click(screen.getByRole("button", { name: "元を見る" }));
-    expect(onShowOrigin).toHaveBeenCalledTimes(1);
   });
 });

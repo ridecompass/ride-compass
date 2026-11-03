@@ -38,6 +38,7 @@ from app.domain.route import (
     aggregate_segments_into_bins,
     route_bin_slices,
     route_bins,
+    steepest_signed_percent,
     along_route_km,
     concat_edge_geometries,
     merge_material_category_shares,
@@ -420,6 +421,7 @@ def _build_segment_details(
                         ),
                     )
                 ],
+                sustained_gradient_percent=steepest_signed_percent(elevation_attr),
                 estimated_arrival_time=arrival_time.isoformat(),
                 material_values=material_values[index],
                 road_classes={

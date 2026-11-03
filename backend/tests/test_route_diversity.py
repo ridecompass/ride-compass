@@ -34,10 +34,10 @@ def test_pareto_layers_are_empty_for_no_candidates():
 
 
 def test_pareto_layers_rank_by_how_many_candidates_dominate():
-    """両指標で負けている候補ほど後ろの層へ回る。層に入れば0以上、入らなければ-1。"""
+    """両指標で負けている候補ほど後ろの層へ回る。要求件数が候補より多くても、全件が層に入って終わる。"""
     a = np.array([1.0, 2.0, 3.0, 3.0, 2.0])
     b = np.array([10.0, 5.0, 1.0, 10.0, 10.0])
-    layer = route_diversity.pareto_layer_index(a, b, quantum_a=1.0, quantum_b=1.0, max_items=5)
+    layer = route_diversity.pareto_layer_index(a, b, quantum_a=1.0, quantum_b=1.0, max_items=10)
     assert list(layer) == [0, 0, 0, 2, 1]
 
 
@@ -68,14 +68,6 @@ def test_pareto_layers_do_not_depend_on_the_order_of_the_candidates():
         a[shuffle], b[shuffle], quantum_a=1.0, quantum_b=1.0, max_items=2
     )
     assert list(shuffled) == [straight[i] for i in shuffle]
-
-
-def test_pareto_assigns_every_candidate_when_there_are_fewer_than_requested():
-    """候補が要求件数に満たないときは、全件が層に入って走査が終わる（-1が残らない）。"""
-    a = np.array([1.0, 2.0, 3.0])
-    b = np.array([3.0, 2.0, 1.0])
-    layer = route_diversity.pareto_layer_index(a, b, quantum_a=1.0, quantum_b=1.0, max_items=10)
-    assert list(layer) == [0, 0, 0]
 
 
 @pytest.mark.parametrize(

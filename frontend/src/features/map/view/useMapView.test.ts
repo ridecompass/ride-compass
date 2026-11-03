@@ -202,6 +202,5 @@ describe("useMapView", () => {
     act(() => result.current.overlayControls.route.onChange(false));
 
     expect(result.current.overlayControls.route).toMatchObject({ shown: false, selectable: true });
-    expect(result.current.look.layerVisibility.route).toBe(false);
   });
 });

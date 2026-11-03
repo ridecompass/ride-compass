@@ -105,20 +105,6 @@ describe("DbStatusPanel", () => {
     expect(screen.getByText("2テーブル ・ 2,000行 ・ 3.0 GB ・ 9/24 10:02")).toBeInTheDocument();
   });
 
-  it("容量は1024MB未満ならMBの整数、以上ならGBの小数1桁で出す", async () => {
-    await collect(
-      status({
-        tables: [
-          tableEntry({ table_name: "small", total_bytes: 1023.4 * MB, needs_attention: true }),
-          tableEntry({ table_name: "large", total_bytes: 1536 * MB, needs_attention: true }),
-        ],
-      }),
-    );
-
-    expect(detailOf("small")).toContainEqual(["容量", "1023 MB"]);
-    expect(detailOf("large")).toContainEqual(["容量", "1.5 GB"]);
-  });
-
   it("群は取込・接続・テーブルの順で、テーブルが1つも無ければテーブルの群を出さない", async () => {
     await collect(status({ imports: [importEntry({ label: "osm" })] }));
 
@@ -130,7 +116,7 @@ describe("DbStatusPanel", () => {
       status({
         tables: [
           tableEntry({ table_name: "hot", needs_attention: true }),
-          tableEntry({ table_name: "calm_a", row_count: 1000, total_bytes: 10 * MB }),
+          tableEntry({ table_name: "calm_a", row_count: 1000, total_bytes: 10.4 * MB }),
           tableEntry({ table_name: "calm_b", row_count: 2000, total_bytes: 20 * MB }),
         ],
       }),

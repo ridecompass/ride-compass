@@ -1,21 +1,13 @@
-// 軸カタログ（`GET /api/axis-catalog`）の軸を、地図が読む形（道ごとの値で塗る軸）へ移す。軸の共通の項目は
-// `catalogAxis.ts`が行から移し、ここは地図の表示の項目だけを足す。
-//
-// 軸の地図の塗り方は`domain/map_paint.py: map_paint`が軸スタジオの公開状態から都度作り、
-// **ビルド時の写しは持たない**——写しを持つと、API障害時に古い軸で地図が描かれ、伝播の失敗が
-// 見えなくなる。取得できるまでは軸0件で描く（`hooks/useAxisCatalog.ts`）。軸は軸スタジオで公開すれば、
-// 再デプロイなしに地図のレイヤーとして現れる。
+// 軸カタログ（`GET /api/axis-catalog`）の軸を、地図が読む形（道ごとの値で塗る軸）へ移す。
 
 import { mapPaintDeclarationOf, type MapPaintDeclaration } from "./valueScale";
 import { catalogAxisFromEntry, type CatalogAxis, type WayValueCondition } from "@/lib/catalogAxis";
 import type { components } from "@/types/generated/api";
 import type { AxisCatalogEntry } from "@/types/route";
+import type { MapTheme } from "@/lib/mapTheme";
 
 /** 道ごとの値（軸カタログの式の木 `way_value_formula` へ、`GET /api/region/way-materials/{axis_id}/...` の材料と走る
- * 条件を入れたもの）で塗る軸。公開中の軸は全部これになる。
- * この型があることで、レイヤー登録・カタログ・可視性・フェッチのすべてを軸idの
- * ハードコードなしに導出できる（軸を軸スタジオで公開しただけで
- * 地図に現れる）。 */
+ * 条件を入れたもの）で塗る軸。公開中の軸は全部これになる。 */
 export interface DedicatedWayValueAxis extends CatalogAxis {
   /** 走行方位で値の決まらない道がありうるか。trueの軸だけ凡例に「向きで決まらない」の行を持つ。 */
   undeterminedByBearing: boolean;
@@ -27,13 +19,17 @@ export interface DedicatedWayValueAxis extends CatalogAxis {
   wayMaterialConditions: readonly WayValueCondition[];
 }
 
-export function dedicatedWayValueAxesFromCatalogAxes(axes: readonly AxisCatalogEntry[]): DedicatedWayValueAxis[] {
+/** `ground`は塗る地図の地の明るさ（省けば明るい地図）。 */
+export function dedicatedWayValueAxesFromCatalogAxes(
+  axes: readonly AxisCatalogEntry[],
+  ground: MapTheme = "light",
+): DedicatedWayValueAxis[] {
   return axes.map((axis) => {
     const base = catalogAxisFromEntry(axis);
     return {
       ...base,
       undeterminedByBearing: axis.dynamic_way_value_undetermined_by_bearing,
-      display: mapPaintDeclarationOf(axis.map_paint),
+      display: mapPaintDeclarationOf(axis.map_paint, ground),
       wayValueFormula: axis.way_value_formula,
       wayMaterialConditions: axis.dynamic_way_value_material_conditions,
     };

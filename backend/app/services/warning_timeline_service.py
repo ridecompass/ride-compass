@@ -14,7 +14,13 @@ from cachetools import TTLCache
 from pydantic import Field
 
 from app.domain.jma_area import resolve_area
-from app.domain.jma_warning_timeline import TimelineKind, WarningTimeline, is_advisory_level, route_passes
+from app.domain.jma_warning_timeline import (
+    TIMELINE_KINDS,
+    TimelineKind,
+    WarningTimeline,
+    is_advisory_level,
+    route_passes,
+)
 from app.domain.route import Coordinates
 from app.domain.strict_model import StrictModel
 from app.infrastructure.debug_log import log_throttled_warning
@@ -42,6 +48,8 @@ class TimelineSlotLevel(StrictModel):
 
 
 class TimelineKindLevels(StrictModel):
+    #: 注意報級以上のコマを出すときの、種別と段の名前。
+    advisory_label: str
     slots: list[TimelineSlotLevel]
     #: 付加事項（突風・ひょう等）。コマに依らず、この種別の段の並び全体に付く。
     additions: list[str]
@@ -125,6 +133,7 @@ def _kind_levels(timeline: WarningTimeline, class20_code: str, class10_code: str
         if levels is None:
             continue
         kinds[kind] = TimelineKindLevels(
+            advisory_label=TIMELINE_KINDS[kind].advisory_label,
             slots=[
                 TimelineSlotLevel(start=slot.start, end=slot.end, code=code, advisory=is_advisory_level(code))
                 for slot, code in zip(levels.slots, levels.codes, strict=True)

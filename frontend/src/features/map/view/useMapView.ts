@@ -29,6 +29,7 @@ import { useRoadClasses } from "@/features/map/useRoadClasses";
 import { useDynamicWeatherLayers } from "@/features/map/useDynamicWeatherLayers";
 import { useStoredBooleanState, useStoredState } from "@/hooks/useStoredState";
 import type { Coordinates } from "@/types/route";
+import type { MapTheme } from "@/lib/mapTheme";
 import type { RideConditions } from "@/features/map/regionApi";
 import { snapDeg } from "@/lib/cardinalLabel";
 import type { WayValueCondition } from "@/lib/catalogAxis";
@@ -77,6 +78,8 @@ interface MapViewState {
   lensConditions: readonly WayValueCondition[];
   /** 押した人の地図だけを、スタイルから取り直して組み直す。 */
   redrawMap: () => void;
+  /** 地図の地の明るさを変える（利用者がメニューで選ぶ。端末に覚える。今の値は`look.mapTheme`）。 */
+  onMapThemeChange: (theme: MapTheme) => void;
   /** 地図の見えている範囲の真ん中。地図がまだ範囲を知らせていなければnull。 */
   center: Coordinates | null;
   /** 地図が今映している範囲。地図がまだ範囲を知らせていなければnull。 */
@@ -96,7 +99,12 @@ export function useMapView({
   routeWeights,
 }: MapViewInputs): MapViewState {
   const catalog = useAxisCatalog();
-  const mapCatalog = useMapAxisCatalog();
+  // 暗い地図は利用者がメニューで選ぶ（いつ暗くするかを自動では決めない）。
+  const [mapTheme, setMapTheme] = useStoredState<MapTheme>("ridecompass:map-theme", "light", {
+    serialize: (value) => value,
+    deserialize: (raw) => (raw === "light" || raw === "dark" ? raw : null),
+  });
+  const mapCatalog = useMapAxisCatalog(mapTheme);
   // 保存するのは触った層の真偽だけで、既定は層の一覧（道の線の層は軸カタログが届いてから決まる）から重ねる。
   const [storedVisibility, setLayerVisibility] = useStoredState<MapLayerVisibility>(
     "ridecompass:layer-visibility",
@@ -187,6 +195,7 @@ export function useMapView({
       wayConditions: formulaConditions,
       hiddenLegendKeys: debouncedHidden,
       refreshToken,
+      mapTheme,
       onViewportChange: setViewport,
       onLayerDataStatusChange: setMapLayerStatus,
     }),
@@ -200,6 +209,7 @@ export function useMapView({
       formulaConditions,
       debouncedHidden,
       refreshToken,
+      mapTheme,
     ],
   );
 
@@ -274,6 +284,7 @@ export function useMapView({
     },
     lensConditions: catalog.axes.find((axis) => axis.axisId === painted)?.wayValueConditions ?? [],
     redrawMap: () => setRefreshToken((token) => token + 1),
+    onMapThemeChange: setMapTheme,
     center,
     viewport,
     bearing: viewport?.bearing ?? 0,

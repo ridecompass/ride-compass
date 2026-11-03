@@ -41,7 +41,6 @@ from tests.axis_system_fixture import linear, shaped_axis
 from tests.material_fixture import material, replace_material_catalog
 from tests.road_class_fixture import classification, road_classes
 
-NAN = float("nan")
 DYNAMIC = next(iter(axis_definitions.REQUEST_DYNAMIC_MATERIAL_IDS))
 
 
@@ -79,13 +78,24 @@ def assert_refused(make, fragment: str) -> None:
     assert fragment in message
 
 
+@pytest.mark.parametrize(
+    ("make", "fragment"),
+    [
+        (lambda: linear(MaterialTerm(material="m"), breakpoints=[(0.0, 0.0), (0.0, 50.0)]), "小さい順"),
+        (lambda: CategoricalShape(material="m", mapping={}), "1件"),
+        (lambda: axis(label=""), "表示名"),
+        (lambda: axis(display_thresholds_override=[]), "1件以上"),
+        (lambda: axis(display_thresholds_override=[10.0, 10.0]), "小さい順"),
+        (lambda: axis(display_band_labels_override=["弱", "強"]), "しきい値も上書き"),
+        (lambda: axis(display_thresholds_override=[1.0, 2.0], display_band_labels_override=["弱", "強"]), "3件"),
+    ],
+    ids=["折れ点が値の軸で並ばない", "空の対応表", "空の表示名", "空のしきい値", "並ばないしきい値", "しきい値の無い帯の名前", "帯の数と合わない名前"],
+)
+def test_the_model_refuses_a_declaration_it_cannot_draw_or_score(make, fragment):
+    assert_refused(make, fragment)
+
+
 class TestShapeModels:
-    def test_breakpoints_must_rise_strictly_along_the_value_axis(self):
-        assert_refused(lambda: linear(MaterialTerm(material="m"), breakpoints=[(0.0, 0.0), (0.0, 50.0)]), "小さい順")
-
-    def test_an_empty_mapping_is_refused(self):
-        assert_refused(lambda: CategoricalShape(material="m", mapping={}), "1件")
-
     @pytest.mark.parametrize(
         ("shape", "expected"),
         [
@@ -100,21 +110,6 @@ class TestShapeModels:
 
 
 class TestAxisModel:
-    def test_an_empty_label_is_refused(self):
-        assert_refused(lambda: axis(label=""), "表示名")
-
-    @pytest.mark.parametrize(("thresholds", "fragment"), [([], "1件以上"), ([10.0, 10.0], "小さい順")])
-    def test_overridden_thresholds_must_be_present_and_rise_strictly(self, thresholds, fragment):
-        assert_refused(lambda: axis(display_thresholds_override=thresholds), fragment)
-
-    def test_band_labels_need_overridden_thresholds(self):
-        assert_refused(lambda: axis(display_band_labels_override=["弱", "強"]), "しきい値も上書き")
-
-    def test_band_labels_must_match_the_number_of_bands(self):
-        assert_refused(
-            lambda: axis(display_thresholds_override=[1.0, 2.0], display_band_labels_override=["弱", "強"]), "3件"
-        )
-
     @pytest.mark.parametrize(
         ("shape", "expected"),
         [
@@ -158,36 +153,21 @@ class TestCheckAxisDefinition:
                 ),
                 "「旗」",
             ),
+            (axis(shape=linear(MaterialTerm(material="nowhere"))), "nowhere"),
+            (axis(shape=linear(MaterialTerm(material="cat"))), "「種類」"),
+            (axis(shape=CategoricalShape(material="num_a", mapping={"1": 1.0})), "「数値A」"),
+            (axis(shape=CategoricalShape(material="flag", mapping={"yes": 1.0})), "「はい」「いいえ」"),
+            (axis(shape=CategoricalShape(material="cat", mapping={"true": 1.0})), "値の名前"),
+            (axis(shape=CategoricalShape(material="flag", mapping={"true": 1.0})), None),
+            (axis(shape=CategoricalShape(material="cat", mapping={"x": 1.0})), None),
         ],
-        ids=["term", "condition"],
+        ids=[
+            "時刻の材料と項", "時刻の材料と条件", "材料でも軸でもない名", "折れ線に種類の材料", "対応表に数値の材料",
+            "真偽の対応表に真偽でない鍵", "種類の対応表に真偽の鍵", "真偽の対応表", "種類の対応表",
+        ],
     )
-    def test_materials_that_change_by_the_hour_are_not_mixed_with_static_ones(self, definition, fragment):
+    def test_a_material_the_shape_cannot_read_is_refused_by_its_name(self, definition, fragment):
         refused_by_check(definition, fragment)
-
-    def test_a_reference_that_is_neither_a_material_nor_a_given_axis_is_refused_by_its_id(self):
-        refused_by_check(axis(shape=linear(MaterialTerm(material="nowhere"))), "nowhere")
-
-    @pytest.mark.parametrize(
-        ("shape", "fragment"),
-        [
-            (linear(MaterialTerm(material="cat")), "「種類」"),
-            (CategoricalShape(material="num_a", mapping={"1": 1.0}), "「数値A」"),
-        ],
-    )
-    def test_a_material_of_a_type_the_shape_cannot_read_is_refused_by_its_name(self, shape, fragment):
-        refused_by_check(axis(shape=shape), fragment)
-
-    @pytest.mark.parametrize(
-        ("material_id", "mapping", "fragment"),
-        [
-            ("flag", {"yes": 1.0}, "「はい」「いいえ」"),
-            ("cat", {"true": 1.0}, "値の名前"),
-            ("flag", {"true": 1.0}, None),
-            ("cat", {"x": 1.0}, None),
-        ],
-    )
-    def test_mapping_keys_must_be_of_the_materials_type(self, material_id, mapping, fragment):
-        refused_by_check(axis(shape=CategoricalShape(material=material_id, mapping=mapping)), fragment)
 
     @pytest.mark.parametrize(
         ("condition", "fragment"),

@@ -1,6 +1,7 @@
 // 本ごとに分けて回した Stryker の結果（mutation.json）を1つの表にする。frontend の下で、測った版と同じ版のチェックアウトで打つ
 // （テストの場所・層の並びを、ここから読む）。
-// 引数: 成果物を取ってきた場所（本ごとのディレクトリの下に mutation.json がある所） 書き出すファイル
+// 引数: 成果物を取ってきた場所（本ごとのディレクトリの下に mutation.json がある所。actions/download-artifact は取る成果物が
+// 1つだと名前のディレクトリを作らずに直下へ置くので、直下の mutation.json も1本に数える） 書き出すファイル
 //
 // 表の形は Stryker の結果の JSON（mutation-testing-elements の report schema の版2）のままで、backend の表と同じ台本
 // （backend/scripts/mutation/review.py）が読む。Stryker の出したものから変えるのは次だけ。
@@ -22,9 +23,14 @@ import { LAYERS } from "../../eslint.config.mjs";
 const [ART, OUT] = process.argv.slice(2);
 const ZERO_TESTS = "テストが1本も走らなかった（測れていない。stryker-mutator/stryker-js#6213）";
 
-const shards = readdirSync(ART, { withFileTypes: true })
-  .filter((d) => d.isDirectory() && existsSync(path.join(ART, d.name, "mutation.json")))
-  .map((d) => JSON.parse(readFileSync(path.join(ART, d.name, "mutation.json"), "utf-8")));
+const shards = [
+  ART,
+  ...readdirSync(ART, { withFileTypes: true })
+    .filter((d) => d.isDirectory())
+    .map((d) => path.join(ART, d.name)),
+]
+  .filter((dir) => existsSync(path.join(dir, "mutation.json")))
+  .map((dir) => JSON.parse(readFileSync(path.join(dir, "mutation.json"), "utf-8")));
 if (shards.length === 0) throw new Error(`${ART} に mutation.json が無い`);
 
 const testIds = new Map(); // `${ファイル}::${名前}` → 振り直した id

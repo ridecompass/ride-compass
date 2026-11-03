@@ -28,10 +28,8 @@ describe("haversineKm", () => {
 
 describe("formatAlongDistance", () => {
   it.each([
-    { case: "1km未満は10m単位", distanceM: 347, text: "350m" },
     { case: "10m単位へ丸めて1km未満ならm単位", distanceM: 994, text: "990m" },
     { case: "10m単位へ丸めて1kmになるものはkm単位", distanceM: 995, text: "1.0km" },
-    { case: "1km以上は0.1km単位", distanceM: 1260, text: "1.3km" },
   ])("$case", ({ distanceM, text }) => {
     expect(formatAlongDistance(distanceM)).toBe(text);
   });

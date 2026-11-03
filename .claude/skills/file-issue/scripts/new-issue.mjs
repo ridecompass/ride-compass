@@ -1,15 +1,16 @@
 // issue を起こす。本文の形（.claude/skills/file-issue/SKILL.md「issue の形」）と子の決まり（同「分ける」）を照らし、合えば GraphQL で
 // 読む1回・作る1回（題名・本文・種類・親・欄）・前後の関係を張る1回（あれば）で作る。合わなければ作らずに理由を出して 1 で終わる。
 // 使い方: node .claude/skills/file-issue/scripts/new-issue.mjs --title <題名> --body-file <本文のファイル> [--type <種類>]
-//   [--parent <親>] [--origin <分割元>] [--blocked-by <前,...>] [--blocking <後,...>] [--size <規模>] [--priority <優先度>] [--start <着手可能日時>]
+//   [--parent <親>] [--origin <分割元>] [--blocked-by <前,...>] [--blocking <後,...>] [--size <規模>] [--priority <優先度>] [--start <着手可能日時>] [--hold]
 //   欄だけ入れ直す: node .claude/skills/file-issue/scripts/new-issue.mjs --fill <番号> [--size ...] [--priority ...] [--start ...]
 //   規模と優先度の選択肢は設定（flow.config.json: fields）が持つ。
+//   --hold は、開発機の対話のセッションが起こしてそのまま持つ issue に、作るときからラベル「開発機で作業中」（flow.config.json: devLabel）を付ける。
 //   --parent は子（種類は親と同じ。子と孫の決まりは tools/flow-gate/src/family.js）。--origin は要望ごとの切り出し（本文に分割元の行を置く）。
 import { readFileSync } from "node:fs";
 import { bot, config, graphql, graphqlData, isNumber, messages, usage } from "../../../../tools/flow-gate/src/bot.js";
 import { CHILD_FIELDS, NO_GRANDCHILD, makesGrandchild, originLine, originOf } from "../../../../tools/flow-gate/src/family.js";
 import { SET_FIELDS, fieldProblems, fieldValues } from "../../../../tools/flow-gate/src/fields.js";
-import { conditions, norm } from "../../../../tools/flow-gate/src/questions.js";
+import { conditions, misboundSteps, norm } from "../../../../tools/flow-gate/src/questions.js";
 
 // 畳んだ節の名前と順（2 は種類ごとに1つ）。
 const SECTIONS = [["不具合: 起きていること", "要望: 困りごと", "保守: 背景", "調査: 明らかにしたいこと"], ["やること", "調べ方"], ["決めること"],
@@ -39,6 +40,7 @@ function issueProblems(body, { type, child = false, size, priority, start }) {
   problems.push(...typeProblems(text, type));
   // 子も自分の約束（完了の条件）を持つ。子は優先度・着手可能日時を持たず、親の値を読む。
   if (!conditions(text).length) problems.push("完了の条件が無い");
+  problems.push(...misboundSteps(text).map((n) => `やることの ${n} の行き先が、完了の条件の文の頭・#<番号>・見送り（<理由>）のどれにも当たらない`));
   if (child && (priority || start)) problems.push(CHILD_FIELDS);
   if (!child && type !== config.dialogType && (!size || !priority)) problems.push("規模と優先度を入れる（--size・--priority）");
   return [...problems, ...fieldProblems(config, fieldsOf({ size, priority, start }))];
@@ -52,12 +54,18 @@ function withOrigin(body, origin) {
   return cut < 0 ? `${text}\n\n${originLine(origin)}` : `${text.slice(0, cut)}\n\n${originLine(origin)}${text.slice(cut)}`;
 }
 
-// 引数を読む。知らない口・値の無い口があれば null（打ち間違いで前提や親の無い issue を作らない）。
+// 引数を読む。知らない口・値の無い口があれば null（打ち間違いで前提や親の無い issue を作らない）。FLAGS は値を取らない口。
 const KEYS = ["title", "body-file", "type", "parent", "origin", "blocked-by", "blocking", "size", "priority", "start", "fill"];
+const FLAGS = ["hold"];
 function parseArgs(argv) {
   const opts = {};
   for (let i = 0; i < argv.length; i += 2) {
     const key = argv[i].replace(/^--/, "");
+    if (argv[i].startsWith("--") && FLAGS.includes(key)) {
+      opts[key] = true;
+      i -= 1;
+      continue;
+    }
     if (!argv[i].startsWith("--") || !KEYS.includes(key) || argv[i + 1] === undefined || argv[i + 1].startsWith("--")) return null;
     opts[key] = argv[i + 1];
   }
@@ -69,10 +77,10 @@ const fieldLines = (values) => values.map(([key, value]) => `${config.fields[key
 const numbers = (list) => (list ? list.split(",").map((n) => n.trim().replace(/^#/, "")) : []);
 const reason = (e) => String(e.stderr || e.message).trim();
 
-// 作る前に読む1回: 置き場の ID・種類・親・前後の issue。番号は数字だけを通してから埋める。
+// 作る前に読む1回: 置き場の ID・種類・開発機が持つラベル・親・前後の issue。番号は数字だけを通してから埋める。
 function readQuery(parent, refs) {
   const issue = (alias, n, fields) => ` ${alias}:issue(number:${n}){${fields}}`;
-  return "query($owner:String!,$name:String!){repository(owner:$owner,name:$name){id issueTypes(first:50){nodes{id name}}" +
+  return "query($owner:String!,$name:String!,$hold:String!){repository(owner:$owner,name:$name){id issueTypes(first:50){nodes{id name}} hold:label(name:$hold){id}" +
     (parent ? issue("parent", parent, "id state issueType{name} parent{number}") : "") + refs.map((n) => issue(`i${n}`, n, "id")).join("") + "}}";
 }
 
@@ -94,10 +102,13 @@ function plan(repo, opts, body, { blockedBy, blocking, values }) {
   const idOf = (n) => repo[`i${n}`]?.id;
   const missing = [...blockedBy, ...blocking].filter((n) => !idOf(n));
   if (missing.length) stop.push(`${missing.map((n) => `#${n}`).join("・")} が無い`);
+  if (opts.hold && !repo.hold) stop.push(`ラベル「${config.devLabel}」が置き場に無い`);
   if (stop.length) return { stop };
+  // 開発機で起こしてそのまま持つ issue は、作る要求の中でラベルを付ける（あとから付けると、その間にゲートが担当へ振り出す）。
   const input = {
     repositoryId: repo.id, title: opts.title, body, issueTypeId: typeId,
     ...(p && { parentIssueId: p.id }), ...(values.length && { issueFields: fieldValues(config, values) }),
+    ...(opts.hold && { labelIds: [repo.hold.id] }),
   };
   return { input, blockedBy: blockedBy.map(idOf), blocking: blocking.map(idOf) };
 }
@@ -129,7 +140,7 @@ function file(gh, opts, body) {
   if (early.length) return { out: [], err: `作らない: ${early.join("・")}` };
   let repo;
   try {
-    const read = graphql(gh, readQuery(opts.parent, all), { owner, name });
+    const read = graphql(gh, readQuery(opts.parent, all), { owner, name, hold: config.devLabel });
     // 無い issue（NOT_FOUND）は plan が名指して断る。それ以外の誤りは読めなかったものとして扱う。
     const failed = (read.errors ?? []).filter((e) => e.type !== "NOT_FOUND");
     repo = read.data?.repository;
@@ -187,7 +198,7 @@ async function main() {
     return fill(bot(), opts.fill, opts);
   }
   if (!opts?.title || !opts["body-file"]) usage("node .claude/skills/file-issue/scripts/new-issue.mjs --title <題名> --body-file <本文のファイル> [--type <種類>] [--parent <親>] " +
-    `[--origin <分割元>] [--blocked-by <前,...>] [--blocking <後,...>] [--size <${choices("size")}>] [--priority <${choices("priority")}>] [--start <着手可能日時>]`);
+    `[--origin <分割元>] [--blocked-by <前,...>] [--blocking <後,...>] [--size <${choices("size")}>] [--priority <${choices("priority")}>] [--start <着手可能日時>] [--hold]`);
   let body = readFileSync(opts["body-file"], "utf8");
   if (opts.origin) body = withOrigin(body, opts.origin);
   const { out, err } = file(bot(), opts, body);

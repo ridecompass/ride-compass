@@ -13,6 +13,7 @@ from typing import NamedTuple
 import numpy as np
 
 from app.domain import search_graph, turn_structure
+from app.domain.traffic import StopEvent
 
 
 class EdgeSpec(NamedTuple):
@@ -107,15 +108,20 @@ def lazy_of(net):
     )
 
 
+def _event(wait_seconds: float, kickoffs: float = 1.0) -> StopEvent:
+    """いつも止まる出来事（減速だけなら漕ぎ出しは`kickoffs`回ぶん）。時間は待ちそのもの。"""
+    return StopEvent(share=1.0, wait_seconds=wait_seconds, kickoffs=kickoffs)
+
+
 # ターンの費用をすべて0にする仕様（ターン以外の挙動を見るとき用）。
 FLAT_SPEC = turn_structure.TurnCostSpec(
-    left_seconds=0.0, right_seconds=0.0, uturn_seconds=0.0, straight_max_deg=180.0,
-    major_crossing_seconds=0.0, major_turn_seconds=0.0,
+    left=_event(0.0), right=_event(0.0), uturn=_event(0.0), straight_max_deg=180.0,
+    major_crossing=_event(0.0), major_turn=_event(0.0),
 )
 # ターンの種別が全部違う値になる仕様。
 TURN_SPEC = turn_structure.TurnCostSpec(
-    left_seconds=5.0, right_seconds=3.0, uturn_seconds=20.0, straight_max_deg=30.0,
-    major_crossing_seconds=7.0, major_turn_seconds=11.0,
+    left=_event(5.0, kickoffs=0.75), right=_event(3.0), uturn=_event(20.0), straight_max_deg=30.0,
+    major_crossing=_event(7.0), major_turn=_event(11.0),
 )
 
 

@@ -2,7 +2,8 @@
  * 走行モードのボタン（`features/ride/RideModeButton/RideModeButton.tsx`）——入切を示し、走行モードの間に
  * 押すと案内を終えるか、休む（休んでいれば続きから走る）かを選ばせ、始められなかった理由と、画面を点けたままにできない端末であることを横に出す。
  *
- * ここで見ないもの: 押したあとの走行モードの移り変わり → `useRideMode.test.ts`、スマホの向きを読む許しを求め直す札 → `page.ride.test.tsx`
+ * ここで見ないもの: 止まっている間に押すと始めること・走っている間に押して休む・案内を終えること・入切の `aria-pressed` → `app/page.rideControl.test.tsx`、
+ * スマホの向きを読む許しを求め直す札 → `page.ride.test.tsx`
  */
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -12,132 +13,62 @@ import RideModeButton from "./RideModeButton";
 
 const WAKE_LOCK_NOTICE = /画面を点けたままにできません/;
 
+type Props = Parameters<typeof RideModeButton>[0];
+
+function props(overrides: Partial<Props> = {}): Props {
+  return {
+    status: "following",
+    error: null,
+    screenWakeLock: "off",
+    onRequestHeading: null,
+    onPress: () => {},
+    onRest: () => {},
+    onResume: () => {},
+    ...overrides,
+  };
+}
+
 describe("RideModeButton", () => {
-  it("止まっている間は、押すとすぐ始める", async () => {
-    const onPress = vi.fn();
-    render(
-      <RideModeButton
-        status="off"
-        error={null}
-        screenWakeLock="off"
-        onRequestHeading={null}
-        onPress={onPress}
-        onRest={() => {}}
-        onResume={() => {}}
-      />,
-    );
+  it("休んでいる間は、押すと「続きから走る」か案内を終えるかを選ばせ、選んだ方だけを知らせて閉じる", async () => {
+    const handlers = { onPress: vi.fn(), onRest: vi.fn(), onResume: vi.fn() };
+    render(<RideModeButton {...props({ status: "resting", ...handlers })} />);
     const button = screen.getByRole("button", { name: "走行モード" });
-    expect(button).toHaveAttribute("aria-pressed", "false");
-    // 面の塗りは様子の印（data-ride）に当てる。塗りが効いて見分けられるかは e2e/ride-mode.spec.ts が計算後の色で見る。
-    expect(button).toHaveAttribute("data-ride", "off");
 
     await userEvent.click(button);
-    expect(onPress).toHaveBeenCalledTimes(1);
+    expect(button).toHaveAttribute("aria-expanded", "true");
+    await userEvent.click(screen.getByRole("button", { name: "続きから走る" }));
+    expect(handlers.onResume).toHaveBeenCalledTimes(1);
+    expect(handlers.onPress).not.toHaveBeenCalled();
+    expect(handlers.onRest).not.toHaveBeenCalled();
     expect(screen.queryByRole("button", { name: "案内を終える" })).toBeNull();
+
+    await userEvent.click(button);
+    await userEvent.click(screen.getByRole("button", { name: "案内を終える" }));
+    expect(handlers.onPress).toHaveBeenCalledTimes(1);
+    expect(handlers.onResume).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("button", { name: "続きから走る" })).toBeNull();
   });
 
-  it.each([
-    { status: "following", choice: "休む", chosen: "onRest" },
-    { status: "paused", choice: "休む", chosen: "onRest" },
-    { status: "resting", choice: "続きから走る", chosen: "onResume" },
-  ] as const)(
-    "$status: 押すと「$choice」か案内を終えるかを選ばせ、選んだ方だけを知らせて閉じる",
-    async ({ status, choice, chosen }) => {
-      const handlers = { onPress: vi.fn(), onRest: vi.fn(), onResume: vi.fn() };
-      render(
-        <RideModeButton status={status} error={null} screenWakeLock="off" onRequestHeading={null} {...handlers} />,
-      );
-      const button = screen.getByRole("button", { name: "走行モード" });
-      expect(button).toHaveAttribute("aria-pressed", "true");
-      expect(button).toHaveAttribute("data-ride", status);
-
-      await userEvent.click(button);
-      expect(button).toHaveAttribute("aria-expanded", "true");
-      await userEvent.click(screen.getByRole("button", { name: choice }));
-      expect(handlers[chosen]).toHaveBeenCalledTimes(1);
-      const others = (["onPress", "onRest", "onResume"] as const).filter((name) => name !== chosen);
-      expect(others).toHaveLength(2);
-      for (const name of others) expect(handlers[name]).not.toHaveBeenCalled();
-      expect(screen.queryByRole("button", { name: "案内を終える" })).toBeNull();
-
-      await userEvent.click(button);
-      await userEvent.click(screen.getByRole("button", { name: "案内を終える" }));
-      expect(handlers.onPress).toHaveBeenCalledTimes(1);
-      expect(handlers[chosen]).toHaveBeenCalledTimes(1);
-      expect(screen.queryByRole("button", { name: choice })).toBeNull();
-    },
-  );
-
   it("画面を点けたままにできない端末では、文を出し、閉じても印と読み上げの説明は残す。頼めていれば何も出さない", async () => {
-    const { rerender } = render(
-      <RideModeButton
-        status="following"
-        error={null}
-        screenWakeLock="held"
-        onRequestHeading={null}
-        onPress={() => {}}
-        onRest={() => {}}
-        onResume={() => {}}
-      />,
-    );
+    const { rerender } = render(<RideModeButton {...props({ screenWakeLock: "held" })} />);
     const button = screen.getByRole("button", { name: "走行モード" });
     expect(screen.queryByText(WAKE_LOCK_NOTICE)).toBeNull();
     expect(button).not.toHaveAttribute("aria-description");
 
-    rerender(
-      <RideModeButton
-        status="following"
-        error={null}
-        screenWakeLock="unavailable"
-        onRequestHeading={null}
-        onPress={() => {}}
-        onRest={() => {}}
-        onResume={() => {}}
-      />,
-    );
+    rerender(<RideModeButton {...props({ screenWakeLock: "unavailable" })} />);
     expect(screen.getByText(WAKE_LOCK_NOTICE)).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "閉じる" }));
     expect(screen.queryByText(WAKE_LOCK_NOTICE)).toBeNull();
     expect(button).toHaveAttribute("aria-description", expect.stringMatching(WAKE_LOCK_NOTICE));
 
     // 止めて始め直すと、また文を出す。
-    rerender(
-      <RideModeButton
-        status="off"
-        error={null}
-        screenWakeLock="off"
-        onRequestHeading={null}
-        onPress={() => {}}
-        onRest={() => {}}
-        onResume={() => {}}
-      />,
-    );
-    rerender(
-      <RideModeButton
-        status="following"
-        error={null}
-        screenWakeLock="unavailable"
-        onRequestHeading={null}
-        onPress={() => {}}
-        onRest={() => {}}
-        onResume={() => {}}
-      />,
-    );
+    rerender(<RideModeButton {...props({ status: "off" })} />);
+    rerender(<RideModeButton {...props({ screenWakeLock: "unavailable" })} />);
     expect(screen.getByText(WAKE_LOCK_NOTICE)).toBeInTheDocument();
   });
 
   it("始められなかった理由を出す", () => {
-    render(
-      <RideModeButton
-        status="off"
-        error="位置情報の利用が許可されていない"
-        screenWakeLock="off"
-        onRequestHeading={null}
-        onPress={() => {}}
-        onRest={() => {}}
-        onResume={() => {}}
-      />,
-    );
+    render(<RideModeButton {...props({ status: "off", error: "位置情報の利用が許可されていない" })} />);
     expect(screen.getByText("位置情報の利用が許可されていない")).toBeInTheDocument();
   });
 });

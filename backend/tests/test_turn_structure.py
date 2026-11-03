@@ -5,6 +5,8 @@
   `current_turn_cost`は判断を持たないので単体では見ない（`test_route_generation_behavior.py`が通す）
 - 遷移を使った探索 → `test_routing.py`
 """
+import dataclasses
+
 import numpy as np
 import pytest
 
@@ -22,24 +24,19 @@ from tests.search_graph_world import (
 )
 
 
-def transition_kinds(lazy, structure):
-    """`(遷移元edge_id, 遷移先edge_id) -> 曲がりの種類`。"""
+def transitions(lazy, structure):
+    """`(遷移元edge_id, 遷移先edge_id) -> (曲がりの種類, ターンの秒数)`。"""
     out = {}
     for source in range(structure.state_count):
         for entry in range(int(structure.indptr[source]), int(structure.indptr[source + 1])):
             target = int(structure.target_state[entry])
-            out[(lazy.edge_ids[source], lazy.edge_ids[target])] = turn_structure.TurnKind(int(structure.turn_kind[entry]))
+            out[(lazy.edge_ids[source], lazy.edge_ids[target])] = (
+                turn_structure.TurnKind(int(structure.turn_kind[entry])), float(structure.turn_seconds[entry]))
     return out
 
 
 def transition_seconds(lazy, structure):
-    """`(遷移元edge_id, 遷移先edge_id) -> ターンの秒数`。"""
-    out = {}
-    for source in range(structure.state_count):
-        for entry in range(int(structure.indptr[source]), int(structure.indptr[source + 1])):
-            target = int(structure.target_state[entry])
-            out[(lazy.edge_ids[source], lazy.edge_ids[target])] = float(structure.turn_seconds[entry])
-    return out
+    return {pair: seconds for pair, (_kind, seconds) in transitions(lazy, structure).items()}
 
 
 def rank_array(lazy, by_edge_id):
@@ -83,22 +80,12 @@ def test_turn_transitions_lead_to_every_outgoing_edge_and_classify_the_turn(edge
     """
     graph = make_graph(PLUS_NODES, edges)
     lazy, _, structure = build_all(graph, spec=TURN_SPEC)
-    from_west = {
-        target: seconds for (source, target), seconds in transition_seconds(lazy, structure).items()
-        if source == "WC"
-    }
-    assert from_west == pytest.approx({
-        "CE": 0.0,
-        "CN": TURN_SPEC.left_seconds,
-        "CS": TURN_SPEC.right_seconds,
-        "CW": TURN_SPEC.uturn_seconds,
-    })
-    kinds = {target: kind for (source, target), kind in transition_kinds(lazy, structure).items() if source == "WC"}
-    assert kinds == {
-        "CE": turn_structure.TurnKind.STRAIGHT,
-        "CN": turn_structure.TurnKind.LEFT,
-        "CS": turn_structure.TurnKind.RIGHT,
-        "CW": turn_structure.TurnKind.UTURN,
+    from_west = {target: turn for (source, target), turn in transitions(lazy, structure).items() if source == "WC"}
+    assert from_west == {
+        "CE": (turn_structure.TurnKind.STRAIGHT, 0.0),
+        "CN": (turn_structure.TurnKind.LEFT, pytest.approx(TURN_SPEC.left.expected_seconds)),
+        "CS": (turn_structure.TurnKind.RIGHT, pytest.approx(TURN_SPEC.right.expected_seconds)),
+        "CW": (turn_structure.TurnKind.UTURN, pytest.approx(TURN_SPEC.uturn.expected_seconds)),
     }
 
 
@@ -177,7 +164,7 @@ def test_a_bend_without_a_branch_adds_no_wait_even_beside_a_higher_ranked_road()
         target: seconds for (source, target), seconds in transition_seconds(lazy, structure).items()
         if source == "AB"
     }
-    assert from_a == pytest.approx({"BC": 0.0, "BA": TURN_SPEC.uturn_seconds})
+    assert from_a == pytest.approx({"BC": 0.0, "BA": TURN_SPEC.uturn.expected_seconds})
 
 
 # T字路。西から東へ来て、東の道は向こうからCへ入る一方通行なので、進めるのは北への左折だけ。
@@ -194,7 +181,7 @@ def test_a_turn_where_the_road_ahead_is_no_entry_is_still_a_turn_at_a_branch():
     turns = turn_structure.turns_along(structure, structure.entries_along([index["WC"], index["CN"]]))
 
     assert [(turn.index, turn.kind) for turn in turns] == [(1, turn_structure.TurnKind.LEFT)]
-    assert transition_seconds(lazy, structure)[("WC", "CN")] == pytest.approx(TURN_SPEC.left_seconds)
+    assert transition_seconds(lazy, structure)[("WC", "CN")] == pytest.approx(TURN_SPEC.left.expected_seconds)
 
 
 def _plus_ranks(lazy, crossing_rank, entering_rank):
@@ -215,14 +202,14 @@ def test_crossing_a_higher_ranked_road_adds_a_wait_split_by_straight_or_turning(
         graph, spec=TURN_SPEC, edge_rank=_plus_ranks(lazy, MAJOR, MAJOR - 1)
     )
     seconds = transition_seconds(lazy, structure)
-    assert seconds[("WC", "CE")] == pytest.approx(TURN_SPEC.major_crossing_seconds)
+    assert seconds[("WC", "CE")] == pytest.approx(TURN_SPEC.major_crossing.expected_seconds)
     assert seconds[("WC", "CN")] == pytest.approx(
-        TURN_SPEC.left_seconds + TURN_SPEC.major_turn_seconds
+        TURN_SPEC.left.expected_seconds + TURN_SPEC.major_turn.expected_seconds
     )
     assert seconds[("WC", "CS")] == pytest.approx(
-        TURN_SPEC.right_seconds + TURN_SPEC.major_turn_seconds
+        TURN_SPEC.right.expected_seconds + TURN_SPEC.major_turn.expected_seconds
     )
-    assert seconds[("WC", "CW")] == pytest.approx(TURN_SPEC.uturn_seconds)
+    assert seconds[("WC", "CW")] == pytest.approx(TURN_SPEC.uturn.expected_seconds)
 
 
 @pytest.mark.parametrize(
@@ -233,7 +220,7 @@ def test_crossing_a_higher_ranked_road_adds_a_wait_split_by_straight_or_turning(
         # 信号のある交差点の待ちは停止密度の材料が運ぶ。ここで足すと同じ待ちを二重に数える。
         (MAJOR, MAJOR - 1, True, 0, 0.0),
         # bboxの外へはみ出した上位の道は部分グラフに現れない。DB側の集計値があれば大きい方を採る。
-        (MAJOR - 1, MAJOR - 1, False, MAJOR, TURN_SPEC.major_crossing_seconds),
+        (MAJOR - 1, MAJOR - 1, False, MAJOR, TURN_SPEC.major_crossing.expected_seconds),
     ],
 )
 def test_crossing_wait_follows_the_node_rank_and_signal(crossing_rank, entering_rank, signal, db_rank, expected):
@@ -270,19 +257,60 @@ def test_node_rank_comes_from_roads_that_leave_the_node_too():
     )
     _, _, structure = build_all(graph, spec=TURN_SPEC, edge_rank=ranks)
     assert transition_seconds(lazy, structure)[("WC", "CE")] == pytest.approx(
-        TURN_SPEC.major_crossing_seconds
+        TURN_SPEC.major_crossing.expected_seconds
     )
 
 
-def test_reverse_transitions_flip_direction_and_carry_the_original_wait():
-    """後ろ向きの遷移は向きだけを反転し、ターンの待ちは元の進行方向の値のまま運ぶ。"""
+def test_a_turn_onto_a_major_road_waits_for_both_but_kicks_off_once():
+    """信号の無い交差点で上位の道へ曲がると、曲がりの待ちと上位の道の待ちを足すが、止まるのは1回なので漕ぎ出しは1回ぶん
+    （重なる出来事の大きい方）だけ数える。"""
+    graph = make_graph(PLUS_NODES, PLUS_EDGES)
+    lazy = lazy_of(graph)
+    _, _, structure = build_all(graph, spec=TURN_SPEC, edge_rank=_plus_ranks(lazy, MAJOR, MAJOR - 1))
+    entries = _entries(lazy, structure)
+
+    right, left = entries[("WC", "CS")], entries[("WC", "CN")]
+    assert float(structure.turn_seconds[right]) == pytest.approx(
+        TURN_SPEC.right.expected_seconds + TURN_SPEC.major_turn.expected_seconds)
+    assert (float(structure.turn_kickoffs[right]), float(structure.turn_kickoffs[left])) == pytest.approx((1.0, 1.0))
+
+
+def test_reverse_transitions_flip_direction_and_point_at_the_original_transition():
+    """後ろ向きの遷移は向きだけを反転し、元の前向きの遷移の位置を持つ（遷移ごとの時間・費用はその位置で並べ替え、元の
+    進行方向の値のまま運ぶ）。"""
     graph = make_graph(PLUS_NODES, PLUS_EDGES)
     lazy, _, structure = build_all(graph, spec=TURN_SPEC)
     forward = transition_seconds(lazy, structure)
-    indptr, source_state, turn_seconds = structure.reverse_transitions()
+    indptr, source_state, order = structure.reverse_transitions()
     backward = {}
     for target in range(structure.state_count):
         for entry in range(int(indptr[target]), int(indptr[target + 1])):
             key = (lazy.edge_ids[int(source_state[entry])], lazy.edge_ids[target])
-            backward[key] = float(turn_seconds[entry])
+            backward[key] = float(structure.turn_seconds[order[entry]])
     assert backward == forward
+
+
+def _entries(lazy, structure):
+    """`(遷移元edge_id, 遷移先edge_id) -> 遷移の位置`。"""
+    return {
+        (lazy.edge_ids[source], lazy.edge_ids[int(structure.target_state[entry])]): entry
+        for source in range(structure.state_count)
+        for entry in range(int(structure.indptr[source]), int(structure.indptr[source + 1]))
+    }
+
+
+def test_a_turn_takes_its_share_of_the_wait_and_of_the_kickoff():
+    """曲がる所の時間は 割合 × 待ち、漕ぎ出しは割合ぶんの回数（減速だけの左折は、出来事が持つ減った回数）。直進は
+    どちらも0。"""
+    graph = make_graph(PLUS_NODES, PLUS_EDGES)
+    spec = dataclasses.replace(TURN_SPEC, right=traffic.StopEvent(share=0.5, wait_seconds=3.0, kickoffs=0.5))
+    lazy, _, structure = build_all(graph, spec=spec)
+    entries = _entries(lazy, structure)
+
+    def seconds_and_kickoffs(pair):
+        return float(structure.turn_seconds[entries[pair]]), float(structure.turn_kickoffs[entries[pair]])
+
+    assert seconds_and_kickoffs(("WC", "CN")) == pytest.approx((5.0, 0.75))  # 左折（減速）
+    assert seconds_and_kickoffs(("WC", "CS")) == pytest.approx((1.5, 0.5))  # 右折（半分の割合で止まる）
+    assert seconds_and_kickoffs(("WC", "CW")) == pytest.approx((20.0, 1.0))  # Uターン
+    assert seconds_and_kickoffs(("WC", "CE")) == pytest.approx((0.0, 0.0))  # 直進

@@ -45,7 +45,6 @@ def test_compass_label_names_the_eight_point_sector(bearing, label):
     assert geo.compass_label(bearing) == label
 
 
-
 @pytest.mark.parametrize(("bearing", "degrees"), [(0.5, 1), (2.5, 3)])
 def test_compass_degrees_rounds_a_half_degree_up_like_the_sector(bearing, degrees):
     """ちょうど半端の度は、区分（`compass_label`）と同じく上へ倒す。偶数丸めだと、応答の度が値の偶奇で前後に倒れる。"""

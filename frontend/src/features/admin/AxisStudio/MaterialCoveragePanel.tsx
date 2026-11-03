@@ -4,7 +4,7 @@ import { vocabulary } from "@/types/generated/vocabulary";
 import { getMaterialCoverage } from "@/features/admin/adminApi";
 import { formatCount, ReportCard } from "./ReportCard";
 import type { MaterialCoverageEntry, MaterialCoverageResponse } from "@/types/route";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table/Table";
+import { Table, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table/Table";
 import { textVariants } from "@/components/ui/Text/Text";
 import { cn } from "@/lib/cn";
 
@@ -49,7 +49,7 @@ function CoverageTable({ entries }: { entries: readonly CountedEntry[] }) {
           <TableHeader scope="col">欠損割合</TableHeader>
         </TableRow>
       </TableHead>
-      <TableBody>
+      <tbody>
         {entries.map((entry) => (
           <TableRow
             key={entry.material_id}
@@ -81,7 +81,7 @@ function CoverageTable({ entries }: { entries: readonly CountedEntry[] }) {
             </TableCell>
           </TableRow>
         ))}
-      </TableBody>
+      </tbody>
     </Table>
   );
 }

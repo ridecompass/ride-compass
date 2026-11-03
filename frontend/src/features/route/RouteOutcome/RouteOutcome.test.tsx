@@ -44,12 +44,9 @@ function listTexts(): string[] {
 }
 
 describe("候補が無い間", () => {
-  it.each([
-    { progressLabel: "順番待ち...", text: "順番待ち..." },
-    { progressLabel: undefined, text: "生成中..." },
-  ])("生成中は進み方（届く前は「生成中...」）を出す: $text", ({ progressLabel, text }) => {
-    renderOutcome({ generation: generationOf({ running: true, progressLabel }) });
-    expect(screen.getByText(text)).toBeInTheDocument();
+  it("生成中は進み方を出す", () => {
+    renderOutcome({ generation: generationOf({ running: true, progressLabel: "生成中...(3秒経過)" }) });
+    expect(screen.getByText("生成中...(3秒経過)")).toBeInTheDocument();
   });
 
   it("案内が無ければ、生成を押すと候補が並ぶことを案内する", () => {

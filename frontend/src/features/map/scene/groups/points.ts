@@ -62,15 +62,18 @@ export const POINT_TILE_SOURCES = Object.fromEntries(
   ]),
 ) as Readonly<Record<PointTileLayer, { readonly sourceId: SceneSourceId; readonly sourceLayer: string }>>;
 
-/** 地図のレイヤーidから点の宣言を引く。idは`pointGroup`と同じソースと役割から決める。 */
-const POINT_LAYER_BY_SCENE_ID = new Map(
-  POINT_LAYERS.map((layer) => [sceneLayerId(POINT_TILE_SOURCES[layer.tile_kind].sourceId, layer.attr_id), layer]),
-);
+/** 押された地物のレイヤーidから、点の宣言を引く関数。idは点のタイルのソースと役割`roleOf(宣言)`から決める。 */
+export function pointLayerLookup(
+  roleOf: (layer: PointLayer) => string,
+): (sceneLayerIdOfFeature: string) => PointLayer | undefined {
+  const byId = new Map(
+    POINT_LAYERS.map((layer) => [sceneLayerId(POINT_TILE_SOURCES[layer.tile_kind].sourceId, roleOf(layer)), layer]),
+  );
+  return (sceneLayerIdOfFeature) => byId.get(sceneLayerIdOfFeature);
+}
 
 /** 押された地物のレイヤーidが点のレイヤーなら、その点の宣言。 */
-export function pointLayerOfSceneLayer(sceneLayerIdOfFeature: string): PointLayer | undefined {
-  return POINT_LAYER_BY_SCENE_ID.get(sceneLayerIdOfFeature);
-}
+export const pointLayerOfSceneLayer = pointLayerLookup((layer) => layer.attr_id);
 
 /** 常に効く絞り込み。同じタイル・同じsource-layerを2つ以上のレイヤーが分け合うときは、
  * 自分の行に属する値だけを通す（持たないと互いの点が混ざる）。 */
@@ -274,12 +277,17 @@ const COUNT_TEXT_FONT = ["Noto Sans Bold"];
 
 const COUNT = ["to-number", ["get", POINT.countProperty], 1];
 
-/** 点の層の印。重なりは MapLibre の既定のまま（ほかの記号とぶつかる印は描かず、寄せて重ならなくなると出る）で、点の層どうし・
+/** 点の層の印（読むタイル・押したときに拾う対象・見た目）。重なりは MapLibre の既定のまま（ほかの記号とぶつかる印は描かず、寄せて重ならなくなると出る）で、点の層どうし・
  * 区間の近くの点・基礎地図の文字とも判定する。同じ層の中で重なると、残す順（`sortKeyExpression`）の先の印を残す。2点以上を束ねた代表点は、同じ印の文字として右に数を出す（数だけが残ることは無い）。
  * 名前を持つ層の押せない点（名前の無い点）は丸い枠で少し薄く描く。描き始める縮尺を宣言した層は、それより引いた縮尺では描かない。 */
-export function pointLook(layer: PointLayer): Pick<SceneLayerEntry, "type" | "paint" | "layout" | "minzoom"> {
+export function pointLook(
+  layer: PointLayer,
+): Pick<SceneLayerEntry, "source" | "sourceLayer" | "type" | "paint" | "layout" | "minzoom" | "hitTargets"> {
   return {
+    source: POINT_TILE_SOURCES[layer.tile_kind].sourceId,
+    sourceLayer: POINT_TILE_SOURCES[layer.tile_kind].sourceLayer,
     type: "symbol",
+    hitTargets: [POINT_HIT_TARGET],
     ...(layer.point_min_zoom === null ? {} : { minzoom: layer.point_min_zoom }),
     paint: {
       "icon-opacity": byNamed(layer, POINT.opacityByLayer[layer.attr_id] ?? 1, UNNAMED_OPACITY_RATIO),
@@ -314,11 +322,8 @@ export const pointGroup = declareGroup<PointState>((state) => {
   const points: readonly SceneLayerEntry[] = STACKED_POINT_LAYERS.map((layer) => ({
     role: layer.attr_id,
     tier: "point",
-    source: POINT_TILE_SOURCES[layer.tile_kind].sourceId,
-    sourceLayer: POINT_TILE_SOURCES[layer.tile_kind].sourceLayer,
     ...pointLook(layer),
     visible: state.visible[layer.attr_id] === true,
-    hitTargets: [POINT_HIT_TARGET],
     filter: layerFilter(layer, state.hiddenKeys),
     hidesBasemapPois: basemapPoisHiddenBy(layer, state.hiddenKeys),
   }));

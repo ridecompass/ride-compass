@@ -124,9 +124,10 @@ LANDCOVER = {
     for key, only in ((SEGMENT, _LANDCOVER_FIELDS[0]), (WAY, _LANDCOVER_FIELDS[1]))
 }
 
-#: 道のタグを読む軸と、区間ごとに値の違う材料（勾配）を読む軸。勾配の大きさだけを読む軸は、地図が得点ではなく勾配
-#: （符号付き材料）を塗る。タイルの材料を読む軸を先に置く（読めないときに、その後ろの軸の値を落とさないことも見る）。
-SIGNED = "axis_slope"
+#: 道のタグを読む軸と、区間ごとに値の違う材料（勾配）を読む軸。勾配1つを読む軸は、上りだけを測っても大きさを測っても、
+#: 地図が得点ではなく勾配（符号付き材料）を塗る。タイルの材料を読む軸を先に置く（読めないときに、その後ろの軸の値を
+#: 落とさないことも見る）。
+SIGNED = ("axis_grade", "axis_slope")
 INSPECTED_AXES = {
     "axis_surface": shaped_axis(
         CategoricalShape(material="cat_a", mapping={"paved": 10.0, "unpaved": 90.0}),
@@ -135,10 +136,10 @@ INSPECTED_AXES = {
         BreakpointLinearShape(terms=[MaterialTerm(material="gradient_percent")],
                               breakpoints=[(-10.0, 100.0), (0.0, 0.0), (10.0, 50.0)]),
         axis_id="axis_grade", is_published=True),
-    SIGNED: shaped_axis(
+    "axis_slope": shaped_axis(
         BreakpointLinearShape(terms=[MaterialTerm(material="gradient_percent")], preprocess="abs",
                               breakpoints=[(0.0, 0.0), (10.0, 100.0)]),
-        axis_id=SIGNED, is_published=True),
+        axis_id="axis_slope", is_published=True),
 }
 
 
@@ -207,8 +208,11 @@ def _scores(values) -> dict[str, float | None]:
 
 
 def _difficulty(axis_id: str, painted: float) -> float:
-    """地図が塗る値の得点。勾配を塗る軸は、塗った勾配の大きさの得点（地図の色の段と同じ段）。"""
-    return INSPECTED_AXES[SIGNED].shape.score_at(abs(painted)) if axis_id == SIGNED else painted
+    """地図が塗る値の得点。勾配を塗る軸は、塗った勾配をその軸の前処理と折れ線に通した得点。"""
+    if axis_id not in SIGNED:
+        return painted
+    shape = INSPECTED_AXES[axis_id].shape
+    return shape.score_at(abs(painted) if shape.preprocess == "abs" else painted)
 
 
 async def _map_values(axis_id: str, tile: tuple[int, int, int]) -> dict[str, float | None]:
@@ -263,7 +267,7 @@ async def test_an_axis_whose_conditions_are_missing_has_no_value_and_the_others_
             int(WAY), SEGMENT, *EDGE_TILE, WayValueQuery(at=None, bearing_deg=None, speed_kmh=None),
             None)
 
-    assert _scores(result.values) == {"axis_surface": 10.0, "axis_grade": None, SIGNED: None}
+    assert _scores(result.values) == {"axis_surface": 10.0, "axis_grade": None, "axis_slope": None}
     assert result.values.composite_difficulty.value == 10.0
 
 

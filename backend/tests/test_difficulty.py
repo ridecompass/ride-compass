@@ -113,15 +113,16 @@ def test_the_contributions_of_a_row_add_up_to_its_unrounded_composite(axes, data
         assert sum(contributions.values()) == pytest.approx(mean)
 
 
-def test_a_segment_composite_names_every_axis_and_leaves_axes_without_a_score_empty():
-    composite, contributions = composite_difficulty({"a": 33.0, "b": None, "c": 66.0}, {"a": 1.0, "b": 5.0, "c": 2.0})
-
-    assert composite == 55.0
-    assert contributions == {"a": 11.0, "b": None, "c": 44.0}
-
-
-def test_a_segment_without_a_composite_has_no_contributions():
-    assert composite_difficulty({"a": 50.0}, {"a": 0.0}) == (None, {"a": None})
+@pytest.mark.parametrize(
+    ("scores", "weights", "expected"),
+    [
+        ({"a": 33.0, "b": None, "c": 66.0}, {"a": 1.0, "b": 5.0, "c": 2.0}, (55.0, {"a": 11.0, "b": None, "c": 44.0})),
+        ({"a": 50.0}, {"a": 0.0}, (None, {"a": None})),
+    ],
+    ids=["点の無い軸は空", "合成の無い区間"],
+)
+def test_a_segment_composite_names_every_axis(scores, weights, expected):
+    assert composite_difficulty(scores, weights) == expected
 
 
 _segments = st.lists(

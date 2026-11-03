@@ -1,12 +1,9 @@
 @import "tailwindcss";
 
-/* components/ui配下がTailwindユーティリティ(rounded-sm/md/lg, shadow-float)として
-   使えるようにする登録。staticにして、ユーティリティを使わない部品が読むvar()の値も
-   root要素へ必ず出す(colorトークンをここに含めない理由は
-   docs/modules/frontend/frontend-design-system.md「Design Token」)。
-   このコメント内で「コロン」の直後に続けてroot要素セレクタ名を書くと、Lightning CSS
-   (Tailwind v4のCSSエンジン)が@theme直前のコメント境界を誤認識しビルドエラーになる。
-   セレクタ名を書く場合は「root要素」のように文字だけで表現する。 */
+/* staticにして、ユーティリティを使わずvar()で読む部品のための値もroot要素へ必ず出す(colorトークンを
+   含めない理由はdocs/modules/frontend/frontend-design-system.md「Design Token」)。
+   このコメントで「コロン」の直後にroot要素のセレクタ名を書くと、Lightning CSSが@theme直前の
+   コメントの境界を誤認してビルドが落ちるので、「root要素」のように文字だけで書く。 */
 @theme static {
   /* スマホ幅の境目。**この値を持つのはここだけ**——メディアクエリはカスタム
    * プロパティを条件に使えないので、各ファイルは`theme()`で引く（ビルド時に
@@ -59,7 +56,6 @@
   --space-1: 0.25rem;
   --space-2: 0.5rem;
   --space-3: 0.75rem;
-  --space-4: 1rem;
 
   --font-size-xs: 0.75rem;
   --font-size-sm: 0.8rem;
@@ -144,7 +140,6 @@
     --space-1: 0.2rem;
     --space-2: 0.4rem;
     --space-3: 0.55rem;
-    --space-4: 0.75rem;
 
     --font-size-xs: 0.7rem;
     --font-size-sm: 0.75rem;
@@ -347,10 +342,9 @@
   }
 }
 
-/* MapLibreの帰属表示（.maplibregl-ctrl-*、ライセンス上必須）。`.app-map-pane`はpage.tsxが地図ペインへ
-   付けるクラスで、地図の外の同名の要素を巻き込まないための限定子。帰属表示は地図の右下・左下に
-   絶対配置されるので、スマホ幅では下部タブバーに隠れる。重なり順で競わせず、タブバーの高さぶん
-   底上げする。 */
+/* MapLibreの帰属表示（ライセンス上必須）は地図の下の隅に絶対配置され、スマホ幅では下部タブバーに
+   隠れる。重なり順で競わせず、タブバーの高さぶん底上げする。`.app-map-pane`は地図の外の同名の要素を
+   巻き込まないための限定子。 */
 @media (width < theme(--breakpoint-mobile)) {
   .app-map-pane .maplibregl-ctrl-bottom-left,
   .app-map-pane .maplibregl-ctrl-bottom-right {
@@ -358,11 +352,8 @@
   }
 }
 
-/* features/map/baseMap.tsがattributionControlを常時コンパクト（ⓘアイコン）固定にしているため、
-   既定の白背景円もアプリの他の浮動UI（現在地ボタン等）と揃うよう馴染ませる。
-   アイコン自体（.maplibregl-ctrl-attrib-buttonの背景画像）は地図の上に乗るため
-   常に視認できる白系のまま変えず、外側の背景色と影だけをトークンに合わせる
-   （ダークモードでアイコンごと暗くすると地図に埋もれて見えなくなる）。 */
+/* 畳んだ帰属表示を、ほかの浮動UIと揃えて外側の背景色と影だけトークンに合わせる。アイコン（背景画像）は
+   白系のまま変えない（ダークモードでアイコンごと暗くすると地図に埋もれる）。 */
 .app-map-pane .maplibregl-ctrl-attrib.maplibregl-compact,
 .app-map-pane .maplibregl-ctrl-attrib.maplibregl-compact-show {
   background-color: var(--color-surface);

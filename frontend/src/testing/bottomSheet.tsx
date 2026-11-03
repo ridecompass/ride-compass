@@ -13,20 +13,12 @@ export type BottomSheetProps = React.ComponentProps<typeof BottomSheet>;
 export const FLOOR = clampSheetHeightVh(0);
 export const CEILING = clampSheetHeightVh(100);
 
-export function sheetElement(
+function sheetElement(
   props: Partial<BottomSheetProps>,
   handlers: Pick<BottomSheetProps, "onClose" | "onHeightChoose">,
 ) {
   return (
-    <BottomSheet
-      open
-      title="ルート設定"
-      titleId="sheet-title"
-      headerAction={null}
-      chosenHeightVh={50}
-      {...handlers}
-      {...props}
-    >
+    <BottomSheet open title="ルート設定" headerAction={null} chosenHeightVh={50} {...handlers} {...props}>
       <p>中身</p>
     </BottomSheet>
   );

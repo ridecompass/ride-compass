@@ -7,6 +7,13 @@
     "tile_property": null
   },
   {
+    "material_id": "elevation_gain_m_per_km",
+    "label": "登りの量 - elevation_gain_m_per_km",
+    "name": "登りの量",
+    "value_labels": null,
+    "tile_property": null
+  },
+  {
     "material_id": "wind_drag_ratio",
     "label": "風の追加負荷(倍率) - wind_drag_ratio",
     "name": "風の追加負荷(倍率)",

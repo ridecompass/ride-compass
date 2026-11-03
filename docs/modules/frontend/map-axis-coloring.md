@@ -21,7 +21,7 @@
 | `features/map/layers/webMercatorTile.ts` | Web MercatorのXYZタイルと緯度経度の行き来（点のタイル座標・点を含むタイル（世界の端はタイルの番号の範囲へ寄せる）・タイルが覆う範囲）。backendと同じ式で、一致は表の組`region`で照らす。道路タイルの値を引くタイルと、気象庁のタイルの在否の判定（`jmaTileIndex.ts`）が同じ式を通る |
 | `lib/mapDisplay/mapColorLegend.ts` | 地図上の色分け凡例（`lib/mapDisplay/mapColorLegend.ts: MapColorLegendBand`型・`lib/mapDisplay/mapColorLegend.ts: buildRangeLegendBands`・`lib/mapDisplay/mapColorLegend.ts: rangeStepLabel`）の共通ロジックと、値が無い行（`lib/mapDisplay/mapColorLegend.ts: NO_DATA_LEGEND_BAND`）。凡例を作る関数（`features/map/view/lens.ts`）・道の属性の凡例（`features/map/scene/legends.ts`）と管理画面が使う |
 | `features/map/LensControl/LensControl.tsx` | レンズ（地図を何で塗るか）の唯一の入口。画面での名前は「評価で塗る」（見出し・読み上げ名。「レンズ」はコードの中の名前で、画面には出さない）。地図の上のピルが、道のりのグラフの「評価で塗る」の切り替えと同じ筆の絵（`lucideIcons.tsx: EvaluationPaintIcon`）と、選んでいる評価軸の名前と凡例の色の帯（段の数に依らない固定の幅）を示し、タップで縦の一覧（評価に使用中の軸を先、未使用の軸を後。各行に軸のアイコン・値が変わる走る条件のアイコン・「未使用」・(i) の説明）を開く。一覧は「表示」の一覧（`MapOverlayControls.tsx`）と同じ形と操作にそろえる——選んでも閉じず、選んでいる行をもう一度押すと外れ、選んでいる行の ▶ で凡例と色の前提（`view/lens.ts: lensPremises`）を開き、下に「ルート後も周囲の道路を薄く塗る」と「選択を外す」「絞り込みをすべて解除」（この一覧の凡例だけを戻す）を置く（選択肢・凡例は`features/map/view/useMapView.ts`が組み立て、`app/HomeMapPane.tsx`はそのまま渡す）。走行中も同じ大きさで出す |
-| `features/map/LensControl/LensRow.tsx` | 一覧の1行（`features/map/LensControl/LensRow.tsx: LensRow`）と選択肢の型（`features/map/LensControl/LensRow.tsx: LensOption`）。「表示」の一覧の行（`OverlayLayerRow.tsx: OverlayLayerRow`）と同じ形で、チェックの代わりに1つだけ選ぶ印を出し、(i) で説明を、▶（選んでいる行だけ）で凡例を行のすぐ下に開く |
+| `features/map/LensControl/LensRow.tsx` | 一覧の1行（`features/map/LensControl/LensRow.tsx: LensRow`）と選択肢の型（`features/map/LensControl/LensRow.tsx: LensOption`）。行の (i) と ▶ の開閉は「表示」の一覧の行と同じ部品（`features/map/LegendCheckboxList/LegendRow.tsx: useRowDescription`・`features/map/LegendCheckboxList/LegendRow.tsx: useRowPanel`）を使い、チェックの代わりに1つだけ選ぶ印を出し、(i) で説明を、▶（選んでいる行だけ）で凡例を行のすぐ下に開く |
 | `lib/lensLink.ts` | 走る条件のボタン（地図の向きの方位磁針・出発時刻・想定速度）に付ける、いまの周りの道の塗りがその条件で決まっている印（輪と読み上げ）。下記「周りの道の色が拠る走る条件」 |
 | `features/map/layers/mapLayers.ts` | `features/map/layers/mapLayers.ts: isAxisStudioLayer`（記述子の印で判定。地図上チップの一覧`overlayChips`が除くのに使う）・軸のレイヤーIDの導出（`features/map/layers/mapLayers.ts: dedicatedWayValueMapLayerId`） |
 | `features/map/MapView/MapView.tsx`（専用way値配信軸の箇所のみ） | 画面の状態を宣言の入力へ渡すだけの配線（下記「MapView.tsx側の配線」）。軸ごとの処理は持たない |
@@ -108,10 +108,11 @@ localStorageキーは`ridecompass:route-style-mode`。今のカタログに無�
 どの軸も、`signed_material`種の軸の材料は`material_values`へいつも載せる（backend側は
 `evaluation.py: displayed_material_ids`、[routing-engine.md](../backend/routing-engine.md)参照）。
 
-`map_paint.value.kind==="signed_material"`の場合、値は`axis_difficulties[axis_id]`ではなく
-`material_values`からbackendが名指す材料（軸カタログの`map_paint.value.material`。生材料、例: `gradient_percent`）を
-`["get", material, ["get", "material_values"]]`で直接読む——向き（登り/下り）は
-絶対値化されたdifficultyでは表現できないため。
+`map_paint.value.kind==="signed_material"`の場合、ルート線の値は`axis_difficulties[axis_id]`ではなく
+backendが名指す区間の欄（軸カタログの`map_paint.value.route_segment_field`）を直接読む——向き（登り/下り）は
+絶対値化されたdifficultyでは表現できないため。欄が`material_values`なら名指す材料（`map_paint.value.material`。生材料）の
+区間の平均を、勾配の軸は区間の続く坂の斜度（`sustained_gradient_percent`）を読む（区間の平均は区間の中の上りと下りが打ち消し合い、
+登って下る区間が平坦の色になる）。
 
 **タイルへ焼くのは材料タグ（生の属性）までで、重み・折れ点・段の色は実行時にブラウザの式へ
 組む。** 最終値をタイルへ焼くと、軸を1本調整するたびに全域のタイルを作り直すことになる。
@@ -155,8 +156,8 @@ localStorageキーは`ridecompass:route-style-mode`。今のカタログに無�
     補間する**。一本の補間だと0付近の段階が片方の端の色へ寄り、段階を細かくするほど隣と
     見分けられなくなる。上り側は難易度と同じ評価の配色を使う。境界がすべて正／すべて負／ちょうど0を含む場合も、この判定だけで
     決まる（片側が0段階になる）。この配色は「0が最も楽で、負側は正側と質が違う」ことを
-    前提にする——`signed_material`は「絶対値で評価すると宣言した軸」（backend
-    `domain/map_paint.py: map_paint`）なので、負側も同じだけ辛い軸が必要に
+    前提にする——`signed_material`は「進行方向で符号の変わる材料（勾配）の軸」（backend
+    `domain/map_paint.py: map_paint`）で、負側（下り）は正側（上り）と質が違うため、負側も同じだけ辛い軸が必要に
     なったら配色を足すのではなく種類を増やす側になる。
 
 ## 評価軸の線（`scene/groups/axisLines.ts`）
@@ -229,7 +230,7 @@ localStorageキーは`ridecompass:route-style-mode`。今のカタログに無�
 
 段の範囲を文字にするのは`mapColorLegend.ts: rangeStepLabel`だけ。**語は述語に合わせる**——
 境界の判定は`>= lower`・`< upper`のため、最上位帯は「以上」であって「超」ではない。
-- `routeStyleModes.ts: DIFFICULTY_MODE`（総合難易度）だけがフロントの固定モード——特定のaxis_idに紐づかず
+- 総合難易度（`routeStyleModes.ts: routeStyleModesFromCatalogAxes` が軸の後ろに足す）だけがフロントの固定モード——特定のaxis_idに紐づかず
   全軸の重み付き合成コストそのものを表示するため、軸スタジオと同期する対象にならない。
 - 既定のモード（`lib/mapDisplay/routeStyleModes.ts: LENS_DIFFICULTY_ID`）は総合難易度。
 - **候補は地図では選ばない**: 未選択候補の線（役割`candidateLine`、細い参考線）は当たり判定を

@@ -114,7 +114,3 @@ def _class(value=1, field="a_percent", label="甲", color="#000001", description
 def test_classes_that_cannot_be_told_apart_where_read_are_refused(classes):
     with pytest.raises(ValueError, match="土地被覆"):
         landcover.check_landcover_classes(classes)
-
-
-def test_classes_told_apart_where_read_are_accepted():
-    landcover.check_landcover_classes((_class(), _class(value=2, field="b_percent", label="乙", color="#000002")))

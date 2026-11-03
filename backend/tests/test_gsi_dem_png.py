@@ -46,4 +46,3 @@ def test_a_pixel_without_elevation_becomes_sea_level_not_a_cliff():
     meters = terrain_rgb_meters(gsi_dem_png_to_terrain_rgb(encode(Image.fromarray(rgb, mode="RGB"))))
 
     np.testing.assert_allclose(meters, [[0.0]], atol=1e-6)
-

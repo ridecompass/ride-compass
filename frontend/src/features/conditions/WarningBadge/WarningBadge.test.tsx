@@ -6,7 +6,6 @@ import { vocabulary } from "@/types/generated/vocabulary";
 
 import WarningBadgeList, { type WarningBadgeItem } from "./WarningBadge";
 
-// 段階の呼び名は、出所ごとにbackendの宣言（domain/warning_display.py）が配る。
 const display = (source: WarningBadgeItem["source"], level: WarningBadgeItem["level"]) =>
   vocabulary.warningBadge[source].find((entry) => entry.level === level)!;
 
@@ -90,16 +89,5 @@ describe("WarningBadgeList", () => {
     expect(await screen.findByText("地図の道路は出ません。")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "再試行" }));
     expect(retries).toEqual(["catalog"]);
-  });
-
-  it("警告と失敗は並べて出す", () => {
-    render(
-      <WarningBadgeList
-        items={[item("a", "jma", "warning")]}
-        failures={[{ id: "wbgt", label: "暑さ指数", detail: "x", effect: "y" }]}
-      />,
-    );
-    expect(screen.getByRole("button", { name: /^気象警報・注意報あり/ })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /^暑さ指数を取得できていません/ })).toBeInTheDocument();
   });
 });

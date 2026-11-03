@@ -1,7 +1,6 @@
 "use client";
 
 import palette from "@/types/generated/palette.json";
-import type React from "react";
 import type { ReactNode } from "react";
 import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
 import { axisIconFor } from "@/components/ui/icons/axisIconPalette";
@@ -57,8 +56,8 @@ export default function AxisContributionBar({
   renderDetail,
   extraChips,
 }: AxisContributionBarProps) {
-  if (!hasAnyContribution(axes, contributions)) return null;
   const rows = axes.filter((axis) => hasContribution(contributions, axis.axisId));
+  if (rows.length === 0) return null;
   const colorOf = (axisId: string) => axisColors[axisId] ?? FALLBACK_COLOR;
 
   return (

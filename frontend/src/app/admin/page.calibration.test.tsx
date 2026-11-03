@@ -106,9 +106,8 @@ beforeEach(() => {
 async function openSlopeOnMap() {
   const user = userEvent.setup();
   render(<AdminPage />);
-  // 較正の欄は軸の一覧が届く前から空のまま描かれるので、欄ではなく選ぶ軸の選択肢が出るのを待つ。
-  await screen.findByRole("option", { name: new RegExp(`^${SLOPE.label}`) });
-  await user.selectOptions(screen.getByRole("combobox", { name: "較正する軸" }), SLOPE.axis_id);
+  await user.click(await screen.findByRole("tab", { name: /^公開済み/ }));
+  await user.click(screen.getByRole("button", { name: new RegExp(`^${SLOPE.label}\\s*${SLOPE.axis_id}`) }));
   await screen.findByRole("region", { name: "下書きの点数の地図" });
   act(() => {
     mapOnScreen().emit("load");

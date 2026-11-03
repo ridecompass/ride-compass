@@ -37,7 +37,7 @@ from app.infrastructure import derived_data_meta, road_network_store
 from app.infrastructure.derived_data_freshness import declared_columns, derived_tables
 from app.infrastructure.road_graph_repository import NETWORK_TUNING, RoadGraphRepository
 from app.infrastructure.source_models import PARTY_TYPE_CODES, Source
-from tests.conftest import APP_TABLES_SQL, empty_ingested_tables, postgis_database_url, raw_connection
+from tests.conftest import APP_TABLES_SQL, empty_ingested_tables, override_tuning, postgis_database_url, raw_connection
 from tests.source_ingest import (
     abr_block_record,
     accident_record,
@@ -219,7 +219,7 @@ async def test_rebuilding_with_the_same_inputs_runs_no_stage_and_changes_nothing
 
 def _override(param: str, value: float):
     async def change(conn: asyncpg.Connection, monkeypatch, tmp_path: Path) -> None:
-        await conn.execute("INSERT INTO tuning_overrides (param_id, value) VALUES ($1, $2)", param, value)
+        await override_tuning(param, value)
     return change
 
 
@@ -340,7 +340,7 @@ async def test_changing_a_value_only_the_network_reads_rebuilds_the_network_with
     世代を進め、作り直しに使った値を記録に残す。配列は、同じ値で全部の段を流して作った配列と同じ。"""
     caplog.set_level(logging.INFO, logger="ridecompass.derive_cli")
     arrays, revision = _network_arrays(), await _revision(world)
-    await world.execute("INSERT INTO tuning_overrides (param_id, value) VALUES ($1, 100.0)", TURN_BEARING_DISTANCE_ID)
+    await override_tuning(TURN_BEARING_DISTANCE_ID, 100.0)
 
     assert await derive_cli.run(postgis_database_url()) == 0
     rebuilt = _network_arrays()

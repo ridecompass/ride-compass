@@ -53,6 +53,10 @@ export default function RideModeButton({
   if (status === "off" && choosing) setChoosing(false);
   const wakeLockUnavailable = screenWakeLock === "unavailable";
   const resting = status === "resting";
+  const choose = (action: () => void) => () => {
+    setChoosing(false);
+    action();
+  };
 
   return (
     <div className="relative flex">
@@ -88,10 +92,7 @@ export default function RideModeButton({
             <Button
               variant="primary"
               size="md"
-              onClick={() => {
-                setChoosing(false);
-                onResume();
-              }}
+              onClick={choose(onResume)}
               usage="現在地を受け直し、休む前の進み具合から案内を続けます。"
             >
               続きから走る
@@ -100,10 +101,7 @@ export default function RideModeButton({
             <Button
               variant="primary"
               size="md"
-              onClick={() => {
-                setChoosing(false);
-                onRest();
-              }}
+              onClick={choose(onRest)}
               usage="現在地を受けるのと画面を点けたままにするのをやめ、電池を守ります。ルートと進み具合は残り、読み込み直しても休んだまま戻ります。地図の下の「続きから走る」で続きから走れます。"
             >
               休む
@@ -111,10 +109,7 @@ export default function RideModeButton({
           )}
           <Button
             size="md"
-            onClick={() => {
-              setChoosing(false);
-              onPress();
-            }}
+            onClick={choose(onPress)}
             usage="走行モードを止めて、走る前の画面に戻します。進み具合は消え、続きからは走れません。"
           >
             案内を終える

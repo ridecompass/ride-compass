@@ -19,6 +19,7 @@ from app.api.routers import (
     material_catalog,
     place_search,
     region,
+    cost_axis_admin,
     road_class_admin,
     routes,
     tuning_admin,
@@ -37,6 +38,7 @@ api_router.include_router(gsi_tile.router)
 api_router.include_router(axis_admin.router)
 api_router.include_router(tuning_admin.router)
 api_router.include_router(road_class_admin.router)
+api_router.include_router(cost_axis_admin.router)
 api_router.include_router(axis_catalog.router)
 api_router.include_router(material_catalog.router)
 api_router.include_router(debug_admin.router)

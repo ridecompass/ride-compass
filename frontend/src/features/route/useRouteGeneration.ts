@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { debugLog } from "@/lib/debugLog";
 import { errorMessage } from "@/lib/apiError";
@@ -19,9 +19,10 @@ import type { Coordinates, RouteCandidate, RoutePreferenceWeights } from "@/type
 /** 押した「生成」の直近の結果。失敗は前の候補を残したまま出すため、候補0件の理由と分けて持つ。 */
 export type GenerationNotice = { kind: "failed" | "empty"; message: string };
 
-/** ルート生成の進み方。同時に成り立つのは1つだけ。 */
+/** ルート生成の進み方。同時に成り立つのは1つだけ。実行中は押した時刻（`performance.now()`）を持つ。 */
 type Generation =
-  { status: "idle"; notice: GenerationNotice | null } | { status: "running"; progress: GenerationProgress | null };
+  | { status: "idle"; notice: GenerationNotice | null }
+  | { status: "running"; progress: GenerationProgress | null; startedAt: number };
 const GENERATION_IDLE: Generation = { status: "idle", notice: null };
 
 /** 表示中の候補を作ったときの条件。 */
@@ -71,6 +72,15 @@ export function useRouteGeneration({
   // 実行中は順番待ちか実行中かと経過時間をボタンへ出し、終わった後は直近の案内を「ルート結果」欄に残す。
   const [generation, setGeneration] = useState<Generation>(GENERATION_IDLE);
   const [generatedConditions, setGeneratedConditions] = useState<GeneratedConditions | null>(null);
+  // 経過時間は問い合わせの応答に依らず、画面の時計で1秒ごとに数える
+  // （docs/modules/frontend/route-settings-and-results.md「生成を待つ時間・投げる回数の根拠」）。
+  const [now, setNow] = useState(() => performance.now());
+  const runningSince = generation.status === "running" ? generation.startedAt : null;
+  useEffect(() => {
+    if (runningSince === null) return;
+    const timer = window.setInterval(() => setNow(performance.now()), SECOND_MS);
+    return () => window.clearInterval(timer);
+  }, [runningSince]);
 
   // 目的地は周回の間を外した値（覚えている目的地は送らない）。
   const { routePreferenceToSend, destination } = conditions;
@@ -96,7 +106,9 @@ export function useRouteGeneration({
     generationConditionsKey(buildCurrentGenerationInput()) !== generatedConditions.key;
 
   async function generate() {
-    setGeneration({ status: "running", progress: null });
+    const startedAt = performance.now();
+    setNow(startedAt);
+    setGeneration({ status: "running", progress: null, startedAt });
     let notice: GenerationNotice | null = null;
     try {
       const generationInput = buildCurrentGenerationInput();
@@ -105,7 +117,7 @@ export function useRouteGeneration({
         conditions: used,
         noCandidatesReason,
       } = await generateRoutes(buildGenerateRequest(generationInput), (progress) =>
-        setGeneration({ status: "running", progress }),
+        setGeneration({ status: "running", progress, startedAt }),
       );
       // backendが目的地を補正したら、地図のピンも実際に使われた地点へ合わせる。待つ間に置き直したピンは、利用者が
       // 次に使う地点なので動かさない（送った目的地のままのときだけ書き換える）。
@@ -170,7 +182,7 @@ export function useRouteGeneration({
   }, [clearNotice]);
 
   const running = generation.status === "running";
-  const progress = generation.status === "running" ? generation.progress : null;
+  const queued = generation.status === "running" && generation.progress?.status === "queued";
   // 入力の誤りは生成の前に止まるので、直前の生成の結果より先に出す。
   const outcome: GenerationNotice | null = routeFormSubmit.error
     ? { kind: "failed", message: routeFormSubmit.error }
@@ -181,13 +193,13 @@ export function useRouteGeneration({
   return {
     submit,
     running,
-    /** 実行中の進み方の文言（進み方がまだ届いていなければundefined）。 */
+    /** 実行中の進み方の文言（押してからの経過秒。実行中でなければundefined）。 */
     progressLabel:
-      progress?.status === "queued"
-        ? "順番待ち..."
-        : progress?.status === "running"
-          ? `生成中...(${Math.round(progress.elapsedMs / SECOND_MS)}秒経過)`
-          : undefined,
+      runningSince === null
+        ? undefined
+        : queued
+          ? "順番待ち..."
+          : `生成中...(${Math.round((now - runningSince) / SECOND_MS)}秒経過)`,
     /** 押した「生成」の直近の案内（候補0件の理由・入力の誤りか失敗）。候補が出たとき・実行中・まだ押していないときはnull。 */
     outcome,
     conditionsDirty,

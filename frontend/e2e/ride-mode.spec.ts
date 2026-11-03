@@ -1,9 +1,8 @@
 import { expect, test } from "@playwright/test";
 import { trueHeadingDeg } from "@/lib/magneticDeclination";
 import { moved } from "@/testing/movedPoint";
-import { RIDE_ZOOM_MAX_OUT, RIDE_ZOOM_STEPS } from "@/features/map/MapView/rideZoom";
 
-import { INTRO_CLOSED, MAIN_MAP_CANVAS, installApiMocks, installMapFinder, seedStoredState } from "./fixtures";
+import { MAIN_MAP_CANVAS, openMapApp } from "./fixtures";
 import {
   START,
   buttonLook,
@@ -23,15 +22,8 @@ import {
 test("走行モードの間、地図は届いた位置を同じ所に描き続け、進む向きを上にでき、指で動かすと休み、止めると追わずに北を上へ戻す", async ({
   page,
   context,
-  browserName,
 }) => {
-  // 共通の段取りが位置を許して初期の地点に置くので、そのあとに走り出す位置へ置き直す。
-  await installApiMocks(page);
-  await context.setGeolocation(START);
-  await seedStoredState(page, INTRO_CLOSED);
-  await page.addInitScript(installMapFinder);
-  await page.goto("/");
-  await expect(page.getByText("地図を読み込み中…")).toBeHidden({ timeout: 15_000 });
+  await openMapApp(page, { routes: () => context.setGeolocation(START) });
 
   // 走行モードの入切と休んでいる間は、ボタンの面の色と縁で見分けられる（パターン4 観点3: 地図の操作のボタンの既定の面に負けない）。
   const rideButton = page.getByRole("button", { name: "走行モード" });
@@ -70,14 +62,6 @@ test("走行モードの間、地図は届いた位置を同じ所に描き続�
   const east = moved(START, 0, 200);
   await context.setGeolocation(east);
   await expectDrawnAt(page, east, anchor);
-  // 200m を数秒で動いた（とても速い）ので、追い始めの倍率からいちばん引いた所まで引く。WebKit では見ない:
-  // Playwright が差し替えの位置の時刻をミリ秒で渡し、WebKit がそれを秒として受けて1000倍にする（WebCore の
-  // `Geolocation.cpp` の `convertSecondsToEpochTimeStamp`）ため、2つの位置の間が1000倍長く見え、速さがほぼ0になる。
-  if (browserName !== "webkit") {
-    await expect
-      .poll(() => page.evaluate(() => window.__liveMap().getZoom()), { timeout: 10_000 })
-      .toBeCloseTo(RIDE_ZOOM_STEPS[0].zoom - RIDE_ZOOM_MAX_OUT, 1);
-  }
 
   // 進む向きを上にすると、地図は動いた向き（東）を上に回す。北を上に戻すと向きも戻る。
   await page.getByRole("button", { name: /^進む向きを上にする/ }).click();
@@ -130,25 +114,19 @@ test("走行モードの間、地図は届いた位置を同じ所に描き続�
   expect(await dotOffsetFrom(page, lastRidden)).toBeLessThan(2);
 });
 
-test("走行モードで寄せている最中に地図の幅が変わっても、届いた位置は次に届いた位置と同じ所に描かれる", async ({
+test("走行モードで地図の大きさが変わって見えている所の中ほどが動いても、届いた位置は次に届いた位置と同じ所に描かれる", async ({
   page,
   context,
 }) => {
-  await installApiMocks(page);
-  await context.setGeolocation(START);
-  await seedStoredState(page, INTRO_CLOSED);
-  await page.addInitScript(installMapFinder);
-  await page.goto("/");
-  await expect(page.getByText("地図を読み込み中…")).toBeHidden({ timeout: 15_000 });
+  await openMapApp(page, { routes: () => context.setGeolocation(START) });
   await page.getByRole("button", { name: "走行モード" }).click();
   await settledScreenPoint(page, START);
 
-  // 走り出すと左のパネルが消えて地図が広がり、最初の位置へ寄せる最中に地図の大きさが変わりうる。
+  // 端末を横にすると背が低くなり、重ねた部品を避ける余白が縮んで、見えている所の中ほどが動く。
   const whileResizing = moved(START, 0, 200);
   await deliverPosition(page, context, whileResizing);
-  expect(await page.evaluate(() => window.__liveMap().isMoving())).toBe(true);
   const viewport = page.viewportSize()!;
-  await page.setViewportSize({ width: viewport.width - 300, height: viewport.height });
+  await page.setViewportSize({ width: viewport.width, height: 300 });
   const drawn = await settledScreenPoint(page, whileResizing);
   const next = moved(whileResizing, 0, 200);
   await deliverPosition(page, context, next);

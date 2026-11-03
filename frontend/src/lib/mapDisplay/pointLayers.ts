@@ -12,9 +12,7 @@ export function isPointTileLayer(name: string | null): name is PointTileLayer {
   return name !== null && Object.hasOwn(regionTileConfig.point_layers, name);
 }
 
-/** 点で描くもの。**源泉が「点の幾何を持ち、表示の定義がある」と言ったものが出る。**
- * 軸・束ね方・行の名前・色・どのタイルに載るかは、すべて源泉が決める。点の属性の`tile_kind`が配信される
- * 点のタイルを指すことは、backendのテスト（`test_point_tile_layers.py`）が確かめる。 */
+/** 点で描くもの。源泉が点の幾何と表示の定義を持つと言ったものが出る。 */
 export const POINT_LAYERS = primaryAttributes.filter(
   (attr): attr is typeof attr & { tile_kind: PointTileLayer } =>
     attr.geometry === "point" && attr.display_axes.length > 0 && isPointTileLayer(attr.tile_kind),
@@ -23,8 +21,7 @@ export const POINT_LAYERS = primaryAttributes.filter(
 export type PointLayer = (typeof POINT_LAYERS)[number];
 export type PointAxis = PointLayer["display_axes"][number];
 
-/** 点の値が入る軸の行。宣言に無い値ならundefined。地図の式（`features/map/scene/groups/points.ts: pointGroup`）と同じく、
- * 値を行の値の並びと比べる。 */
+/** 点の値が入る軸の行（値を行の値の並びと比べる）。宣言に無い値ならundefined。 */
 export function pointCategoryOf(
   axis: PointAxis,
   properties: Readonly<Record<string, unknown>>,

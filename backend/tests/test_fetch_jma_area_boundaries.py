@@ -55,25 +55,18 @@ DISTRIBUTED = [
 ]
 
 
-async def test_fetches_and_places_the_boundaries_of_each_area(boundary_path, respx_mock):
-    respx_mock.get(jma_area_boundaries.SOURCE_URL).respond(content=_archive(DISTRIBUTED))
-
-    assert fetch_jma_area_boundaries.main() == 0
-
-    assert await jma_area_boundaries.find_class20_code(35.05, 139.05) == "0000010"
-    assert await jma_area_boundaries.find_class20_code(35.05, 139.55) == "0000020"
-    assert await jma_area_boundaries.find_class20_code(35.05, 140.05) == "0000020"
-    assert await jma_area_boundaries.find_class20_code(43.05, 145.05) is None
-
-
-def test_other_versions_and_the_archive_are_removed_after_placing(boundary_path, respx_mock):
+async def test_fetches_and_places_the_boundaries_of_each_area_and_removes_the_rest(boundary_path, respx_mock):
     respx_mock.get(jma_area_boundaries.SOURCE_URL).respond(content=_archive(DISTRIBUTED))
     boundary_path.parent.mkdir(parents=True)
     (boundary_path.parent / "older.json").write_text("{}", encoding="utf-8")
 
-    fetch_jma_area_boundaries.main()
+    assert fetch_jma_area_boundaries.main() == 0
 
     assert list(boundary_path.parent.iterdir()) == [boundary_path]
+    assert await jma_area_boundaries.find_class20_code(35.05, 139.05) == "0000010"
+    assert await jma_area_boundaries.find_class20_code(35.05, 139.55) == "0000020"
+    assert await jma_area_boundaries.find_class20_code(35.05, 140.05) == "0000020"
+    assert await jma_area_boundaries.find_class20_code(43.05, 145.05) is None
 
 
 def test_present_version_is_not_fetched_again_but_other_versions_are_removed(boundary_path, respx_mock):

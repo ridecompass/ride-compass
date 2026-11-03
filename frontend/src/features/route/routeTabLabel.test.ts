@@ -1,7 +1,7 @@
 // @vitest-environment node
 /**
  * `features/route/routeTabLabel.ts`——「ルート結果」の一覧の並び・群・名前と、基準線との差の表記。
- * - `routeListEntries`: 最速の印の1本・残りの生成候補（1からの番号。経由地を通る1本は名前）・合成で作ったルート
+ * - `routeListEntries`: 最速の印の1本・残りの生成候補（1からの番号）・合成で作ったルート
  *   （「合成N」）の順に、群を付けて置く
  * - `durationBaseline`: 最速の印の1本があればそれ、無ければ2件以上のうち所要時間が最も短い候補（同着は先の方）
  * - `durationDifferenceLabel`: 基準線との差を丸めて1分以上なら「+N分」・「−N分」で書く

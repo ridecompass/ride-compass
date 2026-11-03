@@ -144,19 +144,13 @@ describe("LensControl", () => {
     expect(screen.queryByRole("button", { name: "usedの軸の凡例" })).not.toBeInTheDocument();
   });
 
-  it.each([
-    [[], ["step-0", "step-1"]],
-    [["step-0"], []],
-  ])(
-    "凡例の見出しのチェックは、全部表示中（隠している段: %j）なら全段を隠し、一部でも隠していれば全段を戻す",
-    async (hidden, next) => {
-      const { onSetHiddenLegendKeys } = renderLens({ hiddenLegendKeys: hidden });
-      await open();
-      await userEvent.click(screen.getByRole("button", { name: "usedの軸の凡例" }));
-      await userEvent.click(screen.getByRole("checkbox", { name: "凡例の全段階をまとめて表示/非表示" }));
-      expect(onSetHiddenLegendKeys).toHaveBeenCalledWith(next);
-    },
-  );
+  it("凡例の見出しのチェックで、全段をまとめて隠す", async () => {
+    const { onSetHiddenLegendKeys } = renderLens({ hiddenLegendKeys: [] });
+    await open();
+    await userEvent.click(screen.getByRole("button", { name: "usedの軸の凡例" }));
+    await userEvent.click(screen.getByRole("checkbox", { name: "凡例の全段階をまとめて表示/非表示" }));
+    expect(onSetHiddenLegendKeys).toHaveBeenCalledWith(["step-0", "step-1"]);
+  });
 
   it.each([
     [[], false],

@@ -98,7 +98,12 @@ export default function HomeMapPane({
   const overview =
     viewport !== null &&
     overviewShown({ weatherShown: anyWeatherShown(mapView.look.dynamicWeather), zoom: viewport.zoom, sheetOpen }) ? (
-      <MapOverview viewport={viewport} dynamicWeather={mapView.look.dynamicWeather} paneRef={paneRef} />
+      <MapOverview
+        viewport={viewport}
+        dynamicWeather={mapView.look.dynamicWeather}
+        theme={mapView.look.mapTheme}
+        paneRef={paneRef}
+      />
     ) : null;
 
   return (

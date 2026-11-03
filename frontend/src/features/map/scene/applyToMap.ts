@@ -21,7 +21,14 @@ import type {
   DynamicWeatherLayerId,
   DynamicWeatherRenderPayload,
 } from "@/features/map/layers/dynamicWeather";
-import { areaLayerAnchor, hideBasemapPois, prepareBasemap, runWhenStyleReady } from "@/features/map/layers/mapStyleOps";
+import { semanticColorsOn, type MapTheme } from "@/lib/mapTheme";
+import {
+  areaLayerAnchor,
+  hideBasemapPois,
+  prepareBasemap,
+  runWhenStyleReady,
+  themeBasemap,
+} from "@/features/map/layers/mapStyleOps";
 import { axisMapLayerIds } from "@/features/map/layers/mapLayers";
 import type { LensId, RouteStyleMode } from "@/lib/mapDisplay/routeStyleModes";
 import type { RoadMapLayerView, RouteCandidate, SelectedRouteSegment } from "@/types/route";
@@ -78,6 +85,8 @@ export interface SceneLook {
   /** 道の値の式が読む走る条件。 */
   readonly wayConditions: WayConditions;
   readonly hiddenLegendKeys: HiddenLegendKeys;
+  /** 地図の地の明るさ。 */
+  readonly mapTheme: MapTheme;
 }
 
 /** 地図に載るもの全部の入力。**実行時にしか決まらない値だけ**をここで集める。**sceneの側で宣言する**——上位の画面部品のpropsから借りると、
@@ -139,6 +148,7 @@ function routeStateFrom(props: SceneWiringProps): RouteState {
         difficulty: segment.difficulty,
         axis_difficulties: segment.axis_difficulties,
         material_values: segment.material_values,
+        sustained_gradient_percent: segment.sustained_gradient_percent,
       };
       const travelled = { ...properties, travelled: true };
       const km = props.travelledKm;
@@ -162,6 +172,7 @@ function routeStateFrom(props: SceneWiringProps): RouteState {
     })),
     composite: composite !== null && composite.length > 1 ? { path: composite } : null,
     selectedSection: pickedSegment === null ? null : segmentPath(pickedSegment),
+    semantic: semanticColorsOn(look.mapTheme),
   };
 }
 
@@ -261,10 +272,17 @@ export function sceneInputsFrom(props: SceneWiringProps): SceneInputs {
 /** 地図へ当てた宣言を地図ごとに覚える。スタイルを差し替えた後は `reset` で作り直す。 */
 const appliedScene = new WeakMap<MapLibreMap, MapScene>();
 
-export function applyScene(map: MapLibreMap, scene: MapScene, options: { reset?: boolean } = {}) {
+/** `basemapTheme`は基礎地図の地の明るさ（省けば明るい地図）。スタイルを差し替えると基礎地図は明るい地図へ戻るので、暗い地図を
+ * 出す地図は当てるたびに渡す。 */
+export function applyScene(
+  map: MapLibreMap,
+  scene: MapScene,
+  options: { readonly basemapTheme?: MapTheme; readonly reset?: boolean } = {},
+) {
   runWhenStyleReady(map, () => {
     prepareBasemap(map);
     hideBasemapPois(map, hiddenBasemapPois(scene));
+    themeBasemap(map, options.basemapTheme ?? "light");
     applyMapScene(map, {
       scene,
       previous: options.reset === true ? EMPTY_MAP_SCENE : (appliedScene.get(map) ?? EMPTY_MAP_SCENE),

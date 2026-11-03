@@ -13,7 +13,7 @@ import type { RouteStretch } from "@/lib/routeDistance";
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import type { RoadMapLayerView, RouteSegmentDetail } from "@/types/route";
 
-type LayerSegment = Pick<RouteSegmentDetail, "elevations" | "road_classes">;
+type LayerSegment = Pick<RouteSegmentDetail, "elevations" | "sustained_gradient_percent" | "road_classes">;
 type RoadClassValue = RouteSegmentDetail["road_classes"][string][number]["value"];
 
 type LineStretch = { readonly distance_km: number; readonly start: number | null; readonly end: number | null };
@@ -26,6 +26,8 @@ export type LineLayer = {
     readonly unit: string;
     /** 区間の中の道ごとの、道の距離と始まり・終わりの値（無ければnull）を通る順に。 */
     readonly stretches: (segment: LayerSegment) => readonly LineStretch[];
+    /** 区間の続く坂の斜度（%、走る向きの符号つき。登りがあれば登りの最大、無ければ下りの最大）。無ければnull。 */
+    readonly sustainedGrade: (segment: LayerSegment) => number | null;
   };
 };
 
@@ -76,6 +78,7 @@ const ELEVATION_LAYER: LineLayer = {
         start: stretch.start_elevation_m,
         end: stretch.end_elevation_m,
       })),
+    sustainedGrade: (segment) => segment.sustained_gradient_percent,
   },
 };
 
@@ -174,23 +177,19 @@ export function layerValueAtKm(
   return start === null || end === null ? null : start + (end - start) * hit.fraction;
 }
 
-/** 区間の勾配（%）。平均は値のある道の上り下りの和を道の長さの和で割り、最大は上りの道のうち一番きつい道の勾配（上りが無ければ
- * null）。値のある道が無ければnull。 */
+/** 区間の勾配（%）。平均は値のある道の上り下りの和を道の長さの和で割り、最大は区間の続く坂の斜度。値のある道が無ければnull。 */
 export function segmentGrades(
   segment: LayerSegment,
   layer: LineLayer,
-): { mean: number; steepestClimb: number | null } | null {
+): { mean: number; sustained: number | null } | null {
   let rise = 0;
   let meters = 0;
-  let steepestClimb: number | null = null;
   for (const { distance_km, start, end } of layer.draw.stretches(segment)) {
     if (start === null || end === null || distance_km <= 0) continue;
-    const grade = ((end - start) / (distance_km * 1000)) * 100;
     rise += end - start;
     meters += distance_km * 1000;
-    if (grade > 0 && (steepestClimb === null || grade > steepestClimb)) steepestClimb = grade;
   }
-  return meters === 0 ? null : { mean: (rise / meters) * 100, steepestClimb };
+  return meters === 0 ? null : { mean: (rise / meters) * 100, sustained: layer.draw.sustainedGrade(segment) };
 }
 
 export type BandPiece = { readonly startKm: number; readonly endKm: number; readonly row: RoadTrackRow };

@@ -9,6 +9,7 @@ import { completeTileVersions, type TileVersions } from "@/features/map/regionAp
 import { buildMapLayers, NO_AXES, type MapLayerDescriptor } from "@/features/map/layers/mapLayers";
 import { catalogAxisFromEntry, type CatalogAxis } from "@/lib/catalogAxis";
 import type { AxisCatalogResponse, RoadMapLayerView } from "@/types/route";
+import type { MapTheme } from "@/lib/mapTheme";
 
 export interface MapAxisCatalog {
   /** 公開中の軸（共有の軸カタログと同じ導出）。地図の説明文が評価の名前を差し込み、レンズが選択肢を作る。 */
@@ -39,17 +40,24 @@ export const EMPTY_MAP_AXIS_CATALOG: MapAxisCatalog = {
   layers: buildMapLayers(NO_AXES),
 };
 
-export function mapAxisCatalogFromResponse(response: AxisCatalogResponse): MapAxisCatalog {
+/** `theme`は塗る地図の地の明るさ（省けば明るい地図）。地図に塗る色（評価の段・道の区分）はこの地の上の色へ解いて持つ。 */
+export function mapAxisCatalogFromResponse(response: AxisCatalogResponse, theme: MapTheme = "light"): MapAxisCatalog {
   const layerAxes = {
     axes: response.axes.map(catalogAxisFromEntry),
-    dedicatedAxes: dedicatedWayValueAxesFromCatalogAxes(response.axes),
+    dedicatedAxes: dedicatedWayValueAxesFromCatalogAxes(response.axes, theme),
     accidentYears: response.accident_years,
     clientTuning: response.client_tuning,
-    roadLayers: response.road_classes.map_layers,
+    roadLayers:
+      theme === "dark"
+        ? response.road_classes.map_layers.map((layer) => ({
+            ...layer,
+            classes: layer.classes.map((roadClass) => ({ ...roadClass, color: roadClass.color_on_dark })),
+          }))
+        : response.road_classes.map_layers,
   };
   return {
     ...layerAxes,
-    routeStyleModes: routeStyleModesFromCatalogAxes(response.axes),
+    routeStyleModes: routeStyleModesFromCatalogAxes(response.axes, theme),
     tileVersions: completeTileVersions(response.tile_versions),
     layers: buildMapLayers(layerAxes),
   };

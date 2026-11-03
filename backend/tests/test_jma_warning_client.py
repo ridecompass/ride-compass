@@ -2,11 +2,11 @@
 
 入口は`fetch_area_data`・`fetch_warning_documents`の2つで、気象庁の代役（respx）へ本物の`httpx.AsyncClient`を
 向けて呼ぶ。見るのは、返る値（`AreaMaster`・`WarningBulletin`。種別はコードを名称へ、状態を発表中かへ読み替えて
-持つ）と、取得に失敗したときのNone、プロセス内キャッシュで上流を引き直さないこと（電文は府県予報区ごと）。
+持つ）と、取得に失敗したときのNone、電文のキャッシュを府県予報区ごとに持つこと。
 コード表`WARNING_KINDS`（配信元の資料の写し）は差し替えず、期待する名称は配信元の資料の別表3から引く。
 
 ここで見ないもの:
-- キャッシュの骨格（失敗をキャッシュしない・ログの`fields`）→ `test_simple_api_client.py`
+- キャッシュの骨格（キャッシュ中は上流を引き直さない・失敗をキャッシュしない・ログの`fields`）→ `test_simple_api_client.py`
 - 地域マスタを辿って警報エリアを解く → `test_jma_area.py`
 - 電文から区域の種別を引く・発表中の警報の抽出 → `test_jma_warning_domain.py`
 - 地点から警報を返すまでの通し → `test_warning_service.py`
@@ -66,19 +66,6 @@ async def test_area_master_tolerates_missing_or_malformed_sections(caplog):
         class10s={},
     )
     assert "unreadable=1 entries=3" in caplog.text
-
-
-async def test_area_master_is_fetched_once_while_cached():
-    router = respx.Router()
-    route = router.get(jma_warning_client.JMA_AREA_JSON_URL).respond(json={"class20s": {}})
-    client = client_for(router)
-
-    cache = new_area_data_cache()
-
-    await jma_warning_client.fetch_area_data(client, cache)
-    await jma_warning_client.fetch_area_data(client, cache)
-
-    assert route.call_count == 1
 
 
 @pytest.mark.parametrize(

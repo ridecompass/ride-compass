@@ -1,15 +1,17 @@
 """ルート生成を公開の入口から確かめるテストが共有する、小さな道路網とその渡し口。
 
-3×3の格子（1辺約1km。長さの要るテストには大きな格子・任意の道と地点の道路網も）を`RoadNetwork`で組み、プロセス境界（DB・道路網の置き場・天気の予報ファイル）だけを代役にして、
+3×3の格子（1辺約1km。長さの要るテストには大きな格子・任意の道と地点の道路網も）を`RoadNetwork`で組み、プロセス境界（DB・天気の予報ファイル）だけを代役にし、道路網は本番と同じ置き場（一時ディレクトリ）から読ませて、
 本物の`GraphService`・エンジンの組み立て（`services/route_generation_setup.py: assemble_route_generation_setup`）・戦略層を通す。
 
 使う側: `test_route_generation_behavior.py`（戦略層の入口）・`test_routes_generate.py`（HTTPの入口）・
 `test_routing.py`（生成の経路がPythonから呼ぶJIT）・`test_route_generator.py`（経由地の無い周回の指定だけ）。
 """
 
-from collections.abc import Callable
+import itertools
+import shutil
 from contextlib import contextmanager
 from dataclasses import replace
+from pathlib import Path
 
 import numpy as np
 
@@ -24,12 +26,12 @@ from app.domain.road_network import RoadNetwork
 from app.domain.route import Coordinates
 from app.domain.route_preference import RoutePreference
 from app.domain.route_request import FixedPoints, RequestedConditions
-from app.domain.tuning import TUNING_VALUES
 from app.domain.wind import WindForecastSeries
 from app.infrastructure import road_network_store
 from app.services.graph_service import GraphService, SearchMemory
 from app.services.weather_service import WeatherService
 from tests.axis_system_fixture import axis_definition, replaced_axis_definitions
+from tests.profile_fixture import two_point_profiles
 
 #: 道の区分の条件と0次ハードフィルタが読む事実の列。
 HIGHWAY, TUNNEL = "highway", "has_tunnel"
@@ -140,6 +142,13 @@ def road_network(
         start_elevation[way_of_row == way] = np.where(forward[way_of_row == way], start_m, end_m)
         end_elevation[way_of_row == way] = np.where(forward[way_of_row == way], end_m, start_m)
     climb = end_elevation - start_elevation
+    distance_m = np.array([haversine_distance_km(a, b) * 1000 for a, b in points])
+    # 道は一様な坂なので、一番急な勾配は平均の勾配そのもの。
+    grade = climb / distance_m * 100
+    # 断面は両端の2点。標高のある道はその標高、ほかは勾配の材料どおりに0mから登る（勾配の値の無い道は点を持たない）。
+    known = ~np.isnan(start_elevation)
+    profile_start = np.where(known, start_elevation, np.where(np.isnan(gradient), np.nan, 0.0))
+    profile_end = np.where(known, end_elevation, gradient / 100 * distance_m)
     return RoadNetwork(
         revision=1,
         node_osm_id=node_ids, node_lat=lat, node_lon=lon,
@@ -165,11 +174,13 @@ def road_network(
         categorical_ids=(HIGHWAY,),
         categorical_codes=np.where(np.isin(way_of_row, list(motorway_ways)), 2, 1).astype(np.int16)[:, None],
         categorical_vocab=((None, "residential", "motorway"),),
-        distance_m=np.array([haversine_distance_km(a, b) * 1000 for a, b in points]),
+        distance_m=distance_m,
         bearing_deg=np.array([bearing_between(a, b) for a, b in points]),
         mid_lat=(lat[tail] + lat[head]) / 2, mid_lon=(lon[tail] + lon[head]) / 2,
         start_elevation_m=start_elevation, end_elevation_m=end_elevation,
         elevation_gain_m=np.maximum(climb, 0.0), elevation_loss_m=np.maximum(-climb, 0.0),
+        steepest_gain_percent=np.maximum(grade, 0.0), steepest_loss_percent=np.maximum(-grade, 0.0),
+        **two_point_profiles(profile_start, profile_end, forward),
     )
 
 
@@ -213,19 +224,25 @@ class Weather:
         return await self._rain.get_station_rain_materials(now)
 
 
-def serve_road_network(monkeypatch, current: Callable[[], RoadNetwork]) -> None:
-    """道路網全体の配列を置き場から読まず、`current`が返すものとして読ませる（`road_network_store.current`の差し替え）。"""
-    monkeypatch.setattr(road_network_store, "current", current)
+#: 置くたびに進める道路網の世代。置き場は世代で見分けるので、中身を変えて置くたびに世代を変える。
+_REVISIONS = itertools.count(1)
+
+
+def serve_road_network(root: Path, network: RoadNetwork | None) -> None:
+    """道路網全体の配列を、本番と同じ置き場（`road_network_store.save`）へ新しい世代として置く。`root`は
+    `conftest.py: road_network_root`の置き場。`network`がNoneなら置き場を空にする（道路網が無い本番の状態）。"""
+    if network is None:
+        shutil.rmtree(root, ignore_errors=True)
+    else:
+        road_network_store.save(replace(network, revision=next(_REVISIONS)))
 
 
 def generator_for(
-    monkeypatch, network: RoadNetwork, avoid_weight: float, wind: WindForecastSeries | None,
+    root: Path, network: RoadNetwork, avoid_weight: float, wind: WindForecastSeries | None,
     *, assumed_speed_kmh: float = 20.0, road_avoidance: dict[str, AvoidanceLevel] | None = None,
 ):
-    """道路網を全体の配列として読ませ、本物の`GraphService`とエンジンの上に戦略層（`RouteGenerator`）を組む。
-    主観と時間の換算レートは1（難易度100の道が体感で2倍の時間）にする。"""
-    serve_road_network(monkeypatch, lambda: network)
-    monkeypatch.setitem(TUNING_VALUES, "evaluation.penalty_strength", 1.0)
+    """道路網を全体の配列として置き場へ置き、本物の`GraphService`とエンジンの上に戦略層（`RouteGenerator`）を組む。"""
+    serve_road_network(root, network)
     return assemble_route_generation_setup(
         GraphService(NetworkRepository(network), SearchMemory()), Weather(wind),
         RequestedConditions(

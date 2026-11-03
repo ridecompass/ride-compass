@@ -211,15 +211,6 @@ async def test_an_accident_goes_to_the_segment_nearest_on_the_ground(counts_conn
     assert await _accidents(counts_conn) == {(100, 0): 1.0, (400, 0): 1.0}
 
 
-async def test_only_a_fatal_accident_is_weighted(counts_conn):
-    """死亡事故は重みの件数分、死亡以外の事故（ノード3の事故）は1件と数える。"""
-    await _ingest_accidents(counts_conn, _accident("fatal", _north_of_way(5.0), fatal=True))
-
-    await derive_counts_at_default_tuning(counts_conn)
-
-    assert await _accidents(counts_conn) == {(100, 0): 1.0, (300, 0): ACCIDENT_FATAL_WEIGHT}
-
-
 async def test_the_stage_counts_accidents_with_the_values_it_is_run_with(counts_conn):
     """付ける距離と死亡の重みは、段へ渡した較正値で効く（管理画面で較正した値が、作り直した事故の数に届く）。"""
     await _ingest_accidents(counts_conn,

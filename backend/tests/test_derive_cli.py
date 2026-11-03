@@ -22,7 +22,7 @@ from app.infrastructure import road_network_store
 from app.infrastructure.derived_data_freshness import derived_tables
 from app.infrastructure.road_graph_repository import RoadGraphRepository
 from app.infrastructure.source_models import PARTY_TYPE_CODES
-from tests.conftest import empty_ingested_tables, postgis_database_url, raw_connection
+from tests.conftest import empty_ingested_tables, override_tuning, postgis_database_url, raw_connection
 from tests.source_ingest import (
     abr_prefecture_record,
     accident_record,
@@ -218,8 +218,7 @@ async def test_the_signal_radius_set_on_the_admin_screen_decides_which_nodes_get
     assert await derive_cli.run(postgis_database_url()) == 0
     assert await _nodes_with_signal(derived_before) == {2}
 
-    await derived_before.execute(
-        "INSERT INTO tuning_overrides (param_id, value) VALUES ($1, 150.0)", SIGNAL_RADIUS)
+    await override_tuning(SIGNAL_RADIUS, 150.0)
     try:
         assert await derive_cli.run(postgis_database_url()) == 0
     finally:

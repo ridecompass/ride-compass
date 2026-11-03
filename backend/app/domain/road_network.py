@@ -24,6 +24,7 @@ from app.domain.attributes import (
     ElevationAttribute,
     MaterialColumn,
 )
+from app.domain.elevation_profile import ElevationProfiles, GradeDistribution
 from app.domain.geo import LatLonPoint
 from app.domain.rain import NearestRainStations
 from app.domain.material_catalog import GRADIENT_PERCENT, materials_of_source
@@ -75,6 +76,16 @@ class RoadNetwork:
     end_elevation_m: np.ndarray  # float64, NaN=標高が無い
     elevation_gain_m: np.ndarray  # float64, NaN=欠損
     elevation_loss_m: np.ndarray
+    steepest_gain_percent: np.ndarray  # float64, NaN=欠損
+    steepest_loss_percent: np.ndarray
+    # 断面の点（`domain/elevation_profile.py`）。区間の行ごとに、全区間の点を順方向に並べてつないだ`profile_elevation_m`の中の
+    # 始まりの位置と点の数（標高の無い区間は0）。両向きの行は同じ点を指し、逆向きの行（`edge_forward`が偽）は勾配の符号を返して読む。
+    edge_profile_start: np.ndarray  # int64
+    edge_profile_points: np.ndarray  # int32
+    profile_elevation_m: np.ndarray  # float32、行数は区間ではなく点の数
+    # 標高の無い所を埋める、道路網全体の点の間の勾配の分布（`domain/elevation_profile.py: grade_distribution`。組むときに1回求める）。
+    profile_distribution_grade: np.ndarray  # float64、行数は階級の数
+    profile_distribution_share: np.ndarray  # float64
 
     def __post_init__(self) -> None:
         """行数と列数が揃っていることを、組み立てた場所で確かめる。
@@ -86,9 +97,12 @@ class RoadNetwork:
         wrong = {
             f.name: len(value)
             for f in fields(self)
-            if isinstance(value := getattr(self, f.name), np.ndarray)
+            if isinstance(value := getattr(self, f.name), np.ndarray) and not f.name.startswith("profile_")
             and len(value) != (node_count if f.name.startswith("node_") else edge_count)
         }
+        if len(self.edge_profile_start) and int(np.max(self.edge_profile_start + self.edge_profile_points)) > len(
+                self.profile_elevation_m):
+            wrong["edge_profile_start"] = len(self.profile_elevation_m)
         wrong_columns = {
             name: (matrix.shape[1], len(ids))
             for name, matrix, ids in (
@@ -108,6 +122,27 @@ class RoadNetwork:
     @property
     def edge_count(self) -> int:
         return len(self.edge_way_id)
+
+    @property
+    def elevation_profiles(self) -> ElevationProfiles:
+        """全区間の断面の点と、標高の無い所を埋める全体の勾配の分布。"""
+        distribution = GradeDistribution(np.asarray(self.profile_distribution_grade),
+                                         np.asarray(self.profile_distribution_share))
+        return ElevationProfiles(self.edge_profile_start, self.edge_profile_points, self.edge_forward,
+                                 self.profile_elevation_m, distribution)
+
+    @cached_property
+    def numeric_means(self) -> dict[str, float]:
+        """数値の材料ごとの、取込範囲全体の距離で重みを付けた平均（値の無い区間を除く。値が1つも無ければNaN）。欠けた材料を
+        埋める（`MaterialFills`）。道路網と同じ寿命で1回だけ求める。"""
+        means: dict[str, float] = {}
+        for column, material_id in enumerate(self.numeric_ids):
+            values = np.asarray(self.numeric_values[:, column], dtype=np.float64)
+            known = ~np.isnan(values)
+            distance = self.distance_m[known]
+            total = float(distance.sum())
+            means[material_id] = float((values[known] * distance).sum()) / total if total > 0 else np.nan
+        return means
 
     @cached_property
     def nearest_rain_stations(self) -> NearestRainStations:
@@ -147,6 +182,37 @@ class RoadSlice:
     @property
     def node_lon(self) -> np.ndarray:
         return np.asarray(self.network.node_lon[self.nodes], dtype=np.float64)
+
+
+@dataclass(frozen=True)
+class MaterialFills:
+    """取込範囲全体の材料の分布で、欠けた材料を埋める（探索の範囲で埋めると、同じ道の費用が探索の範囲で変わる）。
+    `numeric_means`は数値の材料の距離で重みを付けた平均、`class_shares`は区分の材料の値ごとの距離の割合（値の無い道を除いて
+    和が1）。"""
+
+    numeric_means: Mapping[str, float]
+    class_shares: Mapping[str, Mapping[str, float]]
+
+    def fill(self, material_id: str, values: np.ndarray) -> np.ndarray:
+        """数値の材料`material_id`の値の欠けを平均で埋める（平均を持たない材料はNaNのまま）。"""
+        values = np.asarray(values, dtype=np.float64)
+        return np.where(np.isnan(values), self.numeric_means.get(material_id, np.nan), values)
+
+
+def material_fills(network: RoadNetwork, classes: Mapping[str, CategoricalColumn],
+                   class_ids: Iterable[str]) -> MaterialFills:
+    """取込範囲全体の材料の分布。数値の材料は全部（`RoadNetwork.numeric_means`）、区分の材料は`class_ids`の分だけ、取込範囲
+    全体の区分の列（`classes`。`road_class_columns`）の値ごとの距離の割合を求める。"""
+    shares: dict[str, dict[str, float]] = {}
+    for material_id in class_ids:
+        column = classes.get(material_id)
+        if column is None:
+            continue
+        lengths = np.bincount(column.codes, weights=network.distance_m, minlength=len(column.vocab))
+        total = float(lengths[1:].sum())
+        shares[material_id] = {
+            str(value): float(length) / total for value, length in zip(column.vocab[1:], lengths[1:]) if total > 0 and length > 0}
+    return MaterialFills(numeric_means=network.numeric_means, class_shares=shares)
 
 
 def road_class_columns(
@@ -257,6 +323,7 @@ def material_arrays_of(road: RoadSlice, observed: Mapping[str, np.ndarray]) -> E
         bearing_deg=np.asarray(network.bearing_deg[rows]),
         mid_lat=np.asarray(network.mid_lat[rows]),
         mid_lon=np.asarray(network.mid_lon[rows]),
+        elevation_profiles=network.elevation_profiles.take(rows),
     )
 
 
@@ -272,8 +339,14 @@ def elevation_attribute(network: RoadNetwork, row: int, edge_id: str) -> Elevati
         end_elevation_m=float(network.end_elevation_m[row]),
         elevation_gain_m=float(network.elevation_gain_m[row]),
         elevation_loss_m=float(network.elevation_loss_m[row]),
-        average_grade=None if np.isnan(grade := network.numeric_values[row, grade_column]) else float(grade),
+        average_grade=_optional_float(network.numeric_values[row, grade_column]),
+        steepest_gain_percent=_optional_float(network.steepest_gain_percent[row]),
+        steepest_loss_percent=_optional_float(network.steepest_loss_percent[row]),
     )
+
+
+def _optional_float(value: float) -> float | None:
+    return None if np.isnan(value) else float(value)
 
 
 def edge_row_of(network: RoadNetwork, osm_way_id: int, segment_index: int, forward: bool) -> int | None:

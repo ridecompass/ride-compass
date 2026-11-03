@@ -5,6 +5,7 @@ import palette from "@/types/generated/palette.json";
 import type { LegendEntry } from "./legendFilter";
 import { NO_DATA_LEGEND_BAND } from "./mapColorLegend";
 import type { AxisCatalogEntry } from "@/types/route";
+import type { MapTheme } from "@/lib/mapTheme";
 import {
   bandCondition,
   DIFFICULTY_PAINT,
@@ -64,32 +65,38 @@ function buildRangeSteppedMode(options: {
 }
 
 // 公開軸1本のモード。塗る値の種類・単位・しきい値はbackendが決め、ルート前の専用配信の塗りと同じ尺度・配色になる。
-// 生値を塗る材料はbackendが名指す（`map_paint.value.material`）。
-function routeColorableModeFromAxis(axis: AxisCatalogEntry): RouteStyleMode {
+// 生値を塗るときに区間のどの欄を読むかはbackendが名指す（`map_paint.value.route_segment_field`と`material`）。
+function routeColorableModeFromAxis(axis: AxisCatalogEntry, ground: MapTheme): RouteStyleMode {
   const mapValue = axis.map_paint.value;
   const painted =
     mapValue.kind === "signed_material"
-      ? { label: axis.label, valueExpression: ["get", mapValue.material, ["get", "material_values"]] }
+      ? {
+          label: axis.label,
+          valueExpression:
+            mapValue.route_segment_field === "material_values"
+              ? ["get", mapValue.material, ["get", "material_values"]]
+              : ["get", mapValue.route_segment_field],
+        }
       : { label: `${axis.label}の影響`, valueExpression: ["get", axis.axis_id, ["get", "axis_difficulties"]] };
-  return buildRangeSteppedMode({ id: axis.axis_id, ...painted, paint: mapPaintDeclarationOf(axis.map_paint) });
+  return buildRangeSteppedMode({ id: axis.axis_id, ...painted, paint: mapPaintDeclarationOf(axis.map_paint, ground) });
 }
 
-// 総合難易度（全軸を重みで合成した0-100）。特定の軸に紐づかない固定のモード。
-const DIFFICULTY_MODE: RouteStyleMode = buildRangeSteppedMode({
-  id: LENS_DIFFICULTY_ID,
-  label: "総合難易度",
-  valueExpression: ["get", "difficulty"],
-  paint: DIFFICULTY_PAINT,
-});
+/** 総合難易度のモードの名前。 */
+export const DIFFICULTY_LENS_LABEL = "総合難易度";
 
-/** 総合難易度のモードの名前。`LensControl`のピル（評価軸を選んでいないルートの後）はここから引く
- * （同じ語彙をUI側でも直書きすると、モード名を変えたときに片方だけ古いまま残る）。 */
-export const DIFFICULTY_LENS_LABEL = DIFFICULTY_MODE.label;
-
-/** ルートの線の色分けのモード: 公開軸すべて（重みが0の軸も選べる）＋総合難易度（評価軸を選んでいないとき）。 */
-export function routeStyleModesFromCatalogAxes(axes: readonly AxisCatalogEntry[]): RouteStyleMode[] {
-  const dynamicModes = axes.map(routeColorableModeFromAxis);
-  return [...dynamicModes, DIFFICULTY_MODE];
+/** ルートの線の色分けのモード: 公開軸すべて（重みが0の軸も選べる）＋総合難易度（評価軸を選んでいないとき。全軸を重みで
+ * 合成した0-100で、特定の軸に紐づかない）。`ground`は塗る地図の地の明るさ（省けば明るい地図）。 */
+export function routeStyleModesFromCatalogAxes(
+  axes: readonly AxisCatalogEntry[],
+  ground: MapTheme = "light",
+): RouteStyleMode[] {
+  const difficultyMode = buildRangeSteppedMode({
+    id: LENS_DIFFICULTY_ID,
+    label: DIFFICULTY_LENS_LABEL,
+    valueExpression: ["get", "difficulty"],
+    paint: { ...DIFFICULTY_PAINT, ground },
+  });
+  return [...axes.map((axis) => routeColorableModeFromAxis(axis, ground)), difficultyMode];
 }
 
 /** 軸カタログを取得できていない間のモード一覧。総合難易度は軸に依存しないため

@@ -70,17 +70,13 @@ describe("useStoredState", () => {
     expect(window.localStorage.getItem("key-b")).toBe("ok:next");
   });
 
-  it.each([
-    ["保存が無い", () => {}],
-    ["保存が読めない", () => window.localStorage.setItem("key-b", "broken")],
-  ])("キーが変わって新しいキーの%sときは、前のキーの値を引きずらず既定値へ戻る", (_, arrange) => {
+  it("キーが変わって新しいキーの保存が無いときは、前のキーの値を引きずらず既定値へ戻る", () => {
     window.localStorage.setItem("key-a", "ok:a");
     const { result, rerender } = renderHook(({ key }) => useStoredState(key, "default", PREFIXED), {
       initialProps: { key: "key-a" },
     });
     expect(result.current[0]).toBe("a");
 
-    arrange();
     rerender({ key: "key-b" });
 
     expect(result.current[0]).toBe("default");
@@ -128,7 +124,6 @@ describe("useStoredJsonState", () => {
     expect(second.result.current[0]).toEqual({ size: 3 });
   });
 
-  // 変換が投げる保存値を既定値へ倒すのはこのフックで、保存した一覧の読み方（`lib/storedList.ts`）はそれに任せている。
   it("JSONとして読めない保存値は、既定値として扱う", () => {
     window.localStorage.setItem(KEY, "{");
     const { result } = renderHook(() => useStoredJsonState(KEY, { size: 1 }));

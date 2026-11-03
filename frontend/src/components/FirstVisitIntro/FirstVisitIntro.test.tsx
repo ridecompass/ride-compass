@@ -28,12 +28,6 @@ afterEach(() => {
 });
 
 describe("FirstVisitIntro", () => {
-  it("閉じたことが無ければ、見出しを名前に持つ案内を出す", () => {
-    render(<FirstVisitIntro isMobile={false} locationUnknown={false} />);
-
-    expect(intro()).toBeInTheDocument();
-  });
-
   it.each([
     [true, "下の「ルート設定」を開いて距離を決め、ルート生成を押すと、ルートの候補が地図に出ます。"],
     [false, "左の「ルート設定」で距離を決め、ルート生成を押すと、ルートの候補が地図に出ます。"],
@@ -47,7 +41,6 @@ describe("FirstVisitIntro", () => {
     [false, "この印が出発地です（はじめは現在地）。地図の上でつかんで動かせます。"],
     [
       true,
-      // 地図で置く操作はアイコンだけなので、名前はかぎ括弧ごとアイコン（読み上げの名前）に替わる。
       "現在地が分からないため、この灰色の印は仮の地点です。「ルート設定」を開いて地図をタップすると、そこが出発地になります。",
     ],
   ])("位置が分からないと分かったか（%s）で、出発地の行を言い分ける", (locationUnknown, originLine) => {
@@ -58,6 +51,7 @@ describe("FirstVisitIntro", () => {
 
   it.each(["案内を閉じる", "はじめる"])("「%s」を押すと消え、次に開いても出ない", async (name) => {
     const view = render(<FirstVisitIntro isMobile={false} locationUnknown={false} />);
+    expect(intro()).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name }));
 

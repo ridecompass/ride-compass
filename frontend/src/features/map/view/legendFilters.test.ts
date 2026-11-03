@@ -1,29 +1,21 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 
-import {
-  deserializeHiddenLegendKeys,
-  hiddenKeysOf,
-  presentHiddenKeys,
-  toggleHiddenKey,
-  withHiddenKeys,
-} from "./legendFilters";
+import { deserializeHiddenLegendKeys, hiddenAfterToggleAll, presentHiddenKeys, toggleHiddenKey } from "./legendFilters";
 
 describe("凡例で隠した行の保存先", () => {
-  it("軸ごとに隠した鍵を持ち、無い軸は空", () => {
-    expect(hiddenKeysOf({ a: ["x"] }, "a")).toEqual(["x"]);
-    expect(hiddenKeysOf({ a: ["x"] }, "b")).toEqual([]);
+  it("行を押すたびに隠す・戻すが入れ替わり、他の軸を残し、空にした軸も空の並びとして残す（最初に隠す行へ戻さない）", () => {
+    const hidden = toggleHiddenKey({ b: ["y"] }, "a", "x");
+    expect(hidden).toEqual({ b: ["y"], a: ["x"] });
+    expect(toggleHiddenKey(toggleHiddenKey(hidden, "a", "w"), "a", "x")).toEqual({ b: ["y"], a: ["w"] });
+    expect(toggleHiddenKey(hidden, "a", "x")).toEqual({ b: ["y"], a: [] });
   });
 
-  it("書き換えは他の軸を残し、空にした軸も空の並びとして残す（最初に隠す行へ戻さない）", () => {
-    expect(withHiddenKeys({ a: ["x"], b: ["y"] }, "a", ["z"])).toEqual({ a: ["z"], b: ["y"] });
-    expect(withHiddenKeys({ a: ["x"], b: ["y"] }, "a", [])).toEqual({ a: [], b: ["y"] });
-  });
-
-  it("行を押すたびに隠す・戻すが入れ替わる", () => {
-    const hidden = toggleHiddenKey({}, "a", "x");
-    expect(hidden).toEqual({ a: ["x"] });
-    expect(toggleHiddenKey(toggleHiddenKey(hidden, "a", "y"), "a", "x")).toEqual({ a: ["y"] });
+  it.each([
+    { case: "全部出ていれば、全部隠す", hidden: [], after: ["step-0", "step-1"] },
+    { case: "1つでも隠れていれば、全部出す", hidden: ["step-0"], after: [] },
+  ])("見出しのチェックは両方向を兼ねる: $case", ({ hidden, after }) => {
+    expect(hiddenAfterToggleAll([{ key: "step-0" }, { key: "step-1" }], hidden)).toEqual(after);
   });
 
   it("いまの凡例に無い鍵（段の綴りや段数が変わる前の保存値）は、隠した行に数えない", () => {

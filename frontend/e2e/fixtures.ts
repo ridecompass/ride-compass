@@ -7,6 +7,7 @@ import {
   E2E_ROAD_LAYERS,
   gridPointTodayFixture,
 } from "./mockResponses";
+import { installMapFinder } from "./liveMap";
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import nextConfig from "../next.config";
 
@@ -146,22 +147,28 @@ export function allLayersOn(roadLayers: readonly { id: string }[] = E2E_ROAD_LAY
  */
 export const KEYBOARD_HEIGHT = 301;
 
+type OpenOptions = { storedState?: Record<string, string>; routes?: (page: Page) => Promise<unknown> };
+
 /**
- * モバイル幅でアプリを開く（APIモックの登録・ビューポート設定・goto）。
- * `routes`は既定のモックの後・goto前に呼ばれる——テストが判定に使う応答はここで上書きする。
+ * 今のビューポートでアプリを開き（APIモックの登録・goto）、地図の読み込みが終わるまで待つ。`window.__liveMap()`で地図を引ける。
+ * `routes`は既定のモックの後・goto前に呼ばれる——テストが判定に使う応答や、置き直す現在地はここで与える。
  * 呼んだ直後は、まだクリックが効かない（ハイドレーション前の）可能性がある——
  * 操作はopenMobileSheet等のヘルパー経由で行う。
  * 初回の案内（地図の上に重なる）は閉じた状態で開く。
  */
-export async function openMobileApp(
-  page: Page,
-  { storedState, routes }: { storedState?: Record<string, string>; routes?: (page: Page) => Promise<unknown> } = {},
-): Promise<void> {
+export async function openMapApp(page: Page, { storedState, routes }: OpenOptions = {}): Promise<void> {
   await installApiMocks(page);
   if (routes) await routes(page);
-  await page.setViewportSize(MOBILE_VIEWPORT);
   await seedStoredState(page, { ...INTRO_CLOSED, ...storedState });
+  await page.addInitScript(installMapFinder);
   await page.goto("/");
+  await expect(page.getByText("地図を読み込み中…")).toBeHidden({ timeout: 15_000 });
+}
+
+/** モバイル幅（`MOBILE_VIEWPORT`）で`openMapApp`する。 */
+export async function openMobileApp(page: Page, options: OpenOptions = {}): Promise<void> {
+  await page.setViewportSize(MOBILE_VIEWPORT);
+  await openMapApp(page, options);
 }
 
 /**

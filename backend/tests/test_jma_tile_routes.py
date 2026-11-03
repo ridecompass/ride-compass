@@ -112,32 +112,28 @@ def test_jma_tile_proxy_forwards_query_string_to_client(override_dependency):
     ]
 
 
-def test_jma_tile_proxy_interpolates_zoom_without_native_data(override_dependency):
-    # 大雨キキクルはzoomUse="even"のためz9に実データが無い。上流へ問い合わせる代わりに
+_FLOOD_PARENT = mapbox_vector_tile.encode(
+    [{"name": "flood", "features": [{"geometry": LineString([(0, 0), (4096, 4096)]), "properties": {}}]}],
+)
+
+
+@pytest.mark.parametrize(("path", "parent"), [
+    (f"{RAIN_FRAME}/9/455/201.png", (encode(Image.new("RGBA", (256, 256), (255, 0, 0, 255))), "image/png")),
+    # 洪水キキクル（ベクタ）もラスタと同じズームで消えないよう、親から切り出す。
+    (f"{FLOOD_FRAME}/9/455/201.pbf", (_FLOOD_PARENT, "binary/octet-stream")),
+], ids=["raster", "vector"])
+def test_jma_tile_proxy_interpolates_zoom_without_native_data(override_dependency, path, parent):
+    # 大雨キキクル・洪水キキクルはzoomUse="even"のためz9に実データが無い。上流へ問い合わせる代わりに
     # 親（z8）のタイルから該当象限を切り出し、元のパスのキーでキャッシュへ書き戻す（次回は補間をやり直さない）。
-    fake = _answer(override_dependency, parent=(encode(Image.new("RGBA", (256, 256), (255, 0, 0, 255))), "image/png"))
-
-    response = client.get(f"/api/jma-tile/{RAIN_FRAME}/9/455/201.png")
-
-    assert response.status_code == 200
-    assert response.headers["content-type"].startswith("image/png")
-    assert fake.fetched_paths == []
-    assert fake.stored == [(f"{RAIN_FRAME}/9/455/201.png", response.content, "image/png")]
-
-
-def test_jma_tile_proxy_interpolates_vector_tiles(override_dependency):
-    # 洪水キキクル（ベクタ）もラスタ3種と同じズームで消えないよう、親から切り出して返す。
     # Content-Typeは親タイルのものをそのまま引き継ぐ。
-    parent = mapbox_vector_tile.encode(
-        [{"name": "flood", "features": [{"geometry": LineString([(0, 0), (4096, 4096)]), "properties": {}}]}],
-    )
-    fake = _answer(override_dependency, parent=(parent, "binary/octet-stream"))
+    fake = _answer(override_dependency, parent=parent)
 
-    response = client.get(f"/api/jma-tile/{FLOOD_FRAME}/9/455/201.pbf")
+    response = client.get(f"/api/jma-tile/{path}")
 
     assert response.status_code == 200
-    assert response.headers["content-type"].startswith("binary/octet-stream")
-    assert fake.stored == [(f"{FLOOD_FRAME}/9/455/201.pbf", response.content, "binary/octet-stream")]
+    assert response.headers["content-type"].startswith(parent[1])
+    assert fake.fetched_paths == []
+    assert fake.stored == [(path, response.content, parent[1])]
 
 
 def test_jma_tile_proxy_falls_back_when_parent_tile_is_unavailable(override_dependency):

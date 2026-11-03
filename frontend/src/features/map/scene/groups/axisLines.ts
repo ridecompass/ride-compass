@@ -13,6 +13,7 @@ import palette from "@/types/generated/palette.json";
 
 import type { MapSceneFeatureStates, MapSceneGlobalState } from "@/features/map/scene/mapScene";
 import { declareGroup, type SceneLayerEntry, type SceneSourceEntry } from "@/features/map/scene/mapSceneGroups";
+import { featureStatesByName } from "@/features/map/scene/sceneBuilders";
 import { missingExpression, wayValueExpressions, type WayValueFormula } from "@/features/map/scene/wayValueFormula";
 import { LEGEND_NO_DATA_KEY, NO_DATA_LEGEND_BAND, UNDETERMINED_LEGEND_BAND } from "@/lib/mapDisplay/mapColorLegend";
 import { bandStep, type ValueBand } from "@/lib/mapDisplay/valueScale";
@@ -121,32 +122,12 @@ function noDataOpacityExpression(axis: AxisLine): unknown {
   }));
 }
 
-const statesByMaterials = new WeakMap<WayMaterials, Map<string, Map<string, number>>>();
-
-/** 道ごとの材料を、材料の名前ごとの feature-state へ移す。同じ材料の結果からは同じ参照を返す——当てる側は
- * 参照が同じなら道ごとに比べ直さない。 */
-function materialStates(axisId: string, materials: WayMaterials): ReadonlyMap<string, ReadonlyMap<string, number>> {
-  const cached = statesByMaterials.get(materials);
-  if (cached !== undefined) return cached;
-  const states = new Map<string, Map<string, number>>();
-  for (const [featureId, values] of materials) {
-    for (const [name, value] of Object.entries(values)) {
-      const key = materialStateKey(axisId, name);
-      let byFeature = states.get(key);
-      if (byFeature === undefined) states.set(key, (byFeature = new Map()));
-      byFeature.set(featureId, value);
-    }
-  }
-  statesByMaterials.set(materials, states);
-  return states;
-}
-
 function featureStatesFor(state: AxisLineState): MapSceneFeatureStates {
-  const states = new Map<string, ReadonlyMap<string, number>>();
-  for (const axis of state.axes) {
-    for (const [key, values] of materialStates(axis.axisId, axis.materials)) states.set(key, values);
-  }
-  return states;
+  return new Map(
+    state.axes.flatMap((axis) => [
+      ...featureStatesByName(axis.materials, (name) => materialStateKey(axis.axisId, name)),
+    ]),
+  );
 }
 
 export const axisLineGroup = declareGroup<AxisLineState>((state) => {

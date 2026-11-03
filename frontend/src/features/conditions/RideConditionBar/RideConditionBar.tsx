@@ -39,7 +39,7 @@ interface RideConditionBarProps {
    * 時間の経過に追従する状態へ戻すため、`onDepartureTimeChange(new Date())`では代用
    * できない（現在時刻でピン留めされ、実況の更新から取り残される）。 */
   onDepartureNow: () => void;
-  /** 想定速度（km/h、backend: RouteGenerateRequest.assumed_speed_kmh）。 */
+  /** 想定速度（km/h）。 */
   speedKmh: number;
   onSpeedKmhChange: (speedKmh: number) => void;
   /** いまの「評価で塗る」の周りの道の塗りが、出発時刻・想定速度で決まっている。 */
@@ -100,7 +100,7 @@ function DepartureRuler({
 }: Pick<RideConditionBarProps, "departureTime" | "onDepartureTimeChange" | "onDepartureNow">) {
   const [anchor] = useState(() => new Date());
   const [step, setStep] = useStoredState<DepartureStep>(DEPARTURE_STEP_STORAGE_KEY, "hour", {
-    serialize: (value) => value,
+    serialize: String,
     deserialize: (raw) => (isDepartureStep(raw) ? raw : null),
   });
   const { timeline, frames } = useMemo(() => {
@@ -130,10 +130,8 @@ function DepartureRuler({
   );
 }
 
-// 地図右上の走行条件アイコン列。走行条件（出発時刻・想定速度）は時刻・速さで値の変わる評価と
-// 気象レイヤーの表示時刻の両方が参照する共有stateのため、ルート設定フォームでは
-// なく地図上に常時置き、アイコンをタップしてその場で変えられるようにする。地図の右上の
-// 拡大・縮小と方位磁針と同じ列の幅のアイコンボタンに揃える（`app/HomeMapPane.tsx`がその列の直下へ積む）。
+// 地図右上の走行条件アイコン列。走行条件はルートの評価と気象の表示時刻の両方に効くので、ルート設定フォームではなく
+// 地図の上に常時置き、拡大・縮小と方位磁針と同じ列の幅のアイコンボタンに揃える。
 export default function RideConditionBar({
   departureTime,
   onDepartureTimeChange,

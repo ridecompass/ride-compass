@@ -68,17 +68,26 @@ function steps(body) {
   }
   return all;
 }
-// 行き先を名指していない「やること」の項目の name（ゲートは、これが残る間は完成で閉じない）。行き先は、今の完了の条件の文の頭に当たる
-// 「完了の条件「<条件の文の頭>」」か、ほかの issue の「#<番号>」か、理由を添えた「見送り（<理由>）」。
-export function unboundSteps(body, number) {
+// 行き先が当たるか: 今の完了の条件の文の頭に当たる「完了の条件「<条件の文の頭>」」か、ほかの issue の「#<番号>」か、理由を添えた「見送り（<理由>）」。
+// unboundSteps は行き先を名指していない「やること」の項目の name（ゲートは、これが残る間は完成で閉じない）。
+function naming(body, number) {
   const texts = conditions(body).map((c) => c.text);
-  const named = (to) => {
+  return (to) => {
     const c = /^完了の条件「(.+)」$/.exec(to);
     if (c) return texts.some((t) => t.startsWith(c[1]));
     const n = /^#(\d+)(?!\d)/.exec(to);
     return n ? Number(n[1]) !== number : /^見送り（.+）$/.test(to);
   };
+}
+export function unboundSteps(body, number) {
+  const named = naming(body, number);
   return steps(body).filter((s) => !s.to.some(named)).map((s) => s.name);
+}
+// 行き先を書いたのに、どれも当たらない項目の name（書いた時点で照らす: 起票の new-issue.mjs と、条件に印を付ける check.mjs）。
+// 行き先がまだ無い項目は数えない（起票のときに決まらなければ、着手した実装担当が書く）。
+export function misboundSteps(body, number) {
+  const named = naming(body, number);
+  return steps(body).filter((s) => s.to.length && !s.to.some(named)).map((s) => s.name);
 }
 // 本文の、index の行のチェックに印を付ける（同じ文の条件が2つあっても、指した行にだけ付ける）。
 // 本文の完了の条件の行に値（チェック）を書いた本文。marks は [条件の行, 済んだか] の並び。本文の頭の回答のボタンは残す。

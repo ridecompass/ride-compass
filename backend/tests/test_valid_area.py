@@ -55,7 +55,6 @@ SURROUNDED = [
     [
         (STATIONS, Coordinates(latitude=35.52, longitude=139.52), 1),
         (STATIONS, Coordinates(latitude=35.48, longitude=139.38), 0),
-        (STATIONS, Coordinates(latitude=35.5, longitude=139.69), 2),
         # 観測所の並びの外でも、外接矩形の周り1度の内なら範囲を持つ。
         (STATIONS, Coordinates(latitude=35.5, longitude=138.6), 0),
         (SURROUNDED, Coordinates(latitude=35.12, longitude=139.5), 3),

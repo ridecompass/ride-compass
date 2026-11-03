@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { Popover, PopoverAnchor, PopoverContent, POPOVER_COLLISION_PADDING_PX } from "@/components/ui/Popover/Popover";
 import { Button } from "@/components/ui/Button/Button";
 import { GuideText } from "@/components/ui/GuideText/GuideText";
@@ -44,12 +44,9 @@ export default function UsageGuide({ onEnd }: UsageGuideProps) {
   const [target, setTarget] = useState<UsageTarget | null>(null);
   // 枠は測った部品と組で持ち、説明する部品が替わったら前の部品の位置には描かない。
   const [highlight, setHighlight] = useState<{ element: Element; rect: DOMRect } | null>(null);
-  const onEndRef = useRef(onEnd);
   /** 自分で押す click を止めずに届ける間か。 */
   const passing = useRef(false);
-  useEffect(() => {
-    onEndRef.current = onEnd;
-  });
+  const end = useEffectEvent(() => onEnd());
 
   useEffect(() => {
     let down: { x: number; y: number } | null = null;
@@ -92,7 +89,7 @@ export default function UsageGuide({ onEnd }: UsageGuideProps) {
       if (event.key === "Escape") {
         event.stopPropagation();
         event.preventDefault();
-        onEndRef.current();
+        end();
         return;
       }
       if (isInUsageGuide(event.target)) return;
@@ -151,7 +148,7 @@ export default function UsageGuide({ onEnd }: UsageGuideProps) {
         {/* 案内は見出しと「やめる」の1行だけ。部品の上に重なってよい（つまみで動かせる）。浮きパネルを開いている間も、その上に出す。 */}
         <FloatingPanel
           open
-          onClose={() => onEndRef.current()}
+          onClose={onEnd}
           title="説明モード"
           closeLabel="やめる"
           layer="guide"

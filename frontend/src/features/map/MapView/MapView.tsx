@@ -158,7 +158,7 @@ export default function MapView({
     controls: popups,
     backToSegment,
   } = useMapPopups(selectionOwner, selectedRouteSegment, onRouteSegmentSelect);
-  const mapCatalog = useMapAxisCatalog();
+  const mapCatalog = useMapAxisCatalog(look.mapTheme);
   // 詳細を見ている道。強調も scene の一部として当てる。
   const inspectedShape = popup?.kind === "road" ? popup.shape : null;
   // 選んでいる区間（選んでいる候補の区間のときだけ）と、その形。
@@ -214,7 +214,7 @@ export default function MapView({
 
   // スタイルを差し替えた後、いまの宣言を空から当て直す。
   const redrawFromCurrentProps = useCallback((map: MapLibreMap) => {
-    applyScene(map, latest.current.scene, { reset: true });
+    applyScene(map, latest.current.scene, { basemapTheme: latest.current.look.mapTheme, reset: true });
   }, []);
 
   const getLook = useCallback(() => latest.current.look, []);
@@ -283,10 +283,10 @@ export default function MapView({
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    applyScene(map, scene);
+    applyScene(map, scene, { basemapTheme: look.mapTheme });
     // 表示をONにしたレイヤーの状態をすぐ出す（タイルがキャッシュ済みだとsourcedataが来ない）。
     recomputeLayerDataStatus();
-  }, [scene, recomputeLayerDataStatus]);
+  }, [scene, look.mapTheme, recomputeLayerDataStatus]);
 
   // 選んでいるルートの全体へ収める（生成した・カードを押した・乗り換えで作ったとき）。追っている間（追う側が地図を動かす）は収めない。
   useEffect(() => {
