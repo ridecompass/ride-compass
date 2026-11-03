@@ -46,7 +46,7 @@ def _segment() -> RouteSegmentDetail:
     return RouteSegmentDetail(
         start_latitude=0.0, start_longitude=0.0, end_latitude=0.0, end_longitude=0.0,
         cumulative_distance_km=0.0, distance_km=1.0, edge_start=0, edge_end=1, elevations=[],
-        road_classes={},
+        road_classes={}, material_values={},
     )
 
 
@@ -58,8 +58,7 @@ def _candidate(key: str, penalty: float = 10.0, **fields) -> EvaluatedRoute:
         "elevation_gain_m": None, "segments": [_segment()], "estimated_duration_seconds": 100.0,
         "cost_seconds": 100.0 + penalty, "penalty": None,
         "facts": RouteFacts(elevation_unknown_km=0.0, stop_count=0.0, rough_km=0.0, headwind_mean_ms=None, burden_km={}),
-        "wind_unavailable": False, "missing_travel_data_share": None, "axis_raw_values": {},
-        "material_category_shares": {}, "edge_ids": [key], "edge_point_offsets": [], "node_ids": [], "turns": [],
+        "wind_unavailable": False, "missing_travel_data_share": None, "edge_ids": [key], "edge_point_offsets": [], "node_ids": [], "turns": [],
         "waypoint_distances_km": [], **fields,
     })
 

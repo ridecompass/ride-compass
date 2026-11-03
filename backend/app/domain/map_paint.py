@@ -33,10 +33,6 @@ class DifficultyMapValue(StrictModel):
 
     kind: Literal["difficulty"] = "difficulty"
 
-    def segment_value(self, axis_id: str, segment: RouteSegmentDetail) -> float | None:
-        """ルートの区間をこの軸のレンズで塗る値。値が無ければNone。"""
-        return segment.axis_difficulties.get(axis_id)
-
 
 class SignedMaterialMapValue(StrictModel):
     """地図が材料1つの符号付きの生値を塗る。進行方向で符号の変わる材料（勾配）1つの軸で、難易度へ写すと

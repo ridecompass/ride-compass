@@ -3,7 +3,7 @@ from collections import defaultdict
 
 from typing import Annotated, Any, Callable, Iterable, Literal, Mapping, Sequence
 
-from pydantic import WithJsonSchema
+from pydantic import ConfigDict, WithJsonSchema
 
 from app.domain.difficulty import weighted_mean_by_distance
 from app.domain.attributes import ElevationAttribute
@@ -368,6 +368,7 @@ BIN_FIELD_MERGERS: dict[str, Callable[[list[RouteSegmentDetail]], object]] = {
     "end_latitude": lambda segments: segments[-1].end_latitude,
     "end_longitude": lambda segments: segments[-1].end_longitude,
     "cumulative_distance_km": lambda segments: segments[0].cumulative_distance_km,
+    "distance_km": lambda segments: _summed_km(segment.distance_km for segment in segments),
     "edge_start": lambda segments: segments[0].edge_start,
     "edge_end": lambda segments: segments[-1].edge_end,
     "elevations": lambda segments: [stretch for segment in segments for stretch in segment.elevations],

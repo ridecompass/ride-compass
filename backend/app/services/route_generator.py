@@ -26,7 +26,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, Protocol
 
-from app.domain.stopwatch import add_elapsed_ms, elapsed_ms, start_timer, steps_note
+from app.domain.stopwatch import elapsed_ms, start_timer, steps_note
 from app.domain.errors import GENERATION_BUSY_MESSAGE, RoutingError, SearchAreaTooLargeError, SearchMemoryBusyError
 from app.domain.geo import haversine_distance_km
 from app.domain.loop_routing import TracedLoop

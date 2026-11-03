@@ -5,7 +5,6 @@
 """
 
 import asyncio
-import math
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta

@@ -22,7 +22,6 @@ from app.domain.jma_tile_specs import (
     read_target_times,
 )
 from app.domain.region import BoundingBox, tile_bounds_lonlat, tile_position, tiles_covering_bbox
-from app.domain.route import RouteSegmentDetail, merge_route_values
 from app.domain.time_zone import jst_local_text
 from app.domain.way_value_formula import (
     FALSE,
@@ -397,55 +396,6 @@ def time_expectations() -> dict[str, list[dict]]:
     }
 
 
-def _segment(distance_km: float, contributions: dict[str, float] | None) -> RouteSegmentDetail:
-    """区間1本。寄与度の和が区間の難易度で、`None`は値の無い区間。"""
-    return RouteSegmentDetail(
-        start_latitude=35.0,
-        start_longitude=139.0,
-        end_latitude=35.0,
-        end_longitude=139.0,
-        cumulative_distance_km=0.0,
-        distance_km=distance_km,
-        edge_start=0,
-        edge_end=1,
-        elevations=[],
-        road_classes={},
-        axis_contributions=contributions or {},
-        difficulty=None if contributions is None else sum(contributions.values()),
-    )
-
-
-# ルート全体の難易度の場面: （場面, 区間（距離km, 軸ごとの寄与度。値の無い区間はNone））。平均が丸めで動かない値を選ぶ。
-_ROUTES: list[tuple[str, list[tuple[float, dict[str, float] | None]]]] = [
-    ("どの区間にも値がある", [(1.0, {"a": 10.0, "b": 10.0}), (1.0, {"a": 40.0})]),
-    ("値の無い区間がある", [(1.0, {"a": 10.0, "b": 10.0}), (2.0, None), (1.0, {"a": 40.0})]),
-    ("どの区間にも値が無い", [(1.0, None), (2.0, None)]),
-]
-
-
-def difficulty_expectations() -> dict[str, list[dict]]:
-    """ルート全体の難易度（平均と総量）。値の無い区間の数え方が分かれる場面を並べる。"""
-    rows = []
-    for scene, parts in _ROUTES:
-        segments = [_segment(distance_km, contributions) for distance_km, contributions in parts]
-        overall = merge_route_values(segments).overall_difficulty
-        rows.append(
-            {
-                "scene": scene,
-                "segments": [
-                    {
-                        "distance_km": segment.distance_km,
-                        "difficulty": segment.difficulty,
-                        "axis_contributions": segment.axis_contributions,
-                    }
-                    for segment in segments
-                ],
-                "overall_difficulty": None if overall is None else overall.model_dump(),
-            }
-        )
-    return {"overall_difficulty": rows}
-
-
 def _values_only(value: object) -> WayValueFormula:
     return WayValueFormula(value=value, undetermined=FALSE)
 
@@ -543,7 +493,6 @@ EXPECTATIONS: dict[str, Callable[[], dict[str, list[dict]]]] = {
     "geo": geo_expectations,
     "region": region_expectations,
     "time": time_expectations,
-    "difficulty": difficulty_expectations,
     "jma": jma_expectations,
     "way-value": way_value_expectations,
 }

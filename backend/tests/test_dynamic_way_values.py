@@ -43,7 +43,6 @@ from app.domain.dynamic_way_values import (
 from app.domain.evaluation import build_static_edge_score_matrix
 from app.domain.gradient import ROAD_BEARING_LEAF, gradient_by_direction
 from app.domain.map_paint import SignedMaterialMapValue
-from app.domain.route import DensityScoreInput, RouteSegmentDetail, merge_route_values
 from app.domain.search_graph import EDGE_VALUE_DTYPE
 from app.domain.tuning import TUNING_VALUES
 from app.domain.way_value_formula import WayValueFormula, feature, way_values_from_formula
@@ -175,64 +174,14 @@ def _segment_tile():
     return keys, materials, served, segments, {"seg_grade": grade}
 
 
-def _route_values(segments: FeatureSegments, grade: np.ndarray) -> dict[str, dict[str, float]]:
-    """道ごとに、その区間をルートの区間に見立てた探索の得点を、ルートの値の決まりで畳んだ値。"""
-    n = len(segments)
-    nan = np.full(n, np.nan)
-    owners = segments.feature_keys
-    arrays = EdgeMaterialColumns(
-        columns={"seg_cover": np.asarray(segments.columns["seg_cover"], dtype=float), "seg_grade": grade,
-                 "seg_count": np.asarray(segments.columns["seg_count"], dtype=float),
-                 "way_num": np.array([WAY_NUM[owner] for owner in owners], dtype=float)},
-        distance_m=segments.distance_m, bearing_deg=nan, mid_lat=nan, mid_lon=nan,
-        elevation_profiles=grade_profiles(np.zeros(n), segments.distance_m),
-    )
-    matrix = build_static_edge_score_matrix(arrays, FOLDED_AXES, {}, ())
-    details: dict[str, list[RouteSegmentDetail]] = {}
-    for row, owner in enumerate(owners):
-        distance_km = float(segments.distance_m[row]) / 1000
-        details.setdefault(owner, []).append(RouteSegmentDetail(
-            start_latitude=0.0, start_longitude=0.0, end_latitude=0.0, end_longitude=0.0,
-            cumulative_distance_km=0.0, distance_km=distance_km, edge_start=0, edge_end=1, elevations=[],
-            road_classes={}, axis_difficulties={axis_id: float(score) for axis_id, score
-                               in zip(matrix.axis_ids, matrix.axis_scores[:, row]) if not np.isnan(score)},
-        ).with_density_inputs({
-            axis_id: DensityScoreInput(value=float(column.inputs[row]), distance_km=distance_km, weight_share=None,
-                                       shape=column.shape)
-            for axis_id, column in matrix.density_axes.items() if not np.isnan(column.inputs[row])
-        }))
-    return {owner: merge_route_values(segments).axis_difficulties for owner, segments in details.items()}
-
-
-# 引いた地図の道の色が、その道をルートとして走ったときのルートの値と同じ決まりで出る。食い違うと、地図で良く見えた道を
-# 走ったルートが悪い値になる（区間ごとに値の違う割合・勾配と、それを読む軸を参照する軸と、密度の軸）。値の無い道は、
-# ルートの値にも無く、塗らない。符号付き材料を塗る軸（勾配）も、得点で求めれば（区間インスペクタ）ルートの値そのもの。
-@pytest.mark.parametrize(("axis_id", "as_difficulty"), [
-    *((axis_id, False) for axis_id, axis in FOLDED_AXES.items() if axis.is_published and axis_id != "axis_grade"),
-    ("axis_grade", True),
-])
-def test_a_way_is_painted_with_the_value_of_a_route_along_its_segments(axis_id, as_difficulty):
+def test_a_way_painted_with_a_signed_material_takes_the_direction_of_the_whole_way():
+    """勾配の地図は、上りか下りかを道全体で決める。上って下る道（way-3）が平坦の色になると、坂のある道が平坦に見える。
+    向きは値の無い区間を除いて決める（way-2）。"""
     keys, materials, served, segments, served_segments = _segment_tile()
-    expected = _route_values(segments, served_segments["seg_grade"])
-
-    painted = paint_folded_feature_values(axis_id, FOLDED_AXES, keys, materials, served, segments, served_segments,
-                                          as_difficulty=as_difficulty)
-
-    assert painted == {key: values[axis_id] for key, values in expected.items() if axis_id in values}
-
-
-def test_a_way_painted_with_a_signed_material_keeps_the_band_of_the_route_and_the_direction_of_the_whole_way():
-    """勾配の地図は、道1本の色の段がルートの勾配の値と同じ段になり、上りか下りかは道全体で決まる。上って下る道
-    （way-3）が平坦の色になると、坂のある道が平坦に見える。向きは値の無い区間を除いて決める（way-2）。"""
-    keys, materials, served, segments, served_segments = _segment_tile()
-    expected = _route_values(segments, served_segments["seg_grade"])
-    shape = FOLDED_AXES["axis_grade"].shape
 
     painted = paint_folded_feature_values("axis_grade", FOLDED_AXES, keys, materials, served, segments, served_segments,
                                           as_difficulty=False)
 
-    assert {key: shape.score_at(abs(value)) for key, value in painted.items()} == {
-        key: expected[key]["axis_grade"] for key in keys}
     assert {key: np.sign(value) for key, value in painted.items()} == {"way-0": 1.0, "way-1": 1.0, "way-2": -1.0, "way-3": 1.0}
     assert painted["way-3"] >= 3.0
 

@@ -94,6 +94,15 @@ class BinTime(NamedTuple):
 class LegValues:
     """区間の表示が読む、ある時刻で経路上の行だけを合成した値（`LegCostComposer.values_at_rows`）。配列は渡した行の並び。"""
 
+    difficulty_array: np.ndarray
+    axis_arrays: dict[str, np.ndarray]
+    # 区間ごとの「データのある軸の重みの合計」。軸別寄与度（表示用）はこれと`axis_arrays`から
+    # 経路上の行だけ求める（`difficulty.py: axis_weight_shares`）——全区間ぶん作っても、読むのは
+    # 経路上の数百区間だけのため。
+    weight_sums: np.ndarray
+    # 合成に使った重み。時間帯を持つ軸（`time_scope`）は、時刻の昼夜で決めた重み（区間ごとの通過時刻で合成したビンは
+    # 区間ごとの配列、`domain/axis_definitions.py: time_scoped_weights`）。
+    weights: Mapping[str, float | np.ndarray]
     # 材料id→配列。動的材料（`evaluate_dynamic_material_arrays`が返す全材料が対象、全行NaNの材料はキーを持たない）と、
     # 内訳表示用の静的材料（`route_facing_material_ids`、静的スコア行列の列）の両方を持つ。区間表示・`material_values`の
     # 集計が、探索コストの合成と同じ入力から求めた値を読むために保持する。
@@ -317,7 +326,10 @@ class LegCostComposer:
         self._score_matrix = score_matrix
         self._material_fills = material_fills
         self._ledger_setup = ledger
-        # 時刻で変わらない、categorical材料の語彙への番号の列（静的スコア行列の列をそのまま指す。切り出した区間の順）。
+        # 時刻で変わらない、区間の表示が読む列（静的スコア行列の列をそのまま指す。切り出した区間の順）: 折れ点を通す前の生値・
+        # 密度の軸の横軸の値・categorical材料の語彙への番号の列（値ごとの延長割合を出す）。
+        self.axis_raw_arrays = dict(zip(score_matrix.raw_axis_ids, score_matrix.axis_raw_values, strict=True))
+        self.density_axes = score_matrix.density_axes
         # 内訳として見せる静的材料と所要時間が読む材料の値（`route_facing_material_ids`の列をそのまま指す）。
         self._static_material_arrays = dict(zip(score_matrix.material_ids, score_matrix.material_values, strict=True))
         self.categorical_material_arrays = dict(
@@ -620,6 +632,11 @@ class LegCostComposer:
             headwind_ms=evaluated.headwind_ms,
             penalty_by_axis=penalty_by_axis,
             avoidance_seconds=avoidance_seconds,
+            difficulty_array=evaluated.composed.difficulty,
+            # evaluate_dynamic_axis_arraysは内部軸も含めうるため、公開軸だけを見せる。
+            axis_arrays={axis_id: resolved[axis_id] for axis_id in self._score_matrix.axis_ids},
+            weight_sums=evaluated.composed.weight_sums,
+            weights=evaluated.weights,
             material_arrays={
                 **{material_id: values[rows] for material_id, values in self._static_material_arrays.items()},
                 **{

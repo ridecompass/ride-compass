@@ -30,22 +30,18 @@ from app.domain.geo import KM_PER_DEGREE_LATITUDE, haversine_distance_km, km_per
 from app.domain.graph import node_key
 from app.domain.material_catalog import GRADIENT_PERCENT
 from app.domain.road_classes import TRUE_FACT_VALUE
-from app.domain.rain import rain_window_material_id
 from app.domain.road_network import RoadNetwork
 from app.domain.route import Coordinates
 from app.domain.msm import MsmBlock, MsmGrid
 from app.domain.wind import WindForecastSeries
 from app.domain.time_zone import JST
-from app.domain.traffic import stop_count_material_ids
 from app.domain.tuning import TUNING_VALUES
-from tests import rain_history_fake
 from tests.axis_system_fixture import replaced_axis_definitions
 from app.domain.road_classes import AvoidanceClassification
 from tests.road_class_fixture import classification, fact_is, map_layer, replaced_road_classes, road_classes
 from app.domain.route_request import FixedPoints
 from app.domain.route_search import MAX_SNAP_CORRECTION_KM
 from tests.route_world import (
-    AVOID_AXIS,
     BAD_MATERIAL,
     BASE_LAT,
     BASE_LON,
@@ -136,13 +132,13 @@ async def test_destination_route_runs_from_origin_to_destination(engine_over):
 
 
 async def test_weight_on_an_axis_steers_the_route_away_from_what_it_scores_badly(engine_over):
-    """南の道と東の道（南西→南東→北東）だけが避けたい材料を持つ。重みを掛けると、最も易しい候補はそこを通らない。"""
+    """南の道と東の道（南西→南東→北東）だけが避けたい材料を持つ。重みを掛けると、費用の最も小さい候補はそこを通らない。"""
     bad = {100, 101, 202, 205}  # 南の横の道2本と東の縦の道2本
     generator = engine_over(grid_network(bad_ways=bad), avoid_weight=1.0)
 
     candidates = await generator.generate_via_waypoints(at(SOUTH_WEST), [], destination=at(NORTH_EAST), max_routes=3, start_time=DEPARTURE)
 
-    easiest = min(candidates, key=lambda c: c.overall_difficulty.average)
+    easiest = min(candidates, key=lambda c: c.cost_seconds)
     assert_connected(easiest, SOUTH_WEST, NORTH_EAST)
     assert not set(ways_of(easiest)) & bad
 
@@ -944,79 +940,6 @@ async def test_the_share_of_the_route_timed_without_data_is_reported(engine_over
     complete = await engine_over(grid_network()).generate_via_waypoints(
         at(SOUTH_WEST), [], destination=at(SOUTH_EAST), max_routes=3, start_time=DEPARTURE)
     assert fastest_of(complete).missing_travel_data_share == 0.0
-
-
-def _rain_axis(axis_id: str, *materials: str) -> AxisDefinition:
-    terms = [MaterialTerm(material=rain_window_material_id(3)), *(MaterialTerm(material=m) for m in materials)]
-    return AxisDefinition(
-        axis_id=axis_id, label="雨", default_weight=0.0, is_published=True,
-        shape=BreakpointLinearShape(terms=terms, breakpoints=[(0.0, 0.0), (10.0, 100.0)]),
-    )
-
-
-#: 雨の材料だけを読む軸と、雨と道の材料（避けたい材料）を足して読む軸。
-RAIN_AXES = {"rain": _rain_axis("rain"), "rain_and_bad": _rain_axis("rain_and_bad", BAD_MATERIAL)}
-
-#: 南の道の西半分（道100、中点139.6055E）の近くと、東半分（道101、中点139.6165E）の近くの雨量計。
-RAIN_GAUGES = {
-    "west": {"lat": [35, 36.0], "lon": [139, 36.0], "kjName": "西"},
-    "east": {"lat": [35, 36.0], "lon": [139, 37.32], "kjName": "東"},
-}
-
-
-async def test_each_segment_is_scored_with_the_rain_at_the_gauge_nearest_its_midpoint(engine_over, fake_redis):
-    """雨の材料は区間の中点に最も近い雨量計の今の観測で、道の材料と同じく区間の得点とルートの生値（mm）に載る
-    ——雨と道の材料を1つの軸で足すこともできる。南西→南東の最速は道100（西の雨量計）と道101（東の雨量計）で、
-    西では1時間1.0mmの雨が続き、東は降っていない。"""
-    await rain_history_fake.observe(RAIN_GAUGES, {"west": 1.0, "east": 0.0})
-
-    with replaced_axis_definitions({**AXIS_DEFINITIONS, **RAIN_AXES}):
-        candidates = await engine_over(grid_network(bad_ways={101})).generate_via_waypoints(
-            at(SOUTH_WEST), [], destination=at(SOUTH_EAST), max_routes=3, start_time=DEPARTURE)
-
-    fastest = fastest_of(candidates)
-    assert ways_of(fastest) == [100, 101]
-    # 3時間の雨量は1時間1.0mmの3本ぶん。道101の避けたい材料1は、雨の0mmに足されて10点になる。
-    assert [segment.axis_difficulties["rain"] for segment in fastest.segments] == [30.0, 0.0]
-    assert [segment.axis_difficulties["rain_and_bad"] for segment in fastest.segments] == [30.0, 10.0]
-    assert fastest.axis_raw_values["rain"] == pytest.approx(
-        3.0 * fastest.segments[0].distance_km / sum(segment.distance_km for segment in fastest.segments), rel=1e-3)
-
-
-#: 信号の密度（回/km）を、0から始まる直線（11回/kmで100点、その先は100点）で点数にする軸（停止密度の軸の形）。
-STOP_AXIS = AxisDefinition(
-    axis_id="stops", label="停止", default_weight=0.0, is_published=True,
-    shape=BreakpointLinearShape(
-        terms=[MaterialTerm(material=stop_count_material_ids()[0])], breakpoints=[(0.0, 0.0), (11.0, 100.0)],
-    ),
-)
-
-
-async def test_a_route_scores_a_density_axis_from_its_mean_count_rather_than_the_mean_of_segment_scores(engine_over):
-    """1kmあたりの回数で測る軸は、ルートの値を回数の距離平均から点数にする。南西→南東の最速は同じ長さの道100（12回/km）と
-    道101（0回/km）で、区間の点数（頭打ちの100点と0点）の平均は50点だが、回数の平均（6回/km）の点数は54.5点。
-    待ちの秒で遠回りが速くならないよう、南西と南東から北へ出る道は走れない道にする。"""
-    network = grid_network(stop_density_of={100: 12.0}, motorway_ways={200, 202})
-    with replaced_axis_definitions({**AXIS_DEFINITIONS, "stops": STOP_AXIS}):
-        candidates = await engine_over(network).generate_via_waypoints(
-            at(SOUTH_WEST), [], destination=at(SOUTH_EAST), max_routes=3, start_time=DEPARTURE)
-
-    fastest = fastest_of(candidates)
-    assert ways_of(fastest) == [100, 101]
-    assert [segment.axis_difficulties["stops"] for segment in fastest.segments] == [100.0, 0.0]
-    assert fastest.axis_difficulties["stops"] == 54.5
-
-
-async def test_without_an_observation_history_only_the_rain_axis_has_no_data(engine_over, fake_redis):
-    """履歴が無い（バッチがまだ・Redisが不通）ときもルートは出て、雨を読む軸だけが「データなし」になる。"""
-
-    with replaced_axis_definitions({**AXIS_DEFINITIONS, **RAIN_AXES}):
-        candidates = await engine_over(grid_network()).generate_via_waypoints(
-            at(SOUTH_WEST), [], destination=at(SOUTH_EAST), max_routes=3, start_time=DEPARTURE)
-
-    fastest = fastest_of(candidates)
-    assert all("rain" not in segment.axis_difficulties for segment in fastest.segments)
-    assert all(segment.axis_difficulties[AVOID_AXIS] == 0.0 for segment in fastest.segments)
 
 
 def _wind(times: list[datetime], speed_by_point: list[float]) -> WindForecastSeries:
