@@ -1,6 +1,6 @@
 "use client";
 
-import { getCostAxisCatalog } from "@/services/costAxisCatalogApi";
+import { COST_AXIS_CATALOG_LABEL, getCostAxisCatalog } from "@/services/costAxisCatalogApi";
 import { retrySharedCatalogFetch, useSharedCatalog } from "@/hooks/useSharedCatalog";
 import { axisColorsOf } from "@/lib/axisCatalog";
 import type { FetchFailure } from "@/types/fetchFailure";
@@ -93,7 +93,7 @@ export function retryCostAxisCatalogFetch(): void {
 
 const COST_AXIS_CATALOG_FETCH_FAILURE: FetchFailure = {
   id: "cost-axis-catalog",
-  label: "負担の種類の一覧",
+  label: COST_AXIS_CATALOG_LABEL,
   effect: "ルートは軸ごとの倍率を変えていても反映できず、標準の倍率で作ります。",
   onRetry: retryCostAxisCatalogFetch,
 };

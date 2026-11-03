@@ -80,9 +80,10 @@ class LedgerCosts:
     """1回の生成の、道1本と曲がる所の代償の秒を組む。道の負担は時刻に依らないので1回だけ求め、体力は風の時刻ごとに渡す。"""
 
     def __init__(self, axes: CostAxisDefinitions, parameters: LedgerParameters, flat_power_w: float, kickoff_j: float,
-                 burden_km: Mapping[str, np.ndarray]) -> None:
+                 burden_per_km: Mapping[str, np.ndarray], distance_m: np.ndarray) -> None:
         """`flat_power_w`は平地の出力、`kickoff_j`は重みを掛けた漕ぎ出し1回の体力（`SegmentSpeedModel.kickoff_effort_j`）、
-        `burden_km`は道の負担の軸ごとの区間の重さ×km（`burden_per_km` × 区間の長さkm）。"""
+        `burden_per_km`は道の負担の軸ごとの区間の1kmあたりの重さ（`domain/leg_costs.py: burden_weights`）、`distance_m`は区間の
+        長さ。走行の模型から組むときは`for_model`。"""
         multiplier = parameters.multiplier
         self._weight_exponent = parameters.effort_weight_exponent
         self._item_multipliers = {item: multiplier(axis_id) for axis_id, item in EFFORT_AXES.items()}
@@ -90,20 +91,20 @@ class LedgerCosts:
         self._seconds_per_j = parameters.effective_strength * parameters.effort_alpha / flat_power_w
         self._kickoff_seconds = self._seconds_per_j * self._item_multipliers["inertia"] * kickoff_j
         #: 道の負担の軸ごとの、区間ごとの代償の秒（時刻に依らない）。
+        distance_km = np.asarray(distance_m, dtype=np.float64) / 1000.0
         self._burden_axis_seconds = {
             axis_id: parameters.effective_strength * parameters.burden_seconds_per_km * multiplier(axis_id)
-            * np.asarray(burden_km[axis_id], dtype=np.float64)
+            * np.asarray(burden_per_km[axis_id], dtype=np.float64) * distance_km
             for axis_id in axes.burden
         }
 
     @classmethod
     def for_model(cls, axes: CostAxisDefinitions, parameters: LedgerParameters, model: SegmentSpeedModel,
                   burden_per_km: Mapping[str, np.ndarray]) -> "LedgerCosts":
-        """走行の模型`model`の平地の出力と漕ぎ出しの体力（式の重み`γ`を掛けたもの）と、道の負担の軸ごとの区間の1kmあたりの
-        重さ（`domain/leg_costs.py: burden_weights`）に模型の区間の長さを掛けたもので組む。"""
-        distance_km = np.asarray(model.distance_m, dtype=np.float64) / 1000.0
+        """走行の模型`model`の平地の出力・漕ぎ出しの体力（式の重み`γ`を掛けたもの）・区間の長さと、道の負担の軸ごとの区間の
+        1kmあたりの重さ（`domain/leg_costs.py: burden_weights`）で組む。"""
         return cls(axes, parameters, model.flat_power_w, model.kickoff_effort_j(parameters.effort_weight_exponent),
-                   {axis_id: np.asarray(per_km, dtype=np.float64) * distance_km for axis_id, per_km in burden_per_km.items()})
+                   burden_per_km, model.distance_m)
 
     def penalty_by_axis(self, ride: SegmentRide, rows: np.ndarray | None = None) -> dict[str, np.ndarray]:
         """軸id → 区間ごとの代償の秒（体力の軸は つまみ × α × 倍率 × 体力 ÷ 平地の出力、道の負担の軸は つまみ × β × 倍率 ×

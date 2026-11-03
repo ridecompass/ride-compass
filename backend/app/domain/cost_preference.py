@@ -6,7 +6,7 @@
 
 from typing import Annotated, NamedTuple
 
-from pydantic import Field
+from pydantic import AfterValidator, Field
 
 from app.domain.cost_axes import cost_axis_ids, current_cost_axes
 from app.domain.strict_model import StrictModel
@@ -57,3 +57,8 @@ class CostPreference(StrictModel):
             multipliers={axis_id: self.multipliers.get(axis_id, STANDARD_COST_FACTOR)
                          for axis_id in cost_axis_ids(current_cost_axes())},
         )
+
+
+#: 要求が受ける利用者の値（倍率のキーが今の費用の軸のidかを、受け取るときに検める）。ルート生成・地図のレンズ・道の窓の
+#: どの入口もこの型で受ける。
+RequestedCostPreference = Annotated[CostPreference, AfterValidator(CostPreference.check_cost_axis_ids)]

@@ -19,6 +19,7 @@ from app.domain.gradient import ROAD_BEARING_LEAF
 from app.domain.ledger_costs import current_ledger_parameters
 from app.domain.leg_costs import wind_components_or_calm
 from app.domain.lens_values import (
+    LensFactInputs,
     LENS_AGAINST_LEAF,
     LENS_ALONG_LEAF,
     LensFeatures,
@@ -44,13 +45,10 @@ _CATEGORY = "region:lens"
 
 @dataclass(frozen=True)
 class _TileLens:
-    """タイル1枚のレンズの値と、それを求めた行ごとの入力（区間インスペクタが事実を引く）。"""
+    """タイル1枚のレンズの値と、区間インスペクタが引く事実の入力。"""
 
     table: LensTable
-    materials: EdgeMaterialColumns
-    #: 向かい風・横風の成分。風を読めず無風で求めたときはNone（事実として出さない）。
-    wind_ms: tuple[np.ndarray, np.ndarray] | None
-    steepest: tuple[np.ndarray, np.ndarray]
+    facts: LensFactInputs
 
 
 class LensService:
@@ -85,8 +83,7 @@ class LensService:
         road_classes = current_road_classes()
         labels = class_labels(road_classes.classifications.get(road_classes.rolling_resistance_classification or ""))
         painted = painted_direction(bearing_deg, float(tile.table.features.bearing_deg[0]))
-        return lens_inspection(tile.table, 0, painted, tile.materials.columns, tile.materials.distance_m, tile.wind_ms,
-                               tile.steepest, labels)
+        return lens_inspection(tile.table, 0, painted, tile.facts, labels)
 
     async def _tile(self, z: int, x: int, y: int, at: datetime | None, speed_kmh: float, preference: CostPreference,
                     only: str | None = None) -> _TileLens | None:
@@ -149,9 +146,10 @@ def _tile_lens(features: LensFeatures, materials: EdgeMaterialColumns, axes: Cos
             wind_series=series, forecast_index=series.time_index(target, 0.0),
             wind_points=series.lattice.points_of(materials.mid_lat, materials.mid_lon))
         components = wind_components_or_calm(context, n)
-    table = lens_table(features, materials.columns, materials.distance_m, materials.elevation_profiles, axes,
-                       current_ledger_parameters(preference), speed_kmh, fills, components)
-    return _TileLens(table, materials, None if wind is None else components, steepest)
+    table, stops = lens_table(features, materials.columns, materials.distance_m, materials.elevation_profiles, axes,
+                              current_ledger_parameters(preference), speed_kmh, fills, components)
+    return _TileLens(table, LensFactInputs(materials.columns, materials.distance_m, stops,
+                                           None if wind is None else components, steepest))
 
 
 def _way_materials(table: LensTable, lens_id: str) -> dict[str, dict[str, float]] | None:

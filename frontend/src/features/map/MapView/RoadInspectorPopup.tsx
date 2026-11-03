@@ -30,6 +30,7 @@ import { textVariants } from "@/components/ui/Text/Text";
 import { cn } from "@/lib/cn";
 import { useCostAxisCatalog } from "@/hooks/useCostAxisCatalog";
 import { formatLensNumber, LENS_SECONDS_UNIT } from "@/lib/mapDisplay/costLensPaint";
+import { costAxisLabel, factValueText } from "@/lib/routePenalty";
 
 interface RoadInspectorPopupProps {
   properties: RoadSurfacePopupProperties;
@@ -63,16 +64,16 @@ export default function RoadInspectorPopup({
 }: RoadInspectorPopupProps) {
   // 評価は道・走行の条件・利用者の値ごとに持つ。値を変えたら、古い値の評価を見せずに取り直しへ戻す。条件は押したときの
   // ものに留める——出発時刻は「今」へ5分刻みで進むので、今の条件で引き直すと開いている間に評価が消える。
-  const weightsKey = JSON.stringify(costPreference);
-  const [pressed, setPressed] = useState<{ weightsKey: string; conditions: AxisInspectorConditions } | null>(null);
-  const pinned = pressed !== null && pressed.weightsKey === weightsKey ? pressed : null;
+  const preferenceKey = JSON.stringify(costPreference);
+  const [pressed, setPressed] = useState<{ preferenceKey: string; conditions: AxisInspectorConditions } | null>(null);
+  const pinned = pressed !== null && pressed.preferenceKey === preferenceKey ? pressed : null;
   const name = roadDisplayName(properties) ?? track?.label ?? null;
   const summary = roadFactSummary(properties);
   const wayId = roadWayId(properties);
   const featureKey = roadFeatureKey(properties);
   const inspector = useQuery(
     {
-      queryKey: ["axis-inspector", wayId, featureKey, JSON.stringify(pinned?.conditions ?? conditions), weightsKey],
+      queryKey: ["axis-inspector", wayId, featureKey, JSON.stringify(pinned?.conditions ?? conditions), preferenceKey],
       // 取りに行くのは押したあと（`pinned`がある間）だけ。
       queryFn: async () => {
         const value = await fetchAxisInspector(wayId!, featureKey!, pinned!.conditions, costPreference);
@@ -89,7 +90,7 @@ export default function RoadInspectorPopup({
 
   const load = () => {
     if (pinned !== null) void inspector.refetch();
-    else setPressed({ weightsKey, conditions });
+    else setPressed({ preferenceKey, conditions });
   };
 
   return (
@@ -143,13 +144,9 @@ function LensValues({ lens }: { lens: LensInspection }) {
   const slot = lens.painted ?? (lens.along !== null ? "along" : "against");
   const values = lens[slot];
   if (values === null) return <p className={hintClass}>この向きには走れません。</p>;
-  const label = (axisId: string) =>
-    costCatalog.axes.find((axis) => axis.axisId === axisId)?.label ?? (costCatalog.loaded ? axisId : "読み込み中");
   // 事実の名前と単位は backend が付ける（ルートの内訳・凡例の目安と同じ事実は同じ名前）。
   const facts: RoadFactRow[] = [
-    ...values.facts.flatMap((fact) =>
-      fact.value === null ? [] : [{ label: fact.label, value: `${formatLensNumber(fact.value)}${fact.unit}` }],
-    ),
+    ...values.facts.map((fact) => ({ label: fact.label, value: factValueText(fact) })),
     ...(lens.surface !== null ? [{ label: "路面", value: lens.surface }] : []),
   ];
   return (
@@ -166,7 +163,7 @@ function LensValues({ lens }: { lens: LensInspection }) {
       </p>
       <FactList
         rows={values.axes.map((axis) => ({
-          label: label(axis.axis_id),
+          label: costAxisLabel(costCatalog, axis.axis_id),
           value: `${formatLensNumber(axis.seconds_per_km)}${LENS_SECONDS_UNIT}`,
         }))}
       />

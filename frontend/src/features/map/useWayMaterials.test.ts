@@ -76,7 +76,8 @@ afterEach(() => {
 type Props = { axes: typeof dedicatedAxes; viewport: MapViewport | null; conditions: typeof CONDITIONS };
 function render(initialProps: Props) {
   return renderHook(
-    ({ axes, viewport, conditions }: Props) => useWayMaterials(axes, viewport, conditions, STANDARD_COST_PREFERENCE),
+    ({ axes, viewport, conditions }: Props) =>
+      useWayMaterials(axes, viewport, conditions, STANDARD_COST_PREFERENCE, null),
     {
       initialProps,
     },

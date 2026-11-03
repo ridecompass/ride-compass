@@ -40,7 +40,8 @@ def _parameters(strength=1.0, alpha=1.0, beta=180.0, exponent=0.0, **multipliers
 
 
 def _ledger(parameters: LedgerParameters, vibration_km: list[float]) -> LedgerCosts:
-    return LedgerCosts(AXES, parameters, wheel_power_w(RIDER), kickoff_extra_j(RIDER), {"vibration": np.array(vibration_km)})
+    return LedgerCosts(AXES, parameters, wheel_power_w(RIDER), kickoff_extra_j(RIDER), {"vibration": np.array(vibration_km)},
+                       np.full(len(vibration_km), 1000.0))
 
 
 def _ride(n: int, gravity=0.0, air=0.0, rolling=0.0, inertia=0.0) -> SegmentRide:

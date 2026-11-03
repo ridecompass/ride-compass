@@ -22,25 +22,28 @@ export function profileBoxes(
   columns: readonly RouteStretch<Pick<RouteSegmentDetail, "lens_seconds_per_km">>[],
   axisOrder: readonly string[],
 ): Map<string, ProfileBox[]> {
+  // 秒/kmのまま積み、一番高く積んだ区間を図の上端にしてから図の高さへ直す。
   const byAxis = new Map<string, ProfileBox[]>(axisOrder.map((axisId) => [axisId, []]));
-  const perKm = columns.map(({ segment }) => segment.lens_seconds_per_km);
-  // 積んだ高さ（並べた軸の値の和）の一番高い区間を図の上端にする。
-  const stacked = perKm.map((values) => axisOrder.reduce((sum, axisId) => sum + Math.max(0, values?.[axisId] ?? 0), 0));
-  const highest = Math.max(0, ...stacked);
-  if (highest <= 0) return byAxis;
-  const toView = PROFILE_VIEW_HEIGHT / highest;
-  columns.forEach(({ startKm, endKm }, index) => {
-    const values = perKm[index];
-    if (endKm <= startKm || values === null || values === undefined) return;
+  let highest = 0;
+  for (const { startKm, endKm, segment } of columns) {
+    const values = segment.lens_seconds_per_km;
+    if (endKm <= startKm || values == null) continue;
     let bottom = 0;
     for (const axisId of axisOrder) {
-      const value = (values[axisId] ?? 0) * toView;
+      const value = values[axisId] ?? 0;
       if (value <= 0) continue;
       byAxis.get(axisId)?.push({ startKm, endKm, bottom, top: bottom + value });
       bottom += value;
     }
-  });
-  return byAxis;
+    highest = Math.max(highest, bottom);
+  }
+  const toView = highest > 0 ? PROFILE_VIEW_HEIGHT / highest : 0;
+  return new Map(
+    [...byAxis].map(([axisId, boxes]) => [
+      axisId,
+      highest > 0 ? boxes.map((box) => ({ ...box, bottom: box.bottom * toView, top: box.top * toView })) : [],
+    ]),
+  );
 }
 
 /** 距離`km`が入っている柱と、その柱の中の割合（0〜1）。範囲の外は端の柱へ寄せる。長さのある柱が無ければnull。 */

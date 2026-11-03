@@ -9,7 +9,7 @@ import { vi } from "vitest";
 import RouteOutcome from "@/features/route/RouteOutcome/RouteOutcome";
 import type { RouteResults } from "@/features/route/useRouteResults";
 import { catalogEntry, catalogResponse } from "@/testing/catalogAxes";
-import { makeRouteCandidate } from "@/testing/routeFixtures";
+import { makeRouteCandidate, penaltyFields } from "@/testing/routeFixtures";
 import type { RouteCandidate } from "@/types/route";
 
 const ENTRIES = [
@@ -26,8 +26,7 @@ export function route(id: string, overrides: Partial<RouteCandidate> = {}): Rout
 export const FAST = route("fast", {
   distance_km: 10,
   estimated_duration_seconds: 1800,
-  penalty: { axis_seconds: { ascent: 240, vibration: 60 }, avoidance_seconds: 0, total_seconds: 300 },
-  lens_seconds_per_km: { total: 30, ascent: 24, vibration: 6 },
+  ...penaltyFields({ ascent: 240, vibration: 60 }, 10),
 });
 export const SLOW = route("slow", { distance_km: 20, estimated_duration_seconds: 2520, penalty: null });
 

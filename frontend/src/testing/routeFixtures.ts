@@ -149,3 +149,25 @@ export const FACILITY_CANDIDATE: PlaceCandidate = {
   latitude: 35.7148,
   longitude: 139.7967,
 };
+
+/** 区間・候補の代償の内訳（`penalty`）と、backend がそれから導く和（`total_seconds`）と地図のレンズと同じ1kmあたりの値
+ * （`lens_seconds_per_km`。回避指定は入れない。`backend/app/domain/route.py`）を対で返す。足場は内訳だけ・1kmあたりだけの
+ * backend が返さない組を作らない。 */
+export function penaltyFields(
+  axisSeconds: Record<string, number>,
+  distanceKm: number,
+  avoidanceSeconds = 0,
+): Pick<RouteSegmentDetail, "penalty" | "lens_seconds_per_km"> {
+  const axisTotal = Object.values(axisSeconds).reduce((sum, seconds) => sum + seconds, 0);
+  return {
+    penalty: {
+      axis_seconds: axisSeconds,
+      avoidance_seconds: avoidanceSeconds,
+      total_seconds: axisTotal + avoidanceSeconds,
+    },
+    lens_seconds_per_km: {
+      total: axisTotal / distanceKm,
+      ...Object.fromEntries(Object.entries(axisSeconds).map(([axisId, seconds]) => [axisId, seconds / distanceKm])),
+    },
+  };
+}

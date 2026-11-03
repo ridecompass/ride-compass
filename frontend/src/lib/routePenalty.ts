@@ -1,9 +1,10 @@
 // ルートの応答の代償の内訳（`penalty`。軸ごとの秒と、避け方で上乗せした回避指定の秒と、その和）を、画面が読む形にする。候補・区間・
 // 編集の差が同じ形を読む。内訳の無い候補（費用の軸の定義が無い間）は、どれも「内訳なし」として扱う。
 
-import { formatDurationShort, MINUTE_UNIT, secondsToMinutes } from "@/lib/duration";
+import { formatDurationShort, formatMinutes, roundedMinutes } from "@/lib/duration";
+import { formatLensNumber } from "@/lib/mapDisplay/costLensPaint";
 import palette from "@/types/generated/palette.json";
-import type { PenaltyBreakdown } from "@/types/route";
+import type { AxisFact, PenaltyBreakdown } from "@/types/route";
 
 /** 内訳の行の名前と色を引く、費用の軸の一覧（`hooks/useCostAxisCatalog.ts: CostAxisCatalog`が満たす）。 */
 export interface PenaltyCatalog {
@@ -23,8 +24,18 @@ export interface PenaltyRow {
   color: string;
 }
 
-/** 一覧が届くまでの軸の名前。 */
-const UNLOADED_AXIS_LABEL = "読み込み中";
+/** 費用の軸`axisId`の名前。一覧に無い軸は、一覧が届いていればidで、届くまでは「読み込み中」（生のidを名前に見せない）。 */
+export function costAxisLabel(
+  catalog: { readonly axes: readonly { readonly axisId: string; readonly label: string }[]; readonly loaded: boolean },
+  axisId: string,
+): string {
+  return catalog.axes.find((axis) => axis.axisId === axisId)?.label ?? (catalog.loaded ? axisId : "読み込み中");
+}
+
+/** 事実の値と単位（値を求められなければ「—」）。ルートの内訳と道の窓が同じ書き方で出す。 */
+export function factValueText(fact: AxisFact): string {
+  return fact.value === null ? "—" : `${formatLensNumber(fact.value)}${fact.unit}`;
+}
 
 /** 回避指定の行のid。軸のidと同じ並びに置くので、軸には無い綴りにする。 */
 const AVOIDANCE_ROW_ID = "<avoidance>";
@@ -41,10 +52,9 @@ export function penaltyRows(penalty: PenaltyBreakdown, catalog: PenaltyCatalog):
       seconds: penalty.axis_seconds[axis.axisId],
       color: catalog.axisColors[axis.axisId] ?? palette.semantic.neutral,
     })),
-    // 一覧に無い軸は、届いていればidで、届くまでは読み込み中と出す（生のidを名前に見せない）。
     ...unknown.map((id) => ({
       id,
-      label: catalog.loaded ? id : UNLOADED_AXIS_LABEL,
+      label: costAxisLabel(catalog, id),
       seconds: penalty.axis_seconds[id],
       color: palette.semantic.neutral,
     })),
@@ -62,10 +72,10 @@ export function penaltyRows(penalty: PenaltyBreakdown, catalog: PenaltyCatalog):
 
 /** 負担の秒を「+12分」の形にする（所要時間に上乗せした分として読む）。0は「+0分」（効かなかった軸を「1分未満」と見せない）。 */
 export function formatPenalty(seconds: number): string {
-  return seconds === 0 ? `+0${MINUTE_UNIT}` : `+${formatDurationShort(seconds)}`;
+  return `+${seconds === 0 ? formatMinutes(0) : formatDurationShort(seconds)}`;
 }
 
 /** 候補のカードの負担（分へ丸めた数字だけ。「負担」の語と単位は、読み上げと開いたときの内訳が持つ）。 */
 export function formatPenaltyMinutes(seconds: number): string {
-  return `+${Math.round(secondsToMinutes(seconds))}`;
+  return `+${roundedMinutes(seconds)}`;
 }

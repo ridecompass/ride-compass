@@ -181,7 +181,13 @@ export function useMapView({
   const bearingDeg = snapDeg(riding?.bearingDeg ?? viewport?.bearing ?? 0, WAY_BEARING_STEP_DEG);
   const speedKmh = riding?.speedKmh ?? ride.speedKmh;
   const wayConditions = useMemo(() => ({ bearingDeg, at: ride.at, speedKmh }), [bearingDeg, ride.at, speedKmh]);
-  const wayMaterials = useWayMaterials(fetchAxes, viewport, wayConditions, costPreference);
+  const wayMaterials = useWayMaterials(
+    fetchAxes,
+    viewport,
+    wayConditions,
+    costPreference,
+    costCatalog.lenses?.totalLens.axisId ?? null,
+  );
   const shownRoadLayers = mapCatalog.roadLayers.filter((layer) => layerVisibility[layer.id] === true);
   const roadClasses = useRoadClasses(shownRoadLayers.length > 0, viewport, catalog.roadClasses.generation);
   // 層の値はどの道の線の層も同じ取得から読むので、取得の状態は出ている層のどれにも出す。

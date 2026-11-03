@@ -19,7 +19,7 @@ import RouteProfile from "@/features/route/RouteProfile/RouteProfile";
 import type { ProfileLayerSelection } from "@/features/route/RouteProfile/useProfileLayers";
 import RouteAxisProfile from "@/features/route/RouteAxisProfile/RouteAxisProfile";
 import RouteSplicePanel from "@/features/route/RouteSplicePanel/RouteSplicePanel";
-import { formatDurationShort } from "@/lib/duration";
+import { formatDurationShort, MINUTE_UNIT } from "@/lib/duration";
 import EditDifference from "@/features/route/EditDifference/EditDifference";
 import WarningText from "@/features/route/WarningText/WarningText";
 import {
@@ -44,8 +44,9 @@ const GROUP_MARKS: Partial<Record<RouteListGroup, { Icon: typeof FastestRouteIco
 
 /** カードの下の帯の色。地図のルートの線と同じ総合のレンズの段で、候補の1kmあたりの負担を示す。内訳が無ければ値なしの色。 */
 function penaltyColor(route: RouteCandidate, catalog: CostAxisCatalog, ground: MapTheme): string {
-  const total = catalog.lenses === null ? undefined : route.lens_seconds_per_km?.[catalog.lenses.totalLens.axisId];
-  if (total === undefined || catalog.lenses === null) return NO_DATA_LEGEND_BAND.color;
+  if (catalog.lenses === null) return NO_DATA_LEGEND_BAND.color;
+  const total = route.lens_seconds_per_km?.[catalog.lenses.totalLens.axisId];
+  if (total === undefined) return NO_DATA_LEGEND_BAND.color;
   return bandAt(valueBands(costLensPaint(catalog.lenses.totalLens, ground)), total).color;
 }
 
@@ -198,8 +199,14 @@ export default function RouteOutcome({ results, generation, splice, profileLayer
                     {/* 内訳の無い候補は「—」（0と欠損を同じ見た目にしない）。 */}
                     <span>
                       <span className="sr-only">負担</span>
-                      {route.penalty === null ? "—" : formatPenaltyMinutes(route.penalty.total_seconds)}
-                      {route.penalty !== null && <span className="sr-only">分</span>}
+                      {route.penalty === null ? (
+                        "—"
+                      ) : (
+                        <>
+                          {formatPenaltyMinutes(route.penalty.total_seconds)}
+                          <span className="sr-only">{MINUTE_UNIT}</span>
+                        </>
+                      )}
                     </span>
                   </span>
                   <span

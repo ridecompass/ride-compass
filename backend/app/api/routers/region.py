@@ -2,8 +2,9 @@ import asyncio
 from datetime import datetime
 from typing import Annotated
 
+from fastapi.exceptions import RequestValidationError
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
-from pydantic import Field, ValidationError, model_validator
+from pydantic import Field, TypeAdapter, ValidationError, model_validator
 
 from app.api.dependencies import (
     LandcoverTileReader,
@@ -26,7 +27,7 @@ from app.api.routers.routes import RoutePreferenceWeights
 from app.config import settings
 from app.domain.dynamic_way_values import MissingConditions, WayValueQuery
 from app.domain.axis_inspector import AxisInspectorResult
-from app.domain.cost_preference import MAX_COST_STRENGTH, STANDARD_COST_FACTOR, CostPreference
+from app.domain.cost_preference import MAX_COST_STRENGTH, STANDARD_COST_FACTOR, CostPreference, RequestedCostPreference
 from app.domain.geo import BearingDeg
 from app.domain.route_request import AssumedSpeedKmh
 from app.domain.landcover import LandcoverTileZoom
@@ -149,18 +150,22 @@ async def region_way_materials(
     return materials
 
 
+_REQUESTED_COST_PREFERENCE: TypeAdapter[CostPreference] = TypeAdapter(RequestedCostPreference)
+
+
 def lens_cost_preference(
     strength: Annotated[float, Query(ge=0.0, le=MAX_COST_STRENGTH)] = STANDARD_COST_FACTOR,
     multipliers: Annotated[str | None, Query(pattern=r"^[A-Za-z0-9_]+:[0-9.]+(,[A-Za-z0-9_]+:[0-9.]+)*$")] = None,
 ) -> CostPreference:
-    """レンズの要求の利用者の値（ルート生成の`cost_preference`と同じ値・同じ検証）。倍率は`<軸id>:<倍率>`を`,`でつないだもの
-    （書いていない軸は標準）。タイルの URL がそのまま応答のキャッシュの鍵になるので、クエリで受ける。"""
+    """レンズの要求の利用者の値（ルート生成の`cost_preference`と同じ型・同じ検証。誤りは型の検査と同じ形の422）。倍率は
+    `<軸id>:<倍率>`を`,`でつないだもの（書いていない軸は標準。形は`pattern`が検める）。タイルの URL がそのまま応答の
+    キャッシュの鍵になるので、クエリで受ける。"""
+    parsed = {} if multipliers is None else {
+        axis_id: float(value) for axis_id, value in (pair.split(":") for pair in multipliers.split(","))}
     try:
-        parsed = {} if multipliers is None else {
-            axis_id: float(value) for axis_id, value in (pair.split(":") for pair in multipliers.split(","))}
-        return CostPreference(strength=strength, multipliers=parsed).check_cost_axis_ids()
-    except (ValueError, ValidationError) as error:
-        raise HTTPException(status_code=422, detail=str(error)) from error
+        return _REQUESTED_COST_PREFERENCE.validate_python({"strength": strength, "multipliers": parsed})
+    except ValidationError as error:
+        raise RequestValidationError(error.errors()) from error
 
 
 @router.get("/api/region/lens/{lens_id}/{z}/{x}/{y}")
@@ -227,12 +232,11 @@ class AxisInspectorRequest(StrictModel):
     # 合成に使う重み。利用者がいま設定している重み（ルート生成へ送るのと同じ形・同じ検証）を送る。省略すると既定の重み。
     route_preference: RoutePreferenceWeights | None = None
     # 費用の軸のレンズの値（`lens`）の利用者の値。ルート生成へ送るのと同じ形・同じ検証。地図のレンズの要求と同じ値を送る。
-    cost_preference: CostPreference = Field(default_factory=CostPreference)
+    cost_preference: RequestedCostPreference = Field(default_factory=CostPreference)
 
     @model_validator(mode="after")
     def _check_tile_index(self) -> "AxisInspectorRequest":
         check_tile_index(self.z, self.x, self.y)
-        self.cost_preference.check_cost_axis_ids()
         return self
 
 

@@ -1,4 +1,4 @@
-import { MINUTE_UNIT, secondsToMinutes } from "@/lib/duration";
+import { MINUTE_UNIT, roundedMinutes } from "@/lib/duration";
 import { signMark } from "@/lib/numberFormat";
 import type { RouteCandidate } from "@/types/route";
 
@@ -89,7 +89,7 @@ export function durationDifferenceLabel(
   if (baselineSeconds === null) return null;
   const seconds = route.estimated_duration_seconds;
   if (seconds === null) return null;
-  const minutes = Math.round(secondsToMinutes(seconds - baselineSeconds));
+  const minutes = roundedMinutes(seconds - baselineSeconds);
   if (minutes === 0) return null;
   return `${signMark(minutes)}${Math.abs(minutes)}${MINUTE_UNIT}`;
 }

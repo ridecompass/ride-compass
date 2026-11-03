@@ -62,11 +62,11 @@ export function costRouteStyleModes(catalog: CostAxisCatalog, ground: MapTheme):
       valueExpression,
       paint: costLensPaint(presentation, ground),
     });
-  const total: unknown[] = ["get", lenses.totalLens.axisId, ["get", ROUTE_LENS_SECONDS_PROPERTY]];
+  const lensValue = (lensId: string): unknown[] => ["get", lensId, ["get", ROUTE_LENS_SECONDS_PROPERTY]];
   return [
-    mode(LENS_DIFFICULTY_ID, lenses.totalLens, total),
-    mode(lenses.totalLens.axisId, lenses.totalLens, total),
-    ...catalog.axes.map((axis) => mode(axis.axisId, axis, ["get", axis.axisId, ["get", ROUTE_LENS_SECONDS_PROPERTY]])),
+    mode(LENS_DIFFICULTY_ID, lenses.totalLens, lensValue(lenses.totalLens.axisId)),
+    mode(lenses.totalLens.axisId, lenses.totalLens, lensValue(lenses.totalLens.axisId)),
+    ...catalog.axes.map((axis) => mode(axis.axisId, axis, lensValue(axis.axisId))),
   ];
 }
 

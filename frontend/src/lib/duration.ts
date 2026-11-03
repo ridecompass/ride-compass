@@ -12,9 +12,14 @@ export function secondsToMinutes(seconds: number): number {
   return (seconds * SECOND_MS) / MINUTE_MS;
 }
 
+/** 秒を、分へ丸めた数にする。 */
+export function roundedMinutes(seconds: number): number {
+  return Math.round(secondsToMinutes(seconds));
+}
+
 /** 秒を、分へ丸めて「38分」の形にする。 */
 export function formatMinutes(seconds: number): string {
-  return `${Math.round(secondsToMinutes(seconds))}${MINUTE_UNIT}`;
+  return `${roundedMinutes(seconds)}${MINUTE_UNIT}`;
 }
 
 /** 秒を「102分」「38分」の形にする（1時間を超えても分で書く）。1分未満は「1分未満」。 */

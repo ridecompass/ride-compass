@@ -17,6 +17,7 @@ import CostLevelPicker from "./CostLevelPicker";
 import { cn } from "@/lib/cn";
 import { textVariants } from "@/components/ui/Text/Text";
 import { calloutVariants } from "@/components/ui/Callout/Callout";
+import { COST_AXIS_CATALOG_LABEL } from "@/services/costAxisCatalogApi";
 
 // 部品にせず関数で描く。部品の本体で`axisIconFor`の戻りを描くとreact-hooks/static-componentsが誤検知し、
 // パネルの本体の中で部品を定義すると、描き直しのたびにアイコンが作り直される。
@@ -49,7 +50,7 @@ export default function RouteSettingsPanel({ costPreference, onCostPreferenceCha
         >
           <span>{`${catalogFailure.label}を取得できませんでした。${catalogFailure.effect}`}</span>
           <Button
-            usage="取れなかった負担の種類の一覧を、もう一度取りに行きます。"
+            usage={`取れなかった${COST_AXIS_CATALOG_LABEL}を、もう一度取りに行きます。`}
             variant="warning"
             size="panelIcon"
             aria-label="再試行"
@@ -60,7 +61,7 @@ export default function RouteSettingsPanel({ costPreference, onCostPreferenceCha
         </p>
       )}
       {!catalog.loaded && !catalog.failed && (
-        <p className={textVariants({ variant: "hint" })}>負担の種類の一覧を読み込んでいます。</p>
+        <p className={textVariants({ variant: "hint" })}>{COST_AXIS_CATALOG_LABEL}を読み込んでいます。</p>
       )}
       {catalog.loaded && catalog.axes.length === 0 && (
         <p className={textVariants({ variant: "hint" })}>

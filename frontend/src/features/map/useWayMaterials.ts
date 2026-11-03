@@ -2,7 +2,12 @@
 
 import { useQueries, type QueryObserverResult } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
-import { mergeTileValues, NO_VIEWPORT_TILES, tilesCoveringViewport } from "@/features/map/layers/dynamicWayValues";
+import {
+  mergeTileValues,
+  NO_VIEWPORT_TILES,
+  tilesCoveringViewport,
+  type TileXY,
+} from "@/features/map/layers/dynamicWayValues";
 import type { WayMaterials } from "@/features/map/scene/groups/axisLines";
 import { tileQueryOptions } from "@/features/map/tileQueries";
 import type { DedicatedWayValueAxis } from "@/lib/mapDisplay/axisLayers";
@@ -50,23 +55,26 @@ function axisQuery(axis: DedicatedWayValueAxis, conditions: RideConditions): Way
 
 /** 軸の材料の要求（問い合わせの鍵にも載せる）と、タイル1枚の取り方。軸が宣言した口から取り、レンズの口は想定速度と
  * 利用者の値（生成の要求と同じつまみと倍率）を必ず載せる。 */
-function axisMaterials(axis: DedicatedWayValueAxis, conditions: RideConditions, costPreference: CostPreference) {
+function axisMaterials(
+  axis: DedicatedWayValueAxis,
+  conditions: RideConditions,
+  costPreference: CostPreference,
+  totalLensId: string | null,
+) {
   const query = axisQuery(axis, conditions);
   if (axis.wayMaterialSource === "lens") {
     const lensQuery: LensMaterialsQuery = {
       ...query,
       speed_kmh: conditions.speedKmh,
-      ...lensPreferenceQuery(costPreference),
+      ...lensPreferenceQuery(costPreference, axis.axisId, axis.axisId === totalLensId),
     };
     return {
       query: lensQuery,
-      fetch: (tile: TileIndex) => fetchLensMaterials(axis.axisId, tile.z, tile.x, tile.y, lensQuery),
+      fetch: (tile: TileXY) => fetchLensMaterials(axis.axisId, tile.z, tile.x, tile.y, lensQuery),
     };
   }
-  return { query, fetch: (tile: TileIndex) => fetchWayMaterials(axis.axisId, tile.z, tile.x, tile.y, query) };
+  return { query, fetch: (tile: TileXY) => fetchWayMaterials(axis.axisId, tile.z, tile.x, tile.y, query) };
 }
-
-type TileIndex = { z: number; x: number; y: number };
 
 /** 1軸の、表示中のタイルごとの結果をまとめる。 */
 function axisFetch(results: readonly TileResult[], truncated: boolean): WayMaterialsFetch {
@@ -81,15 +89,20 @@ function axisFetch(results: readonly TileResult[], truncated: boolean): WayMater
 
 /** 地図が塗る軸の道ごとの材料を、間引いた表示範囲を覆うタイルごとに取り、軸id→結果のMapを返す。軸の件数は実行時に
  * 増減するので、軸ごとにフックを呼ばず配列で受ける。`axes`と`conditions`は呼び出し側がuseMemoで安定した参照を渡すこと。
- * 要求と問い合わせの鍵へ載せる走る条件は、軸が宣言した名前（`wayMaterialConditions`）だけ。 */
+ * 要求と問い合わせの鍵へ載せる走る条件は、軸が宣言した名前（`wayMaterialConditions`）だけ。費用のレンズは利用者の値
+ * `costPreference`（生成の要求へ送る形）も載せ、総合のレンズ`totalLensId`だけが全部の軸の倍率を載せる。 */
 export function useWayMaterials(
   axes: readonly DedicatedWayValueAxis[],
   mapViewport: MapViewport | null,
   conditions: RideConditions,
   costPreference: CostPreference,
+  totalLensId: string | null,
 ): ReadonlyMap<string, WayMaterialsFetch> {
   const debouncedViewport = useDebouncedValue(mapViewport, MAP_FETCH_DEBOUNCE_MS);
   const debouncedConditions = useDebouncedValue(conditions, MAP_FETCH_DEBOUNCE_MS);
+  // 段を続けて押しても、押すたびに見えている全部のタイルを取り直さない（中身で比べる——送る形は描くたびに作り直される）。
+  const preferenceKey = useDebouncedValue(JSON.stringify(costPreference), MAP_FETCH_DEBOUNCE_MS);
+  const debouncedPreference = useMemo(() => JSON.parse(preferenceKey) as CostPreference, [preferenceKey]);
 
   const { tiles, truncated } = useMemo(
     () =>
@@ -115,7 +128,7 @@ export function useWayMaterials(
   return useQueries(
     {
       queries: axes.flatMap((axis) => {
-        const { query, fetch } = axisMaterials(axis, debouncedConditions, costPreference);
+        const { query, fetch } = axisMaterials(axis, debouncedConditions, debouncedPreference, totalLensId);
         return tiles.map((tile) =>
           tileQueryOptions(
             ["way-material", axis.wayMaterialSource, axis.axisId],

@@ -7,7 +7,7 @@ import { formatDelta } from "@/features/route/routeEditDiff";
 import SpliceDeltaBar, { type AxisDelta } from "@/features/route/RouteSplicePanel/SpliceDeltaBar";
 import SpliceMetricGrid from "@/features/route/RouteSplicePanel/SpliceMetricGrid";
 import { MINUTE_UNIT, secondsToMinutes } from "@/lib/duration";
-import type { PenaltyCatalog } from "@/lib/routePenalty";
+import { costAxisLabel, type PenaltyCatalog } from "@/lib/routePenalty";
 import type { RouteCandidate } from "@/types/route";
 import { Button } from "@/components/ui/Button/Button";
 import { GuideText } from "@/components/ui/GuideText/GuideText";
@@ -53,11 +53,15 @@ const LABELLED_DELTA_COUNT = 2;
 /** 元→編集後で負担（分）が動いた軸（大きい順）。減った軸は負、増えた軸は正。内訳の無い側は、どの軸も0と数える。 */
 function penaltyDeltas(base: RouteCandidate, after: RouteCandidate, catalog: PenaltyCatalog): AxisDelta[] {
   const seconds = (route: RouteCandidate, axisId: string) => route.penalty?.axis_seconds[axisId] ?? 0;
-  return catalog.axes
-    .map((axis) => ({
-      axisId: axis.axisId,
-      label: axis.label,
-      delta: secondsToMinutes(seconds(after, axis.axisId) - seconds(base, axis.axisId)),
+  const axisIds = new Set([
+    ...Object.keys(base.penalty?.axis_seconds ?? {}),
+    ...Object.keys(after.penalty?.axis_seconds ?? {}),
+  ]);
+  return [...axisIds]
+    .map((axisId) => ({
+      axisId,
+      label: costAxisLabel(catalog, axisId),
+      delta: secondsToMinutes(seconds(after, axisId) - seconds(base, axisId)),
     }))
     .filter((item) => Math.abs(item.delta) >= MIN_PENALTY_DELTA_MINUTES)
     .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
@@ -202,9 +206,6 @@ export default function RouteSplicePanel({
                   {MINUTE_UNIT}
                 </span>
               ))
-            ) : preview && !catalog.loaded ? (
-              // 一覧が届くまでは軸が分からず差を並べられない（「変わらない」とは言えない）。
-              "負担の種類の一覧を読み込んでいます"
             ) : preview ? (
               // 評価済みで棒が空なのは、どの軸の差も棒に出す下限に届かないとき。押す案内を残すと押しても変わらない。
               "どの軸の負担も、元とほぼ変わりません"
