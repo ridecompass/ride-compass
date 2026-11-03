@@ -160,7 +160,7 @@ function LensValues({ lens }: { lens: LensInspection }) {
     <div className="flex flex-col gap-1">
       <p className="m-0">
         <span className="font-semibold">
-          {costCatalog.lenses?.totalLens.label ?? "総合"} {formatLensNumber(values.total_seconds_per_km)}
+          {costCatalog.lenses?.totalLens.label ?? "負担"} {formatLensNumber(values.total_seconds_per_km)}
           {LENS_SECONDS_UNIT}
         </span>
         <span className={cn(hintClass, "ml-1.5")}>

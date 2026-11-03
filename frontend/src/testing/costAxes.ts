@@ -29,8 +29,8 @@ export function costAxisCatalog(...axes: CostAxisEntry[]): CostAxisCatalogRespon
     avoidance_label: "回避指定",
     total_lens: {
       lens_id: "total",
-      label: "総合",
-      description: "代償の秒の和",
+      label: "総合の負担",
+      description: "負担の秒の和",
       icon_id: "",
       lens: { thresholds: [10], band_labels: ["軽い", "重い"] },
     },

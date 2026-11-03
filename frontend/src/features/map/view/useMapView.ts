@@ -127,10 +127,13 @@ export function useMapView({
   // 軸を指す保存値はカタログが届いて初めて読めるため、届いた時点で読み直す。
   const [lens, setLens] = useStoredState<LensId>("ridecompass:route-style-mode", LENS_DIFFICULTY_ID, {
     serialize: (value) => value,
-    deserialize: (raw) =>
-      isRouteStyleModeId(mapCatalog.routeStyleModes, raw) || costLenses.some((axis) => axis.axisId === raw)
-        ? raw
-        : null,
+    // 費用の軸のレンズの間は、旧い軸の保存値を受けない（選択肢に無い軸を塗り続けてしまう）。
+    deserialize: (raw) => {
+      const known = usesCostLenses
+        ? raw === LENS_DIFFICULTY_ID || costLenses.some((axis) => axis.axisId === raw)
+        : isRouteStyleModeId(mapCatalog.routeStyleModes, raw);
+      return known ? raw : null;
+    },
     reloadKey: `${catalog.loaded}-${costCatalog.loaded}`,
   });
   const [keepAfterRoute, setKeepAfterRoute] = useStoredBooleanState("ridecompass:lens-keep-after-route", true);

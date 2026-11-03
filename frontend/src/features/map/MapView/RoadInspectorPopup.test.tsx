@@ -73,7 +73,7 @@ describe("RoadInspectorPopup", () => {
 
     await openEvaluation(user);
 
-    expect(await screen.findByText("総合 4秒/km")).toBeInTheDocument();
+    expect(await screen.findByText("総合の負担 4秒/km")).toBeInTheDocument();
     expect(screen.getByText("逆向き")).toBeInTheDocument();
     const rows = screen.getAllByRole("term").map((term) => `${term.textContent}:${term.nextSibling?.textContent}`);
     expect(rows).toEqual(
