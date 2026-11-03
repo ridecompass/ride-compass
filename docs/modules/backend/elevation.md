@@ -43,6 +43,14 @@ edge_elevation（start/end・gain/loss・average・一番急な登りと下り�
 （`domain/route.py: steepest_signed_percent`）。区間の中で計算し直さず、道の値を同じ所から読む。距離は点の道のりの位置の差で
 測る（点どうしの直線で測ると、曲がった区間で勾配が大きく出る）。
 
+## 断面の点を残す
+
+断面の点の標高そのもの（`elevation_profile_m`。走る向きの並びは読む側が逆にする）を区間の標高の表に残す。所要時間と体力は
+この点の間ごとに求め（[経路エンジン](routing-engine.md)）、獲得標高・平均勾配・一番急な所の要約の列も同じ点から出す——
+目的ごとに別の束ね方で持つと、読む所によって値が食い違う。道路網の配列は、向きつきの行ごとの始まりの位置と点の数と、
+全行をつないだ標高の1本の配列で持つ（`domain/road_network.py: RoadNetwork.elevation_profiles`）。標高の無い点の間と
+点が2つ未満の区間は、道路網全体の点の間の勾配の分布どおりの坂として走る（`domain/elevation_profile.py`）。
+
 ## 勾配を出さない区間
 
 `average_grade`がNULLなのは、標高を出せなかった区間だけではない。**舗装公道としてありえない
