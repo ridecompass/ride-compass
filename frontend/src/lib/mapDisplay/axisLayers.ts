@@ -17,6 +17,9 @@ export interface DedicatedWayValueAxis extends CatalogAxis {
   wayValueFormula: components["schemas"]["WayValueFormula"] | null;
   /** `wayValueConditions`のうち、道ごとの材料の要求へ載せるもの。ほかは式の木が読む。 */
   wayMaterialConditions: readonly WayValueCondition[];
+  /** 道ごとの材料を取る口。`axis`は軸の材料（`/api/region/way-materials/{axis_id}/...`）、`lens`は費用の軸のレンズの
+   * 1kmあたりの代償の秒（`/api/region/lens/{lens_id}/...`）。 */
+  wayMaterialSource: "axis" | "lens";
 }
 
 /** `ground`は塗る地図の地の明るさ（省けば明るい地図）。 */
@@ -32,6 +35,7 @@ export function dedicatedWayValueAxesFromCatalogAxes(
       display: mapPaintDeclarationOf(axis.map_paint, ground),
       wayValueFormula: axis.way_value_formula,
       wayMaterialConditions: axis.dynamic_way_value_material_conditions,
+      wayMaterialSource: "axis",
     };
   });
 }

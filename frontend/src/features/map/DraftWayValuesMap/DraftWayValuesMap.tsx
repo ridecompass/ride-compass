@@ -152,6 +152,7 @@ function unpublishedAxis(axisId: string, label: string, paint: MapPaintDeclarati
     wayValueConditions: [],
     timeScope: "always",
     display: paint,
+    wayMaterialSource: "axis",
     ...DRAFT_PAINTING,
   };
 }

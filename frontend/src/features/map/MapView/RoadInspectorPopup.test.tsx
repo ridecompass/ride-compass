@@ -11,6 +11,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { setDebugEnabled } from "@/lib/debugLog";
 import { AXES, AXIS_COLORS, inspectorResult, openEvaluation, RIDE, serveInspector } from "@/testing/roadInspector";
+import { costAxisCatalog, costAxisEntry, serveCostAxisCatalog } from "@/testing/costAxes";
 import materialCatalog from "@/types/generated/material-catalog.json";
 import RoadInspectorPopup from "./RoadInspectorPopup";
 import type { RoadSurfacePopupProperties } from "./roadFacts";
@@ -52,6 +53,33 @@ describe("RoadInspectorPopup", () => {
     expect(header.getByText(SURFACE_LABEL)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "この道の評価を見る" })).toBeInTheDocument();
     expect(screen.queryByRole("region")).not.toBeInTheDocument();
+  });
+
+  it("費用の軸のレンズの値が届いたら、地図が塗る向きの総合と軸ごとの1kmあたりの代償の秒と、その元の事実を出す", async () => {
+    const user = userEvent.setup();
+    serveCostAxisCatalog(costAxisCatalog(costAxisEntry("ascent", { label: "登坂" })));
+    const direction = (total: number, climb: number) => ({
+      total_seconds_per_km: total,
+      axes: [{ axis_id: "ascent", seconds_per_km: total }],
+      steepest_climb_percent: climb,
+      steepest_descent_percent: null,
+      headwind_ms: 1.5,
+      stops_per_km: 2,
+    });
+    serveInspector(
+      inspectorResult({}, { painted: "against", along: direction(30, 12), against: direction(4, 0), surface: "舗装" }),
+    );
+    renderPopup();
+
+    await openEvaluation(user);
+
+    expect(await screen.findByText("総合の負担 4秒/km")).toBeInTheDocument();
+    expect(screen.getByText("逆向き")).toBeInTheDocument();
+    const rows = screen.getAllByRole("term").map((term) => `${term.textContent}:${term.nextSibling?.textContent}`);
+    expect(rows).toEqual(
+      expect.arrayContaining(["登坂:4秒/km", "一番急な登り:0%", "向かい風:1.5m/s", "止まる所:2か所/km", "路面:舗装"]),
+    );
+    expect(screen.queryByRole("region", { name: "難易度" })).not.toBeInTheDocument();
   });
 
   it("道に名前があれば、上の帯は名前で呼ぶ", () => {

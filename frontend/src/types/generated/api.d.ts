@@ -276,6 +276,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/region/lens/{lens_id}/{z}/{x}/{y}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["region_lens_api_region_lens__lens_id___z___x___y__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/region/road-classes/{z}/{x}/{y}": {
         parameters: {
             query?: never;
@@ -1043,6 +1059,7 @@ export interface components {
                 [key: string]: string;
             };
             values: components["schemas"]["InspectorValues"];
+            lens: components["schemas"]["LensInspection"] | null;
         };
         /** AxisMaterialBreakdownEntry */
         AxisMaterialBreakdownEntry: {
@@ -1299,6 +1316,8 @@ export interface components {
             /** Icon Id */
             icon_id: string;
             lens: components["schemas"]["LensBands"];
+            /** Lens Equivalents */
+            lens_equivalents: components["schemas"]["ThresholdEquivalents"] | components["schemas"]["ExampleEquivalents"];
         };
         /** CostAxisCatalogResponse */
         CostAxisCatalogResponse: {
@@ -1306,6 +1325,8 @@ export interface components {
             axes: components["schemas"]["CostAxisCatalogEntry"][];
             /** Avoidance Label */
             avoidance_label: string;
+            total_lens: components["schemas"]["TotalLens"];
+            map_lens: components["schemas"]["MapLens"];
         };
         /** CostAxisDefinitions */
         CostAxisDefinitions: {
@@ -1317,6 +1338,7 @@ export interface components {
             burden: {
                 [key: string]: components["schemas"]["BurdenAxis"];
             };
+            total_lens: components["schemas"]["AxisPresentation"];
         };
         /** CostBreakdown */
         CostBreakdown: {
@@ -1398,6 +1420,16 @@ export interface components {
             start_elevation_m: number | null;
             /** End Elevation M */
             end_elevation_m: number | null;
+        };
+        /** ExampleEquivalents */
+        ExampleEquivalents: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "examples";
+            /** Examples */
+            examples: components["schemas"]["SecondsExample"][];
         };
         /** ExternalCallStats */
         ExternalCallStats: {
@@ -1643,12 +1675,43 @@ export interface components {
             /** After */
             after: string;
         };
+        /** LensAxisSeconds */
+        LensAxisSeconds: {
+            /** Axis Id */
+            axis_id: string;
+            /** Seconds Per Km */
+            seconds_per_km: number;
+        };
         /** LensBands */
         LensBands: {
             /** Thresholds */
             thresholds: number[];
             /** Band Labels */
             band_labels: string[];
+        };
+        /** LensDirection */
+        LensDirection: {
+            /** Total Seconds Per Km */
+            total_seconds_per_km: number;
+            /** Axes */
+            axes: components["schemas"]["LensAxisSeconds"][];
+            /** Steepest Climb Percent */
+            steepest_climb_percent: number | null;
+            /** Steepest Descent Percent */
+            steepest_descent_percent: number | null;
+            /** Headwind Ms */
+            headwind_ms: number | null;
+            /** Stops Per Km */
+            stops_per_km: number | null;
+        };
+        /** LensInspection */
+        LensInspection: {
+            /** Painted */
+            painted: ("along" | "against") | null;
+            along: components["schemas"]["LensDirection"] | null;
+            against: components["schemas"]["LensDirection"] | null;
+            /** Surface */
+            surface: string | null;
         };
         /** LinearBurden */
         LinearBurden: {
@@ -1671,6 +1734,12 @@ export interface components {
             boundaries: number[];
             /** Unit */
             unit: string | null;
+        };
+        /** MapLens */
+        MapLens: {
+            formula: components["schemas"]["WayValueFormula"];
+            /** Material Conditions */
+            material_conditions: ("at" | "bearing_deg" | "speed_kmh")[];
         };
         /** MapPaint */
         MapPaint: {
@@ -2316,6 +2385,13 @@ export interface components {
             /** Scores */
             scores: number[];
         };
+        /** SecondsExample */
+        SecondsExample: {
+            /** Label */
+            label: string;
+            /** Seconds Per Km */
+            seconds_per_km: number;
+        };
         /** SignedMaterialMapValue */
         SignedMaterialMapValue: {
             /**
@@ -2352,6 +2428,20 @@ export interface components {
              */
             finished_at: string;
         };
+        /** ThresholdEquivalents */
+        ThresholdEquivalents: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "thresholds";
+            /** Fact */
+            fact: string;
+            /** Unit */
+            unit: string;
+            /** Values */
+            values: (number | null)[];
+        };
         /**
          * TimelineKind
          * @enum {string}
@@ -2382,6 +2472,18 @@ export interface components {
             code: string;
             /** Advisory */
             advisory: boolean;
+        };
+        /** TotalLens */
+        TotalLens: {
+            /** Label */
+            label: string;
+            /** Description */
+            description: string;
+            /** Icon Id */
+            icon_id: string;
+            lens: components["schemas"]["LensBands"];
+            /** Lens Id */
+            lens_id: string;
         };
         /** TuningParameterView */
         TuningParameterView: {
@@ -3071,6 +3173,47 @@ export interface operations {
             header?: never;
             path: {
                 axis_id: string;
+                z: number;
+                x: number;
+                y: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: {
+                            [key: string]: number;
+                        };
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    region_lens_api_region_lens__lens_id___z___x___y__get: {
+        parameters: {
+            query: {
+                speed_kmh: number;
+                at?: string | null;
+            };
+            header?: never;
+            path: {
+                lens_id: string;
                 z: number;
                 x: number;
                 y: number;

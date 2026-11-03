@@ -34,13 +34,15 @@ EFFORT_AXES: dict[str, EffortItem] = {
 
 _NonNegative = Annotated[float, Field(ge=0.0, allow_inf_nan=False)]
 
+#: 地図の総合のレンズ（軸ごとの代償の秒の和）のid。軸のidと同じ名前空間に並ぶので、軸には使えない。
+TOTAL_LENS_ID = "total"
+
 #: 代償の内訳で、避け方の倍率（道の区分ごとの「なるべく避ける」）が上乗せした秒の行の名前。軸ではないので倍率を持たない。
 AVOIDANCE_LABEL = "回避指定"
 
 
 class LensBands(StrictModel):
-    """地図のレンズの色の段。`thresholds`は事実の量（軸ごとにコードが決める単位）の段の境目で昇順、`band_labels`は段の名前で
-    境目より1つ多い。"""
+    """地図のレンズの色の段。`thresholds`は1kmあたりの代償の秒の段の境目で昇順、`band_labels`は段の名前で境目より1つ多い。"""
 
     thresholds: list[Annotated[float, Field(allow_inf_nan=False)]]
     band_labels: list[str] = Field(min_length=1)
@@ -98,19 +100,21 @@ class BurdenAxis(AxisPresentation):
 
 
 class CostAxisDefinitions(StrictModel):
-    """費用の軸の定義の全体。体力の軸（`EFFORT_AXES`の全部）の見せ方と、道の負担の軸。"""
+    """費用の軸の定義の全体。体力の軸（`EFFORT_AXES`の全部）の見せ方と、道の負担の軸と、地図の総合のレンズ（軸ごとの代償の秒の
+    和。軸ではないので倍率を持たない）の見せ方。レンズの段の境目は、どれも1kmあたりの代償の秒。"""
 
     effort: dict[str, AxisPresentation]
     burden: dict[str, BurdenAxis]
+    total_lens: AxisPresentation
 
     @model_validator(mode="after")
     def _effort_axes_are_the_code_table(self) -> "CostAxisDefinitions":
         if set(self.effort) != set(EFFORT_AXES):
             raise ValueError(
                 f"体力の軸はコードの表と同じ一覧にする: 要る {sorted(EFFORT_AXES)}・書いた {sorted(self.effort)}")
-        clash = sorted(set(self.burden) & set(EFFORT_AXES))
+        clash = sorted(set(self.burden) & {*EFFORT_AXES, TOTAL_LENS_ID})
         if clash:
-            raise ValueError(f"道の負担の軸のidが体力の軸と重なる: {clash}")
+            raise ValueError(f"道の負担の軸のidが体力の軸か総合のレンズと重なる: {clash}")
         return self
 
 

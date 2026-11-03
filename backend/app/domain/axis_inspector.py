@@ -11,6 +11,7 @@
 
 from app.domain.difficulty import composite_difficulty
 from app.domain.landcover import LandcoverPercentages
+from app.domain.lens_values import LensInspection
 from app.domain.route_preference import RoutePreference
 from app.domain.strict_model import StrictModel
 
@@ -48,6 +49,9 @@ class AxisInspectorResult(StrictModel):
     tags: dict[str, str]
     #: 押したフィーチャー（区間で塗る倍率なら区間、道1本で塗る倍率なら道1本）。値はその倍率で地図が塗る色と同じ。
     values: InspectorValues
+    #: 費用の軸のレンズの値（1kmあたりの代償の秒）と、その元の事実。地図のレンズと同じ値。費用の軸の定義が無い間・
+    #: 想定速度を送らなかったときはNone。
+    lens: LensInspection | None
 
 
 def inspector_values(

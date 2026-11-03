@@ -52,6 +52,7 @@ export type GenerationConditions = Schemas["GenerationConditions"];
 
 export type AxisCatalogResponse = Schemas["AxisCatalogResponse"];
 export type AxisCatalogEntry = Schemas["AxisCatalogEntry"];
+export type CostAxisCatalogResponse = Schemas["CostAxisCatalogResponse"];
 /** 道の区分。正本は管理DBで、軸カタログが公開した分け方を解決した形で配る。 */
 export type RoadClassCatalog = Schemas["RoadClassCatalog"];
 export type RoadMapLayerView = Schemas["RoadMapLayerView"];
