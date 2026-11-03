@@ -1846,6 +1846,8 @@ export interface components {
             description: string;
             /** Color */
             color: string;
+            /** Color On Dark */
+            color_on_dark: string;
         };
         /** RoadClassification */
         RoadClassification: {

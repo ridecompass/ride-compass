@@ -20,6 +20,9 @@ _MAX_LIGHTNESS = 58.0
 #: 分類を良し悪しの色で読ませない。暗い端は黒と見分けられる所で止める。
 _ORDERED_HUE_RANGE_DEG = (350.0, 205.0)
 _ORDERED_LIGHTNESS_RANGE = (26.0, 56.0)
+#: 暗い地図の上の範囲。暗い地（`BASEMAP_DARK_LIGHTNESS_RANGE`の上端へ反転した地色）に対してコントラスト比3:1を割らない所から
+#: 始め、行を足しても隣どうしを上の範囲より離す。
+_ORDERED_LIGHTNESS_RANGE_ON_DARK = (46.0, 82.0)
 #: 上の範囲の両端（並びの先頭・末尾の行）の色を、画面で呼ぶ名前。地図の説明の文が差し込む。範囲を変えたら、ここも変える。
 _ORDERED_END_COLOR_NAMES: tuple[str, str] = ("濃い赤紫", "明るい水色")
 #: 目標の彩度。暗い側の色相によってはsRGBに収まらないので、収まるところまで下げる（`_fit_chroma`）。
@@ -41,6 +44,8 @@ NOMINAL_TONES: dict[str | None, tuple[float, float]] = {
     "light": (_MAX_LIGHTNESS, _NOMINAL_CHROMA),
     "vivid": (52.0, 40.0),
 }
+#: 暗い地図の上の、列挙の明度の下限。暗い地に対してコントラスト比3:1を割らない明るさで、これより暗い段だけを持ち上げる。
+_MIN_NOMINAL_LIGHTNESS_ON_DARK = 46.0
 
 
 def _lch_hex(lightness: float, chroma: float, hue_deg: float) -> str:
@@ -75,9 +80,10 @@ def _fit_chroma(lightness: float, chroma: float, hue_deg: float) -> str:
     raise ValueError(f"彩度0でも色域外: L*={lightness} h={hue_deg % 360:.0f}")
 
 
-def ordered_colors(count: int) -> list[str]:
-    """順序のある分類の色。並びの位置が意味を持つので、行数ぶんを一度に作る。"""
-    (l_low, l_high), (h_start, h_end) = _ORDERED_LIGHTNESS_RANGE, _ORDERED_HUE_RANGE_DEG
+def ordered_colors(count: int, on_dark: bool = False) -> list[str]:
+    """順序のある分類の色。並びの位置が意味を持つので、行数ぶんを一度に作る。`on_dark`は暗い地図の上に塗る色。"""
+    (l_low, l_high) = _ORDERED_LIGHTNESS_RANGE_ON_DARK if on_dark else _ORDERED_LIGHTNESS_RANGE
+    (h_start, h_end) = _ORDERED_HUE_RANGE_DEG
     positions = [0.5] if count == 1 else [i / (count - 1) for i in range(count)]
     return [
         _fit_chroma(l_low + (l_high - l_low) * p, _ORDERED_CHROMA, h_start + (h_end - h_start) * p) for p in positions
@@ -90,13 +96,15 @@ def ordered_ends_phrase(first_label: str, last_label: str) -> str:
     return f"「{first_label}」ほど{dark}、「{last_label}」ほど{light}"
 
 
-def nominal_colors(hue_slot: int, count: int, tone: str | None) -> list[str]:
+def nominal_colors(hue_slot: int, count: int, tone: str | None, on_dark: bool = False) -> list[str]:
     """順序を持たない列挙の1軸ぶん。起点から色相環を行数で等分する。**同じ起点・同じ行数・同じ段なら
-    常に同じ色**（行を足すと、その軸の色は配り直される）。知らない段は標準の段で塗る。"""
+    常に同じ色**（行を足すと、その軸の色は配り直される）。知らない段は標準の段で塗る。`on_dark`は暗い地図の上に塗る色。"""
     if not 0 <= hue_slot < NOMINAL_HUE_SLOTS:
         raise ValueError(f"色相の起点は0〜{NOMINAL_HUE_SLOTS - 1}: {hue_slot}")
     start = _NOMINAL_START_HUE_DEG + (360.0 / NOMINAL_HUE_SLOTS) * hue_slot
     lightness, chroma = NOMINAL_TONES.get(tone, NOMINAL_TONES[None])
+    if on_dark:
+        lightness = max(lightness, _MIN_NOMINAL_LIGHTNESS_ON_DARK)
     return [_fit_chroma(lightness, chroma, start + 360.0 * i / count) for i in range(count)]
 
 
@@ -187,6 +195,15 @@ BASEMAP_DARK_SATURATION_SCALE = 0.6
 #: 暗い地図の基礎地図の絵の印（道の番号の標識・バス停・施設の印等）の不透明度に掛ける割合。絵は画像で色を変えられないので、
 #: 透かして暗い地へ沈める（1のままだと白い標識が暗い地図の上で光る）。
 BASEMAP_DARK_ICON_OPACITY_SCALE = 0.5
+
+#: 暗い地図の上の役割の色。暗い地に対してコントラスト比3:1を割る色だけを差し替える。白い縁取りで地から浮く印（点の四角・
+#: 地点の検索の候補）の塗りと、地の上で読ませない色（当たり判定・標識の絵・矢印の縁）は差し替えない。
+SEMANTIC_COLORS_ON_DARK: dict[str, str] = {
+    **SEMANTIC_COLORS,
+    # 暗い地では明るいほど目に立つので、最も悪い側は暗くせず明るいローズへ寄せる。
+    "evaluation_extreme": "#fb7185",
+    "route_selected_halo": "#93c5fd",
+}
 
 
 def resolved_display_axes(attr: PrimaryAttributeSpec) -> list[dict]:

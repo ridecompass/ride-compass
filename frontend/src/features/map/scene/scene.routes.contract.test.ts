@@ -19,6 +19,7 @@ import { routeGroup, type RouteState } from "@/features/map/scene/groups/routes"
 import type { RoutePath } from "@/features/map/scene/groups/routeSources";
 import { composeScene } from "@/features/map/scene/mapSceneGroups";
 import { sceneLayerId } from "@/features/map/scene/sceneBuilders";
+import { semanticColorsOn } from "@/lib/mapTheme";
 
 type RoutePathShape = RouteState["segments"][number];
 
@@ -31,6 +32,7 @@ const NO_ROUTES: RouteState = {
   spliceBands: [],
   composite: null,
   selectedSection: null,
+  semantic: semanticColorsOn("light"),
 };
 
 const DECLARED_LAYERS = routeGroup.build(NO_ROUTES).layers;

@@ -158,7 +158,7 @@ export default function MapView({
     controls: popups,
     backToSegment,
   } = useMapPopups(selectionOwner, selectedRouteSegment, onRouteSegmentSelect);
-  const mapCatalog = useMapAxisCatalog();
+  const mapCatalog = useMapAxisCatalog(look.mapTheme);
   // 詳細を見ている道。強調も scene の一部として当てる。
   const inspectedShape = popup?.kind === "road" ? popup.shape : null;
   // 選んでいる区間（選んでいる候補の区間のときだけ）と、その形。

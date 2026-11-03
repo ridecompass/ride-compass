@@ -175,7 +175,7 @@ export default function DraftWayValuesMap<Draft>({
   const mapRef = useRef<MapLibreMap | null>(null);
   const [viewport, setViewport] = useState<MapViewport | null>(null);
   const [hiddenLegendKeys, setHiddenLegendKeys] = useState<HiddenLegendKeys>({});
-  const mapCatalog = useMapAxisCatalog();
+  const mapCatalog = useMapAxisCatalog("light");
   const { materials, loading, error, truncated } = useDraftWayValues(axisId, draft, fetchTile, viewport);
 
   const published = mapCatalog.dedicatedAxes.find((axis) => axis.axisId === axisId);
@@ -197,6 +197,7 @@ export default function DraftWayValuesMap<Draft>({
             wayMaterials: new Map([[axisId, { materials, loading }]]),
             wayConditions: NO_CONDITIONS,
             hiddenLegendKeys,
+            mapTheme: "light",
           },
           catalog: { dedicatedAxes: [axis], routeStyleModes: mapCatalog.routeStyleModes, roadLayers: NO_ROAD_LAYERS },
           routes: [],

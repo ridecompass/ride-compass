@@ -22,6 +22,7 @@ import { installGeolocation } from "@/testing/geolocation";
 import {
   ELSEWHERE,
   HERE,
+  ROAD_CLASS_COLOR,
   clickMap,
   marksAt,
   renderHome,
@@ -182,10 +183,14 @@ describe("画面の枠", () => {
     expect(failure()).toBeNull();
   });
 
-  it("メニューの「地図を暗くする」で基礎地図の色を暗くし、地図を描き直しても暗いまま。次に開いたときも暗い地図を選んだまま", async () => {
+  it("メニューの「地図を暗くする」で基礎地図とアプリが重ねる線の色を暗い地用にし、地図を描き直しても暗いまま。もう一度押すと明るい地図へ戻り、次に開いたときも選んだ明るさのまま", async () => {
     const { user, unmount } = renderHome();
     const basemap = [{ id: "background", type: "background", paint: { "background-color": "#f8f4f0" } }];
     const ground = () => mapOnScreen().layerPaint("background")?.["background-color"];
+    const painted = (color: string) =>
+      mapOnScreen()
+        .visibleLayerIds()
+        .some((id) => JSON.stringify(mapOnScreen().layerPaint(id) ?? {}).includes(color));
     const fromMenu = async (name: string) => {
       await user.click(screen.getByRole("button", { name: "メニュー" }));
       await user.click(screen.getByRole("button", { name }));
@@ -199,13 +204,22 @@ describe("画面の枠", () => {
       });
     };
     await redraw();
+    await showRoadSurface(user);
     expect(ground()).toBe("#f8f4f0");
+    expect(painted(ROAD_CLASS_COLOR.light)).toBe(true);
 
     await fromMenu("地図を暗くする");
     const dark = themedPaint("dark", basemap[0].paint)["background-color"];
     expect(ground()).toBe(dark);
+    expect([painted(ROAD_CLASS_COLOR.dark), painted(ROAD_CLASS_COLOR.light)]).toEqual([true, false]);
     await redraw();
     expect(ground()).toBe(dark);
+    expect(painted(ROAD_CLASS_COLOR.dark)).toBe(true);
+
+    await fromMenu("地図を暗くする");
+    expect(ground()).toBe("#f8f4f0");
+    expect([painted(ROAD_CLASS_COLOR.light), painted(ROAD_CLASS_COLOR.dark)]).toEqual([true, false]);
+    await fromMenu("地図を暗くする");
     unmount();
 
     const again = renderHome();

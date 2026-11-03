@@ -29,6 +29,9 @@ export const HERE: Coordinates = { latitude: 35.7, longitude: 139.7 };
 export const DESTINATION: Coordinates = { latitude: 35.6, longitude: 139.73 };
 export const ELSEWHERE: Coordinates = { latitude: 35.65, longitude: 139.72 };
 
+/** 路面の層の唯一の区分の、明るい地図と暗い地図の上の色。 */
+export const ROAD_CLASS_COLOR = { light: "#123456", dark: "#abcdef" } as const;
+
 // 地図が道路のタイルを載せる（軸で塗れる）のは、タイルの世代が全部の系統で揃ってから。
 const CATALOG = catalogResponse(
   [
@@ -44,7 +47,11 @@ const CATALOG = catalogResponse(
     // 道路のレイヤーは軸カタログが配る道の線の層で、一覧から出せる層が1つあればよい。
     road_classes: roadClassCatalog({
       map_layers: [
-        roadMapLayer("surface", { label: "路面の種類", category: "roadCondition", classes: [roadClass("paved")] }),
+        roadMapLayer("surface", {
+          label: "路面の種類",
+          category: "roadCondition",
+          classes: [roadClass("paved", { color: ROAD_CLASS_COLOR.light, color_on_dark: ROAD_CLASS_COLOR.dark })],
+        }),
       ],
     }),
   },
