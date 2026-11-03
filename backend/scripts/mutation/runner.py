@@ -36,7 +36,7 @@ if os.path.exists(RECHECK_LIST):
     cfg = configparser.ConfigParser()
     cfg.read(os.path.join(HERE, "setup.cfg"), encoding="utf-8")
     FULL_SELECTION = cfg["mutmut"]["pytest_add_cli_args_test_selection"].split()
-    XDIST = ["-n", str(workers), "--dist", "loadgroup"]
+    XDIST = ["-n", str(workers), "--dist", "worksteal"]
     workers = 1
 done = set(read_results(out_path))
 tbf, dur = read_stats()

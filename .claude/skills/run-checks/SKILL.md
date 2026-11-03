@@ -184,8 +184,9 @@ PYTHONUTF8=1 backend/.venv/Scripts/python.exe -m pytest backend/tests/<テスト
 
 環境ごとに必要な作業（開発機で一度だけ付ける権限・拡張）と、作業ツリーを消したあとの残骸の片付けは付録にある。
 
-**postgisは`-n auto --dist loadgroup`で並列に回る**: pytest-xdistのワーカーは、それぞれ自分のDB（この実行のDBの名前に
-`_<ワーカー>`を付けたもの）を作って使い、DBを使うテストはファイルごとに1つのワーカーへ寄る（`tests/conftest.py: pytest_collection_finish`）。
+**postgisは`-n auto --dist worksteal`で並列に回る**: pytest-xdistのワーカーは、それぞれ自分のDB（この実行のDBの名前に
+`_<ワーカー>`を付けたもの）を作って使う（`tests/conftest.py: pytest_collection_finish`）。ファイルはワーカーへ寄せず、長いファイルは
+手の空いたワーカーが残りを引き取る（分かれたファイルは、ファイル単位の用意がワーカーごとに走るだけ）。
 ワーカーのDBを作れない環境では、共有のDBへ退避せずに止まる（`-n`を外せば1つのDBで回る）。
 
 **`-m postgis`はCIが通し**、完了条件には含めない（手元で回すかは上の「手元の検査の回し方」）。作業ツリー専用のDBを

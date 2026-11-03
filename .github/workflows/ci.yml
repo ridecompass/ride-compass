@@ -242,7 +242,13 @@ jobs:
           key: mypy-${{ runner.arch }}-${{ github.sha }}
           restore-keys: mypy-${{ runner.arch }}-
       # 関数の宣言と違う型の値を渡す呼び出しを止める。対象と設定はbackend/mypy.ini。
-      - run: python -m mypy
+      # 同じ段で、探索のJIT（numba）を1回コンパイルしておく（backend/Dockerfileと同じ口）。結果はソースの隣の__pycache__に
+      # 残り、pytestのワーカーはそこから読む。しないと、ワーカーごとに最初のルート生成が同じコンパイルを約10秒ずつ払う。
+      # どちらも1つのコアで走るので、並べて待ちを重ねる。
+      - run: |
+          python -c "from app.domain.routing import compile_search_kernels; compile_search_kernels()" &
+          python -m mypy
+          wait $!
       - if: github.event_name == 'push'
         uses: actions/cache/save@v6
         with:
@@ -255,11 +261,13 @@ jobs:
         with:
           phase: wait
       # -n auto（pytest-xdist）でCPUコア数ぶん並列化する。PostGIS統合テストは、ワーカーごとに TEST_DATABASE_URL の DB を
-      # 複製した DB を使い、ファイルごとに1つのワーカーへ寄る（backend/tests/conftest.py: pytest_collection_finish）。
+      # 複製した DB を使う（backend/tests/conftest.py: pytest_collection_finish）。配り方は worksteal で、初めに件を
+      # ワーカーへ等しく分け、手の空いたワーカーがほかの残りを引き取る（公式の文書 https://pytest-xdist.readthedocs.io/en/stable/distribution.html ）——
+      # 長いファイルが1つのワーカーに残って全体を延ばさない。
       # 実行順はpytest-randomlyがばらす。-qでは種が見出しに出ないため、runのIDを種に渡す——落ちた並びは
       # 手元で --randomly-seed=<runのID> を付けて同じ順に並べ直せる。所要の長い順に20件をログへ出し、ジョブが延びたときに
       # どのテストが延ばしたかを測り直さずに読めるようにする。
-      - run: python -m pytest -q -n auto --dist loadgroup --randomly-seed=${{ github.run_id }} --durations=0 -v
+      - run: python -m pytest -q -n auto --dist worksteal --randomly-seed=${{ github.run_id }} --durations=20
 
   api-contract:
     needs: changes
