@@ -313,9 +313,10 @@ jobs:
   # 同じ像の中のアプリを、ブラウザと spec の組ごとに別のジョブで並べて走らせる。組を足すときは matrix の行を足す。
   # - Chromium: 全状態の走査を除くspec。
   # - WebKit: 全状態の走査を除くspec（走査は playwright.config.ts の webkit の project が外す）。
-  # - 全状態の走査（frontend/e2e/all-states.spec.ts）: Chromiumで、幅ごとに段階（生成前・生成後・乗り換え後）の数の別のジョブ（--shard）。
-  #   段階の所要は揃っている（2026-10-08 の成功した実行で desktop 35〜41秒ずつ）ので、1つのジョブに1段階ずつ割る。
-  # 持ち時間（timeout）は組ごとに先頭の「持ち時間」の決め方で決める。レーン（lane）は、組が段1のレーン（1〜4）へ同じ数ずつ載るように振る。
+  # - 全状態の走査（frontend/e2e/all-states.spec.ts）: Chromiumで、幅ごとに1つのジョブ。段階ごとのテストを、ランナーのコアの数までの
+  #   workers で並べる（1本のテストは1つのページを順に辿るので、1 worker ではコアが空く）。
+  # 持ち時間（timeout）は組ごとに先頭の「持ち時間」の決め方で決める。組はレーン（lane）へ1本ずつ載せ、全部が1回の波で始まるようにする
+  # （同じレーンの2本目は1本目の終わりを待ち、用意の段（container・npm ci）の分だけ待ちが延びる）。
   e2e:
     # 段1を全部待つ。置き場が変わらずに飛ばされた段1のジョブは、始めるのを止めない。
     needs: [changes, backend, api-contract, frontend, scripts, frontend-image, backend-image, docs-consistency, doc-reading-tests, repo-wide, flow-gate]
@@ -326,12 +327,8 @@ jobs:
         include:
           - { id: chromium, lane: 1, timeout: 50, args: '--project=chromium --grep-invert "全状態の走査"' }
           - { id: webkit, lane: 2, timeout: 5, args: "--project=webkit" }
-          - { id: scan-mobile-1, lane: 3, timeout: 40, args: '--project=chromium -g "全状態の走査: mobile" --shard=1/3' }
-          - { id: scan-mobile-2, lane: 4, timeout: 40, args: '--project=chromium -g "全状態の走査: mobile" --shard=2/3' }
-          - { id: scan-mobile-3, lane: 1, timeout: 40, args: '--project=chromium -g "全状態の走査: mobile" --shard=3/3' }
-          - { id: scan-desktop-1, lane: 2, timeout: 40, args: '--project=chromium -g "全状態の走査: desktop" --shard=1/3' }
-          - { id: scan-desktop-2, lane: 3, timeout: 40, args: '--project=chromium -g "全状態の走査: desktop" --shard=2/3' }
-          - { id: scan-desktop-3, lane: 4, timeout: 40, args: '--project=chromium -g "全状態の走査: desktop" --shard=3/3' }
+          - { id: scan-mobile, lane: 3, timeout: 40, args: '--project=chromium -g "全状態の走査: mobile" --workers=100%' }
+          - { id: scan-desktop, lane: 4, timeout: 40, args: '--project=chromium -g "全状態の走査: desktop" --workers=100%' }
     name: e2e (${{ matrix.id }})
     concurrency:
       group: ${{ github.head_ref || github.ref_name }}-lane-${{ matrix.lane }}
@@ -358,7 +355,8 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       # Playwright を動かすのに node_modules が要る。試すアプリはここではビルドしない。
-      - run: npm ci
+      # 脆弱性の報告（audit）と寄付の案内（fund）は検査の結果に効かない。container の中では audit の網への往復が npm ci の大半を占める。
+      - run: npm ci --no-audit --no-fund
       - uses: actions/download-artifact@v8
         with:
           name: frontend-app
