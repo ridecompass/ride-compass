@@ -75,7 +75,9 @@ export function formatPenalty(seconds: number): string {
   return `+${seconds === 0 ? formatMinutes(0) : formatDurationShort(seconds)}`;
 }
 
-/** 候補のカードの負担（分へ丸めた数字だけ。「負担」の語と単位は、読み上げと開いたときの内訳が持つ）。 */
+/** 候補のカードの負担（分へ丸めた数字だけ。「負担」の語と単位は、読み上げと開いたときの内訳が持つ）。0より大きく1分に
+ * 丸まらない負担は「+<1」（0と見分ける。内訳の「+1分未満」と同じ線）。 */
 export function formatPenaltyMinutes(seconds: number): string {
-  return `+${roundedMinutes(seconds)}`;
+  const minutes = roundedMinutes(seconds);
+  return seconds > 0 && minutes === 0 ? "+<1" : `+${minutes}`;
 }

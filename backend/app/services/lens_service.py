@@ -137,19 +137,16 @@ def _prepare(network: RoadNetwork, z: int, x: int, y: int, axes: CostAxisDefinit
 def _tile_lens(features: LensFeatures, materials: EdgeMaterialColumns, axes: CostAxisDefinitions, fills: MaterialFills,
                speed_kmh: float, preference: CostPreference, wind: tuple[WindForecastSeries, datetime] | None,
                steepest: tuple[np.ndarray, np.ndarray]) -> _TileLens:
-    n = len(features.rows)
-    components = (np.zeros(n), np.zeros(n))
+    components = None
     if wind is not None:
         series, target = wind
         context = DynamicAxisRequestContext(
             bearing_deg=materials.bearing_deg, departure_wind=None, travel_speed_ms=kmh_to_ms(speed_kmh),
             wind_series=series, forecast_index=series.time_index(target, 0.0),
             wind_points=series.lattice.points_of(materials.mid_lat, materials.mid_lon))
-        components = wind_components_or_calm(context, n)
-    table, stops = lens_table(features, materials.columns, materials.distance_m, materials.elevation_profiles, axes,
-                              current_ledger_parameters(preference), speed_kmh, fills, components)
-    return _TileLens(table, LensFactInputs(materials.columns, materials.distance_m, stops,
-                                           None if wind is None else components, steepest))
+        components = wind_components_or_calm(context, len(features.rows))
+    return _TileLens(*lens_table(features, materials.columns, materials.distance_m, materials.elevation_profiles, axes,
+                                 current_ledger_parameters(preference), speed_kmh, fills, components, steepest))
 
 
 def _way_materials(table: LensTable, lens_id: str) -> dict[str, dict[str, float]] | None:

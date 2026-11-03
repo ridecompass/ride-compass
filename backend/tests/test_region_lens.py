@@ -98,35 +98,37 @@ async def test_the_lens_paints_with_the_users_strength_and_multipliers_like_the_
 
     standard = await _lens(client, "total")
     doubled = await _lens(client, "total", strength=2.0)
-    without_ascent = await _lens(client, "ascent", multipliers="ascent:0")
+    without_ascent = await _lens(client, "ascent", multipliers='{"ascent": 0}')
 
     climb = str(CLIMBING_WAY)
     assert doubled[climb][LENS_ALONG_LEAF] == pytest.approx(2 * standard[climb][LENS_ALONG_LEAF])
     assert without_ascent[climb][LENS_ALONG_LEAF] == 0.0
-    unknown_axis = await client.get(f"/api/region/lens/total/{Z}/{X}/{Y}",
-                                    params={"speed_kmh": ASSUMED_SPEED_KMH, "multipliers": "nothing:2"})
-    assert unknown_axis.status_code == 422
+    # 知らない軸・壊れた値・上限を越えるつまみは、ルート生成と同じく型の検査で断る（500にしない）。
+    for broken in ({"multipliers": '{"nothing": 2}'}, {"multipliers": '{"ascent": "1..2"}'}, {"strength": 99}):
+        response = await client.get(f"/api/region/lens/total/{Z}/{X}/{Y}", params={"speed_kmh": ASSUMED_SPEED_KMH, **broken})
+        assert response.status_code == 422, broken
 
 
 async def test_the_legend_tells_the_slope_and_the_stops_a_threshold_stands_for(client, cost_axes, road_network_root):
-    """段の境目の目安は、その斜度の1kmの坂・その回数止まる1kmの道を標準の人が走ると、地図がちょうどその秒で塗る値。
-    道の負担は、重さごとの秒を並べる。"""
-    catalog = (await client.get("/api/cost-axes")).json()
-    equivalents = {axis["axis_id"]: axis["lens_equivalents"] for axis in catalog["axes"]}
+    """段の境目の目安は、その斜度の1kmの坂・その回数止まる1kmの道を、利用者の値（ここではつまみ×2）で走ると、同じ値で塗る
+    地図がちょうどその秒で塗る値。道の負担は、重さごとの秒を並べる。"""
+    response = await client.get("/api/cost-axes/lens-equivalents", params={"strength": 2.0})
+    assert response.status_code == 200, response.text
+    equivalents = response.json()
     slope = equivalents["ascent"]["values"][0]
     stops = equivalents["stopping"]["values"][0]
     serve_road_network(road_network_root, road_network(
         WAYS, COORDINATES, gradient_of={CLIMBING_WAY: slope}, stop_density_of={STOPPING_WAY: 1.0}))
 
-    ascent = await _lens(client, "ascent")
-    stopping = await _lens(client, "stopping")
+    ascent = await _lens(client, "ascent", strength=2.0)
+    stopping = await _lens(client, "stopping", strength=2.0)
 
     assert (equivalents["ascent"]["unit"], equivalents["stopping"]["unit"]) == ("%", "回/km")
     assert ascent[str(CLIMBING_WAY)][LENS_ALONG_LEAF] == pytest.approx(THRESHOLDS[0], rel=0.02)
     # 止まる所の密度1/kmの道の秒から、境目の秒に当たる回数を引き直す（秒は回数に比例する）。
     one_stop = stopping[str(STOPPING_WAY)][LENS_ALONG_LEAF]
     assert stops == pytest.approx(THRESHOLDS[0] / one_stop * _kickoffs_per_stop(), rel=0.02)
-    burden_seconds = tuning_value("evaluation.penalty_strength") * tuning_value("cost.burden_seconds_per_km")
+    burden_seconds = 2.0 * tuning_value("evaluation.penalty_strength") * tuning_value("cost.burden_seconds_per_km")
     assert equivalents["rough"]["examples"] == [
         {"label": "0", "seconds_per_km": 0.0},
         {"label": "1", "seconds_per_km": pytest.approx(burden_seconds * ROUGH_WEIGHT)},

@@ -17,7 +17,7 @@ const axis = (axisId: string, label: string, description: string): CatalogAxis =
   catalogAxisFromEntry(catalogEntry({ axis_id: axisId, label, description }));
 export const AXES = [axis("axis_sample", "見本の軸", "車の通行量の説明"), axis("night", "夜間", "夜間の暗さの説明")];
 export const AXIS_COLORS: Record<string, string> = { axis_sample: "#111111", night: "#222222" };
-/** 地図がいつも渡す走行の条件（押した点のタイル込み）と重み（nullは既定の重み）。 */
+/** 地図がいつも渡す走行の条件（押した点のタイル込み）と利用者の値（標準）。 */
 export const RIDE = {
   costPreference: STANDARD_COST_PREFERENCE,
   conditions: {

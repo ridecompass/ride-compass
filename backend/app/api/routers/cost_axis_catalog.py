@@ -8,19 +8,20 @@
 import asyncio
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, HTTPException, status
-from pydantic import Field
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.exceptions import RequestValidationError
+from pydantic import Field, TypeAdapter, ValidationError
 
 from app.domain.cost_axes import (
     AVOIDANCE_LABEL,
     EFFORT_AXES,
-    TOTAL_LENS_ID,
     AxisPresentation,
     LensBands,
     current_cost_axes,
 )
 from app.domain.dynamic_way_values import WayValueConditionName
-from app.domain.cost_preference import CostPreference
+from app.domain.cost_preference import STANDARD_COST_FACTOR, CostPreference, RequestedCostPreference
+from app.domain.lens_total import TOTAL_LENS_ID
 from app.domain.ledger_costs import current_ledger_parameters
 from app.domain.lens_equivalents import LensEquivalents, lens_equivalents
 from app.domain.lens_values import LENS_MATERIAL_CONDITIONS, lens_way_formula
@@ -38,10 +39,9 @@ class CostAxisCatalogEntry(StrictModel):
     label: str
     description: str
     icon_id: str
-    #: 地図のレンズの段（境目は1kmあたりの代償の秒）。
+    #: 地図のレンズの段（境目は1kmあたりの代償の秒）。境目が利用者の値でどれだけの事実に当たるかの目安は
+    #: `GET /api/cost-axes/lens-equivalents`。
     lens: LensBands
-    #: 段の境目の秒が、標準の条件でどれだけの事実に当たるかの目安（`domain/lens_equivalents.py`）。
-    lens_equivalents: Annotated[LensEquivalents, Field(discriminator="kind")]
 
 
 class MapLens(StrictModel):
@@ -72,16 +72,13 @@ async def get_cost_axis_catalog() -> CostAxisCatalogResponse:
     definitions = current_cost_axes()
     if definitions is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="費用の軸の定義はまだありません")
-    # 目安は合成の道で走行の模型を解くので、イベントループの外で求める。
-    equivalents = await asyncio.to_thread(
-        lens_equivalents, definitions, current_ledger_parameters(CostPreference()), current_road_classes())
     effort = [
-        CostAxisCatalogEntry(axis_id=axis_id, ledger="effort", lens_equivalents=equivalents[axis_id],
+        CostAxisCatalogEntry(axis_id=axis_id, ledger="effort",
                              **definitions.effort[axis_id].model_dump())
         for axis_id in EFFORT_AXES
     ]
     burden = [
-        CostAxisCatalogEntry(axis_id=axis_id, ledger="burden", lens_equivalents=equivalents[axis_id],
+        CostAxisCatalogEntry(axis_id=axis_id, ledger="burden",
                              **axis.model_dump(exclude={"burden"}))
         for axis_id, axis in definitions.burden.items()
     ]
@@ -90,3 +87,39 @@ async def get_cost_axis_catalog() -> CostAxisCatalogResponse:
         total_lens=TotalLens(lens_id=TOTAL_LENS_ID, **definitions.total_lens.model_dump()),
         map_lens=MapLens(formula=lens_way_formula(), material_conditions=list(LENS_MATERIAL_CONDITIONS)),
     )
+
+
+_REQUESTED_COST_PREFERENCE: TypeAdapter[CostPreference] = TypeAdapter(RequestedCostPreference)
+_MULTIPLIERS: TypeAdapter[dict[str, float]] = TypeAdapter(dict[str, float])
+
+
+def cost_preference_query(
+    strength: float = STANDARD_COST_FACTOR,
+    multipliers: Annotated[str | None, Query(description="軸id→倍率のJSONの object（書いていない軸は標準）")] = None,
+) -> CostPreference:
+    """地図のレンズ（タイル）と凡例の目安の要求の利用者の値（ルート生成の`cost_preference`と同じ型・同じ検証。範囲と軸idは型が
+    検め、誤りは型の検査と同じ形の422）。URL がそのまま応答のキャッシュの鍵になるので、クエリで受ける。"""
+    try:
+        parsed = {} if multipliers is None else _MULTIPLIERS.validate_json(multipliers)
+        return _REQUESTED_COST_PREFERENCE.validate_python({"strength": strength, "multipliers": parsed})
+    except ValidationError as error:
+        raise RequestValidationError(error.errors()) from error
+
+
+#: 軸id→段の境目の目安（`domain/lens_equivalents.py`）。
+LensEquivalentsResponse = dict[str, Annotated[LensEquivalents, Field(discriminator="kind")]]
+
+
+@router.get("/api/cost-axes/lens-equivalents", response_model=LensEquivalentsResponse)
+async def get_lens_equivalents(
+    preference: CostPreference = Depends(cost_preference_query),
+) -> LensEquivalentsResponse:
+    """地図のレンズの段の境目の秒が、利用者の値（つまみと倍率。地図のレンズと同じクエリ）で、その事実1つだけが効いた無風の
+    1kmの道のどれだけの事実に当たるかの目安（体力の軸をコードの表の順、続けて道の負担の軸）。地図が塗る色と凡例の目安を同じ
+    値で揃える。費用の軸の定義が無ければ404。"""
+    definitions = current_cost_axes()
+    if definitions is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="費用の軸の定義はまだありません")
+    # 目安は合成の道で走行の模型を解くので、イベントループの外で求める。
+    return await asyncio.to_thread(
+        lens_equivalents, definitions, current_ledger_parameters(preference), current_road_classes())

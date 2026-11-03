@@ -644,6 +644,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/cost-axes/lens-equivalents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_lens_equivalents_api_cost_axes_lens_equivalents_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/material-catalog/{material_id}/value-shares": {
         parameters: {
             query?: never;
@@ -1326,8 +1342,6 @@ export interface components {
             /** Icon Id */
             icon_id: string;
             lens: components["schemas"]["LensBands"];
-            /** Lens Equivalents */
-            lens_equivalents: components["schemas"]["ThresholdEquivalents"] | components["schemas"]["ExampleEquivalents"];
         };
         /** CostAxisCatalogResponse */
         CostAxisCatalogResponse: {
@@ -4019,6 +4033,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CostAxisCatalogResponse"];
+                };
+            };
+        };
+    };
+    get_lens_equivalents_api_cost_axes_lens_equivalents_get: {
+        parameters: {
+            query?: {
+                strength?: number;
+                multipliers?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: components["schemas"]["ThresholdEquivalents"] | components["schemas"]["ExampleEquivalents"];
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

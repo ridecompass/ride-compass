@@ -148,16 +148,19 @@ class LensFactInputs:
 
 def lens_table(features: LensFeatures, materials: Mapping[str, MaterialColumn], distance_m: np.ndarray,
                profiles: ElevationProfiles, axes: CostAxisDefinitions, parameters: LedgerParameters, speed_kmh: float,
-               fills: MaterialFills, wind_ms: tuple[np.ndarray, np.ndarray]) -> tuple[LensTable, np.ndarray]:
-    """`features.rows`の行の順の材料・長さ・断面・風の成分（向かい風・横風）から、レンズの値と、行ごとの止まってから漕ぎ出す
-    回数（同じ走行の入力から出る事実。`LensFactInputs.stops`）を求める。"""
+               fills: MaterialFills, wind_ms: tuple[np.ndarray, np.ndarray] | None,
+               steepest: tuple[np.ndarray, np.ndarray]) -> tuple[LensTable, LensFactInputs]:
+    """`features.rows`の行の順の材料・長さ・断面・風の成分（向かい風・横風。Noneは風を読めず無風で求める）・断面の一番急な
+    登りと下りから、レンズの値と、道の窓が出す事実の入力を求める。"""
     travel = travel_inputs(materials, distance_m, profiles, speed_kmh, fills)
     ledger = LedgerCosts.for_model(axes, parameters, travel.model, burden_weights(axes, materials, fills))
-    _, penalties = ledger.row_seconds(travel.model, *wind_ms)
+    calm = (np.zeros(len(distance_m)), np.zeros(len(distance_m)))
+    _, penalties = ledger.row_seconds(travel.model, *(calm if wind_ms is None else wind_ms))
     km = _summed_by_direction(features, travel.model.distance_m) / 1000.0
     with np.errstate(invalid="ignore", divide="ignore"):
         per_km = {axis_id: _summed_by_direction(features, seconds) / km for axis_id, seconds in penalties.items()}
-    return LensTable(features=features, values=lens_values_with_total(per_km, np.zeros_like(km))), travel.stops
+    return (LensTable(features=features, values=lens_values_with_total(per_km, np.zeros_like(km))),
+            LensFactInputs(materials, travel.model.distance_m, travel.stops, wind_ms, steepest))
 
 
 def _summed_by_direction(features: LensFeatures, per_row: np.ndarray) -> np.ndarray:

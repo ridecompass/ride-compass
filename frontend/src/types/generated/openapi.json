@@ -1028,8 +1028,6 @@
             "required": false,
             "schema": {
               "type": "number",
-              "maximum": 2.0,
-              "minimum": 0.0,
               "default": 1.0,
               "title": "Strength"
             }
@@ -1041,8 +1039,7 @@
             "schema": {
               "anyOf": [
                 {
-                  "type": "string",
-                  "pattern": "^[A-Za-z0-9_]+:[0-9.]+(,[A-Za-z0-9_]+:[0-9.]+)*$"
+                  "type": "string"
                 },
                 {
                   "type": "null"
@@ -2147,6 +2144,79 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/CostAxisCatalogResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/cost-axes/lens-equivalents": {
+      "get": {
+        "operationId": "get_lens_equivalents_api_cost_axes_lens_equivalents_get",
+        "parameters": [
+          {
+            "name": "strength",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "default": 1.0,
+              "title": "Strength"
+            }
+          },
+          {
+            "name": "multipliers",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Multipliers"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "oneOf": [
+                      {
+                        "$ref": "#/components/schemas/ThresholdEquivalents"
+                      },
+                      {
+                        "$ref": "#/components/schemas/ExampleEquivalents"
+                      }
+                    ],
+                    "discriminator": {
+                      "propertyName": "kind",
+                      "mapping": {
+                        "thresholds": "#/components/schemas/ThresholdEquivalents",
+                        "examples": "#/components/schemas/ExampleEquivalents"
+                      }
+                    }
+                  },
+                  "title": "Response Get Lens Equivalents Api Cost Axes Lens Equivalents Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
             }
@@ -4413,24 +4483,6 @@
           },
           "lens": {
             "$ref": "#/components/schemas/LensBands"
-          },
-          "lens_equivalents": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/ThresholdEquivalents"
-              },
-              {
-                "$ref": "#/components/schemas/ExampleEquivalents"
-              }
-            ],
-            "title": "Lens Equivalents",
-            "discriminator": {
-              "propertyName": "kind",
-              "mapping": {
-                "examples": "#/components/schemas/ExampleEquivalents",
-                "thresholds": "#/components/schemas/ThresholdEquivalents"
-              }
-            }
           }
         },
         "additionalProperties": false,
@@ -4441,8 +4493,7 @@
           "label",
           "description",
           "icon_id",
-          "lens",
-          "lens_equivalents"
+          "lens"
         ],
         "title": "CostAxisCatalogEntry"
       },

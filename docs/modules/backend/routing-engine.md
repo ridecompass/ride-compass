@@ -959,7 +959,7 @@ numbaでJITする探索とその部品はこのファイルにまとめて置く
 - `Coordinates`・`RouteSegmentDetail`（**material_valuesに入る
   符号付き材料（`gradient_percent`等）は符号付きが正準契約**——絶対値ではない。
   ルート線の色分けがこの符号を読む。`road_classes`は道の区分のレイヤごとに、区間の中で値が同じまま続く部分を並べる）・`EvaluatedRoute`（エンジンが評価した経路。費用・代償の内訳・事実の量を持つ）・`RouteCandidate`（`EvaluatedRoute`に
-  応答のid・種類・最速の印を足したもの）・`PenaltyBreakdown`（代償の秒の内訳と、その和・地図のレンズと同じ1kmあたりの量。区間とビンと候補が同じ形で持つ）・`RouteFacts`（事実の量）。
+  応答のid・種類・最速の印を足したもの）・`PenaltyBreakdown`（代償の秒の内訳とその和。地図のレンズと同じ1kmあたりの量は区間と候補が内訳と距離から導く。区間とビンと候補が同じ形で持つ）・`RouteFacts`（事実の量）。
 - `aggregate_segments_into_bins`（500m区間ビニング）・`_merge_segment_bin`・`merge_penalty_breakdowns`（代償の秒は足す）。
   **`RouteSegmentDetail`のフィールドは、ビンへの畳み方（`BIN_FIELD_MERGERS`）を必ず宣言する**。`_merge_segment_bin`は
   この表だけからビンを組み立てる。候補の代償の内訳は、丸める前のEdge単位の区間から足す（丸めたビンを足すと、丸めの分が積もる）。

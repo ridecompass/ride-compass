@@ -1,10 +1,8 @@
 import asyncio
 from datetime import datetime
-from typing import Annotated
 
-from fastapi.exceptions import RequestValidationError
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
-from pydantic import Field, TypeAdapter, ValidationError, model_validator
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from pydantic import Field, model_validator
 
 from app.api.dependencies import (
     LandcoverTileReader,
@@ -23,11 +21,12 @@ from app.api.routers._tile_http import (
     tile_response,
     validate_tile_coords,
 )
+from app.api.routers.cost_axis_catalog import cost_preference_query
 from app.api.routers.routes import RoutePreferenceWeights
 from app.config import settings
 from app.domain.dynamic_way_values import MissingConditions, WayValueQuery
 from app.domain.axis_inspector import AxisInspectorResult
-from app.domain.cost_preference import MAX_COST_STRENGTH, STANDARD_COST_FACTOR, CostPreference, RequestedCostPreference
+from app.domain.cost_preference import CostPreference, RequestedCostPreference
 from app.domain.geo import BearingDeg
 from app.domain.route_request import AssumedSpeedKmh
 from app.domain.landcover import LandcoverTileZoom
@@ -150,24 +149,6 @@ async def region_way_materials(
     return materials
 
 
-_REQUESTED_COST_PREFERENCE: TypeAdapter[CostPreference] = TypeAdapter(RequestedCostPreference)
-
-
-def lens_cost_preference(
-    strength: Annotated[float, Query(ge=0.0, le=MAX_COST_STRENGTH)] = STANDARD_COST_FACTOR,
-    multipliers: Annotated[str | None, Query(pattern=r"^[A-Za-z0-9_]+:[0-9.]+(,[A-Za-z0-9_]+:[0-9.]+)*$")] = None,
-) -> CostPreference:
-    """レンズの要求の利用者の値（ルート生成の`cost_preference`と同じ型・同じ検証。誤りは型の検査と同じ形の422）。倍率は
-    `<軸id>:<倍率>`を`,`でつないだもの（書いていない軸は標準。形は`pattern`が検める）。タイルの URL がそのまま応答の
-    キャッシュの鍵になるので、クエリで受ける。"""
-    parsed = {} if multipliers is None else {
-        axis_id: float(value) for axis_id, value in (pair.split(":") for pair in multipliers.split(","))}
-    try:
-        return _REQUESTED_COST_PREFERENCE.validate_python({"strength": strength, "multipliers": parsed})
-    except ValidationError as error:
-        raise RequestValidationError(error.errors()) from error
-
-
 @router.get("/api/region/lens/{lens_id}/{z}/{x}/{y}")
 async def region_lens(
     lens_id: str,
@@ -177,14 +158,14 @@ async def region_lens(
     request: Request,
     speed_kmh: AssumedSpeedKmh,
     at: datetime | None = None,
-    preference: CostPreference = Depends(lens_cost_preference),
+    preference: CostPreference = Depends(cost_preference_query),
     service: LensService = Depends(get_lens_service),
 ) -> dict[str, dict[str, float]]:
     """ルートを出す前の地図がレンズ`lens_id`（総合`total`か費用の軸のid。`domain/lens_values.py`）で道を塗る、指定タイルの
     フィーチャーごとの道ごとの材料: 道の向きに辿った・逆向きに辿った1kmあたりの代償の秒（辿れない向きは載せない）と、
     道の向き。どちらの向きを塗るかは、`/api/cost-axes`の`map_lens.formula`が走行方位で選ぶ。値は時刻`at`（省略すると今。
-    風）と想定速度`speed_kmh`と利用者の値（つまみ`strength`と倍率`multipliers`。ルート生成と同じ値）で決まり、探索と同じ
-    部品で求める。
+    風）と想定速度`speed_kmh`と利用者の値（つまみ`strength`と、軸id→倍率のJSONの`multipliers`。ルート生成と同じ値）で決まり、
+    探索と同じ部品で求める。
 
     鍵は路面タイル（`/api/region/road-surface-tiles`）の同じz/x/yのフィーチャーの鍵。費用の軸の定義がまだ無い間と、
     知らないレンズは404。

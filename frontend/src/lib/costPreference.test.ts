@@ -13,9 +13,12 @@ const CHANGED = { strength: 1.5, multipliers: { vibration: 0, ascent: 2 } };
 
 describe("lensPreferenceQuery", () => {
   it("軸のレンズはつまみとその軸の倍率だけを、総合は全部の倍率を軸idの順に載せる", () => {
-    expect(lensPreferenceQuery(CHANGED, "ascent", false)).toEqual({ strength: 1.5, multipliers: "ascent:2" });
+    expect(lensPreferenceQuery(CHANGED, "ascent", false)).toEqual({ strength: 1.5, multipliers: '{"ascent":2}' });
     expect(lensPreferenceQuery(CHANGED, "stopping", false)).toEqual({ strength: 1.5 });
-    expect(lensPreferenceQuery(CHANGED, "total", true)).toEqual({ strength: 1.5, multipliers: "ascent:2,vibration:0" });
+    expect(lensPreferenceQuery(CHANGED, "total", true)).toEqual({
+      strength: 1.5,
+      multipliers: '{"ascent":2,"vibration":0}',
+    });
   });
 
   it("標準なら何も載せない（同じ URL のタイルを使い回す）", () => {

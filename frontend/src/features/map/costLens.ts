@@ -14,6 +14,7 @@ import type { MapTheme } from "@/lib/mapTheme";
 import type { LensOption } from "@/features/map/LensControl/LensRow";
 import { multiplierOf } from "@/lib/costPreference";
 import type { CostPreference } from "@/types/route";
+import type { LensEquivalentsResponse } from "@/services/costAxisCatalogApi";
 
 type LensPresentation = CostLensCatalog["totalLens"];
 
@@ -85,12 +86,16 @@ export function costLensOptions(axes: readonly DedicatedWayValueAxis[], preferen
   }));
 }
 
-/** 凡例の下に書く、段の境目の秒の目安（標準の人・無風の1kmの道で、その事実1つだけが効いたとき）。軸でないレンズ（総合）・
- * 目安の無い軸は空。 */
-export function costLensPremises(lensId: string | null, catalog: CostAxisCatalog): string[] {
+/** 凡例の下に書く、段の境目の秒の目安（地図と同じ利用者の値・無風の1kmの道で、その事実1つだけが効いたとき。
+ * `features/map/useLensEquivalents.ts`）。軸でないレンズ（総合）・目安の届いていない軸は空。 */
+export function costLensPremises(
+  lensId: string | null,
+  catalog: CostAxisCatalog,
+  allEquivalents: LensEquivalentsResponse | undefined,
+): string[] {
   const axis = catalog.axes.find((candidate) => candidate.axisId === lensId);
-  if (axis === undefined) return [];
-  const equivalents = axis.lensEquivalents;
+  const equivalents = axis === undefined ? undefined : allEquivalents?.[axis.axisId];
+  if (axis === undefined || equivalents === undefined) return [];
   const lines =
     equivalents.kind === "thresholds"
       ? axis.lens.thresholds.map((threshold, index) => {

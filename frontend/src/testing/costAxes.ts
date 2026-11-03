@@ -12,7 +12,6 @@ export function costAxisEntry(axisId: string, overrides: Partial<CostAxisEntry> 
     description: `${axisId}の説明`,
     icon_id: "",
     lens: { thresholds: [], band_labels: ["段"] },
-    lens_equivalents: { kind: "examples", examples: [] },
     ...overrides,
   };
 }
@@ -46,9 +45,8 @@ export const TWO_COST_AXES = costAxisCatalog(
 
 /** 費用の軸の一覧の取得に`response`を返す。nullなら定義がまだ無い（backendは404）。 */
 export function serveCostAxisCatalog(response: CostAxisCatalogResponse | null = TWO_COST_AXES): void {
-  onBackend("GET", "/api/cost-axes", () =>
-    response === null
-      ? Response.json({ detail: "費用の軸の定義はまだありません" }, { status: 404 })
-      : Response.json(response),
-  );
+  const missing = () => Response.json({ detail: "費用の軸の定義はまだありません" }, { status: 404 });
+  onBackend("GET", "/api/cost-axes", () => (response === null ? missing() : Response.json(response)));
+  // 凡例の目安（利用者の値で引く別の口）。目安を見るテストは自分で応える。
+  onBackend("GET", "/api/cost-axes/lens-equivalents", () => (response === null ? missing() : Response.json({})));
 }

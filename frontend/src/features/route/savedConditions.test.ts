@@ -40,7 +40,6 @@ const ENTRY: SavedCondition = {
 };
 
 const NO_BANDS = { thresholds: [], band_labels: ["段"] };
-const NO_EQUIVALENTS = { kind: "examples" as const, examples: [] };
 
 const COST_CATALOG: CostAxisCatalog = {
   axes: [
@@ -51,7 +50,6 @@ const COST_CATALOG: CostAxisCatalog = {
       description: "",
       iconId: "",
       lens: NO_BANDS,
-      lensEquivalents: NO_EQUIVALENTS,
     },
     {
       axisId: "vibration",
@@ -60,7 +58,6 @@ const COST_CATALOG: CostAxisCatalog = {
       description: "",
       iconId: "",
       lens: NO_BANDS,
-      lensEquivalents: NO_EQUIVALENTS,
     },
   ],
   axisColors: {},

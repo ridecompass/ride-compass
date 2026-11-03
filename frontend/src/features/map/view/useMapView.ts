@@ -50,6 +50,7 @@ import { isRouteStyleModeId, lensPremises, lensLegend, lensOptions, paintedAxisI
 import type { HiddenLegendKeys, MapLook } from "./mapLook";
 import { deserializeLayerVisibility, overlayChips } from "./overlayChips";
 import type { CostPreference } from "@/types/route";
+import { useLensEquivalents } from "@/features/map/useLensEquivalents";
 
 /** 凡例のチェックを地図の絞り込みへ反映するまでの遅れ。連続で何行も外す操作を、描き直し
  * 1回へまとめる（チェックの見た目は即座に変わる）。 */
@@ -71,7 +72,8 @@ interface MapViewInputs {
   now: Date;
   /** レンズの選択肢を「未使用」と分ける重み（費用の軸の定義が無い間の、軸の点数のレンズ）。 */
   routeWeights: Readonly<Record<string, number>>;
-  /** 利用者のつまみと倍率（生成の要求へ送る形）。費用のレンズはルートと同じこの値で塗る。 */
+  /** 費用のレンズを塗る利用者のつまみと倍率（生成の要求へ送る形）。ルートを出している間はそのルートを生成したときの値、
+   * 無ければ今の設定——ルートの線と周りの道を同じ量で塗る。 */
   costPreference: CostPreference;
 }
 
@@ -93,6 +95,8 @@ interface MapViewState {
   bearing: number;
   /** 地図の道の値を取る走る条件。道を押したときの内訳にも同じ値を使う。 */
   wayConditions: RideConditions;
+  /** 費用のレンズを塗っている利用者の値（入力の`costPreference`）。道を押したときの費用のレンズの値にも同じ値を渡す。 */
+  costPreference: CostPreference;
 }
 
 export function useMapView({
@@ -118,6 +122,7 @@ export function useMapView({
     [mapCatalog.dedicatedAxes],
   );
   const usesCostLenses = costLenses.length > 0;
+  const lensEquivalents = useLensEquivalents(costPreference, usesCostLenses);
   // 保存するのは触った層の真偽だけで、既定は層の一覧（道の線の層は軸カタログが届いてから決まる）から重ねる。
   const [storedVisibility, setLayerVisibility] = useStoredState<MapLayerVisibility>(
     "ridecompass:layer-visibility",
@@ -279,7 +284,9 @@ export function useMapView({
       onKeepAfterRouteChange: setKeepAfterRoute,
       hasDetail,
       routeHidden: hasSelectedRoute && layerVisibility[ROUTE_LAYER_ID] !== true,
-      premises: usesCostLenses ? costLensPremises(painted, costCatalog) : lensPremises(painted, catalog.axes),
+      premises: usesCostLenses
+        ? costLensPremises(painted, costCatalog, lensEquivalents)
+        : lensPremises(painted, catalog.axes),
       dataStatus: lensFetch
         ? deriveFetchLayerStatus(
             lensFetch.loading,
@@ -320,5 +327,6 @@ export function useMapView({
     viewport,
     bearing: viewport?.bearing ?? 0,
     wayConditions,
+    costPreference,
   };
 }

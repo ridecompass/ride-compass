@@ -117,7 +117,7 @@ export default function HomeMapPane({
         look={mapView.look}
         rideConditions={mapView.wayConditions}
         compassLinked={mapView.lensConditions.includes("bearing_deg")}
-        costPreference={conditions.costPreferenceToSend}
+        costPreference={mapView.costPreference}
         selectedRouteSegment={results.selectedRouteSegment}
         routeFocus={results.routeFocus}
         onRouteSegmentSelect={results.selectSegment}

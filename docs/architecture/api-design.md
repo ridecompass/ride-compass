@@ -21,7 +21,7 @@ backendが公開するHTTP APIの**全体の形**と、エンドポイントを�
 | 天候・防災バッジ | `/api/weather/*` | 不要 | 502（警報系の空応答は「出ていない」だけ） |
 | 地点の検索 | `/api/place-search`・`/api/place-area` | 不要 | 502（対象範囲を読めない）。空の応答は「当たらなかった」・「辺りが無い」だけ |
 | 地図タイル | `/api/region/*-tiles`・`/api/basemap/*`・`/api/jma-tile/*`・`/api/gsi-*-tile/*` | 不要 | 空タイル／502 |
-| 軸カタログ | `/api/axis-catalog`・`/api/cost-axes` | 不要（読み取り専用） | DBから読む値（事故の収録年・タイルの世代）だけ空へ倒す |
+| 軸カタログ | `/api/axis-catalog`・`/api/cost-axes`・`/api/cost-axes/lens-equivalents` | 不要（読み取り専用） | DBから読む値（事故の収録年・タイルの世代）だけ空へ倒す |
 | 管理 | `/api/admin/*` | HTTP Basic必須 | 401／404／422／503（DBの障害。どの口も`api/admin_db_errors.py`の1か所で返す） |
 
 ## 全体に効く約束

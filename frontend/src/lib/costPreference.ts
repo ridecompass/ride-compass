@@ -17,8 +17,8 @@ export function multiplierOf(preference: CostPreference, axisId: string): number
 
 /** 地図のレンズ`lensId`の要求（タイルのクエリ）へ載せる形。`preference`は送る形（`costPreferenceToSend`）。標準は載せない（同じ
  * URL のタイルを使い回す）。軸のレンズの値はつまみとその軸の倍率だけで決まるので、ほかの軸の倍率は載せない（変えても取り直さない）。
- * 総合（`allAxes`）は全部の軸の倍率を載せる。倍率は軸idの順に`<軸id>:<倍率>`を`,`でつなぐ（backendの
- * `api/routers/region.py: lens_cost_preference`）。 */
+ * 総合（`allAxes`）は全部の軸の倍率を載せる。倍率は軸idの順に並べた軸id→倍率のJSON（backendの
+ * `api/routers/cost_axis_catalog.py: cost_preference_query`）。 */
 export function lensPreferenceQuery(
   preference: CostPreference,
   lensId: string,
@@ -26,10 +26,9 @@ export function lensPreferenceQuery(
 ): { strength?: number; multipliers?: string } {
   const pairs = Object.entries(preference.multipliers)
     .filter(([axisId]) => allAxes || axisId === lensId)
-    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-    .map(([axisId, multiplier]) => `${axisId}:${multiplier}`);
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
   return {
     ...(preference.strength !== STANDARD_COST_FACTOR ? { strength: preference.strength } : {}),
-    ...(pairs.length > 0 ? { multipliers: pairs.join(",") } : {}),
+    ...(pairs.length > 0 ? { multipliers: JSON.stringify(Object.fromEntries(pairs)) } : {}),
   };
 }
