@@ -2004,6 +2004,23 @@
         }
       }
     },
+    "/api/cost-axes": {
+      "get": {
+        "operationId": "get_cost_axis_catalog_api_cost_axes_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostAxisCatalogResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/admin/material-catalog/{material_id}/value-shares": {
       "get": {
         "operationId": "get_material_value_shares_api_admin_material_catalog__material_id__value_shares_get",
@@ -4189,6 +4206,70 @@
           "longitude"
         ],
         "title": "Coordinates"
+      },
+      "CostAxisCatalogEntry": {
+        "properties": {
+          "axis_id": {
+            "type": "string",
+            "title": "Axis Id"
+          },
+          "ledger": {
+            "type": "string",
+            "enum": [
+              "effort",
+              "burden"
+            ],
+            "title": "Ledger"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "icon_id": {
+            "type": "string",
+            "title": "Icon Id"
+          },
+          "lens": {
+            "$ref": "#/components/schemas/LensBands"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "axis_id",
+          "ledger",
+          "label",
+          "description",
+          "icon_id",
+          "lens"
+        ],
+        "title": "CostAxisCatalogEntry"
+      },
+      "CostAxisCatalogResponse": {
+        "properties": {
+          "axes": {
+            "items": {
+              "$ref": "#/components/schemas/CostAxisCatalogEntry"
+            },
+            "type": "array",
+            "title": "Axes"
+          },
+          "avoidance_label": {
+            "type": "string",
+            "title": "Avoidance Label"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "axes",
+          "avoidance_label"
+        ],
+        "title": "CostAxisCatalogResponse"
       },
       "CostAxisDefinitions": {
         "properties": {

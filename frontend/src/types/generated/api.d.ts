@@ -612,6 +612,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/cost-axes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_cost_axis_catalog_api_cost_axes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/material-catalog/{material_id}/value-shares": {
         parameters: {
             query?: never;
@@ -1266,6 +1282,30 @@ export interface components {
             latitude: number;
             /** Longitude */
             longitude: number;
+        };
+        /** CostAxisCatalogEntry */
+        CostAxisCatalogEntry: {
+            /** Axis Id */
+            axis_id: string;
+            /**
+             * Ledger
+             * @enum {string}
+             */
+            ledger: "effort" | "burden";
+            /** Label */
+            label: string;
+            /** Description */
+            description: string;
+            /** Icon Id */
+            icon_id: string;
+            lens: components["schemas"]["LensBands"];
+        };
+        /** CostAxisCatalogResponse */
+        CostAxisCatalogResponse: {
+            /** Axes */
+            axes: components["schemas"]["CostAxisCatalogEntry"][];
+            /** Avoidance Label */
+            avoidance_label: string;
         };
         /** CostAxisDefinitions */
         CostAxisDefinitions: {
@@ -3795,6 +3835,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AxisCatalogResponse"];
+                };
+            };
+        };
+    };
+    get_cost_axis_catalog_api_cost_axes_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CostAxisCatalogResponse"];
                 };
             };
         };

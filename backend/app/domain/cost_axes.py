@@ -34,6 +34,9 @@ EFFORT_AXES: dict[str, EffortItem] = {
 
 _NonNegative = Annotated[float, Field(ge=0.0, allow_inf_nan=False)]
 
+#: 代償の内訳で、避け方の倍率（道の区分ごとの「なるべく避ける」）が上乗せした秒の行の名前。軸ではないので倍率を持たない。
+AVOIDANCE_LABEL = "回避指定"
+
 
 class LensBands(StrictModel):
     """地図のレンズの色の段。`thresholds`は事実の量（軸ごとにコードが決める単位）の段の境目で昇順、`band_labels`は段の名前で
