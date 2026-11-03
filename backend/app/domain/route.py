@@ -95,20 +95,23 @@ def merge_cost_breakdowns(parts: Iterable[CostBreakdown | None]) -> CostBreakdow
     )
 
 
+class AxisFact(StrictModel):
+    """費用の軸1つの損の元になった、ルートの事実の量。名前と単位は求める側が付け、画面は軸idで出し分けずにそのまま出す。"""
+
+    label: str
+    # 値を求められなければNone（風を使えないときの向かい風）。
+    value: float | None
+    unit: str
+
+
 class RouteFacts(StrictModel):
-    """ルートの事実の量（費用の式にも利用者の倍率にも依らない）。獲得標高は`EvaluatedRoute.elevation_gain_m`。"""
+    """ルートの事実の量（費用の式にも利用者の倍率にも依らない）。"""
 
     # 標高の無い道の長さ（km）。獲得標高に数えず、所要時間は道路網全体の坂の割合で走った長さ。
     elevation_unknown_km: float
-    # 止まる回数の見込み。止まる出来事と曲がる所を、止まってから漕ぎ出す回数に換えて足したもの（減速だけの出来事は、
-    # 落とした速さから戻す分だけ1回より少なく数える）。所要時間の待ちと停止の軸の体力と同じ回数。
-    stop_count: float
-    # 基準の路面より転がり抵抗の大きい道の長さ（km）。
-    rough_km: float
-    # 進行方向への向かい風成分の距離平均（m/s、負は追い風）。風を使えなければNone。
-    headwind_mean_ms: float | None
-    # 道の負担の軸id→その軸の重さが0より大きい道の長さ（km）。費用の軸の定義が無ければ空。
-    burden_km: dict[str, float]
+    # 費用の軸id→その軸の事実（`services/road_graph_candidates.py: _route_facts`）。体力の軸は費用の軸の定義が無くても
+    # 全部、道の負担の軸は定義があるものだけ。
+    axes: dict[str, AxisFact]
 
 
 class RouteSegmentDetail(StrictModel):

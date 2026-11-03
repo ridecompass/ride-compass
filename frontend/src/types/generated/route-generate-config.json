@@ -13,7 +13,7 @@
   "max_assumed_speed_kmh": 60.0,
   "job_result_ttl_seconds": 600.0,
   "job_wait_seconds": 10,
-  "route_candidate_shape": "370072d4a9d3c757",
+  "route_candidate_shape": "e1c62c16c2d409af",
   "segment_speed_conditions": [
     "坂",
     "風",

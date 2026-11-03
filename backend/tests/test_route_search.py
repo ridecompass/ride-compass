@@ -102,7 +102,7 @@ def draft(distance_km, duration_seconds, cost_seconds):
         direction_label="", distance_km=distance_km, geometry={"type": "LineString", "coordinates": []},
         elevation_gain_m=None, segments=[], estimated_duration_seconds=duration_seconds, cost_seconds=cost_seconds,
         penalty=None,
-        facts=RouteFacts(elevation_unknown_km=0.0, stop_count=0.0, rough_km=0.0, headwind_mean_ms=None, burden_km={}),
+        facts=RouteFacts(elevation_unknown_km=0.0, axes={}),
         wind_unavailable=False, missing_travel_data_share=None,
         edge_ids=[], edge_point_offsets=[], node_ids=[], turns=[], waypoint_distances_km=[],
     )

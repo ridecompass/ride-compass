@@ -3153,6 +3153,37 @@
         ],
         "title": "AxisDefinitionResponse"
       },
+      "AxisFact": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          },
+          "unit": {
+            "type": "string",
+            "title": "Unit"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "label",
+          "value",
+          "unit"
+        ],
+        "title": "AxisFact"
+      },
       "AxisInspectorAxis": {
         "properties": {
           "axis_id": {
@@ -6896,41 +6927,19 @@
             "type": "number",
             "title": "Elevation Unknown Km"
           },
-          "stop_count": {
-            "type": "number",
-            "title": "Stop Count"
-          },
-          "rough_km": {
-            "type": "number",
-            "title": "Rough Km"
-          },
-          "headwind_mean_ms": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Headwind Mean Ms"
-          },
-          "burden_km": {
+          "axes": {
             "additionalProperties": {
-              "type": "number"
+              "$ref": "#/components/schemas/AxisFact"
             },
             "type": "object",
-            "title": "Burden Km"
+            "title": "Axes"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
           "elevation_unknown_km",
-          "stop_count",
-          "rough_km",
-          "headwind_mean_ms",
-          "burden_km"
+          "axes"
         ],
         "title": "RouteFacts"
       },

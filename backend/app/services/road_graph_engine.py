@@ -422,6 +422,7 @@ class RoadGraphEngine:
             statics=statics,
             turn_structure=turn_structure,
             transition_cost=search.composer.transition_costs(turn_structure.turn_seconds, turn_structure.turn_kickoffs),
+            cost_axes=self._cost_axes,
             tile_set=search.tile_set,
         )
 

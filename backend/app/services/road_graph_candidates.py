@@ -13,6 +13,7 @@ from typing import TypeVar, cast
 import numpy as np
 
 from app.domain.attributes import ElevationAttribute
+from app.domain.cost_axes import EFFORT_AXES, EffortItem
 from app.domain.evaluation import displayed_material_ids
 from app.domain.leg_costs import LegValues
 from app.domain.gradient import GRADIENT_VALUE_DECIMALS
@@ -28,6 +29,7 @@ from app.domain.route import (
     STOP_COUNT_DECIMALS,
     WIND_MS_DECIMALS,
     CostBreakdown,
+    AxisFact,
     RouteFacts,
     merge_cost_breakdowns,
     ElevationStretch,
@@ -259,6 +261,7 @@ def _build_candidate(
     geometry, edge_point_offsets = concat_edge_geometries(edges_in_path)
     along_km = along_route_km(edge.distance_m / 1000 for edge in edges_in_path)
     segments = _build_segment_details(orientation, along_km, elevation_by_edge, context, start_time, active_material_ids)
+    elevation_gain_m = route_elevation_gain(edges_in_path, elevation_by_edge)
     turns = _route_turns(context.turn_structure, orientation.entries, edges_in_path, along_km)
     add_elapsed_ms(context.evaluate_steps_ms, "segments", segments_started)
     bins_started = start_timer()
@@ -284,7 +287,7 @@ def _build_candidate(
         segments=segments,
         cost_seconds=round(orientation.cost_seconds, COST_SECONDS_DECIMALS),
         penalty=penalty,
-        facts=_route_facts(orientation, context),
+        facts=_route_facts(orientation, context, elevation_gain_m),
         # 所要時間＝区間の走行時間＋停止の待ち＋ターンの待ち（最後の区間を抜けた時刻）。
         estimated_duration_seconds=passages[-1].elapsed_seconds + passages[-1].seconds if passages else None,
         wind_unavailable=context.composer.wind_unavailable,
@@ -292,7 +295,7 @@ def _build_candidate(
             context.composer.missing_travel_data_share(np.asarray(orientation.rows, dtype=np.int64))
             if orientation.rows else None
         ),
-        elevation_gain_m=route_elevation_gain(edges_in_path, elevation_by_edge),
+        elevation_gain_m=elevation_gain_m,
     )
 
 def _build_segment_details(
@@ -410,7 +413,16 @@ def _segment_penalties(orientation: _Orientation, context: RoadGraphContext) -> 
     return _per_segment(orientation.reads, len(orientation.edges), of)
 
 
-def _route_facts(orientation: _Orientation, context: RoadGraphContext) -> RouteFacts:
+#: 体力の費目 → 候補の事実の名前と単位（値は`_route_facts`が求める）。道の負担の軸は「<軸の名前>のある道」のkm。
+_EFFORT_FACTS: dict[EffortItem, tuple[str, str]] = {
+    "gravity": ("登り", "m"),
+    "air": ("向かい風の平均", "m/s"),
+    "inertia": ("止まる回数", "回"),
+    "rolling": ("転がり抵抗の大きい道", "km"),
+}
+
+
+def _route_facts(orientation: _Orientation, context: RoadGraphContext, elevation_gain_m: float | None) -> RouteFacts:
     """経路の事実の量。区間ごとの値（`domain/leg_costs.py: LegCostComposer.row_facts`・`LegValues.headwind_ms`）を
     経路の区間の長さで足し、曲がる所の漕ぎ出しを止まる回数に足す。"""
     rows = np.asarray(orientation.rows, dtype=np.int64)
@@ -418,18 +430,28 @@ def _route_facts(orientation: _Orientation, context: RoadGraphContext) -> RouteF
     facts = context.composer.row_facts(rows)
     headwind_ms = np.array(_per_segment(orientation.reads, len(rows), lambda read: read.values.headwind_ms.tolist()))
     total_km = float(distance_km.sum())
-    return RouteFacts(
-        elevation_unknown_km=round(float(facts.unknown_elevation_m.sum()) / 1000.0, DISTANCE_KM_DECIMALS),
-        stop_count=round(float(facts.stops.sum()) + sum(orientation.turn_kickoffs), STOP_COUNT_DECIMALS),
-        rough_km=round(float(distance_km[facts.rough].sum()), DISTANCE_KM_DECIMALS),
-        headwind_mean_ms=(
+    # 止まる回数は、止まる出来事と曲がる所を、止まってから漕ぎ出す回数に換えて足したもの（減速だけの出来事は、落とした
+    # 速さから戻す分だけ1回より少なく数える）。所要時間の待ちと停止の軸の体力と同じ回数。
+    values: dict[EffortItem, float | None] = {
+        "gravity": elevation_gain_m,
+        "air": (
             None if context.composer.wind_unavailable or total_km <= 0
             else round(float((headwind_ms * distance_km).sum()) / total_km, WIND_MS_DECIMALS)
         ),
-        burden_km={
-            axis_id: round(float(distance_km[burdened].sum()), DISTANCE_KM_DECIMALS)
-            for axis_id, burdened in facts.burdened.items()
-        },
+        "inertia": round(float(facts.stops.sum()) + sum(orientation.turn_kickoffs), STOP_COUNT_DECIMALS),
+        "rolling": round(float(distance_km[facts.rough].sum()), DISTANCE_KM_DECIMALS),
+    }
+    axes = {
+        axis_id: AxisFact(label=_EFFORT_FACTS[item][0], value=values[item], unit=_EFFORT_FACTS[item][1])
+        for axis_id, item in EFFORT_AXES.items()
+    }
+    burden_axes = {} if context.cost_axes is None else context.cost_axes.burden
+    for axis_id, burdened in facts.burdened.items():
+        axes[axis_id] = AxisFact(label=f"{burden_axes[axis_id].label}のある道",
+                                 value=round(float(distance_km[burdened].sum()), DISTANCE_KM_DECIMALS), unit="km")
+    return RouteFacts(
+        elevation_unknown_km=round(float(facts.unknown_elevation_m.sum()) / 1000.0, DISTANCE_KM_DECIMALS),
+        axes=axes,
     )
 
 

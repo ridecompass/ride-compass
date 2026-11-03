@@ -1005,6 +1005,15 @@ export interface components {
             /** Weight Share When Published */
             weight_share_when_published: number | null;
         };
+        /** AxisFact */
+        AxisFact: {
+            /** Label */
+            label: string;
+            /** Value */
+            value: number | null;
+            /** Unit */
+            unit: string;
+        };
         /** AxisInspectorAxis */
         AxisInspectorAxis: {
             /** Axis Id */
@@ -2121,15 +2130,9 @@ export interface components {
         RouteFacts: {
             /** Elevation Unknown Km */
             elevation_unknown_km: number;
-            /** Stop Count */
-            stop_count: number;
-            /** Rough Km */
-            rough_km: number;
-            /** Headwind Mean Ms */
-            headwind_mean_ms: number | null;
-            /** Burden Km */
-            burden_km: {
-                [key: string]: number;
+            /** Axes */
+            axes: {
+                [key: string]: components["schemas"]["AxisFact"];
             };
         };
         /** RouteGenerateJobCreatedResponse */

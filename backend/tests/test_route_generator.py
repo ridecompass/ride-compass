@@ -57,7 +57,7 @@ def _candidate(key: str, penalty: float = 10.0, **fields) -> EvaluatedRoute:
         "direction_label": f"方位-{key}", "distance_km": 1.0, "geometry": {"type": "LineString", "coordinates": []},
         "elevation_gain_m": None, "segments": [_segment()], "estimated_duration_seconds": 100.0,
         "cost_seconds": 100.0 + penalty, "penalty": None,
-        "facts": RouteFacts(elevation_unknown_km=0.0, stop_count=0.0, rough_km=0.0, headwind_mean_ms=None, burden_km={}),
+        "facts": RouteFacts(elevation_unknown_km=0.0, axes={}),
         "wind_unavailable": False, "missing_travel_data_share": None, "edge_ids": [key], "edge_point_offsets": [], "node_ids": [], "turns": [],
         "waypoint_distances_km": [], **fields,
     })

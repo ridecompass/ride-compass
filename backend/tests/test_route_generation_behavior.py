@@ -1007,8 +1007,12 @@ async def test_the_duration_and_the_penalty_of_each_axis_and_of_the_avoided_road
     fastest = fastest_of(candidates)
     assert ways_of(fastest) == [100, 101]
     assert fastest.penalty.axis_seconds["vibration"] > 0
-    assert fastest.facts.burden_km == {"vibration": pytest.approx(fastest.segments[0].distance_km, abs=0.02)}
-    assert fastest.facts.stop_count > 0
+    # 事実は軸ごとに、名前と単位を付けて返す（画面が軸idで出し分けない）。道の負担の軸の名前は定義から読む。
+    facts = fastest.facts.axes
+    assert set(facts) == {*EFFORT_AXES, "vibration"}
+    assert facts["vibration"].label == "軸のある道"
+    assert facts["vibration"].value == pytest.approx(fastest.segments[0].distance_km, abs=0.02)
+    assert facts["stopping"].value > 0
 
 
 async def test_without_the_cost_axes_a_route_has_a_cost_but_no_breakdown(engine_over):
