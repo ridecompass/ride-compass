@@ -12,7 +12,7 @@ import {
 import type { CostPreference } from "@/types/route";
 import { Button } from "@/components/ui/Button/Button";
 import { RetryIcon } from "@/components/ui/icons/lucideIcons";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/ToggleGroup/ToggleGroup";
+import CostLevelPicker from "./CostLevelPicker";
 import { cn } from "@/lib/cn";
 import { textVariants } from "@/components/ui/Text/Text";
 import { calloutVariants } from "@/components/ui/Callout/Callout";
@@ -73,23 +73,18 @@ export default function RouteSettingsPanel({ costPreference, onCostPreferenceCha
               <span className="truncate">{axis.label}</span>
               <InfoPopover triggerAriaLabel={`${axis.label}の説明`}>{axis.description}</InfoPopover>
             </span>
-            <ToggleGroup
+            <CostLevelPicker
               aria-label={`${axis.label}の倍率`}
               usage="この負担を、道を選ぶときにどれだけ重く見るかを選びます。「無視」はこの負担を数えません。"
-              value={String(multiplierOf(costPreference, axis.axisId))}
-              onValueChange={(next) =>
+              levels={COST_MULTIPLIER_LEVELS}
+              value={multiplierOf(costPreference, axis.axisId)}
+              onChange={(multiplier) =>
                 onCostPreferenceChange({
                   ...costPreference,
-                  multipliers: { ...costPreference.multipliers, [axis.axisId]: Number(next) },
+                  multipliers: { ...costPreference.multipliers, [axis.axisId]: multiplier },
                 })
               }
-            >
-              {COST_MULTIPLIER_LEVELS.map((level) => (
-                <ToggleGroupItem key={level.value} value={String(level.value)}>
-                  {level.label}
-                </ToggleGroupItem>
-              ))}
-            </ToggleGroup>
+            />
           </li>
         ))}
       </ul>

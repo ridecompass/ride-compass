@@ -18,7 +18,7 @@ import { panelIconToggleClass, Toggle } from "@/components/ui/Toggle/Toggle";
 import { useAxisCatalog } from "@/hooks/useAxisCatalog";
 import { CLIENT_TUNING_IDS, clientTuningValue } from "@/lib/axisCatalog";
 import { cn } from "@/lib/cn";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/ToggleGroup/ToggleGroup";
+import CostLevelPicker from "@/features/route/RouteSettingsPanel/CostLevelPicker";
 import { COST_STRENGTH_LEVELS } from "@/features/route/costPreference";
 
 /** 「ルート設定」区分のタブ。タブ列（`SettingsTabsList.tsx`）と選択状態は外が持ち（見出し行に置くため）、
@@ -187,18 +187,13 @@ export default function RouteForm({
         {/* 全体のつまみ。軸ごとの倍率は「負担」タブが持つ。 */}
         <div className="mb-2 flex items-center gap-1.5">
           <span className={cn(textVariants({ variant: "hint" }), "flex-shrink-0")}>負担</span>
-          <ToggleGroup
+          <CostLevelPicker
             aria-label="負担の強さ"
             usage="所要時間のほかに、疲れや道の負担をどれだけ重く見て道を選ぶかを選びます。"
-            value={String(costPreference.strength)}
-            onValueChange={(next) => setCostPreference((prev) => ({ ...prev, strength: Number(next) }))}
-          >
-            {COST_STRENGTH_LEVELS.map((level) => (
-              <ToggleGroupItem key={level.value} value={String(level.value)}>
-                {level.label}
-              </ToggleGroupItem>
-            ))}
-          </ToggleGroup>
+            levels={COST_STRENGTH_LEVELS}
+            value={costPreference.strength}
+            onChange={(strength) => setCostPreference((prev) => ({ ...prev, strength }))}
+          />
           <InfoPopover triggerAriaLabel="負担の強さの説明" triggerClassName="flex-none">
             所要時間のほかに、疲れや道の負担をどれだけ重く見て道を選ぶかです。「気にしない」は所要時間だけで選びます。負担の種類ごとの重さは「負担」タブで選べます。
           </InfoPopover>

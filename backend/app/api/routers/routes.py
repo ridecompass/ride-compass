@@ -134,6 +134,11 @@ class RouteGenerateRequest(StrictModel):
     def _start_time_in_jst(cls, value: datetime) -> datetime:
         return as_jst(value)
 
+    @field_validator("cost_preference")
+    @classmethod
+    def _multipliers_of_current_cost_axes(cls, value: CostPreference) -> CostPreference:
+        return value.check_cost_axis_ids()
+
     _target: RouteTarget = PrivateAttr()
 
     @model_validator(mode="after")

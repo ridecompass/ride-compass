@@ -6,7 +6,7 @@
 
 from typing import Annotated, NamedTuple
 
-from pydantic import Field, model_validator
+from pydantic import Field
 
 from app.domain.cost_axes import cost_axis_ids, current_cost_axes
 from app.domain.strict_model import StrictModel
@@ -37,13 +37,14 @@ MAX_COST_MULTIPLIER = max(level.value for level in COST_MULTIPLIER_LEVELS)
 
 
 class CostPreference(StrictModel):
-    """つまみと軸ごとの倍率。倍率のキーは今の費用の軸のidだけで、書いていない軸は標準（`resolved`で埋める）。"""
+    """つまみと軸ごとの倍率。書いていない軸は標準（`resolved`で埋める）。倍率のキーが今の費用の軸のidかは、要求を受ける側が
+    `check_cost_axis_ids`で見る（応答に返した形を組み直すときに、その後に変わった軸の定義で検め直さない）。"""
 
     strength: float = Field(default=STANDARD_COST_FACTOR, ge=0.0, le=MAX_COST_STRENGTH)
     multipliers: dict[str, Annotated[float, Field(ge=0.0, le=MAX_COST_MULTIPLIER)]] = Field(default_factory=dict)
 
-    @model_validator(mode="after")
-    def _check_axis_ids(self) -> "CostPreference":
+    def check_cost_axis_ids(self) -> "CostPreference":
+        """倍率のキーが今の費用の軸のidだけか。知らない軸の倍率は効かないので、黙って捨てずに断る。"""
         known = set(cost_axis_ids(current_cost_axes()))
         unknown = sorted(set(self.multipliers) - known)
         if unknown:

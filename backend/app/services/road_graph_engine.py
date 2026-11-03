@@ -204,7 +204,6 @@ class RoadGraphEngine:
         graph_service: GraphService,
         weather_service: WeatherService,
         *,
-        route_preference: RoutePreference,
         penalty_strength: float,
         cost_multipliers: Mapping[str, float],
         road_avoidance: Mapping[str, AvoidanceLevel],
@@ -215,7 +214,8 @@ class RoadGraphEngine:
         # 到達予想時刻・所要時間の算出に使う。
         self._assumed_speed_kmh = assumed_speed_kmh
         self._weather_service = weather_service
-        self._route_preference = route_preference
+        # 軸の点数の割増の式（費用の軸の定義が表に無い間）の重み。生成の要求は軸の重みを持たないので、いつも既定の重み。
+        self._route_preference = RoutePreference()
         # 代償の強さ（利用者のつまみ × 較正値）。費目の帳簿の式のつまみで、軸の点数の割増の式
         # `所要時間 × (1 + P × difficulty/100)`のP。
         self._penalty_strength = penalty_strength

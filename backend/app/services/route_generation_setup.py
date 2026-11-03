@@ -10,7 +10,6 @@ from app.domain.cost_preference import CostPreference
 from app.domain.road_avoidance import AvoidanceLevel, resolve_road_avoidance
 from app.domain.road_classes import current_road_classes
 from app.domain.route import Coordinates, RouteCandidate
-from app.domain.route_preference import RoutePreference
 from app.domain.route_request import (
     DistanceTarget,
     NoDistanceTarget,
@@ -64,8 +63,6 @@ def assemble_route_generation_setup(
     engine = RoadGraphEngine(
         graph_service,
         weather_service,
-        # 軸の点数の割増の式（費用の軸の定義が表に無い間）は、軸の既定の重みで探す。
-        route_preference=RoutePreference(),
         # つまみは標準的な人の強さ（較正値）に掛ける比。
         penalty_strength=applied.cost_preference.strength * tuning_value("evaluation.penalty_strength"),
         cost_multipliers=applied.cost_preference.multipliers,

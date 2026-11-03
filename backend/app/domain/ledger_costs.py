@@ -20,6 +20,7 @@ import numpy as np
 
 from app.domain.attributes import CategoricalColumn
 from app.domain.axis_templates import evaluate_breakpoint_linear
+from app.domain.cost_preference import STANDARD_COST_FACTOR
 from app.domain.cost_axes import EFFORT_AXES, Burden, CategoricalBurden, CostAxisDefinitions, EffortItem
 from app.domain.cycling_speed import SegmentRide, SegmentSpeedModel
 from app.domain.road_network import MaterialFills
@@ -46,7 +47,7 @@ class LedgerParameters:
     effort_weight_exponent: float
 
     def multiplier(self, axis_id: str) -> float:
-        return self.multipliers.get(axis_id, 1.0)
+        return self.multipliers.get(axis_id, STANDARD_COST_FACTOR)
 
 
 def current_ledger_parameters(strength: float, multipliers: Mapping[str, float]) -> LedgerParameters:
