@@ -141,10 +141,9 @@ frontendはどのクエリパラメータをどの軸のリクエストへ載せ
 
 ## 引いた地図の道1本の値（`domain/dynamic_way_values.py: paint_folded_feature_values`）
 
-道1本を1つのフィーチャーにするズーム（`EDGE_UNIT_MIN_ZOOM`より下）では、道1本の値を、その道を**ルートとして走ったときの
-ルートの値と同じ決まり**で出す——その道の区間をルートの区間に見立て、区間ごとに評価した得点を区間の長さで平均する
-（`domain/route.py: merge_difficulty_values`）。道1本の材料で評価すると、区間ごとに値の違う材料（割合・勾配）では、
-得点が折れ線を通る前に平均されて、走ったルートの値と食い違う。
+道1本を1つのフィーチャーにするズーム（`EDGE_UNIT_MIN_ZOOM`より下）では、道1本の値を、その道の区間ごとに評価した得点を
+区間の長さで平均して出す。道1本の材料で評価すると、区間ごとに値の違う材料（割合・勾配）では、得点が折れ線を通る前に
+平均されて、区間ごとの得点（探索が読む値）と食い違う。
 
 - **畳む軸**（`folds_segments`）: 密度の軸（`domain/axis_definitions.py: averages_density`）でなく、内部軸まで辿った葉の材料に
   区間ごとに値が違いうる材料（`domain/material_catalog.py: segment_material_ids`。値式が区間の値を読む材料）を持つ軸。
