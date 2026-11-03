@@ -108,24 +108,24 @@ def lazy_of(net):
     )
 
 
-def _event(wait_seconds: float, slows_only: bool = False) -> StopEvent:
-    """いつも止まる（減速する）出来事。時間は待ちそのもの。"""
-    return StopEvent(share=1.0, wait_seconds=wait_seconds, slows_only=slows_only)
+def _event(wait_seconds: float, kickoffs: float = 1.0) -> StopEvent:
+    """いつも止まる出来事（減速だけなら漕ぎ出しは`kickoffs`回ぶん）。時間は待ちそのもの。"""
+    return StopEvent(share=1.0, wait_seconds=wait_seconds, kickoffs=kickoffs)
 
 
 # ターンの費用をすべて0にする仕様（ターン以外の挙動を見るとき用）。
 FLAT_SPEC = turn_structure.TurnCostSpec(
-    left=_event(0.0, slows_only=True), right=_event(0.0), uturn=_event(0.0), straight_max_deg=180.0,
-    major_crossing=_event(0.0), major_turn=_event(0.0), slowed_speed_ratio=0.5,
+    left=_event(0.0), right=_event(0.0), uturn=_event(0.0), straight_max_deg=180.0,
+    major_crossing=_event(0.0), major_turn=_event(0.0),
 )
 # ターンの種別が全部違う値になる仕様。
 TURN_SPEC = turn_structure.TurnCostSpec(
-    left=_event(5.0, slows_only=True), right=_event(3.0), uturn=_event(20.0), straight_max_deg=30.0,
-    major_crossing=_event(7.0), major_turn=_event(11.0), slowed_speed_ratio=0.5,
+    left=_event(5.0, kickoffs=0.75), right=_event(3.0), uturn=_event(20.0), straight_max_deg=30.0,
+    major_crossing=_event(7.0), major_turn=_event(11.0),
 )
 
 
-def build_all(graph, spec=FLAT_SPEC, edge_rank=None, node_has_signal=None, node_db_rank=None, stop_cost_seconds=0.0):
+def build_all(graph, spec=FLAT_SPEC, edge_rank=None, node_has_signal=None, node_db_rank=None):
     """lazy graph・静的派生物・ターン展開構造を一度に組む。
 
     ターンの費用に要る列は`None`を渡せない（渡し忘れが「上位の道の横断に待ちが付かない」
@@ -146,7 +146,6 @@ def build_all(graph, spec=FLAT_SPEC, edge_rank=None, node_has_signal=None, node_
         np.zeros(node_count, dtype=bool) if node_has_signal is None else node_has_signal,
         np.zeros(node_count, dtype=np.int64) if node_db_rank is None else node_db_rank,
         branch_counts(graph.edge_from, graph.edge_to, node_count),
-        stop_cost_seconds,
     )
     return lazy, statics, structure
 

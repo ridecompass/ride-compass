@@ -32,8 +32,7 @@ from app.domain.errors import RoutingError
 from app.domain.axis_definitions import copy_axis_definitions
 from app.domain.evaluation import StaticEdgeScoreMatrix, build_static_edge_score_matrix
 from app.domain.hard_filters import compute_routable_nodes, compute_search_exclusion
-from app.domain.cycling_speed import RiderProfile
-from app.domain.leg_costs import LegCostArrays, LegCostComposer, stop_cost_seconds
+from app.domain.leg_costs import LegCostArrays, LegCostComposer
 from app.domain.route_preference import RoutePreference
 from app.domain.road_avoidance import AvoidanceLevel, RoadAvoidanceMasks
 from app.domain.geo import (
@@ -359,7 +358,6 @@ class RoadGraphEngine:
             np.asarray(network.node_has_signals[road.nodes], dtype=bool),
             np.asarray(network.node_max_rank[road.nodes], dtype=np.int64),
             np.asarray(network.node_branch_count[road.nodes], dtype=np.int16),
-            stop_cost_seconds(RiderProfile(cruise_speed_kmh=self._assumed_speed_kmh), self._penalty_strength),
         )
 
     async def prepare(
@@ -410,6 +408,7 @@ class RoadGraphEngine:
             node_lon=search.node_lon,
             statics=statics,
             turn_structure=turn_structure,
+            transition_cost=turn_structure.turn_seconds,
             tile_set=search.tile_set,
         )
 
@@ -430,7 +429,7 @@ class RoadGraphEngine:
             context.turn_structure, leg.cost_bins_lazy, heuristic_to(context, to_node),
             origin_states(context.statics, from_node),
             to_node,
-            leg.travel_bins_lazy, leg.bin_seconds,
+            leg.travel_bins_lazy, leg.bin_seconds, transition_cost=context.transition_cost
         )
 
     async def trace_fixed_points(self, context: RoadGraphContext, points: FixedPoints) -> FixedLegs:
@@ -534,19 +533,19 @@ class RoadGraphEngine:
                 lambda: build_turn_expanded_tree(
                     context.turn_structure, avoiding_traveled(inbound.cost_lazy, traveled), statics.edge_length_m,
                     destination_states(context.turn_structure, end_node), statics.csr.node_count,
-                    reverse=True, edge_seconds=inbound.travel_seconds_lazy,
+                    reverse=True, edge_seconds=inbound.travel_seconds_lazy, transition_cost=context.transition_cost
                 )
             )
         tree_started = start_timer()
 
         def outbound_tree() -> TurnExpandedTree:
             outbound_costs = avoiding_traveled(outbound.cost_bins_lazy, traveled)
-            cost_limit = tree_cost_bound(context.turn_structure, outbound_costs, statics.edge_length_m, outbound_upper_m)
+            cost_limit = tree_cost_bound(context.turn_structure, outbound_costs, statics.edge_length_m, outbound_upper_m, transition_cost=context.transition_cost)
             return build_turn_expanded_tree(
                 context.turn_structure, outbound_costs, statics.edge_length_m,
                 origin_states(statics, start_node), statics.csr.node_count,
                 cost_limit=cost_limit, edge_seconds=outbound.travel_bins_lazy,
-                bin_seconds=outbound.bin_seconds,
+                bin_seconds=outbound.bin_seconds, transition_cost=context.transition_cost
             )
 
         tree = await asyncio.to_thread(outbound_tree)
@@ -694,7 +693,7 @@ class RoadGraphEngine:
             lambda: turn_expanded_shortest_path(
                 context.turn_structure, avoiding_traveled(inbound_leg.cost_bins_lazy, penalized_columns), heuristic,
                 origin_states(context.statics, data.node), fixed.end_node,
-                inbound_leg.travel_bins_lazy, inbound_leg.bin_seconds,
+                inbound_leg.travel_bins_lazy, inbound_leg.bin_seconds, transition_cost=context.transition_cost
             )
         )
         trace_wall_ms = elapsed_ms(trace_started)

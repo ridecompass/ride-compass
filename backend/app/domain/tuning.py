@@ -48,8 +48,6 @@ class TuningEffect(Enum):
 
     #: 次のリクエストから効く（リクエストごとのコスト合成が読む）。
     IMMEDIATE = ("immediate", "次のルート生成から効く")
-    #: 曲がる所の待ちと割合。ルート生成ごとに曲がる所の構造（`domain/turn_structure.py`）を組むときに読む。
-    TURN_STRUCTURE = ("turn_structure", "次のルート生成から効く（曲がる所）")
     #: 派生の作り直し（`batch/derive_cli.py`）をやり直さないと効かない。派生バッチは作り直しを始めるときに上書きを読み、
     #: 段の較正値は段の入力なので読む段から後ろが流れ、道路網の配列の較正値は配列を作り直させる。派生の外で同じ値を読む所は、
     #: 作り直しに使った値（`infrastructure/derived_data_meta.py: DerivedTuningRow`）を読む。
@@ -93,58 +91,46 @@ class TuningParameter:
             )
 
 
-def stop_seconds_parameter_id(kind: str) -> str:
-    """停止要因の種別から、止まったときの待ちの較正値のid（綴りを組み立てる場所を1つにする）。"""
-    return f"stop.{kind}_seconds"
+def event_seconds_parameter_id(group: str, name: str) -> str:
+    """止まる出来事（`group`は`stop`＝停止要因・`turn`＝曲がる所、`name`は種類）の、止まった（減速した）ときの待ちの
+    較正値のid（綴りを組み立てる場所を1つにする）。"""
+    return f"{group}.{name}_seconds"
 
 
-def stop_share_parameter_id(kind: str) -> str:
-    """停止要因の種別から、止まる割合の較正値のid。"""
-    return f"stop.{kind}_share"
+def event_share_parameter_id(group: str, name: str) -> str:
+    """止まる出来事の、止まる割合の較正値のid。"""
+    return f"{group}.{name}_share"
 
 
-def _stop_parameters(kind: str, share: float, wait: float, description: str) -> tuple[TuningParameter, TuningParameter]:
-    """停止要因1種別ぶんの宣言（止まる割合と、止まったときの待ち）。idは種別の綴りから導く（`POI_COUNT_KINDS`と1対1）。
-    所要時間は 割合 × 待ち、漕ぎ出しの体力は割合ぶん数える（`domain/traffic.py: StopEvent`）。"""
+def _event_parameters(group: str, name: str, labels: tuple[str, str], share: float, wait: float, maximum: float,
+                      description: str) -> tuple[TuningParameter, TuningParameter]:
+    """止まる出来事1種類ぶんの宣言（止まる割合と、止まった・減速したときの待ち。`labels`はその2つの名前）。所要時間は
+    割合 × 待ち、漕ぎ出しの体力は割合ぶん数える（`domain/traffic.py: StopEvent`）。"""
     return (
         TuningParameter(
-            id=stop_share_parameter_id(kind), label="止まる割合", unit="", default=share, minimum=0.0, maximum=1.0,
-            effect=TuningEffect.IMMEDIATE, description="通るたびに止まる（減速する）割合。所要時間と漕ぎ出しの体力に同じ割合を使う。",
-        ),
-        TuningParameter(
-            id=stop_seconds_parameter_id(kind), label="止まったときの待ち", unit="秒", default=wait, minimum=0.0,
-            maximum=300.0, effect=TuningEffect.IMMEDIATE, description=description,
-        ),
-    )
-
-
-def turn_seconds_parameter_id(name: str) -> str:
-    """曲がる所の出来事の名前（`left`・`major_crossing`等）から、止まった（減速した）ときの待ちの較正値のid。"""
-    return f"turn.{name}_seconds"
-
-
-def turn_share_parameter_id(name: str) -> str:
-    """曲がる所の出来事の名前から、止まる割合の較正値のid。"""
-    return f"turn.{name}_share"
-
-
-def _turn_parameters(name: str, label: str, share: float, wait: float, maximum: float,
-                     description: str) -> tuple[TuningParameter, TuningParameter]:
-    """曲がる所の出来事1種類ぶんの宣言（割合と、止まった・減速したときの待ち）。"""
-    return (
-        TuningParameter(
-            turn_share_parameter_id(name), f"{label}の割合", "", share, 0.0, 1.0, TuningEffect.TURN_STRUCTURE,
+            event_share_parameter_id(group, name), labels[0], "", share, 0.0, 1.0, TuningEffect.IMMEDIATE,
             "通るたびに止まる（減速する）割合。所要時間と漕ぎ出しの体力に同じ割合を使う。",
         ),
-        TuningParameter(turn_seconds_parameter_id(name), label, "秒", wait, 0.0, maximum, TuningEffect.TURN_STRUCTURE,
+        TuningParameter(event_seconds_parameter_id(group, name), labels[1], "秒", wait, 0.0, maximum, TuningEffect.IMMEDIATE,
                         description),
     )
 
 
+def _stop_parameters(kind: str, share: float, wait: float, description: str) -> tuple[TuningParameter, TuningParameter]:
+    """停止要因1種別ぶんの宣言。種別（`POI_COUNT_KINDS`のキー）は名前へ添える対象（`domain/tuning_labels.py`）で示す。"""
+    return _event_parameters("stop", kind, ("止まる割合", "止まったときの待ち"), share, wait, 300.0, description)
+
+
+def _turn_parameters(name: str, label: str, share: float, wait: float, maximum: float,
+                     description: str) -> tuple[TuningParameter, TuningParameter]:
+    """曲がる所の出来事1種類ぶんの宣言。"""
+    return _event_parameters("turn", name, (f"{label}の割合", label), share, wait, maximum, description)
+
+
 #: 説明の文が名指す較正値のid。宣言と説明が同じ綴りを引く。
-_MAJOR_CROSSING_ID = turn_seconds_parameter_id("major_crossing")
-_STOP_ID = stop_seconds_parameter_id("stop")
-_SIGNAL_ID = stop_seconds_parameter_id("signal")
+_MAJOR_CROSSING_ID = event_seconds_parameter_id("turn", "major_crossing")
+_STOP_ID = event_seconds_parameter_id("stop", "stop")
+_SIGNAL_ID = event_seconds_parameter_id("stop", "signal")
 _CRR_ID = "speed.crr"
 _CRR_GRAVEL_ID = "speed.crr_gravel"
 _CRR_COBBLESTONE_ID = "speed.crr_cobblestone"
@@ -183,7 +169,7 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
     TuningParameter(
         "turn.straight_max_deg",
         "直進とみなす方位差", "度", 30.0, 0.0, 90.0,
-        TuningEffect.TURN_STRUCTURE,
+        TuningEffect.IMMEDIATE,
         "この角度までの曲がりは直進とみなし、費用を足さない。",
     ),
     *_turn_parameters(

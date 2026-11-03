@@ -14,8 +14,8 @@ from typing import Literal, get_args
 
 from app.domain.tuning import (
     TUNING_PARAMETERS_BY_ID,
-    stop_seconds_parameter_id,
-    stop_share_parameter_id,
+    event_seconds_parameter_id,
+    event_share_parameter_id,
     tuning_value,
 )
 
@@ -155,7 +155,7 @@ if _UNFOLDED_STOP_KINDS or _UNKNOWN_COUNT_KINDS:
 # 宣言の欠けは「その種別の待ちが0秒」として所要時間から見分けられずに消える。
 _UNDECLARED_STOP_KINDS = tuple(
     kind for kind in POI_COUNT_KINDS
-    if not {stop_seconds_parameter_id(kind), stop_share_parameter_id(kind)} <= TUNING_PARAMETERS_BY_ID.keys()
+    if not {event_seconds_parameter_id("stop", kind), event_share_parameter_id("stop", kind)} <= TUNING_PARAMETERS_BY_ID.keys()
 )
 if _UNDECLARED_STOP_KINDS:
     raise RuntimeError(
@@ -167,46 +167,42 @@ def stop_parameter_subjects() -> dict[str, tuple[str, ...]]:
     return {
         parameter_id: (label,)
         for kind, label in POI_COUNT_KINDS.items()
-        for parameter_id in (stop_share_parameter_id(kind), stop_seconds_parameter_id(kind))
+        for parameter_id in (event_share_parameter_id("stop", kind), event_seconds_parameter_id("stop", kind))
     }
 
 
-#: 止まらず減速するだけの停止要因（`POI_COUNT_KINDS`のキー）。ほかの種別は止まる。
-SLOWING_POI_KINDS = frozenset({"barrier"})
+#: 止まらず減速するだけの出来事（`(group, 種類)`。`group`は`stop`＝停止要因・`turn`＝曲がる所）。ほかは止まる。
+SLOWING_EVENTS = frozenset({("stop", "barrier"), ("turn", "left")})
 
 
 @dataclass(frozen=True)
 class StopEvent:
-    """止まる出来事1種類（停止要因・曲がる所）。止まる割合と、止まった（減速した）ときに失う時間（秒）と、止まらず減速する
-    だけか。割合と待ちは種類ごとの較正値で、所要時間と漕ぎ出しの体力に同じ割合を使う——時間だけ割合を掛けて体力は
-    毎回数えると、同じ出来事を時間と体力で別の回数として数える。"""
+    """止まる出来事1種類（停止要因・曲がる所）。止まる割合と、止まった（減速した）ときに失う時間（秒）と、1回通るときの
+    漕ぎ出しを止まる出来事の回数に換えた期待値。割合と待ちは種類ごとの較正値で、所要時間と漕ぎ出しの体力に同じ割合を
+    使う——時間だけ割合を掛けて体力は毎回数えると、同じ出来事を時間と体力で別の回数として数える。"""
 
     share: float
     wait_seconds: float
-    slows_only: bool
+    kickoffs: float
 
     @property
     def expected_seconds(self) -> float:
         """1回通るときに失う時間の期待値（割合 × 待ち）。"""
         return self.share * self.wait_seconds
 
-    def stop_equivalents(self, slowed_speed_ratio: float) -> float:
-        """1回通るときの、漕ぎ出しの体力を止まる出来事の回数に換えた期待値。減速だけの出来事は、巡航速度の
-        `slowed_speed_ratio`倍から戻すので、止まってからの漕ぎ出しの（1 − 割合²）倍。"""
-        return self.share * ((1.0 - slowed_speed_ratio ** 2) if self.slows_only else 1.0)
+
+#: 何も起きない出来事（曲がる所の直進）。
+NO_EVENT = StopEvent(share=0.0, wait_seconds=0.0, kickoffs=0.0)
 
 
-def stop_event(kind: str) -> StopEvent:
-    """停止要因の種別（`POI_COUNT_KINDS`のキー）の止まる出来事。値は`domain/tuning.py`が宣言する（走ってみて決める値の
-    ため、管理画面から変えられる）。"""
-    return StopEvent(share=tuning_value(stop_share_parameter_id(kind)),
-                     wait_seconds=tuning_value(stop_seconds_parameter_id(kind)),
-                     slows_only=kind in SLOWING_POI_KINDS)
-
-
-def slowed_speed_ratio() -> float:
-    """止まらず減速する出来事で、巡航速度のうち残る速さの割合（較正値）。"""
-    return tuning_value("stop.slowed_speed_ratio")
+def stop_event(group: str, name: str) -> StopEvent:
+    """止まる出来事（`group`は`stop`＝停止要因［種類は`POI_COUNT_KINDS`のキー］・`turn`＝曲がる所）を、いま効いている
+    較正値から組む（走ってみて決める値のため、管理画面から変えられる）。減速だけの出来事は巡航速度の
+    `stop.slowed_speed_ratio`倍から戻すので、漕ぎ出しは止まってからの（1 − 割合²）倍。"""
+    share = tuning_value(event_share_parameter_id(group, name))
+    slowed = tuning_value("stop.slowed_speed_ratio")
+    return StopEvent(share=share, wait_seconds=tuning_value(event_seconds_parameter_id(group, name)),
+                     kickoffs=share * ((1.0 - slowed * slowed) if (group, name) in SLOWING_EVENTS else 1.0))
 
 
 def poi_count_column(kind: str) -> str:

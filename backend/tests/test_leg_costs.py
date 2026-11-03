@@ -162,7 +162,7 @@ def test_each_stop_on_a_segment_adds_its_share_of_the_wait():
     leg = _snapshot(_matrix(3, distance=500.0, materials={STOP_DENSITY["signal"]: [2.0, 0.0, np.nan]}))
 
     assert leg.travel_seconds_lazy[0] - leg.travel_seconds_lazy[1] == pytest.approx(
-        traffic.stop_event("signal").expected_seconds)
+        traffic.stop_event("stop", "signal").expected_seconds)
     assert leg.travel_seconds_lazy[2] == leg.travel_seconds_lazy[1]
 
 

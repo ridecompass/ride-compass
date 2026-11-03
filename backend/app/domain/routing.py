@@ -554,11 +554,13 @@ def build_turn_expanded_tree(
     cost_limit: float = np.inf,
     edge_seconds: np.ndarray,
     bin_seconds: float = np.inf,
+    transition_cost: np.ndarray,
 ) -> TurnExpandedTree:
     """状態＝有向Edgeの一対全Dijkstra（numba、前任者付き）。
 
-    `reverse=True`は遷移の向きだけを反転する（ターンの時間と費用は元の進行方向のまま）。費用はターンの費用
-    （`TurnExpandedStructure.turn_cost`）、時間はターンの時間（`turn_seconds`）を足す。
+    `reverse=True`は遷移の向きだけを反転する（ターンの時間と費用は元の進行方向のまま）。費用には遷移ごとの費用
+    `transition_cost`（前向きの遷移の並び。区間の費用と同じく呼び手が値で渡す）、時間にはターンの時間
+    （`TurnExpandedStructure.turn_seconds`）を足す。
     「その区間から目的地まで」のコストが求まる。
 
     `edge_cost`は1次元（時刻に依存しない）か`(時刻ビン, 状態)`の2次元で、素の所要時間
@@ -578,12 +580,12 @@ def build_turn_expanded_tree(
             "build_turn_expanded_tree(reverse=True) cannot use time bins: "
             f"got {cost_bins.shape[0]} bins (pass a single bin; the reverse tree has no arrival clock)"
         )
+    transition_seconds = structure.turn_seconds
     if reverse:
-        indptr, target_state, transition_seconds, transition_cost = structure.reverse_transitions()
+        indptr, target_state, order = structure.reverse_transitions()
+        transition_seconds, transition_cost = transition_seconds[order], np.asarray(transition_cost)[order]
     else:
-        indptr, target_state, transition_seconds, transition_cost = (
-            structure.indptr, structure.target_state, structure.turn_seconds, structure.turn_cost
-        )
+        indptr, target_state = structure.indptr, structure.target_state
     started = start_timer()
     state_cost, predecessor, state_length_m, state_seconds = _turn_expanded_dijkstra(
         kernel_array(indptr, SEARCH_INDEX_DTYPE), kernel_array(target_state, SEARCH_INDEX_DTYPE),
@@ -625,8 +627,9 @@ def build_turn_expanded_tree(
 
 def tree_cost_bound(
     structure: TurnExpandedStructure, edge_cost: np.ndarray, edge_length_m: np.ndarray, length_m: float,
+    transition_cost: np.ndarray,
 ) -> float:
-    """前向きの`build_turn_expanded_tree`へ同じ`edge_cost`を渡したとき、実距離`length_m`以内で届く状態の
+    """前向きの`build_turn_expanded_tree`へ同じ`edge_cost`・`transition_cost`を渡したとき、実距離`length_m`以内で届く状態の
     木の費用を下回らない値（`cost_limit`に渡すと、その状態を1つも打ち切らない上界）。
 
     木の費用は、経路の区間ごとの費用（どの時刻ビンかは到達時刻で決まる）と、区間へ入る遷移の費用の和で、
@@ -637,9 +640,9 @@ def tree_cost_bound(
     cost_bins = _as_time_bins("tree_cost_bound", edge_cost)
     finite = np.isfinite(cost_bins)
     reachable = finite.any(axis=0)
-    entry_wait = np.zeros(structure.state_count)
-    np.maximum.at(entry_wait, structure.target_state, structure.turn_cost)
-    weight = (np.max(cost_bins, axis=0, initial=0.0, where=finite) + entry_wait)[reachable]
+    entry_cost = np.zeros(structure.state_count)
+    np.maximum.at(entry_cost, structure.target_state, transition_cost)
+    weight = (np.max(cost_bins, axis=0, initial=0.0, where=finite) + entry_cost)[reachable]
     size = np.asarray(edge_length_m, dtype=np.float64)[reachable]
     ratio = np.divide(weight, size, out=np.full(weight.shape, np.inf), where=size > 0)
     k = _TREE_BOUND_FIRST_K
@@ -770,6 +773,7 @@ def combine_forward_backward_at_nodes(
     forward: TurnExpandedTree,
     backward: TurnExpandedTree,
     node_count: int,
+    transition_cost: np.ndarray,
 ) -> NodeJunction:
     """前向き木と後ろ向き木を、Nodeごとに「そこでのターンの費用を含めて」繋ぐ。
 
@@ -780,7 +784,7 @@ def combine_forward_backward_at_nodes(
     state_count = structure.state_count
     source = np.repeat(np.arange(state_count, dtype=np.int64), np.diff(structure.indptr))
     target = structure.target_state
-    total = forward.state_cost[source] + structure.turn_cost + backward.state_cost[target]
+    total = forward.state_cost[source] + transition_cost + backward.state_cost[target]
     length = forward.state_length_m[source] + backward.state_length_m[target]
     # 繋ぎ目のターンも、費用には費用、所要時間には時間で入る。
     seconds_total = forward.state_seconds[source] + structure.turn_seconds + backward.state_seconds[target]
@@ -926,13 +930,13 @@ def turn_expanded_shortest_path(
     edge_seconds: np.ndarray,
     bin_seconds: float = np.inf,
     *,
-    fastest: bool = False,
+    transition_cost: np.ndarray,
 ) -> list[int] | None:
     """起点から出る区間`origin_states`から`goal_node_index`までの最小コスト経路を、
     Edge index列（進行順）で返す。到達不能ならNone。
 
-    **コストの単位は秒**（`edge_cost`は区間ごとの体感所要時間、ターンの費用も秒）。`fastest`なら素の所要時間で選ぶ
-    経路で、ターンも費用でなく時間を足す（`edge_cost`にも所要時間を渡す）。
+    **コストの単位は秒**（`edge_cost`は区間ごとの体感所要時間、遷移ごとの費用`transition_cost`も秒）。素の所要時間で
+    選ぶなら、`edge_cost`に所要時間、`transition_cost`にターンの時間（`TurnExpandedStructure.turn_seconds`）を渡す。
     `node_heuristic`はNodeごとの目的地までの所要時間の下界（秒）で、呼び出し元が
     「直線距離 ÷ 出せる最大速度」から作る——実経路は直線より長く、実際の速度は上限以下の
     ため下界になる。
@@ -947,8 +951,7 @@ def turn_expanded_shortest_path(
     capacity = len(origin_states) + HEAP_INITIAL_SLACK
     predecessor, goal_state = _turn_expanded_astar(
         kernel_array(structure.indptr, SEARCH_INDEX_DTYPE), kernel_array(structure.target_state, SEARCH_INDEX_DTYPE),
-        kernel_array(structure.turn_seconds, EDGE_VALUE_DTYPE),
-        kernel_array(structure.turn_seconds if fastest else structure.turn_cost, EDGE_VALUE_DTYPE),
+        kernel_array(structure.turn_seconds, EDGE_VALUE_DTYPE), kernel_array(transition_cost, EDGE_VALUE_DTYPE),
         kernel_array(structure.edge_to, np.int64),
         kernel_array(cost_bins, EDGE_VALUE_DTYPE), kernel_array(seconds_bins, EDGE_VALUE_DTYPE), float(bin_seconds),
         kernel_array(node_heuristic, np.float64),
@@ -975,15 +978,17 @@ def compile_search_kernels() -> None:
     nodes_reached_without_retracing(statics.csr, np.ones(2, dtype=bool), np.ones(2, dtype=bool), [0])
     structure = build_turn_expanded_structure(
         statics.csr, lazy_graph, np.zeros(2), np.zeros(2), np.zeros(2, dtype=np.int64), current_turn_cost(),
-        np.zeros(2, dtype=bool), np.zeros(2, dtype=np.int64), np.ones(2, dtype=np.int16), 0.0,
+        np.zeros(2, dtype=bool), np.zeros(2, dtype=np.int64), np.ones(2, dtype=np.int16),
     )
     cost = np.ones((1, 2))
     origin_states = np.array([0])
     tree = build_turn_expanded_tree(
-        structure, cost, statics.edge_length_m, origin_states, lazy_graph.node_count, edge_seconds=cost
+        structure, cost, statics.edge_length_m, origin_states, lazy_graph.node_count, edge_seconds=cost,
+        transition_cost=structure.turn_seconds,
     )
     overlap = TreePathOverlap(tree)
     overlap.accept(1)
     overlap.max_ratio(0)
-    turn_expanded_shortest_path(structure, cost, np.zeros(2), origin_states, 0, edge_seconds=cost)
+    turn_expanded_shortest_path(structure, cost, np.zeros(2), origin_states, 0, edge_seconds=cost,
+                                transition_cost=structure.turn_seconds)
     compile_leg_cost_kernels()

@@ -264,13 +264,13 @@ class SegmentSpeedModel:
     """
 
     def __init__(self, profile: RiderProfile, profiles: ElevationProfiles, distance_m: np.ndarray,
-                 crr: np.ndarray, stop_equivalents: np.ndarray) -> None:
+                 crr: np.ndarray, kickoffs: np.ndarray) -> None:
         """`profiles`は区間の行ごとの断面、`distance_m`は区間の長さ、`crr`は区間ごとの転がり抵抗（`crr_for_surface`）、
-        `stop_equivalents`は区間の止まる出来事の回数の換算（`domain/traffic.py: StopEvent.stop_equivalents`の和）。"""
+        `kickoffs`は区間の止まる出来事の漕ぎ出しの回数（`domain/traffic.py: StopEvent.kickoffs`の和）。"""
         self._rows = len(distance_m)
         self._shape = np.shape(distance_m)
         mismatched = {name: np.shape(array) for name, array in (
-            ("crr", crr), ("stop_equivalents", stop_equivalents), ("profiles.start", profiles.start),
+            ("crr", crr), ("kickoffs", kickoffs), ("profiles.start", profiles.start),
             ("profiles.points", profiles.points), ("profiles.forward", profiles.forward)) if np.shape(array) != self._shape}
         if mismatched:
             raise ValueError(f"区間の配列の長さが揃っていません distance_m={self._shape} {mismatched}")
@@ -284,7 +284,8 @@ class SegmentSpeedModel:
             start, points, kernel_array(profiles.forward, np.bool_), elevation, distance, self.unknown_m,
             kernel_array(profiles.distribution.grade, np.float64), kernel_array(profiles.distribution.share, np.float64))
         self._crr = kernel_array(crr, np.float32)
-        self._inertia_extra_j = np.asarray(stop_equivalents, dtype=np.float64) * kickoff_extra_j(profile)
+        self._kickoffs = kickoffs
+        self._kickoff_extra_j = kickoff_extra_j(profile)
         rider = np.empty(9, dtype=np.float32)
         rider[_RIDER_WEIGHT] = profile.mass_kg * _GRAVITY_M_S2
         rider[_RIDER_FLAT_POWER] = wheel_power_w(profile)
@@ -310,7 +311,7 @@ class SegmentSpeedModel:
                           self._rider, self._rows)
         return SegmentRide(seconds=_span_seconds(self._span_row, self._span_length, speeds, self._rows),
                            gravity_extra_j=work[0], air_extra_j=work[1], rolling_extra_j=work[2],
-                           inertia_extra_j=self._inertia_extra_j)
+                           inertia_extra_j=np.asarray(self._kickoffs, dtype=np.float64) * self._kickoff_extra_j)
 
     def _solve(self, headwind_ms: np.ndarray, crosswind_ms: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """点の間ごとの速度と踏む出力、区間ごとの向かい風で増えた空気抵抗（N）。"""

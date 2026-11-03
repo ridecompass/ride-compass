@@ -263,29 +263,30 @@ def test_node_rank_comes_from_roads_that_leave_the_node_too():
 
 def test_a_turn_onto_a_major_road_waits_for_both_but_kicks_off_once():
     """信号の無い交差点で上位の道へ曲がると、曲がりの待ちと上位の道の待ちを足すが、止まるのは1回なので漕ぎ出しは1回ぶん
-    （重なる出来事の大きい方）だけ費用に足す。"""
+    （重なる出来事の大きい方）だけ数える。"""
     graph = make_graph(PLUS_NODES, PLUS_EDGES)
     lazy = lazy_of(graph)
-    _, _, structure = build_all(graph, spec=TURN_SPEC, edge_rank=_plus_ranks(lazy, MAJOR, MAJOR - 1), stop_cost_seconds=4.0)
-    entry = _entries(lazy, structure)[("WC", "CS")]  # 右折で上位の道へ
+    _, _, structure = build_all(graph, spec=TURN_SPEC, edge_rank=_plus_ranks(lazy, MAJOR, MAJOR - 1))
+    entries = _entries(lazy, structure)
 
-    assert float(structure.turn_seconds[entry]) == pytest.approx(
+    right, left = entries[("WC", "CS")], entries[("WC", "CN")]
+    assert float(structure.turn_seconds[right]) == pytest.approx(
         TURN_SPEC.right.expected_seconds + TURN_SPEC.major_turn.expected_seconds)
-    assert float(structure.turn_cost[entry]) == pytest.approx(float(structure.turn_seconds[entry]) + 4.0)
+    assert (float(structure.turn_kickoffs[right]), float(structure.turn_kickoffs[left])) == pytest.approx((1.0, 1.0))
 
 
-def test_reverse_transitions_flip_direction_and_carry_the_original_wait():
-    """後ろ向きの遷移は向きだけを反転し、ターンの時間と費用は元の進行方向の値のまま運ぶ。"""
+def test_reverse_transitions_flip_direction_and_point_at_the_original_transition():
+    """後ろ向きの遷移は向きだけを反転し、元の前向きの遷移の位置を持つ（遷移ごとの時間・費用はその位置で並べ替え、元の
+    進行方向の値のまま運ぶ）。"""
     graph = make_graph(PLUS_NODES, PLUS_EDGES)
-    lazy, _, structure = build_all(graph, spec=TURN_SPEC, stop_cost_seconds=4.0)
-    forward = {pair: (float(structure.turn_seconds[entry]), float(structure.turn_cost[entry]))
-               for pair, entry in _entries(lazy, structure).items()}
-    indptr, source_state, turn_seconds, turn_cost = structure.reverse_transitions()
+    lazy, _, structure = build_all(graph, spec=TURN_SPEC)
+    forward = transition_seconds(lazy, structure)
+    indptr, source_state, order = structure.reverse_transitions()
     backward = {}
     for target in range(structure.state_count):
         for entry in range(int(indptr[target]), int(indptr[target + 1])):
             key = (lazy.edge_ids[int(source_state[entry])], lazy.edge_ids[target])
-            backward[key] = (float(turn_seconds[entry]), float(turn_cost[entry]))
+            backward[key] = float(structure.turn_seconds[order[entry]])
     assert backward == forward
 
 
@@ -298,19 +299,18 @@ def _entries(lazy, structure):
     }
 
 
-def test_a_turn_costs_its_time_and_the_kickoff_of_each_stop_and_only_part_of_it_for_a_slowdown():
-    """曲がる所の時間は 割合 × 待ち、費用は時間に「止まる回数の換算 × 1回の漕ぎ出しの代償」を足したもの。右折・Uターンは
-    止まる出来事、左折は減速だけの出来事で、巡航速度の半分から戻すので漕ぎ出しは（1 − 0.5²）回ぶん。割合は時間と体力の
-    両方に掛かる。"""
+def test_a_turn_takes_its_share_of_the_wait_and_of_the_kickoff():
+    """曲がる所の時間は 割合 × 待ち、漕ぎ出しは割合ぶんの回数（減速だけの左折は、出来事が持つ減った回数）。直進は
+    どちらも0。"""
     graph = make_graph(PLUS_NODES, PLUS_EDGES)
-    spec = dataclasses.replace(TURN_SPEC, right=traffic.StopEvent(share=0.5, wait_seconds=3.0, slows_only=False))
-    lazy, _, structure = build_all(graph, spec=spec, stop_cost_seconds=4.0)
+    spec = dataclasses.replace(TURN_SPEC, right=traffic.StopEvent(share=0.5, wait_seconds=3.0, kickoffs=0.5))
+    lazy, _, structure = build_all(graph, spec=spec)
     entries = _entries(lazy, structure)
 
-    def seconds_and_cost(pair):
-        return float(structure.turn_seconds[entries[pair]]), float(structure.turn_cost[entries[pair]])
+    def seconds_and_kickoffs(pair):
+        return float(structure.turn_seconds[entries[pair]]), float(structure.turn_kickoffs[entries[pair]])
 
-    assert seconds_and_cost(("WC", "CN")) == pytest.approx((5.0, 5.0 + 0.75 * 4.0))  # 左折（減速）
-    assert seconds_and_cost(("WC", "CS")) == pytest.approx((1.5, 1.5 + 0.5 * 4.0))  # 右折（半分の割合で止まる）
-    assert seconds_and_cost(("WC", "CW")) == pytest.approx((20.0, 20.0 + 4.0))  # Uターン
-    assert seconds_and_cost(("WC", "CE")) == pytest.approx((0.0, 0.0))  # 直進
+    assert seconds_and_kickoffs(("WC", "CN")) == pytest.approx((5.0, 0.75))  # 左折（減速）
+    assert seconds_and_kickoffs(("WC", "CS")) == pytest.approx((1.5, 0.5))  # 右折（半分の割合で止まる）
+    assert seconds_and_kickoffs(("WC", "CW")) == pytest.approx((20.0, 1.0))  # Uターン
+    assert seconds_and_kickoffs(("WC", "CE")) == pytest.approx((0.0, 0.0))  # 直進
