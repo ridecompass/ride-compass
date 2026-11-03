@@ -11,7 +11,7 @@ from datetime import datetime
 
 import numpy as np
 
-from app.domain.cost_axes import CostAxisDefinitions, burden_material_ids, current_cost_axes
+from app.domain.cost_axes import TOTAL_LENS_ID, CostAxisDefinitions, burden_material_ids, current_cost_axes
 from app.domain.dynamic_materials import DynamicAxisRequestContext
 from app.domain.gradient import ROAD_BEARING_LEAF
 from app.domain.ledger_costs import standard_ledger_parameters
@@ -46,7 +46,8 @@ class _TileLens:
 
     table: LensTable
     materials: EdgeMaterialColumns
-    wind_ms: tuple[np.ndarray, np.ndarray]
+    #: 向かい風・横風の成分。風を読めず無風で求めたときはNone（事実として出さない）。
+    wind_ms: tuple[np.ndarray, np.ndarray] | None
     steepest: tuple[np.ndarray, np.ndarray]
 
 
@@ -64,6 +65,9 @@ class LensService:
                             speed_kmh: float) -> dict[str, dict[str, float]] | None:
         """レンズ`lens_id`の、タイルのフィーチャーごとの道ごとの材料（道の向き・逆向きに辿った値と道の向き。値の無い材料は
         載せない）。費用の軸の定義が無いか、知らないレンズならNone。"""
+        axes = current_cost_axes()
+        if axes is None or lens_id not in {TOTAL_LENS_ID, *axes.effort, *axes.burden}:
+            return None
         table = await self.tile_table(z, x, y, at, speed_kmh)
         return None if table is None else _way_materials(table, lens_id)
 
@@ -145,7 +149,7 @@ def _tile_lens(features: LensFeatures, materials: EdgeMaterialColumns, axes: Cos
     table = lens_table(features, materials.columns, materials.distance_m, materials.elevation_profiles, axes,
                        standard_ledger_parameters(),
                        speed_kmh, fills, components)
-    return _TileLens(table, materials, components, steepest)
+    return _TileLens(table, materials, None if wind is None else components, steepest)
 
 
 def _way_materials(table: LensTable, lens_id: str) -> dict[str, dict[str, float]] | None:

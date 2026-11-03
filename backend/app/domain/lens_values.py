@@ -5,7 +5,7 @@
 区間ごとの値を足して1kmあたりにする。区間ごとの値は探索と同じ部品（`domain/leg_costs.py: travel_inputs`・`burden_km`、
 `domain/ledger_costs.py: LedgerCosts.penalty_by_axis`）で求める——レンズ・探索・ルートは同じ量を同じ所から読む。
 
-レンズはどれも1kmあたりの代償の秒で塗る: 軸ごとのレンズはその軸の分だけ、総合（`TOTAL_LENS`）はその和。避け方の倍率は
+レンズはどれも1kmあたりの代償の秒で塗る: 軸ごとのレンズはその軸の分だけ、総合（`TOTAL_LENS_ID`）はその和。避け方の倍率は
 道の区分の指定で、道の値ではないので入れない。曲がる所の漕ぎ出しは道1本に出せないので入れない（区間の止まる出来事の
 漕ぎ出しは停止の軸に入る）。
 """
@@ -17,7 +17,7 @@ from typing import Literal
 import numpy as np
 
 from app.domain.attributes import CategoricalColumn, MaterialColumn
-from app.domain.cost_axes import CostAxisDefinitions
+from app.domain.cost_axes import TOTAL_LENS_ID, CostAxisDefinitions
 from app.domain.elevation_profile import ElevationProfiles
 from app.domain.dynamic_way_values import WayValueConditionName
 from app.domain.difficulty import weighted_mean_by_distance
@@ -33,7 +33,6 @@ from app.domain.strict_model import StrictModel
 from app.domain.traffic import stop_count_material_ids
 from app.domain.way_value_formula import WayValueFormula, evaluate_formula, feature
 
-TOTAL_LENS = "total"
 
 #: 道ごとの材料の名前（地図の式の木の葉）。道の向きに辿った値・逆向きに辿った値。
 LENS_ALONG_LEAF = "lens_along"
@@ -128,7 +127,7 @@ class LensTable:
     """フィーチャーごと・辿る向きごとのレンズの値（1kmあたりの代償の秒、`(フィーチャー, 2)`。辿れない向きはNaN）。"""
 
     features: LensFeatures
-    #: レンズid（`TOTAL_LENS`か軸id）→ 値。
+    #: レンズid（`TOTAL_LENS_ID`か軸id）→ 値。
     values: Mapping[str, np.ndarray]
 
 
@@ -143,7 +142,7 @@ def lens_table(features: LensFeatures, materials: Mapping[str, MaterialColumn], 
     km = _summed_by_direction(features, travel.distance_m) / 1000.0
     with np.errstate(invalid="ignore", divide="ignore"):
         per_km = {axis_id: _summed_by_direction(features, seconds) / km for axis_id, seconds in penalties.items()}
-    return LensTable(features=features, values={TOTAL_LENS: sum(per_km.values(), np.zeros_like(km)), **per_km})
+    return LensTable(features=features, values={TOTAL_LENS_ID: sum(per_km.values(), np.zeros_like(km)), **per_km})
 
 
 def _summed_by_direction(features: LensFeatures, per_row: np.ndarray) -> np.ndarray:
@@ -198,10 +197,11 @@ def painted_direction(bearing_deg: float, road_bearing_deg: float) -> Literal["a
 
 
 def lens_inspection(table: LensTable, index: int, painted: Literal["along", "against"] | None,
-                    materials: Mapping[str, MaterialColumn], distance_m: np.ndarray, wind_ms: tuple[np.ndarray, np.ndarray],
+                    materials: Mapping[str, MaterialColumn], distance_m: np.ndarray,
+                    wind_ms: tuple[np.ndarray, np.ndarray] | None,
                     steepest: tuple[np.ndarray, np.ndarray], surface_labels: Mapping[str, str]) -> LensInspection:
     """`table`のフィーチャー`index`の両方の向きの値と事実。`materials`・`distance_m`・`wind_ms`・`steepest`（一番急な登りと
-    下り、行の向きの%）は`table.features.rows`の行の順。"""
+    下り、行の向きの%）は`table.features.rows`の行の順。`wind_ms`がNone（風を読めず無風で求めた）なら向かい風は出さない。"""
     features = table.features
     of_feature = features.feature == index
     distance = np.asarray(distance_m, dtype=np.float64)
@@ -213,12 +213,12 @@ def lens_inspection(table: LensTable, index: int, painted: Literal["along", "aga
         if not rows.any():
             return None
         return LensDirection(
-            total_seconds_per_km=float(table.values[TOTAL_LENS][index, slot]),
+            total_seconds_per_km=float(table.values[TOTAL_LENS_ID][index, slot]),
             axes=[LensAxisSeconds(axis_id=lens_id, seconds_per_km=float(values[index, slot]))
-                  for lens_id, values in table.values.items() if lens_id != TOTAL_LENS],
+                  for lens_id, values in table.values.items() if lens_id != TOTAL_LENS_ID],
             steepest_climb_percent=_largest(steepest[0][rows]),
             steepest_descent_percent=_largest(steepest[1][rows]),
-            headwind_ms=_length_mean(wind_ms[0][rows], distance[rows]),
+            headwind_ms=None if wind_ms is None else _length_mean(wind_ms[0][rows], distance[rows]),
             stops_per_km=_length_mean(stops[rows], distance[rows]),
         )
 

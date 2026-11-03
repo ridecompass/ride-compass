@@ -78,7 +78,7 @@ def _effort_equivalents(axes: CostAxisDefinitions, parameters: LedgerParameters,
         return _inverted("向かい風", "m/s", _HEADWIND_MS, lambda wind: seconds(headwind_ms=wind), thresholds)
     if item == "inertia":
         one_stop = float(seconds(kickoffs=np.ones(1))[0])
-        return ThresholdEquivalents(fact="止まる回数", unit="回/km",
+        return ThresholdEquivalents(fact="止まって漕ぎ出す回数", unit="回/km",
                                     values=[threshold / one_stop if one_stop > 0 else None for threshold in thresholds])
     classification = road_classes.rolling_resistance_classification
     classes = [] if classification is None else list(road_classes.rolling_resistance_classes.get(classification, {}))

@@ -34,6 +34,9 @@ EFFORT_AXES: dict[str, EffortItem] = {
 
 _NonNegative = Annotated[float, Field(ge=0.0, allow_inf_nan=False)]
 
+#: 地図の総合のレンズ（軸ごとの代償の秒の和）のid。軸のidと同じ名前空間に並ぶので、軸には使えない。
+TOTAL_LENS_ID = "total"
+
 #: 代償の内訳で、避け方の倍率（道の区分ごとの「なるべく避ける」）が上乗せした秒の行の名前。軸ではないので倍率を持たない。
 AVOIDANCE_LABEL = "回避指定"
 
@@ -109,9 +112,9 @@ class CostAxisDefinitions(StrictModel):
         if set(self.effort) != set(EFFORT_AXES):
             raise ValueError(
                 f"体力の軸はコードの表と同じ一覧にする: 要る {sorted(EFFORT_AXES)}・書いた {sorted(self.effort)}")
-        clash = sorted(set(self.burden) & set(EFFORT_AXES))
+        clash = sorted(set(self.burden) & {*EFFORT_AXES, TOTAL_LENS_ID})
         if clash:
-            raise ValueError(f"道の負担の軸のidが体力の軸と重なる: {clash}")
+            raise ValueError(f"道の負担の軸のidが体力の軸か総合のレンズと重なる: {clash}")
         return self
 
 

@@ -93,6 +93,7 @@ class LedgerCosts:
         self._burden_axis_seconds = {
             axis_id: seconds_per_km * multiplier(axis_id) * np.asarray(burden_km[axis_id], dtype=np.float64)
             for axis_id in axes.burden}
+        self._burden_seconds = sum(self._burden_axis_seconds.values(), np.float64(0.0))
 
     @classmethod
     def for_model(cls, axes: CostAxisDefinitions, parameters: LedgerParameters, model: SegmentSpeedModel,
@@ -103,7 +104,9 @@ class LedgerCosts:
 
     def penalty_seconds(self, ride: SegmentRide) -> np.ndarray:
         """区間ごとの代償の秒（所要時間に足す分。つまみ × (α × 体力 ＋ 道の負担)）。`ride`は重みを掛けた体力の内訳。"""
-        return sum(self.penalty_by_axis(ride).values(), np.zeros(np.shape(ride.seconds)))
+        m = self._item_multipliers
+        effort_j = sum(m[item] * _effort_extra_j(ride, item) for item in EFFORT_AXES.values())
+        return self._seconds_per_j * effort_j + self._burden_seconds
 
     def penalty_by_axis(self, ride: SegmentRide) -> dict[str, np.ndarray]:
         """区間ごとの代償の秒の、軸ごとの内訳（体力の軸をコードの表の順、続けて道の負担の軸。和が`penalty_seconds`）。"""
