@@ -157,7 +157,7 @@ from app.domain.tuning import client_tuning_defaults
 from app.domain.weather import PRECIPITATION_MIN_MM
 from app.infrastructure.msm_client import DEFAULT_UPDATE_INTERVAL_SECONDS as MSM_UPDATE_INTERVAL_SECONDS
 from app.infrastructure.jma_amedas_client import AMEDAS_REFRESH_INTERVAL_MINUTES
-from app.infrastructure.job_registry import JOB_TTL_SECONDS
+from app.infrastructure.job_registry import JOB_TTL_SECONDS, JOB_WAIT_MAX_SECONDS
 from app.services.tile_version_service import TILE_SHAPES
 
 GENERATED_DIR = Path(__file__).resolve().parents[2] / "frontend" / "src" / "types" / "generated"
@@ -592,6 +592,8 @@ def main() -> None:
             # フロントのポーリングの打ち切り。backendが結果を持つ時間より長く待つと、
             # 掃除済みのjob_idを引いて「ジョブが見つかりません」になる。
             "job_result_ttl_seconds": JOB_TTL_SECONDS,
+            # フロントが状態を問い合わせるとき、終わるまで待たせる秒（口が受け付ける上限そのもの）。
+            "job_wait_seconds": JOB_WAIT_MAX_SECONDS,
             # ルート候補の型の契約の印。画面は端末に置いた候補にこの印を添え、印が違う候補は今の型で読めないとして使わない。
             "route_candidate_shape": schema_shape_mark(openapi, "RouteCandidate"),  # type: ignore[arg-type]
             # 区間ごとに速度を変える条件の名前（走行モデルの並び）。所要時間の説明が差し込む。

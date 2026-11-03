@@ -502,6 +502,10 @@ push型更新と同じ前提）。`JobRecord`は状態ごとの型の共用体�
 独立に値を持たず、生成物`route-generate-config.json`の`job_result_ttl_seconds`から受け取る。ルート生成に特化させず`result: Any`型で汎用化してあるため、
 本モジュール自体はルート生成の型を知らない（`routes.py`との循環import回避）。
 
+終わるまで待つ問い合わせ（`wait_until_finished`）は、まだ終わっていないジョブごとの`asyncio.Event`を待ち、
+`set_done`・`set_failed`がそれを鳴らす。合図も台帳と同じプロセスの中にあるので、複数ワーカーにするときは
+台帳と一緒に移す対象になる。
+
 **ジョブキュー（arq等）は使わない。** arqはジョブの列と結果をRedisに置き、ジョブは`arq`コマンドで起動する
 別のワーカープロセスで走る（[arqの文書](https://arq-docs.helpmanual.io/)）。これは次の2点と合わない:
 

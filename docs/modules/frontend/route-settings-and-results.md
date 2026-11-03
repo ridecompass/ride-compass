@@ -436,6 +436,15 @@ JITのコンパイル結果をイメージへ焼く前）:
 生成の間に画面を離れて打ち切りより後に戻った利用者は、終わっている結果を受け取らずにタイムアウトを見る。
 生成のDBのセッションが持つ上限（`command_timeout`）はクエリ1本ごとの上限で、この値とは独立。
 
+**1回の問い合わせでbackendに終わるまで待たせる秒（`infrastructure/job_registry.py: JOB_WAIT_MAX_SECONDS`、生成物の
+`job_wait_seconds`）は、問い合わせの時間切れ（`lib/apiTimeouts.ts: API_TIMEOUT_MS`の`default`）より短くする。** 長いと、
+生成がまだ走っているだけの問い合わせが時間切れの失敗に数えられ、続けて失敗してよい回数を食う。本番のbackendの手前の
+nginxが応答を待つ上限（`proxy_read_timeout`、300秒）にも収まる。待ってから返った後はすぐ次を問い合わせ、待たずに
+返った（問い合わせの失敗・待つ上限を知らないbackend）ときだけ`features/route/routeApi.ts: POLL_INTERVAL_MS`の間をおく。
+
+**実行中の経過秒は画面の時計で1秒ごとに数える**（`features/route/useRouteGeneration.ts`）。問い合わせは終わるまで返らないので、
+応答のたびに経過を更新すると、表示が待つ上限ごとに飛ぶ。
+
 **差分プレビューを自動で走らせず、押したときだけ投げる。** 評価はbackendでしか出せず
 （[design-principles.md](../../architecture/design-principles.md)構造仕様10）、かつ
 **生成APIにはレート上限（1分あたり10回）がある**ため、選んでいる途中の組み合わせごとに

@@ -1,7 +1,8 @@
 // @vitest-environment node
 /**
  * `features/route/routeApi.ts: generateRoutes`——生成のジョブをbackendへ出し、終わるまで状態を問い合わせて結果を返す口。
- * - 出した直後に1回目を問い合わせ、2回目からは間をおく。待ち・実行中の間は経過時間とともに知らせる
+ * - 出した直後に問い合わせ、backendに終わるまで（生成物`route-generate-config.json: job_wait_seconds`まで）待たせる。
+ *   待ってから返ればすぐ次を問い合わせ、待たずに返れば前の問い合わせから間をおく。待ち・実行中の応答のたびに知らせる
  * - 終われば候補・条件・候補0件の理由を返し、失敗ならbackendの文言で投げる
  * - 問い合わせの失敗は続けて決まった回数まで取り直し（成功すれば数え直す）、超えたら最後の失敗の文言を添えて投げる
  * - 結果をbackendが持つ時間（生成物`route-generate-config.json: job_result_ttl_seconds`）を過ぎたら諦める
@@ -34,11 +35,13 @@ const REQUEST: RouteGenerateRequest = {
 const CONDITIONS = { latitude: 35.68, longitude: 139.77, distance_km: 40 } as GenerationConditions;
 const JOB_PATH = "/api/routes/generate/job-1";
 const TTL_MS = routeGenerateConfig.job_result_ttl_seconds * 1000;
+const WAIT_MS = routeGenerateConfig.job_wait_seconds * 1000;
 
-/** 生成の受け付けにはjob-1を返し、問い合わせには`polls`を順に返す（尽きたら最後のものを返し続ける）。届いた要求を順に積む。 */
-function stubJob(polls: Response[]): SentRequest[] {
+/** 生成の受け付けにはjob-1を返し、問い合わせには`polls`を順に返す（尽きたら最後のものを返し続ける）。届いた要求を順に積む。
+ * `polls`の代わりに応え方を渡すと、問い合わせにはそれで応える。 */
+function stubJob(polls: Response[] | ((request: SentRequest) => Promise<Response>)): SentRequest[] {
   const sent: SentRequest[] = [];
-  const nextPoll = inTurn(...polls);
+  const nextPoll = typeof polls === "function" ? polls : inTurn(...polls);
   onBackend("POST", "/api/routes/generate", (request) => {
     sent.push(request);
     return Response.json({ job_id: "job-1" });
@@ -82,7 +85,12 @@ describe("generateRoutes", () => {
     });
     expect(sent).toEqual([
       { method: "POST", path: "/api/routes/generate", query: {}, body: REQUEST },
-      { method: "GET", path: JOB_PATH, query: {}, body: undefined },
+      {
+        method: "GET",
+        path: JOB_PATH,
+        query: { wait_seconds: String(routeGenerateConfig.job_wait_seconds) },
+        body: undefined,
+      },
     ]);
   });
 
@@ -96,22 +104,35 @@ describe("generateRoutes", () => {
     });
   });
 
-  it("1回目は出した直後に問い合わせ、2回目からは間をおき、待ち・実行中の間は経過時間とともに知らせる", async () => {
-    const sent = stubJob([pending("queued"), pending("running"), done()]);
+  it("backendが待ってから返せばすぐ次を問い合わせ、待たずに返せば前の問い合わせから1.5秒おく。待ち・実行中の応答のたびに知らせる", async () => {
+    // backendの代役: 1回目は待つ上限まで待って実行中、2回目は待たずに実行中、3回目で完了を返す。
+    const replies = [
+      { afterMs: WAIT_MS, response: pending("running") },
+      { afterMs: 0, response: pending("queued") },
+      { afterMs: 0, response: done() },
+    ];
+    const sent = stubJob(async () => {
+      const { afterMs, response } = replies.shift()!;
+      await new Promise((resolve) => setTimeout(resolve, afterMs));
+      return response;
+    });
     const onProgress = vi.fn();
     const result = generateRoutes(REQUEST, onProgress);
 
-    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(WAIT_MS - 1);
     expect(polled(sent)).toBe(1);
-    expect(onProgress).toHaveBeenLastCalledWith({ status: "queued", elapsedMs: 0 });
-
-    await vi.advanceTimersByTimeAsync(1499);
-    expect(polled(sent)).toBe(1);
-    await vi.advanceTimersByTimeAsync(1);
+    // 待ってから返ったので、間をおかずに次を問い合わせる（1.5秒寝るなら2回目は待つ上限＋1.5秒）。
+    await vi.advanceTimersByTimeAsync(100);
     expect(polled(sent)).toBe(2);
-    expect(onProgress).toHaveBeenLastCalledWith({ status: "running", elapsedMs: 1500 });
+    expect(onProgress).toHaveBeenNthCalledWith(1, { status: "running" });
 
-    await vi.advanceTimersByTimeAsync(1500);
+    // 待たずに返ったので、2回目を打ち始めてから1.5秒は次を問い合わせない。
+    await vi.advanceTimersByTimeAsync(1300);
+    expect(polled(sent)).toBe(2);
+    expect(onProgress).toHaveBeenLastCalledWith({ status: "queued" });
+    await vi.advanceTimersByTimeAsync(200);
+    expect(polled(sent)).toBe(3);
+
     await expect(result).resolves.toMatchObject({ routes: [expect.objectContaining({ id: "r1" })] });
     expect(onProgress).toHaveBeenCalledTimes(2);
   });
