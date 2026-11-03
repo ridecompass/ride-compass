@@ -2,9 +2,9 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, fields
 from typing import Any
 
+from app.domain.elevation_profile import MAX_PLAUSIBLE_GRADE_PERCENT, ElevationProfiles
 import numpy as np
 
-from app.domain.elevation_profile import ElevationProfiles
 from app.domain.strict_model import StrictModel
 
 
@@ -42,11 +42,6 @@ class ElevationAttribute(StrictModel):
         )
 
 
-# 舗装された公道としてありうる平均勾配の上限（%）。世界でも最急の公道が35%前後のため、
-# これを超える値は道の起伏ではなくDEMの読み違い（両端が路面でない地物を指した等）である。
-# 超えた区間は値を持たせず「データなし」にする——0次ハードフィルタは値の無い区間を
-# 除外しない（`domain/hard_filters.py`）ので、誤った値で黙って経路から外すより安全側になる。
-MAX_PLAUSIBLE_AVERAGE_GRADE_PERCENT = 40.0
 #: 平均勾配（%）を保存・配信する桁。
 AVERAGE_GRADE_DECIMALS = 2
 
@@ -144,8 +139,8 @@ class EdgeMaterialColumns:
     bearing_deg: np.ndarray  # dtype=float64, NaN=方位が決まらない
     mid_lat: np.ndarray  # dtype=float64
     mid_lon: np.ndarray  # dtype=float64
-    # 区間の断面の点（所要時間が読む）。Noneなら区間ごとに勾配の材料の平均勾配1つで走る。
-    elevation_profiles: ElevationProfiles | None = None
+    # 区間の断面の点（所要時間が読む）。
+    elevation_profiles: ElevationProfiles
 
     def __len__(self) -> int:
         return len(self.distance_m)
@@ -214,13 +209,13 @@ agg AS (
     SELECT osm_way_id, segment_index,
            coalesce(sum(greatest(diff, 0))  FILTER (WHERE adjacent), 0) AS gain,
            coalesce(sum(greatest(-diff, 0)) FILTER (WHERE adjacent), 0) AS loss,
-           max(greatest(g, 0))  FILTER (WHERE abs(g) <= {MAX_PLAUSIBLE_AVERAGE_GRADE_PERCENT}) AS steepest_up,
-           max(greatest(-g, 0)) FILTER (WHERE abs(g) <= {MAX_PLAUSIBLE_AVERAGE_GRADE_PERCENT}) AS steepest_down
+           max(greatest(g, 0))  FILTER (WHERE abs(g) <= {MAX_PLAUSIBLE_GRADE_PERCENT}) AS steepest_up,
+           max(greatest(-g, 0)) FILTER (WHERE abs(g) <= {MAX_PLAUSIBLE_GRADE_PERCENT}) AS steepest_down
     FROM graded GROUP BY osm_way_id, segment_index),
 raw AS (
     SELECT e.osm_way_id, e.segment_index, e.on_structure, e.start_e, e.end_e,
            a.gain, a.loss, a.steepest_up, a.steepest_down,
-           CASE WHEN abs(s.g) <= {MAX_PLAUSIBLE_AVERAGE_GRADE_PERCENT} THEN s.g END AS avg_g
+           CASE WHEN abs(s.g) <= {MAX_PLAUSIBLE_GRADE_PERCENT} THEN s.g END AS avg_g
     FROM ends e JOIN agg a USING (osm_way_id, segment_index),
          LATERAL (SELECT CASE WHEN e.total_d > 0 THEN (e.end_e - e.start_e) / e.total_d * 100 END AS g) s
     WHERE e.n >= 2)

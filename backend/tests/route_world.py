@@ -180,7 +180,7 @@ def road_network(
         start_elevation_m=start_elevation, end_elevation_m=end_elevation,
         elevation_gain_m=np.maximum(climb, 0.0), elevation_loss_m=np.maximum(-climb, 0.0),
         steepest_gain_percent=np.maximum(grade, 0.0), steepest_loss_percent=np.maximum(-grade, 0.0),
-        **two_point_profiles(profile_start, profile_end),
+        **two_point_profiles(profile_start, profile_end, forward),
     )
 
 

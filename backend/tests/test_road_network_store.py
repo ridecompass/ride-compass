@@ -94,7 +94,7 @@ def _network(revision: int | None, distance_m: float = 100.0) -> RoadNetwork:
         elevation_loss_m=np.array([0.0, np.nan]),
         steepest_gain_percent=np.array([4.0, np.nan]),
         steepest_loss_percent=np.array([0.0, np.nan]),
-        **two_point_profiles(np.array([10.0, np.nan]), np.array([12.0, np.nan])),
+        **two_point_profiles(np.array([10.0, np.nan]), np.array([12.0, np.nan]), np.array([True, False])),
     )
 
 

@@ -29,6 +29,7 @@ import numpy as np
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.domain.attributes import EDGE_ROW_ARRAY_FIELDS, EdgeMaterialArrays
+from app.domain.elevation_profile import grade_distribution
 from app.domain.road_network import RoadNetwork
 from app.domain.traffic import travel_allowed
 from app.infrastructure.cache_identity import shape_digest
@@ -369,19 +370,35 @@ async def _read_materials(
     edge_count = len(way)
     accident_years_covered = await repository.get_accident_years_covered()
     columns = MaterialColumns(edge_count)
-    profiles: list[np.ndarray] = []
     for start in range(0, edge_count, _MATERIAL_BATCH):
         stop = min(start + _MATERIAL_BATCH, edge_count)
-        keys = (way[start:stop].tolist(), segment[start:stop].tolist(), forward[start:stop].tolist())
-        columns.add(await repository.get_edge_material_arrays(*keys, accident_years_covered))
-        profiles.extend(await repository.get_edge_elevation_profiles(*keys))
+        columns.add(await repository.get_edge_material_arrays(
+            way[start:stop].tolist(), segment[start:stop].tolist(), forward[start:stop].tolist(), accident_years_covered))
         logger.info("材料 %d/%d", stop, edge_count)
-    points = np.fromiter((len(p) for p in profiles), dtype=np.int32, count=edge_count)
+    materials = columns.result()
+    return {**materials, **await _read_profiles(repository, way, segment, materials["distance_m"])}
+
+
+async def _read_profiles(
+    repository: RoadGraphRepository, way: np.ndarray, segment: np.ndarray, distance_m: np.ndarray
+) -> dict[str, Any]:
+    """区間の断面の点（`RoadNetwork`の`edge_profile_*`・`profile_*`の欄）。点は区間ごとに1回だけ持ち、同じ区間の両向きの行
+    （有向の行は区間ごとに隣り合って並ぶ）は同じ点を指す。標高の無い所を埋める分布も、ここで1回だけ求める。"""
+    first = np.ones(len(way), dtype=bool)
+    first[1:] = (way[1:] != way[:-1]) | (segment[1:] != segment[:-1])
+    owner = np.cumsum(first) - 1  # 行 → 点を持つ区間の番号
+    unique_rows = np.flatnonzero(first)
+    profiles: list[np.ndarray] = []
+    for start in range(0, len(unique_rows), _MATERIAL_BATCH):
+        rows = unique_rows[start:start + _MATERIAL_BATCH]
+        profiles.extend(await repository.get_edge_elevation_profiles(way[rows].tolist(), segment[rows].tolist()))
+    points = np.fromiter((len(p) for p in profiles), dtype=np.int32, count=len(profiles))
+    starts = np.cumsum(points, dtype=np.int64) - points
+    elevation = _concatenate(profiles, np.float32)
+    distribution = grade_distribution(starts, points, elevation, distance_m[unique_rows])
     return {
-        **columns.result(),
-        "edge_profile_start": (np.cumsum(points, dtype=np.int64) - points).astype(np.int64),
-        "edge_profile_points": points,
-        "profile_elevation_m": _concatenate(profiles, np.float32),
+        "edge_profile_start": starts[owner], "edge_profile_points": points[owner], "profile_elevation_m": elevation,
+        "profile_distribution_grade": distribution.grade, "profile_distribution_share": distribution.share,
     }
 
 

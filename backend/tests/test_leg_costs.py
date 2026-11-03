@@ -25,7 +25,7 @@ from app.domain.attributes import CategoricalColumn
 from app.domain.axis_definitions import BreakpointLinearShape, MaterialTerm, copy_axis_definitions
 from app.domain.cycling_speed import RiderProfile, SegmentSpeedModel, crr_for_surface
 from app.domain.difficulty import axis_weight_shares
-from app.domain.elevation_profile import ElevationProfiles, GradeDistribution
+from app.domain.elevation_profile import ElevationProfiles
 from app.domain.evaluation import DensityAxisColumn, StaticEdgeScoreMatrix
 from app.domain.leg_costs import LegCostArrays, LegCostComposer, LegValues
 from app.domain.msm import MsmBlock, MsmGrid
@@ -34,12 +34,12 @@ from app.domain.route import Coordinates
 from app.domain.search_graph import EDGE_VALUE_DTYPE
 from app.domain.wind import DepartureWind, WindForecastSeries
 from tests.axis_system_fixture import axis_definition, replaced_axis_definitions
+from tests.profile_fixture import FLAT, grade_profiles
 
 START = datetime(2026, 10, 3, 9, 0)
 CRUISE_KMH = 20.0
 AVOID_MULTIPLIER = 3.0
 SURFACE = "class:rolling"
-GRADIENT = leg_costs.GRADIENT_PERCENT
 WIND_DRAG = next(iter(leg_costs.REQUEST_DYNAMIC_MATERIAL_IDS))
 STOP_DENSITY = dict(zip(leg_costs.POI_COUNT_KINDS, leg_costs.stop_count_material_ids(), strict=True))
 WIND_AXIS = "axis_wind"
@@ -70,7 +70,7 @@ def _matrix(n: int, *, distance=1000.0, gradient=0.0, bearing=NORTH, surface="pa
 
     `signals_per_km`を渡すと、その信号の密度で待ちが入り、密度の軸`STOP_AXIS`（折れ線は`STOP_LINE`）が点数を持つ。"""
     axes, raw_axes = dict(axes or {}), raw_axes or {}
-    materials = {GRADIENT: gradient, **dict.fromkeys(STOP_DENSITY.values(), 0.0), **(materials or {})}
+    materials = {**dict.fromkeys(STOP_DENSITY.values(), 0.0), **(materials or {})}
     density_axes = {}
     if signals_per_km is not None:
         signals = _column(signals_per_km, n)
@@ -91,6 +91,7 @@ def _matrix(n: int, *, distance=1000.0, gradient=0.0, bearing=NORTH, surface="pa
         categorical_material_ids=list(categories),
         categorical_material_columns=[CategoricalColumn.encode(v) for v in categories.values()],
         density_axes=density_axes,
+        elevation_profiles=grade_profiles(_column(gradient, n), _column(distance, n)),
     )
 
 
@@ -148,9 +149,8 @@ def _shares(values: LegValues, rows) -> list[dict[str, float]]:
 # --- 所要時間 -------------------------------------------------------------
 
 
-def test_the_gradient_in_percent_slows_the_rider_as_that_grade_and_a_missing_one_counts_as_flat():
-    """断面の点の無い表は、区間ごとに勾配の材料の平均勾配1つで走る。勾配の材料は%で、走行モデルは割合で読む。読み違えると、
-    坂の所要時間が別の勾配の坂のものになる。"""
+def test_a_road_rising_evenly_runs_at_the_speed_of_its_grade_and_one_without_elevation_runs_the_network_slopes():
+    """1000mで50m一様に登る区間は、5%の坂の速さで走る。標高の無い区間は道路網全体の勾配の分布（ここでは平地だけ）で走る。"""
     leg = _snapshot(_matrix(3, gradient=[5.0, np.nan, 0.0]))
     climb, missing, flat = leg.travel_seconds_lazy
     five_percent = SegmentSpeedModel(
@@ -166,9 +166,9 @@ def test_a_road_that_climbs_and_descends_takes_longer_than_a_flat_one_of_the_sam
     matrix = dataclasses.replace(
         _matrix(2, distance=600.0),
         elevation_profiles=ElevationProfiles(
-            start=np.array([0, 3]), points=np.array([3, 3], dtype=np.int32),
+            start=np.array([0, 3]), points=np.array([3, 3], dtype=np.int32), reversed_rows=np.zeros(2, dtype=bool),
             elevation_m=np.array([0.0, 18.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float32),
-            distribution=GradeDistribution(np.zeros(1), np.ones(1))))
+            distribution=FLAT))
 
     up_and_down, flat = _snapshot(matrix).travel_seconds_lazy
 

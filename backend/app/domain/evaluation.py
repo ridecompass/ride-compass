@@ -404,9 +404,8 @@ class StaticEdgeScoreMatrix:
     # 密度の軸（`averages_density`の公開軸）のid→横軸の値の列。ビンと候補の点数を、この値の
     # 距離平均から作るために運ぶ（`domain/route.py: DensityScoreInput`）。
     density_axes: dict[str, DensityAxisColumn]
-    # 区間の断面の点（所要時間が点の間ごとに速さを解く。`domain/elevation_profile.py`）。Noneなら区間ごとに勾配の材料の
-    # 平均勾配1つで走る。
-    elevation_profiles: ElevationProfiles | None = None
+    # 区間の断面の点（所要時間が点の間ごとに速さを解く。`domain/elevation_profile.py`）。
+    elevation_profiles: ElevationProfiles
 
     def __post_init__(self) -> None:
         """行と列が揃っていることを、組み立てた場所で確かめる。

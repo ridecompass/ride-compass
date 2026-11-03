@@ -25,7 +25,6 @@ import numpy as np
 from numba import njit
 
 from app.domain.attributes import CategoricalColumn
-from app.domain.material_catalog import GRADIENT_PERCENT
 from app.domain.road_classes import class_material_id, current_road_classes
 from app.domain.search_graph import kernel_array
 from app.domain.traffic import stop_count_material_ids
@@ -58,14 +57,15 @@ def rolling_resistance_material_id() -> str | None:
 
 
 def travel_model_material_ids() -> tuple[str, ...]:
-    """所要時間（走行方程式の勾配・路面と、停止の待ち）が区間ごとに読む材料id。
+    """所要時間（走行方程式の路面と、停止の待ち）が区間ごとに読む材料id。勾配は材料ではなく区間の断面の点から読む
+    （`domain/elevation_profile.py`）。
 
     静的スコア行列はこれらを**軸の構成と無関係に**列として運び、欠けた行列は組み立てで断る
     （`evaluation.py: StaticEdgeScoreMatrix`）。軸が分解した材料だけを運ぶ既定に任せると、その軸を
-    非公開にした瞬間に所要時間から坂・路面・停止の待ちが静かに消える。
+    非公開にした瞬間に所要時間から路面・停止の待ちが静かに消える。
     """
     rolling = rolling_resistance_material_id()
-    return (GRADIENT_PERCENT, *((rolling,) if rolling is not None else ()), *stop_count_material_ids())
+    return (*((rolling,) if rolling is not None else ()), *stop_count_material_ids())
 
 
 def crr_for_surface(rolling_classes: CategoricalColumn) -> np.ndarray:
@@ -211,28 +211,11 @@ class SegmentSpeedModel:
         """区間ごとの走行速度（m/s）と、平地の出力を越えて踏んだ出力の内訳。`headwind_ms`は進行方向への向かい風成分
         （正が向かい風）、`crosswind_ms`は横成分。
 
-        空気抵抗の増えた分は、巡航速度で走ったときの向かい風あり・なしの差で測る（速さに依らない基準で測り、踏む出力が
-        解く速さに依らないようにする）。走行方程式`P = 抵抗力(v) × v`を`v`について解く。3次方程式になるため、二分法で
-        挟んでから解を返す（ニュートン法は抵抗力が0を跨ぐ下り坂で発散しうるため、区間を確実に狭める方を採る）。
+        走行方程式`P = 抵抗力(v) × v`を`v`について解く。3次方程式になるため、二分法で挟んでから解を返す（ニュートン法は
+        抵抗力が0を跨ぐ下り坂で発散しうるため、区間を確実に狭める方を採る）。
         """
-        headwind = kernel_array(headwind_ms, np.float32)
-        cross = kernel_array(crosswind_ms, np.float32)
-        mismatched = {
-            name: array.shape
-            for name, array in (("headwind_ms", headwind), ("crosswind_ms", cross))
-            if array.shape != self._shape
-        }
-        if mismatched:
-            raise ValueError(f"区間の配列の長さが揃っていません grade={self._shape} {mismatched}")
-        along = self._cruise_ms + headwind.astype(np.float64)
-        air_extra_n = float(self._drag_coefficient) * (
-            np.sqrt(along * along + cross.astype(np.float64) ** 2) * along - self._cruise_ms ** 2)
-        extras = (self._gravity_extra_n, air_extra_n, self._rolling_extra_n)
-        desired, power = pushed_power_w(self._flat_power_w, sum(extras))
-        speeds = _segment_speeds(
-            kernel_array(power, np.float32), self._constant_force, self._drag_coefficient, self._lowest_ms,
-            self._highest_ms, headwind, cross,
-        )
+        headwind, cross = self._winds(headwind_ms, crosswind_ms)
+        extras, desired, power, speeds = self._solve(headwind, cross)
         positive = [np.maximum(extra, 0.0) for extra in extras]
         positive_sum = sum(positive)
         excess = power - self._flat_power_w
@@ -244,5 +227,33 @@ class SegmentSpeedModel:
         )
 
     def speed_ms(self, headwind_ms: np.ndarray, crosswind_ms: np.ndarray) -> np.ndarray:
-        """区間ごとの走行速度（m/s、float32。`ride`の速度だけ）。"""
-        return self.ride(headwind_ms, crosswind_ms).speed_ms
+        """区間ごとの走行速度（m/s、float32。`ride`の速度だけで、出力の内訳は求めない）。"""
+        return self._solve(*self._winds(headwind_ms, crosswind_ms))[3]
+
+    def _winds(self, headwind_ms: np.ndarray, crosswind_ms: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """風の2成分をJITへ渡す型にし、区間の数と揃っていることを確かめる。"""
+        headwind = kernel_array(headwind_ms, np.float32)
+        cross = kernel_array(crosswind_ms, np.float32)
+        mismatched = {
+            name: array.shape
+            for name, array in (("headwind_ms", headwind), ("crosswind_ms", cross))
+            if array.shape != self._shape
+        }
+        if mismatched:
+            raise ValueError(f"区間の配列の長さが揃っていません grade={self._shape} {mismatched}")
+        return headwind, cross
+
+    def _solve(self, headwind: np.ndarray, cross: np.ndarray) -> tuple[tuple[np.ndarray, ...], np.ndarray, np.ndarray,
+                                                                       np.ndarray]:
+        """増えた抵抗（重力・空気・転がり）・踏みたい出力・実際に踏む出力・速度。空気抵抗の増えた分は、巡航速度で走った
+        ときの向かい風あり・なしの差で測る（速さに依らない基準で測り、踏む出力が解く速さに依らないようにする）。"""
+        along = self._cruise_ms + headwind.astype(np.float64)
+        air_extra_n = float(self._drag_coefficient) * (
+            np.sqrt(along * along + cross.astype(np.float64) ** 2) * along - self._cruise_ms ** 2)
+        extras = (self._gravity_extra_n, air_extra_n, self._rolling_extra_n)
+        desired, power = pushed_power_w(self._flat_power_w, sum(extras))
+        speeds = _segment_speeds(
+            kernel_array(power, np.float32), self._constant_force, self._drag_coefficient, self._lowest_ms,
+            self._highest_ms, headwind, cross,
+        )
+        return extras, desired, power, speeds

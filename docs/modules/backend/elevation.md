@@ -54,7 +54,7 @@ edge_elevation（start/end・gain/loss・average・一番急な登りと下り�
 ## 勾配を出さない区間
 
 `average_grade`がNULLなのは、標高を出せなかった区間だけではない。**舗装公道としてありえない
-急勾配**（`MAX_PLAUSIBLE_AVERAGE_GRADE_PERCENT`）は、計算したうえで**値を持たせない**と決めた
+急勾配**（`domain/elevation_profile.py: MAX_PLAUSIBLE_GRADE_PERCENT`）は、計算したうえで**値を持たせない**と決めた
 区間である。道の起伏ではなくDEMの読み違いで、丸めても上限で切っても直らない。
 
 標高そのもの（start/end・gain/loss）は残す。0次ハードフィルタは値の無い区間を

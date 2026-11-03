@@ -24,7 +24,7 @@ from app.domain.attributes import (
     ElevationAttribute,
     MaterialColumn,
 )
-from app.domain.elevation_profile import ElevationProfiles, grade_distribution
+from app.domain.elevation_profile import ElevationProfiles, GradeDistribution
 from app.domain.geo import LatLonPoint
 from app.domain.rain import NearestRainStations
 from app.domain.material_catalog import GRADIENT_PERCENT, materials_of_source
@@ -78,11 +78,14 @@ class RoadNetwork:
     elevation_loss_m: np.ndarray
     steepest_gain_percent: np.ndarray  # float64, NaN=欠損
     steepest_loss_percent: np.ndarray
-    # 断面の点（`domain/elevation_profile.py`）。区間の行ごとに、全区間の点をつないだ`profile_elevation_m`の中の始まりの位置と
-    # 点の数（標高の無い区間は0）。逆向きの行は点を逆に並べて持つ。
+    # 断面の点（`domain/elevation_profile.py`）。区間の行ごとに、全区間の点を順方向に並べてつないだ`profile_elevation_m`の中の
+    # 始まりの位置と点の数（標高の無い区間は0）。両向きの行は同じ点を指し、逆向きの行（`edge_forward`が偽）は逆に読む。
     edge_profile_start: np.ndarray  # int64
     edge_profile_points: np.ndarray  # int32
     profile_elevation_m: np.ndarray  # float32、行数は区間ではなく点の数
+    # 標高の無い所を埋める、道路網全体の点の間の勾配の分布（`domain/elevation_profile.py: grade_distribution`。組むときに1回求める）。
+    profile_distribution_grade: np.ndarray  # float64、行数は階級の数
+    profile_distribution_share: np.ndarray  # float64
 
     def __post_init__(self) -> None:
         """行数と列数が揃っていることを、組み立てた場所で確かめる。
@@ -120,12 +123,13 @@ class RoadNetwork:
     def edge_count(self) -> int:
         return len(self.edge_way_id)
 
-    @cached_property
+    @property
     def elevation_profiles(self) -> ElevationProfiles:
-        """全区間の断面の点と、全体の点の間の勾配の分布（標高の無い所を埋める平均。道路網と同じ寿命で1回だけ求める）。"""
-        distribution = grade_distribution(
-            self.edge_profile_start, self.edge_profile_points, self.profile_elevation_m, self.distance_m)
-        return ElevationProfiles(self.edge_profile_start, self.edge_profile_points, self.profile_elevation_m, distribution)
+        """全区間の断面の点と、標高の無い所を埋める全体の勾配の分布。"""
+        distribution = GradeDistribution(np.asarray(self.profile_distribution_grade),
+                                         np.asarray(self.profile_distribution_share))
+        return ElevationProfiles(self.edge_profile_start, self.edge_profile_points, ~np.asarray(self.edge_forward),
+                                 self.profile_elevation_m, distribution)
 
     @cached_property
     def nearest_rain_stations(self) -> NearestRainStations:

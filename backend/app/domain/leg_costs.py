@@ -43,14 +43,12 @@ from app.domain.evaluation import (
     density_costs,
     density_sums,
 )
-from app.domain.material_catalog import GRADIENT_PERCENT
 from app.domain.road_avoidance import RoadAvoidanceMasks
 from app.domain.route import Coordinates
 from app.domain.search_graph import EDGE_VALUE_DTYPE, kernel_array
 from app.domain.traffic import POI_COUNT_KINDS, stop_count_material_ids, stop_seconds
 from app.domain.twilight import night_mask
 from app.domain.wind import DepartureWind, WindForecastSeries, kmh_to_ms
-
 
 # レグの中を時刻で区切るビンの幅（h）と本数の上限。**風の予報が1時間刻みのため、幅もそれに
 # 揃え、ビンはその開始時刻で評価する**——`WindForecastSeries.sample`が最も近い正時を引くため、
@@ -358,17 +356,9 @@ class LegCostComposer:
     def _travel_inputs(self) -> _TravelInputs:
         """所要時間のうち風に依らない入力: 点の間（`domain/elevation_profile.py`）と、その走行モデル（勾配・路面・巡航速度）と、
         区間の長さ（m、float64）と、区間にある停止要因の待ちの秒（`domain/traffic.py: stop_seconds`）。どれも静的材料だけから
-        決まるため、リクエストに1回だけ求める。ターンの待ちは遷移ごとに決まるためここには含まない（探索側が足す）。
-
-        断面の点が無い表（`StaticEdgeScoreMatrix.elevation_profiles`がNone）は、区間ごとに勾配の材料の平均勾配1つで走る。"""
+        決まるため、リクエストに1回だけ求める。ターンの待ちは遷移ごとに決まるためここには含まない（探索側が足す）。"""
         distance_m = np.asarray(self._score_matrix.distance_m, dtype=np.float64)
-        profiles = self._score_matrix.elevation_profiles
-        if profiles is None:
-            average = self._static_material_arrays[GRADIENT_PERCENT].astype(np.float64)
-            intervals = ProfileIntervals(edge=np.arange(len(distance_m)), length_m=distance_m,
-                                         grade=np.nan_to_num(average) / 100.0, missing_edge=np.isnan(average))
-        else:
-            intervals = profiles.intervals(distance_m)
+        intervals = self._score_matrix.elevation_profiles.intervals(distance_m)
         rolling = rolling_resistance_material_id()
         surface = self.categorical_material_arrays.get(rolling) if rolling is not None else None
         if surface is None:  # 転がり抵抗の表が分け方を指していない: どの区間も基準の転がり抵抗

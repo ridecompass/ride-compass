@@ -14,6 +14,8 @@ from app.domain.evaluation import build_static_edge_score_matrix
 from app.domain.hard_filters import compute_search_exclusion
 from app.domain.material_catalog import GRADIENT_PERCENT
 from app.domain.road_classes import class_material_id
+from tests.profile_fixture import grade_profiles
+
 
 def edge(facts: dict[str, str] | None = None) -> EdgeMaterialColumns:
     """平らな勾配と、分類の事実（材料のid→値。区分の列もここへ書く）だけを持つ区間1本。"""
@@ -22,6 +24,7 @@ def edge(facts: dict[str, str] | None = None) -> EdgeMaterialColumns:
     return EdgeMaterialColumns(
         columns={GRADIENT_PERCENT: np.zeros(1), **{m: CategoricalColumn.encode([v]) for m, v in facts.items()}},
         distance_m=np.full(1, 100.0), bearing_deg=nan, mid_lat=nan, mid_lon=nan,
+        elevation_profiles=grade_profiles(np.zeros(1), np.full(1, 100.0)),
     )
 
 
