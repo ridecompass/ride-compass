@@ -56,7 +56,7 @@ logger = logging.getLogger("ridecompass.graph")
 
 
 async def select_via_nodes(
-    context: RoadGraphContext, fixed: FixedLegs, max_routes: int, penalty_strength: float,
+    context: RoadGraphContext, fixed: FixedLegs, max_routes: int,
 ) -> list[TracedLoop]:
     """距離なしの仕上げ: 最後の固定点（経由地が無ければ起点）から終点（`fixed.end_node`）までの区間を、
     via-node方式で互いに異なる道に`max_routes`件まで選び、前段の道とつないで返す。代わりの道は最後の区間でだけ探す
@@ -69,9 +69,9 @@ async def select_via_nodes(
     1. 全Nodeについて経由路長`len_f+len_b`・合成コスト`cost_f+cost_b`をベクトル計算し、
        合成コスト最小のNode（"最良路"）の長さの較正値`search.alternative_max_stretch`倍以内の
        Nodeだけを候補にする。
-    2. 平均difficulty`(合成コスト/経由路長-1)/P`昇順に並べる。ただし最良路のNodeは常に
-       先頭へ回す——合成コスト最小であっても、伸び率の許す範囲でより平均difficultyの
-       低い経路が他に存在すれば難易度順ではそちらが上位に来うるため、「最良路は必ず
+    2. 経由路長と1kmあたりの代償の秒`(合成コスト−所要時間)/経由路長`のパレート層の順に並べる。ただし最良路のNodeは
+       常に先頭へ回す——合成コスト最小であっても、伸び率の許す範囲でより1kmあたりの代償の
+       小さい経路が他に存在すればその並びではそちらが上位に来うるため、「最良路は必ず
        結果に含まれる」をランキングとは独立に保証する。
     3. `select_diverse_by_overlap`で、前向き経路・後ろ向き経路が同じEdgeを共有する
        Node（行って戻る形になり経路として成立しない）を除外しつつ、採用済み候補との
@@ -167,12 +167,12 @@ async def select_via_nodes(
 
     best_index, candidates = alternative_via_nodes(junction.cost, junction.length_m, reachable)
     best_length_m = float(junction.length_m[best_index])
-    # 周回の折返し点選定と同じく、経路長・difficultyのパレート非劣解を先に並べる
+    # 周回の折返し点選定と同じく、経路長・1kmあたりの代償の秒のパレート非劣解を先に並べる
     # （目的地ルートは目標距離を持たず代わりの道の長さの上限（較正値）以内という上限だけが効くぶん、
-    # 難易度単独で並べると伸び率上限いっぱいの遠回りが上位を占めやすい）。
+    # 1kmあたりの代償だけで並べると伸び率上限いっぱいの遠回りが上位を占めやすい）。
     ranking = rank_by_pareto_layers(
         candidates, junction.length_m[candidates], junction.cost[candidates], junction.seconds[candidates],
-        penalty_strength,
+        junction.length_m[candidates],
         max_items=max_routes, max_examined=_MAX_VIA_NODE_CANDIDATES_EXAMINED, tie_by_distance=False,
     )
     ranked = candidates[ranking.order].tolist()

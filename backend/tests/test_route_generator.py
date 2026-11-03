@@ -2,12 +2,11 @@
 
 ここで見ないもの:
 - 折返し点の選定・経路探索・評価の中身 → `RoadGraphEngine`（`test_route_generation_behavior.py`と、その判断の部品は`test_route_search.py`）。ここでは代役に置き換える
-- 区間から候補への集約の計算（距離加重平均・丸め） → `test_route.py`・`domain/difficulty.py`のテスト
+- 区間から候補への集約の計算（費用・代償の内訳・事実の量） → `test_route_generation_behavior.py`・`test_route.py`
 - 距離あり・距離なしのどちらの入口を使うか（要求の検証が選ぶ）とAPIの受け口 → `test_routes_generate.py`
 - エンジンへ渡す引数（探索の範囲・経由地の並び・出発時刻・候補数）と、エンジンを呼んだか・何回か → 読むだけの呼び出しなので
   確かめない。経由地を順に通って起点か目的地で終わること・目的地の補正を引き継ぐことは`test_route_generation_behavior.py`が経路で見る
-- 算出不能の候補を末尾へ回すことの目的地の側 → 周回と目的地が同じ並びの鍵（`domain/route_search.py: difficulty_order`）を通るので、
-  周回の並びのテストが見る
+- 並びの鍵の中身（周回の1kmあたりの代償の秒・所要時間の無い候補を末尾へ回すこと） → `test_route_search.py`
 - 前の生成の理由・目的地の補正を持ち越さないこと → 本番は生成ごとに`RouteGenerator`を作るので、持ち越す状態が起こらない
 
 エンジンの代役は、各メソッドを`RoadGraphEngine`の同名メソッドの署名へ当ててから呼ぶ（`bound`）。応答を返すだけで、呼ばれ方を記録しない。
@@ -24,7 +23,7 @@ import pytest
 
 from app.domain.errors import GENERATION_BUSY_MESSAGE, RoutingError, SearchAreaTooLargeError, SearchMemoryBusyError
 from app.domain.loop_routing import LoopTurnaround, TracedLoop
-from app.domain.route import Coordinates, EvaluatedRoute, RouteCandidate, RouteSegmentDetail
+from app.domain.route import Coordinates, EvaluatedRoute, RouteCandidate, RouteFacts, RouteSegmentDetail
 from app.domain.route_request import DEFAULT_MAX_ROUTES, MAX_ROUTES, FixedPoints
 from app.domain.time_zone import JST
 from app.services import route_generator
@@ -43,19 +42,22 @@ UNREACHABLE = "指定した経由地・目的地を通る経路が見つかり�
 RETRY = "距離や除外する道路の設定を変えてお試しください。"
 
 
-def _segment(difficulty: float | None, **fields) -> RouteSegmentDetail:
+def _segment() -> RouteSegmentDetail:
     return RouteSegmentDetail(
         start_latitude=0.0, start_longitude=0.0, end_latitude=0.0, end_longitude=0.0,
         cumulative_distance_km=0.0, distance_km=1.0, edge_start=0, edge_end=1, elevations=[],
-        road_classes={}, difficulty=difficulty, **fields,
+        road_classes={},
     )
 
 
-def _candidate(key: str, difficulty: float | None = 10.0, **fields) -> EvaluatedRoute:
-    """区間1本（1km・難易度`difficulty`）を持つ経路。戦略層は名前を付け替えうるので、どの候補かは`edge_ids`で見分ける。"""
+def _candidate(key: str, penalty: float = 10.0, **fields) -> EvaluatedRoute:
+    """区間1本（1km・所要時間100秒・代償`penalty`秒）を持つ経路。距離と所要時間が揃うので、周回の並び（1kmあたりの代償の秒）
+    と目的地の並び（費用）が同じ順になる。戦略層は名前を付け替えうるので、どの候補かは`edge_ids`で見分ける。"""
     return EvaluatedRoute(**{
         "direction_label": f"方位-{key}", "distance_km": 1.0, "geometry": {"type": "LineString", "coordinates": []},
-        "elevation_gain_m": None, "segments": [_segment(difficulty)], "estimated_duration_seconds": None,
+        "elevation_gain_m": None, "segments": [_segment()], "estimated_duration_seconds": 100.0,
+        "cost_seconds": 100.0 + penalty, "penalty": None,
+        "facts": RouteFacts(elevation_unknown_km=0.0, stop_count=0.0, rough_km=0.0, headwind_mean_ms=None, burden_km={}),
         "wind_unavailable": False, "missing_travel_data_share": None, "axis_raw_values": {},
         "material_category_shares": {}, "edge_ids": [key], "edge_point_offsets": [], "node_ids": [], "turns": [],
         "waypoint_distances_km": [], **fields,
@@ -368,7 +370,7 @@ async def test_waypoint_routes_back_to_the_origin_come_in_several_without_the_fa
 
     result = await _no_distance(engine, [WAYPOINT], destination, max_routes=2)
 
-    # 難易度の高い側から切る
+    # 代償の大きい側から切る
     assert _identities(result) == [("loop-00", "loop", "経由地ルート"), ("loop-01", "loop", "経由地ルート")]
     assert (_keys(result), _fastest(result)) == (["easy", "mid"], [])
 
@@ -389,14 +391,14 @@ async def test_waypoints_that_cannot_be_connected_give_no_candidates_and_say_why
 # ---- 距離なし・経由地なし（目的地ルート） ----
 
 
-def _destination_engine(fastest: str | None, /, **difficulties: float) -> FakeEngine:
-    """代替経路は`difficulties`の順に返り、`fastest`は所要時間が最短の1本（代替経路と同じ鍵ならその経路）。"""
-    routes = {k: _candidate(k, d) for k, d in difficulties.items()}
-    return FakeEngine(via=[_route(k) for k in difficulties if k != "fastest"],
+def _destination_engine(fastest: str | None, /, **penalties: float) -> FakeEngine:
+    """代替経路は`penalties`の順に返り、`fastest`は所要時間が最短の1本（代替経路と同じ鍵ならその経路）。"""
+    routes = {k: _candidate(k, d) for k, d in penalties.items()}
+    return FakeEngine(via=[_route(k) for k in penalties if k != "fastest"],
                       fastest=None if fastest is None else _route(fastest), routes=routes)
 
 
-async def test_destination_routes_add_the_fastest_and_are_ordered_easiest_first():
+async def test_destination_routes_add_the_fastest_and_are_ordered_cheapest_first():
     engine = _destination_engine("fastest", hard=30.0, easy=10.0, fastest=20.0)
 
     result = await _no_distance(engine, [], DESTINATION)
@@ -409,11 +411,11 @@ async def test_destination_routes_add_the_fastest_and_are_ordered_easiest_first(
 @pytest.mark.parametrize(
     ("max_routes", "expected", "fastest"),
     [
-        (2, ["easy", "fastest"], ["fastest"]),  # 難易度で最下位の基準線を残し、その次に難しい候補を切る
-        (1, ["easy"], []),  # 1本だけ返すときは基準線を残さない——軸の重みが結果に現れなくなる
+        (2, ["easy", "fastest"], ["fastest"]),  # 費用で最下位の基準線を残し、その次に高い候補を切る
+        (1, ["easy"], []),  # 1本だけ返すときは基準線を残さない——軸の倍率が結果に現れなくなる
     ],
 )
-async def test_destination_routes_cut_the_hardest_but_keep_the_fastest_unless_returning_one(max_routes, expected, fastest):
+async def test_destination_routes_cut_the_costliest_but_keep_the_fastest_unless_returning_one(max_routes, expected, fastest):
     engine = _destination_engine("fastest", hard=30.0, easy=10.0, fastest=50.0)
 
     result = await _no_distance(engine, [], DESTINATION, max_routes=max_routes)
@@ -422,14 +424,14 @@ async def test_destination_routes_cut_the_hardest_but_keep_the_fastest_unless_re
 
 
 @pytest.mark.parametrize(
-    ("fastest", "difficulties", "expected"),
+    ("fastest", "penalties", "expected"),
     [
         ("a", {"a": 10.0}, ["a"]),  # 比べる相手が無いので、基準として印を付けない
         (None, {"a": 10.0, "b": 10.0}, ["a", "b"]),  # 最速の経路が引けなければ、代替経路だけを返す
     ],
 )
-async def test_destination_routes_without_another_route_to_compare_mark_no_fastest(fastest, difficulties, expected):
-    result = await _no_distance(_destination_engine(fastest, **difficulties), [], DESTINATION)
+async def test_destination_routes_without_another_route_to_compare_mark_no_fastest(fastest, penalties, expected):
+    result = await _no_distance(_destination_engine(fastest, **penalties), [], DESTINATION)
 
     assert (_keys(result), _fastest(result)) == (expected, [])
 

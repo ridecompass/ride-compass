@@ -270,7 +270,7 @@ def compose_costs_from_axis_matrix(
     スコア配列群から、重み付き合成のdifficultyと、費用を求めるための割増の倍率・足す秒を求める（費用そのものは返さない）。
 
     費用は**体感の所要時間**`所要時間 × (1 + P × difficulty/100) + 密度の軸の分`で、`penalty_strength`は
-    「difficulty 100の道は体感で何倍の時間に感じるか−1」を意味する（逆算は`difficulty_from_cost`）。
+    「difficulty 100の道は体感で何倍の時間に感じるか−1」を意味する。
 
     `density`は密度の軸（`axis_definitions.py: averages_density`）ぶんの点数と回数を重みで足した和（`density_sums`）。密度の軸の
     点数は割増の倍率から外し、代わりに`P × 重みの割合 × 傾き/100 × 回数 × 3600/想定速度`の秒を足す（理由は
@@ -310,23 +310,6 @@ def compose_costs_from_axis_matrix(
     # difficultyがNaN(None相当)なら割増なし。
     multiplier = np.where(np.isnan(cost_difficulty), 1.0, 1.0 + penalty_strength * (cost_difficulty / 100))
     return AxisComposition(multiplier, added_seconds, composite, weight_sums)
-
-
-def difficulty_from_cost(cost: np.ndarray, seconds: np.ndarray, penalty_strength: float) -> np.ndarray:
-    """コスト（`compose_costs_from_axis_matrix`）から、所要時間あたりのdifficultyを逆算する。求まらない要素
-    （所要時間0・到達不能）は0。
-
-    密度の軸の分は、足した秒を所要時間で割った値として入る——回数 ÷ (所要時間 × 想定速度)の点数で、所要時間が
-    想定速度で走る時間に近いほど、範囲の平均の密度に傾きを掛けた点数（頭打ちの無い直線）に近い。停止の待ちや
-    上り坂で所要時間が延びた範囲ほど、平均の密度の点数より小さく入る。
-
-    P<=0ではコストが所要時間そのもので難易度を含まないため、全要素0（全候補同点）。
-    """
-    if penalty_strength <= 0:
-        return np.zeros(len(cost))
-    with np.errstate(invalid="ignore", divide="ignore"):
-        difficulty = (cost / seconds - 1.0) / penalty_strength * 100.0
-    return np.where(np.isfinite(difficulty), difficulty, 0.0)
 
 
 @dataclass(frozen=True)

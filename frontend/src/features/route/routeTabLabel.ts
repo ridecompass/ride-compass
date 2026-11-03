@@ -96,7 +96,7 @@ export function durationDifferenceLabel(
 
 /**
  * 生成した候補の並び: 最速の印の付いた1本を先頭に、残りを所要時間の短い順。所要時間の無い候補は末尾。同じ所要時間は
- * 受け取った並び（backendの総合難易度の昇順）を保つので、同着なら易しい方が先。
+ * 受け取った並び（backendの費用・1kmあたりの代償の秒の昇順）を保つので、同着なら代償の小さい方が先。
  */
 export function orderGenerated<T extends Pick<RouteCandidate, "estimated_duration_seconds" | "is_fastest">>(
   routes: readonly T[],
