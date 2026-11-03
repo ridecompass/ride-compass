@@ -259,7 +259,7 @@ jobs:
       # 実行順はpytest-randomlyがばらす。-qでは種が見出しに出ないため、runのIDを種に渡す——落ちた並びは
       # 手元で --randomly-seed=<runのID> を付けて同じ順に並べ直せる。所要の長い順に20件をログへ出し、ジョブが延びたときに
       # どのテストが延ばしたかを測り直さずに読めるようにする。
-      - run: python -m pytest -q -n auto --dist loadgroup --randomly-seed=${{ github.run_id }} --durations=20
+      - run: python -m pytest -q -n auto --dist loadgroup --randomly-seed=${{ github.run_id }} --durations=0 -v
 
   api-contract:
     needs: changes
