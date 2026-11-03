@@ -55,7 +55,7 @@ interface RouteOutcomeProps {
   /** 生成の進み方・条件のずれ。 */
   generation: Pick<
     RouteGeneration,
-    "running" | "progressLabel" | "conditionsDirty" | "weightsNotApplied" | "destinationCorrected"
+    "running" | "progressLabel" | "conditionsDirty" | "multipliersNotApplied" | "destinationCorrected"
   >;
   splice: Pick<SpliceSessionView, "panel">;
   /** 軸を「未使用」と分ける重み（`useRoutePlanner.ts: routeWeights`）。 */
@@ -135,7 +135,9 @@ export default function RouteOutcome({ results, generation, splice, routeWeights
   return (
     <>
       {generation.conditionsDirty && <WarningText>生成条件が変更されています</WarningText>}
-      {generation.weightsNotApplied && <WarningText>重み配分を反映できず、既定の配分で作りました。</WarningText>}
+      {generation.multipliersNotApplied && (
+        <WarningText>軸ごとの倍率を反映できず、標準の倍率で作りました。</WarningText>
+      )}
       {generation.destinationCorrected && (
         <WarningText>
           指定した地点は自転車で行けない場所だったため、近くのアクセス可能な地点へ補正しました。

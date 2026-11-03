@@ -752,7 +752,7 @@ async def test_route_generation_calls_from_python_only_the_jit_that_the_image_ba
         ),
     )
     with avoid_axis_declared():
-        generator = generator_for(road_network_root, grid_network(), 0.0, wind)
+        generator = generator_for(road_network_root, grid_network(), wind)
         departure = datetime(2026, 9, 22, 8, tzinfo=timezone(timedelta(hours=9)))
         assert await generator.generate_loops(
                 at(CENTER), 4.0, 1.5, points=NO_POINTS, max_routes=3, start_time=departure)

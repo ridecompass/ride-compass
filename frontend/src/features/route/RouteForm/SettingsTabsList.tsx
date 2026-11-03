@@ -8,10 +8,14 @@ const SETTINGS_TABS: readonly { value: SettingsTab; label: string; usage: string
   {
     value: "generate",
     label: "条件",
-    usage: "地点・全長の目標・候補の数を決め、いまの設定や地点に名前を付けて保存します。",
+    usage: "地点・全長の目標・候補の数・負担の強さを決め、いまの設定や地点に名前を付けて保存します。",
   },
-  { value: "weights", label: "重み", usage: "道を選ぶときに、どの評価軸をどれだけ重く見るかを決めます。" },
-  { value: "exclusions", label: "除外", usage: "ルートに使わない道路の種類と、道ごとの避け方を選びます。" },
+  {
+    value: "weights",
+    label: "負担",
+    usage: "道を選ぶときに、負担（登り・向かい風・止まる所・路面など）の種類ごとに、どれだけ重く見るかを決めます。",
+  },
+  { value: "exclusions", label: "回避", usage: "ルートに使わない道路の種類と、道ごとの避け方を選びます。" },
   { value: "saved", label: "保存済み", usage: "名前を付けて保存した地点とプリセット（設定）を並べ、呼び出します。" },
 ];
 

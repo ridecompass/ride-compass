@@ -70,6 +70,10 @@ export async function installApiMocks(page: Page): Promise<void> {
   await page.route(`${API_BASE}/api/routes/generate/*`, (route) => route.fulfill({ json: doneJobFixture() }));
 
   await page.route(`${API_BASE}/api/axis-catalog*`, (route) => route.fulfill({ json: defaultAxisCatalogFixture() }));
+  // 費用の軸の定義がまだ無い形（backendは404）で答える。
+  await page.route(`${API_BASE}/api/cost-axes*`, (route) =>
+    route.fulfill({ status: 404, json: { detail: "費用の軸の定義はまだありません" } }),
+  );
   // 軸のレンズで塗る道ごとの材料。材料を持つ道が無い形で答える。
   await page.route(`${API_BASE}/api/region/way-materials/**`, (route) => route.fulfill({ json: {} }));
   await page.route(`${API_BASE}/api/region/road-classes/**`, (route) => route.fulfill({ json: {} }));

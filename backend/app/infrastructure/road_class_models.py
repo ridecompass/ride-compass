@@ -176,7 +176,7 @@ class RoadRollingResistanceClassRow(Base):
 
 
 class RoadAvoidanceClassificationRow(Base):
-    """除外タブに出す分け方（地図の線の層の分け方だけ。凡例に無い見出しを作らない）。区分は全部「通る」で出る（違うものだけ
+    """回避タブに出す分け方（地図の線の層の分け方だけ。凡例に無い見出しを作らない）。区分は全部「通る」で出る（違うものだけ
     `road_avoidance_overrides`が持つ）。"""
 
     __tablename__ = "road_avoidance_classifications"
@@ -205,5 +205,5 @@ class RoadAvoidanceOverrideRow(Base):
     class_key: Mapped[str] = mapped_column(String, primary_key=True)
     #: NULLは「通る」。
     default_level: Mapped[str | None] = mapped_column(String, nullable=True)
-    #: falseは除外タブに出さず、段も効かせない。
+    #: falseは回避タブに出さず、段も効かせない。
     selectable: Mapped[bool] = mapped_column(Boolean, nullable=False)

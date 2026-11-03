@@ -12,9 +12,6 @@ from pydantic import Field, model_validator
 from app.domain.axis_definitions import AXIS_DEFINITIONS, default_axis_weights, published_axis_definitions
 from app.domain.strict_model import StrictModel
 
-#: 既定の重みが0の軸を画面で入れたときの重み（配分を調整する前の出発点）。
-ENABLED_AXIS_WEIGHT = 0.1
-
 
 def published_axis_ids() -> set[str]:
     """重みを付けられる軸。内部軸（is_published=False、他の公開軸から参照される専用の推定軸）は

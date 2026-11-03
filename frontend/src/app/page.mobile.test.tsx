@@ -60,7 +60,7 @@ describe("スマホのシート", () => {
     expect(screen.queryByRole("dialog", { name: "ルートを作れませんでした" })).toBeNull();
 
     expect(originMark().draggable).toBe(true);
-    await user.click(within(settingsSheet).getByRole("tab", { name: "重み" }));
+    await user.click(within(settingsSheet).getByRole("tab", { name: "負担" }));
     expect(originMark().draggable).toBe(false);
     await user.click(within(settingsSheet).getByRole("tab", { name: "条件" }));
     clickMap(HERE);

@@ -166,6 +166,11 @@ def replace_cost_axes(definitions: CostAxisDefinitions | None) -> None:
     _current = definitions
 
 
+def cost_axis_ids(definitions: CostAxisDefinitions | None) -> tuple[str, ...]:
+    """費用の軸のid。体力の軸をコードの表の順、続けて道の負担の軸を定義の順で（定義が無ければ空）。"""
+    return () if definitions is None else (*EFFORT_AXES, *definitions.burden)
+
+
 def burden_material_ids(definitions: CostAxisDefinitions | None) -> tuple[str, ...]:
     """軸の定義の道の負担の軸が読む材料id（重複を除き、軸の順）。静的スコア行列はこれらを軸の構成と無関係に列として運ぶ。"""
     return () if definitions is None else tuple(dict.fromkeys(axis.burden.material for axis in definitions.burden.values()))

@@ -12,6 +12,7 @@ import { catalogEntry, catalogResponse } from "@/testing/catalogAxes";
 import { serveGenerationJobs } from "@/testing/generationJobs";
 import { makeGenerationConditions, makeRouteCandidate, routeThrough, type Places } from "@/testing/routeFixtures";
 import type { RouteCandidate } from "@/types/route";
+import { STANDARD_COST_PREFERENCE } from "@/features/route/costPreference";
 
 export const SPLICE_CATALOG = catalogResponse([catalogEntry({ axis_id: "axis_a", default_weight: 1 })], {
   client_tuning: { [CLIENT_TUNING_IDS.minStretchKm]: 0.1 },
@@ -54,7 +55,7 @@ export const BASIS: GenerationInput = {
   startTime: new Date("2026-10-04T09:00:00Z"),
   startTimePinned: true,
   roadAvoidance: {},
-  routePreference: { axis_a: 1 },
+  costPreference: STANDARD_COST_PREFERENCE,
   waypoints: [],
   destination: { latitude: 35.6, longitude: 139.73 },
 };
@@ -63,8 +64,7 @@ export const BASIS: GenerationInput = {
 const CONDITIONS = makeGenerationConditions({
   latitude: BASIS.origin.latitude,
   longitude: BASIS.origin.longitude,
-  route_preference: { axis_a: 1 },
-  penalty_strength: 1,
+  cost_preference: STANDARD_COST_PREFERENCE,
   max_routes: BASIS.maxRoutes,
   start_time: BASIS.startTime.toISOString(),
   assumed_speed_kmh: BASIS.assumedSpeedKmh,

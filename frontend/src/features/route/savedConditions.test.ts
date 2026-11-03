@@ -1,8 +1,8 @@
 // @vitest-environment node
 /**
  * `features/route/savedConditions.ts`——保存した生成の条件の一覧を読む・名前の案・何が保存されるかの説明・一覧への入れ方。
- * 読むときは、今の画面が受け付けない件だけを捨ててほかの件を残し、避け方は段として読める鍵だけを残す。重みの説明は、上書きしない
- * 重みなら既定の配分を、上書きした重みなら公開軸へ揃えた配分を、軸ごとの割合で出す。同じ名前で保存すると上書きする。
+ * 読むときは、今の画面が受け付けない件だけを捨ててほかの件を残し、避け方は段として読める鍵だけを残す。つまみと倍率は読めなければ
+ * 件を捨てずに標準へ戻す。倍率の説明は、標準でないつまみと軸の倍率だけを出す。同じ名前で保存すると上書きする。
  *
  * ここで見ないもの:
  * - 距離・候補数の範囲（`acceptedDistanceInput`・`acceptedMaxRoutesInput`） → `useGenerationConditions.test.ts`の保存値の読み直し
@@ -11,6 +11,7 @@
  */
 import { describe, expect, it } from "vitest";
 
+import type { CostAxisCatalog } from "@/hooks/useCostAxisCatalog";
 import { EMPTY_CATALOG } from "@/lib/axisCatalog";
 import { AVOIDANCE_LEVELS, avoidanceRow, catalogEntry, catalogOf, roadClassCatalog } from "@/testing/catalogAxes";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
@@ -34,11 +35,55 @@ const ENTRY: SavedCondition = {
   origin: POINT,
   waypoints: [POINT],
   destination: POINT,
-  routePreference: { axis_a: 0.7 },
+  costPreference: { strength: 1.5, multipliers: { ascent: 2 } },
   roadAvoidance: { gravel: "avoid" },
 };
 
+const NO_BANDS = { thresholds: [], band_labels: ["段"] };
+const NO_EQUIVALENTS = { kind: "examples" as const, examples: [] };
+
+const COST_CATALOG: CostAxisCatalog = {
+  axes: [
+    {
+      axisId: "ascent",
+      ledger: "effort",
+      label: "登坂",
+      description: "",
+      iconId: "",
+      lens: NO_BANDS,
+      lensEquivalents: NO_EQUIVALENTS,
+    },
+    {
+      axisId: "vibration",
+      ledger: "burden",
+      label: "振動",
+      description: "",
+      iconId: "",
+      lens: NO_BANDS,
+      lensEquivalents: NO_EQUIVALENTS,
+    },
+  ],
+  avoidanceLabel: "回避指定",
+  lenses: null,
+  loaded: true,
+  failed: false,
+};
+
 describe("readSavedConditions", () => {
+  it.each([
+    ["割合の重みで保存した件（つまみと倍率が無い）", { costPreference: undefined }, { strength: 1, multipliers: {} }],
+    ["段に無いつまみ", { costPreference: { strength: 1.3, multipliers: {} } }, { strength: 1, multipliers: {} }],
+    [
+      "段に無い・数でない倍率はその軸だけ",
+      { costPreference: { strength: 2, multipliers: { ascent: 1.5, vibration: "2", gone: 0 } } },
+      { strength: 2, multipliers: { gone: 0 } },
+    ],
+  ])("つまみと倍率が読めない件も捨てず、読めない所を標準へ戻す: %s", (_, change, expected) => {
+    expect(readSavedConditions(JSON.stringify([{ ...ENTRY, ...change }]))).toEqual([
+      { ...ENTRY, costPreference: expected },
+    ]);
+  });
+
   it("読める件はそのまま返す", () => {
     expect(readSavedConditions(JSON.stringify([ENTRY, { ...ENTRY, name: "現在地から", origin: null }]))).toEqual([
       ENTRY,
@@ -54,8 +99,6 @@ describe("readSavedConditions", () => {
     ["範囲外の候補数", { maxRoutes: "0" }],
     ["座標でない出発地", { origin: { latitude: "35" } }],
     ["上限を超える経由地", { waypoints: Array(routeGenerateConfig.max_waypoints + 1).fill(POINT) }],
-    ["数でない重み", { routePreference: { axis_a: "0.7" } }],
-    ["負の重み", { routePreference: { axis_a: -0.1 } }],
     // 値がundefinedの欄はJSONに書かれない。
     ["避け方を持たない", { roadAvoidance: undefined }],
   ])("%sの件だけを捨て、ほかの件は残す", (_, broken) => {
@@ -117,20 +160,18 @@ describe("describeConditions", () => {
     ["経由地は地点の数", SHAPES.loopVia, "周回 30km・経由 1地点・候補 3本"],
     ["目的地だけ", SHAPES.destinationOnly, "目的地へ・候補 3本"],
   ])("条件: %s", (_, conditions, expected) => {
-    expect(describeConditions({ ...ENTRY, ...conditions }, CATALOG).route).toBe(expected);
+    expect(describeConditions({ ...ENTRY, ...conditions }, CATALOG, COST_CATALOG).route).toBe(expected);
   });
 
   it.each([
-    ["上書きしない重みは、既定の配分を割合の大きい順に", null, CATALOG, "軸B 75%・軸A 25%"],
+    ["標準", { strength: 1, multipliers: { ascent: 1 } }, "標準"],
     [
-      "上書きした重みは、公開軸へ揃えて（無い軸は既定・消えた軸は外す）",
-      { axis_a: 0.75, axis_gone: 1 },
-      CATALOG,
-      "軸A 50%・軸B 50%",
+      "標準でないつまみと軸の倍率だけを、軸の並びで（消えた軸は出さない）",
+      { strength: 0.5, multipliers: { vibration: 0, ascent: 2, gone: 3 } },
+      "全体 少し・登坂 ×2・振動 無視",
     ],
-    ["軸カタログが届く前は、割合を出さない", { axis_a: 1 }, EMPTY_CATALOG, "—"],
-  ])("重み: %s", (_, routePreference, catalog, expected) => {
-    expect(describeConditions({ ...ENTRY, routePreference }, catalog).weights).toBe(expected);
+  ])("倍率: %s", (_, costPreference, expected) => {
+    expect(describeConditions({ ...ENTRY, costPreference }, CATALOG, COST_CATALOG).costPreference).toBe(expected);
   });
 
   it.each([
@@ -143,7 +184,7 @@ describe("describeConditions", () => {
     ["通る行しか無ければ無いと出す", { unpaved: "pass", private: "pass" }, CATALOG, "なし"],
     ["軸カタログが届く前は、行が分からないので無いと出す", { gravel: "exclude" }, EMPTY_CATALOG, "なし"],
   ] as const)("除外: %s", (_, roadAvoidance, catalog, expected) => {
-    expect(describeConditions({ ...ENTRY, roadAvoidance }, catalog).exclusions).toBe(expected);
+    expect(describeConditions({ ...ENTRY, roadAvoidance }, catalog, COST_CATALOG).exclusions).toBe(expected);
   });
 });
 

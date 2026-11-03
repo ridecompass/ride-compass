@@ -11,7 +11,7 @@
 
 | レイヤー | ファイル |
 |---|---|
-| domain | `evaluation.py`（Edge Costの算出。探索範囲の静的スコア行列と、コストの合成・逆算）・`hard_filters.py`（0次フィルタ）・`road_avoidance.py`（道の行ごとの避け方）・`route_preference.py`（重み指定）・`dynamic_materials.py`（風などリクエスト時に決まる材料）・`axis_inspector.py`（区間インスペクタ）・`difficulty.py`（軸の得点の合成と、区間からルートへの集約）・`material_catalog.py`・`material_coverage_spec.py`（材料の欠損率の測り方の型と、欠損率の見出し）・`material_value_labels.py`（材料のタグの値ごとの日本語の対訳表）・`material_sql.py`（材料の値をSQLで導出する式。道・ノードの生データを読む副問い合わせは`infrastructure/source_models.py`） |
+| domain | `evaluation.py`（Edge Costの算出。探索範囲の静的スコア行列と、コストの合成・逆算）・`hard_filters.py`（0次フィルタ）・`road_avoidance.py`（道の行ごとの避け方）・`route_preference.py`（重み指定）・`cost_preference.py`（費用の式の利用者の値: 全体のつまみと費用の軸ごとの倍率と、その範囲）・`dynamic_materials.py`（風などリクエスト時に決まる材料）・`axis_inspector.py`（区間インスペクタ）・`difficulty.py`（軸の得点の合成と、区間からルートへの集約）・`material_catalog.py`・`material_coverage_spec.py`（材料の欠損率の測り方の型と、欠損率の見出し）・`material_value_labels.py`（材料のタグの値ごとの日本語の対訳表）・`material_sql.py`（材料の値をSQLで導出する式。道・ノードの生データを読む副問い合わせは`infrastructure/source_models.py`） |
 | services | `material_coverage_service.py` |
 | infrastructure | `material_coverage.py`（材料ごとの欠損割合の集計クエリ） |
 | api | `material_catalog.py`（材料カタログ・材料値一覧・欠損割合のエンドポイント） |
@@ -132,8 +132,9 @@ way粒度の経路も**区間向けと同じ式**を使う。`way_from_clause`�
 
 - 評価できなかった軸は合成から除外され、残りの重みで再正規化される。
 - `penalty_strength`（P）は**主観的割増と時間の換算レート**。値は較正値`evaluation.penalty_strength`
-  （`domain/tuning.py`）だけが持ち、要求では変えられず、エンジンを組むたびに読む
+  （`domain/tuning.py`。標準的な人の強さ）に、要求の全体のつまみ（標準1）を掛けたもので、エンジンを組むたびに読む
   （`services/route_generation_setup.py: assemble_route_generation_setup`。`compose_costs_from_axis_matrix`は既定を持たない）。
+  軸の重みは要求で変えられず、いつも既定の重み。
   走行モデルへ入っている現象を写した軸の既定重みは0なので、difficultyは主観的な軸だけの加重平均になり、物理の軸で
   薄まらないぶん大きく出る。Pの既定はその物差しに合わせた値で、実走から較正した値ではない。探索のコストは
   `所要時間 × (1 + P × difficulty/100)`＝体感の所要時間（密度の軸の分は下の「密度の軸」のとおり足す）で、P=1は
@@ -256,6 +257,10 @@ bbox全体ぶんのコストをリクエストにつき1回だけnumpyで合成�
   重みを掛けて返し（`domain/cycling_speed.py: SegmentSpeedModel.ride`）、道の負担は時刻に依らないのでリクエストに1回だけ
   求める。曲がる所の費用も同じ換算で組み（`LegCostComposer.transition_costs`）、探索へは`RoadGraphContext.transition_cost`
   で渡る。エンジン（`services/road_graph_engine.py`）は、費用の軸の定義が表にあるときだけ`ledger`を渡す。
+- **利用者の値**: つまみと倍率は生成の要求の`cost_preference`（`domain/cost_preference.py: CostPreference`）で届く。つまみは
+  較正値`evaluation.penalty_strength`に掛ける比なので、エンジンへは つまみ × 較正値 を渡す（点数の割増の式のPと同じ値）——較正値を
+  変えても利用者の値は標準のまま。倍率は書いていない軸を標準とし、条件のエコーへは今の費用の軸を全部書いた形
+  （`CostPreference.resolved`）を返す。
 - **組み立ての部品**: 走行の模型の入力（転がり抵抗・止まる出来事の待ちと漕ぎ出し・断面。`domain/leg_costs.py: travel_inputs`）と
   道の負担の1kmあたりの重さ（`domain/leg_costs.py: burden_weights`）は、材料の列（材料id→区間の列）から組む関数で、探索の合成と地図のレンズ
   （[動的材料・フィーチャー値配信](dynamic-way-values.md)「費用の軸のレンズ」）が同じものを呼ぶ。代償の秒は軸ごとの内訳

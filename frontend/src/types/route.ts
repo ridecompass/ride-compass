@@ -46,6 +46,8 @@ export type RouteGenerateJobStatusResponse = GetJson<"/api/routes/generate/{job_
 
 export type RoutePreferenceWeights = Schemas["RoutePreferenceWeights"];
 export type RoadAvoidanceOverride = Schemas["RoadAvoidanceOverride"];
+/** 代償の全体に掛けるつまみと、費用の軸ごとの倍率。 */
+export type CostPreference = Schemas["CostPreference-Output"];
 
 // 実際に適用された条件のエコー。
 export type GenerationConditions = Schemas["GenerationConditions"];

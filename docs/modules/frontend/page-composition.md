@@ -505,8 +505,8 @@ localStorageへの保存・復元を1箇所に集約する。
   （画面の形が変わったあとも、前に保存した一覧が丸ごと消えない）。
 - 保存の形を変えても、前の形を読み替える`deserialize`は持たない。前の形の保存は読めない値として既定値になり、一覧なら
   その件だけが捨てられる。
-- `useStoredJsonState`は`JSON.stringify`/`JSON.parse`を既定にした薄いラッパー、`useStoredBooleanState`は
-  それに加えて保存値が真偽値かまで確かめるラッパー。
+- `useStoredJsonState`は`JSON.stringify`/`JSON.parse`で保存し、渡した読み方で今の形として読むラッパー、
+  `useStoredBooleanState`は保存値が真偽値かまで確かめるラッパー。
 - 読み書きの失敗（プライベートブラウジング等）はデフォルト値へのフォールバックとして
   握りつぶす。
 
@@ -522,19 +522,13 @@ Reactの外（モジュール評価時に初期値を決めるシングルトン
 
 ## page.tsxが橋渡しする主なデータフロー
 
-- 重み（保存値、`RouteSettingsPanel`が編集）→ `features/route/routePreferenceSync.ts: alignRoutePreference`で
-  公開軸へキーを揃えた値 → 重みタブ・ルート生成リクエスト（`routePreferenceToSend`）・道の評価（`MapView`）・
-  結果の重みの表示。**揃えるのは`useGenerationConditions.ts`が読むときの1か所だけ**で、どの読み手も同じ揃えた値を読む
-  （保存値は書き換えず、利用者が次に重みを動かしたときに揃った形で書かれる）。上書きしていない間は保存値を読まず、既定の重みを
-  揃えた値を読む（重みタブが、送らない間に効く重みを出す）。**利用者が重みを上書きしていない間
-  （`weightOverrideEnabled`がfalse）と、軸カタログを取得できていない間は`route_preference`
-  自体を送らず、backendの既定の重みへ委ねる**——上書きしていない利用者の保存値は利用者が
-  決めた重みではなく、取得前は軸が0件のため、そのまま整合させると保存済みの重みを全部消す。
+- つまみと倍率（保存値。つまみは「条件」タブ、倍率は「負担」タブ（`RouteSettingsPanel`）が編集）→ ルート生成リクエスト（`useGenerationConditions.ts`の
+  `costPreferenceToSend`。今の費用の軸のうち標準でない倍率だけを載せ、費用の軸の一覧が届いていない間は倍率を載せない）。
+  道の評価（`MapView`の区間インスペクタ）は軸の重みを送らず、backendの既定の重みで見せる。
 - 走行条件（走行方位・出発時刻・想定速度）→ 地図の見え方（`useMapView`の入力）・生成リクエスト・
   道の詳細（`MapView`の`rideConditions`）が同じ値を読む（上記「動的材料の状態別表現契約」参照）。
 - 軸を「未使用」と分ける重み（`useRoutePlanner.ts: routeWeights`）→ レンズの選択肢（`useMapView`の`routeWeights`）と
-  候補の中身（`RouteOutcome`）。生成に使われた重み（`useRouteResults.ts: usedWeights`。backendが生成時に使った値を返し、
-  生成が結果と一緒に渡す）で、生成前は代わりに今の設定の重み——重みタブが薄く出す軸と同じ軸が「未使用」に並ぶ。
+  候補の中身（`RouteOutcome`）。生成の要求は軸の重みを持たないので、軸カタログの既定の重み。
 - 地図の見えている範囲の真ん中（`useMapView`の`center`）→ 地点を探す欄（`RouteForm`の`mapCenter`）。施設の候補を近い順に並べる点。
 - 地図の見え方の値（`useMapView`の`look`）→ `MapView`。レイヤーのON/OFF・レンズ・塗っている軸・
   隠した行・取得結果の状態そのものだけを渡し、そこから導けるもの（どのレイヤーを出すか・家族ごとの
@@ -660,8 +654,8 @@ propでヘッダ右側・閉じるボタンの手前へ要素を差し込む（�
 利用者が
 出発時刻を選んでいない間は`start_time`を比べない——共有時刻は「今」へ5分刻みで追従するので、
 放置するだけで値が変わる（何もしていないのに印が点くと、印が合図として機能しなくなる）。
-キーは並び順に依存しない形でJSON化する——`road_avoidance`・`route_preference`は保存値からの
-復元やキー整合の補完でプロパティの並びが変わりうるため。
+キーは並び順に依存しない形でJSON化する——`road_avoidance`・`cost_preference`は保存値からの
+復元や組み直しでプロパティの並びが変わりうるため。
 
 タブ列の上には、条件変更後の未反映（`conditionsDirty`）を知らせるヒントに加え、
 目的地に指定した地点が自転車で行ける道路に繋がっていなかったため

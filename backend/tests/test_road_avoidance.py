@@ -2,7 +2,7 @@
 
 ここで見ないもの:
 - 段の結果がいつも除く道と合わさって探索から除く区間になること → `test_hard_filters.py`
-- 選べる行の並びと、除外タブへ配る形 → `test_road_class_catalog.py`
+- 選べる行の並びと、回避タブへ配る形 → `test_road_class_catalog.py`
 - 割り増しが区間の費用に掛かること → `test_leg_costs.py`
 """
 

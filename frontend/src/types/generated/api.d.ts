@@ -1349,6 +1349,30 @@ export interface components {
             /** Avoidance Seconds */
             avoidance_seconds: number;
         };
+        /** CostPreference */
+        "CostPreference-Input": {
+            /**
+             * Strength
+             * @default 1
+             */
+            strength: number;
+            /** Multipliers */
+            multipliers?: {
+                [key: string]: number;
+            };
+        };
+        /** CostPreference */
+        "CostPreference-Output": {
+            /**
+             * Strength
+             * @default 1
+             */
+            strength: number;
+            /** Multipliers */
+            multipliers: {
+                [key: string]: number;
+            };
+        };
         /** DbStatusReport */
         DbStatusReport: {
             /**
@@ -1475,9 +1499,7 @@ export interface components {
             distance_km: number | null;
             /** Distance Tolerance Km */
             distance_tolerance_km: number | null;
-            route_preference: components["schemas"]["RoutePreferenceWeights"];
-            /** Penalty Strength */
-            penalty_strength: number;
+            cost_preference: components["schemas"]["CostPreference-Output"];
             road_avoidance: components["schemas"]["RoadAvoidanceOverride"];
             /** Max Routes */
             max_routes: number;
@@ -2271,7 +2293,7 @@ export interface components {
             longitude: number;
             /** Distance Km */
             distance_km?: number | null;
-            route_preference?: components["schemas"]["RoutePreferenceWeights"] | null;
+            cost_preference?: components["schemas"]["CostPreference-Input"];
             road_avoidance: components["schemas"]["RoadAvoidanceOverride"];
             /** Max Routes */
             max_routes: number;

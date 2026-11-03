@@ -1,8 +1,8 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
 import { getCostAxisCatalog } from "@/services/costAxisCatalogApi";
-import { getQueryClient } from "@/lib/queryClient";
+import { retrySharedCatalogFetch, useSharedCatalog } from "@/hooks/useSharedCatalog";
+import type { FetchFailure } from "@/types/fetchFailure";
 import type { CostAxisCatalogResponse } from "@/types/route";
 
 const COST_AXIS_CATALOG_QUERY_KEY = ["cost-axis-catalog"] as const;
@@ -10,7 +10,7 @@ const COST_AXIS_CATALOG_QUERY_KEY = ["cost-axis-catalog"] as const;
 type CostAxisEntry = CostAxisCatalogResponse["axes"][number];
 
 /** 費用の軸1本（`GET /api/cost-axes`の1行を画面が読む形へ移したもの）。 */
-interface CostAxis {
+export interface CostAxis {
   /** 軸id。倍率の辞書のキーで、地図のレンズのidでもある。 */
   axisId: string;
   /** 軸の費目を書く帳簿。 */
@@ -37,7 +37,7 @@ export interface CostAxisCatalog {
   avoidanceLabel: string;
   /** 地図のレンズ。定義がまだ無い間・届くまではnull。 */
   lenses: CostLensCatalog | null;
-  /** 取得が成功したか。 */
+  /** 取得が成功したか。falseの間は`axes`が空なので、今の軸と揃うことを要る処理（倍率を送る）はこれで未確定を区別する。 */
   loaded: boolean;
   /** 取得に失敗し、まだ一度も成功していないか（`loaded`と同時にtrueにならない）。 */
   failed: boolean;
@@ -74,19 +74,30 @@ function costAxisCatalogFromResponse(response: CostAxisCatalogResponse | null): 
   };
 }
 
-/** 費用の軸の一覧。取得は読み手の間で1つを共有し、マウントのたびに取り直す（管理APIで書いた定義を再デプロイなしに
- * 反映する）。一度届いた応答は、後の取得の失敗で巻き戻さない。届くまで・失敗の間は軸0件（`loaded`・`failed`で見分ける）。 */
+/** 費用の軸の一覧の取得をやり直す（`failed`からの再試行）。 */
+export function retryCostAxisCatalogFetch(): void {
+  retrySharedCatalogFetch(COST_AXIS_CATALOG_QUERY_KEY);
+}
+
+const COST_AXIS_CATALOG_FETCH_FAILURE: FetchFailure = {
+  id: "cost-axis-catalog",
+  label: "費用の軸の一覧",
+  effect: "ルートは軸ごとの倍率を変えていても反映できず、標準の倍率で作ります。",
+  onRetry: retryCostAxisCatalogFetch,
+};
+
+/** 費用の軸の一覧が取れていないことの項目（取れていれば・取得中なら無い）。常設ヘッダーの印と、負担タブの告知が読む。 */
+export function costAxisCatalogFetchFailure(catalog: CostAxisCatalog): FetchFailure | null {
+  return catalog.failed ? COST_AXIS_CATALOG_FETCH_FAILURE : null;
+}
+
+/** 費用の軸の一覧。届くまで・失敗の間は軸0件（`loaded`・`failed`で見分ける）。取得の共有の仕方は`useSharedCatalog`。 */
 export function useCostAxisCatalog(): CostAxisCatalog {
-  const { data, isError, isFetching } = useQuery(
-    // 読み手が一時いなくなっても捨てない（捨てると、次にマウントした部品が軸0件から始まる）。
-    {
-      queryKey: COST_AXIS_CATALOG_QUERY_KEY,
-      queryFn: getCostAxisCatalog,
-      gcTime: Infinity,
-      select: costAxisCatalogFromResponse,
-    },
-    getQueryClient(),
+  const { data, failed } = useSharedCatalog(
+    COST_AXIS_CATALOG_QUERY_KEY,
+    getCostAxisCatalog,
+    costAxisCatalogFromResponse,
   );
   if (data !== undefined) return data;
-  return isError && !isFetching ? FAILED : EMPTY;
+  return failed ? FAILED : EMPTY;
 }

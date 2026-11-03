@@ -18,6 +18,8 @@ import { panelIconToggleClass, Toggle } from "@/components/ui/Toggle/Toggle";
 import { useAxisCatalog } from "@/hooks/useAxisCatalog";
 import { CLIENT_TUNING_IDS, clientTuningValue } from "@/lib/axisCatalog";
 import { cn } from "@/lib/cn";
+import CostLevelPicker from "@/features/route/RouteSettingsPanel/CostLevelPicker";
+import { COST_STRENGTH_LEVELS } from "@/features/route/costPreference";
 
 /** 「ルート設定」区分のタブ。タブ列（`SettingsTabsList.tsx`）と選択状態は外が持ち（見出し行に置くため）、
  * ここは各タブの中身だけを描く。 */
@@ -36,12 +38,14 @@ interface RouteFormProps extends Omit<RoutePointsProps, "conditions"> {
       | "setMaxRoutesInput"
       | "distanceTargeted"
       | "setDistanceTargeted"
+      | "costPreference"
+      | "setCostPreference"
     >;
   /** 保存した候補を、その役割の地点として置き、置いた地点の詳しくを見せる（経由地は足す）。 */
   onPlaceFound: (role: PinRole, candidate: PlaceCandidate, waypointIndex: number | null) => void;
-  /** 「重み」タブの中身。 */
+  /** 「負担」タブの中身。 */
   weightsPanel: React.ReactNode;
-  /** 「除外」タブの中身。 */
+  /** 「回避」タブの中身。 */
   exclusionsPanel: React.ReactNode;
   /** 「条件」タブの、いまの設定を保存するアイコン（保存するものは各タブに及ぶが、条件を詰める所で保存する）。 */
   saveConditionsButton: React.ReactNode;
@@ -87,8 +91,16 @@ export default function RouteForm({
   savedConditionsPanel,
   ...points
 }: RouteFormProps) {
-  const { distanceTargeted, setDistanceTargeted, distanceInput, setDistanceInput, maxRoutesInput, setMaxRoutesInput } =
-    conditions;
+  const {
+    distanceTargeted,
+    setDistanceTargeted,
+    distanceInput,
+    setDistanceInput,
+    maxRoutesInput,
+    setMaxRoutesInput,
+    costPreference,
+    setCostPreference,
+  } = conditions;
   const distanceToggleName = distanceTargeted ? "全長の目標をやめる" : "全長の目標を決める";
   // 許容差は管理画面の較正値（目標の距離に対する割合）。引けない間は幅の文を出さない（較正したのとは別の数を出さない）。
   const distanceToleranceRatio = clientTuningValue(useAxisCatalog(), CLIENT_TUNING_IDS.distanceToleranceRatio);
@@ -170,6 +182,21 @@ export default function RouteForm({
             </div>
           </div>
           <div className="flex-none">{saveConditionsButton}</div>
+        </div>
+
+        {/* 全体のつまみ。軸ごとの倍率は「負担」タブが持つ。 */}
+        <div className="mb-2 flex items-center gap-1.5">
+          <span className={cn(textVariants({ variant: "hint" }), "flex-shrink-0")}>負担</span>
+          <CostLevelPicker
+            aria-label="負担の強さ"
+            usage="所要時間のほかに、疲れや道の負担をどれだけ重く見て道を選ぶかを選びます。"
+            levels={COST_STRENGTH_LEVELS}
+            value={costPreference.strength}
+            onChange={(strength) => setCostPreference((prev) => ({ ...prev, strength }))}
+          />
+          <InfoPopover triggerAriaLabel="負担の強さの説明" triggerClassName="flex-none">
+            所要時間のほかに、疲れや道の負担をどれだけ重く見て道を選ぶかです。「気にしない」は所要時間だけで選びます。負担の種類ごとの重さは「負担」タブで選べます。
+          </InfoPopover>
         </div>
 
         <RoutePoints conditions={conditions} {...points} />

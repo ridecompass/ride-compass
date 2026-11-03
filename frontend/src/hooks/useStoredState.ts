@@ -63,11 +63,15 @@ export function useStoredState<T>(
   return [value, setStoredValue];
 }
 
-// JSONで保存するuseState。
-export function useStoredJsonState<T>(key: string, defaultValue: T): [T, StoredStateSetter<T>] {
+// JSONで保存するuseState。保存値は`read`が今の形として読む（読めなければnullで、既定値になる）。
+export function useStoredJsonState<T>(
+  key: string,
+  defaultValue: T,
+  read: (stored: unknown) => T | null,
+): [T, StoredStateSetter<T>] {
   return useStoredState<T>(key, defaultValue, {
     serialize: JSON.stringify,
-    deserialize: (raw) => JSON.parse(raw) as T,
+    deserialize: (raw) => read(JSON.parse(raw)),
   });
 }
 
