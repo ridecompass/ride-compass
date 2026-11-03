@@ -16,12 +16,12 @@ import functools
 import pytest
 from sqlalchemy import text
 
-from app.batch import derive_elevation, derive_topology
+from app.batch import derive_topology
 from app.batch.dem_tile_store import PRODUCT_PRIORITY
 from app.batch.ingest import SourceRecord
 from app.domain.region import EDGE_UNIT_MIN_ZOOM, BoundingBox
 from tests.conftest import raw_connection
-from tests.source_ingest import dem_tile_records, ingest_records, way_record
+from tests.source_ingest import dem_tile_records, derive_elevation_at_default_step, ingest_records, way_record
 
 pytestmark = pytest.mark.asyncio(loop_scope="module")
 
@@ -53,7 +53,7 @@ async def _ingest_switchback(session) -> dict[int, tuple[float, float]]:
     await ingest_records("dem", _dem_records())
     async with raw_connection() as conn:
         await derive_topology.derive(conn)
-        await derive_elevation.derive(conn, previous=None)
+        await derive_elevation_at_default_step(conn)
     rows = await session.execute(
         text("SELECT e.segment_index, e.distance_m, m.average_grade FROM road_edges e JOIN edge_elevation m"
              " USING (osm_way_id, segment_index) WHERE e.osm_way_id = :way"), {"way": SWITCHBACK_WAY_ID})

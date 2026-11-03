@@ -155,22 +155,22 @@ EDGE_ROW_ARRAY_FIELDS: tuple[str, ...] = tuple(
 )
 
 
-def elevation_values_sql(vertices: str, step_m: float) -> str:
+def elevation_values_sql(vertices: str, step_m: str) -> str:
     """区間の点列（標高の断面）から、標高と勾配の値を出すSQL。
 
     `vertices`は`(osm_way_id, segment_index, ord, along_m, elev, on_structure)`を返す関係。`along_m`は区間の始まりから
     道に沿って測った点の位置（m）で、距離はすべてこの差で測る——点どうしを直線で測ると、曲がった区間で道のりより短く出て
-    勾配が大きく出る。`elev`がNULLの点は評価から外す。**外した後に隣り合う2点でも、元の点列では間に欠損を
-    挟んでいることがある**——そのまま隣接扱いすると、欠損区間の起伏が均された差として
+    勾配が大きく出る。区間の長さは最後の点の位置。`elev`がNULLの点は評価から外す。**外した後に隣り合う2点でも、元の点列では
+    間に欠損を挟んでいることがある**——そのまま隣接扱いすると、欠損区間の起伏が均された差として
     混入する。獲得/消失と一番急な勾配（欠損を挟むと信頼できない）は元の点列でも真に隣接していたペアだけから出す。
 
     一番急な勾配（`steepest_gain_percent`・`steepest_loss_percent`）は、隣り合う2点の間の勾配のうち、登りと下りの
-    それぞれの最大の大きさ（どちらも0以上）。**ならす幅は`step_m`（断面の刻み）で、間が刻みより短ければ高低差を刻みの幅で
-    割る**——刻みより短い区間の両端の差（数十mの道の跳ね上がり）を、その短さのまま勾配にしない。
+    それぞれの最大の大きさ（どちらも0以上）。点の間隔が勾配をならす幅になる。**区間が`step_m`（断面の刻み。SQLの式で渡す）
+    より短ければ、両端の差を刻みの幅で割る**——数十mの道の跳ね上がりを、その短さのまま急な坂にしない。
     公道としてありえない勾配の間は、標高データの読み違いとして最大に数えない。数えられる間が無い区間は値を持たない。
 
-    `on_structure`（橋・高架・トンネル）は**両端だけ**を使う。配信元のDEMは地表面の値で
-    構造物の高さを反映しないため（https://maps.gsi.go.jp/development/hyokochi.html に明記）、
+    `on_structure`（橋・高架・トンネル）は**値のある両端の2点だけ**を使い、その2点を隣り合う組として数える。配信元のDEMは
+    地表面の値で構造物の高さを反映しないため（https://maps.gsi.go.jp/development/hyokochi.html に明記）、
     中間の点は桁や坑道ではなく下の地形を指す。谷を渡る平らな橋で、谷底の起伏がそのまま
     獲得標高へ積まれてしまう。橋台・坑口は道が地面と接する位置なので、両端の標高は使える。
 
@@ -178,22 +178,28 @@ def elevation_values_sql(vertices: str, step_m: float) -> str:
     """
     return f"""
 WITH v AS ({vertices}),
-known AS (SELECT * FROM v WHERE elev IS NOT NULL),
+measured AS (
+    SELECT *, max(along_m) OVER (PARTITION BY osm_way_id, segment_index) AS length_m FROM v),
+known AS (
+    SELECT *, min(ord) OVER s AS first_ord, max(ord) OVER s AS last_ord
+    FROM measured WHERE elev IS NOT NULL WINDOW s AS (PARTITION BY osm_way_id, segment_index)),
+profile AS (SELECT * FROM known WHERE NOT on_structure OR ord IN (first_ord, last_ord)),
 ends AS (
     SELECT osm_way_id, segment_index, bool_or(on_structure) AS on_structure,
            count(*) AS n, max(along_m) - min(along_m) AS total_d,
            (array_agg(elev ORDER BY ord))[1] AS start_e,
            (array_agg(elev ORDER BY ord DESC))[1] AS end_e
-    FROM known GROUP BY osm_way_id, segment_index),
+    FROM profile GROUP BY osm_way_id, segment_index),
 pairs AS (
-    SELECT osm_way_id, segment_index,
+    SELECT osm_way_id, segment_index, length_m,
            elev - lag(elev) OVER w AS diff,
-           ord - lag(ord) OVER w = 1 AS adjacent,
+           on_structure OR ord - lag(ord) OVER w = 1 AS adjacent,
            along_m - lag(along_m) OVER w AS d
-    FROM known WINDOW w AS (PARTITION BY osm_way_id, segment_index ORDER BY ord)),
+    FROM profile WINDOW w AS (PARTITION BY osm_way_id, segment_index ORDER BY ord)),
 graded AS (
     SELECT osm_way_id, segment_index, diff, adjacent,
-           CASE WHEN adjacent AND d > 0 THEN diff / greatest(d, {float(step_m)}) * 100 END AS g
+           CASE WHEN adjacent AND d > 0
+                THEN diff / (CASE WHEN length_m < {step_m} THEN {step_m} ELSE d END) * 100 END AS g
     FROM pairs WHERE diff IS NOT NULL),
 agg AS (
     SELECT osm_way_id, segment_index,
@@ -212,17 +218,11 @@ raw AS (
 SELECT osm_way_id, segment_index,
        round(start_e::numeric, 1) AS start_elevation_m,
        round(end_e::numeric, 1)   AS end_elevation_m,
-       round((CASE WHEN on_structure THEN greatest(end_e - start_e, 0)
-                   ELSE gain END)::numeric, 1)  AS elevation_gain_m,
-       round((CASE WHEN on_structure THEN greatest(start_e - end_e, 0)
-                   ELSE loss END)::numeric, 1)  AS elevation_loss_m,
+       round(gain::numeric, 1)    AS elevation_gain_m,
+       round(loss::numeric, 1)    AS elevation_loss_m,
        round(avg_g::numeric, {AVERAGE_GRADE_DECIMALS}) AS average_grade,
-       round((CASE WHEN NOT on_structure THEN steepest_up
-                   WHEN avg_g IS NOT NULL THEN greatest(avg_g, 0) END)::numeric, {AVERAGE_GRADE_DECIMALS})
-           AS steepest_gain_percent,
-       round((CASE WHEN NOT on_structure THEN steepest_down
-                   WHEN avg_g IS NOT NULL THEN greatest(-avg_g, 0) END)::numeric, {AVERAGE_GRADE_DECIMALS})
-           AS steepest_loss_percent,
+       round(steepest_up::numeric, {AVERAGE_GRADE_DECIMALS})   AS steepest_gain_percent,
+       round(steepest_down::numeric, {AVERAGE_GRADE_DECIMALS}) AS steepest_loss_percent,
        on_structure
 FROM raw
 """

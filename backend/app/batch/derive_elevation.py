@@ -46,18 +46,22 @@ FROM road_edges e JOIN {WAYS_SOURCE_SQL} w ON w.osm_way_id = e.osm_way_id
 #: 断面の点を一度実体にしてからタイルへ結合する。関数から直に結合すると行数を見積もれず、
 #: プランナがタイル側を入れ子で読み直す計画を選ぶ。前回の値を写した区間（`_reused`）は作らない。
 #:
-#: 刻みの数は「区間の長さ÷`{step_m}`（刻みの上限）」の切り上げで、点は地表の道のりで等しく置く（`geography`の内挿）。
-#: 経緯度のまま内挿すると、東西と南北で1度の長さが違うぶん、曲がった区間で点の間隔がずれる。刻みは引数で渡せない
-#: （`CREATE TABLE AS`は文の引数を取らない）ので、数として埋める。
+#: 刻みの数は「区間の長さ÷`$1`（刻みの上限）」の切り上げで、点は地表の道のりで等しく置く（`geography`の内挿）。
+#: 経緯度のまま内挿すると、東西と南北で1度の長さが違うぶん、曲がった区間で点の間隔がずれる。両端は内挿せずに形の端を使い、
+#: 内挿の副問い合わせは`OFFSET 0`で外へ展開させない（展開されると経度と緯度の取り出しごとに内挿が走る）。
 _VERTICES = """
 CREATE TEMP TABLE _vertex ON COMMIT DROP AS
 SELECT row_number() OVER () AS vid, s.osm_way_id, s.segment_index, i AS ord, s.distance_m * i / k.steps AS along_m,
        ST_X(p.geom) AS lon, ST_Y(p.geom) AS lat, s.on_structure
 FROM _shape s
 CROSS JOIN LATERAL (SELECT CASE WHEN s.on_structure THEN 1
-                                ELSE greatest(1, ceil(s.distance_m / {step_m}))::int END AS steps) k
+                                ELSE greatest(1, ceil(s.distance_m / $1::float8))::int END AS steps) k
 CROSS JOIN LATERAL generate_series(0, k.steps) AS i
-CROSS JOIN LATERAL (SELECT ST_LineInterpolatePoint(s.geom::geography, i::float8 / k.steps)::geometry AS geom) p
+CROSS JOIN LATERAL (
+    SELECT CASE WHEN i = 0 THEN ST_StartPoint(s.geom)
+                WHEN i = k.steps THEN ST_EndPoint(s.geom)
+                ELSE ST_LineInterpolatePoint(s.geom::geography, i::float8 / k.steps)::geometry END AS geom
+    OFFSET 0) p
 WHERE NOT EXISTS (SELECT 1 FROM _reused r
                   WHERE r.osm_way_id = s.osm_way_id AND r.segment_index = s.segment_index)
 """
@@ -109,12 +113,11 @@ FROM _vertex v LEFT JOIN _vertex_elev e ON e.vid = v.vid
 _ELEVATION_COLUMNS = ("start_elevation_m", "end_elevation_m", "elevation_gain_m", "elevation_loss_m",
                       "average_grade", "steepest_gain_percent", "steepest_loss_percent", "on_structure")
 
-def _insert_elevation_sql(profile_step_m: float) -> str:
-    """値の出た区間だけを入れる。"""
-    return f"""
+#: 値の出た区間だけを入れる。`$1`は断面の刻みの上限（m）。
+_INSERT_ELEVATION = f"""
 INSERT INTO edge_elevation (osm_way_id, segment_index, {", ".join(_ELEVATION_COLUMNS)})
 SELECT osm_way_id, segment_index, {", ".join(_ELEVATION_COLUMNS)}
-FROM ({elevation_values_sql(_VERTEX_ELEVATIONS, profile_step_m)}) v
+FROM ({elevation_values_sql(_VERTEX_ELEVATIONS, "$1::float8")}) v
 """
 
 
@@ -163,7 +166,7 @@ async def _derive_elevation(conn: asyncpg.Connection, previous: str | None, prof
     if previous is not None:
         await conn.execute(copy_reused_sql("edge_elevation", _ELEVATION_COLUMNS, previous))
     logger.info("標高: 形と橋・トンネルの変わらない区間 %d本へ前回の値を写し、%d本を計算する", reused, edges - reused)
-    await conn.execute(_VERTICES.format(step_m=float(profile_step_m)))
+    await conn.execute(_VERTICES, profile_step_m)
     await conn.execute("ANALYZE _vertex")
     await conn.execute(_VERTEX_ELEVATION_TABLE)
     vertices = await conn.fetchval("SELECT count(*) FROM _vertex")
@@ -174,7 +177,7 @@ async def _derive_elevation(conn: asyncpg.Connection, previous: str | None, prof
         logger.info("標高: %s（z%d）で頂点 %d点に値が付いた / 残り %d/%d点",
                     product, zoom, filled, remaining, vertices)
         await conn.execute("ANALYZE _vertex_elev")
-    updated = affected_rows(await conn.execute(_insert_elevation_sql(profile_step_m)))
+    updated = affected_rows(await conn.execute(_INSERT_ELEVATION, profile_step_m))
 
     logger.info("標高: 計算した区間 %d/%d本に値が付いた / %.1f秒",
                 updated, edges - reused, time.perf_counter() - started)

@@ -1,4 +1,4 @@
-"""`domain/attributes.py: elevation_values_sql`——区間の頂点列の標高から、区間の標高と勾配を出すSQL。
+"""`domain/attributes.py: elevation_values_sql`——区間の断面の点列の標高から、区間の標高と勾配を出すSQL。
 
 PostGISで実行して、返った行を見る。点は道に沿って1歩（`STEP_M`）おきに置き、断面の刻み（ならす幅）も1歩にする——
 間が刻み以上なら、勾配は高低差÷間そのものになる。
@@ -25,19 +25,19 @@ def rise(percent: float, steps: int = 1) -> float:
     return STEP_M * steps * percent / 100
 
 
-def _relation(rows: list[str]) -> str:
-    return f"SELECT * FROM (VALUES {', '.join(rows)}) AS v(osm_way_id, segment_index, ord, along_m, elev, on_structure)"
-
-
-async def values(session, segments: dict[tuple[int, int], list], on_structure=frozenset()) -> dict:
-    """`{(道, 区間番号): [頂点ごとの標高（Noneは欠損）]}`をSQLへ通し、`{(道, 区間番号): 行}`で返す。"""
+async def values(session, segments: dict[tuple[int, int], list], on_structure=frozenset(), along=None) -> dict:
+    """`{(道, 区間番号): [点ごとの標高（Noneは欠損）]}`をSQLへ通し、`{(道, 区間番号): 行}`で返す。点の道のりの位置は
+    `along`（`{(道, 区間番号): [位置]}`）が持つ区間はその値、ほかは1歩おき。"""
     rows = []
     for (way, segment), elevations in segments.items():
         structure = "true" if (way, segment) in on_structure else "false"
-        for ord_, elev in enumerate(elevations):
+        positions = (along or {}).get((way, segment), [ord_ * STEP_M for ord_ in range(len(elevations))])
+        for ord_, (elev, along_m) in enumerate(zip(elevations, positions, strict=True)):
             elev_sql = "NULL" if elev is None else repr(float(elev))
-            rows.append(f"({way}, {segment}, {ord_}, {ord_ * STEP_M}::float8, {elev_sql}::float8, {structure})")
-    result = await session.execute(text(elevation_values_sql(_relation(rows), STEP_M)))
+            rows.append(f"({way}, {segment}, {ord_}, {along_m}::float8, {elev_sql}::float8, {structure})")
+    relation = (f"SELECT * FROM (VALUES {', '.join(rows)})"
+                " AS v(osm_way_id, segment_index, ord, along_m, elev, on_structure)")
+    result = await session.execute(text(elevation_values_sql(relation, f"{STEP_M}::float8")))
     return {
         (row.osm_way_id, row.segment_index): {
             key: (float(value) if isinstance(value, Decimal) else value)
@@ -48,8 +48,9 @@ async def values(session, segments: dict[tuple[int, int], list], on_structure=fr
     }
 
 
-async def one(session, elevations, on_structure=False) -> dict:
-    rows = await values(session, {(1, 0): elevations}, on_structure={(1, 0)} if on_structure else frozenset())
+async def one(session, elevations, on_structure=False, along=None) -> dict:
+    rows = await values(session, {(1, 0): elevations}, on_structure={(1, 0)} if on_structure else frozenset(),
+                        along=None if along is None else {(1, 0): along})
     return rows[(1, 0)]
 
 
@@ -105,22 +106,19 @@ async def test_gaps_only_between_known_vertices_give_no_climb_but_still_an_avera
 
 async def test_grades_are_measured_along_the_road(road_graph_session):
     """距離は点の道のりの位置の差で測る。曲がって戻る道は直線では近いが、勾配は走る長さで割る（直線で割ると大きく出る）。"""
-    rows = ["(1, 0, 0, 0.0::float8, 100.0::float8, false)",
-            f"(1, 0, 1, {3 * STEP_M}::float8, {100.0 + rise(3, 3)}::float8, false)"]
-    [row] = (await road_graph_session.execute(text(elevation_values_sql(_relation(rows), STEP_M)))).mappings().all()
+    row = await one(road_graph_session, [100.0, 100.0 + rise(3, 3)], along=[0.0, 3 * STEP_M])
 
-    assert float(row["average_grade"]) == pytest.approx(3.0, abs=0.005)
-    assert float(row["steepest_gain_percent"]) == pytest.approx(3.0, abs=0.005)
+    assert row["average_grade"] == pytest.approx(3.0, abs=0.005)
+    assert row["steepest_gain_percent"] == pytest.approx(3.0, abs=0.005)
 
 
 async def test_a_rise_over_less_than_the_step_is_spread_over_the_step(road_graph_session):
     """刻みより短い間の高低差は、刻みの幅でならして一番急な勾配にする（数十mの跳ね上がりを、その短さのまま勾配にしない）。
     平均勾配は道のりのとおり。"""
-    rows = ["(1, 0, 0, 0.0::float8, 10.0::float8, false)", f"(1, 0, 1, {STEP_M / 4}::float8, 12.0::float8, false)"]
-    [row] = (await road_graph_session.execute(text(elevation_values_sql(_relation(rows), STEP_M)))).mappings().all()
+    row = await one(road_graph_session, [10.0, 12.0], along=[0.0, STEP_M / 4])
 
-    assert float(row["steepest_gain_percent"]) == pytest.approx(2.0 / STEP_M * 100, abs=0.005)
-    assert float(row["average_grade"]) == pytest.approx(2.0 / (STEP_M / 4) * 100, abs=0.005)
+    assert row["steepest_gain_percent"] == pytest.approx(2.0 / STEP_M * 100, abs=0.005)
+    assert row["average_grade"] == pytest.approx(2.0 / (STEP_M / 4) * 100, abs=0.005)
 
 
 @pytest.mark.parametrize(
@@ -154,11 +152,18 @@ async def test_an_implausible_average_grade_has_no_value(road_graph_session, per
     assert row["elevation_gain_m"] + row["elevation_loss_m"] == pytest.approx(abs(rise(percent)), abs=0.05)
 
 
-async def test_vertices_at_the_same_place_give_no_grade(road_graph_session):
-    rows = ["(1, 0, 0, 0.0::float8, 10.0::float8, false)", "(1, 0, 1, 0.0::float8, 12.0::float8, false)"]
-    [row] = (await road_graph_session.execute(text(elevation_values_sql(_relation(rows), STEP_M)))).mappings().all()
+async def test_a_road_longer_than_the_step_is_graded_at_its_own_point_spacing(road_graph_session):
+    """刻みより長い区間は、点の間隔そのもので勾配を測る（刻みの幅で割り直すと、間隔が刻みより狭いぶん勾配が小さく出る）。"""
+    spacing = STEP_M * 0.6
+    row = await one(road_graph_session, [0.0, 6.0, 6.0], along=[0.0, spacing, 2 * spacing])
 
-    assert float(row["elevation_gain_m"]) == 2.0
+    assert row["steepest_gain_percent"] == pytest.approx(6.0 / spacing * 100, abs=0.005)
+
+
+async def test_vertices_at_the_same_place_give_no_grade(road_graph_session):
+    row = await one(road_graph_session, [10.0, 12.0], along=[0.0, 0.0])
+
+    assert row["elevation_gain_m"] == 2.0
     assert row["average_grade"] is None
 
 

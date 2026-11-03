@@ -18,6 +18,7 @@ from hypothesis import example, given
 from hypothesis import strategies as st
 
 from app.domain import route
+from app.domain.attributes import ElevationAttribute
 from app.domain.axis_definitions import BreakpointLinearShape, MaterialTerm
 from app.domain.route import DensityScoreInput, RouteSegmentDetail, SegmentDifficulty
 
@@ -173,8 +174,12 @@ def test_route_raw_values_match_the_mean_over_the_bins_of_the_segments(edges):
     ],
 )
 def test_a_road_shows_its_steepest_climb_or_else_its_steepest_descent(gain, loss, expected):
+    elevation = ElevationAttribute(edge_id="1:0:f", start_elevation_m=0.0, end_elevation_m=0.0, elevation_gain_m=0.0,
+                                   elevation_loss_m=0.0, average_grade=None,
+                                   steepest_gain_percent=gain, steepest_loss_percent=loss)
+
     # 文字の形まで比べる（-0.0は0.0と等しいが、画面に「-0%」と出る）。
-    assert repr(route.steepest_signed_percent(gain, loss)) == repr(expected)
+    assert repr(route.steepest_signed_percent(elevation)) == repr(expected)
 
 
 @pytest.mark.parametrize(

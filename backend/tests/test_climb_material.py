@@ -14,7 +14,7 @@ import functools
 import numpy as np
 import pytest
 
-from app.batch import derive_elevation, derive_topology
+from app.batch import derive_topology
 from app.batch.dem_tile_store import PRODUCT_PRIORITY
 from app.batch.ingest import SourceRecord
 from app.domain.axis_definitions import averages_density
@@ -23,7 +23,7 @@ from app.domain.region import BoundingBox
 from app.infrastructure.road_graph_repository import RoadGraphRepository
 from tests.axis_system_fixture import linear, shaped_axis
 from tests.conftest import raw_connection
-from tests.source_ingest import dem_tile_records, ingest_records, way_record
+from tests.source_ingest import dem_tile_records, derive_elevation_at_default_step, ingest_records, way_record
 
 pytestmark = pytest.mark.asyncio(loop_scope="module")
 
@@ -35,6 +35,9 @@ LONS = (139.700, 139.702, 139.704, 139.706, 139.708)
 AREA = BoundingBox(min_latitude=LAT - 0.005, min_longitude=LONS[0] - 0.005,
                    max_latitude=LAT + 0.005, max_longitude=LONS[-1] + 0.005)
 BASE_M, PEAK_M, END_M = 100.0, 120.0, 110.0
+#: 断面の刻み（m）。道1（約723m）を20の刻みに、峠までの半分を10の刻みに分け、峠に点が乗る幅にする——刻みの点が峠を
+#: 挟むと、峠の頂を削って登りを少なく数える（刻みより細かい起伏は数えない）。
+PROFILE_STEP_M = 36.5
 
 
 def _elevation(lon: float, lat: float) -> float:
@@ -58,7 +61,7 @@ async def _derive(*, cut_at_the_peak: bool) -> None:
     await ingest_records("dem", _dem_records())
     async with raw_connection() as conn:
         await derive_topology.derive(conn)
-        await derive_elevation.derive(conn, previous=None)
+        await derive_elevation_at_default_step(conn, profile_step_m=PROFILE_STEP_M)
 
 
 async def _climb_of_way_1(session, *, cut_at_the_peak: bool, forward: bool) -> tuple[np.ndarray, np.ndarray]:
@@ -83,7 +86,7 @@ async def test_the_climb_is_what_the_road_climbs_in_the_direction_travelled(road
     """向きを取り違えると、下り坂を登り坂として避け、登り坂を楽な道として選ぶ。"""
     values, distance_m = await _climb_of_way_1(road_graph_session, cut_at_the_peak=False, forward=forward)
 
-    # 標高の画素（約4m）の分だけ、頂点の標高が道の上の値からずれる。
+    # 標高の画素（約4m）の分だけ、点の標高が道の上の値からずれる。
     assert values[0] * distance_m[0] / 1000 == pytest.approx(climbed_m, abs=0.5)
 
 

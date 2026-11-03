@@ -548,22 +548,27 @@ def merge_road_classes(segments: list[RouteSegmentDetail]) -> dict[str, list[Roa
     return merged
 
 
-def steepest_signed_percent(gain_percent: float | None, loss_percent: float | None) -> float | None:
-    """道1本の続く坂の斜度（%、走る向きの符号つき）。一番急な登りがあればその値、無ければ一番急な下りを負の値で。
-    ならす幅は道の断面の刻みで、区間の中で計算し直さず道の値（区間の標高の表）から出す。値が無ければNone。"""
-    if gain_percent is None or loss_percent is None:
+def steepest_signed_percent(elevation: ElevationAttribute | None) -> float | None:
+    """道1本の続く坂の斜度（%、走る向きの符号つき）。一番急な登りがあればその値、無ければ一番急な下りを負の値で、
+    どちらも無ければ0（-0にしない）。ならす幅は道の断面の刻みで、区間の中で計算し直さず道の値（区間の標高の表）から出す。
+    値が無ければNone。"""
+    if elevation is None or elevation.steepest_gain_percent is None or elevation.steepest_loss_percent is None:
         return None
-    steepest = gain_percent if gain_percent > 0 else -loss_percent if loss_percent > 0 else 0.0
-    return round(steepest, GRADIENT_VALUE_DECIMALS)
+    if elevation.steepest_gain_percent > 0:
+        return round(elevation.steepest_gain_percent, GRADIENT_VALUE_DECIMALS)
+    if elevation.steepest_loss_percent > 0:
+        return round(-elevation.steepest_loss_percent, GRADIENT_VALUE_DECIMALS)
+    return 0.0
 
 
-def merge_sustained_gradients(segments: Sequence["RouteSegmentDetail"]) -> float | None:
+def merge_sustained_gradients(segments: Sequence[RouteSegmentDetail]) -> float | None:
     """区間の続く坂の斜度をビンへ畳む。登りの区間があれば登りの最大、無ければ一番急な下り（最も負の値）。
     区間の値は「登りがあれば登り」で作ってあるので、区間の値だけから道全体で同じ決まりの値になる。値が無ければNone。"""
     values = [segment.sustained_gradient_percent for segment in segments if segment.sustained_gradient_percent is not None]
     if not values:
         return None
-    return max(values) if max(values) > 0 else min(values)
+    steepest_climb = max(values)
+    return steepest_climb if steepest_climb > 0 else min(values)
 
 
 #: ビンのフィールドと、ビンに入る区間の並びからその値を作る畳み方。`_merge_segment_bin`は

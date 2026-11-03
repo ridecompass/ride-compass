@@ -421,11 +421,7 @@ def _build_segment_details(
                         ),
                     )
                 ],
-                sustained_gradient_percent=(
-                    steepest_signed_percent(elevation_attr.steepest_gain_percent, elevation_attr.steepest_loss_percent)
-                    if elevation_attr
-                    else None
-                ),
+                sustained_gradient_percent=steepest_signed_percent(elevation_attr),
                 estimated_arrival_time=arrival_time.isoformat(),
                 material_values=material_values[index],
                 road_classes={
