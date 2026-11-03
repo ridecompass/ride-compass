@@ -254,7 +254,7 @@ gh workflow run mutation.yml -R ridecompass/ride-compass --ref master -f ref=<�
 - **CIの`e2e`は、段1（静的検査・単体のテスト・像の確かめ）が全部通ってから始まる。** 段1で落ちた版では始まらず、
   ジョブはスキップになる（[tech-stack.md](../../../docs/architecture/tech-stack.md)「CIの実行枠（リポジトリがpublicである間の前提）」）。
 - **CIの`e2e`は、ブラウザとspecの組ごとに matrix の別のジョブで走る（`ci.yml`の`e2e`の上）。** 全状態の走査
-  （`e2e/all-states.spec.ts`）は幅 × 段階ごとに1本で、幅ごとに段階の数のジョブへ分ける（`--shard`）。
+  （`e2e/all-states.spec.ts`）は幅 × 段階ごとに1本で、幅ごとに1つのジョブの中で段階を workers で並べる。
   masterへのpushとPull Requestのどちらでも走る。CIで落ちた走査を手元で再現するときは
   `./node_modules/.bin/playwright test e2e/all-states.spec.ts -g "全状態の走査: <幅> / <段階>"`を回す。
 - `playwright.config.ts`はChromiumとWebKitの2つのprojectを持ち、`npm run test:e2e`は両方で回す。片方だけなら`--project=chromium`か
