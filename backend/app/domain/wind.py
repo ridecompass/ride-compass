@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 import numpy as np
+from numba import njit
 
 from app.domain.geo import haversine_distance_km, haversine_distance_km_array
 from app.domain.msm import MsmBlock
@@ -108,6 +109,18 @@ WIND_DRAG_RATIO_WAY_FORMULA = _wind_drag_ratio_way_formula()
 
 _HEADWIND, _CROSSWIND = _wind_component_formulas(feature("speed"), feature("direction"), feature("bearing"))
 _WIND_DRAG_RATIO = wind_drag_ratio_formula(feature("headwind"), feature("crosswind"), feature("travel_speed"))
+
+
+@njit(cache=True, nogil=True)
+def drag_increases_m2_s2(headwind_ms: np.ndarray, crosswind_ms: np.ndarray, travel_speed_ms: float) -> np.ndarray:
+    """`wind_drag_ratio_formula`の分子（`Vr·x − v²`、m²/s²。空気抵抗の係数を掛けると無風に対して増えた空気抵抗のN）を、
+    区間ごとの風の成分の並びについて求める（float32）。走行モデルが風の時刻ごとに探索の範囲の全区間で呼ぶ——材料の式の木を
+    評価すると、それだけで時刻ごとに100ms前後かかる。同じ式の2つの書き方で、一致はテストが確かめる（`tests/test_wind.py`）。"""
+    increases = np.empty(len(headwind_ms), dtype=np.float32)
+    for i in range(len(headwind_ms)):
+        along = travel_speed_ms + headwind_ms[i]
+        increases[i] = np.sqrt(along * along + crosswind_ms[i] * crosswind_ms[i]) * along - travel_speed_ms * travel_speed_ms
+    return increases
 
 
 def wind_components(wind_speed_ms, wind_direction_deg, travel_bearing_deg) -> tuple[np.ndarray, np.ndarray]:

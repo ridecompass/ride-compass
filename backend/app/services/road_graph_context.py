@@ -76,6 +76,9 @@ class RoadGraphContext:
     # 状態＝有向Edge・辺＝ターンの遷移構造（`statics.csr`から導く。起点にもコストにも
     # 依存しないためリクエスト内で共有する）。
     turn_structure: TurnExpandedStructure
+    # 遷移ごとの曲がる所の費用（秒、`turn_structure`の遷移の並び）。区間の費用と同じく利用者ごとに変わりうる値なので、
+    # 構造ではなく文脈が持ち、探索・木の費用の上界・繋ぎ目へ値で渡す。漕ぎ出しの代償を費用に足すまでは時間そのもの。
+    transition_cost: np.ndarray
     # 探索範囲を覆うタイル集合。学習した迂回率の鍵に使う。
     tile_set: frozenset[tuple[int, int, int]]
     # A*のヒューリスティック（向かうノード番号→各Nodeからの所要時間の下界[秒]）。向かう先（置いた点・終点）は

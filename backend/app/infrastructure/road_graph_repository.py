@@ -40,12 +40,12 @@ from app.infrastructure import derived_data_meta
 from app.infrastructure.material_joins import material_from_clause
 from app.infrastructure.orm_base import declared_metadata
 from app.infrastructure.road_tile_sql import (
-    ROADS_AT_SQL,
     FEATURE_GRADIENT_INPUTS_IN_TILE_SQL,
     FEATURE_MATERIALS_IN_TILE_SQL,
     FEATURE_MIDPOINTS_IN_TILE_SQL,
     FEATURE_SEGMENTS_IN_TILE_SQL,
     ROAD_SURFACE_TILE_MVT_SQL,
+    ROADS_AT_SQL,
 )
 from app.infrastructure.source_models import (
     COVERAGE_SQL,
@@ -207,6 +207,17 @@ _EDGE_MATERIAL_ARRAYS_SQL = text(
 )
 
 
+#: 区間ごとの断面の点の標高を、渡した並びの順に1区間1行で読む。値の無い点はDBの側でNaNにする（受け取ってから1点ずつ
+#: 置き換えると、全区間の点をPythonで回す）。
+_EDGE_ELEVATION_PROFILES_SQL = text("""
+SELECT array_replace(ee.elevation_profile_m, NULL, 'NaN'::real) AS elevation_profile_m
+FROM unnest(CAST(:way_ids AS bigint[]), CAST(:segment_indexes AS int[]))
+     WITH ORDINALITY AS ids(osm_way_id, segment_index, ord)
+LEFT JOIN edge_elevation ee ON ee.osm_way_id = ids.osm_way_id AND ee.segment_index = ids.segment_index
+ORDER BY ids.ord
+""")
+
+
 # --- グラフの読み出し ---------------------------------------------------------
 #
 # 区間は向きを持たない1行で、**有向の枝は道路網全体の配列を作るとき**
@@ -261,6 +272,7 @@ NETWORK_SQL_SOURCES = (
     _network_edges_sql(TUNING_PARAMETERS_BY_ID[TURN_BEARING_DISTANCE_ID].default),
     _NETWORK_NODES_SQL,
     _EDGE_MATERIAL_ARRAYS_SQL,
+    _EDGE_ELEVATION_PROFILES_SQL,
 )
 
 _EDGE_GEOMETRIES_SQL = text("""
@@ -469,6 +481,18 @@ class RoadGraphRepository:
             categorical_columns=tuple(CategoricalColumn.encode(raw[material_id]) for material_id in categorical_ids),
             **{name: _float_array(raw[name]) for name in _EXTRA_MATERIAL_ARRAY_COLUMNS},
         )
+
+    async def get_edge_elevation_profiles(self, way_ids: list[int], segment_indexes: list[int]) -> list[np.ndarray]:
+        """区間（位置で揃えた2本の列）ごとの、順方向に並べた断面の点の標高（m、float32、値の無い点はNaN）。標高の行が無い
+        区間は空の配列。区間ごとに点の数が違い、材料の列のように配列へまとめられないので、区間ごとの行で読む。"""
+        profiles: list[np.ndarray] = []
+        for start in range(0, len(way_ids), ID_CHUNK_SIZE):
+            stop = start + ID_CHUNK_SIZE
+            rows = (await self._session.execute(_EDGE_ELEVATION_PROFILES_SQL, {
+                "way_ids": way_ids[start:stop], "segment_indexes": segment_indexes[start:stop],
+            })).all()
+            profiles.extend(np.asarray(row.elevation_profile_m or (), dtype=np.float32) for row in rows)
+        return profiles
 
     async def sample_way_material_values(
         self,

@@ -24,19 +24,20 @@
 
 from geoalchemy2 import Geometry
 from sqlalchemy import (
+    REAL,
     BigInteger,
-    CheckConstraint,
     Boolean,
+    CheckConstraint,
     ForeignKey,
     ForeignKeyConstraint,
     Index,
     Integer,
-    REAL,
     SmallInteger,
     String,
     column,
     func,
 )
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.infrastructure.orm_base import DERIVED, Base
@@ -206,13 +207,17 @@ class EdgeElevationRow(_EdgeKey, Base):
     end_elevation_m: Mapped[float] = mapped_column(REAL, nullable=False)
     elevation_gain_m: Mapped[float] = mapped_column(REAL, nullable=False)
     elevation_loss_m: Mapped[float] = mapped_column(REAL, nullable=False)
-    # 標高が付いた区間でも、両端の差が道としてありえない勾配になる区間は平均勾配を持たない
+    # 標高が付いた区間でも、勾配として数える点の間が無い区間は平均勾配を持たない
     # （`domain/attributes.py: elevation_values_sql`）。
     average_grade: Mapped[float | None] = mapped_column(REAL, nullable=True)
-    #: 順方向に走ったときの、断面の刻みの間で一番急な登りと下りの勾配（%、どちらも0以上）。隣り合う2点の組が
+    #: 順方向に走ったときの、断面の刻みの間で一番急な登りと下りの勾配（%、どちらも0以上）。勾配として数える点の間が
     #: 無い区間は持たない（`domain/attributes.py: elevation_values_sql`）。逆向きは2列を入れ替えて読む。
     steepest_gain_percent: Mapped[float | None] = mapped_column(REAL, nullable=True)
     steepest_loss_percent: Mapped[float | None] = mapped_column(REAL, nullable=True)
+    #: 順方向に並べた断面の点の標高（m）。点は区間を等しい道のりに刻んだ位置で、間隔は区間の長さ÷（点の数−1）。値の無い
+    #: 点はNULL。上の要約の列は、どれもこの点から出す（`domain/attributes.py: elevation_values_sql`）。作り直す前の行は持たない
+    #: （空を許すのは、行の入った本番の表へ列を足せるようにするため）。
+    elevation_profile_m: Mapped[list[float | None] | None] = mapped_column(ARRAY(REAL), nullable=True)
     #: 作り直しの時点の道のタグで、区間が橋かトンネルだったか。値はこれに依る（両端だけを使う）ので、形が同じでも
     #: これが変われば前回の値を使い回せない。
     on_structure: Mapped[bool] = mapped_column(Boolean, nullable=False)

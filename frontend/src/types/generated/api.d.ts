@@ -580,6 +580,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/cost-axes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["read_cost_axes_api_admin_cost_axes_get"];
+        put: operations["replace_cost_axes_api_admin_cost_axes_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/axis-catalog": {
         parameters: {
             query?: never;
@@ -1030,6 +1046,16 @@ export interface components {
                 [key: string]: string;
             };
         };
+        /** AxisPresentation */
+        AxisPresentation: {
+            /** Label */
+            label: string;
+            /** Description */
+            description: string;
+            /** Icon Id */
+            icon_id: string;
+            lens: components["schemas"]["LensBands"];
+        };
         /** AxisPreviewRequest */
         AxisPreviewRequest: {
             /** Shape */
@@ -1091,6 +1117,18 @@ export interface components {
                 number
             ][];
         };
+        /** BurdenAxis */
+        BurdenAxis: {
+            /** Label */
+            label: string;
+            /** Description */
+            description: string;
+            /** Icon Id */
+            icon_id: string;
+            lens: components["schemas"]["LensBands"];
+            /** Burden */
+            burden: components["schemas"]["CategoricalBurden"] | components["schemas"]["LinearBurden"];
+        };
         /** CalibrationPreviewRequest */
         CalibrationPreviewRequest: {
             definition: components["schemas"]["AxisDefinition"];
@@ -1114,6 +1152,20 @@ export interface components {
             then: components["schemas"]["Constant"] | components["schemas"]["Missing"] | components["schemas"]["FeatureValue"] | components["schemas"]["Condition"] | components["schemas"]["Unary"] | components["schemas"]["Binary"] | components["schemas"]["Case"] | components["schemas"]["Interpolate"] | components["schemas"]["Round"];
             /** Otherwise */
             otherwise: components["schemas"]["Constant"] | components["schemas"]["Missing"] | components["schemas"]["FeatureValue"] | components["schemas"]["Condition"] | components["schemas"]["Unary"] | components["schemas"]["Binary"] | components["schemas"]["Case"] | components["schemas"]["Interpolate"] | components["schemas"]["Round"];
+        };
+        /** CategoricalBurden */
+        CategoricalBurden: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "categorical";
+            /** Material */
+            material: string;
+            /** Per Km */
+            per_km: {
+                [key: string]: number;
+            };
         };
         /** CategoricalShape */
         "CategoricalShape-Input": {
@@ -1214,6 +1266,17 @@ export interface components {
             latitude: number;
             /** Longitude */
             longitude: number;
+        };
+        /** CostAxisDefinitions */
+        CostAxisDefinitions: {
+            /** Effort */
+            effort: {
+                [key: string]: components["schemas"]["AxisPresentation"];
+            };
+            /** Burden */
+            burden: {
+                [key: string]: components["schemas"]["BurdenAxis"];
+            };
         };
         /** DbStatusReport */
         DbStatusReport: {
@@ -1530,6 +1593,28 @@ export interface components {
             before: string;
             /** After */
             after: string;
+        };
+        /** LensBands */
+        LensBands: {
+            /** Thresholds */
+            thresholds: number[];
+            /** Band Labels */
+            band_labels: string[];
+        };
+        /** LinearBurden */
+        LinearBurden: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "linear";
+            /** Material */
+            material: string;
+            /** Points */
+            points: [
+                number,
+                number
+            ][];
         };
         /** MapLegendScale */
         MapLegendScale: {
@@ -3628,6 +3713,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RoadClassDefinitions"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_cost_axes_api_admin_cost_axes_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CostAxisDefinitions"];
+                };
+            };
+        };
+    };
+    replace_cost_axes_api_admin_cost_axes_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CostAxisDefinitions"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CostAxisDefinitions"];
                 };
             };
             /** @description Validation Error */

@@ -1,4 +1,4 @@
-"""辺基準グラフの遷移構造（状態＝有向区間、遷移＝ターン）と、遷移ごとのターンの待ち（秒）・案内する曲がり。
+"""辺基準グラフの遷移構造（状態＝有向区間、遷移＝ターン）と、遷移ごとのターンの時間（秒）・漕ぎ出しの回数・案内する曲がり。
 
 右左折の費用はNodeに閉じず「どの区間から入ってどの区間へ出るか」で決まるため、状態をNodeではなく有向区間にする。
 遷移はグラフを物理展開せず`domain/search_graph.py: CsrGraphStructure`から導く。
@@ -11,46 +11,42 @@ import numpy as np
 
 from app.domain.geo import LatLonPoint, bearing_between
 from app.domain.search_graph import EDGE_VALUE_DTYPE, SEARCH_INDEX_DTYPE, CsrGraphStructure, LazyRoadGraph
-from app.domain.traffic import MAJOR_CROSSING_MIN_RANK
+from app.domain.traffic import MAJOR_CROSSING_MIN_RANK, NO_EVENT, StopEvent, stop_event
 from app.domain.tuning import tuning_value
 
 
 @dataclass(frozen=True)
 class TurnCostSpec:
-    """ターン1回の時間損失（秒）と、直進とみなす方位差の上限（度）。
+    """曲がる所の止まる出来事（`domain/traffic.py: StopEvent`）と、直進とみなす方位差の上限（度）。
 
-    探索のコストも秒のため、換算せずそのまま足せる（「右折1回＝何秒余計にかかるか」として
-    走行時間と直接比べられる）。
-
-    左折・右折・Uターン・直進とみなす方位差・上位の道の横断/右左折は、いずれも走ってみて
-    決める値のため`domain/tuning.py`が宣言する。既定を組み立てるのは`current_turn_cost()`で、
-    ここにフィールドの既定値は置かない——既定が分かれると、片方だけが変わる。
+    左折は止まらず減速する出来事、右折（自転車は二段階右折）・Uターン・上位の道の横断/右左折は止まる出来事。
+    割合・待ち・直進とみなす方位差は、いずれも走ってみて決める値のため`domain/tuning.py`が宣言する。既定を組み立てるのは
+    `current_turn_cost()`で、ここにフィールドの既定値は置かない——既定が分かれると、片方だけが変わる。
     """
 
-    left_seconds: float
-    right_seconds: float
-    uturn_seconds: float
+    left: StopEvent
+    right: StopEvent
+    uturn: StopEvent
     straight_max_deg: float
-    # 進入した道より上位の階級の道と交わる**信号の無い**交差点で追加する秒数（横断＝直進で
-    # 渡る場合と、右左折で入る場合）。信号のある交差点の待ちは停止密度の材料が走行モデルへ
-    # 運ぶ（`domain/traffic.py: stop_seconds`）ため、そちらで数え、ここでは足さない
-    # ——両方で足すと同じ待ちを二重に数える（`docs/architecture/design-principles.md`構造仕様13）。
-    major_crossing_seconds: float
-    major_turn_seconds: float
+    # 進入した道より上位の階級の道と交わる**信号の無い**交差点で足す出来事（横断＝直進で渡る場合と、右左折で入る
+    # 場合）。信号のある交差点の待ちは停止密度の材料が所要時間へ運ぶ（`domain/traffic.py: stop_event`）ため、そちらで
+    # 数え、ここでは足さない——両方で足すと同じ待ちを二重に数える（`docs/architecture/design-principles.md`構造仕様13）。
+    major_crossing: StopEvent
+    major_turn: StopEvent
 
 
 def current_turn_cost() -> TurnCostSpec:
-    """いま効いている較正値で組み立てたターンの費用。
+    """いま効いている較正値で組み立てた曲がる所の出来事。
 
     **呼ぶたびに組み立てる**——プロセス内に束ねると、管理画面から変えた値が効かない。
     """
     return TurnCostSpec(
-        left_seconds=tuning_value("turn.left_seconds"),
-        right_seconds=tuning_value("turn.right_seconds"),
-        uturn_seconds=tuning_value("turn.uturn_seconds"),
+        left=stop_event("turn", "left"),
+        right=stop_event("turn", "right"),
+        uturn=stop_event("turn", "uturn"),
         straight_max_deg=tuning_value("turn.straight_max_deg"),
-        major_crossing_seconds=tuning_value("turn.major_crossing_seconds"),
-        major_turn_seconds=tuning_value("turn.major_turn_seconds"),
+        major_crossing=stop_event("turn", "major_crossing"),
+        major_turn=stop_event("turn", "major_turn"),
     )
 
 
@@ -69,15 +65,18 @@ class TurnExpandedStructure:
     indptr: np.ndarray
     # 遷移先の状態（区間の番号）。
     target_state: np.ndarray
-    # 遷移ごとのターンの時間損失（秒）。
+    # 遷移ごとの曲がる所の時間（秒。割合 × 待ちの和）。予想時間と時刻の通過が読み、利用者の好みで変わらない。
     turn_seconds: np.ndarray
+    # 遷移ごとの漕ぎ出しを、止まる出来事の回数に換えた期待値（体力の慣性の費目）。構造は利用者に依らない値だけを持ち、
+    # 費用は探索の呼び手が遷移ごとの配列として渡す（`domain/routing.py`の`transition_cost`）。
+    turn_kickoffs: np.ndarray
     # 遷移ごとの、案内する曲がりの種類（`TurnKind`の値）。案内しない遷移は直進。
     turn_kind: np.ndarray
     # 状態（有向Edge）の始点・終点Node index。
     edge_from: np.ndarray
     edge_to: np.ndarray
     # 逆向き（転置）の遷移。目的地から遡る木が使う。最初に要求されたときだけ組む
-    # （前向きだけの探索では要らないため）。ターンの待ちは元の進行方向のまま運ぶ。
+    # （前向きだけの探索では要らないため）。
     _reverse: tuple[np.ndarray, np.ndarray, np.ndarray] | None = field(
         default=None, repr=False, compare=False
     )
@@ -92,7 +91,8 @@ class TurnExpandedStructure:
         return entries
 
     def reverse_transitions(self) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """`(indptr, source_state, turn_seconds)`を遷移の向きを反転した形で返す。
+        """`(indptr, source_state, order)`を遷移の向きを反転した形で返す。`order`は後ろ向きの並びの各遷移が、前向きの
+        遷移の列のどこか——遷移ごとの値（時間・費用）は`値[order]`で並べ替える。
 
         前向きの遷移「状態a→状態b、待ちw」を、後ろ向きでは「状態b→状態a、待ちw」として
         並べ替える（待ちは元の進行方向で決まるため値は変えない）。
@@ -105,7 +105,7 @@ class TurnExpandedStructure:
             counts = np.bincount(self.target_state, minlength=self.state_count)
             indptr = np.zeros(self.state_count + 1, dtype=SEARCH_INDEX_DTYPE)
             np.cumsum(counts, out=indptr[1:])
-            self._reverse = (indptr, source[order], self.turn_seconds[order])
+            self._reverse = (indptr, source[order], order)
         return self._reverse
 
 
@@ -191,7 +191,6 @@ def build_turn_expanded_structure(
     branch = node_branch_count[edge_to[source]] >= 3
     wait_kind = _turn_kinds(delta, is_uturn, branch, spec)
     straight = wait_kind == TurnKind.STRAIGHT
-    turn_seconds = np.array([0.0, spec.left_seconds, spec.right_seconds, spec.uturn_seconds])[wait_kind]
 
     # ノードの階級は、読み込んだ部分グラフに現れる道から導く。DB側の事前集計値
     # （`node_turns.max_highway_rank`）があれば大きい方を採る——bboxの外へはみ出した
@@ -208,19 +207,32 @@ def build_turn_expanded_structure(
         & (target_node_rank >= MAJOR_CROSSING_MIN_RANK)
         & ~node_has_signal[via_node]
     )
-    turn_seconds = turn_seconds + np.where(
-        crosses_major & ~is_uturn & branch,
-        np.where(straight, spec.major_crossing_seconds, spec.major_turn_seconds),
-        0.0,
-    )
+    # 遷移の時間と漕ぎ出しは、曲がり方（`TurnKind`の4通り）× 上位の道（無し・横断・右左折の3通り）の12通りの表から引く
+    # ——遷移の数（探索の範囲で約200万）の配列を組み直さない。
+    major = crosses_major & ~is_uturn & branch
+    major_kind = np.where(major, np.where(straight, 1, 2), 0)
+    seconds_table, kickoffs_table = _turn_tables(spec)
+    code = (wait_kind + len(TurnKind) * major_kind).astype(np.intp)
 
     return TurnExpandedStructure(
         state_count=state_count, indptr=new_indptr.astype(SEARCH_INDEX_DTYPE),
         target_state=target_state.astype(SEARCH_INDEX_DTYPE),
-        turn_seconds=turn_seconds.astype(EDGE_VALUE_DTYPE),
+        turn_seconds=seconds_table[code], turn_kickoffs=kickoffs_table[code],
         turn_kind=_guided_turn_kinds(wait_kind, delta, is_uturn, branch, source, state_count),
         edge_from=edge_from, edge_to=edge_to,
     )
+
+
+def _turn_tables(spec: TurnCostSpec) -> tuple[np.ndarray, np.ndarray]:
+    """曲がり方（`TurnKind`の値）＋ 4 ×上位の道（0＝無し・1＝横断・2＝右左折）を添字にした、遷移の時間（秒）と漕ぎ出しの
+    回数の表。上位の道の待ちは曲がりの待ちに足し、漕ぎ出しは同じ所で1回しか起きないので重なる出来事の大きい方だけを数える。"""
+    turning = (NO_EVENT, spec.left, spec.right, spec.uturn)  # `TurnKind`の順。直進は出来事が無い
+    seconds, kickoffs = [], []
+    for major in (NO_EVENT, spec.major_crossing, spec.major_turn):
+        for event in turning:
+            seconds.append(event.expected_seconds + major.expected_seconds)
+            kickoffs.append(max(event.kickoffs, major.kickoffs))
+    return np.array(seconds, dtype=EDGE_VALUE_DTYPE), np.array(kickoffs, dtype=EDGE_VALUE_DTYPE)
 
 
 def _guided_turn_kinds(

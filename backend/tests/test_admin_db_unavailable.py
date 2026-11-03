@@ -18,6 +18,7 @@ from sqlalchemy.pool import NullPool
 
 from app.api import dependencies
 from app.api.admin_db_errors import ADMIN_PATH_PREFIX, install_admin_db_unavailable_handler
+from app.domain.cost_axes import EFFORT_AXES
 from app.domain.region import EDGE_UNIT_MIN_ZOOM
 from app.domain.tuning import TUNING_PARAMETERS
 from app.domain.road_classes import EMPTY_ROAD_CLASSES
@@ -38,6 +39,11 @@ WAY_VALUES_BODY = {
     "axis_id": "a", "shape": SHAPE, "z": EDGE_UNIT_MIN_ZOOM, "x": 7275, "y": 3225,
     "bearing_deg": 0, "at": "2026-10-18T09:00:00+09:00", "speed_kmh": 20,
 }
+COST_AXES_BODY = {
+    "effort": {axis_id: {"label": axis_id, "description": "", "icon_id": "i",
+                         "lens": {"thresholds": [1.0], "band_labels": ["a", "b"]}} for axis_id in EFFORT_AXES},
+    "burden": {},
+}
 
 # 口ごとの(パスの引数を埋めたURL, 本文, DBが落ちたときの状態コード)。母集団はアプリのルートから取るので、
 # 管理APIの口を足してここへ足し忘れるとKeyErrorで落ちる。DBを読まない口とDBの失敗を自分で空へ倒す口は200。
@@ -56,6 +62,8 @@ ROUTE_CASES = {
     ("GET", "/api/admin/tuning"): ("/api/admin/tuning", None, 503),
     ("GET", "/api/admin/road-classes"): ("/api/admin/road-classes", None, 503),
     ("PUT", "/api/admin/road-classes"): ("/api/admin/road-classes", EMPTY_ROAD_CLASSES.model_dump(mode="json"), 503),
+    ("GET", "/api/admin/cost-axes"): ("/api/admin/cost-axes", None, 503),
+    ("PUT", "/api/admin/cost-axes"): ("/api/admin/cost-axes", COST_AXES_BODY, 503),
     ("PUT", "/api/admin/tuning/{param_id}"): (f"/api/admin/tuning/{TUNING_PARAMETERS[0].id}", {"value": None}, 503),
     ("GET", "/api/admin/material-catalog/{material_id}/value-shares"): (
         f"/api/admin/material-catalog/{CATEGORICAL}/value-shares",

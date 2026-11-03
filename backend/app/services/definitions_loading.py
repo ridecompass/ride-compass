@@ -8,14 +8,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.infrastructure.axis_definition_repository import AxisDefinitionRepository
 from app.services.axis_registry_service import refresh_axis_definitions
+from app.services.cost_axis_service import refresh_cost_axes
 from app.services.road_class_service import refresh_road_classes
 from app.services.tuning_service import refresh_tuning_values
 
 
 async def refresh_definitions(session: AsyncSession, axes: AxisDefinitionRepository) -> None:
-    """区分 → 軸定義 → 較正値の順に読み込む。軸定義を読めなければ例外のまま止める。`axes`は`session`の上に組んだもの。"""
-    # 軸は区分から作る材料（`class:<分け方>`）を指せるので、区分を先に読む。
+    """区分 → 軸定義 → 費用の軸の定義 → 較正値の順に読み込む。軸定義・費用の軸の定義を読めなければ例外のまま止める。
+    `axes`は`session`の上に組んだもの。"""
+    # 軸と費用の軸は区分から作る材料（`class:<分け方>`）を指せるので、区分を先に読む。
     await refresh_road_classes(session)
     await refresh_axis_definitions(axes)
+    await refresh_cost_axes(session)
     # 較正値は行が1つも無ければ宣言どおりの既定値のまま動く（壊れた値の行だけが止める）。
     await refresh_tuning_values(session)
