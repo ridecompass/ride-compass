@@ -20,7 +20,7 @@ import numpy as np
 import pytest
 from numba.core import event
 
-from app.domain import leg_costs
+from app.domain import leg_costs, traffic
 from app.domain.attributes import CategoricalColumn
 from app.domain.axis_definitions import BreakpointLinearShape, MaterialTerm, copy_axis_definitions
 from app.domain.difficulty import axis_weight_shares
@@ -157,11 +157,12 @@ def test_the_travel_time_runs_the_points_of_the_road_profile_not_its_average_gra
     assert up_and_down > flat * 1.1
 
 
-def test_each_stop_on_a_segment_adds_its_wait():
-    """2回/kmの信号がある500mの区間は、信号1回ぶん待つ。密度の値が無い区間は待たない。"""
+def test_each_stop_on_a_segment_adds_its_share_of_the_wait():
+    """2回/kmの信号がある500mの区間は、信号1回ぶん、止まる割合 × 止まったときの待ちを足す。密度の値が無い区間は待たない。"""
     leg = _snapshot(_matrix(3, distance=500.0, materials={STOP_DENSITY["signal"]: [2.0, 0.0, np.nan]}))
 
-    assert leg.travel_seconds_lazy[0] - leg.travel_seconds_lazy[1] == pytest.approx(leg_costs.stop_seconds("signal"))
+    assert leg.travel_seconds_lazy[0] - leg.travel_seconds_lazy[1] == pytest.approx(
+        traffic.stop_event("stop", "signal").expected_seconds)
     assert leg.travel_seconds_lazy[2] == leg.travel_seconds_lazy[1]
 
 

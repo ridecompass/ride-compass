@@ -44,7 +44,7 @@ def _rider(cruise_speed_kmh: float, **standard: float) -> RiderProfile:
 def _model(profile: RiderProfile, grade: float = 0.0, crr: float | None = None) -> SegmentSpeedModel:
     """1000mを勾配`grade`で一様に登る1区間の走行モデル。"""
     return SegmentSpeedModel(profile, road_profiles([0.0, grade * 1000.0]), np.array([1000.0]),
-                             np.array([profile.crr if crr is None else crr]))
+                             np.array([profile.crr if crr is None else crr]), np.zeros(1))
 
 
 def _speed(profile: RiderProfile, grade: float = 0.0, headwind: float = 0.0, crosswind: float = 0.0,
@@ -176,11 +176,31 @@ def test_a_tailwind_takes_from_the_push_on_a_climb():
     assert float(tailwind.air_extra_j[0]) == 0
 
 
+def test_a_kickoff_pushes_beyond_the_flat_power_the_share_of_the_kinetic_energy_above_the_flat_power():
+    """止まった所から巡航速度まで平地の出力の上限倍率で踏んで加速すると、要る運動エネルギー½mv²のうち、平地の出力を
+    越えた分（1 − 1/上限倍率）を越えて踏む。80kgで時速20km、上限2.5倍なら 0.5 × 80 × (20/3.6)² × 0.6 ≈ 741J。"""
+    rider = _rider(20.0, mass_kg=80.0)
+    with patch.dict(TUNING_VALUES, {"speed.max_climb_power_ratio": 2.5}):
+        assert cycling_speed.kickoff_extra_j(rider) == pytest.approx(0.5 * 80.0 * (20 / 3.6) ** 2 * 0.6)
+
+
+def test_the_stops_on_a_road_go_to_the_inertia_item_of_the_effort_ledger():
+    """区間の止まる出来事（回数の換算）は、漕ぎ出しの体力を慣性の費目に書く。走行時間には足さない（停止の待ちは
+    所要時間の合成が足す）。"""
+    model = SegmentSpeedModel(RIDER, road_profiles([0.0, 0.0], [0.0, 0.0]), np.full(2, 500.0), np.full(2, RIDER.crr),
+                              np.array([2.5, 0.0]))
+
+    ride = model.ride(np.zeros(2), np.zeros(2))
+
+    assert ride.inertia_extra_j.tolist() == pytest.approx([2.5 * cycling_speed.kickoff_extra_j(RIDER), 0.0])
+    assert ride.seconds[0] == pytest.approx(ride.seconds[1])
+
+
 def _seconds(*rows: list[float | None], distance: float, forward=None, distribution=None) -> list[float]:
     built = road_profiles(*rows, forward=forward) if distribution is None else road_profiles(
         *rows, forward=forward, distribution=distribution)
     n = len(rows)
-    model = SegmentSpeedModel(RIDER, built, np.full(n, distance), np.full(n, RIDER.crr))
+    model = SegmentSpeedModel(RIDER, built, np.full(n, distance), np.full(n, RIDER.crr), np.zeros(n))
     return model.travel_seconds(np.zeros(n), np.zeros(n)).tolist()
 
 
@@ -230,9 +250,12 @@ def test_the_limits_follow_the_values_changed_from_the_admin_screen(monkeypatch,
 @pytest.mark.parametrize(
     "call",
     [
-        lambda: SegmentSpeedModel(RIDER, road_profiles([0.0, 0.0], [0.0, 0.0], [0.0, 0.0]), np.ones(3), np.zeros(1)),
-        lambda: SegmentSpeedModel(RIDER, road_profiles([0.0, 0.0], [0.0, 0.0], [0.0, 0.0]), np.ones(3), np.zeros(3)).travel_seconds(
-            np.zeros(1), np.zeros(3)),
+        lambda: SegmentSpeedModel(RIDER, road_profiles([0.0, 0.0], [0.0, 0.0], [0.0, 0.0]), np.ones(3), np.zeros(1),
+                                  np.zeros(3)),
+        lambda: SegmentSpeedModel(RIDER, road_profiles([0.0, 0.0], [0.0, 0.0], [0.0, 0.0]), np.ones(3), np.zeros(3),
+                                  np.zeros(1)),
+        lambda: SegmentSpeedModel(RIDER, road_profiles([0.0, 0.0], [0.0, 0.0], [0.0, 0.0]), np.ones(3), np.zeros(3),
+                                  np.zeros(3)).travel_seconds(np.zeros(1), np.zeros(3)),
     ],
 )
 def test_arrays_of_different_lengths_are_refused_instead_of_spread_over_every_segment(call):

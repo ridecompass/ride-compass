@@ -220,7 +220,7 @@ def test_route_passages_reads_each_edge_in_the_time_bin_the_search_used():
     path = [states["AB"], states["BC"]]
     tree = build_turn_expanded_tree(
         structure, travel_bins, statics.edge_length_m, np.array([states["AB"]], dtype=np.int64),
-        lazy.node_count, edge_seconds=travel_bins, bin_seconds=leg.bin_seconds,
+        lazy.node_count, edge_seconds=travel_bins, bin_seconds=leg.bin_seconds, transition_cost=structure.turn_seconds
     )
 
     passages = route_passages(

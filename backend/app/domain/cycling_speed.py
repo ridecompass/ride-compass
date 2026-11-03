@@ -128,6 +128,14 @@ def pushed_power_w(flat_power_w: float, extra_force_n: float) -> tuple[float, fl
                          tuning_value("speed.max_climb_power_ratio"), float(extra_force_n))
 
 
+def kickoff_extra_j(profile: RiderProfile) -> float:
+    """止まる出来事1回の漕ぎ出しで、平地の出力を越えて踏む体力（J）。止まった所から巡航速度まで、平地の出力の上限倍率
+    （`speed.max_climb_power_ratio`）で踏んで加速する前提で、要る運動エネルギー½mv²のうち平地の出力を越えた分
+    （1 − 1/上限倍率）。"""
+    speed = profile.cruise_speed_ms
+    return 0.5 * profile.mass_kg * speed * speed * (1.0 - 1.0 / tuning_value("speed.max_climb_power_ratio"))
+
+
 def top_speed_kmh(cruise_speed_kmh: float) -> float:
     """区間の速度の上限。下りの上限か、それより速ければ巡航速度。
 
@@ -236,12 +244,14 @@ def _span_work(span_row: np.ndarray, span_length: np.ndarray, span_grade: np.nda
 
 @dataclass(frozen=True)
 class SegmentRide:
-    """区間ごとの所要時間（秒）と、平地の出力を越えて踏んだ体力（J）の抵抗ごとの内訳（3つの和が越えて踏んだ体力の全部）。"""
+    """区間ごとの走行時間（秒）と、平地の出力を越えて踏んだ体力（J）の費目ごとの内訳（重力・空気・転がりと、止まる出来事の
+    漕ぎ出しの慣性。4つの和が越えて踏んだ体力の全部）。"""
 
     seconds: np.ndarray  # float64
     gravity_extra_j: np.ndarray
     air_extra_j: np.ndarray
     rolling_extra_j: np.ndarray
+    inertia_extra_j: np.ndarray
 
 
 class SegmentSpeedModel:
@@ -254,13 +264,14 @@ class SegmentSpeedModel:
     """
 
     def __init__(self, profile: RiderProfile, profiles: ElevationProfiles, distance_m: np.ndarray,
-                 crr: np.ndarray) -> None:
-        """`profiles`は区間の行ごとの断面、`distance_m`は区間の長さ、`crr`は区間ごとの転がり抵抗（`crr_for_surface`）。"""
+                 crr: np.ndarray, kickoffs: np.ndarray) -> None:
+        """`profiles`は区間の行ごとの断面、`distance_m`は区間の長さ、`crr`は区間ごとの転がり抵抗（`crr_for_surface`）、
+        `kickoffs`は区間の止まる出来事の漕ぎ出しの回数（`domain/traffic.py: StopEvent.kickoffs`の和）。"""
         self._rows = len(distance_m)
         self._shape = np.shape(distance_m)
         mismatched = {name: np.shape(array) for name, array in (
-            ("crr", crr), ("profiles.start", profiles.start), ("profiles.points", profiles.points),
-            ("profiles.forward", profiles.forward)) if np.shape(array) != self._shape}
+            ("crr", crr), ("kickoffs", kickoffs), ("profiles.start", profiles.start),
+            ("profiles.points", profiles.points), ("profiles.forward", profiles.forward)) if np.shape(array) != self._shape}
         if mismatched:
             raise ValueError(f"区間の配列の長さが揃っていません distance_m={self._shape} {mismatched}")
         start = kernel_array(profiles.start, np.int64)
@@ -273,6 +284,8 @@ class SegmentSpeedModel:
             start, points, kernel_array(profiles.forward, np.bool_), elevation, distance, self.unknown_m,
             kernel_array(profiles.distribution.grade, np.float64), kernel_array(profiles.distribution.share, np.float64))
         self._crr = kernel_array(crr, np.float32)
+        self._kickoffs = kickoffs
+        self._kickoff_extra_j = kickoff_extra_j(profile)
         rider = np.empty(9, dtype=np.float32)
         rider[_RIDER_WEIGHT] = profile.mass_kg * _GRAVITY_M_S2
         rider[_RIDER_FLAT_POWER] = wheel_power_w(profile)
@@ -292,12 +305,13 @@ class SegmentSpeedModel:
         return _span_seconds(self._span_row, self._span_length, speeds, self._rows)
 
     def ride(self, headwind_ms: np.ndarray, crosswind_ms: np.ndarray) -> SegmentRide:
-        """区間ごとの走行時間と、平地の出力を越えて踏んだ体力の抵抗ごとの内訳。"""
+        """区間ごとの走行時間と、平地の出力を越えて踏んだ体力の費目ごとの内訳。"""
         speeds, powers, air_extra_n = self._solve(headwind_ms, crosswind_ms)
         work = _span_work(self._span_row, self._span_length, self._span_grade, speeds, powers, self._crr, air_extra_n,
                           self._rider, self._rows)
         return SegmentRide(seconds=_span_seconds(self._span_row, self._span_length, speeds, self._rows),
-                           gravity_extra_j=work[0], air_extra_j=work[1], rolling_extra_j=work[2])
+                           gravity_extra_j=work[0], air_extra_j=work[1], rolling_extra_j=work[2],
+                           inertia_extra_j=np.asarray(self._kickoffs, dtype=np.float64) * self._kickoff_extra_j)
 
     def _solve(self, headwind_ms: np.ndarray, crosswind_ms: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """点の間ごとの速度と踏む出力、区間ごとの向かい風で増えた空気抵抗（N）。"""

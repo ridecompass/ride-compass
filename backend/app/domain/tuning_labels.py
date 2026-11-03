@@ -5,7 +5,7 @@
 """
 
 from app.domain.road_classes import by_sort_order, current_road_classes
-from app.domain.traffic import stop_seconds_subjects
+from app.domain.traffic import stop_parameter_subjects
 from app.domain.tuning import TuningParameter
 
 
@@ -25,7 +25,7 @@ def _rolling_resistance_subjects() -> dict[str, tuple[str, ...]]:
 
 def tuning_subjects() -> dict[str, tuple[str, ...]]:
     """較正値のid → 名前へ添える対象。並べる較正値の1件ずつへ同じものを渡せるよう、まとめて作る。"""
-    return {**_rolling_resistance_subjects(), **stop_seconds_subjects()}
+    return {**_rolling_resistance_subjects(), **stop_parameter_subjects()}
 
 
 def tuning_label(parameter: TuningParameter, subjects_by_id: dict[str, tuple[str, ...]]) -> str:
