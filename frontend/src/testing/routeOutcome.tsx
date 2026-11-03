@@ -1,6 +1,7 @@
 // 「ルート結果」の中身（`features/route/RouteOutcome/RouteOutcome.tsx`）を描く足場。結果の状態（`useRouteResults`の戻り値）は
 // 選んだ候補・編集をそろえて値で組み、操作は記録するだけにする。軸は架空のもの（`axis_a`等）で、軸カタログの応答は
-// 使うテストが`CATALOG_RESPONSE`を与える。
+// 使うテストが`CATALOG_RESPONSE`を、費用の軸の一覧は`testing/costAxes.ts: serveCostAxisCatalog`で与える。`FAST`の内訳の軸は
+// その既定の一覧（登坂と振動）の軸。
 import { render } from "@testing-library/react";
 import type { ComponentProps } from "react";
 import { vi } from "vitest";
@@ -26,9 +27,9 @@ export function route(id: string, overrides: Partial<RouteCandidate> = {}): Rout
 export const FAST = route("fast", {
   distance_km: 10,
   estimated_duration_seconds: 1800,
-  overall_difficulty: { average: 41.6, load: 416 },
+  penalty: { axis_seconds: { ascent: 240, vibration: 60 }, avoidance_seconds: 0 },
 });
-export const SLOW = route("slow", { distance_km: 20, estimated_duration_seconds: 2520, overall_difficulty: null });
+export const SLOW = route("slow", { distance_km: 20, estimated_duration_seconds: 2520, penalty: null });
 
 export function resultsOf(
   state: Partial<
@@ -96,7 +97,6 @@ export function renderOutcome({
       results={results}
       generation={generation}
       splice={splice}
-      routeWeights={{}}
       profileLayers={{ ids: ["elevation"], toggle: vi.fn() }}
     />,
   );

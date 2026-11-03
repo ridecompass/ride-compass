@@ -6,7 +6,7 @@
  * 道（backend の答え）を開き、道のタイルを読まずにその道の線を強調すること。
  * 名前の無い点は押せる物に数えず下の物を開き、重なった名前のある点と、束ねた代表点の中の点は全部並べること。区間の中身から点を開くと区間へ戻れ、道へ
  * 入れ替えると区間の選びを外し、開ける物の無い所を押すと閉じること。道の小窓を別の道へ押し替えると、前の道で押した評価を
- * 新しい道へ持ち越さないこと。区間の小窓が上の帯と難易度の塊の形で出て、寄せるアイコンで寄せること。押せる物のタップは待たずに開き、
+ * 新しい道へ持ち越さないこと。区間の小窓が上の帯と負担の内訳の形で出て、寄せるアイコンで寄せること。押せる物のタップは待たずに開き、
  * 何も無い所を続けて2回押しても閉じないこと。
  *
  * ここで見ないもの: 区間の近くの施設の小窓（区間へ戻る）は`app/page.map.test.tsx`の「区間の近くの施設」が、地図を押したときの
@@ -41,6 +41,7 @@ import {
 } from "@/testing/homePage";
 import { mapOnScreen, type PointedFeature } from "@/testing/maplibre";
 import { inspectorResult } from "@/testing/roadInspector";
+import { serveCostAxisCatalog } from "@/testing/costAxes";
 import { makeRouteSegment } from "@/testing/routeFixtures";
 import { settle } from "@/testing/settle";
 
@@ -158,11 +159,12 @@ describe("地図の小窓", () => {
     expect(mapOnScreen().sourceFeatures("road-inspected")).toEqual([]);
   });
 
-  it("区間の小窓は、上の帯に到達予想、その下に難易度の塊を出し、押しただけでは地図は動かず、寄せるアイコンで区間へ寄せる", async () => {
+  it("区間の小窓は、上の帯に到達予想、その下に軸の名前の付いた負担の内訳を出し、押しただけでは地図は動かず、寄せるアイコンで区間へ寄せる", async () => {
+    serveCostAxisCatalog();
     const segment = makeRouteSegment({
       cumulative_distance_km: 1,
       estimated_arrival_time: "2026-10-05T00:30:00Z",
-      difficulty: 42,
+      penalty: { axis_seconds: { ascent: 120 }, avoidance_seconds: 0 },
     });
     const { user } = renderHome();
     jobs.respond([route("one", { segments: [segment] })], LOOP_CONDITIONS);
@@ -174,7 +176,8 @@ describe("地図の小窓", () => {
     clickSegment(mapOnScreen().sourceFeatures("route-segments")[0], HERE);
 
     expect(screen.getByRole("group", { name: "区間の小窓の上の帯" })).toHaveTextContent("到達予想 09:30着");
-    expect(screen.getByRole("region", { name: "難易度" })).toHaveTextContent(/^難易度42\.0\/100/);
+    expect(screen.getByRole("img", { name: "負担の内訳" })).toBeInTheDocument();
+    expect(screen.getByText("登坂").closest("li")).toHaveTextContent("登坂+2分");
 
     expect(mapOnScreen().fits()).toHaveLength(fitsBefore);
     await user.click(screen.getByRole("button", { name: "地図をここへ寄せる" }));

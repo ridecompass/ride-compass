@@ -20,8 +20,8 @@ describe("paintedAxisId（全道路を塗る軸）", () => {
 
 describe("lensLegend（レンズの凡例）", () => {
   it("ルート確定後は、ルート線の色分けモードの凡例。塗る軸でない・無いモードは空", () => {
-    const mode = catalog.routeStyleModes.find((entry) => entry.legend.length > 0)!;
-    expect(lensLegend(mode.id, true, catalog)).toBe(mode.legend);
+    const mode = catalog.routeStyleModes.find((entry) => entry.id === "score")!;
+    expect(lensLegend("score", true, catalog)).toBe(mode.legend);
     expect(lensLegend("missing", true, catalog)).toEqual([]);
     expect(lensLegend("missing", false, catalog)).toEqual([]);
   });
@@ -36,7 +36,7 @@ describe("lensLegend（レンズの凡例）", () => {
 });
 
 describe("同じ軸の同じ段は、ルートを出す前と後で同じ行", () => {
-  // 前後の段の数はbackendが揃えて配る（前は重み付き和の目盛り、後は難易度の目盛りで、同じ数の境界）。
+  // 前後の段の数はbackendが揃えて配る。ルートの線を値で塗る軸（符号付きの材料）だけが、後にも段を持つ。
   const sameBands = mapCatalogOf([
     dedicatedEntry("score", [20, 40, 60, 80], PAINTED),
     dedicatedEntry("rain", [30, 70], { ...PAINTED, map_paint: { legend: { boundaries: [5, 20], unit: "mm" } } }),
@@ -48,7 +48,7 @@ describe("同じ軸の同じ段は、ルートを出す前と後で同じ行", (
       },
     }),
   ]);
-  const paintable = sameBands.dedicatedAxes.map((axis) => axis.axisId);
+  const paintable = sameBands.routeStyleModes.filter((mode) => mode.legend.length > 0).map((mode) => mode.id);
 
   it.each(paintable)("%s: 段の鍵・色・呼び方が前後で同じ", (axisId) => {
     const shape = (hasDetail: boolean) =>

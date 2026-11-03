@@ -105,7 +105,13 @@ export default function RouteOutcome({ results, generation, splice, profileLayer
   // 選び直しても変わらない。
   if (splice.panel) {
     const { sameRouteId, ...panel } = splice.panel;
-    return <RouteSplicePanel {...panel} sameRouteName={sameRouteId === null ? null : nameOf(sameRouteId)} />;
+    return (
+      <RouteSplicePanel
+        {...panel}
+        catalog={costCatalog}
+        sameRouteName={sameRouteId === null ? null : nameOf(sameRouteId)}
+      />
+    );
   }
 
   // 編集で作ったルートの中身に、元との違いを出す。

@@ -54,7 +54,7 @@ export function lensLegend(
   return axis !== undefined && axis.paintsSurroundingRoads ? dedicatedWayValueLegend(axis) : [];
 }
 
-/** レンズの選択肢（公開軸、カタログの並び順）。「なし」「総合難易度」は`LensControl`が足す。
+/** レンズの選択肢（公開軸、カタログの並び順）。「なし」「総合の負担」は`LensControl`が足す。
  *
  * 「未使用」は`weights`（生成後は生成に使われた重み、生成前は今の設定の重み）が0の軸——重みタブが
  * 薄く出す軸と同じで、重みを変えずに生成すれば前後で並びが変わらない。 */

@@ -7,31 +7,24 @@
  *
  * ここで見ないもの: 候補が無い間の案内・候補の上の知らせ・候補の一覧 → `RouteOutcome.test.tsx`。選んだ区間の中身
  * （地図の区間の小窓）→ `app/page.popups.test.tsx`、区間の値の計算 → `features/route/RouteProfile/profileLayers.test.ts`。子の部品（道のりのグラフ・
- * 内訳・寄与の帯・元との違い・編集面）は本物を描き、ここでは受け渡し（親の値が子のどこに出るか・子の操作で親の
+ * 内訳・元との違い・編集面）は本物を描き、ここでは受け渡し（親の値が子のどこに出るか・子の操作で親の
  * 何が変わるか）だけを見る。子が値をどう描くか（書式・並び・空のときの案内）は各部品のテストが見る。道のりのグラフの塗り
- * （積む軸の並び・色・値の無い区間の高さ）は読み上げに出ないので見ない。
+ * （積む軸の並び・色）は読み上げに出ないので見ない。
  *
- * 差し替えたもの: 軸カタログの応答（網の層）。結果の状態は値で組む（`testing/routeOutcome.tsx`）。
+ * 差し替えたもの: 軸カタログと費用の軸の一覧の応答（網の層）。結果の状態は値で組む（`testing/routeOutcome.tsx`）。
  */
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { serveAxisCatalog } from "@/testing/backendServer";
+import { serveCostAxisCatalog } from "@/testing/costAxes";
 import { makeRouteSegment } from "@/testing/routeFixtures";
-import {
-  CATALOG,
-  CATALOG_RESPONSE,
-  FAST,
-  SLOW,
-  renderOutcome,
-  resultsOf,
-  route,
-  type Splice,
-} from "@/testing/routeOutcome";
+import { CATALOG_RESPONSE, FAST, SLOW, renderOutcome, resultsOf, route, type Splice } from "@/testing/routeOutcome";
 
 beforeEach(() => {
   serveAxisCatalog(CATALOG_RESPONSE);
+  serveCostAxisCatalog();
 });
 
 afterEach(() => {
@@ -76,7 +69,7 @@ describe("選んだ候補の中身", () => {
         selectedRouteSegment: { segment: second, latitude: 35, longitude: 139 },
       }),
     });
-    const graph = screen.getByRole("slider", { name: /^道のりに沿った難易度/ });
+    const graph = screen.getByRole("slider", { name: /^道のりに沿った負担/ });
     expect(graph).toHaveAttribute("aria-valuetext", "1.0 km地点");
     expect(screen.getByText("20.0km")).toBeInTheDocument();
     graph.focus();
@@ -84,10 +77,15 @@ describe("選んだ候補の中身", () => {
     expect(results.selectSegment).toHaveBeenCalledWith(expect.objectContaining({ segment: first }));
   });
 
-  it("候補の総合難易度の内訳を出す", () => {
-    const candidate = route("fast", { overall_difficulty: { average: 30, load: 300 } });
+  it("候補の負担と、軸の名前（費用の軸の一覧）の付いた内訳と事実を出す", async () => {
+    const candidate = route("fast", {
+      penalty: { axis_seconds: { ascent: 240 }, avoidance_seconds: 0 },
+      facts: { elevation_unknown_km: 0, axes: { ascent: { label: "登り", value: 120, unit: "m" } } },
+    });
     renderOutcome({ results: resultsOf({ generated: [candidate] }) });
-    expect(screen.getByText("総合難易度").parentElement).toHaveTextContent("総合難易度30.0/100");
+    expect(screen.getByRole("button", { name: "負担の説明を表示" }).parentElement).toHaveTextContent("負担+4分");
+    expect(await screen.findByText("登坂")).toBeInTheDocument();
+    expect(screen.getByText("登り 120m")).toBeInTheDocument();
   });
 
   it("編集している間は、一覧の代わりに編集面だけを出し、同じ道の候補は一覧の名前で渡す", () => {
@@ -105,8 +103,6 @@ describe("選んだ候補の中身", () => {
       applying: false,
       error: null,
       onCancel: vi.fn(),
-      axes: CATALOG.axes,
-      axisColors: CATALOG.axisColors,
     };
     renderOutcome({
       results: resultsOf({ generated: [FAST, SLOW] }),

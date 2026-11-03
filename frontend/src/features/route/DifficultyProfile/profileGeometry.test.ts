@@ -1,8 +1,8 @@
 // @vitest-environment node
 /**
- * `features/route/DifficultyProfile/profileGeometry.ts`——道のりの難易度のグラフの形と、グラフ上の距離が入る区間を引く計算。
- * - `profileBoxes`: 値のある区間は軸の寄与を指定の順に下から積み（寄与の無い軸は積まない）、値の無い区間は
- *   ルートの総合難易度の高さの1本にする。長さの無い区間は描かない
+ * `features/route/DifficultyProfile/profileGeometry.ts`——道のりの負担のグラフの形と、グラフ上の距離が入る区間を引く計算。
+ * - `profileBoxes`: 内訳のある区間は、軸の1kmあたりの代償の秒を指定の順に下から積み（秒の無い軸は積まない）、図の上端を
+ *   このルートで最も大きい区間の値にする。内訳の無い区間・長さの無い区間は描かない
  * - `columnAtKm`: 距離が入る柱と、その柱の中の割合。範囲の外は端の柱へ寄せ、長さの無い柱は選ばない
  *
  * ここで見ないもの:
@@ -11,101 +11,57 @@
  */
 import { describe, expect, it } from "vitest";
 
+import { PROFILE_VIEW_HEIGHT } from "@/features/route/ProfileChart/profileScale";
 import { routeStretches } from "@/lib/routeDistance";
 import { makeRouteSegment } from "@/testing/routeFixtures";
-import difficultyExpectations from "@/types/generated/difficulty-expectations.json";
 import type { RouteSegmentDetail } from "@/types/route";
 
 import { columnAtKm, profileBoxes } from "./profileGeometry";
 
-/** 区間。難易度は、指定しなければ軸の寄与の合計（backendが区間の難易度を寄与へ分けるのと同じ関係）。 */
-function segment(overrides: Partial<RouteSegmentDetail> = {}): RouteSegmentDetail {
-  const contributions = overrides.axis_contributions ?? {};
+/** 区間。`axisSeconds`は軸ごとの代償の秒（nullなら内訳なし）。 */
+function segment(distanceKm: number, axisSeconds: Record<string, number> | null): RouteSegmentDetail {
   return makeRouteSegment({
-    distance_km: 1,
-    difficulty: Object.values(contributions).reduce((sum, value) => sum + value, 0),
+    distance_km: distanceKm,
     end_longitude: 1,
-    ...overrides,
+    penalty: axisSeconds === null ? null : { axis_seconds: axisSeconds, avoidance_seconds: 0 },
   });
 }
 
 describe("profileBoxes", () => {
-  it("値のある区間は、軸の寄与を指定の順に下から積む", () => {
-    const columns = routeStretches([
-      segment({ distance_km: 2, axis_contributions: { wind: 10, slope: 30 } }),
-      segment({ distance_km: 1, axis_contributions: { wind: 5, slope: 15 } }),
-    ]);
-    const { byAxis } = profileBoxes(columns, ["slope", "wind"], 40);
+  it("軸の1kmあたりの秒を指定の順に下から積み、最も大きい区間の値を図の上端にする（回避指定は積まない）", () => {
+    // 1kmあたり: 前の区間は 坂30・風10（計40）、後ろは 坂10・風10（計20）。
+    const columns = routeStretches([segment(2, { wind: 20, slope: 60 }), segment(1, { wind: 10, slope: 10 })]);
+    const byAxis = profileBoxes(columns, ["slope", "wind"]);
+    const unit = PROFILE_VIEW_HEIGHT / 40;
     expect(byAxis.get("slope")).toEqual([
-      { startKm: 0, endKm: 2, bottom: 0, top: 30 },
-      { startKm: 2, endKm: 3, bottom: 0, top: 15 },
+      { startKm: 0, endKm: 2, bottom: 0, top: 30 * unit },
+      { startKm: 2, endKm: 3, bottom: 0, top: 10 * unit },
     ]);
     expect(byAxis.get("wind")).toEqual([
-      { startKm: 0, endKm: 2, bottom: 30, top: 40 },
-      { startKm: 2, endKm: 3, bottom: 15, top: 20 },
+      { startKm: 0, endKm: 2, bottom: 30 * unit, top: 40 * unit },
+      { startKm: 2, endKm: 3, bottom: 10 * unit, top: 20 * unit },
     ]);
   });
 
-  it("寄与の無い軸は積まず、上の軸はその分下がる。指定の順に無い軸は描かない", () => {
-    const columns = routeStretches([segment({ axis_contributions: { light: 25, other: 10 } })]);
-    const { byAxis } = profileBoxes(columns, ["slope", "light"], 40);
-    expect(byAxis.get("slope")).toEqual([]);
-    expect(byAxis.get("light")).toEqual([{ startKm: 0, endKm: 1, bottom: 0, top: 25 }]);
-  });
-
-  it("値の無い区間は、ルートの総合難易度の高さの1本にする", () => {
+  it("秒の無い軸は積まず、指定の順に無い軸は描かない。内訳の無い区間と長さの無い区間は描かない", () => {
     const columns = routeStretches([
-      segment({ distance_km: 1, axis_contributions: { wind: 20 } }),
-      segment({ distance_km: 0.5, difficulty: null, axis_contributions: { wind: 99 } }),
+      segment(1, { slope: 0, wind: 10, other: 99 }),
+      segment(1, null),
+      segment(0, { wind: 5 }),
     ]);
-    const { byAxis, missing } = profileBoxes(columns, ["wind"], 35);
-    expect(missing).toEqual([{ startKm: 1, endKm: 1.5, bottom: 0, top: 35 }]);
-    expect(byAxis.get("wind")).toEqual([{ startKm: 0, endKm: 1, bottom: 0, top: 20 }]);
+    const byAxis = profileBoxes(columns, ["slope", "wind"]);
+    expect(byAxis.get("slope")).toEqual([]);
+    expect(byAxis.get("wind")).toEqual([{ startKm: 0, endKm: 1, bottom: 0, top: PROFILE_VIEW_HEIGHT * (10 / 109) }]);
   });
 
-  it.each([
-    ["総合難易度が無い", null],
-    ["総合難易度が0", 0],
-  ])("%sなら、値の無い区間は描かない", (_label, average) => {
-    const columns = routeStretches([segment({ difficulty: null })]);
-    expect(profileBoxes(columns, ["wind"], average).missing).toEqual([]);
-  });
-
-  it("塗った面積は、backendの表のルートの難易度の総量と同じ（値の無い区間を平均として数える）", () => {
-    const rows = difficultyExpectations.overall_difficulty;
-    expect(rows.length).toBeGreaterThan(0);
-    for (const { scene, segments, overall_difficulty } of rows) {
-      const columns = routeStretches(
-        segments.map((s) =>
-          segment({
-            distance_km: s.distance_km,
-            difficulty: s.difficulty,
-            axis_contributions: s.axis_contributions as Record<string, number>,
-          }),
-        ),
-      );
-      const axes = [...new Set(segments.flatMap((s) => Object.keys(s.axis_contributions)))];
-      const { byAxis, missing } = profileBoxes(columns, axes, overall_difficulty?.average ?? null);
-      const area = [...[...byAxis.values()].flat(), ...missing].reduce(
-        (sum, box) => sum + (box.endKm - box.startKm) * (box.top - box.bottom),
-        0,
-      );
-      expect(area, scene).toBeCloseTo(overall_difficulty?.load ?? 0, 6);
-    }
-  });
-
-  it("長さの無い区間は描かない", () => {
-    const columns = routeStretches([segment({ distance_km: 0, axis_contributions: { wind: 20 } })]);
-    expect(profileBoxes(columns, ["wind"], 35).byAxis.get("wind")).toEqual([]);
+  it("どの区間も内訳を持たなければ、何も描かない", () => {
+    const byAxis = profileBoxes(routeStretches([segment(1, null)]), ["slope"]);
+    expect(byAxis.get("slope")).toEqual([]);
   });
 });
 
 describe("columnAtKm", () => {
-  const columns = routeStretches([
-    segment({ distance_km: 1 }),
-    segment({ distance_km: 0 }),
-    segment({ distance_km: 2 }),
-  ]);
+  const columns = routeStretches([segment(1, null), segment(0, null), segment(2, null)]);
 
   it.each([
     { km: 0.25, column: 0, fraction: 0.25, why: "距離が入る柱と、柱の中の割合" },
@@ -117,6 +73,6 @@ describe("columnAtKm", () => {
   });
 
   it("長さのある柱が無ければnull", () => {
-    expect(columnAtKm(routeStretches([segment({ distance_km: 0 })]), 0)).toBeNull();
+    expect(columnAtKm(routeStretches([segment(0, null)]), 0)).toBeNull();
   });
 });

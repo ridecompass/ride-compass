@@ -46,22 +46,27 @@ export interface CostAxisCatalog {
   failed: boolean;
 }
 
-const EMPTY: CostAxisCatalog = { axes: [], axisColors: {}, avoidanceLabel: "", lenses: null, loaded: false, failed: false };
+const EMPTY: CostAxisCatalog = {
+  axes: [],
+  axisColors: {},
+  avoidanceLabel: "",
+  lenses: null,
+  loaded: false,
+  failed: false,
+};
 const FAILED: CostAxisCatalog = { ...EMPTY, failed: true };
 
 function costAxisCatalogFromResponse(response: CostAxisCatalogResponse | null): CostAxisCatalog {
   if (response === null) return { ...EMPTY, loaded: true };
-  const axes = response.axes.map(
-    (entry): CostAxis => ({
-      axisId: entry.axis_id,
-      ledger: entry.ledger,
-      label: entry.label,
-      description: entry.description,
-      iconId: entry.icon_id,
-      lens: entry.lens,
-      lensEquivalents: entry.lens_equivalents,
-    }),
-  );
+  const axes = response.axes.map((entry): CostAxis => ({
+    axisId: entry.axis_id,
+    ledger: entry.ledger,
+    label: entry.label,
+    description: entry.description,
+    iconId: entry.icon_id,
+    lens: entry.lens,
+    lensEquivalents: entry.lens_equivalents,
+  }));
   return {
     axes,
     axisColors: axisColorsOf(axes),

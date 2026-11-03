@@ -34,7 +34,7 @@ const MOBILE_TABS = [
     label: "ルート結果",
     Icon: RouteIcon,
     usage:
-      "作った候補の一覧と、その難易度の内訳を開きます。点は新しい結果か条件の変更の合図で、赤は失敗、中が空いた丸は候補が無かったことです。",
+      "作った候補の一覧と、その負担の内訳を開きます。点は新しい結果か条件の変更の合図で、赤は失敗、中が空いた丸は候補が無かったことです。",
   },
 ] as const;
 
@@ -69,14 +69,7 @@ interface RoutePanelsProps {
 function outcomeParts({ route, profileLayers, onRide }: RoutePanelsProps) {
   const { results, generation, splice } = route;
   return {
-    body: (
-      <RouteOutcome
-        results={results}
-        generation={generation}
-        splice={splice}
-        profileLayers={profileLayers}
-      />
-    ),
+    body: <RouteOutcome results={results} generation={generation} splice={splice} profileLayers={profileLayers} />,
     actions: results.routes.length > 0 ? <RouteOutcomeHeaderActions planner={route} onRide={onRide} /> : null,
   };
 }
@@ -135,7 +128,7 @@ export function DesktopRoutePanels(props: RoutePanelsProps) {
               }
               open={panels.outcomeOpen}
               onOpenChange={panels.setOutcomeOpen}
-              usage="押すと開き・畳みます。作った候補と、その難易度の内訳がここに並びます。"
+              usage="押すと開き・畳みます。作った候補と、その負担の内訳がここに並びます。"
             >
               {outcome.body}
             </SectionDisclosure>

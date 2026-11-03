@@ -6,6 +6,7 @@ import { expect, vi } from "vitest";
 
 import type { GenerationInput } from "@/features/route/generationRequest";
 import { useSpliceSession } from "@/features/route/useSpliceSession";
+import { useAxisCatalog } from "@/hooks/useAxisCatalog";
 import { CLIENT_TUNING_IDS } from "@/lib/axisCatalog";
 import { heldReplies } from "@/testing/backendServer";
 import { catalogEntry, catalogResponse } from "@/testing/catalogAxes";
@@ -81,18 +82,24 @@ export const PROPS: SpliceProps = { routes: [BASE, VIA_Q], generatedInput: BASIS
 
 export function renderSplice(props: Partial<SpliceProps> = {}) {
   const onApplied = vi.fn();
-  const rendered = renderHook((p: SpliceProps) => useSpliceSession({ ...p, onApplied }), {
-    initialProps: { ...PROPS, ...props },
-  });
-  return { ...rendered, onApplied };
+  // 軸カタログが届いたかは、同じ取得を読む本物のフックで見る（編集面は軸カタログの中身を持たない）。
+  let catalogLoaded = false;
+  const rendered = renderHook(
+    (p: SpliceProps) => {
+      catalogLoaded = useAxisCatalog().loaded;
+      return useSpliceSession({ ...p, onApplied });
+    },
+    { initialProps: { ...PROPS, ...props } },
+  );
+  return { ...rendered, onApplied, catalogLoaded: () => catalogLoaded };
 }
 
 export type RenderedSplice = ReturnType<typeof renderSplice>;
 
-/** 編集を始め、軸カタログ（区間を割る下限）が届いて編集面へ軸が渡るまで待つ。 */
+/** 編集を始め、軸カタログ（区間を割る下限）が届くまで待つ。 */
 export async function startWithCatalog(rendered: RenderedSplice, routeId = "base") {
   act(() => rendered.result.current.start(routeId));
-  await waitFor(() => expect(rendered.result.current.panel?.axes).toHaveLength(1));
+  await waitFor(() => expect(rendered.catalogLoaded()).toBe(true));
 }
 
 /** 編集を始め、乗り換え先が地図へ出るまで待つ。 */

@@ -16,11 +16,7 @@ import type { LensOption } from "@/features/map/LensControl/LensRow";
 
 type LensPresentation = CostLensCatalog["totalLens"];
 
-function lensAxis(
-  presentation: LensPresentation,
-  lenses: CostLensCatalog,
-  ground: MapTheme,
-): DedicatedWayValueAxis {
+function lensAxis(presentation: LensPresentation, lenses: CostLensCatalog, ground: MapTheme): DedicatedWayValueAxis {
   const conditions = lenses.mapLens.material_conditions;
   return {
     axisId: presentation.axisId,
@@ -59,14 +55,17 @@ export function costRouteStyleModes(catalog: CostAxisCatalog, ground: MapTheme):
   const { lenses } = catalog;
   if (lenses === null) return [];
   const mode = (id: string, presentation: LensPresentation, valueExpression: unknown[]) =>
-    buildRangeSteppedMode({ id, label: presentation.label, valueExpression, paint: costLensPaint(presentation, ground) });
+    buildRangeSteppedMode({
+      id,
+      label: presentation.label,
+      valueExpression,
+      paint: costLensPaint(presentation, ground),
+    });
   const total: unknown[] = ["get", ROUTE_LENS_TOTAL_PROPERTY];
   return [
     mode(LENS_DIFFICULTY_ID, lenses.totalLens, total),
     mode(lenses.totalLens.axisId, lenses.totalLens, total),
-    ...catalog.axes.map((axis) =>
-      mode(axis.axisId, axis, ["get", axis.axisId, ["get", ROUTE_LENS_SECONDS_PROPERTY]]),
-    ),
+    ...catalog.axes.map((axis) => mode(axis.axisId, axis, ["get", axis.axisId, ["get", ROUTE_LENS_SECONDS_PROPERTY]])),
   ];
 }
 

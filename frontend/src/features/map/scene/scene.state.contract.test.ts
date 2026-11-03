@@ -136,6 +136,7 @@ describe("状態を地図へ伝えた結果", () => {
     // 北緯35.6度の上を東へ進む、長さ1kmの区間を2つつないだルート。
     const segment = (from: number, to: number) => ({
       distance_km: 1,
+      penalty: null,
       start_longitude: from,
       start_latitude: 35.6,
       end_longitude: to,
@@ -212,9 +213,7 @@ describe("状態を地図へ伝えた結果", () => {
           sceneState({
             look: { layerVisibility: { route: true }, lens: "slope" },
             catalog: { routeStyleModes: routeStyleModesFromCatalogAxes([axis]) },
-            routes: [
-              { ...route, segments: [{ ...segment(139.7, 139.72), axis_difficulties: { slope: 99 }, ...values }] },
-            ] as never,
+            routes: [{ ...route, segments: [{ ...segment(139.7, 139.72), ...values }] }] as never,
             selectedRouteId: "a",
           }),
         );

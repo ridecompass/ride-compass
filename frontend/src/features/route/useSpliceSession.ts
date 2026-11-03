@@ -3,7 +3,6 @@
 import { useCallback, useRef, useState, type ComponentProps } from "react";
 
 import { useAxisCatalog } from "@/hooks/useAxisCatalog";
-import { useCostAxisCatalog } from "@/hooks/useCostAxisCatalog";
 import { errorMessage } from "@/lib/apiError";
 import { useIsomorphicLayoutEffect } from "@/hooks/useIsomorphicLayoutEffect";
 import { CLIENT_TUNING_IDS, clientTuningValue } from "@/lib/axisCatalog";
@@ -81,7 +80,9 @@ export interface SpliceSessionView {
   start: (routeId: string) => void;
   map: SpliceMapProps;
   /** 編集面（`RouteSplicePanel`）へ渡す値。編集していなければnull。同じ道の候補は名前を持たないidで渡す（名前は一覧が付ける）。 */
-  panel: (Omit<ComponentProps<typeof RouteSplicePanel>, "sameRouteName"> & { sameRouteId: string | null }) | null;
+  panel:
+    | (Omit<ComponentProps<typeof RouteSplicePanel>, "sameRouteName" | "catalog"> & { sameRouteId: string | null })
+    | null;
 }
 
 /**
@@ -95,7 +96,6 @@ export function useSpliceSession({
   onApplied,
 }: SpliceSessionInputs): SpliceSessionView {
   const axisCatalog = useAxisCatalog();
-  const costCatalog = useCostAxisCatalog();
   // 始めると空から始まり、抜けると中身ごと消える（前回の編集の残りを次へ持ち込まない）。
   const [session, setSplice] = useState<SpliceSession | null>(null);
   const splice = session !== null && session.basis === generatedInput ? session : null;
@@ -252,7 +252,6 @@ export function useSpliceSession({
             previewing: spliceTask.status === "previewing",
             onPreview: handlePreviewSplice,
             onApply: handleApplySplice,
-            catalog: costCatalog,
             error: spliceTask.status === "idle" ? spliceTask.error : null,
             applying: spliceTask.status === "applying",
           },

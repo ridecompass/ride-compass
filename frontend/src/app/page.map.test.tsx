@@ -314,7 +314,7 @@ describe("区間の近くの施設", () => {
     clickMap(ELSEWHERE);
     expect(sidePointsOnMap()).toEqual({});
 
-    fireEvent.keyDown(screen.getByRole("slider", { name: /^道のりに沿った難易度/ }), { key: "Home" });
+    fireEvent.keyDown(screen.getByRole("slider", { name: /^道のりに沿った負担/ }), { key: "Home" });
     expect(sidePointsOnMap()).toEqual({ "point-poi-side-supply_poi": [[139.705, 35.7]] });
   });
 

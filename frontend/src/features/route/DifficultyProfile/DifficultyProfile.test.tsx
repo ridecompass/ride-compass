@@ -1,12 +1,12 @@
 /**
- * `features/route/DifficultyProfile/DifficultyProfile.tsx`——候補の中身の先頭に出す、道のりに沿った難易度のグラフ。
+ * `features/route/DifficultyProfile/DifficultyProfile.tsx`——候補の中身の先頭に出す、道のりに沿った負担のグラフ。
  *
  * 見るもの: 長さのある区間が無ければ何も描かないこと、横軸の右端（候補の距離と渡された物差しの長い方）と目盛り、
- * 軸の色と色の無い軸の色、値の無い区間の灰色の塗り（総合難易度の高さ）、走行中の現在地の印（その距離の柱の上端）と、
- * 始点からそこまでの色を抜いた薄め（候補の終わりより先は終わりに寄せる）。
+ * 軸の色と色の無い軸の色、走行中の現在地の印（その距離の柱の上端）と、始点からそこまでの色を抜いた薄め（候補の終わりより先は
+ * 終わりに寄せる）。
  *
- * ここで見ないもの: 区間の柱と積み上げの長方形の組み方（`axisOrder`の順に下から積むこと・寄与の無い軸を積まないこと・
- * 総合難易度が無ければ値の無い区間を塗らないことを含む） → `features/route/DifficultyProfile/profileGeometry.ts`。
+ * ここで見ないもの: 区間の柱と積み上げの長方形の組み方（`axisOrder`の順に下から積むこと・秒の無い軸を積まないこと・
+ * 内訳の無い区間を塗らないことを含む） → `features/route/DifficultyProfile/profileGeometry.ts`。
  * 選ばれた区間の帯・スライダーとしての値・キーボードと指で選ぶ操作・見るだけの図 → `ProfileChart.test.tsx`。
  */
 import { render, screen } from "@testing-library/react";
@@ -19,19 +19,18 @@ import palette from "@/types/generated/palette.json";
 import type { RouteSegmentDetail } from "@/types/route";
 import DifficultyProfile from "./DifficultyProfile";
 
-// 1kmずつの2区間。後ろは値の無い区間。
+// 1kmずつの2区間。前の区間の1kmあたりの負担（100秒）が図の上端になる。
 const FIRST = makeRouteSegment({
   distance_km: 1,
-  difficulty: 60,
-  axis_contributions: { axis_a: 40, axis_b: 20 },
+  penalty: { axis_seconds: { axis_a: 60, axis_b: 40 }, avoidance_seconds: 0 },
   start_latitude: 35,
   start_longitude: 139,
   end_latitude: 35,
   end_longitude: 139.01,
 });
-const MISSING = makeRouteSegment({
+const SECOND = makeRouteSegment({
   distance_km: 1,
-  difficulty: null,
+  penalty: { axis_seconds: { axis_a: 30 }, avoidance_seconds: 0 },
   start_latitude: 35,
   start_longitude: 139.01,
   end_latitude: 35,
@@ -51,8 +50,7 @@ function Profile({ segments, scaleKm, ...props }: Props) {
 
 function profileProps(props: Partial<Props> = {}): Props {
   return {
-    segments: [FIRST, MISSING],
-    overallDifficulty: 30,
+    segments: [FIRST, SECOND],
     axisOrder: ["axis_a", "axis_b"],
     axisColors: COLORS,
     scaleKm: 2,
@@ -87,7 +85,7 @@ describe("DifficultyProfile", () => {
     const { container, unmount } = renderProfile({ scaleKm: 4 });
     expect(screen.getByText("4.0km")).toBeInTheDocument();
     // 1kmの区間が、横幅1000の4分の1を占める。
-    expect(paths(container)[1].d).toBe("M0 60H250V100H0Z");
+    expect(paths(container)[0].d).toBe("M0 40H250V100H0ZM250 70H500V100H250Z");
     unmount();
 
     renderProfile({ scaleKm: 1 });
@@ -99,13 +97,9 @@ describe("DifficultyProfile", () => {
     expect(paths(container).map((path) => path.fill)).toEqual([COLORS.axis_a, palette.semantic.no_data]);
   });
 
-  it("値の無い区間は総合難易度の高さで灰色に塗る", () => {
-    const { container } = renderProfile({ overallDifficulty: 30 });
-    expect(paths(container).find((path) => path.opacity === "0.6")).toEqual({
-      fill: palette.semantic.no_data,
-      d: "M500 70H1000V100H500Z",
-      opacity: "0.6",
-    });
+  it("内訳の無い区間は塗らない", () => {
+    const { container } = renderProfile({ segments: [FIRST, makeRouteSegment({ ...SECOND, penalty: null })] });
+    expect(paths(container).map((path) => path.d)).toEqual(["M0 40H500V100H0Z", "M0 0H500V40H0Z"]);
   });
 
   it("現在地の距離に印を、その距離の柱の上端に置き、始点からそこまでは色を抜いて薄め、残りは元の色で描く。候補の終わりより先は終わりに寄せ、無ければ描かない", () => {
@@ -132,7 +126,7 @@ describe("DifficultyProfile", () => {
         mark: mark === null ? null : { left: mark.style.left, top: mark.style.top },
       };
     };
-    const drawnPaths = 3;
+    const drawnPaths = 2;
     expect(progress()).toEqual({
       travelledWidth: "125",
       travelledOpacity: String(mapDisplay.route.opacities.travelled),
@@ -140,8 +134,8 @@ describe("DifficultyProfile", () => {
       travelledPaths: drawnPaths,
       aheadPaths: drawnPaths,
       aheadFilter: null,
-      // 0.5kmの柱は2軸を積んだ難易度60まで、値の無い区間の柱は総合難易度30まで。
-      mark: { left: "12.5%", top: "40%" },
+      // 0.5kmの柱は2軸を積んだ上端まで、後ろの柱は1kmあたり30秒まで。
+      mark: { left: "12.5%", top: "0%" },
     });
 
     rerender(<Profile {...profileProps({ scaleKm: 4, progressKm: 3 })} />);

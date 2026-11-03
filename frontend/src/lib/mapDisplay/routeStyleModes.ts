@@ -7,12 +7,7 @@ import type { LegendEntry } from "./legendFilter";
 import { NO_DATA_LEGEND_BAND } from "./mapColorLegend";
 import type { AxisCatalogEntry } from "@/types/route";
 import type { MapTheme } from "@/lib/mapTheme";
-import {
-  bandCondition,
-  mapPaintDeclarationOf,
-  valueBands,
-  type MapPaintDeclaration,
-} from "./valueScale";
+import { bandCondition, mapPaintDeclarationOf, valueBands, type MapPaintDeclaration } from "./valueScale";
 
 /** レンズ（地図を何で塗るか）の識別子。`"difficulty"`（レンズを選んでいない。ルート後はルート線を総合の負担で塗る）
  * 以外は公開軸のaxis_idか、費用のレンズのid。ルート前は全道路、ルート後はルート線を同じ識別子で塗る。 */
