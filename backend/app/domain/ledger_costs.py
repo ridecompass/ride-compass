@@ -21,7 +21,7 @@ import numpy as np
 from app.domain.attributes import CategoricalColumn
 from app.domain.axis_templates import evaluate_breakpoint_linear
 from app.domain.cost_axes import EFFORT_AXES, Burden, CategoricalBurden, CostAxisDefinitions
-from app.domain.cycling_speed import SegmentRide
+from app.domain.cycling_speed import SegmentRide, SegmentSpeedModel
 from app.domain.road_network import MaterialFills
 from app.domain.tuning import tuning_value
 
@@ -69,6 +69,7 @@ class LedgerCosts:
         """`flat_power_w`は平地の出力、`kickoff_j`は重みを掛けた漕ぎ出し1回の体力（`SegmentSpeedModel.kickoff_effort_j`）、
         `burden_km`は道の負担の軸ごとの区間の重さ×km（`burden_per_km` × 区間の長さkm）。"""
         multiplier = parameters.multiplier
+        self._weight_exponent = parameters.effort_weight_exponent
         self._item_multipliers = {item: multiplier(axis_id) for axis_id, item in EFFORT_AXES.items()}
         #: 体力1J（重み付き）あたりの代償の秒。区間の体力と曲がる所の漕ぎ出しに同じ換算で掛ける。
         self._seconds_per_j = parameters.strength * parameters.effort_alpha / flat_power_w
@@ -82,6 +83,12 @@ class LedgerCosts:
         effort_j = (m["gravity"] * ride.gravity_extra_j + m["air"] * ride.air_extra_j
                     + m["rolling"] * ride.rolling_extra_j + m["inertia"] * ride.inertia_extra_j)
         return self._seconds_per_j * effort_j + self._burden_seconds
+
+    def bin_seconds(self, model: SegmentSpeedModel, headwind_ms: np.ndarray,
+                    crosswind_ms: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """風の成分で走ったときの、区間ごとの`(走行時間, 代償の秒)`（体力の重みは式の`γ`で掛ける）。"""
+        ride = model.ride(headwind_ms, crosswind_ms, self._weight_exponent)
+        return ride.seconds, self.penalty_seconds(ride)
 
     def transition_costs(self, turn_seconds: np.ndarray, turn_kickoffs: np.ndarray) -> np.ndarray:
         """曲がる所の費用（秒、遷移ごと。`turn_seconds`の型のまま）: 時間に、漕ぎ出しの回数 × 漕ぎ出し1回の代償を足したもの。

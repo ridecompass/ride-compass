@@ -718,9 +718,8 @@ class LegCostComposer:
     def _ledger_bin(self, time: BinTime, ledger: LedgerCosts) -> tuple[np.ndarray, np.ndarray]:
         """費目の帳簿の式の、時刻`time`の区間ごとの`(走行時間, 代償の秒)`。"""
         wind_context = self._wind_context(time, _row_taker(None))
-        ride = self._travel_inputs.model.ride(*_wind_components(wind_context, len(self._travel_inputs.distance_m)),
-                                              self._ledger_setup[1].effort_weight_exponent)
-        return ride.seconds, ledger.penalty_seconds(ride)
+        return ledger.bin_seconds(self._travel_inputs.model,
+                                  *_wind_components(wind_context, len(self._travel_inputs.distance_m)))
 
     @cached_property
     def _unit_multiplier(self) -> np.ndarray:
