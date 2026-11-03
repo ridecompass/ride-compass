@@ -207,6 +207,16 @@ _EDGE_MATERIAL_ARRAYS_SQL = text(
 )
 
 
+#: 有向の区間ごとの断面の点の標高を、渡した並びの順に1区間1行で読む。
+_EDGE_ELEVATION_PROFILES_SQL = text("""
+SELECT ids.forward, ee.elevation_profile_m
+FROM unnest(CAST(:way_ids AS bigint[]), CAST(:segment_indexes AS int[]), CAST(:forwards AS boolean[]))
+     WITH ORDINALITY AS ids(osm_way_id, segment_index, forward, ord)
+LEFT JOIN edge_elevation ee ON ee.osm_way_id = ids.osm_way_id AND ee.segment_index = ids.segment_index
+ORDER BY ids.ord
+""")
+
+
 # --- グラフの読み出し ---------------------------------------------------------
 #
 # 区間は向きを持たない1行で、**有向の枝は道路網全体の配列を作るとき**
@@ -469,6 +479,23 @@ class RoadGraphRepository:
             categorical_columns=tuple(CategoricalColumn.encode(raw[material_id]) for material_id in categorical_ids),
             **{name: _float_array(raw[name]) for name in _EXTRA_MATERIAL_ARRAY_COLUMNS},
         )
+
+    async def get_edge_elevation_profiles(
+        self, way_ids: list[int], segment_indexes: list[int], forwards: list[bool]
+    ) -> list[np.ndarray]:
+        """有向の区間（位置で揃えた3本の列）ごとの、走る向きに並べた断面の点の標高（m、float32、値の無い点はNaN）。
+        標高の行が無い区間は空の配列。区間ごとに点の数が違い、材料の列のように配列へまとめられないので、区間ごとの行で読む。"""
+        profiles: list[np.ndarray] = []
+        for start in range(0, len(way_ids), ID_CHUNK_SIZE):
+            stop = start + ID_CHUNK_SIZE
+            rows = (await self._session.execute(_EDGE_ELEVATION_PROFILES_SQL, {
+                "way_ids": way_ids[start:stop], "segment_indexes": segment_indexes[start:stop],
+                "forwards": forwards[start:stop],
+            })).all()
+            for row in rows:
+                values = np.array([np.nan if v is None else v for v in row.elevation_profile_m or ()], dtype=np.float32)
+                profiles.append(values if row.forward else values[::-1].copy())
+        return profiles
 
     async def sample_way_material_values(
         self,

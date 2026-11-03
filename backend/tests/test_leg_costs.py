@@ -25,6 +25,7 @@ from app.domain.attributes import CategoricalColumn
 from app.domain.axis_definitions import BreakpointLinearShape, MaterialTerm, copy_axis_definitions
 from app.domain.cycling_speed import RiderProfile, SegmentSpeedModel, crr_for_surface
 from app.domain.difficulty import axis_weight_shares
+from app.domain.elevation_profile import ElevationProfiles, GradeDistribution
 from app.domain.evaluation import DensityAxisColumn, StaticEdgeScoreMatrix
 from app.domain.leg_costs import LegCostArrays, LegCostComposer, LegValues
 from app.domain.msm import MsmBlock, MsmGrid
@@ -148,7 +149,8 @@ def _shares(values: LegValues, rows) -> list[dict[str, float]]:
 
 
 def test_the_gradient_in_percent_slows_the_rider_as_that_grade_and_a_missing_one_counts_as_flat():
-    """勾配の材料は%で、走行モデルは割合で読む。読み違えると、坂の所要時間が別の勾配の坂のものになる。"""
+    """断面の点の無い表は、区間ごとに勾配の材料の平均勾配1つで走る。勾配の材料は%で、走行モデルは割合で読む。読み違えると、
+    坂の所要時間が別の勾配の坂のものになる。"""
     leg = _snapshot(_matrix(3, gradient=[5.0, np.nan, 0.0]))
     climb, missing, flat = leg.travel_seconds_lazy
     five_percent = SegmentSpeedModel(
@@ -156,6 +158,21 @@ def test_the_gradient_in_percent_slows_the_rider_as_that_grade_and_a_missing_one
 
     assert climb == pytest.approx(1000.0 / five_percent.speed_ms(np.zeros(1), np.zeros(1))[0])
     assert missing == flat
+
+
+def test_a_road_that_climbs_and_descends_takes_longer_than_a_flat_one_of_the_same_average():
+    """断面の点の間ごとに速さを解く。600mで300m登って300m下る道は、平均勾配は平地と同じ0%でも、登りで遅れるぶん
+    下りで取り戻せず、平地より時間がかかる（平均勾配1つで解くと同じ時間になる）。"""
+    matrix = dataclasses.replace(
+        _matrix(2, distance=600.0),
+        elevation_profiles=ElevationProfiles(
+            start=np.array([0, 3]), points=np.array([3, 3], dtype=np.int32),
+            elevation_m=np.array([0.0, 18.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float32),
+            distribution=GradeDistribution(np.zeros(1), np.ones(1))))
+
+    up_and_down, flat = _snapshot(matrix).travel_seconds_lazy
+
+    assert up_and_down > flat * 1.1
 
 
 def test_each_stop_on_a_segment_adds_its_wait():

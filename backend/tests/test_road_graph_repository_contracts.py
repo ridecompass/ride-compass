@@ -230,6 +230,20 @@ async def test_paired_edge_columns_are_not_swapped():
     assert (arrays.start_elevation_m[0], arrays.end_elevation_m[0]) == (10.0, 12.0)
 
 
+async def test_the_elevation_profile_of_a_backward_edge_runs_in_reverse():
+    """断面の点は走る向きに並べて返す。逆向きの区間で並びを逆にしないと、登りを下りとして走る。値の無い点はNaN、
+    標高の行が無い区間は点を持たない。"""
+    repo, _ = _repo([_Row(forward=True, elevation_profile_m=[1.0, None, 3.0]),
+                     _Row(forward=False, elevation_profile_m=[1.0, 2.0]),
+                     _Row(forward=True, elevation_profile_m=None)])
+
+    forward, backward, missing = await repo.get_edge_elevation_profiles([1, 2, 3], [0, 0, 0], [True, False, True])
+
+    assert np.array_equal(forward, [1.0, np.nan, 3.0], equal_nan=True)
+    assert backward.tolist() == [2.0, 1.0]
+    assert len(missing) == 0
+
+
 # --- way粒度の読み出し --------------------------------------------------------
 
 

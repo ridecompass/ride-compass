@@ -24,6 +24,7 @@ from app.domain.attributes import (
     ElevationAttribute,
     MaterialColumn,
 )
+from app.domain.elevation_profile import ElevationProfiles, grade_distribution
 from app.domain.geo import LatLonPoint
 from app.domain.rain import NearestRainStations
 from app.domain.material_catalog import GRADIENT_PERCENT, materials_of_source
@@ -77,6 +78,11 @@ class RoadNetwork:
     elevation_loss_m: np.ndarray
     steepest_gain_percent: np.ndarray  # float64, NaN=欠損
     steepest_loss_percent: np.ndarray
+    # 断面の点（`domain/elevation_profile.py`）。区間の行ごとに、全区間の点をつないだ`profile_elevation_m`の中の始まりの位置と
+    # 点の数（標高の無い区間は0）。逆向きの行は点を逆に並べて持つ。
+    edge_profile_start: np.ndarray  # int64
+    edge_profile_points: np.ndarray  # int32
+    profile_elevation_m: np.ndarray  # float32、行数は区間ではなく点の数
 
     def __post_init__(self) -> None:
         """行数と列数が揃っていることを、組み立てた場所で確かめる。
@@ -88,9 +94,12 @@ class RoadNetwork:
         wrong = {
             f.name: len(value)
             for f in fields(self)
-            if isinstance(value := getattr(self, f.name), np.ndarray)
+            if isinstance(value := getattr(self, f.name), np.ndarray) and not f.name.startswith("profile_")
             and len(value) != (node_count if f.name.startswith("node_") else edge_count)
         }
+        if len(self.edge_profile_start) and int(np.max(self.edge_profile_start + self.edge_profile_points)) > len(
+                self.profile_elevation_m):
+            wrong["edge_profile_start"] = len(self.profile_elevation_m)
         wrong_columns = {
             name: (matrix.shape[1], len(ids))
             for name, matrix, ids in (
@@ -110,6 +119,13 @@ class RoadNetwork:
     @property
     def edge_count(self) -> int:
         return len(self.edge_way_id)
+
+    @cached_property
+    def elevation_profiles(self) -> ElevationProfiles:
+        """全区間の断面の点と、全体の点の間の勾配の分布（標高の無い所を埋める平均。道路網と同じ寿命で1回だけ求める）。"""
+        distribution = grade_distribution(
+            self.edge_profile_start, self.edge_profile_points, self.profile_elevation_m, self.distance_m)
+        return ElevationProfiles(self.edge_profile_start, self.edge_profile_points, self.profile_elevation_m, distribution)
 
     @cached_property
     def nearest_rain_stations(self) -> NearestRainStations:
@@ -259,6 +275,7 @@ def material_arrays_of(road: RoadSlice, observed: Mapping[str, np.ndarray]) -> E
         bearing_deg=np.asarray(network.bearing_deg[rows]),
         mid_lat=np.asarray(network.mid_lat[rows]),
         mid_lon=np.asarray(network.mid_lon[rows]),
+        elevation_profiles=network.elevation_profiles.take(rows),
     )
 
 

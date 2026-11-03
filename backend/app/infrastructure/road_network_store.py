@@ -369,12 +369,20 @@ async def _read_materials(
     edge_count = len(way)
     accident_years_covered = await repository.get_accident_years_covered()
     columns = MaterialColumns(edge_count)
+    profiles: list[np.ndarray] = []
     for start in range(0, edge_count, _MATERIAL_BATCH):
         stop = min(start + _MATERIAL_BATCH, edge_count)
-        columns.add(await repository.get_edge_material_arrays(
-            way[start:stop].tolist(), segment[start:stop].tolist(), forward[start:stop].tolist(), accident_years_covered))
+        keys = (way[start:stop].tolist(), segment[start:stop].tolist(), forward[start:stop].tolist())
+        columns.add(await repository.get_edge_material_arrays(*keys, accident_years_covered))
+        profiles.extend(await repository.get_edge_elevation_profiles(*keys))
         logger.info("材料 %d/%d", stop, edge_count)
-    return columns.result()
+    points = np.fromiter((len(p) for p in profiles), dtype=np.int32, count=edge_count)
+    return {
+        **columns.result(),
+        "edge_profile_start": (np.cumsum(points, dtype=np.int64) - points).astype(np.int64),
+        "edge_profile_points": points,
+        "profile_elevation_m": _concatenate(profiles, np.float32),
+    }
 
 
 class MaterialColumns:

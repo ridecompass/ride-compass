@@ -141,8 +141,9 @@ def test_the_rider_pushes_harder_by_the_same_rule_whatever_resistance_grows(cond
     ride = _ride(RIDER, **conditions)
     parts = {name: float(getattr(ride, name)[0]) for name in ("gravity_extra_w", "air_extra_w", "rolling_extra_w")}
 
+    others = [value for name, value in parts.items() if name != pushing]
     assert parts[pushing] > 0
-    assert all(value == 0 for name, value in parts.items() if name != pushing)
+    assert others == [0.0, 0.0]
     assert float(ride.desired_ratio[0]) > 1
 
 

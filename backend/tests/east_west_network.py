@@ -8,6 +8,7 @@ import numpy as np
 
 from app.domain import road_network
 from app.domain.road_network import RoadNetwork
+from tests.profile_fixture import two_point_profiles
 
 NAN = float("nan")
 GRADE = road_network.GRADIENT_PERCENT
@@ -78,4 +79,5 @@ def network() -> RoadNetwork:
         elevation_loss_m=np.array([0.0, 12.0, 0.0, NAN, 0.0]),
         steepest_gain_percent=np.array([12.0, 0.0, 0.0, NAN, 3.0]),
         steepest_loss_percent=np.array([0.0, 12.0, 0.0, NAN, 0.0]),
+        **two_point_profiles(np.array([10.0, 22.0, 5.0, NAN, 7.0]), np.array([22.0, 10.0, 5.0, NAN, 10.0])),
     )

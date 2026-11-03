@@ -4,6 +4,7 @@ from typing import Any
 
 import numpy as np
 
+from app.domain.elevation_profile import ElevationProfiles
 from app.domain.strict_model import StrictModel
 
 
@@ -143,6 +144,8 @@ class EdgeMaterialColumns:
     bearing_deg: np.ndarray  # dtype=float64, NaN=方位が決まらない
     mid_lat: np.ndarray  # dtype=float64
     mid_lon: np.ndarray  # dtype=float64
+    # 区間の断面の点（所要時間が読む）。Noneなら区間ごとに勾配の材料の平均勾配1つで走る。
+    elevation_profiles: ElevationProfiles | None = None
 
     def __len__(self) -> int:
         return len(self.distance_m)

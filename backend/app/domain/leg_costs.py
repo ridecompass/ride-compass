@@ -34,6 +34,7 @@ from app.domain.cycling_speed import (
 )
 from app.domain.difficulty import axis_weighted_sums
 from app.domain.dynamic_materials import DynamicAxisRequestContext, evaluate_dynamic_axis_arrays
+from app.domain.elevation_profile import ProfileIntervals
 from app.domain.evaluation import (
     AxisComposition,
     DensityCost,
@@ -57,9 +58,9 @@ from app.domain.wind import DepartureWind, WindForecastSeries, kmh_to_ms
 TIME_BIN_HOURS = 1.0
 MAX_TIME_BINS = 4
 
-#: 所要時間の計算が値の無い区間をどう数えるかを、利用者に言う文（`_travel_inputs`が勾配の欠けを0%、
+#: 所要時間の計算が値の無い区間をどう数えるかを、利用者に言う文（`_travel_inputs`が標高の欠けを全体の坂の割合の平均で、
 #: 停止要因の件数の欠けを0件に置き換える）。置き換え方を変えたら、ここも変える。
-MISSING_TRAVEL_DATA_WORDING = "坂の無い平地で、止まる所も無い道として所要時間を出しています"
+MISSING_TRAVEL_DATA_WORDING = "標高の無い所は道路網全体の坂の割合の平均で、止まる所の数が無い所は止まらない道として所要時間を出しています"
 
 #: 風の予報が無く（`LegCostComposer.wind_unavailable`）、所要時間を無風で計算したことを利用者に言う文。
 MISSING_WIND_WORDING = "風のモデルの計算値を使えなかったため、無風として所要時間を出しています"
@@ -187,6 +188,16 @@ class _Evaluated:
     headwind_ms: np.ndarray
     crosswind_ms: np.ndarray
     composed: AxisComposition
+
+
+@dataclass(frozen=True)
+class _TravelInputs:
+    """`LegCostComposer._travel_inputs`の中身。"""
+
+    model: SegmentSpeedModel  # 点の間ごと
+    intervals: ProfileIntervals
+    distance_m: np.ndarray  # 区間ごと（以下同じ）
+    wait_seconds: np.ndarray
 
 
 @njit(cache=True, nogil=True)
@@ -344,23 +355,41 @@ class LegCostComposer:
         self._speeds: dict[int | None, np.ndarray] = {}
 
     @cached_property
-    def _travel_inputs(self) -> tuple[SegmentSpeedModel, np.ndarray, np.ndarray]:
-        """所要時間のうち風に依らない入力: 走行モデル（勾配・路面・巡航速度）と、区間の長さ（m、float64）と、区間にある
-        停止要因の待ちの秒（`domain/traffic.py: stop_seconds`）。どれも静的材料だけから決まるため、リクエストに1回だけ求める。
-        ターンの待ちは遷移ごとに決まるためここには含まない（探索側が足す）。"""
+    def _travel_inputs(self) -> _TravelInputs:
+        """所要時間のうち風に依らない入力: 点の間（`domain/elevation_profile.py`）と、その走行モデル（勾配・路面・巡航速度）と、
+        区間の長さ（m、float64）と、区間にある停止要因の待ちの秒（`domain/traffic.py: stop_seconds`）。どれも静的材料だけから
+        決まるため、リクエストに1回だけ求める。ターンの待ちは遷移ごとに決まるためここには含まない（探索側が足す）。
+
+        断面の点が無い表（`StaticEdgeScoreMatrix.elevation_profiles`がNone）は、区間ごとに勾配の材料の平均勾配1つで走る。"""
         distance_m = np.asarray(self._score_matrix.distance_m, dtype=np.float64)
-        # 材料の列はfloat32で持つ。走行モデルの計算はfloat64で行う。
-        grade = np.nan_to_num(self._static_material_arrays[GRADIENT_PERCENT].astype(np.float64)) / 100.0
+        profiles = self._score_matrix.elevation_profiles
+        if profiles is None:
+            average = self._static_material_arrays[GRADIENT_PERCENT].astype(np.float64)
+            intervals = ProfileIntervals(edge=np.arange(len(distance_m)), length_m=distance_m,
+                                         grade=np.nan_to_num(average) / 100.0, missing_edge=np.isnan(average))
+        else:
+            intervals = profiles.intervals(distance_m)
         rolling = rolling_resistance_material_id()
         surface = self.categorical_material_arrays.get(rolling) if rolling is not None else None
         if surface is None:  # 転がり抵抗の表が分け方を指していない: どの区間も基準の転がり抵抗
             surface = CategoricalColumn(np.zeros(len(distance_m), dtype=np.int16), (None,))
-        model = SegmentSpeedModel(RiderProfile(cruise_speed_kmh=self.speed_kmh), grade, crr_for_surface(surface))
+        model = SegmentSpeedModel(
+            RiderProfile(cruise_speed_kmh=self.speed_kmh), intervals.grade, crr_for_surface(surface)[intervals.edge])
         stops = np.zeros(len(distance_m))
         distance_km = distance_m / 1000.0
         for kind, material_id in zip(POI_COUNT_KINDS, stop_count_material_ids(), strict=True):
             stops += np.nan_to_num(self._static_material_arrays[material_id]) * distance_km * stop_seconds(kind)
-        return model, distance_m, stops
+        return _TravelInputs(model, intervals, distance_m, stops)
+
+    def _edge_speeds(self, headwind_ms: np.ndarray, crosswind_ms: np.ndarray) -> np.ndarray:
+        """区間ごとの実効の走行速度（区間の長さ÷点の間ごとの走行時間の和。m/s、float32）。風は区間ごとの値を、その区間の
+        点の間に配る。長さ0の区間は走行時間が0なので、速度は時間に効かない値（1m/s）にする。"""
+        inputs = self._travel_inputs
+        edge = inputs.intervals.edge
+        speeds = inputs.model.speed_ms(np.asarray(headwind_ms)[edge], np.asarray(crosswind_ms)[edge])
+        seconds = np.bincount(edge, weights=inputs.intervals.length_m / speeds.astype(np.float64),
+                              minlength=len(inputs.distance_m))
+        return np.divide(inputs.distance_m, seconds, out=np.ones(len(seconds)), where=seconds > 0).astype(np.float32)
 
     def bin_time(self, hours: float) -> BinTime:
         """全区間を出発から`hours`時間後の時刻で合成するビンの、時刻の入力（`BinTime`）。"""
@@ -605,13 +634,13 @@ class LegCostComposer:
         return self._departure_wind is None and self._wind_series is None
 
     def missing_travel_data_share(self, rows: np.ndarray) -> float | None:
-        """切り出した区間の順の行`rows`のうち、所要時間の計算で勾配か停止要因の件数の値が無く、既定（平地・待ち無し）で
-        数えた区間の距離の割合。`_travel_inputs`が欠けを置き換えるのと同じ列を見る。距離の合計が0ならNone。"""
+        """切り出した区間の順の行`rows`のうち、所要時間の計算で標高か停止要因の件数の値が無く、既定（全体の坂の割合の平均・
+        待ち無し）で数えた所のある区間の距離の割合。`_travel_inputs`が欠けを置き換えるのと同じ値を見る。距離の合計が0ならNone。"""
         distance = self._score_matrix.distance_m[rows]
         total = float(distance.sum())
         if total <= 0:
             return None
-        missing = np.isnan(self._static_material_arrays[GRADIENT_PERCENT][rows])
+        missing = self._travel_inputs.intervals.missing_edge[rows].copy()
         for material_id in stop_count_material_ids():
             missing |= np.isnan(self._static_material_arrays[material_id][rows])
         return round(float(distance[missing].sum()) / total, 4)
@@ -619,13 +648,12 @@ class LegCostComposer:
     def _speed(self, time: BinTime, evaluated: _Evaluated) -> np.ndarray:
         """区間ごとの走行速度。昼夜は速度に効かないので、全区間が同じ時刻で昼夜だけが違うビンは、風の予報の時刻の添字ごとに
         1回だけ解く（昼夜を持たないビンは、時刻ごとに1本しか合成しないので使い回さない）。"""
-        model = self._travel_inputs[0]
         forecast = time.forecast
         if not isinstance(time.night, bool) or isinstance(forecast, np.ndarray):
-            return model.speed_ms(evaluated.headwind_ms, evaluated.crosswind_ms)
+            return self._edge_speeds(evaluated.headwind_ms, evaluated.crosswind_ms)
         speed = self._speeds.get(forecast)
         if speed is None:
-            speed = self._speeds[forecast] = model.speed_ms(evaluated.headwind_ms, evaluated.crosswind_ms)
+            speed = self._speeds[forecast] = self._edge_speeds(evaluated.headwind_ms, evaluated.crosswind_ms)
         return speed
 
     def _compose_bin(self, time: BinTime, steps_ms: dict[str, int]) -> _ComposedBin:
@@ -637,7 +665,7 @@ class LegCostComposer:
         speed = self._speed(time, evaluated)
         add_elapsed_ms(steps_ms, "speed", started)
         started = start_timer()
-        _model, distance_m, wait_seconds = self._travel_inputs
+        distance_m, wait_seconds = self._travel_inputs.distance_m, self._travel_inputs.wait_seconds
         cost, travel = _bin_cost_arrays(
             speed, distance_m, wait_seconds, self._excluded, self._cost_scale, evaluated.composed,
             self._full_row_index, len(self._lazy_row_index),
