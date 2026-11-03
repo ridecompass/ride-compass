@@ -21,15 +21,12 @@ function evaluationAnchors(ground: MapTheme): readonly string[] {
 /** 凡例が段の境界を書く目盛り（正本はbackend）。`unit`がnullなら境界は得点（0〜100）。 */
 type MapLegendScale = components["schemas"]["MapLegendScale"];
 
-/** 総合難易度（軸ではない）の段の境界。backendが配る。軸の段は宣言の無い軸の既定もbackendが解いて軸ごとに返す。 */
+/** 得点の段の既定の境界（軸スタジオの較正の画面が読む）。backendが配る。軸の段は宣言の無い軸の既定もbackendが解いて軸ごとに返す。 */
 export const DEFAULT_DIFFICULTY_BOUNDARIES: readonly number[] = mapDisplay.valueScale.difficultyBoundaries;
 
 /** 難易度（得点・寄与・平均とその差）を書く桁。backendが区別する桁で、候補の並びを決める差が画面でも読める。
  * 画面の難易度の数字はどれもこの桁で書く。 */
 export const DIFFICULTY_DECIMALS: number = mapDisplay.valueScale.difficultyDecimals;
-
-/** 負荷（総合難易度×距離km。数百の値）を書く桁。 */
-export const LOAD_DECIMALS = 0;
 
 /** 難易度（得点・寄与・平均）を`DIFFICULTY_DECIMALS`の桁で書く。 */
 export function formatDifficulty(value: number): string {
@@ -44,14 +41,9 @@ export function formatDifficultyOutOfScale(value: number): string {
   return `${formatDifficulty(value)}${DIFFICULTY_SCALE_SUFFIX}`;
 }
 
-/** 負荷を`LOAD_DECIMALS`の桁で書く。 */
-export function formatLoad(value: number): string {
-  return value.toFixed(LOAD_DECIMALS);
-}
-
 /** 地図が値を塗る宣言。`boundaries`は塗る値の目盛りの境界で、凡例は`legend`の同じ番号の境界で範囲を書く（雨は得点で
  * 塗り、量で書く）。`bandLabels`は段ごとの体感ラベル（未設定なら数値の範囲だけ）。`ground`は色を載せる地の明るさ
- * （省けば明るい地）。軸もルートの総合難易度もこの形で持ち、段は`valueBands`だけが求める。 */
+ * （省けば明るい地）。軸も費用のレンズもこの形で持ち、段は`valueBands`だけが求める。 */
 export interface MapPaintDeclaration {
   kind: MapValueKind;
   ground?: MapTheme;
@@ -73,13 +65,6 @@ export function mapPaintDeclarationOf(
     bandLabels: paint.band_labels ?? undefined,
   };
 }
-
-/** 総合難易度を塗る宣言。凡例は得点で書く。 */
-export const DIFFICULTY_PAINT: MapPaintDeclaration = {
-  kind: "difficulty",
-  boundaries: DEFAULT_DIFFICULTY_BOUNDARIES,
-  legend: { boundaries: [...DEFAULT_DIFFICULTY_BOUNDARIES], unit: null },
-};
 
 /** 得点の境界に添える単位と、体感ラベルが無い段で範囲の前に置く語。数字だけでは量か得点か読めない。 */
 const SCORE_UNIT = "点";

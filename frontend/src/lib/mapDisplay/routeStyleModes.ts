@@ -59,7 +59,7 @@ export function buildRangeSteppedMode(options: {
 }
 
 /** ルートの区間の地物の、費用の軸id→1kmあたりの代償の秒を持つプロパティと、その和（総合）を持つプロパティ
- * （`features/route/routePenalty.ts: lensSecondsPerKm`）。内訳の無い区間（費用の軸の定義が無い間）は空の辞書とnull。 */
+ * （`lib/routePenalty.ts: lensSecondsPerKm`）。内訳の無い区間（費用の軸の定義が無い間）は空の辞書とnull。 */
 export const ROUTE_LENS_SECONDS_PROPERTY = "lens_seconds_per_km";
 export const ROUTE_LENS_TOTAL_PROPERTY = "lens_total_seconds_per_km";
 

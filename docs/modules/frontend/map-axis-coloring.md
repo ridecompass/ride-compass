@@ -14,9 +14,10 @@
 | ファイル | 責務 |
 |---|---|
 | `lib/mapDisplay/routeStyleModes.ts` | ルート確定後の色分けモード一覧・色式 |
-| `features/map/costLens.ts` | 費用の軸の一覧から、地図のレンズ（総合と軸ごと。1kmあたりの代償の秒）を道ごとの値で塗る軸の形へ移すこと（`features/map/costLens.ts: costLensAxes`）・レンズの選択肢（`features/map/costLens.ts: costLensOptions`）・凡例の下の段の境目の目安の文（`features/map/costLens.ts: costLensPremises`）。下記「費用の軸のレンズ」 |
+| `features/map/costLens.ts` | 費用の軸の一覧から、地図のレンズ（総合と軸ごと。1kmあたりの代償の秒）を道ごとの値で塗る軸の形へ移すこと（`features/map/costLens.ts: costLensAxes`）・レンズの選択肢（`features/map/costLens.ts: costLensOptions`）・凡例の下の段の境目の目安の文（`features/map/costLens.ts: costLensPremises`）・ルートの線のレンズのモード（`features/map/costLens.ts: costRouteStyleModes`。区間の1kmあたりの代償の秒を地図と同じ段で塗り、レンズを選んでいないときは総合で塗る）。下記「費用の軸のレンズ」 |
+| `lib/mapDisplay/costLensPaint.ts` | 費用のレンズの段の塗りの宣言（`lib/mapDisplay/costLensPaint.ts: costLensPaint`）と、レンズの値と事実の数の書き方。地図の道・ルートの線・候補の帯・道の窓が同じ段と同じ書き方にする |
 | `hooks/useCostAxisCatalog.ts` | 費用の軸の一覧（`GET /api/cost-axes`。定義が無い間は0件）を画面が読む形で共有する取得（`services/costAxisCatalogApi.ts: getCostAxisCatalog`） |
-| `lib/mapDisplay/valueScale.ts` | 地図表示値の種類（`lib/mapDisplay/valueScale.ts: MapValueKind`: 難易度／符号付き材料）ごとの既定しきい値・配色（HSL補間）と、地図が値を塗る宣言（`lib/mapDisplay/valueScale.ts: MapPaintDeclaration`）・段の並び（`lib/mapDisplay/valueScale.ts: valueBands`）・値が段に入るかの式（`lib/mapDisplay/valueScale.ts: bandCondition`・`lib/mapDisplay/valueScale.ts: bandStep`）。ルート前の道の線・ルート後の色分け・凡例・管理画面のプレビューが共有する（下記「valueScale.ts」）。画面に出す難易度と負荷の数字の桁（`lib/mapDisplay/valueScale.ts: DIFFICULTY_DECIMALS`・`lib/mapDisplay/valueScale.ts: formatDifficulty`と、目盛りの上端「/100」を添える`lib/mapDisplay/valueScale.ts: DIFFICULTY_SCALE_SUFFIX`・`lib/mapDisplay/valueScale.ts: formatDifficultyOutOfScale`。桁はbackendの`lib/mapDisplay/valueScale.ts: DIFFICULTY_DECIMALS`を生成物`mapDisplay.ts: mapDisplay.valueScale.difficultyDecimals`で読む。負荷は`lib/mapDisplay/valueScale.ts: LOAD_DECIMALS`・`lib/mapDisplay/valueScale.ts: formatLoad`で整数）も持ち、難易度の数字を出す画面はどれもここを通す（[ルート設定・結果パネル](route-settings-and-results.md)「難易度の数字の桁」） |
+| `lib/mapDisplay/valueScale.ts` | 地図表示値の種類（`lib/mapDisplay/valueScale.ts: MapValueKind`: 難易度／符号付き材料）ごとの既定しきい値・配色（HSL補間）と、地図が値を塗る宣言（`lib/mapDisplay/valueScale.ts: MapPaintDeclaration`）・段の並び（`lib/mapDisplay/valueScale.ts: valueBands`）・値が段に入るかの式（`lib/mapDisplay/valueScale.ts: bandCondition`・`lib/mapDisplay/valueScale.ts: bandStep`）。ルート前の道の線・ルート後の色分け・凡例・管理画面のプレビューが共有する（下記「valueScale.ts」）。画面に出す難易度と負荷の数字の桁（`lib/mapDisplay/valueScale.ts: DIFFICULTY_DECIMALS`・`lib/mapDisplay/valueScale.ts: formatDifficulty`と、目盛りの上端「/100」を添える`lib/mapDisplay/valueScale.ts: DIFFICULTY_SCALE_SUFFIX`・`lib/mapDisplay/valueScale.ts: formatDifficultyOutOfScale`。桁はbackendの`lib/mapDisplay/valueScale.ts: DIFFICULTY_DECIMALS`を生成物`mapDisplay.ts: mapDisplay.valueScale.difficultyDecimals`で読む）も持ち、難易度の数字を出す画面はどれもここを通す（[ルート設定・結果パネル](route-settings-and-results.md)「難易度の数字の桁」） |
 | `features/map/scene/groups/axisLines.ts` | ルート確定前に評価軸の値で道を塗る線の宣言。道ごとの材料のfeature-stateと走る条件のglobal-state、段の色、値が無い道・取得中の道の色と濃さ、値が無い道の破線、凡例で隠した段の落とし方（下記「評価軸の線」） |
 | `features/map/scene/wayValueFormula.ts` | 式の木をMapLibreの式へ置き換える唯一の所（下記「評価軸の線」）。木の中身は持たず、節の種類ごとの置き換え方だけを持つ |
 | `features/map/layers/dynamicWayValues.ts` | 材料を引く道路タイルの選び方（地図のズームをタイルのある範囲へ丸め、画面を覆うタイルを並べる。1回の数の上限を超える傾けた・回した大きな画面では、画面の中心に近いタイルから上限まで取り、端を落としたことを返す）・複数タイル応答の統合（材料非依存の共通部分） |
@@ -47,14 +48,14 @@
                                    同じ表示宣言（種類・単位・しきい値・段階ラベル）
                                             ▲
 ルート確定後  ── RouteSegmentDetailの ──────┘
-              axis_difficulties /
+              代償の内訳（1kmあたり）/
               符号付き材料の直読み
 ```
 
 軸ごとに地図が塗る値の種類はbackendが軸定義から決める（`GET /api/axis-catalog`の
 `map_paint.value`、凡例が段を書く目盛りは`map_paint.legend`、[軸スタジオ・評価軸定義（backend）](../backend/axis-studio.md)
-「地図が塗るもの」参照）。`difficulty`の軸はルート前（専用way値レイヤー）もルート後（ルート線）も
-軸スタジオのbreakpointsで評価済みの0〜100を塗り、`signed_material`の軸（勾配）は
+「地図が塗るもの」参照）。`difficulty`の軸はルート前（専用way値レイヤー）に軸スタジオのbreakpointsで評価済みの0〜100を塗り、
+ルート後のルート線は得点を持たないので中立色の1色で引く。`signed_material`の軸（勾配）は
 どちらも符号付き材料生値を塗る。
 
 **段階の境界は`map_paint.thresholds`（`GET /api/axis-catalog`）だけを使う。**
@@ -92,13 +93,13 @@ backend（`domain/map_paint.py: map_paint`）が軸の折れ線で写してか�
 | 凡例の段の範囲を何で書くか | `AxisCatalogEntry.map_paint`の`legend`（`thresholds`と同じ件数の境界と単位。単位がnullなら得点。backend `domain/map_paint.py: map_paint`） | `valueScale.ts: mapPaintDeclarationOf`が塗る宣言の`legend`へ載せ、ルート前（`axisLayers.ts`の軸の`axisLayers.ts: display`）もルート後（`routeStyleModes.ts`）も同じ関数で作る。どれも`valueScale.ts: valueBands`へ渡す |
 
 公開軸は無条件でレンズの選択肢になる（`routeStyleModes.ts: routeStyleModesFromCatalogAxes`が
-公開軸すべて＋`difficulty`（総合難易度）をマップする）。重み0の軸も選べ、`LensControl`は重みのある軸を先に並べ、
+公開軸すべて＋`difficulty`（レンズを選んでいないとき）をマップする）。重み0の軸も選べ、`LensControl`は重みのある軸を先に並べ、
 重みが0の軸に「未使用」を添える。分ける重みは、生成後は生成に使われた重み、生成前は今の設定の重み（重みタブが薄く出す軸と
 同じ。`features/map/view/lens.ts: lensOptions`）——重みを変えずに生成すれば、前後で並びが変わらない。
 **式の木の無い軸もレンズの選択肢に並ぶ**: ルート前は周りの道を塗らず、一覧の行に「ルートの線だけ」を添え、凡例を出さず
-（地図のどこにも無い色見本になる）、凡例の代わりに前提の文で知らせる。ルートの線はどの軸も塗る。
+（地図のどこにも無い色見本になる）、凡例の代わりに前提の文で知らせる。ルートの線を値で塗るのは、符号付きの材料を塗る軸と費用のレンズで、得点を塗る軸は中立色の1色で引く（ルートの区間は得点を持たない）。
 **評価軸を選んでいない状態は`difficulty`で表す**: ルート前は道を塗らず（ピルは「評価軸を選ぶ」）、ルート後はルートの線を
-総合難易度で塗る（ピルは総合難易度の名前）。塗らない選択肢は持たない——評価軸を選ばないことで表せ、ルートの線は「表示」で消せる。
+総合の負担（費用のレンズの総合）で塗る（ピルはその名前。費用の軸の定義が無い間は中立色の1色）。塗らない選択肢は持たない——評価軸を選ばないことで表せ、ルートの線は「表示」で消せる。
 
 **周りの道の色が拠る走る条件は、その条件を決めるボタンに印を付けて見せる**（`features/map/view/useMapView.ts: lensConditions`を
 `app/HomeMapPane.tsx`が地図の右の列の方位磁針・出発時刻・想定速度のボタンへ渡し、ボタンは`lib/lensLink.ts`の輪と読み上げを付ける）。
@@ -114,7 +115,7 @@ backend（`domain/map_paint.py: map_paint`）が軸の折れ線で写してか�
 ルートの線は実際に走る向き・時刻で決まるので、周りの道を塗っていない間（ルート後に周りを塗らない設定）は前提を出さない。
 
 **レンズ状態は1つ**（`features/map/view/useMapView.ts: lens`、`"difficulty" | axis_id`。
-localStorageキーは`ridecompass:route-style-mode`。今のカタログに無い値は総合難易度へ戻す）。ルート前は全道路、ルート後はルート線を
+localStorageキーは`ridecompass:route-style-mode`。今のカタログに無い値は`difficulty`へ戻す）。ルート前は全道路、ルート後はルート線を
 この1つの値から導く——地図へは「全道路を塗っている軸」（`paintedAxisId`）1つを渡し、どの軸の線を出すかは
 地図側（`scene/applyToMap.ts`）が導く（軸ごとの値を持たない）。道ごとの材料は塗っている軸の分だけ取り
 （`useMapView`）、塗っていない軸の材料は取らない。ルート後も全道路の塗りを残すかは「ルート後も周囲を塗る」（既定ON）。
@@ -123,11 +124,11 @@ localStorageキーは`ridecompass:route-style-mode`。今のカタログに無�
 **レンズは評価軸の点数で塗り、場所の事実（点・面）は「表示」の一覧が出す。** 密度の軸もほかの軸と同じく道の線を塗り、
 数える点は「表示」の一覧の点のレイヤーで出す（レンズは「表示」の一覧のレイヤーの入切を変えない——片方を選んだ副作用で
 もう片方の状態を残さない）。
-ルート線をどのレンズでも塗れるよう、backendは重み0の軸でも区間に値を載せる——軸の難易度（`axis_difficulties`）は
-どの軸も、`signed_material`種の軸の材料は`material_values`へいつも載せる（backend側は
+ルート線を塗れるよう、backendは区間に代償の内訳（`penalty`。費用のレンズの値は画面がこれを区間の長さで割って求める。
+`lib/routePenalty.ts: lensSecondsPerKm`）を、`signed_material`種の軸の材料を`material_values`へいつも載せる（backend側は
 `evaluation.py: displayed_material_ids`、[routing-engine.md](../backend/routing-engine.md)参照）。
 
-`map_paint.value.kind==="signed_material"`の場合、ルート線の値は`axis_difficulties[axis_id]`ではなく
+`map_paint.value.kind==="signed_material"`の場合、ルート線の値は
 backendが名指す区間の欄（軸カタログの`map_paint.value.route_segment_field`）を直接読む——向き（登り/下り）は
 絶対値化されたdifficultyでは表現できないため。欄が`material_values`なら名指す材料（`map_paint.value.material`。生材料）の
 区間の平均を、勾配の軸は区間の続く坂の斜度（`sustained_gradient_percent`）を読む（区間の平均は区間の中の上りと下りが打ち消し合い、
@@ -142,11 +143,11 @@ backendが名指す区間の欄（軸カタログの`map_paint.value.route_segme
 
 ## valueScale.ts（ルート前後で共有する葉モジュール）
 
-- `DEFAULT_DIFFICULTY_BOUNDARIES`: 総合難易度（軸ではない）の段の境界（値はbackendが配る）。軸の段は
+- `DEFAULT_DIFFICULTY_BOUNDARIES`: 得点の段の既定の境界（値はbackendが配る。軸スタジオの較正の画面が読む）。軸の段は
   境界を宣言していない軸の既定もbackendが解いて`map_paint.thresholds`に入れるため、画面は軸について既定を持たない
   ——読む側ごとに既定を解くと、1か所だけ解き忘れた経路でその軸の段の数がルート確定の前後で食い違う。
 - `MapPaintDeclaration`: 地図が値を塗る宣言（`{kind, boundaries, legend, bandLabels?}`）。軸は`mapPaintDeclarationOf`が
-  軸カタログの`map_paint`から作り、総合難易度は`DIFFICULTY_PAINT`が持つ。ルート前の軸（`axisLayers.ts`の`display`）も
+  軸カタログの`map_paint`から作り、費用のレンズは`lib/mapDisplay/costLensPaint.ts: costLensPaint`が作る。ルート前の軸（`axisLayers.ts`の`display`）も
   ルート後のモードもこの1つの形を`valueBands`へ渡す。
 - `valueBands(paint)`: 塗る宣言から求める段の並び（低い段から、段ごとに鍵・下限・
   範囲の文字・色）。下限と色は塗る値の境界（`boundaries`）から、範囲の文字は凡例の目盛り（`legend`、同じ番号の
@@ -227,7 +228,7 @@ backendが名指す区間の欄（軸カタログの`map_paint.value.route_segme
 
 ## routeStyleModes.ts（ルート確定後）
 
-- `buildRangeSteppedMode`: 塗る宣言（軸は`mapPaintDeclarationOf`、総合難易度は`DIFFICULTY_PAINT`）の境界の
+- `buildRangeSteppedMode`: 塗る宣言（軸は`mapPaintDeclarationOf`、費用のレンズは`lib/mapDisplay/costLensPaint.ts: costLensPaint`）の境界の
   **長さがそのまま段階数を決める**汎用関数。ラベルは`valueBands`が凡例の目盛りの境界の数字から機械的に生成し、体感ラベルを持つ軸ではその前に添える
   （`bandLabelsForBandCount`、ルート前の凡例と同じ規則）。
 
@@ -249,9 +250,8 @@ backendが名指す区間の欄（軸カタログの`map_paint.value.route_segme
 
 段の範囲を文字にするのは`mapColorLegend.ts: rangeStepLabel`だけ。**語は述語に合わせる**——
 境界の判定は`>= lower`・`< upper`のため、最上位帯は「以上」であって「超」ではない。
-- 総合難易度（`routeStyleModes.ts: routeStyleModesFromCatalogAxes` が軸の後ろに足す）だけがフロントの固定モード——特定のaxis_idに紐づかず
-  全軸の重み付き合成コストそのものを表示するため、軸スタジオと同期する対象にならない。
-- 既定のモード（`lib/mapDisplay/routeStyleModes.ts: LENS_DIFFICULTY_ID`）は総合難易度。
+- レンズを選んでいないときのモード（`lib/mapDisplay/routeStyleModes.ts: LENS_DIFFICULTY_ID`。`routeStyleModes.ts: routeStyleModesFromCatalogAxes` が軸の後ろに足す）が既定で、
+  費用の軸の定義がある間は総合の負担で塗るモードが先に並んで選ばれる（`features/map/useMapAxisCatalog.ts: useMapAxisCatalog`）。
 - **候補は地図では選ばない**: 未選択候補の線（役割`candidateLine`、細い参考線）は当たり判定を
   持たず、押すと下の道の詳細が開く。候補の切り替えは一覧のタブだけで行う——複数の候補が同じ道を
   通る所で、区間の詳細を見ようとして別の候補へ切り替わらないようにする。ルートの当たり判定は

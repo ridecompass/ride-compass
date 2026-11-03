@@ -185,7 +185,7 @@ _MAP_LAYER_IDS: tuple[str, ...] = (*_static_layer_ids(), *WEATHER_LAYER_GROUPS, 
 
 #: 説明の文の差し込み口の名前。どれも軸カタログ（実行時の応答）から来る値で、画面が埋める。
 #: `axes`はそのレイヤーの元データを材料に持つ公開中の評価の名前、`accidentYears`は事故の収録年、
-#: `routeLenses`はルートの線を塗れるもの（公開中の評価と総合難易度）、`landcoverRingOuterM`は土地被覆の割合を数えた帯の
+#: `routeLenses`はルートの線を塗れるもの（公開中の評価と総合の負担）、`landcoverRingOuterM`は土地被覆の割合を数えた帯の
 #: 外の幅（m。作り直しに使った値）。
 LayerTextSlotName = Literal["axes", "accidentYears", "routeLenses", "landcoverRingOuterM"]
 

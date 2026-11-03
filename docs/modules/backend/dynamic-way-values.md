@@ -132,7 +132,7 @@ frontendはどのクエリパラメータをどの軸のリクエストへ載せ
   前もって求める（`axis_way_materials`）。条件で変わる材料を読まない軸は値そのものが材料になり、向きだけで決まる材料
   （勾配）だけを読む軸は順向き・逆向きに辿った値が材料になる（区間から畳む軸もこの形で配れる）。ほかは軸の評価のうち
   条件で変わる材料に届く項を木へ開く。木にできない軸（区間から畳み、向きだけでは選べない材料を読む軸・条件で変わる材料に
-  届く分類の形・0次条件）は`null`で、地図はルートの無い間その軸で周りの道を塗らない（ルートの線は`axis_difficulties`で塗る）。
+  届く分類の形・0次条件）は`null`で、地図はルートの無い間その軸で周りの道を塗らない。
 - **葉を配らない材料**（`ServedMaterialFormula.withholds_leaves`）: 道ごとの材料をそのまま外へ出せない材料（風——葉が予報の
   風速・風向そのもので、道ごとに読める形で出すと地点の予報になる）。これを読む軸の地図の木（`map_way_value_formula`）は、
   道の値そのもの（`axis:value`）と値の決まらないこと（`axis:undetermined`）を読むだけの木で、材料（`map_way_materials`）は
@@ -236,8 +236,7 @@ axis_id → get_dedicated_way_value_service(axis_id) が今の軸の集合の写
 - 応答を軸カタログの`way_value_formula`へ走る条件とともに入れた値が、**地図が塗る値**。`map_paint`の塗る値が難易度の軸
   （風等）は軸定義（breakpoints・priority_overrides・参照する内部軸）で評価した難易度0〜100、
   符号付き材料の軸（勾配のように進行方向で符号の変わる材料1つの軸）は符号付き材料生値のまま。
-  ルート確定後のルート線色分け（`axis_difficulties`／符号付き材料の直読み）と同じ
-  スケールになる。
+  符号付き材料の軸は、ルート確定後のルート線色分け（符号付き材料の直読み）と同じスケールになる。
 - 段階の境界も`map_paint`が同じスケールへ揃えて返す（[axis-studio.md](axis-studio.md)「地図が塗るもの」）。
 - **勾配のサービスが配るフィーチャーの値は、属する区間の勾配の値式を長さで重み付けて平均したもの**
   （`road_tile_sql.py: FEATURE_GRADIENT_INPUTS_IN_TILE_SQL`。集約の式は`domain/material_sql.py: length_weighted_mean_sql`）。区間単位のズームでは属する区間が1本なので
@@ -270,7 +269,7 @@ axis_id → get_dedicated_way_value_service(axis_id) が今の軸の集合の写
 - `GET /api/axis-catalog`は同じ値を`map_paint`として公開し、frontendは色式と凡例の段の範囲の文字をそこから
   組み立てる（ルート確定の前後とも。[地図: 軸・ルート色分け](../frontend/map-axis-coloring.md)参照）。
 
-- ルート確定後は呼ばれない専用エンドポイント（フロントは`axis_difficulties`を使う）。
+- ルート確定後は、周りの道を塗る設定の間だけ呼ばれる（ルートの線は区間の値で塗る）。
 - 静的な路面タイル（`/api/region/road-surface-tiles`、MVT）とは別経路——フロントは
   同じz/x/yに対して両方を取得し、MapLibreの`setFeatureState`で合成する
   （[map-axis-coloring.md](../frontend/map-axis-coloring.md)参照）。

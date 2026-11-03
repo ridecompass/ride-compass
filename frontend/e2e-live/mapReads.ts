@@ -88,7 +88,7 @@ export async function currentLensLabel(page: Page, catalog: AxisCatalogResponse)
  * 区間は scene が区間の当たり判定（`ROUTE_HIT_TARGET_SEGMENT`）を宣言したソースで引き、「データなし」かは、いまの地図が
  * 区間の線に当てている「値が無ければ破線にする」式の条件を、MapLibre の式の評価器で区間のデータに当てて決める（塗り方の規則を
  * ここで書き直さない）。区間のデータは地図への問い合わせ（`queryRenderedFeatures`）ではなくソースから取る——問い合わせが返す地物は
- * 入れ子のプロパティ（`axis_difficulties` 等）を文字列にしていて、式の条件がどの区間にも当たらない。
+ * 入れ子のプロパティ（`material_values` 等）を文字列にしていて、式の条件がどの区間にも当たらない。
  */
 export async function routeSegmentsPainted(page: Page): Promise<{ drawn: number; withValue: number }> {
   const { missing, drawn, segments } = await page.evaluate(async (target) => {
