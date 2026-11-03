@@ -14,19 +14,42 @@
 - 行の値が画面の塗り分けの式になること → 画面側のテスト
 """
 
+import colorsys
 import itertools
 import math
 
 import pytest
 
 from app.domain import display_palette
-from app.domain.display_palette import SEMANTIC_COLORS, nominal_colors, ordered_colors, resolved_display_axes
+from app.domain.display_palette import (
+    BASEMAP_DARK_LIGHTNESS_RANGE,
+    BASEMAP_DARK_SATURATION_SCALE,
+    SEMANTIC_COLORS,
+    SEMANTIC_COLORS_ON_DARK,
+    nominal_colors,
+    ordered_colors,
+    resolved_display_axes,
+)
 from app.domain.map_display import AREA_OPACITY, ROAD_UNKNOWN_OPACITY
 from app.domain.primary_attributes import PRIMARY_ATTRIBUTES
 from app.domain.registry import DisplayAxisSpec, DisplayCategorySpec, PrimaryAttributeSpec
 from app.domain.weather_display import PRECIPITATION_COLOR_STOPS
 
 GROUND = SEMANTIC_COLORS["basemap_ground"]
+
+
+def _dark_ground() -> str:
+    """暗い地図の地色。HSLの明るさを反転して範囲へ収め、彩度に割合を掛ける（`BASEMAP_DARK_*`の宣言の読み方）。"""
+    r, g, b = (int(GROUND[i : i + 2], 16) / 255 for i in (1, 3, 5))
+    hue, lightness, saturation = colorsys.rgb_to_hls(r, g, b)
+    low, high = BASEMAP_DARK_LIGHTNESS_RANGE
+    channels = colorsys.hls_to_rgb(hue, low + (1 - lightness) * (high - low), saturation * BASEMAP_DARK_SATURATION_SCALE)
+    return "#" + "".join(f"{round(c * 255):02x}" for c in channels)
+
+
+DARK_GROUND = _dark_ground()
+#: 明るい地図と暗い地図の地色と、その上に塗る色を選ぶ`on_dark`。
+GROUNDS = [pytest.param(GROUND, False, id="light"), pytest.param(DARK_GROUND, True, id="dark")]
 #: 分類色が地色から浮くコントラスト比（これを割ると「薄い＝対象外」と見分けられない）。
 CLASS_COLOR_CONTRAST = 3.0
 #: 線が地に対して見えるコントラスト比（値が無い道の線・基礎地図の細い道の縁取り）。
@@ -120,23 +143,39 @@ def test_a_hue_slot_outside_the_wheel_is_refused(slot):
         nominal_colors(slot, 3, None)
 
 
+@pytest.mark.parametrize(("ground", "on_dark"), GROUNDS)
 @pytest.mark.parametrize("tone", list(display_palette.NOMINAL_TONES))
-def test_every_nominal_color_stands_out_from_the_ground(tone):
-    """どの起点・行数・段でも、配る色は地色に対してコントラスト比3を割らない（明度の上限で守る）。"""
+def test_every_nominal_color_stands_out_from_the_ground(tone, ground, on_dark):
+    """どの起点・行数・段でも、配る色はその地図の地色に対してコントラスト比3を割らない。"""
     colors = [
         color
         for slot in range(display_palette.NOMINAL_HUE_SLOTS)
         for count in range(1, 13)
-        for color in nominal_colors(slot, count, tone)
+        for color in nominal_colors(slot, count, tone, on_dark=on_dark)
     ]
 
-    assert min(contrast(color, GROUND) for color in colors) >= CLASS_COLOR_CONTRAST
+    assert min(contrast(color, ground) for color in colors) >= CLASS_COLOR_CONTRAST
 
 
-def test_every_ordered_color_stands_out_from_the_ground():
-    colors = [color for count in range(1, 13) for color in ordered_colors(count)]
+@pytest.mark.parametrize(("ground", "on_dark"), GROUNDS)
+def test_every_ordered_color_stands_out_from_the_ground(ground, on_dark):
+    colors = [color for count in range(1, 13) for color in ordered_colors(count, on_dark=on_dark)]
 
-    assert min(contrast(color, GROUND) for color in colors) >= CLASS_COLOR_CONTRAST
+    assert min(contrast(color, ground) for color in colors) >= CLASS_COLOR_CONTRAST
+
+
+def test_ordered_colors_on_the_dark_ground_keep_neighbours_apart():
+    """暗い地図の上の順序の色も、隣の行どうしが見分けられる（明るい地図の色は本番の宣言の節が確かめる）。"""
+    for count in range(2, 13):
+        colors = ordered_colors(count, on_dark=True)
+        for a, b in zip(colors, colors[1:]):
+            assert delta_e(a, b) >= ORDERED_DELTA_E, (count, a, b)
+
+
+@pytest.mark.parametrize("key", ["evaluation_good", "evaluation_mid", "evaluation_bad", "evaluation_extreme"])
+def test_evaluation_colors_stand_out_from_the_dark_ground(key):
+    """評価の配色は道とルートの線を地の上で塗る。暗い地図で最も悪い側が地へ沈むと、悪い道ほど見えなくなる。"""
+    assert contrast(SEMANTIC_COLORS_ON_DARK[key], DARK_GROUND) >= CLASS_COLOR_CONTRAST
 
 
 # --- 本番の宣言 -------------------------------------------------------------------

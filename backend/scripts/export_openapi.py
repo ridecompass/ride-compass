@@ -133,6 +133,7 @@ from app.domain.display_palette import (
     BASEMAP_DARK_LIGHTNESS_RANGE,
     BASEMAP_DARK_SATURATION_SCALE,
     SEMANTIC_COLORS,
+    SEMANTIC_COLORS_ON_DARK,
     resolved_display_axes,
 )
 from app.api.routers.gsi_tile import RELIEF_TILE_URL, TERRAIN_TILE_URL
@@ -342,6 +343,7 @@ def main() -> None:
         PALETTE_PATH,
         {
             "semantic": SEMANTIC_COLORS,
+            "semantic_on_dark": SEMANTIC_COLORS_ON_DARK,
             "basemap_dark": {
                 "lightness_range": list(BASEMAP_DARK_LIGHTNESS_RANGE),
                 "saturation_scale": BASEMAP_DARK_SATURATION_SCALE,

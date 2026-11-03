@@ -99,7 +99,12 @@ export function useMapView({
   routeWeights,
 }: MapViewInputs): MapViewState {
   const catalog = useAxisCatalog();
-  const mapCatalog = useMapAxisCatalog();
+  // 暗い地図は利用者がメニューで選ぶ（いつ暗くするかを自動では決めない）。
+  const [mapTheme, setMapTheme] = useStoredState<MapTheme>("ridecompass:map-theme", "light", {
+    serialize: (value) => value,
+    deserialize: (raw) => (raw === "light" || raw === "dark" ? raw : null),
+  });
+  const mapCatalog = useMapAxisCatalog(mapTheme);
   // 保存するのは触った層の真偽だけで、既定は層の一覧（道の線の層は軸カタログが届いてから決まる）から重ねる。
   const [storedVisibility, setLayerVisibility] = useStoredState<MapLayerVisibility>(
     "ridecompass:layer-visibility",
@@ -131,11 +136,6 @@ export function useMapView({
   const [viewport, setViewport] = useState<MapViewport | null>(null);
   const [mapLayerStatus, setMapLayerStatus] = useState<LayerDataStatusByLayer>({});
   const [refreshToken, setRefreshToken] = useState(0);
-  // 暗い地図は利用者がメニューで選ぶ（いつ暗くするかを自動では決めない）。
-  const [mapTheme, setMapTheme] = useStoredState<MapTheme>("ridecompass:map-theme", "light", {
-    serialize: (value) => value,
-    deserialize: (raw) => (raw === "light" || raw === "dark" ? raw : null),
-  });
   const center = useMemo<Coordinates | null>(() => viewport && viewportCenter(viewport), [viewport]);
 
   // チップ配下の名前付きソースの表示切替は、チップidを凡例の保存先の鍵にする（`scene/legends.ts`）。
