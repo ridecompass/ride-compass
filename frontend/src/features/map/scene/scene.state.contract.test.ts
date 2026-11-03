@@ -24,6 +24,11 @@ import { sceneState } from "@/testing/sceneState";
 import { buildMapScene } from "@/features/map/scene/buildScene";
 import { sceneLayerId } from "@/features/map/scene/sceneBuilders";
 import { routeStyleModesFromCatalogAxes } from "@/lib/mapDisplay/routeStyleModes";
+import { costLensPaint } from "@/lib/mapDisplay/costLensPaint";
+import { valueBands } from "@/lib/mapDisplay/valueScale";
+import { costRouteStyleModes } from "@/features/map/costLens";
+import { costAxisCatalogFromResponse } from "@/hooks/useCostAxisCatalog";
+import { costAxisCatalog, costAxisEntry } from "@/testing/costAxes";
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import palette from "@/types/generated/palette.json";
 
@@ -193,6 +198,60 @@ describe("状態を地図へ伝えた結果", () => {
     });
 
     // 勾配は区間の平均だと登って下る区間が平坦の色になるので、backendが続く坂の斜度の欄を名指す。
+    it.each([
+      ["総合のレンズ", "total", ["軽い", "重い", "重い"]],
+      ["レンズを選んでいないとき", "difficulty", ["軽い", "重い", "重い"]],
+      ["軸のレンズ", "vibration", ["軽い", "重い", "軽い"]],
+    ] as const)("%s（%s）は、区間の1kmあたりの代償の秒をそのレンズの段で塗る", (_, lens, expected) => {
+      // どの段も境目は1kmあたり10秒。区間は2kmずつで、1kmあたり 前: 登坂2・振動2（回避指定300）、中: 振動15、後: 登坂15。
+      const bands = { thresholds: [10], band_labels: ["軽い", "重い"] };
+      const catalog = costAxisCatalogFromResponse(
+        costAxisCatalog(
+          costAxisEntry("ascent", { lens: bands }),
+          costAxisEntry("vibration", { ledger: "burden", lens: bands }),
+        ),
+      );
+      const penalty = (ascent: number, vibration: number, avoidance = 0) => ({
+        axis_seconds: { ascent, vibration },
+        avoidance_seconds: avoidance,
+      });
+      const { map, handle } = createRecordingMap();
+      rebuild(
+        map,
+        sceneState({
+          look: { layerVisibility: { route: true }, lens },
+          catalog: {
+            routeStyleModes: [...costRouteStyleModes(catalog, "light"), ...routeStyleModesFromCatalogAxes([])],
+          },
+          routes: [
+            {
+              ...route,
+              segments: [
+                { ...segment(139.7, 139.71), distance_km: 2, penalty: penalty(4, 4, 600) },
+                { ...segment(139.71, 139.72), distance_km: 2, penalty: penalty(0, 30) },
+                { ...segment(139.72, 139.73), distance_km: 2, penalty: penalty(30, 0) },
+              ],
+            },
+          ] as never,
+          selectedRouteId: "a",
+        }),
+      );
+
+      const layer = handle.layer(handle.layerOrder().find((id) => id.endsWith("-detailLine"))!)!;
+      const { features } = handle.sourceContent(layer.source!)!.data as {
+        features: { properties: Record<string, unknown> }[];
+      };
+      const colorOf = Object.fromEntries(
+        valueBands(costLensPaint({ lens: bands }, "light")).map((band, index) => [
+          bands.band_labels[index],
+          band.color,
+        ]),
+      );
+      expect(features.map((feature) => evaluateExpression(layer.paint["line-color"], feature.properties))).toEqual(
+        expected.map((label) => colorOf[label]),
+      );
+    });
+
     it.each([
       ["material_values", { material_values: { grade: -5 }, sustained_gradient_percent: 5 }],
       ["sustained_gradient_percent", { material_values: { grade: 5 }, sustained_gradient_percent: -5 }],

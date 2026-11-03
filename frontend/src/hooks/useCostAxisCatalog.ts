@@ -56,7 +56,7 @@ const EMPTY: CostAxisCatalog = {
 };
 const FAILED: CostAxisCatalog = { ...EMPTY, failed: true };
 
-function costAxisCatalogFromResponse(response: CostAxisCatalogResponse | null): CostAxisCatalog {
+export function costAxisCatalogFromResponse(response: CostAxisCatalogResponse | null): CostAxisCatalog {
   if (response === null) return { ...EMPTY, loaded: true };
   const axes = response.axes.map((entry): CostAxis => ({
     axisId: entry.axis_id,
