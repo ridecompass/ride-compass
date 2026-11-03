@@ -20,6 +20,7 @@ from app.domain.axis_definitions import (
 from app.domain.evaluation import build_static_edge_score_matrix
 from app.domain.material_catalog import ACCIDENT_COUNT_PER_KM_YEAR, GRADIENT_PERCENT, WIND_DRAG_RATIO
 from tests.axis_system_fixture import replaced_axis_definitions, shaped_axis
+from tests.profile_fixture import grade_profiles
 
 
 def reading_axis(axis_id: str, *materials: str, published: bool = True) -> AxisDefinition:
@@ -33,7 +34,8 @@ def reading_axis(axis_id: str, *materials: str, published: bool = True) -> AxisD
 def no_materials(n: int, columns: Mapping[str, np.ndarray] | None = None) -> EdgeMaterialColumns:
     nan = np.full(n, np.nan)
     return EdgeMaterialColumns(
-        columns={} if columns is None else columns, distance_m=np.full(n, 100.0), bearing_deg=nan, mid_lat=nan, mid_lon=nan
+        columns={} if columns is None else columns, distance_m=np.full(n, 100.0), bearing_deg=nan, mid_lat=nan, mid_lon=nan,
+        elevation_profiles=grade_profiles(np.zeros(n), np.full(n, 100.0)),
     )
 
 

@@ -4,6 +4,7 @@ from typing import Any
 
 import numpy as np
 
+from app.domain.elevation_profile import MAX_PLAUSIBLE_GRADE_PERCENT, ElevationProfiles
 from app.domain.strict_model import StrictModel
 
 
@@ -41,11 +42,6 @@ class ElevationAttribute(StrictModel):
         )
 
 
-# 舗装された公道としてありうる平均勾配の上限（%）。世界でも最急の公道が35%前後のため、
-# これを超える値は道の起伏ではなくDEMの読み違い（両端が路面でない地物を指した等）である。
-# 超えた区間は値を持たせず「データなし」にする——0次ハードフィルタは値の無い区間を
-# 除外しない（`domain/hard_filters.py`）ので、誤った値で黙って経路から外すより安全側になる。
-MAX_PLAUSIBLE_AVERAGE_GRADE_PERCENT = 40.0
 #: 平均勾配（%）を保存・配信する桁。
 AVERAGE_GRADE_DECIMALS = 2
 
@@ -143,6 +139,8 @@ class EdgeMaterialColumns:
     bearing_deg: np.ndarray  # dtype=float64, NaN=方位が決まらない
     mid_lat: np.ndarray  # dtype=float64
     mid_lon: np.ndarray  # dtype=float64
+    # 区間の断面の点（所要時間が読む）。
+    elevation_profiles: ElevationProfiles
 
     def __len__(self) -> int:
         return len(self.distance_m)
@@ -174,16 +172,22 @@ def elevation_values_sql(vertices: str, step_m: str) -> str:
     中間の点は桁や坑道ではなく下の地形を指す。谷を渡る平らな橋で、谷底の起伏がそのまま
     獲得標高へ積まれてしまう。橋台・坑口は道が地面と接する位置なので、両端の標高は使える。
 
-    値が出せない区間（有効な標高が2点未満）は返らない。値と一緒に、値が依った`on_structure`も返す。
+    値が出せない区間（有効な標高が2点未満）は返らない。値と一緒に、値が依った`on_structure`と、断面の点の標高を順に並べた
+    `elevation_profile_m`（値の無い点はNULL。橋とトンネルは両端の2点）も返す——要約の列は、この並びと同じ点から出る。
     """
     return f"""
 WITH v AS ({vertices}),
 measured AS (
-    SELECT *, max(along_m) OVER (PARTITION BY osm_way_id, segment_index) AS length_m FROM v),
+    SELECT *, max(along_m) OVER s AS length_m, max(ord) OVER s AS max_ord
+    FROM v WINDOW s AS (PARTITION BY osm_way_id, segment_index)),
 known AS (
     SELECT *, min(ord) OVER s AS first_ord, max(ord) OVER s AS last_ord
     FROM measured WHERE elev IS NOT NULL WINDOW s AS (PARTITION BY osm_way_id, segment_index)),
 profile AS (SELECT * FROM known WHERE NOT on_structure OR ord IN (first_ord, last_ord)),
+points AS (
+    SELECT osm_way_id, segment_index,
+           array_agg(elev::real ORDER BY ord) FILTER (WHERE NOT on_structure OR ord IN (0, max_ord)) AS elevation_profile_m
+    FROM measured GROUP BY osm_way_id, segment_index),
 ends AS (
     SELECT osm_way_id, segment_index, bool_or(on_structure) AS on_structure,
            count(*) AS n, max(along_m) - min(along_m) AS total_d,
@@ -205,13 +209,13 @@ agg AS (
     SELECT osm_way_id, segment_index,
            coalesce(sum(greatest(diff, 0))  FILTER (WHERE adjacent), 0) AS gain,
            coalesce(sum(greatest(-diff, 0)) FILTER (WHERE adjacent), 0) AS loss,
-           max(greatest(g, 0))  FILTER (WHERE abs(g) <= {MAX_PLAUSIBLE_AVERAGE_GRADE_PERCENT}) AS steepest_up,
-           max(greatest(-g, 0)) FILTER (WHERE abs(g) <= {MAX_PLAUSIBLE_AVERAGE_GRADE_PERCENT}) AS steepest_down
+           max(greatest(g, 0))  FILTER (WHERE abs(g) <= {MAX_PLAUSIBLE_GRADE_PERCENT}) AS steepest_up,
+           max(greatest(-g, 0)) FILTER (WHERE abs(g) <= {MAX_PLAUSIBLE_GRADE_PERCENT}) AS steepest_down
     FROM graded GROUP BY osm_way_id, segment_index),
 raw AS (
     SELECT e.osm_way_id, e.segment_index, e.on_structure, e.start_e, e.end_e,
            a.gain, a.loss, a.steepest_up, a.steepest_down,
-           CASE WHEN abs(s.g) <= {MAX_PLAUSIBLE_AVERAGE_GRADE_PERCENT} THEN s.g END AS avg_g
+           CASE WHEN abs(s.g) <= {MAX_PLAUSIBLE_GRADE_PERCENT} THEN s.g END AS avg_g
     FROM ends e JOIN agg a USING (osm_way_id, segment_index),
          LATERAL (SELECT CASE WHEN e.total_d > 0 THEN (e.end_e - e.start_e) / e.total_d * 100 END AS g) s
     WHERE e.n >= 2)
@@ -223,6 +227,6 @@ SELECT osm_way_id, segment_index,
        round(avg_g::numeric, {AVERAGE_GRADE_DECIMALS}) AS average_grade,
        round(steepest_up::numeric, {AVERAGE_GRADE_DECIMALS})   AS steepest_gain_percent,
        round(steepest_down::numeric, {AVERAGE_GRADE_DECIMALS}) AS steepest_loss_percent,
-       on_structure
-FROM raw
+       on_structure, p.elevation_profile_m
+FROM raw JOIN points p USING (osm_way_id, segment_index)
 """

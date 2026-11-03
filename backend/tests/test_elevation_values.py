@@ -10,10 +10,11 @@ PostGISで実行して、返った行を見る。点は道に沿って1歩（`ST
 
 from decimal import Decimal
 
+from app.domain.attributes import elevation_values_sql
+from app.domain.elevation_profile import MAX_PLAUSIBLE_GRADE_PERCENT
 import pytest
 from sqlalchemy import text
 
-from app.domain.attributes import MAX_PLAUSIBLE_AVERAGE_GRADE_PERCENT, elevation_values_sql
 
 pytestmark = pytest.mark.asyncio(loop_scope="module")
 
@@ -140,8 +141,8 @@ async def test_a_structure_uses_only_its_two_ends(road_graph_session, elevations
 @pytest.mark.parametrize(
     ("percent", "kept"),
     [
-        (MAX_PLAUSIBLE_AVERAGE_GRADE_PERCENT - 0.5, True),
-        (MAX_PLAUSIBLE_AVERAGE_GRADE_PERCENT + 0.5, False),
+        (MAX_PLAUSIBLE_GRADE_PERCENT - 0.5, True),
+        (MAX_PLAUSIBLE_GRADE_PERCENT + 0.5, False),
     ],
 )
 async def test_an_implausible_average_grade_has_no_value(road_graph_session, percent, kept):
@@ -184,7 +185,7 @@ async def test_a_road_that_only_climbs_has_no_steepest_descent(road_graph_sessio
 async def test_an_implausible_step_does_not_count_as_the_steepest(road_graph_session):
     """公道としてありえない勾配の間は、標高データの読み違いとして一番急な勾配に数えない。数えられる間が1つも無ければ、
     平らとは言えないので値を持たない。"""
-    implausible = rise(MAX_PLAUSIBLE_AVERAGE_GRADE_PERCENT + 5)
+    implausible = rise(MAX_PLAUSIBLE_GRADE_PERCENT + 5)
     rows = await values(road_graph_session, {(1, 0): [0.0, rise(3), rise(3) + implausible], (2, 0): [0.0, implausible]})
 
     assert rows[(1, 0)]["steepest_gain_percent"] == pytest.approx(3.0, abs=0.005)

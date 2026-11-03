@@ -50,6 +50,7 @@ from app.domain.way_value_formula import WayValueFormula, feature, way_values_fr
 from app.domain.wind import WIND_DIRECTION_LEAF, WIND_DRAG_RATIO_WAY_FORMULA, WIND_SPEED_LEAF
 from tests.axis_system_fixture import linear, shaped_axis
 from tests.material_fixture import material, replace_material_catalog
+from tests.profile_fixture import grade_profiles
 
 
 CATALOG = [
@@ -105,6 +106,7 @@ def _arrays() -> EdgeMaterialColumns:
         columns={"num_a": np.asarray(NUM_A, dtype=float), "num_b": np.asarray(NUM_B, dtype=float),
                  "bool_a": np.asarray(BOOL_A, dtype=float), "cat_a": CategoricalColumn.encode(CAT_A)},
         distance_m=np.full(n, 100.0), bearing_deg=nan, mid_lat=nan, mid_lon=nan,
+        elevation_profiles=grade_profiles(np.zeros(n), np.full(n, 100.0)),
     )
 
 
@@ -183,6 +185,7 @@ def _route_values(segments: FeatureSegments, grade: np.ndarray) -> dict[str, dic
                  "seg_count": np.asarray(segments.columns["seg_count"], dtype=float),
                  "way_num": np.array([WAY_NUM[owner] for owner in owners], dtype=float)},
         distance_m=segments.distance_m, bearing_deg=nan, mid_lat=nan, mid_lon=nan,
+        elevation_profiles=grade_profiles(np.zeros(n), segments.distance_m),
     )
     matrix = build_static_edge_score_matrix(arrays, FOLDED_AXES, {})
     details: dict[str, list[RouteSegmentDetail]] = {}

@@ -31,6 +31,7 @@ from app.infrastructure import road_network_store
 from app.services.graph_service import GraphService, SearchMemory
 from app.services.weather_service import WeatherService
 from tests.axis_system_fixture import axis_definition, replaced_axis_definitions
+from tests.profile_fixture import two_point_profiles
 
 #: 道の区分の条件と0次ハードフィルタが読む事実の列。
 HIGHWAY, TUNNEL = "highway", "has_tunnel"
@@ -144,6 +145,10 @@ def road_network(
     distance_m = np.array([haversine_distance_km(a, b) * 1000 for a, b in points])
     # 道は一様な坂なので、一番急な勾配は平均の勾配そのもの。
     grade = climb / distance_m * 100
+    # 断面は両端の2点。標高のある道はその標高、ほかは勾配の材料どおりに0mから登る（勾配の値の無い道は点を持たない）。
+    known = ~np.isnan(start_elevation)
+    profile_start = np.where(known, start_elevation, np.where(np.isnan(gradient), np.nan, 0.0))
+    profile_end = np.where(known, end_elevation, gradient / 100 * distance_m)
     return RoadNetwork(
         revision=1,
         node_osm_id=node_ids, node_lat=lat, node_lon=lon,
@@ -175,6 +180,7 @@ def road_network(
         start_elevation_m=start_elevation, end_elevation_m=end_elevation,
         elevation_gain_m=np.maximum(climb, 0.0), elevation_loss_m=np.maximum(-climb, 0.0),
         steepest_gain_percent=np.maximum(grade, 0.0), steepest_loss_percent=np.maximum(-grade, 0.0),
+        **two_point_profiles(profile_start, profile_end, forward),
     )
 
 

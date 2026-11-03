@@ -54,6 +54,7 @@ from app.domain.material_catalog import (
     material_spec,
 )
 from app.domain.cycling_speed import travel_model_material_ids
+from app.domain.elevation_profile import ElevationProfiles
 from app.domain.hard_filters import hard_filtered
 from app.domain.road_classes import CLASS_MATERIAL_PREFIX
 from app.domain.search_graph import EDGE_VALUE_DTYPE
@@ -403,6 +404,8 @@ class StaticEdgeScoreMatrix:
     # 密度の軸（`averages_density`の公開軸）のid→横軸の値の列。ビンと候補の点数を、この値の
     # 距離平均から作るために運ぶ（`domain/route.py: DensityScoreInput`）。
     density_axes: dict[str, DensityAxisColumn]
+    # 区間の断面の点（所要時間が点の間ごとに速さを解く。`domain/elevation_profile.py`）。
+    elevation_profiles: ElevationProfiles
 
     def __post_init__(self) -> None:
         """行と列が揃っていることを、組み立てた場所で確かめる。
@@ -533,6 +536,7 @@ def build_static_edge_score_matrix(
         },
         mid_lat=materials.mid_lat,
         mid_lon=materials.mid_lon,
+        elevation_profiles=materials.elevation_profiles,
     )
     add_elapsed_ms(steps_ms, "stack", started)
     return matrix

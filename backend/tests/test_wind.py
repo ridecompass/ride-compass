@@ -26,11 +26,14 @@ from app.domain.way_value_formula import way_values_from_formula
 from app.domain.wind import (
     WIND_DIRECTION_LEAF,
     WIND_DRAG_RATIO_WAY_FORMULA,
+    WIND_DRAG_REFERENCE_SPEED_MS,
     WIND_SPEED_LEAF,
     WindForecastSeries,
+    drag_increases_m2_s2,
     estimate_passage_hours,
     kmh_to_ms,
     wind_drag_ratio,
+    wind_drag_ratio_from_components,
 )
 
 #: 風速・走行速度の本番の範囲（m/s）。台風の暴風と、想定速度の上限60km/hを覆う。
@@ -56,6 +59,18 @@ def test_the_map_formula_gives_the_drag_the_route_uses(speed, direction, bearing
         {"bearing_deg": bearing, "speed_kmh": speed_kmh})
 
     assert values == {"way": round(wind_drag_ratio(speed, direction, bearing, kmh_to_ms(speed_kmh)), 3)}
+
+
+@given(st.floats(-40.0, 40.0), st.floats(-40.0, 40.0), TRAVEL_SPEEDS)
+def test_the_running_model_reads_the_same_drag_increase_as_the_map(headwind, crosswind, travel_speed):
+    """走行モデルが区間ごとに読む空気抵抗の増え方は、地図とルートの風の負荷と同じ式。食い違うと、向かい風の道の
+    所要時間の伸びと、地図の色が別の風を見る。"""
+    ratio = float(wind_drag_ratio_from_components(headwind, crosswind, travel_speed))
+
+    increase = drag_increases_m2_s2(np.array([headwind], dtype=np.float32), np.array([crosswind], dtype=np.float32),
+                                    np.float32(travel_speed))[0]
+
+    assert increase == pytest.approx(ratio * WIND_DRAG_REFERENCE_SPEED_MS ** 2, rel=1e-4, abs=1e-3)
 
 
 def test_drag_requires_a_positive_travel_speed():

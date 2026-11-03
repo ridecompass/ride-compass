@@ -34,6 +34,7 @@ from app.domain.cycling_speed import (
 )
 from app.domain.difficulty import axis_weighted_sums
 from app.domain.dynamic_materials import DynamicAxisRequestContext, evaluate_dynamic_axis_arrays
+from app.domain.elevation_profile import ElevationProfiles, GradeDistribution
 from app.domain.evaluation import (
     AxisComposition,
     DensityCost,
@@ -42,7 +43,6 @@ from app.domain.evaluation import (
     density_costs,
     density_sums,
 )
-from app.domain.material_catalog import GRADIENT_PERCENT
 from app.domain.road_avoidance import RoadAvoidanceMasks
 from app.domain.route import Coordinates
 from app.domain.search_graph import EDGE_VALUE_DTYPE, kernel_array
@@ -50,16 +50,15 @@ from app.domain.traffic import POI_COUNT_KINDS, stop_count_material_ids, stop_se
 from app.domain.twilight import night_mask
 from app.domain.wind import DepartureWind, WindForecastSeries, kmh_to_ms
 
-
 # レグの中を時刻で区切るビンの幅（h）と本数の上限。**風の予報が1時間刻みのため、幅もそれに
 # 揃え、ビンはその開始時刻で評価する**——`WindForecastSeries.sample`が最も近い正時を引くため、
 # 幅を細かくしても隣のビンが同じ予報時刻を引くだけで、合成の回数だけが増える。
 TIME_BIN_HOURS = 1.0
 MAX_TIME_BINS = 4
 
-#: 所要時間の計算が値の無い区間をどう数えるかを、利用者に言う文（`_travel_inputs`が勾配の欠けを0%、
+#: 所要時間の計算が値の無い区間をどう数えるかを、利用者に言う文（`_travel_inputs`が標高の欠けを全体の坂の割合の平均で、
 #: 停止要因の件数の欠けを0件に置き換える）。置き換え方を変えたら、ここも変える。
-MISSING_TRAVEL_DATA_WORDING = "坂の無い平地で、止まる所も無い道として所要時間を出しています"
+MISSING_TRAVEL_DATA_WORDING = "標高の無い所は道路網全体の坂の割合の平均で、止まる所の数が無い所は止まらない道として所要時間を出しています"
 
 #: 風の予報が無く（`LegCostComposer.wind_unavailable`）、所要時間を無風で計算したことを利用者に言う文。
 MISSING_WIND_WORDING = "風のモデルの計算値を使えなかったため、無風として所要時間を出しています"
@@ -189,10 +188,18 @@ class _Evaluated:
     composed: AxisComposition
 
 
+@dataclass(frozen=True)
+class _TravelInputs:
+    """`LegCostComposer._travel_inputs`の中身。"""
+
+    model: SegmentSpeedModel
+    distance_m: np.ndarray  # 区間ごと
+    wait_seconds: np.ndarray
+
+
 @njit(cache=True, nogil=True)
 def _bin_costs(
-    speed_ms: np.ndarray,
-    distance_m: np.ndarray,
+    travel_seconds: np.ndarray,
     wait_seconds: np.ndarray,
     excluded: np.ndarray,
     cost_scale: np.ndarray,
@@ -203,14 +210,14 @@ def _bin_costs(
 ) -> tuple[np.ndarray, np.ndarray]:
     """ビン1本の`(探索の行順の費用, 探索の行順の所要時間)`（どちらも`EDGE_VALUE_DTYPE`）。
 
-    所要時間は走行時間（`distance_m / speed_ms`）に停止の待ちを足したもの。探索から除く区間は所要時間も費用も
+    所要時間は走行時間に停止の待ちを足したもの。探索から除く区間は所要時間も費用も
     無限大にする（探索から見た通行可否をコストの下地だけで表すため）。費用は所要時間に合成の割増の倍率を掛けて
     足す秒（`domain/evaluation.py: AxisComposition`）を足し、避ける区間の割り増しを掛けたもの。計算はfloat64で行い、
     最後に`EDGE_VALUE_DTYPE`へ丸める。`full_row_index`は切り出した区間の行→探索の行（載らない区間は-1）。
     """
     cost_lazy = np.empty(lazy_count, dtype=EDGE_VALUE_DTYPE)
     travel_lazy = np.empty(lazy_count, dtype=EDGE_VALUE_DTYPE)
-    for row in range(len(speed_ms)):
+    for row in range(len(travel_seconds)):
         lazy = full_row_index[row]
         if lazy < 0:
             continue
@@ -218,7 +225,7 @@ def _bin_costs(
             seconds = np.inf
             cost = np.inf
         else:
-            seconds = distance_m[row] / np.float64(speed_ms[row]) + wait_seconds[row]
+            seconds = travel_seconds[row] + wait_seconds[row]
             cost = cost_scale[row] * (seconds * multiplier[row] + added_seconds[row])
         cost_lazy[lazy] = cost
         travel_lazy[lazy] = seconds
@@ -226,12 +233,12 @@ def _bin_costs(
 
 
 def _bin_cost_arrays(
-    speed: np.ndarray, distance_m: np.ndarray, wait_seconds: np.ndarray, excluded: np.ndarray, cost_scale: np.ndarray,
+    travel_seconds: np.ndarray, wait_seconds: np.ndarray, excluded: np.ndarray, cost_scale: np.ndarray,
     composed: AxisComposition, full_row_index: np.ndarray, lazy_count: int,
 ) -> tuple[np.ndarray, np.ndarray]:
     """`_bin_costs`を、配列の型を揃えて呼ぶ（`domain/search_graph.py: kernel_array`）。"""
     return _bin_costs(
-        kernel_array(speed, np.float32), kernel_array(distance_m, np.float64), kernel_array(wait_seconds, np.float64),
+        kernel_array(travel_seconds, np.float64), kernel_array(wait_seconds, np.float64),
         kernel_array(excluded, np.bool_), kernel_array(cost_scale, np.float64),
         kernel_array(composed.multiplier, np.float64), kernel_array(composed.added_seconds, np.float64),
         kernel_array(full_row_index, np.int64), lazy_count,
@@ -241,10 +248,12 @@ def _bin_cost_arrays(
 def compile_leg_cost_kernels() -> None:
     """費用の組み立てのJIT（走行モデルとビンの仕上げ）を、本番と同じ引数の型で1回ずつ呼んでコンパイルする
     （`domain/routing.py: compile_search_kernels`がイメージの組み立てで呼ぶ）。"""
-    model = SegmentSpeedModel(RiderProfile(cruise_speed_kmh=20.0), np.zeros(1), np.zeros(1))
-    speeds = model.speed_ms(np.zeros(1), np.zeros(1))
+    flat = ElevationProfiles(np.zeros(1, dtype=np.int64), np.full(1, 2, dtype=np.int32), np.ones(1, dtype=bool),
+                             np.zeros(2, dtype=np.float32), GradeDistribution(np.zeros(1), np.ones(1)))
+    model = SegmentSpeedModel(RiderProfile(cruise_speed_kmh=20.0), flat, np.ones(1), np.zeros(1))
+    seconds = model.travel_seconds(np.zeros(1), np.zeros(1))
     composed = AxisComposition(np.ones(1), np.zeros(1), np.zeros(1), np.zeros(1))
-    _bin_cost_arrays(speeds, np.ones(1), np.zeros(1), np.zeros(1, dtype=bool), np.ones(1), composed, np.zeros(1, dtype=int), 1)
+    _bin_cost_arrays(seconds, np.zeros(1), np.zeros(1, dtype=bool), np.ones(1), composed, np.zeros(1, dtype=int), 1)
 
 
 class LegCostComposer:
@@ -340,27 +349,26 @@ class LegCostComposer:
         self._cache: dict[tuple, LegCostArrays] = {}
         # 時刻ビン（`BinTime`が鍵）の合成。同じ鍵のビンは、レグの向きや開始時刻が違っても同じ中身なので、往路と帰りで使い回す。
         self._bins: dict[BinTime, _ComposedBin] = {}
-        # 風の予報の時刻の添字ごとの走行速度（昼夜だけが違うビンは同じ風なので、速度を解き直さない）。
-        self._speeds: dict[int | None, np.ndarray] = {}
+        # 風の予報の時刻の添字ごとの走行時間（昼夜だけが違うビンは同じ風なので、解き直さない）。
+        self._travel_seconds: dict[int | None, np.ndarray] = {}
 
     @cached_property
-    def _travel_inputs(self) -> tuple[SegmentSpeedModel, np.ndarray, np.ndarray]:
-        """所要時間のうち風に依らない入力: 走行モデル（勾配・路面・巡航速度）と、区間の長さ（m、float64）と、区間にある
+    def _travel_inputs(self) -> _TravelInputs:
+        """所要時間のうち風に依らない入力: 走行モデル（断面・路面・巡航速度）と、区間の長さ（m、float64）と、区間にある
         停止要因の待ちの秒（`domain/traffic.py: stop_seconds`）。どれも静的材料だけから決まるため、リクエストに1回だけ求める。
         ターンの待ちは遷移ごとに決まるためここには含まない（探索側が足す）。"""
         distance_m = np.asarray(self._score_matrix.distance_m, dtype=np.float64)
-        # 材料の列はfloat32で持つ。走行モデルの計算はfloat64で行う。
-        grade = np.nan_to_num(self._static_material_arrays[GRADIENT_PERCENT].astype(np.float64)) / 100.0
         rolling = rolling_resistance_material_id()
         surface = self.categorical_material_arrays.get(rolling) if rolling is not None else None
         if surface is None:  # 転がり抵抗の表が分け方を指していない: どの区間も基準の転がり抵抗
             surface = CategoricalColumn(np.zeros(len(distance_m), dtype=np.int16), (None,))
-        model = SegmentSpeedModel(RiderProfile(cruise_speed_kmh=self.speed_kmh), grade, crr_for_surface(surface))
+        model = SegmentSpeedModel(RiderProfile(cruise_speed_kmh=self.speed_kmh), self._score_matrix.elevation_profiles,
+                                  distance_m, crr_for_surface(surface))
         stops = np.zeros(len(distance_m))
         distance_km = distance_m / 1000.0
         for kind, material_id in zip(POI_COUNT_KINDS, stop_count_material_ids(), strict=True):
             stops += np.nan_to_num(self._static_material_arrays[material_id]) * distance_km * stop_seconds(kind)
-        return model, distance_m, stops
+        return _TravelInputs(model, distance_m, stops)
 
     def bin_time(self, hours: float) -> BinTime:
         """全区間を出発から`hours`時間後の時刻で合成するビンの、時刻の入力（`BinTime`）。"""
@@ -605,28 +613,28 @@ class LegCostComposer:
         return self._departure_wind is None and self._wind_series is None
 
     def missing_travel_data_share(self, rows: np.ndarray) -> float | None:
-        """切り出した区間の順の行`rows`のうち、所要時間の計算で勾配か停止要因の件数の値が無く、既定（平地・待ち無し）で
-        数えた区間の距離の割合。`_travel_inputs`が欠けを置き換えるのと同じ列を見る。距離の合計が0ならNone。"""
+        """切り出した区間の順の行`rows`のうち、所要時間の計算で標高か停止要因の件数の値が無く、既定（全体の坂の割合の平均・
+        待ち無し）で数えた所のある区間の距離の割合。`_travel_inputs`が欠けを置き換えるのと同じ値を見る。距離の合計が0ならNone。"""
         distance = self._score_matrix.distance_m[rows]
         total = float(distance.sum())
         if total <= 0:
             return None
-        missing = np.isnan(self._static_material_arrays[GRADIENT_PERCENT][rows])
+        missing = self._travel_inputs.model.unknown_m[rows] > 0
         for material_id in stop_count_material_ids():
             missing |= np.isnan(self._static_material_arrays[material_id][rows])
         return round(float(distance[missing].sum()) / total, 4)
 
-    def _speed(self, time: BinTime, evaluated: _Evaluated) -> np.ndarray:
-        """区間ごとの走行速度。昼夜は速度に効かないので、全区間が同じ時刻で昼夜だけが違うビンは、風の予報の時刻の添字ごとに
-        1回だけ解く（昼夜を持たないビンは、時刻ごとに1本しか合成しないので使い回さない）。"""
-        model = self._travel_inputs[0]
+    def _travel(self, time: BinTime, evaluated: _Evaluated) -> np.ndarray:
+        """区間ごとの走行時間（秒）。昼夜は速さに効かないので、全区間が同じ時刻で昼夜だけが違うビンは、風の予報の時刻の
+        添字ごとに1回だけ解く（昼夜を持たないビンは、時刻ごとに1本しか合成しないので使い回さない）。"""
         forecast = time.forecast
+        model = self._travel_inputs.model
         if not isinstance(time.night, bool) or isinstance(forecast, np.ndarray):
-            return model.speed_ms(evaluated.headwind_ms, evaluated.crosswind_ms)
-        speed = self._speeds.get(forecast)
-        if speed is None:
-            speed = self._speeds[forecast] = model.speed_ms(evaluated.headwind_ms, evaluated.crosswind_ms)
-        return speed
+            return model.travel_seconds(evaluated.headwind_ms, evaluated.crosswind_ms)
+        seconds = self._travel_seconds.get(forecast)
+        if seconds is None:
+            seconds = self._travel_seconds[forecast] = model.travel_seconds(evaluated.headwind_ms, evaluated.crosswind_ms)
+        return seconds
 
     def _compose_bin(self, time: BinTime, steps_ms: dict[str, int]) -> _ComposedBin:
         """時刻`time`で1本ぶん合成する。段ごとの時間を`steps_ms`へ足す。"""
@@ -634,12 +642,12 @@ class LegCostComposer:
         evaluated = self._evaluate(time)
         add_elapsed_ms(steps_ms, "axes", started)
         started = start_timer()
-        speed = self._speed(time, evaluated)
+        travel_seconds = self._travel(time, evaluated)
         add_elapsed_ms(steps_ms, "speed", started)
         started = start_timer()
-        _model, distance_m, wait_seconds = self._travel_inputs
+        distance_m, wait_seconds = self._travel_inputs.distance_m, self._travel_inputs.wait_seconds
         cost, travel = _bin_cost_arrays(
-            speed, distance_m, wait_seconds, self._excluded, self._cost_scale, evaluated.composed,
+            travel_seconds, wait_seconds, self._excluded, self._cost_scale, evaluated.composed,
             self._full_row_index, len(self._lazy_row_index),
         )
         add_elapsed_ms(steps_ms, "finish", started)

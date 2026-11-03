@@ -29,7 +29,9 @@ import numpy as np
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.domain.attributes import EDGE_ROW_ARRAY_FIELDS, EdgeMaterialArrays
+from app.domain.elevation_profile import grade_distribution
 from app.domain.road_network import RoadNetwork
+from app.domain.search_graph import run_starts
 from app.domain.traffic import travel_allowed
 from app.infrastructure.cache_identity import shape_digest
 from app.infrastructure.data_paths import DATA_DIR
@@ -374,7 +376,27 @@ async def _read_materials(
         columns.add(await repository.get_edge_material_arrays(
             way[start:stop].tolist(), segment[start:stop].tolist(), forward[start:stop].tolist(), accident_years_covered))
         logger.info("材料 %d/%d", stop, edge_count)
-    return columns.result()
+    materials = columns.result()
+    return {**materials, **await _read_profiles(repository, way, segment, materials["distance_m"])}
+
+
+async def _read_profiles(
+    repository: RoadGraphRepository, way: np.ndarray, segment: np.ndarray, distance_m: np.ndarray
+) -> dict[str, Any]:
+    """区間の断面の点（`RoadNetwork`の`edge_profile_*`・`profile_*`の欄）。点は区間ごとに1回だけ持ち、同じ区間の両向きの行
+    （有向の行は区間ごとに隣り合って並ぶ）は同じ点を指す。標高の無い所を埋める分布も、ここで1回だけ求める。"""
+    first = run_starts(way) | run_starts(segment)
+    owner = np.cumsum(first) - 1  # 行 → 点を持つ区間の番号
+    unique_rows = np.flatnonzero(first)
+    profiles = await repository.get_edge_elevation_profiles(way[unique_rows].tolist(), segment[unique_rows].tolist())
+    points = np.fromiter((len(p) for p in profiles), dtype=np.int32, count=len(profiles))
+    starts = np.cumsum(points, dtype=np.int64) - points
+    elevation = _concatenate(profiles, np.float32)
+    distribution = grade_distribution(starts, points, elevation, distance_m[unique_rows])
+    return {
+        "edge_profile_start": starts[owner], "edge_profile_points": points[owner], "profile_elevation_m": elevation,
+        "profile_distribution_grade": distribution.grade, "profile_distribution_share": distribution.share,
+    }
 
 
 class MaterialColumns:
