@@ -173,6 +173,7 @@ def test_the_ledger_formula_adds_the_penalty_of_each_road_to_its_travel_time():
         "effort": {axis_id: presentation for axis_id in EFFORT_AXES},
         "burden": {"vibration": {**presentation, "burden": {
             "kind": "categorical", "material": "class:surface_estimate", "per_km": {"paved": 0.0, "gravel": 1.0}}}},
+        "total_lens": presentation,
     })
     parameters = LedgerParameters(strength=0.5, multipliers={}, effort_alpha=1.0, burden_seconds_per_km=100.0,
                                   effort_weight_exponent=0.0)

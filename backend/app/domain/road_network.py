@@ -236,11 +236,24 @@ def slice_network(
     min_lon: float, min_lat: float, max_lon: float, max_lat: float,
 ) -> RoadSlice:
     """区間の形の外接矩形が範囲に重なる区間を取り出す。範囲の外へはみ出す区間も、端点ごと含む。"""
+    return slice_rows(network, classes, rows_in_bbox(network, min_lon, min_lat, max_lon, max_lat))
+
+
+def rows_in_bbox(network: RoadNetwork, min_lon: float, min_lat: float, max_lon: float, max_lat: float) -> np.ndarray:
+    """区間の形の外接矩形が範囲に重なる区間の行（昇順）。"""
     overlaps = np.asarray(network.edge_max_lon) >= min_lon
     overlaps &= np.asarray(network.edge_min_lon) <= max_lon
     overlaps &= np.asarray(network.edge_max_lat) >= min_lat
     overlaps &= np.asarray(network.edge_min_lat) <= max_lat
-    rows = np.flatnonzero(overlaps)
+    return np.flatnonzero(overlaps)
+
+
+def slice_rows(
+    network: RoadNetwork,
+    classes: tuple[Mapping[str, CategoricalColumn], Mapping[str, CategoricalColumn]],
+    rows: np.ndarray,
+) -> RoadSlice:
+    """区間の行`rows`（全体の行番号の昇順）を、端点ごと取り出す。"""
     tail = np.asarray(network.edge_from[rows], dtype=np.int64)
     head = np.asarray(network.edge_to[rows], dtype=np.int64)
     nodes, inverse = np.unique(np.concatenate([tail, head]), return_inverse=True)

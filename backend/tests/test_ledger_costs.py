@@ -27,6 +27,7 @@ def _axes(**burden) -> CostAxisDefinitions:
     return CostAxisDefinitions.model_validate({
         "effort": {axis_id: presentation for axis_id in EFFORT_AXES},
         "burden": {axis_id: {**presentation, "burden": b} for axis_id, b in burden.items()},
+        "total_lens": presentation,
     })
 
 
@@ -82,7 +83,7 @@ def test_a_road_without_a_surface_class_carries_the_mean_burden_of_the_whole_net
     column = CategoricalColumn.encode(["gravel", None, "paved"])
     fills = MaterialFills(numeric_means={}, class_shares={VIBRATION: {"paved": 0.75, "gravel": 0.25}})
 
-    weights = burden_per_km(AXES.burden["vibration"].burden, {}, {VIBRATION: column}, fills)
+    weights = burden_per_km(AXES.burden["vibration"].burden, {VIBRATION: column}, fills)
 
     assert weights.tolist() == pytest.approx([1.0, 0.25, 0.0])
 
@@ -91,6 +92,6 @@ def test_a_curve_reads_the_material_and_a_missing_value_reads_the_mean_of_the_wh
     axes = _axes(steep={"kind": "linear", "material": GRADIENT_PERCENT, "points": [[0.0, 0.0], [10.0, 1.0]]})
     fills = MaterialFills(numeric_means={GRADIENT_PERCENT: 5.0}, class_shares={})
 
-    weights = burden_per_km(axes.burden["steep"].burden, {GRADIENT_PERCENT: np.array([2.0, np.nan, 20.0])}, {}, fills)
+    weights = burden_per_km(axes.burden["steep"].burden, {GRADIENT_PERCENT: np.array([2.0, np.nan, 20.0])}, fills)
 
     assert weights.tolist() == pytest.approx([0.2, 0.5, 1.0])

@@ -14,6 +14,8 @@
 | ファイル | 責務 |
 |---|---|
 | `lib/mapDisplay/routeStyleModes.ts` | ルート確定後の色分けモード一覧・色式 |
+| `features/map/costLens.ts` | 費用の軸の一覧から、地図のレンズ（総合と軸ごと。1kmあたりの代償の秒）を道ごとの値で塗る軸の形へ移すこと（`features/map/costLens.ts: costLensAxes`）・レンズの選択肢（`features/map/costLens.ts: costLensOptions`）・凡例の下の段の境目の目安の文（`features/map/costLens.ts: costLensPremises`）。下記「費用の軸のレンズ」 |
+| `hooks/useCostAxisCatalog.ts` | 費用の軸の一覧（`GET /api/cost-axes`。定義が無い間は0件）を画面が読む形で共有する取得（`services/costAxisCatalogApi.ts: getCostAxisCatalog`） |
 | `lib/mapDisplay/valueScale.ts` | 地図表示値の種類（`lib/mapDisplay/valueScale.ts: MapValueKind`: 難易度／符号付き材料）ごとの既定しきい値・配色（HSL補間）と、地図が値を塗る宣言（`lib/mapDisplay/valueScale.ts: MapPaintDeclaration`）・段の並び（`lib/mapDisplay/valueScale.ts: valueBands`）・値が段に入るかの式（`lib/mapDisplay/valueScale.ts: bandCondition`・`lib/mapDisplay/valueScale.ts: bandStep`）。ルート前の道の線・ルート後の色分け・凡例・管理画面のプレビューが共有する（下記「valueScale.ts」）。画面に出す難易度と負荷の数字の桁（`lib/mapDisplay/valueScale.ts: DIFFICULTY_DECIMALS`・`lib/mapDisplay/valueScale.ts: formatDifficulty`と、目盛りの上端「/100」を添える`lib/mapDisplay/valueScale.ts: DIFFICULTY_SCALE_SUFFIX`・`lib/mapDisplay/valueScale.ts: formatDifficultyOutOfScale`。桁はbackendの`lib/mapDisplay/valueScale.ts: DIFFICULTY_DECIMALS`を生成物`mapDisplay.ts: mapDisplay.valueScale.difficultyDecimals`で読む。負荷は`lib/mapDisplay/valueScale.ts: LOAD_DECIMALS`・`lib/mapDisplay/valueScale.ts: formatLoad`で整数）も持ち、難易度の数字を出す画面はどれもここを通す（[ルート設定・結果パネル](route-settings-and-results.md)「難易度の数字の桁」） |
 | `features/map/scene/groups/axisLines.ts` | ルート確定前に評価軸の値で道を塗る線の宣言。道ごとの材料のfeature-stateと走る条件のglobal-state、段の色、値が無い道・取得中の道の色と濃さ、値が無い道の破線、凡例で隠した段の落とし方（下記「評価軸の線」） |
 | `features/map/scene/wayValueFormula.ts` | 式の木をMapLibreの式へ置き換える唯一の所（下記「評価軸の線」）。木の中身は持たず、節の種類ごとの置き換え方だけを持つ |
@@ -60,6 +62,23 @@
 backend（`domain/map_paint.py: map_paint`）が軸の折れ線で写してから返し、カタログは上書きの生の値を配らないため、
 フロントはスケールの判断を持たない。折れ線が飽和する範囲へ置かれた境界は同じスコアへ写り、
 その分だけ段階が減る。
+
+## 費用の軸のレンズ
+
+費用の軸の定義があるとき（`GET /api/cost-axes`が軸を返す）、レンズの選択肢は総合と費用の軸に替わり、どれも1kmあたりの
+代償の秒で道を塗る（[動的材料・フィーチャー値配信（backend）](../backend/dynamic-way-values.md)「費用の軸のレンズ」）。定義が無い間
+（404）は、上の軸カタログの軸のレンズのまま。
+
+- **同じ塗りの部品を通す**: レンズは道ごとの値で塗る軸（`lib/mapDisplay/axisLayers.ts: DedicatedWayValueAxis`）の形で、地図の軸の
+  一覧（`features/map/useMapAxisCatalog.ts: useMapAxisCatalog`）に足す。材料を取る口だけが違い（`wayMaterialSource`が`lens`なら
+  `GET /api/region/lens/{lens_id}/...`へ想定速度を載せる）、式の木（backendが`map_lens.formula`で配る）・段・凡例・取得の状態は
+  軸と同じ部品が持つ。新しい軸のidは旧い軸のidを使い回さない（費用の軸の定義の決まり）ので、同じ一覧に並べても鍵がぶつからない。
+- **段と凡例**: 段の境目はその軸の`lens`（秒/km）。凡例の下に、段の境目の秒が標準の条件でどれだけの事実に当たるかの目安
+  （backendの`lens_equivalents`）を書く。目安は目安と分かる見出しを付け、その道の本当の事実は道を押したときの窓に出す。
+- **ルートの線**: 新しいレンズのidでのルートの線の塗りは、ルートの応答の側が持つ（ルートの区間の値の読み手）。
+- **道を押したときの窓**（`features/map/MapView/RoadInspectorPopup.tsx`）: 区間インスペクタの応答が費用の軸のレンズの値（`lens`）を
+  持つときは、軸の得点の塊の代わりに、地図が塗っている向きの総合と軸ごとの秒/kmと、その元の事実（一番急な登り・下り・
+  向かい風・止まる所・路面）を並べる。
 
 ## 軸id→振る舞いの判定（データ駆動、axis_idのハードコード比較を使わない）
 

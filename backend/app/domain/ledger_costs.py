@@ -15,10 +15,11 @@
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from typing import cast
 
 import numpy as np
 
-from app.domain.attributes import CategoricalColumn
+from app.domain.attributes import CategoricalColumn, MaterialColumn
 from app.domain.axis_templates import evaluate_breakpoint_linear
 from app.domain.cost_axes import EFFORT_AXES, Burden, CategoricalBurden, CostAxisDefinitions, EffortItem
 from app.domain.cycling_speed import SegmentRide, SegmentSpeedModel
@@ -59,15 +60,22 @@ def current_ledger_parameters(strength: float, multipliers: Mapping[str, float])
     )
 
 
-def burden_per_km(burden: Burden, numeric: Mapping[str, np.ndarray], categorical: Mapping[str, CategoricalColumn],
-                  fills: MaterialFills) -> np.ndarray:
-    """道の負担の軸の費目`burden`の、区間ごとの1kmあたりの重さ。材料の欠けた区間は取込の範囲全体の平均で埋める。"""
+def standard_ledger_parameters() -> LedgerParameters:
+    """つまみ1（割増の強さの較正値そのもの）・倍率はどの軸も標準の1の値。利用者の値が届かない所（地図のレンズ・凡例の目安）が
+    読む。"""
+    return current_ledger_parameters(tuning_value("evaluation.penalty_strength"), {})
+
+
+def burden_per_km(burden: Burden, materials: Mapping[str, MaterialColumn], fills: MaterialFills) -> np.ndarray:
+    """道の負担の軸の費目`burden`の、区間ごとの1kmあたりの重さ。`materials`は材料id→区間の列（数値の配列か区分の列）。
+    材料の欠けた区間は取込の範囲全体の平均で埋める。"""
     if isinstance(burden, CategoricalBurden):
-        weights = categorical[burden.material].lookup(burden.per_km)
+        weights = cast(CategoricalColumn, materials[burden.material]).lookup(burden.per_km)
         shares = fills.class_shares.get(burden.material, {})
         fill = sum(share * burden.per_km.get(value, 0.0) for value, share in shares.items())
         return np.where(np.isnan(weights), fill, weights)
-    return np.nan_to_num(evaluate_breakpoint_linear(fills.fill(burden.material, numeric[burden.material]), burden.points))
+    values = fills.fill(burden.material, cast(np.ndarray, materials[burden.material]))
+    return np.nan_to_num(evaluate_breakpoint_linear(values, burden.points))
 
 
 class LedgerCosts:
@@ -89,6 +97,13 @@ class LedgerCosts:
             * np.asarray(burden_km[axis_id], dtype=np.float64)
             for axis_id in axes.burden
         }
+
+    @classmethod
+    def for_model(cls, axes: CostAxisDefinitions, parameters: LedgerParameters, model: SegmentSpeedModel,
+                  burden_km: Mapping[str, np.ndarray]) -> "LedgerCosts":
+        """走行の模型`model`の平地の出力と漕ぎ出しの体力（式の重み`γ`を掛けたもの）で組む。"""
+        return cls(axes, parameters, model.flat_power_w, model.kickoff_effort_j(parameters.effort_weight_exponent),
+                   burden_km)
 
     def penalty_by_axis(self, ride: SegmentRide, rows: np.ndarray | None = None) -> dict[str, np.ndarray]:
         """軸id → 区間ごとの代償の秒（体力の軸は つまみ × α × 倍率 × 体力 ÷ 平地の出力、道の負担の軸は つまみ × β × 倍率 ×

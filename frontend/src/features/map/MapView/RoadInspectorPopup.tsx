@@ -28,6 +28,8 @@ import { Button } from "@/components/ui/Button/Button";
 import { InspectRoadIcon } from "@/components/ui/icons/lucideIcons";
 import { textVariants } from "@/components/ui/Text/Text";
 import { cn } from "@/lib/cn";
+import { useCostAxisCatalog } from "@/hooks/useCostAxisCatalog";
+import { formatLensNumber, LENS_SECONDS_UNIT } from "@/features/map/costLens";
 
 interface RoadInspectorPopupProps {
   properties: RoadSurfacePopupProperties;
@@ -119,7 +121,12 @@ export default function RoadInspectorPopup({
         </Button>
       )}
       {inspector.isError && <p className={hintClass}>評価を取得できませんでした。</p>}
-      {result !== null && <FeatureValues values={result.values} axes={axes} axisColors={axisColors} />}
+      {result !== null &&
+        (result.lens !== null ? (
+          <LensValues lens={result.lens} />
+        ) : (
+          <FeatureValues values={result.values} axes={axes} axisColors={axisColors} />
+        ))}
       <RoadAttributeRows properties={properties} result={result} />
       {isDebugEnabled() && wayId != null && <p className={hintClass}>OSM way id: {wayId}</p>}
     </div>
@@ -127,6 +134,50 @@ export default function RoadInspectorPopup({
 }
 
 type InspectorValues = AxisInspectorResult["values"];
+type LensInspection = NonNullable<AxisInspectorResult["lens"]>;
+
+/** 押したフィーチャーの、地図のレンズと同じ1kmあたりの代償の秒（総合と軸ごと）と、その元の事実。地図が塗っている向きの
+ * 値を出す（直角に近くて向きが決まらない道は、辿れる向きのうち道の向きを先に）。 */
+function LensValues({ lens }: { lens: LensInspection }) {
+  const costCatalog = useCostAxisCatalog();
+  const slot = lens.painted ?? (lens.along !== null ? "along" : "against");
+  const values = lens[slot];
+  if (values === null) return <p className={hintClass}>この向きには走れません。</p>;
+  const label = (axisId: string) => costCatalog.axes.find((axis) => axis.axisId === axisId)?.label ?? axisId;
+  const measured: [string, number | null, string][] = [
+    ["一番急な登り", values.steepest_climb_percent, "%"],
+    ["一番急な下り", values.steepest_descent_percent, "%"],
+    ["向かい風", values.headwind_ms, "m/s"],
+    ["止まる所", values.stops_per_km, "か所/km"],
+  ];
+  const facts: RoadFactRow[] = [
+    ...measured.flatMap(([factLabel, value, unit]) =>
+      value === null ? [] : [{ label: factLabel, value: `${formatLensNumber(value)}${unit}` }],
+    ),
+    ...(lens.surface !== null ? [{ label: "路面", value: lens.surface }] : []),
+  ];
+  return (
+    <div className="flex flex-col gap-1">
+      <p className="m-0">
+        <span className="font-semibold">
+          {costCatalog.lenses?.totalLens.label ?? "負担"} {formatLensNumber(values.total_seconds_per_km)}
+          {LENS_SECONDS_UNIT}
+        </span>
+        <span className={cn(hintClass, "ml-1.5")}>
+          {slot === "along" ? "道の向き" : "逆向き"}
+          {lens.painted === null ? "（地図の向きに直角に近い道）" : ""}
+        </span>
+      </p>
+      <FactList
+        rows={values.axes.map((axis) => ({
+          label: label(axis.axis_id),
+          value: `${formatLensNumber(axis.seconds_per_km)}${LENS_SECONDS_UNIT}`,
+        }))}
+      />
+      {facts.length > 0 && <FactList rows={facts} />}
+    </div>
+  );
+}
 
 /** 押したフィーチャー（その倍率で地図が塗る区間か道1本）の評価の塊: 難易度・軸ごとの効き方と、周囲の土地被覆のチップ。 */
 function FeatureValues({

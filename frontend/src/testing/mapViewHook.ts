@@ -3,6 +3,7 @@ import { renderHook } from "@testing-library/react";
 
 import { useMapView } from "@/features/map/view/useMapView";
 import { onBackend, onSameOrigin } from "@/testing/backendServer";
+import { serveCostAxisCatalog } from "@/testing/costAxes";
 import {
   catalogResponse,
   dedicatedEntry,
@@ -43,6 +44,7 @@ export function serve(catalog: Response | readonly AxisCatalogEntry[] = [SCORE])
         ),
   );
   onSameOrigin("GET", "/api/jma-tile/*", () => Response.json([]));
+  serveCostAxisCatalog(null);
 }
 
 export function renderMapView(inputs: Partial<Inputs> = {}) {

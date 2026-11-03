@@ -16,6 +16,7 @@ import { MAP_FETCH_DEBOUNCE_MS } from "@/hooks/useDebouncedValue";
 import { onBackend } from "@/testing/backendServer";
 import { dedicatedEntry, MATERIAL_VALUE_FORMULA } from "@/testing/catalogAxes";
 import { chip, renderMapView, serve, VIEWPORT } from "@/testing/mapViewHook";
+import { costAxisCatalog, costAxisEntry, serveCostAxisCatalog } from "@/testing/costAxes";
 
 import { LEGEND_FILTER_DEBOUNCE_MS, type useMapView } from "./useMapView";
 
@@ -61,6 +62,38 @@ describe("useMapView", () => {
       timeout: 3000,
     });
     expect(result.current.lensControl.dataStatus).toBe("error");
+  });
+
+  it("費用の軸の定義があると、レンズは総合と費用の軸に替わり、旧い軸の保存値は受けず、選んだレンズの1kmあたりの負担の秒を想定速度つきで取り、凡例の下に段の境目の目安を出す", async () => {
+    serve([DEDICATED]);
+    serveCostAxisCatalog(
+      costAxisCatalog(
+        costAxisEntry("ascent", {
+          label: "登坂",
+          lens: { thresholds: [4], band_labels: ["緩い", "きつい"] },
+          lens_equivalents: { kind: "thresholds", fact: "斜度", unit: "%", values: [2.1] },
+        }),
+      ),
+    );
+    // 旧い軸を選んでいた端末でも、選択肢に無い旧い軸は塗り続けない。
+    window.localStorage.setItem("ridecompass:route-style-mode", "axis_wind");
+    const sent = onBackend("GET", "/api/region/lens/ascent/:z/:x/:y", () =>
+      Response.json({ "1-0": { lens_along: 5, road_bearing_deg: 0 } }),
+    );
+    const { result } = renderMapView();
+    await waitFor(() =>
+      expect(result.current.lensControl.axisOptions.map((option) => option.id)).toEqual(["total", "ascent"]),
+    );
+    await waitFor(() => expect(result.current.look.lens).toBe("difficulty"));
+
+    act(() => result.current.lensControl.onLensChange("ascent"));
+    act(() => result.current.look.onViewportChange(VIEWPORT));
+
+    await waitFor(() => expect(result.current.look.wayMaterials.get("ascent")?.materials.get("1-0")).toBeDefined(), {
+      timeout: 3000,
+    });
+    expect(sent[0].query.speed_kmh).toBe("20");
+    expect(result.current.lensControl.premises).toContain("4秒/km ≈ 斜度 2.1%");
   });
 
   it("走る向きは地図の上の向きを [0, 360) の10°刻みへ丸めて地図へ渡し、材料の要求へ向きを載せない軸は向きを変えても取り直さない。走行中は実際に走る向きと速度を渡す", async () => {

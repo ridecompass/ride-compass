@@ -188,6 +188,32 @@ export async function fetchWayMaterials(
   );
 }
 
+/** 費用の軸のレンズの道ごとの材料の要求の条件（想定速度は要る。`/api/cost-axes`の`map_lens.material_conditions`）。 */
+export type LensMaterialsQuery = paths["/api/region/lens/{lens_id}/{z}/{x}/{y}"]["get"]["parameters"]["query"];
+
+/** 路面タイルと同じz/x/yの中の道ごとの、レンズ`lensId`（総合か費用の軸）の材料（道の向き・逆向きに辿った1kmあたりの
+ * 代償の秒と道の向き。値の無い材料は鍵ごと無い）。 */
+export async function fetchLensMaterials(
+  lensId: string,
+  z: number,
+  x: number,
+  y: number,
+  query: LensMaterialsQuery,
+): Promise<TileWayValues<Record<string, number>>> {
+  const params = { path: { lens_id: lensId, z, x, y }, query };
+  return tileWayValues(() =>
+    requestApi((init) => backendApi.GET("/api/region/lens/{lens_id}/{z}/{x}/{y}", { params, ...init }), {
+      timeoutMs: API_TIMEOUT_MS.default,
+      category: `api:${lensId}-lens`,
+      messages: {
+        failure: "道路の塗りの値の取得に失敗しました",
+        parseFailure: "道路の塗りの値の解析に失敗しました",
+      },
+      successMeta: (data) => ({ wayCount: Object.keys(data).length }),
+    }),
+  );
+}
+
 /** 路面タイルと同じz/x/yの中の道ごとの、道の線の層の値（層のid→区分の鍵か「データなし」。区分の外の道の層は無い）。 */
 export async function fetchRoadClasses(
   z: number,
