@@ -110,6 +110,7 @@ TILE_ROUTE_POLICIES: Final[tuple[tuple[str, CachePolicy], ...]] = (
     # 同じURLの内容が変わりうるため`immutable`は付けられない。
     ("/api/region/landcover-tiles/", BATCH_TILE),
     ("/api/region/way-materials/", SHORT),
+    ("/api/region/lens/", SHORT),
     ("/api/region/road-classes/", SHORT),
 )
 #: 地図タイル系の経路の接頭辞。アクセスログの高さを分ける（`infrastructure/request_log.py: access_level`）。

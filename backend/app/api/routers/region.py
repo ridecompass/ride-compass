@@ -9,6 +9,7 @@ from app.api.dependencies import (
     get_dedicated_way_value_service,
     get_feature_material_service,
     get_landcover_tile_reader,
+    get_lens_service,
     get_region_service,
 )
 from app.api.rate_limit import enforce_rate_limit
@@ -32,6 +33,7 @@ from app.infrastructure.media_types import PNG_CONTENT_TYPE
 from app.infrastructure.point_tile_layers import POINT_TILE_LAYERS
 from app.services.dedicated_way_values import AxisWayValueLens
 from app.services.feature_materials import FeatureMaterialService
+from app.services.lens_service import LensService, lens_way_materials
 from app.services.region_service import AxisInspectorService, RegionService
 from app.domain.strict_model import StrictModel
 
@@ -141,6 +143,34 @@ async def region_way_materials(
         raise HTTPException(status_code=404, detail="この軸は道ごとの材料を配りません。")
     if isinstance(materials, MissingConditions):
         raise missing_conditions_error(materials)
+    return materials
+
+
+@router.get("/api/region/lens/{lens_id}/{z}/{x}/{y}")
+async def region_lens(
+    lens_id: str,
+    z: RoadTileZoom,
+    x: TileIndex,
+    y: TileIndex,
+    request: Request,
+    speed_kmh: AssumedSpeedKmh,
+    at: datetime | None = None,
+    service: LensService = Depends(get_lens_service),
+) -> dict[str, dict[str, float]]:
+    """ルートを出す前の地図がレンズ`lens_id`（総合・費用の軸のid・勾配。`domain/lens_values.py`）で道を塗る、指定タイルの
+    フィーチャーごとの道ごとの材料: 道の向きに辿った値・逆向きに辿った値（辿れない向き・値の無い向きは載せない）と道の向き。
+    どちらの向きを塗るかは、レンズの式の木が走行方位で選ぶ。値は時刻`at`（省略すると今。風）と想定速度`speed_kmh`で
+    決まり、探索と同じ部品で求める。
+
+    鍵は路面タイル（`/api/region/road-surface-tiles`）の同じz/x/yのフィーチャーの鍵。費用の軸の定義がまだ無い間と、
+    知らないレンズは404。
+    """
+    check_tile_rate_limit(request, "lens")
+    validate_tile_coords(z, x, y)
+    table = await service.tile_table(z, x, y, at, speed_kmh)
+    materials = None if table is None else lens_way_materials(table, lens_id)
+    if materials is None:
+        raise HTTPException(status_code=404, detail="このレンズの値はありません。")
     return materials
 
 

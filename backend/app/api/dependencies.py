@@ -54,6 +54,7 @@ from app.services.flood_service import FloodService
 from app.services.graph_service import GraphService, SearchMemory
 from app.services.jma_amedas_service import JmaAmedasService
 from app.services.landcover_tile_service import get_landcover_tile
+from app.services.lens_service import LensService
 from app.services.material_coverage_service import MaterialCoverageService
 from app.services.nearest_point_areas import new_cells_cache
 from app.services.place_search_service import PlaceSearchReads, PlaceSearchService
@@ -243,6 +244,11 @@ async def get_draft_way_value_lens_builder(
         feature_materials = FeatureMaterialService(repository)
         build_service = material_service_builder(repository, weather_service)
         yield lambda axis_id, shape: draft_axis_way_value_lens(axis_id, shape, feature_materials, build_service)
+
+
+def get_lens_service(weather_service: WeatherService = Depends(get_weather_service)) -> LensService:
+    """地図のレンズの道ごとの値。DBを読まない（取込範囲全体の道の網から求める）。"""
+    return LensService(weather_service)
 
 
 async def get_axis_inspector_service(

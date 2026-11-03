@@ -15,10 +15,11 @@
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from typing import cast
 
 import numpy as np
 
-from app.domain.attributes import CategoricalColumn
+from app.domain.attributes import CategoricalColumn, MaterialColumn
 from app.domain.axis_templates import evaluate_breakpoint_linear
 from app.domain.cost_axes import EFFORT_AXES, Burden, CategoricalBurden, CostAxisDefinitions
 from app.domain.cycling_speed import SegmentRide, SegmentSpeedModel
@@ -50,15 +51,16 @@ def current_ledger_parameters(strength: float, multipliers: Mapping[str, float])
     )
 
 
-def burden_per_km(burden: Burden, numeric: Mapping[str, np.ndarray], categorical: Mapping[str, CategoricalColumn],
-                  fills: MaterialFills) -> np.ndarray:
-    """道の負担の軸の費目`burden`の、区間ごとの1kmあたりの重さ。材料の欠けた区間は取込の範囲全体の平均で埋める。"""
+def burden_per_km(burden: Burden, materials: Mapping[str, MaterialColumn], fills: MaterialFills) -> np.ndarray:
+    """道の負担の軸の費目`burden`の、区間ごとの1kmあたりの重さ。`materials`は材料id→区間の列（数値の配列か区分の列）。
+    材料の欠けた区間は取込の範囲全体の平均で埋める。"""
     if isinstance(burden, CategoricalBurden):
-        weights = categorical[burden.material].lookup(burden.per_km)
+        weights = cast(CategoricalColumn, materials[burden.material]).lookup(burden.per_km)
         shares = fills.class_shares.get(burden.material, {})
         fill = sum(share * burden.per_km.get(value, 0.0) for value, share in shares.items())
         return np.where(np.isnan(weights), fill, weights)
-    return np.nan_to_num(evaluate_breakpoint_linear(fills.fill(burden.material, numeric[burden.material]), burden.points))
+    values = fills.fill(burden.material, cast(np.ndarray, materials[burden.material]))
+    return np.nan_to_num(evaluate_breakpoint_linear(values, burden.points))
 
 
 class LedgerCosts:
@@ -74,8 +76,12 @@ class LedgerCosts:
         #: 体力1J（重み付き）あたりの代償の秒。区間の体力と曲がる所の漕ぎ出しに同じ換算で掛ける。
         self._seconds_per_j = parameters.strength * parameters.effort_alpha / flat_power_w
         self._kickoff_seconds = self._seconds_per_j * self._item_multipliers["inertia"] * kickoff_j
-        self._burden_seconds = parameters.strength * parameters.burden_seconds_per_km * sum(
-            (multiplier(axis_id) * np.asarray(burden_km[axis_id], dtype=np.float64) for axis_id in axes.burden), 0.0)
+        seconds_per_km = parameters.strength * parameters.burden_seconds_per_km
+        #: 道の負担の軸ごとの、区間の代償の秒（時刻に依らない）。
+        self._burden_axis_seconds = {
+            axis_id: seconds_per_km * multiplier(axis_id) * np.asarray(burden_km[axis_id], dtype=np.float64)
+            for axis_id in axes.burden}
+        self._burden_seconds = sum(self._burden_axis_seconds.values(), np.float64(0.0))
 
     def penalty_seconds(self, ride: SegmentRide) -> np.ndarray:
         """区間ごとの代償の秒（所要時間に足す分。つまみ × (α × 体力 ＋ 道の負担)）。`ride`は重みを掛けた体力の内訳。"""
@@ -83,6 +89,12 @@ class LedgerCosts:
         effort_j = (m["gravity"] * ride.gravity_extra_j + m["air"] * ride.air_extra_j
                     + m["rolling"] * ride.rolling_extra_j + m["inertia"] * ride.inertia_extra_j)
         return self._seconds_per_j * effort_j + self._burden_seconds
+
+    def penalty_by_axis(self, ride: SegmentRide) -> dict[str, np.ndarray]:
+        """区間ごとの代償の秒の、軸ごとの内訳（体力の軸をコードの表の順、続けて道の負担の軸。和が`penalty_seconds`）。"""
+        effort = {axis_id: self._seconds_per_j * self._item_multipliers[item] * getattr(ride, f"{item}_extra_j")
+                  for axis_id, item in EFFORT_AXES.items()}
+        return {**effort, **self._burden_axis_seconds}
 
     def bin_seconds(self, model: SegmentSpeedModel, headwind_ms: np.ndarray,
                     crosswind_ms: np.ndarray) -> tuple[np.ndarray, np.ndarray]:

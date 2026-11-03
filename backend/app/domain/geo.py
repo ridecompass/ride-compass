@@ -134,13 +134,19 @@ def bearing_between(origin: LatLon, destination: LatLon) -> float:
 
 def bearing_between_array(origin: LatLon, lat: np.ndarray, lon: np.ndarray) -> np.ndarray:
     """`bearing_between`を多数の点へまとめて求める。originから`(lat, lon)`の各点を見た初期方位角
-    （0=北、時計回り、0-360）を配列で返す。式はここ1本で、1点の`bearing_between`もこれを通す。"""
-    lat1 = math.radians(origin.latitude)
-    lat2 = np.radians(lat)
-    dlon = np.radians(lon - origin.longitude)
+    （0=北、時計回り、0-360）を配列で返す。"""
+    return bearings_between(np.asarray(origin.latitude), np.asarray(origin.longitude), lat, lon)
 
-    x = np.sin(dlon) * np.cos(lat2)
-    y = math.cos(lat1) * np.sin(lat2) - math.sin(lat1) * np.cos(lat2) * np.cos(dlon)
+
+def bearings_between(lat1: np.ndarray, lon1: np.ndarray, lat2: np.ndarray, lon2: np.ndarray) -> np.ndarray:
+    """点`(lat1, lon1)`から点`(lat2, lon2)`を見た初期方位角（0=北、時計回り、0-360）を、点の組ごとに配列で求める。
+    式はここ1本で、`bearing_between`・`bearing_between_array`もこれを通す。"""
+    phi1 = np.radians(lat1)
+    phi2 = np.radians(lat2)
+    dlon = np.radians(np.asarray(lon2) - np.asarray(lon1))
+
+    x = np.sin(dlon) * np.cos(phi2)
+    y = np.cos(phi1) * np.sin(phi2) - np.sin(phi1) * np.cos(phi2) * np.cos(dlon)
 
     return np.degrees(np.arctan2(x, y)) % 360
 

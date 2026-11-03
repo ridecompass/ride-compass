@@ -61,7 +61,7 @@ class SearchMemory:
 _classes: tuple[RoadNetwork, RoadClassDefinitions, tuple[dict[str, CategoricalColumn], dict[str, CategoricalColumn]]] | None = None
 
 
-def _network_classes(network: RoadNetwork) -> tuple[dict[str, CategoricalColumn], dict[str, CategoricalColumn]]:
+def network_classes(network: RoadNetwork) -> tuple[dict[str, CategoricalColumn], dict[str, CategoricalColumn]]:
     """取込範囲全体の区分の列と層ごとの値。道路網と区分の全体の組ごとに1回だけ作り、組が替わったら丸ごと入れ替える。
 
     別のスレッドが同時に作り直しても、どちらも同じ組から同じ列を作るだけなので、束縛の差し替えは1回で済ませる。"""
@@ -81,7 +81,7 @@ def _network_classes(network: RoadNetwork) -> tuple[dict[str, CategoricalColumn]
 def _slice_current(bbox: BoundingBox) -> RoadSlice:
     network = road_network_store.current()
     return slice_network(
-        network, _network_classes(network),
+        network, network_classes(network),
         bbox.min_longitude, bbox.min_latitude, bbox.max_longitude, bbox.max_latitude,
     )
 
