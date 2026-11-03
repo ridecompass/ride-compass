@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 
 from app.domain.stopwatch import elapsed_ms, start_timer
 from app.domain.errors import SearchAreaTooLargeError, SearchMemoryBusyError
@@ -9,7 +9,15 @@ from app.domain.graph import LeanEdge, parse_edge_key
 from app.domain.region import BoundingBox, tiles_covering_bbox
 from app.domain.attributes import CategoricalColumn
 from app.domain.road_classes import RoadClassDefinitions, current_road_classes
-from app.domain.road_network import RoadNetwork, RoadSlice, edge_endpoint_points, road_class_columns, slice_network
+from app.domain.road_network import (
+    MaterialFills,
+    RoadNetwork,
+    RoadSlice,
+    edge_endpoint_points,
+    material_fills,
+    road_class_columns,
+    slice_network,
+)
 from app.domain.route_search import DETOUR_RATIO_SHARING_ZOOM
 from app.infrastructure import container_memory, road_network_store
 from app.infrastructure.detour_ratio_cache import TileSet
@@ -76,6 +84,23 @@ def network_classes(network: RoadNetwork) -> tuple[dict[str, CategoricalColumn],
                 network.edge_count, len(definitions.classifications), elapsed_ms(started))
     _classes = (network, definitions, columns)
     return columns
+
+
+#: 最後に求めた欠けを埋める平均と、求めたときの道路網・区分の列・材料。どれかが入れ替わったら求め直す。
+_fills: tuple[RoadNetwork, Mapping[str, CategoricalColumn], tuple[str, ...], MaterialFills] | None = None
+
+
+def network_fills(network: RoadNetwork, material_ids: tuple[str, ...]) -> MaterialFills:
+    """取込範囲全体の欠けを埋める平均（`domain/road_network.py: material_fills`）。区分の材料の割合は全区間を数えるので、
+    道路網・区分の列・材料の組ごとに1回だけ求める。"""
+    global _fills
+    classes = network_classes(network)[0]
+    cached = _fills
+    if cached is not None and cached[0] is network and cached[1] is classes and cached[2] == material_ids:
+        return cached[3]
+    fills = material_fills(network, classes, material_ids)
+    _fills = (network, classes, material_ids, fills)
+    return fills
 
 
 def _slice_current(bbox: BoundingBox) -> RoadSlice:

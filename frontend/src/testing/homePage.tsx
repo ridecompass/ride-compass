@@ -16,6 +16,7 @@ import {
   roadClassCatalog,
   roadMapLayer,
 } from "@/testing/catalogAxes";
+import { serveCostAxisCatalog } from "@/testing/costAxes";
 import { serveGenerationJobs } from "@/testing/generationJobs";
 import { installGeolocation } from "@/testing/geolocation";
 import { TAP_CONFIRM_MS } from "@/features/map/MapView/mapTaps";
@@ -95,6 +96,7 @@ export function serveHome() {
   installGeolocation(HERE);
   jobs = serveGenerationJobs();
   serveAxisCatalog(CATALOG);
+  serveCostAxisCatalog(null);
   onSameOrigin("GET", "/api/jma-tile/*", () => Response.json([]));
   onBackend("GET", "/api/jma-tile-index", () => Response.json({ available: false, coverage: null, elements: {} }));
   onBackend("GET", "/api/weather/amedas", () => Response.json(OBSERVATION));

@@ -260,6 +260,10 @@ bbox全体ぶんのコストをリクエストにつき1回だけnumpyで合成�
   重みを掛けて返し（`domain/cycling_speed.py: SegmentSpeedModel.ride`）、道の負担は時刻に依らないのでリクエストに1回だけ
   求める。曲がる所の費用も同じ換算で組み（`LegCostComposer.transition_costs`）、探索へは`RoadGraphContext.transition_cost`
   で渡る。エンジン（`services/road_graph_engine.py`）は、費用の軸の定義が表にあるときだけ`ledger`を渡す。
+- **組み立ての部品**: 走行の模型の入力（転がり抵抗・止まる出来事の待ちと漕ぎ出し・断面。`domain/leg_costs.py: travel_inputs`）と
+  道の負担のkm（`domain/leg_costs.py: burden_km`）は、材料の列（材料id→区間の列）から組む関数で、探索の合成と地図のレンズ
+  （[動的材料・フィーチャー値配信](dynamic-way-values.md)「費用の軸のレンズ」）が同じものを呼ぶ。代償の秒は軸ごとの内訳
+  （`domain/ledger_costs.py: LedgerCosts.penalty_by_axis`）を持ち、その和が区間の代償の秒（`LedgerCosts.penalty_seconds`）になる。
 - **欠けの埋め方**: 停止要因の密度と、道の負担の軸の材料の欠けは、`domain/road_network.py: material_fills`の分布で埋める
   （数値の材料の平均は`RoadNetwork.numeric_means`で道路網と同じ寿命で1回だけ、区分の材料の割合は道の負担の軸が読む分だけ
   生成ごとに求める）。停止要因の密度は所要時間（待ち）と体力（漕ぎ出し）の両方に同じ値を使う。

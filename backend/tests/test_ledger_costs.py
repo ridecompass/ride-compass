@@ -27,6 +27,7 @@ def _axes(**burden) -> CostAxisDefinitions:
     return CostAxisDefinitions.model_validate({
         "effort": {axis_id: presentation for axis_id in EFFORT_AXES},
         "burden": {axis_id: {**presentation, "burden": b} for axis_id, b in burden.items()},
+        "total_lens": presentation,
     })
 
 

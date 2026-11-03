@@ -30,6 +30,7 @@ DEFINITIONS = {
     "burden": {"vibration": {"label": "振動", "description": "", "icon_id": "icon", "lens": LENS,
                              "burden": {"kind": "categorical", "material": "class:surface_estimate",
                                         "per_km": {"paved": 0.0, "gravel": 0.6}}}},
+    "total_lens": {"label": "総合", "description": "", "icon_id": "icon", "lens": LENS},
 }
 
 

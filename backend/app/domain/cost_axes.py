@@ -39,8 +39,7 @@ AVOIDANCE_LABEL = "回避指定"
 
 
 class LensBands(StrictModel):
-    """地図のレンズの色の段。`thresholds`は事実の量（軸ごとにコードが決める単位）の段の境目で昇順、`band_labels`は段の名前で
-    境目より1つ多い。"""
+    """地図のレンズの色の段。`thresholds`は1kmあたりの代償の秒の段の境目で昇順、`band_labels`は段の名前で境目より1つ多い。"""
 
     thresholds: list[Annotated[float, Field(allow_inf_nan=False)]]
     band_labels: list[str] = Field(min_length=1)
@@ -98,10 +97,12 @@ class BurdenAxis(AxisPresentation):
 
 
 class CostAxisDefinitions(StrictModel):
-    """費用の軸の定義の全体。体力の軸（`EFFORT_AXES`の全部）の見せ方と、道の負担の軸。"""
+    """費用の軸の定義の全体。体力の軸（`EFFORT_AXES`の全部）の見せ方と、道の負担の軸と、地図の総合のレンズ（軸ごとの代償の秒の
+    和。軸ではないので倍率を持たない）の見せ方。レンズの段の境目は、どれも1kmあたりの代償の秒。"""
 
     effort: dict[str, AxisPresentation]
     burden: dict[str, BurdenAxis]
+    total_lens: AxisPresentation
 
     @model_validator(mode="after")
     def _effort_axes_are_the_code_table(self) -> "CostAxisDefinitions":

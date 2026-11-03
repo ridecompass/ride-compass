@@ -252,7 +252,8 @@ def get_lens_service(weather_service: WeatherService = Depends(get_weather_servi
 
 
 async def get_axis_inspector_service(
-    tile_sessions: TileSessions, weather_service: WeatherService = Depends(get_weather_service)
+    tile_sessions: TileSessions, weather_service: WeatherService = Depends(get_weather_service),
+    lens: LensService = Depends(get_lens_service),
 ):
     """区間インスペクタ。道の読み出しと、地図の配信と同じタイルの材料・配信のサービスの値を、同じセッションで順に引く
     ——別々に開くと、先に引いたセッションが要求の終わりまで接続を持ったまま、後の読み出しがもう1本を取る。"""
@@ -262,6 +263,7 @@ async def get_axis_inspector_service(
             RegionService(repository=repository),
             FeatureMaterialService(repository),
             material_service_builder(repository, weather_service),
+            lens,
         )
 
 

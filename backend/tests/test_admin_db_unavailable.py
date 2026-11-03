@@ -43,6 +43,8 @@ COST_AXES_BODY = {
     "effort": {axis_id: {"label": axis_id, "description": "", "icon_id": "i",
                          "lens": {"thresholds": [1.0], "band_labels": ["a", "b"]}} for axis_id in EFFORT_AXES},
     "burden": {},
+    "total_lens": {"label": "総合", "description": "", "icon_id": "i",
+                   "lens": {"thresholds": [1.0], "band_labels": ["a", "b"]}},
 }
 
 # 口ごとの(パスの引数を埋めたURL, 本文, DBが落ちたときの状態コード)。母集団はアプリのルートから取るので、

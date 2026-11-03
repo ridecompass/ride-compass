@@ -33,7 +33,7 @@ from app.infrastructure.media_types import PNG_CONTENT_TYPE
 from app.infrastructure.point_tile_layers import POINT_TILE_LAYERS
 from app.services.dedicated_way_values import AxisWayValueLens
 from app.services.feature_materials import FeatureMaterialService
-from app.services.lens_service import LensService, lens_way_materials
+from app.services.lens_service import LensService
 from app.services.region_service import AxisInspectorService, RegionService
 from app.domain.strict_model import StrictModel
 
@@ -157,18 +157,17 @@ async def region_lens(
     at: datetime | None = None,
     service: LensService = Depends(get_lens_service),
 ) -> dict[str, dict[str, float]]:
-    """ルートを出す前の地図がレンズ`lens_id`（総合・費用の軸のid・勾配。`domain/lens_values.py`）で道を塗る、指定タイルの
-    フィーチャーごとの道ごとの材料: 道の向きに辿った値・逆向きに辿った値（辿れない向き・値の無い向きは載せない）と道の向き。
-    どちらの向きを塗るかは、レンズの式の木が走行方位で選ぶ。値は時刻`at`（省略すると今。風）と想定速度`speed_kmh`で
-    決まり、探索と同じ部品で求める。
+    """ルートを出す前の地図がレンズ`lens_id`（総合`total`か費用の軸のid。`domain/lens_values.py`）で道を塗る、指定タイルの
+    フィーチャーごとの道ごとの材料: 道の向きに辿った・逆向きに辿った1kmあたりの代償の秒（辿れない向きは載せない）と、
+    道の向き。どちらの向きを塗るかは、`/api/cost-axes`の`map_lens.formula`が走行方位で選ぶ。値は時刻`at`（省略すると今。
+    風）と想定速度`speed_kmh`で決まり、探索と同じ部品で求める。
 
     鍵は路面タイル（`/api/region/road-surface-tiles`）の同じz/x/yのフィーチャーの鍵。費用の軸の定義がまだ無い間と、
     知らないレンズは404。
     """
     check_tile_rate_limit(request, "lens")
     validate_tile_coords(z, x, y)
-    table = await service.tile_table(z, x, y, at, speed_kmh)
-    materials = None if table is None else lens_way_materials(table, lens_id)
+    materials = await service.way_materials(lens_id, z, x, y, at, speed_kmh)
     if materials is None:
         raise HTTPException(status_code=404, detail="このレンズの値はありません。")
     return materials
@@ -246,7 +245,8 @@ async def region_axis_inspector(
     （その倍率で地図が塗る区間か道1本）の軸の得点（地図が塗る値と同じ評価）・合成（取得可能な軸だけの参考値。重みは送られた
     `route_preference`、省略時は既定）を返す。道はosm_way_idの完全一致で引く（交差点付近での取り違え対策）。
     進行方向に依存する軸（勾配・風）は、地図が指定している走行方位・時刻・想定速度から算出する。時刻・速度を
-    送らなければ、それを要る軸は得点がnullで返る。
+    送らなければ、それを要る軸は得点がnullで返る。費用の軸のレンズの値（`lens`）は地図のレンズ（`/api/region/lens`）と
+    同じ値を両方の向きで返し、地図がいまの走行方位で塗っている向きを示す。
     """
     # 道を押すたびの単発リクエストなので、タイル向けの上限を流用せず専用の上限を使う。
     enforce_rate_limit(http_request, "axis-inspector", settings.axis_inspector_rate_limit_per_minute)

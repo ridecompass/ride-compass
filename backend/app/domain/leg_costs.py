@@ -292,7 +292,7 @@ def compile_leg_cost_kernels() -> None:
                      np.zeros(1, dtype=int), 1)
 
 
-def _wind_components(context: DynamicAxisRequestContext, n: int) -> tuple[np.ndarray, np.ndarray]:
+def wind_components_or_calm(context: DynamicAxisRequestContext, n: int) -> tuple[np.ndarray, np.ndarray]:
     """風の文脈の区間ごとの`(向かい風, 横風)`の成分（風が無ければ0）。"""
     wind = context.wind_components_ms
     if wind is None:
@@ -589,7 +589,7 @@ class LegCostComposer:
         dynamic_context = self._wind_context(time, take)
         static_scores = {axis_id: take(values) for axis_id, values in self._static_axis_scores.items()}
         resolved = evaluate_dynamic_axis_arrays(static_scores, dynamic_context, self.axis_definitions)
-        headwind, crosswind = _wind_components(dynamic_context, len(bearing))
+        headwind, crosswind = wind_components_or_calm(dynamic_context, len(bearing))
         # 合成へ渡すのは重みのある時刻で変わる軸だけにし、それ以外は先に求めた重み付き和を使い回す
         # （合成の時間は軸数にほぼ比例する）。
         if self._composition_is_time_invariant:
@@ -693,8 +693,8 @@ class LegCostComposer:
             return None
         axes, parameters = self._ledger_setup
         model = self._travel_inputs.model
-        return LedgerCosts(axes, parameters, model.flat_power_w, model.kickoff_effort_j(parameters.effort_weight_exponent),
-                           burden_km(axes, self._materials, self._material_fills, self._travel_inputs.distance_m))
+        distance_m = self._travel_inputs.distance_m
+        return LedgerCosts.for_model(axes, parameters, model, burden_km(axes, self._materials, self._material_fills, distance_m))
 
     def transition_costs(self, turn_seconds: np.ndarray, turn_kickoffs: np.ndarray) -> np.ndarray:
         """曲がる所の費用（秒、遷移ごと）。費目の帳簿の式なら時間に漕ぎ出しの代償を足し、そうでなければ時間そのもの。"""
@@ -731,7 +731,7 @@ class LegCostComposer:
         """費目の帳簿の式の、時刻`time`の区間ごとの`(走行時間, 代償の秒)`。"""
         wind_context = self._wind_context(time, _row_taker(None))
         return ledger.bin_seconds(self._travel_inputs.model,
-                                  *_wind_components(wind_context, len(self._travel_inputs.distance_m)))
+                                  *wind_components_or_calm(wind_context, len(self._travel_inputs.distance_m)))
 
     @cached_property
     def _unit_multiplier(self) -> np.ndarray:
