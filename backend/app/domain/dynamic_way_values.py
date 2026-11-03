@@ -187,8 +187,7 @@ def _feature_columns(
 
 def _searched_scores(scores: np.ndarray) -> np.ndarray:
     """区間の得点を、探索の静的スコア行列が持つ桁（`EDGE_VALUE_DTYPE`）へ丸めて float64 で返す。区間から畳む値は
-    ルートの値と同じく0.1刻みへ丸めるので、float64 のまま畳むと、丸めの境で地図の色とその道を走ったルートの値が1段
-    ずれる。道1本の材料で評価する得点（`paint_feature_values`）は丸めない——地図へ配る木（`axis_way_value_formula`）は
+    0.1刻みへ丸めるので、float64 のまま畳むと、丸めの境で地図の色が探索の得点から畳んだ値と1段ずれる。道1本の材料で評価する得点（`paint_feature_values`）は丸めない——地図へ配る木（`axis_way_value_formula`）は
     float64 で評価され、そちらと合わせる。"""
     return np.asarray(scores, dtype=EDGE_VALUE_DTYPE).astype(float)
 
@@ -236,9 +235,9 @@ def paint_feature_values(
 def folds_segments(axis_id: str, definitions: Mapping[str, AxisDefinition]) -> bool:
     """道1本のフィーチャーの値を、その道の区間ごとに評価した得点から畳む軸か（`paint_folded_feature_values`）。
 
-    ルートの値は区間の得点の距離平均で、区間ごとに値の違う材料を読む軸では、道1本の材料で評価した得点と違う。
-    密度の軸（`averages_density`）は畳まない——ルートの値は横軸の値（1kmあたりの量）の距離平均の得点で、道1本の
-    材料（道の数÷道の長さ）がその平均と同じ値になる。
+    畳んだ値は区間の得点の距離平均で、区間ごとに値の違う材料を読む軸では、道1本の材料で評価した得点と違う。
+    密度の軸（`averages_density`）は畳まない——道1本の材料（道の数÷道の長さ）が、区間の横軸の値（1kmあたりの量）の
+    距離平均と同じ値になる。
     """
     if averages_density(definitions[axis_id]):
         return False
@@ -260,15 +259,15 @@ def paint_folded_feature_values(
     *,
     as_difficulty: bool,
 ) -> dict[str, float | None]:
-    """道1本のフィーチャーごとに地図が軸`axis_id`について塗る値を、その道の区間をルートの区間に見立てて、ルートの値と
-    同じ決まり（`domain/route.py: merge_route_values`）で畳んで求める。
+    """道1本のフィーチャーごとに地図が軸`axis_id`について塗る値を、その道の区間の得点を距離で平均して求める（密度の軸は
+    区間の横軸の値の距離平均から得点にする）。
 
     区間の材料は、区間ごとに値が違いうる材料なら`segments`の区間の値（配信のサービスが配る材料は`served_segments`の
     区間の値）、ほかの材料は区間が属するフィーチャーの値（`paint_feature_values`と同じ`materials`・`served`）。
     区間から畳まない軸（`folds_segments`）と、区間の無いフィーチャーは、フィーチャーの値で評価する（`paint_feature_values`）。
 
     符号付き材料を塗る軸は、畳んだ得点を、その得点に当たる材料の値の大きさへ戻し（`smallest_magnitude_at`）、区間の
-    材料の値の距離平均の符号（道全体で上るか下るか。平均が0なら正）を付ける——段はルートの値と揃い、地図は材料の
+    材料の値の距離平均の符号（道全体で上るか下るか。平均が0なら正）を付ける——段は畳んだ得点と揃い、地図は材料の
     目盛りと向きの塗り分けを保つ。`as_difficulty`なら、符号付き材料を塗る軸も畳んだ得点を返す。配信が値をNoneで返した
     フィーチャーは、Noneのまま返す。
     """

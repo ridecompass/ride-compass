@@ -9,19 +9,11 @@ import { vi } from "vitest";
 import RouteProfile from "@/features/route/RouteProfile/RouteProfile";
 import { FACT_DISPLAY_NAME } from "@/lib/screenNames";
 import { serveAxisCatalog } from "@/testing/backendServer";
-import {
-  catalogEntry,
-  catalogOf,
-  catalogResponse,
-  roadClass,
-  roadClassCatalog,
-  roadMapLayer,
-} from "@/testing/catalogAxes";
+import { catalogEntry, catalogResponse, roadClass, roadClassCatalog, roadMapLayer } from "@/testing/catalogAxes";
 import { makeRouteSegment } from "@/testing/routeFixtures";
 import type { RouteSegmentDetail } from "@/types/route";
 
 const ENTRIES = [catalogEntry({ axis_id: "axis_a", label: "坂" }), catalogEntry({ axis_id: "axis_b", label: "路面" })];
-export const CATALOG = catalogOf(ENTRIES);
 const SURFACE_ROAD_CLASSES = [
   roadClass("paved", { label: "舗装", color: "#111111" }),
   roadClass("gravel", { label: "砂利・未舗装", color: "#222222" }),
@@ -38,11 +30,20 @@ export function serveProfileCatalog() {
   serveAxisCatalog(catalogResponse(ENTRIES, { road_classes: roadClassCatalog({ map_layers: ROAD_LAYERS }) }));
 }
 
-// 北緯35度の上を東へ1kmずつ進む2区間。前は坂だけが効き、標高を持つ。後ろは難易度も標高も無い。
+/** 道のりのグラフが負担を積む費用の軸。 */
+export const PROFILE_COST_CATALOG = {
+  axes: [
+    { axisId: "ascent", label: "登坂" },
+    { axisId: "vibration", label: "振動" },
+  ],
+  axisColors: { ascent: "rgb(18, 52, 86)", vibration: "rgb(86, 52, 18)" },
+  avoidanceLabel: "回避指定",
+};
+
+// 北緯35度の上を東へ1kmずつ進む2区間。前は登坂だけが効き、標高を持つ。後ろは負担の内訳も標高も無い。
 export const CLIMB = makeRouteSegment({
   distance_km: 1,
-  difficulty: 40,
-  axis_contributions: { axis_a: 40 },
+  penalty: { axis_seconds: { ascent: 40 }, avoidance_seconds: 0 },
   elevations: [{ distance_km: 1, start_elevation_m: 12, end_elevation_m: 31.6 }],
   start_latitude: 35,
   start_longitude: 139,
@@ -51,7 +52,6 @@ export const CLIMB = makeRouteSegment({
 });
 export const UNKNOWN = makeRouteSegment({
   distance_km: 1,
-  difficulty: null,
   start_latitude: 35,
   start_longitude: 139.01,
   end_latitude: 35,
@@ -61,7 +61,6 @@ export const UNKNOWN = makeRouteSegment({
 export const PAVED: RouteSegmentDetail = {
   ...CLIMB,
   estimated_arrival_time: "2026-10-04T00:42:00Z",
-  axis_difficulties: { axis_a: 72.4 },
   road_classes: { surface: [{ distance_km: 1, value: "paved" }], tunnel: [{ distance_km: 1, value: null }] },
 };
 
@@ -72,9 +71,7 @@ export function profileElement(props: Partial<Props> = {}) {
   return (
     <RouteProfile
       segments={[CLIMB, UNKNOWN]}
-      overallDifficulty={20}
-      axes={CATALOG.axes}
-      axisColors={CATALOG.axisColors}
+      catalog={PROFILE_COST_CATALOG}
       scaleKm={2}
       selected={null}
       layers={{ ids: ["elevation"], toggle: vi.fn() }}

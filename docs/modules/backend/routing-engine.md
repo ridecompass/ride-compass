@@ -245,13 +245,11 @@ RouteGenerator.generate_loops(origin, distance_km, distance_tolerance_km, max_ro
   engine.evaluate_loops(context, traced, start_time)  # start_time=リクエストのstart_time（JSTへ直す）、prepare(now=start_time)にも渡す
         │  フィルタ通過候補だけに実ジオメトリ取得・標高・風・路面等の評価を行う
         ▼
-  RouteGenerator._evaluate_and_aggregate() の集約段
-        │  区間segmentsから距離加重で候補単位の集約値（overall_difficulty・軸別の
-        │  difficulty／寄与度／生値・材料値等）を付ける。候補を返す経路はすべてこの
-        │  1メソッドを通るため、集約を増やしてもここだけに書けば全経路へ効く
+  RouteGenerator._evaluate()
+        │  候補を返す経路はすべてこの1メソッドを通る（評価の件数と順が入力と合うかを検査する）
         ▼
   仕上げの並べ方: 周回は1kmあたりの代償の秒・目的地は費用の昇順、同点は目標距離に近い順
-        │  _labelがid（loop-00..）と種類（終点が出発地ならloop）を付けてRouteDraftからRouteCandidateにする（本数は上の逐次処理がmax_routes件で止めている）
+        │  _labelがid（loop-00..）と種類（終点が出発地ならloop）を付けてEvaluatedRouteからRouteCandidateにする（本数は上の逐次処理がmax_routes件で止めている）
         ▼
   RouteCandidate一覧
 ```
@@ -447,7 +445,7 @@ import済みの参照が古い辞書を指したままになる）。差し替�
 終われば`destination`（経由地の有無・距離の有無を問わない。`road_graph_context.py: FixedLegs.closes`）。
 距離ありの周回の名前は方位、距離なしで出発地へ戻る候補は「経由地ルート」、目的地で終わる候補は「目的地ルート」。
 エンジン（`_build_candidate`）は並びも種類も知らないので、方位を持つ候補の`direction_label`
-（`domain/geo.py: compass_label`）だけを付けた`EvaluatedRoute`を返し、`route_generator.py`が区間からの集約を足して`RouteDraft`にする。id・種類・最速の印は`RouteCandidate`だけが
+（`domain/geo.py: compass_label`）だけを付けた`EvaluatedRoute`を返す。id・種類・最速の印は`RouteCandidate`だけが
 必須の欄として持ち、`_label`を通らずに応答の候補は作れない。画面は一覧の群・名前・最速を種類と印だけで決め、
 idの文字列や要求の形から決め直さない。
 
@@ -960,24 +958,18 @@ numbaでJITする探索とその部品はこのファイルにまとめて置く
 
 - `Coordinates`・`RouteSegmentDetail`（**material_valuesに入る
   符号付き材料（`gradient_percent`等）は符号付きが正準契約**——絶対値ではない。
-  ルート線の色分けがこの符号を読む。`road_classes`は道の区分のレイヤごとに、区間の中で値が同じまま続く部分を並べる）・`EvaluatedRoute`（エンジンが評価した経路）・`RouteDraft`（`EvaluatedRoute`に区間から候補単位への集約を足した、並べる前の経路）・`RouteCandidate`（`RouteDraft`に
-  応答のid・種類・最速の印・乗り換えの可否を足したもの）。
-- `aggregate_segments_into_bins`（500m区間ビニング）・`domain/route.py: merge_difficulty_values`（区間の並びの難しさの値を
-  1回で畳む）・`domain/route.py: merge_route_values`（候補の全区間を候補単位の値へ畳む）・`merge_material_category_shares`・
-  `route_axis_raw_values`・`_merge_segment_bin`。密度の軸は、得点ではなく
-  区間の器の内部の値（`DensityScoreInput`）の回数を平均してから得点にする（[評価・スコアリング](evaluation-scoring.md)
-  「ルート単位の集約」の「密度の軸」）。**`RouteSegmentDetail`の
-  フィールドは、ビンへの畳み方（`BIN_FIELD_MERGERS`）を必ず宣言する**。`_merge_segment_bin`は
-  この表だけからビンを組み立て、難しさの値（`merge_difficulty_values`が1回で畳む）も、形・位置・距離のように
-  個別に畳むものも同じ表に載る。
+  ルート線の色分けがこの符号を読む。`road_classes`は道の区分のレイヤごとに、区間の中で値が同じまま続く部分を並べる）・`EvaluatedRoute`（エンジンが評価した経路。費用・代償の内訳・事実の量を持つ）・`RouteCandidate`（`EvaluatedRoute`に
+  応答のid・種類・最速の印を足したもの）・`CostBreakdown`（代償の秒の内訳。区間とビンと候補が同じ形で持つ）・`RouteFacts`（事実の量）。
+- `aggregate_segments_into_bins`（500m区間ビニング）・`_merge_segment_bin`・`merge_cost_breakdowns`（代償の秒は足す）。
+  **`RouteSegmentDetail`のフィールドは、ビンへの畳み方（`BIN_FIELD_MERGERS`）を必ず宣言する**。`_merge_segment_bin`は
+  この表だけからビンを組み立てる。候補の代償の内訳は、丸める前のEdge単位の区間から足す（丸めたビンを足すと、丸めの分が積もる）。
   区間の中の道ごとの両端の標高（`elevations`）は平均せず、中の区間の並びをつなぐ（画面は道ごとの両端を結んで標高の線を描く）。
   区間の続く坂の斜度（`domain/route.py: steepest_signed_percent`）は、道の一番急な登りと下り（区間の標高の表。ならす幅は
   断面の刻み、[標高](elevation.md)「断面の刻み」）から作り、ビンへは登りがあれば登りの最大、無ければ一番急な下りで畳む
   （`domain/route.py: merge_sustained_gradients`）。勾配の材料の区間の平均（`material_values`）は登って下る区間で打ち消し合うので、
   勾配のレンズの色と区間の小窓の「最大」はこの値を読む（`domain/map_paint.py: SignedMaterialMapValue.route_segment_field`）。
   道の区分（`road_classes`）は平均せず、中の区間の部分をつないで隣どうしの同じ値を1つにまとめる（`merge_road_classes`）。
-  ほかのビンへ引き継げない値（平均できない分類値等）はこの器に載せず、ビニングの前に
-  候補全体へ畳む（`merge_material_category_shares`）。宣言の無いフィールドは
+  宣言の無いフィールドは
   `domain/route.py`の読み込み時に落ちる——放っておくと、型でも例外でも現れないまま
   APIからは「そのフィールドだけ既定値（空・null・0）」に見える。母集団は型を問わずモデルの
   全フィールドから引き、表のキーを引く（型で絞ると、`dict[...] | None`や既定値つきの
@@ -995,11 +987,7 @@ numbaでJITする探索とその部品はこのファイルにまとめて置く
   `edges_in_path`から起点順に載せる）。`segments`は約500m単位へ畳まれてEdgeと1対1に
   ならないため、経路の同一性を判定できるのはこちらだけ。**乗り換え後の経路もこのidの列で
   受け取って評価し直す**——ステートレスのため、経路の指定はこの形でしか受けられない。
-- **categorical材料の延長割合はビニングより前に畳む**。ビンの代表値を1つ選ぶ形だと割合が
-  500m単位へ量子化されるため、`road_graph_engine`が`aggregate_segments_into_bins`の前に
-  `merge_material_category_shares`を呼び、結果を`EvaluatedRoute`へ載せる。
-  `route_generator`の後段はこの値に触らない（触ると、区間側が空になっている以上
-  必ず`{}`で上書きされる）。
+
 - **生値・材料値に無限大は来ない**。材料の値式は区間の長さが0なら割らずに欠損にし
   （`domain/material_catalog.py`・`material_sql.py`の密度の式）、動的材料（風）は定数で割り、
   生値は材料の値と参照先の軸の得点の重み付き和である。欠損（NaN）は区間を組み立てる`road_graph_engine`が落とす。

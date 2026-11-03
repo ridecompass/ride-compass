@@ -79,13 +79,13 @@ test("モバイル: 道のりのグラフの切り替えは、結果も走行中
   };
   await openMobileApp(page);
   const sheet = await generateRoutes(page);
-  const resultGraph = (await sheet.getByRole("slider", { name: /^道のりに沿った難易度/ }).boundingBox())!;
+  const resultGraph = (await sheet.getByRole("slider", { name: /^道のりに沿った負担/ }).boundingBox())!;
   const resultTabs = (await sheet.getByRole("tablist", { name: "道のりのグラフ" }).boundingBox())!;
   expectOnTopRight(resultTabs, resultGraph);
 
   await sheet.getByRole("button", { name: /このルートで走る/ }).click();
   const ride = page.getByRole("region", { name: "予定ルートのプロファイル" });
-  const rideGraph = (await ride.getByRole("slider", { name: /^道のりに沿った難易度/ }).boundingBox())!;
+  const rideGraph = (await ride.getByRole("slider", { name: /^道のりに沿った負担/ }).boundingBox())!;
   const rideTabs = (await ride.getByRole("tablist", { name: "道のりのグラフ" }).boundingBox())!;
   expectOnTopRight(rideTabs, rideGraph);
   expect(rideGraph.height).toBeGreaterThan(resultGraph.height);
@@ -106,7 +106,7 @@ test.describe("タッチ端末", () => {
     test.skip(browserName !== "chromium", "1本指のタッチの列はCDP（Chromiumだけの口）でしか送れない");
     await openMobileApp(page);
     const sheet = await generateRoutes(page);
-    const graph = sheet.getByRole("slider", { name: /^道のりに沿った難易度/ });
+    const graph = sheet.getByRole("slider", { name: /^道のりに沿った負担/ });
     const sheetBox = (await sheet.boundingBox())!;
     const graphBox = (await graph.boundingBox())!;
     const sheetBottom = sheetBox.y + sheetBox.height;

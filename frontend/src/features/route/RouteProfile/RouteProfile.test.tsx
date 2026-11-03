@@ -2,7 +2,7 @@
  * `features/route/RouteProfile/RouteProfile.tsx`——道のりのグラフの「表示」「評価で塗る」のタブ（名前は地図の2つの入口と同じ `lib/screenNames.ts`）と、
  * 地点を選んでいる間の「区間を地図で見る」。
  *
- * 見るもの: 既定で「評価で塗る」（難易度のグラフ）を出すこと、その (i) が塗った軸の色と名前・値の無い区間の色・意味の文を出すこと
+ * 見るもの: 既定で「評価で塗る」（負担のグラフ）を出すこと、その (i) が塗った軸の色と名前・意味の文を出すこと
  * （塗る区間の無い軸は出さない）、両方のタブで経由地を通る所に線と番号の印を出し、走り終えた経由地を薄めること。タブは結果も
  * 走行中も地図の入口と同じ絵だけで出し（名前は読み上げに残す）、押すと図が替わること。走行中の図は、目盛り・図の下の文字を
  * 結果の図より大きくすること。地点を選ぶと、右上に「区間を地図で見る」を出すこと。
@@ -11,7 +11,7 @@
  * （本番の層は管理DBが持つ）。
  *
  * ここで見ないもの: 「表示」の図の折れ線・帯・現在地の印・値の目盛りと、出す情報の一覧 → `RouteProfile.layers.test.tsx`。
- * 難易度の塗り → `DifficultyProfile.test.tsx`。なぞって地点を選ぶ操作 → `ProfileChart.test.tsx`。地点・選んだ区間の値と行の計算 → `profileLayers.test.ts`。
+ * 負担の塗り → `DifficultyProfile.test.tsx`。なぞって地点を選ぶ操作 → `ProfileChart.test.tsx`。地点・選んだ区間の値と行の計算 → `profileLayers.test.ts`。
  */
 import { EVALUATION_PAINT_NAME, FACT_DISPLAY_NAME } from "@/lib/screenNames";
 import { fireEvent, render, screen, within } from "@testing-library/react";
@@ -20,8 +20,8 @@ import { useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
-  CATALOG,
   PAVED,
+  PROFILE_COST_CATALOG,
   UNKNOWN,
   openLayers,
   profileElement,
@@ -34,20 +34,19 @@ import type { SelectedRouteSegment } from "@/types/route";
 beforeEach(serveProfileCatalog);
 
 describe("RouteProfile", () => {
-  it("はじめは「評価で塗る」で難易度を出し、(i) で塗った軸の色と名前・値の無い区間・グラフの意味を開く", async () => {
+  it("はじめは「評価で塗る」で負担を出し、(i) で塗った軸の色と名前・グラフの意味を開く", async () => {
     renderProfile();
     expect(screen.getByRole("tab", { name: EVALUATION_PAINT_NAME })).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByRole("img", { name: "道のりに沿った難易度" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "道のりに沿った負担" })).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: "難易度のグラフの見方を表示" }));
+    await userEvent.click(screen.getByRole("button", { name: "負担のグラフの見方を表示" }));
     const note = screen.getByRole("dialog");
-    expect(within(note).getByText("坂").previousElementSibling).toHaveStyle({
-      backgroundColor: CATALOG.axisColors.axis_a,
+    expect(within(note).getByText("登坂").previousElementSibling).toHaveStyle({
+      backgroundColor: PROFILE_COST_CATALOG.axisColors.ascent,
     });
-    expect(within(note).queryByText("路面")).toBeNull();
-    expect(within(note).getByText("値の無い区間")).toBeInTheDocument();
+    expect(within(note).queryByText("振動")).toBeNull();
     expect(note).toHaveTextContent(
-      "高さは区間の難易度、塗った面積はルートの負荷にほぼ一致し、横の右端は一覧の中で最も長い候補の距離",
+      "高さは区間の1kmあたりの負担（上端はこのルートで最も大きい区間）、塗った面積は軸ごとの負担の和で、横の右端は一覧の中で最も長い候補の距離",
     );
   });
 
@@ -73,7 +72,7 @@ describe("RouteProfile", () => {
       [...screen.getByRole("img", { name }).querySelectorAll("[data-waypoint]")].map((line) => line.getAttribute("x1"));
 
     expect(marks()).toEqual(expected);
-    expect(lines("道のりに沿った難易度")).toEqual(["250", "750"]);
+    expect(lines("道のりに沿った負担")).toEqual(["250", "750"]);
     await openLayers();
     expect(marks()).toEqual(expected);
     expect(lines("道のりに沿った情報")).toEqual(["250", "750"]);
@@ -93,12 +92,12 @@ describe("RouteProfile", () => {
       }
       await openLayers();
       expect(screen.getByRole("img", { name: "道のりに沿った情報" })).toBeInTheDocument();
-      expect(screen.queryByRole("img", { name: "道のりに沿った難易度" })).toBeNull();
+      expect(screen.queryByRole("img", { name: "道のりに沿った負担" })).toBeNull();
       for (const text of [screen.getByText("2.0km"), screen.getByText("標高 最高 32m・最低 12m")])
         expect(text.closest(".text-base") !== null).toBe(large);
 
       await userEvent.click(screen.getByRole("tab", { name: EVALUATION_PAINT_NAME }));
-      expect(screen.getByRole("img", { name: "道のりに沿った難易度" })).toBeInTheDocument();
+      expect(screen.getByRole("img", { name: "道のりに沿った負担" })).toBeInTheDocument();
     },
   );
 

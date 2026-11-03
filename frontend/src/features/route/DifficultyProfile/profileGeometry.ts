@@ -1,11 +1,13 @@
-// 道のりに沿った難易度のグラフの形と、グラフ上の距離が入る区間を引く計算。横が始点からの距離、縦が区間ごとの難易度
-// （0〜100）で、区間の中では値が一定なので、形は区間ごとの階段になる。値の無い区間をルートの平均の高さで描くのは、塗った
-// 面積をルートの負荷にほぼ一致させるため（docs/modules/frontend/route-settings-and-results.md の DifficultyProfile の行）。
+// 道のりに沿った負担のグラフの形と、グラフ上の距離が入る区間を引く計算。横が始点からの距離、縦が区間ごとの1kmあたりの負担
+// （軸ごとの代償の秒を区間の長さで割ったもの。地図のレンズと同じ量）で、区間の中では値が一定なので、形は区間ごとの階段になる。
+// 塗った面積は、軸ごとの代償の秒（回避指定を除く）の和になる。
 
+import { PROFILE_VIEW_HEIGHT } from "@/features/route/ProfileChart/profileScale";
 import type { RouteStretch } from "@/lib/routeDistance";
+import { lensSecondsPerKm } from "@/lib/routePenalty";
 import type { RouteSegmentDetail } from "@/types/route";
 
-/** 塗る長方形1つ（距離と難易度の座標）。 */
+/** 塗る長方形1つ（距離と、図の高さ`PROFILE_VIEW_HEIGHT`に合わせた縦の座標）。 */
 export type ProfileBox = {
   readonly startKm: number;
   readonly endKm: number;
@@ -14,33 +16,32 @@ export type ProfileBox = {
 };
 
 /**
- * 軸ごとに積み上げた長方形と、値の無い区間の長方形。軸は`axisOrder`の順に下から積む（区間の軸別の寄与を合計すると
- * その区間の難易度になる）。`averageDifficulty`はルートの総合難易度で、値の無い区間の高さに使う。
+ * 軸ごとに積み上げた長方形。軸は`axisOrder`の順に下から積み、図の上端をこのルートで最も大きい区間の1kmあたりの負担にする。
+ * 内訳の無い区間（費用の軸の定義が無い間）は描かない。
  */
 export function profileBoxes(
-  columns: readonly RouteStretch<Pick<RouteSegmentDetail, "difficulty" | "axis_contributions">>[],
+  columns: readonly RouteStretch<Pick<RouteSegmentDetail, "penalty" | "distance_km">>[],
   axisOrder: readonly string[],
-  averageDifficulty: number | null,
-): { byAxis: Map<string, ProfileBox[]>; missing: ProfileBox[] } {
+): Map<string, ProfileBox[]> {
   const byAxis = new Map<string, ProfileBox[]>(axisOrder.map((axisId) => [axisId, []]));
-  const missing: ProfileBox[] = [];
-  for (const { segment, startKm, endKm } of columns) {
-    if (endKm <= startKm) continue;
-    if (segment.difficulty === null) {
-      if (averageDifficulty !== null && averageDifficulty > 0) {
-        missing.push({ startKm, endKm, bottom: 0, top: averageDifficulty });
-      }
-      continue;
-    }
+  const perKm = columns.map(({ segment }) =>
+    segment.penalty === null ? null : lensSecondsPerKm(segment.penalty, segment.distance_km),
+  );
+  const highest = Math.max(0, ...perKm.map((values) => values?.total ?? 0));
+  if (highest <= 0) return byAxis;
+  const toView = PROFILE_VIEW_HEIGHT / highest;
+  columns.forEach(({ startKm, endKm }, index) => {
+    const values = perKm[index];
+    if (endKm <= startKm || values === null) return;
     let bottom = 0;
     for (const axisId of axisOrder) {
-      const value = segment.axis_contributions[axisId] ?? 0;
+      const value = (values.axes[axisId] ?? 0) * toView;
       if (value <= 0) continue;
       byAxis.get(axisId)?.push({ startKm, endKm, bottom, top: bottom + value });
       bottom += value;
     }
-  }
-  return { byAxis, missing };
+  });
+  return byAxis;
 }
 
 /** 距離`km`が入っている柱と、その柱の中の割合（0〜1）。範囲の外は端の柱へ寄せる。長さのある柱が無ければnull。 */

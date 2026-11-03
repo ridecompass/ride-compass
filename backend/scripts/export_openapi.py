@@ -61,7 +61,7 @@ from app.domain.weather_elements import (
     weather_element_tile,
 )
 from app.domain.cycling_speed import SEGMENT_SPEED_CONDITIONS
-from app.domain.difficulty import DIFFICULTY_DECIMALS, OVERALL_DIFFICULTY_WORDING
+from app.domain.difficulty import DIFFICULTY_DECIMALS
 from app.domain.map_paint import DEFAULT_DIFFICULTY_BOUNDARIES
 from app.domain.road_classes import NO_DATA_VALUE
 from app.domain.map_display import (
@@ -603,8 +603,6 @@ def main() -> None:
             "route_candidate_shape": schema_shape_mark(openapi, "RouteCandidate"),  # type: ignore[arg-type]
             # 区間ごとに速度を変える条件の名前（走行モデルの並び）。所要時間の説明が差し込む。
             "segment_speed_conditions": list(SEGMENT_SPEED_CONDITIONS),
-            # ルート全体の難易度（平均・総量）の数え方の文。結果の難易度の説明が差し込む。
-            "overall_difficulty_wording": OVERALL_DIFFICULTY_WORDING,
             # 所要時間の計算が値の無い区間をどう数えるかの文。結果の「データの無い区間」の注記が差し込む。
             "missing_travel_data_wording": MISSING_TRAVEL_DATA_WORDING,
             # 候補の`wind_unavailable`が立ったときの注記の文。

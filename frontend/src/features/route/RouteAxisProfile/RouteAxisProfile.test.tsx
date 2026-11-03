@@ -1,79 +1,90 @@
 /**
- * `features/route/RouteAxisProfile/RouteAxisProfile.tsx`——候補の中身の総合難易度・所要・負荷と、重み付きの寄与の帯。
+ * `features/route/RouteAxisProfile/RouteAxisProfile.tsx`——候補の中身の所要・負担と、負担の内訳（帯と軸ごとの行）・事実。
  *
- * 見るもの: 総合難易度が無ければ何も描かないこと、総合難易度・所要・負荷の数（丸め）と所要が無いときの省き方、
- * 所要時間の前提が崩れたことの注記（風・値の無い区間の割合を丸めて1%以上）、寄与が1つも無いときの案内、
- * 凡例のチップに並ぶ軸（重みが0・重みの無い軸は出さず、重みがあれば寄与が無くても出す）、チップから開く軸の詳細
- * （軸別難易度の丸めと「データなし」・生値・材料の内訳・説明）。
+ * 見るもの: 所要と負担の数（分へ丸め）と、無いときの省き方、所要時間の前提が崩れたことの注記（風・値の無い区間の割合を
+ * 丸めて1%以上）、内訳の行（軸の名前・その軸の事実・負担の分、回避指定の行）、内訳が無い候補で事実だけを出すこと、標高の無い
+ * 道の注記。
  *
- * ここで見ないもの: 帯の積み方・チップの値と色 → `components/AxisContributionBar`。生値と内訳の1件の書き方 →
- * `features/route/RouteAxisProfile/axisRawValue.ts`。所要の書き方 → `lib/duration.ts`。
- *
- * 軸は架空のもの（`axis_a`等）を`src/testing/catalogAxes.ts`の雛形から作る。
+ * ここで見ないもの: 所要の書き方 → `lib/duration.ts`。内訳の行の並べ方 → `lib/routePenalty.ts`。区間の内訳も同じ部品
+ * （`features/route/PenaltyBreakdown/PenaltyBreakdown.tsx`）を通る。
  */
-import { render, screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { catalogAxisFromEntry } from "@/lib/catalogAxis";
-import { catalogEntry } from "@/testing/catalogAxes";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 import RouteAxisProfile from "./RouteAxisProfile";
 
-const A = catalogAxisFromEntry(catalogEntry({ axis_id: "axis_a", label: "軸A", description: "軸Aの説明" }));
-const B = catalogAxisFromEntry(catalogEntry({ axis_id: "axis_b", label: "軸B" }));
-const C = catalogAxisFromEntry(catalogEntry({ axis_id: "axis_c", label: "軸C" }));
+const CATALOG = {
+  axes: [
+    { axisId: "ascent", label: "登坂" },
+    { axisId: "vibration", label: "振動" },
+  ],
+  axisColors: {},
+  avoidanceLabel: "回避指定",
+};
 
 type Props = React.ComponentProps<typeof RouteAxisProfile>;
 
 function renderProfile(props: Partial<Props> = {}) {
   return render(
     <RouteAxisProfile
-      axes={[A, B, C]}
-      weights={{ axis_a: 0.5, axis_b: 0.5, axis_c: 0 }}
-      axisDifficulties={{}}
-      axisContributions={{ axis_a: 20 }}
-      axisRawValues={{}}
-      materialValues={{}}
-      materialCategoryShares={{}}
-      distanceKm={30}
-      overallDifficulty={{ average: 41.6, load: 1248.4 }}
+      penalty={{ axis_seconds: { ascent: 300, vibration: 0 }, avoidance_seconds: 120 }}
+      facts={{
+        elevation_unknown_km: 0,
+        axes: {
+          ascent: { label: "登り", value: 240, unit: "m" },
+          vibration: { label: "振動のある道", value: 1.25, unit: "km" },
+        },
+      }}
+      catalog={CATALOG}
       estimatedDurationSeconds={3720}
       windUnavailable={false}
       missingTravelDataShare={null}
-      axisColors={{}}
       {...props}
     />,
   );
 }
 
-/** 凡例のチップから開いた軸の詳細の文。 */
-async function openDetail(label: string): Promise<string> {
-  await userEvent.click(screen.getByRole("button", { name: `${label}の詳細を表示` }));
-  return screen.getByRole("dialog").textContent ?? "";
-}
+const rows = () =>
+  within(screen.getByRole("list"))
+    .getAllByRole("listitem")
+    .map((item) => item.textContent);
 
 describe("RouteAxisProfile", () => {
-  it("総合難易度が無い候補では何も出さない", () => {
-    const { container } = renderProfile({ overallDifficulty: null });
-    expect(container.textContent).toBe("");
-    expect(screen.queryByRole("button")).not.toBeInTheDocument();
-  });
-
-  it("総合難易度・所要・負荷を丸めて並べ、それぞれに(i)の説明を持つ", () => {
+  it("所要と負担（内訳の和）を分で並べ、それぞれに(i)の説明を持つ", () => {
     renderProfile();
-    expect(screen.getByText("総合難易度").parentElement).toHaveTextContent("総合難易度41.6/100");
     expect(screen.getByText("所要").parentElement).toHaveTextContent("所要62分");
-    expect(screen.getByText("負荷").parentElement).toHaveTextContent("負荷1248");
-    for (const name of ["総合難易度の説明を表示", "所要時間の説明を表示", "負荷の説明を表示"]) {
+    expect(screen.getByText("負担").parentElement).toHaveTextContent("負担+7分");
+    for (const name of ["所要時間の説明を表示", "負担の説明を表示"]) {
       expect(screen.getByRole("button", { name })).toBeInTheDocument();
     }
+  });
+
+  it("内訳は軸を一覧の順に、名前・その軸の事実・負担の分で並べ、回避指定を最後に置き、帯は秒のある行だけで描く", () => {
+    renderProfile();
+    expect(rows()).toEqual(["登坂登り 240m+5分", "振動振動のある道 1.3km+1分未満", "回避指定+2分"]);
+    expect(screen.getByRole("img", { name: "負担の内訳" }).children).toHaveLength(2);
+  });
+
+  it("内訳が無い候補（費用の軸の定義が無い間）は負担を出さず、事実の行だけを出す", () => {
+    renderProfile({ penalty: null });
+    expect(screen.queryByText("負担")).not.toBeInTheDocument();
+    expect(screen.queryByRole("img", { name: "負担の内訳" })).not.toBeInTheDocument();
+    expect(rows()).toEqual(["登り 240m", "振動のある道 1.3km"]);
   });
 
   it("所要時間が無い候補では所要を出さない", () => {
     renderProfile({ estimatedDurationSeconds: null });
     expect(screen.queryByText("所要")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "所要時間の説明を表示" })).not.toBeInTheDocument();
+  });
+
+  it("標高の無い道があれば、その長さを登りに数えていないと注記する", () => {
+    const { unmount } = renderProfile({ facts: { elevation_unknown_km: 0.4, axes: {} } });
+    expect(screen.getByText("標高の無い道 0.4km（登りに数えていません）")).toBeInTheDocument();
+    unmount();
+    renderProfile();
+    expect(screen.queryByText(/標高の無い道/)).not.toBeInTheDocument();
   });
 
   it("風の値を使えなかった候補にだけ、無風として出した所要時間だと注記する", () => {
@@ -92,63 +103,5 @@ describe("RouteAxisProfile", () => {
     renderProfile({ missingTravelDataShare: share });
     if (expected === null) expect(screen.queryByText(/データの無い区間が/)).not.toBeInTheDocument();
     else expect(screen.getByText(expected)).toBeInTheDocument();
-  });
-
-  it("寄与のある軸が1つも無ければ、帯の代わりに表示できるデータが無いと案内する", () => {
-    renderProfile({ axisContributions: { axis_a: 0 } });
-    expect(screen.getByText("このルートで表示できる評価軸の値がありません")).toBeInTheDocument();
-    expect(screen.queryByRole("img", { name: "難易度の内訳" })).not.toBeInTheDocument();
-  });
-
-  it("凡例のチップは評価に使った軸だけで（重みの辞書に無い軸は重み0と同じく出さない）、重みがあれば寄与が無くても出す", () => {
-    renderProfile({ weights: { axis_a: 0.5, axis_b: 0.5 }, axisContributions: { axis_a: 20, axis_c: 5 } });
-    expect(screen.getByRole("img", { name: "難易度の内訳" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "軸Aの詳細を表示" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "軸Bの詳細を表示" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "軸Cの詳細を表示" })).not.toBeInTheDocument();
-  });
-
-  it("軸の詳細は、名前・丸めた軸別難易度・生値と総量・材料の内訳・説明を並べる", async () => {
-    const axis = catalogAxisFromEntry(
-      catalogEntry({
-        axis_id: "axis_a",
-        label: "軸A",
-        description: "軸Aの説明",
-        raw_value_units: { unit: "回/km", total_unit: "回" },
-        material_breakdown: [
-          { material_id: "lit", label: "街灯あり", dtype: "boolean", unit: "", value_labels: {} },
-          { material_id: "absent", label: "値の来ない材料", dtype: "numeric", unit: "m", value_labels: {} },
-          {
-            material_id: "road_kind",
-            label: "道の種類",
-            dtype: "categorical",
-            unit: "",
-            value_labels: { residential: "住宅街の道" },
-          },
-        ],
-      }),
-    );
-    renderProfile({
-      axes: [axis],
-      weights: { axis_a: 1 },
-      axisDifficulties: { axis_a: 37.5 },
-      axisRawValues: { axis_a: 0.8 },
-      materialValues: { lit: 0.68 },
-      materialCategoryShares: { road_kind: { residential: 0.62, primary: 0.38 } },
-      distanceKm: 32.5,
-    });
-    const detail = await openDetail("軸A");
-    expect(detail).toContain("軸A");
-    expect(detail).toContain("この評価軸の難易度 37.5/100");
-    expect(detail).toContain("0.8回/km・約26回");
-    expect(detail).toContain("この評価軸の内訳: 街灯あり 68%・住宅街の道 62%");
-    expect(detail).toContain("軸Aの説明");
-  });
-
-  it("軸別難易度の値が来ない軸の詳細は「データなし」で、生値も内訳も出さない", async () => {
-    renderProfile({ weights: { axis_a: 0.5, axis_b: 0.5 } });
-    const detail = await openDetail("軸B");
-    expect(detail).toContain("データなし");
-    expect(detail).not.toContain("この評価軸の内訳");
   });
 });

@@ -80,7 +80,9 @@ export interface SpliceSessionView {
   start: (routeId: string) => void;
   map: SpliceMapProps;
   /** 編集面（`RouteSplicePanel`）へ渡す値。編集していなければnull。同じ道の候補は名前を持たないidで渡す（名前は一覧が付ける）。 */
-  panel: (Omit<ComponentProps<typeof RouteSplicePanel>, "sameRouteName"> & { sameRouteId: string | null }) | null;
+  panel:
+    | (Omit<ComponentProps<typeof RouteSplicePanel>, "sameRouteName" | "catalog"> & { sameRouteId: string | null })
+    | null;
 }
 
 /**
@@ -250,8 +252,6 @@ export function useSpliceSession({
             previewing: spliceTask.status === "previewing",
             onPreview: handlePreviewSplice,
             onApply: handleApplySplice,
-            axes: axisCatalog.axes,
-            axisColors: axisCatalog.axisColors,
             error: spliceTask.status === "idle" ? spliceTask.error : null,
             applying: spliceTask.status === "applying",
           },

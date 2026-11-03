@@ -165,7 +165,7 @@ class AxisMaterialBreakdownEntry(StrictModel):
     #: numeric材料の単位。真偽値材料は空文字。
     unit: str
     #: categorical材料の「タグ生値→論理名」対訳（`MaterialSpec.value_labels`）。
-    #: ルート結果は`material_category_shares`の値をこれで日本語にする。他の型では空。
+    #: 区分の値を日本語にする対訳。他の型では空。
     #: 軸スタジオが使う`value_label()`の「論理名 - 物理名」形式にしないのは、走行中に見る
     #: 画面へ物理名を並べても読み手の判断が増えないため。
     value_labels: dict[str, str]

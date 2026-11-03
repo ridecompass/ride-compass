@@ -100,8 +100,7 @@ def route_facing_material_ids(definitions: dict[str, AxisDefinition]) -> list[st
 
     対象外:
 
-    - categorical材料（`highway`等）。列は数値行列のため文字列を載せられない。
-      値ごとの延長割合は別の器（`merge_material_category_shares`）が要る。
+    - categorical材料（`highway`等）。列は数値行列のため文字列を載せられない（`route_facing_categorical_material_ids`）。
     - 動的材料（風）。静的スコア行列は風を持たずに組み立てるため全行NaNになる。
     - 分解しない軸（参照材料が1件）。軸単位の生値（`axis_raw_arrays`）で足りる。
 
@@ -115,8 +114,7 @@ def route_facing_categorical_material_ids(definitions: dict[str, AxisDefinition]
     """内訳として経路へ運ぶcategorical材料id（安定順）。
 
     `route_facing_material_ids`のcategorical版。数値行列には文字列を載せられないため、
-    列は別に持つ（`StaticEdgeScoreMatrix.categorical_material_columns`）。区間ごとの値を
-    ルート集約で「値ごとの延長割合」へ畳むのは`merge_material_category_shares`。
+    列は別に持つ（`StaticEdgeScoreMatrix.categorical_material_columns`）。
     所要時間が読む材料を常に含めるのも`route_facing_material_ids`と同じ。
     """
     return _route_facing_leaf_material_ids(definitions, categorical=True)
@@ -384,8 +382,7 @@ class StaticEdgeScoreMatrix:
     # 数値の行列へは載せられないため別に持つ。
     categorical_material_ids: list[str]
     categorical_material_columns: list[CategoricalColumn]
-    # 密度の軸（`averages_density`の公開軸）のid→横軸の値の列。ビンと候補の点数を、この値の
-    # 距離平均から作るために運ぶ（`domain/route.py: DensityScoreInput`）。
+    # 密度の軸（`averages_density`の公開軸）のid→横軸の値の列。探索の費用は、この値から回数の秒を足す（`density_costs`）。
     density_axes: dict[str, DensityAxisColumn]
     # 区間の断面の点（所要時間が点の間ごとに速さを解く。`domain/elevation_profile.py`）。
     elevation_profiles: ElevationProfiles

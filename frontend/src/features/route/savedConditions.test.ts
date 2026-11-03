@@ -63,6 +63,7 @@ const COST_CATALOG: CostAxisCatalog = {
       lensEquivalents: NO_EQUIVALENTS,
     },
   ],
+  axisColors: {},
   avoidanceLabel: "回避指定",
   lenses: null,
   loaded: true,

@@ -8,9 +8,9 @@
  */
 import { pairedStretches } from "@/features/route/routeSplice";
 import { MINUTE_UNIT, secondsToMinutes } from "@/lib/duration";
-import { DIFFICULTY_DECIMALS, LOAD_DECIMALS } from "@/lib/mapDisplay/valueScale";
 import { roundToDigits, signMark } from "@/lib/numberFormat";
 import { routeEdgeKms } from "@/lib/routeDistance";
+import { penaltyTotalSeconds } from "@/lib/routePenalty";
 import type { RouteCandidate } from "@/types/route";
 
 /** 変えた区間1つ。位置は元のルートの始点からの距離。 */
@@ -41,12 +41,11 @@ const EDIT_METRICS: readonly EditMetric[] = [
       route.estimated_duration_seconds === null ? null : secondsToMinutes(route.estimated_duration_seconds),
   },
   {
-    label: "総合難易度",
-    digits: DIFFICULTY_DECIMALS,
-    unit: "",
-    value: (route) => route.overall_difficulty?.average ?? null,
+    label: "負担",
+    digits: 0,
+    unit: MINUTE_UNIT,
+    value: (route) => (route.penalty === null ? null : secondsToMinutes(penaltyTotalSeconds(route.penalty))),
   },
-  { label: "負荷", digits: LOAD_DECIMALS, unit: "", value: (route) => route.overall_difficulty?.load ?? null },
 ];
 
 /** 指標1つの元・編集後と差（編集後 − 元）。値を持たない側があれば差はnull。 */

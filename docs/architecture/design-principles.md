@@ -96,8 +96,8 @@
    取得できるまでは軸が0件の状態で、`useAxisCatalog`の`loaded`が確定を表す。frontendから
    backend側の生成物へ書き戻す経路は持たない（`docs/modules/frontend/axis-studio.md`・
    `map-axis-coloring.md`・`static-map-layers.md`参照）。
-10. **探索コストと表示difficultyの一致**: Edge単位のコスト計算は1回だけ行い、探索
-    （経路選択）と区間表示（`RouteSegmentDetail`のdifficulty・axis_difficulties）が
+10. **探索コストと表示の一致**: Edge単位のコスト計算は1回だけ行い、探索
+    （経路選択）と区間表示（`RouteSegmentDetail`の代償の内訳`penalty`）が
     同じ算出結果を共有する（二重計算を持たない）。唯一の意図的な例外: 重み付き軸が
     すべて欠損しているEdgeは、探索コストの算出だけbbox内の距離加重平均difficultyを
     補完値として使う（経路比較には有限の値が要るため）。表示側は欠損のままNoneで返し、

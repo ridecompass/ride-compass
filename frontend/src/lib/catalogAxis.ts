@@ -5,7 +5,7 @@ import type { MapValueKind } from "@/lib/mapDisplay/valueScale";
 import type { AxisCatalogEntry } from "@/types/route";
 
 /** 生値の単位が定まらない軸の内訳1件（材料。並びは軸の生値に占める割合の降順）。 */
-export interface AxisMaterialBreakdown {
+interface AxisMaterialBreakdown {
   materialId: string;
   label: string;
   /** `numeric`＝距離加重平均＋単位、`boolean`＝該当区間の延長割合、`categorical`＝値ごとの延長割合。 */

@@ -22,7 +22,7 @@
   （`domain/cycling_speed.py`）・風（`domain/wind.py`）・0次フィルタ（`domain/hard_filters.py`）
   → それぞれの持ち主のテストが持つ。
 
-このファイルが組み立てて渡し、読むデータ型（探索構造・`RouteDraft`等）は本物で作る——代役にしても
+このファイルが組み立てて渡し、読むデータ型（探索構造・`EvaluatedRoute`等）は本物で作る——代役にしても
 何も切り離せず、本物が変わったときに黙ってずれるだけになる。
 """
 
@@ -35,7 +35,7 @@ import pytest
 from app.domain.attributes import ElevationAttribute
 from app.domain.graph import LeanEdge
 from app.domain.route import (
-    RouteDraft,
+    EvaluatedRoute,
     RouteFacts,
     concat_edge_geometries,
     reverse_elevation_by_edge,
@@ -98,14 +98,13 @@ def turn_tree(state_count, *, node_cost, node_length_m, node_seconds, node_best_
 
 def draft(distance_km, duration_seconds, cost_seconds):
     """並びの鍵が読む距離・所要時間・費用だけを持つ候補。ほかの欄は空。"""
-    return RouteDraft(
+    return EvaluatedRoute(
         direction_label="", distance_km=distance_km, geometry={"type": "LineString", "coordinates": []},
         elevation_gain_m=None, segments=[], estimated_duration_seconds=duration_seconds, cost_seconds=cost_seconds,
         penalty=None,
-        facts=RouteFacts(elevation_unknown_km=0.0, stop_count=0.0, rough_km=0.0, headwind_mean_ms=None, burden_km={}),
-        wind_unavailable=False, missing_travel_data_share=None, axis_raw_values={}, material_category_shares={},
+        facts=RouteFacts(elevation_unknown_km=0.0, axes={}),
+        wind_unavailable=False, missing_travel_data_share=None,
         edge_ids=[], edge_point_offsets=[], node_ids=[], turns=[], waypoint_distances_km=[],
-        overall_difficulty=None, axis_difficulties={}, axis_contributions={}, material_values={},
     )
 
 

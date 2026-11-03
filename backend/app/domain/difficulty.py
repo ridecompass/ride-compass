@@ -12,7 +12,6 @@ from collections.abc import Iterable, Mapping, Sequence
 
 import numpy as np
 
-from app.domain.strict_model import StrictModel
 
 #: 難易度（0〜100）を区別する桁。これより細かい差は区別しない——軸の得点・合成・内訳・ルートの平均を
 #: この桁へ丸める。
@@ -154,8 +153,7 @@ def axis_weight_shares(
     """区間ごとの、データのある軸の重みの割合（`重み ÷ weight_sums`）。合成に入らない区間（重みの和が0）は空。
     `scores`は軸→区間ごとの得点、`weights`の配列と`weight_sums`も同じ区間の並び（経路上の行だけを取り出したもの）。
 
-    軸の得点にこれを掛けると寄与度になる（`axis_contributions`）。区間をまたいで得点を作り直す
-    軸（`domain/route.py: DensityScoreInput`）は、作り直した得点にこれを掛けて寄与度を出す。
+    軸の得点にこれを掛けると寄与度になる（`axis_contributions`）。
     """
     totals = np.asarray(weight_sums, dtype=np.float64)
     usable = (totals != 0) & ~np.isnan(totals)
@@ -223,35 +221,6 @@ def weighted_mean_by_distance(segments: Sequence[tuple[float | None, float]]) ->
         return None
 
     return sum(value * distance for value, distance in available) / distance_sum
-
-
-class OverallDifficulty(StrictModel):
-    """ルート全体の難易度。
-
-    `average`は区間の`difficulty`（絶対基準0-100）の距離加重平均（1kmあたりの回数で測る軸の分は、回数を平均して
-    から得点にする。`domain/route.py: merge_difficulty_values`）で、重み・条件が違う実験の間でも比較できる。`load`は難易度の総量（平均×距離km）で、平均が距離で正規化されるため
-    遠回りするほど下がるのに対し、総量は距離が伸びればそのまま増える——「走り切るのに
-    どれだけしんどいか」に近く、遠回りが正直に不利に出る。総量は候補の順位付けには使わず、
-    平均と併せて判断材料として示す。
-    """
-
-    average: float
-    load: float
-
-
-#: ルート全体の難易度の数え方を利用者に言う文（`domain/route.py: merge_route_values`の式の言い換え。式を変えたら、ここも変える）。
-#: 画面は自分の部品（グラフ・内訳）を指す文だけを足す。
-OVERALL_DIFFICULTY_WORDING: dict[str, str] = {
-    "average": (
-        "区間ごとの難易度を距離で重みづけて平均した値です。長く走っても難しさが同じなら増えません。"
-        "1kmあたりの回数で測る評価軸は、回数を距離で平均してから点数にします。"
-    ),
-    "load": (
-        "平均に距離[km]を掛けた総量で、走り切るまでのしんどさの目安です。"
-        "平均は遠回りして難所を避けるほど下がりますが、総量は走った分だけ増えます。"
-    ),
-    "missing": "値の無い区間は、平均の難易度の区間として数えます。",
-}
 
 
 def distance_weighted_difficulty_array(difficulty: np.ndarray, distance_m: np.ndarray) -> float | None:

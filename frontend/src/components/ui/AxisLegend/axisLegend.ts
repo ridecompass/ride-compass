@@ -12,7 +12,7 @@ export const legendChipClass =
 export const legendChipBodyClass =
   "inline-flex grow items-center gap-1 whitespace-nowrap px-2 py-1 text-[length:var(--font-size-sm)] text-[var(--foreground)]";
 
-/** 帯グラフ。長さが総合難易度（幅いっぱい＝100）で、色ごとの長さが軸ごとの寄与。 */
+/** 帯グラフ。色ごとの長さが軸ごとの寄与（重み配分・道の評価の内訳）か負担（ルートの内訳）。 */
 export const stackBarClass = "flex h-[10px] overflow-hidden rounded-[5px] bg-[var(--color-surface-2)]";
 
 export const legendIconClass = "inline-flex flex-shrink-0 items-center";

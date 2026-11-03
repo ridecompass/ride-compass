@@ -3257,6 +3257,37 @@
         ],
         "title": "AxisDefinitionResponse"
       },
+      "AxisFact": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          },
+          "unit": {
+            "type": "string",
+            "title": "Unit"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "label",
+          "value",
+          "unit"
+        ],
+        "title": "AxisFact"
+      },
       "AxisInspectorAxis": {
         "properties": {
           "axis_id": {
@@ -6333,25 +6364,6 @@
         ],
         "title": "MsmGridPointForecast"
       },
-      "OverallDifficulty": {
-        "properties": {
-          "average": {
-            "type": "number",
-            "title": "Average"
-          },
-          "load": {
-            "type": "number",
-            "title": "Load"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "average",
-          "load"
-        ],
-        "title": "OverallDifficulty"
-      },
       "PlaceArea": {
         "properties": {
           "area": {
@@ -7220,23 +7232,6 @@
             ],
             "title": "Missing Travel Data Share"
           },
-          "axis_raw_values": {
-            "additionalProperties": {
-              "type": "number"
-            },
-            "type": "object",
-            "title": "Axis Raw Values"
-          },
-          "material_category_shares": {
-            "additionalProperties": {
-              "additionalProperties": {
-                "type": "number"
-              },
-              "type": "object"
-            },
-            "type": "object",
-            "title": "Material Category Shares"
-          },
           "edge_ids": {
             "items": {
               "type": "string"
@@ -7272,37 +7267,6 @@
             "type": "array",
             "title": "Waypoint Distances Km"
           },
-          "overall_difficulty": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/OverallDifficulty"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "axis_difficulties": {
-            "additionalProperties": {
-              "type": "number"
-            },
-            "type": "object",
-            "title": "Axis Difficulties"
-          },
-          "axis_contributions": {
-            "additionalProperties": {
-              "type": "number"
-            },
-            "type": "object",
-            "title": "Axis Contributions"
-          },
-          "material_values": {
-            "additionalProperties": {
-              "type": "number"
-            },
-            "type": "object",
-            "title": "Material Values"
-          },
           "id": {
             "type": "string",
             "title": "Id"
@@ -7335,17 +7299,11 @@
           "facts",
           "wind_unavailable",
           "missing_travel_data_share",
-          "axis_raw_values",
-          "material_category_shares",
           "edge_ids",
           "edge_point_offsets",
           "node_ids",
           "turns",
           "waypoint_distances_km",
-          "overall_difficulty",
-          "axis_difficulties",
-          "axis_contributions",
-          "material_values",
           "id",
           "kind",
           "is_fastest"
@@ -7358,41 +7316,19 @@
             "type": "number",
             "title": "Elevation Unknown Km"
           },
-          "stop_count": {
-            "type": "number",
-            "title": "Stop Count"
-          },
-          "rough_km": {
-            "type": "number",
-            "title": "Rough Km"
-          },
-          "headwind_mean_ms": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Headwind Mean Ms"
-          },
-          "burden_km": {
+          "axes": {
             "additionalProperties": {
-              "type": "number"
+              "$ref": "#/components/schemas/AxisFact"
             },
             "type": "object",
-            "title": "Burden Km"
+            "title": "Axes"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
           "elevation_unknown_km",
-          "stop_count",
-          "rough_km",
-          "headwind_mean_ms",
-          "burden_km"
+          "axes"
         ],
         "title": "RouteFacts"
       },
@@ -7716,37 +7652,12 @@
               }
             ]
           },
-          "axis_difficulties": {
-            "additionalProperties": {
-              "type": "number"
-            },
-            "type": "object",
-            "title": "Axis Difficulties"
-          },
-          "axis_contributions": {
-            "additionalProperties": {
-              "type": "number"
-            },
-            "type": "object",
-            "title": "Axis Contributions"
-          },
           "material_values": {
             "additionalProperties": {
               "type": "number"
             },
             "type": "object",
             "title": "Material Values"
-          },
-          "difficulty": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Difficulty"
           },
           "road_classes": {
             "additionalProperties": {
@@ -7775,10 +7686,7 @@
           "sustained_gradient_percent",
           "estimated_arrival_time",
           "penalty",
-          "axis_difficulties",
-          "axis_contributions",
           "material_values",
-          "difficulty",
           "road_classes"
         ],
         "title": "RouteSegmentDetail"

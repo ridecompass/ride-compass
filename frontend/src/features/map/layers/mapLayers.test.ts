@@ -95,11 +95,11 @@ describe("buildMapLayers（レイヤーの一覧）", () => {
     expect(layer(layers, "unknown").icon).toBe(layer(layers, "known").icon);
   });
 
-  it("ルートの説明は、レンズで選べる色分け（公開中の評価と総合難易度）を並べる", () => {
+  it("ルートの説明は、レンズで選べる色分け（公開中の評価と総合の負担）を並べる", () => {
     const axes = buildMapLayers(
       mapCatalogOf([catalogEntry({ axis_id: "a", label: "坂" }), catalogEntry({ axis_id: "b", label: "風" })]),
     );
-    expect(layer(axes, "route").description).toContain("[坂・風・総合難易度]");
+    expect(layer(axes, "route").description).toContain("[坂・風・総合の負担]");
   });
 
   it("災害の凡例は、要素が塗る段ごとに1つ並び、見出しにその段で塗る要素の名前が入る", () => {

@@ -26,7 +26,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, Protocol
 
-from app.domain.stopwatch import add_elapsed_ms, elapsed_ms, start_timer, steps_note
+from app.domain.stopwatch import elapsed_ms, start_timer, steps_note
 from app.domain.errors import GENERATION_BUSY_MESSAGE, RoutingError, SearchAreaTooLargeError, SearchMemoryBusyError
 from app.domain.geo import haversine_distance_km
 from app.domain.loop_routing import TracedLoop
@@ -45,10 +45,9 @@ if TYPE_CHECKING:
     from app.services.road_graph_engine import RoadGraphEngine
 from app.domain.route import (
     Coordinates,
+    EvaluatedRoute,
     RouteCandidate,
-    RouteDraft,
     RouteKind,
-    merge_route_values,
 )
 
 logger = logging.getLogger("ridecompass.generate")
@@ -73,10 +72,10 @@ def _pool_note(selected: int, pool_size: int) -> str:
 
 
 def _label(
-    drafts: list[RouteDraft],
+    drafts: list[EvaluatedRoute],
     kind: RouteKind,
     name: str | None = None,
-    fastest: RouteDraft | None = None,
+    fastest: EvaluatedRoute | None = None,
 ) -> list[RouteCandidate]:
     """並べ終えた経路へ応答のid・種類・名前・最速の印を付けて候補にする。候補を返す経路はすべて最後にここを通る。
 
@@ -113,7 +112,7 @@ class _Selection:
     # 選んだ経路。空なら候補0件で、`no_candidates_reason`が利用者へ見せる理由を持つ。
     traced: list[TracedLoop]
     # 評価・集約した候補（`traced`と同じ件数・同じ順）を、応答の並びとラベルへ整える。
-    arrange: Callable[[list[RouteDraft]], list[RouteCandidate]]
+    arrange: Callable[[list[EvaluatedRoute]], list[RouteCandidate]]
     # 常時のサマリログへ載せる、戦略ごとの中間結果の減り方と所要時間。
     summary: str
     no_candidates_reason: str | None = None
@@ -236,7 +235,7 @@ class _DistanceFinish:
         if not traced:
             return _Selection.empty(self._describe_no_traced_reason(failed, filtered_out), summary)
 
-        def arrange(drafts: list[RouteDraft]) -> list[RouteCandidate]:
+        def arrange(drafts: list[EvaluatedRoute]) -> list[RouteCandidate]:
             # 同点は評価前に付けた「目標距離に近い順」を安定ソートで引き継ぐ。周回の名前はエンジンが方位から付けたもの
             # （同じ方位に複数並びうるので、idは並びの位置から作る）。
             ordered = sorted(drafts, key=lambda draft: candidate_order(draft, loop=fixed.closes))
@@ -310,7 +309,7 @@ class _NoDistanceFinish:
                 reason = "指定した目的地までの経路が見つかりませんでした。地点や除外する道路の設定を変えてお試しください。"
             return _Selection.empty(reason, f"no via-node candidates select_ms={select_ms}")
         if fixed.closes:
-            def arrange_loops(drafts: list[RouteDraft]) -> list[RouteCandidate]:
+            def arrange_loops(drafts: list[EvaluatedRoute]) -> list[RouteCandidate]:
                 kept, _ = keep_routes_with_baseline(drafts, None, self.max_routes, loop=True)
                 return _label(kept, "loop", "経由地ルート")
 
@@ -326,7 +325,7 @@ class _NoDistanceFinish:
                 traced.append(fastest)
                 fastest_index = len(traced) - 1
 
-        def arrange(drafts: list[RouteDraft]) -> list[RouteCandidate]:
+        def arrange(drafts: list[EvaluatedRoute]) -> list[RouteCandidate]:
             # 件数を切るときに残し、印を付けるために、基準線をオブジェクトの同一性で覚えておく。
             baseline = drafts[fastest_index] if fastest_index is not None else None
             kept, baseline = keep_routes_with_baseline(drafts, baseline, self.max_routes, loop=False)
@@ -347,13 +346,10 @@ class RouteGenerator:
         #: 目的地をアクセス可能な最寄りNodeへ補正した場合の実際の座標。
         self.last_destination_correction: Coordinates | None = None
 
-    async def _evaluate_and_aggregate(
+    async def _evaluate(
         self, context: "RoadGraphContext", traced: list[TracedLoop], start_time: datetime
-    ) -> list[RouteDraft]:
-        """エンジンの評価を通し、区間から候補単位へ集約した`RouteDraft`を返す。
-
-        候補を返す経路はすべてここを通る。区間からの集約（`domain/route.py: merge_route_values`）を
-        1段増やせば全経路へ同時に効く（design-principles.md 構造仕様8）。
+    ) -> list[EvaluatedRoute]:
+        """エンジンの評価を通す。候補を返す経路はすべてここを通る。
 
         `evaluate_loops`は入力`traced`と**同じ件数・同じ順**で返すこと。この層は
         `TracedLoop.data`の中身を読まないため、位置以外で突き合わせる手段が無い。件数が
@@ -365,10 +361,7 @@ class RouteGenerator:
             raise RoutingError(
                 f"evaluate_loopsの戻り値が入力と対応していません traced={len(traced)} candidates={len(candidates)}"
             )
-        merge_started = start_timer()
-        drafts = [RouteDraft(**dict(candidate), **merge_route_values(candidate.segments)._asdict()) for candidate in candidates]
-        add_elapsed_ms(context.evaluate_steps_ms, "merge", merge_started)
-        return drafts
+        return candidates
 
     async def _prepare(
         self,
@@ -499,7 +492,7 @@ class RouteGenerator:
             return []
 
         evaluate_started = start_timer()
-        candidates = selection.arrange(await self._evaluate_and_aggregate(context, selection.traced, start_time))
+        candidates = selection.arrange(await self._evaluate(context, selection.traced, start_time))
         evaluate_ms = elapsed_ms(evaluate_started)
         # 候補ごとの同じ道を2度目に走る距離の割合（選んだ順。並べ直す前）。
         repeated = ",".join(f"{share:.2f}" for share in self._engine.repeated_shares(context, selection.traced))
@@ -556,7 +549,7 @@ class RouteGenerator:
             return []
 
         evaluate_started = start_timer()
-        drafts = await self._evaluate_and_aggregate(context, [traced], start_time)
+        drafts = await self._evaluate(context, [traced], start_time)
         candidates = _label(drafts, "spliced", "組み合わせたルート")
         evaluate_ms = elapsed_ms(evaluate_started)
         logger.info(

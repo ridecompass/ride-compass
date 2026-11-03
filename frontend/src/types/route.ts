@@ -25,7 +25,8 @@ export type RouteCandidate = Schemas["RouteCandidate"];
 export type RouteTurn = Schemas["RouteTurn"];
 /** 住所の検索で当たった地点の候補。 */
 export type PlaceCandidate = Schemas["PlaceCandidate"];
-export type OverallDifficulty = Schemas["OverallDifficulty"];
+export type CostBreakdown = Schemas["CostBreakdown"];
+export type RouteFacts = Schemas["RouteFacts"];
 
 /** 地図に番号の点で出す、地点の検索で探した候補と、選んでいる候補の番号（`candidates`の添字）。 */
 export interface CandidatesOnMap {

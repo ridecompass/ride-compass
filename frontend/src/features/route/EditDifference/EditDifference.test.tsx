@@ -31,7 +31,7 @@ function origin(overrides: Partial<RouteCandidate> = {}): RouteCandidate {
     id: "origin",
     distance_km: 10,
     estimated_duration_seconds: 3600,
-    overall_difficulty: { average: 40, load: 400 },
+    penalty: { axis_seconds: { ascent: 600 }, avoidance_seconds: 0 },
     ...routeThrough(PLACES, [..."ABCD"]),
     ...overrides,
   });
@@ -42,7 +42,8 @@ function edited(overrides: Partial<RouteCandidate> = {}): RouteCandidate {
     id: "edited",
     distance_km: 12.34,
     estimated_duration_seconds: 3000,
-    overall_difficulty: { average: 40.04, load: 380 },
+    // 内訳の和は元より20秒多く、分へ丸めると0。
+    penalty: { axis_seconds: { ascent: 560 }, avoidance_seconds: 60 },
     ...routeThrough(PLACES, [..."ABPQCD"]),
     ...overrides,
   });
@@ -65,10 +66,9 @@ describe("EditDifference", () => {
     expect(metric("距離")).toHaveAttribute("data-worse", "true");
     expect(metric("所要")).toHaveTextContent("−10分");
     expect(metric("所要")).toHaveAttribute("data-better", "true");
-    expect(metric("負荷")).toHaveTextContent("−20");
-    expect(metric("総合難易度")).toHaveTextContent("±0");
-    expect(metric("総合難易度")).toHaveAttribute("data-worse", "false");
-    expect(metric("総合難易度")).toHaveAttribute("data-better", "false");
+    expect(metric("負担")).toHaveTextContent("±0分");
+    expect(metric("負担")).toHaveAttribute("data-worse", "false");
+    expect(metric("負担")).toHaveAttribute("data-better", "false");
   });
 
   it("どちらかが値を持たない指標は「—」で、印を付けない", () => {

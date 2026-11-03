@@ -274,95 +274,27 @@ bbox全体ぶんのコストをリクエストにつき1回だけnumpyで合成�
   （数値の材料の平均は`RoadNetwork.numeric_means`で道路網と同じ寿命で1回だけ、区分の材料の割合は道の負担の軸が読む分だけ
   生成ごとに求める）。停止要因の密度は所要時間（待ち）と体力（漕ぎ出し）の両方に同じ値を使う。
 
-## ルート単位の集約（`domain/difficulty.py`）
+## 区間の材料の値と密度の軸
 
-区間ごとのdifficultyをルート1本の値へまとめる2つの指標を持つ。どちらも
-`route.py: merge_route_values`が同じsegmentsから一緒に畳み、`_evaluate_and_aggregate`が候補へ付ける。
+ルートの応答は0〜100の得点を持たない（費用・代償の内訳・事実の量を持つ。上の「費目の帳簿の式」と
+[評価モデル](../../architecture/evaluation-model.md)「費目の帳簿の式」）。得点の仕組みが残すのは、探索の費用（点数の割増の式）と、
+区間に載せる材料の値だけ。
 
-| 指標 | 定義 | 性質 |
-|---|---|---|
-| `overall_difficulty.average` | 距離加重平均（`route.py: merge_difficulty_values`。密度の軸の分は下の「密度の軸」） | 距離で正規化されるため、遠回りして難所を避けるほど下がる |
-| `overall_difficulty.load` | 平均×距離合計（`route.py: merge_route_values`） | 距離が伸びればそのまま増える。「走り切るまでのしんどさ」に近く、遠回りが不利に出る |
-
-平均と総量は同じ区間から一緒に決まる（平均が出なければ総量も出ない）ため、1つの任意の項目
-`overall_difficulty`にまとめて返す。
-
-距離加重平均は、区間の並び（Pythonの値）を受ける`weighted_mean_by_distance`と、探索範囲全体の
-配列を受ける`distance_weighted_difficulty_array`の2本が同じ規則（値の無い区間は分母からも外す・
-距離の合計が0以下ならNone）を持つ。前者を配列へ並べ替えて後者を通すと、1呼び出しあたりの所要が
-数µsから十数µsへ増え（区間5〜20件で2〜4µs→10〜14µs）、ビンごと・値の種類ごとに呼ぶルートの
-集約で積み上がるため、2本のままにしている。
-
-**密度の軸は、得点ではなく回数を平均してから得点にする。** 軸の折れ線の横軸の値が1kmあたりの量（密度）の重み付き和の軸
-（`axis_definitions.py: averages_density`。足せる材料`MaterialSpec.additive`だけを項に持ち、前処理が無い）は、ビン（500m）と候補の
-得点を、区間の得点の平均ではなく、横軸の値を距離で平均した値（その範囲の回数÷距離）を折れ線に通して作る。折れ線は(0, 0)から
-始まる直線で、もう1点より先は頭打ちになる（軸の検査が断る。[軸スタジオ](axis-studio.md)「軸の外に照らす値の不変条件」）。
-信号が交差点の脇の短い区間に集まる幹線では、その区間が頭打ちになり、区間ごとの得点の平均が回数どおりの得点より低く出る。
-勾配のように密度でない材料の軸・他の軸を項に持つ軸は得点の平均のまま（短い急坂を平均でならすと坂のつらさが消える）。
-- 運び方: 静的スコア行列が密度の軸の横軸の値の列（`StaticEdgeScoreMatrix.density_axes`）を持ち、合成器（`leg_costs.py: LegCostComposer.density_axes`）を
-  経て、`_build_segment_details`が区間ごとの値・丸めない距離・その軸の重みの割合（`difficulty.py: axis_weight_shares`）を
-  区間の難しさ（`route.py: SegmentDifficulty.density_inputs`）として載せ、ビンへ畳む（`route.py: route_bins`）。距離を丸めないのは、応答の区間の距離が
-  10m単位で、信号の脇の数mの区間が長さ0になって回数ごと消えるため。
-- 畳み方（`route.py: merge_difficulty_values`）: 得点は横軸の値の距離平均を折れ線に通した値、寄与度はその得点×重みの割合の
-  距離平均、合成の難しさは区間の値の距離加重平均の、その軸の寄与度の項だけを作り直した寄与度へ
-  差し替えた値（寄与度の和と合成の難しさの関係を保つ）。ビンは区間から、候補はビンからもう一度同じ畳み方で作り、
-  ビンも中の区間の平均を内部の値として持つ。
-- 探索の費用（`evaluation.py: compose_costs_from_axis_matrix`）: 密度の軸の得点は割増の倍率から外し、代わりに
+- **区間の材料の値**: 静的スコア行列の材料列（`StaticEdgeScoreMatrix.material_ids`/`material_values`、列を決める述語は
+  `route_facing_material_ids`が唯一の定義元）→`RouteSegmentDetail.material_values`→ビンへは`route.py: merge_material_values`
+  （距離加重平均、有効数字4桁）。真偽値材料は0/1のfloatで持つため、距離加重平均がそのまま「該当区間の延長割合」になる。
+  材料値のスケールは材料ごとに違い（勾配は`%`で0〜15程度、事故密度は`件/(km・年)`で有効域0〜0.5）、固定の小数桁で
+  丸めると桁の小さい材料で値がまるごと潰れる。
+- **距離加重平均の2本**: 区間の並び（Pythonの値）を受ける`weighted_mean_by_distance`と、探索範囲全体の配列を受ける
+  `distance_weighted_difficulty_array`が同じ規則（値の無い区間は分母からも外す・距離の合計が0以下ならNone）を持つ。前者を
+  配列へ並べ替えて後者を通すと、1呼び出しあたりの所要が数µsから十数µsへ増え（区間5〜20件で2〜4µs→10〜14µs）、ビンごと・
+  材料ごとに呼ぶ畳み方で積み上がるため、2本のままにしている。
+- **密度の軸の探索の費用**（`evaluation.py: compose_costs_from_axis_matrix`）: 軸の折れ線の横軸の値が1kmあたりの量（密度）の
+  重み付き和の軸（`axis_definitions.py: averages_density`）は、得点を割増の倍率から外し、代わりに
   `P × 重みの割合 × 傾き/100 × 区間の回数 × 3600/想定速度`の秒を足す（回数は横軸の値×区間の長さ。`evaluation.py: density_costs`）。
-  想定速度で走る時間に得点の割増を掛けたものに当たり、回数だけで決まる——区間の端の場所は端を持つ区間が0.5ずつ分け持つので
-  （`domain/traffic.py: place_count_sql`）、道をどこで切っても経路上の和は変わらず、ルートの値と同じ回数から出る。重みの割合の分母は表示の
-  合成と同じ（密度の軸の重みも入る）。実際の所要時間に掛けないのは、停止の待ちの秒も回数に比例するため（得点を掛けると回数の2乗÷長さに
-  なり、短い区間に回数が集まる道ほど重く数える）。想定速度は利用者の巡航速度で、勾配や風で変わる走行の速さではない。
-  頭打ちは持たない（経路全体の平均で決まる頭打ちは、区間ごとに費用を足すA*へ持ち込めない）ので、密度が直線の先へ出る経路では、探索は
-  ルートの値より回数を重く数える。
-
-同じ集約を軸の**生値**（折れ点を通す前の値、`StaticEdgeScoreMatrix.axis_raw_values`）にも
-掛ける。区間の応答は生値を持たず、エンジンがEdge単位の生値を区間と同じ切り方でビンへ畳んでから
-候補全体へ畳む（`road_graph_candidates.py: _build_candidate`→`route.py: route_axis_raw_values`→
-`RouteCandidate.axis_raw_values`）。得点0-100は目盛りの引き方に依存する相対評価のため、
-軸単体で経路を判断するには絶対値が要る。生値を持つのは単位が定まる軸
-（[軸スタジオ](axis-studio.md)「生値の単位」節）だけで、かつリクエストごとに変わる
-材料（風等）を参照する軸は静的スコア行列へ載らないため対象外。
-
-**単位が定まらない軸は、代わりに材料まで分解した絶対量を持つ。** 分解は
-`axis_raw_value.py: axis_material_shares`が軸定義から機械的に行い、軸参照
-（内部軸）は葉の材料まで再帰的に辿る——途中の軸の得点は内訳に含めない。
-得点を内訳へ混ぜると、この仕組みが解こうとしている「較正依存の数字しか出せない」問題が
-入れ子で再発するため。並び順は各階層で`|w| / Σ|w|`へ正規化した重みの積の降順
-（生の重みは階層をまたぐと比較できない——内部軸の`breakpoints`・`mapping`が非線形変換の
-ため。一方、同じshape内のtermどうしは、重み付き和が得点として意味を持つよう作者が
-重みを決めていることが前提なので比較できる）。重み0の材料は含めない。
-
-参照材料が1件へ分解される軸は分解せず、軸単位の生値をそのまま使う（`axis_material_shares`
-が空リストを返す）。分解しても情報が増えず、`shape.preprocess`（勾配の`"abs"`）が材料単位
-では効かなくなり、登りと下りが相殺されて平均がほぼ0になるため。
-
-値の運搬は生値と同じ形で、静的スコア行列の材料列
-（`StaticEdgeScoreMatrix.material_ids`/`material_values`、列を決める述語は
-`route_facing_material_ids`が唯一の定義元）→`RouteSegmentDetail.material_values`→
-`merge_material_values`→`RouteCandidate.material_values`。真偽値材料は0/1のfloatで持つため、
-距離加重平均がそのまま「該当区間の延長割合」になり、割合専用の機構を持たずに済む。
-categorical材料は数値列に載せられないため、対になる別の列で運ぶ:
-`StaticEdgeScoreMatrix.categorical_material_ids`/`categorical_material_columns`
-（語彙への番号の列、列を決める述語は`route_facing_categorical_material_ids`）→
-区間ごとの値（`road_graph_candidates.py: _build_segment_details`が区間の並びと対で返す。
-区間の器`RouteSegmentDetail`は約500mのビンへ畳まれ、分類値はビンの代表値1つにすると
-割合がビンの粒度へ量子化されるため、器には載せない）→
-`merge_material_category_shares`（距離加重で「値ごとの延長割合」へ畳む。分母はその材料の値を
-持つ区間だけで、値の無い区間は分母にも入れない）→`RouteCandidate.material_category_shares`。
-真偽値材料を0/1で運んで平均が割合になるのと同じ考え方を、値が3つ以上ある材料へ広げたもの。
-
-**丸めは値の種類で分ける**。距離加重平均そのものは`weighted_mean_by_distance`
-（`domain/difficulty.py`、丸めない）が求め、丸め方は呼び出し側が決める——
-difficulty系（0〜100）は難易度の桁（`difficulty.py: round_difficulty`。候補の並びの同点もこの桁で決まる）、生値・材料値は**有効数字4桁**。
-生値のスケールは軸ごとに違い（勾配は`%`で0〜15程度、事故密度は`件/(km・年)`で
-有効域0〜0.5）、固定の小数桁で丸めると桁の小さい軸で値がまるごと潰れて
-「値が無い道」と区別できなくなる。frontendの表示（`axisRawValue.ts: formatNumber`）も
-同じ理由で1未満は有効数字2桁を残す。
-
-総量は順位付けには使わず、平均と併せて判断材料として返す。difficultyが
-Noneの区間の扱いは平均と一致させる（区間ごとに積分して欠損を飛ばすと、データの無い区間が
-多いルートほど総量が小さく見えてしまうため、平均×全区間の距離合計で求める）。
+  回数だけで決まる——区間の端の場所は端を持つ区間が0.5ずつ分け持つので（`domain/traffic.py: place_count_sql`）、道をどこで
+  切っても経路上の和は変わらない。実際の所要時間に掛けないのは、停止の待ちの秒も回数に比例するため（得点を掛けると回数の
+  2乗÷長さになり、短い区間に回数が集まる道ほど重く数える）。
 
 ## 材料カタログ（`domain/material_catalog.py`）
 

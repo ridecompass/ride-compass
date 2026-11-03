@@ -73,7 +73,7 @@ export default function LensControl({
   const [open, setOpen] = useState(false);
   const statusLabel = dataStatus ? LAYER_DATA_STATUS_LABELS[dataStatus] : undefined;
   const statusNotice = layerDataStatusNotice(dataStatus);
-  // 評価軸を選んでいないときは、ルートの前は道路を塗らず、ルートの後はルートの線を総合難易度で塗る。
+  // 評価軸を選んでいないときは、ルートの前は道路を塗らず、ルートの後はルートの線を総合の負担で塗る（費用の軸の定義が無い間は1色）。
   const unselected = lens === LENS_DIFFICULTY_ID;
   const selected = axisOptions.find((option) => option.id === lens);
   const pillLabel = unselected ? (hasDetail ? DIFFICULTY_LENS_LABEL : UNSELECTED_LABEL) : (selected?.label ?? lens);
@@ -198,7 +198,7 @@ export default function LensControl({
               aria-label="選択を外す"
               onClick={() => onLensChange(LENS_DIFFICULTY_ID)}
               disabled={unselected}
-              usage="選んでいる評価軸を外します。外すと、ルートの前は道路を塗らず、ルートの後は総合難易度で塗ります。"
+              usage="選んでいる評価軸を外します。外すと、ルートの前は道路を塗らず、ルートの後は総合の負担で塗ります。"
             >
               <ClearAllLayersIcon />
             </Button>
