@@ -37,6 +37,7 @@ from sqlalchemy import (
     column,
     func,
 )
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.infrastructure.orm_base import DERIVED, Base
@@ -213,6 +214,9 @@ class EdgeElevationRow(_EdgeKey, Base):
     #: 無い区間は持たない（`domain/attributes.py: elevation_values_sql`）。逆向きは2列を入れ替えて読む。
     steepest_gain_percent: Mapped[float | None] = mapped_column(REAL, nullable=True)
     steepest_loss_percent: Mapped[float | None] = mapped_column(REAL, nullable=True)
+    #: 順方向に並べた断面の点の標高（m）。点は区間を等しい道のりに刻んだ位置で、間隔は区間の長さ÷（点の数−1）。値の無い
+    #: 点はNULL。上の要約の列は、どれもこの点から出す（`domain/attributes.py: elevation_values_sql`）。
+    elevation_profile_m: Mapped[list[float | None]] = mapped_column(ARRAY(REAL), nullable=False)
     #: 作り直しの時点の道のタグで、区間が橋かトンネルだったか。値はこれに依る（両端だけを使う）ので、形が同じでも
     #: これが変われば前回の値を使い回せない。
     on_structure: Mapped[bool] = mapped_column(Boolean, nullable=False)

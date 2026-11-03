@@ -1,6 +1,6 @@
 """`domain/cycling_speed.py`——平地・無風の巡航速度から出力を逆算し、勾配・風・路面から区間ごとの速度を解く走行モデル。
 
-入口は`RiderProfile`・`wheel_power_w`・`climb_power_w`・`top_speed_kmh`・`SegmentSpeedModel`（`speed_ms`）・`crr_for_surface`。
+入口は`RiderProfile`・`wheel_power_w`・`pushed_power_w`・`top_speed_kmh`・`SegmentSpeedModel`（`ride`・`speed_ms`）・`crr_for_surface`。
 期待値は走行方程式（公開の物理）と、モデルが約束する性質（平地・無風なら巡航速度に戻る・向かい風で遅くなる・上下限で止まる）から書く。
 
 ここで見ないもの:
@@ -92,8 +92,9 @@ RIDER = RiderProfile(cruise_speed_kmh=20.0)
 
 
 def test_the_same_headwind_takes_a_larger_share_from_a_slower_rider():
-    """向かい風5m/sで、巡航20km/hの人は42%、30km/hの人は33%落ちる（向かい風への強さの差は巡航速度の差として式から出る）。"""
-    for cruise_kmh, share in ((20.0, 0.42), (30.0, 0.33)):
+    """向かい風5m/sで、巡航20km/hの人は25%、30km/hの人は23.5%落ちる（増えた空気抵抗のぶん踏み増したうえで、向かい風への
+    強さの差は巡航速度の差として式から出る）。"""
+    for cruise_kmh, share in ((20.0, 0.247), (30.0, 0.235)):
         rider = _rider(cruise_kmh, cda_m2=0.32, crr=0.005, mass_kg=80.0)
 
         assert 1 - _speed(rider, headwind=5.0) / rider.cruise_speed_ms == pytest.approx(share, abs=0.01)
@@ -108,13 +109,62 @@ def test_a_crosswind_slows_the_rider_less_than_a_headwind_of_the_same_strength()
     assert headwind < crosswind < calm
 
 
-def test_a_climb_adds_the_declared_watts_per_percent_whatever_the_flat_power():
-    """管理画面の「登りの出力の増え方」（W/%）のとおり、勾配2%なら値の2倍のWを足す。平地の出力に比例させると、
-    巡航が速い人ほど坂で平地並みの速度を保ち、所要時間が短く出る。"""
+def test_more_resistance_adds_the_declared_watts_per_newton_whatever_the_flat_power():
+    """管理画面の「抵抗が増えたときの踏み増し」（W/N）のとおり、増えた抵抗に比例してWを足し、上限倍率で止まる。平地の出力に
+    比例させると、巡航が速い人ほど坂で平地並みの速度を保ち、所要時間が短く出る。平地より楽なら平地の出力のまま。"""
     flat_power_w = 60.0
-    power = cycling_speed.climb_power_w(flat_power_w, np.array([0.02]))
+    per_newton = cycling_speed.tuning_value("speed.extra_power_per_force")
+    ceiling = flat_power_w * cycling_speed.tuning_value("speed.max_climb_power_ratio")
 
-    assert power[0] - flat_power_w == pytest.approx(2 * cycling_speed.tuning_value("speed.climb_power_per_grade"))
+    desired, power = cycling_speed.pushed_power_w(flat_power_w, np.array([10.0, 1000.0, -10.0]))
+
+    assert desired.tolist() == pytest.approx([flat_power_w + 10 * per_newton, flat_power_w + 1000 * per_newton, flat_power_w])
+    assert power.tolist() == pytest.approx([flat_power_w + 10 * per_newton, ceiling, flat_power_w])
+
+
+def _ride(profile: RiderProfile, grade: float = 0.0, headwind: float = 0.0, crr: float | None = None):
+    model = SegmentSpeedModel(profile, np.array([grade]), np.array([profile.crr if crr is None else crr]))
+    return model.ride(np.array([headwind]), np.array([0.0]))
+
+
+@pytest.mark.parametrize(
+    ("conditions", "pushing"),
+    [
+        ({"grade": 0.03}, "gravity_extra_w"),
+        ({"headwind": 4.0}, "air_extra_w"),
+        ({"crr": 0.015}, "rolling_extra_w"),
+    ],
+    ids=["坂", "向かい風", "路面"],
+)
+def test_the_rider_pushes_harder_by_the_same_rule_whatever_resistance_grows(conditions, pushing):
+    """坂・向かい風・路面のどれで抵抗が増えても、同じ決まりで踏み増し、越えて踏んだ出力はその抵抗の費目に入る。"""
+    ride = _ride(RIDER, **conditions)
+    parts = {name: float(getattr(ride, name)[0]) for name in ("gravity_extra_w", "air_extra_w", "rolling_extra_w")}
+
+    assert parts[pushing] > 0
+    assert all(value == 0 for name, value in parts.items() if name != pushing)
+    assert float(ride.desired_ratio[0]) > 1
+
+
+def test_the_pushed_watts_are_shared_by_the_resistances_that_grew_and_add_up_to_the_whole():
+    """坂と向かい風が重なったら、越えて踏んだ出力を増えた抵抗の比で配り、和が実際に踏んだ出力と平地の出力の差になる。"""
+    flat_power_w = cycling_speed.wheel_power_w(RIDER)
+    ride = _ride(RIDER, grade=0.02, headwind=3.0)
+    gravity, air = float(ride.gravity_extra_w[0]), float(ride.air_extra_w[0])
+    weight_n = RIDER.mass_kg * 9.80665
+
+    _, power = cycling_speed.pushed_power_w(flat_power_w, np.array([weight_n * 0.02 + air / gravity * weight_n * 0.02]))
+    assert gravity + air == pytest.approx(float(power[0]) - flat_power_w)
+    assert gravity > 0 and air > 0
+
+
+def test_a_tailwind_takes_from_the_push_on_a_climb():
+    """抵抗の増減は符号つきで足す。追い風の登りは、無風の登りより踏み増しが小さい。"""
+    calm = _ride(RIDER, grade=0.03)
+    tailwind = _ride(RIDER, grade=0.03, headwind=-3.0)
+
+    assert float(tailwind.gravity_extra_w[0]) < float(calm.gravity_extra_w[0])
+    assert float(tailwind.air_extra_w[0]) == 0
 
 
 @pytest.mark.parametrize(

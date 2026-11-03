@@ -174,7 +174,8 @@ def elevation_values_sql(vertices: str, step_m: str) -> str:
     中間の点は桁や坑道ではなく下の地形を指す。谷を渡る平らな橋で、谷底の起伏がそのまま
     獲得標高へ積まれてしまう。橋台・坑口は道が地面と接する位置なので、両端の標高は使える。
 
-    値が出せない区間（有効な標高が2点未満）は返らない。値と一緒に、値が依った`on_structure`も返す。
+    値が出せない区間（有効な標高が2点未満）は返らない。値と一緒に、値が依った`on_structure`と、断面の点の標高を順に並べた
+    `elevation_profile_m`（値の無い点はNULL。橋とトンネルは両端の2点）も返す——要約の列は、この並びと同じ点から出る。
     """
     return f"""
 WITH v AS ({vertices}),
@@ -184,6 +185,11 @@ known AS (
     SELECT *, min(ord) OVER s AS first_ord, max(ord) OVER s AS last_ord
     FROM measured WHERE elev IS NOT NULL WINDOW s AS (PARTITION BY osm_way_id, segment_index)),
 profile AS (SELECT * FROM known WHERE NOT on_structure OR ord IN (first_ord, last_ord)),
+points AS (
+    SELECT osm_way_id, segment_index,
+           array_agg(elev::real ORDER BY ord) FILTER (WHERE NOT on_structure OR ord IN (0, max_ord)) AS elevation_profile_m
+    FROM (SELECT *, max(ord) OVER (PARTITION BY osm_way_id, segment_index) AS max_ord FROM v) a
+    GROUP BY osm_way_id, segment_index),
 ends AS (
     SELECT osm_way_id, segment_index, bool_or(on_structure) AS on_structure,
            count(*) AS n, max(along_m) - min(along_m) AS total_d,
@@ -223,6 +229,6 @@ SELECT osm_way_id, segment_index,
        round(avg_g::numeric, {AVERAGE_GRADE_DECIMALS}) AS average_grade,
        round(steepest_up::numeric, {AVERAGE_GRADE_DECIMALS})   AS steepest_gain_percent,
        round(steepest_down::numeric, {AVERAGE_GRADE_DECIMALS}) AS steepest_loss_percent,
-       on_structure
-FROM raw
+       on_structure, p.elevation_profile_m
+FROM raw JOIN points p USING (osm_way_id, segment_index)
 """
