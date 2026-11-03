@@ -23,7 +23,7 @@ function isLevel(value: unknown, levels: readonly CostLevel[]): value is number 
 }
 
 /** 段`value`の名前（呼び手は段の値だけを渡す——保存値は読むときに段の値だけを受け付ける）。 */
-export function levelLabel(levels: readonly CostLevel[], value: number): string {
+function levelLabel(levels: readonly CostLevel[], value: number): string {
   return levels.find((level) => level.value === value)?.label ?? String(value);
 }
 
