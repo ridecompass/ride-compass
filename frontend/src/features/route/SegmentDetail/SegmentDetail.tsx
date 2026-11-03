@@ -1,8 +1,7 @@
 "use client";
 
 import { createElement, useMemo } from "react";
-import AxisDetail from "@/components/AxisContributionBar/AxisDetail";
-import { DifficultyBlock, PopupHeader } from "@/components/MapPopup/MapPopupParts";
+import { PopupHeader } from "@/components/MapPopup/MapPopupParts";
 import { legendChipBodyClass, legendChipClass, legendChipsClass } from "@/components/ui/AxisLegend/axisLegend";
 import { Button } from "@/components/ui/Button/Button";
 import { Dot } from "@/components/ui/Dot/Dot";
@@ -16,7 +15,8 @@ import {
   type LineLayer,
   type ProfileLayer,
 } from "@/features/route/RouteProfile/profileLayers";
-import { useAxisCatalog } from "@/hooks/useAxisCatalog";
+import PenaltyBreakdown from "@/features/route/PenaltyBreakdown/PenaltyBreakdown";
+import { useCostAxisCatalog } from "@/hooks/useCostAxisCatalog";
 import { cn } from "@/lib/cn";
 import type { RoadTrackRow } from "@/lib/mapDisplay/roadTracks";
 import { formatJstHourMinute } from "@/lib/time";
@@ -56,7 +56,7 @@ export function SectionOnMapButton({ onMap }: { onMap: SectionOnMap }) {
 }
 
 /** 選んだ区間の小窓（道のりのグラフの表示の断面）。上の帯に到達予想、その下にグラフで選んでいる層の区間の値（線の層は平均と最大の
- * 勾配、帯の層は区間に占める区分の割合の多い順）と、区間の難易度・軸ごとの寄与を出す。 */
+ * 勾配、帯の層は区間に占める区分の割合の多い順）と、区間の負担の内訳を出す。 */
 export default function SegmentDetail({
   selection,
   layers,
@@ -65,7 +65,7 @@ export default function SegmentDetail({
   /** グラフで選んでいる層。 */
   layers: readonly ProfileLayer[];
 }) {
-  const axisCatalog = useAxisCatalog();
+  const costCatalog = useCostAxisCatalog();
   const { segment } = selection;
   // 区間の層の値。値の無い線の層は出さない。
   const { lines, bands } = useMemo(() => {
@@ -128,13 +128,7 @@ export default function SegmentDetail({
           )}
         </div>
       )}
-      <DifficultyBlock
-        difficulty={segment.difficulty}
-        axes={axisCatalog.axes}
-        contributions={segment.axis_contributions}
-        axisColors={axisCatalog.axisColors}
-        renderDetail={(axis) => <AxisDetail axis={axis} difficulty={segment.axis_difficulties[axis.axisId]} />}
-      />
+      <PenaltyBreakdown penalty={segment.penalty} catalog={costCatalog} />
     </div>
   );
 }

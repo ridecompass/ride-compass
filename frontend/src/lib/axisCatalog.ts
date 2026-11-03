@@ -51,8 +51,8 @@ export function clientTuningValue(catalog: Pick<AxisCatalog, "clientTuning">, id
 }
 
 /** 軸の識別色。色に意味は持たせず、色相環を軸数で等分して表示順に割り当てる（軸数が
- * いくつでも衝突せず、重みを0にした軸があっても他の軸の色は動かない）。 */
-function axisColorsOf(axes: readonly CatalogAxis[]): Record<string, string> {
+ * いくつでも衝突せず、重みを0にした軸があっても他の軸の色は動かない）。評価軸も費用の軸もこれで決める。 */
+export function axisColorsOf(axes: readonly { readonly axisId: string }[]): Record<string, string> {
   return Object.fromEntries(axes.map((axis, index) => [axis.axisId, `hsl(${(index * 360) / axes.length}, 62%, 55%)`]));
 }
 

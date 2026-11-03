@@ -2,15 +2,22 @@
 // 費用の軸の定義が無い間は何も導かず、地図は旧い軸のレンズのままにする。
 import type { CostAxisCatalog, CostLensCatalog } from "@/hooks/useCostAxisCatalog";
 import type { DedicatedWayValueAxis } from "@/lib/mapDisplay/axisLayers";
-import { LENS_NEUTRAL_COLOR } from "@/lib/mapDisplay/routeStyleModes";
+import {
+  buildRangeSteppedMode,
+  LENS_DIFFICULTY_ID,
+  LENS_NEUTRAL_COLOR,
+  ROUTE_LENS_SECONDS_PROPERTY,
+  ROUTE_LENS_TOTAL_PROPERTY,
+  type RouteStyleMode,
+} from "@/lib/mapDisplay/routeStyleModes";
+import { costLensPaint, formatLensNumber, LENS_SECONDS_UNIT } from "@/lib/mapDisplay/costLensPaint";
 import type { MapTheme } from "@/lib/mapTheme";
 import type { LensOption } from "@/features/map/LensControl/LensRow";
 
-/** レンズの値の単位。段の境目も凡例の範囲もこの単位で書く。 */
-export const LENS_SECONDS_UNIT = "秒/km";
+type LensPresentation = CostLensCatalog["totalLens"];
 
 function lensAxis(
-  presentation: CostLensCatalog["totalLens"],
+  presentation: LensPresentation,
   lenses: CostLensCatalog,
   ground: MapTheme,
 ): DedicatedWayValueAxis {
@@ -32,13 +39,7 @@ function lensAxis(
     timeScope: "always",
     paintsSurroundingRoads: true,
     undeterminedByBearing: true,
-    display: {
-      kind: "difficulty",
-      ground,
-      boundaries: presentation.lens.thresholds,
-      legend: { boundaries: presentation.lens.thresholds, unit: LENS_SECONDS_UNIT },
-      bandLabels: presentation.lens.band_labels,
-    },
+    display: costLensPaint(presentation, ground),
     wayValueFormula: lenses.mapLens.formula,
     wayMaterialConditions: conditions,
     wayMaterialSource: "lens",
@@ -50,6 +51,23 @@ export function costLensAxes(catalog: CostAxisCatalog, ground: MapTheme): Dedica
   const { lenses } = catalog;
   if (lenses === null) return [];
   return [lenses.totalLens, ...catalog.axes].map((presentation) => lensAxis(presentation, lenses, ground));
+}
+
+/** ルートの線のレンズのモード（総合を先に、続けて軸の順。どれも区間の1kmあたりの代償の秒を地図と同じ段で塗る）。レンズを
+ * 選んでいないときは総合で塗る。費用の軸の定義が無ければ空。 */
+export function costRouteStyleModes(catalog: CostAxisCatalog, ground: MapTheme): RouteStyleMode[] {
+  const { lenses } = catalog;
+  if (lenses === null) return [];
+  const mode = (id: string, presentation: LensPresentation, valueExpression: unknown[]) =>
+    buildRangeSteppedMode({ id, label: presentation.label, valueExpression, paint: costLensPaint(presentation, ground) });
+  const total: unknown[] = ["get", ROUTE_LENS_TOTAL_PROPERTY];
+  return [
+    mode(LENS_DIFFICULTY_ID, lenses.totalLens, total),
+    mode(lenses.totalLens.axisId, lenses.totalLens, total),
+    ...catalog.axes.map((axis) =>
+      mode(axis.axisId, axis, ["get", axis.axisId, ["get", ROUTE_LENS_SECONDS_PROPERTY]]),
+    ),
+  ];
 }
 
 /** レンズの選択肢（総合を先に、続けて軸の順）。利用者の倍率はまだ地図へ届かないので、どの軸も「未使用」にしない。 */
@@ -64,11 +82,6 @@ export function costLensOptions(axes: readonly DedicatedWayValueAxis[]): LensOpt
     conditions: axis.wayValueConditions,
     paintsSurroundingRoads: true,
   }));
-}
-
-/** レンズの値と事実の数の書き方（整数はそのまま、ほかは小数1桁）。凡例の目安と道の窓が同じ書き方にする。 */
-export function formatLensNumber(value: number): string {
-  return Number.isInteger(value) ? String(value) : value.toFixed(1);
 }
 
 /** 凡例の下に書く、段の境目の秒の目安（標準の人・無風の1kmの道で、その事実1つだけが効いたとき）。軸でないレンズ（総合）・

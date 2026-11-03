@@ -1,10 +1,10 @@
 "use client";
 
 import { formatDelta } from "@/features/route/routeEditDiff";
-import { DIFFICULTY_DECIMALS } from "@/lib/mapDisplay/valueScale";
+import { MINUTE_UNIT } from "@/lib/duration";
 import { cn } from "@/lib/cn";
 
-/** 1つの軸の寄与度の差（編集後−元）。 */
+/** 1つの軸の負担の差（分、編集後−元）。 */
 export interface AxisDelta {
   axisId: string;
   label: string;
@@ -22,7 +22,7 @@ export default function SpliceDeltaBar({
   /** 動いた軸（空でない）。 */
   deltas: readonly AxisDelta[];
   /** 軸id→色（ルート設定パネルの軸チップと同じ色）。 */
-  axisColors: Record<string, string>;
+  axisColors: Readonly<Record<string, string>>;
 }) {
   const scale = deltas.reduce((max, item) => Math.max(max, Math.abs(item.delta)), 0);
 
@@ -48,7 +48,7 @@ export default function SpliceDeltaBar({
       <div
         className="flex h-3 min-w-0 flex-1 items-stretch"
         role="img"
-        aria-label={deltas.map((item) => `${item.label} ${formatDelta(item.delta, DIFFICULTY_DECIMALS)}`).join("、")}
+        aria-label={deltas.map((item) => `${item.label} ${formatDelta(item.delta, 1)}${MINUTE_UNIT}`).join("、")}
       >
         {renderDeltaHalf("decrease")}
         <div className="-my-0.5 w-0.5 bg-[var(--foreground)]" />

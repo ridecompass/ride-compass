@@ -11,7 +11,7 @@ import { EvaluationPaintIcon } from "@/components/ui/icons/lucideIcons";
 import DifficultyProfile from "@/features/route/DifficultyProfile/DifficultyProfile";
 import { profileBoxes } from "@/features/route/DifficultyProfile/profileGeometry";
 import { useProfileScale } from "@/features/route/ProfileChart/profileScale";
-import type { CatalogAxis } from "@/lib/catalogAxis";
+import type { PenaltyCatalog } from "@/lib/routePenalty";
 import palette from "@/types/generated/palette.json";
 import type { RouteSegmentDetail, SelectedRouteSegment } from "@/types/route";
 
@@ -24,11 +24,8 @@ import { useChosenProfileLayers, type ProfileLayerSelection } from "./useProfile
 
 interface RouteProfileProps {
   segments: readonly RouteSegmentDetail[];
-  /** ルートの総合難易度。値の無い区間をこの高さで描く。 */
-  overallDifficulty: number | null;
-  /** 難易度を下から積む軸の並び（カタログの順）と色。 */
-  axes: readonly CatalogAxis[];
-  axisColors: Readonly<Record<string, string>>;
+  /** 負担を下から積む費用の軸の並び（一覧の順）と色。 */
+  catalog: PenaltyCatalog;
   /** 横軸の右端の距離。 */
   scaleKm: number;
   selected: SelectedRouteSegment | null;
@@ -46,13 +43,11 @@ interface RouteProfileProps {
   riding?: boolean;
 }
 
-/** 道のりのグラフ。地図の2つの入口と同じ名前のタブで、「評価で塗る」は区間の難易度を、「表示」は選んだ情報（標高の折れ線・道の区分の帯等）を、
+/** 道のりのグラフ。地図の2つの入口と同じ名前のタブで、「評価で塗る」は区間の1kmあたりの負担を、「表示」は選んだ情報（標高の折れ線・道の区分の帯等）を、
  * 同じ横軸で出す。選んだ地点の中身は地図の区間の小窓が出す。 */
 export default function RouteProfile({
   segments,
-  overallDifficulty,
-  axes,
-  axisColors,
+  catalog,
   scaleKm,
   selected,
   onSelect,
@@ -63,13 +58,14 @@ export default function RouteProfile({
   riding = false,
 }: RouteProfileProps) {
   const [tab, setTab] = useState("lens");
+  const { axes, axisColors } = catalog;
   const axisOrder = useMemo(() => axes.map((axis) => axis.axisId), [axes]);
   const scale = useProfileScale(segments, scaleKm);
   // 凡例には、このルートで塗る区間のある軸だけを出す。
   const paintedAxes = useMemo(() => {
-    const { byAxis } = profileBoxes(scale.columns, axisOrder, overallDifficulty);
+    const byAxis = profileBoxes(scale.columns, axisOrder);
     return axes.filter((axis) => (byAxis.get(axis.axisId)?.length ?? 0) > 0);
-  }, [scale, axes, axisOrder, overallDifficulty]);
+  }, [scale, axes, axisOrder]);
   const { available, chosen } = useChosenProfileLayers(layers.ids);
   const shownLayers = useMemo(
     (): ShownLayers => ({
@@ -93,14 +89,14 @@ export default function RouteProfile({
             <DisplayItemsIcon size={14} />
             <span className="sr-only">{FACT_DISPLAY_NAME}</span>
           </TabsTrigger>
-          <TabsTrigger value="lens" usage="区間ごとの難易度を、評価軸の色で塗って道のりに沿って出します。">
+          <TabsTrigger value="lens" usage="区間ごとの1kmあたりの負担を、費用の軸の色で積んで道のりに沿って出します。">
             <EvaluationPaintIcon size={14} />
             <span className="sr-only">{EVALUATION_PAINT_NAME}</span>
           </TabsTrigger>
         </TabsList>
         {tab === "lens" && (
           <InfoPopover
-            triggerAriaLabel="難易度のグラフの見方"
+            triggerAriaLabel="負担のグラフの見方"
             triggerClassName="rounded-full bg-[color-mix(in_srgb,var(--background)_85%,transparent)]"
           >
             <ul className="flex flex-col gap-0.5">
@@ -110,13 +106,9 @@ export default function RouteProfile({
                   <span>{axis.label}</span>
                 </li>
               ))}
-              <li className="flex items-center gap-1.5">
-                <Dot tone="none" style={{ backgroundColor: palette.semantic.no_data }} />
-                <span>値の無い区間</span>
-              </li>
             </ul>
             <p className="mt-1">
-              高さは区間の難易度、塗った面積はルートの負荷にほぼ一致し、横の右端は一覧の中で最も長い候補の距離です。
+              高さは区間の1kmあたりの負担（上端はこのルートで最も大きい区間）、塗った面積は軸ごとの負担の和で、横の右端は一覧の中で最も長い候補の距離です。負担の内訳が無い間は何も塗りません。
             </p>
           </InfoPopover>
         )}
@@ -127,7 +119,6 @@ export default function RouteProfile({
       <TabsContent value="lens">
         <DifficultyProfile
           scale={scale}
-          overallDifficulty={overallDifficulty}
           axisOrder={axisOrder}
           axisColors={axisColors}
           selected={selected}

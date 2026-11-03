@@ -2,6 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { getCostAxisCatalog } from "@/services/costAxisCatalogApi";
+import { axisColorsOf } from "@/lib/axisCatalog";
 import { getQueryClient } from "@/lib/queryClient";
 import type { CostAxisCatalogResponse } from "@/types/route";
 
@@ -33,6 +34,8 @@ export interface CostLensCatalog {
 export interface CostAxisCatalog {
   /** 費用の軸（体力の軸、続けて道の負担の軸）。定義がまだ無い間は0件で`loaded`。 */
   axes: readonly CostAxis[];
+  /** 軸id→識別色（どの画面でも同じ軸は同じ色）。 */
+  axisColors: Readonly<Record<string, string>>;
   /** 代償の内訳の、避け方の倍率で上乗せした秒の行の名前。 */
   avoidanceLabel: string;
   /** 地図のレンズ。定義がまだ無い間・届くまではnull。 */
@@ -43,13 +46,13 @@ export interface CostAxisCatalog {
   failed: boolean;
 }
 
-const EMPTY: CostAxisCatalog = { axes: [], avoidanceLabel: "", lenses: null, loaded: false, failed: false };
+const EMPTY: CostAxisCatalog = { axes: [], axisColors: {}, avoidanceLabel: "", lenses: null, loaded: false, failed: false };
 const FAILED: CostAxisCatalog = { ...EMPTY, failed: true };
 
 function costAxisCatalogFromResponse(response: CostAxisCatalogResponse | null): CostAxisCatalog {
   if (response === null) return { ...EMPTY, loaded: true };
-  return {
-    axes: response.axes.map((entry) => ({
+  const axes = response.axes.map(
+    (entry): CostAxis => ({
       axisId: entry.axis_id,
       ledger: entry.ledger,
       label: entry.label,
@@ -57,7 +60,11 @@ function costAxisCatalogFromResponse(response: CostAxisCatalogResponse | null): 
       iconId: entry.icon_id,
       lens: entry.lens,
       lensEquivalents: entry.lens_equivalents,
-    })),
+    }),
+  );
+  return {
+    axes,
+    axisColors: axisColorsOf(axes),
     avoidanceLabel: response.avoidance_label,
     lenses: {
       totalLens: {

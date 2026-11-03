@@ -3,6 +3,7 @@
 import { useCallback, useRef, useState, type ComponentProps } from "react";
 
 import { useAxisCatalog } from "@/hooks/useAxisCatalog";
+import { useCostAxisCatalog } from "@/hooks/useCostAxisCatalog";
 import { errorMessage } from "@/lib/apiError";
 import { useIsomorphicLayoutEffect } from "@/hooks/useIsomorphicLayoutEffect";
 import { CLIENT_TUNING_IDS, clientTuningValue } from "@/lib/axisCatalog";
@@ -94,6 +95,7 @@ export function useSpliceSession({
   onApplied,
 }: SpliceSessionInputs): SpliceSessionView {
   const axisCatalog = useAxisCatalog();
+  const costCatalog = useCostAxisCatalog();
   // 始めると空から始まり、抜けると中身ごと消える（前回の編集の残りを次へ持ち込まない）。
   const [session, setSplice] = useState<SpliceSession | null>(null);
   const splice = session !== null && session.basis === generatedInput ? session : null;
@@ -250,8 +252,7 @@ export function useSpliceSession({
             previewing: spliceTask.status === "previewing",
             onPreview: handlePreviewSplice,
             onApply: handleApplySplice,
-            axes: axisCatalog.axes,
-            axisColors: axisCatalog.axisColors,
+            catalog: costCatalog,
             error: spliceTask.status === "idle" ? spliceTask.error : null,
             applying: spliceTask.status === "applying",
           },

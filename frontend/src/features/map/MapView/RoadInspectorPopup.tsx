@@ -29,7 +29,7 @@ import { InspectRoadIcon } from "@/components/ui/icons/lucideIcons";
 import { textVariants } from "@/components/ui/Text/Text";
 import { cn } from "@/lib/cn";
 import { useCostAxisCatalog } from "@/hooks/useCostAxisCatalog";
-import { formatLensNumber, LENS_SECONDS_UNIT } from "@/features/map/costLens";
+import { formatLensNumber, LENS_SECONDS_UNIT } from "@/lib/mapDisplay/costLensPaint";
 
 interface RoadInspectorPopupProps {
   properties: RoadSurfacePopupProperties;

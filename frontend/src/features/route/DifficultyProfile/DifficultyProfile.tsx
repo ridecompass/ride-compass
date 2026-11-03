@@ -11,8 +11,6 @@ import { columnAtKm, profileBoxes, type ProfileBox } from "./profileGeometry";
 
 interface DifficultyProfileProps {
   scale: ProfileScale;
-  /** ルートの総合難易度。値の無い区間をこの高さで描く（負荷の計算と同じ扱い）。 */
-  overallDifficulty: number | null;
   /** 下から積む軸の並びと色。 */
   axisOrder: readonly string[];
   axisColors: Readonly<Record<string, string>>;
@@ -32,10 +30,9 @@ function boxesPath(boxes: readonly ProfileBox[], xOf: (km: number) => number): s
     .join("");
 }
 
-/** 道のりに沿った難易度。横が距離、縦が区間ごとの難易度で、塗った面積がルートの負荷になる。 */
+/** 道のりに沿った負担。横が距離、縦が区間ごとの1kmあたりの負担で、塗った面積が軸ごとの負担の和になる。 */
 export default function DifficultyProfile({
   scale,
-  overallDifficulty,
   axisOrder,
   axisColors,
   selected,
@@ -46,16 +43,15 @@ export default function DifficultyProfile({
 }: DifficultyProfileProps) {
   // 塗る形はルートと横軸が変わったときだけ組む（なぞる間に動くのは、カーソルの線と選んだ区間の帯だけ）。
   const paths = useMemo(() => {
-    const { byAxis, missing } = profileBoxes(scale.columns, axisOrder, overallDifficulty);
+    const byAxis = profileBoxes(scale.columns, axisOrder);
     return {
-      missing: missing.length > 0 ? boxesPath(missing, scale.xOf) : null,
       byAxis: axisOrder.flatMap((axisId) => {
         const boxes = byAxis.get(axisId) ?? [];
         return boxes.length === 0 ? [] : [{ axisId, d: boxesPath(boxes, scale.xOf) }];
       }),
-      boxes: [...missing, ...[...byAxis.values()].flat()],
+      boxes: [...byAxis.values()].flat(),
     };
-  }, [scale, axisOrder, overallDifficulty]);
+  }, [scale, axisOrder]);
   // 現在地の印は、その距離の柱の上端に置く。
   const progressColumn = progressKm === null ? null : columnAtKm(scale.columns, progressKm);
   const progressTops = paths.boxes
@@ -66,8 +62,8 @@ export default function DifficultyProfile({
   return (
     <ProfileChart
       scale={scale}
-      label="道のりに沿った難易度"
-      usage="横が道のり、縦がその区間の難易度で、塗った面積がルートの負荷です。"
+      label="道のりに沿った負担"
+      usage="横が道のり、縦がその区間の1kmあたりの負担で、塗った面積が軸ごとの負担の和です。"
       selected={selected}
       onSelect={onSelect}
       progressKm={progressKm}
@@ -75,7 +71,6 @@ export default function DifficultyProfile({
       waypointKms={waypointKms}
       riding={riding}
     >
-      {paths.missing !== null && <path d={paths.missing} fill={palette.semantic.no_data} opacity={0.6} />}
       {paths.byAxis.map(({ axisId, d }) => (
         <path key={axisId} d={d} fill={axisColors[axisId] ?? palette.semantic.no_data} />
       ))}

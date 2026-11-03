@@ -3,11 +3,11 @@
 import ErrorText from "@/features/route/ErrorText/ErrorText";
 import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
 import { NewRouteIcon, RouteDiffIcon, UndoAllIcon, UndoIcon } from "@/components/ui/icons/icons";
-import type { CatalogAxis } from "@/lib/catalogAxis";
 import { formatDelta } from "@/features/route/routeEditDiff";
 import SpliceDeltaBar, { type AxisDelta } from "@/features/route/RouteSplicePanel/SpliceDeltaBar";
 import SpliceMetricGrid from "@/features/route/RouteSplicePanel/SpliceMetricGrid";
-import { DIFFICULTY_DECIMALS } from "@/lib/mapDisplay/valueScale";
+import { MINUTE_UNIT, secondsToMinutes } from "@/lib/duration";
+import type { PenaltyCatalog } from "@/lib/routePenalty";
 import type { RouteCandidate } from "@/types/route";
 import { Button } from "@/components/ui/Button/Button";
 import { GuideText } from "@/components/ui/GuideText/GuideText";
@@ -41,30 +41,25 @@ interface RouteSplicePanelProps {
   error: string | null;
   /** 編集をやめて候補の一覧へ戻る。 */
   onCancel: () => void;
-  /** 公開軸すべて（差分バーのラベルの正本）。 */
-  axes: readonly CatalogAxis[];
-  /** 軸id→色（ルート設定パネルの軸チップと同じ色）。`axes`の全軸を持つ。 */
-  axisColors: Record<string, string>;
+  /** 費用の軸の一覧（差分バーのラベルと色の正本）。 */
+  catalog: PenaltyCatalog;
 }
 
-/** 寄与度の差がこれ未満の軸は差分バーへ出さない（1pxの破片が並ぶと読めない）。 */
-const MIN_CONTRIBUTION_DELTA = 0.1;
+/** 負担の差（分）がこれ未満の軸は差分バーへ出さない（1pxの破片が並ぶと読めない）。 */
+const MIN_PENALTY_DELTA_MINUTES = 0.1;
 /** 差分バーの下へ数値を書く軸の数。大きい順。 */
 const LABELLED_DELTA_COUNT = 2;
 
-/** 元→編集後で寄与度が動いた軸（大きい順）。減った軸は負、増えた軸は正。 */
-function contributionDeltas(
-  base: Record<string, number>,
-  after: Record<string, number>,
-  axes: readonly CatalogAxis[],
-): AxisDelta[] {
-  return axes
+/** 元→編集後で負担（分）が動いた軸（大きい順）。減った軸は負、増えた軸は正。内訳の無い側は、どの軸も0と数える。 */
+function penaltyDeltas(base: RouteCandidate, after: RouteCandidate, catalog: PenaltyCatalog): AxisDelta[] {
+  const seconds = (route: RouteCandidate, axisId: string) => route.penalty?.axis_seconds[axisId] ?? 0;
+  return catalog.axes
     .map((axis) => ({
       axisId: axis.axisId,
       label: axis.label,
-      delta: (after[axis.axisId] ?? 0) - (base[axis.axisId] ?? 0),
+      delta: secondsToMinutes(seconds(after, axis.axisId) - seconds(base, axis.axisId)),
     }))
-    .filter((item) => Math.abs(item.delta) >= MIN_CONTRIBUTION_DELTA)
+    .filter((item) => Math.abs(item.delta) >= MIN_PENALTY_DELTA_MINUTES)
     .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
 }
 
@@ -82,13 +77,12 @@ export default function RouteSplicePanel({
   applying,
   error,
   onCancel,
-  axes,
-  axisColors,
+  catalog,
 }: RouteSplicePanelProps) {
   // `edge_ids`が空の候補では区間を出せない。
   const unavailable = displayed.edge_ids.length === 0;
   const busy = previewing || applying;
-  const deltas = preview ? contributionDeltas(displayed.axis_contributions, preview.axis_contributions, axes) : [];
+  const deltas = preview ? penaltyDeltas(displayed, preview, catalog) : [];
 
   return (
     <section
@@ -181,7 +175,7 @@ export default function RouteSplicePanel({
           <SpliceMetricGrid displayed={displayed} preview={preview} />
 
           {/* 軸別は元・編集後の2本を並べず、差だけの1本にする。中央が0で、左が楽になった側。 */}
-          {deltas.length > 0 && <SpliceDeltaBar deltas={deltas} axisColors={axisColors} />}
+          {deltas.length > 0 && <SpliceDeltaBar deltas={deltas} axisColors={catalog.axisColors} />}
 
           {sameRouteName !== null && (
             <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
@@ -204,12 +198,13 @@ export default function RouteSplicePanel({
             {deltas.length > 0 ? (
               deltas.slice(0, LABELLED_DELTA_COUNT).map((item) => (
                 <span className="mr-2.5" key={item.axisId}>
-                  {item.label} {formatDelta(item.delta, DIFFICULTY_DECIMALS)}
+                  {item.label} {formatDelta(item.delta, 1)}
+                  {MINUTE_UNIT}
                 </span>
               ))
             ) : preview ? (
               // 評価済みで棒が空なのは、どの軸の差も棒に出す下限に届かないとき。押す案内を残すと押しても変わらない。
-              "どの評価軸も、元とほぼ変わりません"
+              "どの軸の負担も、元とほぼ変わりません"
             ) : appliedCount > 0 ? (
               <GuideText text="「差分を見る」を押すと、乗り換えた結果が出ます" />
             ) : hasAlternatives ? (

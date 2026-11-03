@@ -27,7 +27,7 @@ import { useChosenProfileLayers, type ProfileLayerSelection } from "@/features/r
 import SegmentDetail from "@/features/route/SegmentDetail/SegmentDetail";
 import type { GenerationConditionsState } from "@/features/route/useGenerationConditions";
 import type { useRoutePlanner } from "@/features/route/useRoutePlanner";
-import { useAxisCatalog } from "@/hooks/useAxisCatalog";
+import { useCostAxisCatalog } from "@/hooks/useCostAxisCatalog";
 import type { useLocation } from "@/hooks/useLocation";
 import { cn } from "@/lib/cn";
 import { mapOverlayEdge } from "@/lib/mapOverlayEdges";
@@ -83,7 +83,7 @@ export default function HomeMapPane({
   onUsageGuideEnd,
   searchBar,
 }: HomeMapPaneProps) {
-  const axisCatalog = useAxisCatalog();
+  const costCatalog = useCostAxisCatalog();
   const { results, splice } = route;
   const { progress, upcomingTurn } = guidance;
   const navigating = riding.status !== "off";
@@ -262,9 +262,7 @@ export default function HomeMapPane({
             profile !== null ? (
               <RouteProfile
                 segments={profile.segments}
-                overallDifficulty={profile.overall_difficulty?.average ?? null}
-                axes={axisCatalog.axes}
-                axisColors={axisCatalog.axisColors}
+                catalog={costCatalog}
                 scaleKm={profile.distance_km}
                 progressKm={progress.km}
                 waypointKms={profile.waypoint_distances_km}

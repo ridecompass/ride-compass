@@ -74,7 +74,6 @@ function outcomeParts({ route, profileLayers, onRide }: RoutePanelsProps) {
         results={results}
         generation={generation}
         splice={splice}
-        routeWeights={route.routeWeights}
         profileLayers={profileLayers}
       />
     ),
