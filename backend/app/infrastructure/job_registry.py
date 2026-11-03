@@ -17,7 +17,7 @@ from typing import Any, Literal
 JOB_TTL_SECONDS = 600.0
 
 # 問い合わせが終わるまで待ってよい上限（秒）。生成物`route-generate-config.json`で画面が問い合わせるときの待ちとして配る。
-# **動かす前に同じ節を読む**（画面の問い合わせの時間切れより短くなければならない）。
+# **動かす前に同じ節を読む**。
 JOB_WAIT_MAX_SECONDS = 10
 
 

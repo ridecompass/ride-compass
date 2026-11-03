@@ -72,7 +72,8 @@ export function useRouteGeneration({
   // 実行中は順番待ちか実行中かと経過時間をボタンへ出し、終わった後は直近の案内を「ルート結果」欄に残す。
   const [generation, setGeneration] = useState<Generation>(GENERATION_IDLE);
   const [generatedConditions, setGeneratedConditions] = useState<GeneratedConditions | null>(null);
-  // 経過時間は画面の時計で1秒ごとに数える（backendは終わるまで待って返すので、応答の間隔では数えられない）。
+  // 経過時間は問い合わせの応答に依らず、画面の時計で1秒ごとに数える
+  // （docs/modules/frontend/route-settings-and-results.md「生成を待つ時間・投げる回数の根拠」）。
   const [now, setNow] = useState(() => performance.now());
   const runningSince = generation.status === "running" ? generation.startedAt : null;
   useEffect(() => {
