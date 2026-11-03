@@ -23,9 +23,7 @@ from numba.core import event
 from app.domain import leg_costs
 from app.domain.attributes import CategoricalColumn
 from app.domain.axis_definitions import BreakpointLinearShape, MaterialTerm, copy_axis_definitions
-from app.domain.cycling_speed import RiderProfile, SegmentSpeedModel, crr_for_surface
 from app.domain.difficulty import axis_weight_shares
-from app.domain.elevation_profile import ElevationProfiles
 from app.domain.evaluation import DensityAxisColumn, StaticEdgeScoreMatrix
 from app.domain.leg_costs import LegCostArrays, LegCostComposer, LegValues
 from app.domain.msm import MsmBlock, MsmGrid
@@ -34,7 +32,7 @@ from app.domain.route import Coordinates
 from app.domain.search_graph import EDGE_VALUE_DTYPE
 from app.domain.wind import DepartureWind, WindForecastSeries
 from tests.axis_system_fixture import axis_definition, replaced_axis_definitions
-from tests.profile_fixture import FLAT, grade_profiles
+from tests.profile_fixture import grade_profiles, profiles
 
 START = datetime(2026, 10, 3, 9, 0)
 CRUISE_KMH = 20.0
@@ -149,26 +147,10 @@ def _shares(values: LegValues, rows) -> list[dict[str, float]]:
 # --- 所要時間 -------------------------------------------------------------
 
 
-def test_a_road_rising_evenly_runs_at_the_speed_of_its_grade_and_one_without_elevation_runs_the_network_slopes():
-    """1000mで50m一様に登る区間は、5%の坂の速さで走る。標高の無い区間は道路網全体の勾配の分布（ここでは平地だけ）で走る。"""
-    leg = _snapshot(_matrix(3, gradient=[5.0, np.nan, 0.0]))
-    climb, missing, flat = leg.travel_seconds_lazy
-    five_percent = SegmentSpeedModel(
-        RiderProfile(cruise_speed_kmh=CRUISE_KMH), np.array([0.05]), crr_for_surface(CategoricalColumn.encode(["paved"])))
-
-    assert climb == pytest.approx(1000.0 / five_percent.speed_ms(np.zeros(1), np.zeros(1))[0])
-    assert missing == flat
-
-
-def test_a_road_that_climbs_and_descends_takes_longer_than_a_flat_one_of_the_same_average():
-    """断面の点の間ごとに速さを解く。600mで300m登って300m下る道は、平均勾配は平地と同じ0%でも、登りで遅れるぶん
-    下りで取り戻せず、平地より時間がかかる（平均勾配1つで解くと同じ時間になる）。"""
-    matrix = dataclasses.replace(
-        _matrix(2, distance=600.0),
-        elevation_profiles=ElevationProfiles(
-            start=np.array([0, 3]), points=np.array([3, 3], dtype=np.int32), reversed_rows=np.zeros(2, dtype=bool),
-            elevation_m=np.array([0.0, 18.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float32),
-            distribution=FLAT))
+def test_the_travel_time_runs_the_points_of_the_road_profile_not_its_average_grade():
+    """所要時間は行列の区間の断面を点の間ごとに走る。600mで18m登って18m下る道は、平均勾配は平地と同じ0%でも、
+    平地より時間がかかる（勾配の材料の平均を読むと同じ時間になる）。"""
+    matrix = dataclasses.replace(_matrix(2, distance=600.0), elevation_profiles=profiles([0.0, 18.0, 0.0], [0.0, 0.0, 0.0]))
 
     up_and_down, flat = _snapshot(matrix).travel_seconds_lazy
 

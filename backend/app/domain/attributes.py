@@ -2,9 +2,9 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, fields
 from typing import Any
 
-from app.domain.elevation_profile import MAX_PLAUSIBLE_GRADE_PERCENT, ElevationProfiles
 import numpy as np
 
+from app.domain.elevation_profile import MAX_PLAUSIBLE_GRADE_PERCENT, ElevationProfiles
 from app.domain.strict_model import StrictModel
 
 
@@ -178,7 +178,8 @@ def elevation_values_sql(vertices: str, step_m: str) -> str:
     return f"""
 WITH v AS ({vertices}),
 measured AS (
-    SELECT *, max(along_m) OVER (PARTITION BY osm_way_id, segment_index) AS length_m FROM v),
+    SELECT *, max(along_m) OVER s AS length_m, max(ord) OVER s AS max_ord
+    FROM v WINDOW s AS (PARTITION BY osm_way_id, segment_index)),
 known AS (
     SELECT *, min(ord) OVER s AS first_ord, max(ord) OVER s AS last_ord
     FROM measured WHERE elev IS NOT NULL WINDOW s AS (PARTITION BY osm_way_id, segment_index)),
@@ -186,8 +187,7 @@ profile AS (SELECT * FROM known WHERE NOT on_structure OR ord IN (first_ord, las
 points AS (
     SELECT osm_way_id, segment_index,
            array_agg(elev::real ORDER BY ord) FILTER (WHERE NOT on_structure OR ord IN (0, max_ord)) AS elevation_profile_m
-    FROM (SELECT *, max(ord) OVER (PARTITION BY osm_way_id, segment_index) AS max_ord FROM v) a
-    GROUP BY osm_way_id, segment_index),
+    FROM measured GROUP BY osm_way_id, segment_index),
 ends AS (
     SELECT osm_way_id, segment_index, bool_or(on_structure) AS on_structure,
            count(*) AS n, max(along_m) - min(along_m) AS total_d,

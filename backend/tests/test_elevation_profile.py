@@ -1,77 +1,50 @@
-"""`domain/elevation_profile.py`——区間の断面の点の並びから、所要時間と体力を求める点の間を作る。
+"""`domain/elevation_profile.py`——区間の断面の点の並びと、点の間の勾配・標高の無い長さ・全体の勾配の分布。
 
-入口は`ElevationProfiles`（`intervals`・`take`）と`grade_distribution`。
+入口は`interval_grade`・`unknown_lengths_m`・`grade_distribution`・`ElevationProfiles.take`。
 
 ここで見ないもの:
-- 点の間ごとに速さを解いて区間の所要時間にすること → `test_leg_costs.py`
+- 点の間ごとに速さを解いて区間の所要時間にすること（逆向きの行・標高の無い所の埋め方） → `test_cycling_speed.py`
 - 断面の点をDBから道路網の配列へ載せること → `test_road_network_store.py`・`test_road_graph_repository_contracts.py`
 """
 
 import numpy as np
 import pytest
 
-from app.domain.elevation_profile import ElevationProfiles, GradeDistribution, grade_distribution
-
-UP_AND_DOWN = GradeDistribution(np.array([-0.04, 0.02]), np.array([0.25, 0.75]))
-
-
-def _profiles(*profiles: list[float | None], reversed_rows=None, distribution=UP_AND_DOWN) -> ElevationProfiles:
-    points = np.array([len(p) for p in profiles], dtype=np.int32)
-    elevation = np.array([np.nan if v is None else v for p in profiles for v in p], dtype=np.float32)
-    backward = np.zeros(len(profiles), dtype=bool) if reversed_rows is None else np.asarray(reversed_rows, dtype=bool)
-    return ElevationProfiles(np.cumsum(points, dtype=np.int64) - points, points, backward, elevation, distribution)
+from app.domain.elevation_profile import grade_distribution, interval_grade, unknown_lengths_m
+from tests.profile_fixture import profiles
 
 
-def test_each_step_between_neighbouring_points_is_an_interval_of_an_equal_share_of_the_road():
-    intervals = _profiles([10.0, 13.0, 12.0], [5.0, 5.0]).intervals(np.array([200.0, 50.0]))
-
-    assert intervals.edge.tolist() == [0, 0, 1]
-    assert intervals.length_m.tolist() == [100.0, 100.0, 50.0]
-    assert intervals.grade.tolist() == pytest.approx([0.03, -0.01, 0.0])
-    assert intervals.missing_edge.tolist() == [False, False]
-
-
-def test_a_backward_row_reads_the_points_of_its_road_in_reverse():
-    """両向きの行は同じ点を指し、逆向きの行は並びを逆に読む。読み違えると、登りを下りとして走る。"""
-    intervals = _profiles([10.0, 13.0, 12.0], reversed_rows=[True]).intervals(np.array([200.0]))
-
-    assert intervals.grade.tolist() == pytest.approx([0.01, -0.03])
+def test_a_step_reads_the_rise_over_its_length_and_one_without_a_value_or_steeper_than_any_road_has_none():
+    """公道としてありえない勾配（標高データの読み違い）は、値の無い間と同じく勾配を持たない。"""
+    assert interval_grade(10.0, 13.0, 100.0) == pytest.approx(0.03)
+    assert np.isnan(interval_grade(10.0, np.nan, 100.0))
+    assert np.isnan(interval_grade(0.0, 50.0, 100.0))
+    assert np.isnan(interval_grade(0.0, 1.0, 0.0))
 
 
-def test_a_step_or_a_road_without_elevation_runs_the_slopes_of_the_whole_network():
-    """標高の無い間と、点が2つ未満の区間は、区間ごとに足し合わせた長さを、全体の勾配の分布どおりの坂で走る（平地と
-    みなすと、標高の無い道が坂の無い速い道に見える）。"""
-    intervals = _profiles([10.0, None, 12.0], [7.0]).intervals(np.array([200.0, 40.0]))
+def test_the_length_without_elevation_is_summed_per_road_and_a_road_with_fewer_than_two_points_has_none():
+    built = profiles([10.0, None, 12.0], [7.0], [0.0, 50.0, 50.0], [5.0, 5.0], [5.0, 6.0])
 
-    assert intervals.edge.tolist() == [0, 0, 1, 1]
-    assert intervals.length_m.tolist() == pytest.approx([50.0, 150.0, 10.0, 30.0])
-    assert intervals.grade.tolist() == pytest.approx([-0.04, 0.02] * 2)
-    assert intervals.missing_edge.tolist() == [True, True]
+    unknown = unknown_lengths_m(built.start, built.points, built.elevation_m, np.array([200.0, 40.0, 200.0, 50.0, 0.0]))
+
+    assert unknown.tolist() == pytest.approx([200.0, 40.0, 100.0, 0.0, 0.0])
 
 
-def test_a_step_steeper_than_any_public_road_counts_as_without_elevation():
-    """公道としてありえない勾配（標高データの読み違い）の間は、標高の無い間と同じく全体の分布で埋める。"""
-    intervals = _profiles([0.0, 50.0, 50.0]).intervals(np.array([200.0]))
-
-    assert intervals.length_m.tolist() == pytest.approx([100.0, 25.0, 75.0])
-    assert intervals.grade.tolist() == pytest.approx([0.0, -0.04, 0.02])
-    assert intervals.missing_edge.tolist() == [True]
-
-
-def test_the_distribution_is_the_share_of_the_road_run_at_each_slope():
+def test_the_distribution_is_the_share_of_the_road_run_at_each_slope_both_ways():
     """全体の勾配の分布は、点の間の勾配を1%の階級に分けた道のりの割合。どの向きにも走るので、登りと下りを半分ずつ
     数える。値の無い間は数えない。"""
-    profiles = _profiles([0.0, 3.0, 3.0], [0.0, None], [0.0, 1.0])
+    built = profiles([0.0, 3.0, 3.0], [0.0, None], [0.0, 1.0])
 
-    distribution = grade_distribution(profiles.start, profiles.points, profiles.elevation_m, np.array([200.0, 50.0, 100.0]))
+    distribution = grade_distribution(built.start, built.points, built.elevation_m, np.array([200.0, 50.0, 100.0]))
 
     assert distribution.grade.tolist() == pytest.approx([-0.03, -0.01, 0.0, 0.01, 0.03])
     assert distribution.share.tolist() == pytest.approx([1 / 6, 1 / 6, 1 / 3, 1 / 6, 1 / 6])
 
 
-def test_a_slice_keeps_the_points_of_its_rows():
-    profiles = _profiles([1.0, 2.0], [3.0, 4.0, 5.0])
+def test_a_slice_keeps_the_points_and_the_direction_of_its_rows():
+    built = profiles([1.0, 2.0], [3.0, 4.0, 5.0], forward=[True, False])
 
-    taken = profiles.take(np.array([1]))
+    taken = built.take(np.array([1]))
 
-    assert taken.intervals(np.array([20.0])).grade.tolist() == pytest.approx([0.1, 0.1])
+    assert (taken.points.tolist(), taken.forward.tolist()) == ([3], [False])
+    assert taken.elevation_m[taken.start[0]:taken.start[0] + 3].tolist() == [3.0, 4.0, 5.0]

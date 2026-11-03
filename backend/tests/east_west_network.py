@@ -42,6 +42,9 @@ def network() -> RoadNetwork:
     edge_to = np.array([head for *_, head in EDGES], dtype=np.int32)
     n = len(EDGES)
     row = np.arange(n, dtype=np.float64)
+    forward = np.array([forward for _, _, forward, *_ in EDGES], dtype=bool)
+    start_elevation = np.array([10.0, 22.0, 5.0, NAN, 7.0])
+    end_elevation = np.array([22.0, 10.0, 5.0, NAN, 10.0])
     return RoadNetwork(
         revision=7,
         node_osm_id=np.array([osm_id for osm_id, _ in NODES], dtype=np.int64),
@@ -53,7 +56,7 @@ def network() -> RoadNetwork:
         node_branch_count=np.array([1, 1, 1, 1, 1, 2, 1], dtype=np.int16),
         edge_way_id=np.array([way for way, *_ in EDGES], dtype=np.int64),
         edge_segment=np.array([segment for _, segment, *_ in EDGES], dtype=np.int32),
-        edge_forward=np.array([forward for _, _, forward, *_ in EDGES], dtype=bool),
+        edge_forward=forward,
         edge_from=edge_from,
         edge_to=edge_to,
         edge_highway=np.zeros(n, dtype=np.int16),
@@ -73,12 +76,11 @@ def network() -> RoadNetwork:
         bearing_deg=np.array([90.0, 270.0, 90.0, 90.0, NAN]),
         mid_lat=lat[edge_from],
         mid_lon=(lon[edge_from] + lon[edge_to]) / 2,
-        start_elevation_m=np.array([10.0, 22.0, 5.0, NAN, 7.0]),
-        end_elevation_m=np.array([22.0, 10.0, 5.0, NAN, 10.0]),
+        start_elevation_m=start_elevation,
+        end_elevation_m=end_elevation,
         elevation_gain_m=np.array([12.0, 0.0, 0.0, NAN, 3.0]),
         elevation_loss_m=np.array([0.0, 12.0, 0.0, NAN, 0.0]),
         steepest_gain_percent=np.array([12.0, 0.0, 0.0, NAN, 3.0]),
         steepest_loss_percent=np.array([0.0, 12.0, 0.0, NAN, 0.0]),
-        **two_point_profiles(np.array([10.0, 22.0, 5.0, NAN, 7.0]), np.array([22.0, 10.0, 5.0, NAN, 10.0]),
-                             np.array([forward for _, _, forward, *_ in EDGES], dtype=bool)),
+        **two_point_profiles(start_elevation, end_elevation, forward),
     )

@@ -79,7 +79,7 @@ class RoadNetwork:
     steepest_gain_percent: np.ndarray  # float64, NaN=欠損
     steepest_loss_percent: np.ndarray
     # 断面の点（`domain/elevation_profile.py`）。区間の行ごとに、全区間の点を順方向に並べてつないだ`profile_elevation_m`の中の
-    # 始まりの位置と点の数（標高の無い区間は0）。両向きの行は同じ点を指し、逆向きの行（`edge_forward`が偽）は逆に読む。
+    # 始まりの位置と点の数（標高の無い区間は0）。両向きの行は同じ点を指し、逆向きの行（`edge_forward`が偽）は勾配の符号を返して読む。
     edge_profile_start: np.ndarray  # int64
     edge_profile_points: np.ndarray  # int32
     profile_elevation_m: np.ndarray  # float32、行数は区間ではなく点の数
@@ -128,7 +128,7 @@ class RoadNetwork:
         """全区間の断面の点と、標高の無い所を埋める全体の勾配の分布。"""
         distribution = GradeDistribution(np.asarray(self.profile_distribution_grade),
                                          np.asarray(self.profile_distribution_share))
-        return ElevationProfiles(self.edge_profile_start, self.edge_profile_points, ~np.asarray(self.edge_forward),
+        return ElevationProfiles(self.edge_profile_start, self.edge_profile_points, self.edge_forward,
                                  self.profile_elevation_m, distribution)
 
     @cached_property

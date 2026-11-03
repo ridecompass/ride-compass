@@ -31,6 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.domain.attributes import EDGE_ROW_ARRAY_FIELDS, EdgeMaterialArrays
 from app.domain.elevation_profile import grade_distribution
 from app.domain.road_network import RoadNetwork
+from app.domain.search_graph import run_starts
 from app.domain.traffic import travel_allowed
 from app.infrastructure.cache_identity import shape_digest
 from app.infrastructure.data_paths import DATA_DIR
@@ -384,14 +385,10 @@ async def _read_profiles(
 ) -> dict[str, Any]:
     """区間の断面の点（`RoadNetwork`の`edge_profile_*`・`profile_*`の欄）。点は区間ごとに1回だけ持ち、同じ区間の両向きの行
     （有向の行は区間ごとに隣り合って並ぶ）は同じ点を指す。標高の無い所を埋める分布も、ここで1回だけ求める。"""
-    first = np.ones(len(way), dtype=bool)
-    first[1:] = (way[1:] != way[:-1]) | (segment[1:] != segment[:-1])
+    first = run_starts(way) | run_starts(segment)
     owner = np.cumsum(first) - 1  # 行 → 点を持つ区間の番号
     unique_rows = np.flatnonzero(first)
-    profiles: list[np.ndarray] = []
-    for start in range(0, len(unique_rows), _MATERIAL_BATCH):
-        rows = unique_rows[start:start + _MATERIAL_BATCH]
-        profiles.extend(await repository.get_edge_elevation_profiles(way[rows].tolist(), segment[rows].tolist()))
+    profiles = await repository.get_edge_elevation_profiles(way[unique_rows].tolist(), segment[unique_rows].tolist())
     points = np.fromiter((len(p) for p in profiles), dtype=np.int32, count=len(profiles))
     starts = np.cumsum(points, dtype=np.int64) - points
     elevation = _concatenate(profiles, np.float32)
