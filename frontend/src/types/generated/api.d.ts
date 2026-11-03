@@ -1840,13 +1840,6 @@ export interface components {
             /** Precipitation Mm */
             precipitation_mm: (number | null)[];
         };
-        /** OverallDifficulty */
-        OverallDifficulty: {
-            /** Average */
-            average: number;
-            /** Load */
-            load: number;
-        };
         /** PlaceArea */
         PlaceArea: {
             /** Area */
@@ -2104,16 +2097,6 @@ export interface components {
             wind_unavailable: boolean;
             /** Missing Travel Data Share */
             missing_travel_data_share: number | null;
-            /** Axis Raw Values */
-            axis_raw_values: {
-                [key: string]: number;
-            };
-            /** Material Category Shares */
-            material_category_shares: {
-                [key: string]: {
-                    [key: string]: number;
-                };
-            };
             /** Edge Ids */
             edge_ids: string[];
             /** Edge Point Offsets */
@@ -2124,19 +2107,6 @@ export interface components {
             turns: components["schemas"]["RouteTurn"][];
             /** Waypoint Distances Km */
             waypoint_distances_km: number[];
-            overall_difficulty: components["schemas"]["OverallDifficulty"] | null;
-            /** Axis Difficulties */
-            axis_difficulties: {
-                [key: string]: number;
-            };
-            /** Axis Contributions */
-            axis_contributions: {
-                [key: string]: number;
-            };
-            /** Material Values */
-            material_values: {
-                [key: string]: number;
-            };
             /** Id */
             id: string;
             /**
@@ -2262,20 +2232,10 @@ export interface components {
             /** Estimated Arrival Time */
             estimated_arrival_time: string | null;
             penalty: components["schemas"]["CostBreakdown"] | null;
-            /** Axis Difficulties */
-            axis_difficulties: {
-                [key: string]: number;
-            };
-            /** Axis Contributions */
-            axis_contributions: {
-                [key: string]: number;
-            };
             /** Material Values */
             material_values: {
                 [key: string]: number;
             };
-            /** Difficulty */
-            difficulty: number | null;
             /** Road Classes */
             road_classes: {
                 [key: string]: components["schemas"]["RoadClassStretch"][];
