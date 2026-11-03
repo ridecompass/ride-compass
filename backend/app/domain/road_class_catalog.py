@@ -56,14 +56,14 @@ class AvoidanceLevelView(StrictModel):
 
 
 class AvoidanceSectionView(StrictModel):
-    """除外タブの見出し1つ。鍵・名前は分け方の鍵・名前で、地図の線の層（`RoadMapLayerView`）と揃う。"""
+    """回避タブの見出し1つ。鍵・名前は分け方の鍵・名前で、地図の線の層（`RoadMapLayerView`）と揃う。"""
 
     key: str
     label: str
 
 
 class AvoidanceRowView(StrictModel):
-    """除外タブの1行。`key`は`<分け方>.<区分>`、`section`は見出し（分け方）の鍵。"""
+    """回避タブの1行。`key`は`<分け方>.<区分>`、`section`は見出し（分け方）の鍵。"""
 
     key: str
     section: str

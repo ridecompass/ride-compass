@@ -3,9 +3,9 @@
  * 入力の誤り・表示中の候補を作った条件といまの条件のずれを返し、案内と生成の結果を消せる。
  *
  * ここで見ないもの:
- * - 結果の並べ方と知らせ方・候補0件の理由・失敗の文言・目的地の補正・既定の配分で作ったこと → `useRouteGeneration.result.test.ts`
+ * - 結果の並べ方と知らせ方・候補0件の理由・失敗の文言・目的地の補正・標準の倍率で作ったこと → `useRouteGeneration.result.test.ts`
  * - 検証の文言の中身と、作るものが無いときの検証 → `RouteForm/useRouteFormSubmit.test.ts`
- * - 条件の値の持ち方（保存・地点の置き方・重みの揃え方） → `useGenerationConditions.test.ts`
+ * - 条件の値の持ち方（保存・地点の置き方・倍率の送り方） → `useGenerationConditions.test.ts`
  * - 入力から要求の形を組む細部（どの項目を比べないか・選んでいない出発時刻・キーの並びに依らない比較） →
  *   `generationRequest.test.ts`
  * - 要求の投げ方と見回り（ジョブの問い合わせ・打ち切り） → `routeApi.test.ts`
@@ -44,7 +44,7 @@ afterEach(() => {
 });
 
 describe("送る要求", () => {
-  it("全長の目標を決めていれば、いまの位置・入力した距離と候補数・走行条件・除外・選んだ道の避け方と、置いた経由地（置いた順）・目的地をそのまま送り、重みは送らない", async () => {
+  it("全長の目標を決めていれば、いまの位置・入力した距離と候補数・走行条件・除外・選んだ道の避け方と、置いた経由地（置いた順）・目的地をそのまま送り、つまみと倍率は標準で送る", async () => {
     const rendered = renderGeneration();
     const { conditions } = rendered.result.current;
     act(() => conditions.setDistanceInput("42"));
@@ -65,6 +65,7 @@ describe("送る要求", () => {
       longitude: ORIGIN.longitude,
       distance_km: 42,
       road_avoidance: avoidance,
+      cost_preference: { strength: 1, multipliers: {} },
       max_routes: 3,
       assumed_speed_kmh: 20,
       start_time: T1.toISOString(),
@@ -178,7 +179,7 @@ describe("消す", () => {
 
   it("生成の結果（作った条件・補正・既定の配分・案内）を消す", async () => {
     const rendered = renderGeneration();
-    act(() => rendered.result.current.conditions.setWeightOverrideEnabled(true));
+    act(() => rendered.result.current.conditions.setCostPreference({ strength: 1, multipliers: { ascent: 2 } }));
     act(() => rendered.result.current.conditions.setDestination(A));
     backend.respond([route("r1")], used({ corrected_destination: B }));
     await submit(rendered);
@@ -190,7 +191,7 @@ describe("消す", () => {
     const { generation } = rendered.result.current;
     expect(generation.generatedInput).toBeNull();
     expect(generation.destinationCorrected).toBe(false);
-    expect(generation.weightsNotApplied).toBe(false);
+    expect(generation.multipliersNotApplied).toBe(false);
     expect(generation.outcome).toBeNull();
   });
 });

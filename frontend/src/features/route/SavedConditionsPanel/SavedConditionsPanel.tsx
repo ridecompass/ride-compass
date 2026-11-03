@@ -17,6 +17,7 @@ import {
 } from "@/features/route/savedConditions";
 import SavedList from "@/features/route/SavedList/SavedList";
 import { useAxisCatalog } from "@/hooks/useAxisCatalog";
+import { useCostAxisCatalog } from "@/hooks/useCostAxisCatalog";
 
 interface SaveConditionsButtonProps {
   /** 保存した設定（同じ名前があれば上書きと出す）。 */
@@ -63,6 +64,7 @@ export function SaveConditionsButton({
   onSave,
 }: SaveConditionsButtonProps) {
   const catalog = useAxisCatalog();
+  const costCatalog = useCostAxisCatalog();
   // 手で書き換えるまでは、いまの条件から作る仮の名前を出す（条件を変えると名前の案も変わる）。
   const [nameDraft, setNameDraft] = useState<string | null>(null);
   const name = nameDraft ?? suggestedName;
@@ -73,7 +75,10 @@ export function SaveConditionsButton({
   // 窓を開いているか。保存すると閉じる。
   const [saving, setSaving] = useState(false);
   // 窓を開くまで読まないが、パネルはページと一緒に描き直されるので、条件が変わったときだけ組む。
-  const currentDescription = useMemo(() => describeConditions(current, catalog), [current, catalog]);
+  const currentDescription = useMemo(
+    () => describeConditions(current, catalog, costCatalog),
+    [current, catalog, costCatalog],
+  );
 
   return (
     <>
@@ -114,8 +119,8 @@ export function SaveConditionsButton({
                     </ToggleGroupItem>
                   </ToggleGroup>,
                 ],
-                ["重み", currentDescription.weights],
-                ["除外", currentDescription.exclusions],
+                ["負担", currentDescription.costPreference],
+                ["回避", currentDescription.exclusions],
               ]}
             />
             <form
@@ -156,10 +161,11 @@ export function SaveConditionsButton({
 // 生成はいつもの「ルート生成」で行う（入れ替えたあとに値を確かめたり少し変えたりできる）。
 export default function SavedConditionsPanel({ saved, onRecall, onRemove }: SavedConditionsPanelProps) {
   const catalog = useAxisCatalog();
+  const costCatalog = useCostAxisCatalog();
   // 呼び出すを押した設定。確認の窓で中身を見せ、「反映する」を押すまで入れ替えない。
   const [recalling, setRecalling] = useState<SavedCondition | null>(null);
   const [recalled, setRecalled] = useState<SavedCondition | null>(null);
-  const recallingDescription = recalling && describeConditions(recalling, catalog);
+  const recallingDescription = recalling && describeConditions(recalling, catalog, costCatalog);
 
   return (
     <div className="flex flex-col gap-3">
@@ -201,8 +207,8 @@ export default function SavedConditionsPanel({ saved, onRecall, onRemove }: Save
               rows={[
                 ["条件", recallingDescription.route],
                 ["出発地", originDescription(recalling.origin !== null)],
-                ["重み", recallingDescription.weights],
-                ["除外", recallingDescription.exclusions],
+                ["負担", recallingDescription.costPreference],
+                ["回避", recallingDescription.exclusions],
               ]}
             />
             <div className="mt-3 flex justify-end gap-2">

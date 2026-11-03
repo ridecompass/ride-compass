@@ -23,7 +23,7 @@ export function useRideGuidance({
     position: riding.map?.position ?? null,
     accuracyM: riding.accuracyM,
     onRestore: (session) => {
-      results.replaceWithGenerated([session.route], null);
+      results.replaceWithGenerated([session.route]);
       if (session.resting) riding.rest();
       else riding.press();
     },

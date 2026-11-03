@@ -100,7 +100,6 @@ export function routeGenerateResponseFixture(): DoneJob["result"] {
       longitude: 139.7387,
       distance_km: 20,
       distance_tolerance_km: 5,
-      penalty_strength: 1.0,
       max_routes: 8,
       assumed_speed_kmh: 20,
       start_time: "2026-09-05T09:30:00+09:00",

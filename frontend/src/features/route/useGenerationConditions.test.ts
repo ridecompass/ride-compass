@@ -1,28 +1,26 @@
 /**
- * 生成の条件（`useGenerationConditions.ts`）——周回か・全長の目標を決めるか・距離・候補数・重み・道ごとの避け方を返す。
+ * 生成の条件（`useGenerationConditions.ts`）——周回か・全長の目標を決めるか・距離・候補数・つまみと倍率・道ごとの避け方を返す。
  * 保存する値（地点以外）は開き直しても残り、読むときに今の画面が受け付ける範囲・
- * 今の項目へ揃える。重みは軸カタログの公開軸へ揃えた値を返し、送るのは上書きを有効にしてカタログが届いた後だけ。
+ * 今の項目へ揃える。倍率は、費用の軸の一覧が届いた後に、今の軸のものだけを送る。
  *
  * ここで見ないもの:
  * - 地点（出発地以外）の置き方・動かし方・消し方と、検索・名前のある点で置いた地点の候補と、周回の間に覚えておく目的地 →
  *   `useGenerationConditions.points.test.ts`
- * - 重みの揃え方の細部（増えた軸を既定の重みで補う・消えた軸を外す・取得が決まるまで揃えない） →
- *   `routePreferenceSync.test.ts`。ここでは揃えた値を返すことを1件ずつ見る
- * - 重みを送るかの判断（上書きしていない・カタログが届かない間は送らない） → `routePreferenceSync.test.ts`。
- *   ここでは開き直した後に送る重みを1件見る
+ * - つまみと倍率の保存値の読み方（範囲の外・前の形） → `savedConditions.test.ts`。ここでは寄せていることを1件見る
+ * - 一覧が届かない間に倍率を送らないこと → `useRouteGeneration.result.test.ts`
  * - 保存の読み書きそのもの（読めない・書けない端末で既定値になる） → `hooks/useStoredState.test.ts`
  * - 地図で置いた出発地を位置の持ち主が受け取ったあと → `hooks/useLocation.test.ts`
  * - 地図のタップが選んだ地点を置く場面（「ルート設定」の「条件」タブが効いている間だけ） → `app/page.map.test.tsx`
  * - 条件を生成へ送る形 → `useRouteGeneration.test.ts`
  *
- * 差し替えたもの: 軸カタログの応答（網の層）。保存はテスト環境の`localStorage`を
+ * 差し替えたもの: 費用の軸の一覧の応答（網の層）。保存はテスト環境の`localStorage`を
  * 本物のまま使い、開き直しは同じ保存の上でフックを描き直して作る。
  */
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { heldReplies, onBackend, serveAxisCatalog } from "@/testing/backendServer";
-import { catalogEntry, catalogResponse, TWO_AXIS_CATALOG } from "@/testing/catalogAxes";
+import { heldReplies } from "@/testing/backendServer";
+import { serveCostAxisCatalog } from "@/testing/costAxes";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 
 import { useGenerationConditions } from "./useGenerationConditions";
@@ -41,8 +39,8 @@ function reopen(rendered: { unmount: () => void }) {
 
 beforeEach(() => {
   window.localStorage.clear();
-  // 既定は届かないまま（重みを見るテストだけが届ける）。
-  onBackend("GET", "/api/axis-catalog", heldReplies().reply);
+  // 既定は届かないまま（倍率を見るテストだけが届ける）。
+  serveCostAxisCatalog(heldReplies().reply);
 });
 
 describe("周回と全長の目標", () => {
@@ -104,35 +102,26 @@ describe("距離と候補数", () => {
   });
 });
 
-describe("重み", () => {
-  it("揃えても保存した重みは書き換えず、公開を取り下げた軸が戻ればその重みも戻る", async () => {
-    window.localStorage.setItem("ridecompass:weight-override-enabled", "true");
-    window.localStorage.setItem("ridecompass:route-preference", JSON.stringify({ axis_a: 0.7, axis_c: 0.2 }));
-    serveAxisCatalog(TWO_AXIS_CATALOG);
+describe("つまみと倍率", () => {
+  it("既定は標準で、変えたつまみと倍率は開き直しても残り、送るのは今の費用の軸の、標準でない倍率だけ", async () => {
+    serveCostAxisCatalog();
     const first = renderConditions();
-    await waitFor(() => expect(first.result.current.routePreference).toEqual({ axis_a: 0.7, axis_b: 0.6 }));
-
-    serveAxisCatalog(
-      catalogResponse([
-        catalogEntry({ axis_id: "axis_a", default_weight: 0.4 }),
-        catalogEntry({ axis_id: "axis_c", default_weight: 0.6 }),
-      ]),
+    expect(first.result.current.costPreference).toEqual({ strength: 1, multipliers: {} });
+    act(() =>
+      first.result.current.setCostPreference({ strength: 1.5, multipliers: { ascent: 2, vibration: 1, gone: 3 } }),
     );
+
     const { result } = reopen(first);
 
-    await waitFor(() => expect(result.current.routePreference).toEqual({ axis_a: 0.7, axis_c: 0.2 }));
+    await waitFor(() =>
+      expect(result.current.costPreferenceToSend).toEqual({ strength: 1.5, multipliers: { ascent: 2 } }),
+    );
   });
 
-  it("上書きは既定で無効で、動かした重みと上書きの有効は開き直しても残る", async () => {
-    serveAxisCatalog(TWO_AXIS_CATALOG);
-    const first = renderConditions();
-    expect(first.result.current.weightOverrideEnabled).toBe(false);
-    act(() => first.result.current.setRoutePreference({ axis_a: 0.7, axis_b: 0.3 }));
-    act(() => first.result.current.setWeightOverrideEnabled(true));
+  it("前の形（割合の重み）の保存値は読まず、標準に戻す", () => {
+    window.localStorage.setItem("ridecompass:cost-preference", JSON.stringify({ axis_a: 0.7 }));
 
-    const { result } = reopen(first);
-
-    await waitFor(() => expect(result.current.routePreferenceToSend).toEqual({ axis_a: 0.7, axis_b: 0.3 }));
+    expect(renderConditions().result.current.costPreference).toEqual({ strength: 1, multipliers: {} });
   });
 });
 

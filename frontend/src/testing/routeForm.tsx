@@ -7,6 +7,7 @@ import { vi } from "vitest";
 
 import { Tabs } from "@/components/ui/Tabs/Tabs";
 import RouteForm, { type SettingsTab } from "@/features/route/RouteForm/RouteForm";
+import { STANDARD_COST_PREFERENCE } from "@/features/route/costPreference";
 import type { PointTarget } from "@/types/route";
 
 type Props = ComponentProps<typeof RouteForm>;
@@ -25,6 +26,7 @@ const BASE = {
   distanceInput: "30",
   maxRoutesInput: "8",
   distanceTargeted: true,
+  costPreference: STANDARD_COST_PREFERENCE,
   waypoints: [],
   destination: null,
   origin: ORIGIN,
@@ -69,6 +71,7 @@ export function renderForm(options: Options = {}, tab: SettingsTab = "generate")
     setDistanceInput: vi.fn(),
     setMaxRoutesInput: vi.fn(),
     setDistanceTargeted: vi.fn(),
+    setCostPreference: vi.fn(),
     setLoop: vi.fn(),
     removeWaypoint: vi.fn(),
     reorderPoints: vi.fn(),

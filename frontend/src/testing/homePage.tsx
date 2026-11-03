@@ -8,6 +8,7 @@ import { expect, onTestFinished, vi } from "vitest";
 import Home from "@/app/page";
 import { CLIENT_TUNING_IDS } from "@/lib/axisCatalog";
 import { onBackend, onSameOrigin, serveAxisCatalog } from "@/testing/backendServer";
+import { serveCostAxisCatalog } from "@/testing/costAxes";
 import {
   catalogResponse,
   dedicatedEntry,
@@ -95,6 +96,7 @@ export function serveHome() {
   installGeolocation(HERE);
   jobs = serveGenerationJobs();
   serveAxisCatalog(CATALOG);
+  serveCostAxisCatalog();
   onSameOrigin("GET", "/api/jma-tile/*", () => Response.json([]));
   onBackend("GET", "/api/jma-tile-index", () => Response.json({ available: false, coverage: null, elements: {} }));
   onBackend("GET", "/api/weather/amedas", () => Response.json(OBSERVATION));

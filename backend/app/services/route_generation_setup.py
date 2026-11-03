@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import assert_never
 
+from app.domain.cost_preference import CostPreference
 from app.domain.road_avoidance import AvoidanceLevel, resolve_road_avoidance
 from app.domain.road_classes import current_road_classes
 from app.domain.route import Coordinates, RouteCandidate
@@ -29,9 +30,8 @@ from app.services.weather_service import WeatherService
 class _AppliedConditions:
     """実際に適用された評価条件。レスポンスの条件エコーにもそのまま使う。"""
 
-    route_preference: RoutePreference
-    # 主観的割増と時間の換算レート（P）。
-    penalty_strength: float
+    # 利用者のつまみと軸ごとの倍率（今の費用の軸を全部書いた形）。
+    cost_preference: CostPreference
     # 仮定巡航速度（km/h）。通過予定時刻・到達予想時刻・所要時間の算出に使う。
     assumed_speed_kmh: float
     # 避け方を選べる行（`<分け方>.<区分>`）→段。今の区分の行を全部持つ。
@@ -57,16 +57,18 @@ def assemble_route_generation_setup(
     レスポンスのconditionsへも同じ値をエコーする（画面が見る値と探索が使う値を分けない）。
     """
     applied = _AppliedConditions(
-        route_preference=requested.preference_override or RoutePreference(),
-        penalty_strength=tuning_value("evaluation.penalty_strength"),
+        cost_preference=requested.cost_preference.resolved(),
         assumed_speed_kmh=requested.assumed_speed_kmh,
         road_avoidance=resolve_road_avoidance(requested.road_avoidance, current_road_classes()),
     )
     engine = RoadGraphEngine(
         graph_service,
         weather_service,
-        route_preference=applied.route_preference,
-        penalty_strength=applied.penalty_strength,
+        # 軸の点数の割増の式（費用の軸の定義が表に無い間）は、軸の既定の重みで探す。
+        route_preference=RoutePreference(),
+        # つまみは標準的な人の強さ（較正値）に掛ける比。
+        penalty_strength=applied.cost_preference.strength * tuning_value("evaluation.penalty_strength"),
+        cost_multipliers=applied.cost_preference.multipliers,
         road_avoidance=applied.road_avoidance,
         assumed_speed_kmh=applied.assumed_speed_kmh,
     )

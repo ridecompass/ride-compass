@@ -206,6 +206,7 @@ class RoadGraphEngine:
         *,
         route_preference: RoutePreference,
         penalty_strength: float,
+        cost_multipliers: Mapping[str, float],
         road_avoidance: Mapping[str, AvoidanceLevel],
         assumed_speed_kmh: float,
     ):
@@ -215,8 +216,11 @@ class RoadGraphEngine:
         self._assumed_speed_kmh = assumed_speed_kmh
         self._weather_service = weather_service
         self._route_preference = route_preference
-        # コスト式`所要時間 × (1 + P × difficulty/100)`のP＝「主観 vs 時間」の換算レート。
+        # 代償の強さ（利用者のつまみ × 較正値）。費目の帳簿の式のつまみで、軸の点数の割増の式
+        # `所要時間 × (1 + P × difficulty/100)`のP。
         self._penalty_strength = penalty_strength
+        # 費目の帳簿の式の、費用の軸ごとの利用者の倍率。
+        self._cost_multipliers = cost_multipliers
         # 道のレイヤの行→避け方の段。
         self._road_avoidance = road_avoidance
         # 「なるべく避ける」区間の費用の倍率。較正値のため、組み立てた時点の値で1回の生成を通す。
@@ -278,9 +282,10 @@ class RoadGraphEngine:
         learned_detour_ratio = detour_ratio_cache.get_detour_ratio(tile_set)
 
         # 費目の帳簿の式（費用の軸の定義が表にあるときだけ。無ければ軸の点数の割増の式）——切り替えは、本番の表へ費用の軸の
-        # 定義を入れることで起きる。つまみは割増の強さの較正値、倍率はどの軸も標準の1。
+        # 定義を入れることで起きる。
         cost_axes = self._cost_axes
-        ledger = None if cost_axes is None else (cost_axes, current_ledger_parameters(self._penalty_strength, {}))
+        ledger = None if cost_axes is None else (
+            cost_axes, current_ledger_parameters(self._penalty_strength, self._cost_multipliers))
 
         def compose_outbound() -> tuple[RoadAvoidanceMasks, LegCostComposer, LegCostArrays]:
             search_masks = compute_search_exclusion(score_matrix, self._road_avoidance)

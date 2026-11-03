@@ -37,6 +37,7 @@ from app.config import settings
 from app.infrastructure.axis_definition_repository import AxisDefinitionRepository
 from app.infrastructure.database import get_route_generation_session_factory, get_session_factory
 from app.services.definitions_loading import refresh_definitions
+from app.domain.cost_preference import CostPreference
 from app.domain.route import Coordinates
 from app.domain.time_zone import JST
 from app.domain.route_request import ASSUMED_SPEED_KMH
@@ -149,7 +150,7 @@ async def main() -> int:
         await refresh_definitions(session, AxisDefinitionRepository(session))
     # 評価条件を省いた生成の要求と、画面の既定の除外・避け方で組む。
     async with get_route_generation_setup_opener(get_route_generation_session_factory())(RequestedConditions(
-        preference_override=None, road_avoidance={}, assumed_speed_kmh=ASSUMED_SPEED_KMH,
+        cost_preference=CostPreference(), road_avoidance={}, assumed_speed_kmh=ASSUMED_SPEED_KMH,
     )) as setup:
         generator = setup.generator
         for index in range(runs):

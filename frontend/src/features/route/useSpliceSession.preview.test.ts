@@ -54,7 +54,7 @@ describe("差分を見る", () => {
       longitude: BASIS.origin.longitude,
       max_routes: BASIS.maxRoutes,
       assumed_speed_kmh: BASIS.assumedSpeedKmh,
-      route_preference: BASIS.routePreference,
+      cost_preference: BASIS.costPreference,
       destination: { ...BASIS.destination },
       spliced_edge_ids: VIA_Q.edge_ids,
     });

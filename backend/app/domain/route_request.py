@@ -11,9 +11,9 @@ from typing import Annotated
 from pydantic import Field
 from pydantic_core import PydanticCustomError
 
+from app.domain.cost_preference import CostPreference
 from app.domain.road_avoidance import AvoidanceLevel
 from app.domain.route import Coordinates
-from app.domain.route_preference import RoutePreference
 
 # ルート生成距離の上限（km）。上限が無いと探索の範囲が際限なく広がり、道路網の読み込みが
 # 長時間止まりうる。30km規模までの検証実績に余裕を見た値。経由地・目的地は出発地からこの
@@ -123,7 +123,7 @@ class RequestedConditions:
     """要求が指定した評価条件。Noneは省略で、既定はエンジンを組む側（`services/route_generation_setup.py:
     assemble_route_generation_setup`）が決める。"""
 
-    preference_override: RoutePreference | None
+    cost_preference: CostPreference
     # 避け方を選べる行→段（`domain/road_avoidance.py: resolve_road_avoidance`が今の行へ揃える）。
     road_avoidance: Mapping[str, AvoidanceLevel]
     assumed_speed_kmh: float

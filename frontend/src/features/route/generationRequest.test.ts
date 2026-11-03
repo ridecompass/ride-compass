@@ -1,9 +1,9 @@
 // @vitest-environment node
 /**
  * `features/route/generationRequest.ts`——生成の入力から、backendへ送る値と「生成条件が変わったか」の比較キーを作る。
- * - `buildGenerateRequest`: 決まった項目は常に送り、目標距離・重み・経由地・目的地は値があるときだけ送る
+ * - `buildGenerateRequest`: 決まった項目（つまみと倍率を含む）は常に送り、目標距離・経由地・目的地は値があるときだけ送る
  * - `generationConditionsKey`: 送る値のうち、利用者が選んでいない出発時刻を除いたものが同じなら同じキー。
- *   重み・除外の項目の並びは比べない
+ *   倍率・除外の項目の並びは比べない
  *
  * ここで見ないもの:
  * - 画面の状態から入力を組み立てること・キーの違いを印にすること → `useRouteGeneration.test.ts`
@@ -22,26 +22,27 @@ const LOOP: GenerationInput = {
   assumedSpeedKmh: 22,
   startTime: START,
   roadAvoidance: { "layer.row_a": "avoid", "layer.row_b": "pass" },
-  routePreference: null,
+  costPreference: { strength: 1, multipliers: {} },
   waypoints: [],
   destination: null,
   startTimePinned: false,
 };
 
 describe("buildGenerateRequest", () => {
-  it("地点を置かなければ、出発地・目標距離・避け方・候補数・速度・出発時刻を送り、値の無い項目は載せない", () => {
+  it("地点を置かなければ、出発地・目標距離・避け方・つまみと倍率・候補数・速度・出発時刻を送り、値の無い項目は載せない", () => {
     expect(buildGenerateRequest(LOOP)).toEqual({
       latitude: 35.68,
       longitude: 139.77,
       distance_km: 40,
       road_avoidance: { "layer.row_a": "avoid", "layer.row_b": "pass" },
+      cost_preference: { strength: 1, multipliers: {} },
       max_routes: 3,
       assumed_speed_kmh: 22,
       start_time: "2026-10-04T01:30:00.000Z",
     });
   });
 
-  it("目標距離が無ければ距離を載せず、置いた経由地と目的地と、上書きした重みを送る", () => {
+  it("目標距離が無ければ距離を載せず、置いた経由地と目的地を送る", () => {
     const waypoints = [
       { latitude: 35.7, longitude: 139.8 },
       { latitude: 35.71, longitude: 139.81 },
@@ -51,12 +52,10 @@ describe("buildGenerateRequest", () => {
       distanceKm: null,
       waypoints,
       destination: { latitude: 35.75, longitude: 139.85 },
-      routePreference: { wind: 0.4, slope: 0.6 },
     });
     expect(request).not.toHaveProperty("distance_km");
     expect(request.waypoints).toEqual(waypoints);
     expect(request.destination).toEqual({ latitude: 35.75, longitude: 139.85 });
-    expect(request.route_preference).toEqual({ wind: 0.4, slope: 0.6 });
   });
 });
 
@@ -73,13 +72,13 @@ describe("generationConditionsKey", () => {
     expect(key({ startTime: later, startTimePinned: true })).not.toBe(key({ startTimePinned: true }));
   });
 
-  it("避け方・重みの項目の並びが違うだけなら、キーは変わらない", () => {
+  it("避け方・倍率の項目の並びが違うだけなら、キーは変わらない", () => {
     expect(
       key({
         roadAvoidance: { "layer.row_b": "pass", "layer.row_a": "avoid" },
-        routePreference: { slope: 0.6, wind: 0.4 },
+        costPreference: { strength: 1, multipliers: { vibration: 2, ascent: 0.5 } },
       }),
-    ).toBe(key({ routePreference: { wind: 0.4, slope: 0.6 } }));
+    ).toBe(key({ costPreference: { strength: 1, multipliers: { ascent: 0.5, vibration: 2 } } }));
   });
 
   it("経由地の順番が違えば、キーが変わる", () => {

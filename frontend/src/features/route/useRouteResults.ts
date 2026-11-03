@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo, useRef, useState } from "react";
 
-import type { RouteCandidate, RoutePreferenceWeights, SelectedRouteSegment } from "@/types/route";
+import type { RouteCandidate, SelectedRouteSegment } from "@/types/route";
 
 const NO_SELECTION = { routeId: null, reused: false };
 
@@ -45,23 +45,17 @@ export function useRouteResults() {
     () => ({ outside: segmentOutsideMap, onShow: () => setSegmentFocus({}) }),
     [segmentOutsideMap],
   );
-  // 生成に使われた重み（利用者の重みは生成後も変わりうる）。
-  const [usedWeights, setUsedWeights] = useState<RoutePreferenceWeights | null>(null);
 
   /** 生成の結果で一覧を入れ替える。最初に選ぶのは先頭（最速の1本か、最も早く着く候補）。 */
-  const replaceWithGenerated = useCallback(
-    (generated: RouteCandidate[], routePreference: RoutePreferenceWeights | null) => {
-      setGenerated(generated);
-      setEdits([]);
-      nextEditNumber.current = 1;
-      setSelection({ routeId: generated[0]?.id ?? null, reused: false });
-      setRouteFocus({});
-      // 候補が入れ替わると、押していた区間も意味を失う。
-      setSelectedRouteSegment(null);
-      setUsedWeights(routePreference);
-    },
-    [],
-  );
+  const replaceWithGenerated = useCallback((generated: RouteCandidate[]) => {
+    setGenerated(generated);
+    setEdits([]);
+    nextEditNumber.current = 1;
+    setSelection({ routeId: generated[0]?.id ?? null, reused: false });
+    setRouteFocus({});
+    // 候補が入れ替わると、押していた区間も意味を失う。
+    setSelectedRouteSegment(null);
+  }, []);
 
   // 選び直すと、押していた区間は外す。地図は動かさない（収めるのは頼む操作が`focusRoute`で頼む）。
   const select = useCallback((routeId: string, reused: boolean) => {
@@ -92,7 +86,7 @@ export function useRouteResults() {
   );
 
   /** 候補・選択・使われた重みを消す。 */
-  const clear = useCallback(() => replaceWithGenerated([], null), [replaceWithGenerated]);
+  const clear = useCallback(() => replaceWithGenerated([]), [replaceWithGenerated]);
 
   /** ルートを選ぶ（候補のカード・地図の候補の線）。地図は動かさない。 */
   const selectRoute = useCallback((routeId: string) => select(routeId, false), [select]);
@@ -133,7 +127,6 @@ export function useRouteResults() {
     setSegmentOutsideMap,
     /** 区間の詳しくの「区間を地図で見る」へ渡す値。 */
     segmentOnMap,
-    usedWeights,
     replaceWithGenerated,
     addEdit,
     clear,

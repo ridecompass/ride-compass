@@ -56,7 +56,6 @@ export function resultsOf(
     segmentFocus: null,
     setSegmentOutsideMap: vi.fn(),
     segmentOnMap: { outside: false, onShow: vi.fn() },
-    usedWeights: null,
     replaceWithGenerated: vi.fn(),
     addEdit: vi.fn(),
     clear: vi.fn(),
@@ -74,7 +73,7 @@ export function generationOf(overrides: Partial<Generation> = {}): Generation {
     running: false,
     progressLabel: undefined,
     conditionsDirty: false,
-    weightsNotApplied: false,
+    multipliersNotApplied: false,
     destinationCorrected: false,
     ...overrides,
   };

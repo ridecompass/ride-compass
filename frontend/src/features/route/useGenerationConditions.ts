@@ -2,11 +2,16 @@
 
 import { useCallback, useMemo, useState } from "react";
 
-import { useAxisCatalog } from "@/hooks/useAxisCatalog";
+import { useCostAxisCatalog } from "@/hooks/useCostAxisCatalog";
 import { samePosition } from "@/lib/geoDistance";
 import { useStoredBooleanState, useStoredJsonState, useStoredState } from "@/hooks/useStoredState";
 import { readRoadAvoidance } from "@/features/route/roadAvoidance";
-import { alignRoutePreference, routePreferenceToSend } from "@/features/route/routePreferenceSync";
+import {
+  STANDARD_COST_PREFERENCE,
+  costPreferenceToSend,
+  multipliersNotSent,
+  readCostPreference,
+} from "@/features/route/costPreference";
 import {
   acceptedDistanceInput,
   acceptedMaxRoutesInput,
@@ -14,16 +19,15 @@ import {
 } from "@/features/route/savedConditions";
 import type {
   Coordinates,
+  CostPreference,
   PinRole,
   PlaceCandidate,
   PointTarget,
   RoadAvoidanceOverride,
-  RoutePreferenceWeights,
 } from "@/types/route";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 
-const WEIGHT_OVERRIDE_ENABLED_STORAGE_KEY = "ridecompass:weight-override-enabled";
-const ROUTE_PREFERENCE_STORAGE_KEY = "ridecompass:route-preference";
+const COST_PREFERENCE_STORAGE_KEY = "ridecompass:cost-preference";
 const ROAD_AVOIDANCE_STORAGE_KEY = "ridecompass:road-avoidance";
 const NO_ROAD_AVOIDANCE: RoadAvoidanceOverride = {};
 
@@ -57,11 +61,11 @@ interface GenerationConditionsInputs {
 }
 
 /**
- * 生成の条件（「ルート設定」の入力）: 周回か・全長の目標を決めるか・距離・候補数・地点（出発地以外）・重み・除外・避け方と、地図のタップで
+ * 生成の条件（「ルート設定」の入力）: 周回か・全長の目標を決めるか・距離・候補数・地点（出発地以外）・つまみと倍率・避け方と、地図のタップで
  * 置く地点の選びと、保存した条件での入れ替え。保存する値は、読むときに今の画面が受け付ける範囲・今の項目へ揃える。
  */
 export function useGenerationConditions({ onOriginPlace }: GenerationConditionsInputs) {
-  const axisCatalog = useAxisCatalog();
+  const costAxisCatalog = useCostAxisCatalog();
 
   // 経由地（通る順）。
   const [waypoints, setWaypoints] = useState<Coordinates[]>([]);
@@ -202,31 +206,18 @@ export function useGenerationConditions({ onOriginPlace }: GenerationConditionsI
     },
   );
 
-  // 重みを上書きして送るか。OFFの間は重みを送らず、backendの既定で探す。重みを操作するとONになる。
-  const [weightOverrideEnabled, setWeightOverrideEnabled] = useStoredBooleanState(
-    WEIGHT_OVERRIDE_ENABLED_STORAGE_KEY,
-    false,
-  );
-  // 初期値は空。既定の重みは実行時の軸カタログが配り、下で揃えるときに補う（ビルド時の写しを初期値にすると、
-  // 軸の増減が次のデプロイまで届かない）。
-  const [storedRoutePreference, setRoutePreference] = useStoredJsonState<RoutePreferenceWeights>(
-    ROUTE_PREFERENCE_STORAGE_KEY,
-    {},
-  );
-  // 画面が読む重みは、軸カタログの公開軸へ揃えたこの値だけ（保存値は次に重みを動かしたときに揃った形で書かれる）。
-  // 上書きしていない間は保存した重みを読まず、送らない間に効く既定の重みにする（重みのタブが出す値と送る値を食い違わせない）。
-  const routePreference = useMemo(
-    () => alignRoutePreference(weightOverrideEnabled ? storedRoutePreference : {}, axisCatalog),
-    [weightOverrideEnabled, storedRoutePreference, axisCatalog],
+  // 代償の全体に掛けるつまみと、費用の軸ごとの倍率。いつも送る（標準のままでも、標準として送る）。消えた軸の倍率は
+  // 送るときに外す（`costPreferenceToSend`）。
+  const [costPreference, setCostPreference] = useStoredJsonState<CostPreference>(
+    COST_PREFERENCE_STORAGE_KEY,
+    STANDARD_COST_PREFERENCE,
+    readCostPreference,
   );
   // 道の区分の行ごとに選んだ避け方。選んだ段だけを覚え、常に送る。
-  const [roadAvoidance, setRoadAvoidance] = useStoredState<RoadAvoidanceOverride>(
+  const [roadAvoidance, setRoadAvoidance] = useStoredJsonState<RoadAvoidanceOverride>(
     ROAD_AVOIDANCE_STORAGE_KEY,
     NO_ROAD_AVOIDANCE,
-    {
-      serialize: JSON.stringify,
-      deserialize: (raw) => readRoadAvoidance(JSON.parse(raw)),
-    },
+    readRoadAvoidance,
   );
 
   // いまの条件を、保存・呼び出しと同じ形1つで返す（保存・生成の入力・保存の説明はこれを読む）。
@@ -238,7 +229,7 @@ export function useGenerationConditions({ onOriginPlace }: GenerationConditionsI
       maxRoutes: maxRoutesInput,
       waypoints,
       destination: placedDestination,
-      routePreference: weightOverrideEnabled ? routePreference : null,
+      costPreference,
       roadAvoidance,
     }),
     [
@@ -248,8 +239,7 @@ export function useGenerationConditions({ onOriginPlace }: GenerationConditionsI
       maxRoutesInput,
       waypoints,
       placedDestination,
-      weightOverrideEnabled,
-      routePreference,
+      costPreference,
       roadAvoidance,
     ],
   );
@@ -266,25 +256,14 @@ export function useGenerationConditions({ onOriginPlace }: GenerationConditionsI
           maxRoutes: setMaxRoutesInput,
           waypoints: setWaypoints,
           destination: setDestination,
-          routePreference: (weights) => {
-            if (weights !== null) setRoutePreference(weights);
-            setWeightOverrideEnabled(weights !== null);
-          },
+          costPreference: setCostPreference,
           roadAvoidance: setRoadAvoidance,
         },
         saved,
       );
       setChosenPoint(null);
     },
-    [
-      setLoop,
-      setDistanceTargeted,
-      setDistanceInput,
-      setMaxRoutesInput,
-      setRoutePreference,
-      setWeightOverrideEnabled,
-      setRoadAvoidance,
-    ],
+    [setLoop, setDistanceTargeted, setDistanceInput, setMaxRoutesInput, setCostPreference, setRoadAvoidance],
   );
 
   return {
@@ -312,12 +291,12 @@ export function useGenerationConditions({ onOriginPlace }: GenerationConditionsI
     placeAtSelected,
     placeFound,
     foundAt,
-    weightOverrideEnabled,
-    setWeightOverrideEnabled,
-    routePreference,
-    setRoutePreference,
-    /** 生成リクエストと道の評価へ載せる重み（上書きしていない間・軸カタログが無い間はnull）。 */
-    routePreferenceToSend: routePreferenceToSend(routePreference, axisCatalog.loaded, weightOverrideEnabled),
+    costPreference,
+    setCostPreference,
+    /** 生成リクエストへ載せるつまみと倍率（今の費用の軸の倍率だけ。一覧が届いていない間は倍率を送らない）。 */
+    costPreferenceToSend: costPreferenceToSend(costPreference, costAxisCatalog),
+    /** 倍率を変えているのに、一覧が届かず送れないか。 */
+    multipliersNotSent: multipliersNotSent(costPreference, costAxisCatalog),
     roadAvoidance,
     setRoadAvoidance,
   };

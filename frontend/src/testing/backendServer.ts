@@ -22,7 +22,7 @@ export interface SentRequest {
 type Method = "GET" | "POST" | "PUT" | "DELETE";
 
 /** 応答を返す。網の失敗（応答が届かない）は`HttpResponse.error()`を返す。 */
-type Reply = (request: SentRequest) => Response | Promise<Response>;
+export type Reply = (request: SentRequest) => Response | Promise<Response>;
 
 const HANDLER = { GET: http.get, POST: http.post, PUT: http.put, DELETE: http.delete } as const;
 

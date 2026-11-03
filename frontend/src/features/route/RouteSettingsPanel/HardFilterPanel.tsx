@@ -10,7 +10,7 @@ import { cn } from "@/lib/cn";
 import type { RoadAvoidanceOverride, RoadAvoidanceView } from "@/types/route";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 
-// 「ルート設定」区分の「除外」タブ。道の区分の行ごとに「通る・なるべく避ける・通らない」を選び、
+// 「ルート設定」区分の「回避」タブ。道の区分の行ごとに「通る・なるべく避ける・通らない」を選び、
 // 自転車が通れない道の行は「通らない」に固定して同じ並びの先頭に出す。
 
 // 固定の行。backendがいつも経路から外す道で、名前と説明は生成物（route-generate-config.json）から受け取る。

@@ -117,7 +117,8 @@ export default function HomeMapPane({
         look={mapView.look}
         rideConditions={mapView.wayConditions}
         compassLinked={mapView.lensConditions.includes("bearing_deg")}
-        routePreference={conditions.routePreferenceToSend}
+        // 生成の要求は軸の重みを持たないので、区間インスペクタも既定の重みで見せる。
+        routePreference={null}
         selectedRouteSegment={results.selectedRouteSegment}
         routeFocus={results.routeFocus}
         onRouteSegmentSelect={results.selectSegment}

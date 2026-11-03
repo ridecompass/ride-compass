@@ -1,16 +1,17 @@
 // ルート生成（`features/route/useRouteGeneration.ts`）を、本物の`useGenerationConditions`と同じ描画で動かす足場
-// （呼び出し側と同じく、補正した目的地は条件へ書き戻る）。生成のジョブと軸カタログの応答は網の層で差し替える。
+// （呼び出し側と同じく、補正した目的地は条件へ書き戻る）。生成のジョブと費用の軸の一覧の応答は網の層で差し替える。
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { expect, vi } from "vitest";
 
 import { useGenerationConditions } from "@/features/route/useGenerationConditions";
 import { useRouteGeneration } from "@/features/route/useRouteGeneration";
 import { heldReplies, onBackend } from "@/testing/backendServer";
-import { TWO_AXIS_CATALOG } from "@/testing/catalogAxes";
+import { serveCostAxisCatalog, TWO_COST_AXES } from "@/testing/costAxes";
 import { serveGenerationJobs } from "@/testing/generationJobs";
 import { makeGenerationConditions, makeRouteCandidate } from "@/testing/routeFixtures";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 import type { Coordinates, GenerationConditions, RouteCandidate } from "@/types/route";
+import { STANDARD_COST_PREFERENCE } from "@/features/route/costPreference";
 
 export const ORIGIN: Coordinates = { latitude: 35.68, longitude: 139.76 };
 export const A: Coordinates = { latitude: 35.7, longitude: 139.8 };
@@ -68,8 +69,7 @@ export function used(overrides: Partial<GenerationConditions> = {}): GenerationC
     longitude: ORIGIN.longitude,
     distance_km: 30,
     distance_tolerance_km: 5,
-    route_preference: { axis_a: 0.5, axis_b: 0.5 },
-    penalty_strength: 1,
+    cost_preference: STANDARD_COST_PREFERENCE,
     max_routes: routeGenerateConfig.default_max_routes,
     start_time: T1.toISOString(),
     assumed_speed_kmh: 20,
@@ -78,11 +78,11 @@ export function used(overrides: Partial<GenerationConditions> = {}): GenerationC
   });
 }
 
-/** 生成のジョブと軸カタログの代役。軸カタログは`loadCatalog`を呼ぶまで届かない。 */
+/** 生成のジョブと費用の軸の一覧の代役。一覧は`loadCatalog`を呼ぶまで届かない。 */
 export function serveRouteGeneration() {
   const jobs = serveGenerationJobs();
   const catalog = heldReplies();
-  onBackend("GET", "/api/axis-catalog", catalog.reply);
+  serveCostAxisCatalog(catalog.reply);
   return {
     jobs,
     respond(routes: RouteCandidate[], conditions: GenerationConditions = used(), noCandidatesReason?: string) {
@@ -90,12 +90,10 @@ export function serveRouteGeneration() {
     },
     /** 最後に出された生成の要求の中身。 */
     sentRequest: () => jobs.submitted.at(-1)?.body,
-    /** 描画のときに投げた軸カタログの取得を届ける。 */
+    /** 描画のときに投げた費用の軸の一覧の取得を届ける（登坂・振動の2本）。 */
     async loadCatalog(rendered: RenderedGeneration) {
-      await act(() => catalog.answer(0, Response.json(TWO_AXIS_CATALOG)));
-      await waitFor(() =>
-        expect(rendered.result.current.conditions.routePreference).toEqual({ axis_a: 0.4, axis_b: 0.6 }),
-      );
+      await act(() => catalog.answer(0, Response.json(TWO_COST_AXES)));
+      await waitFor(() => expect(rendered.result.current.conditions.multipliersNotSent).toBe(false));
     },
   };
 }

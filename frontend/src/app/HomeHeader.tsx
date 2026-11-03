@@ -13,6 +13,7 @@ import { useWeatherConditions, type WarningRoute } from "@/features/conditions/u
 import RideBar from "@/features/ride/RideBar/RideBar";
 import type { RideRemaining } from "@/features/ride/rideRemaining";
 import { axisCatalogFetchFailure, useAxisCatalog } from "@/hooks/useAxisCatalog";
+import { costAxisCatalogFetchFailure, useCostAxisCatalog } from "@/hooks/useCostAxisCatalog";
 import { useDebugEnabled } from "@/hooks/useDebugLog";
 import type { Coordinates } from "@/types/route";
 import type { FetchFailure } from "@/types/fetchFailure";
@@ -60,13 +61,15 @@ export default function HomeHeader({
   const { amedas, amedasError, gridPointToday, gridPointTodayError, warningBadgeItems, warningFetchFailures } =
     useWeatherConditions(location, locationKnown, ridingAt, warningRoute);
   const axisCatalogFailure = axisCatalogFetchFailure(useAxisCatalog());
+  const costAxisCatalogFailure = costAxisCatalogFetchFailure(useCostAxisCatalog());
   const headerFetchFailures = useMemo(
     () => [
       ...(locationFailure ? [locationFailure] : []),
       ...warningFetchFailures,
       ...(axisCatalogFailure ? [axisCatalogFailure] : []),
+      ...(costAxisCatalogFailure ? [costAxisCatalogFailure] : []),
     ],
-    [locationFailure, warningFetchFailures, axisCatalogFailure],
+    [locationFailure, warningFetchFailures, axisCatalogFailure, costAxisCatalogFailure],
   );
 
   return (
