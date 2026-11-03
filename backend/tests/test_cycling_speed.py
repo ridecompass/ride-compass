@@ -245,6 +245,23 @@ def test_a_road_without_elevation_runs_the_slopes_of_the_whole_network():
     assert missing == pytest.approx(down + up)
 
 
+def test_riding_only_some_rows_gives_those_rows_of_riding_them_all():
+    """経路の行だけを解いた走り（ルートの代償の内訳が読む）は、全部を解いた走り（探索の費用が読む）のその行と同じ。違うと、
+    結果の内訳の和が並べ方の費用と合わない。行は重なってよく、標高の無い行（全体の分布で走る）も混ぜる。"""
+    mixed = GradeDistribution(np.array([-0.04, 0.02]), np.array([0.25, 0.75]))
+    model = SegmentSpeedModel(RIDER, road_profiles([0.0, 30.0], [], [12.0, 0.0, 6.0], distribution=mixed),
+                              np.array([600.0, 400.0, 800.0]), np.array([RIDER.crr, 0.012, RIDER.crr]),
+                              np.array([0.0, 1.5, 0.5]))
+    headwind, crosswind = np.array([2.0, -1.0, 4.0]), np.array([0.0, 3.0, 1.0])
+    rows = np.array([2, 0, 2])
+
+    whole = model.ride(headwind, crosswind, 1.0)
+    some = model.ride(headwind[rows], crosswind[rows], 1.0, rows)
+
+    for name in ("seconds", "gravity_extra_j", "air_extra_j", "rolling_extra_j", "inertia_extra_j"):
+        assert getattr(some, name).tolist() == getattr(whole, name)[rows].tolist(), name
+
+
 @pytest.mark.parametrize(
     ("grade", "limit"),
     [

@@ -500,7 +500,7 @@ class RoadGraphEngine:
            ため、最短実距離基準だと往路だけで目標の半分を超え距離フィルタで全滅する。
            行き来に来た道を戻るしかないNode（袋小路の奥。`domain/routing.py: nodes_reached_without_retracing`の外）は
            帯に入れない——帰りの罰は袋小路を通れるよう有限なので、そこで折り返す周回は来た道を戻る。
-        3. 帯の中心からのずれ・往路の難易度のパレート層の順に並べる（`rank_by_pareto_layers`）。
+        3. 帯の中心からのずれ・往路の1kmあたりの代償の秒のパレート層の順に並べる（`rank_by_pareto_layers`）。
         4. 上位から順に、既採用候補と往路の重複率が重なりの上限（`domain/route_search.py: corridor_overlap_ratios`）を
            超えるもの・最小の間隔（`domain/route_search.py: turnaround_separation`）より近いものを飛ばして`pool_size`件
            採る（同一コリドー上の隣接Nodeが上位を独占し似た周回が並ぶのを防ぐ）。
@@ -585,13 +585,13 @@ class RoadGraphEngine:
             detour_ratio_median = measured_detour_ratio(context, start_node, ring, ring_length)
             closeness_key = closeness_m[ring]
             ranking = rank_by_pareto_layers(
-                ring, closeness_key, tree.node_cost[ring], tree.node_seconds[ring], self._penalty_strength,
+                ring, closeness_key, tree.node_cost[ring], tree.node_seconds[ring], ring_length,
                 max_items=pool_size, max_examined=None, tie_by_distance=True,
             )
             order = ranking.order
             ranked = ring[order]
             ranked_list = ranked.tolist()
-            # 同点（層と丸めた難易度が等しい）候補はグループとして渡し、グループ内の試行順は
+            # 同点（層と刻んだ代償が等しい）候補はグループとして渡し、グループ内の試行順は
             # 「採用済み候補との方位角距離の最小値が最大」（最遠点貪欲法、方位は生成機構ではなく
             # 同点タイブレーク専用）で採用のたびに決め直す。グループ自体の順序（主キー）・
             # 同点でない候補間の順序は変えない。
@@ -675,7 +675,7 @@ class RoadGraphEngine:
 
     async def select_via_nodes(self, context: RoadGraphContext, fixed: FixedLegs, max_routes: int) -> list[TracedLoop]:
         """距離なしの仕上げの候補（`road_graph_via_routes.py: select_via_nodes`）。"""
-        return await road_graph_via_routes.select_via_nodes(context, fixed, max_routes, self._penalty_strength)
+        return await road_graph_via_routes.select_via_nodes(context, fixed, max_routes)
 
     async def select_fastest_route(self, context: RoadGraphContext, fixed: FixedLegs) -> TracedLoop | None:
         """所要時間が最短の基準線（`road_graph_via_routes.py: select_fastest_route`）。"""

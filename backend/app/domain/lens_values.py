@@ -2,7 +2,7 @@
 
 取込範囲全体の道の網（`domain/road_network.py: RoadNetwork`）の有向の区間を、路面タイルのフィーチャー（区間で塗るズームなら
 区間、道1本で塗るズームなら道の全区間。`domain/region.py: EDGE_UNIT_MIN_ZOOM`）と辿る向き（道の向き・逆向き）で束ね、
-区間ごとの値を足して1kmあたりにする。区間ごとの値は探索と同じ部品（`domain/leg_costs.py: travel_inputs`・`burden_km`、
+区間ごとの値を足して1kmあたりにする。区間ごとの値は探索と同じ部品（`domain/leg_costs.py: travel_inputs`・`burden_weights`、
 `domain/ledger_costs.py: LedgerCosts.penalty_by_axis`）で求める——レンズ・探索・ルートは同じ量を同じ所から読む。
 
 レンズはどれも1kmあたりの代償の秒で塗る: 軸ごとのレンズはその軸の分だけ、総合（`TOTAL_LENS_ID`）はその和。避け方の倍率は
@@ -26,7 +26,7 @@ from app.domain.graph import edge_feature_key
 from app.domain.cycling_speed import rolling_resistance_material_id
 from app.domain.gradient import ROAD_BEARING_LEAF, travel_direction_formula
 from app.domain.ledger_costs import LedgerCosts, LedgerParameters
-from app.domain.leg_costs import burden_km, travel_inputs
+from app.domain.leg_costs import burden_weights, travel_inputs
 from app.domain.region import EDGE_UNIT_MIN_ZOOM, tile_bounds_lonlat
 from app.domain.road_network import MaterialFills, RoadNetwork, rows_in_bbox
 from app.domain.strict_model import StrictModel
@@ -137,7 +137,9 @@ def lens_table(features: LensFeatures, materials: Mapping[str, MaterialColumn], 
     """`features.rows`の行の順の材料・長さ・断面・風の成分（向かい風・横風）から、レンズの値を求める。"""
     travel = travel_inputs(materials, distance_m, profiles, speed_kmh, fills)
     model = travel.model
-    ledger = LedgerCosts.for_model(axes, parameters, model, burden_km(axes, materials, fills, travel.distance_m))
+    distance_km = travel.distance_m / 1000.0
+    burden_km = {axis_id: per_km * distance_km for axis_id, per_km in burden_weights(axes, materials, fills).items()}
+    ledger = LedgerCosts.for_model(axes, parameters, model, burden_km)
     penalties = ledger.penalty_by_axis(model.ride(*wind_ms, parameters.effort_weight_exponent))
     km = _summed_by_direction(features, travel.distance_m) / 1000.0
     with np.errstate(invalid="ignore", divide="ignore"):

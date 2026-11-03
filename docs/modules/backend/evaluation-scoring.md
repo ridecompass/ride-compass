@@ -156,11 +156,7 @@ way粒度の経路も**区間向けと同じ式**を使う。`way_from_clause`�
   観測の履歴が無ければ空で、その材料を読む軸はその生成で「データなし」になる。
 - **`compose_costs_from_axis_matrix`**: 軸別スコア配列群と重み辞書から合成difficulty
   （`difficulty.py: composite_from_sums`）→割増の倍率と足す秒（`AxisComposition`。費用は所要時間×倍率＋足す秒で、
-  ビンの仕上げのJIT（`domain/leg_costs.py: _bin_costs`）が求める）まで配列演算で行う。costからdifficultyへの
-  逆算（折返し点・経由Nodeの並べ替えが使う）は同じファイルの`difficulty_from_cost`が持つ。密度の軸の分は、逆算では
-  足した秒を所要時間で割った値として入る——回数 ÷ (所要時間 × 想定速度)の点数で、所要時間が想定速度で走る時間に
-  近いほど、範囲の平均の密度に傾きを掛けた点数（頭打ちの無い直線）に近い。停止の待ちや上り坂で所要時間が延びた
-  範囲ほど、平均の密度の点数より小さく入る。0次フィルタによる除外
+  ビンの仕上げのJIT（`domain/leg_costs.py: _bin_costs`）が求める）まで配列演算で行う。0次フィルタによる除外
   （`compute_search_exclusion`が0次フィルタ・`road_avoidance`を反映して
   別途判定）はここには含まれない。重み付き軸がすべて欠損のEdgeはcost算出だけbbox内平均
   difficultyを代入する（表示用の戻り値には影響しない、詳細は後述「探索コストの既定経路」節）。
@@ -261,9 +257,14 @@ bbox全体ぶんのコストをリクエストにつき1回だけnumpyで合成�
   求める。曲がる所の費用も同じ換算で組み（`LegCostComposer.transition_costs`）、探索へは`RoadGraphContext.transition_cost`
   で渡る。エンジン（`services/road_graph_engine.py`）は、費用の軸の定義が表にあるときだけ`ledger`を渡す。
 - **組み立ての部品**: 走行の模型の入力（転がり抵抗・止まる出来事の待ちと漕ぎ出し・断面。`domain/leg_costs.py: travel_inputs`）と
-  道の負担のkm（`domain/leg_costs.py: burden_km`）は、材料の列（材料id→区間の列）から組む関数で、探索の合成と地図のレンズ
+  道の負担の1kmあたりの重さ（`domain/leg_costs.py: burden_weights`）は、材料の列（材料id→区間の列）から組む関数で、探索の合成と地図のレンズ
   （[動的材料・フィーチャー値配信](dynamic-way-values.md)「費用の軸のレンズ」）が同じものを呼ぶ。代償の秒は軸ごとの内訳
   （`domain/ledger_costs.py: LedgerCosts.penalty_by_axis`）を持ち、その和が区間の代償の秒（`LedgerCosts.penalty_seconds`）になる。
+- **ルートの内訳**: 経路の区間の代償は、探索がその区間に使ったビンの風で、経路上の行だけを解き直して求める
+  （`domain/leg_costs.py: LegCostComposer.values_at_rows`が`domain/ledger_costs.py: LedgerCosts.row_seconds`を呼び、走行の模型は
+  `SegmentSpeedModel.ride`に行を渡すとその行の点の間だけを解く）。点の間ごとの計算は互いに依らないので、全部を解いた探索の
+  値と同じになり、所要時間と内訳の和が探索の費用に合う。回避指定の秒は、避け方の倍率の1を越えた分 ×（区間の所要時間＋代償）。
+  曲がる所の漕ぎ出しの代償は、曲がった先の区間の慣性の費目の軸へ足す（`services/road_graph_candidates.py`）。
 - **欠けの埋め方**: 停止要因の密度と、道の負担の軸の材料の欠けは、`domain/road_network.py: material_fills`の分布で埋める
   （数値の材料の平均は`RoadNetwork.numeric_means`で道路網と同じ寿命で1回だけ、区分の材料の割合は道の負担の軸が読む分だけ
   生成ごとに求める）。停止要因の密度は所要時間（待ち）と体力（漕ぎ出し）の両方に同じ値を使う。
@@ -275,7 +276,7 @@ bbox全体ぶんのコストをリクエストにつき1回だけnumpyで合成�
 
 | 指標 | 定義 | 性質 |
 |---|---|---|
-| `overall_difficulty.average` | 距離加重平均（`route.py: merge_difficulty_values`。密度の軸の分は下の「密度の軸」） | 距離で正規化されるため、遠回りして難所を避けるほど下がる。候補の並び順はこの昇順 |
+| `overall_difficulty.average` | 距離加重平均（`route.py: merge_difficulty_values`。密度の軸の分は下の「密度の軸」） | 距離で正規化されるため、遠回りして難所を避けるほど下がる |
 | `overall_difficulty.load` | 平均×距離合計（`route.py: merge_route_values`） | 距離が伸びればそのまま増える。「走り切るまでのしんどさ」に近く、遠回りが不利に出る |
 
 平均と総量は同じ区間から一緒に決まる（平均が出なければ総量も出ない）ため、1つの任意の項目
@@ -300,7 +301,7 @@ bbox全体ぶんのコストをリクエストにつき1回だけnumpyで合成�
 - 畳み方（`route.py: merge_difficulty_values`）: 得点は横軸の値の距離平均を折れ線に通した値、寄与度はその得点×重みの割合の
   距離平均、合成の難しさは区間の値の距離加重平均の、その軸の寄与度の項だけを作り直した寄与度へ
   差し替えた値（寄与度の和と合成の難しさの関係を保つ）。ビンは区間から、候補はビンからもう一度同じ畳み方で作り、
-  ビンも中の区間の平均を内部の値として持つ。順回り・逆回りの比べ（`route_search.py: prefers_reverse`）も同じ畳み方でビンから候補の値を作る（`route.py: route_difficulty`）。
+  ビンも中の区間の平均を内部の値として持つ。
 - 探索の費用（`evaluation.py: compose_costs_from_axis_matrix`）: 密度の軸の得点は割増の倍率から外し、代わりに
   `P × 重みの割合 × 傾き/100 × 区間の回数 × 3600/想定速度`の秒を足す（回数は横軸の値×区間の長さ。`evaluation.py: density_costs`）。
   想定速度で走る時間に得点の割増を掛けたものに当たり、回数だけで決まる——区間の端の場所は端を持つ区間が0.5ずつ分け持つので

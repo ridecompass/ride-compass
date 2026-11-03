@@ -123,11 +123,10 @@ def _prepare(network: RoadNetwork, z: int, x: int, y: int, axes: CostAxisDefinit
              ) -> tuple[LensFeatures, EdgeMaterialColumns, MaterialFills, tuple[np.ndarray, np.ndarray]] | None:
     """風に依らない入力（フィーチャーと行・材料・欠けを埋める平均・一番急な登りと下り）。道路網の全区間を走査し、初回は
     取込範囲全体の区分の列と平均も求めるので、イベントループの外で呼ぶ。"""
-    features = tile_features(network, z, x, y)
-    if only is not None:
-        features = features.only(only)
-        if features is None:
-            return None
+    tile = tile_features(network, z, x, y)
+    features = tile if only is None else tile.only(only)
+    if features is None:
+        return None
     materials = material_arrays_of(slice_rows(network, network_classes(network), features.rows), {})
     steepest = (network.steepest_gain_percent[features.rows], network.steepest_loss_percent[features.rows])
     return features, materials, network_fills(network, burden_material_ids(axes)), steepest

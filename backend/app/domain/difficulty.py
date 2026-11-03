@@ -15,11 +15,9 @@ import numpy as np
 from app.domain.strict_model import StrictModel
 
 #: 難易度（0〜100）を区別する桁。これより細かい差は区別しない——軸の得点・合成・内訳・ルートの平均を
-#: この桁へ丸め、候補を並べるときもこの桁で同点とみなす。
+#: この桁へ丸める。
 DIFFICULTY_DECIMALS = 1
 _DIFFICULTY_SCALE = 10**DIFFICULTY_DECIMALS
-#: 難易度の区別できる最小の差。
-DIFFICULTY_QUANTUM = 1.0 / _DIFFICULTY_SCALE
 
 
 def round_difficulty(value: float) -> float:

@@ -6,8 +6,6 @@ from dataclasses import dataclass
 import numpy as np
 
 from app.domain.cycling_speed import top_speed_kmh
-from app.domain.difficulty import DIFFICULTY_QUANTUM, round_difficulty_array
-from app.domain.evaluation import difficulty_from_cost
 from app.domain.loop_routing import TracedLoop
 from app.domain.geo import (
     KM_PER_DEGREE_LATITUDE,
@@ -16,9 +14,8 @@ from app.domain.geo import (
     haversine_distance_km_array,
     km_per_degree_longitude,
 )
-from app.domain.leg_costs import LegCostArrays
-from app.domain.route import RouteDraft, SegmentDifficulty, route_difficulty
-from app.domain.turn_structure import TurnExpandedStructure
+from app.domain.leg_costs import LegCostArrays, LegCostComposer
+from app.domain.route import RouteDraft
 from app.domain.route_diversity import pareto_layer_index
 from app.domain.routing import time_bin_of
 from app.domain.tuning import tuning_value
@@ -161,25 +158,41 @@ def retrace_penalized(costs: np.ndarray) -> np.ndarray:
     return costs * tuning_value("search.retrace_penalty_multiplier")
 
 
+#: 1kmあたりの代償の秒（`penalty_seconds_per_km`）の、区別する最小の差。並べ方とパレート層は、この刻みで同点とみなす。
+PENALTY_PER_KM_QUANTUM = 0.1
+
+
+def penalty_key(per_km: np.ndarray) -> np.ndarray:
+    """1kmあたりの代償の秒を、`PENALTY_PER_KM_QUANTUM`の刻みの数にしたもの（同点の比べに使う）。"""
+    return np.rint(np.asarray(per_km, dtype=float) / PENALTY_PER_KM_QUANTUM).astype(np.int64)
+
+
+def penalty_seconds_per_km(cost: np.ndarray | float, seconds: np.ndarray | float, length_m: np.ndarray | float) -> np.ndarray:
+    """費用から所要時間を引いた代償の秒を、1kmあたりにしたもの（数を渡すと0次元の配列）。求まらない要素（長さ0・到達不能）は0。"""
+    with np.errstate(invalid="ignore", divide="ignore"):
+        per_km = (np.asarray(cost, dtype=float) - np.asarray(seconds, dtype=float)) / (np.asarray(length_m, dtype=float) / 1000.0)
+    return np.where(np.isfinite(per_km), per_km, 0.0)
+
+
 @dataclass(frozen=True)
 class _CandidateRanking:
-    """`rank_by_pareto_layers`の結果。`layer_key`・`difficulty_key`は渡した候補の位置ごと。"""
+    """`rank_by_pareto_layers`の結果。`layer_key`・`penalty_key`は渡した候補の位置ごと。"""
 
     #: 渡した候補の位置を、並べた順に`max_examined`件まで（Noneなら全件）。
     order: np.ndarray
     #: パレート層の番号（層に入らなかった候補は最大値で最後尾）。
     layer_key: np.ndarray
-    #: 難易度を`DIFFICULTY_DECIMALS`の桁へ丸めた値。
-    difficulty_key: np.ndarray
+    #: 1kmあたりの代償の秒を`PENALTY_PER_KM_QUANTUM`の刻みの数にした値。
+    penalty_key: np.ndarray
 
     def tie_groups(self, ids: np.ndarray) -> list[list[int]]:
-        """並べた候補（`ids[order]`）を、層と丸めた難易度がともに等しい連続の組に分ける。
+        """並べた候補（`ids[order]`）を、層と刻んだ代償がともに等しい連続の組に分ける。
 
-        層を見るのは、非劣解群の末尾と劣解群の先頭が同じ難易度を持つとき、両者を同点として
+        層を見るのは、非劣解群の末尾と劣解群の先頭が同じ代償を持つとき、両者を同点として
         混ぜると劣解が非劣解より先に試されうるため。
         """
         ranked = ids[self.order]
-        group_key = np.stack([self.layer_key[self.order].astype(np.int64), self.difficulty_key[self.order]])
+        group_key = np.stack([self.layer_key[self.order].astype(np.int64), self.penalty_key[self.order]])
         return [
             group.tolist()
             for group in np.split(ranked, np.flatnonzero(np.any(np.diff(group_key, axis=1) != 0, axis=0)) + 1)
@@ -191,30 +204,30 @@ def rank_by_pareto_layers(
     distance_key: np.ndarray,
     cost: np.ndarray,
     seconds: np.ndarray,
-    penalty_strength: float,
+    length_m: np.ndarray,
     *,
     max_items: int,
     max_examined: int | None,
     tie_by_distance: bool,
 ) -> _CandidateRanking:
-    """候補（折返し点・経由Node）を「距離の鍵」「難易度」の2指標で非優越ソートし、パレート層の順に並べる。
+    """候補（折返し点・経由Node）を「距離の鍵」「1kmあたりの代償の秒」（`penalty_seconds_per_km`。`length_m`はそこまでの
+    道のり）の2指標で非優越ソートし、パレート層の順に並べる。
 
-    難易度は`(cost/seconds - 1)/P`（コスト式の逆算）。難易度だけで並べると、難易度が距離加重
-    「平均」であるために遠回りして難所を避けた候補が常に上位を占めるため、層の順を主キーにする。
-    第1層だけでは2〜3件にしかならないので、`max_items`件が埋まるまで層を重ねる
-    （`pareto_layer_index`）。層の中は丸めた難易度の昇順、`tie_by_distance`なら次に距離の鍵の
+    代償だけで並べると、1kmあたりの「平均」であるために遠回りして難所を避けた候補が常に上位を占めるため、層の順を
+    主キーにする。第1層だけでは2〜3件にしかならないので、`max_items`件が埋まるまで層を重ねる
+    （`pareto_layer_index`）。層の中は刻んだ代償の昇順、`tie_by_distance`なら次に距離の鍵の
     昇順、最後に`ids`の昇順で決定的にする。打ち切りは**並べてから**行う——番号順で先に切ると、
     良い候補が後ろの番号に居るだけで検討から外れる。
     """
-    difficulty = difficulty_from_cost(cost, seconds, penalty_strength)
-    difficulty_key = round_difficulty_array(difficulty)
+    penalty = penalty_seconds_per_km(cost, seconds, length_m)
+    keyed = penalty_key(penalty)
     layer = pareto_layer_index(
-        distance_key, difficulty,
-        quantum_a=tuning_value("search.pareto_distance_quantum_m"), quantum_b=DIFFICULTY_QUANTUM, max_items=max_items,
+        distance_key, penalty,
+        quantum_a=tuning_value("search.pareto_distance_quantum_m"), quantum_b=PENALTY_PER_KM_QUANTUM, max_items=max_items,
     )
     layer_key = np.where(layer >= 0, layer, np.iinfo(np.int32).max)
-    keys = (ids, distance_key, difficulty_key, layer_key) if tie_by_distance else (ids, difficulty_key, layer_key)
-    return _CandidateRanking(np.lexsort(keys)[:max_examined], layer_key, difficulty_key)
+    keys = (ids, distance_key, keyed, layer_key) if tie_by_distance else (ids, keyed, layer_key)
+    return _CandidateRanking(np.lexsort(keys)[:max_examined], layer_key, keyed)
 
 
 def order_by_bearing_spread(
@@ -338,11 +351,23 @@ class EdgePassage:
     elapsed_seconds: float
     # この区間を走る秒（探索と同じビンの値。有限でなければ巡航速度で走ったものとして数える）。
     seconds: float
+    # この区間の費用（探索と同じビンの値。有限でなければ走る秒）。
+    cost: float
 
 
-def turn_waits_along(structure: TurnExpandedStructure, entries: Sequence[int | None]) -> list[float]:
-    """経路に沿った遷移ごとのターンの待ち（秒、区間の数−1個）。遷移が無ければ待ち0。"""
-    return [0.0 if entry is None else float(structure.turn_seconds[entry]) for entry in entries]
+def transition_values_along(values: np.ndarray, entries: Sequence[int | None]) -> list[float]:
+    """経路に沿った遷移ごとの、遷移の値`values`（`domain/turn_structure.py: TurnExpandedStructure.turn_seconds`・
+    `TurnExpandedStructure.turn_kickoffs`）。区間の数−1個で、
+    遷移が無ければ0。"""
+    return [0.0 if entry is None else float(values[entry]) for entry in entries]
+
+
+def route_cost(passages: Sequence[EdgePassage], turn_waits: Sequence[float], turn_kickoffs: Sequence[float],
+               composer: LegCostComposer) -> float:
+    """経路の費用（秒）: 探索と同じ費用の配列から読んだ区間の費用と、曲がる所の費用（`LegCostComposer.transition_costs`）の和。
+    帰りの探索が来た道に置く罰（`retrace_penalized`）は探索の中だけの値なので含めない。"""
+    turns = composer.transition_costs(np.asarray(turn_waits, dtype=np.float64), np.asarray(turn_kickoffs, dtype=np.float64))
+    return sum(passage.cost for passage in passages) + float(turns.sum())
 
 
 def route_passages(
@@ -355,7 +380,7 @@ def route_passages(
 ) -> list[EdgePassage]:
     """経路を探索と同じ規則でたどり、区間ごとに時刻ビンと出発からの秒を決める。
 
-    `path`は区間の番号（探索の行）、`turn_waits`はその遷移ごとの曲がる待ち（`turn_waits_along`）、
+    `path`は区間の番号（探索の行）、`turn_waits`はその遷移ごとの曲がる待ち（`transition_values_along`）、
     `distances_m`は区間の長さ。
     探索（`domain/routing.py`の前向きDijkstra・A*）はレグの中の経過時間でビンを選ぶ: レグの最初の区間は
     ビン0、次の区間は前の区間を抜けた時点（曲がる待ちを足す前）の経過時間のビン。区間ごとの秒は、探索の
@@ -382,9 +407,12 @@ def route_passages(
         bin_count = leg.travel_bins_lazy.shape[0]
         time_bin = time_bin_of(leg_elapsed, leg.bin_seconds, bin_count)
         seconds = float(leg.travel_bins_lazy[time_bin, index])
+        cost = float(leg.cost_bins_lazy[time_bin, index])
         if not np.isfinite(seconds):
             seconds = distance_m / fallback_ms
-        passages.append(EdgePassage(time_bin=time_bin, elapsed_seconds=elapsed, seconds=seconds))
+        if not np.isfinite(cost):
+            cost = seconds
+        passages.append(EdgePassage(time_bin=time_bin, elapsed_seconds=elapsed, seconds=seconds, cost=cost))
         leg_elapsed += entry_wait + seconds
         entry_wait = turn_waits[i] if i < len(turn_waits) else 0.0
         elapsed += seconds + entry_wait
@@ -396,35 +424,34 @@ def best_first(ranked: list[int], best: int) -> list[int]:
     return [best, *(node for node in ranked if node != best)]
 
 
-def prefers_reverse(forward: Sequence[SegmentDifficulty], reverse: Sequence[SegmentDifficulty]) -> bool:
-    """周回を逆回りで返すか。それぞれの向きのビンの難しさ（`domain/route.py: route_bins`）から畳んだ候補の合成の難しさ（`route_difficulty`）が小さい
-    （走りやすい）向きを採る。逆回りが算出不能なら順回りを採る（比較不能を「逆回りの方が良い」とは読まない、安全側）。
-    """
-    forward_difficulty = route_difficulty(forward)
-    reverse_difficulty = route_difficulty(reverse)
-    return reverse_difficulty is not None and (forward_difficulty is None or reverse_difficulty < forward_difficulty)
+def prefers_reverse(forward_cost: float, reverse_cost: float) -> bool:
+    """周回を逆回りで返すか。それぞれの向きの費用（`route_cost`。同じ道のりなので1kmあたりの代償の秒で比べるのと同じ）が
+    小さい向きを採る。同じなら順回り。"""
+    return reverse_cost < forward_cost
 
 
-def difficulty_order(candidate: RouteDraft) -> float:
-    """候補を返す並びの鍵。周回・目的地とも総合難易度の昇順で、先頭が最も易しい候補という
-    契約で配る。平均は難易度の桁へ丸めてあるので、その桁で同点になる。算出不能の候補は末尾へ回す。"""
-    if candidate.overall_difficulty is None:
+def candidate_order(candidate: RouteDraft, *, loop: bool) -> float:
+    """候補を返す並びの鍵。目的地は費用の小さい順、周回（出発地へ戻る経路）は1kmあたりの代償の秒の小さい順で、先頭が
+    最も良い候補という契約で配る。代償は`PENALTY_PER_KM_QUANTUM`の刻みで同点になる。所要時間の無い候補は周回の末尾へ回す。"""
+    if not loop:
+        return candidate.cost_seconds
+    if candidate.estimated_duration_seconds is None or candidate.distance_km <= 0:
         return float("inf")
-    return candidate.overall_difficulty.average
+    return float(penalty_key(penalty_seconds_per_km(
+        candidate.cost_seconds, candidate.estimated_duration_seconds, candidate.distance_km * 1000.0)))
 
 
 def keep_routes_with_baseline(
-    candidates: list[RouteDraft], baseline: RouteDraft | None, max_routes: int
+    candidates: list[RouteDraft], baseline: RouteDraft | None, max_routes: int, *, loop: bool
 ) -> tuple[list[RouteDraft], RouteDraft | None]:
-    """目的地ルートの候補を`difficulty_order`で並べて`max_routes`件へ切り、残った候補と、印を付ける
-    基準線（所要時間だけで選んだ経路）を返す。
+    """候補を`candidate_order`で並べて`max_routes`件へ切り、残った候補と、印を付ける基準線（所要時間だけで選んだ経路）を返す。
 
-    超えたぶんは難易度の高い側から切るが、基準線は難易度で最下位でも残す。ただし`max_routes`が1のときは
+    超えたぶんは並びの後ろから切るが、基準線は並びで最下位でも残す。ただし`max_routes`が1のときは
     残さない。基準線は**比べる相手があって初めて基準**であり、1本だけ返すなら比べる相手が無い。残すと返る
-    唯一の候補が常に時間最短になり、軸の重みが結果に一切現れない（利用者から見ると「設定が効かない」）。
+    唯一の候補が常に時間最短になり、軸の倍率が結果に一切現れない（利用者から見ると「設定が効かない」）。
     印も同じ理由で、比べる相手が残ったときだけ付ける（1本だけなら何とも比べないので None を返す）。
     """
-    ordered = sorted(candidates, key=difficulty_order)
+    ordered = sorted(candidates, key=lambda candidate: candidate_order(candidate, loop=loop))
     excess = len(ordered) - max_routes
     if excess > 0:
         keep_baseline = max_routes >= 2
@@ -441,9 +468,8 @@ def fits_loop_distance(loop_km: float, target_km: float, tolerance_km: float) ->
 
 
 def by_closeness_to_target(loops: list[TracedLoop], target_km: float) -> list[TracedLoop]:
-    """周回を全長が目標距離に近い順に並べる。評価の前に並べておく——最終の並びは総合難易度で
-    決まるが、同点の候補はこの順で並ぶ（重みを振った軸のデータが無く全候補が同じ難易度なら、
-    結果は実質的に目標距離に近い順になる）。"""
+    """周回を全長が目標距離に近い順に並べる。評価の前に並べておく——最終の並びは1kmあたりの代償の秒で
+    決まるが、同点の候補はこの順で並ぶ。"""
     return sorted(loops, key=lambda loop: abs(loop.distance_km - target_km))
 
 

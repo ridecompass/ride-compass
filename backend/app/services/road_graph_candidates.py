@@ -26,6 +26,12 @@ from app.domain.graph import LeanEdge
 from app.domain.road_network import elevation_attribute
 from app.domain.route_road_classes import SegmentClassReader
 from app.domain.route import (
+    COST_SECONDS_DECIMALS,
+    STOP_COUNT_DECIMALS,
+    WIND_MS_DECIMALS,
+    CostBreakdown,
+    RouteFacts,
+    merge_cost_breakdowns,
     DensityScoreInput,
     ElevationStretch,
     EvaluatedRoute,
@@ -50,8 +56,9 @@ from app.domain.route_search import (
     EdgePassage,
     prefers_reverse,
     reverse_leg_assignment,
+    route_cost,
     route_passages,
-    turn_waits_along,
+    transition_values_along,
 )
 from app.domain.stopwatch import add_elapsed_ms, start_timer
 from app.domain.turn_structure import TurnExpandedStructure, TurnKind, turns_along
@@ -178,8 +185,8 @@ def _segment_difficulties(
 
 
 @dataclass(frozen=True, slots=True)
-class _Orientation:
-    """周回の1つの向き。向きを選ぶために求めた値を、残した向きの組み立てがそのまま使う。"""
+class _Traced:
+    """周回の1つの向きを、探索と同じ規則でたどったもの（`_trace`）。向きの比べはこの費用だけを読む。"""
 
     edges: list[LeanEdge]
     path: list[int]
@@ -188,37 +195,54 @@ class _Orientation:
     rows: list[int]
     # 経路の遷移の位置（`TurnExpandedStructure.entries_along`）。時刻の待ちと案内する曲がりが読む。
     entries: list[int | None]
+    # 遷移ごとの曲がる所の漕ぎ出しの回数（`entries`と同じ並び）。費用・代償・止まる回数が読む。
+    turn_kickoffs: list[float]
     passages: list[EdgePassage]
+    # 経路の費用（`domain/route_search.py: route_cost`）。向きの比べと候補の並べ方が同じ値を読む。
+    cost_seconds: float
+
+
+@dataclass(frozen=True, slots=True)
+class _Orientation(_Traced):
+    """残した向きと、その区間の値（`_orientation`）。"""
+
     reads: list[_RowRead]
     # 区間の距離を応答の桁へ丸めた値（km）。区間の難しさと区間の器が同じ値を持ち、ビンの切り方が揃う。
     distances_km: list[float]
-    # ビンの範囲（`domain/route.py: route_bin_slices`）と、ビンの難しさ（`domain/route.py: route_bins`）。向きの比べと
-    # ビンの組み立てが同じ値を読む。
+    # ビンの範囲（`domain/route.py: route_bin_slices`）と、ビンの難しさ（`domain/route.py: route_bins`）。
     bin_slices: list[slice]
     bins: list[SegmentDifficulty]
 
 
-def _orientation(
+def _trace(
     context: RoadGraphContext,
     edges_in_path: list[LeanEdge],
     path: list[int],
     leg_of_edge: list[int],
     waypoint_offsets: list[int],
-) -> _Orientation:
+) -> _Traced:
     rows = [slice_row_of(context, index) for index in path]
     entries = context.turn_structure.entries_along(path)
     # 経路を探索と同じ規則でたどった区間ごとの時刻。区間の到達予想と候補の所要時間が同じ時計を使う。
+    turn_waits = transition_values_along(context.turn_structure.turn_seconds, entries)
+    turn_kickoffs = transition_values_along(context.turn_structure.turn_kickoffs, entries)
     passages = route_passages(
-        context.legs, turn_waits_along(context.turn_structure, entries), path,
-        [edge.distance_m for edge in edges_in_path], leg_of_edge, context.composer.speed_kmh,
+        context.legs, turn_waits, path, [edge.distance_m for edge in edges_in_path], leg_of_edge, context.composer.speed_kmh,
     )
-    reads = _row_reads(context, rows, leg_of_edge, passages)
-    distances_km = [edge.distance_m / 1000 for edge in edges_in_path]
+    return _Traced(edges_in_path, path, leg_of_edge, waypoint_offsets, rows, entries, turn_kickoffs, passages,
+                   route_cost(passages, turn_waits, turn_kickoffs, context.composer))
+
+
+def _orientation(context: RoadGraphContext, traced: _Traced) -> _Orientation:
+    """残した向きの区間の値を、探索が使ったビンの時刻で読む（向きの比べで負けた向きは読まない）。"""
+    reads = _row_reads(context, traced.rows, traced.leg_of_edge, traced.passages)
+    distances_km = [edge.distance_m / 1000 for edge in traced.edges]
     rounded_km = [round(distance_km, DISTANCE_KM_DECIMALS) for distance_km in distances_km]
     bin_slices = route_bin_slices(rounded_km)
     bins = route_bins(_segment_difficulties(reads, context.composer.density_axes, distances_km, rounded_km), bin_slices)
     return _Orientation(
-        edges_in_path, path, leg_of_edge, waypoint_offsets, rows, entries, passages, reads, rounded_km, bin_slices, bins
+        traced.edges, traced.path, traced.leg_of_edge, traced.waypoint_offsets, traced.rows, traced.entries,
+        traced.turn_kickoffs, traced.passages, traced.cost_seconds, reads, rounded_km, bin_slices, bins,
     )
 
 
@@ -231,7 +255,7 @@ def _build_best_candidate(
 ) -> EvaluatedRoute:
     """1候補ぶんの周回を組み立てる。
 
-    同じ周回の逆回りは追加のI/Oなしで評価できるため、両向きのビンの難しさから**難易度の小さい向きだけ**を
+    同じ周回の逆回りは追加のI/Oなしで評価できるため、両向きの費用から**費用の小さい向きだけ**を
     組み立てる（両方向を別候補として並べない）。逆走は勾配・風で評点が変わるため常に意味がある。
     一方通行Edgeが1つでもあれば成立しないので、その場合は順方向のみ。
 
@@ -239,21 +263,22 @@ def _build_best_candidate(
     """
     orient_started = start_timer()
     path: list[int] = traced.data
-    chosen = _orientation(context, edges_in_path, path, traced.leg_of_edge, traced.waypoint_offsets)
+    chosen = _trace(context, edges_in_path, path, traced.leg_of_edge, traced.waypoint_offsets)
     elevation_by_edge = _elevation_by_edge(context, edges_in_path, path)
     reversed_path = _reverse_traced_edges(edges_in_path, path, context) if traced.reversible else None
     if reversed_path is not None:
         reverse_edges, reverse_path = reversed_path
-        reverse = _orientation(
+        reverse = _trace(
             context, reverse_edges, reverse_path, reverse_leg_assignment(traced.leg_of_edge),
             # 逆に回ると、経由地より前の区間は経由地より後の区間になる。
             [len(path) - offset for offset in traced.waypoint_offsets],
         )
-        if prefers_reverse(chosen.bins, reverse.bins):
+        if prefers_reverse(chosen.cost_seconds, reverse.cost_seconds):
             elevation_by_edge = reverse_elevation_by_edge(edges_in_path, reverse_edges, elevation_by_edge)
             chosen = reverse
+    orientation = _orientation(context, chosen)
     add_elapsed_ms(context.evaluate_steps_ms, "orient", orient_started)
-    return _build_candidate(context, traced, chosen, elevation_by_edge, start_time, active_material_ids)
+    return _build_candidate(context, traced, orientation, elevation_by_edge, start_time, active_material_ids)
 
 def _elevation_by_edge(
     context: "RoadGraphContext", edges_in_path: list[LeanEdge], path: list[int]
@@ -298,6 +323,8 @@ def _build_candidate(
     axis_raw_values = route_axis_raw_values(
         list(zip((segment.distance_km for segment in segments), segment_raw_values)), orientation.bin_slices
     )
+    # 候補の内訳は丸める前の区間から足す（丸めたビンを足すと、丸めの分が候補の内訳へ積もる）。
+    penalty = merge_cost_breakdowns(segment.penalty for segment in segments)
     # 返すsegmentsは集約する。Edge単位のままだとペイロードとフロントの描画費用が嵩む。
     segments = aggregate_segments_into_bins(segments, orientation.bins, orientation.bin_slices)
     add_elapsed_ms(context.evaluate_steps_ms, "bins", bins_started)
@@ -316,6 +343,9 @@ def _build_candidate(
         turns=turns,
         waypoint_distances_km=[along_km[offset] for offset in orientation.waypoint_offsets],
         segments=segments,
+        cost_seconds=round(orientation.cost_seconds, COST_SECONDS_DECIMALS),
+        penalty=penalty,
+        facts=_route_facts(orientation, context),
         material_category_shares=material_category_shares,
         axis_raw_values=axis_raw_values,
         # 所要時間＝区間の走行時間＋停止の待ち＋ターンの待ち（最後の区間を抜けた時刻）。
@@ -370,6 +400,7 @@ def _build_segment_details(
     material_values = _per_segment(orientation.reads, count, materials_of)
     segment_categories = _per_segment(orientation.reads, count, categories_of)
     segment_raw_values = _per_segment(orientation.reads, count, raw_values_of)
+    penalties = _segment_penalties(orientation, context)
 
     segments = []
     road_classes = SegmentClassReader.of(context.road)
@@ -424,6 +455,7 @@ def _build_segment_details(
                 sustained_gradient_percent=steepest_signed_percent(elevation_attr),
                 estimated_arrival_time=arrival_time.isoformat(),
                 material_values=material_values[index],
+                penalty=penalties[index],
                 road_classes={
                     layer: [RoadClassStretch.model_construct(distance_km=rounded_km, value=value)]
                     for layer, value in road_classes.values_at(row).items()
@@ -432,6 +464,54 @@ def _build_segment_details(
         )
 
     return segments, segment_categories, segment_raw_values
+
+
+def _segment_penalties(orientation: _Orientation, context: RoadGraphContext) -> list[CostBreakdown | None]:
+    """区間ごとの代償の秒の内訳（費目の帳簿の式で組んでいなければNone）。区間の代償（`LegValues.penalty_by_axis`）に、
+    区間へ入る所で曲がった漕ぎ出しの代償（`LegCostComposer.turn_kickoff_penalty`）を、その費目の軸へ足す。"""
+    kickoff = context.composer.turn_kickoff_penalty
+    if kickoff is None:
+        return [None] * len(orientation.edges)
+    kickoff_axis, kickoff_seconds = kickoff
+    # 区間iへ入る曲がる所は、遷移の並び（区間の数−1個）のi−1番目。
+    entering = [0.0, *orientation.turn_kickoffs]
+
+    def of(read: _RowRead) -> list[CostBreakdown | None]:
+        values = read.values
+        axis_lists = {axis_id: seconds.tolist() for axis_id, seconds in values.penalty_by_axis.items()}
+        avoidance = [] if values.avoidance_seconds is None else values.avoidance_seconds.tolist()
+        breakdowns: list[CostBreakdown | None] = []
+        for position, index in enumerate(read.indices):
+            axis_seconds = {axis_id: seconds[position] for axis_id, seconds in axis_lists.items()}
+            axis_seconds[kickoff_axis] = axis_seconds.get(kickoff_axis, 0.0) + entering[index] * kickoff_seconds
+            breakdowns.append(CostBreakdown.model_construct(
+                axis_seconds=axis_seconds, avoidance_seconds=avoidance[position]))
+        return breakdowns
+
+    return _per_segment(orientation.reads, len(orientation.edges), of)
+
+
+def _route_facts(orientation: _Orientation, context: RoadGraphContext) -> RouteFacts:
+    """経路の事実の量。区間ごとの値（`domain/leg_costs.py: LegCostComposer.row_facts`・`LegValues.headwind_ms`）を
+    経路の区間の長さで足し、曲がる所の漕ぎ出しを止まる回数に足す。"""
+    rows = np.asarray(orientation.rows, dtype=np.int64)
+    distance_km = np.array([edge.distance_m for edge in orientation.edges], dtype=float) / 1000.0
+    facts = context.composer.row_facts(rows)
+    headwind_ms = np.array(_per_segment(orientation.reads, len(rows), lambda read: read.values.headwind_ms.tolist()))
+    total_km = float(distance_km.sum())
+    return RouteFacts(
+        elevation_unknown_km=round(float(facts.unknown_elevation_m.sum()) / 1000.0, DISTANCE_KM_DECIMALS),
+        stop_count=round(float(facts.stops.sum()) + sum(orientation.turn_kickoffs), STOP_COUNT_DECIMALS),
+        rough_km=round(float(distance_km[facts.rough].sum()), DISTANCE_KM_DECIMALS),
+        headwind_mean_ms=(
+            None if context.composer.wind_unavailable or total_km <= 0
+            else round(float((headwind_ms * distance_km).sum()) / total_km, WIND_MS_DECIMALS)
+        ),
+        burden_km={
+            axis_id: round(float(distance_km[burdened].sum()), DISTANCE_KM_DECIMALS)
+            for axis_id, burdened in facts.burdened.items()
+        },
+    )
 
 
 _TURN_DIRECTION = {TurnKind.LEFT: "left", TurnKind.RIGHT: "right", TurnKind.UTURN: "uturn"}

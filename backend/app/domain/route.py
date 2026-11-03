@@ -25,6 +25,12 @@ if TYPE_CHECKING:
 DISTANCE_KM_DECIMALS = 2
 #: 応答の標高（m。獲得標高・区間の端の標高）の桁。
 ELEVATION_M_DECIMALS = 1
+#: 応答の秒（費用・代償の内訳）の桁。
+COST_SECONDS_DECIMALS = 1
+#: 応答の止まる回数の見込みの桁。
+STOP_COUNT_DECIMALS = 1
+#: 応答の風の速さ（m/s）の桁。
+WIND_MS_DECIMALS = 1
 
 
 # GeoJSONのLineString（座標は[経度, 緯度]）。契約には形を載せるが、検証はしない——数千点の座標を
@@ -77,8 +83,7 @@ class DensityScoreInput:
 class SegmentDifficulty:
     """区間・ビンの難しさの値（`RouteSegmentDetail`の同名の欄と、密度の軸の横軸の値）。難しさを畳む関数はこれだけを読む。
 
-    区間の難しさをビンへ1回だけ畳み（`route_bins`）、そのビンで周回の向きを決め（`route_difficulty`）、ビンを組み立てる
-    （`aggregate_segments_into_bins`）。距離は区間の`distance_km`と同じ丸めた値。
+    区間の難しさをビンへ1回だけ畳み（`route_bins`）、ビンを組み立てる（`aggregate_segments_into_bins`）。距離は区間の`distance_km`と同じ丸めた値。
     """
 
     distance_km: float
@@ -108,6 +113,50 @@ class ElevationStretch(StrictModel):
     end_elevation_m: float | None
 
 
+class CostBreakdown(StrictModel):
+    """代償の秒の内訳（費目の帳簿の式、`domain/ledger_costs.py`）。所要時間・軸ごとの代償・回避指定の和が費用になる。
+
+    軸の名前と帳簿は`GET /api/cost-axes`が持ち、回避指定の行の名前は同じ応答の`avoidance_label`が持つ。
+    """
+
+    # 軸id→代償の秒（つまみ×倍率を掛けたもの）。どの軸も0以上で、倍率0の軸も0として持つ。曲がる所の漕ぎ出しは、曲がった
+    # 先の区間の慣性の費目の軸に入る。
+    axis_seconds: dict[str, float]
+    # 避け方の倍率（道の区分ごとの「なるべく避ける」）が、その道の所要時間と代償に上乗せした秒。
+    avoidance_seconds: float
+
+
+def merge_cost_breakdowns(parts: Iterable[CostBreakdown | None]) -> CostBreakdown | None:
+    """内訳を足し合わせる（秒は足せる）。どれも無ければNone。"""
+    present = [part for part in parts if part is not None]
+    if not present:
+        return None
+    totals: dict[str, float] = defaultdict(float)
+    for part in present:
+        for axis_id, seconds in part.axis_seconds.items():
+            totals[axis_id] += seconds
+    return CostBreakdown.model_construct(
+        axis_seconds={axis_id: round(seconds, COST_SECONDS_DECIMALS) for axis_id, seconds in totals.items()},
+        avoidance_seconds=round(sum(part.avoidance_seconds for part in present), COST_SECONDS_DECIMALS),
+    )
+
+
+class RouteFacts(StrictModel):
+    """ルートの事実の量（費用の式にも利用者の倍率にも依らない）。獲得標高は`EvaluatedRoute.elevation_gain_m`。"""
+
+    # 標高の無い道の長さ（km）。獲得標高に数えず、所要時間は道路網全体の坂の割合で走った長さ。
+    elevation_unknown_km: float
+    # 止まる回数の見込み。止まる出来事と曲がる所を、止まってから漕ぎ出す回数に換えて足したもの（減速だけの出来事は、
+    # 落とした速さから戻す分だけ1回より少なく数える）。所要時間の待ちと停止の軸の体力と同じ回数。
+    stop_count: float
+    # 基準の路面より転がり抵抗の大きい道の長さ（km）。
+    rough_km: float
+    # 進行方向への向かい風成分の距離平均（m/s、負は追い風）。風を使えなければNone。
+    headwind_mean_ms: float | None
+    # 道の負担の軸id→その軸の重さが0より大きい道の長さ（km）。費用の軸の定義が無ければ空。
+    burden_km: dict[str, float]
+
+
 class RouteSegmentDetail(StrictModel):
     """周回ルートの1区間（サンプル点i→i+1）の詳細。地図上の難易度レイヤー描画に使う。
 
@@ -135,6 +184,8 @@ class RouteSegmentDetail(StrictModel):
     # `merge_sustained_gradients`で畳む。値が無ければNone。
     sustained_gradient_percent: float | None = None
     estimated_arrival_time: str | None = None
+    # 区間の代償の秒の内訳。費目の帳簿の式で組んでいなければNone。
+    penalty: CostBreakdown | None = None
     # axis_id→difficulty(0-100)。以降の辞書フィールドはすべて「データ無しはキーを
     # 持たない」規約で、評価できなかった軸・値の無い材料はキー自体を含めない。
     axis_difficulties: dict[str, float] = Field(default_factory=dict)
@@ -189,6 +240,12 @@ class EvaluatedRoute(StrictModel):
     # 所要時間の見積もり（秒）。区間の走行時間（`domain/cycling_speed.py`の走行モデルが巡航速度と区間の条件から求めた
     # 速度）＋停止の待ち＋ターンの待ち。経路の選び方には使っておらず、表示のためだけに持つ。
     estimated_duration_seconds: float | None
+    # 並べ方の値（秒）。探索が最小にした費用そのもの（区間の費用＋曲がる所の費用）。費目の帳簿の式なら、所要時間と
+    # 内訳（`penalty`）の和に、丸めの差を除いて等しい。
+    cost_seconds: float
+    # 候補全体の代償の秒の内訳。費目の帳簿の式で組んでいなければNone。
+    penalty: CostBreakdown | None
+    facts: RouteFacts
     # 所要時間の見積もりで風を使えなかった（風の予報が読めず、無風として計算した）。画面が利用者へ知らせる。
     wind_unavailable: bool
     # 所要時間の見積もりで、勾配か停止要因の件数の値が無く、既定（平地・待ち無し）で数えた区間の距離の割合（0〜1）。
@@ -243,7 +300,8 @@ class RouteDraft(EvaluatedRoute):
 class RouteCandidate(RouteDraft):
     """応答の1本のルート候補。
 
-    生成の応答は`overall_difficulty`の平均の昇順で候補を並べる。全区間のdifficultyが欠けていればNone。
+    生成の応答は、目的地で終わる候補を費用（`cost_seconds`）、出発地へ戻る候補を1kmあたりの代償の秒の小さい順に並べる
+    （`domain/route_search.py: candidate_order`）。`overall_difficulty`は全区間のdifficultyが欠けていればNone。
     """
 
     # 応答の中で一意のid・種類・最速の印は、並べ終えた最後に`services/route_generator.py: _label`だけが付ける。
@@ -441,12 +499,6 @@ def merge_difficulty_values(segments: Sequence[SegmentDifficulty]) -> SegmentDif
     )
 
 
-def route_difficulty(bins: Sequence[SegmentDifficulty]) -> float | None:
-    """ビン（`route_bins`）から畳んだ、候補の合成の難しさ（`merge_route_values`の`overall_difficulty`の平均と同じ値）。
-    値のある区間が無ければNone。"""
-    return merge_difficulty_values(bins).difficulty
-
-
 def route_axis_raw_values(edges: list[tuple[float, Mapping[str, float]]], slices: Sequence[slice]) -> dict[str, float]:
     """Edge単位の（距離km, axis_id→生値）を、候補全体の`RouteCandidate.axis_raw_values`へ畳む。
 
@@ -587,6 +639,7 @@ BIN_FIELD_MERGERS: dict[str, Callable[[list[RouteSegmentDetail]], object]] = {
     "estimated_arrival_time": lambda segments: segments[0].estimated_arrival_time,
     "road_classes": merge_road_classes,
     "material_values": merge_material_values,
+    "penalty": lambda segments: merge_cost_breakdowns(segment.penalty for segment in segments),
 }
 
 #: ビンの難しさの欄（`route_bins`が畳む）。密度の軸の横軸の値は応答の欄でないので除く。

@@ -174,7 +174,7 @@ frontendはどのクエリパラメータをどの軸のリクエストへ載せ
 別の口で、タイルのSQLと式の木の材料では作れない体力（走行の模型）を、backendが道ごとに求めて配る。
 
 - **探索と同じ所から読む**: 値は、取込範囲全体の道の網（`infrastructure/road_network_store.py: current`）の有向の区間について、
-  探索と同じ部品——走行の模型の入力（`domain/leg_costs.py: travel_inputs`）・道の負担のkm（`domain/leg_costs.py: burden_km`）・
+  探索と同じ部品——走行の模型の入力（`domain/leg_costs.py: travel_inputs`）・道の負担の1kmあたりの重さ（`domain/leg_costs.py: burden_weights`）・
   軸ごとの代償の秒（`domain/ledger_costs.py: LedgerCosts.penalty_by_axis`）・欠けを埋める取込範囲全体の平均——で求め、
   フィーチャーと辿る向き（道の向き・逆向き）ごとに足して長さで割る。DBは読まない。避け方の倍率と曲がる所の漕ぎ出しは道の
   値ではないので入れない。
