@@ -168,8 +168,9 @@ def _span_static(span_row: np.ndarray, span_grade: np.ndarray, crr: np.ndarray,
 
 @njit(cache=True, nogil=True)
 def _span_speeds(span_row: np.ndarray, constant_force: np.ndarray, static_extra: np.ndarray, air_extra_n: np.ndarray,
-                 headwind_ms: np.ndarray, crosswind_ms: np.ndarray, rider: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """点の間ごとの`(速度（m/s）, 実際に踏む出力（W）)`。踏む出力は`pushed_power_w`の決まり、速度は走行方程式
+                 headwind_ms: np.ndarray, crosswind_ms: np.ndarray,
+                 rider: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """点の間ごとの`(速度（m/s）, 実際に踏む出力（W）, 上限で切る前の踏みたい出力（W）)`。踏む出力は`pushed_power_w`の決まり、速度は走行方程式
     `P = 抵抗力(v) × v`を二分法で解いたもの（3次方程式。ニュートン法は抵抗力が0を跨ぐ下り坂で発散しうるため、区間を
     確実に狭める方を採る）。
 
@@ -186,12 +187,14 @@ def _span_speeds(span_row: np.ndarray, constant_force: np.ndarray, static_extra:
     spans = len(span_row)
     # 区間の行の風を点の間へ配るループと、解くループを分ける——解くループが並びを順に読むだけになり、CPUが複数の点の間を
     # まとめて計算できる（行を引いて読むと、まとめられず数倍遅い）。
+    desired = np.empty(spans, dtype=np.float32)
     powers = np.empty(spans, dtype=np.float32)
     headwind = np.empty(spans, dtype=np.float32)
     cross_squared = np.empty(spans, dtype=np.float32)
     for i in range(spans):
         row = span_row[i]
-        powers[i] = min(flat_power + per_force * max(static_extra[i] + air_extra_n[row], zero), ceiling)
+        desired[i] = flat_power + per_force * max(static_extra[i] + air_extra_n[row], zero)
+        powers[i] = min(desired[i], ceiling)
         headwind[i] = headwind_ms[row]
         cross_squared[i] = crosswind_ms[row] * crosswind_ms[row]
     speeds = np.empty(spans, dtype=np.float32)
@@ -208,7 +211,7 @@ def _span_speeds(span_row: np.ndarray, constant_force: np.ndarray, static_extra:
             else:
                 low = middle
         speeds[i] = (low + high) * half
-    return speeds, powers
+    return speeds, powers, desired
 
 
 @njit(cache=True, nogil=True)
@@ -222,7 +225,7 @@ def _span_seconds(span_row: np.ndarray, span_length: np.ndarray, speeds: np.ndar
 
 @njit(cache=True, nogil=True)
 def _span_work(span_row: np.ndarray, span_length: np.ndarray, span_grade: np.ndarray, speeds: np.ndarray,
-               powers: np.ndarray, static_extra: np.ndarray, crr: np.ndarray, air_extra_n: np.ndarray, rider: np.ndarray,
+               powers: np.ndarray, desired: np.ndarray, crr: np.ndarray, air_extra_n: np.ndarray, rider: np.ndarray,
                rows: int, weight_exponent: float) -> np.ndarray:
     """平地の出力を越えて踏んだ体力（J）を、区間の行ごとに重力・空気・転がりの分へ足す（`(3, 行数)`、float64）。
 
@@ -232,7 +235,6 @@ def _span_work(span_row: np.ndarray, span_length: np.ndarray, span_grade: np.nda
     work = np.zeros((3, rows))
     weight = np.float64(rider[_RIDER_WEIGHT])
     flat_power = np.float64(rider[_RIDER_FLAT_POWER])
-    per_force = np.float64(rider[_RIDER_POWER_PER_FORCE])
     for i in range(len(span_row)):
         row = span_row[i]
         parts = (max(weight * span_grade[i], 0.0), max(np.float64(air_extra_n[row]), 0.0),
@@ -242,8 +244,7 @@ def _span_work(span_row: np.ndarray, span_length: np.ndarray, span_grade: np.nda
             continue
         excess_j = (np.float64(powers[i]) - flat_power) * np.float64(span_length[i]) / np.float64(speeds[i])
         if weight_exponent != 0.0:
-            desired = flat_power + per_force * max(np.float64(static_extra[i]) + np.float64(air_extra_n[row]), 0.0)
-            excess_j *= (desired / flat_power) ** weight_exponent
+            excess_j *= (np.float64(desired[i]) / flat_power) ** weight_exponent
         for k in range(3):
             work[k, row] += excess_j * parts[k] / total
     return work
@@ -308,22 +309,22 @@ class SegmentSpeedModel:
 
     def travel_seconds(self, headwind_ms: np.ndarray, crosswind_ms: np.ndarray) -> np.ndarray:
         """区間ごとの走行時間（秒、float64）。`headwind_ms`は進行方向への向かい風成分（正が向かい風）、`crosswind_ms`は横成分。"""
-        speeds, _powers, _air = self._solve(headwind_ms, crosswind_ms)
+        speeds, _powers, _desired, _air = self._solve(headwind_ms, crosswind_ms)
         return _span_seconds(self._span_row, self._span_length, speeds, self._rows)
 
     def ride(self, headwind_ms: np.ndarray, crosswind_ms: np.ndarray, weight_exponent: float) -> SegmentRide:
         """区間ごとの走行時間と、平地の出力を越えて踏んだ体力の費目ごとの内訳。体力には、点の間ごとに踏みたい出力（上限で切る前）
         と平地の出力の比の`weight_exponent`乗の重みを掛ける（0なら事実の量そのもの。慣性の漕ぎ出しは重みを掛けない——上限で
         踏む前提の量なので、重みは費用の式が掛ける）。"""
-        speeds, powers, air_extra_n = self._solve(headwind_ms, crosswind_ms)
-        work = _span_work(self._span_row, self._span_length, self._span_grade, speeds, powers, self._static_extra,
+        speeds, powers, desired, air_extra_n = self._solve(headwind_ms, crosswind_ms)
+        work = _span_work(self._span_row, self._span_length, self._span_grade, speeds, powers, desired,
                           self._crr, air_extra_n, self._rider, self._rows, float(weight_exponent))
         return SegmentRide(seconds=_span_seconds(self._span_row, self._span_length, speeds, self._rows),
                            gravity_extra_j=work[0], air_extra_j=work[1], rolling_extra_j=work[2],
                            inertia_extra_j=np.asarray(self._kickoffs, dtype=np.float64) * self._kickoff_extra_j)
 
-    def _solve(self, headwind_ms: np.ndarray, crosswind_ms: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """点の間ごとの速度と踏む出力、区間ごとの向かい風で増えた空気抵抗（N）。"""
+    def _solve(self, headwind_ms: np.ndarray, crosswind_ms: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        """点の間ごとの速度・踏む出力・上限で切る前の踏みたい出力と、区間ごとの向かい風で増えた空気抵抗（N）。"""
         headwind = kernel_array(headwind_ms, np.float32)
         cross = kernel_array(crosswind_ms, np.float32)
         mismatched = {name: array.shape for name, array in (("headwind_ms", headwind), ("crosswind_ms", cross))
@@ -334,6 +335,6 @@ class SegmentSpeedModel:
         # 速さに依らないようにする。
         air_extra_n = kernel_array(self._rider[_RIDER_DRAG] * drag_increases_m2_s2(
             headwind, cross, self._rider[_RIDER_CRUISE]), np.float32)
-        speeds, powers = _span_speeds(self._span_row, self._constant_force, self._static_extra, air_extra_n, headwind, cross,
+        speeds, powers, desired = _span_speeds(self._span_row, self._constant_force, self._static_extra, air_extra_n, headwind, cross,
                                       self._rider)
-        return speeds, powers, air_extra_n
+        return speeds, powers, desired, air_extra_n

@@ -12,6 +12,7 @@ from app.domain.cost_axes import CostAxisDefinitions, check_cost_axes, replace_c
 from app.domain.road_classes import RoadClassDefinitions, current_road_classes
 from app.infrastructure.axis_definition_repository import AxisDefinitionRepository
 from app.infrastructure.cost_axis_repository import read_cost_axes, replace_cost_axes_row
+from app.infrastructure.road_class_repository import read_road_classes
 
 logger = logging.getLogger("ridecompass.cost_axes")
 
@@ -50,7 +51,9 @@ class CostAxisAdminService:
         """全体を入れ替え、書いた全体を返す。道の区分の書き込みと同じ鍵を取ってから区分に照らす——取らないと、確かめてから
         確定するまでの間に区分が入れ替わる。"""
         await self._axes.acquire_write_lock()
-        problems = check_cost_axes(definitions, current_road_classes())
+        # プロセス内の区分ではなくDBの区分に照らす——プロセス内は確定の後に書き換わるので、鍵の外れた隙に入れ替わった区分を
+        # 見落とす。
+        problems = check_cost_axes(definitions, await read_road_classes(self._session))
         if problems:
             await self._session.rollback()
             raise CostAxesRejectedError(f"費用の軸の定義が通りません（{'／'.join(problems)}）")

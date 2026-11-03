@@ -63,8 +63,10 @@ def test_a_definition_the_form_does_not_allow_is_refused(definition):
         ({"material": "class:no_such"}, "知らない分け方の材料"),
         ({"material": "no_such"}, "知らない材料"),
         ({"material": "lit"}, "区分の重さは区分の材料"),
+        # 道の負担は1回の生成に1回だけ道ごとに引くので、要求ごとに決まる材料（風）は静的スコア行列に無い。
+        ({"material": "wind_drag_ratio"}, "要求ごとに変わる材料は道の負担に使えない"),
     ],
-    ids=["区分の漏れ", "知らない区分", "知らない分け方", "知らない材料", "区分でない材料に区分の重さ"],
+    ids=["区分の漏れ", "知らない区分", "知らない分け方", "知らない材料", "区分でない材料に区分の重さ", "要求ごとの材料"],
 )
 def test_a_burden_that_does_not_fit_its_material_is_reported(burden, problem):
     """区分の重さは分け方のすべての区分に書く——書いていない区分を0や平均とみなすと、区分を足したときに黙ってその道の負担が
@@ -80,3 +82,4 @@ def test_a_curve_over_a_material_that_is_not_a_number_is_reported():
         _definitions(lighting=_axis("照明", kind="linear", material="lit", points=[[0.0, 1.0]])))
 
     assert check_cost_axes(definitions, SURFACE) == ["lighting: 折れ線は数値の材料にだけ書ける: lit（boolean）"]
+

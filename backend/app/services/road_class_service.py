@@ -10,9 +10,10 @@ from sqlalchemy.exc import DataError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.axis_definitions import AxisDefinition, missing_class_materials, named_references, unknown_class_values
-from app.domain.cost_axes import current_cost_axes
+from app.domain.cost_axes import CostAxisDefinitions
 from app.domain.road_classes import RoadClassDefinitions, replace_road_classes, undeclared_references
 from app.infrastructure.axis_definition_repository import AxisDefinitionRepository
+from app.infrastructure.cost_axis_repository import read_cost_axes
 from app.infrastructure.road_class_repository import read_road_classes, replace_road_class_rows
 from app.services.cost_axis_service import check_cost_axes_against
 
@@ -33,7 +34,8 @@ async def refresh_road_classes(session: AsyncSession) -> None:
     _apply(await read_road_classes(session))
 
 
-def _check_writable(definitions: RoadClassDefinitions, axes: dict[str, AxisDefinition]) -> None:
+def _check_writable(definitions: RoadClassDefinitions, axes: dict[str, AxisDefinition],
+                    cost_axes: CostAxisDefinitions | None) -> None:
     """書く全体が、コードの宣言に無い名を指さず、確定しても次の起動で全軸を読み込め、軸が名指す区分の値がどの道にも当たらなく
     ならないか。通らなければ`RoadClassRejectedError`。"""
     undeclared = undeclared_references(definitions)
@@ -59,7 +61,7 @@ def _check_writable(definitions: RoadClassDefinitions, axes: dict[str, AxisDefin
             f"軸が名指す区分が無くなるため確定しません（{reasons}）。"
             "区分の鍵を改めるときは、先に軸の値を直してください"
         )
-    cost_axis_problems = check_cost_axes_against(current_cost_axes(), definitions)
+    cost_axis_problems = check_cost_axes_against(cost_axes, definitions)
     if cost_axis_problems:
         raise RoadClassRejectedError(
             f"費用の軸の定義が新しい区分に合わなくなるため確定しません（{'／'.join(cost_axis_problems)}）。"
@@ -85,7 +87,7 @@ class RoadClassAdminService:
         session, axes = self._session, self._axes
         try:
             await axes.acquire_write_lock()
-            _check_writable(definitions, await axes.list_all())
+            _check_writable(definitions, await axes.list_all(), await read_cost_axes(session))
             await replace_road_class_rows(session, definitions)
             await session.commit()
         except (IntegrityError, DataError) as error:

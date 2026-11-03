@@ -53,7 +53,7 @@ from app.domain.material_catalog import (
     is_known_material,
     material_spec,
 )
-from app.domain.cost_axes import cost_axis_material_ids
+from app.domain.cost_axes import CostAxisDefinitions, burden_material_ids
 from app.domain.cycling_speed import travel_model_material_ids
 from app.domain.elevation_profile import ElevationProfiles
 from app.domain.hard_filters import hard_filtered
@@ -126,7 +126,7 @@ def route_facing_categorical_material_ids(definitions: dict[str, AxisDefinition]
 def _route_facing_leaf_material_ids(definitions: dict[str, AxisDefinition], *, categorical: bool) -> list[str]:
     """所要時間が読む材料と公開軸の葉の材料のうち、categoricalかどうかが`categorical`に合うもの（動的材料を除く）を安定順で並べる。"""
     seen: dict[str, None] = {}
-    for material_id in (*travel_model_material_ids(), *cost_axis_material_ids(), *_published_axis_leaf_material_ids(definitions)):
+    for material_id in (*travel_model_material_ids(), *_published_axis_leaf_material_ids(definitions)):
         spec = material_spec(material_id)
         if spec is None or (spec.dtype == "categorical") != categorical:
             continue
@@ -471,6 +471,7 @@ def build_static_edge_score_matrix(
     materials: EdgeMaterialColumns,
     definitions: dict[str, AxisDefinition],
     steps_ms: dict[str, int],
+    cost_axes: CostAxisDefinitions | None,
 ) -> StaticEdgeScoreMatrix:
     """切り出した範囲の材料から`StaticEdgeScoreMatrix`を構築する（生成のたびに1回）。段ごとの所要時間を`steps_ms`へ足す。
 
@@ -504,14 +505,16 @@ def build_static_edge_score_matrix(
         axis_id: DensityAxisColumn(shape=cast(BreakpointLinearShape, definitions[axis_id].shape), inputs=_raw(evaluations, axis_id))
         for axis_id in density_axis_ids
     }
+    # 費用の軸の定義（`cost_axes`。呼び手が1回の生成の写しを渡す）の道の負担の材料も、軸の構成と無関係に運ぶ。
+    burden_numeric, burden_classes = burden_material_ids(cost_axes)
     material_value_arrays = {
         material_id: values
-        for material_id in route_facing_material_ids(definitions)
+        for material_id in dict.fromkeys((*route_facing_material_ids(definitions), *burden_numeric))
         if isinstance(values := columns.get(material_id), np.ndarray)
     }
     categorical_material_columns = {
         material_id: column
-        for material_id in route_facing_categorical_material_ids(definitions)
+        for material_id in dict.fromkeys((*route_facing_categorical_material_ids(definitions), *burden_classes))
         if isinstance(column := columns.get(material_id), CategoricalColumn)
     }
     axis_ids, axis_scores = _stack_columns(axis_arrays, n)

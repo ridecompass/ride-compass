@@ -329,7 +329,6 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
         "登りでこれ以下になったら押して歩くとみなす。",
         shown_to_users=True,
     ),
-    # 既定は、巡航20km/hの人（総質量80kg）が勾配5%で時速10km前後になるという実感に合わせた（勾配1%あたり15W）。
     TuningParameter(
         "cost.effort_alpha",
         "体力の換算", "倍", 1.0, 0.0, 10.0, TuningEffect.IMMEDIATE,
@@ -347,6 +346,7 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
         "踏みたい出力（上限で切る前）と平地の出力の比を何乗して体力の重みにするか。0で重みを掛けない。上げるほど、上限を"
         "越えて踏みたい急な坂・強い向かい風を重く数える。",
     ),
+    # 既定は、巡航20km/hの人（総質量80kg）が勾配5%で時速10km前後になるという実感に合わせた（勾配1%あたり15W）。
     TuningParameter(
         "speed.extra_power_per_force",
         "抵抗が増えたときの踏み増し", "W/N", 1.91, 0.0, 20.0,

@@ -19,10 +19,8 @@ from dataclasses import dataclass
 import numpy as np
 
 from app.domain.attributes import CategoricalColumn
-from app.domain.cost_axes import EFFORT_AXES, CategoricalBurden, CostAxisDefinitions, current_cost_axes
+from app.domain.cost_axes import EFFORT_AXES, CategoricalBurden, CostAxisDefinitions
 from app.domain.cycling_speed import RiderProfile, SegmentRide, kickoff_extra_j, wheel_power_w
-from app.domain.road_classes import CLASS_MATERIAL_PREFIX
-from app.domain.traffic import stop_count_material_ids
 from app.domain.tuning import tuning_value
 
 
@@ -109,17 +107,3 @@ class LedgerCosts:
         return (np.asarray(turn_seconds, dtype=np.float64) + per_kickoff * np.asarray(turn_kickoffs, dtype=np.float64)
                 ).astype(np.asarray(turn_seconds).dtype)
 
-
-def fill_numeric_ids() -> tuple[str, ...]:
-    """欠けを取込の範囲全体の平均で埋める数値の材料（停止要因の密度と、今の費用の軸の数値の材料）。"""
-    axes = current_cost_axes()
-    burden = () if axes is None else tuple(
-        a.burden.material for a in axes.burden.values() if not a.burden.material.startswith(CLASS_MATERIAL_PREFIX))
-    return (*stop_count_material_ids(), *burden)
-
-
-def fill_class_ids() -> tuple[str, ...]:
-    """欠けを取込の範囲全体の区分の割合で埋める区分の材料（今の費用の軸の区分の材料）。"""
-    axes = current_cost_axes()
-    return () if axes is None else tuple(
-        a.burden.material for a in axes.burden.values() if a.burden.material.startswith(CLASS_MATERIAL_PREFIX))

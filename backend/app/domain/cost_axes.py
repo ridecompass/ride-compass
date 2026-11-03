@@ -17,7 +17,7 @@ from typing import Annotated, Literal
 
 from pydantic import Field, field_validator, model_validator
 
-from app.domain.material_catalog import material_dtype
+from app.domain.material_catalog import material_dtype, materials_of_source
 from app.domain.road_classes import CLASS_MATERIAL_PREFIX, RoadClassDefinitions
 from app.domain.strict_model import StrictModel
 
@@ -139,6 +139,9 @@ def check_cost_axes(definitions: CostAxisDefinitions, road_classes: RoadClassDef
         dtype = material_dtype(burden.material)
         if dtype is None:
             problems.append(f"{axis_id}: 知らない材料 {burden.material}")
+        elif burden.material in materials_of_source("request"):
+            # 要求ごとに決まる材料（風）は静的スコア行列に載らないので、道の負担の重さを引けない。
+            problems.append(f"{axis_id}: 要求ごとに変わる材料は道の負担に使えない: {burden.material}")
         elif isinstance(burden, CategoricalBurden):
             problems.append(f"{axis_id}: 区分の重さは区分の材料（{CLASS_MATERIAL_PREFIX}<分け方>）にだけ書ける: {burden.material}")
         elif dtype != "numeric":
@@ -160,7 +163,11 @@ def replace_cost_axes(definitions: CostAxisDefinitions | None) -> None:
     _current = definitions
 
 
-def cost_axis_material_ids() -> tuple[str, ...]:
-    """今の費用の軸の定義が読む材料id（道の負担の軸の材料）。静的スコア行列は、軸の構成と無関係にこれらを列として運ぶ。"""
-    definitions = _current
-    return () if definitions is None else tuple(dict.fromkeys(a.burden.material for a in definitions.burden.values()))
+
+def burden_material_ids(definitions: CostAxisDefinitions | None) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """軸の定義の道の負担の軸が読む材料id（`(数値の材料, 区分の材料)`。重複を除き、軸の順）。静的スコア行列はこれらを軸の
+    構成と無関係に列として運び、欠けは取込の範囲全体の分布で埋める。"""
+    materials = [] if definitions is None else [axis.burden.material for axis in definitions.burden.values()]
+    unique = tuple(dict.fromkeys(materials))
+    return (tuple(m for m in unique if not m.startswith(CLASS_MATERIAL_PREFIX)),
+            tuple(m for m in unique if m.startswith(CLASS_MATERIAL_PREFIX)))

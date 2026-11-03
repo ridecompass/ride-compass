@@ -34,7 +34,7 @@ def edge(facts: dict[str, str] | None = None) -> EdgeMaterialColumns:
 )
 def test_the_level_chosen_for_a_row_decides_whether_its_segments_are_excluded_or_surcharged(level, excluded, avoided):
     """「通らない」を選んでも国道を通る・「通る」を選んでも国道を避けると、選んだ避け方が探索に効かない。"""
-    matrix = build_static_edge_score_matrix(edge(facts={class_material_id("kind"): "national"}), {}, {})
+    matrix = build_static_edge_score_matrix(edge(facts={class_material_id("kind"): "national"}), {}, {}, None)
 
     masks = compute_search_exclusion(matrix, {"kind.national": level, "kind.local": "exclude", "other.national": "exclude"})
 
@@ -49,6 +49,6 @@ def test_the_level_chosen_for_a_row_decides_whether_its_segments_are_excluded_or
 ], ids=["高速道路", "自動車専用道路", "標識の無い国道", "自転車通行禁止"])
 def test_only_the_roads_cyclists_may_not_ride_are_always_excluded(tags, excluded):
     """自動車専用道路を通るルートを作ると走れず、標識の無い国道まで外すと遠回りになる。"""
-    matrix = build_static_edge_score_matrix(edge(facts=tags), {}, {})
+    matrix = build_static_edge_score_matrix(edge(facts=tags), {}, {}, None)
 
     assert compute_search_exclusion(matrix, {}).excluded.tolist() == [excluded]
