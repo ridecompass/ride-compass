@@ -14,13 +14,13 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from functools import cached_property
 from datetime import datetime
-from typing import NamedTuple
+from typing import NamedTuple, cast
 
 import numpy as np
 from numba import njit
 
 from app.domain.stopwatch import add_elapsed_ms, elapsed_ms, start_timer, steps_note
-from app.domain.attributes import CategoricalColumn
+from app.domain.attributes import CategoricalColumn, MaterialColumn
 from app.domain.axis_definitions import (
     REQUEST_DYNAMIC_MATERIAL_IDS,
     dynamic_axis_topological_order,
@@ -214,8 +214,9 @@ class _Evaluated:
 
 
 @dataclass(frozen=True)
-class _TravelInputs:
-    """`LegCostComposer._travel_inputs`の中身。"""
+class TravelInputs:
+    """所要時間のうち風に依らない入力: 走行モデル（断面・路面・巡航速度・止まる出来事の回数の換算）と、区間の長さ（m、
+    float64）と、区間にある停止要因で失う時間の期待値（秒。割合 × 待ち。`domain/traffic.py: StopEvent`）。"""
 
     model: SegmentSpeedModel
     distance_m: np.ndarray  # 区間ごと
@@ -223,6 +224,36 @@ class _TravelInputs:
     # 止まる出来事の漕ぎ出しの回数（`StopEvent.kickoffs`の和）と、転がり抵抗（区間ごと）。
     stops: np.ndarray
     crr: np.ndarray
+
+
+def travel_inputs(materials: Mapping[str, MaterialColumn], distance_m: np.ndarray, profiles: ElevationProfiles,
+                  speed_kmh: float, fills: MaterialFills) -> TravelInputs:
+    """区間の材料（材料id→区間の行の順の列）から、所要時間のうち風に依らない入力を組む。探索（`LegCostComposer`）と地図の
+    レンズ（`domain/lens_values.py`）が同じ値を読むよう、組み方はここだけが持つ。ターンは遷移ごとに決まるためここには
+    含まない（探索側が足す）。"""
+    distance_m = np.asarray(distance_m, dtype=np.float64)
+    rolling = rolling_resistance_material_id()
+    surface = materials.get(rolling) if rolling is not None else None
+    if not isinstance(surface, CategoricalColumn):  # 転がり抵抗の表が分け方を指していない: どの区間も基準の転がり抵抗
+        surface = CategoricalColumn(np.zeros(len(distance_m), dtype=np.int16), (None,))
+    waits = np.zeros(len(distance_m))
+    kickoffs = np.zeros(len(distance_m))
+    distance_km = distance_m / 1000.0
+    for kind, material_id in zip(POI_COUNT_KINDS, stop_count_material_ids(), strict=True):
+        event = stop_event("stop", kind)
+        # 停止要因の数の無い区間は、取込の範囲全体の平均の密度で数える（0とみなすと、数の無い道が止まらない速い道に見える）。
+        count = np.nan_to_num(fills.fill(material_id, cast(np.ndarray, materials[material_id]))) * distance_km
+        waits += count * event.expected_seconds
+        kickoffs += count * event.kickoffs
+    crr = crr_for_surface(surface)
+    model = SegmentSpeedModel(RiderProfile(cruise_speed_kmh=speed_kmh), profiles, distance_m, crr, kickoffs)
+    return TravelInputs(model, distance_m, waits, kickoffs, crr)
+
+
+def burden_weights(axes: CostAxisDefinitions, materials: Mapping[str, MaterialColumn],
+                   fills: MaterialFills) -> dict[str, np.ndarray]:
+    """道の負担の軸id → 区間ごとの1kmあたりの重さ（`domain/ledger_costs.py: burden_per_km`）。"""
+    return {axis_id: burden_per_km(axis.burden, materials, fills) for axis_id, axis in axes.burden.items()}
 
 
 @njit(cache=True, nogil=True)
@@ -285,7 +316,7 @@ def compile_leg_cost_kernels() -> None:
                      np.zeros(1, dtype=int), 1)
 
 
-def _wind_components(context: DynamicAxisRequestContext, n: int) -> tuple[np.ndarray, np.ndarray]:
+def wind_components_or_calm(context: DynamicAxisRequestContext, n: int) -> tuple[np.ndarray, np.ndarray]:
     """風の文脈の区間ごとの`(向かい風, 横風)`の成分（風が無ければ0）。"""
     wind = context.wind_components_ms
     if wind is None:
@@ -399,30 +430,15 @@ class LegCostComposer:
         self._ledger_seconds: dict[int | None, tuple[np.ndarray, np.ndarray]] = {}
 
     @cached_property
-    def _travel_inputs(self) -> _TravelInputs:
-        """所要時間のうち風に依らない入力: 走行モデル（断面・路面・巡航速度・止まる出来事の回数の換算）と、区間の長さ（m、
-        float64）と、区間にある停止要因で失う時間の期待値（秒。割合 × 待ち。`domain/traffic.py: StopEvent`）。どれも静的材料
-        だけから決まるため、リクエストに1回だけ求める。ターンは遷移ごとに決まるためここには含まない（探索側が足す）。"""
-        distance_m = np.asarray(self._score_matrix.distance_m, dtype=np.float64)
-        rolling = rolling_resistance_material_id()
-        surface = self.categorical_material_arrays.get(rolling) if rolling is not None else None
-        if surface is None:  # 転がり抵抗の表が分け方を指していない: どの区間も基準の転がり抵抗
-            surface = CategoricalColumn(np.zeros(len(distance_m), dtype=np.int16), (None,))
-        waits = np.zeros(len(distance_m))
-        kickoffs = np.zeros(len(distance_m))
-        distance_km = distance_m / 1000.0
-        for kind, material_id in zip(POI_COUNT_KINDS, stop_count_material_ids(), strict=True):
-            event = stop_event("stop", kind)
-            # 停止要因の数の無い区間は、取込の範囲全体の平均の密度で数える（0とみなすと、数の無い道が止まらない速い道に見える）。
-            density = self._static_material_arrays[material_id]
-            fill = self._material_fills.numeric_means.get(material_id, np.nan)
-            count = np.nan_to_num(np.where(np.isnan(density), fill, density)) * distance_km
-            waits += count * event.expected_seconds
-            kickoffs += count * event.kickoffs
-        crr = crr_for_surface(surface)
-        model = SegmentSpeedModel(RiderProfile(cruise_speed_kmh=self.speed_kmh), self._score_matrix.elevation_profiles,
-                                  distance_m, crr, kickoffs)
-        return _TravelInputs(model, distance_m, waits, kickoffs, crr)
+    def _materials(self) -> dict[str, MaterialColumn]:
+        """所要時間と費用の式が読む静的材料（数値と区分。切り出した区間の順）。"""
+        return {**self._static_material_arrays, **self.categorical_material_arrays}
+
+    @cached_property
+    def _travel_inputs(self) -> TravelInputs:
+        """所要時間のうち風に依らない入力（`travel_inputs`）。静的材料だけから決まるため、リクエストに1回だけ求める。"""
+        return travel_inputs(self._materials, self._score_matrix.distance_m, self._score_matrix.elevation_profiles,
+                             self.speed_kmh, self._material_fills)
 
     def bin_time(self, hours: float) -> BinTime:
         """全区間を出発から`hours`時間後の時刻で合成するビンの、時刻の入力（`BinTime`）。"""
@@ -597,7 +613,7 @@ class LegCostComposer:
         dynamic_context = self._wind_context(time, take)
         static_scores = {axis_id: take(values) for axis_id, values in self._static_axis_scores.items()}
         resolved = evaluate_dynamic_axis_arrays(static_scores, dynamic_context, self.axis_definitions)
-        headwind, crosswind = _wind_components(dynamic_context, len(bearing))
+        headwind, crosswind = wind_components_or_calm(dynamic_context, len(bearing))
         # 合成へ渡すのは重みのある時刻で変わる軸だけにし、それ以外は先に求めた重み付き和を使い回す
         # （合成の時間は軸数にほぼ比例する）。
         if self._composition_is_time_invariant:
@@ -715,20 +731,14 @@ class LegCostComposer:
         axes, parameters = self._ledger_setup
         distance_km = self._travel_inputs.distance_m / 1000.0
         burden_km = {axis_id: per_km * distance_km for axis_id, per_km in self._burden_per_km.items()}
-        model = self._travel_inputs.model
-        return LedgerCosts(axes, parameters, model.flat_power_w,
-                           model.kickoff_effort_j(parameters.effort_weight_exponent), burden_km)
+        return LedgerCosts.for_model(axes, parameters, self._travel_inputs.model, burden_km)
 
     @cached_property
     def _burden_per_km(self) -> dict[str, np.ndarray]:
         """道の負担の軸id→区間ごとの1kmあたりの重さ（帳簿の式で組んでいなければ空）。"""
         if self._ledger_setup is None:
             return {}
-        return {
-            axis_id: burden_per_km(axis.burden, self._static_material_arrays, self.categorical_material_arrays,
-                                   self._material_fills)
-            for axis_id, axis in self._ledger_setup[0].burden.items()
-        }
+        return burden_weights(self._ledger_setup[0], self._materials, self._material_fills)
 
     def row_facts(self, rows: np.ndarray) -> RowFacts:
         """切り出した区間の順の行`rows`の、時刻に依らない事実の量。"""
@@ -781,7 +791,7 @@ class LegCostComposer:
         """費目の帳簿の式の、時刻`time`の区間ごとの`(走行時間, 代償の秒)`。"""
         wind_context = self._wind_context(time, _row_taker(None))
         return ledger.bin_seconds(self._travel_inputs.model,
-                                  *_wind_components(wind_context, len(self._travel_inputs.distance_m)))
+                                  *wind_components_or_calm(wind_context, len(self._travel_inputs.distance_m)))
 
     @cached_property
     def _unit_multiplier(self) -> np.ndarray:

@@ -54,6 +54,7 @@ from app.services.flood_service import FloodService
 from app.services.graph_service import GraphService, SearchMemory
 from app.services.jma_amedas_service import JmaAmedasService
 from app.services.landcover_tile_service import get_landcover_tile
+from app.services.lens_service import LensService
 from app.services.material_coverage_service import MaterialCoverageService
 from app.services.nearest_point_areas import new_cells_cache
 from app.services.place_search_service import PlaceSearchReads, PlaceSearchService
@@ -245,8 +246,14 @@ async def get_draft_way_value_lens_builder(
         yield lambda axis_id, shape: draft_axis_way_value_lens(axis_id, shape, feature_materials, build_service)
 
 
+def get_lens_service(weather_service: WeatherService = Depends(get_weather_service)) -> LensService:
+    """地図のレンズの道ごとの値。DBを読まない（取込範囲全体の道の網から求める）。"""
+    return LensService(weather_service)
+
+
 async def get_axis_inspector_service(
-    tile_sessions: TileSessions, weather_service: WeatherService = Depends(get_weather_service)
+    tile_sessions: TileSessions, weather_service: WeatherService = Depends(get_weather_service),
+    lens: LensService = Depends(get_lens_service),
 ):
     """区間インスペクタ。道の読み出しと、地図の配信と同じタイルの材料・配信のサービスの値を、同じセッションで順に引く
     ——別々に開くと、先に引いたセッションが要求の終わりまで接続を持ったまま、後の読み出しがもう1本を取る。"""
@@ -256,6 +263,7 @@ async def get_axis_inspector_service(
             RegionService(repository=repository),
             FeatureMaterialService(repository),
             material_service_builder(repository, weather_service),
+            lens,
         )
 
 

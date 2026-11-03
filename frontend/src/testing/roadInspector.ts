@@ -33,8 +33,16 @@ export const openEvaluation = (user: UserEvent) =>
   user.click(screen.getByRole("button", { name: "この道の評価を見る" }));
 
 /** 押したフィーチャーの評価を差し替えた応答。 */
-export function inspectorResult(values: Partial<AxisInspectorResult["values"]> = {}): AxisInspectorResult {
-  return { highway: "residential", tags: { lit: "yes", name: "明治通り" }, values: { ...pressedValues(), ...values } };
+export function inspectorResult(
+  values: Partial<AxisInspectorResult["values"]> = {},
+  lens: AxisInspectorResult["lens"] = null,
+): AxisInspectorResult {
+  return {
+    highway: "residential",
+    tags: { lit: "yes", name: "明治通り" },
+    values: { ...pressedValues(), ...values },
+    lens,
+  };
 }
 
 const NO_LANDCOVER = {

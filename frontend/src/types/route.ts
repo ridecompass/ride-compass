@@ -48,13 +48,13 @@ export type RoutePreferenceWeights = Schemas["RoutePreferenceWeights"];
 export type RoadAvoidanceOverride = Schemas["RoadAvoidanceOverride"];
 /** 代償の全体に掛けるつまみと、費用の軸ごとの倍率。 */
 export type CostPreference = Schemas["CostPreference-Output"];
-export type CostAxisCatalogResponse = Schemas["CostAxisCatalogResponse"];
 
 // 実際に適用された条件のエコー。
 export type GenerationConditions = Schemas["GenerationConditions"];
 
 export type AxisCatalogResponse = Schemas["AxisCatalogResponse"];
 export type AxisCatalogEntry = Schemas["AxisCatalogEntry"];
+export type CostAxisCatalogResponse = Schemas["CostAxisCatalogResponse"];
 /** 道の区分。正本は管理DBで、軸カタログが公開した分け方を解決した形で配る。 */
 export type RoadClassCatalog = Schemas["RoadClassCatalog"];
 export type RoadMapLayerView = Schemas["RoadMapLayerView"];

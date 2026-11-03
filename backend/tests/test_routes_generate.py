@@ -134,6 +134,7 @@ def cost_axes():
         "effort": {axis_id: _PRESENTATION for axis_id in EFFORT_AXES},
         "burden": {BAD_AXIS: {**_PRESENTATION, "burden": {
             "kind": "linear", "material": BAD_MATERIAL, "points": [(0.0, 0.0), (1.0, 10.0)]}}},
+        "total_lens": _PRESENTATION,
     }))
     yield
     replace_cost_axes(None)

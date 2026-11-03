@@ -8,6 +8,7 @@ import { tileQueryOptions } from "@/features/map/tileQueries";
 import type { DedicatedWayValueAxis } from "@/lib/mapDisplay/axisLayers";
 import type { MapViewport } from "@/features/map/view/mapLook";
 import {
+  fetchLensMaterials,
   fetchWayMaterials,
   ROAD_TILE_MAX_ZOOM,
   ROAD_TILE_MIN_ZOOM,
@@ -42,6 +43,18 @@ function axisQuery(axis: DedicatedWayValueAxis, conditions: RideConditions): Way
     ...(names.includes("bearing_deg") ? { bearing_deg: conditions.bearingDeg } : {}),
     ...(names.includes("speed_kmh") ? { speed_kmh: conditions.speedKmh } : {}),
   };
+}
+
+/** 軸の材料を、軸が宣言した口から取る。レンズの口は想定速度を必ず載せる。 */
+function fetchAxisMaterials(
+  axis: DedicatedWayValueAxis,
+  tile: { z: number; x: number; y: number },
+  query: WayMaterialsQuery,
+  conditions: RideConditions,
+) {
+  return axis.wayMaterialSource === "lens"
+    ? fetchLensMaterials(axis.axisId, tile.z, tile.x, tile.y, { ...query, speed_kmh: conditions.speedKmh })
+    : fetchWayMaterials(axis.axisId, tile.z, tile.x, tile.y, query);
 }
 
 /** 1軸の、表示中のタイルごとの結果をまとめる。 */
@@ -93,10 +106,10 @@ export function useWayMaterials(
         const query = axisQuery(axis, debouncedConditions);
         return tiles.map((tile) =>
           tileQueryOptions(
-            ["way-material", axis.axisId],
+            ["way-material", axis.wayMaterialSource, axis.axisId],
             query,
             tile,
-            () => fetchWayMaterials(axis.axisId, tile.z, tile.x, tile.y, query),
+            () => fetchAxisMaterials(axis, tile, query, debouncedConditions),
             (data) => data.error,
           ),
         );

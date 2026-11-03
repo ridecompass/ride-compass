@@ -950,6 +950,110 @@
         }
       }
     },
+    "/api/region/lens/{lens_id}/{z}/{x}/{y}": {
+      "get": {
+        "operationId": "region_lens_api_region_lens__lens_id___z___x___y__get",
+        "parameters": [
+          {
+            "name": "lens_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Lens Id"
+            }
+          },
+          {
+            "name": "z",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 15,
+              "minimum": 12,
+              "title": "Z"
+            }
+          },
+          {
+            "name": "x",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "title": "X"
+            }
+          },
+          {
+            "name": "y",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "title": "Y"
+            }
+          },
+          {
+            "name": "speed_kmh",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "number",
+              "maximum": 60.0,
+              "minimum": 5.0,
+              "title": "Speed Kmh"
+            }
+          },
+          {
+            "name": "at",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "At"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "number"
+                    }
+                  },
+                  "title": "Response Region Lens Api Region Lens  Lens Id   Z   X   Y  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/region/road-classes/{z}/{x}/{y}": {
       "get": {
         "operationId": "region_road_classes_api_region_road_classes__z___x___y__get",
@@ -3286,6 +3390,16 @@
           },
           "values": {
             "$ref": "#/components/schemas/InspectorValues"
+          },
+          "lens": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LensInspection"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "additionalProperties": false,
@@ -3293,7 +3407,8 @@
         "required": [
           "highway",
           "tags",
-          "values"
+          "values",
+          "lens"
         ],
         "title": "AxisInspectorResult"
       },
@@ -4235,6 +4350,24 @@
           },
           "lens": {
             "$ref": "#/components/schemas/LensBands"
+          },
+          "lens_equivalents": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ThresholdEquivalents"
+              },
+              {
+                "$ref": "#/components/schemas/ExampleEquivalents"
+              }
+            ],
+            "title": "Lens Equivalents",
+            "discriminator": {
+              "propertyName": "kind",
+              "mapping": {
+                "examples": "#/components/schemas/ExampleEquivalents",
+                "thresholds": "#/components/schemas/ThresholdEquivalents"
+              }
+            }
           }
         },
         "additionalProperties": false,
@@ -4245,7 +4378,8 @@
           "label",
           "description",
           "icon_id",
-          "lens"
+          "lens",
+          "lens_equivalents"
         ],
         "title": "CostAxisCatalogEntry"
       },
@@ -4261,13 +4395,21 @@
           "avoidance_label": {
             "type": "string",
             "title": "Avoidance Label"
+          },
+          "total_lens": {
+            "$ref": "#/components/schemas/TotalLens"
+          },
+          "map_lens": {
+            "$ref": "#/components/schemas/MapLens"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
           "axes",
-          "avoidance_label"
+          "avoidance_label",
+          "total_lens",
+          "map_lens"
         ],
         "title": "CostAxisCatalogResponse"
       },
@@ -4286,13 +4428,17 @@
             },
             "type": "object",
             "title": "Burden"
+          },
+          "total_lens": {
+            "$ref": "#/components/schemas/AxisPresentation"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
           "effort",
-          "burden"
+          "burden",
+          "total_lens"
         ],
         "title": "CostAxisDefinitions"
       },
@@ -4578,6 +4724,30 @@
           "end_elevation_m"
         ],
         "title": "ElevationStretch"
+      },
+      "ExampleEquivalents": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "examples",
+            "title": "Kind",
+            "default": "examples"
+          },
+          "examples": {
+            "items": {
+              "$ref": "#/components/schemas/SecondsExample"
+            },
+            "type": "array",
+            "title": "Examples"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "examples"
+        ],
+        "title": "ExampleEquivalents"
       },
       "ExternalCallStats": {
         "properties": {
@@ -5423,6 +5593,25 @@
         ],
         "title": "LayerTextSlotView"
       },
+      "LensAxisSeconds": {
+        "properties": {
+          "axis_id": {
+            "type": "string",
+            "title": "Axis Id"
+          },
+          "seconds_per_km": {
+            "type": "number",
+            "title": "Seconds Per Km"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "axis_id",
+          "seconds_per_km"
+        ],
+        "title": "LensAxisSeconds"
+      },
       "LensBands": {
         "properties": {
           "thresholds": {
@@ -5448,6 +5637,135 @@
           "band_labels"
         ],
         "title": "LensBands"
+      },
+      "LensDirection": {
+        "properties": {
+          "total_seconds_per_km": {
+            "type": "number",
+            "title": "Total Seconds Per Km"
+          },
+          "axes": {
+            "items": {
+              "$ref": "#/components/schemas/LensAxisSeconds"
+            },
+            "type": "array",
+            "title": "Axes"
+          },
+          "steepest_climb_percent": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Steepest Climb Percent"
+          },
+          "steepest_descent_percent": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Steepest Descent Percent"
+          },
+          "headwind_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Headwind Ms"
+          },
+          "stops_per_km": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stops Per Km"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "total_seconds_per_km",
+          "axes",
+          "steepest_climb_percent",
+          "steepest_descent_percent",
+          "headwind_ms",
+          "stops_per_km"
+        ],
+        "title": "LensDirection"
+      },
+      "LensInspection": {
+        "properties": {
+          "painted": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "along",
+                  "against"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Painted"
+          },
+          "along": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LensDirection"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "against": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LensDirection"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "surface": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Surface"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "painted",
+          "along",
+          "against",
+          "surface"
+        ],
+        "title": "LensInspection"
       },
       "LinearBurden": {
         "properties": {
@@ -5517,6 +5835,32 @@
           "unit"
         ],
         "title": "MapLegendScale"
+      },
+      "MapLens": {
+        "properties": {
+          "formula": {
+            "$ref": "#/components/schemas/WayValueFormula"
+          },
+          "material_conditions": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "at",
+                "bearing_deg",
+                "speed_kmh"
+              ]
+            },
+            "type": "array",
+            "title": "Material Conditions"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "formula",
+          "material_conditions"
+        ],
+        "title": "MapLens"
       },
       "MapPaint": {
         "properties": {
@@ -7546,6 +7890,25 @@
         ],
         "title": "ScoresPreviewResponse"
       },
+      "SecondsExample": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "seconds_per_km": {
+            "type": "number",
+            "title": "Seconds Per Km"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "label",
+          "seconds_per_km"
+        ],
+        "title": "SecondsExample"
+      },
       "SignedMaterialMapValue": {
         "properties": {
           "kind": {
@@ -7639,6 +8002,47 @@
         ],
         "title": "SucceededRunCounts"
       },
+      "ThresholdEquivalents": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "thresholds",
+            "title": "Kind",
+            "default": "thresholds"
+          },
+          "fact": {
+            "type": "string",
+            "title": "Fact"
+          },
+          "unit": {
+            "type": "string",
+            "title": "Unit"
+          },
+          "values": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Values"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "fact",
+          "unit",
+          "values"
+        ],
+        "title": "ThresholdEquivalents"
+      },
       "TimelineKind": {
         "type": "string",
         "enum": [
@@ -7706,6 +8110,40 @@
           "advisory"
         ],
         "title": "TimelineSlotLevel"
+      },
+      "TotalLens": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Label"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "icon_id": {
+            "type": "string",
+            "title": "Icon Id"
+          },
+          "lens": {
+            "$ref": "#/components/schemas/LensBands"
+          },
+          "lens_id": {
+            "type": "string",
+            "title": "Lens Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "label",
+          "description",
+          "icon_id",
+          "lens",
+          "lens_id"
+        ],
+        "title": "TotalLens"
       },
       "TuningParameterView": {
         "properties": {

@@ -40,13 +40,15 @@ const ENTRY: SavedCondition = {
 };
 
 const NO_BANDS = { thresholds: [], band_labels: ["段"] };
+const NO_EQUIVALENTS = { kind: "examples" as const, examples: [] };
 
 const COST_CATALOG: CostAxisCatalog = {
   axes: [
-    { axisId: "ascent", ledger: "effort", label: "登坂", description: "", iconId: "", lens: NO_BANDS },
-    { axisId: "vibration", ledger: "burden", label: "振動", description: "", iconId: "", lens: NO_BANDS },
+    { axisId: "ascent", ledger: "effort", label: "登坂", description: "", iconId: "", lens: NO_BANDS, lensEquivalents: NO_EQUIVALENTS },
+    { axisId: "vibration", ledger: "burden", label: "振動", description: "", iconId: "", lens: NO_BANDS, lensEquivalents: NO_EQUIVALENTS },
   ],
   avoidanceLabel: "回避指定",
+  lenses: null,
   loaded: true,
   failed: false,
 };

@@ -23,7 +23,8 @@ def _axis(label: str, **burden) -> dict:
 
 
 def _definitions(**burden_axes) -> dict:
-    return {"effort": {axis_id: _axis(axis_id) for axis_id in EFFORT_AXES}, "burden": burden_axes}
+    return {"effort": {axis_id: _axis(axis_id) for axis_id in EFFORT_AXES}, "burden": burden_axes,
+            "total_lens": _axis("総合")}
 
 
 VIBRATION = _axis("振動", kind="categorical", material="class:surface_estimate",
@@ -39,7 +40,7 @@ def test_a_definition_with_every_effort_axis_and_a_burden_axis_over_every_class_
 @pytest.mark.parametrize(
     "definition",
     [
-        {"effort": {axis_id: _axis(axis_id) for axis_id in list(EFFORT_AXES)[1:]}, "burden": {}},
+        {"effort": {axis_id: _axis(axis_id) for axis_id in list(EFFORT_AXES)[1:]}, "burden": {}, "total_lens": _axis("総合")},
         _definitions(**{next(iter(EFFORT_AXES)): VIBRATION}),
         _definitions(vibration={**VIBRATION, "burden": {**VIBRATION["burden"], "per_km": {"paved": -0.1}}}),
         _definitions(vibration={**VIBRATION, "lens": {"thresholds": [5.0, 1.0], "band_labels": ["a", "b", "c"]}}),

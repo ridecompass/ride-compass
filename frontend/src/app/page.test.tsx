@@ -64,6 +64,7 @@ const INSPECTED_ROAD: AxisInspectorResult = {
   highway: "residential",
   tags: {},
   values: { axes: [], composite_difficulty: { value: 40, covered_weight_fraction: 1 }, landcover: null },
+  lens: null,
 };
 
 /** 全部の道路をその軸で塗っているか。 */

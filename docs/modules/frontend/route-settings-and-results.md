@@ -28,7 +28,7 @@
 | `features/route/RouteForm/useRouteFormSubmit.ts` | 上記の検証（`{error, check}`。`features/route/RouteForm/useRouteFormSubmit.ts: check`は通ったかを返す）。「ルート生成」ボタン自体は`RouteForm`の外（`GenerateRouteActions.tsx`。見出し行）にあるため分離している（下記参照） |
 | `features/route/RouteSettingsPanel/RouteSettingsPanel.tsx` | 「負担」タブの中身: 費用の軸ごとの倍率を段で選ぶ（下記参照。全体のつまみは「条件」タブの`RouteForm`） |
 | `features/route/costPreference.ts` | つまみと倍率の値の扱い: 段（値と名前）・保存値の読み方（`features/route/costPreference.ts: readCostPreference`。読めない値・段に無い値は標準へ戻す）・生成の要求へ載せる形（`features/route/costPreference.ts: costPreferenceToSend`）・送れなかったかの判定・説明の文 |
-| `hooks/useCostAxisCatalog.ts` | `GET /api/cost-axes`の取得。費用の軸（名前・説明・アイコン）を`hooks/useCostAxisCatalog.ts: useCostAxisCatalog`が返す（定義がまだ無い間は軸0件で読めたとする）。取れていないことの項目（常設ヘッダーの印と倍率タブの告知）もここが持つ |
+| `hooks/useCostAxisCatalog.ts` | `GET /api/cost-axes`の取得。費用の軸（名前・説明・アイコン・地図のレンズ）を`hooks/useCostAxisCatalog.ts: useCostAxisCatalog`が返す（定義がまだ無い間は軸0件で読めたとする。レンズの読み方は[地図: 軸・ルート色分け](map-axis-coloring.md)）。取れていないことの項目（常設ヘッダーの印と負担タブの告知）もここが持つ |
 | `hooks/useSharedCatalog.ts` | 画面の全体が読む一覧（軸カタログ・費用の軸）の取得の共通の形: 読み手の間で1つの取得を共有し、マウントのたびに取り直し、届いた応答を後の失敗で巻き戻さない（`hooks/useSharedCatalog.ts: useSharedCatalog`）。まだ届いていないときだけ取り直す再試行（`hooks/useSharedCatalog.ts: retrySharedCatalogFetch`） |
 | `services/costAxisCatalogApi.ts` | 上記フックが叩くbackend APIの薄いラッパー（404は定義なしとして軸0件の一覧にする） |
 | `features/route/RouteSettingsPanel/HardFilterPanel.tsx` | 「回避」タブの中身。地図の道のレイヤの凡例の行ごとの避け方を1つの並びに出し、自転車が通れない道の行は「通らない」に固定して鍵を付ける（下記「除外」）。選べる行の鍵・名前・既定の段と行をまとめる節は軸カタログの`road_classes.avoidance`が、固定の行の名前と説明は生成物`route-generate-config.json`の`route-generate-config.json: hard_filters`が正で、名前をフロントに持たない——キーと名前を別々に持つと、足した行に名前が無く内部名が出る。軸カタログが届くまでは選べる行を出さない |

@@ -31,10 +31,12 @@ from app.infrastructure.vector_tile import ROAD_SURFACE_LAYER_NAME, encode_empty
 from app.infrastructure.road_graph_repository import RoadGraphRepository
 from app.services.dedicated_way_values import dedicated_way_value_layers
 from app.services import region_service
+from app.services.lens_service import LensService
 from app.services.region_service import AxisInspectorService, RegionService
 from tests.axis_system_fixture import replaced_axis_definitions, shaped_axis
 from tests.way_value_lens_fixture import axis_way_value_lens
 from tests.fake_external_log import record_external_calls
+from tests.route_world import Weather
 
 
 Z, X, Y = 14, 14551, 6447
@@ -197,7 +199,7 @@ class _Gradients:
 
 def _inspector(readable: bool = True, unavailable: bool = False) -> AxisInspectorService:
     return AxisInspectorService(RegionService(repository=_InspectedWayRepository(unavailable)), _TileMaterials(readable),
-                                {"gradient_percent": _Gradients()}.__getitem__)
+                                {"gradient_percent": _Gradients()}.__getitem__, LensService(Weather()))
 
 
 QUERY = WayValueQuery(at=None, bearing_deg=0.0, speed_kmh=None)

@@ -23,6 +23,8 @@ import type MapOverlayControls from "@/features/map/MapOverlayControls/MapOverla
 import { isLegendFiltered } from "@/features/map/MapOverlayControls/OverlayLayerRow";
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import { useAxisCatalog } from "@/hooks/useAxisCatalog";
+import { useCostAxisCatalog } from "@/hooks/useCostAxisCatalog";
+import { costLensOptions, costLensPremises } from "@/features/map/costLens";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useWayMaterials } from "@/features/map/useWayMaterials";
 import { useRoadClasses } from "@/features/map/useRoadClasses";
@@ -105,6 +107,13 @@ export function useMapView({
     deserialize: (raw) => (raw === "light" || raw === "dark" ? raw : null),
   });
   const mapCatalog = useMapAxisCatalog(mapTheme);
+  const costCatalog = useCostAxisCatalog();
+  // 費用の軸の定義がある間は、レンズを総合と費用の軸（1kmあたりの代償の秒）に替える。無い間は旧い軸のレンズのまま。
+  const costLenses = useMemo(
+    () => mapCatalog.dedicatedAxes.filter((axis) => axis.wayMaterialSource === "lens"),
+    [mapCatalog.dedicatedAxes],
+  );
+  const usesCostLenses = costLenses.length > 0;
   // 保存するのは触った層の真偽だけで、既定は層の一覧（道の線の層は軸カタログが届いてから決まる）から重ねる。
   const [storedVisibility, setLayerVisibility] = useStoredState<MapLayerVisibility>(
     "ridecompass:layer-visibility",
@@ -118,8 +127,14 @@ export function useMapView({
   // 軸を指す保存値はカタログが届いて初めて読めるため、届いた時点で読み直す。
   const [lens, setLens] = useStoredState<LensId>("ridecompass:route-style-mode", LENS_DIFFICULTY_ID, {
     serialize: (value) => value,
-    deserialize: (raw) => (isRouteStyleModeId(mapCatalog.routeStyleModes, raw) ? raw : null),
-    reloadKey: catalog.loaded,
+    // 費用の軸のレンズの間は、旧い軸の保存値を受けない（選択肢に無い軸を塗り続けてしまう）。
+    deserialize: (raw) => {
+      const known = usesCostLenses
+        ? raw === LENS_DIFFICULTY_ID || costLenses.some((axis) => axis.axisId === raw)
+        : isRouteStyleModeId(mapCatalog.routeStyleModes, raw);
+      return known ? raw : null;
+    },
+    reloadKey: `${catalog.loaded}-${costCatalog.loaded}`,
   });
   const [keepAfterRoute, setKeepAfterRoute] = useStoredBooleanState("ridecompass:lens-keep-after-route", true);
   const [storedHidden, setStoredHidden] = useStoredState<HiddenLegendKeys>(
@@ -232,14 +247,20 @@ export function useMapView({
   const toggleHiddenFor = (axisId: string, key: string) => setHidden((prev) => toggleHiddenKey(prev, axisId, key));
 
   // 色分けの凡例が隠した段の保存先の鍵（色分けの選択肢）。「表示」の絞り込みの解除は、これ以外の鍵だけを戻す。
-  const lensKeys = new Set<string>([...catalog.axes.map((axis) => axis.axisId), LENS_DIFFICULTY_ID]);
+  const lensKeys = new Set<string>([
+    ...catalog.axes.map((axis) => axis.axisId),
+    ...costLenses.map((axis) => axis.axisId),
+    LENS_DIFFICULTY_ID,
+  ]);
 
   return {
     look,
     lensControl: {
       lens,
       onLensChange: setLens,
-      axisOptions: lensOptions(catalog.axes, routeWeights, catalog.axisColors),
+      axisOptions: usesCostLenses
+        ? costLensOptions(costLenses)
+        : lensOptions(catalog.axes, routeWeights, catalog.axisColors),
       legend,
       hiddenLegendKeys: lensHidden,
       onToggleLegendKey: (key) => toggleHiddenFor(lens, key),
@@ -248,7 +269,7 @@ export function useMapView({
       onKeepAfterRouteChange: setKeepAfterRoute,
       hasDetail,
       routeHidden: hasSelectedRoute && layerVisibility[ROUTE_LAYER_ID] !== true,
-      premises: lensPremises(painted, catalog.axes),
+      premises: usesCostLenses ? costLensPremises(painted, costCatalog) : lensPremises(painted, catalog.axes),
       dataStatus: lensFetch
         ? deriveFetchLayerStatus(
             lensFetch.loading,
@@ -282,7 +303,7 @@ export function useMapView({
           Object.fromEntries(Object.entries(prev).map(([key, keys]) => [key, lensKeys.has(key) ? keys : []])),
         ),
     },
-    lensConditions: catalog.axes.find((axis) => axis.axisId === painted)?.wayValueConditions ?? [],
+    lensConditions: mapCatalog.dedicatedAxes.find((axis) => axis.axisId === painted)?.wayValueConditions ?? [],
     redrawMap: () => setRefreshToken((token) => token + 1),
     onMapThemeChange: setMapTheme,
     center,

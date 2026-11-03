@@ -18,8 +18,16 @@ export interface CostAxis {
   label: string;
   description: string;
   iconId: string;
-  /** 地図のレンズの段。 */
+  /** 地図のレンズの段（境目は1kmあたりの代償の秒）。 */
   lens: CostAxisEntry["lens"];
+  /** 段の境目の秒が、標準の条件でどれだけの事実に当たるかの目安。 */
+  lensEquivalents: CostAxisEntry["lens_equivalents"];
+}
+
+/** 地図のレンズのうち、軸に属さないもの（総合のレンズと、道の値を求める決まり）。総合は軸と同じ見せ方の欄を持つ。 */
+export interface CostLensCatalog {
+  totalLens: Pick<CostAxis, "axisId" | "label" | "description" | "iconId" | "lens">;
+  mapLens: CostAxisCatalogResponse["map_lens"];
 }
 
 export interface CostAxisCatalog {
@@ -27,13 +35,15 @@ export interface CostAxisCatalog {
   axes: readonly CostAxis[];
   /** 代償の内訳の、避け方の倍率で上乗せした秒の行の名前。 */
   avoidanceLabel: string;
+  /** 地図のレンズ。定義がまだ無い間・届くまではnull。 */
+  lenses: CostLensCatalog | null;
   /** 取得が成功したか。falseの間は`axes`が空なので、今の軸と揃うことを要る処理（倍率を送る）はこれで未確定を区別する。 */
   loaded: boolean;
   /** 取得に失敗し、まだ一度も成功していないか（`loaded`と同時にtrueにならない）。 */
   failed: boolean;
 }
 
-const EMPTY: CostAxisCatalog = { axes: [], avoidanceLabel: "", loaded: false, failed: false };
+const EMPTY: CostAxisCatalog = { axes: [], avoidanceLabel: "", lenses: null, loaded: false, failed: false };
 const FAILED: CostAxisCatalog = { ...EMPTY, failed: true };
 
 function costAxisCatalogFromResponse(response: CostAxisCatalogResponse | null): CostAxisCatalog {
@@ -46,8 +56,19 @@ function costAxisCatalogFromResponse(response: CostAxisCatalogResponse | null): 
       description: entry.description,
       iconId: entry.icon_id,
       lens: entry.lens,
+      lensEquivalents: entry.lens_equivalents,
     })),
     avoidanceLabel: response.avoidance_label,
+    lenses: {
+      totalLens: {
+        axisId: response.total_lens.lens_id,
+        label: response.total_lens.label,
+        description: response.total_lens.description,
+        iconId: response.total_lens.icon_id,
+        lens: response.total_lens.lens,
+      },
+      mapLens: response.map_lens,
+    },
     loaded: true,
     failed: false,
   };

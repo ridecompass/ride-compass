@@ -18,6 +18,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MAP_FETCH_DEBOUNCE_MS } from "@/hooks/useDebouncedValue";
 import { bandColorsFor, DEFAULT_DIFFICULTY_BOUNDARIES } from "@/lib/mapDisplay/valueScale";
 import { onSameOrigin, serveAxisCatalog, type SentRequest } from "@/testing/backendServer";
+import { serveCostAxisCatalog } from "@/testing/costAxes";
 import { catalogEntry, catalogResponse } from "@/testing/catalogAxes";
 import { mapOnScreen } from "@/testing/maplibre";
 import { evaluateExpression } from "@/testing/mapExpressions";
@@ -76,6 +77,7 @@ beforeEach(() => {
     Response.json({ sample_ways: 2, total_km: 2, quantiles: {}, bins: [[0, 2, 1]] }),
   );
   onSameOrigin("POST", `${DEFINITIONS}/preview-scores`, () => Response.json({ scores: [50], material_points: [] }));
+  serveCostAxisCatalog(null);
   serveAxisCatalog(
     catalogResponse([catalogEntry({ axis_id: SLOPE.axis_id })], {
       tile_versions: Object.fromEntries(regionTileConfig.tile_version_kinds.map((kind) => [kind, "1-test"])),

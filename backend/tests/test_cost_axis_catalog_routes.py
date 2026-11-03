@@ -18,6 +18,7 @@ DEFINITIONS = CostAxisDefinitions.model_validate({
     "burden": {"vibration": {"label": "振動", "description": "揺れる", "icon_id": "wave", "lens": LENS,
                              "burden": {"kind": "categorical", "material": "class:surface_estimate",
                                         "per_km": {"paved": 0.0}}}},
+    "total_lens": {"label": "総合", "description": "", "icon_id": "sum", "lens": LENS},
 })
 
 
@@ -34,8 +35,9 @@ def test_the_catalog_lists_the_effort_axes_in_the_code_order_then_the_burden_axe
 
     assert [(axis["axis_id"], axis["ledger"]) for axis in body["axes"]] == [
         *((axis_id, "effort") for axis_id in EFFORT_AXES), ("vibration", "burden")]
-    assert body["axes"][-1] == {"axis_id": "vibration", "ledger": "burden", "label": "振動", "description": "揺れる",
-                                "icon_id": "wave", "lens": LENS}
+    shown = {key: value for key, value in body["axes"][-1].items() if key != "lens_equivalents"}
+    assert shown == {"axis_id": "vibration", "ledger": "burden", "label": "振動", "description": "揺れる",
+                     "icon_id": "wave", "lens": LENS}
     assert body["avoidance_label"] == AVOIDANCE_LABEL
 
 

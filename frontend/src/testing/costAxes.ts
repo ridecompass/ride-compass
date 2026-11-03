@@ -12,12 +12,30 @@ export function costAxisEntry(axisId: string, overrides: Partial<CostAxisEntry> 
     description: `${axisId}の説明`,
     icon_id: "",
     lens: { thresholds: [], band_labels: ["段"] },
+    lens_equivalents: { kind: "examples", examples: [] },
     ...overrides,
   };
 }
 
+/** 道の向きの値をそのまま塗る式の木（向きの選び方は backend の木が持ち、ここでは見ない）。 */
+const ALONG_FORMULA: CostAxisCatalogResponse["map_lens"]["formula"] = {
+  value: { op: "feature", name: "lens_along" },
+  undetermined: { op: "const", value: 0 },
+};
+
 export function costAxisCatalog(...axes: CostAxisEntry[]): CostAxisCatalogResponse {
-  return { axes, avoidance_label: "回避指定" };
+  return {
+    axes,
+    avoidance_label: "回避指定",
+    total_lens: {
+      lens_id: "total",
+      label: "総合の負担",
+      description: "負担の秒の和",
+      icon_id: "",
+      lens: { thresholds: [10], band_labels: ["軽い", "重い"] },
+    },
+    map_lens: { formula: ALONG_FORMULA, material_conditions: ["at", "speed_kmh"] },
+  };
 }
 
 /** 登坂（体力）と振動（道の負担）の2本。 */

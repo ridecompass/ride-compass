@@ -220,6 +220,11 @@ def condition_facts(definitions: RoadClassDefinitions) -> set[str]:
     return {fact for classification in definitions.classifications.values() for fact in _facts(classification)}
 
 
+def class_labels(classification: RoadClassification | None) -> dict[str, str]:
+    """分け方の区分の鍵 → 区分の名前（分け方が無ければ空）。"""
+    return {} if classification is None else {key: road_class.label for key, road_class in classification.classes.items()}
+
+
 def class_material_id(classification_key: str) -> str:
     """分け方の区分の列の材料のid。区分の列は材料の列と同じ経路で運び、軸からも材料として選べる（`class_material_spec`）。"""
     return f"{CLASS_MATERIAL_PREFIX}{classification_key}"
@@ -270,7 +275,7 @@ def _class_material_spec(key: str, classification: RoadClassification) -> Materi
         tile_property=None,
         source="road_class",
         coverage=CoverageExcluded(reason="道の区分から都度作る値で、DBに静的な値を持たない", missing_semantics="unknown"),
-        value_labels={class_key: c.label for class_key, c in classification.classes.items()},
+        value_labels=class_labels(classification),
     )
 
 

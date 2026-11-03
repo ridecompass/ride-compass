@@ -8,7 +8,6 @@ import { expect, onTestFinished, vi } from "vitest";
 import Home from "@/app/page";
 import { CLIENT_TUNING_IDS } from "@/lib/axisCatalog";
 import { onBackend, onSameOrigin, serveAxisCatalog } from "@/testing/backendServer";
-import { serveCostAxisCatalog } from "@/testing/costAxes";
 import {
   catalogResponse,
   dedicatedEntry,
@@ -17,6 +16,7 @@ import {
   roadClassCatalog,
   roadMapLayer,
 } from "@/testing/catalogAxes";
+import { serveCostAxisCatalog } from "@/testing/costAxes";
 import { serveGenerationJobs } from "@/testing/generationJobs";
 import { installGeolocation } from "@/testing/geolocation";
 import { TAP_CONFIRM_MS } from "@/features/map/MapView/mapTaps";

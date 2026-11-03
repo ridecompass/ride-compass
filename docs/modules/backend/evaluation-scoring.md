@@ -261,6 +261,10 @@ bbox全体ぶんのコストをリクエストにつき1回だけnumpyで合成�
   較正値`evaluation.penalty_strength`に掛ける比なので、エンジンへは つまみ × 較正値 を渡す（点数の割増の式のPと同じ値）——較正値を
   変えても利用者の値は標準のまま。倍率は書いていない軸を標準とし、条件のエコーへは今の費用の軸を全部書いた形
   （`CostPreference.resolved`）を返す。
+- **組み立ての部品**: 走行の模型の入力（転がり抵抗・止まる出来事の待ちと漕ぎ出し・断面。`domain/leg_costs.py: travel_inputs`）と
+  道の負担の1kmあたりの重さ（`domain/leg_costs.py: burden_weights`）は、材料の列（材料id→区間の列）から組む関数で、探索の合成と地図のレンズ
+  （[動的材料・フィーチャー値配信](dynamic-way-values.md)「費用の軸のレンズ」）が同じものを呼ぶ。代償の秒は軸ごとの内訳
+  （`domain/ledger_costs.py: LedgerCosts.penalty_by_axis`）を持ち、その和が区間の代償の秒（`LedgerCosts.penalty_seconds`）になる。
 - **ルートの内訳**: 経路の区間の代償は、探索がその区間に使ったビンの風で、経路上の行だけを解き直して求める
   （`domain/leg_costs.py: LegCostComposer.values_at_rows`が`domain/ledger_costs.py: LedgerCosts.row_seconds`を呼び、走行の模型は
   `SegmentSpeedModel.ride`に行を渡すとその行の点の間だけを解く）。点の間ごとの計算は互いに依らないので、全部を解いた探索の

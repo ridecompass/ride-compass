@@ -1055,6 +1055,7 @@ def cost_axes_declared(*, vibration_material: str):
     previous = current_cost_axes()
     replace_cost_axes(CostAxisDefinitions.model_validate({
         "effort": {axis_id: presentation for axis_id in EFFORT_AXES},
+        "total_lens": presentation,
         "burden": {"vibration": {**presentation, "burden": {
             "kind": "linear", "material": vibration_material, "points": [[0.0, 0.0], [1.0, 1.0]]}}},
     }))
