@@ -1907,6 +1907,74 @@
         ]
       }
     },
+    "/api/admin/cost-axes": {
+      "get": {
+        "tags": [
+          "cost-axis-admin"
+        ],
+        "operationId": "read_cost_axes_api_admin_cost_axes_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostAxisDefinitions"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "cost-axis-admin"
+        ],
+        "operationId": "replace_cost_axes_api_admin_cost_axes_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CostAxisDefinitions"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostAxisDefinitions"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ]
+      }
+    },
     "/api/axis-catalog": {
       "get": {
         "operationId": "get_axis_catalog_api_axis_catalog_get",
@@ -3242,6 +3310,35 @@
         ],
         "title": "AxisMaterialBreakdownEntry"
       },
+      "AxisPresentation": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Label"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "icon_id": {
+            "type": "string",
+            "title": "Icon Id"
+          },
+          "lens": {
+            "$ref": "#/components/schemas/LensBands"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "label",
+          "description",
+          "icon_id",
+          "lens"
+        ],
+        "title": "AxisPresentation"
+      },
       "AxisPreviewRequest": {
         "properties": {
           "shape": {
@@ -3522,6 +3619,54 @@
         ],
         "title": "BreakpointLinearShape"
       },
+      "BurdenAxis": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Label"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "icon_id": {
+            "type": "string",
+            "title": "Icon Id"
+          },
+          "lens": {
+            "$ref": "#/components/schemas/LensBands"
+          },
+          "burden": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/CategoricalBurden"
+              },
+              {
+                "$ref": "#/components/schemas/LinearBurden"
+              }
+            ],
+            "title": "Burden",
+            "discriminator": {
+              "propertyName": "kind",
+              "mapping": {
+                "categorical": "#/components/schemas/CategoricalBurden",
+                "linear": "#/components/schemas/LinearBurden"
+              }
+            }
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "label",
+          "description",
+          "icon_id",
+          "lens",
+          "burden"
+        ],
+        "title": "BurdenAxis"
+      },
       "CalibrationPreviewRequest": {
         "properties": {
           "definition": {
@@ -3757,6 +3902,36 @@
           "otherwise"
         ],
         "title": "Case"
+      },
+      "CategoricalBurden": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "categorical",
+            "title": "Kind"
+          },
+          "material": {
+            "type": "string",
+            "title": "Material"
+          },
+          "per_km": {
+            "additionalProperties": {
+              "type": "number",
+              "minimum": 0.0
+            },
+            "type": "object",
+            "minProperties": 1,
+            "title": "Per Km"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "material",
+          "per_km"
+        ],
+        "title": "CategoricalBurden"
       },
       "CategoricalShape-Input": {
         "properties": {
@@ -4002,6 +4177,31 @@
           "longitude"
         ],
         "title": "Coordinates"
+      },
+      "CostAxisDefinitions": {
+        "properties": {
+          "effort": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/AxisPresentation"
+            },
+            "type": "object",
+            "title": "Effort"
+          },
+          "burden": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/BurdenAxis"
+            },
+            "type": "object",
+            "title": "Burden"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "effort",
+          "burden"
+        ],
+        "title": "CostAxisDefinitions"
       },
       "DbStatusReport": {
         "properties": {
@@ -5062,6 +5262,72 @@
           "after"
         ],
         "title": "LayerTextSlotView"
+      },
+      "LensBands": {
+        "properties": {
+          "thresholds": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Thresholds"
+          },
+          "band_labels": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Band Labels"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "thresholds",
+          "band_labels"
+        ],
+        "title": "LensBands"
+      },
+      "LinearBurden": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "linear",
+            "title": "Kind"
+          },
+          "material": {
+            "type": "string",
+            "title": "Material"
+          },
+          "points": {
+            "items": {
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number",
+                  "minimum": 0.0
+                }
+              ],
+              "type": "array",
+              "maxItems": 2,
+              "minItems": 2
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Points"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "material",
+          "points"
+        ],
+        "title": "LinearBurden"
       },
       "MapLegendScale": {
         "properties": {
