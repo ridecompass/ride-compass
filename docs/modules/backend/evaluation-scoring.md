@@ -246,6 +246,23 @@ bbox全体ぶんのコストをリクエストにつき1回だけnumpyで合成�
   （`missing_axis_edges`/`missing_axis_distance_ratio`）でリクエストごとの発生比率を
   観測できる。
 
+## 費目の帳簿の式（`domain/ledger_costs.py`・`domain/cost_axes.py`）
+
+構造は[評価モデル](../../architecture/evaluation-model.md)「費目の帳簿の式」。ここは実装の受け渡し。
+
+- **費用の軸の定義**は表`cost_axis_definitions`（`infrastructure/cost_axis_models.py`。1行のJSONB）に全体を1つで持ち、
+  管理API（`/api/admin/cost-axes`の GET・PUT）で全体を1回で読み書きする（道の区分と同じ）。起動時は区分の後に読み
+  （`services/definitions_loading.py`）、通らない定義なら起動を止める。検証（`domain/cost_axes.py: check_cost_axes`）は書き込みと
+  起動時の両方が通し、道の区分を入れ替えるときも今の定義を新しい区分で通し直す——区分の重さは分け方のすべての区分に
+  書かせるので、区分を足すと先に重さを足すまで区分の入れ替えが断られる。
+- **合成への差し込み**: `domain/leg_costs.py: LegCostComposer`は、`ledger`（軸の定義と式の値）を渡されたときだけ、ビンごとの
+  費用を「所要時間 ＋ 代償の秒」で組む（`_bin_costs`へ倍率1・足す秒＝代償で渡す）。代償の体力は走行の模型が点の間ごとに
+  重みを掛けて返し（`domain/cycling_speed.py: SegmentSpeedModel.ride`）、道の負担は時刻に依らないのでリクエストに1回だけ
+  求める。曲がる所の費用も同じ換算で組み（`LegCostComposer.transition_costs`）、探索へは`RoadGraphContext.transition_cost`
+  で渡る。エンジン（`services/road_graph_engine.py`）は、費用の軸の定義が表にあるときだけ`ledger`を渡す。
+- **欠けの埋め方**: 停止要因の密度と、道の負担の軸の材料の欠けは、`RoadNetwork.material_fills`（道路網と同じ寿命で、材料
+  ごとに1回だけ求める）で埋める。停止要因の密度は所要時間（待ち）と体力（漕ぎ出し）の両方に同じ値を使う。
+
 ## ルート単位の集約（`domain/difficulty.py`）
 
 区間ごとのdifficultyをルート1本の値へまとめる2つの指標を持つ。どちらも
