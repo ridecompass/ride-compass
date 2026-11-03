@@ -10,7 +10,7 @@ import type { CatalogAxis } from "@/lib/catalogAxis";
 import { isDebugEnabled } from "@/lib/debugLog";
 import { getQueryClient } from "@/lib/queryClient";
 import { fetchAxisInspector, type AxisInspectorConditions, type AxisInspectorResult } from "@/features/map/regionApi";
-import type { RoutePreferenceWeights } from "@/types/route";
+import type { CostPreference } from "@/types/route";
 import { LANDCOVER_CLASSES } from "@/lib/mapDisplay/landcoverClasses";
 import { LEGEND_SWATCH_RING_CLASS, legendSwatchBackground } from "@/lib/mapDisplay/legendFilter";
 import type { RoadTrackRow } from "@/lib/mapDisplay/roadTracks";
@@ -41,8 +41,8 @@ interface RoadInspectorPopupProps {
   axisColors: Record<string, string>;
   /** 地図が今指定している走行の条件＋押した点のタイル。走る条件を使う軸は、この条件で値を求める。 */
   conditions: AxisInspectorConditions;
-  /** 利用者がいま設定している重み（ルート生成へ送るのと同じもの）。nullなら既定の重み。 */
-  routePreference: RoutePreferenceWeights | null;
+  /** 利用者のつまみと倍率（ルート生成へ送るのと同じもの）。費用のレンズの値をこの値で求める。 */
+  costPreference: CostPreference;
 }
 
 const hintClass = cn(textVariants({ variant: "hint" }), "m-0");
@@ -59,11 +59,11 @@ export default function RoadInspectorPopup({
   axes,
   axisColors,
   conditions,
-  routePreference,
+  costPreference,
 }: RoadInspectorPopupProps) {
-  // 評価は道・走行の条件・重みごとに持つ。重みを変えたら、古い重みの評価を見せずに取り直しへ戻す。条件は押したときの
+  // 評価は道・走行の条件・利用者の値ごとに持つ。値を変えたら、古い値の評価を見せずに取り直しへ戻す。条件は押したときの
   // ものに留める——出発時刻は「今」へ5分刻みで進むので、今の条件で引き直すと開いている間に評価が消える。
-  const weightsKey = JSON.stringify(routePreference);
+  const weightsKey = JSON.stringify(costPreference);
   const [pressed, setPressed] = useState<{ weightsKey: string; conditions: AxisInspectorConditions } | null>(null);
   const pinned = pressed !== null && pressed.weightsKey === weightsKey ? pressed : null;
   const name = roadDisplayName(properties) ?? track?.label ?? null;
@@ -75,7 +75,7 @@ export default function RoadInspectorPopup({
       queryKey: ["axis-inspector", wayId, featureKey, JSON.stringify(pinned?.conditions ?? conditions), weightsKey],
       // 取りに行くのは押したあと（`pinned`がある間）だけ。
       queryFn: async () => {
-        const value = await fetchAxisInspector(wayId!, featureKey!, pinned!.conditions, routePreference);
+        const value = await fetchAxisInspector(wayId!, featureKey!, pinned!.conditions, costPreference);
         if (value === null) throw new Error("評価が返りませんでした");
         return value;
       },
@@ -143,16 +143,12 @@ function LensValues({ lens }: { lens: LensInspection }) {
   const slot = lens.painted ?? (lens.along !== null ? "along" : "against");
   const values = lens[slot];
   if (values === null) return <p className={hintClass}>この向きには走れません。</p>;
-  const label = (axisId: string) => costCatalog.axes.find((axis) => axis.axisId === axisId)?.label ?? axisId;
-  const measured: [string, number | null, string][] = [
-    ["一番急な登り", values.steepest_climb_percent, "%"],
-    ["一番急な下り", values.steepest_descent_percent, "%"],
-    ["向かい風", values.headwind_ms, "m/s"],
-    ["止まる所", values.stops_per_km, "か所/km"],
-  ];
+  const label = (axisId: string) =>
+    costCatalog.axes.find((axis) => axis.axisId === axisId)?.label ?? (costCatalog.loaded ? axisId : "読み込み中");
+  // 事実の名前と単位は backend が付ける（ルートの内訳・凡例の目安と同じ事実は同じ名前）。
   const facts: RoadFactRow[] = [
-    ...measured.flatMap(([factLabel, value, unit]) =>
-      value === null ? [] : [{ label: factLabel, value: `${formatLensNumber(value)}${unit}` }],
+    ...values.facts.flatMap((fact) =>
+      fact.value === null ? [] : [{ label: fact.label, value: `${formatLensNumber(fact.value)}${fact.unit}` }],
     ),
     ...(lens.surface !== null ? [{ label: "路面", value: lens.surface }] : []),
   ];

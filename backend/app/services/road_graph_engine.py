@@ -34,6 +34,7 @@ from app.domain.evaluation import StaticEdgeScoreMatrix, build_static_edge_score
 from app.domain.hard_filters import compute_routable_nodes, compute_search_exclusion
 from app.domain.leg_costs import LegCostArrays, LegCostComposer
 from app.domain.cost_axes import burden_material_ids, current_cost_axes
+from app.domain.cost_preference import CostPreference
 from app.domain.ledger_costs import current_ledger_parameters
 from app.domain.route_preference import RoutePreference
 from app.domain.road_avoidance import AvoidanceLevel, RoadAvoidanceMasks
@@ -204,8 +205,7 @@ class RoadGraphEngine:
         graph_service: GraphService,
         weather_service: WeatherService,
         *,
-        penalty_strength: float,
-        cost_multipliers: Mapping[str, float],
+        cost_preference: CostPreference,
         road_avoidance: Mapping[str, AvoidanceLevel],
         assumed_speed_kmh: float,
     ):
@@ -216,11 +216,8 @@ class RoadGraphEngine:
         self._weather_service = weather_service
         # 軸の点数の割増の式（費用の軸の定義が表に無い間）の重み。生成の要求は軸の重みを持たないので、いつも既定の重み。
         self._route_preference = RoutePreference()
-        # 代償の強さ（利用者のつまみ × 較正値）。費目の帳簿の式のつまみで、軸の点数の割増の式
-        # `所要時間 × (1 + P × difficulty/100)`のP。
-        self._penalty_strength = penalty_strength
-        # 費目の帳簿の式の、費用の軸ごとの利用者の倍率。
-        self._cost_multipliers = cost_multipliers
+        # 費目の帳簿の式の利用者の値（つまみと費用の軸ごとの倍率）。較正値を読んで帳簿の係数にするのは組み立てるとき。
+        self._cost_preference = cost_preference
         # 道のレイヤの行→避け方の段。
         self._road_avoidance = road_avoidance
         # 「なるべく避ける」区間の費用の倍率。較正値のため、組み立てた時点の値で1回の生成を通す。
@@ -284,13 +281,14 @@ class RoadGraphEngine:
         # 費目の帳簿の式（費用の軸の定義が表にあるときだけ。無ければ軸の点数の割増の式）——切り替えは、本番の表へ費用の軸の
         # 定義を入れることで起きる。
         cost_axes = self._cost_axes
-        ledger = None if cost_axes is None else (
-            cost_axes, current_ledger_parameters(self._penalty_strength, self._cost_multipliers))
+        parameters = current_ledger_parameters(self._cost_preference)
+        ledger = None if cost_axes is None else (cost_axes, parameters)
 
         def compose_outbound() -> tuple[RoadAvoidanceMasks, LegCostComposer, LegCostArrays]:
             search_masks = compute_search_exclusion(score_matrix, self._road_avoidance)
             composer = LegCostComposer(
-                score_matrix, self._route_preference.weights, self._penalty_strength, search_masks,
+                # 軸の点数の割増の式`所要時間 × (1 + P × difficulty/100)`のPも、帳簿の式と同じ強さ。
+                score_matrix, self._route_preference.weights, parameters.effective_strength, search_masks,
                 self._avoid_cost_multiplier, departure_wind,
                 wind_series, start, self._assumed_speed_kmh, lazy_graph.edge_rows,
                 detour_ratio=detour_ratio_or_default(learned_detour_ratio),

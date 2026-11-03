@@ -7,6 +7,7 @@ import { catalogAxisFromEntry, type CatalogAxis } from "@/lib/catalogAxis";
 import { onBackend } from "@/testing/backendServer";
 import { catalogEntry } from "@/testing/catalogAxes";
 import type { AxisInspectorResult } from "@/features/map/regionApi";
+import { STANDARD_COST_PREFERENCE } from "@/lib/costPreference";
 
 const INSPECTOR = "/api/region/axis-inspector";
 export const serveInspector = (result: AxisInspectorResult) =>
@@ -18,6 +19,7 @@ export const AXES = [axis("axis_sample", "見本の軸", "車の通行量の説�
 export const AXIS_COLORS: Record<string, string> = { axis_sample: "#111111", night: "#222222" };
 /** 地図がいつも渡す走行の条件（押した点のタイル込み）と重み（nullは既定の重み）。 */
 export const RIDE = {
+  costPreference: STANDARD_COST_PREFERENCE,
   conditions: {
     bearingDeg: 0,
     at: new Date("2026-09-24T00:00:00Z"),
@@ -26,7 +28,6 @@ export const RIDE = {
     x: 1,
     y: 2,
   },
-  routePreference: null,
 };
 
 export const openEvaluation = (user: UserEvent) =>

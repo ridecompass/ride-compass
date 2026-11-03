@@ -17,6 +17,7 @@ import numpy as np
 import pytest
 
 from app.api import dependencies
+from app.domain.cost_preference import CostPreference
 from app.domain.cost_axes import EFFORT_AXES, CostAxisDefinitions, replace_cost_axes
 from app.domain.region import tile_position
 from app.domain.route_request import ASSUMED_SPEED_KMH
@@ -61,8 +62,9 @@ async def client(override_dependency, road_network_root):
         yield client
 
 
-async def _lens(client, lens_id: str) -> dict[str, dict[str, float]]:
-    response = await client.get(f"/api/region/lens/{lens_id}/{Z}/{X}/{Y}", params={"speed_kmh": ASSUMED_SPEED_KMH})
+async def _lens(client, lens_id: str, **preference: float | str) -> dict[str, dict[str, float]]:
+    response = await client.get(f"/api/region/lens/{lens_id}/{Z}/{X}/{Y}",
+                                params={"speed_kmh": ASSUMED_SPEED_KMH, **preference})
     assert response.status_code == 200, response.text
     return response.json()
 
@@ -86,6 +88,24 @@ async def test_each_axis_lens_paints_its_own_penalty_seconds_per_km_and_the_tota
     for leaf in (LENS_ALONG_LEAF, LENS_AGAINST_LEAF):
         assert total[str(CLIMBING_WAY)][leaf] == pytest.approx(
             sum(values[str(CLIMBING_WAY)][leaf] for values in by_axis.values()))
+
+
+async def test_the_lens_paints_with_the_users_strength_and_multipliers_like_the_route(client, cost_axes, road_network_root):
+    """レンズはルート生成と同じ利用者の値で塗る（ルートの線と周りの道が同じ段で同じ量になる）。つまみ×2は代償を2倍に、
+    倍率0の軸はその軸の分を0にする。"""
+    serve_road_network(road_network_root, road_network(
+        WAYS, COORDINATES, bad_ways=(FLAT_ROUGH_WAY,), gradient_of={CLIMBING_WAY: 6.0}))
+
+    standard = await _lens(client, "total")
+    doubled = await _lens(client, "total", strength=2.0)
+    without_ascent = await _lens(client, "ascent", multipliers="ascent:0")
+
+    climb = str(CLIMBING_WAY)
+    assert doubled[climb][LENS_ALONG_LEAF] == pytest.approx(2 * standard[climb][LENS_ALONG_LEAF])
+    assert without_ascent[climb][LENS_ALONG_LEAF] == 0.0
+    unknown_axis = await client.get(f"/api/region/lens/total/{Z}/{X}/{Y}",
+                                    params={"speed_kmh": ASSUMED_SPEED_KMH, "multipliers": "nothing:2"})
+    assert unknown_axis.status_code == 422
 
 
 async def test_the_legend_tells_the_slope_and_the_stops_a_threshold_stands_for(client, cost_axes, road_network_root):
@@ -127,14 +147,14 @@ async def test_the_inspector_gives_both_directions_and_the_facts_behind_them(cos
         network, steepest_gain_percent=np.where(climbing, 12.0, network.steepest_gain_percent)))
     service = LensService(Weather())
 
-    inspection = await service.inspect(str(CLIMBING_WAY), Z, X, Y, 0.0, None, ASSUMED_SPEED_KMH)
-    table = await service.tile_table(Z, X, Y, None, ASSUMED_SPEED_KMH)
+    inspection = await service.inspect(str(CLIMBING_WAY), Z, X, Y, 0.0, None, ASSUMED_SPEED_KMH, CostPreference())
+    table = await service.tile_table(Z, X, Y, None, ASSUMED_SPEED_KMH, CostPreference())
 
     assert inspection is not None and table is not None
     index = table.features.keys.index(str(CLIMBING_WAY))
     assert inspection.painted == "along"
     assert inspection.along.total_seconds_per_km == pytest.approx(table.values["total"][index, 0])
-    assert inspection.along.steepest_climb_percent == 12.0
+    assert {fact.label: fact.value for fact in inspection.along.facts}["一番急な登り"] == 12.0
 
 
 async def test_without_cost_axes_or_for_an_unknown_lens_there_is_nothing_to_paint(client, road_network_root):

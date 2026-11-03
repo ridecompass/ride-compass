@@ -1058,6 +1058,7 @@ export interface components {
             /** Speed Kmh */
             speed_kmh?: number | null;
             route_preference?: components["schemas"]["RoutePreferenceWeights"] | null;
+            cost_preference?: components["schemas"]["CostPreference-Input"];
         };
         /** AxisInspectorResult */
         AxisInspectorResult: {
@@ -1348,15 +1349,6 @@ export interface components {
                 [key: string]: components["schemas"]["BurdenAxis"];
             };
             total_lens: components["schemas"]["AxisPresentation"];
-        };
-        /** CostBreakdown */
-        CostBreakdown: {
-            /** Axis Seconds */
-            axis_seconds: {
-                [key: string]: number;
-            };
-            /** Avoidance Seconds */
-            avoidance_seconds: number;
         };
         /** CostPreference */
         "CostPreference-Input": {
@@ -1726,14 +1718,8 @@ export interface components {
             total_seconds_per_km: number;
             /** Axes */
             axes: components["schemas"]["LensAxisSeconds"][];
-            /** Steepest Climb Percent */
-            steepest_climb_percent: number | null;
-            /** Steepest Descent Percent */
-            steepest_descent_percent: number | null;
-            /** Headwind Ms */
-            headwind_ms: number | null;
-            /** Stops Per Km */
-            stops_per_km: number | null;
+            /** Facts */
+            facts: components["schemas"]["AxisFact"][];
         };
         /** LensInspection */
         LensInspection: {
@@ -1939,6 +1925,17 @@ export interface components {
             wind_direction_deg: (number | null)[];
             /** Precipitation Mm */
             precipitation_mm: (number | null)[];
+        };
+        /** PenaltyBreakdown */
+        PenaltyBreakdown: {
+            /** Axis Seconds */
+            axis_seconds: {
+                [key: string]: number;
+            };
+            /** Avoidance Seconds */
+            avoidance_seconds: number;
+            /** Total Seconds */
+            readonly total_seconds: number;
         };
         /** PlaceArea */
         PlaceArea: {
@@ -2191,7 +2188,7 @@ export interface components {
             estimated_duration_seconds: number | null;
             /** Cost Seconds */
             cost_seconds: number;
-            penalty: components["schemas"]["CostBreakdown"] | null;
+            penalty: components["schemas"]["PenaltyBreakdown"] | null;
             facts: components["schemas"]["RouteFacts"];
             /** Wind Unavailable */
             wind_unavailable: boolean;
@@ -2216,6 +2213,10 @@ export interface components {
             kind: "loop" | "destination" | "spliced";
             /** Is Fastest */
             is_fastest: boolean;
+            /** Lens Seconds Per Km */
+            readonly lens_seconds_per_km: {
+                [key: string]: number;
+            } | null;
         };
         /** RouteFacts */
         RouteFacts: {
@@ -2325,7 +2326,7 @@ export interface components {
             sustained_gradient_percent: number | null;
             /** Estimated Arrival Time */
             estimated_arrival_time: string | null;
-            penalty: components["schemas"]["CostBreakdown"] | null;
+            penalty: components["schemas"]["PenaltyBreakdown"] | null;
             /** Material Values */
             material_values: {
                 [key: string]: number;
@@ -2334,6 +2335,10 @@ export interface components {
             road_classes: {
                 [key: string]: components["schemas"]["RoadClassStretch"][];
             };
+            /** Lens Seconds Per Km */
+            readonly lens_seconds_per_km: {
+                [key: string]: number;
+            } | null;
         };
         /** RouteTimelineRequest */
         RouteTimelineRequest: {
@@ -3195,6 +3200,8 @@ export interface operations {
             query: {
                 speed_kmh: number;
                 at?: string | null;
+                strength?: number;
+                multipliers?: string | null;
             };
             header?: never;
             path: {

@@ -61,10 +61,12 @@ describe("RoadInspectorPopup", () => {
     const direction = (total: number, climb: number) => ({
       total_seconds_per_km: total,
       axes: [{ axis_id: "ascent", seconds_per_km: total }],
-      steepest_climb_percent: climb,
-      steepest_descent_percent: null,
-      headwind_ms: 1.5,
-      stops_per_km: 2,
+      // 事実は名前と単位つきで届き、値の無い事実は届かない。
+      facts: [
+        { label: "一番急な登り", value: climb, unit: "%" },
+        { label: "向かい風", value: 1.5, unit: "m/s" },
+        { label: "止まる回数", value: 2, unit: "回/km" },
+      ],
     });
     serveInspector(
       inspectorResult({}, { painted: "against", along: direction(30, 12), against: direction(4, 0), surface: "舗装" }),
@@ -77,7 +79,7 @@ describe("RoadInspectorPopup", () => {
     expect(screen.getByText("逆向き")).toBeInTheDocument();
     const rows = screen.getAllByRole("term").map((term) => `${term.textContent}:${term.nextSibling?.textContent}`);
     expect(rows).toEqual(
-      expect.arrayContaining(["登坂:4秒/km", "一番急な登り:0%", "向かい風:1.5m/s", "止まる所:2か所/km", "路面:舗装"]),
+      expect.arrayContaining(["登坂:4秒/km", "一番急な登り:0%", "向かい風:1.5m/s", "止まる回数:2回/km", "路面:舗装"]),
     );
     expect(screen.queryByRole("region", { name: "難易度" })).not.toBeInTheDocument();
   });

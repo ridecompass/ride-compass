@@ -4,7 +4,6 @@
 
 import { PROFILE_VIEW_HEIGHT } from "@/features/route/ProfileChart/profileScale";
 import type { RouteStretch } from "@/lib/routeDistance";
-import { lensSecondsPerKm } from "@/lib/routePenalty";
 import type { RouteSegmentDetail } from "@/types/route";
 
 /** 塗る長方形1つ（距離と、図の高さ`PROFILE_VIEW_HEIGHT`に合わせた縦の座標）。 */
@@ -20,22 +19,22 @@ export type ProfileBox = {
  * 内訳の無い区間（費用の軸の定義が無い間）は描かない。
  */
 export function profileBoxes(
-  columns: readonly RouteStretch<Pick<RouteSegmentDetail, "penalty" | "distance_km">>[],
+  columns: readonly RouteStretch<Pick<RouteSegmentDetail, "lens_seconds_per_km">>[],
   axisOrder: readonly string[],
 ): Map<string, ProfileBox[]> {
   const byAxis = new Map<string, ProfileBox[]>(axisOrder.map((axisId) => [axisId, []]));
-  const perKm = columns.map(({ segment }) =>
-    segment.penalty === null ? null : lensSecondsPerKm(segment.penalty, segment.distance_km),
-  );
-  const highest = Math.max(0, ...perKm.map((values) => values?.total ?? 0));
+  const perKm = columns.map(({ segment }) => segment.lens_seconds_per_km);
+  // 積んだ高さ（並べた軸の値の和）の一番高い区間を図の上端にする。
+  const stacked = perKm.map((values) => axisOrder.reduce((sum, axisId) => sum + Math.max(0, values?.[axisId] ?? 0), 0));
+  const highest = Math.max(0, ...stacked);
   if (highest <= 0) return byAxis;
   const toView = PROFILE_VIEW_HEIGHT / highest;
   columns.forEach(({ startKm, endKm }, index) => {
     const values = perKm[index];
-    if (endKm <= startKm || values === null) return;
+    if (endKm <= startKm || values === null || values === undefined) return;
     let bottom = 0;
     for (const axisId of axisOrder) {
-      const value = (values.axes[axisId] ?? 0) * toView;
+      const value = (values[axisId] ?? 0) * toView;
       if (value <= 0) continue;
       byAxis.get(axisId)?.push({ startKm, endKm, bottom, top: bottom + value });
       bottom += value;

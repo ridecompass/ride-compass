@@ -20,7 +20,8 @@ from app.domain.cost_axes import (
     current_cost_axes,
 )
 from app.domain.dynamic_way_values import WayValueConditionName
-from app.domain.ledger_costs import standard_ledger_parameters
+from app.domain.cost_preference import CostPreference
+from app.domain.ledger_costs import current_ledger_parameters
 from app.domain.lens_equivalents import LensEquivalents, lens_equivalents
 from app.domain.lens_values import LENS_MATERIAL_CONDITIONS, lens_way_formula
 from app.domain.road_classes import current_road_classes
@@ -73,7 +74,7 @@ async def get_cost_axis_catalog() -> CostAxisCatalogResponse:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="費用の軸の定義はまだありません")
     # 目安は合成の道で走行の模型を解くので、イベントループの外で求める。
     equivalents = await asyncio.to_thread(
-        lens_equivalents, definitions, standard_ledger_parameters(), current_road_classes())
+        lens_equivalents, definitions, current_ledger_parameters(CostPreference()), current_road_classes())
     effort = [
         CostAxisCatalogEntry(axis_id=axis_id, ledger="effort", lens_equivalents=equivalents[axis_id],
                              **definitions.effort[axis_id].model_dump())

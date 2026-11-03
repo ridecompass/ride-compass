@@ -67,7 +67,7 @@ const list = () => screen.getByRole("radiogroup", { name: "評価で塗る" });
 describe("LensControl", () => {
   it.each([
     ["used", false, "usedの軸"],
-    [LENS_DIFFICULTY_ID, false, "評価軸を選ぶ"],
+    [LENS_DIFFICULTY_ID, false, "塗る負担を選ぶ"],
     [LENS_DIFFICULTY_ID, true, DIFFICULTY_LENS_LABEL],
   ])(
     "ピルは選んでいる評価軸（%s・ルートの確定後 %s）の名前を出し、選んでいなければ塗り方を出す",

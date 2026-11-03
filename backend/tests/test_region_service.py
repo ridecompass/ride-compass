@@ -19,6 +19,7 @@ import pytest
 from app.config import settings
 from app.domain.attributes import CategoricalColumn
 from app.domain.axis_definitions import BreakpointLinearShape, CategoricalShape, MaterialTerm
+from app.domain.cost_preference import CostPreference
 from app.domain.dynamic_way_values import FeatureMaterials, FeatureSegments, WayValueQuery
 from app.domain.gradient import ROAD_BEARING_LEAF
 from app.domain.landcover import LandcoverPercentages
@@ -203,6 +204,8 @@ def _inspector(readable: bool = True, unavailable: bool = False) -> AxisInspecto
 
 
 QUERY = WayValueQuery(at=None, bearing_deg=0.0, speed_kmh=None)
+#: 費用の軸のレンズの値の利用者の値（標準）。
+STANDARD = CostPreference()
 
 
 def _scores(values) -> dict[str, float | None]:
@@ -242,7 +245,7 @@ async def test_the_inspector_gives_the_values_the_map_paints_for_the_pressed_fea
     internal = shaped_axis(BreakpointLinearShape(terms=[MaterialTerm(material="gradient_percent")],
                                                  breakpoints=[(0.0, 0.0), (10.0, 100.0)]), axis_id="axis_internal")
     with replaced_axis_definitions({**axes, internal.axis_id: internal}):
-        result = await _inspector().inspect(int(WAY), feature_key, *pressed, QUERY, None)
+        result = await _inspector().inspect(int(WAY), feature_key, *pressed, QUERY, None, STANDARD)
         painted = {axis_id: await _map_values(axis_id, pressed) for axis_id in axes}
 
     assert _scores(result.values) == {axis_id: _difficulty(axis_id, values[feature_key]) for axis_id, values in painted.items()}
@@ -257,7 +260,7 @@ async def test_what_the_map_does_not_paint_is_no_data_in_the_inspector(readable,
     """取込範囲外・DB障害でタイルの材料を読めない軸と、押した区間を今のタイルが持たない（地図のタイルが前の世代）ときは、
     窓はその軸を「データなし」にする。失敗すると、道を押しても窓が開かない。"""
     with replaced_axis_definitions(INSPECTED_AXES):
-        result = await _inspector(readable).inspect(int(WAY), feature_key, *pressed, QUERY, None)
+        result = await _inspector(readable).inspect(int(WAY), feature_key, *pressed, QUERY, None, STANDARD)
 
     assert _scores(result.values) == dict.fromkeys(INSPECTED_AXES)
 
@@ -267,7 +270,7 @@ async def test_an_axis_whose_conditions_are_missing_has_no_value_and_the_others_
     with replaced_axis_definitions(INSPECTED_AXES):
         result = await _inspector().inspect(
             int(WAY), SEGMENT, *EDGE_TILE, WayValueQuery(at=None, bearing_deg=None, speed_kmh=None),
-            None)
+            None, STANDARD)
 
     assert _scores(result.values) == {"axis_surface": 10.0, "axis_grade": None, "axis_slope": None}
     assert result.values.composite_difficulty.value == 10.0
@@ -278,7 +281,7 @@ async def test_axis_inspector_combines_with_the_weights_it_is_given():
     with replaced_axis_definitions(INSPECTED_AXES):
         weighted, ignored = [
             await _inspector().inspect(int(WAY), SEGMENT, *EDGE_TILE, QUERY,
-                                       RoutePreference(weights={"axis_grade": weight, "axis_surface": 1.0}))
+                                       RoutePreference(weights={"axis_grade": weight, "axis_surface": 1.0}), STANDARD)
             for weight in (1.0, 0.0)
         ]
 
@@ -290,7 +293,7 @@ async def test_the_inspector_does_not_open_and_is_counted_as_a_failure_when_the_
     """DB障害では窓は開かず（応答はNone）、失敗が`/api/debug/stats`の集計に載る。"""
     calls = record_external_calls(monkeypatch, region_service)
 
-    result = await _inspector(unavailable=True).inspect(int(WAY), WAY, *WAY_TILE, QUERY, None)
+    result = await _inspector(unavailable=True).inspect(int(WAY), WAY, *WAY_TILE, QUERY, None, STANDARD)
 
     assert result is None
     assert [(call.fields["result"], call.fields["error_type"]) for call in calls] == [("error", "ConnectionRefusedError")]

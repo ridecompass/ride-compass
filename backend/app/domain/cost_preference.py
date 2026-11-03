@@ -16,21 +16,20 @@ STANDARD_COST_FACTOR = 1.0
 
 
 class CostLevel(NamedTuple):
-    """利用者が選ぶつまみ・倍率の段（値と、画面が出す名前）。"""
+    """利用者が選ぶつまみ・倍率の段（値と、画面が出す名前）。名前は掛ける数そのもの（「強め」のような言葉は量が伝わらない）。"""
 
     value: float
     label: str
 
 
+def _levels(*values: float) -> tuple[CostLevel, ...]:
+    return tuple(CostLevel(value, f"×{value:g}") for value in values)
+
+
 #: 全体のつまみの段。
-COST_STRENGTH_LEVELS = (
-    CostLevel(0.0, "気にしない"), CostLevel(0.5, "少し"), CostLevel(STANDARD_COST_FACTOR, "標準"), CostLevel(1.5, "強め"),
-    CostLevel(2.0, "とても"),
-)
+COST_STRENGTH_LEVELS = _levels(0.0, 0.5, STANDARD_COST_FACTOR, 1.5, 2.0)
 #: 軸ごとの倍率の段。
-COST_MULTIPLIER_LEVELS = (
-    CostLevel(0.0, "無視"), CostLevel(0.5, "×0.5"), CostLevel(STANDARD_COST_FACTOR, "標準"), CostLevel(2.0, "×2"),
-)
+COST_MULTIPLIER_LEVELS = _levels(0.0, 0.5, STANDARD_COST_FACTOR, 2.0)
 #: つまみ・倍率の上限（要求は段の間の値も受け付け、上の段より大きな値は断る）。
 MAX_COST_STRENGTH = max(level.value for level in COST_STRENGTH_LEVELS)
 MAX_COST_MULTIPLIER = max(level.value for level in COST_MULTIPLIER_LEVELS)

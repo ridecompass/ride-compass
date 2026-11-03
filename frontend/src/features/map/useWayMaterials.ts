@@ -13,10 +13,13 @@ import {
   ROAD_TILE_MAX_ZOOM,
   ROAD_TILE_MIN_ZOOM,
   type RideConditions,
+  type LensMaterialsQuery,
   type WayMaterialsQuery,
 } from "@/features/map/regionApi";
 import { MAP_FETCH_DEBOUNCE_MS, useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { getQueryClient } from "@/lib/queryClient";
+import { lensPreferenceQuery } from "@/lib/costPreference";
+import type { CostPreference } from "@/types/route";
 
 interface WayMaterialsFetch {
   /** feature_key→材料（表示中のタイルを統合済み）。 */
@@ -45,17 +48,25 @@ function axisQuery(axis: DedicatedWayValueAxis, conditions: RideConditions): Way
   };
 }
 
-/** 軸の材料を、軸が宣言した口から取る。レンズの口は想定速度を必ず載せる。 */
-function fetchAxisMaterials(
-  axis: DedicatedWayValueAxis,
-  tile: { z: number; x: number; y: number },
-  query: WayMaterialsQuery,
-  conditions: RideConditions,
-) {
-  return axis.wayMaterialSource === "lens"
-    ? fetchLensMaterials(axis.axisId, tile.z, tile.x, tile.y, { ...query, speed_kmh: conditions.speedKmh })
-    : fetchWayMaterials(axis.axisId, tile.z, tile.x, tile.y, query);
+/** 軸の材料の要求（問い合わせの鍵にも載せる）と、タイル1枚の取り方。軸が宣言した口から取り、レンズの口は想定速度と
+ * 利用者の値（生成の要求と同じつまみと倍率）を必ず載せる。 */
+function axisMaterials(axis: DedicatedWayValueAxis, conditions: RideConditions, costPreference: CostPreference) {
+  const query = axisQuery(axis, conditions);
+  if (axis.wayMaterialSource === "lens") {
+    const lensQuery: LensMaterialsQuery = {
+      ...query,
+      speed_kmh: conditions.speedKmh,
+      ...lensPreferenceQuery(costPreference),
+    };
+    return {
+      query: lensQuery,
+      fetch: (tile: TileIndex) => fetchLensMaterials(axis.axisId, tile.z, tile.x, tile.y, lensQuery),
+    };
+  }
+  return { query, fetch: (tile: TileIndex) => fetchWayMaterials(axis.axisId, tile.z, tile.x, tile.y, query) };
 }
+
+type TileIndex = { z: number; x: number; y: number };
 
 /** 1軸の、表示中のタイルごとの結果をまとめる。 */
 function axisFetch(results: readonly TileResult[], truncated: boolean): WayMaterialsFetch {
@@ -75,6 +86,7 @@ export function useWayMaterials(
   axes: readonly DedicatedWayValueAxis[],
   mapViewport: MapViewport | null,
   conditions: RideConditions,
+  costPreference: CostPreference,
 ): ReadonlyMap<string, WayMaterialsFetch> {
   const debouncedViewport = useDebouncedValue(mapViewport, MAP_FETCH_DEBOUNCE_MS);
   const debouncedConditions = useDebouncedValue(conditions, MAP_FETCH_DEBOUNCE_MS);
@@ -103,13 +115,13 @@ export function useWayMaterials(
   return useQueries(
     {
       queries: axes.flatMap((axis) => {
-        const query = axisQuery(axis, debouncedConditions);
+        const { query, fetch } = axisMaterials(axis, debouncedConditions, costPreference);
         return tiles.map((tile) =>
           tileQueryOptions(
             ["way-material", axis.wayMaterialSource, axis.axisId],
             query,
             tile,
-            () => fetchAxisMaterials(axis, tile, query, debouncedConditions),
+            () => fetch(tile),
             (data) => data.error,
           ),
         );

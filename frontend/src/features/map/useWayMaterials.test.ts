@@ -16,6 +16,7 @@ import { dedicatedEntry } from "@/testing/catalogAxes";
 import type { MapViewport } from "@/features/map/view/mapLook";
 
 import { useWayMaterials } from "./useWayMaterials";
+import { STANDARD_COST_PREFERENCE } from "@/lib/costPreference";
 
 const { dedicatedAxes } = mapCatalogOf([
   dedicatedEntry("timed", [1], {
@@ -74,9 +75,12 @@ afterEach(() => {
 
 type Props = { axes: typeof dedicatedAxes; viewport: MapViewport | null; conditions: typeof CONDITIONS };
 function render(initialProps: Props) {
-  return renderHook(({ axes, viewport, conditions }: Props) => useWayMaterials(axes, viewport, conditions), {
-    initialProps,
-  });
+  return renderHook(
+    ({ axes, viewport, conditions }: Props) => useWayMaterials(axes, viewport, conditions, STANDARD_COST_PREFERENCE),
+    {
+      initialProps,
+    },
+  );
 }
 const wayKeys = (materials: ReadonlyMap<string, unknown> | undefined) => [...(materials?.keys() ?? [])];
 

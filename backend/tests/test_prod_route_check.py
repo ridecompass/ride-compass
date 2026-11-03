@@ -13,36 +13,11 @@ from pathlib import Path
 import pytest
 
 from app.api.routers.routes import RouteGenerateRequest
-from app.domain.route import CostBreakdown, RouteSegmentDetail
 from scripts import prod_route_check as check
 
 BACKEND = Path(__file__).resolve().parents[1]
 GENERATED = BACKEND.parent / "frontend/src/types/generated"
 NOW = datetime(2026, 10, 10, 7, 0, tzinfo=check.JST)
-
-GRADIENT = {
-    "axis_id": "gradient",
-    "label": "勾配",
-    "map_paint": {"value": {
-        "kind": "signed_material", "material": "gradient_percent", "route_segment_field": "sustained_gradient_percent"}},
-}
-RAIN = {"axis_id": "rain_24h", "label": "雨", "map_paint": {"value": {"kind": "difficulty"}}}
-CATALOG = {"axes": [GRADIENT, RAIN]}
-
-
-def _segment(**values: dict[str, float] | float) -> dict:
-    """応答の区間（JSON）。値の欄は渡したものだけを持つ。"""
-    segment = RouteSegmentDetail(
-        start_latitude=35.0, start_longitude=139.0, end_latitude=35.0, end_longitude=139.001,
-        cumulative_distance_km=0.1, distance_km=0.1, edge_start=0, edge_end=1, elevations=[], road_classes={},
-        **({"material_values": {}} | values),
-    )
-    return segment.model_dump(mode="json")
-
-
-def _result(*segments: dict) -> dict:
-    return {"routes": [{"segments": list(segments)}], "no_candidates_reason": None}
-
 
 @pytest.mark.parametrize("request_of", [check.generation_request, lambda now: check.splice_request(now, ["way-1-seg0-fwd"])])
 def test_requests_are_accepted_by_the_api(request_of):
@@ -82,33 +57,16 @@ def test_splice_problems(result, fails):
     assert bool(check.splice_problems(result)) == fails
 
 
-#: 区間の代償の内訳（値は判定に効かない）。
-PENALTY = CostBreakdown(axis_seconds={"ascent": 3.0}, avoidance_seconds=0.0)
-
-
 @pytest.mark.parametrize(
-    ("result", "cost_axes_defined", "expected"),
+    ("result", "fails"),
     [
-        # 塗る値が1つの区間にでもあれば、その軸は塗れる。得点を塗る軸（雨）は、区間に自分の値を持たない。
-        (_result(_segment(sustained_gradient_percent=2.0), _segment()), False, []),
-        # 勾配のレンズは区間の続く坂の斜度で塗る。値が無ければ全区間が「データなし」になる。
-        (_result(_segment(material_values={"gradient_percent": 5.0})), False, ["「勾配」（gradient）"]),
-        # 費用の軸の定義があれば、ルートの線は区間の代償の内訳で塗る。
-        (_result(_segment(sustained_gradient_percent=2.0, penalty=PENALTY)), True, []),
-        (_result(_segment(sustained_gradient_percent=2.0)), True, ["費用の軸の定義があるのに"]),
-        ({"routes": [], "no_candidates_reason": "道が無い"}, False, ["候補が0件（理由: 道が無い）"]),
+        ({"routes": [_loop("n")], "no_candidates_reason": None}, False),
+        ({"routes": [], "no_candidates_reason": "道が無い"}, True),
     ],
 )
-def test_problems(result, cost_axes_defined, expected):
-    found = check.problems(CATALOG, result, cost_axes_defined)
-    assert len(found) == len(expected)
-    for line, head in zip(found, expected, strict=True):
-        assert line.startswith(head)
-
-
-def test_problems_fails_on_an_empty_catalog():
-    """軸カタログが空だと、見る軸が無いまま通り、全部の軸が消えた壊れを見逃す。"""
-    assert check.problems({"axes": []}, _result(_segment()), False) != []
+def test_problems(result, fails):
+    """候補が0件なのに通すと、本番の実データで生成が壊れても気付けない。"""
+    assert bool(check.problems(result)) == fails
 
 
 # 生成物（画面のための写し）を開くと止まる子プロセスで、要求と塗る値の判定を出す。
@@ -121,17 +79,17 @@ def refuse(event, args):
 sys.addaudithook(refuse)
 from datetime import datetime
 from scripts import prod_route_check as check
-catalog, result, now = json.loads(sys.stdin.read())
-print(json.dumps([check.generation_request(datetime.fromisoformat(now)), check.problems(catalog, result, False)]))
+result, now = json.loads(sys.stdin.read())
+print(json.dumps([check.generation_request(datetime.fromisoformat(now)), check.problems(result)]))
 """
 
 
 def test_reads_backend_declarations_without_the_generated_files():
     """生成物は画面の読み方の写しで、backendの宣言と食い違っても、本番の確かめは宣言の側で要求を作り値を読む。"""
-    result = _result(_segment(sustained_gradient_percent=2.0), _segment())
+    result = {"routes": [_loop("n")], "no_candidates_reason": None}
     run = subprocess.run(
         [sys.executable, "-c", _WITHOUT_GENERATED, str(GENERATED)],
-        input=json.dumps([CATALOG, result, NOW.isoformat()]), capture_output=True, text=True, cwd=BACKEND, check=True,
+        input=json.dumps([result, NOW.isoformat()]), capture_output=True, text=True, cwd=BACKEND, check=True,
     )
 
-    assert json.loads(run.stdout) == [check.generation_request(NOW), check.problems(CATALOG, result, False)]
+    assert json.loads(run.stdout) == [check.generation_request(NOW), check.problems(result)]

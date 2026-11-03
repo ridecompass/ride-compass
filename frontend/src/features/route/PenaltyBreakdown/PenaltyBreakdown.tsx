@@ -5,13 +5,13 @@ import { stackBarClass } from "@/components/ui/AxisLegend/axisLegend";
 import { textVariants } from "@/components/ui/Text/Text";
 import { formatLensNumber } from "@/lib/mapDisplay/costLensPaint";
 import { formatPenalty, penaltyRows, type PenaltyCatalog } from "@/lib/routePenalty";
-import type { CostBreakdown, RouteFacts } from "@/types/route";
+import type { PenaltyBreakdown as PenaltyValues, RouteFacts } from "@/types/route";
 
 type AxisFact = RouteFacts["axes"][string];
 
 interface PenaltyBreakdownProps {
   /** 代償の内訳（費用の軸の定義が無い間はnull）。 */
-  penalty: CostBreakdown | null;
+  penalty: PenaltyValues | null;
   /** 軸id→その軸の事実（ルート全体だけが持つ）。 */
   facts?: Readonly<Record<string, AxisFact>>;
   catalog: PenaltyCatalog;

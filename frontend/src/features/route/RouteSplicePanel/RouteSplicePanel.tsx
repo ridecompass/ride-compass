@@ -111,8 +111,8 @@ export default function RouteSplicePanel({
         {/* 押す所（24px四方）の余りを両脇の間に重ね、デスクトップのパネルの幅に1行で収める。「‹」は余りをカードの余白へ寄せる。 */}
         <InfoPopover triggerAriaLabel="区間の乗り換えの説明" triggerClassName="-mx-1">
           地図の破線が、いまの道から乗り換えられる先です。タップするとそこへ乗り換わり、その先に
-          分かれ道があれば次の破線が出ます。太い線が、いま作っているルートです。評価軸の棒は中央が0で、左[−]へ
-          伸びた評価軸ほど難易度が下がり、右[＋]へ伸びた評価軸ほど上がっています。
+          分かれ道があれば次の破線が出ます。太い線が、いま作っているルートです。負担の棒は中央が0で、左[−]へ
+          伸びた軸ほど負担が減り、右[＋]へ伸びた軸ほど増えています。
         </InfoPopover>
         {appliedCount > 0 && (
           <span className={cn(textVariants({ variant: "hint" }), "ml-1 whitespace-nowrap")}>{appliedCount}回</span>
@@ -147,7 +147,7 @@ export default function RouteSplicePanel({
               disabled={appliedCount === 0 || busy}
               aria-busy={previewing}
               aria-label="差分を見る"
-              usage="いまの乗り換えで、距離・所要時間・難易度が元の候補からどう変わるかを出します。"
+              usage="いまの乗り換えで、距離・所要時間・負担が元の候補からどう変わるかを出します。"
             >
               <RouteDiffIcon size={18} />
             </Button>
@@ -202,6 +202,9 @@ export default function RouteSplicePanel({
                   {MINUTE_UNIT}
                 </span>
               ))
+            ) : preview && !catalog.loaded ? (
+              // 一覧が届くまでは軸が分からず差を並べられない（「変わらない」とは言えない）。
+              "負担の種類の一覧を読み込んでいます"
             ) : preview ? (
               // 評価済みで棒が空なのは、どの軸の差も棒に出す下限に届かないとき。押す案内を残すと押しても変わらない。
               "どの軸の負担も、元とほぼ変わりません"

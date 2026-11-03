@@ -17,6 +17,7 @@ from typing import Annotated, Literal
 
 from pydantic import Field, field_validator, model_validator
 
+from app.domain.lens_total import TOTAL_LENS_ID
 from app.domain.material_catalog import material_dtype, materials_of_source
 from app.domain.road_classes import CLASS_MATERIAL_PREFIX, RoadClassDefinitions
 from app.domain.strict_model import StrictModel
@@ -34,8 +35,10 @@ EFFORT_AXES: dict[str, EffortItem] = {
 
 _NonNegative = Annotated[float, Field(ge=0.0, allow_inf_nan=False)]
 
-#: 地図の総合のレンズ（軸ごとの代償の秒の和）のid。軸のidと同じ名前空間に並ぶので、軸には使えない。
-TOTAL_LENS_ID = "total"
+#: 体力の費目の事実のうち、ルートの事実・道の窓・凡例の目安の2つ以上が出すものの名前（同じ事実は同じ名前で出す）。止まる回数は、
+#: 止まる出来事（と、ルートなら曲がる所）を止まってから漕ぎ出す回数に換えたもの（`domain/traffic.py: StopEvent.kickoffs`）。
+STOPS_FACT_LABEL = "止まる回数"
+HEADWIND_FACT_LABEL = "向かい風"
 
 #: 代償の内訳で、避け方の倍率（道の区分ごとの「なるべく避ける」）が上乗せした秒の行の名前。軸ではないので倍率を持たない。
 AVOIDANCE_LABEL = "回避指定"

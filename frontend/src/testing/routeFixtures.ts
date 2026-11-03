@@ -2,7 +2,7 @@
 // **既定値は型を満たすための空だけ。** 見たい値（id・方位・距離等）は呼び出し側が書く。
 import { haversineKm } from "@/lib/geoDistance";
 import type { GenerationConditions, PlaceCandidate, RouteCandidate, RouteSegmentDetail } from "@/types/route";
-import { STANDARD_COST_PREFERENCE } from "@/features/route/costPreference";
+import { STANDARD_COST_PREFERENCE } from "@/lib/costPreference";
 
 /** `RouteCandidate`の組み立て（backendは既定値の項目も必ず返すため、型は全フィールドが必須）。 */
 export function makeRouteCandidate(overrides: Partial<RouteCandidate> = {}): RouteCandidate {
@@ -18,6 +18,7 @@ export function makeRouteCandidate(overrides: Partial<RouteCandidate> = {}): Rou
     estimated_duration_seconds: null,
     cost_seconds: 0,
     penalty: null,
+    lens_seconds_per_km: null,
     facts: { elevation_unknown_km: 0, axes: {} },
     wind_unavailable: false,
     missing_travel_data_share: null,
@@ -120,6 +121,7 @@ export function makeRouteSegment(overrides: Partial<RouteSegmentDetail> = {}): R
     edge_end: 0,
     estimated_arrival_time: null,
     penalty: null,
+    lens_seconds_per_km: null,
     material_values: {},
     elevations: [],
     sustained_gradient_percent: null,

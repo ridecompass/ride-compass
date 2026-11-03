@@ -2,7 +2,8 @@
 
 import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
 import { axisIconFor } from "@/components/ui/icons/axisIconPalette";
-import { COST_MULTIPLIER_LEVELS, STANDARD_COST_FACTOR, multiplierOf } from "@/features/route/costPreference";
+import { COST_MULTIPLIER_LEVELS } from "@/features/route/costPreference";
+import { STANDARD_COST_FACTOR, multiplierOf } from "@/lib/costPreference";
 import {
   costAxisCatalogFetchFailure,
   retryCostAxisCatalogFetch,
@@ -48,7 +49,7 @@ export default function RouteSettingsPanel({ costPreference, onCostPreferenceCha
         >
           <span>{`${catalogFailure.label}を取得できませんでした。${catalogFailure.effect}`}</span>
           <Button
-            usage="取れなかった費用の軸の一覧を、もう一度取りに行きます。"
+            usage="取れなかった負担の種類の一覧を、もう一度取りに行きます。"
             variant="warning"
             size="panelIcon"
             aria-label="再試行"
@@ -58,9 +59,12 @@ export default function RouteSettingsPanel({ costPreference, onCostPreferenceCha
           </Button>
         </p>
       )}
+      {!catalog.loaded && !catalog.failed && (
+        <p className={textVariants({ variant: "hint" })}>負担の種類の一覧を読み込んでいます。</p>
+      )}
       {catalog.loaded && catalog.axes.length === 0 && (
         <p className={textVariants({ variant: "hint" })}>
-          負担の種類ごとの重さは、まだ選べません。全体の強さは「条件」タブで選べます。
+          負担の種類ごとの倍率は、まだ選べません。負担の強さは「条件」タブで選べます。
         </p>
       )}
       <ul className="flex flex-col gap-1.5">

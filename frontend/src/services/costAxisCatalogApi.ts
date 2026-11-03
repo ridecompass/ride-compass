@@ -9,6 +9,6 @@ export function getCostAxisCatalog() {
       const result = await backendApi.GET("/api/cost-axes", init);
       return result.response.status === 404 ? { data: null, response: new Response(null) } : result;
     },
-    getOptions({ timeoutMs: API_TIMEOUT_MS.catalog, category: "api:costAxisCatalog", errorLabel: "費用の軸の一覧" }),
+    getOptions({ timeoutMs: API_TIMEOUT_MS.catalog, category: "api:costAxisCatalog", errorLabel: "負担の種類の一覧" }),
   );
 }

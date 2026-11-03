@@ -13,7 +13,7 @@ import { catalogEntry, catalogResponse } from "@/testing/catalogAxes";
 import { serveGenerationJobs } from "@/testing/generationJobs";
 import { makeGenerationConditions, makeRouteCandidate, routeThrough, type Places } from "@/testing/routeFixtures";
 import type { RouteCandidate } from "@/types/route";
-import { STANDARD_COST_PREFERENCE } from "@/features/route/costPreference";
+import { STANDARD_COST_PREFERENCE } from "@/lib/costPreference";
 
 export const SPLICE_CATALOG = catalogResponse([catalogEntry({ axis_id: "axis_a", default_weight: 1 })], {
   client_tuning: { [CLIENT_TUNING_IDS.minStretchKm]: 0.1 },

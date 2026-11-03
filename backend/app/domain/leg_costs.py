@@ -729,9 +729,7 @@ class LegCostComposer:
         if self._ledger_setup is None:
             return None
         axes, parameters = self._ledger_setup
-        distance_km = self._travel_inputs.distance_m / 1000.0
-        burden_km = {axis_id: per_km * distance_km for axis_id, per_km in self._burden_per_km.items()}
-        return LedgerCosts.for_model(axes, parameters, self._travel_inputs.model, burden_km)
+        return LedgerCosts.for_model(axes, parameters, self._travel_inputs.model, self._burden_per_km)
 
     @cached_property
     def _burden_per_km(self) -> dict[str, np.ndarray]:

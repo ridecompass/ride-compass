@@ -79,7 +79,7 @@ describe("選んだ候補の中身", () => {
 
   it("候補の負担と、軸の名前（費用の軸の一覧）の付いた内訳と事実を出す", async () => {
     const candidate = route("fast", {
-      penalty: { axis_seconds: { ascent: 240 }, avoidance_seconds: 0 },
+      penalty: { axis_seconds: { ascent: 240 }, avoidance_seconds: 0, total_seconds: 240 },
       facts: { elevation_unknown_km: 0, axes: { ascent: { label: "登り", value: 120, unit: "m" } } },
     });
     renderOutcome({ results: resultsOf({ generated: [candidate] }) });

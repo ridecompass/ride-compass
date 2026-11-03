@@ -31,7 +31,8 @@ function makeSegment(index: number, coordinates: [number, number][], secondsEach
     end_longitude: coordinates[coordinates.length - 1][0],
     cumulative_distance_km: index * 10,
     distance_km: 10,
-    penalty: { axis_seconds: { ascent: 20 + index * 30 }, avoidance_seconds: 0 },
+    penalty: { axis_seconds: { ascent: 20 + index * 30 }, avoidance_seconds: 0, total_seconds: 20 + index * 30 },
+    lens_seconds_per_km: { total: (20 + index * 30) / 10, ascent: (20 + index * 30) / 10 },
     estimated_arrival_time: new Date(DEPARTED_AT + index * secondsEach * 1000).toISOString(),
   });
 }
@@ -78,7 +79,7 @@ function makeRouteCandidate(
         durationSeconds / 2,
       ),
     ],
-    penalty: { axis_seconds: { ascent: 70 }, avoidance_seconds: 0 },
+    penalty: { axis_seconds: { ascent: 70 }, avoidance_seconds: 0, total_seconds: 70 },
   });
 }
 

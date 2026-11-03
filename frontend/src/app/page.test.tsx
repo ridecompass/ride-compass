@@ -201,11 +201,11 @@ describe("ルートを作る", () => {
     serveCostAxisCatalog();
     const { user } = renderHome();
     await user.click(
-      within(screen.getByRole("radiogroup", { name: "負担の強さ" })).getByRole("radio", { name: "強め" }),
+      within(screen.getByRole("radiogroup", { name: "負担の強さ" })).getByRole("radio", { name: "×1.5" }),
     );
     await user.click(screen.getByRole("tab", { name: "負担" }));
     await user.click(
-      within(await screen.findByRole("radiogroup", { name: "振動の倍率" })).getByRole("radio", { name: "無視" }),
+      within(await screen.findByRole("radiogroup", { name: "振動の倍率" })).getByRole("radio", { name: "×0" }),
     );
 
     jobs.respond([FIRST], LOOP_CONDITIONS);

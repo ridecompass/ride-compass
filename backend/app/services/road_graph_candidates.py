@@ -13,13 +13,14 @@ from typing import TypeVar, cast
 import numpy as np
 
 from app.domain.attributes import ElevationAttribute
-from app.domain.cost_axes import EFFORT_AXES, EffortItem
+from app.domain.cost_axes import EFFORT_AXES, HEADWIND_FACT_LABEL, STOPS_FACT_LABEL, EffortItem
 from app.domain.evaluation import displayed_material_ids
 from app.domain.leg_costs import LegValues
 from app.domain.gradient import GRADIENT_VALUE_DECIMALS
 from app.domain.material_catalog import GRADIENT_PERCENT
 from app.domain.geo import (
     compass_label,
+    length_weighted_mean,
 )
 from app.domain.graph import LeanEdge
 from app.domain.road_network import elevation_attribute
@@ -28,10 +29,10 @@ from app.domain.route import (
     COST_SECONDS_DECIMALS,
     STOP_COUNT_DECIMALS,
     WIND_MS_DECIMALS,
-    CostBreakdown,
+    PenaltyBreakdown,
     AxisFact,
     RouteFacts,
-    merge_cost_breakdowns,
+    merge_penalty_breakdowns,
     ElevationStretch,
     EvaluatedRoute,
     RoadClassStretch,
@@ -266,7 +267,7 @@ def _build_candidate(
     add_elapsed_ms(context.evaluate_steps_ms, "segments", segments_started)
     bins_started = start_timer()
     # 候補の内訳は丸める前の区間から足す（丸めたビンを足すと、丸めの分が候補の内訳へ積もる）。
-    penalty = merge_cost_breakdowns(segment.penalty for segment in segments)
+    penalty = merge_penalty_breakdowns(segment.penalty for segment in segments)
     # 返すsegmentsは集約する。Edge単位のままだとペイロードとフロントの描画費用が嵩む。
     segments = aggregate_segments_into_bins(segments, orientation.bin_slices)
     add_elapsed_ms(context.evaluate_steps_ms, "bins", bins_started)
@@ -388,7 +389,7 @@ def _build_segment_details(
     return segments
 
 
-def _segment_penalties(orientation: _Orientation, context: RoadGraphContext) -> list[CostBreakdown | None]:
+def _segment_penalties(orientation: _Orientation, context: RoadGraphContext) -> list[PenaltyBreakdown | None]:
     """区間ごとの代償の秒の内訳（費目の帳簿の式で組んでいなければNone）。区間の代償（`LegValues.penalty_by_axis`）に、
     区間へ入る所で曲がった漕ぎ出しの代償（`LegCostComposer.turn_kickoff_penalty`）を、その費目の軸へ足す。"""
     kickoff = context.composer.turn_kickoff_penalty
@@ -398,15 +399,15 @@ def _segment_penalties(orientation: _Orientation, context: RoadGraphContext) -> 
     # 区間iへ入る曲がる所は、遷移の並び（区間の数−1個）のi−1番目。
     entering = [0.0, *orientation.turn_kickoffs]
 
-    def of(read: _RowRead) -> list[CostBreakdown | None]:
+    def of(read: _RowRead) -> list[PenaltyBreakdown | None]:
         values = read.values
         axis_lists = {axis_id: seconds.tolist() for axis_id, seconds in values.penalty_by_axis.items()}
         avoidance = [] if values.avoidance_seconds is None else values.avoidance_seconds.tolist()
-        breakdowns: list[CostBreakdown | None] = []
+        breakdowns: list[PenaltyBreakdown | None] = []
         for position, index in enumerate(read.indices):
             axis_seconds = {axis_id: seconds[position] for axis_id, seconds in axis_lists.items()}
             axis_seconds[kickoff_axis] = axis_seconds.get(kickoff_axis, 0.0) + entering[index] * kickoff_seconds
-            breakdowns.append(CostBreakdown.model_construct(
+            breakdowns.append(PenaltyBreakdown.model_construct(
                 axis_seconds=axis_seconds, avoidance_seconds=avoidance[position]))
         return breakdowns
 
@@ -416,8 +417,8 @@ def _segment_penalties(orientation: _Orientation, context: RoadGraphContext) -> 
 #: 体力の費目 → 候補の事実の名前と単位（値は`_route_facts`が求める）。道の負担の軸は「<軸の名前>のある道」のkm。
 _EFFORT_FACTS: dict[EffortItem, tuple[str, str]] = {
     "gravity": ("登り", "m"),
-    "air": ("向かい風の平均", "m/s"),
-    "inertia": ("止まる回数", "回"),
+    "air": (HEADWIND_FACT_LABEL, "m/s"),
+    "inertia": (STOPS_FACT_LABEL, "回"),
     "rolling": ("転がり抵抗の大きい道", "km"),
 }
 
@@ -429,14 +430,13 @@ def _route_facts(orientation: _Orientation, context: RoadGraphContext, elevation
     distance_km = np.array([edge.distance_m for edge in orientation.edges], dtype=float) / 1000.0
     facts = context.composer.row_facts(rows)
     headwind_ms = np.array(_per_segment(orientation.reads, len(rows), lambda read: read.values.headwind_ms.tolist()))
-    total_km = float(distance_km.sum())
     # 止まる回数は、止まる出来事と曲がる所を、止まってから漕ぎ出す回数に換えて足したもの（減速だけの出来事は、落とした
     # 速さから戻す分だけ1回より少なく数える）。所要時間の待ちと停止の軸の体力と同じ回数。
     values: dict[EffortItem, float | None] = {
         "gravity": elevation_gain_m,
         "air": (
-            None if context.composer.wind_unavailable or total_km <= 0
-            else round(float((headwind_ms * distance_km).sum()) / total_km, WIND_MS_DECIMALS)
+            None if context.composer.wind_unavailable or (mean := length_weighted_mean(headwind_ms, distance_km)) is None
+            else round(mean, WIND_MS_DECIMALS)
         ),
         "inertia": round(float(facts.stops.sum()) + sum(orientation.turn_kickoffs), STOP_COUNT_DECIMALS),
         "rolling": round(float(distance_km[facts.rough].sum()), DISTANCE_KM_DECIMALS),

@@ -11,10 +11,12 @@ from datetime import datetime
 
 import numpy as np
 
-from app.domain.cost_axes import TOTAL_LENS_ID, CostAxisDefinitions, burden_material_ids, current_cost_axes
+from app.domain.cost_axes import CostAxisDefinitions, burden_material_ids, cost_axis_ids, current_cost_axes
+from app.domain.lens_total import TOTAL_LENS_ID
+from app.domain.cost_preference import CostPreference
 from app.domain.dynamic_materials import DynamicAxisRequestContext
 from app.domain.gradient import ROAD_BEARING_LEAF
-from app.domain.ledger_costs import standard_ledger_parameters
+from app.domain.ledger_costs import current_ledger_parameters
 from app.domain.leg_costs import wind_components_or_calm
 from app.domain.lens_values import (
     LENS_AGAINST_LEAF,
@@ -55,27 +57,29 @@ class LensService:
     def __init__(self, weather_service: WeatherService):
         self._weather_service = weather_service
 
-    async def tile_table(self, z: int, x: int, y: int, at: datetime | None, speed_kmh: float) -> LensTable | None:
-        """タイルのフィーチャーの、時刻`at`（省略すると今）の風と想定速度`speed_kmh`でのレンズの値。費用の軸の定義が無ければ
-        None。風を読めない・時刻が予報の範囲の外なら無風で求める（探索と同じ）。"""
-        tile = await self._tile(z, x, y, at, speed_kmh)
+    async def tile_table(self, z: int, x: int, y: int, at: datetime | None, speed_kmh: float,
+                         preference: CostPreference) -> LensTable | None:
+        """タイルのフィーチャーの、時刻`at`（省略すると今）の風と想定速度`speed_kmh`と利用者の値`preference`（つまみと倍率。
+        ルート生成と同じ値で塗る）でのレンズの値。費用の軸の定義が無ければNone。風を読めない・時刻が予報の範囲の外なら無風で
+        求める（探索と同じ）。"""
+        tile = await self._tile(z, x, y, at, speed_kmh, preference)
         return None if tile is None else tile.table
 
     async def way_materials(self, lens_id: str, z: int, x: int, y: int, at: datetime | None,
-                            speed_kmh: float) -> dict[str, dict[str, float]] | None:
+                            speed_kmh: float, preference: CostPreference) -> dict[str, dict[str, float]] | None:
         """レンズ`lens_id`の、タイルのフィーチャーごとの道ごとの材料（道の向き・逆向きに辿った値と道の向き。値の無い材料は
         載せない）。費用の軸の定義が無いか、知らないレンズならNone。"""
         axes = current_cost_axes()
-        if axes is None or lens_id not in {TOTAL_LENS_ID, *axes.effort, *axes.burden}:
+        if axes is None or lens_id not in {TOTAL_LENS_ID, *cost_axis_ids(axes)}:
             return None
-        table = await self.tile_table(z, x, y, at, speed_kmh)
+        table = await self.tile_table(z, x, y, at, speed_kmh, preference)
         return None if table is None else _way_materials(table, lens_id)
 
     async def inspect(self, feature_key: str, z: int, x: int, y: int, bearing_deg: float, at: datetime | None,
-                      speed_kmh: float) -> LensInspection | None:
+                      speed_kmh: float, preference: CostPreference) -> LensInspection | None:
         """押したフィーチャー（地図がタイル`z/x/y`で塗っている単位）の、地図と同じ値と、その元の事実。費用の軸の定義が
         無いか、タイルにそのフィーチャーが無ければNone。"""
-        tile = await self._tile(z, x, y, at, speed_kmh, only=feature_key)
+        tile = await self._tile(z, x, y, at, speed_kmh, preference, only=feature_key)
         if tile is None:
             return None
         road_classes = current_road_classes()
@@ -84,7 +88,7 @@ class LensService:
         return lens_inspection(tile.table, 0, painted, tile.materials.columns, tile.materials.distance_m, tile.wind_ms,
                                tile.steepest, labels)
 
-    async def _tile(self, z: int, x: int, y: int, at: datetime | None, speed_kmh: float,
+    async def _tile(self, z: int, x: int, y: int, at: datetime | None, speed_kmh: float, preference: CostPreference,
                     only: str | None = None) -> _TileLens | None:
         """タイルのレンズの値。`only`を渡すとそのフィーチャーだけで求める（無ければNone）。"""
         axes = current_cost_axes()
@@ -97,7 +101,8 @@ class LensService:
             features, materials, fills, steepest = prepared
             fields["features"] = len(features)
             wind = await self._wind(z, x, y, at, materials.mid_lat, materials.mid_lon, fields)
-            return await asyncio.to_thread(_tile_lens, features, materials, axes, fills, speed_kmh, wind, steepest)
+            return await asyncio.to_thread(_tile_lens, features, materials, axes, fills, speed_kmh, preference, wind,
+                                           steepest)
 
     async def _wind(self, z: int, x: int, y: int, at: datetime | None, mid_lat: np.ndarray, mid_lon: np.ndarray,
                     fields: dict) -> tuple[WindForecastSeries, datetime] | None:
@@ -133,7 +138,7 @@ def _prepare(network: RoadNetwork, z: int, x: int, y: int, axes: CostAxisDefinit
 
 
 def _tile_lens(features: LensFeatures, materials: EdgeMaterialColumns, axes: CostAxisDefinitions, fills: MaterialFills,
-               speed_kmh: float, wind: tuple[WindForecastSeries, datetime] | None,
+               speed_kmh: float, preference: CostPreference, wind: tuple[WindForecastSeries, datetime] | None,
                steepest: tuple[np.ndarray, np.ndarray]) -> _TileLens:
     n = len(features.rows)
     components = (np.zeros(n), np.zeros(n))
@@ -144,10 +149,8 @@ def _tile_lens(features: LensFeatures, materials: EdgeMaterialColumns, axes: Cos
             wind_series=series, forecast_index=series.time_index(target, 0.0),
             wind_points=series.lattice.points_of(materials.mid_lat, materials.mid_lon))
         components = wind_components_or_calm(context, n)
-    # 利用者のつまみと倍率が要求へ届くまでは標準の値（探索も、要求に無ければ同じ値）。
     table = lens_table(features, materials.columns, materials.distance_m, materials.elevation_profiles, axes,
-                       standard_ledger_parameters(),
-                       speed_kmh, fills, components)
+                       current_ledger_parameters(preference), speed_kmh, fills, components)
     return _TileLens(table, materials, None if wind is None else components, steepest)
 
 

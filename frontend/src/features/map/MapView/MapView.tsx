@@ -11,7 +11,7 @@ import type {
   PlaceCandidate,
   PointTarget,
   RouteCandidate,
-  RoutePreferenceWeights,
+  CostPreference,
   SelectedRouteSegment,
 } from "@/types/route";
 import type { RideConditions } from "@/features/map/regionApi";
@@ -55,7 +55,7 @@ interface MapViewProps {
   /** 地図を塗るのに使っている走行の条件。道を押したときの内訳にも同じ値を渡す（揃えないと色と数字が食い違う）。 */
   rideConditions: RideConditions;
   /** 利用者がいま設定している重み（ルート生成へ送るのと同じもの）。道の詳細の評価に使う。nullなら既定の重み。 */
-  routePreference: RoutePreferenceWeights | null;
+  costPreference: CostPreference;
   /** 押して選んでいる区間。地図は押した地点に印を立て、その区間の範囲を縁取る（選んでも地図は動かさない）。 */
   selectedRouteSegment: SelectedRouteSegment | null;
   /** 選んでいる区間へ寄せる頼み。新しい値を渡すたびに寄せる。走行中は追うのを休んで寄せ、区間の選びを外すと追い直す。 */
@@ -125,7 +125,7 @@ export default function MapView({
   locationSource,
   look,
   rideConditions,
-  routePreference,
+  costPreference,
   selectedRouteSegment,
   segmentFocus,
   onSegmentOutsideChange,
@@ -264,7 +264,7 @@ export default function MapView({
     segmentDetail,
     segmentPath: selectedSectionPath,
     rideConditions,
-    routePreference,
+    costPreference,
     travelledKm,
     onBackToSegment: backToSegment,
     onFocus: focus,

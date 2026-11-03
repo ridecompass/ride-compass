@@ -22,7 +22,8 @@ import DifficultyProfile from "./DifficultyProfile";
 // 1kmずつの2区間。前の区間の1kmあたりの負担（100秒）が図の上端になる。
 const FIRST = makeRouteSegment({
   distance_km: 1,
-  penalty: { axis_seconds: { axis_a: 60, axis_b: 40 }, avoidance_seconds: 0 },
+  penalty: { axis_seconds: { axis_a: 60, axis_b: 40 }, avoidance_seconds: 0, total_seconds: 100 },
+  lens_seconds_per_km: { total: 100, axis_a: 60, axis_b: 40 },
   start_latitude: 35,
   start_longitude: 139,
   end_latitude: 35,
@@ -30,7 +31,8 @@ const FIRST = makeRouteSegment({
 });
 const SECOND = makeRouteSegment({
   distance_km: 1,
-  penalty: { axis_seconds: { axis_a: 30 }, avoidance_seconds: 0 },
+  penalty: { axis_seconds: { axis_a: 30 }, avoidance_seconds: 0, total_seconds: 30 },
+  lens_seconds_per_km: { total: 30, axis_a: 30 },
   start_latitude: 35,
   start_longitude: 139.01,
   end_latitude: 35,
@@ -98,7 +100,9 @@ describe("DifficultyProfile", () => {
   });
 
   it("内訳の無い区間は塗らない", () => {
-    const { container } = renderProfile({ segments: [FIRST, makeRouteSegment({ ...SECOND, penalty: null })] });
+    const { container } = renderProfile({
+      segments: [FIRST, makeRouteSegment({ ...SECOND, penalty: null, lens_seconds_per_km: null })],
+    });
     expect(paths(container).map((path) => path.d)).toEqual(["M0 40H500V100H0Z", "M0 0H500V40H0Z"]);
   });
 

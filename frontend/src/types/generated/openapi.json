@@ -1021,6 +1021,35 @@
               ],
               "title": "At"
             }
+          },
+          {
+            "name": "strength",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "maximum": 2.0,
+              "minimum": 0.0,
+              "default": 1.0,
+              "title": "Strength"
+            }
+          },
+          {
+            "name": "multipliers",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9_]+:[0-9.]+(,[A-Za-z0-9_]+:[0-9.]+)*$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Multipliers"
+            }
           }
         ],
         "responses": {
@@ -3392,6 +3421,9 @@
                 "type": "null"
               }
             ]
+          },
+          "cost_preference": {
+            "$ref": "#/components/schemas/CostPreference-Input"
           }
         },
         "additionalProperties": false,
@@ -4472,28 +4504,6 @@
           "total_lens"
         ],
         "title": "CostAxisDefinitions"
-      },
-      "CostBreakdown": {
-        "properties": {
-          "axis_seconds": {
-            "additionalProperties": {
-              "type": "number"
-            },
-            "type": "object",
-            "title": "Axis Seconds"
-          },
-          "avoidance_seconds": {
-            "type": "number",
-            "title": "Avoidance Seconds"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "axis_seconds",
-          "avoidance_seconds"
-        ],
-        "title": "CostBreakdown"
       },
       "CostPreference-Input": {
         "properties": {
@@ -5682,49 +5692,12 @@
             "type": "array",
             "title": "Axes"
           },
-          "steepest_climb_percent": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Steepest Climb Percent"
-          },
-          "steepest_descent_percent": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Steepest Descent Percent"
-          },
-          "headwind_ms": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Headwind Ms"
-          },
-          "stops_per_km": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Stops Per Km"
+          "facts": {
+            "items": {
+              "$ref": "#/components/schemas/AxisFact"
+            },
+            "type": "array",
+            "title": "Facts"
           }
         },
         "additionalProperties": false,
@@ -5732,10 +5705,7 @@
         "required": [
           "total_seconds_per_km",
           "axes",
-          "steepest_climb_percent",
-          "steepest_descent_percent",
-          "headwind_ms",
-          "stops_per_km"
+          "facts"
         ],
         "title": "LensDirection"
       },
@@ -6363,6 +6333,34 @@
           "precipitation_mm"
         ],
         "title": "MsmGridPointForecast"
+      },
+      "PenaltyBreakdown": {
+        "properties": {
+          "axis_seconds": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "title": "Axis Seconds"
+          },
+          "avoidance_seconds": {
+            "type": "number",
+            "title": "Avoidance Seconds"
+          },
+          "total_seconds": {
+            "type": "number",
+            "title": "Total Seconds",
+            "readOnly": true
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "axis_seconds",
+          "avoidance_seconds",
+          "total_seconds"
+        ],
+        "title": "PenaltyBreakdown"
       },
       "PlaceArea": {
         "properties": {
@@ -7207,7 +7205,7 @@
           "penalty": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/CostBreakdown"
+                "$ref": "#/components/schemas/PenaltyBreakdown"
               },
               {
                 "type": "null"
@@ -7283,6 +7281,21 @@
           "is_fastest": {
             "type": "boolean",
             "title": "Is Fastest"
+          },
+          "lens_seconds_per_km": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "number"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lens Seconds Per Km",
+            "readOnly": true
           }
         },
         "additionalProperties": false,
@@ -7306,7 +7319,8 @@
           "waypoint_distances_km",
           "id",
           "kind",
-          "is_fastest"
+          "is_fastest",
+          "lens_seconds_per_km"
         ],
         "title": "RouteCandidate"
       },
@@ -7645,7 +7659,7 @@
           "penalty": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/CostBreakdown"
+                "$ref": "#/components/schemas/PenaltyBreakdown"
               },
               {
                 "type": "null"
@@ -7668,6 +7682,21 @@
             },
             "type": "object",
             "title": "Road Classes"
+          },
+          "lens_seconds_per_km": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "number"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lens Seconds Per Km",
+            "readOnly": true
           }
         },
         "additionalProperties": false,
@@ -7687,7 +7716,8 @@
           "estimated_arrival_time",
           "penalty",
           "material_values",
-          "road_classes"
+          "road_classes",
+          "lens_seconds_per_km"
         ],
         "title": "RouteSegmentDetail"
       },

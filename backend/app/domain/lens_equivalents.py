@@ -14,7 +14,9 @@ from typing import Literal
 
 import numpy as np
 
-from app.domain.cost_axes import EFFORT_AXES, CategoricalBurden, CostAxisDefinitions, EffortItem
+from app.domain.cost_axes import (
+    EFFORT_AXES, HEADWIND_FACT_LABEL, STOPS_FACT_LABEL, CategoricalBurden, CostAxisDefinitions, EffortItem,
+)
 from app.domain.cycling_speed import BASE_CRR_ID, RiderProfile, SegmentSpeedModel, crr_for_surface
 from app.domain.attributes import CategoricalColumn
 from app.domain.elevation_profile import ElevationProfiles, GradeDistribution
@@ -75,10 +77,10 @@ def _effort_equivalents(axes: CostAxisDefinitions, parameters: LedgerParameters,
     if item == "gravity":
         return _inverted("斜度", "%", _GRADE_PERCENT, lambda grade: seconds(grade_percent=grade), thresholds)
     if item == "air":
-        return _inverted("向かい風", "m/s", _HEADWIND_MS, lambda wind: seconds(headwind_ms=wind), thresholds)
+        return _inverted(HEADWIND_FACT_LABEL, "m/s", _HEADWIND_MS, lambda wind: seconds(headwind_ms=wind), thresholds)
     if item == "inertia":
         one_stop = float(seconds(kickoffs=np.ones(1))[0])
-        return ThresholdEquivalents(fact="止まって漕ぎ出す回数", unit="回/km",
+        return ThresholdEquivalents(fact=STOPS_FACT_LABEL, unit="回/km",
                                     values=[threshold / one_stop if one_stop > 0 else None for threshold in thresholds])
     classification = road_classes.rolling_resistance_classification
     classes = [] if classification is None else list(road_classes.rolling_resistance_classes.get(classification, {}))
@@ -127,7 +129,7 @@ def _axis_seconds_per_km(axes: CostAxisDefinitions, parameters: LedgerParameters
     ledger = LedgerCosts.for_model(axes, parameters, model, {
         burden_id: burden if burden is not None and burden_id == axis_id else np.zeros(n) for burden_id in axes.burden})
     wind = np.zeros(n) if headwind_ms is None else np.asarray(headwind_ms, dtype=np.float64)
-    return ledger.penalty_by_axis(model.ride(wind, np.zeros(n), parameters.effort_weight_exponent))[axis_id]
+    return ledger.row_seconds(model, wind, np.zeros(n))[1][axis_id]
 
 
 def _uniform_slopes(grade_percent: np.ndarray) -> ElevationProfiles:

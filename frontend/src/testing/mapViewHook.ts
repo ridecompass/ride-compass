@@ -13,6 +13,7 @@ import {
   roadMapLayer,
 } from "@/testing/catalogAxes";
 import type { AxisCatalogEntry } from "@/types/route";
+import { STANDARD_COST_PREFERENCE } from "@/lib/costPreference";
 
 const NOW = new Date("2026-10-07T03:00:00Z");
 const TILE_VERSIONS = { accident: "a1", poi: "p1", road_surface: "r1", stop_place: "s1" };
@@ -56,6 +57,7 @@ export function renderMapView(inputs: Partial<Inputs> = {}) {
       riding: null,
       now: NOW,
       routeWeights: {},
+      costPreference: STANDARD_COST_PREFERENCE,
       ...inputs,
       ...props,
     }),

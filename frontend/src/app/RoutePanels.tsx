@@ -19,6 +19,7 @@ import type { useRoutePlanner } from "@/features/route/useRoutePlanner";
 import { cn } from "@/lib/cn";
 import { mapOverlayEdge } from "@/lib/mapOverlayEdges";
 import type { usePagePanels } from "./usePagePanels";
+import type { MapTheme } from "@/lib/mapTheme";
 
 /** モバイルの下部タブ（シートと同じ並び）。 */
 const MOBILE_TABS = [
@@ -27,7 +28,7 @@ const MOBILE_TABS = [
     label: "ルート設定",
     Icon: RouteSettingsIcon,
     usage:
-      "ルートを作る条件[距離・地点・重み・除外・保存した地点と設定]と「ルート生成」を開きます。もう一度押すと閉じます。",
+      "ルートを作る条件[距離・地点・負担・回避・保存した地点と設定]と「ルート生成」を開きます。もう一度押すと閉じます。",
   },
   {
     sheet: "routeOutcome",
@@ -54,6 +55,8 @@ interface RoutePanelsProps {
   navigating: boolean;
   route: ReturnType<typeof useRoutePlanner>;
   profileLayers: ProfileLayerSelection;
+  /** 地図の地の明るさ（候補のカードの帯を地図と同じ色で塗る）。 */
+  mapTheme: MapTheme;
   /** 「ルート設定」のタブ。タブ列は見出し行、中身は本文に描くため、両方を囲むここで持つ。 */
   settingsTab: SettingsTab;
   onSettingsTabChange: (tab: SettingsTab) => void;
@@ -66,10 +69,18 @@ interface RoutePanelsProps {
 }
 
 /** 「ルート結果」の中身と見出しの操作（デスクトップの区分・モバイルのシートの両方）。見出しの操作は候補がある間だけ出す。 */
-function outcomeParts({ route, profileLayers, onRide }: RoutePanelsProps) {
+function outcomeParts({ route, profileLayers, mapTheme, onRide }: RoutePanelsProps) {
   const { results, generation, splice } = route;
   return {
-    body: <RouteOutcome results={results} generation={generation} splice={splice} profileLayers={profileLayers} />,
+    body: (
+      <RouteOutcome
+        results={results}
+        generation={generation}
+        splice={splice}
+        profileLayers={profileLayers}
+        mapTheme={mapTheme}
+      />
+    ),
     actions: results.routes.length > 0 ? <RouteOutcomeHeaderActions planner={route} onRide={onRide} /> : null,
   };
 }

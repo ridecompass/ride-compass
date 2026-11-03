@@ -12,29 +12,7 @@
   "cost_strength_levels": [
     {
       "value": 0.0,
-      "label": "気にしない"
-    },
-    {
-      "value": 0.5,
-      "label": "少し"
-    },
-    {
-      "value": 1.0,
-      "label": "標準"
-    },
-    {
-      "value": 1.5,
-      "label": "強め"
-    },
-    {
-      "value": 2.0,
-      "label": "とても"
-    }
-  ],
-  "cost_multiplier_levels": [
-    {
-      "value": 0.0,
-      "label": "無視"
+      "label": "×0"
     },
     {
       "value": 0.5,
@@ -42,7 +20,29 @@
     },
     {
       "value": 1.0,
-      "label": "標準"
+      "label": "×1"
+    },
+    {
+      "value": 1.5,
+      "label": "×1.5"
+    },
+    {
+      "value": 2.0,
+      "label": "×2"
+    }
+  ],
+  "cost_multiplier_levels": [
+    {
+      "value": 0.0,
+      "label": "×0"
+    },
+    {
+      "value": 0.5,
+      "label": "×0.5"
+    },
+    {
+      "value": 1.0,
+      "label": "×1"
     },
     {
       "value": 2.0,
@@ -53,7 +53,7 @@
   "max_assumed_speed_kmh": 60.0,
   "job_result_ttl_seconds": 600.0,
   "job_wait_seconds": 10,
-  "route_candidate_shape": "e1c62c16c2d409af",
+  "route_candidate_shape": "1ad077bf7f561588",
   "segment_speed_conditions": [
     "坂",
     "風",

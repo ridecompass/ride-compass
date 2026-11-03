@@ -10,7 +10,6 @@ import { pairedStretches } from "@/features/route/routeSplice";
 import { MINUTE_UNIT, secondsToMinutes } from "@/lib/duration";
 import { roundToDigits, signMark } from "@/lib/numberFormat";
 import { routeEdgeKms } from "@/lib/routeDistance";
-import { penaltyTotalSeconds } from "@/lib/routePenalty";
 import type { RouteCandidate } from "@/types/route";
 
 /** 変えた区間1つ。位置は元のルートの始点からの距離。 */
@@ -44,7 +43,7 @@ const EDIT_METRICS: readonly EditMetric[] = [
     label: "負担",
     digits: 0,
     unit: MINUTE_UNIT,
-    value: (route) => (route.penalty === null ? null : secondsToMinutes(penaltyTotalSeconds(route.penalty))),
+    value: (route) => (route.penalty === null ? null : secondsToMinutes(route.penalty.total_seconds)),
   },
 ];
 

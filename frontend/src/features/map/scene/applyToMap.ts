@@ -30,13 +30,7 @@ import {
   themeBasemap,
 } from "@/features/map/layers/mapStyleOps";
 import { axisMapLayerIds } from "@/features/map/layers/mapLayers";
-import {
-  ROUTE_LENS_SECONDS_PROPERTY,
-  ROUTE_LENS_TOTAL_PROPERTY,
-  type LensId,
-  type RouteStyleMode,
-} from "@/lib/mapDisplay/routeStyleModes";
-import { lensSecondsPerKm } from "@/lib/routePenalty";
+import { ROUTE_LENS_SECONDS_PROPERTY, type LensId, type RouteStyleMode } from "@/lib/mapDisplay/routeStyleModes";
 import type { RoadMapLayerView, RouteCandidate, SelectedRouteSegment } from "@/types/route";
 import { valueBands } from "@/lib/mapDisplay/valueScale";
 import { routeStretches, segmentPath, splitSegmentAt } from "@/lib/routeDistance";
@@ -149,11 +143,9 @@ function routeStateFrom(props: SceneWiringProps): RouteState {
     segments: routeStretches(segments).flatMap(({ segment, startKm, endKm }, index) => {
       // 地物の属性は、区間の番号と線を塗る値（色分けのモードの式と凡例の絞り込みが読む値）だけ。押した区間の中身は、
       // 選んでいる候補の同じ番号の区間から引く（`docs/architecture/data-model.md`の、押したときにしか使わない詳しさは載せない決まり）。
-      const lensSeconds = segment.penalty === null ? null : lensSecondsPerKm(segment.penalty, segment.distance_km);
       const properties = {
         [ROUTE_SEGMENT_INDEX_PROPERTY]: index,
-        [ROUTE_LENS_SECONDS_PROPERTY]: lensSeconds?.axes ?? {},
-        [ROUTE_LENS_TOTAL_PROPERTY]: lensSeconds?.total ?? null,
+        [ROUTE_LENS_SECONDS_PROPERTY]: segment.lens_seconds_per_km ?? {},
         material_values: segment.material_values,
         sustained_gradient_percent: segment.sustained_gradient_percent,
       };

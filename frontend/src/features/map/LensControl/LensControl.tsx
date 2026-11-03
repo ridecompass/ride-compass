@@ -49,7 +49,7 @@ interface LensControlProps {
 const LENS_SCREEN_NAME = EVALUATION_PAINT_NAME;
 
 /** 評価軸を選んでいないルートの前のピルの名前（道路は塗らない）。 */
-const UNSELECTED_LABEL = "評価軸を選ぶ";
+const UNSELECTED_LABEL = "塗る負担を選ぶ";
 
 /**
  * レンズ（地図を何で塗るか）の唯一の入口。地図の上のピルが今のレンズを示し、押すと一覧を開く。置き場は呼び出し側が決める。
@@ -117,7 +117,7 @@ export default function LensControl({
             className="max-w-full flex-row items-center gap-1.5 border-0 px-2.5 py-1 text-[length:var(--font-size-sm)] whitespace-nowrap focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent-strong)]"
             aria-label={`${LENS_SCREEN_NAME}: ${pillLabel}（タップで変更）`}
             title={statusLabel}
-            usage="評価軸を1つ選び、その道を走ったときの点数で、地図の道路（ルートを作った後はルートの線）を塗ります。横の帯は点数の凡例です。"
+            usage="負担の種類を1つ選び、その道を走ったときの1kmあたりの負担で、地図の道路（ルートを作った後はルートの線）を塗ります。横の帯は負担の凡例です。"
           >
             {/* 道のりのグラフの「評価で塗る」の切り替えと同じ絵で、どちらも同じ入口と分かるようにする。 */}
             <EvaluationPaintIcon size={14} />
@@ -170,7 +170,7 @@ export default function LensControl({
             value={unselected ? "" : lens}
             onValueChange={(id) => onLensChange(id === "" ? LENS_DIFFICULTY_ID : id)}
             aria-label={LENS_SCREEN_NAME}
-            usage="押した評価軸の点数で、地図の道路（ルートを作った後はルートの線）を塗ります。選んでいる行をもう一度押すと外れます。"
+            usage="押した負担の種類の1kmあたりの負担で、地図の道路（ルートを作った後はルートの線）を塗ります。選んでいる行をもう一度押すと外れます。"
           >
             {ordered.map((option) => (
               <LensRow
@@ -198,7 +198,7 @@ export default function LensControl({
               aria-label="選択を外す"
               onClick={() => onLensChange(LENS_DIFFICULTY_ID)}
               disabled={unselected}
-              usage="選んでいる評価軸を外します。外すと、ルートの前は道路を塗らず、ルートの後は総合の負担で塗ります。"
+              usage="選んでいる負担の種類を外します。外すと、ルートの前は道路を塗らず、ルートの後は総合の負担で塗ります。"
             >
               <ClearAllLayersIcon />
             </Button>

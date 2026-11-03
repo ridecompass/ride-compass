@@ -289,6 +289,8 @@ class SegmentSpeedModel:
         points = kernel_array(profiles.points, np.int64)
         elevation = kernel_array(profiles.elevation_m, np.float32)
         distance = kernel_array(distance_m, np.float64)
+        #: 区間の行ごとの長さ（m、float64）。
+        self.distance_m = distance
         #: 区間の行ごとの標高の無い長さ（m）。全体の分布で埋めて走る（所要時間の欠けの割合が読む）。
         self.unknown_m = unknown_lengths_m(start, points, elevation, distance)
         span_row, span_length, span_grade = flatten_spans(

@@ -3,10 +3,11 @@ from collections import defaultdict
 
 from typing import Annotated, Any, Callable, Iterable, Literal, Mapping, Sequence
 
-from pydantic import ConfigDict, WithJsonSchema
+from pydantic import ConfigDict, WithJsonSchema, computed_field
 
 from app.domain.difficulty import weighted_mean_by_distance
 from app.domain.attributes import ElevationAttribute
+from app.domain.lens_total import lens_values_with_total
 from app.domain.geo import Latitude, Longitude
 from app.domain.gradient import GRADIENT_VALUE_DECIMALS
 from app.domain.graph import LeanEdge
@@ -67,7 +68,7 @@ class ElevationStretch(StrictModel):
     end_elevation_m: float | None
 
 
-class CostBreakdown(StrictModel):
+class PenaltyBreakdown(StrictModel):
     """代償の秒の内訳（費目の帳簿の式、`domain/ledger_costs.py`）。所要時間・軸ごとの代償・回避指定の和が費用になる。
 
     軸の名前と帳簿は`GET /api/cost-axes`が持ち、回避指定の行の名前は同じ応答の`avoidance_label`が持つ。
@@ -79,8 +80,24 @@ class CostBreakdown(StrictModel):
     # 避け方の倍率（道の区分ごとの「なるべく避ける」）が、その道の所要時間と代償に上乗せした秒。
     avoidance_seconds: float
 
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def total_seconds(self) -> float:
+        """代償の秒の和（軸ごとの秒と回避指定の秒）。所要時間に足すと、候補を並べた費用になる。"""
+        return round(sum(self.axis_seconds.values(), self.avoidance_seconds), COST_SECONDS_DECIMALS)
 
-def merge_cost_breakdowns(parts: Iterable[CostBreakdown | None]) -> CostBreakdown | None:
+
+def lens_seconds_per_km(penalty: PenaltyBreakdown | None, distance_km: float) -> dict[str, float] | None:
+    """地図のレンズと同じ量（レンズid→1kmあたりの代償の秒。総合`TOTAL_LENS_ID`は軸の和）。回避指定は道の区分の指定で道の値では
+    ないので入れない。ルートの値は曲がる所の漕ぎ出しを、曲がった先の区間の慣性の費目の軸に含む（道1本のレンズには無い）。
+    内訳が無いか長さが0ならNone。"""
+    if penalty is None or not distance_km > 0:
+        return None
+    per_km = lens_values_with_total({axis_id: seconds / distance_km for axis_id, seconds in penalty.axis_seconds.items()}, 0.0)
+    return {lens_id: round(value, COST_SECONDS_DECIMALS) for lens_id, value in per_km.items()}
+
+
+def merge_penalty_breakdowns(parts: Iterable[PenaltyBreakdown | None]) -> PenaltyBreakdown | None:
     """内訳を足し合わせる（秒は足せる）。どれも無ければNone。"""
     present = [part for part in parts if part is not None]
     if not present:
@@ -89,7 +106,7 @@ def merge_cost_breakdowns(parts: Iterable[CostBreakdown | None]) -> CostBreakdow
     for part in present:
         for axis_id, seconds in part.axis_seconds.items():
             totals[axis_id] += seconds
-    return CostBreakdown.model_construct(
+    return PenaltyBreakdown.model_construct(
         axis_seconds={axis_id: round(seconds, COST_SECONDS_DECIMALS) for axis_id, seconds in totals.items()},
         avoidance_seconds=round(sum(part.avoidance_seconds for part in present), COST_SECONDS_DECIMALS),
     )
@@ -142,7 +159,14 @@ class RouteSegmentDetail(StrictModel):
     sustained_gradient_percent: float | None = None
     estimated_arrival_time: str | None = None
     # 区間の代償の秒の内訳。費目の帳簿の式で組んでいなければNone。
-    penalty: CostBreakdown | None = None
+    penalty: PenaltyBreakdown | None = None
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def lens_seconds_per_km(self) -> dict[str, float] | None:
+        """区間の、地図のレンズと同じ量（`lens_seconds_per_km`）。ルートの線は地図のレンズと同じ段でこれを塗る。"""
+        return lens_seconds_per_km(self.penalty, self.distance_km)
+
     # 材料id→値（値の無い材料はキーを持たない）。載せる材料は`domain/evaluation.py: displayed_material_ids`が選ぶ。
     material_values: dict[str, float]
     # 分け方（地図の道の線の層のid）と「緑と水」の層のid→区間の始まりから並べた、区分が同じまま続く部分。部分の距離の和は区間の距離と丸めの分だけずれうる。
@@ -182,7 +206,14 @@ class EvaluatedRoute(StrictModel):
     # 内訳（`penalty`）の和に、丸めの差を除いて等しい。
     cost_seconds: float
     # 候補全体の代償の秒の内訳。費目の帳簿の式で組んでいなければNone。
-    penalty: CostBreakdown | None
+    penalty: PenaltyBreakdown | None
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def lens_seconds_per_km(self) -> dict[str, float] | None:
+        """候補全体の、地図のレンズと同じ量（`lens_seconds_per_km`）。候補の帯は地図のレンズと同じ段でこれを塗る。"""
+        return lens_seconds_per_km(self.penalty, self.distance_km)
+
     facts: RouteFacts
     # 所要時間の見積もりで風を使えなかった（風の予報が読めず、無風として計算した）。画面が利用者へ知らせる。
     wind_unavailable: bool
@@ -379,7 +410,7 @@ BIN_FIELD_MERGERS: dict[str, Callable[[list[RouteSegmentDetail]], object]] = {
     "estimated_arrival_time": lambda segments: segments[0].estimated_arrival_time,
     "road_classes": merge_road_classes,
     "material_values": merge_material_values,
-    "penalty": lambda segments: merge_cost_breakdowns(segment.penalty for segment in segments),
+    "penalty": lambda segments: merge_penalty_breakdowns(segment.penalty for segment in segments),
 }
 
 

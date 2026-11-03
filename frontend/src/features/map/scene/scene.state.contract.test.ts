@@ -211,9 +211,14 @@ describe("状態を地図へ伝えた結果", () => {
           costAxisEntry("vibration", { ledger: "burden", lens: bands }),
         ),
       );
+      // 2kmの区間の内訳と、backend がそれから導く1kmあたりの値（回避指定は入れない）。
       const penalty = (ascent: number, vibration: number, avoidance = 0) => ({
-        axis_seconds: { ascent, vibration },
-        avoidance_seconds: avoidance,
+        penalty: {
+          axis_seconds: { ascent, vibration },
+          avoidance_seconds: avoidance,
+          total_seconds: ascent + vibration + avoidance,
+        },
+        lens_seconds_per_km: { total: (ascent + vibration) / 2, ascent: ascent / 2, vibration: vibration / 2 },
       });
       const { map, handle } = createRecordingMap();
       rebuild(
@@ -227,9 +232,9 @@ describe("状態を地図へ伝えた結果", () => {
             {
               ...route,
               segments: [
-                { ...segment(139.7, 139.71), distance_km: 2, penalty: penalty(4, 4, 600) },
-                { ...segment(139.71, 139.72), distance_km: 2, penalty: penalty(0, 30) },
-                { ...segment(139.72, 139.73), distance_km: 2, penalty: penalty(30, 0) },
+                { ...segment(139.7, 139.71), distance_km: 2, ...penalty(4, 4, 600) },
+                { ...segment(139.71, 139.72), distance_km: 2, ...penalty(0, 30) },
+                { ...segment(139.72, 139.73), distance_km: 2, ...penalty(30, 0) },
               ],
             },
           ] as never,

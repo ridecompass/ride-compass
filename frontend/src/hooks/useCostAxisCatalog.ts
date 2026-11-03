@@ -93,7 +93,7 @@ export function retryCostAxisCatalogFetch(): void {
 
 const COST_AXIS_CATALOG_FETCH_FAILURE: FetchFailure = {
   id: "cost-axis-catalog",
-  label: "費用の軸の一覧",
+  label: "負担の種類の一覧",
   effect: "ルートは軸ごとの倍率を変えていても反映できず、標準の倍率で作ります。",
   onRetry: retryCostAxisCatalogFetch,
 };

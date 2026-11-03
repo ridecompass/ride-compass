@@ -26,7 +26,8 @@ export function route(id: string, overrides: Partial<RouteCandidate> = {}): Rout
 export const FAST = route("fast", {
   distance_km: 10,
   estimated_duration_seconds: 1800,
-  penalty: { axis_seconds: { ascent: 240, vibration: 60 }, avoidance_seconds: 0 },
+  penalty: { axis_seconds: { ascent: 240, vibration: 60 }, avoidance_seconds: 0, total_seconds: 300 },
+  lens_seconds_per_km: { total: 30, ascent: 24, vibration: 6 },
 });
 export const SLOW = route("slow", { distance_km: 20, estimated_duration_seconds: 2520, penalty: null });
 
@@ -96,6 +97,7 @@ export function renderOutcome({
       generation={generation}
       splice={splice}
       profileLayers={{ ids: ["elevation"], toggle: vi.fn() }}
+      mapTheme="light"
     />,
   );
   return { results, splice };

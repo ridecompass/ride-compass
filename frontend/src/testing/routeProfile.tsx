@@ -38,12 +38,14 @@ export const PROFILE_COST_CATALOG = {
   ],
   axisColors: { ascent: "rgb(18, 52, 86)", vibration: "rgb(86, 52, 18)" },
   avoidanceLabel: "回避指定",
+  loaded: true,
 };
 
 // 北緯35度の上を東へ1kmずつ進む2区間。前は登坂だけが効き、標高を持つ。後ろは負担の内訳も標高も無い。
 export const CLIMB = makeRouteSegment({
   distance_km: 1,
-  penalty: { axis_seconds: { ascent: 40 }, avoidance_seconds: 0 },
+  penalty: { axis_seconds: { ascent: 40 }, avoidance_seconds: 0, total_seconds: 40 },
+  lens_seconds_per_km: { total: 40, ascent: 40 },
   elevations: [{ distance_km: 1, start_elevation_m: 12, end_elevation_m: 31.6 }],
   start_latitude: 35,
   start_longitude: 139,

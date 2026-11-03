@@ -29,7 +29,7 @@ export default function GenerateRouteActions({ generation }: GenerateRouteAction
         disabled={generation.running}
         onClick={() => void generation.submit()}
         aria-label={generation.running ? generation.progressLabel : "ルート生成"}
-        usage="いまの条件・重み・除外でルートの候補を作ります。候補は「ルート結果」に並び、地図に線が出ます。"
+        usage="いまの条件・負担・回避でルートの候補を作ります。候補は「ルート結果」に並び、地図に線が出ます。"
       >
         <GenerateRoutesIcon size={18} />
       </Button>

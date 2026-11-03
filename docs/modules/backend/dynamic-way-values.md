@@ -17,7 +17,7 @@
 | domain | `wind.py`・`gradient.py`・`rain.py`（雨の材料の宣言——窓の長さの一覧——と、1時間雨量の履歴から材料の値を求める計算・配ってよい履歴の古さ・地点に最も近い雨量計の値の引き方。決まった地点の並びの最寄りを持つ`domain/rain.py: NearestRainStations`はルートの探索範囲が使う）・`dynamic_way_values.py`（要求の条件の組み立てと、フィーチャーの材料から地図が塗る値への写しと、地図へ配る軸の式の木と道ごとの材料）・`way_value_formula.py`（中立の式の木の型と、numpyでの評価） |
 | services | `wind_way_service.py`・`gradient_way_service.py`・`rain_way_service.py`・`feature_midpoints.py`（配信サービスが、タイル内のフィーチャーの値をDBから引き、DB障害・取込範囲外・空のタイルを同じ形でログの欄へ記録する口と、地点の値を引く配信サービスが中ほどを鍵と緯度・経度の配列で引き、1つの要求の中でタイルごとに1回だけ読んで分け合う置き場`TileMidpoints`）・`feature_materials.py`（タイルのフィーチャーごとの材料と、道1本のフィーチャーごとの区間の材料を読み、ディスクへ持つ）・`dedicated_way_values.py`（材料→配信の実装の表、軸の葉の材料から実装を選ぶこと、タイルの材料とサービスの値を1回ずつ引いて軸ごとの値を求める口——地図のレンズと区間インスペクタが使う——、地図のレンズ） |
 | infrastructure | `dynamic_way_value_cache.py`（配信サービスの値は勾配のみ。ディスク経由）・`feature_material_cache.py`（タイルのフィーチャーごとの材料と区間の材料。ディスク経由）・`tile_persistent_cache.py`（呼び出し元が設計したタプルの鍵でPythonオブジェクトを置く汎用のディスクキャッシュ。`diskcache`の包み。路面タイルの世代に結んだ値を、世代を読めたときだけ24時間持つ口`tile_persistent_cache.py: set_tile_entry`も持つ） |
-| domain（費用の軸のレンズ） | `lens_values.py`（タイルのフィーチャーと辿る向きで網の行を束ね、1kmあたりの代償の秒にする・地図の式の木・押した道の値と事実）・`lens_equivalents.py`（段の境目の秒の、標準の条件での事実の目安） |
+| domain（費用の軸のレンズ） | `lens_values.py`（タイルのフィーチャーと辿る向きで網の行を束ね、1kmあたりの代償の秒にする・地図の式の木・押した道の値と事実）・`lens_equivalents.py`（段の境目の秒の、標準の条件での事実の目安）・`lens_total.py`（総合のレンズのidと、軸ごとの値から総合を出す決まり。ルートの線も読む） |
 | services（費用の軸のレンズ） | `lens_service.py`（タイル1枚のレンズの値と、区間インスペクタの値と事実） |
 | api | `region.py`（`GET /api/region/way-materials/{axis_id}/...`・`GET /api/region/lens/{lens_id}/...`）・`dependencies.py`（`dependencies.py: get_dedicated_way_value_service`・`dependencies.py: get_axis_inspector_service`） |
 
@@ -169,7 +169,8 @@ frontendはどのクエリパラメータをどの軸のリクエストへ載せ
 ## 費用の軸のレンズ（`domain/lens_values.py`・`services/lens_service.py`）
 
 費用の軸の定義（`domain/cost_axes.py: CostAxisDefinitions`）があるとき、地図のレンズは総合と費用の軸ごとで、どれも**1kmあたりの
-代償の秒**で塗る（軸ごとはその軸の分だけ、総合はその和。倍率がそのまま映り、足すと総合になる）。上の軸の点数の配信とは
+代償の秒**で塗る（軸ごとはその軸の分だけ、総合はその和。ルート生成と同じ利用者の値——つまみ`strength`と倍率`multipliers`の
+クエリ——で求めるので倍率がそのまま映り、足すと総合になる）。上の軸の点数の配信とは
 別の口で、タイルのSQLと式の木の材料では作れない体力（走行の模型）を、backendが道ごとに求めて配る。
 
 - **探索と同じ所から読む**: 値は、取込範囲全体の道の網（`infrastructure/road_network_store.py: current`）の有向の区間について、
@@ -206,7 +207,8 @@ tile_axis_values`）を、押したフィーチャーだけについて求めた
   （`domain/axis_inspector.py: inspector_values`）。
 - **費用の軸のレンズ**（`lens`）: 費用の軸の定義があり、走行方位と想定速度が送られたとき、地図のレンズと同じタイルの値から、
   押したフィーチャーの両方の向きの総合と軸ごとの秒、地図がいま塗っている向き（地図と同じ式の木で選ぶ）、元の事実（断面の
-  一番急な登り・下り、向かい風の成分、止まる所の密度、転がり抵抗の区分で一番長い路面）を返す
+  一番急な登り・下り、向かい風の成分、止まる回数——止まる出来事を漕ぎ出す回数に換え、欠けを埋めた、探索・凡例の目安と同じ
+  量——の1kmあたり。名前と単位を付けて返す。ほかに転がり抵抗の区分で一番長い路面）を、要求の`cost_preference`で返す
   （`services/lens_service.py: LensService.inspect`）。事実は体感する量で、レンズの秒の内訳を辿るためのもの。
 
 ## API（`api/routers/region.py`）

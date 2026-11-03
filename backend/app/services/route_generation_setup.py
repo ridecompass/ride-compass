@@ -18,7 +18,6 @@ from app.domain.route_request import (
     SplicedTarget,
 )
 from app.domain.route_search import distance_tolerance_km
-from app.domain.tuning import tuning_value
 from app.services.graph_service import GraphService
 from app.services.road_graph_engine import RoadGraphEngine
 from app.services.route_generator import RouteGenerator
@@ -63,9 +62,7 @@ def assemble_route_generation_setup(
     engine = RoadGraphEngine(
         graph_service,
         weather_service,
-        # つまみは標準的な人の強さ（較正値）に掛ける比。
-        penalty_strength=applied.cost_preference.strength * tuning_value("evaluation.penalty_strength"),
-        cost_multipliers=applied.cost_preference.multipliers,
+        cost_preference=applied.cost_preference,
         road_avoidance=applied.road_avoidance,
         assumed_speed_kmh=applied.assumed_speed_kmh,
     )

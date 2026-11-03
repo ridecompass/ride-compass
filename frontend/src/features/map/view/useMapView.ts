@@ -49,6 +49,7 @@ import {
 import { isRouteStyleModeId, lensPremises, lensLegend, lensOptions, paintedAxisId } from "./lens";
 import type { HiddenLegendKeys, MapLook } from "./mapLook";
 import { deserializeLayerVisibility, overlayChips } from "./overlayChips";
+import type { CostPreference } from "@/types/route";
 
 /** 凡例のチェックを地図の絞り込みへ反映するまでの遅れ。連続で何行も外す操作を、描き直し
  * 1回へまとめる（チェックの見た目は即座に変わる）。 */
@@ -68,8 +69,10 @@ interface MapViewInputs {
   riding: { bearingDeg: number; speedKmh: number } | null;
   /** 刻みへ丸めた現在時刻（`useDepartureTime`）。 */
   now: Date;
-  /** レンズの選択肢を「未使用」と分ける重み。 */
+  /** レンズの選択肢を「未使用」と分ける重み（費用の軸の定義が無い間の、軸の点数のレンズ）。 */
   routeWeights: Readonly<Record<string, number>>;
+  /** 利用者のつまみと倍率（生成の要求へ送る形）。費用のレンズはルートと同じこの値で塗る。 */
+  costPreference: CostPreference;
 }
 
 interface MapViewState {
@@ -99,6 +102,7 @@ export function useMapView({
   riding,
   now,
   routeWeights,
+  costPreference,
 }: MapViewInputs): MapViewState {
   const catalog = useAxisCatalog();
   // 暗い地図は利用者がメニューで選ぶ（いつ暗くするかを自動では決めない）。
@@ -177,7 +181,7 @@ export function useMapView({
   const bearingDeg = snapDeg(riding?.bearingDeg ?? viewport?.bearing ?? 0, WAY_BEARING_STEP_DEG);
   const speedKmh = riding?.speedKmh ?? ride.speedKmh;
   const wayConditions = useMemo(() => ({ bearingDeg, at: ride.at, speedKmh }), [bearingDeg, ride.at, speedKmh]);
-  const wayMaterials = useWayMaterials(fetchAxes, viewport, wayConditions);
+  const wayMaterials = useWayMaterials(fetchAxes, viewport, wayConditions, costPreference);
   const shownRoadLayers = mapCatalog.roadLayers.filter((layer) => layerVisibility[layer.id] === true);
   const roadClasses = useRoadClasses(shownRoadLayers.length > 0, viewport, catalog.roadClasses.generation);
   // 層の値はどの道の線の層も同じ取得から読むので、取得の状態は出ている層のどれにも出す。
@@ -259,7 +263,7 @@ export function useMapView({
       lens,
       onLensChange: setLens,
       axisOptions: usesCostLenses
-        ? costLensOptions(costLenses)
+        ? costLensOptions(costLenses, costPreference)
         : lensOptions(catalog.axes, routeWeights, catalog.axisColors),
       legend,
       hiddenLegendKeys: lensHidden,
