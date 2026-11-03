@@ -6,8 +6,8 @@
 （`domain/route_request.py: RouteTarget`）。生成の中では距離の有無を見直さない。
 
 - 距離あり（`_DistanceFinish`）: 最後の固定点からの一対全最短経路木で、全長が目標に合う中継点（折返し点）を往路の
-  軸的な良さの順に選び、それまでに走った道を避けた帰りで終点へ結び、距離許容範囲でフィルタして、総合難易度の昇順で
-  上位`max_routes`件を返す。距離は目標±`distance_tolerance_km`の厳格フィルタであり、スコアとは混ぜない。
+  軸的な良さの順に選び、それまでに走った道を避けた帰りで終点へ結び、距離許容範囲でフィルタして、周回は1kmあたりの
+  代償の秒・目的地は費用の小さい順で上位`max_routes`件を返す。距離は目標±`distance_tolerance_km`の厳格フィルタであり、スコアとは混ぜない。
 - 距離なし（`_NoDistanceFinish`）: 最後の固定点から終点へ良い道で向かう代わりの道を`max_routes`件まで出す。終点が
   出発地と違えば所要時間が最短の1本を基準線として含める。
 
@@ -34,7 +34,7 @@ from app.domain.route_request import NOTHING_TO_GENERATE, FixedPoints
 from app.domain.tuning import tuning_value
 from app.domain.route_search import (
     by_closeness_to_target,
-    difficulty_order,
+    candidate_order,
     fits_loop_distance,
     keep_routes_with_baseline,
     turnaround_ring_m,
@@ -239,7 +239,7 @@ class _DistanceFinish:
         def arrange(drafts: list[RouteDraft]) -> list[RouteCandidate]:
             # 同点は評価前に付けた「目標距離に近い順」を安定ソートで引き継ぐ。周回の名前はエンジンが方位から付けたもの
             # （同じ方位に複数並びうるので、idは並びの位置から作る）。
-            ordered = sorted(drafts, key=difficulty_order)
+            ordered = sorted(drafts, key=lambda draft: candidate_order(draft, loop=fixed.closes))
             if fixed.closes:
                 return _label(ordered, "loop")
             return _label(ordered, "destination", "目的地ルート")
@@ -296,7 +296,7 @@ class _NoDistanceFinish:
         終点が出発地と違えば、所要時間が最短の経路を基準線として1本含め（件数を切るときも残す。ただし1本だけ返すときは比べる相手が
         無いので残さず、印も付けない。`domain/route_search.py: keep_routes_with_baseline`）、最速の印を付ける。軸の重みを
         すべて0にしたときの経路であり、軸設定に沿った候補が何分余計にかかるかを対価として
-        読めるようにするため。並びは周回と同じ総合難易度の昇順で、基準線も難易度の位置に並ぶ。
+        読めるようにするため。並びは周回なら1kmあたりの代償の秒、目的地なら費用の小さい順で、基準線もその位置に並ぶ。
         """
         if fixed.closes and not self.points.waypoints:
             return _Selection.empty(NOTHING_TO_GENERATE, "destination snapped to the origin")
@@ -311,7 +311,7 @@ class _NoDistanceFinish:
             return _Selection.empty(reason, f"no via-node candidates select_ms={select_ms}")
         if fixed.closes:
             def arrange_loops(drafts: list[RouteDraft]) -> list[RouteCandidate]:
-                kept, _ = keep_routes_with_baseline(drafts, None, self.max_routes)
+                kept, _ = keep_routes_with_baseline(drafts, None, self.max_routes, loop=True)
                 return _label(kept, "loop", "経由地ルート")
 
             return _Selection(traced, arrange_loops, f"select_ms={select_ms}")
@@ -329,7 +329,7 @@ class _NoDistanceFinish:
         def arrange(drafts: list[RouteDraft]) -> list[RouteCandidate]:
             # 件数を切るときに残し、印を付けるために、基準線をオブジェクトの同一性で覚えておく。
             baseline = drafts[fastest_index] if fastest_index is not None else None
-            kept, baseline = keep_routes_with_baseline(drafts, baseline, self.max_routes)
+            kept, baseline = keep_routes_with_baseline(drafts, baseline, self.max_routes, loop=False)
             return _label(kept, "destination", "目的地ルート", fastest=baseline)
 
         return _Selection(traced, arrange, f"select_ms={select_ms}")

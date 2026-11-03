@@ -91,7 +91,7 @@ class RouteGenerateRequest(StrictModel):
     cost_preference: CostPreference = Field(default_factory=CostPreference)
     # 道の区分ごとの避け方。
     road_avoidance: RoadAvoidanceOverride
-    # 返す候補の上限件数。距離があれば距離フィルタ合格・overall_difficulty昇順の上位この件数、距離が無ければ
+    # 返す候補の上限件数。距離があれば距離フィルタ合格の候補を試した順にこの件数、距離が無ければ
     # 最後の区間の代わりの道をこの件数まで返す。下限・上限と画面の既定値はOpenAPI生成物
     # （route-generate-config.json）経由でフロントへ渡す唯一の情報源にする。
     max_routes: int = Field(ge=MIN_ROUTES, le=MAX_ROUTES)

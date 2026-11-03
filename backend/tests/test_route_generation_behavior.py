@@ -15,6 +15,7 @@
 
 import logging
 from collections import Counter
+from contextlib import contextmanager
 import math
 import re
 from datetime import datetime, timedelta
@@ -24,6 +25,7 @@ from itertools import accumulate, combinations
 import numpy as np
 import pytest
 
+from app.domain.cost_axes import EFFORT_AXES, CostAxisDefinitions, current_cost_axes, replace_cost_axes
 from app.domain.axis_definitions import AXIS_DEFINITIONS, AxisDefinition, BreakpointLinearShape, MaterialTerm
 from app.domain.geo import KM_PER_DEGREE_LATITUDE, haversine_distance_km, km_per_degree_longitude
 from app.domain.graph import node_key
@@ -545,10 +547,12 @@ async def test_the_freely_chosen_part_avoids_every_road_already_ridden_but_the_p
     stops = [origin, *(lattice_node(*point) for point in waypoints)]
     straight = [node_key(lattice_node(2, col)) for col in range(1, 5)]
     for candidate in candidates:
-        fixed_nodes = candidate.node_ids[:fixed_count + 1]
+        # 経由地が1つの周回は費用の小さい向きで出るので、逆に回ると置いた点どうしの区間が最後に来る。
+        nodes = candidate.node_ids if candidate.node_ids[1] in straight else candidate.node_ids[::-1]
+        fixed_nodes = nodes[:fixed_count + 1]
         assert [n for n in fixed_nodes if n in straight] == fixed_nodes  # 置いた点どうしは横の道のまま
         assert passes_in_order(candidate.node_ids, origin, stops[1:], origin)
-        segments = physical_segments(candidate)
+        segments = [frozenset(pair) for pair in zip(nodes, nodes[1:])]
         free = segments[fixed_count:]
         assert not set(free) & set(segments[:fixed_count])
         assert len(set(free)) == len(free)
@@ -1042,3 +1046,58 @@ async def test_a_route_timed_without_the_wind_forecast_says_so(engine_over):
 
     assert all(c.wind_unavailable for c in without)
     assert not any(c.wind_unavailable for c in with_wind)
+
+
+@contextmanager
+def cost_axes_declared(*, vibration_material: str):
+    """費用の軸の定義（体力の4軸と、`vibration_material`の値1を1kmあたりの重さ1と数える道の負担の軸`vibration`）を置く。"""
+    presentation = {"label": "軸", "description": "", "icon_id": "i", "lens": {"thresholds": [1.0], "band_labels": ["a", "b"]}}
+    previous = current_cost_axes()
+    replace_cost_axes(CostAxisDefinitions.model_validate({
+        "effort": {axis_id: presentation for axis_id in EFFORT_AXES},
+        "burden": {"vibration": {**presentation, "burden": {
+            "kind": "linear", "material": vibration_material, "points": [[0.0, 0.0], [1.0, 1.0]]}}},
+    }))
+    try:
+        yield
+    finally:
+        replace_cost_axes(previous)
+
+
+async def test_the_duration_and_the_penalty_of_each_axis_and_of_the_avoided_roads_add_up_to_the_cost(engine_over):
+    """候補の費用（並べ方の値）は、所要時間と、軸ごとの代償の秒と、回避指定（なるべく避ける道）で上乗せした秒の和になる。
+    合わないと、画面の内訳を見ても候補がなぜその順に並んだのかが分からない。どの道もなるべく避け、道100だけが振動の材料を持つ。"""
+    definitions = road_classes(
+        {"kind": classification({"local": [fact_is(HIGHWAY, "residential")]})},
+        map_layers={"kind": map_layer()},
+        avoidance_classifications={"kind": AvoidanceClassification(overrides={})},
+    )
+    with replaced_road_classes(definitions), cost_axes_declared(vibration_material=BAD_MATERIAL):
+        candidates = await engine_over(
+            grid_network(bad_ways={100}, stop_density_of={101: 3.0}), road_avoidance={"kind.local": "avoid"},
+        ).generate_via_waypoints(at(SOUTH_WEST), [], destination=at(SOUTH_EAST), max_routes=3, start_time=DEPARTURE)
+
+    assert candidates
+    for candidate in candidates:
+        penalty = candidate.penalty
+        assert penalty is not None and penalty.avoidance_seconds > 0
+        assert set(penalty.axis_seconds) == {*EFFORT_AXES, "vibration"}
+        assert candidate.estimated_duration_seconds + sum(penalty.axis_seconds.values()) + penalty.avoidance_seconds \
+            == pytest.approx(candidate.cost_seconds, abs=0.5)
+        # 区間（ビン）の内訳を足すと候補の内訳になる（道のりのグラフと結果の内訳が同じ秒を見せる）。
+        segment_avoidance = sum(segment.penalty.avoidance_seconds for segment in candidate.segments)
+        assert segment_avoidance == pytest.approx(penalty.avoidance_seconds, abs=0.5)
+    fastest = fastest_of(candidates)
+    assert ways_of(fastest) == [100, 101]
+    assert fastest.penalty.axis_seconds["vibration"] > 0
+    assert fastest.facts.burden_km == {"vibration": pytest.approx(fastest.segments[0].distance_km, abs=0.02)}
+    assert fastest.facts.stop_count > 0
+
+
+async def test_without_the_cost_axes_a_route_has_a_cost_but_no_breakdown(engine_over):
+    """費用の軸の定義がまだ表に無い間（軸の点数の割増の式）は、内訳を持たない。費用は並べ方の値として持つ。"""
+    candidates = await engine_over(grid_network()).generate_via_waypoints(
+        at(SOUTH_WEST), [], destination=at(SOUTH_EAST), max_routes=1, start_time=DEPARTURE)
+
+    assert [(c.penalty, all(s.penalty is None for s in c.segments)) for c in candidates] == [(None, True)]
+    assert candidates[0].cost_seconds >= candidates[0].estimated_duration_seconds

@@ -1318,6 +1318,15 @@ export interface components {
                 [key: string]: components["schemas"]["BurdenAxis"];
             };
         };
+        /** CostBreakdown */
+        CostBreakdown: {
+            /** Axis Seconds */
+            axis_seconds: {
+                [key: string]: number;
+            };
+            /** Avoidance Seconds */
+            avoidance_seconds: number;
+        };
         /** CostPreference */
         "CostPreference-Input": {
             /**
@@ -2109,6 +2118,10 @@ export interface components {
             segments: components["schemas"]["RouteSegmentDetail"][];
             /** Estimated Duration Seconds */
             estimated_duration_seconds: number | null;
+            /** Cost Seconds */
+            cost_seconds: number;
+            penalty: components["schemas"]["CostBreakdown"] | null;
+            facts: components["schemas"]["RouteFacts"];
             /** Wind Unavailable */
             wind_unavailable: boolean;
             /** Missing Travel Data Share */
@@ -2155,6 +2168,21 @@ export interface components {
             kind: "loop" | "destination" | "spliced";
             /** Is Fastest */
             is_fastest: boolean;
+        };
+        /** RouteFacts */
+        RouteFacts: {
+            /** Elevation Unknown Km */
+            elevation_unknown_km: number;
+            /** Stop Count */
+            stop_count: number;
+            /** Rough Km */
+            rough_km: number;
+            /** Headwind Mean Ms */
+            headwind_mean_ms: number | null;
+            /** Burden Km */
+            burden_km: {
+                [key: string]: number;
+            };
         };
         /** RouteGenerateJobCreatedResponse */
         RouteGenerateJobCreatedResponse: {
@@ -2255,6 +2283,7 @@ export interface components {
             sustained_gradient_percent: number | null;
             /** Estimated Arrival Time */
             estimated_arrival_time: string | null;
+            penalty: components["schemas"]["CostBreakdown"] | null;
             /** Axis Difficulties */
             axis_difficulties: {
                 [key: string]: number;

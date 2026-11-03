@@ -4296,6 +4296,28 @@
         ],
         "title": "CostAxisDefinitions"
       },
+      "CostBreakdown": {
+        "properties": {
+          "axis_seconds": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "title": "Axis Seconds"
+          },
+          "avoidance_seconds": {
+            "type": "number",
+            "title": "Avoidance Seconds"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "axis_seconds",
+          "avoidance_seconds"
+        ],
+        "title": "CostBreakdown"
+      },
       "CostPreference-Input": {
         "properties": {
           "strength": {
@@ -6822,6 +6844,23 @@
             ],
             "title": "Estimated Duration Seconds"
           },
+          "cost_seconds": {
+            "type": "number",
+            "title": "Cost Seconds"
+          },
+          "penalty": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CostBreakdown"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "facts": {
+            "$ref": "#/components/schemas/RouteFacts"
+          },
           "wind_unavailable": {
             "type": "boolean",
             "title": "Wind Unavailable"
@@ -6947,6 +6986,9 @@
           "elevation_gain_m",
           "segments",
           "estimated_duration_seconds",
+          "cost_seconds",
+          "penalty",
+          "facts",
           "wind_unavailable",
           "missing_travel_data_share",
           "axis_raw_values",
@@ -6965,6 +7007,50 @@
           "is_fastest"
         ],
         "title": "RouteCandidate"
+      },
+      "RouteFacts": {
+        "properties": {
+          "elevation_unknown_km": {
+            "type": "number",
+            "title": "Elevation Unknown Km"
+          },
+          "stop_count": {
+            "type": "number",
+            "title": "Stop Count"
+          },
+          "rough_km": {
+            "type": "number",
+            "title": "Rough Km"
+          },
+          "headwind_mean_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Headwind Mean Ms"
+          },
+          "burden_km": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "title": "Burden Km"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "elevation_unknown_km",
+          "stop_count",
+          "rough_km",
+          "headwind_mean_ms",
+          "burden_km"
+        ],
+        "title": "RouteFacts"
       },
       "RouteGenerateJobCreatedResponse": {
         "properties": {
@@ -7276,6 +7362,16 @@
             ],
             "title": "Estimated Arrival Time"
           },
+          "penalty": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CostBreakdown"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "axis_difficulties": {
             "additionalProperties": {
               "type": "number"
@@ -7334,6 +7430,7 @@
           "elevations",
           "sustained_gradient_percent",
           "estimated_arrival_time",
+          "penalty",
           "axis_difficulties",
           "axis_contributions",
           "material_values",

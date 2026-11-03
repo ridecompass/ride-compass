@@ -279,24 +279,22 @@ class SegmentSpeedModel:
                  crr: np.ndarray, kickoffs: np.ndarray) -> None:
         """`profiles`は区間の行ごとの断面、`distance_m`は区間の長さ、`crr`は区間ごとの転がり抵抗（`crr_for_surface`）、
         `kickoffs`は区間の止まる出来事の漕ぎ出しの回数（`domain/traffic.py: StopEvent.kickoffs`の和）。"""
-        self._rows = len(distance_m)
-        self._shape = np.shape(distance_m)
+        shape = np.shape(distance_m)
         mismatched = {name: np.shape(array) for name, array in (
             ("crr", crr), ("kickoffs", kickoffs), ("profiles.start", profiles.start),
-            ("profiles.points", profiles.points), ("profiles.forward", profiles.forward)) if np.shape(array) != self._shape}
+            ("profiles.points", profiles.points), ("profiles.forward", profiles.forward)) if np.shape(array) != shape}
         if mismatched:
-            raise ValueError(f"区間の配列の長さが揃っていません distance_m={self._shape} {mismatched}")
+            raise ValueError(f"区間の配列の長さが揃っていません distance_m={shape} {mismatched}")
         start = kernel_array(profiles.start, np.int64)
         points = kernel_array(profiles.points, np.int64)
         elevation = kernel_array(profiles.elevation_m, np.float32)
         distance = kernel_array(distance_m, np.float64)
         #: 区間の行ごとの標高の無い長さ（m）。全体の分布で埋めて走る（所要時間の欠けの割合が読む）。
         self.unknown_m = unknown_lengths_m(start, points, elevation, distance)
-        self._span_row, self._span_length, self._span_grade = flatten_spans(
+        span_row, span_length, span_grade = flatten_spans(
             start, points, kernel_array(profiles.forward, np.bool_), elevation, distance, self.unknown_m,
             kernel_array(profiles.distribution.grade, np.float64), kernel_array(profiles.distribution.share, np.float64))
-        self._crr = kernel_array(crr, np.float32)
-        self._kickoffs = np.asarray(kickoffs, dtype=np.float64)
+        crr = kernel_array(crr, np.float32)
         self._kickoff_extra_j = kickoff_extra_j(profile)
         #: 平地・無風の巡航速度のホイール出力（W）。体力を秒へ換算する基準（`domain/ledger_costs.py`）。
         self.flat_power_w = wheel_power_w(profile)
@@ -311,41 +309,74 @@ class SegmentSpeedModel:
         rider[_RIDER_HIGHEST] = kmh_to_ms(top_speed_kmh(profile.cruise_speed_kmh))
         rider[_RIDER_CRUISE] = profile.cruise_speed_ms
         self._rider = rider
-        self._constant_force, self._static_extra = _span_static(self._span_row, self._span_grade, self._crr, rider)
+        constant_force, static_extra = _span_static(span_row, span_grade, crr, rider)
+        self._spans = _Spans(span_row, span_length, span_grade, constant_force, static_extra, crr,
+                             np.asarray(kickoffs, dtype=np.float64), len(distance_m))
 
     def travel_seconds(self, headwind_ms: np.ndarray, crosswind_ms: np.ndarray) -> np.ndarray:
         """区間ごとの走行時間（秒、float64）。`headwind_ms`は進行方向への向かい風成分（正が向かい風）、`crosswind_ms`は横成分。"""
-        speeds, _powers, _air = self._solve(headwind_ms, crosswind_ms)
-        return _span_seconds(self._span_row, self._span_length, speeds, self._rows)
+        spans = self._spans
+        speeds, _powers, _air = self._solve(spans, headwind_ms, crosswind_ms)
+        return _span_seconds(spans.row, spans.length, speeds, spans.rows)
 
-    def ride(self, headwind_ms: np.ndarray, crosswind_ms: np.ndarray, weight_exponent: float) -> SegmentRide:
+    def ride(self, headwind_ms: np.ndarray, crosswind_ms: np.ndarray, weight_exponent: float,
+             rows: np.ndarray | None = None) -> SegmentRide:
         """区間ごとの走行時間と、平地の出力を越えて踏んだ体力の費目ごとの内訳。体力には、点の間ごとに踏みたい出力（上限で切る前）
         と平地の出力の比の`weight_exponent`乗の重みを掛ける（0なら事実の量そのもの。重みを掛けると内訳はJではなく重みを掛けた
-        量）。漕ぎ出しは上限の出力で踏むので、重みは上限の比の`weight_exponent`乗（`kickoff_effort_j`）。"""
-        speeds, powers, air_extra_n = self._solve(headwind_ms, crosswind_ms)
-        work = _span_work(self._span_row, self._span_length, self._span_grade, speeds, powers, self._static_extra,
-                          self._crr, air_extra_n, self._rider, self._rows, float(weight_exponent))
-        return SegmentRide(seconds=_span_seconds(self._span_row, self._span_length, speeds, self._rows),
+        量）。漕ぎ出しは上限の出力で踏むので、重みは上限の比の`weight_exponent`乗（`kickoff_effort_j`）。
+
+        `rows`（区間の行。重なってよい）を渡すとその行の点の間だけを解き、風の成分も返す配列も`rows`の並びになる——経路の
+        数百行を読むのに道路網の全部を解かない。点の間ごとの計算は互いに依らないので、全部を解いたときのその行と同じ値になる。"""
+        spans = self._spans if rows is None else self._spans_of(np.asarray(rows, dtype=np.int64))
+        speeds, powers, air_extra_n = self._solve(spans, headwind_ms, crosswind_ms)
+        work = _span_work(spans.row, spans.length, spans.grade, speeds, powers, spans.static_extra,
+                          spans.crr, air_extra_n, self._rider, spans.rows, float(weight_exponent))
+        return SegmentRide(seconds=_span_seconds(spans.row, spans.length, speeds, spans.rows),
                            gravity_extra_j=work[0], air_extra_j=work[1], rolling_extra_j=work[2],
-                           inertia_extra_j=self._kickoffs * self.kickoff_effort_j(weight_exponent))
+                           inertia_extra_j=spans.kickoffs * self.kickoff_effort_j(weight_exponent))
+
+    def _spans_of(self, rows: np.ndarray) -> "_Spans":
+        """行`rows`の点の間だけを抜き出し、点の間の行を`rows`の中の位置へ付け替えたもの（点の間は行の昇順に並んでいる）。"""
+        spans = self._spans
+        first = np.searchsorted(spans.row, rows, side="left")
+        counts = np.searchsorted(spans.row, rows, side="right") - first
+        position = np.repeat(np.arange(len(rows), dtype=np.int32), counts)
+        taken = np.repeat(first - np.cumsum(counts) + counts, counts) + np.arange(int(counts.sum()))
+        return _Spans(position, spans.length[taken], spans.grade[taken], spans.constant_force[taken],
+                      spans.static_extra[taken], spans.crr[rows], spans.kickoffs[rows], len(rows))
 
     def kickoff_effort_j(self, weight_exponent: float) -> float:
         """止まる出来事1回の漕ぎ出しの体力（J）に、上限の出力と平地の出力の比の`weight_exponent`乗の重みを掛けたもの（曲がる所の
         漕ぎ出しも同じ換算）。"""
         return self._kickoff_extra_j * float(self._rider[_RIDER_MAX_RATIO]) ** weight_exponent
 
-    def _solve(self, headwind_ms: np.ndarray, crosswind_ms: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """点の間ごとの速度と踏む出力、区間ごとの向かい風で増えた空気抵抗（N）。"""
+    def _solve(self, spans: "_Spans", headwind_ms: np.ndarray,
+               crosswind_ms: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """`spans`の点の間ごとの速度と踏む出力、区間ごとの向かい風で増えた空気抵抗（N）。"""
         headwind = kernel_array(headwind_ms, np.float32)
         cross = kernel_array(crosswind_ms, np.float32)
         mismatched = {name: array.shape for name, array in (("headwind_ms", headwind), ("crosswind_ms", cross))
-                      if array.shape != self._shape}
+                      if array.shape != (spans.rows,)}
         if mismatched:
-            raise ValueError(f"区間の配列の長さが揃っていません distance_m={self._shape} {mismatched}")
+            raise ValueError(f"区間の配列の長さが揃っていません 区間={spans.rows} {mismatched}")
         # 向かい風で増えた空気抵抗（N）は、風の材料と同じ式を巡航速度で測る——速さに依らない基準で測り、踏む出力が解く
         # 速さに依らないようにする。
         air_extra_n = kernel_array(self._rider[_RIDER_DRAG] * drag_increases_m2_s2(
             headwind, cross, self._rider[_RIDER_CRUISE]), np.float32)
-        speeds, powers = _span_speeds(self._span_row, self._constant_force, self._static_extra, air_extra_n, headwind, cross,
+        speeds, powers = _span_speeds(spans.row, spans.constant_force, spans.static_extra, air_extra_n, headwind, cross,
                                       self._rider)
         return speeds, powers, air_extra_n
+
+
+@dataclass(frozen=True)
+class _Spans:
+    """解く点の間の並び（`row`は点の間ごとの、結果の配列の位置。昇順）と、結果の配列の位置ごとの路面・漕ぎ出しの回数。"""
+
+    row: np.ndarray
+    length: np.ndarray
+    grade: np.ndarray
+    constant_force: np.ndarray
+    static_extra: np.ndarray
+    crr: np.ndarray
+    kickoffs: np.ndarray
+    rows: int

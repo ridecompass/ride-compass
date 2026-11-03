@@ -3,7 +3,8 @@
 
 対象は、入力を配列や値で直接与えられるもの。
 
-- 表示値の部品（ジオメトリの連結・標高の集約と逆回りの付け替え・候補の難易度の比較）
+- 表示値の部品（ジオメトリの連結・標高の集約と逆回りの付け替え・周回の向きの比較）
+- 候補の並びの鍵（目的地の費用・周回の1kmあたりの代償の秒）
 - 探索の部品（繋ぎ目の候補・同点グループの試行順・中継点の帯）
 - 経路の区間ごとの時刻（`route_passages`）を、探索の木が同じ経路へ付けた所要時間と突き合わせる
 
@@ -15,14 +16,13 @@
   組み立てを作り替えるたびに足場ごと書き直すことになり、振る舞いは何も守らない。
 - 起点・終点の状態の引き方（CSR／遷移構造からの索引）→ 周回・目的地の経路が起点に戻る・目的地へ着くことで
   `test_route_generation_behavior.py`が通す。
-- 標高属性の逆向き（`ElevationAttribute.reversed_as`）→ `test_attributes.py`。候補の難易度の距離加重平均
-  （`domain/difficulty.py: weighted_mean_by_distance`）→ `test_difficulty.py`。
+- 標高属性の逆向き（`ElevationAttribute.reversed_as`）→ `test_attributes.py`。
 - レグごとのコスト配列の合成（`domain/leg_costs.py`）→ `test_leg_costs.py`。
 - 探索カーネル（`domain/routing.py`）・評価軸（`domain/evaluation.py`）・走行モデル
   （`domain/cycling_speed.py`）・風（`domain/wind.py`）・0次フィルタ（`domain/hard_filters.py`）
   → それぞれの持ち主のテストが持つ。
 
-このファイルが組み立てて渡し、読むデータ型（探索構造・`SegmentDifficulty`等）は本物で作る——代役にしても
+このファイルが組み立てて渡し、読むデータ型（探索構造・`RouteDraft`等）は本物で作る——代役にしても
 何も切り離せず、本物が変わったときに黙ってずれるだけになる。
 """
 
@@ -35,13 +35,15 @@ import pytest
 from app.domain.attributes import ElevationAttribute
 from app.domain.graph import LeanEdge
 from app.domain.route import (
-    SegmentDifficulty,
+    RouteDraft,
+    RouteFacts,
     concat_edge_geometries,
     reverse_elevation_by_edge,
     route_elevation_gain,
 )
 from app.domain.route_search import (
     alternative_via_nodes,
+    candidate_order,
     leg_of_edge_by_half,
     order_by_bearing_spread,
     prefers_reverse,
@@ -51,7 +53,7 @@ from app.domain.route_search import (
     loop_to_outbound_ratios,
     reverse_leg_assignment,
     route_passages,
-    turn_waits_along,
+    transition_values_along,
     turnaround_ring_m,
 )
 from app.domain.leg_costs import LegCostArrays
@@ -94,9 +96,16 @@ def turn_tree(state_count, *, node_cost, node_length_m, node_seconds, node_best_
     )
 
 
-def segment_difficulty(difficulty):
-    return SegmentDifficulty(
-        distance_km=1.0, difficulty=difficulty, axis_difficulties={}, axis_contributions={}, density_inputs={}
+def draft(distance_km, duration_seconds, cost_seconds):
+    """並びの鍵が読む距離・所要時間・費用だけを持つ候補。ほかの欄は空。"""
+    return RouteDraft(
+        direction_label="", distance_km=distance_km, geometry={"type": "LineString", "coordinates": []},
+        elevation_gain_m=None, segments=[], estimated_duration_seconds=duration_seconds, cost_seconds=cost_seconds,
+        penalty=None,
+        facts=RouteFacts(elevation_unknown_km=0.0, stop_count=0.0, rough_km=0.0, headwind_mean_ms=None, burden_km={}),
+        wind_unavailable=False, missing_travel_data_share=None, axis_raw_values={}, material_category_shares={},
+        edge_ids=[], edge_point_offsets=[], node_ids=[], turns=[], waypoint_distances_km=[],
+        overall_difficulty=None, axis_difficulties={}, axis_contributions={}, material_values={},
     )
 
 
@@ -173,23 +182,28 @@ def test_leg_of_edge_by_half_switches_where_the_accumulated_weight_reaches_half(
 
 
 @pytest.mark.parametrize(
-    ("forward_difficulty", "reverse_difficulty", "picked"),
-    [
-        (5.0, 3.0, "reverse"),
-        (3.0, 5.0, "forward"),
-        # 比較できないときは「逆回りの方が良い」と読まない（安全側）
-        (5.0, None, "forward"),
-        (None, 7.0, "reverse"),
-    ],
+    ("forward_cost", "reverse_cost", "picked"),
+    [(500.0, 300.0, "reverse"), (300.0, 500.0, "forward"), (400.0, 400.0, "forward")],
 )
-def test_prefers_reverse_takes_the_lower_difficulty(forward_difficulty, reverse_difficulty, picked):
-    """難易度は区間から求める。区間が無い向きは比較できない。"""
-    def segments(difficulty):
-        return [] if difficulty is None else [segment_difficulty(difficulty)]
-
-    reverse = prefers_reverse(segments(forward_difficulty), segments(reverse_difficulty))
+def test_prefers_reverse_takes_the_lower_cost(forward_cost, reverse_cost, picked):
+    reverse = prefers_reverse(forward_cost, reverse_cost)
 
     assert ("reverse" if reverse else "forward") == picked
+
+
+def test_loops_are_ordered_by_the_penalty_per_km_and_destinations_by_the_cost():
+    """長い周回（20km・代償400秒）は短い周回（5km・代償200秒）より代償の総量が多いが、1kmあたりでは少ない。周回の一覧は
+    距離の違う候補を並べるので、総量で並べると短い周回が常に先頭になる。目的地は同じ所へ着く候補どうしなので費用で並べる。"""
+    long_loop, short_loop = draft(20.0, 3600.0, 4000.0), draft(5.0, 900.0, 1100.0)
+
+    assert sorted([short_loop, long_loop], key=lambda c: candidate_order(c, loop=True)) == [long_loop, short_loop]
+    assert sorted([long_loop, short_loop], key=lambda c: candidate_order(c, loop=False)) == [short_loop, long_loop]
+
+
+def test_a_loop_without_a_duration_goes_last():
+    unknown, known = draft(10.0, None, 0.0), draft(10.0, 1800.0, 9000.0)
+
+    assert sorted([unknown, known], key=lambda c: candidate_order(c, loop=True)) == [known, unknown]
 
 
 # --------------------------------------------------------------------------------------
@@ -224,7 +238,7 @@ def test_route_passages_reads_each_edge_in_the_time_bin_the_search_used():
     )
 
     passages = route_passages(
-        [leg], turn_waits_along(structure, structure.entries_along(path)), path, [100.0, 100.0], [0, 0], speed_kmh=20.0
+        [leg], transition_values_along(structure.turn_seconds, structure.entries_along(path)), path, [100.0, 100.0], [0, 0], speed_kmh=20.0
     )
 
     assert passages[-1].elapsed_seconds + passages[-1].seconds == pytest.approx(tree.state_seconds[states["BC"]])
@@ -238,7 +252,7 @@ def test_route_passages_reads_each_edge_in_the_time_bin_the_search_used():
 @pytest.mark.parametrize(
     ("node_best_state", "expected"),
     [
-        # 1つでも繋ぎ目側の値が残ると、difficultyの逆算が別経路のコストと秒で行われる
+        # 1つでも繋ぎ目側の値が残ると、1kmあたりの代償が別経路のコストと秒と長さで求まる
         (3, (5.0, 60.0, 4.0, 3, -1)),
         # 前向きの木が着いていなければ、繋ぎ目の値に触れない
         (-1, (999.0, 111.0, 222.0, -1, 42)),
@@ -286,23 +300,24 @@ def test_order_by_bearing_spread_puts_the_most_distant_bearing_on_the_circle_fir
 # --------------------------------------------------------------------------------------
 
 
-def _ranked_ids(ids, distance, difficulty, *, tie_by_distance):
+def _ranked_ids(ids, distance, penalty_per_km, *, tie_by_distance):
+    """どの候補も道のり2km・所要時間100秒で、1kmあたりの代償が`penalty_per_km`秒。"""
     seconds = np.full(len(ids), 100.0)
     ranking = rank_by_pareto_layers(
-        np.array(ids), np.array(distance, dtype=float), seconds * (1 + np.array(difficulty) / 100), seconds, 1.0,
-        max_items=10, max_examined=10, tie_by_distance=tie_by_distance,
+        np.array(ids), np.array(distance, dtype=float), seconds + 2 * np.array(penalty_per_km), seconds,
+        np.full(len(ids), 2000.0), max_items=10, max_examined=10, tie_by_distance=tie_by_distance,
     )
     return np.array(ids)[ranking.order].tolist()
 
 
-def test_rank_puts_the_pareto_layer_before_the_difficulty():
+def test_rank_puts_the_pareto_layer_before_the_penalty():
     """遠回りして難所を避けた候補（7）だけが上位を占めず、近くて難所を通る候補（5）も一覧に残る。
-    両方に負ける候補（9）は難易度が真ん中でも後ろへ回る。"""
+    両方に負ける候補（9）は代償が真ん中でも後ろへ回る。"""
     assert _ranked_ids([5, 7, 9], [0.0, 2000.0, 2000.0], [50.0, 10.0, 30.0], tie_by_distance=False) == [7, 5, 9]
 
 
 def test_rank_treats_distances_within_the_calibrated_quantum_as_the_same(monkeypatch):
-    """管理画面で距離の粒度を2kmより粗くすると、2km違いの候補は同じ距離とみなされ、難易度だけで並ぶ。"""
+    """管理画面で距離の粒度を2kmより粗くすると、2km違いの候補は同じ距離とみなされ、代償だけで並ぶ。"""
     monkeypatch.setitem(TUNING_VALUES, "search.pareto_distance_quantum_m", 5000.0)
 
     assert _ranked_ids([5, 7, 9], [0.0, 2000.0, 2000.0], [50.0, 10.0, 30.0], tie_by_distance=False) == [7, 9, 5]
@@ -320,7 +335,7 @@ def test_alternative_routes_are_at_most_the_calibrated_stretch_of_the_best(monke
 
 @pytest.mark.parametrize(("tie_by_distance", "expected"), [(True, [8, 3]), (False, [3, 8])])
 def test_rank_breaks_ties_by_distance_only_when_asked(tie_by_distance, expected):
-    """同じ層・同じ難易度の中は、周回なら距離の鍵（リング中心からのずれ）の順、目的地なら番号の順。"""
+    """同じ層・同じ代償の中は、周回なら距離の鍵（リング中心からのずれ）の順、目的地なら番号の順。"""
     assert _ranked_ids([3, 8], [60.0, 10.0], [20.0, 20.0], tie_by_distance=tie_by_distance) == expected
 
 
