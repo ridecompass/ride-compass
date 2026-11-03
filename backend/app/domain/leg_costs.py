@@ -294,7 +294,7 @@ class LegCostComposer:
         detour_ratio: float,
         twilight_origin: Coordinates,
         material_fills: MaterialFills,
-        ledger: tuple[CostAxisDefinitions, LedgerParameters] | None = None,
+        ledger: tuple[CostAxisDefinitions, LedgerParameters] | None,
     ) -> None:
         """`material_fills`は取込の範囲全体の材料の分布（欠けた材料を埋める）。`ledger`を渡すと、費用を費目の帳簿の式
         （`domain/ledger_costs.py`）で組む（渡さなければ軸の点数の割増の式）。"""
