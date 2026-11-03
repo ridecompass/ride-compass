@@ -1,4 +1,9 @@
-"""標高のタイルを区間の形状点で引いて、区間の標高と勾配（`edge_elevation`）にする。
+"""標高のタイルを区間に沿った断面の点で引いて、区間の標高と勾配（`edge_elevation`）にする。
+
+**断面の点は、区間を等しい道のりに刻んだ点**で、刻みは較正値（引数`profile_step_m`）以下にする。形状点で引くと、
+点の間隔が描き手ごとにばらつき、細かく描いた道ほど標高データの揺らぎを登りとして積む。刻みが勾配をならす幅になる
+——刻みより短い区間は両端の2点だけで、刻みより細かい起伏は数えない。橋かトンネルの区間は刻まずに両端だけを引く
+（中間の点が下の地形を指すため。`domain/attributes.py: elevation_values_sql`）。
 
 標高の生データは`source_features`にタイル1枚=1行、`raster`として入っている。**面のまま
 持つ派生は作らない**——面を読む出口は「そのまま見せる」か「線へ落とす」のどちらかで、
@@ -10,8 +15,8 @@
 ——配信元の定める精度の順（`dem_tile_store.PRODUCT_PRIORITY`）に見て、値のある最初の製品を
 採る。どの製品にも値が無い画素は欠測のまま残る。
 
-**区間の値は、その区間の形と、区間が橋かトンネルかと、標高のタイルだけで決まる**（ほかの区間を読まない）。作り直しの入口が
-前回の表のスキーマを渡したとき（タイルとコードが前回と同じ）は、座標の並びまで同じ形で橋かトンネルかも同じ区間へ前回の値を
+**区間の値は、その区間の形と、区間が橋かトンネルかと、標高のタイルと刻みだけで決まる**（ほかの区間を読まない）。作り直しの入口が
+前回の表のスキーマを渡したとき（タイルとコードと刻みが前回と同じ）は、座標の並びまで同じ形で橋かトンネルかも同じ区間へ前回の値を
 写し、残りの区間だけ画素を引く。前回の表は読むだけで、書くのは作業用のスキーマの表だけ。
 
 値の出し方そのものはdomainが持つ（`elevation_values_sql`）。このバッチは画素の引き方を
@@ -38,14 +43,21 @@ SELECT e.osm_way_id, e.segment_index, e.geom,
 FROM road_edges e JOIN {WAYS_SOURCE_SQL} w ON w.osm_way_id = e.osm_way_id
 """
 
-#: 頂点を一度実体にしてからタイルへ結合する。関数から直に結合すると行数を見積もれず、
+#: 断面の点を一度実体にしてからタイルへ結合する。関数から直に結合すると行数を見積もれず、
 #: プランナがタイル側を入れ子で読み直す計画を選ぶ。前回の値を写した区間（`_reused`）は作らない。
+#:
+#: 刻みの数は「区間の長さ÷`{step_m}`（刻みの上限）」の切り上げで、点は地表の道のりで等しく置く（`geography`の内挿）。
+#: 経緯度のまま内挿すると、東西と南北で1度の長さが違うぶん、曲がった区間で点の間隔がずれる。刻みは引数で渡せない
+#: （`CREATE TABLE AS`は文の引数を取らない）ので、数として埋める。
 _VERTICES = """
 CREATE TEMP TABLE _vertex ON COMMIT DROP AS
-SELECT row_number() OVER () AS vid, s.osm_way_id, s.segment_index, dp.path[1] AS ord,
-       ST_X(dp.geom) AS lon, ST_Y(dp.geom) AS lat, s.on_structure
+SELECT row_number() OVER () AS vid, s.osm_way_id, s.segment_index, i AS ord,
+       ST_X(p.geom) AS lon, ST_Y(p.geom) AS lat, s.on_structure
 FROM _shape s
-CROSS JOIN LATERAL ST_DumpPoints(s.geom) AS dp
+CROSS JOIN LATERAL (SELECT CASE WHEN s.on_structure THEN 1
+                                ELSE greatest(1, ceil(ST_Length(s.geom::geography) / {step_m}))::int END AS steps) k
+CROSS JOIN LATERAL generate_series(0, k.steps) AS i
+CROSS JOIN LATERAL (SELECT ST_LineInterpolatePoint(s.geom::geography, i::float8 / k.steps)::geometry AS geom) p
 WHERE NOT EXISTS (SELECT 1 FROM _reused r
                   WHERE r.osm_way_id = s.osm_way_id AND r.segment_index = s.segment_index)
 """
@@ -94,8 +106,8 @@ SELECT v.osm_way_id, v.segment_index, v.ord, v.lon, v.lat, v.on_structure, e.ele
 FROM _vertex v LEFT JOIN _vertex_elev e ON e.vid = v.vid
 """
 
-_ELEVATION_COLUMNS = ("start_elevation_m", "end_elevation_m", "elevation_gain_m",
-                      "elevation_loss_m", "average_grade", "on_structure")
+_ELEVATION_COLUMNS = ("start_elevation_m", "end_elevation_m", "elevation_gain_m", "elevation_loss_m",
+                      "average_grade", "steepest_gain_percent", "steepest_loss_percent", "on_structure")
 
 #: 値の出た区間だけを入れる。
 _INSERT_ELEVATION = f"""
@@ -133,7 +145,7 @@ async def _products_in_priority(conn: asyncpg.Connection) -> list[tuple[str, int
     return [(p, zooms[p][0]) for p in PRODUCT_PRIORITY if p in zooms]
 
 
-async def _derive_elevation(conn: asyncpg.Connection, previous: str | None) -> None:
+async def _derive_elevation(conn: asyncpg.Connection, previous: str | None, profile_step_m: float) -> None:
     started = time.perf_counter()
     products = await _products_in_priority(conn)
     await conn.execute("TRUNCATE edge_elevation")
@@ -150,7 +162,7 @@ async def _derive_elevation(conn: asyncpg.Connection, previous: str | None) -> N
     if previous is not None:
         await conn.execute(copy_reused_sql("edge_elevation", _ELEVATION_COLUMNS, previous))
     logger.info("標高: 形と橋・トンネルの変わらない区間 %d本へ前回の値を写し、%d本を計算する", reused, edges - reused)
-    await conn.execute(_VERTICES)
+    await conn.execute(_VERTICES.format(step_m=float(profile_step_m)))
     await conn.execute("ANALYZE _vertex")
     await conn.execute(_VERTEX_ELEVATION_TABLE)
     vertices = await conn.fetchval("SELECT count(*) FROM _vertex")
@@ -167,7 +179,7 @@ async def _derive_elevation(conn: asyncpg.Connection, previous: str | None) -> N
                 updated, edges - reused, time.perf_counter() - started)
 
 
-async def derive(conn: asyncpg.Connection, *, previous: str | None) -> None:
-    """`previous`は前回の表のスキーマ。Noneなら全区間を計算する。"""
+async def derive(conn: asyncpg.Connection, *, previous: str | None, profile_step_m: float) -> None:
+    """`previous`は前回の表のスキーマ。Noneなら全区間を計算する。`profile_step_m`は断面の刻みの上限（m）。"""
     async with conn.transaction():
-        await _derive_elevation(conn, previous)
+        await _derive_elevation(conn, previous, profile_step_m)

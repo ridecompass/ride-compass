@@ -75,6 +75,8 @@ class RoadNetwork:
     end_elevation_m: np.ndarray  # float64, NaN=標高が無い
     elevation_gain_m: np.ndarray  # float64, NaN=欠損
     elevation_loss_m: np.ndarray
+    steepest_gain_percent: np.ndarray  # float64, NaN=欠損
+    steepest_loss_percent: np.ndarray
 
     def __post_init__(self) -> None:
         """行数と列数が揃っていることを、組み立てた場所で確かめる。
@@ -272,8 +274,14 @@ def elevation_attribute(network: RoadNetwork, row: int, edge_id: str) -> Elevati
         end_elevation_m=float(network.end_elevation_m[row]),
         elevation_gain_m=float(network.elevation_gain_m[row]),
         elevation_loss_m=float(network.elevation_loss_m[row]),
-        average_grade=None if np.isnan(grade := network.numeric_values[row, grade_column]) else float(grade),
+        average_grade=_optional_float(network.numeric_values[row, grade_column]),
+        steepest_gain_percent=_optional_float(network.steepest_gain_percent[row]),
+        steepest_loss_percent=_optional_float(network.steepest_loss_percent[row]),
     )
+
+
+def _optional_float(value: float) -> float | None:
+    return None if np.isnan(value) else float(value)
 
 
 def edge_row_of(network: RoadNetwork, osm_way_id: int, segment_index: int, forward: bool) -> int | None:

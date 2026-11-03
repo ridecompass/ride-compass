@@ -418,6 +418,8 @@ def _build_segment_details(
                         end_elevation_m=(
                             round(elevation_attr.end_elevation_m, ELEVATION_M_DECIMALS) if elevation_attr else None
                         ),
+                        steepest_gain_percent=elevation_attr.steepest_gain_percent if elevation_attr else None,
+                        steepest_loss_percent=elevation_attr.steepest_loss_percent if elevation_attr else None,
                     )
                 ],
                 estimated_arrival_time=arrival_time.isoformat(),

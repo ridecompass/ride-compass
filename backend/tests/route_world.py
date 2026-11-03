@@ -141,6 +141,9 @@ def road_network(
         start_elevation[way_of_row == way] = np.where(forward[way_of_row == way], start_m, end_m)
         end_elevation[way_of_row == way] = np.where(forward[way_of_row == way], end_m, start_m)
     climb = end_elevation - start_elevation
+    distance_m = np.array([haversine_distance_km(a, b) * 1000 for a, b in points])
+    # 道は一様な坂なので、一番急な勾配は平均の勾配そのもの。
+    grade = climb / distance_m * 100
     return RoadNetwork(
         revision=1,
         node_osm_id=node_ids, node_lat=lat, node_lon=lon,
@@ -166,11 +169,12 @@ def road_network(
         categorical_ids=(HIGHWAY,),
         categorical_codes=np.where(np.isin(way_of_row, list(motorway_ways)), 2, 1).astype(np.int16)[:, None],
         categorical_vocab=((None, "residential", "motorway"),),
-        distance_m=np.array([haversine_distance_km(a, b) * 1000 for a, b in points]),
+        distance_m=distance_m,
         bearing_deg=np.array([bearing_between(a, b) for a, b in points]),
         mid_lat=(lat[tail] + lat[head]) / 2, mid_lon=(lon[tail] + lon[head]) / 2,
         start_elevation_m=start_elevation, end_elevation_m=end_elevation,
         elevation_gain_m=np.maximum(climb, 0.0), elevation_loss_m=np.maximum(-climb, 0.0),
+        steepest_gain_percent=np.maximum(grade, 0.0), steepest_loss_percent=np.maximum(-grade, 0.0),
     )
 
 

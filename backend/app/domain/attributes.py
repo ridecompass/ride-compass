@@ -21,10 +21,13 @@ class ElevationAttribute(StrictModel):
     elevation_gain_m: float
     elevation_loss_m: float
     average_grade: float | None
+    # 進む向きに見た、断面の刻みの間で一番急な登りと下りの勾配（%、どちらも0以上）。値が無ければNone。
+    steepest_gain_percent: float | None
+    steepest_loss_percent: float | None
 
     def reversed_as(self, reverse_edge_id: str) -> "ElevationAttribute":
         """同じ地形を逆方向に走った区間（`reverse_edge_id`）の値。標高は進行方向に依存しないため
-        代数的に厳密に決まる: 始まり↔終わりの標高と獲得標高↔喪失標高の入れ替え、平均勾配の符号反転。
+        代数的に厳密に決まる: 始まり↔終わりの標高・獲得標高↔喪失標高・一番急な登り↔下りの入れ替え、平均勾配の符号反転。
         """
         return ElevationAttribute(
             edge_id=reverse_edge_id,
@@ -33,6 +36,8 @@ class ElevationAttribute(StrictModel):
             elevation_gain_m=self.elevation_loss_m,
             elevation_loss_m=self.elevation_gain_m,
             average_grade=-self.average_grade if self.average_grade is not None else None,
+            steepest_gain_percent=self.steepest_loss_percent,
+            steepest_loss_percent=self.steepest_gain_percent,
         )
 
 
@@ -119,6 +124,8 @@ class EdgeMaterialArrays:
     end_elevation_m: np.ndarray  # dtype=float64, NaN=標高が無い
     elevation_gain_m: np.ndarray  # dtype=float64, NaN=欠損
     elevation_loss_m: np.ndarray
+    steepest_gain_percent: np.ndarray  # dtype=float64, NaN=欠損
+    steepest_loss_percent: np.ndarray
 
     def __len__(self) -> int:
         return len(self.distance_m)
@@ -149,13 +156,17 @@ EDGE_ROW_ARRAY_FIELDS: tuple[str, ...] = tuple(
 
 
 def elevation_values_sql(vertices: str) -> str:
-    """区間の頂点列から、標高と勾配の値を出すSQL。
+    """区間の点列（標高の断面）から、標高と勾配の値を出すSQL。
 
     `vertices`は`(osm_way_id, segment_index, ord, lon, lat, elev, on_structure)`を返す関係。
     `elev`がNULLの頂点は評価から外す。**外した後に隣り合う2点でも、元の点列では間に欠損を
     挟んでいることがある**——そのまま隣接扱いすると、欠損区間の起伏が均された差として
-    混入する。平均勾配の距離（座標は欠損の頂点も持つ）は元の点列に沿って測り、獲得/消失（欠損を挟むと信頼できない）は
-    元の点列でも真に隣接していたペアだけから出す。
+    混入する。平均勾配の距離（座標は欠損の頂点も持つ）は元の点列に沿って測り、獲得/消失と一番急な勾配
+    （欠損を挟むと信頼できない）は元の点列でも真に隣接していたペアだけから出す。
+
+    一番急な勾配（`steepest_gain_percent`・`steepest_loss_percent`）は、隣り合う2点の間の勾配のうち、登りと下りの
+    それぞれの最大の大きさ（どちらも0以上）。点の間隔が勾配をならす幅になる——間隔を決めるのは点列を作る側。
+    公道としてありえない勾配の間は、標高データの読み違いとして最大に数えない。隣り合う2点の組が無い区間は値を持たない。
 
     `on_structure`（橋・高架・トンネル）は**両端だけ**を使う。配信元のDEMは地表面の値で
     構造物の高さを反映しないため（https://maps.gsi.go.jp/development/hyokochi.html に明記）、
@@ -174,19 +185,29 @@ ends AS (
            (array_agg(elev ORDER BY ord DESC))[1] AS end_e
     FROM known GROUP BY osm_way_id, segment_index),
 stepped AS (
-    SELECT osm_way_id, segment_index, ord, elev,
+    SELECT osm_way_id, segment_index, ord, elev, lon, lat,
            lag(ord)  OVER w AS prev_ord,
-           lag(elev) OVER w AS prev_elev
+           lag(elev) OVER w AS prev_elev,
+           lag(lon)  OVER w AS prev_lon,
+           lag(lat)  OVER w AS prev_lat
     FROM known WINDOW w AS (PARTITION BY osm_way_id, segment_index ORDER BY ord)),
 pairs AS (
     SELECT osm_way_id, segment_index, elev - prev_elev AS diff,
-           ord - prev_ord = 1 AS adjacent
+           ord - prev_ord = 1 AS adjacent,
+           ST_Distance(ST_MakePoint(prev_lon, prev_lat)::geography, ST_MakePoint(lon, lat)::geography) AS d
     FROM stepped WHERE prev_ord IS NOT NULL),
+graded AS (
+    SELECT osm_way_id, segment_index, diff, adjacent,
+           CASE WHEN adjacent AND d > 0 THEN diff / d * 100 END AS g
+    FROM pairs),
 agg AS (
     SELECT osm_way_id, segment_index,
            coalesce(sum(greatest(diff, 0))  FILTER (WHERE adjacent), 0) AS gain,
-           coalesce(sum(greatest(-diff, 0)) FILTER (WHERE adjacent), 0) AS loss
-    FROM pairs GROUP BY osm_way_id, segment_index),
+           coalesce(sum(greatest(-diff, 0)) FILTER (WHERE adjacent), 0) AS loss,
+           count(g) > 0 AS graded,
+           coalesce(max(g)  FILTER (WHERE g BETWEEN 0 AND {MAX_PLAUSIBLE_AVERAGE_GRADE_PERCENT}), 0) AS steepest_up,
+           coalesce(max(-g) FILTER (WHERE -g BETWEEN 0 AND {MAX_PLAUSIBLE_AVERAGE_GRADE_PERCENT}), 0) AS steepest_down
+    FROM graded GROUP BY osm_way_id, segment_index),
 walked AS (
     SELECT osm_way_id, segment_index, ord,
            ST_Distance(ST_MakePoint(lag(lon) OVER w, lag(lat) OVER w)::geography,
@@ -199,7 +220,7 @@ span AS (
     GROUP BY e.osm_way_id, e.segment_index),
 raw AS (
     SELECT e.osm_way_id, e.segment_index, e.on_structure, e.start_e, e.end_e,
-           a.gain, a.loss,
+           a.gain, a.loss, a.graded, a.steepest_up, a.steepest_down,
            CASE WHEN abs(s.g) <= {MAX_PLAUSIBLE_AVERAGE_GRADE_PERCENT} THEN s.g END AS avg_g
     FROM ends e JOIN agg a USING (osm_way_id, segment_index) JOIN span d USING (osm_way_id, segment_index),
          LATERAL (SELECT CASE WHEN d.total_d > 0 THEN (e.end_e - e.start_e) / d.total_d * 100 END AS g) s
@@ -212,6 +233,10 @@ SELECT osm_way_id, segment_index,
        round((CASE WHEN on_structure THEN greatest(start_e - end_e, 0)
                    ELSE loss END)::numeric, 1)  AS elevation_loss_m,
        round(avg_g::numeric, {AVERAGE_GRADE_DECIMALS}) AS average_grade,
+       round((CASE WHEN on_structure THEN abs(avg_g) * (avg_g > 0)::int
+                   WHEN graded THEN steepest_up END)::numeric, {AVERAGE_GRADE_DECIMALS}) AS steepest_gain_percent,
+       round((CASE WHEN on_structure THEN abs(avg_g) * (avg_g < 0)::int
+                   WHEN graded THEN steepest_down END)::numeric, {AVERAGE_GRADE_DECIMALS}) AS steepest_loss_percent,
        on_structure
 FROM raw
 """

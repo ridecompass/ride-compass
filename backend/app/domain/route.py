@@ -4,7 +4,6 @@ from dataclasses import dataclass, fields
 
 from typing import TYPE_CHECKING, Annotated, Any, Callable, Iterable, Literal, Mapping, NamedTuple, Sequence, TypeVar
 
-import numpy as np
 from pydantic import ConfigDict, Field, PrivateAttr, WithJsonSchema
 
 from app.domain.difficulty import (
@@ -17,7 +16,6 @@ from app.domain.geo import Latitude, Longitude
 from app.domain.gradient import GRADIENT_VALUE_DECIMALS
 from app.domain.graph import LeanEdge
 from app.domain.strict_model import StrictModel
-from app.domain.tuning import SUSTAINED_GRADE_WINDOW_ID, tuning_value
 
 if TYPE_CHECKING:
     # 軸の定義は材料の宣言を経てこのモジュールを読み込むので、実行時には読み込まない（循環する）。
@@ -100,7 +98,8 @@ class RoadClassStretch(StrictModel):
 
 
 class ElevationStretch(StrictModel):
-    """区間の中の道（Edge）1本の、走る向きの始まりと終わりの標高（m）。その道に標高が無ければどちらもNone。"""
+    """区間の中の道（Edge）1本の、走る向きの始まりと終わりの標高（m）と、その道の断面で一番急な登りと下りの勾配
+    （%、どちらも0以上。`domain/attributes.py: elevation_values_sql`）。その道に値が無ければNone。"""
 
     # 区間では検証せずに組み（`model_construct`）、入れたビンを検証するときに検証する（`_merge_segment_bin`）。
     model_config = ConfigDict(revalidate_instances="always")
@@ -108,6 +107,8 @@ class ElevationStretch(StrictModel):
     distance_km: float
     start_elevation_m: float | None
     end_elevation_m: float | None
+    steepest_gain_percent: float | None = None
+    steepest_loss_percent: float | None = None
 
 
 class RouteSegmentDetail(StrictModel):
@@ -550,31 +551,16 @@ def merge_road_classes(segments: list[RouteSegmentDetail]) -> dict[str, list[Roa
 
 
 def sustained_gradient_percent(elevations: Sequence[ElevationStretch]) -> float | None:
-    """区間の続く坂の斜度（%、走る向きの符号つき）。標高のある道（長さ0の道を除く）の上り下りを通る順につないだ断面で、
-    幅W（較正値`gradient.sustained_window_m`、呼ばれた時点で読む）の窓をずらして取った（窓の高低差÷W）のうち、登りがあれば
-    登りの最大、無ければ下りの最大（最も負の値）。断面がWより短ければ断面全体の平均。標高のある道が無ければNone。
-
-    道どうしの継ぎ目の標高の差（標高の無い道を挟んだ所等）は断面に入れず、各道の中の上り下りだけを積む——継ぎ目の差を
-    入れると、長さの無い所に段ができて窓の斜度が跳ねる。
+    """区間の続く坂の斜度（%、走る向きの符号つき）。区間の中の道の断面で一番急な勾配のうち、登りがあれば登りの最大、
+    無ければ下りの最大（負の値）。ならす幅は道の断面の刻みで、区間の中で計算し直さず道の値（区間の標高の表）から出す。
+    値のある道が無ければNone。
     """
-    lengths, rises = [], []
-    for stretch in elevations:
-        if stretch.start_elevation_m is None or stretch.end_elevation_m is None or stretch.distance_km <= 0:
-            continue
-        lengths.append(stretch.distance_km * 1000)
-        rises.append(stretch.end_elevation_m - stretch.start_elevation_m)
-    if not lengths:
+    known = [stretch for stretch in elevations
+             if stretch.steepest_gain_percent is not None and stretch.steepest_loss_percent is not None]
+    if not known:
         return None
-    xs = np.concatenate(([0.0], np.cumsum(lengths)))
-    heights = np.concatenate(([0.0], np.cumsum(rises)))
-    total = float(xs[-1])
-    window = tuning_value(SUSTAINED_GRADE_WINDOW_ID)
-    if total <= window:
-        return round(float(heights[-1]) / total * 100, GRADIENT_VALUE_DECIMALS)
-    # 窓の高低差は窓の始まりについて折れ線なので、最大・最小は窓の端が断面の折れ点に重なる所のどれかで取る。
-    starts = np.clip(np.concatenate((xs, xs - window)), 0.0, total - window)
-    grades = (np.interp(starts + window, xs, heights) - np.interp(starts, xs, heights)) / window * 100
-    steepest = float(grades.max()) if grades.max() > 0 else float(grades.min())
+    climb = max(stretch.steepest_gain_percent for stretch in known)
+    steepest = climb if climb > 0 else -max(stretch.steepest_loss_percent for stretch in known)
     return round(steepest, GRADIENT_VALUE_DECIMALS)
 
 

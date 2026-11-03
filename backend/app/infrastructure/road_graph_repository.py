@@ -175,6 +175,8 @@ _EXTRA_MATERIAL_ARRAY_COLUMNS: dict[str, str] = {
     "end_elevation_m": "em.end_elevation_m",
     "elevation_gain_m": "em.elevation_gain_m",
     "elevation_loss_m": "em.elevation_loss_m",
+    "steepest_gain_percent": "em.steepest_gain_percent",
+    "steepest_loss_percent": "em.steepest_loss_percent",
 }
 
 #: 列の並びは渡した3つ組の位置で固定する。**road_edgesへLEFT JOINする**——行が無い区間で
@@ -473,6 +475,8 @@ class RoadGraphRepository:
             end_elevation_m=_float_array(raw["end_elevation_m"]),
             elevation_gain_m=_float_array(raw["elevation_gain_m"]),
             elevation_loss_m=_float_array(raw["elevation_loss_m"]),
+            steepest_gain_percent=_float_array(raw["steepest_gain_percent"]),
+            steepest_loss_percent=_float_array(raw["steepest_loss_percent"]),
         )
 
     async def sample_way_material_values(

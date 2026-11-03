@@ -162,6 +162,45 @@ async def test_vertices_at_the_same_place_give_no_grade(road_graph_session):
     assert row["average_grade"] is None
 
 
+async def test_the_steepest_climb_and_descent_are_taken_between_neighbouring_points(road_graph_session):
+    """登って下る区間でも打ち消し合わず、登りと下りのそれぞれで一番急な間を出す（どちらも0以上）。"""
+    row = await one(road_graph_session, [100.0, 100.0 + rise(3), 100.0 + rise(3) + rise(8), 100.0 + rise(3) + rise(8) - rise(5)])
+
+    assert row["steepest_gain_percent"] == pytest.approx(8.0, abs=0.005)
+    assert row["steepest_loss_percent"] == pytest.approx(5.0, abs=0.005)
+
+
+async def test_a_road_that_only_climbs_has_no_steepest_descent(road_graph_session):
+    row = await one(road_graph_session, [100.0, 100.0 + rise(2), 100.0 + rise(6)])
+
+    assert (row["steepest_gain_percent"], row["steepest_loss_percent"]) == (pytest.approx(4.0, abs=0.005), 0.0)
+
+
+async def test_an_implausible_step_does_not_count_as_the_steepest(road_graph_session):
+    """公道としてありえない勾配の間は、標高データの読み違いとして一番急な勾配に数えない。"""
+    row = await one(road_graph_session, [0.0, rise(3), rise(3) + rise(MAX_PLAUSIBLE_AVERAGE_GRADE_PERCENT + 5)])
+
+    assert row["steepest_gain_percent"] == pytest.approx(3.0, abs=0.005)
+
+
+async def test_the_steepest_slopes_skip_a_gap(road_graph_session):
+    """欠損を挟んだ2点の間は勾配を測れないので、隣り合う組が無ければ一番急な勾配を持たない。"""
+    row = await one(road_graph_session, [100.0, None, 100.0 + rise(9, 2)])
+
+    assert (row["steepest_gain_percent"], row["steepest_loss_percent"]) == (None, None)
+
+
+@pytest.mark.parametrize(("elevations", "gain", "loss"), [([100.0, 60.0, 100.0 + rise(4, 2)], 4.0, 0.0),
+                                                         ([100.0, 140.0, 100.0 - rise(2, 2)], 0.0, 2.0)],
+                         ids=["上る橋", "下る橋"])
+async def test_a_structure_takes_its_steepest_slope_from_its_two_ends(road_graph_session, elevations, gain, loss):
+    """橋の途中の点は下の谷を指すので、両端の差の勾配だけを一番急な勾配にする。"""
+    row = await one(road_graph_session, elevations, on_structure=True)
+
+    assert row["steepest_gain_percent"] == pytest.approx(gain, abs=0.005)
+    assert row["steepest_loss_percent"] == pytest.approx(loss, abs=0.005)
+
+
 async def test_segments_are_computed_separately(road_graph_session):
     rows = await values(road_graph_session, {(1, 0): [0.0, rise(3)], (1, 1): [0.0, -rise(3)], (2, 0): [5.0, 5.0]})
 
