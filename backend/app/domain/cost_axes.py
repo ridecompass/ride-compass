@@ -9,8 +9,7 @@
 - **道の負担の軸はJSONで出し入れする**（`BurdenAxis`）。量は「材料 × 1kmあたりの重さ × 距離」で、材料と重さがあれば式の
   コードは要らない。危険（車・路面の凸凹）も、危険でないが避けたいもの（排気・混雑等）も、この形で足せる。
 
-軸の定義の全体（`CostAxisDefinitions`）は1つのJSONで読み、1つのJSONで書く（道の区分と同じ）。新しい軸のidは、古い点数の軸の
-idを使い回さない——利用者が保存した割合の重みが、黙って倍率として読まれる。
+軸の定義の全体（`CostAxisDefinitions`）は1つのJSONで読み、1つのJSONで書く（道の区分と同じ）。
 """
 
 from typing import Annotated, Literal

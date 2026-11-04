@@ -1,6 +1,6 @@
 // 「ルート結果」の中身（`features/route/RouteOutcome/RouteOutcome.tsx`）を描く足場。結果の状態（`useRouteResults`の戻り値）は
 // 選んだ候補・編集をそろえて値で組み、操作は記録するだけにする。画面の設定は使うテストが
-// `testing/backendServer.ts: serveClientConfig`で、費用の軸の一覧は`testing/costAxes.ts: serveCostAxisCatalog`で与える。
+// `testing/backendServer.ts: serveClientConfig`で、費用の軸の一覧は`testing/backendServer.ts: serveCostAxisCatalog`で与える。
 // `FAST`の内訳の軸は、その既定の一覧（登坂と振動）の軸。
 import { render } from "@testing-library/react";
 import type { ComponentProps } from "react";
