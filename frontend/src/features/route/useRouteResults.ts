@@ -19,7 +19,7 @@ export interface EditedRoute {
 }
 
 /**
- * 「ルート結果」の状態: 生成した候補・編集で作ったルート・選んだルート・地図で押した区間・生成に使われた重み。
+ * 「ルート結果」の状態: 生成した候補・編集で作ったルート・選んだルート・地図で押した区間。
  * 生成と区間の乗り換えが結果を入れ、「ルート結果」の部品と地図が読む。
  */
 export function useRouteResults() {
@@ -85,7 +85,7 @@ export function useRouteResults() {
     [selectAndFocus],
   );
 
-  /** 候補・選択・使われた重みを消す。 */
+  /** 候補・選択を消す。 */
   const clear = useCallback(() => replaceWithGenerated([]), [replaceWithGenerated]);
 
   /** ルートを選ぶ（候補のカード・地図の候補の線）。地図は動かさない。 */

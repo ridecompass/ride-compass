@@ -76,7 +76,7 @@ export interface SpliceStretchInput {
 export type HiddenLegendKeys = Readonly<Record<string, readonly string[]>>;
 
 /** 地図の見え方の状態。**状態そのものだけ**で、ここから導けるもの（どのレイヤーを出すか・
- * 家族ごとの隠した行・下敷き）はこのファイルが導く。 */
+ * 家族ごとの隠した行）はこのファイルが導く。 */
 export interface SceneLook {
   readonly layerVisibility: MapLayerVisibility;
   readonly dynamicWeather: Partial<Record<DynamicWeatherLayerId, DynamicWeatherGroupState>>;

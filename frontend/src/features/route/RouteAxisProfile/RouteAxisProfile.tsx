@@ -14,7 +14,7 @@ import type { PenaltyBreakdown as PenaltyValues, RouteFacts } from "@/types/rout
 const SPEED_CONDITIONS = routeGenerateConfig.segment_speed_conditions.join("・");
 
 interface RouteAxisProfileProps {
-  /** RouteCandidate.penalty（軸ごとと回避指定の代償の秒。費用の軸の定義が無い間はnull）。 */
+  /** RouteCandidate.penalty（軸ごとと回避指定の代償の秒）。 */
   penalty: PenaltyValues;
   /** RouteCandidate.facts（軸ごとの事実の量と、標高の無い長さ）。 */
   facts: RouteFacts;
