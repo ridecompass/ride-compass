@@ -11,7 +11,7 @@ Tailwindのユーティリティで書く。CSS Modulesは使わない（CSSの�
 
 | レイヤー | ファイル |
 |---|---|
-| components/ui（部品） | `Button/Button.tsx`（押すと1回動く。`Button/Button.tsx: variant`が役割、`Button/Button.tsx: size`が大きさ。`type`未指定時は`"button"`）・`Toggle/Toggle.tsx`（押して切り替える。押下状態は呼び出し側が持つ）・`ToggleGroup/ToggleGroup.tsx`（並んだ選択肢から1つを選ぶ。選んでいるものは外れない）・`Tabs/Tabs.tsx`（タブの列とタブの見た目。Root・ContentはRadixのものを出す）・`Popover/Popover.tsx`（押すと開く浮きパネル。中身はdocument.body直下へ描く。開くボタン`Popover/Popover.tsx: PopoverTrigger`は印`data-usage-opens`を付け、説明を見る状態がその説明に「中を見る」を出す。中身は、説明を見る状態の案内・説明の面を押すこと・そこへフォーカスが移ることでは閉じない。画面の端へ寄せて開くものが端と空ける幅は`Popover/Popover.tsx: POPOVER_COLLISION_PADDING_PX`）・`Input/Input.tsx`（1行・複数行・選択の入力欄。3つとも同じ枠）・`NumberInput/NumberInput.tsx`（入力途中の文字を部品が持つ数値欄。打つたびに渡すか、欄を離れたとき・Enterで渡すかを選ぶ）・`Text/Text.tsx`（文字の役割ごとの大きさ・太さ・色）・`Table/Table.tsx`（一覧表）・`Card/Card.tsx`（ひとまとまりの面）・`Callout/Callout.tsx`（本文の中の注意の1かたまり）・`Badge/Badge.tsx`（名前の横に添える札）・`GuideText/GuideText.tsx`（案内の文。アイコンだけの操作の名前をアイコンにして描く。5-1）・`Dot/Dot.tsx`（状態の小さな丸）・`LogLine/LogLine.tsx`（ログの1行）・`Dialog/Dialog.tsx`（`Dialog/Dialog.tsx: title`必須でアクセシブル名を型で強制。消す前の確認の窓`Dialog/Dialog.tsx: ConfirmDialog`も持つ）・`Checkbox/Checkbox.tsx`・`Ruler/Ruler.tsx`（目盛りを横に滑らせ、左端の目印に合わせたコマを選ぶ。目印より右だけを見せ、残りは滑らせて出す。ドラッグ・ホイール・吸着はEmbla、キー操作と`role="slider"`の読み上げは部品が持つ）・`AxisLegend/axisLegend.ts`（軸の帯グラフと軸チップの形。重み配分の設定とルート結果の内訳が共有する） |
+| components/ui（部品） | `Button/Button.tsx`（押すと1回動く。`Button/Button.tsx: variant`が役割、`Button/Button.tsx: size`が大きさ。`type`未指定時は`"button"`）・`Toggle/Toggle.tsx`（押して切り替える。押下状態は呼び出し側が持つ）・`ToggleGroup/ToggleGroup.tsx`（並んだ選択肢から1つを選ぶ。選んでいるものは外れない）・`Tabs/Tabs.tsx`（タブの列とタブの見た目。Root・ContentはRadixのものを出す）・`Popover/Popover.tsx`（押すと開く浮きパネル。中身はdocument.body直下へ描く。開くボタン`Popover/Popover.tsx: PopoverTrigger`は印`data-usage-opens`を付け、説明を見る状態がその説明に「中を見る」を出す。中身は、説明を見る状態の案内・説明の面を押すこと・そこへフォーカスが移ることでは閉じない。画面の端へ寄せて開くものが端と空ける幅は`Popover/Popover.tsx: POPOVER_COLLISION_PADDING_PX`）・`Input/Input.tsx`（1行・複数行・選択の入力欄。3つとも同じ枠）・`NumberInput/NumberInput.tsx`（入力途中の文字を部品が持つ数値欄。打つたびに渡すか、欄を離れたとき・Enterで渡すかを選ぶ）・`Text/Text.tsx`（文字の役割ごとの大きさ・太さ・色）・`Table/Table.tsx`（一覧表）・`Card/Card.tsx`（ひとまとまりの面）・`Callout/Callout.tsx`（本文の中の注意の1かたまり）・`Badge/Badge.tsx`（名前の横に添える札）・`GuideText/GuideText.tsx`（案内の文。アイコンだけの操作の名前をアイコンにして描く。5-1）・`Dot/Dot.tsx`（状態の小さな丸）・`LogLine/LogLine.tsx`（ログの1行）・`Dialog/Dialog.tsx`（`Dialog/Dialog.tsx: title`必須でアクセシブル名を型で強制。消す前の確認の窓`Dialog/Dialog.tsx: ConfirmDialog`も持つ）・`Checkbox/Checkbox.tsx`・`Ruler/Ruler.tsx`（目盛りを横に滑らせ、左端の目印に合わせたコマを選ぶ。目印より右だけを見せ、残りは滑らせて出す。ドラッグ・ホイール・吸着はEmbla、キー操作と`role="slider"`の読み上げは部品が持つ）・`AxisLegend/axisLegend.ts`（軸の帯グラフと軸チップの形。候補の負担の内訳と区間の小窓が共有する） |
 | lib | `cn.ts`（`cn.ts: clsx`で条件付きclassNameをまとめ、`tailwind-merge`で同じプロパティを指すクラスの後勝ちを解決する）・`paletteCssVariables.ts`（backendが配る色のうちCSSから参照するものを、CSS変数として流す） |
 | app | `globals.css`（デザイントークン・`@theme`登録・リセット・レスポンシブレイアウト・MapLibreのDOM上書き。下記8節） |
 
@@ -175,15 +175,17 @@ backendのdomainの宣言が持つ名前（ハードフィルタ・凡例の行�
 
 | 概念 | 画面の語 | 使わない語 |
 |---|---|---|
-| 道の走りにくさを測る観点の1つ（勾配・舗装質等。重みを配る単位） | 評価軸 | 評価・軸 |
-| 評価軸で道・ルートを測ること、その結果 | 評価（「評価する」「道の評価」） | 評価軸の意味では使わない |
-| 選んだ評価軸の難易度で、地図の道・ルートの線・道のりのグラフに色を付けること（地図の上の入口と、道のりのグラフのタブの名前。`lib/screenNames.ts: EVALUATION_PAINT_NAME`） | 評価で塗る（色を付けることは「塗る」） | 色分け・レンズ |
+| 避けたいものを通る代償を、所要時間に上乗せした秒として数えたもの（ルート・区間は分、地図の道は1kmあたりの秒で出す） | 負担（「+18分」「総合の負担 12秒/km」） | 難易度・スコア・コスト・代償 |
+| 負担を分けて数える観点の1つ（登り・止まる回数・路面の振動等。倍率を選ぶ単位。backendの費用の軸） | 負担の種類（1つずつは軸の名前そのもので呼び、並べて言うときは「軸ごとの倍率」のように「軸」と言ってよい） | 評価軸・費用の軸 |
+| 負担の全体に掛ける数（「条件」タブのつまみ） | 負担の強さ（段の名前は掛ける数そのもの「×0.5」） | 重み・全体の倍率 |
+| 負担の種類ごとに掛ける数（「負担」タブ） | 倍率（段の名前は掛ける数そのもの「×0」「×2」） | 重み・配分 |
+| 全部の負担の種類を合わせた負担（ルートの後に何も選んでいないときの塗り） | 総合の負担 | 合計・合成 |
+| 1種類の負担か総合の負担で、地図の道・ルートの線・道のりのグラフに色を付けること（地図の上の入口と、道のりのグラフのタブの名前。`lib/screenNames.ts: EVALUATION_PAINT_NAME`） | 評価で塗る（色を付けることは「塗る」。選ぶものは「塗る負担」） | 色分け・レンズ |
 | 場所の事実（標高・道路の種類・スポット等）を地図・道のりのグラフに重ねること（地図の左上の入口と、道のりのグラフのタブの名前。`lib/screenNames.ts: FACT_DISPLAY_NAME`） | 表示（重ねる1つずつは「情報」） | レイヤ |
-| 0〜100の走りにくさ（評価軸ごとの値も、重みで合わせた値も） | 難易度（評価軸ごとは「この評価軸の難易度」） | 合成・スコア・コスト |
-| 候補の区間をほかの候補の道へ乗り換えて作ったルート | 合成ルート（作る操作は「ルートを合成」） | 難易度の意味では「合成」を使わない |
+| 候補の区間をほかの候補の道へ乗り換えて作ったルート | 合成ルート（作る操作は「ルートを合成」） | 負担を合わせる意味では「合成」を使わない |
 | 出発地へ戻って終わるルート（目的地を置かない・目的地が出発地と同じ） | 周回（ルート設定の切り替えの名前。周回の間の終点の札では出発地の名前に添えて「現在地[周回]」） | ループ |
 | 地図に点で出す場所（停止要因・補給・事故） | スポット | POI |
-| 利用者が変えていないときに使う値 | 既定（既定の配分・既定値） | デフォルト・サーバー既定 |
+| 利用者が変えていないときに使う値 | 既定（既定値。負担の強さと倍率の段では「標準」） | デフォルト・サーバー既定 |
 | ルートを作り、データを配る側 | アプリ（主語に要るときだけ） | サーバー・ジョブ |
 | OSM の highway=primary とその連絡路の道（番号が2桁以下の県道・市道） | 主要地方道 | 主要道・主要幹線道路 |
 | OSM の highway=secondary・tertiary とその連絡路の道（主要地方道でない県道と、2車線以上の道） | 一般県道・2車線の道 | 主要道・地方主要道 |

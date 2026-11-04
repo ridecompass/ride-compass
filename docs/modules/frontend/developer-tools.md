@@ -2,15 +2,23 @@
 
 ## 責務
 
-`/admin`（`app/admin/page.tsx`、Basic認証保護下）にある開発者向け補助機能（ログ表示・
-システム状況）と、一般公開ページ`page.tsx`（`/`、認証なし）のヘッダーメニューから直接操作
+`/admin`（`app/admin/page.tsx`、Basic認証保護下。画面の題は「管理・開発者ツール」）にある管理の画面（材料・較正値・データ保守）と
+開発者向け補助機能（ログ表示・システム状況）、その認証の境界と、一般公開ページ`page.tsx`（`/`、認証なし）のヘッダーメニューから直接操作
 できる機能（デバッグログ表示）。
 
 **対象ファイル**
 
 | ファイル | 責務 | マウント先 |
 |---|---|---|
-| `app/admin/page.tsx` | `/admin`のタブ構成を束ねるコンポジションルート（開いたときは軸スタジオのタブ） | 独立URL |
+| `app/admin/page.tsx` | `/admin`のタブ構成を束ねるコンポジションルート（開いたときは「材料」のタブ） | 独立URL |
+| `proxy.ts`・`lib/adminBasicAuth.ts` | `/admin`のページと管理APIの転送の口（`/admin/api/**`）への到達をHTTP Basic認証で止めるNext.jsのルーティング境界（ファイル名はフレームワークの規約）と、その資格情報を環境変数から読む口（`lib/adminBasicAuth.ts: adminBasicAuthCredentials`。片方でも空なら認証を通さない）。転送先のbackendの管理APIは別にbackendが同じ方式で守る | `/admin`の手前 |
+| `features/admin/adminApi.ts` | `/admin`の各パネルが叩く口の薄いラッパー（例: 材料の欠損割合・較正値の書き換え・直近のログ・死活）。管理APIは`lib/apiClient.ts: adminApiClient`、認証の要らない稼働状況の口は`lib/apiClient.ts: backendApi`を通る | `/admin`の各パネル |
+| `features/admin/AdminPanels/MaterialCoveragePanel.tsx` | 材料ごとの欠損割合（backend `GET /api/admin/material-catalog/coverage`）を欠損の扱いごとに分けて欠損の高い順に並べる。欠損を取込側で推測して埋めず、実態を見せて「埋めるか」の判断を定義の側へ委ねる。母集団の名前と欠損の扱いの見出しは材料カタログの宣言が配り、宣言に無い扱いの材料は未分類の群が拾う | `/admin`「材料」タブ |
+| `features/admin/AdminPanels/TuningPanel.tsx` | 走ってみて決める較正値（backendの`domain/tuning.py`の宣言）をデプロイなしに変える画面。並べる項目はbackendが宣言から導き、効き方ごとにまとめる（変えたのに効かない群を見分ける）。入力は「DBへ保存」でまとめて送り、既定と同じ値で保存すると上書きの行を消す | `/admin`「較正値」タブ |
+| `features/admin/AdminPanels/DerivedDataFreshnessPanel.tsx` | 派生データ（precomputeバッチの出力）が、取り込んだ生データより古いまま残っていないかを見る。作り直しが要るかはbackendが決める | `/admin`「データ保守」タブ |
+| `features/admin/AdminPanels/DbStatusPanel.tsx` | 派生データの鮮度台帳が拠る土台（取込のrunの失敗・行の有無・プランナの統計・放置されたトランザクション）を、ほかのパネルと同じ1行の形で見せる | `/admin`「データ保守」タブ |
+| `features/admin/AdminPanels/TileCachePanel.tsx` | サーバー側のタイルファイルキャッシュの全消去。全利用者へ影響するため認証の内側にだけ置き、基礎地図のタイルをブラウザが持つ時間（消去が各利用者の画面へ届くまでの遅れ）を添える | `/admin`「データ保守」タブ |
+| `features/admin/AdminPanels/ReportCard.tsx`・`features/admin/AdminPanels/StatusRowList.tsx` | 「材料」「データ保守」の集計のカード（DB全体の走査を伴うので、開いたときには取らず「集計する」を押したときだけ取る。説明はⓘの奥）と、点検の行の一覧（名前の右に規模、開くと中身。手当ての要否を丸の色と読み上げの文の両方で持つ）。件数・時点の書き方（`features/admin/AdminPanels/ReportCard.tsx: formatCount`・`features/admin/AdminPanels/ReportCard.tsx: formatMoment`）も持つ | 上記のパネル |
 | `components/HeaderMenu/HeaderMenu.tsx` | 使い方の説明の入口（「使い方を見る」。[ページ全体構成](page-composition.md)「使い方の説明」）・地図の表示を再描画（[地図: 静的レイヤー](static-map-layers.md)「まとめて戻す操作」）・地図を暗くする（同「暗い地図」。押した状態を見せる入切）・走行の記録のコピー（下記「走行の計測」。記録があるときだけ）・デバッグログ表示・バージョン表示を1個のメニューアイコンへ集約したRadix Popover。バージョン表示は、動いている版（コミットの頭8文字）を窓に出し、確かめ待ちの変更が本番に出たかを利用者が画面から見分けられるようにする | `app/HomeHeader.tsx`（`/`のヘッダー） |
 | `features/admin/DebugPanel/DebugPanel.tsx` | デバッグログ表示のON/OFFトグル | `/admin`「開発者」タブ |
 | `components/DebugConsole/DebugConsole.tsx` | 地図イベント・外部API呼び出しの詳細ログを時系列表示するフローティングパネル。**表示中の行をそのままの形でコピーできる**（絞り込みを無視して全件にすると、絞って見つけた数行を渡したいときに関係ない行まで混ざる） | `app/HomeHeader.tsx`（`/`のヘッダーの下）、`HeaderMenu.tsx: HeaderMenu`から開閉 |
@@ -39,17 +47,16 @@
 | `scripts/audit-test-rewrite.mjs` | 実装から起こし直したテストを外から測る（`.claude/rules/testing-rewrite.md`の手順） |
 | `scripts/structure-population.mjs`・`scripts/structure-population/` | 画面がbackendの宣言を持ち直している形の候補を構文木から列挙する（周期レビューの「構造の問い」のfrontendの母集団）。候補を出すだけで判じない。語彙（生成物の値・現象の語・軸名）の読み取りと、字句の置かれた文脈の判定は`scripts/structure-population/`の下に分けて持つ |
 | `scripts/mutation/` | 変異テスト（Stryker）の設定と、書き換えるファイルを本に分ける・結果を比べる・報告する台本 |
+| `src/structure/`（`*.test.ts`を除く） | 構造の検査（同じ場所の`*.test.ts`）が読む道具: 検査の母集団の根と木の歩き方（`src/structure/sourceTree.ts`）・テストの構文の読み取り・足場の境界と写しの判定・母集団が空のときに何も確かめずに通るループの判定等。画面には載らない |
 
 ## `/admin`とpage.tsx（`/`）の境界
 
 ```
 app/admin/page.tsx（独立URL、Basic認証保護下）
-  ├─ タブ「軸スタジオ」: AxisStudio（本モジュール対象外）
-  ├─ タブ「材料」　　　: MaterialCoveragePanel（材料ごとの欠損割合、本モジュール対象外）
-  ├─ タブ「較正値」　　: TuningPanel（走ってみて決める値の編集、本モジュール対象外）
+  ├─ タブ「材料」（既定）: MaterialCoveragePanel（材料ごとの欠損割合）
+  ├─ タブ「較正値」　　: TuningPanel（走ってみて決める値の編集）
   ├─ タブ「データ保守」: DerivedDataFreshnessPanel（派生データの鮮度台帳）+ DbStatusPanel
-  │                     （本番DBの状態）+ TileCachePanel（タイルファイルキャッシュの全消去、
-  │                     いずれも本モジュール対象外）
+  │                     （本番DBの状態）+ TileCachePanel（タイルファイルキャッシュの全消去）
   └─ タブ「開発者」　　: DebugPanel + BackendStatus + SystemStatusPanel + BackendLogsPanel
 
 app/page.tsx（メインページ、地図を持つ、認証なし）
@@ -92,9 +99,6 @@ Chrome にだけある口で、無い端末ではその項目を null・0 のま
 
 ## 暗黙の前提
 
-- `useAxisCatalog()`（`GET /api/axis-catalog`）の共有・取り直しの規則は
-  [ルート設定・結果パネル](route-settings-and-results.md)「暗黙の前提」が持つ。`/admin`と`/`を別タブで
-  開くと、タブごとに別のキャッシュで取る。
 - `SystemStatusPanel`・`DebugConsole`はポーリングをせず、開いたとき（`open`が`true`に
   なった瞬間）と明示的な「更新」ボタン押下時にのみ`fetchAll`/エントリ取得を行う
   （プロセス内カウンタ・モジュール評価時刻のスナップショットという性質のため）。
