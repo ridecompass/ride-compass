@@ -109,5 +109,5 @@ export function costLensPremises(
       : equivalents.examples.map(
           (example) => `${example.label} ${formatLensNumber(example.seconds_per_km)}${LENS_SECONDS_UNIT}`,
         );
-  return lines.length === 0 ? [] : ["目安（標準の人・無風・その事実だけの1kmの道）", ...lines];
+  return lines.length === 0 ? [] : ["目安（いまの負担の強さと倍率で、無風・その事実だけの1kmの道を走ったとき）", ...lines];
 }
