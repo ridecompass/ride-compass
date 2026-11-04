@@ -39,11 +39,10 @@ const MATERIALS: AxisLine["materials"] = new Map<string, Record<string, number>>
 
 type AxisLine = AxisLineState["axes"][number];
 
-/** 軸1本だけを出している線の宣言。 */
+/** レンズ1つだけを出している線の宣言。 */
 function groupFor(
-  { materials = MATERIALS, loading = false, hiddenBandKeys = [], underlay = false }: Partial<AxisLine> = {},
+  { materials = MATERIALS, loading = false, hiddenBandKeys = [] }: Partial<AxisLine> = {},
   conditions: AxisLineState["conditions"] = { bearing_deg: 0 },
-  roadLayerCount = 2,
 ) {
   return axisLineGroup.build({
     sourceLayer: "road",
@@ -56,11 +55,9 @@ function groupFor(
         materials,
         loading,
         hiddenBandKeys,
-        underlay,
       },
     ],
     conditions,
-    roadLayerCount,
   });
 }
 
@@ -122,21 +119,6 @@ describe("値の無い道", () => {
 
     expect(loading).toEqual({ color: palette.semantic.loading, dashOpacity: null });
     expect(groupFor({ loading: true }).layers[0].paint["line-opacity"]).toBe(mapDisplay.road.knownOpacity);
-  });
-
-  it("材料が同時に出ているときの下敷きは、破線にせず全体を薄く敷く", () => {
-    const underlay = groupFor({ underlay: true });
-
-    expect(lookOf("absent", { underlay: true })).toEqual({ color: palette.semantic.no_data, dashOpacity: null });
-    expect(underlay.layers[0].paint["line-opacity"]).toBe(mapDisplay.road.underlayOpacity);
-  });
-
-  it("下敷きは、道の線の層が多いほど広く敷く（全部の層を左右へ並べた幅を覆う）", () => {
-    const widthWith = (roadLayerCount: number) =>
-      groupFor({ underlay: true }, undefined, roadLayerCount).layers[0].paint["line-width"] as number;
-
-    expect(widthWith(1)).toBe(mapDisplay.road.lineWidthPx);
-    expect(widthWith(3) - widthWith(2)).toBe(mapDisplay.road.trackOffsetStepPx);
   });
 });
 

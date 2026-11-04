@@ -6,13 +6,9 @@ import type { paths } from "@/types/generated/api";
 export const COST_AXIS_CATALOG_LABEL = "負担の種類の一覧";
 
 // 費用の軸の一覧の取得。認可不要の読み取り専用API。管理APIで書いた定義も、この取得だけでフロントへ届く。
-// 定義がまだ無い間（backendは404で返す）はnull。
 export function getCostAxisCatalog() {
   return requestApi(
-    async (init) => {
-      const result = await backendApi.GET("/api/cost-axes", init);
-      return result.response.status === 404 ? { data: null, response: new Response(null) } : result;
-    },
+    (init) => backendApi.GET("/api/cost-axes", init),
     getOptions({
       timeoutMs: API_TIMEOUT_MS.catalog,
       category: "api:costAxisCatalog",
@@ -27,13 +23,10 @@ export type LensEquivalentsQuery = NonNullable<paths["/api/cost-axes/lens-equiva
 export type LensEquivalentsResponse =
   paths["/api/cost-axes/lens-equivalents"]["get"]["responses"][200]["content"]["application/json"];
 
-/** 段の境目が、利用者の値でどれだけの事実に当たるかの目安。定義がまだ無い間（404）はnull。 */
+/** 段の境目が、利用者の値でどれだけの事実に当たるかの目安。 */
 export function getLensEquivalents(query: LensEquivalentsQuery) {
   return requestApi(
-    async (init) => {
-      const result = await backendApi.GET("/api/cost-axes/lens-equivalents", { params: { query }, ...init });
-      return result.response.status === 404 ? { data: null, response: new Response(null) } : result;
-    },
+    (init) => backendApi.GET("/api/cost-axes/lens-equivalents", { params: { query }, ...init }),
     getOptions({ timeoutMs: API_TIMEOUT_MS.catalog, category: "api:lensEquivalents", errorLabel: "凡例の目安" }),
   );
 }

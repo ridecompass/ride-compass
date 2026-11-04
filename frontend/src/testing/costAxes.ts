@@ -1,5 +1,5 @@
 // 費用の軸の一覧（`GET /api/cost-axes`）を、テストが自分で組むための雛形。型はbackendの契約から生成したもの。
-import { onBackend } from "@/testing/backendServer";
+// 網の層（msw）を読まないので、e2e の模擬応答も同じ雛形を使う。網の層で返すのは`testing/backendServer.ts: serveCostAxisCatalog`。
 import type { CostAxisCatalogResponse } from "@/types/route";
 
 type CostAxisEntry = CostAxisCatalogResponse["axes"][number];
@@ -42,11 +42,3 @@ export const TWO_COST_AXES = costAxisCatalog(
   costAxisEntry("ascent", { label: "登坂" }),
   costAxisEntry("vibration", { ledger: "burden", label: "振動" }),
 );
-
-/** 費用の軸の一覧の取得に`response`を返す。nullなら定義がまだ無い（backendは404）。 */
-export function serveCostAxisCatalog(response: CostAxisCatalogResponse | null = TWO_COST_AXES): void {
-  const missing = () => Response.json({ detail: "費用の軸の定義はまだありません" }, { status: 404 });
-  onBackend("GET", "/api/cost-axes", () => (response === null ? missing() : Response.json(response)));
-  // 凡例の目安（利用者の値で引く別の口）。目安を見るテストは自分で応える。
-  onBackend("GET", "/api/cost-axes/lens-equivalents", () => (response === null ? missing() : Response.json({})));
-}

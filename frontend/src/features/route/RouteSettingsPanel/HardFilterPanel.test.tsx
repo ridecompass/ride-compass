@@ -15,7 +15,7 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
-import { AVOIDANCE_LEVELS, avoidanceRow } from "@/testing/catalogAxes";
+import { AVOIDANCE_LEVELS, avoidanceRow } from "@/testing/clientConfig";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 import type { RoadAvoidanceOverride, RoadAvoidanceView } from "@/types/route";
 

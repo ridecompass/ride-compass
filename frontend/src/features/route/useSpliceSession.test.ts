@@ -25,8 +25,8 @@
 import { act, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { serveAxisCatalog } from "@/testing/backendServer";
-import { catalogEntry, catalogResponse } from "@/testing/catalogAxes";
+import { serveClientConfig } from "@/testing/backendServer";
+import { clientConfigResponse } from "@/testing/clientConfig";
 import { makeRouteCandidate } from "@/testing/routeFixtures";
 import {
   BASE,
@@ -44,10 +44,10 @@ import {
 } from "@/testing/spliceSession";
 import type { RouteCandidate } from "@/types/route";
 
-const CATALOG_WITHOUT_MIN_STRETCH = catalogResponse([catalogEntry({ axis_id: "axis_a", default_weight: 1 })]);
+const CATALOG_WITHOUT_MIN_STRETCH = clientConfigResponse();
 
 beforeEach(() => {
-  serveAxisCatalog(SPLICE_CATALOG);
+  serveClientConfig(SPLICE_CATALOG);
 });
 
 describe("入口", () => {
@@ -63,7 +63,7 @@ describe("入口", () => {
   });
 
   it("区間を割る下限を引けない間は始められず、始めても乗り換え先を作らない（較正と別の切り方で出さない）", async () => {
-    serveAxisCatalog(CATALOG_WITHOUT_MIN_STRETCH);
+    serveClientConfig(CATALOG_WITHOUT_MIN_STRETCH);
     const rendered = renderSplice();
 
     await startWithCatalog(rendered);

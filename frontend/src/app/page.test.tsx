@@ -9,7 +9,7 @@
  * 送ること、結果が出たら閉じていた「ルート結果」を開くこと、候補が「ルート結果」と地図の両方へ出て、選んだ候補が地図でも
  * 選ばれ、区間を持つかで周りの塗りが決まること、全消去は確認の窓で「消す」を押してから両方から消えること、候補がある間だけ
  * 条件のずれの印が点き全消去で消えること、走行条件の想定速度・出発時刻が生成と地図の道の詳細へ同じ値で渡ること、
- * 「条件」タブの負担の強さと「負担」タブの軸ごとの倍率が生成の要求に載ること、「評価で塗る」の未使用を分ける重み、「条件」タブで保存した条件が地図で置いた
+ * 「条件」タブの負担の強さと「負担」タブの軸ごとの倍率が生成の要求に載り、倍率×0の軸が「評価で塗る」で未使用になること、「条件」タブで保存した条件が地図で置いた
  * 出発地を持ち、呼び出すとその出発地から生成すること。
  *
  * ここで見ないもの: 子の部品は本物を描き、子が値をどう描くか（一覧の書式・印の色・天候の値）は各部品のテストが見る。
@@ -27,9 +27,7 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { heldReplies, onBackend, serveAxisCatalog } from "@/testing/backendServer";
-import { catalogEntry, catalogResponse } from "@/testing/catalogAxes";
-import { serveCostAxisCatalog } from "@/testing/costAxes";
+import { heldReplies, onBackend, serveCostAxisCatalog } from "@/testing/backendServer";
 import {
   FIRST,
   HERE,
@@ -49,7 +47,7 @@ import {
 } from "@/testing/homePage";
 import { mapOnScreen } from "@/testing/maplibre";
 import type { Coordinates } from "@/types/route";
-import type { AxisInspectorResult } from "@/features/map/regionApi";
+import { inspectorResult } from "@/testing/roadInspector";
 
 vi.mock("maplibre-gl", () => import("@/testing/maplibre"));
 
@@ -59,17 +57,9 @@ beforeEach(() => {
   jobs = serveHome();
 });
 
-/** 道の評価の応答（ここでは中身を見ない）。 */
-const INSPECTED_ROAD: AxisInspectorResult = {
-  highway: "residential",
-  tags: {},
-  values: { axes: [], composite_difficulty: { value: 40, covered_weight_fraction: 1 }, landcover: null },
-  lens: null,
-};
-
-/** 全部の道路をその軸で塗っているか。 */
-function paints(axisId: string): boolean {
-  return mapOnScreen().visibleLayerIds().includes(`road-tiles-${axisId}`);
+/** 全部の道路をそのレンズで塗っているか。 */
+function paints(lensId: string): boolean {
+  return mapOnScreen().visibleLayerIds().includes(`road-tiles-${lensId}`);
 }
 
 describe("ルートを作る", () => {
@@ -79,10 +69,10 @@ describe("ルートを作る", () => {
     expect(section("ルート結果")).toHaveAttribute("aria-expanded", "false");
 
     await user.click(screen.getByRole("button", { name: /^評価で塗る: / }));
-    await user.click(await screen.findByRole("radio", { name: /軸A/ }));
+    await user.click(await screen.findByRole("radio", { name: /登坂/ }));
     await user.click(screen.getByRole("checkbox", { name: "ルート後も周囲の道路を薄く塗る" }));
     await user.keyboard("{Escape}");
-    expect(paints("axis_a")).toBe(true);
+    expect(paints("ascent")).toBe(true);
 
     const job = heldReplies();
     jobs.answerWith(job.reply);
@@ -100,11 +90,11 @@ describe("ルートを作る", () => {
       expect.arrayContaining([FIRST.geometry.coordinates, SECOND.geometry.coordinates]),
     );
     expect(linesOn("route-selected")).toEqual([FIRST.geometry.coordinates]);
-    expect(paints("axis_a")).toBe(false);
+    expect(paints("ascent")).toBe(false);
 
     await user.click(candidateTabs()[1]);
     expect(linesOn("route-selected")).toEqual([SECOND.geometry.coordinates]);
-    expect(paints("axis_a")).toBe(true);
+    expect(paints("ascent")).toBe(true);
 
     await user.click(screen.getByRole("button", { name: "候補を全消去" }));
     expect(routeLinesOnMap()).toHaveLength(2);
@@ -133,11 +123,11 @@ describe("ルートを作る", () => {
 
   it("走行条件の想定速度と出発時刻を変えると、生成の要求と地図の道の詳細へ同じ値が渡る", async () => {
     const departure = new Date("2026-10-05T09:00:00+09:00");
-    // 道の評価は、送られた条件が走行条件と同じときだけ返す。
-    onBackend("POST", "/api/region/axis-inspector", ({ body }) => {
+    // 道の窓は、送られた条件が走行条件と同じときだけ返す。
+    onBackend("POST", "/api/region/road-inspector", ({ body }) => {
       const sent = body as { speed_kmh?: number; at?: string };
       return sent.speed_kmh === 25 && sent.at === departure.toISOString()
-        ? Response.json(INSPECTED_ROAD)
+        ? Response.json(inspectorResult())
         : Response.json({ detail: "条件が違う" }, { status: 400 });
     });
     const { user } = renderHome();
@@ -153,8 +143,8 @@ describe("ルートを作る", () => {
     serveRoadsAt([{ at: HERE, properties: { osm_way_id: 1, feature_key: "1" } }]);
     await user.click(screen.getByRole("button", { name: "パネルを閉じる" }));
     rightClickMap(HERE);
-    await user.click(await screen.findByRole("button", { name: "この道の評価を見る" }));
-    expect(await screen.findByRole("region", { name: "難易度" })).toBeInTheDocument();
+    await user.click(await screen.findByRole("button", { name: "この道の負担を見る" }));
+    expect(await screen.findByText("総合の負担 12秒/km")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "パネルを開く" }));
     jobs.respond([FIRST], LOOP_CONDITIONS);
     expect(await generate(user)).toMatchObject({ assumed_speed_kmh: 25, start_time: departure.toISOString() });
@@ -212,14 +202,13 @@ describe("ルートを作る", () => {
     expect((await generate(user)).cost_preference).toEqual({ strength: 1.5, multipliers: { vibration: 0 } });
   });
 
-  it("「評価で塗る」で未使用に分ける軸は、軸カタログの既定の重みで決まる", async () => {
-    serveAxisCatalog(
-      catalogResponse([
-        catalogEntry({ axis_id: "axis_a", label: "軸A", default_weight: 1 }),
-        catalogEntry({ axis_id: "axis_b", label: "軸B", default_weight: 0 }),
-      ]),
-    );
+  it("「負担」タブで倍率を×0にした軸は、「評価で塗る」で未使用になる", async () => {
     const { user } = renderHome();
+    await user.click(screen.getByRole("tab", { name: "負担" }));
+    await user.click(
+      within(await screen.findByRole("radiogroup", { name: "振動の倍率" })).getByRole("radio", { name: "×0" }),
+    );
+    await user.click(screen.getByRole("button", { name: "パネルを閉じる" }));
     /** 「未使用」を添えた選択肢の文字。 */
     const unusedAxes = async () => {
       await user.click(screen.getByRole("button", { name: /^評価で塗る: / }));
@@ -233,7 +222,7 @@ describe("ルートを作る", () => {
       return unused;
     };
     const unused = await unusedAxes();
-    expect(unused).toContain("軸B");
-    expect(unused).not.toContain("軸A");
+    expect(unused).toContain("振動");
+    expect(unused).not.toContain("登坂");
   });
 });

@@ -10,10 +10,10 @@
  *
  * 差し替えたもの: 費用の軸の一覧の応答（網の層）。保存はテスト環境の`localStorage`を本物のまま使う。
  */
+import { serveCostAxisCatalog } from "@/testing/backendServer";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { serveCostAxisCatalog } from "@/testing/costAxes";
 import type { Coordinates } from "@/types/route";
 
 import { useGenerationConditions } from "./useGenerationConditions";

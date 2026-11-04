@@ -6,7 +6,6 @@ import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/Popover/Popover";
 import { CompassNeedleIcon, RideZoomIcon } from "@/components/ui/icons/icons";
 import { ZoomInIcon, ZoomOutIcon } from "@/components/ui/icons/lucideIcons";
-import { useClientConfig } from "@/hooks/useClientConfig";
 import { normalizeDeg } from "@/lib/cardinalLabel";
 import { cn } from "@/lib/cn";
 import { LENS_LINK_CLASS, LENS_LINK_DESCRIPTION } from "@/lib/lensLink";

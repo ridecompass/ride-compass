@@ -1,17 +1,17 @@
 /**
- * `RoadInspectorPopup.tsx`——押した道の評価を取りに行き、軸ごとの効き方を出すこと。
+ * `RoadInspectorPopup.tsx`——押した道の負担を取りに行き、地図が塗る向きの総合・軸ごとの秒と元の事実を出すこと。
  *
  * ここで見ないもの:
- * - 評価を利用者のいまの重みで取りに行くこと → 受けた重みをそのまま取得の口へ渡す1行の委譲（testing.md「そのテストは
- *   要るか」の1問目）。重みを要求の項目へ載せることは`features/map/regionApi.test.ts`が見る
- * - 重み・走行の条件が変わったときに評価を取り直すか → `RoadInspectorPopup.refetch.test.tsx`
+ * - 負担を利用者のいまの値で取りに行くこと → 受けた値をそのまま取得の口へ渡す1行の委譲（testing.md「そのテストは
+ *   要るか」の1問目）。値を要求の項目へ載せることは`features/map/regionApi.test.ts`が見る
+ * - 利用者の値・走行の条件が変わったときに負担を取り直すか → `RoadInspectorPopup.refetch.test.tsx`
  */
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { setDebugEnabled } from "@/lib/debugLog";
-import { AXES, AXIS_COLORS, inspectorResult, openEvaluation, RIDE, serveInspector } from "@/testing/roadInspector";
-import { costAxisCatalog, costAxisEntry, serveCostAxisCatalog } from "@/testing/costAxes";
+import { inspectorResult, lensDirection, openInspection, RIDE, serveInspector } from "@/testing/roadInspector";
+import { costAxisCatalog, costAxisEntry } from "@/testing/costAxes";
 import materialCatalog from "@/types/generated/material-catalog.json";
 import RoadInspectorPopup from "./RoadInspectorPopup";
 import type { RoadSurfacePopupProperties } from "./roadFacts";
@@ -30,19 +30,15 @@ const SURFACED_ROAD: RoadSurfacePopupProperties = {
 };
 
 function renderPopup(properties: RoadSurfacePopupProperties = SURFACED_ROAD) {
-  return render(
-    <RoadInspectorPopup properties={properties} track={null} axes={AXES} axisColors={AXIS_COLORS} {...RIDE} />,
-  );
+  return render(<RoadInspectorPopup properties={properties} track={null} {...RIDE} />);
 }
 
 describe("RoadInspectorPopup", () => {
-  it("上の帯に地図の道の種類の名前と路面を出し、評価は押したときに取りに行く（クリックのたびに引かない）", () => {
+  it("上の帯に地図の道の種類の名前と路面を出し、負担は押したときに取りに行く（クリックのたびに引かない）", () => {
     render(
       <RoadInspectorPopup
         properties={SURFACED_ROAD}
         track={{ key: "residential", label: "住宅街の道", color: "#123456" }}
-        axes={AXES}
-        axisColors={AXIS_COLORS}
         {...RIDE}
       />,
     );
@@ -51,29 +47,29 @@ describe("RoadInspectorPopup", () => {
     const header = within(screen.getByRole("group", { name: "道の小窓の上の帯" }));
     expect(header.getByText("住宅街の道")).toBeInTheDocument();
     expect(header.getByText(SURFACE_LABEL)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "この道の評価を見る" })).toBeInTheDocument();
-    expect(screen.queryByRole("region")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "この道の負担を見る" })).toBeInTheDocument();
+    expect(screen.queryByText(/秒\/km/)).not.toBeInTheDocument();
   });
 
   it("費用の軸のレンズの値が届いたら、地図が塗る向きの総合と軸ごとの1kmあたりの代償の秒と、その元の事実を出す", async () => {
     const user = userEvent.setup();
-    serveCostAxisCatalog(costAxisCatalog(costAxisEntry("ascent", { label: "登坂" })));
-    const direction = (total: number, climb: number) => ({
-      total_seconds_per_km: total,
-      axes: [{ axis_id: "ascent", seconds_per_km: total }],
-      // 事実は名前と単位つきで届き、値の無い事実は届かない。
-      facts: [
-        { label: "一番急な登り", value: climb, unit: "%" },
-        { label: "向かい風", value: 1.5, unit: "m/s" },
-        { label: "止まる回数", value: 2, unit: "回/km" },
-      ],
-    });
+    const direction = (total: number, climb: number) =>
+      lensDirection(total, {
+        axes: [{ axis_id: "ascent", seconds_per_km: total }],
+        // 事実は名前と単位つきで届き、値の無い事実は届かない。
+        facts: [
+          { label: "一番急な登り", value: climb, unit: "%" },
+          { label: "向かい風", value: 1.5, unit: "m/s" },
+          { label: "止まる回数", value: 2, unit: "回/km" },
+        ],
+      });
     serveInspector(
-      inspectorResult({}, { painted: "against", along: direction(30, 12), against: direction(4, 0), surface: "舗装" }),
+      inspectorResult({ painted: "against", along: direction(30, 12), against: direction(4, 0), surface: "舗装" }),
+      costAxisCatalog(costAxisEntry("ascent", { label: "登坂" })),
     );
     renderPopup();
 
-    await openEvaluation(user);
+    await openInspection(user);
 
     expect(await screen.findByText("総合の負担 4秒/km")).toBeInTheDocument();
     expect(screen.getByText("逆向き")).toBeInTheDocument();
@@ -81,79 +77,12 @@ describe("RoadInspectorPopup", () => {
     expect(rows).toEqual(
       expect.arrayContaining(["登坂:4秒/km", "一番急な登り:0%", "向かい風:1.5m/s", "止まる回数:2回/km", "路面:舗装"]),
     );
-    expect(screen.queryByRole("region", { name: "難易度" })).not.toBeInTheDocument();
   });
 
   it("道に名前があれば、上の帯は名前で呼ぶ", () => {
     renderPopup({ ...SURFACED_ROAD, name: "明治通り" });
 
     expect(within(screen.getByRole("group", { name: "道の小窓の上の帯" })).getByText("明治通り")).toBeInTheDocument();
-  });
-
-  it("押した物の難易度の塊を出し、土地被覆は最も多いクラスのチップにする", async () => {
-    const user = userEvent.setup();
-    serveInspector(inspectorResult());
-    renderPopup();
-
-    await openEvaluation(user);
-
-    // 押した物（その倍率で地図が塗る区間か道1本）の値なので、地図の線の色と窓の値が一致する。
-    const pressed = within(await screen.findByRole("region", { name: "難易度" }));
-    expect(screen.getByRole("region", { name: "難易度" })).toHaveTextContent("難易度40.0/100");
-    expect(pressed.getByText("30.0")).toBeInTheDocument();
-
-    // チップを押すと割合の大きい順に開く。0%のクラス（水面・湿地・裸地・雪氷・草地）は行自体を作らない。
-    await user.click(pressed.getByRole("button", { name: "周囲の土地被覆（建物 50%）の内訳を表示" }));
-    const breakdown = within(screen.getByText("周囲の土地被覆").parentElement!);
-    expect(breakdown.getAllByRole("term").map((term) => term.textContent)).toEqual(["建物", "農地", "樹木"]);
-  });
-
-  it("評価はルート結果と同じ寄与度で出し、算出できない軸は並べない", async () => {
-    const user = userEvent.setup();
-    serveInspector(inspectorResult());
-    renderPopup();
-
-    await openEvaluation(user);
-
-    const way = within(await screen.findByRole("region", { name: "難易度" }));
-    // チップから開く詳細は、その軸の難易度をルート結果と同じ桁で出す。
-    await user.click(way.getByRole("button", { name: "見本の軸の詳細を表示" }));
-    expect(screen.getByText("この評価軸の難易度 57.8/100")).toBeInTheDocument();
-    // この道に値の出ない軸（勾配）はそもそも並ばない。
-    expect(way.queryByLabelText("勾配の詳細を表示")).not.toBeInTheDocument();
-  });
-
-  it("どの軸の寄与も0の道では、帯の代わりにどの軸も0だと言う（空の欄にしない）", async () => {
-    const user = userEvent.setup();
-    serveInspector(
-      inspectorResult({
-        axes: [
-          { axis_id: "axis_sample", difficulty: 0, contribution: 0 },
-          { axis_id: "night", difficulty: 0, contribution: 0 },
-        ],
-        composite_difficulty: { value: 0, covered_weight_fraction: 1 },
-      }),
-    );
-    renderPopup();
-
-    await openEvaluation(user);
-
-    const way = within(await screen.findByRole("region", { name: "難易度" }));
-    expect(way.getByText("どの評価軸も0（易しい）")).toBeInTheDocument();
-  });
-
-  it.each([
-    [0.8, ["重みの約80%ぶんの評価軸だけ（残りはこの走る条件で値が出せません）"]],
-    [0.996, []],
-  ])("合成に使えた重みの割合が%sなら、添える断りは%j（100%に丸まるなら添えない）", async (covered, notes) => {
-    const user = userEvent.setup();
-    serveInspector(inspectorResult({ composite_difficulty: { value: 40, covered_weight_fraction: covered } }));
-    renderPopup();
-
-    await openEvaluation(user);
-
-    const way = within(await screen.findByRole("region", { name: "難易度" }));
-    expect(way.queryAllByText(/^重みの約/).map((note) => note.textContent)).toEqual(notes);
   });
 
   it("属性は畳み、日本語の値だけを項目ごとに1度出し、英語の生の値と登録外のタグは「その他のタグ」にさらに畳む", async () => {
@@ -163,13 +92,13 @@ describe("RoadInspectorPopup", () => {
 
     const attributes = screen.getByText("この道の属性").closest("details")!;
     expect(screen.getByText(SURFACE.name)).not.toBeVisible();
-    // 畳みを開くと、評価を取る前からタイルの事実が読める。
+    // 畳みを開くと、負担を取る前からタイルの事実が読める。
     await user.click(screen.getByText("この道の属性"));
     expect(screen.getByText(SURFACE.name)).toBeVisible();
-    await openEvaluation(user);
+    await openInspection(user);
 
     const others = (await screen.findByText("その他のタグ")).closest("details")!;
-    // 道路種別は評価と一緒に届き、対訳で出す。タイルとタグの両方が持つ路面は1度だけ。
+    // 道路種別は負担と一緒に届き、対訳で出す。タイルとタグの両方が持つ路面は1度だけ。
     const facts = attributes.querySelector(":scope > dl")!;
     const labels = Array.from(facts.querySelectorAll("dt")).map((dt) => dt.textContent);
     expect(labels).toContain("道路種別");

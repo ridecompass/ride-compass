@@ -13,8 +13,8 @@ import { apiPath } from "@/lib/apiPath";
 
 describe("apiPath", () => {
   it("渡した名前を値で埋め、数値は文字列にする", () => {
-    expect(apiPath("/api/region/way-materials/{axis_id}/{z}/{x}/{y}", { axis_id: "wind", z: 14, x: 1, y: 2 })).toBe(
-      "/api/region/way-materials/wind/14/1/2",
+    expect(apiPath("/api/region/lens/{lens_id}/{z}/{x}/{y}", { lens_id: "ascent", z: 14, x: 1, y: 2 })).toBe(
+      "/api/region/lens/ascent/14/1/2",
     );
   });
 

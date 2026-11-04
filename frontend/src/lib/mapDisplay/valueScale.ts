@@ -12,20 +12,13 @@ function evaluationAnchors(ground: MapTheme): readonly string[] {
   return [semantic.evaluation_good, semantic.evaluation_mid, semantic.evaluation_bad, semantic.evaluation_extreme];
 }
 
-/** 凡例が段の境界を書く目盛り。 */
-interface MapLegendScale {
+/** 地図が値を塗る宣言。`boundaries`は段の境界で、凡例は同じ境界と`unit`で範囲を書く。`bandLabels`は段ごとの体感ラベル
+ * （件数が段の数と合わなければ数値の範囲だけ）。`ground`は色を載せる地の明るさ。段は`valueBands`だけが求める。 */
+export interface MapPaintDeclaration {
+  ground: MapTheme;
   boundaries: readonly number[];
   unit: string;
-}
-
-/** 地図が値を塗る宣言。`boundaries`は塗る値の目盛りの境界で、凡例は`legend`の同じ番号の境界で範囲を書く。
- * `bandLabels`は段ごとの体感ラベル（未設定なら数値の範囲だけ）。`ground`は色を載せる地の明るさ（省けば明るい地）。
- * 段は`valueBands`だけが求める。 */
-export interface MapPaintDeclaration {
-  ground?: MapTheme;
-  boundaries: readonly number[];
-  legend: MapLegendScale;
-  bandLabels?: readonly string[] | null;
+  bandLabels: readonly string[];
 }
 
 function hue2rgb(p: number, q: number, tIn: number): number {
@@ -96,10 +89,10 @@ export interface ValueBand extends MapColorLegendBand {
 /** 塗る宣言から段の並び（低い段から）を求める。鍵・範囲の文字・体感ラベル・色をここで一度に決める。体感ラベルは件数が
  * 段の数と合うときだけ添える（`bandLabelsForBandCount`）。 */
 export function valueBands(paint: MapPaintDeclaration): ValueBand[] {
-  const { boundaries, legend, bandLabels, ground } = paint;
-  const colors = interpolateColorStops(evaluationAnchors(ground ?? "light"), boundaries.length + 1);
+  const { boundaries, unit, bandLabels, ground } = paint;
+  const colors = interpolateColorStops(evaluationAnchors(ground), boundaries.length + 1);
   const labels = bandLabelsForBandCount(bandLabels, colors.length);
-  return buildRangeLegendBands(legend.boundaries, colors, legend.unit, labels, "").map((band, index) => ({
+  return buildRangeLegendBands(boundaries, colors, unit, labels).map((band, index) => ({
     ...band,
     lowerBound: index === 0 ? Number.NEGATIVE_INFINITY : boundaries[index - 1],
   }));

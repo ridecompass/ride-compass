@@ -35,13 +35,13 @@ export interface CostLensCatalog {
 }
 
 export interface CostAxisCatalog {
-  /** 費用の軸（体力の軸、続けて道の負担の軸）。定義がまだ無い間は0件で`loaded`。 */
+  /** 費用の軸（体力の軸、続けて道の負担の軸）。届くまで・失敗の間は0件。 */
   axes: readonly CostAxis[];
   /** 軸id→識別色（どの画面でも同じ軸は同じ色）。 */
   axisColors: Readonly<Record<string, string>>;
   /** 代償の内訳の、避け方の倍率で上乗せした秒の行の名前。 */
   avoidanceLabel: string;
-  /** 地図のレンズ。定義がまだ無い間・届くまではnull。 */
+  /** 地図のレンズ。届くまで・失敗の間はnull。 */
   lenses: CostLensCatalog | null;
   /** 取得が成功したか。falseの間は`axes`が空なので、今の軸と揃うことを要る処理（倍率を送る）はこれで未確定を区別する。 */
   loaded: boolean;
@@ -59,8 +59,7 @@ const EMPTY: CostAxisCatalog = {
 };
 const FAILED: CostAxisCatalog = { ...EMPTY, failed: true };
 
-export function costAxisCatalogFromResponse(response: CostAxisCatalogResponse | null): CostAxisCatalog {
-  if (response === null) return { ...EMPTY, loaded: true };
+export function costAxisCatalogFromResponse(response: CostAxisCatalogResponse): CostAxisCatalog {
   const axes = response.axes.map((entry): CostAxis => ({
     axisId: entry.axis_id,
     ledger: entry.ledger,

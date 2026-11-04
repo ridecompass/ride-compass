@@ -43,7 +43,7 @@ const EDIT_METRICS: readonly EditMetric[] = [
     label: "負担",
     digits: 0,
     unit: MINUTE_UNIT,
-    value: (route) => (route.penalty === null ? null : secondsToMinutes(route.penalty.total_seconds)),
+    value: (route) => secondsToMinutes(route.penalty.total_seconds),
   },
 ];
 

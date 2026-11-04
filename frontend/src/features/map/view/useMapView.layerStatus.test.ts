@@ -10,7 +10,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { TILE_VERSIONS_MISSING_NOTICE, TILE_ZOOM_TOO_WIDE_NOTICE } from "@/features/map/layers/mapLayers";
 import { onBackend } from "@/testing/backendServer";
-import { catalogResponse } from "@/testing/catalogAxes";
+import { clientConfigResponse } from "@/testing/clientConfig";
 import { chip, renderMapView, serve, VIEWPORT } from "@/testing/mapViewHook";
 
 /** 世代が届くまで要求できない、静的に宣言された層。 */
@@ -63,10 +63,10 @@ describe("useMapView のチップの取得の状態", () => {
   });
 
   it.each([
-    { name: "世代を持たない応答", catalog: () => Response.json(catalogResponse([])) },
+    { name: "世代を持たない応答", catalog: () => Response.json(clientConfigResponse()) },
     { name: "取得の失敗", catalog: () => new HttpResponse(null, { status: 500 }) },
   ])(
-    "タイルの世代で描くレイヤーは、軸カタログが届くまで読み込み中、届いても世代が無ければ失敗にする（$name）",
+    "タイルの世代で描くレイヤーは、画面の設定が届くまで読み込み中、届いても世代が無ければ失敗にする（$name）",
     async ({ catalog }) => {
       serve(catalog());
 

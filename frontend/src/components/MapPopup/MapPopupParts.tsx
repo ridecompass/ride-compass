@@ -6,7 +6,6 @@
 import type { ReactNode } from "react";
 
 import { PointIconSwatch } from "@/components/PointIconSwatch/PointIconSwatch";
-import { legendChipsClass } from "@/components/ui/AxisLegend/axisLegend";
 import { Button } from "@/components/ui/Button/Button";
 import { OffRoadDistanceIcon, SelectedSpotIcon } from "@/components/ui/icons/lucideIcons";
 import { textVariants } from "@/components/ui/Text/Text";

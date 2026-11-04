@@ -14,8 +14,8 @@ import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 
-import { inTurn, onBackend } from "@/testing/backendServer";
-import { serveCostAxisCatalog, TWO_COST_AXES } from "@/testing/costAxes";
+import { inTurn, onBackend, serveCostAxisCatalog } from "@/testing/backendServer";
+import { TWO_COST_AXES } from "@/testing/costAxes";
 import type { CostPreference } from "@/types/route";
 
 import RouteSettingsPanel from "./RouteSettingsPanel";
@@ -42,14 +42,6 @@ function renderPanel(initial: CostPreference = { strength: 1, multipliers: {} })
 const levelsOf = async (name: string) => within(await screen.findByRole("radiogroup", { name }));
 
 describe("費用の軸の一覧", () => {
-  it("定義がまだ無い間は選べないことを案内し、取れなかったとは知らせない", async () => {
-    serveCostAxisCatalog(null);
-    renderPanel();
-
-    expect(await screen.findByText(/まだ選べません/)).toBeInTheDocument();
-    expect(screen.queryByRole("status")).toBeNull();
-  });
-
   it("取れなければ標準の倍率で作ることを知らせ、再試行で取れたら軸ごとの倍率を出す", async () => {
     onBackend("GET", "/api/cost-axes", inTurn(new Response(null, { status: 503 }), Response.json(TWO_COST_AXES)));
     renderPanel();

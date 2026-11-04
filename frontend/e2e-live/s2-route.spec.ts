@@ -14,7 +14,7 @@ interface Segment {
 
 test("S2 ルート生成（生成後）", async ({ page }) => {
   const catalog = await fetchCatalog();
-  expect(catalog.axes.length, "公開軸が1件も無い").toBeGreaterThan(0);
+  expect(catalog.lenses.length, "レンズが1つも無い").toBeGreaterThan(0);
   const statsBefore = await externalErrors();
   // デバッグログは`[map:error]`を読むため。
   const watch = await openLive(page, { storedState: { "ridecompass:debug-enabled": "1" } });
@@ -79,19 +79,19 @@ test("S2 ルート生成（生成後）", async ({ page }) => {
     );
   }
 
-  // E: 公開軸のレンズを1つずつ選ぶ → ルートの区間のうち、その軸の値で塗られた（「データなし」でない）ものが1つ以上。
+  // E: レンズを1つずつ選ぶ → ルートの区間のうち、そのレンズの値で塗られた（「データなし」でない）ものが1つ以上。
   // 区間ごとの値の有無は実データで変わるので、全区間が欠けたときだけ落とす。
   const originalLens = await currentLensLabel(page, catalog);
-  for (const axis of catalog.axes) {
+  for (const lens of catalog.lenses) {
     await branch(
       page,
-      `ルートをレンズ「${axis.label}」で塗る`,
+      `ルートをレンズ「${lens.label}」で塗る`,
       async () => {
-        await chooseLens(page, axis.label);
+        await chooseLens(page, lens.label);
         await settleMap(page);
         const { drawn, withValue } = await routeSegmentsPainted(page);
-        expect.soft(drawn, `「${axis.label}」: ルートの区間が描かれていない`).toBeGreaterThan(0);
-        expect.soft(withValue, `「${axis.label}」: ルートの区間が全部「データなし」`).toBeGreaterThan(0);
+        expect.soft(drawn, `「${lens.label}」: ルートの区間が描かれていない`).toBeGreaterThan(0);
+        expect.soft(withValue, `「${lens.label}」: ルートの区間が全部「データなし」`).toBeGreaterThan(0);
       },
       () => chooseLens(page, originalLens),
     );

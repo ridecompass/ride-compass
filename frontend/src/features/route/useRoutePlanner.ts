@@ -8,7 +8,6 @@ import {
   type RouteOutcomeKind,
 } from "@/features/route/useRouteGeneration";
 import { useRouteResults } from "@/features/route/useRouteResults";
-import { useClientConfig } from "@/hooks/useClientConfig";
 import { useSpliceSession } from "@/features/route/useSpliceSession";
 
 /** 生成の入力のうち、ページから渡すもの（候補の有無と生成の結果の受け取り先は結果の側がつなぐ）。 */
@@ -26,7 +25,6 @@ interface RoutePlannerInputs extends Pick<
  * 一緒に終わる）。乗り換えで作り始めると、直前の生成の失敗の文言を残さない。
  */
 export function useRoutePlanner({ conditions, onOutcome, ...generationInputs }: RoutePlannerInputs) {
-  const axisCatalog = useClientConfig();
   const results = useRouteResults();
   const { replaceWithGenerated, addEdit, selectReused, clear: clearResults } = results;
 

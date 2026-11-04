@@ -1,4 +1,4 @@
-// 地図の色分けの凡例の段（ラベル・色・安定キーだけ）と、段の範囲の書き方。専用配信の軸の値はfeature-stateで入り、
+// 地図の色分けの凡例の段（ラベル・色・安定キーだけ）と、段の範囲の書き方。レンズの材料はfeature-stateで入り、
 // MapLibreのfilterはfeature-stateを読めないため、段の表示ON/OFFは色の式の側で透明にする——そのため述語を持たない。
 
 import { mapDisplay } from "@/types/generated/mapDisplay";
@@ -16,7 +16,7 @@ export interface MapColorLegendBand {
 
 /** 段階の安定キー。**ルート確定前の全道路の塗りとルート確定後のルート線が同じ段階を同じ
  * キーで指す**ため、片方で非表示にした段階はもう片方でも非表示のまま引き継がれる
- * （どちらも同じ`map_paint.thresholds`で同じ順に段階を並べる）。 */
+ * （どちらも同じレンズの`thresholds`で同じ順に段階を並べる）。 */
 function legendBandKey(index: number): string {
   return `step-${index}`;
 }
@@ -24,7 +24,7 @@ function legendBandKey(index: number): string {
 /** 値が無い地物（取得済みだが値が無い）の段階キー。数値段階と同じ仕組みで非表示にできる。 */
 export const LEGEND_NO_DATA_KEY = "nodata";
 
-/** 値が無い地物の受け皿の行。道の属性・評価軸（ルート前）・ルートの線のどれでも**同じ行**（鍵・呼び方・色）にする
+/** 値が無い地物の受け皿の行。道の属性・レンズ（ルート前）・ルートの線のどれでも**同じ行**（鍵・呼び方・色）にする
  * ——同じ鍵の行が凡例ごとに違う名前で出ると、ルートを出す前と後で同じ行が別物に見える。 */
 export const NO_DATA_LEGEND_BAND: MapColorLegendBand = {
   key: LEGEND_NO_DATA_KEY,
@@ -36,8 +36,7 @@ export const NO_DATA_LEGEND_BAND: MapColorLegendBand = {
 /** 走行方位で値が決まらない地物の段階キー。 */
 export const LEGEND_UNDETERMINED_KEY = "undetermined";
 
-/** 走行方位で値が決まらない地物の行。値が無い行（`NO_DATA_LEGEND_BAND`）とは別の色で、配信がその地物を返しうる軸
- * （軸カタログの`dynamic_way_value_undetermined_by_bearing`）の凡例にだけ出す。 */
+/** 走行方位で値が決まらない地物の行。値が無い行（`NO_DATA_LEGEND_BAND`）とは別の色で、レンズの凡例に出す。 */
 export const UNDETERMINED_LEGEND_BAND: MapColorLegendBand = {
   key: LEGEND_UNDETERMINED_KEY,
   ...mapDisplay.legendSharedRows.undetermined,
@@ -65,21 +64,20 @@ function rangeStepLabel(lower: number | null, upper: number | null, unit: string
 }
 
 /** 境界（昇順、段の数−1件）と色（段の数ぶん）から凡例の段を組む。`labels`（段の数ぶん）があれば、範囲の前に体感ラベル
- * を添える（例:「強い向かい風[2〜6m/s]」）。無ければ範囲の前に`rangePrefix`を置く。`lowest`は最初の段の下限で、
+ * を添える（例:「強い向かい風[2〜6m/s]」）。無ければ範囲だけを書く。`lowest`は最初の段の下限で、
  * それより下を塗らない段の並びが渡す（無ければ最初の段は「〜未満」と書く）。 */
 export function buildRangeLegendBands(
   boundaries: readonly number[],
   colors: readonly string[],
   unit: string,
   labels: readonly string[] | undefined,
-  rangePrefix = "",
   lowest: number | null = null,
 ): MapColorLegendBand[] {
   return colors.map((color, index) => {
     const lower = index === 0 ? lowest : boundaries[index - 1];
     const upper = index === boundaries.length ? null : boundaries[index];
     const rangeLabel = rangeStepLabel(lower, upper, unit);
-    const label = labels ? `${labels[index]}[${rangeLabel}]` : `${rangePrefix}${rangeLabel}`;
+    const label = labels ? `${labels[index]}[${rangeLabel}]` : rangeLabel;
     return { key: legendBandKey(index), label, color };
   });
 }

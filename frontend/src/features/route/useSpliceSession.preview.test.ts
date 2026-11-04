@@ -14,7 +14,7 @@
 import { act } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { serveAxisCatalog } from "@/testing/backendServer";
+import { serveClientConfig } from "@/testing/backendServer";
 import {
   BASE,
   BASIS,
@@ -35,7 +35,7 @@ let evaluations: ReturnType<typeof serveSpliceEvaluations>;
 
 beforeEach(() => {
   evaluations = serveSpliceEvaluations();
-  serveAxisCatalog(SPLICE_CATALOG);
+  serveClientConfig(SPLICE_CATALOG);
 });
 
 describe("差分を見る", () => {

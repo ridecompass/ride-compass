@@ -8,7 +8,7 @@
 import { describe, expect, it } from "vitest";
 
 import { routeStretches } from "@/lib/routeDistance";
-import { roadClass, roadMapLayer } from "@/testing/catalogAxes";
+import { roadClass, roadMapLayer } from "@/testing/clientConfig";
 import { makeRouteSegment } from "@/testing/routeFixtures";
 
 import {

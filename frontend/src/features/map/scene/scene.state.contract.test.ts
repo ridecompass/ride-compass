@@ -2,10 +2,10 @@
 /** 画面の状態を地図へ伝えたとき、**最後にどうなっているか**。
  *
  * 入口は本番と同じ`sceneInputsFrom`→`buildMapScene`→`applyScene`の1本で、面・道路の線・点・
- * 評価軸・気象・ルートのすべてがここを通る。
+ * レンズ・気象・ルートのすべてがここを通る。
  *
  * ここで見ないもの:
- * - 評価軸の線 → `scene.axisLines.contract.test.ts`
+ * - レンズの線 → `scene.axisLines.contract.test.ts`
  * - 出せるものを全部出した状態で見る、レイヤーを横断する要求 → `scene.allLayers.contract.test.ts`
  */
 import { describe, expect, it } from "vitest";
@@ -13,7 +13,6 @@ import { describe, expect, it } from "vitest";
 import { LIBERTY_POI_LAYERS } from "@/testing/libertyPoiLayers";
 import { evaluateExpression, matchesFilter } from "@/testing/mapExpressions";
 import { createRecordingMap, type StyleLayer } from "@/testing/mapTrace/recordingMap";
-import { catalogEntry } from "@/testing/catalogAxes";
 import { rebuild, ROAD_LAYERS, roadLayerId, shown } from "@/testing/sceneContract";
 import { AREA_SOURCE_ID } from "@/features/map/scene/groups/areaRasters";
 import { POINT_TILE_SOURCES, pointAxisKey } from "@/features/map/scene/groups/points";
@@ -23,14 +22,13 @@ import { applyScene, sceneInputsFrom } from "@/features/map/scene/applyToMap";
 import { sceneState } from "@/testing/sceneState";
 import { buildMapScene } from "@/features/map/scene/buildScene";
 import { sceneLayerId } from "@/features/map/scene/sceneBuilders";
-import { routeStyleModesFromCatalogAxes } from "@/lib/mapDisplay/routeStyleModes";
+import { LENS_NEUTRAL_COLOR, UNSELECTED_LENS_ID } from "@/lib/mapDisplay/routeStyleModes";
 import { costLensPaint } from "@/lib/mapDisplay/costLensPaint";
 import { valueBands } from "@/lib/mapDisplay/valueScale";
 import { costRouteStyleModes } from "@/features/map/costLens";
 import { costAxisCatalogFromResponse } from "@/hooks/useCostAxisCatalog";
 import { costAxisCatalog, costAxisEntry } from "@/testing/costAxes";
 import { mapDisplay } from "@/types/generated/mapDisplay";
-import palette from "@/types/generated/palette.json";
 import { penaltyFields } from "@/testing/routeFixtures";
 
 const areaLayerId = (role: keyof typeof AREA_SOURCE_ID) => sceneLayerId(AREA_SOURCE_ID[role], role);
@@ -142,7 +140,6 @@ describe("状態を地図へ伝えた結果", () => {
     // 北緯35.6度の上を東へ進む、長さ1kmの区間を2つつないだルート。
     const segment = (from: number, to: number) => ({
       distance_km: 1,
-      penalty: null,
       start_longitude: from,
       start_latitude: 35.6,
       end_longitude: to,
@@ -198,10 +195,18 @@ describe("状態を地図へ伝えた結果", () => {
       }
     });
 
-    // 勾配は区間の平均だと登って下る区間が平坦の色になるので、backendが続く坂の斜度の欄を名指す。
+    /** 選んだルートの細い線の、区間ごとの色。 */
+    const detailColors = (handle: ReturnType<typeof createRecordingMap>["handle"]) => {
+      const layer = handle.layer(handle.layerOrder().find((id) => id.endsWith("-detailLine"))!)!;
+      const { features } = handle.sourceContent(layer.source!)!.data as {
+        features: { properties: Record<string, unknown> }[];
+      };
+      return features.map((feature) => evaluateExpression(layer.paint["line-color"], feature.properties));
+    };
+
     it.each([
       ["総合のレンズ", "total", ["軽い", "重い", "重い"]],
-      ["レンズを選んでいないとき", "difficulty", ["軽い", "重い", "重い"]],
+      ["レンズを選んでいないとき", UNSELECTED_LENS_ID, ["軽い", "重い", "重い"]],
       ["軸のレンズ", "vibration", ["軽い", "重い", "軽い"]],
     ] as const)("%s（%s）は、区間の1kmあたりの代償の秒をそのレンズの段で塗る", (_, lens, expected) => {
       // どの段も境目は1kmあたり10秒。区間は2kmずつで、1kmあたり 前: 登坂2・振動2（回避指定300）、中: 振動15、後: 登坂15。
@@ -221,7 +226,7 @@ describe("状態を地図へ伝えた結果", () => {
         sceneState({
           look: { layerVisibility: { route: true }, lens },
           catalog: {
-            routeStyleModes: [...costRouteStyleModes(catalog, "light"), ...routeStyleModesFromCatalogAxes([])],
+            routeStyleModes: costRouteStyleModes(catalog, "light"),
           },
           routes: [
             {
@@ -237,54 +242,28 @@ describe("状態を地図へ伝えた結果", () => {
         }),
       );
 
-      const layer = handle.layer(handle.layerOrder().find((id) => id.endsWith("-detailLine"))!)!;
-      const { features } = handle.sourceContent(layer.source!)!.data as {
-        features: { properties: Record<string, unknown> }[];
-      };
       const colorOf = Object.fromEntries(
         valueBands(costLensPaint({ lens: bands }, "light")).map((band, index) => [
           bands.band_labels[index],
           band.color,
         ]),
       );
-      expect(features.map((feature) => evaluateExpression(layer.paint["line-color"], feature.properties))).toEqual(
-        expected.map((label) => colorOf[label]),
-      );
+      expect(detailColors(handle)).toEqual(expected.map((label) => colorOf[label]));
     });
 
-    it.each([
-      ["material_values", { material_values: { grade: -5 }, sustained_gradient_percent: 5 }],
-      ["sustained_gradient_percent", { material_values: { grade: 5 }, sustained_gradient_percent: -5 }],
-    ] as const)(
-      "生値を塗るレンズは、backendが名指す区間の欄（%s）の値でルート線を塗る（負の値は下りの色）",
-      (field, values) => {
-        const axis = catalogEntry({
-          axis_id: "slope",
-          map_paint: {
-            value: { kind: "signed_material", material: "grade", route_segment_field: field },
-            thresholds: [-2, 2],
-            legend: { boundaries: [-2, 2], unit: "%" },
-          },
-        });
-        const { map, handle } = createRecordingMap();
-        rebuild(
-          map,
-          sceneState({
-            look: { layerVisibility: { route: true }, lens: "slope" },
-            catalog: { routeStyleModes: routeStyleModesFromCatalogAxes([axis]) },
-            routes: [{ ...route, segments: [{ ...segment(139.7, 139.72), ...values }] }] as never,
-            selectedRouteId: "a",
-          }),
-        );
+    it("費用の軸の一覧が届く前（モードが0件）も、ルート線を値に依らず中立色の1色で引く", () => {
+      const { map, handle } = createRecordingMap();
+      rebuild(
+        map,
+        sceneState({
+          look: { layerVisibility: { route: true } },
+          routes: [{ ...route, segments: [segment(139.7, 139.71), segment(139.71, 139.72)] }] as never,
+          selectedRouteId: "a",
+        }),
+      );
 
-        const layer = handle.layer(handle.layerOrder().find((id) => id.endsWith("-detailLine"))!)!;
-        const { features } = handle.sourceContent(layer.source!)!.data as {
-          features: { properties: Record<string, unknown> }[];
-        };
-        expect(evaluateExpression(layer.paint["line-color"], features[0].properties)).toBe(
-          palette.semantic.signed_descent,
-        );
-      },
-    );
+      const neutral = evaluateExpression(["to-color", LENS_NEUTRAL_COLOR], {});
+      expect(detailColors(handle)).toEqual([neutral, neutral]);
+    });
   });
 });

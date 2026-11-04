@@ -1,22 +1,23 @@
-// 押した道の詳細（`features/map/MapView/RoadInspectorPopup.tsx`）へ渡す軸・走行の条件と、評価の応答（backend
-// `POST /api/region/axis-inspector`）を組み立て、評価を開く道具。
+// 押した道の詳細（`features/map/MapView/RoadInspectorPopup.tsx`）へ渡す走行の条件と、道の窓の応答（backend
+// `POST /api/region/road-inspector`）を組み立て、負担を開く道具。
 import { screen } from "@testing-library/react";
 import type { UserEvent } from "@testing-library/user-event";
 
-import { catalogAxisFromEntry, type CatalogAxis } from "@/lib/catalogAxis";
-import { onBackend } from "@/testing/backendServer";
-import { catalogEntry } from "@/testing/catalogAxes";
-import type { AxisInspectorResult } from "@/features/map/regionApi";
+import { onBackend, serveCostAxisCatalog } from "@/testing/backendServer";
+import { TWO_COST_AXES } from "@/testing/costAxes";
+import type { RoadInspection } from "@/features/map/regionApi";
 import { STANDARD_COST_PREFERENCE } from "@/lib/costPreference";
+import type { CostAxisCatalogResponse } from "@/types/route";
 
-const INSPECTOR = "/api/region/axis-inspector";
-export const serveInspector = (result: AxisInspectorResult) =>
-  onBackend("POST", INSPECTOR, () => Response.json(result));
+type LensInspection = RoadInspection["lens"];
+type LensDirection = NonNullable<LensInspection["along"]>;
 
-const axis = (axisId: string, label: string, description: string): CatalogAxis =>
-  catalogAxisFromEntry(catalogEntry({ axis_id: axisId, label, description }));
-export const AXES = [axis("axis_sample", "見本の軸", "車の通行量の説明"), axis("night", "夜間", "夜間の暗さの説明")];
-export const AXIS_COLORS: Record<string, string> = { axis_sample: "#111111", night: "#222222" };
+/** 道の窓の応答を返す。負担の名前は費用の軸の一覧から引くので、一覧（既定は`TWO_COST_AXES`）も返す。 */
+export function serveInspector(result: RoadInspection, costAxes: CostAxisCatalogResponse = TWO_COST_AXES) {
+  serveCostAxisCatalog(costAxes);
+  return onBackend("POST", "/api/region/road-inspector", () => Response.json(result));
+}
+
 /** 地図がいつも渡す走行の条件（押した点のタイル込み）と利用者の値（標準）。 */
 export const RIDE = {
   costPreference: STANDARD_COST_PREFERENCE,
@@ -30,41 +31,19 @@ export const RIDE = {
   },
 };
 
-export const openEvaluation = (user: UserEvent) =>
-  user.click(screen.getByRole("button", { name: "この道の評価を見る" }));
+export const openInspection = (user: UserEvent) =>
+  user.click(screen.getByRole("button", { name: "この道の負担を見る" }));
 
-/** 押したフィーチャーの評価を差し替えた応答。 */
-export function inspectorResult(
-  values: Partial<AxisInspectorResult["values"]> = {},
-  lens: AxisInspectorResult["lens"] = null,
-): AxisInspectorResult {
+/** 1つの向きの負担。軸ごとの秒と元の事実は、見たい呼び出し側が書く。 */
+export function lensDirection(totalSecondsPerKm: number, overrides: Partial<LensDirection> = {}): LensDirection {
+  return { total_seconds_per_km: totalSecondsPerKm, axes: [], facts: [], ...overrides };
+}
+
+/** 道の向きを塗る道の応答。レンズの値は一部だけを上書きできる。 */
+export function inspectorResult(lens: Partial<LensInspection> = {}): RoadInspection {
   return {
     highway: "residential",
     tags: { lit: "yes", name: "明治通り" },
-    values: { ...pressedValues(), ...values },
-    lens,
-  };
-}
-
-const NO_LANDCOVER = {
-  water_percent: 0,
-  trees_percent: 0,
-  flooded_veg_percent: 0,
-  crops_percent: 0,
-  built_percent: 0,
-  bare_percent: 0,
-  snow_ice_percent: 0,
-  rangeland_percent: 0,
-};
-
-function pressedValues(): AxisInspectorResult["values"] {
-  return {
-    axes: [
-      { axis_id: "axis_sample", difficulty: 57.8, contribution: 30 },
-      { axis_id: "night", difficulty: 20, contribution: 10 },
-      { axis_id: "gradient", difficulty: null, contribution: null },
-    ],
-    composite_difficulty: { value: 40, covered_weight_fraction: 0.8 },
-    landcover: { ...NO_LANDCOVER, trees_percent: 20, crops_percent: 30, built_percent: 50 },
+    lens: { painted: "along", along: lensDirection(12), against: lensDirection(3), surface: null, ...lens },
   };
 }

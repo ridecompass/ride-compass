@@ -1,5 +1,5 @@
-// 道のりのグラフ（`features/route/RouteProfile/RouteProfile.tsx`）を描く足場。軸カタログ（坂・路面の2軸と、路面の種類・トンネルの
-// 道の層）の応答を置き、東へ1kmずつ進む区間と、既定の受け口を渡した図を組む。`RouteProfile.test.tsx`と、「表示」の図を見る
+// 道のりのグラフ（`features/route/RouteProfile/RouteProfile.tsx`）を描く足場。画面の設定（路面の種類・トンネルの道の層）の
+// 応答を置き、東へ1kmずつ進む区間と、既定の受け口を渡した図を組む。`RouteProfile.test.tsx`と、「表示」の図を見る
 // `RouteProfile.layers.test.tsx`が使う。
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -8,26 +8,25 @@ import { vi } from "vitest";
 
 import RouteProfile from "@/features/route/RouteProfile/RouteProfile";
 import { FACT_DISPLAY_NAME } from "@/lib/screenNames";
-import { serveAxisCatalog } from "@/testing/backendServer";
-import { catalogEntry, catalogResponse, roadClass, roadClassCatalog, roadMapLayer } from "@/testing/catalogAxes";
+import { serveClientConfig } from "@/testing/backendServer";
+import { clientConfigResponse, roadClass, roadClassCatalog, roadMapLayer } from "@/testing/clientConfig";
 import { makeRouteSegment, penaltyFields } from "@/testing/routeFixtures";
 import type { RouteSegmentDetail } from "@/types/route";
 
-const ENTRIES = [catalogEntry({ axis_id: "axis_a", label: "坂" }), catalogEntry({ axis_id: "axis_b", label: "路面" })];
 const SURFACE_ROAD_CLASSES = [
   roadClass("paved", { label: "舗装", color: "#111111" }),
   roadClass("gravel", { label: "砂利・未舗装", color: "#222222" }),
 ];
-/** 道の区分の層（軸カタログの応答の`road_classes.map_layers`）。区間の小窓のテストは、ここから選んでいる層を組む。 */
+/** 道の区分の層（画面の設定の応答の`road_classes.map_layers`）。区間の小窓のテストは、ここから選んでいる層を組む。 */
 const ROAD_LAYERS = [
   roadMapLayer("surface", { label: "路面の種類", has_no_data: true, classes: SURFACE_ROAD_CLASSES }),
   roadMapLayer("tunnel", { label: "トンネル", classes: [roadClass("tunnel", { label: "トンネル" })] }),
 ];
 export const surfaceColor = (key: string) => SURFACE_ROAD_CLASSES.find((roadClass) => roadClass.key === key)!.color;
 
-/** 軸カタログの応答を置く（テストのファイルの`beforeEach`で呼ぶ）。 */
+/** 画面の設定の応答を置く（テストのファイルの`beforeEach`で呼ぶ）。 */
 export function serveProfileCatalog() {
-  serveAxisCatalog(catalogResponse(ENTRIES, { road_classes: roadClassCatalog({ map_layers: ROAD_LAYERS }) }));
+  serveClientConfig(clientConfigResponse({ road_classes: roadClassCatalog({ map_layers: ROAD_LAYERS }) }));
 }
 
 /** 道のりのグラフが負担を積む費用の軸。 */

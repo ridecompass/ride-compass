@@ -56,20 +56,17 @@ describe("editDifference", () => {
     expect(deltasOf(editDifference(origin, edited).metrics)).toEqual({ 距離: 1.5, 所要: -5, 負担: -4 });
   });
 
-  it("どちらかに所要時間・負担の内訳が無ければ、その差はnull", () => {
+  it("どちらかに所要時間が無ければ、その差はnull", () => {
     const withValues = route("ABCDEF", {
       estimated_duration_seconds: 3600,
       penalty: { axis_seconds: { ascent: 300 }, avoidance_seconds: 0, total_seconds: 300 },
     });
-    const withoutValues = route("ABQDEF", { estimated_duration_seconds: null, penalty: null });
+    const withoutValues = route("ABQDEF", { estimated_duration_seconds: null });
     for (const [origin, edited] of [
       [withValues, withoutValues],
       [withoutValues, withValues],
     ]) {
-      expect(deltasOf(editDifference(origin, edited).metrics)).toMatchObject({
-        所要: null,
-        負担: null,
-      });
+      expect(deltasOf(editDifference(origin, edited).metrics)).toMatchObject({ 所要: null });
     }
   });
 

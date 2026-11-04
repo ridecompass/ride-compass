@@ -17,13 +17,12 @@ import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { serveAxisCatalog } from "@/testing/backendServer";
-import { serveCostAxisCatalog } from "@/testing/costAxes";
+import { serveClientConfig, serveCostAxisCatalog } from "@/testing/backendServer";
 import { makeRouteSegment } from "@/testing/routeFixtures";
-import { CATALOG_RESPONSE, FAST, SLOW, renderOutcome, resultsOf, route, type Splice } from "@/testing/routeOutcome";
+import { FAST, SLOW, renderOutcome, resultsOf, route, type Splice } from "@/testing/routeOutcome";
 
 beforeEach(() => {
-  serveAxisCatalog(CATALOG_RESPONSE);
+  serveClientConfig();
   serveCostAxisCatalog();
 });
 

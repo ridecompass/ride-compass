@@ -188,19 +188,13 @@ describe("RouteSplicePanel 指標", () => {
       penalty: penalty({ width: 600 }, 600),
     });
     renderPanel({
-      displayed: { ...DISPLAYED, estimated_duration_seconds: null, penalty: null },
+      displayed: { ...DISPLAYED, estimated_duration_seconds: null },
       appliedCount: 1,
       preview,
     });
 
-    const rows = ["所要", "負担"].map((label) => {
-      const { base, after, delta } = metric(label);
-      return [base.textContent, after.textContent, delta.textContent];
-    });
-    expect(rows).toEqual([
-      ["—", "25分", ""],
-      ["—", "10分", ""],
-    ]);
+    const { base, after, delta } = metric("所要");
+    expect([base.textContent, after.textContent, delta.textContent]).toEqual(["—", "25分", ""]);
   });
 });
 

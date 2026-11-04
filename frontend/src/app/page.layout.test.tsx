@@ -74,8 +74,8 @@ describe("画面の枠", () => {
 
     expect(await canRun("絞り込みをすべて解除")).toBe(false);
     await user.click(screen.getByRole("button", { name: /^評価で塗る: / }));
-    await user.click(await screen.findByRole("radio", { name: /軸A/ }));
-    await user.click(screen.getByRole("button", { name: "軸Aの凡例" }));
+    await user.click(await screen.findByRole("radio", { name: /登坂/ }));
+    await user.click(screen.getByRole("button", { name: "登坂の凡例" }));
     await user.click(await screen.findByRole("checkbox", { name: "凡例の全段階をまとめて表示/非表示" }));
     await user.keyboard("{Escape}");
     expect(await canRun("絞り込みをすべて解除")).toBe(false);
@@ -290,13 +290,13 @@ describe("画面の枠", () => {
     expect(screen.getByRole("region", { name: "俯瞰図" })).toBeInTheDocument();
   });
 
-  it("ヘッダーの「未取得」に、現在地・軸の一覧・警報の取れないものが並ぶ。「現在地に移動」が取れなければ地図の上に理由を出す", async () => {
+  it("ヘッダーの「未取得」に、現在地・画面の設定・警報の取れないものが並ぶ。「現在地に移動」が取れなければ地図の上に理由を出す", async () => {
     installGeolocation(null);
-    onBackend("GET", "/api/axis-catalog", () => Response.json({ detail: "失敗" }, { status: 502 }));
+    onBackend("GET", "/api/client-config", () => Response.json({ detail: "失敗" }, { status: 502 }));
     onBackend("GET", "/api/weather/warnings", () => Response.json({ detail: "失敗" }, { status: 502 }));
     const { user } = renderHome();
     const missing = () => screen.getByRole("button", { name: /を取得できていません。押すと/ });
-    await waitFor(() => expect(missing()).toHaveAccessibleName(/現在地.*評価軸の一覧|評価軸の一覧.*現在地/));
+    await waitFor(() => expect(missing()).toHaveAccessibleName(/現在地.*画面の設定|画面の設定.*現在地/));
     expect(missing()).not.toHaveAccessibleName(/警報/);
 
     await user.click(screen.getByRole("button", { name: "現在地に移動" }));

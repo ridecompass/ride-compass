@@ -19,9 +19,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { GenerationConditionsSnapshot, SavedCondition } from "@/features/route/savedConditions";
-import { serveAxisCatalog } from "@/testing/backendServer";
-import { serveCostAxisCatalog } from "@/testing/costAxes";
-import { catalogEntry, catalogResponse } from "@/testing/catalogAxes";
+import { serveClientConfig, serveCostAxisCatalog } from "@/testing/backendServer";
 
 import SavedConditionsPanel, { SaveConditionsButton } from "./SavedConditionsPanel";
 
@@ -79,12 +77,7 @@ async function openSaveDialog() {
 }
 
 beforeEach(() => {
-  serveAxisCatalog(
-    catalogResponse([
-      catalogEntry({ axis_id: "axis_a", label: "軸A", default_weight: 1 }),
-      catalogEntry({ axis_id: "axis_b", label: "軸B", default_weight: 1 }),
-    ]),
-  );
+  serveClientConfig();
   serveCostAxisCatalog();
 });
 

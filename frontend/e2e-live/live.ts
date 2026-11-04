@@ -1,7 +1,7 @@
 import { expect, type Page, type Response } from "@playwright/test";
 import { VectorTile } from "@mapbox/vector-tile";
 import { PbfReader } from "pbf";
-import type { AxisCatalogResponse } from "@/types/route";
+import type { ClientConfigResponse, CostAxisCatalogResponse } from "@/types/route";
 import regionTileConfig from "@/types/generated/region-tile-config.json";
 import { lonLatToTileIndex } from "@/features/map/layers/webMercatorTile";
 import { INTRO_CLOSED, MOBILE_VIEWPORT, installMapFinder, seedStoredState } from "../e2e/fixtures";
@@ -20,10 +20,39 @@ export const LIVE_POINT = (() => {
   return { latitude, longitude };
 })();
 
-export async function fetchCatalog(): Promise<AxisCatalogResponse> {
-  const response = await fetch(`${LIVE_API}/api/axis-catalog`);
-  if (!response.ok) throw new Error(`軸カタログの取得に失敗: ${response.status}`);
-  return (await response.json()) as AxisCatalogResponse;
+/** 地図が塗るレンズ1つ（総合か費用の軸）。 */
+export interface LiveLens {
+  lensId: string;
+  label: string;
+}
+
+/** backendの画面の設定と、費用の軸の一覧から並べたレンズ（総合を先に、続けて軸の順。画面の選択肢と同じ並び）。
+ * `lensConditions`は、レンズの材料の要求へ載せる走る条件（どのレンズも同じ）。 */
+export interface LiveCatalog {
+  config: ClientConfigResponse;
+  lenses: LiveLens[];
+  lensConditions: CostAxisCatalogResponse["map_lens"]["material_conditions"];
+}
+
+async function fetchJson<T>(path: string, label: string): Promise<T> {
+  const response = await fetch(`${LIVE_API}${path}`);
+  if (!response.ok) throw new Error(`${label}の取得に失敗: ${response.status}`);
+  return (await response.json()) as T;
+}
+
+export async function fetchCatalog(): Promise<LiveCatalog> {
+  const [config, costAxes] = await Promise.all([
+    fetchJson<ClientConfigResponse>("/api/client-config", "画面の設定"),
+    fetchJson<CostAxisCatalogResponse>("/api/cost-axes", "費用の軸の一覧"),
+  ]);
+  return {
+    config,
+    lenses: [
+      { lensId: costAxes.total_lens.lens_id, label: costAxes.total_lens.label },
+      ...costAxes.axes.map((axis) => ({ lensId: axis.axis_id, label: axis.label })),
+    ],
+    lensConditions: costAxes.map_lens.material_conditions,
+  };
 }
 
 export function tileOf(z: number, { latitude, longitude }: { latitude: number; longitude: number }) {
@@ -48,13 +77,13 @@ export interface Watch {
   /** backendが上流（外部の配信元・キャッシュ）の失敗として返した502・503・504（HTTPの定義で上流の失敗を表す）。合否に入れない。 */
   gatewayFailures: string[];
   roadTiles: Map<string, Record<string, unknown>[]>;
-  wayMaterials: { axisId: string; url: string; materials: Record<string, Record<string, number>> }[];
+  wayMaterials: { lensId: string; url: string; materials: Record<string, Record<string, number>> }[];
   jmaTiles: { url: string; body: Buffer }[];
   generated: { routes: unknown[]; no_candidates_reason: string | null }[];
 }
 
 const ROAD_TILE = /\/api\/region\/road-surface-tiles\/(\d+)\/(\d+)\/(\d+)\.pbf/;
-const WAY_MATERIALS = /\/api\/region\/way-materials\/([^/]+)\//;
+const WAY_MATERIALS = /\/api\/region\/lens\/([^/]+)\//;
 
 async function record(watch: Watch, response: Response): Promise<void> {
   const url = response.url();
@@ -78,7 +107,7 @@ async function record(watch: Watch, response: Response): Promise<void> {
   try {
     if (road) watch.roadTiles.set(`${road[1]}/${road[2]}/${road[3]}`, decodeRoadTile(body));
     else if (wayMaterials)
-      watch.wayMaterials.push({ axisId: wayMaterials[1], url, materials: JSON.parse(body.toString("utf-8")) });
+      watch.wayMaterials.push({ lensId: wayMaterials[1], url, materials: JSON.parse(body.toString("utf-8")) });
     else if (isJmaTile) watch.jmaTiles.push({ url, body });
     else {
       const job = JSON.parse(body.toString("utf-8"));

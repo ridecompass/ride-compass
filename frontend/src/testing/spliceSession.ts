@@ -1,6 +1,6 @@
 // 区間の乗り換えの編集（`features/route/useSpliceSession.ts`）を、分かれ道が1つずつの網の候補で動かす足場。
 // 評価（生成のジョブ）は網の層で差し替え（`testing/generationJobs.ts`）、評価はジョブを作りbackendの回数制限に
-// 数えられるので、出した要求を`submitted`で読めるようにする。軸カタログの応答は使うテストが自分で与える。
+// 数えられるので、出した要求を`submitted`で読めるようにする。画面の設定の応答は使うテストが自分で与える。
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { expect, vi } from "vitest";
 
@@ -9,15 +9,13 @@ import { useSpliceSession } from "@/features/route/useSpliceSession";
 import { useClientConfig } from "@/hooks/useClientConfig";
 import { CLIENT_TUNING_IDS } from "@/lib/clientConfig";
 import { heldReplies } from "@/testing/backendServer";
-import { catalogEntry, catalogResponse } from "@/testing/catalogAxes";
+import { clientConfigResponse } from "@/testing/clientConfig";
 import { serveGenerationJobs } from "@/testing/generationJobs";
 import { makeGenerationConditions, makeRouteCandidate, routeThrough, type Places } from "@/testing/routeFixtures";
 import type { RouteCandidate } from "@/types/route";
 import { STANDARD_COST_PREFERENCE } from "@/lib/costPreference";
 
-export const SPLICE_CATALOG = catalogResponse([catalogEntry({ axis_id: "axis_a", default_weight: 1 })], {
-  client_tuning: { [CLIENT_TUNING_IDS.minStretchKm]: 0.1 },
-});
+export const SPLICE_CATALOG = clientConfigResponse({ client_tuning: { [CLIENT_TUNING_IDS.minStretchKm]: 0.1 } });
 
 // 地点（[経度, 緯度]）。n0→n1→n2→n3が元の道で、n1とn2の間を、nqかnrを通る別の道が結ぶ。
 const PLACES: Places = {

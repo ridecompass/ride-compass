@@ -10,7 +10,7 @@ import {
 } from "@/lib/mapDisplay/mapColorLegend";
 import { valueBands } from "@/lib/mapDisplay/valueScale";
 import type { LegendEntry } from "@/lib/mapDisplay/legendFilter";
-import type { LensId, RouteStyleMode } from "@/lib/mapDisplay/routeStyleModes";
+import type { LensId } from "@/lib/mapDisplay/routeStyleModes";
 import type { MapCatalog } from "@/features/map/mapCatalog";
 
 /** 全道路を塗っているレンズ。ルート確定後は、周囲も塗り続ける設定の間だけ塗る。 */
@@ -36,11 +36,4 @@ export function lensLegend(
 function mapLensLegend(lens: MapLens): MapColorLegendBand[] {
   const bands = valueBands(lens.display).map(({ key, label, color }) => ({ key, label, color }));
   return [...bands, UNDETERMINED_LEGEND_BAND, NO_DATA_LEGEND_BAND];
-}
-
-export function isRouteStyleModeId(
-  modes: readonly RouteStyleMode[],
-  value: string | null | undefined,
-): value is LensId {
-  return modes.some((mode) => mode.id === value);
 }

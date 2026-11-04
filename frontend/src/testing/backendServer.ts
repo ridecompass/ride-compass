@@ -6,7 +6,9 @@ import { setupServer } from "msw/node";
 import { expect, vi } from "vitest";
 
 import { API_BASE_URL } from "@/lib/apiBaseUrl";
-import type { AxisCatalogResponse } from "@/types/route";
+import { clientConfigResponse } from "@/testing/clientConfig";
+import { TWO_COST_AXES } from "@/testing/costAxes";
+import type { ClientConfigResponse, CostAxisCatalogResponse } from "@/types/route";
 
 export const backendServer = setupServer();
 
@@ -76,9 +78,16 @@ export function onUrl(url: string, reply: (request: Request) => Response | Promi
   return sent;
 }
 
-/** 軸カタログの取得に`response`を返す（多くの画面が描くと同時に取る）。 */
-export function serveAxisCatalog(response: AxisCatalogResponse): void {
-  onBackend("GET", "/api/axis-catalog", () => Response.json(response));
+/** 画面の設定の取得に`response`を返す（多くの画面が描くと同時に取る）。 */
+export function serveClientConfig(response: ClientConfigResponse = clientConfigResponse()): void {
+  onBackend("GET", "/api/client-config", () => Response.json(response));
+}
+
+/** 費用の軸の一覧の取得に`response`を返す。 */
+export function serveCostAxisCatalog(response: CostAxisCatalogResponse = TWO_COST_AXES): void {
+  onBackend("GET", "/api/cost-axes", () => Response.json(response));
+  // 凡例の目安（利用者の値で引く別の口）。目安を見るテストは自分で応える。
+  onBackend("GET", "/api/cost-axes/lens-equivalents", () => Response.json({}));
 }
 
 /** 届いた順に`responses`を返す（尽きたら最後のものを返し続ける）。 */

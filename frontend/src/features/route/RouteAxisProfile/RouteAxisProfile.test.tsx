@@ -67,13 +67,6 @@ describe("RouteAxisProfile", () => {
     expect(screen.getByRole("img", { name: "負担の内訳" }).children).toHaveLength(2);
   });
 
-  it("内訳が無い候補（費用の軸の定義が無い間）は負担を出さず、事実の行だけを出す", () => {
-    renderProfile({ penalty: null });
-    expect(screen.queryByText("負担")).not.toBeInTheDocument();
-    expect(screen.queryByRole("img", { name: "負担の内訳" })).not.toBeInTheDocument();
-    expect(rows()).toEqual(["登り 240m", "振動のある道 1.3km"]);
-  });
-
   it("所要時間が無い候補では所要を出さない", () => {
     renderProfile({ estimatedDurationSeconds: null });
     expect(screen.queryByText("所要")).not.toBeInTheDocument();

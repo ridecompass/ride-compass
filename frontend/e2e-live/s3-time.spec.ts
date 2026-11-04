@@ -84,19 +84,18 @@ function bySource(tiles: Watch["jmaTiles"]): Map<string, { even: Buffer[]; odd: 
 
 test("S3 時刻で変わる入力", async ({ page }) => {
   const catalog = await fetchCatalog();
-  const timed = catalog.axes.filter(
-    (axis) => axis.dynamic_way_value_conditions.includes("at") && axis.way_value_formula !== null,
-  );
+  // 時刻を材料の要求へ載せるのは、どのレンズも同じ（費用の軸の一覧の`map_lens.material_conditions`）。
+  const timed = catalog.lensConditions.includes("at") ? catalog.lenses : [];
   const statsBefore = await externalErrors();
-  const watch = await openLive(page, { storedState: allLayersOn(catalog.road_classes.map_layers) });
+  const watch = await openLive(page, { storedState: allLayersOn(catalog.config.road_classes.map_layers) });
   // 地図のタイルをブラウザのキャッシュから出さず、ズームごとに取り直させる（取り直した応答の中身を見る）。
   const client = await page.context().newCDPSession(page);
   await client.send("Network.setCacheDisabled", { cacheDisabled: true });
 
   const msmHealthy = process.env.E2E_LIVE_MSM_HEALTHY === "1";
-  if (timed.length === 0) notApplicable("時刻を入力に取る軸", "カタログに該当する公開軸が無い");
-  for (const axis of timed) {
-    await chooseLens(page, axis.label);
+  if (timed.length === 0) notApplicable("時刻を入力に取るレンズ", "レンズの材料の要求が時刻を載せない");
+  for (const lens of timed) {
+    await chooseLens(page, lens.label);
     await settleMap(page);
     await page.getByRole("button", { name: /^出発時刻: / }).click();
     const original = await page.getByLabel("出発日時を直接指定").inputValue();
@@ -107,19 +106,19 @@ test("S3 時刻で変わる入力", async ({ page }) => {
     ] as const) {
       await branch(
         page,
-        `「${axis.label}」${name}`,
+        `「${lens.label}」${name}`,
         async () => {
           if (!msmHealthy) {
-            notApplicable(`「${axis.label}」${name}`, "backendの予報（MSM）が古い");
+            notApplicable(`「${lens.label}」${name}`, "backendの予報（MSM）が古い");
             return;
           }
           const before = watch.wayMaterials.length;
           await setDeparture(page, tomorrowJst(hour));
           await settleMap(page);
-          const received = () => watch.wayMaterials.slice(before).filter((entry) => entry.axisId === axis.axis_id);
+          const received = () => watch.wayMaterials.slice(before).filter((entry) => entry.lensId === lens.lensId);
           await expect.poll(() => received().length, { timeout: 15_000 }).toBeGreaterThan(0);
           const ways = received().flatMap((entry) => Object.keys(entry.materials));
-          expect.soft(ways.length, `「${axis.label}」${name}: 道ごとの材料を1件も受け取っていない`).toBeGreaterThan(0);
+          expect.soft(ways.length, `「${lens.label}」${name}: 道ごとの材料を1件も受け取っていない`).toBeGreaterThan(0);
         },
         () => setDeparture(page, original),
       );
