@@ -20,6 +20,7 @@ from typing import Final
 from starlette.datastructures import MutableHeaders
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from app.api.admin_db_errors import ADMIN_PATH_PREFIX
 from app.infrastructure import jma_tile_redis_cache
 
 
@@ -145,7 +146,7 @@ ROUTE_POLICIES: Final[tuple[tuple[str, CachePolicy], ...]] = (
     # 押した所を本文で送るPOSTで、同じURLの応答を使い回させない。
     ("/api/region/roads-at", NO_STORE),
     # 管理・状態確認（認可必須の情報を中間キャッシュへ残さない）
-    ("/api/admin/", NO_STORE),
+    (ADMIN_PATH_PREFIX, NO_STORE),
     ("/api/debug/", NO_STORE),
     ("/health", NO_STORE),
 )

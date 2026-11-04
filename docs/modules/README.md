@@ -72,10 +72,9 @@
 
 | モジュール | 内容 |
 |---|---|
-| [軸スタジオ・評価軸定義](backend/axis-studio.md) | `axis_definitions`テーブル・評価式・API |
 | [ルート生成エンジン・経路探索](backend/routing-engine.md) | road_graphエンジン、周回生成戦略 |
-| [評価・スコアリング](backend/evaluation-scoring.md) | 0次フィルタ・軸別difficulty合成・材料カタログ |
-| [動的材料・フィーチャー値配信](backend/dynamic-way-values.md) | 風・勾配・雨のようなタイルへ焼けない材料を、路面タイルのフィーチャーの鍵で配る層 |
+| [費用・材料](backend/evaluation-scoring.md) | 0次フィルタ・費目の帳簿の式・道の区分と費用の軸の管理DB・材料カタログ |
+| [レンズ・道ごとの値の配信](backend/dynamic-way-values.md) | 地図のレンズ・道の線の層の値・道の窓を、路面タイルのフィーチャーの鍵で配る層 |
 | [静的道路属性・タイル配信](backend/static-road-attributes.md) | OSM取込・MVTタイル配信 |
 | [気象・動的レイヤー](backend/weather-dynamic-layers.md) | 気象庁MSM（数値予報モデル）・気象庁観測/防災データ |
 | [標高](backend/elevation.md) | GSI DEMタイル |
@@ -86,9 +85,8 @@
 
 | モジュール | 内容 |
 |---|---|
-| [軸スタジオ管理画面](frontend/axis-studio.md) | `/admin`の軸CRUD UI |
-| [ルート設定・結果パネル](frontend/route-settings-and-results.md) | 重み設定・候補一覧・軸別内訳 |
-| [地図: 軸・ルート色分け](frontend/map-axis-coloring.md) | 式の木と道ごとの材料で塗る軸の描画 |
+| [ルート設定・結果パネル](frontend/route-settings-and-results.md) | 負担の倍率・候補一覧・負担の内訳 |
+| [地図: 軸・ルート色分け](frontend/map-axis-coloring.md) | 式の木と道ごとの材料で塗るレンズの描画 |
 | [地図: 動的気象レイヤー](frontend/dynamic-weather-layers.md) | 降水・キキクル等の地図表示 |
 | [地図: 静的レイヤー・道路表示](frontend/static-map-layers.md) | 路面・道路種別・自転車レーン・POI・事故の地図表示 |
 | [ページ全体構成・状態管理](frontend/page-composition.md) | `page.tsx`のコンポジション・永続化。特定モジュールの責務ではない共通部品（`BottomSheet.tsx: BottomSheet`・`Disclosure.tsx: Disclosure`等）もここへ集約する |

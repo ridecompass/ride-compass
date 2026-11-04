@@ -16,7 +16,7 @@ class LazyRoadGraph:
     """
 
     node_count: int
-    # 区間の番号→元の区間の行（探索範囲の材料・スコア行列の行）。
+    # 区間の番号→元の区間の行（探索の材料の表の行）。
     edge_rows: np.ndarray
     edge_from: np.ndarray
     edge_to: np.ndarray

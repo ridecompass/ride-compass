@@ -63,7 +63,6 @@ def test_a_definition_the_form_does_not_allow_is_refused(definition):
         ({"material": "class:no_such"}, "知らない分け方の材料"),
         ({"material": "no_such"}, "知らない材料"),
         ({"material": "lit"}, "区分の重さは区分の材料"),
-        # 道の負担は1回の生成に1回だけ道ごとに引くので、要求ごとに決まる材料（風）は静的スコア行列に無い。
     ],
     ids=["区分の漏れ", "知らない区分", "知らない分け方", "知らない材料", "区分でない材料に区分の重さ"],
 )

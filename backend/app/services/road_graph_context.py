@@ -155,7 +155,7 @@ class FixedLegs:
 
 
 def slice_row_of(context: RoadGraphContext, index: int) -> int:
-    """区間の番号→切り出した区間の行（材料・スコア行列・表示用配列の行）。"""
+    """区間の番号→切り出した区間の行（探索の材料の表・表示用配列の行）。"""
     return int(context.lazy_graph.edge_rows[index])
 
 

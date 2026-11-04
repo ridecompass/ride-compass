@@ -9,6 +9,8 @@ import base64
 from fastapi import FastAPI
 from fastapi.routing import APIRoute
 
+from app.api.admin_db_errors import ADMIN_PATH_PREFIX
+
 
 ADMIN_USERNAME = "admin-user"
 ADMIN_PASSWORD = "secret-password"
@@ -23,4 +25,4 @@ AUTH_HEADERS = {"Authorization": basic_auth_header(ADMIN_USERNAME, ADMIN_PASSWOR
 
 def admin_routes(app: FastAPI) -> list[APIRoute]:
     """`app`の経路のうち、管理APIの接頭辞の下にあるもの。"""
-    return [route for route in app.routes if isinstance(route, APIRoute) and route.path.startswith("/api/admin/")]
+    return [route for route in app.routes if isinstance(route, APIRoute) and route.path.startswith(ADMIN_PATH_PREFIX)]

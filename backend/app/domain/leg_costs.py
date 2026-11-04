@@ -268,7 +268,7 @@ class LegCostComposer:
 
     def __init__(
         self,
-        score_matrix: SearchMaterials,
+        search_materials: SearchMaterials,
         search_masks: RoadAvoidanceMasks,
         avoid_cost_multiplier: float,
         departure_wind: DepartureWind | None,
@@ -283,14 +283,14 @@ class LegCostComposer:
     ) -> None:
         """`material_fills`は取込の範囲全体の材料の分布（欠けた材料を埋める）。費用は費目の帳簿の式（`domain/ledger_costs.py`）
         で、`axes`の軸と`parameters`の強さで組む。"""
-        self._score_matrix = score_matrix
+        self._search_materials = search_materials
         self._material_fills = material_fills
         self._axes = axes
         self._parameters = parameters
         # 所要時間と費用の式が読む材料の値（材料の表の列をそのまま指す。切り出した区間の順）。
-        self._static_material_arrays = dict(zip(score_matrix.material_ids, score_matrix.material_values, strict=True))
+        self._static_material_arrays = dict(zip(search_materials.material_ids, search_materials.material_values, strict=True))
         self._categorical_material_arrays = dict(
-            zip(score_matrix.categorical_material_ids, score_matrix.categorical_material_columns, strict=True)
+            zip(search_materials.categorical_material_ids, search_materials.categorical_material_columns, strict=True)
         )
         # 探索から除く区間（費用を無限大にする）と、費用を割り増す区間。割り増しは探索の費用にだけ掛け、
         # 所要時間には掛けない。倍率は1以上で、費用を下げないので探索の下限の見積もりは崩れない。
@@ -301,7 +301,7 @@ class LegCostComposer:
         # 各Edgeの中点に最も近い予報の格子点（切り出した区間の順。格子点の並びの外の中点は端の格子点へ寄せる）。
         self._wind_points = (
             None if wind_series is None
-            else wind_series.lattice.points_of(score_matrix.mid_lat, score_matrix.mid_lon)
+            else wind_series.lattice.points_of(search_materials.mid_lat, search_materials.mid_lon)
         )
         self.start = start
         self.speed_kmh = speed_kmh
@@ -309,7 +309,7 @@ class LegCostComposer:
         # lazy行順の配列を切り出した区間の順へ戻す並べ替え表（`_lazy_row_index`の逆）。
         # `_lazy_row_index`は全単射ではない——同一Node間の並行Edgeは`build_lazy_road_graph`が
         # 1本だけ採るため、探索用グラフに載らないEdgeがある。載らない行は-1にする。
-        self._full_row_index = np.full(len(score_matrix.distance_m), -1, dtype=np.int64)
+        self._full_row_index = np.full(len(search_materials.distance_m), -1, dtype=np.int64)
         self._full_row_index[lazy_row_index] = np.arange(len(lazy_row_index))
         # 通過予定時刻の推定に使う迂回率（道なり距離÷直線距離）。探索範囲ごとの学習値が
         # あればそれ、無ければ`ROUTE_DETOUR_RATIO`。合成には使わず、レグの時刻を置く探索の側が読む。
@@ -330,7 +330,7 @@ class LegCostComposer:
     @cached_property
     def _travel_inputs(self) -> TravelInputs:
         """所要時間のうち風に依らない入力（`travel_inputs`）。静的材料だけから決まるため、リクエストに1回だけ求める。"""
-        return travel_inputs(self._materials, self._score_matrix.distance_m, self._score_matrix.elevation_profiles,
+        return travel_inputs(self._materials, self._search_materials.distance_m, self._search_materials.elevation_profiles,
                              self.speed_kmh, self._material_fills)
 
     def bin_time(self, hours: float) -> BinTime:
@@ -442,7 +442,7 @@ class LegCostComposer:
     def _wind_context(self, time: BinTime, take: Callable[[np.ndarray], np.ndarray]) -> WindContext:
         """時刻`time`の風の文脈（区間ごとの風の成分を引く入力）。"""
         return WindContext(
-            bearing_deg=take(self._score_matrix.bearing_deg), departure_wind=self._departure_wind,
+            bearing_deg=take(self._search_materials.bearing_deg), departure_wind=self._departure_wind,
             wind_series=self._wind_series, forecast_index=time.forecast,
             wind_points=None if self._wind_points is None else take(self._wind_points),
         )
@@ -462,20 +462,20 @@ class LegCostComposer:
     @property
     def distance_m(self) -> np.ndarray:
         """切り出した区間の順の長さ（m）。"""
-        return self._score_matrix.distance_m
+        return self._search_materials.distance_m
 
     @property
     def bearing_deg(self) -> np.ndarray:
         """切り出した区間の順の方位（度、NaN=決まらない）。"""
-        return self._score_matrix.bearing_deg
+        return self._search_materials.bearing_deg
 
     @property
     def mid_lat(self) -> np.ndarray:
-        return self._score_matrix.mid_lat
+        return self._search_materials.mid_lat
 
     @property
     def mid_lon(self) -> np.ndarray:
-        return self._score_matrix.mid_lon
+        return self._search_materials.mid_lon
 
     def lazy_row(self, full_row: int) -> int:
         """切り出した区間の順の行番号を、探索が使う行順（`cost_lazy`の並び）へ直す。"""
@@ -489,7 +489,7 @@ class LegCostComposer:
     def missing_travel_data_share(self, rows: np.ndarray) -> float | None:
         """切り出した区間の順の行`rows`のうち、所要時間の計算で標高か停止要因の件数の値が無く、取込の範囲全体の平均（坂の
         割合・停止要因の密度）で数えた所のある区間の距離の割合。`_travel_inputs`が欠けを置き換えるのと同じ値を見る。距離の合計が0ならNone。"""
-        distance = self._score_matrix.distance_m[rows]
+        distance = self._search_materials.distance_m[rows]
         total = float(distance.sum())
         if total <= 0:
             return None

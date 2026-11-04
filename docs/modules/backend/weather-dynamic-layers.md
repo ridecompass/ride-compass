@@ -51,11 +51,9 @@ MSMは数値予報モデルの出力で観測値・公式発表の代わりに�
 | `wbgt.py` | WBGT警戒レベル判定（熱中症予防運動指針の5段階閾値）・提供期間判定・段階の表示名（`wbgt.py: WBGT_LEVEL_LABELS`）・情報提供地点`wbgt.py: WbgtPoint`と予測値`wbgt.py: WbgtForecast`・今の予測の選び方（`wbgt.py: current_forecast`） | `wbgt_service.py`・`warning_display.py` |
 | `flood_forecast.py` | アクティブ予報抽出（電文1件`flood_forecast.py: FloodBulletin`から。電文の形とコード→段の読み替えは`flood_client.py`が持つ）・段階の表示名（`FLOOD_LEVEL_LABELS`） | `flood_service.py`・`warning_display.py` |
 | `jma_warning_timeline.py` | 警報級の時系列の段の並び`jma_warning_timeline.py: WarningTimeline`と、区域の段の引き方（二次細分区域に無ければ一次細分区域、区域の中を所で分けていれば陸上）・注意報級かの判定`jma_warning_timeline.py: is_advisory_level`・ルートの点ごとの区域を通る順の通過にまとめる`jma_warning_timeline.py: route_passes` | `warning_timeline_service.py` |
-| `twilight.py` | 市民薄明による夜間判定（`twilight.py: night_mask`、時刻の配列をまとめて判定）・日の出日没計算（`twilight.py: sunrise_sunset_jst`） | `jma_amedas_service.py`（表示用）・[routing-engine.md](routing-engine.md)のroad_graphエンジン（night軸の動的化） |
+| `twilight.py` | 日の出日没計算（`twilight.py: sunrise_sunset_jst`） | `jma_amedas_service.py`（表示用）・[routing-engine.md](routing-engine.md)のroad_graphエンジン（night軸の動的化） |
 
-`twilight.py`は外部APIに依存しないローカルの天文計算のみで、
-実際の主消費者は[routing-engine.md](routing-engine.md)が主管する`road_graph_engine.py`
-である。
+`twilight.py`は外部APIに依存しないローカルの天文計算のみ。
 
 ### 値が成り立つ範囲（`domain/valid_area.py`）
 
@@ -302,10 +300,9 @@ DI工場（`api/dependencies.py`）がプロセスに1つ持ってクライア�
 | メソッド | 用途 | 時刻 |
 |---|---|---|
 | `get_departure_wind(point)` | `RoadGraphEngine`の出発時点の風（時別の系列が無いとき全区間へ一様に使う。`domain/wind.py: DepartureWind`）。画面に値を出さない計算にだけ使う | 時系列の先頭（現在時刻の正時）。出発地へ補間し、風速・風向を小数1桁に丸める |
-| `get_wind_forecast_lattice(bbox)` | `RoadGraphEngine`の探索前コスト合成（Edgeごとの通過予定時刻・最寄りの格子点の風）と、ルートを出す前の地図の風（`WindWayService`） | 範囲を覆うMSMの格子点ごとの時別風向・風速の系列（JST、格子点の値のまま）。格子点はMSMの格子そのもの（`domain/msm.py: MsmGrid.block_covering`）で、どの範囲から引いても同じ地点は同じ格子点に当たる。時刻が2つ未満ならNone |
+| `get_wind_forecast_lattice(bbox)` | `RoadGraphEngine`の探索前コスト合成（Edgeごとの通過予定時刻・最寄りの格子点の風）と、ルートを出す前の地図のレンズの風（`services/lens_service.py: LensService`） | 範囲を覆うMSMの格子点ごとの時別風向・風速の系列（JST、格子点の値のまま）。格子点はMSMの格子そのもの（`domain/msm.py: MsmGrid.block_covering`）で、どの範囲から引いても同じ地点は同じ格子点に当たる。時刻が2つ未満ならNone |
 | `get_msm_grid(bbox)` | 地図の風の矢印と降水の升目（`GET /api/weather/msm-grid`） | 現在時刻の正時から`domain/weather_elements.py: MSM_FORECAST_HOURS`時間ぶん（JST）。範囲の中の格子点を間引き、風速・風向・降水量を格子点の値のまま丸めて返す。格子の欠損はNone。読めなければNone |
 | `get_grid_point_today(point)` | 地点の最寄りの格子点の今日の値（`GET /api/weather`、`domain/weather.py: grid_point_today`） | 現在時刻の正時から、その日（JST）の24時まで。1時間ごとの気温・降水量・風速・風向を格子点の値のまま丸めて返し、格子点の位置と、地点から格子点までの距離（km）・方位を添える。最も高い・低い値は、並べた1時間ごとの値から選んだものとして`highest_hourly_*`・`lowest_hourly_*`の名前で返す（日の最高・最低気温ではない）。格子の欠損はNone。読めなければNone |
-| `get_station_rain_materials(now)` | ルートを出す前の地図の雨（`RainWayService`）と`RoadGraphEngine`の気象の段 | 今の観測（アメダスの1時間雨量の履歴。`jma_amedas_service.py: load_station_rain_materials`）。求めた値は実体の中に5分持つので、DI工場（`api/dependencies.py: get_weather_service`）は実体をプロセスに1つ持つ |
 
 ## その他のサービス
 
@@ -315,8 +312,8 @@ DI工場（`api/dependencies.py`）がプロセスに1つ持ってクライア�
   [度, 分]の座標・[値, 品質フラグ]の観測値・16方位の風向のコード・URLに載せる時刻の書式）はクライアントが解き・組み立て
   （`jma_amedas_client.py: AmedasStation`・`jma_amedas_client.py: AmedasReading`。時刻は`datetime`で受け渡す）、
   Redisの鍵と保存する形は`jma_amedas_store.py`が持つ。サービスは値だけを読む。鍵の観測所idは値に持たず、書くときに観測所id→観測値で渡す。座標の無い観測所は
-  観測所マスタの時点で落ちる（最寄りにも雨の履歴の座標にも使えないため）。名前（`kjName`）の無い観測所も落ちる（ヘッダーに観測所名を出すため。
-  2026-10-07 の実物では全観測所が持つ）。観測所名と観測の時刻（最新の観測時刻）は、バッチが観測値と一緒に Hash へ書く。最寄りの観測所は、雨の材料・暑さ指数の
+  観測所マスタの時点で落ちる（最寄りに使えないため）。名前（`kjName`）の無い観測所も落ちる（ヘッダーに観測所名を出すため。
+  2026-10-07 の実物では全観測所が持つ）。観測所名と観測の時刻（最新の観測時刻）は、バッチが観測値と一緒に Hash へ書く。最寄りの観測所は、暑さ指数の
   情報提供地点と同じ`domain/geo.py: nearest_point_index`（球面の距離）で選ぶ。
 
   **天気コードの晴れ・くもり**: 応答のたびに、リクエストの地点を含む推計気象分布（天気）の最新のタイル
@@ -336,22 +333,6 @@ DI工場（`api/dependencies.py`）がプロセスに1つ持ってクライア�
   `jma_amedas_service.py`単体のコードからは読み取れない外部要因に依存する。バッチ失敗時は
   WARNINGでログされるのみで自動リトライは無く、次回の定期実行（最大10分後）まで観測値は
   更新されない（TTL 15分がバッチ間隔10分より長いため、1回の失敗では即502にならない）。
-
-  **1時間雨量の履歴（雨の材料の元）**: 同じバッチが、毎正時の1時間雨量（地図JSONの`precipitation1h`。
-  その正時に終わる1時間の雨量）を観測所ごとに直近`RAIN_HISTORY_HOURS`本（`domain/rain.py`の窓の長さの
-  一覧の最大）ぶん持つ。置き場はRedisの1キー（`jma:amedas:rain-history`、正時→観測所→mm）で、
-  失うと気象庁へ全本を取り直すことになるためRedisに置く。バッチは欠けている正時だけをその正時の地図JSON
-  （`data/map/YYYYMMDDHH0000.json`）から取る——平常時は新しく来た正時の1本、起動時にRedisが空なら全本
-  （過去の地図JSONは2026-09-26の実測で76時間前の正時まで取れた。保持期間の公式の記載は未確認）。取れなかった正時は欠けたまま
-  次のバッチで取り直す。地図JSONが取れても1時間雨量の値を持つ観測所が1つも無い正時も、取れなかったとして同じく取り直す
-  （取れたとして残すと二度と取り直さず、その正時を含む窓が全国で値を持たないまま窓から外れるまで戻らない）。**Redisから履歴を読めない（冷却中・読みの失敗。置き場の読みが「取れない」を返す）ときは取りに行かない**
-  （取り直しの判定が毎回「全本欠け」になり、10分ごとに全本を問い合わせ続けるため）。保存した形が今のコードで読めない履歴は、無いものとして扱う
-  （WARNINGを出し、雨の材料は配らない）。値`[値, フラグ]`の値がnullのもの（欠測。フラグの公式の意味は
-  未確認）は欠測として持ち、雨量の項目を持たない観測所（雨量計が無い）は載せない。
-  読む側（`load_station_rain_materials`。`WeatherService.get_station_rain_materials`を通して、[動的材料・フィーチャー値配信](dynamic-way-values.md)の
-  `RainWayService`と、ルートの探索範囲を組む`RoadGraphEngine`の気象の段が使う）は、最新の正時が
-  `domain/rain.py: RAIN_HISTORY_MAX_AGE`より古い履歴を配らない——バッチが止まったまま古い雨量を今の値として塗らない・
-  ルートの評価に使わないため。
 
   日の出・日没（`twilight`）はRedisへ保存せず、`get_nearest_observation`が
   クエリ地点（最寄り観測所ではなくリクエストの緯度経度そのもの）に対し都度

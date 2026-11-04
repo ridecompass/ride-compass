@@ -273,22 +273,3 @@ def _evaluate(node: FormulaNode, features: Mapping[str, ArrayLike], conditions: 
     values = _evaluate(node.arg, features, conditions)
     # `np.float64`の`round`はnumpyの丸め（10の冪を掛けて丸める）で、Pythonの`round`と値が食い違いうる。
     return np.vectorize(lambda value: round(float(value), node.decimals), otypes=[float])(values)
-
-
-def way_values_from_formula(
-    formula: WayValueFormula,
-    feature_keys: Sequence[str],
-    features: Mapping[str, ArrayLike],
-    conditions: Mapping[str, float],
-) -> dict[str, float | None]:
-    """道の鍵→地図が塗る値。値の決まらない道はNone、値の無い道は鍵ごと除く。"""
-    length = len(feature_keys)
-    undetermined = _truth(evaluate_formula(formula.undetermined, features, conditions, length))
-    values = evaluate_formula(formula.value, features, conditions, length)
-    out: dict[str, float | None] = {}
-    for key, value, unknown in zip(feature_keys, values.tolist(), undetermined.tolist()):
-        if unknown:
-            out[key] = None
-        elif not np.isnan(value):
-            out[key] = value
-    return out

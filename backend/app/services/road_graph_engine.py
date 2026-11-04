@@ -243,7 +243,7 @@ class RoadGraphEngine:
 
         materials_started = start_timer()
         materials_steps_ms: dict[str, int] = {}
-        score_matrix = await asyncio.to_thread(_search_materials, road, materials_steps_ms,
+        materials = await asyncio.to_thread(_search_materials, road, materials_steps_ms,
                                                burden_material_ids(self._cost_axes))
         materials_ms = elapsed_ms(materials_started)
         # 通過予定時刻の基準（出発時刻）。
@@ -261,9 +261,9 @@ class RoadGraphEngine:
         cost_axes = self._cost_axes
 
         def compose_outbound() -> tuple[RoadAvoidanceMasks, LegCostComposer, LegCostArrays]:
-            search_masks = compute_search_exclusion(score_matrix, self._road_avoidance)
+            search_masks = compute_search_exclusion(materials, self._road_avoidance)
             composer = LegCostComposer(
-                score_matrix, search_masks, self._avoid_cost_multiplier, departure_wind,
+                materials, search_masks, self._avoid_cost_multiplier, departure_wind,
                 wind_series, start, self._assumed_speed_kmh, lazy_graph.edge_rows,
                 detour_ratio=detour_ratio_or_default(learned_detour_ratio),
                 material_fills=material_fills(road.network, road.classes, burden_material_ids(cost_axes)),

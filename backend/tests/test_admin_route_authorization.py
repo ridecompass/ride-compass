@@ -20,6 +20,7 @@ from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 
 from app.api.admin_auth import require_admin_basic_auth
+from app.api.admin_db_errors import ADMIN_PATH_PREFIX
 from app.main import app
 from tests.admin_auth import ADMIN_PASSWORD, ADMIN_USERNAME, AUTH_HEADERS, admin_routes, basic_auth_header
 
@@ -35,7 +36,7 @@ def _depends_on_admin_auth(route: APIRoute) -> bool:
 
 def test_every_admin_route_requires_basic_auth():
     routes = admin_routes(app)
-    assert routes, f"{"/api/admin/"}配下のルートが1本も見つからない"
+    assert routes, f"{ADMIN_PATH_PREFIX}配下のルートが1本も見つからない"
     unprotected = [route.path for route in routes if not _depends_on_admin_auth(route)]
 
     assert unprotected == [], f"require_admin_basic_authが付いていない管理API: {unprotected}"

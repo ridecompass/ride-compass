@@ -173,8 +173,7 @@ class MaterialSpec(StrictModel):
     # 自明でない材料には明示的にここへ書く。Noneは「対応する一次属性が無い」（一次属性未登録の
     # bridge/smoothness等）。
     primary_attribute: PrimaryAttributeSpec | None = None
-    # 値の出どころ（`_MaterialSource`）。リクエストごとに決まる材料の集合・観測の列として受ける材料の集合は
-    # ここから導く（`materials_of_source`）。値式・欠損率の測り方との揃いは`_check_fields_match_the_source`が見る。
+    # 値の出どころ（`_MaterialSource`）。値式・欠損率の測り方との揃いは`_check_fields_match_the_source`が見る。
     source: _MaterialSource = "db"
     # この材料の値をDBから求めるSQL式。読み出し側がFROM句で固定の別名（`material_sql.py`の
     # モジュールの説明の表）を用意し、この式をそのまま並べる。出どころが`db`の材料だけが持つ。

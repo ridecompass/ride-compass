@@ -95,19 +95,6 @@ def bbox_covering_points(points: Sequence[LatLon], margin_km: float) -> Bounding
     )
 
 
-def parse_bbox(text: str) -> BoundingBox:
-    """CLIの--bbox（"min_lat,min_lon,max_lat,max_lon"）をBoundingBoxへ変換する。
-
-    緯度経度の順序はCLI間で揃える。値そのものの妥当性は`BoundingBox`が見る。
-    """
-    parts = [float(p) for p in text.split(",")]
-    if len(parts) != 4:
-        raise ValueError("--bboxは min_lat,min_lon,max_lat,max_lon の4値が必要です")
-    min_lat, min_lon, max_lat, max_lon = parts
-    return BoundingBox(
-        min_latitude=min_lat, min_longitude=min_lon, max_latitude=max_lat, max_longitude=max_lon
-    )
-
 
 def tile_bounds_lonlat(z: int, x: int, y: int) -> BoundingBox:
     """標準的なXYZスライピータイル（Web Mercator）のz/x/yから、そのタイルが覆う緯度経度の範囲を求める。"""

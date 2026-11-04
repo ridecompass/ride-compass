@@ -5,7 +5,6 @@
 ここで決め、受け取る側は組み直さない。並びは`sort_order`の順で、振り分けには使わない。
 """
 
-from typing import Literal
 
 from app.domain.display_palette import nominal_colors, ordered_colors, ordered_ends_phrase
 from app.domain.road_avoidance import AVOIDANCE_LEVEL_LABELS, AVOIDANCE_LEVELS, AvoidanceLevel, avoidance_rows
