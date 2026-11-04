@@ -5,7 +5,7 @@ MSMの読み出し（`msm_client.read_series`・`msm_client.read_grid_points`・
 ここで見ないもの:
 - 風の成分から風速・風向を求めること・格子点の並びの作り方と間引き → `test_msm.py`
 - 格子点の時系列から今日の分を切り出し、丸め、最も高い・低い値を選ぶこと → `test_weather_domain.py`
-- 格子点ごとの予報を道・区間へ配ること → `test_wind_way_service.py`・`test_leg_costs.py`
+- 格子点ごとの予報を道・区間へ配ること → `test_region_lens.py`・`test_leg_costs.py`
 """
 
 from datetime import datetime

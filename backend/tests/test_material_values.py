@@ -161,17 +161,6 @@ async def test_a_value_goes_on_the_tile_in_the_form_the_map_reads(road_graph_ses
 # --- 読み出しの経路（infrastructure/road_graph_repository.py） -----------------------------
 
 
-async def test_a_sample_within_a_range_takes_every_way_in_it_regardless_of_the_sampling_rate(road_graph_repository):
-    """`TABLESAMPLE`は表全体のページから抽選するため、狭い範囲と重ねると標本が数本へ落ちる。
-    割合0は、抽選が混ざれば1本も返さない。"""
-    await _ingest_ways({1: {}, 2: {}})
-    area = BoundingBox(min_latitude=35.68, min_longitude=139.69, max_latitude=35.69, max_longitude=139.71)
-
-    samples = await road_graph_repository.sample_way_material_values(1, 0.0, 10, area)
-
-    assert len(samples) == 2
-
-
 async def test_every_declared_expression_reads_only_what_each_reading_path_provides(road_graph_repository):
     """読む列が無い式が1つでもあると、その経路の読み出しは材料ぶん丸ごと落ちる。列はPostgreSQLが実行の前に
     解決するので、行が無くても確かめられる。"""
@@ -179,10 +168,6 @@ async def test_every_declared_expression_reads_only_what_each_reading_path_provi
 
     arrays = await road_graph_repository.get_edge_material_arrays([1], [0], [True], 1)
     assert len(arrays.distance_m) == 1
-    assert await road_graph_repository.sample_way_material_values(1, 100.0, 10, None) == []
-    assert await road_graph_repository.sample_way_material_values(1, 100.0, 10, area) == []
-    assert await road_graph_repository.get_feature_landcover(1, "1-0") is None
-    assert await road_graph_repository.get_feature_landcover(1, None) is None
     # 取込範囲の外なので焼かずにNoneを返すが、タイルの列は先に解決される。
     assert await road_graph_repository.get_road_surface_tile_mvt(14, 14552, 6451, area) is None
     assert await road_graph_repository.roads_at(139.005, 35.005, 14, 10.0, 1) == []

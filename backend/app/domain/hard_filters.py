@@ -17,8 +17,8 @@ from app.domain.road_avoidance import AvoidanceLevel, RoadAvoidanceMasks, road_a
 from app.domain.road_classes import Condition, ConditionTerm, conditions_match
 
 if TYPE_CHECKING:
-    # 行列を組む側（`domain/evaluation.py`）がこのファイルの判定を使うので、型だけを読む。
-    from app.domain.evaluation import StaticEdgeScoreMatrix
+    # 表を組む側（`domain/search_materials.py`）がこのファイルの判定を使うので、型だけを読む。
+    from app.domain.search_materials import SearchMaterials
 
 
 class _HardFilter(NamedTuple):
@@ -77,10 +77,10 @@ def compute_routable_nodes(
 
 
 def compute_search_exclusion(
-    score_matrix: "StaticEdgeScoreMatrix",
+    score_matrix: "SearchMaterials",
     road_avoidance: Mapping[str, AvoidanceLevel],
 ) -> RoadAvoidanceMasks:
-    """静的スコア行列が持つ0次ハードフィルタ・区分の列から、リクエスト時点の`road_avoidance`を反映した、
+    """探索の材料の表が持つ0次ハードフィルタ・区分の列から、リクエスト時点の`road_avoidance`を反映した、
     探索から除く区間と割り増す区間を求める。"""
     rows = road_avoidance_masks(score_matrix.road_classes, road_avoidance, len(score_matrix.distance_m))
     return RoadAvoidanceMasks(excluded=rows.excluded | score_matrix.hard_filtered, avoided=rows.avoided)

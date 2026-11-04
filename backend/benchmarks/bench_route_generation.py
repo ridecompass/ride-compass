@@ -34,7 +34,6 @@ from datetime import datetime
 from app.api.dependencies import get_route_generation_setup_opener
 from app.batch.common import asyncpg_dsn
 from app.config import settings
-from app.infrastructure.axis_definition_repository import AxisDefinitionRepository
 from app.infrastructure.database import get_route_generation_session_factory, get_session_factory
 from app.services.definitions_loading import refresh_definitions
 from app.domain.cost_preference import CostPreference
@@ -145,9 +144,9 @@ async def main() -> int:
     print(f"\n=== {label} / {origin.latitude},{origin.longitude} / {distance_km}km / {runs}回 ===")
     records: list[dict[str, object]] = []
 
-    # 定義を読む前に組み立てると、既定の重みが空になり、較正値も宣言の既定のままになる。
+    # 定義を読む前に組み立てると、費用の軸の定義が無く、較正値も宣言の既定のままになる。
     async with get_session_factory()() as session:
-        await refresh_definitions(session, AxisDefinitionRepository(session))
+        await refresh_definitions(session)
     # 評価条件を省いた生成の要求と、画面の既定の除外・避け方で組む。
     async with get_route_generation_setup_opener(get_route_generation_session_factory())(RequestedConditions(
         cost_preference=CostPreference(), road_avoidance={}, assumed_speed_kmh=ASSUMED_SPEED_KMH,

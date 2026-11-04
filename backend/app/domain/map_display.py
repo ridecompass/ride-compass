@@ -1,7 +1,7 @@
 """地図に出すものの最上位の束ね方。
 
 所属は**種別**から決まる——レイヤーごとに所属を書くと、1つ足すたびに書き忘れても型が通る。
-軸スタジオ由来の軸はここに載らない（運用で増減し、出すかは軸自身の設定が決める）。
+費用の軸のレンズはここに載らない（管理APIで書いた費用の軸の定義から実行時に決まる）。
 """
 
 from collections import Counter
@@ -134,7 +134,7 @@ _HILLSHADE_LAYER_ID = "hillshade"
 #: 地図へ常に出す出典（HTML）。路面の色・評価・ルートの計算・常設の表示（ヘッダーの天気・警戒度バッジ）へ常に使う
 #: データで、どのレイヤーを表示しているかと関係なく出典が要る（レイヤーのソースに付けると、そのレイヤーを消したとき
 #: 出典も消える）。公共データ利用規約（PDL1.0）とCC BY 4.0は出典とは別に加工した旨を求め、標高からは勾配を、事故の点から
-#: は区間ごとの件数を、アメダスの観測からは雨の材料を、アメダスと推計気象分布からは天気を、区域の境界は簡略化して、配信タイルは欠けたズームを隣の
+#: は区間ごとの件数を、アメダスと推計気象分布からは天気を、区域の境界は簡略化して、配信タイルは欠けたズームを隣の
 #: ズームから補い降水の色を塗り替えて、MSMの格子は地点・時刻へ補間して使っている。気象レイヤーの出典もここが持つ（気象庁のデータは常設の表示
 #: で常に使うため）。住所の区画は地点の検索で常に使う。立ち寄り先は出典を1か所にまとめるためここに置く。基礎地図は配信元のTileJSONが出典を持つので
 #: 入れない（入れると2回並ぶ）。データ源を足したら、利用条件（docs/architecture/data-sources.md）と合わせてここも見る。
@@ -179,7 +179,7 @@ def _static_layer_ids() -> tuple[str, ...]:
     return (*shown, _HILLSHADE_LAYER_ID)
 
 
-#: 地図に載るものの名前。軸スタジオ由来の軸は実行時に増えるためここには現れない。
+#: 地図に載るものの名前。費用の軸のレンズは実行時に決まるためここには現れない。
 _MAP_LAYER_IDS: tuple[str, ...] = (*_static_layer_ids(), *WEATHER_LAYER_GROUPS, _ROUTE_LAYER_ID)
 
 
@@ -217,7 +217,7 @@ class MapLayerSpec(NamedTuple):
     #: 名前。一次属性を描くレイヤーは書かない——属性の名前をそのまま使う（`map_layer_label`）。
     label: str | None = None
     #: ONにすると何が出るかの短い説明（一覧の行のtitle）。地図に載るものは必ず持つ（`MAP_LAYERS`）。
-    #: 軸スタジオ由来の軸の説明は軸から作る。
+    #: 費用の軸のレンズの説明は費用の軸の定義から作る。
     description: LayerText = ()
     #: 一覧の行のⓘが出す、descriptionより詳しい説明。
     panel_hint: LayerText = ()
@@ -285,7 +285,7 @@ def size_sentence(axis: DisplayAxisSpec) -> str:
     return f"{largest.label}は円を大きく表示します。"
 
 
-#: 面で塗らない土地被覆の分類（区間インスペクタの割合には出る）。
+#: 面で塗らない土地被覆の分類（ルートの区間の「緑と水」には出る）。
 _UNPAINTED_LANDCOVER = "・".join(cls.label for cls in LANDCOVER_CLASSES if not cls.painted)
 
 
@@ -539,8 +539,8 @@ def _map_layers() -> tuple[tuple[str, MapLayerSpec], ...]:
 #: 地図に載るものの宣言（`_LAYER_SPECS`の順）。
 MAP_LAYERS: tuple[tuple[str, MapLayerSpec], ...] = _map_layers()
 
-#: 実行時に決まるレイヤーに共通の宣言。`dedicated`は軸スタジオ由来の軸のレイヤーで、路面タイルの道へ道ごとに配る
-#: 得点の色を塗る（得点は時刻で変わりうる）。`road`は道の線の層で、種別は層ごとに軸カタログの`road_classes`が配る。
+#: 実行時に決まるレイヤーに共通の宣言。`dedicated`は費用の軸のレンズのレイヤーで、路面タイルの道へ道ごとに配る
+#: 1kmあたりの代償の秒の色を塗る（値は時刻の風で変わりうる）。`road`は道の線の層で、種別は層ごとに軸カタログの`road_classes`が配る。
 AXIS_LAYER_SPECS: dict[str, MapLayerSpec] = {
     "dedicated": MapLayerSpec(_ROAD_LAYER_DATA_SOURCE, None, data_nature="dynamic"),
     "road": MapLayerSpec(_ROAD_LAYER_DATA_SOURCE, None),

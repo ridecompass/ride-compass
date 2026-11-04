@@ -128,8 +128,6 @@ async def test_observation_map_is_requested_by_the_jst_time():
             wind_speed_ms=3.2,
             wind_direction=WindDirection(deg=180.0, label="南"),
             precipitation_10min_mm=0.5,
-            precipitation_1h_mm=2.0,
-            reports_precipitation_1h=True,
         )
     }
 

@@ -20,7 +20,7 @@ from app.domain.way_value_formula import (
 #
 # **走行方位が決めるのは符号だけで、坂の急さは変えない。** 道路は道路に沿ってしか走れず、
 # 辿る以上は坂の急さをそのまま受けるためである。角度差を係数に掛ける（cos投影）と、同じ坂が
-# 方位次第で緩く見える。風（wind.py: wind_drag_ratio）は風向が進行方向と独立に決まるため
+# 方位次第で緩く見える。風（wind.py: wind_components）は風向が進行方向と独立に決まるため
 # 角度差が実際に抗力を変えるが、勾配では道路の向きが進行方向そのもののため同じ扱いはできない。
 #
 # 直角に近い範囲は符号が決まらない（どちら向きにも辿れる）。そこは値を持たないものとして
@@ -59,7 +59,3 @@ def travel_direction_formula(forward: FormulaNode, backward: FormulaNode) -> Way
     )
 
 
-def gradient_by_direction(gradient_percent: FormulaNode) -> tuple[FormulaNode, FormulaNode]:
-    """道路自身の勾配（`gradient_percent`）を、道の向き寄り・逆向き寄りに辿ったときの勾配（%）。符号だけが入れ替わる。
-    要求の走行方位でどちらを選ぶかは`travel_direction_formula`が決める。"""
-    return gradient_percent, Unary(op="neg", arg=gradient_percent)

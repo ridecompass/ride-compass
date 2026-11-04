@@ -1,6 +1,6 @@
 """一次属性の語彙の宣言（地図での束ね方・凡例の行・名前）と、宣言だけから導く式。
 
-型は`domain/registry.py`が持つ（docs/modules/backend/axis-studio.md「一次属性の語彙」）。
+型は`domain/registry.py`が持つ。
 """
 
 from collections import Counter

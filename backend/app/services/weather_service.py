@@ -1,8 +1,5 @@
-from datetime import datetime
-
 import numpy as np
 
-from app.domain.rain import StationRainMaterials
 from app.domain.msm import wind_speed_and_direction
 from app.domain.msm_grid import (
     MSM_GRID_MAX_POINTS,
@@ -20,21 +17,10 @@ from app.domain.weather import GridPointToday, grid_point_today
 from app.domain.wind import DEPARTURE_WIND_DECIMALS, DepartureWind, WindForecastSeries
 from app.infrastructure import msm_client
 from app.infrastructure.msm_client import MsmUnavailableError
-from app.services.jma_amedas_service import load_station_rain_materials, new_rain_materials_cache
 
 
 class WeatherService:
-    """風の予報を気象庁MSMから読み、雨の観測の材料をアメダスの履歴から読む。
-
-    雨の材料は実体の中に持つため、組み立てる側（`api/dependencies.py`）が実体をプロセスに1つ持つ。
-    """
-
-    def __init__(self) -> None:
-        self._rain_materials_cache = new_rain_materials_cache()
-
-    async def get_station_rain_materials(self, now: datetime) -> StationRainMaterials | None:
-        """観測所ごとの雨の材料（`jma_amedas_service.py: load_station_rain_materials`）。地図の雨とルートの雨が同じ値を読む。"""
-        return await load_station_rain_materials(now, self._rain_materials_cache)
+    """風の予報を気象庁MSMから読む。"""
 
     async def get_departure_wind(self, point: Coordinates) -> DepartureWind | None:
         """地点へ補間した時系列の先頭（現在時刻の正時）の風。`RoadGraphEngine`が時別の系列の代わりに、画面に出さない

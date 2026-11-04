@@ -29,11 +29,9 @@ from sqlalchemy import text
 
 from app.domain.attributes import CategoricalColumn
 from app.domain.graph import LeanEdge, edge_key, node_key
-from app.domain.landcover import LandcoverPercentages, landcover_key
 from app.domain.material_catalog import MATERIAL_CATALOG, material_array_columns
 from app.domain.region import BoundingBox
 from app.infrastructure.derived_models import EdgeCountsRow, EdgeElevationRow, EdgeLandcoverRow
-from app.services.axis_preview_service import SAMPLE_LIMIT, SAMPLE_PERCENT
 from app.infrastructure.material_joins import reversed_partner
 from app.infrastructure.road_graph_repository import (
     ID_CHUNK_SIZE,
@@ -260,16 +258,6 @@ async def test_unknown_way_has_no_tags():
     assert await repo.get_way_tags_by_osm_way_id(123) is None
 
 
-async def test_sampled_way_without_length_is_dropped():
-    """延長は分布の重み。0を混ぜると、その材料の値が重みなしで平均へ入る。"""
-    repo, _ = _repo([_Row(length_m=0.0, m_material_a=1.0),
-                     _Row(length_m=10.0, m_material_a=2.0)])
-
-    samples = await repo.sample_way_material_values(1, SAMPLE_PERCENT, SAMPLE_LIMIT, None)
-
-    assert samples == [(10.0, {"material_a": 2.0})]
-
-
 # --- 事故の収録年 -------------------------------------------------------------
 
 
@@ -279,32 +267,6 @@ async def test_accident_years_come_from_the_declared_profile(declared, years):
     repo, _ = _repo([_Row(years=declared)])
 
     assert await repo.get_accident_years() == years
-
-
-# --- 土地被覆の内訳 -----------------------------------------------------------
-
-
-def _landcover_row() -> _Row:
-    """表が入れる形の、有効画素が正の行。"""
-    return _Row(lc_valid_pixels=100, **{f"lc_{landcover_key(name)}": 12.5 for name in LandcoverPercentages.model_fields})
-
-
-@pytest.mark.parametrize(("feature_key", "segment_index"), [
-    ("123-4", 4),
-    # タイルは区間とway丸ごとを同じ名前の鍵で出す。区切りの無い鍵はway丸ごと
-    ("123", None),
-    # 鍵とwayが食い違うのは呼び出し側の取り違え。別の区間の内訳を返すよりway全体で答える
-    ("456-7", None),
-    # 鍵はフロントから来る。数でない鍵を区間として扱うと、引き直しが例外で落ちる
-    ("123-x", None),
-])
-async def test_landcover_is_read_at_the_unit_the_map_paints(feature_key, segment_index):
-    """鍵が区間を指すなら区間の値。way丸ごとの値を返すと、同じ場所で地図の色と数字が食い違う。"""
-    repo, session = _repo([_landcover_row()])
-
-    await repo.get_feature_landcover(123, feature_key)
-
-    assert session.params[0].get("segment_index") == segment_index
 
 
 # --- タイル -------------------------------------------------------------------
@@ -323,14 +285,3 @@ async def test_tile_inside_the_imported_area_is_bytes_even_without_features(tile
     repo, _ = _repo([_Row(covered=True, tile=tile)])
 
     assert await _read_mvt(repo) == payload
-
-
-async def test_feature_keys_are_returned_as_text():
-    """鍵はタイルが焼いたものと同じ文字列で配る。数で配ると、フロントのidと噛み合わず
-    色が一切付かない。"""
-    repo, _ = _repo([_Row(covered=True, midpoints=None)],
-                    [_Row(covered=True, midpoints={123: [35.1, 139.2], "123-4": [35, 139]})])
-
-    assert await repo.get_feature_midpoints_in_tile(14, 1, 2, BBOX) == {}
-    assert await repo.get_feature_midpoints_in_tile(14, 1, 2, BBOX) == {
-        "123": (35.1, 139.2), "123-4": (35.0, 139.0)}

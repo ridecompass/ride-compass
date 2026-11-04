@@ -23,7 +23,6 @@ from fastapi.testclient import TestClient
 
 from app import main as main_module
 from app.main import app
-from app.services.axis_registry_service import AxisDefinitionSyncError
 from tests.bound_fake import bound
 
 
@@ -89,15 +88,15 @@ def lifespan_schedulers(monkeypatch) -> list[_RecordingScheduler]:
     return created
 
 
-def test_lifespan_fails_fast_when_axis_definitions_cannot_be_loaded(monkeypatch):
-    """`AxisDefinitionSyncError`はlifespan内で捕捉されず、アプリ起動自体が失敗する。"""
+def test_lifespan_fails_fast_when_the_definitions_cannot_be_loaded(monkeypatch):
+    """定義（区分・費用の軸）を読めない例外はlifespan内で捕捉されず、アプリ起動自体が失敗する。"""
 
     async def _raise(*args, **kwargs):
-        raise AxisDefinitionSyncError("boom")
+        raise RuntimeError("boom")
 
     monkeypatch.setattr(main_module, "refresh_definitions", _raise)
 
-    with pytest.raises(AxisDefinitionSyncError), TestClient(app):
+    with pytest.raises(RuntimeError, match="boom"), TestClient(app):
         pass
 
 

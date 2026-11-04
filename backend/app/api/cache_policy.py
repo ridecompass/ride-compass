@@ -20,7 +20,6 @@ from typing import Final
 from starlette.datastructures import MutableHeaders
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from app.api.admin_db_errors import ADMIN_PATH_PREFIX
 from app.infrastructure import jma_tile_redis_cache
 
 
@@ -109,7 +108,6 @@ TILE_ROUTE_POLICIES: Final[tuple[tuple[str, CachePolicy], ...]] = (
     # **開いているラスタの構成は環境変数で決まりURLに現れない**。
     # 同じURLの内容が変わりうるため`immutable`は付けられない。
     ("/api/region/landcover-tiles/", BATCH_TILE),
-    ("/api/region/way-materials/", SHORT),
     ("/api/region/lens/", SHORT),
     ("/api/region/road-classes/", SHORT),
 )
@@ -125,8 +123,8 @@ ROUTE_POLICIES: Final[tuple[tuple[str, CachePolicy], ...]] = (
     ("/api/jma-tile-index", LIVE),
     *TILE_ROUTE_POLICIES,
     # カタログ・設定
-    ("/api/axis-catalog", LIVE),
-    # 管理APIで書いた費用の軸の定義が、再デプロイなしに画面へ出るまでの遅れを軸カタログと揃える。
+    ("/api/client-config", LIVE),
+    # 管理APIで書いた費用の軸の定義が、再デプロイなしに画面へ出るまでの遅れを、区分・較正値と揃える。
     ("/api/cost-axes", LIVE),
     # 天候（URLに緯度経度を含むため地点ごとに別エントリになる）
     ("/api/weather", SHORT),
@@ -143,11 +141,11 @@ ROUTE_POLICIES: Final[tuple[tuple[str, CachePolicy], ...]] = (
     ("/api/place-area", MASTER_LOOKUP),
     # ルート生成（POSTはそもそもキャッシュされないが、進捗のGETは明示的に禁じる）
     ("/api/routes/", NO_STORE),
-    ("/api/region/axis-inspector", NO_STORE),
+    ("/api/region/road-inspector", NO_STORE),
     # 押した所を本文で送るPOSTで、同じURLの応答を使い回させない。
     ("/api/region/roads-at", NO_STORE),
     # 管理・状態確認（認可必須の情報を中間キャッシュへ残さない）
-    (ADMIN_PATH_PREFIX, NO_STORE),
+    ("/api/admin/", NO_STORE),
     ("/api/debug/", NO_STORE),
     ("/health", NO_STORE),
 )

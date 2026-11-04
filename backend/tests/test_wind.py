@@ -1,12 +1,10 @@
-"""`domain/wind.py`——風を走行の負荷へ写す式、格子点ごとの時別の予報、通過予定時刻の推定。
+"""`domain/wind.py`——格子点ごとの時別の予報、通過予定時刻の推定。
 
-入口は`wind_drag_ratio`・`WindForecastSeries`・`estimate_passage_hours`と、
-地図へ配る木`WIND_DRAG_RATIO_WAY_FORMULA`。
+入口は`WindForecastSeries`・`estimate_passage_hours`。
 
 ここで見ないもの:
 - 予報を引くMSMの格子点の並び（`MsmBlock`） → `test_msm.py`
-- 風の材料を道・区間へ配る評価器（`domain/dynamic_materials.py`） → `test_wind_way_service.py`・`test_leg_costs.py`
-- タイルの道へ予報を引く配信 → `test_wind_way_service.py`
+- 風で増える空気抵抗が走る速さを落とすこと（`drag_increases_m2_s2`） → `test_cycling_speed.py`
 - 探索の時刻ビン → `test_leg_costs.py`・`test_route_generation_behavior.py`
 """
 
@@ -16,66 +14,20 @@ from datetime import datetime, timedelta
 
 import numpy as np
 import pytest
-from hypothesis import given
 from hypothesis import strategies as st
 
 from app.domain.geo import EARTH_RADIUS_KM
 from app.domain.msm import MsmBlock, MsmGrid
 from app.domain.route import Coordinates
-from app.domain.way_value_formula import way_values_from_formula
 from app.domain.wind import (
-    WIND_DIRECTION_LEAF,
-    WIND_DRAG_RATIO_WAY_FORMULA,
-    WIND_DRAG_REFERENCE_SPEED_MS,
-    WIND_SPEED_LEAF,
     WindForecastSeries,
-    drag_increases_m2_s2,
     estimate_passage_hours,
-    kmh_to_ms,
-    wind_drag_ratio,
-    wind_drag_ratio_from_components,
 )
 
 #: 風速・走行速度の本番の範囲（m/s）。台風の暴風と、想定速度の上限60km/hを覆う。
 WIND_SPEEDS = st.floats(0.0, 40.0)
 TRAVEL_SPEEDS = st.floats(1.0, 17.0)
 BEARINGS = st.floats(0.0, 360.0)
-
-
-# --- 風の追加負荷 ---
-
-
-@given(st.floats(0.1, 40.0), TRAVEL_SPEEDS)
-def test_a_pure_crosswind_adds_a_little_drag(speed, travel_speed):
-    """真横の風も相対風速を増やすので、負荷は正になる。"""
-    assert wind_drag_ratio(speed, 90.0, 0.0, travel_speed) > 0.0
-
-
-@given(WIND_SPEEDS, BEARINGS, BEARINGS, st.floats(5.0, 60.0))
-def test_the_map_formula_gives_the_drag_the_route_uses(speed, direction, bearing, speed_kmh):
-    """地図の道の色（配る木を道ごとの風と要求の走行方位・想定速度で評価した値）が、ルートの区間の負荷と食い違わない。"""
-    values = way_values_from_formula(
-        WIND_DRAG_RATIO_WAY_FORMULA, ["way"], {WIND_SPEED_LEAF: [speed], WIND_DIRECTION_LEAF: [direction]},
-        {"bearing_deg": bearing, "speed_kmh": speed_kmh})
-
-    assert values == {"way": round(wind_drag_ratio(speed, direction, bearing, kmh_to_ms(speed_kmh)), 3)}
-
-
-@given(st.floats(-40.0, 40.0), st.floats(-40.0, 40.0), TRAVEL_SPEEDS)
-def test_the_running_model_reads_the_same_drag_increase_as_the_map(headwind, crosswind, travel_speed):
-    """走行モデルが区間ごとに読む空気抵抗の増え方は、地図とルートの風の負荷と同じ式。食い違うと、向かい風の道の
-    所要時間の伸びと、地図の色が別の風を見る。"""
-    ratio = float(wind_drag_ratio_from_components(headwind, crosswind, travel_speed))
-
-    increase = drag_increases_m2_s2(np.array([headwind], dtype=np.float32), np.array([crosswind], dtype=np.float32),
-                                    np.float32(travel_speed))[0]
-
-    assert increase == pytest.approx(ratio * WIND_DRAG_REFERENCE_SPEED_MS ** 2, rel=1e-4, abs=1e-3)
-
-
-def test_drag_requires_a_positive_travel_speed():
-    with pytest.raises(ValueError):
-        wind_drag_ratio(3.0, 0.0, 0.0, 0.0)
 
 
 # --- 時別の予報 ---

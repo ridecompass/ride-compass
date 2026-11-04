@@ -20,13 +20,16 @@ from numpy.typing import ArrayLike
 from pydantic import ConfigDict, Field
 
 from app.domain.axis_templates import evaluate_breakpoint_linear
-from app.domain.difficulty import round_difficulty_array
 from app.domain.strict_model import StrictModel
 
 _NODE_CONFIG = ConfigDict(frozen=True, allow_inf_nan=False)
 
 #: 木が読む要求の条件の名前。地図の配信の要求のクエリパラメータの名前でもある。
 _FormulaConditionName = Literal["bearing_deg", "speed_kmh"]
+
+
+#: 地図の式の木が読む走る条件（条件の葉`condition`の名前）。地図のレンズの要求のクエリパラメータの名前でもある。
+WayValueConditionName = Literal["at", "bearing_deg", "speed_kmh"]
 
 
 class Constant(StrictModel):
@@ -268,8 +271,6 @@ def _evaluate(node: FormulaNode, features: Mapping[str, ArrayLike], conditions: 
     if isinstance(node, Interpolate):
         return evaluate_breakpoint_linear(_evaluate(node.input, features, conditions), node.stops)
     values = _evaluate(node.arg, features, conditions)
-    if node.decimals == 1:
-        return np.reshape(round_difficulty_array(np.atleast_1d(values)), np.shape(values))
     # `np.float64`の`round`はnumpyの丸め（10の冪を掛けて丸める）で、Pythonの`round`と値が食い違いうる。
     return np.vectorize(lambda value: round(float(value), node.decimals), otypes=[float])(values)
 

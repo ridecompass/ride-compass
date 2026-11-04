@@ -16,7 +16,6 @@ from app.api.rate_limit import client_id, enforce_rate_limit
 from app.config import settings
 from app.domain.cost_preference import CostPreference, RequestedCostPreference
 from app.domain.road_avoidance import AvoidanceLevel
-from app.domain.route_preference import RoutePreference, check_axis_weights, published_axis_ids
 from app.domain.route_request import (
     MAX_ROUTE_DISTANCE_KM,
     MAX_ROUTES,
@@ -54,25 +53,6 @@ _generate_semaphore = asyncio.Semaphore(settings.generate_max_concurrent)
 # 実行中のルート生成ジョブ（`create_task`の戻り値）。イベントループはタスクへの強参照を
 # 持たないため、ここで保持しないとGCが実行中のジョブごと回収しうる。
 _running_generate_tasks: set[asyncio.Task] = set()
-
-
-class RoutePreferenceWeights(RootModel[dict[str, float]]):
-    """Edge評価・区間難易度（絶対評価、難易度合成）の重み。キーはaxis_id。
-
-    「キー省略時に既定値が黙って入る」ことを避けるため、公開軸のaxis_idを全部明示することを
-    検証で強制する。値の不変条件（公開軸のidだけ・有限かつ非負）は`check_axis_weights`。
-    """
-
-    @model_validator(mode="after")
-    def _check_axis_keys(self) -> "RoutePreferenceWeights":
-        missing = sorted(published_axis_ids() - self.root.keys())
-        if missing:
-            raise ValueError(f"route_preference must specify every published axis_id (missing={missing})")
-        check_axis_weights(self.root)
-        return self
-
-    def to_preference(self) -> RoutePreference:
-        return RoutePreference(weights=dict(self.root))
 
 
 class RoadAvoidanceOverride(RootModel[dict[str, AvoidanceLevel]]):

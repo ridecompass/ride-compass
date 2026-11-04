@@ -1,7 +1,6 @@
-"""評価軸が参照する材料（material）の正式カタログ。
+"""道の材料（material）の正式カタログ。
 
-`domain/axis_definitions.py: AXIS_DEFINITIONS`の各軸（`MaterialTerm.material`・
-`CategoricalShape.material`）が参照する材料idの単一ソース（詳細は
+費用の軸の道の負担の軸（`domain/cost_axes.py: BurdenAxis`の`burden.material`）・走行モデル・地図が参照する材料idの単一ソース（詳細は
 docs/modules/backend/evaluation-scoring.md「材料カタログ」参照）。
 
 **材料の「登録」と「評価軸での利用」は独立している**: 既存の軸が使わない生データ
@@ -65,7 +64,6 @@ from app.domain.material_sql import (
     landcover_value_sql,
     per_km_value_sql,
     poi_density_value_sql,
-    reads_segment_values,
     BRIDGE_NORMALIZED_SQL,
     CYCLEWAY_TAG_NAMES,
     HIGHWAY_SQL,
@@ -84,9 +82,6 @@ from app.domain.traffic import (
     POI_COUNT_KINDS,
     poi_density_material_id,
 )
-from app.domain.rain import HOURS_SINCE_RAIN, RAIN_HISTORY_HOURS, RAIN_WINDOW_HOURS, rain_window_material_id
-from app.domain.weather import PRECIPITATION_MIN_MM
-from app.domain.wind import WIND_DRAG_REFERENCE_SPEED_KMH, WIND_DRAG_REFERENCE_SPEED_MS, wind_drag_ratio
 from app.domain.strict_model import StrictModel
 from app.domain.material_coverage_spec import (
     CoverageExcluded,
@@ -152,12 +147,9 @@ MaterialDType = Literal["numeric", "boolean", "categorical"]
 #: はい/いいえの材料の値の論理名（対応表のキーの綴り→論理名）。
 _BOOLEAN_VALUE_LABELS = {"true": "はい", "false": "いいえ"}
 
-#: 材料の値の出どころ。`db`はDBの値式（`MaterialSpec.value_sql`）で求める。`request`はリクエストの条件（風・
-#: 想定速度）から都度求め、`domain/dynamic_materials.py: DYNAMIC_MATERIAL_EVALUATORS`が評価する。`observation`は
-#: 観測から都度引き、静的スコア行列の組み立てへ観測の列として渡す（`evaluation.py: build_static_edge_score_matrix`）。`road_class`は
-#: 道の区分から都度作る（`domain/road_classes.py: class_columns`）。
-_MaterialSource = Literal["db", "request", "observation", "road_class"]
-
+#: 材料の値の出どころ。`db`はDBの値式（`MaterialSpec.value_sql`）で求める。`road_class`は道の区分から都度作る
+#: （`domain/road_classes.py: class_columns`）。
+_MaterialSource = Literal["db", "road_class"]
 
 
 class MaterialSpec(StrictModel):
@@ -165,24 +157,11 @@ class MaterialSpec(StrictModel):
 
     material_id: str
     label: str
-    # 材料が何の値かの説明。軸の定義ファイルを書く人が材料を選ぶときに読む。
+    # 材料が何の値かの説明。費用の軸の定義を書く人が材料を選ぶときに読む。
     description: str = Field(min_length=1)
     dtype: MaterialDType
     # 値の単位（凡例・数値表示用の表記、無次元・真偽値・カテゴリ値は空文字）。材料の生値を表示するときの単位の唯一の正。
     unit: str = ""
-    # 同じ単位の他の材料と**足し合わせて意味を持つ量**か（示量／示強の区別）。回・件・個の
-    # ような個数と、それを同じ距離で割った密度（回/km等）は足せる。%・km/h・倍率のような
-    # 割合・率は、母数の違うものを足しても何も表さないためFalseのまま（単位が揃っているだけでは和の意味は保証されない）。
-    additive: bool = False
-    # 距離を掛けた総量（例: 「0.8回/km」→「約26回」）を出すときの単位。**総量が読み手の
-    # 判断を変える量にだけ置く**——回・件のように数えられる出来事は「この経路で何回止まるか」
-    # を答えるが、角度のような連続量は総量（「約3322度曲がる」）を出しても比べる尺度が無い。
-    # `additive`（足し合わせて意味を持つか）とは別の問い: 事故密度は足せるが、総量は読めない。
-    # 単位が「◯◯/km」であることだけを条件にすると、この区別が付かない。
-    total_unit: str | None = None
-    # 値が進行方向で符号の変わる量か（勾配: 登りプラス・下りマイナス。同じ道を逆に走ると符号だけが反転する）。
-    # 符号が向きを表すので、得点へ写すと登りか下りかが消える。
-    direction_signed: bool = False
     # MVTタイルへ既に焼き込み済みのプロパティ名。Noneは「タイル非依存」（GSI標高の都度取得、
     # 気象の動的取得、レシピ合成値等）。
     # タイルの列は、この名前と`value_sql`から組み立てる（`tile_column_sql`）。
@@ -191,8 +170,8 @@ class MaterialSpec(StrictModel):
     # （表の外の宣言は`_check_primary_attribute_is_declared`が断る）。
     # 材料id（例: highway_is_cycleway・maxspeed_kmh・intersection_count_per_km）と一次属性id
     # （例: cycleway・maxspeed・intersection）は名前が異なる別の名前空間のため、対応が
-    # 自明でない材料には明示的にここへ書く。Noneは「対応する一次属性が無い」（動的データ
-    # 由来のwind_drag_ratio、一次属性未登録のbridge/smoothness等）。
+    # 自明でない材料には明示的にここへ書く。Noneは「対応する一次属性が無い」（一次属性未登録の
+    # bridge/smoothness等）。
     primary_attribute: PrimaryAttributeSpec | None = None
     # 値の出どころ（`_MaterialSource`）。リクエストごとに決まる材料の集合・観測の列として受ける材料の集合は
     # ここから導く（`materials_of_source`）。値式・欠損率の測り方との揃いは`_check_fields_match_the_source`が見る。
@@ -240,10 +219,6 @@ class MaterialSpec(StrictModel):
     def _check_fields_match_the_dtype(self) -> "MaterialSpec":
         """dtypeと噛み合わない宣言を登録時に落とす。通すと、その材料を選んだ画面だけが
         黙って何も出さない（対訳の効かない値）。"""
-        if self.total_unit is not None and not self.unit:
-            # 総量は生値へ距離を掛けた量で、単位の無い材料には掛ける相手が無い
-            # （`axis_raw_value.py: raw_value_units`は`unit`が空の軸の総量を先に落とす）。
-            raise ValueError(f"{self.material_id}: total_unitはunitを持つ材料にだけ置ける")
         if self.value_labels and self.dtype != "categorical":
             raise ValueError(f"{self.material_id}: value_labelsはcategorical材料の値にだけ付く")
         if self.tile_property is not None and self.value_sql is None:
@@ -262,40 +237,6 @@ class MaterialSpec(StrictModel):
             # 欠損率はDBの値を数えるので、DBに値を持たない材料には数える相手が無い。
             raise ValueError(f"{self.material_id}: 出どころがdbでない材料は欠損率を測らない（CoverageExcluded）")
         return self
-
-
-_WIND_REFERENCE_SPEED_LABEL = f"時速{WIND_DRAG_REFERENCE_SPEED_KMH:g}km"
-
-
-def _wind_drag_ratio_by_situation() -> dict[str, float]:
-    """基準速度で走るときの代表的な風の状況ごとの`wind_drag_ratio`（走行方位0度を基準に、
-    風向差0度=向かい風・180度=追い風・90度=真横）。材料の目安の一覧と説明文の両方がこれを読む。"""
-    v = WIND_DRAG_REFERENCE_SPEED_MS
-    situations = [
-        ("向かい風2m/s", 2.0, 0.0),
-        ("向かい風4m/s", 4.0, 0.0),
-        ("向かい風8m/s", 8.0, 0.0),
-        ("追い風4m/s", 4.0, 180.0),
-        ("真横4m/s", 4.0, 90.0),
-        ("走行速度と同じ追い風", v, 180.0),
-    ]
-    return {
-        situation: round(wind_drag_ratio(wind_speed_ms, wind_direction_deg, 0.0, v), 2)
-        for situation, wind_speed_ms, wind_direction_deg in situations
-    }
-
-
-_WIND_DRAG_RATIO_BY_SITUATION = _wind_drag_ratio_by_situation()
-
-
-_RAIN_MATERIAL_NOTE = (
-    "雨量計は0.5mm刻みで、それより弱い雨は観測されません。"
-    "出発時刻では延ばさず、地図・道の詳細・ルートのどれでも今の観測を使います。"
-)
-_RAIN_COVERAGE = CoverageExcluded(
-    reason="アメダスの観測から都度引く動的材料で、DBに静的な値を持たない",
-    missing_semantics="unknown",
-)
 
 
 #: cyclewayの各タグが道のどちら側を指すか（材料の説明に添える）。タグを足して書き漏らすとimport時に落ちる。
@@ -348,7 +289,6 @@ def _landcover_description(cls: LandcoverClass) -> str:
 #: コードが名指しで読む材料のid。カタログのキーにも同じ定数を使う——綴りを別々に書くと、
 #: ずれたときに読む側が材料を見つけられず、黙って欠損として扱う。
 GRADIENT_PERCENT = "gradient_percent"
-WIND_DRAG_RATIO = "wind_drag_ratio"
 ACCIDENT_COUNT_PER_KM_YEAR = "accident_count_per_km_year"
 
 
@@ -359,10 +299,9 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
         description="国土地理院の標高データから算出した進行方向の勾配（%）。登り坂はプラス、下り坂はマイナスです。",
         dtype="numeric",
         unit="%",
-        direction_signed=True,
         # 進行方向で符号が変わる（登りプラス・下りマイナス）ため、1本のWayに往復2つの値を
         # 持ちうる。方向を持たないMVTプロパティ1個には焼き込めないので、地図へは
-        # `services/gradient_way_service.py`のフィーチャー→値配信で乗せる。
+        # レンズ（`services/lens_service.py`）が辿る向きの値で乗せる。
         tile_property=None,
         primary_attribute=ATTR_ELEVATION,
         value_sql="em.average_grade",
@@ -383,8 +322,6 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
         ),
         dtype="numeric",
         unit="m/km",
-        additive=True,
-        total_unit="m",
         tile_property=None,
         primary_attribute=ATTR_ELEVATION,
         value_sql=per_km_value_sql("em.elevation_gain_m"),
@@ -393,63 +330,6 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
             source="区間の標高の表（edge_elevation）に行があるか",
             missing_semantics="unknown",
         ),
-    ),
-    WIND_DRAG_RATIO: MaterialSpec(
-        material_id=WIND_DRAG_RATIO,
-        label="風の追加負荷(倍率)",
-        description=(
-            "風（気象庁の数値予報モデルの計算値。予報ではなく誤差を含みうる）・進行方向・想定速度から、"
-            "相対風速の二乗則で求めた空気抵抗の増分"
-            f"（{_WIND_REFERENCE_SPEED_LABEL}で無風のときの空気抵抗を1とする倍率）。プラス=向かい風で重くなる、マイナス=追い風で楽になる、"
-            "真横の風は小さなプラス。同じ風でも速く走るほど値が大きくなります。"
-            f"目安（{_WIND_REFERENCE_SPEED_LABEL}）: "
-            + "、".join(f"{situation}→{ratio}" for situation, ratio in _WIND_DRAG_RATIO_BY_SITUATION.items())
-            + "。ルートでは各区間を通る見込みの時刻の風を使い、地図では選んだ時刻の風と指定した走行の向きを使います。"
-        ),
-        dtype="numeric",
-        # 気象は動的データ（時刻依存）のためタイルに焼き込めない（`domain/wind.py:
-        # wind_drag_ratio_array`がリクエスト時に計算する）。対応する一次属性も持たない
-        # （動的気象は`PRIMARY_ATTRIBUTES`の対象外）。
-        tile_property=None,
-        source="request",
-        coverage=CoverageExcluded(
-            reason="時刻ごとの風の予報（数値予報モデルの計算値）・想定速度から都度計算する動的材料で、DBに静的な値を持たない",
-            missing_semantics="unknown",
-        ),
-    ),
-    # --- 雨の材料。`domain/rain.py: RAIN_WINDOW_HOURS`（窓の長さの一覧）から生成する ---
-    # 値は最寄りの雨量計の観測（`domain/rain.py: rain_material_columns`）で、地図へは専用の配信、
-    # ルートへは探索範囲の静的スコア行列の列として届く。
-    **{
-        rain_window_material_id(hours): MaterialSpec(
-            material_id=rain_window_material_id(hours),
-            label=f"過去{hours}時間の雨量",
-            description=(
-                f"最寄りのアメダス雨量計で観測した、直近の正時までの{hours}時間の降水量の合計（mm）。"
-                "窓の中に欠測の1時間があれば値を持ちません。" + _RAIN_MATERIAL_NOTE
-            ),
-            dtype="numeric",
-            unit="mm",
-            tile_property=None,
-            source="observation",
-            coverage=_RAIN_COVERAGE,
-        )
-        for hours in RAIN_WINDOW_HOURS
-    },
-    HOURS_SINCE_RAIN: MaterialSpec(
-        material_id=HOURS_SINCE_RAIN,
-        label="雨が止んでからの時間",
-        description=(
-            f"最寄りのアメダス雨量計で、雨（1時間に{PRECIPITATION_MIN_MM:g}mm以上）を観測した最後の1時間が"
-            "終わってからの時間（1時間刻み）。直近の1時間に雨があれば0。"
-            f"{RAIN_HISTORY_HOURS}時間さかのぼって雨が無ければ{RAIN_HISTORY_HOURS}（{RAIN_HISTORY_HOURS}時間以上）。"
-            "雨を見つける前に欠測の1時間があれば値を持ちません。" + _RAIN_MATERIAL_NOTE
-        ),
-        dtype="numeric",
-        unit="時間",
-        tile_property=None,
-        source="observation",
-        coverage=_RAIN_COVERAGE,
     ),
     # --- 土地被覆のクラス別の割合。`domain/landcover.py: LANDCOVER_CLASSES`から生成する ---
     **{
@@ -472,8 +352,6 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
         description=f"接続する道路が{INTERSECTION_DEGREE_THRESHOLD}本以上ある交差点の1kmあたりの発生回数。",
         dtype="numeric",
         unit="回/km",
-        additive=True,
-        total_unit="回",
         tile_property=None,
         primary_attribute=ATTR_INTERSECTION,
         value_sql=per_km_value_sql("em.intersection_count"),
@@ -485,7 +363,6 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
         description="警察庁の事故データに基づく、1kmあたり・1年あたりの人身事故件数。",
         dtype="numeric",
         unit="件/(km・年)",
-        additive=True,
         tile_property=None,
         primary_attribute=ATTR_ACCIDENT_POINT,
         value_sql=f"CASE WHEN :accident_years > 0 THEN {per_km_value_sql('em.accident_count')} / :accident_years END",
@@ -713,8 +590,6 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
             description=f"進行する道路上にある{label}の、1kmあたりの数。",
             dtype="numeric",
             unit="回/km",
-            additive=True,
-            total_unit="回",
             tile_property=None,
             value_sql=poi_density_value_sql(kind),
             # 行があれば載っていないキーは0件と確定できる（欠損は行そのものの不在だけ）。
@@ -743,7 +618,6 @@ def check_material_catalog(catalog: dict[str, MaterialSpec]) -> None:
 check_material_catalog(MATERIAL_CATALOG)
 
 
-
 def material_spec(material_id: str) -> MaterialSpec | None:
     """材料idの宣言。`MATERIAL_CATALOG`の材料と、道の区分から作る材料（`class:<分け方>`、今の区分の分け方ごとに1つ）を引く。
     無い材料idにはNoneを返す。"""
@@ -753,25 +627,6 @@ def material_spec(material_id: str) -> MaterialSpec | None:
     from app.domain.road_classes import class_material_spec  # 区分は材料の宣言を読むので、引くときにだけ読む
 
     return class_material_spec(material_id)
-
-
-def known_material_spec(material_id: str) -> MaterialSpec:
-    """在ると分かっている材料idの宣言（`material_spec`）。無ければKeyError。"""
-    spec = material_spec(material_id)
-    if spec is None:
-        raise KeyError(material_id)
-    return spec
-
-
-def all_material_specs() -> list[MaterialSpec]:
-    """`MATERIAL_CATALOG`の材料と、今の区分から作る材料の全部。"""
-    from app.domain.road_classes import class_material_specs
-
-    return [*MATERIAL_CATALOG.values(), *class_material_specs()]
-
-
-def is_known_material(material_id: str) -> bool:
-    return material_spec(material_id) is not None
 
 
 def material_dtype(material_id: str) -> MaterialDType | None:
@@ -795,11 +650,6 @@ def material_array_columns() -> tuple[tuple[str, ...], tuple[str, ...]]:
     )
 
 
-def materials_of_source(source: _MaterialSource) -> frozenset[str]:
-    """出どころが`source`の材料id。"""
-    return frozenset(material_id for material_id, spec in MATERIAL_CATALOG.items() if spec.source == source)
-
-
 def material_value_sql() -> dict[str, str]:
     """材料id→値を求めるSQL式。カタログから導く（別の辞書を持たない）。"""
     return {
@@ -807,11 +657,6 @@ def material_value_sql() -> dict[str, str]:
         for material_id, spec in MATERIAL_CATALOG.items()
         if spec.value_sql is not None
     }
-
-
-def segment_material_ids() -> frozenset[str]:
-    """同じ道でも区間ごとに値が違いうる材料（値式が区間ごとの値を読む材料。`material_sql.py: reads_segment_values`）。"""
-    return frozenset(material_id for material_id, sql in material_value_sql().items() if reads_segment_values(sql))
 
 
 def material_coverage_specs() -> dict[str, WayMaterialCoverageSpec | EdgeMaterialCoverageSpec]:

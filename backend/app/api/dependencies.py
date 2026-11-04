@@ -13,14 +13,13 @@ from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from functools import partial
 from typing import Annotated
 
-from cachetools import LRUCache, TTLCache
+from cachetools import LRUCache
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.config import settings
 from app.domain.route_request import RequestedConditions
 from app.infrastructure.address_search import AddressSearchQuery
-from app.infrastructure.axis_definition_repository import AxisDefinitionRepository
 from app.infrastructure.basemap_client import BasemapClient
 from app.infrastructure.database import get_route_generation_session_factory, get_session_factory
 from app.infrastructure.db_status import DbStatusQuery
@@ -39,15 +38,7 @@ from app.infrastructure.road_graph_repository import RoadGraphRepository
 from app.infrastructure.stop_place_search import StopPlaceSearchQuery
 from app.infrastructure.tuning_overrides import TuningOverrideStore
 from app.infrastructure.wbgt_client import new_forecast_cache, new_point_master_cache
-from app.services.axis_preview_service import AxisPreviewService, new_sample_cache
-from app.services.axis_registry_service import AxisRegistryAdminService
 from app.services.db_status_service import DbStatusService
-from app.services.dedicated_way_values import (
-    DraftWayValueLensBuilder,
-    axis_way_value_lens,
-    draft_axis_way_value_lens,
-    material_service_builder,
-)
 from app.services.derived_data_freshness_service import DerivedDataFreshnessService
 from app.services.feature_materials import FeatureMaterialService
 from app.services.flood_service import FloodService
@@ -58,7 +49,7 @@ from app.services.lens_service import LensService
 from app.services.material_coverage_service import MaterialCoverageService
 from app.services.nearest_point_areas import new_cells_cache
 from app.services.place_search_service import PlaceSearchReads, PlaceSearchService
-from app.services.region_service import AxisInspectorService, RegionService
+from app.services.region_service import RoadInspectorService, RegionService
 from app.services.route_generation_setup import (
     RouteGenerationSetup,
     assemble_route_generation_setup,
@@ -90,7 +81,6 @@ _point_master_cache = new_point_master_cache()
 _forecast_cache = new_forecast_cache()
 _point_cells_cache = new_cells_cache()
 _jma_tile_shared = JmaTileSharedState()
-#: 雨の材料を実体の中に持つため、プロセスに1つ。
 _weather_service = WeatherService()
 
 
@@ -169,23 +159,6 @@ def get_landcover_tile_reader() -> LandcoverTileReader:
     return get_landcover_tile
 
 
-#: 軸スタジオの分布の標本。サービスはリクエストごとに作られるため、プロセスの側で持つ。
-_axis_preview_sample_cache = new_sample_cache()
-
-
-def get_axis_preview_sample_cache() -> TTLCache:
-    return _axis_preview_sample_cache
-
-
-async def get_axis_preview_service(
-    long_sessions: LongSessions, sample_cache: TTLCache = Depends(get_axis_preview_sample_cache)
-):
-    """軸スタジオの実データの読み出し。全表走査寄りのため、タイル配信保護用の短いcommand_timeoutで
-    キャンセルされないようルート生成用のセッション工場を使う。"""
-    async with long_sessions() as session:
-        yield AxisPreviewService(RoadGraphRepository(session), sample_cache)
-
-
 @asynccontextmanager
 async def open_region_service(tile_sessions: async_sessionmaker[AsyncSession]) -> AsyncIterator[RegionService]:
     """地域サービスの開き方。HTTPの要求の外（定期ジョブ）と、要求の依存が開く。"""
@@ -209,41 +182,9 @@ def get_place_search_service(tile_sessions: TileSessions):
     return PlaceSearchService(partial(_open_place_search_reads, tile_sessions))
 
 
-async def get_dedicated_way_value_service(
-    axis_id: str,
-    tile_sessions: TileSessions,
-    weather_service: WeatherService = Depends(get_weather_service),
-):
-    """地図のレンズ（軸の値の配信）の、軸id駆動な単一の注入点。
-
-    `axis_id`はパスパラメータで、ルーター側と同名でなければFastAPIが解決できない。
-    router側で軸ごとのサービスをそれぞれ`Depends`するとリクエストごとにDBセッションが
-    重複して開くため、この関数自体が軸から配信を組んで1セッションで済ませる。公開軸でない`axis_id`には
-    Noneを返し、呼び出し元が404を返す。
-    """
-    async with tile_sessions() as session:
-        repository = RoadGraphRepository(session)
-        yield axis_way_value_lens(
-            axis_id, FeatureMaterialService(repository), material_service_builder(repository, weather_service)
-        )
-
-
 async def get_feature_material_service(tile_sessions: TileSessions):
     async with tile_sessions() as session:
         yield FeatureMaterialService(RoadGraphRepository(session))
-
-
-async def get_draft_way_value_lens_builder(
-    tile_sessions: TileSessions,
-    weather_service: WeatherService = Depends(get_weather_service),
-) -> AsyncIterator[DraftWayValueLensBuilder]:
-    """軸スタジオの較正の地図が、下書きの形で軸の値を求めるレンズの組み立て。地図のレンズと同じく、タイルの材料と
-    配信のサービスを1セッションで引く。軸は本文にあるため、組み立ては呼び出し元がする。"""
-    async with tile_sessions() as session:
-        repository = RoadGraphRepository(session)
-        feature_materials = FeatureMaterialService(repository)
-        build_service = material_service_builder(repository, weather_service)
-        yield lambda axis_id, shape: draft_axis_way_value_lens(axis_id, shape, feature_materials, build_service)
 
 
 def get_lens_service(weather_service: WeatherService = Depends(get_weather_service)) -> LensService:
@@ -251,20 +192,10 @@ def get_lens_service(weather_service: WeatherService = Depends(get_weather_servi
     return LensService(weather_service)
 
 
-async def get_axis_inspector_service(
-    tile_sessions: TileSessions, weather_service: WeatherService = Depends(get_weather_service),
-    lens: LensService = Depends(get_lens_service),
-):
-    """区間インスペクタ。道の読み出しと、地図の配信と同じタイルの材料・配信のサービスの値を、同じセッションで順に引く
-    ——別々に開くと、先に引いたセッションが要求の終わりまで接続を持ったまま、後の読み出しがもう1本を取る。"""
+async def get_road_inspector_service(tile_sessions: TileSessions, lens: LensService = Depends(get_lens_service)):
+    """道の窓。道の一次属性を引くセッションと、DBを読まないレンズの値。"""
     async with tile_sessions() as session:
-        repository = RoadGraphRepository(session)
-        yield AxisInspectorService(
-            RegionService(repository=repository),
-            FeatureMaterialService(repository),
-            material_service_builder(repository, weather_service),
-            lens,
-        )
+        yield RoadInspectorService(RegionService(repository=RoadGraphRepository(session)), lens)
 
 
 def get_basemap_client():
@@ -286,11 +217,6 @@ def get_gsi_tile_client():
 # 以下の管理API向けのうち、書き込み・1テーブル読みで足りるものはタイル配信と同じ
 # セッション工場を使い、全表走査を伴う集計はルート生成用の長いcommand_timeoutを使う
 # （短い方だと集計が最後まで走らずキャンセルされる）。
-async def get_axis_registry_admin_service(tile_sessions: TileSessions):
-    async with tile_sessions() as session:
-        yield AxisRegistryAdminService(AxisDefinitionRepository(session))
-
-
 async def get_tuning_service(tile_sessions: TileSessions):
     async with tile_sessions() as session:
         yield TuningService(session, TuningOverrideStore(session))
@@ -298,12 +224,12 @@ async def get_tuning_service(tile_sessions: TileSessions):
 
 async def get_road_class_admin_service(tile_sessions: TileSessions):
     async with tile_sessions() as session:
-        yield RoadClassAdminService(session, AxisDefinitionRepository(session))
+        yield RoadClassAdminService(session)
 
 
 async def get_cost_axis_admin_service(tile_sessions: TileSessions):
     async with tile_sessions() as session:
-        yield CostAxisAdminService(session, AxisDefinitionRepository(session))
+        yield CostAxisAdminService(session)
 
 
 async def get_material_coverage_service(long_sessions: LongSessions):

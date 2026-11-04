@@ -11,7 +11,7 @@ EARTH_RADIUS_KM = 6371.0
 # 置かない——置くとFastAPIがこの型の範囲を読まず、範囲の外の値が黙って通る。
 Latitude = Annotated[float, Field(ge=-90, le=90)]
 Longitude = Annotated[float, Field(ge=-180, le=180)]
-# 走行方位（度、北=0から時計回り）。方位を受ける入口（地図の配信・区間インスペクタ）はこの型で書く。範囲の検査は
+# 走行方位（度、北=0から時計回り）。方位を受ける入口（地図の配信・道の窓）はこの型で書く。範囲の検査は
 # NaN・無限大も断る。
 BearingDeg = Annotated[float, Field(ge=0, lt=360)]
 

@@ -12,7 +12,7 @@ import pytest
 import pytest_asyncio
 from sqlalchemy import delete
 
-from app.domain.cost_axes import EFFORT_AXES, current_cost_axes, replace_cost_axes
+from app.domain.cost_axes import EFFORT_AXES, current_cost_axes
 from app.domain.road_classes import EMPTY_ROAD_CLASSES
 from app.infrastructure.cost_axis_models import CostAxisDefinitionsRow
 from app.main import app
@@ -42,7 +42,6 @@ async def client(road_graph_session, app_on_test_database, admin_credentials):
         yield client
         await road_graph_session.execute(delete(CostAxisDefinitionsRow))
         await road_graph_session.commit()
-        replace_cost_axes(None)
         await client.put(ROAD_CLASSES_PATH, json=EMPTY_ROAD_CLASSES.model_dump(mode="json"), headers=AUTH_HEADERS)
 
 

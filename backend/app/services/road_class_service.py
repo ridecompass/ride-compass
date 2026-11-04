@@ -9,11 +9,10 @@ import logging
 from sqlalchemy.exc import DataError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.domain.axis_definitions import AxisDefinition, missing_class_materials, named_references, unknown_class_values
 from app.domain.cost_axes import CostAxisDefinitions, check_cost_axes
 from app.domain.road_classes import RoadClassDefinitions, replace_road_classes, undeclared_references
-from app.infrastructure.axis_definition_repository import AxisDefinitionRepository
 from app.infrastructure.cost_axis_repository import read_cost_axes
+from app.infrastructure.definition_write_lock import acquire_definition_write_lock
 from app.infrastructure.road_class_repository import read_road_classes, replace_road_class_rows
 
 logger = logging.getLogger("ridecompass.road_classes")
@@ -33,33 +32,14 @@ async def refresh_road_classes(session: AsyncSession) -> None:
     _apply(await read_road_classes(session))
 
 
-def _check_writable(definitions: RoadClassDefinitions, axes: dict[str, AxisDefinition],
-                    cost_axes: CostAxisDefinitions | None) -> None:
-    """書く全体が、コードの宣言に無い名を指さず、確定しても次の起動で全軸を読み込め、軸が名指す区分の値がどの道にも当たらなく
-    ならないか。通らなければ`RoadClassRejectedError`。"""
+def _check_writable(definitions: RoadClassDefinitions, cost_axes: CostAxisDefinitions | None) -> None:
+    """書く全体が、コードの宣言に無い名を指さず、確定しても次の起動で費用の軸の定義を読み込めるか。通らなければ
+    `RoadClassRejectedError`。"""
     undeclared = undeclared_references(definitions)
     if undeclared:
         raise RoadClassRejectedError(f"コードの宣言に無い名を指しています（{'／'.join(undeclared)}）")
-    users = {axis_id: missing for axis_id, axis in axes.items() if (missing := missing_class_materials(axis, definitions))}
-    if users:
-        reasons = "／".join(
-            f"{named_references([axis_id], axes)}が{named_references(missing, axes)}を使っています" for axis_id, missing in users.items()
-        )
-        raise RoadClassRejectedError(
-            f"この入れ替えを確定すると、次の起動で読み込めない軸ができるため確定しません（{reasons}）。"
-            "先に軸の材料から外してください"
-        )
-    stale = {axis_id: unknown for axis_id, axis in axes.items() if (unknown := unknown_class_values(axis, definitions))}
-    if stale:
-        reasons = "／".join(
-            f"{named_references([axis_id], axes)}が{named_references([material], axes)}の値「{name}」を使っています"
-            for axis_id, unknown in stale.items()
-            for material, name in unknown
-        )
-        raise RoadClassRejectedError(
-            f"軸が名指す区分が無くなるため確定しません（{reasons}）。"
-            "区分の鍵を改めるときは、先に軸の値を直してください"
-        )
+    if cost_axes is None:
+        return
     cost_axis_problems = check_cost_axes(cost_axes, definitions)
     if cost_axis_problems:
         raise RoadClassRejectedError(
@@ -71,9 +51,8 @@ def _check_writable(definitions: RoadClassDefinitions, axes: dict[str, AxisDefin
 class RoadClassAdminService:
     """管理APIの全体の読みと入れ替え。入れ替えは1つの取引で、確定してからプロセス内へ反映する。"""
 
-    def __init__(self, session: AsyncSession, axes: AxisDefinitionRepository):
+    def __init__(self, session: AsyncSession):
         self._session = session
-        self._axes = axes
 
     async def read(self) -> RoadClassDefinitions:
         return await read_road_classes(self._session)
@@ -81,12 +60,13 @@ class RoadClassAdminService:
     async def replace(self, definitions: RoadClassDefinitions) -> RoadClassDefinitions:
         """全体を入れ替え、書いた全体を返す。
 
-        軸の書き込みの鍵を取ってから軸を読む——取らないと、確かめてから確定するまでの間に、消す分け方を指す軸が書ける。
+        定義の書き込みの鍵を取ってから費用の軸を読む——取らないと、確かめてから確定するまでの間に、消す区分を指す費用の軸が
+        書ける。
         """
-        session, axes = self._session, self._axes
+        session = self._session
         try:
-            await axes.acquire_write_lock()
-            _check_writable(definitions, await axes.list_all(), await read_cost_axes(session))
+            await acquire_definition_write_lock(session)
+            _check_writable(definitions, await read_cost_axes(session))
             await replace_road_class_rows(session, definitions)
             await session.commit()
         except (IntegrityError, DataError) as error:

@@ -6,7 +6,6 @@
 （`astral.sun.elevation`）という、実装が使う薄明の時刻とは別の道で求める。
 
 ここで見ないもの:
-- 夜の軸の重みを切り替えること（`domain/axis_definitions.py: time_scoped_weights`） → `test_axis_hierarchy.py`・`test_leg_costs.py`
 - 観測の応答へ日の出・日没を埋めること → `test_jma_amedas_service.py`・`test_weather_route.py`
 """
 

@@ -26,7 +26,6 @@ DEFINITIONS = CostAxisDefinitions.model_validate({
 def cost_axes():
     replace_cost_axes(DEFINITIONS)
     yield
-    replace_cost_axes(None)
 
 
 def test_the_catalog_lists_the_effort_axes_in_the_code_order_then_the_burden_axes(cost_axes):
@@ -38,9 +37,3 @@ def test_the_catalog_lists_the_effort_axes_in_the_code_order_then_the_burden_axe
     assert body["axes"][-1] == {"axis_id": "vibration", "ledger": "burden", "label": "振動", "description": "揺れる",
                      "icon_id": "wave", "lens": LENS}
     assert body["avoidance_label"] == AVOIDANCE_LABEL
-
-
-def test_the_catalog_is_not_found_before_the_definitions_are_stored():
-    replace_cost_axes(None)
-
-    assert TestClient(app).get("/api/cost-axes").status_code == 404

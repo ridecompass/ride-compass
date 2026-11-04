@@ -6,7 +6,7 @@
 ここで見ないもの:
 - 走行の模型の体力の内訳そのもの → `test_cycling_speed.py`
 - 代償の秒の式（つまみ・倍率・α・β） → `test_ledger_costs.py`
-- 地図の向きでどちらの値を塗るか（式の木） → `test_dynamic_way_values.py`
+- 地図の向きでどちらの値を塗るか（式の木） → `test_way_value_formula.py`
 - 区間インスペクタの旧い軸の得点と道の読み出し → `test_region_service.py`
 """
 
@@ -51,7 +51,6 @@ FLAT_ROUGH_WAY, CLIMBING_WAY, STOPPING_WAY = 103, 201, 104
 def cost_axes():
     replace_cost_axes(AXES)
     yield
-    replace_cost_axes(None)
 
 
 @pytest.fixture
@@ -159,14 +158,9 @@ async def test_the_inspector_gives_both_directions_and_the_facts_behind_them(cos
     assert {fact.label: fact.value for fact in inspection.along.facts}["一番急な登り"] == 12.0
 
 
-async def test_without_cost_axes_or_for_an_unknown_lens_there_is_nothing_to_paint(client, road_network_root):
+async def test_an_unknown_lens_has_nothing_to_paint(client, road_network_root, cost_axes):
     serve_road_network(road_network_root, road_network(WAYS, COORDINATES))
 
-    without_axes = await client.get(f"/api/region/lens/total/{Z}/{X}/{Y}", params={"speed_kmh": ASSUMED_SPEED_KMH})
-    replace_cost_axes(AXES)
-    try:
-        unknown = await client.get(f"/api/region/lens/nothing/{Z}/{X}/{Y}", params={"speed_kmh": ASSUMED_SPEED_KMH})
-    finally:
-        replace_cost_axes(None)
+    unknown = await client.get(f"/api/region/lens/nothing/{Z}/{X}/{Y}", params={"speed_kmh": ASSUMED_SPEED_KMH})
 
-    assert (without_axes.status_code, unknown.status_code) == (404, 404)
+    assert unknown.status_code == 404

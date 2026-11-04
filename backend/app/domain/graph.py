@@ -59,12 +59,3 @@ def edge_feature_key(osm_way_id: int, segment_index: int) -> str:
     return f"{osm_way_id}{_FEATURE_KEY_SEPARATOR}{segment_index}"
 
 
-def parse_edge_feature_key(key: str) -> tuple[int, int] | None:
-    """`edge_feature_key_sql`の逆（`(osm_way_id, segment_index)`）。way丸ごとの鍵（区切りが無い）はNone。"""
-    way_id, separator, segment = key.partition(_FEATURE_KEY_SEPARATOR)
-    if not separator:
-        return None
-    try:
-        return int(way_id), int(segment)
-    except ValueError:
-        return None

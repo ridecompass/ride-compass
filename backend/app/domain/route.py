@@ -1,11 +1,9 @@
-import math
 from collections import defaultdict
 
-from typing import Annotated, Any, Callable, Iterable, Literal, Mapping, Sequence
+from typing import Annotated, Any, Callable, Iterable, Literal, Sequence
 
 from pydantic import ConfigDict, WithJsonSchema, computed_field
 
-from app.domain.difficulty import weighted_mean_by_distance
 from app.domain.attributes import ElevationAttribute
 from app.domain.lens_total import lens_values_with_total
 from app.domain.geo import Latitude, Longitude
@@ -87,21 +85,19 @@ class PenaltyBreakdown(StrictModel):
         return round(sum(self.axis_seconds.values(), self.avoidance_seconds), COST_SECONDS_DECIMALS)
 
 
-def lens_seconds_per_km(penalty: PenaltyBreakdown | None, distance_km: float) -> dict[str, float] | None:
+def lens_seconds_per_km(penalty: PenaltyBreakdown, distance_km: float) -> dict[str, float] | None:
     """地図のレンズと同じ量（レンズid→1kmあたりの代償の秒。総合`TOTAL_LENS_ID`は軸の和）。回避指定は道の区分の指定で道の値では
     ないので入れない。ルートの値は曲がる所の漕ぎ出しを、曲がった先の区間の慣性の費目の軸に含む（道1本のレンズには無い）。
-    内訳が無いか長さが0ならNone。"""
-    if penalty is None or not distance_km > 0:
+    長さが0ならNone。"""
+    if not distance_km > 0:
         return None
     per_km = lens_values_with_total({axis_id: seconds / distance_km for axis_id, seconds in penalty.axis_seconds.items()}, 0.0)
     return {lens_id: round(value, COST_SECONDS_DECIMALS) for lens_id, value in per_km.items()}
 
 
-def merge_penalty_breakdowns(parts: Iterable[PenaltyBreakdown | None]) -> PenaltyBreakdown | None:
-    """内訳を足し合わせる（秒は足せる）。どれも無ければNone。"""
-    present = [part for part in parts if part is not None]
-    if not present:
-        return None
+def merge_penalty_breakdowns(parts: Iterable[PenaltyBreakdown]) -> PenaltyBreakdown:
+    """内訳を足し合わせる（秒は足せる）。"""
+    present = list(parts)
     totals: dict[str, float] = defaultdict(float)
     for part in present:
         for axis_id, seconds in part.axis_seconds.items():
@@ -134,10 +130,6 @@ class RouteFacts(StrictModel):
 class RouteSegmentDetail(StrictModel):
     """ルートの1区間（Edge、応答では`SEGMENT_BIN_DISTANCE_KM`ごとのビン）の詳細。地図のルートの線の塗りと区間の小窓が読む。
 
-    符号付き材料（`material_values`に入る`gradient_percent`等）は**符号付き・進行方向
-    基準**（登り=正、下り=負）。フロントの勾配色分けはこの符号を前提に「下り」カテゴリを
-    持つため、絶対値で返してはならない。
-
     geometryはこの区間が実際に通る道なり形状（GeoJSON LineString、ルート全体geometryの
     部分列）。フロントはこれがnullの場合のみ始点・終点の直線で代替描画する。
     """
@@ -158,8 +150,8 @@ class RouteSegmentDetail(StrictModel):
     # `merge_sustained_gradients`で畳む。値が無ければNone。
     sustained_gradient_percent: float | None = None
     estimated_arrival_time: str | None = None
-    # 区間の代償の秒の内訳。費目の帳簿の式で組んでいなければNone。
-    penalty: PenaltyBreakdown | None = None
+    # 区間の代償の秒の内訳。
+    penalty: PenaltyBreakdown
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -167,8 +159,6 @@ class RouteSegmentDetail(StrictModel):
         """区間の、地図のレンズと同じ量（`lens_seconds_per_km`）。ルートの線は地図のレンズと同じ段でこれを塗る。"""
         return lens_seconds_per_km(self.penalty, self.distance_km)
 
-    # 材料id→値（値の無い材料はキーを持たない）。載せる材料は`domain/evaluation.py: displayed_material_ids`が選ぶ。
-    material_values: dict[str, float]
     # 分け方（地図の道の線の層のid）と「緑と水」の層のid→区間の始まりから並べた、区分が同じまま続く部分。部分の距離の和は区間の距離と丸めの分だけずれうる。
     road_classes: dict[str, list[RoadClassStretch]]
 
@@ -202,11 +192,11 @@ class EvaluatedRoute(StrictModel):
     # 所要時間の見積もり（秒）。区間の走行時間（`domain/cycling_speed.py`の走行モデルが巡航速度と区間の条件から求めた
     # 速度）＋停止の待ち＋ターンの待ち。経路の選び方には使っておらず、表示のためだけに持つ。
     estimated_duration_seconds: float | None
-    # 並べ方の値（秒）。探索が最小にした費用そのもの（区間の費用＋曲がる所の費用）。費目の帳簿の式なら、所要時間と
-    # 内訳（`penalty`）の和に、丸めの差を除いて等しい。
+    # 並べ方の値（秒）。探索が最小にした費用そのもの（区間の費用＋曲がる所の費用）。所要時間と内訳（`penalty`）の和に、
+    # 丸めの差を除いて等しい。
     cost_seconds: float
-    # 候補全体の代償の秒の内訳。費目の帳簿の式で組んでいなければNone。
-    penalty: PenaltyBreakdown | None
+    # 候補全体の代償の秒の内訳。
+    penalty: PenaltyBreakdown
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -319,42 +309,10 @@ def _concat_segment_geometries(segments: list[RouteSegmentDetail]) -> dict | Non
     return {"type": "LineString", "coordinates": coordinates}
 
 
-_SIGNIFICANT_DIGITS = 4
-
-
-def _round_significant(value: float) -> float:
-    """有効数字`_SIGNIFICANT_DIGITS`桁へ丸める（値のスケールに依存しない丸め）。
-
-    材料値はスケールが材料ごとに違う
-    （事故密度は`件/(km・年)`で有効域0〜0.5、勾配は`%`で0〜15程度）。
-    固定の小数桁で丸めると、桁の小さい軸で値がまるごと潰れる。
-    """
-    if value == 0.0:
-        return value
-    return round(value, -int(math.floor(math.log10(abs(value)))) + (_SIGNIFICANT_DIGITS - 1))
-
-
-def _merge_weighted_dicts(
-    items: list[tuple[float, Mapping[str, float]]], round_value: Callable[[float], float]
-) -> dict[str, float]:
-    """（距離km, キー→値）の並びを、キーごとに距離加重平均へ畳む。キーの無い項目はそのキーの平均に入れない。"""
-    keys = {key for _, values in items for key in values}
-    merged: dict[str, float] = {}
-    for key in keys:
-        value = weighted_mean_by_distance([(values.get(key), distance) for distance, values in items])
-        if value is not None:
-            merged[key] = round_value(value)
-    return merged
-
 
 def _summed_km(distances: Iterable[float]) -> float:
     """区間の距離（km）の和を、区間の`distance_km`と同じ桁へ丸めた値。ビンの距離はこれ1本で作る。"""
     return round(sum(distances), DISTANCE_KM_DECIMALS)
-
-
-def merge_material_values(segments: Sequence[RouteSegmentDetail]) -> dict[str, float]:
-    """`RouteSegmentDetail.material_values`を材料idごとに距離加重平均へ集約する。どの区間にも無い材料は結果にも含めない。"""
-    return _merge_weighted_dicts([(s.distance_km, s.material_values) for s in segments], _round_significant)
 
 
 def merge_road_classes(segments: list[RouteSegmentDetail]) -> dict[str, list[RoadClassStretch]]:
@@ -409,7 +367,6 @@ BIN_FIELD_MERGERS: dict[str, Callable[[list[RouteSegmentDetail]], object]] = {
     "sustained_gradient_percent": merge_sustained_gradients,
     "estimated_arrival_time": lambda segments: segments[0].estimated_arrival_time,
     "road_classes": merge_road_classes,
-    "material_values": merge_material_values,
     "penalty": lambda segments: merge_penalty_breakdowns(segment.penalty for segment in segments),
 }
 
@@ -422,7 +379,7 @@ def _undeclared_fields() -> list[str]:
 
 if undeclared := _undeclared_fields():
     # 宣言し忘れたフィールドはビンで既定値になるだけで、型でも例外でも現れない
-    # （区間インスペクタから値が消える）。読み込みの時点で止める。
+    # （道の窓から値が消える）。読み込みの時点で止める。
     raise RuntimeError(
         f"RouteSegmentDetail のフィールド {undeclared} は、BIN_FIELD_MERGERS（ビンへの畳み方）で宣言すること"
     )

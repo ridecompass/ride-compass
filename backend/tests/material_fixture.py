@@ -10,7 +10,6 @@ from collections.abc import Iterable
 import pytest
 
 from app.domain import material_catalog
-from app.domain.axis_definitions import REQUEST_DYNAMIC_MATERIAL_IDS
 from app.domain.material_catalog import MATERIAL_CATALOG, MaterialDType, MaterialSpec
 from app.domain.material_coverage_spec import CoverageExcluded
 
@@ -46,5 +45,5 @@ def stored_materials(dtype: MaterialDType) -> list[str]:
     return [
         material_id
         for material_id, spec in MATERIAL_CATALOG.items()
-        if spec.dtype == dtype and spec.value_sql is not None and material_id not in REQUEST_DYNAMIC_MATERIAL_IDS
+        if spec.dtype == dtype and spec.value_sql is not None
     ]

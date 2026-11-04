@@ -29,7 +29,7 @@ import pytest
 
 from app.api import dependencies
 from app.config import settings
-from app.domain.cost_axes import EFFORT_AXES, CostAxisDefinitions, replace_cost_axes
+from app.domain.cost_axes import EFFORT_AXES
 from app.domain.graph import node_key, parse_edge_key
 from app.domain.road_network import RoadNetwork
 from app.domain.road_classes import AvoidanceClassification
@@ -42,6 +42,7 @@ from app.services.graph_service import GraphService, SearchMemory
 from app.services.route_generation_setup import assemble_route_generation_setup
 from tests.bound_fake import bound
 from tests.road_class_fixture import classification, fact_is, map_layer, replaced_road_classes, road_classes
+from tests.cost_axes_fixture import BAD_AXIS, cost_axes, cost_axes_declared
 from tests.route_world import (
     BAD_MATERIAL,
     CENTER,
@@ -53,7 +54,6 @@ from tests.route_world import (
     NetworkRepository,
     Weather,
     at,
-    avoid_axis_declared,
     LATTICE,
     grid_network,
     lattice_at,
@@ -110,7 +110,7 @@ class GatedWeather(Weather):
 
 @pytest.fixture
 def world(override_dependency, road_network_root):
-    """格子の道路網・天気の代役と、避けたい材料を読む公開軸1本（`avoid_axis_declared`）。"""
+    """格子の道路網と天気の代役。"""
     world = World(road_network_root)
 
     @asynccontextmanager
@@ -118,26 +118,16 @@ def world(override_dependency, road_network_root):
         yield assemble_route_generation_setup(GraphService(NetworkRepository(world.network), SearchMemory()), world.weather, requested)
 
     override_dependency(dependencies.get_route_generation_setup_opener, lambda: open_setup)
-    with avoid_axis_declared():
-        yield world
+    yield world
 
 
-#: 避けたい材料の道を重く見る道の負担の軸のid。
-BAD_AXIS = "bad"
-_PRESENTATION = {"label": "軸", "description": "", "icon_id": "icon", "lens": {"thresholds": [], "band_labels": ["段"]}}
 
 
 @pytest.fixture
-def cost_axes():
-    """体力の軸と、避けたい材料の道（1kmあたり重さ10）を重く見る道の負担の軸1本。"""
-    replace_cost_axes(CostAxisDefinitions.model_validate({
-        "effort": {axis_id: _PRESENTATION for axis_id in EFFORT_AXES},
-        "burden": {BAD_AXIS: {**_PRESENTATION, "burden": {
-            "kind": "linear", "material": BAD_MATERIAL, "points": [(0.0, 0.0), (1.0, 10.0)]}}},
-        "total_lens": _PRESENTATION,
-    }))
-    yield
-    replace_cost_axes(None)
+def bad_axis():
+    """体力の軸と、避けたい材料の道（1kmあたり重さ10）を重く見る道の負担の軸`BAD_AXIS`1本。"""
+    with cost_axes_declared(cost_axes(BAD_MATERIAL, 10.0)):
+        yield
 
 
 @pytest.fixture
@@ -289,12 +279,12 @@ async def test_the_defaults_that_were_applied_are_echoed(client):
     """画面が見る値と探索が使った値を分けない。省略した項目も、実際に使った値で返す。"""
     conditions = (await _generate(client))["result"]["conditions"]
 
-    assert conditions["cost_preference"] == {"strength": 1.0, "multipliers": {}}
+    assert conditions["cost_preference"] == {"strength": 1.0, "multipliers": dict.fromkeys(EFFORT_AXES, 1.0)}
     assert conditions["waypoints"] is None and conditions["destination"] is None
     assert conditions["corrected_destination"] is None
 
 
-async def test_the_overrides_that_were_sent_are_echoed(client, cost_axes):
+async def test_the_overrides_that_were_sent_are_echoed(client, bad_axis):
     """保存したレスポンスの条件をそのまま送り直せば、同じ条件で生成し直せる。書いていない軸の倍率は標準で返る。"""
     definitions = road_classes(
         {"kind": classification({"local": [fact_is(HIGHWAY, "residential")]})},
@@ -332,7 +322,7 @@ async def test_the_calibrated_tolerance_at_the_time_of_generation_is_applied(cli
     pytest.param({"multipliers": {BAD_AXIS: 0.0}}, False, id="軸の倍率0は数えない"),
     pytest.param({"strength": 0.0}, False, id="つまみ0は所要時間だけで選ぶ"),
 ])
-async def test_the_strength_and_the_multipliers_weigh_the_cost_of_the_roads(client, world, cost_axes, cost_preference,
+async def test_the_strength_and_the_multipliers_weigh_the_cost_of_the_roads(client, world, bad_axis, cost_preference,
                                                                             avoided):
     """南の道（南西→南東の最短2km）だけが避けたい材料を持つ。代償を数えるなら北へ回る道（4km）を選び、数えなければ南の道を選ぶ。
     候補は代償の最も小さい1本（と、それと違えば最速の1本）。"""
@@ -371,7 +361,7 @@ async def test_a_destination_moved_to_the_nearest_reachable_road_is_echoed(clien
 # --- 要求の検証 ---
 
 
-async def test_a_multiplier_for_an_axis_that_is_not_a_cost_axis_is_refused_before_any_job(client, cost_axes):
+async def test_a_multiplier_for_an_axis_that_is_not_a_cost_axis_is_refused_before_any_job(client, bad_axis):
     response = await _post(client, cost_preference={"multipliers": {"unknown": 1.0}})
 
     assert response.status_code == 422

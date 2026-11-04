@@ -437,9 +437,7 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
         "有限なので、走った道を戻るほかに道が無い所（袋小路等）は通れる。",
     ),
     # --- 地図の評価 ---
-    # 地図は軸カタログの`way_value_formula`の木でこの幅を読むので、カタログを取り直す（画面を読み込み直す）と効く。
-    # 道ごとの材料のキャッシュは道の勾配と向きだけを持ち、幅を抱えない（予報の値まで求めて配る軸だけは、
-    # `/api/region/way-materials`の応答のブラウザのキャッシュが切れてから効く）。
+    # 地図は費用の軸の一覧（`/api/cost-axes`の`map_lens.formula`）の木でこの幅を読むので、一覧を取り直す（画面を読み込み直す）と効く。
     TuningParameter(
         "gradient.perpendicular_band_deg",
         "勾配を示さない直角からの幅", "度", 15.0, 0.0, 45.0, TuningEffect.CLIENT_RELOAD,

@@ -5,9 +5,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import Field, model_validator
 
 from app.api.dependencies import (
+    get_road_inspector_service,
     LandcoverTileReader,
-    get_axis_inspector_service,
-    get_dedicated_way_value_service,
     get_feature_material_service,
     get_landcover_tile_reader,
     get_lens_service,
@@ -16,16 +15,13 @@ from app.api.dependencies import (
 from app.api.rate_limit import enforce_rate_limit
 from app.api.routers._tile_http import (
     check_tile_rate_limit,
-    missing_conditions_error,
     region_tile_semaphore,
     tile_response,
     validate_tile_coords,
 )
 from app.api.routers.cost_axis_catalog import cost_preference_query
-from app.api.routers.routes import RoutePreferenceWeights
 from app.config import settings
-from app.domain.dynamic_way_values import MissingConditions, WayValueQuery
-from app.domain.axis_inspector import AxisInspectorResult
+from app.domain.lens_values import RoadInspection
 from app.domain.cost_preference import CostPreference, RequestedCostPreference
 from app.domain.geo import BearingDeg
 from app.domain.route_request import AssumedSpeedKmh
@@ -34,10 +30,9 @@ from app.domain.geo import Latitude, Longitude
 from app.domain.region import RoadAt, RoadsAtRadiusM, RoadTileZoom, TileIndex, check_tile_index
 from app.infrastructure.media_types import PNG_CONTENT_TYPE
 from app.infrastructure.point_tile_layers import POINT_TILE_LAYERS
-from app.services.dedicated_way_values import AxisWayValueLens
 from app.services.feature_materials import FeatureMaterialService
 from app.services.lens_service import LensService
-from app.services.region_service import AxisInspectorService, RegionService
+from app.services.region_service import RegionService, RoadInspectorService
 from app.domain.strict_model import StrictModel
 
 router = APIRouter()
@@ -109,46 +104,6 @@ async def region_landcover_tile(
     return tile_response(tile, PNG_CONTENT_TYPE)
 
 
-@router.get("/api/region/way-materials/{axis_id}/{z}/{x}/{y}")
-async def region_way_materials(
-    axis_id: str,
-    z: RoadTileZoom,
-    x: TileIndex,
-    y: TileIndex,
-    request: Request,
-    at: datetime | None = None,
-    bearing_deg: BearingDeg | None = None,
-    speed_kmh: AssumedSpeedKmh | None = None,
-    lens: AxisWayValueLens | None = Depends(get_dedicated_way_value_service),
-) -> dict[str, dict[str, float]]:
-    """ルート未確定時の地図が公開軸の値を求めるための、指定タイル内のフィーチャーごとの道ごとの材料（材料の名前→値。
-    値の無い材料は載せない）。値は軸カタログの木（`way_value_formula`）へ、木が読む走る条件とともに入れると、探索と同じ
-    評価の値（区間インスペクタの得点と同じ値）になる。
-
-    パスパラメータは**軸id**（`axis_definitions.axis_id`）で、材料id（`wind_drag_ratio`等）とは別の名前空間である。
-    受け取る条件（`at`・`bearing_deg`・`speed_kmh`）は軸カタログの`dynamic_way_value_material_conditions`の名前だけを
-    読み、ほかは応答に効かない。予報の値そのものを葉に持つ軸（風）は、葉を返さずに受け取った条件で値まで求めて返す
-    ——その軸では向き・速さも要り、欠けると422。時刻を省くと現在時刻[Asia/Tokyo]。公開軸でないaxis_idと、木の無い軸
-    （軸カタログの`way_value_formula`がnull）は404。
-
-    鍵は、静的な路面タイル（`/api/region/road-surface-tiles`、MVT）の同じz/x/yのフィーチャーの鍵で、突き合わせて重ねられる。
-    路面・点のタイルと同じレート制限・座標検証・DB接続プールのsemaphoreを共有する（MVTエンコードは伴わないが、
-    同じPostGISコネクションプールを取り合うため）。
-    """
-    if lens is None:
-        raise HTTPException(status_code=404, detail="公開している軸ではありません。")
-    check_tile_rate_limit(request, f"{axis_id}-way-materials")
-    validate_tile_coords(z, x, y)
-    query = WayValueQuery(at=at, bearing_deg=bearing_deg, speed_kmh=speed_kmh)
-    async with region_tile_semaphore:
-        materials = await lens.way_materials(z, x, y, query)
-    if materials is None:
-        raise HTTPException(status_code=404, detail="この軸は道ごとの材料を配りません。")
-    if isinstance(materials, MissingConditions):
-        raise missing_conditions_error(materials)
-    return materials
-
-
 @router.get("/api/region/lens/{lens_id}/{z}/{x}/{y}")
 async def region_lens(
     lens_id: str,
@@ -167,8 +122,7 @@ async def region_lens(
     風）と想定速度`speed_kmh`と利用者の値（つまみ`strength`と、軸id→倍率のJSONの`multipliers`。ルート生成と同じ値）で決まり、
     探索と同じ部品で求める。
 
-    鍵は路面タイル（`/api/region/road-surface-tiles`）の同じz/x/yのフィーチャーの鍵。費用の軸の定義がまだ無い間と、
-    知らないレンズは404。
+    鍵は路面タイル（`/api/region/road-surface-tiles`）の同じz/x/yのフィーチャーの鍵。知らないレンズは404。
     """
     check_tile_rate_limit(request, "lens")
     validate_tile_coords(z, x, y)
@@ -195,28 +149,25 @@ async def region_road_classes(
         return await service.road_layer_values(z, x, y)
 
 
-class AxisInspectorRequest(StrictModel):
+class RoadInspectorRequest(StrictModel):
     osm_way_id: int
     # クリックされたフィーチャーの識別子（路面タイルが焼く`feature_key`）。区間で焼くズームでは区間、道1本で焼くズームでは道1本を指す。
     feature_key: str
-    # 進行方向に依存する材料（勾配・風）を出すのに要るもの。**1本の道は往復2方向で値が
-    # 違う**ため、方向が決まらないと算出できない。地図が指定している値をそのまま送る
-    # （地図が式の木へ入れている向き・速度と同じ）。時刻・速度を省くと、それを要る材料の軸は「データなし」。
-    # `z`/`x`/`y`はクリックしたタイル——地図は既に知っており、way idから逆算するより
-    # 確かで、同じタイルの値がキャッシュに載っていれば追加のDBアクセスも要らない。
+    # 押したタイル。地図は既に知っており、way idから逆算するより確かで、同じタイルの値がキャッシュに載っていれば追加の
+    # 計算も要らない。
     z: RoadTileZoom
     x: TileIndex
     y: TileIndex
+    # レンズの値は向き・時刻（風）・速さで決まる。地図のレンズの要求と同じ値を送る（省いた時刻は今）。**1本の道は往復
+    # 2方向で値が違う**ので、両方の向きを返し、地図がいまの走行方位で塗っている向きを示す。
     bearing_deg: BearingDeg
     at: datetime | None = None
-    speed_kmh: AssumedSpeedKmh | None = None
-    # 合成に使う重み。利用者がいま設定している重み（ルート生成へ送るのと同じ形・同じ検証）を送る。省略すると既定の重み。
-    route_preference: RoutePreferenceWeights | None = None
-    # 費用の軸のレンズの値（`lens`）の利用者の値。ルート生成へ送るのと同じ形・同じ検証。地図のレンズの要求と同じ値を送る。
+    speed_kmh: AssumedSpeedKmh
+    # 利用者の値。ルート生成へ送るのと同じ形・同じ検証。地図のレンズの要求と同じ値を送る。
     cost_preference: RequestedCostPreference = Field(default_factory=CostPreference)
 
     @model_validator(mode="after")
-    def _check_tile_index(self) -> "AxisInspectorRequest":
+    def _check_tile_index(self) -> "RoadInspectorRequest":
         check_tile_index(self.z, self.x, self.y)
         return self
 
@@ -242,29 +193,19 @@ async def region_roads_at(
     return await region_service.roads_at(body.longitude, body.latitude, body.z, body.radius_m)
 
 
-@router.post("/api/region/axis-inspector")
-async def region_axis_inspector(
-    body: AxisInspectorRequest,
+@router.post("/api/region/road-inspector")
+async def region_road_inspector(
+    body: RoadInspectorRequest,
     http_request: Request,
-    axis_inspector: AxisInspectorService = Depends(get_axis_inspector_service),
-) -> AxisInspectorResult | None:
-    """区間インスペクタ。クリックされた道路（osm_way_id）について、一次属性（highway/tags）と、押したフィーチャー
-    （その倍率で地図が塗る区間か道1本）の軸の得点（地図が塗る値と同じ評価）・合成（取得可能な軸だけの参考値。重みは送られた
-    `route_preference`、省略時は既定）を返す。道はosm_way_idの完全一致で引く（交差点付近での取り違え対策）。
-    進行方向に依存する軸（勾配・風）は、地図が指定している走行方位・時刻・想定速度から算出する。時刻・速度を
-    送らなければ、それを要る軸は得点がnullで返る。費用の軸のレンズの値（`lens`）は地図のレンズ（`/api/region/lens`）と
-    同じ値を両方の向きで返し、地図がいまの走行方位で塗っている向きを示す。
+    road_inspector: RoadInspectorService = Depends(get_road_inspector_service),
+) -> RoadInspection | None:
+    """道の窓。押した道（osm_way_id）の一次属性（highway/tags）と、押したフィーチャー（その倍率で地図が塗る区間か道1本）の
+    レンズの値（地図のレンズ`/api/region/lens`と同じ値を両方の向きで）。道はosm_way_idの完全一致で引く（交差点付近での
+    取り違え対策）。見つからなければnull。
     """
     # 道を押すたびの単発リクエストなので、タイル向けの上限を流用せず専用の上限を使う。
-    enforce_rate_limit(http_request, "axis-inspector", settings.axis_inspector_rate_limit_per_minute)
-    preference = None if body.route_preference is None else body.route_preference.to_preference()
-    return await axis_inspector.inspect(
-        body.osm_way_id,
-        body.feature_key,
-        body.z,
-        body.x,
-        body.y,
-        WayValueQuery(at=body.at, bearing_deg=body.bearing_deg, speed_kmh=body.speed_kmh),
-        preference,
+    enforce_rate_limit(http_request, "road-inspector", settings.road_inspector_rate_limit_per_minute)
+    return await road_inspector.inspect(
+        body.osm_way_id, body.feature_key, (body.z, body.x, body.y), body.bearing_deg, body.at, body.speed_kmh,
         body.cost_preference,
     )

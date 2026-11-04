@@ -1,43 +1,21 @@
-"""アメダスの観測値と1時間雨量の履歴をRedisに置く・読む。
+"""アメダスの観測値をRedisに置く・読む。
 
-`AmedasObservation`・`RainHistory`の値で読み書きする。保存した形の不一致は「無い」へ倒す（fail-open）。
+`AmedasObservation`の値で読み書きする。保存した形の不一致は「無い」へ倒す（fail-open）。
 
-観測値は観測所ごとのHashに置き、全観測所を1往復で書く。履歴は1キーのJSONに置く。どちらも`redis_json_cache`を通す。
+観測値は観測所ごとのHashに置き、全観測所を1往復で書く（`redis_json_cache`を通す）。
 """
 
-from dataclasses import dataclass
 from datetime import datetime
 
 from app.domain.jma_amedas import AmedasObservation, WindDirection
-from app.domain.rain import RAIN_HISTORY_HOURS
-from app.domain.time_zone import JST
 from app.infrastructure.debug_log import log_throttled_warning
 from app.infrastructure.jma_amedas_client import AMEDAS_REFRESH_INTERVAL_MINUTES
-from app.infrastructure.redis_json_cache import UNAVAILABLE, Unavailable, get_hash, get_json, set_hashes, set_json
+from app.infrastructure.redis_json_cache import UNAVAILABLE, get_hash, set_hashes
 
 _KEY_PREFIX = "jma:amedas"
 #: 次のバッチが書き直すまで切らさない長さ。
 _OBSERVATION_TTL_SECONDS = (AMEDAS_REFRESH_INTERVAL_MINUTES + 5) * 60
 _OBSERVATION_CATEGORY = "cache:jma-amedas-redis"
-
-_RAIN_HISTORY_KEY = f"{_KEY_PREFIX}:rain-history"
-# 履歴は新しい正時が来るたびに書き直すので、TTLは書き直しが止まったときの消え方だけを決める。
-# 最も古い1本が窓から外れるまでは残し、バッチが戻ったときに取り直す本数を減らす。
-_RAIN_HISTORY_TTL_SECONDS = (RAIN_HISTORY_HOURS + 1) * 60 * 60
-_RAIN_HISTORY_CATEGORY = "cache:jma-amedas-rain-history"
-_HOUR_FORMAT = "%Y%m%d%H"
-
-
-@dataclass(frozen=True)
-class RainHistory:
-    """毎正時の1時間雨量の履歴。"""
-
-    #: 最新の正時（JST）。
-    latest_hour: datetime
-    #: 観測所id → (緯度, 経度)。
-    stations: dict[str, tuple[float, float]]
-    #: 正時 → 観測所id → その正時に終わる1時間の雨量（欠測はNone）。雨量計の無い観測所は載せない。
-    hours: dict[datetime, dict[str, float | None]]
 
 
 def _observation_key(station_id: str) -> str:
@@ -126,49 +104,3 @@ def _wind_direction_from_fields(fields: dict[str, str]) -> WindDirection | None:
     """角度とラベルは同じ観測から一緒に書かれるため、角度があればラベルもある。"""
     deg = _optional_float(fields.get("wind_direction_deg"))
     return None if deg is None else WindDirection(deg=deg, label=fields["wind_direction_label"])
-
-
-async def read_rain_history() -> RainHistory | None | Unavailable:
-    """保存済みの履歴。未保存・保存した形が読めないときはNone、Redisを読めないときは`UNAVAILABLE`。"""
-    stored = await get_json(_RAIN_HISTORY_KEY, category=_RAIN_HISTORY_CATEGORY)
-    if stored is None or stored is UNAVAILABLE:
-        return stored
-    try:
-        return RainHistory(
-            latest_hour=_hour_from_key(stored["latest_hour"]),
-            stations={
-                station_id: (float(latitude), float(longitude))
-                for station_id, (latitude, longitude) in stored["stations"].items()
-            },
-            hours={
-                _hour_from_key(hour): {station_id: None if mm is None else float(mm) for station_id, mm in rain.items()}
-                for hour, rain in stored["hours"].items()
-            },
-        )
-    except (KeyError, TypeError, ValueError, AttributeError) as exc:
-        log_throttled_warning(
-            _RAIN_HISTORY_CATEGORY,
-            "[cache:jma-amedas-rain-history] 保存済みの履歴の形が現在の形と一致しません error=%r", exc,
-        )
-        return None
-
-
-async def write_rain_history(history: RainHistory) -> None:
-    await set_json(
-        _RAIN_HISTORY_KEY,
-        {
-            "latest_hour": _hour_key(history.latest_hour),
-            "stations": {station_id: list(coordinates) for station_id, coordinates in history.stations.items()},
-            "hours": {_hour_key(hour): rain for hour, rain in history.hours.items()},
-        },
-        ttl_seconds=_RAIN_HISTORY_TTL_SECONDS,
-        category=_RAIN_HISTORY_CATEGORY,
-    )
-
-
-def _hour_key(hour: datetime) -> str:
-    return hour.astimezone(JST).strftime(_HOUR_FORMAT)
-
-
-def _hour_from_key(key: str) -> datetime:
-    return datetime.strptime(key, _HOUR_FORMAT).replace(tzinfo=JST)

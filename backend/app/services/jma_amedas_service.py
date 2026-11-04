@@ -10,19 +10,15 @@
 同じキャッシュを通る。`infrastructure/jma_suikei_client.py`）。
 
 観測値は短命でPostGISへは書かず、Redisで完結させる（置き場は`infrastructure/jma_amedas_store.py`）。
-雨の材料（`domain/rain.py`）の元になる毎正時の1時間雨量の履歴も同じバッチが取り、Redisに持つ
-——失うと気象庁の過去の地図JSONを全本取り直すことになる。
 """
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 
 import httpx
-import numpy as np
 from cachetools import LRUCache, TTLCache
 
-from app.domain.rain import RAIN_HISTORY_HOURS, StationRainMaterials, is_rain_history_current, rain_material_values
-from app.domain.time_zone import JST, as_jst
+from app.domain.time_zone import JST
 from app.domain.geo import nearest_point_index
 from app.domain.jma_amedas import AmedasObservation, apparent_temperature_from_amedas
 from app.domain.route import Coordinates
@@ -30,21 +26,10 @@ from app.domain.twilight import sunrise_sunset_jst
 from app.domain.weather import derive_observed_weather_code
 from app.infrastructure import jma_amedas_client, jma_amedas_store, jma_suikei_client
 from app.infrastructure.jma_amedas_client import AmedasReading, AmedasStation
-from app.infrastructure.jma_amedas_store import RainHistory
 from app.infrastructure.jma_tile_client import JmaTileClient
-from app.infrastructure.debug_log import log_throttled_warning
 from app.services.nearest_point_areas import nearest_point_area
 
 logger = logging.getLogger("ridecompass.jma_amedas_service")
-
-_RAIN_MATERIALS_CACHE_TTL_SECONDS = 5 * 60
-_RAIN_MATERIALS_CACHE_KEY = "rain_materials"
-
-
-def new_rain_materials_cache() -> TTLCache:
-    """`load_station_rain_materials`へ渡すキャッシュ。リクエストをまたいで持つのは`WeatherService`の実体。"""
-    return TTLCache(maxsize=1, ttl=_RAIN_MATERIALS_CACHE_TTL_SECONDS)
-
 
 class JmaAmedasService:
     def __init__(
@@ -122,68 +107,7 @@ class JmaAmedasService:
             if station_id in stations
         }
         await jma_amedas_store.write_observations(observations)
-        await self._refresh_rain_history(stations, latest_time, observation_map)
         return len(observations)
-
-    async def _refresh_rain_history(
-        self, stations: dict[str, AmedasStation], latest_time: datetime, latest_map: dict[str, AmedasReading]
-    ) -> None:
-        """毎正時の1時間雨量の履歴（直近`RAIN_HISTORY_HOURS`本）に欠けている正時を、その正時の
-        地図JSONから埋める。
-
-        起動直後やRedisが空のときは全本を過去の地図JSONから取り直す（気象庁は過去の地図JSONも
-        同じURLの形で置いている）。平常時に取りに行くのは、新しく来た正時の1本だけ。
-        取れなかった正時は欠けたまま残し、次のバッチでまた取りに行く。地図JSONが取れても1時間雨量の
-        値を持つ観測所が1つも無ければ取れなかったとする——取れたとして残すと二度と取り直さず、その正時を
-        含む窓が全国で値を持たないまま、窓から外れるまで戻らない。
-        """
-        latest_hour = as_jst(latest_time).replace(minute=0, second=0, microsecond=0)
-        hours = [latest_hour - timedelta(hours=back) for back in range(RAIN_HISTORY_HOURS)]
-        stored = await jma_amedas_store.read_rain_history()
-        if stored is jma_amedas_store.UNAVAILABLE:
-            # 置き場が使えない間に全本を取り直すと、10分ごとに気象庁へ全本を問い合わせ続ける。
-            return
-        stored_hours = {} if stored is None else stored.hours
-        history = {hour: stored_hours[hour] for hour in hours if hour in stored_hours}
-        fetched = 0
-        failed = 0
-        for hour in hours:
-            if hour in history:
-                continue
-            if hour == latest_time:
-                hour_map: dict[str, AmedasReading] | None = latest_map
-            else:
-                hour_map = await jma_amedas_client.fetch_observation_map(self._http_client, hour)
-            rain = None if hour_map is None else _hourly_rain(hour_map)
-            if rain is None or all(mm is None for mm in rain.values()):
-                failed += 1
-                continue
-            history[hour] = rain
-            fetched += 1
-        if failed:
-            log_throttled_warning(
-                "weather:jma-amedas-rain-history",
-                "アメダスの1時間雨量の履歴を取れなかった正時があります missing=%d latest_hour=%s",
-                failed, latest_hour.isoformat(),
-            )
-        if fetched == 0 and stored is not None and stored.latest_hour == latest_hour:
-            return
-        await jma_amedas_store.write_rain_history(
-            RainHistory(
-                latest_hour=latest_hour,
-                stations={
-                    station_id: (stations[station_id].latitude, stations[station_id].longitude)
-                    for station_id in {station_id for rain in history.values() for station_id in rain}
-                    if station_id in stations
-                },
-                hours=history,
-            )
-        )
-        logger.info(
-            "アメダスの1時間雨量の履歴を更新しました latest_hour=%s fetched=%d missing=%d",
-            latest_hour.isoformat(), fetched, failed,
-        )
-
 
 def _observation(station: AmedasStation, observed_at: datetime, reading: AmedasReading) -> AmedasObservation:
     return AmedasObservation(
@@ -200,61 +124,4 @@ def _observation(station: AmedasStation, observed_at: datetime, reading: AmedasR
         twilight=None,
         weather_code=None,
         valid_area=None,
-    )
-
-
-def _hourly_rain(observation_map: dict[str, AmedasReading]) -> dict[str, float | None]:
-    """正時の観測値から、雨量計を持つ観測所の直前1時間の雨量（欠測はNone）。雨量の項目を
-    持たない観測所は載せない。"""
-    return {
-        station_id: reading.precipitation_1h_mm
-        for station_id, reading in observation_map.items()
-        if reading.reports_precipitation_1h
-    }
-
-
-async def load_station_rain_materials(now: datetime, cache: TTLCache) -> StationRainMaterials | None:
-    """観測所ごとの雨の材料（`domain/rain.py`）。保存済みの履歴だけを読み、気象庁へは問い合わせない。
-
-    履歴がまだ無い（バッチが一度も成功していない・Redisが不通）・最新の正時が古い
-    （`domain/rain.py: is_rain_history_current`）ときはNone。
-
-    求めた値は`cache`（`new_rain_materials_cache`）に`_RAIN_MATERIALS_CACHE_TTL_SECONDS`だけ持つ——地図のタイル1枚ごとに
-    全観測所×`RAIN_HISTORY_HOURS`本の履歴を読み直さないため。履歴が新しい正時を得てから
-    地図に出るまで、この時間だけ遅れうる。
-    """
-    materials = cache.get(_RAIN_MATERIALS_CACHE_KEY)
-    if materials is None:
-        history = await jma_amedas_store.read_rain_history()
-        if not isinstance(history, RainHistory) or not history.stations:
-            return None
-        materials = _station_rain_materials(history)
-        cache[_RAIN_MATERIALS_CACHE_KEY] = materials
-    if not is_rain_history_current(materials.latest_hour, now):
-        log_throttled_warning(
-            "weather:jma-amedas-rain-history",
-            "アメダスの1時間雨量の履歴が古いため雨の材料を配りません latest_hour=%s",
-            materials.latest_hour.isoformat(),
-        )
-        return None
-    return materials
-
-
-def _station_rain_materials(history: RainHistory) -> StationRainMaterials:
-    station_ids = sorted(history.stations)
-    hourly_mm = np.full((len(station_ids), RAIN_HISTORY_HOURS), np.nan)
-    for column, back in enumerate(range(RAIN_HISTORY_HOURS - 1, -1, -1)):
-        rain = history.hours.get(history.latest_hour - timedelta(hours=back))
-        if rain is None:
-            continue
-        for row, station_id in enumerate(station_ids):
-            value = rain.get(station_id)
-            if value is not None:
-                hourly_mm[row, column] = value
-    coordinates = np.array([history.stations[station_id] for station_id in station_ids], dtype=float)
-    return StationRainMaterials(
-        latest_hour=history.latest_hour,
-        latitudes=coordinates[:, 0],
-        longitudes=coordinates[:, 1],
-        values=rain_material_values(hourly_mm),
     )

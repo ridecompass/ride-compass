@@ -1,4 +1,4 @@
-"""地図のレンズの、道ごとの値（ルートを出す前の地図の道と区間インスペクタが読む）。
+"""地図のレンズの、道ごとの値（ルートを出す前の地図の道と道の窓が読む）。
 
 取込範囲全体の道の網（`domain/road_network.py: RoadNetwork`）の有向の区間を、路面タイルのフィーチャー（区間で塗るズームなら
 区間、道1本で塗るズームなら道の全区間。`domain/region.py: EDGE_UNIT_MIN_ZOOM`）と辿る向き（道の向き・逆向き）で束ね、
@@ -20,7 +20,6 @@ from app.domain.attributes import CategoricalColumn, MaterialColumn
 from app.domain.cost_axes import HEADWIND_FACT_LABEL, STOPS_FACT_LABEL, CostAxisDefinitions
 from app.domain.lens_total import TOTAL_LENS_ID, lens_values_with_total
 from app.domain.elevation_profile import ElevationProfiles
-from app.domain.dynamic_way_values import WayValueConditionName
 from app.domain.geo import bearings_between, length_weighted_mean
 from app.domain.graph import edge_feature_key
 from app.domain.cycling_speed import rolling_resistance_material_id
@@ -31,7 +30,7 @@ from app.domain.region import EDGE_UNIT_MIN_ZOOM, tile_bounds_lonlat
 from app.domain.road_network import MaterialFills, RoadNetwork, rows_in_bbox
 from app.domain.strict_model import StrictModel
 from app.domain.route import AxisFact
-from app.domain.way_value_formula import WayValueFormula, evaluate_formula, feature
+from app.domain.way_value_formula import WayValueConditionName, WayValueFormula, evaluate_formula, feature
 
 
 #: 道ごとの材料の名前（地図の式の木の葉）。道の向きに辿った値・逆向きに辿った値。
@@ -198,6 +197,16 @@ class LensInspection(StrictModel):
     against: LensDirection | None
     #: 路面の区分（走行の模型が転がり抵抗を引く分け方）の名前。長さの一番長い区分。区分の無い道はNone。
     surface: str | None
+
+
+class RoadInspection(StrictModel):
+    """道の窓（地図の道を押すと出る）。押した道の一次属性と、押したフィーチャー（その倍率で地図が塗る区間か道1本）の
+    レンズの値。"""
+
+    highway: str
+    tags: dict[str, str]
+    #: 費用の軸のレンズの値（1kmあたりの代償の秒）と、その元の事実。地図のレンズと同じ値。
+    lens: LensInspection
 
 
 def painted_direction(bearing_deg: float, road_bearing_deg: float) -> Literal["along", "against"] | None:

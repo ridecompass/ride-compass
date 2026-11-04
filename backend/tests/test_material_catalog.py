@@ -16,7 +16,7 @@
 - 一次属性の行に配る色 → `test_display_palette.py`
 - 一次属性の表示の宣言の検証 → `test_registry.py`・`test_primary_attributes.py`
 - 停止要因の点を地図でまとめるSQL（`stop_poi_map_group_sql`）→ タイルを焼くテスト（`test_road_graph_repository_contracts.py`）
-- カタログを配るAPI → `test_material_catalog_routes.py`・`test_axis_catalog_routes.py`
+- 材料の欠損割合を配るAPI → `test_material_catalog_routes.py`
 """
 
 from contextlib import nullcontext
@@ -52,7 +52,7 @@ def catalog(monkeypatch):
         spec("bool_definite", "boolean", WAY_DEFINITE, tile_property="bool_tile", primary_attribute=ATTR_A),
         spec("bool_unknown", "boolean", WAY_UNKNOWN),
         spec("cat_a", "categorical", WAY_DEFINITE, tile_property="cat_tile", primary_attribute=ATTR_B),
-        spec("dynamic_a", source="request", value_sql=None, coverage=EXCLUDED),
+        spec("class_a", source="road_class", value_sql=None, coverage=EXCLUDED),
         spec("per_year_a", coverage=EXCLUDED),
     ]
     replace_material_catalog(monkeypatch, specs)
@@ -61,11 +61,10 @@ def catalog(monkeypatch):
 @pytest.mark.parametrize(
     "fields",
     [
-        {"total_unit": "回"},  # 掛ける相手の単位が無い
         {"value_labels": {"a": "あ"}},  # 対訳は分類の値にだけ付く
         {"value_sql": None},  # DBが値を求めない静的材料は、全区間で値が欠ける
-        {"source": "request", "value_sql": "w.x", "coverage": EXCLUDED},  # DBの列にも載り、要求の値と2つの出どころを持つ
-        {"source": "observation", "value_sql": None},  # DBに無い値の欠損率を数える
+        {"source": "road_class", "value_sql": "w.x", "coverage": EXCLUDED},  # DBの列にも載り、区分の値と2つの出どころを持つ
+        {"source": "road_class", "value_sql": None},  # DBに無い値の欠損率を数える
         # 地図の表示の軸は材料を一次属性の宣言そのもので照らすので、同じ`attr_id`の写しは表に無いものとして断る。
         {"primary_attribute": ATTR_A.model_copy()},
     ],
@@ -101,7 +100,7 @@ def test_every_material_is_either_measured_for_coverage_or_excluded_with_a_reaso
     excluded = material_catalog.material_coverage_exclusions()
 
     assert measured["num_a"] == EDGE_UNKNOWN
-    assert excluded == {"dynamic_a": "都度引く", "per_year_a": "都度引く"}
+    assert excluded == {"class_a": "都度引く", "per_year_a": "都度引く"}
 
 
 @pytest.mark.parametrize(

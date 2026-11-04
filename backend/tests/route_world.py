@@ -9,7 +9,6 @@
 
 import itertools
 import shutil
-from contextlib import contextmanager
 from dataclasses import replace
 from pathlib import Path
 
@@ -25,13 +24,10 @@ from app.domain.cost_preference import CostPreference
 from app.domain.road_avoidance import AvoidanceLevel
 from app.domain.road_network import RoadNetwork
 from app.domain.route import Coordinates
-from app.domain.axis_definitions import AXIS_DEFINITIONS, AxisDefinition
 from app.domain.route_request import FixedPoints, RequestedConditions
 from app.domain.wind import WindForecastSeries
 from app.infrastructure import road_network_store
 from app.services.graph_service import GraphService, SearchMemory
-from app.services.weather_service import WeatherService
-from tests.axis_system_fixture import axis_definition, replaced_axis_definitions
 from tests.profile_fixture import two_point_profiles
 
 #: 道の区分の条件と0次ハードフィルタが読む事実の列。
@@ -39,7 +35,7 @@ HIGHWAY, TUNNEL = "highway", "has_tunnel"
 #: 経由地も目的地も置かない周回の指定。
 NO_POINTS = FixedPoints(waypoints=[], destination=None)
 
-AVOID_AXIS = "avoid"
+#: 避けたい道の材料（値1の道）。道の負担の軸（`tests/cost_axes_fixture.py: cost_axes`）が読む。
 BAD_MATERIAL = "m_bad"
 BASE_LAT, BASE_LON = 35.60, 139.60
 LAT_STEP, LON_STEP = 0.009, 0.011  # 緯度・経度とも約1km
@@ -208,21 +204,16 @@ class NetworkRepository:
 
 
 class Weather:
-    """天気の代役。出発時点の風は無く、時別の風の予報は`series`（Noneなら無し）を返す。雨の観測は本物の
-    `WeatherService`から読む（Redisの履歴。`tests/rain_history_fake.py: observe`で作る）。"""
+    """天気の代役。出発時点の風は無く、時別の風の予報は`series`（Noneなら無し）を返す。"""
 
     def __init__(self, series: WindForecastSeries | None = None):
         self._series = series
-        self._rain = WeatherService()
 
     async def get_departure_wind(self, origin):
         return None
 
     async def get_wind_forecast_lattice(self, bbox):
         return self._series
-
-    async def get_station_rain_materials(self, now):
-        return await self._rain.get_station_rain_materials(now)
 
 
 #: 置くたびに進める道路網の世代。置き場は世代で見分けるので、中身を変えて置くたびに世代を変える。
@@ -250,24 +241,6 @@ def generator_for(
             cost_preference=CostPreference(), road_avoidance=road_avoidance or {}, assumed_speed_kmh=assumed_speed_kmh,
         ),
     ).generator
-
-
-def _avoid_axis(weight: float) -> AxisDefinition:
-    return axis_definition(AVOID_AXIS, material=BAD_MATERIAL, is_published=True, default_weight=weight)
-
-
-@contextmanager
-def avoid_axis_declared():
-    """避けたい材料が1の区間ほど難しいと評価する公開軸を1本だけ宣言する（重み0）。"""
-    with replaced_axis_definitions({AVOID_AXIS: _avoid_axis(0.0)}):
-        yield
-
-
-@contextmanager
-def avoid_axis_weighted(weight: float):
-    """今の軸の定義のうち、避けたい材料の軸の既定の重みだけを`weight`にする（点数の割増の式は既定の重みで探す）。"""
-    with replaced_axis_definitions({**AXIS_DEFINITIONS, AVOID_AXIS: _avoid_axis(weight)}):
-        yield
 
 
 def at(osm_node_id: int) -> Coordinates:

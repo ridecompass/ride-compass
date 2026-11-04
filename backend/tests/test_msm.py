@@ -8,7 +8,7 @@
 
 ここで見ないもの:
 - 配信元の同期・メタ情報（範囲の読み取りを含む）と実データの読み出し → `test_msm_client.py`
-- 格子点の風をタイルの道・ルートの区間へ配ること → `test_wind_way_service.py`・`test_leg_costs.py`
+- 格子点の風をタイルの道・ルートの区間へ配ること → `test_region_lens.py`・`test_leg_costs.py`
 """
 
 import math

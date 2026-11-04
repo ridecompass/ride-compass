@@ -64,10 +64,10 @@ class Settings(BaseSettings):
     # 共有し、それがこのプール上限に収まるようにする（ルート生成は別エンジン・別プールで取り合わない）。
     road_tile_rate_limit_per_minute: int = 120
     road_tile_max_concurrent: int = 6
-    # 区間インスペクタは道を押すたびの単発リクエストで、パン/ズームのたびに多数のz/x/y
+    # 道の窓は道を押すたびの単発リクエストで、パン/ズームのたびに多数のz/x/y
     # タイルを連続要求するroad_tileとは負荷特性が異なるため別の上限を持つ。
-    axis_inspector_rate_limit_per_minute: int = 120
-    # 押した所に近い道も、道を押すたびの単発リクエスト（区間インスペクタと同じ負荷特性）。
+    road_inspector_rate_limit_per_minute: int = 120
+    # 押した所に近い道も、道を押すたびの単発リクエスト（道の窓と同じ負荷特性）。
     roads_at_rate_limit_per_minute: int = 120
     # 土地被覆ラスタタイルはDBを読まず、GeoTIFFの読み取り・再投影（GDAL）をスレッドプールで
     # 行う。律速がCPUとディスクI/Oになるため、DB向けのタイル上限とは別に持つ。

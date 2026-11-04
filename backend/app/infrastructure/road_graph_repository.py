@@ -15,7 +15,6 @@
 import asyncio
 import json
 import logging
-import re
 from collections.abc import AsyncIterator, Mapping, Sequence
 from itertools import batched
 
@@ -25,14 +24,12 @@ from sqlalchemy import Row, TextClause, text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from app.domain.attributes import CategoricalColumn, EdgeMaterialArrays, MaterialColumn
-from app.domain.dynamic_way_values import FeatureMaterials, FeatureSegments
+from app.domain.feature_materials import FeatureMaterials
 from app.domain.geo import bearing_sql, degrees_covering_m, midpoint_sql
-from app.domain.graph import LeanEdge, edge_key, node_key, parse_edge_feature_key
-from app.domain.landcover import LandcoverPercentages, landcover_key
+from app.domain.graph import LeanEdge, edge_key, node_key
 from app.domain.material_catalog import (
     material_array_columns,
     material_value_sql,
-    segment_material_ids,
 )
 from app.domain.region import BoundingBox, RoadAt
 from app.domain.tuning import TUNING_PARAMETERS_BY_ID, TURN_BEARING_DISTANCE_ID
@@ -40,10 +37,7 @@ from app.infrastructure import derived_data_meta
 from app.infrastructure.material_joins import material_from_clause
 from app.infrastructure.orm_base import declared_metadata
 from app.infrastructure.road_tile_sql import (
-    FEATURE_GRADIENT_INPUTS_IN_TILE_SQL,
     FEATURE_MATERIALS_IN_TILE_SQL,
-    FEATURE_MIDPOINTS_IN_TILE_SQL,
-    FEATURE_SEGMENTS_IN_TILE_SQL,
     ROAD_SURFACE_TILE_MVT_SQL,
     ROADS_AT_SQL,
 )
@@ -53,7 +47,6 @@ from app.infrastructure.source_models import (
     Source,
     nodes_lookup_sql,
     ways_lookup_sql,
-    ways_source_sql,
 )
 from app.infrastructure.vector_tile import ROAD_SURFACE_LAYER_NAME, TILE_EXTENT
 
@@ -88,79 +81,6 @@ async def create_tables(engine: AsyncEngine) -> None:
                 f"このDBに拡張 {', '.join(missing)} が入っていません。"
                 f"スーパーユーザーで先に実行してください: {commands}")
         await conn.run_sync(declared_metadata().create_all)
-
-
-# --- way粒度の材料 -----------------------------------------------------------
-#
-# 材料の式は区間向けの別名を前提にする。**way1本を指すときも同じ式を使う**——wayの行から
-# 同じ名前の別名を組み立てるだけで、式を2組持たない（軸スタジオ）。
-# way粒度では区間そのものの長さが無いため、`re`はwayの長さを返す1行にする。
-
-_WAY_RE_CLAUSE = ("CROSS JOIN LATERAL (SELECT ST_Length(w.geom::geography) AS distance_m,"
-                  " NULL::double precision AS bearing_deg) re")
-_READS_RE = re.compile(r"(?<![\w.])re\.")
-
-
-def way_from_clause(expressions: list[str], source: str) -> str:
-    """式が参照する別名だけを含むFROM句。使わないJOINを足すと、読む材料の少ない問い合わせまで
-    道の全件と材料の表の結合へ広がる。
-
-    `source`は`w`をどう引くか（全件の走査・抽選付きの走査・主キーでの1件）。呼び出し側が
-    決める——1件を引くのに走査を使うと、道の全件に対する総当たりになる。
-    """
-    reads_re = any(_READS_RE.search(expression) for expression in expressions)
-    return (f"\nFROM {source} w\n{_WAY_RE_CLAUSE if reads_re else ''}"
-            + material_from_clause(expressions, "w.osm_way_id"))
-
-
-_WAY_MATERIAL_COLUMN_PREFIX = "m_"
-
-_WAY_MATERIAL_SELECT_SQL = ", ".join(
-    f"({expr}) AS {_WAY_MATERIAL_COLUMN_PREFIX}{name}" for name, expr in sorted(material_value_sql().items())
-)
-
-
-# 軸スタジオの分布プレビューが使うway標本。材料の式は上と同じものを使い、抽選と範囲の
-# 絞り込みだけを差し替える。`TABLESAMPLE SYSTEM`はページ単位の抽選で、全表走査を避けつつ
-# 広い範囲から拾える（行単位のBERNOULLIや`ORDER BY random()`は数百万行の全走査になる）。
-#
-# 範囲を絞るときは抽選と併用しない——`TABLESAMPLE`は表全体のページから抽選するため、
-# 狭い範囲を重ねると当たるページがほとんど残らず、標本が範囲の広さに関係なく数本まで落ちる。
-def _sample_way_values_sql(sampling: str, area: str):
-    return text(
-        f"SELECT ST_Length(w.geom::geography) AS length_m, {_WAY_MATERIAL_SELECT_SQL}"
-        + way_from_clause(list(material_value_sql().values()),
-                           source=ways_source_sql(sampling))
-        + f"{area} LIMIT :limit"
-    )
-
-
-_SAMPLE_WAY_MATERIAL_VALUES_SQL = _sample_way_values_sql(
-    "TABLESAMPLE SYSTEM (:sample_percent)", "")
-_SAMPLE_WAY_MATERIAL_VALUES_IN_BBOX_SQL = _sample_way_values_sql(
-    "", " WHERE w.geom && ST_MakeEnvelope(:xmin, :ymin, :xmax, :ymax, 4326)")
-
-#: 地図のフィーチャー1つぶんの土地被覆。区間を指す鍵なら区間の値、指さなければ（`:segment_index`がNULL）
-#: way1本の値——タイルと同じ切り替えで読む。
-_FEATURE_LANDCOVER_COLUMNS = ["em.lc_valid_pixels"] + [
-    f"em.lc_{landcover_key(field)}" for field in LandcoverPercentages.model_fields]
-_FEATURE_LANDCOVER_SQL = text(
-    f"SELECT {', '.join(_FEATURE_LANDCOVER_COLUMNS)}"
-    " FROM (SELECT CAST(:osm_way_id AS bigint) AS osm_way_id,"
-    " CAST(:segment_index AS smallint) AS segment_index) k"
-    + material_from_clause(_FEATURE_LANDCOVER_COLUMNS, "k.osm_way_id", "k.segment_index",
-                           way_when_no_segment=True)
-)
-
-
-def _material_values_from_row(row: Row) -> dict[str, object]:
-    """way向けクエリの1行から材料id→値の辞書を作る。列別名は`m_<材料id>`で付けるため、
-    材料の一覧をここへ書かない。"""
-    return {
-        key[len(_WAY_MATERIAL_COLUMN_PREFIX):]: value
-        for key, value in row._mapping.items()
-        if key.startswith(_WAY_MATERIAL_COLUMN_PREFIX)
-    }
 
 
 # --- 区間粒度の材料 -----------------------------------------------------------
@@ -494,29 +414,6 @@ class RoadGraphRepository:
             profiles.extend(np.asarray(row.elevation_profile_m or (), dtype=np.float32) for row in rows)
         return profiles
 
-    async def sample_way_material_values(
-        self,
-        accident_years_covered: int,
-        sample_percent: float,
-        limit: int,
-        bbox: BoundingBox | None,
-    ) -> list[tuple[float, dict[str, object]]]:
-        """way標本を`(延長m, 材料値)`の並びで返す（軸スタジオの分布プレビュー）。
-
-        `bbox`を渡すとその範囲内のwayだけを対象にし、抽選は使わない。軸の分布は地域で
-        大きく変わるため、全域の平均だけでは市街地の偏りが見えない。
-        """
-        params: dict[str, object] = {"limit": limit, "accident_years": accident_years_covered}
-        if bbox is None:
-            statement = _SAMPLE_WAY_MATERIAL_VALUES_SQL
-            params["sample_percent"] = sample_percent
-        else:
-            statement = _SAMPLE_WAY_MATERIAL_VALUES_IN_BBOX_SQL
-            params.update(_bbox_params(bbox))
-        rows = await self._session.execute(statement, params)
-        return [(float(row.length_m), _material_values_from_row(row))
-                for row in rows if row.length_m > 0]
-
     async def get_way_tags_by_osm_way_id(
         self, osm_way_id: int
     ) -> tuple[str, dict[str, str]] | None:
@@ -533,28 +430,6 @@ class RoadGraphRepository:
         if row is None:
             return None
         return (row.highway, row.tags)
-
-    async def get_feature_landcover(
-        self, osm_way_id: int, feature_key: str | None
-    ) -> LandcoverPercentages | None:
-        """地図でクリックされたフィーチャー1つぶんの土地被覆（区間インスペクタの内訳）。
-
-        **地図が塗っている値と同じ単位で読む。** 鍵から区間が特定できるときは区間の値を、
-        できないときはway1本の値を使う——切り替えの規則はタイルと同じもので、揃えないと
-        同じ場所で地図の色と内訳の数字が食い違う。
-        """
-        segment = parse_edge_feature_key(feature_key) if feature_key else None
-        row = (await self._session.execute(_FEATURE_LANDCOVER_SQL, {
-            "osm_way_id": osm_way_id,
-            "segment_index": segment[1] if segment is not None and segment[0] == osm_way_id else None,
-        })).one()
-        # 土地被覆の行が無いときは外部結合で全列がNULLになる。行があれば割合は全部ある（列はNOT NULL）。
-        if row.lc_valid_pixels is None:
-            return None
-        return LandcoverPercentages(**{field: getattr(row, f"lc_{landcover_key(field)}")
-                                       for field in LandcoverPercentages.model_fields})
-
-    # --- タイル --------------------------------------------------------------
 
     async def roads_at(self, lon: float, lat: float, z: int, radius_m: float, limit: int) -> list[RoadAt]:
         """押した所`(lon, lat)`から`radius_m`以内の道のフィーチャーを、近い順に`limit`本（`road_tile_sql.py: ROADS_AT_SQL`）。
@@ -599,20 +474,6 @@ class RoadGraphRepository:
         # 「featureが1つも無い有効なMVT」としてMapLibreがそのまま受理する。
         return bytes(tile) if tile is not None else b""
 
-    async def get_feature_midpoints_in_tile(
-        self, z: int, x: int, y: int, bbox: BoundingBox
-    ) -> dict[str, tuple[float, float]] | None:
-        """動的値配信層（風）向けに、指定タイルのフィーチャーごとの中ほどの`(緯度, 経度)`を返す。
-        鍵はタイルが焼いた`feature_key`と同じもの。取込範囲外はNone、範囲内0件は空。"""
-        return await self._feature_pairs_in_tile(FEATURE_MIDPOINTS_IN_TILE_SQL, z, x, y, bbox)
-
-    async def get_feature_gradient_inputs_in_tile(
-        self, z: int, x: int, y: int, bbox: BoundingBox
-    ) -> dict[str, tuple[float, float]] | None:
-        """勾配配信層向けに、フィーチャーごとの`(gradient_percent, road_bearing_deg)`を返す。
-        勾配の無い区間は平均から除き、向き（両端を結ぶ方位）が定まらないフィーチャーは返さない。"""
-        return await self._feature_pairs_in_tile(FEATURE_GRADIENT_INPUTS_IN_TILE_SQL, z, x, y, bbox)
-
     async def get_feature_materials_in_tile(
         self, z: int, x: int, y: int, bbox: BoundingBox, accident_years_covered: int
     ) -> FeatureMaterials | None:
@@ -630,37 +491,3 @@ class RoadGraphRepository:
                for material_id in categorical_ids},
         }
         return FeatureMaterials(feature_keys=tuple(row.feature_keys or ()), columns=columns)
-
-    async def get_feature_segments_in_tile(
-        self, z: int, x: int, y: int, bbox: BoundingBox, accident_years_covered: int
-    ) -> FeatureSegments | None:
-        """道1本を1つのフィーチャーにするズームのタイルの、フィーチャーごとの区間と区間ごとに値が違いうる材料
-        （`road_tile_sql.py: FEATURE_SEGMENTS_IN_TILE_SQL`）。取込範囲外はNone、範囲内0件は0行。"""
-        row = (await self._session.execute(FEATURE_SEGMENTS_IN_TILE_SQL, {
-            **_tile_params(z, x, y, bbox), "accident_years": accident_years_covered,
-        })).one()
-        if not row.covered:
-            return None
-        numeric_ids, categorical_ids = material_array_columns()
-        segment_ids = segment_material_ids()
-        columns: dict[str, MaterialColumn] = {
-            **{material_id: _float_array(getattr(row, f"c_{material_id}") or [])
-               for material_id in numeric_ids if material_id in segment_ids},
-            **{material_id: CategoricalColumn.encode(getattr(row, f"c_{material_id}") or [])
-               for material_id in categorical_ids if material_id in segment_ids},
-        }
-        return FeatureSegments(
-            feature_keys=tuple(row.feature_keys or ()),
-            distance_m=_float_array(row.distance_m or []),
-            feature_bearing_deg=_float_array(row.bearing_deg or []),
-            columns=columns,
-        )
-
-    async def _feature_pairs_in_tile(
-        self, sql: TextClause, z: int, x: int, y: int, bbox: BoundingBox
-    ) -> dict[str, tuple[float, float]] | None:
-        """`(covered, フィーチャーの鍵→2つの数の組)`の1行を返すSQLを流す。取込範囲外はNone、範囲内0件は空。"""
-        covered, pairs = (await self._session.execute(sql, _tile_params(z, x, y, bbox))).one()
-        if not covered:
-            return None
-        return {str(key): (float(value[0]), float(value[1])) for key, value in (pairs or {}).items()}

@@ -33,12 +33,12 @@ DEFAULT_MAX_ROUTES = 8
 MIN_ROUTES = 1
 MAX_ROUTES = 15
 # 仮定巡航速度（km/h）の画面の既定値と、要求が受け付ける下限・上限。区間ごとの推定到達時刻と、風の追加負荷
-# （`domain/wind.py: wind_drag_ratio_array`の走行速度）の算出に使う。風・勾配に依存しない一律の定数として扱うことが
+# （風を受ける走行速度）の算出に使う。風・勾配に依存しない一律の定数として扱うことが
 # 前提——速度を風で可変にすると「時刻の算出に速度が要り、速度が風（時刻依存）に影響される」循環が生まれる。
 ASSUMED_SPEED_KMH = 20.0
 MIN_ASSUMED_SPEED_KMH = 5.0
 MAX_ASSUMED_SPEED_KMH = 60.0
-# 想定速度の値の範囲。速度を受けるどの入口（ルート生成・地図の配信・区間インスペクタ）もこの型で書く。範囲の検査は
+# 想定速度の値の範囲。速度を受けるどの入口（ルート生成・地図の配信・道の窓）もこの型で書く。範囲の検査は
 # NaN・無限大も断る。
 AssumedSpeedKmh = Annotated[float, Field(ge=MIN_ASSUMED_SPEED_KMH, le=MAX_ASSUMED_SPEED_KMH)]
 
