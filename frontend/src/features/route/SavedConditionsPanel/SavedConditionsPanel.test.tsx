@@ -12,7 +12,7 @@
  * - (i)の奥の文（書いた文をそのまま出す）
  * - 無ければ無いと出して保存の仕方を(i)に置くこと（一覧の部品 `SavedList/SavedList.tsx` が持つ） → `SavedPlacesPanel/SavedPlacesPanel.test.tsx`
  *
- * 差し替えたもの: 軸カタログの応答（網の層）。
+ * 差し替えたもの: 画面の設定の応答（網の層）。
  */
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";

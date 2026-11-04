@@ -3,10 +3,9 @@
 費用の軸の道の負担の軸（`domain/cost_axes.py: BurdenAxis`の`burden.material`）・走行モデル・地図が参照する材料idの単一ソース（詳細は
 docs/modules/backend/evaluation-scoring.md「材料カタログ」参照）。
 
-**材料の「登録」と「評価軸での利用」は独立している**: 既存の軸が使わない生データ
-（highway・surface・smoothness等）も、「評価や地図描画に使えそうな生データ」として本カタログへ
-網羅的に登録する。登録済みでも対応する軸が無ければ評価には使われない（軸の定義ファイルから
-使える）。
+**材料の「登録」と「費用の軸での利用」は独立している**: 今の費用の軸が使わない生データ
+（highway・surface・smoothness等）も、「費用や地図描画に使えそうな生データ」として本カタログへ
+網羅的に登録する。登録済みでも道の負担の軸が名指さなければ費用には使われない。
 
 本カタログの材料はGUIから追加・編集・削除できず（コード変更＋デプロイが前提）、ビルド時の生成物
 （`scripts/export_openapi.py`が書き出す`material-catalog.json`）へ書き出す。道の区分から作る材料（`class:<分け方>`）は
@@ -209,7 +208,7 @@ class MaterialSpec(StrictModel):
     @classmethod
     def _check_primary_attribute_is_declared(cls, attr: PrimaryAttributeSpec | None) -> PrimaryAttributeSpec | None:
         """表の要素そのものだけを受ける。地図の表示の軸は材料を宣言そのもので照らし（`display_axis_missing_semantics`）、
-        軸カタログは`attr_id`で地図の層を引くので、表の外の宣言（同じ`attr_id`の写しも）を指す材料は、どちらかの連動を黙って外す。"""
+        地図の表示は`attr_id`で地図の層を引くので、表の外の宣言（同じ`attr_id`の写しも）を指す材料は、どちらかの連動を黙って外す。"""
         if attr is not None and not any(attr is declared for declared in PRIMARY_ATTRIBUTES):
             raise ValueError(f"{attr.attr_id}: 材料の一次属性は`primary_attributes.py: PRIMARY_ATTRIBUTES`の要素そのものを指す")
         return attr
@@ -465,8 +464,7 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
         value_sql=SURFACE_NORMALIZED_SQL,
         coverage=_tag_coverage(SURFACE_NORMALIZED_SQL, "surface", "unknown"),
     ),
-    # 自転車インフラの分類を、評価軸ではなく材料の側で正規化したフラグ群。軸はこれらを
-    # 重み付き線形結合するだけで、タグの読み方を知らない。
+    # 自転車インフラの分類を、材料の側で正規化したフラグ群。読む側はタグの読み方を知らない。
     "highway_is_cycleway": MaterialSpec(
         material_id="highway_is_cycleway",
         label="道路種別が自転車専用道",

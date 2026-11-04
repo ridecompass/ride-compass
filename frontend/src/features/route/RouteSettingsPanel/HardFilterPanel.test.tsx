@@ -1,7 +1,7 @@
 /**
  * `RouteSettingsPanel/HardFilterPanel.tsx`——「回避」タブ。道の区分の行ごとの避け方の選びと、自転車が通れない道の固定の行。
  *
- * 見るもの: 固定の行を「通らない」に鍵を付けて並びの先頭に出し、選ぶ操作を持たないこと（軸カタログが届く前も出す）。行の避け方を
+ * 見るもの: 固定の行を「通らない」に鍵を付けて並びの先頭に出し、選ぶ操作を持たないこと（画面の設定が届く前も出す）。行の避け方を
  * 節ごとに畳んで並べ（行の無い節は出さない）、選ぶとその行だけを変えた値を上げ、既定から変えた行の数を畳んだ見出しに出すこと。
  * 見出しの行と全部を既定へ戻す操作を持たないこと。
  *
@@ -9,7 +9,7 @@
  * `features/route/useRouteGeneration.test.ts`。
  * (i)の奥の文（配られた説明を写すだけ）。
  *
- * 固定の行は生成物（`route-generate-config.json`）から読む。行・段・節は軸カタログが配る（本番の値は管理DBが持つ）ので、テストが組む。
+ * 固定の行は生成物（`route-generate-config.json`）から読む。行・段・節は画面の設定が配る（本番の値は管理DBが持つ）ので、テストが組む。
  */
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";

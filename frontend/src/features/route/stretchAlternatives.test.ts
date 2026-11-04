@@ -8,7 +8,7 @@
  *
  * ここで見ないもの:
  * - 別の道を通る区間の対応づけと、乗り換えを当てた経路の形 → `routeSplice.test.ts`
- * - 区間を割る下限を軸カタログから引くこと・乗り換え先を地図の帯にすること → `useSpliceSession.test.ts`
+ * - 区間を割る下限を画面の設定から引くこと・乗り換え先を地図の帯にすること → `useSpliceSession.test.ts`
  */
 import { describe, expect, it } from "vitest";
 

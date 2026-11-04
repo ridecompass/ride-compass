@@ -138,7 +138,7 @@ function routeDescription(conditions: GenerationConditionsSnapshot): string {
     .join("・");
 }
 
-// 段ごとに「段の名前 行の名前・…」を、強い段から並べる。行と段は軸カタログが配るもので、届く前は「なし」になる。
+// 段ごとに「段の名前 行の名前・…」を、強い段から並べる。行と段は画面の設定が配るもので、届く前は「なし」になる。
 function exclusionsDescription(roadAvoidance: RoadAvoidanceOverride, catalog: ClientConfig): string {
   const { levels, rows } = catalog.roadClasses.avoidance;
   const parts = levels.toReversed().flatMap(({ key: level, label: levelLabel }) => {

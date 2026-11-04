@@ -21,7 +21,7 @@ interface OpenOptions {
   point?: { latitude: number; longitude: number };
   /** 開いたあとに寄せる地図の倍率。 */
   zoom?: number;
-  /** ON にするレイヤーの id（mapDisplay.layers と、軸カタログが配る道の線の層）。渡さないレイヤーは既定の表示のまま。 */
+  /** ON にするレイヤーの id（mapDisplay.layers と、画面の設定が配る道の線の層）。渡さないレイヤーは既定の表示のまま。 */
   layers?: string[];
   /** 開く前に入れる保存状態（localStorage）。 */
   storedState?: Record<string, string>;
@@ -53,7 +53,7 @@ export interface CaptureContext {
    * backend は撮影用の資格情報を通さない）。選べなければ、選べるタブを並べて止まる。
    */
   openAdmin(options?: OpenAdminOptions): Promise<Locator>;
-  /** 「評価で塗る」の評価軸（レンズ）を名前で選び（null は選んでいない状態へ戻す）、読み終わりまで待つ。選べなければ、選べる名前を並べて止まる。 */
+  /** 「評価で塗る」のレンズを名前で選び（null は選んでいない状態へ戻す）、読み終わりまで待つ。選べなければ、選べる名前を並べて止まる。 */
   chooseLens(label: string | null): Promise<void>;
   /**
    * 「表示」の一覧の行の名前で凡例の内訳を開き、その内訳を返す。一覧が閉じていれば開く。`row` を渡せば、その行の説明も開く。
@@ -132,7 +132,7 @@ export function captureContext(
     costAxes,
     settle,
     async open({ point, zoom, layers = [], storedState, routes } = {}) {
-      // 道の線の層は軸カタログが配るので、前もって照らせるのはモックの層だけ（本物の backend の層は開いた画面が決める）。
+      // 道の線の層は画面の設定が配るので、前もって照らせるのはモックの層だけ（本物の backend の層は開いた画面が決める）。
       const layerIds: string[] = [...mapDisplay.layers, ...fixtures.E2E_ROAD_LAYERS].map(({ id }) => id);
       const unknown = mocked ? layers.filter((id) => !layerIds.includes(id)) : [];
       if (unknown.length > 0) {

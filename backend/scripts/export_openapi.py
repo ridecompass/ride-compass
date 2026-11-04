@@ -106,7 +106,6 @@ from app.domain.map_display import (
     ROAD_LINE_WIDTH_PX,
     ROAD_TRACK_OFFSET_STEP_PX,
     NO_DATA_DASH,
-    ROAD_UNDERLAY_OPACITY,
     ROAD_UNKNOWN_OPACITY,
     MAP_LAYER_DATA_NATURES,
     MAP_LAYER_DATA_SOURCES,
@@ -389,14 +388,13 @@ def main() -> None:
             "modelValueDisclaimer": MODEL_VALUE_DISCLAIMER,
             # 地図へ常に出す出典。
             "alwaysShownAttributions": list(ALWAYS_SHOWN_ATTRIBUTIONS),
-            # 値が無い線の破線（道・評価軸・ルートで共有）。
+            # 値が無い線の破線（道・レンズ・ルートで共有）。
             "noDataDash": list(NO_DATA_DASH),
             "road": {
                 "lineWidthPx": ROAD_LINE_WIDTH_PX,
                 "trackOffsetStepPx": ROAD_TRACK_OFFSET_STEP_PX,
                 "knownOpacity": ROAD_KNOWN_OPACITY,
                 "unknownOpacity": ROAD_UNKNOWN_OPACITY,
-                "underlayOpacity": ROAD_UNDERLAY_OPACITY,
                 "inspectedWidthPx": ROAD_INSPECTED_WIDTH_PX,
                 # 地図の線の層の値で「データなし」。
                 "noDataValue": NO_DATA_VALUE,

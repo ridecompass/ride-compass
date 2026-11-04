@@ -34,7 +34,7 @@ type MapLayerDataNature = (typeof mapDisplay.layerDataNatures)[number];
  * `ownFetch`はMapLibreのソースを経由せず自前で取るもので、取得状態はそのフェッチ自身が出す。 */
 export type MapLayerDataSource = (typeof mapDisplay.layerDataSources)[number]["key"];
 
-/** 地図のチップの最上位のグループ（何についての情報か。例: 道路・環境・スポット）。評価軸はどれにも属さない。 */
+/** 地図のチップの最上位のグループ（何についての情報か。例: 道路・環境・スポット）。レンズの層はどれにも属さない。 */
 export type MapOverlayGroup = (typeof mapDisplay.overlayGroups)[number]["key"];
 
 export const MAP_OVERLAY_GROUP_LABELS: Readonly<Record<string, string>> = Object.fromEntries(

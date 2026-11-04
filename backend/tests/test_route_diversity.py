@@ -80,7 +80,7 @@ def test_pareto_layers_do_not_depend_on_the_order_of_the_candidates():
 def test_pareto_cuts_a_distance_step_at_max_items_counting_tie_groups_not_candidates(b, expected):
     """同じ距離段階の中は、bの小さい順にmax_items個の同点グループまでしか層に入らない。
 
-    点単位で切ると、全方位が等距離・同難易度の地形で候補が層からこぼれ、後段の方位分散が
+    点単位で切ると、全方位が等距離・同じ負担の地形で候補が層からこぼれ、後段の方位分散が
     働く同点グループが壊れる。
     """
     layer = route_diversity.pareto_layer_index(

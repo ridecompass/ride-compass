@@ -3,13 +3,13 @@
 import landcoverClassesJson from "@/types/generated/landcover-classes.json";
 
 interface LandcoverClass {
-  /** 区間インスペクタの土地被覆（`InspectorValues.landcover`）の対応する割合列の名前。 */
+  /** 対応する割合列の名前（凡例の行と道のりのグラフの帯の鍵）。 */
   percentField: string;
   label: string;
   color: string;
   /** 凡例の行の（i）から開く説明。 */
   description: string;
-  /** 地図の面レイヤーで塗るか。falseでも区間インスペクタの割合には出る。 */
+  /** 地図の面レイヤーで塗るか。falseでも道のりのグラフの帯には出る。 */
   painted: boolean;
 }
 

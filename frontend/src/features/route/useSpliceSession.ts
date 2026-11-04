@@ -95,7 +95,7 @@ export function useSpliceSession({
   hasSelectedRoute,
   onApplied,
 }: SpliceSessionInputs): SpliceSessionView {
-  const axisCatalog = useClientConfig();
+  const clientConfig = useClientConfig();
   // 始めると空から始まり、抜けると中身ごと消える（前回の編集の残りを次へ持ち込まない）。
   const [session, setSplice] = useState<SpliceSession | null>(null);
   const splice = session !== null && session.basis === generatedInput ? session : null;
@@ -120,7 +120,7 @@ export function useSpliceSession({
   const editingRoute = routes.find((route) => route.id === editingRouteId) ?? null;
   // 区間を割る下限（km）。**引けないときは乗り換えの候補を作らない**——ここで既定を
   // 作ると、較正したのとは別の切り方（下限なし＝共有地点すべてで割る）で黙って動く。
-  const minStretchKm = clientTuningValue(axisCatalog, CLIENT_TUNING_IDS.minStretchKm);
+  const minStretchKm = clientTuningValue(clientConfig, CLIENT_TUNING_IDS.minStretchKm);
   const { splicedShape, spliceOptions, spliceStretchFeatures } = useSpliceOptions(
     routes,
     editingRouteId,
@@ -225,7 +225,7 @@ export function useSpliceSession({
   return {
     editingRoute,
     // 周回も目的地ルートも乗り換えの元にできる（評価は表示中の候補を作った生成の入力で投げ、backendが終点［目的地、
-    // 無ければ出発地］へ着くかを確かめる）。区間を割る下限を引けない間（軸カタログが取れていない）は出さない。
+    // 無ければ出発地］へ着くかを確かめる）。区間を割る下限を引けない間（画面の設定が取れていない）は出さない。
     // 取れていないことはヘッダーの印が知らせる。
     canStart: generatedInput !== null && routes.length > 1 && hasSelectedRoute && minStretchKm !== undefined,
     start: (routeId) => {

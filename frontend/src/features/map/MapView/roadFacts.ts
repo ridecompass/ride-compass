@@ -2,7 +2,7 @@
 // プロパティだけから作る。
 //
 // 値の対訳は生成物（materialCatalog）と点の分類の宣言から引く——
-// 手書きで持つと、同じ値を地図のポップアップと軸スタジオで別の呼び方をすることになる。
+// 手書きで持つと、同じ値を地図のポップアップと管理画面で別の呼び方をすることになる。
 
 import { PRIMARY_ATTRIBUTE_LABELS } from "@/features/map/layers/primaryAttributes";
 import materialCatalog from "@/types/generated/material-catalog.json";
@@ -19,7 +19,7 @@ function textColumn(properties: RoadSurfacePopupProperties, column: string): str
   return typeof value === "string" && value ? value : null;
 }
 
-/** 区間インスペクタで全軸の内訳を引き直すための識別子。 */
+/** 道の窓で押した道の負担を引き直すための識別子。 */
 export function roadWayId(properties: RoadSurfacePopupProperties): number | null {
   const value = properties[COLUMNS.way_id];
   return typeof value === "number" ? value : null;

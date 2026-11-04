@@ -67,7 +67,7 @@ MASTER_LOOKUP = CachePolicy(max_age_seconds=24 * 60 * 60)
 SHORT = CachePolicy(max_age_seconds=5 * 60)
 #: 数分で変わりうる警戒情報・実測値。
 VOLATILE = CachePolicy(max_age_seconds=2 * 60)
-#: 管理GUIでの変更が再デプロイなしに即座に反映される必要があるもの（軸カタログ）。
+#: 管理GUIでの変更が再デプロイなしに即座に反映される必要があるもの（画面の設定）。
 LIVE = CachePolicy(max_age_seconds=60)
 #: 進捗ポーリング・管理情報・状態確認。無指定はキャッシュ禁止と同義ではなく、中間プロキシや
 #: ブラウザのヒューリスティック判断に委ねられるため、禁止したいものは明示する。

@@ -33,7 +33,7 @@ const CONDITION_MARKS: Record<WayValueCondition, { Icon: (props: { size?: number
   at: { Icon: ClockIcon, name: "出発時刻" },
 };
 
-// 部品は軸カタログのアイコンの固定の辞書から引くので描くたびに作られないが、`const Icon = …; <Icon />`の形は
+// 部品は費用の軸のアイコンの固定の辞書から引くので描くたびに作られないが、`const Icon = …; <Icon />`の形は
 // react-hooks/static-componentsが描くたびに作る形と読むため、createElementで描く。
 function AxisIcon({ iconId }: { iconId?: string }) {
   return createElement(axisIconFor(iconId), { size: 14 });
@@ -49,7 +49,7 @@ export function LensRow({
   panel: ReactElement | null;
   filtered: boolean;
 }) {
-  const hint = useRowDescription(option.label, option.description, "この評価軸の説明を、行のすぐ下に開きます。");
+  const hint = useRowDescription(option.label, option.description, "このレンズの説明を、行のすぐ下に開きます。");
   const legend = useRowPanel(option.label, panel);
   return (
     <div className="flex w-full flex-col text-[length:var(--font-size-sm)]">

@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { adminBasicAuthCredentials } from "@/lib/adminBasicAuth";
 
-// /admin（軸スタジオ・開発者ツール）のルーティング境界での認可。
+// /admin（管理・開発者ツール）のルーティング境界での認可。
 // Next.js 16はこの境界のファイルをproxy.tsと呼ぶ（本ファイル名はフレームワークの規約、
 // frontend/AGENTS.md「このNext.jsは知っているものと違う」参照）。
 //

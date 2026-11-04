@@ -9,7 +9,7 @@ import type { PointTileLayer } from "@/lib/mapDisplay/pointLayers";
 
 const ROAD_SURFACE_TILE_PATH = apiPath("/api/region/road-surface-tiles/{z}/{x}/{y}.pbf");
 
-// タイルの世代。**手で上げない**——焼き込むSQLの署名とDBの派生データ・生データの世代からbackendが導き、実行時に配る（軸カタログの
+// タイルの世代。**手で上げない**——焼き込むSQLの署名とDBの派生データ・生データの世代からbackendが導き、実行時に配る（画面の設定の
 // `tile_versions`）。ビルド時の生成物に持たないのは、バッチがタイルを作り直してもデプロイは起きないため。
 // 既定値は置かない——届く前にタイルを要求すると、世代の違う中身がブラウザのキャッシュへ載って残る。
 // 既存の属性の意味を変える変更だけはデプロイの順序に注意が要る（docs/architecture/tech-stack.md「デプロイの反映確認」）。
@@ -24,7 +24,7 @@ export type TileVersions = Readonly<Record<string, string>> & { readonly [COMPLE
 
 /** 配られた世代から、全系統が揃ったものを取り出す。1つでも欠けたら`null`。
  *
- * **軸カタログの到着と同一視しない**。世代を返さない版のbackendが200で応答すると、カタログは「取得済み」なのに
+ * **画面の設定の到着と同一視しない**。世代を返さない版のbackendが200で応答すると、カタログは「取得済み」なのに
  * 世代は揃わない——そこでURLを組み立てると例外になる。空の辞書も「揃った」と見なさない。 */
 export function completeTileVersions(versions: Readonly<Record<string, string>>): TileVersions | null {
   return TILE_KINDS.every((kind) => Boolean(versions[kind])) ? (versions as TileVersions) : null;

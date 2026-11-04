@@ -153,7 +153,7 @@ describe("画面の枠", () => {
     }
   });
 
-  it("地図の出来事のたびに数え直す層の取得状態は、軸カタログが届いてから足された道の層も数える", async () => {
+  it("地図の出来事のたびに数え直す層の取得状態は、画面の設定が届いてから足された道の層も数える", async () => {
     const { user } = renderHome();
     await showRoadSurface(user);
     act(() => mapOnScreen().emit("idle"));

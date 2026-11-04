@@ -1,4 +1,4 @@
-"""道の区分を軸カタログで配る形（`domain/road_class_catalog.py: road_class_catalog`）を見る。
+"""道の区分を画面の設定で配る形（`domain/road_class_catalog.py: road_class_catalog`）を見る。
 
 ここで見ないもの:
 - 区分に道を振り分ける式と、地図の線の層の値 → `test_road_classes.py`

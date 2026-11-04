@@ -54,7 +54,7 @@ async def client(road_graph_session, app_on_test_database, admin_credentials):
 
 
 async def test_written_definitions_are_read_back_and_served(client):
-    """書いた全体がそのまま読み戻り、公開した分け方が軸カタログに出る。"""
+    """書いた全体がそのまま読み戻り、公開した分け方が画面の設定に出る。"""
     assert (await client.put(PATH, json=DEFINITIONS, headers=AUTH_HEADERS)).status_code == 200
     assert (await client.get(PATH, headers=AUTH_HEADERS)).json() == DEFINITIONS
     served = (await client.get("/api/client-config")).json()["road_classes"]

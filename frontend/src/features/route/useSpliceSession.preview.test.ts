@@ -8,7 +8,7 @@
  * - 評価した経路で作る → `useSpliceSession.apply.test.ts`
  * - 編集面の表示（差・失敗の出し方） → `RouteSplicePanel/RouteSplicePanel.test.tsx`
  *
- * 差し替えたもの: 評価（生成のジョブ）と軸カタログの応答（網の層。`testing/spliceSession.ts`）。評価はジョブを作り
+ * 差し替えたもの: 評価（生成のジョブ）と画面の設定の応答（網の層。`testing/spliceSession.ts`）。評価はジョブを作り
  * backendの回数制限に数えられるので、出した要求の数と中身を確かめる。
  */
 import { act } from "@testing-library/react";

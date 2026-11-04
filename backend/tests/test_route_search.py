@@ -18,7 +18,7 @@
   `test_route_generation_behavior.py`が通す。
 - 標高属性の逆向き（`ElevationAttribute.reversed_as`）→ `test_attributes.py`。
 - レグごとのコスト配列の合成（`domain/leg_costs.py`）→ `test_leg_costs.py`。
-- 探索カーネル（`domain/routing.py`）・評価軸（`domain/evaluation.py`）・走行モデル
+- 探索カーネル（`domain/routing.py`）・費用の合成（`domain/leg_costs.py`）・走行モデル
   （`domain/cycling_speed.py`）・風（`domain/wind.py`）・0次フィルタ（`domain/hard_filters.py`）
   → それぞれの持ち主のテストが持つ。
 

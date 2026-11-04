@@ -80,7 +80,7 @@ export const PROPS: SpliceProps = { routes: [BASE, VIA_Q], generatedInput: BASIS
 
 export function renderSplice(props: Partial<SpliceProps> = {}) {
   const onApplied = vi.fn();
-  // 軸カタログが届いたかは、同じ取得を読む本物のフックで見る（編集面は軸カタログの中身を持たない）。
+  // 画面の設定が届いたかは、同じ取得を読む本物のフックで見る（編集面は画面の設定の中身を持たない）。
   let catalogLoaded = false;
   const rendered = renderHook(
     (p: SpliceProps) => {
@@ -94,7 +94,7 @@ export function renderSplice(props: Partial<SpliceProps> = {}) {
 
 export type RenderedSplice = ReturnType<typeof renderSplice>;
 
-/** 編集を始め、軸カタログ（区間を割る下限）が届くまで待つ。 */
+/** 編集を始め、画面の設定（区間を割る下限）が届くまで待つ。 */
 export async function startWithCatalog(rendered: RenderedSplice, routeId = "base") {
   act(() => rendered.result.current.start(routeId));
   await waitFor(() => expect(rendered.catalogLoaded()).toBe(true));

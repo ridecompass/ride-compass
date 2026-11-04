@@ -65,7 +65,7 @@ describe("LensControl", () => {
     [UNSELECTED_LENS_ID, false, "塗る負担を選ぶ"],
     [UNSELECTED_LENS_ID, true, UNSELECTED_LENS_LABEL],
   ])(
-    "ピルは選んでいる評価軸（%s・ルートの確定後 %s）の名前を出し、選んでいなければ塗り方を出す",
+    "ピルは選んでいるレンズ（%s・ルートの確定後 %s）の名前を出し、選んでいなければ塗り方を出す",
     (lens, hasDetail, label) => {
       renderLens({ lens, hasDetail });
       expect(pill()).toHaveAccessibleName(`評価で塗る: ${label}（タップで変更）`);
@@ -89,7 +89,7 @@ describe("LensControl", () => {
     ).toEqual(["usedの軸（地図の向きで変わる）（出発時刻で変わる）", "idleの軸未使用"]);
   });
 
-  it("行を押すとその評価軸を選び、一覧は閉じない。選んでいる行をもう一度押すと外す", async () => {
+  it("行を押すとそのレンズを選び、一覧は閉じない。選んでいる行をもう一度押すと外す", async () => {
     const { onLensChange } = renderLens();
     await open();
     await userEvent.click(within(list()).getByRole("radio", { name: /^idleの軸/ }));
@@ -103,7 +103,7 @@ describe("LensControl", () => {
   it.each([
     ["used", false],
     [UNSELECTED_LENS_ID, true],
-  ])("「選択を外す」は文字の無いアイコンで、評価軸を選んでいる（%s）間だけ押せる", async (lens, disabled) => {
+  ])("「選択を外す」は文字の無いアイコンで、レンズを選んでいる（%s）間だけ押せる", async (lens, disabled) => {
     const { onLensChange } = renderLens({ lens });
     await open();
     const clear = screen.getByRole("button", { name: "選択を外す" });

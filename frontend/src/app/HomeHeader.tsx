@@ -60,16 +60,16 @@ export default function HomeHeader({
   // 最寄りの実測・警報の類（位置が分かってから、位置が変わるたびに取る。仮の地点では取らない）。
   const { amedas, amedasError, gridPointToday, gridPointTodayError, warningBadgeItems, warningFetchFailures } =
     useWeatherConditions(location, locationKnown, ridingAt, warningRoute);
-  const axisCatalogFailure = clientConfigFetchFailure(useClientConfig());
+  const clientConfigFailure = clientConfigFetchFailure(useClientConfig());
   const costAxisCatalogFailure = costAxisCatalogFetchFailure(useCostAxisCatalog());
   const headerFetchFailures = useMemo(
     () => [
       ...(locationFailure ? [locationFailure] : []),
       ...warningFetchFailures,
-      ...(axisCatalogFailure ? [axisCatalogFailure] : []),
+      ...(clientConfigFailure ? [clientConfigFailure] : []),
       ...(costAxisCatalogFailure ? [costAxisCatalogFailure] : []),
     ],
-    [locationFailure, warningFetchFailures, axisCatalogFailure, costAxisCatalogFailure],
+    [locationFailure, warningFetchFailures, clientConfigFailure, costAxisCatalogFailure],
   );
 
   return (

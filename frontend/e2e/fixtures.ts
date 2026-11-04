@@ -134,7 +134,7 @@ export async function seedStoredState(page: Page, entries: Record<string, string
 /** 初回の案内（地図の上に重なる）を閉じた保存状態。 */
 export const INTRO_CLOSED: Record<string, string> = { "ridecompass:first-visit-intro-closed": "true" };
 
-/** 全レイヤーONとデバッグログ（`[map:error]`を読むため）の保存状態。道の線の層は軸カタログが配るので、開く先の軸カタログの
+/** 全レイヤーONとデバッグログ（`[map:error]`を読むため）の保存状態。道の線の層は画面の設定が配るので、開く先の画面の設定の
  * 層を渡す（既定はモックの層）。 */
 export function allLayersOn(roadLayers: readonly { id: string }[] = E2E_ROAD_LAYERS): Record<string, string> {
   const ids = [...mapDisplay.layers, ...roadLayers].map(({ id }) => id);

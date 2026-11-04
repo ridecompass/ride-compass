@@ -140,7 +140,7 @@ async def region_road_classes(
     request: Request,
     service: FeatureMaterialService = Depends(get_feature_material_service),
 ) -> dict[str, dict[str, str]]:
-    """地図の道の線を塗る、指定タイル内のフィーチャーごとの層の値（軸カタログの`road_classes.map_layers`の`id`→値）。鍵は路面タイルの
+    """地図の道の線を塗る、指定タイル内のフィーチャーごとの層の値（画面の設定の`road_classes.map_layers`の`id`→値）。鍵は路面タイルの
     `feature_key`。値は区分の鍵か「データなし」（`domain/road_classes.py: NO_DATA_VALUE`）で、区分の外の道の層は載せない。
     ルートの区間の帯も同じ値を持つ。"""
     check_tile_rate_limit(request, "road-classes")

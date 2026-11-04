@@ -133,7 +133,7 @@ describe("道ごとの避け方", () => {
     expect(reopen(first).result.current.roadAvoidance).toEqual({ gravel: "exclude" });
   });
 
-  // 行は軸カタログが届くまで分からないので、鍵では落とさない（今の行へ揃えるのはbackend）。
+  // 行は画面の設定が届くまで分からないので、鍵では落とさない（今の行へ揃えるのはbackend）。
   it("保存値は段として読める鍵だけを残す", () => {
     window.localStorage.setItem(
       "ridecompass:road-avoidance",

@@ -27,7 +27,7 @@ export function fillLayerText(
     .join("");
 }
 
-/** 収録年の言い方（連続なら範囲、飛んでいれば並べる）。年は取込の宣言が正本で、軸カタログが運ぶ。 */
+/** 収録年の言い方（連続なら範囲、飛んでいれば並べる）。年は取込の宣言が正本で、画面の設定が運ぶ。 */
 export function coverageYearsLabel(years: readonly number[]): string {
   if (years.length === 0) return "";
   const sorted = [...years].sort((a, b) => a - b);

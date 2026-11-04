@@ -1,6 +1,6 @@
 """ルートの区間に載せる道の区分（分け方ごとの区分と「緑と水」）を、切り出した道路網の行から読む。
 
-鍵は分け方（地図の道の線の層のid）と「緑と水」の層のid。呼び名と色は、受け取る側が軸カタログの区分と土地被覆のクラスから引く。
+鍵は分け方（地図の道の線の層のid）と「緑と水」の層のid。呼び名と色は、受け取る側が画面の設定の区分と土地被覆のクラスから引く。
 - 分け方の値は地図の線の層の値（`domain/road_classes.py: layer_columns`）。
 - 「緑と水」は、割合が最も多いクラスの割合の材料のid（`domain/landcover.py: LandcoverClass.percent_field`）。
   同率は`domain/landcover.py: LANDCOVER_CLASSES`の並びで先のクラスを取る。

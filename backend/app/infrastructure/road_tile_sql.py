@@ -157,11 +157,9 @@ ROADS_AT_SQL = text(
 )
 
 
-# 鍵→動的値配信層（風、「評価軸」グループ）。**タイルと同じソース**から鍵の一覧を引く。
+# 鍵→フィーチャーごとの材料（地図の道の線の層の値）。**タイルと同じソース**から鍵の一覧を引く。
 # 別に組み立てると、単位の切り替わり方がタイルとずれた瞬間に鍵が噛み合わず、色が一切
-# 付かない。ある道路の風の値は道路自身の向きに依らないため、方位は返さない。
-# 中ほどは両端の平均で、ルートの区間の中点（`_EXTRA_MATERIAL_ARRAY_COLUMNS`の`mid_lat`/`mid_lon`）と同じ
-# 決め方にする——区間単位のズームでは同じ区間が同じ予報の格子点へ寄る。
+# 付かない。
 _FEATURE_MATERIAL_EXPRESSIONS = dict(sorted(material_value_sql().items()))
 FEATURE_MATERIALS_IN_TILE_SQL = text(
     f"""

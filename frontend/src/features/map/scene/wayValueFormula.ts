@@ -1,4 +1,4 @@
-/** backend が配る中立の式の木（軸カタログの `way_value_formula`）を、MapLibre の式へ置き換える。**木を地図の式へ
+/** backend が配る中立の式の木（費用の軸の一覧の `map_lens.formula`）を、MapLibre の式へ置き換える。**木を地図の式へ
  * 置き換えるのはここだけ**で、木の中身（どの材料をどう組むか）は持たない——節の種類ごとに置き換え方を1つずつ持つ。
  *
  * 値の約束は backend の `domain/way_value_formula.py` に従う: 値の無いことは NaN で、算術は NaN を伝え、比べは NaN を偽とし、

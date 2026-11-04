@@ -144,7 +144,7 @@ export function gridPointTodayFixture(): components["schemas"]["GridPointToday"]
   };
 }
 
-/** モックの軸カタログが配る道の線の層。区分は管理DBが持つ任意の値なので、ここで組む。 */
+/** モックの画面の設定が配る道の線の層。区分は管理DBが持つ任意の値なので、ここで組む。 */
 export const E2E_ROAD_LAYERS = [
   roadMapLayer("surface", {
     label: "路面",
@@ -158,7 +158,7 @@ export const E2E_ROAD_LAYERS = [
   }),
 ];
 
-/** モックの軸カタログの道の区分（線の層と、避け方を選べる行）。 */
+/** モックの画面の設定の道の区分（線の層と、避け方を選べる行）。 */
 const E2E_ROAD_CLASSES = roadClassCatalog({
   map_layers: E2E_ROAD_LAYERS,
   avoidance: {

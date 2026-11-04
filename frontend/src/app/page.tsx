@@ -32,9 +32,9 @@ import { countRideMetric } from "@/lib/rideMetrics";
 
 export default function Home() {
   countRideMetric("pageRenders");
-  const axisCatalog = useClientConfig();
+  const clientConfig = useClientConfig();
   // 走行モード（現在地を追い続けて地図を動かす）。走りとしてありえる速さの上限は、走行モデルの下りの最高速度。
-  const riding = useRideMode(clientTuningValue(axisCatalog, CLIENT_TUNING_IDS.maxDescentKmh));
+  const riding = useRideMode(clientTuningValue(clientConfig, CLIENT_TUNING_IDS.maxDescentKmh));
   // 走行モードの間は、地図と予定ルートのプロファイルに集中する配置にする（地図の上の操作を出さず、パネルは帯の「ルート」で開く）。
   const navigating = riding.status !== "off";
   const ridePosition = riding.map?.position ?? null;

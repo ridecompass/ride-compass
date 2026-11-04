@@ -62,7 +62,7 @@ export function useMapLifecycle(
     [getLook],
   );
   const layerDataStatus = useLayerDataStatus({ mapRef, layerDataSources, getVisibility, onChange });
-  // 地図の出来事は初期化のeffectで一度だけ結ぶので、いまのレイヤーカタログで数える関数をここから読む（カタログは軸カタログが
+  // 地図の出来事は初期化のeffectで一度だけ結ぶので、いまのレイヤーカタログで数える関数をここから読む（カタログは画面の設定が
   // 届くと道の層が増える）。
   const layerDataStatusRef = useRef(layerDataStatus);
   useEffect(() => {

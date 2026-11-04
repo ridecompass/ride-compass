@@ -18,7 +18,7 @@ export type ProfileLayerSelection = {
   readonly toggle: (id: string) => void;
 };
 
-/** 道のりのグラフに重ねるレイヤの選択。端末に覚える。道の層は軸カタログが届くまで分からないので、読むときには捨てず、今ある
+/** 道のりのグラフに重ねるレイヤの選択。端末に覚える。道の層は画面の設定が届くまで分からないので、読むときには捨てず、今ある
  * レイヤで絞るのは使う側に任せる。 */
 export function useProfileLayers(): ProfileLayerSelection {
   const [ids, setIds] = useStoredState<readonly string[]>(PROFILE_LAYERS_STORAGE_KEY, DEFAULT_LAYER_IDS, {

@@ -870,7 +870,7 @@ async def test_each_segment_starts_and_ends_at_the_elevation_of_its_road_in_the_
 
 
 async def test_each_segment_carries_its_road_classes(engine_over):
-    """道のりのグラフは区間の区分を、地図の線の層ごとに層の値で受ける（呼び名と色は軸カタログの区分から引く）。どの区分にも入らない
+    """道のりのグラフは区間の区分を、地図の線の層ごとに層の値で受ける（呼び名と色は画面の設定の区分から引く）。どの区分にも入らない
     道は値なし。緑と水は、区間の最も多いクラスで塗る（同率は宣言の並びの先）。
     南西→南東の最速は、林と水辺が同じ割合の生活道路の道100と、土地被覆の値の無いトンネルの道101。"""
     landcover = {100: {"built_percent": 20.0, "trees_percent": 40.0, "water_percent": 40.0}}

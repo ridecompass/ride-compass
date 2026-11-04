@@ -75,7 +75,7 @@ describe("overlayChips（地図上チップの状態）", () => {
 });
 
 describe("deserializeLayerVisibility（表示状態の保存値）", () => {
-  // 道の線の層は軸カタログが届くまで分からないので、今の層に無い鍵も読む（既定は使う側が層の一覧から重ねる）。
+  // 道の線の層は画面の設定が届くまで分からないので、今の層に無い鍵も読む（既定は使う側が層の一覧から重ねる）。
   it("真偽値の鍵だけを読み、読めない形なら読まない", () => {
     const restored = deserializeLayerVisibility(
       JSON.stringify({ surface: true, notYetArrived: false, highway: "yes" }),

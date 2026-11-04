@@ -9,7 +9,7 @@
 - 一次属性の行の色と、値の無い道の線が地色から見えること → `test_display_palette.py`
 - 一次属性の表示の行の宣言 → `test_registry.py`・`test_primary_attributes.py`
 - 宣言を生成物へ書き出すこと → `scripts/export_openapi.py`の生成物のドリフト検査
-- 説明の差し込み口を軸カタログの値で埋めること → frontend `mapLayers.test.ts`
+- 説明の差し込み口を画面の設定・費用の軸の一覧の値で埋めること → frontend `mapLayers.test.ts`
 """
 
 import pytest

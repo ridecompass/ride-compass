@@ -47,7 +47,7 @@ export type RouteState = {
   readonly selectedRouteId: string | null;
   /** 区間の形。`properties.travelled`が真の区間は、走り終えたものとして薄める。 */
   readonly segments: readonly RouteShape[];
-  /** 区間の色。段の切り方・配色は軸カタログが決めるため、出来上がった式のまま受け取る。 */
+  /** 区間の色。段の切り方・配色は費用の軸の一覧が決めるため、出来上がった式のまま受け取る。 */
   readonly segmentColor: string | ExpressionSpecification;
   /** 値が無い区間で真になる式。その区間を破線にする。値という考えを持たない塗り方（レンズ「なし」）では無い。 */
   readonly segmentNoData?: ExpressionSpecification;

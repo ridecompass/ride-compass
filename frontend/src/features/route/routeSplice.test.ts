@@ -9,7 +9,7 @@
  *
  * ここで見ないもの:
  * - 区間ごとの乗り換え先の集め方（割り方・下限・折り返し・まとめ方） → `stretchAlternatives.test.ts`
- * - 区間を割る下限を軸カタログから引くこと・乗り換え先を地図の帯にすること・選んだ道を積むこと → `useSpliceSession.test.ts`
+ * - 区間を割る下限を画面の設定から引くこと・乗り換え先を地図の帯にすること・選んだ道を積むこと → `useSpliceSession.test.ts`
  * - 編集で作ったルートの元との差 → `routeEditDiff.test.ts`
  */
 import { describe, expect, it } from "vitest";

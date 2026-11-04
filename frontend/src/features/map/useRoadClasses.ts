@@ -36,7 +36,7 @@ function combine(results: TileResult[]): Omit<RoadClassesFetch, "truncated"> {
   };
 }
 
-/** `generation`（軸カタログの区分の指紋）が替われば取り直す。 */
+/** `generation`（画面の設定の区分の指紋）が替われば取り直す。 */
 export function useRoadClasses(
   enabled: boolean,
   mapViewport: MapViewport | null,

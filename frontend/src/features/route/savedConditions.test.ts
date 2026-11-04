@@ -105,7 +105,7 @@ describe("readSavedConditions", () => {
     expect(readSavedConditions(JSON.stringify([{ ...ENTRY, ...broken }, other]))).toEqual([other]);
   });
 
-  // 行は軸カタログが届くまで分からないので、鍵では落とさない。
+  // 行は画面の設定が届くまで分からないので、鍵では落とさない。
   it("避け方は段として読める鍵だけを残す", () => {
     const [read] = readSavedConditions(
       JSON.stringify([{ ...ENTRY, roadAvoidance: { gravel: "exclude", retired_row: "avoid", unpaved: "never" } }]),

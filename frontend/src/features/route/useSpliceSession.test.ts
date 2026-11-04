@@ -13,7 +13,7 @@
  * - 地図に帯が出る・消えることとタップ → `app/page.splice.test.tsx`（帯の色・線の形は`features/map/scene/groups/routes.ts`の宣言）
  * - 作った経路を結果へ足す・既存の候補を選ぶ → `useRouteResults.test.ts`・`app/page.splice.test.tsx`
  *
- * 差し替えたもの: 軸カタログの応答（網の層。`testing/spliceSession.ts`）。
+ * 差し替えたもの: 画面の設定の応答（網の層。`testing/spliceSession.ts`）。
  *
  * 通さない分岐（どれも入口から作れない）:
  * - 生成の入力が無いときの`start`: 始められるのは表示中の候補を作った生成があるときだけで、入口（`canStart`）が出ない

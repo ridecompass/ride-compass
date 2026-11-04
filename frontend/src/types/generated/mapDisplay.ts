@@ -152,7 +152,7 @@ export const mapDisplay = {
         "周囲の緑・水辺・農地を面で重ねる[建物は塗らない]"
       ],
       "panelHint": [
-        "衛星画像から分類した10m四方ごとの土地の使われ方です。1区画に1種類だけが入るため、評価軸が使う「道路の周囲",
+        "衛星画像から分類した10m四方ごとの土地の使われ方です。1区画に1種類だけが入るため、道の線の層が使う「道路の周囲",
         {
           "name": "landcoverRingOuterM",
           "before": "",
@@ -745,7 +745,6 @@ export const mapDisplay = {
     "trackOffsetStepPx": 2,
     "knownOpacity": 0.8,
     "unknownOpacity": 0.6,
-    "underlayOpacity": 0.15,
     "inspectedWidthPx": 8,
     "noDataValue": "-"
   },

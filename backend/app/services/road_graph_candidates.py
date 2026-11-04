@@ -92,9 +92,9 @@ async def evaluate_routes(
 
 @dataclass(frozen=True, slots=True)
 class _RowRead:
-    """経路の区間のうち、同じ値の組から読む区間。時刻で変わる値（難易度・軸・材料）は、探索がその区間に使ったビンの時刻で
+    """経路の区間のうち、同じ値の組から読む区間。時刻で変わる値（代償の内訳・向かい風）は、探索がその区間に使ったビンの時刻で
     経路上の行だけを合成し直した値（`domain/leg_costs.py: LegCostComposer.values_at_rows`、`indices`と同じ並び）。時刻で
-    変わらない値（密度の軸の横軸・生値・分類の材料）は合成器の列を`rows`で読む。"""
+    変わらない値（事実の量・分類の材料）は合成器の列を`rows`で読む。"""
 
     values: LegValues
     # 経路の中の区間の添字と、同じ並びの切り出した区間の順の行。

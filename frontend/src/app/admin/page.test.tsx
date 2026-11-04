@@ -14,8 +14,6 @@ import { heldReplies, onBackend, onSameOrigin } from "@/testing/backendServer";
 import AdminPage from "./page";
 
 beforeEach(() => {
-  onSameOrigin("GET", "/admin/api/axis-definitions", heldReplies().reply);
-  onBackend("GET", "/api/axis-catalog", heldReplies().reply);
   onBackend("GET", "/health", heldReplies().reply);
   onBackend("GET", "/api/debug/stats", heldReplies().reply);
   onSameOrigin("GET", "/api/version", heldReplies().reply);

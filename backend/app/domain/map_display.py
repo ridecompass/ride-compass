@@ -50,7 +50,7 @@ class _LegendSharedRow(NamedTuple):
     description: str
 
 
-#: 行の宣言に当てはまらない道の受け皿の行。道の属性・評価軸・ルートのどの凡例でも同じ意味なので、名前と説明を
+#: 行の宣言に当てはまらない道の受け皿の行。道の属性・レンズ・ルートのどの凡例でも同じ意味なので、名前と説明を
 #: ここだけが持つ（鍵は画面が引く名前）。
 LEGEND_SHARED_ROWS: dict[str, _LegendSharedRow] = {
     "other": _LegendSharedRow(
@@ -197,7 +197,7 @@ class LayerTextSlot(NamedTuple):
     after: str = ""
 
 
-#: 説明の文。地図で何が見えるかの文と、軸カタログから差し込む部分を並べる（設計原則「1つの値の中で混ざるときは、
+#: 説明の文。地図で何が見えるかの文と、画面の設定・費用の軸の一覧から差し込む部分を並べる（設計原則「1つの値の中で混ざるときは、
 #: 部分ごとに問う」）。
 LayerText = tuple[str | LayerTextSlot, ...]
 
@@ -371,7 +371,7 @@ _LAYER_SPECS: dict[str, MapLayerSpec] = {
         description=(f"周囲の緑・水辺・農地を面で重ねる{f'[{_UNPAINTED_LANDCOVER}は塗らない]' if _UNPAINTED_LANDCOVER else ''}",),
         panel_hint=(
             "衛星画像から分類した10m四方ごとの土地の使われ方です。1区画に1種類だけが入るため、"
-            "評価軸が使う「道路の周囲",
+            "道の線の層が使う「道路の周囲",
             LayerTextSlot("landcoverRingOuterM", after="m"),
             "の割合」とは違い、混ざらずそのまま見えます。"
             + (
@@ -481,7 +481,7 @@ _LAYER_SPECS: dict[str, MapLayerSpec] = {
     # 予兆が出てからONにするのでは手遅れになるため既定ONにする。危険度が出ている間は広い範囲が
     # 塗られ、他の面レイヤー（緑と水・標高図）も基礎地図の色も覆われるが、危険度ゼロの領域は
     # 配信元のタイルが透明なので、影響が出るのは警戒度が上がっている間だけ。そのときは防災の
-    # 情報を優先する（利用者は一覧でOFFにすれば戻せる）。回避するしかない危険なので、評価軸には入れず表示だけにする。
+    # 情報を優先する（利用者は一覧でOFFにすれば戻せる）。回避するしかない危険なので、費用には入れず表示だけにする。
     # 要素の名前と、時刻に対する振る舞いは要素の宣言から組み立てる。段の数と名前は凡例に並ぶので文に書かない。
     "disaster": MapLayerSpec(
         "ownFetch",
@@ -537,7 +537,7 @@ def _map_layers() -> tuple[tuple[str, MapLayerSpec], ...]:
 MAP_LAYERS: tuple[tuple[str, MapLayerSpec], ...] = _map_layers()
 
 #: 実行時に決まるレイヤーに共通の宣言。`dedicated`は費用の軸のレンズのレイヤーで、路面タイルの道へ道ごとに配る
-#: 1kmあたりの代償の秒の色を塗る（値は時刻の風で変わりうる）。`road`は道の線の層で、種別は層ごとに軸カタログの`road_classes`が配る。
+#: 1kmあたりの代償の秒の色を塗る（値は時刻の風で変わりうる）。`road`は道の線の層で、種別は層ごとに画面の設定の`road_classes`が配る。
 AXIS_LAYER_SPECS: dict[str, MapLayerSpec] = {
     "dedicated": MapLayerSpec(_ROAD_LAYER_DATA_SOURCE, None, data_nature="dynamic"),
     "road": MapLayerSpec(_ROAD_LAYER_DATA_SOURCE, None),
@@ -610,7 +610,7 @@ ROUTE_CASING_WIDTHS_PX: dict[str, float] = {
 }
 
 #: 線の濃さ（役割ごと）。候補の参考線は選んだ候補より薄くする。`travelled`は走行中に走り終えた区間で、
-#: 残りの道と見分けられるだけ薄くし、ルートの線と道のりの難易度のグラフの両方に当てる。
+#: 残りの道と見分けられるだけ薄くし、ルートの線と道のりの負担のグラフの両方に当てる。
 ROUTE_LINE_OPACITIES: dict[str, float] = {
     "selectedHalo": 0.25,
     "splice": 0.75,
@@ -674,12 +674,10 @@ ROAD_TRACK_OFFSET_STEP_PX = 2
 #: コントラスト比1.5を割らない濃さにする——割ると、道があるのに線が無いように見える。
 ROAD_KNOWN_OPACITY = 0.8
 ROAD_UNKNOWN_OPACITY = 0.6
-#: 評価軸の下敷き（材料の線と一緒に出すときの太い帯）。材料の線より手前の段に重なるので、材料の線の色を隠さない薄さにする。
-ROAD_UNDERLAY_OPACITY = 0.15
 #: 詳細を見ている1本の強調。元の線が上に乗ったままになる太さにする。
 ROAD_INSPECTED_WIDTH_PX = 8
 
-#: 値が無い（不明・データなし）線の破線の刻み（線の太さを1とする長さ）。道の線・評価軸の線・ルートの線で共有する。
+#: 値が無い（不明・データなし）線の破線の刻み（線の太さを1とする長さ）。道の線・レンズの線・ルートの線で共有する。
 #: 乗り換え帯の破線（`ROUTE_SPLICE_DASH`）より細かく刻み、操作の状態と見分けられるようにする。
 NO_DATA_DASH: tuple[float, ...] = (1, 2)
 

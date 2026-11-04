@@ -1,11 +1,11 @@
-/** 道の線の層（軸カタログの`road_classes.map_layers`。分け方1つが層1つ）と、詳細を見ている道の強調。
+/** 道の線の層（画面の設定の`road_classes.map_layers`。分け方1つが層1つ）と、詳細を見ている道の強調。
  *
  * 道の層の値（区分の鍵か「データなし」）はbackendが決め、地図は道ごとに feature-state で受け取って塗るだけにする——ルートの
  * 区間の帯と同じ値になる。**feature-state の値は MapLibre の絞り込みからも `line-dasharray` からも読めない**ため、凡例で隠した
  * 行は透明で落とし、データなしの道の破線は、破線だけの線を重ねて濃さで出し入れする。区分の外の道は値を持たないので、値を
  * 取っている間は、値の無い道をどれも取得中の色で描く（届いていない道と区分の外の道は、取り終えるまで見分けられない）。
  *
- * 道の層の線は**同じ路面タイルのソース**を共有する。評価軸の線も同じソースを読むため、
+ * 道の層の線は**同じ路面タイルのソース**を共有する。レンズの線も同じソースを読むため、
  * ソースの宣言は合成（`composeScene`）が1本へ畳む。道の線は押せない——道は押した所に近い道を backend に問うて開く
  * （`features/map/MapView/mapTaps.ts: bindMapTaps`）ので、道の層を出していなくても押せる。強調は、その答えの線の形を
  * 自分のソースで描き、道のタイルを読まない。
@@ -35,7 +35,7 @@ const ROAD_INSPECTED_SOURCE_ID = sceneSourceId("road-inspected");
 const FEATURE_KEY_PROPERTY = regionTileConfig.road_surface.properties.feature_key;
 
 export type RoadLineState = {
-  /** 道の線の層。**軸カタログが届くまでは空**。 */
+  /** 道の線の層。**画面の設定が届くまでは空**。 */
   readonly layers: readonly RoadMapLayerView[];
   /** タイルの配信先。**世代が届くまでは null**。 */
   readonly tiles: {
@@ -61,7 +61,7 @@ export type RoadClassValues = ReadonlyMap<string, Readonly<Record<string, string
 
 const NO_DATA_VALUE = ROAD.noDataValue;
 
-/** 層の値の feature-state のキー。評価軸の線が同じソースへ載せる材料のキーと重ならないよう、前に印を付ける。 */
+/** 層の値の feature-state のキー。レンズの線が同じソースへ載せる材料のキーと重ならないよう、前に印を付ける。 */
 const stateKey = (layerId: string): string => `road:${layerId}`;
 
 /** 道の層の値。値の届いていない道と区分の外の道は空文字。 */

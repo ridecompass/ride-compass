@@ -1,5 +1,5 @@
 """地図のレンズ——`GET /api/region/lens/{lens_id}/{z}/{x}/{y}`（道ごとの1kmあたりの代償の秒）と、`GET /api/cost-axes`の
-段の境目の目安、区間インスペクタが出す値と事実（`services/lens_service.py: LensService.inspect`）。
+段の境目の目安、道の窓が出す値と事実（`services/lens_service.py: LensService.inspect`）。
 
 道路網は本番と同じ置き場から読ませ（`tests/route_world.py`）、差し替えるのは天気（風の予報は無い）だけ。
 
@@ -7,7 +7,7 @@
 - 走行の模型の体力の内訳そのもの → `test_cycling_speed.py`
 - 代償の秒の式（つまみ・倍率・α・β） → `test_ledger_costs.py`
 - 地図の向きでどちらの値を塗るか（式の木） → `test_way_value_formula.py`
-- 区間インスペクタの旧い軸の得点と道の読み出し → `test_region_service.py`
+- 道の窓の押した道の読み出し → `test_region_service.py`
 """
 
 from dataclasses import replace
@@ -140,7 +140,7 @@ def _kickoffs_per_stop() -> float:
 
 
 async def test_the_inspector_gives_both_directions_and_the_facts_behind_them(cost_axes, road_network_root):
-    """区間インスペクタは地図と同じ秒を両方の向きで返し、地図が塗っている向きと、断面の一番急な所の斜度を事実として出す。
+    """道の窓は地図と同じ秒を両方の向きで返し、地図が塗っている向きと、断面の一番急な所の斜度を事実として出す。
     北へ走る地図では、南から北へ向く道を道の向きで塗る。"""
     network = road_network(WAYS, COORDINATES, gradient_of={CLIMBING_WAY: 2.0})
     climbing = (np.asarray(network.edge_way_id) == CLIMBING_WAY) & np.asarray(network.edge_forward)
