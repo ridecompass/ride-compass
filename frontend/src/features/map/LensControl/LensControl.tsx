@@ -6,8 +6,8 @@ import LegendCheckboxList from "@/features/map/LegendCheckboxList/LegendCheckbox
 import { LEGEND_SWATCH_RING_CLASS, legendSwatchBackground, type LegendEntry } from "@/lib/mapDisplay/legendFilter";
 import { LAYER_DATA_STATUS_LABELS, layerDataStatusNotice, type LayerDataStatus } from "@/features/map/layers/mapLayers";
 import {
-  DIFFICULTY_LENS_LABEL,
-  LENS_DIFFICULTY_ID,
+  UNSELECTED_LENS_LABEL,
+  UNSELECTED_LENS_ID,
   LENS_NEUTRAL_COLOR,
   type LensId,
 } from "@/lib/mapDisplay/routeStyleModes";
@@ -74,9 +74,9 @@ export default function LensControl({
   const statusLabel = dataStatus ? LAYER_DATA_STATUS_LABELS[dataStatus] : undefined;
   const statusNotice = layerDataStatusNotice(dataStatus);
   // 評価軸を選んでいないときは、ルートの前は道路を塗らず、ルートの後はルートの線を総合の負担で塗る（費用の軸の定義が無い間は1色）。
-  const unselected = lens === LENS_DIFFICULTY_ID;
+  const unselected = lens === UNSELECTED_LENS_ID;
   const selected = axisOptions.find((option) => option.id === lens);
-  const pillLabel = unselected ? (hasDetail ? DIFFICULTY_LENS_LABEL : UNSELECTED_LABEL) : (selected?.label ?? lens);
+  const pillLabel = unselected ? (hasDetail ? UNSELECTED_LENS_LABEL : UNSELECTED_LABEL) : (selected?.label ?? lens);
   const pillColor = selected?.color ?? LENS_NEUTRAL_COLOR;
   // ピルの帯は色の段だけを並べる（受け皿の「データなし」は除く）。
   const bands = legend.filter((entry) => !entry.isFallback);
@@ -168,7 +168,7 @@ export default function LensControl({
             className="flex-col flex-nowrap gap-0"
             deselectable
             value={unselected ? "" : lens}
-            onValueChange={(id) => onLensChange(id === "" ? LENS_DIFFICULTY_ID : id)}
+            onValueChange={(id) => onLensChange(id === "" ? UNSELECTED_LENS_ID : id)}
             aria-label={LENS_SCREEN_NAME}
             usage="押した負担の種類の1kmあたりの負担で、地図の道路（ルートを作った後はルートの線）を塗ります。選んでいる行をもう一度押すと外れます。"
           >
@@ -196,7 +196,7 @@ export default function LensControl({
             <Button
               size="panelIcon"
               aria-label="選択を外す"
-              onClick={() => onLensChange(LENS_DIFFICULTY_ID)}
+              onClick={() => onLensChange(UNSELECTED_LENS_ID)}
               disabled={unselected}
               usage="選んでいる負担の種類を外します。外すと、ルートの前は道路を塗らず、ルートの後は総合の負担で塗ります。"
             >

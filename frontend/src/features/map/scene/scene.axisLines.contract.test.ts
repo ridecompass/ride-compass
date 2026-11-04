@@ -26,7 +26,7 @@ describe("評価軸の線", () => {
 
   it("取った材料は道路のソースの地物へ軸ごとに載り、塗っている軸の線が見える", () => {
     const { map, handle } = createRecordingMap();
-    rebuild(map, shown({ surface: true }, { paintedAxisId: "ded1", wayMaterials: MATERIALS }));
+    rebuild(map, shown({ surface: true }, { paintedLensId: "ded1", wayMaterials: MATERIALS }));
 
     expect(handle.featureState(ROAD_LINE_SOURCE_ID, "w1")).toEqual({ "ded1:value": 3, "ded2:value": 7 });
     expect(handle.layer(roadLayerId("ded1"))?.visibility).toBe("visible");
@@ -35,7 +35,7 @@ describe("評価軸の線", () => {
 
   it("走る条件だけを変えると、地図全体の状態だけを置き直し、材料もレイヤーも当て直さない", () => {
     const { map, handle } = createRecordingMap();
-    const look = { paintedAxisId: "ded1", wayMaterials: MATERIALS };
+    const look = { paintedLensId: "ded1", wayMaterials: MATERIALS };
     rebuild(map, shown({ surface: true }, { ...look, wayConditions: { bearing_deg: 0, speed_kmh: 20 } }));
     const callsBefore = handle.trace.length;
 
@@ -51,7 +51,7 @@ describe("評価軸の線", () => {
 
   it("式の木の無い軸は、塗っていても周りの道の線を持たない", () => {
     const { map, handle } = createRecordingMap();
-    rebuild(map, shown({ surface: true }, { paintedAxisId: "unformulated" }));
+    rebuild(map, shown({ surface: true }, { paintedLensId: "unformulated" }));
 
     expect(handle.layerOrder().filter((id) => id.includes("unformulated"))).toEqual([]);
   });
@@ -67,7 +67,7 @@ describe("評価軸の線", () => {
       const { map, handle } = createRecordingMap();
       rebuild(
         map,
-        sceneState({ catalog: { dedicatedAxes }, look: { paintedAxisId: "paved", layerVisibility: { surface } } }),
+        sceneState({ catalog: { dedicatedAxes }, look: { paintedLensId: "paved", layerVisibility: { surface } } }),
       );
       return handle.layer(roadLayerId("paved"))?.paint["line-opacity"];
     };

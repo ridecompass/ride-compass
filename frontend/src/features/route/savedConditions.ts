@@ -1,7 +1,7 @@
 import { avoidanceLevelOf, readRoadAvoidance } from "@/features/route/roadAvoidance";
 import { costPreferenceDescription, readCostPreference } from "@/features/route/costPreference";
 import type { CostAxisCatalog } from "@/hooks/useCostAxisCatalog";
-import type { AxisCatalog } from "@/lib/axisCatalog";
+import type { ClientConfig } from "@/lib/clientConfig";
 import { isCoordinates, readStoredList, withEntryFirst } from "@/lib/storedList";
 import type { Coordinates, CostPreference, RoadAvoidanceOverride } from "@/types/route";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
@@ -139,7 +139,7 @@ function routeDescription(conditions: GenerationConditionsSnapshot): string {
 }
 
 // 段ごとに「段の名前 行の名前・…」を、強い段から並べる。行と段は軸カタログが配るもので、届く前は「なし」になる。
-function exclusionsDescription(roadAvoidance: RoadAvoidanceOverride, catalog: AxisCatalog): string {
+function exclusionsDescription(roadAvoidance: RoadAvoidanceOverride, catalog: ClientConfig): string {
   const { levels, rows } = catalog.roadClasses.avoidance;
   const parts = levels.toReversed().flatMap(({ key: level, label: levelLabel }) => {
     const labels = rows
@@ -152,7 +152,7 @@ function exclusionsDescription(roadAvoidance: RoadAvoidanceOverride, catalog: Ax
 
 export function describeConditions(
   conditions: GenerationConditionsSnapshot,
-  catalog: AxisCatalog,
+  catalog: ClientConfig,
   costCatalog: CostAxisCatalog,
 ): ConditionsDescription {
   return {

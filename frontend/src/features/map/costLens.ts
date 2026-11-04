@@ -1,10 +1,10 @@
 // 費用の軸の一覧（`GET /api/cost-axes`）から、地図のレンズ（総合と軸ごと。どれも1kmあたりの代償の秒で塗る）を導く。
-// 費用の軸の定義が無い間は何も導かず、地図は旧い軸のレンズのままにする。
+// 一覧が届くまでは何も導かない。
 import type { CostAxisCatalog, CostLensCatalog } from "@/hooks/useCostAxisCatalog";
-import type { DedicatedWayValueAxis } from "@/lib/mapDisplay/axisLayers";
+import type { MapLens } from "@/lib/mapDisplay/mapLens";
 import {
   buildRangeSteppedMode,
-  LENS_DIFFICULTY_ID,
+  UNSELECTED_LENS_ID,
   LENS_NEUTRAL_COLOR,
   ROUTE_LENS_SECONDS_PROPERTY,
   type RouteStyleMode,
@@ -18,41 +18,30 @@ import type { LensEquivalentsResponse } from "@/services/costAxisCatalogApi";
 
 type LensPresentation = CostLensCatalog["totalLens"];
 
-function lensAxis(presentation: LensPresentation, lenses: CostLensCatalog, ground: MapTheme): DedicatedWayValueAxis {
+function mapLens(presentation: LensPresentation, lenses: CostLensCatalog, ground: MapTheme): MapLens {
   const conditions = lenses.mapLens.material_conditions;
   return {
-    axisId: presentation.axisId,
+    lensId: presentation.axisId,
     label: presentation.label,
     description: presentation.description,
     iconId: presentation.iconId,
-    mapValueKind: "difficulty",
-    mapValueUnit: LENS_SECONDS_UNIT,
-    rawValueUnit: null,
-    rawValueTotalUnit: null,
-    materialBreakdown: [],
-    primaryAttributeIds: [],
-    roadLayerIds: [],
     // 式の木が走行方位で辿る向きを選ぶので、値は走行方位でも変わる。
-    wayValueConditions: [...conditions, "bearing_deg"],
-    timeScope: "always",
-    paintsSurroundingRoads: true,
-    undeterminedByBearing: true,
+    conditions: [...conditions, "bearing_deg"],
+    materialConditions: conditions,
     display: costLensPaint(presentation, ground),
-    wayValueFormula: lenses.mapLens.formula,
-    wayMaterialConditions: conditions,
-    wayMaterialSource: "lens",
+    formula: lenses.mapLens.formula,
   };
 }
 
-/** 地図が塗るレンズ（総合を先に、続けて軸の順）。費用の軸の定義が無ければ空。 */
-export function costLensAxes(catalog: CostAxisCatalog, ground: MapTheme): DedicatedWayValueAxis[] {
+/** 地図が塗るレンズ（総合を先に、続けて軸の順）。費用の軸の一覧が届くまでは空。 */
+export function costLenses(catalog: CostAxisCatalog, ground: MapTheme): MapLens[] {
   const { lenses } = catalog;
   if (lenses === null) return [];
-  return [lenses.totalLens, ...catalog.axes].map((presentation) => lensAxis(presentation, lenses, ground));
+  return [lenses.totalLens, ...catalog.axes].map((presentation) => mapLens(presentation, lenses, ground));
 }
 
 /** ルートの線のレンズのモード（総合を先に、続けて軸の順。どれも区間の1kmあたりの代償の秒を地図と同じ段で塗る）。レンズを
- * 選んでいないときは総合で塗る。費用の軸の定義が無ければ空。 */
+ * 選んでいないときは総合で塗る。費用の軸の一覧が届くまでは空。 */
 export function costRouteStyleModes(catalog: CostAxisCatalog, ground: MapTheme): RouteStyleMode[] {
   const { lenses } = catalog;
   if (lenses === null) return [];
@@ -65,7 +54,7 @@ export function costRouteStyleModes(catalog: CostAxisCatalog, ground: MapTheme):
     });
   const lensValue = (lensId: string): unknown[] => ["get", lensId, ["get", ROUTE_LENS_SECONDS_PROPERTY]];
   return [
-    mode(LENS_DIFFICULTY_ID, lenses.totalLens, lensValue(lenses.totalLens.axisId)),
+    mode(UNSELECTED_LENS_ID, lenses.totalLens, lensValue(lenses.totalLens.axisId)),
     mode(lenses.totalLens.axisId, lenses.totalLens, lensValue(lenses.totalLens.axisId)),
     ...catalog.axes.map((axis) => mode(axis.axisId, axis, lensValue(axis.axisId))),
   ];
@@ -73,16 +62,15 @@ export function costRouteStyleModes(catalog: CostAxisCatalog, ground: MapTheme):
 
 /** レンズの選択肢（総合を先に、続けて軸の順）。利用者の値で代償が0になるレンズ（つまみ×0なら全部、倍率×0の軸）は
  * 「未使用」にする。 */
-export function costLensOptions(axes: readonly DedicatedWayValueAxis[], preference: CostPreference): LensOption[] {
-  return axes.map((axis) => ({
-    id: axis.axisId,
-    label: axis.label,
+export function costLensOptions(lenses: readonly MapLens[], preference: CostPreference): LensOption[] {
+  return lenses.map((lens) => ({
+    id: lens.lensId,
+    label: lens.label,
     color: LENS_NEUTRAL_COLOR,
-    unused: preference.strength === 0 || multiplierOf(preference, axis.axisId) === 0,
-    description: axis.description,
-    iconId: axis.iconId,
-    conditions: axis.wayValueConditions,
-    paintsSurroundingRoads: true,
+    unused: preference.strength === 0 || multiplierOf(preference, lens.lensId) === 0,
+    description: lens.description,
+    iconId: lens.iconId,
+    conditions: lens.conditions,
   }));
 }
 

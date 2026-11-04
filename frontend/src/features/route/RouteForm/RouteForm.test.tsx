@@ -21,7 +21,7 @@ import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { CLIENT_TUNING_IDS } from "@/lib/axisCatalog";
+import { CLIENT_TUNING_IDS } from "@/lib/clientConfig";
 import { onBackend, serveAxisCatalog } from "@/testing/backendServer";
 import { catalogResponse } from "@/testing/catalogAxes";
 import { DESTINATION, button, renderForm, waypointsOf } from "@/testing/routeForm";

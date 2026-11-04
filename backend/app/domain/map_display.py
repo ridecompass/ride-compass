@@ -183,16 +183,14 @@ def _static_layer_ids() -> tuple[str, ...]:
 _MAP_LAYER_IDS: tuple[str, ...] = (*_static_layer_ids(), *WEATHER_LAYER_GROUPS, _ROUTE_LAYER_ID)
 
 
-#: 説明の文の差し込み口の名前。どれも軸カタログ（実行時の応答）から来る値で、画面が埋める。
-#: `axes`はそのレイヤーの元データを材料に持つ公開中の評価の名前、`accidentYears`は事故の収録年、
-#: `routeLenses`はルートの線を塗れるもの（公開中の評価と総合の負担）、`landcoverRingOuterM`は土地被覆の割合を数えた帯の
-#: 外の幅（m。作り直しに使った値）。
-LayerTextSlotName = Literal["axes", "accidentYears", "routeLenses", "landcoverRingOuterM"]
+#: 説明の文の差し込み口の名前。どれも実行時の応答（画面の設定・費用の軸の一覧）から来る値で、画面が埋める。
+#: `accidentYears`は事故の収録年、`routeLenses`はルートの線を塗れるもの（総合と費用の軸のレンズ）、`landcoverRingOuterM`は
+#: 土地被覆の割合を数えた帯の外の幅（m。作り直しに使った値）。
+LayerTextSlotName = Literal["accidentYears", "routeLenses", "landcoverRingOuterM"]
 
 
 class LayerTextSlot(NamedTuple):
-    """説明の文の差し込み口。値が空なら、前後の文（`before`・`after`）ごと出さない——評価軸が1つも無いのに
-    「評価軸の材料です」と書かない、収録年が届く前に空の[]を出さない。"""
+    """説明の文の差し込み口。値が空なら、前後の文（`before`・`after`）ごと出さない——収録年が届く前に空の[]を出さない。"""
 
     name: LayerTextSlotName
     before: str = ""
@@ -390,7 +388,6 @@ _LAYER_SPECS: dict[str, MapLayerSpec] = {
         description=(f"{_point_kind_list('stop_poi')}の位置を種別ごとに表示",),
         panel_hint=(
             f"{_point_kind_list('stop_poi')}の位置です。",
-            LayerTextSlot("axes", "評価軸", "が近傍のこれらを数えて算出しているものを、種別ごとに直接確認できます。"),
         ),
     ),
     # 種別ごとの鮮度の差を書く根拠は docs/modules/frontend/static-map-layers.md「点で示すもの」。

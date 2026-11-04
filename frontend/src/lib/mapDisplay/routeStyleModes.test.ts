@@ -24,7 +24,7 @@ import { LEGEND_NO_DATA_KEY } from "./mapColorLegend";
 import { costLensPaint } from "./costLensPaint";
 import {
   buildRangeSteppedMode,
-  LENS_DIFFICULTY_ID,
+  UNSELECTED_LENS_ID,
   LENS_NEUTRAL_COLOR,
   ROUTE_LENS_SECONDS_PROPERTY,
   routeStyleModesFromCatalogAxes,
@@ -76,7 +76,7 @@ describe("モードの一覧", () => {
   it("公開軸ごとのモードをカタログの順に並べ、そのあとにレンズを選んでいないときのモードを置く", () => {
     const modes = routeStyleModesFromCatalogAxes([catalogEntry({ axis_id: "b" }), catalogEntry({ axis_id: "a" })]);
 
-    expect(modes.map((mode) => mode.id)).toEqual(["b", "a", LENS_DIFFICULTY_ID]);
+    expect(modes.map((mode) => mode.id)).toEqual(["b", "a", UNSELECTED_LENS_ID]);
   });
 });
 
@@ -118,7 +118,7 @@ describe("段で塗るモード（費用のレンズの1kmあたりの負担）"
 describe("区間が値を持たないモード（得点を塗る軸と、レンズを選んでいないとき）", () => {
   it.each([
     ["得点を塗る軸", "ax"],
-    ["レンズを選んでいないとき", LENS_DIFFICULTY_ID],
+    ["レンズを選んでいないとき", UNSELECTED_LENS_ID],
   ])("%sは、区間の値に依らず中立色の1色で引き、凡例も破線も持たない", (_, id) => {
     const mode = modeOf([catalogEntry({ axis_id: "ax" })], id);
     expect(mode.legend).toEqual([]);

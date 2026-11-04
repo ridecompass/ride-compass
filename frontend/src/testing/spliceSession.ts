@@ -6,8 +6,8 @@ import { expect, vi } from "vitest";
 
 import type { GenerationInput } from "@/features/route/generationRequest";
 import { useSpliceSession } from "@/features/route/useSpliceSession";
-import { useAxisCatalog } from "@/hooks/useAxisCatalog";
-import { CLIENT_TUNING_IDS } from "@/lib/axisCatalog";
+import { useClientConfig } from "@/hooks/useClientConfig";
+import { CLIENT_TUNING_IDS } from "@/lib/clientConfig";
 import { heldReplies } from "@/testing/backendServer";
 import { catalogEntry, catalogResponse } from "@/testing/catalogAxes";
 import { serveGenerationJobs } from "@/testing/generationJobs";
@@ -86,7 +86,7 @@ export function renderSplice(props: Partial<SpliceProps> = {}) {
   let catalogLoaded = false;
   const rendered = renderHook(
     (p: SpliceProps) => {
-      catalogLoaded = useAxisCatalog().loaded;
+      catalogLoaded = useClientConfig().loaded;
       return useSpliceSession({ ...p, onApplied });
     },
     { initialProps: { ...PROPS, ...props } },

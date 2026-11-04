@@ -3,7 +3,7 @@
 // **実際の公開軸を入力に使わない。** 軸idは軸スタジオでユーザーが決める任意の値で、公開される集合もDBが持つ。
 // **既定値は型を満たすための空だけ**（段の境界だけは、backendが宣言の無い軸にも必ず入れる既定の境界）。見たい性質
 // （段の境界・配信に添える条件等）は呼び出し側が書く。
-import { axisCatalogFromResponse, type AxisCatalog } from "@/lib/axisCatalog";
+import { axisCatalogFromResponse, type AxisCatalog } from "@/lib/clientConfig";
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import type {
   AxisCatalogEntry,

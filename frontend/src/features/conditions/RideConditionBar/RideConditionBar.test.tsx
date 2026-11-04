@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { CLIENT_TUNING_IDS } from "@/lib/axisCatalog";
+import { CLIENT_TUNING_IDS } from "@/lib/clientConfig";
 import { getQueryClient } from "@/lib/queryClient";
 import { serveAxisCatalog } from "@/testing/backendServer";
 import { catalogResponse, dedicatedEntry } from "@/testing/catalogAxes";

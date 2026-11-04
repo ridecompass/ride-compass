@@ -23,7 +23,7 @@ import RoadInspectorPopup from "@/features/map/MapView/RoadInspectorPopup";
 import type { RoadSurfacePopupProperties } from "@/features/map/MapView/roadFacts";
 import { visibleScreenBox } from "@/features/map/MapView/mapCamera";
 import { popupInsideVisible, type ScreenBox } from "@/features/map/MapView/popupPlacement";
-import { useAxisCatalog } from "@/hooks/useAxisCatalog";
+import { useClientConfig } from "@/hooks/useClientConfig";
 
 /** 押した物と小窓の間を空ける幅（px）。 */
 const POPUP_GAP_PX = 8;
@@ -177,7 +177,7 @@ export function useMapPopupMount(
     onFocus,
   }: MapPopupMountOptions,
 ): ReactNode {
-  const catalog = useAxisCatalog();
+  const catalog = useClientConfig();
   const onMap = shown !== null && (shown.kind !== "segment" || segmentDetail !== null) ? shown : null;
   // 区間の小窓は、選び直す（グラフをなぞる）たびに作り直さず、同じ器を指す地点だけ動かす。ほかの中身は入れ替えるたびに器を作り直す
   // （前の中身の部品の状態を、新しい中身へ持ち越さない）。
@@ -347,8 +347,6 @@ export function useMapPopupMount(
         <RoadInspectorPopup
           properties={onMap.properties}
           track={onMap.track}
-          axes={catalog.axes}
-          axisColors={catalog.axisColors}
           conditions={{
             ...rideConditions,
             ...onMap.tile,

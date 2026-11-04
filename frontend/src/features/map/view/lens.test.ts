@@ -5,16 +5,16 @@ import { mapCatalogOf } from "@/testing/mapAxisCatalog";
 import { LEGEND_NO_DATA_KEY, LEGEND_UNDETERMINED_KEY } from "@/lib/mapDisplay/mapColorLegend";
 
 import { catalogEntry, dedicatedEntry, MATERIAL_VALUE_FORMULA } from "@/testing/catalogAxes";
-import { isRouteStyleModeId, lensLegend, lensOptions, lensPremises, paintedAxisId } from "./lens";
+import { isRouteStyleModeId, lensLegend, lensOptions, lensPremises, paintedLensId } from "./lens";
 
 const PAINTED = { way_value_formula: MATERIAL_VALUE_FORMULA };
 const catalog = mapCatalogOf([dedicatedEntry("score", [10, 20], PAINTED), dedicatedEntry("lined", [10, 20])]);
 
-describe("paintedAxisId（全道路を塗る軸）", () => {
+describe("paintedLensId（全道路を塗る軸）", () => {
   it("ルートを確定するまではレンズの軸、確定後は周囲も塗り続ける設定の間だけ", () => {
-    expect(paintedAxisId("score", false, false)).toBe("score");
-    expect(paintedAxisId("score", true, true)).toBe("score");
-    expect(paintedAxisId("score", true, false)).toBeNull();
+    expect(paintedLensId("score", false, false)).toBe("score");
+    expect(paintedLensId("score", true, true)).toBe("score");
+    expect(paintedLensId("score", true, false)).toBeNull();
   });
 });
 

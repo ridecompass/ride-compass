@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 
-import { mapAxisCatalogFromResponse } from "@/features/map/mapAxisCatalog";
+import { mapAxisCatalogFromResponse } from "@/features/map/mapCatalog";
 import { mapCatalogOf } from "@/testing/mapAxisCatalog";
 import { catalogEntry, catalogResponse, dedicatedEntry, roadClassCatalog, roadMapLayer } from "@/testing/catalogAxes";
 import type { AxisCatalogEntry, RoadMapLayerView } from "@/types/route";
@@ -12,7 +12,7 @@ import weatherScales from "@/types/generated/weather-scales.json";
 import {
   buildMapLayers,
   deriveFetchLayerStatus,
-  isAxisStudioLayer,
+  isLensLayer,
   LAYER_DATA_STATUS_LABELS,
   layerDataStatusNotice,
   mapOverlayGroupFor,
@@ -27,7 +27,7 @@ const withAxes = buildMapLayers({ ...catalog, accidentYears: [2021, 2019, 2020] 
 const withoutAxes = buildMapLayers(mapCatalogOf([]));
 const withYears = (accidentYears: number[]) => buildMapLayers({ ...mapCatalogOf([]), accidentYears });
 const layer = (layers: readonly MapLayerDescriptor[], id: string) =>
-  layers.find((entry): entry is ChipLayerDescriptor => entry.id === id && !isAxisStudioLayer(entry))!;
+  layers.find((entry): entry is ChipLayerDescriptor => entry.id === id && !isLensLayer(entry))!;
 const staticLayerIds: readonly string[] = mapDisplay.layers.map((entry) => entry.id);
 // 道の線の層は軸カタログが配る（本番の層は管理DBが持つ）ので、テストが組む。
 const withRoadLayers = (roadLayers: RoadMapLayerView[], entries: readonly AxisCatalogEntry[] = []) =>
@@ -41,7 +41,7 @@ const ROAD_CATEGORY = mapDisplay.layerCategories[0];
 describe("buildMapLayers（レイヤーの一覧）", () => {
   it("軸を渡すと、軸ごとに別の名前のレイヤーが軸スタジオ由来として加わる", () => {
     const added = withAxes.filter((entry) => !staticLayerIds.includes(entry.id));
-    expect(added.map((entry) => [entry.id, isAxisStudioLayer(entry)])).toEqual([
+    expect(added.map((entry) => [entry.id, isLensLayer(entry)])).toEqual([
       ["axis_aAxis", true],
       ["axis_bAxis", true],
     ]);

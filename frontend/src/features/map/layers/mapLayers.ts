@@ -1,5 +1,5 @@
 // 地図レイヤーのカタログ。地図のチップとその▶パネルがこの並びを列挙して描く。種別・情報源・性質・既定の表示・名前・
-// 説明は源泉（backendの`domain/map_display.py`と、道の線の層は軸カタログの`road_classes.map_layers`）が宣言し、ここは
+// 説明は源泉（backendの`domain/map_display.py`と、道の線の層は画面の設定の`road_classes.map_layers`）が宣言し、ここは
 // アイコンと表示専用の凡例（`layers/readOnlyLegends.ts`）だけを足す。
 // 地図に描く宣言（`scene/groups/`、絞り込める凡例は`scene/legends.ts`）は別に要る——書き忘れるとチップはONになり
 // 凡例も出るのに、地図には何も出ない。
@@ -8,15 +8,12 @@ import { mapDisplay } from "@/types/generated/mapDisplay";
 import type { MapIconComponent } from "@/components/ui/icons/icons";
 import { MAP_LAYER_ICONS, roadLayerIcon, type StaticMapLayerId } from "@/components/ui/icons/mapLayerIcons";
 import { TILE_VERSION_GATED_SOURCES } from "@/lib/mapDisplay/tileVersionGated";
-import type { MapAxisCatalog } from "@/features/map/mapAxisCatalog";
-import { CLIENT_TUNING_IDS, clientTuningValue } from "@/lib/axisCatalog";
-import { axisNamesInText, type CatalogAxis } from "@/lib/catalogAxis";
-import { primaryAttributeIdsToLayerIds } from "@/features/map/layers/primaryAttributes";
-import { DIFFICULTY_LENS_LABEL } from "@/lib/mapDisplay/routeStyleModes";
+import type { MapCatalog } from "@/features/map/mapCatalog";
+import { CLIENT_TUNING_IDS, clientTuningValue } from "@/lib/clientConfig";
 import { READ_ONLY_LEGENDS, type ReadOnlyLegendBlock } from "./readOnlyLegends";
 import { coverageYearsLabel, fillLayerText } from "./layerText";
 
-/** 地図に載るものの名前。静的な一覧は源泉が持ち、道の線の層（鍵は層のデータが決める）と軸スタジオ由来のものは実行時に決まる。 */
+/** 地図に載るものの名前。静的な一覧は源泉が持ち、道の線の層（鍵は層のデータが決める）とレンズの層は実行時に決まる。 */
 export type MapLayerId = StaticMapLayerId | string;
 
 // 選んだルートに付くデータ（選び直すたびに描き直す）か、地域に固定のデータ（表示の切り替えだけ）か。値が時間で
@@ -51,12 +48,12 @@ const GROUP_BY_CATEGORY: Readonly<Record<string, MapOverlayGroup>> = Object.from
   mapDisplay.layerCategories.map((category) => [category.key, category.group]),
 );
 
-/** 軸スタジオ由来のレイヤー（評価軸で道を塗るもの）か。地図のチップに出さない。idの集合でなく記述子の印で決める。 */
-export function isAxisStudioLayer(layer: MapLayerDescriptor): layer is AxisStudioLayerDescriptor {
-  return layer.axisStudioLayer === true;
+/** レンズの層（道を1kmあたりの代償の秒で塗るもの）か。地図のチップに出さない。idの集合でなく記述子の印で決める。 */
+export function isLensLayer(layer: MapLayerDescriptor): layer is LensLayerDescriptor {
+  return layer.lensLayer === true;
 }
 
-/** チップが属するグループ。中分類だけで決めるので、軸スタジオ由来のレイヤーは渡さない——チップの一覧
+/** チップが属するグループ。中分類だけで決めるので、レンズの層は渡さない——チップの一覧
  * （`features/map/view/overlayChips.ts: overlayChips`）が先に除く。 */
 export function mapOverlayGroupFor(layer: { category?: MapLayerCategory }): MapOverlayGroup | undefined {
   if (layer.category === undefined) return undefined;
@@ -73,7 +70,7 @@ export interface ChipLayerDescriptor {
   dataSource: MapLayerDataSource;
   /** ▶を開いたときの表示専用の凡例。無いレイヤーは絞り込める凡例か、画面の状態から組む凡例を持つ。 */
   readOnlyLegend?: readonly ReadOnlyLegendBlock[];
-  axisStudioLayer?: never;
+  lensLayer?: never;
   /** 中分類（グループの判定・グループ内の並び・小見出し）。ルートは持たない。 */
   category?: MapLayerCategory;
   dataNature?: MapLayerDataNature;
@@ -91,14 +88,14 @@ type LayerDeclaration = Pick<
   "dataSource" | "kind" | "category" | "dataNature" | "defaultOn" | "minZoom"
 >;
 
-/** 軸スタジオ由来のレイヤー。チップに出ない（表示はレンズだけが決める）ので、名前・アイコン・説明を持たず、
+/** レンズの層。チップに出ない（表示はレンズの選択だけが決める）ので、名前・アイコン・説明を持たず、
  * 地図の組み立てが情報源を引くためのidと源泉の宣言だけを持つ。 */
-interface AxisStudioLayerDescriptor extends LayerDeclaration {
+interface LensLayerDescriptor extends LayerDeclaration {
   id: MapLayerId;
-  axisStudioLayer: true;
+  lensLayer: true;
 }
 
-export type MapLayerDescriptor = ChipLayerDescriptor | AxisStudioLayerDescriptor;
+export type MapLayerDescriptor = ChipLayerDescriptor | LensLayerDescriptor;
 
 /** 源泉が宣言する、描き方以外のもの（種別・情報源・性質・既定表示）。最小ズームは、情報源が配る縮尺と層が描き始める縮尺の寄った方。 */
 function declaredLayer(spec: {
@@ -121,26 +118,8 @@ function declaredLayer(spec: {
   };
 }
 
-/** レイヤーの一覧を組むのに要る軸カタログの項目。 */
-type LayerCatalog = Pick<MapAxisCatalog, "axes" | "dedicatedAxes" | "accidentYears" | "clientTuning" | "roadLayers">;
-
-export const NO_AXES: LayerCatalog = {
-  axes: [],
-  dedicatedAxes: [],
-  accidentYears: [],
-  clientTuning: {},
-  roadLayers: [],
-};
-
-/** 軸が材料として読む元データを見せるレイヤー（一次属性の層と、区分を決める材料を読む道の線の層）。 */
-export function axisMapLayerIds(axis: CatalogAxis): readonly MapLayerId[] {
-  return [...primaryAttributeIdsToLayerIds(axis.primaryAttributeIds), ...axis.roadLayerIds];
-}
-
-/** そのレイヤーが見せる元データを材料に持つ公開中の評価の名前（「A」「B」）。無ければ空文字で、呼ぶ側は評価に触れる一文を出さない。 */
-function axisNamesReading(axes: readonly CatalogAxis[], layerId: MapLayerId): string {
-  return axisNamesInText(axes.filter((axis) => axisMapLayerIds(axis).includes(layerId)));
-}
+/** レイヤーの一覧を組むのに要る項目。 */
+type LayerCatalog = Pick<MapCatalog, "lenses" | "accidentYears" | "clientTuning" | "roadLayers">;
 
 const CATEGORY_KEYS: ReadonlySet<string> = new Set(MAP_LAYER_CATEGORY_ORDER);
 
@@ -149,26 +128,15 @@ function knownCategory(key: string): MapLayerCategory | null {
   return CATEGORY_KEYS.has(key) ? (key as MapLayerCategory) : null;
 }
 
-export function buildMapLayers({
-  axes,
-  dedicatedAxes,
-  accidentYears,
-  clientTuning,
-  roadLayers,
-}: LayerCatalog): readonly MapLayerDescriptor[] {
+export function buildMapLayers({ lenses, accidentYears, clientTuning, roadLayers }: LayerCatalog): readonly MapLayerDescriptor[] {
   // 取れていないときは年に触れない（既定の年を出すと、それが正しいように見える）。
   const accidentCoverage = coverageYearsLabel(accidentYears);
-  // 並びはレンズの選択肢と同じ（公開中の評価と総合の負担）。
-  const routeLenses = [...axes.map((axis) => axis.label), DIFFICULTY_LENS_LABEL].join("・");
+  // 並びはレンズの選択肢と同じ（総合を先に、続けて費用の軸）。
+  const routeLenses = lenses.map((lens) => lens.label).join("・");
   // 取れていないときは帯の幅に触れない（既定の幅を出すと、作り直しに使った幅と食い違いうる）。
   const landcoverRingOuterM = String(clientTuningValue({ clientTuning }, CLIENT_TUNING_IDS.landcoverRingOuterM) ?? "");
   const staticLayers = mapDisplay.layers.map((layer): ChipLayerDescriptor => {
-    const slots = {
-      axes: axisNamesReading(axes, layer.id),
-      accidentYears: accidentCoverage,
-      routeLenses,
-      landcoverRingOuterM,
-    };
+    const slots = { accidentYears: accidentCoverage, routeLenses, landcoverRingOuterM };
     return {
       id: layer.id,
       label: layer.label,
@@ -179,30 +147,24 @@ export function buildMapLayers({
       panelHint: layer.panelHint ? fillLayerText(layer.panelHint, slots) : undefined,
     };
   });
-  const roadLayerChips = roadLayers.map((layer): ChipLayerDescriptor => {
-    const slots = {
-      axes: axisNamesReading(axes, layer.id),
-      accidentYears: "",
-      routeLenses: "",
-      landcoverRingOuterM: "",
-    };
-    return {
+  const roadLayerChips = roadLayers.map(
+    (layer): ChipLayerDescriptor => ({
       id: layer.id,
       label: layer.label,
       ...declaredLayer({ ...mapDisplay.axisLayers.road, category: knownCategory(layer.category) }),
       icon: roadLayerIcon(layer.icon),
-      description: fillLayerText(layer.description, slots),
-      panelHint: layer.panel_hint.length > 0 ? fillLayerText(layer.panel_hint, slots) : undefined,
-    };
-  });
+      description: layer.description.join(""),
+      panelHint: layer.panel_hint.length > 0 ? layer.panel_hint : undefined,
+    }),
+  );
   return [
     ...staticLayers,
     ...roadLayerChips,
-    // 評価軸は軸カタログから作る（軸を公開すればここを変えずに現れる）。チップには出ないが、地図の組み立てが情報源をここから引く（無いと描く時点で落ちる）。
-    ...dedicatedAxes.map((axis): AxisStudioLayerDescriptor => ({
-      id: dedicatedWayValueMapLayerId(axis.axisId),
+    // レンズは費用の軸の一覧から作る。チップには出ないが、地図の組み立てが情報源をここから引く（無いと描く時点で落ちる）。
+    ...lenses.map((lens): LensLayerDescriptor => ({
+      id: lensMapLayerId(lens.lensId),
       ...declaredLayer(mapDisplay.axisLayers.dedicated),
-      axisStudioLayer: true,
+      lensLayer: true,
     })),
   ];
 }
@@ -218,21 +180,21 @@ export const TILE_VERSIONS_MISSING_NOTICE = "配信情報を取得できず表�
 /** タイルの世代が届くまで何も描けないレイヤー。軸のレイヤーはチップが無く案内の出し先が無いので含めない。 */
 export function tileVersionGatedLayerIds(layers: readonly MapLayerDescriptor[]): readonly MapLayerId[] {
   return layers
-    .filter((layer) => !isAxisStudioLayer(layer) && TILE_VERSION_GATED_SOURCES.has(layer.dataSource))
+    .filter((layer) => !isLensLayer(layer) && TILE_VERSION_GATED_SOURCES.has(layer.dataSource))
     .map((layer) => layer.id);
 }
 
 /** そのズームでは描かれず、ONにしても何も出ないレイヤー。軸のレイヤーはチップが無く案内の出し先が無いので含めない。 */
 export function tileZoomTooWideLayerIds(layers: readonly MapLayerDescriptor[], zoom: number): readonly MapLayerId[] {
   return layers
-    .filter((layer) => !isAxisStudioLayer(layer) && layer.minZoom !== undefined && zoom < layer.minZoom)
+    .filter((layer) => !isLensLayer(layer) && layer.minZoom !== undefined && zoom < layer.minZoom)
     .map((layer) => layer.id);
 }
 
 /** チップからON/OFFできるレイヤーの既定の表示。軸のレイヤーはレンズだけが決めるので持たない。 */
 export function buildDefaultLayerVisibility(layers: readonly MapLayerDescriptor[]): MapLayerVisibility {
   return Object.fromEntries(
-    layers.filter((layer) => !isAxisStudioLayer(layer)).map((layer) => [layer.id, layer.defaultOn === true]),
+    layers.filter((layer) => !isLensLayer(layer)).map((layer) => [layer.id, layer.defaultOn === true]),
   );
 }
 
@@ -271,6 +233,6 @@ export function deriveFetchLayerStatus(
   return undefined;
 }
 
-function dedicatedWayValueMapLayerId(axisId: string): MapLayerId {
-  return `${axisId}Axis`;
+function lensMapLayerId(lensId: string): MapLayerId {
+  return `${lensId}Lens`;
 }

@@ -12,7 +12,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { CostAxisCatalog } from "@/hooks/useCostAxisCatalog";
-import { EMPTY_CATALOG } from "@/lib/axisCatalog";
+import { EMPTY_CATALOG } from "@/lib/clientConfig";
 import { AVOIDANCE_LEVELS, avoidanceRow, catalogEntry, catalogOf, roadClassCatalog } from "@/testing/catalogAxes";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 

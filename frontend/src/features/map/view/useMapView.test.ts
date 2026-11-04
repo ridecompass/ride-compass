@@ -39,12 +39,12 @@ describe("useMapView", () => {
 
     act(() => result.current.lensControl.onLensChange("axis_score"));
 
-    expect(result.current.look).toMatchObject({ lens: "axis_score", paintedAxisId: "axis_score" });
+    expect(result.current.look).toMatchObject({ lens: "axis_score", paintedLensId: "axis_score" });
     expect(result.current.look.layerVisibility.route).toBe(false);
     expect(result.current.lensControl.routeHidden).toBe(true);
     rerender({ hasDetail: true });
     act(() => result.current.lensControl.onKeepAfterRouteChange(false));
-    expect(result.current.look.paintedAxisId).toBeNull();
+    expect(result.current.look.paintedLensId).toBeNull();
   });
 
   it("塗っている軸だけ表示範囲の材料を取り、塗りに効く走る条件と、取れなかったことをレンズに出す", async () => {

@@ -2,10 +2,10 @@
 
 import { useCallback, useRef, useState, type ComponentProps } from "react";
 
-import { useAxisCatalog } from "@/hooks/useAxisCatalog";
+import { useClientConfig } from "@/hooks/useClientConfig";
 import { errorMessage } from "@/lib/apiError";
 import { useIsomorphicLayoutEffect } from "@/hooks/useIsomorphicLayoutEffect";
-import { CLIENT_TUNING_IDS, clientTuningValue } from "@/lib/axisCatalog";
+import { CLIENT_TUNING_IDS, clientTuningValue } from "@/lib/clientConfig";
 import { buildGenerateRequest, type GenerationInput } from "@/features/route/generationRequest";
 import { generateRoutes } from "@/features/route/routeApi";
 import type { StretchAlternative } from "@/features/route/routeSplice";
@@ -95,7 +95,7 @@ export function useSpliceSession({
   hasSelectedRoute,
   onApplied,
 }: SpliceSessionInputs): SpliceSessionView {
-  const axisCatalog = useAxisCatalog();
+  const axisCatalog = useClientConfig();
   // 始めると空から始まり、抜けると中身ごと消える（前回の編集の残りを次へ持ち込まない）。
   const [session, setSplice] = useState<SpliceSession | null>(null);
   const splice = session !== null && session.basis === generatedInput ? session : null;

@@ -81,13 +81,13 @@ export interface RideConditions {
 
 /** 上記に、クリックされた点を含む道路タイルを足したもの（レンズが引いたのと同じタイルを
  * 指すため、backendは同じキャッシュから値を引ける）。 */
-export interface AxisInspectorConditions extends RideConditions {
+export interface RoadInspectorConditions extends RideConditions {
   z: number;
   x: number;
   y: number;
 }
 
-export type AxisInspectorResult = components["schemas"]["AxisInspectorResult"];
+export type RoadInspection = components["schemas"]["RoadInspection"];
 
 type RoadAt = components["schemas"]["RoadAt"];
 
@@ -107,13 +107,13 @@ export async function fetchRoadsAt(
   });
 }
 
-/** 地図で押した道（`osm_way_id`）の一次属性と、押したフィーチャー（その倍率で地図が塗る区間か道1本）の全軸・合成を取る。 */
-export async function fetchAxisInspector(
+/** 地図で押した道（`osm_way_id`）の一次属性と、押したフィーチャー（その倍率で地図が塗る区間か道1本）のレンズの値を取る。 */
+export async function fetchRoadInspection(
   osmWayId: number,
   featureKey: string,
-  conditions: AxisInspectorConditions,
+  conditions: RoadInspectorConditions,
   costPreference: CostPreference,
-): Promise<AxisInspectorResult | null> {
+): Promise<RoadInspection | null> {
   const body = {
     osm_way_id: osmWayId,
     // 費用のレンズの値を求める利用者の値（地図のレンズ・ルート生成と同じもの）。
@@ -127,12 +127,12 @@ export async function fetchAxisInspector(
     at: conditions.at.toISOString(),
     speed_kmh: conditions.speedKmh,
   };
-  return requestApi((init) => backendApi.POST("/api/region/axis-inspector", { body, ...init }), {
+  return requestApi((init) => backendApi.POST("/api/region/road-inspector", { body, ...init }), {
     timeoutMs: API_TIMEOUT_MS.default,
-    category: "api:axis-inspector",
-    messages: { failure: "内訳の取得に失敗しました", parseFailure: "内訳の取得に失敗しました" },
+    category: "api:road-inspector",
+    messages: { failure: "道の窓の取得に失敗しました", parseFailure: "道の窓の取得に失敗しました" },
     requestMeta: { body },
-    successMeta: (data) => ({ composite: data?.values.composite_difficulty }),
+    successMeta: (data) => ({ found: data !== null }),
   });
 }
 
@@ -155,37 +155,6 @@ async function tileWayValues<Value>(request: () => Promise<Record<string, Value>
     // 失敗の内訳は`requestApi`が記録済み。
     return { values: {}, error: true };
   }
-}
-
-// 軸の、タイルの中の道ごとの材料。パスは軸idで決まり、軸ごとの関数を持たない。世代のクエリを持たない
-// （ブラウザのキャッシュに載せない軽いJSONで、新しさはbackendが持つ）。
-
-/** 道ごとの材料の要求へ載せる走る条件（軸カタログの`dynamic_way_value_material_conditions`の名前だけ）。 */
-export type WayMaterialsQuery = NonNullable<
-  paths["/api/region/way-materials/{axis_id}/{z}/{x}/{y}"]["get"]["parameters"]["query"]
->;
-
-/** 路面タイルと同じz/x/yの中の道ごとの材料（材料の名前→値。値の無い材料は鍵ごと無い）。`query`は、軸が要求へ
- * 載せると宣言した条件だけを呼ぶ側が渡す。 */
-export async function fetchWayMaterials(
-  axisId: string,
-  z: number,
-  x: number,
-  y: number,
-  query: WayMaterialsQuery,
-): Promise<TileWayValues<Record<string, number>>> {
-  const params = { path: { axis_id: axisId, z, x, y }, query };
-  return tileWayValues(() =>
-    requestApi((init) => backendApi.GET("/api/region/way-materials/{axis_id}/{z}/{x}/{y}", { params, ...init }), {
-      timeoutMs: API_TIMEOUT_MS.default,
-      category: `api:${axisId}-way-materials`,
-      messages: {
-        failure: "道路の塗りの材料の取得に失敗しました",
-        parseFailure: "道路の塗りの材料の解析に失敗しました",
-      },
-      successMeta: (data) => ({ wayCount: Object.keys(data).length }),
-    }),
-  );
 }
 
 /** 費用の軸のレンズの道ごとの材料の要求の条件（想定速度は要る。`/api/cost-axes`の`map_lens.material_conditions`）。 */

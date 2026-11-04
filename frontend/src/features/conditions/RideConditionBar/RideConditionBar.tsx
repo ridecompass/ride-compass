@@ -24,9 +24,8 @@ import { NumberInput } from "@/components/ui/NumberInput/NumberInput";
 import { Input } from "@/components/ui/Input/Input";
 import { textVariants } from "@/components/ui/Text/Text";
 import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
-import { useAxisCatalog } from "@/hooks/useAxisCatalog";
-import { CLIENT_TUNING_IDS, clientTuningValue, type AxisCatalog } from "@/lib/axisCatalog";
-import { axisNamesUsing } from "@/lib/catalogAxis";
+import { useClientConfig } from "@/hooks/useClientConfig";
+import { CLIENT_TUNING_IDS, clientTuningValue, type ClientConfig } from "@/lib/clientConfig";
 
 /** 区間ごとに速度を変える条件の名前（backendの走行モデルが宣言する並び）。 */
 const SPEED_CONDITIONS = routeGenerateConfig.segment_speed_conditions.join("・");
@@ -51,7 +50,7 @@ const subscribeNothing = () => () => {};
 
 /** 想定速度の説明に出す走行モデルの標準値（管理画面の較正値）。1つでも引けなければ`null`——
  * 引けない間は標準値の文を出さない（較正したのとは別の数を出さない）。 */
-function riderDefaultsOf(catalog: AxisCatalog) {
+function riderDefaultsOf(catalog: ClientConfig) {
   const massKg = clientTuningValue(catalog, CLIENT_TUNING_IDS.massKg);
   const cdaM2 = clientTuningValue(catalog, CLIENT_TUNING_IDS.cdaM2);
   const maxDescentKmh = clientTuningValue(catalog, CLIENT_TUNING_IDS.maxDescentKmh);
@@ -141,10 +140,7 @@ export default function RideConditionBar({
   linkedDeparture,
   linkedSpeed,
 }: RideConditionBarProps) {
-  const axisCatalog = useAxisCatalog();
-  const riderDefaults = riderDefaultsOf(axisCatalog);
-  // 出発時刻で値の変わる評価の名前は軸カタログから引く。無ければ評価に触れない。
-  const timeAxes = axisNamesUsing(axisCatalog.axes, "at");
+  const riderDefaults = riderDefaultsOf(useClientConfig());
   // 出発時刻の文言は描いた時刻で決まる。ページはビルド時に描かれるので、サーバーとハイドレーションの描画では
   // 出さず、ハイドレーションのあとに出す（出すとビルドの時刻の文言とずれ、ハイドレーションが不一致で失敗する）。
   const hydrated = useSyncExternalStore(
@@ -168,7 +164,7 @@ export default function RideConditionBar({
             name={departureName}
             icon={<ClockIcon />}
             linked={linkedDeparture}
-            usage={`出発する日時を決めます。地図の気象の表示の時刻と、ルートの${timeAxes ? `${timeAxes}の評価・` : ""}到達予想の時刻に使います。`}
+            usage="出発する日時を決めます。地図の気象の表示と周りの道の負担（風）の時刻と、ルートの到達予想の時刻に使います。"
           >
             {/* 別の日は日付も付くため、列の幅に収まるよう日付と時刻を2行に分ける。 */}
             {departureLabel?.map((part) => (

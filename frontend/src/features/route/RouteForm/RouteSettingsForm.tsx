@@ -7,7 +7,7 @@ import HardFilterPanel from "@/features/route/RouteSettingsPanel/HardFilterPanel
 import SavedConditionsPanel, { SaveConditionsButton } from "@/features/route/SavedConditionsPanel/SavedConditionsPanel";
 import type { GenerationConditionsState } from "@/features/route/useGenerationConditions";
 import type { useSavedConditions } from "@/features/route/useSavedConditions";
-import { useAxisCatalog } from "@/hooks/useAxisCatalog";
+import { useClientConfig } from "@/hooks/useClientConfig";
 import RouteForm from "./RouteForm";
 
 type RouteSettingsFormProps = Omit<
@@ -25,7 +25,7 @@ type RouteSettingsFormProps = Omit<
  */
 export default function RouteSettingsForm({ savedConditions, ...props }: RouteSettingsFormProps) {
   const { conditions, originManual, originLocated } = props;
-  const avoidance = useAxisCatalog().roadClasses.avoidance;
+  const avoidance = useClientConfig().roadClasses.avoidance;
   return (
     <RouteForm
       {...props}

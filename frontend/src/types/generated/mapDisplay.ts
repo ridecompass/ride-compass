@@ -175,12 +175,7 @@ export const mapDisplay = {
         "信号、横断歩道、一時停止、徐行、踏切、車止め・ゲート、ハンプ・狭さくの位置を種別ごとに表示"
       ],
       "panelHint": [
-        "信号、横断歩道、一時停止、徐行、踏切、車止め・ゲート、ハンプ・狭さくの位置です。",
-        {
-          "name": "axes",
-          "before": "評価軸",
-          "after": "が近傍のこれらを数えて算出しているものを、種別ごとに直接確認できます。"
-        }
+        "信号、横断歩道、一時停止、徐行、踏切、車止め・ゲート、ハンプ・狭さくの位置です。"
       ],
       "hideMissingRows": false
     },
@@ -820,13 +815,6 @@ export const mapDisplay = {
     "rainbandOutlineWidthPx": 4,
     "rainbandOutlineCasingWidthPx": 6,
     "msmForecastHours": 48
-  },
-  "valueScale": {
-    "difficultyBoundaries": [
-      33,
-      66
-    ],
-    "difficultyDecimals": 1
   },
   "route": {
     "lineWidthsPx": {

@@ -20,12 +20,6 @@ import { bandStep, type ValueBand } from "@/lib/mapDisplay/valueScale";
 
 import { ROAD_LINE_SOURCE_ID } from "./roadLines";
 
-/** 材料が同時に出ているときの下敷きの幅。**道の線の層が全部出たときの帯幅**から決まるので、
- * 層が増えれば広がる（直書きすると追従しない）。 */
-function underlayWidthPx(roadLayerCount: number): number {
-  return Math.max(0, roadLayerCount - 1) * mapDisplay.road.trackOffsetStepPx + mapDisplay.road.lineWidthPx;
-}
-
 /** 道ごとの材料。feature_key → 材料の名前 → 値（値の無い材料は鍵ごと無い）。 */
 export type WayMaterials = ReadonlyMap<string, Readonly<Record<string, number>>>;
 
@@ -46,13 +40,9 @@ export type AxisLineState = {
     readonly loading: boolean;
     /** 凡例で隠した段の鍵。 */
     readonly hiddenBandKeys: readonly string[];
-    /** その軸の材料が同時に出ているか（判定は呼び出し側が持つ）。 */
-    readonly underlay: boolean;
   }[];
   readonly conditions: WayConditions;
   readonly sourceLayer: string | null;
-  /** 道の線の層の数（下敷きの幅を決める）。 */
-  readonly roadLayerCount: number;
 };
 
 type AxisLine = AxisLineState["axes"][number];
@@ -74,9 +64,9 @@ function expressionsOf(axis: AxisLine) {
   });
 }
 
-/** 値の無い道を破線の線が描くか。下敷きは全体を薄く敷くだけ、取得中は取得中の色を見せる。 */
+/** 値の無い道を破線の線が描くか。取得中は取得中の色を見せる。 */
 function dashesMissing(axis: AxisLine): boolean {
-  return !axis.underlay && !axis.loading && !axis.hiddenBandKeys.includes(LEGEND_NO_DATA_KEY);
+  return !axis.loading && !axis.hiddenBandKeys.includes(LEGEND_NO_DATA_KEY);
 }
 
 /** 道の値を `let` で束ね、向きで決まらない道・値の無い道・それ以外の順に場合分けする。値の無い道を先に分けるので、
@@ -155,9 +145,9 @@ export const axisLineGroup = declareGroup<AxisLineState>((state) => {
       ...lineOf(axis.axisId),
       paint: {
         "line-color": colorExpression(axis),
-        "line-width": axis.underlay ? underlayWidthPx(state.roadLayerCount) : mapDisplay.road.lineWidthPx,
+        "line-width": mapDisplay.road.lineWidthPx,
         // 取得中は薄くしない——薄くすると「まだ来ていない」と「対象外」が区別できない。
-        "line-opacity": axis.underlay ? mapDisplay.road.underlayOpacity : mapDisplay.road.knownOpacity,
+        "line-opacity": mapDisplay.road.knownOpacity,
       },
       visible: axis.visible,
     },

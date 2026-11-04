@@ -4,7 +4,7 @@ import { createElement, type ReactElement } from "react";
 import { useRowDescription, useRowPanel } from "@/features/map/LegendCheckboxList/LegendRow";
 import { FILTERED_LABEL } from "@/features/map/MapOverlayControls/OverlayLayerRow";
 import type { LensId } from "@/lib/mapDisplay/routeStyleModes";
-import type { WayValueCondition } from "@/lib/catalogAxis";
+import type { WayValueCondition } from "@/lib/mapDisplay/mapLens";
 import { ToggleGroupItem } from "@/components/ui/ToggleGroup/ToggleGroup";
 import { textVariants } from "@/components/ui/Text/Text";
 import { axisIconFor } from "@/components/ui/icons/axisIconPalette";
@@ -16,16 +16,14 @@ export interface LensOption {
   id: LensId;
   label: string;
   color: string;
-  /** 重みが0（評価に使っていない）。選べるが薄く出し、「未使用」を添えて後ろに並べる。 */
+  /** 代償が0（つまみ×0か、その軸の倍率×0）。選べるが薄く出し、「未使用」を添えて後ろに並べる。 */
   unused: boolean;
-  /** 軸の説明（重みのタブと同じ軸カタログの説明文）。(i) で行の下に開く。 */
+  /** レンズの説明（倍率のタブと同じ費用の軸の一覧の説明文）。(i) で行の下に開く。 */
   description: string;
-  /** 軸のアイコン（重みのタブと同じ）。未設定は汎用のアイコン。 */
+  /** レンズのアイコン（倍率のタブと同じ）。未設定は汎用のアイコン。 */
   iconId?: string;
-  /** 値が変わる走る条件（夜だけ効く軸は出発時刻）。地図の右の列のボタンと同じアイコンを名前に添える。 */
+  /** 値が変わる走る条件。地図の右の列のボタンと同じアイコンを名前に添える。 */
   conditions: readonly WayValueCondition[];
-  /** ルートの無い間の周りの道を塗れるか。塗れない軸は「ルートの線だけ」を添える。 */
-  paintsSurroundingRoads: boolean;
 }
 
 /** 走る条件ごとの、地図の右の列のボタンと同じアイコンと名前。 */
@@ -81,7 +79,6 @@ export function LensRow({
               </span>
             );
           })}
-          {!option.paintsSurroundingRoads && <span className={textVariants({ variant: "note" })}>ルートの線だけ</span>}
           {option.unused && <span className={textVariants({ variant: "note" })}>未使用</span>}
           {filtered && <span className={textVariants({ variant: "note" })}>{FILTERED_LABEL}</span>}
         </ToggleGroupItem>

@@ -9,7 +9,7 @@ import {
 } from "@/features/map/layers/mapLayers";
 import { roadLegendAxes } from "@/features/map/scene/legends";
 
-import { mapAxisCatalogFromResponse } from "@/features/map/mapAxisCatalog";
+import { mapAxisCatalogFromResponse } from "@/features/map/mapCatalog";
 import { catalogResponse, dedicatedEntry, roadClass, roadClassCatalog, roadMapLayer } from "@/testing/catalogAxes";
 import { deserializeLayerVisibility, overlayChips } from "./overlayChips";
 

@@ -16,7 +16,7 @@ import {
   type SavedCondition,
 } from "@/features/route/savedConditions";
 import SavedList from "@/features/route/SavedList/SavedList";
-import { useAxisCatalog } from "@/hooks/useAxisCatalog";
+import { useClientConfig } from "@/hooks/useClientConfig";
 import { useCostAxisCatalog } from "@/hooks/useCostAxisCatalog";
 
 interface SaveConditionsButtonProps {
@@ -63,7 +63,7 @@ export function SaveConditionsButton({
   originKnown,
   onSave,
 }: SaveConditionsButtonProps) {
-  const catalog = useAxisCatalog();
+  const catalog = useClientConfig();
   const costCatalog = useCostAxisCatalog();
   // 手で書き換えるまでは、いまの条件から作る仮の名前を出す（条件を変えると名前の案も変わる）。
   const [nameDraft, setNameDraft] = useState<string | null>(null);
@@ -160,7 +160,7 @@ export function SaveConditionsButton({
 // 一覧の行は名前とアイコンの操作だけで、呼び出すと窓で中身を見せ、「反映する」で各タブの値と地図のピンが入れ替わる。
 // 生成はいつもの「ルート生成」で行う（入れ替えたあとに値を確かめたり少し変えたりできる）。
 export default function SavedConditionsPanel({ saved, onRecall, onRemove }: SavedConditionsPanelProps) {
-  const catalog = useAxisCatalog();
+  const catalog = useClientConfig();
   const costCatalog = useCostAxisCatalog();
   // 呼び出すを押した設定。確認の窓で中身を見せ、「反映する」を押すまで入れ替えない。
   const [recalling, setRecalling] = useState<SavedCondition | null>(null);

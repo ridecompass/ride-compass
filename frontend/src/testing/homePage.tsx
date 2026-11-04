@@ -6,7 +6,7 @@ import userEvent from "@testing-library/user-event";
 import { expect, onTestFinished, vi } from "vitest";
 
 import Home from "@/app/page";
-import { CLIENT_TUNING_IDS } from "@/lib/axisCatalog";
+import { CLIENT_TUNING_IDS } from "@/lib/clientConfig";
 import { onBackend, onSameOrigin, serveAxisCatalog } from "@/testing/backendServer";
 import {
   catalogResponse,

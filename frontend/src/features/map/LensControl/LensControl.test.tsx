@@ -12,7 +12,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import { LAYER_DATA_STATUS_LABELS } from "@/features/map/layers/mapLayers";
-import { DIFFICULTY_LENS_LABEL, LENS_DIFFICULTY_ID } from "@/lib/mapDisplay/routeStyleModes";
+import { UNSELECTED_LENS_LABEL, UNSELECTED_LENS_ID } from "@/lib/mapDisplay/routeStyleModes";
 
 import LensControl from "./LensControl";
 import type { LensOption } from "./LensRow";
@@ -67,8 +67,8 @@ const list = () => screen.getByRole("radiogroup", { name: "評価で塗る" });
 describe("LensControl", () => {
   it.each([
     ["used", false, "usedの軸"],
-    [LENS_DIFFICULTY_ID, false, "塗る負担を選ぶ"],
-    [LENS_DIFFICULTY_ID, true, DIFFICULTY_LENS_LABEL],
+    [UNSELECTED_LENS_ID, false, "塗る負担を選ぶ"],
+    [UNSELECTED_LENS_ID, true, UNSELECTED_LENS_LABEL],
   ])(
     "ピルは選んでいる評価軸（%s・ルートの確定後 %s）の名前を出し、選んでいなければ塗り方を出す",
     (lens, hasDetail, label) => {
@@ -102,12 +102,12 @@ describe("LensControl", () => {
     expect(list()).toBeInTheDocument();
 
     await userEvent.click(within(list()).getByRole("radio", { name: /^usedの軸/ }));
-    expect(onLensChange).toHaveBeenLastCalledWith(LENS_DIFFICULTY_ID);
+    expect(onLensChange).toHaveBeenLastCalledWith(UNSELECTED_LENS_ID);
   });
 
   it.each([
     ["used", false],
-    [LENS_DIFFICULTY_ID, true],
+    [UNSELECTED_LENS_ID, true],
   ])("「選択を外す」は文字の無いアイコンで、評価軸を選んでいる（%s）間だけ押せる", async (lens, disabled) => {
     const { onLensChange } = renderLens({ lens });
     await open();
@@ -118,7 +118,7 @@ describe("LensControl", () => {
       return;
     }
     await userEvent.click(clear);
-    expect(onLensChange).toHaveBeenCalledWith(LENS_DIFFICULTY_ID);
+    expect(onLensChange).toHaveBeenCalledWith(UNSELECTED_LENS_ID);
   });
 
   it("(i) で軸の説明を行の下に開く", async () => {

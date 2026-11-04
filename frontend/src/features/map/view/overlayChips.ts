@@ -4,7 +4,7 @@
  * 凡例は`scene/legends.ts`、表示専用の凡例は記述子の`readOnlyLegend`。
  */
 import {
-  isAxisStudioLayer,
+  isLensLayer,
   TILE_VERSIONS_MISSING_NOTICE,
   TILE_ZOOM_TOO_WIDE_NOTICE,
   type LayerDataStatusByLayer,
@@ -60,7 +60,7 @@ export function overlayChips(options: {
   const { hidden, catalogSettled } = options;
   const legendAxes = [...roadLegendAxes(options.roadLayers), ...DECLARED_LEGEND_AXES];
   return options.layers
-    .filter((layer): layer is ChipLayerDescriptor => !isAxisStudioLayer(layer))
+    .filter((layer): layer is ChipLayerDescriptor => !isLensLayer(layer))
     .filter((layer) => layer.kind !== "dynamic")
     .map((layer) => {
       const versionMissing = options.versionMissingLayerIds.includes(layer.id);

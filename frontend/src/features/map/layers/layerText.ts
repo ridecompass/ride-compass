@@ -1,12 +1,12 @@
-// チップの説明の文の差し込み口を埋める。文は源泉（`mapDisplay.layers`の`description`・`panelHint`と、道の線の層の`panel_hint`）が持つ。
+// チップの説明の文の差し込み口を埋める。文は源泉（`mapDisplay.layers`の`description`・`panelHint`）が持つ。
 
 import { mapDisplay } from "@/types/generated/mapDisplay";
-import type { RoadMapLayerView } from "@/types/route";
 
 /** 源泉の説明の文の差し込み口。 */
-type LayerTextSlot =
-  | Extract<NonNullable<(typeof mapDisplay.layers)[number]["description" | "panelHint"]>[number], { name: string }>
-  | Extract<RoadMapLayerView["panel_hint"][number], { name: string }>;
+type LayerTextSlot = Extract<
+  NonNullable<(typeof mapDisplay.layers)[number]["description" | "panelHint"]>[number],
+  { name: string }
+>;
 
 type LayerTextPart = string | LayerTextSlot;
 

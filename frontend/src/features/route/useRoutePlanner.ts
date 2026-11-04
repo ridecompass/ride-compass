@@ -8,7 +8,7 @@ import {
   type RouteOutcomeKind,
 } from "@/features/route/useRouteGeneration";
 import { useRouteResults } from "@/features/route/useRouteResults";
-import { useAxisCatalog } from "@/hooks/useAxisCatalog";
+import { useClientConfig } from "@/hooks/useClientConfig";
 import { useSpliceSession } from "@/features/route/useSpliceSession";
 
 /** 生成の入力のうち、ページから渡すもの（候補の有無と生成の結果の受け取り先は結果の側がつなぐ）。 */
@@ -26,7 +26,7 @@ interface RoutePlannerInputs extends Pick<
  * 一緒に終わる）。乗り換えで作り始めると、直前の生成の失敗の文言を残さない。
  */
 export function useRoutePlanner({ conditions, onOutcome, ...generationInputs }: RoutePlannerInputs) {
-  const axisCatalog = useAxisCatalog();
+  const axisCatalog = useClientConfig();
   const results = useRouteResults();
   const { replaceWithGenerated, addEdit, selectReused, clear: clearResults } = results;
 
@@ -72,7 +72,5 @@ export function useRoutePlanner({ conditions, onOutcome, ...generationInputs }: 
     clear,
     /** 地図に描くルート。 */
     mapRoutes,
-    /** 軸を「未使用」と分ける重み。生成の要求は軸の重みを持たないので、いつも軸カタログの既定の重み。 */
-    routeWeights: axisCatalog.defaultWeights,
   };
 }

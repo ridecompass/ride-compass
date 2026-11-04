@@ -193,13 +193,5 @@ export const vocabulary = {
       "label": "地点",
       "area": false
     }
-  ],
-  "quantiles": [
-    "p10",
-    "p25",
-    "p50",
-    "p75",
-    "p90",
-    "p99"
   ]
 } as const;

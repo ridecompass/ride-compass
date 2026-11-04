@@ -17,7 +17,7 @@ import type {
 import type { RideConditions } from "@/features/map/regionApi";
 import { applyScene, type SpliceStretchInput } from "@/features/map/scene/applyToMap";
 import type { MapLook } from "@/features/map/view/mapLook";
-import { useMapAxisCatalog } from "@/features/map/useMapAxisCatalog";
+import { useMapCatalog } from "@/features/map/useMapCatalog";
 import { useJmaTileIndex } from "@/features/map/useJmaTileIndex";
 import MapNavigationControl from "@/features/map/MapNavigationControl/MapNavigationControl";
 import MapLoadStatus from "@/features/map/MapView/MapLoadStatus";
@@ -158,7 +158,7 @@ export default function MapView({
     controls: popups,
     backToSegment,
   } = useMapPopups(selectionOwner, selectedRouteSegment, onRouteSegmentSelect);
-  const mapCatalog = useMapAxisCatalog(look.mapTheme);
+  const mapCatalog = useMapCatalog(look.mapTheme);
   // 詳細を見ている道。強調も scene の一部として当てる。
   const inspectedShape = popup?.kind === "road" ? popup.shape : null;
   // 選んでいる区間（選んでいる候補の区間のときだけ）と、その形。

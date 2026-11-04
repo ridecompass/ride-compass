@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo } from "react";
 
-import { useAxisCatalog } from "@/hooks/useAxisCatalog";
+import { useClientConfig } from "@/hooks/useClientConfig";
 import { useStoredState } from "@/hooks/useStoredState";
 import { readStoredList } from "@/lib/storedList";
 
@@ -37,7 +37,7 @@ export function useChosenProfileLayers(ids: readonly string[]): {
   readonly available: readonly ProfileLayer[];
   readonly chosen: readonly ProfileLayer[];
 } {
-  const roadLayers = useAxisCatalog().roadClasses.map_layers;
+  const roadLayers = useClientConfig().roadClasses.map_layers;
   const available = useMemo(() => profileLayers(roadLayers), [roadLayers]);
   const chosen = useMemo(() => available.filter((layer) => ids.includes(layer.id)), [available, ids]);
   return { available, chosen };
