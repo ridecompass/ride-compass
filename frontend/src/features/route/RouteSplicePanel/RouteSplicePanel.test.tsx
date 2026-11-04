@@ -32,12 +32,14 @@ const CATALOG = {
   ],
   axisColors: { width: "red", traffic: "green", slope: "blue", light: "gray" },
   avoidanceLabel: "回避指定",
+  loaded: true,
 };
 
 /** 軸ごとの負担（秒）を持つ内訳。 */
-const penalty = (axisSeconds: Record<string, number>): RouteCandidate["penalty"] => ({
+const penalty = (axisSeconds: Record<string, number>, totalSeconds: number): RouteCandidate["penalty"] => ({
   axis_seconds: axisSeconds,
   avoidance_seconds: 0,
+  total_seconds: totalSeconds,
 });
 
 // 負担は道幅10分・交通5分・勾配3分の計18分。
@@ -45,7 +47,7 @@ const DISPLAYED = makeRouteCandidate({
   edge_ids: ["e1", "e2", "e3"],
   distance_km: 12.3,
   estimated_duration_seconds: 1800,
-  penalty: penalty({ width: 600, traffic: 300, slope: 180 }),
+  penalty: penalty({ width: 600, traffic: 300, slope: 180 }, 1080),
 });
 
 function renderPanel(props: Partial<Props> = {}) {
@@ -162,7 +164,7 @@ describe("RouteSplicePanel 指標", () => {
       edge_ids: ["e1", "e4", "e3"],
       distance_km: 13,
       estimated_duration_seconds: 1500,
-      penalty: penalty({ width: 600, traffic: 300, slope: 200 }),
+      penalty: penalty({ width: 600, traffic: 300, slope: 200 }, 1100),
     });
     renderPanel({ appliedCount: 1, preview });
 
@@ -183,7 +185,7 @@ describe("RouteSplicePanel 指標", () => {
       edge_ids: ["e1", "e4", "e3"],
       distance_km: 13,
       estimated_duration_seconds: 1500,
-      penalty: penalty({ width: 600 }),
+      penalty: penalty({ width: 600 }, 600),
     });
     renderPanel({
       displayed: { ...DISPLAYED, estimated_duration_seconds: null, penalty: null },
@@ -207,7 +209,7 @@ describe("RouteSplicePanel 軸別の差", () => {
   const MOVED = makeRouteCandidate({
     edge_ids: ["e1", "e4", "e3"],
     distance_km: 12.3,
-    penalty: penalty({ width: 480, traffic: 303, slope: 360, light: 6 }),
+    penalty: penalty({ width: 480, traffic: 303, slope: 360, light: 6 }, 1149),
   });
 
   it("負担が0.1分以上動いた軸を大きい順に棒の読み上げへ並べ、大きい2つを下に書く", () => {
@@ -250,7 +252,7 @@ describe("RouteSplicePanel 案内", () => {
   it("差分を見て負担が0.1分以上動いた軸が無ければ、棒も「差分を見る」を押す案内も出さず、どの軸もほぼ変わらないと出す", () => {
     const unmoved = makeRouteCandidate({
       edge_ids: ["e1", "e4", "e3"],
-      penalty: penalty({ width: 603, traffic: 300, slope: 180 }),
+      penalty: penalty({ width: 603, traffic: 300, slope: 180 }, 1083),
     });
     renderPanel({ appliedCount: 1, preview: unmoved });
 

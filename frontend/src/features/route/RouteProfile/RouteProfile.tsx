@@ -89,7 +89,7 @@ export default function RouteProfile({
             <DisplayItemsIcon size={14} />
             <span className="sr-only">{FACT_DISPLAY_NAME}</span>
           </TabsTrigger>
-          <TabsTrigger value="lens" usage="区間ごとの1kmあたりの負担を、費用の軸の色で積んで道のりに沿って出します。">
+          <TabsTrigger value="lens" usage="区間ごとの1kmあたりの負担を、負担の種類の色で積んで道のりに沿って出します。">
             <EvaluationPaintIcon size={14} />
             <span className="sr-only">{EVALUATION_PAINT_NAME}</span>
           </TabsTrigger>

@@ -7,12 +7,14 @@ import {
   LENS_DIFFICULTY_ID,
   LENS_NEUTRAL_COLOR,
   ROUTE_LENS_SECONDS_PROPERTY,
-  ROUTE_LENS_TOTAL_PROPERTY,
   type RouteStyleMode,
 } from "@/lib/mapDisplay/routeStyleModes";
 import { costLensPaint, formatLensNumber, LENS_SECONDS_UNIT } from "@/lib/mapDisplay/costLensPaint";
 import type { MapTheme } from "@/lib/mapTheme";
 import type { LensOption } from "@/features/map/LensControl/LensRow";
+import { multiplierOf } from "@/lib/costPreference";
+import type { CostPreference } from "@/types/route";
+import type { LensEquivalentsResponse } from "@/services/costAxisCatalogApi";
 
 type LensPresentation = CostLensCatalog["totalLens"];
 
@@ -61,21 +63,22 @@ export function costRouteStyleModes(catalog: CostAxisCatalog, ground: MapTheme):
       valueExpression,
       paint: costLensPaint(presentation, ground),
     });
-  const total: unknown[] = ["get", ROUTE_LENS_TOTAL_PROPERTY];
+  const lensValue = (lensId: string): unknown[] => ["get", lensId, ["get", ROUTE_LENS_SECONDS_PROPERTY]];
   return [
-    mode(LENS_DIFFICULTY_ID, lenses.totalLens, total),
-    mode(lenses.totalLens.axisId, lenses.totalLens, total),
-    ...catalog.axes.map((axis) => mode(axis.axisId, axis, ["get", axis.axisId, ["get", ROUTE_LENS_SECONDS_PROPERTY]])),
+    mode(LENS_DIFFICULTY_ID, lenses.totalLens, lensValue(lenses.totalLens.axisId)),
+    mode(lenses.totalLens.axisId, lenses.totalLens, lensValue(lenses.totalLens.axisId)),
+    ...catalog.axes.map((axis) => mode(axis.axisId, axis, lensValue(axis.axisId))),
   ];
 }
 
-/** レンズの選択肢（総合を先に、続けて軸の順）。利用者の倍率はまだ地図へ届かないので、どの軸も「未使用」にしない。 */
-export function costLensOptions(axes: readonly DedicatedWayValueAxis[]): LensOption[] {
+/** レンズの選択肢（総合を先に、続けて軸の順）。利用者の値で代償が0になるレンズ（つまみ×0なら全部、倍率×0の軸）は
+ * 「未使用」にする。 */
+export function costLensOptions(axes: readonly DedicatedWayValueAxis[], preference: CostPreference): LensOption[] {
   return axes.map((axis) => ({
     id: axis.axisId,
     label: axis.label,
     color: LENS_NEUTRAL_COLOR,
-    unused: false,
+    unused: preference.strength === 0 || multiplierOf(preference, axis.axisId) === 0,
     description: axis.description,
     iconId: axis.iconId,
     conditions: axis.wayValueConditions,
@@ -83,12 +86,16 @@ export function costLensOptions(axes: readonly DedicatedWayValueAxis[]): LensOpt
   }));
 }
 
-/** 凡例の下に書く、段の境目の秒の目安（標準の人・無風の1kmの道で、その事実1つだけが効いたとき）。軸でないレンズ（総合）・
- * 目安の無い軸は空。 */
-export function costLensPremises(lensId: string | null, catalog: CostAxisCatalog): string[] {
+/** 凡例の下に書く、段の境目の秒の目安（地図と同じ利用者の値・無風の1kmの道で、その事実1つだけが効いたとき。
+ * `features/map/useLensEquivalents.ts`）。軸でないレンズ（総合）・目安の届いていない軸は空。 */
+export function costLensPremises(
+  lensId: string | null,
+  catalog: CostAxisCatalog,
+  allEquivalents: LensEquivalentsResponse | undefined,
+): string[] {
   const axis = catalog.axes.find((candidate) => candidate.axisId === lensId);
-  if (axis === undefined) return [];
-  const equivalents = axis.lensEquivalents;
+  const equivalents = axis === undefined ? undefined : allEquivalents?.[axis.axisId];
+  if (axis === undefined || equivalents === undefined) return [];
   const lines =
     equivalents.kind === "thresholds"
       ? axis.lens.thresholds.map((threshold, index) => {
@@ -102,5 +109,7 @@ export function costLensPremises(lensId: string | null, catalog: CostAxisCatalog
       : equivalents.examples.map(
           (example) => `${example.label} ${formatLensNumber(example.seconds_per_km)}${LENS_SECONDS_UNIT}`,
         );
-  return lines.length === 0 ? [] : ["目安（標準の人・無風・その事実だけの1kmの道）", ...lines];
+  return lines.length === 0
+    ? []
+    : ["目安（いまの負担の強さと倍率で、無風・その事実だけの1kmの道を走ったとき）", ...lines];
 }

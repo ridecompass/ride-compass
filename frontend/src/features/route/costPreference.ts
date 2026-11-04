@@ -1,4 +1,5 @@
 import type { CostAxisCatalog } from "@/hooks/useCostAxisCatalog";
+import { multiplierOf, STANDARD_COST_FACTOR, STANDARD_COST_PREFERENCE } from "@/lib/costPreference";
 import type { CostPreference } from "@/types/route";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 
@@ -8,15 +9,10 @@ export interface CostLevel {
   label: string;
 }
 
-/** つまみと倍率の標準（backendの宣言）。 */
-export const STANDARD_COST_FACTOR = routeGenerateConfig.standard_cost_factor;
 /** 全体のつまみの段。 */
 export const COST_STRENGTH_LEVELS: readonly CostLevel[] = routeGenerateConfig.cost_strength_levels;
 /** 軸ごとの倍率の段。 */
 export const COST_MULTIPLIER_LEVELS: readonly CostLevel[] = routeGenerateConfig.cost_multiplier_levels;
-
-/** 標準（つまみも、どの軸の倍率も標準）。倍率は書いていない軸が標準なので、空で表す。 */
-export const STANDARD_COST_PREFERENCE: CostPreference = { strength: STANDARD_COST_FACTOR, multipliers: {} };
 
 function isLevel(value: unknown, levels: readonly CostLevel[]): value is number {
   return levels.some((level) => level.value === value);
@@ -44,11 +40,6 @@ export function readCostPreference(value: unknown): CostPreference {
   };
 }
 
-/** 軸`axisId`の倍率（書いていなければ標準）。 */
-export function multiplierOf(preference: CostPreference, axisId: string): number {
-  return preference.multipliers[axisId] ?? STANDARD_COST_FACTOR;
-}
-
 /** 生成の要求へ載せる形。倍率は今の費用の軸のものだけを、標準でないものだけ送る（消えた軸を送ると、要求が断られる）。
  * 一覧が届いていない間は倍率を送らない（backendが標準で作る）。 */
 export function costPreferenceToSend(preference: CostPreference, catalog: CostAxisCatalog): CostPreference {
@@ -73,7 +64,7 @@ export function multipliersNotSent(preference: CostPreference, catalog: CostAxis
 export function costPreferenceDescription(preference: CostPreference, catalog: CostAxisCatalog): string {
   const parts = [
     ...(preference.strength !== STANDARD_COST_FACTOR
-      ? [`全体 ${levelLabel(COST_STRENGTH_LEVELS, preference.strength)}`]
+      ? [`負担の強さ ${levelLabel(COST_STRENGTH_LEVELS, preference.strength)}`]
       : []),
     ...catalog.axes
       .filter((axis) => multiplierOf(preference, axis.axisId) !== STANDARD_COST_FACTOR)

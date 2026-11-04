@@ -35,8 +35,7 @@ def test_the_catalog_lists_the_effort_axes_in_the_code_order_then_the_burden_axe
 
     assert [(axis["axis_id"], axis["ledger"]) for axis in body["axes"]] == [
         *((axis_id, "effort") for axis_id in EFFORT_AXES), ("vibration", "burden")]
-    shown = {key: value for key, value in body["axes"][-1].items() if key != "lens_equivalents"}
-    assert shown == {"axis_id": "vibration", "ledger": "burden", "label": "振動", "description": "揺れる",
+    assert body["axes"][-1] == {"axis_id": "vibration", "ledger": "burden", "label": "振動", "description": "揺れる",
                      "icon_id": "wave", "lens": LENS}
     assert body["avoidance_label"] == AVOIDANCE_LABEL
 

@@ -6,7 +6,7 @@
 
 from typing import Annotated, NamedTuple
 
-from pydantic import Field
+from pydantic import AfterValidator, Field
 
 from app.domain.cost_axes import cost_axis_ids, current_cost_axes
 from app.domain.strict_model import StrictModel
@@ -16,21 +16,20 @@ STANDARD_COST_FACTOR = 1.0
 
 
 class CostLevel(NamedTuple):
-    """利用者が選ぶつまみ・倍率の段（値と、画面が出す名前）。"""
+    """利用者が選ぶつまみ・倍率の段（値と、画面が出す名前）。名前は掛ける数そのもの（「強め」のような言葉は量が伝わらない）。"""
 
     value: float
     label: str
 
 
+def _levels(*values: float) -> tuple[CostLevel, ...]:
+    return tuple(CostLevel(value, f"×{value:g}") for value in values)
+
+
 #: 全体のつまみの段。
-COST_STRENGTH_LEVELS = (
-    CostLevel(0.0, "気にしない"), CostLevel(0.5, "少し"), CostLevel(STANDARD_COST_FACTOR, "標準"), CostLevel(1.5, "強め"),
-    CostLevel(2.0, "とても"),
-)
+COST_STRENGTH_LEVELS = _levels(0.0, 0.5, STANDARD_COST_FACTOR, 1.5, 2.0)
 #: 軸ごとの倍率の段。
-COST_MULTIPLIER_LEVELS = (
-    CostLevel(0.0, "無視"), CostLevel(0.5, "×0.5"), CostLevel(STANDARD_COST_FACTOR, "標準"), CostLevel(2.0, "×2"),
-)
+COST_MULTIPLIER_LEVELS = _levels(0.0, 0.5, STANDARD_COST_FACTOR, 2.0)
 #: つまみ・倍率の上限（要求は段の間の値も受け付け、上の段より大きな値は断る）。
 MAX_COST_STRENGTH = max(level.value for level in COST_STRENGTH_LEVELS)
 MAX_COST_MULTIPLIER = max(level.value for level in COST_MULTIPLIER_LEVELS)
@@ -58,3 +57,8 @@ class CostPreference(StrictModel):
             multipliers={axis_id: self.multipliers.get(axis_id, STANDARD_COST_FACTOR)
                          for axis_id in cost_axis_ids(current_cost_axes())},
         )
+
+
+#: 要求が受ける利用者の値（倍率のキーが今の費用の軸のidかを、受け取るときに検める）。ルート生成・地図のレンズ・道の窓の
+#: どの入口もこの型で受ける。
+RequestedCostPreference = Annotated[CostPreference, AfterValidator(CostPreference.check_cost_axis_ids)]

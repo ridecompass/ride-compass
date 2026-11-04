@@ -40,7 +40,6 @@ const ENTRY: SavedCondition = {
 };
 
 const NO_BANDS = { thresholds: [], band_labels: ["段"] };
-const NO_EQUIVALENTS = { kind: "examples" as const, examples: [] };
 
 const COST_CATALOG: CostAxisCatalog = {
   axes: [
@@ -51,7 +50,6 @@ const COST_CATALOG: CostAxisCatalog = {
       description: "",
       iconId: "",
       lens: NO_BANDS,
-      lensEquivalents: NO_EQUIVALENTS,
     },
     {
       axisId: "vibration",
@@ -60,7 +58,6 @@ const COST_CATALOG: CostAxisCatalog = {
       description: "",
       iconId: "",
       lens: NO_BANDS,
-      lensEquivalents: NO_EQUIVALENTS,
     },
   ],
   axisColors: {},
@@ -169,7 +166,7 @@ describe("describeConditions", () => {
     [
       "標準でないつまみと軸の倍率だけを、軸の並びで（消えた軸は出さない）",
       { strength: 0.5, multipliers: { vibration: 0, ascent: 2, gone: 3 } },
-      "全体 少し・登坂 ×2・振動 無視",
+      "負担の強さ ×0.5・登坂 ×2・振動 ×0",
     ],
   ])("倍率: %s", (_, costPreference, expected) => {
     expect(describeConditions({ ...ENTRY, costPreference }, CATALOG, COST_CATALOG).costPreference).toBe(expected);

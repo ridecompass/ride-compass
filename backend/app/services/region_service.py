@@ -7,6 +7,7 @@ from app.domain.axis_definitions import copy_axis_definitions, published_axis_or
 from app.domain.axis_inspector import AxisInspectorResult, inspector_values
 from app.domain.dynamic_way_values import MissingConditions, WayValueQuery
 from app.domain.landcover import LandcoverPercentages
+from app.domain.cost_preference import CostPreference
 from app.domain.lens_values import LensInspection
 from app.domain.route_preference import RoutePreference
 from app.domain.region import ROADS_AT_LIMIT, BoundingBox, RoadAt, tile_bounds_lonlat
@@ -248,6 +249,7 @@ class AxisInspectorService:
         y: int,
         query: WayValueQuery,
         preference: RoutePreference | None,
+        cost_preference: CostPreference,
     ) -> AxisInspectorResult | None:
         """`preference`は合成に使う重み。利用者がいま設定している重みを渡す——ルート生成と同じ重みで見せないと、
         重みを0にした軸まで効いて見える。省略すると既定の重み。
@@ -267,7 +269,8 @@ class AxisInspectorService:
         async def lens_values() -> LensInspection | None:
             if query.speed_kmh is None or query.bearing_deg is None:
                 return None
-            return await self._lens.inspect(feature.key, *feature.tile, query.bearing_deg, query.at, query.speed_kmh)
+            return await self._lens.inspect(feature.key, *feature.tile, query.bearing_deg, query.at, query.speed_kmh,
+                                            cost_preference)
 
         # レンズはDBを読まないので、軸の得点（DBのセッションを使う）と並べて求める。
         painted, lens = await asyncio.gather(

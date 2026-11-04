@@ -71,9 +71,11 @@ describe("useMapView", () => {
         costAxisEntry("ascent", {
           label: "登坂",
           lens: { thresholds: [4], band_labels: ["緩い", "きつい"] },
-          lens_equivalents: { kind: "thresholds", fact: "斜度", unit: "%", values: [2.1] },
         }),
       ),
+    );
+    onBackend("GET", "/api/cost-axes/lens-equivalents", () =>
+      Response.json({ ascent: { kind: "thresholds", fact: "斜度", unit: "%", values: [2.1] } }),
     );
     // 旧い軸を選んでいた端末でも、選択肢に無い旧い軸は塗り続けない。
     window.localStorage.setItem("ridecompass:route-style-mode", "axis_wind");

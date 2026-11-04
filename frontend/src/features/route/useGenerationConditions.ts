@@ -6,12 +6,8 @@ import { useCostAxisCatalog } from "@/hooks/useCostAxisCatalog";
 import { samePosition } from "@/lib/geoDistance";
 import { useStoredBooleanState, useStoredJsonState, useStoredState } from "@/hooks/useStoredState";
 import { readRoadAvoidance } from "@/features/route/roadAvoidance";
-import {
-  STANDARD_COST_PREFERENCE,
-  costPreferenceToSend,
-  multipliersNotSent,
-  readCostPreference,
-} from "@/features/route/costPreference";
+import { costPreferenceToSend, multipliersNotSent, readCostPreference } from "@/features/route/costPreference";
+import { STANDARD_COST_PREFERENCE } from "@/lib/costPreference";
 import {
   acceptedDistanceInput,
   acceptedMaxRoutesInput,

@@ -14,6 +14,7 @@
 | ファイル | 責務 |
 |---|---|
 | `lib/mapDisplay/routeStyleModes.ts` | ルート確定後の色分けモード一覧・色式 |
+| `features/map/useLensEquivalents.ts` | 凡例の段の境目の目安を、地図のレンズと同じ利用者の値で引く |
 | `features/map/costLens.ts` | 費用の軸の一覧から、地図のレンズ（総合と軸ごと。1kmあたりの代償の秒）を道ごとの値で塗る軸の形へ移すこと（`features/map/costLens.ts: costLensAxes`）・レンズの選択肢（`features/map/costLens.ts: costLensOptions`）・凡例の下の段の境目の目安の文（`features/map/costLens.ts: costLensPremises`）・ルートの線のレンズのモード（`features/map/costLens.ts: costRouteStyleModes`。区間の1kmあたりの代償の秒を地図と同じ段で塗り、レンズを選んでいないときは総合で塗る）。下記「費用の軸のレンズ」 |
 | `lib/mapDisplay/costLensPaint.ts` | 費用のレンズの段の塗りの宣言（`lib/mapDisplay/costLensPaint.ts: costLensPaint`）と、レンズの値と事実の数の書き方。地図の道・ルートの線・候補の帯・道の窓が同じ段と同じ書き方にする |
 | `hooks/useCostAxisCatalog.ts` | 費用の軸の一覧（`GET /api/cost-axes`。定義が無い間は0件）を画面が読む形で共有する取得（`services/costAxisCatalogApi.ts: getCostAxisCatalog`） |
@@ -74,12 +75,12 @@ backend（`domain/map_paint.py: map_paint`）が軸の折れ線で写してか�
   一覧（`features/map/useMapAxisCatalog.ts: useMapAxisCatalog`）に足す。材料を取る口だけが違い（`wayMaterialSource`が`lens`なら
   `GET /api/region/lens/{lens_id}/...`へ想定速度を載せる）、式の木（backendが`map_lens.formula`で配る）・段・凡例・取得の状態は
   軸と同じ部品が持つ。新しい軸のidは旧い軸のidを使い回さない（費用の軸の定義の決まり）ので、同じ一覧に並べても鍵がぶつからない。
-- **段と凡例**: 段の境目はその軸の`lens`（秒/km）。凡例の下に、段の境目の秒が標準の条件でどれだけの事実に当たるかの目安
-  （backendの`lens_equivalents`）を書く。目安は目安と分かる見出しを付け、その道の本当の事実は道を押したときの窓に出す。
+- **段と凡例**: 段の境目はその軸の`lens`（秒/km）。凡例の下に、段の境目の秒が地図と同じ利用者の値でどれだけの事実に当たるかの
+  目安（`GET /api/cost-axes/lens-equivalents`。`features/map/useLensEquivalents.ts`）を書く。目安は目安と分かる見出しを付け、その道の本当の事実は道を押したときの窓に出す。
 - **ルートの線**: 新しいレンズのidでのルートの線の塗りは、ルートの応答の側が持つ（ルートの区間の値の読み手）。
 - **道を押したときの窓**（`features/map/MapView/RoadInspectorPopup.tsx`）: 区間インスペクタの応答が費用の軸のレンズの値（`lens`）を
-  持つときは、軸の得点の塊の代わりに、地図が塗っている向きの総合と軸ごとの秒/kmと、その元の事実（一番急な登り・下り・
-  向かい風・止まる所・路面）を並べる。
+  持つときは、軸の得点の塊の代わりに、地図が塗っている向きの総合と軸ごとの秒/kmと、その元の事実（backendが名前と単位を
+  付けた一番急な登り・下り・向かい風・止まる回数と、路面）を並べる。
 
 ## 軸id→振る舞いの判定（データ駆動、axis_idのハードコード比較を使わない）
 
@@ -124,8 +125,8 @@ localStorageキーは`ridecompass:route-style-mode`。今のカタログに無�
 **レンズは評価軸の点数で塗り、場所の事実（点・面）は「表示」の一覧が出す。** 密度の軸もほかの軸と同じく道の線を塗り、
 数える点は「表示」の一覧の点のレイヤーで出す（レンズは「表示」の一覧のレイヤーの入切を変えない——片方を選んだ副作用で
 もう片方の状態を残さない）。
-ルート線を塗れるよう、backendは区間に代償の内訳（`penalty`。費用のレンズの値は画面がこれを区間の長さで割って求める。
-`lib/routePenalty.ts: lensSecondsPerKm`）を、`signed_material`種の軸の材料を`material_values`へいつも載せる（backend側は
+ルート線を塗れるよう、backendは区間に代償の内訳（`penalty`）と、地図のレンズと同じ量（`lens_seconds_per_km`。レンズid→1kmあたりの
+代償の秒）を、`signed_material`種の軸の材料を`material_values`へいつも載せる（backend側は
 `evaluation.py: displayed_material_ids`、[routing-engine.md](../backend/routing-engine.md)参照）。
 
 `map_paint.value.kind==="signed_material"`の場合、ルート線の値は

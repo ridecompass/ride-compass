@@ -31,7 +31,7 @@ function origin(overrides: Partial<RouteCandidate> = {}): RouteCandidate {
     id: "origin",
     distance_km: 10,
     estimated_duration_seconds: 3600,
-    penalty: { axis_seconds: { ascent: 600 }, avoidance_seconds: 0 },
+    penalty: { axis_seconds: { ascent: 600 }, avoidance_seconds: 0, total_seconds: 600 },
     ...routeThrough(PLACES, [..."ABCD"]),
     ...overrides,
   });
@@ -43,7 +43,7 @@ function edited(overrides: Partial<RouteCandidate> = {}): RouteCandidate {
     distance_km: 12.34,
     estimated_duration_seconds: 3000,
     // 内訳の和は元より20秒多く、分へ丸めると0。
-    penalty: { axis_seconds: { ascent: 560 }, avoidance_seconds: 60 },
+    penalty: { axis_seconds: { ascent: 560 }, avoidance_seconds: 60, total_seconds: 620 },
     ...routeThrough(PLACES, [..."ABPQCD"]),
     ...overrides,
   });

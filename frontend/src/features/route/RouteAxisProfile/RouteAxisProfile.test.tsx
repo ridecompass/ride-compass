@@ -21,6 +21,7 @@ const CATALOG = {
   ],
   axisColors: {},
   avoidanceLabel: "回避指定",
+  loaded: true,
 };
 
 type Props = React.ComponentProps<typeof RouteAxisProfile>;
@@ -28,7 +29,7 @@ type Props = React.ComponentProps<typeof RouteAxisProfile>;
 function renderProfile(props: Partial<Props> = {}) {
   return render(
     <RouteAxisProfile
-      penalty={{ axis_seconds: { ascent: 300, vibration: 0 }, avoidance_seconds: 120 }}
+      penalty={{ axis_seconds: { ascent: 300, vibration: 0 }, avoidance_seconds: 120, total_seconds: 420 }}
       facts={{
         elevation_unknown_km: 0,
         axes: {
@@ -62,7 +63,7 @@ describe("RouteAxisProfile", () => {
 
   it("内訳は軸を一覧の順に、名前・その軸の事実・負担の分で並べ、回避指定を最後に置き、帯は秒のある行だけで描く", () => {
     renderProfile();
-    expect(rows()).toEqual(["登坂登り 240m+5分", "振動振動のある道 1.3km+1分未満", "回避指定+2分"]);
+    expect(rows()).toEqual(["登坂登り 240m+5分", "振動振動のある道 1.3km+0分", "回避指定+2分"]);
     expect(screen.getByRole("img", { name: "負担の内訳" }).children).toHaveLength(2);
   });
 

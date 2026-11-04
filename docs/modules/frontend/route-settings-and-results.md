@@ -10,6 +10,8 @@
 | ファイル | 責務 |
 |---|---|
 | `features/route/RouteForm/RouteForm.tsx` | 全長の目標（入り切りとルーラー）と候補数ステッパーを並べた1行（どの幅でも折り返さない）・地点（出発地・経由地・目的地）の置き場。「ルート設定」区分の各タブの中身を`Tabs.Content`として並べる（タブ列と選択状態は外、下記参照） |
+| `features/route/RouteSettingsPanel/CostLevelPicker.tsx` | 全体のつまみと軸ごとの倍率の段（×0・×0.5・×1…）を選ぶ横並びの選び手 |
+| `lib/costPreference.ts` | 利用者の費用の好み（つまみと倍率）そのものの決まり: 標準・軸の倍率の引き方・地図のレンズの要求へ載せる書き方（ルートと地図の両方が読む） |
 | `features/route/RouteForm/SettingsTabsList.tsx` | 「ルート設定」のタブ列（条件・負担・回避・保存済み）。見出し行に置き、選ぶ状態は囲む`Tabs.Root`から読む |
 | `features/route/RouteForm/RouteSettingsForm.tsx` | `RouteForm`へ、負担・回避・条件の保存・保存した条件の一覧の4つのタブの中身を、生成の条件と保存した条件から組んで渡す |
 | `features/route/GenerateRouteActions/GenerateRouteActions.tsx` | 「ルート設定」の見出し行の右端: 条件が変わった印と「ルート生成」のボタン（下記参照） |
@@ -98,8 +100,10 @@
 費用の式（[評価モデル](../../architecture/evaluation-model.md)）の利用者の値は2つで、画面では代償の秒を「負担」と呼ぶ。
 **全体のつまみ**（代償の全体に掛ける強さ）は「条件」タブ（`RouteForm`。出発地・距離と同じ所）に、**軸ごとの倍率**は「負担」タブ
 （このパネル）に置く。どちらも段で選ばせ、段の値と名前は生成物（`route-generate-config.json`の`cost_strength_levels`・
-`cost_multiplier_levels`、backendの`domain/cost_preference.py`が正本）から読む。標準は×1で、0はその負担を数えない（全体の
-「気にしない」は所要時間だけで道を選ぶ）。
+`cost_multiplier_levels`、backendの`domain/cost_preference.py`が正本）から読む。段の名前は掛ける数そのもの（×0・×0.5・×1…。
+言葉では量が伝わらない）で、標準は×1、×0はその負担を数えない（全体の×0は所要時間だけで道を選ぶ）。段の選び手は
+`features/route/RouteSettingsPanel/CostLevelPicker.tsx`。利用者の値そのものの決まり（標準・軸の倍率の引き方・地図のレンズの要求へ
+載せる書き方）は`lib/costPreference.ts`が持ち、地図のレンズと道の窓もルート生成と同じ値を読む。
 
 - 軸の一覧・名前・アイコン・説明は`GET /api/cost-axes`（`hooks/useCostAxisCatalog.ts: useCostAxisCatalog`）から読み、ビルド時の
   写しへは倒さない。管理APIで書いた定義が再デプロイなしに反映される。定義がまだ表に無い間（口が404）は軸0件で読めたとして扱い、
@@ -150,7 +154,7 @@ backendが要求を断る（倍率のキーは今の費用の軸のidだけ）�
 標高の無い道の注記の順に並べる。
 
 - **負担**: 避けたいもの（登り・止まる回数・路面の振動等の費用の軸）を通る代償を、所要時間に上乗せした秒として数えたもの
-  （`RouteCandidate.penalty`）。数は内訳の和（軸ごとの秒と回避指定の秒。`lib/routePenalty.ts: penaltyTotalSeconds`）を「+N分」で書き、
+  （`RouteCandidate.penalty`）。数は内訳の和（軸ごとの秒と回避指定の秒。応答の`total_seconds`）を、候補のカードは分の数字だけ（「+18」）、開いた内訳は「+N分」で書き、
   所要時間と負担の和が候補を並べた費用になる。内訳の無い候補（費用の軸の定義が無い間）は負担の数を出さない。
 - **内訳と事実**（`features/route/PenaltyBreakdown/PenaltyBreakdown.tsx: PenaltyBreakdown`。区間の小窓も同じ部品）: 軸ごとの秒を積んだ帯
   1本と、軸ごとの行（軸の名前・その軸の事実・負担の分）。行は費用の軸の一覧（`GET /api/cost-axes`）の順で、一覧に無い軸は応答の

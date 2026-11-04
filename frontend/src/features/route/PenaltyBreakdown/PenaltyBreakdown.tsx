@@ -3,22 +3,19 @@
 import { Dot } from "@/components/ui/Dot/Dot";
 import { stackBarClass } from "@/components/ui/AxisLegend/axisLegend";
 import { textVariants } from "@/components/ui/Text/Text";
-import { formatLensNumber } from "@/lib/mapDisplay/costLensPaint";
-import { formatPenalty, penaltyRows, type PenaltyCatalog } from "@/lib/routePenalty";
-import type { CostBreakdown, RouteFacts } from "@/types/route";
-
-type AxisFact = RouteFacts["axes"][string];
+import { factValueText, formatPenalty, penaltyRows, type PenaltyCatalog } from "@/lib/routePenalty";
+import type { AxisFact, PenaltyBreakdown as PenaltyValues } from "@/types/route";
 
 interface PenaltyBreakdownProps {
   /** 代償の内訳（費用の軸の定義が無い間はnull）。 */
-  penalty: CostBreakdown | null;
+  penalty: PenaltyValues | null;
   /** 軸id→その軸の事実（ルート全体だけが持つ）。 */
   facts?: Readonly<Record<string, AxisFact>>;
   catalog: PenaltyCatalog;
 }
 
 function factText(fact: AxisFact): string {
-  return `${fact.label} ${fact.value === null ? "—" : `${formatLensNumber(fact.value)}${fact.unit}`}`;
+  return `${fact.label} ${factValueText(fact)}`;
 }
 
 /** 負担の内訳: 軸ごとの秒を積んだ帯1本と、軸ごとの行（名前・事実・負担の分）。帯の長さの全体は内訳の和。内訳が無ければ事実の

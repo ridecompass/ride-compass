@@ -1,5 +1,5 @@
 import type { components, paths } from "@/types/generated/api";
-import type { RoutePreferenceWeights } from "@/types/route";
+import type { CostPreference } from "@/types/route";
 import { apiPath } from "@/lib/apiPath";
 import { tileBaseUrl } from "@/lib/tileBaseUrl";
 import { backendApi, requestApi } from "@/lib/apiClient";
@@ -112,12 +112,12 @@ export async function fetchAxisInspector(
   osmWayId: number,
   featureKey: string,
   conditions: AxisInspectorConditions,
-  routePreference: RoutePreferenceWeights | null,
+  costPreference: CostPreference,
 ): Promise<AxisInspectorResult | null> {
   const body = {
     osm_way_id: osmWayId,
-    // 合成に使う重み（利用者がいま設定しているもの）。送らなければbackendの既定の重み。
-    ...(routePreference != null ? { route_preference: routePreference } : {}),
+    // 費用のレンズの値を求める利用者の値（地図のレンズ・ルート生成と同じもの）。
+    cost_preference: costPreference,
     // 押した地物の識別子（そのタイルが焼いた区間か道1本）。
     feature_key: featureKey,
     z: conditions.z,

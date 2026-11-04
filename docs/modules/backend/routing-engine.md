@@ -168,7 +168,7 @@ Edgeごとの値で上書きする。`displayed_material_ids`は符号付き材�
 **探索して候補を作る生成は、どれも1本の骨組み（`RouteGenerator._generate`）を通る**: 探索の土台（`prepare`）→
 前段（`engine.trace_fixed_points`。出発地から置いた経由地を置いた順に区間ごとのA*で結び、区間ごとの道・最後の固定点・
 実距離と、仕上げが向かう終点を持つ。経由地が無ければ出発地で止まる）→ 仕上げの戦略（最後の固定点から先の経路を選ぶ）→ 評価と集約
-（`_evaluate_and_aggregate`）→ 戦略の並べ方とラベル（`_label`）。仕上げの戦略は距離の有無で分かれる:
+（`_evaluate`）→ 戦略の並べ方とラベル（`_label`）。仕上げの戦略は距離の有無で分かれる:
 
 | 戦略 | 入口 | 何を解くか |
 |---|---|---|
@@ -723,7 +723,7 @@ segments構築はEdge単位の軽量な計算のため並行化してよい）�
 **戻り値は入力の`traced`と同じ件数・同じ順**（位置で対応づける契約）。戦略層は
 `TracedLoop.data`の中身を知らないため、どの候補がどの`TracedLoop`由来かを位置以外で
 突き合わせられない（基準線への印付けがこれに依存する）。件数のずれは
-`RouteGenerator._evaluate_and_aggregate`が`RoutingError`で落とす——ずれても候補が消えるわけでは
+`RouteGenerator._evaluate`が`RoutingError`で落とす——ずれても候補が消えるわけでは
 なく、印・ラベルだけが静かに入れ替わるため結果からは気づけない。
 
 ### `_build_best_candidate`（逆回りループ候補の代数的合成）
@@ -959,8 +959,8 @@ numbaでJITする探索とその部品はこのファイルにまとめて置く
 - `Coordinates`・`RouteSegmentDetail`（**material_valuesに入る
   符号付き材料（`gradient_percent`等）は符号付きが正準契約**——絶対値ではない。
   ルート線の色分けがこの符号を読む。`road_classes`は道の区分のレイヤごとに、区間の中で値が同じまま続く部分を並べる）・`EvaluatedRoute`（エンジンが評価した経路。費用・代償の内訳・事実の量を持つ）・`RouteCandidate`（`EvaluatedRoute`に
-  応答のid・種類・最速の印を足したもの）・`CostBreakdown`（代償の秒の内訳。区間とビンと候補が同じ形で持つ）・`RouteFacts`（事実の量）。
-- `aggregate_segments_into_bins`（500m区間ビニング）・`_merge_segment_bin`・`merge_cost_breakdowns`（代償の秒は足す）。
+  応答のid・種類・最速の印を足したもの）・`PenaltyBreakdown`（代償の秒の内訳とその和。地図のレンズと同じ1kmあたりの量は区間と候補が内訳と距離から導く。区間とビンと候補が同じ形で持つ）・`RouteFacts`（事実の量）。
+- `aggregate_segments_into_bins`（500m区間ビニング）・`_merge_segment_bin`・`merge_penalty_breakdowns`（代償の秒は足す）。
   **`RouteSegmentDetail`のフィールドは、ビンへの畳み方（`BIN_FIELD_MERGERS`）を必ず宣言する**。`_merge_segment_bin`は
   この表だけからビンを組み立てる。候補の代償の内訳は、丸める前のEdge単位の区間から足す（丸めたビンを足すと、丸めの分が積もる）。
   区間の中の道ごとの両端の標高（`elevations`）は平均せず、中の区間の並びをつなぐ（画面は道ごとの両端を結んで標高の線を描く）。

@@ -7,7 +7,7 @@ import { formatDelta } from "@/features/route/routeEditDiff";
 import SpliceDeltaBar, { type AxisDelta } from "@/features/route/RouteSplicePanel/SpliceDeltaBar";
 import SpliceMetricGrid from "@/features/route/RouteSplicePanel/SpliceMetricGrid";
 import { MINUTE_UNIT, secondsToMinutes } from "@/lib/duration";
-import type { PenaltyCatalog } from "@/lib/routePenalty";
+import { costAxisLabel, type PenaltyCatalog } from "@/lib/routePenalty";
 import type { RouteCandidate } from "@/types/route";
 import { Button } from "@/components/ui/Button/Button";
 import { GuideText } from "@/components/ui/GuideText/GuideText";
@@ -53,11 +53,15 @@ const LABELLED_DELTA_COUNT = 2;
 /** 元→編集後で負担（分）が動いた軸（大きい順）。減った軸は負、増えた軸は正。内訳の無い側は、どの軸も0と数える。 */
 function penaltyDeltas(base: RouteCandidate, after: RouteCandidate, catalog: PenaltyCatalog): AxisDelta[] {
   const seconds = (route: RouteCandidate, axisId: string) => route.penalty?.axis_seconds[axisId] ?? 0;
-  return catalog.axes
-    .map((axis) => ({
-      axisId: axis.axisId,
-      label: axis.label,
-      delta: secondsToMinutes(seconds(after, axis.axisId) - seconds(base, axis.axisId)),
+  const axisIds = new Set([
+    ...Object.keys(base.penalty?.axis_seconds ?? {}),
+    ...Object.keys(after.penalty?.axis_seconds ?? {}),
+  ]);
+  return [...axisIds]
+    .map((axisId) => ({
+      axisId,
+      label: costAxisLabel(catalog, axisId),
+      delta: secondsToMinutes(seconds(after, axisId) - seconds(base, axisId)),
     }))
     .filter((item) => Math.abs(item.delta) >= MIN_PENALTY_DELTA_MINUTES)
     .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
@@ -111,8 +115,8 @@ export default function RouteSplicePanel({
         {/* 押す所（24px四方）の余りを両脇の間に重ね、デスクトップのパネルの幅に1行で収める。「‹」は余りをカードの余白へ寄せる。 */}
         <InfoPopover triggerAriaLabel="区間の乗り換えの説明" triggerClassName="-mx-1">
           地図の破線が、いまの道から乗り換えられる先です。タップするとそこへ乗り換わり、その先に
-          分かれ道があれば次の破線が出ます。太い線が、いま作っているルートです。評価軸の棒は中央が0で、左[−]へ
-          伸びた評価軸ほど難易度が下がり、右[＋]へ伸びた評価軸ほど上がっています。
+          分かれ道があれば次の破線が出ます。太い線が、いま作っているルートです。負担の棒は中央が0で、左[−]へ
+          伸びた軸ほど負担が減り、右[＋]へ伸びた軸ほど増えています。
         </InfoPopover>
         {appliedCount > 0 && (
           <span className={cn(textVariants({ variant: "hint" }), "ml-1 whitespace-nowrap")}>{appliedCount}回</span>
@@ -147,7 +151,7 @@ export default function RouteSplicePanel({
               disabled={appliedCount === 0 || busy}
               aria-busy={previewing}
               aria-label="差分を見る"
-              usage="いまの乗り換えで、距離・所要時間・難易度が元の候補からどう変わるかを出します。"
+              usage="いまの乗り換えで、距離・所要時間・負担が元の候補からどう変わるかを出します。"
             >
               <RouteDiffIcon size={18} />
             </Button>

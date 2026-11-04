@@ -65,8 +65,8 @@ const MAX_ROUTES = routeGenerateConfig.max_routes;
 
 // forceMount+data-stateでの表示切替。
 // 候補数等は`features/route/useGenerationConditions.ts`の制御stateのため非表示中も値は失われないが、
-// 重みタブ（RouteSettingsPanel）はドラッグ中の帯グラフ・チェックOFF前の
-// 重み記憶をローカルstateで持つため、タブ切替のたびにアンマウントすると失われる。
+// 「条件」タブの地点の編集・場所の検索と、「保存済み」タブの名前の下書きはローカルstateで持つため、
+// タブ切替のたびにアンマウントすると失われる。
 function KeptTabContent({ value, children }: { value: string; children: React.ReactNode }) {
   return (
     <TabsContent value={value} forceMount className="data-[state=inactive]:hidden">
@@ -186,16 +186,18 @@ export default function RouteForm({
 
         {/* 全体のつまみ。軸ごとの倍率は「負担」タブが持つ。 */}
         <div className="mb-2 flex items-center gap-1.5">
-          <span className={cn(textVariants({ variant: "hint" }), "flex-shrink-0")}>負担</span>
+          <span className={cn(textVariants({ variant: "hint" }), "flex-shrink-0")}>負担の強さ</span>
           <CostLevelPicker
             aria-label="負担の強さ"
-            usage="所要時間のほかに、疲れや道の負担をどれだけ重く見て道を選ぶかを選びます。"
+            usage="所要時間のほかに、坂や向かい風の疲れ・止まる回数・路面の揺れなどの負担を、どれだけ重く数えて道を選ぶかを選びます。"
             levels={COST_STRENGTH_LEVELS}
             value={costPreference.strength}
             onChange={(strength) => setCostPreference((prev) => ({ ...prev, strength }))}
           />
           <InfoPopover triggerAriaLabel="負担の強さの説明" triggerClassName="flex-none">
-            所要時間のほかに、疲れや道の負担をどれだけ重く見て道を選ぶかです。「気にしない」は所要時間だけで選びます。負担の種類ごとの重さは「負担」タブで選べます。
+            負担の秒に掛ける数です。×1 が標準の人の重さで、×2
+            は負担を2倍に数え、時間が少し延びても負担の少ない道を選びます。×0
+            は所要時間だけで選びます。負担の種類ごとの倍率は「負担」タブで選べます。
           </InfoPopover>
         </div>
 

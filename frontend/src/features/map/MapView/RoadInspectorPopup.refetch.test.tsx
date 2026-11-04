@@ -17,17 +17,15 @@ const props = {
   ...RIDE,
 };
 
-describe("評価の重み", () => {
-  const WEIGHTS = { axis_sample: 0, night: 1 };
-
-  it("重みを変えたら、前の重みで取った評価を見せずに取り直しへ戻る", async () => {
+describe("評価の利用者の値", () => {
+  it("つまみや倍率を変えたら、前の値で取った評価を見せずに取り直しへ戻る", async () => {
     const user = userEvent.setup();
     serveInspector(inspectorResult());
-    const { rerender } = render(<RoadInspectorPopup {...props} routePreference={WEIGHTS} />);
+    const { rerender } = render(<RoadInspectorPopup {...props} />);
     await openEvaluation(user);
     await screen.findByRole("region", { name: "難易度" });
 
-    rerender(<RoadInspectorPopup {...props} routePreference={{ axis_sample: 1, night: 1 }} />);
+    rerender(<RoadInspectorPopup {...props} costPreference={{ strength: 2, multipliers: {} }} />);
 
     expect(screen.queryByRole("region", { name: "難易度" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "この道の評価を見る" })).toBeInTheDocument();
@@ -49,7 +47,7 @@ describe("評価の走行の条件", () => {
     expect(screen.getByRole("region", { name: "難易度" })).toBeInTheDocument();
   });
 
-  it("同じ道を同じ条件・重みで開き直したときは、取り直さずに前の評価を出す", async () => {
+  it("同じ道を同じ条件・利用者の値で開き直したときは、取り直さずに前の評価を出す", async () => {
     const user = userEvent.setup();
     serveInspector(inspectorResult());
     const first = render(<RoadInspectorPopup {...props} conditions={CONDITIONS} />);

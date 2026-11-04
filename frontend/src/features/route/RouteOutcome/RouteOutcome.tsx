@@ -11,14 +11,15 @@ import { textVariants } from "@/components/ui/Text/Text";
 import { useCostAxisCatalog, type CostAxisCatalog } from "@/hooks/useCostAxisCatalog";
 import { cn } from "@/lib/cn";
 import { costLensPaint } from "@/lib/mapDisplay/costLensPaint";
+import type { MapTheme } from "@/lib/mapTheme";
 import { NO_DATA_LEGEND_BAND } from "@/lib/mapDisplay/mapColorLegend";
 import { bandAt, valueBands } from "@/lib/mapDisplay/valueScale";
-import { formatPenalty, lensSecondsPerKm, penaltyTotalSeconds } from "@/lib/routePenalty";
+import { formatPenaltyMinutes } from "@/lib/routePenalty";
 import RouteProfile from "@/features/route/RouteProfile/RouteProfile";
 import type { ProfileLayerSelection } from "@/features/route/RouteProfile/useProfileLayers";
 import RouteAxisProfile from "@/features/route/RouteAxisProfile/RouteAxisProfile";
 import RouteSplicePanel from "@/features/route/RouteSplicePanel/RouteSplicePanel";
-import { formatDurationShort } from "@/lib/duration";
+import { formatDurationShort, MINUTE_UNIT } from "@/lib/duration";
 import EditDifference from "@/features/route/EditDifference/EditDifference";
 import WarningText from "@/features/route/WarningText/WarningText";
 import {
@@ -33,7 +34,7 @@ import type { SpliceSessionView } from "@/features/route/useSpliceSession";
 import type { RouteCandidate } from "@/types/route";
 
 const CANDIDATE_TAB_USAGE =
-  "この候補を地図と内訳に出し、地図をその候補の全体へ収めます。稲妻の印は最も早く着く最速ルート、合成の印は区間を乗り換えて作った合成ルートで、番号だけのものは生成した候補です。上の段は距離、下の段は時間（最速ルート［無ければ最も早い候補］は所要時間、ほかはそれとの差で、速ければ−）と負担［避けたいものを通る代償を、所要時間に上乗せした分］で、下の帯は1kmあたりの負担を地図と同じ色で塗ります。";
+  "この候補を地図と内訳に出し、地図をその候補の全体へ収めます。稲妻の印は最も早く着く最速ルート、合成の印は区間を乗り換えて作った合成ルートで、番号だけのものは生成した候補です。上の段は距離、下の段は時間（最速ルート［無ければ最も早い候補］は所要時間、ほかはそれとの差で、速ければ−）と負担［避けたいものを通る分を、所要時間に上乗せした時間］で、下の帯は1kmあたりの負担を地図と同じ色で塗ります。";
 
 /** 名前の列で群を見分ける印と、その意味（指を置いたときの吹き出しと読み上げの名前）。生成した候補は印を持たない。 */
 const GROUP_MARKS: Partial<Record<RouteListGroup, { Icon: typeof FastestRouteIcon; meaning: string }>> = {
@@ -42,10 +43,11 @@ const GROUP_MARKS: Partial<Record<RouteListGroup, { Icon: typeof FastestRouteIco
 };
 
 /** カードの下の帯の色。地図のルートの線と同じ総合のレンズの段で、候補の1kmあたりの負担を示す。内訳が無ければ値なしの色。 */
-function penaltyColor(route: RouteCandidate, catalog: CostAxisCatalog): string {
-  const perKm = route.penalty === null ? null : lensSecondsPerKm(route.penalty, route.distance_km);
-  if (perKm === null || catalog.lenses === null) return NO_DATA_LEGEND_BAND.color;
-  return bandAt(valueBands(costLensPaint(catalog.lenses.totalLens, "light")), perKm.total).color;
+function penaltyColor(route: RouteCandidate, catalog: CostAxisCatalog, ground: MapTheme): string {
+  if (catalog.lenses === null) return NO_DATA_LEGEND_BAND.color;
+  const total = route.lens_seconds_per_km?.[catalog.lenses.totalLens.axisId];
+  if (total === undefined) return NO_DATA_LEGEND_BAND.color;
+  return bandAt(valueBands(costLensPaint(catalog.lenses.totalLens, ground)), total).color;
 }
 
 type RouteGeneration = ReturnType<typeof useRouteGeneration>;
@@ -60,6 +62,8 @@ interface RouteOutcomeProps {
   splice: Pick<SpliceSessionView, "panel">;
   /** 道のりのグラフに重ねるレイヤの選択（走行中の図と共有する）。 */
   profileLayers: ProfileLayerSelection;
+  /** 地図の地の明るさ。カードの帯を、地図のルートの線と同じ色の組で塗る。 */
+  mapTheme: MapTheme;
 }
 
 /**
@@ -67,7 +71,7 @@ interface RouteOutcomeProps {
  * 選んだ候補の中身・地図で押した区間の詳細、編集中は区間の乗り換えの編集面。候補1本への操作は見出しの行が持つ
  * （`features/route/RouteCandidateActions/RouteCandidateActions.tsx`）。
  */
-export default function RouteOutcome({ results, generation, splice, profileLayers }: RouteOutcomeProps) {
+export default function RouteOutcome({ results, generation, splice, profileLayers, mapTheme }: RouteOutcomeProps) {
   const costCatalog = useCostAxisCatalog();
   const { routes, selectedRouteId, selectedRouteSegment, reusedRouteId } = results;
   // 選んだカードを一覧の見える範囲へ送る（地図や「元を見る」で選び直したとき・乗り換えで作った経路と同じ道だったので
@@ -195,13 +199,20 @@ export default function RouteOutcome({ results, generation, splice, profileLayer
                     {/* 内訳の無い候補は「—」（0と欠損を同じ見た目にしない）。 */}
                     <span>
                       <span className="sr-only">負担</span>
-                      {route.penalty === null ? "—" : formatPenalty(penaltyTotalSeconds(route.penalty))}
+                      {route.penalty === null ? (
+                        "—"
+                      ) : (
+                        <>
+                          {formatPenaltyMinutes(route.penalty.total_seconds)}
+                          <span className="sr-only">{MINUTE_UNIT}</span>
+                        </>
+                      )}
                     </span>
                   </span>
                   <span
                     aria-hidden
                     className="-mx-1.5 mt-1 h-[3px]"
-                    style={{ backgroundColor: penaltyColor(route, costCatalog) }}
+                    style={{ backgroundColor: penaltyColor(route, costCatalog, mapTheme) }}
                   />
                 </TabsTrigger>
               </Fragment>

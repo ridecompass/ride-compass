@@ -72,22 +72,19 @@ describe("押した道の内訳（fetchAxisInspector）", () => {
     speedKmh: 22,
   };
 
-  it.each([
-    { weights: { wind: 2, slope: 0 }, sentWeights: { route_preference: { wind: 2, slope: 0 } } },
-    { weights: null, sentWeights: {} },
-  ])(
-    "押した地物・タイルと走行の条件を backend の項目名で送り、重みは渡したときだけ送る（無ければ backend の既定に任せる）: $weights",
-    async ({ weights, sentWeights }) => {
+  it.each([{ strength: 2, multipliers: { vibration: 0 } }])(
+    "押した地物・タイルと走行の条件と利用者の値を backend の項目名で送る: $strength",
+    async (preference) => {
       const result = { values: { composite_difficulty: 42 } };
       const sent = onBackend("POST", "/api/region/axis-inspector", () => Response.json(result));
 
-      await expect(api.fetchAxisInspector(123, "123:4", CONDITIONS, weights)).resolves.toEqual(result);
+      await expect(api.fetchAxisInspector(123, "123:4", CONDITIONS, preference)).resolves.toEqual(result);
 
       expect(sent.map(({ body }) => body)).toEqual([
         {
           osm_way_id: 123,
+          cost_preference: preference,
           feature_key: "123:4",
-          ...sentWeights,
           z: 15,
           x: 29100,
           y: 12900,

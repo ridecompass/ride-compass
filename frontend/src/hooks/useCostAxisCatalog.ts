@@ -1,6 +1,6 @@
 "use client";
 
-import { getCostAxisCatalog } from "@/services/costAxisCatalogApi";
+import { COST_AXIS_CATALOG_LABEL, getCostAxisCatalog } from "@/services/costAxisCatalogApi";
 import { retrySharedCatalogFetch, useSharedCatalog } from "@/hooks/useSharedCatalog";
 import { axisColorsOf } from "@/lib/axisCatalog";
 import type { FetchFailure } from "@/types/fetchFailure";
@@ -19,10 +19,8 @@ export interface CostAxis {
   label: string;
   description: string;
   iconId: string;
-  /** 地図のレンズの段（境目は1kmあたりの代償の秒）。 */
+  /** 地図のレンズの段（境目は1kmあたりの代償の秒。目安は`features/map/useLensEquivalents.ts`が利用者の値で引く）。 */
   lens: CostAxisEntry["lens"];
-  /** 段の境目の秒が、標準の条件でどれだけの事実に当たるかの目安。 */
-  lensEquivalents: CostAxisEntry["lens_equivalents"];
 }
 
 /** 地図のレンズのうち、軸に属さないもの（総合のレンズと、道の値を求める決まり）。総合は軸と同じ見せ方の欄を持つ。 */
@@ -65,7 +63,6 @@ export function costAxisCatalogFromResponse(response: CostAxisCatalogResponse | 
     description: entry.description,
     iconId: entry.icon_id,
     lens: entry.lens,
-    lensEquivalents: entry.lens_equivalents,
   }));
   return {
     axes,
@@ -93,7 +90,7 @@ export function retryCostAxisCatalogFetch(): void {
 
 const COST_AXIS_CATALOG_FETCH_FAILURE: FetchFailure = {
   id: "cost-axis-catalog",
-  label: "費用の軸の一覧",
+  label: COST_AXIS_CATALOG_LABEL,
   effect: "ルートは軸ごとの倍率を変えていても反映できず、標準の倍率で作ります。",
   onRetry: retryCostAxisCatalogFetch,
 };

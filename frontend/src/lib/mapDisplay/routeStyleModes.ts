@@ -58,10 +58,9 @@ export function buildRangeSteppedMode(options: {
   return { id, label, legend: legendEntries, colorExpression, noDataExpression: noData };
 }
 
-/** ルートの区間の地物の、費用の軸id→1kmあたりの代償の秒を持つプロパティと、その和（総合）を持つプロパティ
- * （`lib/routePenalty.ts: lensSecondsPerKm`）。内訳の無い区間（費用の軸の定義が無い間）は空の辞書とnull。 */
+/** ルートの区間の地物の、レンズid（総合と費用の軸）→1kmあたりの代償の秒を持つプロパティ（応答の区間の
+ * `lens_seconds_per_km`をそのまま載せる。地図のレンズと同じ量）。内訳の無い区間（費用の軸の定義が無い間）は空の辞書。 */
 export const ROUTE_LENS_SECONDS_PROPERTY = "lens_seconds_per_km";
-export const ROUTE_LENS_TOTAL_PROPERTY = "lens_total_seconds_per_km";
 
 // 符号付きの材料を塗る公開軸1本のモード。塗る値の種類・単位・しきい値はbackendが決め、ルート前の専用配信の塗りと同じ尺度・
 // 配色になる。区間のどの欄を読むかはbackendが名指す（`map_paint.value.route_segment_field`と`material`）。得点を塗る軸は、

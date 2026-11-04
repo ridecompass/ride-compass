@@ -11,7 +11,7 @@ import { serveGenerationJobs } from "@/testing/generationJobs";
 import { makeGenerationConditions, makeRouteCandidate } from "@/testing/routeFixtures";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 import type { Coordinates, GenerationConditions, RouteCandidate } from "@/types/route";
-import { STANDARD_COST_PREFERENCE } from "@/features/route/costPreference";
+import { STANDARD_COST_PREFERENCE } from "@/lib/costPreference";
 
 export const ORIGIN: Coordinates = { latitude: 35.68, longitude: 139.76 };
 export const A: Coordinates = { latitude: 35.7, longitude: 139.8 };

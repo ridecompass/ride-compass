@@ -21,7 +21,7 @@ import numpy as np
 
 from app.domain.attributes import CategoricalColumn, MaterialColumn
 from app.domain.axis_templates import evaluate_breakpoint_linear
-from app.domain.cost_preference import STANDARD_COST_FACTOR
+from app.domain.cost_preference import STANDARD_COST_FACTOR, CostPreference
 from app.domain.cost_axes import EFFORT_AXES, Burden, CategoricalBurden, CostAxisDefinitions, EffortItem
 from app.domain.cycling_speed import SegmentRide, SegmentSpeedModel
 from app.domain.road_network import MaterialFills
@@ -41,7 +41,8 @@ _EFFORT_ITEM_J: dict[EffortItem, Callable[[SegmentRide], np.ndarray]] = {
 class LedgerParameters:
     """費用の式の利用者の値（つまみ・軸ごとの倍率）と較正値（α・β・γ）。"""
 
-    strength: float
+    #: 代償の全体に掛ける強さ（利用者のつまみの比 × 標準的な人の強さの較正値`evaluation.penalty_strength`）。
+    effective_strength: float
     multipliers: Mapping[str, float]
     effort_alpha: float
     burden_seconds_per_km: float
@@ -51,20 +52,16 @@ class LedgerParameters:
         return self.multipliers.get(axis_id, STANDARD_COST_FACTOR)
 
 
-def current_ledger_parameters(strength: float, multipliers: Mapping[str, float]) -> LedgerParameters:
-    """いま効いている較正値で組む（呼ぶたびに読む——束ねると管理画面から変えた値が効かない）。"""
+def current_ledger_parameters(preference: CostPreference) -> LedgerParameters:
+    """利用者の値`preference`と、いま効いている較正値で組む（呼ぶたびに読む——束ねると管理画面から変えた値が効かない）。
+    つまみは標準的な人の強さ（較正値）に掛ける比。標準の人の値は`CostPreference()`で組む。"""
     return LedgerParameters(
-        strength=strength, multipliers=multipliers,
+        effective_strength=preference.strength * tuning_value("evaluation.penalty_strength"),
+        multipliers=preference.multipliers,
         effort_alpha=tuning_value("cost.effort_alpha"),
         burden_seconds_per_km=tuning_value("cost.burden_seconds_per_km"),
         effort_weight_exponent=tuning_value("cost.effort_weight_exponent"),
     )
-
-
-def standard_ledger_parameters() -> LedgerParameters:
-    """つまみ1（割増の強さの較正値そのもの）・倍率はどの軸も標準の1の値。利用者の値が届かない所（地図のレンズ・凡例の目安）が
-    読む。"""
-    return current_ledger_parameters(tuning_value("evaluation.penalty_strength"), {})
 
 
 def burden_per_km(burden: Burden, materials: Mapping[str, MaterialColumn], fills: MaterialFills) -> np.ndarray:
@@ -83,28 +80,31 @@ class LedgerCosts:
     """1回の生成の、道1本と曲がる所の代償の秒を組む。道の負担は時刻に依らないので1回だけ求め、体力は風の時刻ごとに渡す。"""
 
     def __init__(self, axes: CostAxisDefinitions, parameters: LedgerParameters, flat_power_w: float, kickoff_j: float,
-                 burden_km: Mapping[str, np.ndarray]) -> None:
+                 burden_per_km: Mapping[str, np.ndarray], distance_m: np.ndarray) -> None:
         """`flat_power_w`は平地の出力、`kickoff_j`は重みを掛けた漕ぎ出し1回の体力（`SegmentSpeedModel.kickoff_effort_j`）、
-        `burden_km`は道の負担の軸ごとの区間の重さ×km（`burden_per_km` × 区間の長さkm）。"""
+        `burden_per_km`は道の負担の軸ごとの区間の1kmあたりの重さ（`domain/leg_costs.py: burden_weights`）、`distance_m`は区間の
+        長さ。走行の模型から組むときは`for_model`。"""
         multiplier = parameters.multiplier
         self._weight_exponent = parameters.effort_weight_exponent
         self._item_multipliers = {item: multiplier(axis_id) for axis_id, item in EFFORT_AXES.items()}
         #: 体力1J（重み付き）あたりの代償の秒。区間の体力と曲がる所の漕ぎ出しに同じ換算で掛ける。
-        self._seconds_per_j = parameters.strength * parameters.effort_alpha / flat_power_w
+        self._seconds_per_j = parameters.effective_strength * parameters.effort_alpha / flat_power_w
         self._kickoff_seconds = self._seconds_per_j * self._item_multipliers["inertia"] * kickoff_j
         #: 道の負担の軸ごとの、区間ごとの代償の秒（時刻に依らない）。
+        distance_km = np.asarray(distance_m, dtype=np.float64) / 1000.0
         self._burden_axis_seconds = {
-            axis_id: parameters.strength * parameters.burden_seconds_per_km * multiplier(axis_id)
-            * np.asarray(burden_km[axis_id], dtype=np.float64)
+            axis_id: parameters.effective_strength * parameters.burden_seconds_per_km * multiplier(axis_id)
+            * np.asarray(burden_per_km[axis_id], dtype=np.float64) * distance_km
             for axis_id in axes.burden
         }
 
     @classmethod
     def for_model(cls, axes: CostAxisDefinitions, parameters: LedgerParameters, model: SegmentSpeedModel,
-                  burden_km: Mapping[str, np.ndarray]) -> "LedgerCosts":
-        """走行の模型`model`の平地の出力と漕ぎ出しの体力（式の重み`γ`を掛けたもの）で組む。"""
+                  burden_per_km: Mapping[str, np.ndarray]) -> "LedgerCosts":
+        """走行の模型`model`の平地の出力・漕ぎ出しの体力（式の重み`γ`を掛けたもの）・区間の長さと、道の負担の軸ごとの区間の
+        1kmあたりの重さ（`domain/leg_costs.py: burden_weights`）で組む。"""
         return cls(axes, parameters, model.flat_power_w, model.kickoff_effort_j(parameters.effort_weight_exponent),
-                   burden_km)
+                   burden_per_km, model.distance_m)
 
     def penalty_by_axis(self, ride: SegmentRide, rows: np.ndarray | None = None) -> dict[str, np.ndarray]:
         """軸id → 区間ごとの代償の秒（体力の軸は つまみ × α × 倍率 × 体力 ÷ 平地の出力、道の負担の軸は つまみ × β × 倍率 ×
@@ -123,8 +123,9 @@ class LedgerCosts:
         return np.asarray(sum(self.penalty_by_axis(ride).values(), np.zeros(len(ride.seconds))), dtype=np.float64)
 
     def row_seconds(self, model: SegmentSpeedModel, headwind_ms: np.ndarray, crosswind_ms: np.ndarray,
-                    rows: np.ndarray) -> tuple[np.ndarray, dict[str, np.ndarray]]:
-        """区間の行`rows`だけを風の成分（`rows`の並び）で走ったときの`(走行時間, 軸ごとの代償の秒)`（`penalty_by_axis`）。"""
+                    rows: np.ndarray | None = None) -> tuple[np.ndarray, dict[str, np.ndarray]]:
+        """区間の行`rows`（省略すると全部）だけを風の成分（`rows`の並び）で走ったときの`(走行時間, 軸ごとの代償の秒)`
+        （`penalty_by_axis`）。"""
         ride = model.ride(headwind_ms, crosswind_ms, self._weight_exponent, rows)
         return ride.seconds, self.penalty_by_axis(ride, rows)
 

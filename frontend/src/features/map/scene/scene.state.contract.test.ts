@@ -31,6 +31,7 @@ import { costAxisCatalogFromResponse } from "@/hooks/useCostAxisCatalog";
 import { costAxisCatalog, costAxisEntry } from "@/testing/costAxes";
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import palette from "@/types/generated/palette.json";
+import { penaltyFields } from "@/testing/routeFixtures";
 
 const areaLayerId = (role: keyof typeof AREA_SOURCE_ID) => sceneLayerId(AREA_SOURCE_ID[role], role);
 const pointLayerId = (role: string) =>
@@ -211,10 +212,9 @@ describe("状態を地図へ伝えた結果", () => {
           costAxisEntry("vibration", { ledger: "burden", lens: bands }),
         ),
       );
-      const penalty = (ascent: number, vibration: number, avoidance = 0) => ({
-        axis_seconds: { ascent, vibration },
-        avoidance_seconds: avoidance,
-      });
+      // 2kmの区間の内訳と、backend がそれから導く1kmあたりの値。
+      const penalty = (ascent: number, vibration: number, avoidance = 0) =>
+        penaltyFields({ ascent, vibration }, 2, avoidance);
       const { map, handle } = createRecordingMap();
       rebuild(
         map,
@@ -227,9 +227,9 @@ describe("状態を地図へ伝えた結果", () => {
             {
               ...route,
               segments: [
-                { ...segment(139.7, 139.71), distance_km: 2, penalty: penalty(4, 4, 600) },
-                { ...segment(139.71, 139.72), distance_km: 2, penalty: penalty(0, 30) },
-                { ...segment(139.72, 139.73), distance_km: 2, penalty: penalty(30, 0) },
+                { ...segment(139.7, 139.71), distance_km: 2, ...penalty(4, 4, 600) },
+                { ...segment(139.71, 139.72), distance_km: 2, ...penalty(0, 30) },
+                { ...segment(139.72, 139.73), distance_km: 2, ...penalty(30, 0) },
               ],
             },
           ] as never,

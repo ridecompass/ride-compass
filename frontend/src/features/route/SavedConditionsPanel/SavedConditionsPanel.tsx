@@ -87,7 +87,7 @@ export function SaveConditionsButton({
         aria-label="いまの設定を保存"
         aria-haspopup="dialog"
         aria-expanded={saving}
-        usage="いまの設定（条件・出発地・重み・除外）を開いて確かめ、名前を付けてプリセットとしてこの端末に保存します。保存したプリセットは、「保存済み」タブの「プリセット」から呼び出せます。"
+        usage="いまの設定（条件・出発地・負担・回避）を開いて確かめ、名前を付けてプリセットとしてこの端末に保存します。保存したプリセットは、「保存済み」タブの「プリセット」から呼び出せます。"
         onClick={() => setSaving(true)}
       >
         <SaveConditionsIcon size={18} />
@@ -179,7 +179,7 @@ export default function SavedConditionsPanel({ saved, onRecall, onRemove }: Save
       <SavedList
         items={saved}
         noun="プリセット"
-        howToSave="条件タブの「いまの設定を保存」で、いまの設定（条件・出発地・重み・除外）に名前を付けてプリセットとして保存します。保存したプリセットは、ここで行の「呼び出す」を押すと各タブへ戻せます。"
+        howToSave="条件タブの「いまの設定を保存」で、いまの設定（条件・出発地・負担・回避）に名前を付けてプリセットとして保存します。保存したプリセットは、ここで行の「呼び出す」を押すと各タブへ戻せます。"
         renderMain={(entry) => <span className="min-w-0 flex-auto truncate font-semibold">{entry.name}</span>}
         renderActions={(entry) => (
           <Button

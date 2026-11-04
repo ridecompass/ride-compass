@@ -284,3 +284,12 @@ def nearest_point_index(location: LatLon, points: Sequence[LatLon]) -> int | Non
             np.array([p.latitude for p in points]), np.array([p.longitude for p in points]),
         )[0]
     )
+
+
+def length_weighted_mean(values: np.ndarray, lengths: np.ndarray) -> float | None:
+    """長さで重みを付けた平均（値がNaNの区間は除き、残りの長さで割る）。有効な区間が無いか長さの和が0ならNone。"""
+    values = np.asarray(values, dtype=np.float64)
+    lengths = np.asarray(lengths, dtype=np.float64)
+    known = ~np.isnan(values)
+    total = float(lengths[known].sum())
+    return float((values[known] * lengths[known]).sum()) / total if total > 0 else None

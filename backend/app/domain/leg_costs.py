@@ -215,11 +215,10 @@ class _Evaluated:
 
 @dataclass(frozen=True)
 class TravelInputs:
-    """所要時間のうち風に依らない入力: 走行モデル（断面・路面・巡航速度・止まる出来事の回数の換算）と、区間の長さ（m、
-    float64）と、区間にある停止要因で失う時間の期待値（秒。割合 × 待ち。`domain/traffic.py: StopEvent`）。"""
+    """所要時間のうち風に依らない入力: 走行モデル（断面・路面・巡航速度・止まる出来事の回数の換算。区間の長さは
+    `model.distance_m`）と、区間にある停止要因で失う時間の期待値（秒。割合 × 待ち。`domain/traffic.py: StopEvent`）。"""
 
     model: SegmentSpeedModel
-    distance_m: np.ndarray  # 区間ごと
     wait_seconds: np.ndarray
     # 止まる出来事の漕ぎ出しの回数（`StopEvent.kickoffs`の和）と、転がり抵抗（区間ごと）。
     stops: np.ndarray
@@ -247,7 +246,7 @@ def travel_inputs(materials: Mapping[str, MaterialColumn], distance_m: np.ndarra
         kickoffs += count * event.kickoffs
     crr = crr_for_surface(surface)
     model = SegmentSpeedModel(RiderProfile(cruise_speed_kmh=speed_kmh), profiles, distance_m, crr, kickoffs)
-    return TravelInputs(model, distance_m, waits, kickoffs, crr)
+    return TravelInputs(model, waits, kickoffs, crr)
 
 
 def burden_weights(axes: CostAxisDefinitions, materials: Mapping[str, MaterialColumn],
@@ -729,9 +728,7 @@ class LegCostComposer:
         if self._ledger_setup is None:
             return None
         axes, parameters = self._ledger_setup
-        distance_km = self._travel_inputs.distance_m / 1000.0
-        burden_km = {axis_id: per_km * distance_km for axis_id, per_km in self._burden_per_km.items()}
-        return LedgerCosts.for_model(axes, parameters, self._travel_inputs.model, burden_km)
+        return LedgerCosts.for_model(axes, parameters, self._travel_inputs.model, self._burden_per_km)
 
     @cached_property
     def _burden_per_km(self) -> dict[str, np.ndarray]:
@@ -764,7 +761,7 @@ class LegCostComposer:
     def _compose_bin(self, time: BinTime, steps_ms: dict[str, int]) -> _ComposedBin:
         """時刻`time`で1本ぶん合成する。段ごとの時間を`steps_ms`へ足す。"""
         ledger = self._ledger
-        distance_m, wait_seconds = self._travel_inputs.distance_m, self._travel_inputs.wait_seconds
+        distance_m, wait_seconds = self._travel_inputs.model.distance_m, self._travel_inputs.wait_seconds
         started = start_timer()
         if ledger is None:
             evaluated = self._evaluate(time)
@@ -791,9 +788,9 @@ class LegCostComposer:
         """費目の帳簿の式の、時刻`time`の区間ごとの`(走行時間, 代償の秒)`。"""
         wind_context = self._wind_context(time, _row_taker(None))
         return ledger.bin_seconds(self._travel_inputs.model,
-                                  *wind_components_or_calm(wind_context, len(self._travel_inputs.distance_m)))
+                                  *wind_components_or_calm(wind_context, len(self._travel_inputs.model.distance_m)))
 
     @cached_property
     def _unit_multiplier(self) -> np.ndarray:
         """帳簿の式の倍率（代償は足す秒で持つので、どの区間も1）。"""
-        return np.ones(len(self._travel_inputs.distance_m))
+        return np.ones(len(self._travel_inputs.model.distance_m))

@@ -1,7 +1,7 @@
-"""地図のレンズの段の境目（1kmあたりの代償の秒）が、標準の条件でどれだけの事実に当たるかの目安。
+"""地図のレンズの段の境目（1kmあたりの代償の秒）が、利用者の値でどれだけの事実に当たるかの目安。
 
-標準の条件は、標準の人（巡航速度`domain/route_request.py: ASSUMED_SPEED_KMH`）・倍率1・つまみ1・その事実のほかは平らで舗装・
-無風・止まらない1kmの道。事実の値を細かく刻んだ道を並べて費用の式（`domain/leg_costs.py: travel_inputs`と同じ走行の模型と
+条件は、標準の人（巡航速度`domain/route_request.py: ASSUMED_SPEED_KMH`）・渡した利用者のつまみと倍率（地図のレンズと同じ値）・
+その事実のほかは平らで舗装・無風・止まらない1kmの道。事実の値を細かく刻んだ道を並べて費用の式（`domain/leg_costs.py: travel_inputs`と同じ走行の模型と
 `domain/ledger_costs.py: LedgerCosts.penalty_by_axis`）へ通し、秒から事実の値へ引き戻す——別の換算の式を持たない。
 
 - 登坂は一様な坂の斜度（%）、向かい風は向かい風の強さ（m/s）、停止は漕ぎ出す回数（回/km）で、段の境目ごとに引く。
@@ -14,7 +14,9 @@ from typing import Literal
 
 import numpy as np
 
-from app.domain.cost_axes import EFFORT_AXES, CategoricalBurden, CostAxisDefinitions, EffortItem
+from app.domain.cost_axes import (
+    EFFORT_AXES, HEADWIND_FACT_LABEL, STOPS_FACT_LABEL, CategoricalBurden, CostAxisDefinitions, EffortItem,
+)
 from app.domain.cycling_speed import BASE_CRR_ID, RiderProfile, SegmentSpeedModel, crr_for_surface
 from app.domain.attributes import CategoricalColumn
 from app.domain.elevation_profile import ElevationProfiles, GradeDistribution
@@ -75,10 +77,10 @@ def _effort_equivalents(axes: CostAxisDefinitions, parameters: LedgerParameters,
     if item == "gravity":
         return _inverted("斜度", "%", _GRADE_PERCENT, lambda grade: seconds(grade_percent=grade), thresholds)
     if item == "air":
-        return _inverted("向かい風", "m/s", _HEADWIND_MS, lambda wind: seconds(headwind_ms=wind), thresholds)
+        return _inverted(HEADWIND_FACT_LABEL, "m/s", _HEADWIND_MS, lambda wind: seconds(headwind_ms=wind), thresholds)
     if item == "inertia":
         one_stop = float(seconds(kickoffs=np.ones(1))[0])
-        return ThresholdEquivalents(fact="止まって漕ぎ出す回数", unit="回/km",
+        return ThresholdEquivalents(fact=STOPS_FACT_LABEL, unit="回/km",
                                     values=[threshold / one_stop if one_stop > 0 else None for threshold in thresholds])
     classification = road_classes.rolling_resistance_classification
     classes = [] if classification is None else list(road_classes.rolling_resistance_classes.get(classification, {}))
@@ -127,7 +129,7 @@ def _axis_seconds_per_km(axes: CostAxisDefinitions, parameters: LedgerParameters
     ledger = LedgerCosts.for_model(axes, parameters, model, {
         burden_id: burden if burden is not None and burden_id == axis_id else np.zeros(n) for burden_id in axes.burden})
     wind = np.zeros(n) if headwind_ms is None else np.asarray(headwind_ms, dtype=np.float64)
-    return ledger.penalty_by_axis(model.ride(wind, np.zeros(n), parameters.effort_weight_exponent))[axis_id]
+    return ledger.row_seconds(model, wind, np.zeros(n))[1][axis_id]
 
 
 def _uniform_slopes(grade_percent: np.ndarray) -> ElevationProfiles:

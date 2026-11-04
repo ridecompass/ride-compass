@@ -1,12 +1,11 @@
-"""本番のbackendでルートを1本作り、レンズで塗る値がルートの区間に載っているかを見る
+"""本番のbackendと本番の実データで、ルートを作れるかと、候補を乗り換えた経路を評価できるかを見る
 （`.github/workflows/deploy-backend.yml`がデプロイのあとに、`.github/workflows/prod-route-check.yml`が1日1回呼ぶ）。
 
     python backend/scripts/prod_route_check.py
 
-利用者の画面と同じAPIを外から通す: 軸カタログと費用の軸の一覧を1回ずつ → 画面の既定の条件で生成を1回 → 終わるまで結果を
-聞く → 候補どうしを乗り換えた経路の評価を1回 → 終わるまで結果を聞く。
-候補が0件か、候補1のどの区間も、ルートの線を塗る値（材料を塗る軸はその材料の値、費用の軸の定義があれば代償の内訳）を
-持たないか、乗り換えた経路の評価が返らなければ、理由を出して終了コード1で終わる。本番には書き込まない（生成の結果はbackendのメモリに置かれ、期限が来ると消える）。
+利用者の画面と同じAPIを外から通す: 画面の既定の条件で生成を1回 → 終わるまで結果を聞く → 候補どうしを乗り換えた経路の評価を
+1回 → 終わるまで結果を聞く。候補が0件か、乗り換えた経路の評価が返らなければ、理由を出して終了コード1で終わる。応答の中身
+（区間の値・内訳）はコードだけで決まるので CI のテストが見て、ここでは見ない。本番には書き込まない（生成の結果はbackendのメモリに置かれ、期限が来ると消える）。
 何を見るか・上限の根拠は docs/architecture/tech-stack.md「本番でルートを作る確かめ」。
 """
 
@@ -15,7 +14,6 @@ from __future__ import annotations
 import json
 import sys
 import time
-import urllib.error
 import urllib.request
 from datetime import datetime
 from itertools import permutations
@@ -23,10 +21,6 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from pydantic import TypeAdapter
-
-from app.domain.map_paint import MapValue, SignedMaterialMapValue
-from app.domain.route import RouteSegmentDetail
 from app.domain.route_request import ASSUMED_SPEED_KMH, DEFAULT_MAX_ROUTES
 from app.domain.time_zone import JST
 
@@ -83,40 +77,11 @@ def splice_problems(result: dict) -> list[str]:
     return [f"乗り換えた経路を評価できない（理由: {result.get('no_candidates_reason')}）"]
 
 
-_MAP_VALUE: TypeAdapter[MapValue] = TypeAdapter(MapValue)
-
-
-def problems(catalog: dict, result: dict, cost_axes_defined: bool) -> list[str]:
-    """生成の結果のうち、利用者に見える壊れ（候補が無い・レンズで塗ると全区間が「データなし」になる軸・費用の軸の定義が
-    あるのに代償の内訳が無い）。`cost_axes_defined`は費用の軸の一覧（`/api/cost-axes`）が定義を返したか。"""
-    routes = result["routes"]
-    if not routes:
+def problems(result: dict) -> list[str]:
+    """生成の結果のうち、利用者に見える壊れ（候補が無い）。"""
+    if not result["routes"]:
         return [f"候補が0件（理由: {result.get('no_candidates_reason')}）"]
-    segments = [RouteSegmentDetail.model_validate(segment) for segment in routes[0]["segments"]]
-    axes = catalog["axes"]
-    if not axes:
-        return ["軸カタログに軸が無い"]
-    found = []
-    for axis in axes:
-        # 材料を塗る軸だけが、ルートの区間に自分の値を持つ（得点を塗る軸の区間の値は、ルートの応答に無い）。
-        painted = _MAP_VALUE.validate_python(axis["map_paint"]["value"])
-        if isinstance(painted, SignedMaterialMapValue) and all(
-                painted.segment_value(axis["axis_id"], segment) is None for segment in segments):
-            found.append(f"「{axis['label']}」（{axis['axis_id']}）: 候補1の区間 {len(segments)} 件のどれにも、レンズが塗る値が無い")
-    if cost_axes_defined and all(segment.penalty is None for segment in segments):
-        found.append(f"費用の軸の定義があるのに、候補1の区間 {len(segments)} 件のどれにも代償の内訳が無い")
-    return found
-
-
-def _cost_axes_defined(origin: str) -> bool:
-    """費用の軸の一覧が定義を返すか（定義がまだ無ければ404）。"""
-    try:
-        _request("GET", f"{origin}/api/cost-axes")
-    except urllib.error.HTTPError as error:
-        if error.code == 404:
-            return False
-        raise
-    return True
+    return []
 
 
 def _request(method: str, url: str, body: dict | None = None) -> dict:
@@ -148,13 +113,11 @@ def main() -> int:
     from _production_origins import production_origin
 
     backend = production_origin("backend")
-    catalog = _request("GET", f"{backend}/api/axis-catalog")
-    cost_axes_defined = _cost_axes_defined(backend)
     now = datetime.now(JST)
     deadline = time.monotonic() + GENERATION_LIMIT_SECONDS
     try:
         result = generate(backend, generation_request(now), deadline)
-        found = problems(catalog, result, cost_axes_defined)
+        found = problems(result)
         edge_ids = spliced_edge_ids(result["routes"])
         if edge_ids is None:
             found.append(f"乗り換えを試せる候補の組が無い（候補 {len(result['routes'])} 件）")
@@ -167,8 +130,7 @@ def main() -> int:
     if found:
         return 1
     assert edge_ids is not None  # 乗り換えを試せる組が無ければ found に載って上で返っている
-    print(f"通った: 候補 {len(result['routes'])} 件・軸 {len(catalog['axes'])} 本のどれも、候補1の区間に塗る値があり、"
-          f"乗り換えた経路（区間 {len(edge_ids)} 本）も評価が返る")
+    print(f"通った: 候補 {len(result['routes'])} 件で、乗り換えた経路（区間 {len(edge_ids)} 本）も評価が返る")
     return 0
 
 

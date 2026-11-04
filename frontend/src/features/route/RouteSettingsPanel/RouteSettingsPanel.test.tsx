@@ -68,10 +68,10 @@ describe("倍率", () => {
     serveCostAxisCatalog();
     const { onCostPreferenceChange } = renderPanel({ strength: 1.5, multipliers: { ascent: 1 } });
     const vibration = await levelsOf("振動の倍率");
-    expect(vibration.getByRole("radio", { name: "標準" })).toBeChecked();
+    expect(vibration.getByRole("radio", { name: "×1" })).toBeChecked();
     expect(screen.getByRole("button", { name: "標準に戻す" })).toBeDisabled();
 
-    await userEvent.click(vibration.getByRole("radio", { name: "無視" }));
+    await userEvent.click(vibration.getByRole("radio", { name: "×0" }));
     expect(onCostPreferenceChange).toHaveBeenLastCalledWith({
       strength: 1.5,
       multipliers: { ascent: 1, vibration: 0 },

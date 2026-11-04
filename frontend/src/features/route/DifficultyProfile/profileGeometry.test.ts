@@ -1,8 +1,8 @@
 // @vitest-environment node
 /**
  * `features/route/DifficultyProfile/profileGeometry.ts`——道のりの負担のグラフの形と、グラフ上の距離が入る区間を引く計算。
- * - `profileBoxes`: 内訳のある区間は、軸の1kmあたりの代償の秒を指定の順に下から積み（秒の無い軸は積まない）、図の上端を
- *   このルートで最も大きい区間の値にする。内訳の無い区間・長さの無い区間は描かない
+ * - `profileBoxes`: 1kmあたりの値（応答の`lens_seconds_per_km`）のある区間は、軸の値を指定の順に下から積み（値の無い軸は
+ *   積まない）、図の上端をこのルートで最も高く積んだ区間にする。値の無い区間・長さの無い区間は描かない
  * - `columnAtKm`: 距離が入る柱と、その柱の中の割合。範囲の外は端の柱へ寄せ、長さの無い柱は選ばない
  *
  * ここで見ないもの:
@@ -18,19 +18,15 @@ import type { RouteSegmentDetail } from "@/types/route";
 
 import { columnAtKm, profileBoxes } from "./profileGeometry";
 
-/** 区間。`axisSeconds`は軸ごとの代償の秒（nullなら内訳なし）。 */
-function segment(distanceKm: number, axisSeconds: Record<string, number> | null): RouteSegmentDetail {
-  return makeRouteSegment({
-    distance_km: distanceKm,
-    end_longitude: 1,
-    penalty: axisSeconds === null ? null : { axis_seconds: axisSeconds, avoidance_seconds: 0 },
-  });
+/** 区間。`perKm`は軸ごとの1kmあたりの代償の秒（nullなら内訳なし）。 */
+function segment(distanceKm: number, perKm: Record<string, number> | null): RouteSegmentDetail {
+  return makeRouteSegment({ distance_km: distanceKm, end_longitude: 1, lens_seconds_per_km: perKm });
 }
 
 describe("profileBoxes", () => {
-  it("軸の1kmあたりの秒を指定の順に下から積み、最も大きい区間の値を図の上端にする（回避指定は積まない）", () => {
-    // 1kmあたり: 前の区間は 坂30・風10（計40）、後ろは 坂10・風10（計20）。
-    const columns = routeStretches([segment(2, { wind: 20, slope: 60 }), segment(1, { wind: 10, slope: 10 })]);
+  it("軸の1kmあたりの秒を指定の順に下から積み、最も高く積んだ区間を図の上端にする", () => {
+    // 前の区間は 坂30・風10（計40）、後ろは 坂10・風10（計20）。
+    const columns = routeStretches([segment(2, { wind: 10, slope: 30 }), segment(1, { wind: 10, slope: 10 })]);
     const byAxis = profileBoxes(columns, ["slope", "wind"]);
     const unit = PROFILE_VIEW_HEIGHT / 40;
     expect(byAxis.get("slope")).toEqual([
@@ -43,7 +39,7 @@ describe("profileBoxes", () => {
     ]);
   });
 
-  it("秒の無い軸は積まず、指定の順に無い軸は描かない。内訳の無い区間と長さの無い区間は描かない", () => {
+  it("秒の無い軸は積まず、指定の順に無い軸は描かず高さにも数えない。値の無い区間と長さの無い区間は描かない", () => {
     const columns = routeStretches([
       segment(1, { slope: 0, wind: 10, other: 99 }),
       segment(1, null),
@@ -51,7 +47,7 @@ describe("profileBoxes", () => {
     ]);
     const byAxis = profileBoxes(columns, ["slope", "wind"]);
     expect(byAxis.get("slope")).toEqual([]);
-    expect(byAxis.get("wind")).toEqual([{ startKm: 0, endKm: 1, bottom: 0, top: PROFILE_VIEW_HEIGHT * (10 / 109) }]);
+    expect(byAxis.get("wind")).toEqual([{ startKm: 0, endKm: 1, bottom: 0, top: PROFILE_VIEW_HEIGHT }]);
   });
 
   it("どの区間も内訳を持たなければ、何も描かない", () => {

@@ -14,7 +14,7 @@
 | domain | `evaluation.py`（Edge Costの算出。探索範囲の静的スコア行列と、コストの合成・逆算）・`hard_filters.py`（0次フィルタ）・`road_avoidance.py`（道の行ごとの避け方）・`route_preference.py`（重み指定）・`cost_preference.py`（費用の式の利用者の値: 全体のつまみと費用の軸ごとの倍率と、その範囲）・`dynamic_materials.py`（風などリクエスト時に決まる材料）・`axis_inspector.py`（区間インスペクタ）・`difficulty.py`（軸の得点の合成と、区間からルートへの集約）・`material_catalog.py`・`material_coverage_spec.py`（材料の欠損率の測り方の型と、欠損率の見出し）・`material_value_labels.py`（材料のタグの値ごとの日本語の対訳表）・`material_sql.py`（材料の値をSQLで導出する式。道・ノードの生データを読む副問い合わせは`infrastructure/source_models.py`） |
 | services | `material_coverage_service.py` |
 | infrastructure | `material_coverage.py`（材料ごとの欠損割合の集計クエリ） |
-| api | `material_catalog.py`（材料カタログ・材料値一覧・欠損割合のエンドポイント） |
+| api | `material_catalog.py`（材料カタログ・材料値一覧・欠損割合のエンドポイント）・`cost_axis_catalog.py`（`GET /api/cost-axes`で費用の軸の見せ方・総合のレンズを、`GET /api/cost-axes/lens-equivalents`で利用者の値での段の境目の目安を画面へ配る。両方の要求の利用者の値の受け口`cost_preference_query`も持つ） |
 
 domainのファイルは**変更理由で分けてある**。`evaluation.py`が変わるのはコストの
 計算方法を変えるとき、`hard_filters.py`はフィルタを増減するとき、`road_avoidance.py`は避け方の段や既定を変えるとき、`route_preference.py`は

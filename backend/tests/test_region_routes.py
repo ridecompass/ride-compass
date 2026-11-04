@@ -49,6 +49,7 @@ from app.domain.region import ROAD_TILE_MAX_ZOOM, ROAD_TILE_MIN_ZOOM, ROADS_AT_M
 from app.infrastructure import database, rate_limiter
 from app.infrastructure.point_tile_layers import POINT_TILE_LAYERS
 from app.infrastructure.region_tile_cache import TileResponse
+from app.domain.cost_preference import CostPreference
 from app.domain.dynamic_way_values import (
     FeatureMaterials,
     WayValueQuery,
@@ -103,8 +104,10 @@ class FakeAxisInspector:
         self.request = None
 
     async def inspect(self, osm_way_id: int, feature_key: str, z: int, x: int, y: int,
-                      query: WayValueQuery, preference: RoutePreference | None) -> AxisInspectorResult | None:
+                      query: WayValueQuery, preference: RoutePreference | None,
+                      cost_preference: CostPreference) -> AxisInspectorResult | None:
         self.request = (osm_way_id, feature_key, z, x, y, query, preference)
+        self.cost_preference = cost_preference
         return self._result
 
 
@@ -229,7 +232,7 @@ def test_region_axis_inspector_hands_the_pressed_feature_and_the_maps_conditions
     override_dependency(get_axis_inspector_service, lambda: fake)
     response = client.post(
         "/api/region/axis-inspector",
-        json={**INSPECTED, "at": "2026-09-21T09:00:00+00:00", "speed_kmh": 20.0},
+        json={**INSPECTED, "at": "2026-09-21T09:00:00+00:00", "speed_kmh": 20.0, "cost_preference": {"strength": 2.0}},
     )
 
     assert response.status_code == 200
@@ -238,6 +241,8 @@ def test_region_axis_inspector_hands_the_pressed_feature_and_the_maps_conditions
         12345, "12345-0", 14, 14551, 6447,
         WayValueQuery(at=datetime(2026, 9, 21, 9, 0, tzinfo=timezone.utc), bearing_deg=90.0, speed_kmh=20.0),
     )
+    # レンズの値は、地図のレンズとルート生成と同じ利用者の値で求める。
+    assert fake.cost_preference == CostPreference(strength=2.0)
 
 
 def test_region_roads_at_hands_the_pressed_place_over(override_dependency):

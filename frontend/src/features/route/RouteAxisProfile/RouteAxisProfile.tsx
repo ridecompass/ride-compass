@@ -6,16 +6,16 @@ import PenaltyBreakdown from "@/features/route/PenaltyBreakdown/PenaltyBreakdown
 import WarningText from "@/features/route/WarningText/WarningText";
 import { formatDurationShort } from "@/lib/duration";
 import { formatLensNumber } from "@/lib/mapDisplay/costLensPaint";
-import { formatPenalty, penaltyTotalSeconds, type PenaltyCatalog } from "@/lib/routePenalty";
+import { formatPenalty, type PenaltyCatalog } from "@/lib/routePenalty";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
-import type { CostBreakdown, RouteFacts } from "@/types/route";
+import type { PenaltyBreakdown as PenaltyValues, RouteFacts } from "@/types/route";
 
 /** 区間ごとに速度を変える条件の名前（backendの走行モデルが宣言する並び）。 */
 const SPEED_CONDITIONS = routeGenerateConfig.segment_speed_conditions.join("・");
 
 interface RouteAxisProfileProps {
   /** RouteCandidate.penalty（軸ごとと回避指定の代償の秒。費用の軸の定義が無い間はnull）。 */
-  penalty: CostBreakdown | null;
+  penalty: PenaltyValues | null;
   /** RouteCandidate.facts（軸ごとの事実の量と、標高の無い長さ）。 */
   facts: RouteFacts;
   /** 費用の軸の一覧（行の名前と色）。 */
@@ -62,10 +62,10 @@ export default function RouteAxisProfile({
         {penalty !== null && (
           <span className="inline-flex flex-shrink-0 items-baseline gap-0.5">
             <span className={textVariants({ variant: "hint" })}>負担</span>
-            <span className="text-[1.05rem] font-semibold">{formatPenalty(penaltyTotalSeconds(penalty))}</span>
+            <span className="text-[1.05rem] font-semibold">{formatPenalty(penalty.total_seconds)}</span>
             <InfoPopover triggerAriaLabel="負担の説明">
               <p>
-                登り・止まる回数・路面の振動など、避けたいものを通る代償を、所要時間に上乗せした分として数えたものです。
+                登り・止まる回数・路面の振動など、避けたいものを通る分を、所要時間に上乗せした時間として数えたものです。
                 所要時間と負担の和が小さい候補ほど先に並び（周回は1kmあたり）、下の一覧は負担を軸ごとに分けたものです。
               </p>
             </InfoPopover>

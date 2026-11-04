@@ -164,7 +164,7 @@ describe("地図の小窓", () => {
     const segment = makeRouteSegment({
       cumulative_distance_km: 1,
       estimated_arrival_time: "2026-10-05T00:30:00Z",
-      penalty: { axis_seconds: { ascent: 120 }, avoidance_seconds: 0 },
+      penalty: { axis_seconds: { ascent: 120 }, avoidance_seconds: 0, total_seconds: 120 },
     });
     const { user } = renderHome();
     jobs.respond([route("one", { segments: [segment] })], LOOP_CONDITIONS);

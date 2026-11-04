@@ -14,7 +14,7 @@ from app.api.dependencies import (
 )
 from app.api.rate_limit import client_id, enforce_rate_limit
 from app.config import settings
-from app.domain.cost_preference import CostPreference
+from app.domain.cost_preference import CostPreference, RequestedCostPreference
 from app.domain.road_avoidance import AvoidanceLevel
 from app.domain.route_preference import RoutePreference, check_axis_weights, published_axis_ids
 from app.domain.route_request import (
@@ -88,7 +88,7 @@ class RouteGenerateRequest(StrictModel):
     distance_km: float | None = Field(default=None, gt=0, le=MAX_ROUTE_DISTANCE_KM)
     # 代償の全体に掛けるつまみと、費用の軸ごとの倍率（書いていない軸は標準）。省略は標準。実際に適用された値は
     # レスポンスのconditionsへエコーされる。
-    cost_preference: CostPreference = Field(default_factory=CostPreference)
+    cost_preference: RequestedCostPreference = Field(default_factory=CostPreference)
     # 道の区分ごとの避け方。
     road_avoidance: RoadAvoidanceOverride
     # 返す候補の上限件数。距離があれば距離フィルタ合格の候補を試した順にこの件数、距離が無ければ
@@ -133,11 +133,6 @@ class RouteGenerateRequest(StrictModel):
     @classmethod
     def _start_time_in_jst(cls, value: datetime) -> datetime:
         return as_jst(value)
-
-    @field_validator("cost_preference")
-    @classmethod
-    def _multipliers_of_current_cost_axes(cls, value: CostPreference) -> CostPreference:
-        return value.check_cost_axis_ids()
 
     _target: RouteTarget = PrivateAttr()
 

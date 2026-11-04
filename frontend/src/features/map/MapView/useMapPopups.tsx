@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import * as maplibregl from "maplibre-gl";
 import type { Map as MapLibreMap } from "maplibre-gl";
 
-import type { RoutePreferenceWeights, SelectedRouteSegment } from "@/types/route";
+import type { CostPreference, SelectedRouteSegment } from "@/types/route";
 import {
   BackToSegmentButton,
   FacilityRows,
@@ -146,7 +146,7 @@ interface MapPopupMountOptions {
   /** 選んでいる区間の形。形が引けなければnull。 */
   segmentPath: Shape | null;
   rideConditions: RideConditions;
-  routePreference: RoutePreferenceWeights | null;
+  costPreference: CostPreference;
   /** 走行中の現在地の道のり（km）。施設の位置をここから見た前後で言う。走っていない間はnull。 */
   travelledKm: number | null;
   /** 点の小窓から区間の中身へ戻る。 */
@@ -171,7 +171,7 @@ export function useMapPopupMount(
     segmentDetail,
     segmentPath,
     rideConditions,
-    routePreference,
+    costPreference,
     travelledKm,
     onBackToSegment,
     onFocus,
@@ -353,7 +353,7 @@ export function useMapPopupMount(
             ...rideConditions,
             ...onMap.tile,
           }}
-          routePreference={routePreference}
+          costPreference={costPreference}
         />
       ) : onMap.kind === "segment" ? (
         segmentDetail

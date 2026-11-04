@@ -4,7 +4,6 @@
 
 import { PROFILE_VIEW_HEIGHT } from "@/features/route/ProfileChart/profileScale";
 import type { RouteStretch } from "@/lib/routeDistance";
-import { lensSecondsPerKm } from "@/lib/routePenalty";
 import type { RouteSegmentDetail } from "@/types/route";
 
 /** 塗る長方形1つ（距離と、図の高さ`PROFILE_VIEW_HEIGHT`に合わせた縦の座標）。 */
@@ -20,28 +19,31 @@ export type ProfileBox = {
  * 内訳の無い区間（費用の軸の定義が無い間）は描かない。
  */
 export function profileBoxes(
-  columns: readonly RouteStretch<Pick<RouteSegmentDetail, "penalty" | "distance_km">>[],
+  columns: readonly RouteStretch<Pick<RouteSegmentDetail, "lens_seconds_per_km">>[],
   axisOrder: readonly string[],
 ): Map<string, ProfileBox[]> {
+  // 秒/kmのまま積み、一番高く積んだ区間を図の上端にしてから図の高さへ直す。
   const byAxis = new Map<string, ProfileBox[]>(axisOrder.map((axisId) => [axisId, []]));
-  const perKm = columns.map(({ segment }) =>
-    segment.penalty === null ? null : lensSecondsPerKm(segment.penalty, segment.distance_km),
-  );
-  const highest = Math.max(0, ...perKm.map((values) => values?.total ?? 0));
-  if (highest <= 0) return byAxis;
-  const toView = PROFILE_VIEW_HEIGHT / highest;
-  columns.forEach(({ startKm, endKm }, index) => {
-    const values = perKm[index];
-    if (endKm <= startKm || values === null) return;
+  let highest = 0;
+  for (const { startKm, endKm, segment } of columns) {
+    const values = segment.lens_seconds_per_km;
+    if (endKm <= startKm || values == null) continue;
     let bottom = 0;
     for (const axisId of axisOrder) {
-      const value = (values.axes[axisId] ?? 0) * toView;
+      const value = values[axisId] ?? 0;
       if (value <= 0) continue;
       byAxis.get(axisId)?.push({ startKm, endKm, bottom, top: bottom + value });
       bottom += value;
     }
-  });
-  return byAxis;
+    highest = Math.max(highest, bottom);
+  }
+  const toView = highest > 0 ? PROFILE_VIEW_HEIGHT / highest : 0;
+  return new Map(
+    [...byAxis].map(([axisId, boxes]) => [
+      axisId,
+      highest > 0 ? boxes.map((box) => ({ ...box, bottom: box.bottom * toView, top: box.top * toView })) : [],
+    ]),
+  );
 }
 
 /** 距離`km`が入っている柱と、その柱の中の割合（0〜1）。範囲の外は端の柱へ寄せる。長さのある柱が無ければnull。 */
