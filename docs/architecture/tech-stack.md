@@ -67,7 +67,7 @@
 上流の報告は[openapi-ts/openapi-typescript#2632](https://github.com/openapi-ts/openapi-typescript/issues/2632)で、
 直す変更（#2673・#2842）は2026-09-27時点で取り込まれていない。0.16.0は同じ変換を持たず、実行時の実装は
 0.17.0と同じ（差は長さ0の応答の判定だけ）。`package.json`の`^0.16.0`は0.x系のキャレットなので0.17へは上がらない。
-**上げるときは、上げた先でタプルを含む応答（例: `/api/admin/axis-definitions/preview-distribution`の`bins`）の
+**上げるときは、上げた先でタプルを含む応答（例: `GET /api/admin/cost-axes`の道の負担の折れ点`points`）の
 推論した型がタプルのままかを`tsc --noEmit`で確かめる。**
 
 ## DependabotのPull Requestは、同じ版を取り込んだタスクが閉じる
@@ -111,7 +111,7 @@ Windowsでは`uvicorn --reload`がリローダー親プロセスとワーカー�
 ## 本番の宛先（frontendのオリジンからbackendへ届くのは一部だけ）
 
 **本番の宛先は、リポジトリの根の`production-origins.json`だけが持つ。** ワークフロー（像のビルド・デプロイ・デプロイのあとの
-確かめ）と道具（例: `axis_apply.py`）はそこから読む。値を書くしかない所（下の表・担当の設定の説明の文等）は、
+確かめ）と道具（例: `prod_route_check.py`）はそこから読む。値を書くしかない所（下の表・担当の設定の説明の文等）は、
 `backend/tests/structure/test_single_owner_values.py`が持ち主と照らし、違えば全部の Pull Request の CI
 （`ci.yml`の`doc-reading-tests`）が落ちる。宛先が変わったら、このファイルと照らしで落ちた所を同じ Pull Request で直す。マージすると、
 `ci.yml: changes`がこのファイルの変更をbackendとfrontendの両方の変更に数えるので、frontendの像が新しい宛先で作られて出て、
@@ -128,7 +128,7 @@ backendのデプロイがCORSの許可へ新しいfrontendの宛先を足す。
 
 **frontendのオリジンからbackendへ届くのは、`frontend/next.config.ts`のrewritesにあるタイル類と、管理画面の
 転送（`/admin/api/…`→backendの`/api/admin/…`、Basic認証をサーバー側で付ける）だけ。** それ以外のAPI
-（例: `/api/axis-catalog`・`/api/region/way-materials/…`・`/health`）をfrontendのオリジンへ投げると、
+（例: `/api/cost-axes`・`/api/region/lens/…`・`/health`）をfrontendのオリジンへ投げると、
 Next.jsのHTMLの404が返る（backendの404はJSON）。本番のAPIを手で叩くとき・道具から引くときは、backendの
 宛先へ直接投げる。frontend自身の口（`/api/version`）はfrontendのオリジンにだけある。開発機で画面を本番のデータで開くときだけ、APIも`/prod/…`で本番のbackendへ転送する（[setup.md](setup.md)「開発機の画面を本番のデータで開く」）。
 
@@ -164,7 +164,7 @@ Next.jsのHTMLの404が返る（backendの404はJSON）。本番のAPIを手で�
 - **入れ替えたコンテナが、今ビルドしたコミットとして`/health`に応答するまで待つ。** `docker run -d`は起動の成否を
   見ないため、起動が止まったまま作り直しや再起動を繰り返すコンテナでもUpのまま成功扱いになる。上限までに応答しなければ、
   コンテナの状態と再起動回数・ログの末尾を出してジョブを失敗させる。応答までの秒数は毎回ジョブのログに出る。上限は60秒で、
-  本番の実測（コンテナを入れ替えてから応答まで4秒）の十数倍——起動時に走るのはDBからの軸定義と較正値の読み込みだけで、
+  本番の実測（コンテナを入れ替えてから応答まで4秒）の十数倍——起動時に走るのはDBからの道の区分・費用の軸の定義と較正値の読み込みだけで、
   上限に届くのは起動が止まったときに限る。起動が遅くなる変更を入れたら、ログの秒数を見て上限を決め直す。
 - **入れ替えたあと、本番のスキーマと出したコードのORMの宣言の差を測る**（同じイメージで`scripts/schema_gap.py`）。
   新しいコードの読み書きを壊しうる差（本番に足りない表・列・制約・索引、型・NULL許容・既定値の値の違い、本番だけが持つ制約・一意の索引・

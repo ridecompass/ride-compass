@@ -1,6 +1,6 @@
 // 画面が backend の宣言を持ち直している形の候補を、構文木から列挙する（.claude/commands/review.md「構造の問い」の frontend の母集団）。
 //
-//   node scripts/structure-population.mjs [--axis-catalog <JSONのファイル>]
+//   node scripts/structure-population.mjs [--cost-axes <JSONのファイル>]
 //
 // 母集団は src の .ts・.tsx のうち、テスト（*.test.ts(x)）・テストの足場・生成物を除いたもの。足場と生成物の置き場、生成物が名前として
 // 配る値の取り方は scripts/repo_population.json が持つ（鍵の意味は scripts/repo_population.py の docstring）。
@@ -8,14 +8,14 @@
 //   (a) 文字列リテラル∩生成物の識別子: 式の中の文字列リテラルで、値が生成物の文字列の値（識別子の形のもの）と同じもの。
 //       import の指定子・型の位置・オブジェクトの鍵の位置は除く。
 //   (b) 画面の文∩本番の軸名・現象の語: 日本語を含む文字列・テンプレートの断片・JSX の文のうち、語を含むもの。語は生成物が
-//       名前として配る値と、--axis-catalog で渡した軸カタログ（本番の backend の /api/axis-catalog の応答）の
-//       軸の label。渡さなければ軸名は入らない。
+//       名前として配る値と、--cost-axes で渡した費用の軸の一覧（本番の backend の /api/cost-axes の応答）の
+//       軸の label と総合のレンズの label。渡さなければ軸名は入らない（費用の軸の名前は本番DBの定義が持ち、生成物に無い）。
 //   (c) 重み・閾値の文脈の数値リテラル（関数の中を含む）: 0・1 を除く数値で、比べる式の片側・`||`／`??` の右・Math.min／max の引数か、
 //       名前が重み・閾値・上下限を表す宣言・引数の既定・代入の値になっているもの。名前によらず、モジュールの上位の const の値の式
 //       （算術の片側を含む。画面自身の定数）と、型が生成物で宣言された欄へ入れる値も入れる。
 //   (d) 宣言の意味の鍵を名指す分岐: 文字列リテラルと、鍵を表す名前（key・id・kind 等）の値を比べる式・そうした値で分ける switch の case と、
 //       値の並び（values・keys 等）が文字列・真偽の字句を含むかを見る `includes`。名前によらず、比べる相手・並びの要素の型が
-//       生成物の文字列の値だけでできた字句の型（例: 軸カタログの `time_scope`）のものも入れる。
+//       生成物の文字列の値だけでできた字句の型（例: 費用の軸の一覧の `ledger`）のものも入れる。
 // 拾わない形（性質に当たりうるのに上の文脈に入らない。出力に0件でも無いとは言えず、使う人が別の grep か読んで見る）:
 //   - 表示の桁の写し: `toFixed(n)`・`formatDelta(x, n)` 等の呼び出しの引数、`digits:` 等の欄の値、`Math.round` で整数へ丸める形。
 //     (c) は比べる式・`||`／`??` の右・min／max の引数・限度を表す名前の値しか見ない。
@@ -54,8 +54,18 @@ const population = JSON.parse(readFileSync(path.join(repoRoot, "scripts", "repo_
 const generatedRoot = path.resolve(repoRoot, population.generated);
 
 const { values } = parseArgs({
-  options: { "axis-catalog": { type: "string" } },
+  options: { "cost-axes": { type: "string" }, help: { type: "boolean", short: "h" } },
 });
+if (values.help) {
+  console.log(
+    [
+      "使い方: node scripts/structure-population.mjs [--cost-axes <JSONのファイル>]",
+      "  --cost-axes  本番の backend の /api/cost-axes の応答を保存したファイル。(b) の語へ費用の軸と総合のレンズの名前を足す。",
+      "範囲と拾う形・拾わない形は、この道具の先頭のコメントが持つ。",
+    ].join("\n"),
+  );
+  process.exit(0);
+}
 
 const EXCLUDED_DIRS = [...population.scaffold, population.generated].map(
   (dir) => path.resolve(repoRoot, dir) + path.sep,
@@ -77,7 +87,7 @@ const JAPANESE = new RegExp(population.japanese);
 const { generatedIdentifiers, generatedLiterals, words } = readVocabulary({
   generatedRoot,
   population,
-  axisCatalog: values["axis-catalog"],
+  costAxes: values["cost-axes"],
 });
 const { isGeneratedLiteralType, isGeneratedElements, numericContext } = typedContexts(
   checker,
@@ -159,7 +169,7 @@ const LABELS = {
 };
 for (const kind of Object.keys(found)) {
   console.log(
-    `## ${LABELS[kind]}: ${found[kind].length}件${kind === "b" && !values["axis-catalog"] ? "（軸名なし: --axis-catalog を渡していない）" : ""}`,
+    `## ${LABELS[kind]}: ${found[kind].length}件${kind === "b" && !values["cost-axes"] ? "（軸名なし: --cost-axes を渡していない）" : ""}`,
   );
   for (const line of found[kind]) console.log(line);
 }

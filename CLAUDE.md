@@ -53,7 +53,7 @@ docs/conventions/ にある（.claude/rules/・.claude/skills/ のものはパ�
 | 依存の版・デプロイ・実行環境に触る | docs/modules/README.md: このディレクトリが扱わない領域（正本は別にある）と、そこが指す docs/architecture/ の節 |
 | キャッシュを足す・変える | .claude/rules/caching.md（全文）／.claude/rules/caching-retention.md（全文） |
 | 外部データソースを使う・使い方を変える | docs/architecture/data-sources.md: 使い方 |
-| 評価軸を足す・消す・調整する | .claude/rules/deployment-sync.md: コミットと同時に揃えるもの／.claude/skills/production-data/SKILL.md: 本番へ効かせたい軸定義の変更は、本番の管理APIへ入れる |
+| 費用の軸・道の区分を足す・消す・調整する | .claude/rules/deployment-sync.md: コミットと同時に揃えるもの／.claude/skills/production-data/SKILL.md: 本番へ効かせたい道の区分・費用の軸の変更は、本番の管理APIへ入れる |
 | 指摘・不具合を直す | .claude/rules/fixing.md（全文） |
 | テストを書く | .claude/rules/testing.md: 確かめる高さ・単体で確かめるかを、コードの種類で先に決める・そのテストは要るか（3問を順に）・挙動を変えたら、入口で確かめる（書く場所・足場に固有の決まりは、その場所の `.claude/rules/testing-*.md` が `paths` で読まれる） |
 | テストを消す・まとめる・変異テストで見直す | .claude/rules/testing-review.md（全文）／全部の測りで見直す1回は .claude/skills/test-review/SKILL.md（全文） |
@@ -63,7 +63,7 @@ docs/conventions/ にある（.claude/rules/・.claude/skills/ のものはパ�
 | コミットする | flow.md: コミット／.github/pull_request_template.md（増減）／.claude/rules/deployment-sync.md: コミットと同時に揃えるもの／製品かテストのコードを変えたら .claude/skills/simplify/SKILL.md（全文） |
 | PR を出す | .claude/skills/task-work/SKILL.md: 実装担当（4〜6） |
 | PR を確かめてマージする | .claude/skills/task-work/SKILL.md: 検証担当・競合を解く |
-| 本番へ書く | flow.md: 自動で進めないもの／.claude/skills/dev-session/SKILL.md: 本番へ書く／.claude/skills/production-data/SKILL.md: 本番へ効かせたい軸定義の変更は、本番の管理APIへ入れる・派生データの作り直し |
+| 本番へ書く | flow.md: 自動で進めないもの／.claude/skills/dev-session/SKILL.md: 本番へ書く／.claude/skills/production-data/SKILL.md: 本番へ効かせたい道の区分・費用の軸の変更は、本番の管理APIへ入れる・派生データの作り直し |
 | 本番を読む | docs/modules/backend/cross-cutting-infrastructure.md の `run_probe.py` の行／docs/architecture/tech-stack.md: 本番の宛先／docs/architecture/setup.md: 開発機の本体のチェックアウトの遅れ |
 | 起票する・流れ（手順・道具・ゲート・検査）で困った | .claude/skills/file-issue/SKILL.md: 流れの摩擦を記録する・起票する・issue の形・ラベルと種類と欄（規模の札・優先度の見積もり）・前後関係と組 |
 | 問う・保留する | .claude/skills/ask/SKILL.md: 問い・答え・保留と棚卸 |

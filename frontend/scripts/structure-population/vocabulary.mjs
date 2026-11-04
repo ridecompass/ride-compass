@@ -1,4 +1,4 @@
-// 列挙が当てる語彙を生成物と軸カタログから読む（scripts/structure-population.mjs の (a)(b)(d) が使う）。
+// 列挙が当てる語彙を生成物と費用の軸の一覧（/api/cost-axes の応答）から読む（scripts/structure-population.mjs の (a)(b)(d) が使う）。
 
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
@@ -58,17 +58,17 @@ function generatedLiteralValues(generatedRoot, generated) {
   return values;
 }
 
-function axisCatalogWords(axisCatalog) {
-  if (!axisCatalog) return [];
-  const catalog = JSON.parse(readFileSync(axisCatalog, "utf-8"));
-  return catalog.axes.map((axis) => axis.label);
+function costAxisWords(costAxes) {
+  if (!costAxes) return [];
+  const catalog = JSON.parse(readFileSync(costAxes, "utf-8"));
+  return [...catalog.axes.map((axis) => axis.label), catalog.total_lens.label];
 }
 
 /**
  * 語彙: 生成物の識別子の形の値（(a)）・生成物の字句（(d)）・現象の語と軸名（(b)。長い順）。
- * 現象の語は、生成物が名前として配る値。軸名は `axisCatalog`（JSON のファイル）を渡したときだけ入る。
+ * 現象の語は、生成物が名前として配る値。軸名は `costAxes`（`/api/cost-axes` の応答の JSON のファイル）を渡したときだけ入る。
  */
-export function readVocabulary({ generatedRoot, population, axisCatalog }) {
+export function readVocabulary({ generatedRoot, population, costAxes }) {
   const generated = generatedStrings(generatedRoot, population);
   const japanese = new RegExp(population.japanese);
   const phenomenonWords = generated
@@ -80,6 +80,6 @@ export function readVocabulary({ generatedRoot, population, axisCatalog }) {
   return {
     generatedIdentifiers: new Set(generated.map(({ value }) => value).filter((value) => IDENTIFIER.test(value))),
     generatedLiterals: generatedLiteralValues(generatedRoot, generated),
-    words: [...new Set([...phenomenonWords, ...axisCatalogWords(axisCatalog)])].sort((a, b) => b.length - a.length),
+    words: [...new Set([...phenomenonWords, ...costAxisWords(costAxes)])].sort((a, b) => b.length - a.length),
   };
 }

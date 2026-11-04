@@ -275,10 +275,10 @@ gh workflow run mutation.yml -R ridecompass/ride-compass --ref master -f ref=<�
 - **実データ・実backendで見る系統は、`frontend/e2e-live/`に置き、`playwright.live.config.ts`で
   走らせる。CIには載せない。** モックで決定的に回す`frontend/e2e/`と同じ場所に混ぜない。
   - **見るもの**: モック（`e2e/fixtures.ts: installApiMocks`）が本物の代わりに返しているもの——
-    基礎地図・タイル・軸カタログ・ルート生成・気象——に本物が来たときにだけ起きる壊れ方（描かれない・
+    基礎地図・タイル・費用の軸の一覧・ルート生成・気象——に本物が来たときにだけ起きる壊れ方（描かれない・
     値が来ない・押すと例外で開かない）。1シナリオ＝1枚のページ＝1本の幹で、重い段取り（開く・生成）を
     1回だけ払い、その先の枝をまとめて見る。枝は見終えたら戻し、戻ったかは`e2e/pageHelpers.ts`の指紋で
-    確かめる。枝の失敗は他の枝を止めない。当てる相手（公開軸・レイヤー）はカタログと宣言から取り、
+    確かめる。枝の失敗は他の枝を止めない。当てる相手（費用の軸・レイヤー）は一覧と宣言から取り、
     手で名指ししない。期待値は値ではなく性質（1件以上ある・2つの出どころが食い違わない・エラー0件）で書く。
     実世界で無いのが正当なもの（踏切の無い範囲・雨の無い日）は判定せず「該当なし（理由）」をログへ出す。
     backendが上流の失敗として返した502・503・504と、`/api/debug/stats`の外部呼び出しのエラーの増分は、
@@ -303,7 +303,7 @@ gh workflow run mutation.yml -R ridecompass/ride-compass --ref master -f ref=<�
     `cd frontend && NEXT_PUBLIC_API_URL=<本番の backend> NEXT_PUBLIC_TILE_BASE_URL=<本番の backend> BACKEND_INTERNAL_URL=<本番の backend> npm run build` →
     `cd frontend && E2E_LIVE_API=<本番の backend> ./node_modules/.bin/playwright test -c playwright.live.config.ts <シナリオ>`（起点は既定のまま）。
     backendの向け先を変えたらビルドし直す（`NEXT_PUBLIC_API_URL`と`BACKEND_INTERNAL_URL`（Next.jsのサーバーが中継する基礎地図・タイルの行き先）等はビルドに埋め込まれる）。
-  - **誰がいつ回すか**: 地図の描き方（`features/map/scene/`等）・タイルへ焼く値・軸カタログ・動的値の
+  - **誰がいつ回すか**: 地図の描き方（`features/map/scene/`等）・タイルへ焼く値・費用の軸の一覧・動的値の
     配信・気象の描き方・ルート生成の応答に触る変更の担当が、**Pull Requestを出す前に1回**回し、
     実行したコマンドと結果（落ちた枝・「該当なし」・「外部要因」）をPull Requestの本文の検証へ書く。担当のランナーは本番のbackendへ向けて回す。
     backendの応答を変える変更を本番へ向けて回したときは、変更が流しに入っていないことを同じ所へ書く。当たるファイルを変えたが描き方にも
@@ -318,7 +318,7 @@ gh workflow run mutation.yml -R ridecompass/ride-compass --ref master -f ref=<�
   地図を開く・レンズを選ぶ・読み終わりを待つ段取りは`e2e-live/mapReads.ts`、画面を進める段取りは
   `e2e/fixtures.ts`・`e2e/states.ts`を使い、書き直さない。地図に描かれた、押すと開くもの（道・点・ルートの区間・乗り換えの帯等）は、
   経度・緯度を渡さずに`e2e/liveMap.ts: clickFeature`で押す。撮れる対象・呼べる段取りを増やすときは口を変えず、地図の当たり判定の
-  宣言（scene の`hitTargets`）か、e2e の段取りと応答の雛形（`e2e/fixtures.ts`・`e2e/mockResponses.ts`・`e2e/states.ts`・`src/testing/catalogAxes.ts`）へ足す。
+  宣言（scene の`hitTargets`）か、e2e の段取りと応答の雛形（`e2e/fixtures.ts`・`e2e/mockResponses.ts`・`e2e/states.ts`・`src/testing/costAxes.ts`・`src/testing/clientConfig.ts`）へ足す。
 
 ## 付録
 
