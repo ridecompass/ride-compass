@@ -189,15 +189,17 @@ export default function RouteForm({
           <span className={cn(textVariants({ variant: "hint" }), "flex-shrink-0")}>負担の強さ</span>
           <CostLevelPicker
             aria-label="負担の強さ"
-            usage="所要時間のほかに、坂や向かい風の疲れ・止まる回数・路面の揺れなどの負担を、どれだけ重く数えて道を選ぶかを選びます。"
+            usage="所要時間に足す負担に掛ける倍率を選びます。負担は、坂や向かい風で平地より多く踏む体力・止まる回数・路面の振動などを、時間に換算したものです。"
             levels={COST_STRENGTH_LEVELS}
             value={costPreference.strength}
             onChange={(strength) => setCostPreference((prev) => ({ ...prev, strength }))}
           />
           <InfoPopover triggerAriaLabel="負担の強さの説明" triggerClassName="flex-none">
-            負担の秒に掛ける数です。×1 が標準の人の重さで、×2
-            は負担を2倍に数え、時間が少し延びても負担の少ない道を選びます。×0
-            は所要時間だけで選びます。負担の種類ごとの倍率は「負担」タブで選べます。
+            {/* JSXの改行は半角スペースになるので、文字列として繋ぐ。 */}
+            {"所要時間に足す負担に掛ける倍率です。負担は、坂や向かい風で平地より多く踏む体力・止まる回数・路面の振動などを、" +
+              "時間に換算したものです。道は、所要時間とこの倍率を掛けた負担の和が小さくなるように選びます。×1 が標準です。" +
+              "×2 は負担を2倍にして足すので、所要時間が延びても負担の小さい道を選びやすくなります。" +
+              "×0 は負担を足さず、所要時間だけで選びます。負担の種類ごとの倍率は「負担」タブで選べます。"}
           </InfoPopover>
         </div>
 

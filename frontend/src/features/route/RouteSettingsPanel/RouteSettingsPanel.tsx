@@ -75,7 +75,7 @@ export default function RouteSettingsPanel({ costPreference, onCostPreferenceCha
             </span>
             <CostLevelPicker
               aria-label={`${axis.label}の倍率`}
-              usage="この負担を、道を選ぶときにどれだけ重く見るかを選びます。「×0」はこの負担を数えません。"
+              usage="この種類の負担を所要時間に足すときに掛ける倍率を選びます。「×0」はこの負担を足しません。"
               levels={COST_MULTIPLIER_LEVELS}
               value={multiplierOf(costPreference, axis.axisId)}
               onChange={(multiplier) =>

@@ -49,7 +49,7 @@ export function LensRow({
   panel: ReactElement | null;
   filtered: boolean;
 }) {
-  const hint = useRowDescription(option.label, option.description, "このレンズの説明を、行のすぐ下に開きます。");
+  const hint = useRowDescription(option.label, option.description, "この負担の種類の説明を、行のすぐ下に開きます。");
   const legend = useRowPanel(option.label, panel);
   return (
     <div className="flex w-full flex-col text-[length:var(--font-size-sm)]">
