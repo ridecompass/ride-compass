@@ -74,7 +74,7 @@ async def region_point_tile(
     """
     point_layer = POINT_TILE_LAYERS.get(layer)
     if point_layer is None:
-        raise HTTPException(status_code=404, detail="未知の点のレイヤーです。")
+        raise HTTPException(status_code=404, detail="指定された地点のレイヤーはありません。")
     check_tile_rate_limit(request, f"{layer}-tile")
     validate_tile_coords(z, x, y)
     async with region_tile_semaphore:
@@ -129,7 +129,7 @@ async def region_lens(
     async with region_tile_semaphore:
         materials = await service.way_materials(lens_id, z, x, y, at, speed_kmh, preference)
     if materials is None:
-        raise HTTPException(status_code=404, detail="このレンズの値はありません。")
+        raise HTTPException(status_code=404, detail="この負担の種類の値はありません。")
     return materials
 
 
@@ -154,8 +154,7 @@ class RoadInspectorRequest(StrictModel):
     osm_way_id: int
     # クリックされたフィーチャーの識別子（路面タイルが焼く`feature_key`）。区間で焼くズームでは区間、道1本で焼くズームでは道1本を指す。
     feature_key: str
-    # 押したタイル。地図は既に知っており、way idから逆算するより確かで、同じタイルの値がキャッシュに載っていれば追加の
-    # 計算も要らない。
+    # 押したタイル。地図は既に知っており、way idから逆算するより確かで、地図のレンズと同じタイルの組み立てで値を求められる。
     z: RoadTileZoom
     x: TileIndex
     y: TileIndex

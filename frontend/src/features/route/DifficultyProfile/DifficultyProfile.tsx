@@ -30,7 +30,7 @@ function boxesPath(boxes: readonly ProfileBox[], xOf: (km: number) => number): s
     .join("");
 }
 
-/** 道のりに沿った負担。横が距離、縦が区間ごとの1kmあたりの負担で、塗った面積が軸ごとの負担の和になる。 */
+/** 道のりに沿った負担。横が距離、縦が区間ごとの1kmあたりの道の負担で、塗った面積が負担の種類ごとの和になる。 */
 export default function DifficultyProfile({
   scale,
   axisOrder,
@@ -63,7 +63,7 @@ export default function DifficultyProfile({
     <ProfileChart
       scale={scale}
       label="道のりに沿った負担"
-      usage="横が道のり、縦がその区間の1kmあたりの負担で、塗った面積が軸ごとの負担の和です。"
+      usage="横は道のり、縦はその区間の1kmあたりの負担です。色ごとの面積は、その種類の負担のルート全体での合計を表します。"
       selected={selected}
       onSelect={onSelect}
       progressKm={progressKm}

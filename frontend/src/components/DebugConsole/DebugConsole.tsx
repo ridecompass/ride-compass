@@ -68,7 +68,7 @@ export default function DebugConsole({ open, onClose }: DebugConsoleProps) {
             onChange={(e) => setMinLevel(e.target.value as DebugLogLevel)}
             className="px-1 py-0.5 text-[length:var(--font-size-xs)]"
             aria-label="表示するログレベルの下限"
-            data-usage="出すログの重さの下限を選びます。下限より軽いログは隠れます。"
+            data-usage="出すログの重要度の下限を選びます。下限より低いログは隠れます。"
           >
             <option value="info">すべて</option>
             <option value="warn">警告以上</option>

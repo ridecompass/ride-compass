@@ -12,7 +12,6 @@ import {
   type GenerationInput,
 } from "@/features/route/generationRequest";
 import { generateRoutes, type GenerationProgress } from "@/features/route/routeApi";
-import { orderGenerated } from "@/features/route/routeTabLabel";
 import type { GenerationConditionsState } from "@/features/route/useGenerationConditions";
 import type { Coordinates, RouteCandidate } from "@/types/route";
 
@@ -46,7 +45,7 @@ export interface RouteGenerationInputs {
   assumedSpeedKmh: number;
   /** 候補が並んでいるか（「条件が変わった」は比べる候補があるときだけ出す）。 */
   hasRoutes: boolean;
-  /** 生成の結果（最速の1本を先頭に、残りを所要時間の短い順に並べた候補）。候補0件でも呼ぶ。 */
+  /** 生成の結果（backendの並び＝先頭が最も良い候補）。候補0件でも呼ぶ。 */
   onGenerated: (routes: RouteCandidate[]) => void;
   /** 押した「生成」の結果（候補・候補0件・失敗・入力の誤り）。どれも「ルート結果」でしか中身が見えない。 */
   onOutcome: (outcome: RouteOutcomeKind) => void;
@@ -125,8 +124,8 @@ export function useRouteGeneration({
       if (corrected) {
         conditions.setDestination((current) => (current === generationInput.destination ? corrected : current));
       }
-      // 一覧は最速の1本を先頭に、残りは所要時間の短い順。
-      onGenerated(orderGenerated(candidates));
+      // 並びはbackendの費用の順のまま（先頭が最も良い候補。一覧は最速の印の1本を基準として別に先頭へ置く）。
+      onGenerated(candidates);
       // 補正があったら補正後の地点で入力を組み直す（ピンも動かしたので、直後に「条件が変わった」にならない）。
       const generatedInput = corrected ? buildCurrentGenerationInput(corrected) : generationInput;
       setGeneratedConditions({

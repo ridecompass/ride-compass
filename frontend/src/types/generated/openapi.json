@@ -2966,6 +2966,14 @@
             "type": "string",
             "title": "Avoidance Label"
           },
+          "turn_label": {
+            "type": "string",
+            "title": "Turn Label"
+          },
+          "turn_axis_id": {
+            "type": "string",
+            "title": "Turn Axis Id"
+          },
           "total_lens": {
             "$ref": "#/components/schemas/TotalLens"
           },
@@ -2978,6 +2986,8 @@
         "required": [
           "axes",
           "avoidance_label",
+          "turn_label",
+          "turn_axis_id",
           "total_lens",
           "map_lens"
         ],
@@ -4505,6 +4515,10 @@
             "type": "object",
             "title": "Axis Seconds"
           },
+          "turn_seconds": {
+            "type": "number",
+            "title": "Turn Seconds"
+          },
           "avoidance_seconds": {
             "type": "number",
             "title": "Avoidance Seconds"
@@ -4519,6 +4533,7 @@
         "type": "object",
         "required": [
           "axis_seconds",
+          "turn_seconds",
           "avoidance_seconds",
           "total_seconds"
         ],

@@ -108,7 +108,7 @@ export default function DynamicLayerTimeSlider({
             onClick={onNow}
             disabled={index === currentIndex}
             aria-label={`${ariaLabel}を現在に戻す`}
-            usage="送った時刻を、いまの時刻に戻し、いまの時刻に合わせ続けます。"
+            usage="出発時刻をいまの時刻に戻し、その後もいまの時刻に合わせ続けます。"
           >
             <BackToNowIcon />
           </Button>

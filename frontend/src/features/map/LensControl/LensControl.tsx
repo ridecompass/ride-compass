@@ -16,9 +16,9 @@ import { Button } from "@/components/ui/Button/Button";
 import { ToggleGroup } from "@/components/ui/ToggleGroup/ToggleGroup";
 import { Dot } from "@/components/ui/Dot/Dot";
 import { ClearAllFiltersIcon, ClearAllLayersIcon } from "@/components/ui/icons/icons";
-import { EvaluationPaintIcon } from "@/components/ui/icons/lucideIcons";
+import { BurdenPaintIcon } from "@/components/ui/icons/lucideIcons";
 import { cn } from "@/lib/cn";
-import { EVALUATION_PAINT_NAME } from "@/lib/screenNames";
+import { BURDEN_PAINT_NAME } from "@/lib/screenNames";
 import { LensRow, type LensOption } from "./LensRow";
 
 interface LensControlProps {
@@ -41,12 +41,14 @@ interface LensControlProps {
   routeHidden: boolean;
   /** 凡例の下に書く、周りの道の色の前提（`features/map/costLens.ts: costLensPremises`）。 */
   premises: readonly string[];
+  /** 選べるレンズが無い理由（費用の軸の一覧が届くまで・取れない間）。届いていればnull。 */
+  catalogNotice: string | null;
   /** 今のレンズの取得の状態（塗っている間だけ）。塗りは失敗でもデータ無しでも同じ無彩色なので、印で見分ける。 */
   dataStatus?: LayerDataStatus;
 }
 
 /** 画面の名前。コードの「レンズ」は画面には出さない（利用者が見る名前はこれだけ）。 */
-const LENS_SCREEN_NAME = EVALUATION_PAINT_NAME;
+const LENS_SCREEN_NAME = BURDEN_PAINT_NAME;
 
 /** レンズを選んでいないルートの前のピルの名前（道路は塗らない）。 */
 const UNSELECTED_LABEL = "塗る負担を選ぶ";
@@ -68,12 +70,13 @@ export default function LensControl({
   hasDetail,
   routeHidden,
   premises,
+  catalogNotice,
   dataStatus,
 }: LensControlProps) {
   const [open, setOpen] = useState(false);
   const statusLabel = dataStatus ? LAYER_DATA_STATUS_LABELS[dataStatus] : undefined;
   const statusNotice = layerDataStatusNotice(dataStatus);
-  // レンズを選んでいないときは、ルートの前は道路を塗らず、ルートの後はルートの線を総合の負担で塗る（費用の軸の定義が無い間は1色）。
+  // レンズを選んでいないときは、ルートの前は道路を塗らず、ルートの後はルートの線を総合の負担で塗る（費用の軸の一覧が届く前と、取れない間は1色）。
   const unselected = lens === UNSELECTED_LENS_ID;
   const selected = axisOptions.find((option) => option.id === lens);
   const pillLabel = unselected ? (hasDetail ? UNSELECTED_LENS_LABEL : UNSELECTED_LABEL) : (selected?.label ?? lens);
@@ -117,10 +120,10 @@ export default function LensControl({
             className="max-w-full flex-row items-center gap-1.5 border-0 px-2.5 py-1 text-[length:var(--font-size-sm)] whitespace-nowrap focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent-strong)]"
             aria-label={`${LENS_SCREEN_NAME}: ${pillLabel}（タップで変更）`}
             title={statusLabel}
-            usage="負担の種類を1つ選び、その道を走ったときの1kmあたりの負担で、地図の道路（ルートを作った後はルートの線）を塗ります。横の帯は負担の凡例です。"
+            usage="選んだ負担の種類の1kmあたりの負担で、地図の道路（ルートを作った後はルートの線）を塗ります。横の帯は負担の凡例です。"
           >
-            {/* 道のりのグラフの「評価で塗る」の切り替えと同じ絵で、どちらも同じ入口と分かるようにする。 */}
-            <EvaluationPaintIcon size={14} />
+            {/* 道のりのグラフの「負担で塗る」の切り替えと同じ絵で、どちらも同じ入口と分かるようにする。 */}
+            <BurdenPaintIcon size={14} />
             <span
               aria-hidden="true"
               className={cn("size-2.5 flex-shrink-0 rounded-full", LEGEND_SWATCH_RING_CLASS)}
@@ -154,13 +157,18 @@ export default function LensControl({
           <p className="mb-1.5 font-semibold">{LENS_SCREEN_NAME}</p>
           {routeHidden && (
             <p className="mb-1.5 text-[length:var(--font-size-sm)]" role="status">
-              ルートの線を「表示」で出していないので、ルートの線は塗っていません。
+              「表示」でルートの線を隠しているため、ルートは塗っていません。
             </p>
           )}
           {/* ピルの状態ドットの意味。titleはスマホでは出ないため、開いた先で文として読ませる。 */}
           {statusNotice && (
             <p className="mb-1.5 text-[length:var(--font-size-sm)]" role="status">
               {statusNotice}
+            </p>
+          )}
+          {catalogNotice !== null && (
+            <p className="mb-1.5 text-[length:var(--font-size-sm)]" role="status">
+              {catalogNotice}
             </p>
           )}
           <ToggleGroup

@@ -38,15 +38,15 @@ WAYPOINT = Coordinates(latitude=35.69, longitude=139.78)
 DESTINATION = Coordinates(latitude=35.70, longitude=139.80)
 START = datetime(2026, 9, 24, 8, 0, tzinfo=JST)
 AREA_PHRASE = "候補を生成できませんでした。対応エリア外の可能性があります。"
-UNREACHABLE = "指定した経由地・目的地を通る経路が見つかりませんでした。地点や除外する道路の設定を変えてお試しください。"
-RETRY = "距離や除外する道路の設定を変えてお試しください。"
+UNREACHABLE = "指定した経由地・目的地を通る経路が見つかりませんでした。地点や「回避」の設定を変えてお試しください。"
+RETRY = "距離や「回避」の設定を変えてお試しください。"
 
 
 def _segment() -> RouteSegmentDetail:
     return RouteSegmentDetail(
         start_latitude=0.0, start_longitude=0.0, end_latitude=0.0, end_longitude=0.0,
         cumulative_distance_km=0.0, distance_km=1.0, edge_start=0, edge_end=1, elevations=[],
-        road_classes={}, penalty=PenaltyBreakdown(axis_seconds={}, avoidance_seconds=0.0),
+        road_classes={}, penalty=PenaltyBreakdown(axis_seconds={}, turn_seconds=0.0, avoidance_seconds=0.0),
     )
 
 
@@ -56,7 +56,7 @@ def _candidate(key: str, penalty: float = 10.0, **fields) -> EvaluatedRoute:
     return EvaluatedRoute(**{
         "direction_label": f"方位-{key}", "distance_km": 1.0, "geometry": {"type": "LineString", "coordinates": []},
         "elevation_gain_m": None, "segments": [_segment()], "estimated_duration_seconds": 100.0,
-        "cost_seconds": 100.0 + penalty, "penalty": PenaltyBreakdown(axis_seconds={"a": penalty}, avoidance_seconds=0.0),
+        "cost_seconds": 100.0 + penalty, "penalty": PenaltyBreakdown(axis_seconds={"a": penalty}, turn_seconds=0.0, avoidance_seconds=0.0),
         "facts": RouteFacts(elevation_unknown_km=0.0, axes={}),
         "wind_unavailable": False, "missing_travel_data_share": None, "edge_ids": [key], "edge_point_offsets": [], "node_ids": [], "turns": [],
         "waypoint_distances_km": [], **fields,
@@ -201,7 +201,7 @@ async def test_no_road_data_gives_no_candidates_and_says_why(entrance, phrase, c
     with caplog.at_level(logging.WARNING, logger=route_generator.logger.name):
         assert await ENTRANCES[entrance](generator) == []
 
-    assert generator.last_no_candidates_reason == f"起点付近の道路データが未整備のため、{phrase}"
+    assert generator.last_no_candidates_reason == f"出発地付近の道路データが未整備のため、{phrase}"
     assert _warned(caplog)
 
 
@@ -210,7 +210,7 @@ async def test_no_road_data_gives_no_candidates_and_says_why(entrance, phrase, c
     [
         (SearchAreaTooLargeError(edges=1_300_000, limit=1_200_000), "探索範囲の道路が多すぎるため", "edges=1300000"),
         (SearchMemoryBusyError(edges=1_300_000, available=900_000), GENERATION_BUSY_MESSAGE, "available=900000"),
-        (RoutingError("no accessible node near origin"), "起点から走り出せる道が見つかりませんでした。", "no accessible node"),
+        (RoutingError("no accessible node near origin"), "出発地から走り出せる道が見つかりませんでした。", "no accessible node"),
     ],
 )
 async def test_a_search_area_that_cannot_be_used_gives_no_candidates_and_says_why(error, reason, logged, caplog):
@@ -240,7 +240,7 @@ async def test_loops_without_turnarounds_say_how_far_out_was_searched(caplog):
         # 片道が数十kmになる距離にする（数kmでは、小数1桁へ丸めると m から km への換算の誤りが消える）。
         assert await generator.generate_loops(ORIGIN, 200.0, 30.0, DEFAULT_MAX_ROUTES, START, NO_POINTS) == []
 
-    assert generator.last_no_candidates_reason == f"起点から片道94.4〜104.5kmで到達できる折返し地点が見つかりませんでした。{RETRY}"
+    assert generator.last_no_candidates_reason == f"出発地から片道94.4〜104.5kmで到達できる折返し地点が見つかりませんでした。{RETRY}"
     assert _warned(caplog)
 
 
@@ -299,10 +299,10 @@ async def test_loops_drop_a_route_too_similar_to_one_already_accepted():
 @pytest.mark.parametrize(
     ("outcomes", "reason"),
     [
-        ([RoutingError("復路なし")], "1件の折返し候補で復路の探索に失敗しました[除外設定をご確認ください]。"),
+        ([RoutingError("復路なし")], "1件の折り返し地点で、帰り道が見つかりませんでした[「回避」の設定をご確認ください]。"),
         ([_route("x", distance_km=20.0), _route("y", distance_km=1.0)], "2件の周回候補は指定距離[10.0km±1.0km]から外れました。"),
         ([RoutingError("復路なし"), _route("x", distance_km=20.0)],
-         "1件の折返し候補で復路の探索に失敗しました[除外設定をご確認ください]、1件の周回候補は指定距離[10.0km±1.0km]から外れました。"),
+         "1件の折り返し地点で、帰り道が見つかりませんでした[「回避」の設定をご確認ください]、1件の周回候補は指定距離[10.0km±1.0km]から外れました。"),
     ],
 )
 async def test_loops_that_all_fall_out_say_why(outcomes, reason, caplog):
@@ -350,7 +350,7 @@ async def test_distance_routes_through_placed_points_without_a_relay_say_so(capl
         assert await _loops(generator, points=FixedPoints(waypoints=[WAYPOINT], destination=None)) == []
 
     assert generator.last_no_candidates_reason == (
-        "置いた地点を通って全長10.0km前後になる経路が見つかりませんでした。距離や地点、除外する道路の設定を変えてお試しください。")
+        "置いた地点を通って全長10.0km前後になる経路が見つかりませんでした。距離や地点、「回避」の設定を変えてお試しください。")
     assert _warned(caplog)
 
 
@@ -442,7 +442,7 @@ async def test_destination_without_alternatives_says_why(caplog):
         assert await _no_distance(generator, [], DESTINATION) == []
 
     assert generator.last_no_candidates_reason == (
-        "指定した目的地までの経路が見つかりませんでした。地点や除外する道路の設定を変えてお試しください。")
+        "指定した目的地までの経路が見つかりませんでした。地点や「回避」の設定を変えてお試しください。")
     assert _warned(caplog)
 
 

@@ -23,7 +23,7 @@ interface MapNavigationControlProps {
   onBearingChange: (bearing: number) => void;
   /** 北を上に戻す。 */
   onResetNorth: () => void;
-  /** いまの「評価で塗る」の周りの道の塗りが、地図の向きで決まっている。 */
+  /** いまの「負担で塗る」の周りの道の塗りが、地図の向きで決まっている。 */
   linked: boolean;
   /** 走行モードの間だけ渡る。拡大・縮小の代わりに倍率のボタンを出し、方位磁針はダイヤルを開かず、現在地を追っている間は北が上と
    * 進む向きが上を切り替え、追っていない間は北が上に戻す。 */
@@ -42,7 +42,7 @@ const TICK_STEP_DEG = 15;
 // ダイヤルの絵の座標（中心が0、外周の半径が RING_RADIUS）。
 const RING_RADIUS = 86;
 const LABEL_RADIUS = 60;
-const ZOOM_GESTURE_USAGE = "地図を1回たたいてから、続けて触れたまま上下に滑らせても拡大・縮小できます。";
+const ZOOM_GESTURE_USAGE = "地図を1回タップし、指を離さずに上下へ動かしても拡大・縮小できます。";
 
 /** 中心から角度`deg`（上が0・時計回り）へ半径`r`の点。 */
 function pointAt(deg: number, r: number): [number, number] {
@@ -110,7 +110,7 @@ export default function MapNavigationControl({
         <Button
           {...compassProps}
           aria-label={rideCompassLabel(ride)}
-          usage="走っている間は、押すと北が上と進む向きが上を切り替えます。地図を指で動かしたあとは、押すとその場で北が上に戻ります。"
+          usage="走行中は、押すたびに「北が上」と「進む向きが上」を切り替えます。地図を指で動かした後は、押すと北が上に戻ります。"
           onClick={ride.onCompass}
         />
       ) : (
@@ -160,7 +160,7 @@ function RideZoomButton({ zoomBase, onNextZoom }: { zoomBase: number; onNextZoom
       size="mapCtrl"
       className="rounded-b-none shadow-none"
       aria-label={`倍率（いまは${step.label}）`}
-      usage="押すたびに、追う地図の倍率を中・遠・近の順に切り替えます。2本指でつまんでも変えられます。速く走るほど、その倍率から引いて先を見せます。"
+      usage="押すたびに、走行中の地図の倍率を中・遠・近の順に切り替えます。2本指でつまんでも変えられます。速く走るほど、選んだ倍率より広い範囲を表示します。"
       onClick={onNextZoom}
     >
       <RideZoomIcon reach={step.reach} />
@@ -226,7 +226,7 @@ function HeadingDial({ bearing, heading, onBearingChange, onResetNorth }: Headin
       <div className="flex items-center justify-between">
         <InfoPopover triggerAriaLabel="地図の向きの使い方">
           輪をなぞると地図が回り、真ん中の針を押すと北が上に戻ります。
-          {`周りの道を負担で塗るときと、道の窓の走る向きは、地図の上の向きを${WAY_BEARING_STEP_DEG}°刻みに丸めた向きです。ルートの負担は、ルートを実際に走る向きで決まります。`}
+          {`周りの道を負担で塗るときと道の小窓では、地図の上の向きを${WAY_BEARING_STEP_DEG}°刻みに丸めた向きを、走る向きとみなします。ルートの負担は、実際に走る向きで決まります。`}
         </InfoPopover>
         <span className="tabular-nums">
           <span className="text-[length:var(--font-size-md)] font-semibold text-[var(--color-accent)]">

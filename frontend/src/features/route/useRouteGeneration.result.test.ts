@@ -1,11 +1,10 @@
 /**
- * ルート生成（`useRouteGeneration.ts`）の結果——候補は所要時間の短い順に並べて渡し、押した1回の
+ * ルート生成（`useRouteGeneration.ts`）の結果——候補はbackendの並びのまま渡し、押した1回の
  * 結果の種類（候補・候補0件・失敗）を知らせて、直近の結果（件数・0件の理由・失敗）を返す。backendが目的地を補正したら
  * 置いた目的地を動かし、変えた倍率を送れなかったときは標準の倍率で作ったと返す。
  *
  * ここで見ないもの:
  * - 送る要求・入力の誤り・進み方・条件のずれ・消す → `useRouteGeneration.test.ts`
- * - 所要時間の並べ方の細部（時間の無い候補の位置） → `routeTabLabel.test.ts`
  * - 結果を一覧へ入れる・知らせを画面に出す → `useRouteResults.test.ts`・`app/page.test.tsx`
  *
  * 差し替えたもの: 生成のジョブと費用の軸の一覧の応答（網の層。`testing/routeGeneration.ts`）。条件は
@@ -39,13 +38,13 @@ afterEach(() => {
 });
 
 describe("生成の結果", () => {
-  it("候補を所要時間の短い順に並べて渡し、新しい結果として知らせる。案内・目的地の補正は出さない", async () => {
+  it("候補をbackendの並び（費用の順）のまま渡し、新しい結果として知らせる。案内・目的地の補正は出さない", async () => {
     const rendered = renderGeneration();
     backend.respond([route("slow", 3600), route("fast", 1800)], used());
 
     await submit(rendered);
 
-    expect(rendered.onGenerated).toHaveBeenCalledWith([route("fast", 1800), route("slow", 3600)]);
+    expect(rendered.onGenerated).toHaveBeenCalledWith([route("slow", 3600), route("fast", 1800)]);
     expect(rendered.onOutcome).toHaveBeenCalledWith("fresh");
     expect(rendered.result.current.generation.outcome).toBeNull();
     expect(rendered.result.current.generation.destinationCorrected).toBe(false);

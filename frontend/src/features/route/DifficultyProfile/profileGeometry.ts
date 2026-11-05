@@ -16,7 +16,7 @@ export type ProfileBox = {
 
 /**
  * 軸ごとに積み上げた長方形。軸は`axisOrder`の順に下から積み、図の上端をこのルートで最も大きい区間の1kmあたりの負担にする。
- * 内訳の無い区間（費用の軸の定義が無い間）は描かない。
+ * 1kmあたりの値の無い区間（長さ0の区間）は描かない。
  */
 export function profileBoxes(
   columns: readonly RouteStretch<Pick<RouteSegmentDetail, "lens_seconds_per_km">>[],

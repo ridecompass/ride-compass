@@ -2,7 +2,7 @@
  * `app/page.tsx`——トップページの走行モードのうち、走っている間に見えるもの。
  *
  * 見ること: 走行モードの間の配置（上の帯を走りの数字に替え、パネルと「現在地に移動」を隠し、選んだ候補のプロファイルを
- * 見るだけで地図の下に出すこと・「表示」と「評価で塗る」は走っていないときと同じに出し、走行中に効かない操作は出さないこと・
+ * 見るだけで地図の下に出すこと・「表示」と「負担で塗る」は走っていないときと同じに出し、走行中に効かない操作は出さないこと・
  * 方位磁針で北が上と進む向きが上を切り替え、地図を指で動かして休んでいる間はその場で北が上に戻すこと）と、
  * 届いた現在地がプロファイルの印と地図のルート線の薄めと走りの帯の残りへ同じ距離で渡り、到着予想が位置を受けた時刻と選んだ候補の計画から出ること、
  * 次に曲がる所がカードと地図の札に出ること、ルートを外れた・戻ったことが走りの帯に出ること、読み込み直しても走行モードが続くこと、
@@ -93,7 +93,7 @@ describe("走行モード", () => {
     expect(rideProfile()).toBeNull();
   });
 
-  it("走行中も「表示」と「評価で塗る」を出してピルから一覧を開け、出したまま現在地を追い、方位磁針で北が上と進む向きが上を切り替え、走行条件・「現在地に移動」は出さない", async () => {
+  it("走行中も「表示」と「負担で塗る」を出してピルから一覧を開け、出したまま現在地を追い、方位磁針で北が上と進む向きが上を切り替え、走行条件・「現在地に移動」は出さない", async () => {
     const geolocation = installGeolocation(HERE);
     const { user } = renderHome();
     jobs.respond([FIRST], LOOP_CONDITIONS);
@@ -103,8 +103,8 @@ describe("走行モード", () => {
     geolocation.deliver(RIDDEN_MIDDLE);
 
     expect(screen.getByRole("button", { name: "地図に出す情報" })).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: /^評価で塗る: / }));
-    expect(await screen.findByRole("radiogroup", { name: "評価で塗る" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /^負担で塗る: / }));
+    expect(await screen.findByRole("radiogroup", { name: "負担で塗る" })).toBeInTheDocument();
     await user.keyboard("{Escape}");
     await user.click(screen.getByRole("button", { name: "進む向きを上にする（いまは北が上）" }));
     expect(screen.getByRole("button", { name: "北を上にする（いまは進む向きが上）" })).toBeInTheDocument();
@@ -300,7 +300,7 @@ describe("走行モード", () => {
       });
     try {
       const { user } = renderHome();
-      const HEADING_NOTICE = /向きを読む許しが要ります/;
+      const HEADING_NOTICE = /向きの取得を許可する必要があります/;
       await screen.findByText(HEADING_NOTICE);
       geolocation.deliver(RIDDEN_MIDDLE);
       turnPhone();

@@ -1,5 +1,5 @@
 /**
- * `LensControl.tsx`——「評価で塗る」のピルが今のレンズを示し、開いた一覧でレンズを1つ選び・外し、選んでいる行の ▶ で
+ * `LensControl.tsx`——「負担で塗る」のピルが今のレンズを示し、開いた一覧でレンズを1つ選び・外し、選んでいる行の ▶ で
  * 凡例を絞り込み、行の印（走る条件・未使用・絞り込み中）と前提の文を読ませること。
  *
  * ここで見ないもの:
@@ -49,15 +49,16 @@ function renderLens(props: Partial<Parameters<typeof LensControl>[0]> = {}) {
       hasDetail={false}
       routeHidden={false}
       premises={[]}
+      catalogNotice={null}
       {...handlers}
       {...props}
     />,
   );
   return handlers;
 }
-const pill = () => screen.getByRole("button", { name: /^評価で塗る:/ });
+const pill = () => screen.getByRole("button", { name: /^負担で塗る:/ });
 const open = () => userEvent.click(pill());
-const list = () => screen.getByRole("radiogroup", { name: "評価で塗る" });
+const list = () => screen.getByRole("radiogroup", { name: "負担で塗る" });
 
 describe("LensControl", () => {
   it.each([
@@ -68,7 +69,7 @@ describe("LensControl", () => {
     "ピルは選んでいるレンズ（%s・ルートの確定後 %s）の名前を出し、選んでいなければ塗り方を出す",
     (lens, hasDetail, label) => {
       renderLens({ lens, hasDetail });
-      expect(pill()).toHaveAccessibleName(`評価で塗る: ${label}（タップで変更）`);
+      expect(pill()).toHaveAccessibleName(`負担で塗る: ${label}（タップで変更）`);
     },
   );
 
@@ -166,7 +167,7 @@ describe("LensControl", () => {
   it("ルートの線を出していなければ、塗っていないことを開いた先で伝える", async () => {
     renderLens({ routeHidden: true });
     await open();
-    expect(screen.getByRole("status")).toHaveTextContent("ルートの線は塗っていません");
+    expect(screen.getByRole("status")).toHaveTextContent("ルートは塗っていません");
   });
 
   it("「ルート後も周囲の道路を薄く塗る」を押すと、反転した値で知らせる", async () => {

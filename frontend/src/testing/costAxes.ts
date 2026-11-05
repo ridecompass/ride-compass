@@ -26,6 +26,8 @@ export function costAxisCatalog(...axes: CostAxisEntry[]): CostAxisCatalogRespon
   return {
     axes,
     avoidance_label: "回避指定",
+    turn_label: "曲がる所",
+    turn_axis_id: "stopping",
     total_lens: {
       lens_id: "total",
       label: "総合の負担",

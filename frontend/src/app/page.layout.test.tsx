@@ -48,7 +48,7 @@ afterEach(() => {
 });
 
 describe("画面の枠", () => {
-  it("地図の表示をまとめて戻す: 「表示」の一覧で行を全部消すとルートのほかの地図のレイヤーが消え、その一覧の絞り込みの解除は「評価で塗る」の凡例を数えず、そちらは「評価で塗る」の解除で戻す。右上のメニューの再描画は地図の描き直しを求める", async () => {
+  it("地図の表示をまとめて戻す: 「表示」の一覧で行を全部消すとルートのほかの地図のレイヤーが消え、その一覧の絞り込みの解除は「負担で塗る」の凡例を数えず、そちらは「負担で塗る」の解除で戻す。右上のメニューの再描画は地図の描き直しを求める", async () => {
     const { user } = renderHome();
     const fromList = async <T,>(name: string, inspect: (button: HTMLButtonElement) => Promise<T> | T) => {
       await user.click(screen.getByRole("button", { name: "地図に出す情報" }));
@@ -73,13 +73,13 @@ describe("画面の枠", () => {
     expect(mapOnScreen().visibleLayerIds()).toEqual(routeLayers);
 
     expect(await canRun("絞り込みをすべて解除")).toBe(false);
-    await user.click(screen.getByRole("button", { name: /^評価で塗る: / }));
+    await user.click(screen.getByRole("button", { name: /^負担で塗る: / }));
     await user.click(await screen.findByRole("radio", { name: /登坂/ }));
     await user.click(screen.getByRole("button", { name: "登坂の凡例" }));
     await user.click(await screen.findByRole("checkbox", { name: "凡例の全段階をまとめて表示/非表示" }));
     await user.keyboard("{Escape}");
     expect(await canRun("絞り込みをすべて解除")).toBe(false);
-    await user.click(screen.getByRole("button", { name: /^評価で塗る: / }));
+    await user.click(screen.getByRole("button", { name: /^負担で塗る: / }));
     await user.click(screen.getByRole("button", { name: "絞り込みをすべて解除" }));
     expect(screen.getByRole("button", { name: "絞り込みをすべて解除" })).toBeDisabled();
     await user.keyboard("{Escape}");
@@ -125,7 +125,7 @@ describe("画面の枠", () => {
     expect(mapOnScreen().zoom()).toBe(zoom);
     fireEvent.pointerDown(screen.getByRole("button", { name: "拡大" }), { pointerType: "touch", button: 0 });
     expect(await screen.findByRole("tooltip", {}, { timeout: 2000 })).toHaveTextContent(
-      /続けて触れたまま上下に滑らせても拡大・縮小できます/,
+      /指を離さずに上下へ動かしても拡大・縮小できます/,
     );
   });
 

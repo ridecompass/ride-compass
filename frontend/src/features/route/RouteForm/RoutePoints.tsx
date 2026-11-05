@@ -164,7 +164,7 @@ export default function RoutePoints({
               aria-label="出発地を現在地に戻す"
               disabled={originAtHere}
               onClick={onOriginReset}
-              usage="現在地を取り直して、そこから出発します。"
+              usage="現在地を取得し直して、そこから出発します。"
             >
               <LocateIcon />
             </Button>
@@ -245,7 +245,7 @@ export default function RoutePoints({
           className={toggleClass}
           pressed={loop}
           onClick={() => setLoop(!loop)}
-          usage="押している間は、出発地へ戻る周回を作ります（変えられるのは経由地だけ）。外すと目的地へ向かいます。"
+          usage="オンにすると、出発地へ戻る周回を作ります（変えられるのは経由地だけです）。オフにすると目的地へ向かいます。"
         >
           <LoopRouteIcon />
           周回
@@ -266,7 +266,7 @@ export default function RoutePoints({
             foundCard?.dismiss();
             setEditOpen(!editing);
           }}
-          usage="押している間は、地点を名前で縦に並べ、通る順を入れ替えたり消したりできます。もう一度押すと閉じます。"
+          usage="オンにすると、地点を名前で縦に並べ、通る順の入れ替えや削除ができます。もう一度押すと閉じます。"
         >
           <EditPointsIcon />
           編集

@@ -67,9 +67,8 @@ LEGEND_SHARED_ROWS: dict[str, _LegendSharedRow] = {
     ),
     "undetermined": _LegendSharedRow(
         "向きで決まらない",
-        "地図の上の向き（走っている間は進む向き）とほぼ直角に交わり、その向きでは値が決まらない道"
-        "（勾配なら、登りか下りかが決まらない）。"
-        "データが無いのではなく、地図を回して向きが変わると色が付く。",
+        "地図の上の向き（走行中は進む向き）とほぼ直角に交わるため、値を決められない道（勾配なら登りか下りか）。"
+        "地図を回して向きが変わると色が付く。",
     ),
 }
 
@@ -321,7 +320,7 @@ _DISASTER_FRAME_RULE_WORDING: dict[FrameRuleKind, tuple[str, str]] = {
     "latestObservation": ("直近の観測", "は観測だけのため、最新の観測より先の時刻には出ません。"),
     "current": (
         "現在の危険度のみ",
-        "は色で示した現在の危険度で、「現在の危険度」単一値のみの配信のため時刻スライダーには連動しません。",
+        "は色で示した現在の危険度です。現在の危険度だけを配信しているため、時刻スライダーには連動しません。",
     ),
 }
 
@@ -371,12 +370,11 @@ _LAYER_SPECS: dict[str, MapLayerSpec] = {
         description=(f"周囲の緑・水辺・農地を面で重ねる{f'[{_UNPAINTED_LANDCOVER}は塗らない]' if _UNPAINTED_LANDCOVER else ''}",),
         panel_hint=(
             "衛星画像から分類した10m四方ごとの土地の使われ方です。1区画に1種類だけが入るため、"
-            "道の線の層が使う「道路の周囲",
+            "ルートの結果の「緑と水」が使う「道路の周囲",
             LayerTextSlot("landcoverRingOuterM", after="m"),
             "の割合」とは違い、混ざらずそのまま見えます。"
             + (
-                f"{_UNPAINTED_LANDCOVER}は塗りません——広い範囲を単色で覆い、基礎地図を隠すだけになるためです。"
-                f"地図の道を押して開く内訳には{_UNPAINTED_LANDCOVER}も出ます。"
+                f"{_UNPAINTED_LANDCOVER}は塗りません。広い範囲を単色で覆い、基礎地図を隠すだけになるためです。"
                 if _UNPAINTED_LANDCOVER
                 else ""
             ),
@@ -459,15 +457,14 @@ _LAYER_SPECS: dict[str, MapLayerSpec] = {
             "部分・線状降水帯予測マップ・線状降水帯の雨域は、取得に失敗することがあります。",
         ),
     ),
-    # 「評価で塗る」の道路の塗り（向かい風・追い風）と見分けられる名前にする。
+    # 「負担で塗る」の道路の塗り（向かい風・追い風）と見分けられる名前にする。
     "windVector": MapLayerSpec(
         "msmGrid",
         "weather",
         data_nature="dynamic",
         label="風[矢印]",
         description=(
-            f"気象庁の数値予報モデルMSMの格子点の風向・風速を、格子点の位置に矢印で表示[{_MSM_REACH}先まで。"
-            "予報ではなく誤差を含みうる]",
+            f"気象庁の数値予報モデルMSMの格子点の風向・風速を、格子点の位置に矢印で表示[{_MSM_REACH}先まで]",
         ),
         panel_hint=(
             "気象庁MSM[メソ数値予報モデル]の格子点[約5km間隔]の風向・風速を、格子点の位置に矢印で表示します。"

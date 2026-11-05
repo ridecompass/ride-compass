@@ -38,6 +38,8 @@ T = TypeVar("T")
 #
 # 点のタイルも同じDB接続プールを取り合うため、専用semaphoreを新設せずこれを
 # 共有する（独立semaphoreを追加すると、種類ごとのタイルの同時実行数の合計がプール上限を超えうる）。
+# 地図のレンズのタイルはDBを読まないが、タイルごとに走行の模型を解く計算を既定のスレッドの置き場（ルート生成と共有）へ
+# 出すので、同じ上限で待たせる（上限が無いと、地図を動かしている間のルート生成が置き場を待たされる）。
 region_tile_semaphore = asyncio.Semaphore(settings.road_tile_max_concurrent)
 
 

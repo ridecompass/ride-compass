@@ -335,7 +335,7 @@ export function useMapPopupMount(
           size="icon"
           className="absolute top-0 right-8 h-11"
           aria-label="地図をここへ寄せる"
-          usage="地図を、この小窓の物へ寄せます。押しただけでは地図は動きません。"
+          usage="地図を動かして、この小窓の道や地点を画面に収めます。道や地点を押して小窓を開いただけでは、地図は動きません。"
           onClick={() => onFocus(shape)}
         >
           <ShowSectionOnMapIcon size={18} />

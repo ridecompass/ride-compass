@@ -59,7 +59,7 @@ export default function WeatherPanel({ amedas, error, today, todayError, mapBear
         <span
           role="img"
           aria-label="観測値を取得できません"
-          data-usage={`いまいる場所の観測値を取れていません（${error}）。取り直しは続いていて、取れればここに値が出ます。`}
+          data-usage={`現在地の観測値を取得できていません（${error}）。取得は自動で続けており、取得できればここに表示します。`}
           className="inline-flex size-7 items-center justify-center text-[var(--color-danger)]"
         >
           <NotFetchedIcon size={18} />

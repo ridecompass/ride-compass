@@ -50,7 +50,7 @@ export default function RouteSettingsPanel({ costPreference, onCostPreferenceCha
         >
           <span>{`${catalogFailure.label}を取得できませんでした。${catalogFailure.effect}`}</span>
           <Button
-            usage={`取れなかった${COST_AXIS_CATALOG_LABEL}を、もう一度取りに行きます。`}
+            usage={`取得できなかった${COST_AXIS_CATALOG_LABEL}を、もう一度取得します。`}
             variant="warning"
             size="panelIcon"
             aria-label="再試行"
@@ -63,7 +63,12 @@ export default function RouteSettingsPanel({ costPreference, onCostPreferenceCha
       {!catalog.loaded && !catalog.failed && (
         <p className={textVariants({ variant: "hint" })}>{COST_AXIS_CATALOG_LABEL}を読み込んでいます。</p>
       )}
-      <ul className="flex flex-col gap-1.5">
+      {costPreference.strength === 0 && catalog.axes.length > 0 && (
+        <p className={textVariants({ variant: "hint" })} role="status">
+          「条件」タブの負担の強さが ×0 のため、ここの倍率は効きません。
+        </p>
+      )}
+      <ul className={cn("flex flex-col gap-1.5", costPreference.strength === 0 && "opacity-50")}>
         {catalog.axes.map((axis) => (
           <li key={axis.axisId} className="flex items-center gap-2">
             <span className="flex min-w-0 flex-1 items-center gap-1">
@@ -75,7 +80,7 @@ export default function RouteSettingsPanel({ costPreference, onCostPreferenceCha
             </span>
             <CostLevelPicker
               aria-label={`${axis.label}の倍率`}
-              usage="この負担を、道を選ぶときにどれだけ重く見るかを選びます。「×0」はこの負担を数えません。"
+              usage="この種類の負担を所要時間に足すときに掛ける倍率を選びます。「×0」はこの負担を足しません。"
               levels={COST_MULTIPLIER_LEVELS}
               value={multiplierOf(costPreference, axis.axisId)}
               onChange={(multiplier) =>
@@ -90,7 +95,7 @@ export default function RouteSettingsPanel({ costPreference, onCostPreferenceCha
       </ul>
       {catalog.axes.length > 0 && (
         <Button
-          usage="軸ごとの倍率を、すべて標準に戻します。"
+          usage="負担の種類ごとの倍率を、すべて標準（×1）に戻します。"
           variant="secondary"
           className="self-end"
           disabled={standard}

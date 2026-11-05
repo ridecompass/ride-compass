@@ -1,8 +1,8 @@
 /**
- * `features/route/RouteProfile/RouteProfile.tsx`——道のりのグラフの「表示」「評価で塗る」のタブ（名前は地図の2つの入口と同じ `lib/screenNames.ts`）と、
+ * `features/route/RouteProfile/RouteProfile.tsx`——道のりのグラフの「表示」「負担で塗る」のタブ（名前は地図の2つの入口と同じ `lib/screenNames.ts`）と、
  * 地点を選んでいる間の「区間を地図で見る」。
  *
- * 見るもの: 既定で「評価で塗る」（負担のグラフ）を出すこと、その (i) が塗った軸の色と名前・意味の文を出すこと
+ * 見るもの: 既定で「負担で塗る」（負担のグラフ）を出すこと、その (i) が塗った軸の色と名前・意味の文を出すこと
  * （塗る区間の無い軸は出さない）、両方のタブで経由地を通る所に線と番号の印を出し、走り終えた経由地を薄めること。タブは結果も
  * 走行中も地図の入口と同じ絵だけで出し（名前は読み上げに残す）、押すと図が替わること。走行中の図は、目盛り・図の下の文字を
  * 結果の図より大きくすること。地点を選ぶと、右上に「区間を地図で見る」を出すこと。
@@ -13,7 +13,7 @@
  * ここで見ないもの: 「表示」の図の折れ線・帯・現在地の印・値の目盛りと、出す情報の一覧 → `RouteProfile.layers.test.tsx`。
  * 負担の塗り → `DifficultyProfile.test.tsx`。なぞって地点を選ぶ操作 → `ProfileChart.test.tsx`。地点・選んだ区間の値と行の計算 → `profileLayers.test.ts`。
  */
-import { EVALUATION_PAINT_NAME, FACT_DISPLAY_NAME } from "@/lib/screenNames";
+import { BURDEN_PAINT_NAME, FACT_DISPLAY_NAME } from "@/lib/screenNames";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
@@ -34,9 +34,9 @@ import type { SelectedRouteSegment } from "@/types/route";
 beforeEach(serveProfileCatalog);
 
 describe("RouteProfile", () => {
-  it("はじめは「評価で塗る」で負担を出し、(i) で塗った軸の色と名前・グラフの意味を開く", async () => {
+  it("はじめは「負担で塗る」で負担を出し、(i) で塗った軸の色と名前・グラフの意味を開く", async () => {
     renderProfile();
-    expect(screen.getByRole("tab", { name: EVALUATION_PAINT_NAME })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: BURDEN_PAINT_NAME })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("img", { name: "道のりに沿った負担" })).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "負担のグラフの見方を表示" }));
@@ -46,7 +46,7 @@ describe("RouteProfile", () => {
     });
     expect(within(note).queryByText("振動")).toBeNull();
     expect(note).toHaveTextContent(
-      "高さは区間の1kmあたりの負担（上端はこのルートで最も大きい区間）、塗った面積は軸ごとの負担の和で、横の右端は一覧の中で最も長い候補の距離",
+      "高さは区間ごとの1kmあたりの負担で、上端はこのルートで最も大きい区間の値です（曲がる所と回避指定は含みません）。色ごとの面積は、その種類の負担の合計を表します。横の右端は、一覧で最も長い候補の距離",
     );
   });
 
@@ -85,7 +85,7 @@ describe("RouteProfile", () => {
     "タブは結果も走行中（$riding）も絵だけで出して押すと図が替わり、走行中だけ距離の目盛り・図の下の文字を大きくする",
     async ({ riding, large }) => {
       renderProfile({ riding, progressKm: riding ? 0.25 : null });
-      for (const name of [FACT_DISPLAY_NAME, EVALUATION_PAINT_NAME]) {
+      for (const name of [FACT_DISPLAY_NAME, BURDEN_PAINT_NAME]) {
         const tab = screen.getByRole("tab", { name });
         expect(tab.querySelector("svg")).not.toBeNull();
         expect(within(tab).getByText(name)).toHaveClass("sr-only");
@@ -96,13 +96,13 @@ describe("RouteProfile", () => {
       for (const text of [screen.getByText("2.0km"), screen.getByText("標高 最高 32m・最低 12m")])
         expect(text.closest(".text-base") !== null).toBe(large);
 
-      await userEvent.click(screen.getByRole("tab", { name: EVALUATION_PAINT_NAME }));
+      await userEvent.click(screen.getByRole("tab", { name: BURDEN_PAINT_NAME }));
       expect(screen.getByRole("img", { name: "道のりに沿った負担" })).toBeInTheDocument();
     },
   );
 
   it.each([
-    { riding: true, tab: EVALUATION_PAINT_NAME },
+    { riding: true, tab: BURDEN_PAINT_NAME },
     { riding: false, tab: FACT_DISPLAY_NAME },
   ])(
     "走行中（$riding）の「$tab」の図をなぞって地点を選ぶと、右上に「区間を地図で見る」を出す",

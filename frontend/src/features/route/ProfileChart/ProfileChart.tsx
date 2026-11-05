@@ -115,7 +115,7 @@ export default function ProfileChart({
                 role: "slider",
                 tabIndex: 0,
                 "aria-label": `${label}（動かすと、その地点を地図に出す）`,
-                "data-usage": `${usage}なぞるか押して離すと、その地点を地図に印で出し、地図にその区間の小窓を出します。`,
+                "data-usage": `${usage}なぞるか押して離すと、その地点の印と区間の小窓を地図に出します。`,
                 "aria-valuemin": 0,
                 "aria-valuemax": roundToDigits(routeKm, 1),
                 "aria-valuenow": roundToDigits(positionKm, 1),

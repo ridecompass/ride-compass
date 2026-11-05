@@ -31,7 +31,7 @@ function origin(overrides: Partial<RouteCandidate> = {}): RouteCandidate {
     id: "origin",
     distance_km: 10,
     estimated_duration_seconds: 3600,
-    penalty: { axis_seconds: { ascent: 600 }, avoidance_seconds: 0, total_seconds: 600 },
+    penalty: { axis_seconds: { ascent: 600 }, turn_seconds: 0, avoidance_seconds: 0, total_seconds: 600 },
     ...routeThrough(PLACES, [..."ABCD"]),
     ...overrides,
   });
@@ -43,7 +43,7 @@ function edited(overrides: Partial<RouteCandidate> = {}): RouteCandidate {
     distance_km: 12.34,
     estimated_duration_seconds: 3000,
     // 内訳の和は元より20秒多く、分へ丸めると0。
-    penalty: { axis_seconds: { ascent: 560 }, avoidance_seconds: 60, total_seconds: 620 },
+    penalty: { axis_seconds: { ascent: 560 }, turn_seconds: 0, avoidance_seconds: 60, total_seconds: 620 },
     ...routeThrough(PLACES, [..."ABPQCD"]),
     ...overrides,
   });
@@ -80,7 +80,7 @@ describe("EditDifference", () => {
 
   it("変えた区間の数と、区間ごとに元の何km〜何kmかと長さの差を出す", () => {
     renderDifference();
-    expect(screen.getByText("から1区間")).toBeInTheDocument();
+    expect(screen.getByText("から1区間を変更")).toBeInTheDocument();
     const item = screen.getByRole("listitem");
     expect(item).toHaveTextContent("1.1〜2.2km");
     expect(item).toHaveTextContent("+2.2km");
@@ -89,7 +89,7 @@ describe("EditDifference", () => {
   it("変えた区間を元と編集後で対応づけられなければ、数（「0区間」）と区間の並びを出さずに対応づけられないと言う", () => {
     // 寄り道（B→P→B）を足しただけの編集は、編集後にだけ別の道を通る区間があり、元の側には無い。
     renderDifference({ edited: edited(routeThrough(PLACES, [..."ABPBCD"])) });
-    expect(screen.getByText("から変えた区間を対応づけられない")).toBeInTheDocument();
+    expect(screen.getByText("（変えた区間を特定できません）")).toBeInTheDocument();
     expect(screen.queryByText(/区間$/)).not.toBeInTheDocument();
     expect(screen.queryByRole("listitem")).not.toBeInTheDocument();
     expect(metric("距離")).toHaveTextContent("+2.3km");

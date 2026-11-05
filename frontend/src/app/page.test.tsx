@@ -9,7 +9,7 @@
  * 送ること、結果が出たら閉じていた「ルート結果」を開くこと、候補が「ルート結果」と地図の両方へ出て、選んだ候補が地図でも
  * 選ばれ、区間を持つかで周りの塗りが決まること、全消去は確認の窓で「消す」を押してから両方から消えること、候補がある間だけ
  * 条件のずれの印が点き全消去で消えること、走行条件の想定速度・出発時刻が生成と地図の道の詳細へ同じ値で渡ること、
- * 「条件」タブの負担の強さと「負担」タブの軸ごとの倍率が生成の要求に載り、倍率×0の軸が「評価で塗る」で未使用になること、「条件」タブで保存した条件が地図で置いた
+ * 「条件」タブの負担の強さと「負担」タブの軸ごとの倍率が生成の要求に載り、倍率×0の軸が「負担で塗る」で未使用になること、「条件」タブで保存した条件が地図で置いた
  * 出発地を持ち、呼び出すとその出発地から生成すること。
  *
  * ここで見ないもの: 子の部品は本物を描き、子が値をどう描くか（一覧の書式・印の色・天候の値）は各部品のテストが見る。
@@ -68,7 +68,7 @@ describe("ルートを作る", () => {
     await user.click(section("ルート結果"));
     expect(section("ルート結果")).toHaveAttribute("aria-expanded", "false");
 
-    await user.click(screen.getByRole("button", { name: /^評価で塗る: / }));
+    await user.click(screen.getByRole("button", { name: /^負担で塗る: / }));
     await user.click(await screen.findByRole("radio", { name: /登坂/ }));
     await user.click(screen.getByRole("checkbox", { name: "ルート後も周囲の道路を薄く塗る" }));
     await user.keyboard("{Escape}");
@@ -202,7 +202,7 @@ describe("ルートを作る", () => {
     expect((await generate(user)).cost_preference).toEqual({ strength: 1.5, multipliers: { vibration: 0 } });
   });
 
-  it("「負担」タブで倍率を×0にした軸は、「評価で塗る」で未使用になる", async () => {
+  it("「負担」タブで倍率を×0にした軸は、「負担で塗る」で未使用になる", async () => {
     const { user } = renderHome();
     await user.click(screen.getByRole("tab", { name: "負担" }));
     await user.click(
@@ -211,8 +211,8 @@ describe("ルートを作る", () => {
     await user.click(screen.getByRole("button", { name: "パネルを閉じる" }));
     /** 「未使用」を添えた選択肢の文字。 */
     const unusedAxes = async () => {
-      await user.click(screen.getByRole("button", { name: /^評価で塗る: / }));
-      const options = await screen.findByRole("radiogroup", { name: "評価で塗る" });
+      await user.click(screen.getByRole("button", { name: /^負担で塗る: / }));
+      const options = await screen.findByRole("radiogroup", { name: "負担で塗る" });
       const unused = within(options)
         .getAllByRole("radio")
         .map((row) => row.textContent ?? "")

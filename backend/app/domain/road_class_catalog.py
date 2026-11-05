@@ -89,7 +89,8 @@ def road_class_catalog(definitions: RoadClassDefinitions) -> RoadClassCatalog:
         else:
             colors = nominal_colors(layer.hue_slot or 0, len(classes), layer.tone)
             colors_on_dark = nominal_colors(layer.hue_slot or 0, len(classes), layer.tone, on_dark=True)
-            part = "・".join(labels)
+            # 区分が1つだけなら、見分けるものが無く、名前は要約の言い直しになるので並べない。
+            part = "・".join(labels) if len(labels) > 1 else ""
         layers.append(
             RoadMapLayerView(
                 id=key,

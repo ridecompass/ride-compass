@@ -48,7 +48,7 @@ MAX_TIME_BINS = 4
 
 #: 所要時間の計算が値の無い区間をどう数えるかを、利用者に言う文（`_travel_inputs`が標高の欠けを全体の坂の割合の平均で、
 #: 停止要因の件数の欠けを取込の範囲全体の平均の密度で置き換える）。置き換え方を変えたら、ここも変える。
-MISSING_TRAVEL_DATA_WORDING = "標高の無い所は道路網全体の坂の割合の平均で、止まる所の数が無い所は道路網全体の平均の数で所要時間を出しています"
+MISSING_TRAVEL_DATA_WORDING = "標高や止まる所の数が無い区間は、道路網全体の平均の値で所要時間を計算しています"
 
 #: 風の予報が無く（`LegCostComposer.wind_unavailable`）、所要時間を無風で計算したことを利用者に言う文。
 MISSING_WIND_WORDING = "風のモデルの計算値を使えなかったため、無風として所要時間を出しています"
@@ -517,9 +517,9 @@ class LegCostComposer:
         )
 
     @property
-    def turn_kickoff_penalty(self) -> tuple[str, float]:
-        """曲がる所の漕ぎ出し1回の代償の秒と、それを持つ軸。"""
-        return self._ledger.kickoff_axis_seconds
+    def turn_kickoff_penalty(self) -> float:
+        """曲がる所の漕ぎ出し1回の代償の秒（慣性の費目の軸の倍率を掛けたもの）。"""
+        return self._ledger.kickoff_seconds
 
     def transition_costs(self, turn_seconds: np.ndarray, turn_kickoffs: np.ndarray) -> np.ndarray:
         """曲がる所の費用（秒、遷移ごと）。時間に漕ぎ出しの代償を足したもの。"""

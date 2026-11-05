@@ -138,7 +138,7 @@ export function SaveConditionsButton({
                 className="min-w-0 flex-auto"
                 value={name}
                 onChange={(event) => setNameDraft(event.target.value)}
-                data-usage="いまの設定に付ける名前です。そのまま保存もできます。"
+                data-usage="いまの設定に付ける名前です。初めに入っている名前のままでも保存できます。"
               />
               <Button
                 type="submit"
@@ -187,7 +187,7 @@ export default function SavedConditionsPanel({ saved, onRecall, onRemove }: Save
             aria-label={`「${entry.name}」を呼び出す`}
             aria-haspopup="dialog"
             aria-expanded={recalling?.name === entry.name}
-            usage="このプリセットの中身を窓で見て、「反映する」で各タブの値と地図の地点を入れ替えます。作るのはいつもの「ルート生成」です。"
+            usage="このプリセットの内容を確かめる窓を開きます。「反映する」を押すと、各タブの値と地図の地点を置き換えます。ルートは、その後に「ルート生成」で作ります。"
             onClick={() => setRecalling(entry)}
           >
             <RecallSavedIcon size={18} />

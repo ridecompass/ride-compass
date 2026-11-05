@@ -14,8 +14,20 @@ import type { Coordinates, PlaceCandidate } from "@/types/route";
 
 /** 左右の端の送るボタン（送る向きごと）。 */
 const EDGES = [
-  { by: -1, side: "left-0", label: "前の候補", mark: "‹", usage: "前の候補を札に出します。札を右へ払っても送れます。" },
-  { by: 1, side: "right-0", label: "次の候補", mark: "›", usage: "次の候補を札に出します。札を左へ払っても送れます。" },
+  {
+    by: -1,
+    side: "left-0",
+    label: "前の候補",
+    mark: "‹",
+    usage: "前の候補を表示します。カードを右へスワイプしても切り替えられます。",
+  },
+  {
+    by: 1,
+    side: "right-0",
+    label: "次の候補",
+    mark: "›",
+    usage: "次の候補を表示します。カードを左へスワイプしても切り替えられます。",
+  },
 ] as const;
 
 /** 指を左右へこれだけ動かしたら、隣の候補へ送る(px)。これより短い動きは押しに数える。 */
@@ -74,7 +86,7 @@ export default function PlaceCandidateCard({
     <section
       {...(floating ? mapOverlayEdge("bottom") : {})}
       aria-label="探した候補"
-      aria-roledescription="札"
+      aria-roledescription="カード"
       className={cn(
         "relative flex items-center gap-2 rounded-sm px-5 py-2",
         floating && cardVariants({ variant: "float" }),

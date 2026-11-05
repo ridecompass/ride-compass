@@ -57,7 +57,7 @@ export default function FirstVisitIntro({ isMobile, locationUnknown }: FirstVisi
         </Button>
       </div>
       <p className={cn(textVariants({ variant: "body" }), "m-0")}>
-        ロードバイクで走る周回ルートを、道の走りやすさを評価して作ります。
+        ロードバイクで走る周回ルートを、所要時間と道の負担が小さくなるように作ります。
       </p>
       <ul className={cn(textVariants({ variant: "body" }), "m-0 flex list-none flex-col gap-1.5 p-0")}>
         <li className="flex items-start gap-1.5">

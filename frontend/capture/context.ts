@@ -53,7 +53,7 @@ export interface CaptureContext {
    * backend は撮影用の資格情報を通さない）。選べなければ、選べるタブを並べて止まる。
    */
   openAdmin(options?: OpenAdminOptions): Promise<Locator>;
-  /** 「評価で塗る」のレンズを名前で選び（null は選んでいない状態へ戻す）、読み終わりまで待つ。選べなければ、選べる名前を並べて止まる。 */
+  /** 「負担で塗る」のレンズを名前で選び（null は選んでいない状態へ戻す）、読み終わりまで待つ。選べなければ、選べる名前を並べて止まる。 */
   chooseLens(label: string | null): Promise<void>;
   /**
    * 「表示」の一覧の行の名前で凡例の内訳を開き、その内訳を返す。一覧が閉じていれば開く。`row` を渡せば、その行の説明も開く。
@@ -101,8 +101,8 @@ const OVERLAY_LIST_NAME = "地図に出す情報";
 
 /** 選び損ねた直後に呼ぶので、選択肢が閉じていれば開く。 */
 async function lensLabels(page: Page): Promise<string[]> {
-  const group = page.getByRole("radiogroup", { name: "評価で塗る" });
-  if (!(await group.isVisible())) await page.getByRole("button", { name: /^評価で塗る: / }).click();
+  const group = page.getByRole("radiogroup", { name: "負担で塗る" });
+  if (!(await group.isVisible())) await page.getByRole("button", { name: /^負担で塗る: / }).click();
   const labels = await group.getByRole("radio").allInnerTexts();
   return labels.map((label) => label.replace(/\s+/g, " ").trim());
 }

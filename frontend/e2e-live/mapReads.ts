@@ -53,16 +53,16 @@ export async function renderedRoads(page: Page, sourceId: string): Promise<Recor
   );
 }
 
-/** 「評価で塗る」のピル（押すとレンズの一覧を開く）。 */
+/** 「負担で塗る」のピル（押すとレンズの一覧を開く）。 */
 function lensPill(page: Page) {
-  return page.getByRole("button", { name: /^評価で塗る: / });
+  return page.getByRole("button", { name: /^負担で塗る: / });
 }
 
 /** レンズを名前で選ぶ（null はレンズを選んでいない状態へ戻す）。一覧は選んでも閉じず、選んでいる行をもう一度押すと外れるので、
  *  選び済みなら押さず、Escape で閉じる。行の名前には走る条件・「未使用」の印が続くので、名前の要素で当てる。 */
 export async function chooseLens(page: Page, label: string | null): Promise<void> {
   await lensPill(page).click();
-  const group = page.getByRole("radiogroup", { name: "評価で塗る" });
+  const group = page.getByRole("radiogroup", { name: "負担で塗る" });
   await expect(group).toBeVisible();
   if (label === null) {
     const clear = page.getByRole("button", { name: "選択を外す" });

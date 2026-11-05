@@ -132,7 +132,7 @@ function AvoidanceLevelRow({
       <ToggleGroup
         className="ml-auto"
         aria-label={`${label}の避け方`}
-        usage="この行に当たる道を、通る・なるべく避ける・通らないから選びます。「なるべく避ける」は遠回りが小さければ別の道を通り、「通らない」は経路から完全に外れます。いくつもの行に当たる道は、強い方の選び方が効きます。"
+        usage="この行に該当する道を、通る・なるべく避ける・通らないから選びます。「なるべく避ける」は遠回りが小さければ別の道を通り、「通らない」は経路から完全に外します。複数の行に該当する道には、より強い避け方を適用します。"
         value={level}
         onValueChange={(next) => onLevelChange(next as AvoidanceLevel)}
       >

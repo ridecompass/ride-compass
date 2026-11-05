@@ -131,10 +131,11 @@ wayの長さ（0はNULL）になる——件数と長さは必ず同じ側から
   （`domain/leg_costs.py: LegCostComposer.values_at_rows`が`domain/ledger_costs.py: LedgerCosts.row_seconds`を呼び、走行の模型は
   `SegmentSpeedModel.ride`に行を渡すとその行の点の間だけを解く）。点の間ごとの計算は互いに依らないので、全部を解いた探索の
   値と同じになり、所要時間と内訳の和が探索の費用に合う。回避指定の秒は、避け方の倍率の1を越えた分 ×（区間の所要時間＋代償）。
-  曲がる所の漕ぎ出しの代償は、曲がった先の区間の慣性の費目の軸へ足す（`services/road_graph_candidates.py`）。
+  曲がる所の漕ぎ出しの代償（慣性の費目の軸の倍率を掛けたもの）は、曲がった先の区間の内訳の別の欄`turn_seconds`に置き、
+  軸の秒には足さない（`services/road_graph_candidates.py`。軸の秒は地図のレンズと同じ道の量）。
 - **欠けの埋め方**: 停止要因の密度と、道のストレスの軸の材料の欠けは、`domain/road_network.py: material_fills`の分布で埋める
   （数値の材料の平均は`RoadNetwork.numeric_means`で道路網と同じ寿命で1回だけ、区分の材料の割合は道のストレスの軸が読む分だけ
-  生成ごとに求める）。停止要因の密度は所要時間（待ち）と体力（漕ぎ出し）の両方に同じ値を使う。
+  道路網・区分の列・材料の組ごとに1回だけ求めて取っておく。`services/graph_service.py: network_fills`）。停止要因の密度は所要時間（待ち）と体力（漕ぎ出し）の両方に同じ値を使う。
 
 ## 管理DBの定義（道の区分・費用の軸）
 

@@ -67,28 +67,28 @@ class ElevationStretch(StrictModel):
 
 
 class PenaltyBreakdown(StrictModel):
-    """代償の秒の内訳（費目の帳簿の式、`domain/ledger_costs.py`）。所要時間・軸ごとの代償・回避指定の和が費用になる。
+    """代償の秒の内訳（費目の帳簿の式、`domain/ledger_costs.py`）。所要時間・軸ごとの代償・曲がる所・回避指定の和が費用になる。
 
-    軸の名前と帳簿は`GET /api/cost-axes`が持ち、回避指定の行の名前は同じ応答の`avoidance_label`が持つ。
+    軸の名前と帳簿は`GET /api/cost-axes`が持ち、曲がる所と回避指定の行の名前は同じ応答の`turn_label`・`avoidance_label`が持つ。
     """
 
-    # 軸id→代償の秒（つまみ×倍率を掛けたもの）。どの軸も0以上で、倍率0の軸も0として持つ。曲がる所の漕ぎ出しは、曲がった
-    # 先の区間の慣性の費目の軸に入る。
+    # 軸id→道の代償の秒（つまみ×倍率を掛けたもの）。どの軸も0以上で、倍率0の軸も0として持つ。地図のレンズと同じ量。
     axis_seconds: dict[str, float]
+    # 区間へ入る所で曲がった漕ぎ出しの代償の秒（慣性の費目の軸の倍率を掛けたもの）。道1本の値ではないので軸の秒に入れない。
+    turn_seconds: float
     # 避け方の倍率（道の区分ごとの「なるべく避ける」）が、その道の所要時間と代償に上乗せした秒。
     avoidance_seconds: float
 
     @computed_field  # type: ignore[prop-decorator]
     @property
     def total_seconds(self) -> float:
-        """代償の秒の和（軸ごとの秒と回避指定の秒）。所要時間に足すと、候補を並べた費用になる。"""
-        return round(sum(self.axis_seconds.values(), self.avoidance_seconds), COST_SECONDS_DECIMALS)
+        """代償の秒の和（軸ごとの秒と曲がる所と回避指定の秒）。所要時間に足すと、候補を並べた費用になる。"""
+        return round(sum(self.axis_seconds.values(), self.turn_seconds + self.avoidance_seconds), COST_SECONDS_DECIMALS)
 
 
 def lens_seconds_per_km(penalty: PenaltyBreakdown, distance_km: float) -> dict[str, float] | None:
-    """地図のレンズと同じ量（レンズid→1kmあたりの代償の秒。総合`TOTAL_LENS_ID`は軸の和）。回避指定は道の区分の指定で道の値では
-    ないので入れない。ルートの値は曲がる所の漕ぎ出しを、曲がった先の区間の慣性の費目の軸に含む（道1本のレンズには無い）。
-    長さが0ならNone。"""
+    """地図のレンズと同じ量（レンズid→1kmあたりの代償の秒。総合`TOTAL_LENS_ID`は軸の和）。曲がる所と回避指定は道1本の値では
+    ないので入れない（ルートの線と周りの道を同じ量で塗る）。長さが0ならNone。"""
     if not distance_km > 0:
         return None
     per_km = lens_values_with_total({axis_id: seconds / distance_km for axis_id, seconds in penalty.axis_seconds.items()}, 0.0)
@@ -104,6 +104,7 @@ def merge_penalty_breakdowns(parts: Iterable[PenaltyBreakdown]) -> PenaltyBreakd
             totals[axis_id] += seconds
     return PenaltyBreakdown.model_construct(
         axis_seconds={axis_id: round(seconds, COST_SECONDS_DECIMALS) for axis_id, seconds in totals.items()},
+        turn_seconds=round(sum(part.turn_seconds for part in present), COST_SECONDS_DECIMALS),
         avoidance_seconds=round(sum(part.avoidance_seconds for part in present), COST_SECONDS_DECIMALS),
     )
 
@@ -122,8 +123,8 @@ class RouteFacts(StrictModel):
 
     # 標高の無い道の長さ（km）。獲得標高に数えず、所要時間は道路網全体の坂の割合で走った長さ。
     elevation_unknown_km: float
-    # 費用の軸id→その軸の事実（`services/road_graph_candidates.py: _route_facts`）。体力の軸は費用の軸の定義が無くても
-    # 全部、道のストレスの軸は定義があるものだけ。
+    # 費用の軸id→その軸の事実（`services/road_graph_candidates.py: _route_facts`）。体力の軸は全部、道のストレスの軸は
+    # 定義にあるもの。
     axes: dict[str, AxisFact]
 
 

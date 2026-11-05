@@ -262,6 +262,11 @@ export function useMapView({
       hasDetail,
       routeHidden: hasSelectedRoute && layerVisibility[ROUTE_LAYER_ID] !== true,
       premises: costLensPremises(painted, costCatalog, lensEquivalents),
+      catalogNotice: costCatalog.loaded
+        ? null
+        : costCatalog.failed
+          ? "負担の種類の一覧を取得できないため、塗る負担を選べません。"
+          : "負担の種類の一覧を読み込んでいます。",
       dataStatus: lensFetch
         ? deriveFetchLayerStatus(
             lensFetch.loading,

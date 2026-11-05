@@ -51,7 +51,7 @@ MSMは数値予報モデルの出力で観測値・公式発表の代わりに�
 | `wbgt.py` | WBGT警戒レベル判定（熱中症予防運動指針の5段階閾値）・提供期間判定・段階の表示名（`wbgt.py: WBGT_LEVEL_LABELS`）・情報提供地点`wbgt.py: WbgtPoint`と予測値`wbgt.py: WbgtForecast`・今の予測の選び方（`wbgt.py: current_forecast`） | `wbgt_service.py`・`warning_display.py` |
 | `flood_forecast.py` | アクティブ予報抽出（電文1件`flood_forecast.py: FloodBulletin`から。電文の形とコード→段の読み替えは`flood_client.py`が持つ）・段階の表示名（`FLOOD_LEVEL_LABELS`） | `flood_service.py`・`warning_display.py` |
 | `jma_warning_timeline.py` | 警報級の時系列の段の並び`jma_warning_timeline.py: WarningTimeline`と、区域の段の引き方（二次細分区域に無ければ一次細分区域、区域の中を所で分けていれば陸上）・注意報級かの判定`jma_warning_timeline.py: is_advisory_level`・ルートの点ごとの区域を通る順の通過にまとめる`jma_warning_timeline.py: route_passes` | `warning_timeline_service.py` |
-| `twilight.py` | 日の出日没計算（`twilight.py: sunrise_sunset_jst`） | `jma_amedas_service.py`（表示用）・[routing-engine.md](routing-engine.md)のroad_graphエンジン（night軸の動的化） |
+| `twilight.py` | 日の出日没計算（`twilight.py: sunrise_sunset_jst`） | `jma_amedas_service.py`（表示用） |
 
 `twilight.py`は外部APIに依存しないローカルの天文計算のみ。
 

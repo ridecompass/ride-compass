@@ -100,7 +100,7 @@ def _origin_label(origin: Coordinates) -> str:
 
 #: 経由地・目的地を通る経路を結べなかったときの、利用者へ見せる理由。
 _UNREACHABLE_POINTS_REASON = (
-    "指定した経由地・目的地を通る経路が見つかりませんでした。地点や除外する道路の設定を変えてお試しください。"
+    "指定した経由地・目的地を通る経路が見つかりませんでした。地点や「回避」の設定を変えてお試しください。"
 )
 
 
@@ -179,11 +179,11 @@ class _DistanceFinish:
         if not turnarounds:
             ring_lower_m, ring_upper_m, _ = turnaround_ring_m(self.distance_km, self.distance_tolerance_km)
             return _Selection.empty(
-                f"起点から片道{ring_lower_m / 1000:.1f}〜{ring_upper_m / 1000:.1f}kmで到達できる折返し地点が見つかりませんでした。"
-                "距離や除外する道路の設定を変えてお試しください。"
+                f"出発地から片道{ring_lower_m / 1000:.1f}〜{ring_upper_m / 1000:.1f}kmで到達できる折返し地点が見つかりませんでした。"
+                "距離や「回避」の設定を変えてお試しください。"
                 if not self.points.waypoints and fixed.closes
                 else f"置いた地点を通って全長{self.distance_km:.1f}km前後になる経路が見つかりませんでした。"
-                "距離や地点、除外する道路の設定を変えてお試しください。",
+                "距離や地点、「回避」の設定を変えてお試しください。",
                 f"turnarounds=0 {_pool_note(0, pool_size)} select_ms={select_ms}",
             )
 
@@ -252,13 +252,13 @@ class _DistanceFinish:
         """
         parts = []
         if failed:
-            parts.append(f"{failed}件の折返し候補で復路の探索に失敗しました[除外設定をご確認ください]")
+            parts.append(f"{failed}件の折り返し地点で、帰り道が見つかりませんでした[「回避」の設定をご確認ください]")
         if filtered_out:
             parts.append(
                 f"{filtered_out}件の周回候補は指定距離"
                 f"[{self.distance_km:.1f}km±{self.distance_tolerance_km:.1f}km]から外れました"
             )
-        return "、".join(parts) + "。距離や除外する道路の設定を変えてお試しください。"
+        return "、".join(parts) + "。距離や「回避」の設定を変えてお試しください。"
 
 
 @dataclass(frozen=True)
@@ -305,7 +305,7 @@ class _NoDistanceFinish:
             if self.points.waypoints:
                 reason = _UNREACHABLE_POINTS_REASON
             else:
-                reason = "指定した目的地までの経路が見つかりませんでした。地点や除外する道路の設定を変えてお試しください。"
+                reason = "指定した目的地までの経路が見つかりませんでした。地点や「回避」の設定を変えてお試しください。"
             return _Selection.empty(reason, f"no via-node candidates select_ms={select_ms}")
         if fixed.closes:
             def arrange_loops(drafts: list[EvaluatedRoute]) -> list[RouteCandidate]:
@@ -392,7 +392,7 @@ class RouteGenerator:
             )
             self.last_no_candidates_reason = (
                 "探索範囲の道路が多すぎるため、ルートを生成できませんでした。"
-                "距離を短くするか、経由地・目的地を起点に近づけてお試しください。")
+                "距離を短くするか、経由地・目的地を出発地に近づけてお試しください。")
             return None
         except SearchMemoryBusyError as exc:
             logger.warning(
@@ -408,7 +408,7 @@ class RouteGenerator:
                 log_label, origin_label, log_detail, exc, elapsed_ms(started),
             )
             self.last_no_candidates_reason = (
-                "起点から走り出せる道が見つかりませんでした。出発地を道路沿いへ動かしてお試しください。")
+                "出発地から走り出せる道が見つかりませんでした。出発地を道路沿いへ動かしてお試しください。")
             return None
         if context is None:
             logger.warning(
@@ -416,7 +416,7 @@ class RouteGenerator:
                 log_label, origin_label, log_detail, elapsed_ms(started),
             )
             self.last_no_candidates_reason = (
-                f"起点付近の道路データが未整備のため、{failure_phrase}")
+                f"出発地付近の道路データが未整備のため、{failure_phrase}")
         return context
 
     async def generate_loops(

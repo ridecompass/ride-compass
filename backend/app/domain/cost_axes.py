@@ -41,6 +41,10 @@ HEADWIND_FACT_LABEL = "向かい風"
 
 #: 代償の内訳で、避け方の倍率（道の区分ごとの「なるべく避ける」）が上乗せした秒の行の名前。軸ではないので倍率を持たない。
 AVOIDANCE_LABEL = "回避指定"
+#: 代償の内訳の、曲がる所の漕ぎ出しの行の名前（道1本の値ではないので軸の行に入れない）。
+TURN_LABEL = "曲がる所"
+#: 曲がる所の漕ぎ出しに倍率が掛かる軸（慣性の費目の軸）。内訳の曲がる所の行は、この軸の色で塗る。
+TURN_AXIS_ID = next(axis_id for axis_id, item in EFFORT_AXES.items() if item == "inertia")
 
 
 class LensBands(StrictModel):

@@ -56,8 +56,8 @@ SQLと式の木の材料では作れない体力（走行の模型）を、backe
   `strength`・`multipliers`のクエリ）は、段の境目の秒が、標準の人・利用者のつまみと倍率・無風の1kmの道でどれだけの事実に当たるか（登坂は斜度、向かい風は風速、停止は止まる回数、摩擦と
   道のストレスは区分・折れ点ごとの秒）。事実の値を刻んだ道を並べて同じ費用の式へ通し、秒から引き戻す——別の換算の式を持たない。
 - **キャッシュしない**: 値は風の時刻・想定速度で変わり、タイル1枚の区間で走行の模型を1回解くだけ。欠けを埋める区分の割合
-  だけは全区間を数えるので、道の網・区分の列・材料の組ごとにプロセスに1つ持つ（`services/graph_service.py: network_fills`）。段の目安も、
-  定義・標準の帳簿の値・道の区分の組ごとに1回だけ求める。
+  だけは全区間を数えるので、道の網・区分の列・材料の組ごとにプロセスに1つ持つ（`services/graph_service.py: network_fills`）。段の目安は
+  利用者の値（つまみと倍率）で変わるので、要求ごとに求める。
 
 ## 道の窓（`services/region_service.py: RoadInspectorService`）
 
@@ -84,8 +84,9 @@ SQLと式の木の材料では作れない体力（走行の模型）を、backe
 - 鍵はタイルが焼いた`feature_key`と同じもので、ズームによって区間・wayのどちらかになる。値の無い材料は載せない。
 - 静的な路面タイル（`/api/region/road-surface-tiles`、MVT）とは別経路——フロントは同じz/x/yに対して両方を取得し、
   MapLibreの`setFeatureState`で合成する（[map-axis-coloring.md](../frontend/map-axis-coloring.md)参照）。
-- 路面・点のタイルと同じレート制限・座標検証を共有し、道の線の層の値はDB接続プールのsemaphore
-  （`api/routers/_tile_http.py: region_tile_semaphore`、`config.py: road_tile_max_concurrent`）も共有する。道の窓は押すたびの
+- 路面・点のタイルと同じレート制限・座標検証を共有し、道の線の層の値とレンズの値は同時実行の上限のsemaphore
+  （`api/routers/_tile_http.py: region_tile_semaphore`、`config.py: road_tile_max_concurrent`）も共有する（レンズはDBを読まないが、
+  タイルごとの計算がルート生成と共有のスレッドの置き場を埋めないように待たせる）。道の窓は押すたびの
   単発の要求なので専用の上限を持つ。
 
 ## タイルの材料（`services/feature_materials.py`）

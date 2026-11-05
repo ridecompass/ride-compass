@@ -128,7 +128,7 @@ export default function PointStrip({
   );
   const endChip = (role: "origin" | "destination", title: string, name: string) => (
     <Button
-      {...pressOf({ role }, `${title}: ${name}`, "この地点を選び、並びの下に詳しくを出します。")}
+      {...pressOf({ role }, `${title}: ${name}`, "この地点を選び、並びの下に詳細を表示します。")}
       variant="ghost"
       size="bare"
       shape="pill"
@@ -169,7 +169,7 @@ export default function PointStrip({
             {...pressOf(
               { role: "waypoint", index },
               `経由地${index + 1}: ${name}`,
-              "この経由地を選び、並びの下に詳しくを出します。",
+              "この経由地を選び、並びの下に詳細を表示します。",
             )}
             key={index}
             variant="ghost"

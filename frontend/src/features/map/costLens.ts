@@ -99,5 +99,5 @@ export function costLensPremises(
         );
   return lines.length === 0
     ? []
-    : ["目安（いまの負担の強さと倍率で、無風・その事実だけの1kmの道を走ったとき）", ...lines];
+    : ["目安（いまの負担の強さと倍率で、その条件だけを持つ1kmの道を無風で走った場合）", ...lines];
 }

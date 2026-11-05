@@ -59,7 +59,7 @@ export default function PlaceSearchBar({
         disabled={full}
         aria-label="探す"
         className="size-7 flex-none text-[var(--foreground)]"
-        usage="打った文字で、いまの地図の真ん中から探します（地図を動かしてから押すと、その辺りで探し直します）。"
+        usage="入力した文字で、地図の中心の周辺を探します。地図を動かしてから押すと、その周辺で探し直します。"
       >
         <SearchPlaceIcon size={16} />
       </Button>
@@ -75,7 +75,7 @@ export default function PlaceSearchBar({
         className="min-w-0 flex-auto self-stretch bg-transparent text-[length:var(--font-size-md)] text-[var(--foreground)] outline-none placeholder:text-[var(--color-muted)] [&::-webkit-search-cancel-button]:appearance-none"
         {...lookup.inputProps()}
         onFocus={lookup.browse}
-        data-usage={`住所か施設の名前を入れて探します。${PREDICTION_MIN_LENGTH}文字から、打つのを止めると候補が出ます。候補を選ぶと${chooseResult}。`}
+        data-usage={`住所か施設の名前を入れて探します。${PREDICTION_MIN_LENGTH}文字以上入力して手を止めると、候補が出ます。候補を選ぶと${chooseResult}。`}
       />
       {lookup.browsing && (
         <Button
@@ -84,7 +84,7 @@ export default function PlaceSearchBar({
           onClick={onClose}
           aria-label={`${title}の候補を閉じる`}
           className="size-6 flex-none text-[var(--foreground)]"
-          usage="地点の検索を閉じて、打った文字を消します。"
+          usage="地点の検索を閉じ、入力した文字を消します。"
         >
           ✕
         </Button>

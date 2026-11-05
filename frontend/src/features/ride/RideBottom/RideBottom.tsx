@@ -43,7 +43,7 @@ export default function RideBottom({ status, offRoute, onResume, profile, overvi
           size="md"
           className="pointer-events-auto gap-1.5 shadow-md"
           onClick={onResume}
-          usage="休んでいる間は、現在地を受けず、画面も点けたままにしません。押すと現在地を受け直し、休む前の進み具合から案内を続けます。"
+          usage="休止中は、現在地の取得と画面の常時点灯を止めています。押すと現在地の取得を再開し、休止前の進み具合から案内を続けます。"
         >
           <RideModeIcon />
           続きから走る
@@ -55,7 +55,7 @@ export default function RideBottom({ status, offRoute, onResume, profile, overvi
           size="md"
           className="pointer-events-auto gap-1.5 shadow-md"
           onClick={onResume}
-          usage="地図を指で動かしている間は、現在地を追いません。押すと地図を現在地へ戻し、続きを追います。"
+          usage="地図を指で動かしている間は、現在地を追いません。押すと地図を現在地へ戻し、再び現在地に合わせて動かします。"
         >
           <LocateIcon />
           現在地へ戻る

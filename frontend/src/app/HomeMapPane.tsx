@@ -166,7 +166,7 @@ export default function HomeMapPane({
         <MapOverlayControls {...mapView.overlayControls} />
         {upcomingTurn !== null && <TurnCard direction={upcomingTurn.direction} distanceM={upcomingTurn.distanceM} />}
       </div>
-      {/* 検索の欄の下の段の中央に「評価で塗る」を置く。走行中も、ルートの線と道の色が何かを示すため同じ大きさで出す。
+      {/* 検索の欄の下の段の中央に「負担で塗る」を置く。走行中も、ルートの線と道の色が何かを示すため同じ大きさで出す。
           左右の余白は、右の縦の列を両側で避ける幅（中央に置くため。左上の「表示」は列と同じ幅なので、これで避けられる）。
           「表示」の横に収まらないほど地図が狭い間は、「表示」の下の段へ下げ、余白は変えずに箱を左へずらして左端を「表示」の左端にそろえる（余白のクラスを上書きしない）。 */}
       <div
@@ -222,7 +222,7 @@ export default function HomeMapPane({
                 disabled={place.locating}
                 aria-label="現在地に移動"
                 title="現在地に移動"
-                usage="現在地を取り直して、地図をそこへ動かします。出発地は変えません。"
+                usage="現在地を取得し直して、地図をそこへ動かします。出発地は変えません。"
                 className={cn(place.locating && "cursor-wait opacity-60")}
               >
                 {place.locating ? "…" : <LocateIcon />}

@@ -93,22 +93,3 @@ export function durationDifferenceLabel(
   if (minutes === 0) return null;
   return `${signMark(minutes)}${Math.abs(minutes)}${MINUTE_UNIT}`;
 }
-
-/**
- * 生成した候補の並び: 最速の印の付いた1本を先頭に、残りを所要時間の短い順。所要時間の無い候補は末尾。同じ所要時間は
- * 受け取った並び（backendの費用・1kmあたりの代償の秒の昇順）を保つので、同着なら代償の小さい方が先。
- */
-export function orderGenerated<T extends Pick<RouteCandidate, "estimated_duration_seconds" | "is_fastest">>(
-  routes: readonly T[],
-): T[] {
-  const secondsOf = (route: T) => route.estimated_duration_seconds ?? Number.POSITIVE_INFINITY;
-  return routes
-    .map((route, index) => ({ route, index }))
-    .sort(
-      (a, b) =>
-        Number(b.route.is_fastest) - Number(a.route.is_fastest) ||
-        secondsOf(a.route) - secondsOf(b.route) ||
-        a.index - b.index,
-    )
-    .map(({ route }) => route);
-}

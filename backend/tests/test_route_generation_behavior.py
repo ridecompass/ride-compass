@@ -941,7 +941,7 @@ async def test_a_route_timed_without_the_wind_forecast_says_so(engine_over):
 
 
 async def test_the_duration_and_the_penalty_of_each_axis_and_of_the_avoided_roads_add_up_to_the_cost(engine_over):
-    """候補の費用（並べ方の値）は、所要時間と、軸ごとの代償の秒と、回避指定（なるべく避ける道）で上乗せした秒の和になる。
+    """候補の費用（並べ方の値）は、所要時間と、軸ごとの代償の秒と、曲がる所の秒と、回避指定（なるべく避ける道）で上乗せした秒の和になる。
     合わないと、画面の内訳を見ても候補がなぜその順に並んだのかが分からない。どの道もなるべく避け、道100だけが振動の材料を持つ。"""
     definitions = road_classes(
         {"kind": classification({"local": [fact_is(HIGHWAY, "residential")]})},
@@ -958,8 +958,8 @@ async def test_the_duration_and_the_penalty_of_each_axis_and_of_the_avoided_road
         penalty = candidate.penalty
         assert penalty is not None and penalty.avoidance_seconds > 0
         assert set(penalty.axis_seconds) == {*EFFORT_AXES, BAD_AXIS}
-        assert candidate.estimated_duration_seconds + sum(penalty.axis_seconds.values()) + penalty.avoidance_seconds \
-            == pytest.approx(candidate.cost_seconds, abs=0.5)
+        assert candidate.estimated_duration_seconds + sum(penalty.axis_seconds.values()) + penalty.turn_seconds \
+            + penalty.avoidance_seconds == pytest.approx(candidate.cost_seconds, abs=0.5)
         # 区間（ビン）の内訳を足すと候補の内訳になる（道のりのグラフと結果の内訳が同じ秒を見せる）。
         segment_avoidance = sum(segment.penalty.avoidance_seconds for segment in candidate.segments)
         assert segment_avoidance == pytest.approx(penalty.avoidance_seconds, abs=0.5)

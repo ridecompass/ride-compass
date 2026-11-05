@@ -65,7 +65,7 @@ test("モバイル: レンズの凡例が、段階の細かい軸でも幅に収
       ),
   });
 
-  await page.getByRole("button", { name: /^評価で塗る:/ }).click();
+  await page.getByRole("button", { name: /^負担で塗る:/ }).click();
   await page.getByRole("radio", { name: FINE_STEP_AXIS_LABEL }).click();
   await page.getByRole("button", { name: `${FINE_STEP_AXIS_LABEL}の凡例` }).click();
   await expect(page.getByLabel("凡例の全段階をまとめて表示/非表示")).toBeVisible();

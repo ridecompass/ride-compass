@@ -111,9 +111,9 @@ export default function RouteSplicePanel({
         {/* 使い方は画面へ書かずここへ置く（設計原則「冗長なものは削る」）。 */}
         {/* 押す所（24px四方）の余りを両脇の間に重ね、デスクトップのパネルの幅に1行で収める。「‹」は余りをカードの余白へ寄せる。 */}
         <InfoPopover triggerAriaLabel="区間の乗り換えの説明" triggerClassName="-mx-1">
-          地図の破線が、いまの道から乗り換えられる先です。タップするとそこへ乗り換わり、その先に
-          分かれ道があれば次の破線が出ます。太い線が、いま作っているルートです。負担の棒は中央が0で、左[−]へ
-          伸びた軸ほど負担が減り、右[＋]へ伸びた軸ほど増えています。
+          {"地図の破線が、いまの道から乗り換えられる先です。タップするとそこへ乗り換わり、その先に分かれ道があれば次の破線が" +
+            "出ます。太い線が、いま作っているルートです。負担の棒は中央が0で、左[−]へ伸びた種類ほど負担が減り、右[＋]へ" +
+            "伸びた種類ほど増えています。"}
         </InfoPopover>
         {appliedCount > 0 && (
           <span className={cn(textVariants({ variant: "hint" }), "ml-1 whitespace-nowrap")}>{appliedCount}回</span>
@@ -170,7 +170,9 @@ export default function RouteSplicePanel({
       </div>
 
       {unavailable ? (
-        <p className={textVariants({ variant: "hint" })}>この候補は通る道の並びを持たないため、区間を出せません。</p>
+        <p className={textVariants({ variant: "hint" })}>
+          この候補には通る道の情報が無いため、乗り換えられる区間を表示できません。
+        </p>
       ) : (
         <>
           <SpliceMetricGrid displayed={displayed} preview={preview} />
@@ -205,7 +207,7 @@ export default function RouteSplicePanel({
               ))
             ) : preview ? (
               // 評価済みで棒が空なのは、どの軸の差も棒に出す下限に届かないとき。押す案内を残すと押しても変わらない。
-              "どの軸の負担も、元とほぼ変わりません"
+              "どの種類の負担も、元のルートとほぼ変わりません"
             ) : appliedCount > 0 ? (
               <GuideText text="「差分を見る」を押すと、乗り換えた結果が出ます" />
             ) : hasAlternatives ? (

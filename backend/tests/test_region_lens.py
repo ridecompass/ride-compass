@@ -26,7 +26,13 @@ from app.domain.tuning import tuning_value
 from app.domain.lens_values import LENS_AGAINST_LEAF, LENS_ALONG_LEAF
 from app.main import app
 from app.services.lens_service import LensService
-from tests.route_world import BAD_MATERIAL, COORDINATES, CENTER, WAYS, Weather, road_network, serve_road_network
+from datetime import datetime
+
+from app.domain.time_zone import JST
+from tests.route_world import (
+    BAD_MATERIAL, COORDINATES, CENTER, NORTH_EAST, SOUTH_WEST, WAYS, Weather, at, edges_of, generator_for, road_network,
+    serve_road_network,
+)
 
 #: 段の境目（1kmあたりの代償の秒）。
 THRESHOLDS = [4.0, 20.0]
@@ -87,6 +93,38 @@ async def test_each_axis_lens_paints_its_own_penalty_seconds_per_km_and_the_tota
     for leaf in (LENS_ALONG_LEAF, LENS_AGAINST_LEAF):
         assert total[str(CLIMBING_WAY)][leaf] == pytest.approx(
             sum(values[str(CLIMBING_WAY)][leaf] for values in by_axis.values()))
+
+
+async def test_the_route_and_the_map_lens_count_the_same_seconds_on_the_same_roads(client, cost_axes, road_network_root):
+    """ルートの軸ごとの代償の秒は、通った道ごとの地図のレンズの値（1kmあたりの秒、通った向き）に道の長さを掛けて足したものと
+    同じになる。合わないと、ルートの線と周りの道が同じ道で違う色になり、内訳とレンズで同じ道の負担が食い違う。曲がる所の
+    漕ぎ出しは道1本の値ではないので軸の秒に入れず、内訳の別の行で費用に入る。"""
+    network = road_network(WAYS, COORDINATES, bad_ways=(FLAT_ROUGH_WAY,), gradient_of={CLIMBING_WAY: 6.0},
+                           stop_density_of={STOPPING_WAY: 3.0})
+    candidates = await generator_for(road_network_root, network, None).generate_via_waypoints(
+        at(SOUTH_WEST), [], destination=at(NORTH_EAST), max_routes=3, start_time=datetime(2026, 5, 1, 9, tzinfo=JST))
+    # 格子はタイルの端をまたぐので、格子のノードを含むタイルを全部取って重ねる（またぐ道は両方のタイルに同じ値で載る）。
+    tiles = {tuple(int(v) for v in tile_position(lon, lat, Z)) for lat, lon in COORDINATES.values()}
+    lenses: dict[str, dict[str, dict[str, float]]] = {}
+    for axis_id in (*EFFORT_AXES, "rough"):
+        lenses[axis_id] = {}
+        for x, y in tiles:
+            response = await client.get(f"/api/region/lens/{axis_id}/{Z}/{x}/{y}", params={"speed_kmh": ASSUMED_SPEED_KMH})
+            assert response.status_code == 200, response.text
+            lenses[axis_id].update(response.json())
+
+    assert candidates
+    for candidate in candidates:
+        expected = dict.fromkeys(lenses, 0.0)
+        for way, segment, forward in edges_of(candidate):
+            (row,) = np.flatnonzero((network.edge_way_id == way) & (network.edge_segment == segment)
+                                    & (network.edge_forward == forward))
+            km = float(network.distance_m[row]) / 1000.0
+            for axis_id, values in lenses.items():
+                expected[axis_id] += values[str(way)][LENS_ALONG_LEAF if forward else LENS_AGAINST_LEAF] * km
+        penalty = candidate.penalty
+        assert penalty.axis_seconds == pytest.approx(expected, abs=0.5)
+        assert candidate.estimated_duration_seconds + penalty.total_seconds == pytest.approx(candidate.cost_seconds, abs=0.5)
 
 
 async def test_the_lens_paints_with_the_users_strength_and_multipliers_like_the_route(client, cost_axes, road_network_root):
