@@ -114,7 +114,6 @@ export function useMapView({
   const mapCatalog = useMapCatalog(mapTheme);
   const costCatalog = useCostAxisCatalog();
   const lenses = mapCatalog.lenses;
-  const lensEquivalents = useLensEquivalents(costPreference, lenses.length > 0);
   // 保存するのは触った層の真偽だけで、既定は層の一覧（道の線の層は画面の設定が届いてから決まる）から重ねる。
   const [storedVisibility, setLayerVisibility] = useStoredState<MapLayerVisibility>(
     "ridecompass:layer-visibility",
@@ -165,6 +164,7 @@ export function useMapView({
   const painted = paintedLensId(lens, hasDetail, keepAfterRoute);
   // 道ごとの材料は、全道路を塗っているレンズの分だけ取る（塗っていないレンズの値は地図に出ない。表示中のものだけ叩く）。
   const fetchLenses = useMemo(() => lenses.filter((candidate) => candidate.lensId === painted), [lenses, painted]);
+  const lensEquivalents = useLensEquivalents(costPreference, fetchLenses.length > 0);
   // 走っていない間の走る向きは、地図の上の向きそのもの。向きを段に丸めるのは、回転や走行中の細かな向きの揺れのたびに式の木を
   // 解き直さないため。式の木と道の窓は同じ丸めた向きで値を求める。
   const bearingDeg = snapDeg(riding?.bearingDeg ?? viewport?.bearing ?? 0, WAY_BEARING_STEP_DEG);

@@ -126,7 +126,8 @@ async def region_lens(
     """
     check_tile_rate_limit(request, "lens")
     validate_tile_coords(z, x, y)
-    materials = await service.way_materials(lens_id, z, x, y, at, speed_kmh, preference)
+    async with region_tile_semaphore:
+        materials = await service.way_materials(lens_id, z, x, y, at, speed_kmh, preference)
     if materials is None:
         raise HTTPException(status_code=404, detail="このレンズの値はありません。")
     return materials
