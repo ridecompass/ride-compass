@@ -300,7 +300,7 @@ describe("走行モード", () => {
       });
     try {
       const { user } = renderHome();
-      const HEADING_NOTICE = /向きを読む許しが要ります/;
+      const HEADING_NOTICE = /向きの取得を許可する必要があります/;
       await screen.findByText(HEADING_NOTICE);
       geolocation.deliver(RIDDEN_MIDDLE);
       turnPhone();

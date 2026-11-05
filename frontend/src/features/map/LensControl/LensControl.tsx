@@ -117,7 +117,7 @@ export default function LensControl({
             className="max-w-full flex-row items-center gap-1.5 border-0 px-2.5 py-1 text-[length:var(--font-size-sm)] whitespace-nowrap focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent-strong)]"
             aria-label={`${LENS_SCREEN_NAME}: ${pillLabel}（タップで変更）`}
             title={statusLabel}
-            usage="負担の種類を1つ選び、その道を走ったときの1kmあたりの負担で、地図の道路（ルートを作った後はルートの線）を塗ります。横の帯は負担の凡例です。"
+            usage="選んだ負担の種類の1kmあたりの負担で、地図の道路（ルートを作った後はルートの線）を塗ります。横の帯は負担の凡例です。"
           >
             {/* 道のりのグラフの「評価で塗る」の切り替えと同じ絵で、どちらも同じ入口と分かるようにする。 */}
             <EvaluationPaintIcon size={14} />
@@ -154,7 +154,7 @@ export default function LensControl({
           <p className="mb-1.5 font-semibold">{LENS_SCREEN_NAME}</p>
           {routeHidden && (
             <p className="mb-1.5 text-[length:var(--font-size-sm)]" role="status">
-              ルートの線を「表示」で出していないので、ルートの線は塗っていません。
+              「表示」でルートの線を隠しているため、ルートは塗っていません。
             </p>
           )}
           {/* ピルの状態ドットの意味。titleはスマホでは出ないため、開いた先で文として読ませる。 */}

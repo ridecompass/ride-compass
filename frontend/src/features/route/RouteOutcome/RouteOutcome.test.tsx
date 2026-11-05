@@ -71,7 +71,7 @@ describe("候補の上の知らせ", () => {
       });
       for (const text of [
         "生成条件が変更されています",
-        "軸ごとの倍率を反映できず、標準の倍率で作りました。",
+        "負担の種類ごとの倍率を反映できなかったため、標準の倍率で作りました。",
         /近くのアクセス可能な地点へ補正しました/,
       ]) {
         expect(screen.queryByText(text) !== null).toBe(on);
@@ -88,7 +88,7 @@ describe("候補の上の知らせ", () => {
     });
     renderOutcome({ results: resultsOf({ generated: [FAST, SLOW], selectedRouteId: "slow", reusedRouteId: "slow" }) });
 
-    expect(screen.getByText("作った組み合わせは「2」と同じ道なので、「2」を選びました")).toBeInTheDocument();
+    expect(screen.getByText("作った組み合わせは既存の候補「2」と同じ道のため、その候補を選びました")).toBeInTheDocument();
     expect(screen.getByRole("tablist", { name: "ルート結果" }).scrollLeft).toBe(100);
   });
 });

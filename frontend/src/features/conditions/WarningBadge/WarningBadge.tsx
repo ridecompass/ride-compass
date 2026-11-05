@@ -75,7 +75,7 @@ function WarningFetchFailureMark({ failures }: { failures: readonly FetchFailure
           variant="ghost"
           size="headerIcon"
           aria-label={`${labels}を取得できていません。押すと詳細を表示`}
-          usage="取得できていない情報と、その間に画面で起きていることを開きます。そこから取り直せます。"
+          usage="取得できていない情報と、その影響で画面に出ないものを開きます。そこから取得し直せます。"
         >
           <NotFetchedIcon size={18} />
         </Button>
@@ -98,7 +98,7 @@ function WarningFetchFailureMark({ failures }: { failures: readonly FetchFailure
                   className="mt-0.5"
                   aria-label="再試行"
                   onClick={failure.onRetry}
-                  usage="この情報をもう一度取りに行きます。"
+                  usage="この情報を取得し直します。"
                 >
                   <RetryIcon />
                 </Button>

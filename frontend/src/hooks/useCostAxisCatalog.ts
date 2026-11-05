@@ -98,7 +98,7 @@ export function retryCostAxisCatalogFetch(): void {
 const COST_AXIS_CATALOG_FETCH_FAILURE: FetchFailure = {
   id: "cost-axis-catalog",
   label: COST_AXIS_CATALOG_LABEL,
-  effect: "ルートは軸ごとの倍率を変えていても反映できず、標準の倍率で作ります。",
+  effect: "負担の種類ごとの倍率を変えていても反映できないため、ルートは標準の倍率で作ります。",
   onRetry: retryCostAxisCatalogFetch,
 };
 

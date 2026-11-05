@@ -63,7 +63,7 @@ export default function DifficultyProfile({
     <ProfileChart
       scale={scale}
       label="道のりに沿った負担"
-      usage="横が道のり、縦がその区間の1kmあたりの道の負担で、塗った面積が負担の種類ごとの和です。"
+      usage="横は道のり、縦はその区間の1kmあたりの負担です。色ごとの面積は、その種類の負担のルート全体での合計を表します。"
       selected={selected}
       onSelect={onSelect}
       progressKm={progressKm}

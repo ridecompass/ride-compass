@@ -166,7 +166,7 @@ describe("LensControl", () => {
   it("ルートの線を出していなければ、塗っていないことを開いた先で伝える", async () => {
     renderLens({ routeHidden: true });
     await open();
-    expect(screen.getByRole("status")).toHaveTextContent("ルートの線は塗っていません");
+    expect(screen.getByRole("status")).toHaveTextContent("ルートは塗っていません");
   });
 
   it("「ルート後も周囲の道路を薄く塗る」を押すと、反転した値で知らせる", async () => {

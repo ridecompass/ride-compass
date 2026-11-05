@@ -147,7 +147,7 @@ export default function PointDetail({
           aria-label={`${title}を探す`}
           disabled={full}
           onClick={onSearchOpen}
-          usage={`地図の上端の欄で、住所・施設の名前を打って${title}を探します。`}
+          usage={`地図の上端の欄に住所・施設の名前を入力して、${title}を探します。`}
         >
           <SearchPlaceIcon size={14} />
           {/* 狭い幅では省かずに折り返す（「地図をタップか、住所・施設で探す」は幅 390 で1行に収まらない）。 */}
@@ -193,7 +193,7 @@ export default function PointDetail({
           >
             <Input
               aria-label="保存する地点の名前"
-              data-usage="保存する地点の名前です。そのまま保存もできます。"
+              data-usage="保存する地点の名前です。初めに入っている名前のままでも保存できます。"
               className="min-w-0 flex-auto"
               value={placeNameDraft ?? suggestedPlaceName}
               onChange={(event) => setPlaceNameDraft(event.target.value)}

@@ -16,7 +16,7 @@ import type { ScreenWakeLockStatus } from "../useScreenWakeLock";
 const WAKE_LOCK_UNAVAILABLE =
   "この端末では画面を点けたままにできません。画面が消えると現在地も届かなくなるので、自動ロックの設定を確かめてください。";
 
-const HEADING_NEEDS_GESTURE = "現在地の印にスマホの向きを出すには、向きを読む許しが要ります。";
+const HEADING_NEEDS_GESTURE = "現在地の印にスマホの向きを表示するには、向きの取得を許可する必要があります。";
 
 const NOTICE_CARD = "absolute top-0 right-full mr-2 w-max max-w-55 border-0 px-2.5 py-1.5";
 
@@ -71,7 +71,7 @@ export default function RideModeButton({
             aria-haspopup={status === "off" ? undefined : "dialog"}
             aria-expanded={status === "off" ? undefined : choosing}
             aria-description={wakeLockUnavailable ? WAKE_LOCK_UNAVAILABLE : undefined}
-            usage="押すと走行モードを始め、現在地を追って地図を動かし続けます（画面も点けたままにします）。走行モードの間に押すと、案内を終えるか休むかを選べます。休むと現在地を受けるのも画面を点けたままにするのもやめ、ルートと進み具合を残します。地図の下の「続きから走る」で、休む前の進み具合から続けます。地図を指で動かすと追うのだけを休み、地図の下の「現在地へ戻る」で追い直します。走行モードの間は、方位のボタンで北が上と進む向きが上を切り替えます。"
+            usage="押すと走行モードを始め、現在地に合わせて地図を動かし続けます（画面も点けたままにします）。走行中に押すと、「案内を終える」か「休む」を選べます。休んだ後は、地図の下の「続きから走る」で再開します。地図を指で動かすと追従だけが止まり、「現在地へ戻る」で再開します。"
             data-ride={status}
             className={cn(
               "relative",
@@ -93,7 +93,7 @@ export default function RideModeButton({
               variant="primary"
               size="md"
               onClick={choose(onResume)}
-              usage="現在地を受け直し、休む前の進み具合から案内を続けます。"
+              usage="現在地の取得を再開し、休止前の進み具合から案内を続けます。"
             >
               続きから走る
             </Button>
@@ -102,7 +102,7 @@ export default function RideModeButton({
               variant="primary"
               size="md"
               onClick={choose(onRest)}
-              usage="現在地を受けるのと画面を点けたままにするのをやめ、電池を守ります。ルートと進み具合は残り、読み込み直しても休んだまま戻ります。地図の下の「続きから走る」で続きから走れます。"
+              usage="現在地の取得と画面の常時点灯を止め、電池の減りを抑えます。ルートと進み具合は残り、再読み込みしても休止中のまま戻ります。地図の下の「続きから走る」で再開できます。"
             >
               休む
             </Button>
@@ -140,7 +140,7 @@ export default function RideModeButton({
             variant="primary"
             size="sm"
             onClick={onRequestHeading}
-            usage="スマホの向きを読む許しを求めます。許すと、現在地の印にスマホが向いている方角が出ます。"
+            usage="スマホの向きの取得の許可を求めます。許可すると、現在地の印にスマホが向いている方角を表示します。"
           >
             向きを出す
           </Button>

@@ -34,7 +34,7 @@ import type { SpliceSessionView } from "@/features/route/useSpliceSession";
 import type { RouteCandidate } from "@/types/route";
 
 const CANDIDATE_TAB_USAGE =
-  "この候補を地図と内訳に出し、地図をその候補の全体へ収めます。稲妻の印は最も早く着く最速ルート、合成の印は区間を乗り換えて作った合成ルートで、番号だけのものは生成した候補です。上の段は距離、下の段は時間（最速ルート［無ければ最も早い候補］は所要時間、ほかはそれとの差で、速ければ−）と負担［避けたいものを通る分を、所要時間に上乗せした時間］で、下の帯は1kmあたりの負担を地図と同じ色で塗ります。";
+  "この候補を地図と内訳に出し、地図を候補の全体に合わせます。稲妻の印は最速ルート、合成の印は区間を乗り換えた合成ルート、番号だけのものは生成した候補です。上の段は距離です。下の段は時間（最速ルート［無ければ最も早い候補］は所要時間、ほかはそれとの差で、速ければ−）と負担です。下の帯は、1kmあたりの負担を地図と同じ色で表します。";
 
 /** 名前の列で群を見分ける印と、その意味（指を置いたときの吹き出しと読み上げの名前）。生成した候補は印を持たない。 */
 const GROUP_MARKS: Partial<Record<RouteListGroup, { Icon: typeof FastestRouteIcon; meaning: string }>> = {
@@ -144,7 +144,7 @@ export default function RouteOutcome({ results, generation, splice, profileLayer
     <>
       {generation.conditionsDirty && <WarningText>生成条件が変更されています</WarningText>}
       {generation.multipliersNotApplied && (
-        <WarningText>軸ごとの倍率を反映できず、標準の倍率で作りました。</WarningText>
+        <WarningText>負担の種類ごとの倍率を反映できなかったため、標準の倍率で作りました。</WarningText>
       )}
       {generation.destinationCorrected && (
         <WarningText>
@@ -153,7 +153,7 @@ export default function RouteOutcome({ results, generation, splice, profileLayer
       )}
       {reusedRouteId !== null && (
         <p className={cn(textVariants({ variant: "hint" }), "m-0")}>
-          作った組み合わせは「{nameOf(reusedRouteId)}」と同じ道なので、「{nameOf(reusedRouteId)}」を選びました
+          作った組み合わせは既存の候補「{nameOf(reusedRouteId)}」と同じ道のため、その候補を選びました
         </p>
       )}
       <Tabs className="flex flex-col gap-2" value={selectedValue} onValueChange={results.selectRoute}>

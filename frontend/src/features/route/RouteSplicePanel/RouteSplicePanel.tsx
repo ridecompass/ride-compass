@@ -170,7 +170,9 @@ export default function RouteSplicePanel({
       </div>
 
       {unavailable ? (
-        <p className={textVariants({ variant: "hint" })}>この候補は通る道の並びを持たないため、区間を出せません。</p>
+        <p className={textVariants({ variant: "hint" })}>
+          この候補には通る道の情報が無いため、乗り換えられる区間を表示できません。
+        </p>
       ) : (
         <>
           <SpliceMetricGrid displayed={displayed} preview={preview} />
@@ -205,7 +207,7 @@ export default function RouteSplicePanel({
               ))
             ) : preview ? (
               // 評価済みで棒が空なのは、どの軸の差も棒に出す下限に届かないとき。押す案内を残すと押しても変わらない。
-              "どの軸の負担も、元とほぼ変わりません"
+              "どの種類の負担も、元のルートとほぼ変わりません"
             ) : appliedCount > 0 ? (
               <GuideText text="「差分を見る」を押すと、乗り換えた結果が出ます" />
             ) : hasAlternatives ? (

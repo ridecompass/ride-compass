@@ -222,7 +222,7 @@ export default function HomeMapPane({
                 disabled={place.locating}
                 aria-label="現在地に移動"
                 title="現在地に移動"
-                usage="現在地を取り直して、地図をそこへ動かします。出発地は変えません。"
+                usage="現在地を取得し直して、地図をそこへ動かします。出発地は変えません。"
                 className={cn(place.locating && "cursor-wait opacity-60")}
               >
                 {place.locating ? "…" : <LocateIcon />}

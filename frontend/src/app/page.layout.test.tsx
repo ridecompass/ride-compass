@@ -125,7 +125,7 @@ describe("画面の枠", () => {
     expect(mapOnScreen().zoom()).toBe(zoom);
     fireEvent.pointerDown(screen.getByRole("button", { name: "拡大" }), { pointerType: "touch", button: 0 });
     expect(await screen.findByRole("tooltip", {}, { timeout: 2000 })).toHaveTextContent(
-      /続けて触れたまま上下に滑らせても拡大・縮小できます/,
+      /指を離さずに上下へ動かしても拡大・縮小できます/,
     );
   });
 

@@ -50,7 +50,7 @@ export default function RouteSettingsPanel({ costPreference, onCostPreferenceCha
         >
           <span>{`${catalogFailure.label}を取得できませんでした。${catalogFailure.effect}`}</span>
           <Button
-            usage={`取れなかった${COST_AXIS_CATALOG_LABEL}を、もう一度取りに行きます。`}
+            usage={`取得できなかった${COST_AXIS_CATALOG_LABEL}を、もう一度取得します。`}
             variant="warning"
             size="panelIcon"
             aria-label="再試行"
@@ -90,7 +90,7 @@ export default function RouteSettingsPanel({ costPreference, onCostPreferenceCha
       </ul>
       {catalog.axes.length > 0 && (
         <Button
-          usage="軸ごとの倍率を、すべて標準に戻します。"
+          usage="負担の種類ごとの倍率を、すべて標準（×1）に戻します。"
           variant="secondary"
           className="self-end"
           disabled={standard}

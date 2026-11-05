@@ -137,8 +137,8 @@ export default function TuningPanel() {
         <span className="flex items-center gap-1">
           <h2 className={textVariants({ variant: "heading" })}>較正値</h2>
           <InfoPopover triggerAriaLabel="較正値の説明">
-            <p>走ってみて決める値です。変えて保存すると、デプロイなしで効きます。</p>
-            <p>●はDBへ保存済みの行です。既定と同じ値にして保存すると消えます。</p>
+            <p>実走の結果を見て調整する値です。変更して保存すると、デプロイせずに反映されます。</p>
+            <p>●は DB に保存済みの値です。既定と同じ値にして保存すると、DB の行を削除して既定値に戻します。</p>
           </InfoPopover>
         </span>
         {parameters && (

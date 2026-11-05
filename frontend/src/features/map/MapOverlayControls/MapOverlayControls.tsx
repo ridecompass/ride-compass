@@ -204,7 +204,7 @@ export default function MapOverlayControls({
             "mt-1 flex items-center gap-1.5 border-b border-[var(--color-border)] pb-1.5",
             route.selectable ? "cursor-pointer" : "text-[var(--color-neutral)]",
           )}
-          data-usage="選んだ候補のルートの線を、地図に出し入れします。線の色は「評価で塗る」で選んだ負担（1kmあたりの代償の秒）です。"
+          data-usage="選んだ候補のルートの線を、地図に表示するか隠すかを切り替えます。線の色は、「評価で塗る」で選んだ負担の種類の1kmあたりの負担です。"
         >
           <Checkbox
             checked={route.shown && route.selectable}

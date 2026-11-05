@@ -97,7 +97,7 @@ export default function RoadInspectorPopup({ properties, track, conditions, cost
           disabled={inspector.isFetching}
           aria-busy={inspector.isFetching}
           aria-label="この道の負担を見る"
-          usage="この道の負担を、いまの走る条件と負担の強さ・倍率で取りに行きます。"
+          usage="いまの走行条件と、負担の強さ・倍率で、この道の負担を計算します。"
         >
           <InspectRoadIcon />
         </Button>

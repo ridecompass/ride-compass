@@ -46,8 +46,8 @@ export default function EditDifference({ originName, origin, edited, onShowOrigi
         <span className="whitespace-nowrap">
           {/* 対応づけられないときに数を出すと、変えたのに「0区間」と読める。 */}
           {difference.stretches === null
-            ? "から変えた区間を対応づけられない"
-            : `から${difference.stretches.length}区間`}
+            ? "（変えた区間を特定できません）"
+            : `から${difference.stretches.length}区間を変更`}
         </span>
       </p>
       <dl className="m-0 grid grid-cols-[max-content_minmax(0,1fr)] gap-x-3 gap-y-0.5">

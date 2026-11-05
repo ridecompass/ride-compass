@@ -164,7 +164,7 @@ export default function RideConditionBar({
             name={departureName}
             icon={<ClockIcon />}
             linked={linkedDeparture}
-            usage="出発する日時を決めます。地図の気象の表示と周りの道の負担（風）の時刻と、ルートの到達予想の時刻に使います。"
+            usage="出発する日時を決めます。地図に出す気象と周りの道の負担（風）の時刻、ルートの到達予想の時刻に使います。"
           >
             {/* 別の日は日付も付くため、列の幅に収まるよう日付と時刻を2行に分ける。 */}
             {departureLabel?.map((part) => (

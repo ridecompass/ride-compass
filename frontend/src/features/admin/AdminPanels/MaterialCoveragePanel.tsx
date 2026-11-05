@@ -142,7 +142,7 @@ function CoverageReport({ report }: { report: MaterialCoverageResponse }) {
       {ungrouped.length > 0 && (
         <CoverageSection
           title="欠損時の扱いが不明な材料"
-          hint="集計対象なのにmissing_semanticsが画面の知らない扱い。画面の更新が追いついていない可能性がある。"
+          hint="集計の対象ですが、欠損の扱い（missing_semantics）が画面の想定に無い値です。画面の更新が遅れている可能性があります。"
           entries={ungrouped}
         />
       )}

@@ -60,7 +60,7 @@ export default function PlaceCandidates({ lookup, onChoose, placeButtons, choose
   if (candidates.length === 0) {
     return (
       <p role="status" className={textVariants({ variant: "hint" })}>
-        当たる住所・施設がありません。
+        該当する住所・施設がありません。
       </p>
     );
   }
@@ -83,7 +83,7 @@ export default function PlaceCandidates({ lookup, onChoose, placeButtons, choose
                 usage={
                   found === null
                     ? `この候補を選ぶと${chooseResult}。`
-                    : "この候補を選び、地図の点を大きくして、置くボタンを出します。"
+                    : "この候補を選び、地図の印を大きくして、地点に置くボタンを出します。"
                 }
               >
                 {found !== null && <CandidateMark number={index + 1} picked={picked} />}

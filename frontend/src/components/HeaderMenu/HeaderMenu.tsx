@@ -84,7 +84,7 @@ export default function HeaderMenu({
           <Button
             variant="menu"
             size="sm"
-            usage="部品を押すと、その部品の使い方が出る状態に入ります。"
+            usage="押した部品の使い方を表示するモードに切り替えます。"
             onClick={() => {
               afterClose.current = "guide";
               setOpen(false);
@@ -119,7 +119,7 @@ export default function HeaderMenu({
             <Button
               variant="menu"
               size="sm"
-              usage="直近の走行の記録（電池・位置・地図の描き直し等の1分ごとの数）を写します。"
+              usage="直近の走行の記録（電池・位置・地図の描き直しの回数などを1分ごとに集計したもの）を、クリップボードにコピーします。"
               onClick={() => copy(formatRideMetrics(rideMetrics))}
             >
               <CopyIcon size={15} />
@@ -132,7 +132,7 @@ export default function HeaderMenu({
               variant="menu"
               onClick={onToggleDebugConsole}
               pressed={debugConsoleOpen}
-              usage="開発者向けの記録の窓を出し入れします。"
+              usage="開発者向けのログの窓を、表示するか隠すかを切り替えます。"
             >
               <LogIcon size={15} />
               {debugConsoleOpen ? "デバッグログを隠す" : "デバッグログを表示"}
@@ -141,7 +141,7 @@ export default function HeaderMenu({
           <Button
             variant="menu"
             size="sm"
-            usage="本番で今動いている版を出します。"
+            usage="いま動いているバージョンを表示します。"
             onClick={() => {
               afterClose.current = "version";
               setOpen(false);
