@@ -73,7 +73,7 @@ export default function LensControl({
   const [open, setOpen] = useState(false);
   const statusLabel = dataStatus ? LAYER_DATA_STATUS_LABELS[dataStatus] : undefined;
   const statusNotice = layerDataStatusNotice(dataStatus);
-  // レンズを選んでいないときは、ルートの前は道路を塗らず、ルートの後はルートの線を総合の負担で塗る（費用の軸の定義が無い間は1色）。
+  // レンズを選んでいないときは、ルートの前は道路を塗らず、ルートの後はルートの線を総合の負担で塗る（費用の軸の一覧が届く前と、取れない間は1色）。
   const unselected = lens === UNSELECTED_LENS_ID;
   const selected = axisOptions.find((option) => option.id === lens);
   const pillLabel = unselected ? (hasDetail ? UNSELECTED_LENS_LABEL : UNSELECTED_LABEL) : (selected?.label ?? lens);

@@ -123,8 +123,8 @@ class RouteFacts(StrictModel):
 
     # 標高の無い道の長さ（km）。獲得標高に数えず、所要時間は道路網全体の坂の割合で走った長さ。
     elevation_unknown_km: float
-    # 費用の軸id→その軸の事実（`services/road_graph_candidates.py: _route_facts`）。体力の軸は費用の軸の定義が無くても
-    # 全部、道のストレスの軸は定義があるものだけ。
+    # 費用の軸id→その軸の事実（`services/road_graph_candidates.py: _route_facts`）。体力の軸は全部、道のストレスの軸は
+    # 定義にあるもの。
     axes: dict[str, AxisFact]
 
 
