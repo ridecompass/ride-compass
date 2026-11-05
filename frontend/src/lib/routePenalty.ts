@@ -1,5 +1,5 @@
-// ルートの応答の代償の内訳（`penalty`。軸ごとの秒と、避け方で上乗せした回避指定の秒と、その和）を、画面が読む形にする。候補・区間・
-// 編集の差が同じ形を読む。内訳の無い候補（費用の軸の定義が無い間）は、どれも「内訳なし」として扱う。
+// ルートの応答の代償の内訳（`penalty`。軸ごとの秒と、曲がる所の秒と、避け方で上乗せした回避指定の秒と、その和）を、画面が読む形に
+// する。候補・区間・編集の差が同じ形を読む。
 
 import { formatDurationShort, formatMinutes, roundedMinutes } from "@/lib/duration";
 import { formatLensNumber } from "@/lib/mapDisplay/costLensPaint";
@@ -11,13 +11,14 @@ export interface PenaltyCatalog {
   axes: readonly { readonly axisId: string; readonly label: string }[];
   axisColors: Readonly<Record<string, string>>;
   avoidanceLabel: string;
+  turnLabel: string;
   /** 一覧が届いたか（届くまでは軸の名前が分からない）。 */
   loaded: boolean;
 }
 
 /** 内訳の1行。 */
 export interface PenaltyRow {
-  /** 軸id（回避指定の行は`AVOIDANCE_ROW_ID`）。 */
+  /** 軸id（曲がる所の行は`TURN_ROW_ID`、回避指定の行は`AVOIDANCE_ROW_ID`）。 */
   id: string;
   label: string;
   seconds: number;
@@ -37,11 +38,12 @@ export function factValueText(fact: AxisFact): string {
   return fact.value === null ? "—" : `${formatLensNumber(fact.value)}${fact.unit}`;
 }
 
-/** 回避指定の行のid。軸のidと同じ並びに置くので、軸には無い綴りにする。 */
+/** 曲がる所・回避指定の行のid。軸のidと同じ並びに置くので、軸には無い綴りにする。 */
+const TURN_ROW_ID = "<turn>";
 const AVOIDANCE_ROW_ID = "<avoidance>";
 
-/** 内訳の行: 軸を一覧の順に（一覧に無い軸は応答の順で後ろに、名前はid）、続けて回避指定。秒が0の軸も残す（効くはずの軸が
- * 効かなかったことも判断の材料になる）。回避指定は、上乗せした秒があるときだけ出す。 */
+/** 内訳の行: 軸を一覧の順に（一覧に無い軸は応答の順で後ろに、名前はid）、続けて曲がる所と回避指定。秒が0の軸も残す（効く
+ * はずの軸が効かなかったことも判断の材料になる）。曲がる所と回避指定は、秒があるときだけ出す。 */
 export function penaltyRows(penalty: PenaltyBreakdown, catalog: PenaltyCatalog): PenaltyRow[] {
   const known = catalog.axes.filter((axis) => Object.hasOwn(penalty.axis_seconds, axis.axisId));
   const unknown = Object.keys(penalty.axis_seconds).filter((id) => !catalog.axes.some((axis) => axis.axisId === id));
@@ -59,6 +61,14 @@ export function penaltyRows(penalty: PenaltyBreakdown, catalog: PenaltyCatalog):
       color: palette.semantic.neutral,
     })),
   ];
+  if (penalty.turn_seconds > 0) {
+    rows.push({
+      id: TURN_ROW_ID,
+      label: catalog.turnLabel,
+      seconds: penalty.turn_seconds,
+      color: palette.semantic.neutral,
+    });
+  }
   if (penalty.avoidance_seconds > 0) {
     rows.push({
       id: AVOIDANCE_ROW_ID,

@@ -46,12 +46,22 @@ describe("editDifference", () => {
     const origin = route("ABCDEF", {
       distance_km: 20,
       estimated_duration_seconds: 3600,
-      penalty: { axis_seconds: { ascent: 300, vibration: 60 }, avoidance_seconds: 60, total_seconds: 420 },
+      penalty: {
+        axis_seconds: { ascent: 300, vibration: 60 },
+        turn_seconds: 0,
+        avoidance_seconds: 60,
+        total_seconds: 420,
+      },
     });
     const edited = route("ABQDEF", {
       distance_km: 21.5,
       estimated_duration_seconds: 3300,
-      penalty: { axis_seconds: { ascent: 120, vibration: 60 }, avoidance_seconds: 0, total_seconds: 180 },
+      penalty: {
+        axis_seconds: { ascent: 120, vibration: 60 },
+        turn_seconds: 0,
+        avoidance_seconds: 0,
+        total_seconds: 180,
+      },
     });
     expect(deltasOf(editDifference(origin, edited).metrics)).toEqual({ 距離: 1.5, 所要: -5, 負担: -4 });
   });
@@ -59,7 +69,7 @@ describe("editDifference", () => {
   it("どちらかに所要時間が無ければ、その差はnull", () => {
     const withValues = route("ABCDEF", {
       estimated_duration_seconds: 3600,
-      penalty: { axis_seconds: { ascent: 300 }, avoidance_seconds: 0, total_seconds: 300 },
+      penalty: { axis_seconds: { ascent: 300 }, turn_seconds: 0, avoidance_seconds: 0, total_seconds: 300 },
     });
     const withoutValues = route("ABQDEF", { estimated_duration_seconds: null });
     for (const [origin, edited] of [

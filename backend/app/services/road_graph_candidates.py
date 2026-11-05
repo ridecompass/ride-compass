@@ -357,9 +357,9 @@ def _build_segment_details(
 
 
 def _segment_penalties(orientation: _Orientation, context: RoadGraphContext) -> list[PenaltyBreakdown]:
-    """区間ごとの代償の秒の内訳。区間の代償（`LegValues.penalty_by_axis`）に、
-    区間へ入る所で曲がった漕ぎ出しの代償（`LegCostComposer.turn_kickoff_penalty`）を、その費目の軸へ足す。"""
-    kickoff_axis, kickoff_seconds = context.composer.turn_kickoff_penalty
+    """区間ごとの代償の秒の内訳。区間の代償（`LegValues.penalty_by_axis`）と、区間へ入る所で曲がった漕ぎ出しの代償
+    （`LegCostComposer.turn_kickoff_penalty`。軸の秒とは別の行）。"""
+    kickoff_seconds = context.composer.turn_kickoff_penalty
     # 区間iへ入る曲がる所は、遷移の並び（区間の数−1個）のi−1番目。
     entering = [0.0, *orientation.turn_kickoffs]
 
@@ -369,10 +369,9 @@ def _segment_penalties(orientation: _Orientation, context: RoadGraphContext) -> 
         avoidance = values.avoidance_seconds.tolist()
         breakdowns: list[PenaltyBreakdown] = []
         for position, index in enumerate(read.indices):
-            axis_seconds = {axis_id: seconds[position] for axis_id, seconds in axis_lists.items()}
-            axis_seconds[kickoff_axis] = axis_seconds.get(kickoff_axis, 0.0) + entering[index] * kickoff_seconds
             breakdowns.append(PenaltyBreakdown.model_construct(
-                axis_seconds=axis_seconds, avoidance_seconds=avoidance[position]))
+                axis_seconds={axis_id: seconds[position] for axis_id, seconds in axis_lists.items()},
+                turn_seconds=entering[index] * kickoff_seconds, avoidance_seconds=avoidance[position]))
         return breakdowns
 
     return _per_segment(orientation.reads, len(orientation.edges), of)

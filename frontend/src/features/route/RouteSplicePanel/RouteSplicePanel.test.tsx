@@ -32,12 +32,14 @@ const CATALOG = {
   ],
   axisColors: { width: "red", traffic: "green", slope: "blue", light: "gray" },
   avoidanceLabel: "回避指定",
+  turnLabel: "曲がる所",
   loaded: true,
 };
 
 /** 軸ごとの負担（秒）を持つ内訳。 */
 const penalty = (axisSeconds: Record<string, number>, totalSeconds: number): RouteCandidate["penalty"] => ({
   axis_seconds: axisSeconds,
+  turn_seconds: 0,
   avoidance_seconds: 0,
   total_seconds: totalSeconds,
 });

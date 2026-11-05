@@ -47,7 +47,7 @@
 | `features/route/RouteAxisProfile/RouteAxisProfile.tsx` | 候補ごとのタブの中身（所要・負担と、負担の内訳と事実。下記「RouteAxisProfile.tsx」）。地図の色分けを選ぶ操作はここには無い（`LensControl`）。候補一覧のタブ自体は`RouteOutcome.tsx`が組み立てる |
 | `features/route/PenaltyBreakdown/PenaltyBreakdown.tsx` | 負担の内訳（軸ごとの秒を積んだ帯1本と、軸ごとの名前・事実・負担の分の行）。候補の中身と区間の小窓が同じこの形で出す（下記「RouteAxisProfile.tsx」） |
 | `lib/routePenalty.ts` | 応答の代償の内訳を画面が読む形にする純関数（内訳の和・行の並べ方・「+N分」の書き方・1kmあたりの代償の秒）。候補・区間・編集の差・ルートの線の塗りが同じ関数を読む |
-| `features/route/routeTabLabel.ts` | 候補タブの時間の列の基準線と差を組み立てる純関数（`features/route/routeTabLabel.ts: durationBaseline`・`features/route/routeTabLabel.ts: durationDifferenceLabel`）、生成した候補の並び（最速の印の1本が先頭、残りは所要時間の短い順、`features/route/routeTabLabel.ts: orderGenerated`）、一覧の並び・群・名前（`features/route/routeTabLabel.ts: routeListEntries`。最速ルート・生成した候補・合成ルートの分け方は[ページ全体構成・状態管理](page-composition.md)「ルート結果の中身」）。種類と最速の印はbackendが付ける値（`route_generator.py: _label`）を読むだけで、idの文字列や要求の形から決め直さない。タブ列自体は`RouteOutcome.tsx`が組み立てる |
+| `features/route/routeTabLabel.ts` | 候補タブの時間の列の基準線と差を組み立てる純関数（`features/route/routeTabLabel.ts: durationBaseline`・`features/route/routeTabLabel.ts: durationDifferenceLabel`）、一覧の並び・群・名前（`features/route/routeTabLabel.ts: routeListEntries`。最速ルート・生成した候補・合成ルートの分け方は[ページ全体構成・状態管理](page-composition.md)「ルート結果の中身」）。種類と最速の印はbackendが付ける値（`route_generator.py: _label`）を読むだけで、idの文字列や要求の形から決め直さない。タブ列自体は`RouteOutcome.tsx`が組み立てる |
 | `features/route/routeEditDiff.ts` | 編集で作ったルートの元との差（距離・所要・負担［代償の内訳の和の分］と、変えた区間の元の位置・長さの差）と、差の表記（`features/route/routeEditDiff.ts: formatDelta`）。指標は1つの表から作り（`features/route/routeEditDiff.ts: metricDifferences`。名前・桁・単位と元・編集後・差）、編集面（`RouteSplicePanel`）と「元との違い」（`features/route/routeEditDiff.ts: EditDifference`）が同じ表を読む——別々に持つと、片方だけ指標や桁が変わる。変えた区間は適用した乗り換えの手順からではなく、できた2本のEdge id列の差（`routeSplice.ts: pairedStretches`）から求める——乗り換えの範囲は適用した時点の経路に対する位置で、元の位置へ戻すには手順の全部が要る。区間の位置と長さは、道のりのグラフと同じ物差し（`lib/routeDistance.ts: routeEdgeKms`）で読む |
 | `features/route/EditDifference/EditDifference.tsx` | 編集で作ったルートの中身の先頭に出す「元との違い」。元の名前と距離・変えた区間の数（元と編集後で区間を対応づけられなければ、数と区間の並びを出さずに「変えた区間を対応づけられない」と言う——「0区間」と出すと変えていないように読める）、指標の差、変えた区間ごとの長さの差を並べ、アイコンの「元を見る」で元のルートへ切り替える |
 | `features/route/gpxExport.ts` | 候補1本をGPXとして書き出す（`features/route/gpxExport.ts: downloadGpx`。押す口は`RouteCandidateActions`の「GPX出力」）。点数を上限（`features/route/gpxExport.ts: MAX_GPX_TRACK_POINTS`）へ収めるとき、残す点を折れ線の形から選ぶ（下記「GPX書き出しの間引き」） |
@@ -154,7 +154,7 @@ backendが要求を断る（倍率のキーは今の費用の軸のidだけ）�
   所要時間と負担の和が候補を並べた費用になる。
 - **内訳と事実**（`features/route/PenaltyBreakdown/PenaltyBreakdown.tsx: PenaltyBreakdown`。区間の小窓も同じ部品）: 軸ごとの秒を積んだ帯
   1本と、軸ごとの行（軸の名前・その軸の事実・負担の分）。行は費用の軸の一覧（`GET /api/cost-axes`）の順で、一覧に無い軸は応答の
-  順で後ろに軸idの名前で置き、回避指定の行（上乗せした秒があるときだけ）を最後に置く（`lib/routePenalty.ts: penaltyRows`）。秒が0の
+  順で後ろに軸idの名前で置き、曲がる所の行と回避指定の行（秒があるときだけ）を最後に置く（`lib/routePenalty.ts: penaltyRows`）。秒が0の
   軸も行に残す——効くはずの軸が効かなかったことも判断の材料になる。事実（`RouteCandidate.facts.axes`）は軸ごとに backend が名前・
   値・単位を付けて返すので、画面は軸idで出し分けずにそのまま出す（値の無い事実は「—」）。
   行の色は費用の軸の一覧の並びから決める（`hooks/useCostAxisCatalog.ts: CostAxisCatalog.axisColors`。道のりのグラフ・編集面の差の棒も同じ色）。

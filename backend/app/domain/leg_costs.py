@@ -517,9 +517,9 @@ class LegCostComposer:
         )
 
     @property
-    def turn_kickoff_penalty(self) -> tuple[str, float]:
-        """曲がる所の漕ぎ出し1回の代償の秒と、それを持つ軸。"""
-        return self._ledger.kickoff_axis_seconds
+    def turn_kickoff_penalty(self) -> float:
+        """曲がる所の漕ぎ出し1回の代償の秒（慣性の費目の軸の倍率を掛けたもの）。"""
+        return self._ledger.kickoff_seconds
 
     def transition_costs(self, turn_seconds: np.ndarray, turn_kickoffs: np.ndarray) -> np.ndarray:
         """曲がる所の費用（秒、遷移ごと）。時間に漕ぎ出しの代償を足したもの。"""

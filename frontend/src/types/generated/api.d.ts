@@ -892,6 +892,8 @@ export interface components {
             axes: components["schemas"]["CostAxisCatalogEntry"][];
             /** Avoidance Label */
             avoidance_label: string;
+            /** Turn Label */
+            turn_label: string;
             total_lens: components["schemas"]["TotalLens"];
             map_lens: components["schemas"]["MapLens"];
         };
@@ -1367,6 +1369,8 @@ export interface components {
             axis_seconds: {
                 [key: string]: number;
             };
+            /** Turn Seconds */
+            turn_seconds: number;
             /** Avoidance Seconds */
             avoidance_seconds: number;
             /** Total Seconds */

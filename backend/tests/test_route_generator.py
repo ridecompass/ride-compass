@@ -46,7 +46,7 @@ def _segment() -> RouteSegmentDetail:
     return RouteSegmentDetail(
         start_latitude=0.0, start_longitude=0.0, end_latitude=0.0, end_longitude=0.0,
         cumulative_distance_km=0.0, distance_km=1.0, edge_start=0, edge_end=1, elevations=[],
-        road_classes={}, penalty=PenaltyBreakdown(axis_seconds={}, avoidance_seconds=0.0),
+        road_classes={}, penalty=PenaltyBreakdown(axis_seconds={}, turn_seconds=0.0, avoidance_seconds=0.0),
     )
 
 
@@ -56,7 +56,7 @@ def _candidate(key: str, penalty: float = 10.0, **fields) -> EvaluatedRoute:
     return EvaluatedRoute(**{
         "direction_label": f"方位-{key}", "distance_km": 1.0, "geometry": {"type": "LineString", "coordinates": []},
         "elevation_gain_m": None, "segments": [_segment()], "estimated_duration_seconds": 100.0,
-        "cost_seconds": 100.0 + penalty, "penalty": PenaltyBreakdown(axis_seconds={"a": penalty}, avoidance_seconds=0.0),
+        "cost_seconds": 100.0 + penalty, "penalty": PenaltyBreakdown(axis_seconds={"a": penalty}, turn_seconds=0.0, avoidance_seconds=0.0),
         "facts": RouteFacts(elevation_unknown_km=0.0, axes={}),
         "wind_unavailable": False, "missing_travel_data_share": None, "edge_ids": [key], "edge_point_offsets": [], "node_ids": [], "turns": [],
         "waypoint_distances_km": [], **fields,

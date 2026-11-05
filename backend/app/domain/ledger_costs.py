@@ -130,9 +130,9 @@ class LedgerCosts:
         return ride.seconds, self.penalty_by_axis(ride, rows)
 
     @property
-    def kickoff_axis_seconds(self) -> tuple[str, float]:
-        """曲がる所の漕ぎ出し1回の代償の秒と、それを持つ軸（慣性の費目の軸）。"""
-        return next(axis_id for axis_id, item in EFFORT_AXES.items() if item == "inertia"), self._kickoff_seconds
+    def kickoff_seconds(self) -> float:
+        """曲がる所の漕ぎ出し1回の代償の秒（慣性の費目の軸の倍率を掛けたもの）。"""
+        return self._kickoff_seconds
 
     def bin_seconds(self, model: SegmentSpeedModel, headwind_ms: np.ndarray,
                     crosswind_ms: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
