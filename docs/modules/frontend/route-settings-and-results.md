@@ -165,7 +165,7 @@ backendが要求を断る（倍率のキーは今の費用の軸のidだけ）�
   使えなかったため、無風として所要時間を出しています」、`missing_travel_data_share`（勾配か停止要因の件数の値が無く、
   平地・待ち無しとして数えた区間の距離の割合）が丸めて1%以上なら「データの無い区間が◯%」を出す——黙って短い所要時間を
   見せない。0%は判断の材料にならないため出さない。どちらもbackendがEdge単位で数えた値をそのまま使う。
-- 候補タブの並び順は負担ではなく、最速の印の1本が先頭、残りは所要時間の短い順（`routeTabLabel.ts: orderGenerated`。
+- 候補タブの並び順は、最速の印の1本が比べる基準として先頭、残りはbackendの費用の順（`routeTabLabel.ts: routeListEntries`。
   [ページ全体構成・状態管理](page-composition.md)参照）。
 
 ## PenaltyBreakdown.tsx（負担の内訳の共有表示部品）
