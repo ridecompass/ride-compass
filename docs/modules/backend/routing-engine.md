@@ -184,7 +184,7 @@ Nodeが出発地のNodeか（`road_graph_context.py: FixedLegs.closes`）の1つ
 候補の形は費用（所要時間と代償の秒。利用者のつまみと倍率で変わる）で決まる（フロンティア方式）:
 起点からの一対全最短経路木（費用）で目標距離の半分付近に到達する折返し点を
 選び、往路と別の復路を探索して周回にする。距離は目標±許容（目標の距離に対する割合の較正値から
-`domain/route_search.py: distance_tolerance_km`が決める長さ。長い目標ほど広い）の厳格フィルタで、スコアとは混ぜない（1つの数字へ合成すると、比較不能な2つを重み配分が勝手に
+`domain/route_search.py: distance_tolerance_km`が決める長さ。長い目標ほど広い）の厳格フィルタで、費用とは混ぜない（1つの数字へ合成すると、比較不能な2つの釣り合いを係数が勝手に
 決めてしまう）。
 
 **折返し点の並びはパレート層の順にする**（`domain/route_search.py: rank_by_pareto_layers`。層は`domain/route_diversity.py: pareto_layer_index`）。
