@@ -93,7 +93,7 @@ def ordered_colors(count: int, on_dark: bool = False) -> list[str]:
 def ordered_ends_phrase(first_label: str, last_label: str) -> str:
     """順序のある分類の、先頭の行と末尾の行の名前から組む色の向きの文。"""
     dark, light = _ORDERED_END_COLOR_NAMES
-    return f"「{first_label}」ほど{dark}、「{last_label}」ほど{light}"
+    return f"「{first_label}」が{dark}、「{last_label}」が{light}"
 
 
 def nominal_colors(hue_slot: int, count: int, tone: str | None, on_dark: bool = False) -> list[str]:
