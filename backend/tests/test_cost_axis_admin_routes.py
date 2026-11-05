@@ -56,7 +56,7 @@ async def test_written_definitions_are_read_back_and_take_effect(client):
 
 
 async def test_definitions_that_do_not_fit_the_road_classes_are_refused_with_the_reason(client):
-    """区分に重さの無い道の負担の軸は、書く前に断る（書いていない区分を0とみなすと、その道の負担が黙って消える）。"""
+    """区分に重さの無い道のストレスの軸は、書く前に断る（書いていない区分を0とみなすと、その道のストレスが黙って消える）。"""
     missing_class = {**DEFINITIONS, "burden": {"vibration": {
         **DEFINITIONS["burden"]["vibration"],
         "burden": {"kind": "categorical", "material": "class:surface_estimate", "per_km": {"paved": 0.0}}}}}

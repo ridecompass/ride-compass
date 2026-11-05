@@ -1,11 +1,11 @@
 """道の材料（material）の正式カタログ。
 
-費用の軸の道の負担の軸（`domain/cost_axes.py: BurdenAxis`の`burden.material`）・走行モデル・地図が参照する材料idの単一ソース（詳細は
+費用の軸の道のストレスの軸（`domain/cost_axes.py: BurdenAxis`の`burden.material`）・走行モデル・地図が参照する材料idの単一ソース（詳細は
 docs/modules/backend/evaluation-scoring.md「材料カタログ」参照）。
 
 **材料の「登録」と「費用の軸での利用」は独立している**: 今の費用の軸が使わない生データ
 （highway・surface・smoothness等）も、「費用や地図描画に使えそうな生データ」として本カタログへ
-網羅的に登録する。登録済みでも道の負担の軸が名指さなければ費用には使われない。
+網羅的に登録する。登録済みでも道のストレスの軸が名指さなければ費用には使われない。
 
 本カタログの材料はGUIから追加・編集・削除できず（コード変更＋デプロイが前提）、ビルド時の生成物
 （`scripts/export_openapi.py`が書き出す`material-catalog.json`）へ書き出す。道の区分から作る材料（`class:<分け方>`）は

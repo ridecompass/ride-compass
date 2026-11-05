@@ -37,7 +37,7 @@ export function costAxisCatalog(...axes: CostAxisEntry[]): CostAxisCatalogRespon
   };
 }
 
-/** 登坂（体力）と振動（道の負担）の2本。 */
+/** 登坂（体力）と振動（道のストレス）の2本。 */
 export const TWO_COST_AXES = costAxisCatalog(
   costAxisEntry("ascent", { label: "登坂" }),
   costAxisEntry("vibration", { ledger: "burden", label: "振動" }),

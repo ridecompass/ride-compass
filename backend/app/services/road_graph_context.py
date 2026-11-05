@@ -80,7 +80,7 @@ class RoadGraphContext:
     # 遷移ごとの曲がる所の費用（秒、`turn_structure`の遷移の並び）。区間の費用と同じく利用者ごとに変わりうる値なので、
     # 構造ではなく文脈が持ち、探索・木の費用の上界・繋ぎ目へ値で渡す。漕ぎ出しの代償を費用に足すまでは時間そのもの。
     transition_cost: np.ndarray
-    # 費用の軸の定義（`composer`を組んだのと同じもの）。候補の事実が道の負担の軸の名前を読む。
+    # 費用の軸の定義（`composer`を組んだのと同じもの）。候補の事実が道のストレスの軸の名前を読む。
     cost_axes: CostAxisDefinitions
     # 探索範囲を覆うタイル集合。学習した迂回率の鍵に使う。
     tile_set: frozenset[tuple[int, int, int]]

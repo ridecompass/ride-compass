@@ -378,7 +378,7 @@ def _segment_penalties(orientation: _Orientation, context: RoadGraphContext) -> 
     return _per_segment(orientation.reads, len(orientation.edges), of)
 
 
-#: 体力の費目 → 候補の事実の名前と単位（値は`_route_facts`が求める）。道の負担の軸は「<軸の名前>のある道」のkm。
+#: 体力の費目 → 候補の事実の名前と単位（値は`_route_facts`が求める）。道のストレスの軸は「<軸の名前>のある道」のkm。
 _EFFORT_FACTS: dict[EffortItem, tuple[str, str]] = {
     "gravity": ("登り", "m"),
     "air": (HEADWIND_FACT_LABEL, "m/s"),

@@ -1,6 +1,6 @@
 import type { CaptureScript } from "../context";
 
-// 脚本の例: モックの費用の軸の一覧を道の負担の軸3つに、画面の設定を走行モデルの較正値に替えて、ルート設定の負担の倍率と想定速度の
+// 脚本の例: モックの費用の軸の一覧を道のストレスの軸3つに、画面の設定を走行モデルの較正値に替えて、ルート設定の負担の倍率と想定速度の
 // 説明を撮る（モックの応答）。
 //   node frontend/scripts/capture.mjs --script frontend/capture/examples/cost-axes.ts
 

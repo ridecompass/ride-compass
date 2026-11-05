@@ -29,7 +29,7 @@ def cost_axes():
 
 
 def test_the_catalog_lists_the_effort_axes_in_the_code_order_then_the_burden_axes(cost_axes):
-    """体力の軸は定義の書き順に依らずコードの表の順で、道の負担の軸が続く。道の負担の費目（材料と重さ）は画面へ出さない。"""
+    """体力の軸は定義の書き順に依らずコードの表の順で、道のストレスの軸が続く。道のストレスの費目（材料と重さ）は画面へ出さない。"""
     body = TestClient(app).get("/api/cost-axes").json()
 
     assert [(axis["axis_id"], axis["ledger"]) for axis in body["axes"]] == [

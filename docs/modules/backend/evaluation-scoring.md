@@ -9,7 +9,7 @@
 
 | レイヤー | ファイル |
 |---|---|
-| domain | `hard_filters.py`（0次フィルタ）・`road_avoidance.py`（道の行ごとの避け方）・`cost_preference.py`（費用の式の利用者の値: 全体のつまみと費用の軸ごとの倍率と、その範囲）・`cost_axes.py`（費用の軸の定義の型・検証と、プロセス内の定義）・`ledger_costs.py`（費目の帳簿の式。代償の秒と、その較正値の束）・`axis_templates.py`（道の負担の重さを材料から引く折れ線と表引き）・`search_materials.py`（探索の材料の表）・`material_catalog.py`・`material_coverage_spec.py`（材料の欠損率の測り方の型と、欠損率の見出し）・`material_value_labels.py`（材料のタグの値ごとの日本語の対訳表）・`material_sql.py`（材料の値をSQLで導出する式。道・ノードの生データを読む副問い合わせは`infrastructure/source_models.py`）・`road_classes.py`（道の区分の全体の型と、区分に道を振り分ける式）・`road_class_catalog.py`（道の区分を画面の設定で配る形） |
+| domain | `hard_filters.py`（0次フィルタ）・`road_avoidance.py`（道の行ごとの避け方）・`cost_preference.py`（費用の式の利用者の値: 全体のつまみと費用の軸ごとの倍率と、その範囲）・`cost_axes.py`（費用の軸の定義の型・検証と、プロセス内の定義）・`ledger_costs.py`（費目の帳簿の式。代償の秒と、その較正値の束）・`axis_templates.py`（道のストレスの重さを材料から引く折れ線と表引き）・`search_materials.py`（探索の材料の表）・`material_catalog.py`・`material_coverage_spec.py`（材料の欠損率の測り方の型と、欠損率の見出し）・`material_value_labels.py`（材料のタグの値ごとの日本語の対訳表）・`material_sql.py`（材料の値をSQLで導出する式。道・ノードの生データを読む副問い合わせは`infrastructure/source_models.py`）・`road_classes.py`（道の区分の全体の型と、区分に道を振り分ける式）・`road_class_catalog.py`（道の区分を画面の設定で配る形） |
 | services | `material_coverage_service.py`・`cost_axis_service.py`（費用の軸の定義の読み込みと管理APIの入れ替え）・`road_class_service.py`（道の区分の読み込みと管理APIの入れ替え） |
 | infrastructure | `material_coverage.py`（材料ごとの欠損割合の集計クエリ）・`cost_axis_models.py`・`cost_axis_repository.py`・`road_class_models.py`・`road_class_repository.py`・`definition_write_lock.py`（定義の書き込みを直列にする鍵） |
 | api | `material_catalog.py`（材料の欠損割合のエンドポイント）・`cost_axis_catalog.py`（`GET /api/cost-axes`で費用の軸の見せ方・総合のレンズを、`GET /api/cost-axes/lens-equivalents`で利用者の値での段の境目の目安を画面へ配る。両方の要求の利用者の値の受け口`cost_preference_query`も持つ）・`cost_axis_admin.py`・`road_class_admin.py`（どちらも全体の読みと入れ替えの管理API）・`client_config.py`（`GET /api/client-config`。較正値・タイルの世代・事故の収録年・道の区分を画面へ配る） |
@@ -95,7 +95,7 @@ wayの長さ（0はNULL）になる——件数と長さは必ず同じ側から
 `domain/search_materials.py: build_search_materials`が、切り出した範囲の材料（`EdgeMaterialColumns`）から、生成のたびに1回
 `SearchMaterials`を組む。行は切り出した区間の順で、数値の材料は材料のidごとに区間の値が連続する行列で持つ。キャッシュしない。
 
-- **運ぶ材料**は、所要時間が読む材料（`domain/cycling_speed.py: travel_model_material_ids`）と、費用の式が読む材料（道の負担の軸の
+- **運ぶ材料**は、所要時間が読む材料（`domain/cycling_speed.py: travel_model_material_ids`）と、費用の式が読む材料（道のストレスの軸の
   材料。`domain/cost_axes.py: burden_material_ids`）だけ。所要時間が読む材料の列が欠けた表は組み立てで断る（`ValueError`）——欠けたまま
   通すと、欠けた材料の待ち・坂が全区間で黙って0秒になる。区間ごとの値の欠け（NaN）は平地・待ち無しとして扱い、
   `missing_travel_data_share`で数える。
@@ -116,7 +116,7 @@ wayの長さ（0はNULL）になる——件数と長さは必ず同じ側から
   起動時の両方が通し、道の区分を入れ替えるときも今の定義を新しい区分で通し直す——区分の重さは分け方のすべての区分に
   書かせるので、区分を足すと先に重さを足すまで区分の入れ替えが断られる。
 - **合成**: `domain/leg_costs.py: LegCostComposer`は、ビンごとの費用を「所要時間 ＋ 代償の秒」で組む。代償の体力は走行の模型が
-  点の間ごとに重みを掛けて返し（`domain/cycling_speed.py: SegmentSpeedModel.ride`）、道の負担は時刻に依らないのでリクエストに1回
+  点の間ごとに重みを掛けて返し（`domain/cycling_speed.py: SegmentSpeedModel.ride`）、道のストレスは時刻に依らないのでリクエストに1回
   だけ求める。曲がる所の費用も同じ換算で組み（`LegCostComposer.transition_costs`）、探索へは`RoadGraphContext.transition_cost`
   で渡る。
 - **利用者の値**: つまみと倍率は生成の要求の`cost_preference`（`domain/cost_preference.py: CostPreference`）で届く。つまみは
@@ -124,7 +124,7 @@ wayの長さ（0はNULL）になる——件数と長さは必ず同じ側から
   呼ぶたびに今の較正値で組む——較正値を変えても利用者の値は標準のまま。倍率は書いていない軸を標準とし、条件のエコーへは
   今の費用の軸を全部書いた形（`CostPreference.resolved`）を返す。
 - **組み立ての部品**: 走行の模型の入力（転がり抵抗・止まる出来事の待ちと漕ぎ出し・断面。`domain/leg_costs.py: travel_inputs`）と
-  道の負担の1kmあたりの重さ（`domain/leg_costs.py: burden_weights`）は、材料の列（材料id→区間の列）から組む関数で、探索の合成と
+  道のストレスの1kmあたりの重さ（`domain/leg_costs.py: burden_weights`）は、材料の列（材料id→区間の列）から組む関数で、探索の合成と
   地図のレンズ（[レンズ・フィーチャー値配信](dynamic-way-values.md)「費用の軸のレンズ」）が同じものを呼ぶ。代償の秒は軸ごとの内訳
   （`domain/ledger_costs.py: LedgerCosts.penalty_by_axis`）を持ち、その和が区間の代償の秒（`LedgerCosts.penalty_seconds`）になる。
 - **ルートの内訳**: 経路の区間の代償は、探索がその区間に使ったビンの風で、経路上の行だけを解き直して求める
@@ -132,8 +132,8 @@ wayの長さ（0はNULL）になる——件数と長さは必ず同じ側から
   `SegmentSpeedModel.ride`に行を渡すとその行の点の間だけを解く）。点の間ごとの計算は互いに依らないので、全部を解いた探索の
   値と同じになり、所要時間と内訳の和が探索の費用に合う。回避指定の秒は、避け方の倍率の1を越えた分 ×（区間の所要時間＋代償）。
   曲がる所の漕ぎ出しの代償は、曲がった先の区間の慣性の費目の軸へ足す（`services/road_graph_candidates.py`）。
-- **欠けの埋め方**: 停止要因の密度と、道の負担の軸の材料の欠けは、`domain/road_network.py: material_fills`の分布で埋める
-  （数値の材料の平均は`RoadNetwork.numeric_means`で道路網と同じ寿命で1回だけ、区分の材料の割合は道の負担の軸が読む分だけ
+- **欠けの埋め方**: 停止要因の密度と、道のストレスの軸の材料の欠けは、`domain/road_network.py: material_fills`の分布で埋める
+  （数値の材料の平均は`RoadNetwork.numeric_means`で道路網と同じ寿命で1回だけ、区分の材料の割合は道のストレスの軸が読む分だけ
   生成ごとに求める）。停止要因の密度は所要時間（待ち）と体力（漕ぎ出し）の両方に同じ値を使う。
 
 ## 管理DBの定義（道の区分・費用の軸）
@@ -185,7 +185,7 @@ wayの長さ（0はNULL）になる——件数と長さは必ず同じ側から
 
 - **費用の式が参照する材料は、正規化された生データ（数値・boolean・単純categorical）に統一する。** 地図表示・API応答向けの
   人間可読な分類ラベル（「この道は自転車レーンあり」のような優先順位付きの多値分類）は道の区分（管理DB）の関心事で、材料にしない。
-- 材料の「登録」（本カタログに載る）と「費用の軸での利用」（道の負担の軸の`burden.material`が名指す）は独立している。
+- 材料の「登録」（本カタログに載る）と「費用の軸での利用」（道のストレスの軸の`burden.material`が名指す）は独立している。
 - 材料自体はGUIから追加・編集・削除できない（コード変更＋デプロイが前提）。frontendが材料を知る
   経路はビルド時の生成物`material-catalog.json`（`scripts/export_openapi.py`）だけで、実行時のAPIでは
   配らない——材料は再デプロイでしか変わらないため、実行時に取りに行くと取得失敗という状態だけが増える。
@@ -210,7 +210,7 @@ wayの長さ（0はNULL）になる——件数と長さは必ず同じ側から
   **欠損判定に1クラスを名指ししない。** 判定も読み出し列もクラスの宣言から導く
   ——名指しすると、クラスを1つ足して既存行を埋め戻す前に、その列がNULLというだけで
   行ごと捨てる。
-  **1つの道の負担の軸で複数のクラスを足さないこと**——割合の合計が100%へ固定されているため
+  **1つの道のストレスの軸で複数のクラスを足さないこと**——割合の合計が100%へ固定されているため
   同じ地面を二重に数える（[設計原則](../../architecture/design-principles.md)構造仕様14）。
 - 値式は`domain/material_sql.py`の組み立て関数から作る（タグの正規化・タグ値の一致・
   数値パース・件数の密度化・タグが無いときの非該当）。同じ判定を材料ごとに書き写さないため、

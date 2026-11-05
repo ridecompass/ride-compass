@@ -122,7 +122,7 @@ def build_search_materials(
     """切り出した範囲の材料から`SearchMaterials`を組む（生成のたびに1回）。段ごとの所要時間を`steps_ms`へ足す。
 
     運ぶ材料は、所要時間が読む材料（`domain/cycling_speed.py: travel_model_material_ids`）と費用の式が読む材料
-    （`cost_material_ids`。道の負担の軸の材料）。DBに無い材料カタログの材料は、値の無い列（`_empty_material_column`）で埋める。
+    （`cost_material_ids`。道のストレスの軸の材料）。DBに無い材料カタログの材料は、値の無い列（`_empty_material_column`）で埋める。
     探索の除外は0次ハードフィルタの当たりと区分の列だけを持つ。
     """
     started = start_timer()

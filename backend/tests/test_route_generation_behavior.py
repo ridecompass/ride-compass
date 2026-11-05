@@ -76,7 +76,7 @@ from tests.route_world import (
 
 
 
-#: 避けたい材料の道の、`avoid_weight` 1あたりの1kmあたりの重さ（道の負担の軸`BAD_AXIS`）。重さ1の道1kmの代償は、標準の
+#: 避けたい材料の道の、`avoid_weight` 1あたりの1kmあたりの重さ（道のストレスの軸`BAD_AXIS`）。重さ1の道1kmの代償は、標準の
 #: 強さ・βで時速20kmの1kmの所要時間の0.7倍。
 BAD_PER_KM_PER_WEIGHT = 1.0
 
@@ -84,7 +84,7 @@ BAD_PER_KM_PER_WEIGHT = 1.0
 @pytest.fixture
 def engine_over(road_network_root):
     """道路網から、本物のエンジンの上に戦略層（`RouteGenerator`）を組む。`avoid_weight`を渡すと、避けたい材料の道を
-    1kmあたり`avoid_weight × BAD_PER_KM_PER_WEIGHT`の重さと数える道の負担の軸を置く。"""
+    1kmあたり`avoid_weight × BAD_PER_KM_PER_WEIGHT`の重さと数える道のストレスの軸を置く。"""
     with ExitStack() as declared:
 
         def build(network: RoadNetwork, *, avoid_weight: float = 0.0, wind: WindForecastSeries | None = None,
@@ -966,7 +966,7 @@ async def test_the_duration_and_the_penalty_of_each_axis_and_of_the_avoided_road
     fastest = fastest_of(candidates)
     assert ways_of(fastest) == [100, 101]
     assert fastest.penalty.axis_seconds[BAD_AXIS] > 0
-    # 事実は軸ごとに、名前と単位を付けて返す（画面が軸idで出し分けない）。道の負担の軸の名前は定義から読む。
+    # 事実は軸ごとに、名前と単位を付けて返す（画面が軸idで出し分けない）。道のストレスの軸の名前は定義から読む。
     facts = fastest.facts.axes
     assert set(facts) == {*EFFORT_AXES, BAD_AXIS}
     assert facts[BAD_AXIS].label == "軸のある道"

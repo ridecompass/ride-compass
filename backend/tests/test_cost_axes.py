@@ -46,10 +46,10 @@ def test_a_definition_with_every_effort_axis_and_a_burden_axis_over_every_class_
         _definitions(vibration={**VIBRATION, "lens": {"thresholds": [5.0, 1.0], "band_labels": ["a", "b", "c"]}}),
         _definitions(vibration=_axis("勾配", kind="linear", material=GRADIENT_PERCENT, points=[[5.0, 1.0], [1.0, 0.0]])),
     ],
-    ids=["体力の軸が欠ける", "道の負担の軸が体力の軸のidを使う", "負の重さ", "レンズの境目が昇順でない", "折れ線の値が昇順でない"],
+    ids=["体力の軸が欠ける", "道のストレスの軸が体力の軸のidを使う", "負の重さ", "レンズの境目が昇順でない", "折れ線の値が昇順でない"],
 )
 def test_a_definition_the_form_does_not_allow_is_refused(definition):
-    """体力の軸はコードの表と同じ一覧で、道の負担の軸はそれと重ならない（同じ費目を2つの軸が持つと同じ損を2回数える）。
+    """体力の軸はコードの表と同じ一覧で、道のストレスの軸はそれと重ならない（同じ費目を2つの軸が持つと同じ損を2回数える）。
     重さは0以上（費用が所要時間を下回ると、探索の見込みが成り立たない）。"""
     with pytest.raises(ValidationError):
         CostAxisDefinitions.model_validate(definition)
@@ -67,7 +67,7 @@ def test_a_definition_the_form_does_not_allow_is_refused(definition):
     ids=["区分の漏れ", "知らない区分", "知らない分け方", "知らない材料", "区分でない材料に区分の重さ"],
 )
 def test_a_burden_that_does_not_fit_its_material_is_reported(burden, problem):
-    """区分の重さは分け方のすべての区分に書く——書いていない区分を0や平均とみなすと、区分を足したときに黙ってその道の負担が
+    """区分の重さは分け方のすべての区分に書く——書いていない区分を0や平均とみなすと、区分を足したときに黙ってその道のストレスが
     消える。"""
     definitions = CostAxisDefinitions.model_validate(
         _definitions(vibration={**VIBRATION, "burden": {**VIBRATION["burden"], **burden}}))

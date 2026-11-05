@@ -35,7 +35,7 @@ export interface CostLensCatalog {
 }
 
 export interface CostAxisCatalog {
-  /** 費用の軸（体力の軸、続けて道の負担の軸）。届くまで・失敗の間は0件。 */
+  /** 費用の軸（体力の軸、続けて道のストレスの軸）。届くまで・失敗の間は0件。 */
   axes: readonly CostAxis[];
   /** 軸id→識別色（どの画面でも同じ軸は同じ色）。 */
   axisColors: Readonly<Record<string, string>>;

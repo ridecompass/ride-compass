@@ -337,8 +337,8 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
     ),
     TuningParameter(
         "cost.burden_seconds_per_km",
-        "道の負担の換算", "秒/km", 180.0, 0.0, 3600.0, TuningEffect.IMMEDIATE,
-        "重さ1の道に換算した1kmを、何秒の損とみなすか（費用の式のβ）。既定は時速20kmで1km走る時間。全部の道の負担の軸に共通。",
+        "道のストレスの換算", "秒/km", 180.0, 0.0, 3600.0, TuningEffect.IMMEDIATE,
+        "重さ1の道に換算した1kmを、何秒の損とみなすか（費用の式のβ）。既定は時速20kmで1km走る時間。全部の道のストレスの軸に共通。",
     ),
     TuningParameter(
         "cost.effort_weight_exponent",
