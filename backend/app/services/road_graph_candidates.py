@@ -141,7 +141,7 @@ class _Traced:
     rows: list[int]
     # 経路の遷移の位置（`TurnExpandedStructure.entries_along`）。時刻の待ちと案内する曲がりが読む。
     entries: list[int | None]
-    # 遷移ごとの曲がる所の漕ぎ出しの回数（`entries`と同じ並び）。費用・代償・止まる回数が読む。
+    # 遷移ごとの曲がる所の漕ぎ出しの回数（`entries`と同じ並び）。費用と内訳の曲がる所の秒が読む。
     turn_kickoffs: list[float]
     passages: list[EdgePassage]
     # 経路の費用（`domain/route_search.py: route_cost`）。向きの比べと候補の並べ方が同じ値を読む。
@@ -388,20 +388,20 @@ _EFFORT_FACTS: dict[EffortItem, tuple[str, str]] = {
 
 def _route_facts(orientation: _Orientation, context: RoadGraphContext, elevation_gain_m: float | None) -> RouteFacts:
     """経路の事実の量。区間ごとの値（`domain/leg_costs.py: LegCostComposer.row_facts`・`LegValues.headwind_ms`）を
-    経路の区間の長さで足し、曲がる所の漕ぎ出しを止まる回数に足す。"""
+    経路の区間の長さで足す。曲がる所の漕ぎ出しは内訳の別の行（`PenaltyBreakdown.turn_seconds`）なので、止まる回数に足さない。"""
     rows = np.asarray(orientation.rows, dtype=np.int64)
     distance_km = np.array([edge.distance_m for edge in orientation.edges], dtype=float) / 1000.0
     facts = context.composer.row_facts(rows)
     headwind_ms = np.array(_per_segment(orientation.reads, len(rows), lambda read: read.values.headwind_ms.tolist()))
-    # 止まる回数は、止まる出来事と曲がる所を、止まってから漕ぎ出す回数に換えて足したもの（減速だけの出来事は、落とした
-    # 速さから戻す分だけ1回より少なく数える）。所要時間の待ちと停止の軸の体力と同じ回数。
+    # 止まる回数は、道の止まる出来事を、止まってから漕ぎ出す回数に換えて足したもの（減速だけの出来事は、落とした速さから
+    # 戻す分だけ1回より少なく数える）。停止の軸の秒（道の量）と同じ回数。
     values: dict[EffortItem, float | None] = {
         "gravity": elevation_gain_m,
         "air": (
             None if context.composer.wind_unavailable or (mean := length_weighted_mean(headwind_ms, distance_km)) is None
             else round(mean, WIND_MS_DECIMALS)
         ),
-        "inertia": round(float(facts.stops.sum()) + sum(orientation.turn_kickoffs), STOP_COUNT_DECIMALS),
+        "inertia": round(float(facts.stops.sum()), STOP_COUNT_DECIMALS),
         "rolling": round(float(distance_km[facts.rough].sum()), DISTANCE_KM_DECIMALS),
     }
     axes = {
