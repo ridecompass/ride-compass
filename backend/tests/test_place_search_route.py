@@ -251,7 +251,7 @@ async def test_the_search_is_a_failure_when_the_area_cannot_be_read():
     response = await _search("東京都新宿区")
 
     assert response.status_code == 502
-    assert response.json() == {"detail": "対象範囲を読めませんでした"}
+    assert response.json() == {"detail": "検索する範囲の情報を取得できませんでした"}
 
 
 @pytest.mark.usefixtures("area")

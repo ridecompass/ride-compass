@@ -47,13 +47,13 @@ class TuningEffect(Enum):
     title: str
 
     #: 次のリクエストから効く（リクエストごとのコスト合成が読む）。
-    IMMEDIATE = ("immediate", "次のルート生成から効く")
+    IMMEDIATE = ("immediate", "次のルート生成から反映")
     #: 派生の作り直し（`batch/derive_cli.py`）をやり直さないと効かない。派生バッチは作り直しを始めるときに上書きを読み、
     #: 段の較正値は段の入力なので読む段から後ろが流れ、道路網の配列の較正値は配列を作り直させる。派生の外で同じ値を読む所は、
     #: 作り直しに使った値（`infrastructure/derived_data_meta.py: DerivedTuningRow`）を読む。
-    DERIVE_REBUILD = ("derive_rebuild", "派生データを作り直すまで効かない")
+    DERIVE_REBUILD = ("derive_rebuild", "派生データを作り直すまで反映されない")
     #: 画面を読み込み直すと効く（フロントが起動時のカタログ取得で受け取る値）。
-    CLIENT_RELOAD = ("client_reload", "画面を読み込み直すと効く")
+    CLIENT_RELOAD = ("client_reload", "画面を再読み込みすると反映")
 
 
 @dataclass(frozen=True)
@@ -175,10 +175,8 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
     *_turn_parameters(
         "major_crossing", "上位の道の横断", 1.0, 8.0, 300.0,
         "信号の無い交差点で、上位の階級の道を直進で渡るときに足す。"
-        f"一時停止で止まるぶん（{_STOP_ID}）とは別で、義務の停止を超えて相手の"
-        "流れが途切れるのを待つぶんを表す（止まること自体は交通ルール上、車が来ていなくても"
-        f"発生する）。信号のある交差点では足さない——{_SIGNAL_ID}が赤で待つ時間、"
-        "すなわち渡れるようになるまでの待ちそのものを表すため。",
+        f"一時停止で止まる時間（{_STOP_ID}）とは別に、相手の流れが途切れるのを待つ時間を表す。"
+        f"信号のある交差点では足さない（{_SIGNAL_ID}の赤の待ちに含まれるため）。",
     ),
     *_turn_parameters(
         "major_turn", "上位の道への右左折", 1.0, 15.0, 300.0,
@@ -192,10 +190,8 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
     *_stop_parameters("crossing", 0.0, 5.0,
                       "歩行者に譲って止まったときの待ち。自転車が止まる前提は置いていない（割合0）。"),
     *_stop_parameters("stop", 1.0, 8.0,
-                      "標識・標示で減速して止まるぶん。交通ルール上、車が来ていなくても止まる"
-                      "ため相手の交通と無関係に発生する。相手の流れが途切れるのを待つぶんは"
-                      f"含まず、そちらは{_MAJOR_CROSSING_ID}が上位の道を渡るときだけ"
-                      "足す。"),
+                      "標識・標示で止まる時間。交通ルール上、車が来ていなくても止まる。"
+                      f"相手の流れが途切れるのを待つ時間は含まず、上位の道を渡るときだけ{_MAJOR_CROSSING_ID}で足す。"),
     *_stop_parameters("level_crossing", 1.0, 25.0,
                       "踏切の直前で止まり（道路交通法第33条）、遮断機の待ちを含む見積もり。"),
     *_stop_parameters("barrier", 1.0, 8.0, "ボラード等で減速して失う時間（止まらず減速する出来事）。"),
@@ -217,7 +213,7 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
         "停止の点をまとめる距離", "m", 40.0, 0.0, 200.0,
         TuningEffect.DERIVE_REBUILD,
         "同じ場所にある同種の停止要因の点を、1回の停止としてまとめる距離。日本のOSMは1つの信号交差点を流入路ごとの"
-        "信号と横断歩道の位置の複数の点で描くため、点を素直に数えると停止回数を上回る。停止回数・地図の停止の点・"
+        "信号と横断歩道の位置の複数の点で描くため、点をそのまま数えると停止回数を上回る。停止回数・地図の停止の点・"
         "ルートの印が同じ値でまとめる。",
     ),
     TuningParameter(
@@ -225,7 +221,7 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
         "曲がりの向きを測る長さ", "m", 20.0, 1.0, 200.0,
         TuningEffect.DERIVE_REBUILD,
         "交差点での曲がり（直進・左・右）を、区間の端からこの道のりの点までの向きで測る。区間がこれより短ければ端から端を見る。"
-        "道路網の配列に効く。",
+        "道路網のデータを作り直すと反映される。",
     ),
     # --- 事故 ---
     TuningParameter(
@@ -248,7 +244,7 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
         "標高の断面の刻み", "m", 50.0, 10.0, 500.0,
         TuningEffect.DERIVE_REBUILD,
         "区間をこの道のり以下の等しい刻みに分けた点で標高を引き、獲得標高と勾配を出す。刻みが勾配をならす幅になる。"
-        "狭めるほど短い起伏まで登りに数えるが、道の脇の地形（堤防の斜面等）や標高データの誤差による跳ね上がりも拾う。"
+        "狭めるほど短い起伏まで登りに数えるが、道の脇の地形（堤防の斜面等）や標高データの誤差による急な変化も登りとして数える。"
         "北千住から石岡への実走の獲得標高（スマートウォッチで約600m）と、刻みごとの値を比べて決めた。",
     ),
     # --- 土地被覆 ---
@@ -320,7 +316,7 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
         "speed.max_descent_kmh",
         "下りの速度上限", "km/h", 45.0, 10.0, 100.0,
         TuningEffect.IMMEDIATE,
-        "入れないと急勾配で所要時間が発散する。巡航速度がこれより速い人は、巡航速度を上限にする。",
+        "上限が無いと、急な下りで計算上の速度が際限なく上がる。巡航速度がこれより速い人は、巡航速度を上限にする。",
         shown_to_users=True,
     ),
     TuningParameter(
@@ -332,27 +328,27 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
     TuningParameter(
         "cost.effort_alpha",
         "体力の換算", "倍", 1.0, 0.0, 10.0, TuningEffect.IMMEDIATE,
-        "平地の出力を越えて踏んだ体力を、平地をその秒だけ走る体力とみなした秒に掛ける倍率（費用の式のα）。全部の体力の軸に"
-        "共通。",
+        "平地の出力を超えて使った体力を、平地を何秒走る分に当たるかに換算し、その秒に掛ける倍率（費用の式のα）。"
+        "体力の負担のすべての種類に共通。",
     ),
     TuningParameter(
         "cost.burden_seconds_per_km",
         "道のストレスの換算", "秒/km", 180.0, 0.0, 3600.0, TuningEffect.IMMEDIATE,
-        "重さ1の道に換算した1kmを、何秒の損とみなすか（費用の式のβ）。既定は時速20kmで1km走る時間。全部の道のストレスの軸に共通。",
+        "道のストレスの基準の重さ（1）の道を1km走ることを、何秒の負担とみなすか（費用の式のβ）。既定は時速20kmで1kmを走る時間。道のストレスのすべての種類に共通。",
     ),
     TuningParameter(
         "cost.effort_weight_exponent",
-        "体力の重みの曲がり方", "", 1.0, 0.0, 4.0, TuningEffect.IMMEDIATE,
+        "体力の重みの指数", "", 1.0, 0.0, 4.0, TuningEffect.IMMEDIATE,
         "踏みたい出力（上限で切る前）と平地の出力の比を何乗して体力の重みにするか。0で重みを掛けない。上げるほど、上限を"
         "越えて踏みたい急な坂・強い向かい風を重く数える。",
     ),
     # 既定は、巡航20km/hの人（総質量80kg）が勾配5%で時速10km前後になるという実感に合わせた（勾配1%あたり15W）。
     TuningParameter(
         "speed.extra_power_per_force",
-        "抵抗が増えたときの踏み増し", "W/N", 1.91, 0.0, 20.0,
+        "抵抗1Nあたりの出力の増加", "W/N", 1.91, 0.0, 20.0,
         TuningEffect.IMMEDIATE,
         "平地・無風・基準の路面より抵抗（坂の重力・向かい風の空気抵抗・路面の転がり抵抗の増えた分の和）が1N増えるごとに、"
-        "何W余分に踏むか。抵抗の種類によらず同じ決まりで踏み増す。坂での速度の実感に合わせた暫定値で、根拠は薄い。",
+        "何W余分に踏むか。抵抗の種類によらず同じ決まりで踏み増す。坂での速さの体感に合わせた暫定値で、裏付けは十分ではない。",
     ),
     TuningParameter(
         "speed.max_climb_power_ratio",
@@ -389,7 +385,7 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
         "search.loop_max_overlap_ratio",
         "周回どうしの重なりの上限", "", 0.7, 0.0, 1.0, TuningEffect.IMMEDIATE,
         "帰りまで継いだ周回が、採用済みの周回と進む向きによらず距離の割合でこれより重なれば捨てる。"
-        "同じ周回の逆回りや、往路は違うが帰りが同じ裏道へ収まる周回を弾く。"
+        "同じ周回の逆回りや、往路は違うが帰りが同じ裏道へ収まる周回を除く。"
         f"往路だけを見る{_TURNAROUND_OVERLAP_ID}より緩い、最後の確かめ。",
     ),
     TuningParameter(
@@ -432,7 +428,7 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
     ),
     TuningParameter(
         "search.retrace_penalty_multiplier",
-        "走った道を帰りで通る罰", "倍", 8.0, 1.0, 100.0, TuningEffect.IMMEDIATE,
+        "往路の道を帰りに通るときの割り増し", "倍", 8.0, 1.0, 100.0, TuningEffect.IMMEDIATE,
         "帰りを探す間、それまでに走った道（逆向きを含む）の探索の費用に掛ける倍率。1は避けない。"
         "有限なので、走った道を戻るほかに道が無い所（袋小路等）は通れる。",
     ),
@@ -454,9 +450,9 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
     # --- 代償の強さ ---
     TuningParameter(
         "evaluation.penalty_strength",
-        "代償の強さ（標準の人）", "", 0.7, 0.0, 5.0,
+        "負担の基準の倍率", "", 0.7, 0.0, 5.0,
         TuningEffect.IMMEDIATE,
-        "代償の秒の全体に掛ける、標準的な人の強さ。利用者の負担の強さのつまみは、これに掛ける比。",
+        "すべての負担に掛ける基準の倍率。利用者が選ぶ「負担の強さ」（×0〜×2）は、この値にさらに掛ける。",
     ),
 )
 

@@ -35,7 +35,7 @@ class _MissingSemanticsDisplay(NamedTuple):
 #: 並びが画面の並び順。
 MISSING_SEMANTICS_DISPLAY: dict[MissingSemantics, _MissingSemanticsDisplay] = labeled_every_value(MissingSemantics, {
     "unknown": _MissingSemanticsDisplay(
-        "評価に影響する欠損", "元データが無い区間では、この材料を使う軸が評価対象外になる。", True
+        "評価に影響する欠損", "元データが無い区間では、この材料を使う負担の種類を評価しない。", True
     ),
     "definite": _MissingSemanticsDisplay(
         "タグ不在を確定値として評価する材料（参考）", "欠損は「該当なし」を意味し、評価に穴は開かない。", False

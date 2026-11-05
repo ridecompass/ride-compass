@@ -21,7 +21,7 @@ async def read_cost_axes(
 ) -> CostAxisDefinitions:
     definitions = await service.read()
     if definitions is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="費用の軸の定義はまだありません")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="負担の種類の定義はまだありません")
     return definitions
 
 

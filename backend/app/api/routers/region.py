@@ -74,7 +74,7 @@ async def region_point_tile(
     """
     point_layer = POINT_TILE_LAYERS.get(layer)
     if point_layer is None:
-        raise HTTPException(status_code=404, detail="未知の点のレイヤーです。")
+        raise HTTPException(status_code=404, detail="指定された地点のレイヤーはありません。")
     check_tile_rate_limit(request, f"{layer}-tile")
     validate_tile_coords(z, x, y)
     async with region_tile_semaphore:
@@ -129,7 +129,7 @@ async def region_lens(
     async with region_tile_semaphore:
         materials = await service.way_materials(lens_id, z, x, y, at, speed_kmh, preference)
     if materials is None:
-        raise HTTPException(status_code=404, detail="このレンズの値はありません。")
+        raise HTTPException(status_code=404, detail="この負担の種類の値はありません。")
     return materials
 
 
