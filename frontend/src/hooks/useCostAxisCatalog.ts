@@ -2,9 +2,14 @@
 
 import { COST_AXIS_CATALOG_LABEL, getCostAxisCatalog } from "@/services/costAxisCatalogApi";
 import { retrySharedCatalogFetch, useSharedCatalog } from "@/hooks/useSharedCatalog";
-import { axisColorsOf } from "@/lib/axisCatalog";
 import type { FetchFailure } from "@/types/fetchFailure";
 import type { CostAxisCatalogResponse } from "@/types/route";
+
+/** 軸の識別色。色に意味は持たせず、色相環を軸数で等分して表示順に割り当てる（軸数がいくつでも衝突せず、倍率を0にした軸が
+ * あっても他の軸の色は動かない）。 */
+function axisColorsOf(axes: readonly { readonly axisId: string }[]): Record<string, string> {
+  return Object.fromEntries(axes.map((axis, index) => [axis.axisId, `hsl(${(index * 360) / axes.length}, 62%, 55%)`]));
+}
 
 const COST_AXIS_CATALOG_QUERY_KEY = ["cost-axis-catalog"] as const;
 
@@ -30,13 +35,13 @@ export interface CostLensCatalog {
 }
 
 export interface CostAxisCatalog {
-  /** 費用の軸（体力の軸、続けて道の負担の軸）。定義がまだ無い間は0件で`loaded`。 */
+  /** 費用の軸（体力の軸、続けて道の負担の軸）。届くまで・失敗の間は0件。 */
   axes: readonly CostAxis[];
   /** 軸id→識別色（どの画面でも同じ軸は同じ色）。 */
   axisColors: Readonly<Record<string, string>>;
   /** 代償の内訳の、避け方の倍率で上乗せした秒の行の名前。 */
   avoidanceLabel: string;
-  /** 地図のレンズ。定義がまだ無い間・届くまではnull。 */
+  /** 地図のレンズ。届くまで・失敗の間はnull。 */
   lenses: CostLensCatalog | null;
   /** 取得が成功したか。falseの間は`axes`が空なので、今の軸と揃うことを要る処理（倍率を送る）はこれで未確定を区別する。 */
   loaded: boolean;
@@ -54,8 +59,7 @@ const EMPTY: CostAxisCatalog = {
 };
 const FAILED: CostAxisCatalog = { ...EMPTY, failed: true };
 
-export function costAxisCatalogFromResponse(response: CostAxisCatalogResponse | null): CostAxisCatalog {
-  if (response === null) return { ...EMPTY, loaded: true };
+export function costAxisCatalogFromResponse(response: CostAxisCatalogResponse): CostAxisCatalog {
   const axes = response.axes.map((entry): CostAxis => ({
     axisId: entry.axis_id,
     ledger: entry.ledger,

@@ -3,9 +3,8 @@
 Esri×Impact Observatory Sentinel-2 10m Annual LULCの画素値ヒストグラム（バッチが
 道路centerline周囲のリングから集計したクラス別画素数）を、クラスごとの割合(%)へ
 変換するだけの純関数群。どのクラスが「遮蔽」でどのクラスが「開放」かという判断は
-一切行わない——その判断は評価軸（`domain/axis_definitions.py: AXIS_DEFINITIONS`）の
-`terms`（重み付き線形結合）が表現する。材料段階で分類を固定すると、軸定義を見ただけでは
-何が難易度に寄与しているか分からなくなるため。
+一切行わない——その判断は、割合を読む側（地図の面の塗り・ルートの区間の「緑と水」）が持つ。材料段階で分類を固定すると、
+読む側を見ただけでは何がどの分類に数えられているか分からなくなるため。
 """
 
 from dataclasses import dataclass, field
@@ -41,7 +40,7 @@ class LandcoverClass:
     """土地被覆1クラスの表示上の定義。
 
     ラスタの画素値・`LandcoverPercentages`の割合列・表示名・色を1組で持つ。地図タイルの
-    塗り（`infrastructure/landcover_raster.py`）も、凡例と区間インスペクタの表示名
+    塗り（`infrastructure/landcover_raster.py`）も、凡例と道の窓の表示名
     （frontendへは`scripts/export_openapi.py`が`landcover-classes.json`として書き出す）も、
     このレジストリだけを見る。
     """
@@ -52,14 +51,14 @@ class LandcoverClass:
     percent_field: str
     label: str
     #: 地図へ塗る色。配信元の公式配色をそのまま使わない——建物が鮮やかな赤で、この
-    #: アプリでは赤が「難易度が高い」を表す色として既に使われているため、市街地が
+    #: アプリでは赤が「負担が重い」を表す色として既に使われているため、市街地が
     #: 常時その色で覆われると他の赤の意味が薄れる。色相は自然な連想（水=青・樹木=緑）を
     #: 保ちつつ、下の道路・地名が読める彩度に落とす。
     color: str
     #: 地図の凡例の行が開く説明。配信元のクラスの定義を利用者の言葉にしたもの。塗りに効かないので、タイルの世代を
     #: 導く署名（このクラスの`repr`）に入れない。
     description: str = field(repr=False)
-    #: 地図の面レイヤーで塗るか。Falseでも区間インスペクタの割合には出る（数値は他の
+    #: 地図の面レイヤーで塗るか。Falseでも道の窓の割合には出る（数値は他の
     #: クラスに薄められない）。塗らないのは、**そのクラスが広い範囲を単色で覆ってしまい、
     #: 基礎地図を隠すわりに何も足さない**場合に限る。
     painted: bool = True
@@ -113,7 +112,7 @@ def check_landcover_classes(classes: Sequence[LandcoverClass]) -> None:
     """クラスの宣言が、画素・割合列・凡例のどこで読んでも1つのクラスに決まらなければ断る。
 
     画素値が重なると1つの画素が2クラスに数えられ、割合列の名前が重なると材料の列がぶつかる。表示名・色が重なると
-    凡例と区間インスペクタで見分けられない。割合列の名前は材料の列の名前を導く接尾辞で終わる。凡例の行は（i）から説明を開く。
+    凡例と道の窓で見分けられない。割合列の名前は材料の列の名前を導く接尾辞で終わる。凡例の行は（i）から説明を開く。
     """
     for attribute in ("value", "percent_field", "label", "color"):
         values = [getattr(cls, attribute) for cls in classes]

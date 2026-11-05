@@ -2,7 +2,7 @@ import { expect, type Locator, type Page } from "@playwright/test";
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { mapDisplay } from "@/types/generated/mapDisplay";
-import * as catalogAxes from "@/testing/catalogAxes";
+import * as costAxes from "@/testing/costAxes";
 import * as fixtures from "../e2e/fixtures";
 import * as states from "../e2e/states";
 import { installPageHelpers } from "../e2e/pageHelpers";
@@ -21,7 +21,7 @@ interface OpenOptions {
   point?: { latitude: number; longitude: number };
   /** 開いたあとに寄せる地図の倍率。 */
   zoom?: number;
-  /** ON にするレイヤーの id（mapDisplay.layers と、軸カタログが配る道の線の層）。渡さないレイヤーは既定の表示のまま。 */
+  /** ON にするレイヤーの id（mapDisplay.layers と、画面の設定が配る道の線の層）。渡さないレイヤーは既定の表示のまま。 */
   layers?: string[];
   /** 開く前に入れる保存状態（localStorage）。 */
   storedState?: Record<string, string>;
@@ -43,8 +43,9 @@ export interface CaptureContext {
   fixtures: typeof fixtures;
   /** e2e/states.ts の全状態の走査の段取り（installScanMocks・splice 等）。 */
   states: typeof states;
-  /** src/testing/catalogAxes.ts の軸の雛形（catalogEntry・dedicatedEntry 等）。モックの軸カタログを組むときに fixtures.axisCatalogFixture へ渡す。 */
-  catalogAxes: typeof catalogAxes;
+  /** src/testing/costAxes.ts の費用の軸の一覧の雛形（costAxisCatalog・costAxisEntry 等）。モックの一覧を組むときに使う（画面の設定は
+   * fixtures.clientConfigFixture）。 */
+  costAxes: typeof costAxes;
   /** アプリを開き、地図の全ソースの読み終わりまで待つ。初回の案内は閉じた状態で開く。 */
   open(options?: OpenOptions): Promise<void>;
   /**
@@ -52,7 +53,7 @@ export interface CaptureContext {
    * backend は撮影用の資格情報を通さない）。選べなければ、選べるタブを並べて止まる。
    */
   openAdmin(options?: OpenAdminOptions): Promise<Locator>;
-  /** 「評価で塗る」の評価軸（レンズ）を名前で選び（null は選んでいない状態へ戻す）、読み終わりまで待つ。選べなければ、選べる名前を並べて止まる。 */
+  /** 「評価で塗る」のレンズを名前で選び（null は選んでいない状態へ戻す）、読み終わりまで待つ。選べなければ、選べる名前を並べて止まる。 */
   chooseLens(label: string | null): Promise<void>;
   /**
    * 「表示」の一覧の行の名前で凡例の内訳を開き、その内訳を返す。一覧が閉じていれば開く。`row` を渡せば、その行の説明も開く。
@@ -75,7 +76,7 @@ export interface CaptureContext {
    * 本物の応答が失敗（本番の backend にまだ無い経路の 404 等）なら、`transform` に undefined を渡し、返した JSON を成功（200）の
    * 応答として CORS のヘッダーを付けて返す。新しい経路の応答も、作業ツリーの版を本番の backend へ向けたまま替えられる（例は examples/place-area.ts）。
    * open より前に呼ぶ（open が開くときに取る応答も替える）。
-   * 本物の backend へ向けたときに使う（モックの応答を替えるなら open の routes で page.route を足す。例は examples/axis-catalog.ts）。
+   * 本物の backend へ向けたときに使う（モックの応答を替えるなら open の routes で page.route を足す。例は examples/cost-axes.ts）。
    * 本文を JSON として読み替えるだけなので、画像等の JSON でない応答は替えられない。作業ツリーの backend が変える、DB を読まない
    * 経路の応答は、scripts/capture.mjs の --backend で作業ツリーの backend に返させる（例は examples/jma-precipitation.ts）。
    */
@@ -128,10 +129,10 @@ export function captureContext(
     expect,
     fixtures,
     states,
-    catalogAxes,
+    costAxes,
     settle,
     async open({ point, zoom, layers = [], storedState, routes } = {}) {
-      // 道の線の層は軸カタログが配るので、前もって照らせるのはモックの層だけ（本物の backend の層は開いた画面が決める）。
+      // 道の線の層は画面の設定が配るので、前もって照らせるのはモックの層だけ（本物の backend の層は開いた画面が決める）。
       const layerIds: string[] = [...mapDisplay.layers, ...fixtures.E2E_ROAD_LAYERS].map(({ id }) => id);
       const unknown = mocked ? layers.filter((id) => !layerIds.includes(id)) : [];
       if (unknown.length > 0) {

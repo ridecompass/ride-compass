@@ -12,7 +12,7 @@ import { observedWind } from "@/features/conditions/observedWind";
 import { useWeatherConditions, type WarningRoute } from "@/features/conditions/useWeatherConditions";
 import RideBar from "@/features/ride/RideBar/RideBar";
 import type { RideRemaining } from "@/features/ride/rideRemaining";
-import { axisCatalogFetchFailure, useAxisCatalog } from "@/hooks/useAxisCatalog";
+import { clientConfigFetchFailure, useClientConfig } from "@/hooks/useClientConfig";
 import { costAxisCatalogFetchFailure, useCostAxisCatalog } from "@/hooks/useCostAxisCatalog";
 import { useDebugEnabled } from "@/hooks/useDebugLog";
 import type { Coordinates } from "@/types/route";
@@ -60,16 +60,16 @@ export default function HomeHeader({
   // 最寄りの実測・警報の類（位置が分かってから、位置が変わるたびに取る。仮の地点では取らない）。
   const { amedas, amedasError, gridPointToday, gridPointTodayError, warningBadgeItems, warningFetchFailures } =
     useWeatherConditions(location, locationKnown, ridingAt, warningRoute);
-  const axisCatalogFailure = axisCatalogFetchFailure(useAxisCatalog());
+  const clientConfigFailure = clientConfigFetchFailure(useClientConfig());
   const costAxisCatalogFailure = costAxisCatalogFetchFailure(useCostAxisCatalog());
   const headerFetchFailures = useMemo(
     () => [
       ...(locationFailure ? [locationFailure] : []),
       ...warningFetchFailures,
-      ...(axisCatalogFailure ? [axisCatalogFailure] : []),
+      ...(clientConfigFailure ? [clientConfigFailure] : []),
       ...(costAxisCatalogFailure ? [costAxisCatalogFailure] : []),
     ],
-    [locationFailure, warningFetchFailures, axisCatalogFailure, costAxisCatalogFailure],
+    [locationFailure, warningFetchFailures, clientConfigFailure, costAxisCatalogFailure],
   );
 
   return (

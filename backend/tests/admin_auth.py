@@ -11,6 +11,7 @@ from fastapi.routing import APIRoute
 
 from app.api.admin_db_errors import ADMIN_PATH_PREFIX
 
+
 ADMIN_USERNAME = "admin-user"
 ADMIN_PASSWORD = "secret-password"
 

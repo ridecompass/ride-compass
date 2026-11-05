@@ -1,4 +1,4 @@
-// 地図のレイヤーと評価軸の、このアプリ固有の形（自前のSVG）。
+// 地図のレイヤーと費用の軸の、このアプリ固有の形（自前のSVG）。
 import { svgProps, type IconProps } from "./icons";
 
 /** 標高図: 色別標高図のイメージに合わせた山並みのシルエット */
@@ -35,7 +35,7 @@ export function LandcoverIcon({ size = 16 }: IconProps) {
   );
 }
 
-/** 評価軸の汎用のアイコン: 密度の濃淡を表す棒グラフ。各軸は`icon_id`
+/** 費用の軸の汎用のアイコン: 密度の濃淡を表す棒グラフ。各軸は`icon_id`
  * （軸自身のデータ）でaxisIconPalette.tsxの固定パレットから専用アイコンを選べる。
  * この汎用形はicon_id未設定の軸向けのフォールバックとして残す。 */
 export function AxisRampIcon({ size = 16 }: IconProps) {

@@ -821,135 +821,6 @@
         }
       }
     },
-    "/api/region/way-materials/{axis_id}/{z}/{x}/{y}": {
-      "get": {
-        "operationId": "region_way_materials_api_region_way_materials__axis_id___z___x___y__get",
-        "parameters": [
-          {
-            "name": "axis_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Axis Id"
-            }
-          },
-          {
-            "name": "z",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "maximum": 15,
-              "minimum": 12,
-              "title": "Z"
-            }
-          },
-          {
-            "name": "x",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "minimum": 0,
-              "title": "X"
-            }
-          },
-          {
-            "name": "y",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "minimum": 0,
-              "title": "Y"
-            }
-          },
-          {
-            "name": "at",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string",
-                  "format": "date-time"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "At"
-            }
-          },
-          {
-            "name": "bearing_deg",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "number",
-                  "minimum": 0,
-                  "exclusiveMaximum": 360
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Bearing Deg"
-            }
-          },
-          {
-            "name": "speed_kmh",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "number",
-                  "maximum": 60.0,
-                  "minimum": 5.0
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Speed Kmh"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "additionalProperties": {
-                    "type": "object",
-                    "additionalProperties": {
-                      "type": "number"
-                    }
-                  },
-                  "title": "Response Region Way Materials Api Region Way Materials  Axis Id   Z   X   Y  Get"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/region/lens/{lens_id}/{z}/{x}/{y}": {
       "get": {
         "operationId": "region_lens_api_region_lens__lens_id___z___x___y__get",
@@ -1188,14 +1059,14 @@
         }
       }
     },
-    "/api/region/axis-inspector": {
+    "/api/region/road-inspector": {
       "post": {
-        "operationId": "region_axis_inspector_api_region_axis_inspector_post",
+        "operationId": "region_road_inspector_api_region_road_inspector_post",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/AxisInspectorRequest"
+                "$ref": "#/components/schemas/RoadInspectorRequest"
               }
             }
           },
@@ -1209,13 +1080,13 @@
                 "schema": {
                   "anyOf": [
                     {
-                      "$ref": "#/components/schemas/AxisInspectorResult"
+                      "$ref": "#/components/schemas/RoadInspection"
                     },
                     {
                       "type": "null"
                     }
                   ],
-                  "title": "Response Region Axis Inspector Api Region Axis Inspector Post"
+                  "title": "Response Region Road Inspector Api Region Road Inspector Post"
                 }
               }
             }
@@ -1450,452 +1321,6 @@
         }
       }
     },
-    "/api/admin/axis-definitions": {
-      "get": {
-        "tags": [
-          "axis-admin"
-        ],
-        "operationId": "list_axis_definitions_api_admin_axis_definitions_get",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/AxisDefinitionResponse"
-                  },
-                  "type": "array",
-                  "title": "Response List Axis Definitions Api Admin Axis Definitions Get"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ]
-      },
-      "post": {
-        "tags": [
-          "axis-admin"
-        ],
-        "operationId": "create_axis_definition_api_admin_axis_definitions_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AxisDefinitionPayload"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AxisDefinitionResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ]
-      }
-    },
-    "/api/admin/axis-definitions/{axis_id}": {
-      "get": {
-        "tags": [
-          "axis-admin"
-        ],
-        "operationId": "get_axis_definition_api_admin_axis_definitions__axis_id__get",
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "axis_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Axis Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AxisDefinitionResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      },
-      "put": {
-        "tags": [
-          "axis-admin"
-        ],
-        "operationId": "update_axis_definition_api_admin_axis_definitions__axis_id__put",
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "axis_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Axis Id"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AxisDefinitionPayload"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AxisDefinitionResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      },
-      "delete": {
-        "tags": [
-          "axis-admin"
-        ],
-        "operationId": "delete_axis_definition_api_admin_axis_definitions__axis_id__delete",
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "axis_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Axis Id"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "Successful Response"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/admin/axis-definitions/{axis_id}/unpublish": {
-      "post": {
-        "tags": [
-          "axis-admin"
-        ],
-        "operationId": "unpublish_axis_definition_api_admin_axis_definitions__axis_id__unpublish_post",
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "axis_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Axis Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AxisDefinitionResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/admin/axis-definitions/preview-distribution": {
-      "post": {
-        "tags": [
-          "axis-admin"
-        ],
-        "operationId": "preview_axis_distribution_api_admin_axis_definitions_preview_distribution_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AxisPreviewRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ValueDistribution"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ]
-      }
-    },
-    "/api/admin/axis-definitions/preview-scores": {
-      "post": {
-        "tags": [
-          "axis-admin"
-        ],
-        "operationId": "preview_scores_api_admin_axis_definitions_preview_scores_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ScoresPreviewRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ScoresPreviewResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ]
-      }
-    },
-    "/api/admin/axis-definitions/preview-calibration": {
-      "post": {
-        "tags": [
-          "axis-admin"
-        ],
-        "operationId": "preview_calibration_api_admin_axis_definitions_preview_calibration_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CalibrationPreviewRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CalibrationPreviewResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ]
-      }
-    },
-    "/api/admin/axis-definitions/preview-way-values": {
-      "post": {
-        "tags": [
-          "axis-admin"
-        ],
-        "operationId": "preview_way_values_api_admin_axis_definitions_preview_way_values_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/WayValuesPreviewRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": {
-                    "anyOf": [
-                      {
-                        "type": "number"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "type": "object",
-                  "title": "Response Preview Way Values Api Admin Axis Definitions Preview Way Values Post"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ]
-      }
-    },
     "/api/admin/tuning": {
       "get": {
         "tags": [
@@ -2117,16 +1542,16 @@
         ]
       }
     },
-    "/api/axis-catalog": {
+    "/api/client-config": {
       "get": {
-        "operationId": "get_axis_catalog_api_axis_catalog_get",
+        "operationId": "get_client_config_api_client_config_get",
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AxisCatalogResponse"
+                  "$ref": "#/components/schemas/ClientConfigResponse"
                 }
               }
             }
@@ -2207,49 +1632,6 @@
                     }
                   },
                   "title": "Response Get Lens Equivalents Api Cost Axes Lens Equivalents Get"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/admin/material-catalog/{material_id}/value-shares": {
-      "get": {
-        "operationId": "get_material_value_shares_api_admin_material_catalog__material_id__value_shares_get",
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "material_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Material Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MaterialValueSharesResponse"
                 }
               }
             }
@@ -2812,550 +2194,6 @@
         ],
         "title": "AvoidanceSectionView"
       },
-      "AxisCatalogEntry": {
-        "properties": {
-          "axis_id": {
-            "type": "string",
-            "title": "Axis Id"
-          },
-          "label": {
-            "type": "string",
-            "title": "Label"
-          },
-          "description": {
-            "type": "string",
-            "title": "Description"
-          },
-          "category": {
-            "type": "string",
-            "enum": [
-              "観測",
-              "推定",
-              "動的"
-            ],
-            "title": "Category"
-          },
-          "default_weight": {
-            "type": "number",
-            "title": "Default Weight"
-          },
-          "icon_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Icon Id"
-          },
-          "primary_attribute_ids": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Primary Attribute Ids"
-          },
-          "road_layer_ids": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Road Layer Ids"
-          },
-          "map_paint": {
-            "$ref": "#/components/schemas/MapPaint"
-          },
-          "raw_value_units": {
-            "$ref": "#/components/schemas/RawValueUnits"
-          },
-          "material_breakdown": {
-            "items": {
-              "$ref": "#/components/schemas/AxisMaterialBreakdownEntry"
-            },
-            "type": "array",
-            "title": "Material Breakdown"
-          },
-          "dynamic_way_value_conditions": {
-            "items": {
-              "type": "string",
-              "enum": [
-                "at",
-                "bearing_deg",
-                "speed_kmh"
-              ]
-            },
-            "type": "array",
-            "title": "Dynamic Way Value Conditions"
-          },
-          "dynamic_way_value_material_conditions": {
-            "items": {
-              "type": "string",
-              "enum": [
-                "at",
-                "bearing_deg",
-                "speed_kmh"
-              ]
-            },
-            "type": "array",
-            "title": "Dynamic Way Value Material Conditions"
-          },
-          "dynamic_way_value_undetermined_by_bearing": {
-            "type": "boolean",
-            "title": "Dynamic Way Value Undetermined By Bearing"
-          },
-          "way_value_formula": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/WayValueFormula"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "time_scope": {
-            "type": "string",
-            "enum": [
-              "always",
-              "night_only"
-            ],
-            "title": "Time Scope"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "axis_id",
-          "label",
-          "description",
-          "category",
-          "default_weight",
-          "icon_id",
-          "primary_attribute_ids",
-          "road_layer_ids",
-          "map_paint",
-          "raw_value_units",
-          "material_breakdown",
-          "dynamic_way_value_conditions",
-          "dynamic_way_value_material_conditions",
-          "dynamic_way_value_undetermined_by_bearing",
-          "way_value_formula",
-          "time_scope"
-        ],
-        "title": "AxisCatalogEntry"
-      },
-      "AxisCatalogResponse": {
-        "properties": {
-          "axes": {
-            "items": {
-              "$ref": "#/components/schemas/AxisCatalogEntry"
-            },
-            "type": "array",
-            "title": "Axes"
-          },
-          "client_tuning": {
-            "additionalProperties": {
-              "type": "number"
-            },
-            "type": "object",
-            "title": "Client Tuning"
-          },
-          "tile_versions": {
-            "additionalProperties": {
-              "type": "string"
-            },
-            "type": "object",
-            "title": "Tile Versions"
-          },
-          "accident_years": {
-            "items": {
-              "type": "integer"
-            },
-            "type": "array",
-            "title": "Accident Years"
-          },
-          "road_classes": {
-            "$ref": "#/components/schemas/RoadClassCatalog"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "axes",
-          "client_tuning",
-          "tile_versions",
-          "accident_years",
-          "road_classes"
-        ],
-        "title": "AxisCatalogResponse"
-      },
-      "AxisDefinition": {
-        "properties": {
-          "axis_id": {
-            "type": "string",
-            "minLength": 1,
-            "title": "Axis Id"
-          },
-          "shape": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/BreakpointLinearShape-Input"
-              },
-              {
-                "$ref": "#/components/schemas/CategoricalShape-Input"
-              }
-            ],
-            "title": "Shape"
-          },
-          "default_weight": {
-            "type": "number",
-            "minimum": 0.0,
-            "title": "Default Weight"
-          },
-          "label": {
-            "type": "string",
-            "minLength": 1,
-            "title": "Label"
-          },
-          "description": {
-            "type": "string",
-            "title": "Description",
-            "default": ""
-          },
-          "category": {
-            "type": "string",
-            "enum": [
-              "観測",
-              "推定",
-              "動的"
-            ],
-            "title": "Category",
-            "default": "推定"
-          },
-          "is_published": {
-            "type": "boolean",
-            "title": "Is Published",
-            "default": false
-          },
-          "priority_overrides": {
-            "items": {
-              "$ref": "#/components/schemas/PriorityCondition"
-            },
-            "type": "array",
-            "title": "Priority Overrides"
-          },
-          "icon_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Icon Id"
-          },
-          "time_scope": {
-            "type": "string",
-            "enum": [
-              "always",
-              "night_only"
-            ],
-            "title": "Time Scope",
-            "default": "always"
-          },
-          "display_thresholds_override": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "number"
-                },
-                "type": "array",
-                "minItems": 1
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Display Thresholds Override"
-          },
-          "display_band_labels_override": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Display Band Labels Override"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "axis_id",
-          "shape",
-          "default_weight",
-          "label"
-        ],
-        "title": "AxisDefinition"
-      },
-      "AxisDefinitionPayload": {
-        "properties": {
-          "axis_id": {
-            "type": "string",
-            "minLength": 1,
-            "title": "Axis Id"
-          },
-          "shape": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/BreakpointLinearShape-Input"
-              },
-              {
-                "$ref": "#/components/schemas/CategoricalShape-Input"
-              }
-            ],
-            "title": "Shape"
-          },
-          "default_weight": {
-            "type": "number",
-            "minimum": 0.0,
-            "title": "Default Weight"
-          },
-          "label": {
-            "type": "string",
-            "minLength": 1,
-            "title": "Label"
-          },
-          "description": {
-            "type": "string",
-            "title": "Description",
-            "default": ""
-          },
-          "category": {
-            "type": "string",
-            "enum": [
-              "観測",
-              "推定",
-              "動的"
-            ],
-            "title": "Category",
-            "default": "推定"
-          },
-          "is_published": {
-            "type": "boolean",
-            "title": "Is Published",
-            "default": false
-          },
-          "priority_overrides": {
-            "items": {
-              "$ref": "#/components/schemas/PriorityCondition"
-            },
-            "type": "array",
-            "title": "Priority Overrides"
-          },
-          "icon_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Icon Id"
-          },
-          "time_scope": {
-            "type": "string",
-            "enum": [
-              "always",
-              "night_only"
-            ],
-            "title": "Time Scope",
-            "default": "always"
-          },
-          "display_thresholds_override": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "number"
-                },
-                "type": "array",
-                "minItems": 1
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Display Thresholds Override"
-          },
-          "display_band_labels_override": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Display Band Labels Override"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "axis_id",
-          "shape",
-          "default_weight",
-          "label"
-        ],
-        "title": "AxisDefinitionPayload"
-      },
-      "AxisDefinitionResponse": {
-        "properties": {
-          "axis_id": {
-            "type": "string",
-            "minLength": 1,
-            "title": "Axis Id"
-          },
-          "shape": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/BreakpointLinearShape-Output"
-              },
-              {
-                "$ref": "#/components/schemas/CategoricalShape-Output"
-              }
-            ],
-            "title": "Shape"
-          },
-          "default_weight": {
-            "type": "number",
-            "minimum": 0.0,
-            "title": "Default Weight"
-          },
-          "label": {
-            "type": "string",
-            "minLength": 1,
-            "title": "Label"
-          },
-          "description": {
-            "type": "string",
-            "title": "Description",
-            "default": ""
-          },
-          "category": {
-            "type": "string",
-            "enum": [
-              "観測",
-              "推定",
-              "動的"
-            ],
-            "title": "Category",
-            "default": "推定"
-          },
-          "is_published": {
-            "type": "boolean",
-            "title": "Is Published",
-            "default": false
-          },
-          "priority_overrides": {
-            "items": {
-              "$ref": "#/components/schemas/PriorityCondition"
-            },
-            "type": "array",
-            "title": "Priority Overrides"
-          },
-          "icon_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Icon Id"
-          },
-          "time_scope": {
-            "type": "string",
-            "enum": [
-              "always",
-              "night_only"
-            ],
-            "title": "Time Scope",
-            "default": "always"
-          },
-          "display_thresholds_override": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "number"
-                },
-                "type": "array",
-                "minItems": 1
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Display Thresholds Override"
-          },
-          "display_band_labels_override": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Display Band Labels Override"
-          },
-          "weight_share_when_published": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Weight Share When Published"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "axis_id",
-          "shape",
-          "default_weight",
-          "label",
-          "description",
-          "category",
-          "is_published",
-          "priority_overrides",
-          "icon_id",
-          "time_scope",
-          "display_thresholds_override",
-          "display_band_labels_override",
-          "weight_share_when_published"
-        ],
-        "title": "AxisDefinitionResponse"
-      },
       "AxisFact": {
         "properties": {
           "label": {
@@ -3387,206 +2225,6 @@
         ],
         "title": "AxisFact"
       },
-      "AxisInspectorAxis": {
-        "properties": {
-          "axis_id": {
-            "type": "string",
-            "title": "Axis Id"
-          },
-          "difficulty": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Difficulty"
-          },
-          "contribution": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Contribution"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "axis_id",
-          "difficulty",
-          "contribution"
-        ],
-        "title": "AxisInspectorAxis"
-      },
-      "AxisInspectorRequest": {
-        "properties": {
-          "osm_way_id": {
-            "type": "integer",
-            "title": "Osm Way Id"
-          },
-          "feature_key": {
-            "type": "string",
-            "title": "Feature Key"
-          },
-          "z": {
-            "type": "integer",
-            "maximum": 15.0,
-            "minimum": 12.0,
-            "title": "Z"
-          },
-          "x": {
-            "type": "integer",
-            "minimum": 0.0,
-            "title": "X"
-          },
-          "y": {
-            "type": "integer",
-            "minimum": 0.0,
-            "title": "Y"
-          },
-          "bearing_deg": {
-            "type": "number",
-            "exclusiveMaximum": 360.0,
-            "minimum": 0.0,
-            "title": "Bearing Deg"
-          },
-          "at": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "At"
-          },
-          "speed_kmh": {
-            "anyOf": [
-              {
-                "type": "number",
-                "maximum": 60.0,
-                "minimum": 5.0
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Speed Kmh"
-          },
-          "route_preference": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/RoutePreferenceWeights"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "cost_preference": {
-            "$ref": "#/components/schemas/CostPreference-Input"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "osm_way_id",
-          "feature_key",
-          "z",
-          "x",
-          "y",
-          "bearing_deg"
-        ],
-        "title": "AxisInspectorRequest"
-      },
-      "AxisInspectorResult": {
-        "properties": {
-          "highway": {
-            "type": "string",
-            "title": "Highway"
-          },
-          "tags": {
-            "additionalProperties": {
-              "type": "string"
-            },
-            "type": "object",
-            "title": "Tags"
-          },
-          "values": {
-            "$ref": "#/components/schemas/InspectorValues"
-          },
-          "lens": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/LensInspection"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "highway",
-          "tags",
-          "values",
-          "lens"
-        ],
-        "title": "AxisInspectorResult"
-      },
-      "AxisMaterialBreakdownEntry": {
-        "properties": {
-          "material_id": {
-            "type": "string",
-            "title": "Material Id"
-          },
-          "label": {
-            "type": "string",
-            "title": "Label"
-          },
-          "dtype": {
-            "type": "string",
-            "enum": [
-              "numeric",
-              "boolean",
-              "categorical"
-            ],
-            "title": "Dtype"
-          },
-          "unit": {
-            "type": "string",
-            "title": "Unit"
-          },
-          "value_labels": {
-            "additionalProperties": {
-              "type": "string"
-            },
-            "type": "object",
-            "title": "Value Labels"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "material_id",
-          "label",
-          "dtype",
-          "unit",
-          "value_labels"
-        ],
-        "title": "AxisMaterialBreakdownEntry"
-      },
       "AxisPresentation": {
         "properties": {
           "label": {
@@ -3615,27 +2253,6 @@
           "lens"
         ],
         "title": "AxisPresentation"
-      },
-      "AxisPreviewRequest": {
-        "properties": {
-          "shape": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/BreakpointLinearShape-Input"
-              },
-              {
-                "$ref": "#/components/schemas/CategoricalShape-Input"
-              }
-            ],
-            "title": "Shape"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "shape"
-        ],
-        "title": "AxisPreviewRequest"
       },
       "Binary": {
         "properties": {
@@ -3790,112 +2407,6 @@
         ],
         "title": "Binary"
       },
-      "BreakpointLinearShape-Input": {
-        "properties": {
-          "kind": {
-            "type": "string",
-            "const": "breakpoint_linear",
-            "title": "Kind",
-            "default": "breakpoint_linear"
-          },
-          "terms": {
-            "items": {
-              "$ref": "#/components/schemas/MaterialTerm-Input"
-            },
-            "type": "array",
-            "minItems": 1,
-            "title": "Terms"
-          },
-          "preprocess": {
-            "type": "string",
-            "enum": [
-              "identity",
-              "abs"
-            ],
-            "title": "Preprocess",
-            "default": "identity"
-          },
-          "breakpoints": {
-            "items": {
-              "prefixItems": [
-                {
-                  "type": "number"
-                },
-                {
-                  "type": "number"
-                }
-              ],
-              "type": "array",
-              "maxItems": 2,
-              "minItems": 2
-            },
-            "type": "array",
-            "minItems": 1,
-            "title": "Breakpoints"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "terms",
-          "breakpoints"
-        ],
-        "title": "BreakpointLinearShape"
-      },
-      "BreakpointLinearShape-Output": {
-        "properties": {
-          "kind": {
-            "type": "string",
-            "const": "breakpoint_linear",
-            "title": "Kind",
-            "default": "breakpoint_linear"
-          },
-          "terms": {
-            "items": {
-              "$ref": "#/components/schemas/MaterialTerm-Output"
-            },
-            "type": "array",
-            "minItems": 1,
-            "title": "Terms"
-          },
-          "preprocess": {
-            "type": "string",
-            "enum": [
-              "identity",
-              "abs"
-            ],
-            "title": "Preprocess",
-            "default": "identity"
-          },
-          "breakpoints": {
-            "items": {
-              "prefixItems": [
-                {
-                  "type": "number"
-                },
-                {
-                  "type": "number"
-                }
-              ],
-              "type": "array",
-              "maxItems": 2,
-              "minItems": 2
-            },
-            "type": "array",
-            "minItems": 1,
-            "title": "Breakpoints"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "kind",
-          "terms",
-          "preprocess",
-          "breakpoints"
-        ],
-        "title": "BreakpointLinearShape"
-      },
       "BurdenAxis": {
         "properties": {
           "label": {
@@ -3943,37 +2454,6 @@
           "burden"
         ],
         "title": "BurdenAxis"
-      },
-      "CalibrationPreviewRequest": {
-        "properties": {
-          "definition": {
-            "$ref": "#/components/schemas/AxisDefinition"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "definition"
-        ],
-        "title": "CalibrationPreviewRequest"
-      },
-      "CalibrationPreviewResponse": {
-        "properties": {
-          "map_paint": {
-            "$ref": "#/components/schemas/MapPaint"
-          },
-          "averages_density": {
-            "type": "boolean",
-            "title": "Averages Density"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "map_paint",
-          "averages_density"
-        ],
-        "title": "CalibrationPreviewResponse"
       },
       "Case": {
         "properties": {
@@ -4210,66 +2690,42 @@
         ],
         "title": "CategoricalBurden"
       },
-      "CategoricalShape-Input": {
+      "ClientConfigResponse": {
         "properties": {
-          "kind": {
-            "type": "string",
-            "const": "categorical",
-            "title": "Kind",
-            "default": "categorical"
-          },
-          "material": {
-            "type": "string",
-            "minLength": 1,
-            "title": "Material"
-          },
-          "mapping": {
+          "client_tuning": {
             "additionalProperties": {
               "type": "number"
             },
             "type": "object",
-            "minProperties": 1,
-            "title": "Mapping"
+            "title": "Client Tuning"
+          },
+          "tile_versions": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Tile Versions"
+          },
+          "accident_years": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Accident Years"
+          },
+          "road_classes": {
+            "$ref": "#/components/schemas/RoadClassCatalog"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
-          "material",
-          "mapping"
+          "client_tuning",
+          "tile_versions",
+          "accident_years",
+          "road_classes"
         ],
-        "title": "CategoricalShape"
-      },
-      "CategoricalShape-Output": {
-        "properties": {
-          "kind": {
-            "type": "string",
-            "const": "categorical",
-            "title": "Kind",
-            "default": "categorical"
-          },
-          "material": {
-            "type": "string",
-            "minLength": 1,
-            "title": "Material"
-          },
-          "mapping": {
-            "additionalProperties": {
-              "type": "number"
-            },
-            "type": "object",
-            "minProperties": 1,
-            "title": "Mapping"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "kind",
-          "material",
-          "mapping"
-        ],
-        "title": "CategoricalShape"
+        "title": "ClientConfigResponse"
       },
       "ColumnNulls": {
         "properties": {
@@ -4763,22 +3219,6 @@
         ],
         "title": "DerivedDataFreshnessReport"
       },
-      "DifficultyMapValue": {
-        "properties": {
-          "kind": {
-            "type": "string",
-            "const": "difficulty",
-            "title": "Kind",
-            "default": "difficulty"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "kind"
-        ],
-        "title": "DifficultyMapValue"
-      },
       "ElevationStretch": {
         "properties": {
           "distance_km": {
@@ -5257,64 +3697,6 @@
         ],
         "title": "ImportRunEntry"
       },
-      "InspectorComposite": {
-        "properties": {
-          "value": {
-            "type": "number",
-            "title": "Value"
-          },
-          "covered_weight_fraction": {
-            "type": "number",
-            "title": "Covered Weight Fraction"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "value",
-          "covered_weight_fraction"
-        ],
-        "title": "InspectorComposite"
-      },
-      "InspectorValues": {
-        "properties": {
-          "axes": {
-            "items": {
-              "$ref": "#/components/schemas/AxisInspectorAxis"
-            },
-            "type": "array",
-            "title": "Axes"
-          },
-          "composite_difficulty": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/InspectorComposite"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "landcover": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/LandcoverPercentages"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "axes",
-          "composite_difficulty",
-          "landcover"
-        ],
-        "title": "InspectorValues"
-      },
       "Interpolate": {
         "properties": {
           "op": {
@@ -5540,55 +3922,6 @@
         ],
         "title": "JmaTileIndexUnavailable"
       },
-      "LandcoverPercentages": {
-        "properties": {
-          "water_percent": {
-            "type": "number",
-            "title": "Water Percent"
-          },
-          "trees_percent": {
-            "type": "number",
-            "title": "Trees Percent"
-          },
-          "flooded_veg_percent": {
-            "type": "number",
-            "title": "Flooded Veg Percent"
-          },
-          "crops_percent": {
-            "type": "number",
-            "title": "Crops Percent"
-          },
-          "built_percent": {
-            "type": "number",
-            "title": "Built Percent"
-          },
-          "bare_percent": {
-            "type": "number",
-            "title": "Bare Percent"
-          },
-          "snow_ice_percent": {
-            "type": "number",
-            "title": "Snow Ice Percent"
-          },
-          "rangeland_percent": {
-            "type": "number",
-            "title": "Rangeland Percent"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "water_percent",
-          "trees_percent",
-          "flooded_veg_percent",
-          "crops_percent",
-          "built_percent",
-          "bare_percent",
-          "snow_ice_percent",
-          "rangeland_percent"
-        ],
-        "title": "LandcoverPercentages"
-      },
       "LastError": {
         "properties": {
           "type": {
@@ -5659,31 +3992,6 @@
           "item_count"
         ],
         "title": "LatestRunCounts"
-      },
-      "LayerTextSlotView": {
-        "properties": {
-          "name": {
-            "type": "string",
-            "const": "axes",
-            "title": "Name"
-          },
-          "before": {
-            "type": "string",
-            "title": "Before"
-          },
-          "after": {
-            "type": "string",
-            "title": "After"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "name",
-          "before",
-          "after"
-        ],
-        "title": "LayerTextSlotView"
       },
       "LensAxisSeconds": {
         "properties": {
@@ -5859,35 +4167,6 @@
         ],
         "title": "LinearBurden"
       },
-      "MapLegendScale": {
-        "properties": {
-          "boundaries": {
-            "items": {
-              "type": "number"
-            },
-            "type": "array",
-            "title": "Boundaries"
-          },
-          "unit": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Unit"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "boundaries",
-          "unit"
-        ],
-        "title": "MapLegendScale"
-      },
       "MapLens": {
         "properties": {
           "formula": {
@@ -5913,66 +4192,6 @@
           "material_conditions"
         ],
         "title": "MapLens"
-      },
-      "MapPaint": {
-        "properties": {
-          "value": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/DifficultyMapValue"
-              },
-              {
-                "$ref": "#/components/schemas/SignedMaterialMapValue"
-              }
-            ],
-            "title": "Value",
-            "discriminator": {
-              "propertyName": "kind",
-              "mapping": {
-                "difficulty": "#/components/schemas/DifficultyMapValue",
-                "signed_material": "#/components/schemas/SignedMaterialMapValue"
-              }
-            }
-          },
-          "unit": {
-            "type": "string",
-            "title": "Unit"
-          },
-          "thresholds": {
-            "items": {
-              "type": "number"
-            },
-            "type": "array",
-            "title": "Thresholds"
-          },
-          "legend": {
-            "$ref": "#/components/schemas/MapLegendScale"
-          },
-          "band_labels": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Band Labels"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "value",
-          "unit",
-          "thresholds",
-          "legend",
-          "band_labels"
-        ],
-        "title": "MapPaint"
       },
       "MaterialCoverageCounted": {
         "properties": {
@@ -6132,114 +4351,6 @@
           "materials"
         ],
         "title": "MaterialCoverageReport"
-      },
-      "MaterialTerm-Input": {
-        "properties": {
-          "material": {
-            "type": "string",
-            "minLength": 1,
-            "title": "Material"
-          },
-          "weight": {
-            "type": "number",
-            "title": "Weight",
-            "default": 1.0
-          },
-          "required": {
-            "type": "boolean",
-            "title": "Required",
-            "default": true
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "material"
-        ],
-        "title": "MaterialTerm"
-      },
-      "MaterialTerm-Output": {
-        "properties": {
-          "material": {
-            "type": "string",
-            "minLength": 1,
-            "title": "Material"
-          },
-          "weight": {
-            "type": "number",
-            "title": "Weight",
-            "default": 1.0
-          },
-          "required": {
-            "type": "boolean",
-            "title": "Required",
-            "default": true
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "material",
-          "weight",
-          "required"
-        ],
-        "title": "MaterialTerm"
-      },
-      "MaterialValueShareEntry": {
-        "properties": {
-          "value": {
-            "type": "string",
-            "title": "Value"
-          },
-          "label": {
-            "type": "string",
-            "title": "Label"
-          },
-          "share": {
-            "type": "number",
-            "title": "Share"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "value",
-          "label",
-          "share"
-        ],
-        "title": "MaterialValueShareEntry"
-      },
-      "MaterialValueSharesResponse": {
-        "properties": {
-          "available": {
-            "type": "boolean",
-            "title": "Available"
-          },
-          "sample_ways": {
-            "type": "integer",
-            "title": "Sample Ways"
-          },
-          "total_km": {
-            "type": "number",
-            "title": "Total Km"
-          },
-          "values": {
-            "items": {
-              "$ref": "#/components/schemas/MaterialValueShareEntry"
-            },
-            "type": "array",
-            "title": "Values"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "available",
-          "sample_ways",
-          "total_km",
-          "values"
-        ],
-        "title": "MaterialValueSharesResponse"
       },
       "Missing": {
         "properties": {
@@ -6513,64 +4624,6 @@
           "candidates"
         ],
         "title": "PlaceSearchResult"
-      },
-      "PriorityCondition": {
-        "properties": {
-          "material": {
-            "type": "string",
-            "minLength": 1,
-            "title": "Material"
-          },
-          "equals": {
-            "type": "string",
-            "title": "Equals"
-          },
-          "value": {
-            "type": "number",
-            "title": "Value"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "material",
-          "equals",
-          "value"
-        ],
-        "title": "PriorityCondition"
-      },
-      "RawValueUnits": {
-        "properties": {
-          "unit": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Unit"
-          },
-          "total_unit": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Total Unit"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "unit",
-          "total_unit"
-        ],
-        "title": "RawValueUnits"
       },
       "RoadAt": {
         "properties": {
@@ -6875,6 +4928,99 @@
         ],
         "title": "RoadClassification"
       },
+      "RoadInspection": {
+        "properties": {
+          "highway": {
+            "type": "string",
+            "title": "Highway"
+          },
+          "tags": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Tags"
+          },
+          "lens": {
+            "$ref": "#/components/schemas/LensInspection"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "highway",
+          "tags",
+          "lens"
+        ],
+        "title": "RoadInspection"
+      },
+      "RoadInspectorRequest": {
+        "properties": {
+          "osm_way_id": {
+            "type": "integer",
+            "title": "Osm Way Id"
+          },
+          "feature_key": {
+            "type": "string",
+            "title": "Feature Key"
+          },
+          "z": {
+            "type": "integer",
+            "maximum": 15.0,
+            "minimum": 12.0,
+            "title": "Z"
+          },
+          "x": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "X"
+          },
+          "y": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Y"
+          },
+          "bearing_deg": {
+            "type": "number",
+            "exclusiveMaximum": 360.0,
+            "minimum": 0.0,
+            "title": "Bearing Deg"
+          },
+          "at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At"
+          },
+          "speed_kmh": {
+            "type": "number",
+            "maximum": 60.0,
+            "minimum": 5.0,
+            "title": "Speed Kmh"
+          },
+          "cost_preference": {
+            "$ref": "#/components/schemas/CostPreference-Input"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "osm_way_id",
+          "feature_key",
+          "z",
+          "x",
+          "y",
+          "bearing_deg",
+          "speed_kmh"
+        ],
+        "title": "RoadInspectorRequest"
+      },
       "RoadMapLayer": {
         "properties": {
           "group_key": {
@@ -6981,17 +5127,7 @@
             "title": "Description"
           },
           "panel_hint": {
-            "items": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "$ref": "#/components/schemas/LayerTextSlotView"
-                }
-              ]
-            },
-            "type": "array",
+            "type": "string",
             "title": "Panel Hint"
           },
           "hide_missing_rows": {
@@ -7254,14 +5390,7 @@
             "title": "Cost Seconds"
           },
           "penalty": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/PenaltyBreakdown"
-              },
-              {
-                "type": "null"
-              }
-            ]
+            "$ref": "#/components/schemas/PenaltyBreakdown"
           },
           "facts": {
             "$ref": "#/components/schemas/RouteFacts"
@@ -7607,13 +5736,6 @@
         ],
         "title": "RouteGenerateResponse"
       },
-      "RoutePreferenceWeights": {
-        "additionalProperties": {
-          "type": "number"
-        },
-        "type": "object",
-        "title": "RoutePreferenceWeights"
-      },
       "RouteSegmentDetail": {
         "properties": {
           "geometry": {
@@ -7708,21 +5830,7 @@
             "title": "Estimated Arrival Time"
           },
           "penalty": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/PenaltyBreakdown"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "material_values": {
-            "additionalProperties": {
-              "type": "number"
-            },
-            "type": "object",
-            "title": "Material Values"
+            "$ref": "#/components/schemas/PenaltyBreakdown"
           },
           "road_classes": {
             "additionalProperties": {
@@ -7766,7 +5874,6 @@
           "sustained_gradient_percent",
           "estimated_arrival_time",
           "penalty",
-          "material_values",
           "road_classes",
           "lens_seconds_per_km"
         ],
@@ -7842,43 +5949,6 @@
         ],
         "title": "RouteWarningTimeline"
       },
-      "ScoresPreviewRequest": {
-        "properties": {
-          "shape": {
-            "$ref": "#/components/schemas/BreakpointLinearShape-Input"
-          },
-          "xs": {
-            "items": {
-              "type": "number"
-            },
-            "type": "array",
-            "title": "Xs"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "shape"
-        ],
-        "title": "ScoresPreviewRequest"
-      },
-      "ScoresPreviewResponse": {
-        "properties": {
-          "scores": {
-            "items": {
-              "type": "number"
-            },
-            "type": "array",
-            "title": "Scores"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "scores"
-        ],
-        "title": "ScoresPreviewResponse"
-      },
       "SecondsExample": {
         "properties": {
           "label": {
@@ -7897,36 +5967,6 @@
           "seconds_per_km"
         ],
         "title": "SecondsExample"
-      },
-      "SignedMaterialMapValue": {
-        "properties": {
-          "kind": {
-            "type": "string",
-            "const": "signed_material",
-            "title": "Kind",
-            "default": "signed_material"
-          },
-          "material": {
-            "type": "string",
-            "title": "Material"
-          },
-          "route_segment_field": {
-            "type": "string",
-            "enum": [
-              "material_values",
-              "sustained_gradient_percent"
-            ],
-            "title": "Route Segment Field"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "kind",
-          "material",
-          "route_segment_field"
-        ],
-        "title": "SignedMaterialMapValue"
       },
       "SourceEntry": {
         "properties": {
@@ -8389,54 +6429,6 @@
         ],
         "title": "ValidationError"
       },
-      "ValueDistribution": {
-        "properties": {
-          "sample_ways": {
-            "type": "integer",
-            "title": "Sample Ways"
-          },
-          "total_km": {
-            "type": "number",
-            "title": "Total Km"
-          },
-          "quantiles": {
-            "additionalProperties": {
-              "type": "number"
-            },
-            "type": "object",
-            "title": "Quantiles"
-          },
-          "bins": {
-            "items": {
-              "prefixItems": [
-                {
-                  "type": "number"
-                },
-                {
-                  "type": "number"
-                },
-                {
-                  "type": "number"
-                }
-              ],
-              "type": "array",
-              "maxItems": 3,
-              "minItems": 3
-            },
-            "type": "array",
-            "title": "Bins"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "sample_ways",
-          "total_km",
-          "quantiles",
-          "bins"
-        ],
-        "title": "ValueDistribution"
-      },
       "WayValueFormula": {
         "properties": {
           "value": {
@@ -8571,81 +6563,6 @@
           "undetermined"
         ],
         "title": "WayValueFormula"
-      },
-      "WayValuesPreviewRequest": {
-        "properties": {
-          "axis_id": {
-            "type": "string",
-            "title": "Axis Id"
-          },
-          "shape": {
-            "$ref": "#/components/schemas/BreakpointLinearShape-Input"
-          },
-          "z": {
-            "type": "integer",
-            "maximum": 15.0,
-            "minimum": 12.0,
-            "title": "Z"
-          },
-          "x": {
-            "type": "integer",
-            "minimum": 0.0,
-            "title": "X"
-          },
-          "y": {
-            "type": "integer",
-            "minimum": 0.0,
-            "title": "Y"
-          },
-          "bearing_deg": {
-            "anyOf": [
-              {
-                "type": "number",
-                "exclusiveMaximum": 360.0,
-                "minimum": 0.0
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Bearing Deg"
-          },
-          "at": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "At"
-          },
-          "speed_kmh": {
-            "anyOf": [
-              {
-                "type": "number",
-                "maximum": 60.0,
-                "minimum": 5.0
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Speed Kmh"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "axis_id",
-          "shape",
-          "z",
-          "x",
-          "y"
-        ],
-        "title": "WayValuesPreviewRequest"
       },
       "WbgtReading": {
         "properties": {

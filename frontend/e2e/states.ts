@@ -1,12 +1,11 @@
 import { expect, type Page } from "@playwright/test";
-import { catalogEntry } from "@/testing/catalogAxes";
+import { costAxisCatalog, costAxisEntry, TWO_COST_AXES } from "@/testing/costAxes";
 import { makeRouteCandidate, routeThrough, type Places } from "@/testing/routeFixtures";
 import {
   API_BASE,
   MOBILE_VIEWPORT,
-  axisCatalogFixture,
+  clientConfigFixture,
   clickMap,
-  defaultAxisCatalogFixture,
   doneJobFixture,
   generateInMobileSheet,
   openMobileSheet,
@@ -76,23 +75,21 @@ const SPLICE_PLACES: Places = {
   D: [139.7466, 35.7622],
 };
 
-/** 走査の軸カタログが持つ重みのある軸の数。公開の軸が増えると見込む最大の数で、軸が並ぶ部品の溢れをこの数で見る。 */
-const SCAN_WEIGHTED_AXES = 25;
+/** 走査の費用の軸の一覧が持つ道の負担の軸の数。公開の軸が増えると見込む最大の数で、軸が並ぶ部品の溢れをこの数で見る。 */
+const SCAN_BURDEN_AXES = 25;
 
 /**
- * 走査の軸カタログ。アプリを開く前に入れる。重みのある軸を`SCAN_WEIGHTED_AXES`本持つ（重みのある軸が2つ以上のときだけ
- * 出る部品があり、既定の1軸では走査に入らない）。乗り換えの入口が出るように、区間を割る下限の較正値を持つ。
+ * 走査の模擬応答。アプリを開く前に入れる。費用の軸は既定の2本に道の負担の軸を`SCAN_BURDEN_AXES`本足す（倍率のタブ・負担の
+ * 内訳・レンズの一覧が軸の数だけ伸びる）。乗り換えの入口が出るように、画面の設定は区間を割る下限の較正値を持つ。
  */
 export async function installScanMocks(page: Page): Promise<void> {
-  const catalog = axisCatalogFixture([
-    ...defaultAxisCatalogFixture().axes,
-    ...Array.from({ length: SCAN_WEIGHTED_AXES }, (_, i) => ({
-      ...catalogEntry({ axis_id: `axis-${i + 1}` }),
-      default_weight: 1 / SCAN_WEIGHTED_AXES,
-    })),
-  ]);
-  catalog.client_tuning = { "splice.min_stretch_km": 0 };
-  await page.route(`${API_BASE}/api/axis-catalog*`, (route) => route.fulfill({ json: catalog }));
+  const costAxes = costAxisCatalog(
+    ...TWO_COST_AXES.axes,
+    ...Array.from({ length: SCAN_BURDEN_AXES }, (_, i) => costAxisEntry(`axis-${i + 1}`, { ledger: "burden" })),
+  );
+  const config = clientConfigFixture({ client_tuning: { "splice.min_stretch_km": 0 } });
+  await page.route(`${API_BASE}/api/cost-axes*`, (route) => route.fulfill({ json: costAxes }));
+  await page.route(`${API_BASE}/api/client-config*`, (route) => route.fulfill({ json: config }));
 }
 
 /**

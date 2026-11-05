@@ -50,13 +50,10 @@ const MIN_PENALTY_DELTA_MINUTES = 0.1;
 /** 差分バーの下へ数値を書く軸の数。大きい順。 */
 const LABELLED_DELTA_COUNT = 2;
 
-/** 元→編集後で負担（分）が動いた軸（大きい順）。減った軸は負、増えた軸は正。内訳の無い側は、どの軸も0と数える。 */
+/** 元→編集後で負担（分）が動いた軸（大きい順）。減った軸は負、増えた軸は正。片側にしか無い軸は、無い側を0と数える。 */
 function penaltyDeltas(base: RouteCandidate, after: RouteCandidate, catalog: PenaltyCatalog): AxisDelta[] {
-  const seconds = (route: RouteCandidate, axisId: string) => route.penalty?.axis_seconds[axisId] ?? 0;
-  const axisIds = new Set([
-    ...Object.keys(base.penalty?.axis_seconds ?? {}),
-    ...Object.keys(after.penalty?.axis_seconds ?? {}),
-  ]);
+  const seconds = (route: RouteCandidate, axisId: string) => route.penalty.axis_seconds[axisId] ?? 0;
+  const axisIds = new Set([...Object.keys(base.penalty.axis_seconds), ...Object.keys(after.penalty.axis_seconds)]);
   return [...axisIds]
     .map((axisId) => ({
       axisId,

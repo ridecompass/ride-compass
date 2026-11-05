@@ -437,9 +437,7 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
         "有限なので、走った道を戻るほかに道が無い所（袋小路等）は通れる。",
     ),
     # --- 地図の評価 ---
-    # 地図は軸カタログの`way_value_formula`の木でこの幅を読むので、カタログを取り直す（画面を読み込み直す）と効く。
-    # 道ごとの材料のキャッシュは道の勾配と向きだけを持ち、幅を抱えない（予報の値まで求めて配る軸だけは、
-    # `/api/region/way-materials`の応答のブラウザのキャッシュが切れてから効く）。
+    # 地図は費用の軸の一覧（`/api/cost-axes`の`map_lens.formula`）の木でこの幅を読むので、一覧を取り直す（画面を読み込み直す）と効く。
     TuningParameter(
         "gradient.perpendicular_band_deg",
         "勾配を示さない直角からの幅", "度", 15.0, 0.0, 45.0, TuningEffect.CLIENT_RELOAD,
@@ -453,12 +451,12 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
         "区間の乗り換えで、これより短い断片は作らない。"
         "細かく割るほど選択肢が増え、1区間=1行の一覧が縦に伸びる。",
     ),
-    # --- 主観と時間の換算 ---
+    # --- 代償の強さ ---
     TuningParameter(
         "evaluation.penalty_strength",
-        "主観と時間の換算レート", "", 0.7, 0.0, 5.0,
+        "代償の強さ（標準の人）", "", 0.7, 0.0, 5.0,
         TuningEffect.IMMEDIATE,
-        "難易度を所要時間の割増しへ換算する強さ。",
+        "代償の秒の全体に掛ける、標準的な人の強さ。利用者の負担の強さのつまみは、これに掛ける比。",
     ),
 )
 

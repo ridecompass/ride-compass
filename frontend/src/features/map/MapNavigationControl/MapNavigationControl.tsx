@@ -6,8 +6,6 @@ import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/Popover/Popover";
 import { CompassNeedleIcon, RideZoomIcon } from "@/components/ui/icons/icons";
 import { ZoomInIcon, ZoomOutIcon } from "@/components/ui/icons/lucideIcons";
-import { useAxisCatalog } from "@/hooks/useAxisCatalog";
-import { axisNamesUsing } from "@/lib/catalogAxis";
 import { normalizeDeg } from "@/lib/cardinalLabel";
 import { cn } from "@/lib/cn";
 import { LENS_LINK_CLASS, LENS_LINK_DESCRIPTION } from "@/lib/lensLink";
@@ -183,8 +181,6 @@ function HeadingDial({ bearing, heading, onBearingChange, onResetNorth }: Headin
   // なぞっている間にwindowへ付けた受け手を外す。なぞる途中でダイヤルを閉じても（Escape等）外す。
   const endDragRef = useRef<(() => void) | null>(null);
   useEffect(() => () => endDragRef.current?.(), []);
-  // 向きで値の変わる評価の名前は軸カタログから引く。無ければ評価に触れる文を出さない。
-  const bearingAxes = axisNamesUsing(useAxisCatalog().axes, "bearing_deg");
 
   /** 中心からポインタへの角度（上が0・時計回り）。 */
   function angleAt(clientX: number, clientY: number): number {
@@ -230,8 +226,7 @@ function HeadingDial({ bearing, heading, onBearingChange, onResetNorth }: Headin
       <div className="flex items-center justify-between">
         <InfoPopover triggerAriaLabel="地図の向きの使い方">
           輪をなぞると地図が回り、真ん中の針を押すと北が上に戻ります。
-          {bearingAxes &&
-            `${bearingAxes}で周りの道を塗るときと、道の評価を見るときの走る向きは、地図の上の向きを${WAY_BEARING_STEP_DEG}°刻みに丸めた向きです。ルートの評価は、ルートを実際に走る向きで決まります。`}
+          {`周りの道を負担で塗るときと、道の窓の走る向きは、地図の上の向きを${WAY_BEARING_STEP_DEG}°刻みに丸めた向きです。ルートの負担は、ルートを実際に走る向きで決まります。`}
         </InfoPopover>
         <span className="tabular-nums">
           <span className="text-[length:var(--font-size-md)] font-semibold text-[var(--color-accent)]">

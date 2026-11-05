@@ -21,7 +21,6 @@ from app.api.cache_policy import (
     CachePolicy,
 )
 from app.config import settings
-from app.domain.dynamic_way_values import MissingConditions
 from app.domain.region import check_tile_index
 from app.infrastructure.http_client import UpstreamNotFound
 from app.infrastructure.media_types import MVT_CONTENT_TYPE
@@ -62,11 +61,6 @@ def validate_tile_coords(z: int, x: int, y: int) -> None:
         raise RequestValidationError(
             [{"type": error.type, "loc": ("path",), "msg": error.message(), "input": {"z": z, "x": x, "y": y}}]
         ) from None
-
-
-def missing_conditions_error(missing: MissingConditions) -> HTTPException:
-    """道ごとの値に要る条件の欄が欠けた要求を断る422。"""
-    return HTTPException(status_code=422, detail=f"この軸には{'・'.join(missing.names)}が必須です。")
 
 
 def tile_response(tile: TileResponse, media_type: str = MVT_CONTENT_TYPE) -> Response:

@@ -61,8 +61,8 @@ def travel_model_material_ids() -> tuple[str, ...]:
     """所要時間（走行方程式の路面と、停止の待ち）が区間ごとに読む材料id。勾配は材料ではなく区間の断面の点から読む
     （`domain/elevation_profile.py`）。
 
-    静的スコア行列はこれらを**軸の構成と無関係に**列として運び、欠けた行列は組み立てで断る
-    （`evaluation.py: StaticEdgeScoreMatrix`）。軸が分解した材料だけを運ぶ既定に任せると、その軸を
+    探索の材料の表はこれらを**費用の軸の構成と無関係に**列として運び、欠けた表は組み立てで断る
+    （`search_materials.py: SearchMaterials`）。軸が分解した材料だけを運ぶ既定に任せると、その軸を
     非公開にした瞬間に所要時間から路面・停止の待ちが静かに消える。
     """
     rolling = rolling_resistance_material_id()

@@ -11,7 +11,7 @@
  * - 要求の投げ方と見回り（ジョブの問い合わせ・打ち切り） → `routeApi.test.ts`
  * - 結果を一覧へ入れる・知らせを画面に出す → `useRouteResults.test.ts`・`app/page.test.tsx`
  *
- * 差し替えたもの: 生成のジョブと軸カタログの応答（網の層。`testing/routeGeneration.ts`）。条件は
+ * 差し替えたもの: 生成のジョブと画面の設定の応答（網の層。`testing/routeGeneration.ts`）。条件は
  * 本物の`useGenerationConditions`を同じ描画で通して作る。
  */
 import { act } from "@testing-library/react";

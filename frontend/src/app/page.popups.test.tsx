@@ -21,7 +21,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { POINT_TILE_SOURCES } from "@/features/map/scene/groups/points";
 import { sceneLayerId } from "@/features/map/scene/sceneBuilders";
 import { mapDisplay } from "@/types/generated/mapDisplay";
-import { onBackend } from "@/testing/backendServer";
+import { onBackend, serveCostAxisCatalog } from "@/testing/backendServer";
 import {
   ELSEWHERE,
   FIRST,
@@ -41,7 +41,6 @@ import {
 } from "@/testing/homePage";
 import { mapOnScreen, type PointedFeature } from "@/testing/maplibre";
 import { inspectorResult } from "@/testing/roadInspector";
-import { serveCostAxisCatalog } from "@/testing/costAxes";
 import { makeRouteSegment } from "@/testing/routeFixtures";
 import { settle } from "@/testing/settle";
 
@@ -108,7 +107,7 @@ describe("地図の小窓", () => {
     expect(header("区間の小窓の上の帯")).toBeInTheDocument();
 
     rightClickMap(ELSEWHERE);
-    expect(await screen.findByRole("button", { name: "この道の評価を見る" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "この道の負担を見る" })).toBeInTheDocument();
     expect(header("区間の小窓の上の帯")).toBeNull();
     expect(
       mapOnScreen()
@@ -146,7 +145,7 @@ describe("地図の小窓", () => {
         .map((link) => link.textContent),
     ).toEqual(["角の店", "駅前の店"]);
     rightClickMap(ELSEWHERE, [toilet]);
-    expect(await screen.findByRole("button", { name: "この道の評価を見る" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "この道の負担を見る" })).toBeInTheDocument();
     // 道はタップでは開かない（近くに道があっても、開ける物の無い所をタップすると閉じる）。
     clickMap(ELSEWHERE, [toilet]);
     await settle();
@@ -184,9 +183,9 @@ describe("地図の小窓", () => {
     await waitFor(() => expect(mapOnScreen().fits()).toHaveLength(fitsBefore + 1));
   });
 
-  it("評価を開いた道から別の道へ押し替えると、その道の評価は押すまで取りに行かない", async () => {
+  it("負担を開いた道から別の道へ押し替えると、その道の負担は押すまで取りに行かない", async () => {
     const asked: unknown[] = [];
-    onBackend("POST", "/api/region/axis-inspector", ({ body }) => {
+    onBackend("POST", "/api/region/road-inspector", ({ body }) => {
       asked.push(body);
       return Response.json(inspectorResult());
     });
@@ -197,11 +196,11 @@ describe("地図の小窓", () => {
     const { user } = renderHome();
     await user.click(screen.getByRole("button", { name: "パネルを閉じる" }));
     rightClickMap(HERE);
-    await user.click(await screen.findByRole("button", { name: "この道の評価を見る" }));
-    expect(await screen.findByRole("region", { name: "難易度" })).toBeInTheDocument();
+    await user.click(await screen.findByRole("button", { name: "この道の負担を見る" }));
+    expect(await screen.findByText("総合の負担 12秒/km")).toBeInTheDocument();
 
     rightClickMap(ELSEWHERE);
-    expect(await screen.findByRole("button", { name: "この道の評価を見る" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "この道の負担を見る" })).toBeInTheDocument();
     await settle();
     expect(asked).toEqual([expect.objectContaining({ osm_way_id: 1 })]);
   });

@@ -12,16 +12,14 @@
  * - (i)の奥の文（書いた文をそのまま出す）
  * - 無ければ無いと出して保存の仕方を(i)に置くこと（一覧の部品 `SavedList/SavedList.tsx` が持つ） → `SavedPlacesPanel/SavedPlacesPanel.test.tsx`
  *
- * 差し替えたもの: 軸カタログの応答（網の層）。
+ * 差し替えたもの: 画面の設定の応答（網の層）。
  */
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { GenerationConditionsSnapshot, SavedCondition } from "@/features/route/savedConditions";
-import { serveAxisCatalog } from "@/testing/backendServer";
-import { serveCostAxisCatalog } from "@/testing/costAxes";
-import { catalogEntry, catalogResponse } from "@/testing/catalogAxes";
+import { serveClientConfig, serveCostAxisCatalog } from "@/testing/backendServer";
 
 import SavedConditionsPanel, { SaveConditionsButton } from "./SavedConditionsPanel";
 
@@ -79,12 +77,7 @@ async function openSaveDialog() {
 }
 
 beforeEach(() => {
-  serveAxisCatalog(
-    catalogResponse([
-      catalogEntry({ axis_id: "axis_a", label: "軸A", default_weight: 1 }),
-      catalogEntry({ axis_id: "axis_b", label: "軸B", default_weight: 1 }),
-    ]),
-  );
+  serveClientConfig();
   serveCostAxisCatalog();
 });
 

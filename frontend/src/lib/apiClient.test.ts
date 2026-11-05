@@ -85,9 +85,9 @@ describe("成功", () => {
   });
 
   it("成功の記録へ、応答から呼び出し側が数えた情報を足す", async () => {
-    onBackend("GET", "/api/axis-catalog", () => Response.json({ axes: [{}, {}, {}] }));
+    onBackend("GET", "/api/cost-axes", () => Response.json({ axes: [{}, {}, {}] }));
 
-    await requestApi((init) => backendApi.GET("/api/axis-catalog", init), {
+    await requestApi((init) => backendApi.GET("/api/cost-axes", init), {
       timeoutMs: 1000,
       category: "api:a",
       messages: { failure: "失敗", parseFailure: "解析の失敗" },

@@ -1,7 +1,7 @@
 """`domain/route.py`——区間（交差点の間）を`SEGMENT_BIN_DISTANCE_KM`ごとのビンへ束ねる`aggregate_segments_into_bins`と、
-区間の材料の値を畳む`merge_material_values`と、区間の続く坂の斜度。
+区間の続く坂の斜度。
 
-入口は`aggregate_segments_into_bins`・`merge_material_values`・`steepest_signed_percent`。
+入口は`aggregate_segments_into_bins`・`steepest_signed_percent`。
 応答の型（`RouteCandidate`等）の検証はPydanticが持つ。
 
 ここで見ないもの:
@@ -14,7 +14,7 @@ from hypothesis import strategies as st
 
 from app.domain import route
 from app.domain.attributes import ElevationAttribute
-from app.domain.route import RouteSegmentDetail
+from app.domain.route import PenaltyBreakdown, RouteSegmentDetail
 
 WIDTH = route.SEGMENT_BIN_DISTANCE_KM
 
@@ -28,7 +28,7 @@ def _segments(distances: list[float], **fields_per_segment) -> list[RouteSegment
             start_latitude=35.0, start_longitude=139.0 + i * 0.01,
             end_latitude=35.0, end_longitude=139.0 + (i + 1) * 0.01,
             cumulative_distance_km=cumulative, distance_km=distance, edge_start=i, edge_end=i + 1,
-            **({"elevations": [], "road_classes": {}, "material_values": {}}
+            **({"elevations": [], "road_classes": {}, "penalty": PenaltyBreakdown(axis_seconds={}, avoidance_seconds=0.0)}
                | {name: values[i] for name, values in fields_per_segment.items()}),
         ))
         cumulative += distance
@@ -64,15 +64,6 @@ def test_bins_cover_the_route_without_gaps_or_overlaps(distances):
         assert before.edge_end == after.edge_start
         assert after.cumulative_distance_km == pytest.approx(
             before.cumulative_distance_km + before.distance_km, abs=0.006)
-
-
-def test_material_values_keep_four_significant_digits():
-    """材料の値はスケールが材料ごとに違う。小数の桁で丸めると、桁の小さい値がまるごと潰れる。"""
-    segments = _segments(
-        [0.1, 0.2], material_values=[{"material_a": 1000.0, "material_b": 0.001}, {"material_a": 2000.0}],
-    )
-
-    assert route.merge_material_values(segments) == {"material_a": 1667.0, "material_b": 0.001}
 
 
 @pytest.mark.parametrize(

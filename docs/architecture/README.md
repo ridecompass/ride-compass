@@ -14,7 +14,7 @@
 | [api-design.md](api-design.md) | 公開しているエンドポイントの一覧と応答の形 |
 | [data-model.md](data-model.md) | API境界の型と、その正本がどこにあるか |
 | [route-generation.md](route-generation.md) | ルート生成の全体像とRoad Graph単一構成 |
-| [evaluation-model.md](evaluation-model.md) | 評価軸の層構造（0次〜3次）の概観 |
+| [evaluation-model.md](evaluation-model.md) | 道を秒にするまでの段（0次〜3次）と費目の帳簿の式の概観 |
 
 ## 書き分け
 

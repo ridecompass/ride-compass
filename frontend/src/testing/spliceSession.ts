@@ -1,23 +1,21 @@
 // 区間の乗り換えの編集（`features/route/useSpliceSession.ts`）を、分かれ道が1つずつの網の候補で動かす足場。
 // 評価（生成のジョブ）は網の層で差し替え（`testing/generationJobs.ts`）、評価はジョブを作りbackendの回数制限に
-// 数えられるので、出した要求を`submitted`で読めるようにする。軸カタログの応答は使うテストが自分で与える。
+// 数えられるので、出した要求を`submitted`で読めるようにする。画面の設定の応答は使うテストが自分で与える。
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { expect, vi } from "vitest";
 
 import type { GenerationInput } from "@/features/route/generationRequest";
 import { useSpliceSession } from "@/features/route/useSpliceSession";
-import { useAxisCatalog } from "@/hooks/useAxisCatalog";
-import { CLIENT_TUNING_IDS } from "@/lib/axisCatalog";
+import { useClientConfig } from "@/hooks/useClientConfig";
+import { CLIENT_TUNING_IDS } from "@/lib/clientConfig";
 import { heldReplies } from "@/testing/backendServer";
-import { catalogEntry, catalogResponse } from "@/testing/catalogAxes";
+import { clientConfigResponse } from "@/testing/clientConfig";
 import { serveGenerationJobs } from "@/testing/generationJobs";
 import { makeGenerationConditions, makeRouteCandidate, routeThrough, type Places } from "@/testing/routeFixtures";
 import type { RouteCandidate } from "@/types/route";
 import { STANDARD_COST_PREFERENCE } from "@/lib/costPreference";
 
-export const SPLICE_CATALOG = catalogResponse([catalogEntry({ axis_id: "axis_a", default_weight: 1 })], {
-  client_tuning: { [CLIENT_TUNING_IDS.minStretchKm]: 0.1 },
-});
+export const SPLICE_CATALOG = clientConfigResponse({ client_tuning: { [CLIENT_TUNING_IDS.minStretchKm]: 0.1 } });
 
 // 地点（[経度, 緯度]）。n0→n1→n2→n3が元の道で、n1とn2の間を、nqかnrを通る別の道が結ぶ。
 const PLACES: Places = {
@@ -82,11 +80,11 @@ export const PROPS: SpliceProps = { routes: [BASE, VIA_Q], generatedInput: BASIS
 
 export function renderSplice(props: Partial<SpliceProps> = {}) {
   const onApplied = vi.fn();
-  // 軸カタログが届いたかは、同じ取得を読む本物のフックで見る（編集面は軸カタログの中身を持たない）。
+  // 画面の設定が届いたかは、同じ取得を読む本物のフックで見る（編集面は画面の設定の中身を持たない）。
   let catalogLoaded = false;
   const rendered = renderHook(
     (p: SpliceProps) => {
-      catalogLoaded = useAxisCatalog().loaded;
+      catalogLoaded = useClientConfig().loaded;
       return useSpliceSession({ ...p, onApplied });
     },
     { initialProps: { ...PROPS, ...props } },
@@ -96,7 +94,7 @@ export function renderSplice(props: Partial<SpliceProps> = {}) {
 
 export type RenderedSplice = ReturnType<typeof renderSplice>;
 
-/** 編集を始め、軸カタログ（区間を割る下限）が届くまで待つ。 */
+/** 編集を始め、画面の設定（区間を割る下限）が届くまで待つ。 */
 export async function startWithCatalog(rendered: RenderedSplice, routeId = "base") {
   act(() => rendered.result.current.start(routeId));
   await waitFor(() => expect(rendered.catalogLoaded()).toBe(true));

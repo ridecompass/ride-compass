@@ -1,7 +1,7 @@
 """地図に出すものの最上位の束ね方。
 
 所属は**種別**から決まる——レイヤーごとに所属を書くと、1つ足すたびに書き忘れても型が通る。
-軸スタジオ由来の軸はここに載らない（運用で増減し、出すかは軸自身の設定が決める）。
+費用の軸のレンズはここに載らない（管理APIで書いた費用の軸の定義から実行時に決まる）。
 """
 
 from collections import Counter
@@ -50,7 +50,7 @@ class _LegendSharedRow(NamedTuple):
     description: str
 
 
-#: 行の宣言に当てはまらない道の受け皿の行。道の属性・評価軸・ルートのどの凡例でも同じ意味なので、名前と説明を
+#: 行の宣言に当てはまらない道の受け皿の行。道の属性・レンズ・ルートのどの凡例でも同じ意味なので、名前と説明を
 #: ここだけが持つ（鍵は画面が引く名前）。
 LEGEND_SHARED_ROWS: dict[str, _LegendSharedRow] = {
     "other": _LegendSharedRow(
@@ -134,7 +134,7 @@ _HILLSHADE_LAYER_ID = "hillshade"
 #: 地図へ常に出す出典（HTML）。路面の色・評価・ルートの計算・常設の表示（ヘッダーの天気・警戒度バッジ）へ常に使う
 #: データで、どのレイヤーを表示しているかと関係なく出典が要る（レイヤーのソースに付けると、そのレイヤーを消したとき
 #: 出典も消える）。公共データ利用規約（PDL1.0）とCC BY 4.0は出典とは別に加工した旨を求め、標高からは勾配を、事故の点から
-#: は区間ごとの件数を、アメダスの観測からは雨の材料を、アメダスと推計気象分布からは天気を、区域の境界は簡略化して、配信タイルは欠けたズームを隣の
+#: は区間ごとの件数を、アメダスと推計気象分布からは天気を、区域の境界は簡略化して、配信タイルは欠けたズームを隣の
 #: ズームから補い降水の色を塗り替えて、MSMの格子は地点・時刻へ補間して使っている。気象レイヤーの出典もここが持つ（気象庁のデータは常設の表示
 #: で常に使うため）。住所の区画は地点の検索で常に使う。立ち寄り先は出典を1か所にまとめるためここに置く。基礎地図は配信元のTileJSONが出典を持つので
 #: 入れない（入れると2回並ぶ）。データ源を足したら、利用条件（docs/architecture/data-sources.md）と合わせてここも見る。
@@ -179,27 +179,25 @@ def _static_layer_ids() -> tuple[str, ...]:
     return (*shown, _HILLSHADE_LAYER_ID)
 
 
-#: 地図に載るものの名前。軸スタジオ由来の軸は実行時に増えるためここには現れない。
+#: 地図に載るものの名前。費用の軸のレンズは実行時に決まるためここには現れない。
 _MAP_LAYER_IDS: tuple[str, ...] = (*_static_layer_ids(), *WEATHER_LAYER_GROUPS, _ROUTE_LAYER_ID)
 
 
-#: 説明の文の差し込み口の名前。どれも軸カタログ（実行時の応答）から来る値で、画面が埋める。
-#: `axes`はそのレイヤーの元データを材料に持つ公開中の評価の名前、`accidentYears`は事故の収録年、
-#: `routeLenses`はルートの線を塗れるもの（公開中の評価と総合の負担）、`landcoverRingOuterM`は土地被覆の割合を数えた帯の
-#: 外の幅（m。作り直しに使った値）。
-LayerTextSlotName = Literal["axes", "accidentYears", "routeLenses", "landcoverRingOuterM"]
+#: 説明の文の差し込み口の名前。どれも実行時の応答（画面の設定・費用の軸の一覧）から来る値で、画面が埋める。
+#: `accidentYears`は事故の収録年、`routeLenses`はルートの線を塗れるもの（総合と費用の軸のレンズ）、`landcoverRingOuterM`は
+#: 土地被覆の割合を数えた帯の外の幅（m。作り直しに使った値）。
+LayerTextSlotName = Literal["accidentYears", "routeLenses", "landcoverRingOuterM"]
 
 
 class LayerTextSlot(NamedTuple):
-    """説明の文の差し込み口。値が空なら、前後の文（`before`・`after`）ごと出さない——評価軸が1つも無いのに
-    「評価軸の材料です」と書かない、収録年が届く前に空の[]を出さない。"""
+    """説明の文の差し込み口。値が空なら、前後の文（`before`・`after`）ごと出さない——収録年が届く前に空の[]を出さない。"""
 
     name: LayerTextSlotName
     before: str = ""
     after: str = ""
 
 
-#: 説明の文。地図で何が見えるかの文と、軸カタログから差し込む部分を並べる（設計原則「1つの値の中で混ざるときは、
+#: 説明の文。地図で何が見えるかの文と、画面の設定・費用の軸の一覧から差し込む部分を並べる（設計原則「1つの値の中で混ざるときは、
 #: 部分ごとに問う」）。
 LayerText = tuple[str | LayerTextSlot, ...]
 
@@ -217,7 +215,7 @@ class MapLayerSpec(NamedTuple):
     #: 名前。一次属性を描くレイヤーは書かない——属性の名前をそのまま使う（`map_layer_label`）。
     label: str | None = None
     #: ONにすると何が出るかの短い説明（一覧の行のtitle）。地図に載るものは必ず持つ（`MAP_LAYERS`）。
-    #: 軸スタジオ由来の軸の説明は軸から作る。
+    #: 費用の軸のレンズの説明は費用の軸の定義から作る。
     description: LayerText = ()
     #: 一覧の行のⓘが出す、descriptionより詳しい説明。
     panel_hint: LayerText = ()
@@ -285,7 +283,7 @@ def size_sentence(axis: DisplayAxisSpec) -> str:
     return f"{largest.label}は円を大きく表示します。"
 
 
-#: 面で塗らない土地被覆の分類（区間インスペクタの割合には出る）。
+#: 面で塗らない土地被覆の分類（ルートの区間の「緑と水」には出る）。
 _UNPAINTED_LANDCOVER = "・".join(cls.label for cls in LANDCOVER_CLASSES if not cls.painted)
 
 
@@ -373,7 +371,7 @@ _LAYER_SPECS: dict[str, MapLayerSpec] = {
         description=(f"周囲の緑・水辺・農地を面で重ねる{f'[{_UNPAINTED_LANDCOVER}は塗らない]' if _UNPAINTED_LANDCOVER else ''}",),
         panel_hint=(
             "衛星画像から分類した10m四方ごとの土地の使われ方です。1区画に1種類だけが入るため、"
-            "評価軸が使う「道路の周囲",
+            "道の線の層が使う「道路の周囲",
             LayerTextSlot("landcoverRingOuterM", after="m"),
             "の割合」とは違い、混ざらずそのまま見えます。"
             + (
@@ -390,7 +388,6 @@ _LAYER_SPECS: dict[str, MapLayerSpec] = {
         description=(f"{_point_kind_list('stop_poi')}の位置を種別ごとに表示",),
         panel_hint=(
             f"{_point_kind_list('stop_poi')}の位置です。",
-            LayerTextSlot("axes", "評価軸", "が近傍のこれらを数えて算出しているものを、種別ごとに直接確認できます。"),
         ),
     ),
     # 種別ごとの鮮度の差を書く根拠は docs/modules/frontend/static-map-layers.md「点で示すもの」。
@@ -484,7 +481,7 @@ _LAYER_SPECS: dict[str, MapLayerSpec] = {
     # 予兆が出てからONにするのでは手遅れになるため既定ONにする。危険度が出ている間は広い範囲が
     # 塗られ、他の面レイヤー（緑と水・標高図）も基礎地図の色も覆われるが、危険度ゼロの領域は
     # 配信元のタイルが透明なので、影響が出るのは警戒度が上がっている間だけ。そのときは防災の
-    # 情報を優先する（利用者は一覧でOFFにすれば戻せる）。回避するしかない危険なので、評価軸には入れず表示だけにする。
+    # 情報を優先する（利用者は一覧でOFFにすれば戻せる）。回避するしかない危険なので、費用には入れず表示だけにする。
     # 要素の名前と、時刻に対する振る舞いは要素の宣言から組み立てる。段の数と名前は凡例に並ぶので文に書かない。
     "disaster": MapLayerSpec(
         "ownFetch",
@@ -539,8 +536,8 @@ def _map_layers() -> tuple[tuple[str, MapLayerSpec], ...]:
 #: 地図に載るものの宣言（`_LAYER_SPECS`の順）。
 MAP_LAYERS: tuple[tuple[str, MapLayerSpec], ...] = _map_layers()
 
-#: 実行時に決まるレイヤーに共通の宣言。`dedicated`は軸スタジオ由来の軸のレイヤーで、路面タイルの道へ道ごとに配る
-#: 得点の色を塗る（得点は時刻で変わりうる）。`road`は道の線の層で、種別は層ごとに軸カタログの`road_classes`が配る。
+#: 実行時に決まるレイヤーに共通の宣言。`dedicated`は費用の軸のレンズのレイヤーで、路面タイルの道へ道ごとに配る
+#: 1kmあたりの代償の秒の色を塗る（値は時刻の風で変わりうる）。`road`は道の線の層で、種別は層ごとに画面の設定の`road_classes`が配る。
 AXIS_LAYER_SPECS: dict[str, MapLayerSpec] = {
     "dedicated": MapLayerSpec(_ROAD_LAYER_DATA_SOURCE, None, data_nature="dynamic"),
     "road": MapLayerSpec(_ROAD_LAYER_DATA_SOURCE, None),
@@ -613,7 +610,7 @@ ROUTE_CASING_WIDTHS_PX: dict[str, float] = {
 }
 
 #: 線の濃さ（役割ごと）。候補の参考線は選んだ候補より薄くする。`travelled`は走行中に走り終えた区間で、
-#: 残りの道と見分けられるだけ薄くし、ルートの線と道のりの難易度のグラフの両方に当てる。
+#: 残りの道と見分けられるだけ薄くし、ルートの線と道のりの負担のグラフの両方に当てる。
 ROUTE_LINE_OPACITIES: dict[str, float] = {
     "selectedHalo": 0.25,
     "splice": 0.75,
@@ -677,12 +674,10 @@ ROAD_TRACK_OFFSET_STEP_PX = 2
 #: コントラスト比1.5を割らない濃さにする——割ると、道があるのに線が無いように見える。
 ROAD_KNOWN_OPACITY = 0.8
 ROAD_UNKNOWN_OPACITY = 0.6
-#: 評価軸の下敷き（材料の線と一緒に出すときの太い帯）。材料の線より手前の段に重なるので、材料の線の色を隠さない薄さにする。
-ROAD_UNDERLAY_OPACITY = 0.15
 #: 詳細を見ている1本の強調。元の線が上に乗ったままになる太さにする。
 ROAD_INSPECTED_WIDTH_PX = 8
 
-#: 値が無い（不明・データなし）線の破線の刻み（線の太さを1とする長さ）。道の線・評価軸の線・ルートの線で共有する。
+#: 値が無い（不明・データなし）線の破線の刻み（線の太さを1とする長さ）。道の線・レンズの線・ルートの線で共有する。
 #: 乗り換え帯の破線（`ROUTE_SPLICE_DASH`）より細かく刻み、操作の状態と見分けられるようにする。
 NO_DATA_DASH: tuple[float, ...] = (1, 2)
 

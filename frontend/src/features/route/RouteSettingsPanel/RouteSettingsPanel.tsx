@@ -63,11 +63,6 @@ export default function RouteSettingsPanel({ costPreference, onCostPreferenceCha
       {!catalog.loaded && !catalog.failed && (
         <p className={textVariants({ variant: "hint" })}>{COST_AXIS_CATALOG_LABEL}を読み込んでいます。</p>
       )}
-      {catalog.loaded && catalog.axes.length === 0 && (
-        <p className={textVariants({ variant: "hint" })}>
-          負担の種類ごとの倍率は、まだ選べません。負担の強さは「条件」タブで選べます。
-        </p>
-      )}
       <ul className="flex flex-col gap-1.5">
         {catalog.axes.map((axis) => (
           <li key={axis.axisId} className="flex items-center gap-2">
@@ -80,7 +75,7 @@ export default function RouteSettingsPanel({ costPreference, onCostPreferenceCha
             </span>
             <CostLevelPicker
               aria-label={`${axis.label}の倍率`}
-              usage="この負担を、道を選ぶときにどれだけ重く見るかを選びます。「無視」はこの負担を数えません。"
+              usage="この負担を、道を選ぶときにどれだけ重く見るかを選びます。「×0」はこの負担を数えません。"
               levels={COST_MULTIPLIER_LEVELS}
               value={multiplierOf(costPreference, axis.axisId)}
               onChange={(multiplier) =>

@@ -2,10 +2,10 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { CLIENT_TUNING_IDS } from "@/lib/axisCatalog";
+import { CLIENT_TUNING_IDS } from "@/lib/clientConfig";
 import { getQueryClient } from "@/lib/queryClient";
-import { serveAxisCatalog } from "@/testing/backendServer";
-import { catalogResponse, dedicatedEntry } from "@/testing/catalogAxes";
+import { serveClientConfig } from "@/testing/backendServer";
+import { clientConfigResponse } from "@/testing/clientConfig";
 import { jst } from "@/testing/jst";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 
@@ -31,7 +31,7 @@ beforeEach(() => {
   window.localStorage.clear();
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(NOW);
-  serveAxisCatalog(catalogResponse([]));
+  serveClientConfig();
 });
 
 afterEach(() => {
@@ -79,32 +79,6 @@ describe("RideConditionBar 出発時刻", () => {
     expect(input).toHaveValue("2026-09-24T09:05");
     fireEvent.change(input, { target: { value: "2026-09-26T07:30" } });
     expect(props.onDepartureTimeChange).toHaveBeenCalledWith(jst("2026-09-26T07:30"));
-  });
-
-  it.each([
-    [
-      "出発時刻で値の変わる評価があれば、その名前で",
-      ["at", "bearing_deg"],
-      "always",
-      "ルートの「評価A」の評価・到達予想の時刻に使います。",
-    ],
-    ["無ければ評価に触れずに", ["bearing_deg"], "always", "ルートの到達予想の時刻に使います。"],
-  ] as const)("出発時刻の説明は、%s何に使うかを書く", async (_case, conditions, timeScope, tail) => {
-    serveAxisCatalog(
-      catalogResponse([
-        dedicatedEntry("a", [1], {
-          label: "評価A",
-          dynamic_way_value_conditions: [...conditions],
-          time_scope: timeScope,
-        }),
-      ]),
-    );
-    renderBar();
-    await waitFor(() => expect(getQueryClient().isFetching()).toBe(0));
-    expect(screen.getByRole("button", { name: /^出発時刻:/ })).toHaveAttribute(
-      "data-usage",
-      `出発する日時を決めます。地図の気象の表示の時刻と、${tail}`,
-    );
   });
 
   it("入力欄を空にしても、出発時刻は変えない", async () => {
@@ -199,9 +173,9 @@ describe("RideConditionBar 想定速度", () => {
     expect(await screen.findByText(/区間ごとの条件ア・条件イで速度を変えて計算します/)).toBeInTheDocument();
   });
 
-  it("(i)の奥に、軸カタログが配る体格・機材の標準値を書く", async () => {
-    serveAxisCatalog(
-      catalogResponse([], {
+  it("(i)の奥に、画面の設定が配る体格・機材の標準値を書く", async () => {
+    serveClientConfig(
+      clientConfigResponse({
         client_tuning: {
           [CLIENT_TUNING_IDS.massKg]: 72,
           [CLIENT_TUNING_IDS.cdaM2]: 0.4,
@@ -216,9 +190,9 @@ describe("RideConditionBar 想定速度", () => {
     expect(await screen.findByText(/総質量72kg.*CdA 0.4m².*下りは50km\/hまで.*5km\/h以下/)).toBeInTheDocument();
   });
 
-  it("体格・機材の標準値を軸カタログから1つでも引けなければ、標準値の文を出さない", async () => {
-    serveAxisCatalog(
-      catalogResponse([], {
+  it("体格・機材の標準値を画面の設定から1つでも引けなければ、標準値の文を出さない", async () => {
+    serveClientConfig(
+      clientConfigResponse({
         client_tuning: {
           [CLIENT_TUNING_IDS.massKg]: 72,
           [CLIENT_TUNING_IDS.cdaM2]: 0.4,
@@ -230,7 +204,7 @@ describe("RideConditionBar 想定速度", () => {
     await userEvent.click(screen.getByRole("button", { name: /^想定速度:/ }));
     await userEvent.click(await screen.findByRole("button", { name: "想定速度の説明を表示" }));
     expect(await screen.findByText(/平らな道を風の無いときに巡航する速度です/)).toBeInTheDocument();
-    // 軸カタログが届いてから確かめる（届く前も文を出さないので、届く前に見ると引けたかを見分けない）。
+    // 画面の設定が届いてから確かめる（届く前も文を出さないので、届く前に見ると引けたかを見分けない）。
     await waitFor(() => expect(getQueryClient().isFetching()).toBe(0));
     expect(screen.queryByText(/標準値で計算します/)).not.toBeInTheDocument();
   });

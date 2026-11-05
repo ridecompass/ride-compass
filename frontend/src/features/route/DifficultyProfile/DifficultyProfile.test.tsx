@@ -97,9 +97,9 @@ describe("DifficultyProfile", () => {
     expect(paths(container).map((path) => path.fill)).toEqual([COLORS.axis_a, palette.semantic.no_data]);
   });
 
-  it("内訳の無い区間は塗らない", () => {
+  it("1kmあたりの値の無い区間（長さ0の区間）は塗らない", () => {
     const { container } = renderProfile({
-      segments: [FIRST, makeRouteSegment({ ...SECOND, penalty: null, lens_seconds_per_km: null })],
+      segments: [FIRST, makeRouteSegment({ ...SECOND, lens_seconds_per_km: null })],
     });
     expect(paths(container).map((path) => path.d)).toEqual(["M0 40H500V100H0Z", "M0 0H500V40H0Z"]);
   });

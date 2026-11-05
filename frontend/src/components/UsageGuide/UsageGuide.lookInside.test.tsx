@@ -130,7 +130,7 @@ describe("UsageGuide", () => {
             </TabsList>
             <TabsContent value="generate" />
             <TabsContent value="weights">
-              <Button usage="評価軸の重さを変えます。">勾配</Button>
+              <Button usage="負担の倍率を変えます。">勾配</Button>
             </TabsContent>
           </Tabs>
           <UsageGuide onEnd={vi.fn()} />
@@ -142,7 +142,7 @@ describe("UsageGuide", () => {
       await userEvent.click(screen.getByRole("button", { name: "中を見る" }));
       await userEvent.click(screen.getByRole("button", { name: "勾配" }));
 
-      expect(explanation()).toHaveTextContent("評価軸の重さを変えます。");
+      expect(explanation()).toHaveTextContent("負担の倍率を変えます。");
     });
 
     it.each([

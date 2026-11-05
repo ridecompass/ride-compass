@@ -19,16 +19,13 @@ from pathlib import Path
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 
-LOADERS = frozenset({"refresh_road_classes", "refresh_axis_definitions", "refresh_tuning_values"})
+LOADERS = frozenset({"refresh_road_classes", "refresh_cost_axes", "refresh_tuning_values"})
 
 # 読み込む関数を直接参照してよい所と、その理由。
 ALLOWED = {
     ("app/services/definitions_loading.py", "refresh_road_classes"): "読む順を持つ1つの入口",
-    ("app/services/definitions_loading.py", "refresh_axis_definitions"): "読む順を持つ1つの入口",
+    ("app/services/definitions_loading.py", "refresh_cost_axes"): "読む順を持つ1つの入口",
     ("app/services/definitions_loading.py", "refresh_tuning_values"): "読む順を持つ1つの入口",
-    ("app/services/axis_registry_service.py", "refresh_axis_definitions"): (
-        "管理APIの書き込みの直後の読み直し。区分は読み込み済みのプロセスで、書いた軸定義だけを読み直す"
-    ),
 }
 
 

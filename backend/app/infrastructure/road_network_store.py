@@ -367,7 +367,7 @@ def _rows_of(sorted_ids: np.ndarray, ids: np.ndarray) -> tuple[np.ndarray, np.nd
 async def _read_materials(
     repository: RoadGraphRepository, way: np.ndarray, segment: np.ndarray, forward: np.ndarray
 ) -> dict[str, Any]:
-    """材料は`get_edge_material_arrays`で引く（式はタイル配信・軸スタジオと同じ`material_sql`の断片で、2か所に持たない）。"""
+    """材料は`get_edge_material_arrays`で引く（式はタイル配信と同じ`material_sql`の断片で、2か所に持たない）。"""
     edge_count = len(way)
     accident_years_covered = await repository.get_accident_years_covered()
     columns = MaterialColumns(edge_count)

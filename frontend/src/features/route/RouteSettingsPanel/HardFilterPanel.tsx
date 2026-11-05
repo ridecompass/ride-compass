@@ -17,7 +17,7 @@ import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 const FIXED_ROWS: readonly { key: string; label: string; description: string }[] = routeGenerateConfig.hard_filters;
 
 interface HardFilterPanelProps {
-  /** 選べる行・段と、行をまとめる節（道の分け方ごと。軸カタログが配る。届くまでは行も段も無い）。 */
+  /** 選べる行・段と、行をまとめる節（道の分け方ごと。画面の設定が配る。届くまでは行も段も無い）。 */
   avoidance: RoadAvoidanceView;
   /** 選んだ段（選んでいない行は無い）。 */
   roadAvoidance: RoadAvoidanceOverride;

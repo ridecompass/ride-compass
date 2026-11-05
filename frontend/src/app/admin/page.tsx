@@ -6,13 +6,11 @@ import BackendStatus from "@/features/admin/BackendStatus/BackendStatus";
 import DebugPanel from "@/features/admin/DebugPanel/DebugPanel";
 import BackendLogsPanel from "@/features/admin/BackendLogsPanel/BackendLogsPanel";
 import SystemStatusPanel from "@/features/admin/SystemStatusPanel/SystemStatusPanel";
-import AxisStudio from "@/features/admin/AxisStudio/AxisStudio";
-import DraftWayValuesMap from "@/features/map/DraftWayValuesMap/DraftWayValuesMap";
-import MaterialCoveragePanel from "@/features/admin/AxisStudio/MaterialCoveragePanel";
-import DerivedDataFreshnessPanel from "@/features/admin/AxisStudio/DerivedDataFreshnessPanel";
-import DbStatusPanel from "@/features/admin/AxisStudio/DbStatusPanel";
-import TileCachePanel from "@/features/admin/AxisStudio/TileCachePanel";
-import TuningPanel from "@/features/admin/AxisStudio/TuningPanel";
+import MaterialCoveragePanel from "@/features/admin/AdminPanels/MaterialCoveragePanel";
+import DerivedDataFreshnessPanel from "@/features/admin/AdminPanels/DerivedDataFreshnessPanel";
+import DbStatusPanel from "@/features/admin/AdminPanels/DbStatusPanel";
+import TileCachePanel from "@/features/admin/AdminPanels/TileCachePanel";
+import TuningPanel from "@/features/admin/AdminPanels/TuningPanel";
 import { useDebugEnabled } from "@/hooks/useDebugLog";
 import { buttonVariants } from "@/components/ui/Button/Button";
 import { Toggle } from "@/components/ui/Toggle/Toggle";
@@ -22,20 +20,17 @@ import { cardVariants } from "@/components/ui/Card/Card";
 
 const TAB_PANEL_CLASS = cn(cardVariants({ variant: "outline" }), "flex flex-col gap-3");
 
-// 軸スタジオ・開発者向け機能をまとめた管理画面。認証はこのページの外（URLの境界）が持つ。
+// 管理（材料・較正値・データ保守）と開発者向け機能をまとめた画面。認証はこのページの外（URLの境界）が持つ。
 export default function AdminPage() {
   const debugEnabled = useDebugEnabled();
   const [systemStatusOpen, setSystemStatusOpen] = useState(false);
 
   return (
     <div className="mx-auto flex w-full min-w-0 max-w-3xl flex-col gap-4 p-4">
-      <h1 className={textVariants({ variant: "title" })}>軸スタジオ・開発者ツール</h1>
+      <h1 className={textVariants({ variant: "title" })}>管理・開発者ツール</h1>
 
-      <Tabs className="flex flex-col gap-3" defaultValue="axisStudio">
+      <Tabs className="flex flex-col gap-3" defaultValue="materials">
         <TabsList>
-          <TabsTrigger usage={null} value="axisStudio">
-            軸スタジオ
-          </TabsTrigger>
           <TabsTrigger usage={null} value="materials">
             材料
           </TabsTrigger>
@@ -49,10 +44,6 @@ export default function AdminPage() {
             開発者
           </TabsTrigger>
         </TabsList>
-
-        <TabsContent className={TAB_PANEL_CLASS} value="axisStudio">
-          <AxisStudio calibrationMap={(props) => <DraftWayValuesMap {...props} />} />
-        </TabsContent>
 
         <TabsContent className={TAB_PANEL_CLASS} value="materials">
           <MaterialCoveragePanel />

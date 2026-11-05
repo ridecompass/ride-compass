@@ -17,15 +17,14 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { ORIGIN_MARK_FALLBACK_COLOR, PIN_MARK_COLOR } from "@/components/PinMark/PinMark";
-import { onBackend, serveAxisCatalog } from "@/testing/backendServer";
-import { catalogResponse } from "@/testing/catalogAxes";
+import { onBackend, serveClientConfig } from "@/testing/backendServer";
 import { DESTINATION, ORIGIN, button, detail, renderForm, searchButton, waypointsOf } from "@/testing/routeForm";
 import { FACILITY_CANDIDATE as FACILITY } from "@/testing/routeFixtures";
 
 // 詳しくは置いた地点の辺りを引く。辺りを見ないテストには、辺り無しと答える（見るテストは後から応答を渡す）。
 beforeEach(() => {
   onBackend("GET", "/api/place-area", () => Response.json({ area: null }));
-  serveAxisCatalog(catalogResponse([]));
+  serveClientConfig();
 });
 
 describe("RouteForm 出発地", () => {

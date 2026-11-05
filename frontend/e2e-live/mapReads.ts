@@ -1,9 +1,9 @@
 import { expect, type Page } from "@playwright/test";
 import { featureFilter } from "@maplibre/maplibre-gl-style-spec";
-import type { AxisCatalogResponse } from "@/types/route";
+import type { LiveCatalog } from "./live";
 import { ROUTE_HIT_TARGET_SEGMENT } from "@/features/map/scene/groups/routes";
 
-// 実backendへ向けて開いた地図の読み終わりを待ち、描かれたもの（路面・ルートの区間・評価軸）を読む。
+// 実backendへ向けて開いた地図の読み終わりを待ち、描かれたもの（路面・ルートの区間・レンズ）を読む。
 
 /**
  * 地図の全ソースのタイルが読み終わるまで待つ。MapLibreの`idle`は、動き続けるレイヤー（時刻で進む気象の表示等）が
@@ -53,12 +53,12 @@ export async function renderedRoads(page: Page, sourceId: string): Promise<Recor
   );
 }
 
-/** 「評価で塗る」のピル（押すと評価軸の一覧を開く）。 */
+/** 「評価で塗る」のピル（押すとレンズの一覧を開く）。 */
 function lensPill(page: Page) {
   return page.getByRole("button", { name: /^評価で塗る: / });
 }
 
-/** 評価軸を名前で選ぶ（null は評価軸を選んでいない状態へ戻す）。一覧は選んでも閉じず、選んでいる行をもう一度押すと外れるので、
+/** レンズを名前で選ぶ（null はレンズを選んでいない状態へ戻す）。一覧は選んでも閉じず、選んでいる行をもう一度押すと外れるので、
  *  選び済みなら押さず、Escape で閉じる。行の名前には走る条件・「未使用」の印が続くので、名前の要素で当てる。 */
 export async function chooseLens(page: Page, label: string | null): Promise<void> {
   await lensPill(page).click();
@@ -75,9 +75,9 @@ export async function chooseLens(page: Page, label: string | null): Promise<void
   await expect(group).toBeHidden();
 }
 
-/** 今の評価軸の名前。ピルがどの軸の名前も出していなければ、評価軸を選んでいない（null）。 */
-export async function currentLensLabel(page: Page, catalog: AxisCatalogResponse): Promise<string | null> {
-  for (const { label } of catalog.axes) {
+/** 今のレンズの名前。ピルがどのレンズの名前も出していなければ、レンズを選んでいない（null）。 */
+export async function currentLensLabel(page: Page, catalog: LiveCatalog): Promise<string | null> {
+  for (const { label } of catalog.lenses) {
     if (await lensPill(page).getByText(label, { exact: true }).isVisible()) return label;
   }
   return null;
@@ -88,7 +88,7 @@ export async function currentLensLabel(page: Page, catalog: AxisCatalogResponse)
  * 区間は scene が区間の当たり判定（`ROUTE_HIT_TARGET_SEGMENT`）を宣言したソースで引き、「データなし」かは、いまの地図が
  * 区間の線に当てている「値が無ければ破線にする」式の条件を、MapLibre の式の評価器で区間のデータに当てて決める（塗り方の規則を
  * ここで書き直さない）。区間のデータは地図への問い合わせ（`queryRenderedFeatures`）ではなくソースから取る——問い合わせが返す地物は
- * 入れ子のプロパティ（`material_values` 等）を文字列にしていて、式の条件がどの区間にも当たらない。
+ * 入れ子のプロパティ（`lens_seconds_per_km` 等）を文字列にしていて、式の条件がどの区間にも当たらない。
  */
 export async function routeSegmentsPainted(page: Page): Promise<{ drawn: number; withValue: number }> {
   const { missing, drawn, segments } = await page.evaluate(async (target) => {

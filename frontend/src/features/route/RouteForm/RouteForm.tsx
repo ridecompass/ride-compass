@@ -15,8 +15,8 @@ import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
 import Ruler, { type RulerFrame } from "@/components/ui/Ruler/Ruler";
 import { textVariants } from "@/components/ui/Text/Text";
 import { panelIconToggleClass, Toggle } from "@/components/ui/Toggle/Toggle";
-import { useAxisCatalog } from "@/hooks/useAxisCatalog";
-import { CLIENT_TUNING_IDS, clientTuningValue } from "@/lib/axisCatalog";
+import { useClientConfig } from "@/hooks/useClientConfig";
+import { CLIENT_TUNING_IDS, clientTuningValue } from "@/lib/clientConfig";
 import { cn } from "@/lib/cn";
 import CostLevelPicker from "@/features/route/RouteSettingsPanel/CostLevelPicker";
 import { COST_STRENGTH_LEVELS } from "@/features/route/costPreference";
@@ -103,7 +103,7 @@ export default function RouteForm({
   } = conditions;
   const distanceToggleName = distanceTargeted ? "全長の目標をやめる" : "全長の目標を決める";
   // 許容差は管理画面の較正値（目標の距離に対する割合）。引けない間は幅の文を出さない（較正したのとは別の数を出さない）。
-  const distanceToleranceRatio = clientTuningValue(useAxisCatalog(), CLIENT_TUNING_IDS.distanceToleranceRatio);
+  const distanceToleranceRatio = clientTuningValue(useClientConfig(), CLIENT_TUNING_IDS.distanceToleranceRatio);
 
   // 範囲の端ではボタンを押せなくするので、足した値は範囲を出ない。
   function stepMaxRoutes(delta: number) {

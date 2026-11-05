@@ -1,7 +1,7 @@
 """`infrastructure/tile_persistent_cache.py`——呼び出し元が設計したタプルの鍵でPythonオブジェクトを置くディスク。
 
 ここで見ないもの:
-- 鍵をどう組み立てるか・いつ失効させるか → 呼び出し元（`test_dynamic_way_value_cache.py`等）
+- 鍵をどう組み立てるか・いつ失効させるか → 呼び出し元（`test_feature_materials.py`等）
 - 違う鍵が別のエントリになること・同じ鍵の上書き・`expire`での失効・書いていない鍵の外れ → `diskcache`へ鍵と`expire`を
   そのまま渡すだけで、自前の判断が無い
 - 生バイトの置き場 → `test_tile_cache.py`

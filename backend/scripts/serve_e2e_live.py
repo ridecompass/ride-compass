@@ -118,7 +118,7 @@ def road_tile_counter(api: str) -> Callable[[float, float], int]:
     from app.domain.region import ROAD_TILE_MAX_ZOOM, tile_position
     from app.infrastructure.vector_tile import ROAD_SURFACE_LAYER_NAME
 
-    catalog = json.loads(get(f"{api}/api/axis-catalog") or b"{}")
+    catalog = json.loads(get(f"{api}/api/client-config") or b"{}")
     version = (catalog.get("tile_versions") or {}).get("road_surface")
     z = ROAD_TILE_MAX_ZOOM
 

@@ -1,7 +1,7 @@
 """較正値の上書き（`app/domain/tuning.py`の宣言から動かしたぶんだけを持つ）。
 
 既定値は宣言が持つ。このテーブルは差分だけを持つため、**行が1つも無くても宣言どおりに
-動く**——`axis_definitions`のような「行そのものが定義」の形と違い、fresh bootstrap
+動く**——費用の軸の定義（`cost_axis_definitions`）のような「行そのものが定義」の形と違い、fresh bootstrap
 （CI・新規環境・disaster recovery）でスナップショットの投入が要らない。
 
 行の読み書きと宣言の範囲での検算を持ち、プロセス内の`domain/tuning.py: TUNING_VALUES`へは書かない。

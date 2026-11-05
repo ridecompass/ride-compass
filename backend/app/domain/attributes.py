@@ -96,7 +96,7 @@ class EdgeMaterialArrays:
     値はDBが導出したものをそのまま受ける（`MaterialSpec.value_sql`）。
     区間ごとのPythonオブジェクトを経由しない。
 
-    材料ごとに別々の配列を持たず、`StaticEdgeScoreMatrix`と同じ「値の行列＋idの並び」の形に
+    材料ごとに別々の配列を持たず、`domain/search_materials.py: SearchMaterials`と同じ「値の行列＋idの並び」の形に
     する。材料が増えてもフィールドは増えず、列の追加は`*_ids`が1つ伸びるだけになる。
     数値と分類の2つに分かれるのは、カテゴリを数値の行列へ混ぜられないため（真偽の材料は数値の行列に
     1.0/0.0/NaNで載る。分け方は`material_catalog.material_array_columns`が決める）。
@@ -129,7 +129,7 @@ class EdgeMaterialArrays:
 
 @dataclass(frozen=True)
 class EdgeMaterialColumns:
-    """点数の表を組む入力（`domain/evaluation.py: build_static_edge_score_matrix`）。切り出した区間の材料id→列と、区間の値。
+    """探索の材料の表を組む入力（`domain/search_materials.py: build_search_materials`）。切り出した区間の材料id→列と、区間の値。
 
     材料の列は読まれたときに切り出し、数値の列はそれぞれ連続した配列で返す（`domain/road_network.py: material_arrays_of`）。
     """

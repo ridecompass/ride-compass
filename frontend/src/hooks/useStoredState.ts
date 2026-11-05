@@ -10,7 +10,7 @@ interface UseStoredStateOptions<T> {
   /** 保存文字列からTへの変換。不正・旧形式の値はnullを返すか投げる（どちらもデフォルト値のまま扱われる）。 */
   deserialize: (raw: string) => T | null;
   /** 変わるたびに、その時点のdeserializeで読み直す（省略時はマウントの1回だけ）。deserializeが実行時に届く一覧
-   * （軸カタログ等）で復元する値を決めるとき、届いたことを渡す。 */
+   * （画面の設定等）で復元する値を決めるとき、届いたことを渡す。 */
   reloadKey?: unknown;
 }
 

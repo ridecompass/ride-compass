@@ -3,12 +3,11 @@ import type { RouteCandidate, RouteGenerateJobStatusResponse } from "@/types/rou
 import {
   AVOIDANCE_LEVELS,
   avoidanceRow,
-  catalogEntry,
-  catalogResponse,
+  clientConfigResponse,
   roadClass,
   roadClassCatalog,
   roadMapLayer,
-} from "@/testing/catalogAxes";
+} from "@/testing/clientConfig";
 import {
   makeGenerationConditions,
   makeRouteCandidate as makeCandidate,
@@ -145,7 +144,7 @@ export function gridPointTodayFixture(): components["schemas"]["GridPointToday"]
   };
 }
 
-/** モックの軸カタログが配る道の線の層。区分は管理DBが持つ任意の値なので、ここで組む。 */
+/** モックの画面の設定が配る道の線の層。区分は管理DBが持つ任意の値なので、ここで組む。 */
 export const E2E_ROAD_LAYERS = [
   roadMapLayer("surface", {
     label: "路面",
@@ -159,7 +158,7 @@ export const E2E_ROAD_LAYERS = [
   }),
 ];
 
-/** モックの軸カタログの道の区分（線の層と、避け方を選べる行）。 */
+/** モックの画面の設定の道の区分（線の層と、避け方を選べる行）。 */
 const E2E_ROAD_CLASSES = roadClassCatalog({
   map_layers: E2E_ROAD_LAYERS,
   avoidance: {
@@ -169,19 +168,12 @@ const E2E_ROAD_CLASSES = roadClassCatalog({
   },
 });
 
-/** `GET /api/axis-catalog`の応答。世代は本物のbackendと同じく全種類を返し（無いと凡例が配信情報を取得できない表示になる）、
- * 軸と世代以外（尺度・調整値・事故の収録年）は空で返す。型は契約のもので、項目を欠いた応答を作れない（欠けると、
- * 本物のbackendなら必ず来る値が画面で`undefined`になる）。 */
-export function axisCatalogFixture(
-  axes: ReturnType<typeof catalogEntry>[],
-): components["schemas"]["AxisCatalogResponse"] {
+/** `GET /api/client-config`の応答。世代は本物のbackendと同じく全種類を返し（無いと凡例が配信情報を取得できない表示になる）、
+ * 世代と道の区分以外（調整値・事故の収録年）は、見たい呼び出し側が上書きする。型は契約のもので、項目を欠いた応答を作れない
+ * （欠けると、本物のbackendなら必ず来る値が画面で`undefined`になる）。 */
+export function clientConfigFixture(
+  overrides: Partial<components["schemas"]["ClientConfigResponse"]> = {},
+): components["schemas"]["ClientConfigResponse"] {
   const tile_versions = Object.fromEntries(regionTileConfig.tile_version_kinds.map((kind) => [kind, "e2e"]));
-  return catalogResponse(axes, { tile_versions, road_classes: E2E_ROAD_CLASSES });
-}
-
-/** 既定の軸カタログ。アプリが軸一覧を引ける最小の1軸だけを持つ。 */
-export function defaultAxisCatalogFixture(): components["schemas"]["AxisCatalogResponse"] {
-  return axisCatalogFixture([
-    { ...catalogEntry({ axis_id: "axis_a", map_paint: { thresholds: [50] } }), default_weight: 0 },
-  ]);
+  return clientConfigResponse({ tile_versions, road_classes: E2E_ROAD_CLASSES, ...overrides });
 }

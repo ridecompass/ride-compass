@@ -21,8 +21,8 @@ export default async function globalSetup(): Promise<void> {
   }
 
   const catalog = await fetchCatalog();
-  const version = catalog.tile_versions.road_surface;
-  if (!version) throw new Unmet("軸カタログに路面タイルの世代が無い", "backendのDBの接続先と起動ログを確かめる");
+  const version = catalog.config.tile_versions.road_surface;
+  if (!version) throw new Unmet("画面の設定に路面タイルの世代が無い", "backendのDBの接続先と起動ログを確かめる");
 
   const { z, x, y } = tileOf(regionTileConfig.road_tile_max_zoom, LIVE_POINT);
   const tile = await fetch(`${LIVE_API}/api/region/road-surface-tiles/${z}/${x}/${y}.pbf?v=${version}`);

@@ -6,8 +6,8 @@ import LegendCheckboxList from "@/features/map/LegendCheckboxList/LegendCheckbox
 import { LEGEND_SWATCH_RING_CLASS, legendSwatchBackground, type LegendEntry } from "@/lib/mapDisplay/legendFilter";
 import { LAYER_DATA_STATUS_LABELS, layerDataStatusNotice, type LayerDataStatus } from "@/features/map/layers/mapLayers";
 import {
-  DIFFICULTY_LENS_LABEL,
-  LENS_DIFFICULTY_ID,
+  UNSELECTED_LENS_LABEL,
+  UNSELECTED_LENS_ID,
   LENS_NEUTRAL_COLOR,
   type LensId,
 } from "@/lib/mapDisplay/routeStyleModes";
@@ -24,7 +24,7 @@ import { LensRow, type LensOption } from "./LensRow";
 interface LensControlProps {
   lens: LensId;
   onLensChange: (id: LensId) => void;
-  /** 軸カタログ順の公開軸。 */
+  /** 総合と費用の軸の順のレンズ。 */
   axisOptions: readonly LensOption[];
   /** 今のレンズの凡例（ルートの前は道路、後はルートの線。どちらも呼ぶ側が組む）。 */
   legend: readonly LegendEntry[];
@@ -35,20 +35,20 @@ interface LensControlProps {
   onSetHiddenLegendKeys: (hiddenKeys: string[]) => void;
   keepAfterRoute: boolean;
   onKeepAfterRouteChange: (keep: boolean) => void;
-  /** ルート確定済みか（評価軸を選んでいないときのピルの名前が、ルートの前後で変わる）。 */
+  /** ルート確定済みか（レンズを選んでいないときのピルの名前が、ルートの前後で変わる）。 */
   hasDetail: boolean;
   /** 候補を選んでいるのに、ルートの線を「表示」で出していない（色分けがルートの線に効かない）。 */
   routeHidden: boolean;
-  /** 凡例の下に書く、周りの道の色の前提（`view/lens.ts: lensPremises`）。 */
+  /** 凡例の下に書く、周りの道の色の前提（`features/map/costLens.ts: costLensPremises`）。 */
   premises: readonly string[];
-  /** 今のレンズの取得の状態（専用配信の軸のときだけ）。塗りは失敗でもデータ無しでも同じ無彩色なので、印で見分ける。 */
+  /** 今のレンズの取得の状態（塗っている間だけ）。塗りは失敗でもデータ無しでも同じ無彩色なので、印で見分ける。 */
   dataStatus?: LayerDataStatus;
 }
 
 /** 画面の名前。コードの「レンズ」は画面には出さない（利用者が見る名前はこれだけ）。 */
 const LENS_SCREEN_NAME = EVALUATION_PAINT_NAME;
 
-/** 評価軸を選んでいないルートの前のピルの名前（道路は塗らない）。 */
+/** レンズを選んでいないルートの前のピルの名前（道路は塗らない）。 */
 const UNSELECTED_LABEL = "塗る負担を選ぶ";
 
 /**
@@ -73,10 +73,10 @@ export default function LensControl({
   const [open, setOpen] = useState(false);
   const statusLabel = dataStatus ? LAYER_DATA_STATUS_LABELS[dataStatus] : undefined;
   const statusNotice = layerDataStatusNotice(dataStatus);
-  // 評価軸を選んでいないときは、ルートの前は道路を塗らず、ルートの後はルートの線を総合の負担で塗る（費用の軸の定義が無い間は1色）。
-  const unselected = lens === LENS_DIFFICULTY_ID;
+  // レンズを選んでいないときは、ルートの前は道路を塗らず、ルートの後はルートの線を総合の負担で塗る（費用の軸の定義が無い間は1色）。
+  const unselected = lens === UNSELECTED_LENS_ID;
   const selected = axisOptions.find((option) => option.id === lens);
-  const pillLabel = unselected ? (hasDetail ? DIFFICULTY_LENS_LABEL : UNSELECTED_LABEL) : (selected?.label ?? lens);
+  const pillLabel = unselected ? (hasDetail ? UNSELECTED_LENS_LABEL : UNSELECTED_LABEL) : (selected?.label ?? lens);
   const pillColor = selected?.color ?? LENS_NEUTRAL_COLOR;
   // ピルの帯は色の段だけを並べる（受け皿の「データなし」は除く）。
   const bands = legend.filter((entry) => !entry.isFallback);
@@ -168,7 +168,7 @@ export default function LensControl({
             className="flex-col flex-nowrap gap-0"
             deselectable
             value={unselected ? "" : lens}
-            onValueChange={(id) => onLensChange(id === "" ? LENS_DIFFICULTY_ID : id)}
+            onValueChange={(id) => onLensChange(id === "" ? UNSELECTED_LENS_ID : id)}
             aria-label={LENS_SCREEN_NAME}
             usage="押した負担の種類の1kmあたりの負担で、地図の道路（ルートを作った後はルートの線）を塗ります。選んでいる行をもう一度押すと外れます。"
           >
@@ -196,7 +196,7 @@ export default function LensControl({
             <Button
               size="panelIcon"
               aria-label="選択を外す"
-              onClick={() => onLensChange(LENS_DIFFICULTY_ID)}
+              onClick={() => onLensChange(UNSELECTED_LENS_ID)}
               disabled={unselected}
               usage="選んでいる負担の種類を外します。外すと、ルートの前は道路を塗らず、ルートの後は総合の負担で塗ります。"
             >

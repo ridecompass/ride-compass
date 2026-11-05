@@ -14,7 +14,7 @@ import * as maplibregl from "maplibre-gl";
 import type { Map as MapLibreMap } from "maplibre-gl";
 
 import type { MapLayerVisibility } from "@/features/map/layers/mapLayers";
-import type { DedicatedWayValueAxis } from "@/lib/mapDisplay/axisLayers";
+import type { MapLens } from "@/lib/mapDisplay/mapLens";
 import { debugLog } from "@/lib/debugLog";
 import type {
   DynamicWeatherGroupState,
@@ -29,8 +29,14 @@ import {
   runWhenStyleReady,
   themeBasemap,
 } from "@/features/map/layers/mapStyleOps";
-import { axisMapLayerIds } from "@/features/map/layers/mapLayers";
-import { ROUTE_LENS_SECONDS_PROPERTY, type LensId, type RouteStyleMode } from "@/lib/mapDisplay/routeStyleModes";
+import {
+  LENS_NEUTRAL_COLOR,
+  ROUTE_LENS_SECONDS_PROPERTY,
+  UNSELECTED_LENS_ID,
+  UNSELECTED_LENS_LABEL,
+  type LensId,
+  type RouteStyleMode,
+} from "@/lib/mapDisplay/routeStyleModes";
 import type { RoadMapLayerView, RouteCandidate, SelectedRouteSegment } from "@/types/route";
 import { valueBands } from "@/lib/mapDisplay/valueScale";
 import { routeStretches, segmentPath, splitSegmentAt } from "@/lib/routeDistance";
@@ -70,14 +76,14 @@ export interface SpliceStretchInput {
 export type HiddenLegendKeys = Readonly<Record<string, readonly string[]>>;
 
 /** 地図の見え方の状態。**状態そのものだけ**で、ここから導けるもの（どのレイヤーを出すか・
- * 家族ごとの隠した行・下敷き）はこのファイルが導く。 */
+ * 家族ごとの隠した行）はこのファイルが導く。 */
 export interface SceneLook {
   readonly layerVisibility: MapLayerVisibility;
   readonly dynamicWeather: Partial<Record<DynamicWeatherLayerId, DynamicWeatherGroupState>>;
   /** ルート線の色分けのモード。 */
   readonly lens: LensId;
   /** 全道路を塗っている軸（塗っていなければnull）。 */
-  readonly paintedAxisId: LensId | null;
+  readonly paintedLensId: LensId | null;
   /** 今の範囲の道ごとの、道の線の層の値の取得結果。 */
   readonly roadClasses: { values: RoadClassValues; loading: boolean };
   /** 軸ごとの、今の範囲の道ごとの材料の取得結果。 */
@@ -94,7 +100,7 @@ export interface SceneLook {
 type SceneWiringProps = {
   readonly look: SceneLook;
   readonly catalog: {
-    readonly dedicatedAxes: readonly DedicatedWayValueAxis[];
+    readonly lenses: readonly MapLens[];
     readonly routeStyleModes: readonly RouteStyleMode[];
     readonly roadLayers: readonly RoadMapLayerView[];
   };
@@ -146,7 +152,6 @@ function routeStateFrom(props: SceneWiringProps): RouteState {
       const properties = {
         [ROUTE_SEGMENT_INDEX_PROPERTY]: index,
         [ROUTE_LENS_SECONDS_PROPERTY]: segment.lens_seconds_per_km ?? {},
-        material_values: segment.material_values,
         sustained_gradient_percent: segment.sustained_gradient_percent,
       };
       const travelled = { ...properties, travelled: true };
@@ -175,36 +180,22 @@ function routeStateFrom(props: SceneWiringProps): RouteState {
   };
 }
 
-/** 下敷きで描く軸。その軸の材料を見せるレイヤーが1つでも出ている間は、材料の線を隠さないよう下へ敷く。 */
-function underlaidAxisIds(props: SceneWiringProps): ReadonlySet<string> {
-  const visible = props.look.layerVisibility;
-  return new Set(
-    props.catalog.dedicatedAxes
-      .filter((axis) => axisMapLayerIds(axis).some((id) => visible[id]))
-      .map((axis) => axis.axisId),
-  );
-}
-
 function axisStateFrom(props: SceneWiringProps, sourceLayer: string | null): AxisLineState {
   const { look } = props;
-  const underlaid = underlaidAxisIds(props);
-  // 式の木の無い軸は、ルートの無い間の周りの道を塗らない。
-  const axes = props.catalog.dedicatedAxes.flatMap((axis) => {
-    if (axis.wayValueFormula === null) return [];
-    const fetched = look.wayMaterials.get(axis.axisId);
+  const axes = props.catalog.lenses.map((lens) => {
+    const fetched = look.wayMaterials.get(lens.lensId);
     return {
-      axisId: axis.axisId,
-      // 道の線を塗る評価軸は、レンズが塗っている1本だけ。
-      visible: axis.axisId === look.paintedAxisId,
-      bands: valueBands(axis.display),
-      formula: axis.wayValueFormula,
+      axisId: lens.lensId,
+      // 道の線を塗るレンズは、選んでいる1本だけ。
+      visible: lens.lensId === look.paintedLensId,
+      bands: valueBands(lens.display),
+      formula: lens.formula,
       materials: fetched?.materials ?? NO_MATERIALS,
       loading: fetched?.loading === true,
-      hiddenBandKeys: look.hiddenLegendKeys[axis.axisId] ?? NO_KEYS,
-      underlay: underlaid.has(axis.axisId),
+      hiddenBandKeys: look.hiddenLegendKeys[lens.lensId] ?? NO_KEYS,
     };
   });
-  return { axes, conditions: look.wayConditions, sourceLayer, roadLayerCount: props.catalog.roadLayers.length };
+  return { axes, conditions: look.wayConditions, sourceLayer };
 }
 
 /** 届いている中身を、要素の鍵（`groups/weather.ts: weatherElementKey`）で引ける形へ移す。 */
@@ -291,9 +282,18 @@ export function applyScene(
   });
 }
 
+// 費用の軸の一覧が届く前・失敗の間（モードが0件）のルートの線。値を読まず中立色の1色で塗り、凡例を持たない。
+const UNPAINTED_ROUTE_STYLE_MODE: RouteStyleMode = {
+  id: UNSELECTED_LENS_ID,
+  label: UNSELECTED_LENS_LABEL,
+  legend: [],
+  colorExpression: ["to-color", LENS_NEUTRAL_COLOR],
+};
+
 function getRouteStyleMode(modes: readonly RouteStyleMode[], id: LensId): RouteStyleMode {
   const found = modes.find((mode) => mode.id === id);
   if (found) return found;
+  if (modes.length === 0) return UNPAINTED_ROUTE_STYLE_MODE;
   // 軸の非公開等でidのモードが消えていたら先頭へ倒す。選択中の色分けが黙って変わるため警告を残す。
   debugLog(
     "map:route-style-mode",

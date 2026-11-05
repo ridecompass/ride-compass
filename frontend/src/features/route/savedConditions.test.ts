@@ -12,8 +12,8 @@
 import { describe, expect, it } from "vitest";
 
 import type { CostAxisCatalog } from "@/hooks/useCostAxisCatalog";
-import { EMPTY_CATALOG } from "@/lib/axisCatalog";
-import { AVOIDANCE_LEVELS, avoidanceRow, catalogEntry, catalogOf, roadClassCatalog } from "@/testing/catalogAxes";
+import { EMPTY_CLIENT_CONFIG } from "@/lib/clientConfig";
+import { AVOIDANCE_LEVELS, avoidanceRow, clientConfigOf, roadClassCatalog } from "@/testing/clientConfig";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 
 import {
@@ -105,7 +105,7 @@ describe("readSavedConditions", () => {
     expect(readSavedConditions(JSON.stringify([{ ...ENTRY, ...broken }, other]))).toEqual([other]);
   });
 
-  // 行は軸カタログが届くまで分からないので、鍵では落とさない。
+  // 行は画面の設定が届くまで分からないので、鍵では落とさない。
   it("避け方は段として読める鍵だけを残す", () => {
     const [read] = readSavedConditions(
       JSON.stringify([{ ...ENTRY, roadAvoidance: { gravel: "exclude", retired_row: "avoid", unpaved: "never" } }]),
@@ -133,25 +133,18 @@ describe("suggestedConditionName", () => {
 });
 
 describe("describeConditions", () => {
-  const CATALOG = catalogOf(
-    [
-      catalogEntry({ axis_id: "axis_a", label: "軸A", default_weight: 0.25 }),
-      catalogEntry({ axis_id: "axis_b", label: "軸B", default_weight: 0.75 }),
-      catalogEntry({ axis_id: "axis_c", label: "軸C", default_weight: 0 }),
-    ],
-    {
-      road_classes: roadClassCatalog({
-        avoidance: {
-          levels: AVOIDANCE_LEVELS,
-          rows: [
-            avoidanceRow("gravel", "surface", { label: "砂利" }),
-            avoidanceRow("unpaved", "surface", { label: "未舗装", default: "avoid" }),
-            avoidanceRow("private", "access", { label: "私道", default: "exclude" }),
-          ],
-        },
-      }),
-    },
-  );
+  const CATALOG = clientConfigOf({
+    road_classes: roadClassCatalog({
+      avoidance: {
+        levels: AVOIDANCE_LEVELS,
+        rows: [
+          avoidanceRow("gravel", "surface", { label: "砂利" }),
+          avoidanceRow("unpaved", "surface", { label: "未舗装", default: "avoid" }),
+          avoidanceRow("private", "access", { label: "私道", default: "exclude" }),
+        ],
+      },
+    }),
+  });
 
   it.each([
     ["戻る周回は距離と候補数", SHAPES.loop, "周回 30km・候補 3本"],
@@ -180,7 +173,7 @@ describe("describeConditions", () => {
       "通らない 砂利／なるべく避ける 未舗装",
     ],
     ["通る行しか無ければ無いと出す", { unpaved: "pass", private: "pass" }, CATALOG, "なし"],
-    ["軸カタログが届く前は、行が分からないので無いと出す", { gravel: "exclude" }, EMPTY_CATALOG, "なし"],
+    ["画面の設定が届く前は、行が分からないので無いと出す", { gravel: "exclude" }, EMPTY_CLIENT_CONFIG, "なし"],
   ] as const)("除外: %s", (_, roadAvoidance, catalog, expected) => {
     expect(describeConditions({ ...ENTRY, roadAvoidance }, catalog, COST_CATALOG).exclusions).toBe(expected);
   });

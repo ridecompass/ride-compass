@@ -1,12 +1,12 @@
-// チップの説明の文の差し込み口を埋める。文は源泉（`mapDisplay.layers`の`description`・`panelHint`と、道の線の層の`panel_hint`）が持つ。
+// チップの説明の文の差し込み口を埋める。文は源泉（`mapDisplay.layers`の`description`・`panelHint`）が持つ。
 
 import { mapDisplay } from "@/types/generated/mapDisplay";
-import type { RoadMapLayerView } from "@/types/route";
 
 /** 源泉の説明の文の差し込み口。 */
-type LayerTextSlot =
-  | Extract<NonNullable<(typeof mapDisplay.layers)[number]["description" | "panelHint"]>[number], { name: string }>
-  | Extract<RoadMapLayerView["panel_hint"][number], { name: string }>;
+type LayerTextSlot = Extract<
+  NonNullable<(typeof mapDisplay.layers)[number]["description" | "panelHint"]>[number],
+  { name: string }
+>;
 
 type LayerTextPart = string | LayerTextSlot;
 
@@ -27,7 +27,7 @@ export function fillLayerText(
     .join("");
 }
 
-/** 収録年の言い方（連続なら範囲、飛んでいれば並べる）。年は取込の宣言が正本で、軸カタログが運ぶ。 */
+/** 収録年の言い方（連続なら範囲、飛んでいれば並べる）。年は取込の宣言が正本で、画面の設定が運ぶ。 */
 export function coverageYearsLabel(years: readonly number[]): string {
   if (years.length === 0) return "";
   const sorted = [...years].sort((a, b) => a - b);

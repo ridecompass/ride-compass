@@ -96,7 +96,7 @@ const DECLARED_LAYERS = mapDisplay.layers.flatMap((layer): BandLayer[] =>
     : [],
 );
 
-/** グラフに重ねられるレイヤ。道の帯は、軸カタログが配る道の線の層（地図のチップと同じ並び）から作る。 */
+/** グラフに重ねられるレイヤ。道の帯は、画面の設定が配る道の線の層（地図のチップと同じ並び）から作る。 */
 export function profileLayers(roadLayers: readonly RoadMapLayerView[]): readonly ProfileLayer[] {
   return [
     ELEVATION_LAYER,

@@ -4,7 +4,7 @@
  *
  * 見るもの: 候補数のステッパー（今の件数・1件ずつの増減・端で押せない）、全長の目標の入り切り（押して上がる値・
  * 外している間はルーラーを動かせない）とルーラーのコマ（5km刻みの範囲・今の値）と動かして上がる値、全長の目標の(i)の奥の
- * 許容差（軸カタログが配る較正値で、引けない間は書かない）、距離・候補数の値と地点の並びの札の名前の文字の大きさのそろい、
+ * 許容差（画面の設定が配る較正値で、引けない間は書かない）、距離・候補数の値と地点の並びの札の名前の文字の大きさのそろい、
  * 経由地が上限のときに保存した地点を経由地に足せないこと、タブを切り替えても各タブの中身を外さないこと。
  *
  * ここで見ないもの: タブの列と選んだタブ、どのタブの中身が見えるか（スタイルで隠す）、呼び出した地点を選んで「条件」タブへ移ること
@@ -21,9 +21,9 @@ import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { CLIENT_TUNING_IDS } from "@/lib/axisCatalog";
-import { onBackend, serveAxisCatalog } from "@/testing/backendServer";
-import { catalogResponse } from "@/testing/catalogAxes";
+import { CLIENT_TUNING_IDS } from "@/lib/clientConfig";
+import { onBackend, serveClientConfig } from "@/testing/backendServer";
+import { clientConfigResponse } from "@/testing/clientConfig";
 import { DESTINATION, button, renderForm, waypointsOf } from "@/testing/routeForm";
 import { FACILITY_CANDIDATE as FACILITY } from "@/testing/routeFixtures";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
@@ -31,7 +31,7 @@ import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 // 詳しくは置いた地点の辺りを引く。辺りを見ないテストには、辺り無しと答える（見るテストは後から応答を渡す）。
 beforeEach(() => {
   onBackend("GET", "/api/place-area", () => Response.json({ area: null }));
-  serveAxisCatalog(catalogResponse([]));
+  serveClientConfig();
 });
 
 /** 全長の目標のルーラー。 */
@@ -82,8 +82,8 @@ describe("RouteForm 全長の目標", () => {
       "ルート全体の長さの目標です。作る候補は、この長さの±15%（30kmなら±4.5km）に入るものだけです。",
     ],
     [{}, "ルート全体の長さの目標です。外すと長さを決めず"],
-  ])("(i)の奥に、軸カタログが配る許容差（%o）を割合と今の目標での長さで書く", async (clientTuning, text) => {
-    serveAxisCatalog(catalogResponse([], { client_tuning: clientTuning }));
+  ])("(i)の奥に、画面の設定が配る許容差（%o）を割合と今の目標での長さで書く", async (clientTuning, text) => {
+    serveClientConfig(clientConfigResponse({ client_tuning: clientTuning }));
     renderForm({ distanceInput: "30" });
     await userEvent.click(button("全長の目標の説明を表示"));
 

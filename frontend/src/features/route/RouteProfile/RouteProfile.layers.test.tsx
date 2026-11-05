@@ -6,9 +6,9 @@
  * 走行中の現在地の印を最初の折れ線のその地点の高さに置くこと（値が無ければ中ほど）、出す情報が無いときと値が無いときの文、
  * 道の区分のレイヤの帯をレイヤごとに地図と同じ色で出し、その凡例を出すこと、走行中の図に標高の目盛りを出すこと。
  *
- * 差し替えたもの: 道の区分の層は軸カタログの応答としてテストが組む（本番の層は管理DBが持つ）。
+ * 差し替えたもの: 道の区分の層は画面の設定の応答としてテストが組む（本番の層は管理DBが持つ）。
  *
- * ここで見ないもの: タブ・難易度のグラフの見方・経由地の印 → `RouteProfile.test.tsx`。折れ線の点・帯の切れ目・地点の値・行の計算 →
+ * ここで見ないもの: タブ・負担のグラフの見方・経由地の印 → `RouteProfile.test.tsx`。折れ線の点・帯の切れ目・地点の値・行の計算 →
  * `profileLayers.test.ts`。選んだレイヤを覚えること → `useProfileLayers.test.ts`。
  */
 import { screen, waitFor, within } from "@testing-library/react";
@@ -35,7 +35,7 @@ describe("RouteProfile の「表示」の図", () => {
     const chart = screen.getByRole("img", { name: "道のりに沿った情報" });
     expect(chart.querySelectorAll("polyline")).toHaveLength(1);
     expect(screen.getByText("標高 最高 32m・最低 12m")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "難易度のグラフの見方を表示" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "負担のグラフの見方を表示" })).toBeNull();
 
     await userEvent.click(screen.getByRole("button", { name: "グラフに出す情報" }));
     const elevation = within(screen.getByRole("dialog")).getByRole("checkbox", { name: "標高" });
@@ -67,7 +67,7 @@ describe("RouteProfile の「表示」の図", () => {
     renderProfile({ segments: [paved, gravel], layers: { ids: ["surface", "tunnel"], toggle: vi.fn() } });
     await openLayers();
     const chart = screen.getByRole("img", { name: "道のりに沿った情報" });
-    // 道の層は軸カタログが届いてから出る。
+    // 道の層は画面の設定が届いてから出る。
     const surfaceBand = await waitFor(() => chart.querySelector('[data-layer="surface"]')!);
     expect([...surfaceBand.querySelectorAll("rect")].map((rect) => rect.getAttribute("fill"))).toEqual([
       surfaceColor("paved"),

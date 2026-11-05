@@ -1,6 +1,6 @@
 """`GET /api/admin/db-status`のルートテスト: レポートを応答へ受け渡す。
 
-ここで見ないもの: 認可 → `test_admin_route_authorization.py`、DB障害の503 → `test_admin_db_unavailable.py`、
+ここで見ないもの: 認可 → `test_admin_route_authorization.py`、
 注意が要るかの判断（しきい値） → `test_db_status_service.py`（ここではレポートを作る関数の結果がそのまま応答になることだけを見る）
 """
 

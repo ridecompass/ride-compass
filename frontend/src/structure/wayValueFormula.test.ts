@@ -1,6 +1,6 @@
 // @vitest-environment node
 /**
- * 道の値の式の木（軸カタログの`way_value_formula`）を地図の式へ置き換える所が、`features/map/scene/wayValueFormula.ts`の
+ * 道の値の式の木（費用の軸の一覧の`map_lens.formula`）を地図の式へ置き換える所が、`features/map/scene/wayValueFormula.ts`の
  * 1つだけであることを見る。置き換えが2か所にあると、片方だけが木の値の約束（丸め・欠けた値）から外れても表
  * （`scene/wayValueFormula.test.ts`）では落ちず、同じ道が地図の場所によって backend と違う色になる。
  *

@@ -15,7 +15,7 @@
  * → `features/route/RouteCandidateActions/RouteCandidateActions.tsx`（置き場は見出しの行の`RouteOutcomeHeaderActions.tsx`）。値から段を引く判断 →
  * `lib/mapDisplay/valueScale.ts: bandAt`。シートが開いたときに合わせる高さ → `components/BottomSheet/BottomSheet.tsx`。
  *
- * 差し替えたもの: 軸カタログと費用の軸の一覧の応答（網の層）。結果の状態は値で組む（`testing/routeOutcome.tsx`）。
+ * 差し替えたもの: 画面の設定と費用の軸の一覧の応答（網の層）。結果の状態は値で組む（`testing/routeOutcome.tsx`）。
  *
  * 軸は架空のもの（`axis_a`等）を`src/testing/catalogAxes.ts`の雛形から作る。
  */
@@ -26,12 +26,12 @@ import type { EditedRoute } from "@/features/route/useRouteResults";
 import { NO_DATA_LEGEND_BAND } from "@/lib/mapDisplay/mapColorLegend";
 import { costLensPaint } from "@/lib/mapDisplay/costLensPaint";
 import { valueBands } from "@/lib/mapDisplay/valueScale";
-import { serveAxisCatalog } from "@/testing/backendServer";
-import { costAxisCatalog, serveCostAxisCatalog } from "@/testing/costAxes";
-import { CATALOG_RESPONSE, FAST, SLOW, generationOf, renderOutcome, resultsOf, route } from "@/testing/routeOutcome";
+import { serveClientConfig, serveCostAxisCatalog } from "@/testing/backendServer";
+import { costAxisCatalog } from "@/testing/costAxes";
+import { FAST, SLOW, generationOf, renderOutcome, resultsOf, route } from "@/testing/routeOutcome";
 
 beforeEach(() => {
-  serveAxisCatalog(CATALOG_RESPONSE);
+  serveClientConfig();
   serveCostAxisCatalog();
 });
 
@@ -96,7 +96,7 @@ describe("候補の上の知らせ", () => {
 describe("候補の一覧", () => {
   it("最速の印の無い生成は最速を分けず、番号・距離・時間・負担の列だけで並べ、区切りの線も群の印も出さない", () => {
     renderOutcome({ results: resultsOf({ generated: [FAST, SLOW] }) });
-    expect(listTexts()).toEqual(["1 10.0km 30分 負担+5分", "2 20.0km +12分 負担—"]);
+    expect(listTexts()).toEqual(["1 10.0km 30分 負担+5分", "2 20.0km +12分 負担+0分"]);
     expect(within(screen.getByRole("tablist")).queryByRole("img")).not.toBeInTheDocument();
   });
 
@@ -108,7 +108,13 @@ describe("候補の一覧", () => {
       number: 1,
     };
     renderOutcome({ results: resultsOf({ generated: [SLOW, { ...FAST, is_fastest: true }], edits: [edit] }) });
-    expect(listTexts()).toEqual([" 10.0km 30分 負担+5分", "―", "1 20.0km +12分 負担—", "―", "1 12.0km −3分 負担—"]);
+    expect(listTexts()).toEqual([
+      " 10.0km 30分 負担+5分",
+      "―",
+      "1 20.0km +12分 負担+0分",
+      "―",
+      "1 12.0km −3分 負担+0分",
+    ]);
     const [fastest, , spliced] = screen.getAllByRole("tab");
     expect(within(fastest).getByRole("img", { name: "最速ルート" })).toHaveAttribute("title", "最速ルート");
     expect(within(spliced).getByRole("img", { name: "合成ルート" })).toHaveAttribute("title", "合成ルート");

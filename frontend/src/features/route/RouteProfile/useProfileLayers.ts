@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo } from "react";
 
-import { useAxisCatalog } from "@/hooks/useAxisCatalog";
+import { useClientConfig } from "@/hooks/useClientConfig";
 import { useStoredState } from "@/hooks/useStoredState";
 import { readStoredList } from "@/lib/storedList";
 
@@ -18,7 +18,7 @@ export type ProfileLayerSelection = {
   readonly toggle: (id: string) => void;
 };
 
-/** 道のりのグラフに重ねるレイヤの選択。端末に覚える。道の層は軸カタログが届くまで分からないので、読むときには捨てず、今ある
+/** 道のりのグラフに重ねるレイヤの選択。端末に覚える。道の層は画面の設定が届くまで分からないので、読むときには捨てず、今ある
  * レイヤで絞るのは使う側に任せる。 */
 export function useProfileLayers(): ProfileLayerSelection {
   const [ids, setIds] = useStoredState<readonly string[]>(PROFILE_LAYERS_STORAGE_KEY, DEFAULT_LAYER_IDS, {
@@ -37,7 +37,7 @@ export function useChosenProfileLayers(ids: readonly string[]): {
   readonly available: readonly ProfileLayer[];
   readonly chosen: readonly ProfileLayer[];
 } {
-  const roadLayers = useAxisCatalog().roadClasses.map_layers;
+  const roadLayers = useClientConfig().roadClasses.map_layers;
   const available = useMemo(() => profileLayers(roadLayers), [roadLayers]);
   const chosen = useMemo(() => available.filter((layer) => ids.includes(layer.id)), [available, ids]);
   return { available, chosen };

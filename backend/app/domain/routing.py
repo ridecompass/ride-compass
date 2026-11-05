@@ -1,6 +1,6 @@
 """Route Engine。
 
-Road Graph（domain/graph.py）とEdge Cost（domain/evaluation.py）を使って、2点間の
+Road Graph（domain/graph.py）とEdge Cost（domain/leg_costs.py）を使って、2点間の
 最小コスト経路を探索する。アルゴリズムは教科書どおりのDijkstra/A*で、独自のものは作らない。
 
 探索の状態は**Nodeではなく有向Edge**で、遷移は`domain/turn_structure.py: TurnExpandedStructure`が持つ。
@@ -756,7 +756,7 @@ def add_terminal_candidate(
     そこで終わる経路は現れない。後ろ向きの区間が無いことは`backward_state=-1`で表す。
 
     **`NodeJunction`の全フィールドを揃えて書く**——1つでも繋ぎ目側の値が残ると、コストと
-    所要時間が別々の経路のものになり、`(cost/seconds - 1)/P`で逆算するdifficultyが壊れる。
+    所要時間が別々の経路のものになり、費用から所要時間を引いた代償が別の経路のものになる。
     """
     state = int(forward.node_best_state[destination_index])
     if state < 0:

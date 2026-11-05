@@ -6,17 +6,9 @@ import userEvent from "@testing-library/user-event";
 import { expect, onTestFinished, vi } from "vitest";
 
 import Home from "@/app/page";
-import { CLIENT_TUNING_IDS } from "@/lib/axisCatalog";
-import { onBackend, onSameOrigin, serveAxisCatalog } from "@/testing/backendServer";
-import {
-  catalogResponse,
-  dedicatedEntry,
-  MATERIAL_VALUE_FORMULA,
-  roadClass,
-  roadClassCatalog,
-  roadMapLayer,
-} from "@/testing/catalogAxes";
-import { serveCostAxisCatalog } from "@/testing/costAxes";
+import { CLIENT_TUNING_IDS } from "@/lib/clientConfig";
+import { onBackend, onSameOrigin, serveClientConfig, serveCostAxisCatalog } from "@/testing/backendServer";
+import { clientConfigResponse, roadClass, roadClassCatalog, roadMapLayer } from "@/testing/clientConfig";
 import { serveGenerationJobs } from "@/testing/generationJobs";
 import { installGeolocation } from "@/testing/geolocation";
 import { TAP_CONFIRM_MS } from "@/features/map/MapView/mapTaps";
@@ -33,30 +25,21 @@ export const ELSEWHERE: Coordinates = { latitude: 35.65, longitude: 139.72 };
 /** 路面の層の唯一の区分の、明るい地図と暗い地図の上の色。 */
 export const ROAD_CLASS_COLOR = { light: "#123456", dark: "#abcdef" } as const;
 
-// 地図が道路のタイルを載せる（軸で塗れる）のは、タイルの世代が全部の系統で揃ってから。
-const CATALOG = catalogResponse(
-  [
-    dedicatedEntry("axis_a", [25, 50, 75], {
-      label: "軸A",
-      default_weight: 1,
-      way_value_formula: MATERIAL_VALUE_FORMULA,
-    }),
-  ],
-  {
-    client_tuning: { [CLIENT_TUNING_IDS.minStretchKm]: 0.1 },
-    tile_versions: Object.fromEntries(regionTileConfig.tile_version_kinds.map((kind) => [kind, "1-test"])),
-    // 道路のレイヤーは軸カタログが配る道の線の層で、一覧から出せる層が1つあればよい。
-    road_classes: roadClassCatalog({
-      map_layers: [
-        roadMapLayer("surface", {
-          label: "路面の種類",
-          category: "roadCondition",
-          classes: [roadClass("paved", { color: ROAD_CLASS_COLOR.light, color_on_dark: ROAD_CLASS_COLOR.dark })],
-        }),
-      ],
-    }),
-  },
-);
+// 地図が道路のタイルを載せる（レンズで塗れる）のは、タイルの世代が全部の系統で揃ってから。
+const CLIENT_CONFIG = clientConfigResponse({
+  client_tuning: { [CLIENT_TUNING_IDS.minStretchKm]: 0.1 },
+  tile_versions: Object.fromEntries(regionTileConfig.tile_version_kinds.map((kind) => [kind, "1-test"])),
+  // 道路のレイヤーは画面の設定が配る道の線の層で、一覧から出せる層が1つあればよい。
+  road_classes: roadClassCatalog({
+    map_layers: [
+      roadMapLayer("surface", {
+        label: "路面の種類",
+        category: "roadCondition",
+        classes: [roadClass("paved", { color: ROAD_CLASS_COLOR.light, color_on_dark: ROAD_CLASS_COLOR.dark })],
+      }),
+    ],
+  }),
+});
 
 // 実測（ここでは中身を見ない）。
 const OBSERVATION: AmedasObservation = {
@@ -95,8 +78,8 @@ export function serveHome() {
   window.localStorage.clear();
   installGeolocation(HERE);
   jobs = serveGenerationJobs();
-  serveAxisCatalog(CATALOG);
-  serveCostAxisCatalog(null);
+  serveClientConfig(CLIENT_CONFIG);
+  serveCostAxisCatalog();
   onSameOrigin("GET", "/api/jma-tile/*", () => Response.json([]));
   onBackend("GET", "/api/jma-tile-index", () => Response.json({ available: false, coverage: null, elements: {} }));
   onBackend("GET", "/api/weather/amedas", () => Response.json(OBSERVATION));

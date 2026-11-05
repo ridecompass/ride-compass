@@ -38,7 +38,6 @@ from app.domain.way_value_formula import (
     feature,
 )
 from app.domain.weather_elements import stage_first_frames
-from app.domain.wind import WIND_DRAG_RATIO_WAY_FORMULA
 from app.infrastructure.jma_tile_client import parse_target_times
 from app.infrastructure.jma_tile_paths import read_jma_tile_path
 
@@ -453,14 +452,6 @@ _WAY_VALUE_FORMULAS: list[tuple[str, WayValueFormula, list[tuple[dict[str, float
          for road, bearing in ((10.0, 0.0), (10.0, 200.0), (350.0, 5.0), (0.0, 104.0), (0.0, 105.0), (0.0, 106.0),
                                (0.0, 255.5), (180.0, 359.75))]
         + [({"forward": 3.0, "backward": -3.0}, {"bearing_deg": 90.0}), ({ROAD_BEARING_LEAF: 0.0}, {"bearing_deg": 0.0})],
-    ),
-    (
-        "風の追加負荷（向かい風・追い風・横風・風の無い道）",
-        WIND_DRAG_RATIO_WAY_FORMULA,
-        [({"wind_speed_ms": speed, "wind_direction_deg": direction}, {"bearing_deg": bearing, "speed_kmh": kmh})
-         for speed, direction, bearing, kmh in ((5.0, 0.0, 0.0, 20.0), (5.0, 180.0, 0.0, 20.0), (8.0, 90.0, 0.0, 25.0),
-                                                (3.2, 47.0, 312.5, 18.0), (12.0, 200.0, 20.0, 40.0))]
-        + [({}, {"bearing_deg": 0.0, "speed_kmh": 20.0})],
     ),
 ]
 

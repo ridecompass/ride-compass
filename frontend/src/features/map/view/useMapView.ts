@@ -3,8 +3,8 @@
 /** 地図の見え方（どのレイヤーを出すか・レンズ・凡例で隠した行）の状態と、そこから導く
  * 地図への値・操作部品への値。
  *
- * 画面から受け取るのはルートの文脈・走行条件・生成に使われた重みだけで、軸やレイヤーの種類を
- * 知らない。軸カタログとタイル世代は共有の源泉から読む。
+ * 画面から受け取るのはルートの文脈・走行条件・利用者の値だけで、レンズやレイヤーの種類を知らない。画面の設定・費用の
+ * 軸の一覧・タイル世代は共有の源泉から読む。
  */
 import { useMemo, useState, type ComponentProps } from "react";
 
@@ -17,12 +17,12 @@ import {
   type LayerDataStatusByLayer,
   type MapLayerVisibility,
 } from "@/features/map/layers/mapLayers";
-import { LENS_DIFFICULTY_ID, type LensId } from "@/lib/mapDisplay/routeStyleModes";
+import { UNSELECTED_LENS_ID, type LensId } from "@/lib/mapDisplay/routeStyleModes";
 import { viewportCenter, type MapViewport } from "@/features/map/view/mapLook";
 import type MapOverlayControls from "@/features/map/MapOverlayControls/MapOverlayControls";
 import { isLegendFiltered } from "@/features/map/MapOverlayControls/OverlayLayerRow";
 import { mapDisplay } from "@/types/generated/mapDisplay";
-import { useAxisCatalog } from "@/hooks/useAxisCatalog";
+import { useClientConfig } from "@/hooks/useClientConfig";
 import { useCostAxisCatalog } from "@/hooks/useCostAxisCatalog";
 import { costLensOptions, costLensPremises } from "@/features/map/costLens";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
@@ -34,8 +34,8 @@ import type { Coordinates } from "@/types/route";
 import type { MapTheme } from "@/lib/mapTheme";
 import type { RideConditions } from "@/features/map/regionApi";
 import { snapDeg } from "@/lib/cardinalLabel";
-import type { WayValueCondition } from "@/lib/catalogAxis";
-import { useMapAxisCatalog } from "@/features/map/useMapAxisCatalog";
+import type { WayValueCondition } from "@/lib/mapDisplay/mapLens";
+import { useMapCatalog } from "@/features/map/useMapCatalog";
 import { initiallyHiddenLegendKeys } from "@/features/map/scene/legends";
 import { WAY_BEARING_STEP_DEG } from "@/features/map/mapHeading";
 
@@ -46,7 +46,7 @@ import {
   toggleHiddenKey,
   withHiddenKeys,
 } from "./legendFilters";
-import { isRouteStyleModeId, lensPremises, lensLegend, lensOptions, paintedAxisId } from "./lens";
+import { lensLegend, paintedLensId } from "./lens";
 import type { HiddenLegendKeys, MapLook } from "./mapLook";
 import { deserializeLayerVisibility, overlayChips } from "./overlayChips";
 import type { CostPreference } from "@/types/route";
@@ -70,8 +70,6 @@ interface MapViewInputs {
   riding: { bearingDeg: number; speedKmh: number } | null;
   /** 刻みへ丸めた現在時刻（`useDepartureTime`）。 */
   now: Date;
-  /** レンズの選択肢を「未使用」と分ける重み（費用の軸の定義が無い間の、軸の点数のレンズ）。 */
-  routeWeights: Readonly<Record<string, number>>;
   /** 費用のレンズを塗る利用者のつまみと倍率（生成の要求へ送る形）。ルートを出している間はそのルートを生成したときの値、
    * 無ければ今の設定——ルートの線と周りの道を同じ量で塗る。 */
   costPreference: CostPreference;
@@ -81,7 +79,7 @@ interface MapViewState {
   look: MapLook;
   lensControl: ComponentProps<typeof LensControl>;
   overlayControls: ComponentProps<typeof MapOverlayControls>;
-  /** 周りの道を塗っている軸が使う走る条件（向き・速さ・出発時刻）。地図の右の列の、その条件のボタンに印を付ける。 */
+  /** 周りの道を塗っているレンズが使う走る条件（向き・速さ・出発時刻）。地図の右の列の、その条件のボタンに印を付ける。 */
   lensConditions: readonly WayValueCondition[];
   /** 押した人の地図だけを、スタイルから取り直して組み直す。 */
   redrawMap: () => void;
@@ -105,25 +103,19 @@ export function useMapView({
   ride,
   riding,
   now,
-  routeWeights,
   costPreference,
 }: MapViewInputs): MapViewState {
-  const catalog = useAxisCatalog();
+  const config = useClientConfig();
   // 暗い地図は利用者がメニューで選ぶ（いつ暗くするかを自動では決めない）。
   const [mapTheme, setMapTheme] = useStoredState<MapTheme>("ridecompass:map-theme", "light", {
     serialize: (value) => value,
     deserialize: (raw) => (raw === "light" || raw === "dark" ? raw : null),
   });
-  const mapCatalog = useMapAxisCatalog(mapTheme);
+  const mapCatalog = useMapCatalog(mapTheme);
   const costCatalog = useCostAxisCatalog();
-  // 費用の軸の定義がある間は、レンズを総合と費用の軸（1kmあたりの代償の秒）に替える。無い間は旧い軸のレンズのまま。
-  const costLenses = useMemo(
-    () => mapCatalog.dedicatedAxes.filter((axis) => axis.wayMaterialSource === "lens"),
-    [mapCatalog.dedicatedAxes],
-  );
-  const usesCostLenses = costLenses.length > 0;
-  const lensEquivalents = useLensEquivalents(costPreference, usesCostLenses);
-  // 保存するのは触った層の真偽だけで、既定は層の一覧（道の線の層は軸カタログが届いてから決まる）から重ねる。
+  const lenses = mapCatalog.lenses;
+  const lensEquivalents = useLensEquivalents(costPreference, lenses.length > 0);
+  // 保存するのは触った層の真偽だけで、既定は層の一覧（道の線の層は画面の設定が届いてから決まる）から重ねる。
   const [storedVisibility, setLayerVisibility] = useStoredState<MapLayerVisibility>(
     "ridecompass:layer-visibility",
     NO_STORED_VALUES,
@@ -133,17 +125,13 @@ export function useMapView({
     () => ({ ...buildDefaultLayerVisibility(mapCatalog.layers), ...storedVisibility }),
     [mapCatalog.layers, storedVisibility],
   );
-  // 軸を指す保存値はカタログが届いて初めて読めるため、届いた時点で読み直す。
-  const [lens, setLens] = useStoredState<LensId>("ridecompass:route-style-mode", LENS_DIFFICULTY_ID, {
+  // レンズを指す保存値は費用の軸の一覧が届いて初めて読めるため、届いた時点で読み直す。選択肢に無いレンズの保存値は受けない
+  // （無いレンズを塗り続けてしまう）。
+  const [lens, setLens] = useStoredState<LensId>("ridecompass:route-style-mode", UNSELECTED_LENS_ID, {
     serialize: (value) => value,
-    // 費用の軸のレンズの間は、旧い軸の保存値を受けない（選択肢に無い軸を塗り続けてしまう）。
-    deserialize: (raw) => {
-      const known = usesCostLenses
-        ? raw === LENS_DIFFICULTY_ID || costLenses.some((axis) => axis.axisId === raw)
-        : isRouteStyleModeId(mapCatalog.routeStyleModes, raw);
-      return known ? raw : null;
-    },
-    reloadKey: `${catalog.loaded}-${costCatalog.loaded}`,
+    deserialize: (raw) =>
+      raw === UNSELECTED_LENS_ID || lenses.some((candidate) => candidate.lensId === raw) ? raw : null,
+    reloadKey: String(costCatalog.loaded),
   });
   const [keepAfterRoute, setKeepAfterRoute] = useStoredBooleanState("ridecompass:lens-keep-after-route", true);
   const [storedHidden, setStoredHidden] = useStoredState<HiddenLegendKeys>(
@@ -151,7 +139,7 @@ export function useMapView({
     NO_STORED_VALUES,
     { serialize: JSON.stringify, deserialize: deserializeHiddenLegendKeys },
   );
-  // 保存値を最初に隠す行の上に重ねる（保存値に無い軸は最初に隠す行のまま）。最初に隠す行は軸カタログが届いてから
+  // 保存値を最初に隠す行の上に重ねる（保存値に無い鍵は最初に隠す行のまま）。最初に隠す行は画面の設定が届いてから
   // 決まるので、保存値を読む時点ではなく使う時点で重ねる。
   const initialHidden = useMemo(() => initiallyHiddenLegendKeys(mapCatalog.roadLayers), [mapCatalog.roadLayers]);
   const hidden = useMemo(() => ({ ...initialHidden, ...storedHidden }), [initialHidden, storedHidden]);
@@ -174,27 +162,23 @@ export function useMapView({
     at: ride.at,
     now,
   });
-  const painted = paintedAxisId(lens, hasDetail, keepAfterRoute);
-  // 道ごとの材料は、全道路を塗っている軸の分だけ取る（塗っていない軸の値は地図に出ない。表示中のものだけ叩く）。
-  // 式の木の無い軸は周りの道を塗らないので取らない。
-  const fetchAxes = useMemo(
-    () => mapCatalog.dedicatedAxes.filter((axis) => axis.axisId === painted && axis.paintsSurroundingRoads),
-    [mapCatalog.dedicatedAxes, painted],
-  );
-  // 走っていない間の走る向きは、地図の上の向きそのもの。向きを段に丸めるのは、向きで材料を取り直す軸が、回転や走行中の
-  // 細かな向きの揺れのたびに取り直さないため。式の木・材料・区間インスペクタは同じ丸めた向きで値を求める。
+  const painted = paintedLensId(lens, hasDetail, keepAfterRoute);
+  // 道ごとの材料は、全道路を塗っているレンズの分だけ取る（塗っていないレンズの値は地図に出ない。表示中のものだけ叩く）。
+  const fetchLenses = useMemo(() => lenses.filter((candidate) => candidate.lensId === painted), [lenses, painted]);
+  // 走っていない間の走る向きは、地図の上の向きそのもの。向きを段に丸めるのは、回転や走行中の細かな向きの揺れのたびに式の木を
+  // 解き直さないため。式の木と道の窓は同じ丸めた向きで値を求める。
   const bearingDeg = snapDeg(riding?.bearingDeg ?? viewport?.bearing ?? 0, WAY_BEARING_STEP_DEG);
   const speedKmh = riding?.speedKmh ?? ride.speedKmh;
   const wayConditions = useMemo(() => ({ bearingDeg, at: ride.at, speedKmh }), [bearingDeg, ride.at, speedKmh]);
   const wayMaterials = useWayMaterials(
-    fetchAxes,
+    fetchLenses,
     viewport,
     wayConditions,
     costPreference,
     costCatalog.lenses?.totalLens.axisId ?? null,
   );
   const shownRoadLayers = mapCatalog.roadLayers.filter((layer) => layerVisibility[layer.id] === true);
-  const roadClasses = useRoadClasses(shownRoadLayers.length > 0, viewport, catalog.roadClasses.generation);
+  const roadClasses = useRoadClasses(shownRoadLayers.length > 0, viewport, config.roadClasses.generation);
   // 層の値はどの道の線の層も同じ取得から読むので、取得の状態は出ている層のどれにも出す。
   const roadClassStatus = deriveFetchLayerStatus(
     roadClasses.loading,
@@ -219,7 +203,7 @@ export function useMapView({
       layerVisibility,
       dynamicWeather: weather.dynamicWeather,
       lens,
-      paintedAxisId: painted,
+      paintedLensId: painted,
       roadClasses,
       wayMaterials,
       wayConditions: formulaConditions,
@@ -254,28 +238,21 @@ export function useMapView({
     dataStatus: { ...mapLayerStatus, ...roadLayerStatus, ...weather.dynamicWeatherDataStatus },
     zoomTooWideLayerIds: viewport ? tileZoomTooWideLayerIds(mapCatalog.layers, viewport.zoom) : [],
     versionMissingLayerIds: mapCatalog.tileVersions ? [] : tileVersionGatedLayerIds(mapCatalog.layers),
-    catalogSettled: catalog.loaded || catalog.failed,
+    catalogSettled: config.loaded || config.failed,
   });
   const setShown = (id: string, on: boolean) => setLayerVisibility((prev) => ({ ...prev, [id]: on }));
-  const setHiddenFor = (axisId: string, keys: readonly string[]) =>
-    setHidden((prev) => withHiddenKeys(prev, axisId, keys));
-  const toggleHiddenFor = (axisId: string, key: string) => setHidden((prev) => toggleHiddenKey(prev, axisId, key));
+  const setHiddenFor = (key: string, keys: readonly string[]) => setHidden((prev) => withHiddenKeys(prev, key, keys));
+  const toggleHiddenFor = (key: string, rowKey: string) => setHidden((prev) => toggleHiddenKey(prev, key, rowKey));
 
   // 色分けの凡例が隠した段の保存先の鍵（色分けの選択肢）。「表示」の絞り込みの解除は、これ以外の鍵だけを戻す。
-  const lensKeys = new Set<string>([
-    ...catalog.axes.map((axis) => axis.axisId),
-    ...costLenses.map((axis) => axis.axisId),
-    LENS_DIFFICULTY_ID,
-  ]);
+  const lensKeys = new Set<string>([...lenses.map((candidate) => candidate.lensId), UNSELECTED_LENS_ID]);
 
   return {
     look,
     lensControl: {
       lens,
       onLensChange: setLens,
-      axisOptions: usesCostLenses
-        ? costLensOptions(costLenses, costPreference)
-        : lensOptions(catalog.axes, routeWeights, catalog.axisColors),
+      axisOptions: costLensOptions(lenses, costPreference),
       legend,
       hiddenLegendKeys: lensHidden,
       onToggleLegendKey: (key) => toggleHiddenFor(lens, key),
@@ -284,9 +261,7 @@ export function useMapView({
       onKeepAfterRouteChange: setKeepAfterRoute,
       hasDetail,
       routeHidden: hasSelectedRoute && layerVisibility[ROUTE_LAYER_ID] !== true,
-      premises: usesCostLenses
-        ? costLensPremises(painted, costCatalog, lensEquivalents)
-        : lensPremises(painted, catalog.axes),
+      premises: costLensPremises(painted, costCatalog, lensEquivalents),
       dataStatus: lensFetch
         ? deriveFetchLayerStatus(
             lensFetch.loading,
@@ -314,13 +289,13 @@ export function useMapView({
         })),
       // 「表示」の絞り込みだけを数え、戻す（色分けの凡例は色分けの中で戻す）。
       anyLegendHidden: chips.some(isLegendFiltered),
-      // 最初に隠す行を持つ軸も、空の並びで「出す」と覚える。
+      // 最初に隠す行を持つ層も、空の並びで「出す」と覚える。
       onShowAllLegendRows: () =>
         setHidden((prev) =>
           Object.fromEntries(Object.entries(prev).map(([key, keys]) => [key, lensKeys.has(key) ? keys : []])),
         ),
     },
-    lensConditions: mapCatalog.dedicatedAxes.find((axis) => axis.axisId === painted)?.wayValueConditions ?? [],
+    lensConditions: lenses.find((candidate) => candidate.lensId === painted)?.conditions ?? [],
     redrawMap: () => setRefreshToken((token) => token + 1),
     onMapThemeChange: setMapTheme,
     center,

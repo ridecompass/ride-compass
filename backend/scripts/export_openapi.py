@@ -41,7 +41,6 @@ from app.main import app
 from app.domain.hard_filters import HARD_FILTERS
 from app.domain.address_area import ADDRESS_AREA_LEVELS
 from app.domain.geo import COMPASS_LABELS, EARTH_RADIUS_KM
-from app.domain.value_distribution import QUANTILE_TARGETS
 from app.domain.place_search import (
     PLACE_KIND_LABELS,
     PLACE_MATCH_LEVEL_LABELS,
@@ -61,8 +60,6 @@ from app.domain.weather_elements import (
     weather_element_tile,
 )
 from app.domain.cycling_speed import SEGMENT_SPEED_CONDITIONS
-from app.domain.difficulty import DIFFICULTY_DECIMALS
-from app.domain.map_paint import DEFAULT_DIFFICULTY_BOUNDARIES
 from app.domain.road_classes import NO_DATA_VALUE
 from app.domain.map_display import (
     ALWAYS_SHOWN_ATTRIBUTIONS,
@@ -109,7 +106,6 @@ from app.domain.map_display import (
     ROAD_LINE_WIDTH_PX,
     ROAD_TRACK_OFFSET_STEP_PX,
     NO_DATA_DASH,
-    ROAD_UNDERLAY_OPACITY,
     ROAD_UNKNOWN_OPACITY,
     MAP_LAYER_DATA_NATURES,
     MAP_LAYER_DATA_SOURCES,
@@ -288,7 +284,7 @@ def main() -> None:
         {
             # **DBの中身から決まる世代はここへ書かない。** バッチが中身を作り直しても
             # デプロイは起きず、ビルド時の値は次のデプロイまで古いままになる。そちらは
-            # `GET /api/axis-catalog`の`tile_versions`が実行時に配る
+            # `GET /api/client-config`の`tile_versions`が実行時に配る
             # （`services/tile_version_service.py`）。
             # 下の`landcover.tile_version`だけは例外で、**コードとクラス定義だけから
             # 決まる**（DBを読まない）ためビルド時に確定する。実際に開いているラスタの
@@ -392,14 +388,13 @@ def main() -> None:
             "modelValueDisclaimer": MODEL_VALUE_DISCLAIMER,
             # 地図へ常に出す出典。
             "alwaysShownAttributions": list(ALWAYS_SHOWN_ATTRIBUTIONS),
-            # 値が無い線の破線（道・評価軸・ルートで共有）。
+            # 値が無い線の破線（道・レンズ・ルートで共有）。
             "noDataDash": list(NO_DATA_DASH),
             "road": {
                 "lineWidthPx": ROAD_LINE_WIDTH_PX,
                 "trackOffsetStepPx": ROAD_TRACK_OFFSET_STEP_PX,
                 "knownOpacity": ROAD_KNOWN_OPACITY,
                 "unknownOpacity": ROAD_UNKNOWN_OPACITY,
-                "underlayOpacity": ROAD_UNDERLAY_OPACITY,
                 "inspectedWidthPx": ROAD_INSPECTED_WIDTH_PX,
                 # 地図の線の層の値で「データなし」。
                 "noDataValue": NO_DATA_VALUE,
@@ -433,11 +428,6 @@ def main() -> None:
                 "rainbandOutlineCasingWidthPx": RAINBAND_OUTLINE_CASING_WIDTH_PX,
                 # MSMの予報を読む先の長さ（時間）。出発時刻を選べる先の長さがこれを読む。
                 "msmForecastHours": MSM_FORECAST_HOURS,
-            },
-            "valueScale": {
-                "difficultyBoundaries": list(DEFAULT_DIFFICULTY_BOUNDARIES),
-                # 難易度を区別する桁。画面の式（タイルから組む点数の丸め）と表示の桁がこれを読む。
-                "difficultyDecimals": DIFFICULTY_DECIMALS,
             },
             "route": {
                 "lineWidthsPx": ROUTE_LINE_WIDTHS_PX,
@@ -475,8 +465,6 @@ def main() -> None:
                 {"key": key, "label": PLACE_MATCH_LEVEL_LABELS[key], "area": key in ADDRESS_AREA_LEVELS}
                 for key in get_args(PlaceMatchLevel)
             ],
-            # 値の分布の分位点の名前（小さい比率から）。応答の`quantiles`の鍵がこの名前。
-            "quantiles": [name for name, _ in QUANTILE_TARGETS],
         },
     )
     # 気象の値を色へ写す段（domain/weather_display.py）。危険度・雷・竜巻は配信元が
@@ -510,7 +498,7 @@ def main() -> None:
         },
     )
     # 土地被覆のクラス（画素値・割合列・表示名・色）。地図タイルの塗りと同じレジストリから
-    # 書き出し、frontendの凡例・区間インスペクタの表示名がこれを読む。
+    # 書き出し、frontendの凡例・道の窓の表示名がこれを読む。
     _write_json(
         LANDCOVER_CLASSES_PATH,
         [
@@ -527,13 +515,13 @@ def main() -> None:
     )
     # 材料の一覧。frontendが材料を知る唯一の経路（材料はコードの宣言で決まり、再デプロイでしか変わらない）。
     # value_labels（smoothness等の値→日本語ラベル）も含める——同じ対訳表をfrontendが
-    # 独自に持つと、地図のポップアップと軸スタジオで同じ値の呼び方が食い違う。
+    # 独自に持つと、地図のポップアップと管理画面で同じ値の呼び方が食い違う。
     _write_json(
         MATERIAL_CATALOG_PATH,
         [
             {
                 "material_id": spec.material_id,
-                # 「論理名 - 物理名」（軸スタジオ向け）。論理名だけは`name`。frontendで`name`と
+                # 「論理名 - 物理名」（管理画面向け）。論理名だけは`name`。frontendで`name`と
                 # idから組み立て直さない——組み立て方の正本は`MaterialSpec.full_label`。
                 "label": spec.full_label(),
                 "name": spec.label,
@@ -548,14 +536,14 @@ def main() -> None:
     for name, build in EXPECTATIONS.items():
         _write_json(GENERATED_DIR / f"{name}-expectations.json", build())
     # **軸そのものはここへ書き出さない。** 軸定義の正本は本番DBで、実行時の
-    # `GET /api/axis-catalog`が配る。ビルド時に写しを持つと、API障害時に古い軸で
+    # `GET /api/client-config`が配る。ビルド時に写しを持つと、API障害時に古い軸で
     # 地図が描かれ、伝播の失敗が見えなくなる。
     _write_ts(
         PRIMARY_ATTRIBUTES_PATH,
         "primaryAttributes",
         # 一次属性カタログ（地図レイヤー階層の次数反転）。宣言
         # （`domain/primary_attributes.py: PRIMARY_ATTRIBUTES`）だけから決まり、DBを読まない。各軸の
-        # `primary_attribute_ids`は実行時の`GET /api/axis-catalog`が配るため、フロントは
+        # `primary_attribute_ids`は実行時の`GET /api/client-config`が配るため、フロントは
         # この一覧のlabel（正式名）と突き合わせて1次↔2次の双方向導出ができる。
         # 宣言をそのまま配る。色だけは宣言に無いので`resolved_display_axes`が決め、値が欠けたときの意味は
         # その値を載せる材料の宣言から引く（地図の凡例が「不明」を出すかを決める）。
@@ -608,10 +596,10 @@ def main() -> None:
             # 候補の`wind_unavailable`が立ったときの注記の文。
             "missing_wind_wording": MISSING_WIND_WORDING,
             # フロントが使う較正値の**既定**（`domain/tuning.py`の宣言そのまま）。フロントはidの型にだけ使い、
-            # 値は読まない——効いている値はGET /api/axis-catalogが返し、取れるまではその値を使う機能を出さない。
+            # 値は読まない——効いている値はGET /api/client-configが返し、取れるまではその値を使う機能を出さない。
             "client_tuning": client_tuning_defaults(),
             # 0次ハードフィルタ。回避タブにいつも「通らない」の行として見せる（要求では受けない）。選べる行と段は
-            # 管理DBの道の区分から、GET /api/axis-catalogが配る。
+            # 管理DBの道の区分から、GET /api/client-configが配る。
             "hard_filters": [
                 {"key": name, "label": spec.label, "description": spec.description}
                 for name, spec in HARD_FILTERS.items()

@@ -4,8 +4,8 @@
 根拠のない推測はしない）。OSMタグからこれらの分類を導く規則の正本はここ1箇所。
 
 分類のほかに、**所要時間モデルのパラメータ**も持つ（`StopEvent`・`stop_event`: 止まる出来事の割合と待ち、
-`HIGHWAY_RANK`: 交差点で優先関係を判定するための階級順）。評価軸の重み付けとは別の関心事
-——軸は「その道を走るときのつらさ」、こちらは「そこを通るのにかかる時間」を表す。
+`HIGHWAY_RANK`: 交差点で優先関係を判定するための階級順）。道の負担の軸とは別の関心事
+——道の負担は「その道を走るときのつらさ」、こちらは「そこを通るのにかかる時間」を表す。
 """
 
 from collections.abc import Mapping
@@ -109,7 +109,7 @@ STOP_POI_KINDS: frozenset[str] = frozenset(get_args(_StopPoiKind))
 # その日本語ラベル。**キーの単一ソース**で、材料
 # （`domain/material_catalog.py`の`poi_*_per_km`）はこの一覧から生成する。
 #
-# `_StopPoiKind`（取込時の分類）と1対1ではない。分ける基準は「評価軸で違う重みを付けたいか」
+# `_StopPoiKind`（取込時の分類）と1対1ではない。分ける基準は「止まる割合と待ちを違えたいか」
 # だけで、次のように畳む:
 # - 信号は`highway=traffic_signals`と`highway=crossing`＋`crossing=traffic_signals`の
 #   両方の書かれ方があり、どちらも同じ「止まる信号」のため`signal`へまとめる
@@ -264,7 +264,7 @@ _SUPPLY_VENDING_VALUES: frozenset[str] = frozenset(
 
 # 交差点で「自分が走ってきた道より上位の道と交わるか」を判定するための階級順（大きいほど
 # 上位）。**優先関係の判定だけに使う**——値そのものに意味は無く、比較結果だけが使われる。
-# 評価軸が持つhighwayの重み付け（DBの軸定義）とは別の関心事で、
+# 道の負担の軸が持つ区分の重さ（DBの費用の軸の定義）とは別の関心事で、
 # あちらは「その道を走るときの圧迫感」、こちらは「その道を横断・合流するときの待ち」。
 HIGHWAY_RANK: dict[str, int] = {
     "motorway": 6, "motorway_link": 6,

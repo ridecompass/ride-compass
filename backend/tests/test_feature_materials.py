@@ -4,7 +4,6 @@ autouseがテストごとの一時ディレクトリへ差し替える。
 
 ここで見ないもの:
 - 読み出しのSQLが返す材料 → `test_feature_materials_in_tile.py`・`test_material_values.py`
-- DB障害・取込範囲の外・空のタイルを値なしにすること（`services/feature_midpoints.py: tile_features`） → `test_gradient_way_service.py`
 - 置き場の失敗と失効 → `test_tile_persistent_cache.py`
 """
 
@@ -13,7 +12,7 @@ import functools
 import numpy as np
 
 from app.domain.attributes import CategoricalColumn
-from app.domain.dynamic_way_values import FeatureMaterials
+from app.domain.feature_materials import FeatureMaterials
 from app.infrastructure import debug_log
 from app.infrastructure.derived_data_meta import DataRevisions
 from app.infrastructure.road_graph_repository import RoadGraphRepository

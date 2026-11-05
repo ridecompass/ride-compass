@@ -11,7 +11,7 @@ import { evaluateExpressionAtZoom as evaluateAt, matchesFilter } from "@/testing
 import { mapDisplay } from "@/types/generated/mapDisplay";
 
 import { ROAD_OTHER_KEY } from "@/lib/mapDisplay/roadTracks";
-import { roadClass, roadMapLayer } from "@/testing/catalogAxes";
+import { roadClass, roadMapLayer } from "@/testing/clientConfig";
 import type { RoadMapLayerView } from "@/types/route";
 
 import { initiallyHiddenLegendKeys, pointLegendAxes, roadLegendAxes } from "./legends";

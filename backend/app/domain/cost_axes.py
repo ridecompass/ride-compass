@@ -9,8 +9,7 @@
 - **道の負担の軸はJSONで出し入れする**（`BurdenAxis`）。量は「材料 × 1kmあたりの重さ × 距離」で、材料と重さがあれば式の
   コードは要らない。危険（車・路面の凸凹）も、危険でないが避けたいもの（排気・混雑等）も、この形で足せる。
 
-軸の定義の全体（`CostAxisDefinitions`）は1つのJSONで読み、1つのJSONで書く（道の区分と同じ）。新しい軸のidは、古い点数の軸の
-idを使い回さない——利用者が保存した割合の重みが、黙って倍率として読まれる。
+軸の定義の全体（`CostAxisDefinitions`）は1つのJSONで読み、1つのJSONで書く（道の区分と同じ）。
 """
 
 from typing import Annotated, Literal
@@ -18,7 +17,7 @@ from typing import Annotated, Literal
 from pydantic import Field, field_validator, model_validator
 
 from app.domain.lens_total import TOTAL_LENS_ID
-from app.domain.material_catalog import material_dtype, materials_of_source
+from app.domain.material_catalog import material_dtype
 from app.domain.road_classes import CLASS_MATERIAL_PREFIX, RoadClassDefinitions
 from app.domain.strict_model import StrictModel
 
@@ -121,12 +120,11 @@ class CostAxisDefinitions(StrictModel):
         return self
 
 
-def check_cost_axes(definitions: CostAxisDefinitions | None, road_classes: RoadClassDefinitions) -> list[str]:
-    """型の外で決まる不備（材料が在るか・材料の型に合うか・区分の重さに漏れや知らない区分が無いか）。不備が無ければ空
-    （定義が無ければ通る）。管理APIの書き込みと起動時の読み込みの両方が通す（復元した行は起動時に初めて検査を通る）。道の
+def check_cost_axes(definitions: CostAxisDefinitions, road_classes: RoadClassDefinitions) -> list[str]:
+    """型の外で決まる不備（材料が在るか・材料の型に合うか・区分の重さに漏れや知らない区分が無いか）。不備が無ければ空。管理APIの書き込みと起動時の読み込みの両方が通す（復元した行は起動時に初めて検査を通る）。道の
     区分を書き換えたときも、今の軸の定義を新しい区分で通し直す。"""
     problems: list[str] = []
-    for axis_id, axis in ({} if definitions is None else definitions.burden).items():
+    for axis_id, axis in definitions.burden.items():
         burden = axis.burden
         if burden.material.startswith(CLASS_MATERIAL_PREFIX):
             classification = road_classes.classifications.get(burden.material.removeprefix(CLASS_MATERIAL_PREFIX))
@@ -145,9 +143,6 @@ def check_cost_axes(definitions: CostAxisDefinitions | None, road_classes: RoadC
         dtype = material_dtype(burden.material)
         if dtype is None:
             problems.append(f"{axis_id}: 知らない材料 {burden.material}")
-        elif burden.material in materials_of_source("request"):
-            # 要求ごとに決まる材料（風）は静的スコア行列に載らないので、道の負担の重さを引けない。
-            problems.append(f"{axis_id}: 要求ごとに変わる材料は道の負担に使えない: {burden.material}")
         elif isinstance(burden, CategoricalBurden):
             problems.append(f"{axis_id}: 区分の重さは区分の材料（{CLASS_MATERIAL_PREFIX}<分け方>）にだけ書ける: {burden.material}")
         elif dtype != "numeric":
@@ -155,25 +150,29 @@ def check_cost_axes(definitions: CostAxisDefinitions | None, road_classes: RoadC
     return problems
 
 
-#: プロセス内の費用の軸の定義（表に行が無ければNone。古い点数の仕組みから切り替えるまでは無くても動く）。
+#: プロセス内の費用の軸の定義。起動で読み込む（`services/cost_axis_service.py: refresh_cost_axes`。表に行が無ければ起動を
+#: 止める）までは None。
 _current: CostAxisDefinitions | None = None
 
 
-def current_cost_axes() -> CostAxisDefinitions | None:
+def current_cost_axes() -> CostAxisDefinitions:
+    """プロセス内の費用の軸の定義。読み込む前に読むのは起動の順の誤りなので、止める。"""
+    if _current is None:
+        raise RuntimeError("費用の軸の定義を読み込む前に読んだ（services/definitions_loading.py: refresh_definitions を先に通す）")
     return _current
 
 
-def replace_cost_axes(definitions: CostAxisDefinitions | None) -> None:
+def replace_cost_axes(definitions: CostAxisDefinitions) -> None:
     """プロセス内の全体を差し替える。束縛を1回替えるだけなので、別スレッドの読みは前か後の全体のどちらかを見る。"""
     global _current
     _current = definitions
 
 
-def cost_axis_ids(definitions: CostAxisDefinitions | None) -> tuple[str, ...]:
-    """費用の軸のid。体力の軸をコードの表の順、続けて道の負担の軸を定義の順で（定義が無ければ空）。"""
-    return () if definitions is None else (*EFFORT_AXES, *definitions.burden)
+def cost_axis_ids(definitions: CostAxisDefinitions) -> tuple[str, ...]:
+    """費用の軸のid。体力の軸をコードの表の順、続けて道の負担の軸を定義の順で。"""
+    return (*EFFORT_AXES, *definitions.burden)
 
 
-def burden_material_ids(definitions: CostAxisDefinitions | None) -> tuple[str, ...]:
-    """軸の定義の道の負担の軸が読む材料id（重複を除き、軸の順）。静的スコア行列はこれらを軸の構成と無関係に列として運ぶ。"""
-    return () if definitions is None else tuple(dict.fromkeys(axis.burden.material for axis in definitions.burden.values()))
+def burden_material_ids(definitions: CostAxisDefinitions) -> tuple[str, ...]:
+    """軸の定義の道の負担の軸が読む材料id（重複を除き、軸の順）。探索の材料の表はこれらを列として運ぶ。"""
+    return tuple(dict.fromkeys(axis.burden.material for axis in definitions.burden.values()))

@@ -18,7 +18,6 @@ from app.api.dependencies import get_amedas_service, get_jma_tile_client, open_r
 from app.api.finite_json_body import reject_non_finite_json_body
 from app.api.routers import api_router
 from app.config import settings
-from app.infrastructure.axis_definition_repository import AxisDefinitionRepository
 from app.infrastructure.database import get_session_factory
 from app.infrastructure.debug_control import install_ring_buffer_handler
 from app.infrastructure.http_client import JMA_JSON_TIMEOUT, SLOW_JSON_TIMEOUT, TILE_PROXY_TIMEOUT, get_http_client
@@ -130,8 +129,8 @@ async def lifespan(app: FastAPI):
         get_http_client(timeout)
 
     async with get_session_factory()() as session:
-        # 例外をここで捕捉しないため、軸定義を読めない状態では起動自体が失敗する（fail-fast）。
-        await refresh_definitions(session, AxisDefinitionRepository(session))
+        # 例外をここで捕捉しないため、費用の軸の定義を読めない状態では起動自体が失敗する（fail-fast）。
+        await refresh_definitions(session)
 
     # 世代2のGCはGCが追う全オブジェクトを走査し、その間イベントループが止まる。起動で読み込んだ長生きの
     # オブジェクト（モジュール・定義）を走査の外へ移し、1回を短くする。先に集めるのは、ゴミまで凍らせると二度と集められないため。
@@ -211,6 +210,6 @@ app.middleware("http")(request_log_middleware(TILE_PATH_PREFIXES))
 app.add_middleware(CorrelationIdMiddleware)
 # 未処理例外(500)発生時もX-Request-IDヘッダを付ける。
 app.add_exception_handler(Exception, unhandled_exception_handler)
-install_admin_db_unavailable_handler(app)
 
 app.include_router(api_router)
+install_admin_db_unavailable_handler(app)

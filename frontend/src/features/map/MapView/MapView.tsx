@@ -17,7 +17,7 @@ import type {
 import type { RideConditions } from "@/features/map/regionApi";
 import { applyScene, type SpliceStretchInput } from "@/features/map/scene/applyToMap";
 import type { MapLook } from "@/features/map/view/mapLook";
-import { useMapAxisCatalog } from "@/features/map/useMapAxisCatalog";
+import { useMapCatalog } from "@/features/map/useMapCatalog";
 import { useJmaTileIndex } from "@/features/map/useJmaTileIndex";
 import MapNavigationControl from "@/features/map/MapNavigationControl/MapNavigationControl";
 import MapLoadStatus from "@/features/map/MapView/MapLoadStatus";
@@ -50,7 +50,7 @@ interface MapViewProps {
   /** 出発地点の色。位置が取れず既定の地点（"default"）のときだけ灰色にする。 */
   locationSource: LocationSource;
   /** 地図の見え方（`features/map/view/useMapView`）。状態そのものと地図からのイベントだけで、
-   * 軸カタログ・タイル世代のような共有の源泉から導けるものはここで読む。 */
+   * 画面の設定・タイル世代のような共有の源泉から導けるものはここで読む。 */
   look: MapLook;
   /** 地図を塗るのに使っている走行の条件。道を押したときの内訳にも同じ値を渡す（揃えないと色と数字が食い違う）。 */
   rideConditions: RideConditions;
@@ -158,7 +158,7 @@ export default function MapView({
     controls: popups,
     backToSegment,
   } = useMapPopups(selectionOwner, selectedRouteSegment, onRouteSegmentSelect);
-  const mapCatalog = useMapAxisCatalog(look.mapTheme);
+  const mapCatalog = useMapCatalog(look.mapTheme);
   // 詳細を見ている道。強調も scene の一部として当てる。
   const inspectedShape = popup?.kind === "road" ? popup.shape : null;
   // 選んでいる区間（選んでいる候補の区間のときだけ）と、その形。
@@ -278,7 +278,7 @@ export default function MapView({
     flyToVisible(map, focusPoint);
   }, [focusPoint]);
 
-  // 地図に載るもの（面・道路の線・評価軸・点・気象・ルート）は、1つの scene として
+  // 地図に載るもの（面・道路の線・レンズ・点・気象・ルート）は、1つの scene として
   // 組み立てて1本の経路で当てる。**表示・絞り込み・重なり順はすべてここを通る。**
   useEffect(() => {
     const map = mapRef.current;

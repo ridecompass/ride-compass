@@ -50,11 +50,6 @@ class AmedasReading:
     #: 静穏（方位不定）・欠測ならNone。
     wind_direction: WindDirection | None
     precipitation_10min_mm: float | None
-    #: その時刻に終わる1時間の雨量。正時の観測値だけが持つ。
-    precipitation_1h_mm: float | None
-    #: 1時間雨量の項目を持つか。雨量計の無い観測所は持たず、雨量計はあるが欠測なら
-    #: 項目はあって値がNone——雨の履歴は前者を載せず、後者を欠測として載せる。
-    reports_precipitation_1h: bool
 
 
 def _degree_minute(value: list) -> float:
@@ -102,8 +97,6 @@ def _parse_reading(raw: dict) -> AmedasReading:
         wind_speed_ms=_first_value(raw.get("wind")),
         wind_direction=_wind_direction(_first_value(raw.get("windDirection"))),
         precipitation_10min_mm=_first_value(raw.get("precipitation10m")),
-        precipitation_1h_mm=_first_value(raw.get("precipitation1h")),
-        reports_precipitation_1h="precipitation1h" in raw,
     )
 
 

@@ -2,12 +2,13 @@ import { expect, type Locator, type Page } from "@playwright/test";
 import type { components } from "@/types/generated/api";
 import {
   amedasObservationFixture,
-  defaultAxisCatalogFixture,
+  clientConfigFixture,
   doneJobFixture,
   E2E_ROAD_LAYERS,
   gridPointTodayFixture,
 } from "./mockResponses";
 import { installMapFinder } from "./liveMap";
+import { TWO_COST_AXES } from "@/testing/costAxes";
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import nextConfig from "../next.config";
 
@@ -69,13 +70,12 @@ export async function installApiMocks(page: Page): Promise<void> {
   );
   await page.route(`${API_BASE}/api/routes/generate/*`, (route) => route.fulfill({ json: doneJobFixture() }));
 
-  await page.route(`${API_BASE}/api/axis-catalog*`, (route) => route.fulfill({ json: defaultAxisCatalogFixture() }));
-  // 費用の軸の定義がまだ無い形（backendは404）で答える。
-  await page.route(`${API_BASE}/api/cost-axes*`, (route) =>
-    route.fulfill({ status: 404, json: { detail: "費用の軸の定義はまだありません" } }),
-  );
-  // 軸のレンズで塗る道ごとの材料。材料を持つ道が無い形で答える。
-  await page.route(`${API_BASE}/api/region/way-materials/**`, (route) => route.fulfill({ json: {} }));
+  await page.route(`${API_BASE}/api/client-config*`, (route) => route.fulfill({ json: clientConfigFixture() }));
+  // 費用の軸は登坂と振動の2本（`src/testing/costAxes.ts: TWO_COST_AXES`）。凡例の目安は無い形で答える。
+  await page.route(`${API_BASE}/api/cost-axes*`, (route) => route.fulfill({ json: TWO_COST_AXES }));
+  await page.route(`${API_BASE}/api/cost-axes/lens-equivalents*`, (route) => route.fulfill({ json: {} }));
+  // レンズで塗る道ごとの材料。材料を持つ道が無い形で答える。
+  await page.route(`${API_BASE}/api/region/lens/**`, (route) => route.fulfill({ json: {} }));
   await page.route(`${API_BASE}/api/region/road-classes/**`, (route) => route.fulfill({ json: {} }));
 
   // 地点の詳しくが、置いた位置の辺りを引く。辺り無し（境界の外）で答える。
@@ -134,7 +134,7 @@ export async function seedStoredState(page: Page, entries: Record<string, string
 /** 初回の案内（地図の上に重なる）を閉じた保存状態。 */
 export const INTRO_CLOSED: Record<string, string> = { "ridecompass:first-visit-intro-closed": "true" };
 
-/** 全レイヤーONとデバッグログ（`[map:error]`を読むため）の保存状態。道の線の層は軸カタログが配るので、開く先の軸カタログの
+/** 全レイヤーONとデバッグログ（`[map:error]`を読むため）の保存状態。道の線の層は画面の設定が配るので、開く先の画面の設定の
  * 層を渡す（既定はモックの層）。 */
 export function allLayersOn(roadLayers: readonly { id: string }[] = E2E_ROAD_LAYERS): Record<string, string> {
   const ids = [...mapDisplay.layers, ...roadLayers].map(({ id }) => id);

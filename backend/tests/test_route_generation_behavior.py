@@ -15,7 +15,6 @@
 
 import logging
 from collections import Counter
-from contextlib import contextmanager
 import math
 import re
 from datetime import datetime, timedelta
@@ -25,11 +24,9 @@ from itertools import accumulate, combinations
 import numpy as np
 import pytest
 
-from app.domain.cost_axes import EFFORT_AXES, CostAxisDefinitions, current_cost_axes, replace_cost_axes
-from app.domain.axis_definitions import AXIS_DEFINITIONS, AxisDefinition, BreakpointLinearShape, MaterialTerm
+from app.domain.cost_axes import EFFORT_AXES
 from app.domain.geo import KM_PER_DEGREE_LATITUDE, haversine_distance_km, km_per_degree_longitude
 from app.domain.graph import node_key
-from app.domain.material_catalog import GRADIENT_PERCENT
 from app.domain.road_classes import TRUE_FACT_VALUE
 from app.domain.road_network import RoadNetwork
 from app.domain.route import Coordinates
@@ -37,7 +34,7 @@ from app.domain.msm import MsmBlock, MsmGrid
 from app.domain.wind import WindForecastSeries
 from app.domain.time_zone import JST
 from app.domain.tuning import TUNING_VALUES
-from tests.axis_system_fixture import replaced_axis_definitions
+from tests.cost_axes_fixture import BAD_AXIS, cost_axes, cost_axes_declared
 from app.domain.road_classes import AvoidanceClassification
 from tests.road_class_fixture import classification, fact_is, map_layer, replaced_road_classes, road_classes
 from app.domain.route_request import FixedPoints
@@ -61,8 +58,6 @@ from tests.route_world import (
     TUNNEL,
     WAYS,
     at,
-    avoid_axis_declared,
-    avoid_axis_weighted,
     edges_of,
     generator_for,
     grid_network,
@@ -81,23 +76,21 @@ from tests.route_world import (
 
 
 
-@pytest.fixture
-def avoid_axis():
-    """避けたい材料が1の区間ほど難しいと評価する公開軸を1本だけ宣言する（`avoid_weight`はこの軸の重み）。"""
-    with avoid_axis_declared():
-        yield
+#: 避けたい材料の道の、`avoid_weight` 1あたりの1kmあたりの重さ（道の負担の軸`BAD_AXIS`）。重さ1の道1kmの代償は、標準の
+#: 強さ・βで時速20kmの1kmの所要時間の0.7倍。
+BAD_PER_KM_PER_WEIGHT = 1.0
 
 
 @pytest.fixture
-def engine_over(road_network_root, avoid_axis):
-    """道路網から、本物のエンジンの上に戦略層（`RouteGenerator`）を組む。軸は`avoid_axis`の1本で、`avoid_weight`はその既定の重み
-    （生成の要求は軸の重みを持たない）。"""
-    with ExitStack() as weights:
+def engine_over(road_network_root):
+    """道路網から、本物のエンジンの上に戦略層（`RouteGenerator`）を組む。`avoid_weight`を渡すと、避けたい材料の道を
+    1kmあたり`avoid_weight × BAD_PER_KM_PER_WEIGHT`の重さと数える道の負担の軸を置く。"""
+    with ExitStack() as declared:
 
         def build(network: RoadNetwork, *, avoid_weight: float = 0.0, wind: WindForecastSeries | None = None,
                   **conditions):
             if avoid_weight:
-                weights.enter_context(avoid_axis_weighted(avoid_weight))
+                declared.enter_context(cost_axes_declared(cost_axes(BAD_MATERIAL, avoid_weight * BAD_PER_KM_PER_WEIGHT)))
             return generator_for(road_network_root, network, wind, **conditions)
 
         yield build
@@ -231,8 +224,8 @@ async def test_a_spliced_route_is_refused_when_the_destination_cannot_be_snapped
 # --- 候補の選び方 ---
 
 
-async def test_fastest_route_ignores_the_axis_weights(engine_over):
-    """基準線は軸の重みを一切使わない。避けたい道が最短でも、基準線はそこを通る（対価として比べる相手のため）。"""
+async def test_fastest_route_ignores_the_penalties(engine_over):
+    """基準線は代償を一切使わない。避けたい道が最短でも、基準線はそこを通る（対価として比べる相手のため）。"""
     generator = engine_over(grid_network(bad_ways={100}), avoid_weight=5.0)
 
     candidates = await generator.generate_via_waypoints(
@@ -877,7 +870,7 @@ async def test_each_segment_starts_and_ends_at_the_elevation_of_its_road_in_the_
 
 
 async def test_each_segment_carries_its_road_classes(engine_over):
-    """道のりのグラフは区間の区分を、地図の線の層ごとに層の値で受ける（呼び名と色は軸カタログの区分から引く）。どの区分にも入らない
+    """道のりのグラフは区間の区分を、地図の線の層ごとに層の値で受ける（呼び名と色は画面の設定の区分から引く）。どの区分にも入らない
     道は値なし。緑と水は、区間の最も多いクラスで塗る（同率は宣言の並びの先）。
     南西→南東の最速は、林と水辺が同じ割合の生活道路の道100と、土地被覆の値の無いトンネルの道101。"""
     landcover = {100: {"built_percent": 20.0, "trees_percent": 40.0, "water_percent": 40.0}}
@@ -906,30 +899,6 @@ async def test_each_segment_carries_its_road_classes(engine_over):
         {"kind": [(second.distance_km, "local")], "tunnel": [(second.distance_km, "yes")],
          "landcover": [(second.distance_km, None)]},
     ]
-
-
-def _slope_axis(*, is_published: bool) -> AxisDefinition:
-    """勾配の符号付きの値を地図が塗る軸（本番の勾配の軸と同じく、勾配の絶対値を読む折れ線）。"""
-    return AxisDefinition(
-        axis_id="slope", label="勾配", default_weight=0.0, is_published=is_published,
-        shape=BreakpointLinearShape(
-            terms=[MaterialTerm(material=GRADIENT_PERCENT)], preprocess="abs", breakpoints=[(0.0, 0.0), (10.0, 100.0)],
-        ),
-    )
-
-
-@pytest.mark.parametrize(("is_published", "carried"), [(True, True), (False, False)])
-async def test_a_published_slope_axis_carries_its_grade_on_every_segment_even_with_no_weight(
-    engine_over, is_published, carried,
-):
-    """地図のレンズはルートを作ったあとにも勾配へ切り替わり、切り替えでは作り直さない。重み0の勾配の軸でも
-    区間が勾配の値を持たないと、あとから勾配のレンズにしたとき全区間が「データなし」になる。下書きの軸はレンズに出ない。"""
-    surveyed = grid_network(elevation_of={way: (0.0, 0.0) for way in WAYS})
-    with replaced_axis_definitions({**AXIS_DEFINITIONS, "slope": _slope_axis(is_published=is_published)}):
-        candidates = await engine_over(surveyed).generate_via_waypoints(
-            at(SOUTH_WEST), [], destination=at(SOUTH_EAST), max_routes=1, start_time=DEPARTURE)
-
-    assert [GRADIENT_PERCENT in segment.material_values for segment in candidates[0].segments] == [carried, carried]
 
 
 async def test_the_share_of_the_route_timed_without_data_is_reported(engine_over):
@@ -971,23 +940,6 @@ async def test_a_route_timed_without_the_wind_forecast_says_so(engine_over):
     assert not any(c.wind_unavailable for c in with_wind)
 
 
-@contextmanager
-def cost_axes_declared(*, vibration_material: str):
-    """費用の軸の定義（体力の4軸と、`vibration_material`の値1を1kmあたりの重さ1と数える道の負担の軸`vibration`）を置く。"""
-    presentation = {"label": "軸", "description": "", "icon_id": "i", "lens": {"thresholds": [1.0], "band_labels": ["a", "b"]}}
-    previous = current_cost_axes()
-    replace_cost_axes(CostAxisDefinitions.model_validate({
-        "effort": {axis_id: presentation for axis_id in EFFORT_AXES},
-        "total_lens": presentation,
-        "burden": {"vibration": {**presentation, "burden": {
-            "kind": "linear", "material": vibration_material, "points": [[0.0, 0.0], [1.0, 1.0]]}}},
-    }))
-    try:
-        yield
-    finally:
-        replace_cost_axes(previous)
-
-
 async def test_the_duration_and_the_penalty_of_each_axis_and_of_the_avoided_roads_add_up_to_the_cost(engine_over):
     """候補の費用（並べ方の値）は、所要時間と、軸ごとの代償の秒と、回避指定（なるべく避ける道）で上乗せした秒の和になる。
     合わないと、画面の内訳を見ても候補がなぜその順に並んだのかが分からない。どの道もなるべく避け、道100だけが振動の材料を持つ。"""
@@ -996,7 +948,7 @@ async def test_the_duration_and_the_penalty_of_each_axis_and_of_the_avoided_road
         map_layers={"kind": map_layer()},
         avoidance_classifications={"kind": AvoidanceClassification(overrides={})},
     )
-    with replaced_road_classes(definitions), cost_axes_declared(vibration_material=BAD_MATERIAL):
+    with replaced_road_classes(definitions), cost_axes_declared(cost_axes(BAD_MATERIAL)):
         candidates = await engine_over(
             grid_network(bad_ways={100}, stop_density_of={101: 3.0}), road_avoidance={"kind.local": "avoid"},
         ).generate_via_waypoints(at(SOUTH_WEST), [], destination=at(SOUTH_EAST), max_routes=3, start_time=DEPARTURE)
@@ -1005,7 +957,7 @@ async def test_the_duration_and_the_penalty_of_each_axis_and_of_the_avoided_road
     for candidate in candidates:
         penalty = candidate.penalty
         assert penalty is not None and penalty.avoidance_seconds > 0
-        assert set(penalty.axis_seconds) == {*EFFORT_AXES, "vibration"}
+        assert set(penalty.axis_seconds) == {*EFFORT_AXES, BAD_AXIS}
         assert candidate.estimated_duration_seconds + sum(penalty.axis_seconds.values()) + penalty.avoidance_seconds \
             == pytest.approx(candidate.cost_seconds, abs=0.5)
         # 区間（ビン）の内訳を足すと候補の内訳になる（道のりのグラフと結果の内訳が同じ秒を見せる）。
@@ -1013,19 +965,10 @@ async def test_the_duration_and_the_penalty_of_each_axis_and_of_the_avoided_road
         assert segment_avoidance == pytest.approx(penalty.avoidance_seconds, abs=0.5)
     fastest = fastest_of(candidates)
     assert ways_of(fastest) == [100, 101]
-    assert fastest.penalty.axis_seconds["vibration"] > 0
+    assert fastest.penalty.axis_seconds[BAD_AXIS] > 0
     # 事実は軸ごとに、名前と単位を付けて返す（画面が軸idで出し分けない）。道の負担の軸の名前は定義から読む。
     facts = fastest.facts.axes
-    assert set(facts) == {*EFFORT_AXES, "vibration"}
-    assert facts["vibration"].label == "軸のある道"
-    assert facts["vibration"].value == pytest.approx(fastest.segments[0].distance_km, abs=0.02)
+    assert set(facts) == {*EFFORT_AXES, BAD_AXIS}
+    assert facts[BAD_AXIS].label == "軸のある道"
+    assert facts[BAD_AXIS].value == pytest.approx(fastest.segments[0].distance_km, abs=0.02)
     assert facts["stopping"].value > 0
-
-
-async def test_without_the_cost_axes_a_route_has_a_cost_but_no_breakdown(engine_over):
-    """費用の軸の定義がまだ表に無い間（軸の点数の割増の式）は、内訳を持たない。費用は並べ方の値として持つ。"""
-    candidates = await engine_over(grid_network()).generate_via_waypoints(
-        at(SOUTH_WEST), [], destination=at(SOUTH_EAST), max_routes=1, start_time=DEPARTURE)
-
-    assert [(c.penalty, all(s.penalty is None for s in c.segments)) for c in candidates] == [(None, True)]
-    assert candidates[0].cost_seconds >= candidates[0].estimated_duration_seconds

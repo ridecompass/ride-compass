@@ -260,22 +260,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/region/way-materials/{axis_id}/{z}/{x}/{y}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["region_way_materials_api_region_way_materials__axis_id___z___x___y__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/region/lens/{lens_id}/{z}/{x}/{y}": {
         parameters: {
             query?: never;
@@ -324,7 +308,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/region/axis-inspector": {
+    "/api/region/road-inspector": {
         parameters: {
             query?: never;
             header?: never;
@@ -333,7 +317,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post: operations["region_axis_inspector_api_region_axis_inspector_post"];
+        post: operations["region_road_inspector_api_region_road_inspector_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -436,118 +420,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/admin/axis-definitions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["list_axis_definitions_api_admin_axis_definitions_get"];
-        put?: never;
-        post: operations["create_axis_definition_api_admin_axis_definitions_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/admin/axis-definitions/{axis_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["get_axis_definition_api_admin_axis_definitions__axis_id__get"];
-        put: operations["update_axis_definition_api_admin_axis_definitions__axis_id__put"];
-        post?: never;
-        delete: operations["delete_axis_definition_api_admin_axis_definitions__axis_id__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/admin/axis-definitions/{axis_id}/unpublish": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["unpublish_axis_definition_api_admin_axis_definitions__axis_id__unpublish_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/admin/axis-definitions/preview-distribution": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["preview_axis_distribution_api_admin_axis_definitions_preview_distribution_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/admin/axis-definitions/preview-scores": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["preview_scores_api_admin_axis_definitions_preview_scores_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/admin/axis-definitions/preview-calibration": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["preview_calibration_api_admin_axis_definitions_preview_calibration_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/admin/axis-definitions/preview-way-values": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["preview_way_values_api_admin_axis_definitions_preview_way_values_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/admin/tuning": {
         parameters: {
             query?: never;
@@ -612,14 +484,14 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/axis-catalog": {
+    "/api/client-config": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get: operations["get_axis_catalog_api_axis_catalog_get"];
+        get: operations["get_client_config_api_client_config_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -652,22 +524,6 @@ export interface paths {
             cookie?: never;
         };
         get: operations["get_lens_equivalents_api_cost_axes_lens_equivalents_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/admin/material-catalog/{material_id}/value-shares": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["get_material_value_shares_api_admin_material_catalog__material_id__value_shares_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -858,185 +714,6 @@ export interface components {
             /** Label */
             label: string;
         };
-        /** AxisCatalogEntry */
-        AxisCatalogEntry: {
-            /** Axis Id */
-            axis_id: string;
-            /** Label */
-            label: string;
-            /** Description */
-            description: string;
-            /**
-             * Category
-             * @enum {string}
-             */
-            category: "観測" | "推定" | "動的";
-            /** Default Weight */
-            default_weight: number;
-            /** Icon Id */
-            icon_id: string | null;
-            /** Primary Attribute Ids */
-            primary_attribute_ids: string[];
-            /** Road Layer Ids */
-            road_layer_ids: string[];
-            map_paint: components["schemas"]["MapPaint"];
-            raw_value_units: components["schemas"]["RawValueUnits"];
-            /** Material Breakdown */
-            material_breakdown: components["schemas"]["AxisMaterialBreakdownEntry"][];
-            /** Dynamic Way Value Conditions */
-            dynamic_way_value_conditions: ("at" | "bearing_deg" | "speed_kmh")[];
-            /** Dynamic Way Value Material Conditions */
-            dynamic_way_value_material_conditions: ("at" | "bearing_deg" | "speed_kmh")[];
-            /** Dynamic Way Value Undetermined By Bearing */
-            dynamic_way_value_undetermined_by_bearing: boolean;
-            way_value_formula: components["schemas"]["WayValueFormula"] | null;
-            /**
-             * Time Scope
-             * @enum {string}
-             */
-            time_scope: "always" | "night_only";
-        };
-        /** AxisCatalogResponse */
-        AxisCatalogResponse: {
-            /** Axes */
-            axes: components["schemas"]["AxisCatalogEntry"][];
-            /** Client Tuning */
-            client_tuning: {
-                [key: string]: number;
-            };
-            /** Tile Versions */
-            tile_versions: {
-                [key: string]: string;
-            };
-            /** Accident Years */
-            accident_years: number[];
-            road_classes: components["schemas"]["RoadClassCatalog"];
-        };
-        /** AxisDefinition */
-        AxisDefinition: {
-            /** Axis Id */
-            axis_id: string;
-            /** Shape */
-            shape: components["schemas"]["BreakpointLinearShape-Input"] | components["schemas"]["CategoricalShape-Input"];
-            /** Default Weight */
-            default_weight: number;
-            /** Label */
-            label: string;
-            /**
-             * Description
-             * @default
-             */
-            description: string;
-            /**
-             * Category
-             * @default 推定
-             * @enum {string}
-             */
-            category: "観測" | "推定" | "動的";
-            /**
-             * Is Published
-             * @default false
-             */
-            is_published: boolean;
-            /** Priority Overrides */
-            priority_overrides?: components["schemas"]["PriorityCondition"][];
-            /** Icon Id */
-            icon_id?: string | null;
-            /**
-             * Time Scope
-             * @default always
-             * @enum {string}
-             */
-            time_scope: "always" | "night_only";
-            /** Display Thresholds Override */
-            display_thresholds_override?: number[] | null;
-            /** Display Band Labels Override */
-            display_band_labels_override?: string[] | null;
-        };
-        /** AxisDefinitionPayload */
-        AxisDefinitionPayload: {
-            /** Axis Id */
-            axis_id: string;
-            /** Shape */
-            shape: components["schemas"]["BreakpointLinearShape-Input"] | components["schemas"]["CategoricalShape-Input"];
-            /** Default Weight */
-            default_weight: number;
-            /** Label */
-            label: string;
-            /**
-             * Description
-             * @default
-             */
-            description: string;
-            /**
-             * Category
-             * @default 推定
-             * @enum {string}
-             */
-            category: "観測" | "推定" | "動的";
-            /**
-             * Is Published
-             * @default false
-             */
-            is_published: boolean;
-            /** Priority Overrides */
-            priority_overrides?: components["schemas"]["PriorityCondition"][];
-            /** Icon Id */
-            icon_id?: string | null;
-            /**
-             * Time Scope
-             * @default always
-             * @enum {string}
-             */
-            time_scope: "always" | "night_only";
-            /** Display Thresholds Override */
-            display_thresholds_override?: number[] | null;
-            /** Display Band Labels Override */
-            display_band_labels_override?: string[] | null;
-        };
-        /** AxisDefinitionResponse */
-        AxisDefinitionResponse: {
-            /** Axis Id */
-            axis_id: string;
-            /** Shape */
-            shape: components["schemas"]["BreakpointLinearShape-Output"] | components["schemas"]["CategoricalShape-Output"];
-            /** Default Weight */
-            default_weight: number;
-            /** Label */
-            label: string;
-            /**
-             * Description
-             * @default
-             */
-            description: string;
-            /**
-             * Category
-             * @default 推定
-             * @enum {string}
-             */
-            category: "観測" | "推定" | "動的";
-            /**
-             * Is Published
-             * @default false
-             */
-            is_published: boolean;
-            /** Priority Overrides */
-            priority_overrides: components["schemas"]["PriorityCondition"][];
-            /** Icon Id */
-            icon_id: string | null;
-            /**
-             * Time Scope
-             * @default always
-             * @enum {string}
-             */
-            time_scope: "always" | "night_only";
-            /** Display Thresholds Override */
-            display_thresholds_override: number[] | null;
-            /** Display Band Labels Override */
-            display_band_labels_override: string[] | null;
-            /** Weight Share When Published */
-            weight_share_when_published: number | null;
-        };
         /** AxisFact */
         AxisFact: {
             /** Label */
@@ -1045,65 +722,6 @@ export interface components {
             value: number | null;
             /** Unit */
             unit: string;
-        };
-        /** AxisInspectorAxis */
-        AxisInspectorAxis: {
-            /** Axis Id */
-            axis_id: string;
-            /** Difficulty */
-            difficulty: number | null;
-            /** Contribution */
-            contribution: number | null;
-        };
-        /** AxisInspectorRequest */
-        AxisInspectorRequest: {
-            /** Osm Way Id */
-            osm_way_id: number;
-            /** Feature Key */
-            feature_key: string;
-            /** Z */
-            z: number;
-            /** X */
-            x: number;
-            /** Y */
-            y: number;
-            /** Bearing Deg */
-            bearing_deg: number;
-            /** At */
-            at?: string | null;
-            /** Speed Kmh */
-            speed_kmh?: number | null;
-            route_preference?: components["schemas"]["RoutePreferenceWeights"] | null;
-            cost_preference?: components["schemas"]["CostPreference-Input"];
-        };
-        /** AxisInspectorResult */
-        AxisInspectorResult: {
-            /** Highway */
-            highway: string;
-            /** Tags */
-            tags: {
-                [key: string]: string;
-            };
-            values: components["schemas"]["InspectorValues"];
-            lens: components["schemas"]["LensInspection"] | null;
-        };
-        /** AxisMaterialBreakdownEntry */
-        AxisMaterialBreakdownEntry: {
-            /** Material Id */
-            material_id: string;
-            /** Label */
-            label: string;
-            /**
-             * Dtype
-             * @enum {string}
-             */
-            dtype: "numeric" | "boolean" | "categorical";
-            /** Unit */
-            unit: string;
-            /** Value Labels */
-            value_labels: {
-                [key: string]: string;
-            };
         };
         /** AxisPresentation */
         AxisPresentation: {
@@ -1114,11 +732,6 @@ export interface components {
             /** Icon Id */
             icon_id: string;
             lens: components["schemas"]["LensBands"];
-        };
-        /** AxisPreviewRequest */
-        AxisPreviewRequest: {
-            /** Shape */
-            shape: components["schemas"]["BreakpointLinearShape-Input"] | components["schemas"]["CategoricalShape-Input"];
         };
         /** Binary */
         Binary: {
@@ -1132,50 +745,6 @@ export interface components {
             /** Right */
             right: components["schemas"]["Constant"] | components["schemas"]["Missing"] | components["schemas"]["FeatureValue"] | components["schemas"]["Condition"] | components["schemas"]["Unary"] | components["schemas"]["Binary"] | components["schemas"]["Case"] | components["schemas"]["Interpolate"] | components["schemas"]["Round"];
         };
-        /** BreakpointLinearShape */
-        "BreakpointLinearShape-Input": {
-            /**
-             * Kind
-             * @default breakpoint_linear
-             * @constant
-             */
-            kind: "breakpoint_linear";
-            /** Terms */
-            terms: components["schemas"]["MaterialTerm-Input"][];
-            /**
-             * Preprocess
-             * @default identity
-             * @enum {string}
-             */
-            preprocess: "identity" | "abs";
-            /** Breakpoints */
-            breakpoints: [
-                number,
-                number
-            ][];
-        };
-        /** BreakpointLinearShape */
-        "BreakpointLinearShape-Output": {
-            /**
-             * Kind
-             * @default breakpoint_linear
-             * @constant
-             */
-            kind: "breakpoint_linear";
-            /** Terms */
-            terms: components["schemas"]["MaterialTerm-Output"][];
-            /**
-             * Preprocess
-             * @default identity
-             * @enum {string}
-             */
-            preprocess: "identity" | "abs";
-            /** Breakpoints */
-            breakpoints: [
-                number,
-                number
-            ][];
-        };
         /** BurdenAxis */
         BurdenAxis: {
             /** Label */
@@ -1187,16 +756,6 @@ export interface components {
             lens: components["schemas"]["LensBands"];
             /** Burden */
             burden: components["schemas"]["CategoricalBurden"] | components["schemas"]["LinearBurden"];
-        };
-        /** CalibrationPreviewRequest */
-        CalibrationPreviewRequest: {
-            definition: components["schemas"]["AxisDefinition"];
-        };
-        /** CalibrationPreviewResponse */
-        CalibrationPreviewResponse: {
-            map_paint: components["schemas"]["MapPaint"];
-            /** Averages Density */
-            averages_density: boolean;
         };
         /** Case */
         Case: {
@@ -1226,35 +785,19 @@ export interface components {
                 [key: string]: number;
             };
         };
-        /** CategoricalShape */
-        "CategoricalShape-Input": {
-            /**
-             * Kind
-             * @default categorical
-             * @constant
-             */
-            kind: "categorical";
-            /** Material */
-            material: string;
-            /** Mapping */
-            mapping: {
+        /** ClientConfigResponse */
+        ClientConfigResponse: {
+            /** Client Tuning */
+            client_tuning: {
                 [key: string]: number;
             };
-        };
-        /** CategoricalShape */
-        "CategoricalShape-Output": {
-            /**
-             * Kind
-             * @default categorical
-             * @constant
-             */
-            kind: "categorical";
-            /** Material */
-            material: string;
-            /** Mapping */
-            mapping: {
-                [key: string]: number;
+            /** Tile Versions */
+            tile_versions: {
+                [key: string]: string;
             };
+            /** Accident Years */
+            accident_years: number[];
+            road_classes: components["schemas"]["RoadClassCatalog"];
         };
         /** ColumnNulls */
         ColumnNulls: {
@@ -1443,14 +986,6 @@ export interface components {
             /** Tables */
             tables: components["schemas"]["app__services__derived_data_freshness_service__TableEntry"][];
         };
-        /** DifficultyMapValue */
-        DifficultyMapValue: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            kind: "difficulty";
-        };
         /** ElevationStretch */
         ElevationStretch: {
             /** Distance Km */
@@ -1577,20 +1112,6 @@ export interface components {
             /** Note */
             note: string;
         };
-        /** InspectorComposite */
-        InspectorComposite: {
-            /** Value */
-            value: number;
-            /** Covered Weight Fraction */
-            covered_weight_fraction: number;
-        };
-        /** InspectorValues */
-        InspectorValues: {
-            /** Axes */
-            axes: components["schemas"]["AxisInspectorAxis"][];
-            composite_difficulty: components["schemas"]["InspectorComposite"] | null;
-            landcover: components["schemas"]["LandcoverPercentages"] | null;
-        };
         /** Interpolate */
         Interpolate: {
             /**
@@ -1659,25 +1180,6 @@ export interface components {
              */
             available: false;
         };
-        /** LandcoverPercentages */
-        LandcoverPercentages: {
-            /** Water Percent */
-            water_percent: number;
-            /** Trees Percent */
-            trees_percent: number;
-            /** Flooded Veg Percent */
-            flooded_veg_percent: number;
-            /** Crops Percent */
-            crops_percent: number;
-            /** Built Percent */
-            built_percent: number;
-            /** Bare Percent */
-            bare_percent: number;
-            /** Snow Ice Percent */
-            snow_ice_percent: number;
-            /** Rangeland Percent */
-            rangeland_percent: number;
-        };
         /** LastError */
         LastError: {
             /** Type */
@@ -1699,18 +1201,6 @@ export interface components {
             };
             /** Item Count */
             item_count: number | null;
-        };
-        /** LayerTextSlotView */
-        LayerTextSlotView: {
-            /**
-             * Name
-             * @constant
-             */
-            name: "axes";
-            /** Before */
-            before: string;
-            /** After */
-            after: string;
         };
         /** LensAxisSeconds */
         LensAxisSeconds: {
@@ -1759,30 +1249,11 @@ export interface components {
                 number
             ][];
         };
-        /** MapLegendScale */
-        MapLegendScale: {
-            /** Boundaries */
-            boundaries: number[];
-            /** Unit */
-            unit: string | null;
-        };
         /** MapLens */
         MapLens: {
             formula: components["schemas"]["WayValueFormula"];
             /** Material Conditions */
             material_conditions: ("at" | "bearing_deg" | "speed_kmh")[];
-        };
-        /** MapPaint */
-        MapPaint: {
-            /** Value */
-            value: components["schemas"]["DifficultyMapValue"] | components["schemas"]["SignedMaterialMapValue"];
-            /** Unit */
-            unit: string;
-            /** Thresholds */
-            thresholds: number[];
-            legend: components["schemas"]["MapLegendScale"];
-            /** Band Labels */
-            band_labels: string[] | null;
         };
         /** MaterialCoverageCounted */
         MaterialCoverageCounted: {
@@ -1846,56 +1317,6 @@ export interface components {
             edge_total: number;
             /** Materials */
             materials: (components["schemas"]["MaterialCoverageCounted"] | components["schemas"]["MaterialCoverageExcluded"])[];
-        };
-        /** MaterialTerm */
-        "MaterialTerm-Input": {
-            /** Material */
-            material: string;
-            /**
-             * Weight
-             * @default 1
-             */
-            weight: number;
-            /**
-             * Required
-             * @default true
-             */
-            required: boolean;
-        };
-        /** MaterialTerm */
-        "MaterialTerm-Output": {
-            /** Material */
-            material: string;
-            /**
-             * Weight
-             * @default 1
-             */
-            weight: number;
-            /**
-             * Required
-             * @default true
-             */
-            required: boolean;
-        };
-        /** MaterialValueShareEntry */
-        MaterialValueShareEntry: {
-            /** Value */
-            value: string;
-            /** Label */
-            label: string;
-            /** Share */
-            share: number;
-        };
-        /** MaterialValueSharesResponse */
-        MaterialValueSharesResponse: {
-            /** Available */
-            available: boolean;
-            /** Sample Ways */
-            sample_ways: number;
-            /** Total Km */
-            total_km: number;
-            /** Values */
-            values: components["schemas"]["MaterialValueShareEntry"][];
         };
         /** Missing */
         Missing: {
@@ -1981,22 +1402,6 @@ export interface components {
         PlaceSearchResult: {
             /** Candidates */
             candidates: components["schemas"]["PlaceCandidate"][];
-        };
-        /** PriorityCondition */
-        PriorityCondition: {
-            /** Material */
-            material: string;
-            /** Equals */
-            equals: string;
-            /** Value */
-            value: number;
-        };
-        /** RawValueUnits */
-        RawValueUnits: {
-            /** Unit */
-            unit: string | null;
-            /** Total Unit */
-            total_unit: string | null;
         };
         /** RoadAt */
         RoadAt: {
@@ -2100,6 +1505,36 @@ export interface components {
                 [key: string]: components["schemas"]["RoadClass"];
             };
         };
+        /** RoadInspection */
+        RoadInspection: {
+            /** Highway */
+            highway: string;
+            /** Tags */
+            tags: {
+                [key: string]: string;
+            };
+            lens: components["schemas"]["LensInspection"];
+        };
+        /** RoadInspectorRequest */
+        RoadInspectorRequest: {
+            /** Osm Way Id */
+            osm_way_id: number;
+            /** Feature Key */
+            feature_key: string;
+            /** Z */
+            z: number;
+            /** X */
+            x: number;
+            /** Y */
+            y: number;
+            /** Bearing Deg */
+            bearing_deg: number;
+            /** At */
+            at?: string | null;
+            /** Speed Kmh */
+            speed_kmh: number;
+            cost_preference?: components["schemas"]["CostPreference-Input"];
+        };
         /** RoadMapLayer */
         RoadMapLayer: {
             /** Group Key */
@@ -2136,7 +1571,7 @@ export interface components {
             /** Description */
             description: string[];
             /** Panel Hint */
-            panel_hint: (string | components["schemas"]["LayerTextSlotView"])[];
+            panel_hint: string;
             /** Hide Missing Rows */
             hide_missing_rows: boolean;
             /** Has No Data */
@@ -2202,7 +1637,7 @@ export interface components {
             estimated_duration_seconds: number | null;
             /** Cost Seconds */
             cost_seconds: number;
-            penalty: components["schemas"]["PenaltyBreakdown"] | null;
+            penalty: components["schemas"]["PenaltyBreakdown"];
             facts: components["schemas"]["RouteFacts"];
             /** Wind Unavailable */
             wind_unavailable: boolean;
@@ -2306,10 +1741,6 @@ export interface components {
             /** No Candidates Reason */
             no_candidates_reason: string | null;
         };
-        /** RoutePreferenceWeights */
-        RoutePreferenceWeights: {
-            [key: string]: number;
-        };
         /** RouteSegmentDetail */
         RouteSegmentDetail: {
             /** Geometry */
@@ -2340,11 +1771,7 @@ export interface components {
             sustained_gradient_percent: number | null;
             /** Estimated Arrival Time */
             estimated_arrival_time: string | null;
-            penalty: components["schemas"]["PenaltyBreakdown"] | null;
-            /** Material Values */
-            material_values: {
-                [key: string]: number;
-            };
+            penalty: components["schemas"]["PenaltyBreakdown"];
             /** Road Classes */
             road_classes: {
                 [key: string]: components["schemas"]["RoadClassStretch"][];
@@ -2378,38 +1805,12 @@ export interface components {
             /** Areas */
             areas: components["schemas"]["RouteAreaTimeline"][];
         };
-        /** ScoresPreviewRequest */
-        ScoresPreviewRequest: {
-            shape: components["schemas"]["BreakpointLinearShape-Input"];
-            /** Xs */
-            xs?: number[];
-        };
-        /** ScoresPreviewResponse */
-        ScoresPreviewResponse: {
-            /** Scores */
-            scores: number[];
-        };
         /** SecondsExample */
         SecondsExample: {
             /** Label */
             label: string;
             /** Seconds Per Km */
             seconds_per_km: number;
-        };
-        /** SignedMaterialMapValue */
-        SignedMaterialMapValue: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            kind: "signed_material";
-            /** Material */
-            material: string;
-            /**
-             * Route Segment Field
-             * @enum {string}
-             */
-            route_segment_field: "material_values" | "sustained_gradient_percent";
         };
         /** SourceEntry */
         SourceEntry: {
@@ -2555,47 +1956,12 @@ export interface components {
             /** Error Type */
             type: string;
         };
-        /** ValueDistribution */
-        ValueDistribution: {
-            /** Sample Ways */
-            sample_ways: number;
-            /** Total Km */
-            total_km: number;
-            /** Quantiles */
-            quantiles: {
-                [key: string]: number;
-            };
-            /** Bins */
-            bins: [
-                number,
-                number,
-                number
-            ][];
-        };
         /** WayValueFormula */
         WayValueFormula: {
             /** Value */
             value: components["schemas"]["Constant"] | components["schemas"]["Missing"] | components["schemas"]["FeatureValue"] | components["schemas"]["Condition"] | components["schemas"]["Unary"] | components["schemas"]["Binary"] | components["schemas"]["Case"] | components["schemas"]["Interpolate"] | components["schemas"]["Round"];
             /** Undetermined */
             undetermined: components["schemas"]["Constant"] | components["schemas"]["Missing"] | components["schemas"]["FeatureValue"] | components["schemas"]["Condition"] | components["schemas"]["Unary"] | components["schemas"]["Binary"] | components["schemas"]["Case"] | components["schemas"]["Interpolate"] | components["schemas"]["Round"];
-        };
-        /** WayValuesPreviewRequest */
-        WayValuesPreviewRequest: {
-            /** Axis Id */
-            axis_id: string;
-            shape: components["schemas"]["BreakpointLinearShape-Input"];
-            /** Z */
-            z: number;
-            /** X */
-            x: number;
-            /** Y */
-            y: number;
-            /** Bearing Deg */
-            bearing_deg?: number | null;
-            /** At */
-            at?: string | null;
-            /** Speed Kmh */
-            speed_kmh?: number | null;
         };
         /** WbgtReading */
         WbgtReading: {
@@ -3167,48 +2533,6 @@ export interface operations {
             };
         };
     };
-    region_way_materials_api_region_way_materials__axis_id___z___x___y__get: {
-        parameters: {
-            query?: {
-                at?: string | null;
-                bearing_deg?: number | null;
-                speed_kmh?: number | null;
-            };
-            header?: never;
-            path: {
-                axis_id: string;
-                z: number;
-                x: number;
-                y: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: {
-                            [key: string]: number;
-                        };
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     region_lens_api_region_lens__lens_id___z___x___y__get: {
         parameters: {
             query: {
@@ -3322,7 +2646,7 @@ export interface operations {
             };
         };
     };
-    region_axis_inspector_api_region_axis_inspector_post: {
+    region_road_inspector_api_region_road_inspector_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -3331,7 +2655,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["AxisInspectorRequest"];
+                "application/json": components["schemas"]["RoadInspectorRequest"];
             };
         };
         responses: {
@@ -3341,7 +2665,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["AxisInspectorResult"] | null;
+                    "application/json": components["schemas"]["RoadInspection"] | null;
                 };
             };
             /** @description Validation Error */
@@ -3523,319 +2847,6 @@ export interface operations {
             };
         };
     };
-    list_axis_definitions_api_admin_axis_definitions_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AxisDefinitionResponse"][];
-                };
-            };
-        };
-    };
-    create_axis_definition_api_admin_axis_definitions_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AxisDefinitionPayload"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AxisDefinitionResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_axis_definition_api_admin_axis_definitions__axis_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                axis_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AxisDefinitionResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    update_axis_definition_api_admin_axis_definitions__axis_id__put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                axis_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AxisDefinitionPayload"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AxisDefinitionResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_axis_definition_api_admin_axis_definitions__axis_id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                axis_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    unpublish_axis_definition_api_admin_axis_definitions__axis_id__unpublish_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                axis_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AxisDefinitionResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    preview_axis_distribution_api_admin_axis_definitions_preview_distribution_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AxisPreviewRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ValueDistribution"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    preview_scores_api_admin_axis_definitions_preview_scores_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ScoresPreviewRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ScoresPreviewResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    preview_calibration_api_admin_axis_definitions_preview_calibration_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CalibrationPreviewRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CalibrationPreviewResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    preview_way_values_api_admin_axis_definitions_preview_way_values_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["WayValuesPreviewRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: number | null;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     list_tuning_parameters_api_admin_tuning_get: {
         parameters: {
             query?: never;
@@ -3997,7 +3008,7 @@ export interface operations {
             };
         };
     };
-    get_axis_catalog_api_axis_catalog_get: {
+    get_client_config_api_client_config_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -4012,7 +3023,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["AxisCatalogResponse"];
+                    "application/json": components["schemas"]["ClientConfigResponse"];
                 };
             };
         };
@@ -4058,37 +3069,6 @@ export interface operations {
                     "application/json": {
                         [key: string]: components["schemas"]["ThresholdEquivalents"] | components["schemas"]["ExampleEquivalents"];
                     };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_material_value_shares_api_admin_material_catalog__material_id__value_shares_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                material_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MaterialValueSharesResponse"];
                 };
             };
             /** @description Validation Error */

@@ -1,8 +1,7 @@
 import { expect, test } from "@playwright/test";
-import { MATERIAL_VALUE_FORMULA, catalogEntry } from "@/testing/catalogAxes";
+import { costAxisCatalog, costAxisEntry } from "@/testing/costAxes";
 import {
   MOBILE_VIEWPORT,
-  axisCatalogFixture,
   doneJobFixture,
   openMobileApp,
   openMobileSheet,
@@ -32,7 +31,7 @@ test("モバイル: 観測値の取得に失敗してもヘッダーが幅に収
   expect((menu?.x ?? 0) + (menu?.width ?? 0)).toBeLessThanOrEqual(MOBILE_VIEWPORT.width);
 });
 
-/** 段階が細かく、凡例の1行（「とても少ない（0.125〜0.375箇所/km）」）が長くなる軸。
+/** 段階が細かく、凡例の1行（「とても少ない[0.125〜0.375秒/km]」）が長くなる軸。
  * 本番の軸名・値は使わない。 */
 const FINE_STEP_AXIS_LABEL = "段階の細かい軸";
 
@@ -40,34 +39,28 @@ const FINE_STEP_AXIS_LABEL = "段階の細かい軸";
 test("モバイル: レンズの凡例が、段階の細かい軸でも幅に収まる", async ({ page }) => {
   await openMobileApp(page, {
     routes: (page) =>
-      page.route("**/api/axis-catalog*", (route) =>
+      page.route("**/api/cost-axes", (route) =>
         route.fulfill({
-          json: axisCatalogFixture([
-            {
-              ...catalogEntry({
-                axis_id: "fine_steps",
-                label: FINE_STEP_AXIS_LABEL,
-                raw_value_units: { unit: "箇所/km" },
-                map_paint: {
-                  band_labels: [
-                    "ほとんど無い",
-                    "とても少ない",
-                    "かなり少ない",
-                    "やや少ない",
-                    "ふつう",
-                    "やや多い",
-                    "かなり多い",
-                    "とても多い",
-                    "非常に多い",
-                  ],
-                  thresholds: [0.125, 0.375, 0.625, 0.875, 1.125, 1.375, 1.625, 1.875],
-                },
-              }),
-              default_weight: 0,
-              // 凡例は周りの道を塗れる軸（式の木を持つ軸）にだけ出る。
-              way_value_formula: MATERIAL_VALUE_FORMULA,
-            },
-          ]),
+          json: costAxisCatalog(
+            costAxisEntry("fine_steps", {
+              ledger: "burden",
+              label: FINE_STEP_AXIS_LABEL,
+              lens: {
+                band_labels: [
+                  "ほとんど無い",
+                  "とても少ない",
+                  "かなり少ない",
+                  "やや少ない",
+                  "ふつう",
+                  "やや多い",
+                  "かなり多い",
+                  "とても多い",
+                  "非常に多い",
+                ],
+                thresholds: [0.125, 0.375, 0.625, 0.875, 1.125, 1.375, 1.625, 1.875],
+              },
+            }),
+          ),
         }),
       ),
   });

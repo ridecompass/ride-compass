@@ -13,26 +13,21 @@ JMAの観測値エンドポイントは1地点だけを絞り込めず全国分�
 - 実測と空から天気コードを導く規則 → `test_weather_domain.py`
 - 風向コード・体感温度 → `test_jma_amedas.py`
 - 気象庁の応答を解くこと → `test_jma_amedas_client.py`
-- 1時間雨量の履歴から窓の累計・止んでからの時間を求めること → `test_rain.py`
 """
 
-import json
-from datetime import datetime, timedelta
+from datetime import datetime
 
 import httpx
-import numpy as np
 import pytest
 import respx
 from PIL import Image
 
 from app.domain.jma_amedas import apparent_temperature_from_amedas
-from app.domain.rain import HOURS_SINCE_RAIN, RAIN_HISTORY_HOURS, RAIN_HISTORY_MAX_AGE, rain_window_material_id
 from app.domain.route import Coordinates
-from app.domain.time_zone import JST
 from app.infrastructure import jma_amedas_client, jma_tile_client
 from app.infrastructure.jma_amedas_client import new_latest_time_cache, new_station_table_cache
 from app.infrastructure.jma_tile_client import JmaTileClient, JmaTileSharedState
-from app.services.jma_amedas_service import JmaAmedasService, load_station_rain_materials, new_rain_materials_cache
+from app.services.jma_amedas_service import JmaAmedasService
 from app.services.nearest_point_areas import new_cells_cache
 from tests.area_shapes import holds
 from tests.fake_http import client_for
@@ -261,133 +256,3 @@ async def test_get_nearest_observation_returns_none_when_not_yet_cached():
     result = await service.get_nearest_observation(POINT)
 
     assert result is None
-
-
-# --- 毎正時の1時間雨量の履歴（雨の材料の元） ---
-
-
-def _latest_hour(now: datetime) -> datetime:
-    """直近の完全な正時の1つ前。観測時刻は正時の50分に置き、正時の地図JSONを別に取りに行かせる。"""
-    return now.replace(minute=0, second=0, microsecond=0) - timedelta(hours=1)
-
-
-class RainMaps:
-    """正時ごとの地図JSON。東京（44132）だけが雨量計を持ち、`rain_by_back`（何時間前の正時→mm）の雨を返す。
-    `broken_by_back`（何時間前の正時→応答）の正時は、雨の代わりにその応答を返す（Noneは取れない）。"""
-
-    def __init__(self, latest_hour: datetime, rain_by_back: dict[int, float], broken_by_back: dict[int, dict | None] = {}):
-        self.latest_hour = latest_hour
-        self.rain_by_back = rain_by_back
-        self.broken_by_back = broken_by_back
-        self.requested_hours: list[int] = []
-
-    def observation_map(self, timestamp):
-        at = datetime.strptime(timestamp, "%Y%m%d%H%M%S").replace(tzinfo=JST)
-        if at.minute != 0:
-            return OBSERVATION_MAP
-        back = int((self.latest_hour - at) / timedelta(hours=1))
-        self.requested_hours.append(back)
-        if back in self.broken_by_back:
-            return self.broken_by_back[back]
-        rain = self.rain_by_back.get(back, 0.0)
-        return {**OBSERVATION_MAP, "44132": {**OBSERVATION_MAP["44132"], "precipitation1h": [rain, 0]}}
-
-
-def _rain_service(maps: RainMaps) -> JmaAmedasService:
-    latest_time = (maps.latest_hour + timedelta(minutes=50)).isoformat()
-    return _service(_upstream(latest_time=latest_time, observation_map=maps.observation_map))
-
-
-async def test_rain_history_is_backfilled_from_past_hourly_maps():
-    now = datetime.now(JST)
-    maps = RainMaps(_latest_hour(now), rain_by_back={2: 3.0, 3: 3.0})
-
-    await _rain_service(maps).refresh_all_stations()
-    materials = await load_station_rain_materials(now, new_rain_materials_cache())
-
-    assert sorted(maps.requested_hours) == list(range(RAIN_HISTORY_HOURS))
-    assert materials is not None
-    # 雨量計を持たない観測所（99999）は最寄りの候補に入らない。
-    assert len(materials.latitudes) == 1
-    assert materials.values[rain_window_material_id(3)][0] == 3.0
-    assert materials.values[HOURS_SINCE_RAIN][0] == 2.0
-
-
-async def test_rain_history_fetches_only_hours_it_does_not_have():
-    now = datetime.now(JST)
-    latest_hour = _latest_hour(now)
-    earlier = RainMaps(latest_hour - timedelta(hours=1), rain_by_back={})
-    await _rain_service(earlier).refresh_all_stations()
-
-    later = RainMaps(latest_hour, rain_by_back={0: 1.5})
-    await _rain_service(later).refresh_all_stations()
-    materials = await load_station_rain_materials(now, new_rain_materials_cache())
-
-    assert later.requested_hours == [0]
-    assert materials is not None
-    assert materials.values[rain_window_material_id(1)][0] == 1.5
-
-
-@pytest.mark.parametrize(
-    "broken",
-    [
-        None,
-        OBSERVATION_MAP,
-        {**OBSERVATION_MAP, "44132": {**OBSERVATION_MAP["44132"], "precipitation1h": [None, 1]}},
-    ],
-    ids=["not fetched", "no rain gauge reports", "every rain gauge is missing"],
-)
-async def test_an_hour_that_could_not_be_fetched_is_retried_and_leaves_its_windows_empty_meanwhile(broken):
-    """取れても1時間雨量の値が1つも無い正時を取れたとして残すと、二度と取り直さず、その正時を含む窓が全国で
-    値を持たないまま、窓から外れるまで戻らない。"""
-    now = datetime.now(JST)
-    latest_hour = _latest_hour(now)
-    failing = RainMaps(latest_hour, rain_by_back={}, broken_by_back={5: broken})
-    await _rain_service(failing).refresh_all_stations()
-    materials = await load_station_rain_materials(now, new_rain_materials_cache())
-
-    assert materials is not None
-    assert materials.values[rain_window_material_id(4)][0] == 0.0
-    assert np.isnan(materials.values[rain_window_material_id(6)][0])
-
-    retry = RainMaps(latest_hour, rain_by_back={})
-    await _rain_service(retry).refresh_all_stations()
-
-    assert retry.requested_hours == [5]
-
-
-async def test_rain_history_is_not_refetched_while_redis_is_down(redis_server):
-    """置き場が使えないたびに全本を取り直すと、10分ごとに気象庁へ全本を問い合わせ続ける。観測値の書き込みだけを
-    飛ばし、バッチは取れた観測所の数を返して終わる。"""
-    redis_server.connected = False
-    maps = RainMaps(_latest_hour(datetime.now(JST)), rain_by_back={})
-
-    assert await _rain_service(maps).refresh_all_stations() == 2
-    assert maps.requested_hours == []
-
-
-async def test_rain_materials_are_not_served_from_a_stale_history():
-    now = datetime.now(JST)
-    maps = RainMaps(_latest_hour(now), rain_by_back={})
-    await _rain_service(maps).refresh_all_stations()
-
-    cache = new_rain_materials_cache()
-
-    assert await load_station_rain_materials(now, cache) is not None
-    assert await load_station_rain_materials(maps.latest_hour + RAIN_HISTORY_MAX_AGE + timedelta(minutes=1), cache) is None
-
-
-@pytest.mark.parametrize("unreadable", ["latest_hour", "rainfall"])
-async def test_a_rain_history_stored_in_a_shape_that_cannot_be_read_serves_no_materials(fake_redis, unreadable):
-    """保存した形は過去のコードが書いたもの。読めないまま展開すると、地図とルートの生成が500で落ちる。"""
-    now = datetime.now(JST)
-    await _rain_service(RainMaps(_latest_hour(now), rain_by_back={})).refresh_all_stations()
-    (key,) = [key for key in await fake_redis.keys() if await fake_redis.type(key) == b"string"]
-    stored = json.loads(await fake_redis.get(key))
-    if unreadable == "latest_hour":
-        stored["latest_hour"] = "yesterday"
-    else:
-        stored["hours"] = {stored["latest_hour"]: {station: "大雨" for station in stored["stations"]}}
-    await fake_redis.set(key, json.dumps(stored))
-
-    assert await load_station_rain_materials(now, new_rain_materials_cache()) is None

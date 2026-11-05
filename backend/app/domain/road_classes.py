@@ -210,16 +210,6 @@ def _facts(classification: RoadClassification) -> set[str]:
     return {fact_key for c in classification.classes.values() for condition in c.conditions for fact_key in condition}
 
 
-def classification_materials(key: str, classification: RoadClassification) -> set[str]:
-    """分け方が区分を決めるのに読む材料のid: 条件の事実と、その分け方の区分の列（`class:<分け方>`）。"""
-    return {*_facts(classification), class_material_id(key)}
-
-
-def condition_facts(definitions: RoadClassDefinitions) -> set[str]:
-    """区分の条件が読む事実の材料のid。"""
-    return {fact for classification in definitions.classifications.values() for fact in _facts(classification)}
-
-
 def class_labels(classification: RoadClassification | None) -> dict[str, str]:
     """分け方の区分の鍵 → 区分の名前（分け方が無ければ空）。"""
     return {} if classification is None else {key: road_class.label for key, road_class in classification.classes.items()}
@@ -287,7 +277,3 @@ def class_material_spec(material_id: str) -> MaterialSpec | None:
     classification = current_road_classes().classifications.get(key)
     return _class_material_spec(key, classification) if classification is not None else None
 
-
-def class_material_specs() -> list[MaterialSpec]:
-    """今の区分の分け方ごとの、区分から作る材料の宣言。"""
-    return [_class_material_spec(key, c) for key, c in current_road_classes().classifications.items()]

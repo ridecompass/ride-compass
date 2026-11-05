@@ -11,19 +11,18 @@
  * 何が変わるか）だけを見る。子が値をどう描くか（書式・並び・空のときの案内）は各部品のテストが見る。道のりのグラフの塗り
  * （積む軸の並び・色）は読み上げに出ないので見ない。
  *
- * 差し替えたもの: 軸カタログと費用の軸の一覧の応答（網の層）。結果の状態は値で組む（`testing/routeOutcome.tsx`）。
+ * 差し替えたもの: 画面の設定と費用の軸の一覧の応答（網の層）。結果の状態は値で組む（`testing/routeOutcome.tsx`）。
  */
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { serveAxisCatalog } from "@/testing/backendServer";
-import { serveCostAxisCatalog } from "@/testing/costAxes";
+import { serveClientConfig, serveCostAxisCatalog } from "@/testing/backendServer";
 import { makeRouteSegment } from "@/testing/routeFixtures";
-import { CATALOG_RESPONSE, FAST, SLOW, renderOutcome, resultsOf, route, type Splice } from "@/testing/routeOutcome";
+import { FAST, SLOW, renderOutcome, resultsOf, route, type Splice } from "@/testing/routeOutcome";
 
 beforeEach(() => {
-  serveAxisCatalog(CATALOG_RESPONSE);
+  serveClientConfig();
   serveCostAxisCatalog();
 });
 

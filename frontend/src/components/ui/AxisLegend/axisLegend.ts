@@ -1,6 +1,6 @@
-// 軸ごとの寄与を色で示す帯グラフと、その下に折り返して並ぶ軸チップ。「重み配分」の設定と、ルート結果・区間詳細の
-// 内訳が同じ形を持つ——同じ軸が画面によって違う形に見えると、設定した軸と結果の軸が同じものだと読み取れない。
-// 軸の色は軸idではなくstyleで与える（軸は軸スタジオで増減する）。
+// 軸ごとの負担を色で示す帯グラフと、その下に折り返して並ぶ軸チップ。ルート結果・区間詳細の内訳が同じ形を持つ
+// ——同じ軸が画面によって違う形に見えると、同じものだと読み取れない。
+// 軸の色は軸idではなくstyleで与える（費用の軸は管理APIで増減する）。
 
 export const legendChipsClass = "m-0 flex list-none flex-wrap gap-1 p-0";
 
@@ -12,7 +12,5 @@ export const legendChipClass =
 export const legendChipBodyClass =
   "inline-flex grow items-center gap-1 whitespace-nowrap px-2 py-1 text-[length:var(--font-size-sm)] text-[var(--foreground)]";
 
-/** 帯グラフ。色ごとの長さが軸ごとの寄与（重み配分・道の評価の内訳）か負担（ルートの内訳）。 */
+/** 帯グラフ。色ごとの長さが軸ごとの負担（ルートの内訳）。 */
 export const stackBarClass = "flex h-[10px] overflow-hidden rounded-[5px] bg-[var(--color-surface-2)]";
-
-export const legendIconClass = "inline-flex flex-shrink-0 items-center";

@@ -67,7 +67,7 @@ MASTER_LOOKUP = CachePolicy(max_age_seconds=24 * 60 * 60)
 SHORT = CachePolicy(max_age_seconds=5 * 60)
 #: 数分で変わりうる警戒情報・実測値。
 VOLATILE = CachePolicy(max_age_seconds=2 * 60)
-#: 管理GUIでの変更が再デプロイなしに即座に反映される必要があるもの（軸カタログ）。
+#: 管理GUIでの変更が再デプロイなしに即座に反映される必要があるもの（画面の設定）。
 LIVE = CachePolicy(max_age_seconds=60)
 #: 進捗ポーリング・管理情報・状態確認。無指定はキャッシュ禁止と同義ではなく、中間プロキシや
 #: ブラウザのヒューリスティック判断に委ねられるため、禁止したいものは明示する。
@@ -109,7 +109,6 @@ TILE_ROUTE_POLICIES: Final[tuple[tuple[str, CachePolicy], ...]] = (
     # **開いているラスタの構成は環境変数で決まりURLに現れない**。
     # 同じURLの内容が変わりうるため`immutable`は付けられない。
     ("/api/region/landcover-tiles/", BATCH_TILE),
-    ("/api/region/way-materials/", SHORT),
     ("/api/region/lens/", SHORT),
     ("/api/region/road-classes/", SHORT),
 )
@@ -125,8 +124,8 @@ ROUTE_POLICIES: Final[tuple[tuple[str, CachePolicy], ...]] = (
     ("/api/jma-tile-index", LIVE),
     *TILE_ROUTE_POLICIES,
     # カタログ・設定
-    ("/api/axis-catalog", LIVE),
-    # 管理APIで書いた費用の軸の定義が、再デプロイなしに画面へ出るまでの遅れを軸カタログと揃える。
+    ("/api/client-config", LIVE),
+    # 管理APIで書いた費用の軸の定義が、再デプロイなしに画面へ出るまでの遅れを、区分・較正値と揃える。
     ("/api/cost-axes", LIVE),
     # 天候（URLに緯度経度を含むため地点ごとに別エントリになる）
     ("/api/weather", SHORT),
@@ -143,7 +142,7 @@ ROUTE_POLICIES: Final[tuple[tuple[str, CachePolicy], ...]] = (
     ("/api/place-area", MASTER_LOOKUP),
     # ルート生成（POSTはそもそもキャッシュされないが、進捗のGETは明示的に禁じる）
     ("/api/routes/", NO_STORE),
-    ("/api/region/axis-inspector", NO_STORE),
+    ("/api/region/road-inspector", NO_STORE),
     # 押した所を本文で送るPOSTで、同じURLの応答を使い回させない。
     ("/api/region/roads-at", NO_STORE),
     # 管理・状態確認（認可必須の情報を中間キャッシュへ残さない）

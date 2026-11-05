@@ -30,7 +30,6 @@ from tests.route_world import (
     NORTH_EAST,
     SOUTH_WEST,
     at,
-    avoid_axis_declared,
     generator_for,
     grid_network,
 )
@@ -751,12 +750,11 @@ async def test_route_generation_calls_from_python_only_the_jit_that_the_image_ba
             grid=MsmGrid(lat_min=BASE_LAT, lon_min=BASE_LON, d_lat=0.018, d_lon=0.022, n_lat=2, n_lon=2), row0=0, col0=0, rows=2, cols=2,
         ),
     )
-    with avoid_axis_declared():
-        generator = generator_for(road_network_root, grid_network(), wind)
-        departure = datetime(2026, 9, 22, 8, tzinfo=timezone(timedelta(hours=9)))
-        assert await generator.generate_loops(
-                at(CENTER), 4.0, 1.5, points=NO_POINTS, max_routes=3, start_time=departure)
-        assert await generator.generate_via_waypoints(
-            at(SOUTH_WEST), [], destination=at(NORTH_EAST), max_routes=3, start_time=departure)
+    generator = generator_for(road_network_root, grid_network(), wind)
+    departure = datetime(2026, 9, 22, 8, tzinfo=timezone(timedelta(hours=9)))
+    assert await generator.generate_loops(
+            at(CENTER), 4.0, 1.5, points=NO_POINTS, max_routes=3, start_time=departure)
+    assert await generator.generate_via_waypoints(
+        at(SOUTH_WEST), [], destination=at(NORTH_EAST), max_routes=3, start_time=departure)
 
     assert called and called <= baked

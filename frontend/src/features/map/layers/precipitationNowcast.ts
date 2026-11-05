@@ -27,7 +27,6 @@ export const PRECIPITATION_INTENSITY_LEVELS: readonly MapColorLegendBand[] = bui
   PRECIPITATION_COLOR_STOPS.map((stop) => stop.color),
   "mm/h",
   PRECIPITATION_COLOR_STOPS.map((stop) => stop.name),
-  "",
   PRECIPITATION_PAINTED_FROM_MM,
 );
 

@@ -2,13 +2,13 @@
 
 画面（設定の軸ごとの倍率・結果の代償の内訳・地図のレンズと凡例）が、軸の名前・説明・アイコン・レンズの段と、軸の帳簿（体力か
 道の負担か）を読む。プロセス内の定義（`domain/cost_axes.py: current_cost_axes`）から返すので、管理APIで書いた定義は
-再デプロイなしにここへ出る。定義がまだ表に無い間（新しい式へ切り替える前）は404。
+再デプロイなしにここへ出る。
 """
 
 import asyncio
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Query
 from fastapi.exceptions import RequestValidationError
 from pydantic import Field, TypeAdapter, ValidationError
 
@@ -19,7 +19,6 @@ from app.domain.cost_axes import (
     LensBands,
     current_cost_axes,
 )
-from app.domain.dynamic_way_values import WayValueConditionName
 from app.domain.cost_preference import STANDARD_COST_FACTOR, CostPreference, RequestedCostPreference
 from app.domain.lens_total import TOTAL_LENS_ID
 from app.domain.ledger_costs import current_ledger_parameters
@@ -27,7 +26,7 @@ from app.domain.lens_equivalents import LensEquivalents, lens_equivalents
 from app.domain.lens_values import LENS_MATERIAL_CONDITIONS, lens_way_formula
 from app.domain.road_classes import current_road_classes
 from app.domain.strict_model import StrictModel
-from app.domain.way_value_formula import WayValueFormula
+from app.domain.way_value_formula import WayValueConditionName, WayValueFormula
 
 router = APIRouter()
 
@@ -70,8 +69,6 @@ class CostAxisCatalogResponse(StrictModel):
 @router.get("/api/cost-axes", response_model=CostAxisCatalogResponse)
 async def get_cost_axis_catalog() -> CostAxisCatalogResponse:
     definitions = current_cost_axes()
-    if definitions is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="費用の軸の定義はまだありません")
     effort = [
         CostAxisCatalogEntry(axis_id=axis_id, ledger="effort",
                              **definitions.effort[axis_id].model_dump())
@@ -116,10 +113,8 @@ async def get_lens_equivalents(
 ) -> LensEquivalentsResponse:
     """地図のレンズの段の境目の秒が、利用者の値（つまみと倍率。地図のレンズと同じクエリ）で、その事実1つだけが効いた無風の
     1kmの道のどれだけの事実に当たるかの目安（体力の軸をコードの表の順、続けて道の負担の軸）。地図が塗る色と凡例の目安を同じ
-    値で揃える。費用の軸の定義が無ければ404。"""
+    値で揃える。"""
     definitions = current_cost_axes()
-    if definitions is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="費用の軸の定義はまだありません")
     # 目安は合成の道で走行の模型を解くので、イベントループの外で求める。
     return await asyncio.to_thread(
         lens_equivalents, definitions, current_ledger_parameters(preference), current_road_classes())

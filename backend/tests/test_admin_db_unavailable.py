@@ -6,7 +6,6 @@ DBに繋がらない状態は、アプリのセッション工場の依存を、
 ここで見ないもの:
 - どの例外をDB障害に数えるか → `test_database.py`
 - 認可 → `test_admin_route_authorization.py`
-- DBの失敗を空へ倒す口（材料の値の一覧の`available=false`）の倒し方 → `test_material_catalog_routes.py`
 """
 
 import pytest
@@ -16,29 +15,15 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
-from app.api import dependencies
 from app.api.admin_db_errors import ADMIN_PATH_PREFIX, install_admin_db_unavailable_handler
 from app.domain.cost_axes import EFFORT_AXES
-from app.domain.region import EDGE_UNIT_MIN_ZOOM
 from app.domain.tuning import TUNING_PARAMETERS
 from app.domain.road_classes import EMPTY_ROAD_CLASSES
 from app.infrastructure import database
 from app.main import app
-from app.services.axis_preview_service import new_sample_cache
 from tests.admin_auth import AUTH_HEADERS, admin_routes
-from tests.axis_system_fixture import axis_definition, replaced_axis_definitions
 from tests.conftest import UNREACHABLE_DATABASE_URL
-from tests.material_fixture import stored_materials
 
-NUMERIC = stored_materials("numeric")[0]
-CATEGORICAL = stored_materials("categorical")[0]
-AXIS = "/api/admin/axis-definitions"
-SHAPE = {"kind": "breakpoint_linear", "terms": [{"material": NUMERIC}], "breakpoints": [[0, 0], [10, 100]]}
-AXIS_BODY = {"axis_id": "a", "label": "軸A", "default_weight": 1.0, "shape": SHAPE}
-WAY_VALUES_BODY = {
-    "axis_id": "a", "shape": SHAPE, "z": EDGE_UNIT_MIN_ZOOM, "x": 7275, "y": 3225,
-    "bearing_deg": 0, "at": "2026-10-18T09:00:00+09:00", "speed_kmh": 20,
-}
 COST_AXES_BODY = {
     "effort": {axis_id: {"label": axis_id, "description": "", "icon_id": "i",
                          "lens": {"thresholds": [1.0], "band_labels": ["a", "b"]}} for axis_id in EFFORT_AXES},
@@ -50,28 +35,12 @@ COST_AXES_BODY = {
 # 口ごとの(パスの引数を埋めたURL, 本文, DBが落ちたときの状態コード)。母集団はアプリのルートから取るので、
 # 管理APIの口を足してここへ足し忘れるとKeyErrorで落ちる。DBを読まない口とDBの失敗を自分で空へ倒す口は200。
 ROUTE_CASES = {
-    ("GET", AXIS): (AXIS, None, 503),
-    ("POST", AXIS): (AXIS, AXIS_BODY, 503),
-    ("GET", AXIS + "/{axis_id}"): (AXIS + "/a", None, 503),
-    ("PUT", AXIS + "/{axis_id}"): (AXIS + "/a", AXIS_BODY, 503),
-    ("DELETE", AXIS + "/{axis_id}"): (AXIS + "/a", None, 503),
-    ("POST", AXIS + "/{axis_id}/unpublish"): (AXIS + "/a/unpublish", None, 503),
-    ("POST", AXIS + "/preview-distribution"): (AXIS + "/preview-distribution", {"shape": SHAPE}, 503),
-    ("POST", AXIS + "/preview-scores"): (AXIS + "/preview-scores", {"shape": SHAPE, "xs": [0.5]}, 200),
-    ("POST", AXIS + "/preview-calibration"): (AXIS + "/preview-calibration", {"definition": AXIS_BODY}, 200),
-    # タイルの材料はDBの失敗を空へ倒し、地図の配信と同じく塗る道の無いタイルとして返す。
-    ("POST", AXIS + "/preview-way-values"): (AXIS + "/preview-way-values", WAY_VALUES_BODY, 200),
     ("GET", "/api/admin/tuning"): ("/api/admin/tuning", None, 503),
     ("GET", "/api/admin/road-classes"): ("/api/admin/road-classes", None, 503),
     ("PUT", "/api/admin/road-classes"): ("/api/admin/road-classes", EMPTY_ROAD_CLASSES.model_dump(mode="json"), 503),
     ("GET", "/api/admin/cost-axes"): ("/api/admin/cost-axes", None, 503),
     ("PUT", "/api/admin/cost-axes"): ("/api/admin/cost-axes", COST_AXES_BODY, 503),
     ("PUT", "/api/admin/tuning/{param_id}"): (f"/api/admin/tuning/{TUNING_PARAMETERS[0].id}", {"value": None}, 503),
-    ("GET", "/api/admin/material-catalog/{material_id}/value-shares"): (
-        f"/api/admin/material-catalog/{CATEGORICAL}/value-shares",
-        None,
-        503,
-    ),
     ("GET", "/api/admin/material-catalog/coverage"): ("/api/admin/material-catalog/coverage", None, 503),
     ("GET", "/api/admin/derived-data/freshness"): ("/api/admin/derived-data/freshness", None, 503),
     ("GET", "/api/admin/db-status"): ("/api/admin/db-status", None, 503),
@@ -84,15 +53,10 @@ ROUTES = [(method, route.path) for route in admin_routes(app) for method in sort
 
 
 @pytest.fixture
-def database_down(override_dependency, monkeypatch):
+def database_down(monkeypatch):
     engine = create_async_engine(UNREACHABLE_DATABASE_URL, poolclass=NullPool)
     for factory in (database.get_session_factory, database.get_route_generation_session_factory):
         monkeypatch.setitem(app.dependency_overrides, factory, lambda: async_sessionmaker(engine))
-    # 分布の標本は一度読むとプロセスに持つため、読んでいない状態から始める。
-    override_dependency(dependencies.get_axis_preview_sample_cache, new_sample_cache)
-    # 軸の集合は起動時にDBから読んでプロセスに持つので、DBが落ちても軸`a`は引ける。
-    with replaced_axis_definitions({"a": axis_definition("a", material=NUMERIC)}):
-        yield
 
 
 # debug_modeの切替の口も本物で叩くため、切り替えた状態を後のテストへ残さない。

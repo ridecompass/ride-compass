@@ -8,7 +8,7 @@
 import { describe, expect, it } from "vitest";
 
 import { routeStretches } from "@/lib/routeDistance";
-import { roadClass, roadMapLayer } from "@/testing/catalogAxes";
+import { roadClass, roadMapLayer } from "@/testing/clientConfig";
 import { makeRouteSegment } from "@/testing/routeFixtures";
 
 import {
@@ -23,7 +23,7 @@ import {
   type LineLayer,
 } from "./profileLayers";
 
-// 道の線の層は軸カタログが配る（本番の層は管理DBが持つ）ので、テストが組む。
+// 道の線の層は画面の設定が配る（本番の層は管理DBが持つ）ので、テストが組む。
 const LAYERS = profileLayers([
   roadMapLayer("surface", {
     has_no_data: true,

@@ -1,20 +1,16 @@
 "use client";
 
-// 地図の小窓（点の吹き出し・道の小窓・区間の小窓）を組む部品。どの小窓も「上の帯」と塊（難易度の塊・施設の行）だけで組む
+// 地図の小窓（点の吹き出し・道の小窓・区間の小窓）を組む部品。どの小窓も「上の帯」と塊（負担の塊・施設の行）だけで組む
 // ——小窓ごとに別の組み方をすると、同じ値が小窓によって違う形に見える。
 
 import type { ReactNode } from "react";
 
-import AxisContributionBar, { hasAnyContribution } from "@/components/AxisContributionBar/AxisContributionBar";
 import { PointIconSwatch } from "@/components/PointIconSwatch/PointIconSwatch";
-import { legendChipsClass } from "@/components/ui/AxisLegend/axisLegend";
 import { Button } from "@/components/ui/Button/Button";
 import { OffRoadDistanceIcon, SelectedSpotIcon } from "@/components/ui/icons/lucideIcons";
 import { textVariants } from "@/components/ui/Text/Text";
-import type { CatalogAxis } from "@/lib/catalogAxis";
 import { cn } from "@/lib/cn";
 import type { PointGlyph } from "@/lib/mapDisplay/legendFilter";
-import { DIFFICULTY_SCALE_SUFFIX, formatDifficulty } from "@/lib/mapDisplay/valueScale";
 
 import { facilityPosition, type Facility } from "./facilityRows";
 
@@ -129,58 +125,5 @@ export function FacilityRows({
         </li>
       ))}
     </ul>
-  );
-}
-
-/** 難易度の塊: 難易度・寄与の帯・軸ごとのチップ（押すと軸の詳しく）と、同じ塊で読むチップ（風・土地被覆等）。 */
-export function DifficultyBlock({
-  difficulty,
-  note,
-  axes,
-  contributions,
-  axisColors,
-  renderDetail,
-  extraChips,
-}: {
-  /** 算出できなかったらnull（「—」）。 */
-  difficulty: number | null;
-  /** 難易度に添える短い断り。 */
-  note?: string;
-  axes: readonly CatalogAxis[];
-  contributions: Record<string, number>;
-  axisColors: Record<string, string>;
-  renderDetail: (axis: CatalogAxis) => ReactNode | null;
-  /** 軸のチップの後ろに並べるチップ（`li`）。 */
-  extraChips?: ReactNode;
-}) {
-  const contributed = hasAnyContribution(axes, contributions);
-  return (
-    <section aria-label="難易度" className="flex flex-col gap-1 tabular-nums">
-      <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
-        <span className="inline-flex items-baseline gap-0.5">
-          <span className={textVariants({ variant: "hint" })}>難易度</span>
-          <span className="font-semibold">{difficulty === null ? "—" : formatDifficulty(difficulty)}</span>
-          <span className={textVariants({ variant: "hint" })}>{DIFFICULTY_SCALE_SUFFIX}</span>
-        </span>
-        {/* 帯は寄与が無いと何も描かないので、何も出ない理由を文で言う（壊れたのと見分けがつかない）。 */}
-        {!contributed && (
-          <span className={hintClass}>
-            {difficulty === null ? "値を出せる評価軸がありません" : "どの評価軸も0（易しい）"}
-          </span>
-        )}
-        {note !== undefined && <span className={hintClass}>{note}</span>}
-      </div>
-      {contributed ? (
-        <AxisContributionBar
-          axes={axes}
-          contributions={contributions}
-          axisColors={axisColors}
-          renderDetail={renderDetail}
-          extraChips={extraChips}
-        />
-      ) : (
-        extraChips !== undefined && <ul className={legendChipsClass}>{extraChips}</ul>
-      )}
-    </section>
   );
 }

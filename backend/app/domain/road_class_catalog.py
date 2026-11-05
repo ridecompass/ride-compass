@@ -1,11 +1,10 @@
-"""道の区分の全体を、公開の軸カタログで配る形（解決した見せ方）へ組む。
+"""道の区分の全体を、画面の設定で配る形（解決した見せ方）へ組む。
 
 配るのは公開した分け方だけで、管理用の欄（公開か・条件）は配らない
 （条件は管理の経路でだけ見せ、区分の説明は意味の文だけにする）。色・層の説明のうち区分から組む部分は
 ここで決め、受け取る側は組み直さない。並びは`sort_order`の順で、振り分けには使わない。
 """
 
-from typing import Literal
 
 from app.domain.display_palette import nominal_colors, ordered_colors, ordered_ends_phrase
 from app.domain.road_avoidance import AVOIDANCE_LEVEL_LABELS, AVOIDANCE_LEVELS, AvoidanceLevel, avoidance_rows
@@ -27,14 +26,6 @@ class RoadClassView(StrictModel):
     color_on_dark: str
 
 
-class LayerTextSlotView(StrictModel):
-    """説明の文の差し込み口（`domain/map_display.py: LayerTextSlot`）。"""
-
-    name: Literal["axes"]
-    before: str
-    after: str
-
-
 class RoadMapLayerView(StrictModel):
     """地図の道の線の層1つ。`id`は描く分け方。層に共通の宣言（情報源・既定の表示）は`domain/map_display.py: AXIS_LAYER_SPECS`の`road`。"""
 
@@ -43,7 +34,7 @@ class RoadMapLayerView(StrictModel):
     category: str
     icon: str
     description: list[str]
-    panel_hint: list[str | LayerTextSlotView]
+    panel_hint: str
     hide_missing_rows: bool
     #: 区分の外の道を「データなし」（`domain/road_classes.py: NO_DATA_VALUE`）と「該当なし」に分けるか。
     has_no_data: bool
@@ -86,9 +77,6 @@ class RoadClassCatalog(StrictModel):
     avoidance: RoadAvoidanceView
 
 
-_AXES_SLOT = LayerTextSlotView(name="axes", before="評価軸", after="の材料の1つです。")
-
-
 def road_class_catalog(definitions: RoadClassDefinitions) -> RoadClassCatalog:
     layers = []
     for key, layer in published_map_layers(definitions):
@@ -109,7 +97,7 @@ def road_class_catalog(definitions: RoadClassDefinitions) -> RoadClassCatalog:
                 category=layer.group_key,
                 icon=layer.icon_key,
                 description=[f"{layer.summary}[{part}]" if part else layer.summary],
-                panel_hint=[layer.panel_hint, _AXES_SLOT],
+                panel_hint=layer.panel_hint,
                 hide_missing_rows=layer.hides_unclassified,
                 has_no_data=layer.no_data_fact_key is not None,
                 classes=[

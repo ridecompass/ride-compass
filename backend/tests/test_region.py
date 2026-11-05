@@ -1,6 +1,6 @@
 """`domain/region.py`——緯度経度の矩形と、XYZタイル（Web Mercator）との行き来。
 
-入口は`BoundingBox`・`bbox_covering_points`・`parse_bbox`・`tile_bounds_lonlat`・`tile_bounds_3857`・
+入口は`BoundingBox`・`bbox_covering_points`・`tile_bounds_lonlat`・`tile_bounds_3857`・
 `tiles_covering_bbox`。期待値はWeb Mercatorの公開の定義（WGS84の長半径6378137m・緯度の限界±85.0511度）と、
 地球を半径6371kmの球とみなした距離から書き、実装の定数を掛け戻さない。
 
@@ -21,7 +21,6 @@ from pydantic import ValidationError
 from app.domain.region import (
     BoundingBox,
     bbox_covering_points,
-    parse_bbox,
     tile_bounds_3857,
     tile_bounds_lonlat,
     tiles_covering_bbox,
@@ -66,18 +65,6 @@ def test_the_margin_extends_every_side_by_about_that_many_kilometers_converting_
     assert (covering.max_latitude - 40.0) * KM_PER_DEGREE_ON_A_6371KM_SPHERE == pytest.approx(10.0, rel=0.01)
     assert (139.0 - covering.min_longitude) * km_per_degree_longitude == pytest.approx(10.0, rel=0.01)
     assert (covering.max_longitude - 140.0) * km_per_degree_longitude == pytest.approx(10.0, rel=0.01)
-
-
-# --- parse_bbox ---
-
-
-def test_parse_bbox_reads_min_lat_min_lon_max_lat_max_lon_in_that_order():
-    assert parse_bbox("35.0, 139.0,35.5,139.5") == box(35.0, 139.0, 35.5, 139.5)
-
-
-def test_parse_bbox_needs_exactly_four_values():
-    with pytest.raises(ValueError, match="4値が必要です"):
-        parse_bbox("35.0,139.0,35.5")
 
 
 # --- tile_bounds_lonlat・tile_bounds_3857 ---

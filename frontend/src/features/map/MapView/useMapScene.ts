@@ -2,13 +2,13 @@
 
 import { useMemo } from "react";
 
-import type { MapAxisCatalog } from "@/features/map/mapAxisCatalog";
+import type { MapCatalog } from "@/features/map/mapCatalog";
 import { sceneInputsFrom } from "@/features/map/scene/applyToMap";
 import { buildMapScene, type SceneInputs } from "@/features/map/scene/buildScene";
 import { interactiveSceneLayerIds } from "@/features/map/scene/mapScene";
 
 type MapSceneSources = Omit<Parameters<typeof sceneInputsFrom>[0], "catalog" | "tileVersions"> & {
-  readonly catalog: MapAxisCatalog;
+  readonly catalog: MapCatalog;
 };
 
 /** 地図に載るもの全部の入力から scene を組む。**ここが scene の唯一の組み立て口**。 */

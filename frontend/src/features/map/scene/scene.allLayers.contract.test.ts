@@ -6,7 +6,7 @@ import { latest, validateStyleMin } from "@maplibre/maplibre-gl-style-spec";
 import { describe, expect, it } from "vitest";
 
 import { createRecordingMap } from "@/testing/mapTrace/recordingMap";
-import { CATALOG, DEDICATED_AXES, rebuild, ROAD_LAYERS } from "@/testing/sceneContract";
+import { CATALOG, LENSES, rebuild, ROAD_LAYERS } from "@/testing/sceneContract";
 import { AREA_SOURCE_ID } from "@/features/map/scene/groups/areaRasters";
 import { POINT_TILE_SOURCES } from "@/features/map/scene/groups/points";
 import { POINT_LAYERS } from "@/lib/mapDisplay/pointLayers";
@@ -47,7 +47,7 @@ describe("レイヤーを横断する要求", () => {
     for (const layer of POINT_LAYERS) visibility[layer.attr_id] = true;
     for (const role of Object.keys(AREA_SOURCE_ID)) visibility[role] = true;
     visibility.route = true;
-    const mode = { id: "difficulty", label: "難易度", colorExpression: ["literal", "#16a34a"], legend: [] };
+    const mode = { id: "unselected", label: "総合の負担", colorExpression: ["literal", "#16a34a"], legend: [] };
     const line = {
       type: "LineString",
       coordinates: [
@@ -66,19 +66,17 @@ describe("レイヤーを横断する要求", () => {
     const firstKeyHidden = (axes: readonly { axisId: string; entries: readonly { key: string }[] }[]) =>
       Object.fromEntries(axes.map((axis) => [axis.axisId, axis.entries.slice(0, 1).map((entry) => entry.key)]));
     const firstBandAndNoData = (bands: readonly { key: string }[]) => [bands[0].key, LEGEND_NO_DATA_KEY];
-    // 評価軸は一度に1本しか塗らないが、どの軸のレイヤーも常に宣言され、塗るかは表示だけが変わる。
+    // レンズは一度に1つしか塗らないが、どのレンズのレイヤーも常に宣言され、塗るかは表示だけが変わる。
     return sceneState({
       catalog: { ...CATALOG, routeStyleModes: [mode] as never },
       look: {
         layerVisibility: visibility,
-        paintedAxisId: DEDICATED_AXES[0].axisId,
+        paintedLensId: LENSES[0].lensId,
         lens: "difficulty",
         hiddenLegendKeys: {
           ...firstKeyHidden(roadLegendAxes(ROAD_LAYERS)),
           ...firstKeyHidden(pointLegendAxes()),
-          ...Object.fromEntries(
-            DEDICATED_AXES.map((axis) => [axis.axisId, firstBandAndNoData(valueBands(axis.display))]),
-          ),
+          ...Object.fromEntries(LENSES.map((lens) => [lens.lensId, firstBandAndNoData(valueBands(lens.display))])),
         },
         dynamicWeather: everyWeatherGroupState() as never,
       },

@@ -8,13 +8,13 @@
  * - 評価の中身（送る入力・同じ組み合わせを覚える） → `useSpliceSession.preview.test.ts`
  * - 作った経路を結果へ足す・既存の候補を選ぶ → `useRouteResults.test.ts`・`app/page.splice.test.tsx`
  *
- * 差し替えたもの: 評価（生成のジョブ）と軸カタログの応答（網の層。`testing/spliceSession.ts`）。評価はジョブを作り
+ * 差し替えたもの: 評価（生成のジョブ）と画面の設定の応答（網の層。`testing/spliceSession.ts`）。評価はジョブを作り
  * backendの回数制限に数えられるので、出した要求の数を確かめる。
  */
 import { act } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { serveAxisCatalog } from "@/testing/backendServer";
+import { serveClientConfig } from "@/testing/backendServer";
 import {
   BASE,
   BASIS,
@@ -35,7 +35,7 @@ let evaluations: ReturnType<typeof serveSpliceEvaluations>;
 
 beforeEach(() => {
   evaluations = serveSpliceEvaluations();
-  serveAxisCatalog(SPLICE_CATALOG);
+  serveClientConfig(SPLICE_CATALOG);
 });
 
 describe("作成", () => {

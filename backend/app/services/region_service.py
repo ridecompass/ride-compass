@@ -1,15 +1,10 @@
-import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from datetime import datetime
 from functools import partial
 
-from app.domain.axis_definitions import copy_axis_definitions, published_axis_order
-from app.domain.axis_inspector import AxisInspectorResult, inspector_values
-from app.domain.dynamic_way_values import MissingConditions, WayValueQuery
-from app.domain.landcover import LandcoverPercentages
 from app.domain.cost_preference import CostPreference
-from app.domain.lens_values import LensInspection
-from app.domain.route_preference import RoutePreference
+from app.domain.lens_values import RoadInspection
 from app.domain.region import ROADS_AT_LIMIT, BoundingBox, RoadAt, tile_bounds_lonlat
 from app.domain.registry import TileKind
 from app.domain.tuning import REBUILT_CLIENT_TUNING_IDS
@@ -20,7 +15,6 @@ from app.infrastructure.road_graph_repository import RoadGraphRepository
 from app.infrastructure.vector_tile import ROAD_SURFACE_LAYER_NAME, encode_empty_tile
 from app.infrastructure.media_types import MVT_CONTENT_TYPE
 from app.infrastructure.region_tile_cache import TileResponse, serve_region_tile
-from app.services.dedicated_way_values import FeatureMaterialSource, MaterialServiceBuilder, tile_axis_values
 from app.services.lens_service import LensService
 from app.services.tile_version_service import (
     TILE_SHAPES,
@@ -34,21 +28,9 @@ _TileReader = Callable[[int, int, int, BoundingBox], Awaitable[bytes | None]]
 
 
 @dataclass(frozen=True)
-class _InspectedFeature:
-    """区間インスペクタが評価するフィーチャー1つ。"""
-
-    key: str
-    #: そのフィーチャーを焼くタイル`(z, x, y)`。地図の配信がこのタイルで塗る値を、そのまま評価に使う。
-    tile: tuple[int, int, int]
-    landcover: LandcoverPercentages | None
-
-
-@dataclass(frozen=True)
 class _InspectedRoad:
     highway: str
     tags: dict[str, str]
-    #: 押したフィーチャー（その倍率で地図が塗る単位）。
-    feature: _InspectedFeature
 
 
 class RegionService:
@@ -140,28 +122,26 @@ class RegionService:
             z=z, x=x, y=y,
         )
 
-    async def inspected_road(self, osm_way_id: int, feature_key: str, z: int, x: int, y: int) -> _InspectedRoad | None:
-        """区間インスペクタが評価する、押したフィーチャー（タイル`(z, x, y)`が焼いた`feature_key`）と、道の一次属性。
+    async def inspected_road(self, osm_way_id: int) -> _InspectedRoad | None:
+        """道の窓が出す、押した道の一次属性。
 
         引き直しの鍵はタイルへ焼き込み済みのosm_way_idで、クリック地点の緯度経度から道を空間マッチで選ばない——交差点
         付近など複数の道路が近接する場所で、実際にクリックされたフィーチャーとは別の道路を拾う。
 
         該当way不在・DB例外はいずれもNoneへ倒す（タイル配信と同じグレースフルデグレード方針）。
         """
-        with log_external_call("region:axis-inspector", osm_way_id=osm_way_id) as fields:
+        with log_external_call("region:road-inspector", osm_way_id=osm_way_id) as fields:
             try:
                 way_tags_result = await self._repository.get_way_tags_by_osm_way_id(osm_way_id)
                 if way_tags_result is None:
                     fields["lookup"] = "not_found"
                     return None
-                feature = _InspectedFeature(feature_key, (z, x, y),
-                                            await self._repository.get_feature_landcover(osm_way_id, feature_key))
             except DB_UNAVAILABLE_ERRORS as exc:
                 mark_failed(fields, exc)
                 return None
             fields["lookup"] = "ok"
             highway, tags = way_tags_result
-            return _InspectedRoad(highway, tags, feature)
+            return _InspectedRoad(highway, tags)
 
     async def roads_at(self, lon: float, lat: float, z: int, radius_m: float) -> list[RoadAt]:
         """押した所に近い道（近い順、最大`ROADS_AT_LIMIT`本）。道のタイルを読まずに道を押せるようにする。
@@ -224,63 +204,24 @@ class RegionService:
             return area
 
 
-class AxisInspectorService:
-    """区間インスペクタ。押したフィーチャー（その倍率で地図が塗る区間か道1本）の公開軸の得点を、地図の配信がそれを塗る
-    タイルの値（`tile_axis_values`）から出す——地図の色と内訳の数字が、同じ評価の同じ値になる。"""
+class RoadInspectorService:
+    """道の窓。押した道の一次属性と、押したフィーチャーのレンズの値を、地図のレンズと同じ口
+    （`services/lens_service.py: LensService.inspect`）から出す——地図の色と道の窓の数字が同じ値になる。"""
 
-    def __init__(
-        self,
-        region_service: RegionService,
-        feature_materials: FeatureMaterialSource,
-        build_service: MaterialServiceBuilder,
-        lens: LensService,
-    ):
+    def __init__(self, region_service: RegionService, lens: LensService):
         self._region_service = region_service
-        self._feature_materials = feature_materials
-        self._build_service = build_service
         self._lens = lens
 
     async def inspect(
-        self,
-        osm_way_id: int,
-        feature_key: str,
-        z: int,
-        x: int,
-        y: int,
-        query: WayValueQuery,
-        preference: RoutePreference | None,
-        cost_preference: CostPreference,
-    ) -> AxisInspectorResult | None:
-        """`preference`は合成に使う重み。利用者がいま設定している重みを渡す——ルート生成と同じ重みで見せないと、
-        重みを0にした軸まで効いて見える。省略すると既定の重み。
-
-        `query`の条件が欠けて値の出ない軸は、評価できない軸になる（地図の配信なら欠けを断る）。費用の軸のレンズの値は、
-        地図のレンズと同じ口（`services/lens_service.py: LensService.inspect`）から出し、走行方位か想定速度が無ければ出さない。
-        """
-        road = await self._region_service.inspected_road(osm_way_id, feature_key, z, x, y)
+        self, osm_way_id: int, feature_key: str, tile: tuple[int, int, int], bearing_deg: float, at: datetime | None,
+        speed_kmh: float, cost_preference: CostPreference,
+    ) -> RoadInspection | None:
+        """押した道（osm_way_id）か、タイル`tile`（押したフィーチャー`feature_key`を焼いた`(z, x, y)`）にそのフィーチャーが
+        見つからなければNone。"""
+        road = await self._region_service.inspected_road(osm_way_id)
         if road is None:
             return None
-        definitions = copy_axis_definitions()
-        published = published_axis_order(definitions)
-        weights = preference or RoutePreference()
-
-        feature = road.feature
-
-        async def lens_values() -> LensInspection | None:
-            if query.speed_kmh is None or query.bearing_deg is None:
-                return None
-            return await self._lens.inspect(feature.key, *feature.tile, query.bearing_deg, query.at, query.speed_kmh,
-                                            cost_preference)
-
-        # レンズはDBを読まないので、軸の得点（DBのセッションを使う）と並べて求める。
-        painted, lens = await asyncio.gather(
-            tile_axis_values(
-                published, definitions, self._feature_materials, self._build_service, *feature.tile, query,
-                feature_key=feature.key, as_difficulty=True,
-            ),
-            lens_values(),
-        )
-        scores = {axis_id: None if isinstance(by_key := painted[axis_id], MissingConditions) else by_key.get(feature.key)
-                  for axis_id in published}
-        return AxisInspectorResult(
-            highway=road.highway, tags=road.tags, values=inspector_values(scores, feature.landcover, weights), lens=lens)
+        lens = await self._lens.inspect(feature_key, *tile, bearing_deg, at, speed_kmh, cost_preference)
+        if lens is None:
+            return None
+        return RoadInspection(highway=road.highway, tags=road.tags, lens=lens)

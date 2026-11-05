@@ -5,8 +5,6 @@
 objectの配列）ごとに確かめる——同じ値には形によらず同じ得点になる。
 
 ここで見ないもの:
-- 材料の線形結合・前処理・得点の丸め・0次条件 → `test_axis_definitions.py`
-- 分類の材料の列（`domain/attributes.py: CategoricalColumn`）はその列の引き方へそのまま渡す → `test_axis_definitions.py`
 """
 
 import bisect

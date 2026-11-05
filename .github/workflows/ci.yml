@@ -293,7 +293,7 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       # 差分が出た場合は、backendの宣言を変えたのに backend/scripts/export_openapi.py →
       # cd frontend && npm run generate:api の実行とコミットが漏れている。**生成物はすべてコードの宣言から決まり、DBを読まない**
-      # ——軸定義はDBが正本で、実行時の GET /api/axis-catalog が配る。
+      # ——道の区分・費用の軸の定義はDBが正本で、実行時の GET /api/client-config・GET /api/cost-axes が配る。
       - run: python scripts/export_openapi.py
       - run: npm ci
         working-directory: frontend
@@ -469,7 +469,7 @@ jobs:
       - if: failure()
         run: docker logs frontend-check
   # backendの像を本番と同じDockerfile・同じaarch64で作り、アプリを読み込めるかを見る（deploy-backend.ymlがコンテナを
-  # 入れ替える前に見るのと同じ確かめを、マージの前に置く）。サーバーの起動はDBの軸定義を読むので、ここでは起こさない。
+  # 入れ替える前に見るのと同じ確かめを、マージの前に置く）。サーバーの起動はDBの道の区分・費用の軸の定義を読むので、ここでは起こさない。
   backend-image:
     needs: changes
     if: fromJSON(needs.changes.outputs.run)['backend-image']

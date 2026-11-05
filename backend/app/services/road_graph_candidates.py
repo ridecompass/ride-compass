@@ -1,11 +1,11 @@
 """探索が選んだ経路（`TracedLoop`）を、応答の候補（`EvaluatedRoute`）へ組み立てる。
 
-- **区間表示は探索と同じコスト配列・スコア行列から引く。** 二重に計算しない。
+- **区間表示は探索と同じコスト配列・材料の表から引く。** 二重に計算しない。
 - **標高・風は探索フェーズで読んだ材料の中にある。** 経路確定後に外部へ取りに行かない。
 """
 
 import asyncio
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from typing import TypeVar, cast
@@ -14,10 +14,7 @@ import numpy as np
 
 from app.domain.attributes import ElevationAttribute
 from app.domain.cost_axes import EFFORT_AXES, HEADWIND_FACT_LABEL, STOPS_FACT_LABEL, EffortItem
-from app.domain.evaluation import displayed_material_ids
 from app.domain.leg_costs import LegValues
-from app.domain.gradient import GRADIENT_VALUE_DECIMALS
-from app.domain.material_catalog import GRADIENT_PERCENT
 from app.domain.geo import (
     compass_label,
     length_weighted_mean,
@@ -85,10 +82,9 @@ async def evaluate_routes(
         [hydrated[topology[index].edge_id] for index in t.data] for t in traced
     ]
     add_elapsed_ms(context.evaluate_steps_ms, "hydrate", hydrate_started)
-    active_material_ids = displayed_material_ids(context.composer.weights, context.composer.axis_definitions)
     return await asyncio.to_thread(
         lambda: [
-            _build_best_candidate(context, t, edges_in_path, start_time, active_material_ids)
+            _build_best_candidate(context, t, edges_in_path, start_time)
             for t, edges_in_path in zip(traced, edges_by_candidate)
         ]
     )
@@ -96,9 +92,9 @@ async def evaluate_routes(
 
 @dataclass(frozen=True, slots=True)
 class _RowRead:
-    """経路の区間のうち、同じ値の組から読む区間。時刻で変わる値（難易度・軸・材料）は、探索がその区間に使ったビンの時刻で
+    """経路の区間のうち、同じ値の組から読む区間。時刻で変わる値（代償の内訳・向かい風）は、探索がその区間に使ったビンの時刻で
     経路上の行だけを合成し直した値（`domain/leg_costs.py: LegCostComposer.values_at_rows`、`indices`と同じ並び）。時刻で
-    変わらない値（密度の軸の横軸・生値・分類の材料）は合成器の列を`rows`で読む。"""
+    変わらない値（事実の量・分類の材料）は合成器の列を`rows`で読む。"""
 
     values: LegValues
     # 経路の中の区間の添字と、同じ並びの切り出した区間の順の行。
@@ -132,13 +128,6 @@ def _per_segment(reads: list[_RowRead], count: int, values_of: Callable[[_RowRea
             placed[index] = value
     assert all(value is not None for value in placed), "どの値の組にも入らない区間がある"
     return cast(list[_T], placed)
-
-
-def _present_rows(columns: Mapping[str, list], count: int) -> list[dict]:
-    """鍵→`count`区間ぶんの値の列から、区間ごとの、値のある鍵だけの辞書（NaN・Noneは値が無い。NaNは自分と等しくない）。"""
-    keys = list(columns)
-    rows = zip(*columns.values()) if keys else [()] * count
-    return [{key: value for key, value in zip(keys, row) if value is not None and value == value} for row in rows]
 
 
 @dataclass(frozen=True, slots=True)
@@ -203,7 +192,6 @@ def _build_best_candidate(
     traced: TracedLoop,
     edges_in_path: list[LeanEdge],
     start_time: datetime,
-    active_material_ids: set[str],
 ) -> EvaluatedRoute:
     """1候補ぶんの周回を組み立てる。
 
@@ -230,7 +218,7 @@ def _build_best_candidate(
             chosen = reverse
     orientation = _orientation(context, chosen)
     add_elapsed_ms(context.evaluate_steps_ms, "orient", orient_started)
-    return _build_candidate(context, traced, orientation, elevation_by_edge, start_time, active_material_ids)
+    return _build_candidate(context, traced, orientation, elevation_by_edge, start_time)
 
 def _elevation_by_edge(
     context: "RoadGraphContext", edges_in_path: list[LeanEdge], path: list[int]
@@ -253,7 +241,6 @@ def _build_candidate(
     orientation: _Orientation,
     elevation_by_edge: dict[str, ElevationAttribute],
     start_time: datetime,
-    active_material_ids: set[str],
 ) -> EvaluatedRoute:
     # distance_km・bearingは同じ物理経路なので順方向の`traced`のものをそのまま使う。
     edges_in_path = orientation.edges
@@ -261,7 +248,7 @@ def _build_candidate(
     segments_started = start_timer()
     geometry, edge_point_offsets = concat_edge_geometries(edges_in_path)
     along_km = along_route_km(edge.distance_m / 1000 for edge in edges_in_path)
-    segments = _build_segment_details(orientation, along_km, elevation_by_edge, context, start_time, active_material_ids)
+    segments = _build_segment_details(orientation, along_km, elevation_by_edge, context, start_time)
     elevation_gain_m = route_elevation_gain(edges_in_path, elevation_by_edge)
     turns = _route_turns(context.turn_structure, orientation.entries, edges_in_path, along_km)
     add_elapsed_ms(context.evaluate_steps_ms, "segments", segments_started)
@@ -305,24 +292,12 @@ def _build_segment_details(
     elevation_by_edge: dict,
     context: RoadGraphContext,
     start_time: datetime,
-    active_material_ids: set[str],
 ) -> list[RouteSegmentDetail]:
     """区間ごとの表示値（ビンへ畳む前の、Edge単位の区間）。
 
-    材料値と代償の秒は同じ値の組（`_Orientation.reads`）から読む。区間は検証せずに組み、検証はビン
+    代償の秒は値の組（`_Orientation.reads`）から読む。区間は検証せずに組み、検証はビン
     （`domain/route.py: aggregate_segments_into_bins`）でだけ行う。到達予想時刻は経路を探索と同じ規則でたどった時刻（`passages`）。
     """
-    count = len(orientation.edges)
-
-    def materials_of(read: _RowRead) -> list[dict[str, float]]:
-        columns = {
-            material_id: array.astype(float).tolist()
-            for material_id in active_material_ids
-            if (array := read.values.material_arrays.get(material_id)) is not None
-        }
-        return _present_rows(columns, len(read.indices))
-
-    material_values = _per_segment(orientation.reads, count, materials_of)
     penalties = _segment_penalties(orientation, context)
 
     segments = []
@@ -330,13 +305,6 @@ def _build_segment_details(
     for index, (edge, row) in enumerate(zip(orientation.edges, orientation.rows)):
         rounded_km = orientation.distances_km[index]
         elevation_attr = elevation_by_edge.get(edge.edge_id)
-
-        gradient_percent = elevation_attr.average_grade if elevation_attr else None
-        # 勾配は地図の配信と同じ桁へ丸めた値で、材料の列の値を上書きする。
-        if GRADIENT_PERCENT in active_material_ids and gradient_percent is not None:
-            material_values[index] = material_values[index] | {
-                GRADIENT_PERCENT: round(gradient_percent, GRADIENT_VALUE_DECIMALS)
-            }
 
         arrival_time = start_time + timedelta(seconds=orientation.passages[index].elapsed_seconds)
 
@@ -377,7 +345,6 @@ def _build_segment_details(
                 ],
                 sustained_gradient_percent=steepest_signed_percent(elevation_attr),
                 estimated_arrival_time=arrival_time.isoformat(),
-                material_values=material_values[index],
                 penalty=penalties[index],
                 road_classes={
                     layer: [RoadClassStretch.model_construct(distance_km=rounded_km, value=value)]
@@ -389,21 +356,18 @@ def _build_segment_details(
     return segments
 
 
-def _segment_penalties(orientation: _Orientation, context: RoadGraphContext) -> list[PenaltyBreakdown | None]:
-    """区間ごとの代償の秒の内訳（費目の帳簿の式で組んでいなければNone）。区間の代償（`LegValues.penalty_by_axis`）に、
+def _segment_penalties(orientation: _Orientation, context: RoadGraphContext) -> list[PenaltyBreakdown]:
+    """区間ごとの代償の秒の内訳。区間の代償（`LegValues.penalty_by_axis`）に、
     区間へ入る所で曲がった漕ぎ出しの代償（`LegCostComposer.turn_kickoff_penalty`）を、その費目の軸へ足す。"""
-    kickoff = context.composer.turn_kickoff_penalty
-    if kickoff is None:
-        return [None] * len(orientation.edges)
-    kickoff_axis, kickoff_seconds = kickoff
+    kickoff_axis, kickoff_seconds = context.composer.turn_kickoff_penalty
     # 区間iへ入る曲がる所は、遷移の並び（区間の数−1個）のi−1番目。
     entering = [0.0, *orientation.turn_kickoffs]
 
-    def of(read: _RowRead) -> list[PenaltyBreakdown | None]:
+    def of(read: _RowRead) -> list[PenaltyBreakdown]:
         values = read.values
         axis_lists = {axis_id: seconds.tolist() for axis_id, seconds in values.penalty_by_axis.items()}
-        avoidance = [] if values.avoidance_seconds is None else values.avoidance_seconds.tolist()
-        breakdowns: list[PenaltyBreakdown | None] = []
+        avoidance = values.avoidance_seconds.tolist()
+        breakdowns: list[PenaltyBreakdown] = []
         for position, index in enumerate(read.indices):
             axis_seconds = {axis_id: seconds[position] for axis_id, seconds in axis_lists.items()}
             axis_seconds[kickoff_axis] = axis_seconds.get(kickoff_axis, 0.0) + entering[index] * kickoff_seconds
@@ -445,7 +409,7 @@ def _route_facts(orientation: _Orientation, context: RoadGraphContext, elevation
         axis_id: AxisFact(label=_EFFORT_FACTS[item][0], value=values[item], unit=_EFFORT_FACTS[item][1])
         for axis_id, item in EFFORT_AXES.items()
     }
-    burden_axes = {} if context.cost_axes is None else context.cost_axes.burden
+    burden_axes = context.cost_axes.burden
     for axis_id, burdened in facts.burdened.items():
         axes[axis_id] = AxisFact(label=f"{burden_axes[axis_id].label}のある道",
                                  value=round(float(distance_km[burdened].sum()), DISTANCE_KM_DECIMALS), unit="km")

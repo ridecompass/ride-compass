@@ -18,7 +18,7 @@
   `test_route_generation_behavior.py`が通す。
 - 標高属性の逆向き（`ElevationAttribute.reversed_as`）→ `test_attributes.py`。
 - レグごとのコスト配列の合成（`domain/leg_costs.py`）→ `test_leg_costs.py`。
-- 探索カーネル（`domain/routing.py`）・評価軸（`domain/evaluation.py`）・走行モデル
+- 探索カーネル（`domain/routing.py`）・費用の合成（`domain/leg_costs.py`）・走行モデル
   （`domain/cycling_speed.py`）・風（`domain/wind.py`）・0次フィルタ（`domain/hard_filters.py`）
   → それぞれの持ち主のテストが持つ。
 
@@ -35,6 +35,7 @@ import pytest
 from app.domain.attributes import ElevationAttribute
 from app.domain.graph import LeanEdge
 from app.domain.route import (
+    PenaltyBreakdown,
     EvaluatedRoute,
     RouteFacts,
     concat_edge_geometries,
@@ -101,7 +102,7 @@ def draft(distance_km, duration_seconds, cost_seconds):
     return EvaluatedRoute(
         direction_label="", distance_km=distance_km, geometry={"type": "LineString", "coordinates": []},
         elevation_gain_m=None, segments=[], estimated_duration_seconds=duration_seconds, cost_seconds=cost_seconds,
-        penalty=None,
+        penalty=PenaltyBreakdown(axis_seconds={}, avoidance_seconds=0.0),
         facts=RouteFacts(elevation_unknown_km=0.0, axes={}),
         wind_unavailable=False, missing_travel_data_share=None,
         edge_ids=[], edge_point_offsets=[], node_ids=[], turns=[], waypoint_distances_km=[],
@@ -216,7 +217,7 @@ def time_binned_leg(travel_bins, bin_seconds):
     return LegCostArrays(
         cost_lazy=travel_bins[0], travel_seconds_lazy=travel_bins[0],
         cost_bins_lazy=travel_bins, travel_bins_lazy=travel_bins, bin_seconds=bin_seconds,
-        bin_times=(), missing_axis_edges=0, missing_axis_distance_m=0.0,
+        bin_times=(),
     )
 
 

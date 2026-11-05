@@ -26,8 +26,7 @@ from app.domain.attributes import (
 )
 from app.domain.elevation_profile import ElevationProfiles, GradeDistribution
 from app.domain.geo import LatLonPoint
-from app.domain.rain import NearestRainStations
-from app.domain.material_catalog import GRADIENT_PERCENT, materials_of_source
+from app.domain.material_catalog import GRADIENT_PERCENT
 from app.domain.road_classes import RoadClassDefinitions, class_columns, layer_columns
 
 
@@ -144,17 +143,13 @@ class RoadNetwork:
             means[material_id] = float((values[known] * distance).sum()) / total if total > 0 else np.nan
         return means
 
-    @cached_property
-    def nearest_rain_stations(self) -> NearestRainStations:
-        """区間の中点ごとの最寄りの雨量計（引かれた区間の分だけ求めて持つ）。道路網と同じ寿命で持つ。"""
-        return NearestRainStations(self.mid_lat, self.mid_lon)
 
 
 @dataclass(frozen=True, eq=False)
 class RoadSlice:
     """範囲に掛かる区間だけを取り出したもの（1回の生成が使う単位）。
 
-    区間は全体の行番号の昇順で持ち、材料・スコア行列の行もこの順に揃える。ノードは使うものだけを
+    区間は全体の行番号の昇順で持ち、探索の材料の表の行もこの順に揃える。ノードは使うものだけを
     全体の行番号の昇順に並べ直し、その位置（切り出しの中のノード番号）で区間の両端を持つ。
     """
 
@@ -269,17 +264,12 @@ class _SliceMaterials(Mapping[str, MaterialColumn]):
     黙って値の無い列になる。数値と分類の材料は、それぞれ区間の行を1度だけまとめて引き、列ごとに値が連続するよう転置して
     持ち、読まれた列はその行のビューで返す（道路網の材料は区間×列の行列で、生成が読むのはそのほとんどの列のため）。
 
-    観測の材料は`observed`の列を返す。道路網にも観測にも無い材料はKeyError（値の無い列で埋めるのは読む側、
-    `domain/evaluation.py: build_static_edge_score_matrix`）。
+    道路網に無い材料はKeyError（値の無い列で埋めるのは読む側、`domain/search_materials.py: build_search_materials`）。
     """
 
-    def __init__(self, road: RoadSlice, observed: Mapping[str, np.ndarray]) -> None:
-        if unexpected := set(observed) - materials_of_source("observation"):
-            # DBの材料の列を観測で上書きすると、地図（値式）とルートで同じ材料の値が食い違う。
-            raise ValueError(f"出どころが観測でない材料を観測の列として受けました: {sorted(unexpected)}")
+    def __init__(self, road: RoadSlice) -> None:
         network = road.network
         self._road = road
-        self._observed = observed
         self._numeric = {material_id: column for column, material_id in enumerate(network.numeric_ids)}
         self._categorical = {material_id: column for column, material_id in enumerate(network.categorical_ids)}
         # 行列の名前→切り出した区間の行を転置した「列×区間」の行列（`_gathered_column`）。
@@ -287,7 +277,7 @@ class _SliceMaterials(Mapping[str, MaterialColumn]):
         self._loaded: dict[str, MaterialColumn] = {}
 
     def _keys(self) -> dict[str, None]:
-        return dict.fromkeys((*self._numeric, *self._categorical, *self._road.classes, *self._observed))
+        return dict.fromkeys((*self._numeric, *self._categorical, *self._road.classes))
 
     def __iter__(self) -> Iterator[str]:
         return iter(self._keys())
@@ -312,8 +302,6 @@ class _SliceMaterials(Mapping[str, MaterialColumn]):
 
     def _load(self, material_id: str) -> MaterialColumn | None:
         network = self._road.network
-        if material_id in self._observed:
-            return self._observed[material_id]
         if material_id in self._numeric:
             return self._gathered_column("numeric", network.numeric_values, self._numeric[material_id])
         if material_id in self._categorical:
@@ -326,12 +314,11 @@ class _SliceMaterials(Mapping[str, MaterialColumn]):
         return None
 
 
-def material_arrays_of(road: RoadSlice, observed: Mapping[str, np.ndarray]) -> EdgeMaterialColumns:
-    """切り出した区間（行は`road.rows`の順）の材料と、区間ごとに引いた観測の材料（雨。材料id→切り出した区間の順の配列。
-    鍵は出どころが観測の材料に限る）。材料の列は読まれたときに切り出す（`_SliceMaterials`）。"""
+def material_arrays_of(road: RoadSlice) -> EdgeMaterialColumns:
+    """切り出した区間（行は`road.rows`の順）の材料。材料の列は読まれたときに切り出す（`_SliceMaterials`）。"""
     network, rows = road.network, road.rows
     return EdgeMaterialColumns(
-        columns=_SliceMaterials(road, observed),
+        columns=_SliceMaterials(road),
         distance_m=np.asarray(network.distance_m[rows]),
         bearing_deg=np.asarray(network.bearing_deg[rows]),
         mid_lat=np.asarray(network.mid_lat[rows]),

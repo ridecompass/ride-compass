@@ -1,6 +1,6 @@
 /**
  * 地図の見え方のフックが、「表示」の一覧のチップへ、レイヤーのデータの取得の状態と案内を出すこと（地図から上がる状態・
- * 気象の取得・道の線の層の値の取得・タイルの世代）。道の線の層の値と軸カタログは網の層で応え、取得のフックも間引きも本物を通す。
+ * 気象の取得・道の線の層の値の取得・タイルの世代）。道の線の層の値と画面の設定は網の層で応え、取得のフックも間引きも本物を通す。
  *
  * ここで見ないもの: レンズ・表示・凡例で隠した行の状態 → `useMapView.test.ts`
  */
@@ -10,7 +10,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { TILE_VERSIONS_MISSING_NOTICE, TILE_ZOOM_TOO_WIDE_NOTICE } from "@/features/map/layers/mapLayers";
 import { onBackend } from "@/testing/backendServer";
-import { catalogResponse } from "@/testing/catalogAxes";
+import { clientConfigResponse } from "@/testing/clientConfig";
 import { chip, renderMapView, serve, VIEWPORT } from "@/testing/mapViewHook";
 
 /** 世代が届くまで要求できない、静的に宣言された層。 */
@@ -63,10 +63,10 @@ describe("useMapView のチップの取得の状態", () => {
   });
 
   it.each([
-    { name: "世代を持たない応答", catalog: () => Response.json(catalogResponse([])) },
+    { name: "世代を持たない応答", catalog: () => Response.json(clientConfigResponse()) },
     { name: "取得の失敗", catalog: () => new HttpResponse(null, { status: 500 }) },
   ])(
-    "タイルの世代で描くレイヤーは、軸カタログが届くまで読み込み中、届いても世代が無ければ失敗にする（$name）",
+    "タイルの世代で描くレイヤーは、画面の設定が届くまで読み込み中、届いても世代が無ければ失敗にする（$name）",
     async ({ catalog }) => {
       serve(catalog());
 

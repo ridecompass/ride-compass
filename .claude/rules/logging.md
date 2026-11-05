@@ -61,8 +61,8 @@ paths:
 - **例外（`log_external_call`を使わないキャッシュ）**: `infrastructure/detour_ratio_cache.py`
   （プロセス内メモリのみのLRUで、失敗しうる経路が無い）は対象外。
   `tile_persistent_cache.py`（ディスクI/O、失敗しうる）は`log_external_call`を経由せず、成功を専用loggerの
-  DEBUG、失敗を`log_throttled_warning`で出す——`dynamic_way_value_cache.py`を
-  読む配信サービス（`gradient_way_service.py`）が`log_external_call`で囲み、そちらがhit/missを
+  DEBUG、失敗を`log_throttled_warning`で出す——`feature_material_cache.py`を
+  読む材料のサービス（`services/feature_materials.py`）が`log_external_call`で囲み、そちらがhit/missを
   数えるため、下の層で二重に数えない。`tile_cache.py`（タイルの生バイトのディスクキャッシュ）も同じ形で、失敗を
   `log_throttled_warning`で出し、hit/missは読むクライアント（`basemap_client.py`等）の`log_external_call`が数える。
 

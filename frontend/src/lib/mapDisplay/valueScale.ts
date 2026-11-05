@@ -1,74 +1,25 @@
-// 地図が軸について塗る値の段と配色。ルート前の道路の線・ルートの線・凡例・管理画面の
-// プレビューが同じ関数を通るので、同じ軸の同じ段はどこでも同じ色になる。
+// 地図がレンズについて塗る値の段と配色。ルート前の道路の線・ルートの線・凡例・候補の帯が同じ関数を通るので、同じレンズの
+// 同じ段はどこでも同じ色になる。
 
-import { mapDisplay } from "@/types/generated/mapDisplay";
-import type { components } from "@/types/generated/api";
 import { hexToRgb, rgbToHsl } from "@/lib/rgbHsl";
 import { semanticColorsOn, type MapTheme } from "@/lib/mapTheme";
 import { bandLabelsForBandCount, buildRangeLegendBands, type MapColorLegendBand } from "./mapColorLegend";
 
-/** 地図がその軸について塗る値の種類（正本はbackend）。`difficulty`は評価済みの0〜100、`signed_material`は
- * 向きの符号が意味を持つ材料1つの生値（勾配等）。 */
-export type MapValueKind = components["schemas"]["MapPaint"]["value"]["kind"];
-
 /** 評価の配色（易しい→難しい）。色相だけでなく明度も動かし（緑→黄→赤→最も悪い側）、段を増やしても隣が見分けられる
- * ようにする。難易度の段と、符号付き材料の上り側が同じものを使う。 */
+ * ようにする。 */
 function evaluationAnchors(ground: MapTheme): readonly string[] {
   const semantic = semanticColorsOn(ground);
   return [semantic.evaluation_good, semantic.evaluation_mid, semantic.evaluation_bad, semantic.evaluation_extreme];
 }
 
-/** 凡例が段の境界を書く目盛り（正本はbackend）。`unit`がnullなら境界は得点（0〜100）。 */
-type MapLegendScale = components["schemas"]["MapLegendScale"];
-
-/** 得点の段の既定の境界（軸スタジオの較正の画面が読む）。backendが配る。軸の段は宣言の無い軸の既定もbackendが解いて軸ごとに返す。 */
-export const DEFAULT_DIFFICULTY_BOUNDARIES: readonly number[] = mapDisplay.valueScale.difficultyBoundaries;
-
-/** 難易度（得点・寄与・平均とその差）を書く桁。backendが区別する桁で、候補の並びを決める差が画面でも読める。
- * 画面の難易度の数字はどれもこの桁で書く。 */
-const DIFFICULTY_DECIMALS: number = mapDisplay.valueScale.difficultyDecimals;
-
-/** 難易度（得点・寄与・平均）を`DIFFICULTY_DECIMALS`の桁で書く。 */
-export function formatDifficulty(value: number): string {
-  return value.toFixed(DIFFICULTY_DECIMALS);
-}
-
-/** 難易度の目盛りの上端を添える書き方（得点は0〜100）。数字と別の見た目で添える所が使う。 */
-export const DIFFICULTY_SCALE_SUFFIX = "/100";
-
-/** 難易度を目盛りの上端と並べて書く（「42.0/100」）。 */
-export function formatDifficultyOutOfScale(value: number): string {
-  return `${formatDifficulty(value)}${DIFFICULTY_SCALE_SUFFIX}`;
-}
-
-/** 地図が値を塗る宣言。`boundaries`は塗る値の目盛りの境界で、凡例は`legend`の同じ番号の境界で範囲を書く（雨は得点で
- * 塗り、量で書く）。`bandLabels`は段ごとの体感ラベル（未設定なら数値の範囲だけ）。`ground`は色を載せる地の明るさ
- * （省けば明るい地）。軸も費用のレンズもこの形で持ち、段は`valueBands`だけが求める。 */
+/** 地図が値を塗る宣言。`boundaries`は段の境界で、凡例は同じ境界と`unit`で範囲を書く。`bandLabels`は段ごとの体感ラベル
+ * （件数が段の数と合わなければ数値の範囲だけ）。`ground`は色を載せる地の明るさ。段は`valueBands`だけが求める。 */
 export interface MapPaintDeclaration {
-  kind: MapValueKind;
-  ground?: MapTheme;
+  ground: MapTheme;
   boundaries: readonly number[];
-  legend: MapLegendScale;
-  bandLabels?: readonly string[] | null;
+  unit: string;
+  bandLabels: readonly string[];
 }
-
-/** 軸カタログの行の`map_paint`から塗る宣言を作る。境界は宣言の無い軸の既定もbackendが解いて入れる。 */
-export function mapPaintDeclarationOf(
-  paint: components["schemas"]["MapPaint"],
-  ground: MapTheme = "light",
-): MapPaintDeclaration {
-  return {
-    kind: paint.value.kind,
-    ground,
-    boundaries: paint.thresholds,
-    legend: paint.legend,
-    bandLabels: paint.band_labels ?? undefined,
-  };
-}
-
-/** 得点の境界に添える単位と、体感ラベルが無い段で範囲の前に置く語。数字だけでは量か得点か読めない。 */
-const SCORE_UNIT = "点";
-const SCORE_RANGE_PREFIX = "影響 ";
 
 function hue2rgb(p: number, q: number, tIn: number): number {
   let t = tIn;
@@ -130,26 +81,6 @@ function interpolateColorStops(anchors: readonly string[], count: number): strin
   });
 }
 
-/** 符号付き材料の段の色。0を含む段（境界にちょうど0があるときは0から始まる段）を平坦にし、その手前と先を
- * それぞれの配色で補間する（2色の補間1本だと0付近の段が端の色に寄る）。手前は下り（走行が楽になる側）の色から平坦へ寄せ、
- * 平坦の色は難易度の「易しい」と同じにして、楽な区間の色を種類をまたいで揃える。 */
-function signedBandColors(boundaries: readonly number[], ground: MapTheme): string[] {
-  const bandCount = boundaries.length + 1;
-  const firstPositive = boundaries.findIndex((boundary) => boundary > 0);
-  const flatIndex = firstPositive < 0 ? bandCount - 1 : firstPositive;
-  const semantic = semanticColorsOn(ground);
-  const flat = semantic.evaluation_good;
-  const descent = interpolateColorStops([semantic.signed_descent, flat], flatIndex + 1).slice(0, flatIndex);
-  const climb = interpolateColorStops(evaluationAnchors(ground), bandCount - flatIndex).slice(1);
-  return [...descent, flat, ...climb];
-}
-
-/** 値の種類と段の境界から、地`ground`（省けば明るい地）の上に塗る段ごとの色を求める。 */
-export function bandColorsFor(kind: MapValueKind, boundaries: readonly number[], ground: MapTheme = "light"): string[] {
-  if (kind === "signed_material") return signedBandColors(boundaries, ground);
-  return interpolateColorStops(evaluationAnchors(ground), boundaries.length + 1);
-}
-
 /** 段1つ。`lowerBound`は段の下限（最も低い段は-∞）で、判定は`>= 下限`・`< 次の下限`。 */
 export interface ValueBand extends MapColorLegendBand {
   lowerBound: number;
@@ -158,13 +89,10 @@ export interface ValueBand extends MapColorLegendBand {
 /** 塗る宣言から段の並び（低い段から）を求める。鍵・範囲の文字・体感ラベル・色をここで一度に決める。体感ラベルは件数が
  * 段の数と合うときだけ添える（`bandLabelsForBandCount`）。 */
 export function valueBands(paint: MapPaintDeclaration): ValueBand[] {
-  const { kind, boundaries, legend, bandLabels, ground } = paint;
-  const colors = bandColorsFor(kind, boundaries, ground);
+  const { boundaries, unit, bandLabels, ground } = paint;
+  const colors = interpolateColorStops(evaluationAnchors(ground), boundaries.length + 1);
   const labels = bandLabelsForBandCount(bandLabels, colors.length);
-  const isScore = legend.unit === null;
-  const unit = legend.unit ?? SCORE_UNIT;
-  const prefix = isScore ? SCORE_RANGE_PREFIX : "";
-  return buildRangeLegendBands(legend.boundaries, colors, unit, labels, prefix).map((band, index) => ({
+  return buildRangeLegendBands(boundaries, colors, unit, labels).map((band, index) => ({
     ...band,
     lowerBound: index === 0 ? Number.NEGATIVE_INFINITY : boundaries[index - 1],
   }));

@@ -14,8 +14,8 @@ import type { PenaltyBreakdown as PenaltyValues, RouteFacts } from "@/types/rout
 const SPEED_CONDITIONS = routeGenerateConfig.segment_speed_conditions.join("・");
 
 interface RouteAxisProfileProps {
-  /** RouteCandidate.penalty（軸ごとと回避指定の代償の秒。費用の軸の定義が無い間はnull）。 */
-  penalty: PenaltyValues | null;
+  /** RouteCandidate.penalty（軸ごとと回避指定の代償の秒）。 */
+  penalty: PenaltyValues;
   /** RouteCandidate.facts（軸ごとの事実の量と、標高の無い長さ）。 */
   facts: RouteFacts;
   /** 費用の軸の一覧（行の名前と色）。 */
@@ -59,18 +59,16 @@ export default function RouteAxisProfile({
             </InfoPopover>
           </span>
         )}
-        {penalty !== null && (
-          <span className="inline-flex flex-shrink-0 items-baseline gap-0.5">
-            <span className={textVariants({ variant: "hint" })}>負担</span>
-            <span className="text-[1.05rem] font-semibold">{formatPenalty(penalty.total_seconds)}</span>
-            <InfoPopover triggerAriaLabel="負担の説明">
-              <p>
-                登り・止まる回数・路面の振動など、避けたいものを通る分を、所要時間に上乗せした時間として数えたものです。
-                所要時間と負担の和が小さい候補ほど先に並び（周回は1kmあたり）、下の一覧は負担を軸ごとに分けたものです。
-              </p>
-            </InfoPopover>
-          </span>
-        )}
+        <span className="inline-flex flex-shrink-0 items-baseline gap-0.5">
+          <span className={textVariants({ variant: "hint" })}>負担</span>
+          <span className="text-[1.05rem] font-semibold">{formatPenalty(penalty.total_seconds)}</span>
+          <InfoPopover triggerAriaLabel="負担の説明">
+            <p>
+              登り・止まる回数・路面の振動など、避けたいものを通る分を、所要時間に上乗せした時間として数えたものです。
+              所要時間と負担の和が小さい候補ほど先に並び（周回は1kmあたり）、下の一覧は負担を軸ごとに分けたものです。
+            </p>
+          </InfoPopover>
+        </span>
       </div>
       {/* 所要時間の前提が崩れていることは、所要時間のすぐ下で知らせる（黙って短い所要時間を見せない）。
           値の無い区間は丸めて1%以上のときだけ出す——0%を並べても判断の材料にならない。 */}

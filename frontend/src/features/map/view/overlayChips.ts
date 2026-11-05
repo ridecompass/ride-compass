@@ -4,7 +4,7 @@
  * 凡例は`scene/legends.ts`、表示専用の凡例は記述子の`readOnlyLegend`。
  */
 import {
-  isAxisStudioLayer,
+  isLensLayer,
   TILE_VERSIONS_MISSING_NOTICE,
   TILE_ZOOM_TOO_WIDE_NOTICE,
   type LayerDataStatusByLayer,
@@ -42,7 +42,7 @@ function chipLegends(
   ];
 }
 
-/** 地図上チップの一覧。軸スタジオ由来のレイヤーと、選択中のルートにひもづくレイヤー（`kind`が`dynamic`）は出さない
+/** 地図上チップの一覧。レンズの層と、選択中のルートにひもづくレイヤー（`kind`が`dynamic`）は出さない
  * ——どちらも出し入れは色分け（`LensControl`）が持つ。チップの束ね方（`mapLayers.ts: mapOverlayGroupFor`）は中分類しか
  * 見ないので、除くのはここの1か所で、束ねる前に除く。 */
 export function overlayChips(options: {
@@ -54,13 +54,13 @@ export function overlayChips(options: {
   zoomTooWideLayerIds: readonly MapLayerId[];
   /** タイル世代が届くまで描けず、いま世代が無いレイヤー。 */
   versionMissingLayerIds: readonly MapLayerId[];
-  /** 軸カタログの取得を終えたか。終えたのに世代が無いなら、待っても直らない。 */
+  /** 画面の設定の取得を終えたか。終えたのに世代が無いなら、待っても直らない。 */
   catalogSettled: boolean;
 }): OverlayLayerChip[] {
   const { hidden, catalogSettled } = options;
   const legendAxes = [...roadLegendAxes(options.roadLayers), ...DECLARED_LEGEND_AXES];
   return options.layers
-    .filter((layer): layer is ChipLayerDescriptor => !isAxisStudioLayer(layer))
+    .filter((layer): layer is ChipLayerDescriptor => !isLensLayer(layer))
     .filter((layer) => layer.kind !== "dynamic")
     .map((layer) => {
       const versionMissing = options.versionMissingLayerIds.includes(layer.id);
@@ -89,7 +89,7 @@ export function overlayChips(options: {
     });
 }
 
-/** 保存値のうち、真偽値の鍵だけを読む。既定は読む側が層の一覧から重ねる（道の線の層は軸カタログが届くまで分からず、
+/** 保存値のうち、真偽値の鍵だけを読む。既定は読む側が層の一覧から重ねる（道の線の層は画面の設定が届くまで分からず、
  * 届く前に読んだ保存値から道の層の真偽を落とすと、選んだ表示が消える）。 */
 export function deserializeLayerVisibility(raw: string): MapLayerVisibility | null {
   const stored: unknown = JSON.parse(raw);

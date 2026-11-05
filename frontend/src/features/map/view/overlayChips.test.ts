@@ -9,20 +9,16 @@ import {
 } from "@/features/map/layers/mapLayers";
 import { roadLegendAxes } from "@/features/map/scene/legends";
 
-import { mapAxisCatalogFromResponse } from "@/features/map/mapAxisCatalog";
-import { catalogResponse, dedicatedEntry, roadClass, roadClassCatalog, roadMapLayer } from "@/testing/catalogAxes";
+import { mapCatalogFor } from "@/testing/mapCatalog";
+import { roadClass, roadClassCatalog, roadMapLayer } from "@/testing/clientConfig";
 import { deserializeLayerVisibility, overlayChips } from "./overlayChips";
 
-// 道の線の層は軸カタログが配る（本番の層は管理DBが持つ）ので、テストが組む。
+// 道の線の層は画面の設定が配る（本番の層は管理DBが持つ）ので、テストが組む。
 const ROAD_LAYERS = [
   roadMapLayer("surface", { classes: [roadClass("paved"), roadClass("unpaved")] }),
   roadMapLayer("tunnel", { classes: [roadClass("tunnel")] }),
 ];
-const catalog = mapAxisCatalogFromResponse(
-  catalogResponse([dedicatedEntry("axis_a", [1])], {
-    road_classes: roadClassCatalog({ map_layers: ROAD_LAYERS }),
-  }),
-);
+const catalog = mapCatalogFor(undefined, { road_classes: roadClassCatalog({ map_layers: ROAD_LAYERS }) });
 const LAYERS = buildMapLayers(catalog);
 
 type Options = Parameters<typeof overlayChips>[0];
@@ -42,9 +38,9 @@ function chips(options: Partial<Options> = {}) {
 const chipOf = (list: ReturnType<typeof chips>, id: string) => list.find((chip) => chip.id === id)!;
 
 describe("overlayChips（地図上チップの状態）", () => {
-  it("軸スタジオ由来のレイヤーと、ルートにひもづくレイヤーはチップにしない（どちらも色分けが持つ）", () => {
+  it("レンズの層と、ルートにひもづくレイヤーはチップにしない（どちらも色分けが持つ）", () => {
     const ids = chips().map((chip) => chip.id);
-    expect(ids).not.toContain("axis_aAxis");
+    expect(ids).not.toContain("ascentLens");
     expect(ids).not.toContain("route");
     expect(ids).toContain("tunnel");
   });
@@ -79,7 +75,7 @@ describe("overlayChips（地図上チップの状態）", () => {
 });
 
 describe("deserializeLayerVisibility（表示状態の保存値）", () => {
-  // 道の線の層は軸カタログが届くまで分からないので、今の層に無い鍵も読む（既定は使う側が層の一覧から重ねる）。
+  // 道の線の層は画面の設定が届くまで分からないので、今の層に無い鍵も読む（既定は使う側が層の一覧から重ねる）。
   it("真偽値の鍵だけを読み、読めない形なら読まない", () => {
     const restored = deserializeLayerVisibility(
       JSON.stringify({ surface: true, notYetArrived: false, highway: "yes" }),

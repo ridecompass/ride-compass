@@ -6,7 +6,6 @@
 
 ここで見ないもの:
 - 区間の中の頂点から獲得標高を積むこと → `test_elevation_values.py`
-- 密度の軸の費用とルートの値が、ほかの区間の点数や時刻と合わさる形 → `test_leg_costs.py`・`test_route.py`
 """
 
 import functools
@@ -17,11 +16,8 @@ import pytest
 from app.batch import derive_topology
 from app.batch.dem_tile_store import PRODUCT_PRIORITY
 from app.batch.ingest import SourceRecord
-from app.domain.axis_definitions import averages_density
-from app.domain.evaluation import DensityAxisColumn, density_costs
 from app.domain.region import BoundingBox
 from app.infrastructure.road_graph_repository import RoadGraphRepository
-from tests.axis_system_fixture import linear, shaped_axis
 from tests.conftest import raw_connection
 from tests.source_ingest import dem_tile_records, derive_elevation_at_default_step, ingest_records, way_record
 
@@ -88,22 +84,3 @@ async def test_the_climb_is_what_the_road_climbs_in_the_direction_travelled(road
 
     # 標高の画素（約4m）の分だけ、点の標高が道の上の値からずれる。
     assert values[0] * distance_m[0] / 1000 == pytest.approx(climbed_m, abs=0.5)
-
-
-async def test_an_axis_on_the_climb_alone_costs_the_same_however_the_road_is_cut(road_graph_session):
-    """登りの量だけを項にした軸は密度の軸で、探索の費用は区間の登った量に比例して足す。峠で2区間に切っても、登った量の和と
-    費用の和は1区間のままと同じ。区間の平均の勾配で点数にすると、切ったときの急な側だけが重くなり、切り方で選ぶ道が変わる。"""
-    axis = shaped_axis(linear(CLIMB, breakpoints=((0.0, 0.0), (50.0, 100.0))))
-    assert averages_density(axis)
-
-    def climbed_and_cost(values: np.ndarray, distance_m: np.ndarray) -> tuple[float, float]:
-        cost = density_costs({axis.axis_id: DensityAxisColumn(shape=axis.shape, inputs=values)},
-                             {axis.axis_id: np.zeros(len(values))}, distance_m, speed_kmh=20.0)
-        return float(np.sum(values * distance_m / 1000)), float(np.sum(cost[axis.axis_id].score_seconds))
-
-    whole = climbed_and_cost(*await _climb_of_way_1(road_graph_session, cut_at_the_peak=False, forward=True))
-    cut = climbed_and_cost(*await _climb_of_way_1(road_graph_session, cut_at_the_peak=True, forward=True))
-
-    # 獲得標高は区間ごとに0.1mへ丸めて持つ。
-    assert cut == pytest.approx(whole, rel=0.01)
-    assert whole[1] > 0

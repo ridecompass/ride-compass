@@ -14,10 +14,9 @@ export interface CostLensBands {
 /** レンズの段の塗り。 */
 export function costLensPaint(presentation: CostLensBands, ground: MapTheme): MapPaintDeclaration {
   return {
-    kind: "difficulty",
     ground,
     boundaries: presentation.lens.thresholds,
-    legend: { boundaries: [...presentation.lens.thresholds], unit: LENS_SECONDS_UNIT },
+    unit: LENS_SECONDS_UNIT,
     bandLabels: presentation.lens.band_labels,
   };
 }

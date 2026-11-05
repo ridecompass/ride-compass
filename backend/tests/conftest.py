@@ -45,9 +45,11 @@ from app.infrastructure.road_graph_repository import (
     create_tables,
 )
 from app.config import settings
+from app.domain.cost_axes import replace_cost_axes
 from app.services import derived_data_revision_service
 from scripts.schema_gap import collect_gaps
 from tests.admin_auth import ADMIN_PASSWORD, ADMIN_USERNAME
+from tests.cost_axes_fixture import cost_axes
 from tests.database_names import (
     SHARED_TEST_DATABASE,
     TEMPLATE_TEST_DATABASE,
@@ -232,6 +234,13 @@ def monotonic_clock(_monotonic_clock_for_the_session) -> MonotonicClock:
         )
     )
     return clock
+
+
+@pytest.fixture(autouse=True)
+def _standard_cost_axes():
+    """テストごとに、体力の4軸だけの費用の軸の定義を置く（本番は起動で表から読み、無ければ起動しない）。前のテストが
+    差し替えた定義を持ち越さない。"""
+    replace_cost_axes(cost_axes())
 
 
 _DISK_CACHES = {"tile_persistent_cache": tile_persistent_cache, "tile_cache": tile_cache}

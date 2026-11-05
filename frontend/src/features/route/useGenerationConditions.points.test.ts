@@ -8,7 +8,7 @@
  * - 地図のタップが選んだ地点を置く場面（「ルート設定」の「条件」タブが効いている間だけ） → `app/page.map.test.tsx`
  * - 条件を生成へ送る形 → `useRouteGeneration.test.ts`
  *
- * 差し替えたもの: 軸カタログの応答（網の層。届かないまま）。保存はテスト環境の`localStorage`を本物のまま使い、
+ * 差し替えたもの: 画面の設定の応答（網の層。届かないまま）。保存はテスト環境の`localStorage`を本物のまま使い、
  * 開き直しは同じ保存の上でフックを描き直して作る。
  */
 import { act, renderHook } from "@testing-library/react";

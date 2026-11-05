@@ -80,8 +80,8 @@ class RoadGraphContext:
     # 遷移ごとの曲がる所の費用（秒、`turn_structure`の遷移の並び）。区間の費用と同じく利用者ごとに変わりうる値なので、
     # 構造ではなく文脈が持ち、探索・木の費用の上界・繋ぎ目へ値で渡す。漕ぎ出しの代償を費用に足すまでは時間そのもの。
     transition_cost: np.ndarray
-    # 費用の軸の定義（`composer`を組んだのと同じもの。無ければ軸の点数の割増の式）。候補の事実が道の負担の軸の名前を読む。
-    cost_axes: CostAxisDefinitions | None
+    # 費用の軸の定義（`composer`を組んだのと同じもの）。候補の事実が道の負担の軸の名前を読む。
+    cost_axes: CostAxisDefinitions
     # 探索範囲を覆うタイル集合。学習した迂回率の鍵に使う。
     tile_set: frozenset[tuple[int, int, int]]
     # A*のヒューリスティック（向かうノード番号→各Nodeからの所要時間の下界[秒]）。向かう先（置いた点・終点）は
@@ -155,7 +155,7 @@ class FixedLegs:
 
 
 def slice_row_of(context: RoadGraphContext, index: int) -> int:
-    """区間の番号→切り出した区間の行（材料・スコア行列・表示用配列の行）。"""
+    """区間の番号→切り出した区間の行（探索の材料の表・表示用配列の行）。"""
     return int(context.lazy_graph.edge_rows[index])
 
 

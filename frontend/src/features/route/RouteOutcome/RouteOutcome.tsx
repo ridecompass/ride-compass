@@ -196,17 +196,10 @@ export default function RouteOutcome({ results, generation, splice, profileLayer
                         ? formatDurationShort(baseline.seconds)
                         : durationDifferenceLabel(route, baseline?.seconds ?? null)}
                     </span>{" "}
-                    {/* 内訳の無い候補は「—」（0と欠損を同じ見た目にしない）。 */}
                     <span>
                       <span className="sr-only">負担</span>
-                      {route.penalty === null ? (
-                        "—"
-                      ) : (
-                        <>
-                          {formatPenaltyMinutes(route.penalty.total_seconds)}
-                          <span className="sr-only">{MINUTE_UNIT}</span>
-                        </>
-                      )}
+                      {formatPenaltyMinutes(route.penalty.total_seconds)}
+                      <span className="sr-only">{MINUTE_UNIT}</span>
                     </span>
                   </span>
                   <span
