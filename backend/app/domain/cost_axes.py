@@ -1,12 +1,12 @@
 """費用の軸（費目と1対1）の定義と、管理APIが受ける前の検証。
 
-費用は3つの帳簿で数える——時間（秒）・体力（平地の出力を越えて踏んだJ）・道の負担（道の性質から距離あたりに受ける負担。
+費用は3つの帳簿で数える——時間（秒）・体力（平地の出力を越えて踏んだJ）・道のストレス（道の性質から距離あたりに受ける負担。
 重さ1の道に換算したkm）。損は1つの帳簿に1つの費目でだけ書き、**軸は費目と1対1**（1つの費目を2つの軸が使い回すと同じ損を
 2回数える）。利用者は軸ごとの倍率（標準1、0で無視）で、どの損を避けたいかを決める。
 
 - **体力の軸は、費目と一緒にコードで固定する**（`EFFORT_AXES`）。体力の費目は走行の模型の抵抗（重力・空気・慣性・転がり）で、
   足すには物理の式が要るため、形（コード）である。JSONは名前・説明・アイコン・レンズの段だけを持つ。
-- **道の負担の軸はJSONで出し入れする**（`BurdenAxis`）。量は「材料 × 1kmあたりの重さ × 距離」で、材料と重さがあれば式の
+- **道のストレスの軸はJSONで出し入れする**（`BurdenAxis`）。量は「材料 × 1kmあたりの重さ × 距離」で、材料と重さがあれば式の
   コードは要らない。危険（車・路面の凸凹）も、危険でないが避けたいもの（排気・混雑等）も、この形で足せる。
 
 軸の定義の全体（`CostAxisDefinitions`）は1つのJSONで読み、1つのJSONで書く（道の区分と同じ）。
@@ -70,7 +70,7 @@ class AxisPresentation(StrictModel):
 
 class CategoricalBurden(StrictModel):
     """区分の材料（`class:<分け方>`）の区分ごとの1kmあたりの重さ。分け方のすべての区分に重さを書く——書いていない区分を
-    0や平均とみなすと、区分を足したときに黙ってその道の負担が消える。"""
+    0や平均とみなすと、区分を足したときに黙ってその道のストレスが消える。"""
 
     kind: Literal["categorical"]
     material: str
@@ -96,13 +96,13 @@ Burden = Annotated[CategoricalBurden | LinearBurden, Field(discriminator="kind")
 
 
 class BurdenAxis(AxisPresentation):
-    """道の負担の軸。自分の費目（材料 × 1kmあたりの重さ）を持つので、費目の持ち主は自分だけ。"""
+    """道のストレスの軸。自分の費目（材料 × 1kmあたりの重さ）を持つので、費目の持ち主は自分だけ。"""
 
     burden: Burden
 
 
 class CostAxisDefinitions(StrictModel):
-    """費用の軸の定義の全体。体力の軸（`EFFORT_AXES`の全部）の見せ方と、道の負担の軸と、地図の総合のレンズ（軸ごとの代償の秒の
+    """費用の軸の定義の全体。体力の軸（`EFFORT_AXES`の全部）の見せ方と、道のストレスの軸と、地図の総合のレンズ（軸ごとの代償の秒の
     和。軸ではないので倍率を持たない）の見せ方。レンズの段の境目は、どれも1kmあたりの代償の秒。"""
 
     effort: dict[str, AxisPresentation]
@@ -116,7 +116,7 @@ class CostAxisDefinitions(StrictModel):
                 f"体力の軸はコードの表と同じ一覧にする: 要る {sorted(EFFORT_AXES)}・書いた {sorted(self.effort)}")
         clash = sorted(set(self.burden) & {*EFFORT_AXES, TOTAL_LENS_ID})
         if clash:
-            raise ValueError(f"道の負担の軸のidが体力の軸か総合のレンズと重なる: {clash}")
+            raise ValueError(f"道のストレスの軸のidが体力の軸か総合のレンズと重なる: {clash}")
         return self
 
 
@@ -169,10 +169,10 @@ def replace_cost_axes(definitions: CostAxisDefinitions) -> None:
 
 
 def cost_axis_ids(definitions: CostAxisDefinitions) -> tuple[str, ...]:
-    """費用の軸のid。体力の軸をコードの表の順、続けて道の負担の軸を定義の順で。"""
+    """費用の軸のid。体力の軸をコードの表の順、続けて道のストレスの軸を定義の順で。"""
     return (*EFFORT_AXES, *definitions.burden)
 
 
 def burden_material_ids(definitions: CostAxisDefinitions) -> tuple[str, ...]:
-    """軸の定義の道の負担の軸が読む材料id（重複を除き、軸の順）。探索の材料の表はこれらを列として運ぶ。"""
+    """軸の定義の道のストレスの軸が読む材料id（重複を除き、軸の順）。探索の材料の表はこれらを列として運ぶ。"""
     return tuple(dict.fromkeys(axis.burden.material for axis in definitions.burden.values()))

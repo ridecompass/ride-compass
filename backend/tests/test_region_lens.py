@@ -32,7 +32,7 @@ from tests.route_world import BAD_MATERIAL, COORDINATES, CENTER, WAYS, Weather, 
 THRESHOLDS = [4.0, 20.0]
 LENS = {"thresholds": THRESHOLDS, "band_labels": ["a", "b", "c"]}
 PRESENTATION = {"label": "x", "description": "", "icon_id": "i", "lens": LENS}
-#: 避けたい材料（1の道）が1kmあたり2の重さになる道の負担の軸。
+#: 避けたい材料（1の道）が1kmあたり2の重さになる道のストレスの軸。
 ROUGH_WEIGHT = 2.0
 AXES = CostAxisDefinitions.model_validate({
     "effort": {axis_id: PRESENTATION for axis_id in EFFORT_AXES},
@@ -70,7 +70,7 @@ async def _lens(client, lens_id: str, **preference: float | str) -> dict[str, di
 
 async def test_each_axis_lens_paints_its_own_penalty_seconds_per_km_and_the_total_paints_their_sum(
         client, cost_axes, road_network_root):
-    """軸ごとのレンズはその軸の分だけの1kmあたりの代償の秒、総合はその和。平らな道は体力の代償が0なので、道の負担の秒だけ。
+    """軸ごとのレンズはその軸の分だけの1kmあたりの代償の秒、総合はその和。平らな道は体力の代償が0なので、道のストレスの秒だけ。
     登りは辿る向きでだけ登坂の秒がかかる。"""
     serve_road_network(road_network_root, road_network(
         WAYS, COORDINATES, bad_ways=(FLAT_ROUGH_WAY,), gradient_of={CLIMBING_WAY: 6.0}))
@@ -110,7 +110,7 @@ async def test_the_lens_paints_with_the_users_strength_and_multipliers_like_the_
 
 async def test_the_legend_tells_the_slope_and_the_stops_a_threshold_stands_for(client, cost_axes, road_network_root):
     """段の境目の目安は、その斜度の1kmの坂・その回数止まる1kmの道を、利用者の値（ここではつまみ×2）で走ると、同じ値で塗る
-    地図がちょうどその秒で塗る値。道の負担は、重さごとの秒を並べる。"""
+    地図がちょうどその秒で塗る値。道のストレスは、重さごとの秒を並べる。"""
     response = await client.get("/api/cost-axes/lens-equivalents", params={"strength": 2.0})
     assert response.status_code == 200, response.text
     equivalents = response.json()

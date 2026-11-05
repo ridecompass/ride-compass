@@ -92,7 +92,7 @@ class RowFacts:
     unknown_elevation_m: np.ndarray
     # 基準の路面より転がり抵抗が大きいか。
     rough: np.ndarray
-    # 道の負担の軸id→その軸の1kmあたりの重さが0より大きいか。
+    # 道のストレスの軸id→その軸の1kmあたりの重さが0より大きいか。
     burdened: dict[str, np.ndarray]
 
 
@@ -199,7 +199,7 @@ def travel_inputs(materials: Mapping[str, MaterialColumn], distance_m: np.ndarra
 
 def burden_weights(axes: CostAxisDefinitions, materials: Mapping[str, MaterialColumn],
                    fills: MaterialFills) -> dict[str, np.ndarray]:
-    """道の負担の軸id → 区間ごとの1kmあたりの重さ（`domain/ledger_costs.py: burden_per_km`）。"""
+    """道のストレスの軸id → 区間ごとの1kmあたりの重さ（`domain/ledger_costs.py: burden_per_km`）。"""
     return {axis_id: burden_per_km(axis.burden, materials, fills) for axis_id, axis in axes.burden.items()}
 
 
@@ -263,7 +263,7 @@ def compile_leg_cost_kernels() -> None:
 class LegCostComposer:
     """bbox全体ぶんのコスト配列を、レグ（時刻オフセット・向き）ごとに合成する。
     材料の表・費用の軸の定義・0次フィルタ・lazy_graph行順の対応表はリクエスト内で共通のため1回だけ用意する。時刻に
-    依らない計算（走行モデルの入力・停止の待ち・道の負担）はリクエストに1回だけ求め、時刻ビンごとにはその時刻の風に依る
+    依らない計算（走行モデルの入力・停止の待ち・道のストレス）はリクエストに1回だけ求め、時刻ビンごとにはその時刻の風に依る
     計算だけを行う。**風の時別系列が無いときだけ**、出発時点のスナップショットで合成した1本（`snapshot`）を全レグで共有する。"""
 
     def __init__(
@@ -500,12 +500,12 @@ class LegCostComposer:
 
     @cached_property
     def _ledger(self) -> LedgerCosts:
-        """費目の帳簿の式。道の負担は時刻に依らないので、ここで1回だけ求める。"""
+        """費目の帳簿の式。道のストレスは時刻に依らないので、ここで1回だけ求める。"""
         return LedgerCosts.for_model(self._axes, self._parameters, self._travel_inputs.model, self._burden_per_km)
 
     @cached_property
     def _burden_per_km(self) -> dict[str, np.ndarray]:
-        """道の負担の軸id→区間ごとの1kmあたりの重さ。"""
+        """道のストレスの軸id→区間ごとの1kmあたりの重さ。"""
         return burden_weights(self._axes, self._materials, self._material_fills)
 
     def row_facts(self, rows: np.ndarray) -> RowFacts:
@@ -528,7 +528,7 @@ class LegCostComposer:
         return self._ledger.transition_costs(turn_seconds, turn_kickoffs)
 
     def _compose_bin(self, time: BinTime, steps_ms: dict[str, int]) -> _ComposedBin:
-        """時刻`time`で1本ぶん合成する。段ごとの時間を`steps_ms`へ足す。体力と道の負担は風だけで決まる。欠けは取込の範囲
+        """時刻`time`で1本ぶん合成する。段ごとの時間を`steps_ms`へ足す。体力と道のストレスは風だけで決まる。欠けは取込の範囲
         全体の平均で埋める（`material_fills`）。"""
         started = start_timer()
         if isinstance(time.forecast, np.ndarray):

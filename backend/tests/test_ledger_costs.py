@@ -52,7 +52,7 @@ def _ride(n: int, gravity=0.0, air=0.0, rolling=0.0, inertia=0.0) -> SegmentRide
 
 
 def test_the_penalty_is_the_strength_times_the_effort_over_the_flat_power_and_the_burden_in_seconds():
-    """代償 ＝ つまみ ×（α × Σ 倍率 × 体力 ÷ 平地の出力 ＋ β × Σ 倍率 × 道の負担）。倍率は軸ごとで、書いていない軸は1。"""
+    """代償 ＝ つまみ ×（α × Σ 倍率 × 体力 ÷ 平地の出力 ＋ β × Σ 倍率 × 道のストレス）。倍率は軸ごとで、書いていない軸は1。"""
     flat = wheel_power_w(RIDER)
     ledger = _ledger(_parameters(strength=0.5, alpha=2.0, beta=100.0, ascent=3.0, vibration=2.0), [0.4])
 

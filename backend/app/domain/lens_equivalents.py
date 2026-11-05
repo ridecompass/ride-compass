@@ -6,7 +6,7 @@
 
 - 登坂は一様な坂の斜度（%）、向かい風は向かい風の強さ（m/s）、停止は漕ぎ出す回数（回/km）で、段の境目ごとに引く。
   刻んだ範囲より大きい秒の境目は値なし（その範囲の外）。
-- 摩擦は路面の区分ごと、道の負担の軸は区分ごと（区分の材料）か折れ点ごと（数値の材料）の秒を並べる。
+- 摩擦は路面の区分ごと、道のストレスの軸は区分ごと（区分の材料）か折れ点ごと（数値の材料）の秒を並べる。
 """
 
 from collections.abc import Callable
@@ -58,7 +58,7 @@ LensEquivalents = ThresholdEquivalents | ExampleEquivalents
 
 def lens_equivalents(axes: CostAxisDefinitions, parameters: LedgerParameters,
                      road_classes: RoadClassDefinitions) -> dict[str, LensEquivalents]:
-    """軸id → 段の境目の目安（体力の軸をコードの表の順、続けて道の負担の軸）。"""
+    """軸id → 段の境目の目安（体力の軸をコードの表の順、続けて道のストレスの軸）。"""
     result: dict[str, LensEquivalents] = {}
     for axis_id, item in EFFORT_AXES.items():
         result[axis_id] = _effort_equivalents(axes, parameters, road_classes, axis_id, item)
@@ -119,7 +119,7 @@ def _axis_seconds_per_km(axes: CostAxisDefinitions, parameters: LedgerParameters
                          grade_percent: np.ndarray | None = None, headwind_ms: np.ndarray | None = None,
                          kickoffs: np.ndarray | None = None, surface: CategoricalColumn | None = None,
                          burden: np.ndarray | None = None) -> np.ndarray:
-    """標準の人が、渡した事実だけを持つ1kmの道を走ったときの、軸`axis_id`の代償の秒（道ごと）。`burden`は道の負担の軸
+    """標準の人が、渡した事実だけを持つ1kmの道を走ったときの、軸`axis_id`の代償の秒（道ごと）。`burden`は道のストレスの軸
     `axis_id`の1kmあたりの重さ。"""
     n = len(next(v for v in (grade_percent, headwind_ms, kickoffs, surface, burden) if v is not None))
     grade = np.zeros(n) if grade_percent is None else np.asarray(grade_percent, dtype=np.float64)

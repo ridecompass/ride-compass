@@ -1,7 +1,7 @@
 """費用の軸の公開読み取りAPI。
 
 画面（設定の軸ごとの倍率・結果の代償の内訳・地図のレンズと凡例）が、軸の名前・説明・アイコン・レンズの段と、軸の帳簿（体力か
-道の負担か）を読む。プロセス内の定義（`domain/cost_axes.py: current_cost_axes`）から返すので、管理APIで書いた定義は
+道のストレスか）を読む。プロセス内の定義（`domain/cost_axes.py: current_cost_axes`）から返すので、管理APIで書いた定義は
 再デプロイなしにここへ出る。
 """
 
@@ -33,7 +33,7 @@ router = APIRouter()
 
 class CostAxisCatalogEntry(StrictModel):
     axis_id: str
-    #: 軸の費目を書く帳簿。体力（`effort`）は走行の模型の物理の費目、道の負担（`burden`）は材料 × 1kmあたりの重さ。
+    #: 軸の費目を書く帳簿。体力（`effort`）は走行の模型の物理の費目、道のストレス（`burden`）は材料 × 1kmあたりの重さ。
     ledger: Literal["effort", "burden"]
     label: str
     description: str
@@ -58,7 +58,7 @@ class TotalLens(AxisPresentation):
 
 
 class CostAxisCatalogResponse(StrictModel):
-    #: 体力の軸をコードの表の順、続けて道の負担の軸を定義の順で。
+    #: 体力の軸をコードの表の順、続けて道のストレスの軸を定義の順で。
     axes: list[CostAxisCatalogEntry]
     #: 代償の内訳の、避け方の倍率で上乗せした秒の行の名前（軸ではないので、倍率を持たない）。
     avoidance_label: str
@@ -112,7 +112,7 @@ async def get_lens_equivalents(
     preference: CostPreference = Depends(cost_preference_query),
 ) -> LensEquivalentsResponse:
     """地図のレンズの段の境目の秒が、利用者の値（つまみと倍率。地図のレンズと同じクエリ）で、その事実1つだけが効いた無風の
-    1kmの道のどれだけの事実に当たるかの目安（体力の軸をコードの表の順、続けて道の負担の軸）。地図が塗る色と凡例の目安を同じ
+    1kmの道のどれだけの事実に当たるかの目安（体力の軸をコードの表の順、続けて道のストレスの軸）。地図が塗る色と凡例の目安を同じ
     値で揃える。"""
     definitions = current_cost_axes()
     # 目安は合成の道で走行の模型を解くので、イベントループの外で求める。

@@ -120,7 +120,7 @@ def test_the_travel_time_runs_the_points_of_the_road_profile_not_its_average_gra
 
 
 def test_the_ledger_formula_adds_the_penalty_of_each_road_to_its_travel_time():
-    """費用 ＝ 所要時間 ＋ つまみ × 代償（平らな舗装の道は代償0、砂利の道は道の負担の分だけ高い）。所要時間は強さに
+    """費用 ＝ 所要時間 ＋ つまみ × 代償（平らな舗装の道は代償0、砂利の道は道のストレスの分だけ高い）。所要時間は強さに
     依らない。"""
     lens = {"thresholds": [1.0], "band_labels": ["a", "b"]}
     presentation = {"label": "x", "description": "", "icon_id": "i", "lens": lens}

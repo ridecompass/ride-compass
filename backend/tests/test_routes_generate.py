@@ -125,7 +125,7 @@ def world(override_dependency, road_network_root):
 
 @pytest.fixture
 def bad_axis():
-    """体力の軸と、避けたい材料の道（1kmあたり重さ10）を重く見る道の負担の軸`BAD_AXIS`1本。"""
+    """体力の軸と、避けたい材料の道（1kmあたり重さ10）を重く見る道のストレスの軸`BAD_AXIS`1本。"""
     with cost_axes_declared(cost_axes(BAD_MATERIAL, 10.0)):
         yield
 
