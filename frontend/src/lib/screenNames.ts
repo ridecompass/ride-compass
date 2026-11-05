@@ -5,4 +5,4 @@
 export const FACT_DISPLAY_NAME = "表示";
 
 /** 選んだレンズの負担で、道・ルートの線・道のりのグラフを塗る所。 */
-export const EVALUATION_PAINT_NAME = "評価で塗る";
+export const BURDEN_PAINT_NAME = "負担で塗る";

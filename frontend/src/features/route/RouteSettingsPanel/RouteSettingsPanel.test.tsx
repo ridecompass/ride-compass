@@ -2,7 +2,7 @@
  * `RouteSettingsPanel/RouteSettingsPanel.tsx`——「負担」タブ。費用の軸ごとの倍率を段で選ぶ。
  *
  * 見るもの: 一覧を取れないときの告知と再試行で軸が出ること、書いていない軸は標準を選んだ状態で出し、選んだ段を上げること、「標準に戻す」が標準の間は押せず、
- * 押すと倍率だけを標準に戻すこと。
+ * 押すと倍率だけを標準に戻すこと、負担の強さが ×0 の間は倍率が効かないと添えること。
  *
  * ここで見ないもの: 選んだ倍率が生成の要求に載ること → `app/page.test.tsx`。軸の名前・(i)の奥の説明（一覧の値をそのまま描く）。
  *
@@ -70,5 +70,13 @@ describe("倍率", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "標準に戻す" }));
     expect(onCostPreferenceChange).toHaveBeenLastCalledWith({ strength: 1.5, multipliers: {} });
+  });
+
+  it("負担の強さが ×0 の間は、倍率が効かないと添える（倍率は選べるまま）", async () => {
+    serveCostAxisCatalog();
+    renderPanel({ strength: 0, multipliers: {} });
+    const vibration = await levelsOf("振動の倍率");
+    expect(screen.getByRole("status")).toHaveTextContent("負担の強さが ×0 のため、ここの倍率は効きません");
+    expect(vibration.getByRole("radio", { name: "×0" })).toBeEnabled();
   });
 });

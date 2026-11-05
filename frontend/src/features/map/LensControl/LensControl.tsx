@@ -16,9 +16,9 @@ import { Button } from "@/components/ui/Button/Button";
 import { ToggleGroup } from "@/components/ui/ToggleGroup/ToggleGroup";
 import { Dot } from "@/components/ui/Dot/Dot";
 import { ClearAllFiltersIcon, ClearAllLayersIcon } from "@/components/ui/icons/icons";
-import { EvaluationPaintIcon } from "@/components/ui/icons/lucideIcons";
+import { BurdenPaintIcon } from "@/components/ui/icons/lucideIcons";
 import { cn } from "@/lib/cn";
-import { EVALUATION_PAINT_NAME } from "@/lib/screenNames";
+import { BURDEN_PAINT_NAME } from "@/lib/screenNames";
 import { LensRow, type LensOption } from "./LensRow";
 
 interface LensControlProps {
@@ -41,12 +41,14 @@ interface LensControlProps {
   routeHidden: boolean;
   /** 凡例の下に書く、周りの道の色の前提（`features/map/costLens.ts: costLensPremises`）。 */
   premises: readonly string[];
+  /** 選べるレンズが無い理由（費用の軸の一覧が届くまで・取れない間）。届いていればnull。 */
+  catalogNotice: string | null;
   /** 今のレンズの取得の状態（塗っている間だけ）。塗りは失敗でもデータ無しでも同じ無彩色なので、印で見分ける。 */
   dataStatus?: LayerDataStatus;
 }
 
 /** 画面の名前。コードの「レンズ」は画面には出さない（利用者が見る名前はこれだけ）。 */
-const LENS_SCREEN_NAME = EVALUATION_PAINT_NAME;
+const LENS_SCREEN_NAME = BURDEN_PAINT_NAME;
 
 /** レンズを選んでいないルートの前のピルの名前（道路は塗らない）。 */
 const UNSELECTED_LABEL = "塗る負担を選ぶ";
@@ -68,6 +70,7 @@ export default function LensControl({
   hasDetail,
   routeHidden,
   premises,
+  catalogNotice,
   dataStatus,
 }: LensControlProps) {
   const [open, setOpen] = useState(false);
@@ -119,8 +122,8 @@ export default function LensControl({
             title={statusLabel}
             usage="選んだ負担の種類の1kmあたりの負担で、地図の道路（ルートを作った後はルートの線）を塗ります。横の帯は負担の凡例です。"
           >
-            {/* 道のりのグラフの「評価で塗る」の切り替えと同じ絵で、どちらも同じ入口と分かるようにする。 */}
-            <EvaluationPaintIcon size={14} />
+            {/* 道のりのグラフの「負担で塗る」の切り替えと同じ絵で、どちらも同じ入口と分かるようにする。 */}
+            <BurdenPaintIcon size={14} />
             <span
               aria-hidden="true"
               className={cn("size-2.5 flex-shrink-0 rounded-full", LEGEND_SWATCH_RING_CLASS)}
@@ -161,6 +164,11 @@ export default function LensControl({
           {statusNotice && (
             <p className="mb-1.5 text-[length:var(--font-size-sm)]" role="status">
               {statusNotice}
+            </p>
+          )}
+          {catalogNotice !== null && (
+            <p className="mb-1.5 text-[length:var(--font-size-sm)]" role="status">
+              {catalogNotice}
             </p>
           )}
           <ToggleGroup

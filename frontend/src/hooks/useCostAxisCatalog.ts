@@ -42,6 +42,8 @@ export interface CostAxisCatalog {
   /** 代償の内訳の、避け方の倍率で上乗せした秒の行の名前。 */
   avoidanceLabel: string;
   turnLabel: string;
+  /** 曲がる所の行の色を借りる軸のid。 */
+  turnAxisId: string;
   /** 地図のレンズ。届くまで・失敗の間はnull。 */
   lenses: CostLensCatalog | null;
   /** 取得が成功したか。falseの間は`axes`が空なので、今の軸と揃うことを要る処理（倍率を送る）はこれで未確定を区別する。 */
@@ -55,6 +57,7 @@ const EMPTY: CostAxisCatalog = {
   axisColors: {},
   avoidanceLabel: "",
   turnLabel: "",
+  turnAxisId: "",
   lenses: null,
   loaded: false,
   failed: false,
@@ -75,6 +78,7 @@ export function costAxisCatalogFromResponse(response: CostAxisCatalogResponse): 
     axisColors: axisColorsOf(axes),
     avoidanceLabel: response.avoidance_label,
     turnLabel: response.turn_label,
+    turnAxisId: response.turn_axis_id,
     lenses: {
       totalLens: {
         axisId: response.total_lens.lens_id,

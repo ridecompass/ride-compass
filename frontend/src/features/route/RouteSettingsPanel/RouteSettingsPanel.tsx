@@ -63,7 +63,12 @@ export default function RouteSettingsPanel({ costPreference, onCostPreferenceCha
       {!catalog.loaded && !catalog.failed && (
         <p className={textVariants({ variant: "hint" })}>{COST_AXIS_CATALOG_LABEL}を読み込んでいます。</p>
       )}
-      <ul className="flex flex-col gap-1.5">
+      {costPreference.strength === 0 && catalog.axes.length > 0 && (
+        <p className={textVariants({ variant: "hint" })} role="status">
+          「条件」タブの負担の強さが ×0 のため、ここの倍率は効きません。
+        </p>
+      )}
+      <ul className={cn("flex flex-col gap-1.5", costPreference.strength === 0 && "opacity-50")}>
         {catalog.axes.map((axis) => (
           <li key={axis.axisId} className="flex items-center gap-2">
             <span className="flex min-w-0 flex-1 items-center gap-1">

@@ -144,7 +144,7 @@ test("ルートを収めるとき、地図の上の操作部品が覆う所へ�
   };
   const depths = {
     right: (await covers(/^(拡大|縮小|地図の向き|現在地に移動)$/)).map((box) => canvas.x + canvas.width - box.x),
-    top: (await covers(/^(評価で塗る:|地図に出す情報$)/)).map((box) => box.y + box.height - canvas.y),
+    top: (await covers(/^(負担で塗る:|地図に出す情報$)/)).map((box) => box.y + box.height - canvas.y),
   };
   for (const [edge, values] of Object.entries(depths) as [keyof typeof depths, number[]][]) {
     expect(values.length, `${edge}の辺を覆う部品が見つからない`).toBeGreaterThan(0);

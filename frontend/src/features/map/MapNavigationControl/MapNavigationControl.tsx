@@ -23,7 +23,7 @@ interface MapNavigationControlProps {
   onBearingChange: (bearing: number) => void;
   /** 北を上に戻す。 */
   onResetNorth: () => void;
-  /** いまの「評価で塗る」の周りの道の塗りが、地図の向きで決まっている。 */
+  /** いまの「負担で塗る」の周りの道の塗りが、地図の向きで決まっている。 */
   linked: boolean;
   /** 走行モードの間だけ渡る。拡大・縮小の代わりに倍率のボタンを出し、方位磁針はダイヤルを開かず、現在地を追っている間は北が上と
    * 進む向きが上を切り替え、追っていない間は北が上に戻す。 */

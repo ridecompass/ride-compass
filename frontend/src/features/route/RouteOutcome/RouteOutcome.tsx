@@ -197,7 +197,7 @@ export default function RouteOutcome({ results, generation, splice, profileLayer
                         : durationDifferenceLabel(route, baseline?.seconds ?? null)}
                     </span>{" "}
                     <span>
-                      <span className="sr-only">負担</span>
+                      <span className="text-[length:var(--font-size-xs)] text-[var(--color-muted)]">負担</span>
                       {formatPenaltyMinutes(route.penalty.total_seconds)}
                       <span className="sr-only">{MINUTE_UNIT}</span>
                     </span>

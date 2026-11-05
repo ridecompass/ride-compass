@@ -22,7 +22,9 @@ const CATALOG = {
   axisColors: {},
   avoidanceLabel: "回避指定",
   turnLabel: "曲がる所",
+  turnAxisId: "stopping",
   loaded: true,
+  failed: false,
 };
 
 type Props = React.ComponentProps<typeof RouteAxisProfile>;

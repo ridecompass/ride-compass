@@ -894,6 +894,8 @@ export interface components {
             avoidance_label: string;
             /** Turn Label */
             turn_label: string;
+            /** Turn Axis Id */
+            turn_axis_id: string;
             total_lens: components["schemas"]["TotalLens"];
             map_lens: components["schemas"]["MapLens"];
         };

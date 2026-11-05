@@ -38,7 +38,9 @@ export const PROFILE_COST_CATALOG = {
   axisColors: { ascent: "rgb(18, 52, 86)", vibration: "rgb(86, 52, 18)" },
   avoidanceLabel: "回避指定",
   turnLabel: "曲がる所",
+  turnAxisId: "stopping",
   loaded: true,
+  failed: false,
 };
 
 // 北緯35度の上を東へ1kmずつ進む2区間。前は登坂だけが効き、標高を持つ。後ろは負担の内訳も標高も無い。

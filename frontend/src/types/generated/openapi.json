@@ -2970,6 +2970,10 @@
             "type": "string",
             "title": "Turn Label"
           },
+          "turn_axis_id": {
+            "type": "string",
+            "title": "Turn Axis Id"
+          },
           "total_lens": {
             "$ref": "#/components/schemas/TotalLens"
           },
@@ -2983,6 +2987,7 @@
           "axes",
           "avoidance_label",
           "turn_label",
+          "turn_axis_id",
           "total_lens",
           "map_lens"
         ],

@@ -166,7 +166,7 @@ export default function MapOverlayControls({
           variant="float"
           size="bare"
           shape="pill"
-          // アイコンだけの、右の縦の列と同じ幅で「評価で塗る」のピルと同じ高さ（文字1行＋上下の余白）のボタン。件数と絞り込みの印は角に置く。
+          // アイコンだけの、右の縦の列と同じ幅で「負担で塗る」のピルと同じ高さ（文字1行＋上下の余白）のボタン。件数と絞り込みの印は角に置く。
           className="pointer-events-auto relative w-[var(--map-ctrl-column-width)] flex-none justify-center border-0 py-1 text-[length:var(--font-size-sm)]"
           aria-label={LIST_SCREEN_NAME}
           aria-description={[
@@ -204,7 +204,7 @@ export default function MapOverlayControls({
             "mt-1 flex items-center gap-1.5 border-b border-[var(--color-border)] pb-1.5",
             route.selectable ? "cursor-pointer" : "text-[var(--color-neutral)]",
           )}
-          data-usage="選んだ候補のルートの線を、地図に表示するか隠すかを切り替えます。線の色は、「評価で塗る」で選んだ負担の種類の1kmあたりの負担です。"
+          data-usage="選んだ候補のルートの線を、地図に表示するか隠すかを切り替えます。線の色は、「負担で塗る」で選んだ負担の種類の1kmあたりの負担です。"
         >
           <Checkbox
             checked={route.shown && route.selectable}

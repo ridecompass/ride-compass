@@ -33,7 +33,9 @@ const CATALOG = {
   axisColors: { width: "red", traffic: "green", slope: "blue", light: "gray" },
   avoidanceLabel: "回避指定",
   turnLabel: "曲がる所",
+  turnAxisId: "stopping",
   loaded: true,
+  failed: false,
 };
 
 /** 軸ごとの負担（秒）を持つ内訳。 */

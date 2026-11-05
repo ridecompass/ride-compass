@@ -1,13 +1,13 @@
 "use client";
 
-import { EVALUATION_PAINT_NAME, FACT_DISPLAY_NAME } from "@/lib/screenNames";
+import { BURDEN_PAINT_NAME, FACT_DISPLAY_NAME } from "@/lib/screenNames";
 import { useMemo, useState } from "react";
 
 import { Dot } from "@/components/ui/Dot/Dot";
 import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs/Tabs";
 import { DisplayItemsIcon } from "@/components/ui/icons/icons";
-import { EvaluationPaintIcon } from "@/components/ui/icons/lucideIcons";
+import { BurdenPaintIcon } from "@/components/ui/icons/lucideIcons";
 import DifficultyProfile from "@/features/route/DifficultyProfile/DifficultyProfile";
 import { profileBoxes } from "@/features/route/DifficultyProfile/profileGeometry";
 import { useProfileScale } from "@/features/route/ProfileChart/profileScale";
@@ -43,7 +43,7 @@ interface RouteProfileProps {
   riding?: boolean;
 }
 
-/** 道のりのグラフ。地図の2つの入口と同じ名前のタブで、「評価で塗る」は区間の1kmあたりの負担を、「表示」は選んだ情報（標高の折れ線・道の区分の帯等）を、
+/** 道のりのグラフ。地図の2つの入口と同じ名前のタブで、「負担で塗る」は区間の1kmあたりの負担を、「表示」は選んだ情報（標高の折れ線・道の区分の帯等）を、
  * 同じ横軸で出す。選んだ地点の中身は地図の区間の小窓が出す。 */
 export default function RouteProfile({
   segments,
@@ -82,7 +82,7 @@ export default function RouteProfile({
     <Tabs value={tab} onValueChange={setTab} className="relative flex flex-col gap-1">
       {/* 切り替えと見方・出す情報のボタンは、結果も走行中も図の右上に重ね、図の上に段を取らない（スマホの低い高さで図を大きく
           見せる）。図の左上は値の目盛りに空けておく。重ねた部品の外では、図をなぞって地点を選べる。切り替えは地図の「表示」の
-          ボタンと「評価で塗る」のピルと同じ絵だけで出し、名前は読み上げに残す。 */}
+          ボタンと「負担で塗る」のピルと同じ絵だけで出し、名前は読み上げに残す。 */}
       <div className="pointer-events-none absolute top-1 right-1 z-10 flex items-start gap-1 [&>*]:pointer-events-auto">
         <TabsList aria-label="道のりのグラフ" variant="overlay">
           <TabsTrigger value="layer" usage="選んだ情報（標高・道の区分等）を、道のりに沿って出します。">
@@ -90,8 +90,8 @@ export default function RouteProfile({
             <span className="sr-only">{FACT_DISPLAY_NAME}</span>
           </TabsTrigger>
           <TabsTrigger value="lens" usage="区間ごとの1kmあたりの負担を、負担の種類の色で積んで道のりに沿って出します。">
-            <EvaluationPaintIcon size={14} />
-            <span className="sr-only">{EVALUATION_PAINT_NAME}</span>
+            <BurdenPaintIcon size={14} />
+            <span className="sr-only">{BURDEN_PAINT_NAME}</span>
           </TabsTrigger>
         </TabsList>
         {tab === "lens" && (

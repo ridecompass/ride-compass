@@ -14,6 +14,7 @@ from pydantic import Field, TypeAdapter, ValidationError
 
 from app.domain.cost_axes import (
     AVOIDANCE_LABEL,
+    TURN_AXIS_ID,
     TURN_LABEL,
     EFFORT_AXES,
     AxisPresentation,
@@ -65,6 +66,8 @@ class CostAxisCatalogResponse(StrictModel):
     avoidance_label: str
     #: 代償の内訳の、曲がる所の漕ぎ出しの行の名前（慣性の費目の軸の倍率が掛かるが、道1本の値ではないので軸の行と分ける）。
     turn_label: str
+    #: 曲がる所の漕ぎ出しに倍率が掛かる軸のid（内訳の曲がる所の行をこの軸の色で塗る）。
+    turn_axis_id: str
     total_lens: TotalLens
     map_lens: MapLens
 
@@ -84,6 +87,7 @@ async def get_cost_axis_catalog() -> CostAxisCatalogResponse:
     ]
     return CostAxisCatalogResponse(
         axes=[*effort, *burden], avoidance_label=AVOIDANCE_LABEL, turn_label=TURN_LABEL,
+        turn_axis_id=TURN_AXIS_ID,
         total_lens=TotalLens(lens_id=TOTAL_LENS_ID, **definitions.total_lens.model_dump()),
         map_lens=MapLens(formula=lens_way_formula(), material_conditions=list(LENS_MATERIAL_CONDITIONS)),
     )

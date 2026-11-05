@@ -100,8 +100,8 @@ export const CopyIcon = fromLucide(Copy);
 export const RedrawMapIcon = fromLucide(RotateCw);
 /** 群の中で一覧に並べる項目を選ぶ。 */
 export const ChooseItemsIcon = fromLucide(ListChecks);
-/** 負担で道を塗る（「評価で塗る」の入口）。 */
-export const EvaluationPaintIcon = fromLucide(Paintbrush);
+/** 負担で道を塗る（「負担で塗る」の入口）。 */
+export const BurdenPaintIcon = fromLucide(Paintbrush);
 export const RouteSettingsIcon = fromLucide(SlidersHorizontal);
 export const ShieldIcon = fromLucide(Shield);
 export const TargetIcon = fromLucide(Target);
