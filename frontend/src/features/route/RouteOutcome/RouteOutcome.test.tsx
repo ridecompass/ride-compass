@@ -88,7 +88,9 @@ describe("候補の上の知らせ", () => {
     });
     renderOutcome({ results: resultsOf({ generated: [FAST, SLOW], selectedRouteId: "slow", reusedRouteId: "slow" }) });
 
-    expect(screen.getByText("作った組み合わせは既存の候補「2」と同じ道のため、その候補を選びました")).toBeInTheDocument();
+    expect(
+      screen.getByText("作った組み合わせは既存の候補「2」と同じ道のため、その候補を選びました"),
+    ).toBeInTheDocument();
     expect(screen.getByRole("tablist", { name: "ルート結果" }).scrollLeft).toBe(100);
   });
 });

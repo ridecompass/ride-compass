@@ -143,7 +143,9 @@ describe("RouteSplicePanel 見出しと操作", () => {
   it("区間を持たない候補では、操作と指標を出さずに区間を出せないことを書き、戻る操作は残す", () => {
     renderPanel({ displayed: { ...DISPLAYED, edge_ids: [] }, appliedCount: 1 });
 
-    expect(screen.getByText("この候補には通る道の情報が無いため、乗り換えられる区間を表示できません。")).toBeInTheDocument();
+    expect(
+      screen.getByText("この候補には通る道の情報が無いため、乗り換えられる区間を表示できません。"),
+    ).toBeInTheDocument();
     for (const name of ACTIONS) expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
     expect(screen.queryByText("距離", { selector: "dt" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "編集をやめて候補へ戻る" })).toBeInTheDocument();
