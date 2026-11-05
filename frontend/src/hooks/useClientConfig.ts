@@ -12,7 +12,7 @@ const CLIENT_CONFIG_QUERY_KEY = ["client-config"] as const;
 const FAILED_CONFIG: ClientConfig = { ...EMPTY_CLIENT_CONFIG, failed: true };
 
 /** 画面の設定の取得をやり直す（`failed`状態からの明示的な再試行導線用）。再取得中は`failed`を下ろし、UIが「取得中」へ戻る。 */
-export function retryClientConfigFetch(): void {
+function retryClientConfigFetch(): void {
   retrySharedCatalogFetch(CLIENT_CONFIG_QUERY_KEY);
 }
 

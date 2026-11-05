@@ -14,5 +14,3 @@ export const legendChipBodyClass =
 
 /** 帯グラフ。色ごとの長さが軸ごとの負担（ルートの内訳）。 */
 export const stackBarClass = "flex h-[10px] overflow-hidden rounded-[5px] bg-[var(--color-surface-2)]";
-
-export const legendIconClass = "inline-flex flex-shrink-0 items-center";

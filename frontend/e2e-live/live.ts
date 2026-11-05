@@ -21,7 +21,7 @@ export const LIVE_POINT = (() => {
 })();
 
 /** 地図が塗るレンズ1つ（総合か費用の軸）。 */
-export interface LiveLens {
+interface LiveLens {
   lensId: string;
   label: string;
 }
