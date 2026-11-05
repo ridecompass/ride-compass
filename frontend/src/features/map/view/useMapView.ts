@@ -129,7 +129,8 @@ export function useMapView({
   // （無いレンズを塗り続けてしまう）。
   const [lens, setLens] = useStoredState<LensId>("ridecompass:route-style-mode", UNSELECTED_LENS_ID, {
     serialize: (value) => value,
-    deserialize: (raw) => (raw === UNSELECTED_LENS_ID || lenses.some((candidate) => candidate.lensId === raw) ? raw : null),
+    deserialize: (raw) =>
+      raw === UNSELECTED_LENS_ID || lenses.some((candidate) => candidate.lensId === raw) ? raw : null,
     reloadKey: String(costCatalog.loaded),
   });
   const [keepAfterRoute, setKeepAfterRoute] = useStoredBooleanState("ridecompass:lens-keep-after-route", true);

@@ -42,12 +42,7 @@ const hintClass = cn(textVariants({ variant: "hint" }), "m-0");
 // 地図の道をクリックしたときの中身。答えるのは「この道は何者で、どれだけの負担か」。
 // 負担は押したときだけ取りに行く（クリックのたびに引くとレート制限に当たる）。
 // 開いたときに見せるのは上の帯（道の種類・名前・路面など）と負担だけで、属性は畳む（地図の上の小さな枠に収めるため）。
-export default function RoadInspectorPopup({
-  properties,
-  track,
-  conditions,
-  costPreference,
-}: RoadInspectorPopupProps) {
+export default function RoadInspectorPopup({ properties, track, conditions, costPreference }: RoadInspectorPopupProps) {
   // 負担は道・走行の条件・利用者の値ごとに持つ。値を変えたら、古い値の負担を見せずに取り直しへ戻す。条件は押したときの
   // ものに留める——出発時刻は「今」へ5分刻みで進むので、今の条件で引き直すと開いている間に負担が消える。
   const preferenceKey = JSON.stringify(costPreference);

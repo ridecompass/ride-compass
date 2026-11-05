@@ -43,7 +43,12 @@ type TileResult = QueryObserverResult<Awaited<ReturnType<typeof fetchLensMateria
 
 /** レンズの材料の要求（問い合わせの鍵にも載せる）と、タイル1枚の取り方。レンズが宣言した条件と、想定速度と利用者の値
  * （生成の要求と同じつまみと倍率）を載せる。 */
-function lensMaterials(lens: MapLens, conditions: RideConditions, costPreference: CostPreference, totalLensId: string | null) {
+function lensMaterials(
+  lens: MapLens,
+  conditions: RideConditions,
+  costPreference: CostPreference,
+  totalLensId: string | null,
+) {
   const names = lens.materialConditions;
   const query: LensMaterialsQuery = {
     ...(names.includes("at") ? { at: conditions.at.toISOString() } : {}),

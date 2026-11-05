@@ -128,7 +128,12 @@ function knownCategory(key: string): MapLayerCategory | null {
   return CATEGORY_KEYS.has(key) ? (key as MapLayerCategory) : null;
 }
 
-export function buildMapLayers({ lenses, accidentYears, clientTuning, roadLayers }: LayerCatalog): readonly MapLayerDescriptor[] {
+export function buildMapLayers({
+  lenses,
+  accidentYears,
+  clientTuning,
+  roadLayers,
+}: LayerCatalog): readonly MapLayerDescriptor[] {
   // 取れていないときは年に触れない（既定の年を出すと、それが正しいように見える）。
   const accidentCoverage = coverageYearsLabel(accidentYears);
   // 並びはレンズの選択肢と同じ（総合を先に、続けて費用の軸）。
@@ -147,16 +152,14 @@ export function buildMapLayers({ lenses, accidentYears, clientTuning, roadLayers
       panelHint: layer.panelHint ? fillLayerText(layer.panelHint, slots) : undefined,
     };
   });
-  const roadLayerChips = roadLayers.map(
-    (layer): ChipLayerDescriptor => ({
-      id: layer.id,
-      label: layer.label,
-      ...declaredLayer({ ...mapDisplay.axisLayers.road, category: knownCategory(layer.category) }),
-      icon: roadLayerIcon(layer.icon),
-      description: layer.description.join(""),
-      panelHint: layer.panel_hint.length > 0 ? layer.panel_hint : undefined,
-    }),
-  );
+  const roadLayerChips = roadLayers.map((layer): ChipLayerDescriptor => ({
+    id: layer.id,
+    label: layer.label,
+    ...declaredLayer({ ...mapDisplay.axisLayers.road, category: knownCategory(layer.category) }),
+    icon: roadLayerIcon(layer.icon),
+    description: layer.description.join(""),
+    panelHint: layer.panel_hint.length > 0 ? layer.panel_hint : undefined,
+  }));
   return [
     ...staticLayers,
     ...roadLayerChips,
