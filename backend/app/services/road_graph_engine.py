@@ -42,7 +42,7 @@ from app.domain.geo import (
     compass_degrees,
 )
 from app.domain.region import BoundingBox, bbox_covering_points
-from app.domain.road_network import RoadSlice, material_arrays_of, material_fills
+from app.domain.road_network import RoadSlice, material_arrays_of
 from app.domain.route import (
     Coordinates,
     EvaluatedRoute,
@@ -87,7 +87,7 @@ from app.domain.wind import (
     detour_ratio_or_default,
 )
 from app.infrastructure import detour_ratio_cache
-from app.services.graph_service import GraphService
+from app.services.graph_service import GraphService, network_fills
 from app.domain.loop_routing import LoopTurnaround, TracedLoop
 from app.services.weather_service import WeatherService
 from app.services import road_graph_via_routes
@@ -266,7 +266,7 @@ class RoadGraphEngine:
                 materials, search_masks, self._avoid_cost_multiplier, departure_wind,
                 wind_series, start, self._assumed_speed_kmh, lazy_graph.edge_rows,
                 detour_ratio=detour_ratio_or_default(learned_detour_ratio),
-                material_fills=material_fills(road.network, road.classes, burden_material_ids(cost_axes)),
+                material_fills=network_fills(road.network, burden_material_ids(cost_axes)),
                 axes=cost_axes,
                 parameters=current_ledger_parameters(self._cost_preference),
             )

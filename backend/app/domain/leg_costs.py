@@ -29,7 +29,7 @@ from app.domain.cycling_speed import (
     rolling_resistance_material_id,
 )
 from app.domain.cost_axes import CostAxisDefinitions
-from app.domain.elevation_profile import ElevationProfiles, GradeDistribution
+from app.domain.elevation_profile import FLAT, ElevationProfiles
 from app.domain.search_materials import SearchMaterials
 from app.domain.ledger_costs import LedgerCosts, LedgerParameters, burden_per_km
 from app.domain.road_network import MaterialFills
@@ -182,7 +182,7 @@ def travel_inputs(materials: Mapping[str, MaterialColumn], distance_m: np.ndarra
     rolling = rolling_resistance_material_id()
     surface = materials.get(rolling) if rolling is not None else None
     if not isinstance(surface, CategoricalColumn):  # 転がり抵抗の表が分け方を指していない: どの区間も基準の転がり抵抗
-        surface = CategoricalColumn(np.zeros(len(distance_m), dtype=np.int16), (None,))
+        surface = CategoricalColumn.empty(len(distance_m))
     waits = np.zeros(len(distance_m))
     kickoffs = np.zeros(len(distance_m))
     distance_km = distance_m / 1000.0
@@ -253,7 +253,7 @@ def compile_leg_cost_kernels() -> None:
     """費用の組み立てのJIT（走行モデルとビンの仕上げ）を、本番と同じ引数の型で1回ずつ呼んでコンパイルする
     （`domain/routing.py: compile_search_kernels`がイメージの組み立てで呼ぶ）。"""
     flat = ElevationProfiles(np.zeros(1, dtype=np.int64), np.full(1, 2, dtype=np.int32), np.ones(1, dtype=bool),
-                             np.zeros(2, dtype=np.float32), GradeDistribution(np.zeros(1), np.ones(1)))
+                             np.zeros(2, dtype=np.float32), FLAT)
     model = SegmentSpeedModel(RiderProfile(cruise_speed_kmh=20.0), flat, np.ones(1), np.zeros(1), np.zeros(1))
     seconds = model.travel_seconds(np.zeros(1), np.zeros(1))
     model.ride(np.zeros(1), np.zeros(1), 1.0)
@@ -319,8 +319,6 @@ class LegCostComposer:
         self._cache: dict[tuple, LegCostArrays] = {}
         # 時刻ビン（`BinTime`が鍵）の合成。同じ鍵のビンは、レグの向きや開始時刻が違っても同じ中身なので、往路と帰りで使い回す。
         self._bins: dict[BinTime, _ComposedBin] = {}
-        # 風の予報の時刻の添字ごとの`(走行時間, 代償の秒)`（全区間が同じ時刻のビンが使い回す）。
-        self._ledger_seconds: dict[int | None, tuple[np.ndarray, np.ndarray]] = {}
 
     @cached_property
     def _materials(self) -> dict[str, MaterialColumn]:
@@ -531,14 +529,7 @@ class LegCostComposer:
         """時刻`time`で1本ぶん合成する。段ごとの時間を`steps_ms`へ足す。体力と道のストレスは風だけで決まる。欠けは取込の範囲
         全体の平均で埋める（`material_fills`）。"""
         started = start_timer()
-        if isinstance(time.forecast, np.ndarray):
-            travel_seconds, added_seconds = self._ledger_bin(time)
-        else:
-            # 全区間が同じ時刻のビンは、風の予報の時刻の添字ごとに1回だけ解いて使い回す。
-            cached = self._ledger_seconds.get(time.forecast)
-            if cached is None:
-                cached = self._ledger_seconds[time.forecast] = self._ledger_bin(time)
-            travel_seconds, added_seconds = cached
+        travel_seconds, added_seconds = self._ledger_bin(time)
         add_elapsed_ms(steps_ms, "speed", started)
         started = start_timer()
         cost, travel = _bin_cost_arrays(

@@ -149,9 +149,10 @@ def _way_materials(table: LensTable, lens_id: str) -> dict[str, dict[str, float]
         return None
     features = table.features
     result: dict[str, dict[str, float]] = {}
-    for key, (along, against), bearing in zip(features.keys, values, features.bearing_deg):
-        leaves = {name: float(value) for name, value in ((LENS_ALONG_LEAF, along), (LENS_AGAINST_LEAF, against),
-                                                         (ROAD_BEARING_LEAF, bearing)) if not np.isnan(value)}
+    for key, (along, against), bearing in zip(features.keys, values.tolist(), features.bearing_deg.tolist()):
+        # NaN（辿れない向き・方位の無い道）は自分と等しくない。
+        leaves = {name: value for name, value in ((LENS_ALONG_LEAF, along), (LENS_AGAINST_LEAF, against),
+                                                  (ROAD_BEARING_LEAF, bearing)) if value == value}
         if LENS_ALONG_LEAF in leaves or LENS_AGAINST_LEAF in leaves:
             result[key] = leaves
     return result

@@ -113,9 +113,12 @@ def _way_direction_bearings(network: RoadNetwork, rows: np.ndarray, feature: np.
     order = np.lexsort((segment, feature))
     first = np.full(count, -1, dtype=np.int64)
     last = np.full(count, -1, dtype=np.int64)
-    # 並べた行の、フィーチャーごとの最初と最後。
-    last[feature[order]] = order
-    first[feature[order[::-1]]] = order[::-1]
+    # 並べた行の、フィーチャーごとの最初と最後（フィーチャーの変わり目）。
+    sorted_feature = feature[order]
+    starts = np.flatnonzero(np.r_[True, sorted_feature[1:] != sorted_feature[:-1]])
+    ends = np.r_[starts[1:] - 1, len(order) - 1]
+    first[sorted_feature[starts]] = order[starts]
+    last[sorted_feature[ends]] = order[ends]
     start, end = tail[first], head[last]
     return bearings_between(network.node_lat[start], network.node_lon[start],
                             network.node_lat[end], network.node_lon[end])
@@ -229,7 +232,9 @@ def lens_inspection(table: LensTable, index: int, painted: Literal["along", "aga
 
     def direction(slot: int) -> LensDirection | None:
         rows = of_feature & (features.direction == slot)
-        if not rows.any():
+        total = float(table.values[TOTAL_LENS_ID][index, slot])
+        # 長さ0の区間だけの向きは1kmあたりが求まらない（0/0）。辿れない向きと同じく値を持たない。
+        if not rows.any() or not np.isfinite(total):
             return None
         km = float(distance[rows].sum()) / 1000.0
         measured = [
@@ -239,7 +244,7 @@ def lens_inspection(table: LensTable, index: int, painted: Literal["along", "aga
             (STOPS_FACT_LABEL, float(facts.stops[rows].sum()) / km if km > 0 else None, "回/km"),
         ]
         return LensDirection(
-            total_seconds_per_km=float(table.values[TOTAL_LENS_ID][index, slot]),
+            total_seconds_per_km=total,
             axes=[LensAxisSeconds(axis_id=lens_id, seconds_per_km=float(values[index, slot]))
                   for lens_id, values in table.values.items() if lens_id != TOTAL_LENS_ID],
             facts=[AxisFact(label=label, value=value, unit=unit) for label, value, unit in measured if value is not None],

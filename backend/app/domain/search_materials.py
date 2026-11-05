@@ -54,7 +54,7 @@ def _empty_material_column(material_id: str, n: int) -> MaterialColumn | None:
     if spec is None:
         return None
     if spec.dtype == "categorical":
-        return CategoricalColumn(np.zeros(n, dtype=np.int16), (None,))
+        return CategoricalColumn.empty(n)
     return np.full(n, np.nan)  # numeric・boolean（真偽も数値の行列と同じく1.0/0.0/NaNで持つ）
 
 

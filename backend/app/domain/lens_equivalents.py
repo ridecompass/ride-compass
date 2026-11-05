@@ -19,7 +19,7 @@ from app.domain.cost_axes import (
 )
 from app.domain.cycling_speed import BASE_CRR_ID, RiderProfile, SegmentSpeedModel, crr_for_surface
 from app.domain.attributes import CategoricalColumn
-from app.domain.elevation_profile import ElevationProfiles, GradeDistribution
+from app.domain.elevation_profile import FLAT, ElevationProfiles
 from app.domain.ledger_costs import LedgerCosts, LedgerParameters
 from app.domain.road_classes import CLASS_MATERIAL_PREFIX, RoadClassDefinitions, class_labels
 from app.domain.route_request import ASSUMED_SPEED_KMH
@@ -137,4 +137,4 @@ def _uniform_slopes(grade_percent: np.ndarray) -> ElevationProfiles:
     n = len(grade_percent)
     elevation = np.column_stack([np.zeros(n), grade_percent / 100.0 * _ROAD_M]).astype(np.float32).ravel()
     return ElevationProfiles(np.arange(n, dtype=np.int64) * 2, np.full(n, 2, dtype=np.int32), np.ones(n, dtype=bool),
-                             elevation, GradeDistribution(np.zeros(1), np.ones(1)))
+                             elevation, FLAT)
