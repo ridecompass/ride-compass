@@ -59,6 +59,11 @@ class CategoricalColumn:
     vocab: tuple[str | None, ...]
 
     @classmethod
+    def empty(cls, n: int) -> "CategoricalColumn":
+        """値の無い区間`n`本ぶんの列（全部が番号0）。"""
+        return cls(np.zeros(n, dtype=np.int16), (None,))
+
+    @classmethod
     def encode(cls, values: Iterable[str | None]) -> "CategoricalColumn":
         """値の並び（値なしはNone）を、現れた順に番号を振った列にする。"""
         code_of: dict[str | None, int] = {None: 0}
