@@ -15,6 +15,7 @@
 
 from datetime import datetime
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
@@ -139,26 +140,31 @@ class FakeService:
     def __init__(self, answer=None):
         self._answer = answer
 
-    async def get_warnings(self, point):
+    def _give(self):
+        if isinstance(self._answer, Exception):
+            raise self._answer
         return self._answer
+
+    async def get_warnings(self, point):
+        return self._give()
 
     async def get_status(self, point, now):
-        return self._answer
+        return self._give()
 
     async def get_forecasts(self, point):
-        return self._answer
+        return self._give()
 
     async def get_nearest_observation(self, point):
-        return self._answer
+        return self._give()
 
     async def get_grid_point_today(self, point):
-        return self._answer
+        return self._give()
 
     async def get_msm_grid(self, bbox):
-        return self._answer
+        return self._give()
 
     async def get_route_timeline(self, points):
-        return self._answer
+        return self._give()
 
 
 def test_the_msm_grid_route_returns_the_grid_points_with_local_times(override_dependency):
@@ -204,24 +210,30 @@ def test_an_msm_grid_range_that_is_inverted_or_too_wide_is_refused(override_depe
     assert response.json() == {"detail": detail}
 
 
-@pytest.mark.parametrize(("method", "path", "call", "dependency", "detail"), [
-    ("GET", "/api/weather/warnings", {"params": POINT}, get_warning_service, "取得できませんでした。"),
-    ("GET", "/api/weather/wbgt", {"params": POINT}, get_wbgt_service, "取得できませんでした。"),
-    ("GET", "/api/weather/flood-forecast", {"params": POINT}, get_flood_service, "取得できませんでした。"),
-    ("GET", "/api/weather/amedas", {"params": POINT}, get_amedas_service, "アメダス観測値の取得に失敗しました"),
-    ("GET", "/api/weather", {"params": POINT}, get_weather_service, "気象データの取得に失敗しました"),
-    ("GET", "/api/weather/msm-grid", {"params": TOKYO_BBOX}, get_weather_service, "気象データの取得に失敗しました"),
+_UPSTREAM_FAILED = "外部の配信元から取得できませんでした（ConnectError）"
+
+
+@pytest.mark.parametrize(("method", "path", "call", "dependency", "answer", "detail"), [
+    ("GET", "/api/weather/warnings", {"params": POINT}, get_warning_service, httpx.ConnectError("x"), _UPSTREAM_FAILED),
+    ("GET", "/api/weather/wbgt", {"params": POINT}, get_wbgt_service, httpx.ConnectError("x"), _UPSTREAM_FAILED),
+    (
+        "GET", "/api/weather/flood-forecast", {"params": POINT}, get_flood_service, httpx.ConnectError("x"),
+        _UPSTREAM_FAILED,
+    ),
+    ("GET", "/api/weather/amedas", {"params": POINT}, get_amedas_service, None, "アメダス観測値の取得に失敗しました"),
+    ("GET", "/api/weather", {"params": POINT}, get_weather_service, None, "気象データの取得に失敗しました"),
+    ("GET", "/api/weather/msm-grid", {"params": TOKYO_BBOX}, get_weather_service, None, "気象データの取得に失敗しました"),
     (
         "POST", "/api/weather/route-warning-timeline", {"json": ROUTE_POINTS},
-        get_warning_timeline_service, "取得できませんでした。",
+        get_warning_timeline_service, httpx.ConnectError("x"), _UPSTREAM_FAILED,
     ),
 ])
 def test_a_source_that_could_not_be_obtained_is_a_failure_not_an_empty_answer(
-    override_dependency, method, path, call, dependency, detail
+    override_dependency, method, path, call, dependency, answer, detail
 ):
     """空の応答は「出ていない」を表す（ルートの警報級の時系列なら「どの区域にも入らない」）。取れなかったことを同じ空で
     返すと、画面は出ていないと見せる。"""
-    override_dependency(dependency, lambda: FakeService(None))
+    override_dependency(dependency, lambda: FakeService(answer))
 
     response = client.request(method, path, **call)
 

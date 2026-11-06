@@ -33,29 +33,3 @@ def test_an_area_is_resolved_by_following_class15_parents_up_to_the_subdivision(
     master = _master({"1310100": AreaEntry(parent=parent)}, class15s)
     assert resolve_area("1310100", master) == EXPECTED
 
-
-@pytest.mark.parametrize(
-    ("class20s", "class15s", "class10s"),
-    [
-        ({}, {}, CLASS10),
-        ({"1310100": AreaEntry(parent=None)}, {}, CLASS10),
-        ({"1310100": AreaEntry(parent="missing")}, {}, CLASS10),
-        ({"1310100": AreaEntry(parent="a")}, {"a": AreaEntry(parent=None)}, CLASS10),
-        (
-            {"1310100": AreaEntry(parent="a")},
-            {"a": AreaEntry(parent="b"), "b": AreaEntry(parent="a")},
-            CLASS10,
-        ),
-        ({"1310100": AreaEntry(parent="130010")}, {}, {"130010": AreaEntry(parent=None)}),
-    ],
-    ids=[
-        "area_missing_from_the_master",
-        "area_without_parent",
-        "parent_in_no_level",
-        "class15_without_parent",
-        "cycle",
-        "subdivision_without_office",
-    ],
-)
-def test_a_chain_that_cannot_reach_a_subdivision_with_an_office_is_unresolved(class20s, class15s, class10s):
-    assert resolve_area("1310100", _master(class20s, class15s, class10s)) is None

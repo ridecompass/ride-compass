@@ -48,19 +48,6 @@ async def test_station_without_a_name_or_coordinates_is_left_out(missing):
 
     assert list(stations) == ["44132"]
 
-
-@pytest.mark.parametrize(
-    "response",
-    [
-        pytest.param({"status_code": 500}, id="サーバの失敗"),
-        pytest.param({"json": [["44132"]]}, id="辞書でない"),
-        pytest.param({"text": "<html>"}, id="JSONでない"),
-    ],
-)
-async def test_station_table_failure_is_none(response):
-    assert await jma_amedas_client.fetch_station_table(answering(**response), new_station_table_cache()) is None
-
-
 # --- 最新の観測時刻 ---
 
 
@@ -84,19 +71,6 @@ async def test_latest_time_is_fetched_once_while_cached():
     await jma_amedas_client.fetch_latest_observation_time(client, cache)
 
     assert route.call_count == 1
-
-
-@pytest.mark.parametrize(
-    "response",
-    [
-        pytest.param({"status_code": 503}, id="サーバの失敗"),
-        pytest.param({"text": "not a time"}, id="時刻でない"),
-        pytest.param({"text": "2026-08-29T17:00:00"}, id="時差が無い"),
-    ],
-)
-async def test_latest_time_failure_is_none(response):
-    assert await jma_amedas_client.fetch_latest_observation_time(answering(**response), new_latest_time_cache()) is None
-
 
 # --- 観測値 ---
 

@@ -160,16 +160,6 @@ async def test_features_not_yet_delivered_are_missing_but_not_remembered(upstrea
     assert await client(upstream).get_cached(FEATURES) is None
 
 
-async def test_an_upstream_failure_reads_as_nothing_and_is_not_remembered(monkeypatch, upstream, fake_redis, client):
-    recorded = record_external_calls(monkeypatch, jma_tile_client)
-    upstream.get(f"/{TILE}").return_value = httpx.Response(503)
-
-    assert await client(upstream).fetch(TILE) is None
-
-    assert recorded[0].fields["result"] == "error"
-    assert await client(upstream).get_cached(TILE) is None
-
-
 async def test_upstream_requests_are_spaced_by_the_configured_rate_only_until_the_interval_has_passed(
     monkeypatch, upstream, fake_redis, waits, clock, client
 ):
@@ -222,9 +212,8 @@ async def test_a_time_listing_reads_as_its_frames_and_the_elements_with_tiles(up
         httpx.Response(200, text="<html>maintenance</html>"),
         httpx.Response(200, json={"basetime": "20260101000000", "validtime": "20260101000000"}),
         httpx.Response(404),
-        httpx.Response(500),
     ],
-    ids=["not_json", "not_a_list", "missing", "failed"],
+    ids=["not_json", "not_a_list", "missing"],
 )
 async def test_a_time_listing_that_cannot_be_read_reads_as_nothing(upstream, fake_redis, answer, client):
     upstream.get(f"/{LISTING}").return_value = answer

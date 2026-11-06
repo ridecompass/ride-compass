@@ -10,7 +10,6 @@
 
 from datetime import datetime
 
-import pytest
 
 from app.domain.route import Coordinates
 from app.infrastructure.jma_warning_client import new_area_data_cache
@@ -63,13 +62,3 @@ async def test_a_route_in_no_area_has_no_passes(boundary_path):
     assert result is not None
     assert result.areas == []
 
-
-@pytest.mark.parametrize("failure", [
-    {"area_data": None, "timeline_document": TIMELINE_DOCUMENT},  # 区域が分からない
-    {},  # 時系列を取れない
-])
-async def test_the_levels_are_unknown_rather_than_empty_when_a_step_fails(boundary_path, failure):
-    """取れなかったことを通過の無い空で返すと、画面は注意報級の時間帯が無いと見せる。"""
-    upstream = area_lookup_upstream(boundary_path, **failure)
-
-    assert await _service(upstream).get_route_timeline([CHIYODA_POINT]) is None

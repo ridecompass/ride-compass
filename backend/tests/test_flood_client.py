@@ -9,7 +9,6 @@
   期限そのものは`cachetools`が持つ
 """
 
-import logging
 
 import httpx
 import pytest
@@ -95,16 +94,3 @@ async def test_the_national_list_is_fetched_once_and_reused():
     assert first == second
     assert route.call_count == 1
 
-
-@pytest.mark.parametrize(
-    "response",
-    [{"status_code": 500}, {"json": {"rivers": []}}, {"text": "<html>maintenance</html>"}],
-    ids=["server-error", "not-a-list", "not-json"],
-)
-async def test_an_unusable_answer_gives_nothing_and_is_logged(response, caplog):
-    client, _ = answering(**response)
-
-    with caplog.at_level(logging.WARNING):
-        assert await flood_client.fetch_flood_documents(client, new_flood_cache()) is None
-
-    assert [r for r in caplog.records if r.levelno >= logging.WARNING and "weather:jma-flood" in r.getMessage()]

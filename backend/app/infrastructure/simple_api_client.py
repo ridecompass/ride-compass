@@ -1,5 +1,5 @@
 """シンプルな外部APIクライアント（TTLCacheのみ、再試行を持たない）が共有する
-「キャッシュ参照→fetch→エラー処理→キャッシュ書き戻し」の骨格。
+「キャッシュ参照→fetch→キャッシュ書き戻し」の骨格。取得の失敗は投げる（口は`api/upstream_errors.py`が502にする）。
 """
 
 import asyncio
@@ -8,7 +8,7 @@ from collections.abc import Awaitable, Callable, Hashable
 import httpx
 from cachetools import TTLCache
 
-from app.infrastructure.debug_log import log_external_call, mark_failed
+from app.infrastructure.debug_log import log_external_call
 
 #: 「まだ引いていない」を表す番兵。`None`は上流が返す正常な答え（該当なし）であり、
 #: 未取得と同じ値にすると該当なしがTTLの間ずっとキャッシュされず、毎回上流を叩く。
@@ -20,7 +20,7 @@ _in_flight: dict[tuple[int, Hashable], asyncio.Task] = {}
 
 
 class UnexpectedShapeError(ValueError):
-    """fetchが返した内容の形が想定と異なる場合に送出する（`catch`の指定に関わらずNoneへ倒す）。"""
+    """fetchが返した内容の形が想定と異なる場合に送出する。"""
 
 
 async def get_json[J: (dict, list)](client: httpx.AsyncClient, url: str, expected: type[J], shape_error_prefix: str) -> J:
@@ -40,18 +40,15 @@ async def cached_fetch[T](
     *,
     cache: TTLCache | None = None,
     key: Hashable = None,
-    # 何をNoneへ倒すかは応答の形ごとに違うため、呼び出し側が指定できるようにする。
-    catch: tuple[type[BaseException], ...] = (httpx.HTTPError, ValueError),
     **log_fields: object,
-) -> T | None:
-    """`fetch()`を呼び、`catch`の例外と`UnexpectedShapeError`をNoneへ倒して記録する。
+) -> T:
+    """`fetch()`を呼んで返す。失敗は投げる（`log_external_call`が失敗として記録する）。
 
     `cache`を渡すと`key`で引き、ミスしたときだけ`fetch()`を呼ぶ。同じ`cache`と`key`へ取得の最中に来た要求は、
     `fetch()`を呼ばずにその取得の結果を待つ（失敗も同じ失敗として受ける）。待っていた要求が切れても、取得は続けて
     キャッシュへ書く。**上流が「該当なし」として返した`None`もキャッシュする**——未取得と区別しないと、該当なしの
     問い合わせがTTLの間ずっと上流へ流れ続ける。`cache`を渡さない場合は毎回`fetch()`を呼ぶ。
     """
-    caught: tuple[type[BaseException], ...] = (UnexpectedShapeError, *catch)
     with log_external_call(category, **log_fields) as fields:
         pending: Awaitable[T]
         if cache is None:
@@ -62,11 +59,7 @@ async def cached_fetch[T](
                 fields["cache"] = "hit"
                 return cached
             pending = asyncio.shield(_shared_fetch(fetch, cache, key, fields))
-        try:
-            data = await pending
-        except caught as exc:
-            mark_failed(fields, exc)
-            return None
+        data = await pending
         fields["result"] = "ok"
         return data
 

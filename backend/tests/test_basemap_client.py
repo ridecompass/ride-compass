@@ -14,7 +14,6 @@
 import json
 import logging
 
-import httpx
 import pytest
 import respx
 
@@ -87,12 +86,3 @@ async def test_json_left_under_the_plain_path_by_an_older_version_is_not_served(
 
     assert json.loads(content)["sprite"] == json.loads(again)["sprite"] == f"{PROXY}/sprites/ofm_f384/ofm"
 
-
-async def test_an_upstream_failure_gives_nothing_is_logged_and_is_not_remembered(warnings):
-    router = respx.Router()
-    route = router.get(f"{UPSTREAM}/{TILE}")
-    route.side_effect = [httpx.Response(503), httpx.Response(200, content=b"tile")]
-
-    assert await client(router).get(TILE) is None
-    assert [r for r in warnings() if "basemap:openfreemap" in r.getMessage()]
-    assert await client(router).get(TILE) == (b"tile", "application/octet-stream")

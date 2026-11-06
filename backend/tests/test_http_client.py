@@ -7,7 +7,6 @@
 """
 
 import httpx
-import pytest
 import respx
 
 from app.infrastructure import http_client
@@ -27,22 +26,11 @@ def test_one_client_is_kept_per_timeout_and_waits_that_long():
     assert (short.timeout, long.timeout) == (httpx.Timeout(3.0, read=5.0), httpx.Timeout(3.0, read=8.0))
 
 
-@pytest.mark.parametrize(
-    "answer, expected, result, error_type",
-    [
-        (httpx.Response(404), UPSTREAM_NOT_FOUND, "ok", None),
-        (httpx.Response(503), None, "error", "http_503"),
-        (httpx.ConnectTimeout("timed out"), None, "error", "ConnectTimeout"),
-    ],
-    ids=["missing", "server-error", "transport-error"],
-)
-async def test_an_upstream_answer_other_than_success_is_told_apart_as_missing_or_failed(
-    answer, expected, result, error_type
-):
-    """404は配信元に無いと確かめた正常系として数え、ほかの失敗だけを失敗として集計とWARNINGへ回す。"""
+async def test_a_missing_upstream_answer_is_told_apart_as_nothing_to_get():
+    """404は配信元に無いと確かめた正常系として返し、成功として数える（ほかの失敗は投げる）。"""
     router = respx.Router()
-    router.get(URL).side_effect = [answer]
+    router.get(URL).side_effect = [httpx.Response(404)]
     fields: dict = {}
 
-    assert await fetch_upstream(client_for(router), URL, fields) is expected
-    assert (fields["result"], fields.get("error_type")) == (result, error_type)
+    assert await fetch_upstream(client_for(router), URL, fields) is UPSTREAM_NOT_FOUND
+    assert fields == {"status": 404, "result": "ok"}

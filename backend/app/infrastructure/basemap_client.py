@@ -30,7 +30,7 @@ class BasemapClient:
         self._http_client = http_client
         self._proxy_base_url = proxy_base_url
 
-    async def get(self, path: str) -> tuple[bytes, str] | UpstreamNotFound | None:
+    async def get(self, path: str) -> tuple[bytes, str] | UpstreamNotFound:
         with log_external_call("basemap:openfreemap", path=path) as fields:
             # tile_cacheの読み書きは同期的なディスクI/O。基礎地図読み込み時は数十件のタイル/フォント
             # リクエストが同時に来るため、awaitせず直接呼ぶとイベントループ全体をブロックし、

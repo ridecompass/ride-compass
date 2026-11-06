@@ -59,7 +59,7 @@ def _parse_bulletin(entry: dict) -> FloodBulletin:
     )
 
 
-async def fetch_flood_documents(client: httpx.AsyncClient, cache: TTLCache) -> list[FloodBulletin] | None:
+async def fetch_flood_documents(client: httpx.AsyncClient, cache: TTLCache) -> list[FloodBulletin]:
     """全国の指定河川洪水予報のうち運用の電文。1件=1河川の最新状態（発表・継続・解除の
     いずれか）で、解除された河川も解除のコードのまま残り続ける。"""
 

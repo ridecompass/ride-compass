@@ -39,7 +39,7 @@ def new_forecast_cache() -> TTLCache:
     return TTLCache(maxsize=2048, ttl=_FORECAST_CACHE_TTL_SECONDS)
 
 
-async def fetch_point_master(client: httpx.AsyncClient, cache: TTLCache) -> list[WbgtPoint] | None:
+async def fetch_point_master(client: httpx.AsyncClient, cache: TTLCache) -> list[WbgtPoint]:
     """情報提供地点マスタのうち運用中の地点を取得する。"""
 
     async def fetch() -> list[WbgtPoint]:
@@ -115,7 +115,7 @@ def _parse_forecast(entry: dict) -> WbgtForecast | None:
 
 async def fetch_forecast(
     client: httpx.AsyncClient, wbgt_no: str, range_from: datetime, range_to: datetime, cache: TTLCache
-) -> list[WbgtForecast] | None:
+) -> list[WbgtForecast]:
     """指定地点の暑さ指数予測値列を取得する。`range_from`/`range_to`は発表時刻（reference_time）の検索範囲で、
     範囲の中の発表回をすべて返す。date_search_type=3（特定時刻）は指定時刻ちょうどの発表が無いと空を返し、
     発表は遅れうるので、連続期間指定（1）で取る。"""

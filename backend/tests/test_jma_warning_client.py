@@ -67,19 +67,6 @@ async def test_area_master_tolerates_missing_or_malformed_sections(caplog):
     )
     assert "unreadable=1 entries=3" in caplog.text
 
-
-@pytest.mark.parametrize(
-    "response",
-    [
-        pytest.param({"status_code": 500}, id="サーバの失敗"),
-        pytest.param({"json": ["class20s"]}, id="辞書でない"),
-        pytest.param({"text": "<html>"}, id="JSONでない"),
-    ],
-)
-async def test_area_master_failure_is_none(response):
-    assert await jma_warning_client.fetch_area_data(answering(**response), new_area_data_cache()) is None
-
-
 # --- 警報・注意報の電文 ---
 
 
@@ -228,14 +215,3 @@ async def test_bulletins_are_cached_per_office():
 
     assert (tokyo.call_count, osaka.call_count) == (1, 1)
 
-
-@pytest.mark.parametrize(
-    "response",
-    [
-        pytest.param({"status_code": 404}, id="無い府県予報区"),
-        pytest.param({"json": {"warning": {}}}, id="配列でない"),
-        pytest.param({"text": "["}, id="JSONでない"),
-    ],
-)
-async def test_bulletin_failure_is_none(response):
-    assert await jma_warning_client.fetch_warning_documents(answering(**response), "130000", new_warning_cache()) is None

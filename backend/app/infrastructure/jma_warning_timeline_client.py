@@ -147,7 +147,7 @@ def _parse_timeline(payload: dict, office_code: str) -> WarningTimeline:
 
 async def fetch_warning_timeline(
     client: httpx.AsyncClient, office_code: str, cache: TTLCache
-) -> WarningTimeline | None:
+) -> WarningTimeline:
     """府県予報区の警報級の時系列を取得する。"""
 
     async def fetch() -> WarningTimeline:

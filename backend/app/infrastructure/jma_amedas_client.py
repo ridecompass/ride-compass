@@ -100,7 +100,7 @@ def _parse_reading(raw: dict) -> AmedasReading:
     )
 
 
-async def fetch_station_table(client: httpx.AsyncClient, cache: TTLCache) -> dict[str, AmedasStation] | None:
+async def fetch_station_table(client: httpx.AsyncClient, cache: TTLCache) -> dict[str, AmedasStation]:
     """観測所マスタ（観測所id → 観測所）を取得する。"""
 
     async def fetch() -> dict[str, AmedasStation]:
@@ -110,7 +110,7 @@ async def fetch_station_table(client: httpx.AsyncClient, cache: TTLCache) -> dic
     return await cached_fetch("weather:jma-amedas-stations", fetch, cache=cache)
 
 
-async def fetch_latest_observation_time(client: httpx.AsyncClient, cache: TTLCache) -> datetime | None:
+async def fetch_latest_observation_time(client: httpx.AsyncClient, cache: TTLCache) -> datetime:
     """最新の観測時刻を返す。応答はISO時刻文字列1個だけのプレーンテキスト（JSONではない）。"""
 
     async def fetch() -> datetime:
@@ -127,12 +127,12 @@ async def fetch_latest_observation_time(client: httpx.AsyncClient, cache: TTLCac
 
     # 応答はプレーンテキストで`.json()`を呼ばず、読めない時刻は`UnexpectedShapeError`へ直すため、
     # ほかにValueErrorの発生源が無い。
-    return await cached_fetch("weather:jma-amedas-latest-time", fetch, cache=cache, catch=(httpx.HTTPError,))
+    return await cached_fetch("weather:jma-amedas-latest-time", fetch, cache=cache)
 
 
 async def fetch_observation_map(
     client: httpx.AsyncClient, observed_at: datetime
-) -> dict[str, AmedasReading] | None:
+) -> dict[str, AmedasReading]:
     """指定時刻の全観測所ぶんの観測値（観測所id → 観測値）を取得する。"""
     timestamp = observed_at.astimezone(JST).strftime("%Y%m%d%H%M%S")
 

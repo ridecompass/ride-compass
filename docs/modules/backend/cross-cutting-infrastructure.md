@@ -19,6 +19,7 @@ DB接続・Redis・HTTPクライアント・レート制限・ログ・デバッ
 | domain | `strict_model.py` | 全Pydanticモデルの基底（`strict_model.py: StrictModel`）。未知のフィールドを黙って捨てず例外にする |
 | api | `admin_auth.py` | 管理API共通の認可境界 |
 | api | `admin_db_errors.py` | 管理APIのDB障害を、どの口でも503で返すアプリ単位の例外の扱い（下の「DB障害として扱う例外」） |
+| api | `upstream_errors.py` | 上流（外部の配信元）から取れなかった例外を、どの口でも502で返すアプリ単位の例外の扱い（下の`fetch_upstream`の段） |
 | api | `cache_policy.py` | 応答の`Cache-Control`（パスとポリシーの対応表・付与ミドルウェア） |
 | api | `dependencies.py`（横断的な部分のみ、他は各モジュール参照） | DI工場（公開関数は注入の口だけ） |
 | api | `finite_json_body.py` | 要求の本文のNaN・無限大を、アプリ全体の依存として経路の処理より前に422で断る（Starletteの本文の読み方はJSONの外の`NaN`・`Infinity`を通す） |
@@ -356,8 +357,11 @@ lifespanが起動時に使うtimeout値を事前ウォームアップするの�
 クライアントへ持たせ、使う側は要求ごとに`timeout`を渡さない（渡すと選んだ値が効かない）。
 
 タイルを中継するクライアントは、上流から1件取る所を`fetch_upstream`へ寄せる。上流の404（このパスで得るものが無い事実）は
-`UPSTREAM_NOT_FOUND`、ほかの失敗はNoneとして返し、404は`log_external_call`の失敗に数えない。404を受けた応答の本文と
+`UPSTREAM_NOT_FOUND`で返して`log_external_call`の失敗に数えず、ほかの失敗は`httpx`の例外のまま投げる。404を受けた応答の本文と
 `Cache-Control`は、配信元ごとの宣言（`api/routers/_tile_http.py: UpstreamReplies`）から引く。
+
+上流から取れなかった例外（`httpx.HTTPError`・JSONでない本文・`UnexpectedShapeError`）は、途中の層で値に替えず、口の1か所
+（`api/upstream_errors.py`）が502と失敗の種類の文（「外部の配信元から取得できませんでした（…）」）にする。
 
 ## 応答のgzip圧縮（`response_compression.py`）
 

@@ -40,32 +40,36 @@ class AreaMaster:
     class10s: dict[str, AreaEntry]
 
 
-def resolve_area(class20_code: str, master: AreaMaster) -> ResolvedArea | None:
+class AreaNotInMasterError(ValueError):
+    """区域のコードを地域マスタで警報のエリアまで辿れない（手元の区域の境界と気象庁の地域マスタが食い違っている）。"""
+
+
+def resolve_area(class20_code: str, master: AreaMaster) -> ResolvedArea:
     """地域マスタを使い、区域のコードからJMA警報エリア（class20/class10/office）を解決する。
-    辿れなければNoneを返す。"""
+    辿れなければ`AreaNotInMasterError`を投げる。"""
     class20 = master.class20s.get(class20_code)
     if class20 is None:
-        return None
+        raise AreaNotInMasterError(class20_code)
 
     # class15→class10まで親を辿る。区域によってはclass20の親が既にclass10自身になっている
     # （細分がそれ以上分かれない）ため、class10sに見つかるまでループする。
     code = class20.parent
     if code is None:
-        return None
+        raise AreaNotInMasterError(class20_code)
     seen = {code}
     while code not in master.class10s:
         parent_entry = master.class15s.get(code)
         if parent_entry is None or parent_entry.parent is None:
-            return None
+            raise AreaNotInMasterError(class20_code)
         parent = parent_entry.parent
         if parent in seen:
             # 循環参照は本来あり得ないが、外部データを無限ループさせないための安全弁。
-            return None
+            raise AreaNotInMasterError(class20_code)
         seen.add(parent)
         code = parent
 
     class10 = master.class10s[code]
     office_code = class10.parent
     if office_code is None:
-        return None
+        raise AreaNotInMasterError(class20_code)
     return ResolvedArea(class20_code=class20_code, class10_code=code, office_code=office_code)

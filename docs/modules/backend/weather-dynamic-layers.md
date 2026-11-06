@@ -135,8 +135,9 @@ MSMは数値予報モデルの出力で観測値・公式発表の代わりに�
 `JmaTileClient.fetch(path)`（外部フェッチ＋キャッシュ書き戻し）へ進む。`JmaTileClient.get(path)`（`get_cached`→ミスなら`fetch`の一括呼び出し）はレート
 制限の適用順序を気にしない呼び出し元（プリウォームバッチ・テスト等）向けに残している。
 
-**フェイルステータスの使い分け**: `fetch`は上流の404を`UPSTREAM_NOT_FOUND`、他の失敗をNoneとして返し
-（取得と404の見分けは`infrastructure/http_client.py: fetch_upstream`が持つ）、`jma_tile.py`はこれを404（Noneは502）として返す。降水・浸水想定区域等の
+**フェイルステータスの使い分け**: `fetch`は上流の404を`UPSTREAM_NOT_FOUND`で返し、他の失敗は投げる
+（取得と404の見分けは`infrastructure/http_client.py: fetch_upstream`が持つ）。`jma_tile.py`は404を404として返し、失敗は
+`api/upstream_errors.py`が502にする。降水・浸水想定区域等の
 疎な格子状タイルは、ズームレベル・場所によって存在しないz/x/yが珍しくない正常系のため、
 タイムアウト・5xx等の実際の障害と同列に502・WARNINGログ・`/api/debug/stats`のerror集計へは
 乗せない。`get`も同じ値を返す（Noneは取得失敗だけを表す。平常時は
@@ -341,9 +342,9 @@ DI工場（`api/dependencies.py`）がプロセスに1つ持ってクライア�
 
 - **`WarningService`**: 気象庁警報・注意報XML/JSONを地域コード（`ResolvedArea`）で解決。
   地点→区域（下の「警報の区域の境界」）→JMA警報エリア（`jma_area.resolve_area`）→電文取得の
-  3段階すべてが失敗しうる箇所で、どこで失敗してもNone（ルーターが502）を返す。前の2段は
-  `infrastructure/jma_area_boundaries.py: resolve_point_area`が持ち、区域が分からないこと（None）と地点が区域の外に
-  あること（`OUTSIDE_AREAS`。警報なしとして返る）を分けて返す。JMAは大雨・
+  3段階すべてが失敗しうる箇所で、どこで失敗しても投げる（上流から取れなければ502）。前の2段は
+  `infrastructure/jma_area_boundaries.py: resolve_point_area`が持ち、地点が区域の外にあること（`OUTSIDE_AREAS`。
+  警報なしとして返る）だけを値で返し、区域が分からないときは投げる。JMAは大雨・
   土砂災害・高潮・暴風/暴風雪・波浪・大雪・その他の注意報を別電文（VPWW55〜61）として
   発表するため、`domain/jma_warning.py: collect_active_warnings`は電文配列全件を走査してcode単位で重複排除する。
   電文の形（`warning.class20Items`等）は`jma_warning_client.py`が`domain/jma_warning.py: WarningBulletin`（地域→種別）へ解き、
@@ -406,8 +407,8 @@ DI工場（`api/dependencies.py`）がプロセスに1つ持ってクライア�
 更新が載ったら、`SOURCE_URL`を新しい版のzipへ書き換えてデプロイする。置き場の名前が変わるため
 デプロイが新しい版を取り直し、古い版のファイルは同じスクリプトが消す。区域の境界と地域マスタ
 （area.json、実行時に取得）は別々に配られるため、境界だけが古いと、境界が返したコードを地域マスタで
-辿れなくなる——このとき`jma_area_boundaries.py: resolve_point_area`と`warning_timeline_service.py: WarningTimelineService`が抑制付きのWARNING（「地域マスタ(area.json)で警報のエリアへ辿れない」）を出す
-（`jma_area.resolve_area`はdomainで、抑制の仕組み（infrastructure）を読めないため、Noneを返すだけにする）。
+辿れなくなる——このとき`jma_area.resolve_area`が`AreaNotInMasterError`（辿れない区域のコードつき）を投げ、警報・洪水予報・
+警報の時系列の要求は失敗する。
 配布ページは発表区域の変更の前に、変更後の版を「以降」の注記付きで先に置くことがある。版を
 選ぶときは注記の日付と、今の地域マスタのコードに合う版かを見る。
 
@@ -422,14 +423,12 @@ DI工場（`api/dependencies.py`）がプロセスに1つ持ってクライア�
 `jma_amedas_client.py`・`jma_warning_client.py`・`jma_warning_timeline_client.py`・`wbgt_client.py`・`flood_client.py`は
 再試行を持たない（更新頻度が高くない、または機械アクセスへの
 配慮のためTTLキャッシュで呼び出し頻度自体を抑える設計）。これらが共有する
-「`TTLCache`参照→ミス時のみfetch→エラー処理→キャッシュ書き戻し」という骨格を
-`cached_fetch(category, fetch, *, cache=..., key=..., catch=..., **log_fields)`が1箇所へ
+「`TTLCache`参照→ミス時のみfetch→キャッシュ書き戻し」という骨格を
+`cached_fetch(category, fetch, *, cache=..., key=..., **log_fields)`が1箇所へ
 まとめている。呼び出し元は`fetch`（実際のhttpx呼び出し＋パース＋必要ならフォーマット
 検証）だけを渡す。JSONを取って最上位が配列か辞書かを確かめるところは`get_json`が持つ。フォーマット不正（配列であるべきなのにそうでない等）は
-`UnexpectedShapeError`（`ValueError`のサブクラス）を`fetch`内から送出すると、`catch`の指定に
-関わらず常にNoneへ倒れ、失敗として記録される。呼び出し元によって
-捕捉すべき例外の範囲が異なる（例: `.json()`を呼ばないアメダスの最新時刻は`httpx.HTTPError`だけを
-対象にする）ため、`catch`引数で個別に指定できる。同じキャッシュと鍵へ取得の最中に来た要求は、上流へ出さずにその取得の結果（失敗も）を
+`UnexpectedShapeError`（`ValueError`のサブクラス）を`fetch`内から送出する。失敗は値に替えずに投げ、`log_external_call`が
+失敗として記録し、口は`api/upstream_errors.py`が502にする。同じキャッシュと鍵へ取得の最中に来た要求は、上流へ出さずにその取得の結果（失敗も）を
 待つ——警報・暑さ指数・洪水予報は画面が開いた利用者ごとに同じ時刻に問い合わせるので、キャッシュが切れた直後の要求が
 揃って上流へ流れない。待っていた要求が切れても取得は続き、結果はキャッシュへ書く。キャッシュは取得の関数が引数で受け、作り方（件数の上限・TTL）は
 各クライアントの`new_…_cache`が持つ。リクエストをまたいで持つのはDI工場（`api/dependencies.py`）で、地域マスタ

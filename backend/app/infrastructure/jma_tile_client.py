@@ -81,20 +81,18 @@ class JmaTileClient:
             fields["cache"] = "hit" if cached is not None else "miss"
             return cached
 
-    async def fetch(self, path: str) -> tuple[bytes, str] | UpstreamNotFound | None:
+    async def fetch(self, path: str) -> tuple[bytes, str] | UpstreamNotFound:
         """キャッシュを一切参照せず外部フェッチのみ行い、結果をキャッシュへ書き戻す。
         呼び出し側の歯止め（レート制限）は、ここを呼ぶ前に済んでいる前提。上流への間隔の待ちは、呼び出し元を
         問わず総リクエスト数を抑えるためここに置き、実フェッチの所要時間に含めないよう`with`の前で待つ。
 
         上流の404は`UPSTREAM_NOT_FOUND`を返す（疎な格子状タイルでは珍しくない正常系、配信前の
-        地物では毎回の配信の間に必ず起きる正常系のため、WARNINGを出さない）。他の失敗はNoneを返す。
+        地物では毎回の配信の間に必ず起きる正常系のため、WARNINGを出さない）。他の失敗は投げる。
         取得できたものは`store`が返す形で返す。
         """
         await self._shared.wait_for_upstream_rate_limit()
         with log_external_call("weather:jma-tile", path=path, cache="miss") as fields:
             response = await fetch_upstream(self._http_client, f"{UPSTREAM_HOST}/{path}", fields)
-            if response is None:
-                return None
             if isinstance(response, UpstreamNotFound):
                 # 確定した404だけを覚え、次回以降は上流へ問い合わせず即座に済ませる。
                 # 配信前の地物の404を覚えると、配信された後もその間は「無い」を返し続ける。
@@ -117,7 +115,7 @@ class JmaTileClient:
             return content, content_type
         return await jma_tile_redis_cache.set(path, content, content_type)
 
-    async def get(self, path: str) -> tuple[bytes, str] | UpstreamNotFound | None:
+    async def get(self, path: str) -> tuple[bytes, str] | UpstreamNotFound:
         """キャッシュ参照→ミスなら外部フェッチ、という一括呼び出し。
         レート制限の適用順序を気にしない呼び出し元（プリウォームバッチ・テスト等）向け。
 

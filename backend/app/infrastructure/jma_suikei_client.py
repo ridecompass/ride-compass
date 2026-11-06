@@ -94,7 +94,7 @@ async def fetch_weather(client: JmaTileClient, latitude: float, longitude: float
     pixel = _pixel(latitude, longitude)
     path = _tile_path(frames[0], pixel)
     raw = await client.get(path)
-    if raw is None or isinstance(raw, UpstreamNotFound):
+    if isinstance(raw, UpstreamNotFound):
         return None
     content, _content_type = raw
     try:

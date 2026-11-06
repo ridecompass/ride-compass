@@ -23,8 +23,7 @@ from app.domain.jma_warning_timeline import (
 )
 from app.domain.route import Coordinates
 from app.domain.strict_model import StrictModel
-from app.infrastructure.debug_log import log_throttled_warning
-from app.infrastructure.jma_area_boundaries import AreaBoundariesUnavailableError, find_class20_codes
+from app.infrastructure.jma_area_boundaries import find_class20_codes
 from app.infrastructure.jma_warning_client import fetch_area_data
 from app.infrastructure.jma_warning_timeline_client import fetch_warning_timeline
 
@@ -78,36 +77,21 @@ class WarningTimelineService:
         self._area_data_cache = area_data_cache
         self._timeline_cache = timeline_cache
 
-    async def get_route_timeline(self, points: list[Coordinates]) -> RouteWarningTimeline | None:
+    async def get_route_timeline(self, points: list[Coordinates]) -> RouteWarningTimeline:
         """ルートの点を区域の通過へまとめ、区域ごとの段を返す。区域の境界・地域マスタ・時系列のどれかを読めない、
-        区域を府県予報区まで辿れないならNone（段が分からない）。"""
-        try:
-            codes = await find_class20_codes([(point.latitude, point.longitude) for point in points])
-        except AreaBoundariesUnavailableError:
-            return None
+        区域を府県予報区まで辿れないときは投げる（段が分からない）。"""
+        codes = await find_class20_codes([(point.latitude, point.longitude) for point in points])
         passes = route_passes(codes)
         if not passes:
             return RouteWarningTimeline(areas=[])
 
         area_master = await fetch_area_data(self._http_client, self._area_data_cache)
-        if area_master is None:
-            return None
-        resolved = {code: resolve_area(code, area_master) for code in {route_pass.class20_code for route_pass in passes}}
-        unresolved = sorted(code for code, area in resolved.items() if area is None)
-        if unresolved:
-            log_throttled_warning(
-                "weather:jma-area", "区域の境界が返したコードを地域マスタ(area.json)で警報のエリアへ辿れない class20=%s", unresolved
-            )
-            return None
-
-        areas_by_code = {code: area for code, area in resolved.items() if area is not None}
+        areas_by_code = {code: resolve_area(code, area_master) for code in {route_pass.class20_code for route_pass in passes}}
         office_codes = sorted({area.office_code for area in areas_by_code.values()})
         fetched = await asyncio.gather(
             *(fetch_warning_timeline(self._http_client, office, self._timeline_cache) for office in office_codes)
         )
-        timelines = {office: timeline for office, timeline in zip(office_codes, fetched, strict=True) if timeline is not None}
-        if len(timelines) != len(office_codes):
-            return None
+        timelines = dict(zip(office_codes, fetched, strict=True))
 
         areas = []
         for route_pass in passes:

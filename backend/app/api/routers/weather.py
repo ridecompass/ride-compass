@@ -57,10 +57,7 @@ async def get_weather_warnings(
     """出発地点近傍のJMA警報・注意報を、サイクリングに関連する種別へ絞ってバッジ用に返す。
     地点→区域→警報エリアの解決か、警報自体の取得に失敗したら502（空の応答は「警報なし」だけを表す）。"""
     enforce_rate_limit(http_request, "weather-warnings", settings.weather_warnings_rate_limit_per_minute)
-    return _or_502(
-        await warning_service.get_warnings(Coordinates(latitude=latitude, longitude=longitude)),
-        _BADGE_SOURCE_UNAVAILABLE,
-    )
+    return await warning_service.get_warnings(Coordinates(latitude=latitude, longitude=longitude))
 
 
 @router.post("/api/weather/route-warning-timeline", response_model=RouteWarningTimeline)
@@ -73,7 +70,7 @@ async def get_route_warning_timeline(
     enforce_rate_limit(
         http_request, "weather-warning-timeline", settings.weather_warning_timeline_rate_limit_per_minute
     )
-    return _or_502(await timeline_service.get_route_timeline(request.points), _BADGE_SOURCE_UNAVAILABLE)
+    return await timeline_service.get_route_timeline(request.points)
 
 
 @router.get("/api/weather/wbgt", response_model=WbgtStatus)
@@ -87,10 +84,7 @@ async def get_wbgt(
     「ほぼ安全」（21未満）と、提供期間の外で今の時刻の値が得られないときは空（reading=None）。
     提供期間の中で地点解決・取得に失敗したか今の時刻の値が得られなければ502。"""
     enforce_rate_limit(http_request, "weather-wbgt", settings.weather_wbgt_rate_limit_per_minute)
-    return _or_502(
-        await wbgt_service.get_status(Coordinates(latitude=latitude, longitude=longitude), datetime.now(JST)),
-        _BADGE_SOURCE_UNAVAILABLE,
-    )
+    return await wbgt_service.get_status(Coordinates(latitude=latitude, longitude=longitude), datetime.now(JST))
 
 
 @router.get("/api/weather/flood-forecast", response_model=FloodForecasts)
@@ -103,10 +97,7 @@ async def get_flood_forecast(
     """出発地点近傍のJMA指定河川洪水予報（レベル2〜5）をバッジ用に返す。
     地点解決か洪水予報自体の取得に失敗したら502（空の応答は「予報なし」だけを表す）。"""
     enforce_rate_limit(http_request, "weather-flood-forecast", settings.weather_flood_forecast_rate_limit_per_minute)
-    return _or_502(
-        await flood_service.get_forecasts(Coordinates(latitude=latitude, longitude=longitude)),
-        _BADGE_SOURCE_UNAVAILABLE,
-    )
+    return await flood_service.get_forecasts(Coordinates(latitude=latitude, longitude=longitude))
 
 
 @router.get("/api/weather/amedas", response_model=AmedasObservation)

@@ -43,12 +43,12 @@ async def _interpolated_tile(jma_tile_client: JmaTileClient, path: str) -> tuple
 
 async def proxied_tile(
     jma_tile_client: JmaTileClient, path: str, before_upstream: Callable[[], None]
-) -> tuple[bytes, str] | UpstreamNotFound | None:
+) -> tuple[bytes, str] | UpstreamNotFound:
     """`path`の内容とContent-Type。
 
     キャッシュに無いときだけ、補間・上流へ出る前に`before_upstream`を1回呼ぶ（呼び出し側の歯止め。
     送出すればそこで止まる）。配信元が実データを持たないズームは親タイルから補間し、元のパスの鍵で
-    キャッシュへ書き戻す。上流に無い（描くものが無いと確認済みを含む）なら`UpstreamNotFound`、上流の障害はNone。
+    キャッシュへ書き戻す。上流に無い（描くものが無いと確認済みを含む）なら`UpstreamNotFound`。上流の障害は投げる。
     """
     cached = await jma_tile_client.get_cached(path)
     if cached is not None:

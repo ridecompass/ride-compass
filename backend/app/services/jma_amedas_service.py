@@ -87,19 +87,10 @@ class JmaAmedasService:
         いないバッチ」が無警告のまま繰り返される。
         """
         stations = await jma_amedas_client.fetch_station_table(self._http_client, self._station_table_cache)
-        if not stations:
-            logger.warning("アメダス観測所マスタの取得に失敗しました（全滅バッチ）")
-            return 0
         latest_time = await jma_amedas_client.fetch_latest_observation_time(
             self._http_client, self._latest_time_cache
         )
-        if latest_time is None:
-            logger.warning("アメダス最新観測時刻の取得に失敗しました（全滅バッチ）")
-            return 0
         observation_map = await jma_amedas_client.fetch_observation_map(self._http_client, latest_time)
-        if observation_map is None:
-            logger.warning("アメダス観測値マップの取得に失敗しました（全滅バッチ）time=%s", latest_time.isoformat())
-            return 0
 
         observations = {
             station_id: _observation(stations[station_id], latest_time, reading)

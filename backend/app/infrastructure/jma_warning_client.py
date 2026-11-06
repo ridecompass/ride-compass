@@ -222,7 +222,7 @@ def _parse_bulletins(payload: list, office_code: str) -> list[WarningBulletin]:
     ]
 
 
-async def fetch_area_data(client: httpx.AsyncClient, cache: TTLCache) -> AreaMaster | None:
+async def fetch_area_data(client: httpx.AsyncClient, cache: TTLCache) -> AreaMaster:
     """気象庁の地域マスタ(area.json)を取得する。"""
 
     async def fetch() -> AreaMaster:
@@ -234,7 +234,7 @@ async def fetch_area_data(client: httpx.AsyncClient, cache: TTLCache) -> AreaMas
 
 async def fetch_warning_documents(
     client: httpx.AsyncClient, office_code: str, cache: TTLCache
-) -> list[WarningBulletin] | None:
+) -> list[WarningBulletin]:
     """指定した府県予報区コードの警報・注意報電文一覧（r8スキーマ）を取得する。電文は種別の組ごとに別なので、
     1地点でも複数電文の配列になる。"""
 

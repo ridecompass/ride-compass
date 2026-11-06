@@ -34,7 +34,7 @@ class GsiTileClient:
         self._http_client = http_client
         self._not_found_paths = not_found_paths
 
-    async def get(self, path: str, *, category: str) -> tuple[bytes, str] | UpstreamNotFound | None:
+    async def get(self, path: str, *, category: str) -> tuple[bytes, str] | UpstreamNotFound:
         """`category`は運用の統計とWARNINGが数える名前で、製品ごとに呼び出し側が名乗る（色別標高図と標高タイルの
         失敗を見分ける）。パスから作らない——パスは利用者の要求そのままで、名前の数に上限が無くなる。"""
         if path in self._not_found_paths:
@@ -48,8 +48,6 @@ class GsiTileClient:
             fields["cache"] = "miss"
 
             response = await fetch_upstream(self._http_client, f"{UPSTREAM_HOST}/{path}", fields)
-            if response is None:
-                return None
             if isinstance(response, UpstreamNotFound):
                 # 404は整備区域外。
                 self._not_found_paths[path] = None

@@ -119,10 +119,6 @@ async def test_point_master_is_cached_across_calls():
     assert upstream.calls.call_count == 1
 
 
-async def test_point_master_http_error_returns_none():
-    assert await wbgt_client.fetch_point_master(answering(500), new_point_master_cache()) is None
-
-
 def _forecast_row(**overrides):
     """予測値APIの`data`の1件（項目は2026-09-27に取得した応答の形のまま）。"""
     row = {
@@ -199,13 +195,6 @@ async def test_forecast_requests_a_continuous_range():
         "range_date_from": "20260701000000",
         "range_date_to": "20260701090000",
     }
-
-
-@pytest.mark.parametrize("body", [{"status": "error", "data": [_forecast_row()]}, {"status": "success"}])
-async def test_a_forecast_response_that_is_not_a_successful_series_returns_none(body):
-    client = answering(json=body)
-
-    assert await wbgt_client.fetch_forecast(client, "44132", _RANGE_FROM, _RANGE_TO, new_forecast_cache()) is None
 
 
 async def test_forecast_cache_key_is_the_point_number_only():
