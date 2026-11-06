@@ -36,6 +36,7 @@ from app.batch.source_profile import NoFields, SourceProfile, SourceSpec, Target
 from app.domain.region import BoundingBox, tile_bounds_lonlat, tiles_covering_bbox
 from app.domain.tuning import (
     ACCIDENT_MATCH_DISTANCE_ID,
+    ELEVATION_BRIDGE_END_RADIUS_ID,
     ELEVATION_PROFILE_STEP_ID,
     STOP_CLUSTER_DISTANCE_ID,
     TUNING_PARAMETERS_BY_ID,
@@ -230,10 +231,11 @@ async def derive_nodes_at_default_radius(conn: asyncpg.Connection) -> None:
 
 
 async def derive_elevation_at_default_step(conn: asyncpg.Connection, **tuning: float) -> None:
-    """標高の派生の段を、前回の値を写さずに、断面の刻みを較正値の既定（`tuning`で上書きしたものはその値）にして流す。"""
+    """標高の派生の段を、前回の値を写さずに、断面の刻みと橋の端の半径を較正値の既定（`tuning`で上書きしたものはその値）にして流す。"""
     await derive_elevation.derive(
         conn, previous=None,
-        **{"profile_step_m": TUNING_PARAMETERS_BY_ID[ELEVATION_PROFILE_STEP_ID].default, **tuning})
+        **{"profile_step_m": TUNING_PARAMETERS_BY_ID[ELEVATION_PROFILE_STEP_ID].default,
+           "bridge_end_radius_m": TUNING_PARAMETERS_BY_ID[ELEVATION_BRIDGE_END_RADIUS_ID].default, **tuning})
 
 
 async def derive_counts_at_default_tuning(conn: asyncpg.Connection, **tuning: float) -> None:
