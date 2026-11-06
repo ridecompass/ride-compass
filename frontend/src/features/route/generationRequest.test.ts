@@ -12,6 +12,7 @@
 import { describe, expect, it } from "vitest";
 
 import { buildGenerateRequest, generationConditionsKey, type GenerationInput } from "./generationRequest";
+import { STANDARD_COST_PREFERENCE } from "@/lib/costPreference";
 
 const START = new Date("2026-10-04T01:30:00Z");
 
@@ -22,7 +23,7 @@ const LOOP: GenerationInput = {
   assumedSpeedKmh: 22,
   startTime: START,
   roadAvoidance: { "layer.row_a": "avoid", "layer.row_b": "pass" },
-  costPreference: { strength: 1, multipliers: {}, disabled_axes: [] },
+  costPreference: STANDARD_COST_PREFERENCE,
   waypoints: [],
   destination: null,
   startTimePinned: false,
@@ -35,7 +36,7 @@ describe("buildGenerateRequest", () => {
       longitude: 139.77,
       distance_km: 40,
       road_avoidance: { "layer.row_a": "avoid", "layer.row_b": "pass" },
-      cost_preference: { strength: 1, multipliers: {}, disabled_axes: [] },
+      cost_preference: STANDARD_COST_PREFERENCE,
       max_routes: 3,
       assumed_speed_kmh: 22,
       start_time: "2026-10-04T01:30:00.000Z",
@@ -76,9 +77,9 @@ describe("generationConditionsKey", () => {
     expect(
       key({
         roadAvoidance: { "layer.row_b": "pass", "layer.row_a": "avoid" },
-        costPreference: { strength: 1, multipliers: { vibration: 2, ascent: 0.5 }, disabled_axes: [] },
+        costPreference: { ...STANDARD_COST_PREFERENCE, multipliers: { vibration: 2, ascent: 0.5 } },
       }),
-    ).toBe(key({ costPreference: { strength: 1, multipliers: { ascent: 0.5, vibration: 2 }, disabled_axes: [] } }));
+    ).toBe(key({ costPreference: { ...STANDARD_COST_PREFERENCE, multipliers: { ascent: 0.5, vibration: 2 } } }));
   });
 
   it("経由地の順番が違えば、キーが変わる", () => {

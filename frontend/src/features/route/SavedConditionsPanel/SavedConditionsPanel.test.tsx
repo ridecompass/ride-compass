@@ -22,6 +22,7 @@ import type { GenerationConditionsSnapshot, SavedCondition } from "@/features/ro
 import { serveClientConfig, serveCostAxisCatalog } from "@/testing/backendServer";
 
 import SavedConditionsPanel, { SaveConditionsButton } from "./SavedConditionsPanel";
+import { STANDARD_COST_PREFERENCE } from "@/lib/costPreference";
 
 const CURRENT: GenerationConditionsSnapshot = {
   loop: true,
@@ -30,7 +31,7 @@ const CURRENT: GenerationConditionsSnapshot = {
   maxRoutes: "8",
   waypoints: [],
   destination: null,
-  costPreference: { strength: 1, multipliers: {}, disabled_axes: [] },
+  costPreference: STANDARD_COST_PREFERENCE,
   roadAvoidance: {},
 };
 const LOOP: SavedCondition = { ...CURRENT, name: "朝の荒川", origin: null };
@@ -43,7 +44,7 @@ const TRIP: SavedCondition = {
   origin: POINT,
   waypoints: [POINT, POINT],
   destination: POINT,
-  costPreference: { strength: 1, multipliers: { vibration: 2 }, disabled_axes: [] },
+  costPreference: { ...STANDARD_COST_PREFERENCE, multipliers: { vibration: 2 } },
 };
 
 function renderSaveButton(

@@ -23,6 +23,7 @@ import {
   withSavedCondition,
   type SavedCondition,
 } from "./savedConditions";
+import { STANDARD_COST_PREFERENCE } from "@/lib/costPreference";
 
 const POINT = { latitude: 35.1, longitude: 139.1 };
 
@@ -35,7 +36,7 @@ const ENTRY: SavedCondition = {
   origin: POINT,
   waypoints: [POINT],
   destination: POINT,
-  costPreference: { strength: 1.5, multipliers: { ascent: 2 }, disabled_axes: [] },
+  costPreference: { ...STANDARD_COST_PREFERENCE, strength: 1.5, multipliers: { ascent: 2 } },
   roadAvoidance: { gravel: "avoid" },
 };
 
@@ -69,16 +70,8 @@ const COST_CATALOG: CostAxisCatalog = {
 
 describe("readSavedConditions", () => {
   it.each([
-    [
-      "割合の重みで保存した件（つまみと倍率が無い）",
-      { costPreference: undefined },
-      { strength: 1, multipliers: {}, disabled_axes: [] },
-    ],
-    [
-      "段に無いつまみ",
-      { costPreference: { strength: 1.3, multipliers: {}, disabled_axes: [] } },
-      { strength: 1, multipliers: {}, disabled_axes: [] },
-    ],
+    ["割合の重みで保存した件（つまみと倍率が無い）", { costPreference: undefined }, STANDARD_COST_PREFERENCE],
+    ["段に無いつまみ", { costPreference: { strength: 1.3, multipliers: {} } }, STANDARD_COST_PREFERENCE],
     [
       "段に無い・数でない倍率はその軸だけ、文字列でない無効の軸はその軸だけ",
       {
@@ -88,7 +81,7 @@ describe("readSavedConditions", () => {
           disabled_axes: ["friction", 3],
         },
       },
-      { strength: 2, multipliers: { gone: 0.5 }, disabled_axes: ["friction"] },
+      { ...STANDARD_COST_PREFERENCE, strength: 2, multipliers: { gone: 0.5 }, disabled_axes: ["friction"] },
     ],
   ])("つまみと倍率が読めない件も捨てず、読めない所を標準へ戻す: %s", (_, change, expected) => {
     expect(readSavedConditions(JSON.stringify([{ ...ENTRY, ...change }]))).toEqual([
@@ -169,10 +162,10 @@ describe("describeConditions", () => {
   });
 
   it.each([
-    ["標準", { strength: 1, multipliers: { ascent: 1 }, disabled_axes: [] }, "標準"],
+    ["標準", { ...STANDARD_COST_PREFERENCE, multipliers: { ascent: 1 } }, "標準"],
     [
       "標準でないつまみと、無効の軸と標準でない軸の倍率だけを、軸の並びで（消えた軸は出さない）",
-      { strength: 0.5, multipliers: { ascent: 2, gone: 3 }, disabled_axes: ["vibration"] },
+      { ...STANDARD_COST_PREFERENCE, strength: 0.5, multipliers: { ascent: 2, gone: 3 }, disabled_axes: ["vibration"] },
       "負担の強さ ×0.5・登坂 ×2・振動 無効",
     ],
   ])("倍率: %s", (_, costPreference, expected) => {

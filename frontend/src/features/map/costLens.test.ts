@@ -12,13 +12,14 @@ import { describe, expect, it } from "vitest";
 import { mapCatalogFor } from "@/testing/mapCatalog";
 
 import { costLensOptions } from "./costLens";
+import { STANDARD_COST_PREFERENCE } from "@/lib/costPreference";
 
 const { lenses } = mapCatalogFor();
 
 describe("costLensOptions", () => {
   it.each([
-    ["標準の値", { strength: 1, multipliers: {}, disabled_axes: [] }, []],
-    ["つまみ×0", { strength: 0, multipliers: {}, disabled_axes: [] }, ["total", "ascent", "vibration"]],
+    ["標準の値", STANDARD_COST_PREFERENCE, []],
+    ["つまみ×0", { ...STANDARD_COST_PREFERENCE, strength: 0 }, ["total", "ascent", "vibration"]],
   ])("%sなら、未使用のレンズは%j", (_, preference, unused) => {
     const options = costLensOptions(lenses, preference);
 

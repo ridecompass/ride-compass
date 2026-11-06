@@ -10,7 +10,12 @@ import { describe, expect, it } from "vitest";
 
 import { lensPreferenceQuery, STANDARD_COST_PREFERENCE } from "./costPreference";
 
-const CHANGED = { strength: 1.5, multipliers: { ascent: 2, friction: 0.5 }, disabled_axes: ["vibration", "headwind"] };
+const CHANGED = {
+  ...STANDARD_COST_PREFERENCE,
+  strength: 1.5,
+  multipliers: { ascent: 2, friction: 0.5 },
+  disabled_axes: ["vibration", "headwind"],
+};
 
 describe("lensPreferenceQuery", () => {
   it("軸のレンズはつまみとその軸の倍率だけを、総合は全部の倍率と無効の軸を軸idの順に載せる", () => {

@@ -19,6 +19,7 @@ import { costAxisCatalog, costAxisEntry } from "@/testing/costAxes";
 import { UNSELECTED_LENS_ID } from "@/lib/mapDisplay/routeStyleModes";
 
 import { LEGEND_FILTER_DEBOUNCE_MS, type useMapView } from "./useMapView";
+import { STANDARD_COST_PREFERENCE } from "@/lib/costPreference";
 
 /** 既定の一覧（`TWO_COST_AXES`）のレンズ: 総合・登坂・振動。 */
 const LENS_COUNT = 3;
@@ -101,9 +102,9 @@ describe("useMapView", () => {
     await waitFor(() => expect(result.current.lensControl.axisOptions).toHaveLength(LENS_COUNT));
     act(() => result.current.lensControl.onLensChange("ascent"));
 
-    rerender({ costPreference: { strength: 1, multipliers: {}, disabled_axes: ["ascent"] } });
+    rerender({ costPreference: { ...STANDARD_COST_PREFERENCE, disabled_axes: ["ascent"] } });
     expect(result.current.look.lens).toBe(UNSELECTED_LENS_ID);
-    rerender({ costPreference: { strength: 1, multipliers: {}, disabled_axes: [] } });
+    rerender({ costPreference: STANDARD_COST_PREFERENCE });
     expect(result.current.look.lens).toBe("ascent");
   });
 

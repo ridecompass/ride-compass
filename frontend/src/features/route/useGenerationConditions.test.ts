@@ -23,6 +23,7 @@ import { heldReplies, onBackend, serveCostAxisCatalog } from "@/testing/backendS
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 
 import { useGenerationConditions } from "./useGenerationConditions";
+import { STANDARD_COST_PREFERENCE } from "@/lib/costPreference";
 
 function renderConditions() {
   const onOriginPlace = vi.fn();
@@ -105,12 +106,12 @@ describe("つまみと倍率", () => {
   it("既定は標準で、変えたつまみと倍率は開き直しても残り、送るのは今の費用の軸の、標準でない倍率だけ", async () => {
     serveCostAxisCatalog();
     const first = renderConditions();
-    expect(first.result.current.costPreference).toEqual({ strength: 1, multipliers: {}, disabled_axes: [] });
+    expect(first.result.current.costPreference).toEqual(STANDARD_COST_PREFERENCE);
     act(() =>
       first.result.current.setCostPreference({
+        ...STANDARD_COST_PREFERENCE,
         strength: 1.5,
         multipliers: { ascent: 2, vibration: 1, gone: 3 },
-        disabled_axes: [],
       }),
     );
 
@@ -118,9 +119,9 @@ describe("つまみと倍率", () => {
 
     await waitFor(() =>
       expect(result.current.costPreferenceToSend).toEqual({
+        ...STANDARD_COST_PREFERENCE,
         strength: 1.5,
         multipliers: { ascent: 2 },
-        disabled_axes: [],
       }),
     );
   });
@@ -128,11 +129,7 @@ describe("つまみと倍率", () => {
   it("前の形（割合の重み）の保存値は読まず、標準に戻す", () => {
     window.localStorage.setItem("ridecompass:cost-preference", JSON.stringify({ axis_a: 0.7 }));
 
-    expect(renderConditions().result.current.costPreference).toEqual({
-      strength: 1,
-      multipliers: {},
-      disabled_axes: [],
-    });
+    expect(renderConditions().result.current.costPreference).toEqual(STANDARD_COST_PREFERENCE);
   });
 });
 

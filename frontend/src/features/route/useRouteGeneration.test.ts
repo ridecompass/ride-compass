@@ -31,6 +31,7 @@ import {
   submit,
   used,
 } from "@/testing/routeGeneration";
+import { STANDARD_COST_PREFERENCE } from "@/lib/costPreference";
 
 let backend: ReturnType<typeof serveRouteGeneration>;
 
@@ -65,7 +66,7 @@ describe("送る要求", () => {
       longitude: ORIGIN.longitude,
       distance_km: 42,
       road_avoidance: avoidance,
-      cost_preference: { strength: 1, multipliers: {}, disabled_axes: [] },
+      cost_preference: STANDARD_COST_PREFERENCE,
       max_routes: 3,
       assumed_speed_kmh: 20,
       start_time: T1.toISOString(),
@@ -180,11 +181,7 @@ describe("消す", () => {
   it("生成の結果（作った条件・補正・既定の配分・案内）を消す", async () => {
     const rendered = renderGeneration();
     act(() =>
-      rendered.result.current.conditions.setCostPreference({
-        strength: 1,
-        multipliers: { ascent: 2 },
-        disabled_axes: [],
-      }),
+      rendered.result.current.conditions.setCostPreference({ ...STANDARD_COST_PREFERENCE, multipliers: { ascent: 2 } }),
     );
     act(() => rendered.result.current.conditions.setDestination(A));
     backend.respond([route("r1")], used({ corrected_destination: B }));

@@ -25,6 +25,7 @@ import {
   used,
 } from "@/testing/routeGeneration";
 import type { Coordinates } from "@/types/route";
+import { STANDARD_COST_PREFERENCE } from "@/lib/costPreference";
 
 let backend: ReturnType<typeof serveRouteGeneration>;
 
@@ -137,15 +138,15 @@ describe("生成の結果", () => {
 
     act(() =>
       rendered.result.current.conditions.setCostPreference({
+        ...STANDARD_COST_PREFERENCE,
         strength: 1.5,
         multipliers: { ascent: 2 },
-        disabled_axes: [],
       }),
     );
     backend.respond([route("r1")]);
     await submit(rendered);
     expect(backend.sentRequest()).toMatchObject({
-      cost_preference: { strength: 1.5, multipliers: {}, disabled_axes: [] },
+      cost_preference: { ...STANDARD_COST_PREFERENCE, strength: 1.5 },
     });
     expect(rendered.result.current.generation.multipliersNotApplied).toBe(true);
 
@@ -153,7 +154,7 @@ describe("生成の結果", () => {
     backend.respond([route("r1")]);
     await submit(rendered);
     expect(backend.sentRequest()).toMatchObject({
-      cost_preference: { strength: 1.5, multipliers: { ascent: 2 }, disabled_axes: [] },
+      cost_preference: { ...STANDARD_COST_PREFERENCE, strength: 1.5, multipliers: { ascent: 2 } },
     });
     expect(rendered.result.current.generation.multipliersNotApplied).toBe(false);
   });
