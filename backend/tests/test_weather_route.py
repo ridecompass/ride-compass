@@ -36,6 +36,7 @@ from app.domain.time_zone import JST
 from app.domain.twilight import Twilight
 from app.domain.weather import GridPointToday
 from app.infrastructure import rate_limiter
+from app.infrastructure.jma_amedas_store import AmedasUnavailableError
 from app.infrastructure.msm_client import MsmUnavailableError
 from app.main import app
 from app.services.flood_service import FloodForecasts
@@ -211,39 +212,32 @@ def test_an_msm_grid_range_that_is_inverted_or_too_wide_is_refused(override_depe
     assert response.json() == {"detail": detail}
 
 
-_UPSTREAM_FAILED = "外部の配信元から取得できませんでした（ConnectError）"
-_MSM_UNAVAILABLE = "気象の数値予報を読めません（未同期）"
+# 取れなかった理由ごとの、口が返す状態と文。
+_UPSTREAM_FAILED = (httpx.ConnectError("x"), 502, "外部の配信元から取得できませんでした（ConnectError）")
+_MSM_UNAVAILABLE = (MsmUnavailableError("未同期"), 503, "気象の数値予報を読めません（未同期）")
+_AMEDAS_UNAVAILABLE = (AmedasUnavailableError("置き場を読めない"), 503, "置き場を読めない")
 
 
-@pytest.mark.parametrize(("method", "path", "call", "dependency", "answer", "detail"), [
-    ("GET", "/api/weather/warnings", {"params": POINT}, get_warning_service, httpx.ConnectError("x"), _UPSTREAM_FAILED),
-    ("GET", "/api/weather/wbgt", {"params": POINT}, get_wbgt_service, httpx.ConnectError("x"), _UPSTREAM_FAILED),
-    (
-        "GET", "/api/weather/flood-forecast", {"params": POINT}, get_flood_service, httpx.ConnectError("x"),
-        _UPSTREAM_FAILED,
-    ),
-    ("GET", "/api/weather/amedas", {"params": POINT}, get_amedas_service, None, "アメダス観測値の取得に失敗しました"),
-    ("GET", "/api/weather", {"params": POINT}, get_weather_service, MsmUnavailableError("未同期"), _MSM_UNAVAILABLE),
-    (
-        "GET", "/api/weather/msm-grid", {"params": TOKYO_BBOX}, get_weather_service, MsmUnavailableError("未同期"),
-        _MSM_UNAVAILABLE,
-    ),
-    (
-        "POST", "/api/weather/route-warning-timeline", {"json": ROUTE_POINTS},
-        get_warning_timeline_service, httpx.ConnectError("x"), _UPSTREAM_FAILED,
-    ),
+@pytest.mark.parametrize(("method", "path", "call", "dependency", "failure"), [
+    ("GET", "/api/weather/warnings", {"params": POINT}, get_warning_service, _UPSTREAM_FAILED),
+    ("GET", "/api/weather/wbgt", {"params": POINT}, get_wbgt_service, _UPSTREAM_FAILED),
+    ("GET", "/api/weather/flood-forecast", {"params": POINT}, get_flood_service, _UPSTREAM_FAILED),
+    ("GET", "/api/weather/amedas", {"params": POINT}, get_amedas_service, _AMEDAS_UNAVAILABLE),
+    ("GET", "/api/weather", {"params": POINT}, get_weather_service, _MSM_UNAVAILABLE),
+    ("GET", "/api/weather/msm-grid", {"params": TOKYO_BBOX}, get_weather_service, _MSM_UNAVAILABLE),
+    ("POST", "/api/weather/route-warning-timeline", {"json": ROUTE_POINTS}, get_warning_timeline_service, _UPSTREAM_FAILED),
 ])
 def test_a_source_that_could_not_be_obtained_is_a_failure_not_an_empty_answer(
-    override_dependency, method, path, call, dependency, answer, detail
+    override_dependency, method, path, call, dependency, failure
 ):
     """空の応答は「出ていない」を表す（ルートの警報級の時系列なら「どの区域にも入らない」）。取れなかったことを同じ空で
-    返すと、画面は出ていないと見せる。"""
-    override_dependency(dependency, lambda: FakeService(answer))
+    返すと、画面は出ていないと見せるので、理由つきの失敗にする。"""
+    error, status, detail = failure
+    override_dependency(dependency, lambda: FakeService(error))
 
     response = client.request(method, path, **call)
 
-    assert response.status_code == (503 if detail == _MSM_UNAVAILABLE else 502)
-    assert response.json() == {"detail": detail}
+    assert (response.status_code, response.json()) == (status, {"detail": detail})
 
 
 @pytest.mark.parametrize(("method", "path", "call", "dependency", "answer", "key", "limit"), [

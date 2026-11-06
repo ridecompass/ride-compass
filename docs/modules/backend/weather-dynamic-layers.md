@@ -44,7 +44,7 @@ MSMは数値予報モデルの出力で観測値・公式発表の代わりに�
 | ファイル | 役割 | 消費側 |
 |---|---|---|
 | `weather.py` | アメダスの10分間の実測（降水量・気温）と推計気象分布の区分からWMO天気コードを導く`domain/weather.py: derive_observed_weather_code`（降っているかと雨・雪は観測所の実測が、降っていないときの晴れ・くもりは推計気象分布が決め、推計の雨・雪の区分はくもりに数える。日照時間は夜は空によらず0になるので使わない。「降っていない」の境`domain/weather.py: PRECIPITATION_MIN_MM`は、雨の材料（`domain/rain.py`）が雨と数える境にも使う） | `jma_amedas_service.py` |
-| `jma_amedas.py` | 風の来る向き`jma_amedas.py: WindDirection`（16方位コードからの読み替えは`jma_amedas_client.py`。静穏・欠測・範囲外のコードは方位なし。呼び名は`domain/geo.py: SIXTEEN_POINT_LABELS`から引く）・体感温度計算（BOM式）・`AmedasObservation`モデル（観測所名と観測の時刻は観測所ごとに決まり、Redisに持つ。天気コード`weather_code`はリクエストの地点の推計気象分布で決まるため、日の出・日没と同じく応答のたびにサービスが入れ、Redisには持たない） | `jma_amedas_service.py` |
+| `jma_amedas.py` | 風の来る向き`jma_amedas.py: WindDirection`（16方位コードからの読み替えは`jma_amedas_client.py`。静穏・欠測のコードは方位なし、範囲外のコードは取得の失敗。呼び名は`domain/geo.py: SIXTEEN_POINT_LABELS`から引く）・体感温度計算（BOM式）・`AmedasObservation`モデル（観測所名と観測の時刻は観測所ごとに決まり、Redisに持つ。天気コード`weather_code`はリクエストの地点の推計気象分布で決まるため、日の出・日没と同じく応答のたびにサービスが入れ、Redisには持たない） | `jma_amedas_service.py` |
 | `valid_area.py` | 値が成り立つ範囲（区域の境界・最寄りの点のボロノイ領域）を、地点を含むときだけ応答の形`valid_area.py: ValidArea`にする。点の並びのボロノイ図`valid_area.py: NearestPointCells`も持つ | `warning_service.py`・`flood_service.py`・`nearest_point_areas.py` |
 | `jma_area.py` | 区域（class20）のコード→JMA警報エリア（class20→class15→class10→office）の親子関係解決。辿る地域マスタは`jma_area.py: AreaMaster`（area.jsonの形は`jma_warning_client.py`が解く。区域の名前は警報級の時系列が応答に添えるためだけに持ち、二次細分区域は親の府県予報区があれば解決する） | `warning_service.py`・`flood_service.py`・`warning_timeline_service.py` |
 | `jma_warning.py` | サイクリングで出さない種別（名称で持つ。既定は出す）・電文1件`jma_warning.py: WarningBulletin`と、区域の種別の引き方（区域の項目が無い電文だけを二次細分区域で引く）・アクティブ警報抽出（電文の1地域ぶんの種別`jma_warning.py: AreaWarningKind`から。種別は名称と発表中かへ読み替え済みで届く）・警戒度の段と呼び名（`jma_warning.py: JMA_LEVEL_LABELS`。段は名称が含む呼び名から導く。危険警報＝警戒レベル4は警報と特別警報の間の段で、氾濫危険警報と同じ段） | `warning_service.py`・`warning_display.py` |
@@ -81,7 +81,7 @@ MSMは数値予報モデルの出力で観測値・公式発表の代わりに�
 | `GET /api/weather/wbgt` | 環境省WBGT | 502 | 30 |
 | `GET /api/weather/flood-forecast` | 河川洪水予報 | 502 | 30 |
 | `POST /api/weather/route-warning-timeline` | 気象庁の警報級の時系列（ルートが通る区域ごと） | 502 | 30 |
-| `GET /api/weather/amedas` | 気象庁アメダス実測値（Redis読み取り専用）と、天気コードの晴れ・くもりに推計気象分布（天気） | 502 | 30 |
+| `GET /api/weather/amedas` | 気象庁アメダス実測値（Redis読み取り専用）と、天気コードの晴れ・くもりに推計気象分布（天気） | 503（置き場を読めない・観測値が無い。理由つき）・502 | 30 |
 | `GET /api/weather` | 気象庁MSMの、地点の最寄りの格子点の今日の値（ローカルの同期ファイル） | 502 | 30 |
 | `GET /api/weather/msm-grid` | 気象庁MSMの格子点の風・降水（ローカルの同期ファイル）。範囲は`min_lon`・`min_lat`・`max_lon`・`max_lat` | 502（範囲が不正・広すぎれば400） | 30 |
 
@@ -311,9 +311,9 @@ DI工場（`api/dependencies.py`）がプロセスに1つ持ってクライア�
   Redis Hash（`jma:amedas:{station_id}`、TTLはバッチ間隔＋5分の15分）へ書き戻す。気象庁の応答の形（キー名・
   [度, 分]の座標・[値, 品質フラグ]の観測値・16方位の風向のコード・URLに載せる時刻の書式）はクライアントが解き・組み立て
   （`jma_amedas_client.py: AmedasStation`・`jma_amedas_client.py: AmedasReading`。時刻は`datetime`で受け渡す）、
-  Redisの鍵と保存する形は`jma_amedas_store.py`が持つ。サービスは値だけを読む。鍵の観測所idは値に持たず、書くときに観測所id→観測値で渡す。座標の無い観測所は
-  観測所マスタの時点で落ちる（最寄りに使えないため）。名前（`kjName`）の無い観測所も落ちる（ヘッダーに観測所名を出すため。
-  2026-10-07 の実物では全観測所が持つ）。観測所名と観測の時刻（最新の観測時刻）は、バッチが観測値と一緒に Hash へ書く。最寄りの観測所は、暑さ指数の
+  Redisの鍵と保存する形は`jma_amedas_store.py`が持つ。サービスは値だけを読む。鍵の観測所idは値に持たず、書くときに観測所id→観測値で渡す。座標・名前（`kjName`）の無い
+  観測所があれば、観測所マスタの取得を失敗にする（最寄りにも、ヘッダーの観測所名にも使えないため。2026-10-07 の実物では全観測所が持つ）。
+  置き場を読めない・最寄りの観測所の観測値が無いときは`jma_amedas_store.py: AmedasUnavailableError`を投げ、口は503と理由を返す。観測所名と観測の時刻（最新の観測時刻）は、バッチが観測値と一緒に Hash へ書く。最寄りの観測所は、暑さ指数の
   情報提供地点と同じ`domain/geo.py: nearest_point_index`（球面の距離）で選ぶ。
 
   **天気コードの晴れ・くもり**: 応答のたびに、リクエストの地点を含む推計気象分布（天気）の最新のタイル

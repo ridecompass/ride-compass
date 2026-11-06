@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import TypeVar
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import ValidationError
@@ -36,17 +35,6 @@ from app.services.weather_service import WeatherService
 router = APIRouter()
 
 # 警報系バッジの失敗の文。画面は出所の名前を前に付けて出す（「警報・注意報: 取得できませんでした。」）。
-_BADGE_SOURCE_UNAVAILABLE = "取得できませんでした。"
-
-_T = TypeVar("_T")
-
-
-def _or_502(value: _T | None, detail: str) -> _T:
-    if value is None:
-        raise HTTPException(status_code=502, detail=detail)
-    return value
-
-
 @router.get("/api/weather/warnings", response_model=WeatherWarnings)
 async def get_weather_warnings(
     http_request: Request,
@@ -110,10 +98,7 @@ async def get_amedas(
     """出発地点近傍の最寄りアメダス観測所の直近観測値を返す。
     観測所解決・取得のいずれかに失敗した場合は502を返す。"""
     enforce_rate_limit(http_request, "amedas", settings.weather_amedas_rate_limit_per_minute)
-    return _or_502(
-        await amedas_service.get_nearest_observation(Coordinates(latitude=latitude, longitude=longitude)),
-        "アメダス観測値の取得に失敗しました",
-    )
+    return await amedas_service.get_nearest_observation(Coordinates(latitude=latitude, longitude=longitude))
 
 
 @router.get("/api/weather", response_model=GridPointToday)

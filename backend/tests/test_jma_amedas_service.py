@@ -19,6 +19,8 @@ from datetime import datetime
 
 import httpx
 import pytest
+
+from app.infrastructure.jma_amedas_store import AmedasUnavailableError
 import respx
 from PIL import Image
 
@@ -207,10 +209,9 @@ async def test_weather_code_takes_rain_from_the_station_and_the_sky_from_the_poi
     assert result.weather_code == expected
 
 
-async def test_get_nearest_observation_returns_none_when_not_yet_cached():
+async def test_get_nearest_observation_says_why_when_not_yet_cached():
     service = _service(_upstream())
 
     # refresh_all_stationsを呼んでいない（＝定期バッチがまだ一度も成功していない）状態。
-    result = await service.get_nearest_observation(POINT)
-
-    assert result is None
+    with pytest.raises(AmedasUnavailableError, match="まだ取り込まれていない"):
+        await service.get_nearest_observation(POINT)
