@@ -4,11 +4,17 @@ import { COST_AXIS_CATALOG_LABEL, getCostAxisCatalog } from "@/services/costAxis
 import { retrySharedCatalogFetch, useSharedCatalog } from "@/hooks/useSharedCatalog";
 import type { FetchFailure } from "@/types/fetchFailure";
 import type { CostAxisCatalogResponse } from "@/types/route";
+import palette from "@/types/generated/palette.json";
 
-/** 軸の識別色。色に意味は持たせず、色相環を軸数で等分して表示順に割り当てる（軸数がいくつでも衝突せず、倍率を0にした軸が
- * あっても他の軸の色は動かない）。 */
-function axisColorsOf(axes: readonly { readonly axisId: string }[]): Record<string, string> {
-  return Object.fromEntries(axes.map((axis, index) => [axis.axisId, `hsl(${(index * 360) / axes.length}, 62%, 55%)`]));
+/**
+ * 軸と曲がる所の識別色。一覧の順に割り当て、曲がる所は軸の次。地図の負担の塗り（緑→赤で軽い→重い）と取り違えないよう
+ * 赤・緑・黄・橙を使わず、隣り合う2色が色覚の違いでも、明るい地・暗い地のどちらでも見分けられる並び（データの見せ方の
+ * 検証の道具で確かめた）。足りない分は灰色にする（色を作って足すと、隣と見分けられる保証が無い）。
+ */
+const SERIES_COLORS = ["#2a78d6", "#d9669a", "#6a55dc", "#139ab3", "#9c6a2c", "#b956c2"] as const;
+
+function seriesColor(index: number): string {
+  return SERIES_COLORS[index] ?? palette.semantic.neutral;
 }
 
 const COST_AXIS_CATALOG_QUERY_KEY = ["cost-axis-catalog"] as const;
@@ -42,8 +48,8 @@ export interface CostAxisCatalog {
   /** 代償の内訳の、避け方の倍率で上乗せした秒の行の名前。 */
   avoidanceLabel: string;
   turnLabel: string;
-  /** 曲がる所の行の色を借りる軸のid。 */
-  turnAxisId: string;
+  /** 曲がる所の行の識別色。 */
+  turnColor: string;
   /** 地図のレンズ。届くまで・失敗の間はnull。 */
   lenses: CostLensCatalog | null;
   /** 取得が成功したか。falseの間は`axes`が空なので、今の軸と揃うことを要る処理（倍率を送る）はこれで未確定を区別する。 */
@@ -57,7 +63,7 @@ const EMPTY: CostAxisCatalog = {
   axisColors: {},
   avoidanceLabel: "",
   turnLabel: "",
-  turnAxisId: "",
+  turnColor: palette.semantic.neutral,
   lenses: null,
   loaded: false,
   failed: false,
@@ -75,10 +81,10 @@ export function costAxisCatalogFromResponse(response: CostAxisCatalogResponse): 
   }));
   return {
     axes,
-    axisColors: axisColorsOf(axes),
+    axisColors: Object.fromEntries(axes.map((axis, index) => [axis.axisId, seriesColor(index)])),
     avoidanceLabel: response.avoidance_label,
     turnLabel: response.turn_label,
-    turnAxisId: response.turn_axis_id,
+    turnColor: seriesColor(axes.length),
     lenses: {
       totalLens: {
         axisId: response.total_lens.lens_id,

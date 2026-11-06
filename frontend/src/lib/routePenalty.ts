@@ -12,7 +12,7 @@ export interface PenaltyCatalog {
   axisColors: Readonly<Record<string, string>>;
   avoidanceLabel: string;
   turnLabel: string;
-  turnAxisId: string;
+  turnColor: string;
   /** 一覧が届いたか（届くまでは軸の名前が分からない）。 */
   loaded: boolean;
   /** 一覧の取得に失敗し、まだ一度も届いていないか。 */
@@ -59,7 +59,7 @@ const TURN_ROW_ID = "<turn>";
 const AVOIDANCE_ROW_ID = "<avoidance>";
 
 /** 内訳の行: 軸を一覧の順に（一覧に無い軸は応答の順で後ろに、名前はid）、続けて曲がる所と回避指定。秒が0の軸も残す（効く
- * はずの軸が効かなかったことも判断の材料になる）。曲がる所と回避指定は、秒があるときだけ出す。曲がる所は倍率の掛かる軸の色で、
+ * はずの軸が効かなかったことも判断の材料になる）。曲がる所と回避指定は、秒があるときだけ出す。曲がる所は自分の識別色で、
  * 回避指定は軸の無い行の色で塗る（データなしの灰色とは分ける）。 */
 export function penaltyRows(penalty: PenaltyBreakdown, catalog: PenaltyCatalog): PenaltyRow[] {
   const known = catalog.axes.filter((axis) => Object.hasOwn(penalty.axis_seconds, axis.axisId));
@@ -83,7 +83,7 @@ export function penaltyRows(penalty: PenaltyBreakdown, catalog: PenaltyCatalog):
       id: TURN_ROW_ID,
       label: catalog.loaded ? catalog.turnLabel : pendingCatalogLabel(catalog),
       seconds: penalty.turn_seconds,
-      color: catalog.axisColors[catalog.turnAxisId] ?? palette.semantic.neutral,
+      color: catalog.turnColor,
     });
   }
   if (penalty.avoidance_seconds > 0) {
