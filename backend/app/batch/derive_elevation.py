@@ -24,11 +24,6 @@ DEM が構造物を除いた範囲（水門の下の水面・高架の下の谷�
 ——配信元の定める精度の順（`dem_tile_store.PRODUCT_PRIORITY`）に見て、値のある最初の製品を
 採る。どの製品にも値が無い画素は欠測のまま残る。
 
-**区間の値は、その区間の形と、区間が橋かトンネルかと、端が橋の端か（隣の区間が橋か）と、標高のタイルと刻みと半径だけで決まる**。
-作り直しの入口が前回の表のスキーマを渡したとき（タイルとコードと較正値が前回と同じ）は、座標の並びまで同じ形で橋かトンネルかも
-同じ区間へ前回の値を写し、残りの区間だけ画素を引く。橋かトンネルの端に接する区間は、今回か前回のどちらかで接していれば写さずに
-計算する——隣の区間が橋になった・橋でなくなったことを、区間の形と自分の橋かトンネルかでは見分けられないため。前回の表は読むだけで、
-書くのは作業用のスキーマの表だけ。
 
 値の出し方そのものはdomainが持つ（`elevation_values_sql`）。このバッチは画素の引き方を
 組み立てるだけで、勾配の上限を持たない。
@@ -39,7 +34,7 @@ import time
 
 import asyncpg
 
-from app.batch.common import affected_rows, copy_reused_sql, reused_edges_sql
+from app.batch.common import affected_rows
 from app.batch.dem_tile_store import PRODUCT_PRIORITY
 from app.domain.attributes import elevation_values_sql
 from app.domain.region import tile_position_sql
@@ -53,11 +48,6 @@ SELECT e.osm_way_id, e.segment_index, e.geom, e.distance_m, e.from_node_id, e.to
        ({IS_TUNNEL_SQL} OR {IS_BRIDGE_SQL}) AS on_structure, {IS_BRIDGE_SQL} AS on_bridge
 FROM road_edges e JOIN {WAYS_SOURCE_SQL} w ON w.osm_way_id = e.osm_way_id
 """
-#: 今回の橋かトンネルの区間の端の頂点。ここに接する区間は前回の値を写さない。
-_STRUCTURE_ENDS = """CREATE TEMP TABLE _structure_end ON COMMIT DROP AS
-SELECT from_node_id AS node_id FROM _shape WHERE on_structure
-UNION SELECT to_node_id FROM _shape WHERE on_structure
-"""
 #: 橋の区間の端の頂点とその位置。標高を周りの一番高い値にする頂点。
 _BRIDGE_ENDS = """CREATE TEMP TABLE _bridge_end ON COMMIT DROP AS
 SELECT DISTINCT ON (node_id) node_id, geom FROM (
@@ -67,7 +57,7 @@ ORDER BY node_id
 """
 
 #: 断面の点を一度実体にしてからタイルへ結合する。関数から直に結合すると行数を見積もれず、
-#: プランナがタイル側を入れ子で読み直す計画を選ぶ。前回の値を写した区間（`_reused`）は作らない。
+#: プランナがタイル側を入れ子で読み直す計画を選ぶ。
 #:
 #: 刻みの数は「区間の長さ÷`$1`（刻みの上限）」の切り上げで、点は地表の道のりで等しく置く（`geography`の内挿）。
 #: 経緯度のまま内挿すると、東西と南北で1度の長さが違うぶん、曲がった区間で点の間隔がずれる。両端は内挿せずに形の端を使い、
@@ -86,8 +76,6 @@ CROSS JOIN LATERAL (
                 WHEN i = k.steps THEN ST_EndPoint(s.geom)
                 ELSE ST_LineInterpolatePoint(s.geom::geography, i::float8 / k.steps)::geometry END AS geom
     OFFSET 0) p
-WHERE NOT EXISTS (SELECT 1 FROM _reused r
-                  WHERE r.osm_way_id = s.osm_way_id AND r.segment_index = s.segment_index)
 """
 
 #: 橋の端の周りの8方位の点を、区間を持たない頂点（`osm_way_id`が空）として足す。`$1`は半径（m）。画素は区間の頂点と
@@ -152,14 +140,13 @@ WHERE v.osm_way_id IS NOT NULL
 ON CONFLICT (vid) DO UPDATE SET elev = EXCLUDED.elev
 """
 _VERTEX_ELEVATIONS = """
-SELECT v.osm_way_id, v.segment_index, v.ord, v.along_m, v.on_structure, e.elev
+SELECT v.osm_way_id, v.segment_index, v.ord, v.along_m, e.elev
 FROM _vertex v LEFT JOIN _vertex_elev e ON e.vid = v.vid
 WHERE v.osm_way_id IS NOT NULL
 """
 
 _ELEVATION_COLUMNS = ("start_elevation_m", "end_elevation_m", "elevation_gain_m", "elevation_loss_m",
-                      "average_grade", "steepest_gain_percent", "steepest_loss_percent", "on_structure",
-                      "elevation_profile_m")
+                      "average_grade", "steepest_gain_percent", "steepest_loss_percent", "elevation_profile_m")
 
 #: 値の出た区間だけを入れる。`$1`は断面の刻みの上限（m）。
 _INSERT_ELEVATION = f"""
@@ -167,22 +154,6 @@ INSERT INTO edge_elevation (osm_way_id, segment_index, {", ".join(_ELEVATION_COL
 SELECT osm_way_id, segment_index, {", ".join(_ELEVATION_COLUMNS)}
 FROM ({elevation_values_sql(_VERTEX_ELEVATIONS, "$1::float8")}) v
 """
-
-
-def _reused_edges_sql(previous: str | None) -> str:
-    """前回の値を写す区間。形に加えて、橋かトンネルかも前回と同じ区間だけを写す。前回に行の無かった区間は、
-    橋かトンネルかが変わっても今回も行を持たない——行が出るかは値のある頂点の数だけで決まる。橋かトンネルの端に接する区間は、
-    今回（`_structure_end`）か前回（前回の表の橋かトンネルの区間の端）のどちらかで接していれば写さない。"""
-    if previous is None:
-        return reused_edges_sql(None, "_shape")
-    return reused_edges_sql(previous, "_shape", f"""LEFT JOIN {previous}.edge_elevation v
-  ON v.osm_way_id = s.osm_way_id AND v.segment_index = s.segment_index
-WHERE (v.osm_way_id IS NULL OR v.on_structure = s.on_structure)
-  AND NOT EXISTS (SELECT 1 FROM _structure_end n WHERE n.node_id IN (s.from_node_id, s.to_node_id))
-  AND NOT EXISTS (SELECT 1 FROM {previous}.road_edges pe JOIN {previous}.edge_elevation pv
-                    ON pv.osm_way_id = pe.osm_way_id AND pv.segment_index = pe.segment_index AND pv.on_structure
-                  WHERE p.from_node_id IN (pe.from_node_id, pe.to_node_id)
-                     OR p.to_node_id IN (pe.from_node_id, pe.to_node_id))""")
 
 
 async def _products_in_priority(conn: asyncpg.Connection) -> list[tuple[str, int]]:
@@ -203,8 +174,7 @@ async def _products_in_priority(conn: asyncpg.Connection) -> list[tuple[str, int
     return [(p, zooms[p][0]) for p in PRODUCT_PRIORITY if p in zooms]
 
 
-async def _derive_elevation(conn: asyncpg.Connection, previous: str | None, profile_step_m: float,
-                            bridge_end_radius_m: float) -> None:
+async def _derive_elevation(conn: asyncpg.Connection, profile_step_m: float, bridge_end_radius_m: float) -> None:
     started = time.perf_counter()
     products = await _products_in_priority(conn)
     await conn.execute("TRUNCATE edge_elevation")
@@ -215,15 +185,8 @@ async def _derive_elevation(conn: asyncpg.Connection, previous: str | None, prof
     edges = await conn.fetchval("SELECT count(*) FROM road_edges")
     await conn.execute(_SHAPES)
     await conn.execute("ANALYZE _shape")
-    await conn.execute(_STRUCTURE_ENDS)
     await conn.execute(_BRIDGE_ENDS)
-    await conn.execute("ANALYZE _structure_end, _bridge_end")
-    await conn.execute(_reused_edges_sql(previous))
-    await conn.execute("ANALYZE _reused")
-    reused = await conn.fetchval("SELECT count(*) FROM _reused")
-    if previous is not None:
-        await conn.execute(copy_reused_sql("edge_elevation", _ELEVATION_COLUMNS, previous))
-    logger.info("標高: 形と橋・トンネルの変わらない区間 %d本へ前回の値を写し、%d本を計算する", reused, edges - reused)
+    await conn.execute("ANALYZE _bridge_end")
     await conn.execute(_VERTICES, profile_step_m)
     probes = affected_rows(await conn.execute(_BRIDGE_END_PROBES, bridge_end_radius_m))
     logger.info("標高: 橋の端 %d点を、周り%.0fmの8方位の点のうち一番高い値にする", probes // 8, bridge_end_radius_m)
@@ -240,13 +203,10 @@ async def _derive_elevation(conn: asyncpg.Connection, previous: str | None, prof
     await conn.execute(_RAISE_BRIDGE_ENDS)
     updated = affected_rows(await conn.execute(_INSERT_ELEVATION, profile_step_m))
 
-    logger.info("標高: 計算した区間 %d/%d本に値が付いた / %.1f秒",
-                updated, edges - reused, time.perf_counter() - started)
+    logger.info("標高: 計算した区間 %d/%d本に値が付いた / %.1f秒", updated, edges, time.perf_counter() - started)
 
 
-async def derive(conn: asyncpg.Connection, *, previous: str | None, profile_step_m: float,
-                 bridge_end_radius_m: float) -> None:
-    """`previous`は前回の表のスキーマ。Noneなら全区間を計算する。`profile_step_m`は断面の刻みの上限（m）、
-    `bridge_end_radius_m`は橋の端の標高を探す半径（m）。"""
+async def derive(conn: asyncpg.Connection, *, profile_step_m: float, bridge_end_radius_m: float) -> None:
+    """`profile_step_m`は断面の刻みの上限（m）、`bridge_end_radius_m`は橋の端の標高を探す半径（m）。"""
     async with conn.transaction():
-        await _derive_elevation(conn, previous, profile_step_m, bridge_end_radius_m)
+        await _derive_elevation(conn, profile_step_m, bridge_end_radius_m)

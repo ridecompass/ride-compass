@@ -218,9 +218,6 @@ class EdgeElevationRow(_EdgeKey, Base):
     #: 点はNULL。上の要約の列は、どれもこの点から出す（`domain/attributes.py: elevation_values_sql`）。作り直す前の行は持たない
     #: （空を許すのは、行の入った本番の表へ列を足せるようにするため）。
     elevation_profile_m: Mapped[list[float | None] | None] = mapped_column(ARRAY(REAL), nullable=True)
-    #: 作り直しの時点の道のタグで、区間が橋かトンネルだったか。値はこれに依る（両端だけを使う）ので、形が同じでも
-    #: これが変われば前回の値を使い回せない。
-    on_structure: Mapped[bool] = mapped_column(Boolean, nullable=False)
 
 
 class EdgeLandcoverRow(_EdgeKey, _Landcover, Base):

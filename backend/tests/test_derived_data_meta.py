@@ -21,6 +21,12 @@ from tests.source_ingest import ingest_records
 pytestmark = pytest.mark.asyncio(loop_scope="module")
 
 
+async def _recorded(conn, ids):
+    """`ids`の、作り直しに使った値（読み手が使う式`recorded_tuning_sql`で読む）。"""
+    row = await conn.fetchrow("SELECT " + ", ".join(derived_data_meta.recorded_tuning_sql(param_id) for param_id in ids))
+    return dict(zip(ids, row.values()))
+
+
 async def _bump_revision() -> int:
     async with raw_connection() as conn:
         return await derived_data_meta.bump_revision(conn)
@@ -42,10 +48,10 @@ async def test_the_tuning_a_rebuild_used_reads_as_the_default_until_one_is_recor
     間も、地図の点・ルートの印・道路網の配列が、出す前と同じ値で読む。記録した値は、記録の無い較正値を既定のまま残す。"""
     ids = (ACCIDENT_MATCH_DISTANCE_ID, TURN_BEARING_DISTANCE_ID)
     async with raw_connection() as conn:
-        before = await derived_data_meta.read_tuning(conn, ids)
+        before = await _recorded(conn, ids)
         await derived_data_meta.replace_tuning(conn, {TURN_BEARING_DISTANCE_ID: 5.0})
         try:
-            after = await derived_data_meta.read_tuning(conn, ids)
+            after = await _recorded(conn, ids)
         finally:
             await derived_data_meta.replace_tuning(conn, {})
 

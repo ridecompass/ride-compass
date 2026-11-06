@@ -231,9 +231,9 @@ async def derive_nodes_at_default_radius(conn: asyncpg.Connection) -> None:
 
 
 async def derive_elevation_at_default_step(conn: asyncpg.Connection, **tuning: float) -> None:
-    """標高の派生の段を、前回の値を写さずに、断面の刻みと橋の端の半径を較正値の既定（`tuning`で上書きしたものはその値）にして流す。"""
+    """標高の派生の段を、断面の刻みと橋の端の半径を較正値の既定（`tuning`で上書きしたものはその値）にして流す。"""
     await derive_elevation.derive(
-        conn, previous=None,
+        conn,
         **{"profile_step_m": TUNING_PARAMETERS_BY_ID[ELEVATION_PROFILE_STEP_ID].default,
            "bridge_end_radius_m": TUNING_PARAMETERS_BY_ID[ELEVATION_BRIDGE_END_RADIUS_ID].default, **tuning})
 

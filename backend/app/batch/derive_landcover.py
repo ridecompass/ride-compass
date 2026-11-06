@@ -7,9 +7,7 @@
 **処理はDB内で完結する。**画素をプロセスへ取り出さず、帯に重なる画素を数える
 （`ST_Clip` + `ST_ValueCount`）。
 
-**区間の値は、その区間の形と土地被覆のタイルだけで決まる**（ほかの区間を読まない）。作り直しの入口が前回の表の
-スキーマを渡したとき（タイルとコードが前回と同じ）は、座標の並びまで同じ形の区間へ前回の値を写し、残りの区間だけ
-帯を作って数える。前回の表は読むだけで、書くのは作業用のスキーマの表だけ。道の値はどちらでも区間の値から作り直す。
+**道の値は区間の値から作る。**
 値の出た区間・道だけが行を持つ。
 
 値の出し方そのものはdomainが持つ（`class_percentages_sql`）。このバッチは画素の数え方を
@@ -21,7 +19,7 @@ import time
 
 import asyncpg
 
-from app.batch.common import affected_rows, copy_reused_sql, reused_edges_sql
+from app.batch.common import affected_rows
 from app.domain.landcover import PERCENT_CLASSES, class_percentages_sql, landcover_key
 from app.infrastructure.source_models import LANDCOVER_TILES_SQL
 
@@ -29,16 +27,14 @@ logger = logging.getLogger("ridecompass.derive_landcover")
 
 
 #: 帯を先に作って索引を張る。タイル1枚ごとに作り直すと、同じ区間を何度も膨らませることになる。
-#: タイルの位置はWebメルカトルなので、帯もそちらへそろえてから重ねる。前回の値を写した区間（`_reused`）は作らない。
+#: タイルの位置はWebメルカトルなので、帯もそちらへそろえてから重ねる。
 _BUILD_RINGS = """
 CREATE TEMP TABLE _rings ON COMMIT DROP AS
 SELECT osm_way_id, segment_index, ring AS ring4326, ST_Transform(ring, 3857) AS ring
 FROM (SELECT e.osm_way_id, e.segment_index,
              ST_Difference(ST_Buffer(e.geom::geography, $1)::geometry,
                            ST_Buffer(e.geom::geography, $2)::geometry) AS ring
-      FROM road_edges e
-      WHERE NOT EXISTS (SELECT 1 FROM _reused r
-                        WHERE r.osm_way_id = e.osm_way_id AND r.segment_index = e.segment_index)) b
+      FROM road_edges e) b
 """
 
 #: 帯に重なる画素をクラスごとに数える。**数え上げはPostGIS側で行う**——画素を行へ
@@ -63,7 +59,7 @@ FROM ({class_percentages_sql(_COUNT_CLASSES)}) p
 """
 
 
-async def _derive_edges(conn: asyncpg.Connection, previous: str | None, ring_outer_m: float, ring_inner_m: float) -> None:
+async def _derive_edges(conn: asyncpg.Connection, ring_outer_m: float, ring_inner_m: float) -> None:
     started = time.perf_counter()
     tiles = await conn.fetchval(f"SELECT count(*) FROM {LANDCOVER_TILES_SQL} t")
     if not tiles:
@@ -71,11 +67,6 @@ async def _derive_edges(conn: asyncpg.Connection, previous: str | None, ring_out
         return
 
     edges = await conn.fetchval("SELECT count(*) FROM road_edges")
-    await conn.execute(reused_edges_sql(previous))
-    reused = await conn.fetchval("SELECT count(*) FROM _reused")
-    if previous is not None:
-        await conn.execute(copy_reused_sql("edge_landcover", _VALUE_COLUMNS, previous))
-    logger.info("土地被覆: 形の変わらない区間 %d本へ前回の値を写し、%d本を数える", reused, edges - reused)
     await conn.execute(_BUILD_RINGS, ring_outer_m, ring_inner_m)
     await conn.execute("CREATE INDEX ON _rings USING GIST (ring4326)")
     await conn.execute("ANALYZE _rings")
@@ -84,7 +75,7 @@ async def _derive_edges(conn: asyncpg.Connection, previous: str | None, ring_out
     updated = affected_rows(await conn.execute(_INSERT_LANDCOVER))
 
     logger.info("土地被覆: 数えた区間 %d/%d本に値が付いた / タイル %d枚 / %.1f秒",
-                updated, edges - reused, tiles, time.perf_counter() - started)
+                updated, edges, tiles, time.perf_counter() - started)
 
 
 # --- 道への集約 -------------------------------------------------------------
@@ -104,11 +95,10 @@ GROUP BY m.osm_way_id
 """
 
 
-async def derive(conn: asyncpg.Connection, *, previous: str | None, ring_outer_m: float, ring_inner_m: float) -> None:
-    """`previous`は前回の表のスキーマ。Noneなら全区間を数える。帯は道の中心線から`ring_inner_m`より外・`ring_outer_m`までで、
-    路面そのものの幅を除く。"""
+async def derive(conn: asyncpg.Connection, *, ring_outer_m: float, ring_inner_m: float) -> None:
+    """帯は道の中心線から`ring_inner_m`より外・`ring_outer_m`までで、路面そのものの幅を除く。"""
     async with conn.transaction():
         await conn.execute("TRUNCATE edge_landcover, way_landcover")
-        await _derive_edges(conn, previous, ring_outer_m, ring_inner_m)
+        await _derive_edges(conn, ring_outer_m, ring_inner_m)
         await conn.execute("ANALYZE edge_landcover")
         await conn.execute(_WAY_ROLLUP)

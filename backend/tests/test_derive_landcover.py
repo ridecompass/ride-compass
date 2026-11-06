@@ -116,10 +116,10 @@ async def test_rerun_on_pixels_left_out_keeps_no_share_on_segments_or_ways(landc
             f"SELECT lc_valid_pixels, lc_{first} FROM road_edges LEFT JOIN edge_landcover USING (osm_way_id, segment_index)"
             f" UNION ALL SELECT lc_valid_pixels, lc_{first} FROM road_ways LEFT JOIN way_landcover USING (osm_way_id)")]
 
-    await derive_landcover.derive(landcover_conn, previous=None, **_DEFAULT_RING)
+    await derive_landcover.derive(landcover_conn, **_DEFAULT_RING)
     before = await shares()
     await _ingest_tile(landcover_conn, _raster(NODATA))
-    await derive_landcover.derive(landcover_conn, previous=None, **_DEFAULT_RING)
+    await derive_landcover.derive(landcover_conn, **_DEFAULT_RING)
 
     # 前提: 1回目は区間にも道にも値が付いている。
     assert len(before) == 2
@@ -140,7 +140,7 @@ async def test_only_pixels_in_the_band_around_the_road_are_counted(landcover_con
                                                     inner_m=band["ring_inner_m"], outer_m=band["ring_outer_m"]))
     inside, ring, outside = (landcover_key(name) for name, _ in classes)
 
-    await derive_landcover.derive(landcover_conn, previous=None, **band)
+    await derive_landcover.derive(landcover_conn, **band)
 
     rows = await landcover_conn.fetch(
         f"SELECT lc_{inside} AS inside, lc_{ring} AS ring, lc_{outside} AS outside"

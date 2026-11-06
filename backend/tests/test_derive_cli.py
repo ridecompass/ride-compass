@@ -4,8 +4,8 @@
 作業用のスキーマで作り、1つのトランザクションで入れ替え、世代を進め、その中身から作った道路網を置く・
 作った取込を記録する・取込と同時に走らない・管理画面で変えた較正値を段へ渡す——を見る。
 段は本物を通し、読み手の目で見るための覗き窓だけを段の後ろに挟む。
-見ないもの: 取込の間に作り直しが止まること → `test_ingest.py`。入力が前回と同じ段を飛ばすこと・段の宣言 →
-`test_derive_skip.py`。
+見ないもの: 取込の間に作り直しが止まること → `test_ingest.py`。段を選ぶこと・段の宣言 →
+`test_derive_stages.py`。
 """
 
 import asyncpg
@@ -17,7 +17,7 @@ from app.batch import derive_cli
 from app.batch.source_adapters.npa_honhyo import HonhyoRows
 from app.domain.accident import PartyType
 from app.domain.material_catalog import ACCIDENT_COUNT_PER_KM_YEAR
-from app.domain.tuning import TUNING_PARAMETERS, TUNING_VALUES, TuningEffect
+from app.domain.tuning import TUNING_PARAMETERS, TuningEffect
 from app.infrastructure import road_network_store
 from app.infrastructure.derived_data_freshness import derived_tables
 from app.infrastructure.road_graph_repository import RoadGraphRepository
@@ -78,7 +78,7 @@ async def _schemas(conn: asyncpg.Connection) -> set[str]:
 
 
 async def _empty(conn: asyncpg.Connection) -> None:
-    """生データ・派生の表と一緒に、段の指紋と世代も空にする。指紋を残すと、空にした表を作り直さずに段を飛ばしうる。"""
+    """生データ・派生の表と一緒に、世代も空にする。"""
     await empty_ingested_tables(conn)
     await conn.execute("TRUNCATE derived_data_meta")
 
@@ -115,7 +115,7 @@ async def derived_before(road_graph_engine, schemas_at_start, road_network_root)
 
 
 def _observe_after(stage_name: str, monkeypatch, observe) -> None:
-    """段`stage_name`の後ろに覗き窓を挟む（段そのものは本物を通す。段は入力が変わったときだけ流れる）。"""
+    """段`stage_name`の後ろに覗き窓を挟む（段そのものは本物を通す）。"""
     module = next(stage.module for stage in derive_cli.STAGES if stage.name == stage_name)
     real = module.derive
 
@@ -179,8 +179,8 @@ async def test_a_failed_rebuild_changes_nothing_readers_see(derived_before, sche
 
 async def test_rerunning_after_a_crash_between_the_swap_and_the_publish_places_the_network_of_the_db_revision(
         derived_before, monkeypatch):
-    """表を入れ替えたあと道路網を付け替える前に落ちると、どの段も入力が前回と同じのまま世代だけが進む。流し直せば
-    その世代の道路網が置かれ、配信が入れ替えた表と食い違った前の世代の配列を読み続けない。"""
+    """表を入れ替えたあと道路網を付け替える前に落ちると、世代だけが進んで道路網は前の世代のまま残る。流し直せば
+    次の世代の表と道路網が置かれ、配信が入れ替えた表と食い違った前の世代の配列を読み続けない。"""
     await _ingest_ways(derived_before, ONEWAY)
 
     def crash(pending):
@@ -194,9 +194,9 @@ async def test_rerunning_after_a_crash_between_the_swap_and_the_publish_places_t
 
     assert await derive_cli.run(postgis_database_url()) == 0
 
-    assert await _revision(derived_before) == 2
+    assert await _revision(derived_before) == 3
     network = road_network_store.current()
-    assert network.revision == 2
+    assert network.revision == 3
     assert (100, False) not in set(zip(network.edge_way_id.tolist(), network.edge_forward.tolist(), strict=True))
 
 
@@ -220,7 +220,7 @@ async def test_the_signal_radius_set_on_the_admin_screen_decides_which_nodes_get
 
     await override_tuning(SIGNAL_RADIUS, 150.0)
     try:
-        assert await derive_cli.run(postgis_database_url()) == 0
+        assert await derive_cli.run(postgis_database_url(), ["nodes"]) == 0
     finally:
         await derived_before.execute("DELETE FROM tuning_overrides WHERE param_id = $1", SIGNAL_RADIUS)
     assert await _nodes_with_signal(derived_before) == {1, 2, 3}
@@ -229,7 +229,7 @@ async def test_the_signal_radius_set_on_the_admin_screen_decides_which_nodes_get
 async def test_every_value_that_waits_for_a_rebuild_is_read_by_the_rebuild():
     """管理画面に「派生データを作り直すまで効かない」と出る較正値は、どれも段か道路網の配列が読み、作り直しの記録に残る。
     読まれない値は変えても何にも効かず、記録に残らない値は、派生の外の読み手が作り直しに使った値ではなく既定で読む。"""
-    assert set(derive_cli.recorded_tuning(TUNING_VALUES)) == {
+    assert set(derive_cli.TUNING_USERS) == {
         param.id for param in TUNING_PARAMETERS if param.effect is TuningEffect.DERIVE_REBUILD}
 
 
