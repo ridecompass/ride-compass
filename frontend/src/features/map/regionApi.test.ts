@@ -72,7 +72,7 @@ describe("押した道の内訳（fetchAxisInspector）", () => {
     speedKmh: 22,
   };
 
-  it.each([{ strength: 2, multipliers: { vibration: 0 }, disabled_axes: [] }])(
+  it.each([{ strength: 2, multipliers: { vibration: 0.5 }, disabled_axes: ["ascent"] }])(
     "押した地物・タイルと走行の条件と利用者の値を backend の項目名で送る: $strength",
     async (preference) => {
       const result = {

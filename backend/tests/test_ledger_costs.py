@@ -13,6 +13,7 @@ import pytest
 from app.domain.attributes import CategoricalColumn
 from app.domain.cost_axes import EFFORT_AXES, CostAxisDefinitions
 from app.domain.cycling_speed import RiderProfile, SegmentRide, kickoff_extra_j, wheel_power_w
+from app.domain.leg_costs import burden_weights
 from app.domain.ledger_costs import LedgerCosts, LedgerParameters, burden_per_km
 from app.domain.material_catalog import GRADIENT_PERCENT
 from app.domain.road_network import MaterialFills
@@ -63,9 +64,12 @@ def test_the_penalty_is_the_strength_times_the_effort_over_the_flat_power_and_th
 
 
 def test_a_disabled_axis_is_not_built_and_a_disabled_stop_axis_does_not_count_the_turns_either():
-    """無効の軸は組まず、軸ごとの秒にも和にも入らない。停止（慣性の費目）を無効にすると、曲がる所の漕ぎ出しも数えず、
-    曲がる所の費用は時間だけになる。"""
-    ledger = _ledger(_parameters(disabled=("ascent", "vibration", "stopping")), [1.0])
+    """無効の軸は組まず、軸ごとの秒にも和にも入らない（道のストレスの軸は、区間ごとの重さを作る所で落ちる）。停止（慣性の費目）を
+    無効にすると、曲がる所の漕ぎ出しも数えず、曲がる所の費用は時間だけになる。"""
+    parameters = _parameters(disabled=("ascent", "vibration", "stopping"))
+    weights = burden_weights(AXES, parameters, {VIBRATION: CategoricalColumn.encode(["gravel"])},
+                             MaterialFills(numeric_means={}, class_shares={}))
+    ledger = LedgerCosts(AXES, parameters, wheel_power_w(RIDER), kickoff_extra_j(RIDER), weights, np.full(1, 1000.0))
     ride = _ride(1, gravity=5000.0, inertia=kickoff_extra_j(RIDER))
 
     assert set(ledger.penalty_by_axis(ride)) == {"headwind", "friction"}

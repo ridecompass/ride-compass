@@ -255,8 +255,9 @@ def _build_candidate(
     bins_started = start_timer()
     # 候補の内訳は丸める前の区間から足す（丸めたビンを足すと、丸めの分が候補の内訳へ積もる）。区間は通った道の分なので、通る道筋で
     # 決まる曲がる所の漕ぎ出しを、その費目を持つ軸の秒として足す。
+    turn_kickoffs = float(sum(orientation.turn_kickoffs))
     turn_penalty = PenaltyBreakdown.model_construct(
-        axis_seconds=context.composer.turn_penalty_by_axis(float(sum(orientation.turn_kickoffs))), avoidance_seconds=0.0)
+        axis_seconds=context.composer.turn_penalty_by_axis(turn_kickoffs), avoidance_seconds=0.0)
     penalty = merge_penalty_breakdowns([*(segment.penalty for segment in segments), turn_penalty])
     # 返すsegmentsは集約する。Edge単位のままだとペイロードとフロントの描画費用が嵩む。
     segments = aggregate_segments_into_bins(segments, orientation.bin_slices)
@@ -278,7 +279,7 @@ def _build_candidate(
         segments=segments,
         cost_seconds=round(orientation.cost_seconds, COST_SECONDS_DECIMALS),
         penalty=penalty,
-        facts=_route_facts(orientation, context, elevation_gain_m),
+        facts=_route_facts(orientation, context, elevation_gain_m, turn_kickoffs),
         # 所要時間＝区間の走行時間＋停止の待ち＋ターンの待ち（最後の区間を抜けた時刻）。
         estimated_duration_seconds=passages[-1].elapsed_seconds + passages[-1].seconds if passages else None,
         wind_unavailable=context.composer.wind_unavailable,
@@ -385,9 +386,11 @@ _EFFORT_FACTS: dict[EffortItem, tuple[str, str]] = {
 }
 
 
-def _route_facts(orientation: _Orientation, context: RoadGraphContext, elevation_gain_m: float | None) -> RouteFacts:
+def _route_facts(orientation: _Orientation, context: RoadGraphContext, elevation_gain_m: float | None,
+                 turn_kickoffs: float) -> RouteFacts:
     """経路の事実の量。区間ごとの値（`domain/leg_costs.py: LegCostComposer.row_facts`・`LegValues.headwind_ms`）を
-    経路の区間の長さで足す。事実を返すのは、利用者が数える軸（`LegCostComposer.counts`）だけ。"""
+    経路の区間の長さで足し、止まる回数には曲がる所の漕ぎ出し`turn_kickoffs`回を足す。事実を返すのは、利用者が数える軸
+    （体力の軸は`LegCostComposer.counts`、道のストレスの軸は`row_facts`が数える軸だけを持つ）だけ。"""
     rows = np.asarray(orientation.rows, dtype=np.int64)
     distance_km = np.array([edge.distance_m for edge in orientation.edges], dtype=float) / 1000.0
     facts = context.composer.row_facts(rows)
@@ -400,7 +403,7 @@ def _route_facts(orientation: _Orientation, context: RoadGraphContext, elevation
             None if context.composer.wind_unavailable or (mean := length_weighted_mean(headwind_ms, distance_km)) is None
             else round(mean, WIND_MS_DECIMALS)
         ),
-        "inertia": round(float(facts.stops.sum()) + float(sum(orientation.turn_kickoffs)), STOP_COUNT_DECIMALS),
+        "inertia": round(float(facts.stops.sum()) + turn_kickoffs, STOP_COUNT_DECIMALS),
         "rolling": round(float(distance_km[facts.rough].sum()), DISTANCE_KM_DECIMALS),
     }
     axes = {
@@ -409,8 +412,6 @@ def _route_facts(orientation: _Orientation, context: RoadGraphContext, elevation
     }
     burden_axes = context.cost_axes.burden
     for axis_id, burdened in facts.burdened.items():
-        if not context.composer.counts(axis_id):
-            continue
         axes[axis_id] = AxisFact(label=f"{burden_axes[axis_id].label}のある道",
                                  value=round(float(distance_km[burdened].sum()), DISTANCE_KM_DECIMALS), unit="km")
     return RouteFacts(

@@ -19,6 +19,20 @@ export function countsAxis(preference: CostPreference, axisId: string): boolean 
   return !preference.disabled_axes.includes(axisId);
 }
 
+/** 軸を数えない（無効）ことを、倍率と並べて選ぶ値。 */
+export const AXIS_OFF = "off";
+/** 軸ごとの設定: 倍率か、無効。 */
+export type AxisSetting = number | typeof AXIS_OFF;
+
+/** 軸`axisId`の設定を`setting`にした好み。1つの軸は倍率と無効のどちらか一方にだけ書く（両方に書くと backend が断る）。 */
+export function withAxisSetting(preference: CostPreference, axisId: string, setting: AxisSetting): CostPreference {
+  const multipliers = Object.fromEntries(Object.entries(preference.multipliers).filter(([id]) => id !== axisId));
+  const disabledAxes = preference.disabled_axes.filter((id) => id !== axisId);
+  return setting === AXIS_OFF
+    ? { ...preference, multipliers, disabled_axes: [...disabledAxes, axisId] }
+    : { ...preference, multipliers: { ...multipliers, [axisId]: setting }, disabled_axes: disabledAxes };
+}
+
 /** 軸`axisId`の倍率（書いていなければ標準）。 */
 export function multiplierOf(preference: CostPreference, axisId: string): number {
   return preference.multipliers[axisId] ?? STANDARD_COST_FACTOR;
@@ -33,10 +47,9 @@ export function lensPreferenceQuery(
   lensId: string,
   allAxes: boolean,
 ): { strength?: number; multipliers?: string; disabled_axes?: string } {
-  const byId = ([a]: [string, unknown], [b]: [string, unknown]) => (a < b ? -1 : a > b ? 1 : 0);
   const pairs = Object.entries(preference.multipliers)
     .filter(([axisId]) => allAxes || axisId === lensId)
-    .sort(byId);
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
   const disabled = allAxes ? [...preference.disabled_axes].sort() : [];
   return {
     ...(preference.strength !== STANDARD_COST_FACTOR ? { strength: preference.strength } : {}),

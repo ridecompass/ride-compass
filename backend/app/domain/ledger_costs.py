@@ -90,10 +90,9 @@ class LedgerCosts:
     def __init__(self, axes: CostAxisDefinitions, parameters: LedgerParameters, flat_power_w: float, kickoff_j: float,
                  burden_per_km: Mapping[str, np.ndarray], distance_m: np.ndarray) -> None:
         """`flat_power_w`は平地の出力、`kickoff_j`は重みを掛けた漕ぎ出し1回の体力（`SegmentSpeedModel.kickoff_effort_j`）、
-        `burden_per_km`は道のストレスの軸ごとの区間の1kmあたりの重さ（`domain/leg_costs.py: burden_weights`）、`distance_m`は区間の
+        `burden_per_km`は数える道のストレスの軸ごとの区間の1kmあたりの重さ（`domain/leg_costs.py: burden_weights`）、`distance_m`は区間の
         長さ。走行の模型から組むときは`for_model`。"""
         multiplier = parameters.multiplier
-        self.counts = parameters.counts
         self._weight_exponent = parameters.effort_weight_exponent
         #: 数える体力の軸（`EFFORT_AXES`の順）と、その費目の倍率。
         self._effort_axes = {axis_id: item for axis_id, item in EFFORT_AXES.items() if parameters.counts(axis_id)}
@@ -108,8 +107,8 @@ class LedgerCosts:
         distance_km = np.asarray(distance_m, dtype=np.float64) / 1000.0
         self._burden_axis_seconds = {
             axis_id: parameters.effective_strength * parameters.burden_seconds_per_km * multiplier(axis_id)
-            * np.asarray(burden_per_km[axis_id], dtype=np.float64) * distance_km
-            for axis_id in axes.burden if parameters.counts(axis_id)
+            * np.asarray(per_km, dtype=np.float64) * distance_km
+            for axis_id, per_km in burden_per_km.items()
         }
 
     @classmethod

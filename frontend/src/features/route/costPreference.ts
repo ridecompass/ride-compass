@@ -74,13 +74,13 @@ export function costPreferenceDescription(preference: CostPreference, catalog: C
     ...(preference.strength !== STANDARD_COST_FACTOR
       ? [`負担の強さ ${levelLabel(COST_STRENGTH_LEVELS, preference.strength)}`]
       : []),
-    ...catalog.axes.flatMap((axis) =>
-      !countsAxis(preference, axis.axisId)
-        ? [`${axis.label} ${DISABLED_AXIS_LABEL}`]
-        : multiplierOf(preference, axis.axisId) !== STANDARD_COST_FACTOR
-          ? [`${axis.label} ${levelLabel(COST_MULTIPLIER_LEVELS, multiplierOf(preference, axis.axisId))}`]
-          : [],
-    ),
+    ...catalog.axes.flatMap((axis) => {
+      if (!countsAxis(preference, axis.axisId)) return [`${axis.label} ${DISABLED_AXIS_LABEL}`];
+      const multiplier = multiplierOf(preference, axis.axisId);
+      return multiplier !== STANDARD_COST_FACTOR
+        ? [`${axis.label} ${levelLabel(COST_MULTIPLIER_LEVELS, multiplier)}`]
+        : [];
+    }),
   ];
   return parts.length > 0 ? parts.join("・") : "標準";
 }

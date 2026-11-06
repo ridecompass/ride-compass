@@ -207,15 +207,20 @@ class EvaluatedRoute(StrictModel):
     # 候補全体の代償の秒の内訳。
     penalty: PenaltyBreakdown
 
+    def penalty_per_km(self) -> float | None:
+        """候補全体の1kmあたりの代償の秒（曲がる所と回避指定を含むルート全体の損。`penalty_seconds_per_km`）。周回はこの値で
+        並べ（`domain/route_search.py: candidate_order`）、候補の帯は応答の`penalty_seconds_per_km`で塗る。所要時間か長さが
+        無ければNone。"""
+        if self.estimated_duration_seconds is None or not self.distance_km > 0:
+            return None
+        return float(penalty_seconds_per_km(self.cost_seconds, self.estimated_duration_seconds, self.distance_km * 1000.0))
+
     @computed_field  # type: ignore[prop-decorator]
     @property
     def penalty_seconds_per_km(self) -> float | None:
-        """候補全体の1kmあたりの代償の秒（曲がる所と回避指定を含むルート全体の損。`penalty_seconds_per_km`）。周回はこれで並べ、
-        候補の帯もこれで塗る。所要時間か長さが無ければNone。"""
-        if self.estimated_duration_seconds is None or not self.distance_km > 0:
-            return None
-        return round(float(penalty_seconds_per_km(self.cost_seconds, self.estimated_duration_seconds, self.distance_km * 1000.0)),
-                     COST_SECONDS_DECIMALS)
+        """`penalty_per_km`を応答の秒の桁へ丸めたもの。候補の帯はこれで塗る。"""
+        per_km = self.penalty_per_km()
+        return None if per_km is None else round(per_km, COST_SECONDS_DECIMALS)
 
     facts: RouteFacts
     # 所要時間の見積もりで風を使えなかった（風の予報が読めず、無風として計算した）。画面が利用者へ知らせる。

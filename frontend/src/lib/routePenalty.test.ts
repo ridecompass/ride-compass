@@ -1,5 +1,5 @@
 /**
- * `lib/routePenalty.ts: penaltyRows`——内訳の行の名前と色。
+ * `lib/routePenalty.ts: penaltyRows`——内訳の行の名前。
  *
  * 見るもの: 一覧が届くまで・取れない間の行の名前。
  *
@@ -10,20 +10,7 @@ import { describe, expect, it } from "vitest";
 import { penaltyRows, type PenaltyCatalog } from "./routePenalty";
 
 const PENALTY = { axis_seconds: { stopping: 30 }, avoidance_seconds: 120, total_seconds: 150 };
-const CATALOG: PenaltyCatalog = {
-  axes: [{ axisId: "stopping", label: "止まる回数" }],
-  axisColors: { stopping: "rgb(1, 2, 3)" },
-  avoidanceLabel: "回避指定",
-  loaded: true,
-  failed: false,
-};
-const NOT_LOADED = {
-  ...CATALOG,
-  axes: [],
-  axisColors: {},
-  avoidanceLabel: "",
-  loaded: false,
-};
+const NOT_LOADED: Omit<PenaltyCatalog, "failed"> = { axes: [], axisColors: {}, avoidanceLabel: "", loaded: false };
 
 describe("penaltyRows", () => {
   it.each([

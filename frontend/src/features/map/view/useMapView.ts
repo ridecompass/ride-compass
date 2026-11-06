@@ -114,13 +114,7 @@ export function useMapView({
   });
   const mapCatalog = useMapCatalog(mapTheme);
   const costCatalog = useCostAxisCatalog();
-  // 選べるレンズは、総合と、利用者が無効にしていない軸（無効の軸は地図のどこにも出さない）。好みは描くたびに新しい値で届くので、
-  // 無効の一覧の中身で作り直す（下の材料の取得は、安定した一覧を受ける）。
-  const disabledKey = costPreference.disabled_axes.join(",");
-  const lenses = useMemo(
-    () => mapCatalog.lenses.filter((candidate) => !disabledKey.split(",").includes(candidate.lensId)),
-    [mapCatalog.lenses, disabledKey],
-  );
+  const lenses = mapCatalog.lenses;
   // 保存するのは触った層の真偽だけで、既定は層の一覧（道の線の層は画面の設定が届いてから決まる）から重ねる。
   const [storedVisibility, setLayerVisibility] = useStoredState<MapLayerVisibility>(
     "ridecompass:layer-visibility",
@@ -136,7 +130,7 @@ export function useMapView({
   const [storedLens, setLens] = useStoredState<LensId>("ridecompass:route-style-mode", UNSELECTED_LENS_ID, {
     serialize: (value) => value,
     deserialize: (raw) =>
-      raw === UNSELECTED_LENS_ID || mapCatalog.lenses.some((candidate) => candidate.lensId === raw) ? raw : null,
+      raw === UNSELECTED_LENS_ID || lenses.some((candidate) => candidate.lensId === raw) ? raw : null,
     reloadKey: String(costCatalog.loaded),
   });
   // 選んでいた軸をあとから無効にしたら、選んでいない状態として扱う（選びは残し、無効を戻せばまた塗る）。
@@ -254,15 +248,18 @@ export function useMapView({
   const toggleHiddenFor = (key: string, rowKey: string) => setHidden((prev) => toggleHiddenKey(prev, key, rowKey));
 
   // 色分けの凡例が隠した段の保存先の鍵（色分けの選択肢）。「表示」の絞り込みの解除は、これ以外の鍵だけを戻す。
-  // 無効の軸のレンズの鍵も含める（無効を戻したときに、隠した行が戻っていないように）。
-  const lensKeys = new Set<string>([...mapCatalog.lenses.map((candidate) => candidate.lensId), UNSELECTED_LENS_ID]);
+  const lensKeys = new Set<string>([...lenses.map((candidate) => candidate.lensId), UNSELECTED_LENS_ID]);
 
   return {
     look,
     lensControl: {
       lens,
       onLensChange: setLens,
-      axisOptions: costLensOptions(lenses, costPreference),
+      // 選べるレンズは、総合と、利用者が無効にしていない軸（無効の軸は地図のどこにも出さない）。
+      axisOptions: costLensOptions(
+        lenses.filter((candidate) => countsAxis(costPreference, candidate.lensId)),
+        costPreference,
+      ),
       legend,
       hiddenLegendKeys: lensHidden,
       onToggleLegendKey: (key) => toggleHiddenFor(lens, key),

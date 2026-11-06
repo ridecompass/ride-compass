@@ -197,10 +197,12 @@ def travel_inputs(materials: Mapping[str, MaterialColumn], distance_m: np.ndarra
     return TravelInputs(model, waits, kickoffs, crr)
 
 
-def burden_weights(axes: CostAxisDefinitions, materials: Mapping[str, MaterialColumn],
+def burden_weights(axes: CostAxisDefinitions, parameters: LedgerParameters, materials: Mapping[str, MaterialColumn],
                    fills: MaterialFills) -> dict[str, np.ndarray]:
-    """道のストレスの軸id → 区間ごとの1kmあたりの重さ（`domain/ledger_costs.py: burden_per_km`）。"""
-    return {axis_id: burden_per_km(axis.burden, materials, fills) for axis_id, axis in axes.burden.items()}
+    """数える道のストレスの軸id → 区間ごとの1kmあたりの重さ（`domain/ledger_costs.py: burden_per_km`）。無効の軸は組まない
+    （費用・内訳・事実は、この組から道のストレスの軸を読む）。"""
+    return {axis_id: burden_per_km(axis.burden, materials, fills)
+            for axis_id, axis in axes.burden.items() if parameters.counts(axis_id)}
 
 
 @njit(cache=True, nogil=True)
@@ -504,7 +506,7 @@ class LegCostComposer:
     @cached_property
     def _burden_per_km(self) -> dict[str, np.ndarray]:
         """道のストレスの軸id→区間ごとの1kmあたりの重さ。"""
-        return burden_weights(self._axes, self._materials, self._material_fills)
+        return burden_weights(self._axes, self._parameters, self._materials, self._material_fills)
 
     def row_facts(self, rows: np.ndarray) -> RowFacts:
         """切り出した区間の順の行`rows`の、時刻に依らない事実の量。"""
@@ -517,8 +519,8 @@ class LegCostComposer:
         )
 
     def counts(self, axis_id: str) -> bool:
-        """軸`axis_id`を数えるか（`LedgerParameters.counts`）。事実を返す軸もこれで選ぶ。"""
-        return self._ledger.counts(axis_id)
+        """軸`axis_id`を数えるか（`LedgerParameters.counts`）。事実を返す体力の軸をこれで選ぶ。"""
+        return self._parameters.counts(axis_id)
 
     def turn_penalty_by_axis(self, kickoffs: float) -> dict[str, float]:
         """曲がる所の漕ぎ出し`kickoffs`回の代償の秒（軸id → 秒。`LedgerCosts.turn_penalty_by_axis`）。"""

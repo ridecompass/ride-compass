@@ -3,7 +3,15 @@
 import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
 import { axisIconFor } from "@/components/ui/icons/axisIconPalette";
 import { COST_MULTIPLIER_LEVELS, DISABLED_AXIS_LABEL } from "@/features/route/costPreference";
-import { STANDARD_COST_FACTOR, countsAxis, multiplierOf } from "@/lib/costPreference";
+import {
+  AXIS_OFF,
+  STANDARD_COST_FACTOR,
+  STANDARD_COST_PREFERENCE,
+  countsAxis,
+  multiplierOf,
+  withAxisSetting,
+  type AxisSetting,
+} from "@/lib/costPreference";
 import {
   costAxisCatalogFetchFailure,
   retryCostAxisCatalogFetch,
@@ -26,6 +34,12 @@ function renderAxisIcon(axis: CostAxis) {
   return <Icon size={14} />;
 }
 
+/** 軸ごとの段: 無効（数えない）を先に、続けて倍率の段。 */
+const AXIS_LEVELS: readonly { value: AxisSetting; label: string }[] = [
+  { value: AXIS_OFF, label: DISABLED_AXIS_LABEL },
+  ...COST_MULTIPLIER_LEVELS,
+];
+
 interface RouteSettingsPanelProps {
   costPreference: CostPreference;
   onCostPreferenceChange: (next: CostPreference) => void;
@@ -39,10 +53,6 @@ export default function RouteSettingsPanel({ costPreference, onCostPreferenceCha
     (axis) =>
       countsAxis(costPreference, axis.axisId) && multiplierOf(costPreference, axis.axisId) === STANDARD_COST_FACTOR,
   );
-  const withoutAxis = (axisId: string) => ({
-    multipliers: Object.fromEntries(Object.entries(costPreference.multipliers).filter(([id]) => id !== axisId)),
-    disabled_axes: costPreference.disabled_axes.filter((id) => id !== axisId),
-  });
 
   return (
     <div className="flex flex-col gap-3">
@@ -88,28 +98,9 @@ export default function RouteSettingsPanel({ costPreference, onCostPreferenceCha
             <CostLevelPicker
               aria-label={`${axis.label}の倍率`}
               usage="この種類の負担を所要時間に足すときに掛ける倍率を選びます。「無効」はこの負担を数えず、結果にも地図にも出しません。"
-              levels={COST_MULTIPLIER_LEVELS}
-              value={multiplierOf(costPreference, axis.axisId)}
-              onChange={(multiplier) => {
-                const rest = withoutAxis(axis.axisId);
-                onCostPreferenceChange({
-                  ...costPreference,
-                  ...rest,
-                  multipliers: { ...rest.multipliers, [axis.axisId]: multiplier },
-                });
-              }}
-              off={{
-                label: DISABLED_AXIS_LABEL,
-                selected: !countsAxis(costPreference, axis.axisId),
-                onSelect: () => {
-                  const rest = withoutAxis(axis.axisId);
-                  onCostPreferenceChange({
-                    ...costPreference,
-                    ...rest,
-                    disabled_axes: [...rest.disabled_axes, axis.axisId],
-                  });
-                },
-              }}
+              levels={AXIS_LEVELS}
+              value={countsAxis(costPreference, axis.axisId) ? multiplierOf(costPreference, axis.axisId) : AXIS_OFF}
+              onChange={(setting) => onCostPreferenceChange(withAxisSetting(costPreference, axis.axisId, setting))}
             />
           </li>
         ))}
@@ -120,7 +111,7 @@ export default function RouteSettingsPanel({ costPreference, onCostPreferenceCha
           variant="secondary"
           className="self-end"
           disabled={standard}
-          onClick={() => onCostPreferenceChange({ ...costPreference, multipliers: {}, disabled_axes: [] })}
+          onClick={() => onCostPreferenceChange({ ...STANDARD_COST_PREFERENCE, strength: costPreference.strength })}
         >
           標準に戻す
         </Button>
