@@ -5,7 +5,6 @@
 見込みの値（`forecastParts`）は読まない。取得失敗はNoneを返し、「段がどこも注意報級でない」とは分ける。
 """
 
-import logging
 import re
 from datetime import datetime, timedelta
 
@@ -13,7 +12,7 @@ import httpx
 from cachetools import TTLCache
 
 from app.domain.jma_warning_timeline import TimelineLevels, TimeSlot, WarningTimeline
-from app.infrastructure.simple_api_client import cached_fetch, get_json
+from app.infrastructure.simple_api_client import UnexpectedShapeError, cached_fetch, get_json
 
 JMA_WARNING_TIMELINE_URL_TEMPLATE = "https://www.jma.go.jp/bosai/warning_timeline/data/{office_code}.json"
 
@@ -23,122 +22,89 @@ _TIMELINE_CACHE_TTL_SECONDS = 10 * 60
 # コマの長さ（ISO 8601の期間）。気象庁は時間の単位でしか出さない。
 _DURATION_HOURS = re.compile(r"PT(\d+)H")
 
-logger = logging.getLogger("ridecompass.jma_warning_timeline_client")
-
-
 def new_timeline_cache() -> TTLCache:
     """`fetch_warning_timeline`へ渡すキャッシュ。府県予報区（約50）が退避されない大きさで、鮮度はTTLで保つ。"""
     return TTLCache(maxsize=256, ttl=_TIMELINE_CACHE_TTL_SECONDS)
 
 
-def _parse_slot(entry: object) -> TimeSlot | None:
+def _shape_error(what: str) -> UnexpectedShapeError:
+    return UnexpectedShapeError(f"warning timeline {what}")
+
+
+def _parse_slot(entry: object) -> TimeSlot:
     if not isinstance(entry, dict) or not isinstance(entry.get("dateTime"), str):
-        return None
+        raise _shape_error("time define has no dateTime")
     duration = _DURATION_HOURS.fullmatch(entry.get("duration") or "")
-    if duration is None:
-        return None
     try:
         start = datetime.fromisoformat(entry["dateTime"])
-    except ValueError:
-        return None
-    if start.tzinfo is None:
-        return None
+    except ValueError as error:
+        raise _shape_error(f"time define dateTime is not ISO: {entry['dateTime']!r}") from error
+    if duration is None or start.tzinfo is None:
+        raise _shape_error(f"time define is not an hourly slot with an offset: {entry!r}")
     return TimeSlot(start=start, end=start + timedelta(hours=int(duration.group(1))))
 
 
-def _parse_slots(time_defines: object) -> tuple[TimeSlot, ...] | None:
-    """系列のコマ。1つでも読めなければ、どの段がどのコマかを決められないのでNone。"""
+def _parse_slots(time_defines: object) -> tuple[TimeSlot, ...]:
     if not isinstance(time_defines, list) or not time_defines:
-        return None
-    slots = tuple(slot for slot in map(_parse_slot, time_defines) if slot is not None)
-    return slots if len(slots) == len(time_defines) else None
+        raise _shape_error("time defines are not a list of slots")
+    return tuple(map(_parse_slot, time_defines))
 
 
-def _parse_local(kind_type: str, local: object, slots: tuple[TimeSlot, ...]) -> TimelineLevels | None:
-    """1つの所の段の並び。段がコマの数だけ無い・2桁の数字でないなら読めない（None）。付加事項は補足なので、
-    配列でなければ無いとし、文字列でない要素は落とす。"""
+def _parse_local(kind_type: str, local: object, slots: tuple[TimeSlot, ...]) -> TimelineLevels:
+    """1つの所の段の並び。段がコマの数だけの2桁の数字でなければ投げる。"""
     if not isinstance(local, dict):
-        return None
+        raise _shape_error("local is not a table")
     codes = local.get("codes")
     area_name = local.get("areaName")
+    additions = local.get("additions", [])
     if (
         not isinstance(codes, list)
         or len(codes) != len(slots)
         or not all(isinstance(code, str) and code.isdigit() for code in codes)
         or not (area_name is None or isinstance(area_name, str))
+        or not isinstance(additions, list)
+        or not all(isinstance(addition, str) for addition in additions)
     ):
-        return None
-    additions = local.get("additions")
-    return TimelineLevels(
-        kind_type=kind_type,
-        area_name=area_name,
-        slots=slots,
-        codes=tuple(codes),
-        additions=tuple(a for a in additions if isinstance(a, str)) if isinstance(additions, list) else (),
-    )
+        raise _shape_error(f"local is not levels for each slot: {local!r}")
+    return TimelineLevels(kind_type=kind_type, area_name=area_name, slots=slots, codes=tuple(codes), additions=tuple(additions))
 
 
-def _parse_kind_levels(kind: object, slots: tuple[TimeSlot, ...]) -> tuple[list[TimelineLevels], int]:
-    """1つの種別の欄の段の並びと、読めずに飛ばした数。見込みの値だけの欄は段を持たない。"""
+def _parse_kind_levels(kind: object, slots: tuple[TimeSlot, ...]) -> list[TimelineLevels]:
+    """1つの種別の欄の段の並び。見込みの値だけの欄は段を持たない。"""
     if not isinstance(kind, dict):
-        return [], 1
-    parts = kind.get("significancyParts")
-    if parts is None:
-        return [], 0
-    if not isinstance(parts, list):
-        return [], 1
-    levels: list[TimelineLevels] = []
-    unreadable = 0
-    for part in parts:
-        if not isinstance(part, dict) or not isinstance(part.get("type"), str) or not isinstance(part.get("locals"), list):
-            unreadable += 1
-            continue
-        for local in part["locals"]:
-            parsed = _parse_local(part["type"], local, slots)
-            if parsed is None:
-                unreadable += 1
-            else:
-                levels.append(parsed)
-    return levels, unreadable
+        raise _shape_error("kind is not a table")
+    parts = kind.get("significancyParts", [])
+    if not isinstance(parts, list) or not all(
+        isinstance(part, dict) and isinstance(part.get("type"), str) and isinstance(part.get("locals"), list) for part in parts
+    ):
+        raise _shape_error("significancy parts are not a list of typed locals")
+    return [_parse_local(part["type"], local, slots) for part in parts for local in part["locals"]]
 
 
-def _parse_items(
-    items: object, slots: tuple[TimeSlot, ...], into: dict[str, list[TimelineLevels]]
-) -> int:
-    """区域ごとの段の並びを`into`へ足し、読めずに飛ばした数を返す。"""
-    if not isinstance(items, list):
-        return 0 if items is None else 1
-    unreadable = 0
+def _parse_items(items: object, slots: tuple[TimeSlot, ...], into: dict[str, list[TimelineLevels]]) -> None:
+    """区域ごとの段の並びを`into`へ足す（項目が無ければ何も足さない）。"""
+    if items is None:
+        return
+    if not isinstance(items, list) or not all(
+        isinstance(item, dict) and isinstance(item.get("areaCode"), str) and isinstance(item.get("kinds"), list)
+        for item in items
+    ):
+        raise _shape_error("area items are not a list of areas with kinds")
     for item in items:
-        if not isinstance(item, dict) or not isinstance(item.get("areaCode"), str) or not isinstance(item.get("kinds"), list):
-            unreadable += 1
-            continue
         for kind in item["kinds"]:
-            levels, skipped = _parse_kind_levels(kind, slots)
-            into.setdefault(item["areaCode"], []).extend(levels)
-            unreadable += skipped
-    return unreadable
+            into.setdefault(item["areaCode"], []).extend(_parse_kind_levels(kind, slots))
 
 
-def _parse_timeline(payload: dict, office_code: str) -> WarningTimeline:
+def _parse_timeline(payload: dict) -> WarningTimeline:
     class20: dict[str, list[TimelineLevels]] = {}
     class10: dict[str, list[TimelineLevels]] = {}
     series = payload.get("timeSeries")
-    series = series if isinstance(series, list) else []
-    unreadable = 0
+    if not isinstance(series, list) or not all(isinstance(entry, dict) for entry in series):
+        raise _shape_error("time series is not a list")
     for entry in series:
-        slots = _parse_slots(entry.get("timeDefines")) if isinstance(entry, dict) else None
-        if slots is None:
-            unreadable += 1
-            continue
-        unreadable += _parse_items(entry.get("class20Items"), slots, class20)
-        unreadable += _parse_items(entry.get("class10Items"), slots, class10)
-    # 読めない部分は他の区域・種別を出すために飛ばすが、飛ばしたことは取得1回につき1行で出す（logging.md「外部データの読み飛ばし」）。
-    if unreadable:
-        logger.warning(
-            "気象庁の警報級の時系列に読めない部分があり読み飛ばしました unreadable=%d series=%d office=%s",
-            unreadable, len(series), office_code,
-        )
+        slots = _parse_slots(entry.get("timeDefines"))
+        _parse_items(entry.get("class20Items"), slots, class20)
+        _parse_items(entry.get("class10Items"), slots, class10)
     return WarningTimeline(
         class20_levels={code: tuple(levels) for code, levels in class20.items()},
         class10_levels={code: tuple(levels) for code, levels in class10.items()},
@@ -157,7 +123,7 @@ async def fetch_warning_timeline(
             dict,
             "warning timeline is",
         )
-        return _parse_timeline(payload, office_code)
+        return _parse_timeline(payload)
 
     return await cached_fetch(
         "weather:jma-warning-timeline",

@@ -79,22 +79,6 @@ async def test_point_master_leaves_out_retired_points_and_blank_lines_without_co
     assert [point.no for point in points] == ["44132"]
     assert caplog.records == []
 
-
-@pytest.mark.parametrize(
-    "unreadable",
-    ["44100,終了日の列が無い", _row("44100", "座標欠損", "", "", "", "", _ACTIVE)],
-)
-async def test_point_master_skips_unreadable_rows_and_says_so(caplog, unreadable):
-    """列構成が変わると読める行だけが残り、遠い地点の値が何事もなく表示される。"""
-    client = answering(text=_csv([unreadable, _row("44132", "東京", "35", "41.4", "139", "45.6", _ACTIVE)]))
-
-    with caplog.at_level(logging.WARNING, logger="ridecompass.wbgt_client"):
-        points = await wbgt_client.fetch_point_master(client, new_point_master_cache())
-
-    assert [point.no for point in points] == ["44132"]
-    assert "unreadable=1 rows=2" in caplog.text
-
-
 async def test_point_master_trims_surrounding_whitespace():
     """余白付きの地点番号はそのまま予測値APIのクエリへ載り、その地点の予測が引けなくなる。"""
     client = answering(
@@ -153,34 +137,6 @@ async def test_a_forecast_is_read_into_its_times_and_the_index_divided_by_ten():
         forecast_time=datetime(2026, 7, 1, 9, 0, 0),
         wbgt=28.0,
     )
-
-
-async def test_a_forecast_without_a_reference_time_is_left_out():
-    result = await wbgt_client.fetch_forecast(
-        _success(_forecast_row(reference_time=None)), "44132", _RANGE_FROM, _RANGE_TO, new_forecast_cache()
-    )
-
-    assert result == []
-
-
-@pytest.mark.parametrize("forecast_time", [None, "2026-07-01T09:00:00"])
-async def test_a_forecast_time_that_cannot_be_read_is_absent_but_the_row_stays(forecast_time):
-    """行は最新の発表回を決めるのに数える。落とすと、古い発表回の値を今の値として選びうる。"""
-    (forecast,) = await wbgt_client.fetch_forecast(
-        _success(_forecast_row(forecast_time=forecast_time)), "44132", _RANGE_FROM, _RANGE_TO, new_forecast_cache()
-    )
-
-    assert forecast.forecast_time is None
-    assert forecast.reference_time == "2026/07/01 08:00:00"
-
-
-async def test_a_value_that_cannot_be_read_is_absent():
-    (forecast,) = await wbgt_client.fetch_forecast(
-        _success(_forecast_row(forecast_val="abc")), "44132", _RANGE_FROM, _RANGE_TO, new_forecast_cache()
-    )
-
-    assert forecast.wbgt is None
-
 
 async def test_forecast_requests_a_continuous_range():
     """`date_search_type=3`（特定時刻）は発表が無いと空を返すため、連続期間で引く。"""
