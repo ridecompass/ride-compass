@@ -15,7 +15,7 @@ export function multiplierOf(preference: CostPreference, axisId: string): number
   return preference.multipliers[axisId] ?? STANDARD_COST_FACTOR;
 }
 
-/** 地図のレンズ`lensId`の要求（タイルのクエリ）へ載せる形。`preference`は送る形（`costPreferenceToSend`）。標準は載せない（同じ
+/** 地図のレンズ`lensId`の要求（タイルのクエリ）へ載せる形。`preference`は利用者が選んだまま。標準は載せない（同じ
  * URL のタイルを使い回す）。軸のレンズの値はつまみとその軸の倍率だけで決まるので、ほかの軸の倍率は載せない（変えても取り直さない）。
  * 総合（`allAxes`）は全部の軸の倍率を載せる。倍率は軸idの順に並べた軸id→倍率のJSON（backendの
  * `api/routers/cost_axis_catalog.py: cost_preference_query`）。 */

@@ -507,8 +507,7 @@ Reactの外（デバッグの記録・走行の計測・走行中のルートの
 
 ## page.tsxが橋渡しする主なデータフロー
 
-- つまみと倍率（保存値。つまみは「条件」タブ、倍率は「負担」タブ（`RouteSettingsPanel`）が編集）→ ルート生成リクエスト（`useGenerationConditions.ts`の
-  `costPreferenceToSend`。今の費用の軸のうち標準でない倍率だけを載せ、費用の軸の一覧が届いていない間は倍率を載せない）。
+- つまみと倍率（保存値。つまみは「条件」タブ、倍率は「負担」タブ（`RouteSettingsPanel`）が編集）→ ルート生成リクエスト（選んだまま載せる。値が正しいかは要求を受けるbackendが判定する）。
   同じ値が地図の見え方（`useMapView`の`costPreference`。ルートを出している間はそのルートを生成したときの値）へも渡り、レンズの塗り・
   「未使用」の印（つまみ×0か倍率×0のレンズ。`features/map/costLens.ts: costLensOptions`）・道の窓の負担が同じ値で求まる。
 - 走行条件（走行方位・出発時刻・想定速度）→ 地図の見え方（`useMapView`の入力）・生成リクエスト・

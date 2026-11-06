@@ -130,14 +130,10 @@ const average = (values: readonly number[]) =>
 /** 通信の行き先の区切り。`/api/<名前>`は名前と、続く区切りが英字で始まればその区切りまで（同じ名前の下の口を分け、
  * タイルの座標の数字では分けない）。ほかはホスト名。 */
 export function requestKind(url: string): string {
-  try {
-    const parsed = new URL(url);
-    const api = parsed.pathname.match(/^\/api\/([^/]+)(?:\/([a-z][^/]*))?/i);
-    if (api === null) return parsed.hostname;
-    return api[2] === undefined ? `api:${api[1]}` : `api:${api[1]}/${api[2]}`;
-  } catch {
-    return "other";
-  }
+  const parsed = new URL(url);
+  const api = parsed.pathname.match(/^\/api\/([^/]+)(?:\/([a-z][^/]*))?/i);
+  if (api === null) return parsed.hostname;
+  return api[2] === undefined ? `api:${api[1]}` : `api:${api[1]}/${api[2]}`;
 }
 
 function heapMb(): number | null {
@@ -147,12 +143,7 @@ function heapMb(): number | null {
 
 function mapState(map: MapLibreMap | null): { zoom: number | null; layers: number | null } {
   if (map === null) return { zoom: null, layers: null };
-  try {
-    return { zoom: round1(map.getZoom()), layers: map.getLayersOrder().length };
-  } catch {
-    // スタイルを読み直している間は層を引けない。
-    return { zoom: round1(map.getZoom()), layers: null };
-  }
+  return { zoom: round1(map.getZoom()), layers: map.getLayersOrder().length };
 }
 
 /** いまの1分を1行にして足し、端末に書く。 */

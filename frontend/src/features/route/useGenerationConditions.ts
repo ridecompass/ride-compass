@@ -2,10 +2,8 @@
 
 import { useCallback, useMemo, useState } from "react";
 
-import { useCostAxisCatalog } from "@/hooks/useCostAxisCatalog";
 import { samePosition } from "@/lib/geoDistance";
 import { useStoredState } from "@/hooks/useStoredState";
-import { costPreferenceToSend, multipliersNotSent } from "@/features/route/costPreference";
 import { STANDARD_COST_PREFERENCE } from "@/lib/costPreference";
 import { type GenerationConditionsSnapshot } from "@/features/route/savedConditions";
 import type {
@@ -53,11 +51,9 @@ interface GenerationConditionsInputs {
 
 /**
  * 生成の条件（「ルート設定」の入力）: 周回か・全長の目標を決めるか・距離・候補数・地点（出発地以外）・つまみと倍率・避け方と、地図のタップで
- * 置く地点の選びと、保存した条件での入れ替え。保存する値は、読むときに今の画面が受け付ける範囲・今の項目へ揃える。
+ * 置く地点の選びと、保存した条件での入れ替え。
  */
 export function useGenerationConditions({ onOriginPlace }: GenerationConditionsInputs) {
-  const costAxisCatalog = useCostAxisCatalog();
-
   // 経由地（通る順）。
   const [waypoints, setWaypoints] = useState<Coordinates[]>([]);
   const moveWaypoint = useCallback((index: number, point: Coordinates) => {
@@ -191,8 +187,7 @@ export function useGenerationConditions({ onOriginPlace }: GenerationConditionsI
     String(routeGenerateConfig.default_max_routes),
   );
 
-  // 代償の全体に掛けるつまみと、費用の軸ごとの倍率。いつも送る（標準のままでも、標準として送る）。消えた軸の倍率は
-  // 送るときに外す（`costPreferenceToSend`）。
+  // 代償の全体に掛けるつまみと、費用の軸ごとの倍率。選んだまま送る（標準のままでも、標準として送る）。
   const [costPreference, setCostPreference] = useStoredState<CostPreference>(
     COST_PREFERENCE_STORAGE_KEY,
     "負担の好み",
@@ -278,10 +273,6 @@ export function useGenerationConditions({ onOriginPlace }: GenerationConditionsI
     foundAt,
     costPreference,
     setCostPreference,
-    /** 生成リクエストへ載せるつまみと倍率（今の費用の軸の倍率だけ。一覧が届いていない間は倍率を送らない）。 */
-    costPreferenceToSend: costPreferenceToSend(costPreference, costAxisCatalog),
-    /** 倍率を変えているのに、一覧が届かず送れないか。 */
-    multipliersNotSent: multipliersNotSent(costPreference, costAxisCatalog),
     roadAvoidance,
     setRoadAvoidance,
   };

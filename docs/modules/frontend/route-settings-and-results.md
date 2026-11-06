@@ -29,7 +29,7 @@
 | `components/PinMark/PointMark.tsx` | 並びの札・詳しく・道のりのグラフの経由地の印に出す、地図のピンと同じ図形の丸（`components/PinMark/PinMark.tsx`の中身に背景色を付けたもの。ルートの機能と地図の機能の両方が描くので共有の層に置く） |
 | `features/route/RouteForm/useRouteFormSubmit.ts` | 上記の検証（`{error, check}`。`features/route/RouteForm/useRouteFormSubmit.ts: check`は通ったかを返す）。「ルート生成」ボタン自体は`RouteForm`の外（`GenerateRouteActions.tsx`。見出し行）にあるため分離している（下記参照） |
 | `features/route/RouteSettingsPanel/RouteSettingsPanel.tsx` | 「負担」タブの中身: 費用の軸ごとの倍率を段で選ぶ（下記参照。全体のつまみは「条件」タブの`RouteForm`）。×0 の軸は数えないので、その行の名前と印を、全体のつまみが ×0 のときと同じ薄さにする（段は戻せるよう押せるまま） |
-| `features/route/costPreference.ts` | つまみと倍率の値の扱い: 段（値と名前）・生成の要求へ載せる形（`features/route/costPreference.ts: costPreferenceToSend`）・送れなかったかの判定・説明の文 |
+| `features/route/costPreference.ts` | つまみと倍率の値の扱い: 段（値と名前）・説明の文 |
 | `hooks/useCostAxisCatalog.ts` | `GET /api/cost-axes`の取得。費用の軸（名前・説明・アイコン・地図のレンズ）を`hooks/useCostAxisCatalog.ts: useCostAxisCatalog`が返す（届くまで・失敗の間は軸0件。レンズの読み方は[地図: レンズ・ルート色分け](map-axis-coloring.md)）。軸ごとの色（`hooks/useCostAxisCatalog.ts: CostAxisCatalog.axisColors`）と、取れていないことの項目（`hooks/useCostAxisCatalog.ts: costAxisCatalogFetchFailure`。常設ヘッダーの印と負担タブの告知）もここが持つ |
 | `hooks/useSharedCatalog.ts` | 画面の全体が読む一覧（画面の設定・費用の軸の一覧）の取得の共通の形: 読み手の間で1つの取得を共有し、マウントのたびに取り直し、届いた応答を後の失敗で巻き戻さない（`hooks/useSharedCatalog.ts: useSharedCatalog`）。まだ届いていないときだけ取り直す再試行（`hooks/useSharedCatalog.ts: retrySharedCatalogFetch`） |
 | `services/costAxisCatalogApi.ts` | 上記フックが叩くbackend APIの薄いラッパーと、凡例の段の境目の目安（`GET /api/cost-axes/lens-equivalents`。`services/costAxisCatalogApi.ts: getLensEquivalents`）の口 |
@@ -124,11 +124,8 @@
     選び直すか、保存した条件を呼び出して戻す。
 
 **送る値**: つまみと倍率は`useGenerationConditions.ts`が端末に覚え、生成の要求へいつも載せる（標準のままでも標準として送る）。
-倍率は、今の費用の軸のうち標準でないものだけを送る（`features/route/costPreference.ts: costPreferenceToSend`）——消えた軸の倍率を送ると
-backendが要求を断る（倍率のキーは今の費用の軸のidだけ）。軸の一覧が届いていない間は倍率を送らず、backendが標準の倍率で作る。
-倍率を変えていたのに送れずに作った候補には、「ルート結果」の先頭に「軸ごとの倍率を反映できず、標準の倍率で作りました。」を出す
-（`useRouteGeneration.ts: multipliersNotApplied`）。生成そのものは断らない——標準の倍率のルートでも走るには使える。読めない形で
-覚えた値は読まず、標準に戻す。
+倍率は選んだまま送り、費用の軸の一覧に合わせて絞らない。値が正しいか（今の費用の軸のidか・段の中か）は要求を受けるbackendが判定し、
+断ればその文言を生成の失敗として出す。
 
 **暗黙の前提**: 費用の軸の一覧・画面の設定は、どちらも`hooks/useSharedCatalog.ts: useSharedCatalog`で取り、画面のデータ取得が共有する
 キャッシュ（`lib/queryClient.ts`、TanStack Query）のそれぞれ1つのキーに置き、全呼び出し元が同じ値を読む（同時に飛んでいる取得は同じキーの1本にまとまる）。届いた値は古いものとして扱い

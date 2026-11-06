@@ -14,10 +14,10 @@
  * 差し替えたもの: 費用の軸の一覧の応答（網の層）。保存はテスト環境の`localStorage`を
  * 本物のまま使い、開き直しは同じ保存の上でフックを描き直して作る。
  */
-import { act, renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { heldReplies, onBackend, serveCostAxisCatalog } from "@/testing/backendServer";
+import { heldReplies, onBackend } from "@/testing/backendServer";
 
 import { useGenerationConditions } from "./useGenerationConditions";
 
@@ -67,19 +67,17 @@ describe("距離と候補数", () => {
 });
 
 describe("つまみと倍率", () => {
-  it("既定は標準で、変えたつまみと倍率は開き直しても残り、送るのは今の費用の軸の、標準でない倍率だけ", async () => {
-    serveCostAxisCatalog();
+  it("既定は標準で、変えたつまみと倍率は開き直しても残る", () => {
     const first = renderConditions();
     expect(first.result.current.costPreference).toEqual({ strength: 1, multipliers: {} });
     act(() =>
       first.result.current.setCostPreference({ strength: 1.5, multipliers: { ascent: 2, vibration: 1, gone: 2 } }),
     );
 
-    const { result } = reopen(first);
-
-    await waitFor(() =>
-      expect(result.current.costPreferenceToSend).toEqual({ strength: 1.5, multipliers: { ascent: 2 } }),
-    );
+    expect(reopen(first).result.current.costPreference).toEqual({
+      strength: 1.5,
+      multipliers: { ascent: 2, vibration: 1, gone: 2 },
+    });
   });
 });
 

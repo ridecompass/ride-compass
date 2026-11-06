@@ -18,6 +18,7 @@ export interface ViewBounds {
 const STYLE_OPERATIONS = [
   "getStyle",
   "getLayer",
+  "getLayersOrder",
   "getSource",
   "hasImage",
   "addImage",
@@ -35,6 +36,8 @@ const STYLE_OPERATIONS = [
 ] as const;
 
 const drawn: StandInMap[] = [];
+
+const WHOLE_WORLD: ViewBounds = { west: -180, south: -85, east: 180, north: 85 };
 
 /** 地図の手ぶりの操作1つ（`dragPan`等）の代役。入切の様子だけを持つ。 */
 class StandInHandler {
@@ -122,10 +125,9 @@ export class StandInMap extends Evented {
     return this;
   }
 
-  /** テストが範囲を置くまでは、範囲の無い地図（MapLibre が範囲を求められないとき）として null を返す。 */
+  /** 見えている範囲。MapLibre と同じくいつも返し、テストが範囲を置くまでは世界の全体とする。 */
   getBounds() {
-    const bounds = this.bounds;
-    if (bounds === null) return null;
+    const bounds = this.bounds ?? WHOLE_WORLD;
     return {
       getWest: () => bounds.west,
       getSouth: () => bounds.south,

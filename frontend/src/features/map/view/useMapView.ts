@@ -170,7 +170,7 @@ export function useMapView({
   // 層の値はどの道の線の層も同じ取得から読むので、取得の状態は出ている層のどれにも出す。
   const roadClassStatus = deriveFetchLayerStatus(
     roadClasses.loading,
-    roadClasses.error ? "fetch-failed" : null,
+    roadClasses.error,
     true,
     true,
     roadClasses.truncated,
@@ -258,7 +258,7 @@ export function useMapView({
       dataStatus: lensFetch
         ? deriveFetchLayerStatus(
             lensFetch.loading,
-            lensFetch.error ? "fetch-failed" : null,
+            lensFetch.error,
             lensFetch.materials.size > 0,
             lensFetch.hasFetched,
             lensFetch.truncated,

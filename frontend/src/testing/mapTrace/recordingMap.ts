@@ -117,6 +117,7 @@ export function createRecordingMap(options: { basemapLayerIds?: readonly string[
             })),
           },
     getLayer: (id: string) => layers[indexOf(id)],
+    getLayersOrder: () => layers.map((layer) => layer.id),
     getSource: (id: string) => sourceHandles.get(id),
     // 記号の絵はブラウザのcanvasが要るため、「登録済み」を返して作らせない
     // （比べたいのはレイヤーの構成で、絵の中身ではない）。

@@ -136,27 +136,6 @@ export async function fetchRoadInspection(
   });
 }
 
-/** 1枚のタイルの中の道ごとの値。 */
-interface TileWayValues<Value> {
-  /** feature_key→値。 */
-  values: Record<string, Value>;
-  /** 通信失敗（HTTPエラー・ネットワークエラー・タイムアウト）ならtrue。backendが正常応答で
-   * 空オブジェクトを返した場合（対象範囲に本当に道が無い）はfalseのまま——呼び出し側が
-   * 「取得失敗」と「本当に空」を区別できるようにする。 */
-  error: boolean;
-}
-
-/** 道ごとの値の取得。失敗しても例外にせず`error: true`を返す（道の塗りは補助の機能なので、道路や他のレイヤーを
- * 巻き込んで止めない。失敗したことは利用者へ示せるよう返す）。 */
-async function tileWayValues<Value>(request: () => Promise<Record<string, Value>>): Promise<TileWayValues<Value>> {
-  try {
-    return { values: await request(), error: false };
-  } catch {
-    // 失敗の内訳は`requestApi`が記録済み。
-    return { values: {}, error: true };
-  }
-}
-
 /** 費用の軸のレンズの道ごとの材料の要求の条件（想定速度は要る。`/api/cost-axes`の`map_lens.material_conditions`）。 */
 export type LensMaterialsQuery = paths["/api/region/lens/{lens_id}/{z}/{x}/{y}"]["get"]["parameters"]["query"];
 
@@ -168,19 +147,17 @@ export async function fetchLensMaterials(
   x: number,
   y: number,
   query: LensMaterialsQuery,
-): Promise<TileWayValues<Record<string, number>>> {
+): Promise<Record<string, Record<string, number>>> {
   const params = { path: { lens_id: lensId, z, x, y }, query };
-  return tileWayValues(() =>
-    requestApi((init) => backendApi.GET("/api/region/lens/{lens_id}/{z}/{x}/{y}", { params, ...init }), {
-      timeoutMs: API_TIMEOUT_MS.default,
-      category: `api:${lensId}-lens`,
-      messages: {
-        failure: "道路の塗りの値の取得に失敗しました",
-        parseFailure: "道路の塗りの値の解析に失敗しました",
-      },
-      successMeta: (data) => ({ wayCount: Object.keys(data).length }),
-    }),
-  );
+  return requestApi((init) => backendApi.GET("/api/region/lens/{lens_id}/{z}/{x}/{y}", { params, ...init }), {
+    timeoutMs: API_TIMEOUT_MS.default,
+    category: `api:${lensId}-lens`,
+    messages: {
+      failure: "道路の塗りの値の取得に失敗しました",
+      parseFailure: "道路の塗りの値の解析に失敗しました",
+    },
+    successMeta: (data) => ({ wayCount: Object.keys(data).length }),
+  });
 }
 
 /** 路面タイルと同じz/x/yの中の道ごとの、道の線の層の値（層のid→区分の鍵か「データなし」。区分の外の道の層は無い）。 */
@@ -188,16 +165,14 @@ export async function fetchRoadClasses(
   z: number,
   x: number,
   y: number,
-): Promise<TileWayValues<Record<string, string>>> {
-  return tileWayValues(() =>
-    requestApi(
-      (init) => backendApi.GET("/api/region/road-classes/{z}/{x}/{y}", { params: { path: { z, x, y } }, ...init }),
-      {
-        timeoutMs: API_TIMEOUT_MS.default,
-        category: "api:road-classes",
-        messages: { failure: "道の区分の取得に失敗しました", parseFailure: "道の区分の解析に失敗しました" },
-        successMeta: (data) => ({ wayCount: Object.keys(data).length }),
-      },
-    ),
+): Promise<Record<string, Record<string, string>>> {
+  return requestApi(
+    (init) => backendApi.GET("/api/region/road-classes/{z}/{x}/{y}", { params: { path: { z, x, y } }, ...init }),
+    {
+      timeoutMs: API_TIMEOUT_MS.default,
+      category: "api:road-classes",
+      messages: { failure: "道の区分の取得に失敗しました", parseFailure: "道の区分の解析に失敗しました" },
+      successMeta: (data) => ({ wayCount: Object.keys(data).length }),
+    },
   );
 }

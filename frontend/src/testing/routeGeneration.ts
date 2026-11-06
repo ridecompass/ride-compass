@@ -1,12 +1,10 @@
 // ルート生成（`features/route/useRouteGeneration.ts`）を、本物の`useGenerationConditions`と同じ描画で動かす足場
-// （呼び出し側と同じく、補正した目的地は条件へ書き戻る）。生成のジョブと費用の軸の一覧の応答は網の層で差し替える。
-import { act, renderHook, waitFor } from "@testing-library/react";
-import { expect, vi } from "vitest";
+// （呼び出し側と同じく、補正した目的地は条件へ書き戻る）。生成のジョブの応答は網の層で差し替える。
+import { act, renderHook } from "@testing-library/react";
+import { vi } from "vitest";
 
 import { useGenerationConditions } from "@/features/route/useGenerationConditions";
 import { useRouteGeneration } from "@/features/route/useRouteGeneration";
-import { heldReplies, onBackend } from "@/testing/backendServer";
-import { TWO_COST_AXES } from "@/testing/costAxes";
 import { serveGenerationJobs } from "@/testing/generationJobs";
 import { makeGenerationConditions, makeRouteCandidate } from "@/testing/routeFixtures";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
@@ -78,11 +76,9 @@ export function used(overrides: Partial<GenerationConditions> = {}): GenerationC
   });
 }
 
-/** 生成のジョブと費用の軸の一覧の代役。一覧は`loadCatalog`を呼ぶまで届かない。 */
+/** 生成のジョブの代役。 */
 export function serveRouteGeneration() {
   const jobs = serveGenerationJobs();
-  const catalog = heldReplies();
-  onBackend("GET", "/api/cost-axes", catalog.reply);
   return {
     jobs,
     respond(routes: RouteCandidate[], conditions: GenerationConditions = used(), noCandidatesReason?: string) {
@@ -90,10 +86,5 @@ export function serveRouteGeneration() {
     },
     /** 最後に出された生成の要求の中身。 */
     sentRequest: () => jobs.submitted.at(-1)?.body,
-    /** 描画のときに投げた費用の軸の一覧の取得を届ける（登坂・振動の2本）。 */
-    async loadCatalog(rendered: RenderedGeneration) {
-      await act(() => catalog.answer(0, Response.json(TWO_COST_AXES)));
-      await waitFor(() => expect(rendered.result.current.conditions.multipliersNotSent).toBe(false));
-    },
   };
 }

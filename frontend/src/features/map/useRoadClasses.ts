@@ -18,8 +18,8 @@ interface RoadClassesFetch {
   values: RoadClassValues;
   /** 表示中のタイルのどれかを取っている最中か。 */
   loading: boolean;
-  /** 表示中のタイルのどれかの取得が通信失敗したか。 */
-  error: boolean;
+  /** 表示中のタイルのどれかの取得が失敗したときの文言。 */
+  error: string | null;
   /** 上限で画面の端のタイルを取らなかったか。 */
   truncated: boolean;
 }
@@ -30,9 +30,9 @@ type TileResult = QueryObserverResult<Awaited<ReturnType<typeof fetchRoadClasses
 // まとめ直さない）。
 function combine(results: TileResult[]): Omit<RoadClassesFetch, "truncated"> {
   return {
-    values: mergeTileValues(results.flatMap((result) => (result.data ? [result.data.values] : []))),
+    values: mergeTileValues(results.flatMap((result) => (result.data ? [result.data] : []))),
     loading: results.some((result) => result.isFetching),
-    error: results.some((result) => result.data?.error === true),
+    error: results.find((result) => result.error !== null)?.error?.message ?? null,
   };
 }
 
@@ -51,13 +51,7 @@ export function useRoadClasses(
   const fetched = useQueries(
     {
       queries: tiles.map((tile) =>
-        tileQueryOptions(
-          ["road-classes"],
-          generation,
-          tile,
-          () => fetchRoadClasses(tile.z, tile.x, tile.y),
-          (data) => data.error,
-        ),
+        tileQueryOptions(["road-classes"], generation, tile, () => fetchRoadClasses(tile.z, tile.x, tile.y)),
       ),
       combine,
     },
