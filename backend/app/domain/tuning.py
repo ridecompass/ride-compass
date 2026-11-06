@@ -149,6 +149,8 @@ LANDCOVER_RING_OUTER_ID = "landcover.ring_outer_m"
 LANDCOVER_RING_INNER_ID = "landcover.ring_inner_m"
 #: 区間の標高の断面を刻む幅の上限のid。
 ELEVATION_PROFILE_STEP_ID = "elevation.profile_step_m"
+#: 橋の端の標高を、端の点の周りで探す半径のid。
+ELEVATION_BRIDGE_END_RADIUS_ID = "elevation.bridge_end_radius_m"
 
 
 TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
@@ -246,6 +248,14 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
         "区間をこの道のり以下の等しい刻みに分けた点で標高を引き、獲得標高と勾配を出す。刻みが勾配をならす幅になる。"
         "狭めるほど短い起伏まで登りに数えるが、道の脇の地形（堤防の斜面等）や標高データの誤差による急な変化も登りとして数える。"
         "北千住から石岡への実走の獲得標高（スマートウォッチで約600m）と、刻みごとの値を比べて決めた。",
+    ),
+    TuningParameter(
+        ELEVATION_BRIDGE_END_RADIUS_ID,
+        "橋の端の標高を探す半径", "m", 10.0, 0.0, 50.0,
+        TuningEffect.DERIVE_REBUILD,
+        "橋の端の点の標高は、その点とこの半径の8方位の点のうち一番高い値を採る。標高データは橋などの構造物を除いた地表の値で、"
+        "橋の端が除かれた範囲に入ると水面や谷底を拾うため。広げるほど除かれた範囲の外へ届くが、谷の斜面の上の高い所も拾いやすい。"
+        "朝霞水門（荒川）の両端で、10mで堤防の上（約13m）に届いた。0にすると端の点の値だけを使う。",
     ),
     # --- 土地被覆 ---
     TuningParameter(

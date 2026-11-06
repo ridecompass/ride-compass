@@ -220,3 +220,27 @@ async def test_the_profile_step_decides_how_fine_a_rise_and_fall_is_counted(elev
     row = await elevation_conn.fetchrow(
         "SELECT elevation_gain_m, elevation_loss_m FROM edge_elevation WHERE osm_way_id = 11")
     assert (row["elevation_gain_m"], row["elevation_loss_m"]) == climb
+
+
+#: 橋の端を置く画素。左（10m）の端で、右へ約10m（画素で2つ半）の所から上（20m）になる。水門の下の水面のように、構造物を
+#: 除いた低い所に橋の端が入った形。
+LOW_END = 126
+
+
+@pytest.mark.parametrize(("structure", "climb"), [({"bridge": "yes"}, 0.0), ({"tunnel": "yes"}, 10.0)],
+                         ids=["橋", "トンネル"])
+async def test_a_bridge_end_takes_the_highest_ground_around_it(elevation_conn, structure, climb):
+    """橋の端の頂点は、その点と周り（既定の半径）の一番高い値を採る。端を共有する道も同じ値を採るので、低い端から高い所へ
+    上る偽の坂ができない。トンネルの坑口には当てない（周りの山肌を拾わない）。"""
+    end = _pixel_center(40, LOW_END)
+    await ingest_records("osm_way", [
+        way_record(21, [_pixel_center(40, 100), end], [210, 211], structure),
+        way_record(22, [end, _pixel_center(40, 200)], [211, 221]),
+        _way(23, ((60, LOW_END), (60, 200)))], conn=elevation_conn)
+    async with elevation_conn.transaction():
+        await derive_topology.derive(elevation_conn)
+        await derive_elevation_at_default_step(elevation_conn)
+
+    rows = await elevation_conn.fetch(
+        "SELECT osm_way_id, elevation_gain_m FROM edge_elevation WHERE osm_way_id IN (22, 23)")
+    assert {r["osm_way_id"]: r["elevation_gain_m"] for r in rows} == {22: climb, 23: 10.0}

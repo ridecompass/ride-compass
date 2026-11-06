@@ -515,8 +515,9 @@ EDGE_CHANGES = [
     EdgeChange("道の形を一部変え、道を足した", _reingest(lambda conn: _ingest_ways(conn, RESHAPED_WAYS)),
                {"landcover": (1, 2), "elevation": (1, 2)}),
     # 橋かトンネルかは標高の値だけが読む。
+    # 橋の端に接する区間（道100は道200と頂点3を共有する）は、橋になった区間と一緒に計算し直す。
     EdgeChange("道を同じ形で取り直し、道を1本橋にした", _reingest(lambda conn: _ingest_ways(conn, bridges=frozenset({200}))),
-               {"landcover": (2, 0), "elevation": (1, 1)}),
+               {"landcover": (2, 0), "elevation": (0, 2)}),
     EdgeChange("道と土地被覆を取り直し、標高の段のコードを変えた",
                _together(_reingest(_ingest_ways), _reingest(_ingest_landcover), _edit_code("batch/derive_elevation.py")),
                {"landcover": (0, 2), "elevation": (0, 2)}),
