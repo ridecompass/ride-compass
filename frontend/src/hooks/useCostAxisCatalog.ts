@@ -6,15 +6,9 @@ import type { FetchFailure } from "@/types/fetchFailure";
 import type { CostAxisCatalogResponse } from "@/types/route";
 import palette from "@/types/generated/palette.json";
 
-/**
- * 軸と曲がる所の識別色。一覧の順に割り当て、曲がる所は軸の次。地図の負担の塗り（緑→赤で軽い→重い）と取り違えないよう
- * 赤・緑・黄・橙を使わず、隣り合う2色が色覚の違いでも、明るい地・暗い地のどちらでも見分けられる並び（データの見せ方の
- * 検証の道具で確かめた）。足りない分は灰色にする（色を作って足すと、隣と見分けられる保証が無い）。
- */
-const SERIES_COLORS = ["#2a78d6", "#d9669a", "#6a55dc", "#139ab3", "#9c6a2c", "#b956c2"] as const;
-
+/** 軸と曲がる所の識別色。一覧の順に当て、曲がる所は軸の次。 */
 function seriesColor(index: number): string {
-  return SERIES_COLORS[index] ?? palette.semantic.neutral;
+  return palette.cost_series[index] ?? palette.semantic.neutral;
 }
 
 const COST_AXIS_CATALOG_QUERY_KEY = ["cost-axis-catalog"] as const;

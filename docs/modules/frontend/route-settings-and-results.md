@@ -158,7 +158,7 @@ backendが要求を断る（倍率のキーは今の費用の軸のidだけ）�
   順で後ろに軸idの名前で置き、曲がる所の行と回避指定の行（秒があるときだけ）を最後に置く（`lib/routePenalty.ts: penaltyRows`）。秒が0の
   軸も行に残す——効くはずの軸が効かなかったことも判断の材料になる。事実（`RouteCandidate.facts.axes`）は軸ごとに backend が名前・
   値・単位を付けて返すので、画面は軸idで出し分けずにそのまま出す（値の無い事実は「—」）。
-  行の色は費用の軸の一覧の並びから決め、曲がる所はその次の色（`hooks/useCostAxisCatalog.ts: CostAxisCatalog.axisColors`・`turnColor`。道のりのグラフ・編集面の差の棒も同じ色）。地図の負担の塗り（緑→赤）と取り違えないよう赤・緑・黄・橙を使わず、隣り合う2色が色覚の違いでも明るい地・暗い地のどちらでも見分けられる並びにしてある。回避指定の行は軸の無い行の色（データなしの灰色とは別）。一覧が届くまでは
+  行の色は費用の軸の一覧の並びから決め、曲がる所はその次の色（`hooks/useCostAxisCatalog.ts: CostAxisCatalog.axisColors`・`turnColor`。道のりのグラフ・編集面の差の棒も同じ色）。色の並びは backend の宣言（`domain/display_palette.py: COST_SERIES_COLORS`）が持ち、生成物`palette.json`の`cost_series`で届く。並びより多い行は軸の無い行の色にする。回避指定の行は軸の無い行の色（データなしの灰色とは別）。一覧が届くまでは
   軸・曲がる所・回避指定の行の名前を「読み込み中」、取れない間は「取得できません」と出す。
 - **標高の無い道**: `RouteCandidate.facts.elevation_unknown_km`が0より大きければ、その長さを登りに数えていないことを注記する。
 - **所要時間の説明**: (i)は、区間ごとに速度を変える条件の名前を走行モデルの宣言（`domain/cycling_speed.py: SEGMENT_SPEED_CONDITIONS`。
