@@ -523,9 +523,9 @@ Reactの外（モジュール評価時に初期値を決めるシングルトン
 ## page.tsxが橋渡しする主なデータフロー
 
 - つまみと倍率（保存値。つまみは「条件」タブ、倍率は「負担」タブ（`RouteSettingsPanel`）が編集）→ ルート生成リクエスト（`useGenerationConditions.ts`の
-  `costPreferenceToSend`。今の費用の軸のうち標準でない倍率だけを載せ、費用の軸の一覧が届いていない間は倍率を載せない）。
+  `costPreferenceToSend`。今の費用の軸のうち、数える軸の標準でない倍率と無効の軸を載せ、費用の軸の一覧が届いていない間はどちらも載せない）。
   同じ値が地図の見え方（`useMapView`の`costPreference`。ルートを出している間はそのルートを生成したときの値）へも渡り、レンズの塗り・
-  「未使用」の印（つまみ×0か倍率×0のレンズ。`features/map/costLens.ts: costLensOptions`）・道の窓の負担が同じ値で求まる。
+  「未使用」の印（全体のつまみ×0のとき。`features/map/costLens.ts: costLensOptions`）・無効の軸を外したレンズの一覧・道の窓の負担が同じ値で求まる。
 - 走行条件（走行方位・出発時刻・想定速度）→ 地図の見え方（`useMapView`の入力）・生成リクエスト・
   道の詳細（`MapView`の`rideConditions`）が同じ値を読む（上記「走る条件で変わる道の値（風・勾配）の状態別表現契約」参照）。
 - 地図の見えている範囲の真ん中（`useMapView`の`center`）→ 地点を探す欄（`RouteForm`の`mapCenter`）。施設の候補を近い順に並べる点。

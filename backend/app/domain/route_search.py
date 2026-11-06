@@ -428,9 +428,10 @@ def candidate_order(candidate: EvaluatedRoute, *, loop: bool) -> float:
     最も良い候補という契約で配る。代償は`PENALTY_PER_KM_QUANTUM`の刻みで同点になる。所要時間の無い候補は周回の末尾へ回す。"""
     if not loop:
         return candidate.cost_seconds
-    if candidate.penalty_seconds_per_km is None:
+    if candidate.estimated_duration_seconds is None or candidate.distance_km <= 0:
         return float("inf")
-    return float(penalty_key(np.asarray(candidate.penalty_seconds_per_km)))
+    return float(penalty_key(penalty_seconds_per_km(
+        candidate.cost_seconds, candidate.estimated_duration_seconds, candidate.distance_km * 1000.0)))
 
 
 def keep_routes_with_baseline(

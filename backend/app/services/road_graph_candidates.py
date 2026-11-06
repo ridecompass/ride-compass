@@ -5,7 +5,7 @@
 """
 
 import asyncio
-from collections.abc import Callable, Collection
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from typing import TypeVar, cast
@@ -278,7 +278,7 @@ def _build_candidate(
         segments=segments,
         cost_seconds=round(orientation.cost_seconds, COST_SECONDS_DECIMALS),
         penalty=penalty,
-        facts=_route_facts(orientation, context, elevation_gain_m, penalty.axis_seconds.keys()),
+        facts=_route_facts(orientation, context, elevation_gain_m),
         # 所要時間＝区間の走行時間＋停止の待ち＋ターンの待ち（最後の区間を抜けた時刻）。
         estimated_duration_seconds=passages[-1].elapsed_seconds + passages[-1].seconds if passages else None,
         wind_unavailable=context.composer.wind_unavailable,
@@ -385,10 +385,9 @@ _EFFORT_FACTS: dict[EffortItem, tuple[str, str]] = {
 }
 
 
-def _route_facts(orientation: _Orientation, context: RoadGraphContext, elevation_gain_m: float | None,
-                 axis_ids: Collection[str]) -> RouteFacts:
+def _route_facts(orientation: _Orientation, context: RoadGraphContext, elevation_gain_m: float | None) -> RouteFacts:
     """経路の事実の量。区間ごとの値（`domain/leg_costs.py: LegCostComposer.row_facts`・`LegValues.headwind_ms`）を
-    経路の区間の長さで足す。事実を返す軸は、費用を組んだ軸（候補の内訳の軸`axis_ids`。無効の軸は無い）だけ。"""
+    経路の区間の長さで足す。事実を返すのは、利用者が数える軸（`LegCostComposer.counts`）だけ。"""
     rows = np.asarray(orientation.rows, dtype=np.int64)
     distance_km = np.array([edge.distance_m for edge in orientation.edges], dtype=float) / 1000.0
     facts = context.composer.row_facts(rows)
@@ -406,11 +405,11 @@ def _route_facts(orientation: _Orientation, context: RoadGraphContext, elevation
     }
     axes = {
         axis_id: AxisFact(label=_EFFORT_FACTS[item][0], value=values[item], unit=_EFFORT_FACTS[item][1])
-        for axis_id, item in EFFORT_AXES.items() if axis_id in axis_ids
+        for axis_id, item in EFFORT_AXES.items() if context.composer.counts(axis_id)
     }
     burden_axes = context.cost_axes.burden
     for axis_id, burdened in facts.burdened.items():
-        if axis_id not in axis_ids:
+        if not context.composer.counts(axis_id):
             continue
         axes[axis_id] = AxisFact(label=f"{burden_axes[axis_id].label}のある道",
                                  value=round(float(distance_km[burdened].sum()), DISTANCE_KM_DECIMALS), unit="km")

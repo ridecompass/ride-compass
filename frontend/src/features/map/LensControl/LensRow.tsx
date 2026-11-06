@@ -16,7 +16,7 @@ export interface LensOption {
   id: LensId;
   label: string;
   color: string;
-  /** 代償が0（つまみ×0か、その軸の倍率×0）。選べるが薄く出し、「未使用」を添えて後ろに並べる。 */
+  /** 代償が0（全体のつまみ×0）。選べるが薄く出し、「未使用」を添えて後ろに並べる。 */
   unused: boolean;
   /** レンズの説明（倍率のタブと同じ費用の軸の一覧の説明文）。(i) で行の下に開く。 */
   description: string;

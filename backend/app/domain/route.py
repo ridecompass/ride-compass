@@ -75,7 +75,7 @@ class PenaltyBreakdown(StrictModel):
     回避指定の行の名前は同じ応答の`avoidance_label`が持つ。
     """
 
-    # 軸id→代償の秒（つまみ×倍率を掛けたもの）。どの軸も0以上で、倍率0の軸も0として持つ。
+    # 軸id→代償の秒（つまみ×倍率を掛けたもの）。数える軸だけを持ち（無効の軸は無い）、秒が0の軸も0として持つ。
     axis_seconds: dict[str, float]
     # 避け方の倍率（道の区分ごとの「なるべく避ける」）が、その道の所要時間と代償に上乗せした秒。
     avoidance_seconds: float

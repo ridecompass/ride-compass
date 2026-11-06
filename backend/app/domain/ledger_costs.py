@@ -93,6 +93,7 @@ class LedgerCosts:
         `burden_per_km`は道のストレスの軸ごとの区間の1kmあたりの重さ（`domain/leg_costs.py: burden_weights`）、`distance_m`は区間の
         長さ。走行の模型から組むときは`for_model`。"""
         multiplier = parameters.multiplier
+        self.counts = parameters.counts
         self._weight_exponent = parameters.effort_weight_exponent
         #: 数える体力の軸（`EFFORT_AXES`の順）と、その費目の倍率。
         self._effort_axes = {axis_id: item for axis_id, item in EFFORT_AXES.items() if parameters.counts(axis_id)}

@@ -114,10 +114,12 @@ export function useMapView({
   });
   const mapCatalog = useMapCatalog(mapTheme);
   const costCatalog = useCostAxisCatalog();
-  // 選べるレンズは、総合と、利用者が無効にしていない軸（無効の軸は地図のどこにも出さない）。
+  // 選べるレンズは、総合と、利用者が無効にしていない軸（無効の軸は地図のどこにも出さない）。好みは描くたびに新しい値で届くので、
+  // 無効の一覧の中身で作り直す（下の材料の取得は、安定した一覧を受ける）。
+  const disabledKey = costPreference.disabled_axes.join(",");
   const lenses = useMemo(
-    () => mapCatalog.lenses.filter((candidate) => countsAxis(costPreference, candidate.lensId)),
-    [mapCatalog.lenses, costPreference],
+    () => mapCatalog.lenses.filter((candidate) => !disabledKey.split(",").includes(candidate.lensId)),
+    [mapCatalog.lenses, disabledKey],
   );
   // 保存するのは触った層の真偽だけで、既定は層の一覧（道の線の層は画面の設定が届いてから決まる）から重ねる。
   const [storedVisibility, setLayerVisibility] = useStoredState<MapLayerVisibility>(
@@ -129,12 +131,12 @@ export function useMapView({
     () => ({ ...buildDefaultLayerVisibility(mapCatalog.layers), ...storedVisibility }),
     [mapCatalog.layers, storedVisibility],
   );
-  // レンズを指す保存値は費用の軸の一覧が届いて初めて読めるため、届いた時点で読み直す。選択肢に無いレンズの保存値は受けない
-  // （無いレンズを塗り続けてしまう）。
+  // レンズを指す保存値は費用の軸の一覧が届いて初めて読めるため、届いた時点で読み直す。一覧に無いレンズの保存値は受けない
+  // （無いレンズを塗り続けてしまう）。無効の軸のレンズは一覧にあるので受け、塗るときに外す（無効を戻すとまた塗る）。
   const [storedLens, setLens] = useStoredState<LensId>("ridecompass:route-style-mode", UNSELECTED_LENS_ID, {
     serialize: (value) => value,
     deserialize: (raw) =>
-      raw === UNSELECTED_LENS_ID || lenses.some((candidate) => candidate.lensId === raw) ? raw : null,
+      raw === UNSELECTED_LENS_ID || mapCatalog.lenses.some((candidate) => candidate.lensId === raw) ? raw : null,
     reloadKey: String(costCatalog.loaded),
   });
   // 選んでいた軸をあとから無効にしたら、選んでいない状態として扱う（選びは残し、無効を戻せばまた塗る）。
@@ -252,7 +254,8 @@ export function useMapView({
   const toggleHiddenFor = (key: string, rowKey: string) => setHidden((prev) => toggleHiddenKey(prev, key, rowKey));
 
   // 色分けの凡例が隠した段の保存先の鍵（色分けの選択肢）。「表示」の絞り込みの解除は、これ以外の鍵だけを戻す。
-  const lensKeys = new Set<string>([...lenses.map((candidate) => candidate.lensId), UNSELECTED_LENS_ID]);
+  // 無効の軸のレンズの鍵も含める（無効を戻したときに、隠した行が戻っていないように）。
+  const lensKeys = new Set<string>([...mapCatalog.lenses.map((candidate) => candidate.lensId), UNSELECTED_LENS_ID]);
 
   return {
     look,

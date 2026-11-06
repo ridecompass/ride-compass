@@ -10,8 +10,8 @@
 | ファイル | 責務 |
 |---|---|
 | `features/route/RouteForm/RouteForm.tsx` | 全長の目標（入り切りとルーラー）と候補数ステッパーを並べた1行（どの幅でも折り返さない）・地点（出発地・経由地・目的地）の置き場。「ルート設定」区分の各タブの中身を`Tabs.Content`として並べる（タブ列と選択状態は外、下記参照） |
-| `features/route/RouteSettingsPanel/CostLevelPicker.tsx` | 全体のつまみと軸ごとの倍率の段（×0・×0.5・×1…）を選ぶ横並びの選び手 |
-| `lib/costPreference.ts` | 利用者の費用の好み（つまみと倍率）そのものの決まり: 標準・軸の倍率の引き方・地図のレンズの要求へ載せる書き方（ルートと地図の両方が読む） |
+| `features/route/RouteSettingsPanel/CostLevelPicker.tsx` | 全体のつまみと軸ごとの倍率の段（×0.5・×1…）を選ぶ横並びの選び手。軸ごとの倍率では、段の前に無効を並べる |
+| `lib/costPreference.ts` | 利用者の費用の好み（つまみと倍率と無効の軸）そのものの決まり: 標準・軸を数えるか・軸の倍率の引き方・地図のレンズの要求へ載せる書き方（ルートと地図の両方が読む） |
 | `features/route/RouteForm/SettingsTabsList.tsx` | 「ルート設定」のタブ列（条件・負担・回避・保存済み）。見出し行に置き、選ぶ状態は囲む`Tabs.Root`から読む |
 | `features/route/RouteForm/RouteSettingsForm.tsx` | `RouteForm`へ、負担・回避・条件の保存・保存した条件の一覧の4つのタブの中身を、生成の条件と保存した条件から組んで渡す |
 | `features/route/GenerateRouteActions/GenerateRouteActions.tsx` | 「ルート設定」の見出し行の右端: 条件が変わった印と「ルート生成」のボタン（下記参照） |
@@ -28,7 +28,7 @@
 | `hooks/useCloseOnBack.ts` | 開いている間、履歴に印を付けた項目を URL を変えずに1つ積み、ブラウザの「戻る」で閉じる。「戻る」以外で閉じたら積んだ項目を戻す（下記「住所・施設で探す」） |
 | `components/PinMark/PointMark.tsx` | 並びの札・詳しく・道のりのグラフの経由地の印に出す、地図のピンと同じ図形の丸（`components/PinMark/PinMark.tsx`の中身に背景色を付けたもの。ルートの機能と地図の機能の両方が描くので共有の層に置く） |
 | `features/route/RouteForm/useRouteFormSubmit.ts` | 上記の検証（`{error, check}`。`features/route/RouteForm/useRouteFormSubmit.ts: check`は通ったかを返す）。「ルート生成」ボタン自体は`RouteForm`の外（`GenerateRouteActions.tsx`。見出し行）にあるため分離している（下記参照） |
-| `features/route/RouteSettingsPanel/RouteSettingsPanel.tsx` | 「負担」タブの中身: 費用の軸ごとの倍率を段で選ぶ（下記参照。全体のつまみは「条件」タブの`RouteForm`）。×0 の軸は数えないので、その行の名前と印を、全体のつまみが ×0 のときと同じ薄さにする（段は戻せるよう押せるまま） |
+| `features/route/RouteSettingsPanel/RouteSettingsPanel.tsx` | 「負担」タブの中身: 費用の軸ごとに、倍率の段か無効を選ぶ（下記参照。全体のつまみは「条件」タブの`RouteForm`）。無効の軸も行として残す（無効から戻す所） |
 | `features/route/costPreference.ts` | つまみと倍率の値の扱い: 段（値と名前）・保存値の読み方（`features/route/costPreference.ts: readCostPreference`。読めない値・段に無い値は標準へ戻す）・生成の要求へ載せる形（`features/route/costPreference.ts: costPreferenceToSend`）・送れなかったかの判定・説明の文 |
 | `hooks/useCostAxisCatalog.ts` | `GET /api/cost-axes`の取得。費用の軸（名前・説明・アイコン・地図のレンズ）を`hooks/useCostAxisCatalog.ts: useCostAxisCatalog`が返す（届くまで・失敗の間は軸0件。レンズの読み方は[地図: レンズ・ルート色分け](map-axis-coloring.md)）。軸ごとの色（`hooks/useCostAxisCatalog.ts: CostAxisCatalog.axisColors`）と、取れていないことの項目（`hooks/useCostAxisCatalog.ts: costAxisCatalogFetchFailure`。常設ヘッダーの印と負担タブの告知）もここが持つ |
 | `hooks/useSharedCatalog.ts` | 画面の全体が読む一覧（画面の設定・費用の軸の一覧）の取得の共通の形: 読み手の間で1つの取得を共有し、マウントのたびに取り直し、届いた応答を後の失敗で巻き戻さない（`hooks/useSharedCatalog.ts: useSharedCatalog`）。まだ届いていないときだけ取り直す再試行（`hooks/useSharedCatalog.ts: retrySharedCatalogFetch`） |

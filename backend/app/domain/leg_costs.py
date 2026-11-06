@@ -516,6 +516,10 @@ class LegCostComposer:
             burdened={axis_id: per_km[rows] > 0.0 for axis_id, per_km in self._burden_per_km.items()},
         )
 
+    def counts(self, axis_id: str) -> bool:
+        """軸`axis_id`を数えるか（`LedgerParameters.counts`）。事実を返す軸もこれで選ぶ。"""
+        return self._ledger.counts(axis_id)
+
     def turn_penalty_by_axis(self, kickoffs: float) -> dict[str, float]:
         """曲がる所の漕ぎ出し`kickoffs`回の代償の秒（軸id → 秒。`LedgerCosts.turn_penalty_by_axis`）。"""
         return self._ledger.turn_penalty_by_axis(kickoffs)
