@@ -12,7 +12,7 @@ from asgi_correlation_id import CorrelationIdMiddleware
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.admin_db_errors import install_admin_db_unavailable_handler
+from app.api.db_errors import install_db_unavailable_handler
 from app.api.upstream_errors import install_upstream_error_handler
 from app.api.cache_policy import TILE_PATH_PREFIXES, CachePolicyMiddleware
 from app.api.dependencies import get_amedas_service, get_jma_tile_client, open_region_service
@@ -213,5 +213,5 @@ app.add_middleware(CorrelationIdMiddleware)
 app.add_exception_handler(Exception, unhandled_exception_handler)
 
 app.include_router(api_router)
-install_admin_db_unavailable_handler(app)
+install_db_unavailable_handler(app)
 install_upstream_error_handler(app)

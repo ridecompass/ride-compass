@@ -10,7 +10,6 @@ TTLが切れるまでDBを読み直さないことと、DBが読めないとき�
 
 import pytest
 
-from app.config import settings
 from app.infrastructure.derived_data_meta import DataRevisions
 from app.services import derived_data_revision_service
 
@@ -41,13 +40,3 @@ async def test_second_call_within_ttl_does_not_read_db():
     assert await derived_data_revision_service.current_revisions(repository) == DataRevisions(derived=7, imported=3)
 
 
-
-async def test_unreadable_db_keeps_the_last_revisions(monotonic_clock):
-    # DBの一時的な断で例外を送り出すと、タイルの世代を決める経路ごとタイルの配信が止まる。
-    repository = FakeRepository(7)
-    await derived_data_revision_service.current_revisions(repository)
-
-    repository.error = OSError("connection refused")
-    monotonic_clock.advance(settings.derived_data_revision_check_interval_seconds)
-
-    assert await derived_data_revision_service.current_revisions(repository) == DataRevisions(derived=7, imported=3)

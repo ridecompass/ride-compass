@@ -588,10 +588,8 @@ OSMは中央分離帯のある道路の上下線を別々のwayとして持ち�
   一次属性（`highway`・タグ）を返す。レンズの値は同じファイルの`RoadInspectorService.inspect`が地図のレンズと同じ口から足す
   （[レンズ・道ごとの値の配信](dynamic-way-values.md)「道の窓」）。部品を束ねるのは`api/dependencies.py: get_road_inspector_service`。
 - `get_accident_years()`: 事故データの収録年（今の派生の表を作った事故の取込の宣言。「事故の帰属」）。
-  `GET /api/client-config`がそのまま地図の説明文へ配る（読めず空なら年を配らない）。
-- DB障害はいずれも安全側（空タイル/None/0/空リスト）へ倒す一貫した
-  グレースフルデグレード方針。DB障害として捕まえるのは`DB_UNAVAILABLE_ERRORS`だけで、
-  実装の誤りは500になる（[横断インフラ](cross-cutting-infrastructure.md)「DB障害として扱う例外」節）。
+  `GET /api/client-config`がそのまま地図の説明文へ配る。
+- DB障害は空へ倒さず投げ、503になる（[横断インフラ](cross-cutting-infrastructure.md)「DB障害として扱う例外」節）。
 
 ### 点のタイル（`point_tile_layers.py`・`RegionService.get_point_tile`）
 

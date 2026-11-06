@@ -12,7 +12,6 @@ from app.infrastructure.debug_log import log_throttled_warning
 from app.infrastructure.media_types import PNG_CONTENT_TYPE
 from app.infrastructure.region_tile_cache import (
     LANDCOVER_TILE_KIND,
-    TileResponse,
     landcover_generation,
     serve_region_tile,
 )
@@ -34,7 +33,7 @@ def _log_unavailable() -> None:
     log_throttled_warning(_CATEGORY, "土地被覆タイルを配信できません: %s", cause)
 
 
-async def get_landcover_tile(z: int, x: int, y: int) -> TileResponse | None:
+async def get_landcover_tile(z: int, x: int, y: int) -> bytes | None:
     """タイル1枚を返す。ラスタが1枚も無ければNone（設定の問題で、範囲外とは区別する）。"""
     if not await asyncio.to_thread(landcover_raster.has_sources):
         _log_unavailable()

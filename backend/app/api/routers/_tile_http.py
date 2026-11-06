@@ -17,14 +17,12 @@ from app.api.cache_policy import (
     GSI_TILE_NOT_FOUND,
     JMA_NOT_YET_DELIVERED,
     JMA_TILE_NOT_FOUND,
-    NO_STORE,
     CachePolicy,
 )
 from app.config import settings
 from app.domain.region import check_tile_index
 from app.infrastructure.http_client import UpstreamNotFound
 from app.infrastructure.media_types import MVT_CONTENT_TYPE
-from app.infrastructure.region_tile_cache import TileResponse
 
 T = TypeVar("T")
 
@@ -65,15 +63,9 @@ def validate_tile_coords(z: int, x: int, y: int) -> None:
         ) from None
 
 
-def tile_response(tile: TileResponse, media_type: str = MVT_CONTENT_TYPE) -> Response:
-    """タイル応答を組み立てる。
-
-    通常は`api/cache_policy.py`の対応表（`BATCH_TILE`）がミドルウェアで`Cache-Control`を
-    付けるが、一時的な失敗で空タイルを返した場合だけは`no-store`を明示して、その空白が
-    利用者のブラウザへ残らないようにする。
-    """
-    headers = None if tile.cacheable else {"Cache-Control": NO_STORE.header()}
-    return Response(content=tile.content, media_type=media_type, headers=headers)
+def tile_response(content: bytes, media_type: str = MVT_CONTENT_TYPE) -> Response:
+    """タイル応答を組み立てる。`Cache-Control`は`api/cache_policy.py`の対応表（`BATCH_TILE`）がミドルウェアで付ける。"""
+    return Response(content=content, media_type=media_type)
 
 
 @dataclass(frozen=True)

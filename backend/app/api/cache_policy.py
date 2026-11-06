@@ -20,7 +20,7 @@ from typing import Final
 from starlette.datastructures import MutableHeaders
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from app.api.admin_db_errors import ADMIN_PATH_PREFIX
+from app.api.admin_paths import ADMIN_PATH_PREFIX
 from app.infrastructure import jma_tile_redis_cache
 
 

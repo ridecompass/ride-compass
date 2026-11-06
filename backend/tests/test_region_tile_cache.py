@@ -68,7 +68,7 @@ async def test_a_cached_tile_is_returned_without_making_it_again(cache, records)
 
     response = await _serve(fetch)
 
-    assert response == region_tile_cache.TileResponse(b"cached")
+    assert response == b"cached"
     assert records[0].fields["cache"] == "hit"
 
 
@@ -77,7 +77,7 @@ async def test_a_missing_tile_is_made_stored_and_returned(cache, records):
 
     response = await _serve(fetch)
 
-    assert response == region_tile_cache.TileResponse(b"new")
+    assert response == b"new"
     assert cache.entries == {KEY: (b"new", "image/png")}
     # 取得元は呼び出し元が名乗る（統計の内訳が実際の取得元と食い違わないため）
     assert [call.fields for call in records] == [{
@@ -86,19 +86,10 @@ async def test_a_missing_tile_is_made_stored_and_returned(cache, records):
     }]
 
 
-@pytest.mark.parametrize(
-    ("failure", "cacheable"),
-    [
-        (None, True),  # 範囲外で恒久的に無い
-        (ConnectionRefusedError("db down"), False),  # 一時的に取れなかった——ブラウザに空白を残さない
-    ],
-)
-async def test_a_tile_that_cannot_be_made_is_the_empty_tile_and_is_not_stored(cache, records, failure, cacheable):
-    fetch = _fetch(None, failure)
+async def test_a_tile_outside_the_coverage_is_the_empty_tile_and_is_not_stored(cache, records):
+    response = await _serve(_fetch(None, None))
 
-    response = await _serve(fetch)
-
-    assert response == region_tile_cache.TileResponse(EMPTY, cacheable=cacheable)
+    assert response == EMPTY
     assert cache.entries == {}
     assert records[0].fields["source"] == "uncovered_empty"
 

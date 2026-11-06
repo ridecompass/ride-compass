@@ -7,7 +7,6 @@
 
 import asyncio
 from collections.abc import Awaitable, Callable, Mapping
-from dataclasses import dataclass
 
 from app.domain.registry import TileKind
 from app.infrastructure import landcover_raster, tile_cache
@@ -27,22 +26,6 @@ LANDCOVER_TILE_KIND = "landcover"
 #: 旧世代を消す間隔。世代が変わるのは派生の作り直し・取込・タイルのSQLを変えたデプロイで、どれも日に1回より
 #: 稀なので、消し遅れて積むのはおおむね1世代ぶんで済む（それ以上は容量の上限が退避する）。
 PRUNE_INTERVAL_HOURS = 24
-
-
-@dataclass(frozen=True)
-class TileResponse:
-    """タイル本体と、それをブラウザへ長期キャッシュさせてよいかどうか。
-
-    取得不可（`fetch_tile`が`None`）のとき返す空タイルには2種類ある——「取込範囲外で
-    恒久的にデータが無い」場合と、「DB障害・混雑で一時的に取れなかった」場合である。
-    後者を`api/cache_policy.py: BATCH_TILE`（1時間）でキャッシュさせると、サーバーが
-    回復した後も利用者のブラウザにはその区画の空白が1時間残り続ける。サーバー側の
-    ファイルキャッシュには書かない（下記`serve_region_tile`参照）ため次のリクエストでは
-    正しく生成され、**取り残されるのはブラウザ側だけ**という気づきにくい壊れ方をする。
-    """
-
-    content: bytes
-    cacheable: bool = True
 
 
 def landcover_generation() -> str:
@@ -71,12 +54,8 @@ async def serve_region_tile(
     external_call_name: str,
     fetch_tile: Callable[[dict], Awaitable[bytes | None]],
     source_label: str = "postgis",
-) -> TileResponse:
-    """キャッシュにあればそれを、無ければ`fetch_tile`で作ったものを返す。
-
-    取得不可が一時的な失敗（`fetch_tile`が`debug_log.py: mark_failed`で失敗を記録した場合）
-    だったときは`cacheable=False`で返す。呼び出し元のルーターはこれを見て
-    `Cache-Control: no-store`を明示する。
+) -> bytes:
+    """キャッシュにあればそれを、無ければ`fetch_tile`で作ったものを返す。`fetch_tile`がNone（取込範囲の外）なら空タイル。
 
     世代を読めていない（`cache_identity.py: is_known_tile_version`が偽）ときはディスクへ書かずに返す。
     **どの世代の中身か分からないまま焼いたタイルを残さない**ため——残すと後で世代が判明しても正しいものと区別できない
@@ -90,13 +69,13 @@ async def serve_region_tile(
         if cached is not None:
             fields["cache"] = "hit"
             content, _content_type = cached
-            return TileResponse(content)
+            return content
         fields["cache"] = "miss"
 
         tile_bytes = await fetch_tile(fields)
         if tile_bytes is None:
             fields["source"] = "uncovered_empty"
-            return TileResponse(empty_tile, cacheable=fields.get("result") != "error")
+            return empty_tile
 
         # どこから作ったか（`source_label`）はタイル種別で違う。/api/debug/statsの内訳が
         # 実際の取得元と食い違わないよう、呼び出し元が名乗る。
@@ -105,7 +84,7 @@ async def serve_region_tile(
         persist = fields["persisted"] = is_known_tile_version(generation)
         if persist:
             await asyncio.to_thread(tile_cache.set, key, tile_bytes, content_type)
-        return TileResponse(tile_bytes)
+        return tile_bytes
 
 
 def prune_other_generations(tile_versions: Mapping[TileKind, str]) -> int:

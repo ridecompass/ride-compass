@@ -18,7 +18,8 @@ DB接続・Redis・HTTPクライアント・レート制限・ログ・デバッ
 | domain | `stopwatch.py` | ログへ出す所要時間の測り方（測り始めの`stopwatch.py: start_timer`とミリ秒の整数の`stopwatch.py: elapsed_ms`）。測り始めと終わりは同じ時計で読む |
 | domain | `strict_model.py` | 全Pydanticモデルの基底（`strict_model.py: StrictModel`）。未知のフィールドを黙って捨てず例外にする |
 | api | `admin_auth.py` | 管理API共通の認可境界 |
-| api | `admin_db_errors.py` | 管理APIのDB障害を、どの口でも503で返すアプリ単位の例外の扱い（下の「DB障害として扱う例外」） |
+| api | `db_errors.py` | DB障害を、どの口でも503で返すアプリ単位の例外の扱い（下の「DB障害として扱う例外」） |
+| api | `admin_paths.py` | 管理APIの経路の接頭辞（認可・キャッシュの決まりが、この下の口をまとめて扱う） |
 | api | `upstream_errors.py` | 上流（外部の配信元）から取れなかった例外を、どの口でも502で返すアプリ単位の例外の扱い（下の`fetch_upstream`の段） |
 | api | `cache_policy.py` | 応答の`Cache-Control`（パスとポリシーの対応表・付与ミドルウェア） |
 | api | `dependencies.py`（横断的な部分のみ、他は各モジュール参照） | DI工場（公開関数は注入の口だけ） |
@@ -226,13 +227,10 @@ HTTPの要求の外（定期ジョブ・ベンチマーク）は、工場を引�
 
 ### DB障害として扱う例外（`database.py: DB_UNAVAILABLE_ERRORS`）
 
-タイル配信・道の窓・道の線の層の値等、DBの読み取りに失敗したら空（空タイル・空dict・
-None）へ倒す箇所は、`except Exception`ではなくこのタプルだけを捕まえる。実装の誤り
-（`TypeError`・`AttributeError`等）は捕まえず、500として表へ出す——空へ倒すと応答は正常の
-形のまま「データなし」に見え、誰も気づかない。
-管理API（`/api/admin/...`）は空へ倒さず、口では捕まえずに、`api/admin_db_errors.py`がアプリ単位の例外の扱いで
-同じタプルだけを503にする（口ごとに書くと、書き忘れた口だけが500になる）。管理API以外の経路で捕まえなかった
-ものは、送り直して500のまま表へ出す。
+DBの読み取りの失敗は、どの層でも空（空タイル・空dict・None）へ倒さず投げ、口では捕まえずに、
+`api/db_errors.py`がアプリ単位の例外の扱いでこのタプルだけを503にする（口ごとに書くと、書き忘れた口だけが500になる。空へ
+倒すと応答は正常の形のまま「データなし」に見え、誰も気づかない）。実装の誤り（`TypeError`・`AttributeError`等）は
+捕まえず、500として表へ出す。
 
 中身はSQLAlchemy 2.1＋asyncpgで例外がどう届くかから決まっている（ソースで確認）:
 

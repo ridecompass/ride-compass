@@ -100,9 +100,9 @@ SQLと式の木の材料では作れない体力（走行の模型）を、backe
   持たない道は道1本の行の値。密度の分母の長さもフィーチャーと同じ側から取る）。
 - 値は探索と同じ値式で求める。事故の密度は今の収録年数（`RoadGraphRepository.get_accident_years_covered`）で割る。区間単位のズームで、
   探索が同じ区間に読む材料と同じ値になる（`tests/test_feature_materials_in_tile.py`）。
-- 取込範囲外・DB障害・フィーチャーの無いタイルは値なし（地図の配信は`{}`）。DB障害だけを空へ倒し（`database.py: DB_UNAVAILABLE_ERRORS`。
-  [横断インフラ](cross-cutting-infrastructure.md)「DB障害として扱う例外」節）、実装の誤りは500のまま表へ出す——空へ倒すと、
-  応答は200・空のままになり、地図では「データなし」と見分けがつかない。
+- 取込範囲外・フィーチャーの無いタイルは値なし（地図の配信は`{}`）。DB障害は空へ倒さず投げ、503になる
+  （[横断インフラ](cross-cutting-infrastructure.md)「DB障害として扱う例外」節）——空へ倒すと、応答は200・空のままになり、
+  地図では「データなし」と見分けがつかない。
 
 ## キャッシュ（`infrastructure/feature_material_cache.py`）
 

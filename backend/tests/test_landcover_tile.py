@@ -57,7 +57,7 @@ def served(monkeypatch):
     async def serve(**kwargs):
         calls.append(kwargs)
         content = await kwargs["fetch_tile"]({})
-        return service.TileResponse(content=content)
+        return content
 
     monkeypatch.setattr(service, "serve_region_tile", bound(service.serve_region_tile, serve))
     return calls
@@ -69,7 +69,7 @@ def served(monkeypatch):
 async def test_a_tile_is_drawn_from_the_raster_through_the_cache(raster, served):
     response = await service.get_landcover_tile(10, 905, 403)
 
-    assert response == service.TileResponse(content=b"10/905/403")
+    assert response == b"10/905/403"
     assert (served[0]["z"], served[0]["x"], served[0]["y"]) == (10, 905, 403)
 
 
@@ -80,7 +80,7 @@ async def test_outside_the_rasters_the_tile_is_the_clear_image_of_the_raster(ras
 
     response = await service.get_landcover_tile(10, 905, 403)
 
-    assert response == service.TileResponse(content=RASTER.empty_tile_png(), cacheable=True)
+    assert response == RASTER.empty_tile_png()
 
 
 # ---- ラスタが1枚も無いとき ----
