@@ -205,6 +205,12 @@ SEMANTIC_COLORS_ON_DARK: dict[str, str] = {
     "route_selected_halo": "#93c5fd",
 }
 
+#: 費用の軸と曲がる所の識別色。費用の軸の一覧の順に当て、曲がる所は軸の次。
+#: 地図の負担の塗り（評価の配色の緑→赤）と取り違えないよう赤・緑・黄・橙を使わず、隣り合う2色が色覚の違いでも、明るい地・
+#: 暗い地のどちらでも見分けられる並び（データの見せ方の検証の道具で確かめた）。足りない分は`SEMANTIC_COLORS["neutral"]`で
+#: 塗る（色を作って足すと、隣と見分けられる保証が無い）。
+COST_SERIES_COLORS: tuple[str, ...] = ("#2a78d6", "#d9669a", "#6a55dc", "#139ab3", "#9c6a2c", "#b956c2")
+
 
 def resolved_display_axes(attr: PrimaryAttributeSpec) -> list[dict]:
     """行の色を解決した表示定義。**色は宣言に無い**ので、配る直前にここで決める。
