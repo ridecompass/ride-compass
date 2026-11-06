@@ -128,6 +128,7 @@ from app.domain.display_palette import (
     BASEMAP_DARK_ICON_OPACITY_SCALE,
     BASEMAP_DARK_LIGHTNESS_RANGE,
     BASEMAP_DARK_SATURATION_SCALE,
+    COST_SERIES_COLORS,
     SEMANTIC_COLORS,
     SEMANTIC_COLORS_ON_DARK,
     resolved_display_axes,
@@ -340,6 +341,7 @@ def main() -> None:
         {
             "semantic": SEMANTIC_COLORS,
             "semantic_on_dark": SEMANTIC_COLORS_ON_DARK,
+            "cost_series": list(COST_SERIES_COLORS),
             "basemap_dark": {
                 "lightness_range": list(BASEMAP_DARK_LIGHTNESS_RANGE),
                 "saturation_scale": BASEMAP_DARK_SATURATION_SCALE,

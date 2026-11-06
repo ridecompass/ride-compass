@@ -1,7 +1,7 @@
 /**
- * `hooks/useCostAxisCatalog.ts: costAxisCatalogFromResponse`——軸と曲がる所の識別色。
+ * `hooks/useCostAxisCatalog.ts: costAxisCatalogFromResponse`——軸の識別色。
  *
- * 見るもの: 一覧の応答から組んだ内訳の行（軸・曲がる所・回避指定）が、どれも違う色で、データなしの色を使わないこと。
+ * 見るもの: 一覧の応答から組んだ内訳の行（軸・回避指定）が、どれも違う色で、データなしの色を使わないこと。
  *
  * ここで見ないもの: 内訳の行の並びと名前 → `lib/routePenalty.test.ts`・`features/route/RouteAxisProfile/RouteAxisProfile.test.tsx`。
  */
