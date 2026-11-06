@@ -48,7 +48,6 @@ describe("editDifference", () => {
       estimated_duration_seconds: 3600,
       penalty: {
         axis_seconds: { ascent: 300, vibration: 60 },
-        turn_seconds: 0,
         avoidance_seconds: 60,
         total_seconds: 420,
       },
@@ -58,7 +57,6 @@ describe("editDifference", () => {
       estimated_duration_seconds: 3300,
       penalty: {
         axis_seconds: { ascent: 120, vibration: 60 },
-        turn_seconds: 0,
         avoidance_seconds: 0,
         total_seconds: 180,
       },
@@ -69,7 +67,7 @@ describe("editDifference", () => {
   it("どちらかに所要時間が無ければ、その差はnull", () => {
     const withValues = route("ABCDEF", {
       estimated_duration_seconds: 3600,
-      penalty: { axis_seconds: { ascent: 300 }, turn_seconds: 0, avoidance_seconds: 0, total_seconds: 300 },
+      penalty: { axis_seconds: { ascent: 300 }, avoidance_seconds: 0, total_seconds: 300 },
     });
     const withoutValues = route("ABQDEF", { estimated_duration_seconds: null });
     for (const [origin, edited] of [

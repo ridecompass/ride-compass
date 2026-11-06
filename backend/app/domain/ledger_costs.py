@@ -90,6 +90,7 @@ class LedgerCosts:
         #: 体力1J（重み付き）あたりの代償の秒。区間の体力と曲がる所の漕ぎ出しに同じ換算で掛ける。
         self._seconds_per_j = parameters.effective_strength * parameters.effort_alpha / flat_power_w
         self._kickoff_seconds = self._seconds_per_j * self._item_multipliers["inertia"] * kickoff_j
+        self._kickoff_axis_id = next(axis_id for axis_id, item in EFFORT_AXES.items() if item == "inertia")
         #: 道のストレスの軸ごとの、区間ごとの代償の秒（時刻に依らない）。
         distance_km = np.asarray(distance_m, dtype=np.float64) / 1000.0
         self._burden_axis_seconds = {
@@ -129,10 +130,10 @@ class LedgerCosts:
         ride = model.ride(headwind_ms, crosswind_ms, self._weight_exponent, rows)
         return ride.seconds, self.penalty_by_axis(ride, rows)
 
-    @property
-    def kickoff_seconds(self) -> float:
-        """曲がる所の漕ぎ出し1回の代償の秒（慣性の費目の軸の倍率を掛けたもの）。"""
-        return self._kickoff_seconds
+    def turn_penalty_by_axis(self, kickoffs: float) -> dict[str, float]:
+        """曲がる所の漕ぎ出し`kickoffs`回の代償の秒を、その費目（慣性）を持つ軸へ（軸id → 秒）。曲がる所の損は、その軸の損の
+        うち通る道筋で決まる分で、軸と別の行を持たない。"""
+        return {self._kickoff_axis_id: kickoffs * self._kickoff_seconds}
 
     def bin_seconds(self, model: SegmentSpeedModel, headwind_ms: np.ndarray,
                     crosswind_ms: np.ndarray) -> tuple[np.ndarray, np.ndarray]:

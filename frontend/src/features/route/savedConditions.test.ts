@@ -62,8 +62,6 @@ const COST_CATALOG: CostAxisCatalog = {
   ],
   axisColors: {},
   avoidanceLabel: "回避指定",
-  turnLabel: "曲がる所",
-  turnColor: "rgb(9, 9, 9)",
   lenses: null,
   loaded: true,
   failed: false,

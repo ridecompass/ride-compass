@@ -80,7 +80,7 @@
 | `features/route/RouteSplicePanel/SpliceMetricGrid.tsx` | 編集面の指標の表。ルート結果と同じ指標（`features/route/routeEditDiff.ts: metricDifferences`。距離・所要・負担）で元と編集後を並べる（1セルに「元→編集後 差」を収め、列見出しを持たない） |
 | `features/route/RouteSplicePanel/SpliceDeltaBar.tsx` | 編集面の軸別の負担の差（`features/route/RouteSplicePanel/SpliceDeltaBar.tsx: AxisDelta`。分）。軸別は2本並べず**差だけの1本**（中央が0・左が楽になった側・長さが変化量・色は軸チップと同じ） |
 | `features/route/useRouteResults.ts` | 「ルート結果」の状態: 生成した候補・編集で作ったルート（作った順の番号と元にしたルートのid）・選んだ候補・地図で押した区間。生成の結果で入れ替えると先頭を選び、編集で作ったルート・押した区間を外す。編集で作ったルートは元を上書きせず別の1本として足して選ぶ（編集で作ったルートをさらに編集したものも、元はその編集）。そのidは作った順の番号で画面が振る（backendは合成のルートへ毎回同じidを返すため、同じ生成へ何本も足すと重なる）。タブを選び替えると押した区間を外す。乗り換えで作った経路が既にある候補と同じ道だったときは、その候補を「同じ道だったので選んだ」と分かる形で選ぶ（`features/route/useRouteResults.ts: reusedRouteId`）——選択と1つの状態に持ち、どの操作で選び直しても外れる |
-| `features/route/RouteOutcome/RouteOutcome.tsx` | 「ルート結果」の中身: 生成前・生成中・候補0件・失敗の案内、候補の一覧（横に並ぶカード。群の印と区切りの線・名前・距離・時間・負担［内訳の和を「+N分」。名前は文字にせず重りの印（`lucideIcons.tsx: BurdenIcon`）で示し、カードを狭く保つ］と、1kmあたりの負担を地図の総合のレンズと同じ段の色で塗る下端の帯）、選んだ候補の中身（道のりのグラフ［シートが開いたときに合わせる高さの下端の印を持つ］・編集で作ったルートなら`EditDifference`・`RouteAxisProfile.tsx: RouteAxisProfile`）と地図で押した区間の詳細、編集中は`RouteSplicePanel.tsx: RouteSplicePanel`（[ページ全体構成・状態管理](page-composition.md)「ルート結果の中身」）。費用の軸の一覧（`hooks/useCostAxisCatalog.ts: useCostAxisCatalog`）を読み、内訳の行の名前と色・帯の段を引いて、子と編集面へ渡す。乗り換えで作った経路が既にある候補と同じ道で、その候補を選んだときは、一覧の上にそのことを候補の名前で出す。選んだカードは、一覧の横だけを送って見える範囲へ出す |
+| `features/route/RouteOutcome/RouteOutcome.tsx` | 「ルート結果」の中身: 生成前・生成中・候補0件・失敗の案内、候補の一覧（横に並ぶカード。群の印と区切りの線・名前・距離・時間・負担［内訳の和を「+N分」。名前は文字にせず重りの印（`lucideIcons.tsx: BurdenIcon`）で示し、カードを狭く保つ］と、候補を並べるのと同じルート全体の1kmあたりの負担を地図の総合のレンズと同じ段の色で塗る下端の帯）、選んだ候補の中身（道のりのグラフ［シートが開いたときに合わせる高さの下端の印を持つ］・編集で作ったルートなら`EditDifference`・`RouteAxisProfile.tsx: RouteAxisProfile`）と地図で押した区間の詳細、編集中は`RouteSplicePanel.tsx: RouteSplicePanel`（[ページ全体構成・状態管理](page-composition.md)「ルート結果の中身」）。費用の軸の一覧（`hooks/useCostAxisCatalog.ts: useCostAxisCatalog`）を読み、内訳の行の名前と色・帯の段を引いて、子と編集面へ渡す。乗り換えで作った経路が既にある候補と同じ道で、その候補を選んだときは、一覧の上にそのことを候補の名前で出す。選んだカードは、一覧の横だけを送って見える範囲へ出す |
 | `features/route/RouteCandidateActions/RouteCandidateActions.tsx` | 選んでいる候補1本への操作（「このルートで走る」［その候補で走行モードを始める。走っている間は出さない］・合成［始められるときだけ。押すと区間の選択を外す］・GPX出力。どれもアイコンだけのボタン）。`RouteOutcomeHeaderActions.tsx`が全消去の手前に置き、編集の間は出さない |
 | `features/route/RouteOutcome/RouteOutcomeHeaderActions.tsx` | 「ルート結果」の見出しの行の操作: 選んでいる候補1本への操作と、全消去（確認の窓で「消す」を押したときだけ消す） |
 | `features/route/useGenerationConditions.ts` | 生成の条件（「ルート設定」の入力）: 周回か・全長の目標を決めるか・距離・候補数・経由地と目的地（周回の間は置いた目的地を覚えておくだけで、返す`features/route/useGenerationConditions.ts: destination`はnull）・通る順の入れ替え（出発地・経由地・目的地を1つの並びとして動かし、置いた位置の役割にする。先頭が変わると新しい先頭を出発地として呼び出し側へ渡す。選んでいる地点は同じ地点に付けたまま。`features/route/useGenerationConditions.ts: reorderPoints`）・地図のタップで置ける役割・住所の検索と地図の点の小窓で選んだ地点の置き方（`features/route/useGenerationConditions.ts: placeFound`）・つまみと倍率・除外・道の行ごとの避け方と、保存した条件での入れ替え（`features/route/useGenerationConditions.ts: restore`）。いまの条件を保存と同じ形1つ（`features/route/useGenerationConditions.ts: snapshot`）で返し、保存・生成の入力はそれを読む。入れ替えは項目ごとの入れ方の表で書き、形に項目を足すと、いまの条件・保存値の読み方・入れ方のどれが欠けても型の誤りになる。保存する値は読むときに今の画面が受け付ける範囲・今の項目へ揃え、倍率は今の費用の軸のものだけを送る（下記「RouteSettingsPanel.tsx」）。出発地は位置の取得と同じ持ち主（`hooks/useLocation.ts`）が持ち、地図で置いた出発地は呼び出し側へ渡す |
@@ -151,15 +151,15 @@ backendが要求を断る（倍率のキーは今の費用の軸のidだけ）�
 標高の無い道の注記の順に並べる。
 
 - **負担**: 避けたいもの（登り・止まる回数・路面の振動等の費用の軸）を通る代償を、所要時間に上乗せした秒として数えたもの
-  （`RouteCandidate.penalty`）。数は内訳の和（軸ごとの秒と曲がる所と回避指定の秒。応答の`total_seconds`）を、候補のカードは「負担」の語と分の数字（「負担 +18」。所要時間の差と読み違えさせない）、開いた内訳は「+N分」で書き、
+  （`RouteCandidate.penalty`）。数は内訳の和（軸ごとの秒と回避指定の秒。応答の`total_seconds`）を、候補のカードは「負担」の語と分の数字（「負担 +18」。所要時間の差と読み違えさせない）、開いた内訳は「+N分」で書き、
   所要時間と負担の和が候補を並べた費用になる。
 - **内訳と事実**（`features/route/PenaltyBreakdown/PenaltyBreakdown.tsx: PenaltyBreakdown`。区間の小窓も同じ部品）: 軸ごとの秒を積んだ帯
   1本と、軸ごとの行（軸の名前・その軸の事実・負担の分）。行は費用の軸の一覧（`GET /api/cost-axes`）の順で、一覧に無い軸は応答の
-  順で後ろに軸idの名前で置き、曲がる所の行と回避指定の行（秒があるときだけ）を最後に置く（`lib/routePenalty.ts: penaltyRows`）。秒が0の
+  順で後ろに軸idの名前で置き、回避指定の行（秒があるときだけ）を最後に置く（`lib/routePenalty.ts: penaltyRows`）。秒が0の
   軸も行に残す——効くはずの軸が効かなかったことも判断の材料になる。事実（`RouteCandidate.facts.axes`）は軸ごとに backend が名前・
   値・単位を付けて返すので、画面は軸idで出し分けずにそのまま出す（値の無い事実は「—」）。
-  行の色は費用の軸の一覧の並びから決め、曲がる所はその次の色（`hooks/useCostAxisCatalog.ts: CostAxisCatalog.axisColors`・`turnColor`。道のりのグラフ・編集面の差の棒も同じ色）。地図の負担の塗り（緑→赤）と取り違えないよう赤・緑・黄・橙を使わず、隣り合う2色が色覚の違いでも明るい地・暗い地のどちらでも見分けられる並びにしてある。回避指定の行は軸の無い行の色（データなしの灰色とは別）。一覧が届くまでは
-  軸・曲がる所・回避指定の行の名前を「読み込み中」、取れない間は「取得できません」と出す。
+  行の色は費用の軸の一覧の並びから決める（`hooks/useCostAxisCatalog.ts: CostAxisCatalog.axisColors`。道のりのグラフ・編集面の差の棒も同じ色）。地図の負担の塗り（緑→赤）と取り違えないよう赤・緑・黄・橙を使わず、隣り合う2色が色覚の違いでも明るい地・暗い地のどちらでも見分けられる並びにしてある。回避指定の行は軸の無い行の色（データなしの灰色とは別）。一覧が届くまでは
+  軸・回避指定の行の名前を「読み込み中」、取れない間は「取得できません」と出す。
 - **標高の無い道**: `RouteCandidate.facts.elevation_unknown_km`が0より大きければ、その長さを登りに数えていないことを注記する。
 - **所要時間の説明**: (i)は、区間ごとに速度を変える条件の名前を走行モデルの宣言（`domain/cycling_speed.py: SEGMENT_SPEED_CONDITIONS`。
   生成物`route-generate-config.json`の`segment_speed_conditions`）から差し込む。想定速度の(i)（`RideConditionBar`）も同じ並びを使う。

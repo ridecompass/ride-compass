@@ -14,16 +14,15 @@ import palette from "@/types/generated/palette.json";
 import { costAxisCatalogFromResponse } from "./useCostAxisCatalog";
 
 describe("costAxisCatalogFromResponse", () => {
-  it("内訳の行（軸・曲がる所・回避指定）は、どれも違う色で、データなしの色を使わない", () => {
+  it("内訳の行（軸・回避指定）は、どれも違う色で、データなしの色を使わない", () => {
     const catalog = costAxisCatalogFromResponse(
       costAxisCatalog(...["ascent", "headwind", "stopping", "friction", "vibration"].map((id) => costAxisEntry(id))),
     );
     const colors = penaltyRows(
       {
         axis_seconds: { ascent: 1, headwind: 1, stopping: 1, friction: 1, vibration: 1 },
-        turn_seconds: 1,
         avoidance_seconds: 1,
-        total_seconds: 7,
+        total_seconds: 6,
       },
       catalog,
     ).map((row) => row.color);

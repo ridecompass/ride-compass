@@ -42,12 +42,11 @@ const GROUP_MARKS: Partial<Record<RouteListGroup, { Icon: typeof FastestRouteIco
   spliced: { Icon: RouteSpliceIcon, meaning: "合成ルート" },
 };
 
-/** カードの下の帯の色。地図のルートの線と同じ総合のレンズの段で、候補の1kmあたりの負担を示す。内訳が無ければ値なしの色。 */
+/** カードの下の帯の色。候補を並べるのと同じ、ルート全体の1kmあたりの負担（曲がる所と回避指定を含む）を、総合のレンズの段で
+ * 示す。値が無ければ値なしの色。 */
 function penaltyColor(route: RouteCandidate, catalog: CostAxisCatalog, ground: MapTheme): string {
-  if (catalog.lenses === null) return NO_DATA_LEGEND_BAND.color;
-  const total = route.lens_seconds_per_km?.[catalog.lenses.totalLens.axisId];
-  if (total === undefined) return NO_DATA_LEGEND_BAND.color;
-  return bandAt(valueBands(costLensPaint(catalog.lenses.totalLens, ground)), total).color;
+  if (catalog.lenses === null || route.penalty_seconds_per_km === null) return NO_DATA_LEGEND_BAND.color;
+  return bandAt(valueBands(costLensPaint(catalog.lenses.totalLens, ground)), route.penalty_seconds_per_km).color;
 }
 
 type RouteGeneration = ReturnType<typeof useRouteGeneration>;

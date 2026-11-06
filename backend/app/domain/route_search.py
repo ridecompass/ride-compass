@@ -15,7 +15,7 @@ from app.domain.geo import (
     km_per_degree_longitude,
 )
 from app.domain.leg_costs import LegCostArrays, LegCostComposer
-from app.domain.route import EvaluatedRoute
+from app.domain.route import EvaluatedRoute, penalty_seconds_per_km
 from app.domain.route_diversity import pareto_layer_index
 from app.domain.routing import time_bin_of
 from app.domain.tuning import tuning_value
@@ -165,13 +165,6 @@ PENALTY_PER_KM_QUANTUM = 0.1
 def penalty_key(per_km: np.ndarray) -> np.ndarray:
     """1kmあたりの代償の秒を、`PENALTY_PER_KM_QUANTUM`の刻みの数にしたもの（同点の比べに使う）。"""
     return np.rint(np.asarray(per_km, dtype=float) / PENALTY_PER_KM_QUANTUM).astype(np.int64)
-
-
-def penalty_seconds_per_km(cost: np.ndarray | float, seconds: np.ndarray | float, length_m: np.ndarray | float) -> np.ndarray:
-    """費用から所要時間を引いた代償の秒を、1kmあたりにしたもの（数を渡すと0次元の配列）。求まらない要素（長さ0・到達不能）は0。"""
-    with np.errstate(invalid="ignore", divide="ignore"):
-        per_km = (np.asarray(cost, dtype=float) - np.asarray(seconds, dtype=float)) / (np.asarray(length_m, dtype=float) / 1000.0)
-    return np.where(np.isfinite(per_km), per_km, 0.0)
 
 
 @dataclass(frozen=True)
@@ -435,10 +428,9 @@ def candidate_order(candidate: EvaluatedRoute, *, loop: bool) -> float:
     最も良い候補という契約で配る。代償は`PENALTY_PER_KM_QUANTUM`の刻みで同点になる。所要時間の無い候補は周回の末尾へ回す。"""
     if not loop:
         return candidate.cost_seconds
-    if candidate.estimated_duration_seconds is None or candidate.distance_km <= 0:
+    if candidate.penalty_seconds_per_km is None:
         return float("inf")
-    return float(penalty_key(penalty_seconds_per_km(
-        candidate.cost_seconds, candidate.estimated_duration_seconds, candidate.distance_km * 1000.0)))
+    return float(penalty_key(np.asarray(candidate.penalty_seconds_per_km)))
 
 
 def keep_routes_with_baseline(

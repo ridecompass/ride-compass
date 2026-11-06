@@ -516,10 +516,9 @@ class LegCostComposer:
             burdened={axis_id: per_km[rows] > 0.0 for axis_id, per_km in self._burden_per_km.items()},
         )
 
-    @property
-    def turn_kickoff_penalty(self) -> float:
-        """曲がる所の漕ぎ出し1回の代償の秒（慣性の費目の軸の倍率を掛けたもの）。"""
-        return self._ledger.kickoff_seconds
+    def turn_penalty_by_axis(self, kickoffs: float) -> dict[str, float]:
+        """曲がる所の漕ぎ出し`kickoffs`回の代償の秒（軸id → 秒。`LedgerCosts.turn_penalty_by_axis`）。"""
+        return self._ledger.turn_penalty_by_axis(kickoffs)
 
     def transition_costs(self, turn_seconds: np.ndarray, turn_kickoffs: np.ndarray) -> np.ndarray:
         """曲がる所の費用（秒、遷移ごと）。時間に漕ぎ出しの代償を足したもの。"""

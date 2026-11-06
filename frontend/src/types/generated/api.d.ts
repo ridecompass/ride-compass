@@ -892,8 +892,6 @@ export interface components {
             axes: components["schemas"]["CostAxisCatalogEntry"][];
             /** Avoidance Label */
             avoidance_label: string;
-            /** Turn Label */
-            turn_label: string;
             total_lens: components["schemas"]["TotalLens"];
             map_lens: components["schemas"]["MapLens"];
         };
@@ -1369,8 +1367,6 @@ export interface components {
             axis_seconds: {
                 [key: string]: number;
             };
-            /** Turn Seconds */
-            turn_seconds: number;
             /** Avoidance Seconds */
             avoidance_seconds: number;
             /** Total Seconds */
@@ -1666,10 +1662,8 @@ export interface components {
             kind: "loop" | "destination" | "spliced";
             /** Is Fastest */
             is_fastest: boolean;
-            /** Lens Seconds Per Km */
-            readonly lens_seconds_per_km: {
-                [key: string]: number;
-            } | null;
+            /** Penalty Seconds Per Km */
+            readonly penalty_seconds_per_km: number | null;
         };
         /** RouteFacts */
         RouteFacts: {

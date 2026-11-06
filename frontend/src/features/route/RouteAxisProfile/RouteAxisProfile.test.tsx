@@ -21,8 +21,6 @@ const CATALOG = {
   ],
   axisColors: {},
   avoidanceLabel: "回避指定",
-  turnLabel: "曲がる所",
-  turnColor: "rgb(9, 9, 9)",
   loaded: true,
   failed: false,
 };
@@ -34,7 +32,6 @@ function renderProfile(props: Partial<Props> = {}) {
     <RouteAxisProfile
       penalty={{
         axis_seconds: { ascent: 300, vibration: 0 },
-        turn_seconds: 0,
         avoidance_seconds: 120,
         total_seconds: 420,
       }}
@@ -69,17 +66,16 @@ describe("RouteAxisProfile", () => {
     }
   });
 
-  it("内訳は軸を一覧の順に、名前・その軸の事実・負担の分で並べ、曲がる所と回避指定を後ろに置き、帯は秒のある行だけで描く", () => {
+  it("内訳は軸を一覧の順に、名前・その軸の事実・負担の分で並べ、回避指定を後ろに置き、帯は秒のある行だけで描く", () => {
     renderProfile({
       penalty: {
         axis_seconds: { ascent: 300, vibration: 0 },
-        turn_seconds: 60,
         avoidance_seconds: 120,
-        total_seconds: 480,
+        total_seconds: 420,
       },
     });
-    expect(rows()).toEqual(["登坂登り 240m+5分", "振動振動のある道 1.3km+0分", "曲がる所+1分", "回避指定+2分"]);
-    expect(screen.getByRole("img", { name: "負担の内訳" }).children).toHaveLength(3);
+    expect(rows()).toEqual(["登坂登り 240m+5分", "振動振動のある道 1.3km+0分", "回避指定+2分"]);
+    expect(screen.getByRole("img", { name: "負担の内訳" }).children).toHaveLength(2);
   });
 
   it("所要時間が無い候補では所要を出さない", () => {

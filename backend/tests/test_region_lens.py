@@ -96,9 +96,9 @@ async def test_each_axis_lens_paints_its_own_penalty_seconds_per_km_and_the_tota
 
 
 async def test_the_route_and_the_map_lens_count_the_same_seconds_on_the_same_roads(client, cost_axes, road_network_root):
-    """ルートの軸ごとの代償の秒は、通った道ごとの地図のレンズの値（1kmあたりの秒、通った向き）に道の長さを掛けて足したものと
-    同じになる。合わないと、ルートの線と周りの道が同じ道で違う色になり、内訳とレンズで同じ道の負担が食い違う。曲がる所の
-    漕ぎ出しは道1本の値ではないので軸の秒に入れず、内訳の別の行で費用に入る。"""
+    """ルートの線（区間）の軸ごとの代償の秒を足すと、通った道ごとの地図のレンズの値（1kmあたりの秒、通った向き）に道の長さを
+    掛けて足したものと同じになる。合わないと、ルートの線と周りの道が同じ道で違う色になる。候補の内訳はルート全体の損なので、
+    来た道と曲がる向きで決まる曲がる所の漕ぎ出しを停止の軸の秒に含め、ほかの軸は区間の和のまま、和は費用に合う。"""
     network = road_network(WAYS, COORDINATES, bad_ways=(FLAT_ROUGH_WAY,), gradient_of={CLIMBING_WAY: 6.0},
                            stop_density_of={STOPPING_WAY: 3.0})
     candidates = await generator_for(road_network_root, network, None).generate_via_waypoints(
@@ -122,8 +122,12 @@ async def test_the_route_and_the_map_lens_count_the_same_seconds_on_the_same_roa
             km = float(network.distance_m[row]) / 1000.0
             for axis_id, values in lenses.items():
                 expected[axis_id] += values[str(way)][LENS_ALONG_LEAF if forward else LENS_AGAINST_LEAF] * km
+        line = {axis_id: sum(segment.penalty.axis_seconds[axis_id] for segment in candidate.segments) for axis_id in lenses}
+        assert line == pytest.approx(expected, abs=0.5)
         penalty = candidate.penalty
-        assert penalty.axis_seconds == pytest.approx(expected, abs=0.5)
+        others = [axis_id for axis_id in lenses if axis_id != "stopping"]
+        assert {axis_id: penalty.axis_seconds[axis_id] for axis_id in others} \
+            == pytest.approx({axis_id: line[axis_id] for axis_id in others}, abs=0.5)
         assert candidate.estimated_duration_seconds + penalty.total_seconds == pytest.approx(candidate.cost_seconds, abs=0.5)
 
 

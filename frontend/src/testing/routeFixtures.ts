@@ -17,8 +17,8 @@ export function makeRouteCandidate(overrides: Partial<RouteCandidate> = {}): Rou
     segments: [],
     estimated_duration_seconds: null,
     cost_seconds: 0,
-    penalty: { axis_seconds: {}, turn_seconds: 0, avoidance_seconds: 0, total_seconds: 0 },
-    lens_seconds_per_km: null,
+    penalty: { axis_seconds: {}, avoidance_seconds: 0, total_seconds: 0 },
+    penalty_seconds_per_km: null,
     facts: { elevation_unknown_km: 0, axes: {} },
     wind_unavailable: false,
     missing_travel_data_share: null,
@@ -120,7 +120,7 @@ export function makeRouteSegment(overrides: Partial<RouteSegmentDetail> = {}): R
     edge_start: 0,
     edge_end: 0,
     estimated_arrival_time: null,
-    penalty: { axis_seconds: {}, turn_seconds: 0, avoidance_seconds: 0, total_seconds: 0 },
+    penalty: { axis_seconds: {}, avoidance_seconds: 0, total_seconds: 0 },
     lens_seconds_per_km: null,
     elevations: [],
     sustained_gradient_percent: null,
@@ -149,7 +149,7 @@ export const FACILITY_CANDIDATE: PlaceCandidate = {
   longitude: 139.7967,
 };
 
-/** 区間・候補の代償の内訳（`penalty`）と、backend がそれから導く和（`total_seconds`）と地図のレンズと同じ1kmあたりの値
+/** 区間の代償の内訳（`penalty`）と、backend がそれから導く和（`total_seconds`）と地図のレンズと同じ1kmあたりの値
  * （`lens_seconds_per_km`。回避指定は入れない。`backend/app/domain/route.py`）を対で返す。足場は内訳だけ・1kmあたりだけの
  * backend が返さない組を作らない。 */
 export function penaltyFields(
@@ -161,7 +161,6 @@ export function penaltyFields(
   return {
     penalty: {
       axis_seconds: axisSeconds,
-      turn_seconds: 0,
       avoidance_seconds: avoidanceSeconds,
       total_seconds: axisTotal + avoidanceSeconds,
     },
@@ -170,4 +169,15 @@ export function penaltyFields(
       ...Object.fromEntries(Object.entries(axisSeconds).map(([axisId, seconds]) => [axisId, seconds / distanceKm])),
     },
   };
+}
+
+/** 候補の代償の内訳（`penalty`）と、backend がそれから導く和（`total_seconds`）とルート全体の1kmあたりの代償の秒
+ * （`penalty_seconds_per_km`。回避指定も入れる。`backend/app/domain/route.py`）を対で返す。 */
+export function candidatePenaltyFields(
+  axisSeconds: Record<string, number>,
+  distanceKm: number,
+  avoidanceSeconds = 0,
+): Pick<RouteCandidate, "penalty" | "penalty_seconds_per_km"> {
+  const { penalty } = penaltyFields(axisSeconds, distanceKm, avoidanceSeconds);
+  return { penalty, penalty_seconds_per_km: penalty.total_seconds / distanceKm };
 }

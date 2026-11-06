@@ -2,6 +2,7 @@ from collections import defaultdict
 
 from typing import Annotated, Any, Callable, Iterable, Literal, Sequence
 
+import numpy as np
 from pydantic import ConfigDict, WithJsonSchema, computed_field
 
 from app.domain.attributes import ElevationAttribute
@@ -67,28 +68,36 @@ class ElevationStretch(StrictModel):
 
 
 class PenaltyBreakdown(StrictModel):
-    """代償の秒の内訳（費目の帳簿の式、`domain/ledger_costs.py`）。所要時間・軸ごとの代償・曲がる所・回避指定の和が費用になる。
+    """代償の秒の内訳（費目の帳簿の式、`domain/ledger_costs.py`）。所要時間・軸ごとの代償・回避指定の和が費用になる。
 
-    軸の名前と帳簿は`GET /api/cost-axes`が持ち、曲がる所と回避指定の行の名前は同じ応答の`turn_label`・`avoidance_label`が持つ。
+    区間（ルートの線の一片）の内訳は通った道の分で、地図のレンズと同じ量。候補の内訳はルート全体の損で、区間の和に、通る道筋で
+    決まる曲がる所の漕ぎ出しを、その費目（慣性）を持つ軸の秒として足したもの。軸の名前と帳簿は`GET /api/cost-axes`が持ち、
+    回避指定の行の名前は同じ応答の`avoidance_label`が持つ。
     """
 
-    # 軸id→道の代償の秒（つまみ×倍率を掛けたもの）。どの軸も0以上で、倍率0の軸も0として持つ。地図のレンズと同じ量。
+    # 軸id→代償の秒（つまみ×倍率を掛けたもの）。どの軸も0以上で、倍率0の軸も0として持つ。
     axis_seconds: dict[str, float]
-    # 区間へ入る所で曲がった漕ぎ出しの代償の秒（慣性の費目の軸の倍率を掛けたもの）。道1本の値ではないので軸の秒に入れない。
-    turn_seconds: float
     # 避け方の倍率（道の区分ごとの「なるべく避ける」）が、その道の所要時間と代償に上乗せした秒。
     avoidance_seconds: float
 
     @computed_field  # type: ignore[prop-decorator]
     @property
     def total_seconds(self) -> float:
-        """代償の秒の和（軸ごとの秒と曲がる所と回避指定の秒）。所要時間に足すと、候補を並べた費用になる。"""
-        return round(sum(self.axis_seconds.values(), self.turn_seconds + self.avoidance_seconds), COST_SECONDS_DECIMALS)
+        """代償の秒の和（軸ごとの秒と回避指定の秒）。所要時間に足すと、候補を並べた費用になる。"""
+        return round(sum(self.axis_seconds.values(), self.avoidance_seconds), COST_SECONDS_DECIMALS)
+
+
+def penalty_seconds_per_km(cost: np.ndarray | float, seconds: np.ndarray | float, length_m: np.ndarray | float) -> np.ndarray:
+    """費用から所要時間を引いた代償の秒を、1kmあたりにしたもの（数を渡すと0次元の配列）。求まらない要素（長さ0・到達不能）は0。
+    周回の候補を並べる値で、候補の帯もこれで塗る。"""
+    with np.errstate(invalid="ignore", divide="ignore"):
+        per_km = (np.asarray(cost, dtype=float) - np.asarray(seconds, dtype=float)) / (np.asarray(length_m, dtype=float) / 1000.0)
+    return np.where(np.isfinite(per_km), per_km, 0.0)
 
 
 def lens_seconds_per_km(penalty: PenaltyBreakdown, distance_km: float) -> dict[str, float] | None:
-    """地図のレンズと同じ量（レンズid→1kmあたりの代償の秒。総合`TOTAL_LENS_ID`は軸の和）。曲がる所と回避指定は道1本の値では
-    ないので入れない（ルートの線と周りの道を同じ量で塗る）。長さが0ならNone。"""
+    """区間の、地図のレンズと同じ量（レンズid→1kmあたりの代償の秒。総合`TOTAL_LENS_ID`は軸の和）。回避指定は軸の値ではないので
+    入れない（ルートの線と周りの道を同じ量で塗る）。長さが0ならNone。"""
     if not distance_km > 0:
         return None
     per_km = lens_values_with_total({axis_id: seconds / distance_km for axis_id, seconds in penalty.axis_seconds.items()}, 0.0)
@@ -104,7 +113,6 @@ def merge_penalty_breakdowns(parts: Iterable[PenaltyBreakdown]) -> PenaltyBreakd
             totals[axis_id] += seconds
     return PenaltyBreakdown.model_construct(
         axis_seconds={axis_id: round(seconds, COST_SECONDS_DECIMALS) for axis_id, seconds in totals.items()},
-        turn_seconds=round(sum(part.turn_seconds for part in present), COST_SECONDS_DECIMALS),
         avoidance_seconds=round(sum(part.avoidance_seconds for part in present), COST_SECONDS_DECIMALS),
     )
 
@@ -201,9 +209,13 @@ class EvaluatedRoute(StrictModel):
 
     @computed_field  # type: ignore[prop-decorator]
     @property
-    def lens_seconds_per_km(self) -> dict[str, float] | None:
-        """候補全体の、地図のレンズと同じ量（`lens_seconds_per_km`）。候補の帯は地図のレンズと同じ段でこれを塗る。"""
-        return lens_seconds_per_km(self.penalty, self.distance_km)
+    def penalty_seconds_per_km(self) -> float | None:
+        """候補全体の1kmあたりの代償の秒（曲がる所と回避指定を含むルート全体の損。`penalty_seconds_per_km`）。周回はこれで並べ、
+        候補の帯もこれで塗る。所要時間か長さが無ければNone。"""
+        if self.estimated_duration_seconds is None or not self.distance_km > 0:
+            return None
+        return round(float(penalty_seconds_per_km(self.cost_seconds, self.estimated_duration_seconds, self.distance_km * 1000.0)),
+                     COST_SECONDS_DECIMALS)
 
     facts: RouteFacts
     # 所要時間の見積もりで風を使えなかった（風の予報が読めず、無風として計算した）。画面が利用者へ知らせる。
