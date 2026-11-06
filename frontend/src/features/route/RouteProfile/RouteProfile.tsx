@@ -156,6 +156,7 @@ export default function RouteProfile({
                   <button
                     type="button"
                     aria-pressed={on}
+                    data-usage="この種類の負担を、上の図に積むか外すかを切り替えます。選びはこの端末に覚えます。"
                     className={legendChipBodyClass}
                     onClick={() =>
                       setChosenAxes(on ? shownAxes.filter((id) => id !== axis.axisId) : [...shownAxes, axis.axisId])
