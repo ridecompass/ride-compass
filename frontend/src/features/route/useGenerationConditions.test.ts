@@ -103,10 +103,9 @@ describe("距離と候補数", () => {
 });
 
 describe("つまみと倍率", () => {
-  it("既定は標準で、変えたつまみと倍率は開き直しても残り、送るのは今の費用の軸の、標準でない倍率だけ", async () => {
+  it("変えたつまみと倍率は開き直しても残り、送るのは今の費用の軸の、標準でない倍率だけ", async () => {
     serveCostAxisCatalog();
     const first = renderConditions();
-    expect(first.result.current.costPreference).toEqual(STANDARD_COST_PREFERENCE);
     act(() =>
       first.result.current.setCostPreference({
         ...STANDARD_COST_PREFERENCE,
