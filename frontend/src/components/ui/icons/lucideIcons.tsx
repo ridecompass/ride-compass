@@ -46,6 +46,7 @@ import {
   Thermometer,
   Trash,
   TriangleAlert,
+  Weight,
   Wind,
   Zap,
   ZoomIn,
@@ -102,6 +103,8 @@ export const RedrawMapIcon = fromLucide(RotateCw);
 export const ChooseItemsIcon = fromLucide(ListChecks);
 /** 負担で道を塗る（「負担で塗る」の入口）。 */
 export const BurdenPaintIcon = fromLucide(Paintbrush);
+/** 負担（所要時間に足す代償）の量。 */
+export const BurdenIcon = fromLucide(Weight);
 export const RouteSettingsIcon = fromLucide(SlidersHorizontal);
 export const ShieldIcon = fromLucide(Shield);
 export const TargetIcon = fromLucide(Target);

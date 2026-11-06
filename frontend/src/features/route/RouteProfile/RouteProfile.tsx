@@ -2,7 +2,10 @@
 
 import { BURDEN_PAINT_NAME, FACT_DISPLAY_NAME } from "@/lib/screenNames";
 import { useMemo, useState } from "react";
+import { useStoredState } from "@/hooks/useStoredState";
+import { readStoredList } from "@/lib/storedList";
 
+import { legendChipBodyClass, legendChipClass, legendChipsClass } from "@/components/ui/AxisLegend/axisLegend";
 import { Dot } from "@/components/ui/Dot/Dot";
 import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs/Tabs";
@@ -21,6 +24,10 @@ import ProfileLayerPicker from "./ProfileLayerPicker";
 import { SectionOnMapButton, type SectionOnMap } from "@/features/route/SegmentDetail/SegmentDetail";
 
 import { useChosenProfileLayers, type ProfileLayerSelection } from "./useProfileLayers";
+
+const PROFILE_AXES_STORAGE_KEY = "ridecompass:profile-axes";
+/** 選んでいない間に積む軸の数（このルートで負担の大きい順）。全部を積むと色が混ざって、どの軸の難所かが読めない。 */
+const DEFAULT_SHOWN_AXES = 2;
 
 interface RouteProfileProps {
   segments: readonly RouteSegmentDetail[];
@@ -66,6 +73,25 @@ export default function RouteProfile({
     const byAxis = profileBoxes(scale.columns, axisOrder);
     return axes.filter((axis) => (byAxis.get(axis.axisId)?.length ?? 0) > 0);
   }, [scale, axes, axisOrder]);
+  // 積む軸の選び（端末に覚える）。選んでいなければ（null）、このルートで負担の大きい軸から積む。
+  const [chosenAxes, setChosenAxes] = useStoredState<readonly string[] | null>(PROFILE_AXES_STORAGE_KEY, null, {
+    serialize: JSON.stringify,
+    deserialize: (raw) => readStoredList(raw, (value) => (typeof value === "string" ? value : null)),
+  });
+  const shownAxes = useMemo(() => {
+    if (chosenAxes !== null) return chosenAxes;
+    const seconds = new Map<string, number>();
+    for (const { startKm, endKm, segment } of scale.columns) {
+      for (const [axisId, perKm] of Object.entries(segment.lens_seconds_per_km ?? {})) {
+        seconds.set(axisId, (seconds.get(axisId) ?? 0) + perKm * (endKm - startKm));
+      }
+    }
+    return [...paintedAxes]
+      .sort((a, b) => (seconds.get(b.axisId) ?? 0) - (seconds.get(a.axisId) ?? 0))
+      .slice(0, DEFAULT_SHOWN_AXES)
+      .map((axis) => axis.axisId);
+  }, [chosenAxes, scale, paintedAxes]);
+  const shownOrder = useMemo(() => axisOrder.filter((axisId) => shownAxes.includes(axisId)), [axisOrder, shownAxes]);
   const { available, chosen } = useChosenProfileLayers(layers.ids);
   const shownLayers = useMemo(
     (): ShownLayers => ({
@@ -99,16 +125,8 @@ export default function RouteProfile({
             triggerAriaLabel="負担のグラフの見方"
             triggerClassName="rounded-full bg-[color-mix(in_srgb,var(--background)_85%,transparent)]"
           >
-            <ul className="flex flex-col gap-0.5">
-              {paintedAxes.map((axis) => (
-                <li key={axis.axisId} className="flex items-center gap-1.5">
-                  <Dot tone="none" style={{ backgroundColor: axisColors[axis.axisId] ?? palette.semantic.no_data }} />
-                  <span>{axis.label}</span>
-                </li>
-              ))}
-            </ul>
-            <p className="mt-1">
-              高さは区間ごとの1kmあたりの負担で、上端はこのルートで最も大きい区間の値です（曲がる所と回避指定は含みません）。色ごとの面積は、その種類の負担の合計を表します。横の右端は、一覧で最も長い候補の距離です。
+            <p>
+              図の下の札で押した種類だけを積みます。高さは区間ごとの1kmあたりの負担で、上端はこのルートで最も大きい区間の値です（曲がる所と回避指定は含みません）。色ごとの面積は、その種類の負担の合計を表します。横の右端は、一覧で最も長い候補の距離です。
             </p>
           </InfoPopover>
         )}
@@ -116,10 +134,10 @@ export default function RouteProfile({
         {/* 選んだ区間の値は地図の区間の小窓が出す。地図は選んでも動かないので、ここから寄せる（区間が地図の外なら目立たせる）。 */}
         {selected !== null && segmentOnMap !== undefined && <SectionOnMapButton onMap={segmentOnMap} />}
       </div>
-      <TabsContent value="lens">
+      <TabsContent value="lens" className="flex flex-col gap-1">
         <DifficultyProfile
           scale={scale}
-          axisOrder={axisOrder}
+          axisOrder={shownOrder}
           axisColors={axisColors}
           selected={selected}
           onSelect={onSelect}
@@ -127,6 +145,30 @@ export default function RouteProfile({
           waypointKms={waypointKms}
           riding={riding}
         />
+        {/* 札が凡例を兼ねる。走行中の図は低く保つため札を出さず、結果で選んだ軸を積む。 */}
+        {!riding && (
+          <ul aria-label="積む負担の種類" className={legendChipsClass}>
+            {paintedAxes.map((axis) => {
+              const on = shownAxes.includes(axis.axisId);
+              return (
+                <li key={axis.axisId} className={legendChipClass} data-checked={on}>
+                  <button
+                    type="button"
+                    aria-pressed={on}
+                    data-usage="この種類の負担を、上の図に積むか外すかを切り替えます。選びはこの端末に覚えます。"
+                    className={legendChipBodyClass}
+                    onClick={() =>
+                      setChosenAxes(on ? shownAxes.filter((id) => id !== axis.axisId) : [...shownAxes, axis.axisId])
+                    }
+                  >
+                    <Dot tone="none" style={{ backgroundColor: axisColors[axis.axisId] ?? palette.semantic.no_data }} />
+                    {axis.label}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
       </TabsContent>
       <TabsContent value="layer" className="flex flex-col gap-1">
         <LayerProfile

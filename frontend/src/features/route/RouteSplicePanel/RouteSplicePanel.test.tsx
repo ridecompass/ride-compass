@@ -33,7 +33,7 @@ const CATALOG = {
   axisColors: { width: "red", traffic: "green", slope: "blue", light: "gray" },
   avoidanceLabel: "回避指定",
   turnLabel: "曲がる所",
-  turnAxisId: "stopping",
+  turnColor: "rgb(9, 9, 9)",
   loaded: true,
   failed: false,
 };

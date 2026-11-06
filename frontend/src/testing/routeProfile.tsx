@@ -38,7 +38,7 @@ export const PROFILE_COST_CATALOG = {
   axisColors: { ascent: "rgb(18, 52, 86)", vibration: "rgb(86, 52, 18)" },
   avoidanceLabel: "回避指定",
   turnLabel: "曲がる所",
-  turnAxisId: "stopping",
+  turnColor: "rgb(9, 9, 9)",
   loaded: true,
   failed: false,
 };

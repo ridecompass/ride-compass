@@ -2,8 +2,8 @@
  * `features/route/RouteProfile/RouteProfile.tsx`——道のりのグラフの「表示」「負担で塗る」のタブ（名前は地図の2つの入口と同じ `lib/screenNames.ts`）と、
  * 地点を選んでいる間の「区間を地図で見る」。
  *
- * 見るもの: 既定で「負担で塗る」（負担のグラフ）を出すこと、その (i) が塗った軸の色と名前・意味の文を出すこと
- * （塗る区間の無い軸は出さない）、両方のタブで経由地を通る所に線と番号の印を出し、走り終えた経由地を薄めること。タブは結果も
+ * 見るもの: 既定で「負担で塗る」（負担のグラフ）を出すこと、図の下に塗る区間のある軸の札を並べ、選んでいなければ
+ * ルートで負担の大きい2つを積み、札を押すと積む軸を足し・外して端末に覚えること、両方のタブで経由地を通る所に線と番号の印を出し、走り終えた経由地を薄めること。タブは結果も
  * 走行中も地図の入口と同じ絵だけで出し（名前は読み上げに残す）、押すと図が替わること。走行中の図は、目盛り・図の下の文字を
  * 結果の図より大きくすること。地点を選ぶと、右上に「区間を地図で見る」を出すこと。
  *
@@ -15,6 +15,7 @@
  */
 import { BURDEN_PAINT_NAME, FACT_DISPLAY_NAME } from "@/lib/screenNames";
 import { fireEvent, render, screen, within } from "@testing-library/react";
+import { makeRouteSegment, penaltyFields } from "@/testing/routeFixtures";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -34,20 +35,50 @@ import type { SelectedRouteSegment } from "@/types/route";
 beforeEach(serveProfileCatalog);
 
 describe("RouteProfile", () => {
-  it("はじめは「負担で塗る」で負担を出し、(i) で塗った軸の色と名前・グラフの意味を開く", async () => {
-    renderProfile();
-    expect(screen.getByRole("tab", { name: BURDEN_PAINT_NAME })).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByRole("img", { name: "道のりに沿った負担" })).toBeInTheDocument();
-
-    await userEvent.click(screen.getByRole("button", { name: "負担のグラフの見方を表示" }));
-    const note = screen.getByRole("dialog");
-    expect(within(note).getByText("登坂").previousElementSibling).toHaveStyle({
-      backgroundColor: PROFILE_COST_CATALOG.axisColors.ascent,
+  it("はじめは「負担で塗る」で、塗る区間のある軸の札を並べ、負担の大きい2つを積む。札を押すと積む軸を足し・外し、端末に覚える", async () => {
+    window.localStorage.clear();
+    const catalog = {
+      ...PROFILE_COST_CATALOG,
+      axes: [
+        ...PROFILE_COST_CATALOG.axes,
+        { axisId: "stopping", label: "停止" },
+        { axisId: "friction", label: "摩擦" },
+      ],
+      axisColors: { ...PROFILE_COST_CATALOG.axisColors, stopping: "rgb(1, 2, 3)", friction: "rgb(4, 5, 6)" },
+    };
+    const segment = makeRouteSegment({
+      distance_km: 1,
+      ...penaltyFields({ ascent: 40, vibration: 10, stopping: 25 }, 1),
     });
-    expect(within(note).queryByText("振動")).toBeNull();
-    expect(note).toHaveTextContent(
-      "高さは区間ごとの1kmあたりの負担で、上端はこのルートで最も大きい区間の値です（曲がる所と回避指定は含みません）。色ごとの面積は、その種類の負担の合計を表します。横の右端は、一覧で最も長い候補の距離",
-    );
+    const { unmount } = render(profileElement({ segments: [segment], scaleKm: 1, catalog }));
+    expect(screen.getByRole("tab", { name: BURDEN_PAINT_NAME })).toHaveAttribute("aria-selected", "true");
+    const chips = () =>
+      within(screen.getByRole("list", { name: "積む負担の種類" }))
+        .getAllByRole("button")
+        .map((chip) => [chip.textContent, chip.getAttribute("aria-pressed")]);
+    const fills = () =>
+      [...screen.getByRole("img", { name: "道のりに沿った負担" }).querySelectorAll("path[fill]")].map((path) =>
+        path.getAttribute("fill"),
+      );
+
+    expect(chips()).toEqual([
+      ["登坂", "true"],
+      ["振動", "false"],
+      ["停止", "true"],
+    ]);
+    expect(fills()).toEqual([catalog.axisColors.ascent, catalog.axisColors.stopping]);
+
+    await userEvent.click(screen.getByRole("button", { name: "振動" }));
+    await userEvent.click(screen.getByRole("button", { name: "登坂" }));
+    expect(fills()).toEqual([catalog.axisColors.vibration, catalog.axisColors.stopping]);
+
+    unmount();
+    render(profileElement({ segments: [segment], scaleKm: 1, catalog }));
+    expect(chips()).toEqual([
+      ["登坂", "false"],
+      ["振動", "true"],
+      ["停止", "true"],
+    ]);
   });
 
   it("両方のタブで、経由地を通る所に縦の線と地図のピンと同じ番号の印を出し、走行中は走り終えた経由地を薄める", async () => {

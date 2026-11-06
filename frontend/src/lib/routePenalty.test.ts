@@ -1,7 +1,7 @@
 /**
  * `lib/routePenalty.ts: penaltyRows`——内訳の行の名前と色。
  *
- * 見るもの: 曲がる所の行を倍率の掛かる軸の色で、回避指定の行をデータなしと別の色で塗ること、一覧が届くまで・取れない間の行の名前。
+ * 見るもの: 回避指定の行を、データなしとも曲がる所とも別の色で塗ること、一覧が届くまで・取れない間の行の名前。
  *
  * ここで見ないもの: 行の並びと分の書き方 → `features/route/RouteAxisProfile/RouteAxisProfile.test.tsx`。
  */
@@ -17,7 +17,7 @@ const CATALOG: PenaltyCatalog = {
   axisColors: { stopping: "rgb(1, 2, 3)" },
   avoidanceLabel: "回避指定",
   turnLabel: "曲がる所",
-  turnAxisId: "stopping",
+  turnColor: "rgb(4, 5, 6)",
   loaded: true,
   failed: false,
 };
@@ -27,14 +27,12 @@ const NOT_LOADED = {
   axisColors: {},
   avoidanceLabel: "",
   turnLabel: "",
-  turnAxisId: "",
   loaded: false,
 };
 
 describe("penaltyRows", () => {
-  it("曲がる所は倍率の掛かる軸と同じ色、回避指定はデータなしと別の色で塗る", () => {
-    const [axis, turn, avoidance] = penaltyRows(PENALTY, CATALOG);
-    expect(turn.color).toBe(axis.color);
+  it("回避指定はデータなしとも曲がる所とも別の色で塗る", () => {
+    const [, turn, avoidance] = penaltyRows(PENALTY, CATALOG);
     expect(avoidance.color).not.toBe(palette.semantic.no_data);
     expect(avoidance.color).not.toBe(turn.color);
   });
