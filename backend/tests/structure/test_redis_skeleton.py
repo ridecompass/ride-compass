@@ -22,7 +22,7 @@ from pathlib import Path
 APP_ROOT = Path(__file__).resolve().parent.parent.parent / "app"
 
 SKELETON_SYMBOLS = (
-    "get_redis_client_or_none",
+    "get_redis_client",
     "record_redis_failure",
     "record_redis_success",
     "redis_available",
@@ -68,7 +68,7 @@ def test_detects_a_copied_skeleton(tmp_path: Path) -> None:
     """検査が効いていること（わざと1件置いて捕まえる）。"""
     (tmp_path / "services").mkdir()
     (tmp_path / "services" / "sample.py").write_text(
-        "from app.infrastructure.redis_client import get_redis_client_or_none\n",
+        "from app.infrastructure.redis_client import get_redis_client\n",
         encoding="utf-8",
     )
 

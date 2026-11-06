@@ -20,6 +20,7 @@ import pytest_asyncio
 import redis.asyncio
 from hypothesis import settings as hypothesis_settings
 from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from app.batch.common import asyncpg_dsn
@@ -178,11 +179,11 @@ def redis_server():
 @pytest.fixture
 async def fake_redis(monkeypatch, redis_server):
     """空のRedis。接続を作る所（`redis.asyncio.from_url`）を同じサーバのfakeredisへ差し、共有クライアントを
-    閉じる口（`redis_client.py: close_redis_client`）で作る前に戻すので、`get_redis_client_or_none`を読むどの
+    閉じる口（`redis_client.py: close_redis_client`）で作る前に戻すので、`get_redis_client`を読むどの
     モジュールからも同じものが見える。返すのはその共有クライアントで、値は生のバイト列で返る。"""
     monkeypatch.setattr(redis.asyncio, "from_url", functools.partial(fakeredis.FakeAsyncRedis.from_url, server=redis_server))
     await redis_client.close_redis_client()
-    yield redis_client.get_redis_client_or_none()
+    yield redis_client.get_redis_client()
     await redis_client.close_redis_client()
 
 
@@ -443,7 +444,7 @@ def _prepare_worktree_database() -> str:
     name = default_test_database_name()
     try:
         created = asyncio.run(_create_database_if_absent(name, str(WORKTREE_ROOT)))
-    except Exception as exc:  # 作れない理由はそのまま伝える
+    except (OSError, asyncpg.PostgresError) as exc:  # 作れない理由はそのまま伝える
         print(
             f"作業ツリー専用のテストDBを用意できないため、共有の{SHARED_TEST_DATABASE}を使います"
             f"（並行セッションと衝突しうる）: {exc}\n"
@@ -529,7 +530,7 @@ def _prepare_worker_database(explicit: str | None, worker: str) -> str:
     try:
         asyncio.run(_create_database_if_absent(name, None if explicit else str(WORKTREE_ROOT),
                                                base if explicit else TEMPLATE_TEST_DATABASE))
-    except Exception as exc:  # 作れない理由はそのまま伝える
+    except (OSError, asyncpg.PostgresError) as exc:  # 作れない理由はそのまま伝える
         pytest.exit(f"ワーカーのテストDB {name} を用意できない（-n を外せば1つのDBで回る）: {exc}", returncode=1)
     return f"{server}/{name}"
 
@@ -555,7 +556,7 @@ async def road_graph_engine():
     try:
         async with engine.connect() as conn:
             await conn.execute(text("SELECT 1"))
-    except Exception as exc:  # 接続できない理由はそのまま伝える
+    except (OSError, SQLAlchemyError) as exc:  # 接続できない理由はそのまま伝える
         await engine.dispose()
         # URLはそのまま出さない（パスワードを含む）。行き先はDB名で足りる。
         database = postgis_database_url().rsplit("/", 1)[-1]
@@ -564,14 +565,11 @@ async def road_graph_engine():
         )
 
     # 拡張はアプリと同じ一覧から入れる（テスト側で書き写すと、スキーマが新しい拡張を
-    # 要求し始めたときにここだけ古いまま「型が存在しません」で落ちる）。入れられない
-    # 権限のときは握って進み、何が足りないかはcreate_tables()に言わせる。
+    # 要求し始めたときにここだけ古いまま「型が存在しません」で落ちる）。既に入っていれば何もしない。入れられなければ
+    # その理由で止める。
     for extension in REQUIRED_EXTENSIONS:
-        try:
-            async with engine.begin() as conn:
-                await conn.execute(text(f"CREATE EXTENSION IF NOT EXISTS {extension}"))
-        except Exception:
-            pass
+        async with engine.begin() as conn:
+            await conn.execute(text(f"CREATE EXTENSION IF NOT EXISTS {extension}"))
     await create_tables(engine)
     # create_tables()は在る表を直さないので、前の実行が宣言と違う形で残した表（表を入れ替える実装を壊して回した・
     # ORMの宣言を一時に壊して回した）のまま走ってしまう。宣言と差があれば、表を消して今の宣言から作り直す。

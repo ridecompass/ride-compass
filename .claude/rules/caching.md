@@ -113,7 +113,7 @@ paths:
 
 ## 直接使ってよい場所
 
-`get_redis_client_or_none`・`record_redis_failure`・`record_redis_success`・`redis_available`を直接呼んでよいファイルは
+`get_redis_client`・`record_redis_failure`・`record_redis_success`・`redis_available`を直接呼んでよいファイルは
 `backend/tests/structure/test_redis_skeleton.py: ALLOWED`が持つ（骨格そのもの・その接続本体と、単一キーのJSON読み書きでは
 表現できないもの）。ここに無いファイルで使うとテストが落ちる。寄せられない事情があるなら、理由とともに`ALLOWED`へ足すこと。
 

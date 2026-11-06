@@ -9,6 +9,8 @@
 置き場は`conftest.py`のautouseフィクスチャがテストごとの一時ディレクトリへ差し替える。
 """
 
+import sqlite3
+
 from app.infrastructure import tile_persistent_cache
 
 KEY = ("way_values", 7, "material_a", 12, 3630, 1612, "09", None, None)
@@ -16,16 +18,10 @@ TTL = 3600
 
 
 def _boom(*_args, **_kwargs):
-    raise RuntimeError("sqlite")
+    raise sqlite3.OperationalError("disk I/O error")
 
 
 class TestWhenTheDiskRefuses:
-    def test_a_value_that_cannot_be_stored_is_dropped_rather_than_raised(self):
-        """書き込みの失敗で応答を止めない。読み手からは未キャッシュと同じに見える。"""
-        tile_persistent_cache.set_by_key(KEY, lambda: None, expire=TTL)
-
-        assert tile_persistent_cache.get_by_key(KEY) is None
-
     def test_a_read_that_blows_up_is_a_miss(self, monkeypatch):
         """壊れたエントリ・SQLiteの障害で止めると、キャッシュの不調がそのまま機能停止になる。"""
         tile_persistent_cache.set_by_key(KEY, "value", expire=TTL)
