@@ -140,14 +140,13 @@ WHERE v.osm_way_id IS NOT NULL
 ON CONFLICT (vid) DO UPDATE SET elev = EXCLUDED.elev
 """
 _VERTEX_ELEVATIONS = """
-SELECT v.osm_way_id, v.segment_index, v.ord, v.along_m, v.on_structure, e.elev
+SELECT v.osm_way_id, v.segment_index, v.ord, v.along_m, e.elev
 FROM _vertex v LEFT JOIN _vertex_elev e ON e.vid = v.vid
 WHERE v.osm_way_id IS NOT NULL
 """
 
 _ELEVATION_COLUMNS = ("start_elevation_m", "end_elevation_m", "elevation_gain_m", "elevation_loss_m",
-                      "average_grade", "steepest_gain_percent", "steepest_loss_percent", "on_structure",
-                      "elevation_profile_m")
+                      "average_grade", "steepest_gain_percent", "steepest_loss_percent", "elevation_profile_m")
 
 #: 値の出た区間だけを入れる。`$1`は断面の刻みの上限（m）。
 _INSERT_ELEVATION = f"""

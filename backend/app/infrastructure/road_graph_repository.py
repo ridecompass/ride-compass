@@ -169,7 +169,7 @@ ORDER BY re.osm_way_id, re.segment_index
 
 
 #: 道路網全体の配列を作る読み出しが読む較正値。値は作り直しに使った値（`derived_data_meta.py: recorded_tuning_sql`）で、
-#: 文へ値で渡り、文が読む表には出ない。
+#: 文へ値で渡る。
 NETWORK_TUNING = (TURN_BEARING_DISTANCE_ID,)
 
 #: 区間の端点全件（`road_edges`の端点は`road_nodes`に行を持ち、`road_nodes`の全行が`node_turns`に行を持つ）。

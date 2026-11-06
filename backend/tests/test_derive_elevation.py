@@ -191,8 +191,7 @@ VALLEY_PIXELS = ((40, 40), (40, 200), (40, 44))
 
 @pytest.mark.parametrize("structure", [{"bridge": "viaduct"}, {"tunnel": "yes"}])
 async def test_a_bridge_or_tunnel_does_not_climb_the_terrain_under_it(elevation_conn, structure):
-    """浮いた橋・地中のトンネルの区間は、下の地表の起伏を上り下りに数えない。同じ形のタグの無い道は数える。
-    どちらの区間も、橋かトンネルだったかを値と一緒に持つ（前回の値を使い回してよいかを、形と並べて見分けるため）。"""
+    """浮いた橋・地中のトンネルの区間は、下の地表の起伏を上り下りに数えない。同じ形のタグの無い道は数える。"""
     await ingest_records("osm_way", [
         *(_way(way_id, pixels) for way_id, pixels, _ in CASES),
         _way(11, VALLEY_PIXELS), _way(12, VALLEY_PIXELS, structure)], conn=elevation_conn)
@@ -201,10 +200,9 @@ async def test_a_bridge_or_tunnel_does_not_climb_the_terrain_under_it(elevation_
         await derive_elevation_at_default_step(elevation_conn)
 
     rows = await elevation_conn.fetch(
-        "SELECT osm_way_id, elevation_gain_m, elevation_loss_m, on_structure FROM edge_elevation"
-        " WHERE osm_way_id IN (11, 12)")
-    assert {r["osm_way_id"]: (r["elevation_gain_m"], r["elevation_loss_m"], r["on_structure"]) for r in rows} == {
-        11: (10.0, 10.0, False), 12: (0.0, 0.0, True)}
+        "SELECT osm_way_id, elevation_gain_m, elevation_loss_m FROM edge_elevation WHERE osm_way_id IN (11, 12)")
+    assert {r["osm_way_id"]: (r["elevation_gain_m"], r["elevation_loss_m"]) for r in rows} == {
+        11: (10.0, 10.0), 12: (0.0, 0.0)}
 
 
 @pytest.mark.parametrize(("profile_step_m", "climb"), [(50.0, (10.0, 10.0)), (5000.0, (0.0, 0.0))],

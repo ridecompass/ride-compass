@@ -21,7 +21,7 @@
 source_features(source='dem')          ← 生データ。取り直さない限り変わらない
    │ derive_elevation.py: 区間を等しい刻みに分けた点で、画素ごとに製品を選んで標高を読み、勾配を出す
    ▼
-edge_elevation（start/end・gain/loss・average・一番急な登りと下り・橋かトンネルか）
+edge_elevation（start/end・gain/loss・average・一番急な登りと下り・断面の点）
    │ 探索フェーズが材料として読む（road_graph_repository.py）
    ▼
 経路の集計（domain/route.py: route_elevation_gain）

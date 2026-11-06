@@ -161,9 +161,9 @@ EDGE_ROW_ARRAY_FIELDS: tuple[str, ...] = tuple(
 def elevation_values_sql(vertices: str, step_m: str) -> str:
     """区間の点列（標高の断面）から、標高と勾配の値を出すSQL。
 
-    `vertices`は`(osm_way_id, segment_index, ord, along_m, elev, on_structure)`を返す関係。`along_m`は区間の始まりから
+    `vertices`は`(osm_way_id, segment_index, ord, along_m, elev)`を返す関係。`along_m`は区間の始まりから
     道に沿って測った点の位置（m）で、距離はすべてこの差で測る——点どうしを直線で測ると、曲がった区間で道のりより短く出て
-    勾配が大きく出る。区間の長さは最後の点の位置。`on_structure`は値を出すのに使わず、値と一緒に返す。
+    勾配が大きく出る。区間の長さは最後の点の位置。
 
     **要約の列は、どれも断面の隣り合う2点の間（点の間）のうち、勾配として数える間だけから出す**。数えるかは
     所要時間が点の間を読むときと同じ判定（`domain/elevation_profile.py: interval_grade`）で、両端に値があり、長さが0でなく、
@@ -181,7 +181,7 @@ def elevation_values_sql(vertices: str, step_m: str) -> str:
     return f"""
 -- 標高は残す断面の点と同じ精度（real）に落としてから比べる。所要時間はその点を読むので、上限ちょうどの間で数えるかが分かれない。
 WITH v AS (
-    SELECT osm_way_id, segment_index, ord, along_m, on_structure, elev::real::float8 AS elev FROM ({vertices}) s),
+    SELECT osm_way_id, segment_index, ord, along_m, elev::real::float8 AS elev FROM ({vertices}) s),
 pairs AS (
     SELECT *, max(along_m) OVER (PARTITION BY osm_way_id, segment_index) AS length_m,
            elev - lag(elev) OVER w AS diff,
@@ -192,7 +192,7 @@ counted AS (
                    THEN diff / (CASE WHEN length_m < {step_m} THEN {step_m} ELSE d END) * 100 END AS g
     FROM pairs),
 raw AS (
-    SELECT osm_way_id, segment_index, bool_or(on_structure) AS on_structure,
+    SELECT osm_way_id, segment_index,
            array_agg(elev::real ORDER BY ord) AS elevation_profile_m,
            array_agg(elev ORDER BY ord) FILTER (WHERE elev IS NOT NULL) AS known,
            coalesce(sum(greatest(diff, 0)) FILTER (WHERE g IS NOT NULL), 0) AS gain,
@@ -209,6 +209,6 @@ SELECT osm_way_id, segment_index,
        round(((gain - loss) / counted_m * 100)::numeric, {AVERAGE_GRADE_DECIMALS}) AS average_grade,
        round(steepest_up::numeric, {AVERAGE_GRADE_DECIMALS})   AS steepest_gain_percent,
        round(steepest_down::numeric, {AVERAGE_GRADE_DECIMALS}) AS steepest_loss_percent,
-       on_structure, elevation_profile_m
+       elevation_profile_m
 FROM raw WHERE cardinality(known) >= 2
 """

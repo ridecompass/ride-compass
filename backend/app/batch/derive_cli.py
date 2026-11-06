@@ -6,12 +6,14 @@
 
     .venv\\Scripts\\python.exe -m app.batch.derive_cli                      # 全部の段
     .venv\\Scripts\\python.exe -m app.batch.derive_cli --stages elevation   # 標高の段（と、それを読む後ろの段）
+    .venv\\Scripts\\python.exe -m app.batch.derive_cli --stages network     # 段を流さず、道路網の配列だけ
 
 **作り直す段は人が選ぶ。** 何が変わったかを自動で判定して段を飛ばす仕組みは持たない。選んだ段の出力を読む後ろの段
 （`after`。たどった先も）は入口が足す——区間を切る段は値の表を空にするので、topology を選べば区間を指す段も全部流れる。
 引数が無ければ全部の段を流す。流した段は、どの区間もすべて計算する。
 
-**道路網の配列は毎回作る**（本番で数分）。配列が読む表を書く段を流したかで分けない。
+**道路網の配列は毎回作る**（本番で数分）。配列が読む表を書く段を流したかで分けない。配列は、段の後ろに必ず流れる
+最後の段（`NETWORK`）として扱い、`--stages network`は段を流さずに配列だけを作る（配列だけが読む較正値を変えたとき）。
 
 段が何を読むかは`STAGES`の宣言が持ち、宣言の漏れは段が読んだ表の数で見張る（`tests/test_derive_stages.py: test_each_stage_declares_what_it_reads_and_writes`）。
 前の段（`after`）には、読む表を書く段と、自分が書く表の行を入れる・消す段を挙げる（区間を切る段は、区間・道・頂点を
@@ -28,9 +30,10 @@
 何も読み込まれていない——そこを読むと、管理画面で変えた値ではなく宣言の既定が効く。
 段へ渡るのは`STAGES`が宣言した較正値だけである。
 
-**作り直しの記録（作った取込・表の列・使った較正値。`derived_data_meta.py`）は、流した段の分だけ今の値にし、流さなかった段の
-分は前回の記録を残す**——流さなかった段の表は前回の取込・列・較正値で作ったままなので、今の値を書くと鮮度の台帳と、記録を
-読む所（事故密度の分母・地図の点のタイル等）が表と食い違う。道路網の配列が読む較正値は、配列を毎回作るので毎回今の値にする。
+**作り直しの記録（作った取込・表の列・使った較正値。`derived_data_meta.py`）は、鍵（取込のソース・表・較正値）ごとに、
+それを使う段が全部流れたときだけ今の値にし、ほかは前回の記録を残す**（`carried_over`）——流さなかった段の表は前回の取込・列・
+較正値で作ったままなので、今の値を書くと鮮度の台帳と、記録を読む所（事故密度の分母・地図の点のタイル等）が表と食い違う。
+道路網の配列が読む較正値は、配列（`NETWORK`）が毎回流れるので毎回今の値になる。
 """
 
 import argparse
@@ -38,10 +41,11 @@ import asyncio
 import logging
 import shutil
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import ModuleType
+from typing import TypeVar
 
 import asyncpg
 
@@ -127,42 +131,65 @@ STAGES: tuple[DeriveStage, ...] = (
 
 
 STAGE_NAMES: tuple[str, ...] = tuple(stage.name for stage in STAGES)
+#: 段の後ろに必ず流れる道路網の配列の名前。段の名前と並べて`--stages`で選べ、選ぶと段を流さずに配列だけを作る。
+NETWORK = "network"
+
+
+def _check_order(stages: Sequence[DeriveStage]) -> None:
+    """前の段（`after`）がどれも前にあること。`stages_to_run`は段の順に1度なめて後ろの段を足すので、これが崩れると黙って落とす。"""
+    seen: set[str] = set()
+    for stage in stages:
+        if missing := set(stage.after) - seen:
+            raise RuntimeError(f"段 {stage.name} の前の段が前に無い: {sorted(missing)}")
+        seen.add(stage.name)
+
+
+_check_order(STAGES)
 
 
 def stages_to_run(names: Sequence[str] | None) -> list[DeriveStage]:
-    """選んだ段（Noneか空なら全部の段）と、その出力を読む後ろの段（`after`をたどった先も）を、段の順に並べる。"""
+    """選んだ段（Noneか空なら全部の段）と、その出力を読む後ろの段（`after`をたどった先も）を、段の順に並べる。
+    `NETWORK`だけを選べば段は流さない（配列はどのときも作る）。"""
     if not names:
         return list(STAGES)
-    unknown = sorted(set(names) - set(STAGE_NAMES))
+    unknown = sorted(set(names) - {*STAGE_NAMES, NETWORK})
     if unknown:
-        raise ValueError(f"知らない段: {unknown}（段は {', '.join(STAGE_NAMES)}）")
-    chosen = set(names)
-    # `after`は前にある段だけを挙げるので、段の順に1度なめれば、たどった先まで入る。
+        raise ValueError(f"知らない段: {unknown}（段は {', '.join((*STAGE_NAMES, NETWORK))}）")
+    chosen = set(names) - {NETWORK}
     for stage in STAGES:
         if chosen & set(stage.after):
             chosen.add(stage.name)
     return [stage for stage in STAGES if stage.name in chosen]
 
 
-def recorded_runs(previous: Mapping[str, int], runs: Mapping[str, int], ran: Sequence[DeriveStage]) -> dict[str, int]:
-    """作り直しの記録に書く取込: 流した段が読むソースは今の取込、ほかは前回の記録。"""
-    sources = {source for stage in ran for source in stage.sources}
-    return {**previous, **{source: run for source, run in runs.items() if source in sources}}
+def _users(pairs: Iterable[tuple[str, str]]) -> dict[str, frozenset[str]]:
+    users: dict[str, set[str]] = {}
+    for key, user in pairs:
+        users.setdefault(key, set()).add(user)
+    return {key: frozenset(names) for key, names in users.items()}
 
 
-def recorded_columns(previous: Mapping[str, frozenset[str]], columns: Mapping[str, frozenset[str]],
-                     ran: Sequence[DeriveStage]) -> dict[str, frozenset[str]]:
-    """作り直しの記録に書く表の列: 流した段の表は今の宣言の列、ほかは前回の記録。"""
-    tables = {table for stage in ran for table in stage.tables}
-    return {**previous, **{table: names for table, names in columns.items() if table in tables}}
+#: 作り直しの記録の鍵ごとの、その鍵を使う段（道路網の配列は`NETWORK`）。取込のソースは読む段、表は書く段、較正値は読む段。
+SOURCE_USERS = _users((source, stage.name) for stage in STAGES for source in stage.sources)
+TABLE_USERS = _users((table, stage.name) for stage in STAGES for table in stage.tables)
+TUNING_USERS = _users([*((param, stage.name) for stage in STAGES for param in stage.tuning.values()),
+                       *((param, NETWORK) for param in NETWORK_TUNING)])
+
+_V = TypeVar("_V")
 
 
-def recorded_tuning(previous: Mapping[str, float], tuning: Mapping[str, float],
-                    ran: Sequence[DeriveStage]) -> dict[str, float]:
-    """作り直しの記録に書く較正値: 流した段と道路網の配列が読む較正値は今の値、ほかの段の較正値は前回の記録（無ければ今の値）。"""
-    current = {*(param for stage in ran for param in stage.tuning.values()), *NETWORK_TUNING}
-    ids = {*(param for stage in STAGES for param in stage.tuning.values()), *NETWORK_TUNING}
-    return {param: tuning[param] if param in current or param not in previous else previous[param] for param in sorted(ids)}
+def carried_over(previous: Mapping[str, _V], current: Mapping[str, _V], users: Mapping[str, frozenset[str]],
+                 ran: Iterable[str]) -> dict[str, _V]:
+    """作り直しの記録に書く値（鍵は`users`の鍵）: 使う段が全部流れた鍵は今の値、ほかは前回の記録。前回に無ければ書かない——
+    読み手は記録の無い較正値を宣言の既定で作ったとみなし、鮮度の台帳は記録の無い取込を作り直しが要る側に数える。"""
+    done = {*ran, NETWORK}
+    result: dict[str, _V] = {}
+    for key, used_by in users.items():
+        if key in current and used_by <= done:
+            result[key] = current[key]
+        elif key in previous:
+            result[key] = previous[key]
+    return result
 
 
 #: 作り直す間の表を置くスキーマ。同時に2本走ると互いの表を消し合うため、作り直しは排他の鍵
@@ -285,13 +312,12 @@ async def run(database_url: str, stages: Sequence[str] | None = None) -> int:
         previous = await derived_data_meta.read_records(conn)
         # 作った取込・列・較正値の記録も作業用のスキーマで書く——事故密度の分母が取込の記録から読まれ、作業用の
         # スキーマから作る道路網の配列も数と同じ取込の年で割り、記録した較正値で読むため。どの記録も派生の表と一緒に入れ替わる。
-        tables = [*(table for stage in ran for table in stage.tables),
-                  derived_data_meta.DerivedSourceRunRow.__tablename__, derived_data_meta.DerivedColumnRow.__tablename__,
-                  derived_data_meta.DerivedTuningRow.__tablename__]
+        tables = [*(table for stage in ran for table in stage.tables), *derived_data_meta.RECORD_TABLES]
         await _create_work_tables(conn, tables)
-        await derived_data_meta.replace_source_runs(conn, recorded_runs(previous.runs, runs, ran))
-        await derived_data_meta.replace_columns(conn, recorded_columns(previous.columns, columns, ran))
-        await derived_data_meta.replace_tuning(conn, recorded_tuning(previous.tuning, tuning, ran))
+        done = [stage.name for stage in ran]
+        await derived_data_meta.replace_source_runs(conn, carried_over(previous.runs, runs, SOURCE_USERS, done))
+        await derived_data_meta.replace_columns(conn, carried_over(previous.columns, columns, TABLE_USERS, done))
+        await derived_data_meta.replace_tuning(conn, carried_over(previous.tuning, tuning, TUNING_USERS, done))
         for index, stage in enumerate(ran, 1):
             stage_started = time.perf_counter()
             logger.info("段 %s を開始（%d/%d）", stage.name, index, len(ran))
@@ -312,14 +338,15 @@ async def run(database_url: str, stages: Sequence[str] | None = None) -> int:
                            _WORK_SCHEMA, exc_info=True)
         await conn.close()
     logger.info("派生を作り直して入れ替えた: 流した段 %s / 派生データの世代 %d / %s",
-                "→".join(stage.name for stage in ran), revision, format_duration(time.perf_counter() - started))
+                "→".join([*(stage.name for stage in ran), NETWORK]), revision, format_duration(time.perf_counter() - started))
     return 0
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="生データから派生を作り直す（選んだ段と、それを読む後ろの段。選ばなければ全部の段）")
-    parser.add_argument("--stages", nargs="+", choices=STAGE_NAMES, metavar="段",
-                        help=f"作り直す段（{', '.join(STAGE_NAMES)}）。その出力を読む後ろの段も流す")
+    parser.add_argument("--stages", nargs="+", metavar="段",
+                        help=f"作り直す段（{', '.join(STAGE_NAMES)}）。その出力を読む後ろの段も流す。"
+                             f"{NETWORK}は段を流さず道路網の配列だけを作る")
     return run_batch_cli(parser, lambda args, database_url: run(database_url, args.stages))
 
 

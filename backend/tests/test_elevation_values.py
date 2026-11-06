@@ -37,9 +37,9 @@ async def values(session, segments: dict[tuple[int, int], list], along=None) -> 
         positions = (along or {}).get((way, segment), [ord_ * STEP_M for ord_ in range(len(elevations))])
         for ord_, (elev, along_m) in enumerate(zip(elevations, positions, strict=True)):
             elev_sql = "NULL" if elev is None else repr(float(elev))
-            rows.append(f"({way}, {segment}, {ord_}, {along_m}::float8, {elev_sql}::float8, false)")
+            rows.append(f"({way}, {segment}, {ord_}, {along_m}::float8, {elev_sql}::float8)")
     relation = (f"SELECT * FROM (VALUES {', '.join(rows)})"
-                " AS v(osm_way_id, segment_index, ord, along_m, elev, on_structure)")
+                " AS v(osm_way_id, segment_index, ord, along_m, elev)")
     result = await session.execute(text(elevation_values_sql(relation, f"{STEP_M}::float8")))
     return {
         (row.osm_way_id, row.segment_index): {

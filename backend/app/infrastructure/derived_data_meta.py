@@ -37,7 +37,7 @@ class DerivedDataMetaRow(Base):
 class DerivedSourceRunRow(Base):
     """今の`public`の派生の表を作った取込。ソースごとに1行。
 
-    流した段が読むソースは作り直しを始めた時点の成功した最新の取込を、流さなかった段だけが読むソースは前回の記録を書く
+    そのソースを読む段が全部流れたら作り直しを始めた時点の成功した最新の取込を、そうでなければ前回の記録を書く
     （鮮度台帳がソースごとに比べる）。作り直す派生の表と一緒に作業用のスキーマで書き、表ごと入れ替える（`derive_cli.py`）——
     事故密度の分母がこの記録の事故の取込の年から読まれる（`road_graph_repository.py: get_accident_years`）ので、
     入れ替えの前に作業用のスキーマから作る道路網の配列も、入れ替えの後の読み手も、数と同じ取込の年を読む。段が読んだ
@@ -77,6 +77,11 @@ class DerivedTuningRow(Base):
 
     param_id: Mapped[str] = mapped_column(String, primary_key=True)
     value: Mapped[float] = mapped_column(Double, nullable=False)
+
+
+#: 派生の表と一緒に作業用のスキーマで書き、表ごと入れ替える作り直しの記録の表。
+RECORD_TABLES: tuple[str, ...] = (DerivedSourceRunRow.__tablename__, DerivedColumnRow.__tablename__,
+                                  DerivedTuningRow.__tablename__)
 
 
 def recorded_tuning_sql(param_id: str) -> str:
@@ -148,15 +153,6 @@ async def read_records(conn: asyncpg.Connection) -> DeriveRecords:
     tuning = {row["param_id"]: row["value"] for row in await conn.fetch(
         f"SELECT param_id, value FROM public.{DerivedTuningRow.__tablename__}")}
     return DeriveRecords(runs=runs, columns={table: frozenset(names) for table, names in columns.items()}, tuning=tuning)
-
-
-async def read_tuning(conn: asyncpg.Connection, param_ids: Iterable[str]) -> dict[str, float]:
-    """`param_ids`の、作り直しに使った較正値（id → 値。行が無ければ`recorded_tuning_sql`のとおり既定）。"""
-    ids = list(param_ids)
-    row = await conn.fetchrow("SELECT " + ", ".join(recorded_tuning_sql(param_id) for param_id in ids))
-    if row is None:
-        raise RuntimeError("較正値の記録の問い合わせが行を返さなかった")
-    return dict(zip(ids, row.values()))
 
 
 async def replace_tuning(conn: asyncpg.Connection, values: Mapping[str, float]) -> None:
