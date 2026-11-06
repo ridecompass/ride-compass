@@ -135,16 +135,26 @@ describe("生成の結果", () => {
     await submit(rendered);
     expect(rendered.result.current.generation.multipliersNotApplied).toBe(false);
 
-    act(() => rendered.result.current.conditions.setCostPreference({ strength: 1.5, multipliers: { ascent: 2 } }));
+    act(() =>
+      rendered.result.current.conditions.setCostPreference({
+        strength: 1.5,
+        multipliers: { ascent: 2 },
+        disabled_axes: [],
+      }),
+    );
     backend.respond([route("r1")]);
     await submit(rendered);
-    expect(backend.sentRequest()).toMatchObject({ cost_preference: { strength: 1.5, multipliers: {} } });
+    expect(backend.sentRequest()).toMatchObject({
+      cost_preference: { strength: 1.5, multipliers: {}, disabled_axes: [] },
+    });
     expect(rendered.result.current.generation.multipliersNotApplied).toBe(true);
 
     await backend.loadCatalog(rendered);
     backend.respond([route("r1")]);
     await submit(rendered);
-    expect(backend.sentRequest()).toMatchObject({ cost_preference: { strength: 1.5, multipliers: { ascent: 2 } } });
+    expect(backend.sentRequest()).toMatchObject({
+      cost_preference: { strength: 1.5, multipliers: { ascent: 2 }, disabled_axes: [] },
+    });
     expect(rendered.result.current.generation.multipliersNotApplied).toBe(false);
   });
 });

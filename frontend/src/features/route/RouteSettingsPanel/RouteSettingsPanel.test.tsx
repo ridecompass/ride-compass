@@ -1,8 +1,9 @@
 /**
- * `RouteSettingsPanel/RouteSettingsPanel.tsx`——「負担」タブ。費用の軸ごとの倍率を段で選ぶ。
+ * `RouteSettingsPanel/RouteSettingsPanel.tsx`——「負担」タブ。費用の軸ごとに、倍率の段か無効を選ぶ。
  *
- * 見るもの: 一覧を取れないときの告知と再試行で軸が出ること、書いていない軸は標準を選んだ状態で出し、選んだ段を上げること、「標準に戻す」が標準の間は押せず、
- * 押すと倍率だけを標準に戻すこと、負担の強さが ×0 の間は倍率が効かないと添えること。
+ * 見るもの: 一覧を取れないときの告知と再試行で軸が出ること、書いていない軸は標準を選んだ状態で出し、無効と段を選ぶと、その軸を
+ * 無効と倍率の片方にだけ置いて上げること、「標準に戻す」が標準の間は押せず、押すと倍率と無効を標準に戻すこと、負担の強さが ×0 の
+ * 間は倍率が効かないと添えること。
  *
  * ここで見ないもの: 選んだ倍率が生成の要求に載ること → `app/page.test.tsx`。軸の名前・(i)の奥の説明（一覧の値をそのまま描く）。
  *
@@ -20,7 +21,7 @@ import type { CostPreference } from "@/types/route";
 import RouteSettingsPanel from "./RouteSettingsPanel";
 
 /** 親の代わりに、上がった値を持ち直して渡す包み。 */
-function renderPanel(initial: CostPreference = { strength: 1, multipliers: {} }) {
+function renderPanel(initial: CostPreference = { strength: 1, multipliers: {}, disabled_axes: [] }) {
   const onCostPreferenceChange = vi.fn<(next: CostPreference) => void>();
   function Parent() {
     const [preference, setPreference] = useState(initial);
@@ -55,28 +56,36 @@ describe("費用の軸の一覧", () => {
 });
 
 describe("倍率", () => {
-  it("書いていない軸は標準を選んだ状態で出し、選んだ段を上げる。「標準に戻す」は標準の間は押せず、押すと倍率だけを戻す", async () => {
+  it("書いていない軸は標準を選んだ状態で出し、無効と段を選ぶとその軸を片方にだけ置いて上げる。「標準に戻す」は標準の間は押せず、押すと倍率と無効を戻す", async () => {
     serveCostAxisCatalog();
-    const { onCostPreferenceChange } = renderPanel({ strength: 1.5, multipliers: { ascent: 1 } });
+    const { onCostPreferenceChange } = renderPanel({ strength: 1.5, multipliers: { ascent: 1 }, disabled_axes: [] });
     const vibration = await levelsOf("振動の倍率");
     expect(vibration.getByRole("radio", { name: "×1" })).toBeChecked();
     expect(screen.getByRole("button", { name: "標準に戻す" })).toBeDisabled();
 
-    await userEvent.click(vibration.getByRole("radio", { name: "×0" }));
+    await userEvent.click(vibration.getByRole("radio", { name: "無効" }));
     expect(onCostPreferenceChange).toHaveBeenLastCalledWith({
       strength: 1.5,
-      multipliers: { ascent: 1, vibration: 0 },
+      multipliers: { ascent: 1 },
+      disabled_axes: ["vibration"],
     });
+    await userEvent.click(vibration.getByRole("radio", { name: "×2" }));
+    expect(onCostPreferenceChange).toHaveBeenLastCalledWith({
+      strength: 1.5,
+      multipliers: { ascent: 1, vibration: 2 },
+      disabled_axes: [],
+    });
+    await userEvent.click(vibration.getByRole("radio", { name: "無効" }));
 
     await userEvent.click(screen.getByRole("button", { name: "標準に戻す" }));
-    expect(onCostPreferenceChange).toHaveBeenLastCalledWith({ strength: 1.5, multipliers: {} });
+    expect(onCostPreferenceChange).toHaveBeenLastCalledWith({ strength: 1.5, multipliers: {}, disabled_axes: [] });
   });
 
   it("負担の強さが ×0 の間は、倍率が効かないと添える（倍率は選べるまま）", async () => {
     serveCostAxisCatalog();
-    renderPanel({ strength: 0, multipliers: {} });
+    renderPanel({ strength: 0, multipliers: {}, disabled_axes: [] });
     const vibration = await levelsOf("振動の倍率");
     expect(screen.getByRole("status")).toHaveTextContent("負担の強さが ×0 のため、ここの倍率は効きません");
-    expect(vibration.getByRole("radio", { name: "×0" })).toBeEnabled();
+    expect(vibration.getByRole("radio", { name: "無効" })).toBeEnabled();
   });
 });

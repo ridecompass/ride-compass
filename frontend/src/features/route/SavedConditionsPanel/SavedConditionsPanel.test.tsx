@@ -30,7 +30,7 @@ const CURRENT: GenerationConditionsSnapshot = {
   maxRoutes: "8",
   waypoints: [],
   destination: null,
-  costPreference: { strength: 1, multipliers: {} },
+  costPreference: { strength: 1, multipliers: {}, disabled_axes: [] },
   roadAvoidance: {},
 };
 const LOOP: SavedCondition = { ...CURRENT, name: "朝の荒川", origin: null };
@@ -43,7 +43,7 @@ const TRIP: SavedCondition = {
   origin: POINT,
   waypoints: [POINT, POINT],
   destination: POINT,
-  costPreference: { strength: 1, multipliers: { vibration: 2 } },
+  costPreference: { strength: 1, multipliers: { vibration: 2 }, disabled_axes: [] },
 };
 
 function renderSaveButton(

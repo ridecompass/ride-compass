@@ -95,6 +95,18 @@ describe("useMapView", () => {
     expect(result.current.lensControl.premises).toContain("4秒/km ≈ 斜度 2.1%");
   });
 
+  it("選んでいた軸を無効にすると、選んでいない状態で塗り、無効を戻すとまたその軸で塗る", async () => {
+    serve();
+    const { result, rerender } = renderMapView();
+    await waitFor(() => expect(result.current.lensControl.axisOptions).toHaveLength(LENS_COUNT));
+    act(() => result.current.lensControl.onLensChange("ascent"));
+
+    rerender({ costPreference: { strength: 1, multipliers: {}, disabled_axes: ["ascent"] } });
+    expect(result.current.look.lens).toBe(UNSELECTED_LENS_ID);
+    rerender({ costPreference: { strength: 1, multipliers: {}, disabled_axes: [] } });
+    expect(result.current.look.lens).toBe("ascent");
+  });
+
   it("走る向きは地図の上の向きを [0, 360) の10°刻みへ丸めて地図へ渡し、材料の要求へ向きを載せないので向きを変えても取り直さない。走行中は実際に走る向きと速度を渡す", async () => {
     serve();
     const sent = onBackend("GET", "/api/region/lens/ascent/:z/:x/:y", () =>

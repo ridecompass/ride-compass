@@ -33,10 +33,6 @@
   ],
   "cost_multiplier_levels": [
     {
-      "value": 0.0,
-      "label": "×0"
-    },
-    {
       "value": 0.5,
       "label": "×0.5"
     },

@@ -119,10 +119,10 @@ async def region_lens(
     """ルートを出す前の地図がレンズ`lens_id`（総合`total`か費用の軸のid。`domain/lens_values.py`）で道を塗る、指定タイルの
     フィーチャーごとの道ごとの材料: 道の向きに辿った・逆向きに辿った1kmあたりの代償の秒（辿れない向きは載せない）と、
     道の向き。どちらの向きを塗るかは、`/api/cost-axes`の`map_lens.formula`が走行方位で選ぶ。値は時刻`at`（省略すると今。
-    風）と想定速度`speed_kmh`と利用者の値（つまみ`strength`と、軸id→倍率のJSONの`multipliers`。ルート生成と同じ値）で決まり、
-    探索と同じ部品で求める。
+    風）と想定速度`speed_kmh`と利用者の値（つまみ`strength`と、軸id→倍率のJSONの`multipliers`と、無効の軸idのJSONの
+    `disabled_axes`。ルート生成と同じ値）で決まり、探索と同じ部品で求める。
 
-    鍵は路面タイル（`/api/region/road-surface-tiles`）の同じz/x/yのフィーチャーの鍵。知らないレンズは404。
+    鍵は路面タイル（`/api/region/road-surface-tiles`）の同じz/x/yのフィーチャーの鍵。知らないレンズと、無効にした軸のレンズは404。
     """
     check_tile_rate_limit(request, "lens")
     validate_tile_coords(z, x, y)

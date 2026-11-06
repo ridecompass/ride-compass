@@ -918,6 +918,22 @@
               ],
               "title": "Multipliers"
             }
+          },
+          {
+            "name": "disabled_axes",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Disabled Axes"
+            }
           }
         ],
         "responses": {
@@ -1604,6 +1620,22 @@
                 }
               ],
               "title": "Multipliers"
+            }
+          },
+          {
+            "name": "disabled_axes",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Disabled Axes"
             }
           }
         ],
@@ -3025,10 +3057,17 @@
             "additionalProperties": {
               "type": "number",
               "maximum": 2.0,
-              "minimum": 0.0
+              "minimum": 0.5
             },
             "type": "object",
             "title": "Multipliers"
+          },
+          "disabled_axes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Disabled Axes"
           }
         },
         "additionalProperties": false,
@@ -3048,17 +3087,25 @@
             "additionalProperties": {
               "type": "number",
               "maximum": 2.0,
-              "minimum": 0.0
+              "minimum": 0.5
             },
             "type": "object",
             "title": "Multipliers"
+          },
+          "disabled_axes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Disabled Axes"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
           "strength",
-          "multipliers"
+          "multipliers",
+          "disabled_axes"
         ],
         "title": "CostPreference"
       },

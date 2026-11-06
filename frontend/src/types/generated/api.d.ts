@@ -918,6 +918,8 @@ export interface components {
             multipliers?: {
                 [key: string]: number;
             };
+            /** Disabled Axes */
+            disabled_axes?: string[];
         };
         /** CostPreference */
         "CostPreference-Output": {
@@ -930,6 +932,8 @@ export interface components {
             multipliers: {
                 [key: string]: number;
             };
+            /** Disabled Axes */
+            disabled_axes: string[];
         };
         /** DbStatusReport */
         DbStatusReport: {
@@ -2538,6 +2542,7 @@ export interface operations {
                 at?: string | null;
                 strength?: number;
                 multipliers?: string | null;
+                disabled_axes?: string | null;
             };
             header?: never;
             path: {
@@ -3051,6 +3056,7 @@ export interface operations {
             query?: {
                 strength?: number;
                 multipliers?: string | null;
+                disabled_axes?: string | null;
             };
             header?: never;
             path?: never;

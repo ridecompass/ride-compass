@@ -58,12 +58,14 @@ LensEquivalents = ThresholdEquivalents | ExampleEquivalents
 
 def lens_equivalents(axes: CostAxisDefinitions, parameters: LedgerParameters,
                      road_classes: RoadClassDefinitions) -> dict[str, LensEquivalents]:
-    """軸id → 段の境目の目安（体力の軸をコードの表の順、続けて道のストレスの軸）。"""
+    """軸id → 段の境目の目安（数える軸だけを、体力の軸をコードの表の順、続けて道のストレスの軸）。"""
     result: dict[str, LensEquivalents] = {}
     for axis_id, item in EFFORT_AXES.items():
-        result[axis_id] = _effort_equivalents(axes, parameters, road_classes, axis_id, item)
+        if parameters.counts(axis_id):
+            result[axis_id] = _effort_equivalents(axes, parameters, road_classes, axis_id, item)
     for axis_id in axes.burden:
-        result[axis_id] = _burden_examples(axes, parameters, road_classes, axis_id)
+        if parameters.counts(axis_id):
+            result[axis_id] = _burden_examples(axes, parameters, road_classes, axis_id)
     return result
 
 

@@ -65,8 +65,9 @@ class LensService:
     async def way_materials(self, lens_id: str, z: int, x: int, y: int, at: datetime | None,
                             speed_kmh: float, preference: CostPreference) -> dict[str, dict[str, float]] | None:
         """レンズ`lens_id`の、タイルのフィーチャーごとの道ごとの材料（道の向き・逆向きに辿った値と道の向き。値の無い材料は
-        載せない）。知らないレンズならNone。"""
-        if lens_id not in {TOTAL_LENS_ID, *cost_axis_ids(current_cost_axes())}:
+        載せない）。知らないレンズか、利用者が無効にした軸のレンズならNone。"""
+        counts = current_ledger_parameters(preference).counts
+        if lens_id not in {TOTAL_LENS_ID, *filter(counts, cost_axis_ids(current_cost_axes()))}:
             return None
         return _way_materials(await self.tile_table(z, x, y, at, speed_kmh, preference), lens_id)
 

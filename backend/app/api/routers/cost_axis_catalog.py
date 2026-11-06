@@ -88,17 +88,21 @@ async def get_cost_axis_catalog() -> CostAxisCatalogResponse:
 
 _REQUESTED_COST_PREFERENCE: TypeAdapter[CostPreference] = TypeAdapter(RequestedCostPreference)
 _MULTIPLIERS: TypeAdapter[dict[str, float]] = TypeAdapter(dict[str, float])
+_AXIS_IDS: TypeAdapter[list[str]] = TypeAdapter(list[str])
 
 
 def cost_preference_query(
     strength: float = STANDARD_COST_FACTOR,
     multipliers: Annotated[str | None, Query(description="軸id→倍率のJSONの object（書いていない軸は標準）")] = None,
+    disabled_axes: Annotated[str | None, Query(description="数えない（無効にした）軸idのJSONの array")] = None,
 ) -> CostPreference:
     """地図のレンズ（タイル）と凡例の目安の要求の利用者の値（ルート生成の`cost_preference`と同じ型・同じ検証。範囲と軸idは型が
     検め、誤りは型の検査と同じ形の422）。URL がそのまま応答のキャッシュの鍵になるので、クエリで受ける。"""
     try:
         parsed = {} if multipliers is None else _MULTIPLIERS.validate_json(multipliers)
-        return _REQUESTED_COST_PREFERENCE.validate_python({"strength": strength, "multipliers": parsed})
+        disabled = [] if disabled_axes is None else _AXIS_IDS.validate_json(disabled_axes)
+        return _REQUESTED_COST_PREFERENCE.validate_python(
+            {"strength": strength, "multipliers": parsed, "disabled_axes": disabled})
     except ValidationError as error:
         raise RequestValidationError(error.errors()) from error
 

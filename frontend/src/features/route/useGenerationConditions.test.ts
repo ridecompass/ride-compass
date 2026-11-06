@@ -105,22 +105,34 @@ describe("つまみと倍率", () => {
   it("既定は標準で、変えたつまみと倍率は開き直しても残り、送るのは今の費用の軸の、標準でない倍率だけ", async () => {
     serveCostAxisCatalog();
     const first = renderConditions();
-    expect(first.result.current.costPreference).toEqual({ strength: 1, multipliers: {} });
+    expect(first.result.current.costPreference).toEqual({ strength: 1, multipliers: {}, disabled_axes: [] });
     act(() =>
-      first.result.current.setCostPreference({ strength: 1.5, multipliers: { ascent: 2, vibration: 1, gone: 3 } }),
+      first.result.current.setCostPreference({
+        strength: 1.5,
+        multipliers: { ascent: 2, vibration: 1, gone: 3 },
+        disabled_axes: [],
+      }),
     );
 
     const { result } = reopen(first);
 
     await waitFor(() =>
-      expect(result.current.costPreferenceToSend).toEqual({ strength: 1.5, multipliers: { ascent: 2 } }),
+      expect(result.current.costPreferenceToSend).toEqual({
+        strength: 1.5,
+        multipliers: { ascent: 2 },
+        disabled_axes: [],
+      }),
     );
   });
 
   it("前の形（割合の重み）の保存値は読まず、標準に戻す", () => {
     window.localStorage.setItem("ridecompass:cost-preference", JSON.stringify({ axis_a: 0.7 }));
 
-    expect(renderConditions().result.current.costPreference).toEqual({ strength: 1, multipliers: {} });
+    expect(renderConditions().result.current.costPreference).toEqual({
+      strength: 1,
+      multipliers: {},
+      disabled_axes: [],
+    });
   });
 });
 

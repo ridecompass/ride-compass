@@ -2,8 +2,8 @@
 
 import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
 import { axisIconFor } from "@/components/ui/icons/axisIconPalette";
-import { COST_MULTIPLIER_LEVELS } from "@/features/route/costPreference";
-import { STANDARD_COST_FACTOR, multiplierOf } from "@/lib/costPreference";
+import { COST_MULTIPLIER_LEVELS, DISABLED_AXIS_LABEL } from "@/features/route/costPreference";
+import { STANDARD_COST_FACTOR, countsAxis, multiplierOf } from "@/lib/costPreference";
 import {
   costAxisCatalogFetchFailure,
   retryCostAxisCatalogFetch,
@@ -31,11 +31,18 @@ interface RouteSettingsPanelProps {
   onCostPreferenceChange: (next: CostPreference) => void;
 }
 
-/** 「ルート設定」の「負担」タブ。費用の軸ごとの倍率を段で選ぶ（標準・0で数えない）。全体のつまみは「条件」タブが持つ。 */
+/** 「ルート設定」の「負担」タブ。費用の軸ごとに、倍率の段か無効（数えない）を選ぶ。全体のつまみは「条件」タブが持つ。 */
 export default function RouteSettingsPanel({ costPreference, onCostPreferenceChange }: RouteSettingsPanelProps) {
   const catalog = useCostAxisCatalog();
   const catalogFailure = costAxisCatalogFetchFailure(catalog);
-  const standard = catalog.axes.every((axis) => multiplierOf(costPreference, axis.axisId) === STANDARD_COST_FACTOR);
+  const standard = catalog.axes.every(
+    (axis) =>
+      countsAxis(costPreference, axis.axisId) && multiplierOf(costPreference, axis.axisId) === STANDARD_COST_FACTOR,
+  );
+  const withoutAxis = (axisId: string) => ({
+    multipliers: Object.fromEntries(Object.entries(costPreference.multipliers).filter(([id]) => id !== axisId)),
+    disabled_axes: costPreference.disabled_axes.filter((id) => id !== axisId),
+  });
 
   return (
     <div className="flex flex-col gap-3">
@@ -71,13 +78,7 @@ export default function RouteSettingsPanel({ costPreference, onCostPreferenceCha
       <ul className={cn("flex flex-col gap-1.5", costPreference.strength === 0 && "opacity-50")}>
         {catalog.axes.map((axis) => (
           <li key={axis.axisId} className="flex items-center gap-2">
-            {/* ×0 の軸は数えないので、全体のつまみが ×0 のときと同じ薄さにする。段は戻せるよう押せるまま。 */}
-            <span
-              className={cn(
-                "flex min-w-0 flex-1 items-center gap-1",
-                multiplierOf(costPreference, axis.axisId) === 0 && "opacity-50",
-              )}
-            >
+            <span className="flex min-w-0 flex-1 items-center gap-1">
               <span aria-hidden="true" className="inline-flex">
                 {renderAxisIcon(axis)}
               </span>
@@ -86,26 +87,40 @@ export default function RouteSettingsPanel({ costPreference, onCostPreferenceCha
             </span>
             <CostLevelPicker
               aria-label={`${axis.label}の倍率`}
-              usage="この種類の負担を所要時間に足すときに掛ける倍率を選びます。「×0」はこの負担を足しません。"
+              usage="この種類の負担を所要時間に足すときに掛ける倍率を選びます。「無効」はこの負担を数えず、結果にも地図にも出しません。"
               levels={COST_MULTIPLIER_LEVELS}
               value={multiplierOf(costPreference, axis.axisId)}
-              onChange={(multiplier) =>
+              onChange={(multiplier) => {
+                const rest = withoutAxis(axis.axisId);
                 onCostPreferenceChange({
                   ...costPreference,
-                  multipliers: { ...costPreference.multipliers, [axis.axisId]: multiplier },
-                })
-              }
+                  ...rest,
+                  multipliers: { ...rest.multipliers, [axis.axisId]: multiplier },
+                });
+              }}
+              off={{
+                label: DISABLED_AXIS_LABEL,
+                selected: !countsAxis(costPreference, axis.axisId),
+                onSelect: () => {
+                  const rest = withoutAxis(axis.axisId);
+                  onCostPreferenceChange({
+                    ...costPreference,
+                    ...rest,
+                    disabled_axes: [...rest.disabled_axes, axis.axisId],
+                  });
+                },
+              }}
             />
           </li>
         ))}
       </ul>
       {catalog.axes.length > 0 && (
         <Button
-          usage="負担の種類ごとの倍率を、すべて標準（×1）に戻します。"
+          usage="負担の種類ごとの倍率と無効を、すべて標準（×1）に戻します。"
           variant="secondary"
           className="self-end"
           disabled={standard}
-          onClick={() => onCostPreferenceChange({ ...costPreference, multipliers: {} })}
+          onClick={() => onCostPreferenceChange({ ...costPreference, multipliers: {}, disabled_axes: [] })}
         >
           標準に戻す
         </Button>

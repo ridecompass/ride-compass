@@ -27,7 +27,7 @@ describe("負担の利用者の値", () => {
     await openInspection(user);
     await screen.findByText(SHOWN);
 
-    rerender(<RoadInspectorPopup {...props} costPreference={{ strength: 2, multipliers: {} }} />);
+    rerender(<RoadInspectorPopup {...props} costPreference={{ strength: 2, multipliers: {}, disabled_axes: [] }} />);
 
     expect(screen.queryByText(SHOWN)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "この道の負担を見る" })).toBeInTheDocument();

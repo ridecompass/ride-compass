@@ -59,7 +59,7 @@ describe("保存して呼び出す", () => {
       result.current.conditions.setMaxRoutesInput("3");
       result.current.conditions.placeAtSelected(A, null);
       result.current.conditions.setDestination(B);
-      result.current.conditions.setCostPreference({ strength: 0.5, multipliers: { ascent: 2 } });
+      result.current.conditions.setCostPreference({ strength: 0.5, multipliers: { ascent: 2 }, disabled_axes: [] });
       result.current.conditions.setRoadAvoidance({ gravel: "exclude" });
     });
     act(() => result.current.saved.save("荒川へ", false));
@@ -71,7 +71,7 @@ describe("保存して呼び出す", () => {
       result.current.conditions.setMaxRoutesInput("5");
       result.current.conditions.removeWaypoint(0);
       result.current.conditions.clearDestination();
-      result.current.conditions.setCostPreference({ strength: 1, multipliers: {} });
+      result.current.conditions.setCostPreference({ strength: 1, multipliers: {}, disabled_axes: [] });
       result.current.conditions.setRoadAvoidance({});
     });
     act(() => result.current.saved.recall(result.current.saved.saved[0]));
@@ -85,7 +85,7 @@ describe("保存して呼び出す", () => {
     expect(conditions.waypoints).toEqual([A]);
     expect(conditions.destination).toEqual(B);
     expect(conditions.selectedPoint).toEqual({ role: "origin" });
-    expect(conditions.costPreferenceToSend).toEqual({ strength: 0.5, multipliers: { ascent: 2 } });
+    expect(conditions.costPreferenceToSend).toEqual({ strength: 0.5, multipliers: { ascent: 2 }, disabled_axes: [] });
     expect(conditions.roadAvoidance).toEqual({ gravel: "exclude" });
   });
 

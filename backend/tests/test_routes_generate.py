@@ -279,13 +279,15 @@ async def test_the_defaults_that_were_applied_are_echoed(client):
     """画面が見る値と探索が使った値を分けない。省略した項目も、実際に使った値で返す。"""
     conditions = (await _generate(client))["result"]["conditions"]
 
-    assert conditions["cost_preference"] == {"strength": 1.0, "multipliers": dict.fromkeys(EFFORT_AXES, 1.0)}
+    assert conditions["cost_preference"] == {
+        "strength": 1.0, "multipliers": dict.fromkeys(EFFORT_AXES, 1.0), "disabled_axes": []}
     assert conditions["waypoints"] is None and conditions["destination"] is None
     assert conditions["corrected_destination"] is None
 
 
 async def test_the_overrides_that_were_sent_are_echoed(client, bad_axis):
-    """保存したレスポンスの条件をそのまま送り直せば、同じ条件で生成し直せる。書いていない軸の倍率は標準で返る。"""
+    """保存したレスポンスの条件をそのまま送り直せば、同じ条件で生成し直せる。書いていない軸の倍率は標準で、無効にした軸は
+    倍率でなく無効の側に返る。"""
     definitions = road_classes(
         {"kind": classification({"local": [fact_is(HIGHWAY, "residential")]})},
         map_layers={"kind": map_layer()},
@@ -293,12 +295,13 @@ async def test_the_overrides_that_were_sent_are_echoed(client, bad_axis):
     )
     with replaced_road_classes(definitions):
         conditions = (await _generate(
-            client, cost_preference={"strength": 2.0, "multipliers": {BAD_AXIS: 0.5}},
+            client, cost_preference={"strength": 2.0, "multipliers": {BAD_AXIS: 0.5}, "disabled_axes": ["headwind"]},
             road_avoidance={"kind.local": "avoid"}, assumed_speed_kmh=25.0,
         ))["result"]["conditions"]
 
     assert conditions["cost_preference"] == {
-        "strength": 2.0, "multipliers": {**{axis_id: 1.0 for axis_id in EFFORT_AXES}, BAD_AXIS: 0.5}}
+        "strength": 2.0, "multipliers": {**{axis_id: 1.0 for axis_id in EFFORT_AXES if axis_id != "headwind"}, BAD_AXIS: 0.5},
+        "disabled_axes": ["headwind"]}
     assert conditions["road_avoidance"] == {"kind.local": "avoid"}
     assert conditions["assumed_speed_kmh"] == 25.0
 
@@ -319,7 +322,7 @@ async def test_the_calibrated_tolerance_at_the_time_of_generation_is_applied(cli
 
 @pytest.mark.parametrize(("cost_preference", "avoided"), [
     pytest.param({}, True, id="標準では避ける"),
-    pytest.param({"multipliers": {BAD_AXIS: 0.0}}, False, id="軸の倍率0は数えない"),
+    pytest.param({"disabled_axes": [BAD_AXIS]}, False, id="無効の軸は数えない"),
     pytest.param({"strength": 0.0}, False, id="つまみ0は所要時間だけで選ぶ"),
 ])
 async def test_the_strength_and_the_multipliers_weigh_the_cost_of_the_roads(client, world, bad_axis, cost_preference,
@@ -334,6 +337,28 @@ async def test_the_strength_and_the_multipliers_weigh_the_cost_of_the_roads(clie
     ))["result"]["routes"]
 
     assert any(not {parse_edge_key(edge_id)[0] for edge_id in route["edge_ids"]} & bad for route in routes) == avoided
+
+
+async def test_a_disabled_axis_appears_nowhere_in_the_routes(client, world, bad_axis):
+    """無効にした軸（道のストレスの軸と停止）は、候補の内訳・区間の内訳と1kmあたり・事実のどこにも出ない。停止を無効にすると、
+    曲がる所の漕ぎ出しも数えないので、内訳の和は費用に合ったまま。"""
+    world.serve(grid_network(bad_ways={100, 101}, stop_density_of={101: 3.0}))
+    disabled = {BAD_AXIS, "stopping"}
+
+    routes = (await _generate(
+        client, destination=_point(NORTH_EAST), distance_km=None, max_routes=2,
+        cost_preference={"disabled_axes": sorted(disabled)},
+    ))["result"]["routes"]
+
+    assert routes
+    for route in routes:
+        shown = {*route["penalty"]["axis_seconds"], *route["facts"]["axes"]}
+        for segment in route["segments"]:
+            shown |= {*segment["penalty"]["axis_seconds"], *(segment["lens_seconds_per_km"] or {})}
+        assert not shown & disabled
+        assert set(route["penalty"]["axis_seconds"]) == set(EFFORT_AXES) - disabled
+        assert route["estimated_duration_seconds"] + route["penalty"]["total_seconds"] == pytest.approx(
+            route["cost_seconds"], abs=0.5)
 
 
 @pytest.mark.parametrize(("sent", "applied"), [
@@ -361,8 +386,14 @@ async def test_a_destination_moved_to_the_nearest_reachable_road_is_echoed(clien
 # --- 要求の検証 ---
 
 
-async def test_a_multiplier_for_an_axis_that_is_not_a_cost_axis_is_refused_before_any_job(client, bad_axis):
-    response = await _post(client, cost_preference={"multipliers": {"unknown": 1.0}})
+@pytest.mark.parametrize("cost_preference", [
+    pytest.param({"multipliers": {"unknown": 1.0}}, id="知らない軸の倍率"),
+    pytest.param({"disabled_axes": ["unknown"]}, id="知らない軸の無効"),
+    pytest.param({"multipliers": {BAD_AXIS: 1.0}, "disabled_axes": [BAD_AXIS]}, id="無効と倍率の両方に書いた軸"),
+])
+async def test_a_preference_naming_an_unknown_or_an_ambiguous_axis_is_refused_before_any_job(client, bad_axis,
+                                                                                            cost_preference):
+    response = await _post(client, cost_preference=cost_preference)
 
     assert response.status_code == 422
 

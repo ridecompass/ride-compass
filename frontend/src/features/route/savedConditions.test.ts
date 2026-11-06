@@ -35,7 +35,7 @@ const ENTRY: SavedCondition = {
   origin: POINT,
   waypoints: [POINT],
   destination: POINT,
-  costPreference: { strength: 1.5, multipliers: { ascent: 2 } },
+  costPreference: { strength: 1.5, multipliers: { ascent: 2 }, disabled_axes: [] },
   roadAvoidance: { gravel: "avoid" },
 };
 
@@ -69,12 +69,26 @@ const COST_CATALOG: CostAxisCatalog = {
 
 describe("readSavedConditions", () => {
   it.each([
-    ["割合の重みで保存した件（つまみと倍率が無い）", { costPreference: undefined }, { strength: 1, multipliers: {} }],
-    ["段に無いつまみ", { costPreference: { strength: 1.3, multipliers: {} } }, { strength: 1, multipliers: {} }],
     [
-      "段に無い・数でない倍率はその軸だけ",
-      { costPreference: { strength: 2, multipliers: { ascent: 1.5, vibration: "2", gone: 0 } } },
-      { strength: 2, multipliers: { gone: 0 } },
+      "割合の重みで保存した件（つまみと倍率が無い）",
+      { costPreference: undefined },
+      { strength: 1, multipliers: {}, disabled_axes: [] },
+    ],
+    [
+      "段に無いつまみ",
+      { costPreference: { strength: 1.3, multipliers: {}, disabled_axes: [] } },
+      { strength: 1, multipliers: {}, disabled_axes: [] },
+    ],
+    [
+      "段に無い・数でない倍率はその軸だけ、文字列でない無効の軸はその軸だけ",
+      {
+        costPreference: {
+          strength: 2,
+          multipliers: { ascent: 1.5, vibration: "2", gone: 0.5 },
+          disabled_axes: ["friction", 3],
+        },
+      },
+      { strength: 2, multipliers: { gone: 0.5 }, disabled_axes: ["friction"] },
     ],
   ])("つまみと倍率が読めない件も捨てず、読めない所を標準へ戻す: %s", (_, change, expected) => {
     expect(readSavedConditions(JSON.stringify([{ ...ENTRY, ...change }]))).toEqual([
@@ -155,11 +169,11 @@ describe("describeConditions", () => {
   });
 
   it.each([
-    ["標準", { strength: 1, multipliers: { ascent: 1 } }, "標準"],
+    ["標準", { strength: 1, multipliers: { ascent: 1 }, disabled_axes: [] }, "標準"],
     [
-      "標準でないつまみと軸の倍率だけを、軸の並びで（消えた軸は出さない）",
-      { strength: 0.5, multipliers: { vibration: 0, ascent: 2, gone: 3 } },
-      "負担の強さ ×0.5・登坂 ×2・振動 ×0",
+      "標準でないつまみと、無効の軸と標準でない軸の倍率だけを、軸の並びで（消えた軸は出さない）",
+      { strength: 0.5, multipliers: { ascent: 2, gone: 3 }, disabled_axes: ["vibration"] },
+      "負担の強さ ×0.5・登坂 ×2・振動 無効",
     ],
   ])("倍率: %s", (_, costPreference, expected) => {
     expect(describeConditions({ ...ENTRY, costPreference }, CATALOG, COST_CATALOG).costPreference).toBe(expected);
