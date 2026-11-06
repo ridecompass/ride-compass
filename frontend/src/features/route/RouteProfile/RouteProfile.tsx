@@ -3,7 +3,6 @@
 import { BURDEN_PAINT_NAME, FACT_DISPLAY_NAME } from "@/lib/screenNames";
 import { useMemo, useState } from "react";
 import { useStoredState } from "@/hooks/useStoredState";
-import { cn } from "@/lib/cn";
 import { readStoredList } from "@/lib/storedList";
 
 import { legendChipBodyClass, legendChipClass, legendChipsClass } from "@/components/ui/AxisLegend/axisLegend";
@@ -135,7 +134,7 @@ export default function RouteProfile({
         {/* 選んだ区間の値は地図の区間の小窓が出す。地図は選んでも動かないので、ここから寄せる（区間が地図の外なら目立たせる）。 */}
         {selected !== null && segmentOnMap !== undefined && <SectionOnMapButton onMap={segmentOnMap} />}
       </div>
-      <TabsContent value="lens">
+      <TabsContent value="lens" className="flex flex-col gap-1">
         <DifficultyProfile
           scale={scale}
           axisOrder={shownOrder}
@@ -148,7 +147,7 @@ export default function RouteProfile({
         />
         {/* 札が凡例を兼ねる。走行中の図は低く保つため札を出さず、結果で選んだ軸を積む。 */}
         {!riding && (
-          <ul aria-label="積む負担の種類" className={cn(legendChipsClass, "mt-1")}>
+          <ul aria-label="積む負担の種類" className={legendChipsClass}>
             {paintedAxes.map((axis) => {
               const on = shownAxes.includes(axis.axisId);
               return (
