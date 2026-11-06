@@ -61,7 +61,6 @@ DB接続・Redis・HTTPクライアント・レート制限・ログ・デバッ
 | scripts | `audit_test_rewrite.py` | 実装から起こし直したテストを外から測る（実装を変えていないか・テストが読む`app.*`・対象の属性の出どころ・seams 数・実装へ1行も入らないテスト・そのテストだけが通す行が0行のテスト・カバレッジ・テストファイルごとの項目と関数と行の数・テストからしか使われない公開の名前の候補。テストは対象を読む母集団を並べて渡す。PostGISのテストはテスト用DBへ繋がるときだけ含める）。起こし直しの手順は[testing-rewrite.md](../../../.claude/rules/testing-rewrite.md) |
 | scripts | `build_road_network.py` | 取込範囲全体の道路網の配列を作り、ディスクへ置く（[経路探索エンジン](routing-engine.md)）。今の派生データの世代とコードの形の置き場が既にあれば何もしない。デプロイの前処理が旧コンテナを止める前に打つ |
 | scripts | `cross_language_expectations.py` | backendと画面が同じ計算を持つところの「入力→答え」の表（`cross_language_expectations.py: EXPECTATIONS`）。答えはbackendの関数が出し、`export_openapi.py`が組ごとに生成物へ書き出す |
-| scripts | `schema_shape.py` | 応答の型の契約から作る印（`schema_shape.py: schema_shape_mark`）。端末に置いた応答が今の型で読めるかを見分けるために、`export_openapi.py`が生成物へ書き出して配る |
 | scripts | `deploy_gate.py` | 本番へ出すかを決める（デプロイのワークフローが呼ぶ）。本番がそのコミットか、より新しいコミットで動いていれば出さない |
 | scripts | `dev_prod_data_backend.py` | 開発機の画面を本番のデータで開くときの、開発機のbackendを起こす（[setup.md](../../architecture/setup.md)「開発機の画面を本番のデータで開く」）。同じLANの端末から届くよう、LANの住所のfrontendを許す相手に足す |
 

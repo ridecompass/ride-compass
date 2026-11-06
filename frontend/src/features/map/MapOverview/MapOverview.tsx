@@ -22,7 +22,7 @@ import {
 import { applyScene, weatherStateFrom, type SceneLook } from "@/features/map/scene/applyToMap";
 import { buildOverviewScene } from "@/features/map/scene/buildScene";
 import { viewportCenter, type MapViewport } from "@/features/map/view/mapLook";
-import { useStoredBooleanState } from "@/hooks/useStoredState";
+import { useStoredState } from "@/hooks/useStoredState";
 
 const COLLAPSED_STORAGE_KEY = "ridecompass:map-overview-collapsed";
 /** 俯瞰図に残す高速道路の線の幅（px）。気象の色を覆わない細さにする。 */
@@ -40,7 +40,7 @@ interface MapOverviewProps {
 /** 本体の地図の左下に添える、今の画面より広い範囲を丸く映す俯瞰図。本体の地図で出している気象の層を同じ色で描き、今の画面の範囲を枠で
  * 示す。「×」で丸いボタンに畳み、畳んだことは端末に覚える。出すかどうかは呼ぶ側が`overview.ts: overviewShown`で決める。 */
 export default function MapOverview(props: MapOverviewProps) {
-  const [collapsed, setCollapsed] = useStoredBooleanState(COLLAPSED_STORAGE_KEY, false);
+  const [collapsed, setCollapsed] = useStoredState(COLLAPSED_STORAGE_KEY, "俯瞰図の開閉", false);
   if (collapsed)
     return (
       <Button

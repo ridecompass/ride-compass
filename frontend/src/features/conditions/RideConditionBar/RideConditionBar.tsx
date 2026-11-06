@@ -98,10 +98,7 @@ function DepartureRuler({
   onDepartureNow,
 }: Pick<RideConditionBarProps, "departureTime" | "onDepartureTimeChange" | "onDepartureNow">) {
   const [anchor] = useState(() => new Date());
-  const [step, setStep] = useStoredState<DepartureStep>(DEPARTURE_STEP_STORAGE_KEY, "hour", {
-    serialize: String,
-    deserialize: (raw) => (isDepartureStep(raw) ? raw : null),
-  });
+  const [step, setStep] = useStoredState<DepartureStep>(DEPARTURE_STEP_STORAGE_KEY, "出発時刻の刻み", "hour");
   const { timeline, frames } = useMemo(() => {
     const timeline = buildDepartureTimeline(anchor, step);
     return { timeline, frames: buildDepartureFrames(timeline, step) };

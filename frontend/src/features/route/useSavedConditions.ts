@@ -4,12 +4,7 @@ import { useCallback } from "react";
 
 import { useStoredState } from "@/hooks/useStoredState";
 import type { GenerationConditionsState } from "@/features/route/useGenerationConditions";
-import {
-  readSavedConditions,
-  suggestedConditionName,
-  withSavedCondition,
-  type SavedCondition,
-} from "@/features/route/savedConditions";
+import { suggestedConditionName, withSavedCondition, type SavedCondition } from "@/features/route/savedConditions";
 import type { Coordinates } from "@/types/route";
 
 // 保存先はこの端末のブラウザの中だけ（ログイン無しで使え、別の端末とは共有しない）。
@@ -35,10 +30,7 @@ export function useSavedConditions({
   onOriginPlace,
   onOriginFollowCurrent,
 }: SavedConditionsInputs) {
-  const [saved, setSaved] = useStoredState<SavedCondition[]>(SAVED_CONDITIONS_STORAGE_KEY, [], {
-    serialize: JSON.stringify,
-    deserialize: readSavedConditions,
-  });
+  const [saved, setSaved] = useStoredState<SavedCondition[]>(SAVED_CONDITIONS_STORAGE_KEY, "保存した条件", []);
   // 出発地は保存のときに固定するかを選ぶので、いまの条件には持たない。
   const { snapshot: current, restore } = conditions;
   const suggestedName = suggestedConditionName(current);

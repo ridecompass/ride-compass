@@ -1,5 +1,5 @@
 import type { CostAxisCatalog } from "@/hooks/useCostAxisCatalog";
-import { multiplierOf, STANDARD_COST_FACTOR, STANDARD_COST_PREFERENCE } from "@/lib/costPreference";
+import { multiplierOf, STANDARD_COST_FACTOR } from "@/lib/costPreference";
 import type { CostPreference } from "@/types/route";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 
@@ -14,30 +14,9 @@ export const COST_STRENGTH_LEVELS: readonly CostLevel[] = routeGenerateConfig.co
 /** 軸ごとの倍率の段。 */
 export const COST_MULTIPLIER_LEVELS: readonly CostLevel[] = routeGenerateConfig.cost_multiplier_levels;
 
-function isLevel(value: unknown, levels: readonly CostLevel[]): value is number {
-  return levels.some((level) => level.value === value);
-}
-
-/** 段`value`の名前（呼び手は段の値だけを渡す——保存値は読むときに段の値だけを受け付ける）。 */
+/** 段`value`の名前。 */
 function levelLabel(levels: readonly CostLevel[], value: number): string {
   return levels.find((level) => level.value === value)?.label ?? String(value);
-}
-
-/** 保存した値を、今の画面が受け付ける形で読む。読めなければ標準（前の形——割合の重み——で保存した値も標準に戻す）。
- * 段に無いつまみは標準に、段に無い倍率はその軸だけ標準に戻す。 */
-export function readCostPreference(value: unknown): CostPreference {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return STANDARD_COST_PREFERENCE;
-  const { strength, multipliers } = value as Record<string, unknown>;
-  const readMultipliers =
-    typeof multipliers === "object" && multipliers !== null && !Array.isArray(multipliers)
-      ? Object.fromEntries(
-          Object.entries(multipliers).filter(([, multiplier]) => isLevel(multiplier, COST_MULTIPLIER_LEVELS)),
-        )
-      : {};
-  return {
-    strength: isLevel(strength, COST_STRENGTH_LEVELS) ? strength : STANDARD_COST_FACTOR,
-    multipliers: readMultipliers,
-  };
 }
 
 /** 生成の要求へ載せる形。倍率は今の費用の軸のものだけを、標準でないものだけ送る（消えた軸を送ると、要求が断られる）。

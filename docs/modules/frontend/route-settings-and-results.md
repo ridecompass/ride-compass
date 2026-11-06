@@ -29,20 +29,20 @@
 | `components/PinMark/PointMark.tsx` | 並びの札・詳しく・道のりのグラフの経由地の印に出す、地図のピンと同じ図形の丸（`components/PinMark/PinMark.tsx`の中身に背景色を付けたもの。ルートの機能と地図の機能の両方が描くので共有の層に置く） |
 | `features/route/RouteForm/useRouteFormSubmit.ts` | 上記の検証（`{error, check}`。`features/route/RouteForm/useRouteFormSubmit.ts: check`は通ったかを返す）。「ルート生成」ボタン自体は`RouteForm`の外（`GenerateRouteActions.tsx`。見出し行）にあるため分離している（下記参照） |
 | `features/route/RouteSettingsPanel/RouteSettingsPanel.tsx` | 「負担」タブの中身: 費用の軸ごとの倍率を段で選ぶ（下記参照。全体のつまみは「条件」タブの`RouteForm`）。×0 の軸は数えないので、その行の名前と印を、全体のつまみが ×0 のときと同じ薄さにする（段は戻せるよう押せるまま） |
-| `features/route/costPreference.ts` | つまみと倍率の値の扱い: 段（値と名前）・保存値の読み方（`features/route/costPreference.ts: readCostPreference`。読めない値・段に無い値は標準へ戻す）・生成の要求へ載せる形（`features/route/costPreference.ts: costPreferenceToSend`）・送れなかったかの判定・説明の文 |
+| `features/route/costPreference.ts` | つまみと倍率の値の扱い: 段（値と名前）・生成の要求へ載せる形（`features/route/costPreference.ts: costPreferenceToSend`）・送れなかったかの判定・説明の文 |
 | `hooks/useCostAxisCatalog.ts` | `GET /api/cost-axes`の取得。費用の軸（名前・説明・アイコン・地図のレンズ）を`hooks/useCostAxisCatalog.ts: useCostAxisCatalog`が返す（届くまで・失敗の間は軸0件。レンズの読み方は[地図: レンズ・ルート色分け](map-axis-coloring.md)）。軸ごとの色（`hooks/useCostAxisCatalog.ts: CostAxisCatalog.axisColors`）と、取れていないことの項目（`hooks/useCostAxisCatalog.ts: costAxisCatalogFetchFailure`。常設ヘッダーの印と負担タブの告知）もここが持つ |
 | `hooks/useSharedCatalog.ts` | 画面の全体が読む一覧（画面の設定・費用の軸の一覧）の取得の共通の形: 読み手の間で1つの取得を共有し、マウントのたびに取り直し、届いた応答を後の失敗で巻き戻さない（`hooks/useSharedCatalog.ts: useSharedCatalog`）。まだ届いていないときだけ取り直す再試行（`hooks/useSharedCatalog.ts: retrySharedCatalogFetch`） |
 | `services/costAxisCatalogApi.ts` | 上記フックが叩くbackend APIの薄いラッパーと、凡例の段の境目の目安（`GET /api/cost-axes/lens-equivalents`。`services/costAxisCatalogApi.ts: getLensEquivalents`）の口 |
 | `features/route/RouteSettingsPanel/HardFilterPanel.tsx` | 「回避」タブの中身。地図の道のレイヤの凡例の行ごとの避け方を1つの並びに出し、自転車が通れない道の行は「通らない」に固定して鍵を付ける（下記「除外」）。選べる行の鍵・名前・既定の段と行をまとめる節は画面の設定の`road_classes.avoidance`が、固定の行の名前と説明は生成物`route-generate-config.json`の`route-generate-config.json: hard_filters`が正で、名前をフロントに持たない——キーと名前を別々に持つと、足した行に名前が無く内部名が出る。画面の設定が届くまでは選べる行を出さない |
-| `features/route/roadAvoidance.ts` | 保存した避け方のうち段として読める鍵を残し（`features/route/roadAvoidance.ts: readRoadAvoidance`。行は画面の設定が届くまで分からないので、今の行に無い鍵も残す）、画面に出す行の段を決める（`features/route/roadAvoidance.ts: avoidanceLevelOf`。選んでいなければ既定の段）。要求には選んだ段をそのまま送り、行の増減はbackendが揃える |
+| `features/route/roadAvoidance.ts` | 画面に出す行の段を決める（`features/route/roadAvoidance.ts: avoidanceLevelOf`。選んでいなければ既定の段）。要求には選んだ段をそのまま送り、行の増減はbackendが揃える |
 | `features/route/SavedPlacesPanel/SavedPlacesPanel.tsx` | 「保存済み」タブの「地点」の中身: 保存した地点の一覧（行は名前・辺りと、アイコンの「呼び出す」「消す」。呼び出すはメニューで出発地・経由地・目的地のどれに置くかを選び（周回の間は目的地を使わないので「目的地にする」を押せない）、消すは確認の窓で「消す」を押すと消す）。無ければ無いと出し、保存の仕方は(i)の奥（下記「保存した地点」） |
 | `features/route/SavedList/SavedList.tsx` | 「保存済み」タブの一覧（地点・プリセット）の形: 空の案内と保存の仕方の(i)・行の枠・消す操作と確認の窓。行の名前の欄と行ごとの操作（「呼び出す」）は使う側が渡す |
 | `features/route/useSavedPlaces.ts` | 保存した地点の一覧（この端末の`localStorage`）と、保存・削除 |
-| `features/route/savedPlaces.ts` | 保存した地点の形（探した候補と同じ形）と、保存値の読み方（今の画面が受け付けない件だけを捨てる）・同じ名前と同じ位置の置き換え・打った文字での絞り込み。検索で選んだ地点の履歴の入れ方（同じ位置の置き換えと件数の上限）・消し方・出す件（保存した地点と同じ位置を除く） |
+| `features/route/savedPlaces.ts` | 保存した地点の形（探した候補と同じ形）と、同じ名前と同じ位置の置き換え・打った文字での絞り込み。検索で選んだ地点の履歴の入れ方（同じ位置の置き換えと件数の上限）・消し方・出す件（保存した地点と同じ位置を除く） |
 | `features/route/usePlaceHistory.ts` | 検索で選んだ地点の履歴（この端末の`localStorage`。保存した地点と同じ読み方）と、入れる・1件を消す。地図の上端の検索の欄（`PlaceSearch/PlaceSearch.tsx`）が使う |
 | `features/route/SavedConditionsPanel/SavedConditionsPanel.tsx` | 「条件」タブの1行目に置くアイコンの「いまの設定を保存」（`features/route/SavedConditionsPanel/SavedConditionsPanel.tsx: SaveConditionsButton`。窓に保存する条件・出発地の扱いの切り替え・負担・回避と、名前の欄・保存のボタン）と、「保存済み」タブの「プリセット」の中身の保存した設定の一覧（行は名前と、アイコンの「呼び出す」「消す」。呼び出すは窓で中身を見せて「反映する」で呼び出し、消すは確認の窓で「消す」を押すと消す。無ければ無いと出し、保存の仕方は(i)の奥。下記「保存した条件」） |
 | `features/route/useSavedConditions.ts` | 保存した条件の一覧（この端末の`localStorage`）と、いまの条件（`useGenerationConditions.ts: snapshot`）の保存（出発地を固定するかを受け取る）・呼び出し・削除。呼び出すと`useGenerationConditions.ts: restore`で条件を入れ替え、出発地は位置の持ち主（`hooks/useLocation.ts`）へ渡す |
-| `features/route/savedConditions.ts` | 生成の条件の形（`features/route/savedConditions.ts: GenerationConditionsSnapshot`。いまの条件・保存・呼び出しが同じ形を使い、保存の1件はそれに名前と出発地を足す）と、保存値の読み方（項目ごとの読み方の表で読み、今の画面が受け付けない件だけを捨てる）・仮の名前・何が保存されるかの説明（`features/route/savedConditions.ts: describeConditions`）・同じ名前の上書き。距離・候補数として受け付ける範囲（`features/route/savedConditions.ts: acceptedDistanceInput`・`features/route/savedConditions.ts: acceptedMaxRoutesInput`）もここが持ち、`useGenerationConditions.ts`の保存値の読み直しと共有する。距離の刻み（`DISTANCE_STEP_KM`。5km刻みで、下限も1刻み分）は画面だけの値で、`RouteForm`のルーラーのコマも読み、保存値は刻みの近い方へ寄せて読む。候補数の下限・上限は生成物`route-generate-config.json`から読む |
+| `features/route/savedConditions.ts` | 生成の条件の形（`features/route/savedConditions.ts: GenerationConditionsSnapshot`。いまの条件・保存・呼び出しが同じ形を使い、保存の1件はそれに名前と出発地を足す）と、仮の名前・何が保存されるかの説明（`features/route/savedConditions.ts: describeConditions`）・同じ名前の上書き。距離の刻み（`DISTANCE_STEP_KM`。5km刻みで、下限も1刻み分）は画面だけの値で、`RouteForm`のルーラーのコマも読む。候補数の下限・上限は生成物`route-generate-config.json`から読む |
 | `lib/cardinalLabel.ts` | 角度を方位の呼び名へ（天気欄等が使う）と、気象の風向（吹いてくる向き）を矢印が指す吹いていく向きへ（`lib/cardinalLabel.ts: downwindDeg`。地図の風の矢印が使う）と、それを回った地図の上の向きへ（`lib/cardinalLabel.ts: downwindOnMapDeg`。走りの帯と天気欄の矢印が使う）。呼び名の並びはbackend（`domain/geo.py: COMPASS_LABELS`）が配り、丸めは画面が持つ。区分の境界を含む角度でbackendと同じ呼び名になることは、backendが出す表（生成物`geo-expectations.json`）をテストが通して確かめる |
 | `features/route/RouteAxisProfile/RouteAxisProfile.tsx` | 候補ごとのタブの中身（所要・負担と、負担の内訳と事実。下記「RouteAxisProfile.tsx」）。地図の色分けを選ぶ操作はここには無い（`LensControl`）。候補一覧のタブ自体は`RouteOutcome.tsx`が組み立てる |
 | `features/route/PenaltyBreakdown/PenaltyBreakdown.tsx` | 負担の内訳（軸ごとの秒を積んだ帯1本と、軸ごとの名前・事実・負担の分の行）。候補の中身と区間の小窓が同じこの形で出す（下記「RouteAxisProfile.tsx」） |
@@ -250,10 +250,7 @@ backendが要求を断る（倍率のキーは今の費用の軸のidだけ）�
   入れ替えたあとに値を確かめたり少し変えたりできる。地点を入れ替えるので、地図のタップで置ける役割は解く。
 - **消す**: 行の「消す」は確認の窓（`Dialog/Dialog.tsx: ConfirmDialog`）を出し、「消す」を押したときだけ消す。消した設定を戻す手段は無く、
   条件・負担・回避を組み直すことになるため（[デザイン基盤](frontend-design-system.md)「意図的に作らない・統合しないもの」の確認の窓の決まり）。
-- **読み方**: 保存値は読むときに、今の画面が受け付けない件（範囲の外の距離・候補数、上限を超える経由地等）だけを捨て、
-  ほかの件は残す。前の形で保存した件（周回か・全長の目標の有無・避け方のどれかを持たない件）は読み替えずに捨てる。道の避け方は
-  段として読める鍵だけを残す。つまみと倍率は、読めなければ件を捨てずに標準へ戻す（読めない形の負担で保存した件も、場所と条件は
-  そのまま呼び出せる）。消えた軸の倍率は送るときに外す（「RouteSettingsPanel.tsx」）。
+- **送り方**: 消えた軸の倍率は送るときに外す（「RouteSettingsPanel.tsx」）。
 
 ## 保存した地点（SavedPlacesPanel.tsx・useSavedPlaces.ts・usePlaceHistory.ts・PointDetail.tsx・PlaceSearch.tsx・KnownPlaces.tsx）
 
@@ -368,8 +365,8 @@ nginxが応答を待つ上限（`proxy_read_timeout`、300秒）にも収まる�
 候補数は「‹ 8 › 件」のステッパー（-/+ボタン、`DynamicLayerTimeSlider`の1コマ送りボタンと同じ役割分担）にし、
 数値の直接入力欄は持たない（原則としてユーザーに数字を直接入力させない方針）。
 distance・maxRoutesはいずれもstring stateのまま`useGenerationConditions.ts`が持ち、数値への変換は送るときに行う。
-**距離・候補数は検証しない**——ルーラーはコマの並び、ステッパーはmin/maxで値域を強制するため空文字・範囲外を作れず、
-保存値も読むときに範囲の外を捨てる（`useGenerationConditions.ts: useStoredState`の`deserialize`）。`useRouteFormSubmit`が
+**距離・候補数は検証しない**——ルーラーはコマの並び、ステッパーはmin/maxで値域を強制するため空文字・範囲外を作れない
+（値の範囲を判定するのは要求を受けるbackend）。`useRouteFormSubmit`が
 確かめるのは、出発地が分からないこと（下記）と、周回で全長の目標を外して経由地も無く作るものが無いこと（文はその入り切りの
 アイコンで「全長の目標を決める」を指す）と、周回を外して目的地を置いていないこと（文は目的地を置くか、出発地へ戻るなら「周回」を押すよう促す）だけ。
 

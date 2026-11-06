@@ -50,7 +50,6 @@ from app.domain.place_search import (
     PlaceMatchLevel,
 )
 from cross_language_expectations import EXPECTATIONS
-from schema_shape import schema_shape_mark
 from app.domain.weather_elements import (
     MSM_FORECAST_HOURS,
     WEATHER_ELEMENTS,
@@ -589,8 +588,6 @@ def main() -> None:
             "job_result_ttl_seconds": JOB_TTL_SECONDS,
             # フロントが状態を問い合わせるとき、終わるまで待たせる秒（口が受け付ける上限そのもの）。
             "job_wait_seconds": JOB_WAIT_MAX_SECONDS,
-            # ルート候補の型の契約の印。画面は端末に置いた候補にこの印を添え、印が違う候補は今の型で読めないとして使わない。
-            "route_candidate_shape": schema_shape_mark(openapi, "RouteCandidate"),  # type: ignore[arg-type]
             # 区間ごとに速度を変える条件の名前（走行モデルの並び）。所要時間の説明が差し込む。
             "segment_speed_conditions": list(SEGMENT_SPEED_CONDITIONS),
             # 所要時間の計算が値の無い区間をどう数えるかの文。結果の「データの無い区間」の注記が差し込む。

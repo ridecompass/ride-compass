@@ -16,7 +16,6 @@ import { MAP_FETCH_DEBOUNCE_MS } from "@/hooks/useDebouncedValue";
 import { onBackend } from "@/testing/backendServer";
 import { chip, renderMapView, serve, VIEWPORT } from "@/testing/mapViewHook";
 import { costAxisCatalog, costAxisEntry } from "@/testing/costAxes";
-import { UNSELECTED_LENS_ID } from "@/lib/mapDisplay/routeStyleModes";
 
 import { LEGEND_FILTER_DEBOUNCE_MS, type useMapView } from "./useMapView";
 
@@ -61,7 +60,7 @@ describe("useMapView", () => {
     expect(result.current.lensControl.dataStatus).toBe("error");
   });
 
-  it("レンズは総合と費用の軸の順に並び、選択肢に無いレンズの保存値は受けず、選んだレンズの1kmあたりの負担の秒を想定速度つきで取り、凡例の下に段の境目の目安を出す", async () => {
+  it("レンズは総合と費用の軸の順に並び、選んだレンズの1kmあたりの負担の秒を想定速度つきで取り、凡例の下に段の境目の目安を出す", async () => {
     serve(
       undefined,
       costAxisCatalog(
@@ -74,8 +73,6 @@ describe("useMapView", () => {
     onBackend("GET", "/api/cost-axes/lens-equivalents", () =>
       Response.json({ ascent: { kind: "thresholds", fact: "斜度", unit: "%", values: [2.1] } }),
     );
-    // 選んでいたレンズが一覧から消えた端末でも、選択肢に無いレンズは塗り続けない。
-    window.localStorage.setItem("ridecompass:route-style-mode", "removed");
     const sent = onBackend("GET", "/api/region/lens/ascent/:z/:x/:y", () =>
       Response.json({ "1-0": { lens_along: 5, road_bearing_deg: 0 } }),
     );
@@ -83,7 +80,6 @@ describe("useMapView", () => {
     await waitFor(() =>
       expect(result.current.lensControl.axisOptions.map((option) => option.id)).toEqual(["total", "ascent"]),
     );
-    await waitFor(() => expect(result.current.look.lens).toBe(UNSELECTED_LENS_ID));
 
     act(() => result.current.lensControl.onLensChange("ascent"));
     act(() => result.current.look.onViewportChange(VIEWPORT));

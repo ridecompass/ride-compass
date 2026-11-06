@@ -29,7 +29,7 @@ import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useWayMaterials } from "@/features/map/useWayMaterials";
 import { useRoadClasses } from "@/features/map/useRoadClasses";
 import { useDynamicWeatherLayers } from "@/features/map/useDynamicWeatherLayers";
-import { useStoredBooleanState, useStoredState } from "@/hooks/useStoredState";
+import { useStoredState } from "@/hooks/useStoredState";
 import type { Coordinates } from "@/types/route";
 import type { MapTheme } from "@/lib/mapTheme";
 import type { RideConditions } from "@/features/map/regionApi";
@@ -39,16 +39,10 @@ import { useMapCatalog } from "@/features/map/useMapCatalog";
 import { initiallyHiddenLegendKeys } from "@/features/map/scene/legends";
 import { WAY_BEARING_STEP_DEG } from "@/features/map/mapHeading";
 
-import {
-  deserializeHiddenLegendKeys,
-  hiddenKeysOf,
-  presentHiddenKeys,
-  toggleHiddenKey,
-  withHiddenKeys,
-} from "./legendFilters";
+import { hiddenKeysOf, presentHiddenKeys, toggleHiddenKey, withHiddenKeys } from "./legendFilters";
 import { lensLegend, paintedLensId } from "./lens";
 import type { HiddenLegendKeys, MapLook } from "./mapLook";
-import { deserializeLayerVisibility, overlayChips } from "./overlayChips";
+import { overlayChips } from "./overlayChips";
 import type { CostPreference } from "@/types/route";
 import { useLensEquivalents } from "@/features/map/useLensEquivalents";
 
@@ -107,36 +101,30 @@ export function useMapView({
 }: MapViewInputs): MapViewState {
   const config = useClientConfig();
   // 暗い地図は利用者がメニューで選ぶ（いつ暗くするかを自動では決めない）。
-  const [mapTheme, setMapTheme] = useStoredState<MapTheme>("ridecompass:map-theme", "light", {
-    serialize: (value) => value,
-    deserialize: (raw) => (raw === "light" || raw === "dark" ? raw : null),
-  });
+  const [mapTheme, setMapTheme] = useStoredState<MapTheme>("ridecompass:map-theme", "地図の明暗", "light");
   const mapCatalog = useMapCatalog(mapTheme);
   const costCatalog = useCostAxisCatalog();
   const lenses = mapCatalog.lenses;
   // 保存するのは触った層の真偽だけで、既定は層の一覧（道の線の層は画面の設定が届いてから決まる）から重ねる。
   const [storedVisibility, setLayerVisibility] = useStoredState<MapLayerVisibility>(
     "ridecompass:layer-visibility",
+    "地図に出す情報",
     NO_STORED_VALUES,
-    { serialize: JSON.stringify, deserialize: deserializeLayerVisibility },
   );
   const layerVisibility = useMemo(
     () => ({ ...buildDefaultLayerVisibility(mapCatalog.layers), ...storedVisibility }),
     [mapCatalog.layers, storedVisibility],
   );
-  // レンズを指す保存値は費用の軸の一覧が届いて初めて読めるため、届いた時点で読み直す。選択肢に無いレンズの保存値は受けない
-  // （無いレンズを塗り続けてしまう）。
-  const [lens, setLens] = useStoredState<LensId>("ridecompass:route-style-mode", UNSELECTED_LENS_ID, {
-    serialize: (value) => value,
-    deserialize: (raw) =>
-      raw === UNSELECTED_LENS_ID || lenses.some((candidate) => candidate.lensId === raw) ? raw : null,
-    reloadKey: String(costCatalog.loaded),
-  });
-  const [keepAfterRoute, setKeepAfterRoute] = useStoredBooleanState("ridecompass:lens-keep-after-route", true);
+  const [lens, setLens] = useStoredState<LensId>("ridecompass:route-style-mode", "塗る負担", UNSELECTED_LENS_ID);
+  const [keepAfterRoute, setKeepAfterRoute] = useStoredState(
+    "ridecompass:lens-keep-after-route",
+    "ルートの後も周りを塗るか",
+    true,
+  );
   const [storedHidden, setStoredHidden] = useStoredState<HiddenLegendKeys>(
     "ridecompass:hidden-legend-keys",
+    "凡例で隠した段",
     NO_STORED_VALUES,
-    { serialize: JSON.stringify, deserialize: deserializeHiddenLegendKeys },
   );
   // 保存値を最初に隠す行の上に重ねる（保存値に無い鍵は最初に隠す行のまま）。最初に隠す行は画面の設定が届いてから
   // 決まるので、保存値を読む時点ではなく使う時点で重ねる。

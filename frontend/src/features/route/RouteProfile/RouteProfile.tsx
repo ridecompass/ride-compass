@@ -3,7 +3,6 @@
 import { BURDEN_PAINT_NAME, FACT_DISPLAY_NAME } from "@/lib/screenNames";
 import { useMemo, useState } from "react";
 import { useStoredState } from "@/hooks/useStoredState";
-import { readStoredList } from "@/lib/storedList";
 
 import { legendChipBodyClass, legendChipClass, legendChipsClass } from "@/components/ui/AxisLegend/axisLegend";
 import { Dot } from "@/components/ui/Dot/Dot";
@@ -74,10 +73,11 @@ export default function RouteProfile({
     return axes.filter((axis) => (byAxis.get(axis.axisId)?.length ?? 0) > 0);
   }, [scale, axes, axisOrder]);
   // 積む軸の選び（端末に覚える）。選んでいなければ（null）、このルートで負担の大きい軸から積む。
-  const [chosenAxes, setChosenAxes] = useStoredState<readonly string[] | null>(PROFILE_AXES_STORAGE_KEY, null, {
-    serialize: JSON.stringify,
-    deserialize: (raw) => readStoredList(raw, (value) => (typeof value === "string" ? value : null)),
-  });
+  const [chosenAxes, setChosenAxes] = useStoredState<readonly string[] | null>(
+    PROFILE_AXES_STORAGE_KEY,
+    "グラフに積む負担",
+    null,
+  );
   const shownAxes = useMemo(() => {
     if (chosenAxes !== null) return chosenAxes;
     const seconds = new Map<string, number>();

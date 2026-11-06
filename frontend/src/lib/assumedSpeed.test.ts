@@ -13,8 +13,4 @@ describe("clampSpeedKmh（想定速度）", () => {
     expect(clampSpeedKmh(min - 5)).toBe(min);
     expect(clampSpeedKmh(max + 5)).toBe(max);
   });
-
-  it("数として読めなければ既定の速度", () => {
-    expect(clampSpeedKmh(Number.NaN)).toBe(routeGenerateConfig.default_assumed_speed_kmh);
-  });
 });

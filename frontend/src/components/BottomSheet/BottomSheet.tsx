@@ -44,13 +44,7 @@ const CHOSEN_HEIGHT_STORAGE_KEY = "ridecompass:mobile-sheet-height-vh";
 /** 利用者が帯で決めた高さ（vh。決めていなければnull）と、決める関数。保存値があることが「決めた」印で、決めた後は
  * 中身に合わせるのをやめる。 */
 export function useChosenSheetHeight(): [number | null, (vh: number) => void] {
-  return useStoredState<number | null>(CHOSEN_HEIGHT_STORAGE_KEY, null, {
-    serialize: JSON.stringify,
-    deserialize: (raw) => {
-      const parsed: unknown = JSON.parse(raw);
-      return typeof parsed === "number" && Number.isFinite(parsed) ? clampSheetHeightVh(parsed) : null;
-    },
-  });
+  return useStoredState<number | null>(CHOSEN_HEIGHT_STORAGE_KEY, "パネルの高さ", null);
 }
 
 /** 中身がそのまま並んだときの高さ。高さの指定を一時的に外して測る（`scrollHeight`や子の合算は、中身が箱より
