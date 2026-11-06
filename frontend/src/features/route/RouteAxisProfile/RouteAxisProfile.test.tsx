@@ -47,7 +47,6 @@ function renderProfile(props: Partial<Props> = {}) {
       }}
       catalog={CATALOG}
       estimatedDurationSeconds={3720}
-      windUnavailable={false}
       missingTravelDataShare={null}
       {...props}
     />,
@@ -94,14 +93,6 @@ describe("RouteAxisProfile", () => {
     unmount();
     renderProfile();
     expect(screen.queryByText(/標高の無い道/)).not.toBeInTheDocument();
-  });
-
-  it("風の値を使えなかった候補にだけ、無風として出した所要時間だと注記する", () => {
-    const { unmount } = renderProfile({ windUnavailable: true });
-    expect(screen.getByText(routeGenerateConfig.missing_wind_wording)).toBeInTheDocument();
-    unmount();
-    renderProfile({ windUnavailable: false });
-    expect(screen.queryByText(routeGenerateConfig.missing_wind_wording)).not.toBeInTheDocument();
   });
 
   it.each([

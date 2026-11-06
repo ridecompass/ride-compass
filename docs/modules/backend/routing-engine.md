@@ -127,8 +127,8 @@ Edgeコストは「探索の材料の表（[費用・材料](evaluation-scoring.
 逆回り候補はレグ割当ても反転する（先に走る側が往路配列、`reverse_leg_assignment`）。レグ番号は走行順に振られるため、Edge列の反転と同時に番号自体も`max_leg - leg`へ振り直す。探索範囲を覆う格子点ごとの時別風予報
 （`WeatherService.get_wind_forecast_lattice`。格子点はMSMの格子点そのもの（`domain/msm.py: MsmBlock`）で、
 探索範囲に依らない。各Edgeは中点に最も近い格子点の値を変えずに引く——ルートを出す前の地図も同じ点を引く。
-中点が並びの外にあるEdgeは、端の格子点の値で計算する）が無い場合は、出発時点のスナップショットで
-合成した1本を全レグで共有する（追加コストゼロ）。時別系列があれば、利用者の値に依らず時刻で合成する。
+中点が並びの外にあるEdgeは、端の格子点の値で計算する）で、利用者の値に依らず時刻で合成する。予報が読めなければ
+生成は失敗する（無風で探さない）。
 仮定巡航速度は`RouteGenerateRequest.assumed_speed_kmh`（画面の既定`ASSUMED_SPEED_KMH`）で
 リクエストごとに送られ、通過予定時刻と走行モデルの巡航速度の
 両方に効く。迂回率（道なり距離÷直線距離）は定数ではなく実測値を使う。直線距離を走行時間へ直す係数
@@ -139,8 +139,8 @@ Edgeコストは「探索の材料の表（[費用・材料](evaluation-scoring.
 `learn_detour_ratio`。NaN・非正の実測は使わない＝`domain/wind.py: is_usable_detour_ratio`）、目的地ルートの後ろ向きレグはその場で測った値で到着予定時刻を置く。
 **周回の復路レグは迂回率を読まない**——総所要時間は目標距離÷仮定速度で決まる（距離
 フィルタが目標±許容を強制する）。運用時は`_build_search_graph`のINFOサマリ
-（`time_varying`・`speed_kmh`・`detour_ratio=値(learned|default)`）、
-`compose_leg_costs`ログ（`leg`・`mode`・`bins`・`reused_bins`＝使い回したビンの数・`compose_ms`と、その内訳の`speed_ms`＝走行モデルと体力の代償・`finish_ms`＝費用と所要時間の配列。要求に1回だけの準備は、初めて読まれた段に入る）、
+（`speed_kmh`・`detour_ratio=値(learned|default)`）、
+`compose_leg_costs`ログ（`leg`・`bins`・`reused_bins`＝使い回したビンの数・`compose_ms`と、その内訳の`speed_ms`＝走行モデルと体力の代償・`finish_ms`＝費用と所要時間の配列。要求に1回だけの準備は、初めて読まれた段に入る）、
 `select_turnarounds`/`select_via_nodes`の`detour_ratio_median`で確認できる。
 
 `RouteGenerateRequest.waypoints`/`destination`（経由地・目的地指定）にも対応する

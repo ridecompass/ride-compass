@@ -78,7 +78,7 @@ def _first_value(pair: list | None) -> float | None:
 
 def _wind_direction(code: float | None) -> WindDirection | None:
     """気象庁の風向コード（0=静穏、1〜16=16方位）を、風の来る向きの角度（0=北・時計回り。
-    `domain/wind.py: DepartureWind.direction_deg`と揃える）と呼び名へ。0（静穏、風速がほぼ0で方位不定）・
+    `domain/wind.py: WindForecastSeries.direction_deg`と揃える）と呼び名へ。0（静穏、風速がほぼ0で方位不定）・
     欠測・1〜16の範囲外はNone（範囲外を別の方位として出すと、向かい風と追い風を取り違えさせる）。
 
     角度と呼び名を別々の関数で読まない——どちらも同じ1つのコードの読み替えで、分けると方位の有無の判定と

@@ -36,7 +36,8 @@ from app.domain.road_network import MaterialFills, RoadNetwork, material_arrays_
 from app.domain.time_zone import JST, as_series_time
 from app.domain.wind import WindForecastSeries
 from app.infrastructure import road_network_store
-from app.infrastructure.debug_log import log_external_call, log_throttled_warning
+from app.infrastructure.debug_log import log_external_call
+from app.infrastructure.msm_client import MsmUnavailableError
 from app.services.graph_service import network_classes, network_fills
 from app.services.weather_service import WeatherService
 
@@ -92,12 +93,12 @@ class LensService:
                 return None
             features, materials, fills, steepest = prepared
             fields["features"] = len(features)
-            wind = await self._wind(z, x, y, at, materials.mid_lat, materials.mid_lon, fields)
+            wind = await self._wind(z, x, y, at, materials.mid_lat, materials.mid_lon)
             return await asyncio.to_thread(_tile_lens, features, materials, axes, fills, speed_kmh, preference, wind,
                                            steepest)
 
     async def _wind(self, z: int, x: int, y: int, at: datetime | None, mid_lat: np.ndarray, mid_lon: np.ndarray,
-                    fields: dict) -> tuple[WindForecastSeries, datetime] | None:
+) -> tuple[WindForecastSeries, datetime] | None:
         if not len(mid_lat):
             return None
         target = as_series_time(at or datetime.now(JST))
@@ -109,10 +110,8 @@ class LensService:
             max_latitude=max(bbox.max_latitude, float(mid_lat.max())),
             max_longitude=max(bbox.max_longitude, float(mid_lon.max())),
         ))
-        if series is None or not series.covers(target):
-            fields["wind"] = "unavailable" if series is None else "out_of_range"
-            log_throttled_warning(_CATEGORY, "レンズの風を読めないため無風で求める z=%d x=%d y=%d", z, x, y)
-            return None
+        if not series.covers(target):
+            raise MsmUnavailableError(f"MSMの風の予報が、求める時刻（{target.isoformat()}）を含みません")
         return series, target
 
 
@@ -136,9 +135,8 @@ def _tile_lens(features: LensFeatures, materials: EdgeMaterialColumns, axes: Cos
     if wind is not None:
         series, target = wind
         components = WindContext(
-            bearing_deg=materials.bearing_deg, departure_wind=None, wind_series=series,
-            forecast_index=series.time_index(target, 0.0),
-            wind_points=series.lattice.points_of(materials.mid_lat, materials.mid_lon)).components_or_calm()
+            bearing_deg=materials.bearing_deg, wind_series=series, forecast_index=series.time_index(target, 0.0),
+            wind_points=series.lattice.points_of(materials.mid_lat, materials.mid_lon)).components()
     return _TileLens(*lens_table(features, materials.columns, materials.distance_m, materials.elevation_profiles, axes,
                                  current_ledger_parameters(preference), speed_kmh, fills, components, steepest))
 

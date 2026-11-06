@@ -300,9 +300,8 @@ DI工場（`api/dependencies.py`）がプロセスに1つ持ってクライア�
 
 | メソッド | 用途 | 時刻 |
 |---|---|---|
-| `get_departure_wind(point)` | `RoadGraphEngine`の出発時点の風（時別の系列が無いとき全区間へ一様に使う。`domain/wind.py: DepartureWind`）。画面に値を出さない計算にだけ使う | 時系列の先頭（現在時刻の正時）。出発地へ補間し、風速・風向を小数1桁に丸める |
-| `get_wind_forecast_lattice(bbox)` | `RoadGraphEngine`の探索前コスト合成（Edgeごとの通過予定時刻・最寄りの格子点の風）と、ルートを出す前の地図のレンズの風（`services/lens_service.py: LensService`） | 範囲を覆うMSMの格子点ごとの時別風向・風速の系列（JST、格子点の値のまま）。格子点はMSMの格子そのもの（`domain/msm.py: MsmGrid.block_covering`）で、どの範囲から引いても同じ地点は同じ格子点に当たる。時刻が2つ未満ならNone |
-| `get_msm_grid(bbox)` | 地図の風の矢印と降水の升目（`GET /api/weather/msm-grid`） | 現在時刻の正時から`domain/weather_elements.py: MSM_FORECAST_HOURS`時間ぶん（JST）。範囲の中の格子点を間引き、風速・風向・降水量を格子点の値のまま丸めて返す。格子の欠損はNone。読めなければNone |
+| `get_wind_forecast_lattice(bbox)` | `RoadGraphEngine`の探索前コスト合成（Edgeごとの通過予定時刻・最寄りの格子点の風）と、ルートを出す前の地図のレンズの風（`services/lens_service.py: LensService`） | 範囲を覆うMSMの格子点ごとの時別風向・風速の系列（JST、格子点の値のまま）。格子点はMSMの格子そのもの（`domain/msm.py: MsmGrid.block_covering`）で、どの範囲から引いても同じ地点は同じ格子点に当たる。時刻が2つ未満なら投げる |
+| `get_msm_grid(bbox)` | 地図の風の矢印と降水の升目（`GET /api/weather/msm-grid`） | 現在時刻の正時から`domain/weather_elements.py: MSM_FORECAST_HOURS`時間ぶん（JST）。範囲の中の格子点を間引き、風速・風向・降水量を格子点の値のまま丸めて返す。格子の欠損はNone。読めなければ投げる |
 | `get_grid_point_today(point)` | 地点の最寄りの格子点の今日の値（`GET /api/weather`、`domain/weather.py: grid_point_today`） | 現在時刻の正時から、その日（JST）の24時まで。1時間ごとの気温・降水量・風速・風向を格子点の値のまま丸めて返し、格子点の位置と、地点から格子点までの距離（km）・方位を添える。最も高い・低い値は、並べた1時間ごとの値から選んだものとして`highest_hourly_*`・`lowest_hourly_*`の名前で返す（日の最高・最低気温ではない）。格子の欠損はNone。読めなければNone |
 
 ## その他のサービス
@@ -551,11 +550,9 @@ MSM（`.om`形式、CC-BY-4.0）をローカルへ同期して読む。予報を
 `domain/weather_elements.py: WeatherElement.grid_value`が宣言する（配信元から取る段を持つ要素は持たない）。
 
 **読めないときの振る舞い**: 同期が済んでいない・配信元の予報終端が現在時刻へ追いついた・置き場のファイルが
-読めない場合は`MsmUnavailableError`（サービスはこの1つだけを受ける）。ルート評価の風
-（`get_wind_forecast_lattice`）はNoneを返し、呼び出し元は出発時点の値（`get_departure_wind`）へ倒すが、
-そちらも同じMSMを読むため同時に読めず、**所要時間は無風で計算される**。候補はそのことを`wind_unavailable`で持ち、画面が候補の中身で知らせる
-（`domain/leg_costs.py: LegCostComposer.wind_unavailable`。時別の系列も出発時点の値も無いとき）。読めなかった原因は、読み出しを囲む`log_external_call`
-（カテゴリ`msm:read`）が抑制付きWARNINGで残す。
+読めない場合は`MsmUnavailableError`を投げる。サービスもルートの生成も地図のレンズも受けずに通し（無風で計算しない）、
+口は`api/upstream_errors.py`が503と理由（「気象の数値予報を読めません（…）」）にする。読めなかった原因は、読み出しを囲む
+`log_external_call`（カテゴリ`msm:read`）が抑制付きWARNINGで残す。
 
 **予報の長さ**: MSMはrunごとに39時間先（00/12UTCのrunは78時間先）まで持ち、配信は
 run初期時刻から数時間遅れる。そのため現在時刻から先の長さはrunのタイミングによって

@@ -5405,10 +5405,6 @@
           "facts": {
             "$ref": "#/components/schemas/RouteFacts"
           },
-          "wind_unavailable": {
-            "type": "boolean",
-            "title": "Wind Unavailable"
-          },
           "missing_travel_data_share": {
             "anyOf": [
               {
@@ -5500,7 +5496,6 @@
           "cost_seconds",
           "penalty",
           "facts",
-          "wind_unavailable",
           "missing_travel_data_share",
           "edge_ids",
           "edge_point_offsets",

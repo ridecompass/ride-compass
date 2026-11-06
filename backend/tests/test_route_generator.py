@@ -58,7 +58,7 @@ def _candidate(key: str, penalty: float = 10.0, **fields) -> EvaluatedRoute:
         "elevation_gain_m": None, "segments": [_segment()], "estimated_duration_seconds": 100.0,
         "cost_seconds": 100.0 + penalty, "penalty": PenaltyBreakdown(axis_seconds={"a": penalty}, turn_seconds=0.0, avoidance_seconds=0.0),
         "facts": RouteFacts(elevation_unknown_km=0.0, axes={}),
-        "wind_unavailable": False, "missing_travel_data_share": None, "edge_ids": [key], "edge_point_offsets": [], "node_ids": [], "turns": [],
+        "missing_travel_data_share": None, "edge_ids": [key], "edge_point_offsets": [], "node_ids": [], "turns": [],
         "waypoint_distances_km": [], **fields,
     })
 

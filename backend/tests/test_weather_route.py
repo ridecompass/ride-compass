@@ -36,6 +36,7 @@ from app.domain.time_zone import JST
 from app.domain.twilight import Twilight
 from app.domain.weather import GridPointToday
 from app.infrastructure import rate_limiter
+from app.infrastructure.msm_client import MsmUnavailableError
 from app.main import app
 from app.services.flood_service import FloodForecasts
 from app.services.warning_service import WeatherWarnings
@@ -211,6 +212,7 @@ def test_an_msm_grid_range_that_is_inverted_or_too_wide_is_refused(override_depe
 
 
 _UPSTREAM_FAILED = "外部の配信元から取得できませんでした（ConnectError）"
+_MSM_UNAVAILABLE = "気象の数値予報を読めません（未同期）"
 
 
 @pytest.mark.parametrize(("method", "path", "call", "dependency", "answer", "detail"), [
@@ -221,8 +223,11 @@ _UPSTREAM_FAILED = "外部の配信元から取得できませんでした（Con
         _UPSTREAM_FAILED,
     ),
     ("GET", "/api/weather/amedas", {"params": POINT}, get_amedas_service, None, "アメダス観測値の取得に失敗しました"),
-    ("GET", "/api/weather", {"params": POINT}, get_weather_service, None, "気象データの取得に失敗しました"),
-    ("GET", "/api/weather/msm-grid", {"params": TOKYO_BBOX}, get_weather_service, None, "気象データの取得に失敗しました"),
+    ("GET", "/api/weather", {"params": POINT}, get_weather_service, MsmUnavailableError("未同期"), _MSM_UNAVAILABLE),
+    (
+        "GET", "/api/weather/msm-grid", {"params": TOKYO_BBOX}, get_weather_service, MsmUnavailableError("未同期"),
+        _MSM_UNAVAILABLE,
+    ),
     (
         "POST", "/api/weather/route-warning-timeline", {"json": ROUTE_POINTS},
         get_warning_timeline_service, httpx.ConnectError("x"), _UPSTREAM_FAILED,
@@ -237,7 +242,7 @@ def test_a_source_that_could_not_be_obtained_is_a_failure_not_an_empty_answer(
 
     response = client.request(method, path, **call)
 
-    assert response.status_code == 502
+    assert response.status_code == (503 if detail == _MSM_UNAVAILABLE else 502)
     assert response.json() == {"detail": detail}
 
 

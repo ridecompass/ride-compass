@@ -1643,8 +1643,6 @@ export interface components {
             cost_seconds: number;
             penalty: components["schemas"]["PenaltyBreakdown"];
             facts: components["schemas"]["RouteFacts"];
-            /** Wind Unavailable */
-            wind_unavailable: boolean;
             /** Missing Travel Data Share */
             missing_travel_data_share: number | null;
             /** Edge Ids */

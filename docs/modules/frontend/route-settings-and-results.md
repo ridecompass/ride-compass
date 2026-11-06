@@ -160,10 +160,9 @@
 - **標高の無い道**: `RouteCandidate.facts.elevation_unknown_km`が0より大きければ、その長さを登りに数えていないことを注記する。
 - **所要時間の説明**: (i)は、区間ごとに速度を変える条件の名前を走行モデルの宣言（`domain/cycling_speed.py: SEGMENT_SPEED_CONDITIONS`。
   生成物`route-generate-config.json`の`segment_speed_conditions`）から差し込む。想定速度の(i)（`RideConditionBar`）も同じ並びを使う。
-- **所要時間の前提が崩れたことの注記**: 所要時間のすぐ下に、`RouteCandidate.wind_unavailable`なら「風のモデルの計算値を
-  使えなかったため、無風として所要時間を出しています」、`missing_travel_data_share`（勾配か停止要因の件数の値が無く、
+- **所要時間の前提が崩れたことの注記**: 所要時間のすぐ下に、`missing_travel_data_share`（勾配か停止要因の件数の値が無く、
   平地・待ち無しとして数えた区間の距離の割合）が丸めて1%以上なら「データの無い区間が◯%」を出す——黙って短い所要時間を
-  見せない。0%は判断の材料にならないため出さない。どちらもbackendがEdge単位で数えた値をそのまま使う。
+  見せない。0%は判断の材料にならないため出さない。backendがEdge単位で数えた値をそのまま使う。
 - 候補タブの並び順は、最速の印の1本が比べる基準として先頭、残りはbackendの費用の順（`routeTabLabel.ts: routeListEntries`。
   [ページ全体構成・状態管理](page-composition.md)参照）。
 

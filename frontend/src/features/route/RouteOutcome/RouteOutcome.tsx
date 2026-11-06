@@ -239,7 +239,6 @@ export default function RouteOutcome({ results, generation, splice, profileLayer
               facts={route.facts}
               catalog={costCatalog}
               estimatedDurationSeconds={route.estimated_duration_seconds}
-              windUnavailable={route.wind_unavailable}
               missingTravelDataShare={route.missing_travel_data_share}
             />
           </TabsContent>

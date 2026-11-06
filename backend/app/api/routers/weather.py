@@ -126,10 +126,7 @@ async def get_weather(
     """地点に最も近い数値予報モデル（MSM）の格子点の、今日の1時間ごとの気温・降水量・風（格子点の値のまま）と、その格子点の
     位置・地点からの距離と方位。MSMを読めないか、地点が格子の外なら502。"""
     enforce_rate_limit(http_request, "weather", settings.weather_rate_limit_per_minute)
-    return _or_502(
-        await weather_service.get_grid_point_today(Coordinates(latitude=latitude, longitude=longitude)),
-        "気象データの取得に失敗しました",
-    )
+    return await weather_service.get_grid_point_today(Coordinates(latitude=latitude, longitude=longitude))
 
 
 @router.get("/api/weather/msm-grid", response_model=MsmGridForecast)
@@ -150,4 +147,4 @@ async def get_msm_grid(
         raise HTTPException(status_code=400, detail="表示範囲が不正です。") from None
     if (max_lat - min_lat) * (max_lon - min_lon) > MSM_GRID_MAX_AREA_SQ_DEG:
         raise HTTPException(status_code=400, detail="表示範囲が広すぎます。ズームインしてください。")
-    return _or_502(await weather_service.get_msm_grid(bbox), "気象データの取得に失敗しました")
+    return await weather_service.get_msm_grid(bbox)
