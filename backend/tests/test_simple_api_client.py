@@ -110,9 +110,9 @@ async def test_requests_waiting_for_a_failing_fetch_fail_with_it(monkeypatch):
     release.set()
 
     failures = await asyncio.gather(first, waiting, return_exceptions=True)
-    assert [str(failure) for failure in failures] == ["bad json", "bad json"]
+    assert [str(failure) for failure in failures] == ["cat: ValueError('bad json')"] * 2
     assert len(calls) == 1
-    assert [call.fields["error_type"] for call in recorded] == ["ValueError", "ValueError"]
+    assert [call.fields["error_type"] for call in recorded] == ["UnexpectedShapeError"] * 2
 
 
 async def test_get_json_waits_as_long_as_the_client_it_is_given():

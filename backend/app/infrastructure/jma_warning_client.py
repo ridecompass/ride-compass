@@ -87,25 +87,11 @@ def new_warning_cache() -> TTLCache:
     return TTLCache(maxsize=256, ttl=_WARNING_CACHE_TTL_SECONDS)
 
 
-def _optional_str(value: object, what: str) -> str | None:
-    """無い（None）か文字列。ほかの形なら投げる。"""
-    if value is None or isinstance(value, str):
-        return value
-    raise UnexpectedShapeError(f"{what} is {type(value).__name__}")
-
-
-def _parse_area_entries(section: object, key: str) -> dict[str, AreaEntry]:
-    if not isinstance(section, dict) or not all(isinstance(entry, dict) for entry in section.values()):
-        raise UnexpectedShapeError(f"area master {key} is not a table of areas")
-    return {
-        code: AreaEntry(parent=_optional_str(entry.get("parent"), f"area {code} parent"),
-                        name=_optional_str(entry.get("name"), f"area {code} name"))
-        for code, entry in section.items()
-    }
-
-
 def _parse_area_master(payload: dict) -> AreaMaster:
-    return AreaMaster(**{key: _parse_area_entries(payload.get(key), key) for key in ("class20s", "class15s", "class10s")})
+    return AreaMaster(**{
+        key: {code: AreaEntry(parent=entry.get("parent"), name=entry.get("name")) for code, entry in payload[key].items()}
+        for key in ("class20s", "class15s", "class10s")
+    })
 
 
 @dataclass(frozen=True)
@@ -117,41 +103,24 @@ class _RawKind:
     additions: tuple[str, ...]
 
 
-def _parse_kind(kind: object) -> _RawKind:
-    """電文の1種別。警報が何も無い地域の種別は`{"status": "発表警報・注意報はなし"}`でコードを持たない。形が合わなければ投げる。"""
-    if not isinstance(kind, dict):
-        raise UnexpectedShapeError(f"warning kind is {type(kind).__name__}")
-    additions = kind.get("additions", [])
-    if not isinstance(additions, list) or not all(isinstance(addition, str) for addition in additions):
-        raise UnexpectedShapeError("warning kind additions are not a list of strings")
-    return _RawKind(
-        code=_optional_str(kind.get("code"), "warning kind code"),
-        status=_optional_str(kind.get("status"), "warning kind status"),
-        additions=tuple(additions),
-    )
+def _parse_kind(kind: dict) -> _RawKind:
+    """電文の1種別。警報が何も無い地域の種別は`{"status": "発表警報・注意報はなし"}`でコードを持たない。"""
+    return _RawKind(code=kind.get("code"), status=kind.get("status"), additions=tuple(kind.get("additions", ())))
 
 
 _RawArea = dict[str, tuple[_RawKind, ...]]
 
 
-def _parse_area_items(items: object) -> _RawArea:
-    """地域ごとの種別（項目が無ければ空）。同じ地域のコードが2度現れたら最初の項目を使う。形が合わなければ投げる。"""
-    if items is None:
-        return {}
-    if not isinstance(items, list):
-        raise UnexpectedShapeError(f"warning area items are {type(items).__name__}")
+def _parse_area_items(items: list | None) -> _RawArea:
+    """地域ごとの種別（項目が無ければ空）。同じ地域のコードが2度現れたら最初の項目を使う。"""
     kinds_by_area: _RawArea = {}
-    for item in items:
-        if not isinstance(item, dict) or not isinstance(item.get("areaCode"), str) or not isinstance(item.get("kinds"), list):
-            raise UnexpectedShapeError("warning area item has no area code or kinds")
+    for item in items or ():
         kinds_by_area.setdefault(item["areaCode"], tuple(_parse_kind(kind) for kind in item["kinds"]))
     return kinds_by_area
 
 
-def _parse_bulletin(document: object) -> tuple[_RawArea, _RawArea]:
-    """電文1件の区域・二次細分区域ごとの種別。形が合わなければ投げる。"""
-    if not isinstance(document, dict) or not isinstance(document.get("warning"), dict):
-        raise UnexpectedShapeError("warning bulletin has no warning")
+def _parse_bulletin(document: dict) -> tuple[_RawArea, _RawArea]:
+    """電文1件の区域・二次細分区域ごとの種別。"""
     warning = document["warning"]
     return _parse_area_items(warning.get("class20Items")), _parse_area_items(warning.get("class10Items"))
 

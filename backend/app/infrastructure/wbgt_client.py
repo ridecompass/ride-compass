@@ -65,37 +65,29 @@ def _parse_point_master(csv_text: str) -> list[WbgtPoint]:
     reader = csv.reader(io.StringIO(csv_text))
     # 空行はデータ行に数えない（配布CSVの末尾に付きうる）。
     rows = [row for row in list(reader)[1:] if any(cell.strip() for cell in row)]  # 先頭行はヘッダー
-    # 読めない行は投げる。列構成が変わったときに読める行だけを残すと、遠い地点の値が何事もなく表示される。
-    if any(len(row) < 13 for row in rows):
-        raise UnexpectedShapeError("wbgt point master has a row with fewer than 13 columns")
-    try:
-        return [
-            WbgtPoint(
-                no=row[2].strip(),
-                name=row[3].strip(),
-                latitude=float(row[7].strip()) + float(row[8].strip()) / 60.0,
-                longitude=float(row[9].strip()) + float(row[10].strip()) / 60.0,
-            )
-            for row in rows
-            if row[12].strip() == "9999-99-99"  # 運用終了済み地点は近傍検索の対象外
-        ]
-    except ValueError as error:
-        raise UnexpectedShapeError(f"wbgt point master has a row whose position is not a number: {error}") from error
+    # 読めない行（列が足りない・座標が数でない）は投げる。読める行だけを残すと、遠い地点の値が何事もなく表示される。
+    return [
+        WbgtPoint(
+            no=row[2].strip(),
+            name=row[3].strip(),
+            latitude=float(row[7].strip()) + float(row[8].strip()) / 60.0,
+            longitude=float(row[9].strip()) + float(row[10].strip()) / 60.0,
+        )
+        for row in rows
+        if row[12].strip() == "9999-99-99"  # 運用終了済み地点は近傍検索の対象外
+    ]
 
 
-def _parse_forecast(entry: object) -> WbgtForecast:
-    """予測値1件。予測の時刻と値は無いことがある（None）。あるのに読めなければ投げる。"""
-    if not isinstance(entry, dict) or not isinstance(entry.get("reference_time"), str):
-        raise UnexpectedShapeError("wbgt forecast entry has no reference time")
+def _parse_forecast(entry: dict) -> WbgtForecast:
+    """予測値1件。予測の時刻と値は無いことがある（None）。"""
     raw_time = entry.get("forecast_time")
     raw_value = entry.get("forecast_val")
-    try:
-        forecast_time = None if raw_time is None else datetime.strptime(raw_time, "%Y/%m/%d %H:%M:%S")
+    return WbgtForecast(
+        reference_time=entry["reference_time"],
+        forecast_time=None if raw_time is None else datetime.strptime(raw_time, "%Y/%m/%d %H:%M:%S"),
         # 配信元は暑さ指数を10倍した整数文字列で返す（例: "280"→28.0）。
-        wbgt = None if raw_value is None else float(raw_value) / 10.0
-    except (TypeError, ValueError) as error:
-        raise UnexpectedShapeError(f"wbgt forecast entry cannot be read: {entry!r}") from error
-    return WbgtForecast(reference_time=entry["reference_time"], forecast_time=forecast_time, wbgt=wbgt)
+        wbgt=None if raw_value is None else float(raw_value) / 10.0,
+    )
 
 
 async def fetch_forecast(

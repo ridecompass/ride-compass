@@ -423,8 +423,9 @@ DI工場（`api/dependencies.py`）がプロセスに1つ持ってクライア�
 「`TTLCache`参照→ミス時のみfetch→キャッシュ書き戻し」という骨格を
 `cached_fetch(category, fetch, *, cache=..., key=..., **log_fields)`が1箇所へ
 まとめている。呼び出し元は`fetch`（実際のhttpx呼び出し＋パース＋必要ならフォーマット
-検証）だけを渡す。JSONを取って最上位が配列か辞書かを確かめるところは`get_json`が持つ。フォーマット不正（配列であるべきなのにそうでない等）は
-`UnexpectedShapeError`（`ValueError`のサブクラス）を`fetch`内から送出する。失敗は値に替えずに投げ、`log_external_call`が
+検証）だけを渡す。JSONを取って最上位が配列か辞書かを確かめるところは`get_json`が持つ。読み方は項目ごとの形を確かめずに
+そのまま読み、欠けた項目・違う型・読めない値でPythonが投げた例外（`KeyError`・`IndexError`・`TypeError`・`ValueError`）は、
+`cached_fetch`が`UnexpectedShapeError`（配信の形の誤り）に包む。失敗は値に替えずに投げ、`log_external_call`が
 失敗として記録し、口は`api/upstream_errors.py`が502にする。同じキャッシュと鍵へ取得の最中に来た要求は、上流へ出さずにその取得の結果（失敗も）を
 待つ——警報・暑さ指数・洪水予報は画面が開いた利用者ごとに同じ時刻に問い合わせるので、キャッシュが切れた直後の要求が
 揃って上流へ流れない。待っていた要求が切れても取得は続き、結果はキャッシュへ書く。キャッシュは取得の関数が引数で受け、作り方（件数の上限・TTL）は

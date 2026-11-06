@@ -23,6 +23,10 @@ class UnexpectedShapeError(ValueError):
     """fetchが返した内容の形が想定と異なる場合に送出する。"""
 
 
+#: 配信の中身を読む途中で、項目が欠けている・型が違う・値が読めないときにPythonが投げる例外。
+_SHAPE_ERRORS = (KeyError, IndexError, TypeError, ValueError)
+
+
 async def get_json[J: (dict, list)](client: httpx.AsyncClient, url: str, expected: type[J], shape_error_prefix: str) -> J:
     """`url`をGETしてJSONを読む。`expected`の型でなければ`UnexpectedShapeError`
     （文は`<shape_error_prefix> <届いた型の名前>`）。"""
@@ -59,7 +63,11 @@ async def cached_fetch[T](
                 fields["cache"] = "hit"
                 return cached
             pending = asyncio.shield(_shared_fetch(fetch, cache, key, fields))
-        data = await pending
+        try:
+            data = await pending
+        except _SHAPE_ERRORS as error:
+            # 読み方は項目ごとの形を確かめずにそのまま読むので、欠け・型の違いはここで配信の形の誤りにする（口は502）。
+            raise UnexpectedShapeError(f"{category}: {error!r}") from error
         fields["result"] = "ok"
         return data
 
