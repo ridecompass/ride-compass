@@ -13,7 +13,6 @@
 """
 
 import asyncio
-import json
 import logging
 from collections.abc import AsyncIterator, Mapping, Sequence
 from itertools import batched
@@ -229,16 +228,6 @@ def _rows_to_directed_edges(rows, wanted: dict[tuple[int, int], list[bool]]) -> 
     return edges
 
 
-def _scanned_relations(plan: object) -> set[str]:
-    """`EXPLAIN (FORMAT JSON)`の計画の中で走査される表の名前。"""
-    if isinstance(plan, list):
-        return set().union(*map(_scanned_relations, plan))
-    if not isinstance(plan, dict):
-        return set()
-    found = {plan["Relation Name"]} if "Relation Name" in plan else set()
-    return found.union(*map(_scanned_relations, plan.values()))
-
-
 def _float_array(values: list) -> np.ndarray:
     """NoneはNaNになる。"""
     return np.array(values, dtype=np.float64)
@@ -330,19 +319,6 @@ class RoadGraphRepository:
         result = await self._session.stream(statement)
         async for chunk in result.partitions(chunk_size):
             yield chunk
-
-    async def network_relations(self) -> set[str]:
-        """道路網全体の配列の読み出し（`NETWORK_SQL_SOURCES`）が読む表の名前。
-
-        文を書き写して読まず、PostgreSQLの計画（`EXPLAIN`）が走査する表から読む——結び方を変えても漏れず、ソースの
-        パーティションは読むものだけが出る。パラメータはNULLで渡す（走査する表は値で変わらない）。
-        """
-        relations: set[str] = set()
-        for statement in NETWORK_SQL_SOURCES:
-            plan: object = (await self._session.execute(text(f"EXPLAIN (FORMAT JSON) {statement.text}"),
-                                                dict.fromkeys(statement.compile().params))).scalar_one()
-            relations |= _scanned_relations(json.loads(plan) if isinstance(plan, str) else plan)
-        return relations
 
     async def get_edges_with_geometry(self, edges: list[LeanEdge]) -> dict[str, LeanEdge]:
         """指定した枝ぶんだけ、実ジオメトリ込みの`LeanEdge`を取得する。

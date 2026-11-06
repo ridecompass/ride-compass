@@ -37,12 +37,11 @@ class DerivedDataMetaRow(Base):
 class DerivedSourceRunRow(Base):
     """今の`public`の派生の表を作った取込。ソースごとに1行。
 
-    作り直しを始めた時点の、全ソースの成功した最新の取込を書く（鮮度台帳がソースごとに比べる）。作り直す派生の表と一緒に
-    作業用のスキーマで書き、表ごと入れ替える（`derive_cli.py`）——
+    流した段が読むソースは作り直しを始めた時点の成功した最新の取込を、流さなかった段だけが読むソースは前回の記録を書く
+    （鮮度台帳がソースごとに比べる）。作り直す派生の表と一緒に作業用のスキーマで書き、表ごと入れ替える（`derive_cli.py`）——
     事故密度の分母がこの記録の事故の取込の年から読まれる（`road_graph_repository.py: get_accident_years`）ので、
     入れ替えの前に作業用のスキーマから作る道路網の配列も、入れ替えの後の読み手も、数と同じ取込の年を読む。段が読んだ
-    生データがこの記録と一致するのは、取込と作り直しが同時に走らず、流さなかった段は読むソースの取込が前回と
-    同じとき（段の指紋が同じとき）だけ飛ばされるためである。
+    生データがこの記録と一致するのは、取込と作り直しが同時に走らないためである。
     """
 
     __tablename__ = "derived_source_runs"
@@ -54,31 +53,16 @@ class DerivedSourceRunRow(Base):
 class DerivedColumnRow(Base):
     """今の`public`の派生の表を作ったときの、表ごとの列（ORMの宣言）。表と列ごとに1行。
 
-    作り直しは作業用のスキーマで表ごと入れ替え、流さない段は入力（書く表の列を含む）が前回と同じ段だけなので、入れ替えた
-    後の値のNULLは「計算した結果、値が無い」しかない。作り直しが要るのは、取込が変わったとき（`derived_source_runs`）と、最後の作り直しの後に
-    派生の表の列を足した・消したとき（足した列は全行がNULLのまま）だけで、後者をこの記録と今の宣言の比べで出す
-    （`derived_data_freshness.py`）。`derived_source_runs`と同じく作業用のスキーマで書き、表ごと入れ替える。
+    流した段の表は今の宣言の列を、流さなかった段の表は前回の記録を書く。作り直しが要るのは、取込が変わったとき
+    （`derived_source_runs`）と、その表を最後に作り直した後に派生の表の列を足した・消したとき（足した列は全行がNULLのまま）
+    で、後者をこの記録と今の宣言の比べで出す（`derived_data_freshness.py`）。`derived_source_runs`と同じく作業用のスキーマで
+    書き、表ごと入れ替える。
     """
 
     __tablename__ = "derived_columns"
 
     table_name: Mapped[str] = mapped_column(String, primary_key=True)
     column_name: Mapped[str] = mapped_column(String, primary_key=True)
-
-
-class DerivedStageRow(Base):
-    """今の`public`の派生の表を作ったときの、段ごとの入力の指紋（`derive_cli.py: stage_fingerprints`）。段ごとに1行で、
-    区間ごとに写す段は前の段を除いた入力の指紋の行も持つ。
-
-    次の作り直しは、指紋がこの記録と同じ段を流さず、その段の前回の表を残す。読むのは作り直しだけ。
-    `derived_source_runs`と同じく作業用のスキーマで書き、表ごと入れ替える——段を流した作り直しが途中で
-    落ちても、記録は前回の表の中身を指したまま残る。
-    """
-
-    __tablename__ = "derived_stages"
-
-    stage: Mapped[str] = mapped_column(String, primary_key=True)
-    fingerprint: Mapped[str] = mapped_column(String, nullable=False)
 
 
 class DerivedTuningRow(Base):
@@ -145,15 +129,25 @@ async def replace_columns(conn: asyncpg.Connection, columns: Mapping[str, frozen
         [(table, name) for table, names in columns.items() for name in sorted(names)])
 
 
-async def read_stage_fingerprints(conn: asyncpg.Connection) -> dict[str, str]:
-    """今の派生の表を作ったときの段ごとの指紋（段の名前 → 指紋）。"""
-    rows = await conn.fetch(f"SELECT stage, fingerprint FROM {DerivedStageRow.__tablename__}")
-    return {row["stage"]: row["fingerprint"] for row in rows}
+@dataclass(frozen=True)
+class DeriveRecords:
+    """今の`public`の派生の表を作ったときの記録（作った取込・表ごとの列・使った較正値）。"""
+
+    runs: dict[str, int]
+    columns: dict[str, frozenset[str]]
+    tuning: dict[str, float]
 
 
-async def replace_stage_fingerprints(conn: asyncpg.Connection, fingerprints: Mapping[str, str]) -> None:
-    """段ごとの指紋を`fingerprints`へ置き換える。"""
-    await _replace_rows(conn, DerivedStageRow.__tablename__, ("stage", "fingerprint"), fingerprints.items())
+async def read_records(conn: asyncpg.Connection) -> DeriveRecords:
+    """今の`public`の作り直しの記録。段を選んだ作り直しが、流さなかった段の分を残すために読む。"""
+    runs = {row["source"]: row["run_id"] for row in await conn.fetch(
+        f"SELECT source, run_id FROM public.{DerivedSourceRunRow.__tablename__}")}
+    columns: dict[str, set[str]] = {}
+    for row in await conn.fetch(f"SELECT table_name, column_name FROM public.{DerivedColumnRow.__tablename__}"):
+        columns.setdefault(row["table_name"], set()).add(row["column_name"])
+    tuning = {row["param_id"]: row["value"] for row in await conn.fetch(
+        f"SELECT param_id, value FROM public.{DerivedTuningRow.__tablename__}")}
+    return DeriveRecords(runs=runs, columns={table: frozenset(names) for table, names in columns.items()}, tuning=tuning)
 
 
 async def read_tuning(conn: asyncpg.Connection, param_ids: Iterable[str]) -> dict[str, float]:
