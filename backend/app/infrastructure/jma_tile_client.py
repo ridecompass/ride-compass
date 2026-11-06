@@ -13,6 +13,7 @@ from app.infrastructure.debug_log import log_external_call
 from app.infrastructure.http_client import UPSTREAM_NOT_FOUND, UpstreamNotFound, fetch_upstream
 from app.infrastructure.jma_tile_paths import is_final_absence
 from app.infrastructure.jma_tile_recolor import recolored
+from app.infrastructure.simple_api_client import UnexpectedShapeError
 
 UPSTREAM_HOST = "https://www.jma.go.jp"
 
@@ -129,26 +130,25 @@ class JmaTileClient:
         return await self.fetch(path)
 
 
-async def get_target_times(client: JmaTileClient, path: str) -> list[TargetTimesRow] | None:
-    """時刻一覧（`targetTimes*.json`）を`client.get`で引き、行へ解く（`parse_target_times`）。取れない・JSONでない
-    ときはNone。
+async def get_target_times(client: JmaTileClient, path: str) -> list[TargetTimesRow]:
+    """時刻一覧（`targetTimes*.json`）を`client.get`で引き、行へ解く（`parse_target_times`）。無い・JSONでない・形が
+    合わないときは投げる。
 
     画面へは同じ時刻一覧を中継するだけで、解くのはbackendがコマを選ぶ（プリウォーム）ときだけ。"""
     raw = await client.get(path)
-    if raw is None or isinstance(raw, UpstreamNotFound):
-        return None
+    if isinstance(raw, UpstreamNotFound):
+        raise UnexpectedShapeError(f"jma target times listing is missing: {path}")
     content, _content_type = raw
-    try:
-        payload = json.loads(content)
-    except (ValueError, TypeError):
-        return None
-    return parse_target_times(payload)
+    return parse_target_times(json.loads(content))
 
 
-def parse_target_times(payload: object) -> list[TargetTimesRow] | None:
-    """時刻一覧（JSONを解いた値）を行へ解く。配列でなければNone。コマの時刻を欠く行は読み飛ばす。"""
-    if not isinstance(payload, list):
-        return None
+def parse_target_times(payload: object) -> list[TargetTimesRow]:
+    """時刻一覧（JSONを解いた値）を行へ解く。配列でない・コマの時刻を欠く行があれば投げる。"""
+    if not isinstance(payload, list) or not all(
+        isinstance(row, dict) and "basetime" in row and "validtime" in row and isinstance(row.get("elements", []), list)
+        for row in payload
+    ):
+        raise UnexpectedShapeError("jma target times are not a list of rows with basetime and validtime")
     return [
         TargetTimesRow(
             # 系列を持たない行（nowc）には`member`が無い。タイルのパスでは"none"と書く。
@@ -156,5 +156,4 @@ def parse_target_times(payload: object) -> list[TargetTimesRow] | None:
             elements=tuple(row.get("elements", ())),
         )
         for row in payload
-        if isinstance(row, dict) and "basetime" in row and "validtime" in row
     ]

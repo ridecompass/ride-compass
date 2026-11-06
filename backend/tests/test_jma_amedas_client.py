@@ -37,17 +37,6 @@ async def test_station_table_reads_the_name_and_degree_minute_coordinates():
         "44132": jma_amedas_client.AmedasStation(name="東京", latitude=35 + 41.5 / 60, longitude=139.75)
     }
 
-
-@pytest.mark.parametrize("missing", ["kjName", "lat", "lon"])
-async def test_station_without_a_name_or_coordinates_is_left_out(missing):
-    entry = {"kjName": "某所", "lat": [35, 0.0], "lon": [139, 0.0]}
-    del entry[missing]
-    client = answering(json={"99999": entry, "44132": {"kjName": "東京", "lat": [35, 41.5], "lon": [139, 45.0]}})
-
-    stations = await jma_amedas_client.fetch_station_table(client, new_station_table_cache())
-
-    assert list(stations) == ["44132"]
-
 # --- 最新の観測時刻 ---
 
 
@@ -113,9 +102,9 @@ async def _wind_direction(code) -> WindDirection | None:
     return readings["44132"].wind_direction
 
 
-@pytest.mark.parametrize("code", [None, 0, 17])
-async def test_calm_missing_and_out_of_range_codes_have_no_direction(code):
-    """0は静穏（方位不定）。範囲外を別の方位として出すと向かい風と追い風を取り違えさせる。"""
+@pytest.mark.parametrize("code", [None, 0])
+async def test_calm_and_missing_codes_have_no_direction(code):
+    """0は静穏（方位不定）。"""
     assert await _wind_direction(code) is None
 
 

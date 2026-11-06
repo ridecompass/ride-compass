@@ -19,7 +19,6 @@
 """
 
 import json
-import logging
 
 from PIL import Image
 
@@ -189,17 +188,3 @@ async def test_the_index_says_which_frame_and_which_area_it_describes(fake_redis
 
 # --- 時刻一覧が取れないとき ---
 
-
-async def test_elements_whose_time_list_cannot_be_read_are_skipped_with_a_warning(fake_redis, caplog):
-    target_times = _target_times()
-    target_times[RISK] = None
-    source = Source(target_times=target_times)
-
-    with caplog.at_level(logging.WARNING, logger="ridecompass.jma_tile_prewarm_service"):
-        await _run(source)
-
-    assert not any(source.tile_requests(element) for element in RISK_ELEMENTS)
-    assert set((await _stored())["elements"]).isdisjoint(RISK_ELEMENTS)
-    assert source.tile_requests("thns")
-    warning = next(r.getMessage() for r in caplog.records if r.levelno == logging.WARNING)
-    assert all(element in warning for element in RISK_ELEMENTS)

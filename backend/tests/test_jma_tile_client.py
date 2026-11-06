@@ -18,7 +18,6 @@
 import asyncio
 import types
 
-import httpx
 import pytest
 import respx
 from PIL import Image
@@ -38,7 +37,7 @@ OTHER_TILE = "bosai/jmatile/data/risk/20260101000000/none/20260101000000/surf/la
 PRECIPITATION_TILE = "bosai/jmatile/data/nowc/20260101000000/none/20260101000000/surf/hrpns/6/57/25.png"
 LISTING = "bosai/jmatile/data/nowc/targetTimes_N1.json"
 FEATURES = "bosai/jmatile/data/nowc/20260101000000/none/20260101000000/surf/liden/data.geojson?id=liden"
-OPAQUE = b"\x89PNG not decoded by the client"
+OPAQUE = encode(Image.new("RGBA", (4, 4), (255, 0, 0, 255)))
 NOTHING_TO_DRAW = encode(Image.new("RGBA", (4, 4), (0, 0, 0, 0)))
 
 
@@ -192,9 +191,6 @@ async def test_a_time_listing_reads_as_its_frames_and_the_elements_with_tiles(up
         json=[
             {"basetime": "20260101000000", "validtime": "20260101000500", "elements": ["hrpns", "hrpns_nd"]},
             {"basetime": "20260101000000", "member": "immed0", "validtime": "20260101001000"},
-            {"basetime": "20260101000000"},
-            {"validtime": "20260101000000"},
-            "not a row",
         ]
     )
 
@@ -205,17 +201,3 @@ async def test_a_time_listing_reads_as_its_frames_and_the_elements_with_tiles(up
         TargetTimesRow(JmaFrame("20260101000000", "immed0", "20260101001000"), ()),
     ]
 
-
-@pytest.mark.parametrize(
-    "answer",
-    [
-        httpx.Response(200, text="<html>maintenance</html>"),
-        httpx.Response(200, json={"basetime": "20260101000000", "validtime": "20260101000000"}),
-        httpx.Response(404),
-    ],
-    ids=["not_json", "not_a_list", "missing"],
-)
-async def test_a_time_listing_that_cannot_be_read_reads_as_nothing(upstream, fake_redis, answer, client):
-    upstream.get(f"/{LISTING}").return_value = answer
-
-    assert await jma_tile_client.get_target_times(client(upstream), LISTING) is None

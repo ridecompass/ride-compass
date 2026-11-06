@@ -21,9 +21,9 @@ from PIL import Image
 from app.domain.jma_tile_specs import JMA_DATA_ROOT, JmaFrame, read_target_times
 from app.domain.region import tile_position
 from app.domain.weather import SuikeiWeather
-from app.infrastructure.debug_log import log_throttled_warning
 from app.infrastructure.jma_tile_client import JmaTileClient, get_target_times
 from app.infrastructure.http_client import UpstreamNotFound
+from app.infrastructure.simple_api_client import UnexpectedShapeError
 
 #: 時刻一覧に載る天気の要素id。
 _WEATHER_ELEMENT = "wthr"
@@ -69,28 +69,22 @@ def _tile_path(frame: JmaFrame, pixel: _Pixel) -> str:
 
 
 def _weather_from_color(red: int, green: int, blue: int, alpha: int) -> SuikeiWeather | None:
-    """画素の色を天気の区分へ。透明（推計の範囲の外・欠測）はNone。
-
-    凡例に無い色もNoneにしてWARNINGを出す——配信元が配色を変えた印で、区分を取り違えて出すより出さない。"""
+    """画素の色を天気の区分へ。透明（推計の範囲の外・欠測）はNone。凡例に無い色なら投げる（配信元が配色を変えた印）。"""
     if alpha == 0:
         return None
     weather = _WEATHER_BY_COLOR.get((red, green, blue))
     if weather is None:
-        log_throttled_warning(
-            _CATEGORY,
-            "推計気象分布（天気）の凡例に無い色です rgb=(%d, %d, %d)（infrastructure/jma_suikei_client.py: _WEATHER_BY_COLOR）",
-            red, green, blue,
+        raise UnexpectedShapeError(
+            f"jma suikei weather color missing from _WEATHER_BY_COLOR: rgb={(red, green, blue)}（jma_suikei_client.py）"
         )
     return weather
 
 
 async def fetch_weather(client: JmaTileClient, latitude: float, longitude: float) -> SuikeiWeather | None:
-    """最新の天気のタイルの、地点の天気の区分。取れない・透明・凡例に無い色ならNone。"""
-    rows = await get_target_times(client, _TARGET_TIMES_PATH)
-    frames = [] if rows is None else read_target_times("latest", rows, _WEATHER_ELEMENT)
+    """最新の天気のタイルの、地点の天気の区分。タイルが無い・透明ならNone。読めなければ投げる。"""
+    frames = read_target_times("latest", await get_target_times(client, _TARGET_TIMES_PATH), _WEATHER_ELEMENT)
     if not frames:
-        log_throttled_warning(_CATEGORY, "推計気象分布（天気）の時刻一覧を読めませんでした path=%s", _TARGET_TIMES_PATH)
-        return None
+        raise UnexpectedShapeError(f"jma suikei target times have no frame: {_TARGET_TIMES_PATH}")
     pixel = _pixel(latitude, longitude)
     path = _tile_path(frames[0], pixel)
     raw = await client.get(path)
@@ -102,7 +96,6 @@ async def fetch_weather(client: JmaTileClient, latitude: float, longitude: float
             # 1画素だけを切り出してから揃える（パレットと透過の指定は切り出しても残る）。
             only = image.crop((pixel.column, pixel.row, pixel.column + 1, pixel.row + 1)).convert("RGBA")
             red, green, blue, alpha = cast(tuple[int, int, int, int], only.getpixel((0, 0)))
-    except Exception as exc:  # 壊れた画像は「空が分からない」に倒し、応答の残りは返す
-        log_throttled_warning(_CATEGORY, "推計気象分布（天気）のタイルを読めませんでした path=%s error=%r", path, exc)
-        return None
+    except (OSError, ValueError, SyntaxError) as error:
+        raise UnexpectedShapeError(f"jma suikei weather tile is not an image: {path}") from error
     return _weather_from_color(red, green, blue, alpha)

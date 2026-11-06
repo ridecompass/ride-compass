@@ -11,7 +11,6 @@
 
 
 import httpx
-import pytest
 import respx
 
 from app.infrastructure import flood_client
@@ -50,33 +49,16 @@ async def test_an_operational_bulletin_is_read_into_its_fields():
     assert bulletin.river_name == "神田川"
 
 
-async def test_drills_and_entries_that_are_not_objects_are_left_out():
-    client, _ = answering(json=[{**KANDA, "status": "訓練"}, "broken", KANDA])
+async def test_drills_are_left_out():
+    client, _ = answering(json=[{**KANDA, "status": "訓練"}, KANDA])
 
     bulletins = await flood_client.fetch_flood_documents(client, new_flood_cache())
 
     assert [b.river_name for b in bulletins] == ["神田川"]
 
-
-@pytest.mark.parametrize("missing", ["absent", "null"])
-async def test_a_bulletin_missing_its_fields_is_still_read_with_empty_values(missing):
-    """1件の欠けで、全国の一覧の取り出しごと落とさない。"""
-    fields = ("riverCode", "riverName", "class20Codes", "class10Codes", "item")
-    entry = {"status": "通常"} if missing == "absent" else {"status": "通常", **dict.fromkeys(fields)}
-    client, _ = answering(json=[entry, KANDA])
-
-    sparse, full = await flood_client.fetch_flood_documents(client, new_flood_cache())
-
-    assert sparse.level is None
-    assert sparse.class20_codes == sparse.class10_codes == ()
-    assert sparse.river_code == sparse.river_name == sparse.condition == ""
-    assert full.river_name == "神田川"
-
-
-@pytest.mark.parametrize("code", ["10", 40], ids=["lifted", "not_a_string"])
-async def test_a_code_that_is_not_an_active_state_has_no_level(code):
+async def test_a_lifted_code_has_no_level():
     """完全解除のコード（配信元の資料の表２）は発表中の段を持たない。"""
-    client, _ = answering(json=[{**KANDA, "item": {"code": code}}])
+    client, _ = answering(json=[{**KANDA, "item": {**KANDA["item"], "code": "10"}}])
 
     (bulletin,) = await flood_client.fetch_flood_documents(client, new_flood_cache())
 

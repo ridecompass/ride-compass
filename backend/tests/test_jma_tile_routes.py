@@ -136,9 +136,9 @@ def test_jma_tile_proxy_interpolates_zoom_without_native_data(override_dependenc
     assert fake.stored == [(path, response.content, parent[1])]
 
 
-def test_jma_tile_proxy_falls_back_when_parent_tile_is_unavailable(override_dependency):
-    # 親タイルが取れない場合は補間せず、通常のフェッチ経路へ進む。
-    _answer(override_dependency, parent=None, fetched=(b"\x89PNG-fallback", "image/png"))
+def test_jma_tile_proxy_falls_back_when_parent_tile_is_empty(override_dependency):
+    # 親タイルが空なら補間せず、通常のフェッチ経路へ進む。
+    _answer(override_dependency, parent=UPSTREAM_NOT_FOUND, fetched=(b"\x89PNG-fallback", "image/png"))
 
     response = client.get(f"/api/jma-tile/{RAIN_FRAME}/9/455/201.png")
 

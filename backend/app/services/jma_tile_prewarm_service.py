@@ -43,6 +43,7 @@ from app.domain.weather_elements import (
     weather_element_deliveries,
     weather_element_tile,
 )
+from app.infrastructure.simple_api_client import UnexpectedShapeError
 from app.infrastructure.http_client import UpstreamNotFound
 from app.infrastructure.jma_tile_client import JmaTileClient, get_target_times
 from app.infrastructure.jma_tile_index import JmaTileIndex, JmaTileIndexCoverage, JmaTileIndexElement, set_index
@@ -141,9 +142,8 @@ async def prewarm_jma_tiles(client: JmaTileClient, area: BoundingBox) -> None:
     ——持つと、通常の取得経路とキャッシュの形が分かれる。
     """
     started = start_timer()
-    target_times_cache: dict[str, list[TargetTimesRow] | None] = {}
+    target_times_cache: dict[str, list[TargetTimesRow]] = {}
     all_tiles: list[JmaTile] = []
-    skipped_labels: list[str] = []
     layer_frames: dict[str, JmaFrame] = {}
 
     for stages in _STAGES:
@@ -153,17 +153,13 @@ async def prewarm_jma_tiles(client: JmaTileClient, area: BoundingBox) -> None:
             for target_times_path in layer.target_times_paths:
                 if target_times_path not in target_times_cache:
                     target_times_cache[target_times_path] = await get_target_times(client, target_times_path)
-                rows.extend(target_times_cache[target_times_path] or [])
+                rows.extend(target_times_cache[target_times_path])
             stage_frames.append(read_target_times(layer.reader, rows, layer.element_id))
         for layer, frame in zip(stages, stage_first_frames(stage_frames), strict=True):
             if frame is None:
-                skipped_labels.append(f"{layer.label}({layer.element_id})")
-                continue
+                raise UnexpectedShapeError(f"jma target times have no frame for {layer.label}({layer.element_id})")
             layer_frames[layer.element_id] = frame
             all_tiles.extend(_tiles_for_layer(layer, frame, area))
-
-    if skipped_labels:
-        logger.warning("jma tile prewarm: targetTimes取得/解析に失敗しスキップ labels=%s", skipped_labels)
 
     fetched = 0
     empty = 0
