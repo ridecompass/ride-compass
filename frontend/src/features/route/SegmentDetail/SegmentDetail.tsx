@@ -1,8 +1,7 @@
 "use client";
 
-import { createElement, useMemo } from "react";
+import { useMemo } from "react";
 import { PopupHeader } from "@/components/MapPopup/MapPopupParts";
-import { legendChipBodyClass, legendChipClass, legendChipsClass } from "@/components/ui/AxisLegend/axisLegend";
 import { Button } from "@/components/ui/Button/Button";
 import { Dot } from "@/components/ui/Dot/Dot";
 import { GradientAxisIcon } from "@/components/ui/icons/layerIcons";
@@ -109,19 +108,16 @@ export default function SegmentDetail({
             </span>
           ))}
           {bands.length > 0 && (
-            <ul className={legendChipsClass}>
+            // 負担の内訳の行と同じ形の行で並べる。札にして横へ並べると、小窓の幅が札の行で決まって広がる。
+            <ul className="m-0 flex list-none flex-col gap-0.5 p-0 text-[length:var(--font-size-sm)]">
               {bands.map(({ layer, row, share }) => (
-                <li key={`${layer.id}-${row.key}`} className={legendChipClass}>
-                  <span className={legendChipBodyClass}>
-                    <Dot tone="none" style={{ backgroundColor: row.color }} />
-                    <span aria-hidden="true" className="inline-flex text-[var(--color-muted)]">
-                      {createElement(layer.icon, { size: 14 })}
-                    </span>
-                    <span>
-                      <span className="sr-only">{layer.label} </span>
-                      {row.label} {Math.round(share * 100)}%
-                    </span>
+                <li key={`${layer.id}-${row.key}`} className="flex items-baseline gap-1.5">
+                  <Dot tone="none" style={{ backgroundColor: row.color }} />
+                  <span>
+                    <span className="sr-only">{layer.label} </span>
+                    {row.label}
                   </span>
+                  <span className="ml-auto pl-2">{Math.round(share * 100)}%</span>
                 </li>
               ))}
             </ul>

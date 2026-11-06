@@ -5,7 +5,7 @@ import { Fragment, useLayoutEffect, useRef, type CSSProperties } from "react";
 import { SHEET_FIT_END_ATTRIBUTE } from "@/components/BottomSheet/BottomSheet";
 import { GuideText } from "@/components/ui/GuideText/GuideText";
 import { RouteSpliceIcon } from "@/components/ui/icons/icons";
-import { FastestRouteIcon } from "@/components/ui/icons/lucideIcons";
+import { BurdenIcon, FastestRouteIcon } from "@/components/ui/icons/lucideIcons";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs/Tabs";
 import { textVariants } from "@/components/ui/Text/Text";
 import { useCostAxisCatalog, type CostAxisCatalog } from "@/hooks/useCostAxisCatalog";
@@ -34,7 +34,7 @@ import type { SpliceSessionView } from "@/features/route/useSpliceSession";
 import type { RouteCandidate } from "@/types/route";
 
 const CANDIDATE_TAB_USAGE =
-  "この候補を地図と内訳に出し、地図を候補の全体に合わせます。稲妻の印は最速ルート、合成の印は区間を乗り換えた合成ルート、番号だけのものは生成した候補です。上の段は距離です。下の段は時間（最速ルート［無ければ最も早い候補］は所要時間、ほかはそれとの差で、速ければ−）と負担です。下の帯は、1kmあたりの負担を地図と同じ色で表します。";
+  "この候補を地図と内訳に出し、地図を候補の全体に合わせます。稲妻の印は最速ルート、合成の印は区間を乗り換えた合成ルート、番号だけのものは生成した候補です。上の段は距離です。下の段は時間（最速ルート［無ければ最も早い候補］は所要時間、ほかはそれとの差で、速ければ−）と負担（重りの印）です。下の帯は、1kmあたりの負担を地図と同じ色で表します。";
 
 /** 名前の列で群を見分ける印と、その意味（指を置いたときの吹き出しと読み上げの名前）。生成した候補は印を持たない。 */
 const GROUP_MARKS: Partial<Record<RouteListGroup, { Icon: typeof FastestRouteIcon; meaning: string }>> = {
@@ -196,8 +196,11 @@ export default function RouteOutcome({ results, generation, splice, profileLayer
                         ? formatDurationShort(baseline.seconds)
                         : durationDifferenceLabel(route, baseline?.seconds ?? null)}
                     </span>{" "}
-                    <span>
-                      <span className="text-[length:var(--font-size-xs)] text-[var(--color-muted)]">負担</span>
+                    <span className="inline-flex items-center gap-0.5">
+                      <span aria-hidden="true" title="負担" className="inline-flex text-[var(--color-muted)]">
+                        <BurdenIcon size={11} />
+                      </span>
+                      <span className="sr-only">負担</span>
                       {formatPenaltyMinutes(route.penalty.total_seconds)}
                       <span className="sr-only">{MINUTE_UNIT}</span>
                     </span>

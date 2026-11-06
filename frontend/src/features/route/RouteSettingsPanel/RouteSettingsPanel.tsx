@@ -71,7 +71,13 @@ export default function RouteSettingsPanel({ costPreference, onCostPreferenceCha
       <ul className={cn("flex flex-col gap-1.5", costPreference.strength === 0 && "opacity-50")}>
         {catalog.axes.map((axis) => (
           <li key={axis.axisId} className="flex items-center gap-2">
-            <span className="flex min-w-0 flex-1 items-center gap-1">
+            {/* ×0 の軸は数えないので、全体のつまみが ×0 のときと同じ薄さにする。段は戻せるよう押せるまま。 */}
+            <span
+              className={cn(
+                "flex min-w-0 flex-1 items-center gap-1",
+                multiplierOf(costPreference, axis.axisId) === 0 && "opacity-50",
+              )}
+            >
               <span aria-hidden="true" className="inline-flex">
                 {renderAxisIcon(axis)}
               </span>
