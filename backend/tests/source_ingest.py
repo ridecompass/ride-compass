@@ -39,11 +39,11 @@ from app.domain.tuning import (
     ELEVATION_BRIDGE_END_RADIUS_ID,
     ELEVATION_PROFILE_STEP_ID,
     STOP_CLUSTER_DISTANCE_ID,
-    TUNING_PARAMETERS_BY_ID,
 )
 from app.infrastructure.source_models import WAY_KIND_TAG
 from tests.conftest import raw_connection
 from tests.tile_images import encode
+from tests.tuning_fixture import TUNING
 
 #: テストが渡した行を返すアダプタの名前。取込の間だけ`ADAPTERS`に置く。
 _ADAPTER = "given_records"
@@ -226,24 +226,24 @@ def dem_tile_records(product: str, zoom: int, bbox: BoundingBox,
 
 
 async def derive_nodes_at_default_radius(conn: asyncpg.Connection) -> None:
-    """ノードの派生の段を、信号を区間へ寄せる半径を調整値の既定にして流す。"""
-    await derive_nodes.derive(conn, TUNING_PARAMETERS_BY_ID["signal.match_radius_m"].default)
+    """ノードの派生の段を、信号を区間へ寄せる半径をテストの較正値にして流す。"""
+    await derive_nodes.derive(conn, TUNING["signal.match_radius_m"])
 
 
 async def derive_elevation_at_default_step(conn: asyncpg.Connection, **tuning: float) -> None:
-    """標高の派生の段を、断面の刻みと橋の端の半径を較正値の既定（`tuning`で上書きしたものはその値）にして流す。"""
+    """標高の派生の段を、断面の刻みと橋の端の半径をテストの較正値（`tuning`で渡したものはその値）にして流す。"""
     await derive_elevation.derive(
         conn,
-        **{"profile_step_m": TUNING_PARAMETERS_BY_ID[ELEVATION_PROFILE_STEP_ID].default,
-           "bridge_end_radius_m": TUNING_PARAMETERS_BY_ID[ELEVATION_BRIDGE_END_RADIUS_ID].default, **tuning})
+        **{"profile_step_m": TUNING[ELEVATION_PROFILE_STEP_ID],
+           "bridge_end_radius_m": TUNING[ELEVATION_BRIDGE_END_RADIUS_ID], **tuning})
 
 
 async def derive_counts_at_default_tuning(conn: asyncpg.Connection, **tuning: float) -> None:
-    """数の派生の段を、較正値の既定（`tuning`で上書きしたものはその値）で流す。"""
+    """数の派生の段を、テストの較正値（`tuning`で渡したものはその値）で流す。"""
     await derive_counts.derive(conn, **{
-        "cluster_distance_m": TUNING_PARAMETERS_BY_ID[STOP_CLUSTER_DISTANCE_ID].default,
-        "accident_fatal_weight": TUNING_PARAMETERS_BY_ID["accident.fatal_weight"].default,
-        "accident_match_distance_m": TUNING_PARAMETERS_BY_ID[ACCIDENT_MATCH_DISTANCE_ID].default,
+        "cluster_distance_m": TUNING[STOP_CLUSTER_DISTANCE_ID],
+        "accident_fatal_weight": TUNING["accident.fatal_weight"],
+        "accident_match_distance_m": TUNING[ACCIDENT_MATCH_DISTANCE_ID],
         **tuning,
     })
 

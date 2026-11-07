@@ -10,9 +10,9 @@ import pytest_asyncio
 
 from app.batch import derive_nodes, derive_topology
 from app.domain.traffic import HIGHWAY_RANK
-from app.domain.tuning import TUNING_PARAMETERS_BY_ID
 from tests.conftest import empty_ingested_tables
 from tests.source_ingest import WAY_ORIGIN, ingest_records, point_record, way_record
+from tests.tuning_fixture import TUNING
 
 # moduleスコープのroad_graph_engine（conftest.py）の上のDBを使うため、.claude/rules/testing-backend.mdのパターン2どおり
 # loop_scope="module"が必須。
@@ -20,7 +20,7 @@ pytestmark = pytest.mark.asyncio(loop_scope="module")
 
 BASE_LON, BASE_LAT = WAY_ORIGIN
 #: 信号とみなす半径（較正値の既定）。
-RADIUS_M = TUNING_PARAMETERS_BY_ID["signal.match_radius_m"].default
+RADIUS_M = TUNING["signal.match_radius_m"]
 #: 経度0.001度は約90m。信号とみなす半径より十分に遠い。
 STEP = 0.001
 #: 経度0.0001度は約9m。半径の内側。

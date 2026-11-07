@@ -1,4 +1,4 @@
-"""較正値の管理API（`domain/tuning.py`の宣言を読み、上書きを書く）。
+"""較正値の管理API（`domain/tuning.py`の宣言といま効いている値を読み、値を書く）。
 
 走行モデルの振る舞いを直接変えられるため、ほかの管理APIと同じ認可境界の内側に置く
 （`require_admin_basic_auth`）。
@@ -28,7 +28,6 @@ class TuningParameterView(StrictModel):
     label: str
     unit: str
     description: str
-    default: float
     minimum: float
     maximum: float
     #: 変えたとき効くまでに何が要るか（`TuningEffect`の値）。画面はこれでまとめる。
@@ -37,42 +36,33 @@ class TuningParameterView(StrictModel):
     #: 持たせない**——効き方を足したときに画面が知らず、名前の無いまとまりへ落ちる。
     effect_title: str
     value: float
-    #: 既定から動かしてあるか。画面が「既定へ戻す」を出すかの判断に使う。
-    overridden: bool
 
 
 class TuningUpdateRequest(StrictModel):
-    """1件の上書き。`value`がnullなら既定へ戻す。"""
+    """1件の値。"""
 
-    value: float | None
+    value: float
 
 
-def _view(
-    parameter: TuningParameter, overridden_ids: set[str], subjects_by_id: dict[str, tuple[str, ...]]
-) -> TuningParameterView:
+def _view(parameter: TuningParameter, subjects_by_id: dict[str, tuple[str, ...]]) -> TuningParameterView:
     return TuningParameterView(
         id=parameter.id,
         label=tuning_label(parameter, subjects_by_id),
         unit=parameter.unit,
         description=parameter.description,
-        default=parameter.default,
         minimum=parameter.minimum,
         maximum=parameter.maximum,
         effect=parameter.effect.value,
         effect_title=parameter.effect.title,
         value=tuning_value(parameter.id),
-        overridden=parameter.id in overridden_ids,
     )
 
 
 @router.get("", response_model=list[TuningParameterView])
-async def list_tuning_parameters(
-    service: TuningService = Depends(get_tuning_service),
-) -> list[TuningParameterView]:
+async def list_tuning_parameters() -> list[TuningParameterView]:
     """較正値を効き方の順（`tuning_parameters_by_effect`）に返す。"""
-    overridden = await service.overridden_parameter_ids()
     subjects_by_id = tuning_subjects()
-    return [_view(p, overridden, subjects_by_id) for p in tuning_parameters_by_effect()]
+    return [_view(p, subjects_by_id) for p in tuning_parameters_by_effect()]
 
 
 @router.put("/{param_id}", response_model=TuningParameterView)
@@ -86,7 +76,7 @@ async def update_tuning_parameter(
         # 較正値の宣言に無いidは書かせない（較正値ではない固定値はこの逆引きに載らない）。
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail=f"較正値がありません: {param_id}")
     try:
-        overridden = await service.save_override(param_id, request.value)
+        await service.save_value(param_id, request.value)
     except TuningOverrideError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
-    return _view(parameter, overridden, tuning_subjects())
+    return _view(parameter, tuning_subjects())

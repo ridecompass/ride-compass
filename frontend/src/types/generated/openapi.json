@@ -6197,10 +6197,6 @@
             "type": "string",
             "title": "Description"
           },
-          "default": {
-            "type": "number",
-            "title": "Default"
-          },
           "minimum": {
             "type": "number",
             "title": "Minimum"
@@ -6220,10 +6216,6 @@
           "value": {
             "type": "number",
             "title": "Value"
-          },
-          "overridden": {
-            "type": "boolean",
-            "title": "Overridden"
           }
         },
         "additionalProperties": false,
@@ -6233,27 +6225,18 @@
           "label",
           "unit",
           "description",
-          "default",
           "minimum",
           "maximum",
           "effect",
           "effect_title",
-          "value",
-          "overridden"
+          "value"
         ],
         "title": "TuningParameterView"
       },
       "TuningUpdateRequest": {
         "properties": {
           "value": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "type": "number",
             "title": "Value"
           }
         },

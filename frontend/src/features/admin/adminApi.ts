@@ -54,8 +54,8 @@ export function listTuningParameters() {
   return requestApi((init) => adminApiClient.GET("/tuning", init), adminOptions("較正値の取得"));
 }
 
-/** 1件を書き換える。`value`にnullを渡すと既定へ戻す。 */
-export function updateTuningParameter(paramId: string, value: number | null) {
+/** 1件を書き換える。 */
+export function updateTuningParameter(paramId: string, value: number) {
   const body = { value };
   return requestApi(
     (init) => adminApiClient.PUT("/tuning/{param_id}", { params: { path: { param_id: paramId } }, body, ...init }),

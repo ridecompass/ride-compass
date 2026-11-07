@@ -29,6 +29,7 @@ from app.infrastructure import derived_data_meta, road_network_store
 from app.infrastructure.derived_data_freshness import derived_tables
 from app.infrastructure.source_models import PARTY_TYPE_CODES, Source
 from tests.conftest import empty_ingested_tables, override_tuning, postgis_database_url, raw_connection
+from tests.tuning_fixture import TUNING
 from tests.source_ingest import (
     abr_block_record,
     accident_record,
@@ -142,7 +143,8 @@ async def world(road_graph_engine, road_network_root):
             assert await derive_cli.run(postgis_database_url()) == 0
             yield conn
         finally:
-            await conn.execute("DELETE FROM tuning_overrides WHERE param_id = ANY($1)", list(OVERRIDDEN))
+            for param_id in OVERRIDDEN:
+                await override_tuning(param_id, TUNING[param_id])
             await empty_ingested_tables(conn)
             await conn.execute("TRUNCATE derived_data_meta")
 

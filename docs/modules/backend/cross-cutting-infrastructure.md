@@ -41,9 +41,9 @@ DB接続・Redis・HTTPクライアント・レート制限・ログ・デバッ
 | infrastructure | `admin_data_backup.py` | DBのバックアップが最後に置けてからの時間（`/health`が返す）。下の「本番DBのバックアップ」 |
 | infrastructure | `job_registry.py` | 汎用の非同期ジョブレジストリ（プロセス内メモリのみ） |
 | infrastructure | `single_process.py` | 起動時にワーカー数を読み、複数なら起動を止める（プロセス内に持つ状態の前提を落ちる形にする） |
-| infrastructure | `tuning_overrides.py` | 較正値の上書き（宣言の既定値から動かしたぶんだけをDBへ持つ）の読み書きと、宣言の範囲での検算。プロセス内の値へは書かない |
+| infrastructure | `tuning_overrides.py` | 較正値の値（宣言の全idの行をDBへ持つ。値の正本）の読み書きと、管理画面から書く値の範囲・順の確かめ。プロセス内の値へは書かない |
 | services | `definitions_loading.py` | DBの定義（道の区分・軸定義・較正値）をプロセスへ読み込む1つの入口と、その順。起動時と、起動を通らない道具が呼ぶ |
-| services | `tuning_service.py` | 較正値の上書きの取引境界（構造仕様7）と、プロセス内の値への反映（起動時の読み込みと、書いた直後） |
+| services | `tuning_service.py` | 較正値の書き込みの取引境界（構造仕様7）と、プロセス内の値への反映（起動時の読み込みと、書いた直後） |
 | api | `tuning_admin.py` | 較正値の一覧・更新（管理画面用、`api/admin_auth.py: require_admin_basic_auth`の内側）。並べる項目も、効き方ごとの見出しと並び順も宣言から導く。名前は`domain/tuning_labels.py: tuning_label`が付ける |
 | ops | `admin_data_backup.sh` | 本番VMのホストで、DBの全体を`pg_dump`し、Object Storageの非公開バケットの前の1個と入れ替え、置けた時刻を書く |
 | ops | `ridecompass-admin-data-backup.service`・`ridecompass-admin-data-backup.timer` | それを毎日打つsystemdのユニット（VMへの登録は手で1回） |
@@ -103,10 +103,9 @@ FastAPI(lifespan=lifespan)
         │       SSLコンテキスト構築が数百ms〜1秒かかるため、デプロイ直後の最初のリクエストが
         │       このコストを負わないようにする）
         ├─ (2) services/definitions_loading.py: refresh_definitions を1回呼び、道の区分 → 費用の軸の定義
-        │       （[費用・材料](evaluation-scoring.md)参照）→ 較正値の上書き（[ルーティングエンジン](routing-engine.md)参照）の
+        │       （[費用・材料](evaluation-scoring.md)参照）→ 較正値（[ルーティングエンジン](routing-engine.md)参照）の
         │       順に読む。費用の軸は区分から作る材料を指せるので、区分が先。費用の軸の定義の行が無いか
-        │       通らないと、ここで捕捉されず起動自体が失敗する。較正値は行が無い・テーブルが
-        │       無い場合は宣言の既定値のまま進み、値が壊れている行だけが起動を止める。
+        │       通らないと、ここで捕捉されず起動自体が失敗する。較正値も、宣言にあるidの行が無ければ起動しない。
         │       起動を通らずに生成・評価を回す道具（ベンチ・scripts/）も同じ関数で読む
         ├─ (2') 全体のGCを1回回してから`gc.freeze()`で、ここまでに読み込んだオブジェクト（モジュール・定義）を
         │       恒久の世代へ移す。世代2のGCは追う全オブジェクトを走査してその間イベントループを止めるので、
@@ -452,7 +451,7 @@ FastAPI側で処理済みのためここには来ない）。
 
 ## 本番DBのバックアップ（`ops/admin_data_backup.sh`）
 
-本番DBには、外部から取り直せず派生からも作り直せない行（管理画面で人が積み上げた軸の定義・較正値の上書き等）と、
+本番DBには、外部から取り直せず派生からも作り直せない行（管理画面で人が積み上げた軸の定義・較正値等）と、
 取り直しと作り直しに時間のかかる生データ・派生データがある。DBを失ったときに書き出しから全体を戻せるよう、本番VMの
 systemdのtimerが毎日、DBの全体を`pg_dump`（custom形式・圧縮あり）で書き出し、Oracle Cloud Object Storageの非公開バケットへ
 置く。戻しは`pg_restore`（登録・戻しの手順は[production-data/SKILL.md](../../../.claude/skills/production-data/SKILL.md)「DBのバックアップ」

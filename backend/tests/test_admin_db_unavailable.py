@@ -23,6 +23,7 @@ from app.infrastructure import database
 from app.main import app
 from tests.admin_auth import AUTH_HEADERS, admin_routes
 from tests.conftest import UNREACHABLE_DATABASE_URL
+from tests.tuning_fixture import TUNING
 
 COST_AXES_BODY = {
     "effort": {axis_id: {"label": axis_id, "description": "", "icon_id": "i",
@@ -35,12 +36,12 @@ COST_AXES_BODY = {
 # 口ごとの(パスの引数を埋めたURL, 本文, DBが落ちたときの状態コード)。母集団はアプリのルートから取るので、
 # 管理APIの口を足してここへ足し忘れるとKeyErrorで落ちる。DBを読まない口とDBの失敗を自分で空へ倒す口は200。
 ROUTE_CASES = {
-    ("GET", "/api/admin/tuning"): ("/api/admin/tuning", None, 503),
+    ("GET", "/api/admin/tuning"): ("/api/admin/tuning", None, 200),
     ("GET", "/api/admin/road-classes"): ("/api/admin/road-classes", None, 503),
     ("PUT", "/api/admin/road-classes"): ("/api/admin/road-classes", EMPTY_ROAD_CLASSES.model_dump(mode="json"), 503),
     ("GET", "/api/admin/cost-axes"): ("/api/admin/cost-axes", None, 503),
     ("PUT", "/api/admin/cost-axes"): ("/api/admin/cost-axes", COST_AXES_BODY, 503),
-    ("PUT", "/api/admin/tuning/{param_id}"): (f"/api/admin/tuning/{TUNING_PARAMETERS[0].id}", {"value": None}, 503),
+    ("PUT", "/api/admin/tuning/{param_id}"): (f"/api/admin/tuning/{TUNING_PARAMETERS[0].id}", {"value": TUNING[TUNING_PARAMETERS[0].id]}, 503),
     ("GET", "/api/admin/material-catalog/coverage"): ("/api/admin/material-catalog/coverage", None, 503),
     ("GET", "/api/admin/derived-data/freshness"): ("/api/admin/derived-data/freshness", None, 503),
     ("GET", "/api/admin/db-status"): ("/api/admin/db-status", None, 503),

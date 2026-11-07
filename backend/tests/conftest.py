@@ -23,6 +23,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
+from app.batch import derive_cli
 from app.batch.common import asyncpg_dsn
 from app.domain import stopwatch
 from app.infrastructure import (
@@ -38,7 +39,8 @@ from app.infrastructure import (
 from app.infrastructure.derived_data_freshness import derived_tables
 from app.infrastructure.orm_base import declared_metadata
 from app.infrastructure.source_models import SourceFeatureRow, SourceRunRow
-from app.infrastructure.tuning_overrides import TuningOverrideStore
+from app.infrastructure.derived_data_meta import DerivedTuningRow
+from app.infrastructure.tuning_overrides import TuningOverrideRow, TuningOverrideStore
 from app.infrastructure.road_graph_repository import (
     REQUIRED_EXTENSIONS,
     RoadGraphRepository,
@@ -46,10 +48,12 @@ from app.infrastructure.road_graph_repository import (
 )
 from app.config import settings
 from app.domain.cost_axes import replace_cost_axes
+from app.domain.tuning import TUNING_VALUES
 from app.services import derived_data_revision_service
 from scripts.schema_gap import collect_gaps
 from tests.admin_auth import ADMIN_PASSWORD, ADMIN_USERNAME
 from tests.cost_axes_fixture import cost_axes
+from tests.tuning_fixture import TUNING
 from tests.database_names import (
     SHARED_TEST_DATABASE,
     TEMPLATE_TEST_DATABASE,
@@ -243,6 +247,19 @@ def _standard_cost_axes():
     replace_cost_axes(cost_axes())
 
 
+#: テストの較正値（`tests/tuning_fixture.py`）を置く（本番は起動で表から読む）。テストのモジュールの先頭で読む所があるので、
+#: 集める前に置く。
+TUNING_VALUES.update(TUNING)
+
+
+@pytest.fixture(autouse=True)
+def _restore_tuning():
+    """テストが読み込んだ・差し替えた較正値を、テストの後に元へ戻す。"""
+    before = dict(TUNING_VALUES)
+    yield
+    TUNING_VALUES.update(before)
+
+
 _DISK_CACHES = {"tile_persistent_cache": tile_persistent_cache, "tile_cache": tile_cache}
 
 
@@ -421,12 +438,12 @@ async def raw_connection():
 
 
 async def override_tuning(param_id: str, value: float) -> None:
-    """較正値の上書きを本番の書き口（`TuningOverrideStore.set_override`）でテストDBへ書いて確定する。プロセス内の今の値へは
+    """較正値を本番の書き口（`TuningOverrideStore.set_value`）でテストDBへ書いて確定する。プロセス内の今の値へは
     反映しない（DBから読む側を確かめるため）。"""
     engine = create_async_engine(postgis_database_url())
     try:
         async with AsyncSession(engine) as session:
-            await TuningOverrideStore(session).set_override(param_id, value)
+            await TuningOverrideStore(session).set_value(param_id, value)
             await session.commit()
     finally:
         await engine.dispose()
@@ -582,20 +599,25 @@ async def road_graph_engine():
     # 前の実行が片付けの前に殺されると（時間切れ・中断）、その行がDBに残る。残った行は
     # 次の実行で最初に走るテストだけを落とし、そのテストの片付けで消える——単独で回すと
     # 通る失敗になる。ファイルの最初に消しておけば、どの実行も空から始まる。
-    await _delete_app_rows(engine)
+    await _reset_app_rows(engine)
 
     yield engine
     await engine.dispose()
 
 
-async def _delete_app_rows(engine) -> None:
-    """アプリの表の全行を、子の表から順に1回の往復で消す。
+async def _reset_app_rows(engine) -> None:
+    """アプリの表の全行を、子の表から順に1回の往復で消し、較正値の行と作り直しに使った較正値の記録をテストの値（`TUNING`）で
+    置き直す（本番の表はいつも宣言の全idの行を持ち、派生の表はそれを作った較正値の記録と一緒に入れ替わる）。
 
     文をいくつも1回で送れるのは単純問い合わせ（引数を持たない`asyncpg.Connection.execute`）だけで、SQLAlchemyの
     `execute`は1文ずつ準備して送る。単純問い合わせの文の並びは1つのトランザクションで走る。
     """
-    statements = "; ".join(
-        str(table.delete().compile(dialect=engine.dialect)) for table in reversed(declared_metadata().sorted_tables))
+    statements = "; ".join([
+        *(str(table.delete().compile(dialect=engine.dialect)) for table in reversed(declared_metadata().sorted_tables)),
+        *(f"INSERT INTO {table} (param_id, value) VALUES " + ", ".join(f"('{param_id}', {TUNING[param_id]!r})" for param_id in ids)
+          for table, ids in ((TuningOverrideRow.__tablename__, TUNING),
+                             (DerivedTuningRow.__tablename__, derive_cli.TUNING_USERS))),
+    ])
     async with engine.connect() as conn:
         raw = await conn.get_raw_connection()
         await raw.driver_connection.execute(statements)
@@ -623,7 +645,7 @@ async def road_graph_session(road_graph_engine) -> AsyncSession:
         yield session
         await session.rollback()
 
-    await _delete_app_rows(road_graph_engine)
+    await _reset_app_rows(road_graph_engine)
 
 
 @pytest_asyncio.fixture(loop_scope="module")

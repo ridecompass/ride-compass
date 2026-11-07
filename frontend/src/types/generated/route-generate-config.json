@@ -60,14 +60,14 @@
   ],
   "missing_travel_data_wording": "標高や止まる所の数が無い区間は、道路網全体の平均の値で所要時間を計算しています",
   "client_tuning": {
-    "landcover.ring_outer_m": 100.0,
-    "speed.cda_m2": 0.32,
-    "speed.mass_kg": 80.0,
-    "speed.max_descent_kmh": 45.0,
-    "speed.walking_kmh": 4.5,
-    "search.distance_tolerance_ratio": 0.15,
-    "gradient.perpendicular_band_deg": 15.0,
-    "splice.min_stretch_km": 0.2
+    "landcover.ring_outer_m": null,
+    "speed.cda_m2": null,
+    "speed.mass_kg": null,
+    "speed.max_descent_kmh": null,
+    "speed.walking_kmh": null,
+    "search.distance_tolerance_ratio": null,
+    "gradient.perpendicular_band_deg": null,
+    "splice.min_stretch_km": null
   },
   "hard_filters": [
     {

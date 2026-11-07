@@ -150,7 +150,7 @@ from app.domain.region import MAX_MERCATOR_LATITUDE, ROAD_TILE_MAX_ZOOM, ROAD_TI
 from app.domain.leg_costs import MISSING_TRAVEL_DATA_WORDING
 from app.config import Settings
 from app.domain.cost_preference import COST_MULTIPLIER_LEVELS, COST_STRENGTH_LEVELS, STANDARD_COST_FACTOR
-from app.domain.tuning import client_tuning_defaults
+from app.domain.tuning import client_tuning_ids
 from app.domain.weather import PRECIPITATION_MIN_MM
 from app.infrastructure.msm_client import DEFAULT_UPDATE_INTERVAL_SECONDS as MSM_UPDATE_INTERVAL_SECONDS
 from app.infrastructure.jma_amedas_client import AMEDAS_REFRESH_INTERVAL_MINUTES
@@ -592,9 +592,9 @@ def main() -> None:
             "segment_speed_conditions": list(SEGMENT_SPEED_CONDITIONS),
             # 所要時間の計算が値の無い区間をどう数えるかの文。結果の「データの無い区間」の注記が差し込む。
             "missing_travel_data_wording": MISSING_TRAVEL_DATA_WORDING,
-            # フロントが使う較正値の**既定**（`domain/tuning.py`の宣言そのまま）。フロントはidの型にだけ使い、
-            # 値は読まない——効いている値はGET /api/client-configが返し、取れるまではその値を使う機能を出さない。
-            "client_tuning": client_tuning_defaults(),
+            # フロントが使う較正値のid（値は持たない。フロントはidの型にだけ使う）。効いている値はGET /api/client-configが
+            # 返し、取れるまではその値を使う機能を出さない。
+            "client_tuning": dict.fromkeys(client_tuning_ids()),
             # 0次ハードフィルタ。回避タブにいつも「通らない」の行として見せる（要求では受けない）。選べる行と段は
             # 管理DBの道の区分から、GET /api/client-configが配る。
             "hard_filters": [
