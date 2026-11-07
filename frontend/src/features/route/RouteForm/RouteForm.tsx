@@ -21,6 +21,7 @@ import { CLIENT_TUNING_IDS, clientTuningValue } from "@/lib/clientConfig";
 import { cn } from "@/lib/cn";
 import CostLevelPicker from "@/features/route/RouteSettingsPanel/CostLevelPicker";
 import { COST_STRENGTH_LEVELS } from "@/features/route/costPreference";
+import { DISABLED_LABEL } from "@/lib/costPreference";
 
 /** 「ルート設定」区分のタブ。タブ列（`SettingsTabsList.tsx`）と選択状態は外が持ち（見出し行に置くため）、
  * ここは各タブの中身だけを描く。 */
@@ -202,7 +203,8 @@ export default function RouteForm({
               `負担は、平地を走るより余分にかかるもの${costAxisNamesNote(costCatalog)}を、時間に換算したものです。` +
               "道は、所要時間とこの倍率を掛けた負担の和が小さくなるように選びます。×1 が標準です。" +
               "×2 は負担を2倍にして足すので、所要時間が延びても負担の小さい道を選びやすくなります。" +
-              "×0 は負担を足さず、所要時間だけで選びます。負担の種類ごとの倍率は「負担」タブで選べます。"}
+              `${DISABLED_LABEL}は負担を数えず、所要時間だけで選びます（結果にも地図にも負担を出しません）。` +
+              "負担の種類ごとの倍率は「負担」タブで選べます。"}
           </InfoPopover>
         </div>
 

@@ -420,7 +420,7 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
     TuningParameter(
         "evaluation.penalty_strength",
         "負担の基準の倍率", "", TuningEffect.IMMEDIATE,
-        "すべての負担に掛ける基準の倍率。利用者が選ぶ「負担の強さ」（×0〜×2）は、この値にさらに掛ける。",
+        "すべての負担に掛ける基準の倍率。利用者が選ぶ「負担の強さ」（無効〜×2）は、この値にさらに掛ける。",
     ),
 )
 
