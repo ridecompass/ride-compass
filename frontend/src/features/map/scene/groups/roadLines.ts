@@ -19,7 +19,7 @@ import { mapDisplay } from "@/types/generated/mapDisplay";
 import palette from "@/types/generated/palette.json";
 import regionTileConfig from "@/types/generated/region-tile-config.json";
 
-import { featureStatesByName, sceneSourceId, zoomScaleExpression } from "@/features/map/scene/sceneBuilders";
+import { featureStatesByName, sceneSourceId } from "@/features/map/scene/sceneBuilders";
 import { LEGEND_NO_DATA_KEY } from "@/lib/mapDisplay/mapColorLegend";
 import { ROAD_OTHER_KEY, roadTrackRowOf, type RoadTrackRow } from "@/lib/mapDisplay/roadTracks";
 import { strongestAvoidance, type AvoidanceChoice, type AvoidanceLevel } from "@/lib/roadAvoidance";
@@ -64,7 +64,7 @@ export type RoadLineState = {
   readonly classes: RoadClassValues;
   /** 今の範囲の層の値を取っている最中か。 */
   readonly loading: boolean;
-  /** 「道路の指定」で塗る、道路タブの段。出していなければ空。 */
+  /** 「道路の指定」で塗る、道路タブの段。出していなければ空で、空なら塗らない（`features/map/view/useMapView.ts`が決める）。 */
   readonly avoidance: AvoidanceChoice;
   /** 詳細を見ている道の線の形（経度, 緯度）。開いていなければ null。 */
   readonly inspectedShape: readonly (readonly [number, number])[] | null;
@@ -223,6 +223,7 @@ export const roadLineGroup = declareGroup<RoadLineState>((state) => {
 
   // 「道路の指定」。道ごとの一番強い段（feature-state）の色で、道の線の層の上を不透明に塗る（段の色が道の層の色に混ざらない）。
   const avoidanceHidden = state.hiddenKeys[ROAD_AVOIDANCE_LAYER_ID] ?? [];
+  const tracksSpread = 2 * Math.max(0, ...offsets.map(Math.abs));
   layers.push({
     ...line,
     role: ROAD_AVOIDANCE_LAYER_ID,
@@ -236,10 +237,16 @@ export const roadLineGroup = declareGroup<RoadLineState>((state) => {
         ]),
         palette.semantic.hidden,
       ],
-      "line-width": zoomScaleExpression(1, mapDisplay.roadAvoidance.widthByZoom),
+      // 横に分けて並べた道の線の層を覆う（出している層の外側の線の縁まで太くする）。
+      "line-width": [
+        "interpolate",
+        ["linear"],
+        ["zoom"],
+        ...mapDisplay.roadAvoidance.widthByZoom.flatMap(([zoom, width]) => [zoom, width + tracksSpread]),
+      ],
       "line-opacity": 1,
     },
-    visible: state.visible[ROAD_AVOIDANCE_LAYER_ID] === true,
+    visible: state.avoidance.levels.size > 0,
   });
 
   layers.push(inspected);

@@ -59,6 +59,12 @@ function groundLightness(theme: MapTheme): number {
   return themedHsl(theme, rgbToHsl(hexToRgb(palette.semantic.basemap_ground)))[2];
 }
 
+/** 見え方ごとの地色の明るさ（色を1つ変えるたびに求め直さない）。 */
+const GROUND_LIGHTNESS: Readonly<Record<MapTheme, number>> = {
+  light: groundLightness("light"),
+  dark: groundLightness("dark"),
+};
+
 /** 灰色に薄めた色。彩度を落とし、明るさを地色の明るさへ寄せる。 */
 function mutedHsl([hue, saturation, lightness]: Hsl, ground: number): Hsl {
   return [hue, saturation * MUTED_SATURATION_SCALE, lightness + (ground - lightness) * MUTED_GROUND_PULL];
@@ -69,7 +75,7 @@ function lookColor(look: BasemapLook, text: string): string {
   const color = parseColor(text);
   if (color === null) return text;
   const themed = themedHsl(look.theme, color.hsl);
-  const [hue, saturation, lightness] = look.muted ? mutedHsl(themed, groundLightness(look.theme)) : themed;
+  const [hue, saturation, lightness] = look.muted ? mutedHsl(themed, GROUND_LIGHTNESS[look.theme]) : themed;
   return `hsla(${hue.toFixed(1)}, ${(saturation * 100).toFixed(1)}%, ${(lightness * 100).toFixed(1)}%, ${color.alpha})`;
 }
 

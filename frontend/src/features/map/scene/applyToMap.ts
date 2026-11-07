@@ -59,7 +59,7 @@ import regionTileConfig from "@/types/generated/region-tile-config.json";
 import { applyMapScene } from "./applyMapScene";
 import type { AxisLineState, WayConditions, WayMaterials } from "./groups/axisLines";
 import { POINT_TILE_LAYERS } from "./groups/points";
-import { ROAD_AVOIDANCE_LAYER_ID, type RoadClassValues } from "./groups/roadLines";
+import type { RoadClassValues } from "./groups/roadLines";
 import type { BasemapLook } from "@/features/map/basemapTheme";
 import type { AvoidanceChoice } from "@/lib/roadAvoidance";
 import type { RouteState } from "./groups/routes";
@@ -274,8 +274,9 @@ export function sceneInputsFrom(props: SceneWiringProps): SceneInputs {
 const appliedScene = new WeakMap<MapLibreMap, MapScene>();
 
 /** 基礎地図の見え方。地図の「道路の指定」を出している間は、塗った道を読ませるため灰色に薄める。 */
-export function basemapLookOf(look: Pick<SceneLook, "mapTheme" | "layerVisibility">): BasemapLook {
-  return { theme: look.mapTheme, muted: look.layerVisibility[ROAD_AVOIDANCE_LAYER_ID] === true };
+export function basemapLookOf(look: Pick<SceneLook, "mapTheme" | "roadAvoidance">): BasemapLook {
+  // 「道路の指定」で塗る段がある間だけ薄める（出していない・塗る段が無い間は、何も塗らないのに地図だけが薄まらない）。
+  return { theme: look.mapTheme, muted: look.roadAvoidance.levels.size > 0 };
 }
 
 /** `basemap`は基礎地図の見え方（省けば明るい地図）。スタイルを差し替えると基礎地図は明るい地図へ戻るので、暗い・薄めた地図を
