@@ -118,6 +118,11 @@ function declaredLayer(spec: {
   };
 }
 
+/** レンズの層が描き始める縮尺（源泉の宣言。路面タイルの道ごとの鍵を持つ縮尺）。 */
+export const LENS_LAYER_MIN_ZOOM = declaredLayer(mapDisplay.axisLayers.dedicated).minZoom;
+/** 道の線の層（道路タブの段も同じ路面タイルを塗る）が描き始める縮尺。 */
+export const ROAD_LINE_MIN_ZOOM = declaredLayer(mapDisplay.axisLayers.road).minZoom;
+
 /** レイヤーの一覧を組むのに要る項目。 */
 type LayerCatalog = Pick<MapCatalog, "lenses" | "accidentYears" | "clientTuning" | "roadLayers">;
 
@@ -179,6 +184,16 @@ export const TILE_ZOOM_TOO_WIDE_NOTICE = "ズームインすると表示され�
 
 /** チップ下に出す、タイルの世代が届いていないときの案内（届くまでソースを作らないので何も描けない）。 */
 export const TILE_VERSIONS_MISSING_NOTICE = "配信情報を取得できず表示できません";
+
+/** 描けない理由の案内。世代が届かない（画面の設定を取り終えたのに無い）ことを、拡大が足りないことより先に出す。 */
+export function tileNotice(reasons: {
+  versionMissing: boolean;
+  catalogSettled: boolean;
+  zoomTooWide: boolean;
+}): string | null {
+  if (reasons.versionMissing && reasons.catalogSettled) return TILE_VERSIONS_MISSING_NOTICE;
+  return reasons.zoomTooWide ? TILE_ZOOM_TOO_WIDE_NOTICE : null;
+}
 
 /** タイルの世代が届くまで何も描けないレイヤー。軸のレイヤーはチップが無く案内の出し先が無いので含めない。 */
 export function tileVersionGatedLayerIds(layers: readonly MapLayerDescriptor[]): readonly MapLayerId[] {

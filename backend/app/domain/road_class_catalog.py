@@ -14,7 +14,6 @@ from app.domain.road_classes import (
     RoadClassDefinitions,
     by_sort_order,
     published_map_layers,
-    road_class_generation,
 )
 from app.domain.strict_model import StrictModel
 
@@ -57,10 +56,11 @@ class AvoidanceSectionView(StrictModel):
 
 
 class AvoidanceRowView(StrictModel):
-    """道路タブの1行。`key`は`<分け方>.<区分>`、`section`は見出し（分け方）の鍵。"""
+    """道路タブの1行。`key`は`<分け方>.<区分>`、`section`は見出し（分け方）の鍵、`class_key`は区分の鍵（地図の線の層の値）。"""
 
     key: str
     section: str
+    class_key: str
     label: str
     description: str
     default: AvoidanceLevel
@@ -75,8 +75,6 @@ class RoadAvoidanceView(StrictModel):
 
 
 class RoadClassCatalog(StrictModel):
-    #: 区分の中身から作る指紋（`domain/road_classes.py: road_class_generation`）。公開していない分け方の変化でも替わる。
-    generation: str
     map_layers: list[RoadMapLayerView]
     avoidance: RoadAvoidanceView
 
@@ -123,6 +121,7 @@ def road_class_catalog(definitions: RoadClassDefinitions) -> RoadClassCatalog:
         AvoidanceRowView(
             key=row.key,
             section=row.classification_key,
+            class_key=row.class_key,
             label=row.road_class.label,
             description=row.road_class.description,
             default=row.default_level,
@@ -130,7 +129,6 @@ def road_class_catalog(definitions: RoadClassDefinitions) -> RoadClassCatalog:
         for row in avoidance
     ]
     return RoadClassCatalog(
-        generation=road_class_generation(definitions),
         map_layers=layers,
         avoidance=RoadAvoidanceView(
             levels=[

@@ -2,8 +2,8 @@
  * 塗る線と、詳細を見ている道の強調。
  *
  * 道の層の値（区分の鍵か「データなし」）はbackendが決めて路面タイルに焼き（層のidのプロパティ。区分の外の道は持たない）、地図は
- * それを読んで塗るだけにする——ルートの区間の帯と同じ値になる。凡例で隠した行は透明で落とし、データなしの道の破線は、破線だけの
- * 線を重ねて濃さで出し入れする。
+ * それを読んで塗るだけにする——ルートの区間の帯と同じ値になる。凡例で隠した行は絞り込みで落とし、データなしの道は破線だけの
+ * 線で描く（実線は落とす）。
  *
  * 道の層の線は**同じ路面タイルのソース**を共有する。レンズの線も同じソースを読むため、
  * ソースの宣言は合成（`composeScene`）が1本へ畳む。道の線は押せない——道は押した所に近い道を backend に問うて開く
@@ -14,11 +14,13 @@
  * 横へ割り付ける（1本なら中央）。線の太さは意味を運ばず、線種が運ぶのは値が無いこと（データなし）だけ
  * ——1本の線へ2つの分類を載せると、色の意味がもう一方のON/OFFで入れ替わる。
  */
+import type { FilterSpecification } from "maplibre-gl";
+
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import palette from "@/types/generated/palette.json";
 import regionTileConfig from "@/types/generated/region-tile-config.json";
 
-import { sceneSourceId, zoomScaleExpression } from "@/features/map/scene/sceneBuilders";
+import { sceneSourceId, valueInExpression, zoomScaleExpression } from "@/features/map/scene/sceneBuilders";
 import { LEGEND_NO_DATA_KEY } from "@/lib/mapDisplay/mapColorLegend";
 import { ROAD_OTHER_KEY, roadTrackRowOf, type RoadTrackRow } from "@/lib/mapDisplay/roadTracks";
 import { AVOIDANCE_LEVEL_COLORS, type AvoidanceChoice } from "@/lib/roadAvoidance";
@@ -81,24 +83,41 @@ export function shownRoadTrackOf(
   return roadTrackRowOf(layer, typeof value === "string" ? value : null);
 }
 
-/** 区分ごとの色。凡例で隠した行は透明。データなしの道は破線の線が描くので、実線は透明にする。 */
-function colorExpression(layer: RoadMapLayerView, hiddenKeys: readonly string[]): unknown {
-  const shown = (key: string, color: string) => (hiddenKeys.includes(key) ? palette.semantic.hidden : color);
-  const pairs = [
-    ...layer.classes.flatMap((roadClass) => [roadClass.key, shown(roadClass.key, roadClass.color)]),
-    ...(layer.has_no_data ? [NO_DATA_VALUE, palette.semantic.hidden] : []),
-  ];
-  const other = shown(ROAD_OTHER_KEY, palette.semantic.no_data);
-  return pairs.length === 0 ? other : ["match", valueOf(layer.id), ...pairs, other];
+/** 区分ごとの色。区分の外（その他）は薄い灰。 */
+function colorExpression(layer: RoadMapLayerView): unknown {
+  const pairs = layer.classes.flatMap((roadClass) => [roadClass.key, roadClass.color]);
+  return pairs.length === 0
+    ? palette.semantic.no_data
+    : ["match", valueOf(layer.id), ...pairs, palette.semantic.no_data];
+}
+
+/** 実線が描く道。凡例で隠した行と、データなしの道（破線の線が描く）を落とす。 */
+function solidFilter(layer: RoadMapLayerView, hiddenKeys: readonly string[]): FilterSpecification {
+  const value = valueOf(layer.id);
+  const classKeys = layer.classes.map((roadClass) => roadClass.key);
+  const hiddenClasses = classKeys.filter((key) => hiddenKeys.includes(key));
+  return [
+    "all",
+    ["!=", value, NO_DATA_VALUE],
+    ["!", valueInExpression(value, hiddenClasses)],
+    ...(hiddenKeys.includes(ROAD_OTHER_KEY) ? [valueInExpression(value, classKeys)] : []),
+  ] as unknown as FilterSpecification;
 }
 
 /** 道ごとの、当たる行の段のうち一番強いものの色（強い段から順に当てる）。どの行にも当たらない道は通る。 */
 function avoidanceColorExpression(choice: AvoidanceChoice): unknown {
   const cases = [...choice.order].reverse().flatMap((level) => {
-    const rows = choice.rows.filter((row) => row.level === level);
-    return rows.length === 0
+    // 分け方ごとに、この段にした区分の鍵（分け方1つにつき比べ1つ）。
+    const classKeys = new Map<string, string[]>();
+    for (const row of choice.rows) {
+      if (row.level === level) classKeys.set(row.section, [...(classKeys.get(row.section) ?? []), row.classKey]);
+    }
+    return classKeys.size === 0
       ? []
-      : [["any", ...rows.map((row) => ["==", valueOf(row.section), row.classKey])], AVOIDANCE_LEVEL_COLORS[level]];
+      : [
+          ["any", ...[...classKeys].map(([section, keys]) => valueInExpression(valueOf(section), keys))],
+          AVOIDANCE_LEVEL_COLORS[level],
+        ];
   });
   return cases.length === 0 ? AVOIDANCE_LEVEL_COLORS.pass : ["case", ...cases, AVOIDANCE_LEVEL_COLORS.pass];
 }
@@ -173,11 +192,12 @@ export const roadLineGroup = declareGroup<RoadLineState>((state) => {
         ...line,
         role: layer.id,
         paint: {
-          "line-color": colorExpression(layer, hiddenKeys),
+          "line-color": colorExpression(layer),
           "line-width": ROAD.lineWidthPx,
           "line-opacity": opacityExpression(layer),
           "line-offset": offset,
         },
+        filter: solidFilter(layer, hiddenKeys),
         visible,
       },
       // データなしの道だけを、薄い破線で描く。
@@ -187,10 +207,11 @@ export const roadLineGroup = declareGroup<RoadLineState>((state) => {
         paint: {
           "line-color": palette.semantic.no_data,
           "line-width": ROAD.lineWidthPx,
-          "line-opacity": ["case", ["==", valueOf(layer.id), NO_DATA_VALUE], ROAD.unknownOpacity, 0],
+          "line-opacity": ROAD.unknownOpacity,
           "line-dasharray": ["literal", [...mapDisplay.noDataDash]],
           "line-offset": offset,
         },
+        filter: ["==", valueOf(layer.id), NO_DATA_VALUE] as FilterSpecification,
         visible: visible && layer.has_no_data && !hiddenKeys.includes(LEGEND_NO_DATA_KEY),
       },
     ];

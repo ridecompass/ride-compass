@@ -333,7 +333,7 @@ export const mapDisplay = {
       "kind": "static",
       "dataNature": "dynamic",
       "defaultOn": false,
-      "drawMinZoom": null
+      "drawMinZoom": 12
     },
     "road": {
       "dataSource": "road_surface",

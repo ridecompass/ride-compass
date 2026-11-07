@@ -55,7 +55,7 @@ export const AVOIDANCE_LEVELS: RoadAvoidanceView["levels"] = [
   { key: "exclude", label: "×∞" },
 ];
 
-/** 避け方を選べる行1つ。既定は「通る」。 */
+/** 避け方を選べる行1つ。既定は「通る」。区分の鍵は`key`の`.`より後（無ければ`key`）。 */
 export function avoidanceRow(
   key: string,
   section: string,
@@ -64,6 +64,7 @@ export function avoidanceRow(
   return {
     key,
     section,
+    class_key: key.slice(key.indexOf(".") + 1),
     label: key,
     description: "",
     default: "pass",
@@ -76,7 +77,6 @@ export function roadClassCatalog(
   overrides: { map_layers?: RoadMapLayerView[]; avoidance?: Partial<RoadAvoidanceView> } = {},
 ): RoadClassCatalog {
   return {
-    generation: "",
     map_layers: overrides.map_layers ?? [],
     avoidance: { levels: [], sections: [], rows: [], ...overrides.avoidance },
   };

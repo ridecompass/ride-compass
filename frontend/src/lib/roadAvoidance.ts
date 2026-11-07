@@ -38,10 +38,9 @@ export interface AvoidanceChoice {
 }
 
 export function avoidanceChoiceOf(avoidance: RoadAvoidanceView, chosen: RoadAvoidanceOverride): AvoidanceChoice {
-  // 行の鍵は`<分け方>.<区分>`（分け方は行の`section`）。
   const rows = avoidance.rows.flatMap((row) => {
     const level = avoidanceLevelOf(row, chosen);
-    return level === "pass" ? [] : [{ section: row.section, classKey: row.key.slice(row.section.length + 1), level }];
+    return level === "pass" ? [] : [{ section: row.section, classKey: row.class_key, level }];
   });
   return { rows, order: avoidance.levels.map((level) => level.key) };
 }

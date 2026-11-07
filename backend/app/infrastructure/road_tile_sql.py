@@ -115,7 +115,7 @@ ROAD_SURFACE_TILE_MVT_SQL = text(
     f"""
     WITH coverage AS ({COVERAGE_SQL}),
     layer_values AS (SELECT key AS feature_key, value AS layers FROM jsonb_each(CAST(:layer_values AS jsonb))),
-    features AS (
+    features AS NOT MATERIALIZED (
         SELECT
             ST_AsMVTGeom(
                 ST_Transform(src.geom, 3857), ST_TileEnvelope(:z, :x, :y), :extent, {TILE_BUFFER}, true

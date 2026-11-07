@@ -308,6 +308,8 @@ def main() -> None:
             # ここから照合する**——片側だけ系統を足すと、足りない側は「世代が揃った」と
             # 判定したまま配られない世代を待ち続ける。
             "tile_version_kinds": sorted(tile_shapes()),
+            # 路面タイルのレイヤー名と、道のフィーチャーの列の名前（路面タイルは`feature_key`だけを持ち、ほかの列は押した所に
+            # 近い道の口が返す）。
             "road_surface": {"layer_name": ROAD_SURFACE_LAYER_NAME, "properties": ROAD_FEATURE_PROPERTIES},
             # 点のレイヤーの名前→source-layer名。画面はタイルのURLをこの名前で組み、source-layerを写さない。
             "point_layers": {layer.name: layer.source_layer for layer in POINT_TILE_LAYERS.values()},

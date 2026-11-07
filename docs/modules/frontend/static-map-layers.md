@@ -16,7 +16,7 @@
 | ファイル | 責務 |
 |---|---|
 | `lib/mapDisplay/roadTracks.ts` | 道の線の層（画面の設定が配る`road_classes.map_layers`）の凡例の行（区分・その他／該当なし・データなし）と、道の区分が入る行（`lib/mapDisplay/roadTracks.ts: roadTrackRowOf`）。地図の線・地図の凡例・道のりのグラフの帯が同じ行を読むので、同じ道が地図と帯で同じ色・呼び名になる |
-| `features/map/scene/groups/roadLines.ts` | 道路の線（例: 路面の種類・トンネル・自転車レーン）を、backendの配る層の値（feature-state）と`roadTracks.ts`の行から式へ組んだ配色と、道路タブを地図で見ている間に道路タブの段を道に塗る線（下記「道路タブの段」）と、詳細を見ている1本の強調。**線レイヤーで分類を運ぶのは色だけで、太さは情報を持たず、線種が運ぶのは値が無いこと（タグが無い道＝「データなし」の破線）だけ**——1本の線へ複数の分類を載せると、色の意味が他方のON/OFFで入れ替わる。同時表示は横へ平行に割り付けて分ける |
+| `features/map/scene/groups/roadLines.ts` | 道路の線（例: 路面の種類・トンネル・自転車レーン）を、路面タイルに焼いた層の値と`roadTracks.ts`の行から式へ組んだ配色と、道路タブを地図で見ている間に道路タブの段を道に塗る線（下記「道路タブの段」）と、詳細を見ている1本の強調。**線レイヤーで分類を運ぶのは色だけで、太さは情報を持たず、線種が運ぶのは値が無いこと（タグが無い道＝「データなし」の破線）だけ**——1本の線へ複数の分類を載せると、色の意味が他方のON/OFFで入れ替わる。同時表示は横へ平行に割り付けて分ける |
 | `lib/mapDisplay/pointLayers.ts` | 点で描く属性（`lib/mapDisplay/pointLayers.ts: POINT_LAYERS`）と、点の値が入る行（`lib/mapDisplay/pointLayers.ts: pointCategoryOf`）・大きさの軸と行の半径・点の名前（`lib/mapDisplay/pointLayers.ts: pointPlaceName`）・束ねた代表点の中の名前のある点（`lib/mapDisplay/pointLayers.ts: pointMembers`）。地図の点・地図の凡例・点のポップアップ・道のりのグラフの印が同じ宣言を読むので、同じ点が地図とグラフで同じ色・呼び名になる |
 | `features/map/scene/groups/points.ts` | 停止要因POI・補給休憩POI・事故・立ち寄り先の分類・配色・点の絵と枠・描き始める縮尺と積む順・束ねた点の数の文字と、同じタイルを分け合う条件 |
 | `features/map/scene/groups/sidePoints.ts` | 選んだ区間の近くの点を、点の層のタイルから点の層と同じ色・絵記号で描く印と、近いかの絞り込み（下記「選んだ区間の近くの点」） |
@@ -274,8 +274,8 @@ DOM/MapLibreを一切知らない。`MapView.tsx`は画面の状態をsceneの�
 `features/map/regionApi.ts: ROAD_SURFACE_TILE_MIN_ZOOM`から読み、それより寄った`ROAD_TILE_MIN_ZOOM`の手前までは値の同じ道をつないだ
 地物で、道ごとの鍵を持たない（道ごとの値を置くレンズ・押した道は`ROAD_TILE_MIN_ZOOM`から）。`scene/groups/roadLines.ts`は層ごとに色式・
 不透明度式を宣言する——**どちらの色の意味も、もう一方のON/OFFでは変わらない**。太さは全レイヤー共通で源泉が配る値
-（`mapDisplay.road.lineWidthPx`）を使い、線種は「データなし」の破線にだけ使う。凡例で隠した行は透明で落とし、データなしの道は
-破線だけの線を重ねて濃さで出し入れする。タイルの取得の状態は、出ている道の線の層のチップの状態ドットに出る。両方ONのときは
+（`mapDisplay.road.lineWidthPx`）を使い、線種は「データなし」の破線にだけ使う。凡例で隠した行は絞り込み（`filter`）で落とし、
+データなしの道は実線から落として破線だけの線で描く。タイルの取得の状態は、出ている道の線の層のチップの状態ドットに出る。両方ONのときは
 下記の並列トラックが横へ分ける。押した道の小窓が出す層の行は、同じ鍵のタイルの地物の値から引く（`MapView/mapTaps.ts`）。
 
 **道路タブの段**: 「ルート設定」の道路タブが画面に見えている間（モバイルはルート設定のシートを開いている、デスクトップは左のパネルで「ルート設定」の区分を開いていて、タブが道路。`app/usePagePanels.ts`の`routeSettingsShown`。もう一方の区分を触っても変わらない）、

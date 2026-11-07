@@ -681,6 +681,8 @@ export interface components {
             key: string;
             /** Section */
             section: string;
+            /** Class Key */
+            class_key: string;
             /** Label */
             label: string;
             /** Description */
@@ -1483,8 +1485,6 @@ export interface components {
         };
         /** RoadClassCatalog */
         RoadClassCatalog: {
-            /** Generation */
-            generation: string;
             /** Map Layers */
             map_layers: components["schemas"]["RoadMapLayerView"][];
             avoidance: components["schemas"]["RoadAvoidanceView"];

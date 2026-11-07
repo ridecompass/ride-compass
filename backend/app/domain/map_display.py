@@ -554,7 +554,8 @@ def segment_series_layer(series: SegmentSeries) -> str:
 #: 実行時に決まるレイヤーに共通の宣言。`dedicated`は費用の軸のレンズのレイヤーで、路面タイルの道へ道ごとに配る
 #: 1kmあたりの代償の秒の色を塗る（値は時刻の風で変わりうる）。`road`は道の線の層で、種別は層ごとに画面の設定の`road_classes`が配る。
 AXIS_LAYER_SPECS: dict[str, MapLayerSpec] = {
-    "dedicated": MapLayerSpec(_ROAD_LAYER_DATA_SOURCE, None, data_nature="dynamic"),
+    # レンズは道ごとの値を路面タイルの道ごとの鍵で置くので、鍵を持つ縮尺から描く。
+    "dedicated": MapLayerSpec(_ROAD_LAYER_DATA_SOURCE, None, data_nature="dynamic", draw_min_zoom=ROAD_TILE_MIN_ZOOM),
     "road": MapLayerSpec(_ROAD_LAYER_DATA_SOURCE, None),
 }
 

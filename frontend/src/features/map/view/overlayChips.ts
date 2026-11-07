@@ -5,8 +5,7 @@
  */
 import {
   isLensLayer,
-  TILE_VERSIONS_MISSING_NOTICE,
-  TILE_ZOOM_TOO_WIDE_NOTICE,
+  tileNotice,
   type LayerDataStatusByLayer,
   type ChipLayerDescriptor,
   type MapLayerDescriptor,
@@ -70,12 +69,11 @@ export function overlayChips(options: {
         icon: layer.icon,
         on: options.visibility[layer.id] === true,
         title: layer.description,
-        notice:
-          versionMissing && catalogSettled
-            ? TILE_VERSIONS_MISSING_NOTICE
-            : options.zoomTooWideLayerIds.includes(layer.id)
-              ? TILE_ZOOM_TOO_WIDE_NOTICE
-              : null,
+        notice: tileNotice({
+          versionMissing,
+          catalogSettled,
+          zoomTooWide: options.zoomTooWideLayerIds.includes(layer.id),
+        }),
         legendDetails: chipLegends(layer, legendAxes).map((axis): LegendFilterSummaryAxis => ({
           ...axis,
           hiddenKeys:

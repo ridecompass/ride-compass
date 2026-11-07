@@ -1,6 +1,6 @@
 /**
- * 地図の見え方のフックが、「表示」の一覧のチップへ、レイヤーのデータの取得の状態と案内を出すこと（地図から上がる状態・
- * 気象の取得・タイルの世代）。画面の設定は網の層で応え、取得のフックも間引きも本物を通す。
+ * 地図の見え方のフックが、「表示」の一覧のチップと道路タブへ、レイヤーのデータの取得の状態と案内を出すこと（地図から上がる状態・
+ * 気象の取得・タイルの世代・縮尺）。画面の設定は網の層で応え、取得のフックも間引きも本物を通す。
  *
  * ここで見ないもの: レンズ・表示・凡例で隠した行の状態 → `useMapView.test.ts`
  */
@@ -32,6 +32,25 @@ describe("useMapView のチップの取得の状態", () => {
     expect(chip(result, "hillshade")?.notice).toBeNull();
     await waitFor(() => expect(chip(result, "disaster")?.dataStatus).toBe("empty"));
   });
+
+  it.each([
+    {
+      name: "世代が届かない",
+      config: () => Response.json(clientConfigResponse()),
+      notice: TILE_VERSIONS_MISSING_NOTICE,
+    },
+    { name: "拡大が足りない", config: undefined, notice: TILE_ZOOM_TOO_WIDE_NOTICE },
+  ])(
+    "道路タブを地図で見ている間は、塗れない理由をチップと同じ決め方で道路タブに出す（$name）",
+    async ({ config, notice }) => {
+      serve(config?.());
+      const { result } = renderMapView({ roadTabShown: true });
+
+      act(() => result.current.look.onViewportChange({ ...VIEWPORT, zoom: 8 }));
+
+      await waitFor(() => expect(result.current.roadTabMap.notice).toBe(notice));
+    },
+  );
 
   it.each([
     { name: "世代を持たない応答", catalog: () => Response.json(clientConfigResponse()) },
