@@ -48,7 +48,7 @@ from app.domain.wind import WindForecastSeries
 from app.domain.wind_context import WindContext
 
 # レグの中を時刻で区切るビンの幅（h）と本数の上限。**風の予報が1時間刻みのため、幅もそれに
-# 揃え、ビンはその開始時刻で評価する**——`WindForecastSeries.sample`が最も近い正時を引くため、
+# 揃え、ビンはその開始時刻で評価する**——`domain/wind.py: WindForecastSeries.time_index`が最も近い正時を引くため、
 # 幅を細かくしても隣のビンが同じ予報時刻を引くだけで、合成の回数だけが増える。
 TIME_BIN_HOURS = 1.0
 MAX_TIME_BINS = 4

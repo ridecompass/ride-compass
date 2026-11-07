@@ -4531,6 +4531,154 @@
         ],
         "title": "MsmGridPointForecast"
       },
+      "NominalRoadMapLayer": {
+        "properties": {
+          "group_key": {
+            "type": "string",
+            "title": "Group Key"
+          },
+          "sort_order": {
+            "type": "integer",
+            "title": "Sort Order"
+          },
+          "icon_key": {
+            "type": "string",
+            "title": "Icon Key"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          },
+          "panel_hint": {
+            "type": "string",
+            "title": "Panel Hint"
+          },
+          "tone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tone"
+          },
+          "no_data_fact_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "No Data Fact Key"
+          },
+          "hides_unclassified": {
+            "type": "boolean",
+            "title": "Hides Unclassified"
+          },
+          "palette": {
+            "type": "string",
+            "const": "nominal",
+            "title": "Palette"
+          },
+          "hue_slot": {
+            "type": "integer",
+            "title": "Hue Slot"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "group_key",
+          "sort_order",
+          "icon_key",
+          "summary",
+          "panel_hint",
+          "tone",
+          "no_data_fact_key",
+          "hides_unclassified",
+          "palette",
+          "hue_slot"
+        ],
+        "title": "NominalRoadMapLayer"
+      },
+      "OrderedRoadMapLayer": {
+        "properties": {
+          "group_key": {
+            "type": "string",
+            "title": "Group Key"
+          },
+          "sort_order": {
+            "type": "integer",
+            "title": "Sort Order"
+          },
+          "icon_key": {
+            "type": "string",
+            "title": "Icon Key"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          },
+          "panel_hint": {
+            "type": "string",
+            "title": "Panel Hint"
+          },
+          "tone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tone"
+          },
+          "no_data_fact_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "No Data Fact Key"
+          },
+          "hides_unclassified": {
+            "type": "boolean",
+            "title": "Hides Unclassified"
+          },
+          "palette": {
+            "type": "string",
+            "const": "ordered",
+            "title": "Palette"
+          },
+          "hue_slot": {
+            "type": "null",
+            "title": "Hue Slot"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "group_key",
+          "sort_order",
+          "icon_key",
+          "summary",
+          "panel_hint",
+          "tone",
+          "no_data_fact_key",
+          "hides_unclassified",
+          "palette",
+          "hue_slot"
+        ],
+        "title": "OrderedRoadMapLayer"
+      },
       "PenaltyBreakdown": {
         "properties": {
           "axis_seconds": {
@@ -4825,7 +4973,21 @@
           },
           "map_layers": {
             "additionalProperties": {
-              "$ref": "#/components/schemas/RoadMapLayer"
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/OrderedRoadMapLayer"
+                },
+                {
+                  "$ref": "#/components/schemas/NominalRoadMapLayer"
+                }
+              ],
+              "discriminator": {
+                "propertyName": "palette",
+                "mapping": {
+                  "nominal": "#/components/schemas/NominalRoadMapLayer",
+                  "ordered": "#/components/schemas/OrderedRoadMapLayer"
+                }
+              }
             },
             "type": "object",
             "title": "Map Layers"
@@ -5055,86 +5217,6 @@
           "speed_kmh"
         ],
         "title": "RoadInspectorRequest"
-      },
-      "RoadMapLayer": {
-        "properties": {
-          "group_key": {
-            "type": "string",
-            "title": "Group Key"
-          },
-          "sort_order": {
-            "type": "integer",
-            "title": "Sort Order"
-          },
-          "icon_key": {
-            "type": "string",
-            "title": "Icon Key"
-          },
-          "summary": {
-            "type": "string",
-            "title": "Summary"
-          },
-          "panel_hint": {
-            "type": "string",
-            "title": "Panel Hint"
-          },
-          "palette": {
-            "type": "string",
-            "title": "Palette"
-          },
-          "hue_slot": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Hue Slot"
-          },
-          "tone": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Tone"
-          },
-          "no_data_fact_key": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "No Data Fact Key"
-          },
-          "hides_unclassified": {
-            "type": "boolean",
-            "title": "Hides Unclassified"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "group_key",
-          "sort_order",
-          "icon_key",
-          "summary",
-          "panel_hint",
-          "palette",
-          "hue_slot",
-          "tone",
-          "no_data_fact_key",
-          "hides_unclassified"
-        ],
-        "title": "RoadMapLayer"
       },
       "RoadMapLayerView": {
         "properties": {

@@ -1,8 +1,7 @@
-"""`domain/msm.py`——MSM格子の幾何（範囲と形状から導く格子・切り出す窓・格子点の並び）と、格子点の値の取り出し・
-双一次補間・風の成分から風速と風向。
+"""`domain/msm.py`——MSM格子の幾何（範囲と形状から導く格子・格子点の並び）と、格子点の値の取り出し・
+風の成分から風速と風向。
 
-入口は`MsmGrid.from_bbox_and_shape`・`MsmGrid.window`と、窓の`lat_slice`/`lon_slice`で切り出した
-部分ブロックを渡す`MsmWindow.interpolate`、格子点の並びを作る`MsmGrid.block_covering`・`MsmGrid.block_overlapping`・`MsmGrid.nearest_points`と
+入口は`MsmGrid.from_bbox_and_shape`、格子点の並びを作る`MsmGrid.block_covering`・`MsmGrid.block_overlapping`・`MsmGrid.nearest_points`と
 その`points_of`・`values`・`thinned_points`、`wind_speed_and_direction`。格子はMSMの公表値（緯度0.05度・
 経度0.0625度、北緯22.4〜47.6度・東経120〜150度）で作る。
 
@@ -22,16 +21,6 @@ from app.domain.msm import MsmGrid, wind_speed_and_direction
 from tests.msm_grid import MSM_BBOX
 from tests.msm_grid import MSM_GRID as GRID
 
-_LATITUDES = GRID.lat_min + GRID.d_lat * np.arange(GRID.n_lat)
-_LONGITUDES = GRID.lon_min + GRID.d_lon * np.arange(GRID.n_lon)
-
-
-def _bilinear(lat, lon):
-    """双一次補間がそのまま再現する形（緯度・経度・その積の一次式）。時刻ごとに係数を変える。"""
-    return np.stack([1.5 + 0.2 * lat - 0.1 * lon + 0.003 * lat * lon, -4.0 + 0.05 * lon - 0.002 * lat * lon], axis=-1)
-
-
-FIELD = _bilinear(_LATITUDES[:, None], _LONGITUDES[None, :])
 #: 格子点ごとに違う値の場。どの格子点を読んだかが値に出る。テストは読むだけなので、書き込みを禁じて共有する。
 NOISE = np.random.default_rng(0).normal(size=(GRID.n_lat, GRID.n_lon, 2))
 NOISE.flags.writeable = False
@@ -49,11 +38,6 @@ def test_a_grid_with_fewer_than_two_points_on_a_side_is_refused(n_lat, n_lon):
 
 def _grid_indices(latitudes, longitudes):
     return np.rint((latitudes - GRID.lat_min) / GRID.d_lat).astype(int), np.rint((longitudes - GRID.lon_min) / GRID.d_lon).astype(int)
-
-
-def _interpolate(latitudes, longitudes, field=FIELD):
-    window = GRID.window(np.asarray(latitudes, dtype=float), np.asarray(longitudes, dtype=float))
-    return window, window.interpolate(field[window.lat_slice, window.lon_slice])
 
 
 _points = st.lists(
@@ -83,31 +67,6 @@ def _nearby_points():
     )
 
 
-@given(points=st.one_of(_points, _nearby_points()))
-def test_interpolation_reproduces_a_bilinear_field_at_every_point_of_the_grid(points):
-    latitudes, longitudes = (np.array(values) for values in zip(*points, strict=True))
-
-    window, values = _interpolate(latitudes, longitudes)
-
-    assert values.shape == (len(points), 2)
-    np.testing.assert_allclose(values, _bilinear(latitudes, longitudes), rtol=1e-9, atol=1e-7)
-    # 読む部分ブロックは地点の範囲より上下左右に1格子までしか広げない。
-    assert window.i1 - window.i0 <= math.ceil((latitudes.max() - latitudes.min()) / GRID.d_lat) + 2
-    assert window.j1 - window.j0 <= math.ceil((longitudes.max() - longitudes.min()) / GRID.d_lon) + 2
-
-
-def test_grid_points_on_the_outer_edges_and_corners_return_the_grid_value():
-    """全体格子の上端・右端ちょうどでは、その外側の格子点が無い。"""
-    rng = np.random.default_rng(0)
-    field = rng.normal(size=(GRID.n_lat, GRID.n_lon, 1))
-    rows = [0, GRID.n_lat - 1, GRID.n_lat - 1, 0, GRID.n_lat - 1, 250]
-    cols = [0, GRID.n_lon - 1, 0, GRID.n_lon - 1, 240, GRID.n_lon - 1]
-
-    _, values = _interpolate(_LATITUDES[rows], _LONGITUDES[cols], field)
-
-    np.testing.assert_allclose(values[:, 0], field[rows, cols, 0], rtol=1e-9)
-
-
 @pytest.mark.parametrize(
     ("latitude", "longitude"),
     [(22.39, 135.0), (47.61, 135.0), (35.0, 119.99), (35.0, 150.01)],
@@ -115,7 +74,7 @@ def test_grid_points_on_the_outer_edges_and_corners_return_the_grid_value():
 )
 def test_a_point_outside_the_grid_is_refused(latitude, longitude):
     with pytest.raises(ValueError):
-        GRID.window(np.array([35.0, latitude]), np.array([135.0, longitude]))
+        GRID.nearest_points(np.array([35.0, latitude]), np.array([135.0, longitude]))
 
 
 # --- 格子点の値 ---

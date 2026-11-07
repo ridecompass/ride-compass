@@ -25,8 +25,8 @@ from app.domain.graph import edge_feature_key
 from app.domain.gradient import ROAD_BEARING_LEAF, travel_direction_formula
 from app.domain.ledger_costs import LedgerCosts, LedgerParameters
 from app.domain.leg_costs import axis_facts, burden_weights, travel_inputs
-from app.domain.region import EDGE_UNIT_MIN_ZOOM, tile_bounds_lonlat
-from app.domain.road_network import MaterialFills, RoadNetwork, rows_in_bbox
+from app.domain.region import EDGE_UNIT_MIN_ZOOM
+from app.domain.road_network import MaterialFills, RoadNetwork, rows_in_tile
 from app.domain.strict_model import StrictModel
 from app.domain.route import AxisFact, elevation_gain
 from app.domain.way_value_formula import WayValueConditionName, WayValueFormula, evaluate_formula, feature
@@ -77,8 +77,7 @@ class LensFeatures:
 def tile_features(network: RoadNetwork, z: int, x: int, y: int) -> LensFeatures:
     """タイルに掛かる区間（形の外接矩形が重なるもの）のフィーチャー。道1本で塗るズームは、タイルの外の区間も含めた道の全区間で
     1つのフィーチャーにする（どのタイルから見ても道1本の値が同じ）。"""
-    bbox = tile_bounds_lonlat(z, x, y)
-    hit = rows_in_bbox(network, bbox.min_longitude, bbox.min_latitude, bbox.max_longitude, bbox.max_latitude)
+    hit = rows_in_tile(network, z, x, y)
     way_ids = np.asarray(network.edge_way_id)
     if z >= EDGE_UNIT_MIN_ZOOM:
         rows = hit

@@ -5,9 +5,8 @@
 - ディスクのキャッシュの読み書きと、読めない・消せないときの扱い → `test_tile_cache.py`
 - 記録した項目のログ・統計への出し方 → `test_debug_log.py`
 
-骨格のテストは、ディスクのキャッシュ（`tile_cache`の読み書き）と記録の口（`log_external_call`）を代役へ差し替え、
-キャッシュの代役は本物の署名へ当てる（`bound`）。旧世代の掃除のテストは、ディスクを本物で通し（置き場は`tests/conftest.py`が
-テストごとの一時ディレクトリへ向けてある）、ラスタの口だけを代役にする。
+ディスクのキャッシュは本物で通す（置き場は`tests/conftest.py`がテストごとの一時ディレクトリへ向けてある）。骨格のテストは
+記録の口（`log_external_call`）を、旧世代の掃除のテストはラスタの口を代役にする。
 """
 
 
@@ -16,22 +15,11 @@ import pytest
 from app.infrastructure import region_tile_cache, tile_cache
 from app.infrastructure.cache_identity import LANDCOVER_TILE_VERSION, UNKNOWN_REVISION, region_tile_key
 from app.infrastructure.debug_log import mark_failed
-from tests.bound_fake import bound
 from tests.fake_external_log import record_external_calls
-from tests.fake_tile_cache import FakeTileCache
 
 EMPTY = b"empty-tile"
 TILE = {"kind": "kind", "generation": "1", "z": 10, "x": 905, "y": 403, "extension": "png"}
 KEY = region_tile_key(**TILE)
-
-
-@pytest.fixture
-def cache(monkeypatch):
-    fake = FakeTileCache()
-    disk = region_tile_cache.tile_cache
-    monkeypatch.setattr(disk, "get", bound(disk.get, fake.get))
-    monkeypatch.setattr(disk, "set", bound(disk.set, fake.set))
-    return fake
 
 
 @pytest.fixture
@@ -62,8 +50,8 @@ async def _serve(fetch, **overrides):
     return await region_tile_cache.serve_region_tile(**arguments)
 
 
-async def test_a_cached_tile_is_returned_without_making_it_again(cache, records):
-    cache.entries[KEY] = (b"cached", "image/png")
+async def test_a_cached_tile_is_returned_without_making_it_again(records):
+    tile_cache.set(KEY, b"cached", "image/png")
     fetch = _fetch(b"new")
 
     response = await _serve(fetch)
@@ -72,13 +60,13 @@ async def test_a_cached_tile_is_returned_without_making_it_again(cache, records)
     assert records[0].fields["cache"] == "hit"
 
 
-async def test_a_missing_tile_is_made_stored_and_returned(cache, records):
+async def test_a_missing_tile_is_made_stored_and_returned(records):
     fetch = _fetch(b"new")
 
     response = await _serve(fetch)
 
     assert response == b"new"
-    assert cache.entries == {KEY: (b"new", "image/png")}
+    assert tile_cache.get(KEY) == (b"new", "image/png")
     # 取得元は呼び出し元が名乗る（統計の内訳が実際の取得元と食い違わないため）
     assert [call.fields for call in records] == [{
         "z": TILE["z"], "x": TILE["x"], "y": TILE["y"],
@@ -86,11 +74,11 @@ async def test_a_missing_tile_is_made_stored_and_returned(cache, records):
     }]
 
 
-async def test_a_tile_outside_the_coverage_is_the_empty_tile_and_is_not_stored(cache, records):
+async def test_a_tile_outside_the_coverage_is_the_empty_tile_and_is_not_stored(records):
     response = await _serve(_fetch(None, None))
 
     assert response == EMPTY
-    assert cache.entries == {}
+    assert tile_cache.get(KEY) is None
     assert records[0].fields["source"] == "uncovered_empty"
 
 

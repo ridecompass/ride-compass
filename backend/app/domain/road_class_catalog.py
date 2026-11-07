@@ -87,8 +87,8 @@ def road_class_catalog(definitions: RoadClassDefinitions) -> RoadClassCatalog:
             colors, colors_on_dark = ordered_colors(len(classes)), ordered_colors(len(classes), on_dark=True)
             part = ordered_ends_phrase(labels[0], labels[-1]) if labels else ""
         else:
-            colors = nominal_colors(layer.hue_slot or 0, len(classes), layer.tone)
-            colors_on_dark = nominal_colors(layer.hue_slot or 0, len(classes), layer.tone, on_dark=True)
+            colors = nominal_colors(layer.hue_slot, len(classes), layer.tone)
+            colors_on_dark = nominal_colors(layer.hue_slot, len(classes), layer.tone, on_dark=True)
             # 区分が1つだけなら、見分けるものが無く、名前は要約の言い直しになるので並べない。
             part = "・".join(labels) if len(labels) > 1 else ""
         layers.append(

@@ -115,8 +115,9 @@ class LensService:
 
 def _prepare(network: RoadNetwork, z: int, x: int, y: int, axes: CostAxisDefinitions, only: str | None
              ) -> tuple[LensFeatures, EdgeMaterialColumns, MaterialFills, np.ndarray] | None:
-    """風に依らない入力（フィーチャーと行・材料・欠けを埋める平均・行の向きの登り）。道路網の全区間を走査し、初回は
-    取込範囲全体の区分の列と平均も求めるので、イベントループの外で呼ぶ。"""
+    """風に依らない入力（フィーチャーと行・材料・欠けを埋める平均・行の向きの登り）。道路網ごとの初回は、
+    タイルの区間の表（`domain/road_network.py: RoadNetwork.road_tile_rows`）と取込範囲全体の区分の列と平均も求めるので、
+    イベントループの外で呼ぶ。"""
     tile = tile_features(network, z, x, y)
     features = tile if only is None else tile.only(only)
     if features is None:

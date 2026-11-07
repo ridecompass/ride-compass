@@ -212,6 +212,20 @@ async def test_the_inspector_gives_both_directions_and_the_facts_behind_them(cos
     assert inspection.along.facts["rough"] == AxisFact(label=bad.label, value=1.0, unit=bad.unit)
 
 
+async def test_a_new_road_network_generation_paints_its_own_roads(client, cost_axes, road_network_root):
+    """道路網が作り直されたら、同じタイルでも新しい網の道で塗る。前の網のタイルの区間を引き続けると、増えた道が地図で
+    塗られない。増やす道は番号が一番大きく、網の行の末尾に載る（前の網の行の範囲の外）。"""
+    new_way, new_node = max(WAYS) + 1, max(COORDINATES) + 1
+    lat, lon = COORDINATES[CENTER]
+    serve_road_network(road_network_root, road_network(WAYS, COORDINATES))
+    assert str(new_way) not in await _lens(client, "total")
+
+    serve_road_network(road_network_root, road_network(
+        {**WAYS, new_way: (CENTER, new_node)}, {**COORDINATES, new_node: (lat, lon + 0.001)}))
+
+    assert str(new_way) in await _lens(client, "total")
+
+
 async def test_an_unknown_lens_has_nothing_to_paint(client, road_network_root, cost_axes):
     serve_road_network(road_network_root, road_network(WAYS, COORDINATES))
 
