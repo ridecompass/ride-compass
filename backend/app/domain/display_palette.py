@@ -98,11 +98,11 @@ def ordered_ends_phrase(first_label: str, last_label: str) -> str:
 
 def nominal_colors(hue_slot: int, count: int, tone: str | None, on_dark: bool = False) -> list[str]:
     """順序を持たない列挙の1軸ぶん。起点から色相環を行数で等分する。**同じ起点・同じ行数・同じ段なら
-    常に同じ色**（行を足すと、その軸の色は配り直される）。知らない段は標準の段で塗る。`on_dark`は暗い地図の上に塗る色。"""
+    常に同じ色**（行を足すと、その軸の色は配り直される）。`on_dark`は暗い地図の上に塗る色。"""
     if not 0 <= hue_slot < NOMINAL_HUE_SLOTS:
         raise ValueError(f"色相の起点は0〜{NOMINAL_HUE_SLOTS - 1}: {hue_slot}")
     start = _NOMINAL_START_HUE_DEG + (360.0 / NOMINAL_HUE_SLOTS) * hue_slot
-    lightness, chroma = NOMINAL_TONES.get(tone, NOMINAL_TONES[None])
+    lightness, chroma = NOMINAL_TONES[tone]
     if on_dark:
         lightness = max(lightness, _MIN_NOMINAL_LIGHTNESS_ON_DARK)
     return [_fit_chroma(lightness, chroma, start + 360.0 * i / count) for i in range(count)]

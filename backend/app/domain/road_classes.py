@@ -3,7 +3,7 @@
 正本は管理DBの表（`infrastructure/road_class_models.py`）で、コードは写しも既定も持たない——表が空なら区分は0件。
 型は表の行を写すだけで、表の制約が守る形（鍵の綴り・参照先の実在・並びの重なり）をもう一度確かめない。制約で表せない
 データの良し悪し（条件の重なり・条件の値の綴り）も判定せず、振り分けの式がどんなデータにも1つの答えを出す。
-コードの宣言を名指す値は、書く側だけが宣言に照らす（`undeclared_references`）。
+コードの宣言を名指す値は、書く側と起動時の読み込みが宣言に照らす（`undeclared_references`）。
 """
 
 import hashlib
@@ -121,11 +121,8 @@ EMPTY_ROAD_CLASSES = RoadClassDefinitions(
 )
 
 def undeclared_references(definitions: RoadClassDefinitions) -> list[str]:
-    """コードの宣言を名指す値のうち、宣言に無いもの（運用者が読む文）。空なら全部が宣言にある。
-
-    読む側は知らない値を1つの振る舞いへ倒す（どの道にも無い事実・標準の段・基準の転がり抵抗等）ので、綴り違いは書いた
-    あと黙って効く。書く側（管理APIの入れ替え）だけがこれで断る。宣言から値を消しても、残った行は読む側が倒すだけで起動は止まらない。
-    """
+    """コードの宣言を名指す値のうち、宣言に無いもの（運用者が読む文）。空なら全部が宣言にある。書く側（管理APIの入れ替え）は
+    これで断り、起動時の読み込みはこれで止まるので、読む側は宣言に無い値を受け取らない。"""
     problems = [
         f"区分「{class_key}」（分け方 {key}）の条件の事実 {fact_key} は材料にありません"
         for key, classification in definitions.classifications.items()

@@ -245,7 +245,7 @@ RouteGenerator.generate_loops(origin, distance_km, distance_tolerance_km, max_ro
 - 半径ヒューリスティック: 較正値`search.turnaround_radius_ratio`（自由に選ぶ部分の長さに対する比率。自由に選ぶ部分の長さは、
   目標距離から出発地→経由地を順に結ぶ直線の長さを引いた残りで、経由地が無ければ目標距離そのもの。直線で引くので残りは
   実際より長く、範囲は広い側に倒れる。折返し点は往路の実距離が自由に選ぶ部分の半分付近にあり、直線距離はそれより短い
-  [実道路の迂回率は概ね1.3]ため、既定は0.5ではなく0.4にする。半径不足時は一対全探索がbboxで自然に切れ
+  [実道路の迂回率は概ね1.3]。半径不足時は一対全探索がbboxで自然に切れ
   リング[折返し候補の集合]が欠けるだけで壊れない）。
 - 候補数: `RouteGenerateRequest.max_routes`（`ge=MIN_ROUTES`[1]・`le=MAX_ROUTES`[15]・
   `default=DEFAULT_MAX_ROUTES`[8]）。経由地・目的地の有無によらず同じに効く。折返し点候補プールのサイズは

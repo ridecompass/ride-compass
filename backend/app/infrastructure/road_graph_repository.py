@@ -305,7 +305,7 @@ class RoadGraphRepository:
         return {param_id: recorded[param_id] for param_id in param_ids}
 
     def stream_network_edges(self, chunk_size: int, tuning: Mapping[str, float]) -> AsyncIterator[Sequence[Row]]:
-        """取込範囲全体の区間を`chunk_size`行ずつ流す（`_network_edges_sql`の並び）。`tuning`は`get_network_tuning`の値。"""
+        """取込範囲全体の区間を`chunk_size`行ずつ流す（`_NETWORK_EDGES_SQL`の並び）。`tuning`は`get_network_tuning`の値。"""
         return self._stream(_NETWORK_EDGES_SQL.bindparams(bearing_distance_m=tuning[TURN_BEARING_DISTANCE_ID]), chunk_size)
 
     def stream_network_nodes(self, chunk_size: int) -> AsyncIterator[Sequence[Row]]:

@@ -2,7 +2,7 @@
 
 警報・注意報のページが時間帯ごとの危険度の表を描くのに読むJSONで、応答の形はここで解き、呼び出し元へは
 `domain/jma_warning_timeline.py: WarningTimeline`で渡す。読むのは段のコード（`significancyParts`）だけで、雨量等の
-見込みの値（`forecastParts`）は読まない。取得失敗はNoneを返し、「段がどこも注意報級でない」とは分ける。
+見込みの値（`forecastParts`）は読まない。取得の失敗は投げ、「段がどこも注意報級でない」とは分ける。
 """
 
 import re

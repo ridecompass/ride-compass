@@ -57,7 +57,7 @@ class LensService:
     async def tile_table(self, z: int, x: int, y: int, at: datetime | None, speed_kmh: float,
                          preference: CostPreference) -> LensTable:
         """タイルのフィーチャーの、時刻`at`（省略すると今）の風と想定速度`speed_kmh`と利用者の値`preference`（つまみと倍率。
-        ルート生成と同じ値で塗る）でのレンズの値。風を読めない・時刻が予報の範囲の外なら無風で求める（探索と同じ）。"""
+        ルート生成と同じ値で塗る）でのレンズの値。風を読めない・時刻が予報の範囲の外なら投げる。"""
         tile = await self._tile(z, x, y, at, speed_kmh, preference)
         assert tile is not None  # フィーチャーを絞らなければ、空のタイルも空の表で返る
         return tile.table

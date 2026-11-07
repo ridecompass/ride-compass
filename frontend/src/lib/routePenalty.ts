@@ -33,8 +33,8 @@ function pendingCatalogLabel(catalog: { readonly failed: boolean }): string {
   return catalog.failed ? "取得できません" : "読み込み中";
 }
 
-/** 費用の軸`axisId`の名前。一覧に無い軸は、一覧が届いていればidで、届いていなければ`pendingCatalogLabel`（生のidを名前に
- * 見せない）。 */
+/** 費用の軸`axisId`の名前。一覧が届いていなければ`pendingCatalogLabel`。届いた一覧に無い軸は、同じbackendの応答どうしの
+ * 食い違いなので投げる（画面のエラーの境目が出す）。 */
 export function costAxisLabel(
   catalog: {
     readonly axes: readonly { readonly axisId: string; readonly label: string }[];
@@ -43,10 +43,10 @@ export function costAxisLabel(
   },
   axisId: string,
 ): string {
-  return (
-    catalog.axes.find((axis) => axis.axisId === axisId)?.label ??
-    (catalog.loaded ? axisId : pendingCatalogLabel(catalog))
-  );
+  if (!catalog.loaded) return pendingCatalogLabel(catalog);
+  const axis = catalog.axes.find((listed) => listed.axisId === axisId);
+  if (axis === undefined) throw new Error(`費用の軸 ${axisId} が一覧にありません`);
+  return axis.label;
 }
 
 /** 軸`axisLabel`の行に添える、事実の名前と値と単位（区分の事実は値を持たず、名前が区分の名前）。事実の名前が軸の名前と同じなら
@@ -61,26 +61,19 @@ export function factText(fact: AxisFact, axisLabel: string): string {
 const PREFERRED_ROW_ID = "<preferred>";
 const AVOIDED_ROW_ID = "<avoided>";
 
-/** 内訳の行: 軸を一覧の順に（一覧に無い軸は応答の順で後ろに、名前はid）、続けて好む道・避ける道。秒が0の軸も残す（効く
+/** 内訳の行: 軸を一覧の順に（一覧が届くまでは応答の順）、続けて好む道・避ける道。秒が0の軸も残す（効く
  * はずの軸が効かなかったことも判断の材料になる）。好む道・避ける道は、秒があるときだけ出し、軸の無い行の色で塗る（データなしの
  * 灰色とは分ける）。 */
 export function penaltyRows(penalty: PenaltyBreakdown, catalog: PenaltyCatalog): PenaltyRow[] {
-  const known = catalog.axes.filter((axis) => Object.hasOwn(penalty.axis_seconds, axis.axisId));
-  const unknown = Object.keys(penalty.axis_seconds).filter((id) => !catalog.axes.some((axis) => axis.axisId === id));
-  const rows: PenaltyRow[] = [
-    ...known.map((axis) => ({
-      id: axis.axisId,
-      label: axis.label,
-      seconds: penalty.axis_seconds[axis.axisId],
-      color: catalog.axisColors[axis.axisId] ?? palette.semantic.neutral,
-    })),
-    ...unknown.map((id) => ({
+  const listed = catalog.axes.map((axis) => axis.axisId);
+  const rows: PenaltyRow[] = Object.keys(penalty.axis_seconds)
+    .sort((a, b) => listed.indexOf(a) - listed.indexOf(b))
+    .map((id) => ({
       id,
       label: costAxisLabel(catalog, id),
       seconds: penalty.axis_seconds[id],
-      color: palette.semantic.neutral,
-    })),
-  ];
+      color: catalog.axisColors[id] ?? palette.semantic.neutral,
+    }));
   const avoidance = [
     { id: PREFERRED_ROW_ID, label: catalog.preferredLabel, seconds: penalty.preferred_seconds },
     { id: AVOIDED_ROW_ID, label: catalog.avoidedLabel, seconds: penalty.avoided_seconds },

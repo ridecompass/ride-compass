@@ -38,9 +38,7 @@ class RegionService:
     生成したタイルは基礎地図タイルと同じファイルキャッシュへ置く。そのため管理画面からの
     一括クリア（`api/routers/basemap.py: basemap_refresh`）で両方とも消える。
 
-    カバレッジ外・DB障害はいずれも空タイルを返す。取れなかったときに
-    別の経路から取り直すフォールバックは持たない（背景は
-    docs/records/decisions/pre-static-attributes-gate.md 決定2）。
+    カバレッジ外は空タイルを返し、DB障害は投げる（503）。取れなかったときに別の経路から取り直すフォールバックは持たない。
     """
 
     def __init__(self, repository: RoadGraphRepository):
