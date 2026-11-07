@@ -30,8 +30,11 @@ class TuningOverrideRow(Base):
 
 
 async def load_tuning_values(session: AsyncSession) -> dict[str, float]:
-    """DBの表から、宣言の全idの値を読む（行が無ければ`KeyError`。プロセスへは反映しない）。"""
+    """DBの表から、宣言の全idの値を読む（プロセスへは反映しない）。行の無いidがあれば、そのidを全部名指して止める。"""
     rows = await TuningOverrideStore(session).read_values()
+    missing = [p.id for p in TUNING_PARAMETERS if p.id not in rows]
+    if missing:
+        raise RuntimeError(f"較正値の行がありません（本番の表へ行を入れてから起動する）: {'／'.join(missing)}")
     return {p.id: rows[p.id] for p in TUNING_PARAMETERS}
 
 
