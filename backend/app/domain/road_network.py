@@ -27,6 +27,7 @@ from app.domain.attributes import (
 from app.domain.elevation_profile import ElevationProfiles, GradeDistribution
 from app.domain.geo import LatLonPoint
 from app.domain.material_catalog import GRADIENT_PERCENT
+from app.domain.region import ROAD_TILE_MIN_ZOOM, tile_bounds_lonlat
 from app.domain.road_classes import RoadClassDefinitions, class_columns, layer_columns
 
 
@@ -129,6 +130,12 @@ class RoadNetwork:
                                          np.asarray(self.profile_distribution_share))
         return ElevationProfiles(self.edge_profile_start, self.edge_profile_points, self.edge_forward,
                                  self.profile_elevation_m, distribution)
+
+    @cached_property
+    def road_tile_rows(self) -> "TileRows":
+        """地図の道のタイルの一番粗いズームのタイルごとの、区間の形の外接矩形が重なる区間の行（`rows_in_tile`が引く）。
+        道路網と同じ寿命で1回だけ作る。"""
+        return TileRows.build(self, ROAD_TILE_MIN_ZOOM)
 
     @cached_property
     def numeric_means(self) -> dict[str, float]:
@@ -234,13 +241,70 @@ def slice_network(
     return slice_rows(network, classes, rows_in_bbox(network, min_lon, min_lat, max_lon, max_lat))
 
 
-def rows_in_bbox(network: RoadNetwork, min_lon: float, min_lat: float, max_lon: float, max_lat: float) -> np.ndarray:
-    """区間の形の外接矩形が範囲に重なる区間の行（昇順）。"""
-    overlaps = np.asarray(network.edge_max_lon) >= min_lon
-    overlaps &= np.asarray(network.edge_min_lon) <= max_lon
-    overlaps &= np.asarray(network.edge_max_lat) >= min_lat
-    overlaps &= np.asarray(network.edge_min_lat) <= max_lat
-    return np.flatnonzero(overlaps)
+def rows_in_bbox(network: RoadNetwork, min_lon: float, min_lat: float, max_lon: float, max_lat: float,
+                 rows: np.ndarray | None = None) -> np.ndarray:
+    """区間の形の外接矩形が範囲に重なる区間の行（昇順）。`rows`（昇順）を渡すと、その行の中だけを比べる。"""
+    among = slice(None) if rows is None else rows
+    overlaps = np.asarray(network.edge_max_lon[among]) >= min_lon
+    overlaps &= np.asarray(network.edge_min_lon[among]) <= max_lon
+    overlaps &= np.asarray(network.edge_max_lat[among]) >= min_lat
+    overlaps &= np.asarray(network.edge_min_lat[among]) <= max_lat
+    hit = np.flatnonzero(overlaps)
+    return hit if rows is None else rows[hit]
+
+
+def rows_in_tile(network: RoadNetwork, z: int, x: int, y: int) -> np.ndarray:
+    """タイル`z/x/y`（`ROAD_TILE_MIN_ZOOM`以上）に区間の形の外接矩形が重なる区間の行（昇順）。全区間は比べず、そのタイルを
+    含む`ROAD_TILE_MIN_ZOOM`のタイルに重なる行（`RoadNetwork.road_tile_rows`）の中だけを比べる。"""
+    bbox = tile_bounds_lonlat(z, x, y)
+    return rows_in_bbox(network, bbox.min_longitude, bbox.min_latitude, bbox.max_longitude, bbox.max_latitude,
+                        network.road_tile_rows.rows_of(z, x, y))
+
+
+@dataclass(frozen=True)
+class TileRows:
+    """`zoom`のタイルごとの、区間の形の外接矩形が重なる区間の行。タイルは番号`x * 2**zoom + y`で引く。
+
+    shapelyの`STRtree`は区間ごとに形のオブジェクトを持ち、網の区間の配列の何倍ものメモリを常駐させるので、行の配列だけで持つ。"""
+
+    zoom: int
+    #: 区間の重なるタイルの番号（昇順）と、タイルごとの`rows`の範囲の始まり（末尾に`rows`の長さ）。
+    tiles: np.ndarray
+    starts: np.ndarray
+    #: タイルごとに昇順に並べてつないだ区間の行。
+    rows: np.ndarray
+
+    @classmethod
+    def build(cls, network: RoadNetwork, zoom: int) -> "TileRows":
+        n = 2**zoom
+        # タイルの境目は`tile_bounds_lonlat`から引き、要求のタイルの範囲と同じ値で比べる（重なる行を取りこぼさない）。
+        bounds = [tile_bounds_lonlat(zoom, i, i) for i in range(n)]
+        # 重なる列は「東の境目 >= 区間の西端」かつ「西の境目 <= 区間の東端」。行は北が若い番号なので、緯度の符号を返して同じに引く。
+        first_x = np.searchsorted([b.max_longitude for b in bounds], np.asarray(network.edge_min_lon), side="left")
+        last_x = np.searchsorted([b.min_longitude for b in bounds], np.asarray(network.edge_max_lon), side="right") - 1
+        first_y = np.searchsorted([-b.min_latitude for b in bounds], -np.asarray(network.edge_max_lat), side="left")
+        last_y = np.searchsorted([-b.max_latitude for b in bounds], -np.asarray(network.edge_min_lat), side="right") - 1
+        width = np.maximum(last_x - first_x + 1, 0)
+        counts = width * np.maximum(last_y - first_y + 1, 0)
+        edge = np.repeat(np.arange(len(counts), dtype=np.int64), counts)
+        # 区間ごとに覆うタイルの中の位置（0から）を、列の幅で横・縦に分ける。
+        position = np.arange(int(counts.sum())) - np.repeat(np.cumsum(counts) - counts, counts)
+        repeated_width = np.repeat(width, counts)
+        tile = ((np.repeat(first_x, counts) + position % repeated_width) * n
+                + np.repeat(first_y, counts) + position // repeated_width)
+        # 安定な並べ替えなので、同じタイルの中では区間の行の昇順が保たれる。
+        order = np.argsort(tile, kind="stable")
+        tiles, starts = np.unique(tile[order], return_index=True)
+        return cls(zoom=zoom, tiles=tiles, starts=np.append(starts, len(order)), rows=edge[order])
+
+    def rows_of(self, z: int, x: int, y: int) -> np.ndarray:
+        """タイル`z/x/y`（`zoom`以上）を含む`zoom`のタイルに重なる区間の行（昇順）。"""
+        shift = z - self.zoom
+        tile = (x >> shift) * 2**self.zoom + (y >> shift)
+        index = int(np.searchsorted(self.tiles, tile))
+        if index == len(self.tiles) or self.tiles[index] != tile:
+            return self.rows[:0]
+        return self.rows[self.starts[index]:self.starts[index + 1]]
 
 
 def slice_rows(

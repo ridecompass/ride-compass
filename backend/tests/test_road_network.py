@@ -3,6 +3,7 @@
 入口は次のとおり。
 - `RoadNetwork`: 組み立てた時点で行数・列数の食い違いを断る
 - `slice_network`: 範囲に掛かる区間と、その両端のノードを取り出す
+- `rows_in_tile`: 地図のタイルに掛かる区間の行
 - `road_class_columns`・`material_arrays_of`: 区分の列と、切り出した区間の材料
 - `material_fills`: 欠けた材料を埋める、取込範囲全体の分布
 - `elevation_attribute`: 1区間の標高属性
@@ -24,6 +25,7 @@ from hypothesis import example, given
 from hypothesis import strategies as st
 
 from app.domain.material_catalog import GRADIENT_PERCENT
+from app.domain.region import ROAD_TILE_MAX_ZOOM, ROAD_TILE_MIN_ZOOM, tile_bounds_lonlat, tile_position
 from app.domain.road_classes import class_material_id
 from app.domain.road_network import (
     edge_row_of,
@@ -31,6 +33,7 @@ from app.domain.road_network import (
     material_arrays_of,
     material_fills,
     road_class_columns,
+    rows_in_tile,
     slice_network,
 )
 from tests.east_west_network import EDGES, NODES, network
@@ -77,6 +80,34 @@ def test_a_slice_keeps_the_edges_and_their_ends_of_the_whole_network(lon_a, lon_
     for position, global_row in enumerate(road.rows):
         assert road.node_lon[road.edge_from[position]] == whole.node_lon[whole.edge_from[global_row]]
         assert road.node_lon[road.edge_to[position]] == whole.node_lon[whole.edge_to[global_row]]
+
+
+#: 範囲の中の、地図の道のタイルの境目の経度・緯度（区間の端が境目ちょうどに乗る場面を引かせる）。
+_tile_edges = [tile_bounds_lonlat(z, *(int(v) for v in tile_position(lon, lat, z)))
+               for z in range(ROAD_TILE_MIN_ZOOM, ROAD_TILE_MAX_ZOOM + 1)
+               for lon in np.arange(138.99, 139.15, 0.005) for lat in np.arange(34.98, 35.02, 0.002)]
+edge_lons = st.one_of(lons, st.sampled_from(sorted({b.min_longitude for b in _tile_edges})))
+edge_lats = st.one_of(lats, st.sampled_from(sorted({b.min_latitude for b in _tile_edges})))
+boxes = st.lists(st.tuples(edge_lons, edge_lons, edge_lats, edge_lats), min_size=len(EDGES), max_size=len(EDGES))
+#: ズーム12で(139.05E, 35.0N)を含むタイルの東の境目。
+_EAST_EDGE = tile_bounds_lonlat(12, *(int(v) for v in tile_position(139.05, 35.0, 12))).max_longitude
+
+
+@given(boxes=boxes, lon=lons, lat=lats, z=st.integers(ROAD_TILE_MIN_ZOOM, ROAD_TILE_MAX_ZOOM))
+@example(boxes=[(_EAST_EDGE, _EAST_EDGE + 0.01, 35.0, 35.0)] * len(EDGES), lon=139.05, lat=35.0, z=12)  # 東の隣のタイルから境目に触れる
+def test_the_rows_in_a_tile_are_the_edges_whose_bounds_touch_it(boxes, lon, lat, z):
+    """地図のタイルに掛かる区間は、どのズーム・どの区間の形でも、区間の外接矩形をタイルの範囲と総当たりで比べた答えに
+    一致する。取りこぼすと、タイルの端に触れる道がレンズで塗られない。"""
+    min_lon, max_lon, min_lat, max_lat = (np.array(v) for v in zip(*(
+        (min(a, b), max(a, b), min(c, d), max(c, d)) for a, b, c, d in boxes)))
+    whole = replace(network(), edge_min_lon=min_lon, edge_max_lon=max_lon, edge_min_lat=min_lat, edge_max_lat=max_lat)
+    x, y = (int(v) for v in tile_position(lon, lat, z))
+    tile = tile_bounds_lonlat(z, x, y)
+
+    expected = [row for row in range(len(EDGES))
+                if max_lon[row] >= tile.min_longitude and min_lon[row] <= tile.max_longitude
+                and max_lat[row] >= tile.min_latitude and min_lat[row] <= tile.max_latitude]
+    assert rows_in_tile(whole, z, x, y).tolist() == expected
 
 
 def test_the_materials_and_road_classes_of_a_slice_follow_its_rows():
