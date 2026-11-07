@@ -780,6 +780,14 @@ export const mapDisplay = {
       2
     ]
   },
+  "avoidanceHalo": {
+    "widthPx": 12,
+    "opacityByLevel": {
+      "prefer": 0.3,
+      "avoid": 0.25,
+      "exclude": 0.55
+    }
+  },
   "point": {
     "radiusPx": 4,
     "strokeWidthPx": 1,

@@ -691,12 +691,17 @@ ROAD_UNKNOWN_OPACITY = 0.6
 #: 詳細を見ている1本の強調。元の線が上に乗ったままになる太さにする。
 ROAD_INSPECTED_WIDTH_PX = 8
 
-#: 道路タブで好む・避けるにした道の強調。ルートの線と地図の道の両脇に細い線を添え、ルートの線の後ろに太く敷く選んだ区間の
-#: 帯（`ROUTE_LINE_WIDTHS_PX["selectedSection"]`）と形で見分ける。好むは実線、避けるは破線で、破線の刻みは値の無い線
-#: （`NO_DATA_DASH`）・乗り換え帯（`ROUTE_SPLICE_DASH`）と別にする。添える線の中心は、強調する線の縁から間隔だけ外に置く。
+#: 道路タブで好む・避けるにした道を通ったルートの区間の強調。ルートの線の両脇に細い線を添え、ルートの線の後ろに太く敷く
+#: 選んだ区間の帯（`ROUTE_LINE_WIDTHS_PX["selectedSection"]`）と形で見分ける。好むは実線、避けるは破線で、破線の刻みは値の無い線
+#: （`NO_DATA_DASH`）・乗り換え帯（`ROUTE_SPLICE_DASH`）と別にする。添える線の中心は、ルートの線の縁取りから間隔だけ外に置く。
 AVOIDANCE_RAIL_WIDTH_PX = 2
 AVOIDANCE_RAIL_GAP_PX = 2
 AVOIDANCE_AVOIDED_DASH: tuple[float, ...] = (3, 2)
+#: 道路タブを開いている間の、好む・避ける・通らないにした区分の地図の道の強調。道の下に淡い帯を1本敷く（線を重ねると幹線の
+#: 多い所で地図が線で埋まる）。好むは好むの色、避ける・通らないは避けるの色で、通らない（×∞）を避ける（×2）より濃くして
+#: 段の重さを濃淡で見せる。通る（×1）は塗らない。
+AVOIDANCE_HALO_WIDTH_PX = 12
+AVOIDANCE_HALO_OPACITY_BY_LEVEL: dict[str, float] = {"prefer": 0.3, "avoid": 0.25, "exclude": 0.55}
 
 #: 値が無い（不明・データなし）線の破線の刻み（線の太さを1とする長さ）。道の線・レンズの線・ルートの線で共有する。
 #: 乗り換え帯の破線（`ROUTE_SPLICE_DASH`）より細かく刻み、操作の状態と見分けられるようにする。

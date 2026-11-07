@@ -90,7 +90,7 @@ describe("凡例で隠した行", () => {
   });
 });
 
-it("道路タブの段（選んでいなければ既定）が好む・避けるの区分の道にだけ、強い方の印（好むは実線・避けるは破線）を両脇に添える", () => {
+it("道路タブの段（選んでいなければ既定）が好む・避ける・通らないの区分の道の下に、強い方の段の帯を段ごとの濃さで敷く", () => {
   const avoidance = roadClassCatalog({
     avoidance: {
       levels: AVOIDANCE_LEVELS,
@@ -121,14 +121,16 @@ it("道路タブの段（選んでいなければ既定）が好む・避ける�
       [...states].flatMap(([key, byId]) => (byId.has(featureKey) ? [[key, byId.get(featureKey)]] : [])),
     );
   const paint = (role: string) => built.layers.find((layer) => layer.role === role)?.paint ?? {};
-  const railed = (role: string, featureKey: string) =>
-    evaluate(paint(role)["line-opacity"], {}, stateOf(featureKey)) === 1;
+  const halo = (featureKey: string) =>
+    ["prefer", "avoid", "exclude"].map((level) =>
+      evaluate(paint(`${level}-halo`)["line-opacity"], {}, stateOf(featureKey)),
+    );
 
-  expect([...roads.keys()].map((key) => [railed("prefer-rail", key), railed("avoid-rail", key)])).toEqual([
-    [true, false],
-    [false, true],
-    [false, false],
-    [false, false],
+  const opacity = mapDisplay.avoidanceHalo.opacityByLevel;
+  expect([...roads.keys()].map(halo)).toEqual([
+    [opacity.prefer, 0, 0],
+    [0, opacity.avoid, 0],
+    [0, 0, opacity.exclude],
+    [0, 0, 0],
   ]);
-  expect(["prefer-rail", "avoid-rail"].map((role) => "line-dasharray" in paint(role))).toEqual([false, true]);
 });

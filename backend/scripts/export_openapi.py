@@ -104,6 +104,8 @@ from app.domain.map_display import (
     AVOIDANCE_RAIL_WIDTH_PX,
     AVOIDANCE_RAIL_GAP_PX,
     AVOIDANCE_AVOIDED_DASH,
+    AVOIDANCE_HALO_WIDTH_PX,
+    AVOIDANCE_HALO_OPACITY_BY_LEVEL,
     ROAD_KNOWN_OPACITY,
     ROAD_LINE_WIDTH_PX,
     ROAD_TRACK_OFFSET_STEP_PX,
@@ -406,12 +408,14 @@ def main() -> None:
                 # 地図の線の層の値で「データなし」。
                 "noDataValue": NO_DATA_VALUE,
             },
-            # 好む・避けるの道の両脇に添える線（ルートの線と地図の道で共有）。
+            # 好む・避けるの道を通ったルートの区間の両脇に添える線。
             "avoidanceRail": {
                 "widthPx": AVOIDANCE_RAIL_WIDTH_PX,
                 "gapPx": AVOIDANCE_RAIL_GAP_PX,
                 "avoidedDash": list(AVOIDANCE_AVOIDED_DASH),
             },
+            # 道路タブを開いている間の、好む・避ける・通らないの地図の道の下に敷く淡い帯（濃さは段ごと）。
+            "avoidanceHalo": {"widthPx": AVOIDANCE_HALO_WIDTH_PX, "opacityByLevel": AVOIDANCE_HALO_OPACITY_BY_LEVEL},
             "point": {
                 "radiusPx": POINT_RADIUS_PX,
                 "strokeWidthPx": POINT_STROKE_WIDTH_PX,
