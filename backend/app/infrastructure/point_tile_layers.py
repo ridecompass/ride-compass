@@ -19,7 +19,7 @@ from sqlalchemy import Float, Integer, Text, TextClause, bindparam, text
 from sqlalchemy.dialects.postgresql import ARRAY
 
 from app.domain.accident import BICYCLE_SQL, FATAL_SQL
-from app.domain.geo import degrees_covering_m
+from app.domain.geo import COORDINATE_DECIMALS, degrees_covering_m
 from app.domain.map_display import POINT_CLUSTER_CELLS_PER_TILE, POINT_COUNT_PROPERTY, POINT_MEMBERS_PROPERTY
 from app.domain.primary_attributes import PRIMARY_ATTRIBUTES, stop_poi_map_group_sql
 from app.domain.registry import PrimaryAttributeSpec, TileKind
@@ -83,8 +83,8 @@ def _clustered_mvt_sql(points: str, rows: tuple[str, ...], properties: tuple[str
                 celled.name AS name,
                 count(*) OVER cell AS {POINT_COUNT_PROPERTY},
                 CASE WHEN count(*) OVER cell > 1 THEN
-                    (json_agg(json_build_array(celled.name, round(ST_X(celled.geom)::numeric, 6),
-                                               round(ST_Y(celled.geom)::numeric, 6)))
+                    (json_agg(json_build_array(celled.name, round(ST_X(celled.geom)::numeric, {COORDINATE_DECIMALS}),
+                                               round(ST_Y(celled.geom)::numeric, {COORDINATE_DECIMALS})))
                          FILTER (WHERE celled.name IS NOT NULL) OVER members)::text
                 END AS {POINT_MEMBERS_PROPERTY}
             FROM celled
