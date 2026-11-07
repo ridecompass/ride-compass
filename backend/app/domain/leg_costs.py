@@ -159,9 +159,8 @@ class TravelInputs:
 
     model: SegmentSpeedModel
     wait_seconds: np.ndarray
-    # 止まる出来事の漕ぎ出しの回数（`StopEvent.kickoffs`の和）と、転がり抵抗（区間ごと）。
+    # 止まる出来事の漕ぎ出しの回数（`StopEvent.kickoffs`の和）。
     stops: np.ndarray
-    crr: np.ndarray
 
 
 def travel_inputs(materials: Mapping[str, MaterialColumn], distance_m: np.ndarray, profiles: ElevationProfiles,
@@ -185,7 +184,7 @@ def travel_inputs(materials: Mapping[str, MaterialColumn], distance_m: np.ndarra
         kickoffs += count * event.kickoffs
     crr = crr_for_surface(surface)
     model = SegmentSpeedModel(RiderProfile(cruise_speed_kmh=speed_kmh), profiles, distance_m, crr, kickoffs)
-    return TravelInputs(model, waits, kickoffs, crr)
+    return TravelInputs(model, waits, kickoffs)
 
 
 def burden_weights(axes: CostAxisDefinitions, parameters: LedgerParameters, materials: Mapping[str, MaterialColumn],
@@ -214,6 +213,7 @@ def axis_facts(axes: CostAxisDefinitions, materials: Mapping[str, MaterialColumn
     - 登坂は登り`ascent_m`、向かい風は向かい風の成分の長さで重みを付けた平均（風を読めなければNone）、停止は止まる回数`stops`。
     - 摩擦と、区分の材料の道のストレスの軸は、その軸の秒に一番効いた区分の名前（値は無い。秒が同じなら長い区分）。
     - 数の材料の道のストレスの軸は、その軸の秒に一番効いた区間の材料の値（欠けは費用と同じく取込の範囲全体の平均で埋めた値）。
+      どの区間でも秒が0なら、効いた区間が無いので載せない。
     """
     mean_headwind = None if headwind_ms is None else length_weighted_mean(headwind_ms, distance_m)
     quantities: dict[EffortItem, float | None] = {
@@ -239,7 +239,8 @@ def axis_facts(axes: CostAxisDefinitions, materials: Mapping[str, MaterialColumn
             else:
                 spec = _declared(burden.material)
                 values = fills.fill(burden.material, cast(np.ndarray, materials[burden.material])[rows])
-                fact = AxisFact(label=spec.label, value=float(values[int(np.argmax(seconds))]), unit=spec.unit)
+                top = int(np.argmax(seconds))
+                fact = AxisFact(label=spec.label, value=float(values[top]), unit=spec.unit) if seconds[top] > 0 else None
         if fact is not None:
             facts[axis_id] = fact
     return facts

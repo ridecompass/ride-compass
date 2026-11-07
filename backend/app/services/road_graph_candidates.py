@@ -246,15 +246,15 @@ def _build_candidate(
         attribute.elevation_gain_m if (attribute := elevation_by_edge.get(edge.edge_id)) is not None else np.nan
         for edge in edges_in_path]))
     turns = _route_turns(context.turn_structure, orientation.entries, edges_in_path, along_km)
+    turn_kickoffs = float(sum(orientation.turn_kickoffs))
+    facts = _route_facts(orientation, context, elevation_gain_m, turn_kickoffs)
     add_elapsed_ms(context.evaluate_steps_ms, "segments", segments_started)
     bins_started = start_timer()
     # 候補の内訳は丸める前の区間から足す（丸めたビンを足すと、丸めの分が候補の内訳へ積もる）。区間は通った道の分なので、通る道筋で
     # 決まる曲がる所の漕ぎ出しを、その費目を持つ軸の秒として足す。
-    turn_kickoffs = float(sum(orientation.turn_kickoffs))
     turn_penalty = PenaltyBreakdown.model_construct(
         axis_seconds=context.composer.turn_penalty_by_axis(turn_kickoffs), avoidance_seconds=0.0)
     penalty = merge_penalty_breakdowns([*(segment.penalty for segment in segments), turn_penalty])
-    facts = _route_facts(orientation, context, segments, elevation_gain_m, turn_kickoffs)
     # 返すsegmentsは集約する。Edge単位のままだとペイロードとフロントの描画費用が嵩む。
     segments = aggregate_segments_into_bins(segments, orientation.bin_slices)
     add_elapsed_ms(context.evaluate_steps_ms, "bins", bins_started)
@@ -372,15 +372,17 @@ def _segment_penalties(orientation: _Orientation) -> list[PenaltyBreakdown]:
     return _per_segment(orientation.reads, len(orientation.edges), of)
 
 
-def _route_facts(orientation: _Orientation, context: RoadGraphContext, segments: list[RouteSegmentDetail],
-                 elevation_gain_m: float | None, turn_kickoffs: float) -> RouteFacts:
-    """経路の事実（`domain/leg_costs.py: LegCostComposer.axis_facts`）。軸ごとの秒は区間（ビンへ畳む前の`segments`）の内訳、
-    向かい風は区間を通る時刻の値で、止まる回数には曲がる所の漕ぎ出し`turn_kickoffs`回を足す。"""
+def _route_facts(orientation: _Orientation, context: RoadGraphContext, elevation_gain_m: float | None,
+                 turn_kickoffs: float) -> RouteFacts:
+    """経路の事実（`domain/leg_costs.py: LegCostComposer.axis_facts`）。軸ごとの秒と向かい風は区間を通る時刻の値で、止まる回数には
+    曲がる所の漕ぎ出し`turn_kickoffs`回を足す。"""
     rows = np.asarray(orientation.rows, dtype=np.int64)
     headwind_ms = np.array(_per_segment(orientation.reads, len(rows), lambda read: read.values.headwind_ms.tolist()))
-    axis_ids = dict.fromkeys(axis_id for segment in segments for axis_id in segment.penalty.axis_seconds)
-    penalty_by_axis = {
-        axis_id: np.array([segment.penalty.axis_seconds[axis_id] for segment in segments]) for axis_id in axis_ids}
+
+    def seconds_of(axis_id: str) -> np.ndarray:
+        return np.array(_per_segment(orientation.reads, len(rows), lambda read: read.values.penalty_by_axis[axis_id].tolist()))
+
+    penalty_by_axis = {axis_id: seconds_of(axis_id) for axis_id in orientation.reads[0].values.penalty_by_axis}
     return RouteFacts(axes=context.composer.axis_facts(rows, penalty_by_axis, elevation_gain_m, headwind_ms, turn_kickoffs))
 
 
