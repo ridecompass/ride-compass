@@ -171,9 +171,8 @@ SEMANTIC_COLORS: dict[str, str] = {
     "avoidance_preferred": "#0d9488",
     "avoidance_avoided": "#db2777",
     # 道路タブを地図で見ている間に、道路タブの段ごとに道を塗る線。灰色に薄めた基礎地図の上で段を読ませるので、
-    # 好む＝緑・避ける＝橙・通らない＝赤の信号の並びにし、通る（指定の無い道）は薄めた基礎地図より濃い灰色で、色の段を際立たせる。
-    # 詳細を見ている道の強調（`inspected`）の黄みと離すため、避けるは赤寄りの橙。
-    "road_avoidance_pass": "#64748b",
+    # 好む＝緑・避ける＝橙・通らない＝赤の信号の並びにする（通るは塗らない）。詳細を見ている道の強調（`inspected`）の黄みと
+    # 離すため、避けるは赤寄りの橙。
     "road_avoidance_prefer": "#16a34a",
     "road_avoidance_avoid": "#ea580c",
     "road_avoidance_exclude": "#dc2626",

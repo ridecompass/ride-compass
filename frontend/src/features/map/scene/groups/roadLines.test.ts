@@ -101,7 +101,7 @@ describe("道路タブの段", () => {
     {},
   ];
 
-  /** 道ごとに段の線が塗る色。線を出していなければ null。 */
+  /** 道ごとに段の線が塗る色（描かない道は null）。線を出していなければ null。 */
   function paintedColors(choice: AvoidanceChoice, shown = true) {
     const built = build({
       layers: [LAYER, roadMapLayer("highway")],
@@ -110,20 +110,21 @@ describe("道路タブの段", () => {
     });
     const layer = built.layers.find((candidate) => candidate.role === ROAD_AVOIDANCE_ROLE);
     if (layer?.visible !== true) return null;
-    return roads.map((properties) => evaluate(layer.paint["line-color"], properties));
+    return roads.map((properties) =>
+      matchesFilter(layer.filter, properties) ? evaluate(layer.paint["line-color"], properties) : null,
+    );
   }
 
   const {
-    road_avoidance_pass: pass,
     road_avoidance_prefer: prefer,
     road_avoidance_avoid: avoid,
     road_avoidance_exclude: exclude,
   } = palette.semantic;
 
-  it("道路タブの段（選んでいなければ既定）のうち強い方の段の色で、どの行にも当たらない道も通るの色で塗り、見ていなければ線を出さない", () => {
+  it("道路タブの段（選んでいなければ既定）のうち強い方の段の色で塗り、どの行にも当たらない道（通る）は描かず、見ていなければ線を出さない", () => {
     const choice = avoidanceChoiceOf(avoidance, { "surface.gravel": "prefer", "surface.dirt": "exclude" });
-    expect(paintedColors(choice)).toEqual([prefer, avoid, exclude, pass]);
-    expect(paintedColors({ rows: [], order: [] })).toEqual([pass, pass, pass, pass]);
+    expect(paintedColors(choice)).toEqual([prefer, avoid, exclude, null]);
+    expect(paintedColors({ rows: [], order: [] })).toEqual([null, null, null, null]);
     expect(paintedColors(choice, false)).toBeNull();
   });
 });

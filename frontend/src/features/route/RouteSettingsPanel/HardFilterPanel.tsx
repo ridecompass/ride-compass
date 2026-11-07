@@ -53,18 +53,22 @@ export default function HardFilterPanel({
     <div className="flex flex-col">
       <label
         className="flex items-center gap-1.5 pb-1 text-[length:var(--font-size-sm)]"
-        data-usage="このタブを出している間、通る道を灰色、好む道を緑、避ける道を橙、通らない道を赤で地図に塗り、下の地図を灰色に薄めます。1本の道がいくつもの行に当たるときは、強い方の段の色です。選びはこの端末に覚えます。"
+        data-usage="このタブを出している間、好む道を緑、避ける道を橙、通らない道を赤で地図に塗り（通る道は塗らない）、下の地図を灰色に薄めます。1本の道がいくつもの行に当たるときは、強い方の段の色です。選びはこの端末に覚えます。"
       >
         <Checkbox checked={roadTabMap.on} onCheckedChange={roadTabMap.onChange} aria-label="地図で見る" />
         地図で見る
         {/* 地図の色が段のどれかを、行の段の名前（倍率）と並べて読ませる。 */}
         <span className={cn(textVariants({ variant: "note" }), "ml-auto flex items-center gap-2")}>
-          {levels.map(({ key, label }) => (
-            <span key={key} className="inline-flex items-center gap-1">
-              <Dot tone="none" style={{ backgroundColor: AVOIDANCE_LEVEL_COLORS[key] }} />
-              {label}
-            </span>
-          ))}
+          {levels.flatMap(({ key, label }) =>
+            key === "pass"
+              ? []
+              : [
+                  <span key={key} className="inline-flex items-center gap-1">
+                    <Dot tone="none" style={{ backgroundColor: AVOIDANCE_LEVEL_COLORS[key] }} />
+                    {label}
+                  </span>,
+                ],
+          )}
         </span>
       </label>
       {roadTabMap.notice !== null && (
