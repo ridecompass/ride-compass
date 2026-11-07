@@ -8,9 +8,9 @@ import type { RoadAvoidanceOverride, RoadAvoidanceView } from "@/types/route";
 export type AvoidanceLevel = RoadAvoidanceOverride[string];
 export type AvoidanceRow = RoadAvoidanceView["rows"][number];
 
-/** 道路タブの段を地図の道に塗る色（道路タブの凡例と地図の線が同じものを読む）。 */
-export const AVOIDANCE_LEVEL_COLORS: Readonly<Record<AvoidanceLevel, string>> = {
-  pass: palette.semantic.road_avoidance_pass,
+/** 道路タブの段を地図の道に塗る色（道路タブの凡例と地図の線が同じものを読む）。通るは楽でも苦でもない（何も指定していない）ので
+ * 塗らない。 */
+export const AVOIDANCE_LEVEL_COLORS: Readonly<Record<Exclude<AvoidanceLevel, "pass">, string>> = {
   prefer: palette.semantic.road_avoidance_prefer,
   avoid: palette.semantic.road_avoidance_avoid,
   exclude: palette.semantic.road_avoidance_exclude,

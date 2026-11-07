@@ -23,7 +23,7 @@ import regionTileConfig from "@/types/generated/region-tile-config.json";
 import { sceneSourceId, valueInExpression, zoomScaleExpression } from "@/features/map/scene/sceneBuilders";
 import { LEGEND_NO_DATA_KEY } from "@/lib/mapDisplay/mapColorLegend";
 import { ROAD_OTHER_KEY, roadTrackRowOf, type RoadTrackRow } from "@/lib/mapDisplay/roadTracks";
-import { AVOIDANCE_LEVEL_COLORS, type AvoidanceChoice } from "@/lib/roadAvoidance";
+import { AVOIDANCE_LEVEL_COLORS, type AvoidanceChoice, type AvoidanceLevel } from "@/lib/roadAvoidance";
 import type { RoadMapLayerView } from "@/types/route";
 
 import { declareGroup, type SceneLayerEntry, type SceneSourceEntry } from "@/features/map/scene/mapSceneGroups";
@@ -104,9 +104,12 @@ function solidFilter(layer: RoadMapLayerView, hiddenKeys: readonly string[]): Fi
   ] as unknown as FilterSpecification;
 }
 
-/** 道ごとの、当たる行の段のうち一番強いものの色（強い段から順に当てる）。どの行にも当たらない道は通る。 */
-function avoidanceColorExpression(choice: AvoidanceChoice): unknown {
-  const cases = [...choice.order].reverse().flatMap((level) => {
+/** 段ごとの、その段の行に当たる道の条件（強い段から。行の無い段は無い）。どの行にも当たらない道は通るで、塗らない。 */
+function avoidanceConditions(
+  choice: AvoidanceChoice,
+): readonly (readonly [Exclude<AvoidanceLevel, "pass">, unknown])[] {
+  return [...choice.order].reverse().flatMap((level) => {
+    if (level === "pass") return [];
     // 分け方ごとに、この段にした区分の鍵（分け方1つにつき比べ1つ）。
     const classKeys = new Map<string, string[]>();
     for (const row of choice.rows) {
@@ -115,11 +118,12 @@ function avoidanceColorExpression(choice: AvoidanceChoice): unknown {
     return classKeys.size === 0
       ? []
       : [
-          ["any", ...[...classKeys].map(([section, keys]) => valueInExpression(valueOf(section), keys))],
-          AVOIDANCE_LEVEL_COLORS[level],
+          [
+            level,
+            ["any", ...[...classKeys].map(([section, keys]) => valueInExpression(valueOf(section), keys))],
+          ] as const,
         ];
   });
-  return cases.length === 0 ? AVOIDANCE_LEVEL_COLORS.pass : ["case", ...cases, AVOIDANCE_LEVEL_COLORS.pass];
 }
 
 /** 区分に入る道は濃く、それ以外（その他・データなし）は薄く（消さずに薄くする）。 */
@@ -219,11 +223,20 @@ export const roadLineGroup = declareGroup<RoadLineState>((state) => {
 
   // 道路タブの段。道ごとの一番強い段の色で、道の線の層の上を不透明に塗る（段の色が道の層の色に混ざらない）。
   const tracksSpread = 2 * Math.max(0, ...offsets.map(Math.abs));
+  const avoided = avoidanceConditions(state.avoidance);
   layers.push({
     ...line,
     role: ROAD_AVOIDANCE_ROLE,
     paint: {
-      "line-color": avoidanceColorExpression(state.avoidance),
+      // 当たる段のうち一番強いものの色（強い段から順に当てる）。描くのはどれかの段の行に当たる道だけ（下の絞り込み）。
+      "line-color":
+        avoided.length === 0
+          ? palette.semantic.hidden
+          : [
+              "case",
+              ...avoided.flatMap(([level, condition]) => [condition, AVOIDANCE_LEVEL_COLORS[level]]),
+              palette.semantic.hidden,
+            ],
       // 横に分けて並べた道の線の層を覆う（出している層の外側の線の縁まで太くする）。
       "line-width": zoomScaleExpression(
         1,
@@ -231,6 +244,7 @@ export const roadLineGroup = declareGroup<RoadLineState>((state) => {
       ),
       "line-opacity": 1,
     },
+    filter: ["any", ...avoided.map(([, condition]) => condition)] as unknown as FilterSpecification,
     visible: state.avoidanceShown,
   });
 
