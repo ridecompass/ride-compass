@@ -21,7 +21,13 @@ import sys
 from pathlib import Path
 
 from repo_git import merge_base, run
-from repo_population import code_text, is_maintained_prose, prose_text, read_text, repository_files
+from repo_population import (
+    code_text,
+    is_maintained_prose,
+    prose_text,
+    read_text,
+    repository_files,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 TASKS_REPO = "ridecompass/ride-compass-tasks"
