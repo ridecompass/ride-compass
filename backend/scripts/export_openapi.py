@@ -152,7 +152,12 @@ from app.domain.jma_tile_specs import JMA_ELEMENTS, JMA_TILE_MIN_ZOOM, effective
 from app.domain.material_catalog import MATERIAL_CATALOG, display_axis_missing_semantics
 from app.domain.material_coverage_spec import MISSING_SEMANTICS_DISPLAY, POPULATION_LABELS
 from app.domain.primary_attributes import PRIMARY_ATTRIBUTES
-from app.domain.region import MAX_MERCATOR_LATITUDE, ROAD_TILE_MAX_ZOOM, ROAD_TILE_MIN_ZOOM
+from app.domain.region import (
+    MAX_MERCATOR_LATITUDE,
+    ROAD_SURFACE_TILE_MIN_ZOOM,
+    ROAD_TILE_MAX_ZOOM,
+    ROAD_TILE_MIN_ZOOM,
+)
 from app.domain.leg_costs import MISSING_TRAVEL_DATA_WORDING
 from app.domain.cost_axes import LENS_QUANTITY_LABEL, LENS_UNIT
 from app.domain.lens_equivalents import LENS_EQUIVALENTS_CONDITION_WORDING
@@ -163,7 +168,7 @@ from app.domain.weather import PRECIPITATION_MIN_MM
 from app.infrastructure.msm_client import DEFAULT_UPDATE_INTERVAL_SECONDS as MSM_UPDATE_INTERVAL_SECONDS
 from app.infrastructure.jma_amedas_client import AMEDAS_REFRESH_INTERVAL_MINUTES
 from app.infrastructure.job_registry import JOB_TTL_SECONDS, JOB_WAIT_MAX_SECONDS
-from app.services.tile_version_service import TILE_SHAPES
+from app.services.tile_version_service import tile_shapes
 
 GENERATED_DIR = Path(__file__).resolve().parents[2] / "frontend" / "src" / "types" / "generated"
 OUTPUT_PATH = GENERATED_DIR / "openapi.json"
@@ -302,13 +307,15 @@ def main() -> None:
             # 実行時に世代が配られる系統の名前。**frontendはこの一覧を手で持たず、
             # ここから照合する**——片側だけ系統を足すと、足りない側は「世代が揃った」と
             # 判定したまま配られない世代を待ち続ける。
-            "tile_version_kinds": sorted(TILE_SHAPES),
+            "tile_version_kinds": sorted(tile_shapes()),
             "road_surface": {"layer_name": ROAD_SURFACE_LAYER_NAME, "properties": ROAD_FEATURE_PROPERTIES},
             # 点のレイヤーの名前→source-layer名。画面はタイルのURLをこの名前で組み、source-layerを写さない。
             "point_layers": {layer.name: layer.source_layer for layer in POINT_TILE_LAYERS.values()},
-            # 路面タイルを要求するズーム範囲。frontendのMapLibreソース設定
+            # 道のタイルを要求するズーム範囲。frontendのMapLibreソース設定
             # （minzoom/maxzoom）とタイル要求のガードがこの値を使う。手書きで複製すると、
-            # backendだけ広げてもfrontendが要求せずレイヤーが黙って消える。
+            # backendだけ広げてもfrontendが要求せずレイヤーが黙って消える。路面タイルだけは
+            # `road_surface_tile_min_zoom`から配り、道ごとの鍵は`road_tile_min_zoom`から持つ。
+            "road_surface_tile_min_zoom": ROAD_SURFACE_TILE_MIN_ZOOM,
             "road_tile_min_zoom": ROAD_TILE_MIN_ZOOM,
             "road_tile_max_zoom": ROAD_TILE_MAX_ZOOM,
             # 画面が点からタイル座標を求めるときに緯度を挟む限界（`domain/region.py`と同じ式を使う）。

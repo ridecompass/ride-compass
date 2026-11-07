@@ -14,7 +14,7 @@ from app.domain.msm_grid import MSM_GRID_MIN_ZOOM
 from app.domain.place_search import ADDRESS_AREA_ATTRIBUTIONS
 from app.domain.primary_attributes import PRIMARY_ATTRIBUTES, PRIMARY_ATTRIBUTES_BY_ID
 from app.domain.registry import DisplayAxisSpec
-from app.domain.region import ROAD_TILE_MIN_ZOOM
+from app.domain.region import ROAD_SURFACE_TILE_MIN_ZOOM, ROAD_TILE_MIN_ZOOM
 from app.domain.weather_elements import (
     MSM_FORECAST_HOURS,
     WEATHER_ELEMENTS,
@@ -78,7 +78,7 @@ class MapLayerDataSource(NamedTuple):
     min_zoom: int | None = None
 
 
-#: タイルで配る一次属性の系統（`tile_version_service.py: TILE_SHAPES`の名前）。道の線の層の系統は区分の配りが持つ。
+#: タイルで配る一次属性の系統（`tile_version_service.py: tile_shapes`の名前）。道の線の層の情報源は`_ROAD_LAYER_DATA_SOURCE`。
 #: 情報源の名前にそのまま使う——世代が届くまで要求できないのは、この名前の情報源だけ。
 _TILE_KINDS: tuple[str, ...] = tuple(
     dict.fromkeys(attr.tile_kind for attr in PRIMARY_ATTRIBUTES if attr.tile_kind is not None)
@@ -91,7 +91,8 @@ _ROAD_LAYER_DATA_SOURCE = "road_surface"
 #: 最小ズームは配信の性質なので情報源の側で持つ——レイヤーごとに書くと、同じタイルを
 #: 読むレイヤーの1つだけ書き忘れても型が通り、その行だけ案内が出ない。
 MAP_LAYER_DATA_SOURCES: tuple[MapLayerDataSource, ...] = (
-    *(MapLayerDataSource(kind, ROAD_TILE_MIN_ZOOM) for kind in (_ROAD_LAYER_DATA_SOURCE, *_TILE_KINDS)),
+    MapLayerDataSource(_ROAD_LAYER_DATA_SOURCE, ROAD_SURFACE_TILE_MIN_ZOOM),
+    *(MapLayerDataSource(kind, ROAD_TILE_MIN_ZOOM) for kind in _TILE_KINDS),
     MapLayerDataSource("gsiRelief"),
     MapLayerDataSource("gsiTerrain", TERRAIN_MIN_ZOOM),
     MapLayerDataSource("landcoverRaster", LANDCOVER_TILE_MIN_ZOOM),

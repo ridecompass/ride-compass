@@ -12,7 +12,6 @@ import type LensControl from "@/features/map/LensControl/LensControl";
 import {
   buildDefaultLayerVisibility,
   deriveFetchLayerStatus,
-  layerDataStatusNotice,
   TILE_ZOOM_TOO_WIDE_NOTICE,
   tileVersionGatedLayerIds,
   tileZoomTooWideLayerIds,
@@ -29,19 +28,17 @@ import { useCostAxisCatalog } from "@/hooks/useCostAxisCatalog";
 import { costLensOptions, costLensPremises } from "@/features/map/costLens";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useWayMaterials } from "@/features/map/useWayMaterials";
-import { useRoadClasses } from "@/features/map/useRoadClasses";
 import { useDynamicWeatherLayers } from "@/features/map/useDynamicWeatherLayers";
 import { useStoredState } from "@/hooks/useStoredState";
 import type { Coordinates, RoadAvoidanceOverride } from "@/types/route";
 import { avoidanceChoiceOf, type RoadTabMap } from "@/lib/roadAvoidance";
 import type { MapTheme } from "@/lib/mapTheme";
-import { ROAD_TILE_MIN_ZOOM, type RideConditions } from "@/features/map/regionApi";
+import { ROAD_SURFACE_TILE_MIN_ZOOM, type RideConditions } from "@/features/map/regionApi";
 import { snapDeg } from "@/lib/cardinalLabel";
 import { countsAxis } from "@/lib/costPreference";
 import type { WayValueCondition } from "@/lib/mapDisplay/mapLens";
 import { useMapCatalog } from "@/features/map/useMapCatalog";
 import { initiallyHiddenLegendKeys } from "@/features/map/scene/legends";
-import { paintsRoadAvoidance } from "@/features/map/scene/groups/roadLines";
 import { WAY_BEARING_STEP_DEG } from "@/features/map/mapHeading";
 
 import { hiddenKeysOf, presentHiddenKeys, toggleHiddenKey, withHiddenKeys } from "./legendFilters";
@@ -179,7 +176,6 @@ export function useMapView({
     costPreference,
     costCatalog.lenses?.totalLens.axisId ?? null,
   );
-  const shownRoadLayers = mapCatalog.roadLayers.filter((layer) => layerVisibility[layer.id] === true);
   const [roadTabOnMap, setRoadTabOnMap] = useStoredState("ridecompass:road-tab-on-map", "道路タブを地図で見るか", true);
   // 道路タブを出していて「地図で見る」がONの間だけ、段を地図の道に塗る。段の値は出し入れで作り直さない。
   const roadAvoidanceShown = roadTabShown && roadTabOnMap;
@@ -187,32 +183,11 @@ export function useMapView({
     () => avoidanceChoiceOf(config.roadClasses.avoidance, roadAvoidance),
     [config.roadClasses.avoidance, roadAvoidance],
   );
-  const avoidancePainted = paintsRoadAvoidance(roadAvoidanceShown, avoidanceChoice);
-  const anyRoadLayerShown = shownRoadLayers.length > 0;
-  const roadClasses = useRoadClasses(anyRoadLayerShown || avoidancePainted, viewport, config.roadClasses.generation);
-  // 道の層を出していない間は取得中の色で塗る線が無いので、取得中を地図へ伝えない（取るたびに地図を組み直さない）。
-  const roadClassesOnMap = useMemo(
-    () => ({ values: roadClasses.values, loading: anyRoadLayerShown && roadClasses.loading }),
-    [roadClasses.values, roadClasses.loading, anyRoadLayerShown],
-  );
-  // 層の値はどの道の線の層も同じ取得から読むので、取得の状態は出ている層のどれにも出す。
-  const roadClassStatus = deriveFetchLayerStatus(
-    roadClasses.loading,
-    roadClasses.error,
-    true,
-    true,
-    roadClasses.truncated,
-  );
-  // 道路タブで塗っている間は、塗れない理由（拡大が足りない・取れない・画面の端を取っていない）を道路タブに出す（道の層を
-  // 出していないと、地図の上の行の状態の印が無い）。
-  const roadTabMapNotice = !avoidancePainted
-    ? null
-    : viewport !== null && viewport.zoom < ROAD_TILE_MIN_ZOOM
+  // 道路タブで塗っている間は、塗れない理由（拡大が足りない）を道路タブに出す（道の層を出していないと、地図の上の行の状態の印が無い）。
+  const roadTabMapNotice =
+    roadAvoidanceShown && viewport !== null && viewport.zoom < ROAD_SURFACE_TILE_MIN_ZOOM
       ? TILE_ZOOM_TOO_WIDE_NOTICE
-      : layerDataStatusNotice(roadClassStatus);
-  const roadLayerStatus = roadClassStatus
-    ? Object.fromEntries(shownRoadLayers.map((layer) => [layer.id, roadClassStatus]))
-    : {};
+      : null;
   // 式の木の条件の名前（`bearing_deg`・`speed_kmh`）で地図へ渡す。速度が数でない間は値の無いことにする。
   const formulaConditions = useMemo(
     () => ({ bearing_deg: bearingDeg, ...(Number.isFinite(speedKmh) ? { speed_kmh: speedKmh } : {}) }),
@@ -227,7 +202,6 @@ export function useMapView({
       dynamicWeather: weather.dynamicWeather,
       lens,
       paintedLensId: painted,
-      roadClasses: roadClassesOnMap,
       roadAvoidance: avoidanceChoice,
       roadAvoidanceShown,
       wayMaterials,
@@ -243,7 +217,6 @@ export function useMapView({
       weather.dynamicWeather,
       lens,
       painted,
-      roadClassesOnMap,
       avoidanceChoice,
       roadAvoidanceShown,
       wayMaterials,
@@ -262,7 +235,7 @@ export function useMapView({
     roadLayers: mapCatalog.roadLayers,
     visibility: layerVisibility,
     hidden,
-    dataStatus: { ...mapLayerStatus, ...roadLayerStatus, ...weather.dynamicWeatherDataStatus },
+    dataStatus: { ...mapLayerStatus, ...weather.dynamicWeatherDataStatus },
     zoomTooWideLayerIds: viewport ? tileZoomTooWideLayerIds(mapCatalog.layers, viewport.zoom) : [],
     versionMissingLayerIds: mapCatalog.tileVersions ? [] : tileVersionGatedLayerIds(mapCatalog.layers),
     catalogSettled: config.loaded || config.failed,

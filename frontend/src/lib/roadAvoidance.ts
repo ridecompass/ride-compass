@@ -8,8 +8,9 @@ import type { RoadAvoidanceOverride, RoadAvoidanceView } from "@/types/route";
 export type AvoidanceLevel = RoadAvoidanceOverride[string];
 export type AvoidanceRow = RoadAvoidanceView["rows"][number];
 
-/** 道路タブの段を地図の道に塗る色（道路タブの凡例と地図の線が同じものを読む）。通るは塗らない（何も指定していない扱い）。 */
-export const AVOIDANCE_LEVEL_COLORS: Readonly<Record<Exclude<AvoidanceLevel, "pass">, string>> = {
+/** 道路タブの段を地図の道に塗る色（道路タブの凡例と地図の線が同じものを読む）。 */
+export const AVOIDANCE_LEVEL_COLORS: Readonly<Record<AvoidanceLevel, string>> = {
+  pass: palette.semantic.road_avoidance_pass,
   prefer: palette.semantic.road_avoidance_prefer,
   avoid: palette.semantic.road_avoidance_avoid,
   exclude: palette.semantic.road_avoidance_exclude,
@@ -28,34 +29,19 @@ export function avoidanceLevelOf(row: AvoidanceRow, chosen: RoadAvoidanceOverrid
   return chosen[row.key] ?? row.default;
 }
 
-/** 道路タブで「通る」以外にした行の段（行の鍵`<分け方>.<区分>` → 段。選んでいなければ既定の段）と、段の強さの並び（画面の設定の
- * `levels`の並び。倍率の小さい順で、後ろほど強い）。 */
+/** 道路タブで「通る」以外にした行（分け方`section`の区分`classKey`と段。選んでいなければ既定の段）と、段の強さの並び（画面の設定の
+ * `levels`の並び。倍率の小さい順で、後ろほど強い）。1つの道が見出しごとに複数の行に当たれば強い段が勝ち、どの行にも当たらない道は
+ * 通る（backendが費用に掛ける段と同じ決め方）。 */
 export interface AvoidanceChoice {
-  readonly levels: ReadonlyMap<string, AvoidanceLevel>;
+  readonly rows: readonly { readonly section: string; readonly classKey: string; readonly level: AvoidanceLevel }[];
   readonly order: readonly AvoidanceLevel[];
 }
 
 export function avoidanceChoiceOf(avoidance: RoadAvoidanceView, chosen: RoadAvoidanceOverride): AvoidanceChoice {
-  const levels = new Map<string, AvoidanceLevel>();
-  for (const row of avoidance.rows) {
+  // 行の鍵は`<分け方>.<区分>`（分け方は行の`section`）。
+  const rows = avoidance.rows.flatMap((row) => {
     const level = avoidanceLevelOf(row, chosen);
-    if (level !== "pass") levels.set(row.key, level);
-  }
-  return { levels, order: avoidance.levels.map((level) => level.key) };
-}
-
-/** 道の区分（分け方 → 区分の鍵）に当たる行の段のうち、いちばん強いもの（1つの道が見出しごとに複数の行に当たれば強い方が勝つ。
- * 通るは何も指定していない扱いなので数えない。backendが費用に掛ける段と同じ決め方）。どの行にも当たらなければ null。 */
-export function strongestAvoidance(
-  classes: Readonly<Record<string, string>>,
-  choice: AvoidanceChoice,
-): AvoidanceLevel | null {
-  let strongest: AvoidanceLevel | null = null;
-  for (const [classification, classKey] of Object.entries(classes)) {
-    const level = choice.levels.get(`${classification}.${classKey}`);
-    if (level !== undefined && (strongest === null || choice.order.indexOf(level) > choice.order.indexOf(strongest))) {
-      strongest = level;
-    }
-  }
-  return strongest;
+    return level === "pass" ? [] : [{ section: row.section, classKey: row.key.slice(row.section.length + 1), level }];
+  });
+  return { rows, order: avoidance.levels.map((level) => level.key) };
 }

@@ -61,7 +61,7 @@ export const mapDisplay = {
   "layerDataSources": [
     {
       "key": "road_surface",
-      "minZoom": 12
+      "minZoom": 10
     },
     {
       "key": "poi",

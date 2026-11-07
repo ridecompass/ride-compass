@@ -2,8 +2,8 @@
 
 ## 責務
 
-ルートを出す前の地図が道を塗る値（費用の軸のレンズ・道の線の層）と、押した道の窓の値を、路面タイルのフィーチャーの鍵で
-配る。配信の単位は路面タイルのフィーチャーと同じで、ズームによってway丸ごとにも区間（road_edges）にもなる——このモジュールは
+ルートを出す前の地図が道を塗る値（費用の軸のレンズ）と、押した道の窓の値を、路面タイルのフィーチャーの鍵で
+配り、路面タイルが焼く地図の線の層の値を求める。配信の単位は路面タイルのフィーチャーと同じで、ズームによってway丸ごとにも区間（road_edges）にもなる——このモジュールは
 どちらかを知る必要がなく、タイルと同じ`feature_key`を鍵として扱う（[static-road-attributes.md](static-road-attributes.md)の
 `EDGE_UNIT_MIN_ZOOM`参照）。ルートの線は区間の値で塗るので、ここは読まない。
 
@@ -14,7 +14,7 @@
 | domain | `way_value_formula.py`（中立の式の木の型と、numpyでの評価）・`gradient.py`（道を辿る向きを走行方位で選ぶ木と、勾配の桁）・`lens_values.py`（タイルのフィーチャーと辿る向きで網の行を束ね、1kmあたりの代償の秒にする・地図の式の木・押した道の区間の秒と事実）・`lens_equivalents.py`（段の境目の秒の、標準の条件での事実の目安）・`lens_total.py`（総合のレンズのidと、軸ごとの値から総合を出す決まり。ルートの線も読む）・`feature_materials.py`（タイル1枚のフィーチャーごとの材料の型） |
 | services | `lens_service.py`（タイル1枚のレンズの値と、押した道のレンズの値と事実）・`feature_materials.py`（タイルのフィーチャーごとの材料を読み、ディスクへ持つ。地図の線の層の値）・`region_service.py: RoadInspectorService`（道の窓） |
 | infrastructure | `feature_material_cache.py`（タイルのフィーチャーごとの材料。ディスク経由）・`tile_persistent_cache.py`（呼び出し元が設計したタプルの鍵でPythonオブジェクトを置く汎用のディスクキャッシュ。`diskcache`の包み。路面タイルの世代に結んだ値を、世代を読めたときだけ24時間持つ口`tile_persistent_cache.py: set_tile_entry`も持つ） |
-| api | `region.py`（`GET /api/region/lens/{lens_id}/...`・`GET /api/region/road-classes/...`・`POST /api/region/road-inspector`）・`dependencies.py`（`dependencies.py: get_lens_service`・`dependencies.py: get_road_inspector_service`・`dependencies.py: get_feature_material_service`） |
+| api | `region.py`（`GET /api/region/lens/{lens_id}/...`・`POST /api/region/road-inspector`）・`dependencies.py`（`dependencies.py: get_lens_service`・`dependencies.py: get_road_inspector_service`） |
 
 フィーチャーごとの材料をDBから取り出す`infrastructure/road_graph_repository.py: get_feature_materials_in_tile`と、そのSQL
 （`infrastructure/road_tile_sql.py`）は[routing-engine.md](routing-engine.md)が主管するファイルに属する。
@@ -82,13 +82,12 @@ SQLと式の木の材料では作れない体力（走行の模型）を、backe
 | エンドポイント | 返すもの |
 |---|---|
 | `GET /api/region/lens/{lens_id}/{z}/{x}/{y}?speed_kmh=&at=&strength=&multipliers=` | フィーチャーの鍵→道の向き・逆向きの1kmあたりの代償の秒と道の向き。知らないレンズは404 |
-| `GET /api/region/road-classes/{z}/{x}/{y}` | フィーチャーの鍵→地図の線の層の値（区分の鍵か「データなし」。区分の外の道の層は載せない）。ルートの区間の帯も同じ値を持つ |
 | `POST /api/region/road-inspector` | 上の「道の窓」 |
 
 - 鍵はタイルが焼いた`feature_key`と同じもので、ズームによって区間・wayのどちらかになる。値の無い材料は載せない。
 - 静的な路面タイル（`/api/region/road-surface-tiles`、MVT）とは別経路——フロントは同じz/x/yに対して両方を取得し、
   MapLibreの`setFeatureState`で合成する（[map-axis-coloring.md](../frontend/map-axis-coloring.md)参照）。
-- 路面・点のタイルと同じレート制限・座標検証を共有し、道の線の層の値とレンズの値は同時実行の上限のsemaphore
+- 路面・点のタイルと同じレート制限・座標検証を共有し、レンズの値は同時実行の上限のsemaphore
   （`api/routers/_tile_http.py: region_tile_semaphore`、`config.py: road_tile_max_concurrent`）も共有する（レンズはDBを読まないが、
   タイルごとの計算がルート生成と共有のスレッドの置き場を埋めないように待たせる）。道の窓は押すたびの
   単発の要求なので専用の上限を持つ。
@@ -96,9 +95,10 @@ SQLと式の木の材料では作れない体力（走行の模型）を、backe
 ## タイルの材料（`services/feature_materials.py`）
 
 タイル1枚ぶんのフィーチャーごとに、全部の材料（`domain/material_catalog.py: material_value_sql`を持つ材料）を読む
-（`infrastructure/road_tile_sql.py: FEATURE_MATERIALS_IN_TILE_SQL`）。地図の線の層の値（`FeatureMaterialService.road_layer_values`）は
-これに区分の列（`domain/road_classes.py: class_columns`）を読むたびに当てて求める——持つものに区分を含めないので、区分を
-書き換えても持ったものを作り直さずに済む。
+（`infrastructure/road_tile_sql.py: FEATURE_MATERIALS_IN_TILE_SQL`）。路面タイルが焼く地図の線の層の値（`FeatureMaterialService.road_layer_values`。
+`services/region_service.py: RegionService.get_road_surface_tile`が読む）は、これに区分の列（`domain/road_classes.py: class_columns`）を
+読むたびに当てて求める——持つものに区分を含めないので、区分を書き換えても材料を作り直さずに済む（路面タイルは世代に区分の
+指紋を入れて焼き直す。`services/tile_version_service.py: tile_shapes`）。
 
 - フィーチャーの並びと材料の表の結び方は路面タイルと同じ（区間単位のズームは区間の値、way単位のズームと区間を
   持たない道は道1本の行の値。密度の分母の長さもフィーチャーと同じ側から取る）。

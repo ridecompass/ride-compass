@@ -17,7 +17,6 @@
 |---|---|
 | `lib/mapDisplay/roadTracks.ts` | 道の線の層（画面の設定が配る`road_classes.map_layers`）の凡例の行（区分・その他／該当なし・データなし）と、道の区分が入る行（`lib/mapDisplay/roadTracks.ts: roadTrackRowOf`）。地図の線・地図の凡例・道のりのグラフの帯が同じ行を読むので、同じ道が地図と帯で同じ色・呼び名になる |
 | `features/map/scene/groups/roadLines.ts` | 道路の線（例: 路面の種類・トンネル・自転車レーン）を、backendの配る層の値（feature-state）と`roadTracks.ts`の行から式へ組んだ配色と、道路タブを地図で見ている間に道路タブの段を道に塗る線（下記「道路タブの段」）と、詳細を見ている1本の強調。**線レイヤーで分類を運ぶのは色だけで、太さは情報を持たず、線種が運ぶのは値が無いこと（タグが無い道＝「データなし」の破線）だけ**——1本の線へ複数の分類を載せると、色の意味が他方のON/OFFで入れ替わる。同時表示は横へ平行に割り付けて分ける |
-| `features/map/useRoadClasses.ts` | 道路の線を塗る道ごとの層の値を、表示中のタイルを1枚ずつ問い合わせて取り（[地図: レンズ・ルート色分け](map-axis-coloring.md)の`features/map/tileQueries.ts`）、取得中・失敗とともに返す（道の線の層を出しておらず、道路タブの段も塗っていない間は取らない） |
 | `lib/mapDisplay/pointLayers.ts` | 点で描く属性（`lib/mapDisplay/pointLayers.ts: POINT_LAYERS`）と、点の値が入る行（`lib/mapDisplay/pointLayers.ts: pointCategoryOf`）・大きさの軸と行の半径・点の名前（`lib/mapDisplay/pointLayers.ts: pointPlaceName`）・束ねた代表点の中の名前のある点（`lib/mapDisplay/pointLayers.ts: pointMembers`）。地図の点・地図の凡例・点のポップアップ・道のりのグラフの印が同じ宣言を読むので、同じ点が地図とグラフで同じ色・呼び名になる |
 | `features/map/scene/groups/points.ts` | 停止要因POI・補給休憩POI・事故・立ち寄り先の分類・配色・点の絵と枠・描き始める縮尺と積む順・束ねた点の数の文字と、同じタイルを分け合う条件 |
 | `features/map/scene/groups/sidePoints.ts` | 選んだ区間の近くの点を、点の層のタイルから点の層と同じ色・絵記号で描く印と、近いかの絞り込み（下記「選んだ区間の近くの点」） |
@@ -270,24 +269,24 @@ DOM/MapLibreを一切知らない。`MapView.tsx`は画面の状態をsceneの�
 
 
 「道路情報」の各層（画面の設定の`road_classes.map_layers`。分け方1つが層1つ）は**それぞれ独立した線レイヤー**で、同じベクタソースを
-共有する。道ごとの層の値（区分の鍵か「データなし」）はbackendが決め、`/api/region/road-classes`でタイルごとに配る（ルートの区間の帯も
-同じ値を持つ）。地図は値を feature-state で受けて塗るだけで、区分の条件を当てない。`scene/groups/roadLines.ts`は層ごとに色式・
+共有する。道ごとの層の値（区分の鍵か「データなし」）はbackendが決め、路面タイルに層のidのプロパティとして焼く（区分の外の道は
+持たない。ルートの区間の帯も同じ値を持つ）。地図はタイルの値を読んで塗るだけで、区分の条件を当てない。路面タイルは
+`features/map/regionApi.ts: ROAD_SURFACE_TILE_MIN_ZOOM`から読み、それより寄った`ROAD_TILE_MIN_ZOOM`の手前までは値の同じ道をつないだ
+地物で、道ごとの鍵を持たない（道ごとの値を置くレンズ・押した道は`ROAD_TILE_MIN_ZOOM`から）。`scene/groups/roadLines.ts`は層ごとに色式・
 不透明度式を宣言する——**どちらの色の意味も、もう一方のON/OFFでは変わらない**。太さは全レイヤー共通で源泉が配る値
-（`mapDisplay.road.lineWidthPx`）を使い、線種は「データなし」の破線にだけ使う。feature-state は絞り込みからも`line-dasharray`からも
-読めないので、凡例で隠した行は透明で落とし、データなしの道は破線だけの線を重ねて濃さで出し入れする。区分の外の道は値を
-持たないので、値を取っている間は値の無い道をどれも取得中の色（`palette.semantic.loading`）で描く。取得中・失敗は、出ている道の線の
-層のチップの状態ドットに出る。両方ONのときは下記の並列トラックが横へ分ける。
+（`mapDisplay.road.lineWidthPx`）を使い、線種は「データなし」の破線にだけ使う。凡例で隠した行は透明で落とし、データなしの道は
+破線だけの線を重ねて濃さで出し入れする。タイルの取得の状態は、出ている道の線の層のチップの状態ドットに出る。両方ONのときは
+下記の並列トラックが横へ分ける。押した道の小窓が出す層の行は、同じ鍵のタイルの地物の値から引く（`MapView/mapTaps.ts`）。
 
 **道路タブの段**: 「ルート設定」の道路タブが画面に見えている間（モバイルはルート設定のシートを開いている、デスクトップは左のパネルで「ルート設定」の区分を開いていて、タブが道路。`app/usePagePanels.ts`の`routeSettingsShown`。もう一方の区分を触っても変わらない）、
-タブの上の「地図で見る」がONなら、今の道路タブの段（`lib/roadAvoidance.ts: avoidanceLevelOf`。選んでいない行は既定の段）で好む・避ける・
-通らないにした区分の道を、道の線の層より上に不透明の線で塗り、下の基礎地図を灰色に薄める（`features/map/basemapTheme.ts: themedPaint`）。
-「表示」の一覧の行と凡例は持たず、段ごとには出し入れしない。道路タブの見出しは地図の道の線の層の分け方なので、道ごとの層の値から、当たる行の段のうち一番強いもの（`lib/roadAvoidance.ts: strongestAvoidance`。
-順は画面の設定の段の並び＝倍率の小さい順で、通るは数えない。費用と同じ決め方）を決めて feature-state に載せ、1枚の線の色を段で分ける
-（好む＝緑・避ける＝橙・通らない＝赤。`palette.semantic`の`road_avoidance_*`。ルートの線の両脇の線の色とは別）。太さは縮尺で道の太さに
-近づける（`mapDisplay.roadAvoidance.widthByZoom`）。「地図で見る」は端末に覚え（既定はON）、道路タブを出していて「地図で見る」がONの間
-だけ塗る段を渡す（`features/map/view/useMapView.ts`）。塗るか・下の地図を薄めるか・道の層の値を取るかは、渡った段があるか
-（`features/map/scene/groups/roadLines.ts: paintsRoadAvoidance`）で決まる。塗っていない間は段を載せず、道の線の層も出していなければ道の
-層の値も取らない。
+タブの上の「地図で見る」がONなら、今の道路タブの段（`lib/roadAvoidance.ts: avoidanceLevelOf`。選んでいない行は既定の段）で、路面タイルの
+どの道も、道の線の層より上に不透明の線で塗り、下の基礎地図を灰色に薄める（`features/map/basemapTheme.ts: themedPaint`）。
+「表示」の一覧の行と凡例は持たず、段ごとには出し入れしない。道路タブの見出しは地図の道の線の層の分け方なので、道の層の値に当たる行の段の
+うち一番強いもの（順は画面の設定の段の並び＝倍率の小さい順。費用と同じ決め方）の色を、強い段から順に当てる式で決め、どの行にも当たらない
+道は通るの色にする（通る＝灰・好む＝緑・避ける＝橙・通らない＝赤。`palette.semantic`の`road_avoidance_*`。ルートの線の両脇の線の色とは別）。
+太さは縮尺で道の太さに近づける（`mapDisplay.roadAvoidance.widthByZoom`）。「地図で見る」は端末に覚え（既定はON）、道路タブを出していて
+「地図で見る」がONの間だけ塗って下の地図を薄める（`features/map/view/useMapView.ts`）。路面タイルの無い縮尺では、道路タブのスイッチの下に
+拡大を促す文を出す。
 
 区分に当てはまらない道は2種類を分ける。**事実の無い道は「データなし」**（値が無い。薄い灰の破線、刻みは`mapDisplay.noDataDash`）、
 **事実はあるが区分の外の道は「その他」**（値はある。薄い灰の実線）。分けるかは層が決め（`has_no_data`）、分けない層は「データなし」の
@@ -560,9 +559,8 @@ ONにしても何も塗られない。「データが無い地域」と区別で
 伝え方」）にある（画面の設定の取得失敗として告知する。描けないものの名前は、世代を要るレイヤーを持つチップのグループの名前から
 作る。`hooks/useClientConfig.ts: clientConfigFetchFailure`）。地図側は理由を出すだけで、再試行ボタンは置かない。
 
-**暗黙の前提**: レンズの層（レンズの線）も同じ路面タイルを
-共有するため同じズームで消えるが、地図上チップを持たないため案内の出し先が無い。
-レンズだけを選んだ状態でも、同じタイルを読む道路のチップ側に案内が出る。
+**暗黙の前提**: レンズの層（レンズの線）も同じ路面タイルを共有し、道ごとの鍵を持つ`features/map/regionApi.ts: ROAD_TILE_MIN_ZOOM`から
+描く（`scene/groups/axisLines.ts`の層の`minzoom`）が、地図上チップを持たないため案内の出し先が無い。
 
 ## 最上位グルーピング（道路/環境/スポット）
 

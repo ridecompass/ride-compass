@@ -1,6 +1,6 @@
 // @vitest-environment node
-/** 道の線の層と道路タブの段の線が、backendの配る層の値（feature-state）から1本の道をどう描くか（色・濃淡・データなしの破線・
- * 道路タブの段の色・凡例で隠した行）。いつ段を塗るか（道路タブを出していて「地図で見る」がONの間）は `app/page.test.tsx` が見る。
+/** 道の線の層と道路タブの段の線が、backendが路面タイルに焼く層の値（地物のプロパティ）から1本の道をどう描くか（色・濃淡・
+ * データなしの破線・道路タブの段の色・凡例で隠した行）。いつ段を塗るか（道路タブを出していて「地図で見る」がONの間）は `app/page.test.tsx` が見る。
  * 式はMapLibreと同じ評価器で評価する。値の決め方（区分の条件）は backend の `test_road_classes.py` が見る。 */
 import { describe, expect, it } from "vitest";
 
@@ -12,7 +12,7 @@ import { AVOIDANCE_LEVELS, avoidanceRow, roadClass, roadClassCatalog, roadMapLay
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import palette from "@/types/generated/palette.json";
 
-import { ROAD_AVOIDANCE_ROLE, roadLineGroup, type RoadClassValues, type RoadLineState } from "./roadLines";
+import { ROAD_AVOIDANCE_ROLE, roadLineGroup, type RoadLineState } from "./roadLines";
 
 const LAYER = roadMapLayer("surface", { has_no_data: true, classes: [roadClass("paved", { color: "#123456" })] });
 
@@ -22,35 +22,33 @@ function build(state: Partial<RoadLineState>) {
     tiles: { urls: ["https://example.test/{z}/{x}/{y}"], sourceLayer: "road", minZoom: 10, maxZoom: 14 },
     visible: { surface: true },
     hiddenKeys: {},
-    classes: new Map(),
-    loading: false,
-    avoidance: { levels: new Map(), order: [] },
+    avoidance: { rows: [], order: [] },
     avoidanceShown: false,
     inspectedShape: null,
     ...state,
   });
 }
 
-function linesOf(hidden: readonly string[] = [], loading = false) {
-  const built = build({ hiddenKeys: { surface: hidden }, loading }).layers;
+function linesOf(hidden: readonly string[] = []) {
+  const built = build({ hiddenKeys: { surface: hidden } }).layers;
   const paint = (role: string) => built.find((layer) => layer.role === role)?.paint ?? {};
   return { solid: paint("surface"), dashed: paint("surface-no-data") };
 }
 
-/** 層の値ごとの、その道の feature-state（値の無い道は state を持たない）。 */
+/** 層の値ごとの、その道のタイルのプロパティ（区分の外の道は層の値を持たない）。 */
 const ROADS = [
-  { row: "paved", state: { "road:surface": "paved" } },
-  { row: ROAD_OTHER_KEY, state: {} },
-  { row: LEGEND_NO_DATA_KEY, state: { "road:surface": mapDisplay.road.noDataValue } },
+  { row: "paved", properties: { surface: "paved" } },
+  { row: ROAD_OTHER_KEY, properties: {} },
+  { row: LEGEND_NO_DATA_KEY, properties: { surface: mapDisplay.road.noDataValue } },
 ];
 
 /** 道がどの線で何色・どの濃さに描かれるか。透明・濃さ0は描かれないものとして読む。 */
-function drawn(lines: ReturnType<typeof linesOf>, state: Record<string, unknown>) {
-  const color = evaluate(lines.solid["line-color"], {}, state);
+function drawn(lines: ReturnType<typeof linesOf>, properties: Record<string, unknown>) {
+  const color = evaluate(lines.solid["line-color"], properties);
   return {
     solid:
-      color === palette.semantic.hidden ? null : { color, opacity: evaluate(lines.solid["line-opacity"], {}, state) },
-    dashed: evaluate(lines.dashed["line-opacity"], {}, state) !== 0,
+      color === palette.semantic.hidden ? null : { color, opacity: evaluate(lines.solid["line-opacity"], properties) },
+    dashed: evaluate(lines.dashed["line-opacity"], properties) !== 0,
   };
 }
 
@@ -65,12 +63,8 @@ describe("層の値から描く線", () => {
     { row: LEGEND_NO_DATA_KEY, solid: null, dashed: true },
   ])("$row の道", ({ row, solid, dashed }) => {
     const road = ROADS.find((candidate) => candidate.row === row);
-    expect(drawn(linesOf(), road?.state ?? {})).toEqual({ solid, dashed });
+    expect(drawn(linesOf(), road?.properties ?? {})).toEqual({ solid, dashed });
   });
-});
-
-it("値を取っている間は、値の届いていない道を取得中の色で描き、届いて区分の外だった道（取り終えたあとの値の無い道）と分ける", () => {
-  expect(drawn(linesOf([], true), {}).solid?.color).toBe(palette.semantic.loading);
 });
 
 // 凡例に出す行はどれも、チェックを外すとその行の道だけが地図から消える。
@@ -78,8 +72,8 @@ describe("凡例で隠した行", () => {
   it.each(ROADS.map(({ row }) => row))("「%s」を隠すと、その行の道だけが消える", (hiddenRow) => {
     const lines = linesOf([hiddenRow]);
     const dashedLayerShown = hiddenRow !== LEGEND_NO_DATA_KEY;
-    for (const { row, state } of ROADS) {
-      const { solid, dashed } = drawn(lines, state);
+    for (const { row, properties } of ROADS) {
+      const { solid, dashed } = drawn(lines, properties);
       expect(solid !== null || (dashed && dashedLayerShown), row).toBe(row !== hiddenRow);
     }
   });
@@ -97,42 +91,36 @@ describe("道路タブの段", () => {
     },
   }).avoidance;
   // 好む道・好む道かつ避ける道・通らない道かつ避ける道・どの行にも当たらない道。
-  const roads: RoadClassValues = new Map<string, Record<string, string>>([
-    ["a", { surface: "gravel" }],
-    ["b", { surface: "gravel", highway: "trunk" }],
-    ["c", { surface: "dirt", highway: "trunk" }],
-    ["d", { surface: "paved" }],
-  ]);
+  const roads = [
+    { surface: "gravel" },
+    { surface: "gravel", highway: "trunk" },
+    { surface: "dirt", highway: "trunk" },
+    {},
+  ];
 
   /** 道ごとに段の線が塗る色。線を出していなければ null。 */
   function paintedColors(choice: AvoidanceChoice, shown = true) {
     const built = build({
       layers: [LAYER, roadMapLayer("highway")],
-      classes: roads,
       avoidance: choice,
       avoidanceShown: shown,
     });
     const layer = built.layers.find((candidate) => candidate.role === ROAD_AVOIDANCE_ROLE);
     if (layer?.visible !== true) return null;
-    const states = built.sources.find((source) => source.featureStates !== undefined)?.featureStates ?? new Map();
-    const stateOf = (featureKey: string) =>
-      Object.fromEntries(
-        [...states].flatMap(([key, byId]) => (byId.has(featureKey) ? [[key, byId.get(featureKey)]] : [])),
-      );
-    return [...roads.keys()].map((featureKey) => evaluate(layer.paint["line-color"], {}, stateOf(featureKey)));
+    return roads.map((properties) => evaluate(layer.paint["line-color"], properties));
   }
 
   const {
+    road_avoidance_pass: pass,
     road_avoidance_prefer: prefer,
     road_avoidance_avoid: avoid,
     road_avoidance_exclude: exclude,
   } = palette.semantic;
-  const none = palette.semantic.hidden;
 
-  it("道路タブの段（選んでいなければ既定）のうち強い方の段の色で道を塗り、塗る段が無ければ線を出さない", () => {
+  it("道路タブの段（選んでいなければ既定）のうち強い方の段の色で、どの行にも当たらない道も通るの色で塗り、見ていなければ線を出さない", () => {
     const choice = avoidanceChoiceOf(avoidance, { "surface.gravel": "prefer", "surface.dirt": "exclude" });
-    expect(paintedColors(choice)).toEqual([prefer, avoid, exclude, none]);
+    expect(paintedColors(choice)).toEqual([prefer, avoid, exclude, pass]);
+    expect(paintedColors({ rows: [], order: [] })).toEqual([pass, pass, pass, pass]);
     expect(paintedColors(choice, false)).toBeNull();
-    expect(paintedColors({ levels: new Map(), order: [] })).toBeNull();
   });
 });

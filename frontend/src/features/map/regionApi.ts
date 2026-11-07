@@ -67,7 +67,9 @@ export function landcoverTileUrl(): string {
   return `${tileBaseUrl()}${LANDCOVER_TILE_PATH}?v=${LANDCOVER_TILE_VERSION}`;
 }
 
-// 路面タイル（点のタイルも同じ）を要求するズーム範囲。正はbackendで、生成物で受け取る。
+// 道のタイルを要求するズーム範囲。正はbackendで、生成物で受け取る。点のタイルと道ごとの値（レンズ・押した所の道）は
+// `ROAD_TILE_MIN_ZOOM`から、路面タイル（道の線）だけは道ごとの鍵を持たずに`ROAD_SURFACE_TILE_MIN_ZOOM`から。
+export const ROAD_SURFACE_TILE_MIN_ZOOM = regionTileConfig.road_surface_tile_min_zoom;
 export const ROAD_TILE_MIN_ZOOM = regionTileConfig.road_tile_min_zoom;
 export const ROAD_TILE_MAX_ZOOM = regionTileConfig.road_tile_max_zoom;
 
@@ -158,21 +160,4 @@ export async function fetchLensMaterials(
     },
     successMeta: (data) => ({ wayCount: Object.keys(data).length }),
   });
-}
-
-/** 路面タイルと同じz/x/yの中の道ごとの、道の線の層の値（層のid→区分の鍵か「データなし」。区分の外の道の層は無い）。 */
-export async function fetchRoadClasses(
-  z: number,
-  x: number,
-  y: number,
-): Promise<Record<string, Record<string, string>>> {
-  return requestApi(
-    (init) => backendApi.GET("/api/region/road-classes/{z}/{x}/{y}", { params: { path: { z, x, y } }, ...init }),
-    {
-      timeoutMs: API_TIMEOUT_MS.default,
-      category: "api:road-classes",
-      messages: { failure: "道の区分の取得に失敗しました", parseFailure: "道の区分の解析に失敗しました" },
-      successMeta: (data) => ({ wayCount: Object.keys(data).length }),
-    },
-  );
 }

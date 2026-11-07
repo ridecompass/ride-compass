@@ -649,7 +649,7 @@
             "schema": {
               "type": "integer",
               "maximum": 15,
-              "minimum": 12,
+              "minimum": 10,
               "title": "Z"
             }
           },
@@ -950,73 +950,6 @@
                     }
                   },
                   "title": "Response Region Lens Api Region Lens  Lens Id   Z   X   Y  Get"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/region/road-classes/{z}/{x}/{y}": {
-      "get": {
-        "operationId": "region_road_classes_api_region_road_classes__z___x___y__get",
-        "parameters": [
-          {
-            "name": "z",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "maximum": 15,
-              "minimum": 12,
-              "title": "Z"
-            }
-          },
-          {
-            "name": "x",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "minimum": 0,
-              "title": "X"
-            }
-          },
-          {
-            "name": "y",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "minimum": 0,
-              "title": "Y"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "additionalProperties": {
-                    "type": "object",
-                    "additionalProperties": {
-                      "type": "string"
-                    }
-                  },
-                  "title": "Response Region Road Classes Api Region Road Classes  Z   X   Y  Get"
                 }
               }
             }

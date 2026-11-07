@@ -13,6 +13,7 @@
 """
 
 import asyncio
+import json
 import logging
 from collections.abc import AsyncIterator, Mapping, Sequence
 from itertools import batched
@@ -422,10 +423,12 @@ class RoadGraphRepository:
         ]
 
     async def get_road_surface_tile_mvt(
-        self, z: int, x: int, y: int, bbox: BoundingBox
+        self, z: int, x: int, y: int, bbox: BoundingBox, layer_values: Mapping[str, Mapping[str, str]]
     ) -> bytes | None:
-        """路面レイヤーのMVTタイル1枚。契約は`get_tile_mvt`と同じ。"""
-        return await self.get_tile_mvt(ROAD_SURFACE_TILE_MVT_SQL, ROAD_SURFACE_LAYER_NAME, z, x, y, bbox)
+        """路面レイヤーのMVTタイル1枚。`layer_values`はフィーチャーの鍵→地図の線の層のid→値（値の無い道は載せない）。契約は
+        `get_tile_mvt`と同じ。"""
+        return await self._tile_mvt(ROAD_SURFACE_TILE_MVT_SQL, ROAD_SURFACE_LAYER_NAME, z, x, y, bbox,
+                                    {"layer_values": json.dumps(layer_values, ensure_ascii=False)})
 
     async def get_tile_mvt(
         self, sql: TextClause, layer_name: str, z: int, x: int, y: int, bbox: BoundingBox
@@ -436,9 +439,14 @@ class RoadGraphRepository:
         対象が1つも無い場合は空バイト列（有効な空MVT、「無いことを確認済み」の
         正常応答でNoneとは区別される）。
         """
+        return await self._tile_mvt(sql, layer_name, z, x, y, bbox, {})
+
+    async def _tile_mvt(
+        self, sql: TextClause, layer_name: str, z: int, x: int, y: int, bbox: BoundingBox, params: Mapping[str, object]
+    ) -> bytes | None:
         result = await self._session.execute(sql, {
             **_tile_params(z, x, y, bbox),
-            "layer_name": layer_name, "extent": TILE_EXTENT,
+            "layer_name": layer_name, "extent": TILE_EXTENT, **params,
         })
         covered, tile = result.one()
         if not covered:
