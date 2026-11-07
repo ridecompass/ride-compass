@@ -78,6 +78,18 @@ def test_a_disabled_axis_is_not_built_and_a_disabled_stop_axis_does_not_count_th
     assert ledger.transition_costs(np.array([10.0], dtype=np.float32), np.array([1.0], dtype=np.float32)).tolist() == [10.0]
 
 
+def test_with_the_strength_off_no_axis_is_built():
+    """負担の強さを無効（0）にすると、全部の軸を無効にしたのと同じく、どの軸も組まない（内訳にも地図のレンズにも出ない）。"""
+    parameters = _parameters(strength=0.0)
+    weights = burden_weights(AXES, parameters, {VIBRATION: CategoricalColumn.encode(["gravel"])},
+                             MaterialFills(numeric_means={}, class_shares={}))
+    ledger = LedgerCosts(AXES, parameters, wheel_power_w(RIDER), kickoff_extra_j(RIDER), weights, np.full(1, 1000.0))
+    ride = _ride(1, gravity=5000.0, inertia=kickoff_extra_j(RIDER))
+
+    assert ledger.penalty_by_axis(ride) == {}
+    assert ledger.turn_penalty_by_axis(2.0) == {}
+
+
 def test_a_turn_costs_its_time_and_the_kickoffs_like_a_stop_on_a_road():
     """曲がる所の費用は、時間に漕ぎ出しの回数 × 漕ぎ出しの代償を足したもの。区間の止まる出来事（慣性の費目）と同じ換算。"""
     ledger = _ledger(_parameters(strength=2.0, stopping=1.5), [0.0])

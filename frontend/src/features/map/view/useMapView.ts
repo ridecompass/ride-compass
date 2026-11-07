@@ -35,7 +35,7 @@ import { avoidanceChoiceOf, type RoadTabMap } from "@/lib/roadAvoidance";
 import type { MapTheme } from "@/lib/mapTheme";
 import { ROAD_SURFACE_TILE_MIN_ZOOM, type RideConditions } from "@/features/map/regionApi";
 import { snapDeg } from "@/lib/cardinalLabel";
-import { countsAxis } from "@/lib/costPreference";
+import { countsAxis, countsCosts, DISABLED_LABEL } from "@/lib/costPreference";
 import type { WayValueCondition } from "@/lib/mapDisplay/mapLens";
 import { useMapCatalog } from "@/features/map/useMapCatalog";
 import { initiallyHiddenLegendKeys } from "@/features/map/scene/legends";
@@ -169,13 +169,8 @@ export function useMapView({
   const bearingDeg = snapDeg(riding?.bearingDeg ?? viewport?.bearing ?? 0, WAY_BEARING_STEP_DEG);
   const speedKmh = riding?.speedKmh ?? ride.speedKmh;
   const wayConditions = useMemo(() => ({ bearingDeg, at: ride.at, speedKmh }), [bearingDeg, ride.at, speedKmh]);
-  const wayMaterials = useWayMaterials(
-    fetchLenses,
-    viewport,
-    wayConditions,
-    costPreference,
-    costCatalog.lenses?.totalLens.axisId ?? null,
-  );
+  const totalLens = costCatalog.lenses?.totalLens ?? null;
+  const wayMaterials = useWayMaterials(fetchLenses, viewport, wayConditions, costPreference, totalLens?.axisId ?? null);
   const [roadTabOnMap, setRoadTabOnMap] = useStoredState("ridecompass:road-tab-on-map", "道路タブを地図で見るか", true);
   // 道路タブを出していて「地図で見る」がONの間だけ、段を地図の道に塗る。段の値は出し入れで作り直さない。
   const roadAvoidanceShown = roadTabShown && roadTabOnMap;
@@ -227,7 +222,9 @@ export function useMapView({
     ],
   );
 
-  const legend = lensLegend(lens, hasDetail, mapCatalog);
+  // 負担の強さが無効の間は総合も数えないので、総合の名前と凡例を出さず、選べる負担が無いことを添える。
+  const totalCounted = countsCosts(costPreference);
+  const legend = totalCounted ? lensLegend(lens, hasDetail, mapCatalog) : [];
   const lensHidden = presentHiddenKeys(legend, hiddenKeysOf(hidden, lens));
   const lensFetch = wayMaterials.get(lens);
   const chips = overlayChips({
@@ -254,7 +251,7 @@ export function useMapView({
       onLensChange: setLens,
       // 選べるレンズは、総合と、数える軸（無効の軸は地図のどこにも出さない。負担の強さが無効なら総合も無い）。
       axisOptions: costLensOptions(lenses.filter((candidate) => countsAxis(costPreference, candidate.lensId))),
-      totalLabel: costCatalog.lenses?.totalLens.label ?? null,
+      totalLabel: totalCounted ? (totalLens?.label ?? null) : null,
       legend,
       hiddenLegendKeys: lensHidden,
       onToggleLegendKey: (key) => toggleHiddenFor(lens, key),
@@ -264,11 +261,13 @@ export function useMapView({
       hasDetail,
       routeHidden: hasSelectedRoute && layerVisibility[ROUTE_LAYER_ID] !== true,
       premises: costLensPremises(painted, costCatalog, lensEquivalents),
-      catalogNotice: costCatalog.loaded
-        ? null
-        : costCatalog.failed
+      catalogNotice: !costCatalog.loaded
+        ? costCatalog.failed
           ? "負担の種類の一覧を取得できないため、塗る負担を選べません。"
-          : "負担の種類の一覧を読み込んでいます。",
+          : "負担の種類の一覧を読み込んでいます。"
+        : totalCounted
+          ? null
+          : `「条件」タブの負担の強さが${DISABLED_LABEL}のため、塗れる負担はありません。`,
       dataStatus: lensFetch
         ? deriveFetchLayerStatus(
             lensFetch.loading,

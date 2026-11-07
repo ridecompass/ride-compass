@@ -2,14 +2,14 @@
 
 import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
 import { axisIconFor } from "@/components/ui/icons/axisIconPalette";
-import { COST_MULTIPLIER_LEVELS, DISABLED_AXIS_LABEL } from "@/features/route/costPreference";
+import { COST_MULTIPLIER_LEVELS } from "@/features/route/costPreference";
 import {
   AXIS_OFF,
+  DISABLED_LABEL,
   STANDARD_COST_FACTOR,
   STANDARD_COST_PREFERENCE,
   axisSettingOf,
-  countsAxis,
-  multiplierOf,
+  countsCosts,
   withAxisSetting,
   type AxisSetting,
 } from "@/lib/costPreference";
@@ -37,7 +37,7 @@ function renderAxisIcon(axis: CostAxis) {
 
 /** 軸ごとの段: 無効（数えない）を先に、続けて倍率の段。 */
 const AXIS_LEVELS: readonly { value: AxisSetting; label: string }[] = [
-  { value: AXIS_OFF, label: DISABLED_AXIS_LABEL },
+  { value: AXIS_OFF, label: DISABLED_LABEL },
   ...COST_MULTIPLIER_LEVELS,
 ];
 
@@ -50,10 +50,7 @@ interface RouteSettingsPanelProps {
 export default function RouteSettingsPanel({ costPreference, onCostPreferenceChange }: RouteSettingsPanelProps) {
   const catalog = useCostAxisCatalog();
   const catalogFailure = costAxisCatalogFetchFailure(catalog);
-  const standard = catalog.axes.every(
-    (axis) =>
-      countsAxis(costPreference, axis.axisId) && multiplierOf(costPreference, axis.axisId) === STANDARD_COST_FACTOR,
-  );
+  const standard = catalog.axes.every((axis) => axisSettingOf(costPreference, axis.axisId) === STANDARD_COST_FACTOR);
 
   return (
     <div className="flex flex-col gap-3">
@@ -81,36 +78,34 @@ export default function RouteSettingsPanel({ costPreference, onCostPreferenceCha
       {!catalog.loaded && !catalog.failed && (
         <p className={textVariants({ variant: "hint" })}>{COST_AXIS_CATALOG_LABEL}を読み込んでいます。</p>
       )}
-      {costPreference.strength === 0 && catalog.axes.length > 0 && (
+      {!countsCosts(costPreference) && catalog.axes.length > 0 && (
         <p className={textVariants({ variant: "hint" })} role="status">
-          「条件」タブの負担の強さが無効のため、ここの倍率は効きません。
+          {`「条件」タブの負担の強さが${DISABLED_LABEL}のため、ここの倍率は効きません。`}
         </p>
       )}
-      <ul className={cn("flex flex-col gap-1.5", costPreference.strength === 0 && "opacity-50")}>
-        {catalog.axes.map((axis) => (
-          <li key={axis.axisId} className="flex items-center gap-2">
-            {/* 無効の軸は、絵と名前を薄くして数えていないことを見せる（選ぶつまみは薄めない）。 */}
-            <span
-              className={cn(
-                "flex min-w-0 flex-1 items-center gap-1",
-                !countsAxis(costPreference, axis.axisId) && "opacity-50",
-              )}
-            >
-              <span aria-hidden="true" className="inline-flex">
-                {renderAxisIcon(axis)}
+      <ul className={cn("flex flex-col gap-1.5", !countsCosts(costPreference) && "opacity-50")}>
+        {catalog.axes.map((axis) => {
+          const setting = axisSettingOf(costPreference, axis.axisId);
+          return (
+            <li key={axis.axisId} className="flex items-center gap-2">
+              {/* 無効の軸は、絵と名前を薄くして数えていないことを見せる（選ぶつまみは薄めない）。 */}
+              <span className={cn("flex min-w-0 flex-1 items-center gap-1", setting === AXIS_OFF && "opacity-50")}>
+                <span aria-hidden="true" className="inline-flex">
+                  {renderAxisIcon(axis)}
+                </span>
+                <span className="truncate">{axis.label}</span>
+                <InfoPopover triggerAriaLabel={`${axis.label}の説明`}>{axis.description}</InfoPopover>
               </span>
-              <span className="truncate">{axis.label}</span>
-              <InfoPopover triggerAriaLabel={`${axis.label}の説明`}>{axis.description}</InfoPopover>
-            </span>
-            <CostLevelPicker
-              aria-label={`${axis.label}の倍率`}
-              usage="この種類の負担を所要時間に足すときに掛ける倍率を選びます。「無効」はこの負担を数えず、結果にも地図にも出しません。"
-              levels={AXIS_LEVELS}
-              value={axisSettingOf(costPreference, axis.axisId)}
-              onChange={(setting) => onCostPreferenceChange(withAxisSetting(costPreference, axis.axisId, setting))}
-            />
-          </li>
-        ))}
+              <CostLevelPicker
+                aria-label={`${axis.label}の倍率`}
+                usage="この種類の負担を所要時間に足すときに掛ける倍率を選びます。「無効」はこの負担を数えず、結果にも地図にも出しません。"
+                levels={AXIS_LEVELS}
+                value={setting}
+                onChange={(next) => onCostPreferenceChange(withAxisSetting(costPreference, axis.axisId, next))}
+              />
+            </li>
+          );
+        })}
       </ul>
       {catalog.axes.length > 0 && (
         <Button

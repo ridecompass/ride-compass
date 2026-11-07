@@ -93,5 +93,7 @@ describe("倍率", () => {
     const vibration = await levelsOf("振動の倍率");
     expect(screen.getByRole("status")).toHaveTextContent("負担の強さが無効のため、ここの倍率は効きません");
     expect(vibration.getByRole("radio", { name: "無効" })).toBeEnabled();
+    // どの軸も標準なら、つまみが無効でも戻すものは無い。
+    expect(screen.getByRole("button", { name: "標準に戻す" })).toBeDisabled();
   });
 });
