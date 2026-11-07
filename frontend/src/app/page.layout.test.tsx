@@ -237,7 +237,7 @@ describe("画面の枠", () => {
     expect(painted(ROAD_CLASS_COLOR.light)).toBe(true);
 
     await fromMenu("地図を暗くする");
-    const dark = themedPaint("dark", basemap[0].paint)["background-color"];
+    const dark = themedPaint({ theme: "dark", muted: false }, basemap[0].paint)["background-color"];
     expect(ground()).toBe(dark);
     expect([painted(ROAD_CLASS_COLOR.dark), painted(ROAD_CLASS_COLOR.light)]).toEqual([true, false]);
     await redraw();

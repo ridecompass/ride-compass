@@ -16,8 +16,8 @@
 | ファイル | 責務 |
 |---|---|
 | `lib/mapDisplay/roadTracks.ts` | 道の線の層（画面の設定が配る`road_classes.map_layers`）の凡例の行（区分・その他／該当なし・データなし）と、道の区分が入る行（`lib/mapDisplay/roadTracks.ts: roadTrackRowOf`）。地図の線・地図の凡例・道のりのグラフの帯が同じ行を読むので、同じ道が地図と帯で同じ色・呼び名になる |
-| `features/map/scene/groups/roadLines.ts` | 道路の線（例: 路面の種類・トンネル・自転車レーン）を、backendの配る層の値（feature-state）と`roadTracks.ts`の行から式へ組んだ配色と、詳細を見ている1本の強調。**線レイヤーで分類を運ぶのは色だけで、太さは情報を持たず、線種が運ぶのは値が無いこと（タグが無い道＝「データなし」の破線）だけ**——1本の線へ複数の分類を載せると、色の意味が他方のON/OFFで入れ替わる。同時表示は横へ平行に割り付けて分ける |
-| `features/map/useRoadClasses.ts` | 道路の線を塗る道ごとの層の値を、表示中のタイルを1枚ずつ問い合わせて取り（[地図: レンズ・ルート色分け](map-axis-coloring.md)の`features/map/tileQueries.ts`）、取得中・失敗とともに返す（道の線の層が1つも出ておらず、道路タブで好む・避けるにした区分も無い間は取らない） |
+| `features/map/scene/groups/roadLines.ts` | 道路の線（例: 路面の種類・トンネル・自転車レーン）を、backendの配る層の値（feature-state）と`roadTracks.ts`の行から式へ組んだ配色と、道路タブの段を道に塗る「道路の指定」（下記）と、詳細を見ている1本の強調。**線レイヤーで分類を運ぶのは色だけで、太さは情報を持たず、線種が運ぶのは値が無いこと（タグが無い道＝「データなし」の破線）だけ**——1本の線へ複数の分類を載せると、色の意味が他方のON/OFFで入れ替わる。同時表示は横へ平行に割り付けて分ける |
+| `features/map/useRoadClasses.ts` | 道路の線を塗る道ごとの層の値を、表示中のタイルを1枚ずつ問い合わせて取り（[地図: レンズ・ルート色分け](map-axis-coloring.md)の`features/map/tileQueries.ts`）、取得中・失敗とともに返す（道の線の層も「道路の指定」も出していない間は取らない） |
 | `lib/mapDisplay/pointLayers.ts` | 点で描く属性（`lib/mapDisplay/pointLayers.ts: POINT_LAYERS`）と、点の値が入る行（`lib/mapDisplay/pointLayers.ts: pointCategoryOf`）・大きさの軸と行の半径・点の名前（`lib/mapDisplay/pointLayers.ts: pointPlaceName`）・束ねた代表点の中の名前のある点（`lib/mapDisplay/pointLayers.ts: pointMembers`）。地図の点・地図の凡例・点のポップアップ・道のりのグラフの印が同じ宣言を読むので、同じ点が地図とグラフで同じ色・呼び名になる |
 | `features/map/scene/groups/points.ts` | 停止要因POI・補給休憩POI・事故・立ち寄り先の分類・配色・点の絵と枠・描き始める縮尺と積む順・束ねた点の数の文字と、同じタイルを分け合う条件 |
 | `features/map/scene/groups/sidePoints.ts` | 選んだ区間の近くの点を、点の層のタイルから点の層と同じ色・絵記号で描く印と、近いかの絞り込み（下記「選んだ区間の近くの点」） |
@@ -49,9 +49,9 @@
 | `features/map/MapView/popupPlacement.ts` | 小窓を見えている所の内側へ押し込めたときの左上（画面のpx）。見えている所が無い地図（描く前・隠れている間）では動かさない |
 | `features/map/MapView/layerDataSources.ts` | レイヤーのデータ取得状態の算出元（`features/map/MapView/layerDataSources.ts: buildLayerDataSources`）。レイヤーカタログの情報源の名前を、取得を見るMapLibreのソースへ引く |
 | `features/map/baseMap.ts` | 基礎地図のスタイル・出典の表記・MapLibreの部品の日本語の文言で地図を作る（`features/map/baseMap.ts: createBaseMap`）。一般の地図（`MapView.tsx`）が使い、載せるものは場面で当てる。地図が今見ている範囲の読み取り（`features/map/baseMap.ts: viewportOf`）もここが持つ。俯瞰図（`features/map/MapOverview/MapOverview.tsx`）は`inset`で、操作を受けず出典の表記を持たない地図として作る（出典は同じ画面の本体の地図が出す）。基礎地図の文字は薄れさせずに出し入れする（MapLibre の`fadeDuration`を0にする）——薄れる間は地図全体を描き直し続けるので、ずらすたびに操作が重くなる |
-| `features/map/basemapTheme.ts`・`lib/mapTheme.ts` | 基礎地図の色の塗りを地の明るさに合わせる（下記「暗い地図」）。地の明るさの型は、メニュー（`components/`）も読むので`lib/`に置く |
+| `features/map/basemapTheme.ts`・`lib/mapTheme.ts` | 基礎地図の色の塗りを見え方（地の明るさと、「道路の指定」を出している間の灰色に薄めた地図）に合わせる（下記「暗い地図」・「道路の指定」）。地の明るさの型は、メニュー（`components/`）も読むので`lib/`に置く |
 | `lib/rgbHsl.ts` | 色の16進とRGB・HSLの読み替え（`lib/rgbHsl.ts: hexToRgb`・`lib/rgbHsl.ts: rgbToHsl`）。基礎地図を暗くする規則（`basemapTheme.ts`）と、値の段の両端の色の間を補う所（`lib/mapDisplay/valueScale.ts`）が同じ読み替えを使う |
-| `features/map/layers/mapStyleOps.ts` | 地図インスタンスへの低水準操作（スタイル読み込み後の実行・面レイヤーの差し込み位置・基礎地図の細い道の縁取りの描き替え・基礎地図の地の明るさ・ズーム依存のicon-size式）。このアプリのどのレイヤーかを知らないものだけを置く |
+| `features/map/layers/mapStyleOps.ts` | 地図インスタンスへの低水準操作（スタイル読み込み後の実行・面レイヤーの差し込み位置・基礎地図の細い道の縁取りの描き替え・基礎地図の見え方・ズーム依存のicon-size式）。このアプリのどのレイヤーかを知らないものだけを置く |
 | `features/map/layers/routeArrowIcon.ts`・`components/ui/icons/icons.tsx`・`components/ui/icons/layerIcons.tsx`・`components/ui/icons/lucideIcons.tsx`・`components/ui/icons/mapLayerIcons.ts` | ルート矢印・アイコン集（下記「本モジュールとの関係」参照）。`icons.tsx`はアイコンの土台（大きさの受け口・線の様式）と、操作・地点の自前の形、`layerIcons.tsx`は地図のレイヤーと費用の軸の自前の形、`lucideIcons.tsx`はlucideの形の包み、`mapLayerIcons.ts`は源泉が宣言するレイヤーごとのアイコンの表（地図の「表示」の一覧と、区間の小窓の層の値のチップが同じ表を引く。レイヤーを足すと型が書き忘れを止める） |
 | `components/ui/icons/axisIconPalette.tsx` | 費用の軸のアイコンの固定のパレット（軸の定義が持つ`icon_id`→形。`components/ui/icons/axisIconPalette.tsx: axisIconFor`）。軸の定義はキーを選ぶだけで、形を足すにはここへ1件足す（任意のSVGの登録は意匠の揃いと無害化の費用が高い）。知らない・未設定の`icon_id`は汎用のアイコンにする。レンズの一覧の行と負担のタブの行が引く |
 | `features/map/layers/sdfIcon.ts` | 地図の記号に使う単色シルエット（例: ルート矢印・落雷の記号）の描画の土台。白で塗った絵を`sdf: true`で登録し、色はicon-colorで付ける。canvasの2D描画が使えなければ投げる——空の絵を黙って返すと記号が地図から消えるだけで誰も気づけない。**単体テストは持たない**（テスト環境のcanvasは2D描画を実装しない。絵の中身は座標の宣言そのもので、写してもなにも守らない） |
@@ -278,12 +278,15 @@ DOM/MapLibreを一切知らない。`MapView.tsx`は画面の状態をsceneの�
 持たないので、値を取っている間は値の無い道をどれも取得中の色（`palette.semantic.loading`）で描く。取得中・失敗は、出ている道の線の
 層のチップの状態ドットに出る。両方ONのときは下記の並列トラックが横へ分ける。
 
-**好む・避ける・通らないの道の淡い帯**: 道路タブを開いている間だけ、今の道路タブの段（`lib/roadAvoidance.ts: avoidanceLevelOf`）で
-好む・避ける・通らないにした区分の道の下に、道の層を出していなくても淡い帯を1本敷く（線を重ねると幹線の多い所で地図が線で埋まる）。
-道路タブの見出しは地図の道の線の層の分け方なので、道ごとの層の値から、当たる行の段のうち一番強いもの（`lib/roadAvoidance.ts:
-strongestAvoidance`。順は画面の設定の段の並び＝倍率の小さい順で、通るは数えない。費用と同じ決め方）を決めて feature-state に載せ、
-段ごとに1枚の帯で、その段の道だけを塗る。好むは好むの色、避ける・通らないは避けるの色で、濃さは段ごと（`mapDisplay.avoidanceHalo`。
-通らないを避けるより濃くして段の重さを見せる）。道路タブを閉じている間は帯を出さず、そのための道の層の値も取らない。
+**道路の指定**（「表示」の一覧の「道路」の行。源泉の層`domain/map_display.py: ROAD_AVOIDANCE_LAYER_ID`）: 出している間、今の道路タブの段
+（`lib/roadAvoidance.ts: avoidanceLevelOf`。選んでいない行は既定の段。道路タブを開いているかに依らない）で好む・避ける・通らないにした
+区分の道を、道の線の層より上に不透明の線で塗り、下の基礎地図を灰色に薄める（`features/map/basemapTheme.ts: themedPaint`）。道路タブの
+見出しは地図の道の線の層の分け方なので、道ごとの層の値から、当たる行の段のうち一番強いもの（`lib/roadAvoidance.ts: strongestAvoidance`。
+順は画面の設定の段の並び＝倍率の小さい順で、通るは数えない。費用と同じ決め方）を決めて feature-state に載せ、1枚の線の色を段で分ける
+（好む＝緑・避ける＝橙・通らない＝赤。`palette.semantic`の`road_avoidance_*`。ルートの線の両脇の線の色とは別）。太さは縮尺で道の太さに
+近づける（`mapDisplay.roadAvoidance.widthByZoom`）。凡例の行は段で、名前は段の呼び名と倍率（画面の設定の段の`name`・`label`。
+`features/map/scene/legends.ts: roadAvoidanceLegendAxis`）。凡例で隠した段は、ほかの道の線と同じく透明で落とす。出していない間は段を
+載せず、道の線の層も出していなければ道の層の値も取らない（`features/map/view/useMapView.ts`）。
 
 区分に当てはまらない道は2種類を分ける。**事実の無い道は「データなし」**（値が無い。薄い灰の破線、刻みは`mapDisplay.noDataDash`）、
 **事実はあるが区分の外の道は「その他」**（値はある。薄い灰の実線）。分けるかは層が決め（`has_no_data`）、分けない層は「データなし」の
@@ -662,6 +665,11 @@ ONにしても何も塗られない。「データが無い地域」と区別で
   選ぶのは`features/map/mapCatalog.ts: mapConfigFromResponse`（道の区分）・`features/map/costLens.ts: costLenses`（レンズの段）と、`features/map/scene/applyToMap.ts: routeStateFrom`
   （`lib/mapTheme.ts: semanticColorsOn`。ルートの線）。点の色・候補地の印は白い縁取りで地から浮くので、明るい地用の1組のまま。
   道のりのグラフ等、地図の外の部品はパネルの上にあるので、明るい地用の色を使う。
+- **「道路の指定」を出している間は、基礎地図を灰色に薄める**（`features/map/scene/applyToMap.ts: basemapLookOf`）。地の明るさで作った塗りの色の
+  彩度を落とし、明るさを地色（`basemap_ground`を同じ地の明るさで作った色）の明るさへ寄せ、絵の印をさらに透かす。規則の値は
+  `domain/display_palette.py: BASEMAP_MUTED_SATURATION_SCALE`・`BASEMAP_MUTED_GROUND_PULL`・`BASEMAP_MUTED_ICON_OPACITY_SCALE`が持ち、
+  `palette.json`の`basemap_muted`で届く。地色へ寄せるので、暗い地図と重ねても暗いまま薄まる。当てる道は暗い地図と同じ（`themeBasemap`が
+  今当てている見え方と比べ、違えば記録から当て直す）。
 
 ## まとめて戻す操作
 

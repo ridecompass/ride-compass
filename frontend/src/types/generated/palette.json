@@ -33,6 +33,9 @@
     "selected_section": "#7c3aed",
     "avoidance_preferred": "#0d9488",
     "avoidance_avoided": "#db2777",
+    "road_avoidance_prefer": "#16a34a",
+    "road_avoidance_avoid": "#ea580c",
+    "road_avoidance_exclude": "#dc2626",
     "place_candidate": "#334155",
     "place_candidate_picked": "#be185d",
     "sign_regulatory": "#d8262e",
@@ -81,6 +84,9 @@
     "selected_section": "#7c3aed",
     "avoidance_preferred": "#0d9488",
     "avoidance_avoided": "#db2777",
+    "road_avoidance_prefer": "#16a34a",
+    "road_avoidance_avoid": "#ea580c",
+    "road_avoidance_exclude": "#dc2626",
     "place_candidate": "#334155",
     "place_candidate_picked": "#be185d",
     "sign_regulatory": "#d8262e",
@@ -110,5 +116,10 @@
     ],
     "saturation_scale": 0.6,
     "icon_opacity_scale": 0.5
+  },
+  "basemap_muted": {
+    "saturation_scale": 0.1,
+    "ground_pull": 0.5,
+    "icon_opacity_scale": 0.4
   }
 }

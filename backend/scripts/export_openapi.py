@@ -104,8 +104,8 @@ from app.domain.map_display import (
     AVOIDANCE_RAIL_WIDTH_PX,
     AVOIDANCE_RAIL_GAP_PX,
     AVOIDANCE_AVOIDED_DASH,
-    AVOIDANCE_HALO_WIDTH_PX,
-    AVOIDANCE_HALO_OPACITY_BY_LEVEL,
+    ROAD_AVOIDANCE_LAYER_ID,
+    ROAD_AVOIDANCE_WIDTH_BY_ZOOM,
     ROAD_KNOWN_OPACITY,
     ROAD_LINE_WIDTH_PX,
     ROAD_TRACK_OFFSET_STEP_PX,
@@ -131,6 +131,9 @@ from app.domain.display_palette import (
     BASEMAP_DARK_ICON_OPACITY_SCALE,
     BASEMAP_DARK_LIGHTNESS_RANGE,
     BASEMAP_DARK_SATURATION_SCALE,
+    BASEMAP_MUTED_GROUND_PULL,
+    BASEMAP_MUTED_ICON_OPACITY_SCALE,
+    BASEMAP_MUTED_SATURATION_SCALE,
     COST_SERIES_COLORS,
     SEMANTIC_COLORS,
     SEMANTIC_COLORS_ON_DARK,
@@ -353,6 +356,11 @@ def main() -> None:
                 "saturation_scale": BASEMAP_DARK_SATURATION_SCALE,
                 "icon_opacity_scale": BASEMAP_DARK_ICON_OPACITY_SCALE,
             },
+            "basemap_muted": {
+                "saturation_scale": BASEMAP_MUTED_SATURATION_SCALE,
+                "ground_pull": BASEMAP_MUTED_GROUND_PULL,
+                "icon_opacity_scale": BASEMAP_MUTED_ICON_OPACITY_SCALE,
+            },
         },
     )
     # 地図に出すものの最上位の束ね方（domain/map_display.py）。並びが「表示」の一覧の並び順。
@@ -414,8 +422,11 @@ def main() -> None:
                 "gapPx": AVOIDANCE_RAIL_GAP_PX,
                 "avoidedDash": list(AVOIDANCE_AVOIDED_DASH),
             },
-            # 道路タブを開いている間の、好む・避ける・通らないの地図の道の下に敷く淡い帯（濃さは段ごと）。
-            "avoidanceHalo": {"widthPx": AVOIDANCE_HALO_WIDTH_PX, "opacityByLevel": AVOIDANCE_HALO_OPACITY_BY_LEVEL},
+            # 道路タブの段（好む・避ける・通らない）を地図の道に塗る層の名前と、線の太さ（縮尺→px）。
+            "roadAvoidance": {
+                "layerId": ROAD_AVOIDANCE_LAYER_ID,
+                "widthByZoom": [list(pair) for pair in ROAD_AVOIDANCE_WIDTH_BY_ZOOM],
+            },
             "point": {
                 "radiusPx": POINT_RADIUS_PX,
                 "strokeWidthPx": POINT_STROKE_WIDTH_PX,

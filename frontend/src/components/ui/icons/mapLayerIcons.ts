@@ -16,7 +16,7 @@ import {
   TrackGradeIcon,
   TunnelIcon,
 } from "@/components/ui/icons/layerIcons";
-import { BicycleIcon, RaindropIcon, ShieldIcon, WindIcon } from "@/components/ui/icons/lucideIcons";
+import { BicycleIcon, RaindropIcon, RoadAvoidanceIcon, ShieldIcon, WindIcon } from "@/components/ui/icons/lucideIcons";
 import { mapDisplay } from "@/types/generated/mapDisplay";
 
 /** 源泉が宣言する、地図に載るものの名前。 */
@@ -24,6 +24,7 @@ export type StaticMapLayerId = (typeof mapDisplay.layers)[number]["id"];
 
 /** レイヤーのアイコン。省略できない（描く側の対応表で引く形だと、書き忘れても汎用のアイコンで見分けの付かないまま出続ける）。 */
 export const MAP_LAYER_ICONS: Record<StaticMapLayerId, MapIconComponent> = {
+  roadAvoidance: RoadAvoidanceIcon,
   elevation: ElevationIcon,
   hillshade: HillshadeIcon,
   landcover: LandcoverIcon,

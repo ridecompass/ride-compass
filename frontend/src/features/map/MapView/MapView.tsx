@@ -15,7 +15,7 @@ import type {
   SelectedRouteSegment,
 } from "@/types/route";
 import type { RideConditions } from "@/features/map/regionApi";
-import { applyScene, type SpliceStretchInput } from "@/features/map/scene/applyToMap";
+import { applyScene, basemapLookOf, type SpliceStretchInput } from "@/features/map/scene/applyToMap";
 import type { MapLook } from "@/features/map/view/mapLook";
 import { useMapCatalog } from "@/features/map/useMapCatalog";
 import { useJmaTileIndex } from "@/features/map/useJmaTileIndex";
@@ -214,7 +214,7 @@ export default function MapView({
 
   // スタイルを差し替えた後、いまの宣言を空から当て直す。
   const redrawFromCurrentProps = useCallback((map: MapLibreMap) => {
-    applyScene(map, latest.current.scene, { basemapTheme: latest.current.look.mapTheme, reset: true });
+    applyScene(map, latest.current.scene, { basemap: basemapLookOf(latest.current.look), reset: true });
   }, []);
 
   const getLook = useCallback(() => latest.current.look, []);
@@ -278,15 +278,17 @@ export default function MapView({
     flyToVisible(map, focusPoint);
   }, [focusPoint]);
 
+  // 基礎地図の見え方は、作るたびに新しくなる組でなく値で依存に入れる。
+  const { theme: basemapTheme, muted: basemapMuted } = basemapLookOf(look);
   // 地図に載るもの（面・道路の線・レンズ・点・気象・ルート）は、1つの scene として
   // 組み立てて1本の経路で当てる。**表示・絞り込み・重なり順はすべてここを通る。**
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    applyScene(map, scene, { basemapTheme: look.mapTheme });
+    applyScene(map, scene, { basemap: { theme: basemapTheme, muted: basemapMuted } });
     // 表示をONにしたレイヤーの状態をすぐ出す（タイルがキャッシュ済みだとsourcedataが来ない）。
     recomputeLayerDataStatus();
-  }, [scene, look.mapTheme, recomputeLayerDataStatus]);
+  }, [scene, basemapTheme, basemapMuted, recomputeLayerDataStatus]);
 
   // 選んでいるルートの全体へ収める（生成した・カードを押した・乗り換えで作ったとき）。追っている間（追う側が地図を動かす）は収めない。
   useEffect(() => {

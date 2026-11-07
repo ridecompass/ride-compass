@@ -34,7 +34,7 @@
 | `hooks/useSharedCatalog.ts` | 画面の全体が読む一覧（画面の設定・費用の軸の一覧）の取得の共通の形: 読み手の間で1つの取得を共有し、マウントのたびに取り直し、届いた応答を後の失敗で巻き戻さない（`hooks/useSharedCatalog.ts: useSharedCatalog`）。まだ届いていないときだけ取り直す再試行（`hooks/useSharedCatalog.ts: retrySharedCatalogFetch`） |
 | `services/costAxisCatalogApi.ts` | 上記フックが叩くbackend APIの薄いラッパーと、凡例の段の境目の目安（`GET /api/cost-axes/lens-equivalents`。`services/costAxisCatalogApi.ts: getLensEquivalents`）の口 |
 | `features/route/RouteSettingsPanel/HardFilterPanel.tsx` | 「道路」タブの中身。地図の道のレイヤの凡例の行ごとの避け方を1つの並びに出し、自転車が通れない道の行は「通らない」に固定して鍵を付ける（下記「除外」）。選べる行の鍵・名前・既定の段と行をまとめる節は画面の設定の`road_classes.avoidance`が、固定の行の名前と説明は生成物`route-generate-config.json`の`route-generate-config.json: hard_filters`が正で、名前をフロントに持たない——キーと名前を別々に持つと、足した行に名前が無く内部名が出る。画面の設定が届くまでは選べる行を出さない |
-| `lib/roadAvoidance.ts` | 画面に出す行の段を決める（`lib/roadAvoidance.ts: avoidanceLevelOf`。地図が好む・避けるの道に添える線も同じ段を読む。選んでいなければ既定の段）。要求には選んだ段をそのまま送り、行の増減はbackendが揃える |
+| `lib/roadAvoidance.ts` | 画面に出す行の段を決める（`lib/roadAvoidance.ts: avoidanceLevelOf`。地図の「道路の指定」が道に塗る段も同じ決め方で読む。選んでいなければ既定の段）。要求には選んだ段をそのまま送り、行の増減はbackendが揃える |
 | `features/route/SavedPlacesPanel/SavedPlacesPanel.tsx` | 「保存済み」タブの「地点」の中身: 保存した地点の一覧（行は名前・辺りと、アイコンの「呼び出す」「消す」。呼び出すはメニューで出発地・経由地・目的地のどれに置くかを選び（周回の間は目的地を使わないので「目的地にする」を押せない）、消すは確認の窓で「消す」を押すと消す）。無ければ無いと出し、保存の仕方は(i)の奥（下記「保存した地点」） |
 | `features/route/SavedList/SavedList.tsx` | 「保存済み」タブの一覧（地点・プリセット）の形: 空の案内と保存の仕方の(i)・行の枠・消す操作と確認の窓。行の名前の欄と行ごとの操作（「呼び出す」）は使う側が渡す |
 | `features/route/useSavedPlaces.ts` | 保存した地点の一覧（この端末の`localStorage`）と、保存・削除 |
@@ -205,8 +205,8 @@
 - **好む・避けるの区間の両脇の線**（役割`preferredRail*`・`avoidedRail*`）: 道路タブで好む・避けるにした道を通った区間（区間の内訳の
   好む道で下げた秒・避ける道で上乗せした秒が0でない区間）に、縁取りの外へ細い線を左右に添える。好むは実線、避けるは破線で、色・太さ・
   間隔・刻みは源泉の宣言（`palette.semantic.avoidance_preferred`・`avoidance_avoided`、`mapDisplay.avoidanceRail`）。選んだ区間の縁取り
-  （線の後ろの太い帯）とは形で見分け、好む区間を選ぶと帯の上に両脇の線が残る。道路タブを開いている間は、地図の道の下にも淡い帯を
-  敷く（[地図: 静的レイヤー](static-map-layers.md)「好む・避ける・通らないの道の淡い帯」）。
+  （線の後ろの太い帯）とは形で見分け、好む区間を選ぶと帯の上に両脇の線が残る。地図の道そのものの段は、「表示」の「道路の指定」が
+  塗る（[地図: 静的レイヤー](static-map-layers.md)の「道路の指定」の段落）。
 
 中身は道のりのグラフの表示の断面で、到達予想時刻と、グラフで選んでいる層の区間の値（線の層は区間の平均と最大の勾配
 〔`features/route/RouteProfile/profileLayers.ts: segmentGrades`〕、帯の層は区間の区分の付く道に占める割合の多い順の行
