@@ -54,7 +54,7 @@ describe("useMapView", () => {
     act(() => result.current.lensControl.onLensChange("ascent"));
     act(() => result.current.look.onViewportChange(VIEWPORT));
 
-    expect(result.current.lensConditions).toEqual(["at", "speed_kmh", "bearing_deg"]);
+    expect(result.current.lensConditions).toEqual(["at", "speed_kmh"]);
     // 表示範囲は間引いてから取るので、そのレンズの結果が出て取り終えるまで待つ。
     await waitFor(() => expect(result.current.look.wayMaterials.get("ascent")?.loading).toBe(false), {
       timeout: 3000,
