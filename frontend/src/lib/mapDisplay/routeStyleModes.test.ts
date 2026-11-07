@@ -60,7 +60,6 @@ function expectColorsMatchLegend(
 describe("段で塗るモード（費用のレンズの1kmあたりの負担）", () => {
   const mode = buildRangeSteppedMode({
     id: "ax",
-    label: "振動",
     valueExpression: ["get", "ax", ["get", ROUTE_LENS_SECONDS_PROPERTY]],
     paint: costLensPaint({ lens: { thresholds: [20, 50], band_labels: ["弱", "中", "強"] } }, "light"),
   });

@@ -1,10 +1,11 @@
 "use client";
 
 import { TabsList, TabsTrigger } from "@/components/ui/Tabs/Tabs";
+import { costAxisNamesNote, useCostAxisCatalog } from "@/hooks/useCostAxisCatalog";
 import type { SettingsTab } from "./RouteForm";
 
-/** 「ルート設定」のタブ（中身は `RouteForm` が描く）。 */
-const SETTINGS_TABS: readonly { value: SettingsTab; label: string; usage: string }[] = [
+/** 「ルート設定」のタブ（中身は `RouteForm` が描く）。`axisNames` は費用の軸の名前の並び（`costAxisNamesNote`）。 */
+const settingsTabs = (axisNames: string): readonly { value: SettingsTab; label: string; usage: string }[] => [
   {
     value: "generate",
     label: "条件",
@@ -13,7 +14,7 @@ const SETTINGS_TABS: readonly { value: SettingsTab; label: string; usage: string
   {
     value: "weights",
     label: "負担",
-    usage: "負担（登り・向かい風・止まる回数・路面など）の種類ごとに、所要時間に足すときに掛ける倍率を決めます。",
+    usage: `負担${axisNames}の種類ごとに、所要時間に足すときに掛ける倍率を決めます。`,
   },
   { value: "exclusions", label: "回避", usage: "ルートに使わない道路の種類と、道ごとの避け方を選びます。" },
   { value: "saved", label: "保存済み", usage: "名前を付けて保存した地点とプリセット（設定）を並べ、呼び出します。" },
@@ -24,9 +25,10 @@ const SETTINGS_TABS: readonly { value: SettingsTab; label: string; usage: string
  * タブ・操作（条件の変更の印も）を1行に切らずに収めるため。
  */
 export default function SettingsTabsList() {
+  const tabs = settingsTabs(costAxisNamesNote(useCostAxisCatalog()));
   return (
     <TabsList className="gap-0 overflow-visible border-b-0" aria-label="ルート設定">
-      {SETTINGS_TABS.map(({ value, label, usage }) => (
+      {tabs.map(({ value, label, usage }) => (
         <TabsTrigger key={value} className="px-1.5" value={value} usage={usage}>
           {label}
         </TabsTrigger>

@@ -5,12 +5,7 @@ import { useState } from "react";
 import LegendCheckboxList from "@/features/map/LegendCheckboxList/LegendCheckboxList";
 import { LEGEND_SWATCH_RING_CLASS, legendSwatchBackground, type LegendEntry } from "@/lib/mapDisplay/legendFilter";
 import { LAYER_DATA_STATUS_LABELS, layerDataStatusNotice, type LayerDataStatus } from "@/features/map/layers/mapLayers";
-import {
-  UNSELECTED_LENS_LABEL,
-  UNSELECTED_LENS_ID,
-  LENS_NEUTRAL_COLOR,
-  type LensId,
-} from "@/lib/mapDisplay/routeStyleModes";
+import { UNSELECTED_LENS_ID, LENS_NEUTRAL_COLOR, type LensId } from "@/lib/mapDisplay/routeStyleModes";
 import { Checkbox } from "@/components/ui/Checkbox/Checkbox";
 import { Button } from "@/components/ui/Button/Button";
 import { ToggleGroup } from "@/components/ui/ToggleGroup/ToggleGroup";
@@ -26,6 +21,8 @@ interface LensControlProps {
   onLensChange: (id: LensId) => void;
   /** 総合と費用の軸の順のレンズ。 */
   axisOptions: readonly LensOption[];
+  /** 総合のレンズの名前（費用の軸の一覧の`total_lens.label`）。一覧が届くまで・取れない間はnull。 */
+  totalLabel: string | null;
   /** 今のレンズの凡例（ルートの前は道路、後はルートの線。どちらも呼ぶ側が組む）。 */
   legend: readonly LegendEntry[];
   /** 凡例で隠している段（ルートの前後で共有する）。 */
@@ -61,6 +58,7 @@ export default function LensControl({
   lens,
   onLensChange,
   axisOptions,
+  totalLabel,
   legend,
   hiddenLegendKeys,
   onToggleLegendKey,
@@ -76,10 +74,14 @@ export default function LensControl({
   const [open, setOpen] = useState(false);
   const statusLabel = dataStatus ? LAYER_DATA_STATUS_LABELS[dataStatus] : undefined;
   const statusNotice = layerDataStatusNotice(dataStatus);
-  // レンズを選んでいないときは、ルートの前は道路を塗らず、ルートの後はルートの線を総合の負担で塗る（費用の軸の一覧が届く前と、取れない間は1色）。
+  // レンズを選んでいないときは、ルートの前は道路を塗らず、ルートの後はルートの線を総合で塗る（費用の軸の一覧が届く前と、取れない間は1色）。
   const unselected = lens === UNSELECTED_LENS_ID;
   const selected = axisOptions.find((option) => option.id === lens);
-  const pillLabel = unselected ? (hasDetail ? UNSELECTED_LENS_LABEL : UNSELECTED_LABEL) : (selected?.label ?? lens);
+  const pillLabel = unselected
+    ? hasDetail && totalLabel !== null
+      ? totalLabel
+      : UNSELECTED_LABEL
+    : (selected?.label ?? lens);
   const pillColor = selected?.color ?? LENS_NEUTRAL_COLOR;
   // ピルの帯は色の段だけを並べる（受け皿の「データなし」は除く）。
   const bands = legend.filter((entry) => !entry.isFallback);
@@ -206,7 +208,7 @@ export default function LensControl({
               aria-label="選択を外す"
               onClick={() => onLensChange(UNSELECTED_LENS_ID)}
               disabled={unselected}
-              usage="選んでいる負担の種類を外します。外すと、ルートの前は道路を塗らず、ルートの後は総合の負担で塗ります。"
+              usage={`選んでいる負担の種類を外します。外すと、ルートの前は道路を塗らず、ルートの後は${totalLabel ?? "1色"}で塗ります。`}
             >
               <ClearAllLayersIcon />
             </Button>

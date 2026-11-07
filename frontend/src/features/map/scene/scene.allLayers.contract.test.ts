@@ -47,7 +47,7 @@ describe("レイヤーを横断する要求", () => {
     for (const layer of POINT_LAYERS) visibility[layer.attr_id] = true;
     for (const role of Object.keys(AREA_SOURCE_ID)) visibility[role] = true;
     visibility.route = true;
-    const mode = { id: "unselected", label: "総合の負担", colorExpression: ["literal", "#16a34a"], legend: [] };
+    const mode = { id: "unselected", colorExpression: ["literal", "#16a34a"], legend: [] };
     const line = {
       type: "LineString",
       coordinates: [

@@ -2,7 +2,7 @@
  * `app/page.tsx`——トップページの画面の枠（地図の上の操作・ヘッダー・メニュー）。
  *
  * 見ること: 地図の表示をまとめて戻す操作（「表示」の一覧の末尾と右上のメニュー）、右上の方位磁針（地図の北を指し、
- * 開いたダイヤルで地図を回して北へ戻す。なぞる途中で閉じたら回さない）と拡大・縮小、地図を読み込み中の覆いが上限の時間で外れること、層の取得状態の数え直しと
+ * 開いたダイヤルで地図を回して北へ戻す。なぞる途中で閉じたら回さない。塗っているレンズの式が走行方位を読むときだけ、連動と出す）と拡大・縮小、地図を読み込み中の覆いが上限の時間で外れること、層の取得状態の数え直しと
  * 再描画の失敗の案内、メニューで地図を暗くすること（基礎地図の色を暗くし、描き直しても保ち、覚える）、区分の開閉の保存、左下の俯瞰図（気象の層を出して寄せると出て、道路を消した下地に同じ気象の層を描き、引くと消え、畳んだことを覚える）、
  * ヘッダーの「未取得」に並ぶ出所と「現在地に移動」の失敗、「現在地に移動」が出発地を変えずに地図を寄せて現在地に点を
  * 出すこと、メニューから入る使い方の説明とデバッグログ。
@@ -17,7 +17,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setDebugEnabled } from "@/lib/debugLog";
 import { HOUR_MS, SECOND_MS } from "@/lib/duration";
 import refreshIntervals from "@/types/generated/refresh-intervals.json";
-import { heldReplies, onBackend } from "@/testing/backendServer";
+import { heldReplies, onBackend, serveCostAxisCatalog } from "@/testing/backendServer";
+import { TWO_COST_AXES } from "@/testing/costAxes";
+import { LENS_LINK_DESCRIPTION } from "@/lib/lensLink";
+import type { CostAxisCatalogResponse } from "@/types/route";
 import { installGeolocation } from "@/testing/geolocation";
 import {
   ELSEWHERE,
@@ -38,6 +41,19 @@ import { insetMapOnScreen, mapOnScreen } from "@/testing/maplibre";
 import Home from "./page";
 
 vi.mock("maplibre-gl", () => import("@/testing/maplibre"));
+
+type LensFormula = CostAxisCatalogResponse["map_lens"]["formula"];
+
+/** 走行方位で、道の向きの値を読むか逆向きの値を読むかを選ぶ木。 */
+const BY_BEARING: LensFormula = {
+  value: {
+    op: "case",
+    when: { op: "lt", left: { op: "condition", name: "bearing_deg" }, right: { op: "const", value: 180 } },
+    then: { op: "feature", name: "lens_along" },
+    otherwise: { op: "feature", name: "lens_against" },
+  },
+  undetermined: { op: "const", value: 0 },
+};
 
 beforeEach(() => {
   serveHome();
@@ -88,6 +104,18 @@ describe("画面の枠", () => {
     await user.click(screen.getByRole("button", { name: "メニュー" }));
     await user.click(screen.getByRole("button", { name: "地図の表示を再描画" }));
     expect(mapOnScreen().styles).toHaveLength(before + 1);
+  });
+
+  it.each([
+    ["走行方位の節を持つ", BY_BEARING, LENS_LINK_DESCRIPTION],
+    ["走行方位の節を持たない", TWO_COST_AXES.map_lens.formula, null],
+  ])("塗っているレンズの式の木が%sなら、右上の方位磁針の連動の印は %s", async (_, formula, description) => {
+    serveCostAxisCatalog({ ...TWO_COST_AXES, map_lens: { ...TWO_COST_AXES.map_lens, formula } });
+    const { user } = renderHome();
+    await user.click(screen.getByRole("button", { name: /^負担で塗る: / }));
+    await user.click(await screen.findByRole("radio", { name: /登坂/ }));
+
+    expect(screen.getByRole("button", { name: "地図の向き" }).getAttribute("aria-description")).toBe(description);
   });
 
   it("右上の方位磁針は地図の北を指し、押すと開くダイヤルの輪をなぞる・矢印のキーで地図が回り、真ん中の針で北が上に戻る。ダイヤルの文は方位と度だけ。＋・－で拡大・縮小し、長押しで1本指の拡大・縮小の案内が出る", async () => {
