@@ -221,18 +221,12 @@ def landcover_tiles(override_dependency):
     yield state
 
 
-# ラスタが1枚も無いのは「範囲外で空」ではない。空を返すと、地図のチップは正常なのに白紙になる。
-@pytest.mark.parametrize(("result", "status", "content_type", "body"), [
-    (b"png-bytes", 200, "image/png", "png-bytes"),
-    (None, 503, "application/json", '{"detail":"土地被覆データが利用できません"}'),
-], ids=["tile", "no-raster"])
-def test_landcover_tile_endpoint_returns_the_tile_as_png_or_reports_no_raster(
-        landcover_tiles, result, status, content_type, body):
-    landcover_tiles["result"] = result
+def test_landcover_tile_endpoint_returns_the_tile_as_png(landcover_tiles):
+    landcover_tiles["result"] = b"png-bytes"
 
     response = client.get("/api/region/landcover-tiles/10/905/403.png")
 
-    assert response.status_code == status
-    assert response.headers["content-type"] == content_type
-    assert response.text == body
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/png"
+    assert response.text == "png-bytes"
     assert landcover_tiles["calls"] == [(10, 905, 403)]

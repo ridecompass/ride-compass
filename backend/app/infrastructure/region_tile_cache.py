@@ -9,7 +9,8 @@ import asyncio
 from collections.abc import Awaitable, Callable, Mapping
 
 from app.domain.registry import TileKind
-from app.infrastructure import landcover_raster, tile_cache
+from app.config import settings
+from app.infrastructure import tile_cache
 from app.infrastructure.cache_identity import (
     LANDCOVER_TILE_VERSION,
     is_known_tile_version,
@@ -29,15 +30,13 @@ PRUNE_INTERVAL_HOURS = 24
 
 
 def landcover_generation() -> str:
-    """土地被覆ラスタタイルのディスクの世代。**実際に開けているラスタの構成**も入れる。
+    """土地被覆ラスタタイルのディスクの世代。**ラスタの構成**も入れる。
 
-    タイルの中身はどのラスタを開いていたかに従属する。対応範囲を広げるためゾーンを1枚
+    タイルの中身はどのラスタから描いたかに従属する。対応範囲を広げるためゾーンを1枚
     足しても鍵が同じだと、継ぎ目のタイルは古い絵（片側が透明のまま）を返し続ける。
-    設定された一覧ではなく開けている一覧を使うのは、**起動時に1枚だけ置かれていなかった
-    場合も同じことが起きる**ため——そのとき設定の側で鍵を作ると、欠けたゾーンの透明な絵が
-    「完全な構成」の鍵で恒久的に残る。
+    描くのは設定したラスタが全部開けたときだけなので、設定の一覧から作る。
     """
-    raster_set = raster_set_fingerprint(landcover_raster.opened_raster_paths())
+    raster_set = raster_set_fingerprint(settings.lulc_raster_paths_list)
     return f"{LANDCOVER_TILE_VERSION}/{raster_set}"
 
 
@@ -93,14 +92,13 @@ def prune_other_generations(tile_versions: Mapping[TileKind, str]) -> int:
     `tile_versions`はDBの世代から組んだ系統名→配信する世代（`services/tile_version_service.py:
     current_tile_versions`）。土地被覆の世代はここで足す。
 
-    - 世代を読めていない系統（DBの世代が読めない・土地被覆のラスタが1枚も開けない）は消さない——
-      どれが今の世代か分からない。
+    - 世代を読めていない系統（DBの世代が読めない）は消さない——どれが今の世代か分からない。
     - どの系統の表にも無い系統（改名・廃止した系統）の鍵は消す——もう誰も読まない。
     """
     generations: dict[str, str | None] = {
         kind: version if is_known_tile_version(version) else None for kind, version in tile_versions.items()
     }
-    generations[LANDCOVER_TILE_KIND] = landcover_generation() if landcover_raster.has_sources() else None
+    generations[LANDCOVER_TILE_KIND] = landcover_generation()
 
     def is_stale(key: str) -> bool:
         kind = region_tile_kind(key)

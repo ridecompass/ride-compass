@@ -149,7 +149,7 @@ def get_route_generation_setup_opener(long_sessions: LongSessions) -> RouteGener
     return partial(_open_route_generation_setup, long_sessions)
 
 
-LandcoverTileReader = Callable[[int, int, int], Awaitable[bytes | None]]
+LandcoverTileReader = Callable[[int, int, int], Awaitable[bytes]]
 
 
 def get_landcover_tile_reader() -> LandcoverTileReader:

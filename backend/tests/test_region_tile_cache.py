@@ -98,13 +98,14 @@ async def test_a_tile_outside_the_coverage_is_the_empty_tile_and_is_not_stored(c
 
 
 @pytest.fixture
-def opened_rasters(monkeypatch):
-    """開けている土地被覆ラスタのパス（代役）。空にすると1枚も開けない状態になる。"""
-    opened = ["/data/zone53.tif"]
-    raster = region_tile_cache.landcover_raster
-    monkeypatch.setattr(raster, "has_sources", bound(raster.has_sources, lambda: bool(opened)))
-    monkeypatch.setattr(raster, "opened_raster_paths", bound(raster.opened_raster_paths, lambda: list(opened)))
-    return opened
+def configure_rasters(monkeypatch):
+    """設定する土地被覆ラスタのパスを渡す口。"""
+
+    def configure(*paths: str) -> None:
+        monkeypatch.setattr(region_tile_cache.settings, "lulc_raster_paths", ",".join(paths))
+
+    configure("/data/zone53.tif")
+    return configure
 
 
 def _store(*keys: str) -> None:
@@ -116,11 +117,11 @@ def _kept(*keys: str) -> set[str]:
     return {key for key in keys if tile_cache.get(key) is not None}
 
 
-def test_only_the_generations_being_served_stay_on_disk(opened_rasters):
-    landcover_now = region_tile_cache.landcover_generation()
-    opened_rasters.append("/data/zone54.tif")
+def test_only_the_generations_being_served_stay_on_disk(configure_rasters):
+    configure_rasters("/data/zone53.tif", "/data/zone54.tif")
     landcover_with_another_zone = region_tile_cache.landcover_generation()
-    opened_rasters.pop()
+    configure_rasters("/data/zone53.tif")
+    landcover_now = region_tile_cache.landcover_generation()
     keys = {
         "路面の今の世代": region_tile_key("road_surface", "3.2-aaa", 12, 1, 1, "pbf"),
         "路面の前の世代": region_tile_key("road_surface", "2.2-aaa", 12, 1, 1, "pbf"),
@@ -147,17 +148,8 @@ def test_only_the_generations_being_served_stay_on_disk(opened_rasters):
     assert removed == len(keys) - len(kept)
 
 
-def test_the_landcover_generation_carries_the_tile_version(opened_rasters):
+def test_the_landcover_generation_carries_the_tile_version(configure_rasters):
     """配色を変えて版を上げたら、前の版の絵をディスクから返さない。"""
     assert region_tile_cache.landcover_generation().startswith(f"{LANDCOVER_TILE_VERSION}/")
 
 
-def test_landcover_tiles_stay_while_no_raster_can_be_opened(opened_rasters):
-    """どれが今の構成か分からない間は消さない（起動時にラスタが一時に置かれていない等）。"""
-    key = region_tile_key("landcover", region_tile_cache.landcover_generation(), 12, 1, 1, "png")
-    _store(key)
-    opened_rasters.clear()
-
-    region_tile_cache.prune_other_generations({})
-
-    assert _kept(key) == {key}

@@ -12,11 +12,9 @@
 本物の署名へ当てる（`bound`）。範囲外の空のタイルのテストだけは骨格を本物で通す。
 """
 
-import logging
 
 import pytest
 
-from app.infrastructure import debug_log
 from app.services import landcover_tile_service as service
 from tests.bound_fake import bound
 
@@ -31,9 +29,6 @@ class Raster:
         #: False なら範囲外で描けない。
         self.inside = True
 
-    def has_sources(self) -> bool:
-        return bool(self.opened)
-
     def opened_raster_paths(self) -> list[str]:
         return list(self.opened)
 
@@ -44,7 +39,7 @@ class Raster:
 @pytest.fixture
 def raster(monkeypatch):
     fake = Raster(["/data/zone53.tif"])
-    for name in ("has_sources", "opened_raster_paths", "render_tile"):
+    for name in ("opened_raster_paths", "render_tile"):
         monkeypatch.setattr(RASTER, name, bound(getattr(RASTER, name), getattr(fake, name)))
     return fake
 
@@ -83,26 +78,3 @@ async def test_outside_the_rasters_the_tile_is_the_clear_image_of_the_raster(ras
     assert response == RASTER.empty_tile_png()
 
 
-# ---- ラスタが1枚も無いとき ----
-
-
-@pytest.mark.parametrize(
-    ("configured", "cause"),
-    [
-        ("", "LULC_RASTER_PATHSが未設定"),
-        ("/data/a.tif,/data/b.tif", "設定された2件のいずれも開けません"),
-    ],
-)
-async def test_without_any_raster_there_is_no_tile_and_the_cause_is_logged(
-    raster, served, monkeypatch, caplog, configured, cause
-):
-    raster.opened = []
-    monkeypatch.setattr(service.settings, "lulc_raster_paths", configured)
-
-    with caplog.at_level(logging.WARNING, logger=debug_log.logger.name):
-        assert await service.get_landcover_tile(10, 905, 403) is None
-
-    # 範囲外の空タイルとは区別する（空を返すと、地図は空なのに正常に見える）
-    assert served == []
-    # 前のテストで抑えた件数の知らせが、窓が替わって最初の警告の前に出ることがあるので、原因を持つ行で読む。
-    assert [r for r in caplog.records if r.name == debug_log.logger.name and cause in r.getMessage()]

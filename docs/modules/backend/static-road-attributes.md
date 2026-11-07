@@ -515,12 +515,12 @@ OSMは中央分離帯のある道路の上下線を別々のwayとして持ち�
 
 サービスは系統（`domain/registry.py: TileKind`か土地被覆）・世代・座標の値だけを渡し、ディスクの鍵
 （`region/<系統>/v<世代>/<z>/<x>/<y>.<拡張子>`）は`cache_identity.py: region_tile_key`が組む。世代は路面・点ならURLへ入る
-世代と同じ文字列（下の「タイル世代」）、土地被覆ならURLの世代に今開けているラスタ構成の指紋を足したもの
+世代と同じ文字列（下の「タイル世代」）、土地被覆ならURLの世代に設定したラスタ構成の指紋を足したもの
 （`region_tile_cache.py: landcover_generation`。下の「土地被覆ラスタタイル」）。
 
 **旧世代の掃除**（`region_tile_cache.py: prune_other_generations`）: 起動直後と`PRUNE_INTERVAL_HOURS`ごとに、
 `main.py`の定期ジョブが`RegionService.prune_other_tile_generations`（中身は`tile_version_service.py`の同名の関数）を呼び、今配っている世代の鍵でない地域タイルを消す。
-世代を読めていない系統（`x-`の世代・土地被覆のラスタが1枚も開けない）は消さず、系統の表に無い系統の鍵は消す。
+世代を読めていない系統（`x-`の世代）は消さず、系統の表に無い系統の鍵は消す。
 同じ置き場の基礎地図・地理院のタイル（鍵が`region/`で始まらない）には触らない。理由は[キャッシュ方針](../../../.claude/rules/caching-retention.md)「無効化」。
 
 ### 路面タイルが1フィーチャーとして焼く単位（`EDGE_UNIT_MIN_ZOOM`）

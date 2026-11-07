@@ -116,7 +116,7 @@ async def _load_boundaries_or_raise() -> AreaBoundaries:
             "（scripts/fetch_jma_area_boundaries.pyで取得する）",
             BOUNDARY_PATH, exc,
         )
-        raise AreaBoundariesUnavailableError from exc
+        raise AreaBoundariesUnavailableError("区域の境界を読めないため、警報・洪水予報の区域を引けません") from exc
 
 
 async def find_class20_codes(points: list[tuple[float, float]]) -> list[str | None]:
