@@ -12,7 +12,8 @@ import type LensControl from "@/features/map/LensControl/LensControl";
 import {
   buildDefaultLayerVisibility,
   deriveFetchLayerStatus,
-  TILE_ZOOM_TOO_WIDE_NOTICE,
+  ROAD_LINE_MIN_ZOOM,
+  tileNotice,
   tileVersionGatedLayerIds,
   tileZoomTooWideLayerIds,
   type LayerDataStatusByLayer,
@@ -33,7 +34,7 @@ import { useStoredState } from "@/hooks/useStoredState";
 import type { Coordinates, RoadAvoidanceOverride } from "@/types/route";
 import { avoidanceChoiceOf, type RoadTabMap } from "@/lib/roadAvoidance";
 import type { MapTheme } from "@/lib/mapTheme";
-import { ROAD_SURFACE_TILE_MIN_ZOOM, type RideConditions } from "@/features/map/regionApi";
+import type { RideConditions } from "@/features/map/regionApi";
 import { snapDeg } from "@/lib/cardinalLabel";
 import { countsAxis, countsCosts, DISABLED_LABEL } from "@/lib/costPreference";
 import type { WayValueCondition } from "@/lib/mapDisplay/mapLens";
@@ -178,11 +179,15 @@ export function useMapView({
     () => avoidanceChoiceOf(config.roadClasses.avoidance, roadAvoidance),
     [config.roadClasses.avoidance, roadAvoidance],
   );
-  // 道路タブで塗っている間は、塗れない理由（拡大が足りない）を道路タブに出す（道の層を出していないと、地図の上の行の状態の印が無い）。
-  const roadTabMapNotice =
-    roadAvoidanceShown && viewport !== null && viewport.zoom < ROAD_SURFACE_TILE_MIN_ZOOM
-      ? TILE_ZOOM_TOO_WIDE_NOTICE
-      : null;
+  // 道路タブで塗っている間は、塗れない理由（拡大が足りない・タイルの世代が届かない）を道路タブに出す（道の層を出していないと、地図の上の
+  // 行の状態の印が無い）。
+  const roadTabMapNotice = roadAvoidanceShown
+    ? tileNotice({
+        versionMissing: mapCatalog.tileVersions === null,
+        catalogSettled: config.loaded || config.failed,
+        zoomTooWide: viewport !== null && ROAD_LINE_MIN_ZOOM !== undefined && viewport.zoom < ROAD_LINE_MIN_ZOOM,
+      })
+    : null;
   // 式の木の条件の名前（`bearing_deg`・`speed_kmh`）で地図へ渡す。速度が数でない間は値の無いことにする。
   const formulaConditions = useMemo(
     () => ({ bearing_deg: bearingDeg, ...(Number.isFinite(speedKmh) ? { speed_kmh: speedKmh } : {}) }),

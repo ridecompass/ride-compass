@@ -159,7 +159,7 @@ wayの長さ（0はNULL）になる——件数と長さは必ず同じ側から
   503で返す（`api/failure_replies.py: install_failure_replies`）。
 - **画面の設定は解決した形で配る**（`GET /api/client-config`の`road_classes`の欄。`domain/road_class_catalog.py`）。公開した分け方
   だけを出し、色・層の説明のうち区分から組む部分をbackendが決める。区分の説明は意味の文だけで、条件は管理の経路
-  （`/api/admin/road-classes`）でだけ見せる。指紋（`generation`）は全体の中身から作る。
+  （`/api/admin/road-classes`）でだけ見せる。
 - **道路タブの見出しは地図の線の層から作る**: 見出しは除外に出す分け方ごとに1つで、名前は分け方の名前、並びは凡例の層の並び
   （`domain/road_classes.py: published_map_layers`）。見出しの名前・並びを別に持たないので、凡例と道路タブは食い違わない。
   除外に出す分け方は地図の線の層でなければならない（外部キー）——凡例に無い見出しを作らない。

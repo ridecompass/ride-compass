@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import { LEGEND_NO_DATA_KEY } from "@/lib/mapDisplay/mapColorLegend";
 import { ROAD_OTHER_KEY } from "@/lib/mapDisplay/roadTracks";
-import { evaluateExpression as evaluate } from "@/testing/mapExpressions";
+import { evaluateExpression as evaluate, matchesFilter } from "@/testing/mapExpressions";
 import { avoidanceChoiceOf, type AvoidanceChoice } from "@/lib/roadAvoidance";
 import { AVOIDANCE_LEVELS, avoidanceRow, roadClass, roadClassCatalog, roadMapLayer } from "@/testing/clientConfig";
 import { mapDisplay } from "@/types/generated/mapDisplay";
@@ -31,8 +31,8 @@ function build(state: Partial<RoadLineState>) {
 
 function linesOf(hidden: readonly string[] = []) {
   const built = build({ hiddenKeys: { surface: hidden } }).layers;
-  const paint = (role: string) => built.find((layer) => layer.role === role)?.paint ?? {};
-  return { solid: paint("surface"), dashed: paint("surface-no-data") };
+  const layer = (role: string) => built.find((candidate) => candidate.role === role)!;
+  return { solid: layer("surface"), dashed: layer("surface-no-data") };
 }
 
 /** 層の値ごとの、その道のタイルのプロパティ（区分の外の道は層の値を持たない）。 */
@@ -42,13 +42,17 @@ const ROADS = [
   { row: LEGEND_NO_DATA_KEY, properties: { surface: mapDisplay.road.noDataValue } },
 ];
 
-/** 道がどの線で何色・どの濃さに描かれるか。透明・濃さ0は描かれないものとして読む。 */
+/** 道がどの線で何色・どの濃さに描かれるか（絞り込みで落ちる・線を出していない道は描かれない）。 */
 function drawn(lines: ReturnType<typeof linesOf>, properties: Record<string, unknown>) {
-  const color = evaluate(lines.solid["line-color"], properties);
+  const { solid, dashed } = lines;
   return {
-    solid:
-      color === palette.semantic.hidden ? null : { color, opacity: evaluate(lines.solid["line-opacity"], properties) },
-    dashed: evaluate(lines.dashed["line-opacity"], properties) !== 0,
+    solid: matchesFilter(solid.filter, properties)
+      ? {
+          color: evaluate(solid.paint["line-color"], properties),
+          opacity: evaluate(solid.paint["line-opacity"], properties),
+        }
+      : null,
+    dashed: dashed.visible && matchesFilter(dashed.filter, properties),
   };
 }
 
@@ -71,10 +75,9 @@ describe("層の値から描く線", () => {
 describe("凡例で隠した行", () => {
   it.each(ROADS.map(({ row }) => row))("「%s」を隠すと、その行の道だけが消える", (hiddenRow) => {
     const lines = linesOf([hiddenRow]);
-    const dashedLayerShown = hiddenRow !== LEGEND_NO_DATA_KEY;
     for (const { row, properties } of ROADS) {
       const { solid, dashed } = drawn(lines, properties);
-      expect(solid !== null || (dashed && dashedLayerShown), row).toBe(row !== hiddenRow);
+      expect(solid !== null || dashed, row).toBe(row !== hiddenRow);
     }
   });
 });

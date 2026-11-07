@@ -36,12 +36,16 @@ def level_multipliers(avoid_cost_multiplier: float) -> dict[AvoidanceLevel, floa
 class AvoidanceRow(NamedTuple):
     """避け方を選べる行1つ。"""
 
-    #: `<分け方>.<区分>`。
-    key: str
     #: 見出しにする分け方。
     classification_key: str
+    class_key: str
     road_class: RoadClass
     override: AvoidanceOverride | None
+
+    @property
+    def key(self) -> str:
+        """`<分け方>.<区分>`。"""
+        return f"{self.classification_key}.{self.class_key}"
 
     @property
     def default_level(self) -> AvoidanceLevel:
@@ -58,7 +62,7 @@ def avoidance_rows(definitions: RoadClassDefinitions) -> list[AvoidanceRow]:
         for class_key, road_class in by_sort_order(definitions.classifications[key].classes):
             override = avoidance.overrides.get(class_key)
             if override is None or override.selectable:
-                rows.append(AvoidanceRow(f"{key}.{class_key}", key, road_class, override))
+                rows.append(AvoidanceRow(key, class_key, road_class, override))
     return rows
 
 

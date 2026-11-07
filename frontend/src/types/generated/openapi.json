@@ -2112,6 +2112,10 @@
             "type": "string",
             "title": "Section"
           },
+          "class_key": {
+            "type": "string",
+            "title": "Class Key"
+          },
           "label": {
             "type": "string",
             "title": "Label"
@@ -2136,6 +2140,7 @@
         "required": [
           "key",
           "section",
+          "class_key",
           "label",
           "description",
           "default"
@@ -4874,10 +4879,6 @@
       },
       "RoadClassCatalog": {
         "properties": {
-          "generation": {
-            "type": "string",
-            "title": "Generation"
-          },
           "map_layers": {
             "items": {
               "$ref": "#/components/schemas/RoadMapLayerView"
@@ -4892,7 +4893,6 @@
         "additionalProperties": false,
         "type": "object",
         "required": [
-          "generation",
           "map_layers",
           "avoidance"
         ],

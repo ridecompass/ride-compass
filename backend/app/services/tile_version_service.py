@@ -29,7 +29,7 @@
 import asyncio
 
 from app.domain.registry import TileKind
-from app.domain.road_classes import current_road_classes, road_class_generation
+from app.domain.road_classes import RoadClassDefinitions, current_road_classes, road_class_generation
 from app.infrastructure.cache_identity import shape_digest, tile_version
 from app.infrastructure.point_tile_layers import POINT_TILE_LAYERS
 from app.infrastructure.region_tile_cache import prune_other_generations
@@ -49,14 +49,17 @@ async def served_tile_version(repository, shape: str) -> str:
     return tile_version(await derived_data_revision_service.current_revisions(repository), shape)
 
 
+def road_surface_tile_shape(definitions: RoadClassDefinitions) -> str:
+    """路面タイルの形の署名。路面タイルは地図の線の層の値（材料に道の区分の全体`definitions`を当てたもの）を焼くので、材料の
+    読み方と区分の全体の指紋も入れる——管理画面で区分を書き換えると世代が変わる。"""
+    return shape_digest(ROAD_SURFACE_TILE_SHAPE, FEATURE_MATERIALS_SHAPE, road_class_generation(definitions))
+
+
 def tile_shapes() -> dict[TileKind, str]:
-    """配信するタイルの系統と、その形の署名。フロントが受け取る辞書のキーでもある。点のレイヤーはそれぞれ自分のSQLだけから
-    署名を持つので、1つのSQLを変えても他のレイヤーの世代は変わらない。路面タイルは地図の線の層の値（材料に今の道の区分を
-    当てたもの）を焼くので、材料の読み方と区分の全体の指紋も署名に入れる——管理画面で区分を書き換えると世代が変わる。"""
+    """配信するタイルの系統と、その形の署名（路面タイルは今の区分の全体で）。フロントが受け取る辞書のキーでもある。点のレイヤーは
+    それぞれ自分のSQLだけから署名を持つので、1つのSQLを変えても他のレイヤーの世代は変わらない。"""
     return {
-        "road_surface": shape_digest(
-            ROAD_SURFACE_TILE_SHAPE, FEATURE_MATERIALS_SHAPE, road_class_generation(current_road_classes())
-        ),
+        "road_surface": road_surface_tile_shape(current_road_classes()),
         **{layer.name: layer.shape for layer in POINT_TILE_LAYERS.values()},
     }
 

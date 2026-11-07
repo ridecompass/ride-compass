@@ -41,7 +41,6 @@ export function clientTuningValue(config: Pick<ClientConfig, "clientTuning">, id
 }
 
 const EMPTY_ROAD_CLASSES: RoadClassCatalog = {
-  generation: "",
   map_layers: [],
   avoidance: { levels: [], sections: [], rows: [] },
 };

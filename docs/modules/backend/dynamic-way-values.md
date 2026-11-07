@@ -98,7 +98,7 @@ SQLと式の木の材料では作れない体力（走行の模型）を、backe
 （`infrastructure/road_tile_sql.py: FEATURE_MATERIALS_IN_TILE_SQL`）。路面タイルが焼く地図の線の層の値（`FeatureMaterialService.road_layer_values`。
 `services/region_service.py: RegionService.get_road_surface_tile`が読む）は、これに区分の列（`domain/road_classes.py: class_columns`）を
 読むたびに当てて求める——持つものに区分を含めないので、区分を書き換えても材料を作り直さずに済む（路面タイルは世代に区分の
-指紋を入れて焼き直す。`services/tile_version_service.py: tile_shapes`）。
+指紋を入れて焼き直す。`services/tile_version_service.py: road_surface_tile_shape`）。
 
 - フィーチャーの並びと材料の表の結び方は路面タイルと同じ（区間単位のズームは区間の値、way単位のズームと区間を
   持たない道は道1本の行の値。密度の分母の長さもフィーチャーと同じ側から取る）。

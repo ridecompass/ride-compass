@@ -13,13 +13,14 @@ import numpy as np
 
 from app.domain.attributes import CategoricalColumn
 from app.domain.feature_materials import FeatureMaterials
+from app.domain.road_classes import EMPTY_ROAD_CLASSES
 from app.infrastructure import debug_log
 from app.infrastructure.derived_data_meta import DataRevisions
 from app.infrastructure.road_graph_repository import RoadGraphRepository
 from app.services import feature_materials
 from app.services.feature_materials import FeatureMaterialService
 from tests.bound_fake import bound
-from tests.road_class_fixture import classification, fact_is, map_layer, replaced_road_classes, road_classes
+from tests.road_class_fixture import classification, fact_is, map_layer, road_classes
 
 Z, X, Y = 14, 14551, 6447
 
@@ -47,7 +48,7 @@ class FakeFeatureMaterialsRepository:
 
 
 async def _num_a(service: FeatureMaterialService) -> float:
-    materials = await service.materials(Z, X, Y)
+    materials = await service.materials(Z, X, Y, EMPTY_ROAD_CLASSES)
     assert materials is not None
     return float(materials.columns["num_a"][0])
 
@@ -100,7 +101,6 @@ async def test_road_layer_values_are_served_per_feature_without_roads_outside_ev
     tile = FeatureMaterials(feature_keys=("1-0", "2-0"), columns={"cat_a": CategoricalColumn.encode(["a", "b"])})
     definitions = road_classes({"k": classification({"is_a": [fact_is("cat_a", "a")]})}, map_layers={"k": map_layer()})
 
-    with replaced_road_classes(definitions):
-        values = await FeatureMaterialService(FakeFeatureMaterialsRepository(tile)).road_layer_values(Z, X, Y)
+    values = await FeatureMaterialService(FakeFeatureMaterialsRepository(tile)).road_layer_values(Z, X, Y, definitions)
 
     assert values == {"1-0": {"k": "is_a"}}
