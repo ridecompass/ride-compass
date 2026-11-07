@@ -29,7 +29,9 @@ from app.domain.geo import KM_PER_DEGREE_LATITUDE, haversine_distance_km, km_per
 from app.domain.graph import node_key
 from app.domain.road_classes import TRUE_FACT_VALUE
 from app.domain.road_network import RoadNetwork
-from app.domain.route import Coordinates
+from app.domain.route import AxisFact, Coordinates
+from app.domain.material_catalog import material_spec
+from app.domain.cycling_speed import BASE_CRR_ID
 from app.domain.msm import MsmBlock, MsmGrid
 from app.domain.wind import WindForecastSeries
 from app.domain.time_zone import JST
@@ -931,11 +933,14 @@ HOURS_OF_THE_DAY = [datetime(2026, 9, 22, h) for h in range(24)]
 
 async def test_the_duration_and_the_penalty_of_each_axis_and_of_the_avoided_roads_add_up_to_the_cost(engine_over):
     """候補の費用（並べ方の値）は、所要時間と、軸ごとの代償の秒と、回避指定（なるべく避ける道）で上乗せした秒の和になる。
-    合わないと、画面の内訳を見ても候補がなぜその順に並んだのかが分からない。どの道もなるべく避け、道100だけが振動の材料を持つ。"""
+    合わないと、画面の内訳を見ても候補がなぜその順に並んだのかが分からない。どの道もなるべく避け、道100だけが振動の材料を持つ。
+    軸ごとの事実は、その軸の秒の元を1つ出す。"""
     definitions = road_classes(
         {"kind": classification({"local": [fact_is(HIGHWAY, "residential")]})},
         map_layers={"kind": map_layer()},
         avoidance_classifications={"kind": AvoidanceClassification(overrides={})},
+        rolling_resistance_classification="kind",
+        rolling_resistance_classes={"kind": {"local": BASE_CRR_ID}},
     )
     with replaced_road_classes(definitions), cost_axes_declared(cost_axes(BAD_MATERIAL)):
         candidates = await engine_over(
@@ -955,9 +960,11 @@ async def test_the_duration_and_the_penalty_of_each_axis_and_of_the_avoided_road
     fastest = fastest_of(candidates)
     assert ways_of(fastest) == [100, 101]
     assert fastest.penalty.axis_seconds[BAD_AXIS] > 0
-    # 事実は軸ごとに、名前と単位を付けて返す（画面が軸idで出し分けない）。道のストレスの軸の名前は定義から読む。
+    # 事実は軸ごとに、名前と単位を付けて返す（画面が軸idで出し分けない）。数の材料の軸は、その軸の秒に一番効いた区間（道100）の
+    # 材料の値を材料の宣言の名前と単位で、摩擦は一番効いた路面の区分の名前を出す。
     facts = fastest.facts.axes
-    assert set(facts) == {*EFFORT_AXES, BAD_AXIS}
-    assert facts[BAD_AXIS].label == "軸のある道"
-    assert facts[BAD_AXIS].value == pytest.approx(fastest.segments[0].distance_km, abs=0.02)
+    bad = material_spec(BAD_MATERIAL)
+    assert bad is not None
+    assert facts[BAD_AXIS] == AxisFact(label=bad.label, value=1.0, unit=bad.unit)
+    assert facts["friction"] == AxisFact(label=definitions.classifications["kind"].classes["local"].label, value=None, unit="")
     assert facts["stopping"].value > 0

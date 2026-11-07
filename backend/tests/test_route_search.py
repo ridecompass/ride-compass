@@ -40,7 +40,7 @@ from app.domain.route import (
     RouteFacts,
     concat_edge_geometries,
     reverse_elevation_by_edge,
-    route_elevation_gain,
+    elevation_gain,
 )
 from app.domain.route_search import (
     alternative_via_nodes,
@@ -103,7 +103,7 @@ def draft(distance_km, duration_seconds, cost_seconds):
         direction_label="", distance_km=distance_km, geometry={"type": "LineString", "coordinates": []},
         elevation_gain_m=None, segments=[], estimated_duration_seconds=duration_seconds, cost_seconds=cost_seconds,
         penalty=PenaltyBreakdown(axis_seconds={}, avoidance_seconds=0.0),
-        facts=RouteFacts(elevation_unknown_km=0.0, axes={}),
+        facts=RouteFacts(axes={}),
         missing_travel_data_share=None,
         edge_ids=[], edge_point_offsets=[], node_ids=[], turns=[], waypoint_distances_km=[],
     )
@@ -136,15 +136,12 @@ def test_concat_edge_geometries_offsets_slice_back_to_each_edge():
 @pytest.mark.parametrize(
     ("gains", "expected"),
     [
-        ({"e1": 10.0, "e4": 2.0}, 12.0),  # 標高の無い区間は集計の母集団から外す
-        ({}, None),  # 標高が1つも取れなかった経路は、0mではなく「取れなかった」として返す
+        ([10.0, np.nan, np.nan, 2.0], 12.0),  # 標高の無い区間は集計の母集団から外す
+        ([np.nan, np.nan], None),  # 標高が1つも取れなかった経路は、0mではなく「取れなかった」として返す
     ],
 )
-def test_route_elevation_gain_sums_only_present_values(gains, expected):
-    edges = [lean_edge("e1"), lean_edge("e2"), lean_edge("e3"), lean_edge("e4")]
-    attributes = {edge_id: elevation(edge_id, elevation_gain_m=gain) for edge_id, gain in gains.items()}
-
-    assert route_elevation_gain(edges, attributes) == expected
+def test_elevation_gain_sums_only_present_values(gains, expected):
+    assert elevation_gain(np.array(gains)) == expected
 
 
 def test_reverse_elevation_by_edge_pairs_the_path_in_reverse_order():

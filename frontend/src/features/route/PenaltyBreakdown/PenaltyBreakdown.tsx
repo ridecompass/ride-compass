@@ -1,24 +1,20 @@
 "use client";
 
 import { Dot } from "@/components/ui/Dot/Dot";
-import { stackBarClass } from "@/components/ui/AxisLegend/axisLegend";
-import { factValueText, formatPenalty, penaltyRows, type PenaltyCatalog } from "@/lib/routePenalty";
-import type { AxisFact, PenaltyBreakdown as PenaltyValues } from "@/types/route";
+import { formatPenalty, penaltyRows, type PenaltyCatalog } from "@/lib/routePenalty";
+import type { PenaltyBreakdown as PenaltyValues } from "@/types/route";
 
 interface PenaltyBreakdownProps {
   /** 代償の内訳（どの費用の軸も、倍率0の軸も0として持つ）。 */
   penalty: PenaltyValues;
-  /** 軸id→その軸の事実（ルート全体だけが持つ）。 */
-  facts?: Readonly<Record<string, AxisFact>>;
   catalog: PenaltyCatalog;
 }
 
-function factText(fact: AxisFact): string {
-  return `${fact.label} ${factValueText(fact)}`;
-}
+/** 負担の内訳: 軸ごとの秒を積んだ帯1本と、軸ごとの行（名前・負担の分）。帯の長さの全体は内訳の和。 */
+/** 帯グラフ。色ごとの長さが軸ごとの負担（軸の色は軸idではなく style で与える。費用の軸は管理APIで増減する）。 */
+const stackBarClass = "flex h-[10px] overflow-hidden rounded-[5px] bg-[var(--color-surface-2)]";
 
-/** 負担の内訳: 軸ごとの秒を積んだ帯1本と、軸ごとの行（名前・事実・負担の分）。帯の長さの全体は内訳の和。 */
-export default function PenaltyBreakdown({ penalty, facts = {}, catalog }: PenaltyBreakdownProps) {
+export default function PenaltyBreakdown({ penalty, catalog }: PenaltyBreakdownProps) {
   const rows = penaltyRows(penalty, catalog);
   const total = rows.reduce((sum, row) => sum + row.seconds, 0);
 
@@ -43,9 +39,6 @@ export default function PenaltyBreakdown({ penalty, facts = {}, catalog }: Penal
           <li key={row.id} className="flex items-baseline gap-1.5">
             <Dot tone="none" style={{ backgroundColor: row.color }} />
             <span>{row.label}</span>
-            {facts[row.id] !== undefined && (
-              <span className="text-[var(--color-muted-strong)] tabular-nums">{factText(facts[row.id])}</span>
-            )}
             <span className="ml-auto tabular-nums">{formatPenalty(row.seconds)}</span>
           </li>
         ))}

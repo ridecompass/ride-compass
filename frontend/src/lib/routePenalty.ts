@@ -47,13 +47,16 @@ export function costAxisLabel(
   );
 }
 
-/** 事実の値と単位（値を求められなければ「—」）。ルートの内訳と道の窓が同じ書き方で出す。 */
-export function factValueText(fact: AxisFact): string {
-  return fact.value === null ? "—" : `${formatLensNumber(fact.value)}${fact.unit}`;
+/** 軸`axisLabel`の行に添える、事実の名前と値と単位（区分の事実は値を持たず、名前が区分の名前）。事実の名前が軸の名前と同じなら
+ * 名前を省く（「向かい風 向かい風 2.3m/s」と重ねない）。ルートの一覧と道の窓が同じ書き方で出す。 */
+export function factText(fact: AxisFact, axisLabel: string): string {
+  if (fact.value === null) return fact.label;
+  const value = `${formatLensNumber(fact.value)}${fact.unit}`;
+  return fact.label === axisLabel ? value : `${fact.label} ${value}`;
 }
 
 /** 回避指定の行のid。軸のidと同じ並びに置くので、軸には無い綴りにする。 */
-const AVOIDANCE_ROW_ID = "<avoidance>";
+export const AVOIDANCE_ROW_ID = "<avoidance>";
 
 /** 内訳の行: 軸を一覧の順に（一覧に無い軸は応答の順で後ろに、名前はid）、続けて回避指定。秒が0の軸も残す（効く
  * はずの軸が効かなかったことも判断の材料になる）。回避指定は、秒があるときだけ出し、軸の無い行の色で塗る（データなしの

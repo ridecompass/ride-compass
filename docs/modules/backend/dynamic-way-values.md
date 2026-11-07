@@ -11,7 +11,7 @@
 
 | レイヤー | ファイル |
 |---|---|
-| domain | `way_value_formula.py`（中立の式の木の型と、numpyでの評価）・`gradient.py`（道を辿る向きを走行方位で選ぶ木と、勾配の桁）・`lens_values.py`（タイルのフィーチャーと辿る向きで網の行を束ね、1kmあたりの代償の秒にする・地図の式の木・押した道の値と事実）・`lens_equivalents.py`（段の境目の秒の、標準の条件での事実の目安）・`lens_total.py`（総合のレンズのidと、軸ごとの値から総合を出す決まり。ルートの線も読む）・`feature_materials.py`（タイル1枚のフィーチャーごとの材料の型） |
+| domain | `way_value_formula.py`（中立の式の木の型と、numpyでの評価）・`gradient.py`（道を辿る向きを走行方位で選ぶ木と、勾配の桁）・`lens_values.py`（タイルのフィーチャーと辿る向きで網の行を束ね、1kmあたりの代償の秒にする・地図の式の木・押した道の区間の秒と事実）・`lens_equivalents.py`（段の境目の秒の、標準の条件での事実の目安）・`lens_total.py`（総合のレンズのidと、軸ごとの値から総合を出す決まり。ルートの線も読む）・`feature_materials.py`（タイル1枚のフィーチャーごとの材料の型） |
 | services | `lens_service.py`（タイル1枚のレンズの値と、押した道のレンズの値と事実）・`feature_materials.py`（タイルのフィーチャーごとの材料を読み、ディスクへ持つ。地図の線の層の値）・`region_service.py: RoadInspectorService`（道の窓） |
 | infrastructure | `feature_material_cache.py`（タイルのフィーチャーごとの材料。ディスク経由）・`tile_persistent_cache.py`（呼び出し元が設計したタプルの鍵でPythonオブジェクトを置く汎用のディスクキャッシュ。`diskcache`の包み。路面タイルの世代に結んだ値を、世代を読めたときだけ24時間持つ口`tile_persistent_cache.py: set_tile_entry`も持つ） |
 | api | `region.py`（`GET /api/region/lens/{lens_id}/...`・`GET /api/region/road-classes/...`・`POST /api/region/road-inspector`）・`dependencies.py`（`dependencies.py: get_lens_service`・`dependencies.py: get_road_inspector_service`・`dependencies.py: get_feature_material_service`） |
@@ -64,14 +64,16 @@ SQLと式の木の材料では作れない体力（走行の模型）を、backe
 ## 道の窓（`services/region_service.py: RoadInspectorService`）
 
 道を押したときの窓（`POST /api/region/road-inspector`）は、押した道の一次属性（`highway`・タグ）と、**押したフィーチャー**
-（区間で塗る倍率なら区間、道1本で塗る倍率なら道1本）のレンズの値を返す。レンズの値は地図のレンズと同じタイルの値から
-求め（`services/lens_service.py: LensService.inspect`）、窓のために別の評価を持たない——窓の値は押した倍率の地図の線の色と
-同じになる。
+（区間で塗る倍率なら区間、道1本で塗る倍率なら道1本）の代償の秒を返す。秒は地図のレンズと同じタイルの行ごとの秒を
+押したフィーチャーの区間の長さぶん足したもので（`services/lens_service.py: LensService.inspect`）、窓のために別の評価を持たない
+——窓の秒を区間の長さで割ると、押した倍率の地図の線の色の値になる。
 
-- **値**: 押したフィーチャーの両方の向きの総合と軸ごとの秒、地図がいま塗っている向き（地図と同じ式の木で選ぶ）、元の事実
-  （断面の一番急な登り・下り、向かい風の成分、止まる回数——止まる出来事を漕ぎ出す回数に換え、欠けを埋めた、探索・凡例の目安と
-  同じ量——の1kmあたり。名前と単位を付けて返す。ほかに転がり抵抗の区分で一番長い路面）を、要求の`cost_preference`で返す。
-  事実は体感する量で、レンズの秒の内訳を辿るためのもの。
+- **値**: 押したフィーチャーの両方の向きの総合と軸ごとの秒、地図がいま塗っている向き（地図と同じ式の木で選ぶ）、軸ごとの元の
+  事実を、要求の`cost_preference`で返す。事実はルートの事実と同じ作り方（`domain/leg_costs.py: axis_facts`）で、その軸の換算
+  ルールが読む値を1つ——登坂は押した区間の辿る向きの登り、向かい風は向かい風の成分の長さで重みを付けた平均、停止は止まる回数
+  （止まる出来事を漕ぎ出す回数に換え、欠けを埋めた、探索と同じ量）、摩擦と区分の材料の道のストレスの軸はその軸の秒に一番効いた
+  区分の名前、数の材料の道のストレスの軸はその軸の秒に一番効いた区間の材料の値（名前と単位は材料の宣言）。求められない事実
+  （風を読めないときの向かい風）は載せない。数えない（無効の）軸は秒も事実も載せない。
 - **要求**: 走行方位・時刻・想定速度・押したタイルを本文で受ける（押した位置をURLに残さない）。押した道か、押したタイルの
   そのフィーチャーが見つからなければ`null`。
 

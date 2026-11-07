@@ -1210,8 +1210,8 @@ export interface components {
         LensAxisSeconds: {
             /** Axis Id */
             axis_id: string;
-            /** Seconds Per Km */
-            seconds_per_km: number;
+            /** Seconds */
+            seconds: number;
         };
         /** LensBands */
         LensBands: {
@@ -1222,12 +1222,14 @@ export interface components {
         };
         /** LensDirection */
         LensDirection: {
-            /** Total Seconds Per Km */
-            total_seconds_per_km: number;
+            /** Total Seconds */
+            total_seconds: number;
             /** Axes */
             axes: components["schemas"]["LensAxisSeconds"][];
             /** Facts */
-            facts: components["schemas"]["AxisFact"][];
+            facts: {
+                [key: string]: components["schemas"]["AxisFact"];
+            };
         };
         /** LensInspection */
         LensInspection: {
@@ -1235,8 +1237,6 @@ export interface components {
             painted: ("along" | "against") | null;
             along: components["schemas"]["LensDirection"] | null;
             against: components["schemas"]["LensDirection"] | null;
-            /** Surface */
-            surface: string | null;
         };
         /** LinearBurden */
         LinearBurden: {
@@ -1698,8 +1698,6 @@ export interface components {
         };
         /** RouteFacts */
         RouteFacts: {
-            /** Elevation Unknown Km */
-            elevation_unknown_km: number;
             /** Axes */
             axes: {
                 [key: string]: components["schemas"]["AxisFact"];
