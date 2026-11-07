@@ -27,10 +27,18 @@ interface RoadClassesFetch {
 type TileResult = QueryObserverResult<Awaited<ReturnType<typeof fetchRoadClasses>>>;
 
 // 結果が変わらない限り同じ参照を返すよう、まとめ方はモジュールに1つだけ置く（`useQueries`は関数の参照が同じなら
-// まとめ直さない）。
+// まとめ直さない）。取得中かが替わっただけなら、届いたタイルは同じなので前の値をそのまま返す（地図は値の参照が同じなら道ごとに
+// 比べ直さない）。
+let mergedTiles: readonly unknown[] = [];
+let mergedValues: RoadClassValues = mergeTileValues([]);
 function combine(results: TileResult[]): Omit<RoadClassesFetch, "truncated"> {
+  const tiles = results.flatMap((result) => (result.data ? [result.data] : []));
+  if (tiles.length !== mergedTiles.length || tiles.some((tile, index) => tile !== mergedTiles[index])) {
+    mergedTiles = tiles;
+    mergedValues = mergeTileValues(tiles);
+  }
   return {
-    values: mergeTileValues(results.flatMap((result) => (result.data ? [result.data] : []))),
+    values: mergedValues,
     loading: results.some((result) => result.isFetching),
     error: results.find((result) => result.error !== null)?.error?.message ?? null,
   };

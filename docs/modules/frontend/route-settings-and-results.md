@@ -34,7 +34,7 @@
 | `hooks/useSharedCatalog.ts` | 画面の全体が読む一覧（画面の設定・費用の軸の一覧）の取得の共通の形: 読み手の間で1つの取得を共有し、マウントのたびに取り直し、届いた応答を後の失敗で巻き戻さない（`hooks/useSharedCatalog.ts: useSharedCatalog`）。まだ届いていないときだけ取り直す再試行（`hooks/useSharedCatalog.ts: retrySharedCatalogFetch`） |
 | `services/costAxisCatalogApi.ts` | 上記フックが叩くbackend APIの薄いラッパーと、凡例の段の境目の目安（`GET /api/cost-axes/lens-equivalents`。`services/costAxisCatalogApi.ts: getLensEquivalents`）の口 |
 | `features/route/RouteSettingsPanel/HardFilterPanel.tsx` | 「道路」タブの中身。地図の道のレイヤの凡例の行ごとの避け方を1つの並びに出し、自転車が通れない道の行は「通らない」に固定して鍵を付ける（下記「除外」）。選べる行の鍵・名前・既定の段と行をまとめる節は画面の設定の`road_classes.avoidance`が、固定の行の名前と説明は生成物`route-generate-config.json`の`route-generate-config.json: hard_filters`が正で、名前をフロントに持たない——キーと名前を別々に持つと、足した行に名前が無く内部名が出る。画面の設定が届くまでは選べる行を出さない |
-| `features/route/roadAvoidance.ts` | 画面に出す行の段を決める（`features/route/roadAvoidance.ts: avoidanceLevelOf`。選んでいなければ既定の段）。要求には選んだ段をそのまま送り、行の増減はbackendが揃える |
+| `lib/roadAvoidance.ts` | 画面に出す行の段を決める（`lib/roadAvoidance.ts: avoidanceLevelOf`。地図が好む・避けるの道に添える線も同じ段を読む。選んでいなければ既定の段）。要求には選んだ段をそのまま送り、行の増減はbackendが揃える |
 | `features/route/SavedPlacesPanel/SavedPlacesPanel.tsx` | 「保存済み」タブの「地点」の中身: 保存した地点の一覧（行は名前・辺りと、アイコンの「呼び出す」「消す」。呼び出すはメニューで出発地・経由地・目的地のどれに置くかを選び（周回の間は目的地を使わないので「目的地にする」を押せない）、消すは確認の窓で「消す」を押すと消す）。無ければ無いと出し、保存の仕方は(i)の奥（下記「保存した地点」） |
 | `features/route/SavedList/SavedList.tsx` | 「保存済み」タブの一覧（地点・プリセット）の形: 空の案内と保存の仕方の(i)・行の枠・消す操作と確認の窓。行の名前の欄と行ごとの操作（「呼び出す」）は使う側が渡す |
 | `features/route/useSavedPlaces.ts` | 保存した地点の一覧（この端末の`localStorage`）と、保存・削除 |
@@ -167,16 +167,16 @@
 道のりのグラフの「負担で塗る」の右上のボタン（「表示」の一覧と同じ`ProfileLayerPicker.tsx`。今積んでいる数の印つき）から開く。行は
 「チェック・色・軸の名前・その軸の事実・ルート全体の負担の分」で、チェックで積む軸を足し・外す（選びは端末に覚える）。
 
-- 行は費用の軸の一覧（`GET /api/cost-axes`）の順で、一覧に無い軸は応答の順で後ろに軸idの名前で置き、好む道で下げた秒の行
-  （「好む道 −3分」）と避ける道で上乗せした秒の行（「避ける道 +1分」）を、それぞれ秒があるときだけ最後に置く（`lib/routePenalty.ts: penaltyRows`。
-  行の名前は費用の軸の一覧の`preferred_label`・`avoided_label`）。どちらも軸ではないので積めず、チェックを置かない。秒が0の軸も行に残す——効く
-  はずの軸が効かなかったことも判断の材料になる。数えない（無効の）軸は応答に無いので行も無い。
+- 行は費用の軸の一覧（`GET /api/cost-axes`）の順で（`lib/routePenalty.ts: penaltyRows`）、届いた一覧に無い軸は投げる。秒が0の軸も行に
+  残す——効くはずの軸が効かなかったことも判断の材料になる。数えない（無効の）軸は応答に無いので行も無い。避け方の倍率が好む道で下げた秒・
+  避ける道で上乗せした秒は行に出さない（区間の内訳も同じ）。どこで効いたかは、地図のルートの線の両脇の線が見せる（下の「好む・避けるの区間の
+  両脇の線」）。候補のカードの負担の数には入ったまま。
 - 事実（`RouteCandidate.facts.axes`）は軸ごとに backend が名前・値・単位を付けて返すので、画面は軸idで出し分けずにそのまま出す。区分の
   事実（値が無い）は名前だけを出す（`lib/routePenalty.ts: factText`。道の窓も同じ書き方）。求められない事実は届かず、その行は事実を出さない。
 - 行の色は費用の軸の一覧の並びから決める（`hooks/useCostAxisCatalog.ts: CostAxisCatalog.axisColors`。道のりのグラフ・区間の内訳・
   編集面の差の棒も同じ色）。色の並びは backend の宣言（`domain/display_palette.py: COST_SERIES_COLORS`）が持ち、生成物`palette.json`の
-  `cost_series`で届く。並びより多い行は軸の無い行の色にする。好む道・避ける道の行は軸の無い行の色（データなしの灰色とは別）。一覧が届くまでは
-  軸・好む道・避ける道の行の名前を「読み込み中」、取れない間は「取得できません」と出す。
+  `cost_series`で届く。並びより多い行は軸の無い行の色にする。一覧が届くまでは軸の行の名前を「読み込み中」、取れない間は「取得できません」と
+  出す。
 
 ## PenaltyBreakdown.tsx（区間の負担の内訳）
 
@@ -202,6 +202,11 @@
 - **選んだ区間の範囲の縁取り**（`scene/groups/routes.ts`の役割`selectedSection`）: グラフの区間の帯と同じ区間の形を、どのルートの線より
   後ろに太い半透明の線で敷き、線の外側へはみ出た所で範囲を示す（線の上に重ねると区間の色分けを隠す）。選んでいる区間が選んでいる候補の
   区間のときだけ敷く。
+- **好む・避けるの区間の両脇の線**（役割`preferredRail*`・`avoidedRail*`）: 道路タブで好む・避けるにした道を通った区間（区間の内訳の
+  好む道で下げた秒・避ける道で上乗せした秒が0でない区間）に、縁取りの外へ細い線を左右に添える。好むは実線、避けるは破線で、色・太さ・
+  間隔・刻みは源泉の宣言（`palette.semantic.avoidance_preferred`・`avoidance_avoided`、`mapDisplay.avoidanceRail`）。選んだ区間の縁取り
+  （線の後ろの太い帯）とは形で見分け、好む区間を選ぶと帯の上に両脇の線が残る。地図の道にも同じ線を添える
+  （[地図: 静的レイヤー](static-map-layers.md)「好む・避けるの道の両脇の線」）。
 
 中身は道のりのグラフの表示の断面で、到達予想時刻と、グラフで選んでいる層の区間の値（線の層は区間の平均と最大の勾配
 〔`features/route/RouteProfile/profileLayers.ts: segmentGrades`〕、帯の層は区間の区分の付く道に占める割合の多い順の行

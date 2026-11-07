@@ -101,6 +101,9 @@ from app.domain.map_display import (
     POINT_STROKE_WIDTH_PX,
     SEGMENT_NEARBY_POINT_MAX_DISTANCE_M,
     ROAD_INSPECTED_WIDTH_PX,
+    AVOIDANCE_RAIL_WIDTH_PX,
+    AVOIDANCE_RAIL_GAP_PX,
+    AVOIDANCE_AVOIDED_DASH,
     ROAD_KNOWN_OPACITY,
     ROAD_LINE_WIDTH_PX,
     ROAD_TRACK_OFFSET_STEP_PX,
@@ -402,6 +405,12 @@ def main() -> None:
                 "inspectedWidthPx": ROAD_INSPECTED_WIDTH_PX,
                 # 地図の線の層の値で「データなし」。
                 "noDataValue": NO_DATA_VALUE,
+            },
+            # 好む・避けるの道の両脇に添える線（ルートの線と地図の道で共有）。
+            "avoidanceRail": {
+                "widthPx": AVOIDANCE_RAIL_WIDTH_PX,
+                "gapPx": AVOIDANCE_RAIL_GAP_PX,
+                "avoidedDash": list(AVOIDANCE_AVOIDED_DASH),
             },
             "point": {
                 "radiusPx": POINT_RADIUS_PX,

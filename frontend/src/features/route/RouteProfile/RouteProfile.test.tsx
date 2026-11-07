@@ -3,8 +3,8 @@
  * 地点を選んでいる間の「区間を地図で見る」。
  *
  * 見るもの: 既定で「負担で塗る」（負担のグラフ）を出すこと、選んでいなければルートで負担の大きい2つを積み、右上の
- * 「グラフに積む負担」の一覧に軸ごとの事実と負担の分を並べ、チェックで積む軸を足し・外して端末に覚えること（好む道・避ける道の行は
- * チェックを持たず、走行中の図は一覧を出さない）、両方のタブで経由地を通る所に線と番号の印を出し、走り終えた経由地を薄めること。タブは結果も
+ * 「グラフに積む負担」の一覧に軸ごとの事実と負担の分を並べ、チェックで積む軸を足し・外して端末に覚えること（避け方の倍率が増減した
+ * 分は行に出さず、走行中の図は一覧を出さない）、両方のタブで経由地を通る所に線と番号の印を出し、走り終えた経由地を薄めること。タブは結果も
  * 走行中も地図の入口と同じ絵だけで出し（名前は読み上げに残す）、押すと図が替わること。走行中の図は、目盛り・図の下の文字を
  * 結果の図より大きくすること。地点を選ぶと、右上に「区間を地図で見る」を出すこと。
  *
@@ -36,7 +36,7 @@ import type { SelectedRouteSegment } from "@/types/route";
 beforeEach(serveProfileCatalog);
 
 describe("RouteProfile", () => {
-  it("はじめは「負担で塗る」で、負担の大きい2つを積む。右上の「グラフに積む負担」の一覧は軸ごとに事実と負担の分を並べ、チェックで積む軸を足し・外して端末に覚え、避ける道の行にはチェックを置かない", async () => {
+  it("はじめは「負担で塗る」で、負担の大きい2つを積む。右上の「グラフに積む負担」の一覧は軸ごとに事実と負担の分を並べ、チェックで積む軸を足し・外して端末に覚え、避ける道で上乗せした分は行に出さない", async () => {
     window.localStorage.clear();
     const catalog = {
       ...PROFILE_COST_CATALOG,
@@ -85,7 +85,6 @@ describe("RouteProfile", () => {
       ["登坂登り 240m+5分", "true"],
       ["振動砂利+1分", "false"],
       ["停止+2分", "true"],
-      ["避ける道+2分", null],
     ]);
     expect(fills()).toEqual([catalog.axisColors.ascent, catalog.axisColors.stopping]);
 
@@ -96,7 +95,7 @@ describe("RouteProfile", () => {
     unmount();
     render(element());
     await openList();
-    expect(rows().map(([, checked]) => checked)).toEqual(["false", "true", "true", null]);
+    expect(rows().map(([, checked]) => checked)).toEqual(["false", "true", "true"]);
   });
 
   it("両方のタブで、経由地を通る所に縦の線と地図のピンと同じ番号の印を出し、走行中は走り終えた経由地を薄める", async () => {

@@ -31,8 +31,6 @@ const CATALOG = {
     { axisId: "light", label: "街灯" },
   ],
   axisColors: { width: "red", traffic: "green", slope: "blue", light: "gray" },
-  preferredLabel: "好む道",
-  avoidedLabel: "避ける道",
   loaded: true,
   failed: false,
 };

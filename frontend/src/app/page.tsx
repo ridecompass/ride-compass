@@ -112,6 +112,7 @@ export default function Home() {
   const generatedPreference = route.generation.generatedInput?.costPreference;
   // ルートを出している間は、そのルートを生成したときの値で地図も塗る（ルートの線と周りの道を同じ量にする）。
   const mapCostPreference = generatedPreference ?? conditions.costPreference;
+  const mapRoadAvoidance = route.generation.generatedInput?.roadAvoidance ?? conditions.roadAvoidance;
 
   const mapView = useMapView({
     hasSelectedRoute: results.selectedCandidate !== null,
@@ -120,6 +121,7 @@ export default function Home() {
     riding: ridingWayConditions,
     now: ride.departure.now,
     costPreference: mapCostPreference,
+    roadAvoidance: mapRoadAvoidance,
   });
 
   // 地図は出発地を真ん中にして開くので、地図が範囲を知らせる前は出発地が真ん中。

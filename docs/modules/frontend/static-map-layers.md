@@ -17,7 +17,7 @@
 |---|---|
 | `lib/mapDisplay/roadTracks.ts` | 道の線の層（画面の設定が配る`road_classes.map_layers`）の凡例の行（区分・その他／該当なし・データなし）と、道の区分が入る行（`lib/mapDisplay/roadTracks.ts: roadTrackRowOf`）。地図の線・地図の凡例・道のりのグラフの帯が同じ行を読むので、同じ道が地図と帯で同じ色・呼び名になる |
 | `features/map/scene/groups/roadLines.ts` | 道路の線（例: 路面の種類・トンネル・自転車レーン）を、backendの配る層の値（feature-state）と`roadTracks.ts`の行から式へ組んだ配色と、詳細を見ている1本の強調。**線レイヤーで分類を運ぶのは色だけで、太さは情報を持たず、線種が運ぶのは値が無いこと（タグが無い道＝「データなし」の破線）だけ**——1本の線へ複数の分類を載せると、色の意味が他方のON/OFFで入れ替わる。同時表示は横へ平行に割り付けて分ける |
-| `features/map/useRoadClasses.ts` | 道路の線を塗る道ごとの層の値を、表示中のタイルを1枚ずつ問い合わせて取り（[地図: レンズ・ルート色分け](map-axis-coloring.md)の`features/map/tileQueries.ts`）、取得中・失敗とともに返す（道の線の層が1つも出ていない間は取らない） |
+| `features/map/useRoadClasses.ts` | 道路の線を塗る道ごとの層の値を、表示中のタイルを1枚ずつ問い合わせて取り（[地図: レンズ・ルート色分け](map-axis-coloring.md)の`features/map/tileQueries.ts`）、取得中・失敗とともに返す（道の線の層が1つも出ておらず、道路タブで好む・避けるにした区分も無い間は取らない） |
 | `lib/mapDisplay/pointLayers.ts` | 点で描く属性（`lib/mapDisplay/pointLayers.ts: POINT_LAYERS`）と、点の値が入る行（`lib/mapDisplay/pointLayers.ts: pointCategoryOf`）・大きさの軸と行の半径・点の名前（`lib/mapDisplay/pointLayers.ts: pointPlaceName`）・束ねた代表点の中の名前のある点（`lib/mapDisplay/pointLayers.ts: pointMembers`）。地図の点・地図の凡例・点のポップアップ・道のりのグラフの印が同じ宣言を読むので、同じ点が地図とグラフで同じ色・呼び名になる |
 | `features/map/scene/groups/points.ts` | 停止要因POI・補給休憩POI・事故・立ち寄り先の分類・配色・点の絵と枠・描き始める縮尺と積む順・束ねた点の数の文字と、同じタイルを分け合う条件 |
 | `features/map/scene/groups/sidePoints.ts` | 選んだ区間の近くの点を、点の層のタイルから点の層と同じ色・絵記号で描く印と、近いかの絞り込み（下記「選んだ区間の近くの点」） |
@@ -277,6 +277,13 @@ DOM/MapLibreを一切知らない。`MapView.tsx`は画面の状態をsceneの�
 読めないので、凡例で隠した行は透明で落とし、データなしの道は破線だけの線を重ねて濃さで出し入れする。区分の外の道は値を
 持たないので、値を取っている間は値の無い道をどれも取得中の色（`palette.semantic.loading`）で描く。取得中・失敗は、出ている道の線の
 層のチップの状態ドットに出る。両方ONのときは下記の並列トラックが横へ分ける。
+
+**好む・避けるの道の両脇の線**: 道路タブで好む・避けるにした区分（行の段は`lib/roadAvoidance.ts: avoidanceLevelOf`。ルートを出している間は
+そのルートを生成したときの段）の道に、道の層を出していなくても細い線を左右に添える。道路タブの見出しは地図の道の線の層の分け方なので、
+道ごとの層の値から、当たる行の段のうち一番強いもの（`lib/roadAvoidance.ts: strongestAvoidance`。順は画面の設定の段の並び＝倍率の
+小さい順で、通るは数えない。費用と同じ決め方）を決めて feature-state に載せ、段ごとに1枚の線（`line-gap-width`で左右の2本。塗りは
+`scene/sceneBuilders.ts: avoidanceRailPaint`）で、その段の道だけを濃く描く。ルートの線の両脇の線（[ルート設定・結果](route-settings-and-results.md)）と
+同じ色・形で、地図とルートで意味をそろえる。
 
 区分に当てはまらない道は2種類を分ける。**事実の無い道は「データなし」**（値が無い。薄い灰の破線、刻みは`mapDisplay.noDataDash`）、
 **事実はあるが区分の外の道は「その他」**（値はある。薄い灰の実線）。分けるかは層が決め（`has_no_data`）、分けない層は「データなし」の

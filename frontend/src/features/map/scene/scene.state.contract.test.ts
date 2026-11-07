@@ -140,6 +140,7 @@ describe("状態を地図へ伝えた結果", () => {
     // 北緯35.6度の上を東へ進む、長さ1kmの区間を2つつないだルート。
     const segment = (from: number, to: number) => ({
       distance_km: 1,
+      ...penaltyFields({}, 1),
       start_longitude: from,
       start_latitude: 35.6,
       end_longitude: to,

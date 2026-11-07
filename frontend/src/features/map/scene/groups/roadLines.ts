@@ -18,9 +18,10 @@ import { mapDisplay } from "@/types/generated/mapDisplay";
 import palette from "@/types/generated/palette.json";
 import regionTileConfig from "@/types/generated/region-tile-config.json";
 
-import { featureStatesByName, sceneSourceId } from "@/features/map/scene/sceneBuilders";
+import { avoidanceRailPaint, featureStatesByName, sceneSourceId } from "@/features/map/scene/sceneBuilders";
 import { LEGEND_NO_DATA_KEY } from "@/lib/mapDisplay/mapColorLegend";
 import { ROAD_OTHER_KEY, roadTrackRowOf, type RoadTrackRow } from "@/lib/mapDisplay/roadTracks";
+import { strongestAvoidance, type AvoidanceChoice } from "@/lib/roadAvoidance";
 import type { RoadMapLayerView } from "@/types/route";
 
 import { declareGroup, type SceneLayerEntry, type SceneSourceEntry } from "@/features/map/scene/mapSceneGroups";
@@ -52,12 +53,34 @@ export type RoadLineState = {
   readonly classes: RoadClassValues;
   /** 今の範囲の層の値を取っている最中か。 */
   readonly loading: boolean;
+  /** 道路タブで選んだ段（好む・避けるの道の両脇に線を添える）。 */
+  readonly avoidance: AvoidanceChoice;
   /** 詳細を見ている道の線の形（経度, 緯度）。開いていなければ null。 */
   readonly inspectedShape: readonly (readonly [number, number])[] | null;
 };
 
 /** 道ごとの層の値。feature_key → 層のid → 区分の鍵か「データなし」（区分の外の道の層は鍵ごと無い）。 */
 export type RoadClassValues = ReadonlyMap<string, Readonly<Record<string, string>>>;
+
+/** 道ごとの、当たる行の段のうち一番強いもの（`lib/roadAvoidance.ts: strongestAvoidance`）を載せる名前。層のidと重ならない
+ * 綴りにする。 */
+const AVOIDANCE_NAME = "<avoidance>";
+
+const withAvoidanceByInput = new WeakMap<RoadClassValues, { choice: AvoidanceChoice; values: RoadClassValues }>();
+
+/** 道ごとの層の値に、一番強い段（`AVOIDANCE_NAME`）を足したもの。同じ入力からは同じ参照を返す（feature-state を比べ直さない）。 */
+function withStrongestAvoidance(classes: RoadClassValues, choice: AvoidanceChoice): RoadClassValues {
+  const cached = withAvoidanceByInput.get(classes);
+  if (cached?.choice === choice) return cached.values;
+  const values = new Map(
+    [...classes].map(([featureKey, byLayer]) => {
+      const level = strongestAvoidance(byLayer, choice);
+      return [featureKey, level === null ? byLayer : { ...byLayer, [AVOIDANCE_NAME]: level }] as const;
+    }),
+  );
+  withAvoidanceByInput.set(classes, { choice, values });
+  return values;
+}
 
 const NO_DATA_VALUE = ROAD.noDataValue;
 
@@ -141,7 +164,7 @@ export const roadLineGroup = declareGroup<RoadLineState>((state) => {
       },
       sourceLayer: tiles.sourceLayer,
       tiles: tiles.urls,
-      featureStates: featureStatesByName(state.classes, stateKey),
+      featureStates: featureStatesByName(withStrongestAvoidance(state.classes, state.avoidance), stateKey),
     },
   ];
 
@@ -149,22 +172,22 @@ export const roadLineGroup = declareGroup<RoadLineState>((state) => {
   const offsets = offsetsFor(shown.length);
   const offsetOf = new Map(shown.map((layer, index) => [layer.id, offsets[index] ?? 0]));
 
+  const line = {
+    tier: "observedLine",
+    source: ROAD_LINE_SOURCE_ID,
+    sourceLayer: tiles.sourceLayer,
+    type: "line",
+  } as const;
   const layers: SceneLayerEntry[] = state.layers.flatMap((layer) => {
     const hiddenKeys = state.hiddenKeys[layer.id] ?? [];
     const visible = state.visible[layer.id] === true;
-    const line = {
-      tier: "observedLine",
-      source: ROAD_LINE_SOURCE_ID,
-      sourceLayer: tiles.sourceLayer,
-      type: "line",
-    } as const;
     const offset = offsetOf.get(layer.id) ?? 0;
     return [
       {
         ...line,
         role: layer.id,
         paint: {
-          "line-color": colorExpression(layer, hiddenKeys, state.loading),
+          "line-color": colorExpression(layer, hiddenKeys, state.loading && visible),
           "line-width": ROAD.lineWidthPx,
           "line-opacity": opacityExpression(layer),
           "line-offset": offset,
@@ -186,6 +209,26 @@ export const roadLineGroup = declareGroup<RoadLineState>((state) => {
       },
     ];
   });
+
+  // 道路タブで好む・避けるにした区分の道の両脇の線。道ごとの一番強い段（feature-state）が段に合う道だけを濃く描く。出している
+  // 道の層の幅（詳細を見ている道の強調の幅より細ければそちら）の外へ間隔だけ出す。
+  const railOffset =
+    Math.max(ROAD.inspectedWidthPx / 2, Math.max(0, ...offsets.map(Math.abs)) + ROAD.lineWidthPx / 2) +
+    mapDisplay.avoidanceRail.gapPx;
+  const chosenLevels = new Set(state.avoidance.levels.values());
+  const railLayer = (level: "prefer" | "avoid", color: string): SceneLayerEntry => ({
+    ...line,
+    role: `${level}-rail`,
+    paint: {
+      ...avoidanceRailPaint(color, level === "avoid", railOffset),
+      "line-opacity": ["case", ["==", ["feature-state", stateKey(AVOIDANCE_NAME)], level], 1, 0],
+    },
+    visible: chosenLevels.has(level),
+  });
+  layers.push(
+    railLayer("prefer", palette.semantic.avoidance_preferred),
+    railLayer("avoid", palette.semantic.avoidance_avoided),
+  );
 
   layers.push(inspected);
 

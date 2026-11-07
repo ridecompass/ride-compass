@@ -11,8 +11,6 @@ import type { AxisFact, PenaltyBreakdown } from "@/types/route";
 export interface PenaltyCatalog {
   axes: readonly { readonly axisId: string; readonly label: string }[];
   axisColors: Readonly<Record<string, string>>;
-  preferredLabel: string;
-  avoidedLabel: string;
   /** 一覧が届いたか（届くまでは軸の名前が分からない）。 */
   loaded: boolean;
   /** 一覧の取得に失敗し、まだ一度も届いていないか。 */
@@ -21,7 +19,7 @@ export interface PenaltyCatalog {
 
 /** 内訳の1行。 */
 export interface PenaltyRow {
-  /** 軸id（避け方の行は軸には無い綴り）。 */
+  /** 軸id。 */
   id: string;
   label: string;
   seconds: number;
@@ -57,16 +55,11 @@ export function factText(fact: AxisFact, axisLabel: string): string {
   return fact.label === axisLabel ? value : `${fact.label} ${value}`;
 }
 
-/** 避け方の行（好む道・避ける道）のid。軸のidと同じ並びに置くので、軸には無い綴りにする。 */
-const PREFERRED_ROW_ID = "<preferred>";
-const AVOIDED_ROW_ID = "<avoided>";
-
-/** 内訳の行: 軸を一覧の順に（一覧が届くまでは応答の順）、続けて好む道・避ける道。秒が0の軸も残す（効く
- * はずの軸が効かなかったことも判断の材料になる）。好む道・避ける道は、秒があるときだけ出し、軸の無い行の色で塗る（データなしの
- * 灰色とは分ける）。 */
+/** 内訳の行: 軸を一覧の順に（一覧が届くまでは応答の順）。秒が0の軸も残す（効くはずの軸が効かなかったことも判断の材料に
+ * なる）。避け方の倍率が増減した秒は行に出さない（地図のルートの線の両脇の線が、好む・避けるの区間を見せる）。 */
 export function penaltyRows(penalty: PenaltyBreakdown, catalog: PenaltyCatalog): PenaltyRow[] {
   const listed = catalog.axes.map((axis) => axis.axisId);
-  const rows: PenaltyRow[] = Object.keys(penalty.axis_seconds)
+  return Object.keys(penalty.axis_seconds)
     .sort((a, b) => listed.indexOf(a) - listed.indexOf(b))
     .map((id) => ({
       id,
@@ -74,20 +67,6 @@ export function penaltyRows(penalty: PenaltyBreakdown, catalog: PenaltyCatalog):
       seconds: penalty.axis_seconds[id],
       color: catalog.axisColors[id] ?? palette.semantic.neutral,
     }));
-  const avoidance = [
-    { id: PREFERRED_ROW_ID, label: catalog.preferredLabel, seconds: penalty.preferred_seconds },
-    { id: AVOIDED_ROW_ID, label: catalog.avoidedLabel, seconds: penalty.avoided_seconds },
-  ];
-  for (const { id, label, seconds } of avoidance) {
-    if (seconds === 0) continue;
-    rows.push({
-      id,
-      label: catalog.loaded ? label : pendingCatalogLabel(catalog),
-      seconds,
-      color: palette.semantic.neutral,
-    });
-  }
-  return rows;
 }
 
 /** 負担の秒の前に置く符号。好む道で下がった負は「−」、ほかは「+」（0も「+0分」として効かなかったことを見せる）。 */

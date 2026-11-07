@@ -5,7 +5,7 @@ import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
 import { Badge } from "@/components/ui/Badge/Badge";
 import { LockedIcon } from "@/components/ui/icons/lucideIcons";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/ToggleGroup/ToggleGroup";
-import { avoidanceLevelOf, type AvoidanceLevel, type AvoidanceRow } from "@/features/route/roadAvoidance";
+import { avoidanceLevelOf, type AvoidanceLevel, type AvoidanceRow } from "@/lib/roadAvoidance";
 import { cn } from "@/lib/cn";
 import type { RoadAvoidanceOverride, RoadAvoidanceView } from "@/types/route";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
