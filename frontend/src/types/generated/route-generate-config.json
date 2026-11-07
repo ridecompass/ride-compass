@@ -55,6 +55,9 @@
     "路面"
   ],
   "missing_travel_data_wording": "標高や止まる所の数が無い区間は、道路網全体の平均の値で所要時間を計算しています",
+  "lens_quantity_label": "1kmあたりの負担",
+  "lens_unit": "秒/km",
+  "lens_equivalents_condition_wording": "いまの負担の強さと倍率で、その条件だけを持つ1kmの道を無風で走った場合",
   "client_tuning": {
     "landcover.ring_outer_m": null,
     "speed.cda_m2": null,

@@ -23,6 +23,7 @@ import { Button } from "@/components/ui/Button/Button";
 import { Popover, PopoverContent, PopoverTrigger, POPOVER_COLLISION_PADDING_PX } from "@/components/ui/Popover/Popover";
 import { cn } from "@/lib/cn";
 import { FACT_DISPLAY_NAME } from "@/lib/screenNames";
+import { LENS_QUANTITY_LABEL } from "@/lib/mapDisplay/costLensPaint";
 import { cardVariants } from "@/components/ui/Card/Card";
 import OverlayLayerRow, {
   FILTERED_LABEL,
@@ -204,7 +205,7 @@ export default function MapOverlayControls({
             "mt-1 flex items-center gap-1.5 border-b border-[var(--color-border)] pb-1.5",
             route.selectable ? "cursor-pointer" : "text-[var(--color-neutral)]",
           )}
-          data-usage="選んだ候補のルートの線を、地図に表示するか隠すかを切り替えます。線の色は、「負担で塗る」で選んだ負担の種類の1kmあたりの負担です。"
+          data-usage={`選んだ候補のルートの線を、地図に表示するか隠すかを切り替えます。線の色は、「負担で塗る」で選んだ負担の種類の${LENS_QUANTITY_LABEL}です。`}
         >
           <Checkbox
             checked={route.shown && route.selectable}
