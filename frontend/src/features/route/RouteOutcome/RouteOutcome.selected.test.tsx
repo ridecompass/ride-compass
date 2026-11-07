@@ -76,14 +76,16 @@ describe("選んだ候補の中身", () => {
     expect(results.selectSegment).toHaveBeenCalledWith(expect.objectContaining({ segment: first }));
   });
 
-  it("候補の負担と、軸の名前（費用の軸の一覧）の付いた内訳と事実を出す", async () => {
+  it("候補の負担を出し、道のりのグラフの「グラフに積む負担」の一覧に軸の名前（費用の軸の一覧）の付いた内訳と事実を出す", async () => {
     const candidate = route("fast", {
+      segments: [makeRouteSegment({ distance_km: 1 })],
       penalty: { axis_seconds: { ascent: 240 }, avoidance_seconds: 0, total_seconds: 240 },
-      facts: { elevation_unknown_km: 0, axes: { ascent: { label: "登り", value: 120, unit: "m" } } },
+      facts: { axes: { ascent: { label: "登り", value: 120, unit: "m" } } },
     });
     renderOutcome({ results: resultsOf({ generated: [candidate] }) });
     expect(screen.getByRole("button", { name: "負担の説明を表示" }).parentElement).toHaveTextContent("負担+4分");
-    expect(await screen.findByText("登坂")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "グラフに積む負担" }));
+    expect(await within(screen.getByRole("dialog")).findByText("登坂")).toBeInTheDocument();
     expect(screen.getByText("登り 120m")).toBeInTheDocument();
   });
 

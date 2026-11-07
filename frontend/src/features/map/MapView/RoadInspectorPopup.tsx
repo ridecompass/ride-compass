@@ -20,12 +20,12 @@ import {
   type RoadSurfacePopupProperties,
 } from "./roadFacts";
 import { Button } from "@/components/ui/Button/Button";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/ToggleGroup/ToggleGroup";
 import { InspectRoadIcon } from "@/components/ui/icons/lucideIcons";
 import { textVariants } from "@/components/ui/Text/Text";
 import { cn } from "@/lib/cn";
 import { useCostAxisCatalog } from "@/hooks/useCostAxisCatalog";
-import { formatLensNumber, LENS_SECONDS_UNIT } from "@/lib/mapDisplay/costLensPaint";
-import { costAxisLabel, factValueText } from "@/lib/routePenalty";
+import { costAxisLabel, factText } from "@/lib/routePenalty";
 
 interface RoadInspectorPopupProps {
   properties: RoadSurfacePopupProperties;
@@ -112,47 +112,69 @@ export default function RoadInspectorPopup({ properties, track, conditions, cost
 
 type LensInspection = RoadInspection["lens"];
 
-/** 押したフィーチャーの、地図のレンズと同じ1kmあたりの代償の秒（総合と軸ごと）と、その元の事実。地図が塗っている向きの
- * 値を出す（直角に近くて向きが決まらない道は、辿れる向きのうち道の向きを先に）。 */
+/** 区間の代償の秒を「+52秒」の形にする（道1本の区間は分に丸めると0ばかりになる）。 */
+function sectionSeconds(seconds: number): string {
+  return `+${Math.round(seconds)}秒`;
+}
+
+/** 押したフィーチャーの、地図が塗っている向きの区間の代償の秒（総合と軸ごと）。「換算前」に切り替えると、軸ごとに秒の元の事実を
+ * 出す（求められない事実の軸は出さない）。直角に近くて向きが決まらない道は、辿れる向きのうち道の向きを先に出す。 */
 function LensValues({ lens }: { lens: LensInspection }) {
   const costCatalog = useCostAxisCatalog();
+  const [view, setView] = useState("seconds");
   const slot = lens.painted ?? (lens.along !== null ? "along" : "against");
   const values = lens[slot];
   if (values === null) return <p className={hintClass}>この向きには走れません。</p>;
-  // 事実の名前と単位は backend が付ける（ルートの内訳・凡例の目安と同じ事実は同じ名前）。
-  const facts: RoadFactRow[] = [
-    ...values.facts.map((fact) => ({ label: fact.label, value: factValueText(fact) })),
-    ...(lens.surface !== null ? [{ label: "路面", value: lens.surface }] : []),
-  ];
+  // 事実の名前と単位は backend が付ける（ルートの一覧と同じ作り方）。
+  const rows: RoadFactRow[] =
+    view === "seconds"
+      ? values.axes.map((axis) => ({
+          label: costAxisLabel(costCatalog, axis.axis_id),
+          value: sectionSeconds(axis.seconds),
+        }))
+      : values.axes.flatMap((axis) => {
+          const fact = values.facts[axis.axis_id];
+          const label = costAxisLabel(costCatalog, axis.axis_id);
+          return fact === undefined ? [] : [{ label, value: factText(fact, label) }];
+        });
   return (
     <div className="flex flex-col gap-1">
-      <p className="m-0">
-        <span className="font-semibold">
-          {costCatalog.lenses?.totalLens.label ?? "負担"} {formatLensNumber(values.total_seconds_per_km)}
-          {LENS_SECONDS_UNIT}
-        </span>
-        <span className={cn(hintClass, "ml-1.5")}>
-          {slot === "along" ? "道の向き" : "逆向き"}
-          {lens.painted === null ? "（地図の向きに直角に近い道）" : ""}
-        </span>
-      </p>
-      <FactList
-        rows={values.axes.map((axis) => ({
-          label: costAxisLabel(costCatalog, axis.axis_id),
-          value: `${formatLensNumber(axis.seconds_per_km)}${LENS_SECONDS_UNIT}`,
-        }))}
-      />
-      {facts.length > 0 && <FactList rows={facts} />}
+      <div className="flex flex-wrap items-center gap-1.5">
+        <p className="m-0">
+          <span className="font-semibold">
+            {costCatalog.lenses?.totalLens.label ?? "負担"} {sectionSeconds(values.total_seconds)}
+          </span>
+          <span className={cn(hintClass, "ml-1.5")}>
+            {slot === "along" ? "道の向き" : "逆向き"}
+            {lens.painted === null ? "（地図の向きに直角に近い道）" : ""}
+          </span>
+        </p>
+        <ToggleGroup
+          value={view}
+          onValueChange={setView}
+          aria-label="負担の出し方"
+          usage="軸ごとの負担を、秒で出すか、秒にする前の事実（登り・止まる回数等）で出すかを切り替えます。"
+          className="ml-auto"
+        >
+          <ToggleGroupItem value="seconds" className="py-0.5">
+            秒
+          </ToggleGroupItem>
+          <ToggleGroupItem value="facts" className="py-0.5">
+            換算前
+          </ToggleGroupItem>
+        </ToggleGroup>
+      </div>
+      <FactList rows={rows} />
     </div>
   );
 }
 
-/** 「項目: 値」の行の並び。項目の名前は並びの中で重ならない。 */
+/** 「項目: 値」の行の並び。項目の名前は重なりうる（軸の一覧が届くまでは、どの軸の名前も「読み込み中」）。 */
 function FactList({ rows }: { rows: readonly RoadFactRow[] }) {
   return (
     <dl className="m-0 grid gap-0.5">
-      {rows.map((row) => (
-        <div key={row.label} className="grid grid-cols-[5.5rem_1fr] gap-1.5">
+      {rows.map((row, index) => (
+        <div key={index} className="grid grid-cols-[5.5rem_1fr] gap-1.5">
           <dt className={hintClass}>{row.label}</dt>
           <dd className="m-0 [overflow-wrap:anywhere]">{row.value}</dd>
         </div>

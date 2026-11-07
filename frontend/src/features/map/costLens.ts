@@ -10,6 +10,7 @@ import {
   type RouteStyleMode,
 } from "@/lib/mapDisplay/routeStyleModes";
 import { costLensPaint, formatLensNumber, LENS_SECONDS_UNIT } from "@/lib/mapDisplay/costLensPaint";
+import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 import type { MapTheme } from "@/lib/mapTheme";
 import type { LensOption } from "@/features/map/LensControl/LensRow";
 import type { CostPreference } from "@/types/route";
@@ -72,8 +73,8 @@ export function costLensOptions(lenses: readonly MapLens[], preference: CostPref
   }));
 }
 
-/** 凡例の下に書く、段の境目の秒の目安（地図と同じ利用者の値・無風の1kmの道で、その事実1つだけが効いたとき。
- * `features/map/useLensEquivalents.ts`）。軸でないレンズ（総合）・目安の届いていない軸は空。 */
+/** 凡例の下に書く、段の境目の秒の目安（`features/map/useLensEquivalents.ts`が引く）。
+ * 軸でないレンズ（総合）・目安の届いていない軸は空。 */
 export function costLensPremises(
   lensId: string | null,
   catalog: CostAxisCatalog,
@@ -95,7 +96,5 @@ export function costLensPremises(
       : equivalents.examples.map(
           (example) => `${example.label} ${formatLensNumber(example.seconds_per_km)}${LENS_SECONDS_UNIT}`,
         );
-  return lines.length === 0
-    ? []
-    : ["目安（いまの負担の強さと倍率で、その条件だけを持つ1kmの道を無風で走った場合）", ...lines];
+  return lines.length === 0 ? [] : [`目安（${routeGenerateConfig.lens_equivalents_condition_wording}）`, ...lines];
 }

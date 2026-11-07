@@ -663,7 +663,7 @@ BottomSheetの`headerAction`propとして同じヘルパーを渡す（`routes.l
 読めない）。編集している間は乗り換え先を探すため、全部の候補を参考線にする。
 
 候補タブの中身（`Tabs.Content`）は、道のりのグラフ・元との違いの下に`RouteAxisProfile`を置く（区間を選んでいる間は`RouteAxisProfile`を出さず、その区間の詳しくを道のりのグラフが図の下に出す）。結果の中のグラフは、走行中の地図の下の図より低く描く（CSS の変数`--profile-chart-height`。走行中は走りながら読めるよう高くする）。`RouteAxisProfile`は
-所要・負担と、負担の内訳（軸ごとの名前・事実・負担の分の行と、秒を積んだ帯）を出す読み取り専用の面（[ルート設定と結果](route-settings-and-results.md)「RouteAxisProfile.tsx」）。地図の色分け（レンズ）を選ぶ操作はここには無い（`LensControl`）。
+所要・負担を出す読み取り専用の面（負担の種類ごとの内訳と事実は、道のりのグラフの右上の一覧が出す）（[ルート設定と結果](route-settings-and-results.md)「RouteAxisProfile.tsx」）。地図の色分け（レンズ）を選ぶ操作はここには無い（`LensControl`）。
 
 ## `MapView`（`features/map/MapView/MapView.tsx`）との境界
 

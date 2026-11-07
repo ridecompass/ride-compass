@@ -118,21 +118,19 @@ def merge_penalty_breakdowns(parts: Iterable[PenaltyBreakdown]) -> PenaltyBreakd
 
 
 class AxisFact(StrictModel):
-    """費用の軸1つの損の元になった、ルートの事実の量。名前と単位は求める側が付け、画面は軸idで出し分けずにそのまま出す。"""
+    """費用の軸1つの秒の元になった事実（`domain/leg_costs.py: axis_facts`）。名前と単位は求める側が付け、画面は軸idで出し分けずに
+    そのまま出す。"""
 
     label: str
-    # 値を求められなければNone（風を使えないときの向かい風）。
+    # 区分の事実（路面の区分等）はNoneで、`label`が区分の名前。
     value: float | None
     unit: str
 
 
 class RouteFacts(StrictModel):
-    """ルートの事実の量（費用の式にも利用者の倍率にも依らない）。"""
+    """ルートの事実（費用の式にも利用者の倍率にも依らない）。"""
 
-    # 標高の無い道の長さ（km）。獲得標高に数えず、所要時間は道路網全体の坂の割合で走った長さ。
-    elevation_unknown_km: float
-    # 費用の軸id→その軸の事実（`services/road_graph_candidates.py: _route_facts`）。体力の軸は全部、道のストレスの軸は
-    # 定義にあるもの。
+    # 費用の軸id→その軸の事実。数える軸のうち、事実を求められたものだけ。
     axes: dict[str, AxisFact]
 
 
@@ -444,11 +442,8 @@ def reverse_elevation_by_edge(
     return result
 
 
-def route_elevation_gain(edges: list[LeanEdge], elevation_by_edge: dict) -> float | None:
-    """経路の獲得標高（m、`ELEVATION_M_DECIMALS`の桁）。値が1つも無ければNone（0mと「標高が取れなかった」を分ける）。"""
-    gains = [
-        attribute.elevation_gain_m
-        for edge in edges
-        if (attribute := elevation_by_edge.get(edge.edge_id)) is not None
-    ]
-    return round(sum(gains), ELEVATION_M_DECIMALS) if gains else None
+def elevation_gain(gains: np.ndarray) -> float | None:
+    """区間ごとの登り（m、NaNは標高が無い）の和（`ELEVATION_M_DECIMALS`の桁）。値が1つも無ければNone（0mと「標高が取れなかった」
+    を分ける）。経路の獲得標高と、道の窓の押した区間の登りが読む。"""
+    known = gains[~np.isnan(gains)]
+    return round(float(known.sum()), ELEVATION_M_DECIMALS) if len(known) else None

@@ -31,7 +31,6 @@ from app.domain.lens_values import (
 )
 from app.domain.region import BoundingBox, tile_bounds_lonlat
 from app.domain.attributes import EdgeMaterialColumns
-from app.domain.road_classes import class_labels, current_road_classes
 from app.domain.road_network import MaterialFills, RoadNetwork, material_arrays_of, slice_rows
 from app.domain.time_zone import JST, as_series_time
 from app.domain.wind import WindForecastSeries
@@ -74,15 +73,13 @@ class LensService:
 
     async def inspect(self, feature_key: str, z: int, x: int, y: int, bearing_deg: float, at: datetime | None,
                       speed_kmh: float, preference: CostPreference) -> LensInspection | None:
-        """押したフィーチャー（地図がタイル`z/x/y`で塗っている単位）の、地図と同じ値と、その元の事実。タイルにその
-        フィーチャーが無ければNone。"""
+        """押したフィーチャー（地図がタイル`z/x/y`で塗っている単位）の、地図と同じ秒を区間の長さぶん足したものと、その元の事実。
+        タイルにそのフィーチャーが無ければNone。"""
         tile = await self._tile(z, x, y, at, speed_kmh, preference, only=feature_key)
         if tile is None:
             return None
-        road_classes = current_road_classes()
-        labels = class_labels(road_classes.classifications.get(road_classes.rolling_resistance_classification or ""))
         painted = painted_direction(bearing_deg, float(tile.table.features.bearing_deg[0]))
-        return lens_inspection(tile.table, 0, painted, tile.facts, labels)
+        return lens_inspection(tile.table.features, 0, painted, tile.facts)
 
     async def _tile(self, z: int, x: int, y: int, at: datetime | None, speed_kmh: float, preference: CostPreference,
                     only: str | None = None) -> _TileLens | None:
@@ -92,11 +89,11 @@ class LensService:
             prepared = await asyncio.to_thread(_prepare, road_network_store.current(), z, x, y, axes, only)
             if prepared is None:
                 return None
-            features, materials, fills, steepest = prepared
+            features, materials, fills, elevation_gain_m = prepared
             fields["features"] = len(features)
             wind = await self._wind(z, x, y, at, materials.mid_lat, materials.mid_lon)
             return await asyncio.to_thread(_tile_lens, features, materials, axes, fills, speed_kmh, preference, wind,
-                                           steepest)
+                                           elevation_gain_m)
 
     async def _wind(self, z: int, x: int, y: int, at: datetime | None, mid_lat: np.ndarray, mid_lon: np.ndarray,
 ) -> tuple[WindForecastSeries, datetime] | None:
@@ -117,8 +114,8 @@ class LensService:
 
 
 def _prepare(network: RoadNetwork, z: int, x: int, y: int, axes: CostAxisDefinitions, only: str | None
-             ) -> tuple[LensFeatures, EdgeMaterialColumns, MaterialFills, tuple[np.ndarray, np.ndarray]] | None:
-    """風に依らない入力（フィーチャーと行・材料・欠けを埋める平均・一番急な登りと下り）。道路網ごとの初回は、
+             ) -> tuple[LensFeatures, EdgeMaterialColumns, MaterialFills, np.ndarray] | None:
+    """風に依らない入力（フィーチャーと行・材料・欠けを埋める平均・行の向きの登り）。道路網ごとの初回は、
     タイルの区間の表（`domain/road_network.py: RoadNetwork.road_tile_rows`）と取込範囲全体の区分の列と平均も求めるので、
     イベントループの外で呼ぶ。"""
     tile = tile_features(network, z, x, y)
@@ -126,13 +123,13 @@ def _prepare(network: RoadNetwork, z: int, x: int, y: int, axes: CostAxisDefinit
     if features is None:
         return None
     materials = material_arrays_of(slice_rows(network, network_classes(network), features.rows))
-    steepest = (network.steepest_gain_percent[features.rows], network.steepest_loss_percent[features.rows])
-    return features, materials, network_fills(network, burden_material_ids(axes)), steepest
+    return (features, materials, network_fills(network, burden_material_ids(axes)),
+            network.elevation_gain_m[features.rows])
 
 
 def _tile_lens(features: LensFeatures, materials: EdgeMaterialColumns, axes: CostAxisDefinitions, fills: MaterialFills,
                speed_kmh: float, preference: CostPreference, wind: tuple[WindForecastSeries, datetime] | None,
-               steepest: tuple[np.ndarray, np.ndarray]) -> _TileLens:
+               elevation_gain_m: np.ndarray) -> _TileLens:
     components = None
     if wind is not None:
         series, target = wind
@@ -140,7 +137,7 @@ def _tile_lens(features: LensFeatures, materials: EdgeMaterialColumns, axes: Cos
             bearing_deg=materials.bearing_deg, wind_series=series, forecast_index=series.time_index(target, 0.0),
             wind_points=series.lattice.points_of(materials.mid_lat, materials.mid_lon)).components()
     return _TileLens(*lens_table(features, materials.columns, materials.distance_m, materials.elevation_profiles, axes,
-                                 current_ledger_parameters(preference), speed_kmh, fills, components, steepest))
+                                 current_ledger_parameters(preference), speed_kmh, fills, components, elevation_gain_m))
 
 
 def _way_materials(table: LensTable, lens_id: str) -> dict[str, dict[str, float]] | None:
