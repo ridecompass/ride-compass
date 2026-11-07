@@ -18,7 +18,7 @@ import { mapDisplay } from "@/types/generated/mapDisplay";
 import palette from "@/types/generated/palette.json";
 import regionTileConfig from "@/types/generated/region-tile-config.json";
 
-import { avoidanceRailPaint, featureStatesByName, sceneSourceId } from "@/features/map/scene/sceneBuilders";
+import { featureStatesByName, sceneSourceId } from "@/features/map/scene/sceneBuilders";
 import { LEGEND_NO_DATA_KEY } from "@/lib/mapDisplay/mapColorLegend";
 import { ROAD_OTHER_KEY, roadTrackRowOf, type RoadTrackRow } from "@/lib/mapDisplay/roadTracks";
 import { strongestAvoidance, type AvoidanceChoice } from "@/lib/roadAvoidance";
@@ -210,24 +210,29 @@ export const roadLineGroup = declareGroup<RoadLineState>((state) => {
     ];
   });
 
-  // 道路タブで好む・避けるにした区分の道の両脇の線。道ごとの一番強い段（feature-state）が段に合う道だけを濃く描く。出している
-  // 道の層の幅（詳細を見ている道の強調の幅より細ければそちら）の外へ間隔だけ出す。
-  const railOffset =
-    Math.max(ROAD.inspectedWidthPx / 2, Math.max(0, ...offsets.map(Math.abs)) + ROAD.lineWidthPx / 2) +
-    mapDisplay.avoidanceRail.gapPx;
+  // 道路タブを開いている間の、好む・避ける・通らないにした区分の道の下の淡い帯。道ごとの一番強い段（feature-state）が段に合う
+  // 道だけを、段ごとの濃さで塗る。
   const chosenLevels = new Set(state.avoidance.levels.values());
-  const railLayer = (level: "prefer" | "avoid", color: string): SceneLayerEntry => ({
+  const haloLayer = (level: keyof typeof mapDisplay.avoidanceHalo.opacityByLevel, color: string): SceneLayerEntry => ({
     ...line,
-    role: `${level}-rail`,
+    role: `${level}-halo`,
     paint: {
-      ...avoidanceRailPaint(color, level === "avoid", railOffset),
-      "line-opacity": ["case", ["==", ["feature-state", stateKey(AVOIDANCE_NAME)], level], 1, 0],
+      "line-color": color,
+      "line-width": mapDisplay.avoidanceHalo.widthPx,
+      "line-opacity": [
+        "case",
+        ["==", ["feature-state", stateKey(AVOIDANCE_NAME)], level],
+        mapDisplay.avoidanceHalo.opacityByLevel[level],
+        0,
+      ],
     },
     visible: chosenLevels.has(level),
   });
-  layers.push(
-    railLayer("prefer", palette.semantic.avoidance_preferred),
-    railLayer("avoid", palette.semantic.avoidance_avoided),
+  // 帯は道の線の下に敷く（道の層の色を隠さない）。
+  layers.unshift(
+    haloLayer("prefer", palette.semantic.avoidance_preferred),
+    haloLayer("avoid", palette.semantic.avoidance_avoided),
+    haloLayer("exclude", palette.semantic.avoidance_avoided),
   );
 
   layers.push(inspected);

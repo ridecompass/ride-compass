@@ -95,8 +95,8 @@ export function featureStatesByName<V extends MapSceneFeatureStateValue>(
 
 const RAIL = mapDisplay.avoidanceRail;
 
-/** 道路タブで好む・避けるにした道の両脇の線の塗り（ルートの線と地図の道で共有し、同じ形にする）。1本の線を`line-gap-width`で
- * 割り、強調する線の中心から左右へ`offsetPx`離れた2本にする。避けるは破線。 */
+/** 道路タブで好む・避けるにした道を通ったルートの区間の両脇の線の塗り。1本の線を`line-gap-width`で割り、ルートの線の中心から
+ * 左右へ`offsetPx`離れた2本にする。避けるは破線。 */
 export function avoidanceRailPaint(color: string, dashed: boolean, offsetPx: number): Record<string, unknown> {
   return {
     "line-color": color,

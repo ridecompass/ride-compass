@@ -31,7 +31,7 @@ import { useRoadClasses } from "@/features/map/useRoadClasses";
 import { useDynamicWeatherLayers } from "@/features/map/useDynamicWeatherLayers";
 import { useStoredState } from "@/hooks/useStoredState";
 import type { Coordinates, RoadAvoidanceOverride } from "@/types/route";
-import { avoidanceChoiceOf } from "@/lib/roadAvoidance";
+import { avoidanceChoiceOf, type AvoidanceChoice } from "@/lib/roadAvoidance";
 import type { MapTheme } from "@/lib/mapTheme";
 import type { RideConditions } from "@/features/map/regionApi";
 import { snapDeg } from "@/lib/cardinalLabel";
@@ -69,9 +69,9 @@ interface MapViewInputs {
   /** 費用のレンズを塗る利用者のつまみと倍率（生成の要求へ送る形）。ルートを出している間はそのルートを生成したときの値、
    * 無ければ今の設定——ルートの線と周りの道を同じ量で塗る。 */
   costPreference: CostPreference;
-  /** 道路タブで選んだ段（`costPreference`と同じく、ルートを出している間はそのルートを生成したときの値）。好む・避けるにした区分の
-   * 道に、地図の上で両脇の線を添える。 */
-  roadAvoidance: RoadAvoidanceOverride;
+  /** 道路タブを開いている間の、道路タブの段。好む・避けるにした区分の地図の道の下に淡い帯を敷く。開いていなければnull
+   * （帯を出さず、そのための道の層の値も取らない）。 */
+  roadAvoidance: RoadAvoidanceOverride | null;
 }
 
 interface MapViewState {
@@ -95,6 +95,9 @@ interface MapViewState {
   /** 費用のレンズを塗っている利用者の値（入力の`costPreference`）。道を押したときの費用のレンズの値にも同じ値を渡す。 */
   costPreference: CostPreference;
 }
+
+/** 道路タブを閉じている間（地図の道に帯を出さない）。 */
+const NO_AVOIDANCE: AvoidanceChoice = { levels: new Map(), order: [] };
 
 export function useMapView({
   hasSelectedRoute,
@@ -175,12 +178,15 @@ export function useMapView({
   );
   const shownRoadLayers = mapCatalog.roadLayers.filter((layer) => layerVisibility[layer.id] === true);
   const avoidanceChoice = useMemo(
-    () => avoidanceChoiceOf(config.roadClasses.avoidance, roadAvoidance),
+    () => (roadAvoidance === null ? NO_AVOIDANCE : avoidanceChoiceOf(config.roadClasses.avoidance, roadAvoidance)),
     [config.roadClasses.avoidance, roadAvoidance],
   );
-  const railed = [...avoidanceChoice.levels.values()].some((level) => level === "prefer" || level === "avoid");
   const anyRoadLayerShown = shownRoadLayers.length > 0;
-  const roadClasses = useRoadClasses(anyRoadLayerShown || railed, viewport, config.roadClasses.generation);
+  const roadClasses = useRoadClasses(
+    anyRoadLayerShown || avoidanceChoice.levels.size > 0,
+    viewport,
+    config.roadClasses.generation,
+  );
   // 道の層を出していない間は取得中の色で塗る線が無いので、取得中を地図へ伝えない（取るたびに地図を組み直さない）。
   const roadClassesOnMap = useMemo(
     () => ({ values: roadClasses.values, loading: anyRoadLayerShown && roadClasses.loading }),
