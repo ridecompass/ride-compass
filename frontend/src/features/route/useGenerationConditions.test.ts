@@ -20,6 +20,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { heldReplies, onBackend } from "@/testing/backendServer";
 
 import { useGenerationConditions } from "./useGenerationConditions";
+import { STANDARD_COST_PREFERENCE } from "@/lib/costPreference";
 
 function renderConditions() {
   const onOriginPlace = vi.fn();
@@ -69,12 +70,16 @@ describe("距離と候補数", () => {
 describe("つまみと倍率", () => {
   it("既定は標準で、変えたつまみと倍率は開き直しても残る", () => {
     const first = renderConditions();
-    expect(first.result.current.costPreference).toEqual({ strength: 1, multipliers: {} });
     act(() =>
-      first.result.current.setCostPreference({ strength: 1.5, multipliers: { ascent: 2, vibration: 1, gone: 2 } }),
+      first.result.current.setCostPreference({
+        ...STANDARD_COST_PREFERENCE,
+        strength: 1.5,
+        multipliers: { ascent: 2, vibration: 1, gone: 2 },
+      }),
     );
 
     expect(reopen(first).result.current.costPreference).toEqual({
+      ...STANDARD_COST_PREFERENCE,
       strength: 1.5,
       multipliers: { ascent: 2, vibration: 1, gone: 2 },
     });

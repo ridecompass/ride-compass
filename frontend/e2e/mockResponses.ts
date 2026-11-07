@@ -12,6 +12,7 @@ import {
   makeGenerationConditions,
   makeRouteCandidate as makeCandidate,
   makeRouteSegment,
+  candidatePenaltyFields,
   penaltyFields,
 } from "@/testing/routeFixtures";
 import type { AmedasObservation } from "@/types/weather";
@@ -78,7 +79,7 @@ function makeRouteCandidate(
         durationSeconds / 2,
       ),
     ],
-    ...penaltyFields({ ascent: 70 }, distanceKm),
+    ...candidatePenaltyFields({ ascent: 70 }, distanceKm),
   });
 }
 

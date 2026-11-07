@@ -96,9 +96,9 @@ async def test_each_axis_lens_paints_its_own_penalty_seconds_per_km_and_the_tota
 
 
 async def test_the_route_and_the_map_lens_count_the_same_seconds_on_the_same_roads(client, cost_axes, road_network_root):
-    """ルートの軸ごとの代償の秒は、通った道ごとの地図のレンズの値（1kmあたりの秒、通った向き）に道の長さを掛けて足したものと
-    同じになる。合わないと、ルートの線と周りの道が同じ道で違う色になり、内訳とレンズで同じ道の負担が食い違う。曲がる所の
-    漕ぎ出しは道1本の値ではないので軸の秒に入れず、内訳の別の行で費用に入る。"""
+    """ルートの線（区間）の軸ごとの代償の秒を足すと、通った道ごとの地図のレンズの値（1kmあたりの秒、通った向き）に道の長さを
+    掛けて足したものと同じになる。合わないと、ルートの線と周りの道が同じ道で違う色になる。候補の内訳はルート全体の損なので、
+    来た道と曲がる向きで決まる曲がる所の漕ぎ出しを停止の軸の秒に含め、ほかの軸は区間の和のまま、和は費用に合う。"""
     network = road_network(WAYS, COORDINATES, bad_ways=(FLAT_ROUGH_WAY,), gradient_of={CLIMBING_WAY: 6.0},
                            stop_density_of={STOPPING_WAY: 3.0})
     candidates = await generator_for(road_network_root, network).generate_via_waypoints(
@@ -122,24 +122,33 @@ async def test_the_route_and_the_map_lens_count_the_same_seconds_on_the_same_roa
             km = float(network.distance_m[row]) / 1000.0
             for axis_id, values in lenses.items():
                 expected[axis_id] += values[str(way)][LENS_ALONG_LEAF if forward else LENS_AGAINST_LEAF] * km
+        line = {axis_id: sum(segment.penalty.axis_seconds[axis_id] for segment in candidate.segments) for axis_id in lenses}
+        assert line == pytest.approx(expected, abs=0.5)
         penalty = candidate.penalty
-        assert penalty.axis_seconds == pytest.approx(expected, abs=0.5)
+        others = [axis_id for axis_id in lenses if axis_id != "stopping"]
+        assert {axis_id: penalty.axis_seconds[axis_id] for axis_id in others} \
+            == pytest.approx({axis_id: line[axis_id] for axis_id in others}, abs=0.5)
         assert candidate.estimated_duration_seconds + penalty.total_seconds == pytest.approx(candidate.cost_seconds, abs=0.5)
 
 
 async def test_the_lens_paints_with_the_users_strength_and_multipliers_like_the_route(client, cost_axes, road_network_root):
-    """レンズはルート生成と同じ利用者の値で塗る（ルートの線と周りの道が同じ段で同じ量になる）。つまみ×2は代償を2倍に、
-    倍率0の軸はその軸の分を0にする。"""
+    """レンズはルート生成と同じ利用者の値で塗る（ルートの線と周りの道が同じ段で同じ量になる）。つまみ×2は代償を2倍にし、
+    無効の軸は総合から外れ、その軸のレンズは無い（404）。"""
     serve_road_network(road_network_root, road_network(
         WAYS, COORDINATES, bad_ways=(FLAT_ROUGH_WAY,), gradient_of={CLIMBING_WAY: 6.0}))
 
     standard = await _lens(client, "total")
     doubled = await _lens(client, "total", strength=2.0)
-    without_ascent = await _lens(client, "ascent", multipliers='{"ascent": 0}')
+    ascent = await _lens(client, "ascent")
+    without_ascent = await _lens(client, "total", disabled_axes='["ascent"]')
+    disabled_lens = await client.get(f"/api/region/lens/ascent/{Z}/{X}/{Y}",
+                                     params={"speed_kmh": ASSUMED_SPEED_KMH, "disabled_axes": '["ascent"]'})
 
     climb = str(CLIMBING_WAY)
     assert doubled[climb][LENS_ALONG_LEAF] == pytest.approx(2 * standard[climb][LENS_ALONG_LEAF])
-    assert without_ascent[climb][LENS_ALONG_LEAF] == 0.0
+    assert without_ascent[climb][LENS_ALONG_LEAF] == pytest.approx(
+        standard[climb][LENS_ALONG_LEAF] - ascent[climb][LENS_ALONG_LEAF])
+    assert disabled_lens.status_code == 404
     # 知らない軸・壊れた値・上限を越えるつまみは、ルート生成と同じく型の検査で断る（500にしない）。
     for broken in ({"multipliers": '{"nothing": 2}'}, {"multipliers": '{"ascent": "1..2"}'}, {"strength": 99}):
         response = await client.get(f"/api/region/lens/total/{Z}/{X}/{Y}", params={"speed_kmh": ASSUMED_SPEED_KMH, **broken})
@@ -170,6 +179,9 @@ async def test_the_legend_tells_the_slope_and_the_stops_a_threshold_stands_for(c
         {"label": "0", "seconds_per_km": 0.0},
         {"label": "1", "seconds_per_km": pytest.approx(burden_seconds * ROUGH_WEIGHT)},
     ]
+    # 無効にした軸の目安は無い（地図の一覧にもその軸のレンズが無い）。
+    without_stopping = await client.get("/api/cost-axes/lens-equivalents", params={"disabled_axes": '["stopping"]'})
+    assert set(without_stopping.json()) == set(equivalents) - {"stopping"}
 
 
 def _kickoffs_per_stop() -> float:

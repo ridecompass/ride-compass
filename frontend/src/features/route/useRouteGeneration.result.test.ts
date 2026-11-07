@@ -25,6 +25,7 @@ import {
   used,
 } from "@/testing/routeGeneration";
 import type { Coordinates } from "@/types/route";
+import { STANDARD_COST_PREFERENCE } from "@/lib/costPreference";
 
 let backend: ReturnType<typeof serveRouteGeneration>;
 
@@ -131,9 +132,17 @@ describe("生成の結果", () => {
 
   it("選んだつまみと倍率を、費用の軸の一覧が届いていなくても、そのまま送る", async () => {
     const rendered = renderGeneration();
-    act(() => rendered.result.current.conditions.setCostPreference({ strength: 1.5, multipliers: { ascent: 2 } }));
+    act(() =>
+      rendered.result.current.conditions.setCostPreference({
+        ...STANDARD_COST_PREFERENCE,
+        strength: 1.5,
+        multipliers: { ascent: 2 },
+      }),
+    );
     backend.respond([route("r1")]);
     await submit(rendered);
-    expect(backend.sentRequest()).toMatchObject({ cost_preference: { strength: 1.5, multipliers: { ascent: 2 } } });
+    expect(backend.sentRequest()).toMatchObject({
+      cost_preference: { ...STANDARD_COST_PREFERENCE, strength: 1.5, multipliers: { ascent: 2 } },
+    });
   });
 });

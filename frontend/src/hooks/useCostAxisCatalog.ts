@@ -6,7 +6,7 @@ import type { FetchFailure } from "@/types/fetchFailure";
 import type { CostAxisCatalogResponse } from "@/types/route";
 import palette from "@/types/generated/palette.json";
 
-/** 軸と曲がる所の識別色。一覧の順に当て、曲がる所は軸の次。 */
+/** 軸の識別色。一覧の順に当てる（色の並びは backend の宣言。`palette.json` の `cost_series`）。 */
 function seriesColor(index: number): string {
   return palette.cost_series[index] ?? palette.semantic.neutral;
 }
@@ -41,9 +41,6 @@ export interface CostAxisCatalog {
   axisColors: Readonly<Record<string, string>>;
   /** 代償の内訳の、避け方の倍率で上乗せした秒の行の名前。 */
   avoidanceLabel: string;
-  turnLabel: string;
-  /** 曲がる所の行の識別色。 */
-  turnColor: string;
   /** 地図のレンズ。届くまで・失敗の間はnull。 */
   lenses: CostLensCatalog | null;
   /** 取得が成功したか。falseの間は`axes`が空なので、今の軸と揃うことを要る処理（倍率を送る）はこれで未確定を区別する。 */
@@ -56,8 +53,6 @@ const EMPTY: CostAxisCatalog = {
   axes: [],
   axisColors: {},
   avoidanceLabel: "",
-  turnLabel: "",
-  turnColor: palette.semantic.neutral,
   lenses: null,
   loaded: false,
   failed: false,
@@ -77,8 +72,6 @@ export function costAxisCatalogFromResponse(response: CostAxisCatalogResponse): 
     axes,
     axisColors: Object.fromEntries(axes.map((axis, index) => [axis.axisId, seriesColor(index)])),
     avoidanceLabel: response.avoidance_label,
-    turnLabel: response.turn_label,
-    turnColor: seriesColor(axes.length),
     lenses: {
       totalLens: {
         axisId: response.total_lens.lens_id,

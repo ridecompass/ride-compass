@@ -9,6 +9,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { inspectorResult, openInspection, RIDE, serveInspector } from "@/testing/roadInspector";
 import RoadInspectorPopup from "./RoadInspectorPopup";
+import { STANDARD_COST_PREFERENCE } from "@/lib/costPreference";
 
 const props = {
   properties: { osm_way_id: 1, feature_key: "1" },
@@ -27,7 +28,7 @@ describe("負担の利用者の値", () => {
     await openInspection(user);
     await screen.findByText(SHOWN);
 
-    rerender(<RoadInspectorPopup {...props} costPreference={{ strength: 2, multipliers: {} }} />);
+    rerender(<RoadInspectorPopup {...props} costPreference={{ ...STANDARD_COST_PREFERENCE, strength: 2 }} />);
 
     expect(screen.queryByText(SHOWN)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "この道の負担を見る" })).toBeInTheDocument();

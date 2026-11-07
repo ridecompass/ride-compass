@@ -21,6 +21,7 @@ import regionTileConfig from "@/types/generated/region-tile-config.json";
 vi.mock("@/lib/tileBaseUrl", () => ({ tileBaseUrl: () => "https://tiles.example" }));
 
 import * as api from "./regionApi";
+import { STANDARD_COST_PREFERENCE } from "@/lib/costPreference";
 
 /** 配信される全系統へ、系統名から作った世代を入れた辞書。 */
 function allVersions(): Record<string, string> {
@@ -72,7 +73,7 @@ describe("押した道の内訳（fetchAxisInspector）", () => {
     speedKmh: 22,
   };
 
-  it.each([{ strength: 2, multipliers: { vibration: 0 } }])(
+  it.each([{ ...STANDARD_COST_PREFERENCE, strength: 2, multipliers: { vibration: 0.5 }, disabled_axes: ["ascent"] }])(
     "押した地物・タイルと走行の条件と利用者の値を backend の項目名で送る: $strength",
     async (preference) => {
       const result = {

@@ -141,7 +141,7 @@ class _Traced:
     rows: list[int]
     # 経路の遷移の位置（`TurnExpandedStructure.entries_along`）。時刻の待ちと案内する曲がりが読む。
     entries: list[int | None]
-    # 遷移ごとの曲がる所の漕ぎ出しの回数（`entries`と同じ並び）。費用と内訳の曲がる所の秒が読む。
+    # 遷移ごとの曲がる所の漕ぎ出しの回数（`entries`と同じ並び）。費用と、候補の内訳の軸の秒・止まる回数が読む。
     turn_kickoffs: list[float]
     passages: list[EdgePassage]
     # 経路の費用（`domain/route_search.py: route_cost`）。向きの比べと候補の並べ方が同じ値を読む。
@@ -253,8 +253,12 @@ def _build_candidate(
     turns = _route_turns(context.turn_structure, orientation.entries, edges_in_path, along_km)
     add_elapsed_ms(context.evaluate_steps_ms, "segments", segments_started)
     bins_started = start_timer()
-    # 候補の内訳は丸める前の区間から足す（丸めたビンを足すと、丸めの分が候補の内訳へ積もる）。
-    penalty = merge_penalty_breakdowns(segment.penalty for segment in segments)
+    # 候補の内訳は丸める前の区間から足す（丸めたビンを足すと、丸めの分が候補の内訳へ積もる）。区間は通った道の分なので、通る道筋で
+    # 決まる曲がる所の漕ぎ出しを、その費目を持つ軸の秒として足す。
+    turn_kickoffs = float(sum(orientation.turn_kickoffs))
+    turn_penalty = PenaltyBreakdown.model_construct(
+        axis_seconds=context.composer.turn_penalty_by_axis(turn_kickoffs), avoidance_seconds=0.0)
+    penalty = merge_penalty_breakdowns([*(segment.penalty for segment in segments), turn_penalty])
     # 返すsegmentsは集約する。Edge単位のままだとペイロードとフロントの描画費用が嵩む。
     segments = aggregate_segments_into_bins(segments, orientation.bin_slices)
     add_elapsed_ms(context.evaluate_steps_ms, "bins", bins_started)
@@ -275,7 +279,7 @@ def _build_candidate(
         segments=segments,
         cost_seconds=round(orientation.cost_seconds, COST_SECONDS_DECIMALS),
         penalty=penalty,
-        facts=_route_facts(orientation, context, elevation_gain_m),
+        facts=_route_facts(orientation, context, elevation_gain_m, turn_kickoffs),
         # 所要時間＝区間の走行時間＋停止の待ち＋ターンの待ち（最後の区間を抜けた時刻）。
         estimated_duration_seconds=passages[-1].elapsed_seconds + passages[-1].seconds if passages else None,
         missing_travel_data_share=(
@@ -297,7 +301,7 @@ def _build_segment_details(
     代償の秒は値の組（`_Orientation.reads`）から読む。区間は検証せずに組み、検証はビン
     （`domain/route.py: aggregate_segments_into_bins`）でだけ行う。到達予想時刻は経路を探索と同じ規則でたどった時刻（`passages`）。
     """
-    penalties = _segment_penalties(orientation, context)
+    penalties = _segment_penalties(orientation)
 
     segments = []
     road_classes = SegmentClassReader.of(context.road)
@@ -355,23 +359,19 @@ def _build_segment_details(
     return segments
 
 
-def _segment_penalties(orientation: _Orientation, context: RoadGraphContext) -> list[PenaltyBreakdown]:
-    """区間ごとの代償の秒の内訳。区間の代償（`LegValues.penalty_by_axis`）と、区間へ入る所で曲がった漕ぎ出しの代償
-    （`LegCostComposer.turn_kickoff_penalty`。軸の秒とは別の行）。"""
-    kickoff_seconds = context.composer.turn_kickoff_penalty
-    # 区間iへ入る曲がる所は、遷移の並び（区間の数−1個）のi−1番目。
-    entering = [0.0, *orientation.turn_kickoffs]
+def _segment_penalties(orientation: _Orientation) -> list[PenaltyBreakdown]:
+    """区間ごとの代償の秒の内訳（通った道の分。`LegValues.penalty_by_axis`）。"""
 
     def of(read: _RowRead) -> list[PenaltyBreakdown]:
         values = read.values
         axis_lists = {axis_id: seconds.tolist() for axis_id, seconds in values.penalty_by_axis.items()}
         avoidance = values.avoidance_seconds.tolist()
-        breakdowns: list[PenaltyBreakdown] = []
-        for position, index in enumerate(read.indices):
-            breakdowns.append(PenaltyBreakdown.model_construct(
+        return [
+            PenaltyBreakdown.model_construct(
                 axis_seconds={axis_id: seconds[position] for axis_id, seconds in axis_lists.items()},
-                turn_seconds=entering[index] * kickoff_seconds, avoidance_seconds=avoidance[position]))
-        return breakdowns
+                avoidance_seconds=avoidance[position])
+            for position in range(len(read.indices))
+        ]
 
     return _per_segment(orientation.reads, len(orientation.edges), of)
 
@@ -385,26 +385,28 @@ _EFFORT_FACTS: dict[EffortItem, tuple[str, str]] = {
 }
 
 
-def _route_facts(orientation: _Orientation, context: RoadGraphContext, elevation_gain_m: float | None) -> RouteFacts:
+def _route_facts(orientation: _Orientation, context: RoadGraphContext, elevation_gain_m: float | None,
+                 turn_kickoffs: float) -> RouteFacts:
     """経路の事実の量。区間ごとの値（`domain/leg_costs.py: LegCostComposer.row_facts`・`LegValues.headwind_ms`）を
-    経路の区間の長さで足す。曲がる所の漕ぎ出しは内訳の別の行（`PenaltyBreakdown.turn_seconds`）なので、止まる回数に足さない。"""
+    経路の区間の長さで足し、止まる回数には曲がる所の漕ぎ出し`turn_kickoffs`回を足す。事実を返すのは、利用者が数える軸
+    （体力の軸は`LegCostComposer.counts`、道のストレスの軸は`row_facts`が数える軸だけを持つ）だけ。"""
     rows = np.asarray(orientation.rows, dtype=np.int64)
     distance_km = np.array([edge.distance_m for edge in orientation.edges], dtype=float) / 1000.0
     facts = context.composer.row_facts(rows)
     headwind_ms = np.array(_per_segment(orientation.reads, len(rows), lambda read: read.values.headwind_ms.tolist()))
-    # 止まる回数は、道の止まる出来事を、止まってから漕ぎ出す回数に換えて足したもの（減速だけの出来事は、落とした速さから
-    # 戻す分だけ1回より少なく数える）。停止の軸の秒（道の量）と同じ回数。
+    # 止まる回数は、道と曲がる所の止まる出来事を、止まってから漕ぎ出す回数に換えて足したもの（減速だけの出来事は、落とした速さから
+    # 戻す分だけ1回より少なく数える）。停止の軸の秒と同じ回数。
     values: dict[EffortItem, float | None] = {
         "gravity": elevation_gain_m,
         "air": (
             None if (mean := length_weighted_mean(headwind_ms, distance_km)) is None else round(mean, WIND_MS_DECIMALS)
         ),
-        "inertia": round(float(facts.stops.sum()), STOP_COUNT_DECIMALS),
+        "inertia": round(float(facts.stops.sum()) + turn_kickoffs, STOP_COUNT_DECIMALS),
         "rolling": round(float(distance_km[facts.rough].sum()), DISTANCE_KM_DECIMALS),
     }
     axes = {
         axis_id: AxisFact(label=_EFFORT_FACTS[item][0], value=values[item], unit=_EFFORT_FACTS[item][1])
-        for axis_id, item in EFFORT_AXES.items()
+        for axis_id, item in EFFORT_AXES.items() if context.composer.counts(axis_id)
     }
     burden_axes = context.cost_axes.burden
     for axis_id, burdened in facts.burdened.items():

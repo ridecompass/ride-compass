@@ -6,7 +6,8 @@
   （`domain/cycling_speed.py: SegmentSpeedModel.ride`）。平地の出力で割ると「平地をその秒だけ走る体力」になる。
 - 道のストレスは、道のストレスの軸（`domain/cost_axes.py: BurdenAxis`）の1kmあたりの重さ × km（重さ1の道に換算したkm）。βは
   換算したkm1つを何秒とみなすか。
-- 倍率は軸ごと（費目と1対1）の利用者の値で、書いていない軸は標準の1。つまみは代償の全体に掛ける利用者の強さ。α・β・γは
+- 倍率は軸ごと（費目と1対1）の利用者の値で、書いていない軸は標準の1。無効の軸（`LedgerParameters.counts`）は組まず、その費目は
+  費用にも内訳にも入らない。つまみは代償の全体に掛ける利用者の強さ。α・β・γは
   全部の軸に共通の換算なので較正値。どの項も0以上なので、費用は所要時間を下回らない（探索の見込みがそのまま使える）。
 
 **欠けた材料は、取込の範囲全体の分布の平均で埋める**（`domain/road_network.py: MaterialFills`。探索の範囲には依らない）。区分の材料は区分ごとの
@@ -39,7 +40,7 @@ _EFFORT_ITEM_J: dict[EffortItem, Callable[[SegmentRide], np.ndarray]] = {
 
 @dataclass(frozen=True)
 class LedgerParameters:
-    """費用の式の利用者の値（つまみ・軸ごとの倍率）と較正値（α・β・γ）。"""
+    """費用の式の利用者の値（つまみ・軸ごとの倍率・無効の軸）と較正値（α・β・γ）。"""
 
     #: 代償の全体に掛ける強さ（利用者のつまみの比 × 標準的な人の強さの較正値`evaluation.penalty_strength`）。
     effective_strength: float
@@ -47,9 +48,15 @@ class LedgerParameters:
     effort_alpha: float
     burden_seconds_per_km: float
     effort_weight_exponent: float
+    #: 数えない（無効にした）軸のid。
+    disabled_axes: frozenset[str] = frozenset()
 
     def multiplier(self, axis_id: str) -> float:
         return self.multipliers.get(axis_id, STANDARD_COST_FACTOR)
+
+    def counts(self, axis_id: str) -> bool:
+        """軸`axis_id`を数えるか（無効にしていないか）。費用・内訳・地図のレンズ・凡例の目安は、どれもこれで軸を選ぶ。"""
+        return axis_id not in self.disabled_axes
 
 
 def current_ledger_parameters(preference: CostPreference) -> LedgerParameters:
@@ -58,6 +65,7 @@ def current_ledger_parameters(preference: CostPreference) -> LedgerParameters:
     return LedgerParameters(
         effective_strength=preference.strength * tuning_value("evaluation.penalty_strength"),
         multipliers=preference.multipliers,
+        disabled_axes=frozenset(preference.disabled_axes),
         effort_alpha=tuning_value("cost.effort_alpha"),
         burden_seconds_per_km=tuning_value("cost.burden_seconds_per_km"),
         effort_weight_exponent=tuning_value("cost.effort_weight_exponent"),
@@ -82,20 +90,25 @@ class LedgerCosts:
     def __init__(self, axes: CostAxisDefinitions, parameters: LedgerParameters, flat_power_w: float, kickoff_j: float,
                  burden_per_km: Mapping[str, np.ndarray], distance_m: np.ndarray) -> None:
         """`flat_power_w`は平地の出力、`kickoff_j`は重みを掛けた漕ぎ出し1回の体力（`SegmentSpeedModel.kickoff_effort_j`）、
-        `burden_per_km`は道のストレスの軸ごとの区間の1kmあたりの重さ（`domain/leg_costs.py: burden_weights`）、`distance_m`は区間の
+        `burden_per_km`は数える道のストレスの軸ごとの区間の1kmあたりの重さ（`domain/leg_costs.py: burden_weights`）、`distance_m`は区間の
         長さ。走行の模型から組むときは`for_model`。"""
         multiplier = parameters.multiplier
         self._weight_exponent = parameters.effort_weight_exponent
-        self._item_multipliers = {item: multiplier(axis_id) for axis_id, item in EFFORT_AXES.items()}
+        #: 数える体力の軸（`EFFORT_AXES`の順）と、その費目の倍率。
+        self._effort_axes = {axis_id: item for axis_id, item in EFFORT_AXES.items() if parameters.counts(axis_id)}
+        self._item_multipliers = {item: multiplier(axis_id) for axis_id, item in self._effort_axes.items()}
         #: 体力1J（重み付き）あたりの代償の秒。区間の体力と曲がる所の漕ぎ出しに同じ換算で掛ける。
         self._seconds_per_j = parameters.effective_strength * parameters.effort_alpha / flat_power_w
-        self._kickoff_seconds = self._seconds_per_j * self._item_multipliers["inertia"] * kickoff_j
-        #: 道のストレスの軸ごとの、区間ごとの代償の秒（時刻に依らない）。
+        #: 漕ぎ出しの費目（慣性）を持つ軸。無効ならNoneで、曲がる所の漕ぎ出しも数えない。
+        self._kickoff_axis_id = next((axis_id for axis_id, item in self._effort_axes.items() if item == "inertia"), None)
+        self._kickoff_seconds = (
+            0.0 if self._kickoff_axis_id is None else self._seconds_per_j * self._item_multipliers["inertia"] * kickoff_j)
+        #: 数える道のストレスの軸ごとの、区間ごとの代償の秒（時刻に依らない）。
         distance_km = np.asarray(distance_m, dtype=np.float64) / 1000.0
         self._burden_axis_seconds = {
             axis_id: parameters.effective_strength * parameters.burden_seconds_per_km * multiplier(axis_id)
-            * np.asarray(burden_per_km[axis_id], dtype=np.float64) * distance_km
-            for axis_id in axes.burden
+            * np.asarray(per_km, dtype=np.float64) * distance_km
+            for axis_id, per_km in burden_per_km.items()
         }
 
     @classmethod
@@ -108,11 +121,11 @@ class LedgerCosts:
 
     def penalty_by_axis(self, ride: SegmentRide, rows: np.ndarray | None = None) -> dict[str, np.ndarray]:
         """軸id → 区間ごとの代償の秒（体力の軸は つまみ × α × 倍率 × 体力 ÷ 平地の出力、道のストレスの軸は つまみ × β × 倍率 ×
-        重さ×km）。体力の軸を`EFFORT_AXES`の順、続けて道のストレスの軸で、和が`penalty_seconds`。`ride`は重みを掛けた体力の内訳で、
+        重さ×km）。数える軸だけを、体力の軸を`EFFORT_AXES`の順、続けて道のストレスの軸で、和が`penalty_seconds`。`ride`は重みを掛けた体力の内訳で、
         区間の行`rows`だけを走ったもの（`domain/cycling_speed.py: SegmentSpeedModel.ride`に`rows`を渡したもの）なら`rows`も渡す。"""
         effort = {
             axis_id: self._seconds_per_j * self._item_multipliers[item] * _EFFORT_ITEM_J[item](ride)
-            for axis_id, item in EFFORT_AXES.items()
+            for axis_id, item in self._effort_axes.items()
         }
         burden = self._burden_axis_seconds if rows is None else {
             axis_id: seconds[rows] for axis_id, seconds in self._burden_axis_seconds.items()}
@@ -129,10 +142,10 @@ class LedgerCosts:
         ride = model.ride(headwind_ms, crosswind_ms, self._weight_exponent, rows)
         return ride.seconds, self.penalty_by_axis(ride, rows)
 
-    @property
-    def kickoff_seconds(self) -> float:
-        """曲がる所の漕ぎ出し1回の代償の秒（慣性の費目の軸の倍率を掛けたもの）。"""
-        return self._kickoff_seconds
+    def turn_penalty_by_axis(self, kickoffs: float) -> dict[str, float]:
+        """曲がる所の漕ぎ出し`kickoffs`回の代償の秒を、その費目（慣性）を持つ軸へ（軸id → 秒）。曲がる所の損は、その軸の損の
+        うち通る道筋で決まる分で、軸と別の行を持たない。その軸が無効なら空。"""
+        return {} if self._kickoff_axis_id is None else {self._kickoff_axis_id: kickoffs * self._kickoff_seconds}
 
     def bin_seconds(self, model: SegmentSpeedModel, headwind_ms: np.ndarray,
                     crosswind_ms: np.ndarray) -> tuple[np.ndarray, np.ndarray]:

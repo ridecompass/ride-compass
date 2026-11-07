@@ -34,6 +34,7 @@ import type { Coordinates } from "@/types/route";
 import type { MapTheme } from "@/lib/mapTheme";
 import type { RideConditions } from "@/features/map/regionApi";
 import { snapDeg } from "@/lib/cardinalLabel";
+import { countsAxis } from "@/lib/costPreference";
 import type { WayValueCondition } from "@/lib/mapDisplay/mapLens";
 import { useMapCatalog } from "@/features/map/useMapCatalog";
 import { initiallyHiddenLegendKeys } from "@/features/map/scene/legends";
@@ -115,7 +116,9 @@ export function useMapView({
     () => ({ ...buildDefaultLayerVisibility(mapCatalog.layers), ...storedVisibility }),
     [mapCatalog.layers, storedVisibility],
   );
-  const [lens, setLens] = useStoredState<LensId>("ridecompass:route-style-mode", "塗る負担", UNSELECTED_LENS_ID);
+  const [storedLens, setLens] = useStoredState<LensId>("ridecompass:route-style-mode", "塗る負担", UNSELECTED_LENS_ID);
+  // 選んでいた軸をあとから無効にしたら、選んでいない状態として扱う（選びは残し、無効を戻せばまた塗る）。
+  const lens = countsAxis(costPreference, storedLens) ? storedLens : UNSELECTED_LENS_ID;
   const [keepAfterRoute, setKeepAfterRoute] = useStoredState(
     "ridecompass:lens-keep-after-route",
     "ルートの後も周りを塗るか",
@@ -240,7 +243,11 @@ export function useMapView({
     lensControl: {
       lens,
       onLensChange: setLens,
-      axisOptions: costLensOptions(lenses, costPreference),
+      // 選べるレンズは、総合と、利用者が無効にしていない軸（無効の軸は地図のどこにも出さない）。
+      axisOptions: costLensOptions(
+        lenses.filter((candidate) => countsAxis(costPreference, candidate.lensId)),
+        costPreference,
+      ),
       legend,
       hiddenLegendKeys: lensHidden,
       onToggleLegendKey: (key) => toggleHiddenFor(lens, key),

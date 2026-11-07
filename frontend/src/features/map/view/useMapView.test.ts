@@ -12,12 +12,14 @@ import { HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { LEGEND_NO_DATA_KEY } from "@/lib/mapDisplay/mapColorLegend";
+import { UNSELECTED_LENS_ID } from "@/lib/mapDisplay/routeStyleModes";
 import { MAP_FETCH_DEBOUNCE_MS } from "@/hooks/useDebouncedValue";
 import { onBackend } from "@/testing/backendServer";
 import { chip, renderMapView, serve, VIEWPORT } from "@/testing/mapViewHook";
 import { costAxisCatalog, costAxisEntry } from "@/testing/costAxes";
 
 import { LEGEND_FILTER_DEBOUNCE_MS, type useMapView } from "./useMapView";
+import { STANDARD_COST_PREFERENCE } from "@/lib/costPreference";
 
 /** 既定の一覧（`TWO_COST_AXES`）のレンズ: 総合・登坂・振動。 */
 const LENS_COUNT = 3;
@@ -89,6 +91,18 @@ describe("useMapView", () => {
     });
     expect(sent[0].query.speed_kmh).toBe("20");
     expect(result.current.lensControl.premises).toContain("4秒/km ≈ 斜度 2.1%");
+  });
+
+  it("選んでいた軸を無効にすると、選んでいない状態で塗り、無効を戻すとまたその軸で塗る", async () => {
+    serve();
+    const { result, rerender } = renderMapView();
+    await waitFor(() => expect(result.current.lensControl.axisOptions).toHaveLength(LENS_COUNT));
+    act(() => result.current.lensControl.onLensChange("ascent"));
+
+    rerender({ costPreference: { ...STANDARD_COST_PREFERENCE, disabled_axes: ["ascent"] } });
+    expect(result.current.look.lens).toBe(UNSELECTED_LENS_ID);
+    rerender({ costPreference: STANDARD_COST_PREFERENCE });
+    expect(result.current.look.lens).toBe("ascent");
   });
 
   it("走る向きは地図の上の向きを [0, 360) の10°刻みへ丸めて地図へ渡し、材料の要求へ向きを載せないので向きを変えても取り直さない。走行中は実際に走る向きと速度を渡す", async () => {

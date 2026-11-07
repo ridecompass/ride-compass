@@ -18,6 +18,7 @@ import type { Coordinates } from "@/types/route";
 
 import { useGenerationConditions } from "./useGenerationConditions";
 import { useSavedConditions } from "./useSavedConditions";
+import { STANDARD_COST_PREFERENCE } from "@/lib/costPreference";
 
 const A: Coordinates = { latitude: 35.1, longitude: 139.1 };
 const B: Coordinates = { latitude: 35.2, longitude: 139.2 };
@@ -59,7 +60,11 @@ describe("保存して呼び出す", () => {
       result.current.conditions.setMaxRoutesInput("3");
       result.current.conditions.placeAtSelected(A, null);
       result.current.conditions.setDestination(B);
-      result.current.conditions.setCostPreference({ strength: 0.5, multipliers: { ascent: 2 } });
+      result.current.conditions.setCostPreference({
+        ...STANDARD_COST_PREFERENCE,
+        strength: 0.5,
+        multipliers: { ascent: 2 },
+      });
       result.current.conditions.setRoadAvoidance({ gravel: "exclude" });
     });
     act(() => result.current.saved.save("荒川へ", false));
@@ -71,7 +76,7 @@ describe("保存して呼び出す", () => {
       result.current.conditions.setMaxRoutesInput("5");
       result.current.conditions.removeWaypoint(0);
       result.current.conditions.clearDestination();
-      result.current.conditions.setCostPreference({ strength: 1, multipliers: {} });
+      result.current.conditions.setCostPreference(STANDARD_COST_PREFERENCE);
       result.current.conditions.setRoadAvoidance({});
     });
     act(() => result.current.saved.recall(result.current.saved.saved[0]));
@@ -84,7 +89,11 @@ describe("保存して呼び出す", () => {
     expect(conditions.waypoints).toEqual([A]);
     expect(conditions.destination).toEqual(B);
     expect(conditions.selectedPoint).toEqual({ role: "origin" });
-    expect(conditions.costPreference).toEqual({ strength: 0.5, multipliers: { ascent: 2 } });
+    expect(conditions.costPreference).toEqual({
+      ...STANDARD_COST_PREFERENCE,
+      strength: 0.5,
+      multipliers: { ascent: 2 },
+    });
     expect(conditions.roadAvoidance).toEqual({ gravel: "exclude" });
   });
 

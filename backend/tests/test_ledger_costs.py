@@ -13,6 +13,7 @@ import pytest
 from app.domain.attributes import CategoricalColumn
 from app.domain.cost_axes import EFFORT_AXES, CostAxisDefinitions
 from app.domain.cycling_speed import RiderProfile, SegmentRide, kickoff_extra_j, wheel_power_w
+from app.domain.leg_costs import burden_weights
 from app.domain.ledger_costs import LedgerCosts, LedgerParameters, burden_per_km
 from app.domain.material_catalog import GRADIENT_PERCENT
 from app.domain.road_network import MaterialFills
@@ -34,9 +35,9 @@ def _axes(**burden) -> CostAxisDefinitions:
 AXES = _axes(vibration={"kind": "categorical", "material": VIBRATION, "per_km": {"paved": 0.0, "gravel": 1.0}})
 
 
-def _parameters(strength=1.0, alpha=1.0, beta=180.0, exponent=0.0, **multipliers) -> LedgerParameters:
+def _parameters(strength=1.0, alpha=1.0, beta=180.0, exponent=0.0, disabled=(), **multipliers) -> LedgerParameters:
     return LedgerParameters(effective_strength=strength, multipliers=multipliers, effort_alpha=alpha,
-                            burden_seconds_per_km=beta, effort_weight_exponent=exponent)
+                            burden_seconds_per_km=beta, effort_weight_exponent=exponent, disabled_axes=frozenset(disabled))
 
 
 def _ledger(parameters: LedgerParameters, vibration_km: list[float]) -> LedgerCosts:
@@ -62,11 +63,19 @@ def test_the_penalty_is_the_strength_times_the_effort_over_the_flat_power_and_th
     assert penalty.tolist() == pytest.approx([expected])
 
 
-def test_an_axis_with_a_zero_multiplier_adds_nothing_and_the_penalty_never_goes_negative():
-    """倍率0の軸は数えない。どの項も0以上なので、費用は所要時間を下回らない（探索の見込みがそのまま使える）。"""
-    ledger = _ledger(_parameters(ascent=0.0, vibration=0.0), [1.0])
+def test_a_disabled_axis_is_not_built_and_a_disabled_stop_axis_does_not_count_the_turns_either():
+    """無効の軸は組まず、軸ごとの秒にも和にも入らない（道のストレスの軸は、区間ごとの重さを作る所で落ちる）。停止（慣性の費目）を
+    無効にすると、曲がる所の漕ぎ出しも数えず、曲がる所の費用は時間だけになる。"""
+    parameters = _parameters(disabled=("ascent", "vibration", "stopping"))
+    weights = burden_weights(AXES, parameters, {VIBRATION: CategoricalColumn.encode(["gravel"])},
+                             MaterialFills(numeric_means={}, class_shares={}))
+    ledger = LedgerCosts(AXES, parameters, wheel_power_w(RIDER), kickoff_extra_j(RIDER), weights, np.full(1, 1000.0))
+    ride = _ride(1, gravity=5000.0, inertia=kickoff_extra_j(RIDER))
 
-    assert ledger.penalty_seconds(_ride(1, gravity=5000.0)).tolist() == [0.0]
+    assert set(ledger.penalty_by_axis(ride)) == {"headwind", "friction"}
+    assert ledger.penalty_seconds(ride).tolist() == [0.0]
+    assert ledger.turn_penalty_by_axis(2.0) == {}
+    assert ledger.transition_costs(np.array([10.0], dtype=np.float32), np.array([1.0], dtype=np.float32)).tolist() == [10.0]
 
 
 def test_a_turn_costs_its_time_and_the_kickoffs_like_a_stop_on_a_road():

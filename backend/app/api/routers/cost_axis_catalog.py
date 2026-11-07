@@ -14,7 +14,6 @@ from pydantic import Field, TypeAdapter, ValidationError
 
 from app.domain.cost_axes import (
     AVOIDANCE_LABEL,
-    TURN_LABEL,
     EFFORT_AXES,
     AxisPresentation,
     LensBands,
@@ -63,8 +62,6 @@ class CostAxisCatalogResponse(StrictModel):
     axes: list[CostAxisCatalogEntry]
     #: 代償の内訳の、避け方の倍率で上乗せした秒の行の名前（軸ではないので、倍率を持たない）。
     avoidance_label: str
-    #: 代償の内訳の、曲がる所の漕ぎ出しの行の名前（慣性の費目の軸の倍率が掛かるが、道1本の値ではないので軸の行と分ける）。
-    turn_label: str
     total_lens: TotalLens
     map_lens: MapLens
 
@@ -83,7 +80,7 @@ async def get_cost_axis_catalog() -> CostAxisCatalogResponse:
         for axis_id, axis in definitions.burden.items()
     ]
     return CostAxisCatalogResponse(
-        axes=[*effort, *burden], avoidance_label=AVOIDANCE_LABEL, turn_label=TURN_LABEL,
+        axes=[*effort, *burden], avoidance_label=AVOIDANCE_LABEL,
         total_lens=TotalLens(lens_id=TOTAL_LENS_ID, **definitions.total_lens.model_dump()),
         map_lens=MapLens(formula=lens_way_formula(), material_conditions=list(LENS_MATERIAL_CONDITIONS)),
     )
@@ -91,17 +88,21 @@ async def get_cost_axis_catalog() -> CostAxisCatalogResponse:
 
 _REQUESTED_COST_PREFERENCE: TypeAdapter[CostPreference] = TypeAdapter(RequestedCostPreference)
 _MULTIPLIERS: TypeAdapter[dict[str, float]] = TypeAdapter(dict[str, float])
+_AXIS_IDS: TypeAdapter[list[str]] = TypeAdapter(list[str])
 
 
 def cost_preference_query(
     strength: float = STANDARD_COST_FACTOR,
     multipliers: Annotated[str | None, Query(description="軸id→倍率のJSONの object（書いていない軸は標準）")] = None,
+    disabled_axes: Annotated[str | None, Query(description="数えない（無効にした）軸idのJSONの array")] = None,
 ) -> CostPreference:
     """地図のレンズ（タイル）と凡例の目安の要求の利用者の値（ルート生成の`cost_preference`と同じ型・同じ検証。範囲と軸idは型が
     検め、誤りは型の検査と同じ形の422）。URL がそのまま応答のキャッシュの鍵になるので、クエリで受ける。"""
     try:
         parsed = {} if multipliers is None else _MULTIPLIERS.validate_json(multipliers)
-        return _REQUESTED_COST_PREFERENCE.validate_python({"strength": strength, "multipliers": parsed})
+        disabled = [] if disabled_axes is None else _AXIS_IDS.validate_json(disabled_axes)
+        return _REQUESTED_COST_PREFERENCE.validate_python(
+            {"strength": strength, "multipliers": parsed, "disabled_axes": disabled})
     except ValidationError as error:
         raise RequestValidationError(error.errors()) from error
 

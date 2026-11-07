@@ -6,8 +6,8 @@
 `domain/ledger_costs.py: LedgerCosts.penalty_by_axis`）で求める——レンズ・探索・ルートは同じ量を同じ所から読む。
 
 レンズはどれも1kmあたりの代償の秒で塗る: 軸ごとのレンズはその軸の分だけ、総合（`TOTAL_LENS_ID`）はその和。避け方の倍率は
-道の区分の指定で、道の値ではないので入れない。曲がる所の漕ぎ出しは道1本に出せないので入れない（区間の止まる出来事の
-漕ぎ出しは停止の軸に入る）。
+道の区分の指定で、道の値ではないので入れない。レンズは通る道筋に依らない道の値なので、来た道と曲がる向きで決まる曲がる所の
+漕ぎ出しは入れない（ルートの内訳では、その費目を持つ軸の秒に入る）。
 """
 
 from collections.abc import Mapping
@@ -155,7 +155,7 @@ def lens_table(features: LensFeatures, materials: Mapping[str, MaterialColumn], 
     """`features.rows`の行の順の材料・長さ・断面・風の成分（向かい風・横風。Noneは風を読めず無風で求める）・断面の一番急な
     登りと下りから、レンズの値と、道の窓が出す事実の入力を求める。"""
     travel = travel_inputs(materials, distance_m, profiles, speed_kmh, fills)
-    ledger = LedgerCosts.for_model(axes, parameters, travel.model, burden_weights(axes, materials, fills))
+    ledger = LedgerCosts.for_model(axes, parameters, travel.model, burden_weights(axes, parameters, materials, fills))
     calm = (np.zeros(len(distance_m)), np.zeros(len(distance_m)))
     _, penalties = ledger.row_seconds(travel.model, *(calm if wind_ms is None else wind_ms))
     km = _summed_by_direction(features, travel.model.distance_m) / 1000.0

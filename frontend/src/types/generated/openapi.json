@@ -918,6 +918,22 @@
               ],
               "title": "Multipliers"
             }
+          },
+          {
+            "name": "disabled_axes",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Disabled Axes"
+            }
           }
         ],
         "responses": {
@@ -1604,6 +1620,22 @@
                 }
               ],
               "title": "Multipliers"
+            }
+          },
+          {
+            "name": "disabled_axes",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Disabled Axes"
             }
           }
         ],
@@ -2966,10 +2998,6 @@
             "type": "string",
             "title": "Avoidance Label"
           },
-          "turn_label": {
-            "type": "string",
-            "title": "Turn Label"
-          },
           "total_lens": {
             "$ref": "#/components/schemas/TotalLens"
           },
@@ -2982,7 +3010,6 @@
         "required": [
           "axes",
           "avoidance_label",
-          "turn_label",
           "total_lens",
           "map_lens"
         ],
@@ -3030,10 +3057,17 @@
             "additionalProperties": {
               "type": "number",
               "maximum": 2.0,
-              "minimum": 0.0
+              "minimum": 0.5
             },
             "type": "object",
             "title": "Multipliers"
+          },
+          "disabled_axes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Disabled Axes"
           }
         },
         "additionalProperties": false,
@@ -3053,17 +3087,25 @@
             "additionalProperties": {
               "type": "number",
               "maximum": 2.0,
-              "minimum": 0.0
+              "minimum": 0.5
             },
             "type": "object",
             "title": "Multipliers"
+          },
+          "disabled_axes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Disabled Axes"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
           "strength",
-          "multipliers"
+          "multipliers",
+          "disabled_axes"
         ],
         "title": "CostPreference"
       },
@@ -4510,10 +4552,6 @@
             "type": "object",
             "title": "Axis Seconds"
           },
-          "turn_seconds": {
-            "type": "number",
-            "title": "Turn Seconds"
-          },
           "avoidance_seconds": {
             "type": "number",
             "title": "Avoidance Seconds"
@@ -4528,7 +4566,6 @@
         "type": "object",
         "required": [
           "axis_seconds",
-          "turn_seconds",
           "avoidance_seconds",
           "total_seconds"
         ],
@@ -5468,19 +5505,16 @@
             "type": "boolean",
             "title": "Is Fastest"
           },
-          "lens_seconds_per_km": {
+          "penalty_seconds_per_km": {
             "anyOf": [
               {
-                "additionalProperties": {
-                  "type": "number"
-                },
-                "type": "object"
+                "type": "number"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Lens Seconds Per Km",
+            "title": "Penalty Seconds Per Km",
             "readOnly": true
           }
         },
@@ -5505,7 +5539,7 @@
           "id",
           "kind",
           "is_fastest",
-          "lens_seconds_per_km"
+          "penalty_seconds_per_km"
         ],
         "title": "RouteCandidate"
       },

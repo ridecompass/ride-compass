@@ -13,6 +13,7 @@ import { EMPTY_CLIENT_CONFIG } from "@/lib/clientConfig";
 import { AVOIDANCE_LEVELS, avoidanceRow, clientConfigOf, roadClassCatalog } from "@/testing/clientConfig";
 
 import { describeConditions, suggestedConditionName, withSavedCondition, type SavedCondition } from "./savedConditions";
+import { STANDARD_COST_PREFERENCE } from "@/lib/costPreference";
 
 const POINT = { latitude: 35.1, longitude: 139.1 };
 
@@ -25,7 +26,7 @@ const ENTRY: SavedCondition = {
   origin: POINT,
   waypoints: [POINT],
   destination: POINT,
-  costPreference: { strength: 1.5, multipliers: { ascent: 2 } },
+  costPreference: { ...STANDARD_COST_PREFERENCE, strength: 1.5, multipliers: { ascent: 2 } },
   roadAvoidance: { gravel: "avoid" },
 };
 
@@ -52,8 +53,6 @@ const COST_CATALOG: CostAxisCatalog = {
   ],
   axisColors: {},
   avoidanceLabel: "回避指定",
-  turnLabel: "曲がる所",
-  turnColor: "rgb(9, 9, 9)",
   lenses: null,
   loaded: true,
   failed: false,
@@ -99,11 +98,11 @@ describe("describeConditions", () => {
   });
 
   it.each([
-    ["標準", { strength: 1, multipliers: { ascent: 1 } }, "標準"],
+    ["標準", { ...STANDARD_COST_PREFERENCE, multipliers: { ascent: 1 } }, "標準"],
     [
-      "標準でないつまみと軸の倍率だけを、軸の並びで（消えた軸は出さない）",
-      { strength: 0.5, multipliers: { vibration: 0, ascent: 2, gone: 3 } },
-      "負担の強さ ×0.5・登坂 ×2・振動 ×0",
+      "標準でないつまみと、無効の軸と標準でない軸の倍率だけを、軸の並びで（消えた軸は出さない）",
+      { ...STANDARD_COST_PREFERENCE, strength: 0.5, multipliers: { ascent: 2, gone: 3 }, disabled_axes: ["vibration"] },
+      "負担の強さ ×0.5・登坂 ×2・振動 無効",
     ],
   ])("倍率: %s", (_, costPreference, expected) => {
     expect(describeConditions({ ...ENTRY, costPreference }, CATALOG, COST_CATALOG).costPreference).toBe(expected);
