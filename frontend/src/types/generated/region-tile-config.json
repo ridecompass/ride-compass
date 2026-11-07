@@ -19,6 +19,7 @@
     "accident": "accidents",
     "stop_place": "stop_places"
   },
+  "road_surface_tile_min_zoom": 10,
   "road_tile_min_zoom": 12,
   "road_tile_max_zoom": 15,
   "max_mercator_latitude": 85.05112878,

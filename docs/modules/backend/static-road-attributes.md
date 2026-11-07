@@ -528,6 +528,18 @@ OSMは中央分離帯のある道路の上下線を別々のwayとして持ち�
 ズームでもway丸ごとで出す。落とすとその道は引いた表示に出ているのに拡大すると消え、データが
 無いことよりも壊れて見える。
 
+### 路面タイルが焼くもの
+
+路面タイル（`infrastructure/road_tile_sql.py: ROAD_SURFACE_TILE_MVT_SQL`）は、地図が塗るものだけを焼く: 線の形と、地図の線の層の値
+（層のid→区分の鍵か「データなし」。区分の外の道は持たない。`services/feature_materials.py: FeatureMaterialService.road_layer_values`）。
+`domain/region.py: ROAD_TILE_MIN_ZOOM`以上は道ごとの`feature_key`も焼き（画面が道ごとの値を置く）、それより引いた
+`domain/region.py: ROAD_SURFACE_TILE_MIN_ZOOM`からは層の値が同じ道を1つの地物につなぎ、鍵を持たない。道路名・材料の列は焼かない
+（押した道の小窓は`POST /api/region/roads-at`から読む）。
+
+引く縮尺の下限は実測で決めた（本番・都心のタイル1枚・gzip後。全部の道を層の値でつないだもの）: z11で約0.3MB、z10で約0.9MB、
+z9で約3MB（28万本・167万点）。z9より引くと1画面で数十MBになり、描画も重い。層の値は材料に今の道の区分を当てたものなので、
+タイルの世代は区分の全体の指紋も入れて組む（`services/tile_version_service.py: tile_shapes`。管理画面で区分を書き換えると焼き直す）。
+
 ### RegionService（路面・点のタイル、押した道）
 
 `repository`（`RoadGraphRepository`、必須）から、要求タイルが取込の宣言した範囲に入って
@@ -584,7 +596,7 @@ OSMは中央分離帯のある道路の上下線を別々のwayとして持ち�
 1つのレジストリ（`point_tile_layers.py: POINT_TILE_LAYERS`）**で配る。レイヤーごとに違うのは、名前・source-layer名・
 焼き込むSQLだけで、どれも路面タイルと同じ`RegionService._get_tile`の道（キャッシュのパス`region/<名前>/v<世代>/…`・
 空タイル・ログ）を通る。**点のレイヤーを足すのは、レジストリへ1エントリ足すことだけ**——配信・世代の表
-（`tile_version_service.py: TILE_SHAPES`）・生成物（`region-tile-config.json`の`point_layers`。名前→source-layer名）は
+（`tile_version_service.py: tile_shapes`）・生成物（`region-tile-config.json`の`point_layers`。名前→source-layer名）は
 レジストリから組み立て、画面はレイヤー名でURLを組みsource-layer名を生成物から読む。地図へ点として出す一次属性の
 `tile_kind`は、レジストリの名前を指す。
 
@@ -649,7 +661,7 @@ OSMは中央分離帯のある道路の上下線を別々のwayとして持ち�
 
 ### vector_tile.py・tile_cache.py
 
-`vector_tile.py`はMVTの共有定数（`TILE_EXTENT`・路面のレイヤー名・路面タイルが材料の外に持つ列の名前
+`vector_tile.py`はMVTの共有定数（`TILE_EXTENT`・路面のレイヤー名・道のフィーチャーが材料の外に持つ列の名前
 `ROAD_FEATURE_PROPERTIES`）と、レイヤー名を受けて空タイルを作る関数（`encode_empty_tile`）のみを持つ
 （点のレイヤー名は`point_tile_layers.py`の宣言が持つ）（実際のMVT生成はPostGIS側のST_AsMVTが担い、Pythonでのジオメトリ
 エンコードは行わない）。列の名前は焼き込みSQLが別名として差し込み、生成物`region-tile-config.json`の
@@ -667,10 +679,10 @@ OSMは中央分離帯のある道路の上下線を別々のwayとして持ち�
 
 | エンドポイント | 内容 |
 |---|---|
-| `GET /api/region/road-surface-tiles/{z}/{x}/{y}.pbf` | 路面・道路種別等のMVTタイル |
+| `GET /api/region/road-surface-tiles/{z}/{x}/{y}.pbf` | 地図の道の線のMVTタイル（下の「路面タイルが焼くもの」） |
 | `GET /api/region/point-tiles/{layer}/{z}/{x}/{y}.pbf` | 点のレイヤー（例: 停止要因・補給休憩のPOI`poi`、事故`accident`）のMVTタイル。`layer`はレジストリの名前で、無ければ404 |
 | `GET /api/region/landcover-tiles/{z}/{x}/{y}.png` | 土地被覆ラスタのPNGタイル |
-| `POST /api/region/roads-at` | 押した所に近い道のフィーチャー（近い順、上限は`domain/region.py: ROADS_AT_LIMIT`）。フィーチャーの単位とプロパティはそのズームの路面タイルと同じで（`infrastructure/road_tile_sql.py: ROADS_AT_SQL`がタイルと同じ並びと列を使う）、線の形はタイルで切らない全体。拾う距離は呼び手が送り、上限を`domain/region.py: ROADS_AT_MAX_RADIUS_M`が持つ。道が並ぶ所で選び直せるよう一覧で返す |
+| `POST /api/region/roads-at` | 押した所に近い道のフィーチャー（近い順、上限は`domain/region.py: ROADS_AT_LIMIT`）。フィーチャーの単位と鍵はそのズームの路面タイルと同じで（`infrastructure/road_tile_sql.py: ROADS_AT_SQL`がタイルと同じ並びを使う）、プロパティは小窓が読む列（識別子・道路名・材料）、線の形はタイルで切らない全体。拾う距離は呼び手が送り、上限を`domain/region.py: ROADS_AT_MAX_RADIUS_M`が持つ。道が並ぶ所で選び直せるよう一覧で返す |
 
 MVTエンコードはPostGIS側（`ST_AsMVT`、`road_graph_repository.py`・`point_tile_layers.py`）で行う。タイル内の
 フィーチャーへ値の表（区間・道の値）を結合するJOINは、**主キー検索に

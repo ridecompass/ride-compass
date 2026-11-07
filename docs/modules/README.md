@@ -74,7 +74,7 @@
 |---|---|
 | [ルート生成エンジン・経路探索](backend/routing-engine.md) | road_graphエンジン、周回生成戦略 |
 | [費用・材料](backend/evaluation-scoring.md) | 0次フィルタ・費目の帳簿の式・道の区分と費用の軸の管理DB・材料カタログ |
-| [レンズ・道ごとの値の配信](backend/dynamic-way-values.md) | 地図のレンズ・道の線の層の値・道の窓を、路面タイルのフィーチャーの鍵で配る層 |
+| [レンズ・道ごとの値の配信](backend/dynamic-way-values.md) | 地図のレンズ・道の窓を路面タイルのフィーチャーの鍵で配り、路面タイルが焼く地図の線の層の値を求める層 |
 | [静的道路属性・タイル配信](backend/static-road-attributes.md) | OSM取込・MVTタイル配信 |
 | [気象・動的レイヤー](backend/weather-dynamic-layers.md) | 気象庁MSM（数値予報モデル）・気象庁観測/防災データ |
 | [標高](backend/elevation.md) | GSI DEMタイル |

@@ -39,7 +39,6 @@ from app.infrastructure.tuning_overrides import TuningOverrideStore
 from app.infrastructure.wbgt_client import new_forecast_cache, new_point_master_cache
 from app.services.db_status_service import DbStatusService
 from app.services.derived_data_freshness_service import DerivedDataFreshnessService
-from app.services.feature_materials import FeatureMaterialService
 from app.services.flood_service import FloodService
 from app.services.graph_service import GraphService, SearchMemory
 from app.services.jma_amedas_service import JmaAmedasService
@@ -179,11 +178,6 @@ async def _open_place_search_reads(tile_sessions: async_sessionmaker[AsyncSessio
 
 def get_place_search_service(tile_sessions: TileSessions):
     return PlaceSearchService(partial(_open_place_search_reads, tile_sessions))
-
-
-async def get_feature_material_service(tile_sessions: TileSessions):
-    async with tile_sessions() as session:
-        yield FeatureMaterialService(RoadGraphRepository(session))
 
 
 def get_lens_service(weather_service: WeatherService = Depends(get_weather_service)) -> LensService:

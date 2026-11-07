@@ -164,7 +164,7 @@ wayの長さ（0はNULL）になる——件数と長さは必ず同じ側から
   （`domain/road_classes.py: published_map_layers`）。見出しの名前・並びを別に持たないので、凡例と道路タブは食い違わない。
   除外に出す分け方は地図の線の層でなければならない（外部キー）——凡例に無い見出しを作らない。
 - **地図の線の層の値もbackendが決める**（`domain/road_classes.py: layer_columns`）。値は区分の鍵か「データなし」で、地図の線
-  （`/api/region/road-classes`）とルートの区間の帯が同じ値を読む。地図は条件を当てない。
+  （路面タイルに焼く）とルートの区間の帯が同じ値を読む。地図は条件を当てない。
 - **本番へは管理APIで全体を入れる**（`PUT /api/admin/road-classes`・`PUT /api/admin/cost-axes`）。全体のJSONは本番の今の全体
   （`GET`）から作り、リポジトリの外に置く（[本番のデータ](../../../.claude/skills/production-data/SKILL.md)）。
 - **区分の鍵は読み替えない**: 区分の鍵を改める・分ける・合わせると、前の鍵で選んだ避け方は既定の段で読まれる

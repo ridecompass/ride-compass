@@ -9,8 +9,8 @@ TILE_EXTENT = 4096
 TILE_BUFFER = 256
 ROAD_SURFACE_LAYER_NAME = "road_surface"
 
-# 路面タイルのフィーチャーが材料の外に持つ列（役割→列名）。材料の列の名前は材料の`tile_property`が持つ。
-# 画面は生成物`region-tile-config.json`の`road_surface.properties`から引き、列名を持たない。
+# 道のフィーチャーが材料の外に持つ列（役割→列名）。押した所に近い道の口は全部を、路面タイルは`feature_key`だけを持つ。
+# 材料の列の名前は材料の`tile_property`が持つ。画面は生成物`region-tile-config.json`の`road_surface.properties`から引き、列名を持たない。
 # - feature_key: フィーチャーの識別子（区間かway丸ごとの鍵）。画面が地物のidへ昇格させ、配信値の鍵にする
 # - way_id: 道の窓が道を引き直すosm_way_id
 # - name・ref: 道路名・路線番号（表示専用の生値）

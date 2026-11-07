@@ -18,6 +18,7 @@ from app.infrastructure.derived_data_meta import DataRevisions
 from app.infrastructure.point_tile_layers import POINT_TILE_LAYERS
 from app.infrastructure.vector_tile import ROAD_SURFACE_LAYER_NAME, encode_empty_tile
 from app.services.region_service import RegionService
+from tests.road_class_fixture import classification, fact_is, replaced_road_classes, road_classes
 
 
 Z, X, Y = 14, 14551, 6447
@@ -25,7 +26,8 @@ POINT_LAYER = next(iter(POINT_TILE_LAYERS.values()))
 
 
 class _TileRepository:
-    """路面・点のMVTを焼く口とデータの世代だけを持つフェイク。取込範囲外はNone。"""
+    """路面・点のMVTを焼く口とデータの世代だけを持つフェイク。取込範囲外はNone。路面タイルが焼く地図の線の層の値の元
+    （タイルの材料）は無い（範囲外）。"""
 
     def __init__(self, tile: bytes | None = None, derived: int | None = 1):
         self.tile = tile
@@ -34,8 +36,14 @@ class _TileRepository:
     async def get_data_revisions(self):
         return DataRevisions(derived=self.derived, imported=1)
 
-    async def get_road_surface_tile_mvt(self, z, x, y, bbox):
+    async def get_road_surface_tile_mvt(self, z, x, y, bbox, layer_values):
         return self.tile
+
+    async def get_accident_years_covered(self):
+        return 1
+
+    async def get_feature_materials_in_tile(self, z, x, y, bbox, accident_years_covered):
+        return None
 
     async def get_tile_mvt(self, sql, layer_name, z, x, y, bbox):
         return self.tile
@@ -79,6 +87,20 @@ async def test_a_baked_tile_is_served_from_disk_only_while_its_generation_is_kno
     tile = await _road_surface_tile(service)
 
     assert tile == (b"first" if kept else b"second")
+
+
+async def test_a_road_surface_tile_is_baked_again_when_the_road_classes_are_replaced():
+    """路面タイルは地図の線の層の値を焼くので、管理画面で道の区分を書き換えると焼き直す（古い区分の色で塗り続けない）。"""
+    repository = _TileRepository(tile=b"first")
+    service = RegionService(repository=repository)
+    with replaced_road_classes(road_classes({"k": classification({"a": [fact_is("cat_a", "a")]})})):
+        await _road_surface_tile(service)
+
+    repository.tile = b"second"
+    with replaced_road_classes(road_classes({"k": classification({"b": [fact_is("cat_a", "b")]})})):
+        tile = await _road_surface_tile(service)
+
+    assert tile == b"second"
 
 
 # --- 道の窓 ---

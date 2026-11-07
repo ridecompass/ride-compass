@@ -19,7 +19,8 @@ import {
 import { ROUTE_SEGMENT_INDEX_PROPERTY } from "@/features/map/scene/groups/routeSources";
 import { POINT_HIT_TARGET, pointLayerOfSceneLayer } from "@/features/map/scene/groups/points";
 import { sidePointLayerOfSceneLayer } from "@/features/map/scene/groups/sidePoints";
-import { shownRoadTrackOf } from "@/features/map/scene/groups/roadLines";
+import { FEATURE_KEY_PROPERTY, ROAD_LINE_SOURCE_ID, shownRoadTrackOf } from "@/features/map/scene/groups/roadLines";
+import { ROAD_TILE_SOURCE_LAYER } from "@/features/map/scene/applyToMap";
 import { roadFeatureKey } from "@/features/map/MapView/roadFacts";
 import type { MapLook } from "@/features/map/view/mapLook";
 import { distinctFacilities, facilityOf } from "@/components/MapPopup/facilityRows";
@@ -280,11 +281,16 @@ export function bindMapTaps(map: MapLibreMap, latest: { readonly current: MapTap
     if (ask !== roadAsk || road === null) return;
     const { look, roadLayers } = latest.current;
     const featureKey = roadFeatureKey(road.properties);
+    // 道の層の値は、地図が塗っている同じ鍵のタイルの地物から読む（地図の線の色と同じ値）。
+    const [baked] =
+      featureKey === null
+        ? []
+        : map.querySourceFeatures(ROAD_LINE_SOURCE_ID, {
+            sourceLayer: ROAD_TILE_SOURCE_LAYER,
+            filter: ["==", ["get", FEATURE_KEY_PROPERTY], featureKey],
+          });
     popups.openRoad({
-      track:
-        featureKey === null
-          ? null
-          : shownRoadTrackOf(featureKey, roadLayers, look.layerVisibility, look.roadClasses.values),
+      track: baked === undefined ? null : shownRoadTrackOf(baked.properties, roadLayers, look.layerVisibility),
       lngLat,
       shape: road.shape,
       properties: road.properties,

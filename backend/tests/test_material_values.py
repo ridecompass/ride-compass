@@ -169,6 +169,6 @@ async def test_every_declared_expression_reads_only_what_each_reading_path_provi
     arrays = await road_graph_repository.get_edge_material_arrays([1], [0], [True], 1)
     assert len(arrays.distance_m) == 1
     # 取込範囲の外なので焼かずにNoneを返すが、タイルの列は先に解決される。
-    assert await road_graph_repository.get_road_surface_tile_mvt(14, 14552, 6451, area) is None
+    assert await road_graph_repository.get_road_surface_tile_mvt(14, 14552, 6451, area, {}) is None
     assert await road_graph_repository.roads_at(139.005, 35.005, 14, 10.0, 1) == []
     assert await road_graph_repository.get_feature_materials_in_tile(14, 14552, 6451, area, 1) is None

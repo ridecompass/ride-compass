@@ -7,7 +7,6 @@ from pydantic import Field, model_validator
 from app.api.dependencies import (
     get_road_inspector_service,
     LandcoverTileReader,
-    get_feature_material_service,
     get_landcover_tile_reader,
     get_lens_service,
     get_region_service,
@@ -27,10 +26,16 @@ from app.domain.geo import BearingDeg
 from app.domain.route_request import AssumedSpeedKmh
 from app.domain.landcover import LandcoverTileZoom
 from app.domain.geo import Latitude, Longitude
-from app.domain.region import RoadAt, RoadsAtRadiusM, RoadTileZoom, TileIndex, check_tile_index
+from app.domain.region import (
+    RoadAt,
+    RoadsAtRadiusM,
+    RoadSurfaceTileZoom,
+    RoadTileZoom,
+    TileIndex,
+    check_tile_index,
+)
 from app.infrastructure.media_types import PNG_CONTENT_TYPE
 from app.infrastructure.point_tile_layers import POINT_TILE_LAYERS
-from app.services.feature_materials import FeatureMaterialService
 from app.services.lens_service import LensService
 from app.services.region_service import RegionService, RoadInspectorService
 from app.domain.strict_model import StrictModel
@@ -46,7 +51,7 @@ _landcover_tile_semaphore = asyncio.Semaphore(settings.landcover_tile_max_concur
 
 @router.get("/api/region/road-surface-tiles/{z}/{x}/{y}.pbf")
 async def region_road_surface_tile(
-    z: RoadTileZoom,
+    z: RoadSurfaceTileZoom,
     x: TileIndex,
     y: TileIndex,
     request: Request,
@@ -129,23 +134,6 @@ async def region_lens(
     if materials is None:
         raise HTTPException(status_code=404, detail="この負担の種類の値はありません。")
     return materials
-
-
-@router.get("/api/region/road-classes/{z}/{x}/{y}")
-async def region_road_classes(
-    z: RoadTileZoom,
-    x: TileIndex,
-    y: TileIndex,
-    request: Request,
-    service: FeatureMaterialService = Depends(get_feature_material_service),
-) -> dict[str, dict[str, str]]:
-    """地図の道の線を塗る、指定タイル内のフィーチャーごとの層の値（画面の設定の`road_classes.map_layers`の`id`→値）。鍵は路面タイルの
-    `feature_key`。値は区分の鍵か「データなし」（`domain/road_classes.py: NO_DATA_VALUE`）で、区分の外の道の層は載せない。
-    ルートの区間の帯も同じ値を持つ。"""
-    check_tile_rate_limit(request, "road-classes")
-    validate_tile_coords(z, x, y)
-    async with region_tile_semaphore:
-        return await service.road_layer_values(z, x, y)
 
 
 class RoadInspectorRequest(StrictModel):

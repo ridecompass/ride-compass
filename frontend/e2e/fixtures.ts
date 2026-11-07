@@ -76,7 +76,6 @@ export async function installApiMocks(page: Page): Promise<void> {
   await page.route(`${API_BASE}/api/cost-axes/lens-equivalents*`, (route) => route.fulfill({ json: {} }));
   // レンズで塗る道ごとの材料。材料を持つ道が無い形で答える。
   await page.route(`${API_BASE}/api/region/lens/**`, (route) => route.fulfill({ json: {} }));
-  await page.route(`${API_BASE}/api/region/road-classes/**`, (route) => route.fulfill({ json: {} }));
 
   // 地点の詳しくが、置いた位置の辺りを引く。辺り無し（境界の外）で答える。
   await page.route(`${API_BASE}/api/place-area*`, (route) => route.fulfill({ json: { area: null } }));

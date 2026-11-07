@@ -46,6 +46,7 @@ import {
 } from "@/features/map/scene/groups/routeSources";
 import { tileBaseUrl } from "@/lib/tileBaseUrl";
 import {
+  ROAD_SURFACE_TILE_MIN_ZOOM,
   ROAD_TILE_MAX_ZOOM,
   ROAD_TILE_MIN_ZOOM,
   landcoverTileUrl,
@@ -59,7 +60,6 @@ import regionTileConfig from "@/types/generated/region-tile-config.json";
 import { applyMapScene } from "./applyMapScene";
 import type { AxisLineState, WayConditions, WayMaterials } from "./groups/axisLines";
 import { POINT_TILE_LAYERS } from "./groups/points";
-import { paintsRoadAvoidance, type RoadClassValues } from "./groups/roadLines";
 import type { BasemapLook } from "@/features/map/basemapTheme";
 import type { AvoidanceChoice } from "@/lib/roadAvoidance";
 import type { RouteState } from "./groups/routes";
@@ -89,9 +89,7 @@ export interface SceneLook {
   readonly lens: LensId;
   /** 全道路を塗っている軸（塗っていなければnull）。 */
   readonly paintedLensId: LensId | null;
-  /** 今の範囲の道ごとの、道の線の層の値の取得結果。 */
-  readonly roadClasses: { values: RoadClassValues; loading: boolean };
-  /** 地図の道に塗る、道路タブの段。道路タブを地図で見ていなければ空。 */
+  /** 地図の道に塗る、道路タブの段。 */
   readonly roadAvoidance: AvoidanceChoice;
   /** 道路タブを地図で見ているか。 */
   readonly roadAvoidanceShown: boolean;
@@ -235,9 +233,16 @@ function pointTileUrls(versions: TileVersions): Record<PointTileLayer, readonly 
 export function sceneInputsFrom(props: SceneWiringProps): SceneInputs {
   // 世代が届く前にタイルのソースを作ると、世代の違う中身がブラウザのキャッシュへ載る。
   const versions = props.tileVersions;
-  const zoom = { minZoom: ROAD_TILE_MIN_ZOOM, maxZoom: ROAD_TILE_MAX_ZOOM };
+  const pointZoom = { minZoom: ROAD_TILE_MIN_ZOOM, maxZoom: ROAD_TILE_MAX_ZOOM };
   const roadTiles =
-    versions === null ? null : { urls: [roadSurfaceTileUrl(versions)], sourceLayer: ROAD_TILE_SOURCE_LAYER, ...zoom };
+    versions === null
+      ? null
+      : {
+          urls: [roadSurfaceTileUrl(versions)],
+          sourceLayer: ROAD_TILE_SOURCE_LAYER,
+          minZoom: ROAD_SURFACE_TILE_MIN_ZOOM,
+          maxZoom: ROAD_TILE_MAX_ZOOM,
+        };
   // 家族はどれも自分の役割の鍵だけを読むため、状態をそのまま渡す。
   const visible = props.look.layerVisibility;
   const hiddenKeys = props.look.hiddenLegendKeys;
@@ -252,15 +257,13 @@ export function sceneInputsFrom(props: SceneWiringProps): SceneInputs {
       tiles: roadTiles,
       visible,
       hiddenKeys,
-      classes: props.look.roadClasses.values,
-      loading: props.look.roadClasses.loading,
       avoidance: props.look.roadAvoidance,
       avoidanceShown: props.look.roadAvoidanceShown,
       inspectedShape: props.inspectedShape,
     },
     axis: axisStateFrom(props, roadTiles?.sourceLayer ?? null),
     point: {
-      tiles: versions === null ? null : { urls: pointTileUrls(versions), ...zoom },
+      tiles: versions === null ? null : { urls: pointTileUrls(versions), ...pointZoom },
       visible,
       hiddenKeys,
     },
@@ -277,8 +280,8 @@ export function sceneInputsFrom(props: SceneWiringProps): SceneInputs {
 const appliedScene = new WeakMap<MapLibreMap, MapScene>();
 
 /** 基礎地図の見え方。道路タブの段を道に塗っている間は、塗った道を読ませるため灰色に薄める。 */
-export function basemapLookOf(look: Pick<SceneLook, "mapTheme" | "roadAvoidance" | "roadAvoidanceShown">): BasemapLook {
-  return { theme: look.mapTheme, muted: paintsRoadAvoidance(look.roadAvoidanceShown, look.roadAvoidance) };
+export function basemapLookOf(look: Pick<SceneLook, "mapTheme" | "roadAvoidanceShown">): BasemapLook {
+  return { theme: look.mapTheme, muted: look.roadAvoidanceShown };
 }
 
 /** `basemap`は基礎地図の見え方（省けば明るい地図）。スタイルを差し替えると基礎地図は明るい地図へ戻るので、暗い・薄めた地図を

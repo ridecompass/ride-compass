@@ -14,6 +14,7 @@ import palette from "@/types/generated/palette.json";
 import type { MapSceneFeatureStates, MapSceneGlobalState } from "@/features/map/scene/mapScene";
 import { declareGroup, type SceneLayerEntry, type SceneSourceEntry } from "@/features/map/scene/mapSceneGroups";
 import { featureStatesByName } from "@/features/map/scene/sceneBuilders";
+import { ROAD_TILE_MIN_ZOOM } from "@/features/map/regionApi";
 import { missingExpression, wayValueExpressions, type WayValueFormula } from "@/features/map/scene/wayValueFormula";
 import { LEGEND_NO_DATA_KEY, NO_DATA_LEGEND_BAND, UNDETERMINED_LEGEND_BAND } from "@/lib/mapDisplay/mapColorLegend";
 import { bandStep, type ValueBand } from "@/lib/mapDisplay/valueScale";
@@ -139,6 +140,8 @@ export const axisLineGroup = declareGroup<AxisLineState>((state) => {
     source: ROAD_LINE_SOURCE_ID,
     sourceLayer: state.sourceLayer ?? undefined,
     type: "line",
+    // 道ごとの値は道ごとの鍵で置くので、鍵を持たない引いたズームの地物には塗らない。
+    minzoom: ROAD_TILE_MIN_ZOOM,
   });
   const layers: readonly SceneLayerEntry[] = state.axes.flatMap((axis) => [
     {
