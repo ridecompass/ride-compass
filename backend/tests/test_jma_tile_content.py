@@ -23,3 +23,8 @@ def test_a_palette_raster_whose_every_pixel_is_the_transparent_entry_is_empty():
     image.info["transparency"] = 0
 
     assert is_empty_tile(encode(image), "png")
+
+
+def test_a_feature_collection_without_features_is_not_empty():
+    """落雷の地点等の地物の集まりは、地物が無いコマも空の集まりが中身（空と判じて404にすると、画面は取れなかったと読む）。"""
+    assert not is_empty_tile(b'{"type":"FeatureCollection","features":[]}', "geojson")
