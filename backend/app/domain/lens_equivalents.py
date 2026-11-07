@@ -31,6 +31,9 @@ _ROAD_M = 1000.0
 _GRADE_PERCENT = (0.0, 25.0, 0.05)
 _HEADWIND_MS = (0.0, 20.0, 0.05)
 
+#: 目安の条件（このモジュールの冒頭）を、利用者に言う文。条件を変えたら、ここも変える。
+LENS_EQUIVALENTS_CONDITION_WORDING = "いまの負担の強さと倍率で、その条件だけを持つ1kmの道を無風で走った場合"
+
 
 class ThresholdEquivalents(StrictModel):
     """段の境目ごとの事実の値（境目と同じ並び。刻んだ範囲の外はNone）。"""
