@@ -87,7 +87,7 @@ class RoadGraphContext:
     # A*のヒューリスティック（(向かうノード番号, 費用の最小の倍率)→各Nodeからの費用の下界[秒]）。向かう先（置いた点・終点）は
     # 1回の生成で固定のため、向かう先と倍率（費用で探すか所要時間で探すか）ごとに初回だけ計算し、区間の探索・最速の経路・
     # 全候補の帰りの探索で共有する。
-    heuristics: dict[tuple[int, float], np.ndarray] = field(default_factory=dict)
+    heuristics: dict[int, np.ndarray] = field(default_factory=dict)
     # 仕上げが目的地を一番近いNodeでなく出て戻れる最寄りNodeへ寄せた場合の
     # 実際の座標（寄せ直しが無ければNone）。仕上げの戻り値（経路の列）の外で生成器へ伝える。
     destination_correction: Coordinates | None = None
@@ -299,13 +299,14 @@ def learn_detour_ratio(context: RoadGraphContext, measured: float) -> float:
     return measured
 
 
-def heuristic_to(context: RoadGraphContext, node: int, cost_scale: float) -> np.ndarray:
-    """`node`へ向かうA*のヒューリスティック（各Nodeからの直線距離を費用の下界[秒]へ直したもの、`heuristic_seconds`）。
-    費用で探すなら`cost_scale`に`LegCostComposer.min_cost_scale`を、所要時間で探すなら1を渡す。"""
-    heuristic = context.heuristics.get((node, cost_scale))
+def heuristic_to(context: RoadGraphContext, node: int) -> np.ndarray:
+    """`node`へ向かうA*のヒューリスティック（各Nodeからの直線距離を費用の下界[秒]へ直したもの、`heuristic_seconds`。
+    「好む」の区間で費用が下がる分を`LegCostComposer.min_cost_scale`で緩め、所要時間で探すときも同じ値を使う）。"""
+    heuristic = context.heuristics.get(node)
     if heuristic is None:
-        heuristic = context.heuristics[node, cost_scale] = heuristic_seconds(
-            straight_distances_m(context.node_lat, context.node_lon, node), context.composer.speed_kmh, cost_scale,
+        heuristic = context.heuristics[node] = heuristic_seconds(
+            straight_distances_m(context.node_lat, context.node_lon, node), context.composer.speed_kmh,
+            context.composer.min_cost_scale,
         )
     return heuristic
 

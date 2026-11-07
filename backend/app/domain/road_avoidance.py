@@ -89,6 +89,8 @@ def road_avoidance_masks(
     列の無い分け方の行と、列の語彙に無い区分の行は、どの区間にも当たらない。"""
     strongest = np.zeros(n, dtype=np.int8)
     for key, level in levels.items():
+        if level == "pass":
+            continue
         classification_key, _, class_key = key.partition(".")
         column = classes.get(class_material_id(classification_key))
         if column is None or class_key not in column.vocab:

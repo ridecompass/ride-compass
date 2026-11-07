@@ -269,7 +269,7 @@ async def select_fastest_route(context: RoadGraphContext, fixed: FixedLegs) -> T
         time_bins = leg.travel_bins_lazy
         edges = await asyncio.to_thread(
             turn_expanded_shortest_path,
-            context.turn_structure, time_bins, heuristic_to(context, to_node, 1.0),
+            context.turn_structure, time_bins, heuristic_to(context, to_node),
             origin_states(context.statics, from_node), to_node,
             time_bins, leg.bin_seconds, transition_cost=context.turn_structure.turn_seconds,
         )

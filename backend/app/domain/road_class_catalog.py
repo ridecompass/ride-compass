@@ -9,6 +9,7 @@
 from app.domain.display_palette import nominal_colors, ordered_colors, ordered_ends_phrase
 from app.domain.cost_preference import multiplier_label
 from app.domain.road_avoidance import AVOIDANCE_LEVELS, AvoidanceLevel, avoidance_rows, level_multipliers
+from app.domain.tuning import tuning_value
 from app.domain.road_classes import (
     RoadClassDefinitions,
     by_sort_order,
@@ -80,8 +81,7 @@ class RoadClassCatalog(StrictModel):
     avoidance: RoadAvoidanceView
 
 
-def road_class_catalog(definitions: RoadClassDefinitions, avoid_cost_multiplier: float) -> RoadClassCatalog:
-    """`avoid_cost_multiplier`は較正値`avoidance.avoid_cost_multiplier`（段の名前の数字になる）。"""
+def road_class_catalog(definitions: RoadClassDefinitions) -> RoadClassCatalog:
     layers = []
     for key, layer in published_map_layers(definitions):
         classification = definitions.classifications[key]
@@ -118,7 +118,7 @@ def road_class_catalog(definitions: RoadClassDefinitions, avoid_cost_multiplier:
             )
         )
     avoidance = avoidance_rows(definitions)
-    multipliers = level_multipliers(avoid_cost_multiplier)
+    multipliers = level_multipliers(tuning_value("avoidance.avoid_cost_multiplier"))
     rows = [
         AvoidanceRowView(
             key=row.key,

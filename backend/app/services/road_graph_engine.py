@@ -410,7 +410,7 @@ class RoadGraphEngine:
             )
             context.legs.append(leg)
         return turn_expanded_shortest_path(
-            context.turn_structure, leg.cost_bins_lazy, heuristic_to(context, to_node, context.composer.min_cost_scale),
+            context.turn_structure, leg.cost_bins_lazy, heuristic_to(context, to_node),
             origin_states(context.statics, from_node),
             to_node,
             leg.travel_bins_lazy, leg.bin_seconds, transition_cost=context.transition_cost
@@ -671,7 +671,7 @@ class RoadGraphEngine:
         inbound_leg = context.legs[leg_index + 1]
 
         penalized_columns = traveled_columns(context, [*fixed.edges, *data.outbound_edge_indices])
-        heuristic = heuristic_to(context, fixed.end_node, context.composer.min_cost_scale)
+        heuristic = heuristic_to(context, fixed.end_node)
 
         trace_started = start_timer()
         return_edge_index_list = await asyncio.to_thread(

@@ -297,7 +297,7 @@ def straight_distances_m(node_lat: np.ndarray, node_lon: np.ndarray, target_node
 
 def heuristic_seconds(straight_m: np.ndarray, cruise_speed_kmh: float, cost_scale: float) -> np.ndarray:
     """Nodeごとの直線距離（m）を、費用の下界（秒）へ直す。`cost_scale`は区間の費用が所要時間に対して下がる最小の倍率
-    （`domain/leg_costs.py: LegCostComposer.min_cost_scale`。所要時間で探すなら1）。
+    （`domain/leg_costs.py: LegCostComposer.min_cost_scale`）。所要時間で探すときも同じ値で、下界のまま緩むだけ。
 
     実経路は直線より長く、実際の速度は走行モデルの速度の上限以下のため、直線距離÷速度の上限は真の
     所要時間を上回らない。区間の費用は所要時間に代償（0以上）を足して避け方の倍率を掛けたもので、所要時間の`cost_scale`倍を

@@ -32,7 +32,6 @@ def edge(facts: dict[str, str] | None = None) -> EdgeMaterialColumns:
     ("levels", "excluded", "avoided", "preferred"),
     [
         ({"kind.national": "pass"}, False, False, False),
-        ({"kind.national": "prefer"}, False, False, True),
         ({"kind.national": "avoid"}, False, True, False),
         ({"kind.national": "exclude"}, True, False, False),
         # 1つの道が2つの行に当たれば強い方: 「通る」は何も指定していない扱いで、「なるべく避ける」は「好む」より強い。

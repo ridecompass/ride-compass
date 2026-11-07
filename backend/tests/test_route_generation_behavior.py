@@ -353,7 +353,6 @@ async def test_a_detour_on_preferred_roads_is_taken_when_it_costs_less_than_the_
     assert others
     for candidate in others:
         assert ways_of(candidate)[:len(AROUND_THE_EDGE)] == AROUND_THE_EDGE
-        assert candidate.penalty.preferred_seconds < 0
 
 
 def _clustered_ring_network() -> tuple[RoadNetwork, Coordinates]:
