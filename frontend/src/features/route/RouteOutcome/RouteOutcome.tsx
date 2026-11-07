@@ -223,6 +223,8 @@ export default function RouteOutcome({ results, generation, splice, profileLayer
                 <RouteProfile
                   segments={route.segments}
                   catalog={costCatalog}
+                  penalty={route.penalty}
+                  facts={route.facts.axes}
                   scaleKm={longestDistanceKm}
                   waypointKms={route.waypoint_distances_km}
                   selected={selectedRouteSegment}
@@ -235,8 +237,6 @@ export default function RouteOutcome({ results, generation, splice, profileLayer
             {renderEditDifference(route)}
             <RouteAxisProfile
               penalty={route.penalty}
-              facts={route.facts}
-              catalog={costCatalog}
               estimatedDurationSeconds={route.estimated_duration_seconds}
               missingTravelDataShare={route.missing_travel_data_share}
             />

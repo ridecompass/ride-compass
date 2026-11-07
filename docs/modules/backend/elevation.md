@@ -24,7 +24,7 @@ source_features(source='dem')          ← 生データ。取り直さない限�
 edge_elevation（start/end・gain/loss・average・一番急な登りと下り・断面の点）
    │ 探索フェーズが材料として読む（road_graph_repository.py）
    ▼
-経路の集計（domain/route.py: route_elevation_gain）
+経路の集計（domain/route.py: elevation_gain）
 ```
 
 値の出し方そのものは`domain/attributes.py: elevation_values_sql`が持つ。派生バッチは
@@ -108,11 +108,11 @@ DEMが返すのは地表面の標高で、桁や坑道の高さではない—�
 区間の長さで割った足せる材料（`elevation_gain_m_per_km`）として別に持つ。足せるので密度の軸の項にでき、区間をどこで
 切っても経路で登った量の和は変わらない。上の入れ替えにより、逆向きの区間ではその区間の下りの量が値になる。
 
-## 経路の集計（`domain/route.py: route_elevation_gain`）
+## 経路の集計（`domain/route.py: elevation_gain`）
 
-確定した経路の区間ぶんの値から、獲得標高を組み立てる（エンジンが呼ぶ domain の関数で、
-ファイルは[ルート生成エンジン](routing-engine.md)の対象）。区間の値は探索フェーズで読んだ
-材料がそのまま持っているため、ここでDBへ問い合わせ直さない。値が1つも無ければNone
+区間ごとの登りの値から、獲得標高を組み立てる（エンジンと道の窓が呼ぶ domain の関数で、
+ファイルは[ルート生成エンジン](routing-engine.md)の対象）。経路の区間の値は探索フェーズで読んだ
+材料がそのまま持っているため、ここでDBへ問い合わせ直さない。道の窓は押した区間の登りをこれで足す。値が1つも無ければNone
 （0mと「標高が取れなかった」を分ける）。
 
 ## タイルの読み方（`batch/source_adapters/gsi_dem_tile.py`）

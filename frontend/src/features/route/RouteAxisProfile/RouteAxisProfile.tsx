@@ -2,13 +2,11 @@
 
 import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
 import { textVariants } from "@/components/ui/Text/Text";
-import PenaltyBreakdown from "@/features/route/PenaltyBreakdown/PenaltyBreakdown";
 import WarningText from "@/features/route/WarningText/WarningText";
 import { formatDurationShort } from "@/lib/duration";
-import { formatLensNumber } from "@/lib/mapDisplay/costLensPaint";
-import { formatPenalty, type PenaltyCatalog } from "@/lib/routePenalty";
+import { formatPenalty } from "@/lib/routePenalty";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
-import type { PenaltyBreakdown as PenaltyValues, RouteFacts } from "@/types/route";
+import type { PenaltyBreakdown as PenaltyValues } from "@/types/route";
 
 /** 区間ごとに速度を変える条件の名前（backendの走行モデルが宣言する並び）。 */
 const SPEED_CONDITIONS = routeGenerateConfig.segment_speed_conditions.join("・");
@@ -16,10 +14,6 @@ const SPEED_CONDITIONS = routeGenerateConfig.segment_speed_conditions.join("・"
 interface RouteAxisProfileProps {
   /** RouteCandidate.penalty（軸ごとと回避指定の代償の秒）。 */
   penalty: PenaltyValues;
-  /** RouteCandidate.facts（軸ごとの事実の量と、標高の無い長さ）。 */
-  facts: RouteFacts;
-  /** 費用の軸の一覧（行の名前と色）。 */
-  catalog: PenaltyCatalog;
   /** RouteCandidate.estimated_duration_seconds（走行＋停止＋ターンの見積もり）。 */
   estimatedDurationSeconds: number | null;
   /** 所要時間を、勾配か停止要因の値が無く平地・待ち無しとして出した区間の距離の割合（0〜1、
@@ -28,11 +22,9 @@ interface RouteAxisProfileProps {
 }
 
 /** ルート結果の所要時間と負担（読むだけ）。負担は、避けたいもの（登り・止まる回数・振動等の軸）を通る代償を秒にしたもので、
- * 軸ごとの内訳を帯と一覧で出し、軸ごとの事実の量を添える。レンズはここでは選ばない（入口は地図の上のピルだけ）。 */
+ * 種類ごとの内訳と事実は道のりのグラフの右上の一覧が出す。レンズはここでは選ばない（入口は地図の上のピルだけ）。 */
 export default function RouteAxisProfile({
   penalty,
-  facts,
-  catalog,
   estimatedDurationSeconds,
   missingTravelDataShare,
 }: RouteAxisProfileProps) {
@@ -41,8 +33,6 @@ export default function RouteAxisProfile({
 
   return (
     <div className="mx-0.5 mt-0.5 mb-1 flex flex-col gap-1">
-      {/* 数値の行と内訳の帯を分ける——同じ折り返しの行へ入れると、数値の文字数で帯が数値の横へ入るか次の行へ落ちるかが
-          変わり、候補ごとに帯の長さが揃わない。 */}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
         {estimatedDurationSeconds != null && (
           <span className="inline-flex flex-shrink-0 items-baseline gap-0.5">
@@ -63,7 +53,7 @@ export default function RouteAxisProfile({
             <p>
               {"登り・止まる回数・路面の振動など、避けたいものを通る分を、所要時間に上乗せした時間として数えたものです。" +
                 "最速の1本を比べる基準として先頭に置き、残りは所要時間と負担の和が小さい順に並びます（周回は1kmあたりの和で比べます）。" +
-                "下の一覧は、負担を種類ごとに分けたものに、曲がる所の漕ぎ出し（止まってから漕ぎ出す負担と同じ倍率が掛かります）と、" +
+                "グラフの右上の一覧は、負担を種類ごとに分けたものに、曲がる所の漕ぎ出し（止まってから漕ぎ出す負担と同じ倍率が掛かります）と、" +
                 "回避指定で上乗せした分を足したものです。"}
             </p>
           </InfoPopover>
@@ -73,12 +63,6 @@ export default function RouteAxisProfile({
           値の無い区間は丸めて1%以上のときだけ出す——0%を並べても判断の材料にならない。 */}
       {missingPct >= 1 && (
         <WarningText>{`データの無い区間が${missingPct}%[${routeGenerateConfig.missing_travel_data_wording}]`}</WarningText>
-      )}
-      <PenaltyBreakdown penalty={penalty} facts={facts.axes} catalog={catalog} />
-      {facts.elevation_unknown_km > 0 && (
-        <p className={textVariants({ variant: "hint" })}>
-          {`標高の無い道 ${formatLensNumber(facts.elevation_unknown_km)}km（登りに数えていません）`}
-        </p>
       )}
     </div>
   );

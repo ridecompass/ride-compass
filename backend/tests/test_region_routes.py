@@ -175,7 +175,7 @@ def test_region_road_inspector_hands_the_pressed_feature_and_the_maps_conditions
     別の物の値が出る。
     """
     result = RoadInspection(highway="primary", tags={},
-                            lens=LensInspection(painted="along", along=None, against=None, surface=None))
+                            lens=LensInspection(painted="along", along=None, against=None))
     fake = FakeRoadInspector(result)
     override_dependency(get_road_inspector_service, lambda: fake)
     response = client.post(

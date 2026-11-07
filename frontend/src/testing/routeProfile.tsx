@@ -41,6 +41,9 @@ export const PROFILE_COST_CATALOG = {
   failed: false,
 };
 
+/** ルート全体の代償の内訳（積む負担の一覧の行）。 */
+export const PROFILE_PENALTY = { axis_seconds: { ascent: 40, vibration: 0 }, avoidance_seconds: 0, total_seconds: 40 };
+
 // 北緯35度の上を東へ1kmずつ進む2区間。前は登坂だけが効き、標高を持つ。後ろは負担の内訳も標高も無い。
 export const CLIMB = makeRouteSegment({
   distance_km: 1,
@@ -73,6 +76,8 @@ export function profileElement(props: Partial<Props> = {}) {
     <RouteProfile
       segments={[CLIMB, UNKNOWN]}
       catalog={PROFILE_COST_CATALOG}
+      penalty={PROFILE_PENALTY}
+      facts={{}}
       scaleKm={2}
       selected={null}
       layers={{ ids: ["elevation"], toggle: vi.fn() }}

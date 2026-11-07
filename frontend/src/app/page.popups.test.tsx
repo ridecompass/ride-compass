@@ -197,7 +197,7 @@ describe("地図の小窓", () => {
     await user.click(screen.getByRole("button", { name: "パネルを閉じる" }));
     rightClickMap(HERE);
     await user.click(await screen.findByRole("button", { name: "この道の負担を見る" }));
-    expect(await screen.findByText("総合の負担 12秒/km")).toBeInTheDocument();
+    expect(await screen.findByText("総合の負担 +12秒")).toBeInTheDocument();
 
     rightClickMap(ELSEWHERE);
     expect(await screen.findByRole("button", { name: "この道の負担を見る" })).toBeInTheDocument();

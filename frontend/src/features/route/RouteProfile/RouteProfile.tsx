@@ -4,7 +4,7 @@ import { BURDEN_PAINT_NAME, FACT_DISPLAY_NAME } from "@/lib/screenNames";
 import { useMemo, useState } from "react";
 import { useStoredState } from "@/hooks/useStoredState";
 
-import { legendChipBodyClass, legendChipClass, legendChipsClass } from "@/components/ui/AxisLegend/axisLegend";
+import { Checkbox } from "@/components/ui/Checkbox/Checkbox";
 import { Dot } from "@/components/ui/Dot/Dot";
 import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs/Tabs";
@@ -13,12 +13,16 @@ import { BurdenPaintIcon } from "@/components/ui/icons/lucideIcons";
 import DifficultyProfile from "@/features/route/DifficultyProfile/DifficultyProfile";
 import { profileBoxes } from "@/features/route/DifficultyProfile/profileGeometry";
 import { useProfileScale } from "@/features/route/ProfileChart/profileScale";
-import type { PenaltyCatalog } from "@/lib/routePenalty";
-import palette from "@/types/generated/palette.json";
-import type { RouteSegmentDetail, SelectedRouteSegment } from "@/types/route";
+import { factText, formatPenalty, penaltyRows, type PenaltyCatalog } from "@/lib/routePenalty";
+import type {
+  AxisFact,
+  PenaltyBreakdown as PenaltyValues,
+  RouteSegmentDetail,
+  SelectedRouteSegment,
+} from "@/types/route";
 
 import LayerProfile, { type ShownLayers } from "./LayerProfile";
-import { layerBand, layerLine, type BandLayer, type LineLayer } from "./profileLayers";
+import { bandLegendRows, layerBand, layerLine, type BandLayer, type LineLayer } from "./profileLayers";
 import ProfileLayerPicker from "./ProfileLayerPicker";
 import { SectionOnMapButton, type SectionOnMap } from "@/features/route/SegmentDetail/SegmentDetail";
 
@@ -32,6 +36,9 @@ interface RouteProfileProps {
   segments: readonly RouteSegmentDetail[];
   /** 負担を下から積む費用の軸の並び（一覧の順）と色。 */
   catalog: PenaltyCatalog;
+  /** ルート全体の代償の内訳と、軸ごとの事実（RouteCandidate.penalty・facts.axes）。積む負担の一覧の行に出す。 */
+  penalty: PenaltyValues;
+  facts: Readonly<Record<string, AxisFact>>;
   /** 横軸の右端の距離。 */
   scaleKm: number;
   selected: SelectedRouteSegment | null;
@@ -54,6 +61,8 @@ interface RouteProfileProps {
 export default function RouteProfile({
   segments,
   catalog,
+  penalty,
+  facts,
   scaleKm,
   selected,
   onSelect,
@@ -67,7 +76,7 @@ export default function RouteProfile({
   const { axes, axisColors } = catalog;
   const axisOrder = useMemo(() => axes.map((axis) => axis.axisId), [axes]);
   const scale = useProfileScale(segments, scaleKm);
-  // 凡例には、このルートで塗る区間のある軸だけを出す。
+  // 選んでいない間に積む軸は、このルートで塗る区間のある軸から選ぶ。
   const paintedAxes = useMemo(() => {
     const byAxis = profileBoxes(scale.columns, axisOrder);
     return axes.filter((axis) => (byAxis.get(axis.axisId)?.length ?? 0) > 0);
@@ -92,6 +101,7 @@ export default function RouteProfile({
       .map((axis) => axis.axisId);
   }, [chosenAxes, scale, paintedAxes]);
   const shownOrder = useMemo(() => axisOrder.filter((axisId) => shownAxes.includes(axisId)), [axisOrder, shownAxes]);
+  const burdenRows = penaltyRows(penalty, catalog);
   const { available, chosen } = useChosenProfileLayers(layers.ids);
   const shownLayers = useMemo(
     (): ShownLayers => ({
@@ -126,11 +136,82 @@ export default function RouteProfile({
             triggerClassName="rounded-full bg-[color-mix(in_srgb,var(--background)_85%,transparent)]"
           >
             <p>
-              図の下の札で押した種類だけを積みます。高さは区間ごとの1kmあたりの負担で、上端はこのルートで最も大きい区間の値です（曲がる所と回避指定は含みません）。色ごとの面積は、その種類の負担の合計を表します。横の右端は、一覧で最も長い候補の距離です。
+              右上の一覧でチェックした種類だけを積みます。高さは区間ごとの1kmあたりの負担で、上端はこのルートで最も大きい区間の値です（曲がる所と回避指定は含みません）。色ごとの面積は、その種類の負担の合計を表します。横の右端は、一覧で最も長い候補の距離です。
             </p>
           </InfoPopover>
         )}
-        {tab === "layer" && <ProfileLayerPicker available={available} layers={layers} shown={shownLayers} />}
+        {/* 走行中の図は低く保つため一覧を出さず、結果で選んだ軸を積む。 */}
+        {tab === "lens" && !riding && (
+          <ProfileLayerPicker
+            title="グラフに積む負担"
+            usage="グラフに積む負担の種類を選ぶ一覧を開きます。数字は今積んでいる数です。"
+            count={burdenRows.filter((row) => shownAxes.includes(row.id)).length}
+          >
+            {burdenRows.map((row) => {
+              const on = shownAxes.includes(row.id);
+              const fact = facts[row.id];
+              return (
+                <li key={row.id} data-usage="チェックした種類の負担を、グラフに積みます。選びはこの端末に覚えます。">
+                  <label className="flex cursor-pointer items-center gap-1.5">
+                    {/* 回避指定は軸ではないので積めない（チェックを置かず、並びをそろえる）。 */}
+                    {Object.hasOwn(penalty.axis_seconds, row.id) ? (
+                      <Checkbox
+                        checked={on}
+                        onCheckedChange={() =>
+                          setChosenAxes(on ? shownAxes.filter((id) => id !== row.id) : [...shownAxes, row.id])
+                        }
+                        aria-label={row.label}
+                      />
+                    ) : (
+                      <span aria-hidden="true" className="size-6 flex-none" />
+                    )}
+                    <Dot tone="none" style={{ backgroundColor: row.color }} />
+                    <span>{row.label}</span>
+                    {fact !== undefined && <span className="text-[var(--color-muted-strong)]">{factText(fact)}</span>}
+                    <span className="ml-auto pl-2 whitespace-nowrap tabular-nums">{formatPenalty(row.seconds)}</span>
+                  </label>
+                </li>
+              );
+            })}
+          </ProfileLayerPicker>
+        )}
+        {tab === "layer" && (
+          <ProfileLayerPicker
+            title="グラフに出す情報"
+            usage="グラフに重ねる情報（標高・道の区分等）を選ぶ一覧を開きます。数字は今重ねている数です。"
+            // 覚えた選択には今は無いレイヤも残るので、数は今重ねているものだけで数える。
+            count={shownLayers.lines.length + shownLayers.bands.length}
+          >
+            {available.map((layer) => {
+              const band = shownLayers.bands.find((shown) => shown.layer.id === layer.id);
+              return (
+                <li key={layer.id} data-usage="チェックした情報を、グラフに重ねて出します。">
+                  <label className="flex cursor-pointer items-center gap-1.5">
+                    <Checkbox
+                      checked={layers.ids.includes(layer.id)}
+                      onCheckedChange={() => layers.toggle(layer.id)}
+                      aria-label={layer.label}
+                    />
+                    {layer.label}
+                  </label>
+                  {band !== undefined && band.pieces.length > 0 && (
+                    <ul
+                      aria-label={`${layer.label}の凡例`}
+                      className="ml-6 flex flex-wrap gap-x-2 text-[length:var(--font-size-xs)] text-[var(--color-muted)]"
+                    >
+                      {bandLegendRows(band.layer, band.pieces).map((legend) => (
+                        <li key={legend.key} className="flex items-center gap-1">
+                          <Dot tone="none" style={{ backgroundColor: legend.color }} />
+                          <span>{legend.label}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </li>
+              );
+            })}
+          </ProfileLayerPicker>
+        )}
         {/* 選んだ区間の値は地図の区間の小窓が出す。地図は選んでも動かないので、ここから寄せる（区間が地図の外なら目立たせる）。 */}
         {selected !== null && segmentOnMap !== undefined && <SectionOnMapButton onMap={segmentOnMap} />}
       </div>
@@ -145,30 +226,6 @@ export default function RouteProfile({
           waypointKms={waypointKms}
           riding={riding}
         />
-        {/* 札が凡例を兼ねる。走行中の図は低く保つため札を出さず、結果で選んだ軸を積む。 */}
-        {!riding && (
-          <ul aria-label="積む負担の種類" className={legendChipsClass}>
-            {paintedAxes.map((axis) => {
-              const on = shownAxes.includes(axis.axisId);
-              return (
-                <li key={axis.axisId} className={legendChipClass} data-checked={on}>
-                  <button
-                    type="button"
-                    aria-pressed={on}
-                    data-usage="この種類の負担を、上の図に積むか外すかを切り替えます。選びはこの端末に覚えます。"
-                    className={legendChipBodyClass}
-                    onClick={() =>
-                      setChosenAxes(on ? shownAxes.filter((id) => id !== axis.axisId) : [...shownAxes, axis.axisId])
-                    }
-                  >
-                    <Dot tone="none" style={{ backgroundColor: axisColors[axis.axisId] ?? palette.semantic.no_data }} />
-                    {axis.label}
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        )}
       </TabsContent>
       <TabsContent value="layer" className="flex flex-col gap-1">
         <LayerProfile

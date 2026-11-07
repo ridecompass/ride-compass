@@ -263,6 +263,8 @@ export default function HomeMapPane({
               <RouteProfile
                 segments={profile.segments}
                 catalog={costCatalog}
+                penalty={profile.penalty}
+                facts={profile.facts.axes}
                 scaleKm={profile.distance_km}
                 progressKm={progress.km}
                 waypointKms={profile.waypoint_distances_km}

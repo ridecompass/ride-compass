@@ -4046,16 +4046,16 @@
             "type": "string",
             "title": "Axis Id"
           },
-          "seconds_per_km": {
+          "seconds": {
             "type": "number",
-            "title": "Seconds Per Km"
+            "title": "Seconds"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
           "axis_id",
-          "seconds_per_km"
+          "seconds"
         ],
         "title": "LensAxisSeconds"
       },
@@ -4087,9 +4087,9 @@
       },
       "LensDirection": {
         "properties": {
-          "total_seconds_per_km": {
+          "total_seconds": {
             "type": "number",
-            "title": "Total Seconds Per Km"
+            "title": "Total Seconds"
           },
           "axes": {
             "items": {
@@ -4099,17 +4099,17 @@
             "title": "Axes"
           },
           "facts": {
-            "items": {
+            "additionalProperties": {
               "$ref": "#/components/schemas/AxisFact"
             },
-            "type": "array",
+            "type": "object",
             "title": "Facts"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
-          "total_seconds_per_km",
+          "total_seconds",
           "axes",
           "facts"
         ],
@@ -4151,17 +4151,6 @@
                 "type": "null"
               }
             ]
-          },
-          "surface": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Surface"
           }
         },
         "additionalProperties": false,
@@ -4169,8 +4158,7 @@
         "required": [
           "painted",
           "along",
-          "against",
-          "surface"
+          "against"
         ],
         "title": "LensInspection"
       },
@@ -5545,10 +5533,6 @@
       },
       "RouteFacts": {
         "properties": {
-          "elevation_unknown_km": {
-            "type": "number",
-            "title": "Elevation Unknown Km"
-          },
           "axes": {
             "additionalProperties": {
               "$ref": "#/components/schemas/AxisFact"
@@ -5560,7 +5544,6 @@
         "additionalProperties": false,
         "type": "object",
         "required": [
-          "elevation_unknown_km",
           "axes"
         ],
         "title": "RouteFacts"

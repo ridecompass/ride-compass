@@ -1,5 +1,5 @@
 /**
- * `RoadInspectorPopup.tsx`——押した道の負担を取りに行き、地図が塗る向きの総合・軸ごとの秒と元の事実を出すこと。
+ * `RoadInspectorPopup.tsx`——押した道の負担を取りに行き、地図が塗る向きの区間の総合・軸ごとの秒と、切り替えで元の事実を出すこと。
  *
  * ここで見ないもの:
  * - 負担を利用者のいまの値で取りに行くこと → 受けた値をそのまま取得の口へ渡す1行の委譲（testing.md「そのテストは
@@ -51,32 +51,41 @@ describe("RoadInspectorPopup", () => {
     expect(screen.queryByText(/秒\/km/)).not.toBeInTheDocument();
   });
 
-  it("費用の軸のレンズの値が届いたら、地図が塗る向きの総合と軸ごとの1kmあたりの代償の秒と、その元の事実を出す", async () => {
+  it("負担が届いたら、地図が塗る向きの区間の総合と軸ごとの秒を出し、「換算前」に切り替えると軸ごとの秒の元の事実を出す", async () => {
     const user = userEvent.setup();
-    const direction = (total: number, climb: number) =>
-      lensDirection(total, {
-        axes: [{ axis_id: "ascent", seconds_per_km: total }],
-        // 事実は名前と単位つきで届き、値の無い事実は届かない。
-        facts: [
-          { label: "一番急な登り", value: climb, unit: "%" },
-          { label: "向かい風", value: 1.5, unit: "m/s" },
-          { label: "止まる回数", value: 2, unit: "回/km" },
+    const direction = (climb: number) =>
+      lensDirection(7, {
+        axes: [
+          { axis_id: "ascent", seconds: 4.4 },
+          { axis_id: "friction", seconds: 2 },
+          { axis_id: "headwind", seconds: 0.6 },
         ],
+        // 区分の事実は値を持たず、区分の名前だけを出す。求められない事実（風を読めないときの向かい風）は届かない。
+        facts: {
+          ascent: { label: "登り", value: climb, unit: "m" },
+          friction: { label: "砂利", value: null, unit: "" },
+        },
       });
     serveInspector(
-      inspectorResult({ painted: "against", along: direction(30, 12), against: direction(4, 0), surface: "舗装" }),
-      costAxisCatalog(costAxisEntry("ascent", { label: "登坂" })),
+      inspectorResult({ painted: "against", along: direction(12), against: direction(0) }),
+      costAxisCatalog(
+        costAxisEntry("ascent", { label: "登坂" }),
+        costAxisEntry("friction", { label: "摩擦" }),
+        costAxisEntry("headwind", { label: "向かい風" }),
+      ),
     );
     renderPopup();
+    const rows = () =>
+      screen.getAllByRole("term").map((term) => `${term.textContent}:${term.nextSibling?.textContent}`);
 
     await openInspection(user);
 
-    expect(await screen.findByText("総合の負担 4秒/km")).toBeInTheDocument();
+    expect(await screen.findByText("総合の負担 +7秒")).toBeInTheDocument();
     expect(screen.getByText("逆向き")).toBeInTheDocument();
-    const rows = screen.getAllByRole("term").map((term) => `${term.textContent}:${term.nextSibling?.textContent}`);
-    expect(rows).toEqual(
-      expect.arrayContaining(["登坂:4秒/km", "一番急な登り:0%", "向かい風:1.5m/s", "止まる回数:2回/km", "路面:舗装"]),
-    );
+    expect(rows()).toEqual(expect.arrayContaining(["登坂:+4秒", "摩擦:+2秒", "向かい風:+1秒"]));
+    await user.click(screen.getByRole("radio", { name: "換算前" }));
+    expect(rows()).toEqual(expect.arrayContaining(["登坂:登り 0m", "摩擦:砂利"]));
+    expect(rows()).not.toContainEqual(expect.stringMatching(/^向かい風:/));
   });
 
   it("道に名前があれば、上の帯は名前で呼ぶ", () => {

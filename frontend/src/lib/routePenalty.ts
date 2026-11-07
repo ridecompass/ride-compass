@@ -47,9 +47,9 @@ export function costAxisLabel(
   );
 }
 
-/** 事実の値と単位（値を求められなければ「—」）。ルートの内訳と道の窓が同じ書き方で出す。 */
-export function factValueText(fact: AxisFact): string {
-  return fact.value === null ? "—" : `${formatLensNumber(fact.value)}${fact.unit}`;
+/** 事実の名前と値と単位（区分の事実は値を持たず、名前が区分の名前）。ルートの一覧と道の窓が同じ書き方で出す。 */
+export function factText(fact: AxisFact): string {
+  return fact.value === null ? fact.label : `${fact.label} ${formatLensNumber(fact.value)}${fact.unit}`;
 }
 
 /** 回避指定の行のid。軸のidと同じ並びに置くので、軸には無い綴りにする。 */
