@@ -42,6 +42,7 @@ function renderPanel(roadAvoidance: RoadAvoidanceOverride = {}) {
       avoidance={AVOIDANCE}
       roadAvoidance={roadAvoidance}
       onRoadAvoidanceChange={onRoadAvoidanceChange}
+      roadTabMap={{ on: true, onChange: vi.fn(), notice: null }}
     />,
   );
   return { ...view, onRoadAvoidanceChange };
@@ -53,10 +54,12 @@ const checkedLevel = (row: string) =>
 
 describe("HardFilterPanel", () => {
   it("自転車が通れない道の行は、並びの先頭に畳まずに鍵で出し、選び直す操作を持たない", () => {
-    const { container } = renderPanel();
+    renderPanel();
     const [firstFixed] = routeGenerateConfig.hard_filters;
 
-    expect(container.firstElementChild!.firstElementChild).toHaveTextContent(new RegExp(`^${firstFixed.label}`));
+    // 行の並びは「地図で見る」の次から。
+    const firstRow = screen.getByRole("checkbox", { name: "地図で見る" }).closest("label")!.nextElementSibling;
+    expect(firstRow).toHaveTextContent(new RegExp(`^${firstFixed.label}`));
     for (const { label } of routeGenerateConfig.hard_filters) {
       expect(screen.getByRole("img", { name: `${label}はいつも経路から外れます（変えられません）` })).toBeVisible();
       expect(screen.queryByRole("radiogroup", { name: `${label}の避け方` })).toBeNull();

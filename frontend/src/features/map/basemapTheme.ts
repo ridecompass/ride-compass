@@ -5,7 +5,7 @@ import type { MapTheme } from "@/lib/mapTheme";
 import { hexToRgb, rgbToHsl } from "@/lib/rgbHsl";
 import palette from "@/types/generated/palette.json";
 
-/** 基礎地図の見え方。`muted`は灰色に薄めるか（地図の「道路の指定」を出している間）。 */
+/** 基礎地図の見え方。`muted`は灰色に薄めるか（道路タブを地図で見ている間）。 */
 export interface BasemapLook {
   readonly theme: MapTheme;
   readonly muted: boolean;

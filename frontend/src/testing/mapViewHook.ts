@@ -54,6 +54,7 @@ export function renderMapView(inputs: Partial<Inputs> = {}) {
       now: NOW,
       costPreference: STANDARD_COST_PREFERENCE,
       roadAvoidance: {},
+      roadTabShown: false,
       ...inputs,
       ...props,
     }),

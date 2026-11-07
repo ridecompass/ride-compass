@@ -11,7 +11,8 @@
  * 条件のずれの印が点き全消去で消えること、走行条件の想定速度・出発時刻が生成と地図の道の詳細へ同じ値で渡ること、
  * 「条件」タブの負担の強さと「負担」タブの軸ごとの無効が生成の要求に載り、無効の軸が「負担で塗る」に出ないこと、負担を説明する文の
  * 軸の並びとルートの後の「負担で塗る」の総合の名前が費用の軸の一覧から引かれること、「条件」タブで保存した条件が地図で置いた
- * 出発地を持ち、呼び出すとその出発地から生成すること。
+ * 出発地を持ち、呼び出すとその出発地から生成すること、「道路」タブの段を、タブを出していて「地図で見る」がONの間だけ地図の道に
+ * 塗ること。
  *
  * ここで見ないもの: 子の部品は本物を描き、子が値をどう描くか（一覧の書式・印の色・天候の値）は各部品のテストが見る。
  * 地図の見え方の中身（どのレイヤーをどの色・重なりで描くか・レンズの選択肢・凡例）は地図の側（`features/map/scene/`）の
@@ -28,7 +29,12 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { heldReplies, onBackend, serveCostAxisCatalog } from "@/testing/backendServer";
+import { heldReplies, onBackend, serveClientConfig, serveCostAxisCatalog } from "@/testing/backendServer";
+import { AVOIDANCE_LEVELS, avoidanceRow, clientConfigResponse, roadClassCatalog } from "@/testing/clientConfig";
+import { ROAD_AVOIDANCE_ROLE, ROAD_LINE_SOURCE_ID } from "@/features/map/scene/groups/roadLines";
+import { sceneLayerId } from "@/features/map/scene/sceneBuilders";
+import { ROAD_SETTINGS_TAB_NAME } from "@/lib/screenNames";
+import regionTileConfig from "@/types/generated/region-tile-config.json";
 import {
   FIRST,
   HERE,
@@ -244,5 +250,33 @@ describe("ルートを作る", () => {
 
     expect(names).not.toContain("振動");
     expect(names).toContain("登坂");
+  });
+
+  it("「道路」タブの段は、タブを出していて「地図で見る」がONの間だけ地図の道に塗る", async () => {
+    serveClientConfig(
+      clientConfigResponse({
+        tile_versions: Object.fromEntries(regionTileConfig.tile_version_kinds.map((kind) => [kind, "1-test"])),
+        road_classes: roadClassCatalog({
+          avoidance: {
+            levels: AVOIDANCE_LEVELS,
+            sections: [{ key: "surface", label: "路面" }],
+            rows: [avoidanceRow("surface.gravel", "surface", { default: "avoid" })],
+          },
+        }),
+      }),
+    );
+    const { user } = renderHome();
+    const painted = () =>
+      mapOnScreen().visibleLayerIds().includes(sceneLayerId(ROAD_LINE_SOURCE_ID, ROAD_AVOIDANCE_ROLE));
+    const onMap = () => screen.getByRole("checkbox", { name: "地図で見る" });
+
+    await user.click(screen.getByRole("tab", { name: ROAD_SETTINGS_TAB_NAME }));
+    await waitFor(() => expect(painted()).toBe(true));
+    await user.click(onMap());
+    expect(painted()).toBe(false);
+    await user.click(onMap());
+    expect(painted()).toBe(true);
+    await user.click(screen.getByRole("tab", { name: "条件" }));
+    expect(painted()).toBe(false);
   });
 });

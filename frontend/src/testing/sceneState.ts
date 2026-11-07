@@ -37,6 +37,7 @@ export function sceneState(overrides: SceneStateOverrides = {}): SceneState {
       paintedLensId: null,
       roadClasses: { values: new Map(), loading: false },
       roadAvoidance: { levels: new Map(), order: [] },
+      roadAvoidanceShown: false,
       wayMaterials: new Map(),
       wayConditions: {},
       hiddenLegendKeys: {},

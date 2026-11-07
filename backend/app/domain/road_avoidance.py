@@ -25,9 +25,6 @@ from app.domain.road_classes import (
 #: ほかの行の段を打ち消さない。
 AvoidanceLevel = Literal["pass", "prefer", "avoid", "exclude"]
 AVOIDANCE_LEVELS: tuple[AvoidanceLevel, ...] = get_args(AvoidanceLevel)
-#: 段の呼び名。道路タブの段の選択肢は倍率（`domain/cost_preference.py: multiplier_label`）で名指し、呼び名は地図の「道路の指定」の
-#: 凡例が倍率に添える。
-AVOIDANCE_LEVEL_NAMES: dict[AvoidanceLevel, str] = {"pass": "通る", "prefer": "好む", "avoid": "避ける", "exclude": "通らない"}
 
 
 def level_multipliers(avoid_cost_multiplier: float) -> dict[AvoidanceLevel, float]:

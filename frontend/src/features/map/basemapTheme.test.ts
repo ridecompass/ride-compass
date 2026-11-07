@@ -43,7 +43,7 @@ describe("themedPaint", () => {
     expect(themedPaint({ theme: "light", muted: false }, paint)).toEqual(paint);
   });
 
-  // 「道路の指定」で塗った道を読ませるため、基礎地図の色を抜いて地色へ沈める。地色へ寄せるので、暗い地図と重ねても明るくならない。
+  // 道路タブの段で塗った道を読ませるため、基礎地図の色を抜いて地色へ沈める。地色へ寄せるので、暗い地図と重ねても明るくならない。
   it.each([
     { theme: "light" as const, toTheme: (lightness: number) => lightness, saturationScale: 1, iconScale: 1 },
     {

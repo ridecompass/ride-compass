@@ -121,6 +121,7 @@ export default function Home() {
     now: ride.departure.now,
     costPreference: mapCostPreference,
     roadAvoidance: conditions.roadAvoidance,
+    roadTabShown: panels.routeSettingsShown && settingsTab === "exclusions",
   });
 
   // 地図は出発地を真ん中にして開くので、地図が範囲を知らせる前は出発地が真ん中。
@@ -150,6 +151,7 @@ export default function Home() {
       <RouteSettingsForm
         conditions={conditions}
         savedConditions={savedConditions}
+        roadTabMap={mapView.roadTabMap}
         origin={location}
         originManual={originManual}
         originLocated={locationKnown}
