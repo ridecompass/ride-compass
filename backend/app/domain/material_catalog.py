@@ -143,9 +143,6 @@ _EDGE_COUNTS_COVERAGE = EdgeMaterialCoverageSpec(
 
 MaterialDType = Literal["numeric", "boolean", "categorical"]
 
-#: はい/いいえの材料の値の論理名（対応表のキーの綴り→論理名）。
-_BOOLEAN_VALUE_LABELS = {"true": "はい", "false": "いいえ"}
-
 #: 材料の値の出どころ。`db`はDBの値式（`MaterialSpec.value_sql`）で求める。`road_class`は道の区分から都度作る
 #: （`domain/road_classes.py: class_columns`）。
 _MaterialSource = Literal["db", "road_class"]
@@ -188,17 +185,6 @@ class MaterialSpec(StrictModel):
     # highway/surface/smoothnessのようなオープンエンドな多値材料だけが持つ（他は空dict）。
     # 値ごとの表示ラベルの単一ソース。
     value_labels: dict[str, str] = {}
-
-    def value_label(self, value: str) -> str:
-        """タグ生値から「論理名 - 物理名」形式の表示用ラベルを組み立てる
-        （例: "自転車専用道 - cycleway"）。対訳表に無い値は物理名のみ返す
-        （フォールバック、新しいOSMタグ値がDBに現れてもAPIが失敗しないようにするため。
-        この場合論理名が無いため" - "を付けない）。はい/いいえの材料の値は対応表のキーの綴り（"true"/"false"）で受ける。"""
-        labels = _BOOLEAN_VALUE_LABELS if self.dtype == "boolean" else self.value_labels
-        label = labels.get(value)
-        if label is None:
-            return value
-        return f"{label} - {value}"
 
     def full_label(self) -> str:
         """材料名を「論理名 - 物理名」形式の表示用ラベルにする（例: "道路種別 - highway"）。"""

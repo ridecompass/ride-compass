@@ -1,6 +1,6 @@
 """`services/weather_service.py`——MSMの読み出しから、出発時点の風と格子点ごとの時別の予報・地図に描く格子点の風と降水を組み立てる。
 
-MSMの読み出し（`msm_client.read_series`・`msm_client.read_grid_points`・`msm_client.read_grid_block`・`msm_client.read_weather_grid`）だけを差し替え、domainの計算は本物を通す。
+MSMの読み出し（`msm_client.read_grid_points`・`msm_client.read_grid_block`・`msm_client.read_weather_grid`）だけを差し替え、domainの計算は本物を通す。
 
 ここで見ないもの:
 - 風の成分から風速・風向を求めること・格子点の並びの作り方と間引き → `test_msm.py`
@@ -18,7 +18,6 @@ from app.infrastructure import msm_client
 from app.infrastructure.msm_client import (
     MsmGridPointSeries,
     MsmGridPointWeatherSeries,
-    MsmSeries,
     MsmWeatherGridSeries,
 )
 from app.services.weather_service import WeatherService
@@ -33,16 +32,6 @@ def _columns(values, points: int) -> np.ndarray:
     """どの地点にも同じ時系列`values`を並べた、地点×時刻の配列。"""
     return np.tile(np.array(values, dtype=float), (points, 1))
 
-
-def _patch_read_series(monkeypatch, *, times, u, v):
-    async def read_series(latitudes, longitudes):
-        return MsmSeries(
-            times=[datetime.fromisoformat(t) for t in times],
-            wind_u_ms=_columns(u, len(latitudes)),
-            wind_v_ms=_columns(v, len(latitudes)),
-        )
-
-    monkeypatch.setattr(msm_client, "read_series", bound(msm_client.read_series, read_series))
 
 async def test_the_point_gets_today_at_its_nearest_grid_point(monkeypatch):
     """`/api/weather`の答え。格子点の位置と、その格子点の今日の時刻の値だけが届く。"""

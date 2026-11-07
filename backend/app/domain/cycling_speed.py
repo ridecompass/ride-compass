@@ -9,7 +9,7 @@
 
 利用者から取る入力は**平地・無風の巡航速度**だけで、そこからホイール出力を逆算する
 （`wheel_power_w`）。体重・出力・ケイデンスは一般の利用者が答えられないため、CdA・Crr・質量は
-標準値を使う。坂・向かい風・路面で抵抗が増えると、同じ決まりで踏み増す（`pushed_power_w`）。「向かい風に強い／弱い」の差の
+標準値を使う。坂・向かい風・路面で抵抗が増えると、同じ決まりで踏み増す（`_pushed_power`）。「向かい風に強い／弱い」の差の
 多くは巡航速度の違いとして式から出る。
 
 **駆動系の伝達効率は掛けない**。巡航速度から逆算するのはホイールでの出力で、他の条件でも
@@ -108,15 +108,11 @@ def wheel_power_w(profile: RiderProfile) -> float:
 @njit(cache=True, nogil=True)
 def _pushed_power(flat_power_w: float, power_per_force: float, max_ratio: float,
                   extra_force_n: float) -> tuple[float, float]:
-    """`pushed_power_w`の計算（JITのループから呼ぶ。較正値は呼び手が読んで渡す）。"""
-    desired = flat_power_w + power_per_force * max(extra_force_n, 0.0)
-    return desired, min(desired, flat_power_w * max_ratio)
+    """抵抗が平地より`extra_force_n`（N。負なら平地より楽）増えたときに、踏みたい出力と実際に踏む出力（W）。JITのループから
+    呼ぶので、較正値（`power_per_force`は`speed.extra_power_per_force`、`max_ratio`は`speed.max_climb_power_ratio`）は
+    呼び手が読んで渡す。
 
-
-def pushed_power_w(flat_power_w: float, extra_force_n: float) -> tuple[float, float]:
-    """抵抗が平地より`extra_force_n`（N。負なら平地より楽）増えたときに、踏みたい出力と実際に踏む出力（W）。
-
-    踏みたい出力は、増えた抵抗1Nごとに決まったW（較正値`speed.extra_power_per_force`）を平地の出力へ足したもの。坂の重力も
+    踏みたい出力は、増えた抵抗1Nごとに決まったWを平地の出力へ足したもの。坂の重力も
     向かい風の空気抵抗も路面の転がり抵抗も、同じ決まりで踏み増す。抵抗が平地より減る区間（下り・追い風）は平地の出力のまま
     （減らさない）。実際に踏む出力は、踏みたい出力を平地の出力の上限倍率で止めたもの。
 
@@ -124,8 +120,8 @@ def pushed_power_w(flat_power_w: float, extra_force_n: float) -> tuple[float, fl
     踏む量を増やす。足す量を平地の出力に比例させない——比例させると巡航が速い人ほど登りで踏み増し、坂でも平地並みの
     速度を保って所要時間が短く出る。
     """
-    return _pushed_power(float(flat_power_w), tuning_value("speed.extra_power_per_force"),
-                         tuning_value("speed.max_climb_power_ratio"), float(extra_force_n))
+    desired = flat_power_w + power_per_force * max(extra_force_n, 0.0)
+    return desired, min(desired, flat_power_w * max_ratio)
 
 
 def kickoff_extra_j(profile: RiderProfile) -> float:
@@ -170,7 +166,7 @@ def _span_static(span_row: np.ndarray, span_grade: np.ndarray, crr: np.ndarray,
 def _span_speeds(span_row: np.ndarray, constant_force: np.ndarray, static_extra: np.ndarray, air_extra_n: np.ndarray,
                  headwind_ms: np.ndarray, crosswind_ms: np.ndarray,
                  rider: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """点の間ごとの`(速度（m/s）, 実際に踏む出力（W）)`。踏む出力は`pushed_power_w`の決まり、速度は走行方程式
+    """点の間ごとの`(速度（m/s）, 実際に踏む出力（W）)`。踏む出力は`_pushed_power`の決まり、速度は走行方程式
     `P = 抵抗力(v) × v`を二分法で解いたもの（3次方程式。ニュートン法は抵抗力が0を跨ぐ下り坂で発散しうるため、区間を
     確実に狭める方を採る）。
 

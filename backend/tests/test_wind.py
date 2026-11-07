@@ -66,28 +66,30 @@ def test_a_series_refuses_values_that_do_not_line_up_with_hourly_times_and_point
         dataclasses.replace(series, **broken)
 
 
-def test_sample_picks_the_nearest_hour_for_each_point():
+def test_the_nearest_hour_is_read_for_each_point():
     series = _series()
 
-    speed, direction = series.sample(T0 + timedelta(hours=1), np.array([-0.4, 0.6, 0.0]), np.array([0, 1, 1]))
+    index = series.time_index(T0 + timedelta(hours=1), np.array([-0.4, 0.6, 0.0]))
+    speed, direction = series.sample_at(index, np.array([0, 1, 1]))
 
     assert speed.tolist() == [1.0, 102.0, 101.0]
     assert direction.tolist() == [10.0, 20.0, 10.0]
 
 
-
 @pytest.mark.parametrize(("minutes", "hours"), [(30, 1), (90, 2)])
 def test_a_passage_halfway_between_two_hours_takes_the_later_one(minutes, hours):
     """毎時30分の通過は、どの時刻でも後の時刻の予報を引く（偶数丸めだと、30分ずつずれた出発が同じ時刻の風になる）。"""
-    speed, _ = _series().sample(T0 + timedelta(minutes=minutes), np.zeros(1), np.array([0]))
+    series = _series()
+    speed, _ = series.sample_at(series.time_index(T0 + timedelta(minutes=minutes), np.zeros(1)), np.array([0]))
 
     # 風速は時刻の番号（点0）。
     assert speed.tolist() == [float(hours)]
 
 
-def test_sample_extends_the_edge_hours_beyond_the_series():
+def test_the_edge_hours_extend_beyond_the_series():
     """探索では値が無いより端の値の方が妥当。"""
-    speed, _ = _series().sample(T0, np.array([-5.0, 10.0]), np.array([1, 1]))
+    series = _series()
+    speed, _ = series.sample_at(series.time_index(T0, np.array([-5.0, 10.0])), np.array([1, 1]))
 
     assert speed.tolist() == [100.0, 102.0]
 

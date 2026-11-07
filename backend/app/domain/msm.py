@@ -1,8 +1,7 @@
-"""気象庁MSM（メソ数値予報モデル）格子の幾何と補間。
+"""気象庁MSM（メソ数値予報モデル）格子の幾何と、格子点の値の取り出し。
 
-MSMは緯度・経度方向で間隔の異なる等間隔格子（緯度0.05度・経度0.0625度）。値の読み方は2つある:
-画面と公開の口へ出す値は格子点の値をそのまま使い（`MsmBlock`・`MsmGridPoints`）、画面に出さない計算に使う
-任意地点の値は周囲4格子点からの双一次補間で求める（`MsmWindow`）。補間した値を地点の値として出すと、気象業務法の
+MSMは緯度・経度方向で間隔の異なる等間隔格子（緯度0.05度・経度0.0625度）。値は格子点の値をそのまま使う
+（`MsmBlock`・`MsmGridPoints`）。補間した値を地点の値として出すと、気象業務法の
 予報業務許可が要る（docs/architecture/data-sources.md「気象業務法の予報業務許可」節）。
 """
 
@@ -15,6 +14,7 @@ import numpy as np
 def _index_rounded(value: float) -> float:
     """格子の番号の実数値。割り算の丸めで格子点ちょうどの値が1つ下へ落ちないよう、丸めてから切り捨て・切り上げる。"""
     return round(value, 9)
+
 
 @dataclass(frozen=True)
 class MsmGrid:
@@ -94,68 +94,6 @@ class MsmGrid:
             grid=self, row0=row0, col0=col0, rows=int(rows.max()) - row0 + 1, cols=int(cols.max()) - col0 + 1,
         )
         return MsmGridPoints(block=block, points=(rows - row0) * block.cols + (cols - col0))
-
-    def window(self, latitudes: np.ndarray, longitudes: np.ndarray) -> "MsmWindow":
-        """与えた地点群を補間するのに必要な部分ブロックの窓を返す。
-
-        双一次補間は各地点の右上側の格子点も参照するため、上端側へ1つ余分に取る。
-        """
-        if not self._contains(latitudes, longitudes):
-            raise ValueError("MSM格子の範囲外の地点が含まれています")
-        return MsmWindow(
-            grid=self,
-            i0=int(np.floor((latitudes.min() - self.lat_min) / self.d_lat)),
-            i1=min(int(np.floor((latitudes.max() - self.lat_min) / self.d_lat)) + 2, self.n_lat),
-            j0=int(np.floor((longitudes.min() - self.lon_min) / self.d_lon)),
-            j1=min(int(np.floor((longitudes.max() - self.lon_min) / self.d_lon)) + 2, self.n_lon),
-            latitudes=latitudes,
-            longitudes=longitudes,
-        )
-
-
-@dataclass(frozen=True)
-class MsmWindow:
-    """全体格子から切り出す範囲と、その範囲を決めた地点群。
-
-    切り出し索引・地点・格子は、揃っていて初めて補間が正しい。呼び出し側がこの3つを
-    別々の引数として組み立てられるようにすると、取り違えても下の`np.clip`が黙って端へ
-    寄せ、全地点の値が例外にならないままずれる。窓を作った側がそのまま補間まで持つ。
-    """
-
-    grid: MsmGrid
-    i0: int
-    i1: int
-    j0: int
-    j1: int
-    latitudes: np.ndarray
-    longitudes: np.ndarray
-
-    @property
-    def lat_slice(self) -> slice:
-        return slice(self.i0, self.i1)
-
-    @property
-    def lon_slice(self) -> slice:
-        return slice(self.j0, self.j1)
-
-    def interpolate(self, block: np.ndarray) -> np.ndarray:
-        """部分ブロック（形状[緯度, 経度, 時刻]、`lat_slice`/`lon_slice`で切り出したもの）
-        から地点ごとの時系列を双一次補間で取り出す。戻り値の形状は[地点数, 時刻数]。
-        """
-        fi = (self.latitudes - self.grid.lat_min) / self.grid.d_lat - self.i0
-        fj = (self.longitudes - self.grid.lon_min) / self.grid.d_lon - self.j0
-        # 全体格子の上端・右端ちょうどの地点では余分の1つが取れず、左下側の格子点が
-        # ブロックの最後の組になる。
-        ai = np.clip(np.floor(fi).astype(int), 0, block.shape[0] - 2)
-        aj = np.clip(np.floor(fj).astype(int), 0, block.shape[1] - 2)
-        wi = (fi - ai)[:, None]
-        wj = (fj - aj)[:, None]
-        return (
-            block[ai, aj] * (1.0 - wi) * (1.0 - wj)
-            + block[ai + 1, aj] * wi * (1.0 - wj)
-            + block[ai, aj + 1] * (1.0 - wi) * wj
-            + block[ai + 1, aj + 1] * wi * wj
-        )
 
 
 @dataclass(frozen=True)
