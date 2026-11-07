@@ -169,7 +169,7 @@ PYTHONUTF8=1 backend/.venv/Scripts/python.exe -m pytest backend/tests/<テスト
 `backend/pytest.ini`の`timeout`が1件あたりの上限（秒。fixtureの準備・本体・後片付けの合計）で、超えたテストを落とす。
 
 - 開発機（Windows）はスレッド方式で、時間切れで全スレッドのスタックを出し、**プロセスごと終わる**（後片付けも以降のテストも走らない）。テストDBに残った行は、
-  次の実行でそのファイルのエンジンの準備（`tests/conftest.py: road_graph_engine`）が消す。
+  次の実行でそのファイルのエンジンの準備（`backend/tests/conftest.py: road_graph_engine`）が消す。
 - CI（Linux）はシグナル方式: 時間切れのテストだけが失敗になり、後片付けも走って残りへ進む。
 - デバッガが動いている間は発火しない（公式）。
 - 上限は、`--durations`で測ったふだんの1件の最長の数倍に置く（値の根拠は`backend/pytest.ini`のコメント）。
@@ -177,15 +177,15 @@ PYTHONUTF8=1 backend/.venv/Scripts/python.exe -m pytest backend/tests/<テスト
 
 ### テストDBは作業ツリーごとに分かれる
 
-`tests/conftest.py: postgis_database_url`が、チェックアウトの場所からDB名を導き
+`backend/tests/conftest.py: postgis_database_url`が、チェックアウトの場所からDB名を導き
 （`ridecompass_test_<ディレクトリ名>_<パスのダイジェスト>`）、無ければ作る。表が宣言と違う形になっていれば、
-ファイルごとのエンジンの準備（`tests/conftest.py: road_graph_engine`）が`scripts/schema_gap.py`で差を測って作り直すので、
+ファイルごとのエンジンの準備（`backend/tests/conftest.py: road_graph_engine`）が`scripts/schema_gap.py`で差を測って作り直すので、
 壊れ方の確かめ（[testing-review.md](../../rules/testing-review.md)「消す・まとめる前に、残す側が落ちるかを見る」）で実装や宣言を戻したあとに、テストDBを手で戻さなくてよい。
 
 環境ごとに必要な作業（開発機で一度だけ付ける権限・拡張）と、作業ツリーを消したあとの残骸の片付けは付録にある。
 
 **postgisは`-n auto --dist worksteal`で並列に回る**: pytest-xdistのワーカーは、それぞれ自分のDB（この実行のDBの名前に
-`_<ワーカー>`を付けたもの）を作って使う（`tests/conftest.py: pytest_collection_finish`）。ファイルはワーカーへ寄せず、長いファイルは
+`_<ワーカー>`を付けたもの）を作って使う（`backend/tests/conftest.py: pytest_collection_finish`）。ファイルはワーカーへ寄せず、長いファイルは
 手の空いたワーカーが残りを引き取る（分かれたファイルは、ファイル単位の用意がワーカーごとに走るだけ）。
 ワーカーのDBを作れない環境では、共有のDBへ退避せずに止まる（`-n`を外せば1つのDBで回る）。
 

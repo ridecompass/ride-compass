@@ -22,15 +22,16 @@
  *    だけを置き換えるもの）も除く——testing-frontend.md は条件（子の中身がテスト環境に無い境界を要し、境界の側で差し替え
  *    られない）を満たす子の差し替えを許し、その条件は構文木から決まらない。
  * 5. 外部の境界の差し替えの写し: `Object.defineProperty(<対象>, "<名前>", …)`・`vi.stubGlobal("<名前>", …)`
- *    （`globalThis`の名前として数える）で置き換える同じ (対象, 名前)（`navigator`の`geolocation`・`globalThis`の`fetch`等）を、
+ *    （`globalThis`の名前として数える）・代入（`<対象>.<名前> = …`。対象はファイルの中で宣言されていない名前か、それを
+ *    型を当てて受けた変数で、受けた変数は元の名前として数える）で置き換える同じ (対象, 名前)（`navigator`の`geolocation`・`globalThis`の`fetch`等）を、
  *    `src/testing`の外の3つ以上のテストのファイルが置き換えるか、`src/testing`の足場が置き換えるのに外のテストが自分で
  *    置き換える。関数の中の差し替えも数える。`msw/node`の`setupServer`を呼ぶファイルは`globalThis`の`fetch`を置き換えると
  *    数える（mswは網の層で要求を横取りし、プロパティの置き換えが構文木に現れない）。
  *
  * **判定しない形**: 関数の中の定義（1の写し）。組み立て関数の項目の一部だけを持つリテラル（関心のある項目だけを書いた入力）と、
  * 上書きを受けない部品の関数（`routeThrough`等、型の一部を組むもの）。代役の無い型（`FilterSpecification`等の値の型）への`as`。
- * 葉が5つ未満の値。`vi.spyOn(globalThis, …)`・代入（`window.<名前> =`）等、
- * 上の3つの形でない置き換え。`e2e-live`・`capture`（別のランナーの道具で、`src/testing`の足場を使わない）。
+ * 葉が5つ未満の値。`vi.spyOn(globalThis, …)`・添字での代入（`window["<名前>"] =`）・`globalThis`を項目に持つ
+ * 値を通した代入等、上の4つの形でない置き換え。`e2e-live`・`capture`（別のランナーの道具で、`src/testing`の足場を使わない）。
  */
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -213,6 +214,26 @@ describe("検査が効いていること", () => {
         "e2e/c.spec.ts:5: navigator.clock（足場がある）",
         "src/a.test.ts:2: navigator.geolocation（3ファイル）",
         "src/b.test.ts:2: navigator.geolocation（3ファイル）",
+      ],
+    });
+  });
+
+  it("外部の境界の名前への代入を、型を当てて受けた変数を通したものも数え、ファイルの中で宣言した名前への代入は数えない", () => {
+    const viaAlias = `const holder = globalThis as unknown as { Orientation?: object };\nholder.Orientation = {};\n`;
+    const local = `const screen = { lock: 0 };\nscreen.lock = 1;\n`;
+    expect(
+      within({
+        "src/a.test.ts": viaAlias + local,
+        "src/b.test.ts": `(globalThis as { Orientation?: object }).Orientation = {};\n` + local,
+        "src/c.test.ts":
+          `function install(globalThis: { Orientation?: object }) {\n  globalThis.Orientation = {};\n}\n` + local,
+        "e2e/d.spec.ts": `globalThis.Orientation = undefined;\n`,
+      }),
+    ).toMatchObject({
+      boundaries: [
+        "e2e/d.spec.ts:1: globalThis.Orientation（3ファイル）",
+        "src/a.test.ts:2: globalThis.Orientation（3ファイル）",
+        "src/b.test.ts:1: globalThis.Orientation（3ファイル）",
       ],
     });
   });

@@ -16,6 +16,7 @@ import Ruler, { type RulerFrame } from "@/components/ui/Ruler/Ruler";
 import { textVariants } from "@/components/ui/Text/Text";
 import { panelIconToggleClass, Toggle } from "@/components/ui/Toggle/Toggle";
 import { useClientConfig } from "@/hooks/useClientConfig";
+import { costAxisNamesNote, useCostAxisCatalog } from "@/hooks/useCostAxisCatalog";
 import { CLIENT_TUNING_IDS, clientTuningValue } from "@/lib/clientConfig";
 import { cn } from "@/lib/cn";
 import CostLevelPicker from "@/features/route/RouteSettingsPanel/CostLevelPicker";
@@ -104,6 +105,7 @@ export default function RouteForm({
   const distanceToggleName = distanceTargeted ? "全長の目標をやめる" : "全長の目標を決める";
   // 許容差は管理画面の較正値（目標の距離に対する割合）。引けない間は幅の文を出さない（較正したのとは別の数を出さない）。
   const distanceToleranceRatio = clientTuningValue(useClientConfig(), CLIENT_TUNING_IDS.distanceToleranceRatio);
+  const costCatalog = useCostAxisCatalog();
 
   // 範囲の端ではボタンを押せなくするので、足した値は範囲を出ない。
   function stepMaxRoutes(delta: number) {
@@ -196,8 +198,9 @@ export default function RouteForm({
           />
           <InfoPopover triggerAriaLabel="負担の強さの説明" triggerClassName="flex-none">
             {/* JSXの改行は半角スペースになるので、文字列として繋ぐ。 */}
-            {"所要時間に足す負担に掛ける倍率です。負担は、坂や向かい風で平地より余分に使う体力・止まる回数・路面の振動などを、" +
-              "時間に換算したものです。道は、所要時間とこの倍率を掛けた負担の和が小さくなるように選びます。×1 が標準です。" +
+            {"所要時間に足す負担に掛ける倍率です。" +
+              `負担は、平地を走るより余分にかかるもの${costAxisNamesNote(costCatalog)}を、時間に換算したものです。` +
+              "道は、所要時間とこの倍率を掛けた負担の和が小さくなるように選びます。×1 が標準です。" +
               "×2 は負担を2倍にして足すので、所要時間が延びても負担の小さい道を選びやすくなります。" +
               "×0 は負担を足さず、所要時間だけで選びます。負担の種類ごとの倍率は「負担」タブで選べます。"}
           </InfoPopover>

@@ -20,6 +20,7 @@ import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { clearDebugLog, getDebugLogEntries, setDebugEnabled } from "@/lib/debugLog";
+import { setOrientationPermission } from "@/testing/deviceOrientation";
 import { installGeolocation, removeGeolocation } from "@/testing/geolocation";
 
 import { useRideMode } from "./useRideMode";
@@ -122,13 +123,10 @@ describe("useRideMode", () => {
 
   it("始める操作の中でスマホの向きを読む許しを求め（iPhone）、許されたら地図へ向いている方角を真北の基準にして渡す", async () => {
     let asked = 0;
-    const holder = globalThis as unknown as { DeviceOrientationEvent?: { requestPermission?: () => Promise<string> } };
-    holder.DeviceOrientationEvent = {
-      requestPermission: async () => {
-        asked += 1;
-        return "granted";
-      },
-    };
+    setOrientationPermission(() => {
+      asked += 1;
+      return "granted";
+    });
     try {
       const { result } = renderHook(() => useRideMode(PLAUSIBLE_MAX_KMH));
       await act(async () => result.current.press());
@@ -144,7 +142,7 @@ describe("useRideMode", () => {
       // コンパスの読みは磁北が基準なので、偏角の分だけ戻す。
       expect(result.current.map?.facing.current()).toBeCloseTo(45 - (7 + 36.5 / 60), 2);
     } finally {
-      holder.DeviceOrientationEvent = undefined;
+      setOrientationPermission(undefined);
     }
   });
 

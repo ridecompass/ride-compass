@@ -20,6 +20,7 @@ import type {
   RouteSegmentDetail,
   SelectedRouteSegment,
 } from "@/types/route";
+import { LENS_QUANTITY_LABEL } from "@/lib/mapDisplay/costLensPaint";
 
 import LayerProfile, { type ShownLayers } from "./LayerProfile";
 import { bandLegendRows, layerBand, layerLine, type BandLayer, type LineLayer } from "./profileLayers";
@@ -125,7 +126,10 @@ export default function RouteProfile({
             <DisplayItemsIcon size={14} />
             <span className="sr-only">{FACT_DISPLAY_NAME}</span>
           </TabsTrigger>
-          <TabsTrigger value="lens" usage="区間ごとの1kmあたりの負担を、負担の種類の色で積んで道のりに沿って出します。">
+          <TabsTrigger
+            value="lens"
+            usage={`区間ごとの${LENS_QUANTITY_LABEL}を、負担の種類の色で積んで道のりに沿って出します。`}
+          >
             <BurdenPaintIcon size={14} />
             <span className="sr-only">{BURDEN_PAINT_NAME}</span>
           </TabsTrigger>
@@ -136,7 +140,8 @@ export default function RouteProfile({
             triggerClassName="rounded-full bg-[color-mix(in_srgb,var(--background)_85%,transparent)]"
           >
             <p>
-              右上の一覧でチェックした種類だけを積みます。高さは区間ごとの1kmあたりの負担で、上端はこのルートで最も大きい区間の値です（曲がる所と回避指定は含みません）。色ごとの面積は、その種類の負担の合計を表します。横の右端は、一覧で最も長い候補の距離です。
+              右上の一覧でチェックした種類だけを積みます。高さは区間ごとの{LENS_QUANTITY_LABEL}
+              で、上端はこのルートで最も大きい区間の値です（曲がる所と回避指定は含みません）。色ごとの面積は、その種類の負担の合計を表します。横の右端は、一覧で最も長い候補の距離です。
             </p>
           </InfoPopover>
         )}

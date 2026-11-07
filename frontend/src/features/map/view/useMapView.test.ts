@@ -20,6 +20,15 @@ import { costAxisCatalog, costAxisEntry } from "@/testing/costAxes";
 
 import { LEGEND_FILTER_DEBOUNCE_MS, type useMapView } from "./useMapView";
 import { STANDARD_COST_PREFERENCE } from "@/lib/costPreference";
+import type routeGenerateConfig from "@/types/generated/route-generate-config.json";
+
+// レンズの単位と目安の条件の文はbackendの宣言。架空の値へ差し替え、凡例の下の目安がそれを書くことを見る。
+vi.mock("@/types/generated/route-generate-config.json", async (importOriginal) => {
+  const original = await importOriginal<{ default: typeof routeGenerateConfig }>();
+  return {
+    default: { ...original.default, lens_unit: "単位ア", lens_equivalents_condition_wording: "条件イの道の場合" },
+  };
+});
 
 /** 既定の一覧（`TWO_COST_AXES`）のレンズ: 総合・登坂・振動。 */
 const LENS_COUNT = 3;
@@ -54,7 +63,7 @@ describe("useMapView", () => {
     act(() => result.current.lensControl.onLensChange("ascent"));
     act(() => result.current.look.onViewportChange(VIEWPORT));
 
-    expect(result.current.lensConditions).toEqual(["at", "speed_kmh", "bearing_deg"]);
+    expect(result.current.lensConditions).toEqual(["at", "speed_kmh"]);
     // 表示範囲は間引いてから取るので、そのレンズの結果が出て取り終えるまで待つ。
     await waitFor(() => expect(result.current.look.wayMaterials.get("ascent")?.loading).toBe(false), {
       timeout: 3000,
@@ -90,7 +99,7 @@ describe("useMapView", () => {
       timeout: 3000,
     });
     expect(sent[0].query.speed_kmh).toBe("20");
-    expect(result.current.lensControl.premises).toContain("4秒/km ≈ 斜度 2.1%");
+    expect(result.current.lensControl.premises).toEqual(["目安（条件イの道の場合）", "4単位ア ≈ 斜度 2.1%"]);
   });
 
   it("選んでいた軸を無効にすると、選んでいない状態で塗り、無効を戻すとまたその軸で塗る", async () => {

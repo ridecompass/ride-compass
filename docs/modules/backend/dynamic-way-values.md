@@ -55,6 +55,8 @@ SQLと式の木の材料では作れない体力（走行の模型）を、backe
 - **段の境目の目安**（`domain/lens_equivalents.py`）: `GET /api/cost-axes/lens-equivalents`（軸id→目安。地図のレンズと同じ
   `strength`・`multipliers`のクエリ）は、段の境目の秒が、標準の人・利用者のつまみと倍率・無風の1kmの道でどれだけの事実に当たるか（登坂は斜度、向かい風は風速、停止は止まる回数、摩擦と
   道のストレスは区分・折れ点ごとの秒）。事実の値を刻んだ道を並べて同じ費用の式へ通し、秒から引き戻す——別の換算の式を持たない。
+  条件を利用者に言う文（`domain/lens_equivalents.py: LENS_EQUIVALENTS_CONDITION_WORDING`）と、レンズの量の名前と単位
+  （`domain/cost_axes.py: LENS_QUANTITY_LABEL`・`domain/cost_axes.py: LENS_UNIT`）は、生成物`route-generate-config.json`で画面へ配る。
 - **キャッシュしない**: 値は風の時刻・想定速度で変わり、タイル1枚の区間で走行の模型を1回解くだけ。欠けを埋める区分の割合
   だけは全区間を数えるので、道の網・区分の列・材料の組ごとにプロセスに1つ持つ（`services/graph_service.py: network_fills`）。段の目安は
   利用者の値（つまみと倍率）で変わるので、要求ごとに求める。

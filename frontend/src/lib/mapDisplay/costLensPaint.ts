@@ -2,9 +2,12 @@
 // 道の窓が同じ段と同じ書き方にする。
 import type { MapTheme } from "@/lib/mapTheme";
 import type { MapPaintDeclaration } from "@/lib/mapDisplay/valueScale";
+import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 
 /** レンズの値の単位。段の境目も凡例の範囲もこの単位で書く。 */
-export const LENS_SECONDS_UNIT = "秒/km";
+export const LENS_SECONDS_UNIT = routeGenerateConfig.lens_unit;
+/** レンズの量の名前。レンズを述べる画面の文が差し込む。 */
+export const LENS_QUANTITY_LABEL = routeGenerateConfig.lens_quantity_label;
 
 /** 塗りを決めるレンズの見せ方（`GET /api/cost-axes`の総合のレンズと軸の行が持つ段）。 */
 export interface CostLensBands {

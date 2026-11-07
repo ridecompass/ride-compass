@@ -33,7 +33,6 @@ import {
   LENS_NEUTRAL_COLOR,
   ROUTE_LENS_SECONDS_PROPERTY,
   UNSELECTED_LENS_ID,
-  UNSELECTED_LENS_LABEL,
   type LensId,
   type RouteStyleMode,
 } from "@/lib/mapDisplay/routeStyleModes";
@@ -285,7 +284,6 @@ export function applyScene(
 // 費用の軸の一覧が届く前・失敗の間（モードが0件）のルートの線。値を読まず中立色の1色で塗り、凡例を持たない。
 const UNPAINTED_ROUTE_STYLE_MODE: RouteStyleMode = {
   id: UNSELECTED_LENS_ID,
-  label: UNSELECTED_LENS_LABEL,
   legend: [],
   colorExpression: ["to-color", LENS_NEUTRAL_COLOR],
 };
