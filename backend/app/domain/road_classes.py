@@ -9,7 +9,7 @@
 import hashlib
 import json
 from collections.abc import Mapping, Sequence
-from typing import Annotated, Protocol, cast
+from typing import Annotated, Literal, Protocol, cast
 
 import numpy as np
 from pydantic import Field
@@ -58,19 +58,33 @@ class RoadClassification(StrictModel):
     classes: dict[str, RoadClass]
 
 
-class RoadMapLayer(StrictModel):
-    """地図の線の層1つ。鍵は描く分け方。"""
-
+class _RoadMapLayerFields(StrictModel):
     group_key: str
     sort_order: int
     icon_key: str
     summary: str
     panel_hint: str
-    palette: str
-    hue_slot: int | None
     tone: str | None
     no_data_fact_key: str | None
     hides_unclassified: bool
+
+
+class OrderedRoadMapLayer(_RoadMapLayerFields):
+    """区分を順に濃淡で塗る層。"""
+
+    palette: Literal["ordered"]
+    hue_slot: None
+
+
+class NominalRoadMapLayer(_RoadMapLayerFields):
+    """区分を色相で分ける層。`hue_slot`は色相の起点。"""
+
+    palette: Literal["nominal"]
+    hue_slot: int
+
+
+#: 地図の線の層1つ。鍵は描く分け方。
+RoadMapLayer = Annotated[OrderedRoadMapLayer | NominalRoadMapLayer, Field(discriminator="palette")]
 
 
 class AvoidanceOverride(StrictModel):

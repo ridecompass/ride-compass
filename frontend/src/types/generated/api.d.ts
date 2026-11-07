@@ -1365,6 +1365,58 @@ export interface components {
             /** Precipitation Mm */
             precipitation_mm: (number | null)[];
         };
+        /** NominalRoadMapLayer */
+        NominalRoadMapLayer: {
+            /** Group Key */
+            group_key: string;
+            /** Sort Order */
+            sort_order: number;
+            /** Icon Key */
+            icon_key: string;
+            /** Summary */
+            summary: string;
+            /** Panel Hint */
+            panel_hint: string;
+            /** Tone */
+            tone: string | null;
+            /** No Data Fact Key */
+            no_data_fact_key: string | null;
+            /** Hides Unclassified */
+            hides_unclassified: boolean;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            palette: "nominal";
+            /** Hue Slot */
+            hue_slot: number;
+        };
+        /** OrderedRoadMapLayer */
+        OrderedRoadMapLayer: {
+            /** Group Key */
+            group_key: string;
+            /** Sort Order */
+            sort_order: number;
+            /** Icon Key */
+            icon_key: string;
+            /** Summary */
+            summary: string;
+            /** Panel Hint */
+            panel_hint: string;
+            /** Tone */
+            tone: string | null;
+            /** No Data Fact Key */
+            no_data_fact_key: string | null;
+            /** Hides Unclassified */
+            hides_unclassified: boolean;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            palette: "ordered";
+            /** Hue Slot */
+            hue_slot: null;
+        };
         /** PenaltyBreakdown */
         PenaltyBreakdown: {
             /** Axis Seconds */
@@ -1461,7 +1513,7 @@ export interface components {
             };
             /** Map Layers */
             map_layers: {
-                [key: string]: components["schemas"]["RoadMapLayer"];
+                [key: string]: components["schemas"]["OrderedRoadMapLayer"] | components["schemas"]["NominalRoadMapLayer"];
             };
             /** Rolling Resistance Classification */
             rolling_resistance_classification: string | null;
@@ -1538,29 +1590,6 @@ export interface components {
             /** Speed Kmh */
             speed_kmh: number;
             cost_preference?: components["schemas"]["CostPreference-Input"];
-        };
-        /** RoadMapLayer */
-        RoadMapLayer: {
-            /** Group Key */
-            group_key: string;
-            /** Sort Order */
-            sort_order: number;
-            /** Icon Key */
-            icon_key: string;
-            /** Summary */
-            summary: string;
-            /** Panel Hint */
-            panel_hint: string;
-            /** Palette */
-            palette: string;
-            /** Hue Slot */
-            hue_slot: number | null;
-            /** Tone */
-            tone: string | null;
-            /** No Data Fact Key */
-            no_data_fact_key: string | null;
-            /** Hides Unclassified */
-            hides_unclassified: boolean;
         };
         /** RoadMapLayerView */
         RoadMapLayerView: {
