@@ -6,6 +6,8 @@ import numpy as np
 from pydantic import Field
 
 EARTH_RADIUS_KM = 6371.0
+#: 応答と地図に載せる緯度・経度の小数の桁。1e-6度は約0.1mで、浮動小数の端数と0.1m未満を落とす。
+COORDINATE_DECIMALS = 6
 
 # 緯度・経度の値の範囲。モデルの欄にもHTTPのクエリにもこの型で書く。クエリでは既定値に`Query()`を
 # 置かない——置くとFastAPIがこの型の範囲を読まず、範囲の外の値が黙って通る。
