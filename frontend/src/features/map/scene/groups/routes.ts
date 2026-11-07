@@ -158,7 +158,13 @@ export const routeGroup = declareGroup<RouteState>((state) => {
           "line-opacity": TRAVELLED_OPACITY,
           ...(dash === null ? {} : { "line-dasharray": [...dash] }),
         },
-        { filter: ["==", ["get", property], true] },
+        {
+          filter: [
+            "all",
+            ["==", ["get", property], true],
+            ...(state.hiddenBandFilter === undefined ? [] : [state.hiddenBandFilter]),
+          ] as FilterSpecification,
+        },
       );
       return { ...entry, paint: { ...entry.paint, "line-offset": ROUTE_OFFSET_PX + side * RAIL_OFFSET_PX } };
     });

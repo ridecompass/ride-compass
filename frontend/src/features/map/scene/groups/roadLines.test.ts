@@ -28,7 +28,7 @@ function build(hidden: readonly string[], loading: boolean, emphasis: RoadEmphas
 }
 
 function linesOf(hidden: readonly string[] = [], loading = false) {
-  const built = build(hidden, loading, { preferred: {}, avoided: {} });
+  const built = build(hidden, loading, { preferred: {}, avoided: {}, excluded: {} });
   const paint = (role: string) => built.find((layer) => layer.role === role)?.paint ?? {};
   return { solid: paint("surface"), dashed: paint("surface-no-data") };
 }

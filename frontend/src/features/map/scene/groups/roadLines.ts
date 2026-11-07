@@ -28,8 +28,6 @@ import { declareGroup, type SceneLayerEntry, type SceneSourceEntry } from "@/fea
 
 const ROAD = mapDisplay.road;
 const RAIL = mapDisplay.avoidanceRail;
-/** 好む・避けるの道の両脇の線を、道の中心から離す量。詳細を見ている道の強調の縁の外へ間隔だけ出す。 */
-const RAIL_OFFSET_PX = ROAD.inspectedWidthPx / 2 + RAIL.gapPx;
 
 export const ROAD_LINE_SOURCE_ID = sceneSourceId("road-tiles");
 const ROAD_INSPECTED_SOURCE_ID = sceneSourceId("road-inspected");
@@ -65,23 +63,23 @@ export type RoadLineState = {
 /** 道ごとの層の値。feature_key → 層のid → 区分の鍵か「データなし」（区分の外の道の層は鍵ごと無い）。 */
 export type RoadClassValues = ReadonlyMap<string, Readonly<Record<string, string>>>;
 
-/** 道路タブで好む・避けるにした区分。層のid（道路タブの見出しの分け方）→ 区分の鍵。 */
+/** 道路タブで好む・避ける・通らないにした区分。層のid（道路タブの見出しの分け方）→ 区分の鍵。通らないは線を添えず、1つの道に
+ * 強い方の印だけを添えるために持つ。 */
 export interface RoadEmphasis {
   readonly preferred: Readonly<Record<string, readonly string[]>>;
   readonly avoided: Readonly<Record<string, readonly string[]>>;
+  readonly excluded: Readonly<Record<string, readonly string[]>>;
 }
 
-/** 道路タブの行ごとの段（選んでいなければ既定の段）から、好む・避けるにした区分を層ごとに集める。 */
+/** 道路タブの行ごとの段（選んでいなければ既定の段）から、好む・避ける・通らないにした区分を層ごとに集める。 */
 export function roadEmphasisOf(avoidance: RoadAvoidanceView, chosen: RoadAvoidanceOverride): RoadEmphasis {
-  const preferred: Record<string, string[]> = {};
-  const avoided: Record<string, string[]> = {};
+  const kinds = { prefer: "preferred", avoid: "avoided", exclude: "excluded" } as const;
+  const emphasis: Record<keyof RoadEmphasis, Record<string, string[]>> = { preferred: {}, avoided: {}, excluded: {} };
   for (const row of avoidance.rows) {
     const level = avoidanceLevelOf(row, chosen);
-    const target = level === "prefer" ? preferred : level === "avoid" ? avoided : null;
-    if (target === null) continue;
-    (target[row.section] ??= []).push(row.key.slice(row.section.length + 1));
+    if (level !== "pass") (emphasis[kinds[level]][row.section] ??= []).push(row.key.slice(row.section.length + 1));
   }
-  return { preferred, avoided };
+  return emphasis;
 }
 
 const NO_DATA_VALUE = ROAD.noDataValue;
@@ -213,19 +211,26 @@ export const roadLineGroup = declareGroup<RoadLineState>((state) => {
   });
 
   // 道路タブで好む・避けるにした区分の道の両脇の線。値は道の層と同じ feature-state から読むので、線種は層ごとに決め、
-  // 当たらない道は透明にする。
+  // 当たらない道は透明にする。1つの道には強い方の印だけを添え（通る＜好む＜なるべく避ける＜通らない。費用の倍率と同じ順）、
+  // 出している道の層の幅（詳細を見ている道の強調の幅より細ければそちら）の外へ間隔だけ出す。
+  const anyOf = (...levels: RoadEmphasis["preferred"][]) =>
+    levels.flatMap((byLayer) =>
+      Object.entries(byLayer).map(([layerId, keys]) => {
+        const layer = state.layers.find((candidate) => candidate.id === layerId);
+        if (layer === undefined) throw new Error(`道路タブの見出し ${layerId} が地図の道の層にありません`);
+        return ["in", valueOf(layer), ["literal", [...keys]]];
+      }),
+    );
+  const railOffset =
+    Math.max(ROAD.inspectedWidthPx / 2, Math.max(0, ...offsets.map(Math.abs)) + ROAD.lineWidthPx / 2) + RAIL.gapPx;
   const railLayers = (
     role: string,
-    byLayer: RoadEmphasis["preferred"],
+    matches: unknown[],
+    overriding: unknown[],
     color: string,
     dash: readonly number[] | null,
-  ) => {
-    const matches = Object.entries(byLayer).map(([layerId, keys]) => {
-      const layer = state.layers.find((candidate) => candidate.id === layerId);
-      if (layer === undefined) throw new Error(`道路タブの見出し ${layerId} が地図の道の層にありません`);
-      return ["in", valueOf(layer), ["literal", [...keys]]];
-    });
-    return [-1, 1].map((side): SceneLayerEntry => ({
+  ) =>
+    [-1, 1].map((side): SceneLayerEntry => ({
       tier: "observedLine",
       source: ROAD_LINE_SOURCE_ID,
       sourceLayer: tiles.sourceLayer,
@@ -234,16 +239,29 @@ export const roadLineGroup = declareGroup<RoadLineState>((state) => {
       paint: {
         "line-color": color,
         "line-width": RAIL.widthPx,
-        "line-opacity": matches.length === 0 ? 0 : ["case", ["any", ...matches], 1, 0],
-        "line-offset": side * RAIL_OFFSET_PX,
+        "line-opacity":
+          matches.length === 0 ? 0 : ["case", ["all", ["any", ...matches], ["!", ["any", ...overriding]]], 1, 0],
+        "line-offset": side * railOffset,
         ...(dash === null ? {} : { "line-dasharray": ["literal", [...dash]] }),
       },
       visible: matches.length > 0,
     }));
-  };
+  const { preferred, avoided, excluded } = state.emphasis;
   layers.push(
-    ...railLayers("preferred-rail", state.emphasis.preferred, palette.semantic.avoidance_preferred, null),
-    ...railLayers("avoided-rail", state.emphasis.avoided, palette.semantic.avoidance_avoided, RAIL.avoidedDash),
+    ...railLayers(
+      "preferred-rail",
+      anyOf(preferred),
+      anyOf(avoided, excluded),
+      palette.semantic.avoidance_preferred,
+      null,
+    ),
+    ...railLayers(
+      "avoided-rail",
+      anyOf(avoided),
+      anyOf(excluded),
+      palette.semantic.avoidance_avoided,
+      RAIL.avoidedDash,
+    ),
   );
 
   layers.push(inspected);
