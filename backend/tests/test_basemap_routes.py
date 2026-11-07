@@ -47,7 +47,6 @@ def test_basemap_proxy_returns_cached_content_with_correct_media_type(override_d
 
 
 @pytest.mark.parametrize(("result", "status", "detail"), [
-    (None, 502, "地図タイルの取得に失敗しました"),
     # 配信元に無い部品は上流障害ではない。502で返すと、本当の障害が埋もれる。
     (UPSTREAM_NOT_FOUND, 404, "指定されたリソースは存在しません"),
 ])

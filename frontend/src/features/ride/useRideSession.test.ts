@@ -11,13 +11,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { makeRouteCandidate } from "@/testing/routeFixtures";
 
-import {
-  RIDE_PROGRESS_STORAGE_KEY,
-  RIDE_ROUTE_STORAGE_KEY,
-  readRideSession,
-  writeRideProgress,
-  writeRideRoute,
-} from "./rideSession";
+import { readRideSession, saveRideProgress, saveRideRoute } from "./rideSession";
 import { useRideSession } from "./useRideSession";
 
 const ROUTE = makeRouteCandidate({ id: "r1" });
@@ -25,12 +19,7 @@ afterEach(() => {
   window.localStorage.clear();
 });
 
-const stored = () =>
-  readRideSession(
-    window.localStorage.getItem(RIDE_ROUTE_STORAGE_KEY),
-    window.localStorage.getItem(RIDE_PROGRESS_STORAGE_KEY),
-    Date.now(),
-  );
+const stored = () => readRideSession(Date.now());
 
 describe("useRideSession", () => {
   it("走行モードの間だけ、選んだルートと当てた位置と休んでいるかが変わるたびに書き、走っていない・ルートが無いと保存を消す", () => {
@@ -57,15 +46,15 @@ describe("useRideSession", () => {
     });
     const setItem = vi.spyOn(window.localStorage, "setItem");
     rerender({ route: ROUTE, riding: true, resting: true, km: 1.5 });
-    expect(setItem.mock.calls.map(([key]) => key)).toEqual([RIDE_PROGRESS_STORAGE_KEY]);
+    expect(setItem.mock.calls.map(([key]) => key)).toEqual(["ridecompass:riding-progress"]);
     expect(stored()).toEqual({ route: ROUTE, km: 1.5, resting: true });
     setItem.mockRestore();
   });
 
   it("開いたときに期限の内の保存があれば、1度だけ復元を知らせ、その保存を消さない", () => {
     const saved = { route: ROUTE, km: 3.5, resting: true };
-    window.localStorage.setItem(RIDE_ROUTE_STORAGE_KEY, writeRideRoute(ROUTE));
-    window.localStorage.setItem(RIDE_PROGRESS_STORAGE_KEY, writeRideProgress(saved, Date.now()));
+    saveRideRoute(ROUTE);
+    saveRideProgress(saved, Date.now());
     const onRestore = vi.fn();
     const { rerender } = renderHook((props) => useRideSession({ ...props, onRestore }), {
       initialProps: { route: null as typeof ROUTE | null, riding: false, resting: false, km: null as number | null },

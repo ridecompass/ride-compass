@@ -54,10 +54,7 @@ type RouteGeneration = ReturnType<typeof useRouteGeneration>;
 interface RouteOutcomeProps {
   results: RouteResults;
   /** 生成の進み方・条件のずれ。 */
-  generation: Pick<
-    RouteGeneration,
-    "running" | "progressLabel" | "conditionsDirty" | "multipliersNotApplied" | "destinationCorrected"
-  >;
+  generation: Pick<RouteGeneration, "running" | "progressLabel" | "conditionsDirty" | "destinationCorrected">;
   splice: Pick<SpliceSessionView, "panel">;
   /** 道のりのグラフに重ねるレイヤの選択（走行中の図と共有する）。 */
   profileLayers: ProfileLayerSelection;
@@ -142,9 +139,6 @@ export default function RouteOutcome({ results, generation, splice, profileLayer
   return (
     <>
       {generation.conditionsDirty && <WarningText>生成条件が変更されています</WarningText>}
-      {generation.multipliersNotApplied && (
-        <WarningText>負担の種類ごとの倍率を反映できなかったため、標準の倍率で作りました。</WarningText>
-      )}
       {generation.destinationCorrected && (
         <WarningText>
           指定した地点は自転車で行けない場所だったため、近くのアクセス可能な地点へ補正しました。
@@ -244,7 +238,6 @@ export default function RouteOutcome({ results, generation, splice, profileLayer
               facts={route.facts}
               catalog={costCatalog}
               estimatedDurationSeconds={route.estimated_duration_seconds}
-              windUnavailable={route.wind_unavailable}
               missingTravelDataShare={route.missing_travel_data_share}
             />
           </TabsContent>

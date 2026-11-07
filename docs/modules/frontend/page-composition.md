@@ -20,7 +20,7 @@
 | hooks | `useStoredState.ts`・`useIsMobile.ts`・`useVisualViewport.ts`・`useLocation.ts`・`useDebouncedValue.ts`・`useIsomorphicLayoutEffect.ts` |
 | features/map/view | `useMapView.ts`（地図の見え方の状態と、地図・操作部品へ渡す値）・`mapLook.ts`（地図へ渡す見え方の値の型）・`lens.ts`（選んだレンズから全道路を塗るレンズ・凡例を導く）・`overlayChips.ts`（地図上チップの状態とレイヤー表示の保存形式）・`legendFilters.ts`（凡例で隠した行の保存先の読み書き） |
 | features/map/MapView | `useLayerDataStatus.ts`（MapLibreのソースイベントからレイヤーごとの取得状態を算出して渡す）・`useMapLifecycle.ts`（地図を作り、読み込み・失敗・動かした範囲・向き・ソースの取得のイベントを状態と知らせ先へつなぐ。「地図の表示を再描画」のスタイルの取り直しも持つ）・`MapLoadStatus.tsx`（読み込みの間の覆いと、地図が白紙のまま止まったときの案内）・`mapCamera.ts`（ルート・選んだ区間を収める・地点へ寄せるときに、地図の上に重ねた部品を避ける。線が見えている所に入るかも同じ避け方で測る）・`useSectionFocus.ts`（頼まれたときだけ形へ寄せ〔小窓の寄せるアイコンとグラフの寄せるボタンが同じ手続きを使う〕、選んだ区間が見えている所の外にあるかを知らせる） |
-| lib | `apiBaseUrl.ts`・`apiClient.ts`（backendのAPIを呼ぶ口と、全呼び出しが共有する骨格。下記）・`apiPath.ts`（アプリ自身が呼ばないURL［地図ライブラリへ渡すタイル・スタイル］のパスをOpenAPIの宣言と型で照合して作る）・`apiError.ts`・`backendInternalUrl.ts`・`queryClient.ts`（画面のデータ取得が共有するTanStack Queryのキャッシュ。下記「データ取得の骨格」）・`apiTimeouts.ts`（APIリクエストのタイムアウト。呼び出しの性質ごとの名前付き定数）・`safeStorage.ts`（localStorageの読み書きで例外を外へ出さない薄いラッパ）・`paletteCssVariables.ts`（地図に塗る色と同じ色をUIにも出す箇所へ、配信された値をCSS変数として流す。`layout.tsx`がサーバー側で`:root`へ入れる。CSSが値を持つのはライト/ダークで2値を持つものだけ）・`duration.ts`（時間の長さの単位［秒・分・時のミリ秒］と、所要時間・待ち時間を「N分」で書く書き方。1時間を超えても分で書き、候補の一覧・候補の中身・差し替えの比較で同じ単位で見比べる）・`numberFormat.ts`（桁での丸めと、差の前に置く符号）・`urlTemplate.ts`（パスのテンプレートの`{名前}`を埋める。`apiPath.ts`と気象庁の配信のパスが使う）・`geoDistance.ts`（2点間の大円距離と、ルートに沿った道のりの書き方〔1km未満は10m単位、以上は0.1km単位。走行中の曲がる所のカードと近くの施設の位置が同じ桁で出す〕。地球の半径はbackendの値を生成物`geo-config.json`で読み、2点の距離がbackendと合うことは、`cardinalLabel`と同じ表をテストが通して確かめる）・`localPlane.ts`（狭い範囲の緯度経度を、経度方向をcos(緯度)で縮めた平面として扱う近似と、緯度1度の長さ・辺の上で地点に最も近い点。地図の上で最も近い点を求める所はどれもこれを通す）・`mapScale.ts`（MapLibre の地図のズームと緯度から、1画素が地上の何 m か・経度1度が何画素か。地図の縮尺を地上の長さへ直す所はどれもこれを通し、自分で式を持たない）・`routeDistance.ts`（ルートの区間を始点からの距離で読む: 候補の中の同じ区間・区間の道なりの形・形の上で距離の割合ぶん進んだ点とそこで分けた前後・ある点に最も近いルートの上の点・Edgeの境界ごとの距離。区間の`routeDistance.ts: distance_km`を始点から積んだ値を物差しにし、道のりのグラフと地図と走行モードと編集の差が同じ距離で読む）・`storedList.ts`（この端末に保存した一覧の読み方と入れ方。下記「状態の永続化」）・`adminApiPrefix.ts`（管理APIの転送の口と、backendの管理APIのパスの接頭辞）・`mapOverlayEdges.ts`（地図の上に重ねる部品へ付ける「どの辺を覆うか」の印と、印の付いた部品が覆う幅の実測。印を付ける部品は地図の機能の外にもあるので共有の層に置く。下記「`MapView`との境界」）・`routeFit.ts`（ルート・区間の形を地図へ収める範囲と、地図の上に重ねた部品を避けて収める・寄せるときの余白とずれ。`MapView`が地図を動かす瞬間に呼ぶ）・`validArea.ts`（backend が添える値の範囲が地点を含むか・走行中に取る地点を動かすか）・`assumedSpeed.ts`（想定速度の範囲と丸め。走行条件の入力と、走行中に地図の道の値へ載せる速さが使う）・`magneticDeclination.ts`（日本付近の偏角と、磁北を基準にした方角を真北の基準へ直すこと）・`tapSlop.ts`（押したか動かしたかを分ける遊びの幅。使い方の説明・長押しのツールチップ・下部シートのつまみが使う） |
+| lib | `apiBaseUrl.ts`・`apiClient.ts`（backendのAPIを呼ぶ口と、全呼び出しが共有する骨格。下記）・`apiPath.ts`（アプリ自身が呼ばないURL［地図ライブラリへ渡すタイル・スタイル］のパスをOpenAPIの宣言と型で照合して作る）・`apiError.ts`・`backendInternalUrl.ts`・`queryClient.ts`（画面のデータ取得が共有するTanStack Queryのキャッシュ。下記「データ取得の骨格」）・`apiTimeouts.ts`（APIリクエストのタイムアウト。呼び出しの性質ごとの名前付き定数）・`safeStorage.ts`（localStorageの読み書きの口。読めない・書けないときは、どの保存値かを添えて投げる。下記「状態の永続化」）・`paletteCssVariables.ts`（地図に塗る色と同じ色をUIにも出す箇所へ、配信された値をCSS変数として流す。`layout.tsx`がサーバー側で`:root`へ入れる。CSSが値を持つのはライト/ダークで2値を持つものだけ）・`duration.ts`（時間の長さの単位［秒・分・時のミリ秒］と、所要時間・待ち時間を「N分」で書く書き方。1時間を超えても分で書き、候補の一覧・候補の中身・差し替えの比較で同じ単位で見比べる）・`numberFormat.ts`（桁での丸めと、差の前に置く符号）・`urlTemplate.ts`（パスのテンプレートの`{名前}`を埋める。`apiPath.ts`と気象庁の配信のパスが使う）・`geoDistance.ts`（2点間の大円距離と、ルートに沿った道のりの書き方〔1km未満は10m単位、以上は0.1km単位。走行中の曲がる所のカードと近くの施設の位置が同じ桁で出す〕。地球の半径はbackendの値を生成物`geo-config.json`で読み、2点の距離がbackendと合うことは、`cardinalLabel`と同じ表をテストが通して確かめる）・`localPlane.ts`（狭い範囲の緯度経度を、経度方向をcos(緯度)で縮めた平面として扱う近似と、緯度1度の長さ・辺の上で地点に最も近い点。地図の上で最も近い点を求める所はどれもこれを通す）・`mapScale.ts`（MapLibre の地図のズームと緯度から、1画素が地上の何 m か・経度1度が何画素か。地図の縮尺を地上の長さへ直す所はどれもこれを通し、自分で式を持たない）・`routeDistance.ts`（ルートの区間を始点からの距離で読む: 候補の中の同じ区間・区間の道なりの形・形の上で距離の割合ぶん進んだ点とそこで分けた前後・ある点に最も近いルートの上の点・Edgeの境界ごとの距離。区間の`routeDistance.ts: distance_km`を始点から積んだ値を物差しにし、道のりのグラフと地図と走行モードと編集の差が同じ距離で読む）・`storedList.ts`（この端末に保存した一覧への入れ方）・`adminApiPrefix.ts`（管理APIの転送の口と、backendの管理APIのパスの接頭辞）・`mapOverlayEdges.ts`（地図の上に重ねる部品へ付ける「どの辺を覆うか」の印と、印の付いた部品が覆う幅の実測。印を付ける部品は地図の機能の外にもあるので共有の層に置く。下記「`MapView`との境界」）・`routeFit.ts`（ルート・区間の形を地図へ収める範囲と、地図の上に重ねた部品を避けて収める・寄せるときの余白とずれ。`MapView`が地図を動かす瞬間に呼ぶ）・`validArea.ts`（backend が添える値の範囲が地点を含むか・走行中に取る地点を動かすか）・`assumedSpeed.ts`（想定速度の範囲と丸め。走行条件の入力と、走行中に地図の道の値へ載せる速さが使う）・`magneticDeclination.ts`（日本付近の偏角と、磁北を基準にした方角を真北の基準へ直すこと）・`tapSlop.ts`（押したか動かしたかを分ける遊びの幅。使い方の説明・長押しのツールチップ・下部シートのつまみが使う） |
 | features/route | `routeApi.ts`（ルート生成API。ジョブを投げ、終わるまで問い合わせる）・`generationRequest.ts`（生成リクエストのpayloadと`conditionsDirty`の比較キーを同じ入力から導出する純関数）・`routeSplice.ts`（候補どうしが別々の道を通る区間を`edge_ids`の集合演算で求め、表示中の側と相手側を対応づけ、選んだ区間を差し替えた経路を組み立てる純関数。差し替えた経路の評価はbackendが行うため計算式は持たない）・`stretchAlternatives.ts`（元の経路の区間ごとに、全候補から乗り換えられる道を集める純関数。区間を割る下限は持たず呼び出し側から受け取る［backendの較正値で、管理画面から変えられる］） |
 | features/conditions | `useRideConditions.ts`（走行条件: 出発時刻・想定速度。想定速度だけを保存し、保存値は画面の範囲内の整数だけを受け入れる）・`useDepartureTime.ts`（出発時刻。選ぶまでは5分刻みの「今」へ追従し、選んだ時刻は動かさない）・`rideConditions.ts`（走行条件の出発時刻ラベルと出発時刻の刻み。想定速度の範囲と丸めは`lib/assumedSpeed.ts`） |
 | types | `types/route.ts`（`types/route.ts: RouteCandidate`等の生成APIレスポンス型）・`types/generated/api.d.ts`（backendのOpenAPIから生成した口の型。下記の呼び出し口が型を推論する元）・`types/fetchFailure.ts`（常設ヘッダーの「未取得」の印に並ぶ項目の型。下記「失敗・空・待ちの伝え方」） |
@@ -479,51 +479,35 @@ MapLibreの`GeolocateControl`を使わないのは、地図を進む向きへ回
   計画の残り時間を足す（`rideRemaining.ts`）。計画の残り時間は、区間の到達予想（区間へ入る時刻）と所要時間を、ルートの上の距離で読んだ
   時刻の差で、区間の中は距離に比例させる。計画の時刻が欠けた候補では到着予想を出さない。走った実績では補正しない（下の「今の事実と
   ルートの計画」）。
-- **一時保存**: 走行モードの間だけ、選んだ候補と前に当てたルートの上の距離と休んでいるかを、変わるたびにこの端末へ書き、走っていなければ消す（`useRideSession.ts`）。候補は形を含めて長く、位置が届くたびに書き直すと遅い端末で重いので、候補は替わったときだけ書き、距離と休んでいるかは別の鍵に書く（`rideSession.ts`。距離の側に候補の`id`を添え、組にならない保存は使わない）。スマホのブラウザは裏に回したタブを
+- **一時保存**: 走行モードの間だけ、選んだ候補と前に当てたルートの上の距離と休んでいるかを、変わるたびにこの端末へ書き、走っていなければ消す（`useRideSession.ts`）。候補は形を含めて長く、位置が届くたびに書き直すと遅い端末で重いので、候補は替わったときだけ書き、距離と休んでいるかは別の鍵に書く（`rideSession.ts`）。スマホのブラウザは裏に回したタブを
   捨てて読み込み直すことがあり、走行中にそれが起きても同じ候補で走行モードを続けるため。走っていない間の候補は戻さない（戻すと
   生成の結果が1本に減る）。開いたときに期限の内の保存があれば
-  （期限は`rideSession.ts: RIDE_SESSION_TTL_MS`）、その候補だけを一覧に戻して選び、走行モードを始め直す（休んでいたなら、位置を受けずに休んだまま戻す）。期限を過ぎた保存・形の
-  合わない保存は使わない。候補の型が今の版と違う版で書いた保存も使わない——保存に添えた型の印を、生成物
-  `route-generate-config.json`の`route_candidate_shape`（応答の候補の型と、そこから辿れる型の宣言から作る）と照らす。生成の結果のほかの候補は戻さない。戻した候補を走る間は、読み込み直す前に当てた距離を前に当てた位置として使い、往復の帰り道で読み込み直しても行きの側に当てない（`useRideProgress.ts`）。
+  （期限は`rideSession.ts: RIDE_SESSION_TTL_MS`）、その候補だけを一覧に戻して選び、走行モードを始め直す（休んでいたなら、位置を受けずに休んだまま戻す）。期限を過ぎた保存は使わない。生成の結果のほかの候補は戻さない。戻した候補を走る間は、読み込み直す前に当てた距離を前に当てた位置として使い、往復の帰り道で読み込み直しても行きの側に当てない（`useRideProgress.ts`）。
 
 ## 状態の永続化（`hooks/useStoredState.ts`）
 
-`useStoredState(key, defaultValue, {serialize, deserialize, reloadKey})`が
-localStorageへの保存・復元を1箇所に集約する。
+`useStoredState(key, label, defaultValue)`が、localStorageへの保存・復元を1箇所に集約する（`label`は保存値の画面の名前）。
 
+- 保存値はJSONで書き、JSONとして読むだけで、保存値ごとの読み方・判定は持たない。初期値（`defaultValue`）は、保存されて
+  いないときにだけ使う。
 - 復元は`useState`の初期化子ではなく、マウント後の`layout effect`
   （`useIsomorphicLayoutEffect`）で行う（SSR時のHTMLとハイドレーション結果のずれ防止）。
 - 保存は「setter呼び出しのたびに即書き込む」方式。途中の値を保存したくないもの（モバイルのシートの
   ドラッグ中の高さ）は、途中の値を別の`useState`で持ち、確定した値だけをsetterへ渡す。
-- `reloadKey`: 復元処理を再実行させたい追加の依存値。`deserialize`はrefへ退避しない
-  （`reloadKey`が変わった際、その時点の最新の`deserialize`クロージャで再復元する）。例:
-  レンズの選択（`lens`）は`deserialize`が地図のレンズの並びを参照するため、
-  費用の軸の一覧の`loaded`を`reloadKey`にする（`features/map/view/useMapView.ts`）——一覧の取得前の1回だけで判定すると、費用の軸を指す
-  保存値が未知のidとして捨てられ、再訪のたびにレンズを選んでいない状態へ戻る。
-- `deserialize`が投げた・nullを返した保存値は既定値として扱う。保存した一覧（保存した地点・検索の履歴・保存した設定・地図で
-  外した項目）の`deserialize`は`lib/storedList.ts: readStoredList`を通し、読めない件だけを捨ててほかの件を残す
-  （画面の形が変わったあとも、前に保存した一覧が丸ごと消えない）。
-- 保存の形を変えても、前の形を読み替える`deserialize`は持たない。前の形の保存は読めない値として既定値になり、一覧なら
-  その件だけが捨てられる。
-- `useStoredJsonState`は`JSON.stringify`/`JSON.parse`で保存し、渡した読み方で今の形として読むラッパー、
-  `useStoredBooleanState`は保存値が真偽値かまで確かめるラッパー。
-- 読み書きの失敗（プライベートブラウジング等）はデフォルト値へのフォールバックとして
-  握りつぶす。
+- 読めない・書けない（ブラウザが断る・容量の上限・JSONでない）ときは、`lib/safeStorage.ts: StoredValueError`（どの保存値か
+  を添えた文言と、その保存値を消す`clear`）を投げる。画面のエラーの境目（`app/error.tsx`）が文言と「保存値を消して再試行」を出す。
 
 保存する／しないの線引きは「その場で決まる値かどうか」で引く。出発地点・距離・目的地は
 毎回初期化し、ルート設定パネルが操作する負担と回避の設定（つまみと倍率・道の行ごとの避け方）は保存する——同じ
 パネルに並ぶ設定の片方だけが消えると、利用者は何が残るかを予測できない。
 
-Reactの外（モジュール評価時に初期値を決めるシングルトン。`lib/debugLog.ts`）は`useStoredState`を使えないため、`lib/safeStorage.ts`の
-`readStoredValue`/`writeStoredValue`を通す。サイトデータを全面ブロックした環境では
-`getItem`/`setItem`ではなく`window.localStorage`のゲッター自体がSecurityErrorを投げ、
-モジュール評価時にこれを浴びると例外を受け止める場所が無く、そのモジュールを読む
-ページ全体が描画されない。
+Reactの外（デバッグの記録・走行の計測・走行中のルートの一時保存）は、`lib/safeStorage.ts`の`readStored`/`writeStored`を
+直に使う（読めない・書けないときに`StoredValueError`を投げるのは同じ）。デバッグの記録の表示は、モジュールを読んだ時点ではなく
+初めて要るときに読む（サーバー側の描画では端末の保存値を読めない）。
 
 ## page.tsxが橋渡しする主なデータフロー
 
-- つまみと倍率（保存値。つまみは「条件」タブ、倍率は「負担」タブ（`RouteSettingsPanel`）が編集）→ ルート生成リクエスト（`useGenerationConditions.ts`の
-  `costPreferenceToSend`。今の費用の軸のうち、数える軸の標準でない倍率と無効の軸を載せ、費用の軸の一覧が届いていない間はどちらも載せない）。
+- つまみと倍率（保存値。つまみは「条件」タブ、倍率は「負担」タブ（`RouteSettingsPanel`）が編集）→ ルート生成リクエスト（選んだまま載せる。値が正しいかは要求を受けるbackendが判定する）。
   同じ値が地図の見え方（`useMapView`の`costPreference`。ルートを出している間はそのルートを生成したときの値）へも渡り、レンズの塗り・
   「未使用」の印（全体のつまみ×0のとき。`features/map/costLens.ts: costLensOptions`）・無効の軸を外したレンズの一覧・道の窓の負担が同じ値で求まる。
 - 走行条件（走行方位・出発時刻・想定速度）→ 地図の見え方（`useMapView`の入力）・生成リクエスト・

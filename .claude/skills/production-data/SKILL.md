@@ -77,7 +77,7 @@ description: "本番の派生データを作り直す・本番へ道の区分と
 
 ### DBのバックアップ
 
-- 対象: 本番DBの全体（管理APIで入れた道の区分・費用の軸の定義と較正値の上書き、生データ・派生データ）。
+- 対象: 本番DBの全体（管理APIで入れた道の区分・費用の軸の定義と較正値、生データ・派生データ）。
   仕組みは[横断基盤](../../../docs/modules/backend/cross-cutting-infrastructure.md)「本番DBのバックアップ」。
 - ルール: 本番VMのsystemdのtimerが毎日03:17（日本時間）に、DBの全体を`pg_dump`（custom形式・圧縮あり）して、
   Oracle Cloud Object Storageの非公開バケットへ`db/<UTCの時刻>.dump`として置き、前の回のものを消す。残すのは、バケットに
@@ -145,7 +145,7 @@ description: "本番の派生データを作り直す・本番へ道の区分と
      ```
      curl -fsS http://localhost:8000/health
      curl -fsS http://localhost:8000/api/cost-axes | head -c 300
-     sudo docker logs --tail 50 ridecompass-backend 2>&1 | grep -E '道の区分|費用の軸の定義|TuningOverrideError'
+     sudo docker logs --tail 50 ridecompass-backend 2>&1 | grep -E '道の区分|費用の軸の定義|較正値'
      ```
      `/health`が応答し、ログに「道の区分を読み込みました」と「費用の軸の定義を読み込みました axes=<戻した軸の数>」が出ていれば済み。
   6. VMを作り直したときは、上の「DBのバックアップ」の登録の2.〜4.をやり直す（動的グループのルールはVMのOCIDを指す）。

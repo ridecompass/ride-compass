@@ -1,4 +1,4 @@
-"""`api/admin_db_errors.py`——管理API（`/api/admin/`配下）のDB障害を、どの口でも503で返すこと。
+"""`api/failure_replies.py`——DB障害を、どの口でも503で返すこと（管理APIの口は全部を本物で叩く）。
 
 DBに繋がらない状態は、アプリのセッション工場の依存を、接続を断るDBへ向けた工場で上書きして作る（本番のDB停止と同じく、
 最初の問い合わせで`ConnectionRefusedError`が出る）。口ごとの依存・サービスは本物を通す。
@@ -11,11 +11,11 @@ DBに繋がらない状態は、アプリのセッション工場の依存を、
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
-from app.api.admin_db_errors import ADMIN_PATH_PREFIX, install_admin_db_unavailable_handler
+from app.api.admin_paths import ADMIN_PATH_PREFIX
+from app.api.failure_replies import install_failure_replies
 from app.domain.cost_axes import EFFORT_AXES
 from app.domain.tuning import TUNING_PARAMETERS
 from app.domain.road_classes import EMPTY_ROAD_CLASSES
@@ -23,6 +23,7 @@ from app.infrastructure import database
 from app.main import app
 from tests.admin_auth import AUTH_HEADERS, admin_routes
 from tests.conftest import UNREACHABLE_DATABASE_URL
+from tests.tuning_fixture import TUNING
 
 COST_AXES_BODY = {
     "effort": {axis_id: {"label": axis_id, "description": "", "icon_id": "i",
@@ -35,12 +36,12 @@ COST_AXES_BODY = {
 # 口ごとの(パスの引数を埋めたURL, 本文, DBが落ちたときの状態コード)。母集団はアプリのルートから取るので、
 # 管理APIの口を足してここへ足し忘れるとKeyErrorで落ちる。DBを読まない口とDBの失敗を自分で空へ倒す口は200。
 ROUTE_CASES = {
-    ("GET", "/api/admin/tuning"): ("/api/admin/tuning", None, 503),
+    ("GET", "/api/admin/tuning"): ("/api/admin/tuning", None, 200),
     ("GET", "/api/admin/road-classes"): ("/api/admin/road-classes", None, 503),
     ("PUT", "/api/admin/road-classes"): ("/api/admin/road-classes", EMPTY_ROAD_CLASSES.model_dump(mode="json"), 503),
     ("GET", "/api/admin/cost-axes"): ("/api/admin/cost-axes", None, 503),
     ("PUT", "/api/admin/cost-axes"): ("/api/admin/cost-axes", COST_AXES_BODY, 503),
-    ("PUT", "/api/admin/tuning/{param_id}"): (f"/api/admin/tuning/{TUNING_PARAMETERS[0].id}", {"value": None}, 503),
+    ("PUT", "/api/admin/tuning/{param_id}"): (f"/api/admin/tuning/{TUNING_PARAMETERS[0].id}", {"value": TUNING[TUNING_PARAMETERS[0].id]}, 503),
     ("GET", "/api/admin/material-catalog/coverage"): ("/api/admin/material-catalog/coverage", None, 503),
     ("GET", "/api/admin/derived-data/freshness"): ("/api/admin/derived-data/freshness", None, 503),
     ("GET", "/api/admin/db-status"): ("/api/admin/db-status", None, 503),
@@ -74,23 +75,14 @@ def test_a_database_failure_becomes_a_503_on_every_admin_route_that_reads_it(
         assert "DBへのアクセスに失敗しました" in response.json()["detail"]
 
 
-@pytest.mark.parametrize(
-    ("path", "error"),
-    [
-        # 管理API以外の口は、DB障害を空へ倒すか500で表へ出すかを口ごとに決めている。
-        ("/api/probe", DBAPIError("SELECT 1", {}, Exception("接続できない"))),
-        # 実装の誤りをDB障害として返すと、直す場所を取り違える。
-        (ADMIN_PATH_PREFIX + "probe", TypeError("wrong arguments")),
-    ],
-    ids=["db-failure-outside-admin", "implementation-error-in-admin"],
-)
-def test_other_failures_stay_unhandled_errors(path, error):
+def test_an_implementation_error_stays_an_unhandled_error():
+    """実装の誤りをDB障害として返すと、直す場所を取り違える。"""
     probe = FastAPI()
-    install_admin_db_unavailable_handler(probe)
+    install_failure_replies(probe)
 
-    @probe.get(path)
+    @probe.get(ADMIN_PATH_PREFIX + "probe")
     async def fail() -> None:
-        raise error
+        raise TypeError("wrong arguments")
 
-    with pytest.raises(type(error)):
-        TestClient(probe).get(path)
+    with pytest.raises(TypeError):
+        TestClient(probe).get(ADMIN_PATH_PREFIX + "probe")

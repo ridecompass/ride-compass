@@ -17,7 +17,7 @@ export interface GenerationInput {
   startTime: Date;
   /** 道の区分の行ごとに選んだ避け方（選んでいない行は、backendが今の行へ揃える）。 */
   roadAvoidance: RoadAvoidanceOverride;
-  /** つまみと軸ごとの倍率（`features/route/costPreference.ts: costPreferenceToSend`を通した値）。 */
+  /** つまみと軸ごとの倍率（利用者が選んだまま）。 */
   costPreference: CostPreference;
   /** 置いた経由地（通る順）と目的地。目的地が無ければ出発地へ戻る。 */
   waypoints: readonly Coordinates[];

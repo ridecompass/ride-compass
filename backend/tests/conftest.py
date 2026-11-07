@@ -20,8 +20,10 @@ import pytest_asyncio
 import redis.asyncio
 from hypothesis import settings as hypothesis_settings
 from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
+from app.batch import derive_cli
 from app.batch.common import asyncpg_dsn
 from app.domain import stopwatch
 from app.infrastructure import (
@@ -37,7 +39,8 @@ from app.infrastructure import (
 from app.infrastructure.derived_data_freshness import derived_tables
 from app.infrastructure.orm_base import declared_metadata
 from app.infrastructure.source_models import SourceFeatureRow, SourceRunRow
-from app.infrastructure.tuning_overrides import TuningOverrideStore
+from app.infrastructure.derived_data_meta import DerivedTuningRow
+from app.infrastructure.tuning_overrides import TuningOverrideRow, TuningOverrideStore
 from app.infrastructure.road_graph_repository import (
     REQUIRED_EXTENSIONS,
     RoadGraphRepository,
@@ -45,10 +48,12 @@ from app.infrastructure.road_graph_repository import (
 )
 from app.config import settings
 from app.domain.cost_axes import replace_cost_axes
+from app.domain.tuning import TUNING_VALUES
 from app.services import derived_data_revision_service
 from scripts.schema_gap import collect_gaps
 from tests.admin_auth import ADMIN_PASSWORD, ADMIN_USERNAME
 from tests.cost_axes_fixture import cost_axes
+from tests.tuning_fixture import TUNING
 from tests.database_names import (
     SHARED_TEST_DATABASE,
     TEMPLATE_TEST_DATABASE,
@@ -178,11 +183,11 @@ def redis_server():
 @pytest.fixture
 async def fake_redis(monkeypatch, redis_server):
     """空のRedis。接続を作る所（`redis.asyncio.from_url`）を同じサーバのfakeredisへ差し、共有クライアントを
-    閉じる口（`redis_client.py: close_redis_client`）で作る前に戻すので、`get_redis_client_or_none`を読むどの
+    閉じる口（`redis_client.py: close_redis_client`）で作る前に戻すので、`get_redis_client`を読むどの
     モジュールからも同じものが見える。返すのはその共有クライアントで、値は生のバイト列で返る。"""
     monkeypatch.setattr(redis.asyncio, "from_url", functools.partial(fakeredis.FakeAsyncRedis.from_url, server=redis_server))
     await redis_client.close_redis_client()
-    yield redis_client.get_redis_client_or_none()
+    yield redis_client.get_redis_client()
     await redis_client.close_redis_client()
 
 
@@ -240,6 +245,19 @@ def _standard_cost_axes():
     """テストごとに、体力の4軸だけの費用の軸の定義を置く（本番は起動で表から読み、無ければ起動しない）。前のテストが
     差し替えた定義を持ち越さない。"""
     replace_cost_axes(cost_axes())
+
+
+#: テストの較正値（`tests/tuning_fixture.py`）を置く（本番は起動で表から読む）。テストのモジュールの先頭で読む所があるので、
+#: 集める前に置く。
+TUNING_VALUES.update(TUNING)
+
+
+@pytest.fixture(autouse=True)
+def _restore_tuning():
+    """テストが読み込んだ・差し替えた較正値を、テストの後に元へ戻す。"""
+    before = dict(TUNING_VALUES)
+    yield
+    TUNING_VALUES.update(before)
 
 
 _DISK_CACHES = {"tile_persistent_cache": tile_persistent_cache, "tile_cache": tile_cache}
@@ -420,12 +438,12 @@ async def raw_connection():
 
 
 async def override_tuning(param_id: str, value: float) -> None:
-    """較正値の上書きを本番の書き口（`TuningOverrideStore.set_override`）でテストDBへ書いて確定する。プロセス内の今の値へは
+    """較正値を本番の書き口（`TuningOverrideStore.set_value`）でテストDBへ書いて確定する。プロセス内の今の値へは
     反映しない（DBから読む側を確かめるため）。"""
     engine = create_async_engine(postgis_database_url())
     try:
         async with AsyncSession(engine) as session:
-            await TuningOverrideStore(session).set_override(param_id, value)
+            await TuningOverrideStore(session).set_value(param_id, value)
             await session.commit()
     finally:
         await engine.dispose()
@@ -443,7 +461,7 @@ def _prepare_worktree_database() -> str:
     name = default_test_database_name()
     try:
         created = asyncio.run(_create_database_if_absent(name, str(WORKTREE_ROOT)))
-    except Exception as exc:  # 作れない理由はそのまま伝える
+    except (OSError, asyncpg.PostgresError) as exc:  # 作れない理由はそのまま伝える
         print(
             f"作業ツリー専用のテストDBを用意できないため、共有の{SHARED_TEST_DATABASE}を使います"
             f"（並行セッションと衝突しうる）: {exc}\n"
@@ -529,7 +547,7 @@ def _prepare_worker_database(explicit: str | None, worker: str) -> str:
     try:
         asyncio.run(_create_database_if_absent(name, None if explicit else str(WORKTREE_ROOT),
                                                base if explicit else TEMPLATE_TEST_DATABASE))
-    except Exception as exc:  # 作れない理由はそのまま伝える
+    except (OSError, asyncpg.PostgresError) as exc:  # 作れない理由はそのまま伝える
         pytest.exit(f"ワーカーのテストDB {name} を用意できない（-n を外せば1つのDBで回る）: {exc}", returncode=1)
     return f"{server}/{name}"
 
@@ -555,7 +573,7 @@ async def road_graph_engine():
     try:
         async with engine.connect() as conn:
             await conn.execute(text("SELECT 1"))
-    except Exception as exc:  # 接続できない理由はそのまま伝える
+    except (OSError, SQLAlchemyError) as exc:  # 接続できない理由はそのまま伝える
         await engine.dispose()
         # URLはそのまま出さない（パスワードを含む）。行き先はDB名で足りる。
         database = postgis_database_url().rsplit("/", 1)[-1]
@@ -564,14 +582,11 @@ async def road_graph_engine():
         )
 
     # 拡張はアプリと同じ一覧から入れる（テスト側で書き写すと、スキーマが新しい拡張を
-    # 要求し始めたときにここだけ古いまま「型が存在しません」で落ちる）。入れられない
-    # 権限のときは握って進み、何が足りないかはcreate_tables()に言わせる。
+    # 要求し始めたときにここだけ古いまま「型が存在しません」で落ちる）。既に入っていれば何もしない。入れられなければ
+    # その理由で止める。
     for extension in REQUIRED_EXTENSIONS:
-        try:
-            async with engine.begin() as conn:
-                await conn.execute(text(f"CREATE EXTENSION IF NOT EXISTS {extension}"))
-        except Exception:
-            pass
+        async with engine.begin() as conn:
+            await conn.execute(text(f"CREATE EXTENSION IF NOT EXISTS {extension}"))
     await create_tables(engine)
     # create_tables()は在る表を直さないので、前の実行が宣言と違う形で残した表（表を入れ替える実装を壊して回した・
     # ORMの宣言を一時に壊して回した）のまま走ってしまう。宣言と差があれば、表を消して今の宣言から作り直す。
@@ -584,20 +599,25 @@ async def road_graph_engine():
     # 前の実行が片付けの前に殺されると（時間切れ・中断）、その行がDBに残る。残った行は
     # 次の実行で最初に走るテストだけを落とし、そのテストの片付けで消える——単独で回すと
     # 通る失敗になる。ファイルの最初に消しておけば、どの実行も空から始まる。
-    await _delete_app_rows(engine)
+    await _reset_app_rows(engine)
 
     yield engine
     await engine.dispose()
 
 
-async def _delete_app_rows(engine) -> None:
-    """アプリの表の全行を、子の表から順に1回の往復で消す。
+async def _reset_app_rows(engine) -> None:
+    """アプリの表の全行を、子の表から順に1回の往復で消し、較正値の行と作り直しに使った較正値の記録をテストの値（`TUNING`）で
+    置き直す（本番の表はいつも宣言の全idの行を持ち、派生の表はそれを作った較正値の記録と一緒に入れ替わる）。
 
     文をいくつも1回で送れるのは単純問い合わせ（引数を持たない`asyncpg.Connection.execute`）だけで、SQLAlchemyの
     `execute`は1文ずつ準備して送る。単純問い合わせの文の並びは1つのトランザクションで走る。
     """
-    statements = "; ".join(
-        str(table.delete().compile(dialect=engine.dialect)) for table in reversed(declared_metadata().sorted_tables))
+    statements = "; ".join([
+        *(str(table.delete().compile(dialect=engine.dialect)) for table in reversed(declared_metadata().sorted_tables)),
+        *(f"INSERT INTO {table} (param_id, value) VALUES " + ", ".join(f"('{param_id}', {TUNING[param_id]!r})" for param_id in ids)
+          for table, ids in ((TuningOverrideRow.__tablename__, TUNING),
+                             (DerivedTuningRow.__tablename__, derive_cli.TUNING_USERS))),
+    ])
     async with engine.connect() as conn:
         raw = await conn.get_raw_connection()
         await raw.driver_connection.execute(statements)
@@ -625,7 +645,7 @@ async def road_graph_session(road_graph_engine) -> AsyncSession:
         yield session
         await session.rollback()
 
-    await _delete_app_rows(road_graph_engine)
+    await _reset_app_rows(road_graph_engine)
 
 
 @pytest_asyncio.fixture(loop_scope="module")

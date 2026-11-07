@@ -49,7 +49,7 @@ paths:
   残したいときだけ書く。HTTPステータスは`fields["status"]`、クォータ系ヘッダがあれば`fields["quota_remaining"]`等で残す。
 - 「取得できないのが正常」なケース（GSIの整備区域外等）は`fields["result"]`を`"error"`にせず
   理由を別フィールドへ残し（`fields["status"]=404`等）、WARNINGでログを埋めない
-  （上流の404は`debug_log.py: mark_status_error`がこの形で記録する）。
+  （上流の404は`http_client.py: fetch_upstream`がこの形で記録する）。
 - 例外を捕まえて既定値（空・None）へ倒すときは、`debug_log.py: mark_failed`で失敗を記録する。
   独自のWARNINGを書き足さない——対象を示す値（対象のタイル・ID等）は`log_external_call`へ渡す`fields`に入れる。
   捕まえずに送り出す例外は何も書かなくてよい。
@@ -92,13 +92,12 @@ paths:
 まとめる（`route_generator.py`参照）。ユーザーに何も返せない結果（候補0件等）は
 WARNINGへ昇格し、原因の内訳（どの段で減ったか）を同じ行に含める。
 
-### 外部データの読み飛ばし
+### 外部データの形の合わない記録
 
-外部から配られるデータ（CSV・JSONの配列等）を読むパーサが、形の合わない記録を飛ばして
-続けるときは、**飛ばした件数と総件数を取得1回につき1行のWARNING**で出す（1件でも
-飛ばしたら）。行ごとには出さない。配布元が宣言した除外（運用終了済みの地点等）と空行は、
-飛ばした件数に数えない（`infrastructure/wbgt_client.py: _parse_point_master`）。一部だけ落ちる形は表示も
-`/api/debug/stats`も正常に見えるので、このログでしか気づけない。
+外部から配られるデータ（CSV・JSONの配列等）を読むパーサは、形の合わない記録を飛ばさず、**その取得を失敗にする**
+（`simple_api_client.py: UnexpectedShapeError`を投げ、`log_external_call`が記録し、口は502）。一部だけ落とす形は表示も
+`/api/debug/stats`も正常に見え、警報なら出ている警報が消えて見える。配布元が宣言した除外（運用終了済みの地点等）と空行は、
+形の合わない記録ではない（`infrastructure/wbgt_client.py: _parse_point_master`）。
 
 ## 観測エンドポイント
 

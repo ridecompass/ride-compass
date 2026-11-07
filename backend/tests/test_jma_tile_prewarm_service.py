@@ -19,7 +19,6 @@
 """
 
 import json
-import logging
 
 from PIL import Image
 
@@ -164,17 +163,6 @@ async def test_the_index_lists_the_tiles_that_have_something_to_draw(fake_redis)
     assert payload["elements"]["flood"]["zooms"] == {}
 
 
-async def test_tiles_that_could_not_be_fetched_are_listed_as_having_something(fake_redis):
-    """載らないタイルを画面は取りに来ないので、取れなかったタイルを載せずにおくと、そこに降る雨が地図から消える。"""
-    source = Source(tiles={"/surf/land/4/": None})
-
-    await _run(source)
-
-    land = (await _stored())["elements"]["land"]
-    parts = [_tile_parts(p) for p in source.tile_requests("land")]
-    assert sorted(land["zooms"]["4"]) == sorted([part["x"], part["y"]] for part in parts if part["z"] == 4)
-
-
 async def test_a_zoom_filled_from_its_parent_is_listed_wherever_the_parent_has_something(fake_redis):
     """補間で埋めるズームを載せないと、クライアントはそこを空と見なして取りに来ず、補間が一度も動かない。"""
     source = Source(tiles={"/surf/rain_mesh/4/": (OPAQUE, "image/png")})
@@ -200,17 +188,3 @@ async def test_the_index_says_which_frame_and_which_area_it_describes(fake_redis
 
 # --- 時刻一覧が取れないとき ---
 
-
-async def test_elements_whose_time_list_cannot_be_read_are_skipped_with_a_warning(fake_redis, caplog):
-    target_times = _target_times()
-    target_times[RISK] = None
-    source = Source(target_times=target_times)
-
-    with caplog.at_level(logging.WARNING, logger="ridecompass.jma_tile_prewarm_service"):
-        await _run(source)
-
-    assert not any(source.tile_requests(element) for element in RISK_ELEMENTS)
-    assert set((await _stored())["elements"]).isdisjoint(RISK_ELEMENTS)
-    assert source.tile_requests("thns")
-    warning = next(r.getMessage() for r in caplog.records if r.levelno == logging.WARNING)
-    assert all(element in warning for element in RISK_ELEMENTS)

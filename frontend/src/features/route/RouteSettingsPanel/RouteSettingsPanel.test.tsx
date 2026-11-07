@@ -43,11 +43,11 @@ function renderPanel(initial: CostPreference = STANDARD_COST_PREFERENCE) {
 const levelsOf = async (name: string) => within(await screen.findByRole("radiogroup", { name }));
 
 describe("費用の軸の一覧", () => {
-  it("取れなければ標準の倍率で作ることを知らせ、再試行で取れたら軸ごとの倍率を出す", async () => {
+  it("取れなければ倍率を変えられないことを知らせ、再試行で取れたら軸ごとの倍率を出す", async () => {
     onBackend("GET", "/api/cost-axes", inTurn(new Response(null, { status: 503 }), Response.json(TWO_COST_AXES)));
     renderPanel();
 
-    expect(await screen.findByRole("status")).toHaveTextContent("標準の倍率で作ります");
+    expect(await screen.findByRole("status")).toHaveTextContent("負担の種類ごとの倍率を変えられません");
 
     await userEvent.click(screen.getByRole("button", { name: "再試行" }));
 

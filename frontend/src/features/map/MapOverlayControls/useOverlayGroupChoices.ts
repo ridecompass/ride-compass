@@ -2,7 +2,6 @@
 
 import { useStoredState } from "@/hooks/useStoredState";
 import type { MapLayerId, MapOverlayGroup } from "@/features/map/layers/mapLayers";
-import { readStoredList } from "@/lib/storedList";
 import type { OverlayLayerChip } from "./OverlayLayerRow";
 
 // たたんだ群と、「表示する項目を選ぶ」で外した項目は次の訪問でも保つ。ⓘ・▶の開閉は一時の確かめなので保たない。
@@ -14,19 +13,14 @@ function hiddenKeyOf(group: MapOverlayGroup, id: MapLayerId): string {
   return `${group}:${id}`;
 }
 
-const storedStringArray = {
-  serialize: (values: readonly string[]) => JSON.stringify(values),
-  deserialize: (raw: string) => readStoredList(raw, (value) => (typeof value === "string" ? value : null)),
-};
-
 /** 群のたたみと、群ごとに一覧へ並べる項目の選び方。どちらも保存し、次の訪問でも保つ。 */
 export function useOverlayGroupChoices(onToggle: (id: MapLayerId, on: boolean) => void) {
   const [collapsedGroups, setCollapsedGroups] = useStoredState<readonly string[]>(
     COLLAPSED_GROUPS_STORAGE_KEY,
+    "たたんだ群",
     [],
-    storedStringArray,
   );
-  const [hiddenIds, setHiddenIds] = useStoredState<readonly string[]>(HIDDEN_IDS_STORAGE_KEY, [], storedStringArray);
+  const [hiddenIds, setHiddenIds] = useStoredState<readonly string[]>(HIDDEN_IDS_STORAGE_KEY, "一覧から外した項目", []);
 
   function isCollapsed(group: MapOverlayGroup): boolean {
     return collapsedGroups.includes(group);

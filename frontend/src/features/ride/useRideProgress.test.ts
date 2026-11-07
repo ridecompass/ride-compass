@@ -13,7 +13,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { makeRouteCandidate, routeThrough } from "@/testing/routeFixtures";
 import type { Coordinates, RouteCandidate } from "@/types/route";
 
-import { RIDE_PROGRESS_STORAGE_KEY, RIDE_ROUTE_STORAGE_KEY, writeRideProgress, writeRideRoute } from "./rideSession";
+import { saveRideProgress, saveRideRoute } from "./rideSession";
 import { useRideProgress } from "./useRideProgress";
 
 // 北緯35度の上を、東へ経度0.02度進んで同じ道を戻る往復（行きは0〜2km、帰りは2〜4km）。
@@ -44,11 +44,8 @@ function render() {
 
 describe("useRideProgress", () => {
   it("帰り道で読み込み直して戻したルートは、前に当てた位置から続く側に当て、別のルートでは始点に近い側から当てる", () => {
-    window.localStorage.setItem(RIDE_ROUTE_STORAGE_KEY, writeRideRoute(ROUTE));
-    window.localStorage.setItem(
-      RIDE_PROGRESS_STORAGE_KEY,
-      writeRideProgress({ route: ROUTE, km: 3.4, resting: false }, Date.now()),
-    );
+    saveRideRoute(ROUTE);
+    saveRideProgress({ route: ROUTE, km: 3.4, resting: false }, Date.now());
     const { result, rerender } = render();
     rerender({ route: ROUTE, riding: true, position: QUARTER });
     expect(result.current.km).toBeCloseTo(3.5);

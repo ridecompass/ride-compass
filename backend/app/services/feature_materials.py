@@ -7,8 +7,7 @@ from app.domain.feature_materials import FeatureMaterials
 from app.domain.road_classes import RoadClassDefinitions, class_columns, current_road_classes, layer_columns
 from app.domain.region import tile_bounds_lonlat
 from app.infrastructure.cache_identity import cache_identity
-from app.infrastructure.database import DB_UNAVAILABLE_ERRORS
-from app.infrastructure.debug_log import log_external_call, mark_failed
+from app.infrastructure.debug_log import log_external_call
 from app.infrastructure.feature_material_cache import get_tile_materials, set_tile_materials
 from app.infrastructure.road_graph_repository import RoadGraphRepository
 from app.infrastructure.road_tile_sql import FEATURE_MATERIALS_SHAPE, ROAD_SURFACE_TILE_SHAPE
@@ -21,13 +20,9 @@ FEATURE_MATERIALS_VALUE_SHAPE = cache_identity("1", FEATURE_MATERIALS_SHAPE, Fea
 async def _tile_features(read: Awaitable[FeatureMaterials | None], fields: dict[str, Any]) -> FeatureMaterials | None:
     """タイル内のフィーチャーごとの材料を読む。
 
-    DB障害・取込範囲外・フィーチャーが無いタイルは None（どれだったかは`fields`へ記録する）。
+    取込範囲外・フィーチャーが無いタイルは None（どちらだったかは`fields`へ記録する）。DB障害は投げる。
     """
-    try:
-        features = await read
-    except DB_UNAVAILABLE_ERRORS as exc:
-        mark_failed(fields, exc)
-        return None
+    features = await read
     if not features:
         fields["postgis"] = "uncovered" if features is None else "empty"
         return None
@@ -42,7 +37,7 @@ class FeatureMaterialService:
     async def materials(
         self, z: int, x: int, y: int, definitions: RoadClassDefinitions | None = None
     ) -> FeatureMaterials | None:
-        """タイル内のフィーチャーごとの材料。取込範囲外・DB障害・フィーチャーの無いタイルはNone。
+        """タイル内のフィーチャーごとの材料。取込範囲外・フィーチャーの無いタイルはNone。
 
         区分の列（`domain/road_classes.py: class_columns`）は、持っておいた事実へ読むたびに当てる。持つものに区分を含めないので、
         区分を書き換えても持ったものを作り直さずに済む。区分の全体は`definitions`（省けば今の全体）。"""

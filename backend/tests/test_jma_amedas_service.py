@@ -19,6 +19,8 @@ from datetime import datetime
 
 import httpx
 import pytest
+
+from app.infrastructure.jma_amedas_store import AmedasUnavailableError
 import respx
 from PIL import Image
 
@@ -146,25 +148,6 @@ def _service(http_client: httpx.AsyncClient) -> JmaAmedasService:
 pytestmark = pytest.mark.usefixtures("fake_redis")
 
 
-@pytest.mark.parametrize(
-    ("answers", "message"),
-    [
-        ({"stations": None}, "観測所マスタ"),
-        ({"latest_time": None}, "最新観測時刻"),
-        ({"observation_map": lambda timestamp: None}, "観測値マップ"),
-    ],
-)
-async def test_refresh_all_stations_warns_when_a_fetch_fails(caplog, answers, message):
-    """呼び出し元は例外の有無しか見ないため、1件も書けていないことはサービス層自身がWARNINGで残すしかない。"""
-    service = _service(_upstream(**answers))
-
-    with caplog.at_level("WARNING", logger="ridecompass.jma_amedas_service"):
-        count = await service.refresh_all_stations()
-
-    assert count == 0
-    assert any(message in record.message for record in caplog.records)
-
-
 async def test_get_nearest_observation_reads_from_redis_without_fetching():
     upstream = _router()
     service = _service(client_for(upstream))
@@ -226,33 +209,9 @@ async def test_weather_code_takes_rain_from_the_station_and_the_sky_from_the_poi
     assert result.weather_code == expected
 
 
-@pytest.mark.parametrize(
-    "answers",
-    [
-        {"suikei_target_times": None},  # 時刻一覧が取れない
-        {"suikei": None},  # 描くものが無いタイル（推計の範囲の外）
-        {"suikei": suikei_tile((1, 2, 3, 255))},  # 凡例に無い色
-    ],
-)
-async def test_observation_is_still_returned_without_a_weather_code_when_the_sky_is_unknown(answers):
-    result = await _nearest(observation_map=_at_night(0.0), **answers)
-
-    assert result is not None
-    assert result.temperature_c == 26.5
-    assert result.weather_code is None
-
-
-async def test_unknown_sky_is_logged_as_a_warning(caplog):
-    with caplog.at_level("WARNING"):
-        await _nearest(observation_map=_at_night(0.0), suikei_target_times=None)
-
-    assert any("推計気象分布" in record.message for record in caplog.records)
-
-
-async def test_get_nearest_observation_returns_none_when_not_yet_cached():
+async def test_get_nearest_observation_says_why_when_not_yet_cached():
     service = _service(_upstream())
 
     # refresh_all_stationsを呼んでいない（＝定期バッチがまだ一度も成功していない）状態。
-    result = await service.get_nearest_observation(POINT)
-
-    assert result is None
+    with pytest.raises(AmedasUnavailableError, match="まだ取り込まれていない"):
+        await service.get_nearest_observation(POINT)

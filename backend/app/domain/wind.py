@@ -18,8 +18,6 @@ from app.domain.way_value_formula import (
     sub,
 )
 
-#: 出発時の風（`DepartureWind`）の風速・風向を応答に載せる桁。
-DEPARTURE_WIND_DECIMALS = 1
 
 # 道なり距離／直線距離の比の想定値。探索前に各Edgeの通過予定時刻を「基準点からの直線距離
 # ×この比÷仮定速度」で推定するときに使う。風の時間解像度は1時間のため、この比のばらつきに
@@ -76,14 +74,6 @@ def wind_components(wind_speed_ms, wind_direction_deg, travel_bearing_deg) -> tu
     inputs = {"speed": wind_speed_ms, "direction": wind_direction_deg, "bearing": travel_bearing_deg}
     return evaluate_formula(_HEADWIND, inputs, {}), evaluate_formula(_CROSSWIND, inputs, {})
 
-
-@dataclass(frozen=True)
-class DepartureWind:
-    """出発地点の出発時点の風（MSMの時系列の先頭）。時別の系列が無いとき、全区間へ一様に使う。"""
-
-    speed_ms: float
-    #: 風が吹いてくる方位（0=北・時計回り）。
-    direction_deg: float
 
 
 @dataclass(frozen=True)

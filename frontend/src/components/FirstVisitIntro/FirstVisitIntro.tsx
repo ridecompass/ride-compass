@@ -7,7 +7,7 @@ import { cardVariants } from "@/components/ui/Card/Card";
 import { textVariants } from "@/components/ui/Text/Text";
 import { MenuIcon } from "@/components/ui/icons/lucideIcons";
 import { originMarkColor, PIN_MARK_BACKGROUND, PinMark } from "@/components/PinMark/PinMark";
-import { useStoredBooleanState } from "@/hooks/useStoredState";
+import { useStoredState } from "@/hooks/useStoredState";
 import { useIsomorphicLayoutEffect } from "@/hooks/useIsomorphicLayoutEffect";
 import { cn } from "@/lib/cn";
 
@@ -26,7 +26,7 @@ interface FirstVisitIntroProps {
  * 保存値の復元はマウント後なので、マウントするまで出さない（出すとSSRのHTMLに載り、閉じた人にも一瞬見える）。
  */
 export default function FirstVisitIntro({ isMobile, locationUnknown }: FirstVisitIntroProps) {
-  const [closed, setClosed] = useStoredBooleanState(FIRST_VISIT_INTRO_STORAGE_KEY, false);
+  const [closed, setClosed] = useStoredState(FIRST_VISIT_INTRO_STORAGE_KEY, "初回の案内を閉じたか", false);
   const [mounted, setMounted] = useState(false);
   const titleId = useId();
   useIsomorphicLayoutEffect(() => setMounted(true), []);

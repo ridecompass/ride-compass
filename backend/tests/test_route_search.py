@@ -104,7 +104,7 @@ def draft(distance_km, duration_seconds, cost_seconds):
         elevation_gain_m=None, segments=[], estimated_duration_seconds=duration_seconds, cost_seconds=cost_seconds,
         penalty=PenaltyBreakdown(axis_seconds={}, avoidance_seconds=0.0),
         facts=RouteFacts(elevation_unknown_km=0.0, axes={}),
-        wind_unavailable=False, missing_travel_data_share=None,
+        missing_travel_data_share=None,
         edge_ids=[], edge_point_offsets=[], node_ids=[], turns=[], waypoint_distances_km=[],
     )
 

@@ -67,22 +67,6 @@ async def test_an_upstream_answer_of_nothing_is_cached_too():
     assert len(calls) == 1
 
 
-async def test_caught_exception_returns_none_and_is_not_cached(monkeypatch):
-    recorded = record_external_calls(monkeypatch, simple_api_client)
-    cache: TTLCache = TTLCache(maxsize=4, ttl=60)
-    calls: list[int] = []
-
-    async def fetch():
-        calls.append(1)
-        raise ValueError("bad json")
-
-    assert await simple_api_client.cached_fetch("cat", fetch, cache=cache, key="k") is None
-    assert await simple_api_client.cached_fetch("cat", fetch, cache=cache, key="k") is None
-    assert len(calls) == 2
-
-    assert recorded[0].fields["result"] == "error"
-
-
 def _held_fetch(outcome):
     """`release`が立つまで返らないfetch。先の要求が上流を待つ間に、次の要求を来させる。"""
     release = asyncio.Event()
@@ -115,7 +99,7 @@ async def test_a_dropped_request_does_not_stop_the_fetch_others_wait_for():
 
 
 async def test_requests_waiting_for_a_failing_fetch_fail_with_it(monkeypatch):
-    """同じ取得を待っていた要求も、上流へ取り直さずに同じ失敗（None）を受ける。"""
+    """同じ取得を待っていた要求も、上流へ取り直さずに同じ失敗を受ける。"""
     recorded = record_external_calls(monkeypatch, simple_api_client)
     cache: TTLCache = TTLCache(maxsize=4, ttl=60)
     fetch, calls, release = _held_fetch(ValueError("bad json"))
@@ -125,9 +109,10 @@ async def test_requests_waiting_for_a_failing_fetch_fail_with_it(monkeypatch):
     await asyncio.sleep(0)
     release.set()
 
-    assert await asyncio.gather(first, waiting) == [None, None]
+    failures = await asyncio.gather(first, waiting, return_exceptions=True)
+    assert [str(failure) for failure in failures] == ["cat: ValueError('bad json')"] * 2
     assert len(calls) == 1
-    assert [call.fields["result"] for call in recorded] == ["error", "error"]
+    assert [call.fields["error_type"] for call in recorded] == ["UnexpectedShapeError"] * 2
 
 
 async def test_get_json_waits_as_long_as_the_client_it_is_given():

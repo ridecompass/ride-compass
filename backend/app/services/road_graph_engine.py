@@ -236,7 +236,6 @@ class RoadGraphEngine:
             return None
 
         weather_started = start_timer()
-        departure_wind = await self._weather_service.get_departure_wind(origin)
         # 探索範囲を覆う格子点ごとの時別風予報（MSMのローカルファイルから読む。外部API呼び出しは無い）。
         wind_series = await self._weather_service.get_wind_forecast_lattice(bbox)
         weather_ms = elapsed_ms(weather_started)
@@ -263,7 +262,7 @@ class RoadGraphEngine:
         def compose_outbound() -> tuple[RoadAvoidanceMasks, LegCostComposer, LegCostArrays]:
             search_masks = compute_search_exclusion(materials, self._road_avoidance)
             composer = LegCostComposer(
-                materials, search_masks, self._avoid_cost_multiplier, departure_wind,
+                materials, search_masks, self._avoid_cost_multiplier,
                 wind_series, start, self._assumed_speed_kmh, lazy_graph.edge_rows,
                 detour_ratio=detour_ratio_or_default(learned_detour_ratio),
                 material_fills=network_fills(road.network, burden_material_ids(cost_axes)),
@@ -278,10 +277,10 @@ class RoadGraphEngine:
         total_ms = elapsed_ms(stage_started)
         logger.info(
             "_build_search_graph edges=%d nodes=%d slice_ms=%d weather_ms=%d materials_ms=%d (%s) "
-            "cost_ms=%d graph_ms=%d total_ms=%d time_varying=%s speed_kmh=%.1f detour_ratio=%.2f(%s)",
+            "cost_ms=%d graph_ms=%d total_ms=%d speed_kmh=%.1f detour_ratio=%.2f(%s)",
             road.edge_count, road.node_count, slice_ms, weather_ms, materials_ms, steps_note(materials_steps_ms),
             cost_ms, graph_ms, total_ms,
-            composer.time_varying, self._assumed_speed_kmh, composer.detour_ratio,
+            self._assumed_speed_kmh, composer.detour_ratio,
             "learned" if learned_detour_ratio is not None else "default",
         )
 

@@ -1,28 +1,18 @@
 // @vitest-environment node
 /**
  * `features/route/savedConditions.ts`——保存した生成の条件の一覧を読む・名前の案・何が保存されるかの説明・一覧への入れ方。
- * 読むときは、今の画面が受け付けない件だけを捨ててほかの件を残し、避け方は段として読める鍵だけを残す。つまみと倍率は読めなければ
- * 件を捨てずに標準へ戻す。倍率の説明は、標準でないつまみと軸の倍率だけを出す。同じ名前で保存すると上書きする。
+ * 倍率の説明は、標準でないつまみと軸の倍率だけを出す。同じ名前で保存すると上書きする。
  *
  * ここで見ないもの:
- * - 距離・候補数の範囲（`acceptedDistanceInput`・`acceptedMaxRoutesInput`） → `useGenerationConditions.test.ts`の保存値の読み直し
  * - 説明を保存の前と一覧の行のどこに出すか → `SavedConditionsPanel/SavedConditionsPanel.test.tsx`
- * - 一覧として読めない保存値 → `lib/storedList.test.ts`
  */
 import { describe, expect, it } from "vitest";
 
 import type { CostAxisCatalog } from "@/hooks/useCostAxisCatalog";
 import { EMPTY_CLIENT_CONFIG } from "@/lib/clientConfig";
 import { AVOIDANCE_LEVELS, avoidanceRow, clientConfigOf, roadClassCatalog } from "@/testing/clientConfig";
-import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 
-import {
-  describeConditions,
-  readSavedConditions,
-  suggestedConditionName,
-  withSavedCondition,
-  type SavedCondition,
-} from "./savedConditions";
+import { describeConditions, suggestedConditionName, withSavedCondition, type SavedCondition } from "./savedConditions";
 import { STANDARD_COST_PREFERENCE } from "@/lib/costPreference";
 
 const POINT = { latitude: 35.1, longitude: 139.1 };
@@ -67,60 +57,6 @@ const COST_CATALOG: CostAxisCatalog = {
   loaded: true,
   failed: false,
 };
-
-describe("readSavedConditions", () => {
-  it.each([
-    ["割合の重みで保存した件（つまみと倍率が無い）", { costPreference: undefined }, STANDARD_COST_PREFERENCE],
-    ["段に無いつまみ", { costPreference: { strength: 1.3, multipliers: {} } }, STANDARD_COST_PREFERENCE],
-    [
-      "段に無い・数でない倍率はその軸だけ、文字列でない無効の軸はその軸だけ",
-      {
-        costPreference: {
-          strength: 2,
-          multipliers: { ascent: 1.5, vibration: "2", gone: 0.5 },
-          disabled_axes: ["friction", 3],
-        },
-      },
-      { ...STANDARD_COST_PREFERENCE, strength: 2, multipliers: { gone: 0.5 }, disabled_axes: ["friction"] },
-    ],
-  ])("つまみと倍率が読めない件も捨てず、読めない所を標準へ戻す: %s", (_, change, expected) => {
-    expect(readSavedConditions(JSON.stringify([{ ...ENTRY, ...change }]))).toEqual([
-      { ...ENTRY, costPreference: expected },
-    ]);
-  });
-
-  it("読める件はそのまま返す", () => {
-    expect(readSavedConditions(JSON.stringify([ENTRY, { ...ENTRY, name: "現在地から", origin: null }]))).toEqual([
-      ENTRY,
-      { ...ENTRY, name: "現在地から", origin: null },
-    ]);
-  });
-
-  it.each([
-    ["名前が空", { name: " " }],
-    ["周回かが真偽でない", { loop: "yes" }],
-    ["全長の目標の有無が真偽でない", { distanceTargeted: "yes" }],
-    ["範囲外の距離", { distance: String(routeGenerateConfig.max_distance_km + 1) }],
-    ["範囲外の候補数", { maxRoutes: "0" }],
-    ["座標でない出発地", { origin: { latitude: "35" } }],
-    ["上限を超える経由地", { waypoints: Array(routeGenerateConfig.max_waypoints + 1).fill(POINT) }],
-    // 値がundefinedの欄はJSONに書かれない。
-    ["避け方を持たない", { roadAvoidance: undefined }],
-  ])("%sの件だけを捨て、ほかの件は残す", (_, broken) => {
-    const other = { ...ENTRY, name: "別の件" };
-
-    expect(readSavedConditions(JSON.stringify([{ ...ENTRY, ...broken }, other]))).toEqual([other]);
-  });
-
-  // 行は画面の設定が届くまで分からないので、鍵では落とさない。
-  it("避け方は段として読める鍵だけを残す", () => {
-    const [read] = readSavedConditions(
-      JSON.stringify([{ ...ENTRY, roadAvoidance: { gravel: "exclude", retired_row: "avoid", unpaved: "never" } }]),
-    )!;
-
-    expect(read.roadAvoidance).toEqual({ gravel: "exclude", retired_row: "avoid" });
-  });
-});
 
 // 名前と説明が分ける形: 周回か（周回の間に覚えている目的地は出さない）・全長の目標の有無・経由地の有無。
 const SHAPES = {

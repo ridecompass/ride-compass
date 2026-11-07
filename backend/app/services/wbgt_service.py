@@ -19,6 +19,7 @@ from app.domain.wbgt import (
     wbgt_level,
 )
 from app.infrastructure.debug_log import log_throttled_warning
+from app.infrastructure.simple_api_client import UnexpectedShapeError
 from app.infrastructure.wbgt_client import fetch_forecast, fetch_point_master
 from app.services.nearest_point_areas import nearest_point_area
 from app.domain.strict_model import StrictModel
@@ -58,16 +59,15 @@ class WbgtService:
         self._forecast_cache = forecast_cache
         self._cells_cache = cells_cache
 
-    async def get_status(self, point: Coordinates, now: datetime) -> WbgtStatus | None:
+    async def get_status(self, point: Coordinates, now: datetime) -> WbgtStatus:
         """出発地点の`now`（JST）時点の暑さ指数警戒レベルと、同じ予測が当たる範囲。
 
         段なし（`reading`が空）は、警告として意味を持たない低いレベルのときと、提供期間の外で今の時刻の値が
-        得られない（取得の失敗も含む）ときだけ。提供期間の中で今の時刻の値が得られなければNone（警戒レベルが
-        分からない）。
+        得られないときだけ。提供期間の中で今の時刻の値が得られなければ投げる（警戒レベルが分からない）。
         """
         reading = await self._reading(point, now)
         if isinstance(reading, _Unknown):
-            return None
+            raise UnexpectedShapeError("wbgt forecast for now is missing within the provision period")
         # 地点の表は予測を引くときに取ってあり（キャッシュ）、範囲のために外部へ問い合わせることはない。
         points = await fetch_point_master(self._http_client, self._point_master_cache)
         valid_area = nearest_point_area(point, points, self._cells_cache, table="wbgt") if points else None
@@ -98,8 +98,6 @@ class WbgtService:
 
         range_from = now - timedelta(hours=FORECAST_SEARCH_WINDOW_HOURS)
         forecasts = await fetch_forecast(self._http_client, nearest.no, range_from, now, self._forecast_cache)
-        if forecasts is None:
-            return None
         if not forecasts and is_within_provision_period(now):
             # 提供期間の中で発表が無いのは配信の止まりで、配信元の失敗ではないためクライアントは出さず、ここで出さないと未取得の理由が残らない。
             log_throttled_warning(

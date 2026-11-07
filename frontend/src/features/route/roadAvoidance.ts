@@ -7,19 +7,6 @@ import type { RoadAvoidanceOverride, RoadAvoidanceView } from "@/types/route";
 export type AvoidanceLevel = RoadAvoidanceOverride[string];
 export type AvoidanceRow = RoadAvoidanceView["rows"][number];
 
-// 鍵はbackendの段の型そのもので、段が増減すれば型検査が落ちる。
-const LEVEL_KEYS: Readonly<Record<AvoidanceLevel, true>> = { pass: true, avoid: true, exclude: true };
-
-function isAvoidanceLevel(value: unknown): value is AvoidanceLevel {
-  return typeof value === "string" && Object.hasOwn(LEVEL_KEYS, value);
-}
-
-/** 保存した避け方のうち、段として読める鍵だけを残す（行は画面の設定が届くまで分からないので、今の行に無い鍵も残す）。 */
-export function readRoadAvoidance(stored: unknown): RoadAvoidanceOverride {
-  if (typeof stored !== "object" || stored === null) return {};
-  return Object.fromEntries(Object.entries(stored).filter((entry) => isAvoidanceLevel(entry[1])));
-}
-
 /** 画面に出す行の段。選んでいなければ既定の段。 */
 export function avoidanceLevelOf(row: AvoidanceRow, chosen: RoadAvoidanceOverride): AvoidanceLevel {
   return chosen[row.key] ?? row.default;

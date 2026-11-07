@@ -9,7 +9,7 @@ import base64
 from fastapi import FastAPI
 from fastapi.routing import APIRoute
 
-from app.api.admin_db_errors import ADMIN_PATH_PREFIX
+from app.api.admin_paths import ADMIN_PATH_PREFIX
 
 
 ADMIN_USERNAME = "admin-user"

@@ -2,17 +2,10 @@
 
 import { useCallback, useMemo, useState } from "react";
 
-import { useCostAxisCatalog } from "@/hooks/useCostAxisCatalog";
 import { samePosition } from "@/lib/geoDistance";
-import { useStoredBooleanState, useStoredJsonState, useStoredState } from "@/hooks/useStoredState";
-import { readRoadAvoidance } from "@/features/route/roadAvoidance";
-import { costPreferenceToSend, multipliersNotSent, readCostPreference } from "@/features/route/costPreference";
+import { useStoredState } from "@/hooks/useStoredState";
 import { STANDARD_COST_PREFERENCE } from "@/lib/costPreference";
-import {
-  acceptedDistanceInput,
-  acceptedMaxRoutesInput,
-  type GenerationConditionsSnapshot,
-} from "@/features/route/savedConditions";
+import { type GenerationConditionsSnapshot } from "@/features/route/savedConditions";
 import type {
   Coordinates,
   CostPreference,
@@ -58,11 +51,9 @@ interface GenerationConditionsInputs {
 
 /**
  * 生成の条件（「ルート設定」の入力）: 周回か・全長の目標を決めるか・距離・候補数・地点（出発地以外）・つまみと倍率・避け方と、地図のタップで
- * 置く地点の選びと、保存した条件での入れ替え。保存する値は、読むときに今の画面が受け付ける範囲・今の項目へ揃える。
+ * 置く地点の選びと、保存した条件での入れ替え。
  */
 export function useGenerationConditions({ onOriginPlace }: GenerationConditionsInputs) {
-  const costAxisCatalog = useCostAxisCatalog();
-
   // 経由地（通る順）。
   const [waypoints, setWaypoints] = useState<Coordinates[]>([]);
   const moveWaypoint = useCallback((index: number, point: Coordinates) => {
@@ -73,7 +64,7 @@ export function useGenerationConditions({ onOriginPlace }: GenerationConditionsI
   }, []);
 
   // 周回か（終点を出発地にする）。周回の間も置いた目的地は消さずに覚えておき、生成にも画面にも使わない（外すと戻る）。
-  const [loop, setLoop] = useStoredBooleanState(LOOP_STORAGE_KEY, true);
+  const [loop, setLoop] = useStoredState(LOOP_STORAGE_KEY, "周回か", true);
 
   // 置いた目的地（周回の間は覚えておくだけ）。生成と画面が読むのは、周回の間を外した`destination`（下の返り値）。
   const [placedDestination, setDestination] = useState<Coordinates | null>(null);
@@ -185,35 +176,28 @@ export function useGenerationConditions({ onOriginPlace }: GenerationConditionsI
   }, [loop]);
 
   // 全長の目標を決めるか。外すと距離を送らず、置いた地点へ良い道で向かう。
-  const [distanceTargeted, setDistanceTargeted] = useStoredBooleanState(DISTANCE_TARGETED_STORAGE_KEY, true);
+  const [distanceTargeted, setDistanceTargeted] = useStoredState(DISTANCE_TARGETED_STORAGE_KEY, "全長の目標", true);
 
   // 距離の入力（文字列のまま）。表示中の候補を作った条件と比べて「生成条件が変更されています」を出すため、入力の形で持つ。
-  const [distanceInput, setDistanceInput] = useStoredState(DISTANCE_STORAGE_KEY, "30", {
-    serialize: (value) => value,
-    deserialize: acceptedDistanceInput,
-  });
+  const [distanceInput, setDistanceInput] = useStoredState(DISTANCE_STORAGE_KEY, "距離", "30");
   // 候補数（文字列のまま、送るときに数へ）。
   const [maxRoutesInput, setMaxRoutesInput] = useStoredState(
     MAX_ROUTES_STORAGE_KEY,
+    "候補数",
     String(routeGenerateConfig.default_max_routes),
-    {
-      serialize: (value) => value,
-      deserialize: acceptedMaxRoutesInput,
-    },
   );
 
-  // 代償の全体に掛けるつまみと、費用の軸ごとの倍率。いつも送る（標準のままでも、標準として送る）。消えた軸の倍率は
-  // 送るときに外す（`costPreferenceToSend`）。
-  const [costPreference, setCostPreference] = useStoredJsonState<CostPreference>(
+  // 代償の全体に掛けるつまみと、費用の軸ごとの倍率。選んだまま送る（標準のままでも、標準として送る）。
+  const [costPreference, setCostPreference] = useStoredState<CostPreference>(
     COST_PREFERENCE_STORAGE_KEY,
+    "負担の好み",
     STANDARD_COST_PREFERENCE,
-    readCostPreference,
   );
   // 道の区分の行ごとに選んだ避け方。選んだ段だけを覚え、常に送る。
-  const [roadAvoidance, setRoadAvoidance] = useStoredJsonState<RoadAvoidanceOverride>(
+  const [roadAvoidance, setRoadAvoidance] = useStoredState<RoadAvoidanceOverride>(
     ROAD_AVOIDANCE_STORAGE_KEY,
+    "避け方",
     NO_ROAD_AVOIDANCE,
-    readRoadAvoidance,
   );
 
   // いまの条件を、保存・呼び出しと同じ形1つで返す（保存・生成の入力・保存の説明はこれを読む）。
@@ -289,10 +273,6 @@ export function useGenerationConditions({ onOriginPlace }: GenerationConditionsI
     foundAt,
     costPreference,
     setCostPreference,
-    /** 生成リクエストへ載せるつまみと倍率（今の費用の軸の倍率だけ。一覧が届いていない間は倍率を送らない）。 */
-    costPreferenceToSend: costPreferenceToSend(costPreference, costAxisCatalog),
-    /** 倍率を変えているのに、一覧が届かず送れないか。 */
-    multipliersNotSent: multipliersNotSent(costPreference, costAxisCatalog),
     roadAvoidance,
     setRoadAvoidance,
   };

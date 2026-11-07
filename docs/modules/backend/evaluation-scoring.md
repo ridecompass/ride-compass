@@ -152,7 +152,7 @@ wayの長さ（0はNULL）になる——件数と長さは必ず同じ側から
   直列にするので、確かめてから確定するまでの間に相手の定義は入れ替わらない。
 - **管理APIは全体の読みと全体の入れ替えだけ**。入れ替えは1つの取引で、表の制約・上の確かめに通らなければ何も変えずに409で
   断りの文を返す。確定してからプロセス内の全体を差し替え、起動時も表から読む（単一プロセスが前提）。管理APIのDB障害は、どの口でも
-  503で返す（`api/admin_db_errors.py: install_admin_db_unavailable_handler`）。
+  503で返す（`api/failure_replies.py: install_failure_replies`）。
 - **画面の設定は解決した形で配る**（`GET /api/client-config`の`road_classes`の欄。`domain/road_class_catalog.py`）。公開した分け方
   だけを出し、色・層の説明のうち区分から組む部分をbackendが決める。区分の説明は意味の文だけで、条件は管理の経路
   （`/api/admin/road-classes`）でだけ見せる。指紋（`generation`）は全体の中身から作る。
@@ -286,8 +286,8 @@ wayの長さ（0はNULL）になる——件数と長さは必ず同じ側から
 - **どちらか一方を必ず持つことは型が保証する**: `MaterialSpec.coverage`は必須で、
   way単位・Edge単位・対象外の3択（`domain/material_coverage_spec.py: MaterialCoverage`）のいずれかしか取れない。
   「どちらの一覧にも載っていない材料」を作れないため、網羅性を確かめるテストは要らない。
-- `MaterialCoverageService.get_material_coverage`はDB例外を握りつぶさず伝播させ、管理API共通の例外の扱い
-  （`api/admin_db_errors.py`）が503で返す（診断用APIのため空レポートへ倒して「欠損0件」に見せない）。
+- `MaterialCoverageService.get_material_coverage`はDB例外を握りつぶさず伝播させ、アプリ共通の例外の扱い
+  （`api/failure_replies.py`）が503で返す（診断用APIのため空レポートへ倒して「欠損0件」に見せない）。
   `api/dependencies.py: get_material_coverage_service`はルート生成用の長い
   `command_timeout`（180秒）を持つセッションを渡す（全表走査がタイル配信用の20秒を
   超えうるため）。

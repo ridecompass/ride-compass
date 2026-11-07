@@ -20,7 +20,6 @@ export function makeRouteCandidate(overrides: Partial<RouteCandidate> = {}): Rou
     penalty: { axis_seconds: {}, avoidance_seconds: 0, total_seconds: 0 },
     penalty_seconds_per_km: null,
     facts: { elevation_unknown_km: 0, axes: {} },
-    wind_unavailable: false,
     missing_travel_data_share: null,
     edge_ids: [],
     edge_point_offsets: [],

@@ -64,10 +64,9 @@ export function createBaseMap({
   return map;
 }
 
-/** 地図が今見ている範囲。範囲を読めなければnull。 */
-export function viewportOf(map: MapLibreMap): MapViewport | null {
+/** 地図が今見ている範囲。 */
+export function viewportOf(map: MapLibreMap): MapViewport {
   const bounds = map.getBounds();
-  if (!bounds) return null;
   return {
     west: bounds.getWest(),
     south: bounds.getSouth(),

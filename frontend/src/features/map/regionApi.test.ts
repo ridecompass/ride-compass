@@ -113,7 +113,7 @@ describe("地図が塗るレンズの道ごとの材料（fetchLensMaterials）"
       speed_kmh: 25,
     });
 
-    expect(result).toEqual({ values: { "101": { lens_along: 3.5 }, "102": { lens_against: 1 } }, error: false });
+    expect(result).toEqual({ "101": { lens_along: 3.5 }, "102": { lens_against: 1 } });
     expect(sent.map(({ method, path, query }) => ({ method, path, query }))).toEqual([
       {
         method: "GET",
@@ -123,12 +123,11 @@ describe("地図が塗るレンズの道ごとの材料（fetchLensMaterials）"
     ]);
   });
 
-  it("失敗は投げずに、空の材料と失敗の印で返す（色分けの失敗で道路や他のレイヤーを止めない）", async () => {
+  it("失敗は、取得の失敗の文言で投げる", async () => {
     onBackend("GET", "/api/region/lens/:lensId/:z/:x/:y", () => new Response(null, { status: 500 }));
 
-    await expect(api.fetchLensMaterials("ascent", 15, 1, 2, { speed_kmh: 20 })).resolves.toEqual({
-      values: {},
-      error: true,
-    });
+    await expect(api.fetchLensMaterials("ascent", 15, 1, 2, { speed_kmh: 20 })).rejects.toThrow(
+      "道路の塗りの値の取得に失敗しました",
+    );
   });
 });

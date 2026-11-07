@@ -13,6 +13,7 @@ from app.infrastructure.debug_log import log_external_call
 from app.infrastructure.http_client import UPSTREAM_NOT_FOUND, UpstreamNotFound, fetch_upstream
 from app.infrastructure.jma_tile_paths import is_final_absence
 from app.infrastructure.jma_tile_recolor import recolored
+from app.infrastructure.simple_api_client import UnexpectedShapeError
 
 UPSTREAM_HOST = "https://www.jma.go.jp"
 
@@ -81,20 +82,18 @@ class JmaTileClient:
             fields["cache"] = "hit" if cached is not None else "miss"
             return cached
 
-    async def fetch(self, path: str) -> tuple[bytes, str] | UpstreamNotFound | None:
+    async def fetch(self, path: str) -> tuple[bytes, str] | UpstreamNotFound:
         """キャッシュを一切参照せず外部フェッチのみ行い、結果をキャッシュへ書き戻す。
         呼び出し側の歯止め（レート制限）は、ここを呼ぶ前に済んでいる前提。上流への間隔の待ちは、呼び出し元を
         問わず総リクエスト数を抑えるためここに置き、実フェッチの所要時間に含めないよう`with`の前で待つ。
 
         上流の404は`UPSTREAM_NOT_FOUND`を返す（疎な格子状タイルでは珍しくない正常系、配信前の
-        地物では毎回の配信の間に必ず起きる正常系のため、WARNINGを出さない）。他の失敗はNoneを返す。
+        地物では毎回の配信の間に必ず起きる正常系のため、WARNINGを出さない）。他の失敗は投げる。
         取得できたものは`store`が返す形で返す。
         """
         await self._shared.wait_for_upstream_rate_limit()
         with log_external_call("weather:jma-tile", path=path, cache="miss") as fields:
             response = await fetch_upstream(self._http_client, f"{UPSTREAM_HOST}/{path}", fields)
-            if response is None:
-                return None
             if isinstance(response, UpstreamNotFound):
                 # 確定した404だけを覚え、次回以降は上流へ問い合わせず即座に済ませる。
                 # 配信前の地物の404を覚えると、配信された後もその間は「無い」を返し続ける。
@@ -117,7 +116,7 @@ class JmaTileClient:
             return content, content_type
         return await jma_tile_redis_cache.set(path, content, content_type)
 
-    async def get(self, path: str) -> tuple[bytes, str] | UpstreamNotFound | None:
+    async def get(self, path: str) -> tuple[bytes, str] | UpstreamNotFound:
         """キャッシュ参照→ミスなら外部フェッチ、という一括呼び出し。
         レート制限の適用順序を気にしない呼び出し元（プリウォームバッチ・テスト等）向け。
 
@@ -131,26 +130,25 @@ class JmaTileClient:
         return await self.fetch(path)
 
 
-async def get_target_times(client: JmaTileClient, path: str) -> list[TargetTimesRow] | None:
-    """時刻一覧（`targetTimes*.json`）を`client.get`で引き、行へ解く（`parse_target_times`）。取れない・JSONでない
-    ときはNone。
+async def get_target_times(client: JmaTileClient, path: str) -> list[TargetTimesRow]:
+    """時刻一覧（`targetTimes*.json`）を`client.get`で引き、行へ解く（`parse_target_times`）。無い・JSONでない・形が
+    合わないときは投げる。
 
     画面へは同じ時刻一覧を中継するだけで、解くのはbackendがコマを選ぶ（プリウォーム）ときだけ。"""
     raw = await client.get(path)
-    if raw is None or isinstance(raw, UpstreamNotFound):
-        return None
+    if isinstance(raw, UpstreamNotFound):
+        raise UnexpectedShapeError(f"jma target times listing is missing: {path}")
     content, _content_type = raw
-    try:
-        payload = json.loads(content)
-    except (ValueError, TypeError):
-        return None
-    return parse_target_times(payload)
+    return parse_target_times(json.loads(content))
 
 
-def parse_target_times(payload: object) -> list[TargetTimesRow] | None:
-    """時刻一覧（JSONを解いた値）を行へ解く。配列でなければNone。コマの時刻を欠く行は読み飛ばす。"""
-    if not isinstance(payload, list):
-        return None
+def parse_target_times(payload: object) -> list[TargetTimesRow]:
+    """時刻一覧（JSONを解いた値）を行へ解く。配列でない・コマの時刻を欠く行があれば投げる。"""
+    if not isinstance(payload, list) or not all(
+        isinstance(row, dict) and "basetime" in row and "validtime" in row and isinstance(row.get("elements", []), list)
+        for row in payload
+    ):
+        raise UnexpectedShapeError("jma target times are not a list of rows with basetime and validtime")
     return [
         TargetTimesRow(
             # 系列を持たない行（nowc）には`member`が無い。タイルのパスでは"none"と書く。
@@ -158,5 +156,4 @@ def parse_target_times(payload: object) -> list[TargetTimesRow] | None:
             elements=tuple(row.get("elements", ())),
         )
         for row in payload
-        if isinstance(row, dict) and "basetime" in row and "validtime" in row
     ]

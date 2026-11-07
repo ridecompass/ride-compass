@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useChosenSheetHeight } from "@/components/BottomSheet/BottomSheet";
-import { useStoredBooleanState } from "@/hooks/useStoredState";
+import { useStoredState } from "@/hooks/useStoredState";
 import type { MapTapMode } from "@/features/map/MapView/mapTaps";
 import type { SettingsTab } from "@/features/route/RouteForm/RouteForm";
 import type { RouteOutcomeKind } from "@/features/route/useRouteGeneration";
@@ -31,8 +31,8 @@ export function usePagePanels({ navigating, isMobile }: { navigating: boolean; i
   // 生成の結果が出て、まだ「ルート結果」を開いていない（モバイルのタブの合図）。失敗と候補0件は形を変えて見分けられるようにする。
   const [unseenOutcome, setUnseenOutcome] = useState<RouteOutcomeKind | null>(null);
   // デスクトップの区分の開閉（モバイルはシートの開閉がこれに当たる）。
-  const [generateOpen, setGenerateOpen] = useStoredBooleanState(GENERATE_OPEN_STORAGE_KEY, true);
-  const [outcomeOpen, setOutcomeOpen] = useStoredBooleanState(OUTCOME_OPEN_STORAGE_KEY, true);
+  const [generateOpen, setGenerateOpen] = useStoredState(GENERATE_OPEN_STORAGE_KEY, "ルート設定の開閉", true);
+  const [outcomeOpen, setOutcomeOpen] = useStoredState(OUTCOME_OPEN_STORAGE_KEY, "ルート結果の開閉", true);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   // デスクトップで2つの区分を開いているとき、地図で効く区分（最後に触った区分。結果が届いたら「ルート結果」）。
   const [lastTouchedPanel, setLastTouchedPanel] = useState<Panel>("routeSettings");

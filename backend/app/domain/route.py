@@ -223,8 +223,6 @@ class EvaluatedRoute(StrictModel):
         return None if per_km is None else round(per_km, COST_SECONDS_DECIMALS)
 
     facts: RouteFacts
-    # 所要時間の見積もりで風を使えなかった（風の予報が読めず、無風として計算した）。画面が利用者へ知らせる。
-    wind_unavailable: bool
     # 所要時間の見積もりで、勾配か停止要因の件数の値が無く、既定（平地・待ち無し）で数えた区間の距離の割合（0〜1）。
     # 数えるのはビンへ畳む前のEdge単位。画面が「データの無い区間が◯%」と知らせる。区間が無ければNone。
     missing_travel_data_share: float | None

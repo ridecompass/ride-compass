@@ -11,7 +11,7 @@ import { roadLegendAxes } from "@/features/map/scene/legends";
 
 import { mapCatalogFor } from "@/testing/mapCatalog";
 import { roadClass, roadClassCatalog, roadMapLayer } from "@/testing/clientConfig";
-import { deserializeLayerVisibility, overlayChips } from "./overlayChips";
+import { overlayChips } from "./overlayChips";
 
 // 道の線の層は画面の設定が配る（本番の層は管理DBが持つ）ので、テストが組む。
 const ROAD_LAYERS = [
@@ -71,16 +71,5 @@ describe("overlayChips（地図上チップの状態）", () => {
 
     const precipitation = chipOf(list, "precipitationNowcast").legendDetails ?? [];
     expect(precipitation.length).toBeGreaterThan(0);
-  });
-});
-
-describe("deserializeLayerVisibility（表示状態の保存値）", () => {
-  // 道の線の層は画面の設定が届くまで分からないので、今の層に無い鍵も読む（既定は使う側が層の一覧から重ねる）。
-  it("真偽値の鍵だけを読み、読めない形なら読まない", () => {
-    const restored = deserializeLayerVisibility(
-      JSON.stringify({ surface: true, notYetArrived: false, highway: "yes" }),
-    );
-    expect(restored).toEqual({ surface: true, notYetArrived: false });
-    expect(deserializeLayerVisibility("null")).toBeNull();
   });
 });

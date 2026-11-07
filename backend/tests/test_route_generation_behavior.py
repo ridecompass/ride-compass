@@ -41,6 +41,7 @@ from app.domain.route_request import FixedPoints
 from app.domain.route_search import MAX_SNAP_CORRECTION_KM
 from tests.route_world import (
     BAD_MATERIAL,
+    CALM,
     BASE_LAT,
     BASE_LON,
     CENTER,
@@ -87,7 +88,7 @@ def engine_over(road_network_root):
     1kmあたり`avoid_weight × BAD_PER_KM_PER_WEIGHT`の重さと数える道のストレスの軸を置く。"""
     with ExitStack() as declared:
 
-        def build(network: RoadNetwork, *, avoid_weight: float = 0.0, wind: WindForecastSeries | None = None,
+        def build(network: RoadNetwork, *, avoid_weight: float = 0.0, wind: WindForecastSeries = CALM,
                   **conditions):
             if avoid_weight:
                 declared.enter_context(cost_axes_declared(cost_axes(BAD_MATERIAL, avoid_weight * BAD_PER_KM_PER_WEIGHT)))
@@ -927,18 +928,6 @@ def _wind(times: list[datetime], speed_by_point: list[float]) -> WindForecastSer
 
 
 HOURS_OF_THE_DAY = [datetime(2026, 9, 22, h) for h in range(24)]
-
-
-async def test_a_route_timed_without_the_wind_forecast_says_so(engine_over):
-    """風の予報が読めないときは無風として所要時間を出す。出したことを候補が持ち、画面が利用者へ知らせる。"""
-    without = await engine_over(grid_network()).generate_via_waypoints(
-        at(SOUTH_WEST), [], destination=at(NORTH_EAST), max_routes=1, start_time=DEPARTURE)
-    with_wind = await engine_over(grid_network(), wind=_wind(HOURS_OF_THE_DAY, [3.0] * 4)).generate_via_waypoints(
-        at(SOUTH_WEST), [], destination=at(NORTH_EAST), max_routes=1, start_time=DEPARTURE)
-
-    assert all(c.wind_unavailable for c in without)
-    assert not any(c.wind_unavailable for c in with_wind)
-
 
 async def test_the_duration_and_the_penalty_of_each_axis_and_of_the_avoided_roads_add_up_to_the_cost(engine_over):
     """候補の費用（並べ方の値）は、所要時間と、軸ごとの代償の秒と、回避指定（なるべく避ける道）で上乗せした秒の和になる。

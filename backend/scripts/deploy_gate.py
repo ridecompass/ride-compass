@@ -47,7 +47,6 @@ NOT_DEPLOYED = (
     # 変更が本番へ届かなくなる。
     "backend/scripts/export_openapi.py",
     "backend/scripts/cross_language_expectations.py",
-    "backend/scripts/schema_shape.py",
     # 本番でルートを作る確かめ。デプロイのあとと定時に、ランナーから本番を外から叩く（像の中では動かさない）。
     "backend/scripts/prod_route_check.py",
     # 本番の点のタイルの確かめ。デプロイのあとと定時に、ランナーから本番を外から叩く（像の中では動かさない）。

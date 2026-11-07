@@ -1,10 +1,9 @@
-import { avoidanceLevelOf, readRoadAvoidance } from "@/features/route/roadAvoidance";
-import { costPreferenceDescription, readCostPreference } from "@/features/route/costPreference";
+import { avoidanceLevelOf } from "@/features/route/roadAvoidance";
+import { costPreferenceDescription } from "@/features/route/costPreference";
 import type { CostAxisCatalog } from "@/hooks/useCostAxisCatalog";
 import type { ClientConfig } from "@/lib/clientConfig";
-import { isCoordinates, readStoredList, withEntryFirst } from "@/lib/storedList";
 import type { Coordinates, CostPreference, RoadAvoidanceOverride } from "@/types/route";
-import routeGenerateConfig from "@/types/generated/route-generate-config.json";
+import { withEntryFirst } from "@/lib/storedList";
 
 /** 生成の条件（「ルート設定」の入力）。いまの条件・保存・呼び出しが同じこの形を使う。出発地は位置の持ち主が持つので含まず、
  * その日の走行条件（出発時刻・想定速度）と、生成した候補も持たない。 */
@@ -36,68 +35,6 @@ export interface SavedCondition extends GenerationConditionsSnapshot {
 /** 距離の刻み（km）。backendは0より大きい距離を受け付けるが、画面は狙った値へ合わせやすいよう、この刻みで選ばせる。
  * 距離の入力の下限も1刻み分。 */
 export const DISTANCE_STEP_KM = 5;
-
-/** 距離の入力として受け付ける値か。0より大きく上限以下の数なら、画面の刻みの近い方へ寄せて受け付ける（1km刻みだった頃の
- * 保存値も読める）。範囲が縮んだ後でも、範囲外の距離が復元されて送られない。 */
-export function acceptedDistanceInput(raw: string): string | null {
-  const parsed = Number(raw);
-  if (!Number.isFinite(parsed) || parsed <= 0 || parsed > routeGenerateConfig.max_distance_km) return null;
-  const snapped = Math.round(parsed / DISTANCE_STEP_KM) * DISTANCE_STEP_KM;
-  return String(Math.min(Math.max(snapped, DISTANCE_STEP_KM), routeGenerateConfig.max_distance_km));
-}
-
-/** 候補数の入力として受け付ける値か。 */
-export function acceptedMaxRoutesInput(raw: string): string | null {
-  const parsed = Number(raw);
-  return Number.isInteger(parsed) &&
-    parsed >= routeGenerateConfig.min_routes &&
-    parsed <= routeGenerateConfig.max_routes
-    ? raw
-    : null;
-}
-
-const coordinatesOrNull = (value: unknown) => (value === null || isCoordinates(value) ? value : undefined);
-
-const isBoolean = (value: unknown) => (typeof value === "boolean" ? value : undefined);
-
-// 保存した1件の項目ごとの読み方。今の画面が受け付けない値はundefinedを返し、その件を捨てる。キーは保存の形と同じ型の
-// 写像なので、形に項目を足すと読み方が要る。前の形で保存した件は読み替えずに捨てる——ただしつまみと倍率は、読めなければ
-// 件を捨てずに標準に戻す（割合の重みで保存した件も、場所と条件はそのまま呼び出せる）。消えた軸の倍率は送るときに外す。
-const SAVED_FIELD_READERS: {
-  [K in keyof SavedCondition]-?: (value: unknown) => SavedCondition[K] | undefined;
-} = {
-  name: (value) => (typeof value === "string" && value.trim() !== "" ? value : undefined),
-  loop: isBoolean,
-  distanceTargeted: isBoolean,
-  distance: (value) => (typeof value === "string" ? (acceptedDistanceInput(value) ?? undefined) : undefined),
-  maxRoutes: (value) => (typeof value === "string" ? (acceptedMaxRoutesInput(value) ?? undefined) : undefined),
-  origin: coordinatesOrNull,
-  waypoints: (value) =>
-    Array.isArray(value) && value.length <= routeGenerateConfig.max_waypoints && value.every(isCoordinates)
-      ? value
-      : undefined,
-  destination: coordinatesOrNull,
-  costPreference: readCostPreference,
-  roadAvoidance: (value) => (typeof value === "object" && value !== null ? readRoadAvoidance(value) : undefined),
-};
-
-// 1件を今の画面が受け付ける形で読む。読めない件はnull（ほかの件は残す）。
-function readSavedCondition(value: unknown): SavedCondition | null {
-  if (typeof value !== "object" || value === null) return null;
-  const entry = value as Record<string, unknown>;
-  const read: Record<string, unknown> = {};
-  for (const [key, readField] of Object.entries(SAVED_FIELD_READERS)) {
-    const field = readField(entry[key]);
-    if (field === undefined) return null;
-    read[key] = field;
-  }
-  return read as unknown as SavedCondition;
-}
-
-/** 保存した生成の条件の一覧を読む。 */
-export function readSavedConditions(raw: string): SavedCondition[] | null {
-  return readStoredList(raw, readSavedCondition);
-}
 
 // 名前と説明が並べる、ルートの形。
 function routeShape(conditions: GenerationConditionsSnapshot) {

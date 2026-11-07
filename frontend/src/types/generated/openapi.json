@@ -5442,10 +5442,6 @@
           "facts": {
             "$ref": "#/components/schemas/RouteFacts"
           },
-          "wind_unavailable": {
-            "type": "boolean",
-            "title": "Wind Unavailable"
-          },
           "missing_travel_data_share": {
             "anyOf": [
               {
@@ -5534,7 +5530,6 @@
           "cost_seconds",
           "penalty",
           "facts",
-          "wind_unavailable",
           "missing_travel_data_share",
           "edge_ids",
           "edge_point_offsets",
@@ -6236,18 +6231,6 @@
             "type": "string",
             "title": "Description"
           },
-          "default": {
-            "type": "number",
-            "title": "Default"
-          },
-          "minimum": {
-            "type": "number",
-            "title": "Minimum"
-          },
-          "maximum": {
-            "type": "number",
-            "title": "Maximum"
-          },
           "effect": {
             "type": "string",
             "title": "Effect"
@@ -6259,10 +6242,6 @@
           "value": {
             "type": "number",
             "title": "Value"
-          },
-          "overridden": {
-            "type": "boolean",
-            "title": "Overridden"
           }
         },
         "additionalProperties": false,
@@ -6272,27 +6251,16 @@
           "label",
           "unit",
           "description",
-          "default",
-          "minimum",
-          "maximum",
           "effect",
           "effect_title",
-          "value",
-          "overridden"
+          "value"
         ],
         "title": "TuningParameterView"
       },
       "TuningUpdateRequest": {
         "properties": {
           "value": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "type": "number",
             "title": "Value"
           }
         },

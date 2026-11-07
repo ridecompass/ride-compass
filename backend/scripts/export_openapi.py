@@ -50,7 +50,6 @@ from app.domain.place_search import (
     PlaceMatchLevel,
 )
 from cross_language_expectations import EXPECTATIONS
-from schema_shape import schema_shape_mark
 from app.domain.weather_elements import (
     MSM_FORECAST_HOURS,
     WEATHER_ELEMENTS,
@@ -148,10 +147,10 @@ from app.domain.material_catalog import MATERIAL_CATALOG, display_axis_missing_s
 from app.domain.material_coverage_spec import MISSING_SEMANTICS_DISPLAY, POPULATION_LABELS
 from app.domain.primary_attributes import PRIMARY_ATTRIBUTES
 from app.domain.region import MAX_MERCATOR_LATITUDE, ROAD_TILE_MAX_ZOOM, ROAD_TILE_MIN_ZOOM
-from app.domain.leg_costs import MISSING_TRAVEL_DATA_WORDING, MISSING_WIND_WORDING
+from app.domain.leg_costs import MISSING_TRAVEL_DATA_WORDING
 from app.config import Settings
 from app.domain.cost_preference import COST_MULTIPLIER_LEVELS, COST_STRENGTH_LEVELS, STANDARD_COST_FACTOR
-from app.domain.tuning import client_tuning_defaults
+from app.domain.tuning import client_tuning_ids
 from app.domain.weather import PRECIPITATION_MIN_MM
 from app.infrastructure.msm_client import DEFAULT_UPDATE_INTERVAL_SECONDS as MSM_UPDATE_INTERVAL_SECONDS
 from app.infrastructure.jma_amedas_client import AMEDAS_REFRESH_INTERVAL_MINUTES
@@ -589,17 +588,13 @@ def main() -> None:
             "job_result_ttl_seconds": JOB_TTL_SECONDS,
             # フロントが状態を問い合わせるとき、終わるまで待たせる秒（口が受け付ける上限そのもの）。
             "job_wait_seconds": JOB_WAIT_MAX_SECONDS,
-            # ルート候補の型の契約の印。画面は端末に置いた候補にこの印を添え、印が違う候補は今の型で読めないとして使わない。
-            "route_candidate_shape": schema_shape_mark(openapi, "RouteCandidate"),  # type: ignore[arg-type]
             # 区間ごとに速度を変える条件の名前（走行モデルの並び）。所要時間の説明が差し込む。
             "segment_speed_conditions": list(SEGMENT_SPEED_CONDITIONS),
             # 所要時間の計算が値の無い区間をどう数えるかの文。結果の「データの無い区間」の注記が差し込む。
             "missing_travel_data_wording": MISSING_TRAVEL_DATA_WORDING,
-            # 候補の`wind_unavailable`が立ったときの注記の文。
-            "missing_wind_wording": MISSING_WIND_WORDING,
-            # フロントが使う較正値の**既定**（`domain/tuning.py`の宣言そのまま）。フロントはidの型にだけ使い、
-            # 値は読まない——効いている値はGET /api/client-configが返し、取れるまではその値を使う機能を出さない。
-            "client_tuning": client_tuning_defaults(),
+            # フロントが使う較正値のid（値は持たない。フロントはidの型にだけ使う）。効いている値はGET /api/client-configが
+            # 返し、取れるまではその値を使う機能を出さない。
+            "client_tuning": dict.fromkeys(client_tuning_ids()),
             # 0次ハードフィルタ。回避タブにいつも「通らない」の行として見せる（要求では受けない）。選べる行と段は
             # 管理DBの道の区分から、GET /api/client-configが配る。
             "hard_filters": [

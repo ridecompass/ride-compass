@@ -32,7 +32,7 @@
 | `features/map/MapView/MapView.tsx`（レンズの線の箇所のみ） | 画面の状態を宣言の入力へ渡すだけの配線（下記「MapView.tsx側の配線」）。レンズごとの処理は持たない |
 | `features/map/scene/groups/routes.ts` | 色分け線そのものを引く側。レンズの配色式・凡例フィルタを受け取ってMapLibreの線レイヤーへ流す |
 | `features/map/useWayMaterials.ts` | 道ごとの材料のフェッチ・状態管理（viewportデバウンス＋タイル単位取得、全レンズを1つのフックで賄う） |
-| `features/map/tileQueries.ts` | 道ごとの値をタイル1枚ずつ取る問い合わせ（レンズの材料・道の線の層の値が共有する）。タイルを鍵にして新しく入ったタイルだけを取り、入力が変わったタイルを取り直す間は前の入力の値を仮に見せ、失敗の印を持つ答えは取っておかない |
+| `features/map/tileQueries.ts` | 道ごとの値をタイル1枚ずつ取る問い合わせ（レンズの材料・道の線の層の値が共有する）。タイルを鍵にして新しく入ったタイルだけを取り、入力が変わったタイルを取り直す間は前の入力の値を仮に見せる。取れなかったタイルは値を持たず、次に見えたときに取り直す。失敗はタイルの取得が投げたまま TanStack Query が持ち、その文言を層の取得の状態へ渡す |
 | `features/map/regionApi.ts`（`features/map/regionApi.ts: fetchLensMaterials`・`features/map/regionApi.ts: fetchRoadInspection`） | backend APIラッパー |
 | `features/map/MapView/RoadInspectorPopup.tsx` | 道を押したときの窓。押した道の負担を押したときだけ取りに行き、地図が塗っている向きの総合と軸ごとの秒/kmと、その元の事実（backendが名前と単位を付けた一番急な登り・下り・向かい風・止まる回数と、路面）を並べる。属性は畳む |
 
@@ -239,10 +239,10 @@ viewportと走る条件（時刻・想定速度）をそれぞれデバウンス
 - `loading: boolean`（表示中のタイルのどれかを取っている最中か）——
   `loading`だけを見て「まだ一度も材料を受け取っていない道が読込中なのか、取得済みだが値が無いのか」を
   呼び出し側（上記「レンズの線」）が塗り分ける。
-- `error: boolean`（表示中のタイルのどれかの取得が通信失敗したか）——
-  `regionApi.ts: fetchLensMaterials`の失敗をタイル横断でOR集約する。
+- `error: string | null`（表示中のタイルのどれかの取得が失敗したときの文言）——
+  `regionApi.ts: fetchLensMaterials`が投げた失敗のうち最初の1つの文言。
   backendが正常応答で空オブジェクトを返した場合（対象範囲に本当に道路が無い）は
-  `false`のまま。地図の色分け自体は「取得失敗」と「本当に空」のどちらも同じ無彩色
+  `null`のまま。地図の色分け自体は「取得失敗」と「本当に空」のどちらも同じ無彩色
   （`palette.json: semantic.no_data`）になり見分けが付かないため、`useMapView`がレンズの材料を
   取りに行っている間だけ`error`/`loading`/`materials`の有無から
   `deriveFetchLayerStatus`（`mapLayers.ts`、動的気象レイヤーと共有する判定関数）で

@@ -14,8 +14,8 @@ from PIL import Image, ImageColor
 from app.domain.jma_tile_specs import jma_tile_spec
 from app.domain.weather_display import PRECIPITATION_COLOR_STOPS
 from app.infrastructure.cache_identity import shape_digest
-from app.infrastructure.debug_log import log_throttled_warning
 from app.infrastructure.jma_tile_paths import read_jma_tile_path
+from app.infrastructure.simple_api_client import UnexpectedShapeError
 
 #: 気象庁の降水のタイル（降水ナウキャスト・降水短時間予報）が段を塗る色を、`PRECIPITATION_COLOR_STOPS`と同じ段の順に
 #: 並べたもの。配信元のタイルのパレットの色。
@@ -41,18 +41,15 @@ def recolored(path: str, content: bytes) -> bytes:
     """宣言が降水の段の色を持つ要素のタイルなら、色を塗り替えたPNGを返す。それ以外はそのまま返す。
 
     パレット形式でない画像（配信元が空のタイルに返すRGBA）は塗る画素を持たないので、そのまま返す。
-    降水の段に無い色の画素は塗り替えずに残し、WARNINGを出す——配信元が配色を変えた印。
-    読めない画像もWARNINGを出してそのまま返す——プリウォームは1枚の例外で1周の取得を止める。"""
+    降水の段に無い色の画素があれば投げる（配信元が配色を変えた印。塗り替えずに残すと、凡例に無い色を描かせる）。
+    読めない画像も投げる。"""
     tile = read_jma_tile_path(path)
     if tile is None or not jma_tile_spec(tile.element_id).precipitation_colors:
         return content
     try:
         return _recolor_palette(path, content)
-    except Exception as exc:  # 壊れた画像・未知の形式で取得そのものを落とさない
-        log_throttled_warning(
-            "jma:tile-recolor", "気象庁の降水のタイルを塗り替えられませんでした path=%s error=%r", path, exc
-        )
-        return content
+    except (OSError, ValueError, SyntaxError) as error:
+        raise UnexpectedShapeError(f"jma precipitation tile is not an image: {path}") from error
 
 
 def _recolor_palette(path: str, content: bytes) -> bytes:
@@ -69,12 +66,9 @@ def _recolor_palette(path: str, content: bytes) -> bytes:
             if rgba[3] > 0 and rgba[:3] not in _PRECIPITATION_COLORS and rgba[:3] != _UNPAINTED
         }
         if unknown:
-            log_throttled_warning(
-                "jma:tile-recolor",
-                "気象庁の降水のタイルに、降水の段に無い色があります path=%s rgb=%s"
-                "（infrastructure/jma_tile_recolor.py: JMA_PRECIPITATION_TILE_COLORS）",
-                path,
-                sorted(unknown),
+            raise UnexpectedShapeError(
+                f"jma precipitation tile has colors missing from JMA_PRECIPITATION_TILE_COLORS: path={path} "
+                f"rgb={sorted(unknown)}（jma_tile_recolor.py）"
             )
         palette = image.getpalette() or []
         entries = [tuple(palette[i : i + 3]) for i in range(0, len(palette), 3)]

@@ -10,7 +10,6 @@
 
 import asyncio
 
-import pytest
 
 from app.infrastructure.flood_client import new_flood_cache
 from app.infrastructure.jma_warning_client import new_area_data_cache
@@ -52,15 +51,6 @@ async def test_get_forecasts_carries_the_area_the_same_forecasts_hold_for(bounda
     assert result is not None and result.valid_area is not None
     assert holds(result.valid_area, CHIYODA_POINT)
     assert not holds(result.valid_area, OFFSHORE_POINT)
-
-
-@pytest.mark.parametrize("failure", [
-    {"area_data": None},  # 区域が分からない
-    {"flood_documents": None},
-])
-async def test_get_forecasts_is_unknown_rather_than_empty_when_a_step_fails(boundary_path, failure):
-    """取れなかったことを「予報なし」と同じ空で返すと、画面は氾濫予報が出ていないと見せる。"""
-    assert await _service(area_lookup_upstream(boundary_path, **failure)).get_forecasts(CHIYODA_POINT) is None
 
 
 async def test_get_forecasts_collects_every_active_forecast_and_leaves_out_the_rest(boundary_path):

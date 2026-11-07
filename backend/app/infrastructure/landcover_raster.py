@@ -15,7 +15,6 @@
 import logging
 import math
 import threading
-import time
 from dataclasses import dataclass
 from io import BytesIO
 
@@ -25,6 +24,7 @@ from PIL import Image, ImageColor
 from app.config import settings
 from app.domain.landcover import LANDCOVER_CLASSES
 from app.domain.region import tile_bounds_3857
+from app.infrastructure.debug_log import log_throttled_warning
 from app.infrastructure.proj_data import pin_bundled_proj_data
 
 pin_bundled_proj_data()
@@ -61,10 +61,11 @@ class _RasterSource:
 
 _opened_sources: list[_RasterSource] | None = None
 _sources_lock = threading.Lock()
-#: 1枚も開けなかったときに、次に開き直すまで待つ秒数。毎回開き直すとタイル1枚ごとにI/Oとログが
-#: 出るので、間隔を空けて試す。
-_RETRY_OPEN_AFTER_SECONDS = 60.0
-_last_open_attempt = 0.0
+
+
+class LandcoverUnavailableError(Exception):
+    """土地被覆のラスタが設定されていないか、1枚でも開けない（開けた分だけで配ると、欠けた区域が透明な絵として配られ、
+    キャッシュにも残る）。範囲の外（どのラスタも覆っていない）とは別の事実。"""
 
 #: 画素値→RGBA。`LANDCOVER_CLASSES`に無い値（No Data・Clouds）と、塗らないと宣言した
 #: クラスは透明のまま残る。
@@ -74,27 +75,19 @@ for _cls in (c for c in LANDCOVER_CLASSES if c.painted):
 
 
 def _open_sources() -> list[_RasterSource]:
-    """設定されたラスタを開く。1枚でも開けたらそれを保持し、以後は開き直さない。
-
-    **1枚も開けなかった場合は記憶しない**（`_RETRY_OPEN_AFTER_SECONDS`だけ空けて再挑戦する）。
-    デプロイはラスタの取得とコンテナ入れ替えを別のステップで行うため、起動時に無くても
-    後から現れる——記憶してしまうと、そのプロセスが生きている間ずっと配信できない。
-    """
-    global _opened_sources, _last_open_attempt
+    """設定されたラスタを全部開いて持つ（開けたら以後は開き直さない）。開けなければ`LandcoverUnavailableError`で、次の読みで
+    開き直す——デプロイはラスタの取得とコンテナ入れ替えを別のステップで行うため、起動時に無くても後から現れる。"""
+    global _opened_sources
     with _sources_lock:
-        if _opened_sources:
-            return _opened_sources
-        now = time.monotonic()
-        if _opened_sources is not None and now - _last_open_attempt < _RETRY_OPEN_AFTER_SECONDS:
-            return _opened_sources
-        _last_open_attempt = now
-        opened: list[_RasterSource] = []
-        for path in settings.lulc_raster_paths_list:
+        if _opened_sources is None:
+            paths = settings.lulc_raster_paths_list
             try:
-                opened.append(_RasterSource(rasterio.open(path), threading.Lock()))
+                if not paths:
+                    raise FileNotFoundError("環境変数LULC_RASTER_PATHSが未設定")
+                _opened_sources = [_RasterSource(rasterio.open(path), threading.Lock()) for path in paths]
             except (OSError, rasterio.errors.RasterioIOError) as exc:
-                logger.warning("土地被覆ラスタを開けません path=%s error=%r", path, exc)
-        _opened_sources = opened
+                log_throttled_warning("region:landcover-raster", "土地被覆のラスタを開けません paths=%s error=%r", paths, exc)
+                raise LandcoverUnavailableError("土地被覆のラスタを開けないため、土地被覆を配れません") from exc
         return _opened_sources
 
 
@@ -153,18 +146,8 @@ def _png(image: Image.Image) -> bytes:
     return buffer.getvalue()
 
 
-def has_sources() -> bool:
-    """配信できるラスタが1枚でもあるか（未設定・開けないものしか無い状態と区別する）。"""
-    return bool(_open_sources())
-
-
 def opened_raster_paths() -> list[str]:
-    """**実際に開けている**ラスタのパス。
-
-    設定された一覧とは違いうる（起動時に1枚だけ置かれていない等）。タイルの中身は
-    開けている側に従うため、キャッシュの鍵はこちらから作る——設定の側で鍵を作ると、
-    欠けたゾーンの継ぎ目が「完全な構成」の鍵で恒久的に残る。
-    """
+    """開いたラスタのパス（開けなければ`LandcoverUnavailableError`）。"""
     return [source.dataset.name for source in _open_sources()]
 
 

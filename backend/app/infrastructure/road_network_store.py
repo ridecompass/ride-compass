@@ -184,8 +184,9 @@ def current() -> RoadNetwork:
 def _open_latest() -> tuple[Path, RoadNetwork]:
     latest = _latest_directory()
     if latest is None:
-        raise RoadNetworkUnavailableError(
-            f"道路網の置き場がありません（{ROOT}、形の署名 {NETWORK_SHAPE}）。scripts/build_road_network.py で作る")
+        # 利用者へ返す文（例外の文）に置き場のパスを載せない。
+        logger.error("道路網の置き場がありません（%s、形の署名 %s）。scripts/build_road_network.py で作る", ROOT, NETWORK_SHAPE)
+        raise RoadNetworkUnavailableError("道路網が用意されていないため、ルートを作れません")
     return latest, load(latest)
 
 

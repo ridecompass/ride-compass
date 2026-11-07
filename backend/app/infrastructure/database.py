@@ -3,11 +3,12 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app.config import settings
 
-# DBへ届かない・DBが答えないときに出る例外。読み取りを空へ倒す箇所はこれだけを捕まえ、
-# 実装の誤り（TypeError・AttributeError等）は捕まえずに500で表へ出す。
+# DBへ届かない・DBが答えないときに出る例外。`api/failure_replies.py`がこれだけを503にし、実装の誤り
+# （TypeError・AttributeError等）とほかのOSError（ファイルの読み書き等）は500のまま表へ出す。
 # - SQLAlchemyError: 接続を張る段階と実行中の失敗（asyncpgの例外はDBAPIErrorへ訳される）とプールの待ち切れ
-# - OSError: 接続の拒否・切断と、command_timeoutのTimeoutError（実行中のasyncpgのタイムアウトは訳されない）
-DB_UNAVAILABLE_ERRORS: tuple[type[Exception], ...] = (SQLAlchemyError, OSError)
+# - ConnectionError: 接続の拒否・切断（asyncpgが訳さずに出す）
+# - TimeoutError: command_timeoutの時間切れ（実行中のasyncpgのタイムアウトは訳されない）
+DB_UNAVAILABLE_ERRORS: tuple[type[Exception], ...] = (SQLAlchemyError, ConnectionError, TimeoutError)
 
 # エンジン（コネクションプール）は系統ごとにアプリ全体で1つだけ生成し、セッションファクトリが持つ。
 # create_async_engineは遅延接続のため、DBが実際に起動していなくてもこの時点では失敗しない。
@@ -26,7 +27,7 @@ def get_session_factory() -> async_sessionmaker[AsyncSession]:
     if _session_factory is None:
         # command_timeout: 路面タイルのバースト（短時間の連続パン/ズーム）でDB側が混雑すると
         # クエリが数分返らないことがあり、上限が無いとリクエストが無期限にハングする。
-        # ここで出るTimeoutErrorはDB_UNAVAILABLE_ERRORSに入るため、タイル配信は空タイルへ劣化する。
+        # ここで出るTimeoutErrorはDB_UNAVAILABLE_ERRORSに入るため、503で返る。
         _session_factory = _new_session_factory(20)
     return _session_factory
 

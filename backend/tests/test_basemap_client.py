@@ -14,7 +14,6 @@
 import json
 import logging
 
-import httpx
 import pytest
 import respx
 
@@ -74,25 +73,3 @@ async def test_changing_the_public_address_takes_effect_on_cached_json_without_a
     # 地の文の上流の名前（出典の表記）は書き換えない。書き換えると利用条件に反する。
     assert json.loads(content)["metadata"] == json.loads(style_json())["metadata"]
 
-
-async def test_json_left_under_the_plain_path_by_an_older_version_is_not_served():
-    """素のパスに残ったJSONは、当時の配信先が焼き付いた書き換え済みの内容である。"""
-    stale = style_json().replace(UPSTREAM.encode(), b"http://old-host/api/basemap")
-    basemap_client.tile_cache.set(STYLE, stale, "application/json")
-    router = respx.Router()
-    router.get(f"{UPSTREAM}/{STYLE}").respond(content=style_json(), headers={"content-type": "application/json"})
-
-    content, _ = await client(router).get(STYLE)
-    again, _ = await client(unreachable()).get(STYLE)
-
-    assert json.loads(content)["sprite"] == json.loads(again)["sprite"] == f"{PROXY}/sprites/ofm_f384/ofm"
-
-
-async def test_an_upstream_failure_gives_nothing_is_logged_and_is_not_remembered(warnings):
-    router = respx.Router()
-    route = router.get(f"{UPSTREAM}/{TILE}")
-    route.side_effect = [httpx.Response(503), httpx.Response(200, content=b"tile")]
-
-    assert await client(router).get(TILE) is None
-    assert [r for r in warnings() if "basemap:openfreemap" in r.getMessage()]
-    assert await client(router).get(TILE) == (b"tile", "application/octet-stream")

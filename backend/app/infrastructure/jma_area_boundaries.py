@@ -116,7 +116,7 @@ async def _load_boundaries_or_raise() -> AreaBoundaries:
             "（scripts/fetch_jma_area_boundaries.pyで取得する）",
             BOUNDARY_PATH, exc,
         )
-        raise AreaBoundariesUnavailableError from exc
+        raise AreaBoundariesUnavailableError("区域の境界を読めないため、警報・洪水予報の区域を引けません") from exc
 
 
 async def find_class20_codes(points: list[tuple[float, float]]) -> list[str | None]:
@@ -140,25 +140,12 @@ OUTSIDE_AREAS = OutsideAreas()
 
 async def resolve_point_area(
     http_client: httpx.AsyncClient, area_data_cache: TTLCache, lat: float, lon: float
-) -> ResolvedArea | OutsideAreas | None:
+) -> ResolvedArea | OutsideAreas:
     """地点が属する区域を、地域マスタ(area.json)で警報のエリアまで辿る。
 
-    どの区域にも入らなければ`OUTSIDE_AREAS`。境界か地域マスタを読めない・辿れないならNone（区域が分からない）。
+    どの区域にも入らなければ`OUTSIDE_AREAS`。境界か地域マスタを読めない・辿れないときは投げる。
     """
-    try:
-        class20_code = await find_class20_code(lat, lon)
-    except AreaBoundariesUnavailableError:
-        return None
+    class20_code = await find_class20_code(lat, lon)
     if class20_code is None:
         return OUTSIDE_AREAS
-
-    area_master = await fetch_area_data(http_client, area_data_cache)
-    if area_master is None:
-        return None
-
-    resolved = resolve_area(class20_code, area_master)
-    if resolved is None:
-        log_throttled_warning(
-            "weather:jma-area", "区域の境界が返したコードを地域マスタ(area.json)で警報のエリアへ辿れない class20=%s", class20_code
-        )
-    return resolved
+    return resolve_area(class20_code, await fetch_area_data(http_client, area_data_cache))

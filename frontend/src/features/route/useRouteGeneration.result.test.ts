@@ -1,13 +1,13 @@
 /**
  * ルート生成（`useRouteGeneration.ts`）の結果——候補はbackendの並びのまま渡し、押した1回の
  * 結果の種類（候補・候補0件・失敗）を知らせて、直近の結果（件数・0件の理由・失敗）を返す。backendが目的地を補正したら
- * 置いた目的地を動かし、変えた倍率を送れなかったときは標準の倍率で作ったと返す。
+ * 置いた目的地を動かす。選んだ倍率はそのまま送る。
  *
  * ここで見ないもの:
  * - 送る要求・入力の誤り・進み方・条件のずれ・消す → `useRouteGeneration.test.ts`
  * - 結果を一覧へ入れる・知らせを画面に出す → `useRouteResults.test.ts`・`app/page.test.tsx`
  *
- * 差し替えたもの: 生成のジョブと費用の軸の一覧の応答（網の層。`testing/routeGeneration.ts`）。条件は
+ * 差し替えたもの: 生成のジョブの応答（網の層。`testing/routeGeneration.ts`）。条件は
  * 本物の`useGenerationConditions`を同じ描画で通して作る（呼び出し側と同じく、補正した目的地はそこへ書き戻る）。
  */
 import { act } from "@testing-library/react";
@@ -130,12 +130,8 @@ describe("生成の結果", () => {
     expect(generation.conditionsDirty).toBe(true);
   });
 
-  it("変えた倍率は費用の軸の一覧が届いていれば送り、届かず送れなかったときだけ標準の倍率で作ったと返す", async () => {
+  it("選んだつまみと倍率を、費用の軸の一覧が届いていなくても、そのまま送る", async () => {
     const rendered = renderGeneration();
-    backend.respond([route("r1")]);
-    await submit(rendered);
-    expect(rendered.result.current.generation.multipliersNotApplied).toBe(false);
-
     act(() =>
       rendered.result.current.conditions.setCostPreference({
         ...STANDARD_COST_PREFERENCE,
@@ -146,16 +142,7 @@ describe("生成の結果", () => {
     backend.respond([route("r1")]);
     await submit(rendered);
     expect(backend.sentRequest()).toMatchObject({
-      cost_preference: { ...STANDARD_COST_PREFERENCE, strength: 1.5 },
-    });
-    expect(rendered.result.current.generation.multipliersNotApplied).toBe(true);
-
-    await backend.loadCatalog(rendered);
-    backend.respond([route("r1")]);
-    await submit(rendered);
-    expect(backend.sentRequest()).toMatchObject({
       cost_preference: { ...STANDARD_COST_PREFERENCE, strength: 1.5, multipliers: { ascent: 2 } },
     });
-    expect(rendered.result.current.generation.multipliersNotApplied).toBe(false);
   });
 });

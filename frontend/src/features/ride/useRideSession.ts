@@ -2,17 +2,9 @@
 
 import { useEffect, useRef } from "react";
 
-import { readStoredValue, writeStoredValue } from "@/lib/safeStorage";
 import type { RouteCandidate } from "@/types/route";
 
-import {
-  RIDE_PROGRESS_STORAGE_KEY,
-  RIDE_ROUTE_STORAGE_KEY,
-  readRideSession,
-  writeRideProgress,
-  writeRideRoute,
-  type RideSession,
-} from "./rideSession";
+import { readRideSession, saveRideProgress, saveRideRoute, type RideSession } from "./rideSession";
 
 interface UseRideSessionInputs {
   /** 選んでいるルート（無ければnull）。 */
@@ -41,11 +33,7 @@ export function useRideSession({ route, riding, km, resting, onRestore }: UseRid
     // 開いた直後は、まだ何も選んでいない状態で書くと保存を消してしまうので、先に読んで復元を知らせ、書かない。
     if (!checked.current) {
       checked.current = true;
-      const saved = readRideSession(
-        readStoredValue(RIDE_ROUTE_STORAGE_KEY),
-        readStoredValue(RIDE_PROGRESS_STORAGE_KEY),
-        Date.now(),
-      );
+      const saved = readRideSession(Date.now());
       if (saved !== null) {
         latestOnRestore.current(saved);
         return;
@@ -55,11 +43,8 @@ export function useRideSession({ route, riding, km, resting, onRestore }: UseRid
     // ルートは替わったときだけ書き直し、位置が届くたびには距離の鍵だけを書く。
     if (current !== writtenRoute.current) {
       writtenRoute.current = current;
-      writeStoredValue(RIDE_ROUTE_STORAGE_KEY, current === null ? "" : writeRideRoute(current));
+      saveRideRoute(current);
     }
-    writeStoredValue(
-      RIDE_PROGRESS_STORAGE_KEY,
-      current === null ? "" : writeRideProgress({ route: current, km, resting }, Date.now()),
-    );
+    saveRideProgress(current === null ? null : { route: current, km, resting }, Date.now());
   }, [route, riding, km, resting]);
 }

@@ -2,7 +2,7 @@
 探索のコスト、区間の表示が読む値を合成する`LegCostComposer`。
 
 入口は`LegCostComposer`（`compose`・`values_at_rows`・`missing_travel_data_share`・`to_full_row_order`・
-`lazy_row`・`wind_unavailable`）。材料の表は架空の材料で組む。
+`lazy_row`）。材料の表は架空の材料で組む。
 
 ここで見ないもの:
 - 勾配・風・路面から速度を解く走行モデルそのもの → `test_cycling_speed.py`
@@ -27,7 +27,7 @@ from app.domain.leg_costs import LegCostArrays, LegCostComposer, LegValues
 from app.domain.road_network import MaterialFills
 from app.domain.msm import MsmBlock, MsmGrid
 from app.domain.road_avoidance import RoadAvoidanceMasks
-from app.domain.wind import DepartureWind, WindForecastSeries
+from app.domain.wind import WindForecastSeries
 from tests.cost_axes_fixture import cost_axes
 from tests.profile_fixture import grade_profiles, profiles
 
@@ -64,10 +64,6 @@ def _matrix(n: int, *, distance=1000.0, gradient=0.0, bearing=NORTH, surface="pa
     )
 
 
-def _departure_wind(speed_ms: float, from_deg: float = NORTH) -> DepartureWind:
-    return DepartureWind(speed_ms=speed_ms, direction_deg=from_deg)
-
-
 def _series(speeds_by_hour: list[float], from_deg: float = NORTH) -> WindForecastSeries:
     """格子点1つの、`START`から1時間刻みの予報。"""
     return WindForecastSeries(
@@ -80,7 +76,11 @@ def _series(speeds_by_hour: list[float], from_deg: float = NORTH) -> WindForecas
     )
 
 
-def _composer(matrix: SearchMaterials, *, excluded=None, avoided=None, departure_wind=None, series=None, lazy=None,
+#: 無風の予報（格子点1つ・2時刻）。
+CALM_SERIES = _series([0.0, 0.0])
+
+
+def _composer(matrix: SearchMaterials, *, excluded=None, avoided=None, series=CALM_SERIES, lazy=None,
               fills=NO_FILLS, axes: CostAxisDefinitions | None = None, parameters=NO_PENALTY) -> LegCostComposer:
     n = len(matrix.distance_m)
     none = np.zeros(n, dtype=bool)
@@ -89,7 +89,7 @@ def _composer(matrix: SearchMaterials, *, excluded=None, avoided=None, departure
         avoided=none if avoided is None else np.asarray(avoided, dtype=bool),
     )
     return LegCostComposer(
-        matrix, masks, AVOID_MULTIPLIER, departure_wind, series, START, CRUISE_KMH,
+        matrix, masks, AVOID_MULTIPLIER, series, START, CRUISE_KMH,
         np.arange(n) if lazy is None else np.asarray(lazy), detour_ratio=1.3, material_fills=fills,
         axes=cost_axes() if axes is None else axes, parameters=parameters,
     )
@@ -202,17 +202,6 @@ def test_the_search_order_holds_only_the_segments_on_the_search_graph():
 
 
 # --- 時刻ビン -----------------------------------------------------------------
-
-
-def test_without_an_hourly_forecast_every_leg_shares_one_composition():
-    composer = _composer(_matrix(1), departure_wind=_departure_wind(3.0))
-
-    outbound = composer.compose("outbound", 0.0, +1, duration_hours=3.0)
-    inbound = composer.compose("inbound", 2.0, -1, duration_hours=3.0)
-
-    assert inbound is outbound
-    assert (len(outbound.cost_bins_lazy), outbound.bin_seconds) == (1, np.inf)
-
 
 @pytest.mark.parametrize(
     ("offset", "direction", "duration_hours", "bin_starts"),
@@ -336,8 +325,7 @@ def test_composing_compiles_nothing_after_baking_whatever_arrays_the_matrix_hold
 
     with event.install_recorder("numba:compile") as compiled:
         for each in matrices:
-            for series in (None, _series([0.0, 3.0])):
-                _composer(each, parameters=STRENGTH, avoided=[True, False, False],
-                          departure_wind=_departure_wind(2.0), series=series).compose("leg", 0.0, +1, duration_hours=2.0)
+            _composer(each, parameters=STRENGTH, avoided=[True, False, False],
+                      series=_series([0.0, 3.0])).compose("leg", 0.0, +1, duration_hours=2.0)
 
     assert compiled.buffer == []

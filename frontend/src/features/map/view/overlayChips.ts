@@ -88,11 +88,3 @@ export function overlayChips(options: {
       };
     });
 }
-
-/** 保存値のうち、真偽値の鍵だけを読む。既定は読む側が層の一覧から重ねる（道の線の層は画面の設定が届くまで分からず、
- * 届く前に読んだ保存値から道の層の真偽を落とすと、選んだ表示が消える）。 */
-export function deserializeLayerVisibility(raw: string): MapLayerVisibility | null {
-  const stored: unknown = JSON.parse(raw);
-  if (stored === null || typeof stored !== "object") return null;
-  return Object.fromEntries(Object.entries(stored).filter((entry) => typeof entry[1] === "boolean"));
-}

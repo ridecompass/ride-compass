@@ -11,7 +11,6 @@
 
 import asyncio
 
-import pytest
 
 from app.infrastructure.jma_warning_client import new_area_data_cache, new_warning_cache
 from app.services.warning_service import WarningService
@@ -44,15 +43,6 @@ async def test_get_warnings_carries_the_area_the_same_warnings_hold_for(boundary
     assert result is not None and result.valid_area is not None
     assert holds(result.valid_area, CHIYODA_POINT)
     assert not holds(result.valid_area, OFFSHORE_POINT)
-
-
-@pytest.mark.parametrize("failure", [
-    {"area_data": None},  # 区域が分からない
-    {"warning_documents": None},
-])
-async def test_get_warnings_is_unknown_rather_than_empty_when_a_step_fails(boundary_path, failure):
-    """取れなかったことを「警報なし」と同じ空で返すと、画面は警報が出ていないと見せる。"""
-    assert await _service(area_lookup_upstream(boundary_path, **failure)).get_warnings(CHIYODA_POINT) is None
 
 
 async def test_get_warnings_merges_across_documents(boundary_path):

@@ -65,7 +65,6 @@ export function generationOf(overrides: Partial<Generation> = {}): Generation {
     running: false,
     progressLabel: undefined,
     conditionsDirty: false,
-    multipliersNotApplied: false,
     destinationCorrected: false,
     ...overrides,
   };

@@ -126,8 +126,7 @@ export function useMapLifecycle(
     }
     // 見えている範囲だけを取りに行くレイヤーへ、今の範囲を渡す（間引きは受け取る側）。
     function reportViewport() {
-      const viewport = viewportOf(map);
-      if (viewport) getLook().onViewportChange(viewport);
+      getLook().onViewportChange(viewportOf(map));
     }
     function handleMoveEnd() {
       const bounds = map.getBounds();

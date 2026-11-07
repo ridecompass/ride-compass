@@ -23,6 +23,7 @@ from app.infrastructure.derived_data_freshness import derived_tables
 from app.infrastructure.road_graph_repository import RoadGraphRepository
 from app.infrastructure.source_models import PARTY_TYPE_CODES
 from tests.conftest import empty_ingested_tables, override_tuning, postgis_database_url, raw_connection
+from tests.tuning_fixture import TUNING
 from tests.source_ingest import (
     abr_prefecture_record,
     accident_record,
@@ -222,13 +223,13 @@ async def test_the_signal_radius_set_on_the_admin_screen_decides_which_nodes_get
     try:
         assert await derive_cli.run(postgis_database_url(), ["nodes"]) == 0
     finally:
-        await derived_before.execute("DELETE FROM tuning_overrides WHERE param_id = $1", SIGNAL_RADIUS)
+        await override_tuning(SIGNAL_RADIUS, TUNING[SIGNAL_RADIUS])
     assert await _nodes_with_signal(derived_before) == {1, 2, 3}
 
 
 async def test_every_value_that_waits_for_a_rebuild_is_read_by_the_rebuild():
     """管理画面に「派生データを作り直すまで効かない」と出る較正値は、どれも段か道路網の配列が読み、作り直しの記録に残る。
-    読まれない値は変えても何にも効かず、記録に残らない値は、派生の外の読み手が作り直しに使った値ではなく既定で読む。"""
+    読まれない値は変えても何にも効かず、記録に残らない値は、派生の外の読み手が読めない。"""
     assert set(derive_cli.TUNING_USERS) == {
         param.id for param in TUNING_PARAMETERS if param.effect is TuningEffect.DERIVE_REBUILD}
 

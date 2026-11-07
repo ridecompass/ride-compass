@@ -282,7 +282,6 @@ def _build_candidate(
         facts=_route_facts(orientation, context, elevation_gain_m, turn_kickoffs),
         # 所要時間＝区間の走行時間＋停止の待ち＋ターンの待ち（最後の区間を抜けた時刻）。
         estimated_duration_seconds=passages[-1].elapsed_seconds + passages[-1].seconds if passages else None,
-        wind_unavailable=context.composer.wind_unavailable,
         missing_travel_data_share=(
             context.composer.missing_travel_data_share(np.asarray(orientation.rows, dtype=np.int64))
             if orientation.rows else None
@@ -400,8 +399,7 @@ def _route_facts(orientation: _Orientation, context: RoadGraphContext, elevation
     values: dict[EffortItem, float | None] = {
         "gravity": elevation_gain_m,
         "air": (
-            None if context.composer.wind_unavailable or (mean := length_weighted_mean(headwind_ms, distance_km)) is None
-            else round(mean, WIND_MS_DECIMALS)
+            None if (mean := length_weighted_mean(headwind_ms, distance_km)) is None else round(mean, WIND_MS_DECIMALS)
         ),
         "inertia": round(float(facts.stops.sum()) + turn_kickoffs, STOP_COUNT_DECIMALS),
         "rolling": round(float(distance_km[facts.rough].sum()), DISTANCE_KM_DECIMALS),
