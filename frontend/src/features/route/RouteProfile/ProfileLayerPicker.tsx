@@ -27,7 +27,7 @@ export default function ProfileLayerPicker({ title, usage, count, children }: Pr
           {count > 0 && (
             <span
               aria-hidden="true"
-              className="absolute -top-1 -right-1 h-3.5 min-w-3.5 rounded-full bg-[var(--color-accent)] px-0.5 text-center text-[0.55rem] leading-3.5 text-white"
+              className="absolute -top-1 right-0 h-3.5 min-w-3.5 rounded-full bg-[var(--color-accent)] px-0.5 text-center text-[0.55rem] leading-3.5 text-white"
             >
               {count}
             </span>
