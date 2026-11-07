@@ -65,7 +65,7 @@ test_routes_generate.py
 
 ## パターン2: PostGIS統合テスト（road_graph_session）→ ファイル単位でエンジン・イベントループを共有
 
-`conftest.py: road_graph_session`/`conftest.py: road_graph_repository`はテストファイル（モジュール）単位で
+`backend/tests/conftest.py: road_graph_session`/`backend/tests/conftest.py: road_graph_repository`はテストファイル（モジュール）単位で
 1本のDB接続・イベントループを使い回す。
 
 新しいテストファイルでこれらのフィクスチャを使う場合:

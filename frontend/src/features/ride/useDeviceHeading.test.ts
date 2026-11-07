@@ -11,6 +11,8 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { setOrientationPermission, unaskedPermission } from "@/testing/deviceOrientation";
+
 import { headingFromOrientation, useDeviceHeading } from "./useDeviceHeading";
 
 describe("headingFromOrientation: 端末の向きの読みから、画面の上が向いている方角", () => {
@@ -39,27 +41,8 @@ function orient(type: string, fields: Record<string, number | null>) {
   });
 }
 
-// 操作の外で、まだ聞いていない許しを求めたときの iPhone の Safari の断り方。
-const UNASKED = new DOMException(
-  "Requesting device orientation access requires a user gesture to prompt",
-  "NotAllowedError",
-);
-
-function setRequestPermission(answer: "granted" | "denied" | typeof UNASKED | undefined) {
-  const holder = globalThis as unknown as { DeviceOrientationEvent?: { requestPermission?: () => Promise<string> } };
-  holder.DeviceOrientationEvent =
-    answer === undefined
-      ? undefined
-      : {
-          requestPermission: async () => {
-            if (answer instanceof DOMException) throw answer;
-            return answer;
-          },
-        };
-}
-
 afterEach(() => {
-  setRequestPermission(undefined);
+  setOrientationPermission(undefined);
 });
 
 describe("useDeviceHeading", () => {
@@ -89,7 +72,7 @@ describe("useDeviceHeading", () => {
   });
 
   it("iPhone では始める操作の中で許しを求め、断られたら方角を出さない", async () => {
-    setRequestPermission("denied");
+    setOrientationPermission(() => "denied");
     const { result } = renderHook(() => useDeviceHeading(true));
     await act(async () => result.current.request());
     orient("deviceorientation", { webkitCompassHeading: 90, alpha: 0 });
@@ -99,7 +82,9 @@ describe("useDeviceHeading", () => {
   });
 
   it("iPhone で操作の外で求めて聞けなかったら、位置を受けている間だけ求め直す口を出す", async () => {
-    setRequestPermission(UNASKED);
+    setOrientationPermission(() => {
+      throw unaskedPermission();
+    });
     const { result, rerender } = renderHook(({ active }) => useDeviceHeading(active), {
       initialProps: { active: true },
     });

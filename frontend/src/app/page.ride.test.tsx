@@ -22,6 +22,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MINUTE_MS } from "@/lib/duration";
 import { formatJstHourMinute } from "@/lib/time";
 import { onBackend } from "@/testing/backendServer";
+import { setOrientationPermission, unaskedPermission } from "@/testing/deviceOrientation";
 import { installGeolocation } from "@/testing/geolocation";
 import {
   FIRST,
@@ -280,17 +281,10 @@ describe("走行モード", () => {
 
     // iPhone の Safari は、まだ聞いていない許しを操作の外で求められると断り、利用者が許したあとは許しを返す。
     let answer: "granted" | null = null;
-    const holder = globalThis as unknown as { DeviceOrientationEvent?: { requestPermission?: () => Promise<string> } };
-    holder.DeviceOrientationEvent = {
-      requestPermission: async () => {
-        if (answer === null)
-          throw new DOMException(
-            "Requesting device orientation access requires a user gesture to prompt",
-            "NotAllowedError",
-          );
-        return answer;
-      },
-    };
+    setOrientationPermission(() => {
+      if (answer === null) throw unaskedPermission();
+      return answer;
+    });
     const facingCone = () => document.querySelector("[data-facing-cone]");
     const turnPhone = () =>
       act(() => {
@@ -312,7 +306,7 @@ describe("走行モード", () => {
       turnPhone();
       expect(facingCone()).toHaveAttribute("visibility", "visible");
     } finally {
-      holder.DeviceOrientationEvent = undefined;
+      setOrientationPermission(undefined);
     }
   });
 });

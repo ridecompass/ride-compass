@@ -1,6 +1,6 @@
 """`infrastructure/rate_limiter.py`——接続元ごとの移動窓の回数制限（`check_rate_limit`）。
 
-時計は`tests/conftest.py: monotonic_clock`（回数制限が読む時計。テストごとに1窓進んでから始まる）で進める。
+時計は`backend/tests/conftest.py: monotonic_clock`（回数制限が読む時計。テストごとに1窓進んでから始まる）で進める。
 接続元の鍵はテストごとに別の名前にし、前のテストの記録と混ざらないようにする。
 
 ここで見ないもの:

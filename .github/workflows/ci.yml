@@ -158,7 +158,9 @@ jobs:
           else
             changed=$(git diff --name-only "$BASE" "$GITHUB_SHA")
             # 本番の宛先は、backend の像（CORS の許可）と frontend の像（埋め込む宛先）の両方が読む。
-            backend=$(area '^(backend/|production-origins\.json$)'); frontend=$(area '^(frontend/|production-origins\.json$)'); scripts=$(area '^scripts/')
+            # 道具のテストは scripts/ の外も読み、読んだのに scripts に当たらないファイルは scripts/tests/conftest.py が落とす。
+            backend=$(area '^(backend/|production-origins\.json$)'); frontend=$(area '^(frontend/|production-origins\.json$)')
+            scripts=$(area '^(scripts/|frontend/package\.json$|tools/flow-gate/flow\.config\.json$|\.github/(taskflow-paths|workflows/ci\.yml)$|backend/scripts/_stdio\.py$)')
             if grep -qE '^\.github/(workflows/ci\.yml$|actions/)' <<< "$changed"; then
               jobs=$(redefined) || { all=true; jobs='[]'; }
               echo "定義が変わったジョブ: $([ "$all" = true ] && echo すべて || echo "$jobs")"
