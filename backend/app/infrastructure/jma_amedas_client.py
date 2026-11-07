@@ -1,4 +1,4 @@
-"""JMAアメダス観測値API（公式だが非公開のエンドポイント）のクライアント。取得失敗はNoneを返す。"""
+"""JMAアメダス観測値API（公式だが非公開のエンドポイント）のクライアント。取得の失敗は投げる。"""
 
 from dataclasses import dataclass
 from datetime import datetime

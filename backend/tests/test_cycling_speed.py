@@ -313,17 +313,17 @@ def test_arrays_of_different_lengths_are_refused_instead_of_spread_over_every_se
 
 
 def test_the_rolling_resistance_of_a_road_follows_the_value_of_its_class_and_the_base_value_elsewhere(monkeypatch):
-    """管理画面で変えた区分の値が所要時間に効く。区分の外の道・表に無い区分・宣言に無い較正値は、走れないとせず
-    基準の転がり抵抗で走る（区分を足し替えるたびに経路が作れなくなると困る）。"""
+    """管理画面で変えた区分の値が所要時間に効く。区分の外の道・表に無い区分は、走れないとせず基準の転がり抵抗で走る
+    （区分を足し替えるたびに経路が作れなくなると困る）。"""
     monkeypatch.setitem(TUNING_VALUES, "speed.crr_gravel", 0.0421)
     definitions = road_classes(
-        {"surface": classification({"rough": [], "smooth": [], "unknown_id": []})},
+        {"surface": classification({"rough": [], "smooth": []})},
         rolling_resistance_classification="surface",
-        rolling_resistance_classes={"surface": {"rough": "speed.crr_gravel", "unknown_id": "no_such_tuning"}},
+        rolling_resistance_classes={"surface": {"rough": "speed.crr_gravel"}},
     )
     base = TUNING_VALUES[cycling_speed.BASE_CRR_ID]
 
     with replaced_road_classes(definitions):
-        crr = cycling_speed.crr_for_surface(CategoricalColumn.encode(["rough", "smooth", "unknown_id", None]))
+        crr = cycling_speed.crr_for_surface(CategoricalColumn.encode(["rough", "smooth", None]))
 
-    assert crr.tolist() == [0.0421, base, base, base]
+    assert crr.tolist() == [0.0421, base, base]

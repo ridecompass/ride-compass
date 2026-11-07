@@ -1,7 +1,7 @@
 """ルーティング評価が読む固定値の宣言。
 
 探索のコストモデルの値は実走してみないと決まらないため、デプロイ無しで変えられるように
-する。**どの値が較正値かはここが唯一の正本**で、`TUNING_PARAMETERS`が範囲・単位を持ち、エンジンが読む値の
+する。**どの値が較正値かはここが唯一の正本**で、`TUNING_PARAMETERS`が単位を持ち、エンジンが読む値の
 id・管理画面が並べる項目・変更が効くために何をやり直す必要があるかを、すべてそこから導く。**値はここに持たない**——
 値の正本はDBの表（`infrastructure/tuning_overrides.py`）で、起動時に全部を読む。変えられるようにする対象と管理画面が面倒を見る対象を
 別々に決めると必ずズレるため、宣言を1つにする。
@@ -163,13 +163,13 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
         "major_turn", "上位の道への右左折", "信号の無い交差点で、上位の階級の道へ右左折で入るときに足す。",
     ),
     # --- 停止要因（種別はPOI_COUNT_KINDSが正本。割合 × 待ちが所要時間、割合が漕ぎ出しの体力） ---
-    *_stop_parameters("signal", "赤で止まったときに青まで待つ時間（一般的な信号サイクルからの見積もり）。止まる割合は赤の割合。"
+    *_stop_parameters("signal", "赤で止まったときに青まで待つ時間。止まる割合は赤の割合。"
                       "渡れるようになるまでの待ちそのものを表すため、信号のある交差点では"
                       f"{_MAJOR_CROSSING_ID}を足さない。"),
     *_stop_parameters("crossing", "歩行者に譲って止まったときの待ち。"),
     *_stop_parameters("stop", "標識・標示で止まる時間。交通ルール上、車が来ていなくても止まる。"
                       f"相手の流れが途切れるのを待つ時間は含まず、上位の道を渡るときだけ{_MAJOR_CROSSING_ID}で足す。"),
-    *_stop_parameters("level_crossing", "踏切の直前で止まり（道路交通法第33条）、遮断機の待ちを含む見積もり。"),
+    *_stop_parameters("level_crossing", "踏切の直前で止まって（道路交通法第33条）、遮断機が上がるまで待つ時間。"),
     *_stop_parameters("barrier", "ボラード等で減速して失う時間（止まらず減速する出来事）。"),
     TuningParameter(
         "stop.slowed_speed_ratio", "減速の出来事で残る速さの割合", "", TuningEffect.IMMEDIATE,
@@ -193,43 +193,40 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
     TuningParameter(
         TURN_BEARING_DISTANCE_ID,
         "曲がりの向きを測る長さ", "m", TuningEffect.DERIVE_REBUILD,
-        "交差点での曲がり（直進・左・右）を、区間の端からこの道のりの点までの向きで測る。区間がこれより短ければ端から端を見る。"
-        "道路網のデータを作り直すと反映される。",
+        "交差点での曲がり（直進・左・右）を、区間の端からこの道のりの点までの向きで測る。区間がこれより短ければ端から端を見る。",
     ),
     # --- 事故 ---
     TuningParameter(
         ACCIDENT_MATCH_DISTANCE_ID,
         "事故を道に付ける距離", "m", TuningEffect.DERIVE_REBUILD,
-        "事故の点を、この距離以内で最も近い道に付ける。事故の点はOSMの要素ではないうえ、緯度経度は本票の度分秒の表記からの"
-        "変換で粗いため、大きめに採る。事故の数とルートの印が同じ値で付ける。",
+        "事故の点を、この距離以内で最も近い道に付ける。事故の数とルートの印が同じ値で付ける。",
     ),
     TuningParameter(
         "accident.fatal_weight",
         "死亡事故の重み", "件", TuningEffect.DERIVE_REBUILD,
         "死亡事故1件を何件分の事故として数えるか。単純に数えると死亡事故が軽い事故と同じ1件になり、最も避けたい重大な事故の"
-        "危険が薄まる。実測から導いた値ではない。",
+        "危険が薄まる。",
     ),
     # --- 標高 ---
     TuningParameter(
         ELEVATION_PROFILE_STEP_ID,
         "標高の断面の刻み", "m", TuningEffect.DERIVE_REBUILD,
         "区間をこの道のり以下の等しい刻みに分けた点で標高を引き、獲得標高と勾配を出す。刻みが勾配をならす幅になる。"
-        "狭めるほど短い起伏まで登りに数えるが、道の脇の地形（堤防の斜面等）や標高データの誤差による急な変化も登りとして数える。"
-        "北千住から石岡への実走の獲得標高（スマートウォッチで約600m）と、刻みごとの値を比べて決めた。",
+        "狭めるほど短い起伏まで登りに数えるが、道の脇の地形（堤防の斜面等）や標高データの誤差による急な変化も登りとして数える。",
     ),
     TuningParameter(
         ELEVATION_BRIDGE_END_RADIUS_ID,
         "橋の端の標高を探す半径", "m", TuningEffect.DERIVE_REBUILD,
         "橋の端の点の標高は、その点とこの半径の8方位の点のうち一番高い値を採る。標高データは橋などの構造物を除いた地表の値で、"
         "橋の端が除かれた範囲に入ると水面や谷底を拾うため。広げるほど除かれた範囲の外へ届くが、谷の斜面の上の高い所も拾いやすい。"
-        "朝霞水門（荒川）の両端で、10mで堤防の上（約13m）に届いた。0にすると端の点の値だけを使う。",
+        "0にすると端の点の値だけを使う。",
     ),
     # --- 土地被覆 ---
     TuningParameter(
         LANDCOVER_RING_OUTER_ID,
         "土地被覆を数える帯の外の幅", "m", TuningEffect.DERIVE_REBUILD,
         "道の中心線からこの距離までの帯に重なる土地被覆の画素を数え、道の周りの土地被覆の割合にする。広げるほど道から"
-        "離れた土地が混ざり、狭めるほど帯1本の画素が減って割合が粗くなる。実測から導いた値ではない。",
+        "離れた土地が混ざり、狭めるほど帯1本の画素が減って割合が粗くなる。",
         shown_to_users=True,
     ),
     TuningParameter(
@@ -241,45 +238,44 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
     TuningParameter(
         "speed.cda_m2",
         "空気抵抗 CdA", "m²", TuningEffect.IMMEDIATE,
-        "ロードバイクのブラケットポジションの標準値。",
+        "走る姿勢の空気抵抗の係数と前面投影面積の積。",
         shown_to_users=True,
     ),
     TuningParameter(
         _CRR_ID,
         "転がり抵抗", "", TuningEffect.IMMEDIATE,
-        "舗装路の23〜28mmタイヤの標準値。",
+        "基準の路面（舗装）の転がり抵抗の係数。区分の外の道もこの値で走る。",
     ),
     # 路面の区分ごとの転がり抵抗。どの区分がどの値を使うかは管理DBの道の区分の転がり抵抗の表が持つ。
     TuningParameter(
         "speed.crr_paving_stones",
         "転がり抵抗", "", TuningEffect.IMMEDIATE,
-        f"切石・レンガの敷石の計測値が見当たらないため、舗装（{_CRR_ID}）と石畳（{_CRR_COBBLESTONE_ID}）の間に置く。",
+        "切石・レンガの敷石の路面の転がり抵抗の係数。",
     ),
     TuningParameter(
         "speed.crr_compacted",
         "転がり抵抗", "", TuningEffect.IMMEDIATE,
-        f"締め固めた路面の計測値が見当たらないため、舗装（{_CRR_ID}）と砂利（{_CRR_GRAVEL_ID}）の中間に置く。",
+        "締め固めた路面の転がり抵抗の係数。",
     ),
     TuningParameter(
         _CRR_GRAVEL_ID,
         "転がり抵抗", "", TuningEffect.IMMEDIATE,
-        "未舗装の値域（0.012〜0.020）の中ほどで、舗装の約3倍（惰行試験で砂利は舗装の約3倍）。",
+        "砂利の路面の転がり抵抗の係数。",
     ),
     TuningParameter(
         "speed.crr_soil",
         "転がり抵抗", "", TuningEffect.IMMEDIATE,
-        "草は舗装の約3.5倍（惰行試験）。砂はさらに大きいが、区分の中では土・草が多いため未舗装の値域の上寄りに置く。",
+        "土・草・砂の路面の転がり抵抗の係数。",
     ),
     TuningParameter(
         _CRR_COBBLESTONE_ID,
         "転がり抵抗", "", TuningEffect.IMMEDIATE,
-        "模擬石畳の試験台で空気圧を最適にしたロードバイクのタイヤが約0.0055。実際の玉石は凹凸が大きく"
-        "空気圧も合わせないため、それより上で、舗装と締め固めの間に置く。",
+        "石畳（玉石）の路面の転がり抵抗の係数。",
     ),
     TuningParameter(
         "speed.crr_unknown",
         "転がり抵抗", "", TuningEffect.IMMEDIATE,
-        f"舗装の道も未舗装の道も多いため、舗装（{_CRR_ID}）と砂利（{_CRR_GRAVEL_ID}）の中間に置く。",
+        "舗装か未舗装かが分からない路面の転がり抵抗の係数。",
     ),
     TuningParameter(
         "speed.mass_kg",
@@ -308,7 +304,7 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
     TuningParameter(
         "cost.burden_seconds_per_km",
         "道のストレスの換算", "秒/km", TuningEffect.IMMEDIATE,
-        "道のストレスの基準の重さ（1）の道を1km走ることを、何秒の負担とみなすか（費用の式のβ）。時速20kmで1kmを走る時間に置く。道のストレスのすべての種類に共通。",
+        "道のストレスの基準の重さ（1）の道を1km走ることを、何秒の負担とみなすか（費用の式のβ）。道のストレスのすべての種類に共通。",
     ),
     TuningParameter(
         "cost.effort_weight_exponent",
@@ -316,12 +312,11 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
         "踏みたい出力（上限で切る前）と平地の出力の比を何乗して体力の重みにするか。0で重みを掛けない。上げるほど、上限を"
         "越えて踏みたい急な坂・強い向かい風を重く数える。",
     ),
-    # 巡航20km/hの人（総質量80kg）が勾配5%で時速10km前後になるという実感に合わせて置く（勾配1%あたり15W）。
     TuningParameter(
         "speed.extra_power_per_force",
         "抵抗1Nあたりの出力の増加", "W/N", TuningEffect.IMMEDIATE,
         "平地・無風・基準の路面より抵抗（坂の重力・向かい風の空気抵抗・路面の転がり抵抗の増えた分の和）が1N増えるごとに、"
-        "何W余分に踏むか。抵抗の種類によらず同じ決まりで踏み増す。坂での速さの体感に合わせた暫定値で、裏付けは十分ではない。",
+        "何W余分に踏むか。抵抗の種類によらず同じ決まりで踏み増す。",
     ),
     TuningParameter(
         "speed.max_climb_power_ratio",
@@ -389,7 +384,7 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
         "search.turnaround_radius_ratio",
         "距離ありの探索範囲の半径の比", "倍", TuningEffect.IMMEDIATE,
         "距離ありで道路網を切り出す範囲の半径を、自由に選ぶ部分（目標から置いた点の間の長さを引いた残り）の"
-        "何倍にするか。折返し点の往路はその半分付近にあり、直線ではそれより短いので0.5より小さく置く。"
+        "何倍にするか。折返し点の往路は、自由に選ぶ部分の半分より短い。"
         "上げると範囲の面積が二乗で増え、生成の準備の時間とメモリが増える。足りなければ折返し点の候補が欠ける。",
     ),
     TuningParameter(

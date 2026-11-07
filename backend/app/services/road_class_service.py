@@ -28,8 +28,13 @@ def _apply(definitions: RoadClassDefinitions) -> None:
 
 
 async def refresh_road_classes(session: AsyncSession) -> None:
-    """表の全体をプロセス内へ読み込む（起動時）。表が空なら区分は0件。表を読めなければ例外のまま起動を止める。"""
-    _apply(await read_road_classes(session))
+    """表の全体をプロセス内へ読み込む（起動時）。表が空なら区分は0件。表を読めないか、コードの宣言に無い名を指していれば
+    （`undeclared_references`）、名指して起動を止める。バックアップから戻した行は管理APIを通らないので、ここで初めて確かめる。"""
+    definitions = await read_road_classes(session)
+    undeclared = undeclared_references(definitions)
+    if undeclared:
+        raise RuntimeError(f"道の区分を読み込めません: コードの宣言に無い名を指しています（{'／'.join(undeclared)}）")
+    _apply(definitions)
 
 
 def _check_writable(definitions: RoadClassDefinitions, cost_axes: CostAxisDefinitions | None) -> None:

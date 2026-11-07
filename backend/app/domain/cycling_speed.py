@@ -29,7 +29,7 @@ from app.domain.elevation_profile import ElevationProfiles, flatten_spans, unkno
 from app.domain.road_classes import class_material_id, current_road_classes
 from app.domain.search_graph import kernel_array
 from app.domain.traffic import stop_count_material_ids
-from app.domain.tuning import TUNING_PARAMETERS_BY_ID, tuning_value
+from app.domain.tuning import tuning_value
 from app.domain.wind import drag_increases_m2_s2, kmh_to_ms
 
 _AIR_DENSITY_KG_M3 = 1.225
@@ -72,11 +72,11 @@ def travel_model_material_ids() -> tuple[str, ...]:
 def crr_for_surface(rolling_classes: CategoricalColumn) -> np.ndarray:
     """路面の見込み（転がり抵抗の表が指す分け方の区分）から、区間ごとの転がり抵抗を返す。
 
-    区分の外の道・表に無い区分・宣言に無い較正値のidは、基準の転がり抵抗（`RiderProfile.crr`）にする。
+    区分の外の道・表に無い区分は、基準の転がり抵抗（`RiderProfile.crr`）にする。
     """
     definitions = current_road_classes()
     ids = definitions.rolling_resistance_classes.get(definitions.rolling_resistance_classification or "", {})
-    table = {key: tuning_value(tuning_id) for key, tuning_id in ids.items() if tuning_id in TUNING_PARAMETERS_BY_ID}
+    table = {key: tuning_value(tuning_id) for key, tuning_id in ids.items()}
     crr = rolling_classes.lookup(table)
     return np.where(np.isnan(crr), tuning_value(BASE_CRR_ID), crr)
 

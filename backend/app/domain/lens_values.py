@@ -146,7 +146,7 @@ class LensFactInputs:
     elevation_gain_m: np.ndarray
     #: 止まってから漕ぎ出す回数（探索・停止の軸と同じ量。`domain/leg_costs.py: TravelInputs.stops`）。
     stops: np.ndarray
-    #: 向かい風の成分。風を読めず無風で求めたときはNone（向かい風を事実として出さない）。
+    #: 向かい風の成分。フィーチャーが無く風を求めなかったときはNone。
     headwind_ms: np.ndarray | None
 
 
@@ -154,7 +154,7 @@ def lens_table(features: LensFeatures, materials: Mapping[str, MaterialColumn], 
                profiles: ElevationProfiles, axes: CostAxisDefinitions, parameters: LedgerParameters, speed_kmh: float,
                fills: MaterialFills, wind_ms: tuple[np.ndarray, np.ndarray] | None,
                elevation_gain_m: np.ndarray) -> tuple[LensTable, LensFactInputs]:
-    """`features.rows`の行の順の材料・長さ・断面・風の成分（向かい風・横風。Noneは風を読めず無風で求める）・行の向きの登りから、
+    """`features.rows`の行の順の材料・長さ・断面・風の成分（向かい風・横風。Noneはフィーチャーが無く風を求めなかったとき）・行の向きの登りから、
     レンズの値と、道の窓が出す区間の秒と事実の入力を求める。"""
     travel = travel_inputs(materials, distance_m, profiles, speed_kmh, fills)
     ledger = LedgerCosts.for_model(axes, parameters, travel.model, burden_weights(axes, parameters, materials, fills))

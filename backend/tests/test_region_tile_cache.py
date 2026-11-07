@@ -14,7 +14,6 @@ import pytest
 
 from app.infrastructure import region_tile_cache, tile_cache
 from app.infrastructure.cache_identity import LANDCOVER_TILE_VERSION, UNKNOWN_REVISION, region_tile_key
-from app.infrastructure.debug_log import mark_failed
 from tests.fake_external_log import record_external_calls
 
 EMPTY = b"empty-tile"
@@ -28,10 +27,8 @@ def records(monkeypatch):
     return record_external_calls(monkeypatch, region_tile_cache)
 
 
-def _fetch(result, failure=None):
+def _fetch(result):
     async def fetch(fields):
-        if failure is not None:
-            mark_failed(fields, failure)
         return result
 
     return fetch
@@ -75,7 +72,7 @@ async def test_a_missing_tile_is_made_stored_and_returned(records):
 
 
 async def test_a_tile_outside_the_coverage_is_the_empty_tile_and_is_not_stored(records):
-    response = await _serve(_fetch(None, None))
+    response = await _serve(_fetch(None))
 
     assert response == EMPTY
     assert tile_cache.get(KEY) is None

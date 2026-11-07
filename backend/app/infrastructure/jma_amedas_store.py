@@ -1,6 +1,6 @@
 """アメダスの観測値をRedisに置く・読む。
 
-`AmedasObservation`の値で読み書きする。保存した形の不一致は「無い」へ倒す（fail-open）。
+`AmedasObservation`の値で読み書きする。
 
 観測値は観測所ごとのHashに置き、全観測所を1往復で書く（`redis_json_cache`を通す）。
 """
