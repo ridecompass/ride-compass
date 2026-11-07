@@ -184,3 +184,17 @@ export function wayValueExpressions(
   const conversion = new Conversion(inputs);
   return { value: conversion.number(formula.value), undetermined: conversion.truth(formula.undetermined) };
 }
+
+/** 木が読む走る条件の名前（重ねずに、木で先に出た順）。条件の値が変わると、道の値も変わる。 */
+export function formulaConditions(formula: WayValueFormula): ConditionName[] {
+  const names = new Set<ConditionName>();
+  // 節の子の欄は種類ごとに違うので、欄の名前を持たずに全部の値をたどる。
+  const visit = (value: unknown): void => {
+    if (typeof value !== "object" || value === null) return;
+    const node = value as Partial<NodeOf<"condition">>;
+    if (node.op === "condition" && node.name !== undefined) names.add(node.name);
+    Object.values(value).forEach(visit);
+  };
+  visit(formula);
+  return [...names];
+}

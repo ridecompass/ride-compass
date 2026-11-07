@@ -248,6 +248,7 @@ export function useMapView({
         lenses.filter((candidate) => countsAxis(costPreference, candidate.lensId)),
         costPreference,
       ),
+      totalLabel: costCatalog.lenses?.totalLens.label ?? null,
       legend,
       hiddenLegendKeys: lensHidden,
       onToggleLegendKey: (key) => toggleHiddenFor(lens, key),

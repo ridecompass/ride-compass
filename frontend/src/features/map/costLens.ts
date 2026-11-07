@@ -14,6 +14,7 @@ import type { MapTheme } from "@/lib/mapTheme";
 import type { LensOption } from "@/features/map/LensControl/LensRow";
 import type { CostPreference } from "@/types/route";
 import type { LensEquivalentsResponse } from "@/services/costAxisCatalogApi";
+import { formulaConditions } from "@/features/map/scene/wayValueFormula";
 
 type LensPresentation = CostLensCatalog["totalLens"];
 
@@ -24,8 +25,7 @@ function mapLens(presentation: LensPresentation, lenses: CostLensCatalog, ground
     label: presentation.label,
     description: presentation.description,
     iconId: presentation.iconId,
-    // 式の木が走行方位で辿る向きを選ぶので、値は走行方位でも変わる。
-    conditions: [...conditions, "bearing_deg"],
+    conditions: [...new Set([...conditions, ...formulaConditions(lenses.mapLens.formula)])],
     materialConditions: conditions,
     display: costLensPaint(presentation, ground),
     formula: lenses.mapLens.formula,
@@ -47,7 +47,6 @@ export function costRouteStyleModes(catalog: CostAxisCatalog, ground: MapTheme):
   const mode = (id: string, presentation: LensPresentation, valueExpression: unknown[]) =>
     buildRangeSteppedMode({
       id,
-      label: presentation.label,
       valueExpression,
       paint: costLensPaint(presentation, ground),
     });

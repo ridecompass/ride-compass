@@ -12,7 +12,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import { LAYER_DATA_STATUS_LABELS } from "@/features/map/layers/mapLayers";
-import { UNSELECTED_LENS_LABEL, UNSELECTED_LENS_ID } from "@/lib/mapDisplay/routeStyleModes";
+import { UNSELECTED_LENS_ID } from "@/lib/mapDisplay/routeStyleModes";
 
 import LensControl from "./LensControl";
 import type { LensOption } from "./LensRow";
@@ -43,6 +43,7 @@ function renderLens(props: Partial<Parameters<typeof LensControl>[0]> = {}) {
     <LensControl
       lens="used"
       axisOptions={OPTIONS}
+      totalLabel="総合"
       legend={LEGEND}
       hiddenLegendKeys={[]}
       keepAfterRoute
@@ -64,7 +65,7 @@ describe("LensControl", () => {
   it.each([
     ["used", false, "usedの軸"],
     [UNSELECTED_LENS_ID, false, "塗る負担を選ぶ"],
-    [UNSELECTED_LENS_ID, true, UNSELECTED_LENS_LABEL],
+    [UNSELECTED_LENS_ID, true, "総合"],
   ])(
     "ピルは選んでいるレンズ（%s・ルートの確定後 %s）の名前を出し、選んでいなければ塗り方を出す",
     (lens, hasDetail, label) => {

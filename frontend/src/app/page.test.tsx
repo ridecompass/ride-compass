@@ -9,7 +9,8 @@
  * 送ること、結果が出たら閉じていた「ルート結果」を開くこと、候補が「ルート結果」と地図の両方へ出て、選んだ候補が地図でも
  * 選ばれ、区間を持つかで周りの塗りが決まること、全消去は確認の窓で「消す」を押してから両方から消えること、候補がある間だけ
  * 条件のずれの印が点き全消去で消えること、走行条件の想定速度・出発時刻が生成と地図の道の詳細へ同じ値で渡ること、
- * 「条件」タブの負担の強さと「負担」タブの軸ごとの無効が生成の要求に載り、無効の軸が「負担で塗る」に出ないこと、「条件」タブで保存した条件が地図で置いた
+ * 「条件」タブの負担の強さと「負担」タブの軸ごとの無効が生成の要求に載り、無効の軸が「負担で塗る」に出ないこと、負担を説明する文の
+ * 軸の並びとルートの後の「負担で塗る」の総合の名前が費用の軸の一覧から引かれること、「条件」タブで保存した条件が地図で置いた
  * 出発地を持ち、呼び出すとその出発地から生成すること。
  *
  * ここで見ないもの: 子の部品は本物を描き、子が値をどう描くか（一覧の書式・印の色・天候の値）は各部品のテストが見る。
@@ -46,6 +47,7 @@ import {
   rightClickMap,
 } from "@/testing/homePage";
 import { mapOnScreen } from "@/testing/maplibre";
+import { costAxisCatalog, costAxisEntry } from "@/testing/costAxes";
 import type { Coordinates } from "@/types/route";
 import { inspectorResult } from "@/testing/roadInspector";
 
@@ -204,6 +206,26 @@ describe("ルートを作る", () => {
       multipliers: {},
       disabled_axes: ["vibration"],
     });
+  });
+
+  it("負担を説明する文の軸の並びと、ルートの後に選ばずに塗る総合の名前は、費用の軸の一覧の名前で出る", async () => {
+    const catalog = costAxisCatalog(costAxisEntry("first", { label: "甲" }), costAxisEntry("second", { label: "乙" }));
+    serveCostAxisCatalog({ ...catalog, total_lens: { ...catalog.total_lens, label: "全部" } });
+    const { user } = renderHome();
+
+    await waitFor(() =>
+      expect(screen.getByRole("tab", { name: "負担" })).toHaveAttribute(
+        "data-usage",
+        expect.stringContaining("負担（甲・乙）の"),
+      ),
+    );
+    await user.click(screen.getByRole("button", { name: "負担の強さの説明を表示" }));
+    expect(await screen.findByText(/余分にかかるもの（甲・乙）を、時間に換算/)).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+
+    jobs.respond([FIRST], LOOP_CONDITIONS);
+    await generate(user);
+    expect(await screen.findByRole("button", { name: "負担で塗る: 全部（タップで変更）" })).toBeInTheDocument();
   });
 
   it("「負担」タブで無効にした軸は、「負担で塗る」の一覧に出ない", async () => {
