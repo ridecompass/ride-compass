@@ -36,7 +36,8 @@ paths:
 
 **定義を消す・責務を別のファイルへ移すときは、それを語る文書も同じ差分で直す。** 移した先と元の両方の、
 `docs/modules/*.md`の対象ファイル表の行と、その事実を語る節（`docs/architecture/`・`docs/modules/`・コメント・docstring）が対象。
-消した・移した名前とファイル名を、リポジトリ全体（`docs/records/`を除く）でgrepして探す。「パス: 名前」の名指しは
+消した・移した名前とファイル名を、リポジトリ全体（`docs/records/`を除く）でgrepして探す（`python scripts/removed_names.py`が差分の削除行から
+名前を抜いて引く）。「パス: 名前」の名指しは
 `backend/tests/structure/test_named_references.py`が落とすが、裸の名前と散文で書いた責務は何も落とさない。
 
 **既定は削除**。経緯の言い回し（「以前は」「改善計画Txxxで」「ユーザー要望…」「実機で…」等）に一致したコメントは、

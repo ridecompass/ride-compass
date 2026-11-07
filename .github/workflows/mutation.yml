@@ -1,6 +1,6 @@
 # 変異テストの全部の測りと、テストの見直し。backend の app の関数の中を機械的に1か所ずつ書き換え（mutmut が作る変異。版と準備は .github/actions/mutmut）、
-# 変異ごとに、その関数を通るテストを最後まで回して、どのテストが落ちたかを記録し、.claude/rules/testing.md「テストを変異テストで
-# 見直す」の候補を出す（tasks#661）。回し方と結果の読み方は .claude/skills/test-review/SKILL.md。
+# 変異ごとに、その関数を通るテストを最後まで回して、どのテストが落ちたかを記録し、.claude/rules/testing-review.md「テストを変異テストで
+# 見直す」の候補を出す。回し方と結果の読み方は .claude/skills/test-review/SKILL.md。
 #
 # - 毎月1日の 02:23（日本時間）に定期に起き、手でも起こせる（gh workflow run mutation.yml、または Actions → Mutation →
 #   Run workflow）。測る版と台本は、手で起こすときは選んだ ref、定期は master の先端から読む（台本は backend/scripts/mutation/。

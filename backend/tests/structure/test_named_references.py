@@ -8,17 +8,14 @@
 
 from __future__ import annotations
 
-import ast
-import io
 import re
 import subprocess
-import tokenize
 from collections.abc import Iterator
 from functools import cache
 from pathlib import Path
 
-# 実在の母集団・維持しない置き場・例の形は、文書のリンクの検査（`scripts/review_checks.py`）と同じ口から取る。
-from repo_population import EXAMPLE, UNMAINTAINED_PREFIXES, read_text, repository_files
+# 実在の母集団・維持する文の範囲・例の形は、文書のリンクの検査（`scripts/review_checks.py`）と同じ口から取る。
+from repo_population import EXAMPLE, code_text, is_maintained_prose, prose_text, read_text, repository_files
 
 from tests.structure.source_symbols import write_files
 
@@ -49,118 +46,6 @@ TEST_FILE = re.compile(r"(?:^|/)(?:test_[^/]*\.py|[^/]*\.test\.tsx?)$")
 API_PATH = re.compile(rf"(?<![A-Za-z0-9_./:<>{{}}-])(?P<path>/api/(?:{EXAMPLE.pattern}|[A-Za-z0-9_.{{}}*/-])*)")
 ROUTE_HANDLER = re.compile(r"^frontend/src/app/(?P<path>.*)/route\.ts$")
 
-HASH_COMMENT_SUFFIXES = {".yml", ".yaml", ".sh", ".ini", ".toml"}
-SLASH_COMMENT_SUFFIXES = {".ts", ".tsx", ".js", ".mjs", ".cjs", ".css"}
-SCANNED_SUFFIXES = {".md", ".py", ".sql"} | HASH_COMMENT_SUFFIXES | SLASH_COMMENT_SUFFIXES
-
-
-def _line_offsets(text: str) -> list[int]:
-    offsets = [0]
-    for line in text.splitlines(keepends=True):
-        offsets.append(offsets[-1] + len(line))
-    return offsets
-
-
-def _python_prose_spans(text: str) -> list[tuple[int, int]]:
-    offsets = _line_offsets(text)
-
-    def at(row: int, col: int) -> int:
-        return offsets[row - 1] + col
-
-    spans = []
-    try:
-        for tok in tokenize.generate_tokens(io.StringIO(text).readline):
-            if tok.type == tokenize.COMMENT:
-                spans.append((at(*tok.start), at(*tok.end)))
-        tree = ast.parse(text)
-    except (SyntaxError, tokenize.TokenError):
-        return [(0, len(text))]
-    for node in ast.walk(tree):
-        if (
-            isinstance(node, ast.Expr)
-            and isinstance(node.value, ast.Constant)
-            and isinstance(node.value.value, str)
-            and node.end_lineno is not None
-            and node.end_col_offset is not None
-        ):
-            # ASTの列はUTF-8のバイト数なので、行の中の位置は文字数へ直す。
-            start_line = text[offsets[node.lineno - 1] : offsets[node.lineno]].encode("utf-8")
-            end_line = text[offsets[node.end_lineno - 1] : offsets[node.end_lineno]].encode("utf-8")
-            start_col = len(start_line[: node.col_offset].decode("utf-8"))
-            end_col = len(end_line[: node.end_col_offset].decode("utf-8"))
-            spans.append((at(node.lineno, start_col), at(node.end_lineno, end_col)))
-    return spans
-
-
-def _slash_prose_spans(text: str) -> list[tuple[int, int]]:
-    """`//`・`/* */`のコメント。文字列（'・"・`）の中の記号はコメントの始まりに数えない。"""
-    spans = []
-    i, n = 0, len(text)
-    while i < n:
-        c = text[i]
-        if c in "'\"`":
-            j = i + 1
-            while j < n and text[j] != c:
-                if text[j] == "\\":
-                    j += 1
-                elif text[j] == "\n" and c != "`":
-                    break
-                j += 1
-            i = j + 1
-        elif text.startswith("//", i):
-            end = text.find("\n", i)
-            end = n if end < 0 else end
-            spans.append((i, end))
-            i = end
-        elif text.startswith("/*", i):
-            end = text.find("*/", i + 2)
-            end = n if end < 0 else end + 2
-            spans.append((i, end))
-            i = end
-        else:
-            i += 1
-    return spans
-
-
-def _line_comment_spans(text: str, marker: str) -> list[tuple[int, int]]:
-    pattern = re.compile(r"(?:^|(?<=\s))" + re.escape(marker) + r"[^\n]*", re.MULTILINE)
-    return [m.span() for m in pattern.finditer(text)]
-
-
-def prose_spans(rel_path: str, text: str) -> list[tuple[int, int]]:
-    """そのファイルのうち、人が読む文として書かれた範囲（Markdownは全文、ソースはコメントとdocstring）。"""
-    suffix = Path(rel_path).suffix
-    if suffix == ".md":
-        return [(0, len(text))]
-    if suffix == ".py":
-        return _python_prose_spans(text)
-    if suffix in SLASH_COMMENT_SUFFIXES:
-        return _slash_prose_spans(text)
-    if suffix in HASH_COMMENT_SUFFIXES:
-        return _line_comment_spans(text, "#")
-    if suffix == ".sql":
-        return _line_comment_spans(text, "--")
-    return []
-
-
-_BLANKED = re.compile(r"[^\n]")
-
-
-def _keep(text: str, spans: list[tuple[int, int]], *, inside: bool) -> str:
-    """spansの内側（inside=True）か外側だけを残し、残りは改行を保って空白にする（位置と行番号を保つ）。"""
-    pieces: list[str] = []
-    at = 0
-    for start, end in sorted(spans):
-        start = max(start, at)
-        if start >= end:
-            continue
-        pieces += [text[at:start], text[start:end]]
-        at = end
-    pieces.append(text[at:])
-    blank = 0 if inside else 1
-    return "".join(_BLANKED.sub(" ", piece) if k % 2 == blank else piece for k, piece in enumerate(pieces))
-
-
 
 class _Repository:
     def __init__(self, root: Path, files: list[str]) -> None:
@@ -183,8 +68,7 @@ class _Repository:
 
     def code(self, rel_path: str) -> str:
         if rel_path not in self._code:
-            text = self.text(rel_path)
-            self._code[rel_path] = _keep(text, prose_spans(rel_path, text), inside=False)
+            self._code[rel_path] = code_text(rel_path, self.text(rel_path))
         return self._code[rel_path]
 
 
@@ -197,14 +81,13 @@ def _names_in(code: str, dotted: str) -> bool:
 @cache
 def _prose(root: Path, rel_path: str) -> str:
     """人が読む文の範囲だけを残したテキスト。本物のリポジトリを読む3つの検査が1回の抜き出しを共有する。"""
-    text = read_text(root / rel_path)
-    return _keep(text, prose_spans(rel_path, text), inside=True)
+    return prose_text(rel_path, read_text(root / rel_path))
 
 
 def _prose_files(repo: _Repository) -> Iterator[tuple[str, str]]:
     """維持するファイルごとの、人が読む文の範囲だけを残したテキスト。"""
     for rel_path in repo.files:
-        if Path(rel_path).suffix not in SCANNED_SUFFIXES or rel_path.startswith(UNMAINTAINED_PREFIXES):
+        if not is_maintained_prose(rel_path):
             continue
         yield rel_path, _prose(repo.root, rel_path)
 
@@ -298,6 +181,21 @@ def dangling_api_paths(root: Path, files: list[str], api_paths: list[str]) -> li
     return found
 
 
+#: タスクの番号。経緯はタスクの issue に書き、維持する文書とコメントには書かない（docs/modules/README.md「記載粒度」・
+#: .claude/rules/comments.md の経緯）。例は`tasks#<番号>`の形で書く。
+TASK_NUMBER = re.compile(r"(?<![A-Za-z0-9_])tasks#\d+")
+
+
+def task_numbers(root: Path, files: list[str]) -> list[str]:
+    """維持する文書とコメントに書いたタスクの番号を`書いた場所: 番号`で返す。"""
+    repo = _Repository(root, files)
+    return [
+        f"{rel_path}:{_line_of(prose, m)}: {m.group()}"
+        for rel_path, prose in _prose_files(repo)
+        for m in TASK_NUMBER.finditer(prose)
+    ]
+
+
 def test_named_references_exist() -> None:
     dangling = dangling_references(REPO_ROOT, repository_files(REPO_ROOT))
 
@@ -325,6 +223,31 @@ def test_named_api_paths_exist() -> None:
         "文書・コメントが名指ししたAPIのパスが見つからない。今のパスへ直すか、例なら`<…>`の形で書く:\n  "
         + "\n  ".join(dangling)
     )
+
+
+def test_no_task_numbers_in_maintained_prose() -> None:
+    found = task_numbers(REPO_ROOT, repository_files(REPO_ROOT))
+
+    assert found == [], (
+        "維持する文書とコメントにタスクの番号がある。経緯はタスクの issue へ移し、例なら`tasks#<番号>`の形で書く:\n  "
+        + "\n  ".join(found)
+    )
+
+
+def test_detects_task_numbers(tmp_path: Path) -> None:
+    """文書とコメントの番号を捕まえ、例の形・文字列リテラル・記録は見逃す。"""
+    files = {
+        "app/a.py": '# tasks#12 で足した\nTITLE = "tasks#34: 題"\n',
+        "app/b.ts": "// 件名は `tasks#<番号>:`\n",
+        "docs/guide.md": "経緯は tasks#56 にある。\n",
+        "docs/records/old.md": "tasks#78\n",
+    }
+    write_files(tmp_path, files)
+
+    assert task_numbers(tmp_path, sorted(files)) == [
+        "app/a.py:1: tasks#12",
+        "docs/guide.md:1: tasks#56",
+    ]
 
 
 def test_detects_dangling_references(tmp_path: Path) -> None:

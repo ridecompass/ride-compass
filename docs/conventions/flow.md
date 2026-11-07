@@ -251,7 +251,7 @@ GitHub の失敗の知らせが届く。この症状で拾えない詰まりは�
 
 **1タスク=1コミット**（子は子ごと）。コミット履歴は、件名と本文だけでどこまで戻せばよいかを特定できる状態に保つ。問い・決定・確認の結果は
 issue に書き、git には写さない。master のコミットは Pull Request の題名と本文から作られ、件名は `tasks#<番号>: <何が変わったか（利用者・運用から見た結果）>`
-（子はその番号、複数は `tasks#12・tasks#13:`）、本文の形は `.github/pull_request_template.md` だけが持ち、Pull Request の CI が照らす。
+（子はその番号、複数は `tasks#<番号>・tasks#<番号>:`）、本文の形は `.github/pull_request_template.md` だけが持ち、Pull Request の CI が照らす。
 属するタスクの無い変更は作らない。
 
 ## ゲートを変える・公開する
