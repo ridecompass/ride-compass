@@ -237,10 +237,10 @@ def axis_facts(axes: CostAxisDefinitions, materials: Mapping[str, MaterialColumn
             if isinstance(burden, CategoricalBurden):
                 fact = _class_fact(burden.material, materials, rows, seconds, distance_m)
             else:
-                spec = _declared(burden.material)
-                values = fills.fill(burden.material, cast(np.ndarray, materials[burden.material])[rows])
+                spec = cast(MaterialSpec, material_spec(burden.material))
                 top = int(np.argmax(seconds))
-                fact = AxisFact(label=spec.label, value=float(values[top]), unit=spec.unit) if seconds[top] > 0 else None
+                value = fills.fill(burden.material, cast(np.ndarray, materials[burden.material])[rows[top:top + 1]])[0]
+                fact = AxisFact(label=spec.label, value=float(value), unit=spec.unit) if seconds[top] > 0 else None
         if fact is not None:
             facts[axis_id] = fact
     return facts
@@ -260,14 +260,7 @@ def _class_fact(material_id: str, materials: Mapping[str, MaterialColumn], rows:
     by_seconds = np.bincount(codes, weights=seconds, minlength=size)[candidates]
     by_length = np.bincount(codes, weights=distance_m, minlength=size)[candidates]
     key = cast(str, column.vocab[candidates[np.lexsort((by_length, by_seconds))[-1]]])
-    return AxisFact(label=_declared(material_id).value_labels[key], value=None, unit="")
-
-
-def _declared(material_id: str) -> MaterialSpec:
-    spec = material_spec(material_id)
-    if spec is None:
-        raise ValueError(f"宣言の無い材料 {material_id}")
-    return spec
+    return AxisFact(label=cast(MaterialSpec, material_spec(material_id)).value_labels[key], value=None, unit="")
 
 
 @njit(cache=True, nogil=True)

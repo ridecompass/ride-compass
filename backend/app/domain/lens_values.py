@@ -18,7 +18,7 @@ import numpy as np
 
 from app.domain.attributes import MaterialColumn
 from app.domain.cost_axes import CostAxisDefinitions
-from app.domain.lens_total import lens_values_with_total
+from app.domain.lens_total import TOTAL_LENS_ID, lens_values_with_total
 from app.domain.elevation_profile import ElevationProfiles
 from app.domain.geo import bearings_between
 from app.domain.graph import edge_feature_key
@@ -232,9 +232,10 @@ def lens_inspection(features: LensFeatures, index: int, painted: Literal["along"
         if not len(rows):
             return None
         seconds = {axis_id: per_row[rows] for axis_id, per_row in facts.penalties.items()}
+        sums = {axis_id: float(values.sum()) for axis_id, values in seconds.items()}
         return LensDirection(
-            total_seconds=float(sum(float(values.sum()) for values in seconds.values())),
-            axes=[LensAxisSeconds(axis_id=axis_id, seconds=float(values.sum())) for axis_id, values in seconds.items()],
+            total_seconds=lens_values_with_total(sums, 0.0)[TOTAL_LENS_ID],
+            axes=[LensAxisSeconds(axis_id=axis_id, seconds=value) for axis_id, value in sums.items()],
             facts=axis_facts(facts.axes, facts.materials, facts.fills, rows, facts.distance_m[rows], seconds,
                              elevation_gain(facts.elevation_gain_m[rows]),
                              None if facts.headwind_ms is None else facts.headwind_ms[rows], float(facts.stops[rows].sum())),

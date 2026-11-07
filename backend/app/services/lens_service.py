@@ -123,7 +123,7 @@ def _prepare(network: RoadNetwork, z: int, x: int, y: int, axes: CostAxisDefinit
         return None
     materials = material_arrays_of(slice_rows(network, network_classes(network), features.rows))
     return (features, materials, network_fills(network, burden_material_ids(axes)),
-            np.asarray(network.elevation_gain_m[features.rows]))
+            network.elevation_gain_m[features.rows])
 
 
 def _tile_lens(features: LensFeatures, materials: EdgeMaterialColumns, axes: CostAxisDefinitions, fills: MaterialFills,

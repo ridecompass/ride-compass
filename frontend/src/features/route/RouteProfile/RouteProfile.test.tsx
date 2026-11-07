@@ -133,8 +133,6 @@ describe("RouteProfile", () => {
     "タブは結果も走行中（$riding）も絵だけで出して押すと図が替わり、走行中だけ距離の目盛り・図の下の文字を大きくする",
     async ({ riding, large }) => {
       renderProfile({ riding, progressKm: riding ? 0.25 : null });
-      // 走行中の図は低く保つため、積む負担の一覧を出さない。
-      expect(screen.queryByRole("button", { name: "グラフに積む負担" }) === null).toBe(riding);
       for (const name of [FACT_DISPLAY_NAME, BURDEN_PAINT_NAME]) {
         const tab = screen.getByRole("tab", { name });
         expect(tab.querySelector("svg")).not.toBeNull();

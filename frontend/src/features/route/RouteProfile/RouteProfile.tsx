@@ -13,7 +13,7 @@ import { BurdenPaintIcon } from "@/components/ui/icons/lucideIcons";
 import DifficultyProfile from "@/features/route/DifficultyProfile/DifficultyProfile";
 import { profileBoxes } from "@/features/route/DifficultyProfile/profileGeometry";
 import { useProfileScale } from "@/features/route/ProfileChart/profileScale";
-import { factText, formatPenalty, penaltyRows, type PenaltyCatalog } from "@/lib/routePenalty";
+import { AVOIDANCE_ROW_ID, factText, formatPenalty, penaltyRows, type PenaltyCatalog } from "@/lib/routePenalty";
 import type {
   AxisFact,
   PenaltyBreakdown as PenaltyValues,
@@ -145,7 +145,7 @@ export default function RouteProfile({
           <ProfileLayerPicker
             title="グラフに積む負担"
             usage="グラフに積む負担の種類を選ぶ一覧を開きます。数字は今積んでいる数です。"
-            count={burdenRows.filter((row) => shownAxes.includes(row.id)).length}
+            count={shownOrder.length}
           >
             {burdenRows.map((row) => {
               const on = shownAxes.includes(row.id);
@@ -154,7 +154,7 @@ export default function RouteProfile({
                 <li key={row.id} data-usage="チェックした種類の負担を、グラフに積みます。選びはこの端末に覚えます。">
                   <label className="flex cursor-pointer items-center gap-1.5">
                     {/* 回避指定は軸ではないので積めない（チェックを置かず、並びをそろえる）。 */}
-                    {Object.hasOwn(penalty.axis_seconds, row.id) ? (
+                    {row.id !== AVOIDANCE_ROW_ID ? (
                       <Checkbox
                         checked={on}
                         onCheckedChange={() =>
@@ -167,7 +167,9 @@ export default function RouteProfile({
                     )}
                     <Dot tone="none" style={{ backgroundColor: row.color }} />
                     <span>{row.label}</span>
-                    {fact !== undefined && <span className="text-[var(--color-muted-strong)]">{factText(fact)}</span>}
+                    {fact !== undefined && (
+                      <span className="text-[var(--color-muted-strong)]">{factText(fact, row.label)}</span>
+                    )}
                     <span className="ml-auto pl-2 whitespace-nowrap tabular-nums">{formatPenalty(row.seconds)}</span>
                   </label>
                 </li>

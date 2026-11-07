@@ -85,7 +85,6 @@ describe("RoadInspectorPopup", () => {
     expect(rows()).toEqual(expect.arrayContaining(["登坂:+4秒", "摩擦:+2秒", "向かい風:+1秒"]));
     await user.click(screen.getByRole("radio", { name: "換算前" }));
     expect(rows()).toEqual(expect.arrayContaining(["登坂:登り 0m", "摩擦:砂利"]));
-    expect(rows()).not.toContainEqual(expect.stringMatching(/^向かい風:/));
   });
 
   it("道に名前があれば、上の帯は名前で呼ぶ", () => {

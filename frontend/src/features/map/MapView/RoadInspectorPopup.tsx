@@ -134,7 +134,8 @@ function LensValues({ lens }: { lens: LensInspection }) {
         }))
       : values.axes.flatMap((axis) => {
           const fact = values.facts[axis.axis_id];
-          return fact === undefined ? [] : [{ label: costAxisLabel(costCatalog, axis.axis_id), value: factText(fact) }];
+          const label = costAxisLabel(costCatalog, axis.axis_id);
+          return fact === undefined ? [] : [{ label, value: factText(fact, label) }];
         });
   return (
     <div className="flex flex-col gap-1">

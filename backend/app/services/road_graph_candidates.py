@@ -377,12 +377,12 @@ def _route_facts(orientation: _Orientation, context: RoadGraphContext, elevation
     """経路の事実（`domain/leg_costs.py: LegCostComposer.axis_facts`）。軸ごとの秒と向かい風は区間を通る時刻の値で、止まる回数には
     曲がる所の漕ぎ出し`turn_kickoffs`回を足す。"""
     rows = np.asarray(orientation.rows, dtype=np.int64)
-    headwind_ms = np.array(_per_segment(orientation.reads, len(rows), lambda read: read.values.headwind_ms.tolist()))
-
-    def seconds_of(axis_id: str) -> np.ndarray:
-        return np.array(_per_segment(orientation.reads, len(rows), lambda read: read.values.penalty_by_axis[axis_id].tolist()))
-
-    penalty_by_axis = {axis_id: seconds_of(axis_id) for axis_id in orientation.reads[0].values.penalty_by_axis}
+    headwind_ms = np.empty(len(rows))
+    penalty_by_axis = {axis_id: np.empty(len(rows)) for axis_id in orientation.reads[0].values.penalty_by_axis}
+    for read in orientation.reads:
+        headwind_ms[read.indices] = read.values.headwind_ms
+        for axis_id, seconds in penalty_by_axis.items():
+            seconds[read.indices] = read.values.penalty_by_axis[axis_id]
     return RouteFacts(axes=context.composer.axis_facts(rows, penalty_by_axis, elevation_gain_m, headwind_ms, turn_kickoffs))
 
 
