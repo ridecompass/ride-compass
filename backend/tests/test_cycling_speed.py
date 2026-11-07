@@ -1,7 +1,7 @@
 """`domain/cycling_speed.py`——平地・無風の巡航速度から出力を逆算し、区間の断面の点の間ごとに勾配・風・路面から速さを解いて
 区間の所要時間と、平地を越えて踏んだ体力の内訳にする走行モデル。
 
-入口は`RiderProfile`・`wheel_power_w`・`pushed_power_w`・`top_speed_kmh`・`SegmentSpeedModel`（`travel_seconds`・`ride`）・
+入口は`RiderProfile`・`wheel_power_w`・`top_speed_kmh`・`SegmentSpeedModel`（`travel_seconds`・`ride`）・
 `crr_for_surface`。
 期待値は走行方程式（公開の物理）と、モデルが約束する性質（平地・無風なら巡航速度に戻る・向かい風で遅くなる・上下限で止まる）から書く。
 
@@ -119,17 +119,36 @@ def test_a_crosswind_slows_the_rider_less_than_a_headwind_of_the_same_strength()
     assert headwind < crosswind < calm
 
 
-def test_more_resistance_adds_the_declared_watts_per_newton_whatever_the_flat_power():
-    """管理画面の「抵抗が増えたときの踏み増し」（W/N）のとおり、増えた抵抗に比例してWを足し、上限倍率で止まる。平地の出力に
-    比例させると、巡航が速い人ほど坂で平地並みの速度を保ち、所要時間が短く出る。平地より楽なら平地の出力のまま。"""
-    flat_power_w = 60.0
-    per_newton = cycling_speed.tuning_value("speed.extra_power_per_force")
-    ceiling = flat_power_w * cycling_speed.tuning_value("speed.max_climb_power_ratio")
+GRAVITY_M_S2 = 9.80665  # 標準重力加速度
 
-    desired, power = zip(*(cycling_speed.pushed_power_w(flat_power_w, extra) for extra in (10.0, 1000.0, -10.0)))
 
-    assert desired == pytest.approx((flat_power_w + 10 * per_newton, flat_power_w + 1000 * per_newton, flat_power_w))
-    assert power == pytest.approx((flat_power_w + 10 * per_newton, ceiling, flat_power_w))
+def _desired_power(flat_power_w: float, extra_n: float) -> float:
+    """管理画面の「抵抗が増えたときの踏み増し」（W/N）のとおりに踏みたい出力。"""
+    return flat_power_w + cycling_speed.tuning_value("speed.extra_power_per_force") * extra_n
+
+
+@pytest.mark.parametrize(
+    ("grade", "power"),
+    [(-0.01, "flat"), (0.02, "desired"), (0.06, "ceiling")],
+    ids=["下り", "登り", "上限を越える登り"],
+)
+def test_more_resistance_adds_the_declared_watts_per_newton_up_to_the_ceiling(grade, power):
+    """増えた抵抗に比例してWを足し、上限倍率で止まる。平地より楽なら平地の出力のまま。解いた速さを走行方程式へ戻すと、
+    その出力になる（空気抵抗の係数は、平地・無風の巡航速度と出力から戻す）。"""
+    flat_power_w = cycling_speed.wheel_power_w(RIDER)
+    cruise = RIDER.cruise_speed_ms
+    rolling_n = RIDER.crr * RIDER.mass_kg * GRAVITY_M_S2
+    drag = (flat_power_w / cruise - rolling_n) / cruise**2
+    gravity_n = RIDER.mass_kg * GRAVITY_M_S2 * grade
+    expected = {
+        "flat": flat_power_w,
+        "desired": _desired_power(flat_power_w, gravity_n),
+        "ceiling": flat_power_w * cycling_speed.tuning_value("speed.max_climb_power_ratio"),
+    }[power]
+
+    speed = _speed(RIDER, grade)
+
+    assert (drag * speed**2 + rolling_n + gravity_n) * speed == pytest.approx(expected, rel=0.01)
 
 
 def _ride(profile: RiderProfile, grade: float = 0.0, headwind: float = 0.0, crr: float | None = None):
@@ -160,9 +179,9 @@ def test_the_pushed_watts_are_shared_by_the_resistances_that_grew_and_add_up_to_
     flat_power_w = cycling_speed.wheel_power_w(RIDER)
     ride = _ride(RIDER, grade=0.02, headwind=3.0)
     gravity, air, seconds = float(ride.gravity_extra_j[0]), float(ride.air_extra_j[0]), float(ride.seconds[0])
-    gravity_n = RIDER.mass_kg * 9.80665 * 0.02  # 標準重力加速度
+    gravity_n = RIDER.mass_kg * GRAVITY_M_S2 * 0.02
 
-    _, power = cycling_speed.pushed_power_w(flat_power_w, gravity_n * (1 + air / gravity))
+    power = _desired_power(flat_power_w, gravity_n * (1 + air / gravity))
     assert gravity + air == pytest.approx((power - flat_power_w) * seconds)
     assert gravity > 0 and air > 0
 
@@ -173,8 +192,7 @@ def test_the_effort_weight_grows_with_the_power_the_rider_wants_over_the_flat_po
     flat_power_w = cycling_speed.wheel_power_w(RIDER)
     model = _model(RIDER, 0.03)
     facts, weighted = (model.ride(np.zeros(1), np.zeros(1), exponent) for exponent in (0.0, 1.0))
-    extra_n = RIDER.mass_kg * 9.80665 * 0.03  # 標準重力加速度
-    desired, _ = cycling_speed.pushed_power_w(flat_power_w, extra_n)
+    desired = _desired_power(flat_power_w, RIDER.mass_kg * GRAVITY_M_S2 * 0.03)
 
     assert float(weighted.gravity_extra_j[0]) == pytest.approx(float(facts.gravity_extra_j[0]) * desired / flat_power_w)
     assert float(weighted.seconds[0]) == pytest.approx(float(facts.seconds[0]))

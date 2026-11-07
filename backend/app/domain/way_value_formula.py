@@ -133,10 +133,6 @@ class WayValueFormula(StrictModel):
     value: FormulaNode
     undetermined: FormulaNode
 
-    def names_read(self, leaf: type[FeatureValue | Condition]) -> set[str]:
-        """木が読む道ごとの材料（`FeatureValue`）か要求の条件（`Condition`）の名前。"""
-        return _names_read(self.value, leaf) | _names_read(self.undetermined, leaf)
-
 
 TRUE = Constant(value=1.0)
 FALSE = Constant(value=0.0)
@@ -182,24 +178,6 @@ def any_of(nodes: Sequence[FormulaNode]) -> FormulaNode:
 def all_of(nodes: Sequence[FormulaNode]) -> FormulaNode:
     """どれもが真なら真（空なら真）。"""
     return reduce(lambda left, right: Binary(op="and", left=left, right=right), nodes) if nodes else TRUE
-
-
-def _names_read(node: FormulaNode, leaf: type[FeatureValue | Condition]) -> set[str]:
-    if isinstance(node, leaf):
-        return {node.name}
-    return set().union(*(_names_read(child, leaf) for child in _children(node)))
-
-
-def _children(node: FormulaNode) -> tuple[FormulaNode, ...]:
-    if isinstance(node, (Unary, Round)):
-        return (node.arg,)
-    if isinstance(node, Binary):
-        return (node.left, node.right)
-    if isinstance(node, Case):
-        return (node.when, node.then, node.otherwise)
-    if isinstance(node, Interpolate):
-        return (node.input,)
-    return ()
 
 
 def _truth(values: np.ndarray) -> np.ndarray:
