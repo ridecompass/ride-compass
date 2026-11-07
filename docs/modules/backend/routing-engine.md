@@ -33,7 +33,7 @@ road_graphエンジンは自前Road Graph（DB由来のノード/Edge）で経�
 慣性の費目に書く（`domain/traffic.py: StopEvent`・`domain/cycling_speed.py: kickoff_extra_j`）。速度は区間の断面の点の間ごとに解いて区間の走行時間へ足し合わせる（`domain/elevation_profile.py`）
 ——平均勾配1つで解くと、登って下る区間が平地と同じ時間になる。点の間はリクエストに1回だけ平らな並びに詰め、風の時刻ごとの
 ビンはその並びを1本のループで解く（点の間は区間の約2.5倍。本番の探索の範囲・約66万区間で、開発機でビン1本約50ms）。
-坂・向かい風・路面のどれで抵抗が増えても、同じ決まりで踏み増す（`domain/cycling_speed.py: pushed_power_w`）。`select_fastest_route`の
+坂・向かい風・路面のどれで抵抗が増えても、同じ決まりで踏み増す（`domain/cycling_speed.py: _pushed_power`）。`select_fastest_route`の
 返す基準線は、区間も曲がる所も時間だけで選ぶ。走行モデルの空気抵抗は相対風速の
 大きさ×進行方向の相対風速に比例し、横風は相対風速の大きさにだけ効く——同じ強さの向かい風ほどは
 遅くならない。

@@ -19,18 +19,45 @@
 - 材料の欠損割合を配るAPI → `test_material_catalog_routes.py`
 """
 
+from collections.abc import Iterable
 from contextlib import nullcontext
 
 import pytest
 from pydantic import ValidationError
 
 from app.domain import material_catalog
-from app.domain.material_catalog import MaterialSpec
+from app.domain.material_catalog import MaterialDType, MaterialSpec
 from app.domain.material_coverage_spec import CoverageExcluded, EdgeMaterialCoverageSpec, WayMaterialCoverageSpec
 from app.domain.primary_attributes import PRIMARY_ATTRIBUTES
-from tests.material_fixture import material, replace_material_catalog
 
 ATTR_A, ATTR_B = PRIMARY_ATTRIBUTES[:2]
+
+
+def material(material_id: str, dtype: MaterialDType = "numeric", **fields) -> MaterialSpec:
+    """中身がテストの主題でない材料を1つ作る。
+
+    既定は型を満たすためだけの値（表示名はid・タイルに載せない・DBの道の列を読む・網羅の集計から外す）。
+    DBに値を持たない材料（`source`が`db`でない）は値の式を持たない。見たい性質は呼び出し側が引数で書く。
+    """
+    db = fields.get("source", "db") == "db"
+    return MaterialSpec(**{
+        "material_id": material_id,
+        "label": material_id,
+        "description": "架空の材料",
+        "dtype": dtype,
+        "tile_property": None,
+        "value_sql": f"w.{material_id}" if db else None,
+        "coverage": CoverageExcluded(reason="架空", missing_semantics="definite"),
+        **fields,
+    })
+
+
+def replace_material_catalog(monkeypatch: pytest.MonkeyPatch, specs: Iterable[MaterialSpec]) -> dict[str, MaterialSpec]:
+    """テストの間だけ材料カタログを`specs`だけにする（同じidは後のものが勝つ）。差し替えた中身を返す。"""
+    catalog = {spec.material_id: spec for spec in specs}
+    monkeypatch.setattr(material_catalog, "MATERIAL_CATALOG", catalog)
+    return catalog
+
 
 WAY_UNKNOWN = WayMaterialCoverageSpec(missing_condition="w.x IS NULL", source="x", missing_semantics="unknown")
 WAY_DEFINITE = WayMaterialCoverageSpec(missing_condition="w.y IS NULL", source="y", missing_semantics="definite")
@@ -72,19 +99,6 @@ def catalog(monkeypatch):
 def test_a_declaration_that_does_not_fit_its_dtype_or_source_is_refused(fields):
     with pytest.raises(ValidationError):
         spec("x", **fields)
-
-
-@pytest.mark.parametrize(
-    ("material", "value", "shown"),
-    [
-        (spec("cat_a", "categorical", value_labels={"paved": "舗装"}), "paved", "舗装 - paved"),
-        (spec("cat_a", "categorical", value_labels={"paved": "舗装"}), "new_value", "new_value"),
-        (spec("flag_a", "boolean"), "true", "はい - true"),
-        (spec("flag_a", "boolean"), "false", "いいえ - false"),
-    ],
-)
-def test_a_value_is_shown_with_its_label_when_there_is_one(material, value, shown):
-    assert material.value_label(value) == shown
 
 
 def test_the_matrix_columns_are_the_materials_with_sql_sorted_by_id(catalog):
