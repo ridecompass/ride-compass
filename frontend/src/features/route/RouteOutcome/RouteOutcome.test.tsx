@@ -62,22 +62,15 @@ describe("候補が無い間", () => {
 });
 
 describe("候補の上の知らせ", () => {
-  it.each([true, false])(
-    "条件のずれ・標準の倍率で作ったこと・目的地の補正を、それぞれの間だけ知らせる（当たる: %s）",
-    (on) => {
-      renderOutcome({
-        results: resultsOf({ generated: [FAST] }),
-        generation: generationOf({ conditionsDirty: on, multipliersNotApplied: on, destinationCorrected: on }),
-      });
-      for (const text of [
-        "生成条件が変更されています",
-        "負担の種類ごとの倍率を反映できなかったため、標準の倍率で作りました。",
-        /近くのアクセス可能な地点へ補正しました/,
-      ]) {
-        expect(screen.queryByText(text) !== null).toBe(on);
-      }
-    },
-  );
+  it.each([true, false])("条件のずれ・目的地の補正を、それぞれの間だけ知らせる（当たる: %s）", (on) => {
+    renderOutcome({
+      results: resultsOf({ generated: [FAST] }),
+      generation: generationOf({ conditionsDirty: on, destinationCorrected: on }),
+    });
+    for (const text of ["生成条件が変更されています", /近くのアクセス可能な地点へ補正しました/]) {
+      expect(screen.queryByText(text) !== null).toBe(on);
+    }
+  });
 
   it("乗り換えで作った経路と同じ道だったので選んだ候補は、一覧の名前で知らせ、そのカードを一覧の横の見える範囲へ送る", () => {
     // 一覧は幅300pxで、選んだ2枚目のカードは右へ100pxはみ出している。

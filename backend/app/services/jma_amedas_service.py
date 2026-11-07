@@ -47,24 +47,18 @@ class JmaAmedasService:
         self._latest_time_cache = latest_time_cache
         self._cells_cache = cells_cache
 
-    async def get_nearest_observation(self, point: Coordinates) -> AmedasObservation | None:
+    async def get_nearest_observation(self, point: Coordinates) -> AmedasObservation:
         """最寄り観測所を解決し、保存済みの観測値に地点の日の出・日没と天気コードを入れて返す。観測値はJMAへ
         問い合わせない。推計気象分布が取れなくても観測値は返し、降っていなければ天気コードだけがNoneになる。
 
-        バッチがまだ一度も成功していない・Redisが不通・最寄り観測所が必要なセンサーを
-        持たない種別（雨量計のみ等）のいずれもNone。
+        バッチがまだ一度も成功していない・Redisが不通・最寄り観測所の観測値が無いときは投げる。
         """
         stations = await jma_amedas_client.fetch_station_table(self._http_client, self._station_table_cache)
-        if not stations:
-            return None
         station_ids = list(stations)
         nearest_index = nearest_point_index(point, list(stations.values()))
         if nearest_index is None:
-            return None
-        station_id = station_ids[nearest_index]
-        observation = await jma_amedas_store.read_observation(station_id)
-        if observation is None:
-            return None
+            raise jma_amedas_store.AmedasUnavailableError("アメダスの観測所マスタに観測所がありません")
+        observation = await jma_amedas_store.read_observation(station_ids[nearest_index])
         # 日の出/日没は最寄り観測所ではなく**クエリ地点**に対して計算する（観測所境界
         # 付近でのズレを避ける）。外部への問い合わせを伴わないため都度計算でよい。
         today = datetime.now(JST).date()
@@ -87,19 +81,10 @@ class JmaAmedasService:
         いないバッチ」が無警告のまま繰り返される。
         """
         stations = await jma_amedas_client.fetch_station_table(self._http_client, self._station_table_cache)
-        if not stations:
-            logger.warning("アメダス観測所マスタの取得に失敗しました（全滅バッチ）")
-            return 0
         latest_time = await jma_amedas_client.fetch_latest_observation_time(
             self._http_client, self._latest_time_cache
         )
-        if latest_time is None:
-            logger.warning("アメダス最新観測時刻の取得に失敗しました（全滅バッチ）")
-            return 0
         observation_map = await jma_amedas_client.fetch_observation_map(self._http_client, latest_time)
-        if observation_map is None:
-            logger.warning("アメダス観測値マップの取得に失敗しました（全滅バッチ）time=%s", latest_time.isoformat())
-            return 0
 
         observations = {
             station_id: _observation(stations[station_id], latest_time, reading)

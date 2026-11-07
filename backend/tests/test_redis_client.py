@@ -11,7 +11,6 @@
 """
 
 import asyncio
-import logging
 import time
 
 import pytest
@@ -46,15 +45,12 @@ async def silent_redis(monkeypatch, no_clients_yet):
 
 
 @pytest.mark.usefixtures("no_clients_yet")
-def test_a_malformed_url_gives_no_client_opens_the_breaker_and_warns(monkeypatch, caplog):
-    """設定の誤りで落ちず、未キャッシュで進める。誤りは警告で出す——黙って未キャッシュで進むと、どのキャッシュも効かないまま気づけない。"""
+def test_a_malformed_url_is_not_silenced(monkeypatch):
+    """設定の誤りはキャッシュの障害ではない。未キャッシュで黙って進むと、どのキャッシュも効かないまま気づけない。"""
     monkeypatch.setattr(settings, "redis_url", "not-a-redis-url")
 
-    with caplog.at_level(logging.WARNING):
-        assert redis_client.get_redis_client_or_none() is None
-
-    assert not redis_client.redis_available()
-    assert "Redis" in caplog.text
+    with pytest.raises(ValueError):
+        redis_client.get_redis_client()
 
 
 @pytest.mark.usefixtures("silent_redis")
@@ -63,6 +59,6 @@ async def test_a_redis_that_does_not_answer_fails_within_a_second():
     started = time.monotonic()
 
     with pytest.raises(redis.exceptions.TimeoutError):
-        await redis_client.get_redis_client_or_none().ping()
+        await redis_client.get_redis_client().ping()
 
     assert time.monotonic() - started < 1.0

@@ -12,9 +12,8 @@ from app.services.tuning_service import refresh_tuning_values
 
 
 async def refresh_definitions(session: AsyncSession) -> None:
-    """区分 → 費用の軸の定義 → 較正値の順に読み込む。費用の軸の定義が無いか読めなければ例外のまま止める。"""
+    """区分 → 費用の軸の定義 → 較正値の順に読み込む。費用の軸の定義・較正値が無いか読めなければ例外のまま止める。"""
     # 費用の軸は区分から作る材料（`class:<分け方>`）を指せるので、区分を先に読む。
     await refresh_road_classes(session)
     await refresh_cost_axes(session)
-    # 較正値は行が1つも無ければ宣言どおりの既定値のまま動く（壊れた値の行だけが止める）。
     await refresh_tuning_values(session)

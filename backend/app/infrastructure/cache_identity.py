@@ -56,13 +56,12 @@ def cache_identity(revision: str, *shape_sources: object) -> str:
 UNKNOWN_REVISION = "x"
 
 
-def tile_version(revisions: DataRevisions | None, shape: str) -> str:
+def tile_version(revisions: DataRevisions, shape: str) -> str:
     """配信するタイルの世代。`<派生の世代>.<生データの世代>-<形の署名>`。
 
-    `revisions`は`derived_data_meta.get_revisions()`の値。Noneはまだ読めていない状態で、
-    派生の世代の行が無いDBと同じく`UNKNOWN_REVISION`を使う。
+    `revisions`は`derived_data_meta.get_revisions()`の値。派生の世代の行が無いDBでは`UNKNOWN_REVISION`を使う。
     """
-    if revisions is None or revisions.derived is None:
+    if revisions.derived is None:
         return f"{UNKNOWN_REVISION}-{shape}"
     return f"{revisions.derived}.{revisions.imported}-{shape}"
 

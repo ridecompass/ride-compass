@@ -2,7 +2,7 @@
 // フレームワーク非依存のシングルトンとして持つことで、Reactコンポーネントだけでなく
 // services/配下のfetchラッパーや地図のイベントハンドラからも直接呼べるようにする。
 
-import { readStoredValue, writeStoredValue } from "@/lib/safeStorage";
+import { readStored, writeStored } from "@/lib/safeStorage";
 
 export type DebugLogLevel = "info" | "warn" | "error";
 
@@ -18,7 +18,9 @@ export interface DebugLogEntry {
 const STORAGE_KEY = "ridecompass:debug-enabled";
 const MAX_ENTRIES = 300;
 
-let enabled = readStoredValue(STORAGE_KEY) === "1";
+const LABEL = "デバッグログの表示";
+// 端末の保存値は、初めて要るときに読む（サーバー側の描画では読めない）。
+let enabled: boolean | undefined;
 let entries: DebugLogEntry[] = [];
 let nextId = 1;
 const listeners = new Set<() => void>();
@@ -28,12 +30,13 @@ function notify(): void {
 }
 
 export function isDebugEnabled(): boolean {
+  enabled ??= readStored<boolean>(STORAGE_KEY, LABEL) ?? false;
   return enabled;
 }
 
 export function setDebugEnabled(next: boolean): void {
   enabled = next;
-  writeStoredValue(STORAGE_KEY, next ? "1" : "0");
+  writeStored(STORAGE_KEY, LABEL, next);
   notify();
 }
 
@@ -56,7 +59,7 @@ function formatTime(date: Date): string {
 }
 
 export function debugLog(category: string, message: string, detail?: unknown, level: DebugLogLevel = "info"): void {
-  if (!enabled) return;
+  if (!isDebugEnabled()) return;
   const entry: DebugLogEntry = { id: nextId++, time: formatTime(new Date()), category, message, detail, level };
   const next = entries.slice(1 - MAX_ENTRIES);
   next.push(entry);

@@ -286,7 +286,7 @@ DOM/MapLibreを一切知らない。`MapView.tsx`は画面の状態をsceneの�
 8〜10割あり、自転車レーンは当てはまる道が数％しか無いので、値の無い道の線が値のある道を埋もれさせる。隠す行の鍵は`scene/legends.ts: initiallyHiddenLegendKeys`が
 層から決め（データなしを分ける層ならデータなし、分けない層なら該当なし）、隠した行の保存先の既定にする。保存先は利用者が
 触った軸だけを空の並びも含めて覚え、触っていない軸（あとから足した層も）は最初に隠す行のまま読む
-（`view/legendFilters.ts: deserializeHiddenLegendKeys`）——空にした軸を保存先から消すと、出した行が次の訪問でまた隠れる。
+（`view/useMapView.ts`が保存値を最初に隠す行の上に重ねる）——空にした軸を保存先から消すと、出した行が次の訪問でまた隠れる。
 
 ## 出典表記（`domain/map_display.py: ALWAYS_SHOWN_ATTRIBUTIONS`）
 

@@ -18,6 +18,7 @@ from app.config import settings
 from app.infrastructure.cache_identity import is_known_tile_version
 from app.infrastructure.data_paths import DATA_DIR
 from app.infrastructure.debug_log import log_throttled_warning
+from app.infrastructure.tile_cache import DISK_READ_ERRORS, DISK_STORE_ERRORS
 
 logger = logging.getLogger("ridecompass.tile_persistent_cache")
 
@@ -62,7 +63,7 @@ def get_by_key(key: tuple) -> Any | None:
         started = time.monotonic()
         value = cache().get(key)
         read_ms = (time.monotonic() - started) * 1000
-    except Exception as exc:  # 破損エントリ・SQLite障害はいずれも未キャッシュ扱いにする
+    except DISK_READ_ERRORS as exc:  # 破損エントリ・SQLite障害はいずれも未キャッシュ扱いにする
         log_throttled_warning(
             _CATEGORY, "tile persistent cache read failed key=%r, treating as cache miss error=%r", key, exc
         )
@@ -75,12 +76,12 @@ def get_by_key(key: tuple) -> Any | None:
 def set_by_key(key: tuple, value: Any, *, expire: float) -> None:
     """任意のタプルキーで書き、`expire`（秒）で失効させる。
 
-    書き込み失敗（ディスクフル・pickle化不能な値等）は握りつぶし、警告ログのみで
-    no-opにフォールバックする（キャッシュ書き込みの失敗が応答を止める理由にはならない）。
+    置き場の障害（ディスクフル等）で書けなければ、警告ログを出して書かずに進む（キャッシュに書けないことが応答を
+    止める理由にはならない）。pickleにできない値は実装の誤りなので投げる。
     """
     try:
         cache().set(key, value, expire=expire)
-    except Exception as exc:  # OSError（ディスクフル）・pickle化不能のいずれも吸収する
+    except DISK_STORE_ERRORS as exc:  # 置き場の障害は、書かずに進む
         log_throttled_warning(_CATEGORY, "tile persistent cache write failed key=%r error=%r", key, exc)
 
 

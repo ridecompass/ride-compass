@@ -18,7 +18,8 @@ DB接続・Redis・HTTPクライアント・レート制限・ログ・デバッ
 | domain | `stopwatch.py` | ログへ出す所要時間の測り方（測り始めの`stopwatch.py: start_timer`とミリ秒の整数の`stopwatch.py: elapsed_ms`）。測り始めと終わりは同じ時計で読む |
 | domain | `strict_model.py` | 全Pydanticモデルの基底（`strict_model.py: StrictModel`）。未知のフィールドを黙って捨てず例外にする |
 | api | `admin_auth.py` | 管理API共通の認可境界 |
-| api | `admin_db_errors.py` | 管理APIのDB障害を、どの口でも503で返すアプリ単位の例外の扱い（下の「DB障害として扱う例外」） |
+| api | `failure_replies.py` | 想定した失敗（上流から取れない→502・MSMを読めない・手元の置き場［アメダスの観測値・区域の境界・土地被覆のラスタ・道路網］を読めない・DBに届かない→503）を、どの口でも理由つきで返すアプリ単位の例外の扱い。ルート生成のジョブの失敗の文も同じ`failure_reply`で決める（下の「DB障害として扱う例外」・`fetch_upstream`の段） |
+| api | `admin_paths.py` | 管理APIの経路の接頭辞（認可・キャッシュの決まりが、この下の口をまとめて扱う） |
 | api | `cache_policy.py` | 応答の`Cache-Control`（パスとポリシーの対応表・付与ミドルウェア） |
 | api | `dependencies.py`（横断的な部分のみ、他は各モジュール参照） | DI工場（公開関数は注入の口だけ） |
 | api | `finite_json_body.py` | 要求の本文のNaN・無限大を、アプリ全体の依存として経路の処理より前に422で断る（Starletteの本文の読み方はJSONの外の`NaN`・`Infinity`を通す） |
@@ -40,9 +41,9 @@ DB接続・Redis・HTTPクライアント・レート制限・ログ・デバッ
 | infrastructure | `admin_data_backup.py` | DBのバックアップが最後に置けてからの時間（`/health`が返す）。下の「本番DBのバックアップ」 |
 | infrastructure | `job_registry.py` | 汎用の非同期ジョブレジストリ（プロセス内メモリのみ） |
 | infrastructure | `single_process.py` | 起動時にワーカー数を読み、複数なら起動を止める（プロセス内に持つ状態の前提を落ちる形にする） |
-| infrastructure | `tuning_overrides.py` | 較正値の上書き（宣言の既定値から動かしたぶんだけをDBへ持つ）の読み書きと、宣言の範囲での検算。プロセス内の値へは書かない |
+| infrastructure | `tuning_overrides.py` | 較正値の値（宣言の全idの行をDBへ持つ。値の正本）の読み書き。プロセス内の値へは書かない |
 | services | `definitions_loading.py` | DBの定義（道の区分・軸定義・較正値）をプロセスへ読み込む1つの入口と、その順。起動時と、起動を通らない道具が呼ぶ |
-| services | `tuning_service.py` | 較正値の上書きの取引境界（構造仕様7）と、プロセス内の値への反映（起動時の読み込みと、書いた直後） |
+| services | `tuning_service.py` | 較正値の書き込みの取引境界（構造仕様7）と、プロセス内の値への反映（起動時の読み込みと、書いた直後） |
 | api | `tuning_admin.py` | 較正値の一覧・更新（管理画面用、`api/admin_auth.py: require_admin_basic_auth`の内側）。並べる項目も、効き方ごとの見出しと並び順も宣言から導く。名前は`domain/tuning_labels.py: tuning_label`が付ける |
 | ops | `admin_data_backup.sh` | 本番VMのホストで、DBの全体を`pg_dump`し、Object Storageの非公開バケットの前の1個と入れ替え、置けた時刻を書く |
 | ops | `ridecompass-admin-data-backup.service`・`ridecompass-admin-data-backup.timer` | それを毎日打つsystemdのユニット（VMへの登録は手で1回） |
@@ -61,7 +62,6 @@ DB接続・Redis・HTTPクライアント・レート制限・ログ・デバッ
 | scripts | `audit_test_rewrite.py` | 実装から起こし直したテストを外から測る（実装を変えていないか・テストが読む`app.*`・対象の属性の出どころ・seams 数・実装へ1行も入らないテスト・そのテストだけが通す行が0行のテスト・カバレッジ・テストファイルごとの項目と関数と行の数・テストからしか使われない公開の名前の候補。テストは対象を読む母集団を並べて渡す。PostGISのテストはテスト用DBへ繋がるときだけ含める）。起こし直しの手順は[testing-rewrite.md](../../../.claude/rules/testing-rewrite.md) |
 | scripts | `build_road_network.py` | 取込範囲全体の道路網の配列を作り、ディスクへ置く（[経路探索エンジン](routing-engine.md)）。今の派生データの世代とコードの形の置き場が既にあれば何もしない。デプロイの前処理が旧コンテナを止める前に打つ |
 | scripts | `cross_language_expectations.py` | backendと画面が同じ計算を持つところの「入力→答え」の表（`cross_language_expectations.py: EXPECTATIONS`）。答えはbackendの関数が出し、`export_openapi.py`が組ごとに生成物へ書き出す |
-| scripts | `schema_shape.py` | 応答の型の契約から作る印（`schema_shape.py: schema_shape_mark`）。端末に置いた応答が今の型で読めるかを見分けるために、`export_openapi.py`が生成物へ書き出して配る |
 | scripts | `deploy_gate.py` | 本番へ出すかを決める（デプロイのワークフローが呼ぶ）。本番がそのコミットか、より新しいコミットで動いていれば出さない |
 | scripts | `dev_prod_data_backend.py` | 開発機の画面を本番のデータで開くときの、開発機のbackendを起こす（[setup.md](../../architecture/setup.md)「開発機の画面を本番のデータで開く」）。同じLANの端末から届くよう、LANの住所のfrontendを許す相手に足す |
 
@@ -103,10 +103,9 @@ FastAPI(lifespan=lifespan)
         │       SSLコンテキスト構築が数百ms〜1秒かかるため、デプロイ直後の最初のリクエストが
         │       このコストを負わないようにする）
         ├─ (2) services/definitions_loading.py: refresh_definitions を1回呼び、道の区分 → 費用の軸の定義
-        │       （[費用・材料](evaluation-scoring.md)参照）→ 較正値の上書き（[ルーティングエンジン](routing-engine.md)参照）の
+        │       （[費用・材料](evaluation-scoring.md)参照）→ 較正値（[ルーティングエンジン](routing-engine.md)参照）の
         │       順に読む。費用の軸は区分から作る材料を指せるので、区分が先。費用の軸の定義の行が無いか
-        │       通らないと、ここで捕捉されず起動自体が失敗する。較正値は行が無い・テーブルが
-        │       無い場合は宣言の既定値のまま進み、値が壊れている行だけが起動を止める。
+        │       通らないと、ここで捕捉されず起動自体が失敗する。較正値も、宣言にあるidの行が無ければ起動しない。
         │       起動を通らずに生成・評価を回す道具（ベンチ・scripts/）も同じ関数で読む
         ├─ (2') 全体のGCを1回回してから`gc.freeze()`で、ここまでに読み込んだオブジェクト（モジュール・定義）を
         │       恒久の世代へ移す。世代2のGCは追う全オブジェクトを走査してその間イベントループを止めるので、
@@ -226,13 +225,10 @@ HTTPの要求の外（定期ジョブ・ベンチマーク）は、工場を引�
 
 ### DB障害として扱う例外（`database.py: DB_UNAVAILABLE_ERRORS`）
 
-タイル配信・道の窓・道の線の層の値等、DBの読み取りに失敗したら空（空タイル・空dict・
-None）へ倒す箇所は、`except Exception`ではなくこのタプルだけを捕まえる。実装の誤り
-（`TypeError`・`AttributeError`等）は捕まえず、500として表へ出す——空へ倒すと応答は正常の
-形のまま「データなし」に見え、誰も気づかない。
-管理API（`/api/admin/...`）は空へ倒さず、口では捕まえずに、`api/admin_db_errors.py`がアプリ単位の例外の扱いで
-同じタプルだけを503にする（口ごとに書くと、書き忘れた口だけが500になる）。管理API以外の経路で捕まえなかった
-ものは、送り直して500のまま表へ出す。
+DBの読み取りの失敗は、どの層でも空（空タイル・空dict・None）へ倒さず投げ、口では捕まえずに、
+`api/failure_replies.py`がアプリ単位の例外の扱いでこのタプルだけを503にする（口ごとに書くと、書き忘れた口だけが500になる。空へ
+倒すと応答は正常の形のまま「データなし」に見え、誰も気づかない）。実装の誤り（`TypeError`・`AttributeError`等）は
+捕まえず、500として表へ出す。
 
 中身はSQLAlchemy 2.1＋asyncpgで例外がどう届くかから決まっている（ソースで確認）:
 
@@ -357,8 +353,11 @@ lifespanが起動時に使うtimeout値を事前ウォームアップするの�
 クライアントへ持たせ、使う側は要求ごとに`timeout`を渡さない（渡すと選んだ値が効かない）。
 
 タイルを中継するクライアントは、上流から1件取る所を`fetch_upstream`へ寄せる。上流の404（このパスで得るものが無い事実）は
-`UPSTREAM_NOT_FOUND`、ほかの失敗はNoneとして返し、404は`log_external_call`の失敗に数えない。404を受けた応答の本文と
+`UPSTREAM_NOT_FOUND`で返して`log_external_call`の失敗に数えず、ほかの失敗は`httpx`の例外のまま投げる。404を受けた応答の本文と
 `Cache-Control`は、配信元ごとの宣言（`api/routers/_tile_http.py: UpstreamReplies`）から引く。
+
+上流から取れなかった例外（`httpx.HTTPError`・JSONでない本文・`UnexpectedShapeError`）は、途中の層で値に替えず、口の1か所
+（`api/failure_replies.py`）が502と失敗の種類の文（「外部の配信元から取得できませんでした（…）」）にする。
 
 ## 応答のgzip圧縮（`response_compression.py`）
 
@@ -452,7 +451,7 @@ FastAPI側で処理済みのためここには来ない）。
 
 ## 本番DBのバックアップ（`ops/admin_data_backup.sh`）
 
-本番DBには、外部から取り直せず派生からも作り直せない行（管理画面で人が積み上げた軸の定義・較正値の上書き等）と、
+本番DBには、外部から取り直せず派生からも作り直せない行（管理画面で人が積み上げた軸の定義・較正値等）と、
 取り直しと作り直しに時間のかかる生データ・派生データがある。DBを失ったときに書き出しから全体を戻せるよう、本番VMの
 systemdのtimerが毎日、DBの全体を`pg_dump`（custom形式・圧縮あり）で書き出し、Oracle Cloud Object Storageの非公開バケットへ
 置く。戻しは`pg_restore`（登録・戻しの手順は[production-data/SKILL.md](../../../.claude/skills/production-data/SKILL.md)「DBのバックアップ」
@@ -499,7 +498,7 @@ push型更新と同じ前提）。`JobRecord`は状態ごとの型の共用体�
 呼び出し時に掃除する（専用の定期タスクは新設せず、`rate_limiter.py`と同じ「呼ばれた
 ついでに掃除」方式）。**この保持時間はフロントのポーリングの打ち切りと同じ値でなければ
 ならない**（短いと、まだ待っているフロントが掃除済みのjob_idを引く）。そのためフロントは
-独立に値を持たず、生成物`route-generate-config.json`の`job_result_ttl_seconds`から受け取る。ルート生成に特化させず`result: Any`型で汎用化してあるため、
+独立に値を持たず、生成物`route-generate-config.json`の`job_result_ttl_seconds`から受け取る。ルート生成のジョブも同じ時間で打ち切る（それより遅く作れても、フロントは問い合わせを諦めている。`routes.py: _run_generate_job`）。ジョブの失敗の文は、口と同じ`api/failure_replies.py: failure_reply`で決める（決め方に無い例外だけは、文に接続先やSQLが混じりうるので決まった文）。ルート生成に特化させず`result: Any`型で汎用化してあるため、
 本モジュール自体はルート生成の型を知らない（`routes.py`との循環import回避）。
 
 終わるまで待つ問い合わせ（`wait_until_finished`）は、まだ終わっていないジョブごとの`asyncio.Event`を待ち、

@@ -25,9 +25,9 @@
 段のSQLは表の名前をスキーマを付けずに書く——接続の`search_path`が作業用のスキーマを先に探し、
 流さない段の表と生データは`public`から読む。
 
-**段が読む較正値は、作り直しを始めるときに1度だけDBの上書きから読み、段の関数へ値で渡す**。
+**段が読む較正値は、作り直しを始めるときに1度だけDBの表から読み、段の関数へ値で渡す**。
 バッチはwebアプリと別のプロセスで、プロセス内の較正値（`domain/tuning.py: TUNING_VALUES`）へは
-何も読み込まれていない——そこを読むと、管理画面で変えた値ではなく宣言の既定が効く。
+何も読み込まれていない。
 段へ渡るのは`STAGES`が宣言した較正値だけである。
 
 **作り直しの記録（作った取込・表の列・使った較正値。`derived_data_meta.py`）は、鍵（取込のソース・表・較正値）ごとに、
@@ -181,7 +181,7 @@ _V = TypeVar("_V")
 def carried_over(previous: Mapping[str, _V], current: Mapping[str, _V], users: Mapping[str, frozenset[str]],
                  ran: Iterable[str]) -> dict[str, _V]:
     """作り直しの記録に書く値（鍵は`users`の鍵）: 使う段が全部流れた鍵は今の値、ほかは前回の記録。前回に無ければ書かない——
-    読み手は記録の無い較正値を宣言の既定で作ったとみなし、鮮度の台帳は記録の無い取込を作り直しが要る側に数える。"""
+    読み手は記録の無い較正値を読めず（読む段を流し直す）、鮮度の台帳は記録の無い取込を作り直しが要る側に数える。"""
     done = {*ran, NETWORK}
     result: dict[str, _V] = {}
     for key, used_by in users.items():
@@ -290,7 +290,7 @@ async def _swap(conn: asyncpg.Connection, tables: list[str], revision: int) -> N
 
 
 async def _read_tuning(database_url: str) -> dict[str, float]:
-    """DBの上書きを宣言の既定へ重ねた、いま効くべき較正値（webアプリが起動時に読むのと同じ値）。"""
+    """いま効くべき較正値（webアプリが起動時に読むのと同じ値）。"""
     async with batch_session_factory(database_url) as session_factory:
         async with session_factory() as session:
             return await load_tuning_values(session)

@@ -22,8 +22,6 @@ interface RouteAxisProfileProps {
   catalog: PenaltyCatalog;
   /** RouteCandidate.estimated_duration_seconds（走行＋停止＋ターンの見積もり）。 */
   estimatedDurationSeconds: number | null;
-  /** 所要時間を、風の値を使えず無風として出した（RouteCandidate.wind_unavailable）。 */
-  windUnavailable: boolean;
   /** 所要時間を、勾配か停止要因の値が無く平地・待ち無しとして出した区間の距離の割合（0〜1、
    * RouteCandidate.missing_travel_data_share）。 */
   missingTravelDataShare: number | null;
@@ -36,7 +34,6 @@ export default function RouteAxisProfile({
   facts,
   catalog,
   estimatedDurationSeconds,
-  windUnavailable,
   missingTravelDataShare,
 }: RouteAxisProfileProps) {
   // 値の無い区間の割合（丸めた%）。値が無ければ0として扱い、知らせない。
@@ -74,7 +71,6 @@ export default function RouteAxisProfile({
       </div>
       {/* 所要時間の前提が崩れていることは、所要時間のすぐ下で知らせる（黙って短い所要時間を見せない）。
           値の無い区間は丸めて1%以上のときだけ出す——0%を並べても判断の材料にならない。 */}
-      {windUnavailable && <WarningText>{routeGenerateConfig.missing_wind_wording}</WarningText>}
       {missingPct >= 1 && (
         <WarningText>{`データの無い区間が${missingPct}%[${routeGenerateConfig.missing_travel_data_wording}]`}</WarningText>
       )}

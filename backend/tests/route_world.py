@@ -8,6 +8,7 @@
 """
 
 import itertools
+from datetime import datetime, timedelta
 import shutil
 from dataclasses import replace
 from pathlib import Path
@@ -25,6 +26,7 @@ from app.domain.road_avoidance import AvoidanceLevel
 from app.domain.road_network import RoadNetwork
 from app.domain.route import Coordinates
 from app.domain.route_request import FixedPoints, RequestedConditions
+from app.domain.msm import MsmBlock, MsmGrid
 from app.domain.wind import WindForecastSeries
 from app.infrastructure import road_network_store
 from app.services.graph_service import GraphService, SearchMemory
@@ -203,14 +205,22 @@ class NetworkRepository:
         }
 
 
+#: 2020〜2035年の毎時の、どこでも無風の予報（格子点1つ。区間はどこでも、一番近い格子点のこの1つを引く）。
+_CALM_HOURS = int((datetime(2035, 1, 1) - datetime(2020, 1, 1)).total_seconds() // 3600)
+CALM = WindForecastSeries(
+    times=[datetime(2020, 1, 1) + timedelta(hours=hour) for hour in range(_CALM_HOURS)],
+    speed_ms=np.zeros((1, _CALM_HOURS)),
+    direction_deg=np.zeros((1, _CALM_HOURS)),
+    lattice=MsmBlock(grid=MsmGrid(lat_min=35.0, lon_min=139.0, d_lat=0.05, d_lon=0.0625, n_lat=1, n_lon=1),
+                     row0=0, col0=0, rows=1, cols=1),
+)
+
+
 class Weather:
-    """天気の代役。出発時点の風は無く、時別の風の予報は`series`（Noneなら無し）を返す。"""
+    """天気の代役。時別の風の予報は`series`（省けば無風の`CALM`）を返す。"""
 
-    def __init__(self, series: WindForecastSeries | None = None):
+    def __init__(self, series: WindForecastSeries = CALM):
         self._series = series
-
-    async def get_departure_wind(self, origin):
-        return None
 
     async def get_wind_forecast_lattice(self, bbox):
         return self._series
@@ -230,7 +240,7 @@ def serve_road_network(root: Path, network: RoadNetwork | None) -> None:
 
 
 def generator_for(
-    root: Path, network: RoadNetwork, wind: WindForecastSeries | None,
+    root: Path, network: RoadNetwork, wind: WindForecastSeries = CALM,
     *, assumed_speed_kmh: float = 20.0, road_avoidance: dict[str, AvoidanceLevel] | None = None,
 ):
     """道路網を全体の配列として置き場へ置き、本物の`GraphService`とエンジンの上に戦略層（`RouteGenerator`）を組む。"""

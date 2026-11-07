@@ -24,7 +24,7 @@ _LONGER_THAN_THE_REGION = 60.0
 
 async def test_without_resource_and_loadavg_it_loads_and_reports_them_as_not_measured(monkeypatch):
     monkeypatch.setitem(sys.modules, "resource", None)
-    monkeypatch.delattr(os, "getloadavg")
+    monkeypatch.delattr(os, "getloadavg", raising=False)
     monkeypatch.delitem(sys.modules, "benchmarks._resources", raising=False)
     resources = importlib.import_module("benchmarks._resources")
 

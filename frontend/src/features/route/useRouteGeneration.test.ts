@@ -3,7 +3,7 @@
  * 入力の誤り・表示中の候補を作った条件といまの条件のずれを返し、案内と生成の結果を消せる。
  *
  * ここで見ないもの:
- * - 結果の並べ方と知らせ方・候補0件の理由・失敗の文言・目的地の補正・標準の倍率で作ったこと → `useRouteGeneration.result.test.ts`
+ * - 結果の並べ方と知らせ方・候補0件の理由・失敗の文言・目的地の補正 → `useRouteGeneration.result.test.ts`
  * - 検証の文言の中身と、作るものが無いときの検証 → `RouteForm/useRouteFormSubmit.test.ts`
  * - 条件の値の持ち方（保存・地点の置き方・倍率の送り方） → `useGenerationConditions.test.ts`
  * - 入力から要求の形を組む細部（どの項目を比べないか・選んでいない出発時刻・キーの並びに依らない比較） →
@@ -177,7 +177,7 @@ describe("消す", () => {
     expect(rendered.result.current.generation.running).toBe(true);
   });
 
-  it("生成の結果（作った条件・補正・既定の配分・案内）を消す", async () => {
+  it("生成の結果（作った条件・補正・案内）を消す", async () => {
     const rendered = renderGeneration();
     act(() => rendered.result.current.conditions.setCostPreference({ strength: 1, multipliers: { ascent: 2 } }));
     act(() => rendered.result.current.conditions.setDestination(A));
@@ -191,7 +191,6 @@ describe("消す", () => {
     const { generation } = rendered.result.current;
     expect(generation.generatedInput).toBeNull();
     expect(generation.destinationCorrected).toBe(false);
-    expect(generation.multipliersNotApplied).toBe(false);
     expect(generation.outcome).toBeNull();
   });
 });

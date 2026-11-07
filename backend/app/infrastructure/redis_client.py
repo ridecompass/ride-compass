@@ -9,7 +9,6 @@ import time
 import redis.asyncio as redis
 
 from app.config import settings
-from app.infrastructure.debug_log import log_throttled_warning
 
 _client: redis.Redis | None = None
 
@@ -21,30 +20,23 @@ _SOCKET_TIMEOUT_SECONDS = 0.2
 
 CIRCUIT_COOLDOWN_SECONDS = 10.0
 _last_failure_at: float | None = None
-_CLIENT_CATEGORY = "cache:redis-client"
 
 
-def get_redis_client_or_none() -> redis.Redis | None:
+def get_redis_client() -> redis.Redis:
     """共有クライアント。値は生のバイト列で読み書きし、文字列（JSON等）は使う側がその場でデコードする。
-    取得できなければNone（呼び出し元は未キャッシュ扱いで進む）。
 
-    `redis.from_url()`はURLスキーム不正（`settings.redis_url`の設定ミス）等で同期的に送出するので、
-    ここで捕まえる（コマンドの失敗だけを想定した使う側を、生成の失敗で落とさない）。
+    `redis.from_url()`はURLスキーム不正（`settings.redis_url`の設定ミス）等で同期的に投げる。設定の誤りは
+    キャッシュの障害ではないので、未キャッシュで進まずに表へ出す。
     """
     global _client
-    try:
-        if _client is None:
-            _client = redis.from_url(
-                settings.redis_url,
-                socket_connect_timeout=_CONNECT_TIMEOUT_SECONDS,
-                socket_timeout=_SOCKET_TIMEOUT_SECONDS,
-                retry_on_timeout=False,
-            )
-        return _client
-    except Exception as exc:  # 設定の誤りでも未キャッシュで進む
-        record_redis_failure()
-        log_throttled_warning(_CLIENT_CATEGORY, "Redisのクライアントを作れません error=%r", exc)
-        return None
+    if _client is None:
+        _client = redis.from_url(
+            settings.redis_url,
+            socket_connect_timeout=_CONNECT_TIMEOUT_SECONDS,
+            socket_timeout=_SOCKET_TIMEOUT_SECONDS,
+            retry_on_timeout=False,
+        )
+    return _client
 
 
 async def close_redis_client() -> None:

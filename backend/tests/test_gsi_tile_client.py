@@ -70,13 +70,3 @@ async def test_outside_coverage_is_remembered_for_the_process_but_not_across_a_r
     assert after_restart == (b"\x89PNG", "image/png")
     assert warnings() == []
 
-
-async def test_an_upstream_failure_gives_nothing_is_logged_and_is_not_remembered(warnings):
-    router = respx.Router()
-    route = router.get(f"{UPSTREAM}/{RELIEF}")
-    route.side_effect = [httpx.Response(503), httpx.Response(200, content=b"\x89PNG")]
-    not_found = LRUCache(maxsize=16)
-
-    assert await client(router, not_found).get(RELIEF, category=CATEGORY) is None
-    assert [r for r in warnings() if CATEGORY in r.getMessage()]
-    assert await client(router, not_found).get(RELIEF, category=CATEGORY) == (b"\x89PNG", "image/png")

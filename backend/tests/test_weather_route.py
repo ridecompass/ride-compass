@@ -15,6 +15,7 @@
 
 from datetime import datetime
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
@@ -35,6 +36,8 @@ from app.domain.time_zone import JST
 from app.domain.twilight import Twilight
 from app.domain.weather import GridPointToday
 from app.infrastructure import rate_limiter
+from app.infrastructure.jma_amedas_store import AmedasUnavailableError
+from app.infrastructure.msm_client import MsmUnavailableError
 from app.main import app
 from app.services.flood_service import FloodForecasts
 from app.services.warning_service import WeatherWarnings
@@ -139,26 +142,31 @@ class FakeService:
     def __init__(self, answer=None):
         self._answer = answer
 
-    async def get_warnings(self, point):
+    def _give(self):
+        if isinstance(self._answer, Exception):
+            raise self._answer
         return self._answer
+
+    async def get_warnings(self, point):
+        return self._give()
 
     async def get_status(self, point, now):
-        return self._answer
+        return self._give()
 
     async def get_forecasts(self, point):
-        return self._answer
+        return self._give()
 
     async def get_nearest_observation(self, point):
-        return self._answer
+        return self._give()
 
     async def get_grid_point_today(self, point):
-        return self._answer
+        return self._give()
 
     async def get_msm_grid(self, bbox):
-        return self._answer
+        return self._give()
 
     async def get_route_timeline(self, points):
-        return self._answer
+        return self._give()
 
 
 def test_the_msm_grid_route_returns_the_grid_points_with_local_times(override_dependency):
@@ -204,29 +212,32 @@ def test_an_msm_grid_range_that_is_inverted_or_too_wide_is_refused(override_depe
     assert response.json() == {"detail": detail}
 
 
-@pytest.mark.parametrize(("method", "path", "call", "dependency", "detail"), [
-    ("GET", "/api/weather/warnings", {"params": POINT}, get_warning_service, "取得できませんでした。"),
-    ("GET", "/api/weather/wbgt", {"params": POINT}, get_wbgt_service, "取得できませんでした。"),
-    ("GET", "/api/weather/flood-forecast", {"params": POINT}, get_flood_service, "取得できませんでした。"),
-    ("GET", "/api/weather/amedas", {"params": POINT}, get_amedas_service, "アメダス観測値の取得に失敗しました"),
-    ("GET", "/api/weather", {"params": POINT}, get_weather_service, "気象データの取得に失敗しました"),
-    ("GET", "/api/weather/msm-grid", {"params": TOKYO_BBOX}, get_weather_service, "気象データの取得に失敗しました"),
-    (
-        "POST", "/api/weather/route-warning-timeline", {"json": ROUTE_POINTS},
-        get_warning_timeline_service, "取得できませんでした。",
-    ),
+# 取れなかった理由ごとの、口が返す状態と文。
+_UPSTREAM_FAILED = (httpx.ConnectError("x"), 502, "外部の配信元から取得できませんでした（ConnectError）")
+_MSM_UNAVAILABLE = (MsmUnavailableError("未同期"), 503, "気象の数値予報を読めません（未同期）")
+_AMEDAS_UNAVAILABLE = (AmedasUnavailableError("置き場を読めない"), 503, "置き場を読めない")
+
+
+@pytest.mark.parametrize(("method", "path", "call", "dependency", "failure"), [
+    ("GET", "/api/weather/warnings", {"params": POINT}, get_warning_service, _UPSTREAM_FAILED),
+    ("GET", "/api/weather/wbgt", {"params": POINT}, get_wbgt_service, _UPSTREAM_FAILED),
+    ("GET", "/api/weather/flood-forecast", {"params": POINT}, get_flood_service, _UPSTREAM_FAILED),
+    ("GET", "/api/weather/amedas", {"params": POINT}, get_amedas_service, _AMEDAS_UNAVAILABLE),
+    ("GET", "/api/weather", {"params": POINT}, get_weather_service, _MSM_UNAVAILABLE),
+    ("GET", "/api/weather/msm-grid", {"params": TOKYO_BBOX}, get_weather_service, _MSM_UNAVAILABLE),
+    ("POST", "/api/weather/route-warning-timeline", {"json": ROUTE_POINTS}, get_warning_timeline_service, _UPSTREAM_FAILED),
 ])
 def test_a_source_that_could_not_be_obtained_is_a_failure_not_an_empty_answer(
-    override_dependency, method, path, call, dependency, detail
+    override_dependency, method, path, call, dependency, failure
 ):
     """空の応答は「出ていない」を表す（ルートの警報級の時系列なら「どの区域にも入らない」）。取れなかったことを同じ空で
-    返すと、画面は出ていないと見せる。"""
-    override_dependency(dependency, lambda: FakeService(None))
+    返すと、画面は出ていないと見せるので、理由つきの失敗にする。"""
+    error, status, detail = failure
+    override_dependency(dependency, lambda: FakeService(error))
 
     response = client.request(method, path, **call)
 
-    assert response.status_code == 502
-    assert response.json() == {"detail": detail}
+    assert (response.status_code, response.json()) == (status, {"detail": detail})
 
 
 @pytest.mark.parametrize(("method", "path", "call", "dependency", "answer", "key", "limit"), [

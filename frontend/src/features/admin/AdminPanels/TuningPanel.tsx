@@ -8,7 +8,6 @@ import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
 import { listTuningParameters, updateTuningParameter, type TuningParameter } from "@/features/admin/adminApi";
 import { NumberInput } from "@/components/ui/NumberInput/NumberInput";
 import { textVariants } from "@/components/ui/Text/Text";
-import { Dot } from "@/components/ui/Dot/Dot";
 import { cn } from "@/lib/cn";
 import { errorMessage } from "@/lib/apiError";
 import { getQueryClient } from "@/lib/queryClient";
@@ -18,7 +17,7 @@ const TUNING_QUERY_KEY = ["tuning-parameters"];
 /** 1件ぶんの行。入力中の値は親がまとめて持ち、この行は表示だけを担う
  * （保存はDBへの書き込みのため、押した時にまとめて送る）。
  *
- * 説明と既定値・範囲は(i)の奥へ置く——**行ごとに説明を敷くと、縦に並んだ全体を
+ * 説明は(i)の奥へ置く——**行ごとに説明を敷くと、縦に並んだ全体を
  * 一覧として読めなくなる**（項目数は運用で増える）。 */
 function TuningRow({
   parameter,
@@ -33,17 +32,12 @@ function TuningRow({
 }) {
   return (
     <li className="flex items-center gap-2 border-b border-[var(--color-border)] py-1">
-      <Dot tone={parameter.overridden ? "accent" : "none"} aria-hidden="true" />
       <InfoPopover
         triggerAriaLabel={`${parameter.label}の説明`}
         label={parameter.label}
         labelClassName={cn(textVariants({ variant: "body" }), "min-w-0 flex-auto [overflow-wrap:anywhere]")}
       >
         <p>{parameter.description}</p>
-        <p>
-          既定 {parameter.default}
-          {parameter.unit}（{parameter.minimum}〜{parameter.maximum}）
-        </p>
       </InfoPopover>
       <NumberInput
         commitOn="input"
@@ -56,8 +50,6 @@ function TuningRow({
         inputMode="decimal"
         aria-label={parameter.label}
         value={draft}
-        min={parameter.minimum}
-        max={parameter.maximum}
         onValueChange={onChange}
       />
       <span className={cn(textVariants({ variant: "note" }), "min-w-9 flex-none")}>{parameter.unit}</span>
@@ -72,8 +64,7 @@ function TuningRow({
  * するため——同じ見た目で並べると「変えたのに効かない」に気づけない。
  *
  * 入力は打っただけでは効かせず、「DBへ保存」で送る（どれを書き込むのかが押す前に見えて
- * いないと、桁の途中の値が一瞬効く）。既定と同じ値にして保存すると上書きの行を消すため、
- * DBに残るのは既定から動かしたぶんだけになる。
+ * いないと、桁の途中の値が一瞬効く）。値の正本はDBで、画面に既定は無い。
  */
 export default function TuningPanel() {
   const client = getQueryClient();
@@ -96,8 +87,7 @@ export default function TuningPanel() {
     {
       mutationFn: async (targets: readonly { parameter: TuningParameter; next: number }[]) => {
         for (const { parameter, next } of targets) {
-          // 既定と同じ値に戻したら上書きを消す（DBに持つのは動かしたぶんだけ）。
-          const updated = await updateTuningParameter(parameter.id, next === parameter.default ? null : next);
+          const updated = await updateTuningParameter(parameter.id, next);
           client.setQueryData<TuningParameter[]>(TUNING_QUERY_KEY, (prev) =>
             prev?.map((p) => (p.id === updated.id ? updated : p)),
           );
@@ -138,7 +128,6 @@ export default function TuningPanel() {
           <h2 className={textVariants({ variant: "heading" })}>較正値</h2>
           <InfoPopover triggerAriaLabel="較正値の説明">
             <p>実走の結果を見て調整する値です。変更して保存すると、デプロイせずに反映されます。</p>
-            <p>●は DB に保存済みの値です。既定と同じ値にして保存すると、DB の行を削除して既定値に戻します。</p>
           </InfoPopover>
         </span>
         {parameters && (

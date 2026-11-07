@@ -89,12 +89,8 @@ async def test_missing_boundaries_raise_and_warn_until_they_are_written(boundary
     [
         (CHIYODA_POINT, {}, False, ResolvedArea(CLASS20_CODE, CLASS10_CODE, OFFICE_CODE)),
         (OFFSHORE_POINT, {}, False, OUTSIDE_AREAS),
-        (CHIYODA_POINT, {}, True, None),
-        (CHIYODA_POINT, {"area_data": None}, False, None),
-        # 境界が返した区域を地域マスタで辿れない
-        (CHIYODA_POINT, {"class20_code": "9999900"}, False, None),
     ],
-    ids=["resolved", "outside", "boundaries_unreadable", "master_unavailable", "master_cannot_follow"],
+    ids=["resolved", "outside"],
 )
 async def test_a_point_resolves_to_its_warning_area_or_says_it_is_unknown(
     boundary_path, point, upstream, unreadable, expected
@@ -110,14 +106,3 @@ async def test_a_point_resolves_to_its_warning_area_or_says_it_is_unknown(
 
     assert resolved == expected
 
-
-async def test_a_point_the_master_cannot_follow_names_its_area(boundary_path, caplog):
-    """区域の境界と地域マスタは別々に配られ、片方だけが区域の変更に追いつくと起きる。運用者が気づけるように出す。"""
-    client = client_for(area_lookup_upstream(boundary_path, class20_code="9999900"))
-
-    with caplog.at_level(logging.WARNING, logger="ridecompass.external"):
-        await jma_area_boundaries.resolve_point_area(
-            client, new_area_data_cache(), CHIYODA_POINT.latitude, CHIYODA_POINT.longitude
-        )
-
-    assert any("9999900" in record.getMessage() for record in caplog.records)

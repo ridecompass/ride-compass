@@ -30,8 +30,6 @@ interface GeneratedConditions {
   key: string;
   /** 目的地が道路網から外れていて、backendが最寄りの行ける地点へ補正したか。 */
   destinationCorrected: boolean;
-  /** 利用者が軸ごとの倍率を変えていたのに、費用の軸の一覧が無く送れなかったか（標準の倍率で探した）。 */
-  multipliersNotApplied: boolean;
   /** 送った入力そのもの。乗り換えで合成した経路も同じ条件で評価する。 */
   input: GenerationInput;
 }
@@ -82,7 +80,7 @@ export function useRouteGeneration({
   }, [runningSince]);
 
   // 目的地は周回の間を外した値（覚えている目的地は送らない）。
-  const { costPreferenceToSend, destination } = conditions;
+  const { costPreference, destination } = conditions;
   const { loop, distanceTargeted, distance, waypoints, maxRoutes, roadAvoidance } = conditions.snapshot;
   // いまの条件から生成の入力を組み立てる。`destinationOverride`はbackendが補正した目的地。
   const buildCurrentGenerationInput = (destinationOverride?: Coordinates): GenerationInput => ({
@@ -93,7 +91,7 @@ export function useRouteGeneration({
     startTime: departure.at,
     startTimePinned: departure.pinned,
     roadAvoidance,
-    costPreference: costPreferenceToSend,
+    costPreference,
     waypoints,
     destination: destinationOverride ?? destination,
   });
@@ -131,7 +129,6 @@ export function useRouteGeneration({
       setGeneratedConditions({
         key: generationConditionsKey(generatedInput),
         destinationCorrected: Boolean(corrected),
-        multipliersNotApplied: conditions.multipliersNotSent,
         input: generatedInput,
       });
       // 候補が出たことは「ルート結果」の一覧と合図で分かるので、案内は候補0件のときだけ持つ。
@@ -203,7 +200,6 @@ export function useRouteGeneration({
     outcome,
     conditionsDirty,
     destinationCorrected: generatedConditions?.destinationCorrected ?? false,
-    multipliersNotApplied: generatedConditions?.multipliersNotApplied ?? false,
     /** 表示中の候補を作った生成の入力（生成していなければnull）。 */
     generatedInput: generatedConditions?.input ?? null,
     clearNotice,

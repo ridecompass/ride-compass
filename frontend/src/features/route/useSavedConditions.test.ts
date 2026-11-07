@@ -11,7 +11,7 @@
  * 差し替えたもの: 費用の軸の一覧の応答（網の層）。保存はテスト環境の`localStorage`を本物のまま使う。
  */
 import { serveCostAxisCatalog } from "@/testing/backendServer";
-import { act, renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Coordinates } from "@/types/route";
@@ -76,7 +76,6 @@ describe("保存して呼び出す", () => {
     });
     act(() => result.current.saved.recall(result.current.saved.saved[0]));
 
-    await waitFor(() => expect(result.current.conditions.multipliersNotSent).toBe(false));
     const conditions = result.current.conditions;
     expect(conditions.loop).toBe(false);
     expect(conditions.distanceTargeted).toBe(false);
@@ -85,7 +84,7 @@ describe("保存して呼び出す", () => {
     expect(conditions.waypoints).toEqual([A]);
     expect(conditions.destination).toEqual(B);
     expect(conditions.selectedPoint).toEqual({ role: "origin" });
-    expect(conditions.costPreferenceToSend).toEqual({ strength: 0.5, multipliers: { ascent: 2 } });
+    expect(conditions.costPreference).toEqual({ strength: 0.5, multipliers: { ascent: 2 } });
     expect(conditions.roadAvoidance).toEqual({ gravel: "exclude" });
   });
 

@@ -6,10 +6,11 @@
 import type { Map as MapLibreMap } from "maplibre-gl";
 
 import { MINUTE_MS } from "@/lib/duration";
-import { readStoredValue, writeStoredValue } from "@/lib/safeStorage";
+import { readStored, writeStored } from "@/lib/safeStorage";
 import { formatJstHourMinute, toJstLocalValue } from "@/lib/time";
 
 const STORAGE_KEY = "ridecompass:ride-metrics";
+const LABEL = "走行の計測の記録";
 /** 残す行の上限（1分1行で10時間）。 */
 const MAX_ROWS = 600;
 /** 1分の行に残す、時間を使ったスクリプトの数。 */
@@ -129,14 +130,10 @@ const average = (values: readonly number[]) =>
 /** 通信の行き先の区切り。`/api/<名前>`は名前と、続く区切りが英字で始まればその区切りまで（同じ名前の下の口を分け、
  * タイルの座標の数字では分けない）。ほかはホスト名。 */
 export function requestKind(url: string): string {
-  try {
-    const parsed = new URL(url);
-    const api = parsed.pathname.match(/^\/api\/([^/]+)(?:\/([a-z][^/]*))?/i);
-    if (api === null) return parsed.hostname;
-    return api[2] === undefined ? `api:${api[1]}` : `api:${api[1]}/${api[2]}`;
-  } catch {
-    return "other";
-  }
+  const parsed = new URL(url);
+  const api = parsed.pathname.match(/^\/api\/([^/]+)(?:\/([a-z][^/]*))?/i);
+  if (api === null) return parsed.hostname;
+  return api[2] === undefined ? `api:${api[1]}` : `api:${api[1]}/${api[2]}`;
 }
 
 function heapMb(): number | null {
@@ -146,12 +143,7 @@ function heapMb(): number | null {
 
 function mapState(map: MapLibreMap | null): { zoom: number | null; layers: number | null } {
   if (map === null) return { zoom: null, layers: null };
-  try {
-    return { zoom: round1(map.getZoom()), layers: map.getLayersOrder().length };
-  } catch {
-    // スタイルを読み直している間は層を引けない。
-    return { zoom: round1(map.getZoom()), layers: null };
-  }
+  return { zoom: round1(map.getZoom()), layers: map.getLayersOrder().length };
 }
 
 /** いまの1分を1行にして足し、端末に書く。 */
@@ -187,7 +179,7 @@ function closeMinute(nowMs: number): void {
     heapMb: heapMb(),
   };
   log.rows = [...log.rows, row].slice(-MAX_ROWS);
-  writeStoredValue(STORAGE_KEY, JSON.stringify(log));
+  writeStored(STORAGE_KEY, LABEL, log);
   const next = freshMinute(nowMs);
   // 位置の届く間隔は区切りをまたいで測る。
   next.lastFixMs = minute.lastFixMs;
@@ -277,7 +269,7 @@ export function startRideMetrics(): void {
     },
     rows: [],
   };
-  writeStoredValue(STORAGE_KEY, JSON.stringify(log));
+  writeStored(STORAGE_KEY, LABEL, log);
   const onVisibility = () => {
     if (recording === null) return;
     const now = Date.now();
@@ -388,15 +380,9 @@ export function bindRideMetrics(map: MapLibreMap): () => void {
   };
 }
 
-/** 端末に残した、直近の1回の走行の記録。無い・読めなければ null。 */
+/** 端末に残した、直近の1回の走行の記録。無ければ null。読めなければ投げる。 */
 export function readRideMetrics(): RideMetricsLog | null {
-  const raw = readStoredValue(STORAGE_KEY);
-  if (raw === null) return null;
-  try {
-    return JSON.parse(raw) as RideMetricsLog;
-  } catch {
-    return null;
-  }
+  return readStored<RideMetricsLog>(STORAGE_KEY, LABEL);
 }
 
 /** 区切りの文字（`,`・`;`・`=`・改行）を空白に替える。 */

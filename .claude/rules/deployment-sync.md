@@ -39,6 +39,9 @@ paths:
   DBのバックアップは`.claude/skills/production-data/SKILL.md`の付録の「DBのバックアップ」。
   完了扱いにする条件は`.claude/skills/production-data/SKILL.md`の「本番へ効かせたい道の区分・費用の軸の変更は、本番の管理APIへ入れる」
   （開発DBのみの反映で完了扱いにしない）。
+- **較正値を宣言（`app/domain/tuning.py: TUNING_PARAMETERS`）に足したら、本番の表`tuning_overrides`にその行を入れてから
+  masterへ入れる（マージする）**。値の正本は表だけで、行が無いと本番の backend が起動しない（今のコードは宣言に無いidの行を
+  読まないので、先に入れてよい）。宣言から消したら、出したあとに本番の行を消す。入れ方・消し方は上の表を足す・消すときと同じ。
 - **既存DBの行データを新しいコードが読めなくなる変更（Pydanticモデルの破壊的変更等）を
   含む`backend/**`の変更は、本番DBのデータ移行を完了させてからmasterへ入れる（マージする）**。
   masterに入ってCI（`.github/workflows/ci.yml`）が通ると、backendは本番へ自動デプロイされ、止める仕組みは無い

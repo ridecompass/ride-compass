@@ -18,9 +18,10 @@ from app.domain.landcover import (
     PERCENT_CLASSES,
     landcover_key,
 )
-from app.domain.tuning import LANDCOVER_RING_INNER_ID, LANDCOVER_RING_OUTER_ID, TUNING_PARAMETERS_BY_ID
+from app.domain.tuning import LANDCOVER_RING_INNER_ID, LANDCOVER_RING_OUTER_ID
 from app.domain.region import WEB_MERCATOR_HALF_M, tile_bounds_3857, tile_bounds_lonlat
 from tests.source_ingest import ingest_records, tile_record, way_record
+from tests.tuning_fixture import TUNING
 
 # moduleスコープのroad_graph_engine（conftest.py）の上のDBを使うため、.claude/rules/testing-backend.mdのパターン2どおり
 # loop_scope="module"が必須。
@@ -57,8 +58,8 @@ ROAD = _road()
 
 #: 帯の境目からこれより近い画素は欠測にする。距離を平面で近似した誤差と、画素が帯に入るかを
 #: 段へ渡す帯の幅（較正値の宣言の既定）。
-_DEFAULT_RING = {"ring_inner_m": TUNING_PARAMETERS_BY_ID[LANDCOVER_RING_INNER_ID].default,
-                 "ring_outer_m": TUNING_PARAMETERS_BY_ID[LANDCOVER_RING_OUTER_ID].default}
+_DEFAULT_RING = {"ring_inner_m": TUNING[LANDCOVER_RING_INNER_ID],
+                 "ring_outer_m": TUNING[LANDCOVER_RING_OUTER_ID]}
 #: 中心で決めるか触れるかの違い（画素の対角の半分、約5.5m）を吸収する。
 BOUNDARY_MARGIN_M = 6.0
 

@@ -18,13 +18,15 @@
  *
  * **判定しない形**: 文の値が空でないか（型が文字列なら通す）。`label`（押すと中の入力が動き、文はその入力から引く）。
  */
-import { join, relative } from "node:path";
+import { join, relative } from "node:path/posix";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
 import { SRC_ROOT, removeTree, walkTree, writeTree } from "./sourceTree";
 
 const GUIDE = "components/UsageGuide/UsageGuide.tsx";
+/** TypeScript はパスを`/`区切りで返すので、こちらのパスも`/`区切りで作って比べる（Windows の区切りは`\`）。 */
+const slashed = (path: string) => path.replaceAll("\\", "/");
 const PRESSABLE_TAGS = new Set(["button", "input", "select", "textarea", "summary"]);
 const PRESSABLE_ROLES = new Set(["button", "tab", "radio", "checkbox", "switch", "slider", "menuitem", "option"]);
 
@@ -113,7 +115,7 @@ const SHARED_IMPORTS = [
 
 /** `frontend/src`の中に置いたとみなした1ファイルを型検査し、誤りのある行（1始まり）と誤りの文を返す。 */
 function typeErrors(source: string): { line: number; message: string }[] {
-  const probe = join(SRC_ROOT, "structure/usageProbe.tsx");
+  const probe = join(slashed(SRC_ROOT), "structure/usageProbe.tsx");
   const options: ts.CompilerOptions = {
     strict: true,
     noEmit: true,
@@ -123,7 +125,7 @@ function typeErrors(source: string): { line: number; message: string }[] {
     moduleResolution: ts.ModuleResolutionKind.Bundler,
     jsx: ts.JsxEmit.ReactJSX,
     resolveJsonModule: true,
-    paths: { "@/*": [join(SRC_ROOT, "*")] },
+    paths: { "@/*": [join(slashed(SRC_ROOT), "*")] },
   };
   const host = ts.createCompilerHost(options);
   const { getSourceFile, fileExists, readFile } = host;
@@ -139,7 +141,8 @@ function typeErrors(source: string): { line: number; message: string }[] {
 }
 
 /** 文の無い押せる要素と、`null`を渡す`usage`（`<ファイル>:<行> <タグ>`）。 */
-export function missingUsage(root: string): string[] {
+export function missingUsage(rootPath: string): string[] {
+  const root = slashed(rootPath);
   const files = walkTree(root)
     .filter(({ path, isDirectory }) => !isDirectory && isProduction(path))
     .map(({ path }) => join(root, path));

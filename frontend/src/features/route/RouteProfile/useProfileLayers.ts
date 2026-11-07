@@ -4,7 +4,6 @@ import { useCallback, useMemo } from "react";
 
 import { useClientConfig } from "@/hooks/useClientConfig";
 import { useStoredState } from "@/hooks/useStoredState";
-import { readStoredList } from "@/lib/storedList";
 
 import { profileLayers, type ProfileLayer } from "./profileLayers";
 
@@ -21,10 +20,11 @@ export type ProfileLayerSelection = {
 /** 道のりのグラフに重ねるレイヤの選択。端末に覚える。道の層は画面の設定が届くまで分からないので、読むときには捨てず、今ある
  * レイヤで絞るのは使う側に任せる。 */
 export function useProfileLayers(): ProfileLayerSelection {
-  const [ids, setIds] = useStoredState<readonly string[]>(PROFILE_LAYERS_STORAGE_KEY, DEFAULT_LAYER_IDS, {
-    serialize: JSON.stringify,
-    deserialize: (raw) => readStoredList(raw, (value) => (typeof value === "string" ? value : null)),
-  });
+  const [ids, setIds] = useStoredState<readonly string[]>(
+    PROFILE_LAYERS_STORAGE_KEY,
+    "グラフに出す情報",
+    DEFAULT_LAYER_IDS,
+  );
   const toggle = useCallback(
     (id: string) => setIds((prev) => (prev.includes(id) ? prev.filter((kept) => kept !== id) : [...prev, id])),
     [setIds],

@@ -77,7 +77,6 @@ def test_the_identity_is_the_revision_followed_by_the_signature():
 @pytest.mark.parametrize(("revisions", "version", "known"), [
     # 取込だけを流した（派生の世代は動かない）ときも世代が変わるよう、両方の世代を持つ。最初の派生の世代は0。
     (DataRevisions(derived=0, imported=3), "0.3-abc", True),
-    (None, "x-abc", False),  # まだ読めていない
     (DataRevisions(derived=None, imported=5), "x-abc", False),  # 派生の世代の行が無い
 ])
 def test_a_tile_version_carries_both_revisions_or_is_marked_unknown(revisions, version, known):

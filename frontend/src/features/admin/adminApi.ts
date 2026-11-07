@@ -54,8 +54,8 @@ export function listTuningParameters() {
   return requestApi((init) => adminApiClient.GET("/tuning", init), adminOptions("較正値の取得"));
 }
 
-/** 1件を書き換える。`value`にnullを渡すと既定へ戻す。 */
-export function updateTuningParameter(paramId: string, value: number | null) {
+/** 1件を書き換える。 */
+export function updateTuningParameter(paramId: string, value: number) {
   const body = { value };
   return requestApi(
     (init) => adminApiClient.PUT("/tuning/{param_id}", { params: { path: { param_id: paramId } }, body, ...init }),
@@ -87,18 +87,12 @@ export function getDebugStats() {
   );
 }
 
-/** backendへ疎通できるか。画面は「OK/接続できません」の2値しか出さないため失敗の種類は返さないが、中身は
- * `requestApi`がdebugLogへ残す。 */
-export async function checkBackendHealth(): Promise<boolean> {
+/** backendの疎通を確かめ、`/health`の応答を返す。疎通できなければ投げる。 */
+export function checkBackendHealth() {
   const failure = "バックエンドへの疎通確認に失敗しました";
-  try {
-    const data = await requestApi((init) => backendApi.GET("/health", init), {
-      timeoutMs: API_TIMEOUT_MS.status,
-      category: "api:health",
-      messages: { failure, parseFailure: failure },
-    });
-    return data.status === "ok";
-  } catch {
-    return false;
-  }
+  return requestApi((init) => backendApi.GET("/health", init), {
+    timeoutMs: API_TIMEOUT_MS.status,
+    category: "api:health",
+    messages: { failure, parseFailure: failure },
+  });
 }

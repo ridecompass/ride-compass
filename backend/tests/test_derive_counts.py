@@ -16,7 +16,7 @@ from app.batch import derive_topology
 from app.domain.accident import PartyType
 from app.domain.geo import KM_PER_DEGREE_LATITUDE, km_per_degree_longitude
 from app.domain.traffic import POI_COUNT_KINDS, poi_count_column
-from app.domain.tuning import ACCIDENT_MATCH_DISTANCE_ID, TUNING_PARAMETERS_BY_ID
+from app.domain.tuning import ACCIDENT_MATCH_DISTANCE_ID
 from app.infrastructure.source_models import ACCIDENTS_SOURCE_SQL, PARTY_TYPE_CODES
 from tests.conftest import empty_ingested_tables
 from tests.source_ingest import (
@@ -31,14 +31,15 @@ from tests.source_ingest import (
     zigzag_point,
     zigzag_way_record,
 )
+from tests.tuning_fixture import TUNING
 
 # moduleスコープのroad_graph_engine（conftest.py）の上のDBを使うため、.claude/rules/testing-backend.mdのパターン2どおり
 # loop_scope="module"が必須。
 pytestmark = pytest.mark.asyncio(loop_scope="module")
 
 BASE_LON, BASE_LAT = WAY_ORIGIN
-ACCIDENT_MATCH_DISTANCE_M = TUNING_PARAMETERS_BY_ID[ACCIDENT_MATCH_DISTANCE_ID].default
-ACCIDENT_FATAL_WEIGHT = TUNING_PARAMETERS_BY_ID["accident.fatal_weight"].default
+ACCIDENT_MATCH_DISTANCE_M = TUNING[ACCIDENT_MATCH_DISTANCE_ID]
+ACCIDENT_FATAL_WEIGHT = TUNING["accident.fatal_weight"]
 
 
 #: (wayのid, 参照ノードid列)。3本ともノード3で接する。ノード3の上で起きた事故は

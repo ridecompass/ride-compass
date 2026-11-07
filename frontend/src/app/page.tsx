@@ -9,8 +9,6 @@ import type { SettingsTab } from "@/features/route/RouteForm/RouteForm";
 import RouteSettingsForm from "@/features/route/RouteForm/RouteSettingsForm";
 import PointStrip from "@/features/route/RouteForm/PointStrip";
 import { useGenerationConditions, waypointsFull } from "@/features/route/useGenerationConditions";
-import { costPreferenceToSend } from "@/features/route/costPreference";
-import { useCostAxisCatalog } from "@/hooks/useCostAxisCatalog";
 import { useSavedConditions } from "@/features/route/useSavedConditions";
 import { useSavedPlaces } from "@/features/route/useSavedPlaces";
 import type { Coordinates, PinRole, PlaceCandidate, PointTarget } from "@/types/route";
@@ -111,17 +109,9 @@ export default function Home() {
   });
   const { results } = route;
   const guidance = useRideGuidance({ riding, results });
-  const costAxisCatalog = useCostAxisCatalog();
   const generatedPreference = route.generation.generatedInput?.costPreference;
-  // ルートを出している間は、そのルートを生成したときの値で地図も塗る（ルートの線と周りの道を同じ量にする）。生成の後に消えた軸の
-  // 倍率は今の軸へ絞る（地図の要求は知らない軸を断る）。
-  const mapCostPreference = useMemo(
-    () =>
-      generatedPreference === undefined
-        ? conditions.costPreferenceToSend
-        : costPreferenceToSend(generatedPreference, costAxisCatalog),
-    [generatedPreference, conditions.costPreferenceToSend, costAxisCatalog],
-  );
+  // ルートを出している間は、そのルートを生成したときの値で地図も塗る（ルートの線と周りの道を同じ量にする）。
+  const mapCostPreference = generatedPreference ?? conditions.costPreference;
 
   const mapView = useMapView({
     hasSelectedRoute: results.selectedCandidate !== null,

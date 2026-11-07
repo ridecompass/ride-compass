@@ -99,8 +99,6 @@ async def region_landcover_tile(
     validate_tile_coords(z, x, y)
     async with _landcover_tile_semaphore:
         tile = await read_tile(z, x, y)
-    if tile is None:
-        raise HTTPException(status_code=503, detail="土地被覆データが利用できません")
     return tile_response(tile, PNG_CONTENT_TYPE)
 
 

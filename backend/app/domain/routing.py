@@ -34,6 +34,7 @@ from app.domain.search_graph import (
     kernel_array,
     run_starts,
 )
+from app.domain.tuning import TUNING_PARAMETERS_BY_ID, TUNING_VALUES
 from app.domain.turn_structure import TurnExpandedStructure, build_turn_expanded_structure, current_turn_cost
 
 logger = logging.getLogger("ridecompass.graph")
@@ -971,7 +972,19 @@ def compile_search_kernels() -> None:
     コンパイルを待たないようにする。探索の入口が引数の型を揃える（`domain/search_graph.py: kernel_array`）ため、ここで
     作る入力は形が合えばよい。焼くのはここがPythonから呼ぶJITだけなので、本番の経路がPythonから呼ぶJITも
     ここで呼ぶものに限る（部品は探索の中へ展開し、Pythonからは素の関数を呼ぶ）。
+
+    コンパイルは引数の型だけを見て、値は結果に効かない。イメージの組み立てではDBの較正値を読めないので、宣言の全idに仮の値
+    （1）を置いて呼び、抜けるときに前の値へ戻す（同じプロセスで後からルートを作っても、仮の値で作らない）。
     """
+    loaded = dict(TUNING_VALUES)
+    TUNING_VALUES.update(dict.fromkeys(TUNING_PARAMETERS_BY_ID, 1.0))
+    try:
+        _call_search_kernels()
+    finally:
+        TUNING_VALUES.update(loaded)
+
+
+def _call_search_kernels() -> None:
     lazy_graph = build_lazy_road_graph(np.array([0, 1]), np.array([1, 0]), 2)
     statics = build_search_graph_statics(lazy_graph, np.ones(2))
     largest_strongly_connected_nodes(statics.csr, np.ones(2, dtype=bool))

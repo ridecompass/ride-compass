@@ -158,7 +158,8 @@ class _Handoff:
             try:
                 work(self)
                 self.flush()
-            except BaseException as exc:  # スレッドの例外を本流へ運ぶ
+            # スレッドの例外は何であれ本流へ運び、そこで投げ直す（握りつぶさない）。
+            except BaseException as exc:  # noqa: BLE001
                 self.error = exc
             finally:
                 self.queue.put(_SENTINEL)
@@ -190,14 +191,11 @@ def _record_replication_timestamp(path: Path, origin: dict[str, Any]) -> None:
     """PBFの素性へ`osmosis_replication_timestamp`を足す。これは**配信元がいつの断面を焼いたか**で、
     ファイルのmtime（こちらがいつ落としたか）とは別物。取れないPBFもあるので、
     取れたときだけ入れる。"""
-    try:
-        from app.batch.pbf_source import replication_timestamp
+    from app.batch.pbf_source import replication_timestamp
 
-        stamp = replication_timestamp(path)
-        if stamp:
-            origin["replication_timestamp"] = stamp
-    except Exception:  # 出所の付帯情報が取れないだけで取込は続ける
-        pass
+    stamp = replication_timestamp(path)
+    if stamp:
+        origin["replication_timestamp"] = stamp
 
 
 def osm_way_inputs(spec: SourceSpec, profile: SourceProfile) -> AdapterInputs:

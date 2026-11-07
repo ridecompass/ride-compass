@@ -103,9 +103,9 @@ class GatedWeather(Weather):
         super().__init__()
         self.gate = asyncio.Event()
 
-    async def get_departure_wind(self, origin):
+    async def get_wind_forecast_lattice(self, bbox):
         await self.gate.wait()
-        return None
+        return await super().get_wind_forecast_lattice(bbox)
 
 
 @pytest.fixture

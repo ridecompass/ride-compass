@@ -33,7 +33,6 @@ from app.infrastructure.jma_warning_client import new_area_data_cache, new_warni
 from app.infrastructure.jma_warning_timeline_client import new_timeline_cache
 from app.infrastructure.material_coverage import MaterialCoverageQuery
 from app.infrastructure.place_area_query import PlaceAreaQuery
-from app.infrastructure.region_tile_cache import TileResponse
 from app.infrastructure.road_graph_repository import RoadGraphRepository
 from app.infrastructure.stop_place_search import StopPlaceSearchQuery
 from app.infrastructure.tuning_overrides import TuningOverrideStore
@@ -150,7 +149,7 @@ def get_route_generation_setup_opener(long_sessions: LongSessions) -> RouteGener
     return partial(_open_route_generation_setup, long_sessions)
 
 
-LandcoverTileReader = Callable[[int, int, int], Awaitable[TileResponse | None]]
+LandcoverTileReader = Callable[[int, int, int], Awaitable[bytes]]
 
 
 def get_landcover_tile_reader() -> LandcoverTileReader:

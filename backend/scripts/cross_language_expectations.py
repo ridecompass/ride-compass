@@ -23,6 +23,7 @@ from app.domain.jma_tile_specs import (
 )
 from app.domain.region import BoundingBox, tile_bounds_lonlat, tile_position, tiles_covering_bbox
 from app.domain.time_zone import jst_local_text
+from app.domain.tuning import TUNING_VALUES
 from app.domain.way_value_formula import (
     FALSE,
     Binary,
@@ -403,6 +404,9 @@ _X = feature("x")
 _Y = feature("y")
 
 #: 場面 → 木と、木へ入れる道ごとの材料（値の無い材料は載せない）と条件の組。
+#: 直角とみなす幅（較正値。値の正本はDBなので、表の入力としてここで置く）。向きの行（104・105・106度）がこの幅の境目を挟む。
+TUNING_VALUES["gradient.perpendicular_band_deg"] = 15.0
+
 _WAY_VALUE_FORMULAS: list[tuple[str, WayValueFormula, list[tuple[dict[str, float], dict[str, float]]]]] = [
     (
         "丸め1桁（2進で中点ちょうど・中点のすぐ上下・負）",

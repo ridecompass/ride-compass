@@ -22,14 +22,13 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.api import dependencies
-from app.api.cache_policy import BATCH_TILE, NO_STORE
+from app.api.cache_policy import BATCH_TILE
 from app.api.dependencies import get_region_service, get_road_inspector_service
 from app.config import settings
 from app.domain.lens_values import LensInspection, RoadInspection
 from app.domain.region import ROAD_TILE_MAX_ZOOM, ROAD_TILE_MIN_ZOOM, ROADS_AT_MAX_RADIUS_M, RoadAt
 from app.infrastructure import rate_limiter
 from app.infrastructure.point_tile_layers import POINT_TILE_LAYERS
-from app.infrastructure.region_tile_cache import TileResponse
 from app.domain.cost_preference import CostPreference
 from app.main import app
 from app.domain.landcover import LANDCOVER_TILE_MAX_ZOOM
@@ -41,9 +40,8 @@ POINT_LAYER = next(iter(POINT_TILE_LAYERS))
 
 
 class FakeRegionService:
-    def __init__(self, tile_bytes=b"\x00\x01\x02", cacheable=True, roads: list[RoadAt] | None = None):
+    def __init__(self, tile_bytes=b"\x00\x01\x02", roads: list[RoadAt] | None = None):
         self._tile_bytes = tile_bytes
-        self._cacheable = cacheable
         self._roads = roads or []
         # 頼まれたタイル（点のレイヤーの名前・路面ならNone、z、x、y）
         self.tile_request = None
@@ -52,11 +50,11 @@ class FakeRegionService:
 
     async def get_road_surface_tile(self, z, x, y):
         self.tile_request = (None, z, x, y)
-        return TileResponse(self._tile_bytes, cacheable=self._cacheable)
+        return self._tile_bytes
 
     async def get_point_tile(self, layer, z, x, y):
         self.tile_request = (layer.name, z, x, y)
-        return TileResponse(self._tile_bytes, cacheable=self._cacheable)
+        return self._tile_bytes
 
     async def roads_at(self, lon, lat, z, radius_m):
         self.roads_request = (lon, lat, z, radius_m)
@@ -81,19 +79,16 @@ INSPECTED = {"osm_way_id": 12345, "feature_key": "12345-0", "z": 14, "x": 14551,
 PRESSED = {"longitude": 139.70, "latitude": 35.68, "z": 14, "radius_m": 30.0}
 
 
-# 一時的な失敗（DB障害・混雑）で取れなかった空タイルを1時間キャッシュさせると、サーバーが回復した後も
-# 利用者のブラウザにはその区画の空白が残り続ける。
 @pytest.mark.parametrize(
-    ("path", "cacheable", "requested", "cache_control"),
+    ("path", "requested"),
     [
-        ("/api/region/road-surface-tiles/14/14551/6447.pbf", True, (None, 14, 14551, 6447), BATCH_TILE),
-        ("/api/region/road-surface-tiles/14/14551/6447.pbf", False, (None, 14, 14551, 6447), NO_STORE),
-        (f"/api/region/point-tiles/{POINT_LAYER}/14/14551/6447.pbf", False, (POINT_LAYER, 14, 14551, 6447), NO_STORE),
+        ("/api/region/road-surface-tiles/14/14551/6447.pbf", (None, 14, 14551, 6447)),
+        (f"/api/region/point-tiles/{POINT_LAYER}/14/14551/6447.pbf", (POINT_LAYER, 14, 14551, 6447)),
     ],
 )
-def test_region_tiles_hand_the_services_mvt_over(override_dependency, path, cacheable, requested, cache_control):
+def test_region_tiles_hand_the_services_mvt_over(override_dependency, path, requested):
     tile = bytes(range(256)) * 40  # 圧縮する大きさを超える
-    fake = FakeRegionService(tile_bytes=tile, cacheable=cacheable)
+    fake = FakeRegionService(tile_bytes=tile)
     override_dependency(get_region_service, lambda: fake)
 
     response = client.get(path, headers={"Accept-Encoding": "gzip"})
@@ -102,7 +97,7 @@ def test_region_tiles_hand_the_services_mvt_over(override_dependency, path, cach
     assert response.content == tile
     assert response.headers["content-type"] == "application/vnd.mapbox-vector-tile"
     assert response.headers["content-encoding"] == "gzip"
-    assert response.headers["cache-control"] == cache_control.header()
+    assert response.headers["cache-control"] == BATCH_TILE.header()
     assert fake.tile_request == requested
 
 
@@ -226,18 +221,12 @@ def landcover_tiles(override_dependency):
     yield state
 
 
-# ラスタが1枚も無いのは「範囲外で空」ではない。空を返すと、地図のチップは正常なのに白紙になる。
-@pytest.mark.parametrize(("result", "status", "content_type", "body"), [
-    (TileResponse(b"png-bytes"), 200, "image/png", "png-bytes"),
-    (None, 503, "application/json", '{"detail":"土地被覆データが利用できません"}'),
-], ids=["tile", "no-raster"])
-def test_landcover_tile_endpoint_returns_the_tile_as_png_or_reports_no_raster(
-        landcover_tiles, result, status, content_type, body):
-    landcover_tiles["result"] = result
+def test_landcover_tile_endpoint_returns_the_tile_as_png(landcover_tiles):
+    landcover_tiles["result"] = b"png-bytes"
 
     response = client.get("/api/region/landcover-tiles/10/905/403.png")
 
-    assert response.status_code == status
-    assert response.headers["content-type"] == content_type
-    assert response.text == body
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/png"
+    assert response.text == "png-bytes"
     assert landcover_tiles["calls"] == [(10, 905, 403)]

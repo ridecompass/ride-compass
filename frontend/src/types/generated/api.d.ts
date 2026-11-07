@@ -1643,8 +1643,6 @@ export interface components {
             cost_seconds: number;
             penalty: components["schemas"]["PenaltyBreakdown"];
             facts: components["schemas"]["RouteFacts"];
-            /** Wind Unavailable */
-            wind_unavailable: boolean;
             /** Missing Travel Data Share */
             missing_travel_data_share: number | null;
             /** Edge Ids */
@@ -1904,25 +1902,17 @@ export interface components {
             unit: string;
             /** Description */
             description: string;
-            /** Default */
-            default: number;
-            /** Minimum */
-            minimum: number;
-            /** Maximum */
-            maximum: number;
             /** Effect */
             effect: string;
             /** Effect Title */
             effect_title: string;
             /** Value */
             value: number;
-            /** Overridden */
-            overridden: boolean;
         };
         /** TuningUpdateRequest */
         TuningUpdateRequest: {
             /** Value */
-            value: number | null;
+            value: number;
         };
         /** Twilight */
         Twilight: {

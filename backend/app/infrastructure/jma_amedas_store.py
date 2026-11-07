@@ -8,7 +8,6 @@
 from datetime import datetime
 
 from app.domain.jma_amedas import AmedasObservation, WindDirection
-from app.infrastructure.debug_log import log_throttled_warning
 from app.infrastructure.jma_amedas_client import AMEDAS_REFRESH_INTERVAL_MINUTES
 from app.infrastructure.redis_json_cache import UNAVAILABLE, get_hash, set_hashes
 
@@ -22,34 +21,24 @@ def _observation_key(station_id: str) -> str:
     return f"{_KEY_PREFIX}:{station_id}"
 
 
-async def read_observation(station_id: str) -> AmedasObservation | None:
-    """保存済みの観測値。日の出・日没（`twilight`）と天気コード（`weather_code`）は持たずNoneで返す（クエリ地点で決まるため）。
+class AmedasUnavailableError(Exception):
+    """アメダスの観測値を出せない（置き場を読めない・観測所の観測値が無い）。口は503で理由を返す。"""
 
-    未保存とRedisを読めないときは、どちらも観測値なしとしてNone（読み手はどちらでも観測値を出さない）。
-    """
+
+async def read_observation(station_id: str) -> AmedasObservation:
+    """保存済みの観測値。日の出・日没（`twilight`）と天気コード（`weather_code`）は持たずNoneで返す（クエリ地点で決まるため）。
+    置き場を読めない・観測値が無いときは投げる。"""
     observation = await get_hash(
         _observation_key(station_id),
-        decode=lambda fields: _observation_or_none(station_id, fields),
+        decode=lambda raw: _observation_from_fields({name.decode(): value.decode() for name, value in raw.items()}),
         category=_OBSERVATION_CATEGORY,
         station_id=station_id,
     )
-    return None if observation is UNAVAILABLE else observation
-
-
-def _observation_or_none(station_id: str, raw: dict[bytes, bytes]) -> AmedasObservation | None:
-    fields = {name.decode(): value.decode() for name, value in raw.items()}
-    try:
-        return _observation_from_fields(fields)
-    except (KeyError, ValueError) as exc:
-        # Hashには版が無く、中身は**過去のコードが書いた形**である。必須フィールドが
-        # 欠けた・型が変わった状態を無条件に展開すると、キャッシュの不整合が
-        # 「観測値が無い」ではなく500になって外へ出る。fail-openの契約どおり倒す。
-        log_throttled_warning(
-            _OBSERVATION_CATEGORY,
-            "[cache:jma-amedas-redis] 保存済みの観測値の形が現在のモデルと一致しません"
-            " station_id=%s error=%r", station_id, exc,
-        )
-        return None
+    if observation is UNAVAILABLE:
+        raise AmedasUnavailableError("アメダスの観測値の置き場（Redis）を読めません")
+    if observation is None:
+        raise AmedasUnavailableError(f"観測所 {station_id} の観測値がありません（まだ取り込まれていないか、期限が切れました）")
+    return observation
 
 
 async def write_observations(observations: dict[str, AmedasObservation]) -> None:

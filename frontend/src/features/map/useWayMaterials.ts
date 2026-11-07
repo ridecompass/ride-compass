@@ -29,8 +29,8 @@ interface WayMaterialsFetch {
   materials: WayMaterials;
   /** 表示中のタイルのどれかを取っている最中か。 */
   loading: boolean;
-  /** 表示中のタイルのどれかの取得が通信失敗したか（正常に空を返したタイルは数えない）。 */
-  error: boolean;
+  /** 表示中のタイルのどれかの取得が失敗したときの文言（正常に空を返したタイルは数えない）。 */
+  error: string | null;
   /** 一度でも取得を終えたか（成否は問わない）。「まだ取りに行っていない」と「取ったが値が無かった」を分ける。 */
   hasFetched: boolean;
   /** 上限で画面の端のタイルを取らなかったか。 */
@@ -61,9 +61,9 @@ function lensMaterials(
 /** 1つのレンズの、表示中のタイルごとの結果をまとめる。 */
 function lensFetch(results: readonly TileResult[], truncated: boolean): WayMaterialsFetch {
   return {
-    materials: mergeTileValues(results.flatMap((result) => (result.data ? [result.data.values] : []))),
+    materials: mergeTileValues(results.flatMap((result) => (result.data ? [result.data] : []))),
     loading: results.some((result) => result.isFetching),
-    error: results.some((result) => result.data?.error === true),
+    error: results.find((result) => result.error !== null)?.error?.message ?? null,
     hasFetched: results.some((result) => result.isFetched || result.isPlaceholderData),
     truncated,
   };
@@ -112,13 +112,7 @@ export function useWayMaterials(
       queries: lenses.flatMap((lens) => {
         const { query, fetch } = lensMaterials(lens, debouncedConditions, debouncedPreference, totalLensId);
         return tiles.map((tile) =>
-          tileQueryOptions(
-            ["way-material", "lens", lens.lensId],
-            query,
-            tile,
-            () => fetch(tile),
-            (data) => data.error,
-          ),
+          tileQueryOptions(["way-material", "lens", lens.lensId], query, tile, () => fetch(tile)),
         );
       }),
       combine,

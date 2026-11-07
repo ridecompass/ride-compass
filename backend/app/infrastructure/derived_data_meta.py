@@ -21,7 +21,6 @@ from sqlalchemy import BigInteger, CheckConstraint, Double, ForeignKey, Integer,
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.domain.tuning import TUNING_PARAMETERS_BY_ID
 from app.infrastructure.orm_base import Base
 from app.infrastructure.source_models import succeeded_run_count
 
@@ -85,10 +84,8 @@ RECORD_TABLES: tuple[str, ...] = (DerivedSourceRunRow.__tablename__, DerivedColu
 
 
 def recorded_tuning_sql(param_id: str) -> str:
-    """作り直しに使った較正値を読むSQLの式。行が無ければ（記録より前に作った派生の表）宣言の既定で作ったとみなす。"""
-    default = TUNING_PARAMETERS_BY_ID[param_id].default
-    return (f"COALESCE((SELECT value FROM {DerivedTuningRow.__tablename__} WHERE param_id = '{param_id}'),"
-            f" {default!r}::double precision)")
+    """作り直しに使った較正値を読むSQLの式（派生の表と記録は同じ作り直しで一緒に入れ替わる）。"""
+    return f"(SELECT value FROM {DerivedTuningRow.__tablename__} WHERE param_id = '{param_id}')"
 
 
 @dataclass(frozen=True)

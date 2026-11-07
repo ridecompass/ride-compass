@@ -37,6 +37,7 @@ from app.domain.route_request import (
 from app.domain.geo import Latitude, Longitude, haversine_distance_km
 from app.domain.errors import GENERATION_BUSY_MESSAGE
 from app.domain.route import Coordinates, RouteCandidate
+from app.api.failure_replies import failure_reply
 from app.infrastructure import job_registry
 from app.infrastructure.debug_log import record_rate_limit_rejection
 from app.infrastructure.heap_release import release_freed_heap
@@ -281,24 +282,28 @@ async def _run_generate_job(job_id: str, request: RouteGenerateRequest, open_set
     続けることになる。
 
     `_generate_semaphore`は投稿時点の`generate_routes`側で既に取得済み（TOCTOUレース
-    対応）。ここでは成否によらず必ずfinallyで解放する。"""
+    対応）。ここでは成否によらず必ずfinallyで解放する。
+
+    生成は結果を持つ時間（`job_registry.JOB_TTL_SECONDS`）で打ち切る。それより遅く作れても、画面は問い合わせを諦めている。"""
+    deadline = asyncio.timeout(job_registry.JOB_TTL_SECONDS)
     try:
         job_registry.set_running(job_id)
         target = request.target
-        generated = await generate_route_candidates(
-            partial(
-                open_setup,
-                RequestedConditions(
-                    cost_preference=request.cost_preference,
-                    road_avoidance=dict(request.road_avoidance.root),
-                    assumed_speed_kmh=request.assumed_speed_kmh,
+        async with deadline:
+            generated = await generate_route_candidates(
+                partial(
+                    open_setup,
+                    RequestedConditions(
+                        cost_preference=request.cost_preference,
+                        road_avoidance=dict(request.road_avoidance.root),
+                        assumed_speed_kmh=request.assumed_speed_kmh,
+                    ),
                 ),
-            ),
-            origin=Coordinates(latitude=request.latitude, longitude=request.longitude),
-            target=target,
-            start_time=request.start_time,
-            max_routes=request.max_routes,
-        )
+                origin=Coordinates(latitude=request.latitude, longitude=request.longitude),
+                target=target,
+                start_time=request.start_time,
+                max_routes=request.max_routes,
+            )
         applied = generated.conditions
         response = RouteGenerateResponse(
             routes=generated.candidates,
@@ -320,13 +325,17 @@ async def _run_generate_job(job_id: str, request: RouteGenerateRequest, open_set
             ),
         )
         job_registry.set_done(job_id, response)
-    except Exception:  # バックグラウンドジョブの例外はここで必ず捕捉し記録する
-        # ここは例外の種類を選ばず捕まえるため、DB接続やPostGISの例外もそのまま入る。
-        # それらの`str(exc)`には接続先やSQLが混じるので、詳細はログ（logger.exception、
-        # トレースバック込み）にだけ残し、クライアントへは汎用メッセージを返す。
-        # 突き合わせにはjob_idを使う（クライアントがポーリング先として既に知っている）。
+    except Exception as exc:  # バックグラウンドジョブの例外はここで必ず捕捉し記録する
+        # 想定した失敗は口と同じ文（`failure_reply`）で、時間切れはその旨で返す。決め方に無い例外（実装の誤り等）は、文に
+        # 接続先やSQLが混じりうるので詳細はログ（トレースバック込み）にだけ残し、決まった文を返す。突き合わせにはjob_idを使う。
         logger.exception("ルート生成ジョブが失敗 job_id=%s", job_id)
-        job_registry.set_failed(job_id, "ルート生成に失敗しました。時間をおいて再度お試しください。")
+        reply = failure_reply(exc)
+        job_registry.set_failed(
+            job_id,
+            f"ルート生成が{job_registry.JOB_TTL_SECONDS:.0f}秒のうちに終わりませんでした" if deadline.expired()
+            else reply[1] if reply is not None
+            else "ルート生成に失敗しました。時間をおいて再度お試しください。",
+        )
     finally:
         _generate_semaphore.release()
         # 生成が作って捨てた配列の領域を返す。返さないと、それまでで一番大きい生成の分が anon に残り、

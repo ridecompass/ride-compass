@@ -26,10 +26,9 @@ const isLineLayer = (layer: ProfileLayer): layer is LineLayer => layer.draw.kind
 /** 勾配（%）を符号つきで。 */
 const formatGrade = (grade: number) => `${grade >= 0 ? "+" : ""}${grade.toFixed(1)}%`;
 
-/** 区間へ入る見込みの時刻（日本時間）。無い・読めない時刻は null。 */
+/** 区間へ入る見込みの時刻（日本時間）。無ければ null。 */
 function formatSegmentArrivalTime(iso: string | null): string | null {
-  const date = new Date(iso ?? NaN);
-  return Number.isNaN(date.getTime()) ? null : formatJstHourMinute(date);
+  return iso === null ? null : formatJstHourMinute(new Date(iso));
 }
 
 /** 「区間を地図で見る」。区間を選んでも地図は動かないので、地図を区間へ寄せるのは押したときだけ（道のりのグラフの右上）。 */

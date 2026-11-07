@@ -58,17 +58,13 @@ def _degree_minute(value: list) -> float:
 
 
 def _parse_station_table(payload: dict) -> dict[str, AmedasStation]:
-    """座標の無い観測所は載せない（最寄りにも、雨の履歴の座標にも使えない）。名前の無い観測所も載せない
-    （画面のヘッダーに観測所名を出すため）。"""
-    stations = {}
-    for station_id, entry in payload.items():
-        name = entry.get("kjName")
-        lat = entry.get("lat")
-        lon = entry.get("lon")
-        if not name or not lat or not lon:
-            continue
-        stations[station_id] = AmedasStation(name=name, latitude=_degree_minute(lat), longitude=_degree_minute(lon))
-    return stations
+    """観測所id→観測所。名前と座標（[度, 分]）の無い観測所があれば投げる（最寄りにも、画面のヘッダーにも使えない）。"""
+    return {
+        station_id: AmedasStation(
+            name=entry["kjName"], latitude=_degree_minute(entry["lat"]), longitude=_degree_minute(entry["lon"]),
+        )
+        for station_id, entry in payload.items()
+    }
 
 
 def _first_value(pair: list | None) -> float | None:
@@ -78,14 +74,16 @@ def _first_value(pair: list | None) -> float | None:
 
 def _wind_direction(code: float | None) -> WindDirection | None:
     """気象庁の風向コード（0=静穏、1〜16=16方位）を、風の来る向きの角度（0=北・時計回り。
-    `domain/wind.py: DepartureWind.direction_deg`と揃える）と呼び名へ。0（静穏、風速がほぼ0で方位不定）・
-    欠測・1〜16の範囲外はNone（範囲外を別の方位として出すと、向かい風と追い風を取り違えさせる）。
+    `domain/wind.py: WindForecastSeries.direction_deg`と揃える）と呼び名へ。0（静穏、風速がほぼ0で方位不定）・
+    欠測はNone。1〜16の範囲外なら投げる（別の方位として出すと、向かい風と追い風を取り違えさせる）。
 
     角度と呼び名を別々の関数で読まない——どちらも同じ1つのコードの読み替えで、分けると方位の有無の判定と
     16方位の割当が2か所に分かれ、片方だけずれても落ちない。"""
     # 番号は1=北北東からcode*22.5度で時計回りに進み、16=北で一周する。16で割った余りが北を0とした16方位の番号になる。
-    if code is None or not 1 <= code <= 16:
+    if code is None or code == 0:
         return None
+    if not 1 <= code <= 16:
+        raise UnexpectedShapeError(f"amedas wind direction code is out of range: {code}")
     index = int(code) % 16
     return WindDirection(deg=index * 22.5, label=SIXTEEN_POINT_LABELS[index])
 
@@ -100,7 +98,7 @@ def _parse_reading(raw: dict) -> AmedasReading:
     )
 
 
-async def fetch_station_table(client: httpx.AsyncClient, cache: TTLCache) -> dict[str, AmedasStation] | None:
+async def fetch_station_table(client: httpx.AsyncClient, cache: TTLCache) -> dict[str, AmedasStation]:
     """観測所マスタ（観測所id → 観測所）を取得する。"""
 
     async def fetch() -> dict[str, AmedasStation]:
@@ -110,7 +108,7 @@ async def fetch_station_table(client: httpx.AsyncClient, cache: TTLCache) -> dic
     return await cached_fetch("weather:jma-amedas-stations", fetch, cache=cache)
 
 
-async def fetch_latest_observation_time(client: httpx.AsyncClient, cache: TTLCache) -> datetime | None:
+async def fetch_latest_observation_time(client: httpx.AsyncClient, cache: TTLCache) -> datetime:
     """最新の観測時刻を返す。応答はISO時刻文字列1個だけのプレーンテキスト（JSONではない）。"""
 
     async def fetch() -> datetime:
@@ -127,12 +125,12 @@ async def fetch_latest_observation_time(client: httpx.AsyncClient, cache: TTLCac
 
     # 応答はプレーンテキストで`.json()`を呼ばず、読めない時刻は`UnexpectedShapeError`へ直すため、
     # ほかにValueErrorの発生源が無い。
-    return await cached_fetch("weather:jma-amedas-latest-time", fetch, cache=cache, catch=(httpx.HTTPError,))
+    return await cached_fetch("weather:jma-amedas-latest-time", fetch, cache=cache)
 
 
 async def fetch_observation_map(
     client: httpx.AsyncClient, observed_at: datetime
-) -> dict[str, AmedasReading] | None:
+) -> dict[str, AmedasReading]:
     """指定時刻の全観測所ぶんの観測値（観測所id → 観測値）を取得する。"""
     timestamp = observed_at.astimezone(JST).strftime("%Y%m%d%H%M%S")
 

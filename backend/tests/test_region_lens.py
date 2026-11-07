@@ -101,7 +101,7 @@ async def test_the_route_and_the_map_lens_count_the_same_seconds_on_the_same_roa
     漕ぎ出しは道1本の値ではないので軸の秒に入れず、内訳の別の行で費用に入る。"""
     network = road_network(WAYS, COORDINATES, bad_ways=(FLAT_ROUGH_WAY,), gradient_of={CLIMBING_WAY: 6.0},
                            stop_density_of={STOPPING_WAY: 3.0})
-    candidates = await generator_for(road_network_root, network, None).generate_via_waypoints(
+    candidates = await generator_for(road_network_root, network).generate_via_waypoints(
         at(SOUTH_WEST), [], destination=at(NORTH_EAST), max_routes=3, start_time=datetime(2026, 5, 1, 9, tzinfo=JST))
     # 格子はタイルの端をまたぐので、格子のノードを含むタイルを全部取って重ねる（またぐ道は両方のタイルに同じ値で載る）。
     tiles = {tuple(int(v) for v in tile_position(lon, lat, Z)) for lat, lon in COORDINATES.values()}

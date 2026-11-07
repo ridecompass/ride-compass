@@ -96,7 +96,7 @@ describe("useWayMaterials（道ごとの材料）", () => {
     const materials = result.current.get("ascent")!.materials;
     expect(new Set([...materials.values()].map(({ x }) => x)).size).toBeGreaterThan(1);
     expect([...materials].every(([key, { x }]) => key.startsWith(`ascent@${x}@`))).toBe(true);
-    expect(result.current.get("ascent")).toMatchObject({ loading: false, error: false, hasFetched: true });
+    expect(result.current.get("ascent")).toMatchObject({ loading: false, error: null, hasFetched: true });
   });
 
   it.each([
@@ -160,14 +160,14 @@ describe("useWayMaterials（道ごとの材料）", () => {
     serveWayMaterials(() => true);
     const { result, rerender } = render({ axes: [ASCENT], viewport: VIEWPORT, conditions: CONDITIONS });
     await fetched(result);
-    expect(result.current.get("ascent")?.error).toBe(true);
+    expect(result.current.get("ascent")?.error).toMatch(/道路の塗りの値の取得に失敗しました/);
     serveWayMaterials();
     rerender({ axes: [ASCENT], viewport: ELSEWHERE_VIEWPORT, conditions: CONDITIONS });
     await debounced();
     await fetched(result);
     rerender({ axes: [ASCENT], viewport: VIEWPORT, conditions: CONDITIONS });
     await debounced();
-    await vi.waitFor(() => expect(result.current.get("ascent")?.error).toBe(false));
+    await vi.waitFor(() => expect(result.current.get("ascent")?.error).toBeNull());
     expect(result.current.get("ascent")?.materials.size).toBeGreaterThan(0);
   });
 

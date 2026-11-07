@@ -68,9 +68,8 @@ def test_a_tile_is_served_as_png(override_dependency, path, upstream, served):
 # パンする利用者は404だけでレート制限に達しうるので、恒久404はブラウザにも覚えさせる。502は一時的なので覚えさせない。
 @pytest.mark.parametrize("path", [RELIEF_TILE, TERRAIN_TILE])
 @pytest.mark.parametrize(("result", "status", "detail", "cache_control"), [
-    (None, 502, "地理院タイルの取得に失敗しました", None),
     (UPSTREAM_NOT_FOUND, 404, "指定されたタイルは存在しません", GSI_TILE_NOT_FOUND.header()),
-], ids=["failed", "outside"])
+], ids=["outside"])
 def test_a_tile_outside_the_coverage_is_told_apart_from_an_upstream_failure(
         override_dependency, path, result, status, detail, cache_control):
     _answer(override_dependency, result)

@@ -26,9 +26,9 @@ class ActiveFloodForecast(StrictModel):
 
 @dataclass(frozen=True)
 class FloodBulletin:
-    """指定河川洪水予報の電文1件（1河川の最新の状態）。文字の項目は、電文に無ければ空の文字。"""
+    """指定河川洪水予報の電文1件（1河川の最新の状態）。"""
 
-    #: 発表中の段。解除された・コードの無い電文はNone。
+    #: 発表中の段。解除された電文はNone。
     level: WarningBadgeLevel | None
     #: 予報の対象の区域（市区町村等）と二次細分区域のコード。
     class20_codes: tuple[str, ...]

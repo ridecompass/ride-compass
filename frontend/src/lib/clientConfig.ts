@@ -15,7 +15,7 @@ export interface ClientConfig {
   failed: boolean;
 }
 
-/** ビルド時生成物（route-generate-config.json）に在る較正値のid。 */
+/** ビルド時生成物（route-generate-config.json）に在る較正値のid（生成物は値を持たない）。 */
 type ClientTuningId = keyof (typeof import("@/types/generated/route-generate-config.json"))["client_tuning"];
 
 /** フロントが読む較正値のid。**ここに並んだidは、ビルド時生成物に在るものだけを型が通す**——backendの宣言から

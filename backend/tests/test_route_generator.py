@@ -58,7 +58,7 @@ def _candidate(key: str, penalty: float = 10.0, **fields) -> EvaluatedRoute:
         "elevation_gain_m": None, "segments": [_segment()], "estimated_duration_seconds": 100.0,
         "cost_seconds": 100.0 + penalty, "penalty": PenaltyBreakdown(axis_seconds={"a": penalty}, turn_seconds=0.0, avoidance_seconds=0.0),
         "facts": RouteFacts(elevation_unknown_km=0.0, axes={}),
-        "wind_unavailable": False, "missing_travel_data_share": None, "edge_ids": [key], "edge_point_offsets": [], "node_ids": [], "turns": [],
+        "missing_travel_data_share": None, "edge_ids": [key], "edge_point_offsets": [], "node_ids": [], "turns": [],
         "waypoint_distances_km": [], **fields,
     })
 
@@ -265,18 +265,13 @@ async def test_the_generation_log_says_when_the_turnaround_pool_was_not_filled(m
     assert any(f"pool_unfilled={missing}" in r.getMessage() for r in caplog.records) is unfilled
 
 
-async def test_loops_pass_over_turnarounds_whose_return_trip_fails(caplog):
+async def test_loops_pass_over_turnarounds_whose_return_trip_fails():
     engine = FakeEngine(
-        turnarounds=[_turnaround(RoutingError("復路なし")), _turnaround(RuntimeError("不具合")), _turnaround(_route("a"))],
+        turnarounds=[_turnaround(RoutingError("復路なし")), _turnaround(_route("a"))],
         routes={"a": _candidate("a")},
     )
 
-    with caplog.at_level(logging.DEBUG, logger=route_generator.logger.name):
-        assert _keys(await _loops(engine)) == ["a"]
-
-    # 想定外の例外だけは、エンジンの不具合としてスタックトレース付きのERRORで残す
-    (error,) = [r for r in caplog.records if r.levelno >= logging.ERROR]
-    assert isinstance(error.exc_info[1], RuntimeError)
+    assert _keys(await _loops(engine)) == ["a"]
 
 
 async def test_loops_keep_only_routes_within_the_distance_tolerance():

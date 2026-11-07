@@ -15,7 +15,6 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-import httpx
 from pydantic import Field
 
 from app.domain.stopwatch import elapsed_ms, start_timer
@@ -149,20 +148,6 @@ def mark_failed(fields: dict, exc: BaseException) -> None:
     fields["result"] = "error"
     fields["error"] = repr(exc)
     fields["error_type"] = error_type_label(exc)
-
-
-def mark_status_error(fields: dict, exc: httpx.HTTPStatusError) -> bool:
-    """`log_external_call`の中で上流の失敗の応答を捕まえたときの記録の入口。404ならTrueを返す。
-
-    404は配信元に無いことを確かめた正常系で、成功として数え（`status`に404を残す）、WARNINGを出さない。
-    ほかの応答は`mark_failed`で失敗として記録する。
-    """
-    if exc.response.status_code == 404:
-        fields["result"] = "ok"
-        fields["status"] = 404
-        return True
-    mark_failed(fields, exc)
-    return False
 
 
 def log_throttled_warning(category: str, message: str, *args: object) -> None:

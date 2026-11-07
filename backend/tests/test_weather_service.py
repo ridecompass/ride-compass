@@ -14,13 +14,11 @@ import numpy as np
 
 from app.domain.region import BoundingBox
 from app.domain.route import Coordinates
-from app.domain.wind import DepartureWind
 from app.infrastructure import msm_client
 from app.infrastructure.msm_client import (
     MsmGridPointSeries,
     MsmGridPointWeatherSeries,
     MsmSeries,
-    MsmUnavailableError,
     MsmWeatherGridSeries,
 )
 from app.services.weather_service import WeatherService
@@ -46,14 +44,6 @@ def _patch_read_series(monkeypatch, *, times, u, v):
 
     monkeypatch.setattr(msm_client, "read_series", bound(msm_client.read_series, read_series))
 
-
-async def test_the_departure_wind_is_the_first_hour_rounded_to_a_tenth(monkeypatch):
-    """経路の計算が全区間へ一様に使う出発時点の風。東西成分だけの風（u=3.04）は西から吹くため270度。"""
-    _patch_read_series(monkeypatch, times=["2026-09-07T13:00", "2026-09-07T14:00"], u=[3.04, 9.0], v=[0.0, 0.0])
-
-    assert await WeatherService().get_departure_wind(POINT) == DepartureWind(speed_ms=3.0, direction_deg=270.0)
-
-
 async def test_the_point_gets_today_at_its_nearest_grid_point(monkeypatch):
     """`/api/weather`の答え。格子点の位置と、その格子点の今日の時刻の値だけが届く。"""
     async def read_grid_points(latitudes, longitudes):
@@ -75,16 +65,6 @@ async def test_the_point_gets_today_at_its_nearest_grid_point(monkeypatch):
     assert today.times == [datetime(2026, 10, 7, 23, 0)]
     assert (today.temperature_c, today.precipitation_mm, today.wind_speed_ms) == ([18.4], [1.3], [3.0])
 
-
-async def test_the_point_gets_nothing_when_the_forecast_is_unreadable(monkeypatch):
-    async def read_grid_points(latitudes, longitudes):
-        raise MsmUnavailableError("予報のファイルが無い")
-
-    monkeypatch.setattr(msm_client, "read_grid_points", bound(msm_client.read_grid_points, read_grid_points))
-
-    assert await WeatherService().get_grid_point_today(POINT) is None
-
-
 def _patch_read_grid_block(monkeypatch, *, times):
     async def read_grid_block(south, west, north, east):
         points = MSM_GRID.block_covering(south, west, north, east).all_points()
@@ -94,14 +74,6 @@ def _patch_read_grid_block(monkeypatch, *, times):
         )
 
     monkeypatch.setattr(msm_client, "read_grid_block", bound(msm_client.read_grid_block, read_grid_block))
-
-
-async def test_a_forecast_of_a_single_hour_gives_no_hourly_series(monkeypatch):
-    """1時間刻みの並びを作れない予報で、ルートの生成と地図の風の配信を落とさない（風の予報が無いものとして扱う）。"""
-    _patch_read_grid_block(monkeypatch, times=["2026-09-07T13:00"])
-
-    assert await WeatherService().get_wind_forecast_lattice(BBOX) is None
-
 
 async def test_the_map_grid_gives_each_grid_point_its_rounded_wind_and_rain_with_missing_values_as_none(monkeypatch):
     """東西成分だけの風（u=3.04）は西から吹くため270度。格子の欠損（NaN）を0と読むと、降っていないと見せる。"""

@@ -14,8 +14,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { CEILING, handle, renderSheet } from "@/testing/bottomSheet";
 import BottomSheet, { DEFAULT_SHEET_HEIGHT_VH, useChosenSheetHeight } from "./BottomSheet";
 
-const HEIGHT_STORAGE_KEY = "ridecompass:mobile-sheet-height-vh";
-
 /** `useChosenSheetHeight`で決めた高さを持ち、シートへ渡す持ち主。描くたびに`onRender`を呼ぶ。 */
 function OwnedSheet({ onRender }: { onRender: () => void }) {
   const [chosenHeightVh, chooseHeight] = useChosenSheetHeight();
@@ -181,17 +179,6 @@ describe("BottomSheet", () => {
 
       render(<OwnedSheet onRender={() => {}} />);
       expect(handle()).toHaveAttribute("aria-valuenow", "70");
-    });
-
-    it.each([
-      ["数でない値", '"70"', DEFAULT_SHEET_HEIGHT_VH],
-      ["シートの範囲の外", "500", CEILING],
-    ])("保存されたシートの高さが%s（%s）なら、%dvhで開く", (_, stored, expected) => {
-      window.localStorage.setItem(HEIGHT_STORAGE_KEY, stored);
-
-      render(<OwnedSheet onRender={() => {}} />);
-
-      expect(handle()).toHaveAttribute("aria-valuenow", String(expected));
     });
   });
 });

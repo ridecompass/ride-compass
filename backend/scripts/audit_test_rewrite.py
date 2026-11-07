@@ -289,7 +289,7 @@ def test_database_unreachable(backend: Path) -> str | None:
 
     try:
         asyncio.run(connect())
-    except Exception as exc:  # 繋がらない理由はそのまま出す
+    except (OSError, asyncpg.PostgresError) as exc:  # 繋がらない理由はそのまま出す
         return f"{type(exc).__name__}: {exc}"
     return None
 
