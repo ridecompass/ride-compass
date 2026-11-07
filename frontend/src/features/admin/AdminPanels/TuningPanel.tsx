@@ -17,7 +17,7 @@ const TUNING_QUERY_KEY = ["tuning-parameters"];
 /** 1件ぶんの行。入力中の値は親がまとめて持ち、この行は表示だけを担う
  * （保存はDBへの書き込みのため、押した時にまとめて送る）。
  *
- * 説明と範囲は(i)の奥へ置く——**行ごとに説明を敷くと、縦に並んだ全体を
+ * 説明は(i)の奥へ置く——**行ごとに説明を敷くと、縦に並んだ全体を
  * 一覧として読めなくなる**（項目数は運用で増える）。 */
 function TuningRow({
   parameter,
@@ -38,10 +38,6 @@ function TuningRow({
         labelClassName={cn(textVariants({ variant: "body" }), "min-w-0 flex-auto [overflow-wrap:anywhere]")}
       >
         <p>{parameter.description}</p>
-        <p>
-          範囲 {parameter.minimum}〜{parameter.maximum}
-          {parameter.unit}
-        </p>
       </InfoPopover>
       <NumberInput
         commitOn="input"
@@ -54,8 +50,6 @@ function TuningRow({
         inputMode="decimal"
         aria-label={parameter.label}
         value={draft}
-        min={parameter.minimum}
-        max={parameter.maximum}
         onValueChange={onChange}
       />
       <span className={cn(textVariants({ variant: "note" }), "min-w-9 flex-none")}>{parameter.unit}</span>

@@ -145,7 +145,7 @@ description: "本番の派生データを作り直す・本番へ道の区分と
      ```
      curl -fsS http://localhost:8000/health
      curl -fsS http://localhost:8000/api/cost-axes | head -c 300
-     sudo docker logs --tail 50 ridecompass-backend 2>&1 | grep -E '道の区分|費用の軸の定義|TuningOverrideError'
+     sudo docker logs --tail 50 ridecompass-backend 2>&1 | grep -E '道の区分|費用の軸の定義|較正値'
      ```
      `/health`が応答し、ログに「道の区分を読み込みました」と「費用の軸の定義を読み込みました axes=<戻した軸の数>」が出ていれば済み。
   6. VMを作り直したときは、上の「DBのバックアップ」の登録の2.〜4.をやり直す（動的グループのルールはVMのOCIDを指す）。

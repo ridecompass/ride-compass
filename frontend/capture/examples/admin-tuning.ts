@@ -8,8 +8,6 @@ const parameter = (id: string, label: string, unit: string, value: number) => ({
   label,
   unit,
   description: "",
-  minimum: 0,
-  maximum: 200,
   effect: "immediate",
   effect_title: "次のルート生成から反映",
   value,

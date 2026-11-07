@@ -6197,14 +6197,6 @@
             "type": "string",
             "title": "Description"
           },
-          "minimum": {
-            "type": "number",
-            "title": "Minimum"
-          },
-          "maximum": {
-            "type": "number",
-            "title": "Maximum"
-          },
           "effect": {
             "type": "string",
             "title": "Effect"
@@ -6225,8 +6217,6 @@
           "label",
           "unit",
           "description",
-          "minimum",
-          "maximum",
           "effect",
           "effect_title",
           "value"

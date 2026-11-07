@@ -35,8 +35,6 @@ def _declared(param_id: str, effect) -> object:
         label=f"表示名-{param_id}",
         unit="km/h",
         description=f"説明-{param_id}",
-        minimum=1.0,
-        maximum=100.0,
         effect=effect,
     )
 

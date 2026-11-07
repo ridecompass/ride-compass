@@ -4,8 +4,7 @@
 （起動しない）。較正値を宣言に足すときは、デプロイの前に本番の表へ行を入れる（読むのは宣言にあるidの行だけなので、
 先に入れても動きは変わらない）。宣言から消すときは、デプロイの後に行を消す。
 
-読むのは値が取れるかだけ。管理画面から書く値は、書く前に宣言の範囲と値どうしの順の約束を確かめる（人が打った入力）。
-プロセス内の`domain/tuning.py: TUNING_VALUES`へは書かない。
+読むのは値が取れるかだけで、管理画面から書いた値はそのまま持つ。プロセス内の`domain/tuning.py: TUNING_VALUES`へは書かない。
 """
 
 from datetime import datetime
@@ -15,12 +14,8 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.domain.tuning import TUNING_PARAMETERS, TUNING_PARAMETERS_BY_ID, TUNING_VALUES, misordered_pairs
+from app.domain.tuning import TUNING_PARAMETERS
 from app.infrastructure.orm_base import Base
-
-
-class TuningOverrideError(RuntimeError):
-    """管理画面から書く値が、宣言の範囲の外か、いまの値と重ねて値どうしの順の約束を破る。"""
 
 
 class TuningOverrideRow(Base):
@@ -52,13 +47,7 @@ class TuningOverrideStore:
         return {row.param_id: float(row.value) for row in rows}
 
     async def set_value(self, param_id: str, value: float) -> None:
-        """宣言にある1件を書く。宣言の範囲の外（数でない値も）か、いまの値と重ねて値どうしの順の約束
-        （`domain/tuning.py: TUNING_ORDERINGS`）を破れば、書かずに`TuningOverrideError`。"""
-        parameter = TUNING_PARAMETERS_BY_ID[param_id]
-        if not parameter.minimum <= value <= parameter.maximum:
-            raise TuningOverrideError(f"較正値が宣言の範囲の外: {param_id}={value}（{parameter.minimum}〜{parameter.maximum}）")
-        if misordered := misordered_pairs({**TUNING_VALUES, param_id: value}):
-            raise TuningOverrideError(f"較正値の順の約束を破る（下側, 上側）: {misordered}")
+        """1件を書く。"""
         await self._session.execute(
             pg_insert(TuningOverrideRow)
             .values(param_id=param_id, value=value)

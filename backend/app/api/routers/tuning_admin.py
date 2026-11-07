@@ -15,7 +15,6 @@ from app.api.dependencies import get_tuning_service
 from app.domain.strict_model import StrictModel
 from app.domain.tuning import TUNING_PARAMETERS_BY_ID, TuningParameter, tuning_parameters_by_effect, tuning_value
 from app.domain.tuning_labels import tuning_label, tuning_subjects
-from app.infrastructure.tuning_overrides import TuningOverrideError
 from app.services.tuning_service import TuningService
 
 router = APIRouter(prefix="/api/admin/tuning", tags=["tuning-admin"], dependencies=[Depends(require_admin_basic_auth)])
@@ -28,8 +27,6 @@ class TuningParameterView(StrictModel):
     label: str
     unit: str
     description: str
-    minimum: float
-    maximum: float
     #: 変えたとき効くまでに何が要るか（`TuningEffect`の値）。画面はこれでまとめる。
     effect: str
     #: 上と同じことを利用者へ見せる言い方（`TuningEffect.title`）。**画面へ対応表を
@@ -50,8 +47,6 @@ def _view(parameter: TuningParameter, subjects_by_id: dict[str, tuple[str, ...]]
         label=tuning_label(parameter, subjects_by_id),
         unit=parameter.unit,
         description=parameter.description,
-        minimum=parameter.minimum,
-        maximum=parameter.maximum,
         effect=parameter.effect.value,
         effect_title=parameter.effect.title,
         value=tuning_value(parameter.id),
@@ -75,8 +70,5 @@ async def update_tuning_parameter(
     if parameter is None:
         # 較正値の宣言に無いidは書かせない（較正値ではない固定値はこの逆引きに載らない）。
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail=f"較正値がありません: {param_id}")
-    try:
-        await service.save_value(param_id, request.value)
-    except TuningOverrideError as exc:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    await service.save_value(param_id, request.value)
     return _view(parameter, tuning_subjects())

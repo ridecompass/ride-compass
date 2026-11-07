@@ -1902,10 +1902,6 @@ export interface components {
             unit: string;
             /** Description */
             description: string;
-            /** Minimum */
-            minimum: number;
-            /** Maximum */
-            maximum: number;
             /** Effect */
             effect: string;
             /** Effect Title */
