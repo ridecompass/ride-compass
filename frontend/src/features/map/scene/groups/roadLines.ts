@@ -22,7 +22,7 @@ import regionTileConfig from "@/types/generated/region-tile-config.json";
 import { featureStatesByName, sceneSourceId, zoomScaleExpression } from "@/features/map/scene/sceneBuilders";
 import { LEGEND_NO_DATA_KEY } from "@/lib/mapDisplay/mapColorLegend";
 import { ROAD_OTHER_KEY, roadTrackRowOf, type RoadTrackRow } from "@/lib/mapDisplay/roadTracks";
-import { strongestAvoidance, type AvoidanceChoice, type AvoidanceLevel } from "@/lib/roadAvoidance";
+import { AVOIDANCE_LEVEL_COLORS, strongestAvoidance, type AvoidanceChoice } from "@/lib/roadAvoidance";
 import type { RoadMapLayerView } from "@/types/route";
 
 import { declareGroup, type SceneLayerEntry, type SceneSourceEntry } from "@/features/map/scene/mapSceneGroups";
@@ -31,13 +31,6 @@ const ROAD = mapDisplay.road;
 
 /** 道路タブの段を地図の道に塗る線の役割。 */
 export const ROAD_AVOIDANCE_ROLE = "roadAvoidance";
-
-/** 道路タブの段を道に塗る段と色。通るは塗らない（何も指定していない扱い）。 */
-const ROAD_AVOIDANCE_COLORS: Readonly<Record<Exclude<AvoidanceLevel, "pass">, string>> = {
-  prefer: palette.semantic.road_avoidance_prefer,
-  avoid: palette.semantic.road_avoidance_avoid,
-  exclude: palette.semantic.road_avoidance_exclude,
-};
 
 export const ROAD_LINE_SOURCE_ID = sceneSourceId("road-tiles");
 const ROAD_INSPECTED_SOURCE_ID = sceneSourceId("road-inspected");
@@ -235,7 +228,7 @@ export const roadLineGroup = declareGroup<RoadLineState>((state) => {
       "line-color": [
         "match",
         valueOf(AVOIDANCE_NAME),
-        ...Object.entries(ROAD_AVOIDANCE_COLORS).flat(),
+        ...Object.entries(AVOIDANCE_LEVEL_COLORS).flat(),
         palette.semantic.hidden,
       ],
       // 横に分けて並べた道の線の層を覆う（出している層の外側の線の縁まで太くする）。

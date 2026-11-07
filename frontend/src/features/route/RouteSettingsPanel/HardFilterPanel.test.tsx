@@ -42,6 +42,7 @@ function renderPanel(roadAvoidance: RoadAvoidanceOverride = {}) {
       avoidance={AVOIDANCE}
       roadAvoidance={roadAvoidance}
       onRoadAvoidanceChange={onRoadAvoidanceChange}
+      mapNotice={null}
       shownOnMap
       onShownOnMapChange={vi.fn()}
     />,

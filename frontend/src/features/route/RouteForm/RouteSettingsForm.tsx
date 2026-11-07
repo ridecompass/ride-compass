@@ -20,6 +20,7 @@ type RouteSettingsFormProps = Omit<
   /** 「道路」タブの「地図で見る」（タブを出している間、段を地図の道に塗るか）。 */
   roadTabOnMap: boolean;
   onRoadTabOnMapChange: (on: boolean) => void;
+  roadTabMapNotice: string | null;
 };
 
 /**
@@ -30,6 +31,7 @@ export default function RouteSettingsForm({
   savedConditions,
   roadTabOnMap,
   onRoadTabOnMapChange,
+  roadTabMapNotice,
   ...props
 }: RouteSettingsFormProps) {
   const { conditions, originManual, originLocated } = props;
@@ -50,6 +52,7 @@ export default function RouteSettingsForm({
           onRoadAvoidanceChange={conditions.setRoadAvoidance}
           shownOnMap={roadTabOnMap}
           onShownOnMapChange={onRoadTabOnMapChange}
+          mapNotice={roadTabMapNotice}
         />
       }
       saveConditionsButton={

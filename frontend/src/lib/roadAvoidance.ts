@@ -1,3 +1,4 @@
+import palette from "@/types/generated/palette.json";
 import type { RoadAvoidanceOverride, RoadAvoidanceView } from "@/types/route";
 
 // 道の区分の行ごとの避け方。**行・段・既定は画面の設定（`road_classes.avoidance`）が配る**。端末に覚えるのは利用者が選んだ段
@@ -6,6 +7,13 @@ import type { RoadAvoidanceOverride, RoadAvoidanceView } from "@/types/route";
 
 export type AvoidanceLevel = RoadAvoidanceOverride[string];
 export type AvoidanceRow = RoadAvoidanceView["rows"][number];
+
+/** 道路タブの段を地図の道に塗る色（道路タブの凡例と地図の線が同じものを読む）。通るは塗らない（何も指定していない扱い）。 */
+export const AVOIDANCE_LEVEL_COLORS: Readonly<Record<Exclude<AvoidanceLevel, "pass">, string>> = {
+  prefer: palette.semantic.road_avoidance_prefer,
+  avoid: palette.semantic.road_avoidance_avoid,
+  exclude: palette.semantic.road_avoidance_exclude,
+};
 
 /** 画面に出す行の段。選んでいなければ既定の段。 */
 export function avoidanceLevelOf(row: AvoidanceRow, chosen: RoadAvoidanceOverride): AvoidanceLevel {
@@ -18,6 +26,9 @@ export interface AvoidanceChoice {
   readonly levels: ReadonlyMap<string, AvoidanceLevel>;
   readonly order: readonly AvoidanceLevel[];
 }
+
+/** 塗る段が無いこと（道路タブを地図で見ていない間）。 */
+export const NO_AVOIDANCE_CHOICE: AvoidanceChoice = { levels: new Map(), order: [] };
 
 export function avoidanceChoiceOf(avoidance: RoadAvoidanceView, chosen: RoadAvoidanceOverride): AvoidanceChoice {
   const levels = new Map<string, AvoidanceLevel>();

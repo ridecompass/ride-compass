@@ -12,6 +12,8 @@ import type LensControl from "@/features/map/LensControl/LensControl";
 import {
   buildDefaultLayerVisibility,
   deriveFetchLayerStatus,
+  layerDataStatusNotice,
+  TILE_ZOOM_TOO_WIDE_NOTICE,
   tileVersionGatedLayerIds,
   tileZoomTooWideLayerIds,
   type LayerDataStatusByLayer,
@@ -31,9 +33,9 @@ import { useRoadClasses } from "@/features/map/useRoadClasses";
 import { useDynamicWeatherLayers } from "@/features/map/useDynamicWeatherLayers";
 import { useStoredState } from "@/hooks/useStoredState";
 import type { Coordinates, RoadAvoidanceOverride } from "@/types/route";
-import { avoidanceChoiceOf, type AvoidanceChoice } from "@/lib/roadAvoidance";
+import { avoidanceChoiceOf, NO_AVOIDANCE_CHOICE } from "@/lib/roadAvoidance";
 import type { MapTheme } from "@/lib/mapTheme";
-import type { RideConditions } from "@/features/map/regionApi";
+import { ROAD_TILE_MIN_ZOOM, type RideConditions } from "@/features/map/regionApi";
 import { snapDeg } from "@/lib/cardinalLabel";
 import { countsAxis } from "@/lib/costPreference";
 import type { WayValueCondition } from "@/lib/mapDisplay/mapLens";
@@ -55,9 +57,6 @@ export const LEGEND_FILTER_DEBOUNCE_MS = 400;
 
 const ROUTE_LAYER_ID = "route";
 const NO_STORED_VALUES = {};
-/** 道路タブを地図で見ていない間（地図の道に段を塗らない）。 */
-const NO_AVOIDANCE: AvoidanceChoice = { levels: new Map(), order: [] };
-
 interface MapViewInputs {
   /** 候補を選んでいるか。 */
   hasSelectedRoute: boolean;
@@ -91,6 +90,8 @@ interface MapViewState {
   /** 道路タブの「地図で見る」（道路タブを出している間、段を地図の道に塗るか）。端末に覚える。 */
   roadTabOnMap: boolean;
   onRoadTabOnMapChange: (on: boolean) => void;
+  /** 道路タブで地図に塗っている間に、塗れない理由（拡大が足りない・取れない等）。無ければnull。 */
+  roadTabMapNotice: string | null;
   /** 地図の見えている範囲の真ん中。地図がまだ範囲を知らせていなければnull。 */
   center: Coordinates | null;
   /** 地図が今映している範囲。地図がまだ範囲を知らせていなければnull。 */
@@ -186,7 +187,7 @@ export function useMapView({
   // 道路タブを出していて「地図で見る」がONの間だけ、段を地図の道に塗る（ほかの間は塗る段を空にする）。
   const roadTabPainted = roadTabShown && roadTabOnMap;
   const avoidanceChoice = useMemo(
-    () => (roadTabPainted ? avoidanceChoiceOf(config.roadClasses.avoidance, roadAvoidance) : NO_AVOIDANCE),
+    () => (roadTabPainted ? avoidanceChoiceOf(config.roadClasses.avoidance, roadAvoidance) : NO_AVOIDANCE_CHOICE),
     [roadTabPainted, config.roadClasses.avoidance, roadAvoidance],
   );
   const avoidancePainted = paintsRoadAvoidance(avoidanceChoice);
@@ -205,6 +206,13 @@ export function useMapView({
     true,
     roadClasses.truncated,
   );
+  // 道路タブで塗っている間は、塗れない理由（拡大が足りない・取れない・画面の端を取っていない）を道路タブに出す（道の層を
+  // 出していないと、地図の上の行の状態の印が無い）。
+  const roadTabMapNotice = !roadTabPainted
+    ? null
+    : viewport !== null && viewport.zoom < ROAD_TILE_MIN_ZOOM
+      ? TILE_ZOOM_TOO_WIDE_NOTICE
+      : layerDataStatusNotice(roadClassStatus);
   const roadLayerStatus = roadClassStatus
     ? Object.fromEntries(shownRoadLayers.map((layer) => [layer.id, roadClassStatus]))
     : {};
@@ -327,6 +335,7 @@ export function useMapView({
     onMapThemeChange: setMapTheme,
     roadTabOnMap,
     onRoadTabOnMapChange: setRoadTabOnMap,
+    roadTabMapNotice,
     center,
     viewport,
     bearing: viewport?.bearing ?? 0,

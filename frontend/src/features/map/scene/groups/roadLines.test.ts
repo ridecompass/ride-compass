@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import { LEGEND_NO_DATA_KEY } from "@/lib/mapDisplay/mapColorLegend";
 import { ROAD_OTHER_KEY } from "@/lib/mapDisplay/roadTracks";
 import { evaluateExpression as evaluate } from "@/testing/mapExpressions";
-import { avoidanceChoiceOf, type AvoidanceChoice } from "@/lib/roadAvoidance";
+import { avoidanceChoiceOf, NO_AVOIDANCE_CHOICE as NO_AVOIDANCE, type AvoidanceChoice } from "@/lib/roadAvoidance";
 import { AVOIDANCE_LEVELS, avoidanceRow, roadClass, roadClassCatalog, roadMapLayer } from "@/testing/clientConfig";
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import palette from "@/types/generated/palette.json";
@@ -15,8 +15,6 @@ import palette from "@/types/generated/palette.json";
 import { ROAD_AVOIDANCE_ROLE, roadLineGroup, type RoadClassValues, type RoadLineState } from "./roadLines";
 
 const LAYER = roadMapLayer("surface", { has_no_data: true, classes: [roadClass("paved", { color: "#123456" })] });
-
-const NO_AVOIDANCE: AvoidanceChoice = { levels: new Map(), order: [] };
 
 function build(state: Partial<RoadLineState>) {
   return roadLineGroup.build({

@@ -6,7 +6,8 @@ import { Badge } from "@/components/ui/Badge/Badge";
 import { Checkbox } from "@/components/ui/Checkbox/Checkbox";
 import { LockedIcon } from "@/components/ui/icons/lucideIcons";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/ToggleGroup/ToggleGroup";
-import { avoidanceLevelOf, type AvoidanceLevel, type AvoidanceRow } from "@/lib/roadAvoidance";
+import { Dot } from "@/components/ui/Dot/Dot";
+import { AVOIDANCE_LEVEL_COLORS, avoidanceLevelOf, type AvoidanceLevel, type AvoidanceRow } from "@/lib/roadAvoidance";
 import { cn } from "@/lib/cn";
 import type { RoadAvoidanceOverride, RoadAvoidanceView } from "@/types/route";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
@@ -27,6 +28,8 @@ interface HardFilterPanelProps {
   /** 「地図で見る」（このタブを出している間、段を地図の道に塗るか）。 */
   shownOnMap: boolean;
   onShownOnMapChange: (on: boolean) => void;
+  /** 地図に塗っている間に塗れない理由（拡大が足りない・取れない等）。無ければnull。 */
+  mapNotice: string | null;
 }
 
 export default function HardFilterPanel({
@@ -35,6 +38,7 @@ export default function HardFilterPanel({
   onRoadAvoidanceChange,
   shownOnMap,
   onShownOnMapChange,
+  mapNotice,
 }: HardFilterPanelProps) {
   const { levels } = avoidance;
   const excludeLabel = levels.find(({ key }) => key === "exclude")?.label;
@@ -51,7 +55,25 @@ export default function HardFilterPanel({
       >
         <Checkbox checked={shownOnMap} onCheckedChange={onShownOnMapChange} aria-label="地図で見る" />
         地図で見る
+        {/* 地図の色が段のどれかを、行の段の名前（倍率）と並べて読ませる。 */}
+        <span className="ml-auto flex items-center gap-2 text-[length:var(--font-size-xs)] text-[var(--color-muted)]">
+          {levels.flatMap(({ key, label }) =>
+            key === "pass"
+              ? []
+              : [
+                  <span key={key} className="inline-flex items-center gap-1">
+                    <Dot tone="none" style={{ backgroundColor: AVOIDANCE_LEVEL_COLORS[key] }} />
+                    {label}
+                  </span>,
+                ],
+          )}
+        </span>
       </label>
+      {shownOnMap && mapNotice !== null && (
+        <p className="pb-1 text-[length:var(--font-size-xs)] text-[var(--color-muted)]" role="status">
+          {mapNotice}
+        </p>
+      )}
       {FIXED_ROWS.map(({ key, label, description }) => (
         <div
           key={key}
