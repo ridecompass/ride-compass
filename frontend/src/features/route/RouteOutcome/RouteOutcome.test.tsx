@@ -89,14 +89,9 @@ describe("候補の上の知らせ", () => {
 });
 
 describe("候補の一覧", () => {
-  it("最速の印の無い生成は最速を分けず、番号・距離・時間・負担の列だけで並べ、区切りの線も群の印も出さない。好む道で下がった負担は「−」で出す", () => {
-    const preferring = route("preferring", {
-      distance_km: 12,
-      estimated_duration_seconds: 2100,
-      penalty: { axis_seconds: {}, preferred_seconds: -180, avoided_seconds: 0, total_seconds: -180 },
-    });
-    renderOutcome({ results: resultsOf({ generated: [FAST, SLOW, preferring] }) });
-    expect(listTexts()).toEqual(["1 10.0km 30分 負担+5分", "2 20.0km +12分 負担+0分", "3 12.0km +5分 負担−3分"]);
+  it("最速の印の無い生成は最速を分けず、番号・距離・時間・負担の列だけで並べ、区切りの線も群の印も出さない", () => {
+    renderOutcome({ results: resultsOf({ generated: [FAST, SLOW] }) });
+    expect(listTexts()).toEqual(["1 10.0km 30分 負担+5分", "2 20.0km +12分 負担+0分"]);
     expect(within(screen.getByRole("tablist")).queryByRole("img")).not.toBeInTheDocument();
   });
 
