@@ -30,8 +30,7 @@ export const buttonVariants = cva(
          * 消えるのが遅れ、押した後も枠が青く見えるため消す。 */
         float:
           "pointer-events-auto touch-none border-[var(--color-border-strong)] bg-[var(--color-surface)] text-[var(--foreground)] shadow-float [-webkit-tap-highlight-color:transparent] hover:enabled:border-[var(--color-accent)]",
-        /** 地図右上のMapLibre純正コントロールの続きに見えるボタン。面の色はテーマに従い、純正の側はglobals.cssが同じ色へ
-         * 揃える。寸法はglobals.cssの--map-ctrl-*（縦積みの位置計算と共有）。 */
+        /** 地図右上の操作の列に並ぶボタン。寸法はglobals.cssの--map-ctrl-*（縦積みの位置計算と共有）。 */
         mapCtrl:
           "pointer-events-auto touch-none rounded-[4px] border-0 bg-[var(--color-surface)] text-[var(--foreground)] shadow-[0_0_0_2px_rgba(0,0,0,0.1)] data-[state=open]:shadow-[0_0_2px_2px_#0096ff] [&_svg]:size-[var(--map-ctrl-icon-size)]",
         /** メニューの1行（押すと1回動く。切り替えの行は`Toggle`の`menu`）。 */
@@ -71,8 +70,11 @@ export const buttonVariants = cva(
 );
 
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement>, VariantProps<typeof buttonVariants> {
-  /** 使い方の文。説明を見る状態（`components/UsageGuide/UsageGuide.tsx`）でこの部品を押すと出る。 */
-  usage?: string;
+  /**
+   * 使い方の文。説明を見る状態（`components/UsageGuide/UsageGuide.tsx`）でこの部品を押すと出る。`null`は説明を見る状態の
+   * 無い画面（管理画面・エラー画面）と説明を見る状態自身の部品だけが渡す（`structure/usageText.test.ts`が見る）。
+   */
+  usage: string | null;
 }
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
@@ -84,7 +86,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       ref={ref}
       type={type}
       className={cn(buttonVariants({ variant, size, shape }), className)}
-      data-usage={usage}
+      data-usage={usage ?? undefined}
       {...props}
     />
   );

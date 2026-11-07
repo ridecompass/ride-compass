@@ -15,3 +15,8 @@ def test_describe_records_the_measured_commit_and_uncommitted_changes():
     text = describe(RevisionState(head=SHA, dirty=True))
     assert SHA[:12] in text
     assert "未コミット" in text
+
+
+def test_describe_says_when_uncommitted_changes_could_not_be_read():
+    """git が状態を返さなかった作業コピーを「未コミットの変更なし」と読ませない（数字を別の版のものと取り違える）。"""
+    assert "確かめられない" in describe(RevisionState(head=SHA, dirty=None))

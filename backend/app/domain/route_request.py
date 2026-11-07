@@ -11,18 +11,18 @@ from typing import Annotated
 from pydantic import Field
 from pydantic_core import PydanticCustomError
 
+from app.domain.cost_preference import CostPreference
 from app.domain.road_avoidance import AvoidanceLevel
 from app.domain.route import Coordinates
-from app.domain.route_preference import RoutePreference
 
 # ルート生成距離の上限（km）。上限が無いと探索の範囲が際限なく広がり、道路網の読み込みが
 # 長時間止まりうる。30km規模までの検証実績に余裕を見た値。経由地・目的地は出発地からこの
 # 距離の中に置く。
 MAX_ROUTE_DISTANCE_KM = 100
-# 目標距離からの許容差（km）。画面はこの既定値をそのまま送る——片方だけ変えると、画面の
-# 見込みと探索の範囲がずれる。
-DEFAULT_DISTANCE_TOLERANCE_KM = 5.0
-MAX_DISTANCE_TOLERANCE_KM = 50.0
+# 都心の出発地でも、同時に動く生成の上限の本数がそろって探索範囲を読める全長の目標（km）。探索範囲の区間数は目標の
+# 2乗で増え、これを超える目標はほかの生成と重なると`services/graph_service.py: SearchMemory`の予算を超えて混み合いで
+# 断られうる。受け付けは`MAX_ROUTE_DISTANCE_KM`まで残し、画面の全長の目標の説明がこの値を出す。
+BUSY_SAFE_DISTANCE_KM = 60
 # 経由地の数の上限。経由地ごとにレグの探索が1本増える。
 MAX_WAYPOINTS = 8
 # 区間の乗り換えで受け取るEdge idの上限。1本の候補が数百Edgeで、区間を差し替えても
@@ -33,14 +33,16 @@ DEFAULT_MAX_ROUTES = 8
 MIN_ROUTES = 1
 MAX_ROUTES = 15
 # 仮定巡航速度（km/h）の画面の既定値と、要求が受け付ける下限・上限。区間ごとの推定到達時刻と、風の追加負荷
-# （`domain/wind.py: wind_drag_ratio_array`の走行速度）の算出に使う。風・勾配に依存しない一律の定数として扱うことが
+# （風を受ける走行速度）の算出に使う。風・勾配に依存しない一律の定数として扱うことが
 # 前提——速度を風で可変にすると「時刻の算出に速度が要り、速度が風（時刻依存）に影響される」循環が生まれる。
 ASSUMED_SPEED_KMH = 20.0
 MIN_ASSUMED_SPEED_KMH = 5.0
 MAX_ASSUMED_SPEED_KMH = 60.0
-# 想定速度の値の範囲。速度を受けるどの入口（ルート生成・地図の配信・区間インスペクタ）もこの型で書く。範囲の検査は
+# 想定速度の値の範囲。速度を受けるどの入口（ルート生成・地図の配信・道の窓）もこの型で書く。範囲の検査は
 # NaN・無限大も断る。
 AssumedSpeedKmh = Annotated[float, Field(ge=MIN_ASSUMED_SPEED_KMH, le=MAX_ASSUMED_SPEED_KMH)]
+
+
 def request_error(message: str) -> PydanticCustomError:
     """要求の誤り。文は画面の結果欄へそのまま出るので、利用者が読める日本語で書く
     （`ValueError`は「Value error, 」の前置きが付いて返る）。"""
@@ -104,9 +106,10 @@ class NoDistanceTarget:
 @dataclass(frozen=True)
 class SplicedTarget:
     """区間を差し替えて組み立てた経路を、探索せずに評価する。経路は出発地から始まり、終点（目的地、無ければ出発地）で
-    終わらなければならない（周回の候補どうしを乗り換えた経路も、出発地へ戻ることを評価の前に確かめる）。"""
+    終わらなければならない（周回の候補どうしを乗り換えた経路も、出発地へ戻ることを評価の前に確かめる）。置いた経由地は
+    探索に使わず、組んだ経路の中で通る所を求めるためだけに持つ。"""
 
-    destination: Coordinates | None
+    points: FixedPoints
     edge_ids: tuple[str, *tuple[str, ...]]
 
 
@@ -120,9 +123,7 @@ class RequestedConditions:
     """要求が指定した評価条件。Noneは省略で、既定はエンジンを組む側（`services/route_generation_setup.py:
     assemble_route_generation_setup`）が決める。"""
 
-    preference_override: RoutePreference | None
-    penalty_strength: float | None
-    max_average_grade_percent: float | None
-    # 道のレイヤの行→避け方の段（鍵は`domain/road_avoidance.py: AVOIDABLE_ROWS`と同じ集合）。
+    cost_preference: CostPreference
+    # 避け方を選べる行→段（`domain/road_avoidance.py: resolve_road_avoidance`が今の行へ揃える）。
     road_avoidance: Mapping[str, AvoidanceLevel]
     assumed_speed_kmh: float

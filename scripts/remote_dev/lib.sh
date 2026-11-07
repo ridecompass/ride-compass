@@ -121,7 +121,7 @@ rc_compose() { docker compose -p ride-compass -f "$RC_REPO/docker-compose.yml" "
 # DBとRedisのイメージを手元に揃える。Docker Hubは接続元ごとの取得上限で429を返すことが
 # あるため、同じイメージを配るGoogleのミラーへ切り替えて取り、元の名前を付け直す。
 rc_pull_images() {
-  local image
+  local image mirror
   for image in $(rc_compose config --images postgres redis); do
     docker image inspect "$image" >/dev/null 2>&1 && continue
     case "$image" in */*) mirror="mirror.gcr.io/$image" ;; *) mirror="mirror.gcr.io/library/$image" ;; esac

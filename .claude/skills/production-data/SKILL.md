@@ -1,6 +1,6 @@
 ---
 name: production-data
-description: "本番の派生データを作り直す・本番へ軸定義の変更を入れる・DBのバックアップを登録する・本番DBを失ったときに戻す手順。本番のデータに触る作業の前に使う。"
+description: "本番の派生データを作り直す・本番へ道の区分と費用の軸の変更を入れる・DBのバックアップを登録する・本番DBを失ったときに戻す手順。本番のデータに触る作業の前に使う。"
 ---
 
 ## 派生データの作り直し
@@ -29,42 +29,47 @@ description: "本番の派生データを作り直す・本番へ軸定義の変
   途中で落ちたとき（配列を作れなかったときを含む）は何も入れ替わらず、backendは前の表と配列を読み続けるので、原因を直して打ち直す。
 - 取込（`app.batch.ingest_cli`）は派生の表・派生の世代・道路網の配列を変えない。取り込んだら続けて派生を作り直す。
   地図のタイルは生データも直接読むので、成功した取込は配信するタイルの世代を進める（読み直しのTTLの後から、全系統のタイルを焼き直す）。
-- 作り直しは、入力（読むソースの取込・前の段・較正値・書く表の列・段のコード・実行環境の版）が前回の作り直しと同じ段を
-  流さず、ログに「段 <名前> を飛ばした」と出す。全部の段が同じなら何も入れ替えずに終える。段を選んで流す口は無く、
-  どの場面（取り直した・段のやり方を変えた・較正値を変えた・列を足した）でも上の1コマンドを打つ。
+- 作り直す段は、上のコマンドの末尾に`--stages <段>...`で選ぶ（選ばなければ全部の段。本番で約1時間10分）。選んだ段の出力を
+  読む後ろの段は入口が足し、道路網の配列は毎回作る。何が変わったかの自動判定は無いので、変えたものから段を選ぶ:
+
+  | 変えたもの | 選ぶ段 |
+  |---|---|
+  | 道（`osm_way`）を取り直した | `topology addresses`（`topology`を選ぶと道路の段が全部流れる） |
+  | ノード（`osm_node`）を取り直した | `nodes` |
+  | 事故（`accident`）を取り直した | `counts` |
+  | 標高（`dem`）を取り直した | `elevation` |
+  | 土地被覆（`lulc`）を取り直した | `landcover` |
+  | 住所（`abr`・`isj_block`）を取り直した | `addresses` |
+  | 地点・寺社・小地域（`overture_place`・`bunka_heritage`・`estat_small_area`）を取り直した | `stop_places` |
+  | 段のコード（`app/batch/derive_<段>.py`と、それが使う式）を変えた | その段 |
+  | 段が読む較正値を変えた | その較正値を宣言した段（`app/batch/derive_cli.py: STAGES`の`tuning`） |
+  | 派生の表に列を足した・消した | その表を書く段（`STAGES`の`tables`） |
+  | 道路網の配列だけが読む較正値を変えた | `network`（段を流さず配列だけを作る） |
+
+  迷ったら段を選ばずに全部を流す。
 - 取込と作り直しは同時に走らない（後から始めた方が止まる。終わってから打ち直す）。DBのバックアップの書き出し（毎日03:17（日本時間）から
   30分ほど）の間に打った取込と作り直しも止まる。仕組みは[静的道路属性](../../../docs/modules/backend/static-road-attributes.md)「派生」。
 
-## 本番へ効かせたい軸定義の変更は、本番の管理APIへ入れる
+## 本番へ効かせたい道の区分・費用の軸の変更は、本番の管理APIへ入れる
 
-- 対象: `axis_admin`のAPI（各環境の軸スタジオGUI、直接API呼び出し、または下の道具）経由で
-  `axis_definitions`等のDB行データを変更する全ての作業。
-- ルール: **DBは環境ごとに独立していて、その環境の管理画面がそのDBをメンテナンスする**。
-  開発DBだけ変えてタスクを完了扱いにしない
-  ——本番へ効かせるなら本番の軸スタジオか、次の道具で行う。環境間で内容を転送する仕組みは持たない。
-  **リポジトリは軸の写しを持たない**ため、再ダンプの手順は無い。
-- 変える中身が決まっている変更（タスクで値を決めた軸の書き換え・追加・削除）は、軸1本の定義のJSONを作り、
-  `backend/scripts/axis_apply.py`で入れる
-  （仕組みは[axis-studio.md](../../../docs/modules/backend/axis-studio.md)「軸の定義をファイルから本番へ入れる」）:
-
-  ```
-  python scripts/axis_apply.py <JSONのパス>               # 差を出すだけ
-  python scripts/axis_apply.py <JSONのパス> --apply <指紋>  # 書く
-  python scripts/axis_apply.py --delete <axis_id> [--apply <指紋>]
-  ```
-
-  担当は打たず、開発機の対話のセッションがユーザーがチャットで言ったときだけ打つ
-  （[dev-session/SKILL.md](../dev-session/SKILL.md)「本番へ書く」）。差（項目ごとの「前 → 後」）と指紋をチャットで見せ、書くよう言われてから、同じ指紋で書く。宛先は
-  リポジトリの`production-origins.json`から読み、認証情報は`backend/.env.oracle.local`の`ADMIN_BASIC_AUTH_USERNAME`・
-  `ADMIN_BASIC_AUTH_PASSWORD`に置く。JSONはリポジトリの外（作業ツリーの外の手元の置き場）に置き、コミットしない——軸の定義は較正の値を持ち、公開のリポジトリへ写さない（[data-sources.md](../../../docs/architecture/data-sources.md)「OSM から作った値と独自の層」）。記録はタスクの issue に書き、そこにも定義の値を写さない。
-  本番の写しとして直し続けない（次に変えるときは本番の今の定義から新しいJSONを作る）。
-- 完了の条件: 道具が「反映を確かめました」を出したこと（管理APIと公開の軸カタログの両方で見ている）。
-  画面で変えたときは、本番の`GET /api/axis-catalog`で変えた軸を確かめる。
-- 軸の評価の式（`backend/app/domain/`の軸の評価）だけを変えた変更は、本番に出たあとに全部の軸の張り付きを本番で1回測る
-  （`backend`で`python scripts/run_probe.py scripts/measure_axis_saturation.py`。読むだけ）。落ちた絞り込み・二重に数えた値は
-  エラーにもテストの失敗にもならず値の偏りとしてだけ現れ、式だけの変更は派生の表も変えない。本番を読めるのは開発機なので、
-  起票のときにマージのあとの残りの1行として書き、開発機の対話のセッションが打って出力をタスクの issue に書く。張り付いた軸があれば、その変更を疑う
-  （見方は[axis-studio.md](../../../docs/modules/backend/axis-studio.md)「飽和の計測（`scripts/measure_axis_saturation.py`）」）。
+- 対象: 道の区分（分け方・区分の条件・地図の線の層・転がり抵抗の割り当て・回避タブの設定）と費用の軸の定義（体力の軸の
+  見せ方・道のストレスの軸・総合のレンズ）を変える全ての作業。どちらも各環境のDBの表が正本で、管理API
+  （`/api/admin/road-classes`・`/api/admin/cost-axes`）の全体の`GET`・`PUT`だけで読み書きする（仕組みは
+  [費用・材料](../../../docs/modules/backend/evaluation-scoring.md)「管理DBの定義（道の区分・費用の軸）」）。
+- ルール: **DBは環境ごとに独立していて、その環境の管理APIがそのDBをメンテナンスする**。
+  開発DBだけ変えてタスクを完了扱いにしない——本番へ効かせるなら本番の管理APIへ入れる。環境間で内容を転送する仕組みは持たない。
+  **リポジトリは定義の写しを持たない**ため、再ダンプの手順は無い。
+- 入れ方: 本番の`GET`が返す今の全体を取り、変える所だけを直した全体のJSONを作って、同じ口へ`PUT`する。担当は打たず、
+  開発機の対話のセッションがユーザーがチャットで言ったときだけ打つ（[dev-session/SKILL.md](../dev-session/SKILL.md)「本番へ書く」）。
+  今の全体と書く全体の差（項目ごとの「前 → 後」）をチャットで見せ、書くよう言われてから書く。宛先はリポジトリの
+  `production-origins.json`から読み、認証情報は`backend/.env.oracle.local`の`ADMIN_BASIC_AUTH_USERNAME`・`ADMIN_BASIC_AUTH_PASSWORD`に置く。
+  JSONはリポジトリの外（作業ツリーの外の手元の置き場）に置き、コミットしない——定義は較正の値を持ち、公開のリポジトリへ写さない
+  （[data-sources.md](../../../docs/architecture/data-sources.md)「OSM から作った値と独自の層」）。記録はタスクの issue に書き、そこにも
+  定義の値を写さない。本番の写しとして直し続けない（次に変えるときは本番の今の全体から新しいJSONを作る）。
+- 道の区分と費用の軸は、入れ替えるときに互いを確かめる（区分を入れ替えると今の費用の軸を新しい区分で通し直し、費用の軸は今の
+  区分で通す）。表の制約か確かめに通らなければ、何も変えずに409と断りの文を返す。
+- 完了の条件: `PUT`の応答が書いた全体と一致し、本番の公開の口（区分は`GET /api/client-config`の`road_classes`、費用の軸は
+  `GET /api/cost-axes`）に変えた分が出ていること。
 
 ## 付録
 
@@ -72,7 +77,7 @@ description: "本番の派生データを作り直す・本番へ軸定義の変
 
 ### DBのバックアップ
 
-- 対象: 本番DBの全体（管理画面で積み上げた軸の定義・較正値の上書き、生データ・派生データ）。
+- 対象: 本番DBの全体（管理APIで入れた道の区分・費用の軸の定義と較正値、生データ・派生データ）。
   仕組みは[横断基盤](../../../docs/modules/backend/cross-cutting-infrastructure.md)「本番DBのバックアップ」。
 - ルール: 本番VMのsystemdのtimerが毎日03:17（日本時間）に、DBの全体を`pg_dump`（custom形式・圧縮あり）して、
   Oracle Cloud Object Storageの非公開バケットへ`db/<UTCの時刻>.dump`として置き、前の回のものを消す。残すのは、バケットに
@@ -139,8 +144,8 @@ description: "本番の派生データを作り直す・本番へ軸定義の変
      戻ったことを確かめる:
      ```
      curl -fsS http://localhost:8000/health
-     curl -fsS http://localhost:8000/api/axis-catalog | head -c 300
-     sudo docker logs --tail 50 ridecompass-backend 2>&1 | grep -E '軸定義|AxisDefinitionSyncError|TuningOverrideError'
+     curl -fsS http://localhost:8000/api/cost-axes | head -c 300
+     sudo docker logs --tail 50 ridecompass-backend 2>&1 | grep -E '道の区分|費用の軸の定義|較正値'
      ```
-     `/health`が応答し、ログに「軸定義をDBから読み込みました axes=<戻した軸の数>」が出ていれば済み。
+     `/health`が応答し、ログに「道の区分を読み込みました」と「費用の軸の定義を読み込みました axes=<戻した軸の数>」が出ていれば済み。
   6. VMを作り直したときは、上の「DBのバックアップ」の登録の2.〜4.をやり直す（動的グループのルールはVMのOCIDを指す）。

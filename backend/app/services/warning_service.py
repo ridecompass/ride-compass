@@ -25,21 +25,17 @@ class WarningService:
         self._area_data_cache = area_data_cache
         self._warning_cache = warning_cache
 
-    async def get_warnings(self, point: Coordinates) -> WeatherWarnings | None:
+    async def get_warnings(self, point: Coordinates) -> WeatherWarnings:
         """出発地点の警報・注意報バッジ情報を取得する。
 
-        地点→区域→警報エリアの解決か、警報自体の取得に失敗したらNone（出ているかが分からない）。
+        地点→区域→警報エリアの解決か、警報自体の取得に失敗したら投げる（出ているかが分からない）。
         「警報なし」は、地点がどの区域にも入らないときと、取れた電文がその区域に警報を持たないときだけ。
         """
         resolved = await resolve_point_area(self._http_client, self._area_data_cache, point.latitude, point.longitude)
-        if resolved is None:
-            return None
         if isinstance(resolved, OutsideAreas):
             return WeatherWarnings(warnings=[], valid_area=None)
 
         bulletins = await fetch_warning_documents(self._http_client, resolved.office_code, self._warning_cache)
-        if bulletins is None:
-            return None
 
         shape = await area_shape(resolved.class20_code)
         return WeatherWarnings(

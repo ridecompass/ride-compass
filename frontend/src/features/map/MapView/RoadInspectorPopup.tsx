@@ -2,182 +2,158 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import AxisContributionBar, { hasAnyContribution } from "@/components/AxisContributionBar/AxisContributionBar";
-import AxisDetail from "@/components/AxisContributionBar/AxisDetail";
-import type { CatalogAxis } from "@/lib/catalogAxis";
+import { PopupHeader } from "@/components/MapPopup/MapPopupParts";
 import { isDebugEnabled } from "@/lib/debugLog";
 import { getQueryClient } from "@/lib/queryClient";
-import { fetchAxisInspector, type AxisInspectorConditions, type AxisInspectorResult } from "@/features/map/regionApi";
-import type { RoutePreferenceWeights } from "@/types/route";
-import { LANDCOVER_CLASSES } from "@/lib/mapDisplay/landcoverClasses";
-import { PRIMARY_ATTRIBUTE_LABELS } from "@/features/map/layers/primaryAttributes";
-import { roadDisplayName, roadFactRows, roadFeatureKey, roadWayId, type RoadSurfacePopupProperties } from "./roadFacts";
+import { fetchRoadInspection, type RoadInspection, type RoadInspectorConditions } from "@/features/map/regionApi";
+import type { CostPreference } from "@/types/route";
+import { LEGEND_SWATCH_RING_CLASS, legendSwatchBackground } from "@/lib/mapDisplay/legendFilter";
+import type { RoadTrackRow } from "@/lib/mapDisplay/roadTracks";
+import {
+  roadDisplayName,
+  roadFactRows,
+  roadFactSummary,
+  roadFeatureKey,
+  roadTagRows,
+  roadWayId,
+  type RoadFactRow,
+  type RoadSurfacePopupProperties,
+} from "./roadFacts";
 import { Button } from "@/components/ui/Button/Button";
 import { InspectRoadIcon } from "@/components/ui/icons/lucideIcons";
 import { textVariants } from "@/components/ui/Text/Text";
 import { cn } from "@/lib/cn";
-import { formatDifficultyOutOfScale } from "@/lib/mapDisplay/valueScale";
+import { useCostAxisCatalog } from "@/hooks/useCostAxisCatalog";
+import { formatLensNumber, LENS_SECONDS_UNIT } from "@/lib/mapDisplay/costLensPaint";
+import { costAxisLabel, factValueText } from "@/lib/routePenalty";
 
 interface RoadInspectorPopupProps {
   properties: RoadSurfacePopupProperties;
-  /** 公開軸すべて（順序・ラベルの正本）。ルート結果と同じ並びで内訳を出すために渡す。 */
-  axes: readonly CatalogAxis[];
-  /** 軸id→色（ルート結果の寄与度バー・凡例チップと同じ配色）。 */
-  axisColors: Record<string, string>;
-  /** 地図が今指定している走行の条件＋押した点のタイル。走る条件を使う軸は、この条件で値を求める。 */
-  conditions: AxisInspectorConditions;
-  /** 利用者がいま設定している重み（ルート生成へ送るのと同じもの）。nullなら既定の重み。 */
-  routePreference: RoutePreferenceWeights | null;
+  /** 押した道の線が入る凡例の行（地図の道の色と道の種類の名前）。引けなければnull。 */
+  track: RoadTrackRow | null;
+  /** 地図が今指定している走行の条件＋押した点のタイル。レンズの値はこの条件で求める。 */
+  conditions: RoadInspectorConditions;
+  /** 利用者のつまみと倍率（ルート生成へ送るのと同じもの）。費用のレンズの値をこの値で求める。 */
+  costPreference: CostPreference;
 }
 
-// 地図の道をクリックしたときの中身。答えるのは「この道は何者で、なぜこの評価なのか」。
-//
-// **ルート結果と同じ部品・同じ配色で評価を出す**（`AxisContributionBar`・`AxisDetail`）——同じ「軸ごとの
-// 効き方」を別の見た目で見せると、利用者は2つの読み方を覚えることになる。
-// 評価は押したときだけ取りに行く（クリックのたびに引くとレート制限に当たる）。
-// 開いたときに見せるのは名前と評価だけで、属性・土地被覆は畳む（地図の上の小さな枠に収めるため）。
-export default function RoadInspectorPopup({
-  properties,
-  axes,
-  axisColors,
-  conditions,
-  routePreference,
-}: RoadInspectorPopupProps) {
-  // 評価は道・走行の条件・重みごとに持つ。重みを変えたら、古い重みの評価を見せずに取り直しへ戻す。条件は押したときの
-  // ものに留める——出発時刻は「今」へ5分刻みで進むので、今の条件で引き直すと開いている間に評価が消える。
-  const weightsKey = JSON.stringify(routePreference);
-  const [pressed, setPressed] = useState<{ weightsKey: string; conditions: AxisInspectorConditions } | null>(null);
-  const pinned = pressed !== null && pressed.weightsKey === weightsKey ? pressed : null;
-  const name = roadDisplayName(properties);
+const hintClass = cn(textVariants({ variant: "hint" }), "m-0");
+
+// 地図の道をクリックしたときの中身。答えるのは「この道は何者で、どれだけの負担か」。
+// 負担は押したときだけ取りに行く（クリックのたびに引くとレート制限に当たる）。
+// 開いたときに見せるのは上の帯（道の種類・名前・路面など）と負担だけで、属性は畳む（地図の上の小さな枠に収めるため）。
+export default function RoadInspectorPopup({ properties, track, conditions, costPreference }: RoadInspectorPopupProps) {
+  // 負担は道・走行の条件・利用者の値ごとに持つ。値を変えたら、古い値の負担を見せずに取り直しへ戻す。条件は押したときの
+  // ものに留める——出発時刻は「今」へ5分刻みで進むので、今の条件で引き直すと開いている間に負担が消える。
+  const preferenceKey = JSON.stringify(costPreference);
+  const [pressed, setPressed] = useState<{ preferenceKey: string; conditions: RoadInspectorConditions } | null>(null);
+  const pinned = pressed !== null && pressed.preferenceKey === preferenceKey ? pressed : null;
+  const name = roadDisplayName(properties) ?? track?.label ?? null;
+  const summary = roadFactSummary(properties);
   const wayId = roadWayId(properties);
   const featureKey = roadFeatureKey(properties);
   const inspector = useQuery(
     {
-      queryKey: ["axis-inspector", wayId, featureKey, JSON.stringify(pinned?.conditions ?? conditions), weightsKey],
+      queryKey: ["road-inspector", wayId, featureKey, JSON.stringify(pinned?.conditions ?? conditions), preferenceKey],
       // 取りに行くのは押したあと（`pinned`がある間）だけ。
       queryFn: async () => {
-        const value = await fetchAxisInspector(wayId!, featureKey!, pinned!.conditions, routePreference);
-        if (value === null) throw new Error("評価が返りませんでした");
+        const value = await fetchRoadInspection(wayId!, featureKey!, pinned!.conditions, costPreference);
+        if (value === null) throw new Error("負担が返りませんでした");
         return value;
       },
       enabled: pinned !== null && wayId != null && featureKey != null,
-      // 同じ道を同じ条件・重みで開き直したときは、前に取った評価を出す（押すたびに引くとレート制限に当たる）。
+      // 同じ道を同じ条件・利用者の値で開き直したときは、前に取った負担を出す（押すたびに引くとレート制限に当たる）。
       staleTime: Infinity,
     },
     getQueryClient(),
   );
-  const result: AxisInspectorResult | null = inspector.data ?? null;
+  const result: RoadInspection | null = inspector.data ?? null;
 
   const load = () => {
     if (pinned !== null) void inspector.refetch();
-    else setPressed({ weightsKey, conditions });
+    else setPressed({ preferenceKey, conditions });
   };
 
   return (
-    // 高さに上限を付け、あふれたら中でスクロールする——地図の上の枠は、中身が伸びても画面の外へ出てはいけない。
-    <div className="max-h-[min(22rem,45vh)] max-w-68 overflow-y-auto text-[length:var(--font-size-md)] leading-[1.4]">
-      {name !== null && <div className="mb-1 font-semibold">{name}</div>}
+    <div className="flex max-w-68 flex-col gap-1.5">
+      <PopupHeader label="道の小窓の上の帯">
+        {track !== null && (
+          <span
+            aria-hidden="true"
+            className={cn("inline-block h-1.5 w-4 flex-none rounded-[1px]", LEGEND_SWATCH_RING_CLASS)}
+            style={{ background: legendSwatchBackground(track) }}
+          />
+        )}
+        <span className="min-w-0 [overflow-wrap:anywhere]">
+          {name !== null && <span className="font-semibold">{name}</span>}
+          {summary.length > 0 && <span className={cn(hintClass, "ml-1.5")}>{summary.join("・")}</span>}
+        </span>
+      </PopupHeader>
       {wayId != null && featureKey != null && result === null && (
         <Button
           size="panelIcon"
-          className="disabled:cursor-progress"
+          className="self-start disabled:cursor-progress"
           onClick={load}
           disabled={inspector.isFetching}
           aria-busy={inspector.isFetching}
-          aria-label="この道の評価を見る"
-          usage="この道を、いまの条件と重みで評価した値を取りに行きます。"
+          aria-label="この道の負担を見る"
+          usage="いまの走行条件と、負担の強さ・倍率で、この道の負担を計算します。"
         >
           <InspectRoadIcon />
         </Button>
       )}
-      {inspector.isError && <p className={textVariants({ variant: "hint" })}>評価を取得できませんでした。</p>}
-      {result !== null &&
-        FEATURES.map((feature) => (
-          <FeatureValues
-            key={feature.key}
-            feature={feature}
-            values={result[feature.key]}
-            axes={axes}
-            axisColors={axisColors}
-          />
-        ))}
-      <div className="mt-1 grid gap-0.5 border-t border-[var(--color-border)] pt-1">
-        <RoadAttributeRows properties={properties} result={result} />
-      </div>
-      {isDebugEnabled() && wayId != null && <p className={textVariants({ variant: "hint" })}>OSM way id: {wayId}</p>}
+      {inspector.isError && <p className={hintClass}>負担を取得できませんでした。</p>}
+      {result !== null && <LensValues lens={result.lens} />}
+      <RoadAttributeRows properties={properties} result={result} />
+      {isDebugEnabled() && wayId != null && <p className={hintClass}>OSM way id: {wayId}</p>}
     </div>
   );
 }
 
-type InspectorValues = AxisInspectorResult["way"];
+type LensInspection = RoadInspection["lens"];
 
-/** 窓に並べるフィーチャー（応答の欄）と、その値をどの範囲の値として見せるか。押した区間は寄せた地図の色、道全体は
- * 引いた地図の色と同じ値なので、どちらの値かを見出しと文で名指す。 */
-const FEATURES = [
-  { key: "segment", heading: "押した区間", subject: "この区間" },
-  { key: "way", heading: "この道全体", subject: "この道全体" },
-] as const satisfies readonly { key: keyof AxisInspectorResult; heading: string; subject: string }[];
-
-/** 1つのフィーチャーの評価: 軸ごとの効き方・合成・周囲の土地被覆。 */
-function FeatureValues({
-  feature,
-  values,
-  axes,
-  axisColors,
-}: {
-  feature: (typeof FEATURES)[number];
-  values: InspectorValues;
-  axes: readonly CatalogAxis[];
-  axisColors: Record<string, string>;
-}) {
-  // 寄与度はbackendが返す（軸ごとの重み付き寄与、合計が合成スコアと一致する）。
-  // フロントで重みを掛け直さない——ルート結果側と同じ規約。
-  const contributions: Record<string, number> = {};
-  for (const axis of values.axes) {
-    if (axis.contribution != null) contributions[axis.axis_id] = axis.contribution;
-  }
-
-  // 合成に使えた軸の重みの割合（%）。出すのと同じ丸めで100%に届かないときだけ、一部の軸だけの値だと添える。
-  const coveredWeightPercent =
-    values.composite_difficulty != null ? Math.round(values.composite_difficulty.covered_weight_fraction * 100) : null;
-
+/** 押したフィーチャーの、地図のレンズと同じ1kmあたりの代償の秒（総合と軸ごと）と、その元の事実。地図が塗っている向きの
+ * 値を出す（直角に近くて向きが決まらない道は、辿れる向きのうち道の向きを先に）。 */
+function LensValues({ lens }: { lens: LensInspection }) {
+  const costCatalog = useCostAxisCatalog();
+  const slot = lens.painted ?? (lens.along !== null ? "along" : "against");
+  const values = lens[slot];
+  if (values === null) return <p className={hintClass}>この向きには走れません。</p>;
+  // 事実の名前と単位は backend が付ける（ルートの内訳・凡例の目安と同じ事実は同じ名前）。
+  const facts: RoadFactRow[] = [
+    ...values.facts.map((fact) => ({ label: fact.label, value: factValueText(fact) })),
+    ...(lens.surface !== null ? [{ label: "路面", value: lens.surface }] : []),
+  ];
   return (
-    <section aria-label={feature.heading} className="mt-1 grid gap-1">
-      <h3 className={cn(textVariants({ variant: "label" }), "m-0")}>{feature.heading}</h3>
-      {hasAnyContribution(axes, contributions) ? (
-        <AxisContributionBar
-          axes={axes}
-          contributions={contributions}
-          axisColors={axisColors}
-          renderDetail={(axis) => {
-            const found = values.axes.find((a) => a.axis_id === axis.axisId);
-            if (found === undefined || found.difficulty === null) return null;
-            return <AxisDetail axis={axis} difficulty={found.difficulty} />;
-          }}
-        />
-      ) : (
-        <p className={textVariants({ variant: "hint" })}>{`${feature.subject}で値を出せる評価軸がありません。`}</p>
-      )}
-      {values.composite_difficulty !== null && (
-        <p className={cn(textVariants({ variant: "hint" }), "m-0")}>
-          {`${feature.subject}で見た難易度: ${formatDifficultyOutOfScale(values.composite_difficulty.value)}`}
-          {coveredWeightPercent !== null && coveredWeightPercent < 100
-            ? `[重みの約${coveredWeightPercent}%ぶんの評価軸だけ。残りの評価軸は、${feature.subject}とこの走る条件では値が出せません]`
-            : ""}
-        </p>
-      )}
-      <RoadLandcoverRows landcover={values.landcover} />
-    </section>
+    <div className="flex flex-col gap-1">
+      <p className="m-0">
+        <span className="font-semibold">
+          {costCatalog.lenses?.totalLens.label ?? "負担"} {formatLensNumber(values.total_seconds_per_km)}
+          {LENS_SECONDS_UNIT}
+        </span>
+        <span className={cn(hintClass, "ml-1.5")}>
+          {slot === "along" ? "道の向き" : "逆向き"}
+          {lens.painted === null ? "（地図の向きに直角に近い道）" : ""}
+        </span>
+      </p>
+      <FactList
+        rows={values.axes.map((axis) => ({
+          label: costAxisLabel(costCatalog, axis.axis_id),
+          value: `${formatLensNumber(axis.seconds_per_km)}${LENS_SECONDS_UNIT}`,
+        }))}
+      />
+      {facts.length > 0 && <FactList rows={facts} />}
+    </div>
   );
 }
 
 /** 「項目: 値」の行の並び。項目の名前は並びの中で重ならない。 */
-function FactList({ rows }: { rows: readonly { label: string; value: string }[] }) {
+function FactList({ rows }: { rows: readonly RoadFactRow[] }) {
   return (
     <dl className="m-0 grid gap-0.5">
       {rows.map((row) => (
         <div key={row.label} className="grid grid-cols-[5.5rem_1fr] gap-1.5">
-          <dt className={cn(textVariants({ variant: "hint" }), "m-0")}>{row.label}</dt>
+          <dt className={hintClass}>{row.label}</dt>
           <dd className="m-0 [overflow-wrap:anywhere]">{row.value}</dd>
         </div>
       ))}
@@ -185,61 +161,32 @@ function FactList({ rows }: { rows: readonly { label: string; value: string }[] 
   );
 }
 
-/** 道路の周囲100mリングの土地被覆。走行中に読むものではないため畳んでおき、閉じている
- * 間は最も多いクラスだけを見せる。クラスの割合は合計100%になるため、開いたときは割合の
- * 大きい順に並べ、0%のクラスは出さない。 */
-function RoadLandcoverRows({ landcover }: { landcover: InspectorValues["landcover"] }) {
-  if (landcover === null) return null;
-  const rows = LANDCOVER_CLASSES.map((cls) => ({
-    label: cls.label,
-    value: landcover[cls.percentField as keyof typeof landcover] as number,
-  }))
-    .filter((row) => row.value >= 0.5)
-    .sort((a, b) => b.value - a.value);
-  if (rows.length === 0) return null;
-  const top = rows[0];
-  return (
-    <details className="[&>summary]:cursor-pointer">
-      <summary
-        className={textVariants({ variant: "hint" })}
-      >{`周囲の土地被覆: ${top.label} ${Math.round(top.value)}%`}</summary>
-      <FactList rows={rows.map((row) => ({ label: row.label, value: `${Math.round(row.value)}%` }))} />
-    </details>
-  );
-}
-
-/** この道の属性。地図のタイルから分かる事実に、評価を取ったときに届くタグ（カタログに登録済みのもの）を足し、
- * **同じ項目は1度だけ**出す（タイルとタグの両方が持つ項目がある）。畳んでおく——走行中に読むものではなく、
- * 開いたままだと地図の上の枠からはみ出す。登録外の生タグ（`name`・`ref`等、OSM編集者が自由に書ける）は
- * 数が読めないため、さらに畳んで置く。 */
+/** この道の属性。地図のタイルから分かる事実に、負担を取ったときに届くタグを足し、**同じ項目は1度だけ**出す（タイルとタグの
+ * 両方が持つ項目がある）。中は日本語で読める値だけにし、英語の生の値・登録外のタグ（`name`・`ref`等、OSM編集者が自由に
+ * 書ける）は、数が読めないため、さらに畳んだ「その他のタグ」に置く。畳んでおく——走行中に読むものではなく、開いたままだと
+ * 地図の上の枠からはみ出す。 */
 function RoadAttributeRows({
   properties,
   result,
 }: {
   properties: RoadSurfacePopupProperties;
-  result: AxisInspectorResult | null;
+  result: RoadInspection | null;
 }) {
   const rows = [...roadFactRows(properties)];
-  const others: { label: string; value: string }[] = [];
-  const add = (label: string, value: string) => {
-    if (!rows.some((row) => row.label === label)) rows.push({ label, value });
-  };
-  if (result !== null) {
-    add(PRIMARY_ATTRIBUTE_LABELS.highway, result.highway);
-    for (const [key, value] of Object.entries(result.tags)) {
-      const label = PRIMARY_ATTRIBUTE_LABELS[key];
-      if (label === undefined) others.push({ label: key, value });
-      else add(label, value);
-    }
-  }
+  const tagged = result === null ? { rows: [], raw: [] } : roadTagRows({ highway: result.highway, ...result.tags });
+  for (const row of tagged.rows) if (!rows.some((shown) => shown.label === row.label)) rows.push(row);
   return (
-    <details className="[&>summary]:cursor-pointer">
-      <summary className={textVariants({ variant: "hint" })}>この道の属性</summary>
+    <details className="border-t border-[var(--color-border)] pt-1 [&_summary]:cursor-pointer">
+      <summary className={hintClass} data-usage="この道の属性の一覧を開きます。">
+        この道の属性
+      </summary>
       <FactList rows={rows} />
-      {others.length > 0 && (
-        <details className="[&>summary]:cursor-pointer">
-          <summary className={textVariants({ variant: "hint" })}>その他のタグ</summary>
-          <FactList rows={others} />
+      {tagged.raw.length > 0 && (
+        <details>
+          <summary className={hintClass} data-usage="上に並べていない、この道のタグを開きます。">
+            その他のタグ
+          </summary>
+          <FactList rows={tagged.raw} />
         </details>
       )}
     </details>

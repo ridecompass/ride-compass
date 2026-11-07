@@ -24,33 +24,37 @@ paths:
   docs/architecture/・docs/modules/の追従を既定で含める**（書き分けはdocs/architecture/README.md「書き分け」）。
   どちらもコード変更と同一コミットで更新する。
 - **既存の仕組みと技術的に別方式の新しい配信・レンダリング機構（例: 地図の配信と別に、
-  フィーチャーの鍵で値を配る専用way値の配信）を新設するときは、
+  フィーチャーの鍵でレンズの材料を配る口）を新設するときは、
   着手前に`docs/architecture/design-principles.md`の構造仕様3・8（1本道の追加点）がこの新しい機構にも
   適用されるかを点検し、適用されるなら軸ごとのファイル・関数・定数・propを新設しない
   汎用設計にする**。
 - **MVT焼き込み値（CASE式・材料タグ・domain純関数）を変更したら**、生成物
   （region-tile-config.json）を同一コミットで再生成する（タイル世代は手で上げない。`app/infrastructure/cache_identity.py`参照）。
-- **評価軸（`axis_definitions`テーブル）の新規追加・削除・既存軸の`shape_params`調整は、
-  すべて`axis_admin`のAPI（軸の定義ファイルを入れる`backend/scripts/axis_apply.py`。折れ点・段の境界だけなら軸スタジオの較正の画面でもよい。新規追加=POST、
-  削除=unpublish→DELETE、公開軸の折れ点・表示だけの調整=PUT、それ以外の公開軸の調整=unpublish→PUT→republish）経由で行う。**
-  **正本は本番DBだけ**で、リポジトリは軸の写しを持たない。
+- **道の区分と費用の軸の定義（表`cost_axis_definitions`）の追加・削除・調整は、すべて管理API
+  （`/api/admin/road-classes`・`/api/admin/cost-axes`の全体の`GET`・`PUT`）で行う。**
+  **正本は本番DBだけ**で、リポジトリは定義の写しを持たない。
   本番の既存の表は`create_tables()`が宣言の変更に追従しないので、差は人が本番で埋める（デプロイが入れ替えの後に
   測る。docs/architecture/tech-stack.md「デプロイの反映確認（backend/frontendで注入元が異なる）」の`schema_gap.py`）。
   ビルド時の生成物（`frontend/src/types/generated/`）はコードの宣言から決め、DBを読まない。
   DBのバックアップは`.claude/skills/production-data/SKILL.md`の付録の「DBのバックアップ」。
-  完了扱いにする条件は`.claude/skills/production-data/SKILL.md`の「本番へ効かせたい軸定義の変更は、本番の管理APIへ入れる」
+  完了扱いにする条件は`.claude/skills/production-data/SKILL.md`の「本番へ効かせたい道の区分・費用の軸の変更は、本番の管理APIへ入れる」
   （開発DBのみの反映で完了扱いにしない）。
+- **較正値を宣言（`app/domain/tuning.py: TUNING_PARAMETERS`）に足したら、本番の表`tuning_overrides`にその行を入れてから
+  masterへ入れる（マージする）**。値の正本は表だけで、行が無いと本番の backend が起動しない（今のコードは宣言に無いidの行を
+  読まないので、先に入れてよい）。宣言から消したら、出したあとに本番の行を消す。入れ方・消し方は上の表を足す・消すときと同じ。
 - **既存DBの行データを新しいコードが読めなくなる変更（Pydanticモデルの破壊的変更等）を
   含む`backend/**`の変更は、本番DBのデータ移行を完了させてからmasterへ入れる（マージする）**。
   masterに入ってCI（`.github/workflows/ci.yml`）が通ると、backendは本番へ自動デプロイされ、止める仕組みは無い
-  （新しいコードが本番DBに残る旧い形のデータを読めないと、`refresh_axis_definitions`等の fail-fast で本番の backend が起動に失敗する）
+  （新しいコードが本番DBに残る旧い形のデータを読めないと、`services/cost_axis_service.py: refresh_cost_axes`等の fail-fast で本番の backend が起動に失敗する）
   （コンテナを入れ替えるかの振り分けは`backend/scripts/deploy_gate.py`が正本）。
   対応順序は事前に次のいずれかを選ぶこと: 1) 本番DBのデータ移行を先に完了させてから
   マージ（移行を即座に行えなければ、終わるまでmasterへ入れずに待つ）、2) 新旧両方の形式を一時的に許容する後方互換コードを
   経由して段階的に移行する。
 - **コードが新しく読む表・列を足す`backend/**`の変更も、本番DBに空の表（列）を作ってからmasterへ入れる（マージする）**。
   本番に無い表を読むコードが出ると、その表を読む口がデプロイのあと失敗し、派生の作り直しも本番の今の表を写して作業用のスキーマを作るので動かない。
-  読まずに宣言だけ足す表は、出したあとに作ってよい。空の表のDDLは手で書かず、ORMの宣言（`app/infrastructure/orm_base.py: declared_metadata`）から
+  読まずに宣言だけ足す表は、出したあとに作ってよい（作るまでは本番に足りない差として、デプロイのスキーマの差の段が落ちる）。
+  古いコードが読む列・既定値を宣言から消したら、出したあとに本番で消す（消すまでは本番が多く持つ差で、段は出すだけで落とさない）。
+  消す本番の作業は、対話作業の issue の約束として持つ。空の表のDDLは手で書かず、ORMの宣言（`app/infrastructure/orm_base.py: declared_metadata`）から
   `sqlalchemy.schema`の`CreateTable`・`CreateIndex`をPostgreSQLの方言でcompileして出す。マージの前の本番への書き込みの進め方は
   docs/conventions/flow.md「担当」の「自動で進めないもの」。
 

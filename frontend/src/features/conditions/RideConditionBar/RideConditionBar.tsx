@@ -3,7 +3,7 @@
 import { cn } from "@/lib/cn";
 import { LENS_LINK_CLASS, LENS_LINK_DESCRIPTION } from "@/lib/lensLink";
 import { Popover, PopoverContent, PopoverTrigger, POPOVER_COLLISION_PADDING_PX } from "@/components/ui/Popover/Popover";
-import { useState, useSyncExternalStore, type ComponentProps, type ReactNode } from "react";
+import { useMemo, useState, useSyncExternalStore, type ComponentProps, type ReactNode } from "react";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 import { departureLabelParts } from "@/features/conditions/rideConditions";
 import { clampSpeedKmh, MAX_SPEED_KMH, MIN_SPEED_KMH } from "@/lib/assumedSpeed";
@@ -11,15 +11,21 @@ import { clampSpeedKmh, MAX_SPEED_KMH, MIN_SPEED_KMH } from "@/lib/assumedSpeed"
 import DynamicLayerTimeSlider from "@/features/conditions/DynamicLayerTimeSlider/DynamicLayerTimeSlider";
 import { nearestTimeIndex, parseJstLocalValue, toJstLocalValue } from "@/lib/time";
 import { ClockIcon, SpeedGaugeIcon } from "@/components/ui/icons/lucideIcons";
-import { buildDepartureFrames, buildDepartureTimeline } from "./departureTimeline";
+import { useStoredState } from "@/hooks/useStoredState";
+import {
+  buildDepartureFrames,
+  buildDepartureTimeline,
+  DEPARTURE_STEPS,
+  isDepartureStep,
+  type DepartureStep,
+} from "./departureTimeline";
 import { Button } from "@/components/ui/Button/Button";
 import { NumberInput } from "@/components/ui/NumberInput/NumberInput";
 import { Input } from "@/components/ui/Input/Input";
 import { textVariants } from "@/components/ui/Text/Text";
 import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
-import { useAxisCatalog } from "@/hooks/useAxisCatalog";
-import { CLIENT_TUNING_IDS, clientTuningValue, type AxisCatalog } from "@/lib/axisCatalog";
-import { axisNamesUsing } from "@/lib/catalogAxis";
+import { useClientConfig } from "@/hooks/useClientConfig";
+import { CLIENT_TUNING_IDS, clientTuningValue, type ClientConfig } from "@/lib/clientConfig";
 
 /** 区間ごとに速度を変える条件の名前（backendの走行モデルが宣言する並び）。 */
 const SPEED_CONDITIONS = routeGenerateConfig.segment_speed_conditions.join("・");
@@ -32,10 +38,10 @@ interface RideConditionBarProps {
    * 時間の経過に追従する状態へ戻すため、`onDepartureTimeChange(new Date())`では代用
    * できない（現在時刻でピン留めされ、実況の更新から取り残される）。 */
   onDepartureNow: () => void;
-  /** 想定速度（km/h、backend: RouteGenerateRequest.assumed_speed_kmh）。 */
+  /** 想定速度（km/h）。 */
   speedKmh: number;
   onSpeedKmhChange: (speedKmh: number) => void;
-  /** いまの「評価で塗る」の周りの道の塗りが、出発時刻・想定速度で決まっている。 */
+  /** いまの「負担で塗る」の周りの道の塗りが、出発時刻・想定速度で決まっている。 */
   linkedDeparture: boolean;
   linkedSpeed: boolean;
 }
@@ -44,7 +50,7 @@ const subscribeNothing = () => () => {};
 
 /** 想定速度の説明に出す走行モデルの標準値（管理画面の較正値）。1つでも引けなければ`null`——
  * 引けない間は標準値の文を出さない（較正したのとは別の数を出さない）。 */
-function riderDefaultsOf(catalog: AxisCatalog) {
+function riderDefaultsOf(catalog: ClientConfig) {
   const massKg = clientTuningValue(catalog, CLIENT_TUNING_IDS.massKg);
   const cdaM2 = clientTuningValue(catalog, CLIENT_TUNING_IDS.cdaM2);
   const maxDescentKmh = clientTuningValue(catalog, CLIENT_TUNING_IDS.maxDescentKmh);
@@ -82,18 +88,23 @@ function ConditionTrigger({
   );
 }
 
-/** 出発時刻のドラッグタイムライン。目盛りは描き始めた（ポップオーバーを開いた）時刻を基準に一度だけ作る——開いたまま
- * 長時間放置されても「現在」ボタン・目盛りの基準がずれないよう、開くたびに作り直す。 */
+const DEPARTURE_STEP_STORAGE_KEY = "ridecompass:departure-step";
+
+/** 出発時刻のドラッグタイムライン。目盛りは描き始めた（ポップオーバーを開いた）時刻を基準に作る——開いたまま
+ * 長時間放置されても「現在」ボタン・目盛りの基準がずれないよう、開くたびに基準を取り直す。刻みは端末に覚える。 */
 function DepartureRuler({
   departureTime,
   onDepartureTimeChange,
   onDepartureNow,
 }: Pick<RideConditionBarProps, "departureTime" | "onDepartureTimeChange" | "onDepartureNow">) {
-  const [{ timeline, frames, nowIndex }] = useState(() => {
-    const anchor = new Date();
-    const timeline = buildDepartureTimeline(anchor);
-    return { timeline, frames: buildDepartureFrames(timeline), nowIndex: nearestTimeIndex(timeline, anchor) };
-  });
+  const [anchor] = useState(() => new Date());
+  const [step, setStep] = useStoredState<DepartureStep>(DEPARTURE_STEP_STORAGE_KEY, "出発時刻の刻み", "hour");
+  const { timeline, frames } = useMemo(() => {
+    const timeline = buildDepartureTimeline(anchor, step);
+    return { timeline, frames: buildDepartureFrames(timeline, step) };
+  }, [anchor, step]);
+  // 先頭の目盛りは「今」（開いた時刻を刻みへ切り下げた時刻）。「今」に追従する出発時刻も同じく切り下げてある。
+  const nowIndex = 0;
   return (
     <DynamicLayerTimeSlider
       frames={frames}
@@ -104,14 +115,19 @@ function DepartureRuler({
       currentIndex={nowIndex}
       onNow={onDepartureNow}
       ariaLabel="出発時刻"
+      steps={DEPARTURE_STEPS}
+      step={step}
+      onStepChange={(next) => {
+        if (!isDepartureStep(next)) return;
+        setStep(next);
+        onDepartureNow();
+      }}
     />
   );
 }
 
-// 地図右上の走行条件アイコン列。走行条件（出発時刻・想定速度）は時刻・速さで値の変わる評価と
-// 気象レイヤーの表示時刻の両方が参照する共有stateのため、ルート設定フォームでは
-// なく地図上に常時置き、アイコンをタップしてその場で変えられるようにする。地図の右上の
-// 拡大・縮小と方位磁針と同じ列の幅のアイコンボタンに揃える（page.tsxがその列の直下へ積む）。
+// 地図右上の走行条件アイコン列。走行条件はルートの評価と気象の表示時刻の両方に効くので、ルート設定フォームではなく
+// 地図の上に常時置き、拡大・縮小と方位磁針と同じ列の幅のアイコンボタンに揃える。
 export default function RideConditionBar({
   departureTime,
   onDepartureTimeChange,
@@ -121,10 +137,7 @@ export default function RideConditionBar({
   linkedDeparture,
   linkedSpeed,
 }: RideConditionBarProps) {
-  const axisCatalog = useAxisCatalog();
-  const riderDefaults = riderDefaultsOf(axisCatalog);
-  // 出発時刻で値の変わる評価の名前は軸カタログから引く。無ければ評価に触れない。
-  const timeAxes = axisNamesUsing(axisCatalog.axes, "at");
+  const riderDefaults = riderDefaultsOf(useClientConfig());
   // 出発時刻の文言は描いた時刻で決まる。ページはビルド時に描かれるので、サーバーとハイドレーションの描画では
   // 出さず、ハイドレーションのあとに出す（出すとビルドの時刻の文言とずれ、ハイドレーションが不一致で失敗する）。
   const hydrated = useSyncExternalStore(
@@ -148,7 +161,7 @@ export default function RideConditionBar({
             name={departureName}
             icon={<ClockIcon />}
             linked={linkedDeparture}
-            usage={`出発する日時を決めます。地図の気象の表示の時刻と、ルートの${timeAxes ? `${timeAxes}の評価・` : ""}到達予想の時刻に使います。`}
+            usage="出発する日時を決めます。地図に出す気象と周りの道の負担（風）の時刻、ルートの到達予想の時刻に使います。"
           >
             {/* 別の日は日付も付くため、列の幅に収まるよう日付と時刻を2行に分ける。 */}
             {departureLabel?.map((part) => (
@@ -176,16 +189,11 @@ export default function RideConditionBar({
             }}
             className="h-8 tabular-nums"
           />
-          <div
-            className="contents"
-            data-usage="目盛りをなぞって出発時刻を選びます。‹ › で1つずつ動かし、「現在」で今の時刻に合わせ続ける状態へ戻します。"
-          >
-            <DepartureRuler
-              departureTime={departureTime}
-              onDepartureTimeChange={onDepartureTimeChange}
-              onDepartureNow={onDepartureNow}
-            />
-          </div>
+          <DepartureRuler
+            departureTime={departureTime}
+            onDepartureTimeChange={onDepartureTimeChange}
+            onDepartureNow={onDepartureNow}
+          />
         </PopoverContent>
       </Popover>
 

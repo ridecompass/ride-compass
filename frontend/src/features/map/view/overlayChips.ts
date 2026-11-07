@@ -4,8 +4,7 @@
  * 凡例は`scene/legends.ts`、表示専用の凡例は記述子の`readOnlyLegend`。
  */
 import {
-  buildDefaultLayerVisibility,
-  isAxisStudioLayer,
+  isLensLayer,
   TILE_VERSIONS_MISSING_NOTICE,
   TILE_ZOOM_TOO_WIDE_NOTICE,
   type LayerDataStatusByLayer,
@@ -14,6 +13,7 @@ import {
   type MapLayerId,
   type MapLayerVisibility,
 } from "@/features/map/layers/mapLayers";
+import type { RoadMapLayerView } from "@/types/route";
 import type { LegendFilterSummaryAxis } from "@/features/map/MapOverlayControls/LegendDetails";
 import type { OverlayLayerChip } from "@/features/map/MapOverlayControls/OverlayLayerRow";
 import { disasterSourceLegendAxis, pointLegendAxes, roadLegendAxes } from "@/features/map/scene/legends";
@@ -23,37 +23,44 @@ import type { HiddenLegendKeys } from "./mapLook";
 
 type ChipLegend = Omit<LegendFilterSummaryAxis, "hiddenKeys">;
 
-// 絞り込める凡例は生成物の宣言だけから決まるので、一度だけ組む。
-const SCENE_LEGEND_AXES = [...roadLegendAxes(), ...pointLegendAxes(), disasterSourceLegendAxis()];
+// 点と災害の凡例は生成物の宣言だけから決まるので、一度だけ組む。
+const DECLARED_LEGEND_AXES = [...pointLegendAxes(), disasterSourceLegendAxis()];
 
-function chipLegends(layer: ChipLayerDescriptor): ChipLegend[] {
+function chipLegends(
+  layer: ChipLayerDescriptor,
+  legendAxes: readonly (typeof DECLARED_LEGEND_AXES)[number][],
+): ChipLegend[] {
   return [
-    ...SCENE_LEGEND_AXES.filter((axis) => axis.layerId === layer.id).map((axis) => ({
-      label: axis.label,
-      legend: axis.entries,
-      axisId: axis.axisId,
-    })),
+    ...legendAxes
+      .filter((axis) => axis.layerId === layer.id)
+      .map((axis) => ({
+        label: axis.label,
+        legend: axis.entries,
+        axisId: axis.axisId,
+      })),
     ...(layer.readOnlyLegend ?? []),
   ];
 }
 
-/** 地図上チップの一覧。軸スタジオ由来のレイヤーと、選択中のルートにひもづくレイヤー（`kind`が`dynamic`）は出さない
+/** 地図上チップの一覧。レンズの層と、選択中のルートにひもづくレイヤー（`kind`が`dynamic`）は出さない
  * ——どちらも出し入れは色分け（`LensControl`）が持つ。チップの束ね方（`mapLayers.ts: mapOverlayGroupFor`）は中分類しか
  * 見ないので、除くのはここの1か所で、束ねる前に除く。 */
 export function overlayChips(options: {
   layers: readonly MapLayerDescriptor[];
+  roadLayers: readonly RoadMapLayerView[];
   visibility: MapLayerVisibility;
   hidden: HiddenLegendKeys;
   dataStatus: LayerDataStatusByLayer;
   zoomTooWideLayerIds: readonly MapLayerId[];
   /** タイル世代が届くまで描けず、いま世代が無いレイヤー。 */
   versionMissingLayerIds: readonly MapLayerId[];
-  /** 軸カタログの取得を終えたか。終えたのに世代が無いなら、待っても直らない。 */
+  /** 画面の設定の取得を終えたか。終えたのに世代が無いなら、待っても直らない。 */
   catalogSettled: boolean;
 }): OverlayLayerChip[] {
   const { hidden, catalogSettled } = options;
+  const legendAxes = [...roadLegendAxes(options.roadLayers), ...DECLARED_LEGEND_AXES];
   return options.layers
-    .filter((layer): layer is ChipLayerDescriptor => !isAxisStudioLayer(layer))
+    .filter((layer): layer is ChipLayerDescriptor => !isLensLayer(layer))
     .filter((layer) => layer.kind !== "dynamic")
     .map((layer) => {
       const versionMissing = options.versionMissingLayerIds.includes(layer.id);
@@ -69,7 +76,7 @@ export function overlayChips(options: {
             : options.zoomTooWideLayerIds.includes(layer.id)
               ? TILE_ZOOM_TOO_WIDE_NOTICE
               : null,
-        legendDetails: chipLegends(layer).map((axis): LegendFilterSummaryAxis => ({
+        legendDetails: chipLegends(layer, legendAxes).map((axis): LegendFilterSummaryAxis => ({
           ...axis,
           hiddenKeys:
             axis.axisId === undefined ? [] : presentHiddenKeys(axis.legend, hiddenKeysOf(hidden, axis.axisId)),
@@ -80,17 +87,4 @@ export function overlayChips(options: {
         dataStatus: versionMissing ? (catalogSettled ? "error" : "loading") : options.dataStatus[layer.id],
       };
     });
-}
-
-/** 保存値のうち、いまのレイヤーカタログにある鍵の真偽値だけを読む。無い鍵は既定のまま
- * ——レイヤーが増えた後の古い保存値から、新しいレイヤーの既定が消えないようにする。 */
-export function deserializeLayerVisibility(raw: string): MapLayerVisibility {
-  const stored: unknown = JSON.parse(raw);
-  const visibility = buildDefaultLayerVisibility();
-  if (stored === null || typeof stored !== "object") return visibility;
-  for (const id of Object.keys(visibility) as MapLayerId[]) {
-    const value = (stored as Record<string, unknown>)[id];
-    if (typeof value === "boolean") visibility[id] = value;
-  }
-  return visibility;
 }

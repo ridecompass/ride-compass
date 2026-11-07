@@ -43,6 +43,9 @@
 #   像を広げずにビルドしていた形）から同じ決め方で決めた。
 #   段1のジョブの持ち時間だけは、重い検査を始めるまでの待ちの予算として、2026-10-11 に測った成功した実行（Pull Requestの
 #   直近60件とmasterへのpushの直近60件）の最長の1.3〜3.4倍を分単位へ切り上げた値に詰めてある（短いジョブほど、分単位の切り上げで倍率が大きくなる）。
+#   frontend は 2026-10-31 に3分で切られるようになり、同じ決め方で測り直した（Pull Requestとmasterへのpushの実行31回の
+#   成功した22回。最長180秒）。遅い回はどの段も一様に約1.5倍延び（ランナーの速さの揺れ）、速くする手（npm ci の audit を
+#   止める・vitest のワーカーをコア数いっぱいにする）で縮む見込みは約1割なので、上げて4分にした。
 #   docs-consistency・doc-reading-tests・repo-wide・flow-gate は、2026-10-14 に測った成功した実行（マージした Pull Request の
 #   直近40件。最長はそれぞれ9秒・50秒・13秒・19秒）から同じ決め方で決めた。段1の検査が延びると、その分
 #   だけ通る版の待ちが延びる。持ち時間で切られたら、上げる前に検査を速くするか段2へ移せないかを見て、上げるならその理由を
@@ -215,7 +218,10 @@ jobs:
         working-directory: backend
     steps:
       - uses: actions/checkout@v5
+      # DB を使うのは pytest だけなので、入れるのを裏で始め（約30秒）、依存の用意と静的検査に重ねる。
       - uses: ./.github/actions/postgis
+        with:
+          phase: start
       # requirements-batch.txt（-r requirements.txtを内包し、取込バッチの依存を足す）を入れる。
       # 本番のイメージ（backend/Dockerfile）と同じ組で、tests/には取込バッチ（app/batch/）の
       # テストがあり無条件でosmiumをimportするため、requirements.txtだけでは収集で失敗する。
@@ -226,18 +232,42 @@ jobs:
       # 実行の速いものから）。設定はbackend/ruff.toml。対象はbackendの下のPythonすべてで、backendの外は
       # repo-wideジョブが見る。
       - run: python -m ruff check .
+      # mypy の解析結果（backend/.mypy_cache）は、master の実行が残した一番新しいものを読み、変わったファイルとそれを
+      # 読むものだけを見直す（無ければ全部を見る。全部で約20秒）。残すのは master の push だけにする——Pull Request の
+      # 実行が残したものはその Pull Request からしか読めず（公式の文書「Dependency caching」の Restrictions for accessing a cache）、
+      # 置き場の容量を食うだけ。
+      - uses: actions/cache/restore@v6
+        with:
+          path: backend/.mypy_cache
+          key: mypy-${{ runner.arch }}-${{ github.sha }}
+          restore-keys: mypy-${{ runner.arch }}-
       # 関数の宣言と違う型の値を渡す呼び出しを止める。対象と設定はbackend/mypy.ini。
-      - run: python -m mypy
+      # 同じ段で、探索のJIT（numba）を1回コンパイルしておく（backend/Dockerfileと同じ口）。結果はソースの隣の__pycache__に
+      # 残り、pytestのワーカーはそこから読む。しないと、ワーカーごとに最初のルート生成が同じコンパイルを約10秒ずつ払う。
+      # どちらも1つのコアで走るので、並べて待ちを重ねる。
+      - run: |
+          python -c "from app.domain.routing import compile_search_kernels; compile_search_kernels()" &
+          python -m mypy
+          wait $!
+      - if: github.event_name == 'push'
+        uses: actions/cache/save@v6
+        with:
+          path: backend/.mypy_cache
+          key: mypy-${{ runner.arch }}-${{ github.sha }}
       # 層の向き（上の層だけが下の層を読む）を止める。契約はbackend/.importlinter、各層が持つものは
       # docs/architecture/directory-layout.md。
       - run: lint-imports
-      # -n auto（pytest-xdist）でCPUコア数ぶん並列化する。
-      # PostGIS統合テストは全ファイルxdist_group="postgis"で同一workerへ固定済み
-      # （同じridecompass_test DBへの同時TRUNCATEレースを防ぐ、.claude/rules/testing-backend.mdパターン2）
-      # なので、それら以外のテストだけが安全に並列化される。上記コメント参照:
+      - uses: ./.github/actions/postgis
+        with:
+          phase: wait
+      # -n auto（pytest-xdist）でCPUコア数ぶん並列化する。PostGIS統合テストは、ワーカーごとに TEST_DATABASE_URL の DB を
+      # 複製した DB を使う（backend/tests/conftest.py: pytest_collection_finish）。配り方は worksteal で、初めに件を
+      # ワーカーへ等しく分け、手の空いたワーカーがほかの残りを引き取る（公式の文書 https://pytest-xdist.readthedocs.io/en/stable/distribution.html ）——
+      # 長いファイルが1つのワーカーに残って全体を延ばさない。
       # 実行順はpytest-randomlyがばらす。-qでは種が見出しに出ないため、runのIDを種に渡す——落ちた並びは
-      # 手元で --randomly-seed=<runのID> を付けて同じ順に並べ直せる。
-      - run: python -m pytest -q -n auto --dist loadgroup --randomly-seed=${{ github.run_id }}
+      # 手元で --randomly-seed=<runのID> を付けて同じ順に並べ直せる。所要の長い順に20件をログへ出し、ジョブが延びたときに
+      # どのテストが延ばしたかを測り直さずに読めるようにする。
+      - run: python -m pytest -q -n auto --dist worksteal --randomly-seed=${{ github.run_id }} --durations=20
 
   api-contract:
     needs: changes
@@ -263,7 +293,7 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       # 差分が出た場合は、backendの宣言を変えたのに backend/scripts/export_openapi.py →
       # cd frontend && npm run generate:api の実行とコミットが漏れている。**生成物はすべてコードの宣言から決まり、DBを読まない**
-      # ——軸定義はDBが正本で、実行時の GET /api/axis-catalog が配る。
+      # ——道の区分・費用の軸の定義はDBが正本で、実行時の GET /api/client-config・GET /api/cost-axes が配る。
       - run: python scripts/export_openapi.py
       - run: npm ci
         working-directory: frontend
@@ -282,7 +312,7 @@ jobs:
       group: ${{ github.head_ref || github.ref_name }}-lane-2
       queue: max
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 4
     defaults:
       run:
         working-directory: frontend
@@ -293,7 +323,8 @@ jobs:
           node-version-file: frontend/package.json
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - run: npm ci
+      # 脆弱性の報告（audit）と寄付の案内（fund）は検査の結果に効かず、auditの網への往復だけがかかる。
+      - run: npm ci --no-audit --no-fund
       # 書式。設定はfrontend/.prettierrc.json・.prettierignore（生成物は外してある）。
       - run: npm run format:check
       - run: npm run lint
@@ -305,14 +336,15 @@ jobs:
       # 失敗する。next typegenはフルビルドなしで型だけを生成する。
       - run: npx next typegen
       - run: npx tsc --noEmit
-      - run: npm test
+      # vitestの既定のワーカー数は「コア数−1」。このジョブでは他に動くものが無いので、コア数いっぱいに使う（手元の4コアで約15%縮む）。
+      - run: npm test -- --maxWorkers=100%
 
   # 同じ像の中のアプリを、ブラウザと spec の組ごとに別のジョブで並べて走らせる。組を足すときは matrix の行を足す。
   # - Chromium: 全状態の走査を除くspec。
   # - WebKit: 全状態の走査を除くspec（走査は playwright.config.ts の webkit の project が外す）。
-  # - 全状態の走査（frontend/e2e/all-states.spec.ts）: Chromiumで、幅ごとに段階（生成前・生成後・乗り換え後）の数の別のジョブ（--shard）。
-  #   段階の所要は揃っている（2026-10-08 の成功した実行で desktop 35〜41秒ずつ）ので、1つのジョブに1段階ずつ割る。
-  # 持ち時間（timeout）は組ごとに先頭の「持ち時間」の決め方で決める。レーン（lane）は、組が段1のレーン（1〜4）へ同じ数ずつ載るように振る。
+  # - 全状態の走査（frontend/e2e/all-states.spec.ts）: Chromiumで、幅ごとに1つのジョブ。
+  # 持ち時間（timeout）は組ごとに先頭の「持ち時間」の決め方で決める。組はレーン（lane）へ1本ずつ載せ、全部が1回の波で始まるようにする
+  # （同じレーンの2本目は1本目の終わりを待ち、用意の段（container・npm ci）の分だけ待ちが延びる）。
   e2e:
     # 段1を全部待つ。置き場が変わらずに飛ばされた段1のジョブは、始めるのを止めない。
     needs: [changes, backend, api-contract, frontend, scripts, frontend-image, backend-image, docs-consistency, doc-reading-tests, repo-wide, flow-gate]
@@ -323,12 +355,8 @@ jobs:
         include:
           - { id: chromium, lane: 1, timeout: 50, args: '--project=chromium --grep-invert "全状態の走査"' }
           - { id: webkit, lane: 2, timeout: 5, args: "--project=webkit" }
-          - { id: scan-mobile-1, lane: 3, timeout: 40, args: '--project=chromium -g "全状態の走査: mobile" --shard=1/3' }
-          - { id: scan-mobile-2, lane: 4, timeout: 40, args: '--project=chromium -g "全状態の走査: mobile" --shard=2/3' }
-          - { id: scan-mobile-3, lane: 1, timeout: 40, args: '--project=chromium -g "全状態の走査: mobile" --shard=3/3' }
-          - { id: scan-desktop-1, lane: 2, timeout: 40, args: '--project=chromium -g "全状態の走査: desktop" --shard=1/3' }
-          - { id: scan-desktop-2, lane: 3, timeout: 40, args: '--project=chromium -g "全状態の走査: desktop" --shard=2/3' }
-          - { id: scan-desktop-3, lane: 4, timeout: 40, args: '--project=chromium -g "全状態の走査: desktop" --shard=3/3' }
+          - { id: scan-mobile, lane: 3, timeout: 40, args: '--project=chromium -g "全状態の走査: mobile"' }
+          - { id: scan-desktop, lane: 4, timeout: 40, args: '--project=chromium -g "全状態の走査: desktop"' }
     name: e2e (${{ matrix.id }})
     concurrency:
       group: ${{ github.head_ref || github.ref_name }}-lane-${{ matrix.lane }}
@@ -355,14 +383,15 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       # Playwright を動かすのに node_modules が要る。試すアプリはここではビルドしない。
-      - run: npm ci
-      - uses: actions/download-artifact@v4
+      # 脆弱性の報告（audit）と寄付の案内（fund）は検査の結果に効かない。container の中では audit の網への往復が npm ci の大半を占める。
+      - run: npm ci --no-audit --no-fund
+      - uses: actions/download-artifact@v8
         with:
           name: frontend-app
       - run: tar -xzf frontend-app.tar.gz
         working-directory: .
       - run: npx playwright test ${{ matrix.args }}
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: playwright-report-${{ matrix.id }}
@@ -398,10 +427,11 @@ jobs:
           node frontend/scripts/image.mjs "$IMAGE:$GITHUB_SHA" "$GITHUB_SHA"
       # 起こす前のコンテナから取る（起こしたサーバーが書いたものを混ぜない）。
       - name: 像の中のアプリを取り出す
+        shell: bash  # pipefail を付け、取り出しが落ちたら空の圧縮を成果物にせず段を落とす
         run: |
           docker create --name frontend-app "$IMAGE:$GITHUB_SHA"
           docker cp frontend-app:/app - | gzip -1 > frontend-app.tar.gz
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: frontend-app
           path: frontend-app.tar.gz
@@ -439,7 +469,7 @@ jobs:
       - if: failure()
         run: docker logs frontend-check
   # backendの像を本番と同じDockerfile・同じaarch64で作り、アプリを読み込めるかを見る（deploy-backend.ymlがコンテナを
-  # 入れ替える前に見るのと同じ確かめを、マージの前に置く）。サーバーの起動はDBの軸定義を読むので、ここでは起こさない。
+  # 入れ替える前に見るのと同じ確かめを、マージの前に置く）。サーバーの起動はDBの道の区分・費用の軸の定義を読むので、ここでは起こさない。
   backend-image:
     needs: changes
     if: fromJSON(needs.changes.outputs.run)['backend-image']
@@ -515,7 +545,7 @@ jobs:
       - run: ruff check --extend-exclude backend .
       # 追跡しているshの構文。
       - run: git ls-files -z '*.sh' | xargs -0 -n1 bash -n
-  # タスクの流れのゲート（tools/flow-gate/）の lint とテストと、Pull Request の本文の形（本文は master のコミットになるので、
+  # タスクの流れのゲート（tools/flow-gate/）の lint と、Pull Request の本文の形（本文は master のコミットになるので、
   # 直したときも照らす。上の on の edited）。
   flow-gate:
     concurrency:
@@ -530,7 +560,7 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: tools/flow-gate/package-lock.json
-      - run: npm ci && npm run lint && npm test
+      - run: npm ci && npm run lint
         working-directory: tools/flow-gate
       # Dependabot の PR はマージしない（同じ版を取り込んだタスクが閉じる）ので照らさない。本文は環境変数で渡す（シェルに読ませない）。
       - if: github.event_name == 'pull_request' && github.event.pull_request.user.login != 'dependabot[bot]'

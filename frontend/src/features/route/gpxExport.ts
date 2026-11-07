@@ -97,8 +97,7 @@ function buildGpxDocument(candidate: RouteCandidate): string {
   ].join("\n");
 }
 
-/** ブラウザへGPXファイルのダウンロードを発火する（Blob + Object URL、リポジトリ初のクライアント
- * サイドファイルダウンロード）。 */
+/** ブラウザへGPXファイルのダウンロードを発火する。 */
 export function downloadGpx(candidate: RouteCandidate): void {
   const xml = buildGpxDocument(candidate);
   const blob = new Blob([xml], { type: "application/gpx+xml" });

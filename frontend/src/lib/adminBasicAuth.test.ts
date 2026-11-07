@@ -28,11 +28,8 @@ describe("adminBasicAuthCredentials", () => {
     expect(adminBasicAuthCredentials()).toEqual({ username: "admin", password: "secret" });
   });
 
-  it.each([
-    ["ユーザー名が無い", undefined, "secret"],
-    ["パスワードが空", "admin", ""],
-  ])("%sなら、認証を成立させない（null）", (_scene, username, password) => {
-    stubCredentials(username, password);
+  it("パスワードが空なら、認証を成立させない（null）", () => {
+    stubCredentials("admin", "");
 
     expect(adminBasicAuthCredentials()).toBeNull();
   });

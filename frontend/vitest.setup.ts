@@ -6,6 +6,19 @@ import { afterAll, afterEach, beforeAll } from "vitest";
 globalThis.BroadcastChannel ??= BroadcastChannel as unknown as typeof globalThis.BroadcastChannel;
 const { backendServer, closeHeldReplies } = await import("@/testing/backendServer");
 
+// node の環境のテスト（DOM を使わない）にも、端末の保存値の口を置く。デバッグの記録の表示など、保存値を読む処理を通るテストが
+// あるため（本番では画面の中でしか動かない）。
+if (typeof window === "undefined") {
+  const values = new Map<string, string>();
+  const storage: Pick<Storage, "getItem" | "setItem" | "removeItem" | "clear"> = {
+    getItem: (key) => values.get(key) ?? null,
+    setItem: (key, value) => void values.set(key, value),
+    removeItem: (key) => void values.delete(key),
+    clear: () => values.clear(),
+  };
+  Object.defineProperty(globalThis, "localStorage", { value: storage, configurable: true });
+}
+
 // 警告は既定でエラー（.claude/rules/testing.md「警告は既定でエラー」）。`console.warn`・`console.error`へ出たもの
 // （Reactの警告もここへ届く）は、出したテストを落とす。vitestには出力の警告で落とす設定が無いため、ここで受ける。
 // 直せない警告だけを、文で名指して下の一覧へ載せる（1件ずつ、理由と外せる条件を添える）。
@@ -66,6 +79,9 @@ afterEach(async () => {
   let turn = 0;
   do await new Promise((resolve) => setTimeout(resolve, 0));
   while (reachedServer < sentToFetch && ++turn < 50);
+  // 届かなかった要求の差を次のテストへ持ち越すと、以後のテストが毎回上限まで待つか、差が逆に開いて待たなくなる。
+  sentToFetch = 0;
+  reachedServer = 0;
   closeHeldReplies();
   backendServer.resetHandlers();
 });

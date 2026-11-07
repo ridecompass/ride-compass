@@ -24,19 +24,20 @@
 
 from geoalchemy2 import Geometry
 from sqlalchemy import (
+    REAL,
     BigInteger,
-    CheckConstraint,
     Boolean,
+    CheckConstraint,
     ForeignKey,
     ForeignKeyConstraint,
     Index,
     Integer,
-    REAL,
     SmallInteger,
     String,
     column,
     func,
 )
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.infrastructure.orm_base import DERIVED, Base
@@ -61,7 +62,7 @@ _LANDCOVER_COLUMNS = tuple(
 _PERCENT_SUM_TOLERANCE = 0.1
 
 
-def count_checks(table: str) -> tuple[CheckConstraint, ...]:
+def _count_checks(table: str) -> tuple[CheckConstraint, ...]:
     """数の表（区間・道）の「値が不整合になりえない」制約。読み出し側が毎回この条件を書かずに済むように、入れられない側で止める。"""
     return tuple(CheckConstraint(f"{column} >= 0", name=f"{table}_{column}_not_negative")
                  for column in _COUNT_COLUMNS)
@@ -181,8 +182,8 @@ class RoadNodeRow(Base):
     """区間の端点（グラフの頂点）1つ。ただの形状頂点は持たない。**生データのノードを覆わない**。
 
     `branch_count`は**そこに集まる道の本数**。グラフの位相としての次数（隣接する頂点の
-    数）とは別物で、2本の枝が同じ次の交差点へ向かうと次数は1つに潰れる。交差点の密度を
-    測るのに要るのは枝の本数のほうで、位相としての次数は探索がメモリ上で数える。
+    数）とは別物で、2本の枝が同じ次の交差点へ向かうと次数は1つに潰れる。交差点の密度と、
+    曲がりの待ち・案内を足す分かれ道の判定に要るのは枝の本数のほう。
     """
 
     __tablename__ = "road_nodes"
@@ -206,12 +207,17 @@ class EdgeElevationRow(_EdgeKey, Base):
     end_elevation_m: Mapped[float] = mapped_column(REAL, nullable=False)
     elevation_gain_m: Mapped[float] = mapped_column(REAL, nullable=False)
     elevation_loss_m: Mapped[float] = mapped_column(REAL, nullable=False)
-    # 標高が付いた区間でも、両端の差が道としてありえない勾配になる区間は平均勾配を持たない
+    # 標高が付いた区間でも、勾配として数える点の間が無い区間は平均勾配を持たない
     # （`domain/attributes.py: elevation_values_sql`）。
     average_grade: Mapped[float | None] = mapped_column(REAL, nullable=True)
-    #: 作り直しの時点の道のタグで、区間が橋かトンネルだったか。値はこれに依る（両端だけを使う）ので、形が同じでも
-    #: これが変われば前回の値を使い回せない。
-    on_structure: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    #: 順方向に走ったときの、断面の刻みの間で一番急な登りと下りの勾配（%、どちらも0以上）。勾配として数える点の間が
+    #: 無い区間は持たない（`domain/attributes.py: elevation_values_sql`）。逆向きは2列を入れ替えて読む。
+    steepest_gain_percent: Mapped[float | None] = mapped_column(REAL, nullable=True)
+    steepest_loss_percent: Mapped[float | None] = mapped_column(REAL, nullable=True)
+    #: 順方向に並べた断面の点の標高（m）。点は区間を等しい道のりに刻んだ位置で、間隔は区間の長さ÷（点の数−1）。値の無い
+    #: 点はNULL。上の要約の列は、どれもこの点から出す（`domain/attributes.py: elevation_values_sql`）。作り直す前の行は持たない
+    #: （空を許すのは、行の入った本番の表へ列を足せるようにするため）。
+    elevation_profile_m: Mapped[list[float | None] | None] = mapped_column(ARRAY(REAL), nullable=True)
 
 
 class EdgeLandcoverRow(_EdgeKey, _Landcover, Base):
@@ -225,7 +231,7 @@ class EdgeCountsRow(_EdgeKey, _Counts, Base):
     """区間に付く数（事故・交差点・停止要因）。全区間が行を持つ。"""
 
     __tablename__ = "edge_counts"
-    __table_args__ = (_edge_key("edge_counts"), *count_checks("edge_counts"), {"info": DERIVED})
+    __table_args__ = (_edge_key("edge_counts"), *_count_checks("edge_counts"), {"info": DERIVED})
 
 
 class WayDirectionRow(_WayKey, Base):
@@ -237,7 +243,7 @@ class WayDirectionRow(_WayKey, Base):
 
     #: 通行方向（forward/backward/both）。タグからの判断なので、生データではなくここに置く。
     #: 探索が有向グラフをメモリ上で組むときに、逆向きの枝を作ってよいかを決める。
-    direction: Mapped[str] = mapped_column(String, nullable=False, server_default="both")
+    direction: Mapped[str] = mapped_column(String, nullable=False)
 
     #: 上下線が分かれた道の片側か。
     divided: Mapped[bool] = mapped_column(Boolean, nullable=False)
@@ -258,7 +264,7 @@ class WayCountsRow(_WayKey, _Counts, Base):
     """道1本の数（区間の和）。全部の道が行を持つ。"""
 
     __tablename__ = "way_counts"
-    __table_args__ = (*count_checks("way_counts"), {"info": DERIVED})
+    __table_args__ = (*_count_checks("way_counts"), {"info": DERIVED})
 
 
 class NodeKindRow(Base):
@@ -352,10 +358,6 @@ class AddressBlockRow(Base):
     geom: Mapped[object] = mapped_column(Geometry("POINT", srid=4326, spatial_index=False), nullable=False)
 
 
-#: 立ち寄り先の表へ地点を入れるソース。
-STOP_PLACE_SOURCES: frozenset[str] = frozenset({Source.OVERTURE_PLACE, Source.BUNKA_HERITAGE})
-
-
 class StopPlaceRow(Base):
     """立ち寄り先1つ。群へ入れ、近くの同じ店をまとめたあとの地点（`batch/derive_stop_places.py`）。
 
@@ -365,7 +367,7 @@ class StopPlaceRow(Base):
 
     __tablename__ = "stop_places"
     __table_args__ = (
-        vocabulary_check("stop_places", "source", STOP_PLACE_SOURCES),
+        vocabulary_check("stop_places", "source", frozenset({Source.OVERTURE_PLACE, Source.BUNKA_HERITAGE})),
         vocabulary_check("stop_places", "place_group", frozenset(StopPlaceGroup)),
         CheckConstraint("confidence BETWEEN 0 AND 1", name="stop_places_confidence_is_ratio"),
         # タイルが範囲で引く。

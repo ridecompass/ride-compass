@@ -11,7 +11,9 @@
   アダプタを差し替えて入れる）
 """
 
+import asyncio
 import dataclasses
+import threading
 from pathlib import Path
 from xml.sax.saxutils import quoteattr
 
@@ -108,6 +110,34 @@ async def test_supply_area_becomes_one_point_inside_it_keyed_by_the_negated_way_
     outline = Polygon([(BASE_LON + NODES[n][1], BASE_LAT + NODES[n][0]) for n in WAYS[3][0]])
     assert outline.contains(point)
     assert tags == WAYS[3][1]
+
+
+def test_stopping_reading_partway_does_not_hang(tmp_path, monkeypatch):
+    """取込の書き込みが途中で落ちて読むのをやめても、PBFを読む側が止まって終わる。終わらないと、取込は失敗を報告せずに
+    止まったままになる。待ち行列があふれる数の頂点を持つ道を読み、1件目でやめる。止まった場合に備えて別のスレッドで流す。"""
+    count = osm_pbf.HANDOFF_BATCH * (osm_pbf.QUEUE_DEPTH + 2)
+    nodes = "".join(f'<node id="{i}" version="1" lat="{BASE_LAT}" lon="{BASE_LON + i * 1e-6}"/>'
+                    for i in range(1, count + 1))
+    way = f'<way id="1" version="1">{_refs_xml(list(range(1, count + 1)))}{_tags_xml({"highway": "residential"})}</way>'
+    (tmp_path / "long.osm").write_text(f'<?xml version="1.0" encoding="UTF-8"?><osm version="0.6">{nodes}{way}</osm>',
+                                       encoding="utf-8")
+    monkeypatch.setattr(osm_pbf, "DATA_DIR", tmp_path)
+    profile = load_source_profile(None)
+    profile = dataclasses.replace(profile, sources=tuple(
+        dataclasses.replace(spec, rows=dataclasses.replace(spec.rows, file="long.osm"))
+        if spec.name == "osm_way" else spec
+        for spec in profile.sources))
+    node = profile.source("osm_node")
+
+    async def take_one() -> None:
+        records = osm_pbf.read_osm_nodes(node, profile, osm_pbf.osm_node_inputs(node, profile), {})
+        await anext(records)
+        await records.aclose()
+
+    reader = threading.Thread(target=asyncio.run, args=(take_one(),), daemon=True)
+    reader.start()
+    reader.join(timeout=60)
+    assert not reader.is_alive()
 
 
 def test_a_way_condition_without_road_kind_is_refused():

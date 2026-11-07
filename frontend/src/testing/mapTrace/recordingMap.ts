@@ -1,7 +1,7 @@
 /** 地図への呼び出しを順番に記録し、地図に載っているもの（レイヤー・ソース・地物の状態）を持つ代役。
  *
  * 受けるのは**地図の中身を変える呼び出しと、その判断に使う問い合わせ**だけで、
- * 描画そのものは行わない。`maplibre-gl` の代役（`testing/maplibre.ts`）も、地図の中身の記録にこれを使う。
+ * 描画そのものは行わない。`maplibre-gl` の地図の代役（`testing/maplibreStandIn/map.ts`）も、地図の中身の記録にこれを使う。
  */
 interface TraceEntry {
   readonly call: string;
@@ -46,6 +46,7 @@ export interface StyleLayer {
   readonly type: string;
   readonly "source-layer"?: string;
   readonly filter?: unknown;
+  readonly paint?: Readonly<Record<string, unknown>>;
 }
 
 /**
@@ -61,14 +62,21 @@ export function createRecordingMap(options: { basemapLayerIds?: readonly string[
       sourceLayer: layer["source-layer"],
       ...(layer.filter === undefined ? {} : { filter: layer.filter }),
       visibility: "visible",
-      paint: {},
+      paint: { ...layer.paint },
       layout: {},
     }));
   let layers = fromStyle((options.basemapLayerIds ?? []).map((id) => ({ id, type: "background" })));
   let sources = new Map<string, unknown>();
   // **ソースの実体は id ごとに1つに保つ。** 実装側は「同じ中身なら流し込まない」の判定に
   // ソースのインスタンスを鍵として使うため、呼ぶたびに別物を返すと毎回作り直しになる。
-  let sourceHandles = new Map<string, { setData: (data: unknown) => void; setTiles: (tiles: string[]) => void }>();
+  let sourceHandles = new Map<
+    string,
+    {
+      setData: (data: unknown) => void;
+      setTiles: (tiles: string[]) => void;
+      getClusterLeaves: (clusterId: number, limit: number, offset: number) => Promise<unknown[]>;
+    }
+  >();
   const content = new Map<string, { data?: unknown; tiles?: readonly string[] }>();
   let featureStates = new Map<string, Record<string, unknown>>();
   let globalState: Record<string, unknown> = {};
@@ -100,14 +108,16 @@ export function createRecordingMap(options: { basemapLayerIds?: readonly string[
       styleLoading
         ? undefined
         : {
-            layers: layers.map(({ id, type, sourceLayer, filter }) => ({
+            layers: layers.map(({ id, type, sourceLayer, filter, paint }) => ({
               id,
               type,
               ...(sourceLayer === undefined ? {} : { "source-layer": sourceLayer }),
               ...(filter === undefined ? {} : { filter }),
+              ...(Object.keys(paint).length === 0 ? {} : { paint: { ...paint } }),
             })),
           },
     getLayer: (id: string) => layers[indexOf(id)],
+    getLayersOrder: () => layers.map((layer) => layer.id),
     getSource: (id: string) => sourceHandles.get(id),
     // 記号の絵はブラウザのcanvasが要るため、「登録済み」を返して作らせない
     // （比べたいのはレイヤーの構成で、絵の中身ではない）。
@@ -130,6 +140,12 @@ export function createRecordingMap(options: { basemapLayerIds?: readonly string[
           record("setTiles", id, tiles);
           content.set(id, { ...content.get(id), tiles });
         },
+        // 代役は点を束ねないので、どの束もソースの点を全部持つとして答える。
+        getClusterLeaves: async (_clusterId: number, limit: number, offset: number) =>
+          ((content.get(id)?.data as { features?: unknown[] } | undefined)?.features ?? []).slice(
+            offset,
+            offset + limit,
+          ),
       });
     },
     removeSource: (id: string) => {

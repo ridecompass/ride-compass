@@ -103,7 +103,7 @@ paths:
 | 用途 | 掃除 |
 |---|---|
 | `tile_cache`（基礎地図・DEM・色別標高図の生バイト） | 容量上限（`tile_cache_size_limit_mb`）を超えると`diskcache`が書いた時刻の古い順に退避する（実測11MB、2026-09-07。上限は1桁の余裕があり今は発火しない。鍵に世代を持たないので、伸び続けたときの頭打ちとしてだけ置く） |
-| `tile_cache`のうち土地被覆タイル（PNG） | 起動直後と24時間ごとに、今開けているラスタ構成でない世代を消す（[caching-retention.md](caching-retention.md)「無効化」）。容量上限の対象でもある（関東本土の全ズームで45MB・21,264枚の見積もり、2026-09-16） |
+| `tile_cache`のうち土地被覆タイル（PNG） | 起動直後と24時間ごとに、設定したラスタ構成でない世代を消す（[caching-retention.md](caching-retention.md)「無効化」）。容量上限の対象でもある（関東本土の全ズームで45MB・21,264枚の見積もり、2026-09-16） |
 | `tile_cache`のうち地域のMVTタイル（路面・点。鍵`region/<系統>/v<世代>/…`） | 起動直後と24時間ごとに、配っていない世代を消す（[caching-retention.md](caching-retention.md)「無効化」）。容量上限の対象でもある |
 | `msm`（予報の`.om`ファイル） | 同期のたびに予報窓の外を削除（実測87MB） |
 | `tile_persistent_cache`（way_id別の動的値・タイルのフィーチャーごとの材料のpickle） | 容量上限＋`expire`による失効 |
@@ -114,7 +114,7 @@ paths:
 
 ## 直接使ってよい場所
 
-`get_redis_client_or_none`・`record_redis_failure`・`record_redis_success`・`redis_available`を直接呼んでよいファイルは
+`get_redis_client`・`record_redis_failure`・`record_redis_success`・`redis_available`を直接呼んでよいファイルは
 `backend/tests/structure/test_redis_skeleton.py: ALLOWED`が持つ（骨格そのもの・その接続本体と、単一キーのJSON読み書きでは
 表現できないもの）。ここに無いファイルで使うとテストが落ちる。寄せられない事情があるなら、理由とともに`ALLOWED`へ足すこと。
 

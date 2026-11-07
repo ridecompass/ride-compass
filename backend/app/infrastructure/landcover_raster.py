@@ -15,7 +15,6 @@
 import logging
 import math
 import threading
-import time
 from dataclasses import dataclass
 from io import BytesIO
 
@@ -25,6 +24,7 @@ from PIL import Image, ImageColor
 from app.config import settings
 from app.domain.landcover import LANDCOVER_CLASSES
 from app.domain.region import tile_bounds_3857
+from app.infrastructure.debug_log import log_throttled_warning
 from app.infrastructure.proj_data import pin_bundled_proj_data
 
 pin_bundled_proj_data()
@@ -39,7 +39,7 @@ from rasterio.windows import Window, transform as window_transform  # noqa: E402
 logger = logging.getLogger("ridecompass.landcover_raster")
 
 TILE_SIZE = 256
-TILE_CRS = "EPSG:3857"
+_TILE_CRS = "EPSG:3857"
 
 # 1回の読み取りで扱う元画素の上限（1辺）。低ズームのタイルほど元画素を多く覆うため、
 # これを超える場合は間引いて読む（GDAL側で間引かれ、メモリは常にこの辺長の2乗で収まる）。
@@ -61,10 +61,11 @@ class _RasterSource:
 
 _opened_sources: list[_RasterSource] | None = None
 _sources_lock = threading.Lock()
-#: 1枚も開けなかったときに、次に開き直すまで待つ秒数。毎回開き直すとタイル1枚ごとにI/Oとログが
-#: 出るので、間隔を空けて試す。
-_RETRY_OPEN_AFTER_SECONDS = 60.0
-_last_open_attempt = 0.0
+
+
+class LandcoverUnavailableError(Exception):
+    """土地被覆のラスタが設定されていないか、1枚でも開けない（開けた分だけで配ると、欠けた区域が透明な絵として配られ、
+    キャッシュにも残る）。範囲の外（どのラスタも覆っていない）とは別の事実。"""
 
 #: 画素値→RGBA。`LANDCOVER_CLASSES`に無い値（No Data・Clouds）と、塗らないと宣言した
 #: クラスは透明のまま残る。
@@ -74,32 +75,24 @@ for _cls in (c for c in LANDCOVER_CLASSES if c.painted):
 
 
 def _open_sources() -> list[_RasterSource]:
-    """設定されたラスタを開く。1枚でも開けたらそれを保持し、以後は開き直さない。
-
-    **1枚も開けなかった場合は記憶しない**（`_RETRY_OPEN_AFTER_SECONDS`だけ空けて再挑戦する）。
-    デプロイはラスタの取得とコンテナ入れ替えを別のステップで行うため、起動時に無くても
-    後から現れる——記憶してしまうと、そのプロセスが生きている間ずっと配信できない。
-    """
-    global _opened_sources, _last_open_attempt
+    """設定されたラスタを全部開いて持つ（開けたら以後は開き直さない）。開けなければ`LandcoverUnavailableError`で、次の読みで
+    開き直す——デプロイはラスタの取得とコンテナ入れ替えを別のステップで行うため、起動時に無くても後から現れる。"""
+    global _opened_sources
     with _sources_lock:
-        if _opened_sources:
-            return _opened_sources
-        now = time.monotonic()
-        if _opened_sources is not None and now - _last_open_attempt < _RETRY_OPEN_AFTER_SECONDS:
-            return _opened_sources
-        _last_open_attempt = now
-        opened: list[_RasterSource] = []
-        for path in settings.lulc_raster_paths_list:
+        if _opened_sources is None:
+            paths = settings.lulc_raster_paths_list
             try:
-                opened.append(_RasterSource(rasterio.open(path), threading.Lock()))
+                if not paths:
+                    raise FileNotFoundError("環境変数LULC_RASTER_PATHSが未設定")
+                _opened_sources = [_RasterSource(rasterio.open(path), threading.Lock()) for path in paths]
             except (OSError, rasterio.errors.RasterioIOError) as exc:
-                logger.warning("土地被覆ラスタを開けません path=%s error=%r", path, exc)
-        _opened_sources = opened
+                log_throttled_warning("region:landcover-raster", "土地被覆のラスタを開けません paths=%s error=%r", paths, exc)
+                raise LandcoverUnavailableError("土地被覆のラスタを開けないため、土地被覆を配れません") from exc
         return _opened_sources
 
 
 def close_sources() -> None:
-    """開いたラスタを閉じる。プロセス終了時に`process_resources.py: close_process_resources`から呼ぶ。次の読み取りで開き直す。"""
+    """開いたラスタを閉じる。次の読み取りで開き直す。"""
     global _opened_sources
     with _sources_lock:
         for source in _opened_sources or []:
@@ -133,11 +126,8 @@ def _read_decimated(source: _RasterSource, bounds: tuple[float, float, float, fl
             # 重なりが空（rasterioは幅か高さが0の重なりも空として送出する）。ゾーン単位のラスタに
             # 対しては、覆っていないタイルの方が普通に多い。
             return None
-        scale = max(window.width, window.height) / _MAX_SOURCE_READ_SIDE
-        if scale > 1:
-            out_shape = (max(1, int(window.height / scale)), max(1, int(window.width / scale)))
-        else:
-            out_shape = (int(window.height), int(window.width))
+        scale = max(1, max(window.width, window.height) / _MAX_SOURCE_READ_SIDE)
+        out_shape = (max(1, int(window.height / scale)), max(1, int(window.width / scale)))
         data = dataset.read(1, window=window, out_shape=out_shape, resampling=Resampling.nearest)
         base = window_transform(window, dataset.transform)
     # 間引いて読むと1画素が覆う実距離が伸びる。読んだ配列の形へtransformを合わせないと、
@@ -156,18 +146,8 @@ def _png(image: Image.Image) -> bytes:
     return buffer.getvalue()
 
 
-def has_sources() -> bool:
-    """配信できるラスタが1枚でもあるか（未設定・開けないものしか無い状態と区別する）。"""
-    return bool(_open_sources())
-
-
 def opened_raster_paths() -> list[str]:
-    """**実際に開けている**ラスタのパス。
-
-    設定された一覧とは違いうる（起動時に1枚だけ置かれていない等）。タイルの中身は
-    開けている側に従うため、キャッシュの鍵はこちらから作る——設定の側で鍵を作ると、
-    欠けたゾーンの継ぎ目が「完全な構成」の鍵で恒久的に残る。
-    """
+    """開いたラスタのパス（開けなければ`LandcoverUnavailableError`）。"""
     return [source.dataset.name for source in _open_sources()]
 
 
@@ -186,7 +166,7 @@ def tile_classes(z: int, x: int, y: int) -> "np.ndarray | None":
         dataset = source.dataset
         # densify_pts: 投影をまたぐと矩形の辺は直線でなくなる。角だけで変換すると、
         # 辺のふくらみぶんが読み取り範囲から落ちてタイルの縁が欠ける。
-        src_bounds = transform_bounds(TILE_CRS, dataset.crs, *bounds, densify_pts=21)
+        src_bounds = transform_bounds(_TILE_CRS, dataset.crs, *bounds, densify_pts=21)
         read = _read_decimated(source, src_bounds)
         if read is None:
             continue
@@ -198,7 +178,7 @@ def tile_classes(z: int, x: int, y: int) -> "np.ndarray | None":
             src_transform=src_transform,
             src_crs=dataset.crs,
             dst_transform=dst_transform,
-            dst_crs=TILE_CRS,
+            dst_crs=_TILE_CRS,
             resampling=Resampling.nearest,
             src_nodata=0,
             dst_nodata=0,
@@ -207,9 +187,7 @@ def tile_classes(z: int, x: int, y: int) -> "np.ndarray | None":
         # 既に描けている画素を消さないようにする）。
         classes = np.where(classes == 0, patch, classes)
 
-    if not classes.any():
-        return None
-    return classes
+    return classes if classes.any() else None
 
 
 def render_tile(z: int, x: int, y: int) -> bytes | None:

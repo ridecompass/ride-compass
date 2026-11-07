@@ -4,6 +4,7 @@ paths:
   - "frontend/src/testing/**"
   - "frontend/vitest.setup.ts"
   - "frontend/e2e/fixtures.ts"
+  - "frontend/e2e/mockResponses.ts"
 ---
 
 # テストの足場とフェイク
@@ -114,5 +115,5 @@ paths:
 確かめるには`pytest <対象> --setup-plan`でセットアップ順を出す。
 
 frontendは`frontend/src/testing/`配下が同じ役割を持ち、用途は各ファイルの先頭のコメントが書く
-（例: `routeFixtures.ts: makeRouteCandidate()`は、`e2e/fixtures.ts`も含めてルート候補を組み立てる
+（例: `routeFixtures.ts: makeRouteCandidate()`は、`e2e/mockResponses.ts`も含めてルート候補を組み立てる
 すべての場所が使う）。

@@ -41,7 +41,7 @@ interface ToggleProps
     VariantProps<typeof toggleVariants> {
   pressed: boolean;
   /** 使い方の文（`Button`の`usage`と同じ）。 */
-  usage?: string;
+  usage: string | null;
 }
 
 export const Toggle = forwardRef<HTMLButtonElement, ToggleProps>(function Toggle(
@@ -53,7 +53,7 @@ export const Toggle = forwardRef<HTMLButtonElement, ToggleProps>(function Toggle
       ref={ref}
       type={type}
       className={cn(toggleVariants({ variant }), className)}
-      data-usage={usage}
+      data-usage={usage ?? undefined}
       {...props}
     />
   );

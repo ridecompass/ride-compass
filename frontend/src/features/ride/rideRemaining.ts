@@ -25,15 +25,29 @@ function plannedClock(plan: RidePlan, stretches: readonly { startKm: number; end
   if (entries.some((at) => Number.isNaN(at)) || plan.estimated_duration_seconds === null) return null;
   const finishedAt = entries[0] + plan.estimated_duration_seconds * 1000;
   return (km: number) => {
-    const index = Math.max(
-      0,
-      stretches.findIndex(({ endKm }) => km <= endKm),
-    );
+    // 終わりを越えた距離は、最後の区間で読む。
+    const found = stretches.findIndex(({ endKm }) => km <= endKm);
+    const index = found === -1 ? stretches.length - 1 : found;
     const { startKm, endKm } = stretches[index];
     const leftAt = entries[index + 1] ?? finishedAt;
     const fraction = endKm > startKm ? Math.min(1, Math.max(0, (km - startKm) / (endKm - startKm))) : 1;
     return entries[index] + (leftAt - entries[index]) * fraction;
   };
+}
+
+/**
+ * ルート`plan`の上の距離を通る見込みの時刻（ms）を返す関数。走る前（`at`がnull）は計画の時刻のまま、走行中は`at.km`を
+ * `at.fixedAtMs`（最後に位置を受けた時刻）に通ったとして、その先へ計画の時間を足す。ルートが無い・計画の時刻が欠けていればnull。
+ */
+export function rideClock(
+  plan: RidePlan,
+  at: { km: number; fixedAtMs: number } | null,
+): ((km: number) => number) | null {
+  if (plan.segments.length === 0) return null;
+  const clock = plannedClock(plan, routeStretches(plan.segments));
+  if (clock === null || at === null) return clock;
+  const shift = at.fixedAtMs - clock(at.km);
+  return (km) => clock(km) + shift;
 }
 
 /**
@@ -50,10 +64,6 @@ export function rideRemaining(
   const stretches = routeStretches(plan.segments);
   const routeKm = stretches[stretches.length - 1].endKm;
   const remainingKm = Math.max(0, routeKm - progressKm);
-  const clock = plannedClock(plan, stretches);
-  const arrivalAt =
-    fixedAtMs === null || clock === null
-      ? null
-      : new Date(fixedAtMs + clock(routeKm) - clock(Math.min(routeKm, progressKm)));
-  return { remainingKm, arrivalAt };
+  const clock = fixedAtMs === null ? null : rideClock(plan, { km: Math.min(routeKm, progressKm), fixedAtMs });
+  return { remainingKm, arrivalAt: clock === null ? null : new Date(clock(routeKm)) };
 }

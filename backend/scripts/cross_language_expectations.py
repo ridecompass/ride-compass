@@ -22,8 +22,8 @@ from app.domain.jma_tile_specs import (
     read_target_times,
 )
 from app.domain.region import BoundingBox, tile_bounds_lonlat, tile_position, tiles_covering_bbox
-from app.domain.route import RouteSegmentDetail, merge_overall_difficulty
 from app.domain.time_zone import jst_local_text
+from app.domain.tuning import TUNING_VALUES
 from app.domain.way_value_formula import (
     FALSE,
     Binary,
@@ -39,7 +39,6 @@ from app.domain.way_value_formula import (
     feature,
 )
 from app.domain.weather_elements import stage_first_frames
-from app.domain.wind import WIND_DRAG_RATIO_WAY_FORMULA
 from app.infrastructure.jma_tile_client import parse_target_times
 from app.infrastructure.jma_tile_paths import read_jma_tile_path
 
@@ -129,6 +128,19 @@ _READER_SCENES: list[tuple[str, TargetTimesReader, str, list[dict]]] = [
             _row(_t("0010"), _t("0020"), ["hrpns"]),
             _row(_t("0010"), _t("0010"), ["hrpns"]),
             _row(_t("0005"), _t("0005"), ["hrpns"]),
+        ],
+    ),
+    (
+        "実況と予測のファイルのbasetimeがずれる",
+        "nowcast",
+        "hrpns",
+        [
+            _row(_t("0005"), _t("0005"), ["hrpns"]),
+            _row(_t("0010"), _t("0010"), ["hrpns"]),
+            _row(_t("0005"), _t("0010"), ["hrpns"]),
+            _row(_t("0005"), _t("0015"), ["hrpns"]),
+            _row(_t("0010"), _t("0015"), ["hrpns"]),
+            _row(_t("0010"), _t("0020"), ["hrpns"]),
         ],
     ),
     ("その要素の行が0件", "nowcast", "thns", [_row(_t("0015"), _t("0015"), ["liden"])]),
@@ -384,53 +396,6 @@ def time_expectations() -> dict[str, list[dict]]:
     }
 
 
-def _segment(distance_km: float, contributions: dict[str, float] | None) -> RouteSegmentDetail:
-    """区間1本。寄与度の和が区間の難易度で、`None`は値の無い区間。"""
-    return RouteSegmentDetail(
-        start_latitude=35.0,
-        start_longitude=139.0,
-        end_latitude=35.0,
-        end_longitude=139.0,
-        cumulative_distance_km=0.0,
-        distance_km=distance_km,
-        elevations=[],
-        road_classes={},
-        axis_contributions=contributions or {},
-        difficulty=None if contributions is None else sum(contributions.values()),
-    )
-
-
-# ルート全体の難易度の場面: （場面, 区間（距離km, 軸ごとの寄与度。値の無い区間はNone））。平均が丸めで動かない値を選ぶ。
-_ROUTES: list[tuple[str, list[tuple[float, dict[str, float] | None]]]] = [
-    ("どの区間にも値がある", [(1.0, {"a": 10.0, "b": 10.0}), (1.0, {"a": 40.0})]),
-    ("値の無い区間がある", [(1.0, {"a": 10.0, "b": 10.0}), (2.0, None), (1.0, {"a": 40.0})]),
-    ("どの区間にも値が無い", [(1.0, None), (2.0, None)]),
-]
-
-
-def difficulty_expectations() -> dict[str, list[dict]]:
-    """ルート全体の難易度（平均と総量）。値の無い区間の数え方が分かれる場面を並べる。"""
-    rows = []
-    for scene, parts in _ROUTES:
-        segments = [_segment(distance_km, contributions) for distance_km, contributions in parts]
-        overall = merge_overall_difficulty(segments)
-        rows.append(
-            {
-                "scene": scene,
-                "segments": [
-                    {
-                        "distance_km": segment.distance_km,
-                        "difficulty": segment.difficulty,
-                        "axis_contributions": segment.axis_contributions,
-                    }
-                    for segment in segments
-                ],
-                "overall_difficulty": None if overall is None else overall.model_dump(),
-            }
-        )
-    return {"overall_difficulty": rows}
-
-
 def _values_only(value: object) -> WayValueFormula:
     return WayValueFormula(value=value, undetermined=FALSE)
 
@@ -439,6 +404,9 @@ _X = feature("x")
 _Y = feature("y")
 
 #: 場面 → 木と、木へ入れる道ごとの材料（値の無い材料は載せない）と条件の組。
+#: 直角とみなす幅（較正値。値の正本はDBなので、表の入力としてここで置く）。向きの行（104・105・106度）がこの幅の境目を挟む。
+TUNING_VALUES["gradient.perpendicular_band_deg"] = 15.0
+
 _WAY_VALUE_FORMULAS: list[tuple[str, WayValueFormula, list[tuple[dict[str, float], dict[str, float]]]]] = [
     (
         "丸め1桁（2進で中点ちょうど・中点のすぐ上下・負）",
@@ -489,14 +457,6 @@ _WAY_VALUE_FORMULAS: list[tuple[str, WayValueFormula, list[tuple[dict[str, float
                                (0.0, 255.5), (180.0, 359.75))]
         + [({"forward": 3.0, "backward": -3.0}, {"bearing_deg": 90.0}), ({ROAD_BEARING_LEAF: 0.0}, {"bearing_deg": 0.0})],
     ),
-    (
-        "風の追加負荷（向かい風・追い風・横風・風の無い道）",
-        WIND_DRAG_RATIO_WAY_FORMULA,
-        [({"wind_speed_ms": speed, "wind_direction_deg": direction}, {"bearing_deg": bearing, "speed_kmh": kmh})
-         for speed, direction, bearing, kmh in ((5.0, 0.0, 0.0, 20.0), (5.0, 180.0, 0.0, 20.0), (8.0, 90.0, 0.0, 25.0),
-                                                (3.2, 47.0, 312.5, 18.0), (12.0, 200.0, 20.0, 40.0))]
-        + [({}, {"bearing_deg": 0.0, "speed_kmh": 20.0})],
-    ),
 ]
 
 
@@ -528,7 +488,6 @@ EXPECTATIONS: dict[str, Callable[[], dict[str, list[dict]]]] = {
     "geo": geo_expectations,
     "region": region_expectations,
     "time": time_expectations,
-    "difficulty": difficulty_expectations,
     "jma": jma_expectations,
     "way-value": way_value_expectations,
 }

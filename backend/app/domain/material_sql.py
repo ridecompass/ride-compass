@@ -1,9 +1,7 @@
 """材料の値をSQLで導出する式の、単一の情報源。
 
-材料が何から導かれるかはdomainの知識のため、式をここに置く。参照する側
-（タイル配信・材料の読み出し・欠損割合集計・派生バッチ）はいずれもRoad Graphの
-オブジェクトを構築せずDBを直接引く。同じ判定式を呼び出し側ごとに独立して書くと
-ドリフトするため、ここへ集約する。表を読む文（生データの表から`w`を作る副問い合わせ等）は
+材料が何から導かれるかはdomainの知識のため、式をここに置く。同じ判定式を呼び出し側ごとに
+独立して書くとドリフトするため、ここへ集約する。表を読む文（生データの表から`w`を作る副問い合わせ等）は
 実行する層が持ち、ここは別名の列に対する式だけを持つ。
 
 式はテーブルのエイリアスを固定で参照する。FROM句は読み出し側が組み立てる（`em`・`wm`は
@@ -21,19 +19,8 @@
 """
 
 import re
-from collections.abc import Iterable, Sequence
-from typing import NamedTuple
+from collections.abc import Iterable
 
-from app.domain.road import (
-    SURFACE_CLASSES,
-    SURFACE_OTHER_KEY,
-    TRACK_GRADES,
-    TRACK_HIGHWAY,
-    UNKNOWN_ROAD_SURFACE,
-    UNKNOWN_TRACK_SURFACE,
-    SurfaceClass,
-    TrackGrade,
-)
 from app.domain.traffic import poi_count_column
 
 
@@ -44,11 +31,15 @@ def normalized_tag_sql(tag: str) -> str:
 
 def positive_integer_tag_sql(tag: str) -> str:
     """数値タグ（maxspeed/lanes等）を、数値としてパースでき0より大きい場合のみ
-    値を持つ式として参照する（0以下・非数値はNULL＝未取得と同じ扱い）。"""
+    値を持つ式として参照する（0以下・非数値・整数の列に入らない桁はNULL＝未取得と同じ扱い）。
+
+    `integer`へ入らない値を変換すると文全体が落ち、誤ったタグの道1本が範囲の読み出しを止めるので、範囲を先に見る。
+    `AND`は評価の順を約束しないため、数値への変換は形を見た`CASE`の内側でだけ行う。"""
     raw = f"btrim(w.tags->>'{tag}')"
+    truncated = f"trunc({raw}::numeric)"
     return (
-        f"CASE WHEN {raw} ~ '^[0-9]+(\\.[0-9]+)?$' AND trunc({raw}::numeric) > 0 "
-        f"THEN trunc({raw}::numeric)::integer END"
+        f"CASE WHEN {raw} ~ '^[0-9]+(\\.[0-9]+)?$' THEN "
+        f"CASE WHEN {truncated} BETWEEN 1 AND 2147483647 THEN {truncated}::integer END END"
     )
 
 
@@ -62,35 +53,6 @@ def sql_literals(values: Iterable[str]) -> str:
     return ", ".join("'" + value.replace("'", "''") + "'" for value in values)
 
 
-def _surface_class_branches(classes: Sequence[SurfaceClass]) -> str:
-    return " ".join(
-        f"WHEN {SURFACE_NORMALIZED_SQL} IN ({sql_literals(c.tags)}) THEN '{c.key}'" for c in classes if c.tags
-    )
-
-
-def surface_class_sql(classes: Sequence[SurfaceClass]) -> str:
-    """surfaceタグの路面区分。タグが無ければNULL、区分に無い値は`SURFACE_OTHER_KEY`。"""
-    return (
-        f"CASE {_surface_class_branches(classes)} "
-        f"WHEN {SURFACE_NORMALIZED_SQL} IS NOT NULL THEN '{SURFACE_OTHER_KEY}' END"
-    )
-
-
-def surface_estimate_sql(classes: Sequence[SurfaceClass], grades: Sequence[TrackGrade]) -> str:
-    """路面の見込み（`domain/road.py: SurfaceEstimate`）。surfaceの区分、無ければ等級から写した区分、
-    どちらも無ければ道路種別で分けた「不明」。どの道も値を持つ。"""
-    grade_branches = " ".join(
-        f"WHEN {TRACKTYPE_NORMALIZED_SQL} = '{g.value}' THEN '{g.surface_class}'" for g in grades
-    )
-    return (
-        f"CASE {_surface_class_branches(classes)} {grade_branches} "
-        f"WHEN {HIGHWAY_SQL} = '{TRACK_HIGHWAY}' THEN '{UNKNOWN_TRACK_SURFACE.key}' "
-        f"ELSE '{UNKNOWN_ROAD_SURFACE.key}' END"
-    )
-
-
-SURFACE_CLASS_SQL = surface_class_sql(SURFACE_CLASSES)
-SURFACE_ESTIMATE_SQL = surface_estimate_sql(SURFACE_CLASSES, TRACK_GRADES)
 SMOOTHNESS_NORMALIZED_SQL = normalized_tag_sql("smoothness")
 MAXSPEED_KMH_CASE_SQL = positive_integer_tag_sql("maxspeed")
 LANES_COUNT_CASE_SQL = positive_integer_tag_sql("lanes")
@@ -99,7 +61,6 @@ TUNNEL_NORMALIZED_SQL = normalized_tag_sql("tunnel")
 BRIDGE_NORMALIZED_SQL = normalized_tag_sql("bridge")
 MOTOR_VEHICLE_NORMALIZED_SQL = normalized_tag_sql("motor_vehicle")
 BICYCLE_NORMALIZED_SQL = normalized_tag_sql("bicycle")
-MOTORROAD_NORMALIZED_SQL = normalized_tag_sql("motorroad")
 
 # 自転車インフラ系材料（highway_is_cycleway以外）が参照するcyclewayタグの完全な集合。
 CYCLEWAY_TAG_NAMES = ("cycleway", "cycleway:left", "cycleway:right", "cycleway:both")
@@ -125,7 +86,7 @@ def tag_note(tag: str, *values: str) -> str:
 
 # 橋・トンネルとみなすのは、道が地面から浮いているか地中にある値だけ（値の意味は OSM wiki の
 # Key:bridge・Key:tunnel）。地図の「橋・高架」「トンネル」と、勾配で地表を拾わない区間
-# （`attributes.py: elevation_values_sql` の on_structure）が同じ道を指すよう、両方がここを読む。
+# （`batch/derive_elevation.py` が両端だけを引く区間）が同じ道を指すよう、両方がここを読む。
 # 建物の下の通路（building_passage）・道の下の水路（culvert）・水面すれすれの低い橋
 # （low_water_crossing）は道が地表にあり、載っていない値も普通の道として扱う——知らない値を
 # 構造物に入れると、地図に誤った橋・トンネルが出る。
@@ -135,12 +96,8 @@ IS_BRIDGE_SQL = tag_absent_is_false_sql(f"{BRIDGE_NORMALIZED_SQL} IN ({sql_liter
 IS_TUNNEL_SQL = tag_absent_is_false_sql(f"{TUNNEL_NORMALIZED_SQL} IN ({sql_literals(TUNNEL_STRUCTURE_VALUES)})")
 
 
-def _cycleway_tags_include_sql(*values: str) -> str:
-    return f"{_CYCLEWAY_TAGS_ARRAY_SQL} && ARRAY[{sql_literals(values)}]"
-
-
 def cycleway_has_value_sql(*values: str) -> str:
-    return tag_absent_is_false_sql(_cycleway_tags_include_sql(*values))
+    return tag_absent_is_false_sql(f"{_CYCLEWAY_TAGS_ARRAY_SQL} && ARRAY[{sql_literals(values)}]")
 
 
 #: 自転車のためのタグの値。条件の式と説明の文の両方がここから作る。
@@ -158,44 +115,6 @@ SHARED_PEDESTRIAN_PATH_SQL = (
 )
 #: `SHARED_PEDESTRIAN_PATH_SQL`の条件を説明の文で指す書き方。
 SHARED_PEDESTRIAN_PATH_NOTE = f"{tag_note('highway', *_SHARED_PATH_HIGHWAYS)} かつ {tag_note('bicycle', *_SHARED_PATH_BICYCLE)}"
-
-
-class CyclewayClass(NamedTuple):
-    """自転車の走る場所の区分の1つ。`condition`は道がこの区分に当たるかのSQL真偽式。"""
-
-    key: str
-    label: str
-    #: 地図の凡例の行が開く説明。
-    description: str
-    condition: str
-
-
-#: 並びが判定の順（1本の道が複数に当たれば先の区分）で、地図の凡例の並び。車道から分けられた度合いの強い順。
-CYCLEWAY_CLASSES: tuple[CyclewayClass, ...] = (
-    CyclewayClass(
-        "separated",
-        "自転車道",
-        f"車道から分けられた、自転車の通る道[OSM の {tag_note('highway', CYCLEWAY_HIGHWAY)}・"
-        f"{tag_note('cycleway', *CYCLEWAY_TRACK_VALUES)}]。",
-        f"{HIGHWAY_SQL} = '{CYCLEWAY_HIGHWAY}' OR {_cycleway_tags_include_sql(*CYCLEWAY_TRACK_VALUES)}",
-    ),
-    CyclewayClass(
-        "lane",
-        "自転車レーン",
-        f"車道の上に線で区切った、自転車の通る帯[OSM の {tag_note('cycleway', *CYCLEWAY_LANE_VALUES)}]。",
-        _cycleway_tags_include_sql(*CYCLEWAY_LANE_VALUES),
-    ),
-    CyclewayClass(
-        "shared",
-        "共用の道",
-        "バス・車と共用の帯か、自転車も通ってよい歩道・遊歩道"
-        f"[OSM の {tag_note('cycleway', *CYCLEWAY_SHARED_VALUES)}、{SHARED_PEDESTRIAN_PATH_NOTE}]。",
-        f"{_cycleway_tags_include_sql(*CYCLEWAY_SHARED_VALUES)} OR ({SHARED_PEDESTRIAN_PATH_SQL})",
-    ),
-)
-
-#: どの区分にも当たらない道（自転車のための設けが無い道）はNULL。
-CYCLEWAY_CLASS_SQL = "CASE " + " ".join(f"WHEN {c.condition} THEN '{c.key}'" for c in CYCLEWAY_CLASSES) + " END"
 
 
 def per_km_value_sql(count: str) -> str:
@@ -218,21 +137,3 @@ def landcover_value_sql(key: str) -> str:
 _SEGMENT_VALUE_REFERENCE = re.compile(r"(?<![\w.])(?:re|em)\.\w")
 
 
-def reads_segment_values(expression: str) -> bool:
-    """式が区間ごとの値（別名`re`・`em`の列）を読むか。読む材料は、道1本を1つのフィーチャーにする読み出しでは
-    道1本の値で読まれるが、同じ道でも区間ごとに値が違いうる。"""
-    return _SEGMENT_VALUE_REFERENCE.search(expression) is not None
-
-
-def length_weighted_mean_sql(value: str) -> str:
-    """区間の値（`value`）を区間の長さで重み付けた平均の集約式。`GROUP BY`の中で、平均する区間を
-    `re`・`em`として並べた行に対して使う。
-
-    向きのある値（ジオメトリの始点→終点を正とする勾配等）も、同じ道の区間ならそのまま平均する。区間は
-    道の点を並びの順に切ったもの（`batch/derive_topology.py`）で、どの区間も道と同じ向きを正とする。
-    勾配なら、各区間の勾配へ長さを掛けると長さが約分されて標高差だけが残り、結果は両端の標高差を全長で
-    割った値になる（崖を下って上り返す道は打ち消し合って0になる）。区間の方位で向きを揃え直すと、
-    つづら折りのように道の両端を結ぶ方位から90度より大きく離れる区間の符号が反転し、登り続ける道が
-    0%近くに打ち消し合う。値の無い区間は呼び出し側が除く——残すと分母の長さだけに数えられる。
-    """
-    return f"sum(({value}) * re.distance_m) / sum(re.distance_m)"

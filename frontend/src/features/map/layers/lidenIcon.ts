@@ -2,7 +2,7 @@
 
 import { drawSdfIcon } from "@/features/map/layers/sdfIcon";
 
-const LIDEN_ICON_SIZE_PX = 24;
+export const LIDEN_ICON_SIZE_PX = 24;
 
 /** 単体の稲妻シルエット。 */
 export function createLidenIcon(): ImageData {

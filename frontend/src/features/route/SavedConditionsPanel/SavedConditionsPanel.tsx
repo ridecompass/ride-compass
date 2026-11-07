@@ -16,7 +16,8 @@ import {
   type SavedCondition,
 } from "@/features/route/savedConditions";
 import SavedList from "@/features/route/SavedList/SavedList";
-import { useAxisCatalog } from "@/hooks/useAxisCatalog";
+import { useClientConfig } from "@/hooks/useClientConfig";
+import { useCostAxisCatalog } from "@/hooks/useCostAxisCatalog";
 
 interface SaveConditionsButtonProps {
   /** 保存した設定（同じ名前があれば上書きと出す）。 */
@@ -62,7 +63,8 @@ export function SaveConditionsButton({
   originKnown,
   onSave,
 }: SaveConditionsButtonProps) {
-  const catalog = useAxisCatalog();
+  const catalog = useClientConfig();
+  const costCatalog = useCostAxisCatalog();
   // 手で書き換えるまでは、いまの条件から作る仮の名前を出す（条件を変えると名前の案も変わる）。
   const [nameDraft, setNameDraft] = useState<string | null>(null);
   const name = nameDraft ?? suggestedName;
@@ -73,7 +75,10 @@ export function SaveConditionsButton({
   // 窓を開いているか。保存すると閉じる。
   const [saving, setSaving] = useState(false);
   // 窓を開くまで読まないが、パネルはページと一緒に描き直されるので、条件が変わったときだけ組む。
-  const currentDescription = useMemo(() => describeConditions(current, catalog), [current, catalog]);
+  const currentDescription = useMemo(
+    () => describeConditions(current, catalog, costCatalog),
+    [current, catalog, costCatalog],
+  );
 
   return (
     <>
@@ -82,7 +87,7 @@ export function SaveConditionsButton({
         aria-label="いまの設定を保存"
         aria-haspopup="dialog"
         aria-expanded={saving}
-        usage="いまの設定（条件・出発地・重み・除外）を開いて確かめ、名前を付けてプリセットとしてこの端末に保存します。保存したプリセットは、「保存済み」タブの「プリセット」から呼び出せます。"
+        usage="いまの設定（条件・出発地・負担・回避）を開いて確かめ、名前を付けてプリセットとしてこの端末に保存します。保存したプリセットは、「保存済み」タブの「プリセット」から呼び出せます。"
         onClick={() => setSaving(true)}
       >
         <SaveConditionsIcon size={18} />
@@ -96,6 +101,7 @@ export function SaveConditionsButton({
                 [
                   "出発地",
                   <ToggleGroup
+                    usage="保存するプリセットの出発地を、呼び出した時の現在地にするか、今の出発地に固定するかを選びます。"
                     key="origin"
                     aria-label="保存する出発地"
                     value={fixOrigin ? "fixed" : "current"}
@@ -113,8 +119,8 @@ export function SaveConditionsButton({
                     </ToggleGroupItem>
                   </ToggleGroup>,
                 ],
-                ["重み", currentDescription.weights],
-                ["除外", currentDescription.exclusions],
+                ["負担", currentDescription.costPreference],
+                ["回避", currentDescription.exclusions],
               ]}
             />
             <form
@@ -132,7 +138,7 @@ export function SaveConditionsButton({
                 className="min-w-0 flex-auto"
                 value={name}
                 onChange={(event) => setNameDraft(event.target.value)}
-                data-usage="いまの設定に付ける名前です。そのまま保存もできます。"
+                data-usage="いまの設定に付ける名前です。初めに入っている名前のままでも保存できます。"
               />
               <Button
                 type="submit"
@@ -154,11 +160,12 @@ export function SaveConditionsButton({
 // 一覧の行は名前とアイコンの操作だけで、呼び出すと窓で中身を見せ、「反映する」で各タブの値と地図のピンが入れ替わる。
 // 生成はいつもの「ルート生成」で行う（入れ替えたあとに値を確かめたり少し変えたりできる）。
 export default function SavedConditionsPanel({ saved, onRecall, onRemove }: SavedConditionsPanelProps) {
-  const catalog = useAxisCatalog();
+  const catalog = useClientConfig();
+  const costCatalog = useCostAxisCatalog();
   // 呼び出すを押した設定。確認の窓で中身を見せ、「反映する」を押すまで入れ替えない。
   const [recalling, setRecalling] = useState<SavedCondition | null>(null);
   const [recalled, setRecalled] = useState<SavedCondition | null>(null);
-  const recallingDescription = recalling && describeConditions(recalling, catalog);
+  const recallingDescription = recalling && describeConditions(recalling, catalog, costCatalog);
 
   return (
     <div className="flex flex-col gap-3">
@@ -172,7 +179,7 @@ export default function SavedConditionsPanel({ saved, onRecall, onRemove }: Save
       <SavedList
         items={saved}
         noun="プリセット"
-        howToSave="条件タブの「いまの設定を保存」で、いまの設定（条件・出発地・重み・除外）に名前を付けてプリセットとして保存します。保存したプリセットは、ここで行の「呼び出す」を押すと各タブへ戻せます。"
+        howToSave="条件タブの「いまの設定を保存」で、いまの設定（条件・出発地・負担・回避）に名前を付けてプリセットとして保存します。保存したプリセットは、ここで行の「呼び出す」を押すと各タブへ戻せます。"
         renderMain={(entry) => <span className="min-w-0 flex-auto truncate font-semibold">{entry.name}</span>}
         renderActions={(entry) => (
           <Button
@@ -180,7 +187,7 @@ export default function SavedConditionsPanel({ saved, onRecall, onRemove }: Save
             aria-label={`「${entry.name}」を呼び出す`}
             aria-haspopup="dialog"
             aria-expanded={recalling?.name === entry.name}
-            usage="このプリセットの中身を窓で見て、「反映する」で各タブの値と地図の地点を入れ替えます。作るのはいつもの「ルート生成」です。"
+            usage="このプリセットの内容を確かめる窓を開きます。「反映する」を押すと、各タブの値と地図の地点を置き換えます。ルートは、その後に「ルート生成」で作ります。"
             onClick={() => setRecalling(entry)}
           >
             <RecallSavedIcon size={18} />
@@ -200,15 +207,16 @@ export default function SavedConditionsPanel({ saved, onRecall, onRemove }: Save
               rows={[
                 ["条件", recallingDescription.route],
                 ["出発地", originDescription(recalling.origin !== null)],
-                ["重み", recallingDescription.weights],
-                ["除外", recallingDescription.exclusions],
+                ["負担", recallingDescription.costPreference],
+                ["回避", recallingDescription.exclusions],
               ]}
             />
             <div className="mt-3 flex justify-end gap-2">
-              <Button size="sm" onClick={() => setRecalling(null)}>
+              <Button usage="反映せずに、この窓を閉じます。" size="sm" onClick={() => setRecalling(null)}>
                 キャンセル
               </Button>
               <Button
+                usage="このプリセットの値で、各タブの値と地図の地点を入れ替えます。"
                 variant="primary"
                 size="sm"
                 onClick={() => {

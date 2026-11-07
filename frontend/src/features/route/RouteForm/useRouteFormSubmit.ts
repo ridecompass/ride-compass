@@ -22,7 +22,7 @@ interface UseRouteFormSubmitResult {
   clear: () => void;
 }
 
-/** 「ルート生成」ボタン（page.tsxの「ルート設定」見出し行）から呼ぶ検証。距離・候補数は確かめない——
+/** 「ルート生成」ボタン（「ルート設定」見出し行の`GenerateRouteActions.tsx`）から呼ぶ検証。距離・候補数は確かめない——
  * 入力がスライダー・ステッパーで、保存値も読むときに範囲の外を捨てる（`features/route/useGenerationConditions.ts`）ので、
  * 範囲の外の値は作れない。 */
 export function useRouteFormSubmit({

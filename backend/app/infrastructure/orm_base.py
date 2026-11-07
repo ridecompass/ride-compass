@@ -23,9 +23,10 @@ class Base(DeclarativeBase):
 #: 表を宣言するモジュールの全部。足し忘れは`tests/structure/test_table_modules.py`が落とす（`Base.metadata`の
 #: 中身は同じ実行でほかに誰がimportしたかで変わるので、テストの集まりの中では欠けが出ない）。
 TABLE_MODULES = (
-    "app.infrastructure.axis_definition_models",
+    "app.infrastructure.cost_axis_models",
     "app.infrastructure.derived_data_meta",
     "app.infrastructure.derived_models",
+    "app.infrastructure.road_class_models",
     "app.infrastructure.source_models",
     "app.infrastructure.tuning_overrides",
 )

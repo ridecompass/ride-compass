@@ -14,8 +14,8 @@
 入らない）。部品を返す関数（`material_service_builder`の類）を呼ぶ形は見ない——クラスを組まない関数と見分けられない。
 
 DI工場が配るのは組み立てた部品だけで、`api/dependencies.py`の関数は`await`しない（呼び出しの結果を配らない）、
-`app.infrastructure`から開いた`with ... as`の名前（DBのセッション）をそのままか、`app.infrastructure`のクラスに
-包んだだけで配らない（受けた側が、どのセッション工場の上で動くかを見られない）。母集団は`api/dependencies.py`の
+`app.infrastructure`の名前か、引数（`Depends`で受けたセッション工場）を呼んで開いた`with ... as`の名前（DBの
+セッション）をそのままか、`app.infrastructure`のクラスに包んだだけで配らない（受けた側が、どのセッション工場の上で動くかを見られない）。母集団は`api/dependencies.py`の
 全関数の`yield`・`return`。定期ジョブ（`main.py`で`add_job`に渡す関数）は、DI工場の組む`app.infrastructure`の
 クラスを組まず、DI工場の口を使う。
 
@@ -241,13 +241,22 @@ def factories_handing_out_calls_or_sessions(root: Path) -> list[str]:
     tree, imported = _read(root, root / DEPENDENCIES)
     out: list[str] = []
     for name, function in _functions(tree).items():
+        arguments = function.args
+        parameters = {argument.arg for argument in (*arguments.posonlyargs, *arguments.args, *arguments.kwonlyargs)}
         opened = {
             item.optional_vars.id
             for node in ast.walk(function)
             if isinstance(node, (ast.With, ast.AsyncWith))
             for item in node.items
             if isinstance(item.optional_vars, ast.Name)
-            and any(isinstance(n, ast.Name) and n.id in imported for n in ast.walk(item.context_expr))
+            and (
+                any(isinstance(n, ast.Name) and n.id in imported for n in ast.walk(item.context_expr))
+                or (
+                    isinstance(item.context_expr, ast.Call)
+                    and isinstance(item.context_expr.func, ast.Name)
+                    and item.context_expr.func.id in parameters
+                )
+            )
         }
         for node in ast.walk(function):
             if isinstance(node, ast.Await):
@@ -311,8 +320,8 @@ def test_jobs_use_the_factories() -> None:
 
 
 def test_detects_factories_and_jobs_that_bypass_assembly(tmp_path: Path) -> None:
-    """検査が効いていること（呼び出しの結果・セッション・包んだだけのリポジトリを配る工場と、工場の部品を組むジョブを
-    捕まえ、サービスに組んで配る工場・中継のクライアントを配る工場・開き方を通す）。"""
+    """検査が効いていること（呼び出しの結果・セッション（注入された工場から開いたものも）・包んだだけのリポジトリを配る
+    工場と、工場の部品を組むジョブを捕まえ、サービスに組んで配る工場・中継のクライアントを配る工場・開き方を通す）。"""
     root = tmp_path / "app"
     for directory in ("api", "services", "infrastructure"):
         (root / directory).mkdir(parents=True)
@@ -331,9 +340,15 @@ def test_detects_factories_and_jobs_that_bypass_assembly(tmp_path: Path) -> None
         "async def get_repository():\n"
         "    async with open_session() as session:\n"
         "        yield Repository(session)\n"
+        "async def get_injected_session(sessions=Depends(open_sessions)):\n"
+        "    async with sessions() as session:\n"
+        "        yield session\n"
         "async def get_region_service():\n"
         "    async with open_session() as session:\n"
         "        yield RegionService(Repository(session))\n"
+        "async def get_relayed_region_service(sessions=Depends(open_sessions)):\n"
+        "    async with open_region(sessions) as region:\n"
+        "        yield region\n"
         "def get_client():\n"
         "    return Client()\n"
         "def get_opener():\n"
@@ -359,5 +374,6 @@ def test_detects_factories_and_jobs_that_bypass_assembly(tmp_path: Path) -> None
         "get_area:5 await RegionService(Repository(session)).area()",
         "get_session:8 配る session",
         "get_repository:11 配る Repository(session)",
+        "get_injected_session:14 配る session",
     ]
     assert jobs_assembling_what_the_factories_assemble(root) == ["main.py:5 _job app.infrastructure.db.Repository"]

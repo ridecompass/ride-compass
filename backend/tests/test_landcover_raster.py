@@ -1,6 +1,6 @@
 """`infrastructure/landcover_raster.py`——土地被覆のGeoTIFFから、XYZタイル1枚ぶんのクラスと絵を作る。
 
-入口は`tile_classes`・`render_tile`・`empty_tile_png`・`has_sources`・`opened_raster_paths`。
+入口は`tile_classes`・`render_tile`・`empty_tile_png`・`opened_raster_paths`。
 ラスタは一時ディレクトリに本物のGeoTIFFを書き、設定（`settings.lulc_raster_paths`）でその置き場を
 渡す。開いたラスタはプロセスに残るので、テストごとに閉じる口（`close_sources`）で開く前の状態に戻してから始め、同じ口で閉じる。
 タイルの範囲はXYZの公開の定義（Web Mercatorの全幅を2^z等分し、yは北から数える）から作る。
@@ -8,12 +8,11 @@
 ここで見ないもの:
 - 配色の中身（どのクラスを塗り、何色か） → `domain/landcover.py: LANDCOVER_CLASSES`の宣言。
   ここではクラスを「塗る」「塗らない」の性質で選び、色は宣言から読む
-- 空のタイルを返すか503にするか・キャッシュの鍵 → `test_landcover_tile.py`
+- 空のタイルを返すこと・キャッシュの鍵 → `test_landcover_tile.py`
 - 取込がタイルのクラスをDBへ入れること → 取込のアダプタ（`batch/source_adapters/io_lulc_tile.py`）の持ち物
 """
 
 import io
-import logging
 import math
 
 import numpy as np
@@ -148,27 +147,13 @@ def test_the_empty_tile_is_a_fully_clear_image_of_tile_size():
     assert (image[:, :, 3] == 0).all()
 
 
-def test_once_a_raster_is_open_the_set_of_rasters_stays_until_restart(tmp_path, configure):
-    first = over_tile(tmp_path / "first.tif", stripes(2), *TOKYO)
-    configure(first)
-    assert landcover_raster.opened_raster_paths() == [first]
-
-    configure(first, over_tile(tmp_path / "second.tif", stripes(5), *TOKYO))
-
-    assert landcover_raster.opened_raster_paths() == [first]
-
-
-def test_a_raster_that_appears_after_start_is_picked_up_after_the_retry_interval(tmp_path, configure, clock, caplog):
-    """デプロイはラスタの取得とコンテナの入れ替えを別に行うので、起動時に無くても後から現れる。"""
+def test_a_raster_that_cannot_be_opened_is_an_error_and_is_opened_once_it_appears(tmp_path, configure):
+    """開けなければエラー。デプロイはラスタの取得とコンテナの入れ替えを別に行うので、起動時に無くても後から現れ、次の読みで開く。"""
     path = tmp_path / "late.tif"
     configure(str(path))
-    with caplog.at_level(logging.WARNING, logger="ridecompass.landcover_raster"):
-        assert not landcover_raster.has_sources()
-        over_tile(path, stripes(2), *TOKYO)
-        clock.tick(59)
-        assert not landcover_raster.has_sources()
+    with pytest.raises(landcover_raster.LandcoverUnavailableError):
+        landcover_raster.opened_raster_paths()
 
-    assert len([r for r in caplog.records if "late.tif" in r.getMessage()]) == 1
-    clock.tick(1)
-    assert landcover_raster.has_sources()
+    over_tile(path, stripes(2), *TOKYO)
+
     assert landcover_raster.opened_raster_paths() == [str(path)]

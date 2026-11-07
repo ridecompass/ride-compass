@@ -3,8 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { HttpResponse } from "msw";
 
+import { HOUR_MS } from "@/lib/duration";
 import { getQueryClient } from "@/lib/queryClient";
 import { heldReplies, inTurn, onBackend } from "@/testing/backendServer";
+import { makeRouteSegment } from "@/testing/routeFixtures";
 import { settle } from "@/testing/settle";
 
 import { useWeatherConditions } from "./useWeatherConditions";
@@ -14,6 +16,8 @@ const AMEDAS = "/api/weather/amedas";
 const WARNINGS = "/api/weather/warnings";
 const WBGT = "/api/weather/wbgt";
 const FLOOD = "/api/weather/flood-forecast";
+const GRID_POINT_TODAY = "/api/weather";
+const ROUTE_TIMELINE = "/api/weather/route-warning-timeline";
 
 const TOKYO = { latitude: 35.68, longitude: 139.76 };
 const YOKOHAMA = { latitude: 35.44, longitude: 139.64 };
@@ -33,6 +37,7 @@ beforeEach(() => {
   onBackend("GET", WARNINGS, json(NO_WARNINGS));
   onBackend("GET", WBGT, json(NO_WBGT));
   onBackend("GET", FLOOD, json(NO_FLOOD));
+  onBackend("GET", GRID_POINT_TODAY, json({ distance_km: 1 }));
 });
 
 afterEach(() => {
@@ -45,7 +50,7 @@ afterEach(() => {
 const fetched = () => vi.waitFor(() => expect(getQueryClient().isFetching()).toBe(0));
 
 function render(location = TOKYO, ready = true) {
-  return renderHook(({ location, ready }) => useWeatherConditions(location, ready, null), {
+  return renderHook(({ location, ready }) => useWeatherConditions(location, ready, null, null), {
     initialProps: { location, ready },
   });
 }
@@ -57,10 +62,11 @@ describe("useWeatherConditions 取得の時機", () => {
     expect(result.current).toMatchObject({ amedas: null, warningBadgeItems: [] });
   });
 
-  it("位置が決まったら、実測・警報・暑さ指数・氾濫予報をその位置で取る", async () => {
+  it("位置が決まったら、実測・最寄りの格子点の今日の値・警報・暑さ指数・氾濫予報をその位置で取る", async () => {
     // どの口も、問い合わせた緯度・経度を値に書いて返す。
     const at = ({ query }: { query: Record<string, string> }) => `${query.latitude},${query.longitude}`;
     onBackend("GET", AMEDAS, (request) => Response.json({ place: at(request) }));
+    onBackend("GET", GRID_POINT_TODAY, (request) => Response.json({ place: at(request) }));
     onBackend("GET", WARNINGS, (request) =>
       Response.json({ warnings: [{ code: "03", name: `警報@${at(request)}`, level: "warning", additions: [] }] }),
     );
@@ -76,6 +82,7 @@ describe("useWeatherConditions 取得の時機", () => {
     const tokyo = `${TOKYO.latitude},${TOKYO.longitude}`;
     await vi.waitFor(() => {
       expect(result.current.amedas).toEqual({ place: tokyo });
+      expect(result.current.gridPointToday).toEqual({ place: tokyo });
       expect(result.current.warningBadgeItems.map((item) => item.label)).toEqual([
         `警報@${tokyo}`,
         `暑さ指数@${tokyo}`,
@@ -106,12 +113,13 @@ describe("useWeatherConditions 取得の時機", () => {
     await vi.waitFor(() => expect(observations).toHaveLength(2));
   });
 
-  it("取り終えたら読み込み中を下ろし、位置を変えて取り直す間は前の位置の値のまま読み込み中にする", async () => {
+  it("位置を変えて取り直す間は、前の位置の値のまま", async () => {
     const { result, rerender } = render();
-    await vi.waitFor(() => expect(result.current.amedasLoading).toBe(false));
-    onBackend("GET", AMEDAS, heldReplies().reply);
+    await fetched();
+    const held = heldReplies();
+    onBackend("GET", AMEDAS, held.reply);
     rerender({ location: YOKOHAMA, ready: true });
-    await vi.waitFor(() => expect(result.current.amedasLoading).toBe(true));
+    await vi.waitFor(() => expect(held.arrived()).toBe(1));
     expect(result.current.amedas).toEqual({ temperature_c: 21 });
   });
 });
@@ -150,7 +158,7 @@ describe("useWeatherConditions 走行中", () => {
   const NEAR_TOKYO = { latitude: TOKYO.latitude + 0.01, longitude: TOKYO.longitude + 0.01 };
 
   function renderRiding(position: typeof TOKYO) {
-    return renderHook(({ position }) => useWeatherConditions(YOKOHAMA, true, position), {
+    return renderHook(({ position }) => useWeatherConditions(YOKOHAMA, true, position, null), {
       initialProps: { position },
     });
   }
@@ -291,5 +299,83 @@ describe("useWeatherConditions 警報のバッジ", () => {
       ]),
     );
     expect(result.current.warningBadgeItems).toEqual([]);
+  });
+});
+
+describe("useWeatherConditions ルートの警報級の時系列", () => {
+  // 10/21 18:00（日本時間）に出て、1kmを8時間で走るルート。点は0.25kmおきの5つで、0.5kmの点（2番）を22時に通る。
+  const ROUTE = {
+    segments: [
+      makeRouteSegment({
+        distance_km: 1,
+        geometry: {
+          type: "LineString",
+          coordinates: [
+            [139.76, 35.68],
+            [139.77, 35.68],
+          ],
+        },
+      }),
+    ],
+    clock: (km: number) => Date.parse("2026-10-21T18:00:00+09:00") + km * 8 * HOUR_MS,
+    fromKm: 0,
+  };
+  const slot = (start: string, end: string, code: string) => ({ start, end, code, advisory: code >= "20" });
+  // 2番から終わり（4番）まで、22時〜翌2時に通る区域。18〜21時と翌0〜3時が注意報級。
+  const TIMELINE = {
+    areas: [
+      {
+        area_code: "1310100",
+        area_name: "千代田区",
+        start_index: 2,
+        end_index: 4,
+        kinds: {
+          thunder: {
+            advisory_label: "雷（注意報級）",
+            slots: [
+              slot("2026-10-21T18:00:00+09:00", "2026-10-21T21:00:00+09:00", "20"),
+              slot("2026-10-21T21:00:00+09:00", "2026-10-22T00:00:00+09:00", "01"),
+              slot("2026-10-22T00:00:00+09:00", "2026-10-22T03:00:00+09:00", "20"),
+            ],
+            additions: ["突風"],
+          },
+        },
+      },
+    ],
+  };
+
+  function renderWithRoute() {
+    return renderHook(() => useWeatherConditions(TOKYO, true, null, ROUTE));
+  }
+
+  it("ルートの区域を通る時刻に当たる注意報級の時間帯を、付加事項を添えて警告に並べる", async () => {
+    onBackend("POST", ROUTE_TIMELINE, json(TIMELINE));
+    const { result } = renderWithRoute();
+
+    await vi.waitFor(() =>
+      expect(result.current.warningBadgeItems).toEqual([
+        expect.objectContaining({
+          label: "雷（注意報級）千代田区",
+          level: "advisory",
+          title: "10/22 00:00〜03:00に通る見込み。付加事項: 突風",
+        }),
+      ]),
+    );
+  });
+
+  it("取れなければ、失敗として渡し、間隔ごとに取り直している間も渡したままにする（回復したように見せない）", async () => {
+    onBackend("POST", ROUTE_TIMELINE, failure("取得できませんでした。"));
+    const { result } = renderWithRoute();
+    const timelineFailure = [
+      { id: "route-timeline", label: "ルートの注意報級の見込み", detail: "取得できませんでした。" },
+    ];
+
+    await vi.waitFor(() => expect(result.current.warningFetchFailures).toMatchObject(timelineFailure));
+    await fetched();
+    const held = heldReplies();
+    onBackend("POST", ROUTE_TIMELINE, held.reply);
+    act(() => vi.advanceTimersByTime(10 * 60 * 1000));
+    await vi.waitFor(() => expect(held.arrived()).toBe(1));
+    expect(result.current.warningFetchFailures).toMatchObject(timelineFailure);
   });
 });

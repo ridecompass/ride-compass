@@ -39,7 +39,7 @@ const triggerVariants = cva(
           "-mb-px flex-none rounded-t-sm border-b-2 border-transparent px-2 py-1.5 data-[state=active]:border-[var(--color-accent-strong)] data-[state=active]:bg-[var(--color-accent-bg)]",
         // 選んだカードは枠の代わりに内側の線と地の色で示す（枠の太さを変えると、選ぶたびに中身が動く）。
         cards:
-          "w-[4.875rem] flex-none flex-col items-stretch overflow-hidden rounded-sm border border-[var(--color-border)] px-1.5 pt-1 text-left tabular-nums data-[state=active]:border-transparent data-[state=active]:bg-[var(--color-accent-bg)] data-[state=active]:shadow-[inset_0_0_0_2px_var(--color-accent-strong)]",
+          "w-[5.25rem] flex-none flex-col items-stretch overflow-hidden rounded-sm border border-[var(--color-border)] px-1.5 pt-1 text-left tabular-nums data-[state=active]:border-transparent data-[state=active]:bg-[var(--color-accent-bg)] data-[state=active]:shadow-[inset_0_0_0_2px_var(--color-accent-strong)]",
         // 1つを選ぶ切り替え（`ToggleGroup`の`segmented`）と同じく、選んだ方を地の色で示す。
         overlay:
           "min-h-6 flex-none px-2 py-0.5 font-normal text-[length:var(--font-size-xs)] text-[var(--foreground)] data-[state=active]:bg-[var(--color-accent)] data-[state=active]:text-white",
@@ -69,7 +69,7 @@ export const TabsList = forwardRef<HTMLDivElement, TabsListProps>(function TabsL
 
 interface TabsTriggerProps extends React.ComponentPropsWithoutRef<typeof RadixTabs.Trigger> {
   /** 使い方の文（`Button`の`usage`と同じ）。 */
-  usage?: string;
+  usage: string | null;
 }
 
 export const TabsTrigger = forwardRef<HTMLButtonElement, TabsTriggerProps>(function TabsTrigger(
@@ -81,7 +81,7 @@ export const TabsTrigger = forwardRef<HTMLButtonElement, TabsTriggerProps>(funct
     <RadixTabs.Trigger
       ref={ref}
       className={cn(triggerVariants({ variant }), className)}
-      data-usage={usage}
+      data-usage={usage ?? undefined}
       {...props}
     />
   );

@@ -1,30 +1,19 @@
 // 道のりのグラフに重ねるレイヤ。各レイヤの描き方と、応答の区間から値を引く所をここで宣言する。地図の「表示」とは別に選ぶ。
 //
-// 描き方は3つ。折れ線は区間の中の道ごとの両端の値（応答の`elevations`）を距離に沿ってつなぎ、値の無い道で線を切る。帯は区間の中の区分の並び
-// （応答の`road_classes`）を距離に沿って色で塗る。点はルートの近くの点（応答の`points`）を通る距離に印で並べる。
-// 帯と点のレイヤと名前・行（色と呼び名）は地図の「表示」と同じ宣言から引く。
+// 描き方は2つ。折れ線は区間の中の道ごとの両端の値（応答の`elevations`）を距離に沿ってつなぎ、値の無い道で線を切る。帯は区間の中の区分の並び
+// （応答の`road_classes`）を距離に沿って色で塗る。帯のレイヤと名前・行（色と呼び名）は地図の「表示」と同じ宣言から引く。
 
 import type { MapIconComponent } from "@/components/ui/icons/icons";
-import { MAP_LAYER_ICONS } from "@/components/ui/icons/mapLayerIcons";
+import { MAP_LAYER_ICONS, roadLayerIcon } from "@/components/ui/icons/mapLayerIcons";
+import { columnAtKm } from "@/features/route/DifficultyProfile/profileGeometry";
 import { LANDCOVER_CLASSES } from "@/lib/mapDisplay/landcoverClasses";
 import { NO_DATA_LEGEND_BAND } from "@/lib/mapDisplay/mapColorLegend";
-import { ROAD_TRACKS, roadTrackRowOf, roadTrackRows, type RoadTrackRow } from "@/lib/mapDisplay/roadTracks";
+import { isUnclassifiedRow, roadTrackRowOf, roadTrackRows, type RoadTrackRow } from "@/lib/mapDisplay/roadTracks";
 import type { RouteStretch } from "@/lib/routeDistance";
 import { mapDisplay } from "@/types/generated/mapDisplay";
-import palette from "@/types/generated/palette.json";
-import type { RoutePoint, RouteSegmentDetail } from "@/types/route";
+import type { RoadMapLayerView, RouteSegmentDetail } from "@/types/route";
 
-import type { PointGlyph } from "@/lib/mapDisplay/legendFilter";
-import {
-  pointCategoryOf,
-  pointCategoryRadiusPx,
-  pointPlaceName,
-  POINT_LAYERS,
-  sizeAxis,
-  type PointLayer as PointDeclaration,
-} from "@/lib/mapDisplay/pointLayers";
-
-type LayerSegment = Pick<RouteSegmentDetail, "elevations" | "road_classes">;
+type LayerSegment = Pick<RouteSegmentDetail, "elevations" | "sustained_gradient_percent" | "road_classes">;
 type RoadClassValue = RouteSegmentDetail["road_classes"][string][number]["value"];
 
 type LineStretch = { readonly distance_km: number; readonly start: number | null; readonly end: number | null };
@@ -37,6 +26,8 @@ export type LineLayer = {
     readonly unit: string;
     /** 区間の中の道ごとの、道の距離と始まり・終わりの値（無ければnull）を通る順に。 */
     readonly stretches: (segment: LayerSegment) => readonly LineStretch[];
+    /** 区間の続く坂の斜度（%、走る向きの符号つき。登りがあれば登りの最大、無ければ下りの最大）。無ければnull。 */
+    readonly sustainedGrade: (segment: LayerSegment) => number | null;
   };
 };
 
@@ -55,14 +46,7 @@ export type BandLayer = {
   };
 };
 
-export type PointLayer = {
-  /** 地図のレイヤのid。応答の点の`layer`でもある。 */
-  readonly id: string;
-  readonly label: string;
-  readonly draw: { readonly kind: "points"; readonly declaration: PointDeclaration };
-};
-
-export type ProfileLayer = LineLayer | BandLayer | PointLayer;
+export type ProfileLayer = LineLayer | BandLayer;
 
 const LANDCOVER_ROWS: readonly RoadTrackRow[] = [
   ...LANDCOVER_CLASSES.map((cls) => ({
@@ -82,49 +66,49 @@ function landcoverRowOf(value: RoadClassValue): RoadTrackRow {
   return row;
 }
 
-/** 地図のレイヤのid → 帯の行。 */
-const BAND_ROWS: Readonly<Record<string, Pick<BandLayer["draw"], "rows" | "rowOf">>> = {
-  ...Object.fromEntries(
-    ROAD_TRACKS.map((track) => [
-      track.attr_id,
-      { rows: roadTrackRows(track), rowOf: (value: RoadClassValue) => roadTrackRowOf(track, value) },
-    ]),
-  ),
-  landcover: { rows: LANDCOVER_ROWS, rowOf: landcoverRowOf },
+const ELEVATION_LAYER: LineLayer = {
+  id: "elevation",
+  label: "標高",
+  draw: {
+    kind: "line",
+    unit: "m",
+    stretches: (segment) =>
+      segment.elevations.map((stretch) => ({
+        distance_km: stretch.distance_km,
+        start: stretch.start_elevation_m,
+        end: stretch.end_elevation_m,
+      })),
+    sustainedGrade: (segment) => segment.sustained_gradient_percent,
+  },
 };
 
-export const PROFILE_LAYERS: readonly ProfileLayer[] = [
-  {
-    id: "elevation",
-    label: "標高",
-    draw: {
-      kind: "line",
-      unit: "m",
-      stretches: (segment) =>
-        segment.elevations.map((stretch) => ({
-          distance_km: stretch.distance_km,
-          start: stretch.start_elevation_m,
-          end: stretch.end_elevation_m,
-        })),
-    },
-  },
-  // 並びと名前は地図の「表示」のレイヤのまま。
-  ...mapDisplay.layers.flatMap((layer): (BandLayer | PointLayer)[] => {
-    if (layer.id in BAND_ROWS)
-      return [
+// 並びと名前は地図の「表示」のレイヤのまま。
+const DECLARED_LAYERS = mapDisplay.layers.flatMap((layer): BandLayer[] =>
+  layer.id === "landcover"
+    ? [
         {
           id: layer.id,
           label: layer.label,
           icon: MAP_LAYER_ICONS[layer.id],
-          draw: { kind: "band", ...BAND_ROWS[layer.id] },
+          draw: { kind: "band", rows: LANDCOVER_ROWS, rowOf: landcoverRowOf },
         },
-      ];
-    const declaration = POINT_LAYERS.find((point) => point.attr_id === layer.id);
-    return declaration === undefined
-      ? []
-      : [{ id: layer.id, label: layer.label, draw: { kind: "points", declaration } }];
-  }),
-];
+      ]
+    : [],
+);
+
+/** グラフに重ねられるレイヤ。道の帯は、画面の設定が配る道の線の層（地図のチップと同じ並び）から作る。 */
+export function profileLayers(roadLayers: readonly RoadMapLayerView[]): readonly ProfileLayer[] {
+  return [
+    ELEVATION_LAYER,
+    ...DECLARED_LAYERS,
+    ...roadLayers.map((layer): BandLayer => ({
+      id: layer.id,
+      label: layer.label,
+      icon: roadLayerIcon(layer.icon),
+      draw: { kind: "band", rows: roadTrackRows(layer), rowOf: (value) => roadTrackRowOf(layer, value) },
+    })),
+  ];
+}
 
 export type LinePoint = { readonly km: number; readonly value: number };
 
@@ -181,37 +165,31 @@ export function layerLine(
   return { runs, range: values.length === 0 ? null : { min: Math.min(...values), max: Math.max(...values) } };
 }
 
-/** 距離`km`の地点を通る道の部分と、その中の位置（0〜1）。範囲の外は端の部分へ寄せる。 */
-function linePieceAtKm(columns: readonly RouteStretch<LayerSegment>[], layer: LineLayer, km: number) {
-  const pieces = linePieces(columns, layer);
-  if (pieces.length === 0) return null;
-  const piece = pieces.find((candidate) => km < candidate.endKm) ?? pieces[pieces.length - 1];
-  const fraction = Math.min(1, Math.max(0, (km - piece.startKm) / (piece.endKm - piece.startKm)));
-  return { stretch: piece.stretch, fraction };
-}
-
 /** 距離`km`の地点の値。道の中は両端の間を距離で割り振り、範囲の外は端の道へ寄せる。値の無い道ではnull。 */
 export function layerValueAtKm(
   columns: readonly RouteStretch<LayerSegment>[],
   layer: LineLayer,
   km: number,
 ): number | null {
-  const hit = linePieceAtKm(columns, layer, km);
+  const hit = columnAtKm(linePieces(columns, layer), km);
   if (hit === null) return null;
-  const { start, end } = hit.stretch;
+  const { start, end } = hit.column.stretch;
   return start === null || end === null ? null : start + (end - start) * hit.fraction;
 }
 
-/** 距離`km`の地点を通る道の勾配（%）。道の両端の値の差（m）を道の長さで割る。値の無い道ではnull。 */
-export function layerGradeAtKm(
-  columns: readonly RouteStretch<LayerSegment>[],
+/** 区間の勾配（%）。平均は値のある道の上り下りの和を道の長さの和で割り、最大は区間の続く坂の斜度。値のある道が無ければnull。 */
+export function segmentGrades(
+  segment: LayerSegment,
   layer: LineLayer,
-  km: number,
-): number | null {
-  const hit = linePieceAtKm(columns, layer, km);
-  if (hit === null) return null;
-  const { start, end, distance_km } = hit.stretch;
-  return start === null || end === null ? null : ((end - start) / (distance_km * 1000)) * 100;
+): { mean: number; sustained: number | null } | null {
+  let rise = 0;
+  let meters = 0;
+  for (const { distance_km, start, end } of layer.draw.stretches(segment)) {
+    if (start === null || end === null || distance_km <= 0) continue;
+    rise += end - start;
+    meters += distance_km * 1000;
+  }
+  return meters === 0 ? null : { mean: (rise / meters) * 100, sustained: layer.draw.sustainedGrade(segment) };
 }
 
 export type BandPiece = { readonly startKm: number; readonly endKm: number; readonly row: RoadTrackRow };
@@ -234,76 +212,30 @@ export function layerBand(columns: readonly RouteStretch<LayerSegment>[], layer:
   return pieces;
 }
 
-/** 距離`km`の地点の行。範囲の外は端の部分へ寄せる。部分が無ければnull。 */
-export function bandRowAtKm(pieces: readonly BandPiece[], km: number): RoadTrackRow | null {
-  if (pieces.length === 0) return null;
-  return (pieces.find((piece) => km < piece.endKm) ?? pieces[pieces.length - 1]).row;
+/** 区間の区分の付く道に占める、区分の行と割合（0〜1）を、割合の多い順に。どの区分にも入らない道（その他・該当なし・データなし）は
+ * 行にも分母にも数えない。整数の%に丸めて0%になる行は出さない。 */
+export function segmentBandShares(
+  segment: LayerSegment,
+  layer: BandLayer,
+): { readonly row: RoadTrackRow; readonly share: number }[] {
+  const kmByRow = new Map<string, { row: RoadTrackRow; km: number }>();
+  let totalKm = 0;
+  for (const { distance_km, value } of segment.road_classes[layer.id] ?? []) {
+    const row = layer.draw.rowOf(value);
+    if (isUnclassifiedRow(row)) continue;
+    const counted = kmByRow.get(row.key);
+    kmByRow.set(row.key, { row, km: (counted?.km ?? 0) + distance_km });
+    totalKm += distance_km;
+  }
+  if (totalKm <= 0) return [];
+  return [...kmByRow.values()]
+    .map(({ row, km }) => ({ row, share: km / totalKm }))
+    .filter(({ share }) => Math.round(share * 100) >= 1)
+    .sort((a, b) => b.share - a.share);
 }
 
 /** 凡例に出す行。このルートの帯に現れる行だけを、宣言の並びで。 */
 export function bandLegendRows(layer: BandLayer, pieces: readonly BandPiece[]): readonly RoadTrackRow[] {
   const present = new Set(pieces.map((piece) => piece.row.key));
   return layer.draw.rows.filter((row) => present.has(row.key));
-}
-
-export type PointMark = {
-  readonly km: number;
-  /** 先頭の軸の区分の鍵。宣言に無い値ならnull。 */
-  readonly categoryKey: string | null;
-  /** 地図の点の色（先頭の軸の行の色）。 */
-  readonly color: string;
-  /** 地図で絵記号の記号に描く点の絵記号。丸い点で描く点はnull。 */
-  readonly glyph: PointGlyph | null;
-  readonly radiusPx: number;
-  /** 軸ごとの区分の名前を軸の並びでつないだもの。宣言に無い値の軸は「不明」。 */
-  readonly kinds: string;
-  readonly name: string | null;
-};
-
-/** そのレイヤの点の印の並び（応答の道のりの順のまま）。色・絵記号・半径・区分の名前は地図の点と同じ宣言から引く。 */
-export function layerMarks(points: readonly RoutePoint[], layer: PointLayer): PointMark[] {
-  const declaration = layer.draw.declaration;
-  const size = sizeAxis(declaration);
-  return points
-    .filter((point) => point.layer === layer.id)
-    .map((point) => {
-      const first = pointCategoryOf(declaration.display_axes[0], point.properties);
-      const sized = size === undefined ? undefined : pointCategoryOf(size, point.properties);
-      return {
-        km: point.distance_km,
-        categoryKey: first?.key ?? null,
-        color: first !== undefined && "color" in first ? first.color : palette.semantic.no_data,
-        glyph: first !== undefined && "glyph" in first ? first.glyph : null,
-        radiusPx: sized === undefined ? mapDisplay.point.radiusPx : pointCategoryRadiusPx(sized),
-        kinds: declaration.display_axes
-          .map((axis) => pointCategoryOf(axis, point.properties)?.label ?? "不明")
-          .join(" ・ "),
-        name: pointPlaceName(declaration, point.properties),
-      };
-    });
-}
-
-/** 距離`km`から`toleranceKm`以内でいちばん近い印。無ければnull。 */
-export function markNearKm(marks: readonly PointMark[], km: number, toleranceKm: number): PointMark | null {
-  let nearest: PointMark | null = null;
-  for (const mark of marks) {
-    const gap = Math.abs(mark.km - km);
-    if (gap <= toleranceKm && (nearest === null || gap < Math.abs(nearest.km - km))) nearest = mark;
-  }
-  return nearest;
-}
-
-export type MarkLegendRow = { readonly key: string; readonly label: string; readonly color: string };
-
-/** 凡例に出す行。印に現れた先頭の軸の区分だけを宣言の並びで、宣言に無い値の印があれば最後に「不明」を。 */
-export function markLegendRows(layer: PointLayer, marks: readonly PointMark[]): MarkLegendRow[] {
-  const present = new Set(marks.map((mark) => mark.categoryKey));
-  const rows: MarkLegendRow[] = layer.draw.declaration.display_axes[0].categories
-    .filter((category) => present.has(category.key))
-    .map((category) => ({
-      key: category.key,
-      label: category.label,
-      color: "color" in category ? category.color : palette.semantic.no_data,
-    }));
-  return present.has(null) ? [...rows, { key: "unknown", label: "不明", color: palette.semantic.no_data }] : rows;
 }

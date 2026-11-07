@@ -8,7 +8,6 @@
  */
 import { pairedStretches } from "@/features/route/routeSplice";
 import { MINUTE_UNIT, secondsToMinutes } from "@/lib/duration";
-import { DIFFICULTY_DECIMALS, LOAD_DECIMALS } from "@/lib/mapDisplay/valueScale";
 import { roundToDigits, signMark } from "@/lib/numberFormat";
 import { routeEdgeKms } from "@/lib/routeDistance";
 import type { RouteCandidate } from "@/types/route";
@@ -41,29 +40,25 @@ const EDIT_METRICS: readonly EditMetric[] = [
       route.estimated_duration_seconds === null ? null : secondsToMinutes(route.estimated_duration_seconds),
   },
   {
-    label: "総合難易度",
-    digits: DIFFICULTY_DECIMALS,
-    unit: "",
-    value: (route) => route.overall_difficulty?.average ?? null,
+    label: "負担",
+    digits: 0,
+    unit: MINUTE_UNIT,
+    value: (route) => secondsToMinutes(route.penalty.total_seconds),
   },
-  { label: "負荷", digits: LOAD_DECIMALS, unit: "", value: (route) => route.overall_difficulty?.load ?? null },
 ];
 
 /** 指標1つの元・編集後と差（編集後 − 元）。値を持たない側があれば差はnull。 */
-export interface MetricDifference {
-  label: string;
-  digits: number;
-  unit: string;
+export type MetricDifference = Omit<EditMetric, "value"> & {
   base: number | null;
   after: number | null;
   delta: number | null;
-}
+};
 
 /** 元との差。 */
 export interface EditDifference {
   metrics: MetricDifference[];
-  /** 起点に近い順。 */
-  stretches: ChangedStretch[];
+  /** 起点に近い順。元と編集後で変えた区間を対応づけられなければ（`pairedStretches`）null。 */
+  stretches: ChangedStretch[] | null;
 }
 
 /** 指標ごとの元・編集後と差。編集後がまだ無ければ（評価する前）元の値だけを持つ。 */
@@ -84,13 +79,16 @@ export function editDifference(origin: RouteCandidate, edited: RouteCandidate): 
   const pairs = pairedStretches(origin.edge_ids, edited.edge_ids);
   const originKm = routeEdgeKms(origin.segments, origin.edge_point_offsets);
   const editedKm = routeEdgeKms(edited.segments, edited.edge_point_offsets);
-  const stretches = pairs.map((pair) => {
-    const startKm = originKm[pair.displayed.start];
-    const endKm = originKm[pair.displayed.end];
-    const editedStartKm = editedKm[pair.target.start];
-    const editedEndKm = editedKm[pair.target.end];
-    return { startKm, endKm, lengthDiffKm: editedEndKm - editedStartKm - (endKm - startKm) };
-  });
+  const stretches =
+    pairs === null
+      ? null
+      : pairs.map((pair) => {
+          const startKm = originKm[pair.displayed.start];
+          const endKm = originKm[pair.displayed.end];
+          const editedStartKm = editedKm[pair.target.start];
+          const editedEndKm = editedKm[pair.target.end];
+          return { startKm, endKm, lengthDiffKm: editedEndKm - editedStartKm - (endKm - startKm) };
+        });
   return { metrics: metricDifferences(origin, edited), stretches };
 }
 

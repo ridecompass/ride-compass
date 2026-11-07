@@ -4,8 +4,8 @@
 
 ここで見ないもの:
 - 分類の材料の列（`CategoricalColumn`）と、dtypeごとの行列から列を引くこと（`EdgeMaterialArrays`） → 列を読む側
-  （`test_axis_definitions.py`・`test_cycling_speed.py`・`test_dynamic_way_values.py`）
-- 標高と勾配を出すSQL（`elevation_values_sql`）と、その逆順が`reversed_as`に一致すること → `test_elevation_values.py`
+  （`test_cycling_speed.py`）
+- 標高と勾配を出すSQL（`elevation_values_sql`） → `test_elevation_values.py`
 - 道路網の配列から材料と標高属性を組み立てること → `test_road_network.py`
 """
 
@@ -20,6 +20,8 @@ def climb() -> ElevationAttribute:
         elevation_gain_m=25.0,
         elevation_loss_m=5.0,
         average_grade=4.0,
+        steepest_gain_percent=9.0,
+        steepest_loss_percent=2.0,
     )
 
 
@@ -33,4 +35,6 @@ def test_the_reverse_turns_climbs_into_descents():
         "elevation_gain_m": 5.0,
         "elevation_loss_m": 25.0,
         "average_grade": -4.0,
+        "steepest_gain_percent": 2.0,
+        "steepest_loss_percent": 9.0,
     }

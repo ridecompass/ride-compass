@@ -1,4 +1,4 @@
-/** backend が配る中立の式の木（軸カタログの `way_value_formula`）を、MapLibre の式へ置き換える。**木を地図の式へ
+/** backend が配る中立の式の木（費用の軸の一覧の `map_lens.formula`）を、MapLibre の式へ置き換える。**木を地図の式へ
  * 置き換えるのはここだけ**で、木の中身（どの材料をどう組むか）は持たない——節の種類ごとに置き換え方を1つずつ持つ。
  *
  * 値の約束は backend の `domain/way_value_formula.py` に従う: 値の無いことは NaN で、算術は NaN を伝え、比べは NaN を偽とし、
@@ -26,7 +26,7 @@ type NodeOf<Op extends FormulaOp> = FormulaNode extends infer Node
 type ConditionName = NodeOf<"condition">["name"];
 
 /** 木の葉を、地図のどの値から読むか。材料は道ごとの feature-state、条件は地図全体の global-state。 */
-export interface FormulaInputs {
+interface FormulaInputs {
   readonly featureStateKey: (name: string) => string;
   readonly globalStateKey: (name: ConditionName) => string;
 }
@@ -183,10 +183,4 @@ export function wayValueExpressions(
 ): { readonly value: unknown; readonly undetermined: unknown } {
   const conversion = new Conversion(inputs);
   return { value: conversion.number(formula.value), undetermined: conversion.truth(formula.undetermined) };
-}
-
-/** 道ごとの材料 `name` をそのまま道の値にし、向きで決まらない道を持たない木。backend が求め終えた値を、材料として載せて
- * 塗るときに使う。 */
-export function featureValueFormula(name: string): WayValueFormula {
-  return { value: { op: "feature", name }, undetermined: { op: "const", value: 0 } };
 }

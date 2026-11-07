@@ -7,14 +7,13 @@
 
 import asyncio
 
-from app.domain.gsi_tiles import TERRAIN_UPSTREAM_PATH
-from app.infrastructure.gsi_dem_png import gsi_dem_png_to_terrain_rgb
+from app.infrastructure.gsi_dem_png import gsi_dem_png_path, gsi_dem_png_to_terrain_rgb
 from app.infrastructure.gsi_tile_client import GsiTileClient
 from app.infrastructure.http_client import UpstreamNotFound
 
 
 async def get_terrain_rgb_tile(client: GsiTileClient, z: int, x: int, y: int) -> bytes | UpstreamNotFound | None:
-    result = await client.get(TERRAIN_UPSTREAM_PATH.format(z=z, x=x, y=y))
+    result = await client.get(gsi_dem_png_path(z, x, y), category="gsi:dem-tile")
     if isinstance(result, UpstreamNotFound) or result is None:
         return result
     content, _ = result

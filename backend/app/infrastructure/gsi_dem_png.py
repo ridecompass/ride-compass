@@ -27,6 +27,11 @@ _GSI_UNIT_M = 0.01
 _TERRAIN_RGB_MAX = _GSI_WRAP - 1
 
 
+def gsi_dem_png_path(z: int, x: int, y: int) -> str:
+    """配信元の標高タイル（DEM10B、PNG形式）1枚の、`GsiTileClient`へ渡すパス。"""
+    return f"xyz/dem_png/{z}/{x}/{y}.png"
+
+
 def read_gsi_dem_png(png: bytes) -> tuple[np.ndarray, np.ndarray]:
     """地理院の標高タイル1枚を、画素の (標高（0.01m単位の整数）, 標高が無いか) の2つの格子にする。
 

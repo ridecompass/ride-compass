@@ -41,8 +41,8 @@ DATA_DIR = Path(__file__).resolve().parents[3] / "data" / "pbf"
 
 #: スレッド間で受け渡すまとまりの件数と、待ち行列の深さ。深さは読み手が遅れたときに
 #: 読み側が先へ行きすぎないための背圧で、メモリの上限を決める。
-_HANDOFF_BATCH = 5_000
-_QUEUE_DEPTH = 4
+HANDOFF_BATCH = 5_000
+QUEUE_DEPTH = 4
 
 _SENTINEL = object()
 
@@ -131,20 +131,25 @@ class _Handoff:
     """別スレッドが積んだまとまりを、非同期側へ流す受け渡し。"""
 
     def __init__(self) -> None:
-        self.queue: queue.Queue = queue.Queue(maxsize=_QUEUE_DEPTH)
+        self.queue: queue.Queue = queue.Queue(maxsize=QUEUE_DEPTH)
         self._batch: list[SourceRecord] = []
         self.error: BaseException | None = None
+        self._abandoned = threading.Event()
 
     def put(self, record: SourceRecord) -> None:
         self._batch.append(record)
-        if len(self._batch) >= _HANDOFF_BATCH:
-            self.queue.put(self._batch)
-            self._batch = []
+        if len(self._batch) >= HANDOFF_BATCH:
+            self._send()
 
     def flush(self) -> None:
         if self._batch:
-            self.queue.put(self._batch)
-            self._batch = []
+            self._send()
+
+    def _send(self) -> None:
+        if self._abandoned.is_set():
+            raise RuntimeError("読み手が途中でやめた")
+        self.queue.put(self._batch)
+        self._batch = []
 
     async def stream(self, work) -> AsyncIterator[SourceRecord]:
         """`work`を別スレッドで流し、積まれたものを順に返す。"""
@@ -153,7 +158,8 @@ class _Handoff:
             try:
                 work(self)
                 self.flush()
-            except BaseException as exc:  # スレッドの例外を本流へ運ぶ
+            # スレッドの例外は何であれ本流へ運び、そこで投げ直す（握りつぶさない）。
+            except BaseException as exc:  # noqa: BLE001
                 self.error = exc
             finally:
                 self.queue.put(_SENTINEL)
@@ -169,7 +175,14 @@ class _Handoff:
                 for record in batch:
                     yield record
         finally:
-            thread.join()
+            # 読み手が途中でやめると、積み手は満杯の待ち行列で止まったままになる。やめたことを知らせ、積み手の
+            # スレッドが終わるまで待ち行列を空ける。番兵では終わりを見ない——取り消された取り出しの待ちが先に拾いうる。
+            self._abandoned.set()
+            while thread.is_alive():
+                try:
+                    self.queue.get(timeout=0.1)
+                except queue.Empty:
+                    pass
         if self.error is not None:
             raise self.error
 
@@ -178,14 +191,11 @@ def _record_replication_timestamp(path: Path, origin: dict[str, Any]) -> None:
     """PBFの素性へ`osmosis_replication_timestamp`を足す。これは**配信元がいつの断面を焼いたか**で、
     ファイルのmtime（こちらがいつ落としたか）とは別物。取れないPBFもあるので、
     取れたときだけ入れる。"""
-    try:
-        from app.batch.pbf_source import replication_timestamp
+    from app.batch.pbf_source import replication_timestamp
 
-        stamp = replication_timestamp(path)
-        if stamp:
-            origin["replication_timestamp"] = stamp
-    except Exception:  # 出所の付帯情報が取れないだけで取込は続ける
-        pass
+    stamp = replication_timestamp(path)
+    if stamp:
+        origin["replication_timestamp"] = stamp
 
 
 def osm_way_inputs(spec: SourceSpec, profile: SourceProfile) -> AdapterInputs:

@@ -11,7 +11,7 @@ EARTH_RADIUS_KM = 6371.0
 # 置かない——置くとFastAPIがこの型の範囲を読まず、範囲の外の値が黙って通る。
 Latitude = Annotated[float, Field(ge=-90, le=90)]
 Longitude = Annotated[float, Field(ge=-180, le=180)]
-# 走行方位（度、北=0から時計回り）。方位を受ける入口（地図の配信・区間インスペクタ）はこの型で書く。範囲の検査は
+# 走行方位（度、北=0から時計回り）。方位を受ける入口（地図の配信・道の窓）はこの型で書く。範囲の検査は
 # NaN・無限大も断る。
 BearingDeg = Annotated[float, Field(ge=0, lt=360)]
 
@@ -100,6 +100,8 @@ SIXTEEN_POINT_LABELS = [
     "北", "北北東", "北東", "東北東", "東", "東南東", "南東", "南南東",
     "南", "南南西", "南西", "西南西", "西", "西北西", "北西", "北北西",
 ]
+if len(set(SIXTEEN_POINT_LABELS)) != len(SIXTEEN_POINT_LABELS):
+    raise ValueError("16方位の呼び名が重なると、違う向きが画面で同じ名前になる")
 COMPASS_LABELS = SIXTEEN_POINT_LABELS[::2]
 
 
@@ -109,18 +111,18 @@ def compass_label(bearing_deg: float) -> str:
     画面も同じ角度を名付けるので、境界を含む入力とこの関数の答えを
     `scripts/cross_language_expectations.py: geo_expectations`が表にして配り、画面のテストが通す。
     """
-    return COMPASS_LABELS[bearing_sector(bearing_deg, len(COMPASS_LABELS))]
+    return COMPASS_LABELS[_bearing_sector(bearing_deg, len(COMPASS_LABELS))]
 
 
-def bearing_sector(bearing_deg: float, count: int) -> int:
+def _bearing_sector(bearing_deg: float, count: int) -> int:
     """任意の角度（0=北、時計回り）を、北を中心にした`count`等分の区分の番号（0〜count-1）へ丸める。
     境界は上の区分へ倒す（組み込みの`round`は偶数丸めで、境界の区分の幅が揃わない）。"""
     return math.floor((bearing_deg % 360) / (360 / count) + 0.5) % count
 
 
 def compass_degrees(bearing_deg: float) -> int:
-    """方位（度）を応答に載せる桁（0〜359の整数の度）へ丸める。"""
-    return int(round(bearing_deg)) % 360
+    """方位（度）を応答に載せる桁（0〜359の整数の度）へ丸める。境目は`_bearing_sector`と同じく上へ倒す。"""
+    return math.floor(bearing_deg + 0.5) % 360
 
 
 def bearing_between(origin: LatLon, destination: LatLon) -> float:
@@ -132,13 +134,19 @@ def bearing_between(origin: LatLon, destination: LatLon) -> float:
 
 def bearing_between_array(origin: LatLon, lat: np.ndarray, lon: np.ndarray) -> np.ndarray:
     """`bearing_between`を多数の点へまとめて求める。originから`(lat, lon)`の各点を見た初期方位角
-    （0=北、時計回り、0-360）を配列で返す。式はここ1本で、1点の`bearing_between`もこれを通す。"""
-    lat1 = math.radians(origin.latitude)
-    lat2 = np.radians(lat)
-    dlon = np.radians(lon - origin.longitude)
+    （0=北、時計回り、0-360）を配列で返す。"""
+    return bearings_between(np.asarray(origin.latitude), np.asarray(origin.longitude), lat, lon)
 
-    x = np.sin(dlon) * np.cos(lat2)
-    y = math.cos(lat1) * np.sin(lat2) - math.sin(lat1) * np.cos(lat2) * np.cos(dlon)
+
+def bearings_between(lat1: np.ndarray, lon1: np.ndarray, lat2: np.ndarray, lon2: np.ndarray) -> np.ndarray:
+    """点`(lat1, lon1)`から点`(lat2, lon2)`を見た初期方位角（0=北、時計回り、0-360）を、点の組ごとに配列で求める。
+    式はここ1本で、`bearing_between`・`bearing_between_array`もこれを通す。"""
+    phi1 = np.radians(lat1)
+    phi2 = np.radians(lat2)
+    dlon = np.radians(np.asarray(lon2) - np.asarray(lon1))
+
+    x = np.sin(dlon) * np.cos(phi2)
+    y = np.cos(phi1) * np.sin(phi2) - np.sin(phi1) * np.cos(phi2) * np.cos(dlon)
 
     return np.degrees(np.arctan2(x, y)) % 360
 
@@ -276,3 +284,12 @@ def nearest_point_index(location: LatLon, points: Sequence[LatLon]) -> int | Non
             np.array([p.latitude for p in points]), np.array([p.longitude for p in points]),
         )[0]
     )
+
+
+def length_weighted_mean(values: np.ndarray, lengths: np.ndarray) -> float | None:
+    """長さで重みを付けた平均（値がNaNの区間は除き、残りの長さで割る）。有効な区間が無いか長さの和が0ならNone。"""
+    values = np.asarray(values, dtype=np.float64)
+    lengths = np.asarray(lengths, dtype=np.float64)
+    known = ~np.isnan(values)
+    total = float(lengths[known].sum())
+    return float((values[known] * lengths[known]).sum()) / total if total > 0 else None

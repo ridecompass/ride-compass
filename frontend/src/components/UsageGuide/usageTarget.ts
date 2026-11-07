@@ -20,9 +20,10 @@ export function isUnselectedTab(element: Element): boolean {
 /**
  * 押すと中を展開する、閉じた部品か（`aria-expanded="false"`。浮きパネル・折りたたみ・下部シートのタブ等）か、選ばれていない
  * タブ（押すと中身へ切り替わる）か。浮きパネルのほかの、別の面を開く部品（`aria-haspopup`。消す前の確かめのダイアログ等）は、
- * 開くと画面を塞ぐので除く。
+ * 開くと画面を塞ぐので除く。押せない（disabled）部品も、押しても開かないので除く。
  */
 function opensInside(element: Element): boolean {
+  if (element.matches(':disabled, [aria-disabled="true"]')) return false;
   if (isUnselectedTab(element)) return true;
   if (element.getAttribute("aria-expanded") !== "false") return false;
   return element.hasAttribute(USAGE_OPENS_ATTRIBUTE) || !element.hasAttribute("aria-haspopup");

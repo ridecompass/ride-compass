@@ -7,8 +7,6 @@ import { cn } from "@/lib/cn";
 
 // 並んだ選択肢から1つを選ぶ。選択状態（role="radio"・aria-checked・data-state）と矢印キーでの
 // 移動はRadix ToggleGroupが持つ。
-//
-// 選んでいるものをもう一度押しても外れない（「選ばない」が無い選択）。
 const groupVariants = cva("inline-flex", {
   variants: {
     variant: {
@@ -45,7 +43,7 @@ interface ToggleGroupProps extends VariantProps<typeof groupVariants> {
   "aria-label": string;
   className?: string;
   /** 使い方の文（`Button`の`usage`と同じ）。文を持たない選択肢を押したときも、これを出す。 */
-  usage?: string;
+  usage: string | null;
   /** 選んでいる項目をもう一度押すと外せる（`onValueChange`へ空文字を渡す）。無ければ外せない。 */
   deselectable?: boolean;
   children: React.ReactNode;
@@ -72,7 +70,7 @@ export function ToggleGroup({
           onValueChange(next);
         }}
         className={cn(groupVariants({ variant: v }), className)}
-        data-usage={usage}
+        data-usage={usage ?? undefined}
         {...props}
       >
         {children}

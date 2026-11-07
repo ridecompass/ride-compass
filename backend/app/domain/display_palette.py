@@ -20,8 +20,11 @@ _MAX_LIGHTNESS = 58.0
 #: 分類を良し悪しの色で読ませない。暗い端は黒と見分けられる所で止める。
 _ORDERED_HUE_RANGE_DEG = (350.0, 205.0)
 _ORDERED_LIGHTNESS_RANGE = (26.0, 56.0)
+#: 暗い地図の上の範囲。暗い地（`BASEMAP_DARK_LIGHTNESS_RANGE`の上端へ反転した地色）に対してコントラスト比3:1を割らない所から
+#: 始め、行を足しても隣どうしを上の範囲より離す。
+_ORDERED_LIGHTNESS_RANGE_ON_DARK = (46.0, 82.0)
 #: 上の範囲の両端（並びの先頭・末尾の行）の色を、画面で呼ぶ名前。地図の説明の文が差し込む。範囲を変えたら、ここも変える。
-ORDERED_END_COLOR_NAMES: tuple[str, str] = ("濃い赤紫", "明るい水色")
+_ORDERED_END_COLOR_NAMES: tuple[str, str] = ("濃い赤紫", "明るい水色")
 #: 目標の彩度。暗い側の色相によってはsRGBに収まらないので、収まるところまで下げる（`_fit_chroma`）。
 _ORDERED_CHROMA = 45.0
 
@@ -35,12 +38,14 @@ _NOMINAL_CHROMA = 28.0
 #: 近い色が残るので、レイヤーごとに明度を変えて離す。暗い段は色相によってsRGBに収まらない
 #: （水色〜青）ので、そこだけ収まるところまで彩度を下げる（`_fit_chroma`）。鮮やかな段は明度を標準のまま
 #: 彩度で離す——明度は上を地色とのコントラストが、下を絵記号の白との見分けが決め、明度だけでは段が足りない。
-_NOMINAL_TONES: dict[str | None, tuple[float, float]] = {
+NOMINAL_TONES: dict[str | None, tuple[float, float]] = {
     None: (52.0, _NOMINAL_CHROMA),
     "dark": (42.0, _NOMINAL_CHROMA),
     "light": (_MAX_LIGHTNESS, _NOMINAL_CHROMA),
     "vivid": (52.0, 40.0),
 }
+#: 暗い地図の上の、列挙の明度の下限。暗い地に対してコントラスト比3:1を割らない明るさで、これより暗い段だけを持ち上げる。
+_MIN_NOMINAL_LIGHTNESS_ON_DARK = 46.0
 
 
 def _lch_hex(lightness: float, chroma: float, hue_deg: float) -> str:
@@ -75,26 +80,36 @@ def _fit_chroma(lightness: float, chroma: float, hue_deg: float) -> str:
     raise ValueError(f"彩度0でも色域外: L*={lightness} h={hue_deg % 360:.0f}")
 
 
-def ordered_colors(count: int) -> list[str]:
-    """順序のある分類の色。並びの位置が意味を持つので、行数ぶんを一度に作る。"""
-    if count <= 0:
-        return []
-    (l_low, l_high), (h_start, h_end) = _ORDERED_LIGHTNESS_RANGE, _ORDERED_HUE_RANGE_DEG
+def ordered_colors(count: int, on_dark: bool = False) -> list[str]:
+    """順序のある分類の色。並びの位置が意味を持つので、行数ぶんを一度に作る。`on_dark`は暗い地図の上に塗る色。"""
+    (l_low, l_high) = _ORDERED_LIGHTNESS_RANGE_ON_DARK if on_dark else _ORDERED_LIGHTNESS_RANGE
+    (h_start, h_end) = _ORDERED_HUE_RANGE_DEG
     positions = [0.5] if count == 1 else [i / (count - 1) for i in range(count)]
     return [
         _fit_chroma(l_low + (l_high - l_low) * p, _ORDERED_CHROMA, h_start + (h_end - h_start) * p) for p in positions
     ]
 
 
-def nominal_colors(hue_slot: int, count: int, tone: str | None) -> list[str]:
+def ordered_ends_phrase(first_label: str, last_label: str) -> str:
+    """順序のある分類の、先頭の行と末尾の行の名前から組む色の向きの文。"""
+    dark, light = _ORDERED_END_COLOR_NAMES
+    return f"「{first_label}」が{dark}、「{last_label}」が{light}"
+
+
+def nominal_colors(hue_slot: int, count: int, tone: str | None, on_dark: bool = False) -> list[str]:
     """順序を持たない列挙の1軸ぶん。起点から色相環を行数で等分する。**同じ起点・同じ行数・同じ段なら
-    常に同じ色**（行を足すと、その軸の色は配り直される）。"""
+    常に同じ色**（行を足すと、その軸の色は配り直される）。知らない段は標準の段で塗る。`on_dark`は暗い地図の上に塗る色。"""
     if not 0 <= hue_slot < NOMINAL_HUE_SLOTS:
         raise ValueError(f"色相の起点は0〜{NOMINAL_HUE_SLOTS - 1}: {hue_slot}")
     start = _NOMINAL_START_HUE_DEG + (360.0 / NOMINAL_HUE_SLOTS) * hue_slot
-    lightness, chroma = _NOMINAL_TONES[tone]
+    lightness, chroma = NOMINAL_TONES.get(tone, NOMINAL_TONES[None])
+    if on_dark:
+        lightness = max(lightness, _MIN_NOMINAL_LIGHTNESS_ON_DARK)
     return [_fit_chroma(lightness, chroma, start + 360.0 * i / count) for i in range(count)]
 
+
+#: 信号の停止の赤。自転車が関わる事故の印も同じ赤にし、その他の事故と見分ける。
+_STOP_RED = "#e2453c"
 
 #: 役割ごとの色。名前は「どこで使うか」ではなく「何を意味するか」で付ける——使い場所で
 #: 名前を付けると、同じ意味の色が使い場所の数だけ増える。
@@ -131,6 +146,9 @@ SEMANTIC_COLORS: dict[str, str] = {
     # 基礎地図（OpenFreeMap liberty）の背景色。配信元のスタイルが持つ値の写しで、分類色の
     # 明度の上限（`_MAX_LIGHTNESS`）はこれを基準にする——分類色は地図の上では常にこの地に載る。
     "basemap_ground": "#f8f4f0",
+    # 基礎地図の細い道の縁取りの描き替え。libertyは引いた縮尺の細い道を縁取りの線だけで描くので、配信元の薄い灰のままでは
+    # 雨・標高の面を重ねた地と同じ明るさになり、道の並びが消える。面の有無で切り替えず、いつも描き替える。
+    "basemap_minor_road_casing": "#7a7874",
     # 大きさだけで意味を示す行（事故の重大度）の見本。地図の点の色はこの行では決まらない
     # ことを、どの分類色とも違う灰で示す。
     "legend_size_only": "#6b7280",
@@ -147,11 +165,52 @@ SEMANTIC_COLORS: dict[str, str] = {
     "pin_origin_unresolved": "#9ca3af",
     "pin_waypoint": "#2563eb",
     "pin_destination": "#059669",
-    # 道のりのグラフ・地図で選んだ地点の印と、その地点を含む区間の範囲の縁取り。印は評価の配色・ルートの線の色・
-    # 現在地の青のどれとも重ならない朱色、縁取りはルートの線の下に敷いても線の色（評価・候補・乗り換え）に溶けない紫にする。
-    "selected_point": "#ff4d1a",
+    # 道のりのグラフ・地図で選んだ区間の範囲の縁取り。ルートの線の下に敷いても線の色（評価・候補・乗り換え）に溶けない紫にする。
     "selected_section": "#7c3aed",
+    # 地点の検索で探した候補の番号の点。地点のピン（白い台）と見分けるよう塗りの丸にし、選んでいる候補はピンの役割の色・
+    # ルートの線の色のどれとも重ならない色で塗る。
+    "place_candidate": "#334155",
+    "place_candidate_picked": "#be185d",
+    # 停止要因の点の絵。日本の道路標識・信号機の色に寄せ、何の点かを形と色で直感的に読ませる（点の区分の色とは別）。
+    "sign_regulatory": "#d8262e",
+    "sign_regulatory_text": "#1a3c8c",
+    "sign_warning": "#f5c518",
+    "sign_ink": "#222222",
+    "sign_face": "#ffffff",
+    "sign_post": "#555555",
+    "signal_go": "#1ea56c",
+    "signal_caution": "#f2c230",
+    "signal_stop": _STOP_RED,
+    # 事故の点の絵（ぶつかった印）。
+    "crash": "#f08a24",
+    "crash_bicycle": _STOP_RED,
 }
+
+#: 暗い地図の基礎地図。配信元のスタイル（liberty）の塗りの色を、色相を残して明るさを反転して作る（反転の式は画面の
+#: `features/map/basemapTheme.ts: darkColor`）。明るさの範囲は、HSLの明るさ（0〜1）で、最も明るい塗り（地色）と最も暗い塗り
+#: （文字）の行き先。下端はまぶしさを抑えるため黒の手前に置き、上端は1にすると反転した文字が白く光るので抑える。彩度の割合を
+#: 掛けないと、反転した暗い色が地図の上で浮く。
+BASEMAP_DARK_LIGHTNESS_RANGE: tuple[float, float] = (0.07, 0.85)
+BASEMAP_DARK_SATURATION_SCALE = 0.6
+#: 暗い地図の基礎地図の絵の印（道の番号の標識・バス停・施設の印等）の不透明度に掛ける割合。絵は画像で色を変えられないので、
+#: 透かして暗い地へ沈める（1のままだと白い標識が暗い地図の上で光る）。
+BASEMAP_DARK_ICON_OPACITY_SCALE = 0.5
+
+#: 暗い地図の上の役割の色。暗い地に対してコントラスト比3:1を割る色だけを差し替える。白い縁取りで地から浮く印（点の四角・
+#: 地点の検索の候補）の塗りと、地の上で読ませない色（当たり判定・標識の絵・矢印の縁）は差し替えない。
+SEMANTIC_COLORS_ON_DARK: dict[str, str] = {
+    **SEMANTIC_COLORS,
+    # 暗い地では明るいほど目に立つので、最も悪い側は暗くせず明るいローズへ寄せる。
+    "evaluation_extreme": "#fb7185",
+    "route_selected_halo": "#93c5fd",
+}
+
+#: 費用の軸の識別色。費用の軸の一覧の順に当てる。
+#: 地図の負担の塗り（評価の配色の緑→赤）と取り違えないよう赤・緑・黄・橙を使わず、隣り合う2色が色覚の違いでも、明るい地・
+#: 暗い地のどちらでも見分けられる並び（データの見せ方の検証の道具で確かめた）。足りない分は`SEMANTIC_COLORS["neutral"]`で
+#: 塗る（色を作って足すと、隣と見分けられる保証が無い）。
+COST_SERIES_COLORS: tuple[str, ...] = ("#2a78d6", "#d9669a", "#6a55dc", "#139ab3", "#9c6a2c", "#b956c2")
+
 
 def resolved_display_axes(attr: PrimaryAttributeSpec) -> list[dict]:
     """行の色を解決した表示定義。**色は宣言に無い**ので、配る直前にここで決める。

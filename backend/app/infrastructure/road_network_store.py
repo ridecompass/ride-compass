@@ -5,7 +5,7 @@ DBから作ると数分かかる。そのため作るのは派生の作り直し
 backendは置かれたものを読むだけにする。
 
 置き場は`data/road_network/<形の署名>-r<派生データの世代>/`。中に配列ごとの`.npy`と、
-配列でない値（語彙・列の並び・世代）と配列を作った入力の指紋を書いた`manifest.json`を置く。書き終えるまでは読み手が
+配列でない値（語彙・列の並び・世代）を書いた`manifest.json`を置く。書き終えるまでは読み手が
 拾わない名前（先頭が`.`）のディレクトリに書き、最後に名前を付け替える——途中で落ちても、読む側が
 書きかけを掴まない。
 
@@ -19,7 +19,8 @@ import os
 import re
 import shutil
 import time
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
 from dataclasses import fields
 from pathlib import Path
 from typing import Any
@@ -28,7 +29,9 @@ import numpy as np
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.domain.attributes import EDGE_ROW_ARRAY_FIELDS, EdgeMaterialArrays
+from app.domain.elevation_profile import grade_distribution
 from app.domain.road_network import RoadNetwork
+from app.domain.search_graph import run_starts
 from app.domain.traffic import travel_allowed
 from app.infrastructure.cache_identity import shape_digest
 from app.infrastructure.data_paths import DATA_DIR
@@ -43,8 +46,6 @@ ROOT = DATA_DIR / "road_network"
 NETWORK_SHAPE = shape_digest(RoadNetwork, *NETWORK_SQL_SOURCES)
 
 _MANIFEST = "manifest.json"
-#: manifestの中の、配列を作った入力の指紋の名前（`RoadNetwork`の列ではないので、`load`は読まない）。
-_INPUTS = "inputs"
 _DIRECTORY_PATTERN = re.compile(r"^(?P<shape>[0-9a-f]+)-r(?P<revision>\d+|x)$")
 # 行を流す単位と、材料を1回で引く区間の数。材料は区間ごとに列の値を作るため、1回ぶんの
 # 一時的なメモリがこの数に比例する。
@@ -69,66 +70,52 @@ def _latest_directory() -> Path | None:
 
     世代が読めなかったDBで作ったもの（`-rx`）は、世代のあるものより古いとみなす。
     """
-    best: tuple[int, Path] | None = None
-    for path, match in _directories():
-        if match["shape"] != NETWORK_SHAPE:
-            continue
-        revision = -1 if match["revision"] == "x" else int(match["revision"])
-        if best is None or revision > best[0]:
-            best = (revision, path)
-    return None if best is None else best[1]
+    candidates = (
+        (-1 if match["revision"] == "x" else int(match["revision"]), path)
+        for path, match in _directories()
+        if match["shape"] == NETWORK_SHAPE
+    )
+    return max(candidates, key=lambda candidate: candidate[0], default=(None, None))[1]
 
 
 def save(network: RoadNetwork) -> Path:
     """置き場を作って書き、同じ形で世代の古い置き場を消す。同じ世代の置き場が既にあれば書かずにそれを返す。"""
-    target = ROOT / directory_name(network.revision)
-    if target.exists():
-        return target
-    return publish(write_pending(network))
+    return placed(network.revision) or publish(write_pending(network))
 
 
-def write_pending(network: RoadNetwork, inputs: str | None = None) -> Path:
-    """読み手（`_latest_directory`）が拾わない名前で書き、そのディレクトリを返す。`publish`で世代の名前にする。
+def placed(revision: int | None) -> Path | None:
+    """今の形で`revision`の世代の置き場。無ければNone。"""
+    target = ROOT / directory_name(revision)
+    return target if target.exists() else None
 
-    `inputs`は配列を作った入力の指紋（作り手が決める）。次の作り直しが`reuse_pending`で同じ入力の置き場を探す。
-    """
-    temporary = _new_pending(network.revision)
-    values: dict[str, object] = {_INPUTS: inputs}
-    for f in fields(network):
-        value = getattr(network, f.name)
-        if isinstance(value, np.ndarray):
-            np.save(temporary / f"{f.name}.npy", value, allow_pickle=False)
-        else:
-            values[f.name] = value
-    _write_manifest(temporary, values)
+
+def write_pending(network: RoadNetwork) -> Path:
+    """読み手（`_latest_directory`）が拾わない名前で書き、そのディレクトリを返す。`publish`で世代の名前にする。"""
+    with _new_pending(network.revision) as temporary:
+        values: dict[str, object] = {}
+        for f in fields(network):
+            value = getattr(network, f.name)
+            if isinstance(value, np.ndarray):
+                np.save(temporary / f"{f.name}.npy", value, allow_pickle=False)
+            else:
+                values[f.name] = value
+        _write_manifest(temporary, values)
     return temporary
 
 
-def reuse_pending(inputs: str, revision: int) -> Path | None:
-    """今の形で世代が最も新しい置き場が`inputs`から作ったものなら、その配列を`revision`の世代として読み手が拾わない名前に
-    出し直し、そのディレクトリを返す（`publish`で世代の名前にする）。無ければNone。
-
-    配列はハードリンクで置く——書き直さず、前の世代の置き場が`publish`で消えても中身は残る。
-    """
-    latest = _latest_directory()
-    if latest is None:
-        return None
-    values = _read_manifest(latest)
-    if values.get(_INPUTS) != inputs:
-        return None
-    temporary = _new_pending(revision)
-    for path in latest.glob("*.npy"):
-        os.link(path, temporary / path.name)
-    _write_manifest(temporary, {**values, "revision": revision})
-    return temporary
-
-
-def _new_pending(revision: int | None) -> Path:
+@contextmanager
+def _new_pending(revision: int | None) -> Iterator[Path]:
+    """読み手の拾わない名前のディレクトリを作って渡す。中で落ちたら消す——呼び手は受け取る前なので消せず、
+    片付け（`prune`・`prune_other_shapes`）も名前の形に合わないものを拾わない。"""
     ROOT.mkdir(parents=True, exist_ok=True)
     temporary = ROOT / f".{directory_name(revision)}.tmp-{os.getpid()}"
     shutil.rmtree(temporary, ignore_errors=True)
     temporary.mkdir()
-    return temporary
+    try:
+        yield temporary
+    except BaseException:
+        shutil.rmtree(temporary, ignore_errors=True)
+        raise
 
 
 def _write_manifest(directory: Path, values: dict[str, object]) -> None:
@@ -184,13 +171,23 @@ def current() -> RoadNetwork:
     """
     global _loaded
     latest = _latest_directory()
-    if latest is None:
-        raise RoadNetworkUnavailableError(
-            f"道路網の置き場がありません（{ROOT}、形の署名 {NETWORK_SHAPE}）。scripts/build_road_network.py で作る")
     if _loaded is None or _loaded[0] != latest:
-        _loaded = (latest, load(latest))
-        logger.info("道路網を読みました %s 有向の区間=%d", latest.name, _loaded[1].edge_count)
+        try:
+            _loaded = _open_latest()
+        except FileNotFoundError:
+            # 選んでから開くまでに、派生の作り直し（`publish`）が新しい世代へ付け替えて古い置き場を消した。
+            _loaded = _open_latest()
+        logger.info("道路網を読みました %s 有向の区間=%d", _loaded[0].name, _loaded[1].edge_count)
     return _loaded[1]
+
+
+def _open_latest() -> tuple[Path, RoadNetwork]:
+    latest = _latest_directory()
+    if latest is None:
+        # 利用者へ返す文（例外の文）に置き場のパスを載せない。
+        logger.error("道路網の置き場がありません（%s、形の署名 %s）。scripts/build_road_network.py で作る", ROOT, NETWORK_SHAPE)
+        raise RoadNetworkUnavailableError("道路網が用意されていないため、ルートを作れません")
+    return latest, load(latest)
 
 
 def _as_tuples(value: object) -> object:
@@ -235,8 +232,8 @@ async def ensure_current(session_factory: async_sessionmaker[AsyncSession]) -> P
     async with session_factory() as session:
         repository = RoadGraphRepository(session)
         revision = (await repository.get_data_revisions()).derived
-        target = ROOT / directory_name(revision)
-        if target.exists():
+        target = placed(revision)
+        if target is not None:
             logger.info("道路網の置き場は作成済みです %s", target.name)
             return target
         network = await build(repository, revision)
@@ -244,10 +241,11 @@ async def ensure_current(session_factory: async_sessionmaker[AsyncSession]) -> P
 
 
 async def build(repository: RoadGraphRepository, revision: int | None) -> RoadNetwork:
-    """DBから道路網全体を読み、`revision`の世代の`RoadNetwork`を組む。"""
+    """DBから道路網全体を読み、`revision`の世代の`RoadNetwork`を組む。較正値は、読む表を作り直したときに使った値で読む。"""
     started = time.monotonic()
     nodes = await _read_nodes(repository)
-    edges, dropped_without_endpoint = await _read_directed_edges(repository, nodes["node_osm_id"])
+    edges, dropped_without_endpoint = await _read_directed_edges(
+        repository, nodes["node_osm_id"], await repository.get_network_tuning())
     topology_s = time.monotonic() - started
     logger.info(
         "道路網のつながりを読みました ノード=%d 有向の区間=%d 端点のノードが無く落とした有向の区間=%d %.0f秒",
@@ -264,7 +262,7 @@ async def build(repository: RoadGraphRepository, revision: int | None) -> RoadNe
 _NODE_COLUMNS = {
     "node_osm_id": ("osm_node_id", np.int64), "node_lat": ("latitude", np.float64),
     "node_lon": ("longitude", np.float64), "node_has_signals": ("has_traffic_signals", np.bool_),
-    "node_max_rank": ("max_highway_rank", np.int64),
+    "node_max_rank": ("max_highway_rank", np.int64), "node_branch_count": ("branch_count", np.int16),
 }
 #: `RoadNetwork`の区間の欄 → 型。
 _EDGE_DTYPES = {"edge_way_id": np.int64, "edge_segment": np.int32, "edge_forward": np.bool_, "edge_from": np.int32,
@@ -284,14 +282,14 @@ async def _read_nodes(repository: RoadGraphRepository) -> dict[str, Any]:
 
 
 async def _read_directed_edges(
-    repository: RoadGraphRepository, node_osm_id: np.ndarray
+    repository: RoadGraphRepository, node_osm_id: np.ndarray, tuning: Mapping[str, float]
 ) -> tuple[dict[str, Any], int]:
     """区間を有向の行へ広げ、`RoadNetwork`の区間の欄と、端点のノードが無く落とした有向の行の数を返す。
     一方通行は走れる向きだけを持つ（道の値の行は、区間が持つ外部キーが保証する）。"""
     highway_vocab: dict[str, int] = {}
     dropped_without_endpoint = 0
     parts: dict[str, list[np.ndarray]] = {name: [] for name in _EDGE_DTYPES}
-    async for rows in repository.stream_network_edges(_STREAM_CHUNK):
+    async for rows in repository.stream_network_edges(_STREAM_CHUNK, tuning):
         n = len(rows)
         way = np.fromiter((r.osm_way_id for r in rows), dtype=np.int64, count=n)
         segment = np.fromiter((r.segment_index for r in rows), dtype=np.int32, count=n)
@@ -346,7 +344,7 @@ def _rows_of(sorted_ids: np.ndarray, ids: np.ndarray) -> tuple[np.ndarray, np.nd
 async def _read_materials(
     repository: RoadGraphRepository, way: np.ndarray, segment: np.ndarray, forward: np.ndarray
 ) -> dict[str, Any]:
-    """材料は`get_edge_material_arrays`で引く（式はタイル配信・軸スタジオと同じ`material_sql`の断片で、2か所に持たない）。"""
+    """材料は`get_edge_material_arrays`で引く（式はタイル配信と同じ`material_sql`の断片で、2か所に持たない）。"""
     edge_count = len(way)
     accident_years_covered = await repository.get_accident_years_covered()
     columns = MaterialColumns(edge_count)
@@ -355,7 +353,27 @@ async def _read_materials(
         columns.add(await repository.get_edge_material_arrays(
             way[start:stop].tolist(), segment[start:stop].tolist(), forward[start:stop].tolist(), accident_years_covered))
         logger.info("材料 %d/%d", stop, edge_count)
-    return columns.result()
+    materials = columns.result()
+    return {**materials, **await _read_profiles(repository, way, segment, materials["distance_m"])}
+
+
+async def _read_profiles(
+    repository: RoadGraphRepository, way: np.ndarray, segment: np.ndarray, distance_m: np.ndarray
+) -> dict[str, Any]:
+    """区間の断面の点（`RoadNetwork`の`edge_profile_*`・`profile_*`の欄）。点は区間ごとに1回だけ持ち、同じ区間の両向きの行
+    （有向の行は区間ごとに隣り合って並ぶ）は同じ点を指す。標高の無い所を埋める分布も、ここで1回だけ求める。"""
+    first = run_starts(way) | run_starts(segment)
+    owner = np.cumsum(first) - 1  # 行 → 点を持つ区間の番号
+    unique_rows = np.flatnonzero(first)
+    profiles = await repository.get_edge_elevation_profiles(way[unique_rows].tolist(), segment[unique_rows].tolist())
+    points = np.fromiter((len(p) for p in profiles), dtype=np.int32, count=len(profiles))
+    starts = np.cumsum(points, dtype=np.int64) - points
+    elevation = _concatenate(profiles, np.float32)
+    distribution = grade_distribution(starts, points, elevation, distance_m[unique_rows])
+    return {
+        "edge_profile_start": starts[owner], "edge_profile_points": points[owner], "profile_elevation_m": elevation,
+        "profile_distribution_grade": distribution.grade, "profile_distribution_share": distribution.share,
+    }
 
 
 class MaterialColumns:
@@ -375,8 +393,7 @@ class MaterialColumns:
     def add(self, materials: EdgeMaterialArrays) -> None:
         """次の束を、前の束の続きの行へ詰める。"""
         if not self._arrays:
-            self._ids = {"numeric_ids": materials.numeric_ids, "categorical_ids": materials.categorical_ids,
-                         "route_flag_ids": materials.route_flag_ids}
+            self._ids = {"numeric_ids": materials.numeric_ids, "categorical_ids": materials.categorical_ids}
             self._vocab = [{None: 0} for _ in materials.categorical_ids]
             self._arrays["categorical_codes"] = np.zeros(
                 (self._edge_count, len(materials.categorical_ids)), dtype=np.int16)

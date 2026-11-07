@@ -21,7 +21,7 @@ from app.infrastructure.orm_base import Base
 from app.infrastructure.source_models import Source
 from app.services.derived_data_freshness_service import build_freshness_report
 from tests.conftest import postgis_database_url, raw_connection
-from tests.source_ingest import abr_prefecture_record, ingest_records, point_record, way_record
+from tests.source_ingest import abr_prefecture_record, ingest_records, interrupted, point_record, way_record
 
 from datetime import datetime, timezone
 
@@ -54,11 +54,6 @@ def test_値の列は鍵を除いた列():
 
 # --- ソースごとの鮮度 -------------------------------------------------------
 
-def _breaks_midway():
-    yield point_record(1, 139.7, 35.6)
-    raise OSError("配信元が途中で切れた")
-
-
 @on_postgis
 async def test_作り直しに使った取込が成功した最新の取込でないソースは作り直しが要る(road_graph_session):
     """取り直したソース・まだ作り直しに使っていないソース・取込が1度も成功していないソースが、作り直しが要る側に出る。"""
@@ -69,7 +64,7 @@ async def test_作り直しに使った取込が成功した最新の取込で�
     reingested_accident_run = await ingest_records(Source.ACCIDENT, [])
     node_run = await ingest_records(Source.OSM_NODE, [])
     with pytest.raises(OSError):
-        await ingest_records(Source.DEM, _breaks_midway())
+        await ingest_records(Source.DEM, interrupted(point_record(1, 139.7, 35.6)))
 
     freshness = await DerivedDataFreshnessQuery(road_graph_session).get_freshness()
     report = build_freshness_report(freshness, datetime(2026, 1, 1, tzinfo=timezone.utc))

@@ -2,9 +2,8 @@ from functools import cache
 
 import mapbox_vector_tile
 
-# レイヤー名とextentはPostGIS側のST_AsMVT呼び出し（`road_graph_repository.py`の路面のMVT生成SQL）と
-# 空タイル生成の両方が共有する。手で揃えると片方だけ変えたときにクライアントがレイヤーを見失う。
-# 点のレイヤー名は`point_tile_layers.py`の宣言が持つ。
+# レイヤー名とextentはPostGIS側のST_AsMVTと空タイルの生成の両方が読む。手で揃えると片方だけ変えたときに
+# クライアントがレイヤーを見失う。
 TILE_EXTENT = 4096
 # PostGIS側の`ST_AsMVTGeom`がタイルの境の外に残す幅（`TILE_EXTENT`と同じタイル座標の単位）。
 TILE_BUFFER = 256
@@ -13,7 +12,7 @@ ROAD_SURFACE_LAYER_NAME = "road_surface"
 # 路面タイルのフィーチャーが材料の外に持つ列（役割→列名）。材料の列の名前は材料の`tile_property`が持つ。
 # 画面は生成物`region-tile-config.json`の`road_surface.properties`から引き、列名を持たない。
 # - feature_key: フィーチャーの識別子（区間かway丸ごとの鍵）。画面が地物のidへ昇格させ、配信値の鍵にする
-# - way_id: 区間インスペクタが道を引き直すosm_way_id
+# - way_id: 道の窓が道を引き直すosm_way_id
 # - name・ref: 道路名・路線番号（表示専用の生値）
 ROAD_FEATURE_PROPERTIES: dict[str, str] = {
     "feature_key": "feature_key",

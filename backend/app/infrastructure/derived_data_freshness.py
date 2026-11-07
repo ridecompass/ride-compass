@@ -1,6 +1,6 @@
 """派生データの鮮度を測る読み取り専用リポジトリ。
 
-`GET /api/admin/derived-data/freshness`のデータ源。作り直しが要るかを2つの比べで見る。
+作り直しが要るかを2つの比べで見る。
 
 - **ソース**: ソースごとに、今の派生の表を作った取込（`derived_source_runs`）が、そのソースの成功した
   最新の取込と同じか。違えば、生データを取り直したのに派生を作り直していない。取込が1度も成功して
@@ -13,8 +13,7 @@
 列ごとのNULLの件数は参考として返す。
 
 **対象は宣言から導く**——表の印（`orm_base.py: DERIVED`）を持つ表が派生データで、その表の主キー
-以外の列が値である。ソースは取込の記録と作り直しの記録にあるものを全部並べる。表・列・ソースを
-1つ足しても、ここは変わらない。
+以外の列が値である。ソースは取込の記録と作り直しの記録にあるものを全部並べる。
 """
 
 from dataclasses import dataclass
@@ -83,7 +82,7 @@ class DerivedDataFreshness:
     tables: tuple[TableFreshness, ...]
 
 
-def build_table_sql(table) -> str:
+def _build_table_sql(table) -> str:
     """1表ぶんの集計（行数・列ごとのNULLの件数）を1回の走査で求める。
 
     列名は宣言からのみ組み立てる（外部入力を連結しない）。
@@ -121,7 +120,7 @@ class DerivedDataFreshnessQuery:
         declared = declared_columns()
         tables: list[TableFreshness] = []
         for table in derived_tables():
-            row = (await self._session.execute(text(build_table_sql(table)))).mappings().one()
+            row = (await self._session.execute(text(_build_table_sql(table)))).mappings().one()
             built = recorded.get(table.name)
             tables.append(TableFreshness(
                 table_name=table.name,

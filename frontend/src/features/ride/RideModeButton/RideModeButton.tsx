@@ -16,12 +16,16 @@ import type { ScreenWakeLockStatus } from "../useScreenWakeLock";
 const WAKE_LOCK_UNAVAILABLE =
   "この端末では画面を点けたままにできません。画面が消えると現在地も届かなくなるので、自動ロックの設定を確かめてください。";
 
+const HEADING_NEEDS_GESTURE = "現在地の印にスマホの向きを表示するには、向きの取得を許可する必要があります。";
+
 const NOTICE_CARD = "absolute top-0 right-full mr-2 w-max max-w-55 border-0 px-2.5 py-1.5";
 
 interface RideModeButtonProps {
   status: RideStatus;
   error: string | null;
   screenWakeLock: ScreenWakeLockStatus;
+  /** スマホの向きを読む許しを求め直す。求め直しが要る間だけ値がある。 */
+  onRequestHeading: (() => void) | null;
   /** 止まっていれば始め、走行モードの間は案内を終える。 */
   onPress: () => void;
   /** 休む（位置を受けるのをやめ、ルートと進み具合は残す）。 */
@@ -31,12 +35,13 @@ interface RideModeButtonProps {
 }
 
 /** 地図の右の列の走行モードのボタン。走行モードの間に押すと、案内を終えるか、休む（休んでいれば続きから走る）かを選ばせる。始められなかった理由と、
- * 画面を点けたままにできない端末であることを、ボタンの横に出す。後者は走っている間ずっと地図を覆わないよう閉じられ、
+ * スマホの向きを読む許しを求め直すボタンと、画面を点けたままにできない端末であることを、ボタンの横に出す。最後のものは走っている間ずっと地図を覆わないよう閉じられ、
  * 閉じたあとはボタンの角の印と読み上げの説明に残す。 */
 export default function RideModeButton({
   status,
   error,
   screenWakeLock,
+  onRequestHeading,
   onPress,
   onRest,
   onResume,
@@ -48,6 +53,10 @@ export default function RideModeButton({
   if (status === "off" && choosing) setChoosing(false);
   const wakeLockUnavailable = screenWakeLock === "unavailable";
   const resting = status === "resting";
+  const choose = (action: () => void) => () => {
+    setChoosing(false);
+    action();
+  };
 
   return (
     <div className="relative flex">
@@ -62,7 +71,7 @@ export default function RideModeButton({
             aria-haspopup={status === "off" ? undefined : "dialog"}
             aria-expanded={status === "off" ? undefined : choosing}
             aria-description={wakeLockUnavailable ? WAKE_LOCK_UNAVAILABLE : undefined}
-            usage="押すと走行モードを始め、現在地を追って地図を動かし続けます（画面も点けたままにします）。走行モードの間に押すと、案内を終えるか休むかを選べます。休むと現在地を受けるのも画面を点けたままにするのもやめ、ルートと進み具合を残します。地図の下の「続きから走る」で、休む前の進み具合から続けます。地図を指で動かすと追うのだけを休み、地図の下の「現在地へ戻る」で追い直します。走行モードの間は、方位のボタンで北が上と進む向きが上を切り替えます。"
+            usage="押すと走行モードを始め、現在地に合わせて地図を動かし続けます（画面も点けたままにします）。走行中に押すと、「案内を終える」か「休む」を選べます。休んだ後は、地図の下の「続きから走る」で再開します。地図を指で動かすと追従だけが止まり、「現在地へ戻る」で再開します。"
             data-ride={status}
             className={cn(
               "relative",
@@ -83,11 +92,8 @@ export default function RideModeButton({
             <Button
               variant="primary"
               size="md"
-              onClick={() => {
-                setChoosing(false);
-                onResume();
-              }}
-              usage="現在地を受け直し、休む前の進み具合から案内を続けます。"
+              onClick={choose(onResume)}
+              usage="現在地の取得を再開し、休止前の進み具合から案内を続けます。"
             >
               続きから走る
             </Button>
@@ -95,21 +101,15 @@ export default function RideModeButton({
             <Button
               variant="primary"
               size="md"
-              onClick={() => {
-                setChoosing(false);
-                onRest();
-              }}
-              usage="現在地を受けるのと画面を点けたままにするのをやめ、電池を守ります。ルートと進み具合は残り、読み込み直しても休んだまま戻ります。地図の下の「続きから走る」で続きから走れます。"
+              onClick={choose(onRest)}
+              usage="現在地の取得と画面の常時点灯を止め、電池の減りを抑えます。ルートと進み具合は残り、再読み込みしても休止中のまま戻ります。地図の下の「続きから走る」で再開できます。"
             >
               休む
             </Button>
           )}
           <Button
             size="md"
-            onClick={() => {
-              setChoosing(false);
-              onPress();
-            }}
+            onClick={choose(onPress)}
             usage="走行モードを止めて、走る前の画面に戻します。進み具合は消え、続きからは走れません。"
           >
             案内を終える
@@ -127,6 +127,24 @@ export default function RideModeButton({
         >
           {error}
         </p>
+      ) : onRequestHeading !== null ? (
+        <div
+          className={cn(
+            cardVariants({ variant: "float" }),
+            "pointer-events-auto flex flex-col items-start gap-1.5",
+            NOTICE_CARD,
+          )}
+        >
+          <p className={textVariants({ variant: "hint" })}>{HEADING_NEEDS_GESTURE}</p>
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={onRequestHeading}
+            usage="スマホの向きの取得の許可を求めます。許可すると、現在地の印にスマホが向いている方角を表示します。"
+          >
+            向きを出す
+          </Button>
+        </div>
       ) : (
         wakeLockUnavailable &&
         !wakeNoticeClosed && (
@@ -139,6 +157,7 @@ export default function RideModeButton({
           >
             <p className={textVariants({ variant: "hint" })}>{WAKE_LOCK_UNAVAILABLE}</p>
             <Button
+              usage="このお知らせを閉じます。"
               variant="ghost"
               size="iconRound"
               onClick={() => setWakeNoticeClosed(true)}

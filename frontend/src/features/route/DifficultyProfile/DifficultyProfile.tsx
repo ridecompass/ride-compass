@@ -1,33 +1,24 @@
 "use client";
 
-import { useMemo, type ReactNode } from "react";
+import { useMemo } from "react";
 
-import ProfileChart, { PROFILE_VIEW_HEIGHT, useProfileScale } from "@/features/route/ProfileChart/ProfileChart";
+import ProfileChart from "@/features/route/ProfileChart/ProfileChart";
+import { PROFILE_VIEW_HEIGHT, type ProfileScale } from "@/features/route/ProfileChart/profileScale";
 import palette from "@/types/generated/palette.json";
-import type { RouteSegmentDetail, SelectedRouteSegment } from "@/types/route";
+import type { SelectedRouteSegment } from "@/types/route";
 
 import { columnAtKm, profileBoxes, type ProfileBox } from "./profileGeometry";
 
 interface DifficultyProfileProps {
-  segments: readonly RouteSegmentDetail[];
-  /** ルートの総合難易度。値の無い区間をこの高さで描く（負荷の計算と同じ扱い）。 */
-  overallDifficulty: number | null;
+  scale: ProfileScale;
   /** 下から積む軸の並びと色。 */
   axisOrder: readonly string[];
   axisColors: Readonly<Record<string, string>>;
-  /** 横軸の右端の距離。一覧の中で最も長い候補の距離にすると、候補どうしで面積（負荷）を見比べられる。 */
-  scaleKm: number;
   selected: SelectedRouteSegment | null;
-  /** なぞる・押して離すと、その地点の区間を選ぶ。無ければ押せない見るだけの図にする。 */
   onSelect?: (selection: SelectedRouteSegment) => void;
-  /** 走行中の現在地のルートの上の距離。印を引き、始点からそこまでを走り終えた区間として薄める。 */
-  progressKm?: number | null;
-  /** 置いた経由地を通る所のルートの上の距離（置いた順）。 */
+  progressKm: number | null;
   waypointKms: readonly number[];
-  /** 走行中の地図の下の図。目盛りの文字を大きくする。 */
-  riding?: boolean;
-  /** 図の下の1行。区間を選んでいれば、その地点の距離を受け取る。 */
-  caption?: (pointKm: number | null) => ReactNode;
+  riding: boolean;
 }
 
 function boxesPath(boxes: readonly ProfileBox[], xOf: (km: number) => number): string {
@@ -39,33 +30,28 @@ function boxesPath(boxes: readonly ProfileBox[], xOf: (km: number) => number): s
     .join("");
 }
 
-/** 道のりに沿った難易度。横が距離、縦が区間ごとの難易度で、塗った面積がルートの負荷になる。 */
+/** 道のりに沿った負担。横が距離、縦が区間ごとの1kmあたりの道の負担で、塗った面積が負担の種類ごとの和になる。 */
 export default function DifficultyProfile({
-  segments,
-  overallDifficulty,
+  scale,
   axisOrder,
   axisColors,
-  scaleKm,
   selected,
   onSelect,
-  progressKm = null,
+  progressKm,
   waypointKms,
-  riding = false,
-  caption,
+  riding,
 }: DifficultyProfileProps) {
-  const scale = useProfileScale(segments, scaleKm);
   // 塗る形はルートと横軸が変わったときだけ組む（なぞる間に動くのは、カーソルの線と選んだ区間の帯だけ）。
   const paths = useMemo(() => {
-    const { byAxis, missing } = profileBoxes(scale.columns, axisOrder, overallDifficulty);
+    const byAxis = profileBoxes(scale.columns, axisOrder);
     return {
-      missing: missing.length > 0 ? boxesPath(missing, scale.xOf) : null,
       byAxis: axisOrder.flatMap((axisId) => {
         const boxes = byAxis.get(axisId) ?? [];
         return boxes.length === 0 ? [] : [{ axisId, d: boxesPath(boxes, scale.xOf) }];
       }),
-      boxes: [...missing, ...[...byAxis.values()].flat()],
+      boxes: [...byAxis.values()].flat(),
     };
-  }, [scale, axisOrder, overallDifficulty]);
+  }, [scale, axisOrder]);
   // 現在地の印は、その距離の柱の上端に置く。
   const progressColumn = progressKm === null ? null : columnAtKm(scale.columns, progressKm);
   const progressTops = paths.boxes
@@ -76,17 +62,15 @@ export default function DifficultyProfile({
   return (
     <ProfileChart
       scale={scale}
-      label="道のりに沿った難易度"
-      usage="横が道のり、縦がその区間の難易度で、塗った面積がルートの負荷です。なぞるか押して離すと、その地点を地図に印で出し、下にその区間の詳細を出します。"
+      label="道のりに沿った負担"
+      usage="横は道のり、縦はその区間の1kmあたりの負担です。色ごとの面積は、その種類の負担のルート全体での合計を表します。"
       selected={selected}
       onSelect={onSelect}
       progressKm={progressKm}
       progressMarkY={progressMarkY}
       waypointKms={waypointKms}
       riding={riding}
-      caption={caption}
     >
-      {paths.missing !== null && <path d={paths.missing} fill={palette.semantic.no_data} opacity={0.6} />}
       {paths.byAxis.map(({ axisId, d }) => (
         <path key={axisId} d={d} fill={axisColors[axisId] ?? palette.semantic.no_data} />
       ))}

@@ -2,7 +2,7 @@
 
 パスとポリシーの対応表（`ROUTE_POLICIES`）をこの1箇所へ集め、
 `CachePolicyMiddleware`が応答へ付与する。新しいエンドポイントを追加したときは、この表へも
-1行足す（足し忘れは`tests/test_cache_policy.py`が全ルートを走査して機械的に検出する）。
+1行足す。
 
 **2xxにしか付けない**: 上流障害（502）等の一時的な失敗をキャッシュさせると障害が
 実際の復旧より長く尾を引く。エラー応答をあえてキャッシュさせたい場合はハンドラ側で明示する。
@@ -20,7 +20,7 @@ from typing import Final
 from starlette.datastructures import MutableHeaders
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from app.api.admin_db_errors import ADMIN_PATH_PREFIX
+from app.api.admin_paths import ADMIN_PATH_PREFIX
 from app.infrastructure import jma_tile_redis_cache
 
 
@@ -68,7 +68,7 @@ MASTER_LOOKUP = CachePolicy(max_age_seconds=24 * 60 * 60)
 SHORT = CachePolicy(max_age_seconds=5 * 60)
 #: 数分で変わりうる警戒情報・実測値。
 VOLATILE = CachePolicy(max_age_seconds=2 * 60)
-#: 管理GUIでの変更が再デプロイなしに即座に反映される必要があるもの（軸カタログ）。
+#: 管理GUIでの変更が再デプロイなしに即座に反映される必要があるもの（画面の設定）。
 LIVE = CachePolicy(max_age_seconds=60)
 #: 進捗ポーリング・管理情報・状態確認。無指定はキャッシュ禁止と同義ではなく、中間プロキシや
 #: ブラウザのヒューリスティック判断に委ねられるため、禁止したいものは明示する。
@@ -78,8 +78,7 @@ NO_STORE = CachePolicy(max_age_seconds=None)
 HANDLER_MANAGED = CachePolicy(max_age_seconds=None, handler_managed=True)
 
 #: 気象庁の時刻一覧（`targetTimes*.json`）。同じURLのまま内容が更新されるため`immutable`に
-#: できず、新しいフレームの発見が遅れないよう`JmaTileClient`のプロセス内TTLCache（2分）より
-#: 短くする。
+#: できず、新しいフレームの発見が遅れないよう短くする。
 JMA_TARGET_TIMES = CachePolicy(max_age_seconds=60)
 #: 気象庁タイルの恒久404。`basetime`が確定した過去の一時点に対する結果のため再問い合わせ
 #: しても変わらない（`infrastructure/jma_tile_paths.py: is_final_absence`）。疎な格子状タイルでは
@@ -88,11 +87,9 @@ JMA_TILE_NOT_FOUND = CachePolicy(max_age_seconds=10 * 60)
 #: 気象庁のコマごとの地物（GeoJSON）の404。配信元はそのコマを配信するまで404を返すため確定しておらず、
 #: 覚えると配信された後もその間は画面へ届かない（`infrastructure/jma_tile_paths.py: is_final_absence`）。
 JMA_NOT_YET_DELIVERED = CachePolicy(max_age_seconds=None)
-#: 地理院タイルの恒久404（整備区域外）。同じ事実は`gsi_tile_client.py`がプロセス内に
-#: 持ち、上流へ問い合わせ直さない。**ブラウザにも伝える**——MapLibreの`raster-dem`は
+#: 地理院タイルの恒久404（整備区域外）。**ブラウザにも伝える**——MapLibreの`raster-dem`は
 #: 整備区域外のタイルも視界へ入るたび要求するため、伝えないと沿岸部を連続してパンする
-#: 利用者が404だけでレート制限に達しうる。プロセス内の記録は再起動で消える（整備区域が
-#: 広がったときに取り直す機会）ため、ブラウザへもそれより長い寿命は渡さない。
+#: 利用者が404だけでレート制限に達しうる。整備区域が広がったときに取り直せるよう、寿命は短く留める。
 GSI_TILE_NOT_FOUND = CachePolicy(max_age_seconds=60 * 60)
 
 
@@ -110,10 +107,11 @@ TILE_ROUTE_POLICIES: Final[tuple[tuple[str, CachePolicy], ...]] = (
     ("/api/region/road-surface-tiles/", BATCH_TILE),
     ("/api/region/point-tiles/", BATCH_TILE),
     # 年次のラスタをそのまま塗ったもの。配色・クラス構成の変化はURLの世代が表すが、
-    # **開いているラスタの構成は環境変数で決まりURLに現れない**（landcover_tile_service.py）。
+    # **開いているラスタの構成は環境変数で決まりURLに現れない**。
     # 同じURLの内容が変わりうるため`immutable`は付けられない。
     ("/api/region/landcover-tiles/", BATCH_TILE),
-    ("/api/region/way-materials/", SHORT),
+    ("/api/region/lens/", SHORT),
+    ("/api/region/road-classes/", SHORT),
 )
 #: 地図タイル系の経路の接頭辞。アクセスログの高さを分ける（`infrastructure/request_log.py: access_level`）。
 TILE_PATH_PREFIXES: Final[tuple[str, ...]] = tuple(prefix for prefix, _ in TILE_ROUTE_POLICIES)
@@ -122,18 +120,23 @@ TILE_PATH_PREFIXES: Final[tuple[str, ...]] = tuple(prefix for prefix, _ in TILE_
 # 実在のルートに当たること——ルートを改名して行が取り残され、改名したルートが短いパターンの方針へ黙って落ちないこと——は、
 # 表の行とアプリのルートを突き合わせないと判じられず、`policy_for_path`の入口からは表の行を数えられない。
 ROUTE_POLICIES: Final[tuple[tuple[str, CachePolicy], ...]] = (
-    # 在否インデックスはプリウォーム（10分間隔）ごとに内容が変わる。古いものを掴むと
+    # 在否インデックスはプリウォームごとに内容が変わる。古いものを掴むと
     # 「中身があるのに取りに行かない」ことになるため短命にする。
     ("/api/jma-tile-index", LIVE),
     *TILE_ROUTE_POLICIES,
     # カタログ・設定
-    ("/api/axis-catalog", LIVE),
+    ("/api/client-config", LIVE),
+    # 管理APIで書いた費用の軸の定義が、再デプロイなしに画面へ出るまでの遅れを、区分・較正値と揃える。
+    ("/api/cost-axes", LIVE),
     # 天候（URLに緯度経度を含むため地点ごとに別エントリになる）
+    ("/api/weather", SHORT),
     ("/api/weather/msm-grid", SHORT),
     ("/api/weather/warnings", VOLATILE),
     ("/api/weather/wbgt", VOLATILE),
     ("/api/weather/flood-forecast", VOLATILE),
     ("/api/weather/amedas", VOLATILE),
+    # ルートの形を本文で送るPOSTで、同じURLの応答を使い回させない。
+    ("/api/weather/route-warning-timeline", NO_STORE),
     # 地点の検索（URLに入力の文字列を含むため入力ごとに別エントリになる）
     ("/api/place-search", MASTER_LOOKUP),
     # 置いた位置の辺り（URLに緯度経度を含むため位置ごとに別エントリになる）
@@ -142,7 +145,9 @@ ROUTE_POLICIES: Final[tuple[tuple[str, CachePolicy], ...]] = (
     ("/api/derived-database", MASTER_LOOKUP),
     # ルート生成（POSTはそもそもキャッシュされないが、進捗のGETは明示的に禁じる）
     ("/api/routes/", NO_STORE),
-    ("/api/region/axis-inspector", NO_STORE),
+    ("/api/region/road-inspector", NO_STORE),
+    # 押した所を本文で送るPOSTで、同じURLの応答を使い回させない。
+    ("/api/region/roads-at", NO_STORE),
     # 管理・状態確認（認可必須の情報を中間キャッシュへ残さない）
     (ADMIN_PATH_PREFIX, NO_STORE),
     ("/api/debug/", NO_STORE),

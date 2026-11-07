@@ -1,12 +1,13 @@
 "use client";
 
+import type { ComponentProps } from "react";
+
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs/Tabs";
-import type { Coordinates, PinRole, PlaceCandidate } from "@/types/route";
+import type { PinRole, PlaceCandidate } from "@/types/route";
 import { waypointsFull, type GenerationConditionsState } from "@/features/route/useGenerationConditions";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 import { DISTANCE_STEP_KM } from "@/features/route/savedConditions";
 import SavedPlacesPanel from "@/features/route/SavedPlacesPanel/SavedPlacesPanel";
-import type { SavedPlacesState } from "@/features/route/useSavedPlaces";
 import RoutePoints from "./RoutePoints";
 import { Button } from "@/components/ui/Button/Button";
 import { DistanceTargetIcon } from "@/components/ui/icons/lucideIcons";
@@ -14,63 +15,37 @@ import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
 import Ruler, { type RulerFrame } from "@/components/ui/Ruler/Ruler";
 import { textVariants } from "@/components/ui/Text/Text";
 import { panelIconToggleClass, Toggle } from "@/components/ui/Toggle/Toggle";
+import { useClientConfig } from "@/hooks/useClientConfig";
+import { CLIENT_TUNING_IDS, clientTuningValue } from "@/lib/clientConfig";
 import { cn } from "@/lib/cn";
+import CostLevelPicker from "@/features/route/RouteSettingsPanel/CostLevelPicker";
+import { COST_STRENGTH_LEVELS } from "@/features/route/costPreference";
 
-/** 「ルート設定」区分のタブ。タブ列と選択状態はpage.tsxが持ち（見出し行に置くため）、
+/** 「ルート設定」区分のタブ。タブ列（`SettingsTabsList.tsx`）と選択状態は外が持ち（見出し行に置くため）、
  * ここは各タブの中身だけを描く。 */
 export type SettingsTab = "generate" | "weights" | "exclusions" | "saved";
 
-/** 「条件」タブが読む生成の条件（`features/route/useGenerationConditions.ts`の返り値をそのまま渡す）。距離・候補数は
- * 文字列のまま持つ——生成条件のdirty判定（`features/route/useRouteGeneration.ts`）に使うため。 */
-type RouteFormConditions = Pick<
-  GenerationConditionsState,
-  | "distanceInput"
-  | "setDistanceInput"
-  | "maxRoutesInput"
-  | "setMaxRoutesInput"
-  | "loop"
-  | "setLoop"
-  | "distanceTargeted"
-  | "setDistanceTargeted"
-  | "waypoints"
-  | "removeWaypoint"
-  | "destination"
-  | "clearDestination"
-  | "clearPoints"
-  | "selectedPoint"
-  | "selectPoint"
-  | "foundAt"
->;
+type RoutePointsProps = ComponentProps<typeof RoutePoints>;
 
-interface RouteFormProps {
-  /** 生成の条件と、それを変える操作。 */
-  conditions: RouteFormConditions;
-  /** 出発地の位置（現在地か、地図で置いた地点）。 */
-  origin: Coordinates;
-  /** 出発地を地図で置き直してあるか（falseなら現在地のまま）。 */
-  originManual: boolean;
-  /** 出発地が実際の位置か（現在地を取れたか、地図で置いたか）。falseの間は地図のピンと同じく印を灰色にし、
-   * 名前も「現在地」と出さない（位置が仮の地点のままであることを、パネルと地図で示す）。 */
-  originLocated: boolean;
-  /** 出発地が、最後に取れた現在地にあるか（真なら「出発地を現在地に戻す」を押せなくする）。 */
-  originAtHere: boolean;
-  /** 出発地を現在地へ戻す（現在地の取得もこの操作が兼ねる）。 */
-  onOriginReset: () => void;
-  /** 出発地が、探して置いたときの位置のままなら、その候補（名前を出す）。 */
-  originFound: PlaceCandidate | null;
-  /** 地図でいま見ている所の真ん中。探す施設の候補は、ここから近い順に並ぶ。 */
-  mapCenter: Coordinates;
-  /** 探して選んだ候補を、その役割の地点として置く（経由地は`waypointIndex`番目を置き直し、無ければ足す）。 */
+interface RouteFormProps extends Omit<RoutePointsProps, "conditions"> {
+  /** 生成の条件と、それを変える操作。距離・候補数は入力のままの文字列で受け取り、文字列で上げる。 */
+  conditions: RoutePointsProps["conditions"] &
+    Pick<
+      GenerationConditionsState,
+      | "distanceInput"
+      | "setDistanceInput"
+      | "maxRoutesInput"
+      | "setMaxRoutesInput"
+      | "distanceTargeted"
+      | "setDistanceTargeted"
+      | "costPreference"
+      | "setCostPreference"
+    >;
+  /** 保存した候補を、その役割の地点として置き、置いた地点の詳しくを見せる（経由地は足す）。 */
   onPlaceFound: (role: PinRole, candidate: PlaceCandidate, waypointIndex: number | null) => void;
-  /** 保存した地点（地点の詳しくで保存して打つ欄の候補に出し、「保存済み」タブの「地点」に並べて呼び出す）。 */
-  savedPlaces: SavedPlacesState;
-  /** 「条件」タブへ移る（「保存済み」タブの「地点」から呼び出した地点を見せる）。 */
-  onPointsShow: () => void;
-  /** 地図をタップすると選んでいる地点を置くか（ルート設定が地図で効いている間）。 */
-  placing: boolean;
-  /** 「重み」タブの中身。タブの列と「ルート生成」ボタンは見出しの行（page.tsx）、検証は`useRouteFormSubmit`が持つ。 */
+  /** 「負担」タブの中身。 */
   weightsPanel: React.ReactNode;
-  /** 「除外」タブの中身。 */
+  /** 「回避」タブの中身。 */
   exclusionsPanel: React.ReactNode;
   /** 「条件」タブの、いまの設定を保存するアイコン（保存するものは各タブに及ぶが、条件を詰める所で保存する）。 */
   saveConditionsButton: React.ReactNode;
@@ -79,7 +54,6 @@ interface RouteFormProps {
 }
 
 const MAX_DISTANCE_KM = routeGenerateConfig.max_distance_km;
-const DISTANCE_TOLERANCE_KM = routeGenerateConfig.default_distance_tolerance_km;
 /** 全長の目標のルーラーのコマ。止まる刻みごとに1コマで（下限は1刻み分）、10kmごとに太い目盛りと数を付ける。 */
 const DISTANCE_FRAMES: RulerFrame[] = Array.from({ length: Math.floor(MAX_DISTANCE_KM / DISTANCE_STEP_KM) }, (_, i) => {
   const km = (i + 1) * DISTANCE_STEP_KM;
@@ -89,10 +63,10 @@ const DISTANCE_FRAMES: RulerFrame[] = Array.from({ length: Math.floor(MAX_DISTAN
 const MIN_ROUTES = routeGenerateConfig.min_routes;
 const MAX_ROUTES = routeGenerateConfig.max_routes;
 
-// forceMount+data-stateでの表示切替（ルート結果のタブと同じ方式）。
+// forceMount+data-stateでの表示切替。
 // 候補数等は`features/route/useGenerationConditions.ts`の制御stateのため非表示中も値は失われないが、
-// 重みタブ（RouteSettingsPanel）はドラッグ中の帯グラフ・チェックOFF前の
-// 重み記憶をローカルstateで持つため、タブ切替のたびにアンマウントすると失われる。
+// 「条件」タブの地点の編集・場所の検索と、「保存済み」タブの名前の下書きはローカルstateで持つため、
+// タブ切替のたびにアンマウントすると失われる。
 function KeptTabContent({ value, children }: { value: string; children: React.ReactNode }) {
   return (
     <TabsContent value={value} forceMount className="data-[state=inactive]:hidden">
@@ -101,34 +75,35 @@ function KeptTabContent({ value, children }: { value: string; children: React.Re
   );
 }
 
+// 割合も長さも小数1桁へ丸める（0.15×100は15.000000000000002になる）。
+function toleranceSentence(ratio: number, distanceInput: string): string {
+  const percent = Math.round(ratio * 1000) / 10;
+  const km = Math.round(Number(distanceInput) * ratio * 10) / 10;
+  return `作る候補は、この長さの±${percent}%（${distanceInput}kmなら±${km}km）に入るものだけです。`;
+}
+
 export default function RouteForm({
   conditions,
-  origin,
-  originManual,
-  originLocated,
-  originAtHere,
-  onOriginReset,
-  originFound,
-  mapCenter,
   onPlaceFound,
-  savedPlaces,
-  onPointsShow,
-  placing,
   weightsPanel,
   exclusionsPanel,
   saveConditionsButton,
   savedConditionsPanel,
+  ...points
 }: RouteFormProps) {
-  const { distanceTargeted, setDistanceTargeted, distanceInput, setDistanceInput, maxRoutesInput, setMaxRoutesInput } =
-    conditions;
+  const {
+    distanceTargeted,
+    setDistanceTargeted,
+    distanceInput,
+    setDistanceInput,
+    maxRoutesInput,
+    setMaxRoutesInput,
+    costPreference,
+    setCostPreference,
+  } = conditions;
   const distanceToggleName = distanceTargeted ? "全長の目標をやめる" : "全長の目標を決める";
-
-  // 保存した地点を呼び出したら「条件」タブへ移り、置いた地点を選んで詳しくを出す（足した経由地は`onPlaceFound`が選ぶ）。
-  function recallSavedPlace(role: PinRole, place: PlaceCandidate) {
-    onPlaceFound(role, place, null);
-    if (role !== "waypoint") conditions.selectPoint({ role });
-    onPointsShow();
-  }
+  // 許容差は管理画面の較正値（目標の距離に対する割合）。引けない間は幅の文を出さない（較正したのとは別の数を出さない）。
+  const distanceToleranceRatio = clientTuningValue(useClientConfig(), CLIENT_TUNING_IDS.distanceToleranceRatio);
 
   // 範囲の端ではボタンを押せなくするので、足した値は範囲を出ない。
   function stepMaxRoutes(delta: number) {
@@ -145,11 +120,11 @@ export default function RouteForm({
           <div className="flex min-w-0 flex-1 items-center gap-1">
             <Toggle
               variant="plain"
-              className={cn(panelIconToggleClass, "flex-none")}
+              className={panelIconToggleClass}
               pressed={distanceTargeted}
               aria-label={distanceToggleName}
               onClick={() => setDistanceTargeted(!distanceTargeted)}
-              usage="押している間は、ルート全体の長さを目標に合わせます。"
+              usage="オンにすると、ルート全体の長さを目標に合わせます。"
             >
               <DistanceTargetIcon />
             </Toggle>
@@ -164,7 +139,7 @@ export default function RouteForm({
             />
             <span
               className={cn(
-                // 文字の大きさは地点の並びの札の名前とそろえる（`RoutePoints.tsx: chipName`）。
+                // 文字の大きさは地点の並びの札の名前とそろえる（`PointStrip.tsx: chipName`）。
                 "min-w-[3.25em] flex-shrink-0 text-right text-[length:var(--font-size-md)] tabular-nums",
                 !distanceTargeted && "opacity-40",
               )}
@@ -172,7 +147,12 @@ export default function RouteForm({
               {distanceInput}km
             </span>
             <InfoPopover triggerAriaLabel="全長の目標の説明" triggerClassName="flex-none">
-              {`ルート全体の長さの目標です。作る候補は、この長さの±${DISTANCE_TOLERANCE_KM}kmに入るものだけです。外すと長さを決めず、目的地（周回なら経由地を回って出発地）へ良い道で向かいます。`}
+              {[
+                "ルート全体の長さの目標です。",
+                distanceToleranceRatio === undefined ? "" : toleranceSentence(distanceToleranceRatio, distanceInput),
+                "外すと長さを決めず、目的地（周回なら経由地を回って出発地）へ、所要時間と負担の和が小さい道で向かいます。",
+                `${routeGenerateConfig.busy_safe_distance_km}kmより長い目標は、混み合っているときに作れないことがあります。`,
+              ].join("")}
             </InfoPopover>
           </div>
           <div className="flex flex-none items-center gap-1">
@@ -204,19 +184,26 @@ export default function RouteForm({
           <div className="flex-none">{saveConditionsButton}</div>
         </div>
 
-        <RoutePoints
-          conditions={conditions}
-          origin={origin}
-          originManual={originManual}
-          originLocated={originLocated}
-          originAtHere={originAtHere}
-          onOriginReset={onOriginReset}
-          originFound={originFound}
-          mapCenter={mapCenter}
-          onPlaceFound={onPlaceFound}
-          savedPlaces={savedPlaces}
-          placing={placing}
-        />
+        {/* 全体のつまみ。軸ごとの倍率は「負担」タブが持つ。 */}
+        <div className="mb-2 flex items-center gap-1.5">
+          <span className={cn(textVariants({ variant: "hint" }), "flex-shrink-0")}>負担の強さ</span>
+          <CostLevelPicker
+            aria-label="負担の強さ"
+            usage="所要時間に足す負担に掛ける倍率を選びます。"
+            levels={COST_STRENGTH_LEVELS}
+            value={costPreference.strength}
+            onChange={(strength) => setCostPreference((prev) => ({ ...prev, strength }))}
+          />
+          <InfoPopover triggerAriaLabel="負担の強さの説明" triggerClassName="flex-none">
+            {/* JSXの改行は半角スペースになるので、文字列として繋ぐ。 */}
+            {"所要時間に足す負担に掛ける倍率です。負担は、坂や向かい風で平地より余分に使う体力・止まる回数・路面の振動などを、" +
+              "時間に換算したものです。道は、所要時間とこの倍率を掛けた負担の和が小さくなるように選びます。×1 が標準です。" +
+              "×2 は負担を2倍にして足すので、所要時間が延びても負担の小さい道を選びやすくなります。" +
+              "×0 は負担を足さず、所要時間だけで選びます。負担の種類ごとの倍率は「負担」タブで選べます。"}
+          </InfoPopover>
+        </div>
+
+        <RoutePoints conditions={conditions} {...points} />
       </KeptTabContent>
 
       <KeptTabContent value="weights">{weightsPanel}</KeptTabContent>
@@ -242,11 +229,11 @@ export default function RouteForm({
           </TabsList>
           <KeptTabContent value="places">
             <SavedPlacesPanel
-              places={savedPlaces.places}
+              places={points.savedPlaces.places}
               waypointsFull={waypointsFull(conditions.waypoints)}
               loop={conditions.loop}
-              onRecall={recallSavedPlace}
-              onRemove={savedPlaces.remove}
+              onRecall={(role, place) => onPlaceFound(role, place, null)}
+              onRemove={points.savedPlaces.remove}
             />
           </KeptTabContent>
           <KeptTabContent value="conditions">{savedConditionsPanel}</KeptTabContent>

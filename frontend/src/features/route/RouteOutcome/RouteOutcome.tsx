@@ -5,18 +5,21 @@ import { Fragment, useLayoutEffect, useRef, type CSSProperties } from "react";
 import { SHEET_FIT_END_ATTRIBUTE } from "@/components/BottomSheet/BottomSheet";
 import { GuideText } from "@/components/ui/GuideText/GuideText";
 import { RouteSpliceIcon } from "@/components/ui/icons/icons";
-import { FastestRouteIcon } from "@/components/ui/icons/lucideIcons";
+import { BurdenIcon, FastestRouteIcon } from "@/components/ui/icons/lucideIcons";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs/Tabs";
 import { textVariants } from "@/components/ui/Text/Text";
-import { useAxisCatalog } from "@/hooks/useAxisCatalog";
+import { useCostAxisCatalog, type CostAxisCatalog } from "@/hooks/useCostAxisCatalog";
 import { cn } from "@/lib/cn";
+import { costLensPaint } from "@/lib/mapDisplay/costLensPaint";
+import type { MapTheme } from "@/lib/mapTheme";
 import { NO_DATA_LEGEND_BAND } from "@/lib/mapDisplay/mapColorLegend";
-import { bandAt, DIFFICULTY_PAINT, formatDifficulty, valueBands } from "@/lib/mapDisplay/valueScale";
+import { bandAt, valueBands } from "@/lib/mapDisplay/valueScale";
+import { formatPenaltyMinutes } from "@/lib/routePenalty";
 import RouteProfile from "@/features/route/RouteProfile/RouteProfile";
 import type { ProfileLayerSelection } from "@/features/route/RouteProfile/useProfileLayers";
 import RouteAxisProfile from "@/features/route/RouteAxisProfile/RouteAxisProfile";
 import RouteSplicePanel from "@/features/route/RouteSplicePanel/RouteSplicePanel";
-import { formatDurationShort } from "@/lib/duration";
+import { formatDurationShort, MINUTE_UNIT } from "@/lib/duration";
 import EditDifference from "@/features/route/EditDifference/EditDifference";
 import WarningText from "@/features/route/WarningText/WarningText";
 import {
@@ -28,10 +31,10 @@ import {
 import type { useRouteGeneration } from "@/features/route/useRouteGeneration";
 import type { RouteResults } from "@/features/route/useRouteResults";
 import type { SpliceSessionView } from "@/features/route/useSpliceSession";
-import type { RouteCandidate, RoutePreferenceWeights } from "@/types/route";
+import type { RouteCandidate } from "@/types/route";
 
 const CANDIDATE_TAB_USAGE =
-  "この候補を地図と内訳に出します。稲妻の印は最も早く着く最速ルート、合成の印は区間を乗り換えて作った合成ルートで、番号だけのものは生成した候補です。上の段は距離、下の段は時間（最速ルート［無ければ最も早い候補］は所要時間、ほかはそれとの差で、速ければ−）と総合難易度で、下の帯は総合難易度を地図と同じ色で塗ります。";
+  "この候補を地図と内訳に出し、地図を候補の全体に合わせます。稲妻の印は最速ルート、合成の印は区間を乗り換えた合成ルート、番号だけのものは生成した候補です。上の段は距離です。下の段は時間（最速ルート［無ければ最も早い候補］は所要時間、ほかはそれとの差で、速ければ−）と負担（重りの印）です。下の帯は、1kmあたりの負担を地図と同じ色で表します。";
 
 /** 名前の列で群を見分ける印と、その意味（指を置いたときの吹き出しと読み上げの名前）。生成した候補は印を持たない。 */
 const GROUP_MARKS: Partial<Record<RouteListGroup, { Icon: typeof FastestRouteIcon; meaning: string }>> = {
@@ -39,13 +42,11 @@ const GROUP_MARKS: Partial<Record<RouteListGroup, { Icon: typeof FastestRouteIco
   spliced: { Icon: RouteSpliceIcon, meaning: "合成ルート" },
 };
 
-/** 地図が総合難易度を塗る段。カードの下の帯は、地図のルートの線と同じ段の色で総合難易度を示す。 */
-const DIFFICULTY_BANDS = valueBands(DIFFICULTY_PAINT);
-
-function difficultyColor(route: RouteCandidate): string {
-  return route.overall_difficulty === null
-    ? NO_DATA_LEGEND_BAND.color
-    : bandAt(DIFFICULTY_BANDS, route.overall_difficulty.average).color;
+/** カードの下の帯の色。候補を並べるのと同じ、ルート全体の1kmあたりの負担（曲がる所と回避指定を含む）を、総合のレンズの段で
+ * 示す。値が無ければ値なしの色。 */
+function penaltyColor(route: RouteCandidate, catalog: CostAxisCatalog, ground: MapTheme): string {
+  if (catalog.lenses === null || route.penalty_seconds_per_km === null) return NO_DATA_LEGEND_BAND.color;
+  return bandAt(valueBands(costLensPaint(catalog.lenses.totalLens, ground)), route.penalty_seconds_per_km).color;
 }
 
 type RouteGeneration = ReturnType<typeof useRouteGeneration>;
@@ -53,15 +54,12 @@ type RouteGeneration = ReturnType<typeof useRouteGeneration>;
 interface RouteOutcomeProps {
   results: RouteResults;
   /** 生成の進み方・条件のずれ。 */
-  generation: Pick<
-    RouteGeneration,
-    "running" | "progressLabel" | "conditionsDirty" | "weightsNotApplied" | "destinationCorrected"
-  >;
+  generation: Pick<RouteGeneration, "running" | "progressLabel" | "conditionsDirty" | "destinationCorrected">;
   splice: Pick<SpliceSessionView, "panel">;
-  /** 軸を「未使用」と分ける重み（`useRoutePlanner.ts: routeWeights`）。 */
-  routeWeights: RoutePreferenceWeights;
   /** 道のりのグラフに重ねるレイヤの選択（走行中の図と共有する）。 */
   profileLayers: ProfileLayerSelection;
+  /** 地図の地の明るさ。カードの帯を、地図のルートの線と同じ色の組で塗る。 */
+  mapTheme: MapTheme;
 }
 
 /**
@@ -69,8 +67,8 @@ interface RouteOutcomeProps {
  * 選んだ候補の中身・地図で押した区間の詳細、編集中は区間の乗り換えの編集面。候補1本への操作は見出しの行が持つ
  * （`features/route/RouteCandidateActions/RouteCandidateActions.tsx`）。
  */
-export default function RouteOutcome({ results, generation, splice, routeWeights, profileLayers }: RouteOutcomeProps) {
-  const axisCatalog = useAxisCatalog();
+export default function RouteOutcome({ results, generation, splice, profileLayers, mapTheme }: RouteOutcomeProps) {
+  const costCatalog = useCostAxisCatalog();
   const { routes, selectedRouteId, selectedRouteSegment, reusedRouteId } = results;
   // 選んだカードを一覧の見える範囲へ送る（地図や「元を見る」で選び直したとき・乗り換えで作った経路と同じ道だったので
   // 選んだとき）。送るのは一覧の横だけで、シートやパネルを縦に動かさない（下の中身を読んでいる最中に上へ飛ばない）。
@@ -88,20 +86,36 @@ export default function RouteOutcome({ results, generation, splice, routeWeights
     else if (cardBox.right > visibleRight) list.scrollLeft += cardBox.right - visibleRight;
   }, [selectedRouteId, reusedRouteId]);
 
-  // 「ルート結果」に候補が無いときの中身（生成前・生成中）。候補0件の理由と失敗は、ここでなく窓で知らせる。
-  function renderRouteOutcomeEmptyState() {
-    if (generation.running) {
-      return <p className={textVariants({ variant: "hint" })}>{generation.progressLabel ?? "生成中..."}</p>;
-    }
+  // 候補が無い間（生成前・生成中）の案内。候補0件の理由と失敗は、ここでなく窓で知らせる。
+  if (routes.length === 0) {
     return (
       <p className={textVariants({ variant: "hint" })}>
-        <GuideText text="「ルート設定」の「ルート生成」を押すと候補がここに並びます" />
+        {generation.running ? (
+          generation.progressLabel
+        ) : (
+          <GuideText text="「ルート設定」の「ルート生成」を押すと候補がここに並びます" />
+        )}
       </p>
     );
   }
 
+  const entries = routeListEntries(results.generated, results.edits);
+  const nameOf = (routeId: string) => entries.find((entry) => entry.route.id === routeId)?.name ?? "";
+  // 編集中は同じ場所が編集面になる（「ルート編集」という別の置き場を持たない）。元は1本に固定で、相手を
+  // 選び直しても変わらない。
+  if (splice.panel) {
+    const { sameRouteId, ...panel } = splice.panel;
+    return (
+      <RouteSplicePanel
+        {...panel}
+        catalog={costCatalog}
+        sameRouteName={sameRouteId === null ? null : nameOf(sameRouteId)}
+      />
+    );
+  }
+
   // 編集で作ったルートの中身に、元との違いを出す。
-  function renderEditDifference(route: RouteCandidate, nameOf: (routeId: string) => string) {
+  function renderEditDifference(route: RouteCandidate) {
     const edit = results.edits.find((item) => item.route.id === route.id);
     const origin = edit && routes.find((candidate) => candidate.id === edit.originId);
     if (!edit || !origin) return null;
@@ -110,153 +124,125 @@ export default function RouteOutcome({ results, generation, splice, routeWeights
         originName={nameOf(origin.id)}
         origin={origin}
         edited={route}
-        onShowOrigin={() => results.selectTab(origin.id)}
+        onShowOrigin={() => results.showRoute(origin.id)}
       />
     );
   }
 
-  // 「ルート結果」の中身（デスクトップの区分・モバイルのシートの両方）。
-  function renderRouteOutcome() {
-    if (routes.length === 0) return renderRouteOutcomeEmptyState();
-    return renderRouteOutcomeSectionBody();
-  }
-
   // 候補ごとのタブの1段で、タブの切り替えが候補の切り替えを兼ねる。中身は上から、候補の一覧・道のりのグラフ・
   // 元との違い・内訳（区間を押している間は区間の詳細）の順で、狭い高さでも候補の切り替えとグラフが先に見える。
-  function renderRouteOutcomeSectionBody() {
-    const entries = routeListEntries(results.generated, results.edits);
-    const nameOf = (routeId: string) => entries.find((entry) => entry.route.id === routeId)?.name ?? "";
-    // 編集中は同じ場所が編集面になる（「ルート編集」という別の置き場を持たない）。元は1本に固定で、相手を
-    // 選び直しても変わらない。
-    if (splice.panel) {
-      const { sameRouteId, ...panel } = splice.panel;
-      return <RouteSplicePanel {...panel} sameRouteName={sameRouteId === null ? null : nameOf(sameRouteId)} />;
-    }
+  const baseline = durationBaseline(routes);
+  // 道のりのグラフの横軸の右端。候補どうしで同じ物差しにし、面積（負荷）を見比べられるようにする。
+  const longestDistanceKm = Math.max(0, ...routes.map((route) => route.distance_km));
+  const selectedValue = selectedRouteId ?? routes[0].id;
 
-    const baseline = durationBaseline(routes);
-    // 道のりのグラフの横軸の右端。候補どうしで同じ物差しにし、面積（負荷）を見比べられるようにする。
-    const longestDistanceKm = Math.max(0, ...routes.map((route) => route.distance_km));
-    const selectedValue = selectedRouteId ?? routes[0].id;
-
-    return (
-      <>
-        {generation.conditionsDirty && <WarningText>生成条件が変更されています</WarningText>}
-        {generation.weightsNotApplied && <WarningText>重み配分を反映できず、既定の配分で作りました。</WarningText>}
-        {generation.destinationCorrected && (
-          <WarningText>
-            指定した地点は自転車で行けない場所だったため、近くのアクセス可能な地点へ補正しました。
-          </WarningText>
-        )}
-        {reusedRouteId !== null && (
-          <p className={cn(textVariants({ variant: "hint" }), "m-0")}>
-            作った組み合わせは「{nameOf(reusedRouteId)}」と同じ道なので、「{nameOf(reusedRouteId)}」を選びました
-          </p>
-        )}
-        <Tabs className="flex flex-col gap-2" value={selectedValue} onValueChange={results.selectTab}>
-          {/* 候補は1枚ずつのカードで横に並べ、幅に収まらない分は一覧の中だけを横へ送る。縦には動かないので、縦のなぞりは
-              シート・パネルのスクロールへ渡る（縦に動く所を1つにする）。 */}
-          <TabsList ref={listRef} variant="cards" aria-label="ルート結果">
-            {entries.map(({ route, group, label }, index) => {
-              const mark = GROUP_MARKS[group];
-              return (
-                <Fragment key={route.id}>
-                  {index > 0 && group !== entries[index - 1].group && (
-                    <hr className="m-0 w-0 flex-none self-stretch border-0 border-l border-[var(--color-border)]" />
-                  )}
-                  {/* 段の中の空白は見た目には出ず、読み上げの名前でだけ項目を区切る。 */}
-                  <TabsTrigger
-                    ref={route.id === selectedValue ? selectedCardRef : undefined}
-                    value={route.id}
-                    usage={CANDIDATE_TAB_USAGE}
-                  >
-                    <span className="flex items-baseline justify-between gap-1">
-                      <span className="inline-flex items-center gap-0.5">
-                        {mark && (
-                          <span role="img" aria-label={mark.meaning} title={mark.meaning} className="inline-flex">
-                            <mark.Icon size={12} />
-                          </span>
-                        )}
-                        {label}
-                      </span>{" "}
-                      <span>
-                        {route.distance_km.toFixed(1)}
-                        <span className="text-[length:var(--font-size-xs)] font-normal">km</span>
-                      </span>
+  return (
+    <>
+      {generation.conditionsDirty && <WarningText>生成条件が変更されています</WarningText>}
+      {generation.destinationCorrected && (
+        <WarningText>
+          指定した地点は自転車で行けない場所だったため、近くのアクセス可能な地点へ補正しました。
+        </WarningText>
+      )}
+      {reusedRouteId !== null && (
+        <p className={cn(textVariants({ variant: "hint" }), "m-0")}>
+          作った組み合わせは既存の候補「{nameOf(reusedRouteId)}」と同じ道のため、その候補を選びました
+        </p>
+      )}
+      <Tabs className="flex flex-col gap-2" value={selectedValue} onValueChange={results.selectRoute}>
+        {/* 候補は1枚ずつのカードで横に並べ、幅に収まらない分は一覧の中だけを横へ送る。縦には動かないので、縦のなぞりは
+            シート・パネルのスクロールへ渡る（縦に動く所を1つにする）。 */}
+        <TabsList ref={listRef} variant="cards" aria-label="ルート結果">
+          {entries.map(({ route, group, label }, index) => {
+            const mark = GROUP_MARKS[group];
+            return (
+              <Fragment key={route.id}>
+                {index > 0 && group !== entries[index - 1].group && (
+                  <hr className="m-0 w-0 flex-none self-stretch border-0 border-l border-[var(--color-border)]" />
+                )}
+                {/* 段の中の空白は見た目には出ず、読み上げの名前でだけ項目を区切る。 */}
+                <TabsTrigger
+                  ref={route.id === selectedValue ? selectedCardRef : undefined}
+                  value={route.id}
+                  usage={CANDIDATE_TAB_USAGE}
+                  // 選びはタブが（変わったときだけ）知らせ、押したら選んでいたカードでも全体へ収める。
+                  onClick={results.focusRoute}
+                >
+                  <span className="flex items-baseline justify-between gap-1">
+                    <span className="inline-flex items-center gap-0.5">
+                      {mark && (
+                        <span role="img" aria-label={mark.meaning} title={mark.meaning} className="inline-flex">
+                          <mark.Icon size={12} />
+                        </span>
+                      )}
+                      {label}
                     </span>{" "}
-                    <span className="flex items-baseline justify-between gap-1 font-normal text-[var(--color-muted-strong)]">
-                      {/* 基準線の候補はその所要時間、他の候補はそれとの差（見比べる場所に置く）。 */}
-                      <span>
-                        {route.id === baseline?.id
-                          ? formatDurationShort(baseline.seconds)
-                          : durationDifferenceLabel(route, baseline?.seconds ?? null)}
-                      </span>{" "}
-                      {/* 算出できなかった候補は「—」（0と欠損を同じ見た目にしない）。 */}
-                      <span>
-                        <span className="sr-only">難易度</span>
-                        {route.overall_difficulty === null ? "—" : formatDifficulty(route.overall_difficulty.average)}
-                      </span>
+                    <span>
+                      {route.distance_km.toFixed(1)}
+                      <span className="text-[length:var(--font-size-xs)] font-normal">km</span>
                     </span>
-                    <span
-                      aria-hidden
-                      className="-mx-1.5 mt-1 h-[3px]"
-                      style={{ backgroundColor: difficultyColor(route) }}
-                    />
-                  </TabsTrigger>
-                </Fragment>
-              );
-            })}
-          </TabsList>
-          {routes.map((route) => (
-            <TabsContent
-              key={route.id}
-              // 結果の中の道のりのグラフは、走行中の地図の下の図より高くして読みやすくする。
-              className="flex flex-col gap-2 data-[state=inactive]:hidden"
-              style={{ "--profile-chart-height": "5.5rem" } as CSSProperties}
-              value={route.id}
-            >
-              {/* 道のりのグラフ。区間を選んでいる間も残す（動かして地点を選ぶ操作の置き場のため）。選んでいる間は、その地点の
-                  詳しくをグラフが自分の下に出す。シートは、高さを決めていなければ、開いたときにここの下端までの高さに合わせる。 */}
-              {route.segments.length > 0 && (
-                <div {...{ [SHEET_FIT_END_ATTRIBUTE]: "" }}>
-                  <RouteProfile
-                    segments={route.segments}
-                    points={route.points}
-                    overallDifficulty={route.overall_difficulty?.average ?? null}
-                    axes={axisCatalog.axes}
-                    axisColors={axisCatalog.axisColors}
-                    scaleKm={longestDistanceKm}
-                    waypointKms={route.waypoint_distances_km}
-                    selected={selectedRouteSegment}
-                    onSelect={results.selectSegment}
-                    layers={profileLayers}
+                  </span>{" "}
+                  <span className="flex items-baseline justify-between gap-1 font-normal text-[var(--color-muted-strong)]">
+                    {/* 基準線の候補はその所要時間、他の候補はそれとの差（見比べる場所に置く）。 */}
+                    <span>
+                      {route.id === baseline?.id
+                        ? formatDurationShort(baseline.seconds)
+                        : durationDifferenceLabel(route, baseline?.seconds ?? null)}
+                    </span>{" "}
+                    <span className="inline-flex items-center gap-0.5">
+                      <span aria-hidden="true" title="負担" className="inline-flex text-[var(--color-muted)]">
+                        <BurdenIcon size={11} />
+                      </span>
+                      <span className="sr-only">負担</span>
+                      {formatPenaltyMinutes(route.penalty.total_seconds)}
+                      <span className="sr-only">{MINUTE_UNIT}</span>
+                    </span>
+                  </span>
+                  <span
+                    aria-hidden
+                    className="-mx-1.5 mt-1 h-[3px]"
+                    style={{ backgroundColor: penaltyColor(route, costCatalog, mapTheme) }}
                   />
-                </div>
-              )}
-              {renderEditDifference(route, nameOf)}
-              {/* 区間を押している間は、候補全体の内訳を出さない（その区間の詳しくはグラフの下に出る）。 */}
-              {selectedRouteSegment === null && (
-                <RouteAxisProfile
-                  axes={axisCatalog.axes}
-                  weights={routeWeights}
-                  axisDifficulties={route.axis_difficulties}
-                  axisContributions={route.axis_contributions}
-                  axisRawValues={route.axis_raw_values}
-                  materialValues={route.material_values}
-                  materialCategoryShares={route.material_category_shares}
-                  distanceKm={route.distance_km}
-                  overallDifficulty={route.overall_difficulty}
-                  estimatedDurationSeconds={route.estimated_duration_seconds}
-                  windUnavailable={route.wind_unavailable}
-                  missingTravelDataShare={route.missing_travel_data_share}
-                  axisColors={axisCatalog.axisColors}
+                </TabsTrigger>
+              </Fragment>
+            );
+          })}
+        </TabsList>
+        {routes.map((route) => (
+          <TabsContent
+            key={route.id}
+            // 結果の中の道のりのグラフは、走行中の地図の下の図より高くして読みやすくする。
+            className="flex flex-col gap-2 data-[state=inactive]:hidden"
+            style={{ "--profile-chart-height": "5.5rem" } as CSSProperties}
+            value={route.id}
+          >
+            {/* 道のりのグラフ。区間を選んでいる間も残す（動かして地点を選ぶ操作の置き場のため）。選んでいる間は、その地点の
+                詳しくをグラフが自分の下に出す。シートは、高さを決めていなければ、開いたときにここの下端までの高さに合わせる。 */}
+            {route.segments.length > 0 && (
+              <div {...{ [SHEET_FIT_END_ATTRIBUTE]: "" }}>
+                <RouteProfile
+                  segments={route.segments}
+                  catalog={costCatalog}
+                  scaleKm={longestDistanceKm}
+                  waypointKms={route.waypoint_distances_km}
+                  selected={selectedRouteSegment}
+                  onSelect={results.selectSegment}
+                  segmentOnMap={results.segmentOnMap}
+                  layers={profileLayers}
                 />
-              )}
-            </TabsContent>
-          ))}
-        </Tabs>
-      </>
-    );
-  }
-
-  return renderRouteOutcome();
+              </div>
+            )}
+            {renderEditDifference(route)}
+            <RouteAxisProfile
+              penalty={route.penalty}
+              facts={route.facts}
+              catalog={costCatalog}
+              estimatedDurationSeconds={route.estimated_duration_seconds}
+              missingTravelDataShare={route.missing_travel_data_share}
+            />
+          </TabsContent>
+        ))}
+      </Tabs>
+    </>
+  );
 }

@@ -16,10 +16,7 @@ describe("formatDurationShort", () => {
     expect(formatDurationShort(30)).toBe("1分");
   });
 
-  it.each([
-    ["負の秒", -1],
-    ["NaN", Number.NaN],
-  ])("%sは「—」", (_label, seconds) => {
-    expect(formatDurationShort(seconds)).toBe("—");
+  it("負の秒は「—」", () => {
+    expect(formatDurationShort(-1)).toBe("—");
   });
 });

@@ -123,7 +123,7 @@ export const vocabulary = {
     {
       "key": "unknown",
       "title": "評価に影響する欠損",
-      "hint": "元データが無い区間では、この材料を使う軸が評価対象外になる。",
+      "hint": "元データが無い区間では、この材料を使う負担の種類を評価しない。",
       "affects_evaluation": true
     },
     {
@@ -193,13 +193,5 @@ export const vocabulary = {
       "label": "地点",
       "area": false
     }
-  ],
-  "quantiles": [
-    "p10",
-    "p25",
-    "p50",
-    "p75",
-    "p90",
-    "p99"
   ]
 } as const;

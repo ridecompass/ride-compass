@@ -26,7 +26,7 @@ async def search_places(
     try:
         return await service.search(q, LatLonPoint(latitude, longitude))
     except PlaceSearchAreaUnavailable:
-        raise HTTPException(status_code=502, detail="対象範囲を読めませんでした") from None
+        raise HTTPException(status_code=502, detail="検索する範囲の情報を取得できませんでした") from None
 
 
 @router.get("/api/place-area", response_model=PlaceArea)

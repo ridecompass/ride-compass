@@ -1,39 +1,20 @@
-"""`domain/traffic.py`のうち、Pythonで値を返す入口——停止要因の待ち（`stop_seconds`）と道の階級（`highway_rank`）。
+"""`domain/traffic.py`のうち、Pythonで値を返す入口の道の階級（`highway_rank`）。
 
 ここで見ないもの:
 - 点のタグから停止要因・補給休憩の種別を引き当てるSQLと、数える種別へ畳むSQL → `test_tag_classification.py`
 - 道の通行方向を決めるSQL → `test_resolve_direction.py`
 - 停止の待ちが区間の所要時間へ足されること → `test_leg_costs.py`
 - 待ちの秒が管理画面から変えた値を読むこと → `test_tuning_overrides.py`
-- 階級を比べて交差点の待ちを足すこと → `test_routing.py`
-- 停止要因の種別を地図の凡例の行へ写すこと → `test_material_catalog.py`
+- 階級を比べて交差点の待ちを足すこと → `test_turn_structure.py`
+- 停止要因の種別を地図の凡例の行へ写すこと → `test_primary_attributes.py`
 """
+
+from unittest.mock import patch
 
 import pytest
 
 from app.domain import traffic
-
-
-def test_a_kind_that_is_not_counted_fails_instead_of_waiting_zero_seconds():
-    with pytest.raises(KeyError):
-        traffic.stop_seconds("traffic_signals")
-
-
-# OSMの道路の格（Key:highway）の上から順。リンク（`*_link`）は本線と同じ格に並ぶ。
-_OSM_MAIN_ROADS = ["motorway", "trunk", "primary", "secondary", "tertiary"]
-
-
-def test_the_rank_follows_the_osm_road_hierarchy():
-    ranks = [traffic.highway_rank(highway) for highway in _OSM_MAIN_ROADS]
-
-    assert ranks == sorted(ranks, reverse=True)
-    assert len(set(ranks)) == len(ranks)
-
-
-@pytest.mark.parametrize("highway", _OSM_MAIN_ROADS)
-def test_a_link_road_has_the_rank_of_its_main_road(highway):
-    """ランプを本線より下に置くと、本線とランプが合流する所で「上位の道と交わる」待ちが付く。"""
-    assert traffic.highway_rank(f"{highway}_link") == traffic.highway_rank(highway)
+from app.domain.tuning import TUNING_VALUES
 
 
 def test_minor_roads_share_one_rank_below_tertiary_and_above_paths():
@@ -43,8 +24,15 @@ def test_minor_roads_share_one_rank_below_tertiary_and_above_paths():
     assert traffic.highway_rank("cycleway") < minor.pop() < traffic.highway_rank("tertiary")
 
 
-def test_only_roads_from_tertiary_up_need_a_wait_to_cross():
-    """生活道路・サービス道路を横切るのに待ちは要らない。自転車道（階級0）からサービス道路へ出るだけで
-    「上位の道を渡る」と数えないこと。"""
-    assert traffic.highway_rank("tertiary") >= traffic.MAJOR_CROSSING_MIN_RANK
-    assert traffic.highway_rank("service") < traffic.MAJOR_CROSSING_MIN_RANK
+def test_a_stop_event_takes_its_share_of_the_wait_and_of_the_kickoff_and_a_slowdown_only_part_of_the_kickoff():
+    """止まる出来事は 割合 × 待ち を時間に、割合ぶんの漕ぎ出しを体力に数える。減速だけの出来事（車止め・左折）は、巡航速度の
+    残る割合から戻すので、漕ぎ出しは（1 − 割合²）回ぶん。値は管理画面の較正値から組む。"""
+    values = {"stop.signal_share": 0.5, "stop.signal_seconds": 42.0, "stop.barrier_share": 1.0,
+              "stop.barrier_seconds": 8.0, "turn.left_share": 1.0, "stop.slowed_speed_ratio": 0.5}
+    with patch.dict(TUNING_VALUES, values):
+        signal, barrier, left = (traffic.stop_event(*event) for event in (("stop", "signal"), ("stop", "barrier"),
+                                                                           ("turn", "left")))
+
+    assert (signal.expected_seconds, signal.kickoffs) == pytest.approx((21.0, 0.5))
+    assert (barrier.expected_seconds, barrier.kickoffs) == pytest.approx((8.0, 0.75))
+    assert left.kickoffs == pytest.approx(0.75)

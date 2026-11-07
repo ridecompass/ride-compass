@@ -1,6 +1,7 @@
 "use client";
 
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { OVERVIEW_MIN_ZOOM, overviewBounds } from "@/features/map/MapOverview/overview";
 import type { MapViewport } from "@/features/map/view/mapLook";
 import type { MsmGridForecast } from "@/types/weather";
 import { getMsmGrid, type Bbox } from "@/services/weatherApi";
@@ -16,10 +17,8 @@ const WEATHER_GRID_REFRESH_INTERVAL_MS = refreshIntervals.msm_seconds * SECOND_M
 // この未満のズームでは格子点を取らない。境は源泉の情報源の宣言が持つ。
 const MSM_GRID_MIN_ZOOM = mapDisplay.layerDataSources.find((source) => source.key === "msmGrid")!.minZoom!;
 
-const MSM_GRID_KEY = "msm-grid";
-
 interface UseWeatherGridResult {
-  /** 表示範囲の中のMSMの格子点の予報。まだ取れていない・取らない間はnull。取ってから時間が経つと先頭の時刻が過去に
+  /** 表示範囲（俯瞰図を出すズームでは俯瞰図の範囲も）の中のMSMの格子点の予報。まだ取れていない・取らない間はnull。取ってから時間が経つと先頭の時刻が過去に
    * なる（落とすのは時系列を作る側）。 */
   grid: MsmGridForecast | null;
   /** まだ一度も取り終えていない間の取得中。 */
@@ -32,8 +31,29 @@ interface UseWeatherGridResult {
 
 const DISABLED: UseWeatherGridResult = { grid: null, loading: false, error: null, hasFetched: false };
 
-function viewportBbox(viewport: MapViewport): Bbox {
-  return { minLon: viewport.west, minLat: viewport.south, maxLon: viewport.east, maxLat: viewport.north };
+// 取る範囲の端を丸める刻みは、範囲の幅のこの分の1以下で最大の2の冪（度）。丸めると幅は最大でこの分の2だけ広がり、
+// 小さくするほど取り直しは減るが、広がりが増えてbackendの広さの上限と間引きに近づく。
+const BBOX_SNAP_DIVISOR = 8;
+
+// 範囲の端を刻みへ外向きに丸める。刻みの中を動く間は取得の鍵が変わらず、取り直さない。
+function snappedOutward(min: number, max: number): [number, number] {
+  const unit = 2 ** Math.floor(Math.log2((max - min) / BBOX_SNAP_DIVISOR));
+  return [Math.floor(min / unit) * unit, Math.ceil(max / unit) * unit];
+}
+
+// 俯瞰図を出すズームでは、俯瞰図が映す範囲も覆うように取る（俯瞰図は本体の地図と同じ格子点を描く）。
+function gridBbox(viewport: MapViewport): Bbox {
+  let { west, south, east, north } = viewport;
+  if (viewport.zoom >= OVERVIEW_MIN_ZOOM) {
+    const overview = overviewBounds(viewport);
+    west = Math.min(west, overview.west);
+    south = Math.min(south, overview.south);
+    east = Math.max(east, overview.east);
+    north = Math.max(north, overview.north);
+  }
+  const [minLon, maxLon] = snappedOutward(west, east);
+  const [minLat, maxLat] = snappedOutward(south, north);
+  return { minLon, minLat, maxLon, maxLat };
 }
 
 /** 風の矢印と降水の塗りが共有する、表示範囲の中のMSMの格子点（1回の取得に風と降水が載る）。`enabled`の間、源泉が
@@ -41,10 +61,10 @@ function viewportBbox(viewport: MapViewport): Bbox {
 export function useWeatherGrid(enabled: boolean, mapViewport: MapViewport | null): UseWeatherGridResult {
   const debouncedMapViewport = useDebouncedValue(mapViewport, MAP_FETCH_DEBOUNCE_MS);
   const fetching = enabled && debouncedMapViewport !== null && debouncedMapViewport.zoom >= MSM_GRID_MIN_ZOOM;
-  const bbox = fetching ? viewportBbox(debouncedMapViewport) : null;
+  const bbox = fetching ? gridBbox(debouncedMapViewport) : null;
   const query = useQuery(
     {
-      queryKey: [MSM_GRID_KEY, bbox],
+      queryKey: ["msm-grid", bbox],
       queryFn: () => getMsmGrid(bbox!),
       enabled: fetching,
       refetchInterval: WEATHER_GRID_REFRESH_INTERVAL_MS,

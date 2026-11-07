@@ -1,7 +1,7 @@
 """取得の道具（`scripts/fetch_*.py`）の入口の骨格。
 
 `common.py`と分けて置くのは、プロファイルを読むとアダプタ全部が`import`でたどれるようになるため——`common.py`を読む
-派生の段のコードの指紋（`code_fingerprint.py: code_fingerprint`）に、段が読まないアダプタまで入ってしまう。
+派生の段にまで、段が読まないアダプタを読み込ませない。
 """
 
 import argparse

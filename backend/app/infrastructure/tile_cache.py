@@ -4,6 +4,8 @@
 保存の実体は`diskcache`で、容量上限を超えればライブラリが書き込みのついでに退避する。
 """
 
+import pickle
+import sqlite3
 from collections.abc import Callable
 
 import diskcache
@@ -15,6 +17,11 @@ from app.infrastructure.debug_log import log_throttled_warning
 CACHE_DIR = DATA_DIR / "tile_cache"
 
 _CATEGORY = "cache:tile-disk"
+
+#: ディスクの置き場（`diskcache`）の障害（ディスクフル・権限・SQLiteの障害）として受ける例外。実装の誤り（pickleにできない値等）は受けない。
+DISK_STORE_ERRORS = (OSError, sqlite3.Error)
+#: 読んだ項目が壊れているときに出る例外。
+DISK_READ_ERRORS = (*DISK_STORE_ERRORS, pickle.UnpicklingError, EOFError)
 
 _opened_cache: diskcache.Cache | None = None
 
@@ -37,7 +44,7 @@ def get(path: str) -> tuple[bytes, str] | None:
     """キャッシュ済みなら(内容, Content-Type)を返す。未キャッシュ・読めないときはNone（呼び出し元が取り直す）。"""
     try:
         return _opened().get(path)
-    except Exception as exc:  # ディスク・SQLiteの障害と壊れた項目は、いずれも未キャッシュ扱いにする
+    except DISK_READ_ERRORS as exc:  # ディスク・SQLiteの障害と壊れた項目は、いずれも未キャッシュ扱いにする
         log_throttled_warning(_CATEGORY, "tile cache read failed for path=%s, treating as cache miss error=%r", path, exc)
         return None
 
@@ -46,7 +53,7 @@ def set(path: str, content: bytes, content_type: str) -> None:
     """書き込みの失敗（ディスクフル等）は警告だけにする——キャッシュに書けないことが配信を止める理由にはならない。"""
     try:
         _opened().set(path, (content, content_type))
-    except Exception as exc:  # ディスクフル・権限・SQLiteの障害のいずれも吸収する
+    except DISK_STORE_ERRORS as exc:  # ディスクフル・権限・SQLiteの障害は、書かずに進む
         log_throttled_warning(_CATEGORY, "tile cache write failed for path=%s (disk full/permission?) error=%r", path, exc)
 
 
@@ -60,7 +67,7 @@ def delete_where(is_stale: Callable[[str], bool]) -> int:
         cache = _opened()
         stale = [key for key in cache.iterkeys() if is_stale(key)]
         return sum(1 for key in stale if cache.delete(key))
-    except Exception as exc:  # ディスク・SQLiteの障害は、消さずに残すことへ倒す
+    except DISK_STORE_ERRORS as exc:  # ディスク・SQLiteの障害は、消さずに残すことへ倒す
         log_throttled_warning(_CATEGORY, "tile cache prune failed, stale entries are kept error=%r", exc)
         return 0
 
@@ -70,7 +77,7 @@ def clear_all() -> None:
 
 
 def close() -> None:
-    """開いたキャッシュを閉じる（プロセスの終わりに`process_resources.py`が呼ぶ）。次の読み書きで開き直す。"""
+    """開いたキャッシュを閉じる。次の読み書きで開き直す。"""
     global _opened_cache
     if _opened_cache is not None:
         _opened_cache.close()

@@ -67,7 +67,7 @@
 上流の報告は[openapi-ts/openapi-typescript#2632](https://github.com/openapi-ts/openapi-typescript/issues/2632)で、
 直す変更（#2673・#2842）は2026-09-27時点で取り込まれていない。0.16.0は同じ変換を持たず、実行時の実装は
 0.17.0と同じ（差は長さ0の応答の判定だけ）。`package.json`の`^0.16.0`は0.x系のキャレットなので0.17へは上がらない。
-**上げるときは、上げた先でタプルを含む応答（例: `/api/admin/axis-definitions/preview-distribution`の`bins`）の
+**上げるときは、上げた先でタプルを含む応答（例: `GET /api/admin/cost-axes`の道のストレスの折れ点`points`）の
 推論した型がタプルのままかを`tsc --noEmit`で確かめる。**
 
 ## DependabotのPull Requestは、同じ版を取り込んだタスクが閉じる
@@ -90,7 +90,8 @@ Dependabotは、masterが同じ版になってもPull Requestを閉じないこ�
   （[W3C Screen Wake Lock](https://www.w3.org/TR/screen-wake-lock/)「Handling document loss of visibility」）。
 - **向きを読む許しは、利用者の操作の中でしか求められない**: `DeviceOrientationEvent.requestPermission()`は、許しがまだ決まって
   いない間は利用者の操作の中で呼ばないと断られる（[W3C Device Orientation](https://www.w3.org/TR/orientation-event/)
-  「requestPermission()」）。この口を持つのはiPhoneのSafariで、ほかのブラウザは許しを求めずに向きを届ける。
+  「requestPermission()」）。この口を持つのはiPhoneのSafariで、ほかのブラウザは許しを求めずに向きを届ける。Safariは、既に許した・断った
+  答えは操作の外でもそのまま返し、まだ聞いていないときだけ`NotAllowedError`で断る（[WebKitの`DeviceOrientationEvent::requestPermission`](https://github.com/WebKit/WebKit/blob/main/Source/WebCore/dom/DeviceOrientationEvent.cpp)）。
 - **裏に回したタブは捨てられることがある**: スマホのブラウザはメモリが足りないと、裏のタブを捨て、戻ったときに読み込み直す
   （Chromeは[Page Lifecycle API](https://developer.chrome.com/docs/web-platform/page-lifecycle-api)の`discarded`）。画面の中の
   状態だけに持った値は消えるので、走行中のルートは端末へ一時保存する。
@@ -110,7 +111,7 @@ Windowsでは`uvicorn --reload`がリローダー親プロセスとワーカー�
 ## 本番の宛先（frontendのオリジンからbackendへ届くのは一部だけ）
 
 **本番の宛先は、リポジトリの根の`production-origins.json`だけが持つ。** ワークフロー（像のビルド・デプロイ・デプロイのあとの
-確かめ）と道具（例: `axis_apply.py`）はそこから読む。値を書くしかない所（下の表・担当の設定の説明の文等）は、
+確かめ）と道具（例: `prod_route_check.py`）はそこから読む。値を書くしかない所（下の表・担当の設定の説明の文等）は、
 `backend/tests/structure/test_single_owner_values.py`が持ち主と照らし、違えば全部の Pull Request の CI
 （`ci.yml`の`doc-reading-tests`）が落ちる。宛先が変わったら、このファイルと照らしで落ちた所を同じ Pull Request で直す。マージすると、
 `ci.yml: changes`がこのファイルの変更をbackendとfrontendの両方の変更に数えるので、frontendの像が新しい宛先で作られて出て、
@@ -127,7 +128,7 @@ backendのデプロイがCORSの許可へ新しいfrontendの宛先を足す。
 
 **frontendのオリジンからbackendへ届くのは、`frontend/next.config.ts`のrewritesにあるタイル類と、管理画面の
 転送（`/admin/api/…`→backendの`/api/admin/…`、Basic認証をサーバー側で付ける）だけ。** それ以外のAPI
-（例: `/api/axis-catalog`・`/api/region/way-materials/…`・`/health`）をfrontendのオリジンへ投げると、
+（例: `/api/cost-axes`・`/api/region/lens/…`・`/health`）をfrontendのオリジンへ投げると、
 Next.jsのHTMLの404が返る（backendの404はJSON）。本番のAPIを手で叩くとき・道具から引くときは、backendの
 宛先へ直接投げる。frontend自身の口（`/api/version`）はfrontendのオリジンにだけある。開発機で画面を本番のデータで開くときだけ、APIも`/prod/…`で本番のbackendへ転送する（[setup.md](setup.md)「開発機の画面を本番のデータで開く」）。
 
@@ -163,13 +164,18 @@ Next.jsのHTMLの404が返る（backendの404はJSON）。本番のAPIを手で�
 - **入れ替えたコンテナが、今ビルドしたコミットとして`/health`に応答するまで待つ。** `docker run -d`は起動の成否を
   見ないため、起動が止まったまま作り直しや再起動を繰り返すコンテナでもUpのまま成功扱いになる。上限までに応答しなければ、
   コンテナの状態と再起動回数・ログの末尾を出してジョブを失敗させる。応答までの秒数は毎回ジョブのログに出る。上限は60秒で、
-  本番の実測（コンテナを入れ替えてから応答まで4秒）の十数倍——起動時に走るのはDBからの軸定義と較正値の読み込みだけで、
+  本番の実測（コンテナを入れ替えてから応答まで4秒）の十数倍——起動時に走るのはDBからの道の区分・費用の軸の定義と較正値の読み込みだけで、
   上限に届くのは起動が止まったときに限る。起動が遅くなる変更を入れたら、ログの秒数を見て上限を決め直す。
 - **入れ替えたあと、本番のスキーマと出したコードのORMの宣言の差を測る**（同じイメージで`scripts/schema_gap.py`）。
-  差が1件でもあればジョブを失敗させ、差の行をログに出す。積み上げ式のmigrationは持たず、差は人が本番で埋める。
+  新しいコードの読み書きを壊しうる差（本番に足りない表・列・制約・索引、型・NULL許容・既定値の値の違い、本番だけが持つ制約・一意の索引・
+  既定値の無いNOT NULLの列）が1件でもあればジョブを失敗させ、差の行をログに出す。本番が宣言より多く持つだけの差（宣言に無い表、NULLを許すか
+  既定値のある宣言に無い列、宣言に無い既定値、一意でない索引）は、ログに出すだけで落とさない。積み上げ式のmigrationは持たず、差は人が本番で埋める。
   埋めるのは、新しいコードが書く・読む表や列なら出す前（.claude/rules/deployment-sync.md「コミットと同時に揃えるもの」）、
   古いコードが読む列を消す・新しいコードが宣言しただけで読まない表を作るなら出した後で、
   **測るのは入れ替えの後、出すのは止めない**——前で止めると、出した後に埋める差がデプロイを止めて埋められなくなる。
+  出した後に消す列・既定値は、消すまで本番が多く持つ差なので落とさない（落とすと、消すまでの間の関係ないマージのデプロイも赤になり続ける）。
+  消すのは、その差を持つ本番の作業の対話作業の issue の約束で、デプロイの約束ではない。宣言しただけの表は、作るまで本番に足りない差として
+  落ちる（読むかどうかを道具が見分けられないため）。
   赤のまま次のデプロイも出る（判定は本番のコミットからの差分で、前の実行の成否を見ない）ので、差を埋めるまで毎回赤になる。
   下の「本番でルートを作る確かめ」とは別の段にし、互いの失敗で飛ばさない（差が続く間も確かめは回る）。
 - **探索のJIT（numba）のコンパイル結果はイメージの組み立てで焼く**（`backend/Dockerfile`の`compile_search_kernels`）。
@@ -183,11 +189,12 @@ Next.jsのHTMLの404が返る（backendの404はJSON）。本番のAPIを手で�
 - **CIを待つぶん、反映はpushからCIの所要だけ遅れる。** 急ぎの修正でも待つ。待たずに出す手段は
   `deploy-backend.yml`の手動起動（`workflow_dispatch`）で、選んだrefの先端を判定なしで出す。
 
-振り分けの一覧（`deploy_gate.py: DEPLOY_PATHS`と`deploy_gate.py: NOT_DEPLOYED`。gitのpathspecとして
-`git diff --name-only`に当てさせる）は`backend/**`から、イメージに入らないもの（テスト・lint設定等）と、イメージには入るが本番
-プロセスが読まないもの（`export_openapi.py`とそれだけが読む表示値の宣言）を外している。`backend/ops/`（VMのホストで動く
-systemdのユニットとシェル）はイメージに入らないが外さない——デプロイがVMの作業コピーをそのコミットへ揃えて
-`systemctl daemon-reload`を打つことでだけ届く。
+本番へ届くファイル（`deploy_gate.py: deploy_paths`。gitのpathspecとして`git diff --name-only`に当てさせる）は、
+イメージに入るもの——`backend/Dockerfile`と、出したいコミットのそのDockerfileがCOPYするもの——と、イメージの外から届くもの
+（`deploy_gate.py: HOST_PATHS`）である。イメージに入らないもの（テスト・lint設定・ベンチマーク等）は、COPYしないことで外れ、
+別の一覧を持たない。`backend/ops/`（VMのホストで動くsystemdのユニットとシェル）はイメージに入らないが`HOST_PATHS`に入る
+——デプロイがVMの作業コピーをそのコミットへ揃えて`systemctl daemon-reload`を打つことでだけ届く。イメージには入るが本番
+プロセスが読まないもの（`export_openapi.py`とそれだけが読む表示値の宣言）は`deploy_gate.py: NOT_DEPLOYED`が外す。
 表示値の変更は生成物（`frontend/src/types/generated/`）を経由してfrontendのデプロイで
 画面へ届くため、backendのコンテナを入れ替える理由にならない。**外したモジュールを本番側が
 importすると、その変更だけが本番へ届かなくなる**（エラーにならず古い値で動き続ける）。
@@ -223,25 +230,49 @@ backendが先に配信すると、そのプロパティの有無を見ている�
 
 ## 本番でルートを作る確かめ
 
-**本番のbackendで、利用者と同じ操作（ルートを作ってレンズを替える）が壊れていないかを外から見る。** CIの層は
-どれもこの組を本物の応答で通さない（e2eは応答がモックで、`frontend/e2e-live/`はCIに載らず、担当が変更のときに手で回すだけ）。
-`backend/scripts/prod_route_check.py`が、軸カタログを1回読み、画面の既定の条件・backendの既定の重みで生成を1回頼み、
-終わるまで結果を聞く。候補が0件か、カタログのどれかの軸について、候補1のどの区間もその軸のレンズが塗る値
-（軸カタログの`map_paint.value`が指す欄）を持たなければ失敗にする。区間ごとの値の有無は実データで変わるので、
-全区間が欠けたときだけ落とす。本番には書き込まない。
+**本番のbackendと本番の実データで、利用者の主な操作（ルートを作る・候補を乗り換える）が通るかを外から見る。** CIの層は
+どれも本番の実データを通さない（e2eは応答がモックで、`frontend/e2e-live/`はCIに載らず、担当が変更のときに手で回すだけ）。
+`backend/scripts/prod_route_check.py`が、画面の既定の条件で生成を1回頼み、終わるまで結果を聞く。候補が0件なら失敗にする。
+続けて、作った候補どうしを共に通る地点で乗り換えた経路（`prod_route_check.py: spliced_edge_ids`）の評価を1回頼み、評価が
+返らない・乗り換えを試せる候補の組が無い・ジョブが失敗したときも失敗にする（乗り換えの評価は生成と別の範囲の作り方を通るので、
+生成が通っても乗り換えだけが壊れうる）。応答の中身（区間の値・代償の内訳）はコードだけで決まるのでCIのテストが見て、ここでは
+見ない。軸の定義の誤りも見ない（定義は管理APIで出し入れし、入れるときに型が検める）。本番には書き込まない。
 
 - **回すのは2か所。** `deploy-backend.yml`が出したあと（出さなかった実行・入れ替えの段で落ちた実行では回さない。
   スキーマの差の段の成否には左右されない）と、
-  `prod-route-check.yml`が毎日1回。本番の値はデプロイを伴わずにも変わる（派生データの作り直し・取込・軸スタジオでの
-  軸の変更・外部の観測の取込の止まり）ので、デプロイのあとだけでは次のデプロイまで気づけない。どちらも落ちたら
+  `prod-route-check.yml`が毎日1回。本番の値はデプロイを伴わずにも変わる（派生データの作り直し・取込・外部の観測の取込の
+  止まり）ので、デプロイのあとだけでは次のデプロイまで気づけない。どちらも落ちたら
   GitHub Actionsの失敗の知らせが届き、出したものは戻さない。決まった時刻の起動（`schedule`）は、GitHubが混むと遅れ、
   ひどく混むと取りこぼされ、publicのリポジトリに60日動きが無いと止められる（公式の「Events that trigger workflows」の
   `schedule`）。
-- **上限**: 生成を待つのは`backend/scripts/prod_route_check.py: GENERATION_LIMIT_SECONDS`（120）秒までで、超えたら失敗にする。段には`timeout-minutes`の3分を置く。
+- **上限**: 生成と乗り換えの評価を合わせて待つのは`backend/scripts/prod_route_check.py: GENERATION_LIMIT_SECONDS`（120）秒までで、超えたら失敗にする。段には`timeout-minutes`の3分を置く。
   2026-10-10に本番で同じ条件を測った値は、デプロイで再起動した直後の1回目が生成36.6秒（結果を聞いた回数21）、2回目以降が
-  約4秒で、上限は再起動の直後の約3倍。デプロイのあとの確かめはいつも再起動の直後の形になる。
+  約4秒で、上限は再起動の直後の生成の約3倍（乗り換えの評価の所要は未計測）。デプロイのあとの確かめはいつも再起動の直後の形になる。
 - **利用者への影響**: 本番は生成を同時に決まった本数までしか受けないので、確かめの生成が走っている間（約4秒、再起動の直後は
-  約40秒）に利用者の生成が重なると、上限を超えた分が混み合いとして断られる。
+  約40秒。乗り換えの評価の所要は未計測）に利用者の生成が重なると、上限を超えた分が混み合いとして断られる。
+- **受け付ける全長の上限（`domain/route_request.py: MAX_ROUTE_DISTANCE_KM`）の距離は試さない。** 上限の距離の探索範囲は、
+  1本で`services/graph_service.py: SearchMemory`の予算の大半を取り、走っている間は利用者の生成をほぼすべて混み合いとして
+  断らせる。上限の距離は混んでいれば作れないことを画面が断っている（`domain/route_request.py: BUSY_SAFE_DISTANCE_KM`）ので、
+  確かめが通らなくても利用者への約束が破れたとは読めず、確かめの持ち時間の中で上限の距離を作れる所要も未計測である。
+
+## 本番の点のタイルの確かめ
+
+**本番のbackendで、点の密な所の点のタイルが上限の中で空でなく返るかを外から見る。** タイルを作る問い合わせがDBの上限
+（`infrastructure/database.py`の`command_timeout`）を超えると、配信は空のタイルへ倒れる。空のタイルは点の無い所と同じ見た目で、
+画面を見ても不具合と気づきにくい。点のタイルのテストは小さな見本の点で束ね方を見ていて、テストのDBに本番の規模の点は無いので、
+作る時間はこの確かめでしか見ない。`backend/scripts/prod_point_tile_check.py`が、点の層（`infrastructure/point_tile_layers.py: POINT_TILE_LAYERS`）
+ごと・配る倍率ごとに、点の密な所（`prod_point_tile_check.py: DENSE_POINT`）を含む1枚を公開の口で取り、200で返らない・空のタイル
+（`infrastructure/vector_tile.py: encode_empty_tile`の形）・`prod_point_tile_check.py: TILE_LIMIT_SECONDS`（10）秒を超えたのどれかなら、
+層・倍率・時間・大きさを出して失敗にする。本番には書き込まない。
+
+- **回すのは2か所。** `deploy-backend.yml`が出したあと（上の「本番でルートを作る確かめ」と別の段で、互いの失敗で飛ばさない）と、
+  `prod-route-check.yml`が毎日1回（ジョブ`point-tiles`）。点の数は取込・派生の作り直しでデプロイを伴わずに増える。
+- **配信のディスクのキャッシュに当たったタイルは、作る時間を測らない。** 作れたタイルは世代ごとにディスクへ残り、
+  範囲の外の空のタイルは残さない（`infrastructure/region_tile_cache.py: serve_region_tile`）。束ねるSQLを変えると世代が
+  変わるので、デプロイのあとの確かめは作り直しを測る。DBの障害は503で返る。
+- **上限**: 2026-10-28に本番のDBで新宿駅の真ん中を含むタイルを作った所要は、点の層と倍率のどれも1.4秒以内（ridecompass/ride-compass#1395の
+  直したSQL。直す前の補給・停止要因のz12は33.8秒で、配信は20.6秒で17バイトの空のタイルを返した）。同じ日に直したSQLを出したあと、
+  公開の口から取った所要は0.5〜3.1秒（一番遅いのは約1.3MBの立ち寄り先のz12）。上限は作り直しの所要の約7倍で、DBの上限より短くし、503になる手前の遅さも拾う。
 
 ## CIの実行枠（リポジトリがpublicである間の前提）
 
@@ -310,6 +341,7 @@ publicリポジトリで標準のGitHubホストランナーを使う実行を�
   レーンの数より多くは動かず、多い分は取り消されずに順に待つ。持ち主の数×レーンの数が組織の上限を超えた分は、ふつうの順番待ちになる。
   - 鍵は、Pull Request なら元のブランチ（タスクの作業ブランチ `orch/tasks-<番号>`）、push・定時・手の起こしなら ref の名前。
     担当（`claude-task.yml`）と変異テストの全部の測り（`mutation.yml`）は、起こすときの入力の issue から作業ブランチの名を組む。
+    変異テストの全部の測りの定時の起こし（`mutation.yml`・`mutation-frontend.yml`）は入力の issue を持たないので、どの issue にも属さない専用の鍵 `mutation` で動く。
     本番へ出す・公開するジョブは、どの ref から起こしても行き先が1つなので、鍵を master に決めてある。
   - レーンは決め打ちで、ジョブごと（matrix なら行ごと）にどのレーンかを書く。式に余りの演算が無く、空いたレーンを取り合う形は
     書けない。担当は持ち時間いっぱいまで動くので、レーン0を担当だけに与え、ほかのジョブはレーン1以降に置く（同じレーンに置くと、
@@ -335,7 +367,7 @@ CIだけに置いているため、CIの分数が尽きると検査そのもの�
 | 入れた場所 | 名前 | 中身（作った人・Resource owner・届く範囲・権限・期限） | 使う所 |
 |---|---|---|---|
 | ridecompass/ride-compassのActionsの秘密の値 | `CODE_TOKEN` | hidakagitが作ったfine-grained。Resource ownerはridecompassで、届くのはridecompass/ride-compassだけ。Actions・Contents・Issues・Pull requests・Variables・Workflowsは読み書き（Workflowsは2026-10-09に足した。担当が`.github/workflows/`を自分でpushする）、Commit statusesは読むだけ。期限は未記録 | `claude-task.yml`（checkout・Claudeの連携・ghの既定） |
-| 同 | `FLOW_BOT_TOKEN` | hidakagit-botが作ったfine-grained。届くのはridecompass/ride-compass-tasksだけ。Contentsは読み書き（担当の手番の記録をリリースへ置く）。期限2027-09-29 | 担当と流れの道具が置き場へ書く。開発機ではユーザー環境変数の同じ名前 |
+| 同 | `FLOW_BOT_TOKEN` | hidakagit-botが作ったfine-grained。届くのはridecompass/ride-compass-tasksだけ。Contentsは読み書き（担当の手番の記録をリリースへ置く）。期限2027-09-29 | 担当と流れの道具が置き場へ書く。変異テストの全部の測りの定時の起こしが、重なりの候補を消すタスクを置き場へ起こす。開発機ではユーザー環境変数の同じ名前 |
 | 同 | `CLAUDE_CODE_OAUTH_TOKEN` | Claudeの契約のトークン（GitHubのトークンではない） | `claude-task.yml` |
 | 同 | `CLOUDFLARE_API_TOKEN`・`CLOUDFLARE_ACCOUNT_ID` | Cloudflare | ゲートと回答フォームの公開（`ci.yml`の`deploy-gate`） |
 | 同 | `MAPILLARY_TOKEN` | hidakagitがMapillaryの開発者の画面で登録したアプリのClient Token（読むだけ。GitHubのトークンではない）。期限は未記録 | `claude-task.yml`（担当の環境変数。Mapillaryの街灯の点の付き方の測定） |
@@ -403,6 +435,17 @@ Execution Time: 1605.6 ms      （jit=off なら 678.6 ms）
 
 `ALTER DATABASE`の設定は**新規接続から効く**。稼働中のコンテナの既存接続には次の
 デプロイまで反映されない。
+
+## 本番VMの自動更新の時刻
+
+**自動更新（`unattended-upgrade`）は毎日 04:30（日本時間）に、ずらさずに回す。** Ubuntu の既定（`apt-daily-upgrade.timer` の
+06:00 UTC から最大60分のずらし）のままだと、ライブラリを入れたあとの起こし直し（Ubuntu 24.04 の `needrestart` は既定で自動）が
+PostgreSQL を毎日決まらない時刻に十数秒止め、走っている派生の作り直しと利用者の要求を切る。利用の少ない時刻で、毎日 03:17 からの
+DB のバックアップの書き出しの後に置く。派生の作り直しは、この時刻を避けて流す。
+
+VM の上書きは `/etc/systemd/system/apt-daily-upgrade.timer.d/override.conf`（`OnCalendar=*-*-* 04:30:00 Asia/Tokyo`・
+`RandomizedDelaySec=0`）で、デプロイは届けない（VM で手で置いた）。消して `systemctl daemon-reload` を打てば Ubuntu の既定へ戻る。
+VM が止まっていて時刻を逃した回は、`Persistent=true`（既定）で起動のときに回る。
 
 ## 本番Redisの設定
 

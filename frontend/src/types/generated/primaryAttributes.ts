@@ -5,113 +5,12 @@ export const primaryAttributes = [
     "label": "道路の種類",
     "geometry": "line",
     "point_facts": [],
-    "tile_kind": "road_surface",
-    "point_thinning": null,
+    "tile_kind": null,
     "point_name_property": null,
-    "display_axes": [
-      {
-        "key": "highway",
-        "label": "",
-        "property": "highway",
-        "categories": [
-          {
-            "key": "motorway",
-            "label": "高速道路",
-            "values": [
-              "motorway",
-              "motorway_link"
-            ],
-            "description": "自動車専用の道。高速道路・有料道路と、自動車専用のバイパス[OSM の highway=motorway とその連絡路]。",
-            "color": "#74154b"
-          },
-          {
-            "key": "trunk",
-            "label": "国道",
-            "values": [
-              "trunk",
-              "trunk_link"
-            ],
-            "description": "国道の標識が立つ一般国道（自動車専用の区間を除く）[OSM の highway=trunk とその連絡路]。",
-            "color": "#712a68"
-          },
-          {
-            "key": "primary",
-            "label": "主要地方道",
-            "values": [
-              "primary",
-              "primary_link"
-            ],
-            "description": "番号が2桁以下の県道・市道など、地方の主な道[OSM の highway=primary とその連絡路]。",
-            "color": "#653d83"
-          },
-          {
-            "key": "secondary",
-            "label": "一般県道・2車線の道",
-            "values": [
-              "secondary",
-              "secondary_link",
-              "tertiary",
-              "tertiary_link"
-            ],
-            "description": "主要地方道でない県道と、センターラインのある市町村道・農道など2車線以上の道[OSM の highway=secondary・tertiary とその連絡路]。",
-            "color": "#4d5099"
-          },
-          {
-            "key": "unclassified",
-            "label": "1車線の一般道",
-            "values": [
-              "unclassified"
-            ],
-            "description": "住宅街の外にある、2車線に満たない一般の道。舗装した林道も入る[OSM の highway=unclassified]。",
-            "color": "#1c62aa"
-          },
-          {
-            "key": "residential",
-            "label": "住宅街・施設の中の道",
-            "values": [
-              "residential",
-              "living_street",
-              "service",
-              "road"
-            ],
-            "description": "住宅街の中の道・駐車場や施設の中の通路など、主に近くへ行くための道[OSM の highway=residential・living_street・service・road]。",
-            "color": "#0770a4"
-          },
-          {
-            "key": "cycleway",
-            "label": "自転車専用道",
-            "values": [
-              "cycleway"
-            ],
-            "description": "自転車専用の標識が立つ道[OSM の highway=cycleway]。",
-            "color": "#0f7ca0"
-          },
-          {
-            "key": "footway",
-            "label": "歩道・小道",
-            "values": [
-              "footway",
-              "pedestrian",
-              "steps",
-              "path",
-              "bridleway"
-            ],
-            "description": "歩道・歩行者専用の道・階段と、山や野原の小道など、車が通らない道[OSM の highway=footway・pedestrian・steps・path・bridleway]。",
-            "color": "#10899f"
-          },
-          {
-            "key": "track",
-            "label": "農道・林道",
-            "values": [
-              "track"
-            ],
-            "description": "田畑や山林へ入るための道。舗装も未舗装もある[OSM の highway=track]。",
-            "color": "#0d959d"
-          }
-        ],
-        "missing_semantics": "unknown"
-      }
-    ]
+    "point_min_zoom": null,
+    "point_priority": 0,
+    "point_priority_axes": [],
+    "display_axes": []
   },
   {
     "attr_id": "lanes",
@@ -119,8 +18,10 @@ export const primaryAttributes = [
     "geometry": "line",
     "point_facts": [],
     "tile_kind": null,
-    "point_thinning": null,
     "point_name_property": null,
+    "point_min_zoom": null,
+    "point_priority": 0,
+    "point_priority_axes": [],
     "display_axes": []
   },
   {
@@ -129,8 +30,10 @@ export const primaryAttributes = [
     "geometry": "line",
     "point_facts": [],
     "tile_kind": null,
-    "point_thinning": null,
     "point_name_property": null,
+    "point_min_zoom": null,
+    "point_priority": 0,
+    "point_priority_axes": [],
     "display_axes": []
   },
   {
@@ -138,183 +41,36 @@ export const primaryAttributes = [
     "label": "自転車インフラ",
     "geometry": "line",
     "point_facts": [],
-    "tile_kind": "road_surface",
-    "point_thinning": null,
+    "tile_kind": null,
     "point_name_property": null,
-    "display_axes": [
-      {
-        "key": "cycleway",
-        "label": "",
-        "property": "cycleway_class",
-        "categories": [
-          {
-            "key": "separated",
-            "label": "自転車道",
-            "values": [
-              "separated"
-            ],
-            "description": "車道から分けられた、自転車の通る道[OSM の highway=cycleway・cycleway=track]。",
-            "color": "#807e4d"
-          },
-          {
-            "key": "lane",
-            "label": "自転車レーン",
-            "values": [
-              "lane"
-            ],
-            "description": "車道の上に線で区切った、自転車の通る帯[OSM の cycleway=lane]。",
-            "color": "#25879d"
-          },
-          {
-            "key": "shared",
-            "label": "共用の道",
-            "values": [
-              "shared"
-            ],
-            "description": "バス・車と共用の帯か、自転車も通ってよい歩道・遊歩道[OSM の cycleway=share_busway・shared_lane、highway=footway・path かつ bicycle=yes・designated]。",
-            "color": "#a36b89"
-          }
-        ],
-        "missing_semantics": "definite"
-      }
-    ]
+    "point_min_zoom": null,
+    "point_priority": 0,
+    "point_priority_axes": [],
+    "display_axes": []
   },
   {
     "attr_id": "surface",
     "label": "路面の種類",
     "geometry": "line",
     "point_facts": [],
-    "tile_kind": "road_surface",
-    "point_thinning": null,
+    "tile_kind": null,
     "point_name_property": null,
-    "display_axes": [
-      {
-        "key": "surface",
-        "label": "",
-        "property": "surface_class",
-        "categories": [
-          {
-            "key": "paved",
-            "label": "舗装",
-            "values": [
-              "paved"
-            ],
-            "description": "路面がアスファルト・舗装[種別不明]・チップシール舗装・コンクリート・コンクリート版・コンクリート帯[轍部のみ舗装]の道[OSM の surface タグ]。",
-            "color": "#48886f"
-          },
-          {
-            "key": "paving_stones",
-            "label": "敷石・レンガ",
-            "values": [
-              "paving_stones"
-            ],
-            "description": "路面が石畳[切石]・レンガ舗装の道[OSM の surface タグ]。",
-            "color": "#25879d"
-          },
-          {
-            "key": "compacted",
-            "label": "締め固め・細砂利",
-            "values": [
-              "compacted"
-            ],
-            "description": "路面が締固め砂利・細砂利の道[OSM の surface タグ]。",
-            "color": "#6d7aaa"
-          },
-          {
-            "key": "gravel",
-            "label": "砂利・未舗装",
-            "values": [
-              "gravel"
-            ],
-            "description": "路面が砂利・小石敷き・岩盤・未舗装[種別不明]の道[OSM の surface タグ]。",
-            "color": "#a36b89"
-          },
-          {
-            "key": "soil",
-            "label": "土・草・泥・砂",
-            "values": [
-              "soil"
-            ],
-            "description": "路面が土・地面[土・砂利混合]・土[地表面]・泥・砂・芝・草地・ウッドチップの道[OSM の surface タグ]。",
-            "color": "#a66e5b"
-          },
-          {
-            "key": "cobblestone",
-            "label": "石畳",
-            "values": [
-              "cobblestone"
-            ],
-            "description": "路面が石畳[玉石]・玉石舗装・玉石舗装[未加工]の道[OSM の surface タグ]。",
-            "color": "#807e4d"
-          }
-        ],
-        "missing_semantics": "unknown"
-      }
-    ]
+    "point_min_zoom": null,
+    "point_priority": 0,
+    "point_priority_axes": [],
+    "display_axes": []
   },
   {
     "attr_id": "tracktype",
     "label": "農道・林道の等級",
     "geometry": "line",
     "point_facts": [],
-    "tile_kind": "road_surface",
-    "point_thinning": null,
+    "tile_kind": null,
     "point_name_property": null,
-    "display_axes": [
-      {
-        "key": "tracktype",
-        "label": "",
-        "property": "tracktype",
-        "categories": [
-          {
-            "key": "grade1",
-            "label": "1 舗装・固く締まる",
-            "values": [
-              "grade1"
-            ],
-            "description": "固い路面の農道・林道。多くは舗装されている[OSM の tracktype=grade1]。",
-            "color": "#74154b"
-          },
-          {
-            "key": "grade2",
-            "label": "2 砂利[未舗装]",
-            "values": [
-              "grade2"
-            ],
-            "description": "おおむね固い未舗装の農道・林道。砂や土の混じった砂利道が多い[OSM の tracktype=grade2]。",
-            "color": "#653d83"
-          },
-          {
-            "key": "grade3",
-            "label": "3 砂利と土が半々",
-            "values": [
-              "grade3"
-            ],
-            "description": "固い部分と柔らかい部分が半々の未舗装の農道・林道[OSM の tracktype=grade3]。",
-            "color": "#1c62aa"
-          },
-          {
-            "key": "grade4",
-            "label": "4 土・草が主",
-            "values": [
-              "grade4"
-            ],
-            "description": "土・砂・草が主で、固い部分が少し混じる未舗装の農道・林道[OSM の tracktype=grade4]。",
-            "color": "#0f7ca0"
-          },
-          {
-            "key": "grade5",
-            "label": "5 土・草・砂",
-            "values": [
-              "grade5"
-            ],
-            "description": "固い材料が無く、締まっていない土・砂・草の農道・林道[OSM の tracktype=grade5]。",
-            "color": "#0d959d"
-          }
-        ],
-        "missing_semantics": "unknown"
-      }
-    ]
+    "point_min_zoom": null,
+    "point_priority": 0,
+    "point_priority_axes": [],
+    "display_axes": []
   },
   {
     "attr_id": "motor_vehicle_access",
@@ -322,8 +78,10 @@ export const primaryAttributes = [
     "geometry": "line",
     "point_facts": [],
     "tile_kind": null,
-    "point_thinning": null,
     "point_name_property": null,
+    "point_min_zoom": null,
+    "point_priority": 0,
+    "point_priority_axes": [],
     "display_axes": []
   },
   {
@@ -332,8 +90,10 @@ export const primaryAttributes = [
     "geometry": "line",
     "point_facts": [],
     "tile_kind": null,
-    "point_thinning": null,
     "point_name_property": null,
+    "point_min_zoom": null,
+    "point_priority": 0,
+    "point_priority_axes": [],
     "display_axes": []
   },
   {
@@ -341,56 +101,24 @@ export const primaryAttributes = [
     "label": "トンネル",
     "geometry": "line",
     "point_facts": [],
-    "tile_kind": "road_surface",
-    "point_thinning": null,
+    "tile_kind": null,
     "point_name_property": null,
-    "display_axes": [
-      {
-        "key": "tunnel",
-        "label": "",
-        "property": "tunnel",
-        "categories": [
-          {
-            "key": "tunnel",
-            "label": "トンネル",
-            "values": [
-              true
-            ],
-            "description": "トンネルの中を通る区間[OSM の tunnel=yes・avalanche_protector]。",
-            "color": "#8e729e"
-          }
-        ],
-        "missing_semantics": "definite"
-      }
-    ]
+    "point_min_zoom": null,
+    "point_priority": 0,
+    "point_priority_axes": [],
+    "display_axes": []
   },
   {
     "attr_id": "oneway",
     "label": "一方通行",
     "geometry": "line",
     "point_facts": [],
-    "tile_kind": "road_surface",
-    "point_thinning": null,
+    "tile_kind": null,
     "point_name_property": null,
-    "display_axes": [
-      {
-        "key": "oneway",
-        "label": "",
-        "property": "oneway",
-        "categories": [
-          {
-            "key": "oneway",
-            "label": "一方通行",
-            "values": [
-              true
-            ],
-            "description": "一方向にしか進めない道。環状交差点も含み、自転車だけ両方向に通れる道と上下線が分かれているだけの道[逆向きの一方通行が15m以内、同じ路線番号・名前なら40m以内を並走する道]は含まない[OSM の oneway:bicycle・oneway・junction タグ]。",
-            "color": "#a66e5b"
-          }
-        ],
-        "missing_semantics": "definite"
-      }
-    ]
+    "point_min_zoom": null,
+    "point_priority": 0,
+    "point_priority_axes": [],
+    "display_axes": []
   },
   {
     "attr_id": "elevation",
@@ -398,8 +126,10 @@ export const primaryAttributes = [
     "geometry": "area",
     "point_facts": [],
     "tile_kind": null,
-    "point_thinning": null,
     "point_name_property": null,
+    "point_min_zoom": null,
+    "point_priority": 0,
+    "point_priority_axes": [],
     "display_axes": []
   },
   {
@@ -408,8 +138,10 @@ export const primaryAttributes = [
     "geometry": "point",
     "point_facts": [],
     "tile_kind": "poi",
-    "point_thinning": null,
     "point_name_property": null,
+    "point_min_zoom": 15,
+    "point_priority": 3,
+    "point_priority_axes": [],
     "display_axes": [
       {
         "key": "kind",
@@ -423,6 +155,7 @@ export const primaryAttributes = [
               "traffic_signals"
             ],
             "description": "信号機。信号付きの横断歩道もここに入る[OSM の highway=traffic_signals・crossing]。",
+            "glyph": "signal",
             "color": "#885270"
           },
           {
@@ -432,6 +165,7 @@ export const primaryAttributes = [
               "crossing"
             ],
             "description": "信号の無い横断歩道[OSM の highway=crossing]。",
+            "glyph": "crosswalk",
             "color": "#8d5449"
           },
           {
@@ -441,6 +175,7 @@ export const primaryAttributes = [
               "stop"
             ],
             "description": "一時停止の標識がある所[OSM の highway=stop]。",
+            "glyph": "stop_sign",
             "color": "#736134"
           },
           {
@@ -450,6 +185,7 @@ export const primaryAttributes = [
               "give_way"
             ],
             "description": "相手に道を譲る（徐行する）標識がある所[OSM の highway=give_way]。",
+            "glyph": "yield",
             "color": "#496c44"
           },
           {
@@ -460,6 +196,7 @@ export const primaryAttributes = [
               "railway_crossing"
             ],
             "description": "線路（路面電車を含む）を渡る所。車道の踏切も歩道・自転車道の踏切も入る[OSM の railway タグ]。",
+            "glyph": "railway",
             "color": "#016f6b"
           },
           {
@@ -469,6 +206,7 @@ export const primaryAttributes = [
               "barrier"
             ],
             "description": "車止めの柱・ゲート・柵など、道をふさいで止まるか押して通る所[OSM の barrier タグ]。",
+            "glyph": "barrier",
             "color": "#0c6b8b"
           },
           {
@@ -478,6 +216,7 @@ export const primaryAttributes = [
               "traffic_calming"
             ],
             "description": "車の速度を落とさせる段差（ハンプ）や道幅の絞り込み[OSM の traffic_calming タグ]。",
+            "glyph": "hump",
             "color": "#5e5f8d"
           }
         ],
@@ -496,8 +235,13 @@ export const primaryAttributes = [
       }
     ],
     "tile_kind": "accident",
-    "point_thinning": null,
     "point_name_property": null,
+    "point_min_zoom": 15,
+    "point_priority": 0,
+    "point_priority_axes": [
+      "severity",
+      "party"
+    ],
     "display_axes": [
       {
         "key": "party",
@@ -511,6 +255,7 @@ export const primaryAttributes = [
               true
             ],
             "description": "当事者に自転車が含まれる事故[警察庁の交通事故統計の当事者種別]。",
+            "glyph": "bicycle_crash",
             "color": "#5791ba"
           },
           {
@@ -520,6 +265,7 @@ export const primaryAttributes = [
               false
             ],
             "description": "当事者に自転車が含まれない事故（車どうし・車と歩行者など）。",
+            "glyph": "crash",
             "color": "#a7865c"
           }
         ],
@@ -559,8 +305,10 @@ export const primaryAttributes = [
     "geometry": "point",
     "point_facts": [],
     "tile_kind": null,
-    "point_thinning": null,
     "point_name_property": null,
+    "point_min_zoom": null,
+    "point_priority": 0,
+    "point_priority_axes": [],
     "display_axes": []
   },
   {
@@ -569,8 +317,10 @@ export const primaryAttributes = [
     "geometry": "area",
     "point_facts": [],
     "tile_kind": null,
-    "point_thinning": null,
     "point_name_property": null,
+    "point_min_zoom": null,
+    "point_priority": 0,
+    "point_priority_axes": [],
     "display_axes": []
   },
   {
@@ -579,8 +329,10 @@ export const primaryAttributes = [
     "geometry": "point",
     "point_facts": [],
     "tile_kind": "poi",
-    "point_thinning": null,
     "point_name_property": "name",
+    "point_min_zoom": null,
+    "point_priority": 2,
+    "point_priority_axes": [],
     "display_axes": [
       {
         "key": "kind",
@@ -658,18 +410,10 @@ export const primaryAttributes = [
     "geometry": "point",
     "point_facts": [],
     "tile_kind": "stop_place",
-    "point_thinning": {
-      "rows": [
-        "temple_shrine",
-        "bath",
-        "bicycle",
-        "lodging",
-        "scenic",
-        "eat_drink"
-      ],
-      "ratio_property": "confidence"
-    },
     "point_name_property": "name",
+    "point_min_zoom": null,
+    "point_priority": 1,
+    "point_priority_axes": [],
     "display_axes": [
       {
         "key": "group",

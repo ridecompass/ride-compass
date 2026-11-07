@@ -1,22 +1,21 @@
 // @vitest-environment node
 /**
  * `features/route/routeTabLabel.ts`——「ルート結果」の一覧の並び・群・名前と、基準線との差の表記。
- * - `routeListEntries`: 最速の印の1本・残りの生成候補（1からの番号。経由地を通る1本は名前）・合成で作ったルート
+ * - `routeListEntries`: 最速の印の1本・残りの生成候補（1からの番号）・合成で作ったルート
  *   （「合成N」）の順に、群を付けて置く
  * - `durationBaseline`: 最速の印の1本があればそれ、無ければ2件以上のうち所要時間が最も短い候補（同着は先の方）
  * - `durationDifferenceLabel`: 基準線との差を丸めて1分以上なら「+N分」・「−N分」で書く
- * - `orderGenerated`: 最速の印の1本を先頭に、残りを所要時間の短い順。所要時間の無い候補は末尾、同着は受け取った並び
  *
  * ここで見ないもの:
  * - 一覧・タブへの描き方（群の印・区切りの線） → `RouteOutcome/RouteOutcome.test.tsx`
- * - 生成した候補をこの並びで結果へ渡すこと → `useRouteGeneration.test.ts`
+ * - 生成した候補をこの並びで結果へ渡すこと → `useRouteGeneration.result.test.ts`
  */
 import { describe, expect, it } from "vitest";
 
 import { makeRouteCandidate } from "@/testing/routeFixtures";
 import type { RouteCandidate } from "@/types/route";
 
-import { durationBaseline, durationDifferenceLabel, orderGenerated, routeListEntries } from "./routeTabLabel";
+import { durationBaseline, durationDifferenceLabel, routeListEntries } from "./routeTabLabel";
 
 function route(id: string, seconds: number | null, overrides: Partial<RouteCandidate> = {}) {
   return makeRouteCandidate({ id, direction_label: `${id}の方位`, estimated_duration_seconds: seconds, ...overrides });
@@ -28,15 +27,6 @@ function entriesOf(entries: ReturnType<typeof routeListEntries<RouteCandidate>>)
 }
 
 describe("routeListEntries", () => {
-  it("最速の印が無く合成も無ければ、全部を生成した候補として受け取った順で1から番号を振る", () => {
-    const generated = [route("a", 900), route("b", 600), route("c", 1200)];
-    expect(entriesOf(routeListEntries(generated, []))).toEqual([
-      "a:generated:1/1",
-      "b:generated:2/2",
-      "c:generated:3/3",
-    ]);
-  });
-
   it("最速の印の1本を印だけの最速として先頭に置いて残りに1から番号を振り、合成は後へ「合成N」で並べる", () => {
     // 印の1本より速く見積もられた候補があっても、最速は印で決まる
     const generated = [route("a", 900), route("b", 600, { is_fastest: true }), route("c", 500)];
@@ -86,18 +76,5 @@ describe("durationDifferenceLabel", () => {
   it("基準線が無い・自分の所要時間が無いならnull", () => {
     expect(durationDifferenceLabel(route("a", 900), null)).toBeNull();
     expect(durationDifferenceLabel(route("a", null), 600)).toBeNull();
-  });
-});
-
-describe("orderGenerated", () => {
-  it("最速の印の1本を先頭に、残りを所要時間の短い順に並べ、所要時間の無い候補は末尾、同着は受け取った並びを保つ", () => {
-    const routes = [
-      route("a", 900),
-      route("none", null),
-      route("fastest", 700, { is_fastest: true }),
-      route("b", 600),
-      route("c", 900),
-    ];
-    expect(orderGenerated(routes).map((r) => r.id)).toEqual(["fastest", "b", "a", "c", "none"]);
   });
 });

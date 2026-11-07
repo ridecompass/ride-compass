@@ -32,14 +32,3 @@ export function hiddenAfterToggleAll(legend: readonly { key: string }[], hidden:
 export function presentHiddenKeys(legend: readonly { key: string }[], hidden: readonly string[]): readonly string[] {
   return hidden.filter((key) => legend.some((entry) => entry.key === key));
 }
-
-/** 保存値を、最初に隠す行（`initial`）の上に重ねる。保存値に無い軸（触ったことの無い軸・あとから足した層）は最初に
- * 隠す行のままにする。文字列の配列でない鍵は捨てる（読めない保存値の例外は`useStoredState`が既定値へ倒す）。 */
-export function deserializeHiddenLegendKeys(raw: string, initial: HiddenLegendKeys): HiddenLegendKeys | null {
-  const parsed: unknown = JSON.parse(raw);
-  if (parsed === null || typeof parsed !== "object") return null;
-  const stored = Object.entries(parsed).filter(
-    (entry): entry is [string, string[]] => Array.isArray(entry[1]) && entry[1].every((key) => typeof key === "string"),
-  );
-  return { ...initial, ...Object.fromEntries(stored) };
-}

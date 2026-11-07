@@ -1,6 +1,7 @@
 // 意味の決まった汎用の形（lucide-react）を、自前の形と同じ呼び方と線の太さへ包んで書き出す。
 import {
   ArrowUp,
+  ArrowUpDown,
   Bike,
   CircleQuestionMark,
   Clock,
@@ -12,7 +13,9 @@ import {
   Download,
   Droplet,
   EllipsisVertical,
+  Footprints,
   Gauge,
+  GripVertical,
   GitCommitHorizontal,
   History,
   Import,
@@ -20,6 +23,8 @@ import {
   Layers,
   ListChecks,
   Lock,
+  LockOpen,
+  Map as MapShape,
   MapPin,
   MapPinX,
   Minus,
@@ -41,8 +46,10 @@ import {
   Thermometer,
   Trash,
   TriangleAlert,
+  Weight,
   Wind,
   Zap,
+  ZoomIn,
   type LucideIcon,
 } from "lucide-react";
 import { LUCIDE_STROKE_WIDTH, type IconProps, type MapIconComponent } from "./icons";
@@ -83,6 +90,10 @@ export const SavePlaceIcon = fromLucide(Star);
 export function SavedPlaceIcon({ size = 16 }: IconProps) {
   return <Star size={size} strokeWidth={LUCIDE_STROKE_WIDTH} fill="currentColor" />;
 }
+/** 検索で選んだ地点の履歴（保存した地点の塗った星と見分ける）。 */
+export const PlaceHistoryIcon = fromLucide(History);
+/** 検索で選んだ地点を履歴から消す。 */
+export const ForgetHistoryPlaceIcon = fromLucide(Trash);
 export const InfoIcon = fromLucide(Info, 14);
 export const ZoomInIcon = fromLucide(Plus);
 export const ZoomOutIcon = fromLucide(Minus);
@@ -90,8 +101,10 @@ export const CopyIcon = fromLucide(Copy);
 export const RedrawMapIcon = fromLucide(RotateCw);
 /** 群の中で一覧に並べる項目を選ぶ。 */
 export const ChooseItemsIcon = fromLucide(ListChecks);
-/** 評価軸の点数で道を塗る（「評価で塗る」の入口）。 */
-export const EvaluationPaintIcon = fromLucide(Paintbrush);
+/** 負担で道を塗る（「負担で塗る」の入口）。 */
+export const BurdenPaintIcon = fromLucide(Paintbrush);
+/** 負担（所要時間に足す代償）の量。 */
+export const BurdenIcon = fromLucide(Weight);
 export const RouteSettingsIcon = fromLucide(SlidersHorizontal);
 export const ShieldIcon = fromLucide(Shield);
 export const TargetIcon = fromLucide(Target);
@@ -113,8 +126,16 @@ export const ClearPointsIcon = fromLucide(MapPinX);
 export const DistanceTargetIcon = fromLucide(Ruler);
 /** 置いた地点を1つ消す。保存したものを消す`DeleteSavedIcon`と同じく、消す操作はごみ箱の形にそろえる。 */
 export const RemovePointIcon = fromLucide(Trash);
+/** 置いた地点の編集（通る順の入れ替えと消すこと）を開く。 */
+export const EditPointsIcon = fromLucide(ArrowUpDown);
+/** 押さえたまま上下へ動かして、行の順を入れ替える所。 */
+export const ReorderHandleIcon = fromLucide(GripVertical);
 /** 利用者が変えられない選び方（いつも決まった値の行）。 */
 export const LockedIcon = fromLucide(Lock);
+/** 走行中の地図への触れを受け付けないロックの間。 */
+export const MapLockedIcon = fromLucide(Lock);
+/** 走行中の地図のロックを外している間（押すとロックする）。 */
+export const MapUnlockedIcon = fromLucide(LockOpen);
 /** 取れなかったものを取り直す。 */
 export const RetryIcon = fromLucide(RotateCw);
 /** 取れていない情報がある印。警報の色と取り違えないよう、三角の形を使わない。 */
@@ -123,9 +144,17 @@ export const NotFetchedIcon = fromLucide(CloudOff);
 export const BackToNowIcon = fromLucide(History);
 /** 地図で選んだ道の評価を調べる。 */
 export const InspectRoadIcon = fromLucide(Search);
+/** 地点を住所・施設で探す。 */
+export const SearchPlaceIcon = fromLucide(Search);
+/** 選んだ区間へ地図を寄せる。 */
+export const ShowSectionOnMapIcon = fromLucide(ZoomIn);
 /** 編集で作ったルートの元にしたルートを見る。 */
 export const ShowOriginIcon = fromLucide(CornerUpLeft);
 /** 走行中の曲がる所の案内: 左折。 */
 export const TurnLeftIcon = fromLucide(CornerUpLeft);
 /** 走行中の曲がる所の案内: 右折。 */
 export const TurnRightIcon = fromLucide(CornerUpRight);
+/** 畳んだ俯瞰図を開く。 */
+export const OverviewMapIcon = fromLucide(MapShape);
+/** 施設の道からの距離（道を外れて歩く距離）。 */
+export const OffRoadDistanceIcon = fromLucide(Footprints);

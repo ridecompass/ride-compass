@@ -24,8 +24,9 @@ import {
   route,
   routeLinesOnMap,
   selectDestination,
+  selectedSectionOnMap,
   serveHome,
-  showRoadSurface,
+  serveRoadsAt,
 } from "@/testing/homePage";
 import { mapOnScreen } from "@/testing/maplibre";
 import { makeGenerationConditions, routeThrough, type Places } from "@/testing/routeFixtures";
@@ -91,7 +92,7 @@ describe("区間の乗り換え", () => {
 
     clickSegment(mapOnScreen().sourceFeatures("route-segments")[0], ELSEWHERE);
     await user.click(screen.getByRole("button", { name: "編集をやめて候補へ戻る" }));
-    expect(screen.queryByRole("button", { name: "区間の選択を解除" })).toBeNull();
+    expect(selectedSectionOnMap()).toEqual([]);
 
     await user.click(screen.getByRole("button", { name: "ルートを合成" }));
     jobs.respond([BASE, OTHER], DESTINATION_CONDITIONS);
@@ -100,8 +101,8 @@ describe("区間の乗り換え", () => {
   });
 
   it("乗り換えの帯が区間と道に重なった所を押すと、帯の乗り換えだけを選び、区間も道も開かない", async () => {
+    serveRoadsAt([{ at: HERE, properties: { osm_way_id: 1, feature_key: "1" } }]);
     const { user } = renderHome();
-    await showRoadSurface(user);
     await generateTwo(user);
     await startEditing(user);
     const [band] = mapOnScreen().sourceFeatures("route-splice-bands");
@@ -110,13 +111,12 @@ describe("区間の乗り換え", () => {
     clickMap(HERE, [
       { layer: "route-splice-bands-spliceBandHit", properties: band.properties ?? {}, geometry: band.geometry },
       { layer: "route-segments-detailHit", properties: segment.properties ?? {}, geometry: segment.geometry },
-      { layer: "road-tiles-surface", properties: { osm_way_id: 1, feature_key: "1" } },
     ]);
 
     expect(await screen.findByRole("button", { name: "1つ戻す" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "この道の評価を見る" })).toBeNull();
     await user.click(screen.getByRole("button", { name: "編集をやめて候補へ戻る" }));
-    expect(screen.queryByRole("button", { name: "区間の選択を解除" })).toBeNull();
+    expect(selectedSectionOnMap()).toEqual([]);
   });
 
   it("作り直しの失敗は前の候補を残して窓で知らせ、作った合成ルートを選んでいる間は、地図に元のルートだけを重ねる", async () => {

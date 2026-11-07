@@ -16,18 +16,10 @@ import {
 } from "@/features/map/layers/dynamicWeather";
 
 /**
- * JMAプロキシ配下のパスを、タイル本体と同じ配信オリジンの絶対URLにする。
+ * 中継（`GET /api/jma-tile/{path}`）配下のパスを、タイル本体と同じ配信オリジンの絶対URLにする。配信元へ直接は当たらない。
  *
- * 配信元の時刻一覧・タイル・地点は、バックエンドのプロキシ＋キャッシュ（backend/app/infrastructure/jma_tile_client.py、
- * `GET /api/jma-tile/{path}`）経由で取り、JMAの非公式内部APIへ直接は当たらない。
- *
- * 時刻一覧（`targetTimes*.json`）・地点のGeoJSONは、タイル本体と違ってアプリ自身の`fetch()`で
- * 読む。**タイルURLは時刻一覧が返るまで確定しない**ため、ここでフロントのホスティングを経由すると
- * 往復1つぶんが初回表示のクリティカルパスへ直列に乗る。タイルと同じ`tileBaseUrl()`（本番では
- * backendのオリジン）を使って避ける。
- *
- * `tileBaseUrl()`は`window`を参照するため、モジュール読み込み時の定数ではなく
- * 呼び出し時に評価する関数として提供する（SSRで空文字に固定されるのを避ける）。
+ * **タイルURLは時刻一覧が返るまで確定しない**ため、時刻一覧・地点もフロントのホスティングを経由させると、往復1つぶんが
+ * 初回表示へ直列に乗る。`tileBaseUrl()`は`window`を読むので、呼ぶたびに求める（SSRで空文字に固定されない）。
  */
 function jmaProxyUrl(path: string): string {
   return `${tileBaseUrl()}${apiPath("/api/jma-tile/{path}", { path })}`;
@@ -52,14 +44,9 @@ export function jmaFrameKey(frame: JmaFrame): string {
   return `${frame.basetime}/${frame.member}/${frame.validtime}`;
 }
 
-/** 源泉のテンプレート（`urlTemplate`）の、コマの項目を埋める。タイル座標の`{z}/{x}/{y}`は地図ライブラリが埋めるので残す。 */
-function fillFrame(template: string, frame: JmaFrame): string {
-  return fillTemplate(template, { ...frame });
-}
-
-/** そのコマの配信元のURL。タイルなら`{z}/{x}/{y}`を残したテンプレート、地点ならGeoJSONのURL。 */
+/** そのコマの配信元のURL。タイルなら`{z}/{x}/{y}`を残したテンプレート（地図ライブラリが埋める）、地点ならGeoJSONのURL。 */
 function jmaFrameUrl(delivery: JmaDelivery, frame: JmaFrame): string {
-  return jmaProxyUrl(fillFrame(delivery.urlTemplate, frame));
+  return jmaProxyUrl(fillTemplate(delivery.urlTemplate, { ...frame }));
 }
 
 /** 配信元のタイルで描く段の、そのコマの描画ペイロード。 */
@@ -74,12 +61,7 @@ export function jmaTilePayload(
 /** ソース初期化時の仮URLに使う、実在しない時刻。 */
 const PLACEHOLDER_TIME = "00000000000000";
 
-/**
- * ソースを作るときの仮のURL（`features/map/scene/groups/weather.ts`）。
- *
- * 実データが来る前にsourceを作るための仮の値で、中身が届くと本物のURLへ差し替わる。
- * 時刻部分は実在しない値のため、万一このまま要求されても配信元で404になる。
- */
+/** 中身が届く前にソースを作るための仮のURL。時刻は実在しない値で、このまま要求されても配信元で404になる。 */
 export function jmaPlaceholderTileUrl(element: Pick<DeclaredElement, "jmaElements">): string {
   const [first] = element.jmaElements;
   if (first === undefined) throw new Error("配信元から取らない要素のタイルのURLを求めた");
@@ -183,17 +165,30 @@ function byValidtime(a: JmaFrame, b: JmaFrame): number {
   return a.validtime.localeCompare(b.validtime);
 }
 
-/** 実況＋予測。その要素の行を時刻順に並べ、最新の実況（validtime===basetime）より前を捨てる
+/** 実況＋予測。その要素の行をvalidtimeごとに1コマへ絞って時刻順に並べ、最新の実況（validtime===basetime）より前を捨てる
  * ——過去を振り返る用途は無く、左端が「今」になる。実況が1つも無ければ何も捨てない（最も未来の
- * 1コマだけを残すと、実況が欠けた回に要素が実質空になる）。 */
+ * 1コマだけを残すと、実況が欠けた回に要素が実質空になる）。実況と予測は別々に取るファイルに載り、取った時点が
+ * ずれると前のbasetimeの予測と新しい実況が同じvalidtimeを持つので、実況を予測より、新しいbasetimeを古いものより先に採る。 */
 function readNowcast(rows: readonly RawTargetTime[]): JmaFrame[] {
-  const frames = rows.map(toFrame).sort(byValidtime);
+  const byTime = new Map<string, JmaFrame>();
+  for (const frame of rows.map(toFrame)) {
+    const taken = byTime.get(frame.validtime);
+    if (taken === undefined || precedesInNowcast(frame, taken)) byTime.set(frame.validtime, frame);
+  }
+  const frames = [...byTime.values()].sort(byValidtime);
   return frames.slice(
     Math.max(
       frames.findLastIndex((frame) => frame.validtime === frame.basetime),
       0,
     ),
   );
+}
+
+function precedesInNowcast(frame: JmaFrame, taken: JmaFrame): boolean {
+  const observed = frame.validtime === frame.basetime;
+  const takenObserved = taken.validtime === taken.basetime;
+  if (observed !== takenObserved) return observed;
+  return frame.basetime > taken.basetime;
 }
 
 /** 数値予報のラン。系列（`member`）ごとに、有効時刻を複数持つ最新のラン（完全な予報）だけを使う
@@ -230,10 +225,6 @@ function readLatest(rows: readonly RawTargetTime[]): JmaFrame[] {
   return latest ? [toFrame(latest)] : [];
 }
 
-// backendのプリウォームが同じ読み方で温めるフレームを選ぶ（`domain/jma_tile_specs.py: read_target_times`）。
-// 片方だけ変えると在否インデックスのフレームが画面と一致せず、画面は全タイルを取りに行く。同じコマになることは、
-// backendが出す表（生成物`jma-expectations.json`）をテストが通して確かめる。配信の遅れのずらし
-// （`delayed`）はプリウォームが持たず、タイルの要素には宣言できない（`domain/jma_tile_specs.py: JmaElement`）。
 const READERS: Record<JmaDelivery["reader"], (rows: readonly RawTargetTime[]) => JmaFrame[]> = {
   nowcast: readNowcast,
   latestFullRun: readLatestFullRun,
@@ -270,11 +261,5 @@ function formatValidtime(date: Date): string {
 
 /** "YYYYMMDDHHmmss"（UTC）形式のvalidtime → Date。 */
 export function parseValidtime(validtime: string): Date {
-  const y = validtime.slice(0, 4);
-  const mo = validtime.slice(4, 6);
-  const d = validtime.slice(6, 8);
-  const h = validtime.slice(8, 10);
-  const mi = validtime.slice(10, 12);
-  const s = validtime.slice(12, 14);
-  return new Date(`${y}-${mo}-${d}T${h}:${mi}:${s}Z`);
+  return new Date(validtime.replace(/^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})$/, "$1-$2-$3T$4:$5:$6Z"));
 }

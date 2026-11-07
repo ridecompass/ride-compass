@@ -1,11 +1,12 @@
 """`backend/scripts/deploy_gate.py`の判定テスト（本番・ネットワークには触れない）。
 
-履歴は一時的なgitリポジトリで作り、振り分けの一覧は本物（`DEPLOY_PATHS`・`NOT_DEPLOYED`）を当てる。
+履歴は一時的なgitリポジトリで作り、振り分けの一覧は本物（`backend/Dockerfile`と`HOST_PATHS`・`NOT_DEPLOYED`）を当てる。
 
 ここで見ないもの: 一覧の中身（どのファイルを外すか）は宣言なので書き写さない。外したファイルが本番で
 読まれていないことは`tests/structure/test_deploy_exclusions.py`が見る。
 """
 
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -65,9 +66,15 @@ def test_relation_reads_ancestry(tmp_path, monkeypatch):
 
 def test_only_changes_that_reach_production_deploy(tmp_path, monkeypatch):
     subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    (tmp_path / "backend").mkdir()
+    # イメージの中身は本物の組み立て方から導かせる。
+    shutil.copy(Path(__file__).resolve().parents[1] / "Dockerfile", tmp_path / "backend" / "Dockerfile")
+    subprocess.run(["git", "add", "backend/Dockerfile"], cwd=tmp_path, check=True)
     deployed = _commit(tmp_path, "README.md")
     # 外したもの（`**`は下の階層を跨ぐ）と対象の外（根から当てるので、下の階層にある同じ名前のディレクトリも外）だけが変わった。
     unchanged_image = _commit(tmp_path, "backend/benchmarks/deep/bench.py", "frontend/backend/app.py")
+    # Dockerfileが写さない、どの一覧にも名前の無い新しいファイル。
+    unchanged_outside = _commit(tmp_path, "backend/notes/new_tool.toml")
     changed_image = _commit(tmp_path, "backend/app/main.py")
     # イメージに入らないが、デプロイが揃える作業コピーからVMのsystemdが読むもの。
     changed_host = _commit(tmp_path, "backend/ops/unit.service")
@@ -76,9 +83,10 @@ def test_only_changes_that_reach_production_deploy(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path / "backend")  # 当てる先は作業ディレクトリによらずリポジトリの根から
 
     assert gate.main(["gate", deployed, unchanged_image]) == 0
+    assert gate.main(["gate", unchanged_image, unchanged_outside]) == 0
     assert gate.main(["gate", deployed, changed_image]) == 0
     assert gate.main(["gate", changed_image, changed_host]) == 0
-    assert output.read_text(encoding="utf-8").splitlines() == ["deploy=false", "deploy=true", "deploy=true"]
+    assert output.read_text(encoding="utf-8").splitlines() == ["deploy=false", "deploy=false", "deploy=true", "deploy=true"]
 
 
 def test_any_change_deploys_without_matching_paths(tmp_path, monkeypatch):

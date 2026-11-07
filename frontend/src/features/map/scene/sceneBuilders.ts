@@ -1,11 +1,5 @@
-/** scene を組み立てる道具。
- *
- * 型の契約は`mapScene.ts`が持ち、ここはそれを作るときに**どの家族でも同じ形になるもの**
- * だけを置く。家族に固有のもの（どんな色で塗るか・何を宣言するか）はここへ入れない。
- */
-import type { LayerSpecification } from "maplibre-gl";
-
-import type { MapSceneSourceContent } from "./mapScene";
+/** scene を組み立てる道具のうち、どの家族でも同じ形になるもの。 */
+import type { MapSceneFeatureStates, MapSceneFeatureStateValue, MapSceneSourceContent } from "./mapScene";
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import type { LegendEntry } from "@/lib/mapDisplay/legendFilter";
 
@@ -28,26 +22,6 @@ export function sceneLayerId(source: SceneSourceId, role: string): string {
   return `${source}-${role}`;
 }
 
-/**
- * MapLibre のレイヤー宣言。`LayerSpecification` は `type` ごとの合併型のため、
- * paint/layout を外から受け取る形では合併型として組み立て直せない。
- * **この取り替えはここ1箇所だけに置く**。
- */
-export function layerSpec(spec: {
-  readonly id: string;
-  readonly type: LayerSpecification["type"];
-  readonly source: string;
-  readonly sourceLayer?: string;
-  readonly paint?: Readonly<Record<string, unknown>>;
-  readonly layout?: Readonly<Record<string, unknown>>;
-}): LayerSpecification {
-  const { sourceLayer, ...rest } = spec;
-  return {
-    ...rest,
-    ...(sourceLayer === undefined ? {} : { "source-layer": sourceLayer }),
-  } as unknown as LayerSpecification;
-}
-
 /** 大きさを、ズームで決まる倍率で伸縮させる式。`base`は定数でも値から決まる式でもよい。倍率の曲線（`stops`、
  * ズーム→倍率）は宣言（`mapDisplay`）が配る。 */
 export function zoomScaleExpression(base: unknown, stops: readonly (readonly [number, number])[]): unknown {
@@ -57,6 +31,17 @@ export function zoomScaleExpression(base: unknown, stops: readonly (readonly [nu
     ["zoom"],
     ...stops.flatMap(([zoom, factor]) => [zoom, typeof base === "number" ? base * factor : ["*", base, factor]]),
   ];
+}
+
+/** 地図の線形の補間の式（`["interpolate", ["linear"], 入力, ...stops]`）が、入力`x`で出す値。`stops`は入力の昇順で、
+ * 端より外は端の値。 */
+export function linearAt(stops: readonly (readonly [number, number])[], x: number): number {
+  const upper = stops.findIndex(([at]) => at >= x);
+  if (upper === -1) return stops[stops.length - 1][1];
+  if (upper === 0) return stops[0][1];
+  const [x0, y0] = stops[upper - 1];
+  const [x1, y1] = stops[upper];
+  return y0 + ((y1 - y0) * (x - x0)) / (x1 - x0);
 }
 
 /** 実行時に入れ替わる GeoJSON の中身。ソースを作り直さずに当て直す。
@@ -83,6 +68,29 @@ export function tilesContent(tiles: readonly string[]): MapSceneSourceContent {
       (source as { setTiles: (tiles: string[]) => void }).setTiles([...tiles]);
     },
   };
+}
+
+const featureStatesByInput = new WeakMap<object, MapSceneFeatureStates>();
+
+/** 地物ごとの値（地物id → 名前 → 値）を、名前ごとの feature-state（`stateKey(名前)` → 地物id → 値）へ移す。同じ入力からは
+ * 同じ参照を返す——当てる側は参照が同じなら地物ごとに比べ直さない。入力1つに`stateKey`は1つだけ使う（覚えるのは入力ごと）。 */
+export function featureStatesByName<V extends MapSceneFeatureStateValue>(
+  byFeature: ReadonlyMap<string, Readonly<Record<string, V>>>,
+  stateKey: (name: string) => string,
+): ReadonlyMap<string, ReadonlyMap<string, V>> {
+  const cached = featureStatesByInput.get(byFeature);
+  if (cached !== undefined) return cached as ReadonlyMap<string, ReadonlyMap<string, V>>;
+  const states = new Map<string, Map<string, V>>();
+  for (const [featureId, values] of byFeature) {
+    for (const [name, value] of Object.entries(values)) {
+      const key = stateKey(name);
+      let byId = states.get(key);
+      if (byId === undefined) states.set(key, (byId = new Map()));
+      byId.set(featureId, value);
+    }
+  }
+  featureStatesByInput.set(byFeature, states);
+  return states;
 }
 
 /** 値がどれかに入るかの式。 */

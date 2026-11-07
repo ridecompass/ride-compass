@@ -129,7 +129,7 @@ def input_fingerprint(spec: SourceSpec, profile: SourceProfile, inputs: AdapterI
     """そのソースの取込の入力（アダプタが答えた`inputs`）の指紋。
 
     入力は、読むファイルの場所と中身・範囲と読むソースの宣言・アダプタからたどれるコード
-    （`code_fingerprint.py`）・Pythonとライブラリの版。ファイルは中身を全部読む——大きさと更新時刻が
+    （`code_fingerprint.py`）・Pythonとアダプタからたどれるコードが読むライブラリの版。ファイルは中身を全部読む——大きさと更新時刻が
     同じでも、中身が同じとは言えない。
     """
     digest = hashlib.sha256(_json({
@@ -137,7 +137,7 @@ def input_fingerprint(spec: SourceSpec, profile: SourceProfile, inputs: AdapterI
         "sources": [_source_dict(profile.source(name)) for name in (spec.name, *inputs.sources)],
         "code": code_fingerprint(ADAPTERS[spec.adapter].read.__module__),
         "python": sys.version,
-        "libraries": library_versions(),
+        "libraries": library_versions(ADAPTERS[spec.adapter].read.__module__),
     }).encode())
     for name, path in sorted({str(path.resolve()): path for path in inputs.files}.items()):
         digest.update(name.encode())

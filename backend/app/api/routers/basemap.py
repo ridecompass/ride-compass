@@ -15,9 +15,8 @@ router = APIRouter()
 async def basemap_proxy(
     path: str, request: Request, basemap_client: BasemapClient = Depends(get_basemap_client)
 ) -> Response:
-    # 認証なしで叩けるbasemapプロキシへの簡易な歯止め（1クライアントIPあたり1分間の上限）。
-    # basemapはOpenFreeMapへの中継を伴うため、無制限に叩かれると外部サービス負荷や
-    # ディスク消費に繋がる（詳細はrate_limiter.py）。
+    # 認証なしで叩けるプロキシへの簡易な歯止め。OpenFreeMapへの中継を伴うため、
+    # 無制限に叩かれると外部サービス負荷やディスク消費に繋がる。
     enforce_rate_limit(request, "basemap", settings.basemap_rate_limit_per_minute)
     content, content_type = BASEMAP_REPLIES.found(await basemap_client.get(path))
     return Response(content=content, media_type=content_type)
@@ -32,11 +31,9 @@ def basemap_refresh() -> dict[str, str]:
 
     基礎地図タイルと路面ベクタタイルは同じファイルキャッシュを共有しているため、この
     一括クリアで両方とも消える。影響は押した人だけでなく**全利用者**に及ぶ（次のタイル要求で
-    作り直されるまで、外部サービスへの実問い合わせやタイル生成が走る）ため、
-    axis_admin.py/debug_admin.pyと同じ管理API認可境界（require_admin_basic_auth）の内側に置く。
+    作り直されるまで、外部サービスへの実問い合わせやタイル生成が走る）ため、管理APIの認可の内側に置く。
 
-    各利用者の画面へ反映されるのは、ブラウザが持つ既存タイルの`Cache-Control`が切れた後
-    （`api/cache_policy.py`のBASEMAP: 10分）。
+    各利用者の画面へ反映されるのは、ブラウザが持つ既存タイルの`Cache-Control`が切れた後。
     """
     tile_cache.clear_all()
     return {"status": "ok"}

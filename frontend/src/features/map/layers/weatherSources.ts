@@ -28,7 +28,7 @@ export type GridValue = NonNullable<DeclaredElement["gridValue"]>;
 export type JmaStage = { origin: "jma"; kind: DeclaredElement["kind"]; delivery: JmaDelivery };
 
 /** MSMの格子点から描く時刻の段。 */
-export type GridStage = { origin: "grid"; value: GridValue };
+type GridStage = { origin: "grid"; value: GridValue };
 
 /** 時刻の段1つ。 */
 type WeatherStage = JmaStage | GridStage;
@@ -46,7 +46,7 @@ function stagesOf(element: DeclaredElement): WeatherStage[] {
   if (element.jmaElements.length > 0) {
     return element.jmaElements.map((delivery) => ({ origin: "jma", kind: element.kind, delivery }));
   }
-  // 配信元から取らない要素は必ず読む格子の値を持つ（backendの`test_weather_elements.py`が全要素で確かめる）。
+  // 配信元から取らない要素は必ず読む格子の値を持つ（`backend/app/domain/weather_elements.py: check_weather_elements`が宣言の読み込みで断る）。
   return [{ origin: "grid", value: element.gridValue! }];
 }
 
@@ -101,9 +101,7 @@ export function gridStageFrames(
 
 /** 段のコマを1本の時系列へつなぐ。各段は前の段の最後のコマより後の時刻だけを継ぐ——近い時刻は
  * 精度の高い前の段が持ち、二重に出さない。ある段が空（取れていない等）なら、次の段がその前の
- * 段の直後から継ぐ。backendのプリウォームも同じつなぎ方で段ごとに温めるフレームを選ぶ
- * （`domain/weather_elements.py: stage_first_frames`）。各段が最初に描くコマが同じになることは、backendが出す
- * 表（生成物`jma-expectations.json`）をテストが通して確かめる。 */
+ * 段の直後から継ぐ。 */
 export function sourceTimeline(
   stages: readonly (readonly DynamicWeatherFrame<StageFrameRef>[])[],
 ): DynamicWeatherFrame<StageFrameRef>[] {

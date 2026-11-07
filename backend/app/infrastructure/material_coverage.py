@@ -1,9 +1,8 @@
 """材料ごとの欠損割合（カバレッジ）を集計クエリで求める読み取り専用リポジトリ。
 
-`GET /api/admin/material-catalog/coverage`（`api/routers/material_catalog.py`）のデータ源。
 材料ごとに元データの置き場所が異なる（道の生データのタグ・区間の材料の列）ため、「どの母集団の、どの条件が成り立てば欠損か」を
 材料ごとの宣言（`MaterialSpec.coverage`）から受け取り、集計クエリで数える（Edge/Way単位の
-Pythonループは回さない）。ここは測り方の実装だけを持つ。
+Pythonループは回さない）。
 
 母集団は2種類:
 
@@ -24,20 +23,14 @@ Pythonループは回さない）。ここは測り方の実装だけを持つ�
 
 from dataclasses import dataclass
 
-from app.domain.material_catalog import (
-    EdgeMaterialCoverageSpec,
-    WayMaterialCoverageSpec,
-    material_coverage_exclusions,
-    material_coverage_specs,
-)
+from app.domain.material_catalog import material_coverage_exclusions, material_coverage_specs
+from app.domain.material_coverage_spec import EdgeMaterialCoverageSpec, WayMaterialCoverageSpec
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.infrastructure.material_joins import edge_material_table
 from app.infrastructure.source_models import WAYS_SOURCE_SQL
 
-# 材料ごとの宣言は`MaterialSpec.coverage`が持つ（材料を1つ増やすとき触るのは1か所）。
-# ここは測り方の実装だけを持ち、宣言は持たない。
 MATERIAL_COVERAGE_SPECS = material_coverage_specs()
 MATERIAL_COVERAGE_EXCLUSIONS = material_coverage_exclusions()
 
@@ -70,8 +63,6 @@ def _way_coverage_sql():
         f"count(*) FILTER (WHERE {spec.missing_condition}) AS {material_id}"
         for material_id, spec in _WAY_SPECS.items()
     )
-    # 元データの引き方は`domain/material_sql.py`が持つ。ここで書き写すと、生データの
-    # 置き場が変わったときにこの1本だけが古いテーブルを指したまま残る。
     sql = (  # 固定の内部辞書のみ使用
         f"SELECT count(*) AS total{', ' + columns if columns else ''} FROM {WAYS_SOURCE_SQL} AS w"
     )

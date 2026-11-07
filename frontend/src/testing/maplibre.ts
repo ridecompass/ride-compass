@@ -3,11 +3,15 @@
  * （.claude/rules/testing-frontend.md「確かめる高さ（frontend）」の境界の表の「テスト環境に無いブラウザの機能」）。
  *
  * 代役は MapLibre の振る舞いを真似ず、受けたものを記録して返すだけにする:
- * - ソース・レイヤー・地物の状態は `mapTrace/recordingMap.ts` へ記録し、`MapOnScreen` から読む。
+ * - ソース・レイヤー・地物の状態は `mapTrace/recordingMap.ts` へ記録し、`MapOnScreen` から読む。点は束ねない。
  * - 印（`Marker`）とポップアップ（`Popup`）は、渡された要素を地図の器へ置く（画面の問い合わせで引ける）。
- * - カメラの操作（`fitBounds`）とスタイルの取り直し（`setStyle`）は、引数を残す。向き（`setBearing`・`easeTo` の `bearing`）と
- *   倍率（`zoomIn`・`zoomOut`）は、受けた値をそのまま今の値にする（動きの途中は無い）。向きが変わったら "rotate" だけを出す。
+ * - カメラの操作（`fitBounds`）とスタイルの取り直し（`setStyle`）は、引数を残す。向き（`setBearing`・`easeTo`・`jumpTo` の `bearing`）と
+ *   倍率（`zoomIn`・`zoomOut`・`jumpTo` の `zoom`）は、受けた値をそのまま今の値にする（動きの途中は無い）。
+ * - 位置の換算（`project`）は、テストが置いた範囲（`moveTo`）を描画面へ線形に当てる。
+ * - 操作を受けない地図（`interactive: false`。本体の地図に添える小さな地図）は、本体の地図と分けて `insetMapOnScreen` で引く。向きが変わったら "rotate" だけを出す。
  * - `addProtocol` で登録された受け手は、`protocolHandler` で引ける（テストが要求を渡して呼ぶ）。
+ * - タイルのソースの点の地物は、テストが`placeTileFeatures`で置く。問い合わせ（`querySourceFeatures`）とレイヤーが描くもの（`drawnTileFeatures`）は、
+ *   その地物に絞り込みを MapLibre と同じ評価器（`mapExpressions.ts: matchesFilterAtPoint`）で当てて返す。
  * - 出来事（"load"・"click" 等）は、上の "rotate" のほかは自分では起こさず、テストが `MapOnScreen` で起こす。押した所に描かれている地物も、
  *   テストが渡したものを返す。
  *
@@ -15,341 +19,13 @@
  */
 import type { Coordinates } from "@/types/route";
 
-import { createRecordingMap, type RecordingMap, type StyleLayer } from "./mapTrace/recordingMap";
+import type { StyleLayer } from "./mapTrace/recordingMap";
+import type { PointedFeature } from "./maplibreStandIn/evented";
+import { lastDrawnMap, type FittedBounds, type StandInMap, type ViewBounds } from "./maplibreStandIn/map";
 
-type Handler = (event: Record<string, unknown>) => void;
-type Listener = { readonly type: string; readonly layerId?: string; readonly handler: Handler; readonly once: boolean };
-type LngLat = { lng: number; lat: number };
-
-/** 見えている範囲（経度・緯度）。 */
-export interface ViewBounds {
-  readonly west: number;
-  readonly south: number;
-  readonly east: number;
-  readonly north: number;
-}
-
-/** 押した所に描かれている地物。`layer` は描いているレイヤーの id。 */
-export interface PointedFeature {
-  readonly layer: string;
-  readonly properties: Record<string, unknown>;
-  readonly geometry?: GeoJSON.Geometry;
-}
-
-function toLngLat(value: readonly [number, number] | LngLat): LngLat {
-  return "lng" in value ? { lng: value.lng, lat: value.lat } : { lng: value[0], lat: value[1] };
-}
-
-class Evented {
-  private listeners: Listener[] = [];
-
-  on(type: string, layerIdOrHandler: string | Handler, handler?: Handler) {
-    this.listeners.push(
-      typeof layerIdOrHandler === "string"
-        ? { type, layerId: layerIdOrHandler, handler: handler!, once: false }
-        : { type, handler: layerIdOrHandler, once: false },
-    );
-    return this;
-  }
-
-  once(type: string, handler: Handler) {
-    this.listeners.push({ type, handler, once: true });
-    return this;
-  }
-
-  off(type: string, layerIdOrHandler: string | Handler, handler?: Handler) {
-    const [layerId, target] =
-      typeof layerIdOrHandler === "string" ? [layerIdOrHandler, handler] : [undefined, layerIdOrHandler];
-    this.listeners = this.listeners.filter(
-      (listener) => !(listener.type === type && listener.layerId === layerId && listener.handler === target),
-    );
-    return this;
-  }
-
-  /** 登録の順に呼ぶ。レイヤーを指した購読へは、そのレイヤーの地物が `features` にあるときだけ、その地物を渡す。 */
-  protected fire(type: string, event: Record<string, unknown> = {}, features: readonly PointedFeature[] = []) {
-    for (const listener of [...this.listeners]) {
-      if (listener.type !== type) continue;
-      if (listener.once) this.listeners = this.listeners.filter((entry) => entry !== listener);
-      if (listener.layerId === undefined) {
-        listener.handler(event);
-        continue;
-      }
-      const onLayer = features.filter((feature) => feature.layer === listener.layerId).map(asRendered);
-      if (onLayer.length > 0) listener.handler({ ...event, features: onLayer });
-    }
-  }
-}
-
-function asRendered(feature: PointedFeature) {
-  return { layer: { id: feature.layer }, properties: feature.properties, geometry: feature.geometry };
-}
-
-export class LngLatBounds {
-  extend() {
-    return this;
-  }
-}
-
-export class Marker extends Evented {
-  readonly element: HTMLElement;
-  draggable: boolean;
-  private lngLat: LngLat = { lng: 0, lat: 0 };
-  private map: StandInMap | null = null;
-
-  constructor(options: { element: HTMLElement; draggable?: boolean }) {
-    super();
-    this.element = options.element;
-    this.draggable = options.draggable ?? false;
-  }
-
-  setLngLat(lngLat: readonly [number, number] | LngLat) {
-    this.lngLat = toLngLat(lngLat);
-    return this;
-  }
-
-  getLngLat() {
-    return this.lngLat;
-  }
-
-  getElement() {
-    return this.element;
-  }
-
-  setRotation() {
-    return this;
-  }
-
-  setDraggable(draggable: boolean) {
-    this.draggable = draggable;
-    return this;
-  }
-
-  addTo(map: StandInMap) {
-    this.map = map;
-    map.markers.add(this);
-    map.getContainer().append(this.element);
-    return this;
-  }
-
-  remove() {
-    this.map?.markers.delete(this);
-    this.element.remove();
-    return this;
-  }
-}
-
-export class Popup extends Evented {
-  private lngLat: LngLat = { lng: 0, lat: 0 };
-  private content: Node | null = null;
-
-  setLngLat(lngLat: readonly [number, number] | LngLat) {
-    this.lngLat = toLngLat(lngLat);
-    return this;
-  }
-
-  getLngLat() {
-    return this.lngLat;
-  }
-
-  setDOMContent(content: Node) {
-    this.content = content;
-    return this;
-  }
-
-  addTo(map: StandInMap) {
-    if (this.content !== null) map.getContainer().append(this.content);
-    return this;
-  }
-
-  remove() {
-    if (this.content !== null) this.content.parentNode?.removeChild(this.content);
-    return this;
-  }
-}
-
-/** 地図の中身（ソース・レイヤー・地物の状態）を記録する操作。ここから先は `recordingMap` へそのまま渡す。 */
-const STYLE_OPERATIONS = [
-  "getStyle",
-  "getLayer",
-  "getSource",
-  "hasImage",
-  "addImage",
-  "addSource",
-  "removeSource",
-  "addLayer",
-  "removeLayer",
-  "moveLayer",
-  "setPaintProperty",
-  "setLayoutProperty",
-  "setFilter",
-  "setFeatureState",
-  "removeFeatureState",
-  "setGlobalStateProperty",
-] as const;
-
-const drawn: StandInMap[] = [];
-
-class StandInMap extends Evented {
-  readonly markers = new Set<Marker>();
-  readonly styles: string[];
-  readonly content: RecordingMap;
-  private readonly container: HTMLElement;
-  private readonly canvas: HTMLCanvasElement;
-  private zoom: number;
-  private bearing = 0;
-  private bounds: ViewBounds | null = null;
-  private pointed: readonly PointedFeature[] = [];
-  // 手ぶりの入切は、代役では指の操作が無いので受けるだけにする。
-  readonly touchZoomRotate = { disableRotation() {}, enableRotation() {} };
-  readonly touchPitch = { disable() {}, enable() {} };
-
-  constructor(options: { container: HTMLElement; style: string; zoom: number }) {
-    super();
-    const { map, handle } = createRecordingMap();
-    Object.assign(this, Object.fromEntries(STYLE_OPERATIONS.map((name) => [name, map[name]])));
-    this.content = handle;
-    this.container = options.container;
-    this.styles = [options.style];
-    this.zoom = options.zoom;
-    // 描画面は窓いっぱいとして大きさを返す（テスト環境はレイアウトの実寸を0で返す）。
-    this.canvas = document.createElement("canvas");
-    Object.defineProperties(this.canvas, {
-      clientWidth: { value: window.innerWidth },
-      clientHeight: { value: window.innerHeight },
-    });
-    this.container.append(this.canvas);
-    drawn.push(this);
-  }
-
-  getContainer() {
-    return this.container;
-  }
-
-  getCanvas() {
-    return this.canvas;
-  }
-
-  getZoom() {
-    return this.zoom;
-  }
-
-  zoomIn() {
-    this.zoom += 1;
-    return this;
-  }
-
-  zoomOut() {
-    this.zoom -= 1;
-    return this;
-  }
-
-  /** テストが範囲を置くまでは、範囲の無い地図（MapLibre が範囲を求められないとき）として null を返す。 */
-  getBounds() {
-    const bounds = this.bounds;
-    if (bounds === null) return null;
-    return {
-      getWest: () => bounds.west,
-      getSouth: () => bounds.south,
-      getEast: () => bounds.east,
-      getNorth: () => bounds.north,
-    };
-  }
-
-  /** 範囲と倍率を置き、動き終わった（"moveend"）ことを出す。 */
-  moveTo(bounds: ViewBounds, zoom: number) {
-    this.bounds = bounds;
-    this.zoom = zoom;
-    this.fire("moveend", {});
-  }
-
-  addControl() {
-    return this;
-  }
-
-  resize() {
-    return this;
-  }
-
-  flyTo() {
-    return this;
-  }
-
-  easeTo(options: { bearing?: number } = {}) {
-    if (options.bearing !== undefined) this.turn(options.bearing, {});
-    return this;
-  }
-
-  setBearing(bearing: number) {
-    this.turn(bearing, {});
-    return this;
-  }
-
-  /** 向きを変え、変わったら MapLibre と同じく "rotate" を出す。`event` は出来事の中身。 */
-  turn(bearing: number, event: Record<string, unknown>) {
-    if (bearing === this.bearing) return;
-    this.bearing = bearing;
-    this.fire("rotate", event);
-  }
-
-  getBearing() {
-    return this.bearing;
-  }
-
-  isZooming() {
-    return false;
-  }
-
-  fitBounds() {
-    return this;
-  }
-
-  setStyle(style: string) {
-    this.styles.push(style);
-    this.content.dropEverything();
-    return this;
-  }
-
-  isSourceLoaded() {
-    return false;
-  }
-
-  querySourceFeatures() {
-    return [];
-  }
-
-  queryRenderedFeatures(_point: unknown, options: { layers?: readonly string[] } = {}) {
-    return this.pointed
-      .filter((feature) => options.layers === undefined || options.layers.includes(feature.layer))
-      .map(asRendered);
-  }
-
-  remove() {
-    const index = drawn.indexOf(this);
-    if (index !== -1) drawn.splice(index, 1);
-  }
-
-  /** テストが起こす出来事。`event` は出来事の中身（利用者の操作なら `originalEvent` を持たせる）。 */
-  emit(type: string, event: Record<string, unknown> = {}) {
-    this.fire(type, event);
-  }
-
-  /** `lngLat` を押す。`features` はそこに描かれている地物で、無い・隠したレイヤーのものは渡せない（MapLibre は返さない）。 */
-  click(lngLat: Coordinates, features: readonly PointedFeature[]) {
-    const undrawn = features.filter((feature) => (this.content.layer(feature.layer)?.visibility ?? "none") === "none");
-    if (undrawn.length > 0) {
-      throw new Error(`描かれていないレイヤーの地物は押せない: ${undrawn.map((feature) => feature.layer).join(", ")}`);
-    }
-    this.pointed = features;
-    try {
-      this.fire("click", { lngLat: { lng: lngLat.longitude, lat: lngLat.latitude }, point: { x: 0, y: 0 } }, features);
-    } finally {
-      this.pointed = [];
-    }
-  }
-}
-
-export { StandInMap as Map };
+export type { PointedFeature } from "./maplibreStandIn/evented";
+export { StandInMap as Map, type ViewBounds } from "./maplibreStandIn/map";
+export { LngLatBounds, Marker, Popup } from "./maplibreStandIn/overlays";
 
 const protocols = new Map<string, unknown>();
 
@@ -372,12 +48,22 @@ export interface MapOnScreen {
   loadStyle(layers: readonly StyleLayer[] | undefined): void;
   /** `lngLat` を押す。`features` はそこに描かれている地物。 */
   click(lngLat: Coordinates, features?: readonly PointedFeature[]): void;
+  /** `lngLat` をマウスの右ボタンで押す。`features` は`click`と同じ。 */
+  rightClick(lngLat: Coordinates, features?: readonly PointedFeature[]): void;
+  /** タイルのソース`sourceId`に、地図が読み込んだ点の地物を置く。 */
+  placeTileFeatures(sourceId: string, features: readonly GeoJSON.Feature<GeoJSON.Point>[]): void;
+  /** レイヤー`layerId`が描く、置いたタイルの点の地物。 */
+  drawnTileFeatures(layerId: string): GeoJSON.Feature<GeoJSON.Point>[];
   /** いま表示しているレイヤーの id。 */
   visibleLayerIds(): string[];
+  /** いま地図に載っているソースの id。 */
+  sourceIds(): string[];
   /** GeoJSON のソースへ最後に渡された地物。ソースが無ければ空。 */
   sourceFeatures(sourceId: string): GeoJSON.Feature[];
   /** 地図に置いた印。 */
   markers(): { coordinates: Coordinates; draggable: boolean; element: HTMLElement }[];
+  /** 地図を範囲へ寄せた（`fitBounds`）ときの範囲と倍率の上限を、寄せた順に。 */
+  fits(): readonly FittedBounds[];
   /** 求めたスタイル（最初の1つと、取り直しの分）。 */
   readonly styles: readonly string[];
   /** いまの倍率。 */
@@ -388,20 +74,37 @@ export interface MapOnScreen {
   rotateByHand(bearing: number): void;
   /** 利用者が地図を動かす（範囲と倍率を置いて "moveend" を出す）。 */
   moveTo(bounds: ViewBounds, zoom: number): void;
+  /** 地図の手ぶりの操作（`dragPan` 等）のうち、止めているものの名前。 */
+  stoppedGestures(): string[];
   /** 地物の状態（`setFeatureState` で載せたもの）。 */
   featureState(sourceId: string, featureId: string): Record<string, unknown> | undefined;
   /** レイヤーの今の塗りの宣言。無いレイヤーは undefined。 */
   layerPaint(layerId: string): Record<string, unknown> | undefined;
 }
 
+/** いま描かれている本体の地図。 */
 export function mapOnScreen(): MapOnScreen {
-  const map = drawn.at(-1);
+  const map = lastDrawnMap();
   if (map === undefined) throw new Error("地図が描かれていない");
+  return onScreen(map);
+}
+
+/** いま描かれている、本体の地図に添える小さな地図（操作を受けない地図）。無ければ null。 */
+export function insetMapOnScreen(): MapOnScreen | null {
+  const map = lastDrawnMap(true);
+  return map === undefined ? null : onScreen(map);
+}
+
+function onScreen(map: StandInMap): MapOnScreen {
   return {
     emit: (type, event) => map.emit(type, event),
     loadStyle: (layers) => map.content.loadStyle(layers),
     click: (lngLat, features = []) => map.click(lngLat, features),
+    rightClick: (lngLat, features = []) => map.rightClick(lngLat, features),
+    placeTileFeatures: (sourceId, features) => map.placeTileFeatures(sourceId, features),
+    drawnTileFeatures: (layerId) => map.drawnTileFeatures(layerId),
     visibleLayerIds: () => map.content.layerOrder().filter((id) => map.content.layer(id)?.visibility !== "none"),
+    sourceIds: () => map.content.sources(),
     sourceFeatures: (sourceId) =>
       (map.content.sourceContent(sourceId)?.data as GeoJSON.FeatureCollection | undefined)?.features ?? [],
     markers: () =>
@@ -410,6 +113,7 @@ export function mapOnScreen(): MapOnScreen {
         draggable: marker.draggable,
         element: marker.element,
       })),
+    fits: () => map.fits,
     styles: map.styles,
     zoom: () => map.getZoom(),
     bearing: () => map.getBearing(),
@@ -417,6 +121,7 @@ export function mapOnScreen(): MapOnScreen {
       map.turn(bearing, { originalEvent: new Event("touchmove") });
     },
     moveTo: (bounds, zoom) => map.moveTo(bounds, zoom),
+    stoppedGestures: () => map.stoppedGestures(),
     featureState: (sourceId, featureId) => map.content.featureState(sourceId, featureId),
     layerPaint: (layerId) => map.content.layer(layerId)?.paint,
   };

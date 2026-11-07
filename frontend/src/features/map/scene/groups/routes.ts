@@ -6,16 +6,14 @@
  */
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import palette from "@/types/generated/palette.json";
+import type { SemanticColors } from "@/lib/mapTheme";
 import type { ExpressionSpecification, FilterSpecification } from "maplibre-gl";
-import type { Feature, FeatureCollection, LineString, Position } from "geojson";
 
 import { createRouteArrowIcon, ROUTE_ARROW_ICON_ID } from "@/features/map/layers/routeArrowIcon";
 import type { MapSceneImage } from "@/features/map/scene/mapScene";
-import { declareGroup, type SceneLayerEntry, type SceneSourceEntry } from "@/features/map/scene/mapSceneGroups";
-import { noDataDashExpression, zoomScaleExpression, sceneSourceId } from "@/features/map/scene/sceneBuilders";
-
-/** [経度, 緯度] の並び。 */
-export type RoutePath = readonly Position[];
+import { declareGroup, type SceneLayerEntry } from "@/features/map/scene/mapSceneGroups";
+import { noDataDashExpression, zoomScaleExpression } from "@/features/map/scene/sceneBuilders";
+import { ROUTE_SOURCE as SOURCE, routeSourceEntries, type RoutePath, type RouteShape } from "./routeSources";
 
 /** 見た目の値は源泉が配る（`backend/app/domain/map_display.py`）。ここは受け取って塗るだけ。 */
 const ROUTE = mapDisplay.route;
@@ -36,53 +34,32 @@ const TRAVELLED_OPACITY: ExpressionSpecification = [
  * 線・ハロー・当たり判定・矢印を同じだけずらし、見た目の線と押せる所と向きの印を揃える。 */
 const ROUTE_OFFSET_PX = -ROUTE.casingWidthsPx.detail / 2;
 
-const HIT_PAINT = { "line-color": palette.semantic.hit, "line-opacity": 0, "line-offset": ROUTE_OFFSET_PX } as const;
+const HIT_PAINT = { "line-color": palette.semantic.hit, "line-opacity": 0, "line-width": HIT_WIDTH_PX } as const;
 const ROUND_CAP = { "line-cap": "round", "line-join": "round" } as const;
 
 export const ROUTE_HIT_TARGET_SEGMENT = "routeSegment";
 export const ROUTE_HIT_TARGET_CANDIDATE = "routeCandidate";
 export const ROUTE_HIT_TARGET_SPLICE_BAND = "routeSpliceBand";
 
-type Shape = { readonly path: RoutePath; readonly properties?: Readonly<Record<string, unknown>> };
-
 export type RouteState = {
   readonly visible: boolean;
   readonly candidates: readonly { readonly routeId: string; readonly path: RoutePath }[];
   readonly selectedRouteId: string | null;
   /** 区間の形。`properties.travelled`が真の区間は、走り終えたものとして薄める。 */
-  readonly segments: readonly Shape[];
-  /** 区間の色。段の切り方・配色は軸カタログが決めるため、出来上がった式のまま受け取る。 */
+  readonly segments: readonly RouteShape[];
+  /** 区間の色。段の切り方・配色は費用の軸の一覧が決めるため、出来上がった式のまま受け取る。 */
   readonly segmentColor: string | ExpressionSpecification;
   /** 値が無い区間で真になる式。その区間を破線にする。値という考えを持たない塗り方（レンズ「なし」）では無い。 */
   readonly segmentNoData?: ExpressionSpecification;
   /** 凡例で隠した段を落とす絞り込み。色分け線・縁取り・当たり判定の3枚へ同じものを当てる。 */
   readonly hiddenBandFilter?: FilterSpecification;
-  readonly spliceBands: readonly Shape[];
-  readonly composite: Shape | null;
+  readonly spliceBands: readonly RouteShape[];
+  readonly composite: RouteShape | null;
   /** 選んだ地点を含む区間の形。選んでいなければnull。 */
   readonly selectedSection: RoutePath | null;
+  /** 線を塗る役割の色。地図の地の明るさに合う組。 */
+  readonly semantic: SemanticColors;
 };
-
-const SOURCE = {
-  candidates: sceneSourceId("route-candidates"),
-  selected: sceneSourceId("route-selected"),
-  segments: sceneSourceId("route-segments"),
-  spliceBands: sceneSourceId("route-splice-bands"),
-  composite: sceneSourceId("route-composite"),
-  selectedSection: sceneSourceId("route-selected-section"),
-} as const;
-
-function line(path: RoutePath, properties: Readonly<Record<string, unknown>> = {}): Feature<LineString> {
-  return {
-    type: "Feature",
-    geometry: { type: "LineString", coordinates: path.map(([lng, lat]) => [lng, lat]) },
-    properties: { ...properties },
-  };
-}
-
-function collection(features: readonly Feature<LineString>[]): FeatureCollection<LineString> {
-  return { type: "FeatureCollection", features: [...features] };
-}
 
 /** 進行方向の矢印の絵。色を持たないシルエットで、色はレイヤーが決める。 */
 const ROUTE_ARROW_IMAGE: MapSceneImage = {
@@ -125,184 +102,104 @@ export const routeGroup = declareGroup<RouteState>((state) => {
   const detailed = state.segments.length > 0 ? selected : null;
   const references = state.candidates.filter((candidate) => candidate !== detailed);
 
-  const sources: readonly SceneSourceEntry[] = [
-    {
-      id: SOURCE.candidates,
-      spec: { type: "geojson" },
-      data: collection(references.map((c) => line(c.path, { routeId: c.routeId }))),
-    },
-    {
-      id: SOURCE.selected,
-      spec: { type: "geojson" },
-      data: collection(selected === null ? [] : [line(selected.path)]),
-    },
-    {
-      id: SOURCE.segments,
-      spec: { type: "geojson" },
-      data: collection(state.segments.map((s) => line(s.path, s.properties))),
-    },
-    {
-      id: SOURCE.spliceBands,
-      spec: { type: "geojson" },
-      data: collection(state.spliceBands.map((b) => line(b.path, b.properties))),
-    },
-    {
-      id: SOURCE.composite,
-      spec: { type: "geojson" },
-      data: collection(state.composite === null ? [] : [line(state.composite.path, state.composite.properties)]),
-    },
-    {
-      id: SOURCE.selectedSection,
-      spec: { type: "geojson" },
-      data: collection(state.selectedSection === null ? [] : [line(state.selectedSection)]),
-    },
-  ];
+  const sources = routeSourceEntries({
+    references,
+    selected,
+    segments: state.segments,
+    spliceBands: state.spliceBands,
+    composite: state.composite,
+    selectedSection: state.selectedSection,
+  });
 
   const withBandFilter = (entry: SceneLayerEntry): SceneLayerEntry =>
     state.hiddenBandFilter === undefined ? entry : { ...entry, filter: state.hiddenBandFilter };
+  /** ルートの線。どれも進む向きの左へ同じだけずらす。 */
+  const lineLayer = (
+    role: string,
+    source: SceneLayerEntry["source"],
+    paint: SceneLayerEntry["paint"],
+    extra: Partial<SceneLayerEntry> = {},
+  ): SceneLayerEntry => ({
+    role,
+    tier: "route",
+    source,
+    type: "line",
+    visible: state.visible,
+    paint: { ...paint, "line-offset": ROUTE_OFFSET_PX },
+    ...extra,
+  });
+  const hitLayer = (role: string, source: SceneLayerEntry["source"], target: string): SceneLayerEntry =>
+    lineLayer(role, source, HIT_PAINT, { hitTargets: [target] });
 
   // 背面から前面。
   const layers: readonly SceneLayerEntry[] = [
     // 選んだ区間の範囲は、どのルートの線より後ろに太く敷き、線の外側へはみ出た所で示す——線の上に重ねると、区間の色分けを隠す。
-    {
-      role: "selectedSection",
-      tier: "route",
-      source: SOURCE.selectedSection,
-      type: "line",
-      visible: state.visible && state.selectedSection !== null,
-      layout: ROUND_CAP,
-      paint: {
-        "line-color": palette.semantic.selected_section,
+    lineLayer(
+      "selectedSection",
+      SOURCE.selectedSection,
+      {
+        "line-color": state.semantic.selected_section,
         "line-width": ROUTE.lineWidthsPx.selectedSection,
         "line-opacity": ROUTE.opacities.selectedSection,
-        "line-offset": ROUTE_OFFSET_PX,
       },
-    },
-    {
-      role: "selectedHalo",
-      tier: "route",
-      source: SOURCE.selected,
-      type: "line",
-      visible: state.visible,
-      paint: {
-        "line-color": palette.semantic.route_selected_halo,
-        "line-width": ROUTE.lineWidthsPx.selectedHalo,
-        "line-opacity": ROUTE.opacities.selectedHalo,
-        "line-offset": ROUTE_OFFSET_PX,
-      },
-    },
-    {
-      role: "candidateLine",
-      tier: "route",
-      source: SOURCE.candidates,
-      type: "line",
-      visible: state.visible,
-      paint: {
-        "line-color": palette.semantic.route_candidate,
-        "line-width": ROUTE.lineWidthsPx.candidate,
-        "line-opacity": ROUTE.opacities.candidate,
-        "line-offset": ROUTE_OFFSET_PX,
-      },
-    },
+      { visible: state.visible && state.selectedSection !== null, layout: ROUND_CAP },
+    ),
+    lineLayer("selectedHalo", SOURCE.selected, {
+      "line-color": state.semantic.route_selected_halo,
+      "line-width": ROUTE.lineWidthsPx.selectedHalo,
+      "line-opacity": ROUTE.opacities.selectedHalo,
+    }),
+    lineLayer("candidateLine", SOURCE.candidates, {
+      "line-color": state.semantic.route_candidate,
+      "line-width": ROUTE.lineWidthsPx.candidate,
+      "line-opacity": ROUTE.opacities.candidate,
+    }),
     // 候補の線の当たり判定は、区間と乗り換えの帯の当たり判定より後ろ——重なった所は選んでいるルートの区間・帯を選ぶ。
-    {
-      role: "candidateHit",
-      tier: "route",
-      source: SOURCE.candidates,
-      type: "line",
-      visible: state.visible,
-      paint: { ...HIT_PAINT, "line-width": HIT_WIDTH_PX },
-      hitTargets: [ROUTE_HIT_TARGET_CANDIDATE],
-    },
-    {
-      role: "spliceBandLine",
-      tier: "route",
-      source: SOURCE.spliceBands,
-      type: "line",
-      paint: {
-        "line-color": palette.semantic.route_splice,
+    hitLayer("candidateHit", SOURCE.candidates, ROUTE_HIT_TARGET_CANDIDATE),
+    lineLayer(
+      "spliceBandLine",
+      SOURCE.spliceBands,
+      {
+        "line-color": state.semantic.route_splice,
         "line-width": ROUTE.lineWidthsPx.splice,
         "line-opacity": ROUTE.opacities.splice,
         "line-dasharray": [...ROUTE.spliceDash],
-        "line-offset": ROUTE_OFFSET_PX,
       },
-      visible: state.visible && state.spliceBands.length > 0,
-    },
-    {
-      role: "compositeCasing",
-      tier: "route",
-      source: SOURCE.composite,
-      type: "line",
-      visible: state.visible,
-      layout: ROUND_CAP,
-      paint: {
-        "line-color": palette.semantic.route_casing,
-        "line-width": ROUTE.casingWidthsPx.composite,
-        "line-offset": ROUTE_OFFSET_PX,
-      },
-    },
-    {
-      role: "compositeLine",
-      tier: "route",
-      source: SOURCE.composite,
-      type: "line",
-      visible: state.visible,
-      layout: ROUND_CAP,
-      paint: {
-        "line-color": palette.semantic.route_splice,
-        "line-width": ROUTE.lineWidthsPx.composite,
-        "line-offset": ROUTE_OFFSET_PX,
-      },
-    },
-    withBandFilter({
-      role: "detailCasing",
-      tier: "route",
-      source: SOURCE.segments,
-      type: "line",
-      visible: state.visible,
-      paint: {
-        "line-color": palette.semantic.route_casing,
+      { visible: state.visible && state.spliceBands.length > 0 },
+    ),
+    lineLayer(
+      "compositeCasing",
+      SOURCE.composite,
+      { "line-color": state.semantic.route_casing, "line-width": ROUTE.casingWidthsPx.composite },
+      { layout: ROUND_CAP },
+    ),
+    lineLayer(
+      "compositeLine",
+      SOURCE.composite,
+      { "line-color": state.semantic.route_splice, "line-width": ROUTE.lineWidthsPx.composite },
+      { layout: ROUND_CAP },
+    ),
+    withBandFilter(
+      lineLayer("detailCasing", SOURCE.segments, {
+        "line-color": state.semantic.route_casing,
         "line-width": ROUTE.casingWidthsPx.detail,
         "line-opacity": TRAVELLED_OPACITY,
-        "line-offset": ROUTE_OFFSET_PX,
-      },
-    }),
-    withBandFilter({
-      role: "detailLine",
-      tier: "route",
-      source: SOURCE.segments,
-      type: "line",
-      visible: state.visible,
-      paint: {
+      }),
+    ),
+    withBandFilter(
+      lineLayer("detailLine", SOURCE.segments, {
         "line-color": state.segmentColor,
         "line-width": ROUTE.lineWidthsPx.detail,
         "line-opacity": TRAVELLED_OPACITY,
-        "line-offset": ROUTE_OFFSET_PX,
         ...(state.segmentNoData === undefined ? {} : { "line-dasharray": noDataDashExpression(state.segmentNoData) }),
-      },
-    }),
-    withBandFilter({
-      role: "detailHit",
-      tier: "route",
-      source: SOURCE.segments,
-      type: "line",
-      visible: state.visible,
-      paint: { ...HIT_PAINT, "line-width": HIT_WIDTH_PX },
-      hitTargets: [ROUTE_HIT_TARGET_SEGMENT],
-    }),
+      }),
+    ),
+    withBandFilter(hitLayer("detailHit", SOURCE.segments, ROUTE_HIT_TARGET_SEGMENT)),
     // 帯の当たり判定は区間の当たり判定より前面——区間の当たり判定はルート全体を覆うため、
     // 後ろだと帯を一度も押せない。
-    {
-      role: "spliceBandHit",
-      tier: "route",
-      source: SOURCE.spliceBands,
-      type: "line",
-      visible: state.visible,
-      paint: { ...HIT_PAINT, "line-width": HIT_WIDTH_PX },
-      hitTargets: [ROUTE_HIT_TARGET_SPLICE_BAND],
-    },
-    arrowLayer("arrowHalo", ROUTE.arrowHaloScale, palette.semantic.route_arrow_halo, ROUTE.opacities.arrowHalo),
-    arrowLayer("arrow", 1, palette.semantic.route_arrow, 1),
+    hitLayer("spliceBandHit", SOURCE.spliceBands, ROUTE_HIT_TARGET_SPLICE_BAND),
+    arrowLayer("arrowHalo", ROUTE.arrowHaloScale, state.semantic.route_arrow_halo, ROUTE.opacities.arrowHalo),
+    arrowLayer("arrow", 1, state.semantic.route_arrow, 1),
   ];
 
   return { sources, layers, images: [ROUTE_ARROW_IMAGE] };

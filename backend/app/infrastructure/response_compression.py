@@ -1,13 +1,7 @@
 """応答のgzip圧縮（content-typeで対象を絞ったGZipMiddleware）。
 
-StarletteのGZipMiddlewareはcontent-typeを見ずに全応答を圧縮するため、そのまま使うと
-basemap/JMA/国土地理院のラスタタイル（PNG等、既に圧縮済みでgzipしても縮まない）にも
-CPUを使ってしまう。ここでは`COMPRESSIBLE_CONTENT_TYPES`に該当する応答だけを圧縮し、
-それ以外はそのまま素通しする。
-
-圧縮はイベントループ上で同期的に行われる（GZipResponderの実装）ため、compresslevelは
-高くしない。路面タイル（z12で約680KB）ではlevel 3で約57%、level 9で約55%と
-縮小率がほぼ同じ一方、所要時間は6倍近く違う。
+StarletteのGZipMiddlewareはcontent-typeを見ずに全応答を圧縮し、既に圧縮済みのラスタタイルにもCPUを使うため、
+対象のcontent-typeの応答だけを圧縮して、それ以外は素通しする。
 """
 
 from starlette.datastructures import Headers
@@ -16,9 +10,8 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from app.infrastructure.media_types import MVT_CONTENT_TYPE
 
-# 圧縮対象のcontent-type（パラメータ部を除いた小文字比較）。`text/`で始まるものは
-# 個別に列挙せず常に対象とする。
-COMPRESSIBLE_CONTENT_TYPES = frozenset(
+# 圧縮対象のcontent-type（パラメータ部を除いた小文字比較）。`text/`で始まるものは常に対象。
+_COMPRESSIBLE_CONTENT_TYPES = frozenset(
     {
         "application/json",
         MVT_CONTENT_TYPE,
@@ -27,14 +20,14 @@ COMPRESSIBLE_CONTENT_TYPES = frozenset(
     }
 )
 DEFAULT_MINIMUM_SIZE = 1000
-DEFAULT_COMPRESS_LEVEL = 3
+_COMPRESS_LEVEL = 3
 
 
-def is_compressible_content_type(content_type: str | None) -> bool:
+def _is_compressible_content_type(content_type: str | None) -> bool:
     if not content_type:
         return False
     media_type = content_type.split(";", 1)[0].strip().lower()
-    return media_type.startswith("text/") or media_type in COMPRESSIBLE_CONTENT_TYPES
+    return media_type.startswith("text/") or media_type in _COMPRESSIBLE_CONTENT_TYPES
 
 
 class _ContentTypeGZipResponder(GZipResponder):
@@ -47,7 +40,7 @@ class _ContentTypeGZipResponder(GZipResponder):
     async def send_with_gzip(self, message: Message) -> None:
         if message["type"] == "http.response.start":
             headers = Headers(raw=message["headers"])
-            self._passthrough = not is_compressible_content_type(headers.get("content-type"))
+            self._passthrough = not _is_compressible_content_type(headers.get("content-type"))
         if self._passthrough:
             await self.send(message)
             return
@@ -58,7 +51,7 @@ class ContentTypeGZipMiddleware(GZipMiddleware):
     """`Accept-Encoding: gzip`のリクエストに対し、圧縮対象content-typeの応答だけをgzipする。"""
 
     def __init__(self, app: ASGIApp) -> None:
-        super().__init__(app, minimum_size=DEFAULT_MINIMUM_SIZE, compresslevel=DEFAULT_COMPRESS_LEVEL)
+        super().__init__(app, minimum_size=DEFAULT_MINIMUM_SIZE, compresslevel=_COMPRESS_LEVEL)
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] == "http" and "gzip" in Headers(scope=scope).get("Accept-Encoding", ""):

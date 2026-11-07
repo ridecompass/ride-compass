@@ -5,28 +5,23 @@
 
 ここで見ないもの:
 - どのリクエストがどちらの系統を使うか → `api/dependencies.py`を通る各ルーターのテスト
-- DB障害の例外を受けて空・503へ倒すこと → 倒す側のテスト（例: `test_gradient_way_service.py`・`test_region_service.py`）
+- DB障害の例外を受けて空・503へ倒すこと → 倒す側のテスト（例: `test_region_service.py`）
 - 実行中の待ちの上限（`command_timeout`）。上限は通常の系統で20秒あり、届かせるにはその時間だけ待つ
 """
 
 import pytest
 from sqlalchemy import text
 
-from app.config import settings
 from app.infrastructure import database
-
-# 何も聞いていないポート。接続は張る段階ですぐに断られる。
-UNREACHABLE_DATABASE_URL = "postgresql+asyncpg://user:password@127.0.0.1:1/unreachable"
+from tests.conftest import UNREACHABLE_DATABASE_URL, app_database_at
 
 FACTORIES = [database.get_session_factory, database.get_route_generation_session_factory]
 
 
 @pytest.fixture
 async def unreachable_database(monkeypatch):
-    monkeypatch.setattr(settings, "database_url", UNREACHABLE_DATABASE_URL)
-    await database.dispose_engines()
-    yield
-    await database.dispose_engines()
+    async with app_database_at(monkeypatch, UNREACHABLE_DATABASE_URL):
+        yield
 
 
 @pytest.mark.usefixtures("unreachable_database")

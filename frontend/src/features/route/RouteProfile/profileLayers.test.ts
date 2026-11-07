@@ -1,36 +1,39 @@
 // @vitest-environment node
 /**
- * `features/route/RouteProfile/profileLayers.ts`——道のりのグラフのレイヤの値を、区間の並びから折れ線・最高と最低・地点の値と、区分の帯・地点の行・凡例の行へ、
- * ルートの近くの点から印・凡例の行へ引く計算。
+ * `features/route/RouteProfile/profileLayers.ts`——道のりのグラフのレイヤの値を、区間の並びから折れ線・最高と最低・地点の値と、区分の帯・凡例の行へ
+ * 引く計算と、1つの区間の勾配・区分の割合。
  *
  * ここで見ないもの: 折れ線と帯を描くこと・タブとチップ・選んだものを覚えること → `RouteProfile.test.tsx`。
  */
 import { describe, expect, it } from "vitest";
 
 import { routeStretches } from "@/lib/routeDistance";
+import { roadClass, roadMapLayer } from "@/testing/clientConfig";
 import { makeRouteSegment } from "@/testing/routeFixtures";
-import palette from "@/types/generated/palette.json";
 
 import {
   bandLegendRows,
-  bandRowAtKm,
   layerBand,
-  layerGradeAtKm,
   layerLine,
-  layerMarks,
   layerValueAtKm,
-  markLegendRows,
-  markNearKm,
-  PROFILE_LAYERS,
+  profileLayers,
+  segmentBandShares,
+  segmentGrades,
   type BandLayer,
   type LineLayer,
-  type PointLayer,
 } from "./profileLayers";
 
-const elevation = PROFILE_LAYERS.find((layer): layer is LineLayer => layer.id === "elevation")!;
-const band = (id: string) => PROFILE_LAYERS.find((layer): layer is BandLayer => layer.id === id)!;
+// 道の線の層は画面の設定が配る（本番の層は管理DBが持つ）ので、テストが組む。
+const LAYERS = profileLayers([
+  roadMapLayer("surface", {
+    has_no_data: true,
+    classes: [roadClass("paved"), roadClass("gravel"), roadClass("soil")],
+  }),
+  roadMapLayer("tunnel", { classes: [roadClass("tunnel")] }),
+]);
+const elevation = LAYERS.find((layer): layer is LineLayer => layer.id === "elevation")!;
+const band = (id: string) => LAYERS.find((layer): layer is BandLayer => layer.id === id)!;
 const surface = band("surface");
-const pointLayer = (id: string) => PROFILE_LAYERS.find((layer): layer is PointLayer => layer.id === id)!;
 const row = (layer: BandLayer, key: string) => layer.draw.rows.find((candidate) => candidate.key === key)!;
 
 type Road = [number | null, number | null, number];
@@ -100,18 +103,13 @@ describe("layerLine", () => {
   });
 });
 
-describe("layerValueAtKm・layerGradeAtKm", () => {
+describe("layerValueAtKm", () => {
   it.each([
-    {
-      km: 0.75,
-      value: 30,
-      grade: 4,
-      why: "区間の中は、その地点の道の両端の間を距離で割り振り、勾配はその道の両端の差を道の長さで割る",
-    },
-    { km: 1.5, value: null, grade: null, why: "道の並びの無い区間" },
-    { km: 2.5, value: null, grade: null, why: "値の無い道" },
-    { km: 99, value: 60, grade: 1, why: "終わりより先は終点の道" },
-  ])("$why", ({ km, value, grade }) => {
+    { km: 0.75, value: 30, why: "区間の中は、その地点の道の両端の間を距離で割り振る" },
+    { km: 1.5, value: null, why: "道の並びの無い区間" },
+    { km: 2.5, value: null, why: "値の無い道" },
+    { km: 99, value: 60, why: "終わりより先は終点の道" },
+  ])("$why", ({ km, value }) => {
     const columns = stretches(
       [
         [
@@ -125,11 +123,36 @@ describe("layerValueAtKm・layerGradeAtKm", () => {
       [[[50, 60, 1]], 1],
     );
     expect(layerValueAtKm(columns, elevation, km)).toBe(value);
-    expect(layerGradeAtKm(columns, elevation, km)).toBe(grade);
   });
 });
 
-type Stretch = { distance_km: number; value: string | boolean | null };
+describe("segmentGrades", () => {
+  // 最大は区間の続く坂の斜度（backendが区間ごとに作る）で、道1本の勾配から作り直さない——作り直すと数十mの跳ね上がりを拾う。
+  it.each<[string, Road[], number | null, { mean: number; sustained: number | null } | null]>([
+    [
+      "上り下りの和を長さの和で割った平均と、区間の続く坂の斜度。値の無い道は数えない",
+      [
+        [10, 20, 0.5],
+        [20, 40, 0.5],
+        [null, 99, 1],
+      ],
+      3.5,
+      { mean: 3, sustained: 3.5 },
+    ],
+    ["上りの無い区間は、下りの続く坂の斜度を出す", [[50, 40, 1]], -1.5, { mean: -1, sustained: -1.5 }],
+    ["値のある道が無ければ出さない", [[null, null, 1]], null, null],
+  ])("%s", (_, roads, sustained, grades) => {
+    const elevations = roads.map(([start, end, km]) => ({
+      distance_km: km,
+      start_elevation_m: start,
+      end_elevation_m: end,
+    }));
+    const found = segmentGrades(makeRouteSegment({ elevations, sustained_gradient_percent: sustained }), elevation);
+    expect(found && { ...found, mean: Number(found.mean.toFixed(6)) }).toEqual(grades);
+  });
+});
+
+type Stretch = { distance_km: number; value: string | null };
 
 function classed(id: string, ...segments: [Stretch[] | undefined, number][]) {
   return routeStretches(
@@ -140,7 +163,7 @@ function classed(id: string, ...segments: [Stretch[] | undefined, number][]) {
 }
 
 describe("layerBand", () => {
-  it("区間の中の区分を距離の比で区間の長さへ割り振り、隣どうしで同じ行をつなぎ、長さの無い区間を飛ばし、区分の無い区間は値なしの行で塗る", () => {
+  it("区間の中の区分を距離の比で区間の長さへ割り振り、隣どうしで同じ行をつなぎ、長さの無い区間を飛ばし、区分の無い区間は区分の外の行で塗る", () => {
     const pieces = layerBand(
       classed(
         "surface",
@@ -160,13 +183,13 @@ describe("layerBand", () => {
     expect(pieces).toEqual([
       { startKm: 0, endKm: 0.5, row: row(surface, "paved") },
       { startKm: 0.5, endKm: 3, row: row(surface, "gravel") },
-      { startKm: 3, endKm: 4, row: row(surface, "nodata") },
+      { startKm: 3, endKm: 4, row: row(surface, "other") },
     ]);
   });
 
   it.each([
-    { id: "surface", value: "unknown_surface", key: "other", why: "分類に無い値はその他" },
-    { id: "tunnel", value: null, key: "other", why: "タグの不在も値として載る属性では、値なしは該当なし" },
+    { id: "surface", value: "unknown_class", key: "other", why: "層に無い区分の鍵はその他" },
+    { id: "tunnel", value: null, key: "other", why: "どの区分にも入らない道はその他（該当なし）" },
     { id: "landcover", value: "trees_percent", key: "trees_percent", why: "緑と水は最も多いクラスの行" },
     { id: "landcover", value: null, key: "nodata", why: "緑と水の割合が無ければデータなし" },
   ])("$why", ({ id, value, key }) => {
@@ -177,22 +200,34 @@ describe("layerBand", () => {
   });
 });
 
-describe("bandRowAtKm", () => {
-  const pieces = layerBand(
-    classed("surface", [[{ distance_km: 1, value: "paved" }], 1], [[{ distance_km: 1, value: "gravel" }], 1]),
-    surface,
-  );
-
-  it.each([
-    { km: 0.5, key: "paved", why: "部分の中はその部分の行" },
-    { km: 1, key: "gravel", why: "切れ目ちょうどは後の部分" },
-    { km: 99, key: "gravel", why: "終わりより先は終点の行" },
-  ])("$why", ({ km, key }) => {
-    expect(bandRowAtKm(pieces, km)).toEqual(row(surface, key));
-  });
-
-  it("部分が無ければ行も無い", () => {
-    expect(bandRowAtKm([], 0)).toBeNull();
+describe("segmentBandShares", () => {
+  it.each<[string, Stretch[] | undefined, [string, number][]]>([
+    [
+      "区分の付く道だけで割り、同じ行をまとめて多い順に並べる。どの区分にも入らない道は数えない",
+      [
+        { distance_km: 0.3, value: "paved" },
+        { distance_km: 0.4, value: "unknown_class" },
+        { distance_km: 0.1, value: "gravel" },
+        { distance_km: 0.4, value: "paved" },
+      ],
+      [
+        ["paved", 0.875],
+        ["gravel", 0.125],
+      ],
+    ],
+    [
+      "整数の%に丸めて0%になる行は出さない",
+      [
+        { distance_km: 1, value: "paved" },
+        { distance_km: 0.004, value: "soil" },
+      ],
+      [["paved", 0.996016]],
+    ],
+    ["区分の付く道の無い区間は、何も出さない", [{ distance_km: 1, value: null }], []],
+  ])("%s", (_, stretches, shares) => {
+    const segment = makeRouteSegment({ road_classes: stretches === undefined ? {} : { surface: stretches } });
+    const found = segmentBandShares(segment, surface).map(({ row, share }) => [row.key, Number(share.toFixed(6))]);
+    expect(found).toEqual(shares);
   });
 });
 
@@ -203,100 +238,5 @@ describe("bandLegendRows", () => {
       surface,
     );
     expect(bandLegendRows(surface, pieces)).toEqual([row(surface, "paved"), row(surface, "gravel")]);
-  });
-});
-
-describe("layerMarks", () => {
-  const supply = pointLayer("supply_poi");
-  const accident = pointLayer("accident_point");
-  const colorOf = (layer: PointLayer, key: string) => {
-    const category = layer.draw.declaration.display_axes[0].categories.find((candidate) => candidate.key === key)!;
-    if (!("color" in category)) throw new Error(`色の無い区分: ${key}`);
-    return category.color;
-  };
-
-  it("そのレイヤの点だけを道のりの順のまま、地図と同じ色と絵記号・区分の名前・点の名前つきの印にする", () => {
-    const marks = layerMarks(
-      [
-        { distance_km: 0.2, layer: "supply_poi", properties: { kind: "toilets" } },
-        { distance_km: 0.5, layer: "stop_poi", properties: { kind: "stop" } },
-        { distance_km: 1.4, layer: "supply_poi", properties: { kind: "convenience", name: "ローソン 渋谷店" } },
-      ],
-      supply,
-    );
-    expect(marks).toEqual([
-      expect.objectContaining({
-        km: 0.2,
-        color: colorOf(supply, "toilets"),
-        glyph: "toilet",
-        kinds: "トイレ",
-        name: null,
-      }),
-      expect.objectContaining({
-        km: 1.4,
-        color: colorOf(supply, "convenience"),
-        glyph: "bag",
-        kinds: "コンビニ",
-        name: "ローソン 渋谷店",
-      }),
-    ]);
-  });
-
-  it("絵記号の無いレイヤは、先頭の軸の色と大きさの軸の半径で丸の印にし、区分の名前を軸の並びでつなぐ", () => {
-    const [mark] = layerMarks(
-      [
-        {
-          distance_km: 1,
-          layer: "accident_point",
-          properties: { involves_bicycle: true, fatal: true, occurred_year: 2021 },
-        },
-      ],
-      accident,
-    );
-    expect(mark).toEqual(
-      expect.objectContaining({
-        color: colorOf(accident, "bicycle"),
-        glyph: null,
-        radiusPx: 6,
-        kinds: "自転車関連 ・ 死亡事故",
-      }),
-    );
-  });
-
-  it("宣言に無い値の点は、値の無い色と「不明」で出す", () => {
-    const [mark] = layerMarks([{ distance_km: 1, layer: "supply_poi", properties: { kind: "vanished" } }], supply);
-    expect(mark).toEqual(expect.objectContaining({ color: palette.semantic.no_data, glyph: null, kinds: "不明" }));
-  });
-});
-
-describe("markNearKm", () => {
-  const marks = layerMarks(
-    [
-      { distance_km: 1, layer: "supply_poi", properties: { kind: "toilets" } },
-      { distance_km: 1.3, layer: "supply_poi", properties: { kind: "convenience" } },
-    ],
-    pointLayer("supply_poi"),
-  );
-
-  it.each([
-    { km: 1.2, kinds: "コンビニ", why: "許す幅の内では、いちばん近い印" },
-    { km: 1.6, kinds: null, why: "許す幅の外なら印は無い" },
-  ])("$why", ({ km, kinds }) => {
-    expect(markNearKm(marks, km, 0.2)?.kinds ?? null).toBe(kinds);
-  });
-});
-
-describe("markLegendRows", () => {
-  it("印に現れた区分だけを宣言の並びで出し、宣言に無い値の印があれば最後に「不明」を出す", () => {
-    const supply = pointLayer("supply_poi");
-    const marks = layerMarks(
-      [
-        { distance_km: 0.1, layer: "supply_poi", properties: { kind: "vanished" } },
-        { distance_km: 0.2, layer: "supply_poi", properties: { kind: "toilets" } },
-        { distance_km: 0.3, layer: "supply_poi", properties: { kind: "convenience" } },
-      ],
-      supply,
-    );
-    expect(markLegendRows(supply, marks).map((row) => row.label)).toEqual(["コンビニ", "トイレ", "不明"]);
   });
 });

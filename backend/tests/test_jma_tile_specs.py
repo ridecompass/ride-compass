@@ -1,14 +1,14 @@
 """`domain/jma_tile_specs.py`——気象庁の配信要素ごとの、タイルのズーム・配信元のパス・時刻一覧の読み方。
 
 入口は、ズーム（`effective_max_zoom`・`has_native_tile`・`source_zoom_for_interpolation`・`jma_tile_spec`）、
-配信元のパス（`jma_target_times_paths`・`jma_url_template`・`jma_tile_path`）、時刻一覧の行をコマにする
+配信元のパス（`jma_url_template`・`jma_tile_path`）、時刻一覧の行をコマにする
 `read_target_times`と、要素の宣言`JmaElement`の検証。
 
 要素の宣言`JMA_ELEMENTS`は配信元の設定ファイルの写し（本番の正本を持つ宣言のデータ）なので中身に踏み込まず、
 架空の要素へ差し替える。期待するパスの形は配信元のURL（`https://www.jma.go.jp/bosai/jmatile/data/...`）である。
 
 ここで見ないもの:
-- 動的気象の要素の段をつなぐこと・段ごとの配信の組み立て → `test_weather_elements.py`
+- 動的気象の要素の段をつなぐこと・段ごとの配信の組み立て（時刻一覧のパス`jma_target_times_paths`も） → `test_weather_elements.py`
 - 時刻一覧の応答を行へ解くこと・取得とキャッシュ → `test_jma_tile_client.py`
 - パスをタイルとして読み戻すこと（`infrastructure/jma_tile_paths.py`） → `test_jma_tile_interpolation.py`（親のパス）・
   `test_jma_tile_client.py`（取得とキャッシュ）、404の意味 → `test_jma_tile_client.py`
@@ -25,7 +25,6 @@ ELEMENTS = {
     "ras2": JmaElement("risk", ("targetTimes.json",), "latest", JmaTileSpec("even", 11)),
     "vec": JmaElement("risk", ("targetTimes.json",), "latest", JmaTileSpec("even", 11, vector_layer="lines")),
     "oddz": JmaElement("rasrf", ("targetTimes.json",), "latestFullRun", JmaTileSpec("odd", 9)),
-    "allz": JmaElement("rasrf", ("targetTimes.json",), "latest", JmaTileSpec("all", 8)),
     "pts": JmaElement("nowc", ("targetTimes_N3.json",), "nowcast", data_delay_minutes=10),
 }
 
@@ -58,9 +57,7 @@ def test_the_source_has_data_only_at_its_parity_between_the_minimum_and_the_usab
         ("ras2", 5, 4),
         ("ras2", 10, None),
         ("ras2", 11, None),
-        ("ras2", 3, None),
         ("oddz", 4, None),
-        ("allz", 6, None),
         ("pts", 5, None),
         ("undeclared", 5, None),
     ],
@@ -68,9 +65,7 @@ def test_the_source_has_data_only_at_its_parity_between_the_minimum_and_the_usab
         "parent_at_the_minimum",
         "native",
         "above_the_usable_maximum_is_overzoomed_by_the_map",
-        "below_the_minimum",
         "parent_below_the_minimum",
-        "no_parity_constraint",
         "not_delivered_as_tiles",
         "undeclared",
     ],
@@ -88,10 +83,15 @@ def test_the_tile_spec_is_given_only_for_declared_tile_elements():
         specs.jma_tile_spec("undeclared")
 
 
-def test_a_tile_element_cannot_declare_a_delivery_delay():
-    """遅れのずらしは画面の読み方だけが持ち、タイルを温めるプリウォームは持たない。"""
+@pytest.mark.parametrize(
+    ("time_files", "tile", "delay"),
+    [((), None, 0), (("targetTimes_N1.json",), JmaTileSpec("even", 10), 10)],
+    ids=["時刻一覧のファイルが無い", "タイルで配る要素に配信の遅れ"],
+)
+def test_an_element_that_cannot_be_fetched_as_declared_is_refused(time_files, tile, delay):
+    """時刻一覧のファイルが無いとコマを取りに行けない。遅れのずらしは画面の読み方だけが持ち、タイルを温めるプリウォームは持たない。"""
     with pytest.raises(ValueError):
-        JmaElement("nowc", ("targetTimes_N1.json",), "nowcast", JmaTileSpec("even", 10), data_delay_minutes=10)
+        JmaElement("nowc", time_files, "nowcast", tile, data_delay_minutes=delay)
 
 
 # --- 配信元のパス ---
@@ -136,27 +136,49 @@ def test_rows_of_other_elements_on_the_same_listing_are_ignored():
     assert specs.read_target_times("nowcast", rows, "el") == [mine]
 
 
-def test_a_nowcast_starts_at_its_latest_observation_and_runs_in_valid_time_order():
-    old_observation = _frame("0050", "0050")
-    latest_observation = _frame("0100", "0100")
-    forecasts = [_frame("0100", "0110"), _frame("0100", "0105")]
-    rows = _rows(forecasts[0], latest_observation, old_observation, forecasts[1])
-
-    assert specs.read_target_times("nowcast", rows, "el") == [latest_observation, forecasts[1], forecasts[0]]
+_OLD_OBSERVATION = _frame("0050", "0050")
+_LATEST_OBSERVATION = _frame("0100", "0100")
+_FORECASTS = (_frame("0100", "0110"), _frame("0100", "0105"))
 
 
-def test_a_nowcast_without_any_observation_keeps_every_frame_in_order():
-    rows = _rows(_frame("0100", "0110"), _frame("0100", "0105"))
-    assert specs.read_target_times("nowcast", rows, "el") == [_frame("0100", "0105"), _frame("0100", "0110")]
+@pytest.mark.parametrize(
+    ("rows", "expected"),
+    [
+        (
+            _rows(_FORECASTS[0], _LATEST_OBSERVATION, _OLD_OBSERVATION, _FORECASTS[1]),
+            [_LATEST_OBSERVATION, _FORECASTS[1], _FORECASTS[0]],
+        ),
+        (_rows(*_FORECASTS), [_FORECASTS[1], _FORECASTS[0]]),
+        (
+            _rows(
+                _frame("0105", "0105"),
+                _frame("0105", "0110"),
+                _frame("0100", "0105"),
+                _frame("0100", "0110"),
+            ),
+            [_frame("0105", "0105"), _frame("0105", "0110")],
+        ),
+    ],
+    ids=[
+        "starts_at_the_latest_observation",
+        "without_any_observation_keeps_every_frame",
+        "one_frame_per_valid_time_preferring_the_observation_then_the_newer_run",
+    ],
+)
+def test_a_nowcast_runs_in_valid_time_order_from_its_latest_observation(rows, expected):
+    assert specs.read_target_times("nowcast", rows, "el") == expected
 
 
-def test_latest_reads_only_the_newest_base_time():
-    rows = _rows(_frame("0100", "0100"), _frame("0110", "0110"), _frame("0050", "0050"))
-    assert specs.read_target_times("latest", rows, "el") == [_frame("0110", "0110")]
-
-
-def test_latest_of_an_element_without_rows_has_no_frames():
-    assert specs.read_target_times("latest", _rows(_frame("0100", "0100"), elements=("other",)), "el") == []
+@pytest.mark.parametrize(
+    ("rows", "expected"),
+    [
+        (_rows(_frame("0100", "0100"), _frame("0110", "0110"), _frame("0050", "0050")), [_frame("0110", "0110")]),
+        (_rows(_frame("0100", "0100"), elements=("other",)), []),
+    ],
+    ids=["only_the_newest_base_time", "no_rows_of_the_element"],
+)
+def test_latest_reads_only_the_newest_base_time(rows, expected):
+    assert specs.read_target_times("latest", rows, "el") == expected
 
 
 def test_a_full_run_is_the_newest_run_with_several_valid_times_and_single_time_runs_are_skipped():

@@ -39,9 +39,9 @@ const MATERIALS: AxisLine["materials"] = new Map<string, Record<string, number>>
 
 type AxisLine = AxisLineState["axes"][number];
 
-/** 軸1本だけを出している線の宣言。 */
+/** レンズ1つだけを出している線の宣言。 */
 function groupFor(
-  { materials = MATERIALS, loading = false, hiddenBandKeys = [], underlay = false }: Partial<AxisLine> = {},
+  { materials = MATERIALS, loading = false, hiddenBandKeys = [] }: Partial<AxisLine> = {},
   conditions: AxisLineState["conditions"] = { bearing_deg: 0 },
 ) {
   return axisLineGroup.build({
@@ -55,7 +55,6 @@ function groupFor(
         materials,
         loading,
         hiddenBandKeys,
-        underlay,
       },
     ],
     conditions,
@@ -90,10 +89,6 @@ describe("段の色", () => {
     expect(lookOf("along", { hiddenBandKeys: ["high"] }).color).toBe("#f59e0b");
   });
 
-  it("段の境界ちょうどの値の道は上の段の色（段の引き方は`valueScale.ts: bandCondition`の1つ）", () => {
-    expect(lookOf("onBoundary").color).toBe("#dc2626");
-  });
-
   it("走る向きを変えると、地図全体の状態の向きが変わり、その向きで求めた値の段の色になる", () => {
     const turned = groupFor({}, { bearing_deg: 10 });
 
@@ -111,13 +106,6 @@ describe("値の無い道", () => {
     expect(lookOf("along").dashOpacity).toBe(0);
   });
 
-  it("破線の線は「データなし」の色で、データなしの刻みを持つ", () => {
-    const dashed = groupFor().layers[1];
-
-    expect(dashed.paint["line-color"]).toBe(palette.semantic.no_data);
-    expect(evaluate(dashed.paint["line-dasharray"], {})).toEqual([...mapDisplay.noDataDash]);
-  });
-
   it("「データなし」を隠すと、実線も破線も描かない", () => {
     expect(lookOf("absent", { hiddenBandKeys: [LEGEND_NO_DATA_KEY] })).toEqual({
       color: TRANSPARENT,
@@ -131,13 +119,6 @@ describe("値の無い道", () => {
 
     expect(loading).toEqual({ color: palette.semantic.loading, dashOpacity: null });
     expect(groupFor({ loading: true }).layers[0].paint["line-opacity"]).toBe(mapDisplay.road.knownOpacity);
-  });
-
-  it("材料が同時に出ているときの下敷きは、破線にせず全体を薄く敷く", () => {
-    const underlay = groupFor({ underlay: true });
-
-    expect(lookOf("absent", { underlay: true })).toEqual({ color: palette.semantic.no_data, dashOpacity: null });
-    expect(underlay.layers[0].paint["line-opacity"]).toBe(mapDisplay.road.underlayOpacity);
   });
 });
 

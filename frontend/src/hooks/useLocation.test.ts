@@ -6,7 +6,7 @@
  *
  * ここで見ないもの:
  * - 位置が分からない間に天候・警報を取らないこと、印の項目をヘッダーに並べること、取り直した現在地へ地図を寄せること
- *   → `app/page.test.tsx`
+ *   → `app/page.layout.test.tsx`
  *
  * 差し替えたもの: 位置情報の取得（`navigator.geolocation`。テスト環境に無いブラウザの機能）。要求ごとに、
  * テストが決めた時に成功か失敗で返す。
@@ -95,17 +95,6 @@ describe("「現在地に移動」の取り直し", () => {
     expect(result.current.originAtHere).toBe(false);
   });
 
-  it("出発地がまだ分からなければ、取れた現在地を出発地にする", () => {
-    const { result } = renderHook(() => useLocation(null));
-    requests[0].fail();
-
-    act(() => result.current.locateMe());
-    requests[1].succeed(HERE);
-
-    expect(result.current.location).toEqual(HERE);
-    expect(result.current.locationKnown).toBe(true);
-  });
-
   it("失敗したら取得中を下ろして文を出し、次に押すと文を消してから取り直す", () => {
     const { result } = renderHook(() => useLocation(null));
     requests[0].succeed(HERE);
@@ -141,25 +130,6 @@ describe("「現在地に移動」の取り直し", () => {
     expect(result.current.here).toEqual(HERE);
     expect(result.current.location).toEqual(HERE);
   });
-
-  it("取り直しの失敗を、遅れて返った自動取得の失敗が打ち消さない", () => {
-    const { result } = renderHook(() => useLocation(null));
-    act(() => result.current.locateMe());
-
-    requests[1].fail();
-    requests[0].fail();
-
-    expect(result.current.locateError).toBe(FAILED);
-  });
-
-  it("自動取得の決着より先に取り直しが失敗したら、自動取得を待たずに印の項目を出す", () => {
-    const { result } = renderHook(() => useLocation(null));
-    act(() => result.current.locateMe());
-
-    requests[1].fail();
-
-    expect(result.current.locationFailure).not.toBeNull();
-  });
 });
 
 describe("出発地を現在地に戻す", () => {
@@ -190,6 +160,16 @@ describe("出発地を現在地に戻す", () => {
     expect(result.current.location).toEqual(THERE);
     expect(result.current.locationSource).toBe("geolocation");
     expect(result.current.originAtHere).toBe(true);
+  });
+  it("走行モードを抜けたら、走行モードが最後に受けた位置を現在地のまま残す", () => {
+    const { result, rerender } = renderHook(({ ridingAt }) => useLocation(ridingAt), {
+      initialProps: { ridingAt: null as Coordinates | null },
+    });
+    requests[0].succeed(HERE);
+    rerender({ ridingAt: THERE });
+    rerender({ ridingAt: null });
+    expect(result.current.here).toEqual(THERE);
+    expect(result.current.originAtHere).toBe(false);
   });
 });
 

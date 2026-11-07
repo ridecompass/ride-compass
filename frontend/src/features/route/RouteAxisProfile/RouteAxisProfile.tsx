@@ -1,180 +1,84 @@
 "use client";
 
 import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
-import type { CatalogAxis } from "@/lib/catalogAxis";
-import { formatDurationShort } from "@/lib/duration";
-import type { OverallDifficulty, RoutePreferenceWeights } from "@/types/route";
-import AxisContributionBar, { hasAnyContribution } from "@/components/AxisContributionBar/AxisContributionBar";
-import AxisDetail from "@/components/AxisContributionBar/AxisDetail";
-import { formatAxisRawValue, formatCategoryBreakdown, formatMaterialBreakdown } from "./axisRawValue";
 import { textVariants } from "@/components/ui/Text/Text";
+import PenaltyBreakdown from "@/features/route/PenaltyBreakdown/PenaltyBreakdown";
 import WarningText from "@/features/route/WarningText/WarningText";
-import { DIFFICULTY_SCALE_SUFFIX, formatDifficulty, formatLoad } from "@/lib/mapDisplay/valueScale";
+import { formatDurationShort } from "@/lib/duration";
+import { formatLensNumber } from "@/lib/mapDisplay/costLensPaint";
+import { formatPenalty, type PenaltyCatalog } from "@/lib/routePenalty";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
+import type { PenaltyBreakdown as PenaltyValues, RouteFacts } from "@/types/route";
 
 /** 区間ごとに速度を変える条件の名前（backendの走行モデルが宣言する並び）。 */
 const SPEED_CONDITIONS = routeGenerateConfig.segment_speed_conditions.join("・");
-/** 総合難易度（平均）と負荷（総量）の数え方の文。backendが式の横で持つ。 */
-const DIFFICULTY_WORDING = routeGenerateConfig.overall_difficulty_wording;
 
 interface RouteAxisProfileProps {
-  /** 公開軸すべて（軸カタログの順序・ラベルの正本）。重みによる絞り込みは行わない。 */
-  axes: readonly CatalogAxis[];
-  /** この候補を実際に評価した重み（生成時点のroute_preference）。0の軸と重みの無い軸は凡例に出さない。 */
-  weights: RoutePreferenceWeights;
-  /** RouteCandidate.axis_difficulties（axis_id→距離加重平均の難易度0-100）。評価できなかった
-   * 軸はキー自体を持たない。 */
-  axisDifficulties: Record<string, number>;
-  /** RouteCandidate.axis_contributions（axis_id→重み付き寄与度0-100、合計はoverallDifficultyと
-   * 一致する）。backendは公開軸すべてにキーを返す（重み0の軸は値0.0）ため、値0の軸は
-   * AxisContributionBar側で表示から除く（本コンポーネント側での絞り込みは行わない）。 */
-  axisContributions: Record<string, number>;
-  /** RouteCandidate.axis_raw_values（axis_id→折れ点を通す前の生値）。単位が定まる軸だけが
-   * 値を持つ。得点は目盛りの引き方に依存する相対評価のため、軸単体で経路を判断するには
-   * この絶対値が要る。 */
-  axisRawValues: Record<string, number>;
-  /** RouteCandidate.material_values（材料id→距離加重平均の値）。生値の単位が定まらない軸は、
-   * 軸の内訳（CatalogAxis.materialBreakdown）が挙げる材料の値をここから引いて出す。
-   * 真偽値材料は0/1で運ばれるため、平均がそのまま該当区間の延長割合になる。 */
-  materialValues: Record<string, number>;
-  /** RouteCandidate.material_category_shares（categorical材料id→{値: 延長割合}）。
-   * 数値として平均できない材料の内訳はここから引く。 */
-  materialCategoryShares: Record<string, Record<string, number>>;
-  /** 経路の走行距離（km）。単位が「◯◯/km」の軸で、生値から経路全体の実数を出すのに使う。 */
-  distanceKm: number | null;
-  /** RouteCandidate.overall_difficulty。平均は内訳の合計（絶対基準0-100）。総量（平均×距離km）は、平均が距離で
-   * 正規化されるのに対し距離が伸びればそのまま増えるため「遠回りした分だけ増えるしんどさ」を表す。候補間の
-   * 相対比較に使う値で単位を持たない。 */
-  overallDifficulty: OverallDifficulty | null;
+  /** RouteCandidate.penalty（軸ごとと回避指定の代償の秒）。 */
+  penalty: PenaltyValues;
+  /** RouteCandidate.facts（軸ごとの事実の量と、標高の無い長さ）。 */
+  facts: RouteFacts;
+  /** 費用の軸の一覧（行の名前と色）。 */
+  catalog: PenaltyCatalog;
   /** RouteCandidate.estimated_duration_seconds（走行＋停止＋ターンの見積もり）。 */
   estimatedDurationSeconds: number | null;
-  /** 所要時間を、風の値を使えず無風として出した（RouteCandidate.wind_unavailable）。 */
-  windUnavailable: boolean;
   /** 所要時間を、勾配か停止要因の値が無く平地・待ち無しとして出した区間の距離の割合（0〜1、
    * RouteCandidate.missing_travel_data_share）。 */
   missingTravelDataShare: number | null;
-  /** 軸id→色ドットの色（ルート設定パネルの凡例チップと同じ色）。 */
-  axisColors: Record<string, string>;
 }
 
-/** ルート結果の総合難易度と、重み付きの寄与の積み上げの帯（読むだけ）。軸ごとの詳細は一覧を作らず、帯の凡例の
- * チップを押して開く。レンズはここでは選ばない（入口は地図の上のピルだけ）。 */
+/** ルート結果の所要時間と負担（読むだけ）。負担は、避けたいもの（登り・止まる回数・振動等の軸）を通る代償を秒にしたもので、
+ * 軸ごとの内訳を帯と一覧で出し、軸ごとの事実の量を添える。レンズはここでは選ばない（入口は地図の上のピルだけ）。 */
 export default function RouteAxisProfile({
-  axes,
-  weights,
-  axisRawValues,
-  materialValues,
-  materialCategoryShares,
-  distanceKm,
-  axisDifficulties,
-  axisContributions,
-  overallDifficulty,
+  penalty,
+  facts,
+  catalog,
   estimatedDurationSeconds,
-  windUnavailable,
   missingTravelDataShare,
-  axisColors,
 }: RouteAxisProfileProps) {
   // 値の無い区間の割合（丸めた%）。値が無ければ0として扱い、知らせない。
   const missingPct = missingTravelDataShare == null ? 0 : Math.round(missingTravelDataShare * 100);
-  // 評価に使っていない軸（重み0）はnullを返し、AxisContributionBarの凡例から落とす。
-  // 内訳は候補ごとに縦へ伸びるため、使っていない軸まで並べると狭い幅で「このルートで
-  // 何が効いたか」が読めなくなる（設計原則「消さずに薄くする」の例外）。
-  const renderAxisDetail = (axis: CatalogAxis) => {
-    if ((weights[axis.axisId] ?? 0) <= 0) return null;
-    // 折れ点を通す前の生値。単位が定まらない軸（合成軸等）はbackendがrawValueUnitを
-    // 返さないため何も出ない。
-    const rawText = formatAxisRawValue(
-      axisRawValues[axis.axisId],
-      axis.rawValueUnit,
-      axis.rawValueTotalUnit,
-      distanceKm,
-    );
-    // backendがmaterialBreakdownで並び順ごと返すため、ここでは並べ替えない。
-    const breakdownTexts = axis.materialBreakdown
-      .map((entry) =>
-        entry.dtype === "categorical"
-          ? formatCategoryBreakdown(entry, materialCategoryShares[entry.materialId])
-          : formatMaterialBreakdown(entry, materialValues[entry.materialId]),
-      )
-      .filter((text): text is string => text !== null);
-    return (
-      <AxisDetail axis={axis} difficulty={axisDifficulties[axis.axisId]}>
-        {rawText && <span className="block text-[var(--color-muted-strong)] tabular-nums">{rawText}</span>}
-        {breakdownTexts.length > 0 && (
-          <span className="block text-[var(--color-muted-strong)] tabular-nums">{`この評価軸の内訳: ${breakdownTexts.join("・")}`}</span>
-        )}
-      </AxisDetail>
-    );
-  };
 
   return (
-    <div className="flex flex-col">
-      {overallDifficulty != null && (
-        <div className="mx-0.5 mt-0.5 mb-1 flex flex-col gap-1">
-          {/* 数値の行と内訳のバーを分ける——同じ折り返しの行へ入れると、数値の文字数（所要の「58分」と「125分」等）で
-              バーが数値の横へ入るか次の行へ落ちるかが変わり、候補ごとにバーの長さが揃わない。 */}
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
-            <span className="inline-flex flex-shrink-0 items-baseline gap-0.5">
-              <span className={textVariants({ variant: "hint" })}>総合難易度</span>
-              <span className="text-[1.05rem] font-semibold">{formatDifficulty(overallDifficulty.average)}</span>
-              <span className={textVariants({ variant: "hint" })}>{DIFFICULTY_SCALE_SUFFIX}</span>
-              <InfoPopover triggerAriaLabel="総合難易度の説明">
-                <p>
-                  {DIFFICULTY_WORDING.average}
-                  評価軸の重み配分を反映していて、下の内訳の合計とほぼ一致します。候補の一覧は、最速ルートのほかは所要時間の短い順に並びます。
-                </p>
-              </InfoPopover>
-            </span>
-            {estimatedDurationSeconds != null && (
-              <span className="inline-flex flex-shrink-0 items-baseline gap-0.5">
-                <span className={textVariants({ variant: "hint" })}>所要</span>
-                <span className="text-[1.05rem] font-semibold">{formatDurationShort(estimatedDurationSeconds)}</span>
-                <InfoPopover triggerAriaLabel="所要時間の説明">
-                  <p>
-                    {`走行時間[${SPEED_CONDITIONS}と想定した巡航速度から区間ごとに計算]に、`}
-                    信号などで止まる待ちと、交差点で曲がる待ちを足した見積もりです。実際の信号のタイミングや走り方で変わります。
-                  </p>
-                </InfoPopover>
-              </span>
-            )}
-            <span className="inline-flex flex-shrink-0 items-baseline gap-0.5">
-              {/* 「難易度×距離」という中身は説明（ⓘ）が持つ。狭い右カラムで折り返す
-                ぶんだけ縦を食うため、見出しは短い語に留める。 */}
-              <span className={textVariants({ variant: "hint" })}>負荷</span>
-              <span className="text-[1.05rem] font-semibold">{formatLoad(overallDifficulty.load)}</span>
-              <InfoPopover triggerAriaLabel="負荷の説明">
-                <p>
-                  {DIFFICULTY_WORDING.load}
-                  難所を通っても短いルートと、遠回りで易しいルートを見比べるときに使ってください。
-                </p>
-                <p>
-                  上のグラフは横が距離、縦が区間ごとの難易度で、塗られた面積がこの負荷にあたります
-                  [色ごとの面積がその評価軸の負荷]。灰色は値の無い区間で、平均の高さで描いています。
-                  {DIFFICULTY_WORDING.missing}
-                </p>
-              </InfoPopover>
-            </span>
-          </div>
-          {/* 所要時間の前提が崩れていることは、所要時間のすぐ下で知らせる（黙って短い所要時間を見せない）。
-              値の無い区間は丸めて1%以上のときだけ出す——0%を並べても判断の材料にならない。 */}
-          {windUnavailable && (
-            <WarningText>風のモデルの計算値を使えなかったため、無風として所要時間を出しています</WarningText>
-          )}
-          {missingPct >= 1 && (
-            <WarningText>{`データの無い区間が${missingPct}%[${routeGenerateConfig.missing_travel_data_wording}]`}</WarningText>
-          )}
-          {hasAnyContribution(axes, axisContributions) ? (
-            <AxisContributionBar
-              axes={axes}
-              legendAxes={axes}
-              contributions={axisContributions}
-              axisColors={axisColors}
-              renderDetail={renderAxisDetail}
-            />
-          ) : (
-            <p className={textVariants({ variant: "hint" })}>このルートで表示できる評価軸の値がありません</p>
-          )}
-        </div>
+    <div className="mx-0.5 mt-0.5 mb-1 flex flex-col gap-1">
+      {/* 数値の行と内訳の帯を分ける——同じ折り返しの行へ入れると、数値の文字数で帯が数値の横へ入るか次の行へ落ちるかが
+          変わり、候補ごとに帯の長さが揃わない。 */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
+        {estimatedDurationSeconds != null && (
+          <span className="inline-flex flex-shrink-0 items-baseline gap-0.5">
+            <span className={textVariants({ variant: "hint" })}>所要</span>
+            <span className="text-[1.05rem] font-semibold">{formatDurationShort(estimatedDurationSeconds)}</span>
+            <InfoPopover triggerAriaLabel="所要時間の説明">
+              <p>
+                {`走行時間[${SPEED_CONDITIONS}と想定した巡航速度から区間ごとに計算]に、`}
+                信号などで止まる待ちと、交差点で曲がる待ちを足した見積もりです。実際の信号のタイミングや走り方で変わります。
+              </p>
+            </InfoPopover>
+          </span>
+        )}
+        <span className="inline-flex flex-shrink-0 items-baseline gap-0.5">
+          <span className={textVariants({ variant: "hint" })}>負担</span>
+          <span className="text-[1.05rem] font-semibold">{formatPenalty(penalty.total_seconds)}</span>
+          <InfoPopover triggerAriaLabel="負担の説明">
+            <p>
+              {"登り・止まる回数・路面の振動など、避けたいものを通る分を、所要時間に上乗せした時間として数えたものです。" +
+                "最速の1本を比べる基準として先頭に置き、残りは所要時間と負担の和が小さい順に並びます（周回は1kmあたりの和で比べます）。" +
+                "下の一覧は、負担を種類ごとに分けたものに、曲がる所の漕ぎ出し（止まってから漕ぎ出す負担と同じ倍率が掛かります）と、" +
+                "回避指定で上乗せした分を足したものです。"}
+            </p>
+          </InfoPopover>
+        </span>
+      </div>
+      {/* 所要時間の前提が崩れていることは、所要時間のすぐ下で知らせる（黙って短い所要時間を見せない）。
+          値の無い区間は丸めて1%以上のときだけ出す——0%を並べても判断の材料にならない。 */}
+      {missingPct >= 1 && (
+        <WarningText>{`データの無い区間が${missingPct}%[${routeGenerateConfig.missing_travel_data_wording}]`}</WarningText>
+      )}
+      <PenaltyBreakdown penalty={penalty} facts={facts.axes} catalog={catalog} />
+      {facts.elevation_unknown_km > 0 && (
+        <p className={textVariants({ variant: "hint" })}>
+          {`標高の無い道 ${formatLensNumber(facts.elevation_unknown_km)}km（登りに数えていません）`}
+        </p>
       )}
     </div>
   );

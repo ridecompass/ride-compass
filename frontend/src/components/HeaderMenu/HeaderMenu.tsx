@@ -6,10 +6,13 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/Popover
 import { Button } from "@/components/ui/Button/Button";
 import { DialogContent, DialogRoot } from "@/components/ui/Dialog/Dialog";
 import { LogIcon } from "@/components/ui/icons/icons";
-import { HelpIcon, MenuIcon, RedrawMapIcon, VersionIcon } from "@/components/ui/icons/lucideIcons";
+import { CopyIcon, HelpIcon, MenuIcon, MoonIcon, RedrawMapIcon, VersionIcon } from "@/components/ui/icons/lucideIcons";
 import { textVariants } from "@/components/ui/Text/Text";
 import { Toggle } from "@/components/ui/Toggle/Toggle";
+import type { MapTheme } from "@/lib/mapTheme";
+import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
 import { getQueryClient } from "@/lib/queryClient";
+import { formatRideMetrics, readRideMetrics } from "@/lib/rideMetrics";
 import { frontendVersionQuery } from "@/services/versionApi";
 
 interface HeaderMenuProps {
@@ -21,6 +24,9 @@ interface HeaderMenuProps {
   onStartUsageGuide: () => void;
   /** 押した人の地図だけを描き直す（ページを読み込み直すと生成したルートが消える）。 */
   onRedrawMap: () => void;
+  /** 地図の地の明るさ（利用者が選んだ値）。 */
+  mapTheme: MapTheme;
+  onMapThemeChange: (theme: MapTheme) => void;
 }
 
 // ヘッダーの狭い幅に個別のボタンを並べず、常時出すのは1個のメニューアイコンにして、項目は押して開く中に置く。
@@ -30,12 +36,17 @@ export default function HeaderMenu({
   onToggleDebugConsole,
   onStartUsageGuide,
   onRedrawMap,
+  mapTheme,
+  onMapThemeChange,
 }: HeaderMenuProps) {
   const [open, setOpen] = useState(false);
   const [versionOpen, setVersionOpen] = useState(false);
   // メニューが閉じきってから入る先（説明を見る状態・バージョンの窓）。
   const afterClose = useRef<"guide" | "version" | null>(null);
   const trigger = useRef<HTMLButtonElement>(null);
+  const { copied, error: copyError, copy } = useCopyToClipboard();
+  // 直近の走行の記録（`lib/rideMetrics.ts`）。メニューを開いたときに読む（走り終えてから開いて写す）。
+  const rideMetrics = open ? readRideMetrics() : null;
 
   return (
     <>
@@ -73,7 +84,7 @@ export default function HeaderMenu({
           <Button
             variant="menu"
             size="sm"
-            usage="部品を押すと、その部品の使い方が出る状態に入ります。"
+            usage="押した部品の使い方を表示するモードに切り替えます。"
             onClick={() => {
               afterClose.current = "guide";
               setOpen(false);
@@ -94,12 +105,34 @@ export default function HeaderMenu({
             <RedrawMapIcon size={15} />
             地図の表示を再描画
           </Button>
+          <Toggle
+            variant="menu"
+            onClick={() => onMapThemeChange(mapTheme === "dark" ? "light" : "dark")}
+            pressed={mapTheme === "dark"}
+            usage="地図を暗い色にします。夜のまぶしさを抑え、有機ELの画面では電池の減りを抑えます。"
+          >
+            <MoonIcon size={15} />
+            地図を暗くする
+          </Toggle>
+          {rideMetrics !== null && (
+            // 写したことはメニューの中の名前で見せるので、押しても閉じない。
+            <Button
+              variant="menu"
+              size="sm"
+              usage="直近の走行の記録（電池・位置・地図の描き直しの回数などを1分ごとに集計したもの）を、クリップボードにコピーします。"
+              onClick={() => copy(formatRideMetrics(rideMetrics))}
+            >
+              <CopyIcon size={15} />
+              {copied ? "走行の記録をコピーしました" : "走行の記録をコピー"}
+            </Button>
+          )}
+          {copyError !== null && <p className={textVariants({ variant: "error" })}>{copyError}</p>}
           {debugEnabled && (
             <Toggle
               variant="menu"
               onClick={onToggleDebugConsole}
               pressed={debugConsoleOpen}
-              usage="開発者向けの記録の窓を出し入れします。"
+              usage="開発者向けのログの窓を、表示するか隠すかを切り替えます。"
             >
               <LogIcon size={15} />
               {debugConsoleOpen ? "デバッグログを隠す" : "デバッグログを表示"}
@@ -108,7 +141,7 @@ export default function HeaderMenu({
           <Button
             variant="menu"
             size="sm"
-            usage="本番で今動いている版を出します。"
+            usage="いま動いているバージョンを表示します。"
             onClick={() => {
               afterClose.current = "version";
               setOpen(false);

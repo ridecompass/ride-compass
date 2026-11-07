@@ -1,12 +1,13 @@
 import { expect, test } from "@playwright/test";
 import { installApiMocks, installMapFinder } from "./fixtures";
-import { scanLayout, scanOverflowingContent, scanPinch, scanSpacingUtilities, scanTruncatedText } from "./scans";
+import { scanPinch, scanSpacingUtilities } from "./componentScans";
+import { installPageHelpers } from "./pageHelpers";
+import { scanLayout, scanOverflowingContent, scanTruncatedText } from "./scans";
 import {
   PHASES,
   WIDTHS,
   assertWidthsStraddleBreakpoint,
   generate,
-  installPageHelpers,
   installScanMocks,
   openApp,
   resetPhase,
@@ -18,7 +19,7 @@ import {
 // 観点1〜3（パターン4）の走査を、画面の全状態へ当てる。状態は states.ts が画面から辿る
 // （幅 × 段階を土台に、最前面で押せる開閉の部品を押せる限り）。配置の検査は状態ごと、部品の検査は
 // 段階ごとに各部品1回。観点2（ピンチ）はタッチの文脈（モバイル幅）だけで見る。
-// 幅 × 段階ごとに1本にしてあり、CIでは幅ごとのジョブの中で段階を別のジョブへ分けて（--shard）走らせる。
+// 幅 × 段階ごとに1本にしてあり、CIでは幅ごとのジョブの中で段階を別の worker で並べて走らせる。
 // 各段階は開き直したページで、前の段階と同じ段取り（生成・乗り換え）を踏んでから辿る。
 
 for (const width of Object.keys(WIDTHS) as WidthName[]) {

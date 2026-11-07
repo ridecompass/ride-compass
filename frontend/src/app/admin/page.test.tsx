@@ -1,5 +1,5 @@
 /**
- * `app/admin/page.tsx`——管理画面の入口の状態: 開いたときのタブ、システム状況の開閉、
+ * `app/admin/page.tsx`——管理画面の入口の状態: システム状況の開閉、
  * デバッグモード中の案内。
  *
  * 各タブのパネルは本物を描き、パネルが取りに行く backend への要求には応えないまま止めておく（中身の振る舞いは
@@ -14,8 +14,6 @@ import { heldReplies, onBackend, onSameOrigin } from "@/testing/backendServer";
 import AdminPage from "./page";
 
 beforeEach(() => {
-  onSameOrigin("GET", "/admin/api/axis-definitions", heldReplies().reply);
-  onBackend("GET", "/api/axis-catalog", heldReplies().reply);
   onBackend("GET", "/health", heldReplies().reply);
   onBackend("GET", "/api/debug/stats", heldReplies().reply);
   onSameOrigin("GET", "/api/version", heldReplies().reply);
@@ -29,12 +27,6 @@ async function openDeveloperTab() {
 }
 
 describe("AdminPage", () => {
-  it("開くと軸スタジオのタブが選ばれる", () => {
-    render(<AdminPage />);
-
-    expect(screen.getByRole("tab", { name: "軸スタジオ" })).toHaveAttribute("aria-selected", "true");
-  });
-
   it("システム状況は閉じた状態で始まり、ボタンで開閉し、パネル側から閉じても戻る", async () => {
     const user = await openDeveloperTab();
 

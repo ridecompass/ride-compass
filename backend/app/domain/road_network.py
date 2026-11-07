@@ -12,13 +12,22 @@
 分類の材料は文字列のまま持たず、列ごとの語彙への番号で持つ（番号0は値なし）。
 """
 
+from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass, fields
-from typing import Any
+from functools import cached_property
 
 import numpy as np
 
-from app.domain.attributes import EDGE_ROW_ARRAY_FIELDS, CategoricalColumn, EdgeMaterialArrays, ElevationAttribute
+from app.domain.attributes import (
+    CategoricalColumn,
+    EdgeMaterialColumns,
+    ElevationAttribute,
+    MaterialColumn,
+)
+from app.domain.elevation_profile import ElevationProfiles, GradeDistribution
+from app.domain.geo import LatLonPoint
 from app.domain.material_catalog import GRADIENT_PERCENT
+from app.domain.road_classes import RoadClassDefinitions, class_columns, layer_columns
 
 
 @dataclass(frozen=True, eq=False)
@@ -32,6 +41,8 @@ class RoadNetwork:
     node_lon: np.ndarray  # float64
     node_has_signals: np.ndarray  # bool
     node_max_rank: np.ndarray  # int64
+    # そこに集まる道の本数（`road_nodes.branch_count`）。3本以上なら分かれ道。
+    node_branch_count: np.ndarray  # int16
 
     edge_way_id: np.ndarray  # int64
     edge_segment: np.ndarray  # int32
@@ -56,8 +67,6 @@ class RoadNetwork:
     categorical_ids: tuple[str, ...]
     categorical_codes: np.ndarray  # (区間, 列) int16。0は値なし
     categorical_vocab: tuple[tuple[str | None, ...], ...]  # 列ごとの語彙。先頭は必ずNone
-    route_flag_ids: tuple[str, ...]
-    route_flags: np.ndarray  # (区間, 列) bool
     distance_m: np.ndarray  # float64
     bearing_deg: np.ndarray  # float64, NaN=方位が決まらない
     mid_lat: np.ndarray
@@ -66,6 +75,16 @@ class RoadNetwork:
     end_elevation_m: np.ndarray  # float64, NaN=標高が無い
     elevation_gain_m: np.ndarray  # float64, NaN=欠損
     elevation_loss_m: np.ndarray
+    steepest_gain_percent: np.ndarray  # float64, NaN=欠損
+    steepest_loss_percent: np.ndarray
+    # 断面の点（`domain/elevation_profile.py`）。区間の行ごとに、全区間の点を順方向に並べてつないだ`profile_elevation_m`の中の
+    # 始まりの位置と点の数（標高の無い区間は0）。両向きの行は同じ点を指し、逆向きの行（`edge_forward`が偽）は勾配の符号を返して読む。
+    edge_profile_start: np.ndarray  # int64
+    edge_profile_points: np.ndarray  # int32
+    profile_elevation_m: np.ndarray  # float32、行数は区間ではなく点の数
+    # 標高の無い所を埋める、道路網全体の点の間の勾配の分布（`domain/elevation_profile.py: grade_distribution`。組むときに1回求める）。
+    profile_distribution_grade: np.ndarray  # float64、行数は階級の数
+    profile_distribution_share: np.ndarray  # float64
 
     def __post_init__(self) -> None:
         """行数と列数が揃っていることを、組み立てた場所で確かめる。
@@ -77,15 +96,17 @@ class RoadNetwork:
         wrong = {
             f.name: len(value)
             for f in fields(self)
-            if isinstance(value := getattr(self, f.name), np.ndarray)
+            if isinstance(value := getattr(self, f.name), np.ndarray) and not f.name.startswith("profile_")
             and len(value) != (node_count if f.name.startswith("node_") else edge_count)
         }
+        if len(self.edge_profile_start) and int(np.max(self.edge_profile_start + self.edge_profile_points)) > len(
+                self.profile_elevation_m):
+            wrong["edge_profile_start"] = len(self.profile_elevation_m)
         wrong_columns = {
             name: (matrix.shape[1], len(ids))
             for name, matrix, ids in (
                 ("numeric_values", self.numeric_values, self.numeric_ids),
                 ("categorical_codes", self.categorical_codes, self.categorical_ids),
-                ("route_flags", self.route_flags, self.route_flag_ids),
             )
             if matrix.shape[1] != len(ids)
         }
@@ -101,16 +122,41 @@ class RoadNetwork:
     def edge_count(self) -> int:
         return len(self.edge_way_id)
 
+    @property
+    def elevation_profiles(self) -> ElevationProfiles:
+        """全区間の断面の点と、標高の無い所を埋める全体の勾配の分布。"""
+        distribution = GradeDistribution(np.asarray(self.profile_distribution_grade),
+                                         np.asarray(self.profile_distribution_share))
+        return ElevationProfiles(self.edge_profile_start, self.edge_profile_points, self.edge_forward,
+                                 self.profile_elevation_m, distribution)
+
+    @cached_property
+    def numeric_means(self) -> dict[str, float]:
+        """数値の材料ごとの、取込範囲全体の距離で重みを付けた平均（値の無い区間を除く。値が1つも無ければNaN）。欠けた材料を
+        埋める（`MaterialFills`）。道路網と同じ寿命で1回だけ求める。"""
+        means: dict[str, float] = {}
+        for column, material_id in enumerate(self.numeric_ids):
+            values = np.asarray(self.numeric_values[:, column], dtype=np.float64)
+            known = ~np.isnan(values)
+            distance = self.distance_m[known]
+            total = float(distance.sum())
+            means[material_id] = float((values[known] * distance).sum()) / total if total > 0 else np.nan
+        return means
+
+
 
 @dataclass(frozen=True, eq=False)
 class RoadSlice:
     """範囲に掛かる区間だけを取り出したもの（1回の生成が使う単位）。
 
-    区間は全体の行番号の昇順で持ち、材料・スコア行列の行もこの順に揃える。ノードは使うものだけを
+    区間は全体の行番号の昇順で持ち、探索の材料の表の行もこの順に揃える。ノードは使うものだけを
     全体の行番号の昇順に並べ直し、その位置（切り出しの中のノード番号）で区間の両端を持つ。
     """
 
     network: RoadNetwork
+    #: 取込範囲全体の区分の列と地図の線の層ごとの値（`road_class_columns`）。区分の列は、切り出した区間の材料へ`rows`で引いて足す。
+    classes: Mapping[str, CategoricalColumn]
+    layers: Mapping[str, CategoricalColumn]
     rows: np.ndarray  # int64, 全体の区間の行
     nodes: np.ndarray  # int64, 全体のノードの行
     edge_from: np.ndarray  # int64, 切り出しの中のノード番号
@@ -133,41 +179,151 @@ class RoadSlice:
         return np.asarray(self.network.node_lon[self.nodes], dtype=np.float64)
 
 
+@dataclass(frozen=True)
+class MaterialFills:
+    """取込範囲全体の材料の分布で、欠けた材料を埋める（探索の範囲で埋めると、同じ道の費用が探索の範囲で変わる）。
+    `numeric_means`は数値の材料の距離で重みを付けた平均、`class_shares`は区分の材料の値ごとの距離の割合（値の無い道を除いて
+    和が1）。"""
+
+    numeric_means: Mapping[str, float]
+    class_shares: Mapping[str, Mapping[str, float]]
+
+    def fill(self, material_id: str, values: np.ndarray) -> np.ndarray:
+        """数値の材料`material_id`の値の欠けを平均で埋める（平均を持たない材料はNaNのまま）。"""
+        values = np.asarray(values, dtype=np.float64)
+        return np.where(np.isnan(values), self.numeric_means.get(material_id, np.nan), values)
+
+
+def material_fills(network: RoadNetwork, classes: Mapping[str, CategoricalColumn],
+                   class_ids: Iterable[str]) -> MaterialFills:
+    """取込範囲全体の材料の分布。数値の材料は全部（`RoadNetwork.numeric_means`）、区分の材料は`class_ids`の分だけ、取込範囲
+    全体の区分の列（`classes`。`road_class_columns`）の値ごとの距離の割合を求める。"""
+    shares: dict[str, dict[str, float]] = {}
+    for material_id in class_ids:
+        column = classes.get(material_id)
+        if column is None:
+            continue
+        lengths = np.bincount(column.codes, weights=network.distance_m, minlength=len(column.vocab))
+        total = float(lengths[1:].sum())
+        shares[material_id] = {
+            str(value): float(length) / total for value, length in zip(column.vocab[1:], lengths[1:]) if total > 0 and length > 0}
+    return MaterialFills(numeric_means=network.numeric_means, class_shares=shares)
+
+
+def road_class_columns(
+    network: RoadNetwork, definitions: RoadClassDefinitions
+) -> tuple[dict[str, CategoricalColumn], dict[str, CategoricalColumn]]:
+    """取込範囲全体の区間ごとの区分の列と、地図の線の層ごとの値（`domain/road_classes.py: class_columns`・`layer_columns`）。"""
+    facts: dict[str, MaterialColumn] = {
+        **{material_id: network.numeric_values[:, i] for i, material_id in enumerate(network.numeric_ids)},
+        **{
+            material_id: CategoricalColumn(network.categorical_codes[:, i], vocab)
+            for i, (material_id, vocab) in enumerate(zip(network.categorical_ids, network.categorical_vocab, strict=True))
+        },
+    }
+    classes = class_columns(definitions, facts, network.edge_count)
+    return classes, layer_columns(definitions, {**facts, **classes}, network.edge_count)
+
+
 def slice_network(
-    network: RoadNetwork, min_lon: float, min_lat: float, max_lon: float, max_lat: float
+    network: RoadNetwork,
+    classes: tuple[Mapping[str, CategoricalColumn], Mapping[str, CategoricalColumn]],
+    min_lon: float, min_lat: float, max_lon: float, max_lat: float,
 ) -> RoadSlice:
     """区間の形の外接矩形が範囲に重なる区間を取り出す。範囲の外へはみ出す区間も、端点ごと含む。"""
+    return slice_rows(network, classes, rows_in_bbox(network, min_lon, min_lat, max_lon, max_lat))
+
+
+def rows_in_bbox(network: RoadNetwork, min_lon: float, min_lat: float, max_lon: float, max_lat: float) -> np.ndarray:
+    """区間の形の外接矩形が範囲に重なる区間の行（昇順）。"""
     overlaps = np.asarray(network.edge_max_lon) >= min_lon
     overlaps &= np.asarray(network.edge_min_lon) <= max_lon
     overlaps &= np.asarray(network.edge_max_lat) >= min_lat
     overlaps &= np.asarray(network.edge_min_lat) <= max_lat
-    rows = np.flatnonzero(overlaps)
+    return np.flatnonzero(overlaps)
+
+
+def slice_rows(
+    network: RoadNetwork,
+    classes: tuple[Mapping[str, CategoricalColumn], Mapping[str, CategoricalColumn]],
+    rows: np.ndarray,
+) -> RoadSlice:
+    """区間の行`rows`（全体の行番号の昇順）を、端点ごと取り出す。"""
     tail = np.asarray(network.edge_from[rows], dtype=np.int64)
     head = np.asarray(network.edge_to[rows], dtype=np.int64)
     nodes, inverse = np.unique(np.concatenate([tail, head]), return_inverse=True)
     return RoadSlice(
-        network=network, rows=rows, nodes=nodes,
+        network=network, classes=classes[0], layers=classes[1], rows=rows, nodes=nodes,
         edge_from=inverse[: len(rows)].astype(np.int64, copy=False),
         edge_to=inverse[len(rows):].astype(np.int64, copy=False),
     )
 
 
-def material_arrays_of(road: RoadSlice) -> EdgeMaterialArrays:
-    """切り出した区間の材料（行は`road.rows`の順）。分類の材料は語彙への番号のまま渡す。"""
-    network, rows = road.network, road.rows
-    # 分類の材料は(区間, 列)の行列なので、行を1回だけ引いてから列へ分ける。
-    codes = np.asarray(network.categorical_codes[rows])
+class _SliceMaterials(Mapping[str, MaterialColumn]):
+    """切り出した区間の材料id→列。列は読まれたときに1度だけ切り出す——読む材料を先に並べると、並べ忘れた材料が
+    黙って値の無い列になる。数値と分類の材料は、それぞれ区間の行を1度だけまとめて引き、列ごとに値が連続するよう転置して
+    持ち、読まれた列はその行のビューで返す（道路網の材料は区間×列の行列で、生成が読むのはそのほとんどの列のため）。
 
-    row_arrays: dict[str, Any] = {name: np.asarray(getattr(network, name)[rows]) for name in EDGE_ROW_ARRAY_FIELDS}
-    return EdgeMaterialArrays(
-        numeric_ids=network.numeric_ids,
-        categorical_ids=network.categorical_ids,
-        categorical_columns=tuple(
-            CategoricalColumn(np.ascontiguousarray(codes[:, column]), vocab)
-            for column, vocab in enumerate(network.categorical_vocab)
-        ),
-        route_flag_ids=network.route_flag_ids,
-        **row_arrays,
+    道路網に無い材料はKeyError（値の無い列で埋めるのは読む側、`domain/search_materials.py: build_search_materials`）。
+    """
+
+    def __init__(self, road: RoadSlice) -> None:
+        network = road.network
+        self._road = road
+        self._numeric = {material_id: column for column, material_id in enumerate(network.numeric_ids)}
+        self._categorical = {material_id: column for column, material_id in enumerate(network.categorical_ids)}
+        # 行列の名前→切り出した区間の行を転置した「列×区間」の行列（`_gathered_column`）。
+        self._gathered: dict[str, np.ndarray] = {}
+        self._loaded: dict[str, MaterialColumn] = {}
+
+    def _keys(self) -> dict[str, None]:
+        return dict.fromkeys((*self._numeric, *self._categorical, *self._road.classes))
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._keys())
+
+    def __len__(self) -> int:
+        return len(self._keys())
+
+    def __getitem__(self, material_id: str) -> MaterialColumn:
+        if (loaded := self._loaded.get(material_id)) is not None:
+            return loaded
+        column = self._load(material_id)
+        if column is None:
+            raise KeyError(material_id)
+        self._loaded[material_id] = column
+        return column
+
+    def _gathered_column(self, name: str, matrix: np.ndarray, column: int) -> np.ndarray:
+        """道路網の区間×列の行列`matrix`（名前`name`）の列`column`を、切り出した区間の順の連続した配列で。"""
+        if (gathered := self._gathered.get(name)) is None:
+            gathered = self._gathered[name] = np.ascontiguousarray(np.asarray(matrix[self._road.rows]).T)
+        return gathered[column]
+
+    def _load(self, material_id: str) -> MaterialColumn | None:
+        network = self._road.network
+        if material_id in self._numeric:
+            return self._gathered_column("numeric", network.numeric_values, self._numeric[material_id])
+        if material_id in self._categorical:
+            column = self._categorical[material_id]
+            return CategoricalColumn(
+                self._gathered_column("categorical", network.categorical_codes, column), network.categorical_vocab[column]
+            )
+        if material_id in self._road.classes:
+            return self._road.classes[material_id].take(self._road.rows)
+        return None
+
+
+def material_arrays_of(road: RoadSlice) -> EdgeMaterialColumns:
+    """切り出した区間（行は`road.rows`の順）の材料。材料の列は読まれたときに切り出す（`_SliceMaterials`）。"""
+    network, rows = road.network, road.rows
+    return EdgeMaterialColumns(
+        columns=_SliceMaterials(road),
+        distance_m=np.asarray(network.distance_m[rows]),
+        bearing_deg=np.asarray(network.bearing_deg[rows]),
+        mid_lat=np.asarray(network.mid_lat[rows]),
+        mid_lon=np.asarray(network.mid_lon[rows]),
+        elevation_profiles=network.elevation_profiles.take(rows),
     )
 
 
@@ -183,8 +339,14 @@ def elevation_attribute(network: RoadNetwork, row: int, edge_id: str) -> Elevati
         end_elevation_m=float(network.end_elevation_m[row]),
         elevation_gain_m=float(network.elevation_gain_m[row]),
         elevation_loss_m=float(network.elevation_loss_m[row]),
-        average_grade=None if np.isnan(grade := network.numeric_values[row, grade_column]) else float(grade),
+        average_grade=_optional_float(network.numeric_values[row, grade_column]),
+        steepest_gain_percent=_optional_float(network.steepest_gain_percent[row]),
+        steepest_loss_percent=_optional_float(network.steepest_loss_percent[row]),
     )
+
+
+def _optional_float(value: float) -> float | None:
+    return None if np.isnan(value) else float(value)
 
 
 def edge_row_of(network: RoadNetwork, osm_way_id: int, segment_index: int, forward: bool) -> int | None:
@@ -199,3 +361,15 @@ def edge_row_of(network: RoadNetwork, osm_way_id: int, segment_index: int, forwa
         if int(network.edge_segment[row]) == segment_index and bool(network.edge_forward[row]) == forward:
             return row
     return None
+
+
+def edge_endpoint_points(network: RoadNetwork, edges: Iterable[tuple[int, int, bool]]) -> list[LatLonPoint]:
+    """`(道, 区間番号, 向き)`の区間の両端の地点。道路網に無い区間は飛ばす。"""
+    points: list[LatLonPoint] = []
+    for edge in edges:
+        row = edge_row_of(network, *edge)
+        if row is None:
+            continue
+        for node in (int(network.edge_from[row]), int(network.edge_to[row])):
+            points.append(LatLonPoint(float(network.node_lat[node]), float(network.node_lon[node])))
+    return points

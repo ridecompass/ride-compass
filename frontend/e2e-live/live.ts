@@ -1,13 +1,12 @@
 import { expect, type Page, type Response } from "@playwright/test";
 import { VectorTile } from "@mapbox/vector-tile";
 import { PbfReader } from "pbf";
-import { featureFilter } from "@maplibre/maplibre-gl-style-spec";
-import type { AxisCatalogResponse } from "@/types/route";
+import type { ClientConfigResponse, CostAxisCatalogResponse } from "@/types/route";
 import regionTileConfig from "@/types/generated/region-tile-config.json";
 import { lonLatToTileIndex } from "@/features/map/layers/webMercatorTile";
-import { ROUTE_HIT_TARGET_SEGMENT } from "@/features/map/scene/groups/routes";
 import { INTRO_CLOSED, MOBILE_VIEWPORT, installMapFinder, seedStoredState } from "../e2e/fixtures";
-import { installPageHelpers } from "../e2e/states";
+import { installPageHelpers } from "../e2e/pageHelpers";
+import { settleMap } from "./mapReads";
 
 // 実backendへ向けて回すe2eの共通の段取りと観測（.claude/skills/run-checks/SKILL.md「E2E・画面の撮影の走らせ方」）。
 // 期待値は値そのものではなく性質（1件以上ある・2つの出どころが食い違わない・エラー0件）で書く。
@@ -21,10 +20,39 @@ export const LIVE_POINT = (() => {
   return { latitude, longitude };
 })();
 
-export async function fetchCatalog(): Promise<AxisCatalogResponse> {
-  const response = await fetch(`${LIVE_API}/api/axis-catalog`);
-  if (!response.ok) throw new Error(`軸カタログの取得に失敗: ${response.status}`);
-  return (await response.json()) as AxisCatalogResponse;
+/** 地図が塗るレンズ1つ（総合か費用の軸）。 */
+interface LiveLens {
+  lensId: string;
+  label: string;
+}
+
+/** backendの画面の設定と、費用の軸の一覧から並べたレンズ（総合を先に、続けて軸の順。画面の選択肢と同じ並び）。
+ * `lensConditions`は、レンズの材料の要求へ載せる走る条件（どのレンズも同じ）。 */
+export interface LiveCatalog {
+  config: ClientConfigResponse;
+  lenses: LiveLens[];
+  lensConditions: CostAxisCatalogResponse["map_lens"]["material_conditions"];
+}
+
+async function fetchJson<T>(path: string, label: string): Promise<T> {
+  const response = await fetch(`${LIVE_API}${path}`);
+  if (!response.ok) throw new Error(`${label}の取得に失敗: ${response.status}`);
+  return (await response.json()) as T;
+}
+
+export async function fetchCatalog(): Promise<LiveCatalog> {
+  const [config, costAxes] = await Promise.all([
+    fetchJson<ClientConfigResponse>("/api/client-config", "画面の設定"),
+    fetchJson<CostAxisCatalogResponse>("/api/cost-axes", "費用の軸の一覧"),
+  ]);
+  return {
+    config,
+    lenses: [
+      { lensId: costAxes.total_lens.lens_id, label: costAxes.total_lens.label },
+      ...costAxes.axes.map((axis) => ({ lensId: axis.axis_id, label: axis.label })),
+    ],
+    lensConditions: costAxes.map_lens.material_conditions,
+  };
 }
 
 export function tileOf(z: number, { latitude, longitude }: { latitude: number; longitude: number }) {
@@ -49,13 +77,13 @@ export interface Watch {
   /** backendが上流（外部の配信元・キャッシュ）の失敗として返した502・503・504（HTTPの定義で上流の失敗を表す）。合否に入れない。 */
   gatewayFailures: string[];
   roadTiles: Map<string, Record<string, unknown>[]>;
-  wayMaterials: { axisId: string; url: string; materials: Record<string, Record<string, number>> }[];
+  wayMaterials: { lensId: string; url: string; materials: Record<string, Record<string, number>> }[];
   jmaTiles: { url: string; body: Buffer }[];
   generated: { routes: unknown[]; no_candidates_reason: string | null }[];
 }
 
 const ROAD_TILE = /\/api\/region\/road-surface-tiles\/(\d+)\/(\d+)\/(\d+)\.pbf/;
-const WAY_MATERIALS = /\/api\/region\/way-materials\/([^/]+)\//;
+const WAY_MATERIALS = /\/api\/region\/lens\/([^/]+)\//;
 
 async function record(watch: Watch, response: Response): Promise<void> {
   const url = response.url();
@@ -79,7 +107,7 @@ async function record(watch: Watch, response: Response): Promise<void> {
   try {
     if (road) watch.roadTiles.set(`${road[1]}/${road[2]}/${road[3]}`, decodeRoadTile(body));
     else if (wayMaterials)
-      watch.wayMaterials.push({ axisId: wayMaterials[1], url, materials: JSON.parse(body.toString("utf-8")) });
+      watch.wayMaterials.push({ lensId: wayMaterials[1], url, materials: JSON.parse(body.toString("utf-8")) });
     else if (isJmaTile) watch.jmaTiles.push({ url, body });
     else {
       const job = JSON.parse(body.toString("utf-8"));
@@ -130,54 +158,6 @@ export async function openLive(
   await expect(page.getByText("地図を読み込み中…")).toBeHidden({ timeout: 60_000 });
   await settleMap(page);
   return watch;
-}
-
-/**
- * 地図の全ソースのタイルが読み終わるまで待つ。MapLibreの`idle`は、動き続けるレイヤー（時刻で進む気象の表示等）が
- * あると来ないので使わない。読み終わらないソースは名前を出して落とす。
- */
-export async function settleMap(page: Page): Promise<void> {
-  const pending = await page.evaluate(async () => {
-    const map = window.__liveMap();
-    const unloaded = () => Object.keys(map.getStyle().sources).filter((id) => !map.isSourceLoaded(id));
-    const deadline = performance.now() + 45_000;
-    let streak = 0;
-    while (performance.now() < deadline) {
-      streak = unloaded().length === 0 ? streak + 1 : 0;
-      if (streak >= 3) return [];
-      await new Promise((resolve) => setTimeout(resolve, 250));
-    }
-    return unloaded();
-  });
-  expect(pending, "45秒たっても読み終わらない地図のソース").toEqual([]);
-  await page.evaluate(() => window.__e2e.settle());
-}
-
-/** 路面タイルのソースのid（スタイルのうち、タイルのURLが路面タイルの経路を指すもの）。 */
-export async function roadSourceId(page: Page): Promise<string> {
-  const id = await page.evaluate(() => {
-    const sources = window.__liveMap().getStyle().sources;
-    return (
-      Object.entries(sources).find(([, source]) =>
-        ((source as { tiles?: string[] }).tiles ?? []).some((url) => url.includes("/road-surface-tiles/")),
-      )?.[0] ?? null
-    );
-  });
-  expect(id, "路面タイルのソースがスタイルに無い").not.toBeNull();
-  return id!;
-}
-
-/** いま描かれている路面の地物のプロパティ（画面に出ている範囲）。 */
-export async function renderedRoads(page: Page, sourceId: string): Promise<Record<string, unknown>[]> {
-  return page.evaluate(
-    (source) =>
-      window
-        .__liveMap()
-        .queryRenderedFeatures()
-        .filter((feature) => feature.source === source)
-        .map((feature) => feature.properties),
-    sourceId,
-  );
 }
 
 /**
@@ -233,71 +213,4 @@ export function expectNoOwnFailures(watch: Watch): void {
   expect
     .soft(watch.backendFailures, "backend自前の失敗（429と、502・503・504以外の5xx、本文を解釈できない応答）")
     .toEqual([]);
-}
-
-/** 「評価で塗る」のピル（押すと評価軸の一覧を開く）。 */
-function lensPill(page: Page) {
-  return page.getByRole("button", { name: /^評価で塗る: / });
-}
-
-/** 評価軸を名前で選ぶ（null は評価軸を選んでいない状態へ戻す）。一覧は選んでも閉じず、選んでいる行をもう一度押すと外れるので、
- *  選び済みなら押さず、Escape で閉じる。行の名前には走る条件・「未使用」の印が続くので、名前の要素で当てる。 */
-export async function chooseLens(page: Page, label: string | null): Promise<void> {
-  await lensPill(page).click();
-  const group = page.getByRole("radiogroup", { name: "評価で塗る" });
-  await expect(group).toBeVisible();
-  if (label === null) {
-    const clear = page.getByRole("button", { name: "選択を外す" });
-    if (await clear.isEnabled()) await clear.click();
-  } else {
-    const row = group.getByRole("radio").filter({ has: page.getByText(label, { exact: true }) });
-    if ((await row.getAttribute("aria-checked")) !== "true") await row.click();
-  }
-  await page.keyboard.press("Escape");
-  await expect(group).toBeHidden();
-}
-
-/** 今の評価軸の名前。ピルがどの軸の名前も出していなければ、評価軸を選んでいない（null）。 */
-export async function currentLensLabel(page: Page, catalog: AxisCatalogResponse): Promise<string | null> {
-  for (const { label } of catalog.axes) {
-    if (await lensPill(page).getByText(label, { exact: true }).isVisible()) return label;
-  }
-  return null;
-}
-
-/**
- * 選んでいる候補のルートの区間のうち、描かれている数と、そのうち「データなし」でない（いまのレンズの値で塗られた）数。
- * 区間は scene が区間の当たり判定（`ROUTE_HIT_TARGET_SEGMENT`）を宣言したソースで引き、「データなし」かは、いまの地図が
- * 区間の線に当てている「値が無ければ破線にする」式の条件を、MapLibre の式の評価器で区間のデータに当てて決める（塗り方の規則を
- * ここで書き直さない）。区間のデータは地図への問い合わせ（`queryRenderedFeatures`）ではなくソースから取る——問い合わせが返す地物は
- * 入れ子のプロパティ（`axis_difficulties` 等）を文字列にしていて、式の条件がどの区間にも当たらない。
- */
-export async function routeSegmentsPainted(page: Page): Promise<{ drawn: number; withValue: number }> {
-  const { missing, drawn, segments } = await page.evaluate(async (target) => {
-    const map = window.__liveMap();
-    const layers = window.__liveScene().layers.map((layer) => ({
-      ...layer,
-      spec: layer.spec as { id: string; source?: string; paint?: Record<string, unknown> },
-    }));
-    const sources = new Set(
-      layers.filter((layer) => layer.hitTargets.includes(target)).map((layer) => layer.spec.source),
-    );
-    const dashOf = (layer: (typeof layers)[number]) => layer.spec.paint?.["line-dasharray"];
-    const line = layers.find((layer) => {
-      const dash = dashOf(layer);
-      return sources.has(layer.spec.source) && Array.isArray(dash) && dash[0] === "case";
-    });
-    if (!line) throw new Error("ルートの区間の線に「データなし」の式が無い（いまのレンズが値という考えを持たない）");
-    const source = map.getSource(line.spec.source!) as unknown as { getData(): Promise<GeoJSON.FeatureCollection> };
-    return {
-      missing: (dashOf(line) as unknown[])[1],
-      drawn: map.queryRenderedFeatures({ layers: [line.spec.id] }).length,
-      segments: (await source.getData()).features.map((feature) => feature.properties ?? {}),
-    };
-  }, ROUTE_HIT_TARGET_SEGMENT);
-  const hasValue = featureFilter(["!", missing] as never, "ルートの区間の値あり");
-  const withValue = segments.filter((properties) =>
-    hasValue.filter({ zoom: 0 }, { type: 2, properties } as never),
-  ).length;
-  return { drawn, withValue };
 }

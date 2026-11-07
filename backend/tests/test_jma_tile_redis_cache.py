@@ -3,19 +3,19 @@
 入口は`get`・`set`・`set_empty`。Redisはfakeredis、時計はfreezegunで与える。
 
 ここで見ないもの:
-- どのタイルを空とみなすか（透明・0バイト・読めない画像） → `test_jma_tile_content.py`。ここでは空の代表を1つずつ使う
+- どのタイルを空とみなすか → `test_jma_tile_content.py`。ここでは空の代表を1つずつ使う
 - いつ`set_empty`を呼ぶか（確定した404） → `test_jma_tile_client.py`
 - Redisの障害で何も持たず、例外を出さないこと → `test_redis_json_cache.py`（ここは`get_bytes`・`set_bytes`へ委ねるだけ）
 - 一度も書いていないパスの外れ → 同じ。ここでは別のパスが外れるテストが通す
 - 後から書いた値が前の値を置き換えること → Redisの`SET`の振る舞いで、ここに判断が無い
 """
 
-import io
-
+import pytest
 from PIL import Image
 
 from app.infrastructure import jma_tile_redis_cache
 from app.infrastructure.http_client import UPSTREAM_NOT_FOUND
+from tests.tile_images import encode
 
 TILE = "bosai/jmatile/data/risk/20260101000000/none/20260101000000/surf/land/10/908/403.png"
 OTHER_TILE = "bosai/jmatile/data/risk/20260101000000/none/20260101000000/surf/land/10/908/404.png"
@@ -23,9 +23,7 @@ VECTOR_TILE = "bosai/jmatile/data/risk/20260101000000/none/20260101000000/surf/f
 
 
 def png(alpha: int) -> bytes:
-    buffer = io.BytesIO()
-    Image.new("RGBA", (4, 4), (255, 0, 0, alpha)).save(buffer, format="PNG")
-    return buffer.getvalue()
+    return encode(Image.new("RGBA", (4, 4), (255, 0, 0, alpha)))
 
 
 async def test_a_stored_tile_comes_back_byte_for_byte_with_its_content_type(fake_redis):
@@ -43,23 +41,19 @@ async def test_each_path_keeps_its_own_entry(fake_redis):
     assert await jma_tile_redis_cache.get(OTHER_TILE) is None
 
 
-async def test_a_tile_with_nothing_to_draw_comes_back_as_the_flag(fake_redis):
-    await jma_tile_redis_cache.set(TILE, png(0), "image/png")
+@pytest.mark.parametrize(
+    ("path", "content", "content_type"),
+    [
+        (TILE, png(0), "image/png"),
+        # ベクタは長さで空を見る。画像として読もうとすると、空のベクタも「中身あり」で実体を持つ。
+        (VECTOR_TILE, b"", "application/x-protobuf"),
+    ],
+    ids=["transparent_raster", "empty_vector"],
+)
+async def test_a_tile_with_nothing_to_draw_comes_back_as_the_flag(fake_redis, path, content, content_type):
+    await jma_tile_redis_cache.set(path, content, content_type)
 
-    assert await jma_tile_redis_cache.get(TILE) is UPSTREAM_NOT_FOUND
-
-
-async def test_a_vector_tile_is_judged_as_a_vector_by_its_path(fake_redis):
-    """ベクタは長さで空を見る。画像として読もうとすると、空のベクタも「中身あり」で実体を持つ。"""
-    await jma_tile_redis_cache.set(VECTOR_TILE, b"", "application/x-protobuf")
-
-    assert await jma_tile_redis_cache.get(VECTOR_TILE) is UPSTREAM_NOT_FOUND
-
-
-async def test_a_path_recorded_as_having_nothing_to_draw_comes_back_as_the_flag(fake_redis):
-    await jma_tile_redis_cache.set_empty(TILE)
-
-    assert await jma_tile_redis_cache.get(TILE) is UPSTREAM_NOT_FOUND
+    assert await jma_tile_redis_cache.get(path) is UPSTREAM_NOT_FOUND
 
 
 async def test_tiles_and_flags_are_forgotten_after_twenty_minutes(fake_redis, clock):
@@ -73,4 +67,3 @@ async def test_tiles_and_flags_are_forgotten_after_twenty_minutes(fake_redis, cl
     clock.tick(2)
     assert await jma_tile_redis_cache.get(TILE) is None
     assert await jma_tile_redis_cache.get(OTHER_TILE) is None
-

@@ -17,6 +17,13 @@ export const getAmedasObservation = (point: Coordinates) =>
     weatherOptions("api:amedas", "アメダス観測値"),
   );
 
+/** 地点に最も近いMSMの格子点の、今日の1時間ごとの気温・降水量・風（格子点の値のまま）と格子点の位置。 */
+export const getGridPointToday = (point: Coordinates) =>
+  requestApi(
+    (init) => backendApi.GET("/api/weather", { ...atPoint(point), ...init }),
+    weatherOptions("api:gridPointToday", "最寄りの格子点の今日の値"),
+  );
+
 export const getWeatherWarnings = (point: Coordinates) =>
   requestApi(
     (init) => backendApi.GET("/api/weather/warnings", { ...atPoint(point), ...init }),
@@ -33,6 +40,16 @@ export const getFloodForecasts = (point: Coordinates) =>
   requestApi(
     (init) => backendApi.GET("/api/weather/flood-forecast", { ...atPoint(point), ...init }),
     weatherOptions("api:floodForecast", "河川氾濫予報"),
+  );
+
+/** ルートを通る順に並べた点から、通る区域ごとの警報級の時系列の段（気象庁のコマのまま）。通過は点の番号で返る。 */
+export const getRouteWarningTimeline = (points: readonly Coordinates[]) =>
+  requestApi(
+    (init) => backendApi.POST("/api/weather/route-warning-timeline", { body: { points: [...points] }, ...init }),
+    {
+      ...weatherOptions("api:routeWarningTimeline", "ルートの警報級の見込み"),
+      successMeta: (data) => ({ points: points.length, areas: data.areas.length }),
+    },
   );
 
 export interface Bbox {

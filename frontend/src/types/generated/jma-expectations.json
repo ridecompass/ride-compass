@@ -135,6 +135,72 @@
       ]
     },
     {
+      "scene": "実況と予測のファイルのbasetimeがずれる",
+      "reader": "nowcast",
+      "element_id": "hrpns",
+      "rows": [
+        {
+          "basetime": "20260924000500",
+          "validtime": "20260924000500",
+          "elements": [
+            "hrpns"
+          ]
+        },
+        {
+          "basetime": "20260924001000",
+          "validtime": "20260924001000",
+          "elements": [
+            "hrpns"
+          ]
+        },
+        {
+          "basetime": "20260924000500",
+          "validtime": "20260924001000",
+          "elements": [
+            "hrpns"
+          ]
+        },
+        {
+          "basetime": "20260924000500",
+          "validtime": "20260924001500",
+          "elements": [
+            "hrpns"
+          ]
+        },
+        {
+          "basetime": "20260924001000",
+          "validtime": "20260924001500",
+          "elements": [
+            "hrpns"
+          ]
+        },
+        {
+          "basetime": "20260924001000",
+          "validtime": "20260924002000",
+          "elements": [
+            "hrpns"
+          ]
+        }
+      ],
+      "frames": [
+        {
+          "basetime": "20260924001000",
+          "member": "none",
+          "validtime": "20260924001000"
+        },
+        {
+          "basetime": "20260924001000",
+          "member": "none",
+          "validtime": "20260924001500"
+        },
+        {
+          "basetime": "20260924001000",
+          "member": "none",
+          "validtime": "20260924002000"
+        }
+      ]
+    },
+    {
       "scene": "その要素の行が0件",
       "reader": "nowcast",
       "element_id": "thns",

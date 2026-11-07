@@ -21,7 +21,8 @@ import time
 
 from _shared import ORIGINAL, RECHECK_LIST, baseline_of, fn_of, read_lines, read_results, read_stats
 
-OUT = os.environ["MUT_OUT"]
+# 元の版の基準は子を別の作業ディレクトリで起こすので、子へ渡す置き場は絶対パスにする。
+OUT = os.path.abspath(os.environ["MUT_OUT"])
 DB_PREFIX = os.environ["MUT_DB_PREFIX"]
 DB_SERVER = os.environ["TEST_DATABASE_SERVER"]
 STOP_AFTER = float(os.environ.get("MUT_STOP_AFTER") or "inf")
@@ -35,7 +36,7 @@ if os.path.exists(RECHECK_LIST):
     cfg = configparser.ConfigParser()
     cfg.read(os.path.join(HERE, "setup.cfg"), encoding="utf-8")
     FULL_SELECTION = cfg["mutmut"]["pytest_add_cli_args_test_selection"].split()
-    XDIST = ["-n", str(workers), "--dist", "loadgroup"]
+    XDIST = ["-n", str(workers), "--dist", "worksteal"]
     workers = 1
 done = set(read_results(out_path))
 tbf, dur = read_stats()

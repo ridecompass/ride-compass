@@ -2,15 +2,12 @@
 
 情報提供地点マスタ（CSV）と暑さ指数（WBGT）予測値取得WebAPI（JSON、典拠は
 `man15NH/wbgt_data_api_service_manual.pdf`）を叩く。サイト側の利用上の注意
-（wbgt_data_download.php）に「自動化ツールからの高頻度アクセスは控えて」と明記されて
-いるため、再試行は設けずTTLキャッシュで呼び出し頻度自体を抑える。取得失敗はNoneを返し、
-呼び出し元（wbgt_service.py）が「警告なし」と分けて返す。応答の形（CSVの列・JSONのキー・
-度と分の座標・10倍された暑さ指数）はここで解き、呼び出し元へは`WbgtPoint`・`WbgtForecast`で渡す。
+（wbgt_data_download.php）が自動化ツールからの高頻度アクセスを控えるよう求めるため、再試行は設けず
+TTLキャッシュで呼び出し頻度自体を抑える。取得失敗はNoneを返す。
 """
 
 import csv
 import io
-import logging
 from datetime import datetime
 
 import httpx
@@ -20,48 +17,35 @@ from app.domain.time_zone import JST
 from app.domain.wbgt import WbgtForecast, WbgtPoint
 from app.infrastructure.simple_api_client import UnexpectedShapeError, cached_fetch
 
-# ファイル名に更新日が埋め込まれた命名規則（環境省サイト側の運用）のため、地点構成が
-# 変わった際はURLごと差し替えが必要になる（自動追従の仕組みは無い。年1回程度の更新
-# 頻度と見込まれるため、遭遇したら気づいて直す前提でハードコードする）。
+# ファイル名に更新日が入るため、地点構成が変わったらURLごと差し替える（自動では追従しない）。
 WBGT_POINT_MASTER_URL = "https://www.wbgt.env.go.jp/man15NH/wbgt_point_master-20260515.csv"
 WBGT_FORECAST_API_URL = "https://www.wbgt.env.go.jp/api/v1/getForecastData"
 
-# 地点構成は年1回程度しか変わらないため長いTTL（jma_warning_client.pyのarea.jsonと同じ思想）。
+# 地点構成は年1回程度しか変わらない。予測値は3時間刻みでしか更新されない。
 _POINT_MASTER_CACHE_TTL_SECONDS = 24 * 60 * 60
-# 予測値は3時間刻みでしか更新されないため、サイト側の注意書き（高頻度アクセスを控える）
-# に配慮して1時間TTLとする。
 _FORECAST_CACHE_TTL_SECONDS = 60 * 60
 
-REQUEST_TIMEOUT = httpx.Timeout(connect=3.0, read=8.0, write=5.0, pool=5.0)
-
-logger = logging.getLogger("ridecompass.wbgt_client")
-
-_POINT_MASTER_CACHE_KEY = "point_master"
 
 
 def new_point_master_cache() -> TTLCache:
-    """`fetch_point_master`へ渡すキャッシュ。リクエストをまたいで持つのは組み立てる側（`api/dependencies.py`）。"""
+    """`fetch_point_master`へ渡すキャッシュ。"""
     return TTLCache(maxsize=1, ttl=_POINT_MASTER_CACHE_TTL_SECONDS)
 
 
 def new_forecast_cache() -> TTLCache:
-    """`fetch_forecast`へ渡すキャッシュ。リクエストをまたいで持つのは組み立てる側（`api/dependencies.py`）。"""
-    # forecast_no単位の粒度でキャッシュする（地点ごとに問い合わせ元の緯度経度は丸められて
-    # 同じ地点へ収束するため、地点番号キーで十分にキャッシュが効く）。maxsizeは全国の
-    # 情報提供地点数（約840地点）に十分な余裕を持たせた値。
+    """`fetch_forecast`へ渡すキャッシュ。鍵は地点番号で、全国の地点（約840）が退避されない大きさ。"""
     return TTLCache(maxsize=2048, ttl=_FORECAST_CACHE_TTL_SECONDS)
 
 
-async def fetch_point_master(client: httpx.AsyncClient, cache: TTLCache) -> list[WbgtPoint] | None:
-    """情報提供地点マスタ（全国約840地点）を取得する。運用終了済み地点
-    （End Year-End Month-End Dayが"9999-99-99"以外）は除外する。"""
+async def fetch_point_master(client: httpx.AsyncClient, cache: TTLCache) -> list[WbgtPoint]:
+    """情報提供地点マスタのうち運用中の地点を取得する。"""
 
     async def fetch() -> list[WbgtPoint]:
-        response = await client.get(WBGT_POINT_MASTER_URL, timeout=REQUEST_TIMEOUT)
+        response = await client.get(WBGT_POINT_MASTER_URL)
         response.raise_for_status()
         return _parse_point_master(response.text)
 
-    return await cached_fetch("weather:wbgt-point-master", fetch, cache=cache, key=_POINT_MASTER_CACHE_KEY)
+    return await cached_fetch("weather:wbgt-point-master", fetch, cache=cache)
 
 
 def _parse_point_master(csv_text: str) -> list[WbgtPoint]:
@@ -81,66 +65,37 @@ def _parse_point_master(csv_text: str) -> list[WbgtPoint]:
     reader = csv.reader(io.StringIO(csv_text))
     # 空行はデータ行に数えない（配布CSVの末尾に付きうる）。
     rows = [row for row in list(reader)[1:] if any(cell.strip() for cell in row)]  # 先頭行はヘッダー
-    points: list[WbgtPoint] = []
-    unreadable = 0
-    for row in rows:
-        if len(row) < 13:
-            unreadable += 1
-            continue
-        end_date = row[12].strip()
-        if end_date != "9999-99-99":
-            continue  # 運用終了済み地点は近傍検索の対象外
-        try:
-            no = row[2].strip()
-            name = row[3].strip()
-            latitude = float(row[7].strip()) + float(row[8].strip()) / 60.0
-            longitude = float(row[9].strip()) + float(row[10].strip()) / 60.0
-        except ValueError:
-            unreadable += 1
-            continue
-        points.append(WbgtPoint(no=no, name=name, latitude=latitude, longitude=longitude))
-    # 読めない行は他の地点で近傍検索を続けるために飛ばすが、飛ばしたことは必ず出す。
-    # 列構成が変わると読める行だけが残り、遠い地点の値が何事もなく表示される。
-    # 行ごとに出すと列構成の変化で全行に出るため、取得1回につき1行にまとめる。
-    if unreadable:
-        logger.warning(
-            "暑さ指数の地点マスタに読めない行があり読み飛ばしました unreadable=%d rows=%d points=%d",
-            unreadable, len(rows), len(points),
+    # 読めない行（列が足りない・座標が数でない）は投げる。読める行だけを残すと、遠い地点の値が何事もなく表示される。
+    return [
+        WbgtPoint(
+            no=row[2].strip(),
+            name=row[3].strip(),
+            latitude=float(row[7].strip()) + float(row[8].strip()) / 60.0,
+            longitude=float(row[9].strip()) + float(row[10].strip()) / 60.0,
         )
-    return points
+        for row in rows
+        if row[12].strip() == "9999-99-99"  # 運用終了済み地点は近傍検索の対象外
+    ]
 
 
-def _parse_forecast(entry: dict) -> WbgtForecast | None:
-    reference_time = entry.get("reference_time")
-    if not reference_time:
-        return None
+def _parse_forecast(entry: dict) -> WbgtForecast:
+    """予測値1件。予測の時刻と値は無いことがある（None）。"""
     raw_time = entry.get("forecast_time")
-    try:
-        forecast_time = datetime.strptime(raw_time, "%Y/%m/%d %H:%M:%S") if raw_time else None
-    except ValueError:
-        forecast_time = None
-    try:
+    raw_value = entry.get("forecast_val")
+    return WbgtForecast(
+        reference_time=entry["reference_time"],
+        forecast_time=None if raw_time is None else datetime.strptime(raw_time, "%Y/%m/%d %H:%M:%S"),
         # 配信元は暑さ指数を10倍した整数文字列で返す（例: "280"→28.0）。
-        wbgt: float | None = float(entry["forecast_val"]) / 10.0
-    except (KeyError, TypeError, ValueError):
-        wbgt = None
-    return WbgtForecast(reference_time=reference_time, forecast_time=forecast_time, wbgt=wbgt)
+        wbgt=None if raw_value is None else float(raw_value) / 10.0,
+    )
 
 
 async def fetch_forecast(
     client: httpx.AsyncClient, wbgt_no: str, range_from: datetime, range_to: datetime, cache: TTLCache
-) -> list[WbgtForecast] | None:
-    """指定地点の暑さ指数予測値列（3時間刻み、翌々日まで）を取得する。
-
-    `range_from`/`range_to`は発表時刻=reference_timeの検索範囲（呼び出し元が「現在時刻を
-    含む直近N時間」を渡す想定。配信元へはJSTのYYYYMMDDHHMMSSで渡す）。date_search_type=3
-    （特定時刻）は指定時刻ちょうどに発表（reference_time）が存在しないと空を返す
-    厳格な一致検索（20:00:00ちょうどを指定すると20時発表がまだ無く空、19:00:00なら
-    19時発表がヒットする、等）。発表は概ね毎時行われるが遅延もありうるため、
-    date_search_type=1（連続期間指定）で直近の発表を幅広く取得し、複数の発表回
-    （reference_time）が返ってきた場合は呼び出し元（wbgt_service.py）が最新の発表回
-    だけを使う。
-    """
+) -> list[WbgtForecast]:
+    """指定地点の暑さ指数予測値列を取得する。`range_from`/`range_to`は発表時刻（reference_time）の検索範囲で、
+    範囲の中の発表回をすべて返す。date_search_type=3（特定時刻）は指定時刻ちょうどの発表が無いと空を返し、
+    発表は遅れうるので、連続期間指定（1）で取る。"""
     params: dict[str, str | int] = {
         "location_type": 1,
         "date_search_type": 1,
@@ -150,7 +105,7 @@ async def fetch_forecast(
     }
 
     async def fetch() -> list[WbgtForecast]:
-        response = await client.get(WBGT_FORECAST_API_URL, params=params, timeout=REQUEST_TIMEOUT)
+        response = await client.get(WBGT_FORECAST_API_URL, params=params)
         response.raise_for_status()
         body = response.json()
         if not isinstance(body, dict) or body.get("status") != "success":
@@ -158,19 +113,9 @@ async def fetch_forecast(
         data = body.get("data")
         if not isinstance(data, list):
             raise UnexpectedShapeError(f"wbgt forecast data is {type(data).__name__}")
-        return [
-            forecast
-            for entry in data
-            if isinstance(entry, dict) and (forecast := _parse_forecast(entry)) is not None
-        ]
+        return [_parse_forecast(entry) for entry in data]
 
-    return await cached_fetch(
-        "weather:wbgt-forecast",
-        fetch,
-        cache=cache,
-        key=wbgt_no,
-        wbgt_no=wbgt_no,
-    )
+    return await cached_fetch("weather:wbgt-forecast", fetch, cache=cache, key=wbgt_no, wbgt_no=wbgt_no)
 
 
 def _query_time(at: datetime) -> str:

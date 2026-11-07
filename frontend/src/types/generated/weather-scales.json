@@ -1,11 +1,6 @@
 {
   "precipitation": [
     {
-      "value": 0,
-      "color": "#b8e6fd",
-      "name": "ごく弱い雨"
-    },
-    {
       "value": 1,
       "color": "#68ccfb",
       "name": "弱い雨"

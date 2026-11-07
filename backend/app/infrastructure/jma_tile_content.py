@@ -1,16 +1,10 @@
-"""JMA動的タイルの中身が空かどうかの判定。
-
-「このタイルには描くものが無い」という事実は次の2箇所で必要になり、判定の基準が
-ずれると危険側（危険情報を表示しない）へ倒れるため、判定はここ1箇所だけに置く。
-
-- `jma_tile_redis_cache.py`: 空だと分かったタイルは実体ではなくフラグで持つ
-- `jma_tile_prewarm_service.py`: クライアントへ「取りに行かなくてよい」と伝える
-  在否インデックス（`jma_tile_index.py`）へ記録する側
-"""
+"""JMA動的タイルの中身が空かどうかの判定。中継の応答・キャッシュ・在否インデックスが同じ基準で読む。"""
 
 import io
 
 from PIL import Image
+
+from app.infrastructure.simple_api_client import UnexpectedShapeError
 
 
 def is_empty_tile(content: bytes, extension: str) -> bool:
@@ -20,9 +14,7 @@ def is_empty_tile(content: bytes, extension: str) -> bool:
     外接矩形を返し、全て透明ならNone）。ベクタ（洪水キキクル）は空のMVTが0バイトで
     配信されるため長さで判定する。
 
-    **判定できない場合は「中身あり」に倒す**——この判定は「取りに行かなくてよい」
-    「実体を保持しなくてよい」の根拠に使うため、誤って空と判定すると危険情報が
-    表示されなくなる。
+    画像として読めなければ投げる（空と判定すると危険情報が表示されなくなり、中身ありとして配ると壊れた画像を描かせる）。
     """
     if extension == "pbf":
         return len(content) == 0
@@ -30,5 +22,5 @@ def is_empty_tile(content: bytes, extension: str) -> bool:
         with Image.open(io.BytesIO(content)) as image:
             rgba = image if image.mode == "RGBA" else image.convert("RGBA")
             return rgba.getchannel("A").getbbox() is None
-    except Exception:  # 壊れた画像・未知の形式は「中身あり」扱いで取得を止めない
-        return False
+    except (OSError, ValueError, SyntaxError) as error:
+        raise UnexpectedShapeError("jma tile is not an image") from error

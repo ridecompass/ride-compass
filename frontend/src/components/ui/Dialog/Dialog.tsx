@@ -34,6 +34,7 @@ export function DialogContent({ title, children, className }: DialogContentProps
         <div className="mt-3">{children}</div>
         <RadixDialog.Close asChild>
           <Button
+            usage="この窓を閉じます。"
             variant="ghost"
             size="bare"
             aria-label="閉じる"
@@ -71,10 +72,10 @@ export function ConfirmDialog({ open, title, confirmLabel, onConfirm, onCancel, 
       <DialogContent title={title}>
         <p className={textVariants({ variant: "hint" })}>{children}</p>
         <div className="mt-3 flex justify-end gap-2">
-          <Button size="sm" onClick={onCancel}>
+          <Button usage="何もせずに、この窓を閉じます。" size="sm" onClick={onCancel}>
             キャンセル
           </Button>
-          <Button variant="danger" size="sm" onClick={onConfirm}>
+          <Button usage="窓に書いた操作を行います。" variant="danger" size="sm" onClick={onConfirm}>
             {confirmLabel}
           </Button>
         </div>

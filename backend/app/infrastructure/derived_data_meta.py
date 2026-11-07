@@ -1,9 +1,8 @@
-"""派生データの世代（1行のみ、id=1固定）と、今の派生の表を作った取込（`derived_source_runs`）・列（`derived_columns`）。
+"""派生データの世代（1行のみ、id=1固定）と、今の派生の表を作った取込（`derived_source_runs`）・列（`derived_columns`）・
+較正値（`derived_tuning`）。
 
-派生の作り直し（`app/batch/derive_cli.py`）が作り直した表を入れ替えるたびにインクリメントする単調カウンタ。
-道路網全体の配列の置き場の名前（`road_network_store.py`）と、配信する地図タイルの世代
-（`tile_version_service.py`）が、中身が作り直されたかをこの値で見分ける。タイルは生データも
-直接読むため、生データの世代と一緒に読む（`get_revisions`）。
+世代は、派生の作り直しが作り直した表を入れ替えるたびに進める単調カウンタで、読み手は中身が作り直されたかをこの値で
+見分ける。生データの世代と一緒に読める（`get_revisions`）。
 
 **作り直しに使った取込の記録（`derived_source_runs`）では代用できない。** 同じ取込runのままバッチをもう一度
 回す（バッチ側のバグ修正後の再実行、`derive_cli.py`の再実行）と値は変わりうるのに、
@@ -18,7 +17,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 
 import asyncpg
-from sqlalchemy import BigInteger, CheckConstraint, ForeignKey, Integer, String, select
+from sqlalchemy import BigInteger, CheckConstraint, Double, ForeignKey, Integer, String, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -37,12 +36,11 @@ class DerivedDataMetaRow(Base):
 class DerivedSourceRunRow(Base):
     """今の`public`の派生の表を作った取込。ソースごとに1行。
 
-    作り直しを始めた時点の、全ソースの成功した最新の取込を書く（鮮度台帳がソースごとに比べる）。作り直す派生の表と一緒に
-    作業用のスキーマで書き、表ごと入れ替える（`derive_cli.py`）——
+    そのソースを読む段が全部流れたら作り直しを始めた時点の成功した最新の取込を、そうでなければ前回の記録を書く
+    （鮮度台帳がソースごとに比べる）。作り直す派生の表と一緒に作業用のスキーマで書き、表ごと入れ替える（`derive_cli.py`）——
     事故密度の分母がこの記録の事故の取込の年から読まれる（`road_graph_repository.py: get_accident_years`）ので、
     入れ替えの前に作業用のスキーマから作る道路網の配列も、入れ替えの後の読み手も、数と同じ取込の年を読む。段が読んだ
-    生データがこの記録と一致するのは、取込と作り直しが同時に走らず、流さなかった段は読むソースの取込が前回と
-    同じとき（段の指紋が同じとき）だけ飛ばされるためである。
+    生データがこの記録と一致するのは、取込と作り直しが同時に走らないためである。
     """
 
     __tablename__ = "derived_source_runs"
@@ -54,10 +52,10 @@ class DerivedSourceRunRow(Base):
 class DerivedColumnRow(Base):
     """今の`public`の派生の表を作ったときの、表ごとの列（ORMの宣言）。表と列ごとに1行。
 
-    作り直しは作業用のスキーマで表ごと入れ替え、流さない段は入力（書く表の列を含む）が前回と同じ段だけなので、入れ替えた
-    後の値のNULLは「計算した結果、値が無い」しかない。作り直しが要るのは、取込が変わったとき（`derived_source_runs`）と、最後の作り直しの後に
-    派生の表の列を足した・消したとき（足した列は全行がNULLのまま）だけで、後者をこの記録と今の宣言の比べで出す
-    （`derived_data_freshness.py`）。`derived_source_runs`と同じく作業用のスキーマで書き、表ごと入れ替える。
+    流した段の表は今の宣言の列を、流さなかった段の表は前回の記録を書く。作り直しが要るのは、取込が変わったとき
+    （`derived_source_runs`）と、その表を最後に作り直した後に派生の表の列を足した・消したとき（足した列は全行がNULLのまま）
+    で、後者をこの記録と今の宣言の比べで出す（`derived_data_freshness.py`）。`derived_source_runs`と同じく作業用のスキーマで
+    書き、表ごと入れ替える。
     """
 
     __tablename__ = "derived_columns"
@@ -66,19 +64,28 @@ class DerivedColumnRow(Base):
     column_name: Mapped[str] = mapped_column(String, primary_key=True)
 
 
-class DerivedStageRow(Base):
-    """今の`public`の派生の表を作ったときの、段ごとの入力の指紋（`derive_cli.py: stage_fingerprints`）。段ごとに1行で、
-    区間ごとに写す段は前の段を除いた入力の指紋の行も持つ。
+class DerivedTuningRow(Base):
+    """今の`public`の派生の表と道路網の配列を作ったときの較正値（`derive_cli.py`が段と配列へ渡した値）。較正値ごとに1行。
 
-    次の作り直しは、指紋がこの記録と同じ段を流さず、その段の前回の表を残す。読むのは作り直しだけ。
-    `derived_source_runs`と同じく作業用のスキーマで書き、表ごと入れ替える——段を流した作り直しが途中で
-    落ちても、記録は前回の表の中身を指したまま残る。
+    派生の外で同じ値を読む所（地図の点のタイル・近くの点の読み出し・道路網の配列を作る読み出し）は、管理画面の今の上書きでは
+    なくこの値を読む——上書きを変えてから作り直すまでの間も、派生の表と同じ値で読む。`derived_source_runs`と同じく
+    作業用のスキーマで書き、表ごと入れ替えるので、派生の世代と一緒に変わる。
     """
 
-    __tablename__ = "derived_stages"
+    __tablename__ = "derived_tuning"
 
-    stage: Mapped[str] = mapped_column(String, primary_key=True)
-    fingerprint: Mapped[str] = mapped_column(String, nullable=False)
+    param_id: Mapped[str] = mapped_column(String, primary_key=True)
+    value: Mapped[float] = mapped_column(Double, nullable=False)
+
+
+#: 派生の表と一緒に作業用のスキーマで書き、表ごと入れ替える作り直しの記録の表。
+RECORD_TABLES: tuple[str, ...] = (DerivedSourceRunRow.__tablename__, DerivedColumnRow.__tablename__,
+                                  DerivedTuningRow.__tablename__)
+
+
+def recorded_tuning_sql(param_id: str) -> str:
+    """作り直しに使った較正値を読むSQLの式（派生の表と記録は同じ作り直しで一緒に入れ替わる）。"""
+    return f"(SELECT value FROM {DerivedTuningRow.__tablename__} WHERE param_id = '{param_id}')"
 
 
 @dataclass(frozen=True)
@@ -124,18 +131,30 @@ async def replace_columns(conn: asyncpg.Connection, columns: Mapping[str, frozen
         [(table, name) for table, names in columns.items() for name in sorted(names)])
 
 
-async def read_stage_fingerprints(conn: asyncpg.Connection) -> dict[str, str]:
-    """今の派生の表を作ったときの段ごとの指紋（段の名前 → 指紋）。"""
-    return await _read_pairs(conn, DerivedStageRow.__tablename__, "stage", "fingerprint")
+@dataclass(frozen=True)
+class DeriveRecords:
+    """今の`public`の派生の表を作ったときの記録（作った取込・表ごとの列・使った較正値）。"""
+
+    runs: dict[str, int]
+    columns: dict[str, frozenset[str]]
+    tuning: dict[str, float]
 
 
-async def replace_stage_fingerprints(conn: asyncpg.Connection, fingerprints: Mapping[str, str]) -> None:
-    """段ごとの指紋を`fingerprints`へ置き換える。"""
-    await _replace_rows(conn, DerivedStageRow.__tablename__, ("stage", "fingerprint"), fingerprints.items())
+async def read_records(conn: asyncpg.Connection) -> DeriveRecords:
+    """今の`public`の作り直しの記録。段を選んだ作り直しが、流さなかった段の分を残すために読む。"""
+    runs = {row["source"]: row["run_id"] for row in await conn.fetch(
+        f"SELECT source, run_id FROM public.{DerivedSourceRunRow.__tablename__}")}
+    columns: dict[str, set[str]] = {}
+    for row in await conn.fetch(f"SELECT table_name, column_name FROM public.{DerivedColumnRow.__tablename__}"):
+        columns.setdefault(row["table_name"], set()).add(row["column_name"])
+    tuning = {row["param_id"]: row["value"] for row in await conn.fetch(
+        f"SELECT param_id, value FROM public.{DerivedTuningRow.__tablename__}")}
+    return DeriveRecords(runs=runs, columns={table: frozenset(names) for table, names in columns.items()}, tuning=tuning)
 
 
-async def _read_pairs(conn: asyncpg.Connection, table: str, key: str, value: str) -> dict:
-    return {row[key]: row[value] for row in await conn.fetch(f"SELECT {key}, {value} FROM {table}")}
+async def replace_tuning(conn: asyncpg.Connection, values: Mapping[str, float]) -> None:
+    """作り直しに使った較正値を`values`へ置き換える。"""
+    await _replace_rows(conn, DerivedTuningRow.__tablename__, ("param_id", "value"), values.items())
 
 
 async def _replace_rows(conn: asyncpg.Connection, table: str, columns: tuple[str, str], rows: Iterable) -> None:

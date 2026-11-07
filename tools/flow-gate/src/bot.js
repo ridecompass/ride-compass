@@ -2,7 +2,6 @@
 // スクリプトが共通に使う部品。Worker は読み込まない。
 import { execFileSync } from "node:child_process";
 import { readdirSync, readFileSync } from "node:fs";
-import { pathToFileURL } from "node:url";
 import base from "../flow.config.json" with { type: "json" };
 import { settings } from "./settings.js";
 
@@ -19,8 +18,6 @@ export function bot() {
   return (args, input) => execFileSync("gh", args, { input, encoding: "utf8", env: { ...process.env, GH_TOKEN: process.env.FLOW_BOT_TOKEN }, stdio: ["pipe", "pipe", "pipe"],
     maxBuffer: 256 * 1024 * 1024 });
 }
-// スクリプトとして打たれたか（テストが読み込んだときは手順を動かさない）。
-export const isMain = (url) => url === pathToFileURL(process.argv[1] ?? "").href;
 // issue の番号の引数か。
 export const isNumber = (arg) => /^\d+$/.test(arg ?? "");
 // 使い方を出して 2 で終わる。

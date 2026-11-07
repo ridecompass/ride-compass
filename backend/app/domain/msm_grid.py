@@ -1,6 +1,6 @@
 """地図に描く、MSMの格子点の風と降水（`GET /api/weather/msm-grid`）。
 
-値は格子点の値のままで、補間しない（domain/msm.py のモジュールの説明）。表示範囲の格子点が多いときは、格子の原点から数えて
+値は格子点の値のままで、補間しない。表示範囲の格子点が多いときは、格子の原点から数えて
 同じ間隔おきの格子点だけを残す（`domain/msm.py: MsmBlock.thinned_points`）。
 """
 
@@ -23,6 +23,7 @@ MSM_GRID_MIN_ZOOM = 8
 WIND_SPEED_MS_DECIMALS = 1
 WIND_DIRECTION_DEG_DECIMALS = 0
 PRECIPITATION_MM_DECIMALS = 1
+TEMPERATURE_C_DECIMALS = 1
 # 格子点の位置は格子の原点と間隔の積で、浮動小数の端数が付く。0.1m未満を落とす。
 _COORDINATE_DECIMALS = 6
 

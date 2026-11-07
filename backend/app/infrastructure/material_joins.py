@@ -12,7 +12,7 @@ from sqlalchemy import Column
 from sqlalchemy.dialects import postgresql
 
 from app.infrastructure.derived_models import RoadEdgeRow
-from app.infrastructure.orm_base import DERIVED_KEY, declared_metadata
+from app.infrastructure.derived_data_freshness import derived_tables
 
 _EDGE_KEY = ("osm_way_id", "segment_index")
 _WAY_KEY = ("osm_way_id",)
@@ -24,8 +24,8 @@ def _material_columns(key: tuple[str, ...]) -> dict[str, Column]:
     同じ名前の列を2つの表が持つと、別名の列がどちらの表から来るかが決まらないので送出する。
     """
     columns: dict[str, Column] = {}
-    for table in declared_metadata().sorted_tables:
-        if (not table.info.get(DERIVED_KEY) or table is RoadEdgeRow.__table__
+    for table in derived_tables():
+        if (table is RoadEdgeRow.__table__
                 or tuple(column.name for column in table.primary_key.columns) != key):
             continue
         for column in table.columns:
@@ -45,8 +45,8 @@ _WAY_MATERIAL_COLUMNS = _material_columns(_WAY_KEY)
 _REVERSING_TOKEN_PAIRS = (("start_", "end_"), ("_gain_", "_loss_"))
 
 
-def reversed_material_expression(name: str) -> str | None:
-    """逆向きの枝でこの列へ入る式（入れ替える相手の列を別名`m`で読む）。向きで変わらない列はNone。
+def reversed_partner(name: str) -> tuple[str, bool] | None:
+    """逆向きの枝でこの列へ入る相手の列と、符号を返すか。向きで変わらない列はNone。
 
     対になる語を入れ替え、`_grade`で終わる量は符号を返す。標高は地形の物理量で進行方向に依存しないため、
     この変換は厳密に正しい（形状点列を逆順に辿ると各区間の差分の符号がすべて反転する）。
@@ -60,17 +60,11 @@ def reversed_material_expression(name: str) -> str | None:
             swapped = swapped.replace(second, first, 1)
             break
     negated = name.endswith("_grade")
-    if swapped == name and not negated:
-        return None
-    return ("-" if negated else "") + "m." + swapped
+    return None if swapped == name and not negated else (swapped, negated)
 
 
 #: 区間の列→逆向きで読む相手の列と、符号を返すか。
-_REVERSED_EDGE_COLUMNS: dict[str, tuple[str, bool]] = {
-    name: (expression.lstrip("-").removeprefix("m."), expression.startswith("-"))
-    for name in _EDGE_MATERIAL_COLUMNS
-    if (expression := reversed_material_expression(name)) is not None
-}
+_REVERSED_EDGE_COLUMNS = {name: partner for name in _EDGE_MATERIAL_COLUMNS if (partner := reversed_partner(name))}
 
 #: 入れ替え先の列が無ければSQLは実行時に落ちる。import時に気づけるようにする。
 _missing_partners = sorted(partner for partner, _ in _REVERSED_EDGE_COLUMNS.values()

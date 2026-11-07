@@ -34,8 +34,8 @@ PLACE_MATCH_LEVEL_LABELS: dict[PlaceMatchLevel, str] = {
 }
 
 #: 入力の長さの上限。住所の1行（都道府県から号まで・建物名つき）が収まる長さ。
-PLACE_QUERY_MAX_LENGTH = 100
-PlaceQuery = Annotated[str, StringConstraints(min_length=1, max_length=PLACE_QUERY_MAX_LENGTH)]
+_PLACE_QUERY_MAX_LENGTH = 100
+PlaceQuery = Annotated[str, StringConstraints(min_length=1, max_length=_PLACE_QUERY_MAX_LENGTH)]
 
 #: 入力の続き（打ちかけの語を頭に持つ住所）を候補に足す最短の長さ（空白を除いた文字数）。画面が打ちかけで引き始める
 #: 長さも同じ。根拠は docs/modules/backend/place-search.md「引き方」。

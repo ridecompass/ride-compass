@@ -2,27 +2,19 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
+import { roadClass } from "@/testing/clientConfig";
+
 import LegendCheckboxList from "./LegendCheckboxList";
 
 const LEGEND = [
-  { key: "a", label: "舗装", color: "#111111", filter: [], description: "アスファルトの道" },
+  roadClass("a", { label: "舗装", color: "#111111", description: "アスファルトの道" }),
   { key: "b", label: "大きい点", color: "#222222", filter: [], diameterPx: 12 },
   { key: "other", label: "不明・他", color: "#333333", filter: [], isFallback: true },
 ];
 
 function renderList(props: Partial<Parameters<typeof LegendCheckboxList>[0]> = {}) {
   const onToggle = vi.fn();
-  render(
-    <LegendCheckboxList
-      legend={LEGEND}
-      hiddenKeys={["b"]}
-      onToggle={onToggle}
-      listClassName="list"
-      rowClassName="row"
-      swatchClassName="swatch"
-      {...props}
-    />,
-  );
+  render(<LegendCheckboxList legend={LEGEND} hiddenKeys={["b"]} onToggle={onToggle} {...props} />);
   return onToggle;
 }
 
@@ -38,7 +30,7 @@ describe("LegendCheckboxList（凡例のチェック一覧）", () => {
   it("色見本は行の色で、大きさで意味を示す行だけ地図の点と同じ大きさにする", () => {
     renderList();
     const [plain, sized] = [screen.getByText("舗装"), screen.getByText("大きい点")].map(
-      (row) => row.querySelector(".swatch") as HTMLElement,
+      (row) => row.querySelector('span[aria-hidden="true"]') as HTMLElement,
     );
     expect(plain).toHaveStyle({ background: "#111111" });
     expect(plain.style.width).toBe("");

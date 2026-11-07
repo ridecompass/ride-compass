@@ -12,17 +12,17 @@ import ast
 import io
 import re
 import subprocess
-import sys
 import tokenize
 from collections.abc import Iterator
+from functools import cache
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
-
 # 実在の母集団・維持しない置き場・例の形は、文書のリンクの検査（`scripts/review_checks.py`）と同じ口から取る。
-sys.path.insert(0, str(REPO_ROOT / "scripts"))
+from repo_population import EXAMPLE, UNMAINTAINED_PREFIXES, read_text, repository_files
 
-from repo_population import EXAMPLE, UNMAINTAINED_PREFIXES, read_text, repository_files  # noqa: E402
+from tests.structure.source_symbols import write_files
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
 
 TARGET_EXTENSIONS = r"(?:py|tsx?|js|mjs|cjs|ya?ml|json|sql|sh|toml|ini|css)"
 
@@ -143,13 +143,23 @@ def prose_spans(rel_path: str, text: str) -> list[tuple[int, int]]:
     return []
 
 
+_BLANKED = re.compile(r"[^\n]")
+
+
 def _keep(text: str, spans: list[tuple[int, int]], *, inside: bool) -> str:
     """spansの内側（inside=True）か外側だけを残し、残りは改行を保って空白にする（位置と行番号を保つ）。"""
-    mask = [not inside] * len(text)
-    for start, end in spans:
-        for k in range(start, end):
-            mask[k] = inside
-    return "".join(ch if keep or ch == "\n" else " " for ch, keep in zip(text, mask, strict=True))
+    pieces: list[str] = []
+    at = 0
+    for start, end in sorted(spans):
+        start = max(start, at)
+        if start >= end:
+            continue
+        pieces += [text[at:start], text[start:end]]
+        at = end
+    pieces.append(text[at:])
+    blank = 0 if inside else 1
+    return "".join(_BLANKED.sub(" ", piece) if k % 2 == blank else piece for k, piece in enumerate(pieces))
+
 
 
 class _Repository:
@@ -184,13 +194,19 @@ def _names_in(code: str, dotted: str) -> bool:
     )
 
 
+@cache
+def _prose(root: Path, rel_path: str) -> str:
+    """人が読む文の範囲だけを残したテキスト。本物のリポジトリを読む3つの検査が1回の抜き出しを共有する。"""
+    text = read_text(root / rel_path)
+    return _keep(text, prose_spans(rel_path, text), inside=True)
+
+
 def _prose_files(repo: _Repository) -> Iterator[tuple[str, str]]:
     """維持するファイルごとの、人が読む文の範囲だけを残したテキスト。"""
     for rel_path in repo.files:
         if Path(rel_path).suffix not in SCANNED_SUFFIXES or rel_path.startswith(UNMAINTAINED_PREFIXES):
             continue
-        text = repo.text(rel_path)
-        yield rel_path, _keep(text, prose_spans(rel_path, text), inside=True)
+        yield rel_path, _prose(repo.root, rel_path)
 
 
 def _line_of(prose: str, match: re.Match[str]) -> int:
@@ -312,8 +328,8 @@ def test_named_api_paths_exist() -> None:
 
 
 def test_detects_dangling_references(tmp_path: Path) -> None:
-    """検査が効いていること（消えた名前・無いパス・曖昧なパスを置いて捕まえ、正しい名指しと
-    文字列リテラルは見逃す）。"""
+    """検査が効いていること（消えた名前・無いパス・曖昧なパスを、対象ファイル表の行の中でも置いて捕まえ、
+    正しい名指しと文字列リテラルは見逃す）。"""
     files = {
         "app/a.py": '"""モジュール。"""\n\nLIVE = 1\n# GONE はコメントにだけ残っている\n',
         "app/b/util.ts": "export const helper = 1;\n",
@@ -326,11 +342,10 @@ def test_detects_dangling_references(tmp_path: Path) -> None:
         ),
         "app/e.ts": '// `a.py: GONE_TS`\nconst url = "https://x/a.py: NOT_A_REFERENCE";\n',
         "docs/guide.md": "`util.ts: helper`と`b/util.ts: helper`と`missing.py: X`。\n",
+        "docs/modules/table.md": "| domain | `a.py`（`a.py: LIVE`と`a.py: GONE_ROW`） |\n",
         "docs/records/old.md": "`a.py: GONE`\n",
     }
-    for rel, body in files.items():
-        (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
-        (tmp_path / rel).write_text(body, encoding="utf-8")
+    write_files(tmp_path, files)
 
     assert dangling_references(tmp_path, sorted(files)) == [
         "app/d.py:1: a.py: GONE（そのファイルのコードに名前が無い）",
@@ -338,33 +353,27 @@ def test_detects_dangling_references(tmp_path: Path) -> None:
         "app/e.ts:1: a.py: GONE_TS（そのファイルのコードに名前が無い）",
         "docs/guide.md:1: util.ts: helper（パスが2本に当たる。親ディレクトリを足して1本に決める）",
         "docs/guide.md:1: missing.py: X（そのパスのファイルが無い）",
+        "docs/modules/table.md:1: a.py: GONE_ROW（そのファイルのコードに名前が無い）",
     ]
 
 
 def test_untracked_files_count_as_existing(tmp_path: Path) -> None:
     """`git add`前の新しいファイルは実在に数え、無視されたファイルは数えない。"""
-    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
-    files = {
+    files = _write_repository(tmp_path, {
         ".gitignore": "ignored.py\n",
         "app/new.py": "LIVE = 1\n",
         "app/ignored.py": "HIDDEN = 1\n",
         "docs/guide.md": "`new.py: LIVE`と`ignored.py: HIDDEN`。\n",
-    }
-    for rel, body in files.items():
-        (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
-        (tmp_path / rel).write_text(body, encoding="utf-8")
+    })
 
-    assert dangling_references(tmp_path, repository_files(tmp_path)) == [
+    assert dangling_references(tmp_path, files) == [
         "docs/guide.md:1: ignored.py: HIDDEN（そのパスのファイルが無い）",
     ]
 
 
 def _write_repository(root: Path, files: dict[str, str]) -> list[str]:
     subprocess.run(["git", "init", "-q"], cwd=root, check=True)
-    for rel, body in files.items():
-        (root / rel).parent.mkdir(parents=True, exist_ok=True)
-        (root / rel).write_text(body, encoding="utf-8")
-    return repository_files(root)
+    return repository_files(write_files(root, files))
 
 
 def test_detects_dangling_paths(tmp_path: Path) -> None:

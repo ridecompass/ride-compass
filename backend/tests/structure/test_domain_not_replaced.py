@@ -22,7 +22,7 @@ import ast
 from collections.abc import Iterator
 from pathlib import Path
 
-from tests.structure.source_symbols import Scope, SourceTree, Symbol, replacement_calls, replacement_of, scanned_tests
+from tests.structure.source_symbols import Scope, SourceTree, Symbol, replacement_calls, replacement_of, scanned_tests, within, write_files
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent
 DOMAIN = "app.domain"
@@ -52,9 +52,7 @@ def domain_replacements(root: Path) -> list[str]:
         scope = Scope(source, source.module_of(path), tree)
         for call, enclosing in replacement_calls(tree):
             for text, target in _replaced(scope, call, enclosing):
-                if target.kind in ("function", "class") and (
-                    target.module == DOMAIN or target.module.startswith(f"{DOMAIN}.")
-                ):
+                if target.kind in ("function", "class") and within(target.module, DOMAIN):
                     out.append(f"{path.relative_to(root).as_posix()}:{call.lineno}: {text}（{target.module}）")
     return out
 
@@ -69,7 +67,7 @@ def test_tests_do_not_replace_domain_functions_or_classes() -> None:
 
 
 def _backend(tmp_path: Path, test_source: str) -> Path:
-    for relative, text in {
+    return write_files(tmp_path, {
         "app/__init__.py": "",
         "app/domain/__init__.py": "",
         "app/domain/speed.py": "TABLE = {}\n\n\ndef cruise():\n    return 1.0\n\n\nclass Model:\n    def run(self):\n        return 0\n",
@@ -77,10 +75,7 @@ def _backend(tmp_path: Path, test_source: str) -> Path:
         "app/services/planner.py": "from app.domain.speed import cruise\n",
         "tests/__init__.py": "",
         "tests/test_sample.py": test_source,
-    }.items():
-        (tmp_path / relative).parent.mkdir(parents=True, exist_ok=True)
-        (tmp_path / relative).write_text(text, encoding="utf-8")
-    return tmp_path
+    })
 
 
 def test_detects_replaced_domain_functions_and_classes_but_not_declared_data(tmp_path: Path) -> None:
