@@ -132,6 +132,7 @@ def _fetched(source, kind="rasterTile", jma=("t_even10",), label="架空", rule=
         pytest.param((_fetched("a"), _fetched("a", "gridMark", ("t_points",))), id="配信元から取る要素が重なる"),
         pytest.param((_fetched("a", "vectorTile"),), id="ベクタのレイヤー名が無い"),
         pytest.param((_fetched("a", "gridMark", ("undeclared",)),), id="宣言の無い配信要素"),
+        pytest.param((_fetched("a")._replace(legend_color="#ff0000"),), id="凡例の色だけで説明が無い"),
     ],
 )
 def test_elements_the_screen_cannot_read_one_way_are_refused(_declared, elements):

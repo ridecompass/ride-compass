@@ -1,6 +1,7 @@
 """ルートの区間に載せる道の区分（分け方ごとの区分と「緑と水」）を、切り出した道路網の行から読む。
 
-鍵は分け方（地図の道の線の層のid）と「緑と水」の層のid。呼び名と色は、受け取る側が画面の設定の区分と土地被覆のクラスから引く。
+鍵は分け方（地図の道の線の層のid）と、土地被覆のクラスの並びを載せると宣言した層のid（`domain/map_display.py: segment_series_layer`）。
+呼び名と色は、受け取る側が画面の設定の区分と土地被覆のクラスから引く。
 - 分け方の値は地図の線の層の値（`domain/road_classes.py: layer_columns`）。
 - 「緑と水」は、割合が最も多いクラスの割合の材料のid（`domain/landcover.py: LandcoverClass.percent_field`）。
   同率は`domain/landcover.py: LANDCOVER_CLASSES`の並びで先のクラスを取る。
@@ -11,8 +12,10 @@ from dataclasses import dataclass
 
 from app.domain.attributes import CategoricalColumn
 from app.domain.landcover import LANDCOVER_CLASSES
-from app.domain.primary_attributes import ATTR_LANDCOVER
+from app.domain.map_display import segment_series_layer
 from app.domain.road_network import RoadSlice
+
+_LANDCOVER_LAYER = segment_series_layer("landcoverClass")
 
 
 @dataclass(frozen=True)
@@ -38,7 +41,7 @@ class SegmentClassReader:
         """切り出しの中の`index`番目の区間の、分け方・「緑と水」→区分。"""
         row = int(self.road.rows[index])
         values: dict[str, str | None] = {key: column.value_at(row) for key, column in self.classes}
-        values[ATTR_LANDCOVER.attr_id] = self._dominant_landcover(row)
+        values[_LANDCOVER_LAYER] = self._dominant_landcover(row)
         return values
 
     def _dominant_landcover(self, row: int) -> str | None:
