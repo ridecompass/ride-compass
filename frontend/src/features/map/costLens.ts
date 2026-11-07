@@ -13,7 +13,6 @@ import { costLensPaint, formatLensNumber, LENS_SECONDS_UNIT } from "@/lib/mapDis
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 import type { MapTheme } from "@/lib/mapTheme";
 import type { LensOption } from "@/features/map/LensControl/LensRow";
-import type { CostPreference } from "@/types/route";
 import type { LensEquivalentsResponse } from "@/services/costAxisCatalogApi";
 import { formulaConditions } from "@/features/map/scene/wayValueFormula";
 
@@ -59,14 +58,12 @@ export function costRouteStyleModes(catalog: CostAxisCatalog, ground: MapTheme):
   ];
 }
 
-/** レンズの選択肢（総合を先に、続けて軸の順。無効の軸のレンズは、選べるレンズの一覧`lenses`に無い）。全体のつまみが×0なら、
- * どのレンズも代償が0なので「未使用」にする。 */
-export function costLensOptions(lenses: readonly MapLens[], preference: CostPreference): LensOption[] {
+/** レンズの選択肢（総合を先に、続けて軸の順。数えない軸のレンズは、選べるレンズの一覧`lenses`に無い）。 */
+export function costLensOptions(lenses: readonly MapLens[]): LensOption[] {
   return lenses.map((lens) => ({
     id: lens.lensId,
     label: lens.label,
     color: LENS_NEUTRAL_COLOR,
-    unused: preference.strength === 0,
     description: lens.description,
     iconId: lens.iconId,
     conditions: lens.conditions,

@@ -1,9 +1,9 @@
 /**
  * `LensControl.tsx`——「負担で塗る」のピルが今のレンズを示し、開いた一覧でレンズを1つ選び・外し、選んでいる行の ▶ で
- * 凡例を絞り込み、行の印（走る条件・未使用・絞り込み中）と前提の文を読ませること。
+ * 凡例を絞り込み、行の印（走る条件・絞り込み中）と前提の文を読ませること。
  *
  * ここで見ないもの:
- * - 選択肢・凡例・前提の文の中身を費用の軸の一覧から組むこと → `features/map/view/lens.test.ts`・`features/map/costLens.test.ts`
+ * - 選択肢・凡例・前提の文の中身を費用の軸の一覧から組むこと → `features/map/view/lens.test.ts`
  * - 凡例の行のチェックの描き方 → `LegendCheckboxList`
  * - 浮かせた一覧の位置取り・外を押すと閉じること → Radix Popover
  */
@@ -21,12 +21,11 @@ const option = (id: string, overrides: Partial<LensOption> = {}): LensOption => 
   id,
   label: `${id}の軸`,
   color: "#123456",
-  unused: false,
   description: `${id}の説明`,
   conditions: [],
   ...overrides,
 });
-const OPTIONS = [option("idle", { unused: true }), option("used", { conditions: ["bearing_deg", "at"] })];
+const OPTIONS = [option("idle"), option("used", { conditions: ["bearing_deg", "at"] })];
 const LEGEND = [
   { key: "step-0", label: "低い", color: "#00ff00", filter: [] },
   { key: "step-1", label: "高い", color: "#ff0000", filter: [] },
@@ -81,14 +80,14 @@ describe("LensControl", () => {
     expect(screen.getByRole("status")).toHaveTextContent(LAYER_DATA_STATUS_LABELS.error);
   });
 
-  it("一覧は使用中のレンズを先に並べ、値が変わる走る条件・「未使用」を名前に添える", async () => {
+  it("一覧は、値が変わる走る条件を名前に添える", async () => {
     renderLens();
     await open();
     expect(
       within(list())
         .getAllByRole("radio")
         .map((row) => row.textContent),
-    ).toEqual(["usedの軸（地図の向きで変わる）（出発時刻で変わる）", "idleの軸未使用"]);
+    ).toEqual(["idleの軸", "usedの軸（地図の向きで変わる）（出発時刻で変わる）"]);
   });
 
   it("行を押すとそのレンズを選び、一覧は閉じない。選んでいる行をもう一度押すと外す", async () => {

@@ -267,11 +267,8 @@ export function useMapView({
     lensControl: {
       lens,
       onLensChange: setLens,
-      // 選べるレンズは、総合と、利用者が無効にしていない軸（無効の軸は地図のどこにも出さない）。
-      axisOptions: costLensOptions(
-        lenses.filter((candidate) => countsAxis(costPreference, candidate.lensId)),
-        costPreference,
-      ),
+      // 選べるレンズは、総合と、数える軸（無効の軸は地図のどこにも出さない。負担の強さが無効なら総合も無い）。
+      axisOptions: costLensOptions(lenses.filter((candidate) => countsAxis(costPreference, candidate.lensId))),
       totalLabel: costCatalog.lenses?.totalLens.label ?? null,
       legend,
       hiddenLegendKeys: lensHidden,

@@ -86,8 +86,6 @@ export default function LensControl({
   const pillColor = selected?.color ?? LENS_NEUTRAL_COLOR;
   // ピルの帯は色の段だけを並べる（受け皿の「データなし」は除く）。
   const bands = legend.filter((entry) => !entry.isFallback);
-  // 並びは重みのタブと同じ（重みのある軸が先、残りはカタログの順）。
-  const ordered = [...axisOptions.filter((option) => !option.unused), ...axisOptions.filter((option) => option.unused)];
 
   // 選んでいる行の ▶ の中身。「表示」の一覧の凡例と同じ形（見出しのチェックと段ごとのチェック）と、前提の文。
   const legendPanel =
@@ -183,7 +181,7 @@ export default function LensControl({
             aria-label={LENS_SCREEN_NAME}
             usage={`押した負担の種類の${LENS_QUANTITY_LABEL}で、地図の道路（ルートを作った後はルートの線）を塗ります。選んでいる行をもう一度押すと外れます。`}
           >
-            {ordered.map((option) => (
+            {axisOptions.map((option) => (
               <LensRow
                 key={option.id}
                 option={option}
