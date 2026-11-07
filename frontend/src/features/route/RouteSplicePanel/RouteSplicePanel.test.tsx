@@ -31,7 +31,8 @@ const CATALOG = {
     { axisId: "light", label: "街灯" },
   ],
   axisColors: { width: "red", traffic: "green", slope: "blue", light: "gray" },
-  avoidanceLabel: "回避指定",
+  preferredLabel: "好む道",
+  avoidedLabel: "避ける道",
   loaded: true,
   failed: false,
 };
@@ -39,7 +40,8 @@ const CATALOG = {
 /** 軸ごとの負担（秒）を持つ内訳。 */
 const penalty = (axisSeconds: Record<string, number>, totalSeconds: number): RouteCandidate["penalty"] => ({
   axis_seconds: axisSeconds,
-  avoidance_seconds: 0,
+  preferred_seconds: 0,
+  avoided_seconds: 0,
   total_seconds: totalSeconds,
 });
 

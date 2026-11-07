@@ -8,7 +8,8 @@
 
 from app.domain.road_class_catalog import road_class_catalog
 from app.domain.map_display import MAP_LAYER_CATEGORIES
-from app.domain.road_classes import AvoidanceClassification, AvoidanceOverride
+from app.domain.road_classes import EMPTY_ROAD_CLASSES, AvoidanceClassification, AvoidanceOverride
+from app.domain.tuning import TUNING_VALUES
 from tests.road_class_fixture import classification, fact_is, map_layer, road_classes
 
 
@@ -26,8 +27,7 @@ def test_layers_are_published_and_ordered() -> None:
                 "other": map_layer(0).model_copy(update={"group_key": second}),
                 "draft": map_layer(0).model_copy(update={"group_key": first}),
             },
-        )
-    )
+        ))
     assert [(layer.id, [c.key for c in layer.classes]) for layer in catalog.map_layers] == [
         ("early", ["b", "a"]),
         ("late", ["b", "a"]),
@@ -44,8 +44,7 @@ def test_class_description_is_the_meaning_without_its_conditions() -> None:
             {"k": kinds.model_copy(update={"classes": {"a": meant}})},
             map_layers={"k": map_layer()},
             avoidance_classifications={"k": AvoidanceClassification(overrides={})},
-        )
-    )
+        ))
     (layer,) = catalog.map_layers
     (row,) = catalog.avoidance.rows
     assert (layer.classes[0].description, row.description) == ("意味の文", "意味の文")
@@ -79,8 +78,7 @@ def test_avoidance_rows_are_grouped_under_their_map_layers() -> None:
                 "draft": AvoidanceClassification(overrides={}),
                 "unmapped": AvoidanceClassification(overrides={}),
             },
-        )
-    )
+        ))
     assert [(section.key, section.label) for section in catalog.avoidance.sections] == [("y", "分け方Y"), ("x", "分け方X")]
     assert [(row.key, row.section, row.default) for row in catalog.avoidance.rows] == [
         ("y.plain", "y", "pass"),
@@ -88,4 +86,15 @@ def test_avoidance_rows_are_grouped_under_their_map_layers() -> None:
         ("y.hidden", "y", "pass"),
         ("x.plain", "x", "pass"),
         ("x.avoided", "x", "avoid"),
+    ]
+
+
+def test_levels_are_named_by_the_multiplier_derived_from_the_calibrated_avoid_multiplier(monkeypatch):
+    """段の名前は区間の費用に掛ける倍率で、並びは倍率の順。「好む」は「なるべく避ける」の倍率の逆数なので、管理画面で倍率を
+    変えると、どちらの段の数字も変わる。"""
+    monkeypatch.setitem(TUNING_VALUES, "avoidance.avoid_cost_multiplier", 4.0)
+    catalog = road_class_catalog(EMPTY_ROAD_CLASSES)
+
+    assert [(level.key, level.label) for level in catalog.avoidance.levels] == [
+        ("prefer", "×0.25"), ("pass", "×1"), ("avoid", "×4"), ("exclude", "×∞"),
     ]

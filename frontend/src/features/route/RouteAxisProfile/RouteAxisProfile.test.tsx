@@ -20,7 +20,8 @@ function renderProfile(props: Partial<Props> = {}) {
     <RouteAxisProfile
       penalty={{
         axis_seconds: { ascent: 300, vibration: 0 },
-        avoidance_seconds: 120,
+        preferred_seconds: 0,
+        avoided_seconds: 120,
         total_seconds: 420,
       }}
       estimatedDurationSeconds={3720}

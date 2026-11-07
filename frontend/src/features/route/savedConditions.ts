@@ -59,7 +59,7 @@ interface ConditionsDescription {
   route: string;
   /** つまみと、標準でない軸の倍率（全部標準なら「標準」）。 */
   costPreference: string;
-  /** 「通らない」を選んだ行と、なるべく避ける行の名前（いつも通らない固定の行は含めない）。 */
+  /** 「通る」以外を選んだ行の名前を段ごとに（いつも通らない固定の行は含めない）。 */
   exclusions: string;
 }
 
@@ -75,7 +75,7 @@ function routeDescription(conditions: GenerationConditionsSnapshot): string {
     .join("・");
 }
 
-// 段ごとに「段の名前 行の名前・…」を、強い段から並べる。行と段は画面の設定が配るもので、届く前は「なし」になる。
+// 段ごとに「段の名前 行の名前・…」を、倍率の大きい段から並べる。行と段は画面の設定が配るもので、届く前は「なし」になる。
 function exclusionsDescription(roadAvoidance: RoadAvoidanceOverride, catalog: ClientConfig): string {
   const { levels, rows } = catalog.roadClasses.avoidance;
   const parts = levels.toReversed().flatMap(({ key: level, label: levelLabel }) => {

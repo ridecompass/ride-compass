@@ -50,6 +50,7 @@ from app.domain.route_search import (
     prefers_reverse,
     rank_by_pareto_layers,
     relay_band,
+    retrace_penalized,
     distance_tolerance_km,
     loop_to_outbound_ratios,
     reverse_leg_assignment,
@@ -102,7 +103,7 @@ def draft(distance_km, duration_seconds, cost_seconds):
     return EvaluatedRoute(
         direction_label="", distance_km=distance_km, geometry={"type": "LineString", "coordinates": []},
         elevation_gain_m=None, segments=[], estimated_duration_seconds=duration_seconds, cost_seconds=cost_seconds,
-        penalty=PenaltyBreakdown(axis_seconds={}, avoidance_seconds=0.0),
+        penalty=PenaltyBreakdown(axis_seconds={}, preferred_seconds=0.0, avoided_seconds=0.0),
         facts=RouteFacts(axes={}),
         missing_travel_data_share=None,
         edge_ids=[], edge_point_offsets=[], node_ids=[], turns=[], waypoint_distances_km=[],
@@ -186,6 +187,16 @@ def test_prefers_reverse_takes_the_lower_cost(forward_cost, reverse_cost, picked
     reverse = prefers_reverse(forward_cost, reverse_cost)
 
     assert ("reverse" if reverse else "forward") == picked
+
+
+def test_retracing_a_preferred_road_is_penalized_as_much_as_a_plain_road_of_the_same_duration():
+    """帰りに走り直す罰が、好む道（費用が所要時間の半分）で好まない道より小さいと、帰りが好む道を往復する。"""
+    travel = np.array([60.0, 60.0])
+    costs = np.array([60.0, 30.0])
+
+    added = retrace_penalized(costs, travel) - costs
+
+    assert added[0] == added[1] > 0
 
 
 def test_loops_are_ordered_by_the_penalty_per_km_and_destinations_by_the_cost():

@@ -39,8 +39,9 @@ export interface CostAxisCatalog {
   axes: readonly CostAxis[];
   /** 軸id→識別色（どの画面でも同じ軸は同じ色）。 */
   axisColors: Readonly<Record<string, string>>;
-  /** 代償の内訳の、避け方の倍率で上乗せした秒の行の名前。 */
-  avoidanceLabel: string;
+  /** 代償の内訳の、避け方の倍率が好む道で下げた秒と、避ける道で上乗せした秒の行の名前。 */
+  preferredLabel: string;
+  avoidedLabel: string;
   /** 地図のレンズ。届くまで・失敗の間はnull。 */
   lenses: CostLensCatalog | null;
   /** 取得が成功したか。falseの間は`axes`が空なので、今の軸と揃うことを要る処理（倍率を送る）はこれで未確定を区別する。 */
@@ -52,7 +53,8 @@ export interface CostAxisCatalog {
 const EMPTY: CostAxisCatalog = {
   axes: [],
   axisColors: {},
-  avoidanceLabel: "",
+  preferredLabel: "",
+  avoidedLabel: "",
   lenses: null,
   loaded: false,
   failed: false,
@@ -71,7 +73,8 @@ export function costAxisCatalogFromResponse(response: CostAxisCatalogResponse): 
   return {
     axes,
     axisColors: Object.fromEntries(axes.map((axis, index) => [axis.axisId, seriesColor(index)])),
-    avoidanceLabel: response.avoidance_label,
+    preferredLabel: response.preferred_label,
+    avoidedLabel: response.avoided_label,
     lenses: {
       totalLens: {
         axisId: response.total_lens.lens_id,

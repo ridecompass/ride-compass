@@ -2124,6 +2124,7 @@
             "type": "string",
             "enum": [
               "pass",
+              "prefer",
               "avoid",
               "exclude"
             ],
@@ -2190,6 +2191,7 @@
             "type": "string",
             "enum": [
               "pass",
+              "prefer",
               "avoid",
               "exclude"
             ],
@@ -2994,9 +2996,13 @@
             "type": "array",
             "title": "Axes"
           },
-          "avoidance_label": {
+          "preferred_label": {
             "type": "string",
-            "title": "Avoidance Label"
+            "title": "Preferred Label"
+          },
+          "avoided_label": {
+            "type": "string",
+            "title": "Avoided Label"
           },
           "total_lens": {
             "$ref": "#/components/schemas/TotalLens"
@@ -3009,7 +3015,8 @@
         "type": "object",
         "required": [
           "axes",
-          "avoidance_label",
+          "preferred_label",
+          "avoided_label",
           "total_lens",
           "map_lens"
         ],
@@ -4688,9 +4695,13 @@
             "type": "object",
             "title": "Axis Seconds"
           },
-          "avoidance_seconds": {
+          "preferred_seconds": {
             "type": "number",
-            "title": "Avoidance Seconds"
+            "title": "Preferred Seconds"
+          },
+          "avoided_seconds": {
+            "type": "number",
+            "title": "Avoided Seconds"
           },
           "total_seconds": {
             "type": "number",
@@ -4702,7 +4713,8 @@
         "type": "object",
         "required": [
           "axis_seconds",
-          "avoidance_seconds",
+          "preferred_seconds",
+          "avoided_seconds",
           "total_seconds"
         ],
         "title": "PenaltyBreakdown"
@@ -4861,6 +4873,7 @@
           "type": "string",
           "enum": [
             "pass",
+            "prefer",
             "avoid",
             "exclude"
           ]

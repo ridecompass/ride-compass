@@ -28,7 +28,7 @@ def _segments(distances: list[float], **fields_per_segment) -> list[RouteSegment
             start_latitude=35.0, start_longitude=139.0 + i * 0.01,
             end_latitude=35.0, end_longitude=139.0 + (i + 1) * 0.01,
             cumulative_distance_km=cumulative, distance_km=distance, edge_start=i, edge_end=i + 1,
-            **({"elevations": [], "road_classes": {}, "penalty": PenaltyBreakdown(axis_seconds={}, avoidance_seconds=0.0)}
+            **({"elevations": [], "road_classes": {}, "penalty": PenaltyBreakdown(axis_seconds={}, preferred_seconds=0.0, avoided_seconds=0.0)}
                | {name: values[i] for name, values in fields_per_segment.items()}),
         ))
         cumulative += distance

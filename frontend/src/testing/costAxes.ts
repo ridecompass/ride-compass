@@ -25,7 +25,8 @@ const ALONG_FORMULA: CostAxisCatalogResponse["map_lens"]["formula"] = {
 export function costAxisCatalog(...axes: CostAxisEntry[]): CostAxisCatalogResponse {
   return {
     axes,
-    avoidance_label: "回避指定",
+    preferred_label: "好む道",
+    avoided_label: "避ける道",
     total_lens: {
       lens_id: "total",
       label: "総合の負担",

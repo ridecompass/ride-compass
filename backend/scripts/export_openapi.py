@@ -601,7 +601,7 @@ def main() -> None:
             # フロントが使う較正値のid（値は持たない。フロントはidの型にだけ使う）。効いている値はGET /api/client-configが
             # 返し、取れるまではその値を使う機能を出さない。
             "client_tuning": dict.fromkeys(client_tuning_ids()),
-            # 0次ハードフィルタ。回避タブにいつも「通らない」の行として見せる（要求では受けない）。選べる行と段は
+            # 0次ハードフィルタ。道路タブにいつも「通らない」の行として見せる（要求では受けない）。選べる行と段は
             # 管理DBの道の区分から、GET /api/client-configが配る。
             "hard_filters": [
                 {"key": name, "label": spec.label, "description": spec.description}

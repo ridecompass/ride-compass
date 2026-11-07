@@ -680,7 +680,7 @@ export interface components {
              * Key
              * @enum {string}
              */
-            key: "pass" | "avoid" | "exclude";
+            key: "pass" | "prefer" | "avoid" | "exclude";
             /** Label */
             label: string;
         };
@@ -705,7 +705,7 @@ export interface components {
              * Default
              * @enum {string}
              */
-            default: "pass" | "avoid" | "exclude";
+            default: "pass" | "prefer" | "avoid" | "exclude";
         };
         /** AvoidanceSectionView */
         AvoidanceSectionView: {
@@ -890,8 +890,10 @@ export interface components {
         CostAxisCatalogResponse: {
             /** Axes */
             axes: components["schemas"]["CostAxisCatalogEntry"][];
-            /** Avoidance Label */
-            avoidance_label: string;
+            /** Preferred Label */
+            preferred_label: string;
+            /** Avoided Label */
+            avoided_label: string;
             total_lens: components["schemas"]["TotalLens"];
             map_lens: components["schemas"]["MapLens"];
         };
@@ -1423,8 +1425,10 @@ export interface components {
             axis_seconds: {
                 [key: string]: number;
             };
-            /** Avoidance Seconds */
-            avoidance_seconds: number;
+            /** Preferred Seconds */
+            preferred_seconds: number;
+            /** Avoided Seconds */
+            avoided_seconds: number;
             /** Total Seconds */
             readonly total_seconds: number;
         };
@@ -1473,7 +1477,7 @@ export interface components {
         };
         /** RoadAvoidanceOverride */
         RoadAvoidanceOverride: {
-            [key: string]: "pass" | "avoid" | "exclude";
+            [key: string]: "pass" | "prefer" | "avoid" | "exclude";
         };
         /** RoadAvoidanceView */
         RoadAvoidanceView: {

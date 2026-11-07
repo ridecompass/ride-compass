@@ -7,7 +7,9 @@
 
 
 from app.domain.display_palette import nominal_colors, ordered_colors, ordered_ends_phrase
-from app.domain.road_avoidance import AVOIDANCE_LEVEL_LABELS, AVOIDANCE_LEVELS, AvoidanceLevel, avoidance_rows
+from app.domain.cost_preference import multiplier_label
+from app.domain.road_avoidance import AVOIDANCE_LEVELS, AvoidanceLevel, avoidance_rows, level_multipliers
+from app.domain.tuning import tuning_value
 from app.domain.road_classes import (
     RoadClassDefinitions,
     by_sort_order,
@@ -43,18 +45,19 @@ class RoadMapLayerView(StrictModel):
 
 class AvoidanceLevelView(StrictModel):
     key: AvoidanceLevel
+    #: 掛ける倍率そのもの（`domain/cost_preference.py: multiplier_label`）。
     label: str
 
 
 class AvoidanceSectionView(StrictModel):
-    """回避タブの見出し1つ。鍵・名前は分け方の鍵・名前で、地図の線の層（`RoadMapLayerView`）と揃う。"""
+    """道路タブの見出し1つ。鍵・名前は分け方の鍵・名前で、地図の線の層（`RoadMapLayerView`）と揃う。"""
 
     key: str
     label: str
 
 
 class AvoidanceRowView(StrictModel):
-    """回避タブの1行。`key`は`<分け方>.<区分>`、`section`は見出し（分け方）の鍵。"""
+    """道路タブの1行。`key`は`<分け方>.<区分>`、`section`は見出し（分け方）の鍵。"""
 
     key: str
     section: str
@@ -64,6 +67,7 @@ class AvoidanceRowView(StrictModel):
 
 
 class RoadAvoidanceView(StrictModel):
+    #: 並びは倍率の小さい順。
     levels: list[AvoidanceLevelView]
     #: 並びは行の並び（地図の線の層の並び）。行の無い見出しは出さない。
     sections: list[AvoidanceSectionView]
@@ -114,6 +118,7 @@ def road_class_catalog(definitions: RoadClassDefinitions) -> RoadClassCatalog:
             )
         )
     avoidance = avoidance_rows(definitions)
+    multipliers = level_multipliers(tuning_value("avoidance.avoid_cost_multiplier"))
     rows = [
         AvoidanceRowView(
             key=row.key,
@@ -128,7 +133,10 @@ def road_class_catalog(definitions: RoadClassDefinitions) -> RoadClassCatalog:
         generation=road_class_generation(definitions),
         map_layers=layers,
         avoidance=RoadAvoidanceView(
-            levels=[AvoidanceLevelView(key=level, label=AVOIDANCE_LEVEL_LABELS[level]) for level in AVOIDANCE_LEVELS],
+            levels=[
+                AvoidanceLevelView(key=level, label=multiplier_label(multipliers[level]))
+                for level in sorted(AVOIDANCE_LEVELS, key=multipliers.__getitem__)
+            ],
             sections=[
                 AvoidanceSectionView(key=key, label=definitions.classifications[key].label)
                 for key in dict.fromkeys(row.classification_key for row in avoidance)

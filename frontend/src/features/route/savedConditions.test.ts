@@ -52,7 +52,8 @@ const COST_CATALOG: CostAxisCatalog = {
     },
   ],
   axisColors: {},
-  avoidanceLabel: "回避指定",
+  preferredLabel: "好む道",
+  avoidedLabel: "避ける道",
   lenses: null,
   loaded: true,
   failed: false,
@@ -110,10 +111,10 @@ describe("describeConditions", () => {
 
   it.each([
     [
-      "選んだ段と、選んでいない行の既定の段を、「通らない」の行・なるべく避ける行の順に並べる",
-      { gravel: "exclude", private: "pass" },
+      "選んだ段と、選んでいない行の既定の段を、倍率の大きい段から並べる",
+      { gravel: "exclude", private: "prefer" },
       CATALOG,
-      "通らない 砂利／なるべく避ける 未舗装",
+      "×∞ 砂利／×2 未舗装／×0.5 私道",
     ],
     ["通る行しか無ければ無いと出す", { unpaved: "pass", private: "pass" }, CATALOG, "なし"],
     ["画面の設定が届く前は、行が分からないので無いと出す", { gravel: "exclude" }, EMPTY_CLIENT_CONFIG, "なし"],

@@ -253,7 +253,7 @@ def _build_candidate(
     # 候補の内訳は丸める前の区間から足す（丸めたビンを足すと、丸めの分が候補の内訳へ積もる）。区間は通った道の分なので、通る道筋で
     # 決まる曲がる所の漕ぎ出しを、その費目を持つ軸の秒として足す。
     turn_penalty = PenaltyBreakdown.model_construct(
-        axis_seconds=context.composer.turn_penalty_by_axis(turn_kickoffs), avoidance_seconds=0.0)
+        axis_seconds=context.composer.turn_penalty_by_axis(turn_kickoffs), preferred_seconds=0.0, avoided_seconds=0.0)
     penalty = merge_penalty_breakdowns([*(segment.penalty for segment in segments), turn_penalty])
     # 返すsegmentsは集約する。Edge単位のままだとペイロードとフロントの描画費用が嵩む。
     segments = aggregate_segments_into_bins(segments, orientation.bin_slices)
@@ -361,11 +361,11 @@ def _segment_penalties(orientation: _Orientation) -> list[PenaltyBreakdown]:
     def of(read: _RowRead) -> list[PenaltyBreakdown]:
         values = read.values
         axis_lists = {axis_id: seconds.tolist() for axis_id, seconds in values.penalty_by_axis.items()}
-        avoidance = values.avoidance_seconds.tolist()
+        preferred, avoided = values.preferred_seconds.tolist(), values.avoided_seconds.tolist()
         return [
             PenaltyBreakdown.model_construct(
                 axis_seconds={axis_id: seconds[position] for axis_id, seconds in axis_lists.items()},
-                avoidance_seconds=avoidance[position])
+                preferred_seconds=preferred[position], avoided_seconds=avoided[position])
             for position in range(len(read.indices))
         ]
 

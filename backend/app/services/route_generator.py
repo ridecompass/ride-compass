@@ -28,6 +28,7 @@ from typing import TYPE_CHECKING, Protocol
 from app.domain.stopwatch import elapsed_ms, start_timer, steps_note
 from app.domain.errors import GENERATION_BUSY_MESSAGE, RoutingError, SearchAreaTooLargeError, SearchMemoryBusyError
 from app.domain.geo import haversine_distance_km
+from app.domain.map_display import MAP_OVERLAY_GROUPS
 from app.domain.loop_routing import TracedLoop
 from app.domain.route_request import NOTHING_TO_GENERATE, FixedPoints
 from app.domain.tuning import tuning_value
@@ -98,9 +99,11 @@ def _origin_label(origin: Coordinates) -> str:
     return f"({origin.latitude:.2f},{origin.longitude:.2f})"
 
 
+#: 道の避け方を選ぶ「ルート設定」のタブの名前（地図の道路のまとまりの名前）。理由の文が、変えてみる設定として名指す。
+_ROAD_SETTINGS_TAB = next(group.label for group in MAP_OVERLAY_GROUPS if group.key == "road")
 #: 経由地・目的地を通る経路を結べなかったときの、利用者へ見せる理由。
 _UNREACHABLE_POINTS_REASON = (
-    "指定した経由地・目的地を通る経路が見つかりませんでした。地点や「回避」の設定を変えてお試しください。"
+    f"指定した経由地・目的地を通る経路が見つかりませんでした。地点や「{_ROAD_SETTINGS_TAB}」の設定を変えてお試しください。"
 )
 
 
@@ -180,10 +183,10 @@ class _DistanceFinish:
             ring_lower_m, ring_upper_m, _ = turnaround_ring_m(self.distance_km, self.distance_tolerance_km)
             return _Selection.empty(
                 f"出発地から片道{ring_lower_m / 1000:.1f}〜{ring_upper_m / 1000:.1f}kmで到達できる折返し地点が見つかりませんでした。"
-                "距離や「回避」の設定を変えてお試しください。"
+                f"距離や「{_ROAD_SETTINGS_TAB}」の設定を変えてお試しください。"
                 if not self.points.waypoints and fixed.closes
                 else f"置いた地点を通って全長{self.distance_km:.1f}km前後になる経路が見つかりませんでした。"
-                "距離や地点、「回避」の設定を変えてお試しください。",
+                f"距離や地点、「{_ROAD_SETTINGS_TAB}」の設定を変えてお試しください。",
                 f"turnarounds=0 {_pool_note(0, pool_size)} select_ms={select_ms}",
             )
 
@@ -248,13 +251,13 @@ class _DistanceFinish:
         """
         parts = []
         if failed:
-            parts.append(f"{failed}件の折り返し地点で、帰り道が見つかりませんでした[「回避」の設定をご確認ください]")
+            parts.append(f"{failed}件の折り返し地点で、帰り道が見つかりませんでした[「{_ROAD_SETTINGS_TAB}」の設定をご確認ください]")
         if filtered_out:
             parts.append(
                 f"{filtered_out}件の周回候補は指定距離"
                 f"[{self.distance_km:.1f}km±{self.distance_tolerance_km:.1f}km]から外れました"
             )
-        return "、".join(parts) + "。距離や「回避」の設定を変えてお試しください。"
+        return "、".join(parts) + f"。距離や「{_ROAD_SETTINGS_TAB}」の設定を変えてお試しください。"
 
 
 @dataclass(frozen=True)
@@ -301,7 +304,7 @@ class _NoDistanceFinish:
             if self.points.waypoints:
                 reason = _UNREACHABLE_POINTS_REASON
             else:
-                reason = "指定した目的地までの経路が見つかりませんでした。地点や「回避」の設定を変えてお試しください。"
+                reason = f"指定した目的地までの経路が見つかりませんでした。地点や「{_ROAD_SETTINGS_TAB}」の設定を変えてお試しください。"
             return _Selection.empty(reason, f"no via-node candidates select_ms={select_ms}")
         if fixed.closes:
             def arrange_loops(drafts: list[EvaluatedRoute]) -> list[RouteCandidate]:

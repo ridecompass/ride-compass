@@ -7,7 +7,7 @@ export interface ClientConfig {
    * 管理画面から変えた値が再デプロイなしにここへ届く。**取得できるまでは空**——ビルド時生成物の既定で
    * 埋めると、管理画面で較正したのとは別の値で黙って動く。読み手は引けない間その機能を出さない。 */
   clientTuning: Readonly<Record<string, number>>;
-  /** 道の区分（地図の線の層・回避タブの行）。正本は管理DBで、**取得できるまでは層も行も0件**。 */
+  /** 道の区分（地図の線の層・道路タブの行）。正本は管理DBで、**取得できるまでは層も行も0件**。 */
   roadClasses: RoadClassCatalog;
   /** 取得が成功したか。falseの間は他の欄が空。 */
   loaded: boolean;

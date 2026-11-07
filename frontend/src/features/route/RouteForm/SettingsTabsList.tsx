@@ -2,6 +2,7 @@
 
 import { TabsList, TabsTrigger } from "@/components/ui/Tabs/Tabs";
 import { costAxisNamesNote, useCostAxisCatalog } from "@/hooks/useCostAxisCatalog";
+import { ROAD_SETTINGS_TAB_NAME } from "@/lib/screenNames";
 import type { SettingsTab } from "./RouteForm";
 
 /** 「ルート設定」のタブ（中身は `RouteForm` が描く）。`axisNames` は費用の軸の名前の並び（`costAxisNamesNote`）。 */
@@ -16,7 +17,11 @@ const settingsTabs = (axisNames: string): readonly { value: SettingsTab; label: 
     label: "負担",
     usage: `負担${axisNames}の種類ごとに、所要時間に足すときに掛ける倍率を決めます。`,
   },
-  { value: "exclusions", label: "回避", usage: "ルートに使わない道路の種類と、道ごとの避け方を選びます。" },
+  {
+    value: "exclusions",
+    label: ROAD_SETTINGS_TAB_NAME,
+    usage: "道路の種類ごとに、費用に掛ける倍率で、好んで通るか・なるべく避けるか・通らないかを選びます。",
+  },
   { value: "saved", label: "保存済み", usage: "名前を付けて保存した地点とプリセット（設定）を並べ、呼び出します。" },
 ];
 

@@ -5,6 +5,7 @@
 つまみは較正値`evaluation.penalty_strength`（標準的な人の強さ）に掛ける比なので、較正値を変えても利用者の値は標準のまま。
 """
 
+import math
 from typing import Annotated, NamedTuple
 
 from pydantic import AfterValidator, Field
@@ -23,8 +24,13 @@ class CostLevel(NamedTuple):
     label: str
 
 
+def multiplier_label(value: float) -> str:
+    """掛ける数の段の画面に出す名前（掛ける数を有効数字2桁で。無限大は「×∞」）。"""
+    return "×∞" if math.isinf(value) else f"×{value:.2g}"
+
+
 def _levels(*values: float) -> tuple[CostLevel, ...]:
-    return tuple(CostLevel(value, f"×{value:g}") for value in values)
+    return tuple(CostLevel(value, multiplier_label(value)) for value in values)
 
 
 #: 全体のつまみの段。

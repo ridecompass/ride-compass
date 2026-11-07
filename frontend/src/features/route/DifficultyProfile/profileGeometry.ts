@@ -1,6 +1,6 @@
 // 道のりに沿った負担のグラフの形と、グラフ上の距離が入る区間を引く計算。横が始点からの距離、縦が区間ごとの1kmあたりの負担
 // （軸ごとの代償の秒を区間の長さで割ったもの。地図のレンズと同じ量）で、区間の中では値が一定なので、形は区間ごとの階段になる。
-// 塗った面積は、軸ごとの代償の秒（回避指定を除く）の和になる。
+// 塗った面積は、軸ごとの代償の秒（好む道・避ける道の増減を除く）の和になる。
 
 import { PROFILE_VIEW_HEIGHT } from "@/features/route/ProfileChart/profileScale";
 import type { RouteStretch } from "@/lib/routeDistance";

@@ -4,10 +4,11 @@
 フィルタはどれもいつも効き、要求で切れない。判定（`compute_search_exclusion`）は
 レジストリをループするため、フィルタを増やしても判定側は無変更で反映される。フィルタは道の区分（`domain/road_classes.py`）と
 同じ形の条件で事実の列に当て、区分の宣言とは別に持つ。道の区分ごとの避け方（`domain/road_avoidance.py`）も同じ判定で、除く区間と
-割り増す区間に分ける。
+避け方の倍率を掛ける区間に分ける。
 """
 
 from collections.abc import Mapping
+from dataclasses import replace
 from typing import TYPE_CHECKING, NamedTuple
 
 import numpy as np
@@ -81,6 +82,6 @@ def compute_search_exclusion(
     road_avoidance: Mapping[str, AvoidanceLevel],
 ) -> RoadAvoidanceMasks:
     """探索の材料の表が持つ0次ハードフィルタ・区分の列から、リクエスト時点の`road_avoidance`を反映した、
-    探索から除く区間と割り増す区間を求める。"""
+    探索から除く区間と、避け方の倍率を掛ける区間を求める。"""
     rows = road_avoidance_masks(search_materials.road_classes, road_avoidance, len(search_materials.distance_m))
-    return RoadAvoidanceMasks(excluded=rows.excluded | search_materials.hard_filtered, avoided=rows.avoided)
+    return replace(rows, excluded=rows.excluded | search_materials.hard_filtered)

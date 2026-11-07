@@ -208,7 +208,7 @@ class RoadGraphEngine:
         self._cost_preference = cost_preference
         # 道のレイヤの行→避け方の段。
         self._road_avoidance = road_avoidance
-        # 「なるべく避ける」区間の費用の倍率。較正値のため、組み立てた時点の値で1回の生成を通す。
+        # 「なるべく避ける」区間の費用の倍率（「好む」はその逆数）。較正値のため、組み立てた時点の値で1回の生成を通す。
         self._avoid_cost_multiplier = tuning_value("avoidance.avoid_cost_multiplier")
         # 交差点でのターンの費用（秒）。較正値のため、組み立てた時点の値で1回の生成を通す。
         self._turn_cost = current_turn_cost()
@@ -515,7 +515,8 @@ class RoadGraphEngine:
             context.legs = [*context.legs[:leg_index + 1], inbound]
             backward_tree = await asyncio.to_thread(
                 lambda: build_turn_expanded_tree(
-                    context.turn_structure, avoiding_traveled(inbound.cost_lazy, traveled), statics.edge_length_m,
+                    context.turn_structure, avoiding_traveled(inbound.cost_lazy, inbound.travel_seconds_lazy, traveled),
+                    statics.edge_length_m,
                     destination_states(context.turn_structure, end_node), statics.csr.node_count,
                     reverse=True, edge_seconds=inbound.travel_seconds_lazy, transition_cost=context.transition_cost
                 )
@@ -523,7 +524,7 @@ class RoadGraphEngine:
         tree_started = start_timer()
 
         def outbound_tree() -> TurnExpandedTree:
-            outbound_costs = avoiding_traveled(outbound.cost_bins_lazy, traveled)
+            outbound_costs = avoiding_traveled(outbound.cost_bins_lazy, outbound.travel_bins_lazy, traveled)
             cost_limit = tree_cost_bound(context.turn_structure, outbound_costs, statics.edge_length_m, outbound_upper_m, transition_cost=context.transition_cost)
             return build_turn_expanded_tree(
                 context.turn_structure, outbound_costs, statics.edge_length_m,
@@ -675,7 +676,8 @@ class RoadGraphEngine:
         trace_started = start_timer()
         return_edge_index_list = await asyncio.to_thread(
             lambda: turn_expanded_shortest_path(
-                context.turn_structure, avoiding_traveled(inbound_leg.cost_bins_lazy, penalized_columns), heuristic,
+                context.turn_structure,
+                avoiding_traveled(inbound_leg.cost_bins_lazy, inbound_leg.travel_bins_lazy, penalized_columns), heuristic,
                 origin_states(context.statics, data.node), fixed.end_node,
                 inbound_leg.travel_bins_lazy, inbound_leg.bin_seconds, transition_cost=context.transition_cost
             )

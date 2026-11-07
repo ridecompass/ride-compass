@@ -5,6 +5,7 @@ import { textVariants } from "@/components/ui/Text/Text";
 import WarningText from "@/features/route/WarningText/WarningText";
 import { formatDurationShort } from "@/lib/duration";
 import { formatPenalty } from "@/lib/routePenalty";
+import { ROAD_SETTINGS_TAB_NAME } from "@/lib/screenNames";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 import type { PenaltyBreakdown as PenaltyValues } from "@/types/route";
 
@@ -12,7 +13,7 @@ import type { PenaltyBreakdown as PenaltyValues } from "@/types/route";
 const SPEED_CONDITIONS = routeGenerateConfig.segment_speed_conditions.join("・");
 
 interface RouteAxisProfileProps {
-  /** RouteCandidate.penalty（軸ごとと回避指定の代償の秒）。 */
+  /** RouteCandidate.penalty（軸ごとの代償の秒と、好む道・避ける道で増減した秒）。 */
   penalty: PenaltyValues;
   /** RouteCandidate.estimated_duration_seconds（走行＋停止＋ターンの見積もり）。 */
   estimatedDurationSeconds: number | null;
@@ -54,7 +55,7 @@ export default function RouteAxisProfile({
               {"登り・止まる回数・路面の振動など、避けたいものを通る分を、所要時間に上乗せした時間として数えたものです。" +
                 "最速の1本を比べる基準として先頭に置き、残りは所要時間と負担の和が小さい順に並びます（周回は1kmあたりの和で比べます）。" +
                 "グラフの右上の一覧は、負担を種類ごとに分けたものに、曲がる所の漕ぎ出し（止まってから漕ぎ出す負担と同じ倍率が掛かります）と、" +
-                "回避指定で上乗せした分を足したものです。"}
+                `${ROAD_SETTINGS_TAB_NAME}のタブで好むとした道を通って下げた分（−）と、避けるとした道を通って上乗せした分を足したものです。`}
             </p>
           </InfoPopover>
         </span>
