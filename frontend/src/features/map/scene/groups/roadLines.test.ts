@@ -109,13 +109,10 @@ describe("道路の指定", () => {
   function paintedColors(shown: boolean, hidden: readonly string[]) {
     const built = build({
       layers: [LAYER, roadMapLayer("highway")],
-      visible: { surface: true },
+      visible: { surface: true, [ROAD_AVOIDANCE_LAYER_ID]: shown },
       hiddenKeys: { [ROAD_AVOIDANCE_LAYER_ID]: hidden },
       classes: roads,
-      // 出していない間は、useMapView が段を空にして渡す。
-      avoidance: shown
-        ? avoidanceChoiceOf(avoidance, { "surface.gravel": "prefer", "surface.dirt": "exclude" })
-        : { levels: new Map(), order: [] },
+      avoidance: avoidanceChoiceOf(avoidance, { "surface.gravel": "prefer", "surface.dirt": "exclude" }),
     });
     const layer = built.layers.find((candidate) => candidate.role === ROAD_AVOIDANCE_LAYER_ID);
     if (layer?.visible !== true) return null;

@@ -55,14 +55,10 @@ function themedHsl(theme: MapTheme, hsl: Hsl): Hsl {
 
 /** 地色の、地の明るさでの明るさ。灰色に薄めるとき、塗りの明るさをここへ寄せる——地図ごと地色へ沈むので、暗い地図と重ねても
  * 明るくならない。 */
-function groundLightness(theme: MapTheme): number {
-  return themedHsl(theme, rgbToHsl(hexToRgb(palette.semantic.basemap_ground)))[2];
-}
-
-/** 見え方ごとの地色の明るさ（色を1つ変えるたびに求め直さない）。 */
+const GROUND_HSL = rgbToHsl(hexToRgb(palette.semantic.basemap_ground));
 const GROUND_LIGHTNESS: Readonly<Record<MapTheme, number>> = {
-  light: groundLightness("light"),
-  dark: groundLightness("dark"),
+  light: themedHsl("light", GROUND_HSL)[2],
+  dark: themedHsl("dark", GROUND_HSL)[2],
 };
 
 /** 灰色に薄めた色。彩度を落とし、明るさを地色の明るさへ寄せる。 */

@@ -31,7 +31,7 @@ import { useRoadClasses } from "@/features/map/useRoadClasses";
 import { useDynamicWeatherLayers } from "@/features/map/useDynamicWeatherLayers";
 import { useStoredState } from "@/hooks/useStoredState";
 import type { Coordinates, RoadAvoidanceOverride } from "@/types/route";
-import { avoidanceChoiceOf, type AvoidanceChoice } from "@/lib/roadAvoidance";
+import { avoidanceChoiceOf } from "@/lib/roadAvoidance";
 import type { MapTheme } from "@/lib/mapTheme";
 import type { RideConditions } from "@/features/map/regionApi";
 import { snapDeg } from "@/lib/cardinalLabel";
@@ -39,7 +39,7 @@ import { countsAxis } from "@/lib/costPreference";
 import type { WayValueCondition } from "@/lib/mapDisplay/mapLens";
 import { useMapCatalog } from "@/features/map/useMapCatalog";
 import { initiallyHiddenLegendKeys } from "@/features/map/scene/legends";
-import { ROAD_AVOIDANCE_LAYER_ID } from "@/features/map/scene/groups/roadLines";
+import { paintsRoadAvoidance, ROAD_AVOIDANCE_LAYER_ID } from "@/features/map/scene/groups/roadLines";
 import { WAY_BEARING_STEP_DEG } from "@/features/map/mapHeading";
 
 import { hiddenKeysOf, presentHiddenKeys, toggleHiddenKey, withHiddenKeys } from "./legendFilters";
@@ -95,9 +95,6 @@ interface MapViewState {
   /** 費用のレンズを塗っている利用者の値（入力の`costPreference`）。道を押したときの費用のレンズの値にも同じ値を渡す。 */
   costPreference: CostPreference;
 }
-
-/** 「道路の指定」を出していない間（地図の道に段を塗らず、そのための道の層の値も取らない）。 */
-const NO_AVOIDANCE: AvoidanceChoice = { levels: new Map(), order: [] };
 
 export function useMapView({
   hasSelectedRoute,
@@ -177,17 +174,13 @@ export function useMapView({
     costCatalog.lenses?.totalLens.axisId ?? null,
   );
   const shownRoadLayers = mapCatalog.roadLayers.filter((layer) => layerVisibility[layer.id] === true);
-  const avoidanceShown = layerVisibility[ROAD_AVOIDANCE_LAYER_ID] === true;
   const avoidanceChoice = useMemo(
-    () => (avoidanceShown ? avoidanceChoiceOf(config.roadClasses.avoidance, roadAvoidance) : NO_AVOIDANCE),
-    [avoidanceShown, config.roadClasses.avoidance, roadAvoidance],
+    () => avoidanceChoiceOf(config.roadClasses.avoidance, roadAvoidance),
+    [config.roadClasses.avoidance, roadAvoidance],
   );
+  const avoidancePainted = paintsRoadAvoidance(layerVisibility, avoidanceChoice);
   const anyRoadLayerShown = shownRoadLayers.length > 0;
-  const roadClasses = useRoadClasses(
-    anyRoadLayerShown || avoidanceChoice.levels.size > 0,
-    viewport,
-    config.roadClasses.generation,
-  );
+  const roadClasses = useRoadClasses(anyRoadLayerShown || avoidancePainted, viewport, config.roadClasses.generation);
   // 道の層を出していない間は取得中の色で塗る線が無いので、取得中を地図へ伝えない（取るたびに地図を組み直さない）。
   const roadClassesOnMap = useMemo(
     () => ({ values: roadClasses.values, loading: anyRoadLayerShown && roadClasses.loading }),
@@ -201,12 +194,12 @@ export function useMapView({
     true,
     roadClasses.truncated,
   );
+  const roadClassLayerIds = [
+    ...shownRoadLayers.map((layer) => layer.id),
+    ...(avoidancePainted ? [ROAD_AVOIDANCE_LAYER_ID] : []),
+  ];
   const roadLayerStatus = roadClassStatus
-    ? Object.fromEntries(
-        [...shownRoadLayers.map((layer) => layer.id), ...(avoidanceShown ? [ROAD_AVOIDANCE_LAYER_ID] : [])].map(
-          (id) => [id, roadClassStatus],
-        ),
-      )
+    ? Object.fromEntries(roadClassLayerIds.map((id) => [id, roadClassStatus]))
     : {};
   // 式の木の条件の名前（`bearing_deg`・`speed_kmh`）で地図へ渡す。速度が数でない間は値の無いことにする。
   const formulaConditions = useMemo(

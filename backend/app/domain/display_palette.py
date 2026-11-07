@@ -195,7 +195,7 @@ SEMANTIC_COLORS: dict[str, str] = {
 }
 
 #: 暗い地図の基礎地図。配信元のスタイル（liberty）の塗りの色を、色相を残して明るさを反転して作る（反転の式は画面の
-#: `features/map/basemapTheme.ts: themedPaint`）。明るさの範囲は、HSLの明るさ（0〜1）で、最も明るい塗り（地色）と最も暗い塗り
+#: `features/map/basemapTheme.ts: darkHsl`）。明るさの範囲は、HSLの明るさ（0〜1）で、最も明るい塗り（地色）と最も暗い塗り
 #: （文字）の行き先。下端はまぶしさを抑えるため黒の手前に置き、上端は1にすると反転した文字が白く光るので抑える。彩度の割合を
 #: 掛けないと、反転した暗い色が地図の上で浮く。
 BASEMAP_DARK_LIGHTNESS_RANGE: tuple[float, float] = (0.07, 0.85)

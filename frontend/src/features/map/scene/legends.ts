@@ -45,10 +45,18 @@ export function roadAvoidanceLegendAxis(levels: RoadAvoidanceView["levels"]): Sc
     layerId: ROAD_AVOIDANCE_LAYER_ID,
     axisId: ROAD_AVOIDANCE_LAYER_ID,
     label: "",
-    entries: Object.entries(ROAD_AVOIDANCE_COLORS).flatMap(([key, color]) => {
-      const level = levels.find((candidate) => candidate.key === key);
-      return level === undefined ? [] : [{ key, label: `${level.name} ${level.label}`, color, line: true as const }];
-    }),
+    entries: levels.flatMap((level) =>
+      level.key === "pass"
+        ? []
+        : [
+            {
+              key: level.key,
+              label: `${level.name} ${level.label}`,
+              color: ROAD_AVOIDANCE_COLORS[level.key],
+              line: true as const,
+            },
+          ],
+    ),
   };
 }
 
