@@ -12,6 +12,10 @@ export type RouteShape = { readonly path: RoutePath; readonly properties?: Reado
 
 /** 区間の線の地物が持つ、選んでいる候補の中の区間の番号（`segments`の並びの位置）。 */
 export const ROUTE_SEGMENT_INDEX_PROPERTY = "index";
+/** 区間の線の地物が持つ、道路タブで好む・避けるにした道を通ったか（区間の内訳の好む道で下げた秒・避ける道で上乗せした秒が
+ * 0でないか）。両脇の線を絞る。 */
+export const ROUTE_SEGMENT_PREFERRED_PROPERTY = "preferred";
+export const ROUTE_SEGMENT_AVOIDED_PROPERTY = "avoided";
 
 type RouteLine = { readonly routeId: string; readonly path: RoutePath };
 

@@ -2996,14 +2996,6 @@
             "type": "array",
             "title": "Axes"
           },
-          "preferred_label": {
-            "type": "string",
-            "title": "Preferred Label"
-          },
-          "avoided_label": {
-            "type": "string",
-            "title": "Avoided Label"
-          },
           "total_lens": {
             "$ref": "#/components/schemas/TotalLens"
           },
@@ -3015,8 +3007,6 @@
         "type": "object",
         "required": [
           "axes",
-          "preferred_label",
-          "avoided_label",
           "total_lens",
           "map_lens"
         ],

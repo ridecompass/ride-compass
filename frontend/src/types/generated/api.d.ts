@@ -890,10 +890,6 @@ export interface components {
         CostAxisCatalogResponse: {
             /** Axes */
             axes: components["schemas"]["CostAxisCatalogEntry"][];
-            /** Preferred Label */
-            preferred_label: string;
-            /** Avoided Label */
-            avoided_label: string;
             total_lens: components["schemas"]["TotalLens"];
             map_lens: components["schemas"]["MapLens"];
         };

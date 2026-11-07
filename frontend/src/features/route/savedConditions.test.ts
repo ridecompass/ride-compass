@@ -52,8 +52,6 @@ const COST_CATALOG: CostAxisCatalog = {
     },
   ],
   axisColors: {},
-  preferredLabel: "好む道",
-  avoidedLabel: "避ける道",
   lenses: null,
   loaded: true,
   failed: false,

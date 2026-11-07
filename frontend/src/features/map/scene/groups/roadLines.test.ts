@@ -6,24 +6,29 @@ import { describe, expect, it } from "vitest";
 import { LEGEND_NO_DATA_KEY } from "@/lib/mapDisplay/mapColorLegend";
 import { ROAD_OTHER_KEY } from "@/lib/mapDisplay/roadTracks";
 import { evaluateExpression as evaluate } from "@/testing/mapExpressions";
-import { roadClass, roadMapLayer } from "@/testing/clientConfig";
+import { avoidanceRow, roadClass, roadClassCatalog, roadMapLayer } from "@/testing/clientConfig";
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import palette from "@/types/generated/palette.json";
 
-import { roadLineGroup } from "./roadLines";
+import { roadEmphasisOf, roadLineGroup, type RoadEmphasis } from "./roadLines";
 
 const LAYER = roadMapLayer("surface", { has_no_data: true, classes: [roadClass("paved", { color: "#123456" })] });
 
-function linesOf(hidden: readonly string[] = [], loading = false) {
-  const built = roadLineGroup.build({
+function build(hidden: readonly string[], loading: boolean, emphasis: RoadEmphasis) {
+  return roadLineGroup.build({
     layers: [LAYER],
     tiles: { urls: ["https://example.test/{z}/{x}/{y}"], sourceLayer: "road", minZoom: 10, maxZoom: 14 },
     visible: { surface: true },
     hiddenKeys: { surface: hidden },
     classes: new Map(),
     loading,
+    emphasis,
     inspectedShape: null,
   }).layers;
+}
+
+function linesOf(hidden: readonly string[] = [], loading = false) {
+  const built = build(hidden, loading, { preferred: {}, avoided: {} });
   const paint = (role: string) => built.find((layer) => layer.role === role)?.paint ?? {};
   return { solid: paint("surface"), dashed: paint("surface-no-data") };
 }
@@ -74,4 +79,35 @@ describe("凡例で隠した行", () => {
       expect(solid !== null || (dashed && dashedLayerShown), row).toBe(row !== hiddenRow);
     }
   });
+});
+
+it("道路タブの段（選んでいなければ既定）が好む・避けるの区分の道にだけ、好むは実線・避けるは破線の線を両脇に添える", () => {
+  const avoidance = roadClassCatalog({
+    avoidance: {
+      rows: [
+        avoidanceRow("surface.paved", "surface", { default: "avoid" }),
+        avoidanceRow("surface.gravel", "surface"),
+        avoidanceRow("surface.dirt", "surface"),
+      ],
+    },
+  }).avoidance;
+  const built = build([], false, roadEmphasisOf(avoidance, { "surface.gravel": "prefer", "surface.dirt": "exclude" }));
+  const paint = (role: string) => built.find((layer) => layer.role === role)?.paint ?? {};
+  const railed = (role: string, value: string) =>
+    evaluate(paint(role)["line-opacity"], {}, { "road:surface": value }) === 1;
+
+  expect(
+    ["paved", "gravel", "dirt"].map((value) => [
+      railed("preferred-rail-left", value),
+      railed("avoided-rail-right", value),
+    ]),
+  ).toEqual([
+    [false, true],
+    [true, false],
+    [false, false],
+  ]);
+  expect(["preferred-rail-left", "avoided-rail-left"].map((role) => "line-dasharray" in paint(role))).toEqual([
+    false,
+    true,
+  ]);
 });

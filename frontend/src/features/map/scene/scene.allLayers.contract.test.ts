@@ -2,6 +2,7 @@
 /** 出せるものを全部出した状態を地図へ伝えたとき、どのレイヤーにも当たる要求。入口は`scene.state.contract.test.ts`と同じ
  * `sceneInputsFrom`→`buildMapScene`→`applyScene`の1本。
  */
+import { penaltyFields } from "@/testing/routeFixtures";
 import { latest, validateStyleMin } from "@maplibre/maplibre-gl-style-spec";
 import { describe, expect, it } from "vitest";
 
@@ -59,7 +60,14 @@ describe("レイヤーを横断する要求", () => {
       id: "a",
       geometry: line,
       segments: [
-        { start_longitude: 139.7, start_latitude: 35.6, end_longitude: 139.71, end_latitude: 35.61, geometry: line },
+        {
+          start_longitude: 139.7,
+          start_latitude: 35.6,
+          end_longitude: 139.71,
+          end_latitude: 35.61,
+          geometry: line,
+          ...penaltyFields({}, 1),
+        },
       ],
     };
     // 絞り込みの式も検証の対象にするため、凡例の先頭の行と「値なし」を隠しておく。

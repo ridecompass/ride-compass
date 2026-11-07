@@ -1,4 +1,4 @@
-import { avoidanceLevelOf } from "@/features/route/roadAvoidance";
+import { avoidanceLevelOf } from "@/lib/roadAvoidance";
 import { costPreferenceDescription } from "@/features/route/costPreference";
 import type { CostAxisCatalog } from "@/hooks/useCostAxisCatalog";
 import type { ClientConfig } from "@/lib/clientConfig";

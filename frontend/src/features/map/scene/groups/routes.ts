@@ -13,7 +13,14 @@ import { createRouteArrowIcon, ROUTE_ARROW_ICON_ID } from "@/features/map/layers
 import type { MapSceneImage } from "@/features/map/scene/mapScene";
 import { declareGroup, type SceneLayerEntry } from "@/features/map/scene/mapSceneGroups";
 import { noDataDashExpression, zoomScaleExpression } from "@/features/map/scene/sceneBuilders";
-import { ROUTE_SOURCE as SOURCE, routeSourceEntries, type RoutePath, type RouteShape } from "./routeSources";
+import {
+  ROUTE_SEGMENT_AVOIDED_PROPERTY,
+  ROUTE_SEGMENT_PREFERRED_PROPERTY,
+  ROUTE_SOURCE as SOURCE,
+  routeSourceEntries,
+  type RoutePath,
+  type RouteShape,
+} from "./routeSources";
 
 /** 見た目の値は源泉が配る（`backend/app/domain/map_display.py`）。ここは受け取って塗るだけ。 */
 const ROUTE = mapDisplay.route;
@@ -35,6 +42,10 @@ const TRAVELLED_OPACITY: ExpressionSpecification = [
 const ROUTE_OFFSET_PX = -ROUTE.casingWidthsPx.detail / 2;
 
 const HIT_PAINT = { "line-color": palette.semantic.hit, "line-opacity": 0, "line-width": HIT_WIDTH_PX } as const;
+
+const RAIL = mapDisplay.avoidanceRail;
+/** 好む・避けるの区間の両脇の線を、区間の線の中心から離す量。縁取りの外へ間隔だけ出す。 */
+const RAIL_OFFSET_PX = ROUTE.casingWidthsPx.detail / 2 + RAIL.gapPx;
 const ROUND_CAP = { "line-cap": "round", "line-join": "round" } as const;
 
 export const ROUTE_HIT_TARGET_SEGMENT = "routeSegment";
@@ -130,6 +141,27 @@ export const routeGroup = declareGroup<RouteState>((state) => {
   });
   const hitLayer = (role: string, source: SceneLayerEntry["source"], target: string): SceneLayerEntry =>
     lineLayer(role, source, HIT_PAINT, { hitTargets: [target] });
+  /** 区間の線の地物の真偽`property`が立つ区間の、左右の両脇の線（`dash`が null なら実線）。 */
+  const railLayers = (
+    role: string,
+    property: string,
+    color: string,
+    dash: readonly number[] | null,
+  ): SceneLayerEntry[] =>
+    [-1, 1].map((side) => {
+      const entry = lineLayer(
+        `${role}${side < 0 ? "Left" : "Right"}`,
+        SOURCE.segments,
+        {
+          "line-color": color,
+          "line-width": RAIL.widthPx,
+          "line-opacity": TRAVELLED_OPACITY,
+          ...(dash === null ? {} : { "line-dasharray": [...dash] }),
+        },
+        { filter: ["==", ["get", property], true] },
+      );
+      return { ...entry, paint: { ...entry.paint, "line-offset": ROUTE_OFFSET_PX + side * RAIL_OFFSET_PX } };
+    });
 
   // 背面から前面。
   const layers: readonly SceneLayerEntry[] = [
@@ -194,6 +226,9 @@ export const routeGroup = declareGroup<RouteState>((state) => {
         ...(state.segmentNoData === undefined ? {} : { "line-dasharray": noDataDashExpression(state.segmentNoData) }),
       }),
     ),
+    // 道路タブで好む・避けるにした道を通った区間の両脇の線。選んだ区間の帯（線の後ろに太く敷く）と形で見分ける。
+    ...railLayers("preferredRail", ROUTE_SEGMENT_PREFERRED_PROPERTY, state.semantic.avoidance_preferred, null),
+    ...railLayers("avoidedRail", ROUTE_SEGMENT_AVOIDED_PROPERTY, state.semantic.avoidance_avoided, RAIL.avoidedDash),
     withBandFilter(hitLayer("detailHit", SOURCE.segments, ROUTE_HIT_TARGET_SEGMENT)),
     // 帯の当たり判定は区間の当たり判定より前面——区間の当たり判定はルート全体を覆うため、
     // 後ろだと帯を一度も押せない。

@@ -13,9 +13,7 @@ from fastapi.exceptions import RequestValidationError
 from pydantic import Field, TypeAdapter, ValidationError
 
 from app.domain.cost_axes import (
-    AVOIDED_ROADS_LABEL,
     EFFORT_AXES,
-    PREFERRED_ROADS_LABEL,
     AxisPresentation,
     LensBands,
     current_cost_axes,
@@ -61,9 +59,6 @@ class TotalLens(AxisPresentation):
 class CostAxisCatalogResponse(StrictModel):
     #: 体力の軸をコードの表の順、続けて道のストレスの軸を定義の順で。
     axes: list[CostAxisCatalogEntry]
-    #: 代償の内訳の、避け方の倍率が「好む」で下げた秒と「なるべく避ける」で上乗せした秒の行の名前（軸ではないので、倍率を持たない）。
-    preferred_label: str
-    avoided_label: str
     total_lens: TotalLens
     map_lens: MapLens
 
@@ -82,7 +77,7 @@ async def get_cost_axis_catalog() -> CostAxisCatalogResponse:
         for axis_id, axis in definitions.burden.items()
     ]
     return CostAxisCatalogResponse(
-        axes=[*effort, *burden], preferred_label=PREFERRED_ROADS_LABEL, avoided_label=AVOIDED_ROADS_LABEL,
+        axes=[*effort, *burden],
         total_lens=TotalLens(lens_id=TOTAL_LENS_ID, **definitions.total_lens.model_dump()),
         map_lens=MapLens(formula=lens_way_formula(), material_conditions=list(LENS_MATERIAL_CONDITIONS)),
     )

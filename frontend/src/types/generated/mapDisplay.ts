@@ -772,6 +772,14 @@ export const mapDisplay = {
     "inspectedWidthPx": 8,
     "noDataValue": "-"
   },
+  "avoidanceRail": {
+    "widthPx": 2,
+    "gapPx": 2,
+    "avoidedDash": [
+      3,
+      2
+    ]
+  },
   "point": {
     "radiusPx": 4,
     "strokeWidthPx": 1,

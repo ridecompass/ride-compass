@@ -39,7 +39,11 @@ import {
 import type { RoadMapLayerView, RouteCandidate, SelectedRouteSegment } from "@/types/route";
 import { valueBands } from "@/lib/mapDisplay/valueScale";
 import { routeStretches, segmentPath, splitSegmentAt } from "@/lib/routeDistance";
-import { ROUTE_SEGMENT_INDEX_PROPERTY } from "@/features/map/scene/groups/routeSources";
+import {
+  ROUTE_SEGMENT_AVOIDED_PROPERTY,
+  ROUTE_SEGMENT_INDEX_PROPERTY,
+  ROUTE_SEGMENT_PREFERRED_PROPERTY,
+} from "@/features/map/scene/groups/routeSources";
 import { tileBaseUrl } from "@/lib/tileBaseUrl";
 import {
   ROAD_TILE_MAX_ZOOM,
@@ -55,7 +59,7 @@ import regionTileConfig from "@/types/generated/region-tile-config.json";
 import { applyMapScene } from "./applyMapScene";
 import type { AxisLineState, WayConditions, WayMaterials } from "./groups/axisLines";
 import { POINT_TILE_LAYERS } from "./groups/points";
-import type { RoadClassValues } from "./groups/roadLines";
+import type { RoadClassValues, RoadEmphasis } from "./groups/roadLines";
 import type { RouteState } from "./groups/routes";
 import { weatherElementKey, type WeatherState } from "./groups/weather";
 import { buildLegendFilterExpression } from "./sceneBuilders";
@@ -85,6 +89,8 @@ export interface SceneLook {
   readonly paintedLensId: LensId | null;
   /** 今の範囲の道ごとの、道の線の層の値の取得結果。 */
   readonly roadClasses: { values: RoadClassValues; loading: boolean };
+  /** 道路タブで好む・避けるにした区分（地図の道の両脇に線を添える）。 */
+  readonly roadEmphasis: RoadEmphasis;
   /** 軸ごとの、今の範囲の道ごとの材料の取得結果。 */
   readonly wayMaterials: ReadonlyMap<string, { materials: WayMaterials; loading: boolean }>;
   /** 道の値の式が読む走る条件。 */
@@ -150,6 +156,8 @@ function routeStateFrom(props: SceneWiringProps): RouteState {
       // 選んでいる候補の同じ番号の区間から引く（`docs/architecture/data-model.md`の、押したときにしか使わない詳しさは載せない決まり）。
       const properties = {
         [ROUTE_SEGMENT_INDEX_PROPERTY]: index,
+        [ROUTE_SEGMENT_PREFERRED_PROPERTY]: segment.penalty.preferred_seconds < 0,
+        [ROUTE_SEGMENT_AVOIDED_PROPERTY]: segment.penalty.avoided_seconds > 0,
         [ROUTE_LENS_SECONDS_PROPERTY]: segment.lens_seconds_per_km ?? {},
         sustained_gradient_percent: segment.sustained_gradient_percent,
       };
@@ -241,6 +249,7 @@ export function sceneInputsFrom(props: SceneWiringProps): SceneInputs {
       hiddenKeys,
       classes: props.look.roadClasses.values,
       loading: props.look.roadClasses.loading,
+      emphasis: props.look.roadEmphasis,
       inspectedShape: props.inspectedShape,
     },
     axis: axisStateFrom(props, roadTiles?.sourceLayer ?? null),

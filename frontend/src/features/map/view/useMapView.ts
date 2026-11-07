@@ -30,7 +30,8 @@ import { useWayMaterials } from "@/features/map/useWayMaterials";
 import { useRoadClasses } from "@/features/map/useRoadClasses";
 import { useDynamicWeatherLayers } from "@/features/map/useDynamicWeatherLayers";
 import { useStoredState } from "@/hooks/useStoredState";
-import type { Coordinates } from "@/types/route";
+import type { Coordinates, RoadAvoidanceOverride } from "@/types/route";
+import { roadEmphasisOf } from "@/features/map/scene/groups/roadLines";
 import type { MapTheme } from "@/lib/mapTheme";
 import type { RideConditions } from "@/features/map/regionApi";
 import { snapDeg } from "@/lib/cardinalLabel";
@@ -68,6 +69,9 @@ interface MapViewInputs {
   /** 費用のレンズを塗る利用者のつまみと倍率（生成の要求へ送る形）。ルートを出している間はそのルートを生成したときの値、
    * 無ければ今の設定——ルートの線と周りの道を同じ量で塗る。 */
   costPreference: CostPreference;
+  /** 道路タブで選んだ段（`costPreference`と同じく、ルートを出している間はそのルートを生成したときの値）。好む・避けるにした区分の
+   * 道に、地図の上で両脇の線を添える。 */
+  roadAvoidance: RoadAvoidanceOverride;
 }
 
 interface MapViewState {
@@ -99,6 +103,7 @@ export function useMapView({
   riding,
   now,
   costPreference,
+  roadAvoidance,
 }: MapViewInputs): MapViewState {
   const config = useClientConfig();
   // 暗い地図は利用者がメニューで選ぶ（いつ暗くするかを自動では決めない）。
@@ -169,7 +174,12 @@ export function useMapView({
     costCatalog.lenses?.totalLens.axisId ?? null,
   );
   const shownRoadLayers = mapCatalog.roadLayers.filter((layer) => layerVisibility[layer.id] === true);
-  const roadClasses = useRoadClasses(shownRoadLayers.length > 0, viewport, config.roadClasses.generation);
+  const roadEmphasis = useMemo(
+    () => roadEmphasisOf(config.roadClasses.avoidance, roadAvoidance),
+    [config.roadClasses.avoidance, roadAvoidance],
+  );
+  const emphasized = Object.keys(roadEmphasis.preferred).length + Object.keys(roadEmphasis.avoided).length > 0;
+  const roadClasses = useRoadClasses(shownRoadLayers.length > 0 || emphasized, viewport, config.roadClasses.generation);
   // 層の値はどの道の線の層も同じ取得から読むので、取得の状態は出ている層のどれにも出す。
   const roadClassStatus = deriveFetchLayerStatus(
     roadClasses.loading,
@@ -196,6 +206,7 @@ export function useMapView({
       lens,
       paintedLensId: painted,
       roadClasses,
+      roadEmphasis,
       wayMaterials,
       wayConditions: formulaConditions,
       hiddenLegendKeys: debouncedHidden,
@@ -210,6 +221,7 @@ export function useMapView({
       lens,
       painted,
       roadClasses,
+      roadEmphasis,
       wayMaterials,
       formulaConditions,
       debouncedHidden,

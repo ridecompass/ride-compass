@@ -36,8 +36,6 @@ export const PROFILE_COST_CATALOG = {
     { axisId: "vibration", label: "振動" },
   ],
   axisColors: { ascent: "rgb(18, 52, 86)", vibration: "rgb(86, 52, 18)" },
-  preferredLabel: "好む道",
-  avoidedLabel: "避ける道",
   loaded: true,
   failed: false,
 };

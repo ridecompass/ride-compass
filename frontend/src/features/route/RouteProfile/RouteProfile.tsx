@@ -158,18 +158,13 @@ export default function RouteProfile({
               return (
                 <li key={row.id} data-usage="チェックした種類の負担を、グラフに積みます。選びはこの端末に覚えます。">
                   <label className="flex cursor-pointer items-center gap-1.5">
-                    {/* 好む道・避ける道は軸ではないので積めない（チェックを置かず、並びをそろえる）。 */}
-                    {Object.hasOwn(penalty.axis_seconds, row.id) ? (
-                      <Checkbox
-                        checked={on}
-                        onCheckedChange={() =>
-                          setChosenAxes(on ? shownAxes.filter((id) => id !== row.id) : [...shownAxes, row.id])
-                        }
-                        aria-label={row.label}
-                      />
-                    ) : (
-                      <span aria-hidden="true" className="size-6 flex-none" />
-                    )}
+                    <Checkbox
+                      checked={on}
+                      onCheckedChange={() =>
+                        setChosenAxes(on ? shownAxes.filter((id) => id !== row.id) : [...shownAxes, row.id])
+                      }
+                      aria-label={row.label}
+                    />
                     <Dot tone="none" style={{ backgroundColor: row.color }} />
                     <span>{row.label}</span>
                     {fact !== undefined && (
