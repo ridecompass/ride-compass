@@ -14,6 +14,7 @@ from app.domain.jma_tile_specs import (
     jma_tile_spec,
     jma_url_template,
 )
+from app.domain.weather_display import LINEAR_RAINBAND_COLOR, LINEAR_RAINBAND_OUTLINE_COLOR
 
 #: 動的気象の描き方の種類。配信元が描いた画像（`rasterTile`）・配信元の地物（`vectorTile`）・
 #: MSMの格子点を中心にした升目の塗り（`gridFill`）・格子点や地点の記号（`gridMark`）・配信元がGeoJSONで配る領域の輪郭線（`outline`）。
@@ -90,9 +91,12 @@ class WeatherElement(NamedTuple):
     #: 地図がこの要素を塗る段。災害のチップは、同じ段で塗る要素の名前を見出しにして段を凡例に並べる。
     #: 段を持たない要素（記号・輪郭線・升目の塗り）と、凡例を別に持つ降水の要素はNone。
     level_scale: LevelScale | None = None
-    #: 要素を利用者に言う文。災害のチップは▶パネルの要素の行の（i）から開き、降水のチップは凡例の行に出す。
+    #: 要素を利用者に言う文。災害のチップは▶パネルの要素の行の（i）から開き、凡例の色を持つ要素は凡例の行に出す。
     #: 同じ名前付きソースの要素は同じ説明を持つ。
     description: str | None = None
+    #: 説明を凡例の行に出す要素の、行の色（配信元が地図に塗る色そのもの）。説明を持つ要素だけが持てる。
+    #: 同じ名前付きソースの要素は同じ色を持つ。
+    legend_color: str | None = None
 
 
 #: 線状降水帯予測を重ねる幅（分）。「今後3時間以内に大雨のおそれ」という予報なので、現在から3時間先の間だけ重ねる。
@@ -117,6 +121,7 @@ WEATHER_ELEMENTS: tuple[WeatherElement, ...] = (
             f"今後{reach_text(_LINEAR_RAINBAND_WINDOW_MINUTES)}以内に大雨のおそれ"
             f"[矩形の予測領域。現在〜{reach_text(_LINEAR_RAINBAND_WINDOW_MINUTES)}先のみ]"
         ),
+        legend_color=LINEAR_RAINBAND_COLOR,
     ),
     # 今まさに追跡中の線状降水帯の雨域（実況と予測）。公式の既定の表示と同じく2つを同じ見た目で重ねる。
     # 説明の文言は配信元の公式の画面の凡例に合わせる。
@@ -132,6 +137,7 @@ WEATHER_ELEMENTS: tuple[WeatherElement, ...] = (
                 "大雨災害発生の危険度が急激に高まっている線状降水帯の雨域"
                 f"[赤い輪郭線。実況〜{forecast_reach('slmcs_unifyfcst')}先のみ]"
             ),
+            legend_color=LINEAR_RAINBAND_OUTLINE_COLOR,
         )
         for source, element_id in (
             ("linearRainbandArea", "slmcs_unify"),
@@ -283,7 +289,7 @@ def check_weather_elements(elements: Sequence[WeatherElement]) -> None:
 
     画面は（チップ, 名前付きソース, 描き方）ごとに1つのレイヤーを作り、名前付きソース1つを1行として呼び、
     その時刻の段を1本の時系列へつなぎ、配信元から取るものは（チップ, 名前付きソース）から配信要素を引く。"""
-    by_source: dict[tuple[str, str], tuple[str, FrameRule, str | None]] = {}
+    by_source: dict[tuple[str, str], tuple[str, FrameRule, str | None, str | None]] = {}
     layers: set[tuple[str, str, str]] = set()
     fetched: set[tuple[str, str]] = set()
     for element in elements:
@@ -292,9 +298,11 @@ def check_weather_elements(elements: Sequence[WeatherElement]) -> None:
         if (*key, element.kind) in layers:
             raise ValueError(f"チップ・名前付きソース・描き方の組が重なる: {name} {element.kind}")
         layers.add((*key, element.kind))
-        shared = (element.label, element.frame_rule, element.description)
+        shared = (element.label, element.frame_rule, element.description, element.legend_color)
         if by_source.setdefault(key, shared) != shared:
-            raise ValueError(f"同じ名前付きソースの要素で、呼び名・コマの規則・説明が食い違う: {name}")
+            raise ValueError(f"同じ名前付きソースの要素で、呼び名・コマの規則・説明・凡例の色が食い違う: {name}")
+        if element.legend_color is not None and element.description is None:
+            raise ValueError(f"凡例の色を持つ要素に、凡例の行に出す説明が無い: {name}")
         if bool(element.jma_elements) == (element.grid_value is not None):
             raise ValueError(f"配信元から取る段とMSMの格子点で読む値の、ちょうど一方を持たない: {name}")
         if element.jma_elements:

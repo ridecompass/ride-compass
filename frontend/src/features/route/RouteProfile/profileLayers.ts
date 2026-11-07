@@ -82,18 +82,25 @@ const ELEVATION_LAYER: LineLayer = {
   },
 };
 
-// 並びと名前は地図の「表示」のレイヤのまま。
+type SegmentSeries = NonNullable<(typeof mapDisplay.layers)[number]["segmentSeries"]>;
+
+/** 区間の区分の並びの値の語彙ごとの、凡例の行と値の入る行。語彙が増えれば型検査が落ちる。 */
+const SERIES_BANDS: Record<SegmentSeries, Pick<BandLayer["draw"], "rows" | "rowOf">> = {
+  landcoverClass: { rows: LANDCOVER_ROWS, rowOf: landcoverRowOf },
+};
+
+// 区間に区分の並びを載せると宣言した層。並びと名前は地図の「表示」のレイヤのまま。
 const DECLARED_LAYERS = mapDisplay.layers.flatMap((layer): BandLayer[] =>
-  layer.id === "landcover"
-    ? [
+  layer.segmentSeries === null
+    ? []
+    : [
         {
           id: layer.id,
           label: layer.label,
           icon: MAP_LAYER_ICONS[layer.id],
-          draw: { kind: "band", rows: LANDCOVER_ROWS, rowOf: landcoverRowOf },
+          draw: { kind: "band", ...SERIES_BANDS[layer.segmentSeries] },
         },
-      ]
-    : [],
+      ],
 );
 
 /** グラフに重ねられるレイヤ。道の帯は、画面の設定が配る道の線の層（地図のチップと同じ並び）から作る。 */

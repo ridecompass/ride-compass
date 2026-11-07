@@ -201,6 +201,11 @@ class LayerTextSlot(NamedTuple):
 LayerText = tuple[str | LayerTextSlot, ...]
 
 
+#: ルートの区間が層のidを鍵に持つ区分の並び（応答の`road_classes`）の、値の語彙。`landcoverClass`は土地被覆のクラスの割合の
+#: 材料のid（`domain/landcover.py: LandcoverClass.percent_field`）。
+SegmentSeries = Literal["landcoverClass"]
+
+
 class MapLayerSpec(NamedTuple):
     #: 絵の出所（`MAP_LAYER_DATA_SOURCES`の`key`）。
     data_source: str
@@ -223,6 +228,8 @@ class MapLayerSpec(NamedTuple):
     hide_missing_rows: bool = False
     #: 描き始める縮尺。情報源がタイルを配る縮尺より寄ってから描く層だけが持つ。
     draw_min_zoom: int | None = None
+    #: ルートの区間がこの層のidを鍵に区分の並びを持つなら、その値の語彙。道の線の層の並びは区分の配りが持つので、ここには書かない。
+    segment_series: SegmentSeries | None = None
 
 
 def _tile_layer(
@@ -367,6 +374,7 @@ _LAYER_SPECS: dict[str, MapLayerSpec] = {
     "landcover": MapLayerSpec(
         "landcoverRaster",
         "terrain",
+        segment_series="landcoverClass",
         description=(f"周囲の緑・水辺・農地を面で重ねる{f'[{_UNPAINTED_LANDCOVER}は塗らない]' if _UNPAINTED_LANDCOVER else ''}",),
         panel_hint=(
             "衛星画像から分類した10m四方ごとの土地の使われ方です。1区画に1種類だけが入るため、"
@@ -532,6 +540,15 @@ def _map_layers() -> tuple[tuple[str, MapLayerSpec], ...]:
 
 #: 地図に載るものの宣言（`_LAYER_SPECS`の順）。
 MAP_LAYERS: tuple[tuple[str, MapLayerSpec], ...] = _map_layers()
+
+
+def segment_series_layer(series: SegmentSeries) -> str:
+    """区間に`series`の並びを載せる層のid。ちょうど1つの層が宣言していなければ`ValueError`。"""
+    layer_ids = [layer_id for layer_id, spec in MAP_LAYERS if spec.segment_series == series]
+    if len(layer_ids) != 1:
+        raise ValueError(f"区間の区分の並び'{series}'を載せる層が1つに決まらない: {layer_ids}")
+    return layer_ids[0]
+
 
 #: 実行時に決まるレイヤーに共通の宣言。`dedicated`は費用の軸のレンズのレイヤーで、路面タイルの道へ道ごとに配る
 #: 1kmあたりの代償の秒の色を塗る（値は時刻の風で変わりうる）。`road`は道の線の層で、種別は層ごとに画面の設定の`road_classes`が配る。

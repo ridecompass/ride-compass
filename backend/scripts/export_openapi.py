@@ -113,7 +113,6 @@ from app.domain.map_display import (
 from app.domain.warning_display import WARNING_BADGE_DISPLAY
 from app.domain.weather_display import (
     WEATHER_CATEGORIES,
-    LINEAR_RAINBAND_COLOR,
     LINEAR_RAINBAND_OUTLINE_CASING_COLOR,
     LINEAR_RAINBAND_OUTLINE_COLOR,
     PRECIPITATION_COLOR_STOPS,
@@ -249,6 +248,7 @@ def _weather_element_entry(element: WeatherElement) -> dict:
         "gridValue": element.grid_value,
         "levelScale": element.level_scale,
         "description": element.description,
+        "legendColor": element.legend_color,
         # 時刻の段の順（近い時刻から）。画面のデータ層は、時刻一覧をそのパスから取り、行を読み方に従って
         # コマにし、コマの時刻と系列でパスのテンプレートを埋めて取りに行く。
         "jmaElements": [
@@ -376,6 +376,7 @@ def main() -> None:
                     "description": _layer_text(spec.description),
                     "panelHint": _layer_text(spec.panel_hint) or None,
                     "hideMissingRows": spec.hide_missing_rows,
+                    "segmentSeries": spec.segment_series,
                 }
                 for layer_id, spec in MAP_LAYERS
             ],
@@ -478,7 +479,6 @@ def main() -> None:
             "precipitation": [s._asdict() for s in PRECIPITATION_COLOR_STOPS],
             "wind_speed": [s._asdict() for s in WIND_SPEED_COLOR_STOPS],
             "risk_levels": [level._asdict() for level in RISK_LEVEL_COLORS],
-            "linear_rainband_color": LINEAR_RAINBAND_COLOR,
             "linear_rainband_outline_color": LINEAR_RAINBAND_OUTLINE_COLOR,
             "linear_rainband_outline_casing_color": LINEAR_RAINBAND_OUTLINE_CASING_COLOR,
             "thunder_activity": [level._asdict() for level in THUNDER_ACTIVITY_LEVELS],
