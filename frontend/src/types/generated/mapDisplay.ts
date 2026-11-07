@@ -106,24 +106,6 @@ export const mapDisplay = {
   ],
   "layers": [
     {
-      "id": "roadAvoidance",
-      "label": "道路の指定",
-      "dataSource": "road_surface",
-      "category": "roadCondition",
-      "kind": "static",
-      "dataNature": "raw",
-      "defaultOn": false,
-      "drawMinZoom": null,
-      "description": [
-        "「道路」タブで好む・避ける・通らないにした道を色で塗る[下の地図は灰色に薄める]"
-      ],
-      "panelHint": [
-        "「ルート設定」の「道路」タブで選んだ段のとおりに、好む道を緑、避ける道を橙、通らない道を赤で塗ります。1本の道がいくつもの行に当たるときは、強い方の段の色です。ルートを作る前でも、今の「道路」タブの段で塗ります。道が読みやすいよう、出している間は下の地図を灰色に薄めます。"
-      ],
-      "hideMissingRows": false,
-      "segmentSeries": null
-    },
-    {
       "id": "elevation",
       "label": "標高図",
       "dataSource": "gsiRelief",
@@ -799,7 +781,6 @@ export const mapDisplay = {
     ]
   },
   "roadAvoidance": {
-    "layerId": "roadAvoidance",
     "widthByZoom": [
       [
         12,

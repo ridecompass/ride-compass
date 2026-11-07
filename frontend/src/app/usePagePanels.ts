@@ -14,13 +14,18 @@ export type MobileSheet = "routeSettings" | "routeOutcome" | null;
 /** パネルの区分（モバイルはシート、デスクトップは左のパネルの区分）。 */
 export type Panel = Exclude<MobileSheet, null>;
 
+/** 出している「ルート設定」のタブ。「ルート設定」が地図で効いていなければ null（タブを選んだままでも、見ていない面として扱う）。 */
+export function shownSettingsTabOf(panel: Panel | null, settingsTab: SettingsTab): SettingsTab | null {
+  return panel === "routeSettings" ? settingsTab : null;
+}
+
 /**
  * 地図を押したときの意味を、効いているパネルから決める（地図を触った副作用で、いま見ていない面の状態が変わらない）。
  * 「ルート設定」の条件タブは地点、編集中は乗り換える区間、ほかは押した物を開く（走行中も同じ）。
  */
 export function mapTapModeOf(panel: Panel | null, settingsTab: SettingsTab, editing: boolean): MapTapMode {
   if (editing) return "splice";
-  return panel === "routeSettings" && settingsTab === "generate" ? "points" : "open";
+  return shownSettingsTabOf(panel, settingsTab) === "generate" ? "points" : "open";
 }
 
 /**

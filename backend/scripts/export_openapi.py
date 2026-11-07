@@ -104,7 +104,6 @@ from app.domain.map_display import (
     AVOIDANCE_RAIL_WIDTH_PX,
     AVOIDANCE_RAIL_GAP_PX,
     AVOIDANCE_AVOIDED_DASH,
-    ROAD_AVOIDANCE_LAYER_ID,
     ROAD_AVOIDANCE_WIDTH_BY_ZOOM,
     ROAD_KNOWN_OPACITY,
     ROAD_LINE_WIDTH_PX,
@@ -422,9 +421,8 @@ def main() -> None:
                 "gapPx": AVOIDANCE_RAIL_GAP_PX,
                 "avoidedDash": list(AVOIDANCE_AVOIDED_DASH),
             },
-            # 道路タブの段（好む・避ける・通らない）を地図の道に塗る層の名前と、線の太さ（縮尺→px）。
+            # 道路タブの段（好む・避ける・通らない）を地図の道に塗る線の太さ（縮尺→px）。
             "roadAvoidance": {
-                "layerId": ROAD_AVOIDANCE_LAYER_ID,
                 "widthByZoom": [list(pair) for pair in ROAD_AVOIDANCE_WIDTH_BY_ZOOM],
             },
             "point": {

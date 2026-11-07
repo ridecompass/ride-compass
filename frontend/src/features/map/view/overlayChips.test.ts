@@ -10,7 +10,7 @@ import {
 import { roadLegendAxes } from "@/features/map/scene/legends";
 
 import { mapCatalogFor } from "@/testing/mapCatalog";
-import { AVOIDANCE_LEVELS, roadClass, roadClassCatalog, roadMapLayer } from "@/testing/clientConfig";
+import { roadClass, roadClassCatalog, roadMapLayer } from "@/testing/clientConfig";
 import { overlayChips } from "./overlayChips";
 
 // 道の線の層は画面の設定が配る（本番の層は管理DBが持つ）ので、テストが組む。
@@ -26,7 +26,6 @@ function chips(options: Partial<Options> = {}) {
   return overlayChips({
     layers: LAYERS,
     roadLayers: ROAD_LAYERS,
-    avoidanceLevels: AVOIDANCE_LEVELS,
     visibility: buildDefaultLayerVisibility(LAYERS),
     hidden: {},
     dataStatus: {},

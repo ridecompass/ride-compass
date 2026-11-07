@@ -3,6 +3,7 @@
 import Disclosure, { DisclosureChevron } from "@/components/Disclosure/Disclosure";
 import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
 import { Badge } from "@/components/ui/Badge/Badge";
+import { Checkbox } from "@/components/ui/Checkbox/Checkbox";
 import { LockedIcon } from "@/components/ui/icons/lucideIcons";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/ToggleGroup/ToggleGroup";
 import { avoidanceLevelOf, type AvoidanceLevel, type AvoidanceRow } from "@/lib/roadAvoidance";
@@ -11,7 +12,8 @@ import type { RoadAvoidanceOverride, RoadAvoidanceView } from "@/types/route";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 
 // 「ルート設定」区分の「道路」タブ。道の区分の行ごとに、費用に掛ける倍率の段（好む・通る・なるべく避ける・通らない）を選び、
-// 自転車が通れない道の行は「通らない」に固定して同じ並びの先頭に出す。段の名前（倍率）は画面の設定が配る。
+// 自転車が通れない道の行は「通らない」に固定して同じ並びの先頭に出す。段の名前（倍率）は画面の設定が配る。並びの上の
+// 「地図で見る」は、このタブを出している間に段を地図の道に塗るかを選ぶ。
 
 // 固定の行。backendがいつも経路から外す道で、名前と説明は生成物（route-generate-config.json）から受け取る。
 const FIXED_ROWS: readonly { key: string; label: string; description: string }[] = routeGenerateConfig.hard_filters;
@@ -22,9 +24,18 @@ interface HardFilterPanelProps {
   /** 選んだ段（選んでいない行は無い）。 */
   roadAvoidance: RoadAvoidanceOverride;
   onRoadAvoidanceChange: (next: RoadAvoidanceOverride) => void;
+  /** 「地図で見る」（このタブを出している間、段を地図の道に塗るか）。 */
+  shownOnMap: boolean;
+  onShownOnMapChange: (on: boolean) => void;
 }
 
-export default function HardFilterPanel({ avoidance, roadAvoidance, onRoadAvoidanceChange }: HardFilterPanelProps) {
+export default function HardFilterPanel({
+  avoidance,
+  roadAvoidance,
+  onRoadAvoidanceChange,
+  shownOnMap,
+  onShownOnMapChange,
+}: HardFilterPanelProps) {
   const { levels } = avoidance;
   const excludeLabel = levels.find(({ key }) => key === "exclude")?.label;
   const levelOf = (row: AvoidanceRow) => avoidanceLevelOf(row, roadAvoidance);
@@ -34,6 +45,13 @@ export default function HardFilterPanel({ avoidance, roadAvoidance, onRoadAvoida
     .filter(({ rows }) => rows.length > 0);
   return (
     <div className="flex flex-col">
+      <label
+        className="flex items-center gap-1.5 pb-1 text-[length:var(--font-size-sm)]"
+        data-usage="このタブを出している間、好む道を緑、避ける道を橙、通らない道を赤で地図に塗り、下の地図を灰色に薄めます。1本の道がいくつもの行に当たるときは、強い方の段の色です。選びはこの端末に覚えます。"
+      >
+        <Checkbox checked={shownOnMap} onCheckedChange={onShownOnMapChange} aria-label="地図で見る" />
+        地図で見る
+      </label>
       {FIXED_ROWS.map(({ key, label, description }) => (
         <div
           key={key}

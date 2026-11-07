@@ -26,7 +26,7 @@ import { useMapView } from "@/features/map/view/useMapView";
 import HomeHeader from "./HomeHeader";
 import HomeMapPane from "./HomeMapPane";
 import { DesktopRoutePanels, MobileRoutePanels } from "./RoutePanels";
-import { mapTapModeOf, usePagePanels } from "./usePagePanels";
+import { mapTapModeOf, shownSettingsTabOf, usePagePanels } from "./usePagePanels";
 import { useRideGuidance } from "./useRideGuidance";
 import { countRideMetric } from "@/lib/rideMetrics";
 
@@ -121,6 +121,7 @@ export default function Home() {
     now: ride.departure.now,
     costPreference: mapCostPreference,
     roadAvoidance: conditions.roadAvoidance,
+    roadTabShown: shownSettingsTabOf(panels.activePanel, settingsTab) === "exclusions",
   });
 
   // 地図は出発地を真ん中にして開くので、地図が範囲を知らせる前は出発地が真ん中。
@@ -150,6 +151,8 @@ export default function Home() {
       <RouteSettingsForm
         conditions={conditions}
         savedConditions={savedConditions}
+        roadTabOnMap={mapView.roadTabOnMap}
+        onRoadTabOnMapChange={mapView.onRoadTabOnMapChange}
         origin={location}
         originManual={originManual}
         originLocated={locationKnown}
