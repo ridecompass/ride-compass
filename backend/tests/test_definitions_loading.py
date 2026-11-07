@@ -1,4 +1,5 @@
-"""`services/definitions_loading.py: refresh_definitions`: DBの区分から作る材料を指す費用の軸の定義が、読み込まれる。
+"""`services/definitions_loading.py: refresh_definitions`: DBの区分から作る材料を指す費用の軸の定義が読み込まれ、コードの宣言に無い
+材料・体力の軸を指す定義は、それを名指して起動を止める。
 
 ここで見ないもの:
 - 費用の軸の定義の検算（材料・区分の重さ） → `test_cost_axes.py`
@@ -7,9 +8,12 @@
 """
 
 import pytest
+from pydantic import ValidationError
+from sqlalchemy import func, insert
 
 from app.domain.cost_axes import CostAxisDefinitions, current_cost_axes
 from app.domain.road_classes import EMPTY_ROAD_CLASSES, class_material_id
+from app.infrastructure.cost_axis_models import CostAxisDefinitionsRow
 from app.infrastructure.cost_axis_repository import replace_cost_axes_row
 from app.infrastructure.road_class_repository import replace_road_class_rows
 from app.services.definitions_loading import refresh_definitions
@@ -33,3 +37,23 @@ async def test_cost_axes_reading_a_road_class_are_loaded(road_graph_session):
         await refresh_definitions(road_graph_session)
 
         assert current_cost_axes() == definitions
+
+
+@pytest.mark.parametrize(
+    ("change", "named"),
+    [
+        (lambda d: {**d, "burden": {"lighting": {**d["total_lens"], "burden": {
+            "kind": "linear", "material": "removed_material", "points": [[0.0, 1.0]]}}}}, "removed_material"),
+        (lambda d: {**d, "effort": {**d["effort"], "removed_axis": d["total_lens"]}}, "removed_axis"),
+    ],
+    ids=["材料", "体力の軸"],
+)
+async def test_definitions_naming_what_left_the_code_stop_the_start_naming_it(road_graph_session, change, named):
+    """コードの宣言から消した材料・体力の軸を保存済みの定義が指していたら、外したり既定へ戻したりせず、それを名指して止まる
+    （運用者が定義を直してから起動する）。"""
+    raw = change(cost_axes().model_dump(mode="json"))
+    await road_graph_session.execute(insert(CostAxisDefinitionsRow).values(only_one=True, definitions=raw, updated_at=func.now()))
+    await road_graph_session.commit()
+
+    with pytest.raises((RuntimeError, ValidationError), match=named):
+        await refresh_definitions(road_graph_session)
