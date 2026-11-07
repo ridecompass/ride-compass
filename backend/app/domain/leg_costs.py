@@ -344,6 +344,9 @@ class LegCostComposer:
         multipliers = level_multipliers(avoid_cost_multiplier)
         self._cost_scale = np.select(
             [search_masks.avoided, search_masks.preferred], [multipliers["avoid"], multipliers["prefer"]], multipliers["pass"])
+        #: 通れる区間の費用が所要時間に対して下がる最小の倍率（「好む」の区間があればその倍率、無ければ1）。探索の見込み
+        #: （`domain/route_search.py: heuristic_seconds`）を、費用の下界に保つよう緩める。要求の間は変わらないので1回だけ求める。
+        self.min_cost_scale = float(np.min(self._cost_scale[~self._excluded], initial=1.0))
         self._wind_series = wind_series
         # 各Edgeの中点に最も近い予報の格子点（切り出した区間の順。格子点の並びの外の中点は端の格子点へ寄せる）。
         self._wind_points = wind_series.lattice.points_of(search_materials.mid_lat, search_materials.mid_lon)
@@ -493,12 +496,6 @@ class LegCostComposer:
             travel_seconds + inputs.wait_seconds[rows] + sum(penalty_by_axis.values(), np.zeros(len(rows))))
         return LegValues(headwind_ms=headwind, penalty_by_axis=penalty_by_axis,
                          preferred_seconds=np.minimum(scaled, 0.0), avoided_seconds=np.maximum(scaled, 0.0))
-
-    @property
-    def min_cost_scale(self) -> float:
-        """区間の費用が所要時間に対して下がる最小の倍率（「好む」の区間があればその倍率、無ければ1）。探索の見込み
-        （`domain/route_search.py: heuristic_seconds`）を、費用の下界に保つよう緩める。"""
-        return float(np.min(self._cost_scale, initial=1.0))
 
     @property
     def distance_m(self) -> np.ndarray:

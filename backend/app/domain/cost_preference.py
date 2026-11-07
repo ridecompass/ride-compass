@@ -25,8 +25,8 @@ class CostLevel(NamedTuple):
 
 
 def multiplier_label(value: float) -> str:
-    """掛ける数の段の画面に出す名前（掛ける数そのもの。無限大は「×∞」）。"""
-    return "×∞" if math.isinf(value) else f"×{value:g}"
+    """掛ける数の段の画面に出す名前（掛ける数を有効数字2桁で。無限大は「×∞」）。"""
+    return "×∞" if math.isinf(value) else f"×{value:.2g}"
 
 
 def _levels(*values: float) -> tuple[CostLevel, ...]:

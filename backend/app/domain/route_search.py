@@ -156,7 +156,8 @@ def retrace_penalized(costs: np.ndarray, travel_seconds: np.ndarray) -> np.ndarr
     """復路探索の間に、往路の区間（と同じNode対の逆向きの区間）へ置くコスト。罰は区間の所要時間`travel_seconds`（`costs`と
     同じ形）に掛け、費用には掛けない——費用に掛けると、避け方の倍率で費用を下げた「好む」の道ほど罰が縮み、帰りが好む道を
     往復する。倍率は有限にする（較正値の範囲が持つ）——帰りが往路を戻るほかに道が無い区間（袋小路等）は通れる必要がある。"""
-    return costs + (tuning_value("search.retrace_penalty_multiplier") - 1.0) * travel_seconds
+    # 通れない区間（所要時間も費用も無限大）は罰を足さない（倍率がちょうど1のとき 0 × 無限大 が NaN になる）。
+    return costs + (tuning_value("search.retrace_penalty_multiplier") - 1.0) * np.where(np.isinf(travel_seconds), 0.0, travel_seconds)
 
 
 #: 1kmあたりの代償の秒（`penalty_seconds_per_km`）の、区別する最小の差。並べ方とパレート層は、この刻みで同点とみなす。
