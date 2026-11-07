@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import { LEGEND_NO_DATA_KEY } from "@/lib/mapDisplay/mapColorLegend";
 import { ROAD_OTHER_KEY } from "@/lib/mapDisplay/roadTracks";
 import { evaluateExpression as evaluate } from "@/testing/mapExpressions";
-import { avoidanceChoiceOf, NO_AVOIDANCE_CHOICE as NO_AVOIDANCE, type AvoidanceChoice } from "@/lib/roadAvoidance";
+import { avoidanceChoiceOf, type AvoidanceChoice } from "@/lib/roadAvoidance";
 import { AVOIDANCE_LEVELS, avoidanceRow, roadClass, roadClassCatalog, roadMapLayer } from "@/testing/clientConfig";
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import palette from "@/types/generated/palette.json";
@@ -24,7 +24,8 @@ function build(state: Partial<RoadLineState>) {
     hiddenKeys: {},
     classes: new Map(),
     loading: false,
-    avoidance: NO_AVOIDANCE,
+    avoidance: { levels: new Map(), order: [] },
+    avoidanceShown: false,
     inspectedShape: null,
     ...state,
   });
@@ -104,8 +105,13 @@ describe("道路タブの段", () => {
   ]);
 
   /** 道ごとに段の線が塗る色。線を出していなければ null。 */
-  function paintedColors(choice: AvoidanceChoice) {
-    const built = build({ layers: [LAYER, roadMapLayer("highway")], classes: roads, avoidance: choice });
+  function paintedColors(choice: AvoidanceChoice, shown = true) {
+    const built = build({
+      layers: [LAYER, roadMapLayer("highway")],
+      classes: roads,
+      avoidance: choice,
+      avoidanceShown: shown,
+    });
     const layer = built.layers.find((candidate) => candidate.role === ROAD_AVOIDANCE_ROLE);
     if (layer?.visible !== true) return null;
     const states = built.sources.find((source) => source.featureStates !== undefined)?.featureStates ?? new Map();
@@ -126,6 +132,7 @@ describe("道路タブの段", () => {
   it("道路タブの段（選んでいなければ既定）のうち強い方の段の色で道を塗り、塗る段が無ければ線を出さない", () => {
     const choice = avoidanceChoiceOf(avoidance, { "surface.gravel": "prefer", "surface.dirt": "exclude" });
     expect(paintedColors(choice)).toEqual([prefer, avoid, exclude, none]);
-    expect(paintedColors(NO_AVOIDANCE)).toBeNull();
+    expect(paintedColors(choice, false)).toBeNull();
+    expect(paintedColors({ levels: new Map(), order: [] })).toBeNull();
   });
 });

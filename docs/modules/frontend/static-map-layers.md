@@ -278,7 +278,7 @@ DOM/MapLibreを一切知らない。`MapView.tsx`は画面の状態をsceneの�
 持たないので、値を取っている間は値の無い道をどれも取得中の色（`palette.semantic.loading`）で描く。取得中・失敗は、出ている道の線の
 層のチップの状態ドットに出る。両方ONのときは下記の並列トラックが横へ分ける。
 
-**道路タブの段**: 「ルート設定」の道路タブを出している間（「ルート設定」が地図で効いていて、タブが道路。`app/usePagePanels.ts: shownSettingsTabOf`）、
+**道路タブの段**: 「ルート設定」の道路タブが画面に見えている間（モバイルはルート設定のシートを開いている、デスクトップは左のパネルで「ルート設定」の区分を開いていて、タブが道路。`app/usePagePanels.ts`の`routeSettingsShown`。もう一方の区分を触っても変わらない）、
 タブの上の「地図で見る」がONなら、今の道路タブの段（`lib/roadAvoidance.ts: avoidanceLevelOf`。選んでいない行は既定の段）で好む・避ける・
 通らないにした区分の道を、道の線の層より上に不透明の線で塗り、下の基礎地図を灰色に薄める（`features/map/basemapTheme.ts: themedPaint`）。
 「表示」の一覧の行と凡例は持たず、段ごとには出し入れしない。道路タブの見出しは地図の道の線の層の分け方なので、道ごとの層の値から、当たる行の段のうち一番強いもの（`lib/roadAvoidance.ts: strongestAvoidance`。

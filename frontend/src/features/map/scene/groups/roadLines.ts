@@ -59,6 +59,9 @@ export type RoadLineState = {
   readonly loading: boolean;
   /** 地図の道に塗る、道路タブの段。道路タブを地図で見ていなければ空。 */
   readonly avoidance: AvoidanceChoice;
+  /** 道路タブを地図で見ているか（道路タブを出していて「地図で見る」がON）。段の値は見ていない間も持ったまま（出し入れのたびに
+   * 道ごとの段を作り直さない）。 */
+  readonly avoidanceShown: boolean;
   /** 詳細を見ている道の線の形（経度, 緯度）。開いていなければ null。 */
   readonly inspectedShape: readonly (readonly [number, number])[] | null;
 };
@@ -96,9 +99,9 @@ function valueOf(layerId: string): unknown {
   return ["to-string", ["feature-state", stateKey(layerId)]];
 }
 
-/** 道路タブの段を道に塗るか（塗る段があるか。道路タブを地図で見ていない間は段が空）。塗るときだけ下の地図を薄め、道の層の値を取る。 */
-export function paintsRoadAvoidance(avoidance: AvoidanceChoice): boolean {
-  return avoidance.levels.size > 0;
+/** 道路タブの段を地図の道に塗るか（道路タブを地図で見ていて、塗る段があるか）。塗るときだけ下の地図を薄め、道の層の値を取る。 */
+export function paintsRoadAvoidance(shown: boolean, avoidance: AvoidanceChoice): boolean {
+  return shown && avoidance.levels.size > 0;
 }
 
 /** 道（`feature_key`）が、「表示」で出している道の層の先頭の層で入る凡例の行（地図の線の色と同じ値から引く）。道の層を
@@ -238,7 +241,7 @@ export const roadLineGroup = declareGroup<RoadLineState>((state) => {
       ),
       "line-opacity": 1,
     },
-    visible: paintsRoadAvoidance(state.avoidance),
+    visible: paintsRoadAvoidance(state.avoidanceShown, state.avoidance),
   });
 
   layers.push(inspected);

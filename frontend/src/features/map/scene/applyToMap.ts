@@ -93,6 +93,8 @@ export interface SceneLook {
   readonly roadClasses: { values: RoadClassValues; loading: boolean };
   /** 地図の道に塗る、道路タブの段。道路タブを地図で見ていなければ空。 */
   readonly roadAvoidance: AvoidanceChoice;
+  /** 道路タブを地図で見ているか。 */
+  readonly roadAvoidanceShown: boolean;
   /** 軸ごとの、今の範囲の道ごとの材料の取得結果。 */
   readonly wayMaterials: ReadonlyMap<string, { materials: WayMaterials; loading: boolean }>;
   /** 道の値の式が読む走る条件。 */
@@ -253,6 +255,7 @@ export function sceneInputsFrom(props: SceneWiringProps): SceneInputs {
       classes: props.look.roadClasses.values,
       loading: props.look.roadClasses.loading,
       avoidance: props.look.roadAvoidance,
+      avoidanceShown: props.look.roadAvoidanceShown,
       inspectedShape: props.inspectedShape,
     },
     axis: axisStateFrom(props, roadTiles?.sourceLayer ?? null),
@@ -274,8 +277,8 @@ export function sceneInputsFrom(props: SceneWiringProps): SceneInputs {
 const appliedScene = new WeakMap<MapLibreMap, MapScene>();
 
 /** 基礎地図の見え方。道路タブの段を道に塗っている間は、塗った道を読ませるため灰色に薄める。 */
-export function basemapLookOf(look: Pick<SceneLook, "mapTheme" | "roadAvoidance">): BasemapLook {
-  return { theme: look.mapTheme, muted: paintsRoadAvoidance(look.roadAvoidance) };
+export function basemapLookOf(look: Pick<SceneLook, "mapTheme" | "roadAvoidance" | "roadAvoidanceShown">): BasemapLook {
+  return { theme: look.mapTheme, muted: paintsRoadAvoidance(look.roadAvoidanceShown, look.roadAvoidance) };
 }
 
 /** `basemap`は基礎地図の見え方（省けば明るい地図）。スタイルを差し替えると基礎地図は明るい地図へ戻るので、暗い・薄めた地図を

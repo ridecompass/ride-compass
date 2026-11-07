@@ -151,9 +151,7 @@ export default function Home() {
       <RouteSettingsForm
         conditions={conditions}
         savedConditions={savedConditions}
-        roadTabOnMap={mapView.roadTabOnMap}
-        onRoadTabOnMapChange={mapView.onRoadTabOnMapChange}
-        roadTabMapNotice={mapView.roadTabMapNotice}
+        roadTabMap={mapView.roadTabMap}
         origin={location}
         originManual={originManual}
         originLocated={locationKnown}

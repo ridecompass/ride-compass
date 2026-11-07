@@ -33,7 +33,7 @@ import { useRoadClasses } from "@/features/map/useRoadClasses";
 import { useDynamicWeatherLayers } from "@/features/map/useDynamicWeatherLayers";
 import { useStoredState } from "@/hooks/useStoredState";
 import type { Coordinates, RoadAvoidanceOverride } from "@/types/route";
-import { avoidanceChoiceOf, NO_AVOIDANCE_CHOICE } from "@/lib/roadAvoidance";
+import { avoidanceChoiceOf, type RoadTabMap } from "@/lib/roadAvoidance";
 import type { MapTheme } from "@/lib/mapTheme";
 import { ROAD_TILE_MIN_ZOOM, type RideConditions } from "@/features/map/regionApi";
 import { snapDeg } from "@/lib/cardinalLabel";
@@ -73,7 +73,8 @@ interface MapViewInputs {
   costPreference: CostPreference;
   /** 道路タブの今の段（選んだ段だけ。選んでいない行は既定の段）。道路タブを地図で見ている間、地図の道に塗る。 */
   roadAvoidance: RoadAvoidanceOverride;
-  /** 道路タブを出しているか（`app/usePagePanels.ts: shownSettingsTabOf`）。出していて「地図で見る」がONの間だけ、段を地図の道に塗る。 */
+  /** 道路タブが画面に見えているか（`app/usePagePanels.ts`の`routeSettingsShown`とタブ）。見えていて「地図で見る」がONの間だけ、段を
+   * 地図の道に塗る。 */
   roadTabShown: boolean;
 }
 
@@ -87,11 +88,7 @@ interface MapViewState {
   redrawMap: () => void;
   /** 地図の地の明るさを変える（利用者がメニューで選ぶ。端末に覚える。今の値は`look.mapTheme`）。 */
   onMapThemeChange: (theme: MapTheme) => void;
-  /** 道路タブの「地図で見る」（道路タブを出している間、段を地図の道に塗るか）。端末に覚える。 */
-  roadTabOnMap: boolean;
-  onRoadTabOnMapChange: (on: boolean) => void;
-  /** 道路タブで地図に塗っている間に、塗れない理由（拡大が足りない・取れない等）。無ければnull。 */
-  roadTabMapNotice: string | null;
+  roadTabMap: RoadTabMap;
   /** 地図の見えている範囲の真ん中。地図がまだ範囲を知らせていなければnull。 */
   center: Coordinates | null;
   /** 地図が今映している範囲。地図がまだ範囲を知らせていなければnull。 */
@@ -184,13 +181,13 @@ export function useMapView({
   );
   const shownRoadLayers = mapCatalog.roadLayers.filter((layer) => layerVisibility[layer.id] === true);
   const [roadTabOnMap, setRoadTabOnMap] = useStoredState("ridecompass:road-tab-on-map", "道路タブを地図で見るか", true);
-  // 道路タブを出していて「地図で見る」がONの間だけ、段を地図の道に塗る（ほかの間は塗る段を空にする）。
-  const roadTabPainted = roadTabShown && roadTabOnMap;
+  // 道路タブを出していて「地図で見る」がONの間だけ、段を地図の道に塗る。段の値は出し入れで作り直さない。
+  const roadAvoidanceShown = roadTabShown && roadTabOnMap;
   const avoidanceChoice = useMemo(
-    () => (roadTabPainted ? avoidanceChoiceOf(config.roadClasses.avoidance, roadAvoidance) : NO_AVOIDANCE_CHOICE),
-    [roadTabPainted, config.roadClasses.avoidance, roadAvoidance],
+    () => avoidanceChoiceOf(config.roadClasses.avoidance, roadAvoidance),
+    [config.roadClasses.avoidance, roadAvoidance],
   );
-  const avoidancePainted = paintsRoadAvoidance(avoidanceChoice);
+  const avoidancePainted = paintsRoadAvoidance(roadAvoidanceShown, avoidanceChoice);
   const anyRoadLayerShown = shownRoadLayers.length > 0;
   const roadClasses = useRoadClasses(anyRoadLayerShown || avoidancePainted, viewport, config.roadClasses.generation);
   // 道の層を出していない間は取得中の色で塗る線が無いので、取得中を地図へ伝えない（取るたびに地図を組み直さない）。
@@ -208,7 +205,7 @@ export function useMapView({
   );
   // 道路タブで塗っている間は、塗れない理由（拡大が足りない・取れない・画面の端を取っていない）を道路タブに出す（道の層を
   // 出していないと、地図の上の行の状態の印が無い）。
-  const roadTabMapNotice = !roadTabPainted
+  const roadTabMapNotice = !avoidancePainted
     ? null
     : viewport !== null && viewport.zoom < ROAD_TILE_MIN_ZOOM
       ? TILE_ZOOM_TOO_WIDE_NOTICE
@@ -232,6 +229,7 @@ export function useMapView({
       paintedLensId: painted,
       roadClasses: roadClassesOnMap,
       roadAvoidance: avoidanceChoice,
+      roadAvoidanceShown,
       wayMaterials,
       wayConditions: formulaConditions,
       hiddenLegendKeys: debouncedHidden,
@@ -247,6 +245,7 @@ export function useMapView({
       painted,
       roadClassesOnMap,
       avoidanceChoice,
+      roadAvoidanceShown,
       wayMaterials,
       formulaConditions,
       debouncedHidden,
@@ -333,9 +332,7 @@ export function useMapView({
     lensConditions: lenses.find((candidate) => candidate.lensId === painted)?.conditions ?? [],
     redrawMap: () => setRefreshToken((token) => token + 1),
     onMapThemeChange: setMapTheme,
-    roadTabOnMap,
-    onRoadTabOnMapChange: setRoadTabOnMap,
-    roadTabMapNotice,
+    roadTabMap: { on: roadTabOnMap, onChange: setRoadTabOnMap, notice: roadTabMapNotice },
     center,
     viewport,
     bearing: viewport?.bearing ?? 0,

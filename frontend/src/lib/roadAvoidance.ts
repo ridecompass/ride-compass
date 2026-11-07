@@ -15,6 +15,14 @@ export const AVOIDANCE_LEVEL_COLORS: Readonly<Record<Exclude<AvoidanceLevel, "pa
   exclude: palette.semantic.road_avoidance_exclude,
 };
 
+/** 道路タブの「地図で見る」（道路タブを出している間、段を地図の道に塗るか。端末に覚える）と、塗っている間に塗れない理由
+ * （拡大が足りない・取れない等。無ければnull）。地図の見え方が持ち、道路タブへ渡す。 */
+export interface RoadTabMap {
+  on: boolean;
+  onChange: (on: boolean) => void;
+  notice: string | null;
+}
+
 /** 画面に出す行の段。選んでいなければ既定の段。 */
 export function avoidanceLevelOf(row: AvoidanceRow, chosen: RoadAvoidanceOverride): AvoidanceLevel {
   return chosen[row.key] ?? row.default;
@@ -26,9 +34,6 @@ export interface AvoidanceChoice {
   readonly levels: ReadonlyMap<string, AvoidanceLevel>;
   readonly order: readonly AvoidanceLevel[];
 }
-
-/** 塗る段が無いこと（道路タブを地図で見ていない間）。 */
-export const NO_AVOIDANCE_CHOICE: AvoidanceChoice = { levels: new Map(), order: [] };
 
 export function avoidanceChoiceOf(avoidance: RoadAvoidanceView, chosen: RoadAvoidanceOverride): AvoidanceChoice {
   const levels = new Map<string, AvoidanceLevel>();

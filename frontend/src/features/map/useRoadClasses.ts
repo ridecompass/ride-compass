@@ -33,7 +33,11 @@ let mergedTiles: readonly unknown[] = [];
 let mergedValues: RoadClassValues = mergeTileValues([]);
 function combine(results: TileResult[]): Omit<RoadClassesFetch, "truncated"> {
   const tiles = results.flatMap((result) => (result.data ? [result.data] : []));
-  if (tiles.length !== mergedTiles.length || tiles.some((tile, index) => tile !== mergedTiles[index])) {
+  // 取るのを止めた間（タブを出入りした・層を外した）は前の値を返したままにする（戻ったときに道ごとに置き直さない）。
+  if (
+    results.length > 0 &&
+    (tiles.length !== mergedTiles.length || tiles.some((tile, index) => tile !== mergedTiles[index]))
+  ) {
     mergedTiles = tiles;
     mergedValues = mergeTileValues(tiles);
   }
