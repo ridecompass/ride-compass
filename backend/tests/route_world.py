@@ -232,7 +232,7 @@ _REVISIONS = itertools.count(1)
 
 def serve_road_network(root: Path, network: RoadNetwork | None) -> None:
     """道路網全体の配列を、本番と同じ置き場（`road_network_store.save`）へ新しい世代として置く。`root`は
-    `conftest.py: road_network_root`の置き場。`network`がNoneなら置き場を空にする（道路網が無い本番の状態）。"""
+    `backend/tests/conftest.py: road_network_root`の置き場。`network`がNoneなら置き場を空にする（道路網が無い本番の状態）。"""
     if network is None:
         shutil.rmtree(root, ignore_errors=True)
     else:

@@ -1,7 +1,7 @@
 """`scripts/fetch_jma_area_boundaries.py`——配布元のzip（シェープファイル）から区域の境界を作り、置き場へ置く。
 
 入口は`main`（デプロイが呼ぶ）と、zipから区域を読む`read_areas`。配布元は`respx_mock`で代わりのzipを返し、
-置き場は`tests/conftest.py: boundary_path`。作った境界は`jma_area_boundaries.find_class20_code`で引いて確かめる。
+置き場は`backend/tests/conftest.py: boundary_path`。作った境界は`jma_area_boundaries.find_class20_code`で引いて確かめる。
 見るのは、置き場に今の版があれば取りに行かないこと・取得から書き込みまで・zipでない応答で置き場を作らないこと・
 他の版の掃除・コードの空の図形を落とすこと・同じコードの図形をまとめること・簡略化。
 
