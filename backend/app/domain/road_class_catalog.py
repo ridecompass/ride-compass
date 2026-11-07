@@ -8,7 +8,13 @@
 
 from app.domain.display_palette import nominal_colors, ordered_colors, ordered_ends_phrase
 from app.domain.cost_preference import multiplier_label
-from app.domain.road_avoidance import AVOIDANCE_LEVELS, AvoidanceLevel, avoidance_rows, level_multipliers
+from app.domain.road_avoidance import (
+    AVOIDANCE_LEVEL_NAMES,
+    AVOIDANCE_LEVELS,
+    AvoidanceLevel,
+    avoidance_rows,
+    level_multipliers,
+)
 from app.domain.tuning import tuning_value
 from app.domain.road_classes import (
     RoadClassDefinitions,
@@ -47,6 +53,8 @@ class AvoidanceLevelView(StrictModel):
     key: AvoidanceLevel
     #: 掛ける倍率そのもの（`domain/cost_preference.py: multiplier_label`）。
     label: str
+    #: 段の呼び名（`domain/road_avoidance.py: AVOIDANCE_LEVEL_NAMES`）。
+    name: str
 
 
 class AvoidanceSectionView(StrictModel):
@@ -134,7 +142,9 @@ def road_class_catalog(definitions: RoadClassDefinitions) -> RoadClassCatalog:
         map_layers=layers,
         avoidance=RoadAvoidanceView(
             levels=[
-                AvoidanceLevelView(key=level, label=multiplier_label(multipliers[level]))
+                AvoidanceLevelView(
+                    key=level, label=multiplier_label(multipliers[level]), name=AVOIDANCE_LEVEL_NAMES[level]
+                )
                 for level in sorted(AVOIDANCE_LEVELS, key=multipliers.__getitem__)
             ],
             sections=[

@@ -13,10 +13,15 @@ import {
   type MapLayerId,
   type MapLayerVisibility,
 } from "@/features/map/layers/mapLayers";
-import type { RoadMapLayerView } from "@/types/route";
+import type { RoadAvoidanceView, RoadMapLayerView } from "@/types/route";
 import type { LegendFilterSummaryAxis } from "@/features/map/MapOverlayControls/LegendDetails";
 import type { OverlayLayerChip } from "@/features/map/MapOverlayControls/OverlayLayerRow";
-import { disasterSourceLegendAxis, pointLegendAxes, roadLegendAxes } from "@/features/map/scene/legends";
+import {
+  disasterSourceLegendAxis,
+  pointLegendAxes,
+  roadAvoidanceLegendAxis,
+  roadLegendAxes,
+} from "@/features/map/scene/legends";
 
 import { hiddenKeysOf, presentHiddenKeys } from "./legendFilters";
 import type { HiddenLegendKeys } from "./mapLook";
@@ -48,6 +53,8 @@ function chipLegends(
 export function overlayChips(options: {
   layers: readonly MapLayerDescriptor[];
   roadLayers: readonly RoadMapLayerView[];
+  /** 道路タブの段の並び（「道路の指定」の凡例の行）。 */
+  avoidanceLevels: RoadAvoidanceView["levels"];
   visibility: MapLayerVisibility;
   hidden: HiddenLegendKeys;
   dataStatus: LayerDataStatusByLayer;
@@ -58,7 +65,11 @@ export function overlayChips(options: {
   catalogSettled: boolean;
 }): OverlayLayerChip[] {
   const { hidden, catalogSettled } = options;
-  const legendAxes = [...roadLegendAxes(options.roadLayers), ...DECLARED_LEGEND_AXES];
+  const legendAxes = [
+    ...roadLegendAxes(options.roadLayers),
+    roadAvoidanceLegendAxis(options.avoidanceLevels),
+    ...DECLARED_LEGEND_AXES,
+  ];
   return options.layers
     .filter((layer): layer is ChipLayerDescriptor => !isLensLayer(layer))
     .filter((layer) => layer.kind !== "dynamic")

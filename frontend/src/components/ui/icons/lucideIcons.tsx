@@ -38,6 +38,7 @@ import {
   Save,
   Search,
   Shield,
+  Signpost,
   SlidersHorizontal,
   Snowflake,
   Star,
@@ -107,6 +108,8 @@ export const BurdenPaintIcon = fromLucide(Paintbrush);
 export const BurdenIcon = fromLucide(Weight);
 export const RouteSettingsIcon = fromLucide(SlidersHorizontal);
 export const ShieldIcon = fromLucide(Shield);
+/** 道路タブの段（好む・避ける・通らない）を地図の道に塗る層。 */
+export const RoadAvoidanceIcon = fromLucide(Signpost);
 export const TargetIcon = fromLucide(Target);
 export const ClockIcon = fromLucide(Clock);
 /** 最も早く着くルート。 */

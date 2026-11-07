@@ -120,9 +120,7 @@ export default function Home() {
     riding: ridingWayConditions,
     now: ride.departure.now,
     costPreference: mapCostPreference,
-    // 道路タブを開いている間だけ、今の段で地図の道に帯を敷く。
-    roadAvoidance:
-      panels.activePanel === "routeSettings" && settingsTab === "exclusions" ? conditions.roadAvoidance : null,
+    roadAvoidance: conditions.roadAvoidance,
   });
 
   // 地図は出発地を真ん中にして開くので、地図が範囲を知らせる前は出発地が真ん中。

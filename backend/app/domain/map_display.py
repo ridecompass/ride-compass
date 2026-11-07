@@ -130,6 +130,10 @@ _ROUTE_LAYER_ID = "route"
 #: 陰影は属性ではなく標高の別の描き方。源泉に属性として現れないのが正しい。
 _HILLSHADE_LAYER_ID = "hillshade"
 
+#: 道路タブの段（好む・避ける・通らない）を地図の道に塗る層。属性ではなく利用者の設定を描く。凡例の行の鍵は段の鍵
+#: （`domain/road_avoidance.py: AvoidanceLevel`）。
+ROAD_AVOIDANCE_LAYER_ID = "roadAvoidance"
+
 #: 地図へ常に出す出典（HTML）。路面の色・評価・ルートの計算・常設の表示（ヘッダーの天気・警戒度バッジ）へ常に使う
 #: データで、どのレイヤーを表示しているかと関係なく出典が要る（レイヤーのソースに付けると、そのレイヤーを消したとき
 #: 出典も消える）。公共データ利用規約（PDL1.0）とCC BY 4.0は出典とは別に加工した旨を求め、標高からは勾配を、事故の点から
@@ -179,7 +183,12 @@ def _static_layer_ids() -> tuple[str, ...]:
 
 
 #: 地図に載るものの名前。費用の軸のレンズは実行時に決まるためここには現れない。
-_MAP_LAYER_IDS: tuple[str, ...] = (*_static_layer_ids(), *WEATHER_LAYER_GROUPS, _ROUTE_LAYER_ID)
+_MAP_LAYER_IDS: tuple[str, ...] = (
+    ROAD_AVOIDANCE_LAYER_ID,
+    *_static_layer_ids(),
+    *WEATHER_LAYER_GROUPS,
+    _ROUTE_LAYER_ID,
+)
 
 
 #: 説明の文の差し込み口の名前。どれも実行時の応答（画面の設定・費用の軸の一覧）から来る値で、画面が埋める。
@@ -356,6 +365,18 @@ _DISASTER_BY_FRAME_RULE = _disaster_by_frame_rule()
 
 #: `_MAP_LAYER_IDS`の1つずつの宣言。並びが一覧の行の並び（種別の中の順）になる。**過不足は生成の時点で落ちる**（`MAP_LAYERS`）。
 _LAYER_SPECS: dict[str, MapLayerSpec] = {
+    # 段は道の層の値（区分）から決めるので、絵の出所は道の線の層と同じ。
+    ROAD_AVOIDANCE_LAYER_ID: MapLayerSpec(
+        _ROAD_LAYER_DATA_SOURCE,
+        "roadCondition",
+        label="道路の指定",
+        description=("「道路」タブで好む・避ける・通らないにした道を色で塗る[下の地図は灰色に薄める]",),
+        panel_hint=(
+            "「ルート設定」の「道路」タブで選んだ段のとおりに、好む道を緑、避ける道を橙、通らない道を赤で塗ります。"
+            "1本の道がいくつもの行に当たるときは、強い方の段の色です。ルートを作る前でも、今の「道路」タブの段で塗ります。"
+            "道が読みやすいよう、出している間は下の地図を灰色に薄めます。",
+        ),
+    ),
     "elevation": MapLayerSpec(
         "gsiRelief",
         "terrain",
@@ -697,11 +718,9 @@ ROAD_INSPECTED_WIDTH_PX = 8
 AVOIDANCE_RAIL_WIDTH_PX = 2
 AVOIDANCE_RAIL_GAP_PX = 2
 AVOIDANCE_AVOIDED_DASH: tuple[float, ...] = (3, 2)
-#: 道路タブを開いている間の、好む・避ける・通らないにした区分の地図の道の強調。道の下に淡い帯を1本敷く（線を重ねると幹線の
-#: 多い所で地図が線で埋まる）。好むは好むの色、避ける・通らないは避けるの色で、通らない（×∞）を避ける（×2）より濃くして
-#: 段の重さを濃淡で見せる。通る（×1）は塗らない。
-AVOIDANCE_HALO_WIDTH_PX = 12
-AVOIDANCE_HALO_OPACITY_BY_LEVEL: dict[str, float] = {"prefer": 0.3, "avoid": 0.25, "exclude": 0.55}
+#: 地図の「道路の指定」で、好む・避ける・通らないの道を塗る線の太さ（縮尺→px）。横に分けて並べた道の線の層を覆い、
+#: 寄るほど基礎地図の道そのものの太さに近づける。
+ROAD_AVOIDANCE_WIDTH_BY_ZOOM = zoom_curve((12, 3), (14, 5), (16, 9), (18, 18))
 
 #: 値が無い（不明・データなし）線の破線の刻み（線の太さを1とする長さ）。道の線・レンズの線・ルートの線で共有する。
 #: 乗り換え帯の破線（`ROUTE_SPLICE_DASH`）より細かく刻み、操作の状態と見分けられるようにする。

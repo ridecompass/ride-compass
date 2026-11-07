@@ -683,6 +683,8 @@ export interface components {
             key: "pass" | "prefer" | "avoid" | "exclude";
             /** Label */
             label: string;
+            /** Name */
+            name: string;
         };
         /** AvoidanceOverride */
         AvoidanceOverride: {

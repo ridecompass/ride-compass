@@ -2133,13 +2133,18 @@
           "label": {
             "type": "string",
             "title": "Label"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
           "key",
-          "label"
+          "label",
+          "name"
         ],
         "title": "AvoidanceLevelView"
       },

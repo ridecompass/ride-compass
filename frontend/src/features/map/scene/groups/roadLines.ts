@@ -1,4 +1,5 @@
-/** 道の線の層（画面の設定の`road_classes.map_layers`。分け方1つが層1つ）と、詳細を見ている道の強調。
+/** 道の線の層（画面の設定の`road_classes.map_layers`。分け方1つが層1つ）と、道路タブの段を道に塗る「道路の指定」と、詳細を
+ * 見ている道の強調。
  *
  * 道の層の値（区分の鍵か「データなし」）はbackendが決め、地図は道ごとに feature-state で受け取って塗るだけにする——ルートの
  * 区間の帯と同じ値になる。**feature-state の値は MapLibre の絞り込みからも `line-dasharray` からも読めない**ため、凡例で隠した
@@ -18,15 +19,25 @@ import { mapDisplay } from "@/types/generated/mapDisplay";
 import palette from "@/types/generated/palette.json";
 import regionTileConfig from "@/types/generated/region-tile-config.json";
 
-import { featureStatesByName, sceneSourceId } from "@/features/map/scene/sceneBuilders";
+import { featureStatesByName, sceneSourceId, zoomScaleExpression } from "@/features/map/scene/sceneBuilders";
 import { LEGEND_NO_DATA_KEY } from "@/lib/mapDisplay/mapColorLegend";
 import { ROAD_OTHER_KEY, roadTrackRowOf, type RoadTrackRow } from "@/lib/mapDisplay/roadTracks";
-import { strongestAvoidance, type AvoidanceChoice } from "@/lib/roadAvoidance";
+import { strongestAvoidance, type AvoidanceChoice, type AvoidanceLevel } from "@/lib/roadAvoidance";
 import type { RoadMapLayerView } from "@/types/route";
 
 import { declareGroup, type SceneLayerEntry, type SceneSourceEntry } from "@/features/map/scene/mapSceneGroups";
 
 const ROAD = mapDisplay.road;
+
+/** 道路タブの段を地図の道に塗る層（「表示」の一覧の「道路の指定」）。凡例の行の鍵は段の鍵。 */
+export const ROAD_AVOIDANCE_LAYER_ID = mapDisplay.roadAvoidance.layerId;
+
+/** 「道路の指定」が塗る段と色。並びが凡例の行の並び。通るは塗らない（何も指定していない扱い）。 */
+export const ROAD_AVOIDANCE_COLORS: Readonly<Record<Exclude<AvoidanceLevel, "pass">, string>> = {
+  prefer: palette.semantic.road_avoidance_prefer,
+  avoid: palette.semantic.road_avoidance_avoid,
+  exclude: palette.semantic.road_avoidance_exclude,
+};
 
 export const ROAD_LINE_SOURCE_ID = sceneSourceId("road-tiles");
 const ROAD_INSPECTED_SOURCE_ID = sceneSourceId("road-inspected");
@@ -53,7 +64,7 @@ export type RoadLineState = {
   readonly classes: RoadClassValues;
   /** 今の範囲の層の値を取っている最中か。 */
   readonly loading: boolean;
-  /** 道路タブで選んだ段（好む・避けるの道の両脇に線を添える）。 */
+  /** 「道路の指定」で塗る、道路タブの段。出していなければ空。 */
   readonly avoidance: AvoidanceChoice;
   /** 詳細を見ている道の線の形（経度, 緯度）。開いていなければ null。 */
   readonly inspectedShape: readonly (readonly [number, number])[] | null;
@@ -210,30 +221,26 @@ export const roadLineGroup = declareGroup<RoadLineState>((state) => {
     ];
   });
 
-  // 道路タブを開いている間の、好む・避ける・通らないにした区分の道の下の淡い帯。道ごとの一番強い段（feature-state）が段に合う
-  // 道だけを、段ごとの濃さで塗る。
-  const chosenLevels = new Set(state.avoidance.levels.values());
-  const haloLayer = (level: keyof typeof mapDisplay.avoidanceHalo.opacityByLevel, color: string): SceneLayerEntry => ({
+  // 「道路の指定」。道ごとの一番強い段（feature-state）の色で、道の線の層の上を不透明に塗る（段の色が道の層の色に混ざらない）。
+  const avoidanceHidden = state.hiddenKeys[ROAD_AVOIDANCE_LAYER_ID] ?? [];
+  layers.push({
     ...line,
-    role: `${level}-halo`,
+    role: ROAD_AVOIDANCE_LAYER_ID,
     paint: {
-      "line-color": color,
-      "line-width": mapDisplay.avoidanceHalo.widthPx,
-      "line-opacity": [
-        "case",
-        ["==", ["feature-state", stateKey(AVOIDANCE_NAME)], level],
-        mapDisplay.avoidanceHalo.opacityByLevel[level],
-        0,
+      "line-color": [
+        "match",
+        ["to-string", ["feature-state", stateKey(AVOIDANCE_NAME)]],
+        ...Object.entries(ROAD_AVOIDANCE_COLORS).flatMap(([level, color]) => [
+          level,
+          avoidanceHidden.includes(level) ? palette.semantic.hidden : color,
+        ]),
+        palette.semantic.hidden,
       ],
+      "line-width": zoomScaleExpression(1, mapDisplay.roadAvoidance.widthByZoom),
+      "line-opacity": 1,
     },
-    visible: chosenLevels.has(level),
+    visible: state.visible[ROAD_AVOIDANCE_LAYER_ID] === true,
   });
-  // 帯は道の線の下に敷く（道の層の色を隠さない）。
-  layers.unshift(
-    haloLayer("prefer", palette.semantic.avoidance_preferred),
-    haloLayer("avoid", palette.semantic.avoidance_avoided),
-    haloLayer("exclude", palette.semantic.avoidance_avoided),
-  );
 
   layers.push(inspected);
 

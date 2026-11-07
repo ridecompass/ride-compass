@@ -39,6 +39,7 @@ import { countsAxis } from "@/lib/costPreference";
 import type { WayValueCondition } from "@/lib/mapDisplay/mapLens";
 import { useMapCatalog } from "@/features/map/useMapCatalog";
 import { initiallyHiddenLegendKeys } from "@/features/map/scene/legends";
+import { ROAD_AVOIDANCE_LAYER_ID } from "@/features/map/scene/groups/roadLines";
 import { WAY_BEARING_STEP_DEG } from "@/features/map/mapHeading";
 
 import { hiddenKeysOf, presentHiddenKeys, toggleHiddenKey, withHiddenKeys } from "./legendFilters";
@@ -69,9 +70,8 @@ interface MapViewInputs {
   /** 費用のレンズを塗る利用者のつまみと倍率（生成の要求へ送る形）。ルートを出している間はそのルートを生成したときの値、
    * 無ければ今の設定——ルートの線と周りの道を同じ量で塗る。 */
   costPreference: CostPreference;
-  /** 道路タブを開いている間の、道路タブの段。好む・避けるにした区分の地図の道の下に淡い帯を敷く。開いていなければnull
-   * （帯を出さず、そのための道の層の値も取らない）。 */
-  roadAvoidance: RoadAvoidanceOverride | null;
+  /** 道路タブの今の段（選んだ段だけ。選んでいない行は既定の段）。「表示」の「道路の指定」を出している間、地図の道に塗る。 */
+  roadAvoidance: RoadAvoidanceOverride;
 }
 
 interface MapViewState {
@@ -96,7 +96,7 @@ interface MapViewState {
   costPreference: CostPreference;
 }
 
-/** 道路タブを閉じている間（地図の道に帯を出さない）。 */
+/** 「道路の指定」を出していない間（地図の道に段を塗らず、そのための道の層の値も取らない）。 */
 const NO_AVOIDANCE: AvoidanceChoice = { levels: new Map(), order: [] };
 
 export function useMapView({
@@ -177,9 +177,10 @@ export function useMapView({
     costCatalog.lenses?.totalLens.axisId ?? null,
   );
   const shownRoadLayers = mapCatalog.roadLayers.filter((layer) => layerVisibility[layer.id] === true);
+  const avoidanceShown = layerVisibility[ROAD_AVOIDANCE_LAYER_ID] === true;
   const avoidanceChoice = useMemo(
-    () => (roadAvoidance === null ? NO_AVOIDANCE : avoidanceChoiceOf(config.roadClasses.avoidance, roadAvoidance)),
-    [config.roadClasses.avoidance, roadAvoidance],
+    () => (avoidanceShown ? avoidanceChoiceOf(config.roadClasses.avoidance, roadAvoidance) : NO_AVOIDANCE),
+    [avoidanceShown, config.roadClasses.avoidance, roadAvoidance],
   );
   const anyRoadLayerShown = shownRoadLayers.length > 0;
   const roadClasses = useRoadClasses(
@@ -192,7 +193,7 @@ export function useMapView({
     () => ({ values: roadClasses.values, loading: anyRoadLayerShown && roadClasses.loading }),
     [roadClasses.values, roadClasses.loading, anyRoadLayerShown],
   );
-  // 層の値はどの道の線の層も同じ取得から読むので、取得の状態は出ている層のどれにも出す。
+  // 層の値はどの道の線の層も「道路の指定」も同じ取得から読むので、取得の状態は出ているそのどれにも出す。
   const roadClassStatus = deriveFetchLayerStatus(
     roadClasses.loading,
     roadClasses.error,
@@ -201,7 +202,11 @@ export function useMapView({
     roadClasses.truncated,
   );
   const roadLayerStatus = roadClassStatus
-    ? Object.fromEntries(shownRoadLayers.map((layer) => [layer.id, roadClassStatus]))
+    ? Object.fromEntries(
+        [...shownRoadLayers.map((layer) => layer.id), ...(avoidanceShown ? [ROAD_AVOIDANCE_LAYER_ID] : [])].map(
+          (id) => [id, roadClassStatus],
+        ),
+      )
     : {};
   // 式の木の条件の名前（`bearing_deg`・`speed_kmh`）で地図へ渡す。速度が数でない間は値の無いことにする。
   const formulaConditions = useMemo(
@@ -248,6 +253,7 @@ export function useMapView({
   const chips = overlayChips({
     layers: mapCatalog.layers,
     roadLayers: mapCatalog.roadLayers,
+    avoidanceLevels: config.roadClasses.avoidance.levels,
     visibility: layerVisibility,
     hidden,
     dataStatus: { ...mapLayerStatus, ...roadLayerStatus, ...weather.dynamicWeatherDataStatus },

@@ -6,13 +6,14 @@
 import type { LegendEntry } from "@/lib/mapDisplay/legendFilter";
 import { NO_DATA_LEGEND_BAND } from "@/lib/mapDisplay/mapColorLegend";
 import { ROAD_OTHER_KEY, roadTrackRows } from "@/lib/mapDisplay/roadTracks";
-import type { RoadMapLayerView } from "@/types/route";
+import type { RoadAvoidanceView, RoadMapLayerView } from "@/types/route";
 
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import palette from "@/types/generated/palette.json";
 import weatherScales from "@/types/generated/weather-scales.json";
 
 import { pointAxisKey } from "@/features/map/scene/groups/points";
+import { ROAD_AVOIDANCE_COLORS, ROAD_AVOIDANCE_LAYER_ID } from "@/features/map/scene/groups/roadLines";
 import { POINT_LAYERS, pointIconScales, type PointAxis } from "@/lib/mapDisplay/pointLayers";
 import { DISASTER_ELEMENTS, DISASTER_LAYER_ID, type DisasterElement } from "@/features/map/layers/dynamicWeather";
 
@@ -36,6 +37,19 @@ export function roadLegendAxes(layers: readonly RoadMapLayerView[]): readonly Sc
     label: "",
     entries: roadTrackRows(layer).map((row) => ({ ...row, line: true as const })),
   }));
+}
+
+/** 「道路の指定」の凡例。行は塗る段で、名前は段の呼び名と倍率（画面の設定の段の並びから引く）。 */
+export function roadAvoidanceLegendAxis(levels: RoadAvoidanceView["levels"]): SceneLegendAxis {
+  return {
+    layerId: ROAD_AVOIDANCE_LAYER_ID,
+    axisId: ROAD_AVOIDANCE_LAYER_ID,
+    label: "",
+    entries: Object.entries(ROAD_AVOIDANCE_COLORS).flatMap(([key, color]) => {
+      const level = levels.find((candidate) => candidate.key === key);
+      return level === undefined ? [] : [{ key, label: `${level.name} ${level.label}`, color, line: true as const }];
+    }),
+  };
 }
 
 /** 最初に凡例で隠しておく行。区分の外の道を隠す層（`hide_missing_rows`）の、値の無い道の行（データなしを分ける層では
