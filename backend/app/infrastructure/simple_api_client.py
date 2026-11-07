@@ -1,5 +1,5 @@
 """シンプルな外部APIクライアント（TTLCacheのみ、再試行を持たない）が共有する
-「キャッシュ参照→fetch→キャッシュ書き戻し」の骨格。取得の失敗は投げる（口は`api/upstream_errors.py`が502にする）。
+「キャッシュ参照→fetch→キャッシュ書き戻し」の骨格。取得の失敗は投げる（口は`api/failure_replies.py`が502にする）。
 """
 
 import asyncio

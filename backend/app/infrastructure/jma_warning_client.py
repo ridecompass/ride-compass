@@ -89,7 +89,7 @@ def new_warning_cache() -> TTLCache:
 
 def _parse_area_master(payload: dict) -> AreaMaster:
     return AreaMaster(**{
-        key: {code: AreaEntry(parent=entry.get("parent"), name=entry.get("name")) for code, entry in payload[key].items()}
+        key: {code: AreaEntry(parent=entry["parent"], name=entry["name"]) for code, entry in payload[key].items()}
         for key in ("class20s", "class15s", "class10s")
     })
 

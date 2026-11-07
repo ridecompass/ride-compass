@@ -88,13 +88,14 @@ def _open_sources() -> list[_RasterSource]:
         if _opened_sources is not None and now - _last_open_attempt < _RETRY_OPEN_AFTER_SECONDS:
             return _opened_sources
         _last_open_attempt = now
-        opened: list[_RasterSource] = []
-        for path in settings.lulc_raster_paths_list:
-            try:
-                opened.append(_RasterSource(rasterio.open(path), threading.Lock()))
-            except (OSError, rasterio.errors.RasterioIOError) as exc:
-                logger.warning("土地被覆ラスタを開けません path=%s error=%r", path, exc)
-        _opened_sources = opened
+        # 1枚でも開けなければ、どれも配らない（開けた分だけで配ると、欠けた区域が透明な絵として配られ、キャッシュにも残る）。
+        try:
+            _opened_sources = [
+                _RasterSource(rasterio.open(path), threading.Lock()) for path in settings.lulc_raster_paths_list
+            ]
+        except (OSError, rasterio.errors.RasterioIOError) as exc:
+            logger.warning("土地被覆ラスタを開けないため、土地被覆を配りません error=%r", exc)
+            _opened_sources = []
         return _opened_sources
 
 

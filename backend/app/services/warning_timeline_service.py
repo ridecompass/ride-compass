@@ -97,11 +97,10 @@ class WarningTimelineService:
         for route_pass in passes:
             area = areas_by_code[route_pass.class20_code]
             timeline = timelines[area.office_code]
-            entry = area_master.class20s.get(route_pass.class20_code)
             areas.append(
                 RouteAreaTimeline(
                     area_code=route_pass.class20_code,
-                    area_name=(entry.name if entry is not None and entry.name else route_pass.class20_code),
+                    area_name=area_master.class20s[route_pass.class20_code].name,
                     start_index=route_pass.start_index,
                     end_index=route_pass.end_index,
                     kinds=_kind_levels(timeline, area.class20_code, area.class10_code),

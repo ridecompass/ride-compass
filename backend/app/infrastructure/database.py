@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app.config import settings
 
-# DBへ届かない・DBが答えないときに出る例外。`api/db_errors.py`がこれだけを503にし、実装の誤り
+# DBへ届かない・DBが答えないときに出る例外。`api/failure_replies.py`がこれだけを503にし、実装の誤り
 # （TypeError・AttributeError等）とほかのOSError（ファイルの読み書き等）は500のまま表へ出す。
 # - SQLAlchemyError: 接続を張る段階と実行中の失敗（asyncpgの例外はDBAPIErrorへ訳される）とプールの待ち切れ
 # - ConnectionError: 接続の拒否・切断（asyncpgが訳さずに出す）

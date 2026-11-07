@@ -1,4 +1,4 @@
-"""`api/db_errors.py`——DB障害を、どの口でも503で返すこと（管理APIの口は全部を本物で叩く）。
+"""`api/failure_replies.py`——DB障害を、どの口でも503で返すこと（管理APIの口は全部を本物で叩く）。
 
 DBに繋がらない状態は、アプリのセッション工場の依存を、接続を断るDBへ向けた工場で上書きして作る（本番のDB停止と同じく、
 最初の問い合わせで`ConnectionRefusedError`が出る）。口ごとの依存・サービスは本物を通す。
@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
 from app.api.admin_paths import ADMIN_PATH_PREFIX
-from app.api.db_errors import install_db_unavailable_handler
+from app.api.failure_replies import install_failure_replies
 from app.domain.cost_axes import EFFORT_AXES
 from app.domain.tuning import TUNING_PARAMETERS
 from app.domain.road_classes import EMPTY_ROAD_CLASSES
@@ -77,7 +77,7 @@ def test_a_database_failure_becomes_a_503_on_every_admin_route_that_reads_it(
 def test_an_implementation_error_stays_an_unhandled_error():
     """実装の誤りをDB障害として返すと、直す場所を取り違える。"""
     probe = FastAPI()
-    install_db_unavailable_handler(probe)
+    install_failure_replies(probe)
 
     @probe.get(ADMIN_PATH_PREFIX + "probe")
     async def fail() -> None:

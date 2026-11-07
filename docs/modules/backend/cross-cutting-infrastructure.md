@@ -18,9 +18,8 @@ DB接続・Redis・HTTPクライアント・レート制限・ログ・デバッ
 | domain | `stopwatch.py` | ログへ出す所要時間の測り方（測り始めの`stopwatch.py: start_timer`とミリ秒の整数の`stopwatch.py: elapsed_ms`）。測り始めと終わりは同じ時計で読む |
 | domain | `strict_model.py` | 全Pydanticモデルの基底（`strict_model.py: StrictModel`）。未知のフィールドを黙って捨てず例外にする |
 | api | `admin_auth.py` | 管理API共通の認可境界 |
-| api | `db_errors.py` | DB障害を、どの口でも503で返すアプリ単位の例外の扱い（下の「DB障害として扱う例外」） |
+| api | `failure_replies.py` | 想定した失敗（上流から取れない→502・MSMを読めない・アメダスの観測値を出せない・DBに届かない→503）を、どの口でも理由つきで返すアプリ単位の例外の扱い。ルート生成のジョブの失敗の文も同じ`failure_reply`で決める（下の「DB障害として扱う例外」・`fetch_upstream`の段） |
 | api | `admin_paths.py` | 管理APIの経路の接頭辞（認可・キャッシュの決まりが、この下の口をまとめて扱う） |
-| api | `upstream_errors.py` | 上流（外部の配信元）から取れなかった例外を、どの口でも502で返すアプリ単位の例外の扱い（下の`fetch_upstream`の段） |
 | api | `cache_policy.py` | 応答の`Cache-Control`（パスとポリシーの対応表・付与ミドルウェア） |
 | api | `dependencies.py`（横断的な部分のみ、他は各モジュール参照） | DI工場（公開関数は注入の口だけ） |
 | api | `finite_json_body.py` | 要求の本文のNaN・無限大を、アプリ全体の依存として経路の処理より前に422で断る（Starletteの本文の読み方はJSONの外の`NaN`・`Infinity`を通す） |
@@ -228,7 +227,7 @@ HTTPの要求の外（定期ジョブ・ベンチマーク）は、工場を引�
 ### DB障害として扱う例外（`database.py: DB_UNAVAILABLE_ERRORS`）
 
 DBの読み取りの失敗は、どの層でも空（空タイル・空dict・None）へ倒さず投げ、口では捕まえずに、
-`api/db_errors.py`がアプリ単位の例外の扱いでこのタプルだけを503にする（口ごとに書くと、書き忘れた口だけが500になる。空へ
+`api/failure_replies.py`がアプリ単位の例外の扱いでこのタプルだけを503にする（口ごとに書くと、書き忘れた口だけが500になる。空へ
 倒すと応答は正常の形のまま「データなし」に見え、誰も気づかない）。実装の誤り（`TypeError`・`AttributeError`等）は
 捕まえず、500として表へ出す。
 
@@ -359,7 +358,7 @@ lifespanが起動時に使うtimeout値を事前ウォームアップするの�
 `Cache-Control`は、配信元ごとの宣言（`api/routers/_tile_http.py: UpstreamReplies`）から引く。
 
 上流から取れなかった例外（`httpx.HTTPError`・JSONでない本文・`UnexpectedShapeError`）は、途中の層で値に替えず、口の1か所
-（`api/upstream_errors.py`）が502と失敗の種類の文（「外部の配信元から取得できませんでした（…）」）にする。
+（`api/failure_replies.py`）が502と失敗の種類の文（「外部の配信元から取得できませんでした（…）」）にする。
 
 ## 応答のgzip圧縮（`response_compression.py`）
 
@@ -500,7 +499,7 @@ push型更新と同じ前提）。`JobRecord`は状態ごとの型の共用体�
 呼び出し時に掃除する（専用の定期タスクは新設せず、`rate_limiter.py`と同じ「呼ばれた
 ついでに掃除」方式）。**この保持時間はフロントのポーリングの打ち切りと同じ値でなければ
 ならない**（短いと、まだ待っているフロントが掃除済みのjob_idを引く）。そのためフロントは
-独立に値を持たず、生成物`route-generate-config.json`の`job_result_ttl_seconds`から受け取る。ルート生成に特化させず`result: Any`型で汎用化してあるため、
+独立に値を持たず、生成物`route-generate-config.json`の`job_result_ttl_seconds`から受け取る。ルート生成のジョブも同じ時間で打ち切る（それより遅く作れても、フロントは問い合わせを諦めている。`routes.py: _run_generate_job`）。ジョブの失敗の文は、口と同じ`api/failure_replies.py: failure_reply`で決める（決め方に無い例外だけは、文に接続先やSQLが混じりうるので決まった文）。ルート生成に特化させず`result: Any`型で汎用化してあるため、
 本モジュール自体はルート生成の型を知らない（`routes.py`との循環import回避）。
 
 終わるまで待つ問い合わせ（`wait_until_finished`）は、まだ終わっていないジョブごとの`asyncio.Event`を待ち、

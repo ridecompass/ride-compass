@@ -40,7 +40,7 @@ UPSTREAM_NOT_FOUND = UpstreamNotFound()
 
 async def fetch_upstream(http_client: httpx.AsyncClient, url: str, fields: dict) -> httpx.Response | UpstreamNotFound:
     """`log_external_call`の中で上流から1件取る。404は`UPSTREAM_NOT_FOUND`。ほかの失敗は`httpx`の例外のまま投げる
-    （`log_external_call`が失敗として記録し、口は`api/upstream_errors.py`が502にする）。"""
+    （`log_external_call`が失敗として記録し、口は`api/failure_replies.py`が502にする）。"""
     response = await http_client.get(url)
     fields["status"] = response.status_code
     if response.status_code == 404:

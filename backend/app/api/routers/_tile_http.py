@@ -70,7 +70,7 @@ def tile_response(content: bytes, media_type: str = MVT_CONTENT_TYPE) -> Respons
 
 @dataclass(frozen=True)
 class UpstreamReplies:
-    """上流から中継する配信元の、上流に無い（404）ときの応答（取得の失敗は`api/upstream_errors.py`が502にする）。"""
+    """上流から中継する配信元の、上流に無い（404）ときの応答（取得の失敗は`api/failure_replies.py`が502にする）。"""
 
     not_found_detail: str
     #: この404をブラウザに持たせる時間。Noneは`Cache-Control`を付けない（ミドルウェアは2xxにしか付けない）。
