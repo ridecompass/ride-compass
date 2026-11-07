@@ -59,7 +59,8 @@ import regionTileConfig from "@/types/generated/region-tile-config.json";
 import { applyMapScene } from "./applyMapScene";
 import type { AxisLineState, WayConditions, WayMaterials } from "./groups/axisLines";
 import { POINT_TILE_LAYERS } from "./groups/points";
-import type { RoadClassValues, RoadEmphasis } from "./groups/roadLines";
+import type { RoadClassValues } from "./groups/roadLines";
+import type { AvoidanceChoice } from "@/lib/roadAvoidance";
 import type { RouteState } from "./groups/routes";
 import { weatherElementKey, type WeatherState } from "./groups/weather";
 import { buildLegendFilterExpression } from "./sceneBuilders";
@@ -89,8 +90,8 @@ export interface SceneLook {
   readonly paintedLensId: LensId | null;
   /** 今の範囲の道ごとの、道の線の層の値の取得結果。 */
   readonly roadClasses: { values: RoadClassValues; loading: boolean };
-  /** 道路タブで好む・避けるにした区分（地図の道の両脇に線を添える）。 */
-  readonly roadEmphasis: RoadEmphasis;
+  /** 道路タブで選んだ段（好む・避けるの道の両脇に線を添える）。 */
+  readonly roadAvoidance: AvoidanceChoice;
   /** 軸ごとの、今の範囲の道ごとの材料の取得結果。 */
   readonly wayMaterials: ReadonlyMap<string, { materials: WayMaterials; loading: boolean }>;
   /** 道の値の式が読む走る条件。 */
@@ -249,7 +250,7 @@ export function sceneInputsFrom(props: SceneWiringProps): SceneInputs {
       hiddenKeys,
       classes: props.look.roadClasses.values,
       loading: props.look.roadClasses.loading,
-      emphasis: props.look.roadEmphasis,
+      avoidance: props.look.roadAvoidance,
       inspectedShape: props.inspectedShape,
     },
     axis: axisStateFrom(props, roadTiles?.sourceLayer ?? null),

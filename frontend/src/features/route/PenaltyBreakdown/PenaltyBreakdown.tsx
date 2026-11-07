@@ -10,10 +10,10 @@ interface PenaltyBreakdownProps {
   catalog: PenaltyCatalog;
 }
 
-/** 負担の内訳: 軸ごとの秒を積んだ帯1本と、軸ごとの行（名前・負担の分）。帯の長さの全体は軸の秒の和。 */
 /** 帯グラフ。色ごとの長さが軸ごとの負担（軸の色は軸idではなく style で与える。費用の軸は管理APIで増減する）。 */
 const stackBarClass = "flex h-[10px] overflow-hidden rounded-[5px] bg-[var(--color-surface-2)]";
 
+/** 負担の内訳: 軸ごとの秒を積んだ帯1本と、軸ごとの行（名前・負担の分）。帯の長さの全体は軸の秒の和。 */
 export default function PenaltyBreakdown({ penalty, catalog }: PenaltyBreakdownProps) {
   const rows = penaltyRows(penalty, catalog);
   const total = rows.reduce((sum, row) => sum + row.seconds, 0);

@@ -279,9 +279,10 @@ DOM/MapLibreを一切知らない。`MapView.tsx`は画面の状態をsceneの�
 層のチップの状態ドットに出る。両方ONのときは下記の並列トラックが横へ分ける。
 
 **好む・避けるの道の両脇の線**: 道路タブで好む・避けるにした区分（行の段は`lib/roadAvoidance.ts: avoidanceLevelOf`。ルートを出している間は
-そのルートを生成したときの段）の道に、道の層を出していなくても細い線を左右に添える（`scene/groups/roadLines.ts: roadEmphasisOf`）。
-道路タブの見出しは地図の道の線の層の分け方なので、値は道の層と同じ feature-state から読み、線種（好むは実線・避けるは破線）は層ごとに
-決めて、当たらない道は透明にする。地図の道の層に無い見出しは投げる。ルートの線の両脇の線（[ルート設定・結果](route-settings-and-results.md)）と
+そのルートを生成したときの段）の道に、道の層を出していなくても細い線を左右に添える。道路タブの見出しは地図の道の線の層の分け方なので、
+道ごとの層の値から、当たる行の段のうち一番強いもの（`lib/roadAvoidance.ts: strongestAvoidance`。順は画面の設定の段の並び＝倍率の
+小さい順で、通るは数えない。費用と同じ決め方）を決めて feature-state に載せ、段ごとに1枚の線（`line-gap-width`で左右の2本。塗りは
+`scene/sceneBuilders.ts: avoidanceRailPaint`）で、その段の道だけを濃く描く。ルートの線の両脇の線（[ルート設定・結果](route-settings-and-results.md)）と
 同じ色・形で、地図とルートで意味をそろえる。
 
 区分に当てはまらない道は2種類を分ける。**事実の無い道は「データなし」**（値が無い。薄い灰の破線、刻みは`mapDisplay.noDataDash`）、

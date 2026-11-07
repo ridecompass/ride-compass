@@ -31,7 +31,7 @@ import { useRoadClasses } from "@/features/map/useRoadClasses";
 import { useDynamicWeatherLayers } from "@/features/map/useDynamicWeatherLayers";
 import { useStoredState } from "@/hooks/useStoredState";
 import type { Coordinates, RoadAvoidanceOverride } from "@/types/route";
-import { roadEmphasisOf } from "@/features/map/scene/groups/roadLines";
+import { avoidanceChoiceOf } from "@/lib/roadAvoidance";
 import type { MapTheme } from "@/lib/mapTheme";
 import type { RideConditions } from "@/features/map/regionApi";
 import { snapDeg } from "@/lib/cardinalLabel";
@@ -174,12 +174,18 @@ export function useMapView({
     costCatalog.lenses?.totalLens.axisId ?? null,
   );
   const shownRoadLayers = mapCatalog.roadLayers.filter((layer) => layerVisibility[layer.id] === true);
-  const roadEmphasis = useMemo(
-    () => roadEmphasisOf(config.roadClasses.avoidance, roadAvoidance),
+  const avoidanceChoice = useMemo(
+    () => avoidanceChoiceOf(config.roadClasses.avoidance, roadAvoidance),
     [config.roadClasses.avoidance, roadAvoidance],
   );
-  const emphasized = Object.keys(roadEmphasis.preferred).length + Object.keys(roadEmphasis.avoided).length > 0;
-  const roadClasses = useRoadClasses(shownRoadLayers.length > 0 || emphasized, viewport, config.roadClasses.generation);
+  const railed = [...avoidanceChoice.levels.values()].some((level) => level === "prefer" || level === "avoid");
+  const anyRoadLayerShown = shownRoadLayers.length > 0;
+  const roadClasses = useRoadClasses(anyRoadLayerShown || railed, viewport, config.roadClasses.generation);
+  // 道の層を出していない間は取得中の色で塗る線が無いので、取得中を地図へ伝えない（取るたびに地図を組み直さない）。
+  const roadClassesOnMap = useMemo(
+    () => ({ values: roadClasses.values, loading: anyRoadLayerShown && roadClasses.loading }),
+    [roadClasses.values, roadClasses.loading, anyRoadLayerShown],
+  );
   // 層の値はどの道の線の層も同じ取得から読むので、取得の状態は出ている層のどれにも出す。
   const roadClassStatus = deriveFetchLayerStatus(
     roadClasses.loading,
@@ -205,8 +211,8 @@ export function useMapView({
       dynamicWeather: weather.dynamicWeather,
       lens,
       paintedLensId: painted,
-      roadClasses,
-      roadEmphasis,
+      roadClasses: roadClassesOnMap,
+      roadAvoidance: avoidanceChoice,
       wayMaterials,
       wayConditions: formulaConditions,
       hiddenLegendKeys: debouncedHidden,
@@ -220,8 +226,8 @@ export function useMapView({
       weather.dynamicWeather,
       lens,
       painted,
-      roadClasses,
-      roadEmphasis,
+      roadClassesOnMap,
+      avoidanceChoice,
       wayMaterials,
       formulaConditions,
       debouncedHidden,

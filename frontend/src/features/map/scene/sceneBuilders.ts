@@ -93,6 +93,19 @@ export function featureStatesByName<V extends MapSceneFeatureStateValue>(
   return states;
 }
 
+const RAIL = mapDisplay.avoidanceRail;
+
+/** 道路タブで好む・避けるにした道の両脇の線の塗り（ルートの線と地図の道で共有し、同じ形にする）。1本の線を`line-gap-width`で
+ * 割り、強調する線の中心から左右へ`offsetPx`離れた2本にする。避けるは破線。 */
+export function avoidanceRailPaint(color: string, dashed: boolean, offsetPx: number): Record<string, unknown> {
+  return {
+    "line-color": color,
+    "line-width": RAIL.widthPx,
+    "line-gap-width": 2 * offsetPx - RAIL.widthPx,
+    ...(dashed ? { "line-dasharray": ["literal", [...RAIL.avoidedDash]] } : {}),
+  };
+}
+
 /** 値がどれかに入るかの式。 */
 export function valueInExpression(value: unknown, values: readonly unknown[]): unknown[] {
   return ["in", value, ["literal", [...values]]];
