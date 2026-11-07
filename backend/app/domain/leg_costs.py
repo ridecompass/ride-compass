@@ -31,7 +31,6 @@ from app.domain.cost_axes import (
     EFFORT_AXES,
     HEADWIND_FACT_LABEL,
     STOPS_FACT_LABEL,
-    CategoricalBurden,
     CostAxisDefinitions,
     EffortItem,
 )
@@ -196,13 +195,6 @@ def burden_weights(axes: CostAxisDefinitions, parameters: LedgerParameters, mate
 
 
 #: 量で出す体力の事実の名前と単位（転がりは路面の区分の名前で出す）。
-_EFFORT_FACT_NAMES: dict[EffortItem, tuple[str, str]] = {
-    "gravity": ("登り", "m"),
-    "air": (HEADWIND_FACT_LABEL, "m/s"),
-    "inertia": (STOPS_FACT_LABEL, "回"),
-}
-
-
 def axis_facts(axes: CostAxisDefinitions, materials: Mapping[str, MaterialColumn], fills: MaterialFills,
                rows: np.ndarray, distance_m: np.ndarray, penalty_by_axis: Mapping[str, np.ndarray],
                ascent_m: float | None, headwind_ms: np.ndarray | None, stops: float) -> dict[str, AxisFact]:
@@ -211,45 +203,40 @@ def axis_facts(axes: CostAxisDefinitions, materials: Mapping[str, MaterialColumn
     ルートの事実と道の窓が、どちらもここで作る。
 
     - 登坂は登り`ascent_m`、向かい風は向かい風の成分の長さで重みを付けた平均（風を読めなければNone）、停止は止まる回数`stops`。
-    - 摩擦と、区分の材料の道のストレスの軸は、その軸の秒に一番効いた区分の名前（値は無い。秒が同じなら長い区分）。
-    - 数の材料の道のストレスの軸は、その軸の秒に一番効いた区間の材料の値（欠けは費用と同じく取込の範囲全体の平均で埋めた値）。
-      どの区間でも秒が0なら、効いた区間が無いので載せない。
+    - 摩擦（転がり抵抗の分け方）と道のストレスの軸（定義の材料）は、読む材料の値（`_material_fact`）。
     """
     mean_headwind = None if headwind_ms is None else length_weighted_mean(headwind_ms, distance_m)
-    quantities: dict[EffortItem, float | None] = {
-        "gravity": ascent_m,
-        "air": None if mean_headwind is None else round(mean_headwind, WIND_MS_DECIMALS),
-        "inertia": round(stops, STOP_COUNT_DECIMALS),
+    numbers: dict[EffortItem, tuple[str, float | None, str]] = {
+        "gravity": ("登り", ascent_m, "m"),
+        "air": (HEADWIND_FACT_LABEL, None if mean_headwind is None else round(mean_headwind, WIND_MS_DECIMALS), "m/s"),
+        "inertia": (STOPS_FACT_LABEL, round(stops, STOP_COUNT_DECIMALS), "回"),
     }
-    rolling = rolling_resistance_material_id()
     facts: dict[str, AxisFact] = {}
     for axis_id, seconds in penalty_by_axis.items():
         item = EFFORT_AXES.get(axis_id)
         fact: AxisFact | None
-        if item == "rolling":
-            fact = None if rolling is None else _class_fact(rolling, materials, rows, seconds, distance_m)
-        elif item is not None:
-            value = quantities[item]
-            label, unit = _EFFORT_FACT_NAMES[item]
+        if item in numbers:
+            label, value, unit = numbers[item]
             fact = None if value is None else AxisFact(label=label, value=value, unit=unit)
         else:
-            burden = axes.burden[axis_id].burden
-            if isinstance(burden, CategoricalBurden):
-                fact = _class_fact(burden.material, materials, rows, seconds, distance_m)
-            else:
-                spec = cast(MaterialSpec, material_spec(burden.material))
-                top = int(np.argmax(seconds))
-                value = fills.fill(burden.material, cast(np.ndarray, materials[burden.material])[rows[top:top + 1]])[0]
-                fact = AxisFact(label=spec.label, value=float(value), unit=spec.unit) if seconds[top] > 0 else None
+            material = rolling_resistance_material_id() if item == "rolling" else axes.burden[axis_id].burden.material
+            fact = None if material is None else _material_fact(material, materials, fills, rows, seconds, distance_m)
         if fact is not None:
             facts[axis_id] = fact
     return facts
 
 
-def _class_fact(material_id: str, materials: Mapping[str, MaterialColumn], rows: np.ndarray, seconds: np.ndarray,
-                distance_m: np.ndarray) -> AxisFact | None:
-    """区分の材料`material_id`のうち、秒`seconds`に一番効いた区分の名前（秒が同じなら長い区分）。値なしの区間しか無ければNone。"""
-    column = cast(CategoricalColumn, materials[material_id])
+def _material_fact(material_id: str, materials: Mapping[str, MaterialColumn], fills: MaterialFills, rows: np.ndarray,
+                   seconds: np.ndarray, distance_m: np.ndarray) -> AxisFact | None:
+    """材料`material_id`の、秒`seconds`に一番効いた所の値（名前と単位は材料の宣言から）。区分の列なら区分の名前（秒が同じなら長い
+    区分。値なしの区間しか無ければNone）、数の列なら一番効いた区間の値（欠けは費用と同じく取込の範囲全体の平均で埋める。どの区間も
+    秒が0なら、効いた区間が無いのでNone）。"""
+    spec = cast(MaterialSpec, material_spec(material_id))
+    column = materials[material_id]
+    if not isinstance(column, CategoricalColumn):
+        top = int(np.argmax(seconds))
+        value = fills.fill(material_id, column[rows[top:top + 1]])[0]
+        return AxisFact(label=spec.label, value=float(value), unit=spec.unit) if seconds[top] > 0 else None
     codes = column.codes[rows]
     size = len(column.vocab)
     present = np.bincount(codes, minlength=size) > 0
@@ -260,7 +247,7 @@ def _class_fact(material_id: str, materials: Mapping[str, MaterialColumn], rows:
     by_seconds = np.bincount(codes, weights=seconds, minlength=size)[candidates]
     by_length = np.bincount(codes, weights=distance_m, minlength=size)[candidates]
     key = cast(str, column.vocab[candidates[np.lexsort((by_length, by_seconds))[-1]]])
-    return AxisFact(label=cast(MaterialSpec, material_spec(material_id)).value_labels[key], value=None, unit="")
+    return AxisFact(label=spec.value_labels[key], value=None, unit="")
 
 
 @njit(cache=True, nogil=True)
