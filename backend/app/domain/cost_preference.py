@@ -29,11 +29,16 @@ def multiplier_label(value: float) -> str:
     return "×∞" if math.isinf(value) else f"×{value:.2g}"
 
 
+#: 負担を数えないことの、段と並べて出す名前（費用の軸の無効と、全体のつまみの0）。
+DISABLED_LABEL = "無効"
+
+
 def _levels(*values: float) -> tuple[CostLevel, ...]:
-    return tuple(CostLevel(value, multiplier_label(value)) for value in values)
+    return tuple(CostLevel(value, DISABLED_LABEL if value == 0 else multiplier_label(value)) for value in values)
 
 
-#: 全体のつまみの段。
+#: 全体のつまみの段。0は「無効」で、どの軸も数えない（全部の軸を無効にしたのと同じ。`domain/ledger_costs.py:
+#: LedgerParameters.counts`）。
 COST_STRENGTH_LEVELS = _levels(0.0, 0.5, STANDARD_COST_FACTOR, 1.5, 2.0)
 #: 軸ごとの倍率の段（数えない軸は倍率でなく無効で表すので、0の段は無い）。
 COST_MULTIPLIER_LEVELS = _levels(0.5, STANDARD_COST_FACTOR, 2.0)

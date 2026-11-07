@@ -14,9 +14,10 @@ export const STANDARD_COST_PREFERENCE: CostPreference = {
   disabled_axes: [],
 };
 
-/** 軸`axisId`を数えるか（無効にしていないか）。無効の軸は、費用にも結果にも地図にも出ない。 */
+/** 軸`axisId`を数えるか（全体のつまみを無効（0）にしておらず、その軸を無効にしていないか。backendの
+ * `domain/ledger_costs.py: LedgerParameters.counts`と同じ決め方）。数えない軸は、費用にも結果にも地図にも出ない。 */
 export function countsAxis(preference: CostPreference, axisId: string): boolean {
-  return !preference.disabled_axes.includes(axisId);
+  return preference.strength > 0 && !preference.disabled_axes.includes(axisId);
 }
 
 /** 軸を数えない（無効）ことを、倍率と並べて選ぶ値。 */
@@ -31,6 +32,11 @@ export function withAxisSetting(preference: CostPreference, axisId: string, sett
   return setting === AXIS_OFF
     ? { ...preference, multipliers, disabled_axes: [...disabledAxes, axisId] }
     : { ...preference, multipliers: { ...multipliers, [axisId]: setting }, disabled_axes: disabledAxes };
+}
+
+/** 軸`axisId`に利用者が選んだ設定（倍率か無効。全体のつまみには依らない）。 */
+export function axisSettingOf(preference: CostPreference, axisId: string): AxisSetting {
+  return preference.disabled_axes.includes(axisId) ? AXIS_OFF : multiplierOf(preference, axisId);
 }
 
 /** 軸`axisId`の倍率（書いていなければ標準）。 */

@@ -7,6 +7,7 @@ import {
   AXIS_OFF,
   STANDARD_COST_FACTOR,
   STANDARD_COST_PREFERENCE,
+  axisSettingOf,
   countsAxis,
   multiplierOf,
   withAxisSetting,
@@ -82,7 +83,7 @@ export default function RouteSettingsPanel({ costPreference, onCostPreferenceCha
       )}
       {costPreference.strength === 0 && catalog.axes.length > 0 && (
         <p className={textVariants({ variant: "hint" })} role="status">
-          「条件」タブの負担の強さが ×0 のため、ここの倍率は効きません。
+          「条件」タブの負担の強さが無効のため、ここの倍率は効きません。
         </p>
       )}
       <ul className={cn("flex flex-col gap-1.5", costPreference.strength === 0 && "opacity-50")}>
@@ -105,7 +106,7 @@ export default function RouteSettingsPanel({ costPreference, onCostPreferenceCha
               aria-label={`${axis.label}の倍率`}
               usage="この種類の負担を所要時間に足すときに掛ける倍率を選びます。「無効」はこの負担を数えず、結果にも地図にも出しません。"
               levels={AXIS_LEVELS}
-              value={countsAxis(costPreference, axis.axisId) ? multiplierOf(costPreference, axis.axisId) : AXIS_OFF}
+              value={axisSettingOf(costPreference, axis.axisId)}
               onChange={(setting) => onCostPreferenceChange(withAxisSetting(costPreference, axis.axisId, setting))}
             />
           </li>

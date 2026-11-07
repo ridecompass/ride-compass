@@ -1,5 +1,5 @@
 import type { CostAxisCatalog } from "@/hooks/useCostAxisCatalog";
-import { countsAxis, multiplierOf, STANDARD_COST_FACTOR } from "@/lib/costPreference";
+import { AXIS_OFF, axisSettingOf, STANDARD_COST_FACTOR } from "@/lib/costPreference";
 import type { CostPreference } from "@/types/route";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 
@@ -13,8 +13,8 @@ export interface CostLevel {
 export const COST_STRENGTH_LEVELS: readonly CostLevel[] = routeGenerateConfig.cost_strength_levels;
 /** 軸ごとの倍率の段。 */
 export const COST_MULTIPLIER_LEVELS: readonly CostLevel[] = routeGenerateConfig.cost_multiplier_levels;
-/** 軸を数えない（無効にした）ことを、倍率の段と並べて出す名前。 */
-export const DISABLED_AXIS_LABEL = "無効";
+/** 負担を数えないことを、段と並べて出す名前（費用の軸の無効と、全体のつまみの0。backendの宣言）。 */
+export const DISABLED_AXIS_LABEL = routeGenerateConfig.disabled_label;
 
 /** 段`value`の名前。 */
 function levelLabel(levels: readonly CostLevel[], value: number): string {
@@ -28,11 +28,9 @@ export function costPreferenceDescription(preference: CostPreference, catalog: C
       ? [`負担の強さ ${levelLabel(COST_STRENGTH_LEVELS, preference.strength)}`]
       : []),
     ...catalog.axes.flatMap((axis) => {
-      if (!countsAxis(preference, axis.axisId)) return [`${axis.label} ${DISABLED_AXIS_LABEL}`];
-      const multiplier = multiplierOf(preference, axis.axisId);
-      return multiplier !== STANDARD_COST_FACTOR
-        ? [`${axis.label} ${levelLabel(COST_MULTIPLIER_LEVELS, multiplier)}`]
-        : [];
+      const setting = axisSettingOf(preference, axis.axisId);
+      if (setting === AXIS_OFF) return [`${axis.label} ${DISABLED_AXIS_LABEL}`];
+      return setting !== STANDARD_COST_FACTOR ? [`${axis.label} ${levelLabel(COST_MULTIPLIER_LEVELS, setting)}`] : [];
     }),
   ];
   return parts.length > 0 ? parts.join("・") : "標準";

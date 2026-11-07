@@ -155,7 +155,7 @@ from app.domain.leg_costs import MISSING_TRAVEL_DATA_WORDING
 from app.domain.cost_axes import LENS_QUANTITY_LABEL, LENS_UNIT
 from app.domain.lens_equivalents import LENS_EQUIVALENTS_CONDITION_WORDING
 from app.config import Settings
-from app.domain.cost_preference import COST_MULTIPLIER_LEVELS, COST_STRENGTH_LEVELS, STANDARD_COST_FACTOR
+from app.domain.cost_preference import COST_MULTIPLIER_LEVELS, COST_STRENGTH_LEVELS, DISABLED_LABEL, STANDARD_COST_FACTOR
 from app.domain.tuning import client_tuning_ids
 from app.domain.weather import PRECIPITATION_MIN_MM
 from app.infrastructure.msm_client import DEFAULT_UPDATE_INTERVAL_SECONDS as MSM_UPDATE_INTERVAL_SECONDS
@@ -596,6 +596,8 @@ def main() -> None:
             "standard_cost_factor": STANDARD_COST_FACTOR,
             "cost_strength_levels": [level._asdict() for level in COST_STRENGTH_LEVELS],
             "cost_multiplier_levels": [level._asdict() for level in COST_MULTIPLIER_LEVELS],
+            # 負担を数えないことの名前（費用の軸の無効の段と、全体のつまみの0の段）。
+            "disabled_label": DISABLED_LABEL,
             "min_assumed_speed_kmh": MIN_ASSUMED_SPEED_KMH,
             "max_assumed_speed_kmh": MAX_ASSUMED_SPEED_KMH,
             # フロントのポーリングの打ち切り。backendが結果を持つ時間より長く待つと、

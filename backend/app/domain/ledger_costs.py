@@ -56,8 +56,9 @@ class LedgerParameters:
         return self.multipliers.get(axis_id, STANDARD_COST_FACTOR)
 
     def counts(self, axis_id: str) -> bool:
-        """軸`axis_id`を数えるか（無効にしていないか）。費用・内訳・地図のレンズ・凡例の目安は、どれもこれで軸を選ぶ。"""
-        return axis_id not in self.disabled_axes
+        """軸`axis_id`を数えるか（全体のつまみを無効（0）にしておらず、その軸を無効にしていないか）。費用・内訳・地図のレンズ・
+        凡例の目安は、どれもこれで軸を選ぶ。"""
+        return self.effective_strength > 0 and axis_id not in self.disabled_axes
 
 
 def current_ledger_parameters(preference: CostPreference) -> LedgerParameters:
