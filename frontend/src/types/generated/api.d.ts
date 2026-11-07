@@ -1902,8 +1902,6 @@ export interface components {
             unit: string;
             /** Description */
             description: string;
-            /** Default */
-            default: number;
             /** Minimum */
             minimum: number;
             /** Maximum */
@@ -1914,13 +1912,11 @@ export interface components {
             effect_title: string;
             /** Value */
             value: number;
-            /** Overridden */
-            overridden: boolean;
         };
         /** TuningUpdateRequest */
         TuningUpdateRequest: {
             /** Value */
-            value: number | null;
+            value: number;
         };
         /** Twilight */
         Twilight: {
