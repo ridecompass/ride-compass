@@ -98,7 +98,8 @@ async def select_via_nodes(
     context.legs = [*context.legs[:leg_index], outbound]
     forward_tree = await asyncio.to_thread(
         lambda: build_turn_expanded_tree(
-            context.turn_structure, avoiding_traveled(outbound.cost_bins_lazy, traveled), context.statics.edge_length_m,
+            context.turn_structure, avoiding_traveled(outbound.cost_bins_lazy, outbound.travel_bins_lazy, traveled),
+            context.statics.edge_length_m,
             origin_states(context.statics, start_node), context.statics.csr.node_count,
             edge_seconds=outbound.travel_bins_lazy, bin_seconds=outbound.bin_seconds, transition_cost=context.transition_cost
         )
@@ -134,7 +135,8 @@ async def select_via_nodes(
     context.legs = [*context.legs[:leg_index + 1], inbound]
     backward_tree = await asyncio.to_thread(
         lambda: build_turn_expanded_tree(
-            context.turn_structure, avoiding_traveled(inbound.cost_lazy, traveled), context.statics.edge_length_m,
+            context.turn_structure, avoiding_traveled(inbound.cost_lazy, inbound.travel_seconds_lazy, traveled),
+            context.statics.edge_length_m,
             destination_states(context.turn_structure, destination_index),
             context.statics.csr.node_count, reverse=True, edge_seconds=inbound.travel_seconds_lazy, transition_cost=context.transition_cost
         )
@@ -267,7 +269,7 @@ async def select_fastest_route(context: RoadGraphContext, fixed: FixedLegs) -> T
         time_bins = leg.travel_bins_lazy
         edges = await asyncio.to_thread(
             turn_expanded_shortest_path,
-            context.turn_structure, time_bins, heuristic_to(context, to_node),
+            context.turn_structure, time_bins, heuristic_to(context, to_node, 1.0),
             origin_states(context.statics, from_node), to_node,
             time_bins, leg.bin_seconds, transition_cost=context.turn_structure.turn_seconds,
         )

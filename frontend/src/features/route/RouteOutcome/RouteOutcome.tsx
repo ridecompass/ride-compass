@@ -41,7 +41,7 @@ const GROUP_MARKS: Partial<Record<RouteListGroup, { Icon: typeof FastestRouteIco
   spliced: { Icon: RouteSpliceIcon, meaning: "合成ルート" },
 };
 
-/** カードの下の帯の色。候補を並べるのと同じ、ルート全体の1kmあたりの負担（曲がる所と回避指定を含む）を、総合のレンズの段で
+/** カードの下の帯の色。候補を並べるのと同じ、ルート全体の1kmあたりの負担（曲がる所と、好む道・避ける道の増減を含む）を、総合のレンズの段で
  * 示す。値が無ければ値なしの色。 */
 function penaltyColor(route: RouteCandidate, catalog: CostAxisCatalog, ground: MapTheme): string {
   if (catalog.lenses === null || route.penalty_seconds_per_km === null) return NO_DATA_LEGEND_BAND.color;

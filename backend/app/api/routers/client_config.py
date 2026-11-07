@@ -10,7 +10,7 @@ from app.api.dependencies import get_region_service
 from app.domain.road_class_catalog import RoadClassCatalog, road_class_catalog
 from app.domain.road_classes import current_road_classes
 from app.domain.strict_model import StrictModel
-from app.domain.tuning import client_tuning_values
+from app.domain.tuning import client_tuning_values, tuning_value
 from app.services.region_service import RegionService
 
 router = APIRouter()
@@ -37,5 +37,5 @@ async def get_client_config(region_service: RegionService = Depends(get_region_s
         client_tuning={**client_tuning_values(), **await region_service.get_rebuilt_client_tuning()},
         tile_versions=await region_service.tile_versions(),
         accident_years=await region_service.get_accident_years(),
-        road_classes=road_class_catalog(current_road_classes()),
+        road_classes=road_class_catalog(current_road_classes(), tuning_value("avoidance.avoid_cost_multiplier")),
     )

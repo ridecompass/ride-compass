@@ -1,7 +1,7 @@
 /**
  * `hooks/useCostAxisCatalog.ts: costAxisCatalogFromResponse`——軸の識別色。
  *
- * 見るもの: 一覧の応答から組んだ内訳の行（軸・回避指定）が、どれも違う色で、データなしの色を使わないこと。
+ * 見るもの: 一覧の応答から組んだ内訳の行（軸・避ける道）が、どれも違う色で、データなしの色を使わないこと。
  *
  * ここで見ないもの: 内訳の行の並びと名前 → `lib/routePenalty.test.ts`・`features/route/RouteAxisProfile/RouteAxisProfile.test.tsx`。
  */
@@ -14,14 +14,15 @@ import palette from "@/types/generated/palette.json";
 import { costAxisCatalogFromResponse } from "./useCostAxisCatalog";
 
 describe("costAxisCatalogFromResponse", () => {
-  it("内訳の行（軸・回避指定）は、どれも違う色で、データなしの色を使わない", () => {
+  it("内訳の行（軸・避ける道）は、どれも違う色で、データなしの色を使わない", () => {
     const catalog = costAxisCatalogFromResponse(
       costAxisCatalog(...["ascent", "headwind", "stopping", "friction", "vibration"].map((id) => costAxisEntry(id))),
     );
     const colors = penaltyRows(
       {
         axis_seconds: { ascent: 1, headwind: 1, stopping: 1, friction: 1, vibration: 1 },
-        avoidance_seconds: 1,
+        preferred_seconds: 0,
+        avoided_seconds: 1,
         total_seconds: 6,
       },
       catalog,

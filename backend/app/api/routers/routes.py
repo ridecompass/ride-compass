@@ -57,7 +57,7 @@ _running_generate_tasks: set[asyncio.Task] = set()
 
 
 class RoadAvoidanceOverride(RootModel[dict[str, AvoidanceLevel]]):
-    """避け方を選べる行（`<分け方>.<区分>`）→避け方（通る・なるべく避ける・通らない）。要求では行の一部でもよく、
+    """避け方を選べる行（`<分け方>.<区分>`）→避け方（好む・通る・なるべく避ける・通らない）。要求では行の一部でもよく、
     応答には今の区分の行を全部エコーする（`domain/road_avoidance.py: resolve_road_avoidance`）。"""
 
 

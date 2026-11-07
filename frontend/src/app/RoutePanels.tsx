@@ -8,6 +8,7 @@ import { dotVariants } from "@/components/ui/Dot/Dot";
 import { RouteIcon } from "@/components/ui/icons/icons";
 import { RouteSettingsIcon } from "@/components/ui/icons/lucideIcons";
 import { Tabs } from "@/components/ui/Tabs/Tabs";
+import { ROAD_SETTINGS_TAB_NAME } from "@/lib/screenNames";
 import GenerateRouteActions from "@/features/route/GenerateRouteActions/GenerateRouteActions";
 import type { SettingsTab } from "@/features/route/RouteForm/RouteForm";
 import SettingsTabsList from "@/features/route/RouteForm/SettingsTabsList";
@@ -27,8 +28,7 @@ const MOBILE_TABS = [
     sheet: "routeSettings",
     label: "ルート設定",
     Icon: RouteSettingsIcon,
-    usage:
-      "ルートを作る条件[距離・地点・負担・回避・保存した地点と設定]と「ルート生成」を開きます。もう一度押すと閉じます。",
+    usage: `ルートを作る条件[距離・地点・負担・${ROAD_SETTINGS_TAB_NAME}・保存した地点と設定]と「ルート生成」を開きます。もう一度押すと閉じます。`,
   },
   {
     sheet: "routeOutcome",

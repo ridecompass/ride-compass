@@ -46,7 +46,7 @@ interface RouteFormProps extends Omit<RoutePointsProps, "conditions"> {
   onPlaceFound: (role: PinRole, candidate: PlaceCandidate, waypointIndex: number | null) => void;
   /** 「負担」タブの中身。 */
   weightsPanel: React.ReactNode;
-  /** 「回避」タブの中身。 */
+  /** 「道路」タブの中身。 */
   exclusionsPanel: React.ReactNode;
   /** 「条件」タブの、いまの設定を保存するアイコン（保存するものは各タブに及ぶが、条件を詰める所で保存する）。 */
   saveConditionsButton: React.ReactNode;

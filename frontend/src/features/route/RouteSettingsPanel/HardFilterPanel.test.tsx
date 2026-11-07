@@ -1,5 +1,5 @@
 /**
- * `RouteSettingsPanel/HardFilterPanel.tsx`——「回避」タブ。道の区分の行ごとの避け方の選びと、自転車が通れない道の固定の行。
+ * `RouteSettingsPanel/HardFilterPanel.tsx`——「道路」タブ。道の区分の行ごとの避け方の選びと、自転車が通れない道の固定の行。
  *
  * 見るもの: 固定の行を「通らない」に鍵を付けて並びの先頭に出し、選ぶ操作を持たないこと（画面の設定が届く前も出す）。行の避け方を
  * 節ごとに畳んで並べ（行の無い節は出さない）、選ぶとその行だけを変えた値を上げ、既定から変えた行の数を畳んだ見出しに出すこと。
@@ -70,9 +70,9 @@ describe("HardFilterPanel", () => {
     expect(screen.queryByRole("button", { name: /^行の無い節/ })).toBeNull();
 
     await userEvent.click(sectionTrigger("路面"));
-    expect(checkedLevel("砂利")).toHaveTextContent("通る");
+    expect(checkedLevel("砂利")).toHaveTextContent("×1");
     await userEvent.click(
-      within(screen.getByRole("radiogroup", { name: "砂利の避け方" })).getByRole("radio", { name: "通らない" }),
+      within(screen.getByRole("radiogroup", { name: "砂利の避け方" })).getByRole("radio", { name: "×∞" }),
     );
 
     expect(onRoadAvoidanceChange).toHaveBeenCalledExactlyOnceWith({ private: "avoid", gravel: "exclude" });

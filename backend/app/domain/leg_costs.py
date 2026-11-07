@@ -41,7 +41,7 @@ from app.domain.elevation_profile import FLAT, ElevationProfiles
 from app.domain.search_materials import SearchMaterials
 from app.domain.ledger_costs import LedgerCosts, LedgerParameters, burden_per_km
 from app.domain.road_network import MaterialFills
-from app.domain.road_avoidance import RoadAvoidanceMasks
+from app.domain.road_avoidance import RoadAvoidanceMasks, level_multipliers
 from app.domain.search_graph import EDGE_VALUE_DTYPE, kernel_array
 from app.domain.traffic import POI_COUNT_KINDS, stop_count_material_ids, stop_event
 from app.domain.wind import WindForecastSeries
@@ -81,9 +81,10 @@ class LegValues:
     # 区間ごとの進行方向への向かい風成分（m/s、風が無ければ0）。
     headwind_ms: np.ndarray
     # 軸id→区間ごとの代償の秒（`domain/ledger_costs.py: LedgerCosts.row_seconds`）と、避け方の倍率が区間の所要時間と
-    # 代償に上乗せした秒。
+    # 代償から下げた秒（0以下）と上乗せした秒（0以上）。
     penalty_by_axis: dict[str, np.ndarray]
-    avoidance_seconds: np.ndarray
+    preferred_seconds: np.ndarray
+    avoided_seconds: np.ndarray
 
 
 class _ComposedBin(NamedTuple):
@@ -264,7 +265,7 @@ def _bin_costs(
 
     所要時間は走行時間に停止の待ちを足したもの。探索から除く区間は所要時間も費用も
     無限大にする（探索から見た通行可否をコストの下地だけで表すため）。費用は所要時間に代償の秒
-    （`domain/ledger_costs.py: LedgerCosts.bin_seconds`）を足し、避ける区間の割り増しを掛けたもの。計算はfloat64で行い、
+    （`domain/ledger_costs.py: LedgerCosts.bin_seconds`）を足し、避け方の倍率を掛けたもの。計算はfloat64で行い、
     最後に`EDGE_VALUE_DTYPE`へ丸める。`full_row_index`は切り出した区間の行→探索の行（載らない区間は-1）。
     """
     cost_lazy = np.empty(lazy_count, dtype=EDGE_VALUE_DTYPE)
@@ -338,10 +339,11 @@ class LegCostComposer:
         self._categorical_material_arrays = dict(
             zip(search_materials.categorical_material_ids, search_materials.categorical_material_columns, strict=True)
         )
-        # 探索から除く区間（費用を無限大にする）と、費用を割り増す区間。割り増しは探索の費用にだけ掛け、
-        # 所要時間には掛けない。倍率は1以上で、費用を下げないので探索の下限の見積もりは崩れない。
+        # 探索から除く区間（費用を無限大にする）と、避け方の倍率。倍率は探索の費用にだけ掛け、所要時間には掛けない。
         self._excluded = search_masks.excluded
-        self._cost_scale = np.where(search_masks.avoided, avoid_cost_multiplier, 1.0)
+        multipliers = level_multipliers(avoid_cost_multiplier)
+        self._cost_scale = np.select(
+            [search_masks.avoided, search_masks.preferred], [multipliers["avoid"], multipliers["prefer"]], multipliers["pass"])
         self._wind_series = wind_series
         # 各Edgeの中点に最も近い予報の格子点（切り出した区間の順。格子点の並びの外の中点は端の格子点へ寄せる）。
         self._wind_points = wind_series.lattice.points_of(search_materials.mid_lat, search_materials.mid_lon)
@@ -486,10 +488,17 @@ class LegCostComposer:
         headwind, crosswind = self._wind_context(time.take(rows), _row_taker(rows)).components()
         inputs = self._travel_inputs
         travel_seconds, penalty_by_axis = self._ledger.row_seconds(inputs.model, headwind, crosswind, rows)
-        # 探索の費用の式（`_bin_costs`）の、避け方の倍率が掛かる前の秒に、倍率の1を越えた分を掛けたもの。
-        avoidance_seconds = (self._cost_scale[rows] - 1.0) * (
+        # 探索の費用の式（`_bin_costs`）の、避け方の倍率が掛かる前の秒に、倍率の1との差を掛けたもの。
+        scaled = (self._cost_scale[rows] - 1.0) * (
             travel_seconds + inputs.wait_seconds[rows] + sum(penalty_by_axis.values(), np.zeros(len(rows))))
-        return LegValues(headwind_ms=headwind, penalty_by_axis=penalty_by_axis, avoidance_seconds=avoidance_seconds)
+        return LegValues(headwind_ms=headwind, penalty_by_axis=penalty_by_axis,
+                         preferred_seconds=np.minimum(scaled, 0.0), avoided_seconds=np.maximum(scaled, 0.0))
+
+    @property
+    def min_cost_scale(self) -> float:
+        """区間の費用が所要時間に対して下がる最小の倍率（「好む」の区間があればその倍率、無ければ1）。探索の見込み
+        （`domain/route_search.py: heuristic_seconds`）を、費用の下界に保つよう緩める。"""
+        return float(np.min(self._cost_scale, initial=1.0))
 
     @property
     def distance_m(self) -> np.ndarray:

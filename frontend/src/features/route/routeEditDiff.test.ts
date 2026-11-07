@@ -42,13 +42,14 @@ function deltasOf(metrics: MetricDifference[]): Record<string, number | null> {
 }
 
 describe("editDifference", () => {
-  it("距離・所要時間・負担（回避指定を含む内訳の和）の差を、編集後から元を引いて出す", () => {
+  it("距離・所要時間・負担（避ける道で上乗せした秒を含む内訳の和）の差を、編集後から元を引いて出す", () => {
     const origin = route("ABCDEF", {
       distance_km: 20,
       estimated_duration_seconds: 3600,
       penalty: {
         axis_seconds: { ascent: 300, vibration: 60 },
-        avoidance_seconds: 60,
+        preferred_seconds: 0,
+        avoided_seconds: 60,
         total_seconds: 420,
       },
     });
@@ -57,7 +58,8 @@ describe("editDifference", () => {
       estimated_duration_seconds: 3300,
       penalty: {
         axis_seconds: { ascent: 120, vibration: 60 },
-        avoidance_seconds: 0,
+        preferred_seconds: 0,
+        avoided_seconds: 0,
         total_seconds: 180,
       },
     });
@@ -67,7 +69,7 @@ describe("editDifference", () => {
   it("どちらかに所要時間が無ければ、その差はnull", () => {
     const withValues = route("ABCDEF", {
       estimated_duration_seconds: 3600,
-      penalty: { axis_seconds: { ascent: 300 }, avoidance_seconds: 0, total_seconds: 300 },
+      penalty: { axis_seconds: { ascent: 300 }, preferred_seconds: 0, avoided_seconds: 0, total_seconds: 300 },
     });
     const withoutValues = route("ABQDEF", { estimated_duration_seconds: null });
     for (const [origin, edited] of [

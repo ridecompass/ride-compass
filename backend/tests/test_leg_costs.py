@@ -80,13 +80,14 @@ def _series(speeds_by_hour: list[float], from_deg: float = NORTH) -> WindForecas
 CALM_SERIES = _series([0.0, 0.0])
 
 
-def _composer(matrix: SearchMaterials, *, excluded=None, avoided=None, series=CALM_SERIES, lazy=None,
+def _composer(matrix: SearchMaterials, *, excluded=None, avoided=None, preferred=None, series=CALM_SERIES, lazy=None,
               fills=NO_FILLS, axes: CostAxisDefinitions | None = None, parameters=NO_PENALTY) -> LegCostComposer:
     n = len(matrix.distance_m)
     none = np.zeros(n, dtype=bool)
     masks = RoadAvoidanceMasks(
         excluded=none if excluded is None else np.asarray(excluded, dtype=bool),
         avoided=none if avoided is None else np.asarray(avoided, dtype=bool),
+        preferred=none if preferred is None else np.asarray(preferred, dtype=bool),
     )
     return LegCostComposer(
         matrix, masks, AVOID_MULTIPLIER, series, START, CRUISE_KMH,
@@ -175,12 +176,14 @@ def test_an_excluded_segment_cannot_be_passed():
     assert np.isfinite(leg.cost_lazy[1])
 
 
-def test_a_segment_to_avoid_costs_more_but_takes_the_same_time():
-    """割り増しが所要時間へ混ざると、避けた道を通った候補の所要時間と到着の予想が延びる。"""
-    leg = _snapshot(_matrix(2), avoided=[True, False])
+def test_a_segment_to_avoid_costs_more_and_one_to_prefer_costs_less_but_both_take_the_same_time():
+    """好む道は避ける道の倍率の逆数で費用が下がる。倍率が所要時間へ混ざると、避けた道・好む道を通った候補の所要時間と到着の
+    予想が延び縮みする。"""
+    leg = _snapshot(_matrix(3), avoided=[True, False, False], preferred=[False, False, True])
 
     assert leg.cost_lazy[0] == pytest.approx(AVOID_MULTIPLIER * leg.cost_lazy[1])
-    assert leg.travel_seconds_lazy[0] == pytest.approx(leg.travel_seconds_lazy[1])
+    assert leg.cost_lazy[2] == pytest.approx(leg.cost_lazy[1] / AVOID_MULTIPLIER)
+    assert leg.travel_seconds_lazy.tolist() == pytest.approx([leg.travel_seconds_lazy[1]] * 3)
 
 
 # --- 探索の行順 ---------------------------------------------------------------

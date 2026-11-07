@@ -9,8 +9,14 @@ import { describe, expect, it } from "vitest";
 
 import { penaltyRows, type PenaltyCatalog } from "./routePenalty";
 
-const PENALTY = { axis_seconds: { stopping: 30 }, avoidance_seconds: 120, total_seconds: 150 };
-const NOT_LOADED: Omit<PenaltyCatalog, "failed"> = { axes: [], axisColors: {}, avoidanceLabel: "", loaded: false };
+const PENALTY = { axis_seconds: { stopping: 30 }, preferred_seconds: 0, avoided_seconds: 120, total_seconds: 150 };
+const NOT_LOADED: Omit<PenaltyCatalog, "failed"> = {
+  axes: [],
+  axisColors: {},
+  preferredLabel: "",
+  avoidedLabel: "",
+  loaded: false,
+};
 
 describe("penaltyRows", () => {
   it.each([

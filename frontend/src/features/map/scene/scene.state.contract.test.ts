@@ -209,7 +209,7 @@ describe("状態を地図へ伝えた結果", () => {
       ["レンズを選んでいないとき", UNSELECTED_LENS_ID, ["軽い", "重い", "重い"]],
       ["軸のレンズ", "vibration", ["軽い", "重い", "軽い"]],
     ] as const)("%s（%s）は、区間の1kmあたりの代償の秒をそのレンズの段で塗る", (_, lens, expected) => {
-      // どの段も境目は1kmあたり10秒。区間は2kmずつで、1kmあたり 前: 登坂2・振動2（回避指定300）、中: 振動15、後: 登坂15。
+      // どの段も境目は1kmあたり10秒。区間は2kmずつで、1kmあたり 前: 登坂2・振動2（避ける道300）、中: 振動15、後: 登坂15。
       const bands = { thresholds: [10], band_labels: ["軽い", "重い"] };
       const catalog = costAxisCatalogFromResponse(
         costAxisCatalog(
@@ -218,8 +218,8 @@ describe("状態を地図へ伝えた結果", () => {
         ),
       );
       // 2kmの区間の内訳と、backend がそれから導く1kmあたりの値。
-      const penalty = (ascent: number, vibration: number, avoidance = 0) =>
-        penaltyFields({ ascent, vibration }, 2, avoidance);
+      const penalty = (ascent: number, vibration: number, avoided = 0) =>
+        penaltyFields({ ascent, vibration }, 2, avoided);
       const { map, handle } = createRecordingMap();
       rebuild(
         map,

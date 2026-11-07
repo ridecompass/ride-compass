@@ -10,28 +10,28 @@ interface PenaltyBreakdownProps {
   catalog: PenaltyCatalog;
 }
 
-/** 負担の内訳: 軸ごとの秒を積んだ帯1本と、軸ごとの行（名前・負担の分）。帯の長さの全体は内訳の和。 */
+/** 負担の内訳: 軸ごとの秒を積んだ帯1本と、軸ごとの行（名前・負担の分）。帯は正の行だけを積み、長さの全体はその和（好む道で
+ * 下げた負の行は積めない）。 */
 /** 帯グラフ。色ごとの長さが軸ごとの負担（軸の色は軸idではなく style で与える。費用の軸は管理APIで増減する）。 */
 const stackBarClass = "flex h-[10px] overflow-hidden rounded-[5px] bg-[var(--color-surface-2)]";
 
 export default function PenaltyBreakdown({ penalty, catalog }: PenaltyBreakdownProps) {
   const rows = penaltyRows(penalty, catalog);
-  const total = rows.reduce((sum, row) => sum + row.seconds, 0);
+  const stacked = rows.filter((row) => row.seconds > 0);
+  const total = stacked.reduce((sum, row) => sum + row.seconds, 0);
 
   return (
     <div className="flex flex-col gap-1">
       {total > 0 && (
         <div className={stackBarClass} role="img" aria-label="負担の内訳">
-          {rows
-            .filter((row) => row.seconds > 0)
-            .map((row) => (
-              <div
-                key={row.id}
-                className="h-full"
-                style={{ width: `${(row.seconds / total) * 100}%`, background: row.color }}
-                title={`${row.label} ${formatPenalty(row.seconds)}`}
-              />
-            ))}
+          {stacked.map((row) => (
+            <div
+              key={row.id}
+              className="h-full"
+              style={{ width: `${(row.seconds / total) * 100}%`, background: row.color }}
+              title={`${row.label} ${formatPenalty(row.seconds)}`}
+            />
+          ))}
         </div>
       )}
       <ul className="m-0 flex list-none flex-col gap-0.5 p-0 text-[length:var(--font-size-sm)]">

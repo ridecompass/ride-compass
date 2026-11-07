@@ -152,10 +152,11 @@ def turnaround_band(
     return in_band, np.abs(length_m - center_m)
 
 
-def retrace_penalized(costs: np.ndarray) -> np.ndarray:
-    """復路探索の間に、往路の区間（と同じNode対の逆向きの区間）へ置くコスト。倍率は有限にする
-    （較正値の範囲が持つ）——帰りが往路を戻るほかに道が無い区間（袋小路等）は通れる必要がある。"""
-    return costs * tuning_value("search.retrace_penalty_multiplier")
+def retrace_penalized(costs: np.ndarray, travel_seconds: np.ndarray) -> np.ndarray:
+    """復路探索の間に、往路の区間（と同じNode対の逆向きの区間）へ置くコスト。罰は区間の所要時間`travel_seconds`（`costs`と
+    同じ形）に掛け、費用には掛けない——費用に掛けると、避け方の倍率で費用を下げた「好む」の道ほど罰が縮み、帰りが好む道を
+    往復する。倍率は有限にする（較正値の範囲が持つ）——帰りが往路を戻るほかに道が無い区間（袋小路等）は通れる必要がある。"""
+    return costs + (tuning_value("search.retrace_penalty_multiplier") - 1.0) * travel_seconds
 
 
 #: 1kmあたりの代償の秒（`penalty_seconds_per_km`）の、区別する最小の差。並べ方とパレート層は、この刻みで同点とみなす。
@@ -293,14 +294,15 @@ def straight_distances_m(node_lat: np.ndarray, node_lon: np.ndarray, target_node
     return haversine_distance_km_array(node_lat, node_lon, target) * 1000
 
 
-def heuristic_seconds(straight_m: np.ndarray, cruise_speed_kmh: float) -> np.ndarray:
-    """Nodeごとの直線距離（m）を、所要時間の下界（秒）へ直す。
+def heuristic_seconds(straight_m: np.ndarray, cruise_speed_kmh: float, cost_scale: float) -> np.ndarray:
+    """Nodeごとの直線距離（m）を、費用の下界（秒）へ直す。`cost_scale`は区間の費用が所要時間に対して下がる最小の倍率
+    （`domain/leg_costs.py: LegCostComposer.min_cost_scale`。所要時間で探すなら1）。
 
-    実経路は直線より長く、実際の速度は走行モデルの速度の上限以下のため、これは真の
-    所要時間を上回らない＝A*のヒューリスティックとして使える（admissible）。主観的割増は
-    1以上の倍率のため、割増を含むコストに対しても下界であり続ける。
+    実経路は直線より長く、実際の速度は走行モデルの速度の上限以下のため、直線距離÷速度の上限は真の
+    所要時間を上回らない。区間の費用は所要時間に代償（0以上）を足して避け方の倍率を掛けたもので、所要時間の`cost_scale`倍を
+    下回らないので、それを掛けた値は費用の下界になる＝A*のヒューリスティックとして使える（admissible）。
     """
-    return np.asarray(straight_m, dtype=float) / kmh_to_ms(top_speed_kmh(cruise_speed_kmh))
+    return np.asarray(straight_m, dtype=float) / kmh_to_ms(top_speed_kmh(cruise_speed_kmh)) * cost_scale
 
 
 def reverse_leg_assignment(leg_of_edge: list[int]) -> list[int]:

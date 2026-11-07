@@ -45,7 +45,7 @@ Condition = dict[str, ConditionTerm]
 class RoadClass(StrictModel):
     label: str
     description: str
-    #: 凡例・回避タブ・帯で共通の並び。色もこの順で決まる。振り分けには使わない。
+    #: 凡例・道路タブ・帯で共通の並び。色もこの順で決まる。振り分けには使わない。
     sort_order: int
     #: 区分は、条件のどれかに当たる道。
     conditions: list[Condition]
@@ -95,7 +95,7 @@ class AvoidanceOverride(StrictModel):
 
 
 class AvoidanceClassification(StrictModel):
-    """回避タブに出す分け方1つ。鍵は分け方で、地図の線の層でもある（凡例と回避タブの見出しを揃える）。"""
+    """道路タブに出す分け方1つ。鍵は分け方で、地図の線の層でもある（凡例と道路タブの見出しを揃える）。"""
 
     overrides: dict[str, AvoidanceOverride]
 
@@ -174,7 +174,7 @@ def by_sort_order[T: _Sorted](items: Mapping[str, T]) -> list[tuple[str, T]]:
 
 def published_map_layers(definitions: RoadClassDefinitions) -> list[tuple[str, RoadMapLayer]]:
     """公開した分け方の地図の線の層を、画面が出す並び（群は`domain/map_display.py: MAP_LAYER_CATEGORIES`の順、その中は層の
-    `sort_order`の順）で。凡例と回避タブの見出しが同じ並びに従う。知らない群の層は最後に置く。"""
+    `sort_order`の順）で。凡例と道路タブの見出しが同じ並びに従う。知らない群の層は最後に置く。"""
     groups = [category.key for category in MAP_LAYER_CATEGORIES]
 
     def position(item: tuple[str, RoadMapLayer]) -> tuple[int, int]:

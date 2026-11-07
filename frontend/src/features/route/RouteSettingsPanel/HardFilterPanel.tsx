@@ -10,8 +10,8 @@ import { cn } from "@/lib/cn";
 import type { RoadAvoidanceOverride, RoadAvoidanceView } from "@/types/route";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 
-// 「ルート設定」区分の「回避」タブ。道の区分の行ごとに「通る・なるべく避ける・通らない」を選び、
-// 自転車が通れない道の行は「通らない」に固定して同じ並びの先頭に出す。
+// 「ルート設定」区分の「道路」タブ。道の区分の行ごとに、費用に掛ける倍率の段（好む・通る・なるべく避ける・通らない）を選び、
+// 自転車が通れない道の行は「通らない」に固定して同じ並びの先頭に出す。段の名前（倍率）は画面の設定が配る。
 
 // 固定の行。backendがいつも経路から外す道で、名前と説明は生成物（route-generate-config.json）から受け取る。
 const FIXED_ROWS: readonly { key: string; label: string; description: string }[] = routeGenerateConfig.hard_filters;
@@ -95,13 +95,14 @@ export default function HardFilterPanel({ avoidance, roadAvoidance, onRoadAvoida
   );
 }
 
-// 畳んだ見出しに、「通る」以外を選んだ行の数を段ごとに出す（開かずに何を避けているかが分かる）。
+// 畳んだ見出しに、「通る」以外を選んだ行の数を段ごとに出す（開かずに何を好み・避けているかが分かる）。段の名前は倍率の数字
+// なので、行の数には「件」を付けて見分ける。
 function avoidedSummary(levels: RoadAvoidanceView["levels"], rowLevels: readonly AvoidanceLevel[]): string {
   return levels
     .filter(({ key }) => key !== "pass")
     .map(({ key: level, label }) => ({ label, count: rowLevels.filter((rowLevel) => rowLevel === level).length }))
     .filter(({ count }) => count > 0)
-    .map(({ label, count }) => `${label} ${count}`)
+    .map(({ label, count }) => `${label} ${count}件`)
     .join("・");
 }
 
@@ -132,7 +133,7 @@ function AvoidanceLevelRow({
       <ToggleGroup
         className="ml-auto"
         aria-label={`${label}の避け方`}
-        usage="この行に該当する道を、通る・なるべく避ける・通らないから選びます。「なるべく避ける」は遠回りが小さければ別の道を通り、「通らない」は経路から完全に外します。複数の行に該当する道には、より強い避け方を適用します。"
+        usage="この行に該当する道の費用に掛ける倍率を選びます。1より小さい倍率は好んで通り（遠回りでも選びやすくなります）、1より大きい倍率はなるべく避け（遠回りが小さければ別の道を通ります）、∞は経路から完全に外します。複数の行に該当する道には、通らない・なるべく避ける・好むの順に強い方を当てます（×1は指定なしの扱いです）。"
         value={level}
         onValueChange={(next) => onLevelChange(next as AvoidanceLevel)}
       >

@@ -13,7 +13,7 @@ import { BurdenPaintIcon } from "@/components/ui/icons/lucideIcons";
 import DifficultyProfile from "@/features/route/DifficultyProfile/DifficultyProfile";
 import { profileBoxes } from "@/features/route/DifficultyProfile/profileGeometry";
 import { useProfileScale } from "@/features/route/ProfileChart/profileScale";
-import { AVOIDANCE_ROW_ID, factText, formatPenalty, penaltyRows, type PenaltyCatalog } from "@/lib/routePenalty";
+import { factText, formatPenalty, penaltyRows, type PenaltyCatalog } from "@/lib/routePenalty";
 import type {
   AxisFact,
   PenaltyBreakdown as PenaltyValues,
@@ -141,7 +141,7 @@ export default function RouteProfile({
           >
             <p>
               右上の一覧でチェックした種類だけを積みます。高さは区間ごとの{LENS_QUANTITY_LABEL}
-              で、上端はこのルートで最も大きい区間の値です（曲がる所と回避指定は含みません）。色ごとの面積は、その種類の負担の合計を表します。横の右端は、一覧で最も長い候補の距離です。
+              で、上端はこのルートで最も大きい区間の値です（曲がる所と、好む道・避ける道の増減は含みません）。色ごとの面積は、その種類の負担の合計を表します。横の右端は、一覧で最も長い候補の距離です。
             </p>
           </InfoPopover>
         )}
@@ -158,8 +158,8 @@ export default function RouteProfile({
               return (
                 <li key={row.id} data-usage="チェックした種類の負担を、グラフに積みます。選びはこの端末に覚えます。">
                   <label className="flex cursor-pointer items-center gap-1.5">
-                    {/* 回避指定は軸ではないので積めない（チェックを置かず、並びをそろえる）。 */}
-                    {row.id !== AVOIDANCE_ROW_ID ? (
+                    {/* 好む道・避ける道は軸ではないので積めない（チェックを置かず、並びをそろえる）。 */}
+                    {Object.hasOwn(penalty.axis_seconds, row.id) ? (
                       <Checkbox
                         checked={on}
                         onCheckedChange={() =>

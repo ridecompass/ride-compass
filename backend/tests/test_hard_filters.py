@@ -29,16 +29,25 @@ def edge(facts: dict[str, str] | None = None) -> EdgeMaterialColumns:
 
 
 @pytest.mark.parametrize(
-    ("level", "excluded", "avoided"),
-    [("pass", False, False), ("avoid", False, True), ("exclude", True, False)],
+    ("levels", "excluded", "avoided", "preferred"),
+    [
+        ({"kind.national": "pass"}, False, False, False),
+        ({"kind.national": "prefer"}, False, False, True),
+        ({"kind.national": "avoid"}, False, True, False),
+        ({"kind.national": "exclude"}, True, False, False),
+        # 1つの道が2つの行に当たれば強い方: 「通る」は何も指定していない扱いで、「なるべく避ける」は「好む」より強い。
+        ({"kind.national": "pass", "surface.gravel": "prefer"}, False, False, True),
+        ({"kind.national": "avoid", "surface.gravel": "prefer"}, False, True, False),
+    ],
 )
-def test_the_level_chosen_for_a_row_decides_whether_its_segments_are_excluded_or_surcharged(level, excluded, avoided):
+def test_the_strongest_level_of_the_rows_of_a_road_decides_how_its_segments_are_searched(levels, excluded, avoided, preferred):
     """「通らない」を選んでも国道を通る・「通る」を選んでも国道を避けると、選んだ避け方が探索に効かない。"""
-    matrix = build_search_materials(edge(facts={class_material_id("kind"): "national"}), {}, ())
+    matrix = build_search_materials(
+        edge(facts={class_material_id("kind"): "national", class_material_id("surface"): "gravel"}), {}, ())
 
-    masks = compute_search_exclusion(matrix, {"kind.national": level, "kind.local": "exclude", "other.national": "exclude"})
+    masks = compute_search_exclusion(matrix, {**levels, "kind.local": "exclude", "other.national": "exclude"})
 
-    assert (masks.excluded.tolist(), masks.avoided.tolist()) == ([excluded], [avoided])
+    assert (masks.excluded.tolist(), masks.avoided.tolist(), masks.preferred.tolist()) == ([excluded], [avoided], [preferred])
 
 
 @pytest.mark.parametrize(("tags", "excluded"), [

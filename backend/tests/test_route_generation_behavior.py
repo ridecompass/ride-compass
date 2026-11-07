@@ -326,6 +326,36 @@ async def test_a_slow_cruise_on_roads_to_avoid_still_turns_at_the_far_side_of_th
     assert all(abs(c.distance_km - 12.0) <= 0.5 for c in candidates)
 
 
+#: 南西から南東へ、西・北・東の縁を回る道（6km）。南の縁を直に行く道（道100・101、2km）の3倍の長さ。
+AROUND_THE_EDGE = [200, 203, 104, 105, 205, 202]
+
+
+async def test_a_detour_on_preferred_roads_is_taken_when_it_costs_less_than_the_direct_road(engine_over, monkeypatch):
+    """「好む」にした道の費用には「なるべく避ける」の倍率の逆数（ここでは1/8）が掛かり、3倍の長さの回り道でも直に行くより
+    安くなるので、置いた点どうしを回り道で結ぶ。A*の見込みが倍率で緩まないと、回り道の入口が直の道より高く見えて探索が先に
+    直の道で着き、安い回り道を取りこぼす（巡航を速さの上限と同じにして、緩めない見込みを平地の所要時間に近づける）。"""
+    definitions = road_classes(
+        {"tunnel": classification({"yes": [fact_is(TUNNEL, TRUE_FACT_VALUE)]})},
+        map_layers={"tunnel": map_layer()},
+        avoidance_classifications={"tunnel": AvoidanceClassification(overrides={})},
+    )
+    monkeypatch.setitem(TUNING_VALUES, "avoidance.avoid_cost_multiplier", 8.0)
+    with replaced_road_classes(definitions):
+        candidates = await engine_over(
+            grid_network(tunnel_ways=set(AROUND_THE_EDGE)), road_avoidance={"tunnel.yes": "prefer"},
+            assumed_speed_kmh=TUNING_VALUES["speed.max_descent_kmh"],
+        ).generate_via_waypoints(at(SOUTH_WEST), [at(SOUTH_EAST)], destination=at(CENTER), max_routes=3,
+                                 start_time=DEPARTURE)
+
+    fastest = fastest_of(candidates)
+    assert ways_of(fastest)[:2] == [100, 101]
+    others = [candidate for candidate in candidates if candidate is not fastest]
+    assert others
+    for candidate in others:
+        assert ways_of(candidate)[:len(AROUND_THE_EDGE)] == AROUND_THE_EDGE
+        assert candidate.penalty.preferred_seconds < 0
+
+
 def _clustered_ring_network() -> tuple[RoadNetwork, Coordinates]:
     """易しい折返し点が1か所に数千点固まる道路網（関東の網で、易しい往路の先の住宅地の細かい網が上位を占める形）と出発地。
 
@@ -931,34 +961,45 @@ def _wind(times: list[datetime], speed_by_point: list[float]) -> WindForecastSer
 
 HOURS_OF_THE_DAY = [datetime(2026, 9, 22, h) for h in range(24)]
 
-async def test_the_duration_and_the_penalty_of_each_axis_and_of_the_avoided_roads_add_up_to_the_cost(engine_over):
-    """候補の費用（並べ方の値）は、所要時間と、軸ごとの代償の秒と、回避指定（なるべく避ける道）で上乗せした秒の和になる。
-    合わないと、画面の内訳を見ても候補がなぜその順に並んだのかが分からない。どの道もなるべく避け、道100だけが振動の材料を持つ。
-    軸ごとの事実は、その軸の秒の元を1つ出す。"""
+async def test_the_duration_and_the_penalty_of_each_axis_and_of_the_preferred_and_avoided_roads_add_up_to_the_cost(
+    engine_over,
+):
+    """候補の費用（並べ方の値）は、所要時間と、軸ごとの代償の秒と、好む道で下げた秒と、なるべく避ける道で上乗せした秒の和に
+    なる。合わないと、画面の内訳を見ても候補がなぜその順に並んだのかが分からない。道100だけが振動の材料を持ってなるべく避け、
+    道101を好む。軸ごとの事実は、その軸の秒の元を1つ出す。"""
     definitions = road_classes(
-        {"kind": classification({"local": [fact_is(HIGHWAY, "residential")]})},
-        map_layers={"kind": map_layer()},
-        avoidance_classifications={"kind": AvoidanceClassification(overrides={})},
+        {
+            "kind": classification({"local": [fact_is(HIGHWAY, "residential")]}),
+            "tunnel": classification({"yes": [fact_is(TUNNEL, TRUE_FACT_VALUE)]}),
+            "bad": classification({"yes": [fact_is(BAD_MATERIAL, TRUE_FACT_VALUE)]}),
+        },
+        map_layers={"kind": map_layer(0), "tunnel": map_layer(1), "bad": map_layer(2)},
+        avoidance_classifications={
+            "tunnel": AvoidanceClassification(overrides={}), "bad": AvoidanceClassification(overrides={}),
+        },
         rolling_resistance_classification="kind",
         rolling_resistance_classes={"kind": {"local": BASE_CRR_ID}},
     )
     with replaced_road_classes(definitions), cost_axes_declared(cost_axes(BAD_MATERIAL)):
         candidates = await engine_over(
-            grid_network(bad_ways={100}, stop_density_of={101: 3.0}), road_avoidance={"kind.local": "avoid"},
+            grid_network(bad_ways={100}, stop_density_of={101: 3.0}, tunnel_ways={101}),
+            road_avoidance={"tunnel.yes": "prefer", "bad.yes": "avoid"},
         ).generate_via_waypoints(at(SOUTH_WEST), [], destination=at(SOUTH_EAST), max_routes=3, start_time=DEPARTURE)
 
     assert candidates
     for candidate in candidates:
         penalty = candidate.penalty
-        assert penalty is not None and penalty.avoidance_seconds > 0
+        assert penalty is not None
         assert set(penalty.axis_seconds) == {*EFFORT_AXES, BAD_AXIS}
-        assert candidate.estimated_duration_seconds + sum(penalty.axis_seconds.values()) \
-            + penalty.avoidance_seconds == pytest.approx(candidate.cost_seconds, abs=0.5)
+        assert candidate.estimated_duration_seconds + sum(penalty.axis_seconds.values()) + penalty.preferred_seconds \
+            + penalty.avoided_seconds == pytest.approx(candidate.cost_seconds, abs=0.5)
         # 区間（ビン）の内訳を足すと候補の内訳になる（道のりのグラフと結果の内訳が同じ秒を見せる）。
-        segment_avoidance = sum(segment.penalty.avoidance_seconds for segment in candidate.segments)
-        assert segment_avoidance == pytest.approx(penalty.avoidance_seconds, abs=0.5)
+        for part in ("preferred_seconds", "avoided_seconds"):
+            segments_sum = sum(getattr(segment.penalty, part) for segment in candidate.segments)
+            assert segments_sum == pytest.approx(getattr(penalty, part), abs=0.5)
     fastest = fastest_of(candidates)
     assert ways_of(fastest) == [100, 101]
+    assert fastest.penalty.preferred_seconds < 0 < fastest.penalty.avoided_seconds
     assert fastest.penalty.axis_seconds[BAD_AXIS] > 0
     # 事実は軸ごとに、名前と単位を付けて返す（画面が軸idで出し分けない）。数の材料の軸は、その軸の秒に一番効いた区間（道100）の
     # 材料の値を材料の宣言の名前と単位で、摩擦は一番効いた路面の区分の名前を出す。

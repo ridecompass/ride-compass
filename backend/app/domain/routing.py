@@ -869,7 +869,7 @@ def _turn_expanded_astar(
 ) -> tuple[np.ndarray, int]:
     """状態＝有向区間・辺＝ターンのA*（JITコンパイル）。
 
-    ヒープには`f = g + 目的地までの所要時間の下界`をキーとして、積んだ時点の`g`と一緒に
+    ヒープには`f = g + 目的地までの費用の下界`をキーとして、積んだ時点の`g`と一緒に
     積み、取り出したときに`g`が`best`より大きければ古いエントリとして捨てる。戻り値は
     前任者の配列と、目的地へ入った状態（到達不能なら-1）。
 
@@ -938,9 +938,8 @@ def turn_expanded_shortest_path(
 
     **コストの単位は秒**（`edge_cost`は区間ごとの体感所要時間、遷移ごとの費用`transition_cost`も秒）。素の所要時間で
     選ぶなら、`edge_cost`に所要時間、`transition_cost`にターンの時間（`TurnExpandedStructure.turn_seconds`）を渡す。
-    `node_heuristic`はNodeごとの目的地までの所要時間の下界（秒）で、呼び出し元が
-    「直線距離 ÷ 出せる最大速度」から作る——実経路は直線より長く、実際の速度は上限以下の
-    ため下界になる。
+    `node_heuristic`はNodeごとの目的地までの費用（`edge_cost`と`transition_cost`の和）の下界（秒）で、呼び出し元が
+    作る（`domain/route_search.py: heuristic_seconds`）。
 
     `edge_cost`は1次元（時刻に依存しない）か`(時刻ビン, 状態)`の2次元で、素の所要時間
     `edge_seconds`を同じ形で渡す——探索が出発からの経過時間を持ち回り、その時刻のビンから
