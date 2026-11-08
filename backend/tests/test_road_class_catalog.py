@@ -94,6 +94,6 @@ def test_levels_are_named_by_the_multiplier_derived_from_the_calibrated_avoid_mu
     catalog = road_class_catalog(EMPTY_ROAD_CLASSES)
 
     assert [(level.key, level.label) for level in catalog.avoidance.levels] == [
-        ("prefer", "×0.5"), ("slight_prefer", "×0.71"), ("pass", "×1"), ("slight_avoid", "×1.4"), ("avoid", "×2"),
+        ("prefer", "×0.5"), ("slight_prefer", "×0.7"), ("pass", "×1"), ("slight_avoid", "×1.4"), ("avoid", "×2"),
         ("exclude", "×∞"),
     ]

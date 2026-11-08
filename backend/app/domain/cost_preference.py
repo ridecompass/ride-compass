@@ -25,8 +25,8 @@ class CostLevel(NamedTuple):
 
 
 def multiplier_label(value: float) -> str:
-    """掛ける数の段の画面に出す名前（掛ける数を有効数字2桁で。無限大は「×∞」）。"""
-    return "×∞" if math.isinf(value) else f"×{value:.2g}"
+    """掛ける数の段の画面に出す名前（掛ける数を小数1桁に丸め、末尾の0は書かない。無限大は「×∞」）。"""
+    return "×∞" if math.isinf(value) else f"×{round(value, 1):g}"
 
 
 #: 負担を数えないことの、段と並べて出す名前（費用の軸の無効と、全体のつまみの0）。
