@@ -38,7 +38,7 @@ from app.infrastructure.source_models import SOURCE_RUN_STATUS_LABELS
 from app.infrastructure.point_tile_layers import POINT_TILE_LAYERS
 from app.infrastructure.vector_tile import ROAD_FEATURE_PROPERTIES, ROAD_SURFACE_LAYER_NAME
 from app.main import app
-from app.domain.hard_filters import HARD_FILTERS
+from app.domain.hard_filters import HARD_FILTER_PROPERTY, HARD_FILTERS
 from app.domain.address_area import ADDRESS_AREA_LEVELS
 from app.domain.geo import COMPASS_LABELS, EARTH_RADIUS_KM
 from app.domain.place_search import (
@@ -640,6 +640,8 @@ def main() -> None:
                 {"key": name, "label": spec.label, "description": spec.description}
                 for name, spec in HARD_FILTERS.items()
             ],
+            # 路面タイルが、道の当たる0次ハードフィルタの名前を載せるプロパティ（地図は「通らない」の色で塗る）。
+            "hard_filter_property": HARD_FILTER_PROPERTY,
         },
     )
 

@@ -13,6 +13,7 @@ import numpy as np
 
 from app.domain.attributes import CategoricalColumn
 from app.domain.feature_materials import FeatureMaterials
+from app.domain.hard_filters import HARD_FILTER_PROPERTY
 from app.domain.road_classes import EMPTY_ROAD_CLASSES
 from app.infrastructure import debug_log
 from app.infrastructure.derived_data_meta import DataRevisions
@@ -97,10 +98,14 @@ async def test_tiles_read_while_the_revision_is_unknown_are_not_kept():
 
 
 async def test_road_layer_values_are_served_per_feature_without_roads_outside_every_class():
-    """地図は道ごとの層の値で道の線を塗る。区分の外の道の層を載せると、地図はその道を区分の色で塗れない値として受け取る。"""
-    tile = FeatureMaterials(feature_keys=("1-0", "2-0"), columns={"cat_a": CategoricalColumn.encode(["a", "b"])})
+    """地図は道ごとの層の値で道の線を塗り、0次ハードフィルタに当たる道を「通らない」の色で塗る。区分の外の道の層を載せると、
+    地図はその道を区分の色で塗れない値として受け取る。"""
+    tile = FeatureMaterials(feature_keys=("1-0", "2-0", "3-0"), columns={
+        "cat_a": CategoricalColumn.encode(["a", "b", "b"]),
+        "bicycle": CategoricalColumn.encode([None, None, "no"]),
+    })
     definitions = road_classes({"k": classification({"is_a": [fact_is("cat_a", "a")]})}, map_layers={"k": map_layer()})
 
     values = await FeatureMaterialService(FakeFeatureMaterialsRepository(tile)).road_layer_values(Z, X, Y, definitions)
 
-    assert values == {"1-0": {"k": "is_a"}}
+    assert values == {"1-0": {"k": "is_a"}, "3-0": {HARD_FILTER_PROPERTY: "no_bicycle"}}

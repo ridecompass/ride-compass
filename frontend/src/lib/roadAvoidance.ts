@@ -1,4 +1,5 @@
 import palette from "@/types/generated/palette.json";
+import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 import type { RoadAvoidanceOverride, RoadAvoidanceView } from "@/types/route";
 
 // 道の区分の行ごとの避け方。**行・段・既定は画面の設定（`road_classes.avoidance`）が配る**。端末に覚えるのは利用者が選んだ段
@@ -37,10 +38,18 @@ export interface AvoidanceChoice {
   readonly order: readonly AvoidanceLevel[];
 }
 
+/** 0次ハードフィルタ（道路タブの上の固定の行）は、いつも通らない。路面タイルは道の当たるフィルタの名前を、区分の分け方と別の
+ * プロパティに載せる。 */
+const HARD_FILTER_ROWS: AvoidanceChoice["rows"] = routeGenerateConfig.hard_filters.map(({ key }) => ({
+  section: routeGenerateConfig.hard_filter_property,
+  classKey: key,
+  level: "exclude",
+}));
+
 export function avoidanceChoiceOf(avoidance: RoadAvoidanceView, chosen: RoadAvoidanceOverride): AvoidanceChoice {
   const rows = avoidance.rows.flatMap((row) => {
     const level = avoidanceLevelOf(row, chosen);
     return level === "pass" ? [] : [{ section: row.section, classKey: row.class_key, level }];
   });
-  return { rows, order: avoidance.levels.map((level) => level.key) };
+  return { rows: [...HARD_FILTER_ROWS, ...rows], order: avoidance.levels.map((level) => level.key) };
 }

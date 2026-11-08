@@ -28,6 +28,7 @@
 
 import asyncio
 
+from app.domain.hard_filters import HARD_FILTERS
 from app.domain.registry import TileKind
 from app.domain.road_classes import RoadClassDefinitions, current_road_classes, road_class_generation
 from app.infrastructure.cache_identity import shape_digest, tile_version
@@ -50,9 +51,11 @@ async def served_tile_version(repository, shape: str) -> str:
 
 
 def road_surface_tile_shape(definitions: RoadClassDefinitions) -> str:
-    """路面タイルの形の署名。路面タイルは地図の線の層の値（材料に道の区分の全体`definitions`を当てたもの）を焼くので、材料の
-    読み方と区分の全体の指紋も入れる——管理画面で区分を書き換えると世代が変わる。"""
-    return shape_digest(ROAD_SURFACE_TILE_SHAPE, FEATURE_MATERIALS_SHAPE, road_class_generation(definitions))
+    """路面タイルの形の署名。路面タイルは地図の線の層の値（材料に道の区分の全体`definitions`を当てたもの）と、当たる0次
+    ハードフィルタを焼くので、材料の読み方と区分の全体の指紋とフィルタの条件も入れる——管理画面で区分を書き換えると世代が変わる。"""
+    return shape_digest(
+        ROAD_SURFACE_TILE_SHAPE, FEATURE_MATERIALS_SHAPE, road_class_generation(definitions), HARD_FILTERS
+    )
 
 
 def tile_shapes() -> dict[TileKind, str]:

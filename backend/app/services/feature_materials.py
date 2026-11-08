@@ -5,6 +5,7 @@ from collections.abc import Awaitable
 from typing import Any
 
 from app.domain.feature_materials import FeatureMaterials
+from app.domain.hard_filters import HARD_FILTER_PROPERTY, hard_filter_column
 from app.domain.road_classes import RoadClassDefinitions, class_columns, layer_columns
 from app.domain.region import tile_bounds_lonlat
 from app.infrastructure.cache_identity import cache_identity
@@ -34,7 +35,8 @@ async def _tile_features(read: Awaitable[FeatureMaterials | None], fields: dict[
 def _layer_values_by_feature(
     definitions: RoadClassDefinitions, materials: FeatureMaterials
 ) -> dict[str, dict[str, str]]:
-    layers = layer_columns(definitions, materials.columns, len(materials))
+    n = len(materials)
+    layers = {**layer_columns(definitions, materials.columns, n), HARD_FILTER_PROPERTY: hard_filter_column(materials.columns, n)}
     out: dict[str, dict[str, str]] = {}
     for row, key in enumerate(materials.feature_keys):
         if values := {layer: value for layer, column in layers.items() if (value := column.value_at(row)) is not None}:
@@ -62,8 +64,8 @@ class FeatureMaterialService:
     async def road_layer_values(
         self, z: int, x: int, y: int, definitions: RoadClassDefinitions
     ) -> dict[str, dict[str, str]]:
-        """タイル内のフィーチャーごとの、区分の全体`definitions`での地図の線の層の値（`domain/road_classes.py: layer_columns`）。
-        値の無い層は載せない。引いたズームのタイルは道が数万本あるので、並べる計算はイベントループの外で行う。"""
+        """タイル内のフィーチャーごとの、区分の全体`definitions`での地図の線の層の値（`domain/road_classes.py: layer_columns`）と、
+        当たる0次ハードフィルタの名前（`domain/hard_filters.py: HARD_FILTER_PROPERTY`の名前で）。値の無い層は載せない。引いたズームのタイルは道が数万本あるので、並べる計算はイベントループの外で行う。"""
         materials = await self.materials(z, x, y, definitions)
         if materials is None:
             return {}

@@ -80,5 +80,6 @@
       "label": "自転車通行禁止",
       "description": "自転車の通行が禁止された道。いつも経路から外します。"
     }
-  ]
+  ],
+  "hard_filter_property": "hard-filter"
 }

@@ -55,7 +55,8 @@ wayの長さ（0はNULL）になる——件数と長さは必ず同じ側から
   条件は道の区分と同じ形（`domain/road_classes.py: conditions_match`）で事実の列に当てる。`compute_search_exclusion`は
   探索の材料の表が組んだときに求めた「どれかのフィルタに当たる」の配列を読み、フィルタごとの専用引数・専用フィールドは持たない。
   フィルタを足しても変わるのはこの辞書だけ。名前と説明は生成物`route-generate-config.json`の`hard_filters`で配り、
-  画面は避け方の行の並びの先頭に「通らない」で固定して出す。フィルタは区分の宣言とは別に持つ——区分は管理DBで直せるが、
+  画面は避け方の行の並びの先頭に「通らない」で固定して出す。路面タイルは道の当たるフィルタの名前を焼き
+  （`domain/hard_filters.py: HARD_FILTER_PROPERTY`。判定は探索と同じ`hard_filter_column`）、地図は道路タブの「通らない」の色で塗る。フィルタは区分の宣言とは別に持つ——区分は管理DBで直せるが、
   通れない道を外すことは直してはいけない。
   タグが無い道は除外しない（判断材料が無い区間まで一律に除外すると探索対象が過度に狭まるため、不明な場合は許可し費用の側へ委ねる）。
 - **道の区分ごとの避け方**: 除外の設定（管理DBの道の区分。`domain/road_classes.py: RoadClassDefinitions.avoidance_classifications`）が

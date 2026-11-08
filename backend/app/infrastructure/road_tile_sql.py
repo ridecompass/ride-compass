@@ -104,8 +104,8 @@ _FEATURE_PROPERTY_JOINS_SQL = _tile_material_joins(material_tile_columns().value
 # 路面タイル（MVT）をPostGIS側で丸ごと生成する。転送は完成済みタイル1個で済み、エンコードはPostGISのC実装が担う。
 # bbox内の全way行をPythonへ転送してshapelyでdecode→encodeする構成だと、行転送とGILを握るCPU処理で数秒かかる。
 #
-# 焼くのは地図が塗るものだけ: 線の形と、地図の線の層の値（`:layer_values`。`feature_key`→層のid→値のJSON。値の無い道は
-# 載らない）。層の値はjsonbの列のまま渡し、ST_AsMVTが層のidごとのプロパティに広げる。`ROAD_TILE_MIN_ZOOM`以上は道ごとの
+# 焼くのは地図が塗るものだけ: 線の形と、地図の線の層の値と当たる0次ハードフィルタ（`:layer_values`。`feature_key`→層のid→値の
+# JSON。値の無い道は載らない）。層の値はjsonbの列のまま渡し、ST_AsMVTが層のidごとのプロパティに広げる。`ROAD_TILE_MIN_ZOOM`以上は道ごとの
 # 鍵（`feature_key`。地図が道ごとの値を置く）も焼き、それより引いたズームは層の値が同じ道を1つにつなぐ（道ごとの鍵が要らず、
 # 線の本数と点が減る）。つなぐのはタイルの座標へ写した後の形で、タイルの外へ出た所は切れたまま。
 #
