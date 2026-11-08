@@ -1,5 +1,8 @@
 // 意味の決まった汎用の形（lucide-react）を、自前の形と同じ呼び方と線の太さへ包んで書き出す。
 import {
+  Mountain,
+  Road,
+  Sigma,
   ArrowUp,
   ArrowUpDown,
   Bike,
@@ -64,6 +67,9 @@ function fromLucide(Icon: LucideIcon, defaultSize = 16): MapIconComponent {
 
 export const WarningTriangleIcon = fromLucide(TriangleAlert);
 export const WindIcon = fromLucide(Wind);
+export const MountainIcon = fromLucide(Mountain);
+export const RoadIcon = fromLucide(Road);
+export const SigmaIcon = fromLucide(Sigma);
 export const BicycleIcon = fromLucide(Bike);
 /** 呼び出し側が風向のぶん回転させて使うため、上向きのまっすぐな矢印にしてある。 */
 export const WindDirectionArrowIcon = fromLucide(ArrowUp);

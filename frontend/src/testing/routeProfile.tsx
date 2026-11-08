@@ -32,8 +32,8 @@ export function serveProfileCatalog() {
 /** 道のりのグラフが負担を積む費用の軸。 */
 export const PROFILE_COST_CATALOG = {
   axes: [
-    { axisId: "ascent", label: "登坂" },
-    { axisId: "vibration", label: "振動" },
+    { axisId: "ascent", label: "登坂", iconId: "" },
+    { axisId: "vibration", label: "振動", iconId: "" },
   ],
   axisColors: { ascent: "rgb(18, 52, 86)", vibration: "rgb(86, 52, 18)" },
   loaded: true,

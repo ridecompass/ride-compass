@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { PopupHeader } from "@/components/MapPopup/MapPopupParts";
 import { isDebugEnabled } from "@/lib/debugLog";
 import { getQueryClient } from "@/lib/queryClient";
@@ -22,6 +22,7 @@ import {
 import { Button } from "@/components/ui/Button/Button";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/ToggleGroup/ToggleGroup";
 import { InspectRoadIcon } from "@/components/ui/icons/lucideIcons";
+import { AxisMark } from "@/components/ui/icons/axisIconPalette";
 import { textVariants } from "@/components/ui/Text/Text";
 import { cn } from "@/lib/cn";
 import { useCostAxisCatalog } from "@/hooks/useCostAxisCatalog";
@@ -126,16 +127,24 @@ function LensValues({ lens }: { lens: LensInspection }) {
   const values = lens[slot];
   if (values === null) return <p className={hintClass}>この向きには走れません。</p>;
   // 事実の名前と単位は backend が付ける（ルートの一覧と同じ作り方）。
-  const rows: RoadFactRow[] =
+  // 軸の行は、名前の前に軸の絵（道のりのグラフと同じ軸の色）を置く。
+  const mark = (axisId: string) => (
+    <AxisMark
+      iconId={costCatalog.axes.find((axis) => axis.axisId === axisId)?.iconId ?? null}
+      color={costCatalog.axisColors[axisId]}
+    />
+  );
+  const rows: FactRow[] =
     view === "seconds"
       ? values.axes.map((axis) => ({
           label: costAxisLabel(costCatalog, axis.axis_id),
           value: sectionSeconds(axis.seconds),
+          mark: mark(axis.axis_id),
         }))
       : values.axes.flatMap((axis) => {
           const fact = values.facts[axis.axis_id];
           const label = costAxisLabel(costCatalog, axis.axis_id);
-          return fact === undefined ? [] : [{ label, value: factText(fact, label) }];
+          return fact === undefined ? [] : [{ label, value: factText(fact, label), mark: mark(axis.axis_id) }];
         });
   return (
     <div className="flex flex-col gap-1">
@@ -169,13 +178,19 @@ function LensValues({ lens }: { lens: LensInspection }) {
   );
 }
 
+/** 「項目: 値」の行。軸の行は、名前の前に軸の絵を置く。 */
+type FactRow = RoadFactRow & { mark?: ReactNode };
+
 /** 「項目: 値」の行の並び。項目の名前は重なりうる（軸の一覧が届くまでは、どの軸の名前も「読み込み中」）。 */
-function FactList({ rows }: { rows: readonly RoadFactRow[] }) {
+function FactList({ rows }: { rows: readonly FactRow[] }) {
   return (
     <dl className="m-0 grid gap-0.5">
       {rows.map((row, index) => (
         <div key={index} className="grid grid-cols-[5.5rem_1fr] gap-1.5">
-          <dt className={hintClass}>{row.label}</dt>
+          <dt className={cn(hintClass, "inline-flex items-center gap-1")}>
+            {row.mark}
+            {row.label}
+          </dt>
           <dd className="m-0 [overflow-wrap:anywhere]">{row.value}</dd>
         </div>
       ))}
