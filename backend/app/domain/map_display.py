@@ -170,6 +170,9 @@ ALWAYS_SHOWN_ATTRIBUTIONS: tuple[str, ...] = (
     # ジャパンサーチのサイトポリシーの出典の記載例（編集・加工して使う場合）の形。
     '寺社: ジャパンサーチ「<a href="https://jpsearch.go.jp/database/bunka" target="_blank" rel="noreferrer">'
     "文化遺産オンライン（文化庁・国立情報学研究所）</a>」のメタデータを改変して利用（所有者で寺社ごとにまとめた）",
+    # JARTIC のオープンデータの利用規約の、加工した旨の記載例の形。
+    '交通規制: 公益財団法人日本道路交通情報センター「<a href="https://www.jartic.or.jp/service/opendata/" '
+    'target="_blank" rel="noreferrer">交通規制情報</a>」を加工して作成',
 )
 
 

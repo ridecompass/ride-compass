@@ -64,16 +64,9 @@ def open_shapefile(archive: zipfile.ZipFile) -> shapefile.Reader:
                             dbf=io.BytesIO(archive.read(members[".dbf"])), encoding=_ENCODING)
 
 
-def _boundary_paths(rows: EstatSmallAreaRows, prefectures: list[str]) -> list[Path]:
-    paths = [boundary_path(rows.survey, code) for code in prefectures]
-    missing = [str(path) for path in paths if not path.exists()]
-    if missing:
-        raise FileNotFoundError(f"e-Stat の小地域の境界がありません: {missing}（scripts/fetch_estat_small_areas.py が写す）")
-    return paths
-
-
 def estat_small_area_inputs(spec: SourceSpec, profile: SourceProfile) -> RangeInputs:
-    return range_inputs(profile, lambda prefectures: _boundary_paths(spec.rows, prefectures))
+    return range_inputs(profile, lambda code: boundary_path(spec.rows.survey, code),
+                        "e-Stat の小地域の境界がありません（scripts/fetch_estat_small_areas.py が写す）")
 
 
 def _to_wgs84(geometry: BaseGeometry, transformer: pyproj.Transformer) -> BaseGeometry:

@@ -49,6 +49,7 @@ class Source(StrEnum):
     ABR = "abr"
     ESTAT_SMALL_AREA = "estat_small_area"
     ISJ_BLOCK = "isj_block"
+    JARTIC_REGULATION = "jartic_regulation"
     DEM = "dem"
     LULC = "lulc"
 
