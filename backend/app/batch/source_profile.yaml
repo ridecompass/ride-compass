@@ -99,7 +99,7 @@ sources:
 
   # --- 交通規制 -----------------------------------------------------------
   # 日本道路交通情報センター（JARTIC）の交通規制情報（都道府県警察の交通規制。範囲に掛かる都道府県のもの）。
-  # 版は配布元の置き場の名前（毎月出て、前の版は残らない）。入れ替えの手順は docs/architecture/data-sources.md「交通規制情報」。
+  # 版は配布元の置き場の名前（毎月出て、前の版は残らない）。入れ替えの手順は docs/architecture/data-sources.md「交通規制情報（JARTIC）」。
   - name: jartic_regulation
     adapter: jartic_regulation
     rows:
