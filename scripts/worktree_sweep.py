@@ -245,7 +245,9 @@ def _detach(hook_input: dict) -> None:
         args += ["--keep", hook_input["cwd"]]
     root = scratch_root()
     root.mkdir(parents=True, exist_ok=True)
-    flags = (subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP) if os.name == "nt" else 0
+    # Windows では窓の無いコンソールで起こす。コンソールを持たない形（DETACHED_PROCESS）で起こすと、子の git が1回ごとに
+    # 新しいコンソールの窓を開き、画面がちらつく。
+    flags = (subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP) if os.name == "nt" else 0
     # 子は記録のファイルを自分で開いたまま持つので、ここで閉じてよい。
     with open(root / "worktree-sweep.log", "a", encoding="utf-8") as log:
         subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=log, stderr=log, cwd=REPO_ROOT,
