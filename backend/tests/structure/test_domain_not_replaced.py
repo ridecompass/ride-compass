@@ -2,7 +2,7 @@
 
 自分のdomainの関数・クラスは差し替えずに本物を通す（.claude/rules/testing.md「確かめる高さ」）。
 差し替えると、テストは実装の途中の手順を写したものになり、作り替えを越えられない。
-差し替えてよい宣言のデータ（`TUNING_VALUES`・`MATERIAL_CATALOG`等）は関数・クラスではないので、ここでは落ちない。
+差し替えてよい宣言のデータ（`MATERIAL_CATALOG`等）は関数・クラスではないので、ここでは落ちない。
 
 母集団はソースから導く——`backend/tests`配下の全`.py`（この検査のディレクトリを除く）を読み、
 `setattr`（`monkeypatch.setattr`・`MonkeyPatch.context()`の`setattr`・組み込み）・`delattr`と`patch`・`patch.object`の

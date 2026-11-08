@@ -57,10 +57,12 @@ from app.domain.route_search import (
     route_passages,
     transition_values_along,
     turnaround_ring_m,
+    turnaround_separation,
 )
 from app.domain.leg_costs import LegCostArrays
 from app.domain.routing import NodeJunction, TurnExpandedTree, add_terminal_candidate, build_turn_expanded_tree
-from app.domain.tuning import TUNING_VALUES
+from app.domain.geo import KM_PER_DEGREE_LATITUDE
+from app.domain.tuning import tuning_value
 from tests.search_graph_world import LINE_EDGES, LINE_NODES, build_all, make_graph, state_index
 
 
@@ -324,21 +326,29 @@ def test_rank_puts_the_pareto_layer_before_the_penalty():
     assert _ranked_ids([5, 7, 9], [0.0, 2000.0, 2000.0], [50.0, 10.0, 30.0], tie_by_distance=False) == [7, 5, 9]
 
 
-def test_rank_treats_distances_within_the_calibrated_quantum_as_the_same(monkeypatch):
-    """管理画面で距離の粒度を2kmより粗くすると、2km違いの候補は同じ距離とみなされ、代償だけで並ぶ。"""
-    monkeypatch.setitem(TUNING_VALUES, "search.pareto_distance_quantum_m", 5000.0)
+def test_rank_treats_distances_within_the_calibrated_quantum_as_the_same():
+    """距離の差が較正値の粒度に満たない候補は同じ距離とみなされ、代償だけで並ぶ。"""
+    near = 0.4 * tuning_value("search.pareto_distance_quantum_m")
 
-    assert _ranked_ids([5, 7, 9], [0.0, 2000.0, 2000.0], [50.0, 10.0, 30.0], tie_by_distance=False) == [7, 9, 5]
+    assert _ranked_ids([5, 7, 9], [0.0, near, near], [50.0, 10.0, 30.0], tie_by_distance=False) == [7, 9, 5]
 
 
-@pytest.mark.parametrize(("stretch", "expected"), [(1.0, [0]), (1.5, [0, 1, 2])])
-def test_alternative_routes_are_at_most_the_calibrated_stretch_of_the_best(monkeypatch, stretch, expected):
-    """目的地への代わりの道は、最良路（1km）の長さの較正値の倍までを候補にする。"""
-    monkeypatch.setitem(TUNING_VALUES, "search.alternative_max_stretch", stretch)
+def test_alternative_routes_are_at_most_the_calibrated_stretch_of_the_best():
+    """目的地への代わりの道は、最良路（1km）の長さの較正値の倍まで（ちょうどを含む）を候補にする。"""
+    longest = 1000.0 * tuning_value("search.alternative_max_stretch")
 
     best, alternatives = alternative_via_nodes(
-        np.array([1.0, 2.0, 3.0]), np.array([1000.0, 1200.0, 1400.0]), np.array([True, True, True]))
-    assert (best, alternatives.tolist()) == (0, expected)
+        np.array([1.0, 2.0, 3.0]), np.array([1000.0, longest, longest + 1.0]), np.array([True, True, True]))
+    assert (best, alternatives.tolist()) == (0, [0, 1])
+
+
+def test_a_turnaround_closer_than_the_calibrated_separation_to_an_accepted_one_is_skipped():
+    """採用済みの折返し点から較正値の間隔より近い点は採らず、離れた点は採る（近い点ばかり採ると、同じ方面の周回が並ぶ）。"""
+    separation_km = tuning_value("search.min_turnaround_separation_km")
+    lat = 35.0 + np.array([0.0, separation_km - 0.01, separation_km + 0.01]) / KM_PER_DEGREE_LATITUDE
+    far_enough = turnaround_separation([1, 2, 3], lat, np.full(3, 139.0), 35.0)
+
+    assert (far_enough(2, [1]), far_enough(3, [1])) == (False, True)
 
 
 @pytest.mark.parametrize(("tie_by_distance", "expected"), [(True, [8, 3]), (False, [3, 8])])
@@ -375,45 +385,28 @@ def test_turnaround_ring_center_lies_inside_the_ring():
     assert lower_m <= center_m <= upper_m
 
 
-def _set_loop_estimate(monkeypatch, ratio_min, ratio_max):
-    monkeypatch.setitem(TUNING_VALUES, "search.loop_to_outbound_ratio_min", ratio_min)
-    monkeypatch.setitem(TUNING_VALUES, "search.loop_to_outbound_ratio_max", ratio_max)
-
-
-def test_turnaround_ring_follows_the_loop_length_estimate_in_effect(monkeypatch):
-    """周回の全長の見込み（較正値）を管理画面で変えると、次に探すリングがその見込みで決まる。見込みを全長÷2.5に
-    揃えると、目標10km±1kmのリングは9km÷2.5〜11km÷2.5で、中心は10km÷2.5。"""
-    _set_loop_estimate(monkeypatch, 2.5, 2.5)
-
-    assert turnaround_ring_m(10.0, 1.0) == pytest.approx((3600.0, 4400.0, 4000.0))
-
-
 @pytest.mark.parametrize(
     ("outbound_m", "shortest_m", "in_band"),
     [
-        (3000.0, 4000.0, True),  # 見込み9.0〜10.2km: 下端がちょうど目標−許容
-        (2900.0, 4000.0, False),  # 下端8.9kmが目標−許容より短い
-        (3000.0, 4700.0, False),  # 上端11.1kmが目標＋許容より長い
-        # 見込みの幅（帰り7km×0.3）が許容の幅より広いので、全長を見込みの中央（帰り×1.15）の1点で見る。
-        # 中央10.55kmは入る（幅のままだと上端11.6kmで外れる）。中央11.05kmは、下端の10.0kmが入っても外れる
+        (3000.0, 5000.0, True),  # 見込み9.0〜11.0km: 両端がちょうど目標±許容
+        (2900.0, 5000.0, False),  # 下端8.9kmが目標−許容より短い
+        (3100.0, 5000.0, False),  # 上端11.1kmが目標＋許容より長い
+        # 見込みの幅（帰り7km×0.4）が許容の幅より広いので、全長を見込みの中央（帰り×1.0）の1点で見る。
+        # 中央9.5kmは入る（幅のままだと下端8.1kmで外れる）。中央11.5kmは、下端の10.1kmが入っても外れる
         (500.0, 7000.0, True),
-        (1000.0, 7000.0, False),
+        (2500.0, 7000.0, False),
         (3000.0, np.nan, False),  # 終点へ届かない中継点
     ],
 )
-def test_relay_band_takes_relays_whose_whole_estimate_of_the_route_fits_the_distance(
-    monkeypatch, outbound_m, shortest_m, in_band,
-):
-    """目標10km±1km、前段2km。周回の見込みを2.0〜2.3に置き、全長の見込みは前段＋往路＋帰りの最短×1.0〜1.3。
+def test_relay_band_takes_relays_whose_whole_estimate_of_the_route_fits_the_distance(outbound_m, shortest_m, in_band):
+    """目標10km±1km、前段2km。テストの較正値の周回の見込み1.8〜2.2で、全長の見込みは前段＋往路＋帰りの最短×0.8〜1.2。
     帯から外れた中継点を選ぶと、帰りを探したあとの距離フィルタで落ち、候補が減る。"""
-    _set_loop_estimate(monkeypatch, 2.0, 2.3)
     (inside,), _ = relay_band(2000.0, np.array([outbound_m]), np.array([shortest_m]), 10.0, 1.0)
     assert bool(inside) is in_band
 
 
-def test_relay_band_ranks_relays_by_how_far_the_middle_of_the_estimate_is_from_the_target(monkeypatch):
-    """見込みの中央（周回の見込み2.0〜2.3で、帰り×1.15）が目標から遠いほど後ろに並ぶ。短すぎる経路も長すぎる経路も
-    同じに扱う。"""
-    _set_loop_estimate(monkeypatch, 2.0, 2.3)
-    _, closeness_m = relay_band(2000.0, np.array([3000.0, 3000.0]), np.array([4000.0, 4000.0 + 800.0 / 1.15]), 10.0, 1.0)
-    assert closeness_m == pytest.approx([400.0, 400.0])
+def test_relay_band_ranks_relays_by_how_far_the_middle_of_the_estimate_is_from_the_target():
+    """見込みの中央（テストの較正値の周回の見込み1.8〜2.2で、帰り×1.0）が目標から遠いほど後ろに並ぶ。短すぎる経路も
+    長すぎる経路も同じに扱う。"""
+    _, closeness_m = relay_band(2000.0, np.array([3000.0, 3000.0]), np.array([4000.0, 6000.0]), 10.0, 1.0)
+    assert closeness_m == pytest.approx([1000.0, 1000.0])

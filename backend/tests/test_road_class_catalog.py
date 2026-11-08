@@ -9,7 +9,6 @@
 from app.domain.road_class_catalog import road_class_catalog
 from app.domain.map_display import MAP_LAYER_CATEGORIES
 from app.domain.road_classes import EMPTY_ROAD_CLASSES, AvoidanceClassification, AvoidanceOverride
-from app.domain.tuning import TUNING_VALUES
 from tests.road_class_fixture import classification, fact_is, map_layer, road_classes
 
 
@@ -89,12 +88,10 @@ def test_avoidance_rows_are_grouped_under_their_map_layers() -> None:
     ]
 
 
-def test_levels_are_named_by_the_multiplier_derived_from_the_calibrated_avoid_multiplier(monkeypatch):
-    """段の名前は区間の費用に掛ける倍率で、並びは倍率の順。「好む」は「なるべく避ける」の倍率の逆数なので、管理画面で倍率を
-    変えると、どちらの段の数字も変わる。"""
-    monkeypatch.setitem(TUNING_VALUES, "avoidance.avoid_cost_multiplier", 4.0)
+def test_levels_are_named_by_the_multiplier_derived_from_the_calibrated_avoid_multiplier():
+    """段の名前は区間の費用に掛ける倍率で、並びは倍率の順。「好む」は「なるべく避ける」の倍率（テストの較正値は2）の逆数。"""
     catalog = road_class_catalog(EMPTY_ROAD_CLASSES)
 
     assert [(level.key, level.label) for level in catalog.avoidance.levels] == [
-        ("prefer", "×0.25"), ("pass", "×1"), ("avoid", "×4"), ("exclude", "×∞"),
+        ("prefer", "×0.5"), ("pass", "×1"), ("avoid", "×2"), ("exclude", "×∞"),
     ]

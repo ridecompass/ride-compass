@@ -34,7 +34,7 @@ from app.domain.graph import node_key, parse_edge_key
 from app.domain.road_network import RoadNetwork
 from app.domain.road_classes import AvoidanceClassification
 from app.domain.route_request import ASSUMED_SPEED_KMH, DEFAULT_MAX_ROUTES, MAX_SPLICED_EDGES, MAX_WAYPOINTS
-from app.domain.tuning import TUNING_VALUES
+from app.domain.tuning import tuning_value
 from app.infrastructure import rate_limiter
 from app.infrastructure.job_registry import JOB_WAIT_MAX_SECONDS
 from app.main import app
@@ -251,12 +251,11 @@ async def test_a_spliced_route_outside_the_search_area_fails_as_an_error_of_the_
     assert [r for r in caplog.records if r.levelno == logging.ERROR]
 
 
-async def test_a_distance_with_placed_points_is_the_length_of_the_whole_route(client, world, monkeypatch):
+async def test_a_distance_with_placed_points_is_the_length_of_the_whole_route(client, world):
     """経由地を置いても、距離は全長の目標として効く（夕食と銭湯に寄って30kmの周回）。
     探索は置いた点の近くに限らず、全長の目標に足りる広さで探す。"""
     world.serve(LATTICE)
-    tolerance_ratio = 0.2
-    monkeypatch.setitem(TUNING_VALUES, "search.distance_tolerance_ratio", tolerance_ratio)
+    tolerance_ratio = tuning_value("search.distance_tolerance_ratio")
     origin, waypoint, target = (1, 1), (1, 2), 12.0
 
     result = (await _generate(
@@ -276,13 +275,15 @@ async def test_a_distance_with_placed_points_is_the_length_of_the_whole_route(cl
 
 
 async def test_the_defaults_that_were_applied_are_echoed(client):
-    """画面が見る値と探索が使った値を分けない。省略した項目も、実際に使った値で返す。"""
+    """画面が見る値と探索が使った値を分けない。省略した項目も、実際に使った値で返す。許容は目標距離に割合の較正値を掛けた長さで返す。"""
     conditions = (await _generate(client))["result"]["conditions"]
 
     assert conditions["cost_preference"] == {
         "strength": 1.0, "multipliers": dict.fromkeys(EFFORT_AXES, 1.0), "disabled_axes": []}
     assert conditions["waypoints"] is None and conditions["destination"] is None
     assert conditions["corrected_destination"] is None
+    assert conditions["distance_tolerance_km"] == pytest.approx(
+        conditions["distance_km"] * tuning_value("search.distance_tolerance_ratio"))
 
 
 async def test_the_overrides_that_were_sent_are_echoed(client, bad_axis):
@@ -304,17 +305,6 @@ async def test_the_overrides_that_were_sent_are_echoed(client, bad_axis):
         "disabled_axes": ["headwind"]}
     assert conditions["road_avoidance"] == {"kind.local": "avoid"}
     assert conditions["assumed_speed_kmh"] == 25.0
-
-
-async def test_the_calibrated_tolerance_at_the_time_of_generation_is_applied(client, monkeypatch):
-    """管理画面で変えた較正値は、プロセスを入れ替えずに次の生成から効き、使った値として返る。許容は割合の較正値で、
-    目標4kmに掛けた長さを使って返す。"""
-    echoed = []
-    for value in (0.25, 0.5):
-        monkeypatch.setitem(TUNING_VALUES, "search.distance_tolerance_ratio", value)
-        echoed.append((await _generate(client))["result"]["conditions"]["distance_tolerance_km"])
-
-    assert tuple(echoed) == pytest.approx((1.0, 2.0))
 
 
 # --- つまみと倍率 ---
