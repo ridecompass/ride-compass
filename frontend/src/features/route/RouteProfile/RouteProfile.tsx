@@ -103,7 +103,7 @@ export default function RouteProfile({
       .map((axis) => axis.axisId);
   }, [chosenAxes, scale, paintedAxes]);
   const shownOrder = useMemo(() => axisOrder.filter((axisId) => shownAxes.includes(axisId)), [axisOrder, shownAxes]);
-  const burdenRows = penaltyRows(penalty, catalog);
+  const burdenRows = penaltyRows(penalty.axis_seconds, catalog);
   const { available, chosen } = useChosenProfileLayers(layers.ids);
   const shownLayers = useMemo(
     (): ShownLayers => ({
