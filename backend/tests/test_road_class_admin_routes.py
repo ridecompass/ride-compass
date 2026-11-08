@@ -39,7 +39,8 @@ DEFINITIONS = road_classes(
     rolling_resistance_classes={"surface": {"paved": BASE_CRR_ID}},
     avoidance_classifications={
         "surface": AvoidanceClassification(
-            overrides={"unpaved": AvoidanceOverride(default_level="avoid", selectable=True)},
+            # 既定は「通る」のほかのどの段にも置ける（好む側も）。
+            overrides={"unpaved": AvoidanceOverride(default_level="slight_prefer", selectable=True)},
         ),
     },
 ).model_dump(mode="json")

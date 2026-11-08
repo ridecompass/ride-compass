@@ -60,12 +60,13 @@ wayの長さ（0はNULL）になる——件数と長さは必ず同じ側から
   通れない道を外すことは直してはいけない。
   タグが無い道は除外しない（判断材料が無い区間まで一律に除外すると探索対象が過度に狭まるため、不明な場合は許可し費用の側へ委ねる）。
 - **道の区分ごとの避け方**: 除外の設定（管理DBの道の区分。`domain/road_classes.py: RoadClassDefinitions.avoidance_classifications`）が
-  指す公開した分け方の区分ごとに、「好む」「通る」「なるべく避ける」「通らない」を選ぶ（行の鍵は`<分け方>.<区分>`。選べないとした区分は行にならない）。
+  指す公開した分け方の区分ごとに、「好む」「少し好む」「通る」「少し避ける」「なるべく避ける」「通らない」を選ぶ（行の鍵は`<分け方>.<区分>`。選べないとした区分は行にならない）。
   区間が行に当たるかは、地図がその分け方の線を塗るのと同じ区分の列（`domain/road_classes.py: class_material_id`）から求める。
   「通らない」の行に当たる区間は除き、「なるべく避ける」の行に当たる区間は費用に較正値`avoidance.avoid_cost_multiplier`を、
-  「好む」の行に当たる区間はその逆数を掛ける（`domain/road_avoidance.py: level_multipliers`・`domain/leg_costs.py: LegCostComposer`）。
-  好むは新しい較正値を持たず、避けると逆向きに同じ強さで効く。1つの区間が複数の行に当たれば強い段が効き、強さの順は
-  通る＜好む＜なるべく避ける＜通らない（通るは何も指定していない扱い。`domain/road_avoidance.py: road_avoidance_masks`）。
+  「好む」の行に当たる区間はその逆数を掛け、「少し」の段はそれぞれの平方根を掛ける（倍率の対数で「通る」との真ん中。
+  `domain/road_avoidance.py: level_multipliers`・`domain/leg_costs.py: LegCostComposer`）。好む・少しの段は新しい較正値を持たず、
+  避けると逆向きに同じ強さで効く。1つの区間が複数の行に当たれば倍率の大きい段が効く（通るは何も指定していない扱い。
+  `domain/road_avoidance.py: road_avoidance_masks`）。管理DBの区分の既定には、通るのほかのどの段も置ける（通るは上書きの行を持たない）。
   要求に無い行は、管理DBが持つ既定の段を取る。画面に配る段の名前は掛ける倍率そのもの（×0.5・×1・×2・×∞の形。
   `domain/cost_preference.py: multiplier_label`。費用の軸の倍率の段と同じ書き方）で、較正値から作るので、管理画面で倍率を変えると段の数字も変わる。並びは倍率の順。
   倍率は本番で前後の幹線の割合・距離を比べて決める。
@@ -135,7 +136,7 @@ wayの長さ（0はNULL）になる——件数と長さは必ず同じ側から
   （`domain/leg_costs.py: LegCostComposer.values_at_rows`が`domain/ledger_costs.py: LedgerCosts.row_seconds`を呼び、走行の模型は
   `SegmentSpeedModel.ride`に行を渡すとその行の点の間だけを解く）。点の間ごとの計算は互いに依らないので、全部を解いた探索の
   値と同じになり、所要時間と内訳の和が探索の費用に合う。避け方の秒は、避け方の倍率と1の差 ×（区間の所要時間＋代償）で、
-  負の分（好む）と正の分（なるべく避ける）を分けて持つ（`domain/route.py: PenaltyBreakdown`の`preferred_seconds`・`avoided_seconds`）。
+  負の分（好む側の段）と正の分（避ける側の段）を分けて持つ（`domain/route.py: PenaltyBreakdown`の`preferred_seconds`・`avoided_seconds`）。
   曲がる所の漕ぎ出しの代償（`domain/ledger_costs.py: LedgerCosts.turn_penalty_by_axis`。その費目を持つ軸の秒）は、区間には
   置かず、候補の内訳の軸の秒に足す（`services/road_graph_candidates.py`。区間の軸の秒は地図のレンズと同じ道の量）。
 - **欠けの埋め方**: 停止要因の密度と、道のストレスの軸の材料の欠けは、`domain/road_network.py: material_fills`の分布で埋める

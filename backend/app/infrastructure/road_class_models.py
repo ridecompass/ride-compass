@@ -21,9 +21,11 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, attribute_keyed_dict, mapped_column, relationship
 
+from app.domain.road_avoidance import AVOIDANCE_LEVELS
 from app.infrastructure.orm_base import Base
 
 _KEY_PATTERN = "^[a-z][a-z0-9_]*$"
+_OVERRIDE_LEVELS_SQL = ", ".join(f"'{level}'" for level in AVOIDANCE_LEVELS if level != "pass")
 
 
 class _Deferral(TypedDict):
@@ -193,7 +195,8 @@ class RoadAvoidanceOverrideRow(Base):
     __tablename__ = "road_avoidance_overrides"
     __table_args__ = (
         _class_fk(),
-        CheckConstraint("default_level IN ('avoid', 'exclude')", name="road_avoidance_overrides_default_level_check"),
+        # 既定に置ける段は「通る」のほかの段のどれでも（「通る」は上書きの行を持たない）。
+        CheckConstraint(f"default_level IN ({_OVERRIDE_LEVELS_SQL})", name="road_avoidance_overrides_default_level_check"),
         CheckConstraint("selectable <> (default_level IS NULL)", name="road_avoidance_overrides_check"),
     )
 

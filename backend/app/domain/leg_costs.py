@@ -41,7 +41,7 @@ from app.domain.elevation_profile import FLAT, ElevationProfiles
 from app.domain.search_materials import SearchMaterials
 from app.domain.ledger_costs import LedgerCosts, LedgerParameters, burden_per_km
 from app.domain.road_network import MaterialFills
-from app.domain.road_avoidance import RoadAvoidanceMasks, level_multipliers
+from app.domain.road_avoidance import RoadAvoidanceMasks
 from app.domain.search_graph import EDGE_VALUE_DTYPE, kernel_array
 from app.domain.traffic import POI_COUNT_KINDS, stop_count_material_ids, stop_event
 from app.domain.wind import WindForecastSeries
@@ -318,7 +318,6 @@ class LegCostComposer:
         self,
         search_materials: SearchMaterials,
         search_masks: RoadAvoidanceMasks,
-        avoid_cost_multiplier: float,
         wind_series: WindForecastSeries,
         start: datetime,
         speed_kmh: float,
@@ -341,12 +340,10 @@ class LegCostComposer:
         )
         # 探索から除く区間（費用を無限大にする）と、避け方の倍率。倍率は探索の費用にだけ掛け、所要時間には掛けない。
         self._excluded = search_masks.excluded
-        multipliers = level_multipliers(avoid_cost_multiplier)
-        self._cost_scale = np.select(
-            [search_masks.avoided, search_masks.preferred], [multipliers["avoid"], multipliers["prefer"]], multipliers["pass"])
-        #: 区間の費用が所要時間に対して下がる最小の倍率（「好む」の区間があればその倍率、無ければ1）。探索の見込み
+        self._cost_scale = search_masks.cost_scale
+        #: 区間の費用が所要時間に対して下がる最小の倍率（好む側の段の区間があればその倍率、無ければ1）。探索の見込み
         #: （`domain/route_search.py: heuristic_seconds`）を、費用の下界に保つよう緩める。要求の間は変わらないので1回だけ求める。
-        self.min_cost_scale = multipliers["prefer"] if search_masks.preferred.any() else 1.0
+        self.min_cost_scale = float(search_masks.cost_scale.min(initial=1.0))
         self._wind_series = wind_series
         # 各Edgeの中点に最も近い予報の格子点（切り出した区間の順。格子点の並びの外の中点は端の格子点へ寄せる）。
         self._wind_points = wind_series.lattice.points_of(search_materials.mid_lat, search_materials.mid_lon)

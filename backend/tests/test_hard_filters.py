@@ -14,6 +14,7 @@ from app.domain.search_materials import build_search_materials
 from app.domain.hard_filters import compute_search_exclusion
 from app.domain.material_catalog import GRADIENT_PERCENT
 from app.domain.road_classes import class_material_id
+from app.domain.road_avoidance import level_multipliers
 from tests.profile_fixture import grade_profiles
 
 
@@ -28,25 +29,29 @@ def edge(facts: dict[str, str] | None = None) -> EdgeMaterialColumns:
     )
 
 
+MULTIPLIERS = level_multipliers(4.0)
+
+
 @pytest.mark.parametrize(
-    ("levels", "excluded", "avoided", "preferred"),
+    ("levels", "excluded", "cost_scale"),
     [
-        ({"kind.national": "pass"}, False, False, False),
-        ({"kind.national": "avoid"}, False, True, False),
-        ({"kind.national": "exclude"}, True, False, False),
-        # 1つの道が2つの行に当たれば強い方: 「通る」は何も指定していない扱いで、「なるべく避ける」は「好む」より強い。
-        ({"kind.national": "pass", "surface.gravel": "prefer"}, False, False, True),
-        ({"kind.national": "avoid", "surface.gravel": "prefer"}, False, True, False),
+        ({"kind.national": "pass"}, False, 1.0),
+        ({"kind.national": "avoid"}, False, 4.0),
+        ({"kind.national": "exclude"}, True, 1.0),
+        # 1つの道が2つの行に当たれば倍率の大きい方: 「通る」は何も指定していない扱いで、避ける側は好む側より大きい。
+        ({"kind.national": "pass", "surface.gravel": "prefer"}, False, 0.25),
+        ({"kind.national": "avoid", "surface.gravel": "prefer"}, False, 4.0),
+        ({"kind.national": "slight_prefer", "surface.gravel": "prefer"}, False, 0.5),
     ],
 )
-def test_the_strongest_level_of_the_rows_of_a_road_decides_how_its_segments_are_searched(levels, excluded, avoided, preferred):
+def test_the_largest_multiplier_of_the_rows_of_a_road_decides_how_its_segments_are_searched(levels, excluded, cost_scale):
     """「通らない」を選んでも国道を通る・「通る」を選んでも国道を避けると、選んだ避け方が探索に効かない。"""
     matrix = build_search_materials(
         edge(facts={class_material_id("kind"): "national", class_material_id("surface"): "gravel"}), {}, ())
 
-    masks = compute_search_exclusion(matrix, {**levels, "kind.local": "exclude", "other.national": "exclude"})
+    masks = compute_search_exclusion(matrix, {**levels, "kind.local": "exclude", "other.national": "exclude"}, MULTIPLIERS)
 
-    assert (masks.excluded.tolist(), masks.avoided.tolist(), masks.preferred.tolist()) == ([excluded], [avoided], [preferred])
+    assert (masks.excluded.tolist(), masks.cost_scale.tolist()) == ([excluded], [cost_scale])
 
 
 @pytest.mark.parametrize(("tags", "excluded"), [
@@ -59,4 +64,4 @@ def test_only_the_roads_cyclists_may_not_ride_are_always_excluded(tags, excluded
     """自動車専用道路を通るルートを作ると走れず、標識の無い国道まで外すと遠回りになる。"""
     matrix = build_search_materials(edge(facts=tags), {}, ())
 
-    assert compute_search_exclusion(matrix, {}).excluded.tolist() == [excluded]
+    assert compute_search_exclusion(matrix, {}, MULTIPLIERS).excluded.tolist() == [excluded]

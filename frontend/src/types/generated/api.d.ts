@@ -664,7 +664,7 @@ export interface components {
              * Key
              * @enum {string}
              */
-            key: "pass" | "prefer" | "avoid" | "exclude";
+            key: "pass" | "slight_prefer" | "prefer" | "slight_avoid" | "avoid" | "exclude";
             /** Label */
             label: string;
         };
@@ -691,7 +691,7 @@ export interface components {
              * Default
              * @enum {string}
              */
-            default: "pass" | "prefer" | "avoid" | "exclude";
+            default: "pass" | "slight_prefer" | "prefer" | "slight_avoid" | "avoid" | "exclude";
         };
         /** AvoidanceSectionView */
         AvoidanceSectionView: {
@@ -1459,7 +1459,7 @@ export interface components {
         };
         /** RoadAvoidanceOverride */
         RoadAvoidanceOverride: {
-            [key: string]: "pass" | "prefer" | "avoid" | "exclude";
+            [key: string]: "pass" | "slight_prefer" | "prefer" | "slight_avoid" | "avoid" | "exclude";
         };
         /** RoadAvoidanceView */
         RoadAvoidanceView: {

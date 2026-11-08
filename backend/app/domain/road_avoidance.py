@@ -1,4 +1,4 @@
-"""道の区分ごとの避け方（好む・通る・なるべく避ける・通らない）。
+"""道の区分ごとの避け方（好む・少し好む・通る・少し避ける・なるべく避ける・通らない）。
 
 選べる行は、除外の設定（`domain/road_classes.py: RoadClassDefinitions.avoidance_classifications`）が指す公開した分け方の区分で、
 選べないとした区分を除く。鍵は`<分け方>.<区分>`で、行は分け方ごとの見出しにまとまる。区間が行に当たるかは、その分け方の区分の列から決める。
@@ -21,16 +21,25 @@ from app.domain.road_classes import (
     published_map_layers,
 )
 
-#: 避け方の段。並びは弱い順で、1つの区間が複数の行に当たれば後ろ（強い）の段を取る。「通る」は何も指定していない扱いで、
-#: ほかの行の段を打ち消さない。
-AvoidanceLevel = Literal["pass", "prefer", "avoid", "exclude"]
+#: 避け方の段。1つの区間が複数の行に当たれば、倍率の大きい段を取る。「通る」は何も指定していない扱いで、ほかの行の段を
+#: 打ち消さない。
+AvoidanceLevel = Literal["pass", "slight_prefer", "prefer", "slight_avoid", "avoid", "exclude"]
 AVOIDANCE_LEVELS: tuple[AvoidanceLevel, ...] = get_args(AvoidanceLevel)
 
 
 def level_multipliers(avoid_cost_multiplier: float) -> dict[AvoidanceLevel, float]:
     """段→その段の区間の費用に掛ける倍率。「好む」は「なるべく避ける」の倍率（較正値`avoidance.avoid_cost_multiplier`）の
-    逆数で、逆向きに同じ強さで効く。「通らない」は探索から除くので無限大。"""
-    return {"pass": 1.0, "prefer": 1.0 / avoid_cost_multiplier, "avoid": avoid_cost_multiplier, "exclude": math.inf}
+    逆数で、逆向きに同じ強さで効く。「少し」の段はその平方根（倍率の対数で「通る」との真ん中）。「通らない」は探索から除くので
+    無限大。"""
+    slight = math.sqrt(avoid_cost_multiplier)
+    return {
+        "pass": 1.0,
+        "slight_prefer": 1.0 / slight,
+        "prefer": 1.0 / avoid_cost_multiplier,
+        "slight_avoid": slight,
+        "avoid": avoid_cost_multiplier,
+        "exclude": math.inf,
+    }
 
 
 class AvoidanceRow(NamedTuple):
@@ -80,18 +89,19 @@ class RoadAvoidanceMasks:
 
     #: 「通らない」の行に当たる区間。
     excluded: np.ndarray
-    #: 一番強い段が「なるべく避ける」の区間。
-    avoided: np.ndarray
-    #: 一番強い段が「好む」の区間。
-    preferred: np.ndarray
+    #: 区間の費用に掛ける倍率（当たる行の段の倍率のうち一番大きいもの。どの行にも当たらない区間と、通らない区間は1）。
+    cost_scale: np.ndarray
 
 
 def road_avoidance_masks(
-    classes: Mapping[str, CategoricalColumn], levels: Mapping[str, AvoidanceLevel], n: int
+    classes: Mapping[str, CategoricalColumn],
+    levels: Mapping[str, AvoidanceLevel],
+    multipliers: Mapping[AvoidanceLevel, float],
+    n: int,
 ) -> RoadAvoidanceMasks:
-    """区分の列（`domain/road_classes.py: class_material_id`の鍵）と、行→段から、区間ごとに当たる行の一番強い段を求める。
-    列の無い分け方の行と、列の語彙に無い区分の行は、どの区間にも当たらない。"""
-    strongest = np.zeros(n, dtype=np.int8)
+    """区分の列（`domain/road_classes.py: class_material_id`の鍵）と、行→段と、段→倍率（`level_multipliers`）から、区間ごとに
+    当たる行の倍率のうち一番大きいものを求める。列の無い分け方の行と、列の語彙に無い区分の行は、どの区間にも当たらない。"""
+    largest = np.full(n, np.nan)
     for key, level in levels.items():
         if level == "pass":
             continue
@@ -100,9 +110,6 @@ def road_avoidance_masks(
         if column is None or class_key not in column.vocab:
             continue
         hit = column.codes == column.vocab.index(class_key)
-        strongest[hit] = np.maximum(strongest[hit], AVOIDANCE_LEVELS.index(level))
-    return RoadAvoidanceMasks(
-        excluded=strongest == AVOIDANCE_LEVELS.index("exclude"),
-        avoided=strongest == AVOIDANCE_LEVELS.index("avoid"),
-        preferred=strongest == AVOIDANCE_LEVELS.index("prefer"),
-    )
+        largest[hit] = np.fmax(largest[hit], multipliers[level])
+    excluded = np.isinf(largest)
+    return RoadAvoidanceMasks(excluded=excluded, cost_scale=np.where(np.isnan(largest) | excluded, 1.0, largest))

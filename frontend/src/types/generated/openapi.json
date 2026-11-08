@@ -2057,7 +2057,9 @@
             "type": "string",
             "enum": [
               "pass",
+              "slight_prefer",
               "prefer",
+              "slight_avoid",
               "avoid",
               "exclude"
             ],
@@ -2128,7 +2130,9 @@
             "type": "string",
             "enum": [
               "pass",
+              "slight_prefer",
               "prefer",
+              "slight_avoid",
               "avoid",
               "exclude"
             ],
@@ -4801,7 +4805,9 @@
           "type": "string",
           "enum": [
             "pass",
+            "slight_prefer",
             "prefer",
+            "slight_avoid",
             "avoid",
             "exclude"
           ]

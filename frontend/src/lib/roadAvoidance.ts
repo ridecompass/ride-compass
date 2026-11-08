@@ -13,6 +13,8 @@ export type AvoidanceRow = RoadAvoidanceView["rows"][number];
  * 塗らない。 */
 export const AVOIDANCE_LEVEL_COLORS: Readonly<Record<Exclude<AvoidanceLevel, "pass">, string>> = {
   prefer: palette.semantic.road_avoidance_prefer,
+  slight_prefer: palette.semantic.road_avoidance_slight_prefer,
+  slight_avoid: palette.semantic.road_avoidance_slight_avoid,
   avoid: palette.semantic.road_avoidance_avoid,
   exclude: palette.semantic.road_avoidance_exclude,
 };

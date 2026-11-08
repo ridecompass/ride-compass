@@ -73,7 +73,7 @@ describe("HardFilterPanel", () => {
     expect(screen.queryByRole("button", { name: /^行の無い節/ })).toBeNull();
 
     await userEvent.click(sectionTrigger("路面"));
-    expect(checkedLevel("砂利")).toHaveTextContent("×1");
+    expect(checkedLevel("砂利")).toHaveAccessibleName("×1");
     await userEvent.click(
       within(screen.getByRole("radiogroup", { name: "砂利の避け方" })).getByRole("radio", { name: "×∞" }),
     );
