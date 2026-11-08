@@ -93,8 +93,10 @@ def compute_routable_nodes(
 def compute_search_exclusion(
     search_materials: "SearchMaterials",
     road_avoidance: Mapping[str, AvoidanceLevel],
+    multipliers: Mapping[AvoidanceLevel, float],
 ) -> RoadAvoidanceMasks:
-    """探索の材料の表が持つ0次ハードフィルタ・区分の列から、リクエスト時点の`road_avoidance`を反映した、
-    探索から除く区間と、避け方の倍率を掛ける区間を求める。"""
-    rows = road_avoidance_masks(search_materials.road_classes, road_avoidance, len(search_materials.distance_m))
+    """探索の材料の表が持つ0次ハードフィルタ・区分の列から、リクエスト時点の`road_avoidance`（段の倍率は`multipliers`）を
+    反映した、探索から除く区間と、区間の費用に掛ける避け方の倍率を求める。"""
+    rows = road_avoidance_masks(
+        search_materials.road_classes, road_avoidance, multipliers, len(search_materials.distance_m))
     return replace(rows, excluded=rows.excluded | search_materials.hard_filtered)

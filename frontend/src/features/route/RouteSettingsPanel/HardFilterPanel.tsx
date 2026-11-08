@@ -139,6 +139,11 @@ export default function HardFilterPanel({
 
 // 畳んだ見出しに、「通る」以外を選んだ行の数を段ごとに出す（開かずに何を好み・避けているかが分かる）。段の名前は倍率の数字
 // なので、行の数には「件」を付けて見分ける。
+/** 段を地図で塗る色。通る（塗らない）は目立たない文字の色。 */
+function levelColor(level: AvoidanceLevel): string {
+  return level === "pass" ? "var(--color-muted)" : AVOIDANCE_LEVEL_COLORS[level];
+}
+
 function avoidedSummary(levels: RoadAvoidanceView["levels"], rowLevels: readonly AvoidanceLevel[]): string {
   return levels
     .filter(({ key }) => key !== "pass")
@@ -172,19 +177,39 @@ function AvoidanceLevelRow({
       >
         {description}
       </InfoPopover>
-      <ToggleGroup
-        className="ml-auto"
-        aria-label={`${label}の避け方`}
-        usage="この行に該当する道の費用に掛ける倍率を選びます。1より小さい倍率は好んで通り（遠回りでも選びやすくなります）、1より大きい倍率はなるべく避け（遠回りが小さければ別の道を通ります）、∞は経路から完全に外します。複数の行に該当する道には、通らない・なるべく避ける・好むの順に強い方を当てます（×1は指定なしの扱いです）。"
-        value={level}
-        onValueChange={(next) => onLevelChange(next as AvoidanceLevel)}
-      >
-        {levels.map(({ key, label: levelLabel }) => (
-          <ToggleGroupItem key={key} value={key}>
-            {levelLabel}
-          </ToggleGroupItem>
-        ))}
-      </ToggleGroup>
+      <span className="ml-auto flex items-center gap-1.5">
+        <ToggleGroup
+          variant="scale"
+          aria-label={`${label}の避け方`}
+          usage="この行に該当する道の費用に掛ける倍率を、目盛りの点を押して選びます。真ん中の長い目盛りが×1（指定なし）で、左ほど好んで通り（遠回りでも選びやすくなります）、右ほど避け（遠回りが小さければ別の道を通ります）、右端の∞は経路から完全に外します。複数の行に該当する道には、倍率の大きい方を当てます（×1は指定なしの扱いです）。"
+          value={level}
+          onValueChange={(next) => onLevelChange(next as AvoidanceLevel)}
+        >
+          {levels.map(({ key, label: levelLabel }) => (
+            <ToggleGroupItem key={key} value={key} aria-label={levelLabel}>
+              {key === level ? (
+                <span
+                  aria-hidden="true"
+                  className="block size-3.5 rounded-full border-2 border-[var(--background)]"
+                  style={{ background: levelColor(key) }}
+                />
+              ) : (
+                <span
+                  aria-hidden="true"
+                  className={cn("block w-px bg-[var(--color-muted)]", key === "pass" ? "h-3.5" : "h-2.5")}
+                />
+              )}
+            </ToggleGroupItem>
+          ))}
+        </ToggleGroup>
+        {/* 選んでいる段の倍率（地図で塗る色の文字で）。 */}
+        <span
+          className="w-9 text-right text-[length:var(--font-size-xs)] tabular-nums"
+          style={{ color: levelColor(level) }}
+        >
+          {levels.find(({ key }) => key === level)?.label}
+        </span>
+      </span>
     </div>
   );
 }

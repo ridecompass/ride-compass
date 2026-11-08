@@ -35,7 +35,7 @@ from app.domain.leg_costs import LegCostArrays, LegCostComposer
 from app.domain.cost_axes import burden_material_ids, current_cost_axes
 from app.domain.cost_preference import CostPreference
 from app.domain.ledger_costs import current_ledger_parameters
-from app.domain.road_avoidance import AvoidanceLevel, RoadAvoidanceMasks
+from app.domain.road_avoidance import AvoidanceLevel, RoadAvoidanceMasks, level_multipliers
 from app.domain.geo import (
     bearing_between,
     bearing_between_array,
@@ -209,7 +209,7 @@ class RoadGraphEngine:
         # 道のレイヤの行→避け方の段。
         self._road_avoidance = road_avoidance
         # 「なるべく避ける」区間の費用の倍率（「好む」はその逆数）。較正値のため、組み立てた時点の値で1回の生成を通す。
-        self._avoid_cost_multiplier = tuning_value("avoidance.avoid_cost_multiplier")
+        self._avoidance_multipliers = level_multipliers(tuning_value("avoidance.avoid_cost_multiplier"))
         # 交差点でのターンの費用（秒）。較正値のため、組み立てた時点の値で1回の生成を通す。
         self._turn_cost = current_turn_cost()
         # 費用の軸の定義。管理APIの書き込みが途中で差し替えても、表の列・欠けの埋め方・費用の式が同じ写しを読むよう、
@@ -260,9 +260,9 @@ class RoadGraphEngine:
         cost_axes = self._cost_axes
 
         def compose_outbound() -> tuple[RoadAvoidanceMasks, LegCostComposer, LegCostArrays]:
-            search_masks = compute_search_exclusion(materials, self._road_avoidance)
+            search_masks = compute_search_exclusion(materials, self._road_avoidance, self._avoidance_multipliers)
             composer = LegCostComposer(
-                materials, search_masks, self._avoid_cost_multiplier,
+                materials, search_masks,
                 wind_series, start, self._assumed_speed_kmh, lazy_graph.edge_rows,
                 detour_ratio=detour_ratio_or_default(learned_detour_ratio),
                 material_fills=network_fills(road.network, burden_material_ids(cost_axes)),
