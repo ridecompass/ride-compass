@@ -24,7 +24,14 @@ from app.domain.landcover import (
 )
 from app.domain.divided_carriageway import DIVIDED_ROAD_NOTE, oneway_material_sql
 from app.domain.registry import PrimaryAttributeSpec
-from app.domain.tuning import LANDCOVER_RING_INNER_ID, LANDCOVER_RING_OUTER_ID, TUNING_PARAMETERS_BY_ID
+from app.domain.tuning import (
+    LANDCOVER_RING_INNER_ID,
+    LANDCOVER_RING_OUTER_ID,
+    REGULATION_EDGE_SHARE_ID,
+    REGULATION_LINE_HALF_WIDTH_ID,
+    TUNING_PARAMETERS_BY_ID,
+)
+from app.domain.traffic_regulation import REGULATION_HOURS_LABELS
 from app.domain.primary_attributes import (
     PRIMARY_ATTRIBUTES,
     ATTR_ACCIDENT_POINT,
@@ -270,6 +277,29 @@ def _landcover_description(cls: LandcoverClass) -> str:
     )
 
 
+def _pedestrian_road_material(column: str, label: str, subject: str) -> MaterialSpec:
+    """区間に当たった歩行者用道路の規制が効く時間帯の材料（`edge_traffic_regulations`の列`column`）。"""
+    return MaterialSpec(
+        material_id=column,
+        label=label,
+        description=(
+            f"日本道路交通情報センターの交通規制情報から、{subject}歩行者用道路の規制が当たった区間の、規制が効く時間帯"
+            "（終日か、時間・曜日を限るか）。区間の長さのうち較正値の"
+            f"「{TUNING_PARAMETERS_BY_ID[REGULATION_EDGE_SHARE_ID].label}」以上が規制の場所（線の規制は較正値の"
+            f"「{TUNING_PARAMETERS_BY_ID[REGULATION_LINE_HALF_WIDTH_ID].label}」の帯、面の規制は面）の中にある区間に当てます。"
+            "規制が当たらない区間は値を持ちません。"
+        ),
+        dtype="categorical",
+        tile_property=None,
+        value_labels=REGULATION_HOURS_LABELS,
+        value_sql=f"em.{column}",
+        coverage=CoverageExcluded(
+            reason="edge_traffic_regulationsは規制が当たった区間だけが行を持ち、行が無いのは規制が無いこと（データの欠けではない）",
+            missing_semantics="definite",
+        ),
+    )
+
+
 #: コードが名指しで読む材料のid。カタログのキーにも同じ定数を使う——綴りを別々に書くと、
 #: ずれたときに読む側が材料を見つけられず、黙って欠損として扱う。
 GRADIENT_PERCENT = "gradient_percent"
@@ -510,6 +540,9 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
         coverage=_tag_coverage(BICYCLE_NORMALIZED_SQL, f"bicycle（{SHARED_PEDESTRIAN_PATH_NOTE}で判定、タグ不在は非該当扱い）", "definite"),
     ),
     # --- 道の区分を決める事実（タグの値を束ねずに持つ）。道の区分の条件はこれらを読む ---
+    "pedestrian_road": _pedestrian_road_material("pedestrian_road", "歩行者用道路", ""),
+    "pedestrian_road_bicycle": _pedestrian_road_material(
+        "pedestrian_road_bicycle", "歩行者用道路[自転車も対象]", "普通自転車も通行の禁止の対象とする"),
     "bicycle": _tag_fact_material(
         "bicycle", "自転車の通行", "自転車が通ってよいか（禁止・指定・許可等）。",
         ACCESS_VALUE_LABELS, ATTR_CYCLEWAY, "unknown",

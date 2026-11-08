@@ -3,7 +3,7 @@
 することと、段の宣言（`STAGES`）が段の読むもの・書くものを漏らしていないことと、段の書いた表が統計を持つこと。
 
 流した段は段の関数が呼ばれたかで見る。どの生データにも行があり、どの段も値を書く小さな世界（道2本・信号・事故・標高と
-土地被覆のタイル・住所・小地域の境界・地点・寺社の建物）から始める。
+土地被覆のタイル・住所・小地域の境界・地点・寺社の建物・道を囲む交通規制）から始める。
 
 ここで見ないもの: 入れ替えまで読み手に前の表を見せること・取込の記録・較正値の読み方 → `test_derive_cli.py`。
 段の値の出し方 → 段ごとのテスト（`test_derive_*.py`）。
@@ -15,6 +15,8 @@ from dataclasses import dataclass, field
 import asyncpg
 import pytest
 import pytest_asyncio
+import shapely
+from shapely.geometry import box
 
 from app.batch import derive_cli
 from app.batch.dem_tile_store import PRODUCT_PRIORITY
@@ -24,6 +26,7 @@ from app.batch.source_adapters.raster_wkb import tile_raster_wkb
 from app.domain.accident import PartyType
 from app.domain.landcover import PERCENT_CLASSES
 from app.domain.region import BoundingBox
+from app.domain.traffic_regulation import PEDESTRIAN_ROAD_KIND
 from app.domain.tuning import LANDCOVER_RING_OUTER_ID
 from app.infrastructure import derived_data_meta, road_network_store
 from app.infrastructure.derived_data_freshness import derived_tables
@@ -138,6 +141,9 @@ async def world(road_graph_engine, road_network_root):
                 (west, south - 0.001), (west, south + 0.002), (west + 0.003, south + 0.002),
                 (west + 0.003, south - 0.001), (west, south - 0.001)])], conn=conn)
             await _ingest_places(conn)
+            await ingest_records("jartic_regulation", [SourceRecord(
+                natural_key="regulation", geom_wkb=shapely.to_wkb(box(west - 0.01, south - 0.01, west + 0.01, south + 0.01)),
+                attrs={"共通規制種別コード": PEDESTRIAN_ROAD_KIND, "点・線・面コード": "3"})], conn=conn)
             await ingest_records("bunka_heritage", [point_record("bunka-1", *_point(3), {"bunka-14-s": "宗教法人神田神社"})],
                                  conn=conn)
             assert await derive_cli.run(postgis_database_url()) == 0
@@ -203,7 +209,7 @@ async def test_the_world_fills_every_derived_table_and_each_has_statistics(world
     (None, STAGE_NAMES),
     (["elevation"], ["elevation"]),
     (["nodes"], ["nodes", "counts"]),
-    (["topology"], ["topology", "nodes", "counts", "elevation", "landcover", "directions"]),
+    (["topology"], ["topology", "nodes", "counts", "elevation", "landcover", "traffic_regulations", "directions"]),
     (["stop_places", "elevation"], ["elevation", "stop_places"]),
     ([derive_cli.NETWORK], []),
 ], ids=["選ばない", "後ろの段の無い段", "数の段が読む段", "区間を切る段", "2つの段", "道路網の配列だけ"])

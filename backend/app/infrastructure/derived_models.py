@@ -47,6 +47,7 @@ from app.domain.landcover import PERCENT_CLASSES, landcover_key
 from app.domain.material_sql import sql_literals
 from app.domain.stop_place import StopPlaceGroup
 from app.domain.traffic import DIRECTIONS, NODE_KINDS, POI_COUNT_KINDS, poi_count_column
+from app.domain.traffic_regulation import REGULATION_HOURS
 
 #: 数えた値は負にならない。0は数えた結果の「1つも無い」。
 #: 件数は小数を持つ——区間の端に乗るものは前後の区間が0.5ずつ持つ（`batch/derive_counts.py`）。
@@ -232,6 +233,31 @@ class EdgeCountsRow(_EdgeKey, _Counts, Base):
 
     __tablename__ = "edge_counts"
     __table_args__ = (_edge_key("edge_counts"), *_count_checks("edge_counts"), {"info": DERIVED})
+
+
+def _not_stronger_check(table: str, weaker: str, stronger: str) -> CheckConstraint:
+    """時間帯の列`weaker`が列`stronger`より強くならない制約（強さは`REGULATION_HOURS`の並び）。どちらかがNULLなら通す。"""
+    order = f"ARRAY[{sql_literals(REGULATION_HOURS)}]"
+    return CheckConstraint(f"array_position({order}, {weaker}) >= array_position({order}, {stronger})",
+                           name=f"{table}_{weaker}_not_stronger")
+
+
+class EdgeTrafficRegulationRow(_EdgeKey, Base):
+    """区間に当たった交通規制が効く時間帯。規制が当たった区間だけが行を持つ。"""
+
+    __tablename__ = "edge_traffic_regulations"
+    __table_args__ = (
+        _edge_key(__tablename__),
+        vocabulary_check(__tablename__, "pedestrian_road", frozenset(REGULATION_HOURS)),
+        vocabulary_check(__tablename__, "pedestrian_road_bicycle", frozenset(REGULATION_HOURS)),
+        _not_stronger_check(__tablename__, "pedestrian_road_bicycle", "pedestrian_road"),
+        {"info": DERIVED},
+    )
+
+    #: 歩行者用道路の規制が効く時間帯。
+    pedestrian_road: Mapped[str] = mapped_column(String, nullable=False)
+    #: 普通自転車も対象の歩行者用道路の規制が効く時間帯。自転車が対象の規制が当たらない区間はNULL。
+    pedestrian_road_bicycle: Mapped[str | None] = mapped_column(String, nullable=True)
 
 
 class WayDirectionRow(_WayKey, Base):

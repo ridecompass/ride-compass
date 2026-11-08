@@ -390,6 +390,39 @@ ISJ_BLOCKS_SOURCE_SQL = (
 )
 
 
+#: 交通規制の条件の組の欄（`{i}`が組の番号）。中立の名前 → 配布の列の名前。
+_JARTIC_SLOT_COLUMNS = {
+    "hours_from": "規制時間{i}_開始", "hours_to": "規制時間{i}_終了", "days": "規制曜日コード{i}",
+    "period_from": "対象期間{i}_開始", "period_to": "対象期間{i}_終了",
+    "except_hours_from": "除外時間{i}_開始", "except_hours_to": "除外時間{i}_終了", "except_days": "除外曜日コード{i}",
+    "except_period_from": "除外期間{i}_開始", "except_period_to": "除外期間{i}_終了",
+}
+#: 車両のコードの欄。区分 A〜D を順に配列にする。
+_JARTIC_VEHICLE_COLUMNS = {"vehicles": "対象車両コード{i}_{c}", "except_vehicles": "除外車両コード{i}_{c}"}
+_JARTIC_SLOT_COUNT = 5
+
+
+def _jartic_slot_sql(i: int) -> str:
+    def text(column: str) -> str:
+        return f"coalesce(attrs->>'{column}', '')"
+
+    fields = [f"'{name}', {text(column.format(i=i))}" for name, column in _JARTIC_SLOT_COLUMNS.items()]
+    fields += [f"'{name}', jsonb_build_array({', '.join(text(column.format(i=i, c=c)) for c in 'ABCD')})"
+               for name, column in _JARTIC_VEHICLE_COLUMNS.items()]
+    return f"jsonb_build_object({', '.join(fields)})"
+
+
+#: JARTIC の交通規制（1件=1つの規制の線か面）。`kind`は共通規制種別コード、`is_area`は面の規制か、`slots`は条件の組の
+#: jsonb の配列（組ごとに`_JARTIC_SLOT_COLUMNS`と`_JARTIC_VEHICLE_COLUMNS`の名前の欄を持ち、空の欄は空文字列）。配布の CSV の
+#: 列の名前はここだけが名指す。
+JARTIC_REGULATIONS_SOURCE_SQL = (
+    "(SELECT natural_key AS regulation_id, attrs->>'共通規制種別コード' AS kind,"
+    " attrs->>'点・線・面コード' = '3' AS is_area,"
+    f" jsonb_build_array({', '.join(_jartic_slot_sql(i) for i in range(1, _JARTIC_SLOT_COUNT + 1))}) AS slots, geom"
+    f" FROM {_TABLE} WHERE source = '{Source.JARTIC_REGULATION}')"
+)
+
+
 def _raster_tiles_sql(source: Source) -> str:
     return f"(SELECT rast, attrs, geom FROM {_TABLE} WHERE source = '{source}')"
 
