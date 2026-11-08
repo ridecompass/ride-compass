@@ -254,7 +254,7 @@ TUNING_VALUES.update(TUNING)
 
 @pytest.fixture(autouse=True)
 def _restore_tuning():
-    """テストが読み込んだ・差し替えた較正値を、テストの後に元へ戻す。"""
+    """テストが表から読み込んだ・管理APIで保存した較正値を、テストの後に元へ戻す。"""
     before = dict(TUNING_VALUES)
     yield
     TUNING_VALUES.update(before)

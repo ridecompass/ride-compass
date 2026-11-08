@@ -316,9 +316,8 @@ dataclassのフィールド既定値に置く）と、実行時に変えた値�
 読む（`services/route_generation_setup.py: assemble_route_generation_setup`）。
 
 この前提を守るのは「書いた値がプロセス内の`TUNING_VALUES`まで届く」テスト（`tests/test_tuning_overrides.py`）で、
-値をそのまま読み返せないもの——上下限として効く値——は、頭打ちになる入力を1つ通して観測する
-（`tests/test_cycling_speed.py`）。**フロント側が値を送ってしまうと、この解決そのものが
-迂回される**ため、
+ほかのテストは置き場を書き換えず、テストの較正値から入力を組む（`backend/tests/structure/test_tuning_values_not_touched.py`が落とす）。
+**フロント側が値を送ってしまうと、この解決そのものが迂回される**ため、
 画面から変える手段が無い値はリクエストへ載せない（`features/route/generationRequest.ts`）。
 
 表`tuning_overrides`は、道の区分・費用の軸の表と同じく**行そのものが値**で、宣言にあるidの行が無ければ読めず、
