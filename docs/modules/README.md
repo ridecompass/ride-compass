@@ -62,6 +62,7 @@
 | クラウドのセッションの用意（`scripts/remote_dev/`） | [architecture/setup.md](../architecture/setup.md)「クラウドのセッション」 | 依存の導入とDB・Redisの起動 |
 | 壊れ方の確かめ（`scripts/break_tests.py`） | [.claude/rules/testing-review.md](../../.claude/rules/testing-review.md)「消す・まとめる前に、残す側が落ちるかを見る」 | 壊れ方の一覧の形・断る条件・前の版のテストの並べ方 |
 | チェックアウトの遅れの確かめ（`scripts/checkout_freshness.py`） | [architecture/setup.md](../architecture/setup.md)「開発機の本体のチェックアウトの遅れ」 | どの道具が遅れで止まるか・早送りを打つ条件 |
+| 残った作業ツリーとスクラッチの片付け（`scripts/worktree_sweep.py`） | [architecture/setup.md](../architecture/setup.md)「残った作業ツリーとスクラッチの片付け」 | 消すものと消さないもの・打つ所 |
 | 本番でルートを作る確かめ（`backend/scripts/prod_route_check.py`） | [architecture/tech-stack.md](../architecture/tech-stack.md)「本番でルートを作る確かめ」 | 何を見て落とすか・どこから回すか・待ちの上限の根拠 |
 | 本番の点のタイルの確かめ（`backend/scripts/prod_point_tile_check.py`） | [architecture/tech-stack.md](../architecture/tech-stack.md)「本番の点のタイルの確かめ」 | 何を見て落とすか・どこから回すか・上限の根拠 |
 
