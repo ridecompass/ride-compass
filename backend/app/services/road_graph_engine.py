@@ -208,7 +208,7 @@ class RoadGraphEngine:
         self._cost_preference = cost_preference
         # 道のレイヤの行→避け方の段。
         self._road_avoidance = road_avoidance
-        # 「なるべく避ける」区間の費用の倍率（「好む」はその逆数）。較正値のため、組み立てた時点の値で1回の生成を通す。
+        # 避け方の段→区間の費用の倍率。較正値から作るため、組み立てた時点の値で1回の生成を通す。
         self._avoidance_multipliers = level_multipliers(tuning_value("avoidance.avoid_cost_multiplier"))
         # 交差点でのターンの費用（秒）。較正値のため、組み立てた時点の値で1回の生成を通す。
         self._turn_cost = current_turn_cost()

@@ -29,7 +29,6 @@ def edge(facts: dict[str, str] | None = None) -> EdgeMaterialColumns:
     )
 
 
-#: 段の倍率（「なるべく避ける」4・「少し避ける」2・「好む」1/4・「少し好む」1/2）。
 MULTIPLIERS = level_multipliers(4.0)
 
 

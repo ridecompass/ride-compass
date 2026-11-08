@@ -343,7 +343,7 @@ class LegCostComposer:
         self._cost_scale = search_masks.cost_scale
         #: 区間の費用が所要時間に対して下がる最小の倍率（好む側の段の区間があればその倍率、無ければ1）。探索の見込み
         #: （`domain/route_search.py: heuristic_seconds`）を、費用の下界に保つよう緩める。要求の間は変わらないので1回だけ求める。
-        self.min_cost_scale = float(min(1.0, search_masks.cost_scale.min(initial=1.0)))
+        self.min_cost_scale = float(search_masks.cost_scale.min(initial=1.0))
         self._wind_series = wind_series
         # 各Edgeの中点に最も近い予報の格子点（切り出した区間の順。格子点の並びの外の中点は端の格子点へ寄せる）。
         self._wind_points = wind_series.lattice.points_of(search_materials.mid_lat, search_materials.mid_lon)

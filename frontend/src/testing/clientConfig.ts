@@ -50,7 +50,9 @@ export function roadMapLayer(id: string, overrides: Partial<RoadMapLayerView> = 
 /** 避け方の段（倍率の小さい順で、名前は倍率）。段の鍵はbackendの型が決める。 */
 export const AVOIDANCE_LEVELS: RoadAvoidanceView["levels"] = [
   { key: "prefer", label: "×0.5" },
+  { key: "slight_prefer", label: "×0.7" },
   { key: "pass", label: "×1" },
+  { key: "slight_avoid", label: "×1.4" },
   { key: "avoid", label: "×2" },
   { key: "exclude", label: "×∞" },
 ];

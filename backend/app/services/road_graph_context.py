@@ -301,7 +301,7 @@ def learn_detour_ratio(context: RoadGraphContext, measured: float) -> float:
 
 def heuristic_to(context: RoadGraphContext, node: int) -> np.ndarray:
     """`node`へ向かうA*のヒューリスティック（各Nodeからの直線距離を費用の下界[秒]へ直したもの、`heuristic_seconds`。
-    「好む」の区間で費用が下がる分を`LegCostComposer.min_cost_scale`で緩め、所要時間で探すときも同じ値を使う）。"""
+    好む側の段の区間で費用が下がる分を`LegCostComposer.min_cost_scale`で緩め、所要時間で探すときも同じ値を使う）。"""
     heuristic = context.heuristics.get(node)
     if heuristic is None:
         heuristic = context.heuristics[node] = heuristic_seconds(

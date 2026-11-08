@@ -33,7 +33,8 @@ from tests.profile_fixture import grade_profiles, profiles
 
 START = datetime(2026, 10, 3, 9, 0)
 CRUISE_KMH = 20.0
-AVOID_MULTIPLIER = 3.0
+#: 避け方の倍率の例（避ける側の区間の費用に掛ける）。
+COST_SCALE = 3.0
 SURFACE = "class:rolling"
 STOP_DENSITY = dict(zip(leg_costs.POI_COUNT_KINDS, leg_costs.stop_count_material_ids(), strict=True))
 NORTH, SOUTH = 0.0, 180.0
@@ -175,12 +176,11 @@ def test_an_excluded_segment_cannot_be_passed():
 
 
 def test_a_segment_to_avoid_costs_more_and_one_to_prefer_costs_less_but_both_take_the_same_time():
-    """好む道は避ける道の倍率の逆数で費用が下がる。倍率が所要時間へ混ざると、避けた道・好む道を通った候補の所要時間と到着の
-    予想が延び縮みする。"""
-    leg = _snapshot(_matrix(3), cost_scale=[AVOID_MULTIPLIER, 1.0, 1.0 / AVOID_MULTIPLIER])
+    """避け方の倍率は費用にだけ掛かる。倍率が所要時間へ混ざると、避けた道・好む道を通った候補の所要時間と到着の予想が延び縮みする。"""
+    leg = _snapshot(_matrix(3), cost_scale=[COST_SCALE, 1.0, 1.0 / COST_SCALE])
 
-    assert leg.cost_lazy[0] == pytest.approx(AVOID_MULTIPLIER * leg.cost_lazy[1])
-    assert leg.cost_lazy[2] == pytest.approx(leg.cost_lazy[1] / AVOID_MULTIPLIER)
+    assert leg.cost_lazy[0] == pytest.approx(COST_SCALE * leg.cost_lazy[1])
+    assert leg.cost_lazy[2] == pytest.approx(leg.cost_lazy[1] / COST_SCALE)
     assert leg.travel_seconds_lazy.tolist() == pytest.approx([leg.travel_seconds_lazy[1]] * 3)
 
 
@@ -326,7 +326,7 @@ def test_composing_compiles_nothing_after_baking_whatever_arrays_the_matrix_hold
 
     with event.install_recorder("numba:compile") as compiled:
         for each in matrices:
-            _composer(each, parameters=STRENGTH, cost_scale=[AVOID_MULTIPLIER, 1.0, 1.0],
+            _composer(each, parameters=STRENGTH, cost_scale=[COST_SCALE, 1.0, 1.0],
                       series=_series([0.0, 3.0])).compose("leg", 0.0, +1, duration_hours=2.0)
 
     assert compiled.buffer == []

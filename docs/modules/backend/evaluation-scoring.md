@@ -136,7 +136,7 @@ wayの長さ（0はNULL）になる——件数と長さは必ず同じ側から
   （`domain/leg_costs.py: LegCostComposer.values_at_rows`が`domain/ledger_costs.py: LedgerCosts.row_seconds`を呼び、走行の模型は
   `SegmentSpeedModel.ride`に行を渡すとその行の点の間だけを解く）。点の間ごとの計算は互いに依らないので、全部を解いた探索の
   値と同じになり、所要時間と内訳の和が探索の費用に合う。避け方の秒は、避け方の倍率と1の差 ×（区間の所要時間＋代償）で、
-  負の分（好む）と正の分（なるべく避ける）を分けて持つ（`domain/route.py: PenaltyBreakdown`の`preferred_seconds`・`avoided_seconds`）。
+  負の分（好む側の段）と正の分（避ける側の段）を分けて持つ（`domain/route.py: PenaltyBreakdown`の`preferred_seconds`・`avoided_seconds`）。
   曲がる所の漕ぎ出しの代償（`domain/ledger_costs.py: LedgerCosts.turn_penalty_by_axis`。その費目を持つ軸の秒）は、区間には
   置かず、候補の内訳の軸の秒に足す（`services/road_graph_candidates.py`。区間の軸の秒は地図のレンズと同じ道の量）。
 - **欠けの埋め方**: 停止要因の密度と、道のストレスの軸の材料の欠けは、`domain/road_network.py: material_fills`の分布で埋める

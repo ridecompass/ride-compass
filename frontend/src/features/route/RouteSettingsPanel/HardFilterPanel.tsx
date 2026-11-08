@@ -19,7 +19,7 @@ import { cn } from "@/lib/cn";
 import type { RoadAvoidanceOverride, RoadAvoidanceView } from "@/types/route";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 
-// 「ルート設定」区分の「道路」タブ。道の区分の行ごとに、費用に掛ける倍率の段（好む・通る・なるべく避ける・通らない）を選び、
+// 「ルート設定」区分の「道路」タブ。道の区分の行ごとに、費用に掛ける倍率の段（好む・少し好む・通る・少し避ける・なるべく避ける・通らない）を目盛りで選び、
 // 自転車が通れない道の行は「通らない」に固定して同じ並びの先頭に出す。段の名前（倍率）は画面の設定が配る。並びの上の
 // 「地図で見る」は、このタブを出している間に段を地図の道に塗るかを選ぶ。
 
@@ -53,7 +53,7 @@ export default function HardFilterPanel({
     <div className="flex flex-col">
       <label
         className="flex items-center gap-1.5 pb-1 text-[length:var(--font-size-sm)]"
-        data-usage="このタブを出している間、好む道を緑、避ける道を橙、通らない道を赤で地図に塗り（通る道は塗らない）、下の地図を灰色に薄めます。1本の道がいくつもの行に当たるときは、強い方の段の色です。選びはこの端末に覚えます。"
+        data-usage="このタブを出している間、好む道を緑、避ける道を橙（少しの段は薄い色）、通らない道を赤で地図に塗り（通る道は塗らない）、下の地図を灰色に薄めます。1本の道がいくつもの行に当たるときは、倍率の大きい方の段の色です。選びはこの端末に覚えます。"
       >
         <Checkbox checked={roadTabMap.on} onCheckedChange={roadTabMap.onChange} aria-label="地図で見る" />
         地図で見る
@@ -137,13 +137,13 @@ export default function HardFilterPanel({
   );
 }
 
-// 畳んだ見出しに、「通る」以外を選んだ行の数を段ごとに出す（開かずに何を好み・避けているかが分かる）。段の名前は倍率の数字
-// なので、行の数には「件」を付けて見分ける。
-/** 段を地図で塗る色。通る（塗らない）は目立たない文字の色。 */
+/** 段を地図で塗る色（目盛りのつまみ）。通る（塗らない）は目立たない色。 */
 function levelColor(level: AvoidanceLevel): string {
   return level === "pass" ? "var(--color-muted)" : AVOIDANCE_LEVEL_COLORS[level];
 }
 
+// 畳んだ見出しに、「通る」以外を選んだ行の数を段ごとに出す（開かずに何を好み・避けているかが分かる）。段の名前は倍率の数字
+// なので、行の数には「件」を付けて見分ける。
 function avoidedSummary(levels: RoadAvoidanceView["levels"], rowLevels: readonly AvoidanceLevel[]): string {
   return levels
     .filter(({ key }) => key !== "pass")
@@ -202,11 +202,8 @@ function AvoidanceLevelRow({
             </ToggleGroupItem>
           ))}
         </ToggleGroup>
-        {/* 選んでいる段の倍率（地図で塗る色の文字で）。 */}
-        <span
-          className="w-9 text-right text-[length:var(--font-size-xs)] tabular-nums"
-          style={{ color: levelColor(level) }}
-        >
+        {/* 選んでいる段の倍率。色はつまみが持つ（薄い色の文字は明るい画面で読めない）。 */}
+        <span className="w-9 text-right text-[length:var(--font-size-xs)] tabular-nums">
           {levels.find(({ key }) => key === level)?.label}
         </span>
       </span>
