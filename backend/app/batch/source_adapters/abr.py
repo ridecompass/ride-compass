@@ -146,12 +146,15 @@ class RangeInputs(AdapterInputs):
         return {**super().origin(), "prefectures": list(self.prefectures)}
 
 
-def range_inputs(profile: SourceProfile, archives_of: Callable[[list[str]], Iterable[Path]]) -> RangeInputs:
-    """範囲に掛かる都道府県と、`archives_of`がそこから決めた配布。範囲を決めるのに読む ABR の市区町村の代表点と、
-    その取った日を宣言する ABR のソースも入力に入れる。"""
+def range_inputs(profile: SourceProfile, archive_of: Callable[[str], Path], missing: str) -> RangeInputs:
+    """範囲に掛かる都道府県と、`archive_of`が都道府県ごとに決めた配布。範囲を決めるのに読む ABR の市区町村の代表点と、
+    その取った日を宣言する ABR のソースも入力に入れる。配布が無ければ、無い置き場を`missing`（何が無く、何が写すか）に添えて止まる。"""
     snapshot = abr_snapshot(profile)
     prefectures = range_prefectures(snapshot, profile.target)
-    archives = tuple(archives_of(prefectures))
+    archives = tuple(archive_of(code) for code in prefectures)
+    absent = [str(path) for path in archives if not path.exists()]
+    if absent:
+        raise FileNotFoundError(f"{missing}: {absent}")
     return RangeInputs(files=(city_positions_path(snapshot), *archives),
                        sources=tuple(spec.name for spec in _abr_sources(profile)),
                        prefectures=tuple(prefectures), archives=archives)

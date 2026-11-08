@@ -59,16 +59,9 @@ def read_rows(path: Path) -> Generator[dict[str, str]]:
     return read_zip_csv(path, ENCODING)
 
 
-def _paths(rows: IsjBlockRows, prefectures: list[str]) -> list[Path]:
-    paths = [archive_path(rows.version, code) for code in prefectures]
-    missing = [str(path) for path in paths if not path.exists()]
-    if missing:
-        raise FileNotFoundError(f"街区レベル位置参照情報がありません: {missing}（scripts/fetch_isj_blocks.py が写す）")
-    return paths
-
-
 def isj_block_inputs(spec: SourceSpec, profile: SourceProfile) -> RangeInputs:
-    return range_inputs(profile, lambda prefectures: _paths(spec.rows, prefectures))
+    return range_inputs(profile, lambda code: archive_path(spec.rows.version, code),
+                        "街区レベル位置参照情報がありません（scripts/fetch_isj_blocks.py が写す）")
 
 
 @register_adapter("isj_block", rows=IsjBlockRows, inputs=isj_block_inputs)
