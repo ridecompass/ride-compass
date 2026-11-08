@@ -25,10 +25,10 @@ type Props = ComponentProps<typeof RouteSplicePanel>;
 
 const CATALOG = {
   axes: [
-    { axisId: "width", label: "道幅" },
-    { axisId: "traffic", label: "交通" },
-    { axisId: "slope", label: "勾配" },
-    { axisId: "light", label: "街灯" },
+    { axisId: "width", label: "道幅", iconId: "" },
+    { axisId: "traffic", label: "交通", iconId: "" },
+    { axisId: "slope", label: "勾配", iconId: "" },
+    { axisId: "light", label: "街灯", iconId: "" },
   ],
   axisColors: { width: "red", traffic: "green", slope: "blue", light: "gray" },
   loaded: true,

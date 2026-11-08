@@ -1,6 +1,7 @@
 "use client";
 
-import { Dot } from "@/components/ui/Dot/Dot";
+import { AxisMark } from "@/components/ui/icons/axisIconPalette";
+import { BurdenIcon } from "@/components/ui/icons/lucideIcons";
 import { formatPenalty, penaltyRows, type PenaltyCatalog } from "@/lib/routePenalty";
 import type { PenaltyBreakdown as PenaltyValues } from "@/types/route";
 
@@ -10,37 +11,32 @@ interface PenaltyBreakdownProps {
   catalog: PenaltyCatalog;
 }
 
-/** 帯グラフ。色ごとの長さが軸ごとの負担（軸の色は軸idではなく style で与える。費用の軸は管理APIで増減する）。 */
-const stackBarClass = "flex h-[10px] overflow-hidden rounded-[5px] bg-[var(--color-surface-2)]";
-
-/** 負担の内訳: 軸ごとの秒を積んだ帯1本と、軸ごとの行（名前・負担の分）。帯の長さの全体は軸の秒の和。 */
+/** 負担の内訳の1行: 合計と、負担のある軸ごとの絵（軸の色）と分。0の軸は出さない。行は小窓の幅を決めず（上の行が決める）、その幅の中で
+ * 軸のまとまりごとに折り返す。 */
 export default function PenaltyBreakdown({ penalty, catalog }: PenaltyBreakdownProps) {
-  const rows = penaltyRows(penalty, catalog);
-  const total = rows.reduce((sum, row) => sum + row.seconds, 0);
-
+  const rows = penaltyRows(penalty, catalog).filter((row) => row.seconds !== 0);
   return (
-    <div className="flex flex-col gap-1">
-      {total > 0 && (
-        <div className={stackBarClass} role="img" aria-label="負担の内訳">
-          {rows.map((row) => (
-            <div
-              key={row.id}
-              className="h-full"
-              style={{ width: `${(row.seconds / total) * 100}%`, background: row.color }}
-              title={`${row.label} ${formatPenalty(row.seconds)}`}
-            />
-          ))}
-        </div>
-      )}
-      <ul className="m-0 flex list-none flex-col gap-0.5 p-0 text-[length:var(--font-size-sm)]">
-        {rows.map((row) => (
-          <li key={row.id} className="flex items-baseline gap-1.5">
-            <Dot tone="none" style={{ backgroundColor: row.color }} />
-            <span>{row.label}</span>
-            <span className="ml-auto tabular-nums">{formatPenalty(row.seconds)}</span>
-          </li>
-        ))}
-      </ul>
+    <div
+      role="group"
+      aria-label="負担の内訳"
+      className="flex flex-wrap items-center gap-x-2.5 tabular-nums [contain:inline-size]"
+    >
+      <span className="inline-flex items-center gap-1.5">
+        <span aria-hidden="true" className="inline-flex text-[var(--color-muted)]">
+          <BurdenIcon size={14} />
+        </span>
+        <span className="sr-only">負担 </span>
+        <span className="font-semibold">{formatPenalty(penalty.total_seconds)}</span>
+      </span>
+      {rows.map((row) => (
+        <span
+          key={row.id}
+          className="inline-flex items-center gap-0.5 whitespace-nowrap text-[var(--color-muted-strong)]"
+        >
+          <AxisMark iconId={row.iconId} label={row.label} color={row.color} />
+          {formatPenalty(row.seconds)}
+        </span>
+      ))}
     </div>
   );
 }

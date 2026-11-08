@@ -9,7 +9,7 @@ import type { AxisFact, PenaltyBreakdown } from "@/types/route";
 
 /** 内訳の行の名前と色を引く、費用の軸の一覧（`hooks/useCostAxisCatalog.ts: CostAxisCatalog`が満たす）。 */
 export interface PenaltyCatalog {
-  axes: readonly { readonly axisId: string; readonly label: string }[];
+  axes: readonly { readonly axisId: string; readonly label: string; readonly iconId: string }[];
   axisColors: Readonly<Record<string, string>>;
   /** 一覧が届いたか（届くまでは軸の名前が分からない）。 */
   loaded: boolean;
@@ -22,6 +22,8 @@ export interface PenaltyRow {
   /** 軸id。 */
   id: string;
   label: string;
+  /** 軸の絵の名前（一覧に無い軸は null）。 */
+  iconId: string | null;
   seconds: number;
   color: string;
 }
@@ -64,6 +66,7 @@ export function penaltyRows(penalty: PenaltyBreakdown, catalog: PenaltyCatalog):
     .map((id) => ({
       id,
       label: costAxisLabel(catalog, id),
+      iconId: catalog.axes.find((axis) => axis.axisId === id)?.iconId ?? null,
       seconds: penalty.axis_seconds[id],
       color: catalog.axisColors[id] ?? palette.semantic.neutral,
     }));

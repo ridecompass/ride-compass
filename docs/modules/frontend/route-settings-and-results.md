@@ -45,7 +45,7 @@
 | `features/route/savedConditions.ts` | 生成の条件の形（`features/route/savedConditions.ts: GenerationConditionsSnapshot`。いまの条件・保存・呼び出しが同じ形を使い、保存の1件はそれに名前と出発地を足す）と、仮の名前・何が保存されるかの説明（`features/route/savedConditions.ts: describeConditions`）・同じ名前の上書き。距離の刻み（`DISTANCE_STEP_KM`。5km刻みで、下限も1刻み分）は画面だけの値で、`RouteForm`のルーラーのコマも読む。候補数の下限・上限は生成物`route-generate-config.json`から読む |
 | `lib/cardinalLabel.ts` | 角度を方位の呼び名へ（天気欄等が使う）と、気象の風向（吹いてくる向き）を矢印が指す吹いていく向きへ（`lib/cardinalLabel.ts: downwindDeg`。地図の風の矢印が使う）と、それを回った地図の上の向きへ（`lib/cardinalLabel.ts: downwindOnMapDeg`。走りの帯と天気欄の矢印が使う）。呼び名の並びはbackend（`domain/geo.py: COMPASS_LABELS`）が配り、丸めは画面が持つ。区分の境界を含む角度でbackendと同じ呼び名になることは、backendが出す表（生成物`geo-expectations.json`）をテストが通して確かめる |
 | `features/route/RouteAxisProfile/RouteAxisProfile.tsx` | 候補ごとのタブの中身（所要・負担。下記「RouteAxisProfile.tsx」）。地図の色分けを選ぶ操作はここには無い（`LensControl`）。候補一覧のタブ自体は`RouteOutcome.tsx`が組み立てる |
-| `features/route/PenaltyBreakdown/PenaltyBreakdown.tsx` | 区間の小窓の負担の内訳（軸ごとの秒を積んだ帯1本と、軸ごとの名前・負担の分の行。下記「PenaltyBreakdown.tsx」） |
+| `features/route/PenaltyBreakdown/PenaltyBreakdown.tsx` | 区間の小窓の負担の内訳（合計と、負担のある軸ごとの絵と分の1行。下記「PenaltyBreakdown.tsx」） |
 | `lib/routePenalty.ts` | 応答の代償の内訳を画面が読む形にする純関数（内訳の和・行の並べ方・「+N分」の書き方・1kmあたりの代償の秒）。候補・区間・編集の差・ルートの線の塗りが同じ関数を読む |
 | `features/route/routeTabLabel.ts` | 候補タブの時間の列の基準線と差を組み立てる純関数（`features/route/routeTabLabel.ts: durationBaseline`・`features/route/routeTabLabel.ts: durationDifferenceLabel`）、一覧の並び・群・名前（`features/route/routeTabLabel.ts: routeListEntries`。最速ルート・生成した候補・合成ルートの分け方は[ページ全体構成・状態管理](page-composition.md)「ルート結果の中身」）。種類と最速の印はbackendが付ける値（`route_generator.py: _label`）を読むだけで、idの文字列や要求の形から決め直さない。タブ列自体は`RouteOutcome.tsx`が組み立てる |
 | `features/route/routeEditDiff.ts` | 編集で作ったルートの元との差（距離・所要・負担［代償の内訳の和の分］と、変えた区間の元の位置・長さの差）と、差の表記（`features/route/routeEditDiff.ts: formatDelta`）。指標は1つの表から作り（`features/route/routeEditDiff.ts: metricDifferences`。名前・桁・単位と元・編集後・差）、編集面（`RouteSplicePanel`）と「元との違い」（`features/route/routeEditDiff.ts: EditDifference`）が同じ表を読む——別々に持つと、片方だけ指標や桁が変わる。変えた区間は適用した乗り換えの手順からではなく、できた2本のEdge id列の差（`routeSplice.ts: pairedStretches`）から求める——乗り換えの範囲は適用した時点の経路に対する位置で、元の位置へ戻すには手順の全部が要る。区間の位置と長さは、道のりのグラフと同じ物差し（`lib/routeDistance.ts: routeEdgeKms`）で読む |
@@ -183,9 +183,10 @@
 
 ## PenaltyBreakdown.tsx（区間の負担の内訳）
 
-区間の小窓が出す、区間の負担の内訳。軸ごとの秒を積んだ帯1本と、軸ごとの行（軸の名前・負担の分）で、行の並びと色は上の
-「積む負担の一覧」と同じ`penaltyRows`から作る。帯の色は軸ごとの色（`hooks/useCostAxisCatalog.ts: CostAxisCatalog.axisColors`）で、
-道のりのグラフの負担の面と編集面の差の棒も同じ色で塗る。
+区間の小窓が出す、区間の負担の内訳。負担の合計（太字）と、負担のある軸ごとの絵と分を1行に並べ（0の軸は出さない。軸の名前は
+読み上げにだけ出す）、並びと色は上の「積む負担の一覧」と同じ`penaltyRows`から作る。絵の色は軸ごとの色
+（`hooks/useCostAxisCatalog.ts: CostAxisCatalog.axisColors`）で、道のりのグラフの負担の面と編集面の差の棒も同じ色で塗る。
+割合の帯は持たない（長さがいつも全幅で、区間の重さが読めない）。行は小窓の幅を決めず、上の行が決めた幅の中で軸のまとまりごとに折り返す。
 
 **軸の並び順に連続的な意味は無い。** 軸を横に並べて見せるUIでは、隣り合う軸の間に傾き・
 推移があるように見せない——値どうしを線やグラデーションでつなぐと、「隣の軸へ向かって

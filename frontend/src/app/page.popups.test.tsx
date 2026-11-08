@@ -158,12 +158,17 @@ describe("地図の小窓", () => {
     expect(mapOnScreen().sourceFeatures("road-inspected")).toEqual([]);
   });
 
-  it("区間の小窓は、上の帯に到達予想、その下に軸の名前の付いた負担の内訳を出し、押しただけでは地図は動かず、寄せるアイコンで区間へ寄せる", async () => {
+  it("区間の小窓は、上の帯に到達予想、その下に負担の合計と負担のある軸ごとの分を出し、押しただけでは地図は動かず、寄せるアイコンで区間へ寄せる", async () => {
     serveCostAxisCatalog();
     const segment = makeRouteSegment({
       cumulative_distance_km: 1,
       estimated_arrival_time: "2026-10-05T00:30:00Z",
-      penalty: { axis_seconds: { ascent: 120 }, preferred_seconds: 0, avoided_seconds: 0, total_seconds: 120 },
+      penalty: {
+        axis_seconds: { ascent: 120, vibration: 0 },
+        preferred_seconds: 0,
+        avoided_seconds: 0,
+        total_seconds: 120,
+      },
     });
     const { user } = renderHome();
     jobs.respond([route("one", { segments: [segment] })], LOOP_CONDITIONS);
@@ -175,8 +180,8 @@ describe("地図の小窓", () => {
     clickSegment(mapOnScreen().sourceFeatures("route-segments")[0], HERE);
 
     expect(screen.getByRole("group", { name: "区間の小窓の上の帯" })).toHaveTextContent("到達予想 09:30着");
-    expect(screen.getByRole("img", { name: "負担の内訳" })).toBeInTheDocument();
-    expect(screen.getByText("登坂").closest("li")).toHaveTextContent("登坂+2分");
+    // 軸は絵で出し、名前は読み上げに残す。負担の無い軸は出さない。
+    expect(screen.getByRole("group", { name: "負担の内訳" })).toHaveTextContent(/^負担 \+2分登坂\+2分$/);
 
     expect(mapOnScreen().fits()).toHaveLength(fitsBefore);
     await user.click(screen.getByRole("button", { name: "地図をここへ寄せる" }));

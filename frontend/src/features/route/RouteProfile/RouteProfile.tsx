@@ -10,6 +10,7 @@ import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs/Tabs";
 import { DisplayItemsIcon } from "@/components/ui/icons/icons";
 import { BurdenPaintIcon } from "@/components/ui/icons/lucideIcons";
+import { AxisMark } from "@/components/ui/icons/axisIconPalette";
 import DifficultyProfile from "@/features/route/DifficultyProfile/DifficultyProfile";
 import { profileBoxes } from "@/features/route/DifficultyProfile/profileGeometry";
 import { useProfileScale } from "@/features/route/ProfileChart/profileScale";
@@ -165,7 +166,7 @@ export default function RouteProfile({
                       }
                       aria-label={row.label}
                     />
-                    <Dot tone="none" style={{ backgroundColor: row.color }} />
+                    <AxisMark iconId={row.iconId} color={row.color} />
                     <span>{row.label}</span>
                     {fact !== undefined && (
                       <span className="text-[var(--color-muted-strong)]">{factText(fact, row.label)}</span>

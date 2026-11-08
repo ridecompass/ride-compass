@@ -42,8 +42,8 @@ describe("RouteProfile", () => {
       ...PROFILE_COST_CATALOG,
       axes: [
         ...PROFILE_COST_CATALOG.axes,
-        { axisId: "stopping", label: "停止" },
-        { axisId: "friction", label: "摩擦" },
+        { axisId: "stopping", label: "停止", iconId: "" },
+        { axisId: "friction", label: "摩擦", iconId: "" },
       ],
       axisColors: { ...PROFILE_COST_CATALOG.axisColors, stopping: "rgb(1, 2, 3)", friction: "rgb(4, 5, 6)" },
     };
