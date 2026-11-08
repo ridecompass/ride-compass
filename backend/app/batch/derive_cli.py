@@ -57,6 +57,7 @@ from app.batch import (
     derive_nodes,
     derive_stop_places,
     derive_topology,
+    derive_traffic_regulations,
     derive_way_directions,
 )
 from app.batch.common import (
@@ -75,6 +76,8 @@ from app.domain.tuning import (
     ELEVATION_PROFILE_STEP_ID,
     LANDCOVER_RING_INNER_ID,
     LANDCOVER_RING_OUTER_ID,
+    REGULATION_EDGE_SHARE_ID,
+    REGULATION_LINE_HALF_WIDTH_ID,
     STOP_CLUSTER_DISTANCE_ID,
 )
 from app.infrastructure.road_graph_repository import NETWORK_TUNING, RoadGraphRepository
@@ -119,6 +122,9 @@ STAGES: tuple[DeriveStage, ...] = (
                 {"profile_step_m": ELEVATION_PROFILE_STEP_ID, "bridge_end_radius_m": ELEVATION_BRIDGE_END_RADIUS_ID}),
     DeriveStage("landcover", derive_landcover, frozenset({Source.LULC}), ("topology",), ("edge_landcover", "way_landcover"),
                 {"ring_outer_m": LANDCOVER_RING_OUTER_ID, "ring_inner_m": LANDCOVER_RING_INNER_ID}),
+    DeriveStage("traffic_regulations", derive_traffic_regulations, frozenset({Source.JARTIC_REGULATION}), ("topology",),
+                ("edge_traffic_regulations",),
+                {"line_half_width_m": REGULATION_LINE_HALF_WIDTH_ID, "edge_share": REGULATION_EDGE_SHARE_ID}),
     DeriveStage("directions", derive_way_directions, frozenset({Source.OSM_WAY}), ("topology",), ("way_directions",)),
     # 住所の区画は、道路（`osm_way`）のパーティションを読まず、取込の記録から範囲だけを読む（読んだ数の見張りに出ないので、
     # 手で挙げる）。
