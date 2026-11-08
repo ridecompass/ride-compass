@@ -11,6 +11,7 @@ import { avoidanceChoiceOf, type AvoidanceChoice } from "@/lib/roadAvoidance";
 import { AVOIDANCE_LEVELS, avoidanceRow, roadClass, roadClassCatalog, roadMapLayer } from "@/testing/clientConfig";
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import palette from "@/types/generated/palette.json";
+import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 
 import { ROAD_AVOIDANCE_ROLE, roadLineGroup, type RoadLineState } from "./roadLines";
 
@@ -93,11 +94,12 @@ describe("道路タブの段", () => {
       ],
     },
   }).avoidance;
-  // 好む道・好む道かつ避ける道・通らない道かつ避ける道・どの行にも当たらない道。
+  // 好む道・好む道かつ避ける道・通らない道かつ避ける道・自転車が通れない道（0次ハードフィルタ）かつ好む道・どの行にも当たらない道。
   const roads = [
     { surface: "gravel" },
     { surface: "gravel", highway: "trunk" },
     { surface: "dirt", highway: "trunk" },
+    { surface: "gravel", [routeGenerateConfig.hard_filter_property]: routeGenerateConfig.hard_filters[0].key },
     {},
   ];
 
@@ -121,10 +123,10 @@ describe("道路タブの段", () => {
     road_avoidance_exclude: exclude,
   } = palette.semantic;
 
-  it("道路タブの段（選んでいなければ既定）のうち強い方の段の色で塗り、どの行にも当たらない道（通る）は描かず、見ていなければ線を出さない", () => {
+  it("道路タブの段（選んでいなければ既定。0次ハードフィルタの道はいつも通らない）のうち強い方の段の色で塗り、どの行にも当たらない道（通る）は描かず、見ていなければ線を出さない", () => {
     const choice = avoidanceChoiceOf(avoidance, { "surface.gravel": "prefer", "surface.dirt": "exclude" });
-    expect(paintedColors(choice)).toEqual([prefer, avoid, exclude, null]);
-    expect(paintedColors({ rows: [], order: [] })).toEqual([null, null, null, null]);
+    expect(paintedColors(choice)).toEqual([prefer, avoid, exclude, exclude, null]);
+    expect(paintedColors({ rows: [], order: [] })).toEqual([null, null, null, null, null]);
     expect(paintedColors(choice, false)).toBeNull();
   });
 });

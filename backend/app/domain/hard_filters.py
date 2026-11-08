@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, NamedTuple
 
 import numpy as np
 
-from app.domain.attributes import MaterialColumn
+from app.domain.attributes import CategoricalColumn, MaterialColumn
 from app.domain.road_avoidance import AvoidanceLevel, RoadAvoidanceMasks, road_avoidance_masks
 from app.domain.road_classes import Condition, ConditionTerm, conditions_match
 
@@ -50,9 +50,22 @@ HARD_FILTERS: dict[str, _HardFilter] = {
 }
 
 
+#: 路面タイルが、道の当たる0次ハードフィルタの名前を載せるプロパティ。地図の線の層のid（分け方の鍵。英小文字・数字・`_`の綴り）と
+#: 重ならないよう`-`を含める。
+HARD_FILTER_PROPERTY = "hard-filter"
+
+
+def hard_filter_column(columns: Mapping[str, MaterialColumn], n: int) -> CategoricalColumn:
+    """区間ごとに、当たる0次ハードフィルタの名前（当たらなければ値なし。いくつも当たれば`HARD_FILTERS`の先のもの）。"""
+    codes = np.zeros(n, dtype=np.int16)
+    for code, spec in reversed(list(enumerate(HARD_FILTERS.values(), start=1))):
+        codes[conditions_match(spec.conditions, columns, n)] = code
+    return CategoricalColumn(codes, (None, *HARD_FILTERS))
+
+
 def hard_filtered(columns: Mapping[str, MaterialColumn], n: int) -> np.ndarray:
     """区間ごとに、0次ハードフィルタのどれかに当たるか。"""
-    return conditions_match([c for spec in HARD_FILTERS.values() for c in spec.conditions], columns, n)
+    return hard_filter_column(columns, n).codes != 0
 
 
 def compute_routable_nodes(
