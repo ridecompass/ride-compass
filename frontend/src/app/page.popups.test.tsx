@@ -5,8 +5,7 @@
  * 点・区間はタップで開き、道はタップでは開かず、長押し（ここでは同じに受けるマウスの右ボタン）で、道の層を出していなくても押した所に近い
  * 道（backend の答え）を開き、道のタイルを読まずにその道の線を強調すること。
  * 名前の無い点は押せる物に数えず下の物を開き、重なった名前のある点と、束ねた代表点の中の点は全部並べること。区間の中身から点を開くと区間へ戻れ、道へ
- * 入れ替えると区間の選びを外し、開ける物の無い所を押すと閉じること。道の小窓を別の道へ押し替えると、前の道で押した評価を
- * 新しい道へ持ち越さないこと。区間の小窓が上の帯と負担の内訳の形で出て、寄せるアイコンで寄せること。押せる物のタップは待たずに開き、
+ * 入れ替えると区間の選びを外し、開ける物の無い所を押すと閉じること。区間の小窓が上の帯と負担の内訳の形で出て、寄せるアイコンで寄せること。押せる物のタップは待たずに開き、
  * 何も無い所を続けて2回押しても閉じないこと。
  *
  * ここで見ないもの: 区間の近くの施設の小窓（区間へ戻る）は`app/page.map.test.tsx`の「区間の近くの施設」が、地図を押したときの
@@ -83,6 +82,8 @@ describe("地図の小窓", () => {
       geometry: { type: "Point", coordinates: [ELSEWHERE.longitude, ELSEWHERE.latitude] },
     };
     serveRoadsAt([{ at: ELSEWHERE, properties: { osm_way_id: 1, feature_key: "1" } }]);
+    // 道の小窓は開いたら負担を取りに行く。
+    onBackend("POST", "/api/region/road-inspector", () => Response.json(inspectorResult()));
     const { user } = renderHome();
     await user.click(screen.getByRole("button", { name: "地図に出す情報" }));
     await user.click(screen.getByRole("checkbox", { name: "補給・休憩ポイント" }));
@@ -107,7 +108,7 @@ describe("地図の小窓", () => {
     expect(header("区間の小窓の上の帯")).toBeInTheDocument();
 
     rightClickMap(ELSEWHERE);
-    expect(await screen.findByRole("button", { name: "この道の負担を見る" })).toBeInTheDocument();
+    expect(await screen.findByRole("group", { name: "道の小窓の上の帯" })).toBeInTheDocument();
     expect(header("区間の小窓の上の帯")).toBeNull();
     expect(
       mapOnScreen()
@@ -145,7 +146,7 @@ describe("地図の小窓", () => {
         .map((link) => link.textContent),
     ).toEqual(["角の店", "駅前の店"]);
     rightClickMap(ELSEWHERE, [toilet]);
-    expect(await screen.findByRole("button", { name: "この道の負担を見る" })).toBeInTheDocument();
+    expect(await screen.findByRole("group", { name: "道の小窓の上の帯" })).toBeInTheDocument();
     // 道はタップでは開かない（近くに道があっても、開ける物の無い所をタップすると閉じる）。
     clickMap(ELSEWHERE, [toilet]);
     await settle();
@@ -186,27 +187,5 @@ describe("地図の小窓", () => {
     expect(mapOnScreen().fits()).toHaveLength(fitsBefore);
     await user.click(screen.getByRole("button", { name: "地図をここへ寄せる" }));
     await waitFor(() => expect(mapOnScreen().fits()).toHaveLength(fitsBefore + 1));
-  });
-
-  it("負担を開いた道から別の道へ押し替えると、その道の負担は押すまで取りに行かない", async () => {
-    const asked: unknown[] = [];
-    onBackend("POST", "/api/region/road-inspector", ({ body }) => {
-      asked.push(body);
-      return Response.json(inspectorResult());
-    });
-    serveRoadsAt([
-      { at: HERE, properties: { osm_way_id: 1, feature_key: "1" } },
-      { at: ELSEWHERE, properties: { osm_way_id: 2, feature_key: "2" } },
-    ]);
-    const { user } = renderHome();
-    await user.click(screen.getByRole("button", { name: "パネルを閉じる" }));
-    rightClickMap(HERE);
-    await user.click(await screen.findByRole("button", { name: "この道の負担を見る" }));
-    expect(await screen.findByText("総合の負担 +12秒")).toBeInTheDocument();
-
-    rightClickMap(ELSEWHERE);
-    expect(await screen.findByRole("button", { name: "この道の負担を見る" })).toBeInTheDocument();
-    await settle();
-    expect(asked).toEqual([expect.objectContaining({ osm_way_id: 1 })]);
   });
 });

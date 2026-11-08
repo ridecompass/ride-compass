@@ -5,7 +5,7 @@ import { formatDurationShort, formatMinutes, roundedMinutes } from "@/lib/durati
 import { formatLensNumber } from "@/lib/mapDisplay/costLensPaint";
 import { signMark } from "@/lib/numberFormat";
 import palette from "@/types/generated/palette.json";
-import type { AxisFact, PenaltyBreakdown } from "@/types/route";
+import type { AxisFact } from "@/types/route";
 
 /** 内訳の行の名前と色を引く、費用の軸の一覧（`hooks/useCostAxisCatalog.ts: CostAxisCatalog`が満たす）。 */
 export interface PenaltyCatalog {
@@ -59,15 +59,15 @@ export function factText(fact: AxisFact, axisLabel: string): string {
 
 /** 内訳の行: 軸を一覧の順に（一覧が届くまでは応答の順）。秒が0の軸も残す（効くはずの軸が効かなかったことも判断の材料に
  * なる）。避け方の倍率が増減した秒は行に出さない（地図のルートの線の両脇の線が、好む・避けるの区間を見せる）。 */
-export function penaltyRows(penalty: PenaltyBreakdown, catalog: PenaltyCatalog): PenaltyRow[] {
+export function penaltyRows(axisSeconds: Readonly<Record<string, number>>, catalog: PenaltyCatalog): PenaltyRow[] {
   const listed = catalog.axes.map((axis) => axis.axisId);
-  return Object.keys(penalty.axis_seconds)
+  return Object.keys(axisSeconds)
     .sort((a, b) => listed.indexOf(a) - listed.indexOf(b))
     .map((id) => ({
       id,
       label: costAxisLabel(catalog, id),
       iconId: catalog.axes.find((axis) => axis.axisId === id)?.iconId ?? null,
-      seconds: penalty.axis_seconds[id],
+      seconds: axisSeconds[id],
       color: catalog.axisColors[id] ?? palette.semantic.neutral,
     }));
 }

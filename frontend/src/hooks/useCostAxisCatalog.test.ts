@@ -18,15 +18,9 @@ describe("costAxisCatalogFromResponse", () => {
     const catalog = costAxisCatalogFromResponse(
       costAxisCatalog(...["ascent", "headwind", "stopping", "friction", "vibration"].map((id) => costAxisEntry(id))),
     );
-    const colors = penaltyRows(
-      {
-        axis_seconds: { ascent: 1, headwind: 1, stopping: 1, friction: 1, vibration: 1 },
-        preferred_seconds: 0,
-        avoided_seconds: 0,
-        total_seconds: 5,
-      },
-      catalog,
-    ).map((row) => row.color);
+    const colors = penaltyRows({ ascent: 1, headwind: 1, stopping: 1, friction: 1, vibration: 1 }, catalog).map(
+      (row) => row.color,
+    );
     expect(new Set(colors).size).toBe(colors.length);
     expect(colors).not.toContain(palette.semantic.no_data);
   });

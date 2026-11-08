@@ -14,9 +14,10 @@ import {
   type LineLayer,
   type ProfileLayer,
 } from "@/features/route/RouteProfile/profileLayers";
-import PenaltyBreakdown from "@/features/route/PenaltyBreakdown/PenaltyBreakdown";
+import PenaltyBreakdown from "@/components/MapPopup/PenaltyBreakdown";
 import { useCostAxisCatalog } from "@/hooks/useCostAxisCatalog";
 import { cn } from "@/lib/cn";
+import { formatPenalty, penaltyRows } from "@/lib/routePenalty";
 import type { RoadTrackRow } from "@/lib/mapDisplay/roadTracks";
 import { formatJstHourMinute } from "@/lib/time";
 import type { SelectedRouteSegment } from "@/types/route";
@@ -123,7 +124,12 @@ export default function SegmentDetail({
           )}
         </div>
       )}
-      <PenaltyBreakdown penalty={segment.penalty} catalog={costCatalog} />
+      <PenaltyBreakdown
+        total={formatPenalty(segment.penalty.total_seconds)}
+        items={penaltyRows(segment.penalty.axis_seconds, costCatalog).flatMap((row) =>
+          row.seconds === 0 ? [] : [{ row, text: formatPenalty(row.seconds) }],
+        )}
+      />
     </div>
   );
 }
