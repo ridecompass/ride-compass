@@ -408,6 +408,23 @@ async def test_a_name_of_a_chain_finds_its_stores_written_in_either_letters():
 
 
 @pytest.mark.usefixtures("area")
+async def test_a_name_of_the_bicycle_group_finds_bicycle_stores_and_not_bike_share_ports():
+    """「自転車屋」と打つと、見ている所により近いシェアサイクルの貸し場（貸し自転車の分類に入っている）ではなく、自転車屋が出る。
+    貸し場は自分の自転車で走る人の行き先にならない。"""
+    rental = ("sports_and_recreation", "recreational_equipment_rental", "bike_rental")
+    await _ingest_facilities([
+        overture_place_record(1, LON + 0.001, LAT, "HELLO CYCLING 新宿三丁目", rental),
+        overture_place_record(2, LON + 0.002, LAT, "千代田区コミュニティサイクル ちよくる A4-04", rental),
+        overture_place_record(3, LON + 0.01, LAT, "ワイズロード新宿カスタム", BIKE_STORE),
+    ])
+
+    response = await _search("自転車屋")
+
+    assert response.status_code == 200
+    assert response.json() == {"candidates": [_facility("ワイズロード新宿カスタム", LON + 0.01)]}
+
+
+@pytest.mark.usefixtures("area")
 async def test_places_of_the_categories_not_searched_are_not_found():
     """店の中の機械・付属物（貸し出しの機械・ATM・駐車場・受け取りロッカー）は、店の名前で入っていても検索に出ない。"""
     await _ingest_facilities([
