@@ -131,9 +131,10 @@ TURN_BEARING_DISTANCE_ID = "turn.bearing_distance_m"
 #: 土地被覆を数える帯の外・内の幅のid。外の幅は地図の説明の文にも出る。
 LANDCOVER_RING_OUTER_ID = "landcover.ring_outer_m"
 LANDCOVER_RING_INNER_ID = "landcover.ring_inner_m"
-#: 交通規制を区間へ当てる幅と割合のid。区間の値の説明の文にも出る。
+#: 交通規制を区間へ当てる幅と割合と向きの差のid。区間の値の説明の文にも出る。
 REGULATION_LINE_HALF_WIDTH_ID = "traffic_regulation.line_half_width_m"
 REGULATION_EDGE_SHARE_ID = "traffic_regulation.edge_share"
+REGULATION_MAX_ANGLE_ID = "traffic_regulation.max_angle_deg"
 #: 区間の標高の断面を刻む幅の上限のid。
 ELEVATION_PROFILE_STEP_ID = "elevation.profile_step_m"
 #: 橋の端の標高を、端の点の周りで探す半径のid。
@@ -249,6 +250,13 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
         "交通規制を区間へ当てる長さの割合", "", TuningEffect.DERIVE_REBUILD,
         "区間の長さのうち、この割合以上が規制の場所（線の帯か面）の中にある区間へ規制を当てる。0より大きく1以下。下げるほど"
         "規制の場所を横切るだけの区間にも当たり、上げるほど規制の端に掛かる区間が漏れる。",
+    ),
+    TuningParameter(
+        REGULATION_MAX_ANGLE_ID,
+        "線の交通規制を区間へ当てる向きの差の上限", "度", TuningEffect.DERIVE_REBUILD,
+        "線の規制は、区間の始点から終点への向きと、区間の中点に一番近い所の規制の線の向きの差（向きを問わず0〜90度）が"
+        "この角度以下の区間にだけ当てる。広げるほど規制の線を交差点で横切る短い区間にも当たり、狭めるほど規制の線と"
+        "地図の道の向きのずれで当たり漏れる。",
     ),
     # --- 走行モデル ---
     TuningParameter(

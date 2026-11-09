@@ -29,6 +29,7 @@ from app.domain.tuning import (
     LANDCOVER_RING_OUTER_ID,
     REGULATION_EDGE_SHARE_ID,
     REGULATION_LINE_HALF_WIDTH_ID,
+    REGULATION_MAX_ANGLE_ID,
     TUNING_PARAMETERS_BY_ID,
 )
 from app.domain.traffic_regulation import REGULATION_HOURS_LABELS
@@ -287,6 +288,8 @@ def _pedestrian_road_material(column: str, label: str, subject: str) -> Material
             "（終日か、時間・曜日を限るか）。区間の長さのうち較正値の"
             f"「{TUNING_PARAMETERS_BY_ID[REGULATION_EDGE_SHARE_ID].label}」以上が規制の場所（線の規制は較正値の"
             f"「{TUNING_PARAMETERS_BY_ID[REGULATION_LINE_HALF_WIDTH_ID].label}」の帯、面の規制は面）の中にある区間に当てます。"
+            "線の規制は、さらに区間と線の向きの差が較正値の"
+            f"「{TUNING_PARAMETERS_BY_ID[REGULATION_MAX_ANGLE_ID].label}」以下の区間（線に沿う区間）に限ります。"
             "規制が当たらない区間は値を持ちません。"
         ),
         dtype="categorical",
