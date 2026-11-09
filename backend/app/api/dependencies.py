@@ -34,7 +34,8 @@ from app.infrastructure.jma_warning_timeline_client import new_timeline_cache
 from app.infrastructure.material_coverage import MaterialCoverageQuery
 from app.infrastructure.place_area_query import PlaceAreaQuery
 from app.infrastructure.road_graph_repository import RoadGraphRepository
-from app.infrastructure.stop_place_search import StopPlaceSearchQuery
+from app.infrastructure.facility_search import FacilitySearchQuery
+from app.infrastructure.place_address_query import PlaceAddressQuery
 from app.infrastructure.tuning_overrides import TuningOverrideStore
 from app.infrastructure.wbgt_client import new_forecast_cache, new_point_master_cache
 from app.services.db_status_service import DbStatusService
@@ -173,7 +174,7 @@ async def get_region_service(tile_sessions: TileSessions):
 async def _open_place_search_reads(tile_sessions: async_sessionmaker[AsyncSession]) -> AsyncIterator[PlaceSearchReads]:
     async with tile_sessions() as session:
         yield PlaceSearchReads(RegionService(repository=RoadGraphRepository(session)), AddressSearchQuery(session),
-                               StopPlaceSearchQuery(session), PlaceAreaQuery(session))
+                               FacilitySearchQuery(session), PlaceAreaQuery(session), PlaceAddressQuery(session))
 
 
 def get_place_search_service(tile_sessions: TileSessions):

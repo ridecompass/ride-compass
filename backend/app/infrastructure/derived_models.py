@@ -9,7 +9,7 @@
 | 線（細） | `road_edges`（交差点で切った区間の形） | 値を出す段ごとに1表。区間の鍵が主キーで、`road_edges`を指す |
 | 線（粗） | `road_ways`（区間を持つ道の鍵） | 値を出す段ごとに1表。道の鍵が主キーで、`road_ways`を指す |
 | 点 | `road_nodes`（区間の端点と、集まる道の本数） | 頂点の値は`road_nodes`を指す。種別は頂点でない点にも付くので指さない |
-| 地点 | `stop_places` | 立ち寄り先。道の網とは別の点で、OpenStreetMap由来の値を持たない |
+| 地点 | `places` | 名前のある地点の全部（立ち寄り先は群を持つ行）。道の網とは別の点で、OpenStreetMap由来の値を持たない |
 | 住所の区画 | `address_areas` / `address_search_keys` / `address_blocks` | 区画と、区画を引く鍵と、区画の中の街区・地番 |
 
 値の表は、段が値を出せた行だけを持つ表と、母集団の全行を持つ表がある（どちらかは表ごとのdocstringが書く）。値を出せた行だけの
@@ -35,6 +35,7 @@ from sqlalchemy import (
     SmallInteger,
     String,
     column,
+    text,
     func,
 )
 from sqlalchemy.dialects.postgresql import ARRAY
@@ -45,7 +46,7 @@ from app.infrastructure.source_models import Source
 from app.domain.address_area import ADDRESS_AREA_LEVELS, BLOCK_KINDS
 from app.domain.landcover import PERCENT_CLASSES, landcover_key
 from app.domain.material_sql import sql_literals
-from app.domain.stop_place import StopPlaceGroup
+from app.domain.stop_place import BRAND_CHAIN_PREFIX, StopPlaceGroup
 from app.domain.traffic import DIRECTIONS, NODE_KINDS, POI_COUNT_KINDS, poi_count_column
 from app.domain.traffic_regulation import REGULATION_HOURS
 
@@ -384,20 +385,37 @@ class AddressBlockRow(Base):
     geom: Mapped[object] = mapped_column(Geometry("POINT", srid=4326, spatial_index=False), nullable=False)
 
 
-class StopPlaceRow(Base):
-    """立ち寄り先1つ。群へ入れ、近くの同じ店をまとめたあとの地点（`batch/derive_stop_places.py`）。
+class PlaceRow(Base):
+    """名前のある地点1つ。地点の生データ（Overture の地点・国の文化財の建造物）から、近くの同じ店をまとめたあとの地点
+    （`batch/derive_places.py`）。立ち寄り先は、このうち群（`place_group`）を持つ行。
+
+    列が空のときの意味は docs/modules/backend/static-road-attributes.md「値が無ければNULL」。
 
     **OpenStreetMap由来の値（最寄りの道・道へ寄せた座標）を持たない**——ODbLの共有の義務が表にかかる。
     経由地へ寄せるのは要求のたびに計算する。出どころの違う地点（文化財の一覧等）も同じ表へ、`source`で分けて入れる。
     """
 
-    __tablename__ = "stop_places"
+    __tablename__ = "places"
     __table_args__ = (
-        vocabulary_check("stop_places", "source", frozenset({Source.OVERTURE_PLACE, Source.BUNKA_HERITAGE})),
-        vocabulary_check("stop_places", "place_group", frozenset(StopPlaceGroup)),
-        CheckConstraint("confidence BETWEEN 0 AND 1", name="stop_places_confidence_is_ratio"),
-        # タイルが範囲で引く。
-        Index("idx_stop_places_geom", "geom", postgresql_using="gist"),
+        vocabulary_check("places", "source", frozenset({Source.OVERTURE_PLACE, Source.BUNKA_HERITAGE})),
+        vocabulary_check("places", "place_group", frozenset(StopPlaceGroup)),
+        CheckConstraint("confidence BETWEEN 0 AND 1", name="places_confidence_is_ratio"),
+        # チェーンの鍵の語彙は並べない——チェーンの語（`domain/stop_place.py: CHAIN_WORDS`）を足すたびに本番の表の制約を
+        # 変えることになる。
+        CheckConstraint(f"chain <> '' AND chain <> '{BRAND_CHAIN_PREFIX}'", name="places_chain_not_empty"),
+        CheckConstraint("address <> ''", name="places_address_not_empty"),
+        # 寺社の群は文化財の一覧からだけ出す（`domain/stop_place.py`の頭の docstring）。素の`=`では群が NULL の行が素通りする。
+        CheckConstraint(f"coalesce(place_group = '{StopPlaceGroup.TEMPLE_SHRINE}', false) = (source = '{Source.BUNKA_HERITAGE}')",
+                        name="places_temple_shrine_from_heritage"),
+        # 地図の点のタイルが範囲で引く。タイルは群を持つ行だけを読むので、群の無い行を索引に入れない。
+        Index("idx_places_grouped_geom", "geom", postgresql_using="gist", postgresql_where=column("place_group").isnot(None)),
+        # 地点の検索が、名前の部分一致（3文字以上）・名前の頭の一致（1〜2文字。照合順序`C`の範囲で引く）・チェーンで引く
+        # （`infrastructure/facility_search.py: _SEARCH_SQL`）。部分一致の索引は3文字の組で引くので、3文字に満たない語には効かない。
+        # 群の店は上の位置の索引で近い順に引く（群の列の索引を張ると、群の店を全部引いてから並べる計画になる）。
+        Index("idx_places_search_name_trgm", "search_name", postgresql_using="gin",
+              postgresql_ops={"search_name": "gin_trgm_ops"}),
+        Index("idx_places_search_name_prefix", text('search_name COLLATE "C"')),
+        Index("idx_places_chain", "chain", postgresql_where=column("chain").isnot(None)),
         {"info": DERIVED},
     )
 
@@ -408,12 +426,15 @@ class StopPlaceRow(Base):
     name: Mapped[str] = mapped_column(String, nullable=False)
     #: 名前の表記の揺れを除いた形（`domain/stop_place.py: normalized_sql`）。地点の検索が引く。
     search_name: Mapped[str] = mapped_column(String, nullable=False)
-    place_group: Mapped[str] = mapped_column(String, nullable=False)
+    place_group: Mapped[str | None] = mapped_column(String, nullable=True)
+    #: 同じチェーンかを比べるだけの鍵で、表示しない（`domain/stop_place.py: chain_sql`）。地点の検索がチェーンの語で引く。
+    chain: Mapped[str | None] = mapped_column(String, nullable=True)
+    #: Overture の分類の道筋（上の段から下の段への語の並び）。地点の検索が、検索に出さない分類と照らす。
+    categories: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)
+    #: 外の地図の検索に渡す住所（`domain/stop_place.py: address_sql`）。
+    address: Mapped[str | None] = mapped_column(String, nullable=True)
     #: 地点が実在する見込み（0〜1）。地図で重なった点のどれを残すかに使う。
     confidence: Mapped[float] = mapped_column(REAL, nullable=False)
-    #: チェーンの名前。無ければ個店。
-    brand: Mapped[str | None] = mapped_column(String, nullable=True)
     #: 辺り（市区町村から字・丁目まで。位置を含む小地域の境界の名前）。地点の検索が名前に添え、同じ名前の店を見分ける。
-    #: 位置を含む名前のある境界が無ければNULL。
     area: Mapped[str | None] = mapped_column(String, nullable=True)
     geom: Mapped[object] = mapped_column(Geometry("POINT", srid=4326, spatial_index=False), nullable=False)

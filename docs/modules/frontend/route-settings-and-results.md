@@ -492,7 +492,7 @@ page-composition.md「生成に関するフィードバックの置き場」）�
 
 #### 住所・施設で探す（`PlaceSearch/usePlaceLookup.ts`・`PlaceSearch/PlaceCandidates.tsx`・`PlaceSearch/PlaceCandidateCard.tsx`）
 
-地点は地図のタップのほかに、住所か施設（立ち寄り先の表のお店・施設）の名前で探して置ける（[地点の検索（backend）](../backend/place-search.md)）。探す欄は
+地点は地図のタップのほかに、住所か施設（地点の表のお店・駅・施設）の名前で探して置ける（[地点の検索（backend）](../backend/place-search.md)）。探す欄は
 **地図の上端にいつも1つ出す**（`PlaceSearch/PlaceSearch.tsx`。パネルを閉じていても、地図を見たまま探せる）。置く地点は「ルート設定」で
 選んでいる地点（何も選んでいなければ出発地）で、欄の案内と読み上げ名にその呼び名を出す（「目的地を住所・施設で探す」）。詳しくの探すボタンは
 この欄へ focus を移して開く（iOS はキーボードを、押した操作の中で focus したときだけ出すので、押した処理の中で同期して移す）。

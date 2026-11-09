@@ -89,6 +89,9 @@ export function serveHome() {
   onBackend("GET", "/api/weather/flood-forecast", () => Response.json({ forecasts: [] }));
   onBackend("POST", "/api/weather/route-warning-timeline", () => Response.json({ areas: [] }));
   onBackend("GET", "/api/place-area", () => Response.json({ area: null }));
+  onBackend("GET", "/api/place-link", ({ query }) =>
+    Response.json({ url: `https://maps.example/${encodeURIComponent(String(query.name))}` }),
+  );
   serveRoadsAt([]);
   return jobs;
 }

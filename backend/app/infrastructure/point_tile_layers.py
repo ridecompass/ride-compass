@@ -99,7 +99,7 @@ def _clustered_mvt_sql(points: str, rows: tuple[str, ...], properties: tuple[str
 
 
 # 種別は`node_kinds.kind`（派生側の分類器が付けたもの）に信号の読み替えを済ませたもので、
-# 位置は`source_features`の点。コンビニだけは立ち寄り先の表（`stop_places`）から足し、店の名前も添える。
+# 位置は`source_features`の点。コンビニだけは地点の表（`places`）の群「コンビニ」の行から足し、店の名前も添える。
 _POI_KIND_EXPR = stop_kind_sql("nm")
 _POI_GROUP_EXPR = stop_poi_map_group_sql("nm")
 
@@ -138,8 +138,8 @@ _POI_POINTS_SQL = f"""
             -- 補給POIのコンビニは立ち寄り先の群「コンビニ」の行から出す。群の値が種別の値。
             SELECT s.place_group, s.place_group, s.geom,
                    's' || s.source || ':' || s.source_key, s.name
-            FROM stop_places s
-            WHERE s.place_group = :convenience_group
+            FROM places s
+            WHERE s.place_group IS NOT NULL AND s.place_group = :convenience_group
               AND ST_Intersects(s.geom, ST_MakeEnvelope(:xmin, :ymin, :xmax, :ymax, 4326))
         ) clustered
         GROUP BY clustered.map_group, clustered.cluster_key
@@ -187,12 +187,14 @@ _ACCIDENT_TILE_MVT_SQL = text(
     """
 ).bindparams(*_CLUSTER_PARAMS)
 
-# 立ち寄り先。群へ入れ、近くの同じ店をまとめた後の表（`batch/derive_stop_places.py`）をそのまま出す。代表点は確からしい地点を先に選ぶ。
+# 立ち寄り先。地点の表（`batch/derive_places.py`）のうち群を持つ行をそのまま出す。代表点は確からしい地点を先に選ぶ。
+# 群を持つ行だけを読む条件（`place_group IS NOT NULL`）は、表の部分索引（`derived_models.py: PlaceRow`）の条件と同じ字面で
+# 書く——群との比べだけでも群の無い行は落ちるが、書き換えて群の無い地点を地図に出さないように、意図を文に残す。
 _STOP_PLACE_POINTS_SQL = """
     SELECT s.geom, s.name, s.place_group AS "group", s.confidence
-    FROM stop_places s
+    FROM places s
     -- 群「コンビニ」は補給の点のタイル（`poi`）が出す。
-    WHERE s.place_group <> :convenience_group
+    WHERE s.place_group IS NOT NULL AND s.place_group <> :convenience_group
       AND ST_Intersects(s.geom, ST_MakeEnvelope(:xmin, :ymin, :xmax, :ymax, 4326))
 """
 
