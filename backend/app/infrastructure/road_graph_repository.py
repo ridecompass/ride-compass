@@ -56,10 +56,11 @@ logger = logging.getLogger("ridecompass.road_graph_repository")
 ID_CHUNK_SIZE = 50_000
 
 
-#: スキーマが依存する拡張。**アプリの権限では入れられない**（どちらもスーパーユーザーを
+#: スキーマが依存する拡張。PostGIS の2つは**アプリの権限では入れられない**（スーパーユーザーを
 #: 要求し、trustedでもない）ため、DBを作る人が先に入れる。`raster`は面のソースの列の型で、
-#: 画素の数え上げをDB側で行うために要る。
-REQUIRED_EXTENSIONS = ("postgis", "postgis_raster")
+#: 画素の数え上げをDB側で行うために要る。`pg_trgm`は地点の名前の部分一致の索引（`derived_models.py: PlaceRow`）の
+#: 演算子の類で、trusted なのでDBに CREATE の権限があれば入れられる。
+REQUIRED_EXTENSIONS = ("postgis", "postgis_raster", "pg_trgm")
 
 
 async def create_tables(engine: AsyncEngine) -> None:

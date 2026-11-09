@@ -40,7 +40,7 @@ description: "本番の派生データを作り直す・本番へ道の区分と
   | 標高（`dem`）を取り直した | `elevation` |
   | 土地被覆（`lulc`）を取り直した | `landcover` |
   | 住所（`abr`・`isj_block`）を取り直した | `addresses` |
-  | 地点・寺社・小地域（`overture_place`・`bunka_heritage`・`estat_small_area`）を取り直した | `stop_places` |
+  | 地点・寺社・小地域（`overture_place`・`bunka_heritage`・`estat_small_area`）を取り直した | `places` |
   | 段のコード（`app/batch/derive_<段>.py`と、それが使う式）を変えた | その段 |
   | 段が読む較正値を変えた | その較正値を宣言した段（`app/batch/derive_cli.py: STAGES`の`tuning`） |
   | 派生の表に列を足した・消した | その表を書く段（`STAGES`の`tables`） |

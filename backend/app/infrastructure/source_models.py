@@ -314,8 +314,8 @@ def accidents_within_sql(envelope: str) -> str:
     )
 
 
-#: Overture の地点の生データ（1件=1点）。群の判断（`domain/stop_place.py`）が読む列へ読み替える。配布の列の
-#: 入れ子（`names.primary` 等）はここだけが名指す。ウェブサイト・電話は文字列の配列か、無ければ null（jsonb）。
+#: Overture の地点の生データ（1件=1点）。群・チェーン・住所の判断（`domain/stop_place.py`）が読む列へ読み替える。配布の列の
+#: 入れ子（`names.primary` 等）はここだけが名指す。ウェブサイト・電話・住所は配列か、無ければ null（jsonb）。
 OVERTURE_PLACES_SOURCE_SQL = (
     "(SELECT natural_key AS overture_id, geom,"
     " attrs->'names'->>'primary' AS name,"
@@ -323,7 +323,8 @@ OVERTURE_PLACES_SOURCE_SQL = (
     " (attrs->>'confidence')::float8 AS confidence,"
     " attrs->'taxonomy'->'hierarchy' AS hierarchy,"
     " attrs->'websites' AS websites,"
-    " attrs->'phones' AS phones"
+    " attrs->'phones' AS phones,"
+    " attrs->'addresses' AS addresses"
     f" FROM {_TABLE} WHERE source = '{Source.OVERTURE_PLACE}')"
 )
 

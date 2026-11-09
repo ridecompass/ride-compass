@@ -1,7 +1,7 @@
 """立ち寄り先の寺社を、国の文化財の建造物（ジャパンサーチの項目の形）から作る。
 
 入口は取込（`ingest_source`。アダプタ`bunka_heritages`は本物で、手元の1行1件の JSON を読む）と派生の段
-（`derive_stop_places.derive`）。項目の形の小さな見本を置き場に書き、表に入った寺社を見る。
+（`derive_places.derive`）。項目の形の小さな見本を置き場に書き、表に入った寺社を見る。
 
 ここで見ないもの:
 - 配信元から手元へ写す取得（`scripts/fetch_bunka_heritages.py`）→ `test_fetch_bunka_heritages.py`
@@ -12,7 +12,7 @@ import json
 
 import pytest
 
-from app.batch import derive_stop_places
+from app.batch import derive_places
 from app.batch.ingest import ingest_source
 from app.batch.source_adapters import bunka_heritages
 from app.batch.source_profile import load_source_profile
@@ -56,9 +56,9 @@ async def _temples(conn, items: list[dict]) -> list[tuple[str, float, float]]:
     path = bunka_heritages.heritages_path(ROWS.snapshot)
     path.write_text("".join(json.dumps(item, ensure_ascii=False) + "\n" for item in items), encoding="utf-8")
     await ingest_source(conn, PROFILE, Source.BUNKA_HERITAGE)
-    await derive_stop_places.derive(conn)
+    await derive_places.derive(conn)
     rows = await conn.fetch(
-        "SELECT name, place_group, source, confidence, ST_X(geom) AS lon, ST_Y(geom) AS lat FROM stop_places")
+        "SELECT name, place_group, source, confidence, ST_X(geom) AS lon, ST_Y(geom) AS lat FROM places")
     assert {(row["place_group"], row["source"], row["confidence"]) for row in rows} <= {
         ("temple_shrine", "bunka_heritage", 1.0)}
     return sorted((row["name"], row["lon"], row["lat"]) for row in rows)

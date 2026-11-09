@@ -24,7 +24,7 @@ import json
 import mapbox_vector_tile
 import pytest
 
-from app.batch import derive_stop_places
+from app.batch import derive_places
 from app.domain.map_display import (
     POINT_CLUSTER_CELLS_PER_TILE,
     POINT_COUNT_PROPERTY,
@@ -93,10 +93,10 @@ def _features(tile: bytes | None, name: str) -> list[dict]:
 
 
 async def _ingest_stop_places(places: list[object]) -> None:
-    """Overture の地点を取り込み、立ち寄り先の表を作る派生の段を流す。"""
+    """Overture の地点を取り込み、地点の表を作る派生の段を流す。"""
     await ingest_records("overture_place", places)
     async with raw_connection() as conn:
-        await derive_stop_places.derive(conn)
+        await derive_places.derive(conn)
 
 
 def _kinds(tile: bytes | None) -> Counter[str]:
@@ -221,12 +221,13 @@ async def test_convenience_stores_come_from_the_stop_places_with_their_names_and
     road_graph_repository,
 ):
     """補給の点のコンビニは立ち寄り先の群「コンビニ」の行から出し、OpenStreetMap の`shop=convenience`は出さない。
-    ほかの群の立ち寄り先は補給の点に出ない。コンビニは押すと店の名前で外の地図を開けるように名前を持ち、
-    OpenStreetMap の点は名前を焼かない。"""
+    ほかの群の立ち寄り先と、群を持たない地点（コンビニの分類でもコンビニのチェーンでない店）は補給の点に出ない。コンビニは
+    押すと店の名前で外の地図を開けるように名前を持ち、OpenStreetMap の点は名前を焼かない。"""
     await _ingest_pois([(LON, LAT, {"shop": "convenience"}), (LON + FAR, LAT, {**TOILETS, "name": "公園のトイレ"})])
     await _ingest_stop_places([
         overture_place_record(1, LON - FAR, LAT, "ローソン 渋谷店", ("shopping", "convenience_store")),
         overture_place_record(2, LON, LAT + FAR, "店2"),
+        overture_place_record(3, LON - FAR, LAT + FAR, "ダイソー 渋谷店", ("shopping", "convenience_store")),
     ])
 
     features = _features(await _tile(road_graph_repository, "poi"), "poi")
@@ -282,11 +283,12 @@ async def test_an_accident_point_carries_bicycle_fatal_and_year(road_graph_repos
 
 async def test_a_stop_place_point_carries_its_group_and_name(road_graph_repository):
     """立ち寄り先は事故と同じく対象範囲を一括で取り込むので、道を取り込んでいない所でも出す。タイルの外の地点と、
-    補給の点に出す群「コンビニ」は出ない。"""
+    補給の点に出す群「コンビニ」と、群を持たない地点（検索にだけ出る駅等）は出ない。"""
     await _ingest_stop_places([
         overture_place_record(1, LON, LAT, "店1"),
         overture_place_record(2, LON + 10 * FAR, LAT, "店2"),
         overture_place_record(3, LON + FAR, LAT, "ローソン 渋谷店", ("shopping", "convenience_store")),
+        overture_place_record(4, LON - FAR, LAT, "渋谷駅", ("travel_and_transportation", "train_station")),
     ])
 
     [feature] = _features(await _tile(road_graph_repository, "stop_place"), "stop_place")

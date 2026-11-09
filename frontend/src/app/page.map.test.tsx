@@ -41,6 +41,7 @@ import {
   selectedSectionOnMap,
   serveHome,
 } from "@/testing/homePage";
+import { onBackend } from "@/testing/backendServer";
 import { installGeolocation } from "@/testing/geolocation";
 import { mapOnScreen, type PointedFeature } from "@/testing/maplibre";
 import { makeGenerationConditions, makeRouteSegment, routeThrough } from "@/testing/routeFixtures";
@@ -181,7 +182,7 @@ describe("地図で扱えること", () => {
     // 見るだけのタブで開いた点の小窓は、「ルート結果」へ移ると消える。
     await user.click(screen.getByRole("tab", { name: "負担" }));
     clickMap(DESTINATION, [shop]);
-    expect(screen.getByRole("link", { name: "角の店" })).toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: "角の店" })).toBeInTheDocument();
     await user.click(candidateTabs()[0]);
     expect(screen.queryByRole("link", { name: "角の店" })).toBeNull();
 
@@ -328,10 +329,17 @@ describe("区間の近くの施設", () => {
       return { layer, properties: feature.properties ?? {}, geometry: feature.geometry };
     };
 
-    clickMap(ELSEWHERE, [drawn("point-poi-side-supply_poi", "ファミリーマート")]);
-    expect(screen.getByRole("link", { name: "ファミリーマート" }).closest("li")!.textContent).toBe(
-      "ファミリーマート道からの距離 8m",
-    );
+    const asked = onBackend("GET", "/api/place-link", () => Response.json({ url: "https://maps.example/familymart" }));
+    const familyMart = drawn("point-poi-side-supply_poi", "ファミリーマート");
+    clickMap(ELSEWHERE, [familyMart]);
+    const link = await screen.findByRole("link", { name: "ファミリーマート" });
+    expect(link.closest("li")!.textContent).toBe("ファミリーマート道からの距離 8m");
+    // 外の地図のリンクは、点の名前と位置で backend に引いた先を開く。
+    expect(link).toHaveAttribute("href", "https://maps.example/familymart");
+    const [longitude, latitude] = (familyMart.geometry as GeoJSON.Point).coordinates;
+    expect(asked.map(({ query }) => [query.name, Number(query.latitude), Number(query.longitude)])).toEqual([
+      ["ファミリーマート", latitude, longitude],
+    ]);
     await user.click(
       within(screen.getByRole("group", { name: "点の小窓の上の帯" })).getByRole("button", { name: "‹ 区間" }),
     );
@@ -370,7 +378,7 @@ describe("区間の近くの施設", () => {
       { layer: "point-poi-side-supply_poi", properties: familyMart.properties ?? {}, geometry: familyMart.geometry },
     ]);
 
-    expect(screen.getByRole("link", { name: "ファミリーマート" }).closest("li")!.textContent).toBe(
+    expect((await screen.findByRole("link", { name: "ファミリーマート" })).closest("li")!.textContent).toBe(
       "ファミリーマート現在地から あと900m道からの距離 8m",
     );
   });

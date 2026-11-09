@@ -25,7 +25,8 @@ Source: https://opensource.foursquare.com/places-notice-txt/
 Notice of changes:
 - Overture Maps Foundation transformed the Foursquare data to the Overture schema
   (https://docs.overturemaps.org/attribution/).
-- RideCompass selected places by category and confidence from the Overture Maps places release,
-  sorted them into groups (eat and drink, bath, bicycle, scenic, lodging, convenience store),
-  and merged places of the same group and brand within 30 m into one place.
+- RideCompass selected places with a name by confidence from the Overture Maps places release,
+  sorted some of them into groups by category and brand (eat and drink, bath, bicycle, scenic,
+  lodging, convenience store), merged places of the same group and brand within 30 m into one place,
+  and merged places without a group into a place of the same brand within 30 m.
 - A copy of the License is at /licenses/apache-2.0.txt.

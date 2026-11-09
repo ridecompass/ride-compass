@@ -210,7 +210,7 @@ async def test_the_world_fills_every_derived_table_and_each_has_statistics(world
     (["elevation"], ["elevation"]),
     (["nodes"], ["nodes", "counts"]),
     (["topology"], ["topology", "nodes", "counts", "elevation", "landcover", "traffic_regulations", "directions"]),
-    (["stop_places", "elevation"], ["elevation", "stop_places"]),
+    (["places", "elevation"], ["elevation", "places"]),
     ([derive_cli.NETWORK], []),
 ], ids=["選ばない", "後ろの段の無い段", "数の段が読む段", "区間を切る段", "2つの段", "道路網の配列だけ"])
 async def test_choosing_stages_adds_the_stages_that_read_them(chosen, expected):

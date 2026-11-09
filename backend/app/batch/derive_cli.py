@@ -55,7 +55,7 @@ from app.batch import (
     derive_elevation,
     derive_landcover,
     derive_nodes,
-    derive_stop_places,
+    derive_places,
     derive_topology,
     derive_traffic_regulations,
     derive_way_directions,
@@ -130,9 +130,9 @@ STAGES: tuple[DeriveStage, ...] = (
     # 手で挙げる）。
     DeriveStage("addresses", derive_addresses, frozenset({Source.ABR, Source.ISJ_BLOCK, Source.OSM_WAY}), (),
                 ("address_areas", "address_search_keys", "address_blocks")),
-    DeriveStage("stop_places", derive_stop_places,
+    DeriveStage("places", derive_places,
                 frozenset({Source.OVERTURE_PLACE, Source.BUNKA_HERITAGE, Source.ESTAT_SMALL_AREA}), (),
-                ("stop_places",)),
+                ("places",)),
 )
 
 

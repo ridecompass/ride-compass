@@ -1,6 +1,6 @@
-"""立ち寄り先の辺り（`stop_places.area`）を、e-Stat の小地域の境界の名前から決める。
+"""立ち寄り先の辺り（`places.area`）を、e-Stat の小地域の境界の名前から決める。
 
-入口は取込（`ingest_source`。アダプタ`estat_small_area`は本物で、手元の zip を読む）と派生の段（`derive_stop_places.derive`）。
+入口は取込（`ingest_source`。アダプタ`estat_small_area`は本物で、手元の zip を読む）と派生の段（`derive_places.derive`）。
 配布の形の小さな見本（e-Stat の Shapefile の zip と、取り込む都道府県を決める ABR の市区町村の代表点の zip）を置き場に書き、
 Overture の地点を取り込んで段を流し、表に入った辺りを見る。
 
@@ -16,7 +16,7 @@ import zipfile
 import pytest
 import shapefile
 
-from app.batch import derive_stop_places
+from app.batch import derive_places
 from app.batch.ingest import ingest_source
 from app.batch.source_adapters import abr, estat_small_area
 from app.infrastructure.source_models import Source
@@ -101,8 +101,8 @@ async def _areas(conn, places: dict[str, tuple[float, float]]) -> dict[str, str 
     await ingest_records("overture_place", [
         overture_place_record(key, lon, lat, f"喫茶{key}")
         for key, (lon, lat) in places.items()], conn=conn)
-    await derive_stop_places.derive(conn)
-    return {row["source_key"]: row["area"] for row in await conn.fetch("SELECT source_key, area FROM stop_places")}
+    await derive_places.derive(conn)
+    return {row["source_key"]: row["area"] for row in await conn.fetch("SELECT source_key, area FROM places")}
 
 
 @pytest.mark.usefixtures("boundary_data")

@@ -100,7 +100,7 @@ describe("地図の小窓", () => {
     // 区間の中身から点を開くと、区間の選びを残し、「‹ 区間」で区間の中身へ戻れる。押せる物のタップは、時計を進めずに開く（何も無い所の
     // タップだけを、ダブルタップの1回目でないと確かめるまで待つ）。何も無い所を続けて2回押しても（地図の拡大）、小窓は閉じない。
     act(() => mapOnScreen().click(ELSEWHERE, [shop]));
-    expect(screen.getByRole("link", { name: "角の店" })).toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: "角の店" })).toBeInTheDocument();
     doubleClickMap(HERE);
     expect(screen.getByRole("link", { name: "角の店" })).toBeInTheDocument();
     expect(selectedSectionOnMap()).toHaveLength(1);
@@ -133,18 +133,22 @@ describe("地図の小窓", () => {
 
     // 重なった名前のある点は全部並べ、名前の無い点は飛ばす。名前の無い点だけの所は、下の道を開く。
     clickMap(ELSEWHERE, [toilet, shop, cafe]);
-    expect(
-      within(header("点の小窓の上の帯")!.parentElement!)
-        .getAllByRole("link")
-        .map((link) => link.textContent),
-    ).toEqual(["角の店", "峠の茶屋"]);
+    await waitFor(() =>
+      expect(
+        within(header("点の小窓の上の帯")!.parentElement!)
+          .getAllByRole("link")
+          .map((link) => link.textContent),
+      ).toEqual(["角の店", "峠の茶屋"]),
+    );
     // 束ねた代表点は、中の店を1行ずつ並べる。
     clickMap(ELSEWHERE, [bundled]);
-    expect(
-      within(header("点の小窓の上の帯")!.parentElement!)
-        .getAllByRole("link")
-        .map((link) => link.textContent),
-    ).toEqual(["角の店", "駅前の店"]);
+    await waitFor(() =>
+      expect(
+        within(header("点の小窓の上の帯")!.parentElement!)
+          .getAllByRole("link")
+          .map((link) => link.textContent),
+      ).toEqual(["角の店", "駅前の店"]),
+    );
     rightClickMap(ELSEWHERE, [toilet]);
     expect(await screen.findByRole("group", { name: "道の小窓の上の帯" })).toBeInTheDocument();
     // 道はタップでは開かない（近くに道があっても、開ける物の無い所をタップすると閉じる）。
