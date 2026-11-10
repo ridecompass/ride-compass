@@ -19,8 +19,8 @@
 | `features/map/scene/groups/roadLines.ts` | 道路の線（例: 路面の種類・トンネル・自転車レーン）を、路面タイルに焼いた層の値と`roadTracks.ts`の行から式へ組んだ配色と、道路タブを地図で見ている間に道路タブの段を道に塗る線（下記「道路タブの段」）と、詳細を見ている1本の強調。**線レイヤーで分類を運ぶのは色だけで、太さは情報を持たず、線種が運ぶのは値が無いこと（タグが無い道＝「データなし」の破線）だけ**——1本の線へ複数の分類を載せると、色の意味が他方のON/OFFで入れ替わる。同時表示は横へ平行に割り付けて分ける |
 | `lib/mapDisplay/pointLayers.ts` | 点で描く属性（`lib/mapDisplay/pointLayers.ts: POINT_LAYERS`）と、点の値が入る行（`lib/mapDisplay/pointLayers.ts: pointCategoryOf`）・大きさの軸と行の半径・点の名前（`lib/mapDisplay/pointLayers.ts: pointPlaceName`）・束ねた代表点の中の名前のある点（`lib/mapDisplay/pointLayers.ts: pointMembers`）。地図の点・地図の凡例・点のポップアップ・道のりのグラフの印が同じ宣言を読むので、同じ点が地図とグラフで同じ色・呼び名になる |
 | `features/map/scene/groups/points.ts` | 停止要因POI・補給休憩POI・事故・立ち寄り先の分類・配色・点の絵と枠・描き始める縮尺と積む順・束ねた点の数の文字と、同じタイルを分け合う条件 |
-| `features/map/scene/groups/sidePoints.ts` | 選んだ区間の近くの点を、点の層のタイルから点の層と同じ色・絵記号で描く印と、近いかの絞り込み（下記「選んだ区間の近くの点」） |
-| `lib/mapDisplay/sidePoints.ts` | 近くの点の距離の上限（backendの`domain/map_display.py: SEGMENT_NEARBY_POINT_MAX_DISTANCE_M`を生成物から読む）・区間の小窓に並べる点の層（補給・立ち寄り先）・地図に出す・消すの区分の鍵と、点の位置を区間に当てた道のりと道からの距離 |
+| `features/map/scene/groups/sidePoints.ts` | 選んだ区間（走行中に区間を選んでいない間は現在地から先の道のり）の近くの点を、点の層のタイルから点の層と同じ色・絵記号で描く印と、近いかの絞り込み（下記「選んだ区間の近くの点」） |
+| `lib/mapDisplay/sidePoints.ts` | 近くの点の距離の上限（backendの`domain/map_display.py: SEGMENT_NEARBY_POINT_MAX_DISTANCE_M`を生成物から読む）・走行中に近くの点を描く現在地から先の道のりの長さと、その始まりを動かす刻み・点の位置を区間か先の道のりに当てた道のりと道からの距離 |
 | `features/map/layers/pointIcon.ts` | 絵記号で描く点の、地図へ登録する画素。形は見本（`components/PointIconSwatch/PointIconSwatch.tsx`）の宣言を読む。**単体テストは持たない**（`sdfIcon.ts`と同じく、テスト環境のcanvasは2D描画を実装せず、形は座標の宣言そのもの） |
 | `components/PointIconSwatch/PointIconSwatch.tsx` | 地図の点の見本。点の絵の形（行の色の枠——押せる点は角丸四角、押せない点は丸——に載せる白い線の絵記号と、枠を持たない標識の絵）の宣言と、
 それを描く部品の列（`components/PointIconSwatch/PointIconSwatch.tsx: pointIconParts`）を持ち、地図へ登録する画素（`pointIcon.ts`）と見本（`PointIconSwatch`）が同じ列を描く。地図の凡例と区間の近くの施設のチップ（ルートの機能）が出すので共有の層に置く。絵記号の名前は源泉の行が持ち、描き方の無い名前は型検査が落とす |
@@ -430,6 +430,8 @@ MSMを配るOpen-MeteoのCC BY 4.0も、リンク付きのクレジット・ラ�
 ## 選んだ区間の近くの点（`groups/sidePoints.ts`）
 
 区間を選んでいる間だけ、点の層のタイル（停止要因・補給・立ち寄り先・事故）のうち区間の線から`lib/mapDisplay/sidePoints.ts: SIDE_POINT_MAX_DISTANCE_M`以内の点を、点の層と同じ見た目（行の色の丸か、行の色に絵記号を載せた絵）で、「表示」で点の層を出しているかに関わらず描く。近いかは MapLibre の`distance`式で決める（backendへは問い合わせない）。描いた点は「表示」の点と同じ点で、押したときは上の「地図を押したときと地図の小窓」の決まりに従う。点の層の行（先頭の軸の行）に当たらない値の点は描かない。点の層と同じく、束ねた点には数を出す。点のタイルは路面のタイルと同じズーム（`features/map/regionApi.ts: ROAD_TILE_MIN_ZOOM`）から読むので、それより引いた地図では近くの点を描かない。
+
+**走行中に区間を選んでいない間**は、区間の線の代わりに、現在地から`lib/mapDisplay/sidePoints.ts: AHEAD_SIDE_POINT_KM`先までのルートの道のり（ルートの終わりで切る。`lib/mapDisplay/sidePoints.ts: aheadSidePoints`）から近い点を、区間を選んだときと同じ4種類・同じ見た目で描く。道のりの始まりは走った距離を`lib/mapDisplay/sidePoints.ts: AHEAD_SIDE_POINT_STEP_KM`の刻みへ切り下げた所で、刻みをまたいだときだけ動かす（走った距離が変わるたびに絞り込みを当て直さない）。区間を選ぶとその区間の近くの点に替わり、選びを外すと先の道のりへ戻る。描いた点を押すと、点の位置を先の道のりに当てて、現在地からの残りと道からの距離を出す。
 
 ## 重なりの段（`scene/mapScene.ts: MAP_SCENE_TIERS`）
 

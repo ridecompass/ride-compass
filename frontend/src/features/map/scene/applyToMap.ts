@@ -125,7 +125,7 @@ type SceneWiringProps = {
   readonly travelledKm: number | null;
   /** 道のりのグラフか地図で選んだ地点と、その地点を含む区間。選んでいなければnull。 */
   readonly selectedRouteSegment: SelectedRouteSegment | null;
-  /** 選んでいる区間の線（近くの点を描く）。選んでいなければnull。 */
+  /** 近くの点を描く線（選んでいる区間か、走行中に選んでいない間は現在地から先の道のり）。どちらも無ければnull。 */
   readonly sidePointPath: readonly (readonly [number, number])[] | null;
 };
 
