@@ -15,7 +15,7 @@ import {
 import type { Facility } from "@/components/MapPopup/facilityRows";
 import { Button, buttonVariants } from "@/components/ui/Button/Button";
 import { ShowSectionOnMapIcon, StreetViewIcon } from "@/components/ui/icons/lucideIcons";
-import { segmentBearingAt } from "@/lib/routeDistance";
+import { bearingAlong } from "@/lib/localPlane";
 import { streetViewUrl } from "@/lib/streetViewUrl";
 import type { RoadTrackRow } from "@/lib/mapDisplay/roadTracks";
 import { cn } from "@/lib/cn";
@@ -162,6 +162,11 @@ function targetOf(popup: MapPopup, segmentPath: Shape | null): { lngLat: [number
   return popup.kind === "segment"
     ? { lngLat: [popup.segment.longitude, popup.segment.latitude], shape: segmentPath }
     : { lngLat: popup.lngLat, shape: popup.shape };
+}
+
+/** 小窓の地点で見る向き（真北0・時計回りの度）。区間は走る向きで、道は向きが決まらないので、点とともに null（Google に任せる）。 */
+function lookingOf(popup: MapPopup, { lngLat, shape }: ReturnType<typeof targetOf>): number | null {
+  return popup.kind === "segment" && shape !== null ? bearingAlong(shape, lngLat) : null;
 }
 
 /** 小窓を地図へ載せ、中身をportalで描く。返した要素を地図の部品の中に置く。 */
@@ -326,12 +331,8 @@ export function useMapPopupMount(
   }, [mapRef, mountKey, controls]);
 
   if (onMap === null || mount?.key !== mountKey) return null;
-  const { lngLat, shape } = targetOf(onMap, segmentPath);
-  // 区間は走る向きの景色を開く。道は向きが決まらないので、Google に任せる。
-  const heading =
-    onMap.kind === "segment"
-      ? segmentBearingAt(onMap.segment.segment, { longitude: lngLat[0], latitude: lngLat[1] })
-      : null;
+  const target = targetOf(onMap, segmentPath);
+  const { lngLat, shape } = target;
   return createPortal(
     // 高さに上限を付け、あふれたら中でスクロールする——地図の上の枠は、中身が伸びても画面の外へ出てはいけない。縦をスクロールに
     // すると横も切り取られるので、端に接する見本の枠（箱の1px外に描く`ring`）が欠けないよう、四辺に1pxの余白を置く。
@@ -340,7 +341,7 @@ export function useMapPopupMount(
       <div className="absolute top-0 right-8 flex">
         {/* 開く先は地点だけで決まるので、押す前に決まったリンクにする（押してから開くと、iPhone の Safari が新しい窓を止める）。 */}
         <a
-          href={streetViewUrl(lngLat, heading)}
+          href={streetViewUrl(lngLat, lookingOf(onMap, target))}
           target="_blank"
           rel="noopener noreferrer"
           aria-label="ここのストリートビューを開く"

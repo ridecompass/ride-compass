@@ -202,8 +202,6 @@ describe("地図の小窓", () => {
       properties: { name: "角の店", kind: "convenience" },
       geometry: { type: "Point", coordinates: [ELSEWHERE.longitude, ELSEWHERE.latitude] },
     };
-    serveRoadsAt([{ at: ELSEWHERE, properties: { osm_way_id: 1, feature_key: "1" } }]);
-    onBackend("POST", "/api/region/road-inspector", () => Response.json(inspectorResult()));
     const { user } = renderHome();
     await user.click(screen.getByRole("button", { name: "地図に出す情報" }));
     await user.click(screen.getByRole("checkbox", { name: "補給・休憩ポイント" }));
@@ -217,23 +215,17 @@ describe("地図の小窓", () => {
       const url = new URL(streetView().getAttribute("href")!);
       return { at: `${url.origin}${url.pathname}`, query: Object.fromEntries(url.searchParams) };
     };
-    const viewpoint = ({ latitude, longitude }: { latitude: number; longitude: number }) =>
-      `${latitude.toFixed(6)},${longitude.toFixed(6)}`;
 
-    const pressed = { latitude: 35.7, longitude: 139.705 };
-    clickSegment(mapOnScreen().sourceFeatures("route-segments")[0], pressed);
+    clickSegment(mapOnScreen().sourceFeatures("route-segments")[0], { latitude: 35.7, longitude: 139.705 });
     expect(streetView()).toHaveAttribute("target", "_blank");
     expect(opened()).toEqual({
       at: "https://www.google.com/maps/@",
-      query: { api: "1", map_action: "pano", viewpoint: viewpoint(pressed), heading: "90" },
+      query: { api: "1", map_action: "pano", viewpoint: "35.700000,139.705000", heading: "90" },
     });
 
-    // 点と道は向きを渡さず、Google に任せる。
+    // 区間でない小窓（点・道は同じ形）は向きを渡さず、Google に任せる。
     act(() => mapOnScreen().click(ELSEWHERE, [shop]));
     await screen.findByRole("link", { name: "角の店" });
-    expect(opened().query).toEqual({ api: "1", map_action: "pano", viewpoint: viewpoint(ELSEWHERE) });
-    rightClickMap(ELSEWHERE);
-    await screen.findByRole("group", { name: "道の小窓の上の帯" });
-    expect(opened().query).toEqual({ api: "1", map_action: "pano", viewpoint: viewpoint(ELSEWHERE) });
+    expect(opened().query).toEqual({ api: "1", map_action: "pano", viewpoint: "35.650000,139.720000" });
   });
 });

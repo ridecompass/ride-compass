@@ -4,7 +4,7 @@
 // 測った長さとは少しずれるので、割合でつなぐ——こうすると、道のりのグラフの距離・地図の上の地点・現在地の位置が
 // どれも同じ物差しで行き来する。
 
-import { bearingDeg, longitudeScale, projectOnEdge } from "@/lib/localPlane";
+import { longitudeScale, projectOnEdge } from "@/lib/localPlane";
 import type { Coordinates, RouteSegmentDetail } from "@/types/route";
 
 export type RouteSegmentShape = Pick<
@@ -186,17 +186,6 @@ export function nearestOnTrack(track: readonly RouteTrackEdge[], position: Coord
   const projections = projectOnTrack(track, position);
   const nearest = projections.reduce((best, p) => (p.offsetM < best.offsetM ? p : best), projections[0]);
   return nearest ?? { km: 0, offsetM: 0 };
-}
-
-/** 区間`segment`の道なりの形のうち、地点`position`に最も近い辺の進む向き（真北0・時計回りの度）。長さのある辺が無ければnull。 */
-export function segmentBearingAt(segment: RouteSegmentShape, position: Coordinates): number | null {
-  const track = routeTrack([segment]).filter(({ from, to }) => from[0] !== to[0] || from[1] !== to[1]);
-  const projections = projectOnTrack(track, position);
-  const nearest = projections.reduce<number | null>(
-    (best, p, i) => (best === null || p.offsetM < projections[best].offsetM ? i : best),
-    null,
-  );
-  return nearest === null ? null : bearingDeg(track[nearest].from, track[nearest].to);
 }
 
 /** 地点`position`を区間`segment`の道なりの形に当てた点の、区間の始まりからの距離（km）と、地点からの隔たり（m）。 */
