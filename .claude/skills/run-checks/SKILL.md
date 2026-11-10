@@ -316,8 +316,8 @@ gh workflow run mutation.yml -R ridecompass/ride-compass --ref master -f ref=<�
   （`frontend/capture/context.ts: CaptureScript`）に分かれ、手元で起動する版には本番と同じ組の環境変数を渡す（渡していなければ撮る前に止まる）。
   見せたい状態（位置・レイヤー・レンズ・凡例・応答の差し替え等）は引数でなく脚本で書く。脚本は受け取る口だけを使い何も読み込まない（だから作業ツリーの外に置ける）。
   地図を開く・レンズを選ぶ・読み終わりを待つ段取りは`e2e-live/mapReads.ts`、画面を進める段取りは
-  `e2e/fixtures.ts`・`e2e/states.ts`を使い、書き直さない。地図に描かれた、押すと開くもの（道・点・ルートの区間・乗り換えの帯等）は、
-  経度・緯度を渡さずに`e2e/liveMap.ts: clickFeature`で押す。撮れる対象・呼べる段取りを増やすときは口を変えず、地図の当たり判定の
+  `e2e/fixtures.ts`・`e2e/states.ts`を使い、書き直さない。地図に描かれた、押すと開くもの（点・ルートの区間・乗り換えの帯等）は、
+  経度・緯度を渡さずに`e2e/liveMap.ts: clickFeature`で押し、道は`e2e/liveMap.ts: longPressRoad`で長押しする。撮れる対象・呼べる段取りを増やすときは口を変えず、地図の当たり判定の
   宣言（scene の`hitTargets`）か、e2e の段取りと応答の雛形（`e2e/fixtures.ts`・`e2e/mockResponses.ts`・`e2e/states.ts`・`src/testing/costAxes.ts`・`src/testing/clientConfig.ts`）へ足す。
 
 ## 付録
