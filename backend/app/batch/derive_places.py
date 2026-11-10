@@ -58,6 +58,8 @@ from app.infrastructure.source_models import BUNKA_HERITAGES_SOURCE_SQL, OVERTUR
 
 logger = logging.getLogger("ridecompass.derive_places")
 
+#: 副問い合わせは`OFFSET 0`で外へ畳ませない（畳まれると、外の式が名前・チェーンを参照するたびに名前の揃えとチェーンの式を
+#: 計算し直し、チェーンの語の数だけ行ごとの計算が増える）。
 _PLACES = f"""
 CREATE TEMP TABLE _places ON COMMIT DROP AS
 SELECT c.overture_id, c.name, c.normalized_name, c.confidence, c.geom, c.categories,
@@ -74,9 +76,9 @@ FROM (
                         THEN ARRAY(SELECT jsonb_array_elements_text(o.hierarchy))::varchar[] END AS categories,
                    {address_parts_sql("o.addresses")}
             FROM {OVERTURE_PLACES_SOURCE_SQL} o
-        ) n
-    ) g
-) c
+        OFFSET 0) n
+    OFFSET 0) g
+OFFSET 0) c
 """
 
 #: 地点の連絡先（1つの連絡先が1行）と、寄せに使える連絡先（2つ以上の地点が持ち、それを持つ地点（群を問わない）の広がりが
