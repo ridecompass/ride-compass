@@ -1,6 +1,7 @@
-/** 選んでいる区間（地図で押しても、道のりのグラフで選んでも）の近くの点。
+/** 選んでいる区間（地図で押しても、道のりのグラフで選んでも）か、走行中に区間を選んでいない間は現在地から先の道のり
+ * （`lib/mapDisplay/sidePoints.ts: aheadSidePoints`）の近くの点。
  *
- * 点の層のタイル（`points.ts: POINT_TILE_SOURCES`）を読み、区間の線から近い点だけを、点の層と同じ見た目で描く（束ねた点の数も出す）。「表示」で
+ * 点の層のタイル（`points.ts: POINT_TILE_SOURCES`）を読み、その線から近い点だけを、点の層と同じ見た目で描く（束ねた点の数も出す）。「表示」で
  * 点の層を出しているかに関わらず出す。描いた点は「表示」の点と同じ点で、押すと点の小窓を開く
  * （当たり判定は`points.ts: POINT_HIT_TARGET`）。近いかは地図の道具の`distance`式で決める（MapLibre の文書は、ズーム13未満では
  * 距離の精度が落ちうると書いている）。
@@ -21,7 +22,7 @@ function roleOf(layer: PointLayer): string {
 export const sidePointLayerOfSceneLayer = pointLayerLookup(roleOf);
 
 export type SidePointState = {
-  /** 選んでいる区間の線。選んでいなければnull。 */
+  /** 近くの点を描く線（選んでいる区間か、走行中の現在地から先の道のり）。どちらも無ければnull。 */
   readonly path: readonly (readonly [number, number])[] | null;
   /** 点の層のタイルのソースがあるか（タイルの世代が届くまで無い）。 */
   readonly tilesReady: boolean;
