@@ -65,11 +65,13 @@ export interface CaptureContext {
   /** 地図の見えている所（部品に覆われていない所）へ経度・緯度の点を寄せてから押す。点が画面の外や部品の下に来うるときに使う。 */
   clickVisible(lngLat: [number, number]): Promise<void>;
   /**
-   * 地図に描かれた、押すと開くもの（道の詳細・点の詳細・ルートの区間・乗り換えの帯等）を、経度・緯度を渡さずに1つ押す。
-   * `target` は地図の当たり判定の対象の名前（例: "road"）で、いまの地図に無い名前を渡すと押せる名前を並べて止まる。持つレイヤーが
-   * 非表示・画面に描かれていないときも止まるので、open の layers・位置・倍率で描かれる状態にしてから呼ぶ（例は examples/road-detail.ts）。
+   * 地図に描かれた、押すと開くもの（点の詳細・ルートの区間・乗り換えの帯等）を、経度・緯度を渡さずに1つ押す。
+   * `target` は地図の当たり判定の対象の名前（例: "point"）で、いまの地図に無い名前を渡すと押せる名前を並べて止まる。持つレイヤーが
+   * 非表示・画面に描かれていないときも止まるので、open の layers・位置・倍率で描かれる状態にしてから呼ぶ。
    */
   clickFeature(target: string): Promise<void>;
+  /** 地図に描かれた道を経度・緯度を渡さずに1本長押しし、道の詳細を開く。open の layers で道の層を出してから呼ぶ（例は examples/road-detail.ts）。 */
+  longPressRoad(): Promise<void>;
   /**
    * URL が glob に当たる応答の本文を `transform` の返した JSON に替える。本物の応答を取ってから本文だけを替えるので、CORS 等の
    * ヘッダーは本物のまま残る（ヘッダーの無い応答で返すと、別オリジンの backend への取得としてブラウザが捨てる）。
@@ -231,6 +233,10 @@ export function captureContext(
       // 生成・レイヤーの切り替えの直後は、まだ描かれていない。
       await settle();
       await fixtures.clickFeature(page, target);
+    },
+    async longPressRoad() {
+      await settle();
+      await fixtures.longPressRoad(page);
     },
     async patch(glob, transform) {
       await page.route(glob, async (route) => {
