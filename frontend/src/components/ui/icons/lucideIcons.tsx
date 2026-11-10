@@ -39,6 +39,7 @@ import {
   RotateCw,
   Ruler,
   Save,
+  PersonStanding,
   Search,
   Shield,
   SlidersHorizontal,
@@ -152,6 +153,8 @@ export const BackToNowIcon = fromLucide(History);
 export const SearchPlaceIcon = fromLucide(Search);
 /** 選んだ区間へ地図を寄せる。 */
 export const ShowSectionOnMapIcon = fromLucide(ZoomIn);
+/** 小窓の地点の Street View を開く（Google マップの Street View の人の形）。 */
+export const StreetViewIcon = fromLucide(PersonStanding);
 /** 編集で作ったルートの元にしたルートを見る。 */
 export const ShowOriginIcon = fromLucide(CornerUpLeft);
 /** 走行中の曲がる所の案内: 左折。 */

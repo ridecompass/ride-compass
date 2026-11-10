@@ -55,3 +55,10 @@ export function projectOnEdge(
     offsetM: Math.hypot(closest.x, closest.y),
   };
 }
+
+/** 点`from`から点`to`（[経度, 緯度]）へ向かう方位（真北0・時計回りの度。0以上360未満）。`from`の緯度で平面へ落として測る。 */
+export function bearingDeg(from: readonly [number, number], to: readonly [number, number]): number {
+  const x = (to[0] - from[0]) * longitudeScale(from[1]);
+  const y = to[1] - from[1];
+  return ((Math.atan2(x, y) * 180) / Math.PI + 360) % 360;
+}

@@ -6,6 +6,7 @@
  * - `splitSegmentAt`: 区間の形を割合の地点で前と後ろに分ける（分けた点は両方に入る）
  * - `routeTrack`・`projectOnTrack`: ルートの形を辺へ分け、地点に最も近い辺の上の点のルートの上の距離と隔たり
  * - `routePointsEvery`: ルートの形の上に一定の距離おきに置いた点
+ * - `segmentBearingAt`: 区間の形のうち、地点に最も近い辺の進む向き
  * - `trackBetween`: ルートの形のうち、2つの距離の間の部分
  *
  * ここで見ないもの:
@@ -22,6 +23,7 @@ import {
   routePointsEvery,
   routeStretches,
   routeTrack,
+  segmentBearingAt,
   splitSegmentAt,
   trackBetween,
 } from "./routeDistance";
@@ -241,5 +243,35 @@ describe("routePointsEvery", () => {
     // 2つ目の区間の0.2km（0.5kmの4割）は、北への辺の4割。
     expect(at[3]).toEqual([expect.closeTo(139.01, 6), expect.closeTo(35.004, 6)]);
     expect(at[4]).toEqual([139.01, 35.01]);
+  });
+});
+
+describe("segmentBearingAt", () => {
+  it("地点に最も近い辺の進む向きを、真北0・時計回りの度で出し、長さの無い辺は数えない", () => {
+    // 東へ進み、同じ点を挟んで北へ折れる区間。
+    const bent = segment({
+      geometry: line([
+        [139, 35],
+        [139.01, 35],
+        [139.01, 35],
+        [139.01, 35.01],
+      ]),
+    });
+    expect(segmentBearingAt(bent, { latitude: 35.0001, longitude: 139.005 })).toBeCloseTo(90);
+    expect(segmentBearingAt(bent, { latitude: 35.005, longitude: 139.0101 })).toBeCloseTo(0);
+  });
+
+  it("長さのある辺が無ければ向きは無い", () => {
+    const still = segment({
+      geometry: line([
+        [139, 35],
+        [139, 35],
+      ]),
+      end_longitude: 139,
+      end_latitude: 35,
+      start_longitude: 139,
+      start_latitude: 35,
+    });
+    expect(segmentBearingAt(still, { latitude: 35, longitude: 139 })).toBeNull();
   });
 });
