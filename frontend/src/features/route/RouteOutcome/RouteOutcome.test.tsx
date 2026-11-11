@@ -67,7 +67,7 @@ describe("候補の上の知らせ", () => {
       results: resultsOf({ generated: [FAST] }),
       generation: generationOf({ conditionsDirty: on, destinationCorrected: on }),
     });
-    for (const text of ["生成条件が変更されています", /近くのアクセス可能な地点へ補正しました/]) {
+    for (const text of ["生成条件が変更されています", /近くの自転車で行ける地点へ移しました/]) {
       expect(screen.queryByText(text) !== null).toBe(on);
     }
   });

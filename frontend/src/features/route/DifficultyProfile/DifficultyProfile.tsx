@@ -64,7 +64,7 @@ export default function DifficultyProfile({
     <ProfileChart
       scale={scale}
       label="道のりに沿った負担"
-      usage={`横は道のり、縦はその区間の${LENS_QUANTITY_LABEL}です。色ごとの面積は、その種類の負担のルート全体での合計を表します。`}
+      usage={`横は道のり、縦はその区間の${LENS_QUANTITY_LABEL}です。色ごとの面積は、その種類の負担をルート全体で合計した値を表します。`}
       selected={selected}
       onSelect={onSelect}
       progressKm={progressKm}

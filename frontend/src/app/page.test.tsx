@@ -221,11 +221,11 @@ describe("ルートを作る", () => {
     await waitFor(() =>
       expect(screen.getByRole("tab", { name: "負担" })).toHaveAttribute(
         "data-usage",
-        expect.stringContaining("負担（甲・乙）の"),
+        expect.stringContaining("負担[甲・乙]の"),
       ),
     );
     await user.click(screen.getByRole("button", { name: "負担の強さの説明を表示" }));
-    expect(await screen.findByText(/余分にかかるもの（甲・乙）を、時間に換算/)).toBeInTheDocument();
+    expect(await screen.findByText(/余分にかかるもの\[甲・乙\]を時間に直した/)).toBeInTheDocument();
     await user.keyboard("{Escape}");
 
     jobs.respond([FIRST], LOOP_CONDITIONS);

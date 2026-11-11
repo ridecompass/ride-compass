@@ -84,7 +84,7 @@ describe("画面の枠", () => {
     const routeLayers = mapOnScreen()
       .visibleLayerIds()
       .filter((id) => id.startsWith("route-"));
-    await run("表示中のレイヤーをすべて非表示");
+    await run("表示中の情報をすべて非表示");
     expect(nonRouteLayers()).toEqual([]);
     expect(mapOnScreen().visibleLayerIds()).toEqual(routeLayers);
 

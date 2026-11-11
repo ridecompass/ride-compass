@@ -6,10 +6,9 @@
 export class StoredValueError extends Error {
   constructor(operation: "read" | "write", label: string, cause: unknown) {
     const reason = cause instanceof Error ? cause.message : String(cause);
-    super(
-      `端末に保存した${label}を${operation === "read" ? "読めませんでした" : "保存できませんでした"}（${reason}）`,
-      { cause },
-    );
+    super(`端末に保存した${label}を${operation === "read" ? "読めませんでした" : "保存できませんでした"}[${reason}]`, {
+      cause,
+    });
     this.name = "StoredValueError";
   }
 }

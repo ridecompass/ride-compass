@@ -79,15 +79,15 @@ describe("RouteForm 全長の目標", () => {
   it.each([
     [
       { [CLIENT_TUNING_IDS.distanceToleranceRatio]: 0.15 },
-      "ルート全体の長さの目標です。作る候補は、この長さの±15%（30kmなら±4.5km）に入るものだけです。",
+      "ルート全体の長さの目標です。候補は、この長さの±15%[30kmなら±4.5km]に収まるものだけを作ります。",
     ],
-    [{}, "ルート全体の長さの目標です。外すと長さを決めず"],
+    [{}, "ルート全体の長さの目標です。オフにすると長さを決めず"],
   ])("(i)の奥に、画面の設定が配る許容差（%o）を割合と今の目標での長さで書く", async (clientTuning, text) => {
     serveClientConfig(clientConfigResponse({ client_tuning: clientTuning }));
     renderForm({ distanceInput: "30" });
     await userEvent.click(button("全長の目標の説明を表示"));
 
-    expect(await screen.findByText(new RegExp(`^${text}`))).toBeInTheDocument();
+    expect(await screen.findByText((content) => content.startsWith(text))).toBeInTheDocument();
   });
 
   it("ルーラーは5kmから上限まで5km刻みのコマを持ち、今の値のコマを選んでいる", () => {

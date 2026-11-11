@@ -65,7 +65,7 @@ const GROUP_COLORS = {
 const LIST_SCREEN_NAME = "地図に出す情報";
 
 const LIST_USAGE =
-  "チェックを入れた情報を地図に重ね、外すと消します。▶で凡例を開くと、段階ごとに隠せます。漏斗の印は、一部を隠している合図です。";
+  "チェックを入れた情報を地図に重ね、外すと消します。▶で凡例を開くと、段階ごとに隠せます。漏斗の印は一部を隠している合図です。";
 
 /** 地図の上に浮かせる一覧。画面の端・下端に収まる大きさはRadixが測り、ⓘと▶は一覧の中の行の下に開く——一覧の上に
  * 別の浮きパネルを重ねると、スマホの幅では行そのものを覆い、下端で切れる。重なり順は`Popover`の既定（下部シートより上）の
@@ -171,12 +171,12 @@ export default function MapOverlayControls({
           className="pointer-events-auto relative w-[var(--map-ctrl-column-width)] flex-none justify-center border-0 py-1 text-[length:var(--font-size-sm)]"
           aria-label={LIST_SCREEN_NAME}
           aria-description={[
-            `${FACT_DISPLAY_NAME}（${LIST_SCREEN_NAME}）[${shownCount}件を表示中]`,
+            `${FACT_DISPLAY_NAME}[${LIST_SCREEN_NAME}][${shownCount}件を表示中]`,
             anyFiltered ? FILTERED_LABEL : undefined,
           ]
             .filter(Boolean)
             .join("・")}
-          usage="地図に重ねる情報（路面・雨雲・補給の店など）の一覧を開きます。数字は今地図に出している件数です。"
+          usage="地図に重ねる情報[路面・雨雲・補給の店など]の一覧を開きます。数字は今地図に出している件数です。"
         >
           <span className="inline-flex h-[1lh] items-center">
             <DisplayItemsIcon size={16} />
@@ -205,7 +205,7 @@ export default function MapOverlayControls({
             "mt-1 flex items-center gap-1.5 border-b border-[var(--color-border)] pb-1.5",
             route.selectable ? "cursor-pointer" : "text-[var(--color-neutral)]",
           )}
-          data-usage={`選んだ候補のルートの線を、地図に表示するか隠すかを切り替えます。線の色は、「負担で塗る」で選んだ負担の種類の${LENS_QUANTITY_LABEL}です。`}
+          data-usage={`選んだ候補のルートの線を、地図に表示するか隠すかを切り替えます。線の色は、「負担で塗る」で選んだ負担の種類の${LENS_QUANTITY_LABEL}を表します。`}
         >
           <Checkbox
             checked={route.shown && route.selectable}
@@ -213,16 +213,16 @@ export default function MapOverlayControls({
             onCheckedChange={() => route.onChange(!route.shown)}
             aria-label="ルート"
           />
-          {route.selectable ? "ルート（選んだ候補の線）" : "ルート（候補を選ぶと出せます）"}
+          {route.selectable ? "ルート[選んだ候補の線]" : "ルート[候補を選ぶと出せます]"}
         </label>
         {groups}
         <div className="mt-1.5 flex justify-end gap-1 border-t border-[var(--color-border)] pt-1.5">
           <Button
             size="panelIcon"
-            aria-label="表示中のレイヤーをすべて非表示"
+            aria-label="表示中の情報をすべて非表示"
             onClick={onHideAllLayers}
             disabled={shownCount === 0}
-            usage="この一覧でONにした情報を、まとめてOFFにします（ルートの線は残します）。"
+            usage="この一覧でONにした情報を、まとめてOFFにします。ルートの線は残します。"
           >
             <ClearAllLayersIcon />
           </Button>

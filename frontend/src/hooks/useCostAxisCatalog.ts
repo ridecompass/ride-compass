@@ -83,9 +83,9 @@ export function costAxisCatalogFromResponse(response: CostAxisCatalogResponse): 
   };
 }
 
-/** 文の中に括弧で添える、軸の名前の並び（一覧の順。例:「（登坂・振動）」）。届くまで・失敗の間は軸が無いので空。 */
+/** 文の中に括弧で添える、軸の名前の並び（一覧の順。例:「[登坂・振動]」）。届くまで・失敗の間は軸が無いので空。 */
 export function costAxisNamesNote(catalog: CostAxisCatalog): string {
-  return catalog.axes.length === 0 ? "" : `（${catalog.axes.map((axis) => axis.label).join("・")}）`;
+  return catalog.axes.length === 0 ? "" : `[${catalog.axes.map((axis) => axis.label).join("・")}]`;
 }
 
 /** 費用の軸の一覧の取得をやり直す（`failed`からの再試行）。 */

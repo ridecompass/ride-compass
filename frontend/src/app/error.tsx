@@ -21,7 +21,7 @@ export default function Error({ error, retry }: { error: Error & { digest?: stri
           retry();
         }}
       >
-        端末の保存を消して再試行
+        端末に保存した値を消して再試行
       </Button>
       <Button usage={null} onClick={() => retry()}>
         再試行

@@ -97,11 +97,11 @@ export default function MaterialCoveragePanel() {
         <>
           <p className="m-0 [&+&]:mt-2">
             材料の元データ（OSMタグ、または区間単位の派生テーブルの行）を持たない区間の割合。母集団は
-            {POPULATION_LABELS.way}=取り込んだOSMのway全件、{POPULATION_LABELS.edge}=道路グラフの区間全件で、
-            件数ベース（距離加重ではない）。
+            {POPULATION_LABELS.way}=取り込んだOSMのway全件、{POPULATION_LABELS.edge}
+            =道路グラフの区間全件で、件数ベース（距離加重ではない）。
           </p>
           <p className="m-0 [&+&]:mt-2">
-            材料名の下に、欠損の判定根拠（参照しているタグ・テーブル）を添える。集計はDB全体を走査するため手動実行。
+            材料名の下に、欠損の判定根拠（参照しているタグ・テーブル）を出す。集計はDB全体を走査するため手動実行。
           </p>
         </>
       }

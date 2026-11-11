@@ -87,7 +87,7 @@ function FacilityName({ name, lngLat }: { name: string; lngLat: readonly [number
       href={url}
       target="_blank"
       rel="noopener noreferrer"
-      data-usage="この施設を、別のタブの地図で開きます。"
+      data-usage="この施設を別のタブの地図で開きます。"
       className="text-[var(--foreground)] underline"
     >
       {name}

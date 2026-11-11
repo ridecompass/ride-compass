@@ -75,7 +75,7 @@ export function ConfirmDialog({ open, title, confirmLabel, onConfirm, onCancel, 
           <Button usage="何もせずに、この窓を閉じます。" size="sm" onClick={onCancel}>
             キャンセル
           </Button>
-          <Button usage="窓に書いた操作を行います。" variant="danger" size="sm" onClick={onConfirm}>
+          <Button usage="窓に書いた操作をします。" variant="danger" size="sm" onClick={onConfirm}>
             {confirmLabel}
           </Button>
         </div>

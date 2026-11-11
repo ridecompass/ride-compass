@@ -123,7 +123,7 @@ export default function RouteProfile({
           ボタンと「負担で塗る」のピルと同じ絵だけで出し、名前は読み上げに残す。 */}
       <div className="pointer-events-none absolute top-1 right-1 z-10 flex items-start gap-1 [&>*]:pointer-events-auto">
         <TabsList aria-label="道のりのグラフ" variant="overlay">
-          <TabsTrigger value="layer" usage="選んだ情報（標高・道の区分等）を、道のりに沿って出します。">
+          <TabsTrigger value="layer" usage="選んだ情報[標高・道の区分等]を、道のりに沿って出します。">
             <DisplayItemsIcon size={14} />
             <span className="sr-only">{FACT_DISPLAY_NAME}</span>
           </TabsTrigger>
@@ -141,8 +141,8 @@ export default function RouteProfile({
             triggerClassName="rounded-full bg-[color-mix(in_srgb,var(--background)_85%,transparent)]"
           >
             <p>
-              右上の一覧でチェックした種類だけを積みます。高さは区間ごとの{LENS_QUANTITY_LABEL}
-              で、上端はこのルートで最も大きい区間の値です（曲がる所と、好む道・避ける道の増減は含みません）。色ごとの面積は、その種類の負担の合計を表します。横の右端は、一覧で最も長い候補の距離です。
+              右上の一覧でチェックした種類だけを積み上げます。高さは区間ごとの{LENS_QUANTITY_LABEL}
+              で、上端はこのルートでいちばん大きい区間の値です[曲がる所の負担と、好む道・避ける道による増減は含みません]。色ごとの面積は、その種類の負担の合計です。横軸の右端は、一覧でいちばん長い候補の距離です。
             </p>
           </InfoPopover>
         )}
@@ -157,7 +157,10 @@ export default function RouteProfile({
               const on = shownAxes.includes(row.id);
               const fact = facts[row.id];
               return (
-                <li key={row.id} data-usage="チェックした種類の負担を、グラフに積みます。選びはこの端末に覚えます。">
+                <li
+                  key={row.id}
+                  data-usage="チェックした種類の負担を、グラフに積みます。選んだ種類はこの端末に保存します。"
+                >
                   <label className="flex cursor-pointer items-center gap-1.5">
                     <Checkbox
                       checked={on}
@@ -181,7 +184,7 @@ export default function RouteProfile({
         {tab === "layer" && (
           <ProfileLayerPicker
             title="グラフに出す情報"
-            usage="グラフに重ねる情報（標高・道の区分等）を選ぶ一覧を開きます。数字は今重ねている数です。"
+            usage="グラフに重ねる情報[標高・道の区分等]を選ぶ一覧を開きます。数字は今重ねている数です。"
             // 覚えた選択には今は無いレイヤも残るので、数は今重ねているものだけで数える。
             count={shownLayers.lines.length + shownLayers.bands.length}
           >

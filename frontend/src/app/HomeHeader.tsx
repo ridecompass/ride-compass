@@ -103,7 +103,7 @@ export default function HomeHeader({
               onClick={onToggleRidePanel}
               aria-label="ルート"
               aria-expanded={panelsShown}
-              usage="走行モードのまま「ルート設定」と「ルート結果」を開きます。候補を選び直す・作り直すと、走行モードはその候補を追います。もう一度押すと閉じます。"
+              usage="走行モードのまま「ルート設定」と「ルート結果」を開きます。候補を選び直したり作り直したりすると、走行モードはその候補に切り替わります。もう一度押すと閉じます。"
             >
               <RouteIcon size={18} />
             </Button>
