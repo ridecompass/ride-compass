@@ -93,5 +93,5 @@ export function costLensPremises(
       : equivalents.examples.map(
           (example) => `${example.label} ${formatLensNumber(example.seconds_per_km)}${LENS_SECONDS_UNIT}`,
         );
-  return lines.length === 0 ? [] : [`目安（${routeGenerateConfig.lens_equivalents_condition_wording}）`, ...lines];
+  return lines.length === 0 ? [] : [`目安[${routeGenerateConfig.lens_equivalents_condition_wording}]`, ...lines];
 }

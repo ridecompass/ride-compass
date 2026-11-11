@@ -99,7 +99,7 @@ describe("useMapView", () => {
       timeout: 3000,
     });
     expect(sent[0].query.speed_kmh).toBe("20");
-    expect(result.current.lensControl.premises).toEqual(["目安（条件イの道の場合）", "4単位ア ≈ 斜度 2.1%"]);
+    expect(result.current.lensControl.premises).toEqual(["目安[条件イの道の場合]", "4単位ア ≈ 斜度 2.1%"]);
   });
 
   it("選んでいた軸を無効にすると、選んでいない状態で塗り、無効を戻すとまたその軸で塗る", async () => {

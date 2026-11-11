@@ -245,7 +245,7 @@ export default function RoutePoints({
           className={toggleClass}
           pressed={loop}
           onClick={() => setLoop(!loop)}
-          usage="オンにすると、出発地へ戻る周回を作ります（変えられるのは経由地だけです）。オフにすると目的地へ向かいます。"
+          usage="オンにすると、出発地へ戻る周回を作ります[変えられるのは経由地だけです]。オフにすると目的地へ向かいます。"
         >
           <LoopRouteIcon />
           周回

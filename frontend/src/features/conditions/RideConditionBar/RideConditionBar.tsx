@@ -161,7 +161,7 @@ export default function RideConditionBar({
             name={departureName}
             icon={<ClockIcon />}
             linked={linkedDeparture}
-            usage="出発する日時を決めます。地図に出す気象と周りの道の負担（風）の時刻、ルートの到達予想の時刻に使います。"
+            usage="出発する日時を決めます。地図に出す気象と周りの道の負担[風]の時刻、ルートの到達予想の時刻に使います。"
           >
             {/* 別の日は日付も付くため、列の幅に収まるよう日付と時刻を2行に分ける。 */}
             {departureLabel?.map((part) => (
@@ -243,14 +243,14 @@ export default function RideConditionBar({
             <InfoPopover triggerAriaLabel="想定速度の説明">
               {/* JSXの改行は半角スペースになるので、文字列として繋ぐ。 */}
               <p>
-                {"普段の平均速度[信号待ち・坂を含む]ではなく、平らな道を風の無いときに巡航する速度です。" +
-                  `所要時間は、この速度から平地で出している力を逆算し、区間ごとの${SPEED_CONDITIONS}で速度を変えて計算します。`}
+                {"平らな道を風の無いときに巡航する速度です。信号待ちや坂を含めた普段の平均速度ではありません。" +
+                  `所要時間は、平地をこの速度で走る力を求め、区間ごとの${SPEED_CONDITIONS}に合わせて速度を変えて計算します。`}
               </p>
               {riderDefaults && (
                 <p>
-                  {`体格・機材は標準値で計算します: 総質量${riderDefaults.massKg}kg[体重＋車体＋装備]・` +
-                    `空気抵抗CdA ${riderDefaults.cdaM2}m²[ロードバイクのブラケットポジション]。` +
-                    `下りは${riderDefaults.maxDescentKmh}km/hまで[想定速度がそれより速いときは想定速度まで]、登りで${riderDefaults.walkingKmh}km/h以下になる所は押して歩くとみなします。`}
+                  {`体格と機材は標準の値で計算します。総質量は${riderDefaults.massKg}kg[体重・車体・装備の合計]、` +
+                    `空気抵抗CdAは${riderDefaults.cdaM2}m²[ロードバイクでブラケットを握る姿勢]です。` +
+                    `下りは${riderDefaults.maxDescentKmh}km/hまで[想定速度のほうが速ければ想定速度まで]出し、登りで${riderDefaults.walkingKmh}km/h以下になる所は押して歩くとみなします。`}
                 </p>
               )}
             </InfoPopover>

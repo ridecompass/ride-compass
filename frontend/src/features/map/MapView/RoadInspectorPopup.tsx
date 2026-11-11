@@ -125,13 +125,13 @@ function LensValues({ lens }: { lens: LensInspection }) {
       <div className="flex flex-wrap items-center gap-1.5">
         <p className={hintClass}>
           {slot === "along" ? "道の向き" : "逆向き"}
-          {lens.painted === null ? "（地図の向きに直角に近い道）" : ""}
+          {lens.painted === null ? "[地図の向きに直角に近い道]" : ""}
         </p>
         <ToggleGroup
           value={view}
           onValueChange={setView}
           aria-label="負担の出し方"
-          usage="軸ごとの負担を、秒で出すか、秒にする前の事実（登り・止まる回数等）で出すかを切り替えます。"
+          usage="軸ごとの負担を、秒で出すか、秒にする前の事実[登り・止まる回数等]で出すかを切り替えます。"
           className="ml-auto"
         >
           <ToggleGroupItem value="seconds" className="py-0.5">

@@ -44,7 +44,7 @@ export function useRouteFormSubmit({
       return false;
     }
     if (!loop && !destinationSet) {
-      setError("目的地を置いてください（出発地へ戻るなら「周回」を押してください）。");
+      setError("目的地を置いてください[出発地へ戻るなら「周回」を押してください]。");
       return false;
     }
     setError(null);

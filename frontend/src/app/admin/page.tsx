@@ -78,7 +78,7 @@ export default function AdminPage() {
           {debugEnabled && (
             // ログは地図を操作しながら見るもので、地図の無いこのページには出さない。
             <p className={textVariants({ variant: "hint" })}>
-              デバッグログの表示はトップページ（/）のヘッダーアイコンで行えます。
+              デバッグログはトップページ（/）のヘッダーアイコンから表示できます。
             </p>
           )}
           <SystemStatusPanel open={systemStatusOpen} onClose={() => setSystemStatusOpen(false)} />

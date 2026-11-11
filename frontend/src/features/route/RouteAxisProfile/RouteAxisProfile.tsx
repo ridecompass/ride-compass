@@ -41,8 +41,8 @@ export default function RouteAxisProfile({
             <span className="text-[1.05rem] font-semibold">{formatDurationShort(estimatedDurationSeconds)}</span>
             <InfoPopover triggerAriaLabel="所要時間の説明">
               <p>
-                {`走行時間[${SPEED_CONDITIONS}と想定した巡航速度から区間ごとに計算]に、`}
-                信号などで止まる待ちと、交差点で曲がる待ちを足した見積もりです。実際の信号のタイミングや走り方で変わります。
+                {"区間ごとの走行時間に、信号などで止まる時間と、交差点を曲がるのにかかる時間を足した見積もりです。" +
+                  `走行時間は、想定した巡航速度と${SPEED_CONDITIONS}から計算します。実際の信号のタイミングや走り方で変わります。`}
               </p>
             </InfoPopover>
           </span>
@@ -52,11 +52,11 @@ export default function RouteAxisProfile({
           <span className="text-[1.05rem] font-semibold">{formatPenalty(penalty.total_seconds)}</span>
           <InfoPopover triggerAriaLabel="負担の説明">
             <p>
-              {"登り・止まる回数・路面の振動など、避けたいものを通る分を、所要時間に上乗せした時間として数えたものです。" +
-                "最速の1本を比べる基準として先頭に置き、残りは所要時間と負担の和が小さい順に並びます（周回は1kmあたりの和で比べます）。" +
-                "グラフの右上の一覧は、負担を種類ごとに分けたものです（曲がる所の漕ぎ出しは、止まってから漕ぎ出す負担に入ります）。" +
-                `この数には、${ROAD_SETTINGS_TAB_NAME}のタブで好むとした道を通って下げた分（−）と、避けるとした道を通って上乗せした分も` +
-                "入ります。その区間は、地図のルートの線の両脇の線が示します。"}
+              {"登り・止まる回数・路面の振動など、避けたいものを通る分を時間に直し、所要時間に上乗せしたものです。" +
+                "候補は、最速の1本を比べる基準として先頭に置き、残りを所要時間と負担の和が小さい順に並べます[周回は1kmあたりの和で比べます]。" +
+                "グラフの右上の一覧は、負担を種類ごとに分けたものです[曲がる所の漕ぎ出しは、止まってから漕ぎ出す負担に入れます]。" +
+                `${ROAD_SETTINGS_TAB_NAME}のタブで好むとした道を通って減った分[−]と、避けるとした道を通って増えた分も、` +
+                "この負担に入ります。その区間は、地図のルートの線の両脇の線で示します。"}
             </p>
           </InfoPopover>
         </span>

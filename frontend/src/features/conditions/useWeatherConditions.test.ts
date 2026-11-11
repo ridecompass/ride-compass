@@ -269,7 +269,7 @@ describe("useWeatherConditions 警報のバッジ", () => {
           label: "大雨警報",
           level: "warning",
           source: "jma",
-          title: "付随事項: 土砂災害・浸水害",
+          title: "付加事項: 土砂災害・浸水害",
         },
         { id: "10", label: "雷注意報", level: "advisory", source: "jma" },
         { id: "wbgt", label: "暑さ指数厳重警戒", level: "warning", source: "wbgt", title: "暑さ指数 29.0" },

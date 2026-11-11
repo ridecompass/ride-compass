@@ -80,7 +80,7 @@ export default function RouteSettingsPanel({ costPreference, onCostPreferenceCha
       )}
       {!countsCosts(costPreference) && catalog.axes.length > 0 && (
         <p className={textVariants({ variant: "hint" })} role="status">
-          {`「条件」タブの負担の強さが${DISABLED_LABEL}のため、ここの倍率は効きません。`}
+          {`「条件」タブの負担の強さが${DISABLED_LABEL}のため、ここの倍率は使いません。`}
         </p>
       )}
       <ul className={cn("flex flex-col gap-1.5", !countsCosts(costPreference) && "opacity-50")}>
@@ -109,7 +109,7 @@ export default function RouteSettingsPanel({ costPreference, onCostPreferenceCha
       </ul>
       {catalog.axes.length > 0 && (
         <Button
-          usage="負担の種類ごとの倍率と無効を、すべて標準（×1）に戻します。"
+          usage="負担の種類ごとの倍率と無効を、すべて標準[×1]に戻します。"
           variant="secondary"
           className="self-end"
           disabled={standard}

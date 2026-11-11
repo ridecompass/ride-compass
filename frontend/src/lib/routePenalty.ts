@@ -45,7 +45,7 @@ export function costAxisLabel(
 ): string {
   if (!catalog.loaded) return pendingCatalogLabel(catalog);
   const axis = catalog.axes.find((listed) => listed.axisId === axisId);
-  if (axis === undefined) throw new Error(`費用の軸 ${axisId} が一覧にありません`);
+  if (axis === undefined) throw new Error(`負担の種類 ${axisId} が一覧にありません`);
   return axis.label;
 }
 

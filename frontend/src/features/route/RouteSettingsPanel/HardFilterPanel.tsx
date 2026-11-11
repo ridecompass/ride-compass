@@ -53,7 +53,7 @@ export default function HardFilterPanel({
     <div className="flex flex-col">
       <label
         className="flex items-center gap-1.5 pb-1 text-[length:var(--font-size-sm)]"
-        data-usage="このタブを出している間、好む道を緑、避ける道を橙（少しの段は薄い色）、通らない道を赤で地図に塗り（通る道は塗らない）、下の地図を灰色に薄めます。1本の道がいくつもの行に当たるときは、倍率の大きい方の段の色です。選びはこの端末に覚えます。"
+        data-usage="このタブを出している間、好む道を緑、避ける道を橙[少しの段は薄い色]、通らない道を赤で地図に塗ります[通る道は塗りません]。下の地図は灰色に薄めます。1本の道がいくつもの行に当たるときは、倍率の大きい方の段の色です。選んだものはこの端末に保存します。"
       >
         <Checkbox checked={roadTabMap.on} onCheckedChange={roadTabMap.onChange} aria-label="地図で見る" />
         地図で見る
@@ -181,7 +181,7 @@ function AvoidanceLevelRow({
         <ToggleGroup
           variant="scale"
           aria-label={`${label}の避け方`}
-          usage="この行に該当する道の費用に掛ける倍率を、目盛りの点を押して選びます。真ん中の長い目盛りが×1（指定なし）で、左ほど好んで通り（遠回りでも選びやすくなります）、右ほど避け（遠回りが小さければ別の道を通ります）、右端の∞は経路から完全に外します。複数の行に該当する道には、倍率の大きい方を当てます（×1は指定なしの扱いです）。"
+          usage="この行に該当する道の費用に掛ける倍率を、目盛りの点を押して選びます。真ん中の長い目盛りが×1[指定なし]です。左ほど好んで通り[遠回りでも選びやすくなります]、右ほど避けます[遠回りが小さければ別の道を通ります]。右端の∞は経路から完全に外します。複数の行に該当する道には、倍率の大きい方を当てます[×1は指定なしの扱いです]。"
           value={level}
           onValueChange={(next) => onLevelChange(next as AvoidanceLevel)}
         >

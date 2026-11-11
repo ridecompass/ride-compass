@@ -119,7 +119,7 @@ export default function HeaderMenu({
             <Button
               variant="menu"
               size="sm"
-              usage="直近の走行の記録（電池・位置・地図の描き直しの回数などを1分ごとに集計したもの）を、クリップボードにコピーします。"
+              usage="直近の走行の記録[電池・位置・地図の描き直しの回数などを1分ごとに集計したもの]を、クリップボードにコピーします。"
               onClick={() => copy(formatRideMetrics(rideMetrics))}
             >
               <CopyIcon size={15} />
@@ -171,10 +171,13 @@ function VersionDialog() {
       {!data && !error && <p className={textVariants({ variant: "hint" })}>読み込み中…</p>}
       {data &&
         (data.commit === null ? (
-          <p className={textVariants({ variant: "hint" })}>手元で動いている版です（本番の版ではありません）。</p>
+          <p className={textVariants({ variant: "hint" })}>
+            手元で動いているバージョンです[本番のバージョンではありません]。
+          </p>
         ) : (
           <p className={textVariants({ variant: "body" })}>
-            版 <span className={textVariants({ variant: "code" })}>{data.commit.slice(0, SHORT_COMMIT_LENGTH)}</span>
+            コミット{" "}
+            <span className={textVariants({ variant: "code" })}>{data.commit.slice(0, SHORT_COMMIT_LENGTH)}</span>
           </p>
         ))}
     </DialogContent>

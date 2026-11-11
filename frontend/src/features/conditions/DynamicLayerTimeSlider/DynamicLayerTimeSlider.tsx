@@ -70,7 +70,7 @@ export default function DynamicLayerTimeSlider({
         </div>
         <div className="flex items-center gap-2">
           <Button
-            usage="出発時刻を、目盛りの1コマ前へ動かします。"
+            usage="出発時刻を目盛りの1コマ前へ動かします。"
             variant="stepper"
             size="sm"
             className="pointer-events-auto touch-none"
@@ -90,7 +90,7 @@ export default function DynamicLayerTimeSlider({
             className="pointer-events-auto min-w-30 flex-1 touch-none"
           />
           <Button
-            usage="出発時刻を、目盛りの1コマ次へ動かします。"
+            usage="出発時刻を目盛りの1コマ次へ動かします。"
             variant="stepper"
             size="sm"
             className="pointer-events-auto touch-none"
