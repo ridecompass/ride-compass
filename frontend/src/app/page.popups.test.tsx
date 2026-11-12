@@ -6,14 +6,14 @@
  * 道（backend の答え）を開き、道のタイルを読まずにその道の線を強調すること。
  * 名前の無い点は押せる物に数えず下の物を開き、重なった名前のある点と、束ねた代表点の中の点は全部並べること。区間の中身から点を開くと区間へ戻れ、道へ
  * 入れ替えると区間の選びを外し、開ける物の無い所を押すと閉じること。区間の小窓が上の帯と負担の内訳の形で出て、寄せるアイコンで寄せること。どの小窓も
- * 右上のリンクで小窓の地点の Street View を開き、区間ではルートの進む向きを渡すこと。押せる物のタップは待たずに開き、
+ * 右上のリンクで小窓の地点の Street View を開き、区間ではルートの進む向きを、道では道の向きのうちルートか走行中の進む向きに近い側を渡すこと。押せる物のタップは待たずに開き、
  * 何も無い所を続けて2回押しても閉じないこと。
  *
  * ここで見ないもの: 区間の近くの施設の小窓（区間へ戻る）は`app/page.map.test.tsx`の「区間の近くの施設」が、地図を押したときの
  * 意味をどのパネルが決めるかは同じファイルの「地図で扱えること」が見る。触れた操作がタップか長押しか地図を動かす操作か（指の長押し・
  * ずらす・2本の指・ダブルタップ・流れている地図を止める）は`features/map/MapView/mapGestures.test.ts`が見る。
  *
- * 差し替えたもの: backend の応答（網の層）、位置情報の取得、地図の描画（`maplibre-gl`）。子の部品は本物を描く。
+ * 差し替えたもの: backend の応答（網の層）、位置情報の取得と走行中に届く位置、地図の描画（`maplibre-gl`）。子の部品は本物を描く。
  */
 import { act, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -22,6 +22,7 @@ import { POINT_TILE_SOURCES } from "@/features/map/scene/groups/points";
 import { sceneLayerId } from "@/features/map/scene/sceneBuilders";
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import { onBackend, serveCostAxisCatalog } from "@/testing/backendServer";
+import { installGeolocation } from "@/testing/geolocation";
 import {
   ELSEWHERE,
   FIRST,
@@ -223,9 +224,38 @@ describe("地図の小窓", () => {
       query: { api: "1", map_action: "pano", viewpoint: "35.700000,139.705000", heading: "90" },
     });
 
-    // 区間でない小窓（点・道は同じ形）は向きを渡さず、Google に任せる。
+    // 点の小窓は向きを渡さず、Google に任せる。
     act(() => mapOnScreen().click(ELSEWHERE, [shop]));
     await screen.findByRole("link", { name: "角の店" });
     expect(opened().query).toEqual({ api: "1", map_action: "pano", viewpoint: "35.650000,139.720000" });
+  });
+
+  it("道の小窓の Street View は、道の向きのうち、ルートと重なればルートの進む向きに、重ならず走行中なら今の進む向きに近い側を渡し、どちらでもなければ渡さない", async () => {
+    const geolocation = installGeolocation(HERE);
+    // 西へ進む区間1つのルートと、東へ引いた道（`serveRoadsAt`）を、ルートの上と離れた所に1本ずつ。
+    const west = route("west", routeThrough({ a: [139.71, 35.7], b: [139.7, 35.7] }, ["a", "b"], [1]));
+    const ON_ROUTE = { latitude: 35.7, longitude: 139.705 };
+    serveRoadsAt([
+      { at: ON_ROUTE, properties: { osm_way_id: 1, feature_key: "1" } },
+      { at: ELSEWHERE, properties: { osm_way_id: 2, feature_key: "2" } },
+    ]);
+    onBackend("POST", "/api/region/road-inspector", () => Response.json(inspectorResult()));
+    const { user } = renderHome();
+    jobs.respond([west], LOOP_CONDITIONS);
+    await generate(user);
+    await waitFor(() => expect(candidateTabs()).toHaveLength(1));
+    const headingAt = async (at: typeof ELSEWHERE) => {
+      rightClickMap(at);
+      const link = await screen.findByRole("link", { name: "ここのストリートビューを開く" });
+      await waitFor(() => expect(link.getAttribute("href")).toContain(`${at.latitude.toFixed(6)}`));
+      return new URL(link.getAttribute("href")!).searchParams.get("heading");
+    };
+
+    expect(await headingAt(ON_ROUTE)).toBe("270");
+    expect(await headingAt(ELSEWHERE)).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "走行モード" }));
+    geolocation.deliver({ ...HERE, heading: 250 });
+    expect(await headingAt(ELSEWHERE)).toBe("270");
   });
 });
