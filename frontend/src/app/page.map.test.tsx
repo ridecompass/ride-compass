@@ -320,6 +320,20 @@ describe("区間の近くの施設", () => {
     expect(sidePointsOnMap()).toEqual({ "point-poi-side-supply_poi": [[139.705, 35.7]] });
   });
 
+  it("「表示」の点の層の内訳で外した行の点は、層を出していなくても近くの点に描かない", async () => {
+    const { user } = renderHome();
+    await pressSecondSegment(user);
+    // 停止要因は縮尺15から描く層で、それより引いた地図では内訳に行を出さない。
+    act(() => mapOnScreen().moveTo(ROUTE_VIEW, 16));
+    await user.click(screen.getByRole("button", { name: "地図に出す情報" }));
+    await user.click(screen.getByRole("button", { name: "停止要因の凡例" }));
+    const details = screen.getByRole("region", { name: "停止要因の内訳" });
+    await user.click(within(details).getByRole("checkbox", { name: /^信号/ }));
+
+    await waitFor(() => expect(sidePointsOnMap()).not.toHaveProperty("point-poi-side-stop_poi"));
+    expect(sidePointsOnMap()).toHaveProperty("point-poi-side-supply_poi");
+  });
+
   it("描いた名前のある点を押すと、道からの距離を添えた点の小窓を出して区間へ戻れ、名前の無い点だけの所を押すと下の区間を開く", async () => {
     const { user } = renderHome();
     await pressSecondSegment(user);

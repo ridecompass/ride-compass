@@ -4,7 +4,6 @@ import {
   Road,
   Sigma,
   ArrowUp,
-  ArrowUpDown,
   Bike,
   CircleQuestionMark,
   Clock,
@@ -29,7 +28,6 @@ import {
   LockOpen,
   Map as MapShape,
   MapPin,
-  MapPinX,
   Minus,
   Moon,
   Navigation,
@@ -127,14 +125,10 @@ export const HelpIcon = fromLucide(CircleQuestionMark);
 export const VersionIcon = fromLucide(GitCommitHorizontal);
 /** 地図で選んでいる区間の地点。 */
 export const SelectedSpotIcon = fromLucide(MapPin);
-/** 置いた経由地と目的地を一度に消す。ClearAllLayersIconと同じく、消す対象の形（地点のピン）にバツを添える。 */
-export const ClearPointsIcon = fromLucide(MapPinX);
 /** ルートの全長の目標を決める（押している間は全長が目標に合うルートを作る）。 */
 export const DistanceTargetIcon = fromLucide(Ruler);
 /** 置いた地点を1つ消す。保存したものを消す`DeleteSavedIcon`と同じく、消す操作はごみ箱の形にそろえる。 */
 export const RemovePointIcon = fromLucide(Trash);
-/** 置いた地点の編集（通る順の入れ替えと消すこと）を開く。 */
-export const EditPointsIcon = fromLucide(ArrowUpDown);
 /** 押さえたまま上下へ動かして、行の順を入れ替える所。 */
 export const ReorderHandleIcon = fromLucide(GripVertical);
 /** 利用者が変えられない選び方（いつも決まった値の行）。 */

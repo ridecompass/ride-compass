@@ -3,8 +3,8 @@
 import { useState } from "react";
 
 import { Button } from "@/components/ui/Button/Button";
-import { LocateIcon, LoopRouteIcon } from "@/components/ui/icons/icons";
-import { ClearPointsIcon, EditPointsIcon, RemovePointIcon } from "@/components/ui/icons/lucideIcons";
+import { ClearPointsIcon, EditPointsIcon, LocateIcon, LoopRouteIcon } from "@/components/ui/icons/icons";
+import { RemovePointIcon } from "@/components/ui/icons/lucideIcons";
 import { Toggle } from "@/components/ui/Toggle/Toggle";
 import { waypointsFull, type GenerationConditionsState } from "@/features/route/useGenerationConditions";
 import { usePlaceAreas } from "@/features/route/usePlaceAreas";
