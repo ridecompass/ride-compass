@@ -35,9 +35,9 @@ async def read_observation(station_id: str) -> AmedasObservation:
         station_id=station_id,
     )
     if observation is UNAVAILABLE:
-        raise AmedasUnavailableError("アメダスの観測値の置き場（Redis）を読めません")
+        raise AmedasUnavailableError("アメダスの観測値の置き場[Redis]を読めません")
     if observation is None:
-        raise AmedasUnavailableError(f"観測所 {station_id} の観測値がありません（まだ取り込まれていないか、期限が切れました）")
+        raise AmedasUnavailableError(f"観測所 {station_id} の観測値がありません[まだ取り込まれていないか、期限が切れました]")
     return observation
 
 

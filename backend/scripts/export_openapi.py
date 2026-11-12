@@ -38,7 +38,6 @@ from app.infrastructure.source_models import SOURCE_RUN_STATUS_LABELS
 from app.infrastructure.point_tile_layers import POINT_TILE_LAYERS
 from app.infrastructure.vector_tile import ROAD_FEATURE_PROPERTIES, ROAD_SURFACE_LAYER_NAME
 from app.main import app
-from app.domain.hard_filters import HARD_FILTER_PROPERTY, HARD_FILTERS
 from app.domain.address_area import ADDRESS_AREA_LEVELS
 from app.domain.geo import COMPASS_LABELS, EARTH_RADIUS_KM
 from app.domain.place_search import (
@@ -576,9 +575,7 @@ def main() -> None:
         PRIMARY_ATTRIBUTES_PATH,
         "primaryAttributes",
         # 一次属性カタログ（地図レイヤー階層の次数反転）。宣言
-        # （`domain/primary_attributes.py: PRIMARY_ATTRIBUTES`）だけから決まり、DBを読まない。各軸の
-        # `primary_attribute_ids`は実行時の`GET /api/client-config`が配るため、フロントは
-        # この一覧のlabel（正式名）と突き合わせて1次↔2次の双方向導出ができる。
+        # （`domain/primary_attributes.py: PRIMARY_ATTRIBUTES`）だけから決まり、DBを読まない。
         # 宣言をそのまま配る。色だけは宣言に無いので`resolved_display_axes`が決め、値が欠けたときの意味は
         # その値を載せる材料の宣言から引く（地図の凡例が「不明」を出すかを決める）。
         [
@@ -634,14 +631,6 @@ def main() -> None:
             # フロントが使う較正値のid（値は持たない。フロントはidの型にだけ使う）。効いている値はGET /api/client-configが
             # 返し、取れるまではその値を使う機能を出さない。
             "client_tuning": dict.fromkeys(client_tuning_ids()),
-            # 0次ハードフィルタ。道路タブにいつも「通らない」の行として見せる（要求では受けない）。選べる行と段は
-            # 管理DBの道の区分から、GET /api/client-configが配る。
-            "hard_filters": [
-                {"key": name, "label": spec.label, "description": spec.description}
-                for name, spec in HARD_FILTERS.items()
-            ],
-            # 路面タイルが、道の当たる0次ハードフィルタの名前を載せるプロパティ（地図は「通らない」の色で塗る）。
-            "hard_filter_property": HARD_FILTER_PROPERTY,
         },
     )
 

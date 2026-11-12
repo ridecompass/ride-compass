@@ -54,8 +54,8 @@ wayの長さ（0はNULL）になる——件数と長さは必ず同じ側から
   `domain/hard_filters.py: HARD_FILTERS`が名前・画面に出す名前と説明・該当する道の条件をまとめて持つ唯一のレジストリで、
   条件は道の区分と同じ形（`domain/road_classes.py: conditions_match`）で事実の列に当てる。`compute_search_exclusion`は
   探索の材料の表が組んだときに求めた「どれかのフィルタに当たる」の配列を読み、フィルタごとの専用引数・専用フィールドは持たない。
-  フィルタを足しても変わるのはこの辞書だけ。名前と説明は生成物`route-generate-config.json`の`hard_filters`で配り、
-  画面は避け方の行の並びの先頭に「通らない」で固定して出す。路面タイルは道の当たるフィルタの名前を焼き
+  フィルタを足しても変わるのはこの辞書だけ。名前と説明は画面の設定の`road_classes.avoidance`の行（`domain/road_class_catalog.py: AvoidanceRowView`）に
+  選べない行（`selectable`が偽・既定は「通らない」・鍵は`<HARD_FILTER_PROPERTY>.<名前>`）として並びの先頭に載せて配る。路面タイルは道の当たるフィルタの名前を焼き
   （`domain/hard_filters.py: HARD_FILTER_PROPERTY`。判定は探索と同じ`hard_filter_column`）、地図は道路タブの「通らない」の色で塗る。フィルタは区分の宣言とは別に持つ——区分は管理DBで直せるが、
   通れない道を外すことは直してはいけない。
   タグが無い道は除外しない（判断材料が無い区間まで一律に除外すると探索対象が過度に狭まるため、不明な場合は許可し費用の側へ委ねる）。
@@ -102,8 +102,8 @@ wayの長さ（0はNULL）になる——件数と長さは必ず同じ側から
 
 - **運ぶ材料**は、所要時間が読む材料（`domain/cycling_speed.py: travel_model_material_ids`）と、費用の式が読む材料（道のストレスの軸の
   材料。`domain/cost_axes.py: burden_material_ids`）だけ。所要時間が読む材料の列が欠けた表は組み立てで断る（`ValueError`）——欠けたまま
-  通すと、欠けた材料の待ち・坂が全区間で黙って0秒になる。区間ごとの値の欠け（NaN）は平地・待ち無しとして扱い、
-  `missing_travel_data_share`で数える。
+  通すと、全区間が取込の範囲全体の平均で数えられ、道ごとの坂・待ちの違いが黙って消える。区間ごとの値の欠け（NaN）は
+  取込の範囲全体の平均（坂の割合・停止要因の密度）で数え、その区間の距離の割合を`missing_travel_data_share`で数える。
 - **DBに無い材料**は、材料カタログにあれば値の無い列で読める（`_ColumnsOrEmpty`が読まれたときに埋める）。
 - **分類の材料**（`highway`・路面の見込み等）は、道路網の置き場が持つ語彙への番号の列（`domain/attributes.py: CategoricalColumn`）
   のまま運ぶ。区分の表引き・0次条件・走行モデルの転がり抵抗は、語彙の値ごとに1回引いた表を番号で配る——区間ごとに値の

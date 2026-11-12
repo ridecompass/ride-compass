@@ -56,7 +56,7 @@ def store(road_network_root):
 # --- 置き場の読み書き（DBを使わない） -------------------------------------------------
 
 
-def _network(revision: int | None, distance_m: float = 100.0) -> RoadNetwork:
+def _network(revision: int, distance_m: float = 100.0) -> RoadNetwork:
     """ノード2つ・有向の区間2本（同じ区間の両向き）の道路網。材料の名前は架空。"""
     return RoadNetwork(
         revision=revision,

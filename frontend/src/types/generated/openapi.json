@@ -2130,13 +2130,37 @@
           "label": {
             "type": "string",
             "title": "Label"
+          },
+          "color": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Color"
+          },
+          "color_on_dark": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Color On Dark"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
           "key",
-          "label"
+          "label",
+          "color",
+          "color_on_dark"
         ],
         "title": "AvoidanceLevelView"
       },
@@ -2199,6 +2223,10 @@
               "exclude"
             ],
             "title": "Default"
+          },
+          "selectable": {
+            "type": "boolean",
+            "title": "Selectable"
           }
         },
         "additionalProperties": false,
@@ -2209,7 +2237,8 @@
           "class_key",
           "label",
           "description",
-          "default"
+          "default",
+          "selectable"
         ],
         "title": "AvoidanceRowView"
       },

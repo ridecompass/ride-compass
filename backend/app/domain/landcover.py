@@ -78,11 +78,11 @@ LANDCOVER_CLASSES: tuple[LandcoverClass, ...] = (
     ),
     LandcoverClass(
         _LULC_TREES, "trees_percent", "樹木", "#4C8C4A",
-        "背の高い木がまとまって茂る所（森林・林など）。",
+        "背の高い木がまとまって茂る所[森林・林など]。",
     ),
     LandcoverClass(
         _LULC_CROPS, "crops_percent", "農地", "#E0C066",
-        "人が植えた作物の畑（木の高さにならないもの。休耕地を含む）。",
+        "人が植えた作物の畑[木の高さにならないもの。休耕地を含む]。",
     ),
     LandcoverClass(
         _LULC_RANGELAND, "rangeland_percent", "草地", "#C3B78F",
@@ -90,15 +90,15 @@ LANDCOVER_CLASSES: tuple[LandcoverClass, ...] = (
     ),
     LandcoverClass(
         _LULC_WATER, "water_percent", "水面", "#4A7FB5",
-        "一年の大半に水がある所（川・湖・海など）。",
+        "一年の大半に水がある所[川・湖・海など]。",
     ),
     LandcoverClass(
         _LULC_FLOODED_VEG, "flooded_veg_percent", "湿地", "#7FB99B",
-        "一年の大半、植物と水が混じっている所（冠水した草地など）。",
+        "一年の大半、植物と水が混じっている所[冠水した草地など]。",
     ),
     LandcoverClass(
         _LULC_BARE, "bare_percent", "裸地", "#C4B4A3",
-        "一年を通して植物がほとんど無い岩や土・砂の所（河川敷・造成地など）。",
+        "一年を通して植物がほとんど無い岩や土・砂の所[河川敷・造成地など]。",
     ),
     LandcoverClass(
         _LULC_SNOW_ICE, "snow_ice_percent", "雪氷", "#D8E6F0",

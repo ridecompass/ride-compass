@@ -331,7 +331,7 @@ describe("useWeatherConditions ルートの警報級の時系列", () => {
         end_index: 4,
         kinds: {
           thunder: {
-            advisory_label: "雷（注意報級）",
+            advisory_label: "雷[注意報級]",
             slots: [
               slot("2026-10-21T18:00:00+09:00", "2026-10-21T21:00:00+09:00", "20"),
               slot("2026-10-21T21:00:00+09:00", "2026-10-22T00:00:00+09:00", "01"),
@@ -355,7 +355,7 @@ describe("useWeatherConditions ルートの警報級の時系列", () => {
     await vi.waitFor(() =>
       expect(result.current.warningBadgeItems).toEqual([
         expect.objectContaining({
-          label: "雷（注意報級）千代田区",
+          label: "雷[注意報級]千代田区",
           level: "advisory",
           title: "10/22 00:00〜03:00に通る見込み。付加事項: 突風",
         }),

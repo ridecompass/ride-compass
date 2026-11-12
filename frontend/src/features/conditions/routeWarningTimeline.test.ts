@@ -21,7 +21,7 @@ const FIRST_SLOT_AT = Date.parse("2026-10-21T18:00:00+09:00");
 const iso = (ms: number) => new Date(ms).toISOString();
 
 /** 段の並び（"20"以上が注意報級）を、18時からの3時間のコマにする。 */
-function levels(codes: string[], additions: string[] = [], advisoryLabel = "雷（注意報級）") {
+function levels(codes: string[], additions: string[] = [], advisoryLabel = "雷[注意報級]") {
   return {
     advisory_label: advisoryLabel,
     slots: codes.map((code, index) => ({
@@ -67,7 +67,7 @@ describe("routeWarningTimelineItems", () => {
 
     expect(items).toEqual([
       expect.objectContaining({
-        label: "雷（注意報級）区域1",
+        label: "雷[注意報級]区域1",
         level: "advisory",
         title: "10/21 21:00〜10/22 00:00に通る見込み。付加事項: 突風・ひょう",
       }),
@@ -104,17 +104,17 @@ describe("routeWarningTimelineItems", () => {
     );
 
     expect(items.map((item) => [item.label, item.title])).toEqual([
-      ["雷（注意報級）区域1", "10/22 00:00〜03:00に通る見込み"],
+      ["雷[注意報級]区域1", "10/22 00:00〜03:00に通る見込み"],
     ]);
   });
 
   it("backendが配る種別を全部、backendの名前で出す", () => {
     const area = timeline({ start: 0, end: 2, codes: ["20"] });
-    area.areas[0].kinds.snow = levels(["20"], [], "大雪（注意報級）");
+    area.areas[0].kinds.snow = levels(["20"], [], "大雪[注意報級]");
 
     expect(routeWarningTimelineItems(area, POINT_KMS, clock, 0).map((item) => item.label)).toEqual([
-      "雷（注意報級）区域0",
-      "大雪（注意報級）区域0",
+      "雷[注意報級]区域0",
+      "大雪[注意報級]区域0",
     ]);
   });
 

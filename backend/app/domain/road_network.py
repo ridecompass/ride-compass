@@ -35,7 +35,7 @@ from app.domain.road_classes import RoadClassDefinitions, class_columns, layer_c
 class RoadNetwork:
     """`revision`は作った時点の派生データの世代（`derived_data_meta.revision`）。"""
 
-    revision: int | None
+    revision: int
 
     node_osm_id: np.ndarray  # int64, 昇順
     node_lat: np.ndarray  # float64
