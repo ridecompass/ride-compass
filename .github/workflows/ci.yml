@@ -529,7 +529,7 @@ jobs:
       - uses: ./.github/actions/python
         with:
           requirements: requirements-dev.txt
-      - run: python -m pytest -q tests/structure/test_named_references.py tests/structure/test_single_owner_values.py tests/structure/test_workflow_lanes.py
+      - run: python -m pytest -q tests/structure/test_named_references.py tests/structure/test_single_owner_values.py tests/structure/test_workflow_lanes.py tests/test_deploy_gate.py
   # 運用の道具（backendの外のPython・追跡しているsh）の静的検査。
   repo-wide:
     concurrency:
