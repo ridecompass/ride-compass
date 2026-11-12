@@ -46,15 +46,15 @@ ROOT = DATA_DIR / "road_network"
 NETWORK_SHAPE = shape_digest(RoadNetwork, *NETWORK_SQL_SOURCES)
 
 _MANIFEST = "manifest.json"
-_DIRECTORY_PATTERN = re.compile(r"^(?P<shape>[0-9a-f]+)-r(?P<revision>\d+|x)$")
+_DIRECTORY_PATTERN = re.compile(r"^(?P<shape>[0-9a-f]+)-r(?P<revision>\d+)$")
 # 行を流す単位と、材料を1回で引く区間の数。材料は区間ごとに列の値を作るため、1回ぶんの
 # 一時的なメモリがこの数に比例する。
 _STREAM_CHUNK = 200_000
 _MATERIAL_BATCH = 200_000
 
 
-def directory_name(revision: int | None) -> str:
-    return f"{NETWORK_SHAPE}-r{'x' if revision is None else revision}"
+def directory_name(revision: int) -> str:
+    return f"{NETWORK_SHAPE}-r{revision}"
 
 
 def _directories() -> Iterator[tuple[Path, re.Match[str]]]:
@@ -66,12 +66,9 @@ def _directories() -> Iterator[tuple[Path, re.Match[str]]]:
 
 
 def _latest_directory() -> Path | None:
-    """形の署名が一致するもののうち、世代が最も新しい置き場。無ければNone。
-
-    世代が読めなかったDBで作ったもの（`-rx`）は、世代のあるものより古いとみなす。
-    """
+    """形の署名が一致するもののうち、世代が最も新しい置き場。無ければNone。"""
     candidates = (
-        (-1 if match["revision"] == "x" else int(match["revision"]), path)
+        (int(match["revision"]), path)
         for path, match in _directories()
         if match["shape"] == NETWORK_SHAPE
     )
@@ -83,7 +80,7 @@ def save(network: RoadNetwork) -> Path:
     return placed(network.revision) or publish(write_pending(network))
 
 
-def placed(revision: int | None) -> Path | None:
+def placed(revision: int) -> Path | None:
     """今の形で`revision`の世代の置き場。無ければNone。"""
     target = ROOT / directory_name(revision)
     return target if target.exists() else None
@@ -104,7 +101,7 @@ def write_pending(network: RoadNetwork) -> Path:
 
 
 @contextmanager
-def _new_pending(revision: int | None) -> Iterator[Path]:
+def _new_pending(revision: int) -> Iterator[Path]:
     """読み手の拾わない名前のディレクトリを作って渡す。中で落ちたら消す——呼び手は受け取る前なので消せず、
     片付け（`prune`・`prune_other_shapes`）も名前の形に合わないものを拾わない。"""
     ROOT.mkdir(parents=True, exist_ok=True)
@@ -240,7 +237,7 @@ async def ensure_current(session_factory: async_sessionmaker[AsyncSession]) -> P
     return save(network)
 
 
-async def build(repository: RoadGraphRepository, revision: int | None) -> RoadNetwork:
+async def build(repository: RoadGraphRepository, revision: int) -> RoadNetwork:
     """DBから道路網全体を読み、`revision`の世代の`RoadNetwork`を組む。較正値は、読む表を作り直したときに使った値で読む。"""
     started = time.monotonic()
     nodes = await _read_nodes(repository)

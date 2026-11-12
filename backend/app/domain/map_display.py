@@ -55,11 +55,11 @@ class _LegendSharedRow(NamedTuple):
 LEGEND_SHARED_ROWS: dict[str, _LegendSharedRow] = {
     "other": _LegendSharedRow(
         "その他",
-        "値は書かれているが、上のどの行にも当てはまらない道（まれな種類など）。",
+        "値は書かれているが、上のどの行にも当てはまらない道[まれな種類など]。",
     ),
     "notApplicable": _LegendSharedRow(
         "該当なし",
-        "この種類に当たらない道（例: トンネルの凡例では、トンネルでない道）。",
+        "この種類に当たらない道[例: トンネルの凡例では、トンネルでない道]。",
     ),
     "noData": _LegendSharedRow(
         "データなし",
@@ -67,7 +67,7 @@ LEGEND_SHARED_ROWS: dict[str, _LegendSharedRow] = {
     ),
     "undetermined": _LegendSharedRow(
         "向きで決まらない",
-        "地図の上の向き（走行中は進む向き）とほぼ直角に交わるため、値を決められない道（勾配なら登りか下りか）。"
+        "地図の上の向き[走行中は進む向き]とほぼ直角に交わるため、値を決められない道[勾配なら登りか下りか]。"
         "地図を回して向きが変わると色が付く。",
     ),
 }
@@ -169,7 +169,7 @@ ALWAYS_SHOWN_ATTRIBUTIONS: tuple[str, ...] = (
     '<a href="/licenses/foursquare-places-NOTICE.txt" target="_blank" rel="noreferrer">NOTICE</a>)',
     # ジャパンサーチのサイトポリシーの出典の記載例（編集・加工して使う場合）の形。
     '寺社: ジャパンサーチ「<a href="https://jpsearch.go.jp/database/bunka" target="_blank" rel="noreferrer">'
-    "文化遺産オンライン（文化庁・国立情報学研究所）</a>」のメタデータを改変して利用（所有者で寺社ごとにまとめた）",
+    "文化遺産オンライン[文化庁・国立情報学研究所]</a>」のメタデータを改変して利用[所有者で寺社ごとにまとめた]",
     # JARTIC のオープンデータの利用規約の、加工した旨の記載例の形。
     '交通規制: 公益財団法人日本道路交通情報センター「<a href="https://www.jartic.or.jp/service/opendata/" '
     'target="_blank" rel="noreferrer">交通規制情報</a>」を加工して作成',

@@ -28,7 +28,7 @@ class _TimelineKindNames(NamedTuple):
 
 
 TIMELINE_KINDS: dict[TimelineKind, _TimelineKindNames] = {
-    TimelineKind.THUNDER: _TimelineKindNames("雷危険度", "雷（注意報級）"),
+    TimelineKind.THUNDER: _TimelineKindNames("雷危険度", "雷[注意報級]"),
 }
 
 #: 区域の中を陸と海で分けた段のうち、陸の側の所の名前。

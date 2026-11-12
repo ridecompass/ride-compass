@@ -356,7 +356,7 @@ lifespanが起動時に使うtimeout値を事前ウォームアップするの�
 `Cache-Control`は、配信元ごとの宣言（`api/routers/_tile_http.py: UpstreamReplies`）から引く。
 
 上流から取れなかった例外（`httpx.HTTPError`・JSONでない本文・`UnexpectedShapeError`）は、途中の層で値に替えず、口の1か所
-（`api/failure_replies.py`）が502と失敗の種類の文（「外部の配信元から取得できませんでした（…）」）にする。
+（`api/failure_replies.py`）が502と失敗の種類の文（「外部の配信元から取得できませんでした[…]」）にする。
 
 ## 応答のgzip圧縮（`response_compression.py`）
 
