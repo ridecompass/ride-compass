@@ -15,7 +15,6 @@ from typing import Any
 import diskcache
 
 from app.config import settings
-from app.infrastructure.cache_identity import is_known_tile_version
 from app.infrastructure.data_paths import DATA_DIR
 from app.infrastructure.debug_log import log_throttled_warning
 from app.infrastructure.tile_cache import DISK_READ_ERRORS, DISK_STORE_ERRORS
@@ -91,9 +90,6 @@ async def get_tile_entry(key: tuple) -> Any | None:
     return await asyncio.to_thread(get_by_key, key)
 
 
-async def set_tile_entry(key: tuple, value: Any, *, surface_tile_version: str) -> None:
-    """路面タイルの世代（`surface_tile_version`。鍵にも入れる）に結んだ値を書く。世代を読めていない
-    （`cache_identity.py: is_known_tile_version`が偽）ときは書かない——どの世代の鍵の値か分からないまま残すと、
-    後で同じ印の鍵で別の世代の値を返す。"""
-    if is_known_tile_version(surface_tile_version):
-        await asyncio.to_thread(set_by_key, key, value, expire=_TILE_ENTRY_TTL_SECONDS)
+async def set_tile_entry(key: tuple, value: Any) -> None:
+    """路面タイルの世代（鍵に入れる）に結んだ値を書く。"""
+    await asyncio.to_thread(set_by_key, key, value, expire=_TILE_ENTRY_TTL_SECONDS)
