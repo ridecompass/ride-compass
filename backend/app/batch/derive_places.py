@@ -39,7 +39,6 @@ from app.domain.stop_place import (
     HERITAGE_MERGE_RADIUS_M,
     MERGE_RADIUS_M,
     StopPlaceGroup,
-    address_parts_sql,
     address_sql,
     chain_sql,
     chain_text_sql,
@@ -71,10 +70,7 @@ FROM (
         SELECT n.*, {normalized_sql("n.name")} AS normalized_name, {normalized_sql("n.brand")} AS normalized_brand
         FROM (
             SELECT o.overture_id, {store_name_sql("o.name")} AS name, o.brand, o.confidence, o.geom,
-                   {overture_group_sql("o.hierarchy")} AS class_group,
-                   CASE WHEN jsonb_typeof(o.hierarchy) = 'array'
-                        THEN ARRAY(SELECT jsonb_array_elements_text(o.hierarchy))::varchar[] END AS categories,
-                   {address_parts_sql("o.addresses")}
+                   {overture_group_sql("o.categories")} AS class_group, o.categories, o.region, o.locality, o.freeform
             FROM {OVERTURE_PLACES_SOURCE_SQL} o
         OFFSET 0) n
     OFFSET 0) g

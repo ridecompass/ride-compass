@@ -5,7 +5,7 @@
 
 ここで見ないもの:
 - キャッシュの骨格（失敗をNoneへ倒す・キャッシュしない）→ `test_simple_api_client.py`
-- 区域の段の並びを選ぶこと・注意報級の判定 → `test_jma_warning_timeline_domain.py`
+- 区域の段の並びを選ぶこと → `test_jma_warning_timeline_domain.py`
 """
 
 import copy
@@ -44,15 +44,18 @@ async def test_levels_are_read_per_area_and_kind_as_the_slots_the_agency_gave():
     assert timeline.class20_levels[CLASS20_CODE] == (
         TimelineLevels(
             kind_type="風危険度", area_name=None, slots=slots,
-            codes=("20", "20", "01", "01", "01", "01", "01", "01", "01", "01"), additions=(),
+            codes=("20", "20", "01", "01", "01", "01", "01", "01", "01", "01"),
+            advisories=(True, True, False, False, False, False, False, False, False, False), additions=(),
         ),
         TimelineLevels(
             kind_type="雷危険度", area_name=None, slots=slots,
-            codes=tuple(THUNDER_CODES), additions=tuple(THUNDER_ADDITIONS),
+            codes=tuple(THUNDER_CODES), advisories=tuple(code == "20" for code in THUNDER_CODES),
+            additions=tuple(THUNDER_ADDITIONS),
         ),
     )
     assert timeline.class10_levels[CLASS10_CODE] == (
-        TimelineLevels(kind_type="雷危険度", area_name=None, slots=slots, codes=("01",) * 10, additions=()),
+        TimelineLevels(kind_type="雷危険度", area_name=None, slots=slots, codes=("01",) * 10, advisories=(False,) * 10,
+                       additions=()),
     )
 
 
@@ -65,3 +68,14 @@ def _broken(mutate) -> dict:
 def _thunder_local(document: dict) -> dict:
     return document["timeSeries"][0]["class20Items"][0]["kinds"][2]["significancyParts"][0]["locals"][0]
 
+
+async def test_a_level_is_advisory_from_the_twenties_up():
+    """十の位が2から注意報級。気象庁のページの「注意報級以上」と境目がずれると、出ていない注意報級を出すか、出ている
+    ものを落とす。"""
+    document = _broken(lambda d: _thunder_local(d).update(codes=["11", "20", *THUNDER_CODES[2:]]))
+
+    timeline = await fetch_warning_timeline(answering(json=document), OFFICE_CODE, new_timeline_cache())
+
+    assert timeline is not None
+    thunder = next(levels for levels in timeline.class20_levels[CLASS20_CODE] if levels.kind_type == "雷危険度")
+    assert thunder.advisories[:2] == (False, True)

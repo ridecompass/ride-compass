@@ -8,6 +8,7 @@
 全表を見るため、他のORMと同じ`Base`（`orm_base.py`）を使う。
 """
 
+import json
 from datetime import datetime
 from enum import StrEnum
 
@@ -31,6 +32,8 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.domain.accident import PartyType
 from app.domain.material_sql import sql_literals
+from app.domain.place_search import PlaceMatchLevel
+from app.domain.traffic_regulation import RegulationSlot
 from app.infrastructure.orm_base import Base
 
 
@@ -314,17 +317,26 @@ def accidents_within_sql(envelope: str) -> str:
     )
 
 
+def _jsonb_text_array_sql(value: str) -> str:
+    """jsonb の文字列の配列`value`を文字列の配列へ。配列でなければ（無い・null）NULL。"""
+    return f"CASE WHEN jsonb_typeof({value}) = 'array' THEN ARRAY(SELECT jsonb_array_elements_text({value}))::varchar[] END"
+
+
 #: Overture の地点の生データ（1件=1点）。群・チェーン・住所の判断（`domain/stop_place.py`）が読む列へ読み替える。配布の列の
-#: 入れ子（`names.primary` 等）はここだけが名指す。ウェブサイト・電話・住所は配列か、無ければ null（jsonb）。
+#: 入れ子（`names.primary` 等）はここだけが名指す。`categories`は分類の道筋（`taxonomy.hierarchy`。上の段から下の段への
+#: 語の並び）、ウェブサイト・電話はその文字列の配列で、どれも無ければ NULL。住所は最初の1件の都道府県・市区町村（無ければ
+#: 空の文字列）と残り（無ければ NULL）。
 OVERTURE_PLACES_SOURCE_SQL = (
     "(SELECT natural_key AS overture_id, geom,"
     " attrs->'names'->>'primary' AS name,"
     " attrs->'brand'->'names'->>'primary' AS brand,"
-    " (attrs->>'confidence')::float8 AS confidence,"
-    " attrs->'taxonomy'->'hierarchy' AS hierarchy,"
-    " attrs->'websites' AS websites,"
-    " attrs->'phones' AS phones,"
-    " attrs->'addresses' AS addresses"
+    " (attrs->>'confidence')::float8 AS confidence, "
+    + _jsonb_text_array_sql("attrs->'taxonomy'->'hierarchy'") + " AS categories, "
+    + _jsonb_text_array_sql("attrs->'websites'") + " AS websites, "
+    + _jsonb_text_array_sql("attrs->'phones'") + " AS phones,"
+    " coalesce(attrs->'addresses'->0->>'region', '') AS region,"
+    " coalesce(attrs->'addresses'->0->>'locality', '') AS locality,"
+    " nullif(attrs->'addresses'->0->>'freeform', '') AS freeform"
     f" FROM {_TABLE} WHERE source = '{Source.OVERTURE_PLACE}')"
 )
 
@@ -337,9 +349,10 @@ BUNKA_HERITAGES_SOURCE_SQL = (
 )
 
 
-def _abr_sql(columns: dict[str, str], kind: str) -> str:
-    """アドレス・ベース・レジストリの生データのうち`kind`の行。列は ABR の列の名前 → 出す名前（空の値は空の文字列）。"""
-    selected = ", ".join(f"coalesce(attrs->>'{raw}', '') AS {name}" for raw, name in columns.items())
+def _abr_sql(columns: dict[str, str], kind: str, *derived: str) -> str:
+    """アドレス・ベース・レジストリの生データのうち`kind`の行。列は ABR の列の名前 → 出す名前（空の値は空の文字列）と、
+    `derived`の選ぶ式。"""
+    selected = ", ".join([*(f"coalesce(attrs->>'{raw}', '') AS {name}" for raw, name in columns.items()), *derived])
     return (f"(SELECT {selected}, ST_X(geom) AS lon, ST_Y(geom) AS lat"
             f" FROM {_TABLE} WHERE source = '{Source.ABR}' AND {kind})")
 
@@ -356,13 +369,20 @@ ABR_CITIES_SOURCE_SQL = _abr_sql(
      "ablt_date": "abolished"},
     "attrs ? 'city' AND NOT attrs ? 'machiaza_id'")
 
-#: ABR の町字（大字・町、丁目、小字等。町字区分`machiaza_type`で分かれる）。`city_code`は属す市区町村（区）の`code`。
+#: ABR の町字区分（`machiaza_type`）→ 区画の段。1 が大字・町、2 が丁目、3 が小字。ここに無い区分（4 町字なし・
+#: 5 道路名）は区画の行を作らない。
+_MACHIAZA_TYPE_LEVELS: dict[str, PlaceMatchLevel] = {"1": "oaza", "2": "aza", "3": "aza"}
+
+#: ABR の町字（大字・町、丁目、小字等）。`city_code`は属す市区町村（区）の`code`、`level`は町字区分から決めた区画の段
+#: （区画にしない区分は NULL）。
 ABR_TOWNS_SOURCE_SQL = _abr_sql(
-    {"lg_code": "city_code", "machiaza_id": "town_id", "machiaza_type": "town_type", "pref": "prefecture",
+    {"lg_code": "city_code", "machiaza_id": "town_id", "pref": "prefecture",
      "county": "county", "city": "city", "ward": "ward", "oaza_cho": "oaza", "chome": "chome",
      "chome_number": "chome_number", "koaza": "koaza",
      "ablt_date": "abolished"},
-    "attrs ? 'machiaza_id' AND NOT attrs ? 'blk_id'")
+    "attrs ? 'machiaza_id' AND NOT attrs ? 'blk_id'",
+    "CASE attrs->>'machiaza_type' "
+    + " ".join(f"WHEN '{code}' THEN '{level}'" for code, level in _MACHIAZA_TYPE_LEVELS.items()) + " END AS level")
 
 #: ABR の住居表示の街区（1件=1つの街区の代表点）。`city_code`・`town_id`は属す町字の鍵（`ABR_TOWNS_SOURCE_SQL`と同じ）、
 #: `number`は街区符号（「8」）。
@@ -391,6 +411,9 @@ ISJ_BLOCKS_SOURCE_SQL = (
 )
 
 
+#: 交通規制の共通規制種別コード（配布元の説明書「拡張版標準フォーマット k_2.1」の共通コード表）の歩行者用道路。
+PEDESTRIAN_ROAD_KIND = "1"
+
 #: 交通規制の条件の組の欄（`{i}`が組の番号）。中立の名前 → 配布の列の名前。
 _JARTIC_SLOT_COLUMNS = {
     "hours_from": "規制時間{i}_開始", "hours_to": "規制時間{i}_終了", "days": "規制曜日コード{i}",
@@ -414,14 +437,44 @@ def _jartic_slot_sql(i: int) -> str:
 
 
 #: JARTIC の交通規制（1件=1つの規制の線か面）。`kind`は共通規制種別コード、`is_area`は面の規制か、`slots`は条件の組の
-#: jsonb の配列（組ごとに`_JARTIC_SLOT_COLUMNS`と`_JARTIC_VEHICLE_COLUMNS`の名前の欄を持ち、空の欄は空文字列）。配布の CSV の
-#: 列の名前はここだけが名指す。
+#: jsonb の配列（組ごとに`_JARTIC_SLOT_COLUMNS`と`_JARTIC_VEHICLE_COLUMNS`の名前の欄を持ち、空の欄は空文字列。
+#: `regulation_slots`が値へ読み替える）。配布の CSV の列の名前はここだけが名指す。
 JARTIC_REGULATIONS_SOURCE_SQL = (
     "(SELECT natural_key AS regulation_id, attrs->>'共通規制種別コード' AS kind,"
     " attrs->>'点・線・面コード' = '3' AS is_area,"
     f" jsonb_build_array({', '.join(_jartic_slot_sql(i) for i in range(1, _JARTIC_SLOT_COUNT + 1))}) AS slots, geom"
     f" FROM {_TABLE} WHERE source = '{Source.JARTIC_REGULATION}')"
 )
+
+
+def _minutes(hours: str) -> int | None:
+    """規制時間（時分をつないだ数字で、先頭の0を持たない。「800」「2400」）を0:00からの分へ。空なら None。"""
+    return None if not hours else int(hours) // 100 * 60 + int(hours) % 100
+
+
+def _has_digit(code: str, place: int) -> bool:
+    """車両のコードは区分の中の車種ごとの位の数を足した10進数なので、車種を含むかは、その位が0でないかで分かる。
+    `place`は1の位を1とする位置。"""
+    return len(code) >= place and code[-place] != "0"
+
+
+def _includes_bicycle(vehicles: list[str]) -> bool:
+    """区分 A〜D の車両のコードが普通自転車を含むか。区分 A の車両（自動車・原付・軽車両の全部）、区分 D の自転車、
+    区分 D の軽車両のどれかに当たれば含む。"""
+    a, _b, _c, d = vehicles
+    return _has_digit(a, 1) or _has_digit(d, 3) or _has_digit(d, 6)
+
+
+def regulation_slots(slots_json: str) -> list[RegulationSlot]:
+    """`JARTIC_REGULATIONS_SOURCE_SQL`の`slots`（JSON の文字列）を、条件の組の値へ読み替える。"""
+    return [RegulationSlot(
+        hours_from=_minutes(slot["hours_from"]), hours_to=_minutes(slot["hours_to"]), days=bool(slot["days"]),
+        period=bool(slot["period_from"] or slot["period_to"]), vehicles=any(slot["vehicles"]),
+        vehicles_bicycle=_includes_bicycle(slot["vehicles"]),
+        except_hours=bool(slot["except_hours_from"] or slot["except_hours_to"]), except_days=bool(slot["except_days"]),
+        except_period=bool(slot["except_period_from"] or slot["except_period_to"]),
+        except_vehicles_bicycle=_includes_bicycle(slot["except_vehicles"]),
+    ) for slot in json.loads(slots_json)]
 
 
 def _raster_tiles_sql(source: Source) -> str:

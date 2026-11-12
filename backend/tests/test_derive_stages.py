@@ -26,11 +26,10 @@ from app.batch.source_adapters.raster_wkb import tile_raster_wkb
 from app.domain.accident import PartyType
 from app.domain.landcover import PERCENT_CLASSES
 from app.domain.region import BoundingBox
-from app.domain.traffic_regulation import PEDESTRIAN_ROAD_KIND
 from app.domain.tuning import LANDCOVER_RING_OUTER_ID
 from app.infrastructure import derived_data_meta, road_network_store
 from app.infrastructure.derived_data_freshness import derived_tables
-from app.infrastructure.source_models import PARTY_TYPE_CODES, Source
+from app.infrastructure.source_models import PARTY_TYPE_CODES, PEDESTRIAN_ROAD_KIND, Source
 from tests.conftest import (
     empty_ingested_tables,
     override_tuning,
