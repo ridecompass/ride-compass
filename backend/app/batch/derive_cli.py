@@ -71,6 +71,7 @@ from app.infrastructure.tuning_overrides import load_tuning_values
 from app.infrastructure import derived_data_meta, road_network_store
 from app.infrastructure.derived_data_freshness import declared_columns
 from app.domain.tuning import (
+    ACCIDENT_FATAL_WEIGHT_ID,
     ACCIDENT_MATCH_DISTANCE_ID,
     ELEVATION_BRIDGE_END_RADIUS_ID,
     ELEVATION_PROFILE_STEP_ID,
@@ -78,6 +79,7 @@ from app.domain.tuning import (
     LANDCOVER_RING_OUTER_ID,
     REGULATION_EDGE_SHARE_ID,
     REGULATION_LINE_HALF_WIDTH_ID,
+    SIGNAL_MATCH_RADIUS_ID,
     STOP_CLUSTER_DISTANCE_ID,
 )
 from app.infrastructure.road_graph_repository import NETWORK_TUNING, RoadGraphRepository
@@ -112,10 +114,10 @@ class DeriveStage:
 STAGES: tuple[DeriveStage, ...] = (
     DeriveStage("topology", derive_topology, frozenset({Source.OSM_WAY}), (), ("road_edges", "road_ways", "road_nodes")),
     DeriveStage("nodes", derive_nodes, frozenset({Source.OSM_NODE, Source.OSM_WAY}), ("topology",),
-                ("node_kinds", "node_turns"), {"signal_radius_m": "signal.match_radius_m"}),
+                ("node_kinds", "node_turns"), {"signal_radius_m": SIGNAL_MATCH_RADIUS_ID}),
     DeriveStage("counts", derive_counts, frozenset({Source.OSM_NODE, Source.OSM_WAY, Source.ACCIDENT}),
                 ("topology", "nodes"), ("edge_counts", "way_counts"),
-                {"cluster_distance_m": STOP_CLUSTER_DISTANCE_ID, "accident_fatal_weight": "accident.fatal_weight",
+                {"cluster_distance_m": STOP_CLUSTER_DISTANCE_ID, "accident_fatal_weight": ACCIDENT_FATAL_WEIGHT_ID,
                  "accident_match_distance_m": ACCIDENT_MATCH_DISTANCE_ID}),
     # 標高の段は、道から区間が橋かトンネルかだけを読み、その値を区間ごとに表へ残す。
     DeriveStage("elevation", derive_elevation, frozenset({Source.OSM_WAY, Source.DEM}), ("topology",), ("edge_elevation",),
