@@ -88,9 +88,6 @@ class RoadGraphContext:
     # 1回の生成で固定のため、向かう先と倍率（費用で探すか所要時間で探すか）ごとに初回だけ計算し、区間の探索・最速の経路・
     # 全候補の帰りの探索で共有する。
     heuristics: dict[int, np.ndarray] = field(default_factory=dict)
-    # 仕上げが目的地を一番近いNodeでなく出て戻れる最寄りNodeへ寄せた場合の
-    # 実際の座標（寄せ直しが無ければNone）。仕上げの戻り値（経路の列）の外で生成器へ伝える。
-    destination_correction: Coordinates | None = None
     # 評価（`road_graph_candidates.py: evaluate_routes`と候補単位へのまとめ）の段ごとの所要時間（段の名前→ミリ秒、
     # 候補をまたいだ和）。生成器が評価の時間と一緒にログの行へ出す。
     evaluate_steps_ms: dict[str, int] = field(default_factory=dict)
@@ -102,7 +99,8 @@ class FixedLegs:
     """前段（`road_graph_engine.py: RoadGraphEngine.trace_fixed_points`）の結果: 出発地から置いた経由地を置いた順に、区間ごとの最短でつないだ道と、
     仕上げが向かう終点。
 
-    仕上げの戦略はここから続ける。戦略層は終点が出発地か（`closes`）だけを読み、ほかは受け取ったまま仕上げへ渡す。
+    仕上げの戦略はここから続ける。戦略層はここから終点が出発地か（`closes`）だけを読み（置いた経由地の有無は要求の点から読む）、
+    ほかは受け取ったまま仕上げへ渡す。
     """
 
     # 区間（出発地→1つ目の経由地、…）ごとの、探索用グラフの区間の番号列。添字が`RoadGraphContext.legs`の添字になる。
@@ -189,33 +187,35 @@ def snap_point(context: RoadGraphContext, point: Coordinates) -> tuple[int, bool
     return snap_to_accessible_node(context.node_index, context.accessible, point, MAX_SNAP_CORRECTION_KM)
 
 
-def _snap_destination(context: RoadGraphContext, destination: Coordinates) -> int | None:
-    """目的地を寄せたNode。寄せ直したら、その座標を`context.destination_correction`に残す（利用者のピンを動かす）。"""
+@dataclass(frozen=True)
+class ResolvedEnd:
+    """仕上げの終点（`resolve_end`）。生成と乗り換えのどちらも、終点をここで決める。"""
+
+    # 終点のノード番号と、終点へ向かう帰りのレグの基準点。
+    node: int
+    point: Coordinates
+    # 目的地を一番近いNodeでなく出て戻れる最寄りNodeへ寄せ直したときの、そのNodeの座標（利用者のピンを動かす）。
+    # 寄せ直さなければNone。
+    corrected_destination: Coordinates | None = None
+
+
+def resolve_end(context: RoadGraphContext, destination: Coordinates | None) -> ResolvedEnd | None:
+    """仕上げの終点。目的地が無いか、目的地が出発地のNodeへ寄ったら出発地（周回。基準点も置いた出発地に揃え、目的地を
+    置かない周回と同じ候補を作る）、ほかは寄せたNodeと寄せたあとの地点。目的地を寄せられなければNone。"""
+    if destination is None:
+        return ResolvedEnd(node=context.origin_node, point=context.origin)
     snapped = snap_point(context, destination)
     if snapped is None:
         logger.warning("destination has no accessible node nearby")
         return None
     node, moved = snapped
-    if moved:
-        context.destination_correction = node_coordinates(context, node)
+    corrected = node_coordinates(context, node) if moved else None
+    if corrected is not None:
         logger.warning(
-            "corrected destination to nearest accessible node lat=%.2f lon=%.2f",
-            context.destination_correction.latitude, context.destination_correction.longitude,
+            "corrected destination to nearest accessible node lat=%.2f lon=%.2f", corrected.latitude, corrected.longitude,
         )
-    return node
-
-
-def resolve_end(context: RoadGraphContext, destination: Coordinates | None) -> tuple[int, Coordinates] | None:
-    """仕上げの終点のノード番号と基準点。目的地が無いか、目的地が出発地のNodeへ寄ったら出発地（周回。基準点も置いた出発地に
-    揃え、目的地を置かない周回と同じ候補を作る）、ほかは寄せたNodeと寄せたあとの地点。目的地を寄せられなければNone。"""
-    if destination is None:
-        return context.origin_node, context.origin
-    node = _snap_destination(context, destination)
-    if node is None:
-        return None
-    if node == context.origin_node:
-        return node, context.origin
-    return node, context.destination_correction or destination
+    point = context.origin if node == context.origin_node else corrected or destination
+    return ResolvedEnd(node=node, point=point, corrected_destination=corrected)
 
 
 def leg_name(leg_index: int) -> str:
