@@ -272,6 +272,7 @@ export function sceneInputsFrom(props: SceneWiringProps): SceneInputs {
     sidePoint: {
       path: props.sidePointPath,
       tilesReady: versions !== null,
+      hiddenKeys,
     },
   };
 }

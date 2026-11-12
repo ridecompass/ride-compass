@@ -77,7 +77,7 @@ export const pointLayerOfSceneLayer = pointLayerLookup((layer) => layer.attr_id)
 
 /** 常に効く絞り込み。同じタイル・同じsource-layerを2つ以上のレイヤーが分け合うときは、
  * 自分の行に属する値だけを通す（持たないと互いの点が混ざる）。 */
-export function baseFilter(layer: PointLayer): FilterSpecification | undefined {
+function baseFilter(layer: PointLayer): FilterSpecification | undefined {
   if (POINT_LAYERS.filter((other) => other.tile_kind === layer.tile_kind).length < 2) return undefined;
   const axis = layer.display_axes[0];
   const values = axis.categories.flatMap((category) => [...category.values]);
@@ -155,7 +155,7 @@ function categoryMatch(axis: PointAxis, category: PointAxis["categories"][number
 }
 
 /** 通す分類だけを残す絞り込み。軸が複数あるときはすべてANDで効く。 */
-function layerFilter(layer: PointLayer, hiddenKeys: PointState["hiddenKeys"]): FilterSpecification | undefined {
+export function layerFilter(layer: PointLayer, hiddenKeys: PointState["hiddenKeys"]): FilterSpecification | undefined {
   const clauses: unknown[] = [];
   const base = baseFilter(layer);
   if (base !== undefined) clauses.push(base);
