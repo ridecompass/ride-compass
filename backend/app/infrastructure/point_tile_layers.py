@@ -11,7 +11,7 @@
 （`domain/map_display.py: POINT_MEMBERS_PROPERTY`）を持つ。
 """
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from functools import cached_property
 
@@ -46,7 +46,7 @@ class PointTileLayer:
         return shape_digest(self.sql, self.source_layer)
 
 
-def _place_groups_param(tile_kind: TileKind) -> BindParameter[list[str]]:
+def _place_groups_param(tile_kind: TileKind) -> BindParameter[Sequence[str]]:
     """タイル`tile_kind`が地点の表から出す群（`:place_groups`）。"""
     return bindparam("place_groups", value=sorted(place_groups_shown_by(tile_kind)), type_=ARRAY(Text()))
 
