@@ -4,7 +4,7 @@
 （出て戻れる集まり）、探索のJITの型。
 
 ここで見ないもの:
-- Edge Costの中身（勾配・路面・風がどう秒へ化けるか） → `domain/evaluation.py`側
+- Edge Costの中身（勾配・路面・風がどう秒へ化けるか） → `test_leg_costs.py`
 - 探索用グラフ・ターンの遷移の組み立て → `test_search_graph.py`・`test_turn_structure.py`
 - 候補ルートの並べ方・返し方 → `route_generator`側
 """

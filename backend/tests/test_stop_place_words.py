@@ -2,7 +2,7 @@
 
 ここで見ないもの:
 - 群の名前で引いた店の並び（名前に当たる店との前後・近い順） → `test_place_search_route.py`
-- 群へ入れる地点 → `test_stop_places.py`
+- 群へ入れる地点 → `test_places.py`
 """
 
 import pytest

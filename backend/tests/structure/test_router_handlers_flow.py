@@ -21,7 +21,7 @@
 ここで見ないもの:
 - 部品を呼ばず、`infrastructure/`を直接呼ぶ素通し（directory-layout.md が許す）。その戻り値を丸める・組むのも見ない
 - f-string の外の組み立て（`+`・`str.format`・f-string の外の`join`）——ルーターに今は無く、書かれたら周期レビューが読む
-- `app.services`の同期の関数を注入せずに呼ぶ——I/Oを持たない導出（`dedicated_way_value_layers`）で、テストが差し替えない。
+- `app.services`の同期の関数を注入せずに呼ぶ——I/Oを持たない導出で、テストが差し替えない。
   同期でI/Oをするものは周期レビューが読む
 - 組む関数を引数に渡す形（`partial(open_setup, ...)`）の中で何を組むか——渡した先の services が持つ
 - 要求モデル（クラス）の validator の中の導出——要求の形の検査で、ハンドラの段取りではない

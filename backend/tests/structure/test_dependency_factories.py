@@ -11,7 +11,7 @@
 `services/`は、組み立ての置き場（`api/dependencies.py`・`main.py`）が組む`app.infrastructure`・`app.services`の
 クラスを呼ばない——自分で組むと、DI工場と別のタイムアウト・別の共有状態で動き、テストが部品を差し替えられない。
 母集団は、組み立ての置き場が呼ぶ`app.infrastructure`・`app.services`のクラス（値の型は組み立ての置き場が組まないので
-入らない）。部品を返す関数（`material_service_builder`の類）を呼ぶ形は見ない——クラスを組まない関数と見分けられない。
+入らない）。部品を返す関数を呼ぶ形は見ない——クラスを組まない関数と見分けられない。
 
 DI工場が配るのは組み立てた部品だけで、`api/dependencies.py`の関数は`await`しない（呼び出しの結果を配らない）、
 `app.infrastructure`の名前か、引数（`Depends`で受けたセッション工場）を呼んで開いた`with ... as`の名前（DBの

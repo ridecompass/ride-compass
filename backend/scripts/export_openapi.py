@@ -576,9 +576,7 @@ def main() -> None:
         PRIMARY_ATTRIBUTES_PATH,
         "primaryAttributes",
         # 一次属性カタログ（地図レイヤー階層の次数反転）。宣言
-        # （`domain/primary_attributes.py: PRIMARY_ATTRIBUTES`）だけから決まり、DBを読まない。各軸の
-        # `primary_attribute_ids`は実行時の`GET /api/client-config`が配るため、フロントは
-        # この一覧のlabel（正式名）と突き合わせて1次↔2次の双方向導出ができる。
+        # （`domain/primary_attributes.py: PRIMARY_ATTRIBUTES`）だけから決まり、DBを読まない。
         # 宣言をそのまま配る。色だけは宣言に無いので`resolved_display_axes`が決め、値が欠けたときの意味は
         # その値を載せる材料の宣言から引く（地図の凡例が「不明」を出すかを決める）。
         [

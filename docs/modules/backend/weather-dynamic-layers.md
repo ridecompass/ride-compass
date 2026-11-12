@@ -43,7 +43,7 @@ MSMは数値予報モデルの出力で観測値・公式発表の代わりに�
 
 | ファイル | 役割 | 消費側 |
 |---|---|---|
-| `weather.py` | アメダスの10分間の実測（降水量・気温）と推計気象分布の区分からWMO天気コードを導く`domain/weather.py: derive_observed_weather_code`（降っているかと雨・雪は観測所の実測が、降っていないときの晴れ・くもりは推計気象分布が決め、推計の雨・雪の区分はくもりに数える。日照時間は夜は空によらず0になるので使わない。「降っていない」の境`domain/weather.py: PRECIPITATION_MIN_MM`は、雨の材料（`domain/rain.py`）が雨と数える境にも使う） | `jma_amedas_service.py` |
+| `weather.py` | アメダスの10分間の実測（降水量・気温）と推計気象分布の区分からWMO天気コードを導く`domain/weather.py: derive_observed_weather_code`（降っているかと雨・雪は観測所の実測が、降っていないときの晴れ・くもりは推計気象分布が決め、推計の雨・雪の区分はくもりに数える。日照時間は夜は空によらず0になるので使わない。「降っていない」の境は`domain/weather.py: PRECIPITATION_MIN_MM`） | `jma_amedas_service.py` |
 | `jma_amedas.py` | 風の来る向き`jma_amedas.py: WindDirection`（16方位コードからの読み替えは`jma_amedas_client.py`。静穏・欠測のコードは方位なし、範囲外のコードは取得の失敗。呼び名は`domain/geo.py: SIXTEEN_POINT_LABELS`から引く）・体感温度計算（BOM式）・`AmedasObservation`モデル（観測所名と観測の時刻は観測所ごとに決まり、Redisに持つ。天気コード`weather_code`はリクエストの地点の推計気象分布で決まるため、日の出・日没と同じく応答のたびにサービスが入れ、Redisには持たない） | `jma_amedas_service.py` |
 | `valid_area.py` | 値が成り立つ範囲（区域の境界・最寄りの点のボロノイ領域）を、地点を含むときだけ応答の形`valid_area.py: ValidArea`にする。点の並びのボロノイ図`valid_area.py: NearestPointCells`も持つ | `warning_service.py`・`flood_service.py`・`nearest_point_areas.py` |
 | `jma_area.py` | 区域（class20）のコード→JMA警報エリア（class20→class15→class10→office）の親子関係解決。辿る地域マスタは`jma_area.py: AreaMaster`（area.jsonの形は`jma_warning_client.py`が解く。区域の名前は警報級の時系列が応答に添えるためだけに持ち、二次細分区域は親の府県予報区があれば解決する） | `warning_service.py`・`flood_service.py`・`warning_timeline_service.py` |
