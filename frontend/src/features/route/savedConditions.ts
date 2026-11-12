@@ -1,4 +1,4 @@
-import { avoidanceLevelOf } from "@/lib/roadAvoidance";
+import { avoidanceLevelOf, isPainted } from "@/lib/roadAvoidance";
 import { costPreferenceDescription } from "@/features/route/costPreference";
 import type { CostAxisCatalog } from "@/hooks/useCostAxisCatalog";
 import type { ClientConfig } from "@/lib/clientConfig";
@@ -59,7 +59,7 @@ interface ConditionsDescription {
   route: string;
   /** つまみと、標準でない軸の倍率（全部標準なら「標準」）。 */
   costPreference: string;
-  /** 「通る」以外を選んだ行の名前を段ごとに（いつも通らない固定の行は含めない）。 */
+  /** 地図に塗る段（指定なしでない段）を選んだ行の名前を段ごとに（選べない行は含めない）。 */
   exclusions: string;
 }
 
@@ -78,12 +78,15 @@ function routeDescription(conditions: GenerationConditionsSnapshot): string {
 // 段ごとに「段の名前 行の名前・…」を、倍率の大きい段から並べる。行と段は画面の設定が配るもので、届く前は「なし」になる。
 function exclusionsDescription(roadAvoidance: RoadAvoidanceOverride, catalog: ClientConfig): string {
   const { levels, rows } = catalog.roadClasses.avoidance;
-  const parts = levels.toReversed().flatMap(({ key: level, label: levelLabel }) => {
-    const labels = rows
-      .filter((row) => level !== "pass" && avoidanceLevelOf(row, roadAvoidance) === level)
-      .map(({ label }) => label);
-    return labels.length === 0 ? [] : [`${levelLabel} ${labels.join("・")}`];
-  });
+  const parts = levels
+    .filter(isPainted)
+    .toReversed()
+    .flatMap(({ key: level, label: levelLabel }) => {
+      const labels = rows
+        .filter((row) => row.selectable && avoidanceLevelOf(row, roadAvoidance) === level)
+        .map(({ label }) => label);
+      return labels.length === 0 ? [] : [`${levelLabel} ${labels.join("・")}`];
+    });
   return parts.length === 0 ? "なし" : parts.join("／");
 }
 
