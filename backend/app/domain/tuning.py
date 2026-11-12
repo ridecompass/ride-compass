@@ -115,7 +115,8 @@ def _turn_parameters(name: str, label: str, description: str) -> tuple[TuningPar
 _MAJOR_CROSSING_ID = event_seconds_parameter_id("turn", "major_crossing")
 _STOP_ID = event_seconds_parameter_id("stop", "stop")
 _SIGNAL_ID = event_seconds_parameter_id("stop", "signal")
-_CRR_ID = "speed.crr"
+#: 基準の転がり抵抗の較正値のid。
+BASE_CRR_ID = "speed.crr"
 _CRR_GRAVEL_ID = "speed.crr_gravel"
 _CRR_COBBLESTONE_ID = "speed.crr_cobblestone"
 _TURNAROUND_OVERLAP_ID = "search.turnaround_max_overlap_ratio"
@@ -123,6 +124,9 @@ _TURNAROUND_RELAXED_OVERLAP_ID = "search.turnaround_relaxed_overlap_ratio"
 _LOOP_RATIO_MIN_ID = "search.loop_to_outbound_ratio_min"
 _LOOP_RATIO_MAX_ID = "search.loop_to_outbound_ratio_max"
 _DISTANCE_TOLERANCE_ID = "search.distance_tolerance_ratio"
+#: 派生の段だけが読む較正値のid。
+SIGNAL_MATCH_RADIUS_ID = "signal.match_radius_m"
+ACCIDENT_FATAL_WEIGHT_ID = "accident.fatal_weight"
 #: 派生の外（地図の点のタイル・近くの点の読み出し）も作り直しに使った値を読む較正値のid。
 STOP_CLUSTER_DISTANCE_ID = "stop.cluster_distance_m"
 ACCIDENT_MATCH_DISTANCE_ID = "accident.match_max_distance_m"
@@ -181,7 +185,7 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
     ),
     # --- 交差点と停止の点 ---
     TuningParameter(
-        "signal.match_radius_m",
+        SIGNAL_MATCH_RADIUS_ID,
         "信号とみなす半径", "m", TuningEffect.DERIVE_REBUILD,
         "交差点から何m以内の信号を、その交差点のものとみなすか。"
         "広げるほど横断の費用が付く交差点が減る（頭打ちが無い）。",
@@ -205,7 +209,7 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
         "事故の点を、この距離以内で最も近い道に付ける。事故の数とルートの印が同じ値で付ける。",
     ),
     TuningParameter(
-        "accident.fatal_weight",
+        ACCIDENT_FATAL_WEIGHT_ID,
         "死亡事故の重み", "件", TuningEffect.DERIVE_REBUILD,
         "死亡事故1件を何件分の事故として数えるか。単純に数えると死亡事故が軽い事故と同じ1件になり、最も避けたい重大な事故の"
         "危険が薄まる。",
@@ -258,7 +262,7 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
         shown_to_users=True,
     ),
     TuningParameter(
-        _CRR_ID,
+        BASE_CRR_ID,
         "転がり抵抗", "", TuningEffect.IMMEDIATE,
         "基準の路面（舗装）の転がり抵抗の係数。区分の外の道もこの値で走る。",
     ),

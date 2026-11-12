@@ -53,6 +53,7 @@ from app.domain.stop_place import (
     store_name_sql,
     temple_shrine_owner_sql,
 )
+from app.infrastructure.derived_models import grouped_place_sql
 from app.infrastructure.place_area_query import area_label_sql
 from app.infrastructure.source_models import BUNKA_HERITAGES_SOURCE_SQL, OVERTURE_PLACES_SOURCE_SQL, Source
 
@@ -123,10 +124,10 @@ WHERE f.overture_id = merged.overture_id
 
 # 群を持つ地点は落とさないので、寄せ先が連なって消えることはない。範囲の箱で索引を引いてから地面の距離で比べる。
 _MERGE_INTO_GROUPED = f"""
-CREATE INDEX ON _places USING gist (geom) WHERE place_group IS NOT NULL;
+CREATE INDEX ON _places USING gist (geom) WHERE {grouped_place_sql()};
 DELETE FROM _places f
 USING _places j
-WHERE f.place_group IS NULL AND f.chain IS NOT NULL AND j.place_group IS NOT NULL AND j.chain = f.chain
+WHERE f.place_group IS NULL AND f.chain IS NOT NULL AND {grouped_place_sql("j")} AND j.chain = f.chain
   AND j.geom && ST_Expand(f.geom, {degrees_covering_m(MERGE_RADIUS_M)})
   AND ST_DWithin(f.geom::geography, j.geom::geography, {MERGE_RADIUS_M})
 """
@@ -200,7 +201,7 @@ async def derive(conn: asyncpg.Connection) -> None:
         await conn.execute(_TEMPLE_BUILDINGS)
         temple_buildings = await conn.fetchval("SELECT count(*) FROM _temple_buildings")
         temples = affected_rows(await conn.execute(_INSERT_TEMPLES, HERITAGE_MERGE_RADIUS_M))
-        grouped = await conn.fetchval("SELECT count(*) FROM places WHERE place_group IS NOT NULL")
+        grouped = await conn.fetchval(f"SELECT count(*) FROM places WHERE {grouped_place_sql()}")
         located = await conn.fetchval("SELECT count(*) FROM places WHERE area IS NOT NULL")
     logger.info("地点: Overture の地点 %d件 → 連絡先で寄せて %d件減・群を持つ同じ店へ寄せて %d件減 → まとめて %d件、"
                 "寺社の文化財 %d件 → 寺社 %d件、うち群を持つ %d件・辺りの付いた %d件 / %.1f秒", read, merged_by_contact,

@@ -31,11 +31,10 @@ from app.domain.road_classes import TRUE_FACT_VALUE
 from app.domain.road_network import RoadNetwork
 from app.domain.route import AxisFact, Coordinates
 from app.domain.material_catalog import material_spec
-from app.domain.cycling_speed import BASE_CRR_ID
 from app.domain.msm import MsmBlock, MsmGrid
 from app.domain.wind import WindForecastSeries
 from app.domain.time_zone import JST
-from app.domain.tuning import tuning_value
+from app.domain.tuning import BASE_CRR_ID, tuning_value
 from tests.cost_axes_fixture import BAD_AXIS, cost_axes, cost_axes_declared
 from app.domain.road_classes import AvoidanceClassification, ConditionTerm
 from tests.road_class_fixture import classification, fact_is, map_layer, replaced_road_classes, road_classes

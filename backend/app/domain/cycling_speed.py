@@ -29,7 +29,7 @@ from app.domain.elevation_profile import ElevationProfiles, flatten_spans, unkno
 from app.domain.road_classes import class_material_id, current_road_classes
 from app.domain.search_graph import kernel_array
 from app.domain.traffic import stop_count_material_ids
-from app.domain.tuning import tuning_value
+from app.domain.tuning import BASE_CRR_ID, tuning_value
 from app.domain.wind import drag_increases_m2_s2, kmh_to_ms
 
 _AIR_DENSITY_KG_M3 = 1.225
@@ -46,10 +46,6 @@ _SPEED_SOLVE_ITERATIONS = 12
 #: 区間ごとに速度を変える道と天気の条件の、画面で呼ぶ名前（走行方程式の重力・空気抵抗・転がり抵抗の順）。
 #: 画面の所要時間の説明はこの並びを差し込む。方程式に条件を足したら、ここにも足す。
 SEGMENT_SPEED_CONDITIONS: tuple[str, ...] = ("坂", "風", "路面")
-
-#: 基準の転がり抵抗の較正値のid。
-BASE_CRR_ID = "speed.crr"
-
 
 def rolling_resistance_material_id() -> str | None:
     """走行モデルが転がり抵抗に読む区分の列の材料id（転がり抵抗の表が指す分け方。指していなければNone）。"""

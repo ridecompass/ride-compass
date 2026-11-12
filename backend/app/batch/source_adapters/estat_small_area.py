@@ -30,8 +30,9 @@ from shapely.geometry.base import BaseGeometry
 from app.batch.ingest import SourceRecord, register_adapter
 from app.batch.source_adapters.abr import JGD2011, RangeInputs, range_inputs, wgs84_transformer
 from app.batch.source_profile import SourceProfile, SourceSpec
+from app.infrastructure import data_paths
 
-DATA_DIR = Path(__file__).resolve().parents[3] / "data" / "estat"
+DATA_DIR = data_paths.DATA_DIR / "estat"
 
 #: 通常の小地域の境界の区分（`HCODE`）。
 NORMAL_AREA_HCODE = 8101

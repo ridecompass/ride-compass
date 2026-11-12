@@ -29,8 +29,9 @@ from app.batch.ingest import SourceRecord, register_adapter
 from app.batch.source_adapters.abr import JGD2011, RangeInputs, range_inputs, wgs84_transformer
 from app.batch.source_adapters.zip_csv import read_zip_csv
 from app.batch.source_profile import SourceProfile, SourceSpec
+from app.infrastructure import data_paths
 
-DATA_DIR = Path(__file__).resolve().parents[3] / "data" / "isj"
+DATA_DIR = data_paths.DATA_DIR / "isj"
 
 #: 配布元の取得の口（位置参照情報ダウンロードサービス。都道府県コード2桁に`000`をつないだ名前）。
 DOWNLOAD_URL = "https://nlftp.mlit.go.jp/isj/dls/data/{version}/{prefecture}000-{version}.zip"
