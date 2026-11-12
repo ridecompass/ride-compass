@@ -64,18 +64,31 @@ export function bearingDeg(from: readonly [number, number], to: readonly [number
   return normalizeDeg((Math.atan2(x, y) * 180) / Math.PI);
 }
 
-/** 線`path`（[経度, 緯度]の並び）のうち、地点`at`に最も近い長さのある辺の進む向き（`bearingDeg`）。同じ近さなら先の辺。
- * 長さのある辺が無ければnull。 */
-export function bearingAlong(
+/** 線の辺のうち地点に最も近いもの。`point`はその辺の上で地点に最も近い点、`offsetM`は地点からの隔たり（m）、`bearing`は辺の
+ * 進む向き（`bearingDeg`）。 */
+export interface NearestEdge {
+  point: [number, number];
+  offsetM: number;
+  bearing: number;
+}
+
+/** 線`path`（[経度, 緯度]の並び）のうち、地点`at`に最も近い長さのある辺。同じ近さなら先の辺。長さのある辺が無ければnull。 */
+export function nearestEdge(
   path: readonly (readonly [number, number])[],
   at: readonly [number, number],
-): number | null {
-  let nearest: { offsetM: number; bearing: number } | null = null;
+): NearestEdge | null {
+  let nearest: NearestEdge | null = null;
   for (let i = 1; i < path.length; i += 1) {
     const [from, to] = [path[i - 1], path[i]];
     if (from[0] === to[0] && from[1] === to[1]) continue;
-    const { offsetM } = projectOnEdge(at, from, to);
-    if (nearest === null || offsetM < nearest.offsetM) nearest = { offsetM, bearing: bearingDeg(from, to) };
+    const { point, offsetM } = projectOnEdge(at, from, to);
+    if (nearest === null || offsetM < nearest.offsetM) nearest = { point, offsetM, bearing: bearingDeg(from, to) };
   }
-  return nearest?.bearing ?? null;
+  return nearest;
+}
+
+/** 向きの無い線の軸`axisDeg`（とその逆向き）のうち、向き`towardDeg`に近い側（0以上360未満）。直角なら`axisDeg`。 */
+export function nearerSide(axisDeg: number, towardDeg: number): number {
+  const apart = normalizeDeg(towardDeg - axisDeg);
+  return normalizeDeg(apart > 90 && apart < 270 ? axisDeg + 180 : axisDeg);
 }
