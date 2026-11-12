@@ -39,7 +39,7 @@ def _tag_is(fact_key: str, *values: str) -> Condition:
 HARD_FILTERS: dict[str, _HardFilter] = {
     "motorway": _HardFilter(
         "高速道路・自動車専用道路",
-        "高速道路と、自動車専用の標識のある一般道（バイパス等）。自転車は通れないので、いつも経路から外します。",
+        "高速道路と、自動車専用の標識のある一般道[バイパス等]。自転車は通れないので、いつも経路から外します。",
         [_tag_is("highway", "motorway", "motorway_link"), _tag_is("motorroad", "yes")],
     ),
     "no_bicycle": _HardFilter(

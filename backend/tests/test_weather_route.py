@@ -116,7 +116,7 @@ ROUTE_TIMELINE = RouteWarningTimeline(
             end_index=1,
             kinds={
                 "thunder": TimelineKindLevels(
-                    advisory_label="雷（注意報級）",
+                    advisory_label="雷[注意報級]",
                     slots=[
                         TimelineSlotLevel(
                             start=datetime(2026, 10, 21, 18, 0, tzinfo=JST),
@@ -213,8 +213,8 @@ def test_an_msm_grid_range_that_is_inverted_or_too_wide_is_refused(override_depe
 
 
 # 取れなかった理由ごとの、口が返す状態と文。
-_UPSTREAM_FAILED = (httpx.ConnectError("x"), 502, "外部の配信元から取得できませんでした（ConnectError）")
-_MSM_UNAVAILABLE = (MsmUnavailableError("未同期"), 503, "気象の数値予報を読めません（未同期）")
+_UPSTREAM_FAILED = (httpx.ConnectError("x"), 502, "外部の配信元から取得できませんでした[ConnectError]")
+_MSM_UNAVAILABLE = (MsmUnavailableError("未同期"), 503, "気象の数値予報を読めません[未同期]")
 _AMEDAS_UNAVAILABLE = (AmedasUnavailableError("置き場を読めない"), 503, "置き場を読めない")
 
 
