@@ -17,7 +17,7 @@ interface RouteAxisProfileProps {
   penalty: PenaltyValues;
   /** RouteCandidate.estimated_duration_seconds（走行＋停止＋ターンの見積もり）。 */
   estimatedDurationSeconds: number | null;
-  /** 所要時間を、勾配か停止要因の値が無く平地・待ち無しとして出した区間の距離の割合（0〜1、
+  /** 所要時間を、勾配か停止要因の値が無く全体の平均で出した区間の距離の割合（0〜1、
    * RouteCandidate.missing_travel_data_share）。 */
   missingTravelDataShare: number | null;
 }

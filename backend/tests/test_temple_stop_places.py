@@ -5,7 +5,7 @@
 
 ここで見ないもの:
 - 配信元から手元へ写す取得（`scripts/fetch_bunka_heritages.py`）→ `test_fetch_bunka_heritages.py`
-- Overture の地点の群とまとめ → `test_stop_places.py`
+- Overture の地点の群とまとめ → `test_places.py`
 """
 
 import json

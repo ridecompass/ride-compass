@@ -21,7 +21,7 @@ function latestOtherInput<Data>(scope: readonly unknown[], tile: TileXY): Data |
 }
 
 /**
- * タイル1枚の問い合わせ。鍵は`[...scope, input, z, x, y]`で、`input`（走る条件・下書き等）が変わったタイルは取り直す。
+ * タイル1枚の問い合わせ。鍵は`[...scope, input, z, x, y]`で、`input`（走る条件・重み等）が変わったタイルは取り直す。
  * 取り直す間は、同じ`scope`の同じタイルを前の`input`で取った値を仮に見せる（値の無い道が取得中の色へ戻らない）。
  * 取れなかったタイルは値を持たず、次に見えたときに取り直す。
  */
