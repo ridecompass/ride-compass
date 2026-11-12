@@ -683,6 +683,10 @@ export interface components {
             key: "pass" | "slight_prefer" | "prefer" | "slight_avoid" | "avoid" | "exclude";
             /** Label */
             label: string;
+            /** Color */
+            color: string | null;
+            /** Color On Dark */
+            color_on_dark: string | null;
         };
         /** AvoidanceOverride */
         AvoidanceOverride: {
@@ -708,6 +712,8 @@ export interface components {
              * @enum {string}
              */
             default: "pass" | "slight_prefer" | "prefer" | "slight_avoid" | "avoid" | "exclude";
+            /** Selectable */
+            selectable: boolean;
         };
         /** AvoidanceSectionView */
         AvoidanceSectionView: {

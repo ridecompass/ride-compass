@@ -33,7 +33,7 @@
 | `hooks/useCostAxisCatalog.ts` | `GET /api/cost-axes`の取得。費用の軸（名前・説明・アイコン・地図のレンズ）を`hooks/useCostAxisCatalog.ts: useCostAxisCatalog`が返す（届くまで・失敗の間は軸0件。レンズの読み方は[地図: レンズ・ルート色分け](map-axis-coloring.md)）。軸ごとの色（`hooks/useCostAxisCatalog.ts: CostAxisCatalog.axisColors`）と、取れていないことの項目（`hooks/useCostAxisCatalog.ts: costAxisCatalogFetchFailure`。常設ヘッダーの印と負担タブの告知）もここが持つ |
 | `hooks/useSharedCatalog.ts` | 画面の全体が読む一覧（画面の設定・費用の軸の一覧）の取得の共通の形: 読み手の間で1つの取得を共有し、マウントのたびに取り直し、届いた応答を後の失敗で巻き戻さない（`hooks/useSharedCatalog.ts: useSharedCatalog`）。まだ届いていないときだけ取り直す再試行（`hooks/useSharedCatalog.ts: retrySharedCatalogFetch`） |
 | `services/costAxisCatalogApi.ts` | 上記フックが叩くbackend APIの薄いラッパーと、凡例の段の境目の目安（`GET /api/cost-axes/lens-equivalents`。`services/costAxisCatalogApi.ts: getLensEquivalents`）の口 |
-| `features/route/RouteSettingsPanel/HardFilterPanel.tsx` | 「道路」タブの中身。地図の道のレイヤの凡例の行ごとの避け方を1つの並びに出し、自転車が通れない道の行は「通らない」に固定して鍵を付ける（下記「除外」）。選べる行の鍵・名前・既定の段と行をまとめる節は画面の設定の`road_classes.avoidance`が、固定の行の名前と説明は生成物`route-generate-config.json`の`route-generate-config.json: hard_filters`が正で、名前をフロントに持たない——キーと名前を別々に持つと、足した行に名前が無く内部名が出る。画面の設定が届くまでは選べる行を出さない。並びの上に「地図で見る」（このタブを出している間、段を地図の道に塗るか。値は`features/map/view/useMapView.ts`が端末に覚える）を置く |
+| `features/route/RouteSettingsPanel/HardFilterPanel.tsx` | 「道路」タブの中身。地図の道のレイヤの凡例の行ごとの避け方を1つの並びに出し、自転車が通れない道の行は「通らない」に固定して鍵を付ける（下記「除外」）。選べる行の鍵・名前・既定の段と行をまとめる節は画面の設定の`road_classes.avoidance`が、選べない行（自転車が通れない道）も同じ一覧に`selectable`が偽の行として載り、名前をフロントに持たない——キーと名前を別々に持つと、足した行に名前が無く内部名が出る。画面の設定が届くまでは選べる行を出さない。並びの上に「地図で見る」（このタブを出している間、段を地図の道に塗るか。値は`features/map/view/useMapView.ts`が端末に覚える）を置く |
 | `lib/roadAvoidance.ts` | 画面に出す行の段を決める（`lib/roadAvoidance.ts: avoidanceLevelOf`。道路タブを地図で見ている間に道へ塗る段も同じ決め方で読む。選んでいなければ既定の段）。要求には選んだ段をそのまま送り、行の増減はbackendが揃える |
 | `features/route/SavedPlacesPanel/SavedPlacesPanel.tsx` | 「保存済み」タブの「地点」の中身: 保存した地点の一覧（行は名前・辺りと、アイコンの「呼び出す」「消す」。呼び出すはメニューで出発地・経由地・目的地のどれに置くかを選び（周回の間は目的地を使わないので「目的地にする」を押せない）、消すは確認の窓で「消す」を押すと消す）。無ければ無いと出し、保存の仕方は(i)の奥（下記「保存した地点」） |
 | `features/route/SavedList/SavedList.tsx` | 「保存済み」タブの一覧（地点・プリセット）の形: 空の案内と保存の仕方の(i)・行の枠・消す操作と確認の窓。行の名前の欄と行ごとの操作（「呼び出す」）は使う側が渡す |
@@ -116,9 +116,9 @@
   （[ページ全体構成・状態管理](page-composition.md)「走る条件で変わる道の値（風・勾配）の状態別表現契約」の「地図の向き」）。
 - 道の避け方は独立したタブ（`HardFilterPanel`。名前は「道路」）に置き、道ごとの避け方を1つの並びにする。負担のタブと同じく見出しの行を持たず、タブを開くと
   「地図で見る」の下からすぐ並びが始まる。段の名前は費用に掛ける倍率（×0.5・×1・×2・×∞の形。backendが較正値から作って配る）で、行ごとの選ぶ口は段を倍率の順に並べた
-  1本の目盛り（真ん中の長い目盛りが×1、左ほど好む・右ほど避ける）と、選んでいる倍率の数字（地図で塗る色の文字）。1つの道が複数の行に
-  当たるときは倍率の大きい段が効くことを、行ごとの選ぶ口の使い方の文（説明を見る状態で出る）で明示し、将来の除外条件もこのタブへ足す。
-  - **固定の行**: 自転車が通れない道（生成物の`hard_filters`）は、並びの先頭に畳まずに置き、選ぶ口の代わりに鍵と「通らない」を出す。
+  1本の目盛り（真ん中の長い目盛りが×1、左ほど好む・右ほど避ける）と、選んでいる倍率の数字（地図で塗る色の文字）。段の並びと色は配られたまま使い、
+  1つの道が複数の行に当たるときにどの段が効くかを画面は書き写さない。将来の除外条件もこのタブへ足す。
+  - **固定の行**: 選べない行（自転車が通れない道）は、並びの先頭に畳まずに置き、選ぶ口の代わりに鍵と「通らない」を出す。
     backendはこの道をいつも除き、要求でも変えられない。
   - **地図で見る**: このタブを出している間だけ、選んだ段のとおりに地図の道を塗り、下の地図を灰色に薄める（決まりは
     [地図: 静的レイヤー](static-map-layers.md)の「道路タブの段」の段落）。ほかのタブを出している間・「ルート設定」の区分やシートを
