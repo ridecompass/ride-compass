@@ -350,27 +350,44 @@ async def test_a_facility_nearer_on_the_ground_comes_first_even_when_degrees_sca
 
 #: 群「コンビニ」に入る Overture の分類（群はチェーンの名前の店だけを入れる）。
 CONVENIENCE_STORE = ("shopping", "convenience_store")
+#: 群「銭湯・温泉」に入る Overture の分類。
+PUBLIC_BATH = ("beauty_and_spa", "public_bath_house")
 
 
-@pytest.mark.usefixtures("area")
-async def test_a_name_of_a_group_finds_the_nearest_stores_of_the_group_before_the_names_it_matches():
-    """「コンビニ」と打つと、名前に「コンビニ」を含まない近くのコンビニの店が、名前が入力と同じ店（より近くても）より先に近い順に出る。"""
-    await _ingest_facilities([
+@pytest.mark.parametrize(("query", "records", "expected"), [
+    pytest.param("コンビニ", [
         overture_place_record(1, LON, LAT, "コンビニ"),
         overture_place_record(2, LON + 0.02, LAT, "セブン-イレブン 西新宿店", CONVENIENCE_STORE),
         overture_place_record(3, LON + 0.01, LAT, "ファミリーマート 新宿店", CONVENIENCE_STORE),
         overture_place_record(4, OUTSIDE_LON, OUTSIDE_LAT, "ローソン 道頓堀店", CONVENIENCE_STORE),
         overture_place_record(5, LON + 0.005, LAT, "ラーメン一風堂"),
-    ])
-
-    response = await _search("コンビニ")
-
-    assert response.status_code == 200
-    assert response.json() == {"candidates": [
+    ], [
         _facility("ファミリーマート 新宿店", LON + 0.01),
         _facility("セブン-イレブン 西新宿店", LON + 0.02),
         _facility("コンビニ", LON),
-    ]}
+    ], id="近くに多い群"),
+    # 銭湯は少なく、その群の一番遠い店までの円の中に、ほかの群の店が上限より多く入る。
+    pytest.param("銭湯", [
+        overture_place_record(1, LON, LAT, "銭湯"),
+        overture_place_record(2, LON + 0.04, LAT, "草津湯", PUBLIC_BATH),
+        overture_place_record(3, LON + 0.03, LAT, "大黒湯", PUBLIC_BATH),
+        *(overture_place_record(10 + i, LON + 0.001 * (i + 1), LAT, f"喫茶{i}")
+          for i in range(PLACE_PREDICTION_LIMIT)),
+    ], [
+        _facility("大黒湯", LON + 0.03),
+        _facility("草津湯", LON + 0.04),
+        _facility("銭湯", LON),
+    ], id="少ない群"),
+])
+@pytest.mark.usefixtures("area")
+async def test_a_name_of_a_group_finds_the_nearest_stores_of_the_group_before_the_names_it_matches(query, records, expected):
+    """群の語と打つと、名前に語を含まない近くのその群の店が、名前が入力と同じ店（より近くても）より先に近い順に出る。"""
+    await _ingest_facilities(records)
+
+    response = await _search(query)
+
+    assert response.status_code == 200
+    assert response.json() == {"candidates": expected}
 
 
 @pytest.mark.usefixtures("area")
