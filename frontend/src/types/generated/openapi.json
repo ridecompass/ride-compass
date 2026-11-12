@@ -3285,6 +3285,13 @@
             },
             "type": "array",
             "title": "Tables"
+          },
+          "tuning": {
+            "items": {
+              "$ref": "#/components/schemas/TuningEntry"
+            },
+            "type": "array",
+            "title": "Tuning"
           }
         },
         "additionalProperties": false,
@@ -3292,7 +3299,8 @@
         "required": [
           "computed_at",
           "sources",
-          "tables"
+          "tables",
+          "tuning"
         ],
         "title": "DerivedDataFreshnessReport"
       },
@@ -6331,6 +6339,52 @@
           "lens_id"
         ],
         "title": "TotalLens"
+      },
+      "TuningEntry": {
+        "properties": {
+          "param_id": {
+            "type": "string",
+            "title": "Param Id"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "unit": {
+            "type": "string",
+            "title": "Unit"
+          },
+          "derived_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Derived Value"
+          },
+          "current_value": {
+            "type": "number",
+            "title": "Current Value"
+          },
+          "needs_rebuild": {
+            "type": "boolean",
+            "title": "Needs Rebuild"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "param_id",
+          "label",
+          "unit",
+          "derived_value",
+          "current_value",
+          "needs_rebuild"
+        ],
+        "title": "TuningEntry"
       },
       "TuningParameterView": {
         "properties": {

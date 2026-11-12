@@ -1,6 +1,6 @@
 """派生データの鮮度を測る読み取り専用リポジトリ。
 
-作り直しが要るかを2つの比べで見る。
+作り直しの記録（`derived_data_meta.py: read_records`。記録の鍵の種類はこの読み手が持つ）の鍵ごとに、記録と今の値を比べる。
 
 - **ソース**: ソースごとに、今の派生の表を作った取込（`derived_source_runs`）が、そのソースの成功した
   最新の取込と同じか。違えば、生データを取り直したのに派生を作り直していない。取込が1度も成功して
@@ -13,18 +13,22 @@
 列ごとのNULLの件数は参考として返す。
 
 **対象は宣言から導く**——表の印（`orm_base.py: DERIVED`）を持つ表が派生データで、その表の主キー
-以外の列が値である。ソースは取込の記録と作り直しの記録にあるものを全部並べる。
+以外の列が値である。ソースは取込の記録と作り直しの記録にあるものを全部並べる。較正値は効き方の宣言から導く。
 """
 
 from dataclasses import dataclass
+from typing import cast
 
-from sqlalchemy import text
+import asyncpg
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.strict_model import StrictModel
-from app.infrastructure import source_models
-from app.infrastructure.derived_data_meta import DerivedColumnRow, DerivedSourceRunRow
+from app.domain.tuning import TUNING_PARAMETERS, TuningEffect
+from app.infrastructure.derived_data_meta import read_records
 from app.infrastructure.orm_base import DERIVED_KEY, declared_metadata
+from app.infrastructure.source_models import LATEST_SUCCEEDED_RUNS_SQL, SourceRunRow
+from app.infrastructure.tuning_overrides import load_tuning_values
 
 
 def derived_tables() -> list:
@@ -76,10 +80,22 @@ class SourceFreshness(StrictModel, frozen=True):
     latest_run_id: int | None
 
 
+class TuningFreshness(StrictModel, frozen=True):
+    param_id: str
+    #: 管理画面の表示名と単位（`domain/tuning.py: TuningParameter`の宣言）。
+    label: str
+    unit: str
+    #: 今の派生を作った値。作り直しに使っていなければNone。
+    derived_value: float | None
+    #: 今の値（管理画面で変えた値）。
+    current_value: float
+
+
 @dataclass(frozen=True)
 class DerivedDataFreshness:
     sources: tuple[SourceFreshness, ...]
     tables: tuple[TableFreshness, ...]
+    tuning: tuple[TuningFreshness, ...]
 
 
 def _build_table_sql(table) -> str:
@@ -91,19 +107,6 @@ def _build_table_sql(table) -> str:
     return f"SELECT {', '.join(['count(*) AS row_count', *counts])} FROM {table.name}"  # 宣言のみ
 
 
-#: 取込か作り直しの記録にあるソースごとに、作り直しに使った取込と成功した最新の取込。
-_SOURCES_SQL = text(f"""
-SELECT s.source, d.run_id AS derived_run_id, l.run_id AS latest_run_id
-FROM (SELECT source FROM {source_models.SourceRunRow.__tablename__}
-      UNION SELECT source FROM {DerivedSourceRunRow.__tablename__}) s
-LEFT JOIN {DerivedSourceRunRow.__tablename__} d ON d.source = s.source
-LEFT JOIN ({source_models.LATEST_SUCCEEDED_RUNS_SQL}) l ON l.source = s.source
-ORDER BY s.source
-""")
-
-_COLUMNS_SQL = text(f"SELECT table_name, column_name FROM {DerivedColumnRow.__tablename__}")
-
-
 class DerivedDataFreshnessQuery:
     """読み取り専用。全表走査を伴うため管理API専用。"""
 
@@ -111,17 +114,23 @@ class DerivedDataFreshnessQuery:
         self._session = session
 
     async def get_freshness(self) -> DerivedDataFreshness:
+        raw = (await (await self._session.connection()).get_raw_connection()).driver_connection
+        records = await read_records(cast(asyncpg.Connection, raw))
+        latest = {row.source: row.run_id for row in await self._session.execute(text(LATEST_SUCCEEDED_RUNS_SQL))}
+        imported = set(await self._session.scalars(select(SourceRunRow.source).distinct()))
         sources = tuple(
-            SourceFreshness(source=row.source, derived_run_id=row.derived_run_id, latest_run_id=row.latest_run_id)
-            for row in await self._session.execute(_SOURCES_SQL))
-        recorded: dict[str, set[str]] = {}
-        for column in await self._session.execute(_COLUMNS_SQL):
-            recorded.setdefault(column.table_name, set()).add(column.column_name)
+            SourceFreshness(source=source, derived_run_id=records.runs.get(source), latest_run_id=latest.get(source))
+            for source in sorted(imported | records.runs.keys()))
+        current_tuning = await load_tuning_values(self._session)
+        tuning = tuple(
+            TuningFreshness(param_id=p.id, label=p.label, unit=p.unit, derived_value=records.tuning.get(p.id),
+                            current_value=current_tuning[p.id])
+            for p in TUNING_PARAMETERS if p.effect is TuningEffect.DERIVE_REBUILD)
         declared = declared_columns()
         tables: list[TableFreshness] = []
         for table in derived_tables():
             row = (await self._session.execute(text(_build_table_sql(table)))).mappings().one()
-            built = recorded.get(table.name)
+            built = records.columns.get(table.name)
             tables.append(TableFreshness(
                 table_name=table.name,
                 row_count=int(row["row_count"]),
@@ -131,4 +140,4 @@ class DerivedDataFreshnessQuery:
                     added=tuple(sorted(declared[table.name] - built)),
                     removed=tuple(sorted(built - declared[table.name]))),
             ))
-        return DerivedDataFreshness(sources=sources, tables=tuple(tables))
+        return DerivedDataFreshness(sources=sources, tables=tuple(tables), tuning=tuning)

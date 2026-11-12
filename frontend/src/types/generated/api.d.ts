@@ -995,6 +995,8 @@ export interface components {
             sources: components["schemas"]["SourceEntry"][];
             /** Tables */
             tables: components["schemas"]["app__services__derived_data_freshness_service__TableEntry"][];
+            /** Tuning */
+            tuning: components["schemas"]["TuningEntry"][];
         };
         /** ElevationStretch */
         ElevationStretch: {
@@ -1927,6 +1929,21 @@ export interface components {
             lens: components["schemas"]["LensBands"];
             /** Lens Id */
             lens_id: string;
+        };
+        /** TuningEntry */
+        TuningEntry: {
+            /** Param Id */
+            param_id: string;
+            /** Label */
+            label: string;
+            /** Unit */
+            unit: string;
+            /** Derived Value */
+            derived_value: number | null;
+            /** Current Value */
+            current_value: number;
+            /** Needs Rebuild */
+            needs_rebuild: boolean;
         };
         /** TuningParameterView */
         TuningParameterView: {
