@@ -75,7 +75,7 @@ export default function RouteProfile({
   riding = false,
 }: RouteProfileProps) {
   const [tab, setTab] = useState("lens");
-  const { axes, axisColors } = catalog;
+  const { axes } = catalog;
   const axisOrder = useMemo(() => axes.map((axis) => axis.axisId), [axes]);
   const scale = useProfileScale(segments, scaleKm);
   // 選んでいない間に積む軸は、このルートで塗る区間のある軸から選ぶ。
@@ -225,7 +225,7 @@ export default function RouteProfile({
         <DifficultyProfile
           scale={scale}
           axisOrder={shownOrder}
-          axisColors={axisColors}
+          catalog={catalog}
           selected={selected}
           onSelect={onSelect}
           progressKm={progressKm}

@@ -4,17 +4,18 @@ import { useMemo } from "react";
 
 import ProfileChart from "@/features/route/ProfileChart/ProfileChart";
 import { PROFILE_VIEW_HEIGHT, type ProfileScale } from "@/features/route/ProfileChart/profileScale";
-import palette from "@/types/generated/palette.json";
 import { LENS_QUANTITY_LABEL } from "@/lib/mapDisplay/costLensPaint";
+import { costAxisColor, type PenaltyCatalog } from "@/lib/routePenalty";
 import type { SelectedRouteSegment } from "@/types/route";
 
 import { columnAtKm, profileBoxes, type ProfileBox } from "./profileGeometry";
 
 interface DifficultyProfileProps {
   scale: ProfileScale;
-  /** 下から積む軸の並びと色。 */
+  /** 下から積む軸の並び。 */
   axisOrder: readonly string[];
-  axisColors: Readonly<Record<string, string>>;
+  /** 軸の色を引く、費用の軸の一覧。 */
+  catalog: Pick<PenaltyCatalog, "axisColors" | "loaded">;
   selected: SelectedRouteSegment | null;
   onSelect?: (selection: SelectedRouteSegment) => void;
   progressKm: number | null;
@@ -35,7 +36,7 @@ function boxesPath(boxes: readonly ProfileBox[], xOf: (km: number) => number): s
 export default function DifficultyProfile({
   scale,
   axisOrder,
-  axisColors,
+  catalog,
   selected,
   onSelect,
   progressKm,
@@ -73,7 +74,7 @@ export default function DifficultyProfile({
       riding={riding}
     >
       {paths.byAxis.map(({ axisId, d }) => (
-        <path key={axisId} d={d} fill={axisColors[axisId] ?? palette.semantic.no_data} />
+        <path key={axisId} d={d} fill={costAxisColor(catalog, axisId)} />
       ))}
     </ProfileChart>
   );

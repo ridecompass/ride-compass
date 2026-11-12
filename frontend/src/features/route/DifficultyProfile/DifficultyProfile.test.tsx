@@ -2,7 +2,7 @@
  * `features/route/DifficultyProfile/DifficultyProfile.tsx`——候補の中身の先頭に出す、道のりに沿った負担のグラフ。
  *
  * 見るもの: 長さのある区間が無ければ何も描かないこと、横軸の右端（候補の距離と渡された物差しの長い方）と目盛り、
- * 軸の色と色の無い軸の色、走行中の現在地の印（その距離の柱の上端）と、始点からそこまでの色を抜いた薄め（候補の終わりより先は
+ * 軸の色、走行中の現在地の印（その距離の柱の上端）と、始点からそこまでの色を抜いた薄め（候補の終わりより先は
  * 終わりに寄せる）。
  *
  * ここで見ないもの: 区間の柱と積み上げの長方形の組み方（`axisOrder`の順に下から積むこと・秒の無い軸を積まないこと・
@@ -15,7 +15,6 @@ import { describe, expect, it, vi } from "vitest";
 import { useProfileScale } from "@/features/route/ProfileChart/profileScale";
 import { makeRouteSegment, penaltyFields } from "@/testing/routeFixtures";
 import { mapDisplay } from "@/types/generated/mapDisplay";
-import palette from "@/types/generated/palette.json";
 import type { RouteSegmentDetail } from "@/types/route";
 import DifficultyProfile from "./DifficultyProfile";
 
@@ -52,7 +51,7 @@ function profileProps(props: Partial<Props> = {}): Props {
   return {
     segments: [FIRST, SECOND],
     axisOrder: ["axis_a", "axis_b"],
-    axisColors: COLORS,
+    catalog: { axisColors: COLORS, loaded: true },
     scaleKm: 2,
     selected: null,
     onSelect: vi.fn(),
@@ -90,11 +89,6 @@ describe("DifficultyProfile", () => {
 
     renderProfile({ scaleKm: 1 });
     expect(screen.getByText("2.0km")).toBeInTheDocument();
-  });
-
-  it("色の無い軸は、値の無い区間と同じ色で塗る", () => {
-    const { container } = renderProfile({ segments: [FIRST], axisColors: { axis_a: COLORS.axis_a } });
-    expect(paths(container).map((path) => path.fill)).toEqual([COLORS.axis_a, palette.semantic.no_data]);
   });
 
   it("1kmあたりの値の無い区間（長さ0の区間）は塗らない", () => {

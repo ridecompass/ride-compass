@@ -50,12 +50,17 @@ def _classes(**conditions_by_class: list[Condition]) -> list[str | None]:
         ("cat_a", _term([], negated=True), [None, "c", "c"]),
         # 真偽の事実: 真だけが'true'の事実あり。偽と値なしは事実なし。
         ("bool_a", _term(["true"]), ["c", None, None]),
-        # 知らない事実（列が無い）は、どの道にも事実が無い。
-        ("unknown", _term(["a"], matches_absent=True), ["c", "c", "c"]),
     ],
 )
 def test_term_meaning(fact_key: str, term: ConditionTerm, expected: list[str | None]) -> None:
     assert _classes(c=[{fact_key: term}]) == expected
+
+
+def test_a_fact_without_a_column_is_not_read_as_absent() -> None:
+    """列の無い事実を「どの道にも無い」と読むと、事実を問う区分が黙って空になり（事実が無いことを問う区分は全部の道に当たり）、
+    地図の色と道路タブの効き目が理由を見せずに変わる。"""
+    with pytest.raises(KeyError):
+        _classes(c=[{"unknown": _term(["a"], matches_absent=True)}])
 
 
 def test_terms_and_conditions_combine() -> None:

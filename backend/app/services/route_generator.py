@@ -531,7 +531,7 @@ class RouteGenerator:
         try:
             traced = await asyncio.to_thread(self._engine.build_traced_from_edge_ids, context, edge_ids, points)
         except RoutingError as exc:
-            # 経路の形が受け取れない（未知のEdge・つながっていない・起点や終点が違う）。
+            # 経路の形が受け取れない（未知のEdge・つながっていない・起点や終点が違う・探索から除く区間を通る）。
             # **利用者へ届く理由を捨てない**——ここで素通しすると、呼び出し元の汎用catchが
             # 「ルート生成に失敗しました」に潰し、画面からは原因が分からなくなる。
             # 例外の本文は内部の言葉（Edgeの件数・ノードの地点）で書かれているためそのまま出さず、
@@ -541,7 +541,7 @@ class RouteGenerator:
                 origin_label, len(edge_ids), exc,
             )
             self.last_no_candidates_reason = (
-                "組み合わせた経路がつながっていないため評価できませんでした。"
+                "組み合わせた経路がつながっていないか、今の条件で通らない道を含むため評価できませんでした。"
                 "区間の選び直しか、ルートの再生成をお試しください。"
             )
             return []

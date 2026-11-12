@@ -707,7 +707,7 @@ class RoadGraphEngine:
         """クライアントが組み立てたEdge id列を、評価できる経路として検証して`TracedLoop`にする。
 
         区間の乗り換えで使う。フロントは候補の`edge_ids`から
-        「Aの前半＋Bの後半」を作って送り返すため、**このグラフに実在し・順につながり・
+        「Aの前半＋Bの後半」を作って送り返すため、**このグラフに実在し・探索から除く区間を通らず・順につながり・
         起点から始まり・終点（目的地、無ければ出発地）へ着く**ことをここで確かめる（送られた列をそのまま信じると、
         評価は成功するのに経路として成立しないルートが候補一覧へ並ぶ。周回どうしを乗り換えた経路が出発地へ戻ることもここで決まる）。
 
@@ -729,6 +729,10 @@ class RoadGraphEngine:
             logger.debug("経路に未知のEdgeが含まれています first=%s", unknown[0])
             raise RoutingError(f"経路に未知のEdgeが含まれています count={len(unknown)}")
         path = [index for index in resolved if index is not None]
+        # 除く区間は秒も費用も無限で、評価できる値が無い（生成したときから区分やハードフィルタが変わると送られうる）。
+        impassable = int(np.count_nonzero(~context.passable[path]))
+        if impassable:
+            raise RoutingError(f"経路が探索から除く区間を通ります count={impassable}")
         lazy_graph = context.lazy_graph
         tails = [int(lazy_graph.edge_from[index]) for index in path]
         heads = [int(lazy_graph.edge_to[index]) for index in path]

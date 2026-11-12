@@ -468,6 +468,6 @@ async def test_spliced_route_that_does_not_connect_says_so_without_internal_ids(
         assert await generator.generate_spliced_route(ORIGIN, FixedPoints(waypoints=[], destination=DESTINATION), ("osm-123",), START) == []
 
     assert generator.last_no_candidates_reason == (
-        "組み合わせた経路がつながっていないため評価できませんでした。区間の選び直しか、ルートの再生成をお試しください。")
+        "組み合わせた経路がつながっていないか、今の条件で通らない道を含むため評価できませんでした。区間の選び直しか、ルートの再生成をお試しください。")
     # 原因（内部の識別子を含む）はログにだけ残す
     assert any("osm-123" in r.getMessage() for r in caplog.records)

@@ -102,6 +102,8 @@ async def test_road_layer_values_are_served_per_feature_without_roads_outside_ev
     地図はその道を区分の色で塗れない値として受け取る。"""
     tile = FeatureMaterials(feature_keys=("1-0", "2-0", "3-0"), columns={
         "cat_a": CategoricalColumn.encode(["a", "b", "b"]),
+        "highway": CategoricalColumn.encode([None, None, None]),
+        "motorroad": CategoricalColumn.encode([None, None, None]),
         "bicycle": CategoricalColumn.encode([None, None, "no"]),
     })
     definitions = road_classes({"k": classification({"is_a": [fact_is("cat_a", "a")]})}, map_layers={"k": map_layer()})

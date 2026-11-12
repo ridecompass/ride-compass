@@ -26,7 +26,7 @@ import pytest
 
 from app.domain.cost_axes import EFFORT_AXES
 from app.domain.geo import KM_PER_DEGREE_LATITUDE, haversine_distance_km, km_per_degree_longitude
-from app.domain.graph import node_key
+from app.domain.graph import edge_key, node_key
 from app.domain.road_classes import TRUE_FACT_VALUE
 from app.domain.road_network import RoadNetwork
 from app.domain.route import AxisFact, Coordinates
@@ -209,6 +209,15 @@ async def test_a_spliced_route_the_road_network_cannot_trace_is_refused(
 
     levels = [r.levelno for r in caplog.records if re.search(r"osm-node-|way-\d", r.getMessage())]
     assert levels and set(levels) == {logging.DEBUG}
+
+
+async def test_a_spliced_route_through_a_road_the_search_excludes_is_refused(engine_over):
+    """管理APIで区分を書き換えた直後等に、通れない道を含む経路を送られても、普通の道として所要時間を付けて返さない。"""
+    generator = engine_over(grid_network(motorway_ways={100}))
+    through_motorway = (edge_key(100, 0, True), edge_key(101, 0, True), edge_key(202, 0, True), edge_key(205, 0, True))
+
+    assert await generator.generate_spliced_route(
+        at(SOUTH_WEST), FixedPoints(waypoints=[], destination=at(NORTH_EAST)), through_motorway, start_time=DEPARTURE) == []
 
 
 async def test_a_spliced_route_is_refused_when_the_destination_cannot_be_snapped(engine_over):

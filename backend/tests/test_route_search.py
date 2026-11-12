@@ -248,7 +248,7 @@ def test_route_passages_reads_each_edge_in_the_time_bin_the_search_used():
     )
 
     passages = route_passages(
-        [leg], transition_values_along(structure.turn_seconds, structure.entries_along(path)), path, [100.0, 100.0], [0, 0], speed_kmh=20.0
+        [leg], transition_values_along(structure.turn_seconds, structure.entries_along(path)), path, [0, 0]
     )
 
     assert passages[-1].elapsed_seconds + passages[-1].seconds == pytest.approx(tree.state_seconds[states["BC"]])
