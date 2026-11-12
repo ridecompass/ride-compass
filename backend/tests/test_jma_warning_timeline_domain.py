@@ -1,7 +1,7 @@
-"""`domain/jma_warning_timeline.py`——警報級の時系列の段の判定・区域の段の並びの選び方・ルートの点の区域を通過へまとめること。
+"""`domain/jma_warning_timeline.py`——警報級の時系列の区域の段の並びの選び方・ルートの点の区域を通過へまとめること。
 
 ここで見ないもの:
-- 気象庁の応答の形を解くこと → `test_jma_warning_timeline_client.py`
+- 気象庁の応答の形を解くこと・段が注意報級かの読み替え → `test_jma_warning_timeline_client.py`
 - 地点から区域を引くこと → `test_jma_area_boundaries.py`
 - 通過と段を応答へ組むこと → `test_warning_timeline_service.py`
 """
@@ -17,23 +17,16 @@ from app.domain.jma_warning_timeline import (
     TimelineLevels,
     TimeSlot,
     WarningTimeline,
-    is_advisory_level,
     route_passes,
 )
-
-
-@pytest.mark.parametrize(("code", "advisory"), [("11", False), ("20", True)])
-def test_a_level_is_advisory_from_the_twenties_up(code, advisory):
-    """十の位が2から注意報級。気象庁のページの「注意報級以上」と境目がずれると、出ていない注意報級を出すか、出ている
-    ものを落とす。"""
-    assert is_advisory_level(code) is advisory
 
 
 _SLOT = (TimeSlot(start=datetime(2026, 10, 21, 18), end=datetime(2026, 10, 21, 21)),)
 
 
 def _levels(area_name: str | None, code: str, kind_type: str = "雷危険度") -> TimelineLevels:
-    return TimelineLevels(kind_type=kind_type, area_name=area_name, slots=_SLOT, codes=(code,), additions=())
+    return TimelineLevels(kind_type=kind_type, area_name=area_name, slots=_SLOT, codes=(code,), advisories=(False,),
+                          additions=())
 
 
 @pytest.mark.parametrize(("class20", "class10", "chosen"), [
