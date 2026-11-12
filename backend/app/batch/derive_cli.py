@@ -187,7 +187,7 @@ _V = TypeVar("_V")
 def carried_over(previous: Mapping[str, _V], current: Mapping[str, _V], users: Mapping[str, frozenset[str]],
                  ran: Iterable[str]) -> dict[str, _V]:
     """作り直しの記録に書く値（鍵は`users`の鍵）: 使う段が全部流れた鍵は今の値、ほかは前回の記録。前回に無ければ書かない——
-    読み手は記録の無い較正値を読めず（読む段を流し直す）、鮮度の台帳は記録の無い取込を作り直しが要る側に数える。"""
+    読み手は記録の無い較正値を読めず（読む段を流し直す）、鮮度の台帳は記録の無い鍵を作り直しが要る側に数える。"""
     done = {*ran, NETWORK}
     result: dict[str, _V] = {}
     for key, used_by in users.items():

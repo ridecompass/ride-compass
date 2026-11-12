@@ -52,10 +52,9 @@ class DerivedSourceRunRow(Base):
 class DerivedColumnRow(Base):
     """今の`public`の派生の表を作ったときの、表ごとの列（ORMの宣言）。表と列ごとに1行。
 
-    流した段の表は今の宣言の列を、流さなかった段の表は前回の記録を書く。作り直しが要るのは、取込が変わったとき
-    （`derived_source_runs`）と、その表を最後に作り直した後に派生の表の列を足した・消したとき（足した列は全行がNULLのまま）
-    で、後者をこの記録と今の宣言の比べで出す（`derived_data_freshness.py`）。`derived_source_runs`と同じく作業用のスキーマで
-    書き、表ごと入れ替える。
+    流した段の表は今の宣言の列を、流さなかった段の表は前回の記録を書く。鮮度台帳（`derived_data_freshness.py`）がこの記録と
+    今の宣言を比べ、最後に作り直した後に列を足した・消した表（足した列は全行がNULLのまま）を作り直しが要る側に数える。
+    `derived_source_runs`と同じく作業用のスキーマで書き、表ごと入れ替える。
     """
 
     __tablename__ = "derived_columns"
@@ -141,7 +140,7 @@ class DeriveRecords:
 
 
 async def read_records(conn: asyncpg.Connection) -> DeriveRecords:
-    """今の`public`の作り直しの記録。段を選んだ作り直しが、流さなかった段の分を残すために読む。"""
+    """今の`public`の作り直しの記録。段を選んだ作り直しが流さなかった段の分を残すために、鮮度台帳が記録と今の値を比べるために読む。"""
     runs = {row["source"]: row["run_id"] for row in await conn.fetch(
         f"SELECT source, run_id FROM public.{DerivedSourceRunRow.__tablename__}")}
     columns: dict[str, set[str]] = {}
