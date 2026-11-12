@@ -109,7 +109,7 @@ class LensService:
             max_longitude=max(bbox.max_longitude, float(mid_lon.max())),
         ))
         if not series.covers(target):
-            raise MsmUnavailableError(f"MSMの風の予報が、求める時刻（{target.isoformat()}）を含みません")
+            raise MsmUnavailableError(f"MSMの風の予報が、求める時刻 {target.isoformat()} を含みません")
         return series, target
 
 

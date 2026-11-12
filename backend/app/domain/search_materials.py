@@ -93,7 +93,7 @@ class SearchMaterials:
             raise ValueError(f"区分の材料の列の数がidの数と違います: {len(self.categorical_material_columns)}, "
                              f"{len(self.categorical_material_ids)}")
         # 所要時間の入力が欠けた表を通すと、読む側はその材料を区間ごとの欠損と区別できず、
-        # 平地・待ち無しとして所要時間を黙って縮める。
+        # 全区間を取込の範囲全体の平均で数え、道ごとの坂・待ちの違いを黙って失う。
         missing_inputs = set(travel_model_material_ids()) - {*self.material_ids, *self.categorical_material_ids}
         if missing_inputs:
             raise ValueError(f"材料の表に所要時間が読む材料の列がありません: {sorted(missing_inputs)}")

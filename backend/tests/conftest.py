@@ -39,7 +39,7 @@ from app.infrastructure import (
 from app.infrastructure.derived_data_freshness import derived_tables
 from app.infrastructure.orm_base import declared_metadata
 from app.infrastructure.source_models import SourceFeatureRow, SourceRunRow
-from app.infrastructure.derived_data_meta import replace_tuning
+from app.infrastructure.derived_data_meta import DerivedDataMetaRow, replace_tuning
 from app.infrastructure.tuning_overrides import TuningOverrideStore
 from app.infrastructure.road_graph_repository import (
     REQUIRED_EXTENSIONS,
@@ -605,16 +605,25 @@ async def road_graph_engine():
     await engine.dispose()
 
 
+async def reset_derived_revision(conn: asyncpg.Connection) -> None:
+    """派生の世代を、表を作っただけのDBの世代0へ戻す。行は消さない——行は表を作るときに入り
+    （`road_graph_repository.py: create_tables`）、本番のDBに行の無い状態は無い。"""
+    await conn.execute(f"UPDATE {DerivedDataMetaRow.__tablename__} SET revision = 0")
+
+
 async def _reset_app_rows(engine) -> None:
     """アプリの表の全行を子の表から順に消し、較正値の行と作り直しに使った較正値の記録を、本番の書き口
     （`TuningOverrideStore.set_value`・`derived_data_meta.replace_tuning`）でテストの値（`TUNING`）に置き直す（本番の表はいつも
-    宣言の全idの行を持ち、派生の表はそれを作った較正値の記録と一緒に入れ替わる）。1つのトランザクションで確定する。"""
+    宣言の全idの行を持ち、派生の表はそれを作った較正値の記録と一緒に入れ替わる）。派生の世代は行を残して0へ戻す。
+    1つのトランザクションで確定する。"""
     deletes = "; ".join(
         str(table.delete().compile(dialect=engine.dialect)) for table in reversed(declared_metadata().sorted_tables)
+        if table is not DerivedDataMetaRow.__table__
     )
     async with AsyncSession(engine) as session:
         raw = (await (await session.connection()).get_raw_connection()).driver_connection
         await raw.execute(deletes)
+        await reset_derived_revision(raw)
         store = TuningOverrideStore(session)
         for param_id, value in TUNING.items():
             await store.set_value(param_id, value)

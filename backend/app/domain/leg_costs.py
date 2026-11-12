@@ -195,7 +195,6 @@ def burden_weights(axes: CostAxisDefinitions, parameters: LedgerParameters, mate
             for axis_id, axis in axes.burden.items() if parameters.counts(axis_id)}
 
 
-#: 量で出す体力の事実の名前と単位（転がりは路面の区分の名前で出す）。
 def axis_facts(axes: CostAxisDefinitions, materials: Mapping[str, MaterialColumn], fills: MaterialFills,
                rows: np.ndarray, distance_m: np.ndarray, penalty_by_axis: Mapping[str, np.ndarray],
                ascent_m: float | None, headwind_ms: np.ndarray | None, stops: float) -> dict[str, AxisFact]:

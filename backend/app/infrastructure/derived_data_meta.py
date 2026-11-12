@@ -9,8 +9,8 @@
 記録は変わらないためである。「中身を書き直した」という事実を
 表せるのは書いた側が進めるカウンタだけである。
 
-行は最初に世代を進めたとき（`bump_revision`）に作られる。行が無い間は`get_revisions()`の
-派生の世代がNoneになる。
+行は表を作るとき（`road_graph_repository.py: create_tables`が`insert_first_revision`を呼ぶ）に世代0で入り、
+読み手と`bump_revision`は行があるものとして読み書きする。
 """
 
 from collections.abc import Iterable, Mapping
@@ -18,7 +18,8 @@ from dataclasses import dataclass
 
 import asyncpg
 from sqlalchemy import BigInteger, CheckConstraint, Double, ForeignKey, Integer, String, select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.infrastructure.orm_base import Base
@@ -91,8 +92,8 @@ def recorded_tuning_sql(param_id: str) -> str:
 class DataRevisions:
     """派生データの世代と生データの世代。"""
 
-    #: 派生データの世代。行がまだ無ければNone。
-    derived: int | None
+    #: 派生データの世代。
+    derived: int
     #: 生データの世代（`source_models.py: succeeded_run_count`）。取込だけを流したときは
     #: 派生の世代が動かないため、別に持つ。
     imported: int
@@ -100,21 +101,23 @@ class DataRevisions:
 
 async def get_revisions(session: AsyncSession) -> DataRevisions:
     """派生データの世代と生データの世代を1回の問い合わせで読む。"""
-    derived = select(DerivedDataMetaRow.revision).scalar_subquery()
-    row = (await session.execute(select(derived, succeeded_run_count()))).one()
+    row = (await session.execute(select(DerivedDataMetaRow.revision, succeeded_run_count()))).one()
     return DataRevisions(derived=row[0], imported=row[1])
 
 
+async def insert_first_revision(conn: AsyncConnection) -> None:
+    """世代の1行を世代0で入れる。既にあれば何もしない。"""
+    await conn.execute(insert(DerivedDataMetaRow).values(id=1, revision=0).on_conflict_do_nothing())
+
+
 async def bump_revision(conn: asyncpg.Connection) -> int:
-    """世代を1つ進めて新しい値を返す。行が無ければ作って1にする。
+    """世代を1つ進めて新しい値を返す。
 
     派生の表を入れ替えるトランザクションの中で呼ぶ——入れ替えと世代が別々にコミットされると、
     その間の読み手は新しい表を古い世代の鍵でキャッシュする。
     """
     revision: int = await conn.fetchval(
-        "INSERT INTO derived_data_meta (id, revision) VALUES (1, 1)"
-        " ON CONFLICT (id) DO UPDATE SET revision = derived_data_meta.revision + 1"
-        " RETURNING revision")
+        "UPDATE derived_data_meta SET revision = revision + 1 RETURNING revision")
     return revision
 
 

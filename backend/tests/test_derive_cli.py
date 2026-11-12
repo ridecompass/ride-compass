@@ -22,7 +22,13 @@ from app.infrastructure import road_network_store
 from app.infrastructure.derived_data_freshness import derived_tables
 from app.infrastructure.road_graph_repository import RoadGraphRepository
 from app.infrastructure.source_models import PARTY_TYPE_CODES
-from tests.conftest import empty_ingested_tables, override_tuning, postgis_database_url, raw_connection
+from tests.conftest import (
+    empty_ingested_tables,
+    override_tuning,
+    postgis_database_url,
+    raw_connection,
+    reset_derived_revision,
+)
 from tests.tuning_fixture import TUNING
 from tests.source_ingest import (
     abr_prefecture_record,
@@ -79,12 +85,12 @@ async def _schemas(conn: asyncpg.Connection) -> set[str]:
 
 
 async def _empty(conn: asyncpg.Connection) -> None:
-    """生データ・派生の表と一緒に、世代も空にする。"""
+    """生データ・派生の表を空にし、世代を0へ戻す。"""
     await empty_ingested_tables(conn)
-    await conn.execute("TRUNCATE derived_data_meta")
+    await reset_derived_revision(conn)
 
 
-async def _revision(conn: asyncpg.Connection) -> int | None:
+async def _revision(conn: asyncpg.Connection) -> int:
     return await conn.fetchval("SELECT revision FROM derived_data_meta")
 
 

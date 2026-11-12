@@ -458,7 +458,7 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
     "highway": MaterialSpec(
         material_id="highway",
         label="道路種別",
-        description="OSMの道路種別タグ(highway)の生値（例: residential/primary/cycleway等）。値ごとに個別のスコアを設定できます。",
+        description="OSMの道路種別タグ(highway)の生値（例: residential/primary/cycleway等）。道の区分の条件に値ごとに書けます。",
         dtype="categorical",
         # 取込プロファイル（`batch/source_profile.yaml: osm_way.rows`）で許可された値のみ実際に現れる。
         # 正準の閉じた値集合はこのプロジェクトで管理していない（OSMタグの生値のため）。
@@ -471,7 +471,7 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
     "surface": MaterialSpec(
         material_id="surface",
         label="路面種別",
-        description="OSMの路面種別タグ(surface)の生値（例: asphalt/gravel等）。区分（路面の区分）より細かく、タグの値ごとにスコアを設定したい場合に使います。",
+        description="OSMの路面種別タグ(surface)の生値（例: asphalt/gravel等）。路面の区分より細かく、道の区分の条件に値ごとに書けます。",
         dtype="categorical",
         # タグの値そのもの（正規化: lower/btrim）。
         tile_property="surface",

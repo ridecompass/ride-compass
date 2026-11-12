@@ -17,7 +17,7 @@
  *
  * 差し替えたもの: 画面の設定と費用の軸の一覧の応答（網の層）。結果の状態は値で組む（`testing/routeOutcome.tsx`）。
  *
- * 軸は架空のもの（`axis_a`等）を`src/testing/catalogAxes.ts`の雛形から作る。
+ * 軸は架空のもの（`axis_a`等）を`testing/costAxes.ts: costAxisEntry`の雛形から作る。
  */
 import { screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
