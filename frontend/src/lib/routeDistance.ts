@@ -172,7 +172,7 @@ export function projectOnTrack(track: readonly RouteTrackEdge[], position: Coord
 }
 
 /** 地点`position`を道なりの形`track`に当てた、いちばん近い点の距離（km）と、地点からの隔たり（m）。 */
-export function nearestOnTrack(track: readonly RouteTrackEdge[], position: Coordinates): TrackProjection {
+function nearestOnTrack(track: readonly RouteTrackEdge[], position: Coordinates): TrackProjection {
   const projections = projectOnTrack(track, position);
   const nearest = projections.reduce((best, p) => (p.offsetM < best.offsetM ? p : best), projections[0]);
   return nearest ?? { km: 0, offsetM: 0 };
