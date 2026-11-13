@@ -176,10 +176,9 @@
   両脇の線」）。候補のカードの負担の数には入ったまま。
 - 事実（`RouteCandidate.facts.axes`）は軸ごとに backend が名前・値・単位を付けて返すので、画面は軸idで出し分けずにそのまま出す。区分の
   事実（値が無い）は名前だけを出す（`lib/routePenalty.ts: factText`。道の窓も同じ書き方）。求められない事実は届かず、その行は事実を出さない。
-- 行の色は費用の軸の一覧の並びから決める（`hooks/useCostAxisCatalog.ts: CostAxisCatalog.axisColors`。道のりのグラフ・区間の内訳・
-  編集面の差の棒も同じ色）。色の並びは backend の宣言（`domain/display_palette.py: COST_SERIES_COLORS`）が持ち、生成物`palette.json`の
-  `cost_series`で届く。並びより多い行は軸の無い行の色にする。一覧が届くまでは軸の行の名前を「読み込み中」、取れない間は「取得できません」と
-  出す。
+- 行の色は費用の軸の一覧が軸ごとに配る`color`で塗る（`hooks/useCostAxisCatalog.ts: CostAxisCatalog.axisColors`。道のりのグラフ・区間の内訳・
+  編集面の差の棒も同じ色）。軸の数に合わせて見分けられる色を作るのは backend（`domain/display_palette.py: cost_series_colors`）で、画面は
+  色の並びを持たない。一覧が届くまでは軸の行の名前を「読み込み中」、取れない間は「取得できません」と出す。
 
 ## PenaltyBreakdown.tsx（区間と道の負担の内訳）
 
