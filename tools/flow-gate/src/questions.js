@@ -49,18 +49,45 @@ export function conditions(body) {
   }
   return all;
 }
+// 本文の畳んだ節（.claude/skills/file-issue/SKILL.md「issue の形」）。節は字下げの無い <details> の行から、入れ子の <details> を数えて対になる
+// </details> の行までで、入れ子は節の中身に数える。name は節の頭の <summary> の中身（<details> と同じ行でも次の行でもよい。無ければ undefined）、
+// lines は頭と終わりの間の行。閉じない節は本文の終わりまで。コードの中（`…` と ``` の囲み）の綴りは開き・閉じに数えない（本文はタグを綴りで語る）。
+const OPEN = /<details[\s>]/g;
+const CLOSE = /<\/details>/g;
+const FENCE = /^\s*(```|~~~)/;
+export function folds(body) {
+  const lines = bodyRest(body).split("\n");
+  const all = [];
+  let depth = 0;
+  let from = -1;
+  let fenced = false;
+  lines.forEach((line, i) => {
+    if (FENCE.test(line)) {
+      fenced = !fenced;
+      return;
+    }
+    if (fenced) return;
+    const l = line.replace(/`[^`]*`/g, "");
+    if (!depth && l.startsWith("<details")) {
+      from = i;
+      all.push({ name: /^<details>\s*<summary>(.+?)<\/summary>/.exec(lines.slice(i, i + 2).join("\n"))?.[1], lines: lines.slice(i + 1) });
+    }
+    depth = Math.max(0, depth + (l.match(OPEN)?.length ?? 0) - (l.match(CLOSE)?.length ?? 0));
+    if (!depth && from >= 0) {
+      all.at(-1).lines = lines.slice(from + 1, i);
+      from = -1;
+    }
+  });
+  return all;
+}
 // 本文の「やること」の節（.claude/skills/file-issue/SKILL.md「issue の形」）の項目。項目は節の中の字下げの無い番号付きの行から、次の項目の
 // 前までで、字下げした続きの行のうち「- 行き先: 」で始まる行が行き先。字下げの無い箇条の行（前提の1行等）は項目に数えない。
 // name は番号と文の頭（番号を振り直した並びが節に2つあっても見分ける）。
 const STEP = /^(\d+)\. (.+)$/;
 const TO = /^- 行き先: (.+)$/;
 function steps(body) {
-  const lines = bodyRest(body).split("\n");
-  const from = lines.findIndex((l) => l.trim().startsWith("<details><summary>やること</summary>"));
-  if (from < 0) return [];
-  const to = lines.findIndex((l, k) => k > from && l.trim() === "</details>");
   const all = [];
-  for (const l of lines.slice(from + 1, to < 0 ? undefined : to)) {
+  for (const l of folds(body).find((f) => f.name === "やること")?.lines ?? []) {
     const m = STEP.exec(l);
     const t = TO.exec(l.trim());
     if (m) all.push({ name: `${m[1]}「${m[2].slice(0, 20)}」`, to: [] });
