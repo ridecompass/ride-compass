@@ -16,7 +16,7 @@
 """
 
 import pytest
-from fastapi.routing import APIRoute
+from fastapi.routing import RouteContext
 from fastapi.testclient import TestClient
 
 from app.api.admin_auth import require_admin_basic_auth
@@ -27,7 +27,7 @@ from tests.admin_auth import ADMIN_PASSWORD, ADMIN_USERNAME, AUTH_HEADERS, admin
 client = TestClient(app)
 
 
-def _depends_on_admin_auth(route: APIRoute) -> bool:
+def _depends_on_admin_auth(route: RouteContext) -> bool:
     return any(
         dependency.call is require_admin_basic_auth
         for dependency in route.dependant.dependencies
