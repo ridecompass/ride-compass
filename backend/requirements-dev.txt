@@ -31,3 +31,6 @@ fakeredis==2.39.0
 # 性質（任意の入力で成り立つこと）を確かめるテストの入力を作る。使い方は.claude/rules/testing-backend.md「性質で確かめる（hypothesis）」。
 # 開発・CIでだけ使い、本番のイメージには入らない（MPL-2.0。依存のsortedcontainersはApache-2.0）。
 hypothesis==6.168.3
+# StarletteのTestClient（fastapi.testclient）が使う通信の道具。httpxで動かすと
+# 非推奨の警告を出す（警告は既定でエラー）。開発・CIでだけ使う（BSD-3-Clause）。本体のhttpxは外部への呼び出しに使う。
+httpx2==2.16.0
