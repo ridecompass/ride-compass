@@ -352,6 +352,8 @@ async def test_a_facility_nearer_on_the_ground_comes_first_even_when_degrees_sca
 CONVENIENCE_STORE = ("shopping", "convenience_store")
 #: 群「銭湯・温泉」に入る Overture の分類。
 PUBLIC_BATH = ("beauty_and_spa", "public_bath_house")
+#: 群「自転車店」に入る Overture の分類。
+BIKE_STORE = ("shopping", "sporting_goods_store", "bike_store")
 
 
 @pytest.mark.parametrize(("query", "records", "expected"), [
@@ -371,7 +373,7 @@ PUBLIC_BATH = ("beauty_and_spa", "public_bath_house")
         overture_place_record(1, LON, LAT, "銭湯"),
         overture_place_record(2, LON + 0.04, LAT, "草津湯", PUBLIC_BATH),
         overture_place_record(3, LON + 0.03, LAT, "大黒湯", PUBLIC_BATH),
-        *(overture_place_record(10 + i, LON + 0.001 * (i + 1), LAT, f"喫茶{i}")
+        *(overture_place_record(10 + i, LON + 0.001 * (i + 1), LAT, f"自転車屋{i}", BIKE_STORE)
           for i in range(PLACE_PREDICTION_LIMIT)),
     ], [
         _facility("大黒湯", LON + 0.03),
@@ -402,10 +404,6 @@ async def test_a_place_outside_the_groups_is_found_by_its_name():
 
     assert response.status_code == 200
     assert response.json() == {"candidates": [_facility("新宿駅", LON), _facility("新宿区役所", LON + 0.01)]}
-
-
-#: 自転車屋の分類。
-BIKE_STORE = ("shopping", "sporting_goods_store", "bike_store")
 
 
 @pytest.mark.usefixtures("area")
