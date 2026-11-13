@@ -21,8 +21,9 @@ from sqlalchemy.dialects.postgresql import ARRAY
 from app.domain.accident import BICYCLE_SQL, FATAL_SQL
 from app.domain.geo import COORDINATE_DECIMALS, degrees_covering_m
 from app.domain.map_display import POINT_CLUSTER_CELLS_PER_TILE, POINT_COUNT_PROPERTY, POINT_MEMBERS_PROPERTY
-from app.domain.primary_attributes import PRIMARY_ATTRIBUTES, place_groups_shown_by, stop_poi_map_group_sql
+from app.domain.primary_attributes import PRIMARY_ATTRIBUTES, SUPPLY_PLACE_GROUPS, stop_poi_map_group_sql
 from app.domain.registry import PrimaryAttributeSpec, TileKind
+from app.domain.stop_place import StopPlaceGroup
 from app.domain.traffic import STOP_POI_KINDS, stop_cluster_sql, stop_kind_sql
 from app.domain.tuning import STOP_CLUSTER_DISTANCE_ID
 from app.infrastructure.cache_identity import shape_digest
@@ -46,12 +47,12 @@ class PointTileLayer:
         return shape_digest(self.sql, self.source_layer)
 
 
-def _place_groups_param(tile_kind: TileKind) -> BindParameter[Sequence[str]]:
-    """タイル`tile_kind`が地点の表から出す群（`:place_groups`）。"""
-    return bindparam("place_groups", value=sorted(place_groups_shown_by(tile_kind)), type_=ARRAY(Text()))
+def _place_groups_param(groups: Iterable[StopPlaceGroup]) -> BindParameter[Sequence[str]]:
+    """タイルが地点の表から出す群`groups`（`:place_groups`）。"""
+    return bindparam("place_groups", value=sorted(groups), type_=ARRAY(Text()))
 
 
-# 地点の表は、位置の部分索引の条件（`derived_models.py: grouped_place_sql`）で絞ってから、タイルの凡例の行に入る群で選ぶ。
+# 地点の表は、位置の部分索引の条件（`derived_models.py: grouped_place_sql`）で絞ってから、タイルが出す群で選ぶ。
 _PLACE_POINTS_WHERE = f"""{grouped_place_sql("s")} AND s.place_group = ANY(:place_groups)
               AND ST_Intersects(s.geom, ST_MakeEnvelope(:xmin, :ymin, :xmax, :ymax, 4326))"""
 
@@ -167,7 +168,7 @@ _POI_TILE_MVT_SQL = text(
 ).bindparams(
     bindparam("stop_kinds", value=sorted(STOP_POI_KINDS), type_=ARRAY(Text())),
     bindparam("degrees_per_m", value=_DEGREES_PER_M, type_=Float()),
-    _place_groups_param("poi"),
+    _place_groups_param(SUPPLY_PLACE_GROUPS),
     *_CLUSTER_PARAMS,
 )
 
@@ -193,7 +194,7 @@ _ACCIDENT_TILE_MVT_SQL = text(
     """
 ).bindparams(*_CLUSTER_PARAMS)
 
-# 立ち寄り先。地点の表（`batch/derive_places.py`）のうち、このタイルの凡例の行に入る群の行をそのまま出す。代表点は確からしい
+# 立ち寄り先。地点の表（`batch/derive_places.py`）のうち、補給の点のタイルが出さない群の行をそのまま出す。代表点は確からしい
 # 地点を先に選ぶ。
 _STOP_PLACE_POINTS_SQL = f"""
     SELECT s.geom, s.name, s.place_group AS "group", s.confidence
@@ -211,7 +212,7 @@ _STOP_PLACE_TILE_MVT_SQL = text(
         true AS covered,
         {_STOP_PLACE_CLUSTERED_SQL} AS tile
     """
-).bindparams(_place_groups_param("stop_place"), *_CLUSTER_PARAMS)
+).bindparams(_place_groups_param(set(StopPlaceGroup) - SUPPLY_PLACE_GROUPS), *_CLUSTER_PARAMS)
 
 #: 名前→点のレイヤー。
 POINT_TILE_LAYERS: dict[str, PointTileLayer] = {

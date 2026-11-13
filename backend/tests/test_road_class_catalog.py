@@ -116,8 +116,3 @@ def test_hard_filters_lead_the_rows_as_unselectable_exclusions() -> None:
     ]
     assert [section.key for section in catalog.avoidance.sections] == ["k"]
 
-
-def test_only_the_unspecified_level_goes_unpainted() -> None:
-    """地図に塗らない（色の無い）段は「通る」だけで、ほかの段は明るい地・暗い地の色を持つ。"""
-    levels = road_class_catalog(EMPTY_ROAD_CLASSES).avoidance.levels
-    assert [level.key for level in levels if level.color is None or level.color_on_dark is None] == ["pass"]

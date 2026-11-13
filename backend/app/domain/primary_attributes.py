@@ -11,12 +11,12 @@ from app.domain.registry import (
     DisplayCategorySpec,
     PointFactSpec,
     PrimaryAttributeSpec,
-    TileKind,
 )
 from app.domain.stop_place import StopPlaceGroup
 from app.domain.traffic import NODE_KINDS, STOP_POI_KINDS, TAG_KIND_RULES, kind_map_sql, kinds_shown_as, stop_kind_sql
 
-_PLACE_GROUP_VALUES = frozenset(StopPlaceGroup)
+#: 補給の点のタイル（`poi`）が地点の表から出す立ち寄り先の群。ほかの群は立ち寄り先のタイル（`stop_place`）が出す。
+SUPPLY_PLACE_GROUPS = frozenset({StopPlaceGroup.CONVENIENCE})
 
 #: 元のタグの値をこの数より多く持つ種別は、説明でタグの名前だけを言う（値を並べると説明が値の一覧になる）。
 _LISTED_TAG_VALUES = 3
@@ -324,33 +324,8 @@ check_primary_attributes(PRIMARY_ATTRIBUTES)
 PRIMARY_ATTRIBUTES_BY_ID = {attr.attr_id: attr for attr in PRIMARY_ATTRIBUTES}
 check_point_rows(ATTR_STOP_POI, STOP_POI_KINDS)
 # 補給の点のコンビニは、ノードの種別でなく立ち寄り先の群「コンビニ」から、点のタイルの`poi`のレイヤーが足す。
-check_point_rows(PRIMARY_ATTRIBUTES_BY_ID["supply_poi"], NODE_KINDS - STOP_POI_KINDS | {StopPlaceGroup.CONVENIENCE})
+check_point_rows(PRIMARY_ATTRIBUTES_BY_ID["supply_poi"], NODE_KINDS - STOP_POI_KINDS | SUPPLY_PLACE_GROUPS)
 
-
-def _place_groups_in_rows(attr: PrimaryAttributeSpec) -> list[StopPlaceGroup]:
-    """一次属性`attr`の先頭の軸の行が持つ、立ち寄り先の群の値。"""
-    if not attr.display_axes:
-        return []
-    return [StopPlaceGroup(value) for category in attr.display_axes[0].categories for value in category.values
-            if value in _PLACE_GROUP_VALUES]
-
-
-def place_groups_shown_by(tile_kind: TileKind) -> frozenset[StopPlaceGroup]:
-    """点のタイル`tile_kind`が地点の表から出す立ち寄り先の群。そのタイルを描く一次属性の先頭の軸の行が持つ群。"""
-    return frozenset(group for attr in PRIMARY_ATTRIBUTES if attr.tile_kind == tile_kind
-                     for group in _place_groups_in_rows(attr))
-
-
-def _check_place_groups_shown_once(attributes: tuple[PrimaryAttributeSpec, ...]) -> None:
-    """立ち寄り先の群がどれも、点のタイルの凡例の行にちょうど1度出ることを確かめ、外れれば`ValueError`。
-
-    行に無い群の地点は地図に出ず、2つのタイルの行に出る群は同じ地点を2つの点で描く。"""
-    shown = Counter(group for attr in attributes for group in _place_groups_in_rows(attr))
-    if any(shown[group] != 1 for group in StopPlaceGroup):
-        raise ValueError(f"立ち寄り先の群の点のタイルの行への出方が1度でない: {sorted((str(g), shown[g]) for g in StopPlaceGroup)}")
-
-
-_check_place_groups_shown_once(PRIMARY_ATTRIBUTES)
 
 
 def stop_poi_map_group_sql(alias: str) -> str:
