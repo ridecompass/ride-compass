@@ -290,9 +290,11 @@ async def _swap(conn: asyncpg.Connection, tables: list[str], revision: int) -> N
             logger.info("派生の表を入れ替えた（%d回目） / 表の排他ロック（待ちを含む）=%.1fs",
                         attempt, time.perf_counter() - started)
             return
-        except asyncpg.exceptions.LockNotAvailableError:
-            logger.warning("入れ替えが表を読んでいる相手を待ちきれなかった。%.0f秒後にやり直す（%d/%d）",
-                           _SWAP_RETRY_SECONDS, attempt, _SWAP_ATTEMPTS)
+        # 読み手とのデッドロックでは、DBがどちらを止めるかを約束しない。止められたのが入れ替えなら巻き戻っているので、
+        # 待ち切れと同じにやり直してよい。
+        except (asyncpg.exceptions.LockNotAvailableError, asyncpg.exceptions.DeadlockDetectedError) as error:
+            logger.warning("入れ替えが表を読んでいる相手に止められた（%s）。%.0f秒後にやり直す（%d/%d）",
+                           type(error).__name__, _SWAP_RETRY_SECONDS, attempt, _SWAP_ATTEMPTS)
             await asyncio.sleep(_SWAP_RETRY_SECONDS)
     raise RuntimeError("入れ替えられなかった: 派生の表を読み続けている相手がいる")
 
