@@ -3004,6 +3004,10 @@
             "type": "string",
             "title": "Icon Id"
           },
+          "color": {
+            "type": "string",
+            "title": "Color"
+          },
           "lens": {
             "$ref": "#/components/schemas/LensBands"
           }
@@ -3016,6 +3020,7 @@
           "label",
           "description",
           "icon_id",
+          "color",
           "lens"
         ],
         "title": "CostAxisCatalogEntry"

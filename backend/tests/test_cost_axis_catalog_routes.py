@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 from app.domain.cost_axes import (
     EFFORT_AXES, CostAxisDefinitions, replace_cost_axes,
 )
+from app.domain.display_palette import cost_series_colors
 from app.main import app
 
 LENS = {"thresholds": [1.0], "band_labels": ["少ない", "多い"]}
@@ -37,4 +38,4 @@ def test_the_catalog_lists_the_effort_axes_in_the_code_order_then_the_burden_axe
     assert [(axis["axis_id"], axis["ledger"]) for axis in body["axes"]] == [
         *((axis_id, "effort") for axis_id in EFFORT_AXES), ("vibration", "burden")]
     assert body["axes"][-1] == {"axis_id": "vibration", "ledger": "burden", "label": "振動", "description": "揺れる",
-                     "icon_id": "wave", "lens": LENS}
+                     "icon_id": "wave", "color": cost_series_colors(len(body["axes"]))[-1], "lens": LENS}

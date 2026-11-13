@@ -4,6 +4,12 @@ import type { CostAxisCatalogResponse } from "@/types/route";
 
 type CostAxisEntry = CostAxisCatalogResponse["axes"][number];
 
+/** 軸idから決まる色（軸どうしの色が違い、撮るたびに同じになる）。 */
+function placeholderColor(axisId: string): string {
+  const hue = [...axisId].reduce((sum, char) => (sum * 31 + char.charCodeAt(0)) % 360, 0);
+  return `hsl(${hue} 60% 45%)`;
+}
+
 export function costAxisEntry(axisId: string, overrides: Partial<CostAxisEntry> = {}): CostAxisEntry {
   return {
     axis_id: axisId,
@@ -11,6 +17,7 @@ export function costAxisEntry(axisId: string, overrides: Partial<CostAxisEntry> 
     label: `軸${axisId}`,
     description: `${axisId}の説明`,
     icon_id: "",
+    color: placeholderColor(axisId),
     lens: { thresholds: [], band_labels: ["段"] },
     ...overrides,
   };
