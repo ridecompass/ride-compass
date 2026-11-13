@@ -12,7 +12,7 @@ import { render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { FACT_DISPLAY_NAME } from "@/lib/screenNames";
-import { chip, LIST_NAME, propsOf, ROUTE_ROW, setup } from "@/testing/mapOverlayControls";
+import { chip, LIST_NAME, propsOf, ROUTE_ROW, setup, SURROUNDINGS_ROW } from "@/testing/mapOverlayControls";
 import MapOverlayControls from "./MapOverlayControls";
 import type { LegendFilterSummaryAxis } from "./LegendDetails";
 import type { OverlayLayerChip } from "./OverlayLayerRow";
@@ -163,6 +163,12 @@ describe("ルートの行", () => {
     expect(route).toBeChecked();
     await user.click(route);
     expect(props.route.onChange).toHaveBeenCalledWith(false);
+  });
+
+  it.each([true, false])("「ルート後も周りを出す」は、入り切り（%s）を反転した値で知らせる", async (shown) => {
+    const { user, props, list } = await setup([], { surroundings: { shown } });
+    await user.click(within(list).getByRole("checkbox", { name: SURROUNDINGS_ROW }));
+    expect(props.surroundings.onChange).toHaveBeenCalledWith(!shown);
   });
 
   it("候補を選ぶまでは押せず、ONに見えない", async () => {

@@ -95,8 +95,8 @@ export type PointState = {
   readonly visible: Readonly<Record<string, boolean>>;
   /** 軸の鍵ごとの、凡例で隠した行の鍵。 */
   readonly hiddenKeys: Readonly<Record<string, readonly string[]>>;
-  /** 点を近くだけに絞るルートの線。地図全体に出すならnull。 */
-  readonly nearPath: readonly (readonly [number, number])[] | null;
+  /** 点を近くだけに絞るルートの線（[経度, 緯度]の並び）。地図全体に出すならnull。 */
+  readonly nearPath: readonly (readonly number[])[] | null;
 };
 
 /** 行が出ている間、基礎地図から隠す店・施設の種類（点の属性 → 行の鍵 → 種類）。OpenStreetMap でない出どころから

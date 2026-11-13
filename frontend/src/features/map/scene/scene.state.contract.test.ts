@@ -11,7 +11,7 @@
 import { describe, expect, it } from "vitest";
 
 import { LIBERTY_POI_LAYERS } from "@/testing/libertyPoiLayers";
-import { evaluateExpression, matchesFilter } from "@/testing/mapExpressions";
+import { evaluateExpression, matchesFilter, matchesFilterAtPoint } from "@/testing/mapExpressions";
 import { createRecordingMap, type StyleLayer } from "@/testing/mapTrace/recordingMap";
 import { rebuild, ROAD_LAYERS, roadLayerId, shown } from "@/testing/sceneContract";
 import { AREA_SOURCE_ID } from "@/features/map/scene/groups/areaRasters";
@@ -85,6 +85,53 @@ describe("状態を地図へ伝えた結果", () => {
       expect(stop?.visibility).toBe("visible");
       // 停止要因と補給は同じタイルを分け合う。分ける条件を持たないと、補給の点が停止要因の色で出る。
       expect(stop?.filter).toBeDefined();
+    });
+
+    // 東西に1kmずつ離れた2本の線。緯度0.001度（約110m）より近い点だけを通す。
+    const ROUTE: [number, number][] = [
+      [139.7, 35.7],
+      [139.71, 35.7],
+    ];
+    const EDITED: [number, number][] = [
+      [139.7, 35.71],
+      [139.71, 35.71],
+    ];
+    const CONVENIENCE = { kind: "convenience" };
+    it.each([
+      {
+        case: "周りを出す間は、どちらの線からも遠い点も描く",
+        surroundingsShown: true,
+        splicedRoute: null,
+        near: [true, true, true],
+      },
+      {
+        case: "ルート沿いだけの間は、ルートの線の近くだけ",
+        surroundingsShown: false,
+        splicedRoute: null,
+        near: [true, false, false],
+      },
+      {
+        case: "編集中は、編集している線の近くだけ",
+        surroundingsShown: false,
+        splicedRoute: EDITED,
+        near: [false, true, false],
+      },
+    ])("$case", ({ surroundingsShown, splicedRoute, near }) => {
+      const { map, handle } = createRecordingMap();
+
+      rebuild(map, {
+        ...shown({ supply_poi: true }, { surroundingsShown }),
+        routePath: ROUTE,
+        splicedRoute,
+      });
+
+      const filter = handle.layer(pointLayerId("supply_poi"))?.filter;
+      const at: [number, number][] = [
+        [139.705, 35.7001],
+        [139.705, 35.7101],
+        [139.705, 35.705],
+      ];
+      expect(at.map((lngLat) => matchesFilterAtPoint(filter, CONVENIENCE, lngLat))).toEqual(near);
     });
   });
   describe("基礎地図の店・施設の印", () => {

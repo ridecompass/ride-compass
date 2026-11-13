@@ -28,16 +28,20 @@ export function chip(id: string, overrides: Partial<OverlayLayerChip> = {}): Ove
   return { id: id as MapLayerId, icon: TestIcon, label: id, on: false, category: categoriesOf(ROAD)[0], ...overrides };
 }
 
-type Overrides = { anyLegendHidden?: boolean; route?: { shown: boolean; selectable: boolean } };
+type Overrides = {
+  anyLegendHidden?: boolean;
+  route?: { shown: boolean; selectable: boolean };
+  surroundings?: { shown: boolean };
+};
 
 export function propsOf(
   layers: OverlayLayerChip[],
-  { route = { shown: true, selectable: true }, ...overrides }: Overrides = {},
+  { route = { shown: true, selectable: true }, surroundings = { shown: false }, ...overrides }: Overrides = {},
 ) {
   return {
     layers,
     route: { ...route, onChange: vi.fn() },
-    surroundings: { shown: false, onChange: vi.fn() },
+    surroundings: { ...surroundings, onChange: vi.fn() },
     onToggle: vi.fn(),
     onLegendEntryToggle: vi.fn(),
     onLegendAxisSetHidden: vi.fn(),
@@ -61,7 +65,7 @@ export async function setup(layers: OverlayLayerChip[], overrides: Overrides = {
 export const ROUTE_ROW = "ルート";
 
 /** 群の外の先頭にある、ルートの後も周りを出すかの行のチェックボックスの名前。 */
-const SURROUNDINGS_ROW = "ルート後も周りを出す";
+export const SURROUNDINGS_ROW = "ルート後も周りを出す";
 
 /** 群に並んでいるレイヤーの行の名前（行のチェックボックスの名前）。 */
 export const rowNames = (list: HTMLElement) =>

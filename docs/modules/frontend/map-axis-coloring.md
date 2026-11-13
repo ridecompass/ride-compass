@@ -83,7 +83,7 @@
 
 **レンズ状態は1つ**（`features/map/view/useMapView.ts: lens`。localStorageキーは`ridecompass:route-style-mode`。選択肢に無い値は
 `UNSELECTED_LENS_ID`へ戻す——費用の軸の一覧が届いてから読み直す）。ルート前は全道路、ルート後はルート線をこの1つの値から
-導く——地図へは「全道路を塗っているレンズ」（`paintedLensId`）1つを渡し、どのレンズの線を出すかは地図側（`scene/applyToMap.ts`）が
+導く——地図へはレンズと周りを出すか（`surroundingsShown`）を渡し、どのレンズの線を出すかは地図側（`scene/applyToMap.ts`）が
 導く。道ごとの材料は塗っているレンズの分だけ取り（`useMapView`）、塗っていないレンズの材料は取らない。ルート後も全道路の塗りを
 残すかは「表示」の「ルート後も周りを出す」（既定OFF。点の層も同じ切り替えに従う）。
 **ルートの線の出し入れは「表示」の一覧の先頭の行が持ち、レンズを選んでも変えない**——候補を選んでいるのに線を出していない間は、
@@ -271,12 +271,12 @@ viewportと走る条件（時刻・想定速度）をそれぞれデバウンス
 
 ```
 features/map/view/useMapView.ts
-  ├─ 取りに行くレンズ = [塗っているレンズ]（paintedLensId）
+  ├─ 取りに行くレンズ = [塗っているレンズ]（周りを出す間の lens）
   ├─ 走る条件 = {bearing_deg: 走行方位（段に丸める）, speed_kmh: 想定速度}
   ├─ useWayMaterials(取りに行くレンズ, 表示範囲, 出発時刻と走る条件, 利用者の値, 総合のレンズのid)
   │     → ReadonlyMap<lensId, {materials, loading, error, hasFetched, truncated}>
   ▼
-<MapView look={{ …, paintedLensId, wayMaterials: 上のMapそのもの, wayConditions: 走る条件 }} .../>
+<MapView look={{ …, lens, surroundingsShown, wayMaterials: 上のMapそのもの, wayConditions: 走る条件 }} .../>
   │   （レンズの一覧は MapView が地図の一覧の共有ストアから読む）
   ├─ sceneInputsFrom(...)（scene/applyToMap.ts）がレンズごとの段（レンズのdisplayから）・式の木・材料・
   │   取得中フラグ・隠した段と走る条件をレンズの線の入力へ移す
@@ -320,7 +320,7 @@ features/map/view/useMapView.ts
 |---|---|
 | `MapLayerId`・`MapLayerDescriptor`（地図UIからの除外を含む） | 地図の一覧の`layers`（`buildMapLayers`） |
 | MapLibreの線レイヤー・色式・濃さ・feature-state | `scene/applyToMap.ts: sceneInputsFrom`が`lenses`をレンズの線（`scene/groups/axisLines.ts`）の入力へ移す |
-| 表示ON/OFF（レンズ選択） | 塗っているレンズ（`useMapView`の`paintedLensId`）から`scene/applyToMap.ts`が導く |
+| 表示ON/OFF（レンズ選択） | レンズと周りを出すか（`useMapView`の`surroundingsShown`）から`scene/applyToMap.ts`が導く |
 | 道ごとの材料のフェッチと走る条件の取捨 | `useWayMaterials` + 一覧の`map_lens.material_conditions` |
 | 道の値の式 | 一覧の`map_lens.formula`（`scene/wayValueFormula.ts`が地図の式へ置き換える） |
 | 塗る段・凡例・ルートの線のモード | `costLenses`（レンズの`display`）・`lensLegend`・`costRouteStyleModes` |

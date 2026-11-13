@@ -79,7 +79,6 @@ describe("レイヤーを横断する要求", () => {
       catalog: { ...CATALOG, routeStyleModes: [mode] as never },
       look: {
         layerVisibility: visibility,
-        paintedLensId: LENSES[0].lensId,
         lens: LENSES[0].lensId,
         hiddenLegendKeys: {
           ...firstKeyHidden(roadLegendAxes(ROAD_LAYERS)),
