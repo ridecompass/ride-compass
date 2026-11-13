@@ -62,6 +62,9 @@ class Settings(BaseSettings):
     # 同時に動く生成は、この件数の枠とは別に、探索範囲の大きさに比例するメモリを分け合う（`services/graph_service.py: SearchMemory`）。
     generate_rate_limit_per_minute: int = 10
     generate_max_concurrent: int = 2
+    # 同時実行の枠を待てる生成の数と、待てる時間（秒）。根拠は docs/modules/backend/routing-engine.md「同時実行の枠と待ち行列」。
+    generate_max_queued: int = 8
+    generate_queue_wait_seconds: float = 50.0
     # タイル処理の律速はDB側の同時クエリ負荷とSQLAlchemyの接続プール
     # （既定pool_size=5+max_overflow=10=最大15接続）。地域タイル（路面・点）は1つの同時実行上限を
     # 共有し、それがこのプール上限に収まるようにする（ルート生成は別エンジン・別プールで取り合わない）。

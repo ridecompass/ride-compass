@@ -16,7 +16,7 @@
 | domain | `road_network.py`（取込範囲全体の道路網を、有向の区間とノードの番号で引ける列の配列として持つ型。行の並び・分類の材料を語彙への番号で持つことはそのdocstringが持つ）・`routing.py`（numbaでJITする探索。一対全の木・2点間探索・経路の復元・木の経路どうしの重複率・木の繋ぎ目・出て戻れるノードの集まり）・`search_graph.py`（探索用グラフと、同じ番号を持つCSRの構造）・`turn_structure.py`（状態＝有向区間・辺＝ターンの遷移構造と、経路の曲がる所）・`route_diversity.py`（候補の経路どうしの重なりの測り方と、重なり・パレートの層で候補を間引く手順）・`node_spatial_index.py`（置いた点に一番近いノードの索引と、寄せてよいノードへの寄せ方）・`graph.py`・`route.py`・`route_road_classes.py`（区間に載せる道の区分の値を道路網の行から読む`route_road_classes.py: SegmentClassReader`。値は地図がそのレイヤを塗るのと同じ値で、「緑と水」は割合が最も多いクラス。「緑と水」の鍵は、区間に土地被覆のクラスの並びを載せると宣言した地図の層（`domain/map_display.py: MapLayerSpec.segment_series`）のid）・`geo.py`・`errors.py`・`region.py`（矩形（`domain/region.py: BoundingBox`）と地点を覆う矩形の組み立て、XYZタイルとの相互変換（緯度経度・Web Mercatorのメートル・同じ式のSQL）。タイル座標の型（路面のズーム`domain/region.py: RoadTileZoom`・列と行`domain/region.py: TileIndex`。ほかのレイヤーのズームの型はそのレイヤーの宣言の隣）と、列・行がズームの範囲にあるかの検査`domain/region.py: check_tile_index`も持ち、タイルを受ける入口（path・本文）はどれもこれで書く。タイル配信・取込・派生バッチ・推計気象分布の画素（`infrastructure/jma_suikei_client.py`）もこの変換を共有する）・`cycling_speed.py`（自転車の走行モデル。平地・無風の巡航速度からホイール出力を逆算し、勾配・向かい風・転がり抵抗から区間ごとの速度を走行方程式で解く。速度の逆算は`v`の3次方程式になるため二分法で、区間ごとのループをnumbaでJITする。候補の所要時間と基準線の探索コストがここから出る）・`tuning.py`（ルーティング評価が読む固定値の宣言。走ってみて決める値［較正値］のid・効き方はここが持ち（値はDBの表）、エンジンが読む値・管理画面が並べる項目・変更が効くために何をやり直す必要があるかをそこから導く。較正値ではない固定値は載せない）・`tuning_labels.py`（較正値の管理画面での名前。値を使う側の宣言が持つ対象を添える）・`route_search.py`（探索が候補を選ぶ判断の値と手順。折返し点・復路・代替経路の間引きのしきい値、往路と周回全長の比の範囲と折返し点を探すリング、候補を同じとみなす距離の粒度、目的地を寄せてよい距離、候補の並べ方（パレート層と1kmあたりの代償の秒）・同点の組・離れているかの判定・逆回りとの比べ方・A*の下界・迂回率の測り方と共有の粒度、応答の候補の並び）・`loop_routing.py`（周回・目的地ルートの探索結果を運ぶ型。探索の実装と候補を並べる戦略のどちらにも属さない）・`route_request.py`（ルート生成の要求が受け付ける値の範囲（返す候補数の既定と上限・想定速度の既定と範囲の型`route_request.py: AssumedSpeedKmh`を含む。想定速度は地図のレンズ・道の窓の入口も同じ型で受ける）と、その外れを知らせる文。経由地・目的地が出発地から届く範囲にあるかの検査`route_request.py: check_points_within_reach`。要求の検証と、画面が操作を止める上限の生成物が同じ宣言を読む。検証を通った要求が何を生成するか（距離あり・距離なし・差し替えた経路）の型も持ち、仕上げの戦略を選ぶのはこの型だけ）・`wind.py`（風の予報の系列と格子・出発時点の風・通過予定時刻と迂回率の模型）・`wind_context.py`（1つの時刻の風を区間の向きへ分けた成分。走行モデルと区間の表示が同じ値を読む）・`leg_costs.py`（レグごとのコスト配列の合成。探索の材料の表・費用の軸の定義・0次フィルタ・風の予報から、探索のコストと区間の表示が読む配列を時刻ビンごとに作る。ルートの事実と道の窓が共有する軸の事実の作り方（`axis_facts`）も持つ。外部とやり取りせず配列だけを受け取るので、エンジンの途中状態を組まずに確かめられる。下記「レグ別コスト配列」） |
 | services | `route_generator.py`（戦略層。生成の骨組みと、距離の有無で分かれる仕上げの戦略）・`road_graph_engine.py`（探索範囲の準備・前段・距離ありの仕上げ）・`road_graph_context.py`（1回の生成の間、エンジン・仕上げ・候補の組み立てが共有する状態`road_graph_context.py: RoadGraphContext`と前段の結果`road_graph_context.py: FixedLegs`、生成と乗り換えが共に使う終点`road_graph_context.py: ResolvedEnd`、そこから区間・ノードを引く部品）・`road_graph_via_routes.py`（距離なしの仕上げ。via-nodeの代わりの道と基準線）・`road_graph_candidates.py`（選んだ経路を応答の候補へ組み立てる`road_graph_candidates.py: evaluate_routes`）・`graph_service.py`・`route_generation_setup.py`（エンジンの組み立てと評価条件の既定の解決。組んだエンジンで要求の対象の候補を作る段取り`route_generation_setup.py: generate_route_candidates`） |
 | infrastructure | `road_graph_repository.py`（道路網・材料の読み出し専用）・`material_joins.py`（材料の式が読む別名`material_joins.py: em`・`material_joins.py: wm`を与える表の結び方）・`road_tile_sql.py`（地図のタイルと、タイルと同じフィーチャーごとに値を配る読み出しのSQL）・`road_network_store.py`（道路網全体の配列をDBから作り、ディスクへ置き、読む）・`detour_ratio_cache.py`（探索範囲ごとに学習した迂回率）・`cache_identity.py`（キャッシュ鍵の組み立て方の正本。手で書くリビジョンと、焼き込みSQL・列構成から導く署名を合成する。道路網の置き場の形の署名とタイル配信側の世代も同じ関数を使う）・`container_memory.py`（このプロセスのコンテナのメモリ上限。読み込む量の上限を導く）・`heap_release.py`（解放した割り当ての領域を OS へ返す。生成のジョブの終わりに呼ぶ）・`derived_data_meta.py`（派生データの世代と、今の派生の表を作った全ソースの取込・較正値。世代はバッチが中身を書き直すたびに進む単調カウンタで、デプロイを伴わない変化を表せる唯一の経路。配信するタイルのために生データの世代も一緒に読む） |
-| api | `routes.py` |
+| api | `routes.py`・`generation_slots.py`（同時実行の枠と、枠を待つ待ち行列。プロセスに1つ） |
 
 探索が読む`road_edges`と材料のテーブル（ORMの宣言）・それを作るバッチは
 [静的道路属性・タイル配信](static-road-attributes.md)の対象ファイル表が持つ。
@@ -741,7 +741,7 @@ segments構築はEdge単位の軽量な計算のため並行化してよい）�
    プロセスに1つで、生成ごとの`GraphService`へ渡す）。切り出した区間の分が生成に回せる全部に1件でも収まらなければ
    `SearchAreaTooLargeError`、ほかの生成が取っている分と合わせて収まらなければ`SearchMemoryBusyError`を送出する
    （WARNING常時ログ）。取った分は生成のジョブの開き方（`api/dependencies.py: get_route_generation_setup_opener`）が
-   生成を終えて閉じるときに返す。同時の件数の枠（`generate_max_concurrent`）は投稿の時点で別に効き、ふだんの距離は
+   生成を終えて閉じるときに返す。同時の件数の枠（`generate_max_concurrent`）は別に効き、ふだんの距離は
    その件数まで同時に作れる。都心の80〜100kmのように生成に回せるメモリの半分を超える範囲は、ほかの生成と合わせて
    収まるときだけ組む。上限は定数で持たない——メモリを増やすときに直すのはデプロイのメモリ上限の1か所だけで、
    分け合う量はそれに付いてくる。
@@ -753,7 +753,7 @@ segments構築はEdge単位の軽量な計算のため並行化してよい）�
    OS へ返さず（抱える量はそれまでで一番大きい生成の大きさで決まる）、抱えた分も anon に数えられるので、生成のジョブは
    終わりに`heap_release.py: release_freed_heap`で返す（`malloc_trim(0)`。glibc の無い開発機では何もしない）。
    戦略層（`RouteGenerator._prepare`）は、範囲が大きすぎる例外を「探索範囲の道路が多すぎる」理由付きの候補0件に、
-   混んでいる例外を投稿の時点で同時の件数の枠が埋まっているときと同じ文（`domain/errors.py: GENERATION_BUSY_MESSAGE`）の理由付きの候補0件にする。
+   混んでいる例外を同時の件数の枠で断るときと同じ文（`domain/errors.py: GENERATION_BUSY_MESSAGE`）の理由付きの候補0件にする。
 
 戻り値は`(RoadSlice, タイル集合)`。材料を読むだけで、観測を引くこともスコアを組むこともしない
 （`RoadGraphEngine`の`prepare`節）。
@@ -1060,13 +1060,9 @@ backendは置き場を読むだけで、読むのは`current()`の1か所であ�
 
 | エンドポイント | 内容 |
 |---|---|
-| `POST /api/routes/generate` | 202を即座に返す非同期ジョブ投稿。`asyncio.create_task`でジョブ本体（`_run_generate_job`）を起動し、タスク参照を`_running_generate_tasks`が保持する（`BackgroundTasks`だとレスポンス送出の失敗でジョブが起動せず、投稿時点で取得済みのセマフォが解放されない） |
+| `POST /api/routes/generate` | 202を即座に返す非同期ジョブ投稿。`asyncio.create_task`でジョブ本体（`_run_generate_job`）を起動し、タスク参照を`api/generation_slots.py: GenerationSlots`が保持する（`BackgroundTasks`だとレスポンス送出の失敗でジョブが起動せず、記録したジョブが待ちのまま残る） |
 | `GET /api/routes/generate/{job_id}` | ジョブの状態・結果を取得（`job_registry`、サーバー再起動で失われる）。`wait_seconds`を渡すと終わるまで（上限まで）待って返す |
 
-- **同時実行数の制限**: `generate_routes`ハンドラ内で`_generate_semaphore.locked()`
-  確認と`acquire()`をawaitを挟まず連続実行する（HTTPレスポンス送出という実I/Oを挟んでから
-  acquireすると、複数リクエストが同時に届いた際に上限を超えて受理してしまうため）。
-  セマフォの解放は`_run_generate_job`側の`finally`で行う。
 - **バックグラウンドジョブはリクエストスコープのDBセッションを使えない**。
   ハンドラへは開き方（`api/dependencies.py: get_route_generation_setup_opener`）を注入し、ジョブは要求の条件を
   束ねた開き方を`services/route_generation_setup.py: generate_route_candidates`へ渡す。そこが独立したセッションを開き、
@@ -1085,6 +1081,21 @@ backendは置き場を読むだけで、読むのは`current()`の1か所であ�
 - ジョブ失敗時、クライアントへは汎用メッセージのみ返す: 例外の生メッセージ
   （PostGIS/内部処理のエラー詳細を含みうる）は`logger.exception`でサーバーログに
   のみ残す。
+
+### 同時実行の枠と待ち行列
+
+- 同時に走る生成は`config.py: Settings.generate_max_concurrent`の数まで。それを超えた投稿も202で受け付け、ジョブは
+  待ち（`queued`）のまま受け付けた順に枠の空きを待つ。待てる数（`config.py: Settings.generate_max_queued`）を超える
+  投稿はその場で429、待てる時間（`config.py: Settings.generate_queue_wait_seconds`）のうちに枠が空かないジョブは
+  混み合い（`domain/errors.py: GENERATION_BUSY_MESSAGE`）の失敗にする。どちらの断りも`/api/debug/stats`の429拒否数に
+  数える（投稿時の断りと待ちの時間切れは、カテゴリを分けて数える）。
+- 受け付けの数は、受け付けて終わっていないジョブの数で数える（`api/generation_slots.py: GenerationSlots`）。枠はジョブの中で取り、
+  取れたときだけ`finally`で返す。結果を持つ時間（`infrastructure/job_registry.py: JOB_TTL_SECONDS`）での打ち切りは、待ちと
+  生成を合わせて数える（その時間を生成物`route-generate-config.json`で問い合わせの打ち切りとして配るため）。
+- 値の根拠は、利用者に約束する線（同時に10人までは断られる人が1割以下で、作れた人の待ちが60秒以内）。
+  走る分と待てる分の和をその人数にし、待てる時間は線から本番の1件の生成の所要（同時に作る人数によらず3〜6秒、
+  2026-10-30 の本番の計測）を引いた残りに収める。待ちの時間切れも断りに数えるので、待てる時間を
+  詰めるほど断られる人が増える。同時に流す数を増やすときは、待てる数を減らして和を保つ。
 
 ## 交差点の信号・最大階級（`batch/derive_nodes.py`が埋める）
 

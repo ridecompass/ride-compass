@@ -17,6 +17,7 @@ from cachetools import LRUCache
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.api.generation_slots import GenerationSlots
 from app.config import settings
 from app.domain.route_request import RequestedConditions
 from app.infrastructure.address_search import AddressSearchQuery
@@ -147,6 +148,14 @@ def get_route_generation_setup_opener(long_sessions: LongSessions) -> RouteGener
     DBセッションはハンドラ関数が返った時点で閉じられるため、ジョブが自分でセッションを開いて閉じる。
     """
     return partial(_open_route_generation_setup, long_sessions)
+
+
+#: ルート生成の同時実行の枠と待ち行列。生成はリクエストをまたいで走るため、プロセスの側で持つ。
+_generation_slots = GenerationSlots(settings.generate_max_concurrent, settings.generate_max_queued)
+
+
+def get_generation_slots() -> GenerationSlots:
+    return _generation_slots
 
 
 LandcoverTileReader = Callable[[int, int, int], Awaitable[bytes]]

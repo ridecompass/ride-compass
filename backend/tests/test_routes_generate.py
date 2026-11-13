@@ -2,7 +2,7 @@
 
 確かめるのは、HTTPから見える振る舞いだけ: 要求の検証（422）、ジョブの投稿と取得（202・404。終わるまで待つ取得を含む）、生成の種類
 （周回・目的地・経由地・区間の乗り換え。距離と置いた点の組み合わせ）の振り分け、実際に使った条件のエコー、候補0件の理由、失敗の伝え方、
-同時実行とレート制限（429）。
+同時実行の待ちとレート制限（429）。
 
 裏の生成は本物の`RouteGenerator`とエンジンを、小さな格子の道路網（`tests/route_world.py`）の上で通す。
 差し替えるのはプロセス境界だけ——DBのセッションと天気の予報ファイル（生成の開き方の注入の口`get_route_generation_setup_opener`）・
@@ -28,8 +28,10 @@ import httpx
 import pytest
 
 from app.api import dependencies
+from app.api.generation_slots import GenerationSlots
 from app.config import settings
 from app.domain.cost_axes import EFFORT_AXES
+from app.domain.errors import GENERATION_BUSY_MESSAGE
 from app.domain.graph import node_key, parse_edge_key
 from app.domain.road_network import RoadNetwork
 from app.domain.road_classes import AvoidanceClassification
@@ -118,6 +120,9 @@ def world(override_dependency, road_network_root):
         yield assemble_route_generation_setup(GraphService(NetworkRepository(world.network), SearchMemory()), world.weather, requested)
 
     override_dependency(dependencies.get_route_generation_setup_opener, lambda: open_setup)
+    # 枠を待つ生成はテストごとのイベントループに結び付くので、持ち主をテストごとに作り直す。
+    slots = GenerationSlots(settings.generate_max_concurrent, settings.generate_max_queued)
+    override_dependency(dependencies.get_generation_slots, lambda: slots)
     yield world
 
 
@@ -140,6 +145,13 @@ async def client(world):
 
 async def _post(client, **body):
     return await client.post("/api/routes/generate", json={**_point(CENTER), "distance_km": 4.0, **ALWAYS_SENT, **body})
+
+
+async def _post_as(rider, **body):
+    """接続元を利用者ごとに分けて投稿する（同時に作る人数を、1人あたりの回数の制限に当てずに作る）。"""
+    transport = httpx.ASGITransport(app=app, client=(f"10.0.0.{rider}", 50000))
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as rider_client:
+        return await _post(rider_client, **body)
 
 
 async def _wait(client, job_id):
@@ -451,20 +463,37 @@ async def test_a_failed_job_says_so_without_leaking_its_internals(client, world)
     assert all("置き場" not in s["error"] and s["error"] for s in statuses)
 
 
-async def test_jobs_beyond_the_concurrency_limit_are_refused_at_once(client, world):
-    """待たせずに429を返す（連打やブラウザのリトライで裏の負荷を積み上げない）。枠が空けばまた受け付ける。"""
+async def test_jobs_beyond_the_concurrency_limit_wait_their_turn_and_beyond_the_queue_are_refused(client, world):
+    """同時実行の上限を越えた投稿も受け付け、待ちのまま枠の空きを待たせて作る。待てる数も越えた投稿は429で断る
+    （連打やブラウザのリトライで待ち行列を伸ばさない）。枠が空けばまた受け付ける。"""
     world.weather = GatedWeather()
-    running = [await _post(client) for _ in range(settings.generate_max_concurrent)]
+    riders = settings.generate_max_concurrent + settings.generate_max_queued
+    accepted = [await _post_as(rider) for rider in range(riders)]
 
-    # 上限を越えた投稿が枠の空きを待ってしまうと、応答が返らない。待たせないことを期限で確かめる。
-    refused = await asyncio.wait_for(_post(client), timeout=5)
+    refused = await _post_as(riders)
+    last = accepted[-1].json()["job_id"]
+    assert (await client.get(f"/api/routes/generate/{last}")).json() == {"status": "queued"}
 
     world.weather.gate.set()
-    for response in running:
+    for response in accepted:
         assert response.status_code == 202
         assert (await _wait(client, response.json()["job_id"]))["status"] == "done"
     assert refused.status_code == 429
     assert (await _generate(client))["status"] == "done"
+
+
+async def test_a_job_that_cannot_get_a_slot_in_time_fails_as_busy(client, world, monkeypatch):
+    """待てる時間のうちに枠が空かなければ、混み合いの文で失敗にする（作れない利用者を待たせ続けない）。"""
+    monkeypatch.setattr(settings, "generate_queue_wait_seconds", 0.1)
+    world.weather = GatedWeather()
+    running = [await _post(client) for _ in range(settings.generate_max_concurrent)]
+
+    waiting = await _post(client)
+
+    assert await _wait(client, waiting.json()["job_id"]) == {"status": "failed", "error": GENERATION_BUSY_MESSAGE}
+    world.weather.gate.set()
+    for response in running:
+        assert (await _wait(client, response.json()["job_id"]))["status"] == "done"
 
 
 async def test_too_many_requests_from_one_client_are_refused(client):
