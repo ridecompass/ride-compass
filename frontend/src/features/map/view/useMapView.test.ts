@@ -39,22 +39,17 @@ afterEach(() => {
 });
 
 describe("useMapView", () => {
-  it("レンズを選んでもルートの線の出し入れは変えず、ルートの確定後は線を出していて周りを出さない間だけ道に付く層をルート沿いに絞る", () => {
+  it("ルートの区間が確定するまでは範囲を選べず地図全体に出し、確定後は既定でルート沿いだけ、地図全体を選べば地図全体に出す", () => {
     serve();
-    const { result, rerender } = renderMapView({ hasSelectedRoute: true });
-    act(() => result.current.overlayControls.route.onChange(false));
-
+    const { result, rerender } = renderMapView();
     act(() => result.current.lensControl.onLensChange("ascent"));
-
     expect(result.current.look).toMatchObject({ lens: "ascent", surroundingsShown: true });
-    expect(result.current.look.layerVisibility.route).toBe(false);
-    expect(result.current.lensControl.routeHidden).toBe(true);
+    expect(result.current.overlayControls.range).toMatchObject({ routeOnly: false, selectable: false });
+
     rerender({ hasDetail: true });
-    // 線を隠している間は、絞る線が地図に無いので絞らない。
-    expect(result.current.look.surroundingsShown).toBe(true);
-    act(() => result.current.overlayControls.route.onChange(true));
     expect(result.current.look.surroundingsShown).toBe(false);
-    act(() => result.current.overlayControls.surroundings.onChange(true));
+    expect(result.current.overlayControls.range).toMatchObject({ routeOnly: true, selectable: true });
+    act(() => result.current.overlayControls.range.onChange(false));
     expect(result.current.look.surroundingsShown).toBe(true);
   });
 
@@ -217,21 +212,23 @@ describe("useMapView", () => {
     expect(chip(result, "disaster")?.legendDetails?.[0].hiddenKeys).toEqual(["heavyRain"]);
   });
 
-  it("表示・レンズ・周りを出す設定・隠した行は、次に開いたときも残る", async () => {
+  it("表示・レンズ・表示する範囲・地図の色・隠した行は、次に開いたときも残る", async () => {
     serve();
-    const first = renderMapView();
+    const first = renderMapView({ hasDetail: true });
     await waitFor(() => expect(first.result.current.lensControl.axisOptions).toHaveLength(LENS_COUNT));
     act(() => first.result.current.overlayControls.onToggle("hillshade", true));
     act(() => first.result.current.lensControl.onLensChange("ascent"));
-    act(() => first.result.current.overlayControls.surroundings.onChange(true));
+    act(() => first.result.current.overlayControls.range.onChange(false));
+    act(() => first.result.current.overlayControls.mapTheme.onChange("dark"));
     act(() => first.result.current.overlayControls.onLegendEntryToggle("disaster", "heavyRain"));
     first.unmount();
 
-    const { result } = renderMapView();
+    const { result } = renderMapView({ hasDetail: true });
 
     await waitFor(() => expect(result.current.lensControl.lens).toBe("ascent"));
     expect(result.current.look.layerVisibility.hillshade).toBe(true);
-    expect(result.current.overlayControls.surroundings.shown).toBe(true);
+    expect(result.current.overlayControls.range.routeOnly).toBe(false);
+    expect(result.current.look.mapTheme).toBe("dark");
     expect(chip(result, "disaster")?.legendDetails?.[0].hiddenKeys).toEqual(["heavyRain"]);
   });
 
@@ -245,17 +242,5 @@ describe("useMapView", () => {
     if (reported !== null) act(() => result.current.look.onViewportChange({ ...VIEWPORT, bearing: reported }));
 
     expect(result.current.bearing).toBe(bearing);
-  });
-
-  it("ルートの出し入れは「表示」の一覧が持ち、候補を選ぶまで押せない", () => {
-    serve();
-    const { result, rerender } = renderMapView();
-    expect(result.current.overlayControls.route).toMatchObject({ shown: true, selectable: false });
-    expect(result.current.lensControl.routeHidden).toBe(false);
-
-    rerender({ hasSelectedRoute: true });
-    act(() => result.current.overlayControls.route.onChange(false));
-
-    expect(result.current.overlayControls.route).toMatchObject({ shown: false, selectable: true });
   });
 });

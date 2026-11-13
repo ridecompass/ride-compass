@@ -12,7 +12,7 @@ import { render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { FACT_DISPLAY_NAME } from "@/lib/screenNames";
-import { chip, LIST_NAME, propsOf, ROUTE_ROW, setup, SURROUNDINGS_ROW } from "@/testing/mapOverlayControls";
+import { chip, LIST_NAME, propsOf, setup } from "@/testing/mapOverlayControls";
 import MapOverlayControls from "./MapOverlayControls";
 import type { LegendFilterSummaryAxis } from "./LegendDetails";
 import type { OverlayLayerChip } from "./OverlayLayerRow";
@@ -156,26 +156,32 @@ describe("行の印", () => {
   });
 });
 
-describe("ルートの行", () => {
-  it("候補を選んでいれば、出し入れを反転した値で知らせる", async () => {
-    const { user, props, list } = await setup([], { route: { shown: true, selectable: true } });
-    const route = within(list).getByRole("checkbox", { name: ROUTE_ROW });
-    expect(route).toBeChecked();
-    await user.click(route);
-    expect(props.route.onChange).toHaveBeenCalledWith(false);
+describe("範囲と色のタブ", () => {
+  it.each([
+    { routeOnly: false, choose: "ルート沿い", routeOnlyAfter: true },
+    { routeOnly: true, choose: "地図全体", routeOnlyAfter: false },
+  ])(
+    "表示する範囲で「$choose」を選ぶと、ルート沿いだけにするかを知らせる",
+    async ({ routeOnly, choose, routeOnlyAfter }) => {
+      const { user, props, list } = await setup([], { range: { routeOnly, selectable: true } });
+      await user.click(within(list).getByRole("tab", { name: "範囲と色" }));
+      await user.click(within(list).getByRole("radio", { name: choose }));
+      expect(props.range.onChange).toHaveBeenCalledWith(routeOnlyAfter);
+    },
+  );
+
+  it("ルートの区間が無い間は「ルート沿い」を選べず、地図全体を選んでいる", async () => {
+    const { user, list } = await setup([], { range: { routeOnly: false, selectable: false } });
+    await user.click(within(list).getByRole("tab", { name: "範囲と色" }));
+    expect(within(list).getByRole("radio", { name: "ルート沿い" })).toBeDisabled();
+    expect(within(list).getByRole("radio", { name: "地図全体" })).toBeChecked();
   });
 
-  it.each([true, false])("「ルート後も周りを出す」は、入り切り（%s）を反転した値で知らせる", async (shown) => {
-    const { user, props, list } = await setup([], { surroundings: { shown } });
-    await user.click(within(list).getByRole("checkbox", { name: SURROUNDINGS_ROW }));
-    expect(props.surroundings.onChange).toHaveBeenCalledWith(!shown);
-  });
-
-  it("候補を選ぶまでは押せず、ONに見えない", async () => {
-    const { list } = await setup([], { route: { shown: true, selectable: false } });
-    const route = within(list).getByRole("checkbox", { name: ROUTE_ROW });
-    expect(route).toBeDisabled();
-    expect(route).not.toBeChecked();
+  it("地図の色で「暗い」を選ぶと知らせる", async () => {
+    const { user, props, list } = await setup([]);
+    await user.click(within(list).getByRole("tab", { name: "範囲と色" }));
+    await user.click(within(list).getByRole("radio", { name: "暗い" }));
+    expect(props.mapTheme.onChange).toHaveBeenCalledWith("dark");
   });
 });
 

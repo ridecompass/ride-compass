@@ -9,21 +9,19 @@ import {
   type MapLayerId,
   type MapOverlayGroup,
 } from "@/features/map/layers/mapLayers";
-import { Checkbox } from "@/components/ui/Checkbox/Checkbox";
 import {
   ClearAllFiltersIcon,
   ClearAllLayersIcon,
   EnvironmentDataIcon,
-  DisplayItemsIcon,
   SpotDataIcon,
 } from "@/components/ui/icons/icons";
 import { RoadIcon } from "@/components/ui/icons/layerIcons";
-import { ChooseItemsIcon } from "@/components/ui/icons/lucideIcons";
+import { ChooseItemsIcon, LayersStackIcon } from "@/components/ui/icons/lucideIcons";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs/Tabs";
 import { Button } from "@/components/ui/Button/Button";
 import { Popover, PopoverContent, PopoverTrigger, POPOVER_COLLISION_PADDING_PX } from "@/components/ui/Popover/Popover";
 import { cn } from "@/lib/cn";
 import { FACT_DISPLAY_NAME } from "@/lib/screenNames";
-import { LENS_QUANTITY_LABEL } from "@/lib/mapDisplay/costLensPaint";
 import { cardVariants } from "@/components/ui/Card/Card";
 import OverlayLayerRow, {
   FILTERED_LABEL,
@@ -33,14 +31,11 @@ import OverlayLayerRow, {
   type OverlayLayerChip,
 } from "./OverlayLayerRow";
 import ItemChooser from "./ItemChooser";
+import MapLookSettings, { type MapLookSettingsProps } from "./MapLookSettings";
 import { useOverlayGroupChoices } from "./useOverlayGroupChoices";
 
-interface MapOverlayControlsProps extends LegendHandlers {
+interface MapOverlayControlsProps extends LegendHandlers, MapLookSettingsProps {
   layers: readonly OverlayLayerChip[];
-  /** 選んだ候補のルートの線の出し入れ（作った結果なので、群の外の先頭に置く）。 */
-  route: { shown: boolean; selectable: boolean; onChange: (shown: boolean) => void };
-  /** ルートを選んでいる間も、道に付く層（塗る負担の周りの道・地点）を地図全体に出すか。外せばルート沿いだけに出す。 */
-  surroundings: { shown: boolean; onChange: (shown: boolean) => void };
   onToggle: (id: MapLayerId, on: boolean) => void;
   /** 一覧の行を全部OFFにする（既定へ戻すのではない）。 */
   onHideAllLayers: () => void;
@@ -77,12 +72,12 @@ const FLOATING_PANEL_CLASS = cn(
   "max-w-[min(calc(100vw-2*var(--space-3)),var(--radix-popover-content-available-width))] overflow-y-auto px-3 py-2",
 );
 
-// 地図に重ねる情報の出し入れの入口（「表示」のボタン）と、押すと開く一覧。レイヤー固有の知識を持たない描画係で、
+// 地図に重ねる情報の出し入れの入口（「表示」のボタン）と、押すと開く一覧（重ねる情報と、範囲と色のタブ）。レイヤー固有の知識を持たない描画係で、
 // レイヤーが増えてもここは変わらない（群の分け方と並びはレイヤーカタログから導く）。置き場は呼び出し側が決める。
 export default function MapOverlayControls({
   layers,
-  route,
-  surroundings,
+  range,
+  mapTheme,
   onToggle,
   onLegendEntryToggle,
   onLegendAxisSetHidden,
@@ -95,6 +90,8 @@ export default function MapOverlayControls({
   const anyFiltered = layers.some(isLegendFiltered);
   const { isCollapsed, toggleCollapsed, isHidden, toggleHidden, setAllHidden } = useOverlayGroupChoices(onToggle);
   const [choosingGroup, setChoosingGroup] = useState<MapOverlayGroup | null>(null);
+  // 開いていたタブは、一覧を閉じても覚えておく（走行中に地図の色を切り替え直すときに、タブを押し直さない）。
+  const [tab, setTab] = useState("layers");
 
   const groups = MAP_OVERLAY_GROUP_ORDER.flatMap((group) => {
     const members = MAP_LAYER_CATEGORY_ORDER.flatMap((category) =>
@@ -179,10 +176,10 @@ export default function MapOverlayControls({
           ]
             .filter(Boolean)
             .join("・")}
-          usage="地図に重ねる情報[路面・雨雲・補給の店など]の一覧を開きます。数字は今地図に出している件数です。"
+          usage="地図に重ねる情報[路面・雨雲・補給の店など]と、表示する範囲・地図の色を選ぶ一覧を開きます。数字は今地図に出している件数です。"
         >
           <span className="inline-flex h-[1lh] items-center">
-            <DisplayItemsIcon size={16} />
+            <LayersStackIcon size={16} />
           </span>
           {shownCount > 0 && (
             <span
@@ -203,53 +200,42 @@ export default function MapOverlayControls({
         className={cn(FLOATING_PANEL_CLASS, "max-h-[var(--radix-popover-content-available-height)] w-72")}
       >
         <p className="m-0 font-semibold">{LIST_SCREEN_NAME}</p>
-        <label
-          className={cn(
-            "mt-1 flex items-center gap-1.5 border-b border-[var(--color-border)] pb-1.5",
-            route.selectable ? "cursor-pointer" : "text-[var(--color-neutral)]",
-          )}
-          data-usage={`選んだ候補のルートの線を、地図に表示するか隠すかを切り替えます。線の色は、「負担で塗る」で選んだ負担の種類の${LENS_QUANTITY_LABEL}を表します。`}
-        >
-          <Checkbox
-            checked={route.shown && route.selectable}
-            disabled={!route.selectable}
-            onCheckedChange={() => route.onChange(!route.shown)}
-            aria-label="ルート"
-          />
-          {route.selectable ? "ルート[選んだ候補の線]" : "ルート[候補を選ぶと出せます]"}
-        </label>
-        <label
-          className="flex cursor-pointer items-center gap-1.5 border-b border-[var(--color-border)] py-1.5"
-          data-usage="ルートを選んでいる間も、塗る負担の周りの道と地点を地図全体に出します。外すと、ルート沿いだけに出します。"
-        >
-          <Checkbox
-            checked={surroundings.shown}
-            onCheckedChange={() => surroundings.onChange(!surroundings.shown)}
-            aria-label="ルート後も周りを出す"
-          />
-          ルート後も周りを出す[道の塗り・地点]
-        </label>
-        {groups}
-        <div className="mt-1.5 flex justify-end gap-1 border-t border-[var(--color-border)] pt-1.5">
-          <Button
-            size="panelIcon"
-            aria-label="表示中の情報をすべて非表示"
-            onClick={onHideAllLayers}
-            disabled={shownCount === 0}
-            usage="この一覧でONにした情報を、まとめてOFFにします。ルートの線は残します。"
-          >
-            <ClearAllLayersIcon />
-          </Button>
-          <Button
-            size="panelIcon"
-            aria-label="絞り込みをすべて解除"
-            onClick={onShowAllLegendRows}
-            disabled={!anyLegendHidden}
-            usage="この一覧の凡例のチェックを外して隠した段階を、まとめて地図に戻します。"
-          >
-            <ClearAllFiltersIcon />
-          </Button>
-        </div>
+        <Tabs value={tab} onValueChange={setTab}>
+          <TabsList className="mt-1 mb-1">
+            <TabsTrigger value="layers" usage="地図に重ねる情報を選びます。">
+              重ねる情報
+            </TabsTrigger>
+            <TabsTrigger value="look" usage="重ねた情報を出す範囲と、地図の色を選びます。">
+              範囲と色
+            </TabsTrigger>
+          </TabsList>
+          <TabsContent value="look">
+            <MapLookSettings range={range} mapTheme={mapTheme} />
+          </TabsContent>
+          <TabsContent value="layers">
+            {groups}
+            <div className="mt-1.5 flex justify-end gap-1 border-t border-[var(--color-border)] pt-1.5">
+              <Button
+                size="panelIcon"
+                aria-label="表示中の情報をすべて非表示"
+                onClick={onHideAllLayers}
+                disabled={shownCount === 0}
+                usage="この一覧でONにした情報を、まとめてOFFにします。"
+              >
+                <ClearAllLayersIcon />
+              </Button>
+              <Button
+                size="panelIcon"
+                aria-label="絞り込みをすべて解除"
+                onClick={onShowAllLegendRows}
+                disabled={!anyLegendHidden}
+                usage="この一覧の凡例のチェックを外して隠した段階を、まとめて地図に戻します。"
+              >
+                <ClearAllFiltersIcon />
+              </Button>
+            </div>
+          </TabsContent>
+        </Tabs>
       </PopoverContent>
     </Popover>
   );

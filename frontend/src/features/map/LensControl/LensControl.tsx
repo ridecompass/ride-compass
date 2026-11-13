@@ -32,8 +32,6 @@ interface LensControlProps {
   onSetHiddenLegendKeys: (hiddenKeys: string[]) => void;
   /** ルート確定済みか（レンズを選んでいないときのピルの名前が、ルートの前後で変わる）。 */
   hasDetail: boolean;
-  /** 候補を選んでいるのに、ルートの線を「表示」で出していない（色分けがルートの線に効かない）。 */
-  routeHidden: boolean;
   /** 凡例の下に書く、周りの道の色の前提（`features/map/costLens.ts: costLensPremises`）。 */
   premises: readonly string[];
   /** 選べるレンズが無い理由（費用の軸の一覧が届くまで・取れない間）。届いていればnull。 */
@@ -62,7 +60,6 @@ export default function LensControl({
   onToggleLegendKey,
   onSetHiddenLegendKeys,
   hasDetail,
-  routeHidden,
   premises,
   catalogNotice,
   dataStatus,
@@ -151,11 +148,6 @@ export default function LensControl({
           collisionPadding={POPOVER_COLLISION_PADDING_PX}
         >
           <p className="mb-1.5 font-semibold">{LENS_SCREEN_NAME}</p>
-          {routeHidden && (
-            <p className="mb-1.5 text-[length:var(--font-size-sm)]" role="status">
-              「表示」でルートの線を隠しているため、ルートは塗っていません。
-            </p>
-          )}
           {/* ピルの状態ドットの意味。titleはスマホでは出ないため、開いた先で文として読ませる。 */}
           {statusNotice && (
             <p className="mb-1.5 text-[length:var(--font-size-sm)]" role="status">

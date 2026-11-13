@@ -45,7 +45,6 @@ function renderLens(props: Partial<Parameters<typeof LensControl>[0]> = {}) {
       legend={LEGEND}
       hiddenLegendKeys={[]}
       hasDetail={false}
-      routeHidden={false}
       premises={[]}
       catalogNotice={null}
       {...handlers}
@@ -160,11 +159,5 @@ describe("LensControl", () => {
     }
     await userEvent.click(clear);
     expect(onSetHiddenLegendKeys).toHaveBeenCalledWith([]);
-  });
-
-  it("ルートの線を出していなければ、塗っていないことを開いた先で伝える", async () => {
-    renderLens({ routeHidden: true });
-    await open();
-    expect(screen.getByRole("status")).toHaveTextContent("ルートは塗っていません");
   });
 });

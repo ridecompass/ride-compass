@@ -69,10 +69,6 @@ describe("buildMapLayers（レイヤーの一覧）", () => {
     expect(layer(layers, "unknown").icon).toBe(layer(layers, "known").icon);
   });
 
-  it("ルートの説明は、レンズで選べる色分け（総合と費用の軸）をレンズの選択肢と同じ順に並べる", () => {
-    expect(layer(layers, "route").description).toContain("[総合の負担・登坂・振動]");
-  });
-
   it("災害の凡例は、要素が塗る段ごとに1つ並び、見出しにその段で塗る要素の名前が入る", () => {
     const blocks = layer(layers, "disaster").readOnlyLegend ?? [];
     const scaled = mapDisplay.weatherElements.filter((element) => element.group === "disaster" && element.levelScale);

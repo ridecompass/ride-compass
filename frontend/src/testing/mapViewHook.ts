@@ -47,7 +47,6 @@ export function serve(config?: Response, costAxes: CostAxisCatalogResponse = TWO
 export function renderMapView(inputs: Partial<Inputs> = {}) {
   return renderHook((props: Partial<Inputs>) =>
     useMapView({
-      hasSelectedRoute: false,
       hasDetail: false,
       ride: { at: NOW, speedKmh: 20 },
       riding: null,

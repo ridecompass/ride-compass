@@ -60,7 +60,8 @@
 | `features/map/MapView/roadFacts.ts` | クリックした道の「事実」（例: 道路名・路面の種類・農道・林道の等級・トンネル）をタイルのプロパティから組み立てる純関数。項目名と値の呼び名、タイルのどの属性を読むか（`features/map/MapView/roadFacts.ts: tile_property`）は材料カタログ（生成物`material-catalog.json`）から引く。材料の外の列（識別子・道路名）の名前は生成物`region-tile-config.json`の`region-tile-config.json: road_surface.properties`から引き、押した道のway_id・フィーチャーの鍵もここの関数（`roadWayId`・`roadFeatureKey`）で読む。該当しない項目は行ごと出さない（「なし」が並ぶと該当する項目が埋もれる）。路面の種類（材料`surface`。区分ではなくタグの値の呼び名）だけは値が無くても「不明」として出す——どの道でも最初に見たい項目で、行ごと消すと「舗装されていない」と読める |
 | `features/map/regionApi.ts`（`features/map/regionApi.ts: roadSurfaceTileUrl`/`features/map/regionApi.ts: pointTileUrl`とタイル世代の判定） | ベクタタイルのURLテンプレート（`features/map/regionApi.ts: fetchLensMaterials`は[地図: レンズ・ルート色分け](map-axis-coloring.md)の管轄）。点のレイヤーはどれも1つの配信（backend `GET /api/region/point-tiles/{layer}/...`）で、URLはレイヤー名（生成物`region-tile-config.json`の`region-tile-config.json: point_layers`の鍵。タイルの世代の系統の名前でもある）で組み、source-layer名も同じ一覧から読む。世代はbackendから実行時に届き、**全系統が揃ったもの（`completeTileVersions`だけが作る`TileVersions`）でしかURLを組み立てない** |
 | `lib/tileBaseUrl.ts` | タイル配信元オリジンの決定（既定はフロント自身のオリジン＝rewrites経由、`lib/tileBaseUrl.ts: NEXT_PUBLIC_TILE_BASE_URL`設定時はbackend直接）。路面/POI/事故タイル・基礎地図スタイル（`features/map/regionApi.ts: mapStyleUrl`）・国土地理院色別標高図・JMA動的タイル（[動的気象レイヤー](dynamic-weather-layers.md)）が共通に使う |
-| `features/map/MapOverlayControls/MapOverlayControls.tsx` | 地図の左上の「表示」のボタンと、押すと開く地図に出す情報の一覧（下記「最上位グルーピング」）。群への束ね方と並びはレイヤーカタログ（`features/map/MapOverlayControls/MapOverlayControls.tsx: mapOverlayGroupFor`・`mapLayers.ts: MAP_OVERLAY_GROUP_ORDER`）から導く。群の見出しで中身をたため、群ごとに一覧に並べる項目を選べる。先頭の「ルート」の行の下に「ルート後も周りを出す」（下記「ルートの近くの点」）を置く。末尾にまとめて戻す操作（下記「まとめて戻す操作」）を並べる |
+| `features/map/MapOverlayControls/MapOverlayControls.tsx` | 地図の左上の「表示」のボタンと、押すと開く地図に出す情報の一覧（下記「最上位グルーピング」）。群への束ね方と並びはレイヤーカタログ（`features/map/MapOverlayControls/MapOverlayControls.tsx: mapOverlayGroupFor`・`mapLayers.ts: MAP_OVERLAY_GROUP_ORDER`）から導く。一覧は「重ねる情報」と「範囲と色」のタブに分ける。「重ねる情報」は群の見出しで中身をたため、群ごとに一覧に並べる項目を選べ、末尾にまとめて戻す操作（下記「まとめて戻す操作」）を並べる。「範囲と色」は`features/map/MapOverlayControls/MapLookSettings.tsx`が描く |
+| `features/map/MapOverlayControls/MapLookSettings.tsx` | 「表示」の「範囲と色」のタブ。表示する範囲（ルート沿い・地図全体。下記「ルートの近くの点」）と地図の色（明るい・暗い。下記「暗い地図」）を2択で選び、説明は見出しのⓘで行のすぐ下に開く |
 | `features/map/MapOverlayControls/OverlayLayerRow.tsx` | 一覧の1行（`features/map/MapOverlayControls/OverlayLayerRow.tsx: OverlayLayerChip`）。行のチェックでON/OFFし、ⓘで説明を、▶で凡例の内訳か案内・取得状態を行のすぐ下に開く。絞り込みの合図（漏斗の印と`features/map/MapOverlayControls/OverlayLayerRow.tsx: isLegendFiltered`）も持つ |
 | `features/map/MapOverlayControls/LegendDetails.tsx` | ▶の中の凡例の内訳（`features/map/MapOverlayControls/LegendDetails.tsx: LegendFilterSummaryAxis`）と、地図と同じ形の色見本。`features/map/MapOverlayControls/LegendDetails.tsx: axisId`を持つ軸はその場で絞り込める |
 | `features/map/MapOverlayControls/ItemChooser.tsx`・`useOverlayGroupChoices.ts` | 群ごとに一覧へ並べる項目を選ぶ一覧と、群のたたみ・外した項目の保存（下記「最上位グルーピング」の保存の鍵） |
@@ -428,8 +429,8 @@ MSMを配るOpen-MeteoのCC BY 4.0も、リンク付きのクレジット・ラ�
 
 ## ルートの近くの点（`groups/points.ts`）
 
-道に付く層（塗る負担の周りの道の塗りと点の層）は、ルートを選んで線を出している間はルート沿いだけに出し（線を「表示」で隠している間は絞らない）、「表示」の「ルート後も周りを出す」
-（既定は外す。端末に保存する）を入れている間だけ地図全体に出す。判定は地図の見え方（`features/map/view/useMapView.ts`）の1か所が持ち、
+道に付く層（負担で塗った周りの道と点の層）は、ルートを選んでいる間はルート沿いだけに出し、「表示」の「範囲と色」の表示する範囲で
+地図全体（端末に保存する。既定はルート沿い）を選んでいる間だけ地図全体に出す。ルートの区間が確定するまでは地図全体に出し、ルート沿いは選べない。判定は地図の見え方（`features/map/view/useMapView.ts`）の1か所が持ち、
 地図へは`features/map/scene/applyToMap.ts: SceneLook.surroundingsShown`で渡す。地形・天気・災害の層は道の外に広がるものを見るので絞らない。
 
 点の層は、ルート沿いだけに出す間、「表示」で出している層（見出しのチェックと内訳の行の両方に従う）の点のうち、選んでいるルート全体の線（地点の並びを編集している間は、編集している線）から
@@ -598,10 +599,8 @@ ONにしても何も塗られない。「データが無い地域」と区別で
 どれかの行が凡例を絞り込んでいる合図（漏斗）を付ける——閉じている間も、何かが出ている・欠けていることが分かる。
 一覧は群の見出し（群の色）の下に行を並べる。行の名前は略さない
 （一覧には幅があり、略名を持つ理由が無い）。並べ方をレイヤーカタログ側（`mapLayers.ts`）が決めるのは、一覧の中身が
-そこから導かれるため。選択中のルートにひもづくレイヤー（`kind`が`dynamic`。今はルートの線だけ）は群の行に並べず、
-一覧の先頭（群の外）のルートの行で出し入れする（候補を選ぶまで押せない）——ルートの線はレイヤーカタログの群に属さない、
-作った結果の線なので、群の並びの外に置く。線の色と、その凡例の絞り込みは「負担で塗る」（`LensControl`）が持つ。
-群の行から除くのはレンズの層と同じ`overlayChips`の1か所。
+そこから導かれるため。ルートの線は「表示」で出し入れせず、いつも出す（作った結果の線で、場所の情報の層ではない）。
+線の色と、その凡例の絞り込みは「負担で塗る」（`LensControl`）が持つ。
 
 行のⓘ（説明）と▶（凡例の内訳）は、行のすぐ下に開いて一覧の中で送る。一覧の上へ別の浮きパネルを重ねると、スマホの幅では
 一覧の右に出す余地が無く、重ねた窓が行そのものを覆い、下端で切れる。一覧は下部シート・タブバーより上に重ねる（`ui/Popover`の既定の層）
@@ -649,7 +648,7 @@ ONにしても何も塗られない。「データが無い地域」と区別で
 ## 暗い地図
 
 夜のまぶしさを抑え、有機ELの画面で電池の減りを抑えるため、地図を暗い色で出せる。いつ暗くするかは、今は利用者が
-画面の右上のメニューの「地図を暗くする」で選び、端末に覚える（`features/map/view/useMapView.ts: mapTheme`）。自動で切り替える
+「表示」の「範囲と色」の地図の色で選び、端末に覚える（`features/map/view/useMapView.ts: mapTheme`）。走行中も「表示」から切り替えられる。自動で切り替える
 （端末の暗い表示・走行モード・夜等）かは決めていない。
 
 - **基礎地図は、配信元のスタイル（liberty）の塗りの色を規則で暗くする**（`features/map/basemapTheme.ts: themedPaint`）。
@@ -685,7 +684,7 @@ ONにしても何も塗られない。「データが無い地域」と区別で
 （`MapOverlayControls`。状態と操作は`features/map/view/useMapView.ts: overlayControls`）、再描画は画面の右上のメニュー
 （`components/HeaderMenu/HeaderMenu.tsx`。操作は`useMapView.ts: redrawMap`）に置く。
 
-- **表示中の情報をすべて非表示**: 群の行を全部OFFにする（既定へ戻すのではない。先頭のルートの行は消さない）。
+- **表示中の情報をすべて非表示**: 群の行を全部OFFにする（既定へ戻すのではない）。
   ONの行が1つも無い間は押せない。
 - **絞り込みをすべて解除**: この一覧の凡例で隠した行を全部戻す（「負担で塗る」の凡例は、そちらの同じ名前のボタンが戻す）。
   出しているレイヤーの凡例で隠している行が無い間は押せない（数えるのは、いま描いている凡例に実在する行だけ。上記「凡例カテゴリの絞り込み」。

@@ -135,20 +135,18 @@ const NO_MATERIALS: WayMaterials = new Map();
 
 function routeStateFrom(props: SceneWiringProps): RouteState {
   const { look } = props;
-  const visible = look.layerVisibility.route === true;
   const selected = props.routes.find((route) => route.id === props.selectedRouteId) ?? null;
   const mode = getRouteStyleMode(props.catalog.routeStyleModes, look.lens);
-  const segments = visible ? (selected?.segments ?? []) : [];
-  const bands = visible ? props.spliceStretches : [];
-  const composite = visible ? props.splicedRoute : null;
-  const picked = visible ? props.selectedRouteSegment : null;
+  const segments = selected?.segments ?? [];
+  const bands = props.spliceStretches;
+  const composite = props.splicedRoute;
+  const picked = props.selectedRouteSegment;
   const pickedSegment = picked !== null && segments.includes(picked.segment) ? picked.segment : null;
   const hiddenBandFilter = buildLegendFilterExpression(
     mode.legend,
     look.hiddenLegendKeys[look.lens] ?? NO_KEYS,
   ) as maplibregl.FilterSpecification | null;
   return {
-    visible,
     candidates: props.routes.map((route) => ({
       routeId: route.id,
       path: route.geometry.coordinates,

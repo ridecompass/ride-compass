@@ -16,10 +16,6 @@ import { coverageYearsLabel, fillLayerText } from "./layerText";
 /** 地図に載るものの名前。静的な一覧は源泉が持ち、道の線の層（鍵は層のデータが決める）とレンズの層は実行時に決まる。 */
 export type MapLayerId = StaticMapLayerId | string;
 
-// 選んだルートに付くデータ（選び直すたびに描き直す）か、地域に固定のデータ（表示の切り替えだけ）か。値が時間で
-// 変わるかは別の`dataNature`が表す（降水ナウキャストは地域に固定で、値が時間で変わる）。
-type MapLayerKind = (typeof mapDisplay.layerKinds)[number];
-
 // 地域に固定のレイヤーの中分類（▶パネルの見出し）。ルートは持たない。
 export type MapLayerCategory = (typeof mapDisplay.layerCategories)[number]["key"];
 
@@ -64,7 +60,6 @@ export function mapOverlayGroupFor(layer: { category?: MapLayerCategory }): MapO
 export interface ChipLayerDescriptor {
   id: MapLayerId;
   label: string;
-  kind: MapLayerKind;
   icon: MapIconComponent;
   /** 省略できない（書き忘れたレイヤーは取得状態を持たず、チップの状態の印が出ない）。 */
   dataSource: MapLayerDataSource;
@@ -83,10 +78,7 @@ export interface ChipLayerDescriptor {
   minZoom?: number;
 }
 
-type LayerDeclaration = Pick<
-  ChipLayerDescriptor,
-  "dataSource" | "kind" | "category" | "dataNature" | "defaultOn" | "minZoom"
->;
+type LayerDeclaration = Pick<ChipLayerDescriptor, "dataSource" | "category" | "dataNature" | "defaultOn" | "minZoom">;
 
 /** レンズの層。チップに出ない（表示はレンズの選択だけが決める）ので、名前・アイコン・説明を持たず、
  * 地図の組み立てが情報源を引くためのidと源泉の宣言だけを持つ。 */
@@ -101,7 +93,6 @@ export type MapLayerDescriptor = ChipLayerDescriptor | LensLayerDescriptor;
 function declaredLayer(spec: {
   dataSource: MapLayerDataSource;
   category: MapLayerCategory | null;
-  kind: MapLayerKind;
   dataNature: MapLayerDataNature;
   defaultOn: boolean;
   drawMinZoom: number | null;
@@ -110,7 +101,6 @@ function declaredLayer(spec: {
   const minZooms = [sourceMinZoom, spec.drawMinZoom].filter((zoom): zoom is number => zoom !== null);
   return {
     dataSource: spec.dataSource,
-    kind: spec.kind,
     category: spec.category ?? undefined,
     dataNature: spec.dataNature,
     defaultOn: spec.defaultOn,
@@ -141,12 +131,10 @@ export function buildMapLayers({
 }: LayerCatalog): readonly MapLayerDescriptor[] {
   // 取れていないときは年に触れない（既定の年を出すと、それが正しいように見える）。
   const accidentCoverage = coverageYearsLabel(accidentYears);
-  // 並びはレンズの選択肢と同じ（総合を先に、続けて費用の軸）。
-  const routeLenses = lenses.map((lens) => lens.label).join("・");
   // 取れていないときは帯の幅に触れない（既定の幅を出すと、作り直しに使った幅と食い違いうる）。
   const landcoverRingOuterM = String(clientTuningValue({ clientTuning }, CLIENT_TUNING_IDS.landcoverRingOuterM) ?? "");
   const staticLayers = mapDisplay.layers.map((layer): ChipLayerDescriptor => {
-    const slots = { accidentYears: accidentCoverage, routeLenses, landcoverRingOuterM };
+    const slots = { accidentYears: accidentCoverage, landcoverRingOuterM };
     return {
       id: layer.id,
       label: layer.label,
