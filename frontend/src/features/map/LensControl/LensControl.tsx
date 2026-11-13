@@ -6,7 +6,6 @@ import LegendCheckboxList from "@/features/map/LegendCheckboxList/LegendCheckbox
 import { LEGEND_SWATCH_RING_CLASS, legendSwatchBackground, type LegendEntry } from "@/lib/mapDisplay/legendFilter";
 import { LAYER_DATA_STATUS_LABELS, layerDataStatusNotice, type LayerDataStatus } from "@/features/map/layers/mapLayers";
 import { UNSELECTED_LENS_ID, LENS_NEUTRAL_COLOR, type LensId } from "@/lib/mapDisplay/routeStyleModes";
-import { Checkbox } from "@/components/ui/Checkbox/Checkbox";
 import { Button } from "@/components/ui/Button/Button";
 import { ToggleGroup } from "@/components/ui/ToggleGroup/ToggleGroup";
 import { Dot } from "@/components/ui/Dot/Dot";
@@ -31,8 +30,6 @@ interface LensControlProps {
   onToggleLegendKey: (key: string) => void;
   /** 全部の段をまとめて置き換える（段の細かい軸で「1つだけ見たい」を1つずつ外させない）。 */
   onSetHiddenLegendKeys: (hiddenKeys: string[]) => void;
-  keepAfterRoute: boolean;
-  onKeepAfterRouteChange: (keep: boolean) => void;
   /** ルート確定済みか（レンズを選んでいないときのピルの名前が、ルートの前後で変わる）。 */
   hasDetail: boolean;
   /** 候補を選んでいるのに、ルートの線を「表示」で出していない（色分けがルートの線に効かない）。 */
@@ -64,8 +61,6 @@ export default function LensControl({
   hiddenLegendKeys,
   onToggleLegendKey,
   onSetHiddenLegendKeys,
-  keepAfterRoute,
-  onKeepAfterRouteChange,
   hasDetail,
   routeHidden,
   premises,
@@ -190,17 +185,6 @@ export default function LensControl({
               />
             ))}
           </ToggleGroup>
-          <label
-            className="mt-2 flex items-center gap-1.5 border-t border-dashed border-[var(--color-border)] pt-2"
-            data-usage="ルートを作った後も、ルートの外の道路を薄く塗ったまま残します。"
-          >
-            <Checkbox
-              checked={keepAfterRoute}
-              onCheckedChange={onKeepAfterRouteChange}
-              aria-label="ルート後も周囲の道路を薄く塗る"
-            />
-            ルート後も周囲の道路を薄く塗る
-          </label>
           <div className="mt-1.5 flex justify-end gap-1 border-t border-[var(--color-border)] pt-1.5">
             <Button
               size="panelIcon"

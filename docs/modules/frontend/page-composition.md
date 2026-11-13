@@ -27,7 +27,7 @@
 | components（特定モジュールの責務ではない共通部品） | `BottomSheet/BottomSheet.tsx`（モバイル下部シート、下記「モバイル/デスクトップのレイアウト分岐」節参照）・`Disclosure/Disclosure.tsx`（折りたたみ表示、[ルート設定・結果パネル](route-settings-and-results.md)等が使う）・`SectionDisclosure/SectionDisclosure.tsx`（デスクトップの左のパネルの1区分。効いているパネルの印を見出しに出す`Disclosure`）・`UsageGuide/UsageGuide.tsx`（説明を見る状態。下記「使い方の説明」）・`UsageGuide/UsageTooltip.tsx`（アイコンだけの部品の長押し・マウスを重ねたときのツールチップ。下記「長押しのツールチップ」）・`UsageGuide/usageTarget.ts`（押された要素から説明する部品・名前・使い方の文を引き、アイコンだけで見えている部品かを決める）・`FirstVisitIntro/FirstVisitIntro.tsx`（初めて開いたときだけ出す案内。下記「初回の案内」）・`TurnArrow/TurnArrow.tsx`（曲がる向きの矢印と読み上げの言葉。曲がる所のカードと地図の曲がる所の札が同じ絵を出す）・`HeaderStat/HeaderStat.tsx`（画面の上の1行の数字1つ・数値と単位・風の矢印と速さ。同じ枠に入れ替わって出る天気の帯と走りの帯が同じに読めるよう、両方がこれで描く） |
 | features/conditions/RideConditionBar | `RideConditionBar.tsx`（地図右上、拡大・縮小と方位磁針の直下の走行条件アイコン列本体。出発時刻・想定速度とも列の幅のアイコンボタンで、アイコンの下へ現在値（出発時刻は当日なら「12:40」、別の日は「9/24」「12:40」の2行。想定速度は「20km/h」）を出す。表示・`aria-label`・`RideConditionBar.tsx: title`は同じ文字列から作る。タップしたポップオーバー内はドラッグ式タイムライン（「今」の目盛りを選ぶと追従へ戻す。刻みは端末に覚える）＋`input[type=datetime-local]`の直接指定[出発時刻、日本時間で読み書きする]、スライダー＋数値入力[想定速度。平地・無風の巡航速度であることを添え、(i)の奥に、速度を変える条件の名前を走行モデルの宣言（生成物の`segment_speed_conditions`）から、走行モデルの体格・機材の標準値を画面の設定の較正値から書く——引けない間は標準値の文を出さない]）・`departureTimeline.ts`（出発時刻ポップオーバーのドラッグタイムライン用の目盛り生成。気象レイヤーの実フレームには依存しない自己完結した合成タイムライン） |
 | features/map/MapNavigationControl | `MapNavigationControl.tsx`（地図右上の拡大・縮小（走行中は倍率のボタン）と、地図の北を指す方位磁針。下記「地図の向き」）・`features/map/mapHeading.ts`（地図の向きを8方位の呼び名と度で読むことと、道の値を求める走る向きの刻み） |
-| features/ride | `useRideMode.ts`（走行モードの状態と、地図へ渡す値。下記「走行モード」）・`lib/liveValue.ts`（1秒に何十回も変わる値を状態にせずに渡す口。読む所だけが知らせを受けて描き直す。スマホの向きに使う）・`travelBearing.ts`（受け取った位置から進む向きを決める）・`routeProgress.ts`（現在地をルートの上のどこと見るか）・`useRouteProgress.ts`（走行モードの間、届いた位置を選んだ候補の上の距離へ当て続ける）・`useRideProgress.ts`（ルートの上の位置と一時保存を組にし、読み込み直したら前に当てた位置から続ける）・`useRideWayConditions.ts`（走行中に地図の道の値を取る向き・速さ。実際の進む向きと速さ）・`rideRemaining.ts`（ルートの残りと、選んだ候補の計画から出す到着予想）・`useScreenWakeLock.ts`（位置を受けている間、画面が自動で消えないよう端末に頼む）・`useDeviceHeading.ts`（位置を受けている間、スマホが向いている方角を端末のコンパスから読む）・`RideModeButton/RideModeButton.tsx`（地図の右の列の末尾の走行モードのボタン。走行モードの間は、休む（休んでいれば続きから走る）か案内を終えるかを選ばせ、横に始められなかった理由・向きを読む許しを求め直すボタン・画面を点けたままにできないことを出す）・`RideLockButton/RideLockButton.tsx`（走行モードの間、走行モードのボタンの下に置く、地図への触れを受け付けないロックの鍵のボタン。下記「走行モード」の「ロック」）・`RideBar/RideBar.tsx`（走行モードの間、画面の上の1行に出す走りの数字）・`rideSession.ts`（走行中のルートの一時保存の書き方・読み方・期限）・`useRideSession.ts`（一時保存を書き、開いたときに復元を知らせる）・`nextTurn.ts`（ルートの曲がる所の並びから、現在地より先でいちばん近いものを選ぶ）・`TurnCard/TurnCard.tsx`（次に曲がる所の向きと距離のカード）・`RideBottom/RideBottom.tsx`（走行モードの間の地図の下端: 続きから走る・現在地へ戻る操作、ルートを外れた知らせ、道のりのグラフ、その上の左の俯瞰図） |
+| features/ride | `useRideMode.ts`（走行モードの状態と、地図へ渡す値。下記「走行モード」）・`lib/liveValue.ts`（1秒に何十回も変わる値を状態にせずに渡す口。読む所だけが知らせを受けて描き直す。スマホの向きに使う）・`travelBearing.ts`（受け取った位置から進む向きを決める）・`lib/routeProgress.ts`（現在地をルートの上のどこと見るか。地図の点の小窓も同じ当て方を使う）・`useRouteProgress.ts`（走行モードの間、届いた位置を選んだ候補の上の距離へ当て続ける）・`useRideProgress.ts`（ルートの上の位置と一時保存を組にし、読み込み直したら前に当てた位置から続ける）・`useRideWayConditions.ts`（走行中に地図の道の値を取る向き・速さ。実際の進む向きと速さ）・`rideRemaining.ts`（ルートの残りと、選んだ候補の計画から出す到着予想）・`useScreenWakeLock.ts`（位置を受けている間、画面が自動で消えないよう端末に頼む）・`useDeviceHeading.ts`（位置を受けている間、スマホが向いている方角を端末のコンパスから読む）・`RideModeButton/RideModeButton.tsx`（地図の右の列の末尾の走行モードのボタン。走行モードの間は、休む（休んでいれば続きから走る）か案内を終えるかを選ばせ、横に始められなかった理由・向きを読む許しを求め直すボタン・画面を点けたままにできないことを出す）・`RideLockButton/RideLockButton.tsx`（走行モードの間、走行モードのボタンの下に置く、地図への触れを受け付けないロックの鍵のボタン。下記「走行モード」の「ロック」）・`RideBar/RideBar.tsx`（走行モードの間、画面の上の1行に出す走りの数字）・`rideSession.ts`（走行中のルートの一時保存の書き方・読み方・期限）・`useRideSession.ts`（一時保存を書き、開いたときに復元を知らせる）・`nextTurn.ts`（ルートの曲がる所の並びから、現在地より先でいちばん近いものを選ぶ）・`TurnCard/TurnCard.tsx`（次に曲がる所の向きと距離のカード）・`RideBottom/RideBottom.tsx`（走行モードの間の地図の下端: 続きから走る・現在地へ戻る操作、ルートを外れた知らせ、道のりのグラフ、その上の左の俯瞰図） |
 | features/map/MapView（走行モード） | `useRideFollow.ts`（走行モードの値を受けて、現在地の点・追うカメラ・指で動かしたら休む知らせ・方位磁針を押したときの向きを地図へ当てる）・`rideZoom.ts`（走行中の倍率のボタンが回す基準の倍率の段と、走る速さから追っている間の倍率をどれだけ引くかを決める）・`useTurnMark.tsx`（走行中に次に曲がる所の地点に、曲がる向きの矢印の札を出す） |
 | features/conditions/DynamicLayerTimeSlider | `DynamicLayerTimeSlider.tsx`（時刻のルーラー（`components/ui/Ruler/Ruler.tsx`）に、選んだ時刻の文・刻みの切り替え・1コマ送り・現在へ戻すボタンを添えたタイムラインUI。`RideConditionBar`が出発時刻ピッカーとして使う唯一の呼び出し元） |
 
@@ -342,7 +342,7 @@ backendも日本時間で扱う。`domain/time_zone.py`）。暦と時刻の取�
               └─→ レンズの線: 塗っているレンズの式が勾配の材料を読む間だけ（下記の共通経路）
 
   レンズの線の共通経路（レンズごとの分岐を持たない）:
-    塗っているレンズ paintedLensId = lens（ルート確定後は周囲も塗る設定の間だけ。それ以外はnull）
+    塗っているレンズ paintedLensId = lens（ルート確定後は周りを出す設定の間だけ。それ以外はnull）
     useWayMaterials([塗っているレンズ], 表示範囲, 出発時刻と走る条件, つまみと倍率)
       （useMapViewの中。走る条件は、レンズの materialConditions にある名前だけがそのレンズの材料の要求に載る）
     走る条件 {bearing_deg: 走行方位, speed_kmh: 想定速度} → 地図全体のglobal-state（要求に載せない条件は、変えても材料を取り直さない）
@@ -350,8 +350,8 @@ backendも日本時間で扱う。`domain/time_zone.py`）。暦と時刻の取�
 ```
 
 **ルート確定後（`hasDetail`）**、レンズの線の一律色分けは
-**「ルート後も周囲を塗る」（既定ON）次第**で、ONの間はルート線の色分けと併せて
-周囲の道路も薄く塗り続ける（`features/map/view/lens.ts: paintedLensId`）。ルート線側の色分けは`routeStyleModes.ts`由来のモード
+**「表示」の「ルート後も周りを出す」（既定OFF）次第**で、ONの間はルート線の色分けと併せて
+周囲の道路も薄く塗り続ける（`features/map/view/useMapView.ts`。点の層も同じ切り替えに従う）。ルート線側の色分けは`routeStyleModes.ts`由来のモード
 選択が担う。
 
 **地図の向き**: 地図の上の向きが、向きで値の変わる負担（風・勾配）で周りの道を塗るときと、道の負担を見るときの走る向きになる。
@@ -455,10 +455,10 @@ MapLibreの`GeolocateControl`を使わないのは、地図を進む向きへ回
   現在地の縦の線と印を出し、そこまでをプロファイル（色を抜く）と地図のルート線の両方で薄める（地図は区間を、その地点を刻みへ切り下げた所で分けて手前を薄める。刻みをまたぐまでは地図の中身を組み直さない。刻みは
   `features/map/MapView/MapView.tsx: TRAVELLED_SHADE_STEP_M`。濃さは`mapDisplay.route.opacities.travelled`）。往復のように行きと帰りが同じ道を通ると、後に描く帰りの線が走り終えて薄めた行きの線を
   覆うので、ルートの線は走行中に限らず進む向きの左へずらして描き、重なる道では行きと帰りを並べる（`scene/groups/routes.ts: ROUTE_OFFSET_PX`）。当てる先はルートの上で最も近い点だが、往復のように同じ道を2度通るルートでは行きと帰りが
-  同じ近さになるので、最も近い点と余裕（`routeProgress.ts: ROUTE_MATCH_SLACK_M`）の内で並ぶ点のうち、前に当てた位置から続く点を選ぶ。
+  同じ近さになるので、最も近い点と余裕（`lib/routeProgress.ts: ROUTE_MATCH_SLACK_M`）の内で並ぶ点のうち、前に当てた位置から続く点を選ぶ。
   折り返しの近くでは行きと帰りが前の位置から同じだけ離れるので、後ろへ戻る側を重く数えて前へ進んだ側を取る。前の位置は候補を
   替えると捨て、最初の1回は始点に近い側を選ぶ。ルートからの隔たりが端末の返す位置の誤差と同じ余裕の和を超えたら外れたとし
-  （`routeProgress.ts: offRoute`。線は道の中心を通るので、誤差だけを境目にすると広い道の端を走るだけで外れたと出る。外れの判定と当て方は、位置が届いたときに組んだ全部の辺への射影を1つ使い、描き直すたびには組まない）、外れている間は外れる前に当てた距離で止めて（残り・到着予想・
+  （`lib/routeProgress.ts: offRoute`。線は道の中心を通るので、誤差だけを境目にすると広い道の端を走るだけで外れたと出る。外れの判定と当て方は、位置が届いたときに組んだ全部の辺への射影を1つ使い、描き直すたびには組まない）、外れている間は外れる前に当てた距離で止めて（残り・到着予想・
   プロファイルの線・地図の薄めはその所のまま）走りの帯に外れの印を出し、ルートへ戻ったら戻った点から続ける。外れても自動で作り直さない
   （作り直しは利用者の操作だけ）。位置の誤差が分からない端末では外れを決めない。
 - **曲がる所の案内**: ルートの上の現在地より先でいちばん近い曲がる所（候補の`turns`。backend が分かれ道で曲がる所だけを

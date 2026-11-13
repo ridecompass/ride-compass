@@ -78,7 +78,6 @@ describe("ルートを作る", () => {
 
     await user.click(screen.getByRole("button", { name: /^負担で塗る: / }));
     await user.click(await screen.findByRole("radio", { name: /登坂/ }));
-    await user.click(screen.getByRole("checkbox", { name: "ルート後も周囲の道路を薄く塗る" }));
     await user.keyboard("{Escape}");
     expect(paints("ascent")).toBe(true);
 

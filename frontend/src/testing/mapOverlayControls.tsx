@@ -37,6 +37,7 @@ export function propsOf(
   return {
     layers,
     route: { ...route, onChange: vi.fn() },
+    surroundings: { shown: false, onChange: vi.fn() },
     onToggle: vi.fn(),
     onLegendEntryToggle: vi.fn(),
     onLegendAxisSetHidden: vi.fn(),

@@ -32,7 +32,7 @@ import { useMapScene } from "@/features/map/MapView/useMapScene";
 import { useRideFollow, type RideFollow } from "@/features/map/MapView/useRideFollow";
 import { useSectionFocus } from "@/features/map/MapView/useSectionFocus";
 import { type TurnMarkPoint, useTurnMark } from "@/features/map/MapView/useTurnMark";
-import { aheadSidePoints, aheadSidePointStartKm, sidePointLocator } from "@/lib/mapDisplay/sidePoints";
+import { routeSide } from "@/lib/mapDisplay/sidePoints";
 import { segmentPath } from "@/lib/routeDistance";
 
 interface MapViewProps {
@@ -172,18 +172,8 @@ export default function MapView({
     () => (selectedSection === null ? null : segmentPath(selectedSection)),
     [selectedSection],
   );
-  // 選んだ区間の道なりの形に、点の小窓の点を当てる（区間を選び直したときだけ組み直す）。
-  const locateOnSection = useMemo(
-    () => (selectedSection === null ? null : sidePointLocator(selectedSection)),
-    [selectedSection],
-  );
-  // 走行中の、現在地から先の道のり（始まりが刻みをまたいだときだけ組み直す）。区間を選んでいる間は、選んだ区間が勝つ。
-  const aheadStartKm = travelledKm === null ? null : aheadSidePointStartKm(travelledKm);
-  const ahead = useMemo(
-    () =>
-      selectedSegments === undefined || aheadStartKm === null ? null : aheadSidePoints(selectedSegments, aheadStartKm),
-    [selectedSegments, aheadStartKm],
-  );
+  // 選んでいるルートの線と、点の小窓の点をそれに当てる関数（候補を選び直したときだけ組み直す）。
+  const side = useMemo(() => (selectedSegments === undefined ? null : routeSide(selectedSegments)), [selectedSegments]);
   const { scene, interactiveLayerIds } = useMapScene({
     look,
     catalog: mapCatalog,
@@ -194,8 +184,7 @@ export default function MapView({
     inspectedShape,
     travelledKm: travelledKm === null ? null : shadedTravelledKm(travelledKm),
     selectedRouteSegment,
-    // 区間を選んでいる間はその区間の、走行中に選んでいない間は現在地から先の道のりの、近くの点を描く。
-    sidePointPath: selectedSectionPath ?? ahead?.path ?? null,
+    routePath: side?.path ?? null,
   });
   const tapsLocked = ride?.locked ?? false;
   // 地図のイベント（初期化のeffectで一度だけ登録する）が、いまのpropsを読むための参照。
@@ -208,7 +197,7 @@ export default function MapView({
     tapsLocked,
     onPointPlace,
     onRouteSegmentSelect,
-    sidePointAlong: (lngLat: readonly [number, number]) => (locateOnSection ?? ahead?.locate)?.(lngLat) ?? null,
+    sidePointAlong: (lngLat: readonly [number, number]) => side?.locate(lngLat, travelledKm) ?? null,
     onSpliceStretchSelect,
     onRouteSelect,
     ride,

@@ -5,7 +5,7 @@ import { useMemo, useState } from "react";
 import { projectOnTrack, routeTrack, type RouteSegmentShape, type RouteTrackEdge } from "@/lib/routeDistance";
 import type { Coordinates } from "@/types/route";
 
-import { locateOnRoute, offRoute } from "./routeProgress";
+import { locateOnRoute, offRoute } from "@/lib/routeProgress";
 
 /** ルートの上の現在地。`km`は始点からの距離で、まだルートへ当てていなければnull。 */
 export interface RouteProgress {

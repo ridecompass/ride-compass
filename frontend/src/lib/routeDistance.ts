@@ -135,16 +135,6 @@ function lngLatOnEdge(edge: RouteTrackEdge, km: number): LngLat {
   return [edge.from[0] + (edge.to[0] - edge.from[0]) * fraction, edge.from[1] + (edge.to[1] - edge.from[1]) * fraction];
 }
 
-/** 道なりの形`track`のうち、ルートの上の距離`fromKm`から`toKm`までの部分。両端にかかる辺は、その距離の位置で切る。 */
-export function trackBetween(track: readonly RouteTrackEdge[], fromKm: number, toKm: number): RouteTrackEdge[] {
-  return track.flatMap((edge) => {
-    if (edge.toKm <= fromKm || edge.fromKm >= toKm) return [];
-    const startKm = Math.max(edge.fromKm, fromKm);
-    const endKm = Math.min(edge.toKm, toKm);
-    return [{ from: lngLatOnEdge(edge, startKm), to: lngLatOnEdge(edge, endKm), fromKm: startKm, toKm: endKm }];
-  });
-}
-
 /**
  * ルートの道なりの形の上に、始まりから`stepKm`おきに置いた点と、そのルートの上の距離。終わりの点も必ず含む。
  */

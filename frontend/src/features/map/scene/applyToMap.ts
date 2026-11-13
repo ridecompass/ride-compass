@@ -89,6 +89,8 @@ export interface SceneLook {
   readonly lens: LensId;
   /** 全道路を塗っている軸（塗っていなければnull）。 */
   readonly paintedLensId: LensId | null;
+  /** 道に付く層（塗る負担の周りの道・点の層）を地図全体に出すか。ルートを選んでいて周りを出さない間だけ偽で、ルート沿いだけに出す。 */
+  readonly surroundingsShown: boolean;
   /** 地図の道に塗る、道路タブの段。 */
   readonly roadAvoidance: AvoidanceChoice;
   /** 道路タブを地図で見ているか。 */
@@ -125,8 +127,8 @@ type SceneWiringProps = {
   readonly travelledKm: number | null;
   /** 道のりのグラフか地図で選んだ地点と、その地点を含む区間。選んでいなければnull。 */
   readonly selectedRouteSegment: SelectedRouteSegment | null;
-  /** 近くの点を描く線（選んでいる区間か、走行中に選んでいない間は現在地から先の道のり）。どちらも無ければnull。 */
-  readonly sidePointPath: readonly (readonly [number, number])[] | null;
+  /** 選んでいるルートの線。無ければnull。 */
+  readonly routePath: readonly (readonly [number, number])[] | null;
 };
 
 const NO_KEYS: readonly string[] = [];
@@ -266,14 +268,10 @@ export function sceneInputsFrom(props: SceneWiringProps): SceneInputs {
       tiles: versions === null ? null : { urls: pointTileUrls(versions), ...pointZoom },
       visible,
       hiddenKeys,
+      nearPath: props.look.surroundingsShown ? null : props.routePath,
     },
     weather: weatherStateFrom(props.look.dynamicWeather),
     route: routeStateFrom(props),
-    sidePoint: {
-      path: props.sidePointPath,
-      tilesReady: versions !== null,
-      hiddenKeys,
-    },
   };
 }
 
