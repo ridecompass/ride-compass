@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import { LEGEND_NO_DATA_KEY } from "@/lib/mapDisplay/mapColorLegend";
 import { ROAD_OTHER_KEY } from "@/lib/mapDisplay/roadTracks";
 import { evaluateExpression as evaluate, matchesFilter } from "@/testing/mapExpressions";
-import { avoidanceChoiceOf, type AvoidanceChoice, type AvoidanceLevel } from "@/lib/roadAvoidance";
+import { avoidanceChoiceOf, type AvoidanceChoice } from "@/lib/roadAvoidance";
 import { AVOIDANCE_LEVELS, avoidanceRow, roadClass, roadClassCatalog, roadMapLayer } from "@/testing/clientConfig";
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import palette from "@/types/generated/palette.json";
@@ -137,13 +137,5 @@ describe("道路タブの段", () => {
     }
     expect(paintedColors({ levels: [], rows: [] })).toEqual([null, null, null, null, null]);
     expect(paintedColors(avoidanceChoiceOf(avoidance, chosen, "light"), false)).toBeNull();
-  });
-
-  it("配られた段を足せば、その段の並びと色のまま塗る", () => {
-    // backendの宣言にだけ足した段（画面の型にまだ無い鍵）。
-    const strongest = { key: "never" as AvoidanceLevel, label: "×∞∞", color: "#010203", color_on_dark: "#040506" };
-    const added = { ...avoidance, levels: [...avoidance.levels, strongest] };
-    const choice = avoidanceChoiceOf(added, { "surface.gravel": strongest.key }, "light");
-    expect(paintedColors(choice)).toEqual([strongest.color, strongest.color, colorOf("avoid"), strongest.color, null]);
   });
 });

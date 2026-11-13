@@ -28,7 +28,7 @@ from app.domain.address_area import (
 from app.domain.geo import LatLon
 from app.domain.material_sql import like_escaped_sql
 from app.domain.place_search import PLACE_PREDICTION_LIMIT, PLACE_PREDICTION_MIN_LENGTH, PlaceCandidate
-from app.infrastructure.derived_models import continuable_key_sql
+from app.infrastructure.derived_models import CONTINUABLE_KEY_SQL
 
 #: 上限までの区画（`found`）ごとに、祖先を都道府県から自分まで並べた名前（`names`）の配列を1行ずつ出す。
 _AREA_CHAINS = """
@@ -73,13 +73,13 @@ _SEARCH_SQL = text(f"""
         UNION ALL
         SELECT area_id, 0, 1, NULL
         FROM address_search_keys
-        WHERE :continues AND {continuable_key_sql()} AND key LIKE {_CONTINUED_PATTERN} AND length(key) > :query_length
+        WHERE :continues AND {CONTINUABLE_KEY_SQL} AND key LIKE {_CONTINUED_PATTERN} AND length(key) > :query_length
           AND length(key) <= coalesce((
               SELECT min(counted.n) FROM (
                   SELECT l.n, sum(c.count) OVER (ORDER BY l.n) AS total
                   FROM generate_series(:query_length + 1, :query_length + {_CONTINUATION_LENGTH_WINDOW}) AS l(n),
                        LATERAL (SELECT count(*) AS count FROM address_search_keys
-                                WHERE {continuable_key_sql()} AND length(key) = l.n AND key LIKE {_CONTINUED_PATTERN}) c
+                                WHERE {CONTINUABLE_KEY_SQL} AND length(key) = l.n AND key LIKE {_CONTINUED_PATTERN}) c
               ) counted
               WHERE counted.total >= CAST(:limit AS integer)), 2147483647)
     ),

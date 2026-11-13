@@ -58,17 +58,6 @@ class AvoidanceLevelView(StrictModel):
     color_on_dark: str | None
 
 
-#: 段→地図に塗る色の役割（`domain/display_palette.py: SEMANTIC_COLORS`の鍵）。Noneの段は塗らない。
-_LEVEL_COLOR_ROLES: dict[AvoidanceLevel, str | None] = {
-    "pass": None,
-    "slight_prefer": "road_avoidance_slight_prefer",
-    "prefer": "road_avoidance_prefer",
-    "slight_avoid": "road_avoidance_slight_avoid",
-    "avoid": "road_avoidance_avoid",
-    "exclude": "road_avoidance_exclude",
-}
-
-
 class AvoidanceSectionView(StrictModel):
     """道路タブの見出し1つ。鍵・名前は分け方の鍵・名前で、地図の線の層（`RoadMapLayerView`）と揃う。"""
 
@@ -174,11 +163,11 @@ def road_class_catalog(definitions: RoadClassDefinitions) -> RoadClassCatalog:
                 AvoidanceLevelView(
                     key=level,
                     label=multiplier_label(multipliers[level]),
-                    color=role and SEMANTIC_COLORS[role],
-                    color_on_dark=role and SEMANTIC_COLORS_ON_DARK[role],
+                    # 色の役割は`road_avoidance_<段>`。役割の無い段（通る）は塗らない。
+                    color=SEMANTIC_COLORS.get(f"road_avoidance_{level}"),
+                    color_on_dark=SEMANTIC_COLORS_ON_DARK.get(f"road_avoidance_{level}"),
                 )
                 for level in sorted(AVOIDANCE_LEVELS, key=multipliers.__getitem__)
-                for role in [_LEVEL_COLOR_ROLES[level]]
             ],
             sections=[
                 AvoidanceSectionView(key=key, label=definitions.classifications[key].label)

@@ -251,12 +251,6 @@ def _material_fact(material_id: str, materials: Mapping[str, MaterialColumn], fi
 
 
 @njit(cache=True, nogil=True)
-def _avoidance_scaled(cost_scale: float | np.ndarray, seconds: float | np.ndarray) -> float | np.ndarray:
-    """避け方の倍率`cost_scale`を掛ける前の秒`seconds`から、掛けた後の費用（数でも配列でもよい）。"""
-    return cost_scale * seconds
-
-
-@njit(cache=True, nogil=True)
 def _bin_costs(
     travel_seconds: np.ndarray,
     wait_seconds: np.ndarray,
@@ -284,7 +278,7 @@ def _bin_costs(
             cost = np.inf
         else:
             seconds = travel_seconds[row] + wait_seconds[row]
-            cost = float(_avoidance_scaled(cost_scale[row], seconds + added_seconds[row]))
+            cost = cost_scale[row] * (seconds + added_seconds[row])
         cost_lazy[lazy] = cost
         travel_lazy[lazy] = seconds
     return cost_lazy, travel_lazy
@@ -311,7 +305,6 @@ def compile_leg_cost_kernels() -> None:
     seconds = model.travel_seconds(np.zeros(1), np.zeros(1))
     model.ride(np.zeros(1), np.zeros(1), 1.0)
     _bin_cost_arrays(seconds, np.zeros(1), np.zeros(1, dtype=bool), np.ones(1), np.zeros(1), np.zeros(1, dtype=int), 1)
-    _avoidance_scaled(np.ones(1), np.zeros(1))
 
 
 class LegCostComposer:
@@ -494,10 +487,9 @@ class LegCostComposer:
         headwind, crosswind = self._wind_context(time.take(rows), _row_taker(rows)).components()
         inputs = self._travel_inputs
         travel_seconds, penalty_by_axis = self._ledger.row_seconds(inputs.model, headwind, crosswind, rows)
-        # 探索の費用（`_bin_costs`）のうち、避け方の倍率が足し引きした分。
+        # 探索の費用（`_bin_costs`）のうち、避け方の倍率が足し引きした分。探索と同じく倍率を掛けてから引き、float64で求める。
         unscaled = travel_seconds + inputs.wait_seconds[rows] + sum(penalty_by_axis.values(), np.zeros(len(rows)))
-        scaled = np.asarray(_avoidance_scaled(
-            kernel_array(self._cost_scale[rows], np.float64), kernel_array(unscaled, np.float64))) - unscaled
+        scaled = self._cost_scale[rows].astype(np.float64) * unscaled - unscaled
         return LegValues(headwind_ms=headwind, penalty_by_axis=penalty_by_axis,
                          preferred_seconds=np.minimum(scaled, 0.0), avoided_seconds=np.maximum(scaled, 0.0))
 

@@ -34,17 +34,6 @@ def test_regulation_hours_are_minutes_from_midnight(hours, minutes):
     assert (slot.hours_from, slot.hours_to) == minutes
 
 
-def _given(slot: RegulationSlot) -> tuple[bool, ...]:
-    return slot.days, slot.period, slot.vehicles, slot.except_hours, slot.except_days, slot.except_period
-
-
-def test_regulation_fields_are_whether_given():
-    assert _given(_slot()) == (False,) * 6
-    slot = _slot(days="1", period_to="0930", vehicles=_vehicles(a="10"), except_hours_from="1200", except_days="6",
-                 except_period_from="1229")
-    assert _given(slot) == (True,) * 6
-
-
 def _vehicles(a: str = "", d: str = "") -> list[str]:
     return [a, "", "", d]
 

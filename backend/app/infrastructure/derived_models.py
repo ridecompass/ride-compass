@@ -86,18 +86,13 @@ def vocabulary_check(table: str, column: str, values: frozenset[str]) -> CheckCo
     return CheckConstraint(f"{column} IN ({sql_literals(sorted(values))})", name=f"{table}_{column}_known")
 
 
-def _qualified(alias: str | None, column_name: str) -> str:
-    return column_name if alias is None else f"{alias}.{column_name}"
-
-
 def grouped_place_sql(alias: str | None = None) -> str:
     """群を持つ地点（立ち寄り先）の条件。地点の位置の部分索引の条件で、範囲で引く読み手もこの式で絞ると索引が使われる。"""
-    return f"{_qualified(alias, 'place_group')} IS NOT NULL"
+    return f"{alias + '.' if alias else ''}place_group IS NOT NULL"
 
 
-def continuable_key_sql(alias: str | None = None) -> str:
-    """続きに使う住所の鍵の条件。鍵の長さの部分索引の条件で、続きを引く読み手もこの式で絞ると索引が使われる。"""
-    return _qualified(alias, "continuable")
+# 続きに使う住所の鍵の条件。鍵の長さの部分索引の条件で、続きを引く読み手もこの式で絞ると索引が使われる。
+CONTINUABLE_KEY_SQL = "continuable"
 
 
 def _edge_key(table: str) -> ForeignKeyConstraint:
@@ -370,7 +365,7 @@ class AddressSearchKeyRow(Base):
     __table_args__ = (
         # 続きを引くとき、長さごとの件数を数えて短い鍵から引く。
         Index("idx_address_search_keys_continuable", func.length(column("key")), "key",
-              postgresql_where=text(continuable_key_sql())),
+              postgresql_where=text(CONTINUABLE_KEY_SQL)),
         {"info": DERIVED},
     )
 
