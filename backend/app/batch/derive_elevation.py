@@ -8,7 +8,7 @@
 （https://maps.gsi.go.jp/development/hyokochi.html に明記）、中間の点は桁や坑道ではなく下の地形を指す——谷を渡る平らな橋で、
 谷底の起伏がそのまま獲得標高へ積まれてしまう。橋台・坑口は道が地面と接する位置なので、両端の標高は使える。
 
-**橋の端の点は、その点の周り（較正値`bridge_end_radius_m`の半径の8方位）とその点のうち、一番高い値を採る**。OSM の橋の端が、
+**橋の端の点は、その点の周り（較正値`bridge_end_radius_m`の半径で、北から等しい角度に並べた方位）とその点のうち、一番高い値を採る**。OSM の橋の端が、
 DEM が構造物を除いた範囲（水門の下の水面・高架の下の谷底）に入ると、端の点そのものは橋台の載る堤防や岸より低い値を返す。
 橋の両端だけを引く作りではその値がそのまま橋の高さになり、端を共有する隣の道にも急な偽の坂ができる。構造物を除いた所は
 周りより低いので、周りの一番高い値が橋台の高さに近い。同じ頂点を端に持つ区間（橋と、続く道）は同じ値を採る。トンネルの坑口には
@@ -39,6 +39,7 @@ from app.batch.dem_tile_store import PRODUCT_PRIORITY
 from app.domain.attributes import elevation_values_sql
 from app.domain.region import tile_position_sql
 from app.domain.material_sql import IS_BRIDGE_SQL, IS_TUNNEL_SQL
+from app.domain.tuning import BRIDGE_END_BEARINGS
 from app.infrastructure.source_models import DEM_TILES_SQL, WAYS_SOURCE_SQL
 
 logger = logging.getLogger("ridecompass.derive_elevation")
@@ -78,14 +79,14 @@ CROSS JOIN LATERAL (
     OFFSET 0) p
 """
 
-#: 橋の端の周りの8方位の点を、区間を持たない頂点（`osm_way_id`が空）として足す。`$1`は半径（m）。画素は区間の頂点と
+#: 橋の端の周りの方位（`domain/tuning.py: BRIDGE_END_BEARINGS`）の点を、区間を持たない頂点（`osm_way_id`が空）として足す。`$1`は半径（m）。画素は区間の頂点と
 #: 同じ引き方で引き、`_RAISE_BRIDGE_ENDS`が端の頂点へ一番高い値を写す。計算する区間の頂点がある端だけを足す。
-_BRIDGE_END_PROBES = """
+_BRIDGE_END_PROBES = f"""
 INSERT INTO _vertex (vid, lon, lat, node_id)
 SELECT (SELECT max(vid) FROM _vertex) + row_number() OVER (), ST_X(p.geom), ST_Y(p.geom), b.node_id
 FROM _bridge_end b
-CROSS JOIN LATERAL generate_series(0, 7) AS k
-CROSS JOIN LATERAL (SELECT ST_Project(b.geom::geography, $1::float8, radians(45 * k))::geometry AS geom) p
+CROSS JOIN LATERAL generate_series(0, {BRIDGE_END_BEARINGS - 1}) AS k
+CROSS JOIN LATERAL (SELECT ST_Project(b.geom::geography, $1::float8, radians({360 / BRIDGE_END_BEARINGS} * k))::geometry AS geom) p
 WHERE EXISTS (SELECT 1 FROM _vertex v WHERE v.node_id = b.node_id)
 """
 #: 頂点ごとに採った標高。値のある画素だけを入れるので、行の無い頂点はまだどの製品でも
@@ -189,7 +190,8 @@ async def _derive_elevation(conn: asyncpg.Connection, profile_step_m: float, bri
     await conn.execute("ANALYZE _bridge_end")
     await conn.execute(_VERTICES, profile_step_m)
     probes = affected_rows(await conn.execute(_BRIDGE_END_PROBES, bridge_end_radius_m))
-    logger.info("標高: 橋の端 %d点を、周り%.0fmの8方位の点のうち一番高い値にする", probes // 8, bridge_end_radius_m)
+    logger.info("標高: 橋の端 %d点を、周り%.0fmの%d方位の点のうち一番高い値にする",
+                probes // BRIDGE_END_BEARINGS, bridge_end_radius_m, BRIDGE_END_BEARINGS)
     await conn.execute("ANALYZE _vertex")
     await conn.execute(_VERTEX_ELEVATION_TABLE)
     vertices = await conn.fetchval("SELECT count(*) FROM _vertex")
