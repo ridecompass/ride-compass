@@ -39,7 +39,7 @@ afterEach(() => {
 });
 
 describe("useMapView", () => {
-  it("レンズを選んでもルートの線の出し入れは変えず、ルートの確定後に周りを塗らない設定なら全道路を塗らない", () => {
+  it("レンズを選んでもルートの線の出し入れは変えず、ルートの確定後は周りを出す設定の間だけ道に付く層を地図全体に出す", () => {
     serve();
     const { result, rerender } = renderMapView({ hasSelectedRoute: true });
     act(() => result.current.overlayControls.route.onChange(false));
@@ -50,8 +50,9 @@ describe("useMapView", () => {
     expect(result.current.look.layerVisibility.route).toBe(false);
     expect(result.current.lensControl.routeHidden).toBe(true);
     rerender({ hasDetail: true });
-    act(() => result.current.lensControl.onKeepAfterRouteChange(false));
-    expect(result.current.look.paintedLensId).toBeNull();
+    expect(result.current.look).toMatchObject({ paintedLensId: null, surroundingsShown: false });
+    act(() => result.current.overlayControls.surroundings.onChange(true));
+    expect(result.current.look).toMatchObject({ paintedLensId: "ascent", surroundingsShown: true });
   });
 
   it("塗っているレンズだけ表示範囲の材料を取り、塗りに効く走る条件と、取れなかったことをレンズに出す", async () => {
@@ -213,13 +214,13 @@ describe("useMapView", () => {
     expect(chip(result, "disaster")?.legendDetails?.[0].hiddenKeys).toEqual(["heavyRain"]);
   });
 
-  it("表示・レンズ・周りを塗る設定・隠した行は、次に開いたときも残る", async () => {
+  it("表示・レンズ・周りを出す設定・隠した行は、次に開いたときも残る", async () => {
     serve();
     const first = renderMapView();
     await waitFor(() => expect(first.result.current.lensControl.axisOptions).toHaveLength(LENS_COUNT));
     act(() => first.result.current.overlayControls.onToggle("hillshade", true));
     act(() => first.result.current.lensControl.onLensChange("ascent"));
-    act(() => first.result.current.lensControl.onKeepAfterRouteChange(false));
+    act(() => first.result.current.overlayControls.surroundings.onChange(true));
     act(() => first.result.current.overlayControls.onLegendEntryToggle("disaster", "heavyRain"));
     first.unmount();
 
@@ -227,7 +228,7 @@ describe("useMapView", () => {
 
     await waitFor(() => expect(result.current.lensControl.lens).toBe("ascent"));
     expect(result.current.look.layerVisibility.hillshade).toBe(true);
-    expect(result.current.lensControl.keepAfterRoute).toBe(false);
+    expect(result.current.overlayControls.surroundings.shown).toBe(true);
     expect(chip(result, "disaster")?.legendDetails?.[0].hiddenKeys).toEqual(["heavyRain"]);
   });
 

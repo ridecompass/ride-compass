@@ -43,7 +43,7 @@ import { initiallyHiddenLegendKeys } from "@/features/map/scene/legends";
 import { WAY_BEARING_STEP_DEG } from "@/features/map/mapHeading";
 
 import { hiddenKeysOf, presentHiddenKeys, toggleHiddenKey, withHiddenKeys } from "./legendFilters";
-import { lensLegend, paintedLensId } from "./lens";
+import { lensLegend } from "./lens";
 import type { HiddenLegendKeys, MapLook } from "./mapLook";
 import { overlayChips } from "./overlayChips";
 import type { CostPreference } from "@/types/route";
@@ -128,10 +128,10 @@ export function useMapView({
   const [storedLens, setLens] = useStoredState<LensId>("ridecompass:route-style-mode", "塗る負担", UNSELECTED_LENS_ID);
   // 選んでいた軸をあとから無効にしたら、選んでいない状態として扱う（選びは残し、無効を戻せばまた塗る）。
   const lens = countsAxis(costPreference, storedLens) ? storedLens : UNSELECTED_LENS_ID;
-  const [keepAfterRoute, setKeepAfterRoute] = useStoredState(
-    "ridecompass:lens-keep-after-route",
-    "ルートの後も周りを塗るか",
-    true,
+  const [keepSurroundings, setKeepSurroundings] = useStoredState(
+    "ridecompass:route-keep-surroundings",
+    "ルートの後も周りを出すか",
+    false,
   );
   const [storedHidden, setStoredHidden] = useStoredState<HiddenLegendKeys>(
     "ridecompass:hidden-legend-keys",
@@ -161,7 +161,9 @@ export function useMapView({
     at: ride.at,
     now,
   });
-  const painted = paintedLensId(lens, hasDetail, keepAfterRoute);
+  // ルートを選んでいる間は、周りを出す設定のときだけ道に付く層（周りの道の塗り・点の層）を地図全体に出す。
+  const surroundingsShown = !hasDetail || keepSurroundings;
+  const painted = surroundingsShown ? lens : null;
   // 道ごとの材料は、全道路を塗っているレンズの分だけ取る（塗っていないレンズの値は地図に出ない。表示中のものだけ叩く）。
   const fetchLenses = useMemo(() => lenses.filter((candidate) => candidate.lensId === painted), [lenses, painted]);
   const lensEquivalents = useLensEquivalents(costPreference, fetchLenses.length > 0);
@@ -202,6 +204,7 @@ export function useMapView({
       dynamicWeather: weather.dynamicWeather,
       lens,
       paintedLensId: painted,
+      surroundingsShown,
       roadAvoidance: avoidanceChoice,
       roadAvoidanceShown,
       wayMaterials,
@@ -217,6 +220,7 @@ export function useMapView({
       weather.dynamicWeather,
       lens,
       painted,
+      surroundingsShown,
       avoidanceChoice,
       roadAvoidanceShown,
       wayMaterials,
@@ -261,8 +265,6 @@ export function useMapView({
       hiddenLegendKeys: lensHidden,
       onToggleLegendKey: (key) => toggleHiddenFor(lens, key),
       onSetHiddenLegendKeys: (keys) => setHiddenFor(lens, keys),
-      keepAfterRoute,
-      onKeepAfterRouteChange: setKeepAfterRoute,
       hasDetail,
       routeHidden: hasSelectedRoute && layerVisibility[ROUTE_LAYER_ID] !== true,
       premises: costLensPremises(painted, costCatalog, lensEquivalents),
@@ -290,6 +292,7 @@ export function useMapView({
         selectable: hasSelectedRoute,
         onChange: (on) => setShown(ROUTE_LAYER_ID, on),
       },
+      surroundings: { shown: keepSurroundings, onChange: setKeepSurroundings },
       onToggle: setShown,
       onLegendEntryToggle: toggleHiddenFor,
       onLegendAxisSetHidden: setHiddenFor,

@@ -135,16 +135,6 @@ function lngLatOnEdge(edge: RouteTrackEdge, km: number): LngLat {
   return [edge.from[0] + (edge.to[0] - edge.from[0]) * fraction, edge.from[1] + (edge.to[1] - edge.from[1]) * fraction];
 }
 
-/** 道なりの形`track`のうち、ルートの上の距離`fromKm`から`toKm`までの部分。両端にかかる辺は、その距離の位置で切る。 */
-export function trackBetween(track: readonly RouteTrackEdge[], fromKm: number, toKm: number): RouteTrackEdge[] {
-  return track.flatMap((edge) => {
-    if (edge.toKm <= fromKm || edge.fromKm >= toKm) return [];
-    const startKm = Math.max(edge.fromKm, fromKm);
-    const endKm = Math.min(edge.toKm, toKm);
-    return [{ from: lngLatOnEdge(edge, startKm), to: lngLatOnEdge(edge, endKm), fromKm: startKm, toKm: endKm }];
-  });
-}
-
 /**
  * ルートの道なりの形の上に、始まりから`stepKm`おきに置いた点と、そのルートの上の距離。終わりの点も必ず含む。
  */
@@ -182,7 +172,7 @@ export function projectOnTrack(track: readonly RouteTrackEdge[], position: Coord
 }
 
 /** 地点`position`を道なりの形`track`に当てた、いちばん近い点の距離（km）と、地点からの隔たり（m）。 */
-export function nearestOnTrack(track: readonly RouteTrackEdge[], position: Coordinates): TrackProjection {
+function nearestOnTrack(track: readonly RouteTrackEdge[], position: Coordinates): TrackProjection {
   const projections = projectOnTrack(track, position);
   const nearest = projections.reduce((best, p) => (p.offsetM < best.offsetM ? p : best), projections[0]);
   return nearest ?? { km: 0, offsetM: 0 };

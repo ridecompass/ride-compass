@@ -24,8 +24,8 @@
 | `features/map/layers/dynamicWayValues.ts` | 材料を引く道路タイルの選び方（地図のズームをタイルのある範囲へ丸め、画面を覆うタイルを並べる。1回の数の上限を超える傾けた・回した大きな画面では、画面の中心に近いタイルから上限まで取り、端を落としたことを返す）・複数タイル応答の統合 |
 | `features/map/layers/webMercatorTile.ts` | Web MercatorのXYZタイルと緯度経度の行き来（点のタイル座標・点を含むタイル（世界の端はタイルの番号の範囲へ寄せる）・タイルが覆う範囲）。backendと同じ式で、一致は表の組`region`で照らす。道路タイルの値を引くタイルと、気象庁のタイルの在否の判定（`jmaTileIndex.ts`）が同じ式を通る |
 | `lib/mapDisplay/mapColorLegend.ts` | 地図上の色分け凡例（`lib/mapDisplay/mapColorLegend.ts: MapColorLegendBand`型・`lib/mapDisplay/mapColorLegend.ts: buildRangeLegendBands`・`lib/mapDisplay/mapColorLegend.ts: rangeStepLabel`）の共通ロジックと、値が無い行（`lib/mapDisplay/mapColorLegend.ts: NO_DATA_LEGEND_BAND`）・向きで決まらない行（`lib/mapDisplay/mapColorLegend.ts: UNDETERMINED_LEGEND_BAND`）。凡例を作る関数（`features/map/view/lens.ts`）・道の属性の凡例（`features/map/scene/legends.ts`）が使う |
-| `features/map/view/lens.ts` | 全道路を塗っているレンズ（`features/map/view/lens.ts: paintedLensId`）と、レンズの凡例（`features/map/view/lens.ts: lensLegend`。ルート後はルートの線のモードの凡例） |
-| `features/map/LensControl/LensControl.tsx` | レンズ（地図を何で塗るか）の唯一の入口。画面での名前は「負担で塗る」（見出し・読み上げ名。「レンズ」はコードの中の名前で、画面には出さない）。地図の上のピルが、道のりのグラフの「負担で塗る」の切り替えと同じ筆の絵（`lucideIcons.tsx: BurdenPaintIcon`）と、選んでいるレンズの名前と凡例の色の帯（段の数に依らない固定の幅）を示し、タップで縦の一覧（各行にアイコン・値が変わる走る条件のアイコン・(i) の説明）を開く。一覧は「表示」の一覧（`MapOverlayControls.tsx`）と同じ形と操作にそろえる——選んでも閉じず、選んでいる行をもう一度押すと外れ、選んでいる行の ▶ で凡例と段の境目の目安を開き、下に「ルート後も周囲の道路を薄く塗る」と「選択を外す」「絞り込みをすべて解除」（この一覧の凡例だけを戻す）を置く（選択肢・凡例は`features/map/view/useMapView.ts`が組み立て、`app/HomeMapPane.tsx`はそのまま渡す）。走行中も同じ大きさで出す |
+| `features/map/view/lens.ts` | レンズの凡例（`features/map/view/lens.ts: lensLegend`。ルート後はルートの線のモードの凡例） |
+| `features/map/LensControl/LensControl.tsx` | レンズ（地図を何で塗るか）の唯一の入口。画面での名前は「負担で塗る」（見出し・読み上げ名。「レンズ」はコードの中の名前で、画面には出さない）。地図の上のピルが、道のりのグラフの「負担で塗る」の切り替えと同じ筆の絵（`lucideIcons.tsx: BurdenPaintIcon`）と、選んでいるレンズの名前と凡例の色の帯（段の数に依らない固定の幅）を示し、タップで縦の一覧（各行にアイコン・値が変わる走る条件のアイコン・(i) の説明）を開く。一覧は「表示」の一覧（`MapOverlayControls.tsx`）と同じ形と操作にそろえる——選んでも閉じず、選んでいる行をもう一度押すと外れ、選んでいる行の ▶ で凡例と段の境目の目安を開き、下に「選択を外す」「絞り込みをすべて解除」（この一覧の凡例だけを戻す）を置く（選択肢・凡例は`features/map/view/useMapView.ts`が組み立て、`app/HomeMapPane.tsx`はそのまま渡す）。走行中も同じ大きさで出す |
 | `features/map/LensControl/LensRow.tsx` | 一覧の1行（`features/map/LensControl/LensRow.tsx: LensRow`）と選択肢の型（`features/map/LensControl/LensRow.tsx: LensOption`）。行の (i) と ▶ の開閉は「表示」の一覧の行と同じ部品（`features/map/LegendCheckboxList/LegendRow.tsx: useRowDescription`・`features/map/LegendCheckboxList/LegendRow.tsx: useRowPanel`）を使い、チェックの代わりに1つだけ選ぶ印を出し、(i) で説明を、▶（選んでいる行だけ）で凡例を行のすぐ下に開く |
 | `lib/lensLink.ts` | 走る条件のボタン（地図の向きの方位磁針・出発時刻・想定速度）に付ける、いまの周りの道の塗りがその条件で決まっている印（輪と読み上げ）。下記「周りの道の色が拠る走る条件」 |
 | `features/map/layers/mapLayers.ts` | レンズの層（`features/map/layers/mapLayers.ts: isLensLayer`。記述子の印で判定。地図上チップの一覧`overlayChips`が除くのに使う） |
@@ -85,7 +85,7 @@
 `UNSELECTED_LENS_ID`へ戻す——費用の軸の一覧が届いてから読み直す）。ルート前は全道路、ルート後はルート線をこの1つの値から
 導く——地図へは「全道路を塗っているレンズ」（`paintedLensId`）1つを渡し、どのレンズの線を出すかは地図側（`scene/applyToMap.ts`）が
 導く。道ごとの材料は塗っているレンズの分だけ取り（`useMapView`）、塗っていないレンズの材料は取らない。ルート後も全道路の塗りを
-残すかは「ルート後も周囲を塗る」（既定ON）。
+残すかは「表示」の「ルート後も周りを出す」（既定OFF。点の層も同じ切り替えに従う）。
 **ルートの線の出し入れは「表示」の一覧の先頭の行が持ち、レンズを選んでも変えない**——候補を選んでいるのに線を出していない間は、
 `LensControl`の開いた先でルートの線を塗っていないことを伝える（`routeHidden`）。レンズは生成リクエストに載らず、切り替えてもルートを作り直さない。
 **レンズは代償の秒で塗り、場所の事実（点・面）は「表示」の一覧が出す**（レンズは「表示」の一覧のレイヤーの入切を変えない

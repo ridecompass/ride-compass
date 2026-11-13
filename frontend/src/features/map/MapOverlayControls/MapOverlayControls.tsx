@@ -39,6 +39,8 @@ interface MapOverlayControlsProps extends LegendHandlers {
   layers: readonly OverlayLayerChip[];
   /** 選んだ候補のルートの線の出し入れ（作った結果なので、群の外の先頭に置く）。 */
   route: { shown: boolean; selectable: boolean; onChange: (shown: boolean) => void };
+  /** ルートを選んでいる間も、道に付く層（塗る負担の周りの道・地点）を地図全体に出すか。外せばルート沿いだけに出す。 */
+  surroundings: { shown: boolean; onChange: (shown: boolean) => void };
   onToggle: (id: MapLayerId, on: boolean) => void;
   /** 一覧の行を全部OFFにする（既定へ戻すのではない）。 */
   onHideAllLayers: () => void;
@@ -80,6 +82,7 @@ const FLOATING_PANEL_CLASS = cn(
 export default function MapOverlayControls({
   layers,
   route,
+  surroundings,
   onToggle,
   onLegendEntryToggle,
   onLegendAxisSetHidden,
@@ -214,6 +217,17 @@ export default function MapOverlayControls({
             aria-label="ルート"
           />
           {route.selectable ? "ルート[選んだ候補の線]" : "ルート[候補を選ぶと出せます]"}
+        </label>
+        <label
+          className="flex cursor-pointer items-center gap-1.5 border-b border-[var(--color-border)] py-1.5"
+          data-usage="ルートを選んでいる間も、塗る負担の周りの道と地点を地図全体に出します。外すと、ルート沿いだけに出します。"
+        >
+          <Checkbox
+            checked={surroundings.shown}
+            onCheckedChange={() => surroundings.onChange(!surroundings.shown)}
+            aria-label="ルート後も周りを出す"
+          />
+          ルート後も周りを出す[道の塗り・地点]
         </label>
         {groups}
         <div className="mt-1.5 flex justify-end gap-1 border-t border-[var(--color-border)] pt-1.5">

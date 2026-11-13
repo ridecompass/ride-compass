@@ -34,7 +34,7 @@ const TILES = {
 };
 
 function pointLayerOf(role: string, hiddenKeys: Readonly<Record<string, readonly string[]>> = {}) {
-  const layers = pointGroup.build({ tiles: TILES, visible: { [role]: true }, hiddenKeys }).layers;
+  const layers = pointGroup.build({ tiles: TILES, visible: { [role]: true }, hiddenKeys, nearPath: null }).layers;
   const layer = layers.find((l) => l.role === role);
   if (layer === undefined) throw new Error(`${role} の層が無い`);
   return layer;

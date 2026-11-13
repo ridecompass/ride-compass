@@ -1,4 +1,4 @@
-// 地図の点（施設・事故）を1つ1行で見せるための、行の中身。地図の点の層・区間の近くの施設の印・区間の小窓の区分の一覧が
+// 地図の点（施設・事故）を1つ1行で見せるための、行の中身。地図の点の層・区間の小窓の区分の一覧が
 // 同じ行を読む。区分の名前・色・絵記号は地図の点と同じ宣言から引く。
 import type { PointGlyph } from "@/lib/mapDisplay/legendFilter";
 import { pointCategoryOf, pointPlaceName, type PointAxis } from "@/lib/mapDisplay/pointLayers";
@@ -28,7 +28,7 @@ export type Facility = {
   /** 宣言が点に添える事実（「<名前> <値>」）。値の無い事実は持たない。 */
   readonly facts: readonly string[];
   /** ルートの上の位置（候補の始点からの道のりkm。画面には走行中の現在地から見た前後で出す）と、道からの距離（m）。
-   * 区間の近くの点だけが持つ。 */
+   * ルートを選んでいる間だけ持つ。 */
   readonly km: number | null;
   readonly offsetM: number | null;
 };

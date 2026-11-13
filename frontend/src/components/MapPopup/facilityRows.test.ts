@@ -6,7 +6,7 @@
  *
  * 点の宣言は架空のもので与える（実在の区分の名前をテストへ書き写さない）。
  *
- * ここで見ないもの: 行の描き方（リンク・見本・km・道から）→ `app/page.map.test.tsx`の「区間の近くの施設」。名前から開く外の地図の
+ * ここで見ないもの: 行の描き方（リンク・見本・km・道から）→ `app/page.map.test.tsx`の「ルートの近くの点」。名前から開く外の地図の
  * リンクの形 → backend の`test_place_search_route.py`（地図の点の名前から開くリンク）。
  */
 import { describe, expect, it } from "vitest";
