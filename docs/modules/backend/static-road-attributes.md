@@ -726,7 +726,7 @@ MVTエンコードはPostGIS側（`ST_AsMVT`、`road_graph_repository.py`・`poi
 （`settings.road_tile_max_concurrent`）を共有する（DB接続プール上限を超えないため専用
 semaphoreを追加しない）。レート制限は同じ上限値（`settings.road_tile_rate_limit_per_minute`）で、
 キーはタイルの種類（点はレイヤー）ごとに分ける。超過分は
-**待たせて全件処理**する（ルート生成の即429方式とは異なる——MapLibreは失敗したタイル
+**待たせて全件処理**する（待ちに数と時間の上限を置かない——MapLibreは失敗したタイル
 要求を自動再試行しないため、429だと広範囲で一部タイルが永久に空白になりうる）。
 `/health`はこれらのsemaphoreを経由しない別の同期ハンドラのため、待機中のタイル要求に
 巻き込まれず応答し続ける。
