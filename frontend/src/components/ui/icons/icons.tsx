@@ -143,6 +143,36 @@ export function UndoAllIcon({ size = 16 }: IconProps) {
   );
 }
 
+/** 置いたルート（始点と終点の丸をつなぐ道）の形。地点の操作の形は、これを左上に置き、右下へ操作の印を添える。 */
+const pointsRoute = (
+  <>
+    <circle cx="4.2" cy="12.3" r="1.9" />
+    <path d="M6.1 12.3h5.25a2.2 2.2 0 0 0 0-4.4H4.5a2.2 2.2 0 0 1 0-4.4h5.3" />
+    <circle cx="11.7" cy="3.5" r="1.9" />
+  </>
+);
+
+/** 置いた経由地と目的地を一度に消す: 消す対象の形（ルート）＋バツ。地点のピン1本にバツだと、地点を1つ消すように読める。 */
+export function ClearPointsIcon({ size = 16 }: IconProps) {
+  return (
+    <svg width={size} height={size} {...svgProps}>
+      {pointsRoute}
+      <path d="M12.9 12.9 17.5 17.5M17.5 12.9 12.9 17.5" />
+    </svg>
+  );
+}
+
+/** 置いた地点の編集（通る順の入れ替えと消すこと）を開く: ルート＋上下の矢印（通る順の入れ替え）。 */
+export function EditPointsIcon({ size = 16 }: IconProps) {
+  return (
+    <svg width={size} height={size} {...svgProps}>
+      {pointsRoute}
+      <path d="M13.6 18.4v-5.2M17.6 13.2v5.2" />
+      <path d="m12 14.8 1.6-1.6 1.6 1.6M16 16.8l1.6 1.6 1.6-1.6" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 /** 全レイヤー一括OFF: 重なり（レイヤー）＋バツ。
  * 「表示」の一覧の末尾には「戻す」操作が複数並ぶため、バツは「消す」の意味だけに使い、
  * 何を消すのかは対象の形（重なり／漏斗）で示す——バツ単体だと対象を表せない。 */

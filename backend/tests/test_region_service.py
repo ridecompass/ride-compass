@@ -29,7 +29,7 @@ class _TileRepository:
     """路面・点のMVTを焼く口とデータの世代だけを持つフェイク。取込範囲外はNone。路面タイルが焼く地図の線の層の値の元
     （タイルの材料）は無い（範囲外）。"""
 
-    def __init__(self, tile: bytes | None = None, derived: int | None = 1):
+    def __init__(self, tile: bytes | None = None, derived: int = 1):
         self.tile = tile
         self.derived = derived
 
@@ -71,13 +71,11 @@ async def test_a_tile_outside_the_coverage_is_the_empty_tile_of_its_layer(serve,
 @pytest.mark.parametrize(("before", "after", "kept"), [
     (1, 1, True),
     (1, 2, False),
-    (None, None, False),
-], ids=["同じ世代", "派生を作り直した", "世代が分からない"])
-async def test_a_baked_tile_is_served_from_disk_only_while_its_generation_is_known_and_unchanged(
+], ids=["同じ世代", "派生を作り直した"])
+async def test_a_baked_tile_is_served_from_disk_only_while_its_generation_is_unchanged(
         monkeypatch, before, after, kept):
     """世代はタイルを配る経路が自分で読む。起動後に誰もカタログを取っていなくても、焼いたタイルは世代付きの鍵で
-    ディスクへ残り、世代が変わると焼き直す。世代が分からないうちに焼いたタイルは残さない——後で世代が分かっても
-    古いと判定できない。"""
+    ディスクへ残り、世代が変わると焼き直す。"""
     monkeypatch.setattr(settings, "derived_data_revision_check_interval_seconds", 0.0)
     repository = _TileRepository(tile=b"first", derived=before)
     service = RegionService(repository=repository)

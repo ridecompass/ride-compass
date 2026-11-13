@@ -7,7 +7,7 @@ from pydantic import ConfigDict, WithJsonSchema, computed_field
 
 from app.domain.attributes import ElevationAttribute
 from app.domain.lens_total import lens_values_with_total
-from app.domain.geo import Latitude, Longitude
+from app.domain.geo import Latitude, Longitude, length_weighted_mean
 from app.domain.gradient import GRADIENT_VALUE_DECIMALS
 from app.domain.graph import LeanEdge
 from app.domain.strict_model import StrictModel
@@ -158,6 +158,9 @@ class RouteSegmentDetail(StrictModel):
     # 区間の続く坂の斜度（%、走る向きの符号つき）。道の一番急な登りと下りから`steepest_signed_percent`が作り、ビンへは
     # `merge_sustained_gradients`で畳む。値が無ければNone。
     sustained_gradient_percent: float | None = None
+    # 区間の平均勾配（%、走る向きの符号つき）。道の平均勾配（区間の標高の表）を、ビンへは`merge_average_gradients`で
+    # 値のある道の距離で重みづけて畳む。値が無ければNone。
+    average_gradient_percent: float | None = None
     estimated_arrival_time: str | None = None
     # 区間の代償の秒の内訳。
     penalty: PenaltyBreakdown
@@ -223,7 +226,7 @@ class EvaluatedRoute(StrictModel):
         return None if per_km is None else round(per_km, COST_SECONDS_DECIMALS)
 
     facts: RouteFacts
-    # 所要時間の見積もりで、勾配か停止要因の件数の値が無く、既定（平地・待ち無し）で数えた区間の距離の割合（0〜1）。
+    # 所要時間の見積もりで、勾配か停止要因の件数の値が無く、取込の範囲全体の平均で数えた区間の距離の割合（0〜1）。
     # 数えるのはビンへ畳む前のEdge単位。画面が「データの無い区間が◯%」と知らせる。区間が無ければNone。
     missing_travel_data_share: float | None
     # 経路を構成するEdge idの列（起点から順）。フロントは候補どうしの共通部分を集合演算で
@@ -302,7 +305,7 @@ def route_bin_slices(distances_km: Sequence[float]) -> list[slice]:
 def aggregate_segments_into_bins(segments: list[RouteSegmentDetail], slices: Sequence[slice]) -> list[RouteSegmentDetail]:
     """連続するEdge単位の`RouteSegmentDetail`を、ビン（`route_bin_slices`）ごとに1件の`RouteSegmentDetail`へ集約する。
 
-    値の性質ごとに畳み方が違う（`BIN_FIELD_MERGERS`）: 材料値は距離加重平均（値がNoneの区間は除外し、残りの距離で
+    値の性質ごとに畳み方が違う（`BIN_FIELD_MERGERS`）: 平均勾配は距離加重平均（値がNoneの区間は除外し、残りの距離で
     再正規化）、代償の秒は和、位置はビンの始点・終点、距離は合計、geometryは隣接区間の境界点を重複させずに連結する。
     """
     return [_merge_segment_bin(segments[chunk]) for chunk in slices]
@@ -368,6 +371,15 @@ def merge_sustained_gradients(segments: Sequence[RouteSegmentDetail]) -> float |
     return steepest_climb if steepest_climb > 0 else min(values)
 
 
+def merge_average_gradients(segments: Sequence[RouteSegmentDetail]) -> float | None:
+    """区間の平均勾配をビンへ畳む。値のある区間の平均勾配を、その区間の距離で重みづけた平均（-0にしない）。
+    値のある区間が無ければNone。"""
+    mean = length_weighted_mean(
+        np.array([np.nan if s.average_gradient_percent is None else s.average_gradient_percent for s in segments]),
+        np.array([s.distance_km for s in segments]))
+    return None if mean is None else round(mean, GRADIENT_VALUE_DECIMALS) + 0.0
+
+
 #: ビンのフィールドと、ビンに入る区間の並びからその値を作る畳み方。`_merge_segment_bin`はこの表だけからビンを組み立てる。
 BIN_FIELD_MERGERS: dict[str, Callable[[list[RouteSegmentDetail]], object]] = {
     "geometry": _concat_segment_geometries,
@@ -381,6 +393,7 @@ BIN_FIELD_MERGERS: dict[str, Callable[[list[RouteSegmentDetail]], object]] = {
     "edge_end": lambda segments: segments[-1].edge_end,
     "elevations": lambda segments: [stretch for segment in segments for stretch in segment.elevations],
     "sustained_gradient_percent": merge_sustained_gradients,
+    "average_gradient_percent": merge_average_gradients,
     "estimated_arrival_time": lambda segments: segments[0].estimated_arrival_time,
     "road_classes": merge_road_classes,
     "penalty": lambda segments: merge_penalty_breakdowns(segment.penalty for segment in segments),

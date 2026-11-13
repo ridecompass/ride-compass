@@ -37,6 +37,7 @@ const SIDE_POINT_SCENE_LAYERS = sidePointGroup.build({
     [139.71, 35.61],
   ],
   tilesReady: true,
+  hiddenKeys: {},
 }).layers;
 
 function layerOf(role: string) {

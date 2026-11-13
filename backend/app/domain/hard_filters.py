@@ -1,6 +1,6 @@
 """0次ハードフィルタ（Hard Constraint）。
 
-スコア計算には一切登場させず、ルーティンググラフから除外する判定だけを担う。
+費用の計算には登場させず、ルーティンググラフから除外する判定だけを担う。
 フィルタはどれもいつも効き、要求で切れない。判定（`compute_search_exclusion`）は
 レジストリをループするため、フィルタを増やしても判定側は無変更で反映される。フィルタは道の区分（`domain/road_classes.py`）と
 同じ形の条件で事実の列に当て、区分の宣言とは別に持つ。道の区分ごとの避け方（`domain/road_avoidance.py`）も同じ判定で、除く区間と
@@ -39,7 +39,7 @@ def _tag_is(fact_key: str, *values: str) -> Condition:
 HARD_FILTERS: dict[str, _HardFilter] = {
     "motorway": _HardFilter(
         "高速道路・自動車専用道路",
-        "高速道路と、自動車専用の標識のある一般道（バイパス等）。自転車は通れないので、いつも経路から外します。",
+        "高速道路と、自動車専用の標識のある一般道[バイパス等]。自転車は通れないので、いつも経路から外します。",
         [_tag_is("highway", "motorway", "motorway_link"), _tag_is("motorroad", "yes")],
     ),
     "no_bicycle": _HardFilter(

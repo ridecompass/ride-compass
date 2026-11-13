@@ -176,8 +176,8 @@ export function useMapView({
   // 道路タブを出していて「地図で見る」がONの間だけ、段を地図の道に塗る。段の値は出し入れで作り直さない。
   const roadAvoidanceShown = roadTabShown && roadTabOnMap;
   const avoidanceChoice = useMemo(
-    () => avoidanceChoiceOf(config.roadClasses.avoidance, roadAvoidance),
-    [config.roadClasses.avoidance, roadAvoidance],
+    () => avoidanceChoiceOf(config.roadClasses.avoidance, roadAvoidance, mapTheme),
+    [config.roadClasses.avoidance, roadAvoidance, mapTheme],
   );
   // 道路タブで塗っている間は、塗れない理由（拡大が足りない・タイルの世代が届かない）を道路タブに出す（道の層を出していないと、地図の上の
   // 行の状態の印が無い）。

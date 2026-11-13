@@ -6,8 +6,15 @@
 """
 
 
-from app.domain.display_palette import nominal_colors, ordered_colors, ordered_ends_phrase
+from app.domain.display_palette import (
+    SEMANTIC_COLORS,
+    SEMANTIC_COLORS_ON_DARK,
+    nominal_colors,
+    ordered_colors,
+    ordered_ends_phrase,
+)
 from app.domain.cost_preference import multiplier_label
+from app.domain.hard_filters import HARD_FILTER_PROPERTY, HARD_FILTERS
 from app.domain.road_avoidance import AVOIDANCE_LEVELS, AvoidanceLevel, avoidance_rows, level_multipliers
 from app.domain.tuning import tuning_value
 from app.domain.road_classes import (
@@ -46,6 +53,9 @@ class AvoidanceLevelView(StrictModel):
     key: AvoidanceLevel
     #: 掛ける倍率そのもの（`domain/cost_preference.py: multiplier_label`）。
     label: str
+    #: この段の行に当たる道を地図に塗る色と、暗い地図の上に塗る色。無い段は何も指定していない扱いで、塗らない。
+    color: str | None
+    color_on_dark: str | None
 
 
 class AvoidanceSectionView(StrictModel):
@@ -56,7 +66,8 @@ class AvoidanceSectionView(StrictModel):
 
 
 class AvoidanceRowView(StrictModel):
-    """道路タブの1行。`key`は`<分け方>.<区分>`、`section`は見出し（分け方）の鍵、`class_key`は区分の鍵（地図の線の層の値）。"""
+    """道路タブの1行。`key`は`<section>.<class_key>`。`section`・`class_key`は、行に当たる道を路面タイルから引く鍵（プロパティ名と
+    その値）で、選べる行では見出し（分け方）の鍵と区分の鍵（地図の線の層の値）。"""
 
     key: str
     section: str
@@ -64,13 +75,16 @@ class AvoidanceRowView(StrictModel):
     label: str
     description: str
     default: AvoidanceLevel
+    #: 選べない行（0次ハードフィルタ。いつも`default`の段で、要求の段を読まない）は見出しに入らない。
+    selectable: bool
 
 
 class RoadAvoidanceView(StrictModel):
-    #: 並びは倍率の小さい順。
+    #: 並びは倍率の小さい順。1つの道がいくつもの行に当たれば、後ろの段が効く。
     levels: list[AvoidanceLevelView]
-    #: 並びは行の並び（地図の線の層の並び）。行の無い見出しは出さない。
+    #: 選べる行の見出し。並びは行の並び（地図の線の層の並び）。行の無い見出しは出さない。
     sections: list[AvoidanceSectionView]
+    #: 選べない行が先で、選べる行が続く。
     rows: list[AvoidanceRowView]
 
 
@@ -117,7 +131,20 @@ def road_class_catalog(definitions: RoadClassDefinitions) -> RoadClassCatalog:
         )
     avoidance = avoidance_rows(definitions)
     multipliers = level_multipliers(tuning_value("avoidance.avoid_cost_multiplier"))
-    rows = [
+    # 0次ハードフィルタの行。路面タイルは道の当たるフィルタの名前を`HARD_FILTER_PROPERTY`に焼く。
+    fixed = [
+        AvoidanceRowView(
+            key=f"{HARD_FILTER_PROPERTY}.{name}",
+            section=HARD_FILTER_PROPERTY,
+            class_key=name,
+            label=spec.label,
+            description=spec.description,
+            default="exclude",
+            selectable=False,
+        )
+        for name, spec in HARD_FILTERS.items()
+    ]
+    rows = fixed + [
         AvoidanceRowView(
             key=row.key,
             section=row.classification_key,
@@ -125,6 +152,7 @@ def road_class_catalog(definitions: RoadClassDefinitions) -> RoadClassCatalog:
             label=row.road_class.label,
             description=row.road_class.description,
             default=row.default_level,
+            selectable=True,
         )
         for row in avoidance
     ]
@@ -132,7 +160,13 @@ def road_class_catalog(definitions: RoadClassDefinitions) -> RoadClassCatalog:
         map_layers=layers,
         avoidance=RoadAvoidanceView(
             levels=[
-                AvoidanceLevelView(key=level, label=multiplier_label(multipliers[level]))
+                AvoidanceLevelView(
+                    key=level,
+                    label=multiplier_label(multipliers[level]),
+                    # 色の役割は`road_avoidance_<段>`。役割の無い段（通る）は塗らない。
+                    color=SEMANTIC_COLORS.get(f"road_avoidance_{level}"),
+                    color_on_dark=SEMANTIC_COLORS_ON_DARK.get(f"road_avoidance_{level}"),
+                )
                 for level in sorted(AVOIDANCE_LEVELS, key=multipliers.__getitem__)
             ],
             sections=[

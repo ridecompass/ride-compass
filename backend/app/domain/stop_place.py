@@ -213,17 +213,13 @@ def japanese_name_sql(name_expr: str) -> str:
 
 
 def contacts_sql(websites_expr: str, phones_expr: str) -> str:
-    """地点の連絡先（ウェブサイト・電話。jsonb の文字列の配列か null）を、1つずつ比べられる形の行に出す副問い合わせ
+    """地点の連絡先（ウェブサイト・電話。文字列の配列か NULL）を、1つずつ比べられる形の行に出す副問い合わせ
     （列`contact`）。ウェブサイトは小文字にして`http(s)://`・`www.`・末尾の`/`を除き、電話は数字だけにして頭の国番号を0にする
     （配布には`+81339412222`と`03-3941-2222`の両方の書き方がある）。"""
-
-    def elements(expr: str) -> str:
-        return f"jsonb_array_elements_text(CASE WHEN jsonb_typeof({expr}) = 'array' THEN {expr} ELSE '[]' END)"
-
     website = "regexp_replace(lower(trim(w)), '^https?://(www\\.)?|^www\\.|/+$', '', 'g')"
     phone = "regexp_replace(regexp_replace(t, '[^0-9]', '', 'g'), '^81', '0')"
-    return (f"SELECT 'w:' || {website} AS contact FROM {elements(websites_expr)} w WHERE {website} <> ''"
-            f" UNION SELECT 't:' || {phone} FROM {elements(phones_expr)} t WHERE {phone} <> ''")
+    return (f"SELECT 'w:' || {website} AS contact FROM unnest({websites_expr}) w WHERE {website} <> ''"
+            f" UNION SELECT 't:' || {phone} FROM unnest({phones_expr}) t WHERE {phone} <> ''")
 
 
 def store_name_sql(name_expr: str) -> str:
@@ -286,17 +282,10 @@ def search_excluded_sql(categories: str) -> str:
 _PREFECTURE_PATTERN = "(東京都|北海道|京都府|大阪府|[一-龥]{2,3}県)"
 
 
-def address_parts_sql(addresses: str) -> str:
-    """Overture の地点の住所（jsonb の配列の式）の最初の1件を、`address_sql`が読む列（`region`・`locality`・`freeform`）に
-    出す選ぶ列の並び。都道府県・市区町村の無いものは空の文字列、残りの無いものは NULL。"""
-    first = f"({addresses})->0"
-    return (f"coalesce({first}->>'region', '') AS region, coalesce({first}->>'locality', '') AS locality,"
-            f" nullif({first}->>'freeform', '') AS freeform")
-
-
 def address_sql(region: str, locality: str, freeform: str) -> str:
-    """住所の都道府県・市区町村・残り（`address_parts_sql`の列）から、外の地図の検索に渡す住所を出す式。残りに都道府県が
-    書かれていて市区町村を含まない住所は、別の場所の住所が混ざっている（「北区」と「沖縄県那覇市字安里48番地」）ので NULL。
+    """住所の都道府県・市区町村・残り（都道府県・市区町村は無ければ空の文字列、残りは無ければ NULL）から、外の地図の
+    検索に渡す住所を出す式。残りに都道府県が書かれていて市区町村を含まない住所は、別の場所の住所が混ざっている
+    （「北区」と「沖縄県那覇市字安里48番地」）ので NULL。
     残りが都道府県か市区町村から書かれていれば残りだけ、そうでなければ都道府県・市区町村・残りをつなぐ。残りが無ければ NULL。"""
     return (f"CASE WHEN {freeform} IS NULL THEN NULL"
             f" WHEN {freeform} ~ '{_PREFECTURE_PATTERN}'"
@@ -305,10 +294,10 @@ def address_sql(region: str, locality: str, freeform: str) -> str:
             f" ELSE {region} || {locality} || {freeform} END")
 
 
-def overture_group_sql(hierarchy: str) -> str:
-    """分類の道筋（jsonbの文字列の配列を出す式）から群を出す式。どの群にも当たらなければNULL。"""
+def overture_group_sql(categories: str) -> str:
+    """分類の道筋（文字列の配列の式。NULLは分類を持たない地点）から群を出す式。どの群にも当たらなければNULL。"""
     whens = " ".join(
-        f"WHEN {hierarchy} ?| ARRAY[{sql_literals(sorted(words))}] THEN '{group}'"
+        f"WHEN {categories} && ARRAY[{sql_literals(sorted(words))}]::varchar[] THEN '{group}'"
         for group, words in OVERTURE_GROUP_WORDS)
     return f"CASE {whens} END"
 

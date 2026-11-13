@@ -7,7 +7,7 @@
 import logging
 from datetime import datetime, timezone
 
-from app.domain.db_status import source_needs_rebuild, table_needs_rebuild
+from app.domain.db_status import source_needs_rebuild, table_needs_rebuild, tuning_needs_rebuild
 from app.domain.stopwatch import elapsed_ms, start_timer
 from app.domain.strict_model import StrictModel
 from app.infrastructure.debug_log import log_external_call
@@ -16,6 +16,7 @@ from app.infrastructure.derived_data_freshness import (
     DerivedDataFreshnessQuery,
     SourceFreshness,
     TableFreshness,
+    TuningFreshness,
 )
 
 logger = logging.getLogger("ridecompass.derived_data_freshness")
@@ -31,10 +32,16 @@ class TableEntry(TableFreshness):
     needs_rebuild: bool
 
 
+class TuningEntry(TuningFreshness):
+    #: `domain/db_status.py: tuning_needs_rebuild`の判断。画面はこれで較正値を「作り直しが必要」に数える。
+    needs_rebuild: bool
+
+
 class DerivedDataFreshnessReport(StrictModel):
     computed_at: datetime
     sources: list[SourceEntry]
     tables: list[TableEntry]
+    tuning: list[TuningEntry]
 
 
 def build_freshness_report(
@@ -60,6 +67,13 @@ def build_freshness_report(
             )
             for table in freshness.tables
         ],
+        tuning=[
+            TuningEntry(
+                **dict(entry),
+                needs_rebuild=tuning_needs_rebuild(derived_value=entry.derived_value, current_value=entry.current_value),
+            )
+            for entry in freshness.tuning
+        ],
     )
 
 
@@ -77,9 +91,10 @@ class DerivedDataFreshnessService:
         report = build_freshness_report(freshness, datetime.now(timezone.utc))
         stale_sources = sum(1 for source in report.sources if source.needs_rebuild)
         stale_tables = sum(1 for table in report.tables if table.needs_rebuild)
+        stale_tuning = sum(1 for entry in report.tuning if entry.needs_rebuild)
         logger.info(
-            "derived data freshness computed tables=%d stale_sources=%d stale_tables=%d elapsed_ms=%d",
-            len(report.tables), stale_sources, stale_tables,
+            "derived data freshness computed tables=%d stale_sources=%d stale_tables=%d stale_tuning=%d elapsed_ms=%d",
+            len(report.tables), stale_sources, stale_tables, stale_tuning,
             elapsed_ms(started),
         )
         return report

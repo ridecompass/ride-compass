@@ -35,7 +35,7 @@ export function sceneState(overrides: SceneStateOverrides = {}): SceneState {
       dynamicWeather: {},
       lens: UNSELECTED_LENS_ID,
       paintedLensId: null,
-      roadAvoidance: { rows: [], order: [] },
+      roadAvoidance: { levels: [], rows: [] },
       roadAvoidanceShown: false,
       wayMaterials: new Map(),
       wayConditions: {},

@@ -15,6 +15,9 @@ from app.domain.registry import (
 from app.domain.stop_place import StopPlaceGroup
 from app.domain.traffic import NODE_KINDS, STOP_POI_KINDS, TAG_KIND_RULES, kind_map_sql, kinds_shown_as, stop_kind_sql
 
+#: 補給の点のタイル（`poi`）が地点の表から出す立ち寄り先の群。ほかの群は立ち寄り先のタイル（`stop_place`）が出す。
+SUPPLY_PLACE_GROUPS = frozenset({StopPlaceGroup.CONVENIENCE})
+
 #: 元のタグの値をこの数より多く持つ種別は、説明でタグの名前だけを言う（値を並べると説明が値の一覧になる）。
 _LISTED_TAG_VALUES = 3
 
@@ -82,13 +85,13 @@ PRIMARY_ATTRIBUTES: tuple[PrimaryAttributeSpec, ...] = (
                     ),
                     _kind_row("crossing", "横断歩道", ("crossing",), "信号の無い横断歩道", glyph="crosswalk"),
                     _kind_row("stop", "一時停止", ("stop",), "一時停止の標識がある所", glyph="stop_sign"),
-                    _kind_row("give_way", "徐行", ("give_way",), "相手に道を譲る（徐行する）標識がある所", glyph="yield"),
+                    _kind_row("give_way", "徐行", ("give_way",), "相手に道を譲る[徐行する]標識がある所", glyph="yield"),
                     # 車道用と歩道・自転車道用の踏切は、利用者から見れば同じ「線路を渡る点」。
                     _kind_row(
                         "level_crossing",
                         "踏切",
                         ("level_crossing", "railway_crossing"),
-                        "線路（路面電車を含む）を渡る所。車道の踏切も歩道・自転車道の踏切も入る",
+                        "線路[路面電車を含む]を渡る所。車道の踏切も歩道・自転車道の踏切も入る",
                         glyph="railway",
                     ),
                     _kind_row(
@@ -102,7 +105,7 @@ PRIMARY_ATTRIBUTES: tuple[PrimaryAttributeSpec, ...] = (
                         "traffic_calming",
                         "ハンプ・狭さく",
                         ("traffic_calming",),
-                        "車の速度を落とさせる段差（ハンプ）や道幅の絞り込み",
+                        "車の速度を落とさせる段差[ハンプ]や道幅の絞り込み",
                         glyph="hump",
                     ),
                 ),
@@ -140,7 +143,7 @@ PRIMARY_ATTRIBUTES: tuple[PrimaryAttributeSpec, ...] = (
                         key="other",
                         label="その他",
                         values=(False,),
-                        description="当事者に自転車が含まれない事故（車どうし・車と歩行者など）。",
+                        description="当事者に自転車が含まれない事故[車どうし・車と歩行者など]。",
                         glyph="crash",
                     ),
                 ),
@@ -161,7 +164,7 @@ PRIMARY_ATTRIBUTES: tuple[PrimaryAttributeSpec, ...] = (
                         key="non_fatal",
                         label="死亡以外",
                         values=(False,),
-                        description="死者の記録が無い事故（負傷事故）。",
+                        description="死者の記録が無い事故[負傷事故]。",
                         radius_px=3,
                     ),
                 ),
@@ -321,7 +324,8 @@ check_primary_attributes(PRIMARY_ATTRIBUTES)
 PRIMARY_ATTRIBUTES_BY_ID = {attr.attr_id: attr for attr in PRIMARY_ATTRIBUTES}
 check_point_rows(ATTR_STOP_POI, STOP_POI_KINDS)
 # 補給の点のコンビニは、ノードの種別でなく立ち寄り先の群「コンビニ」から、点のタイルの`poi`のレイヤーが足す。
-check_point_rows(PRIMARY_ATTRIBUTES_BY_ID["supply_poi"], NODE_KINDS - STOP_POI_KINDS | {StopPlaceGroup.CONVENIENCE})
+check_point_rows(PRIMARY_ATTRIBUTES_BY_ID["supply_poi"], NODE_KINDS - STOP_POI_KINDS | SUPPLY_PLACE_GROUPS)
+
 
 
 def stop_poi_map_group_sql(alias: str) -> str:

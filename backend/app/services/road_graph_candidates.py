@@ -343,6 +343,7 @@ def _build_segment_details(
                     )
                 ],
                 sustained_gradient_percent=steepest_signed_percent(elevation_attr),
+                average_gradient_percent=elevation_attr.average_grade if elevation_attr else None,
                 estimated_arrival_time=arrival_time.isoformat(),
                 penalty=penalties[index],
                 road_classes={

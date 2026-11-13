@@ -13,7 +13,7 @@
 import pytest
 
 from app.infrastructure import region_tile_cache, tile_cache
-from app.infrastructure.cache_identity import LANDCOVER_TILE_VERSION, UNKNOWN_REVISION, region_tile_key
+from app.infrastructure.cache_identity import LANDCOVER_TILE_VERSION, region_tile_key
 from tests.fake_external_log import record_external_calls
 
 EMPTY = b"empty-tile"
@@ -67,7 +67,7 @@ async def test_a_missing_tile_is_made_stored_and_returned(records):
     # 取得元は呼び出し元が名乗る（統計の内訳が実際の取得元と食い違わないため）
     assert [call.fields for call in records] == [{
         "z": TILE["z"], "x": TILE["x"], "y": TILE["y"],
-        "cache": "miss", "source": "raster", "tile_bytes": 3, "persisted": True,
+        "cache": "miss", "source": "raster", "tile_bytes": 3,
     }]
 
 
@@ -111,7 +111,6 @@ def test_only_the_generations_being_served_stay_on_disk(configure_rasters):
         "路面の今の世代": region_tile_key("road_surface", "3.2-aaa", 12, 1, 1, "pbf"),
         "路面の前の世代": region_tile_key("road_surface", "2.2-aaa", 12, 1, 1, "pbf"),
         "形の署名だけ違う世代": region_tile_key("road_surface", "3.2-bbb", 12, 1, 1, "pbf"),
-        "世代を読めていない系統": region_tile_key("poi", "3.2-ccc", 12, 1, 1, "pbf"),
         "表に無い系統": region_tile_key("road-surface", "3.2-aaa", 12, 1, 1, "pbf"),
         "土地被覆の今のラスタ構成": region_tile_key("landcover", landcover_now, 12, 1, 1, "png"),
         "土地被覆の別のラスタ構成": region_tile_key("landcover", landcover_with_another_zone, 12, 1, 1, "png"),
@@ -120,13 +119,12 @@ def test_only_the_generations_being_served_stay_on_disk(configure_rasters):
     _store(*keys.values())
 
     removed = region_tile_cache.prune_other_generations(
-        {"road_surface": "3.2-aaa", "poi": f"{UNKNOWN_REVISION}-ccc"}
+        {"road_surface": "3.2-aaa"}
     )
 
     kept = _kept(*keys.values())
     assert {name for name, key in keys.items() if key in kept} == {
         "路面の今の世代",
-        "世代を読めていない系統",
         "土地被覆の今のラスタ構成",
         "基礎地図（地域タイルでない）",
     }

@@ -47,7 +47,7 @@ class TuningEffect(Enum):
     #: 次のリクエストから効く（リクエストごとのコスト合成が読む）。
     IMMEDIATE = ("immediate", "次のルート生成から反映")
     #: 派生の作り直し（`batch/derive_cli.py`）をやり直さないと効かない。派生バッチは作り直しを始めるときに値を読み、
-    #: 段の較正値は段の入力なので読む段から後ろが流れ、道路網の配列の較正値は配列を作り直させる。派生の外で同じ値を読む所は、
+    #: 段の較正値はそれを読む段を選んで作り直すと効き、道路網の配列の較正値は配列を作り直すと効く。派生の外で同じ値を読む所は、
     #: 作り直しに使った値（`infrastructure/derived_data_meta.py: DerivedTuningRow`）を読む。
     DERIVE_REBUILD = ("derive_rebuild", "派生データを作り直すまで反映されない")
     #: 画面を読み込み直すと効く（フロントが起動時のカタログ取得で受け取る値）。
@@ -115,7 +115,8 @@ def _turn_parameters(name: str, label: str, description: str) -> tuple[TuningPar
 _MAJOR_CROSSING_ID = event_seconds_parameter_id("turn", "major_crossing")
 _STOP_ID = event_seconds_parameter_id("stop", "stop")
 _SIGNAL_ID = event_seconds_parameter_id("stop", "signal")
-_CRR_ID = "speed.crr"
+#: 基準の転がり抵抗の較正値のid。
+BASE_CRR_ID = "speed.crr"
 _CRR_GRAVEL_ID = "speed.crr_gravel"
 _CRR_COBBLESTONE_ID = "speed.crr_cobblestone"
 _TURNAROUND_OVERLAP_ID = "search.turnaround_max_overlap_ratio"
@@ -123,6 +124,9 @@ _TURNAROUND_RELAXED_OVERLAP_ID = "search.turnaround_relaxed_overlap_ratio"
 _LOOP_RATIO_MIN_ID = "search.loop_to_outbound_ratio_min"
 _LOOP_RATIO_MAX_ID = "search.loop_to_outbound_ratio_max"
 _DISTANCE_TOLERANCE_ID = "search.distance_tolerance_ratio"
+#: 派生の段だけが読む較正値のid。
+SIGNAL_MATCH_RADIUS_ID = "signal.match_radius_m"
+ACCIDENT_FATAL_WEIGHT_ID = "accident.fatal_weight"
 #: 派生の外（地図の点のタイル・近くの点の読み出し）も作り直しに使った値を読む較正値のid。
 STOP_CLUSTER_DISTANCE_ID = "stop.cluster_distance_m"
 ACCIDENT_MATCH_DISTANCE_ID = "accident.match_max_distance_m"
@@ -138,6 +142,8 @@ REGULATION_EDGE_SHARE_ID = "traffic_regulation.edge_share"
 ELEVATION_PROFILE_STEP_ID = "elevation.profile_step_m"
 #: 橋の端の標高を、端の点の周りで探す半径のid。
 ELEVATION_BRIDGE_END_RADIUS_ID = "elevation.bridge_end_radius_m"
+#: 橋の端の点の周りで標高を引く方位の数。北から等しい角度で並べる。
+BRIDGE_END_BEARINGS = 8
 
 
 TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
@@ -181,7 +187,7 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
     ),
     # --- 交差点と停止の点 ---
     TuningParameter(
-        "signal.match_radius_m",
+        SIGNAL_MATCH_RADIUS_ID,
         "信号とみなす半径", "m", TuningEffect.DERIVE_REBUILD,
         "交差点から何m以内の信号を、その交差点のものとみなすか。"
         "広げるほど横断の費用が付く交差点が減る（頭打ちが無い）。",
@@ -205,7 +211,7 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
         "事故の点を、この距離以内で最も近い道に付ける。事故の数とルートの印が同じ値で付ける。",
     ),
     TuningParameter(
-        "accident.fatal_weight",
+        ACCIDENT_FATAL_WEIGHT_ID,
         "死亡事故の重み", "件", TuningEffect.DERIVE_REBUILD,
         "死亡事故1件を何件分の事故として数えるか。単純に数えると死亡事故が軽い事故と同じ1件になり、最も避けたい重大な事故の"
         "危険が薄まる。",
@@ -220,7 +226,7 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
     TuningParameter(
         ELEVATION_BRIDGE_END_RADIUS_ID,
         "橋の端の標高を探す半径", "m", TuningEffect.DERIVE_REBUILD,
-        "橋の端の点の標高は、その点とこの半径の8方位の点のうち一番高い値を採る。標高データは橋などの構造物を除いた地表の値で、"
+        f"橋の端の点の標高は、その点とこの半径の{BRIDGE_END_BEARINGS}方位の点のうち一番高い値を採る。標高データは橋などの構造物を除いた地表の値で、"
         "橋の端が除かれた範囲に入ると水面や谷底を拾うため。広げるほど除かれた範囲の外へ届くが、谷の斜面の上の高い所も拾いやすい。"
         "0にすると端の点の値だけを使う。",
     ),
@@ -258,7 +264,7 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
         shown_to_users=True,
     ),
     TuningParameter(
-        _CRR_ID,
+        BASE_CRR_ID,
         "転がり抵抗", "", TuningEffect.IMMEDIATE,
         "基準の路面（舗装）の転がり抵抗の係数。区分の外の道もこの値で走る。",
     ),

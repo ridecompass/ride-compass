@@ -1,7 +1,7 @@
 """生データから導いたもののPostGISスキーマ（SQLAlchemy ORM）。
 
 **表は「書く段 × 行の母集団」ごとに分ける**。どの表も書く段（`batch/derive_cli.py: STAGES`）は1つで、段は自分の表を
-空にしてから埋める。段の指紋は書く表の列を読むので、表に列を1つ足して流れるのは、その表を書く段と後ろの段だけになる。
+空にしてから埋める。表に列を1つ足したら、作り直すのはその表を書く段（と、入口が足す後ろの段）だけでよい。
 読む側は、材料の式が読む列を持つ表だけを主キーで結ぶ（`material_joins.py: material_from_clause`）。
 
 | 粒度 | 形・鍵の表（区間を切る段が書く） | 値の表 |
@@ -84,6 +84,15 @@ def landcover_checks(table: str) -> tuple[CheckConstraint, ...]:
 def vocabulary_check(table: str, column: str, values: frozenset[str]) -> CheckConstraint:
     """派生の段がSQLで直接書く語彙の列に、domainの宣言の外の値を入れさせない制約。NULLは通す。"""
     return CheckConstraint(f"{column} IN ({sql_literals(sorted(values))})", name=f"{table}_{column}_known")
+
+
+def grouped_place_sql(alias: str | None = None) -> str:
+    """群を持つ地点（立ち寄り先）の条件。地点の位置の部分索引の条件で、範囲で引く読み手もこの式で絞ると索引が使われる。"""
+    return f"{alias + '.' if alias else ''}place_group IS NOT NULL"
+
+
+# 続きに使う住所の鍵の条件。鍵の長さの部分索引の条件で、続きを引く読み手もこの式で絞ると索引が使われる。
+CONTINUABLE_KEY_SQL = "continuable"
 
 
 def _edge_key(table: str) -> ForeignKeyConstraint:
@@ -356,7 +365,7 @@ class AddressSearchKeyRow(Base):
     __table_args__ = (
         # 続きを引くとき、長さごとの件数を数えて短い鍵から引く。
         Index("idx_address_search_keys_continuable", func.length(column("key")), "key",
-              postgresql_where=column("continuable")),
+              postgresql_where=text(CONTINUABLE_KEY_SQL)),
         {"info": DERIVED},
     )
 
@@ -408,11 +417,11 @@ class PlaceRow(Base):
         CheckConstraint(f"coalesce(place_group = '{StopPlaceGroup.TEMPLE_SHRINE}', false) = (source = '{Source.BUNKA_HERITAGE}')",
                         name="places_temple_shrine_from_heritage"),
         # 地図の点のタイルが範囲で引く。タイルは群を持つ行だけを読むので、群の無い行を索引に入れない。
-        Index("idx_places_grouped_geom", "geom", postgresql_using="gist", postgresql_where=column("place_group").isnot(None)),
+        Index("idx_places_grouped_geom", "geom", postgresql_using="gist", postgresql_where=text(grouped_place_sql())),
         # 地点の検索が、群の語でその群の行だけを近い順と円の中で引く（`infrastructure/facility_search.py: _SEARCH_SQL`）。群の列の
         # B-tree の索引は張らない（群の店を全部引いてから並べる計画になる）。群の列を GiST に入れるのに`btree_gist`が要る。
         Index("idx_places_group_geom", "place_group", "geom", postgresql_using="gist",
-              postgresql_where=column("place_group").isnot(None)),
+              postgresql_where=text(grouped_place_sql())),
         # 地点の検索が、名前の部分一致（3文字以上）・名前の頭の一致（1〜2文字。照合順序`C`の範囲で引く）・チェーンで引く
         # （`infrastructure/facility_search.py: _SEARCH_SQL`）。部分一致の索引は3文字の組で引くので、3文字に満たない語には効かない。
         Index("idx_places_search_name_trgm", "search_name", postgresql_using="gin",

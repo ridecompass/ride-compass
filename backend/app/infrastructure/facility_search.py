@@ -11,6 +11,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.geo import LatLon, degrees_covering_m
+from app.domain.material_sql import like_escaped_sql
 from app.domain.place_search import PLACE_PREDICTION_LIMIT, PlaceCandidate
 from app.domain.region import BoundingBox
 from app.domain.stop_place import (
@@ -52,7 +53,7 @@ _MERIDIAN_RADIUS_LOWER_M = 6_335_000
 #   全部の行に測地の距離を求めて並べたのと同じ答えになる。
 _SEARCH_SQL = text(f"""
     WITH q AS (
-        SELECT n.name, replace(replace(replace(n.name, '\\', '\\\\'), '%', '\\%'), '_', '\\_') AS pattern,
+        SELECT n.name, {like_escaped_sql("n.name")} AS pattern,
                ST_SetSRID(ST_MakePoint(:near_lon, :near_lat), 4326)::geography AS center
         FROM (SELECT {normalized_sql(":query")} AS name) n
     ),

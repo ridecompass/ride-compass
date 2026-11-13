@@ -38,8 +38,9 @@ from shapely.geometry import Point
 from app.batch.ingest import AdapterInputs, SourceRecord, register_adapter
 from app.batch.source_adapters.zip_csv import read_zip_csv
 from app.batch.source_profile import SourceProfile, SourceSpec, Target
+from app.infrastructure import data_paths
 
-DATA_DIR = Path(__file__).resolve().parents[3] / "data" / "abr"
+DATA_DIR = data_paths.DATA_DIR / "abr"
 
 #: 配布の置き場。全国の1ファイルずつのもの（キーはファイルの名前の頭）。
 NATIONWIDE_ARCHIVES = ("mt_pref_all", "mt_pref_pos_all", "mt_city_all", "mt_city_pos_all", "mt_town_fullset_all")

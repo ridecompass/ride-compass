@@ -21,11 +21,15 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, attribute_keyed_dict, mapped_column, relationship
 
+from app.domain.display_palette import NOMINAL_HUE_SLOTS
+from app.domain.material_sql import sql_literals
+from app.domain.registry import DISPLAY_PALETTES
 from app.domain.road_avoidance import AVOIDANCE_LEVELS
 from app.infrastructure.orm_base import Base
+from app.infrastructure.tuning_overrides import TuningOverrideRow
 
 _KEY_PATTERN = "^[a-z][a-z0-9_]*$"
-_OVERRIDE_LEVELS_SQL = ", ".join(f"'{level}'" for level in AVOIDANCE_LEVELS if level != "pass")
+_OVERRIDE_LEVELS_SQL = sql_literals(level for level in AVOIDANCE_LEVELS if level != "pass")
 
 
 class _Deferral(TypedDict):
@@ -132,8 +136,8 @@ class RoadMapLayerRow(Base):
 
     __tablename__ = "road_map_layers"
     __table_args__ = (
-        CheckConstraint("palette IN ('ordered', 'nominal')", name="road_map_layers_palette_check"),
-        CheckConstraint("hue_slot BETWEEN 0 AND 11", name="road_map_layers_hue_slot_check"),
+        CheckConstraint(f"palette IN ({sql_literals(DISPLAY_PALETTES)})", name="road_map_layers_palette_check"),
+        CheckConstraint(f"hue_slot BETWEEN 0 AND {NOMINAL_HUE_SLOTS - 1}", name="road_map_layers_hue_slot_check"),
         CheckConstraint("(palette = 'nominal') = (hue_slot IS NOT NULL)", name="road_map_layers_check"),
         UniqueConstraint("group_key", "sort_order", name="road_map_layers_group_key_sort_order_key", **_IMMEDIATE),
         UniqueConstraint("hue_slot", name="road_map_layers_hue_slot_key", **_IMMEDIATE),
@@ -174,7 +178,7 @@ class RoadRollingResistanceClassRow(Base):
 
     classification_key: Mapped[str] = mapped_column(String, primary_key=True)
     class_key: Mapped[str] = mapped_column(String, primary_key=True)
-    tuning_id: Mapped[str] = mapped_column(String, nullable=False)
+    tuning_id: Mapped[str] = mapped_column(String, ForeignKey(TuningOverrideRow.param_id, **_DEFERRED), nullable=False)
 
 
 class RoadAvoidanceClassificationRow(Base):

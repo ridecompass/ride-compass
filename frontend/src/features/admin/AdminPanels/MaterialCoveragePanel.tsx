@@ -87,8 +87,7 @@ function CoverageTable({ entries }: { entries: readonly CountedEntry[] }) {
 }
 
 // 「材料」タブ（/admin）から、材料ごとの欠損割合（backend GET /api/admin/material-catalog/
-// coverage）を見るパネル。欠損データを取込側で推測して埋めるのではなく、欠損の実態を
-// 見えるようにして「埋めるかどうか」の判断を軸定義側へ委ねるための画面。
+// coverage）を見るパネル。欠損データを取込側で推測して埋めずに、欠損の実態を見えるようにする。
 export default function MaterialCoveragePanel() {
   return (
     <ReportCard

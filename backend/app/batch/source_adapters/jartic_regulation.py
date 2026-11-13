@@ -24,8 +24,9 @@ from app.batch.ingest import SourceRecord, register_adapter
 from app.batch.source_adapters.abr import RangeInputs, range_inputs
 from app.batch.source_adapters.zip_csv import read_zip_csv
 from app.batch.source_profile import SourceProfile, SourceSpec
+from app.infrastructure import data_paths
 
-DATA_DIR = Path(__file__).resolve().parents[3] / "data" / "jartic"
+DATA_DIR = data_paths.DATA_DIR / "jartic"
 
 ENCODING = "cp932"
 #: 規制の鍵（全国で一意）。

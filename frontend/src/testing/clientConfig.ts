@@ -47,17 +47,18 @@ export function roadMapLayer(id: string, overrides: Partial<RoadMapLayerView> = 
   };
 }
 
-/** 避け方の段（倍率の小さい順で、名前は倍率）。段の鍵はbackendの型が決める。 */
+/** 避け方の段（倍率の小さい順で、名前は倍率）。段の鍵はbackendの型が決める。色は見分けられれば何でもよく、暗い地図の色は
+ * 明るい地図の色と別にする。指定なし（×1）だけが色を持たない。 */
 export const AVOIDANCE_LEVELS: RoadAvoidanceView["levels"] = [
-  { key: "prefer", label: "×0.5" },
-  { key: "slight_prefer", label: "×0.7" },
-  { key: "pass", label: "×1" },
-  { key: "slight_avoid", label: "×1.4" },
-  { key: "avoid", label: "×2" },
-  { key: "exclude", label: "×∞" },
+  { key: "prefer", label: "×0.5", color: "#00aa00", color_on_dark: "#00ff00" },
+  { key: "slight_prefer", label: "×0.7", color: "#00aa01", color_on_dark: "#00ff01" },
+  { key: "pass", label: "×1", color: null, color_on_dark: null },
+  { key: "slight_avoid", label: "×1.4", color: "#aa5500", color_on_dark: "#ff5500" },
+  { key: "avoid", label: "×2", color: "#aa5501", color_on_dark: "#ff5501" },
+  { key: "exclude", label: "×∞", color: "#aa0000", color_on_dark: "#ff0000" },
 ];
 
-/** 避け方を選べる行1つ。既定は「通る」。区分の鍵は`key`の`.`より後（無ければ`key`）。 */
+/** 避け方の行1つ。既定は選べる「通る」の行。区分の鍵は`key`の`.`より後（無ければ`key`）。 */
 export function avoidanceRow(
   key: string,
   section: string,
@@ -70,6 +71,7 @@ export function avoidanceRow(
     label: key,
     description: "",
     default: "pass",
+    selectable: true,
     ...overrides,
   };
 }

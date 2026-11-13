@@ -12,6 +12,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Literal, get_args
 
+from app.domain.geo import ground_m_sql
 from app.domain.tuning import (
     TUNING_PARAMETERS_BY_ID,
     event_seconds_parameter_id,
@@ -234,8 +235,8 @@ def place_count_sql(inside_ends: str) -> str:
 
 
 def stop_cluster_sql(geom: str, eps_m: str, partition: str) -> str:
-    """停止要因の点`geom`を`partition`ごとに`eps_m`以内で連なるまとまりへ分ける窓の式。間隔は地面の m 以下になる Web Mercator の m。"""
-    return f"ST_ClusterDBSCAN(ST_Transform({geom}, 3857), eps := {eps_m}, minpoints := 1) OVER (PARTITION BY {partition})"
+    """停止要因の点`geom`を`partition`ごとに地面の m で`eps_m`以内に連なるまとまりへ分ける窓の式。"""
+    return f"ST_ClusterDBSCAN({ground_m_sql(geom)}, eps := {eps_m}, minpoints := 1) OVER (PARTITION BY {partition})"
 
 
 # コンビニは OpenStreetMap からは取らない——補給の点のコンビニは Overture の地点（`domain/stop_place.py`の群

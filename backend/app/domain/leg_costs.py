@@ -195,7 +195,6 @@ def burden_weights(axes: CostAxisDefinitions, parameters: LedgerParameters, mate
             for axis_id, axis in axes.burden.items() if parameters.counts(axis_id)}
 
 
-#: 量で出す体力の事実の名前と単位（転がりは路面の区分の名前で出す）。
 def axis_facts(axes: CostAxisDefinitions, materials: Mapping[str, MaterialColumn], fills: MaterialFills,
                rows: np.ndarray, distance_m: np.ndarray, penalty_by_axis: Mapping[str, np.ndarray],
                ascent_m: float | None, headwind_ms: np.ndarray | None, stops: float) -> dict[str, AxisFact]:
@@ -488,9 +487,9 @@ class LegCostComposer:
         headwind, crosswind = self._wind_context(time.take(rows), _row_taker(rows)).components()
         inputs = self._travel_inputs
         travel_seconds, penalty_by_axis = self._ledger.row_seconds(inputs.model, headwind, crosswind, rows)
-        # 探索の費用の式（`_bin_costs`）の、避け方の倍率が掛かる前の秒に、倍率の1との差を掛けたもの。
-        scaled = (self._cost_scale[rows] - 1.0) * (
-            travel_seconds + inputs.wait_seconds[rows] + sum(penalty_by_axis.values(), np.zeros(len(rows))))
+        # 探索の費用（`_bin_costs`）のうち、避け方の倍率が足し引きした分。探索と同じく倍率を掛けてから引き、float64で求める。
+        unscaled = travel_seconds + inputs.wait_seconds[rows] + sum(penalty_by_axis.values(), np.zeros(len(rows)))
+        scaled = self._cost_scale[rows].astype(np.float64) * unscaled - unscaled
         return LegValues(headwind_ms=headwind, penalty_by_axis=penalty_by_axis,
                          preferred_seconds=np.minimum(scaled, 0.0), avoided_seconds=np.maximum(scaled, 0.0))
 

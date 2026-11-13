@@ -157,10 +157,10 @@ async def main() -> int:
             kind = "冷" if index == 0 else "温"
             async with sample_resources(dsn) as trace:
                 started = time.perf_counter()
-                candidates = await generator.generate_loops(
+                candidates = (await generator.generate_loops(
                     origin, distance_km=distance_km, distance_tolerance_km=distance_tolerance_km(distance_km),
                     points=FixedPoints(waypoints=[], destination=None),
-                    max_routes=DEFAULT_MAX_ROUTES, start_time=datetime.now(JST))
+                    max_routes=DEFAULT_MAX_ROUTES, start_time=datetime.now(JST))).candidates
                 elapsed = time.perf_counter() - started
             print(f"\n  [{kind}] {elapsed:7.1f}秒 / 候補 {len(candidates)}件")
             print(f"    {trace.summary()}")

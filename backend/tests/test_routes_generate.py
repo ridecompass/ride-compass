@@ -373,6 +373,17 @@ async def test_a_destination_moved_to_the_nearest_reachable_road_is_echoed(clien
     assert conditions["destination"] == _point(91)
 
 
+async def test_a_spliced_route_to_a_destination_moved_to_the_nearest_reachable_road_echoes_the_move(client, world):
+    """乗り換えでも寄せ直した終点を返す——返さないと、画面の目的地のピンが経路の終わりから離れたままになる。"""
+    world.serve(grid_network(island=True))
+    body = {**_point(SOUTH_WEST), "destination": _point(91), "distance_km": None}
+    (route, *_) = (await _generate(client, **body, max_routes=1))["result"]["routes"]
+
+    conditions = (await _generate(client, **body, spliced_edge_ids=route["edge_ids"]))["result"]["conditions"]
+
+    assert conditions["corrected_destination"] == _point(NORTH_EAST)
+
+
 # --- 要求の検証 ---
 
 

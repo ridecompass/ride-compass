@@ -16,7 +16,7 @@
 ここで見ないもの:
 - 対象範囲を読むこと（どの取込の記録の範囲か） → `test_ingested_area.py`
 - 住所の区画・鍵・街区の作り方（範囲・祖先・鍵の別形・地番を区画に結ぶ名前・住居表示の区域で ABR を採る） → `test_address_areas.py`、表記の揃え方の1つずつ → `test_address_area.py`
-- 地点の群・絞り・まとめ・住所 → `test_stop_places.py`、入力を群の語として読むか → `test_stop_place_words.py`
+- 地点の群・絞り・まとめ・住所 → `test_places.py`、入力を群の語として読むか → `test_stop_place_words.py`
 - 辺りの決め方（辺の上・境界の外・名前の無い境界・配布の境界の読み方） → `test_stop_place_areas.py`。置いた位置の辺りも
   同じ SQL の部品（`infrastructure/place_area_query.py: area_label_sql`）で決めるので、ここでは境界の中と外の両側だけを見る
 - 回数制限の窓 → `test_rate_limiter.py`

@@ -226,10 +226,6 @@ def conditions_match(conditions: Sequence[Condition], columns: Mapping[str, Mate
     return matched
 
 
-def _facts(classification: RoadClassification) -> set[str]:
-    return {fact_key for c in classification.classes.values() for condition in c.conditions for fact_key in condition}
-
-
 def class_labels(classification: RoadClassification | None) -> dict[str, str]:
     """分け方の区分の鍵 → 区分の名前（分け方が無ければ空）。"""
     return {} if classification is None else {key: road_class.label for key, road_class in classification.classes.items()}

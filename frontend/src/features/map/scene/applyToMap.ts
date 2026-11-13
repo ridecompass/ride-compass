@@ -272,6 +272,7 @@ export function sceneInputsFrom(props: SceneWiringProps): SceneInputs {
     sidePoint: {
       path: props.sidePointPath,
       tilesReady: versions !== null,
+      hiddenKeys,
     },
   };
 }
@@ -315,7 +316,7 @@ function getRouteStyleMode(modes: readonly RouteStyleMode[], id: LensId): RouteS
   const found = modes.find((mode) => mode.id === id);
   if (found) return found;
   if (modes.length === 0) return UNPAINTED_ROUTE_STYLE_MODE;
-  // 軸の非公開等でidのモードが消えていたら先頭へ倒す。選択中の色分けが黙って変わるため警告を残す。
+  // 軸が消えた等でidのモードが無くなっていたら先頭へ倒す。選択中の色分けが黙って変わるため警告を残す。
   debugLog(
     "map:route-style-mode",
     `route style mode "${id}" not found, falling back to "${modes[0].id}"`,

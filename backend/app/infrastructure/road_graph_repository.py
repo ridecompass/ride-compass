@@ -83,6 +83,7 @@ async def create_tables(engine: AsyncEngine) -> None:
                 f"このDBに拡張 {', '.join(missing)} が入っていません。"
                 f"スーパーユーザーで先に実行してください: {commands}")
         await conn.run_sync(declared_metadata().create_all)
+        await derived_data_meta.insert_first_revision(conn)
 
 
 # --- 区間粒度の材料 -----------------------------------------------------------

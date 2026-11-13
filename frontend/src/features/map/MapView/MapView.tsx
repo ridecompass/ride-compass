@@ -270,6 +270,8 @@ export default function MapView({
     controls: popups,
     segmentDetail,
     segmentPath: selectedSectionPath,
+    routePath: (selectedRoute?.geometry.coordinates as [number, number][] | undefined) ?? null,
+    travelBearing: ride?.bearing ?? null,
     rideConditions,
     costPreference,
     travelledKm,

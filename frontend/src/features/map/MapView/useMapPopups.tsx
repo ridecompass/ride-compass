@@ -15,7 +15,7 @@ import {
 import type { Facility } from "@/components/MapPopup/facilityRows";
 import { Button, buttonVariants } from "@/components/ui/Button/Button";
 import { ShowSectionOnMapIcon, StreetViewIcon } from "@/components/ui/icons/lucideIcons";
-import { bearingAlong } from "@/lib/localPlane";
+import { nearerSide, nearestEdge } from "@/lib/localPlane";
 import { streetViewUrl } from "@/lib/streetViewUrl";
 import type { RoadTrackRow } from "@/lib/mapDisplay/roadTracks";
 import { cn } from "@/lib/cn";
@@ -38,6 +38,10 @@ const POPUP_MAX_WIDTH = "calc(100% - 1.5rem)";
  * 残し、つまんで戻せる所が見えているようにする。
  */
 const DRAGGED_POPUP_KEEP_PX = 128;
+
+/** 押した道がルートと重なるとみる、道の上で押した所に最も近い点とルートの線の隔たりの上限（m）。ルートは道の線をつないだ形なので
+ * 重なる道ではほぼ0になり、並んで走る別の道を重なるとみないよう小さく取る。 */
+const ROUTE_OVERLAP_M = 5;
 
 /** 押した所を指さない（ずらした・押し込めた）小窓に付ける印。矢印を隠す（`app/globals.css`）。 */
 const FREE_POPUP_CLASS = "map-popup-free";
@@ -147,6 +151,10 @@ interface MapPopupMountOptions {
   segmentDetail: ReactNode | null;
   /** 選んでいる区間の形。形が引けなければnull。 */
   segmentPath: Shape | null;
+  /** 選んでいるルートの線。選んでいなければnull。 */
+  routePath: Shape | null;
+  /** 走行中の今の進む向き（真北0・時計回りの度）。走っていない・まだ分からなければnull。 */
+  travelBearing: number | null;
   rideConditions: RideConditions;
   costPreference: CostPreference;
   /** 走行中の現在地の道のり（km）。施設の位置をここから見た前後で言う。走っていない間はnull。 */
@@ -164,9 +172,23 @@ function targetOf(popup: MapPopup, segmentPath: Shape | null): { lngLat: [number
     : { lngLat: popup.lngLat, shape: popup.shape };
 }
 
-/** 小窓の地点で見る向き（真北0・時計回りの度）。区間は走る向きで、道は向きが決まらないので、点とともに null（Google に任せる）。 */
-function lookingOf(popup: MapPopup, { lngLat, shape }: ReturnType<typeof targetOf>): number | null {
-  return popup.kind === "segment" && shape !== null ? bearingAlong(shape, lngLat) : null;
+/**
+ * 小窓の地点で見る向き（真北0・時計回りの度。nullなら Google に任せる）。押した物の線のうち地点に最も近い辺の向きを、進む向きへ
+ * 向ける。区間はルートの一部で、線の向きがそのまま進む向き。道は両向きに走れるので、辺の両向きのうち、押した道がルートと重なれば
+ * ルートの進む向きに、重ならず走行中なら今の進む向きに近い側。点は線を持たない（束ねた点の形は点の並びで、道筋ではない）。
+ */
+function lookingOf(
+  popup: MapPopup,
+  { lngLat, shape }: ReturnType<typeof targetOf>,
+  routePath: Shape | null,
+  travelBearing: number | null,
+): number | null {
+  if (popup.kind === "point" || shape === null) return null;
+  const along = nearestEdge(shape, lngLat);
+  if (along === null || popup.kind === "segment") return along?.bearing ?? null;
+  const onRoute = routePath === null ? null : nearestEdge(routePath, along.point);
+  const forward = onRoute !== null && onRoute.offsetM <= ROUTE_OVERLAP_M ? onRoute.bearing : travelBearing;
+  return forward === null ? null : nearerSide(along.bearing, forward);
 }
 
 /** 小窓を地図へ載せ、中身をportalで描く。返した要素を地図の部品の中に置く。 */
@@ -177,6 +199,8 @@ export function useMapPopupMount(
     controls,
     segmentDetail,
     segmentPath,
+    routePath,
+    travelBearing,
     rideConditions,
     costPreference,
     travelledKm,
@@ -341,7 +365,7 @@ export function useMapPopupMount(
       <div className="absolute top-0 right-8 flex">
         {/* 開く先は地点だけで決まるので、押す前に決まったリンクにする（押してから開くと、iPhone の Safari が新しい窓を止める）。 */}
         <a
-          href={streetViewUrl(lngLat, lookingOf(onMap, target))}
+          href={streetViewUrl(lngLat, lookingOf(onMap, target, routePath, travelBearing))}
           target="_blank"
           rel="noopener noreferrer"
           aria-label="ここのストリートビューを開く"
