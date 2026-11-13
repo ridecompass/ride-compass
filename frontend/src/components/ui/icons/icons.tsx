@@ -197,17 +197,6 @@ export function ClearAllFiltersIcon({ size = 16 }: IconProps) {
   );
 }
 
-/** 地図に出す情報を選ぶ（「表示」のボタン）: 中抜きのつまみが付いた横線2本。RouteSettingsIcon（短い縦線のつまみが3つ）とは、つまみの形と本数で見分ける。 */
-export function DisplayItemsIcon({ size = 16 }: IconProps) {
-  return (
-    <svg width={size} height={size} {...svgProps}>
-      <path d="M3 6.5h4.7M12.3 6.5H17M3 13.5h1.2M8.8 13.5H17" />
-      <circle cx="10" cy="6.5" r="2.3" />
-      <circle cx="6.5" cy="13.5" r="2.3" />
-    </svg>
-  );
-}
-
 /** 出発地の印: 竿に、塗った旗。目的地の`GoalFlagIcon`と竿をそろえ、旗の模様だけで見分ける。 */
 export function StartFlagIcon({ size = 16 }: IconProps) {
   return (

@@ -120,14 +120,6 @@ MAP_LAYER_CATEGORIES: tuple[LayerCategory, ...] = (
 )
 
 
-#: 描き直しの種類。`dynamic`は選択中ルートにひもづくもの、`static`はそれ以外。
-#: **値が時間で変わるかとは別軸**——降水は中身が変わるがルートとは無関係なので`static`。
-MapLayerKind = Literal["static", "dynamic"]
-MAP_LAYER_KINDS: tuple[str, ...] = get_args(MapLayerKind)
-
-#: 利用者が作った線。属性でも配信でもないので、ここだけが名前を持つ。
-_ROUTE_LAYER_ID = "route"
-
 #: 陰影は属性ではなく標高の別の描き方。源泉に属性として現れないのが正しい。
 _HILLSHADE_LAYER_ID = "hillshade"
 
@@ -183,13 +175,12 @@ def _static_layer_ids() -> tuple[str, ...]:
 
 
 #: 地図に載るものの名前。費用の軸のレンズは実行時に決まるためここには現れない。
-_MAP_LAYER_IDS: tuple[str, ...] = (*_static_layer_ids(), *WEATHER_LAYER_GROUPS, _ROUTE_LAYER_ID)
+_MAP_LAYER_IDS: tuple[str, ...] = (*_static_layer_ids(), *WEATHER_LAYER_GROUPS)
 
 
 #: 説明の文の差し込み口の名前。どれも実行時の応答（画面の設定・費用の軸の一覧）から来る値で、画面が埋める。
-#: `accidentYears`は事故の収録年、`routeLenses`はルートの線を塗れるもの（総合と費用の軸のレンズ）、`landcoverRingOuterM`は
-#: 土地被覆の割合を数えた帯の外の幅（m。作り直しに使った値）。
-LayerTextSlotName = Literal["accidentYears", "routeLenses", "landcoverRingOuterM"]
+#: `accidentYears`は事故の収録年、`landcoverRingOuterM`は土地被覆の割合を数えた帯の外の幅（m。作り直しに使った値）。
+LayerTextSlotName = Literal["accidentYears", "landcoverRingOuterM"]
 
 
 class LayerTextSlot(NamedTuple):
@@ -213,12 +204,11 @@ SegmentSeries = Literal["landcoverClass"]
 class MapLayerSpec(NamedTuple):
     #: 絵の出所（`MAP_LAYER_DATA_SOURCES`の`key`）。
     data_source: str
-    #: 種別（`MAP_LAYER_CATEGORIES`の`key`）。どのグループにも属さないもの（ルート）はNone。
+    #: 種別（`MAP_LAYER_CATEGORIES`の`key`）。どのグループにも属さないものはNone。
     category: str | None
-    kind: MapLayerKind = "static"
     data_nature: MapLayerDataNature = "raw"
     #: 利用者の操作を待たずに表示するか。**性質で決める**——明示的にONにして初めて出るのが
-    #: 地図レイヤーの原則で、既定ONの根拠になるのは防災級の情報と、探索の結果そのものだけ。
+    #: 地図レイヤーの原則で、既定ONの根拠になるのは防災級の情報だけ。
     default_on: bool = False
     #: 名前。一次属性を描くレイヤーは書かない——属性の名前をそのまま使う（`map_layer_label`）。
     label: str | None = None
@@ -508,15 +498,6 @@ _LAYER_SPECS: dict[str, MapLayerSpec] = {
             + "平常時は危険度ゼロの領域が透明のため、ONのままでも地図の見た目は"
             "変わりません。非公式の内部APIを利用しているため、取得に失敗することがあります。",
         ),
-    ),
-    # 候補を出したら見えている必要がある（探索の結果そのもの）。
-    _ROUTE_LAYER_ID: MapLayerSpec(
-        "ownFetch",
-        None,
-        kind="dynamic",
-        default_on=True,
-        label="ルート",
-        description=("選択中ルート沿いの情報", LayerTextSlot("routeLenses", "[", "]"), "で塗って表示"),
     ),
 }
 

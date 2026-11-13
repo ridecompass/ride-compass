@@ -7,8 +7,9 @@ import { InfoIcon } from "@/components/ui/icons/lucideIcons";
 import { cn } from "@/lib/cn";
 import type { LegendEntry } from "@/lib/mapDisplay/legendFilter";
 
-/** 行の右端の（i）（`toggle`）と、押すと行のすぐ下に開く`label`の説明（`text`）。説明が無ければどちらも出さない。 */
-export function useRowDescription(label: string, description: string | undefined, usage: string) {
+/** 行の右端の（i）（`toggle`）と、押すと行のすぐ下に開く`label`の説明（`text`）。説明が無ければどちらも出さない。
+ * `indented`は、説明をチェックの幅だけ字下げして行の名前にそろえるか（チェックの無い行では偽）。 */
+export function useRowDescription(label: string, description: string | undefined, usage: string, indented = true) {
   const [open, setOpen] = useState(false);
   const id = useId();
   if (!description) return { open: false, toggle: null, text: null };
@@ -28,7 +29,13 @@ export function useRowDescription(label: string, description: string | undefined
       </Button>
     ),
     text: open && (
-      <p id={id} className="mb-1 pl-6 text-[length:var(--font-size-xs)] whitespace-normal text-[var(--color-neutral)]">
+      <p
+        id={id}
+        className={cn(
+          "mb-1 text-[length:var(--font-size-xs)] whitespace-normal text-[var(--color-neutral)]",
+          indented && "pl-6",
+        )}
+      >
         {description}
       </p>
     ),

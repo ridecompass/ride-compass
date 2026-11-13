@@ -41,9 +41,8 @@ function chipLegends(
   ];
 }
 
-/** 地図上チップの一覧。レンズの層と、選択中のルートにひもづくレイヤー（`kind`が`dynamic`）は出さない
- * ——どちらも出し入れは色分け（`LensControl`）が持つ。チップの束ね方（`mapLayers.ts: mapOverlayGroupFor`）は中分類しか
- * 見ないので、除くのはここの1か所で、束ねる前に除く。 */
+/** 地図上チップの一覧。レンズの層は出さない——出し入れは色分け（`LensControl`）が持つ。チップの束ね方
+ * （`mapLayers.ts: mapOverlayGroupFor`）は中分類しか見ないので、除くのはここの1か所で、束ねる前に除く。 */
 export function overlayChips(options: {
   layers: readonly MapLayerDescriptor[];
   roadLayers: readonly RoadMapLayerView[];
@@ -60,7 +59,6 @@ export function overlayChips(options: {
   const legendAxes = [...roadLegendAxes(options.roadLayers), ...DECLARED_LEGEND_AXES];
   return options.layers
     .filter((layer): layer is ChipLayerDescriptor => !isLensLayer(layer))
-    .filter((layer) => layer.kind !== "dynamic")
     .map((layer) => {
       const versionMissing = options.versionMissingLayerIds.includes(layer.id);
       return {

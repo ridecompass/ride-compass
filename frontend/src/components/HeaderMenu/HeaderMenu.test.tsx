@@ -33,8 +33,6 @@ async function openMenu(props: Partial<React.ComponentProps<typeof HeaderMenu>> 
       onToggleDebugConsole={onToggleDebugConsole}
       onStartUsageGuide={onStartUsageGuide}
       onRedrawMap={onRedrawMap}
-      mapTheme="light"
-      onMapThemeChange={() => {}}
       {...props}
     />,
   );

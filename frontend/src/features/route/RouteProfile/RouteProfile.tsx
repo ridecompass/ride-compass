@@ -8,8 +8,7 @@ import { Checkbox } from "@/components/ui/Checkbox/Checkbox";
 import { Dot } from "@/components/ui/Dot/Dot";
 import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs/Tabs";
-import { DisplayItemsIcon } from "@/components/ui/icons/icons";
-import { BurdenPaintIcon } from "@/components/ui/icons/lucideIcons";
+import { BurdenPaintIcon, LayersStackIcon } from "@/components/ui/icons/lucideIcons";
 import { AxisMark } from "@/components/ui/icons/axisIconPalette";
 import DifficultyProfile from "@/features/route/DifficultyProfile/DifficultyProfile";
 import { profileBoxes } from "@/features/route/DifficultyProfile/profileGeometry";
@@ -131,7 +130,7 @@ export default function RouteProfile({
       <div className="pointer-events-none absolute top-1 right-1 z-10 flex items-start gap-1 [&>*]:pointer-events-auto">
         <TabsList aria-label="道のりのグラフ" variant="overlay">
           <TabsTrigger value="layer" usage="選んだ情報[標高・道の区分等]を、道のりに沿って出します。">
-            <DisplayItemsIcon size={14} />
+            <LayersStackIcon size={14} />
             <span className="sr-only">{FACT_DISPLAY_NAME}</span>
           </TabsTrigger>
           <TabsTrigger

@@ -68,7 +68,6 @@ from app.domain.map_display import (
     MAP_LAYER_CATEGORIES,
     MAP_LAYERS,
     map_layer_label,
-    MAP_LAYER_KINDS,
     MapLayerSpec,
     ROUTE_ARROW_HALO_SCALE,
     ROUTE_ARROW_SIZE_BY_ZOOM,
@@ -235,7 +234,6 @@ def _map_layer_entry(spec: MapLayerSpec) -> dict:
     return {
         "dataSource": spec.data_source,
         "category": spec.category,
-        "kind": spec.kind,
         "dataNature": spec.data_nature,
         "defaultOn": spec.default_on,
         "drawMinZoom": spec.draw_min_zoom,
@@ -384,7 +382,6 @@ def main() -> None:
                 {"key": source.key, "minZoom": source.min_zoom} for source in MAP_LAYER_DATA_SOURCES
             ],
             "layerDataNatures": list(MAP_LAYER_DATA_NATURES),
-            "layerKinds": list(MAP_LAYER_KINDS),
             # 地図に載るものの、描き方以外の宣言（種別・情報源・性質・既定表示・最初に隠す行）。
             "layers": [
                 {

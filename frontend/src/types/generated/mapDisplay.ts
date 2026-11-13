@@ -100,17 +100,12 @@ export const mapDisplay = {
     "raw",
     "dynamic"
   ],
-  "layerKinds": [
-    "static",
-    "dynamic"
-  ],
   "layers": [
     {
       "id": "elevation",
       "label": "標高図",
       "dataSource": "gsiRelief",
       "category": "terrain",
-      "kind": "static",
       "dataNature": "raw",
       "defaultOn": false,
       "drawMinZoom": null,
@@ -128,7 +123,6 @@ export const mapDisplay = {
       "label": "起伏",
       "dataSource": "gsiTerrain",
       "category": "terrain",
-      "kind": "static",
       "dataNature": "raw",
       "defaultOn": false,
       "drawMinZoom": null,
@@ -146,7 +140,6 @@ export const mapDisplay = {
       "label": "緑と水",
       "dataSource": "landcoverRaster",
       "category": "terrain",
-      "kind": "static",
       "dataNature": "raw",
       "defaultOn": false,
       "drawMinZoom": null,
@@ -170,7 +163,6 @@ export const mapDisplay = {
       "label": "停止要因",
       "dataSource": "poi",
       "category": "trafficSafety",
-      "kind": "static",
       "dataNature": "raw",
       "defaultOn": false,
       "drawMinZoom": 15,
@@ -188,7 +180,6 @@ export const mapDisplay = {
       "label": "補給・休憩ポイント",
       "dataSource": "poi",
       "category": "amenity",
-      "kind": "static",
       "dataNature": "raw",
       "defaultOn": false,
       "drawMinZoom": null,
@@ -206,7 +197,6 @@ export const mapDisplay = {
       "label": "立ち寄り先",
       "dataSource": "stop_place",
       "category": "amenity",
-      "kind": "static",
       "dataNature": "raw",
       "defaultOn": false,
       "drawMinZoom": null,
@@ -224,7 +214,6 @@ export const mapDisplay = {
       "label": "事故[警察庁統計]",
       "dataSource": "accident",
       "category": "trafficSafety",
-      "kind": "static",
       "dataNature": "raw",
       "defaultOn": false,
       "drawMinZoom": 15,
@@ -254,7 +243,6 @@ export const mapDisplay = {
       "label": "降水ナウキャスト",
       "dataSource": "ownFetch",
       "category": "weather",
-      "kind": "static",
       "dataNature": "dynamic",
       "defaultOn": false,
       "drawMinZoom": null,
@@ -272,7 +260,6 @@ export const mapDisplay = {
       "label": "風[矢印]",
       "dataSource": "msmGrid",
       "category": "weather",
-      "kind": "static",
       "dataNature": "dynamic",
       "defaultOn": false,
       "drawMinZoom": null,
@@ -290,7 +277,6 @@ export const mapDisplay = {
       "label": "災害",
       "dataSource": "ownFetch",
       "category": "disaster",
-      "kind": "static",
       "dataNature": "dynamic",
       "defaultOn": true,
       "drawMinZoom": null,
@@ -302,35 +288,12 @@ export const mapDisplay = {
       ],
       "hideMissingRows": false,
       "segmentSeries": null
-    },
-    {
-      "id": "route",
-      "label": "ルート",
-      "dataSource": "ownFetch",
-      "category": null,
-      "kind": "dynamic",
-      "dataNature": "raw",
-      "defaultOn": true,
-      "drawMinZoom": null,
-      "description": [
-        "選択中ルート沿いの情報",
-        {
-          "name": "routeLenses",
-          "before": "[",
-          "after": "]"
-        },
-        "で塗って表示"
-      ],
-      "panelHint": null,
-      "hideMissingRows": false,
-      "segmentSeries": null
     }
   ],
   "axisLayers": {
     "dedicated": {
       "dataSource": "road_surface",
       "category": null,
-      "kind": "static",
       "dataNature": "dynamic",
       "defaultOn": false,
       "drawMinZoom": 12
@@ -338,7 +301,6 @@ export const mapDisplay = {
     "road": {
       "dataSource": "road_surface",
       "category": null,
-      "kind": "static",
       "dataNature": "raw",
       "defaultOn": false,
       "drawMinZoom": null

@@ -30,18 +30,17 @@ export function chip(id: string, overrides: Partial<OverlayLayerChip> = {}): Ove
 
 type Overrides = {
   anyLegendHidden?: boolean;
-  route?: { shown: boolean; selectable: boolean };
-  surroundings?: { shown: boolean };
+  range?: { routeOnly: boolean; selectable: boolean };
 };
 
 export function propsOf(
   layers: OverlayLayerChip[],
-  { route = { shown: true, selectable: true }, surroundings = { shown: false }, ...overrides }: Overrides = {},
+  { range = { routeOnly: false, selectable: true }, ...overrides }: Overrides = {},
 ) {
   return {
     layers,
-    route: { ...route, onChange: vi.fn() },
-    surroundings: { ...surroundings, onChange: vi.fn() },
+    range: { ...range, onChange: vi.fn() },
+    mapTheme: { value: "light" as const, onChange: vi.fn() },
     onToggle: vi.fn(),
     onLegendEntryToggle: vi.fn(),
     onLegendAxisSetHidden: vi.fn(),
@@ -61,15 +60,8 @@ export async function setup(layers: OverlayLayerChip[], overrides: Overrides = {
   return { user, props, list: screen.getByRole("dialog", { name: LIST_NAME }), ...view };
 }
 
-/** 群の外の先頭にある、ルートの行のチェックボックスの名前。 */
-export const ROUTE_ROW = "ルート";
-
-/** 群の外の先頭にある、ルートの後も周りを出すかの行のチェックボックスの名前。 */
-export const SURROUNDINGS_ROW = "ルート後も周りを出す";
-
 /** 群に並んでいるレイヤーの行の名前（行のチェックボックスの名前）。 */
 export const rowNames = (list: HTMLElement) =>
   within(list)
     .queryAllByRole("checkbox")
-    .map((box) => box.getAttribute("aria-label"))
-    .filter((name) => name !== ROUTE_ROW && name !== SURROUNDINGS_ROW);
+    .map((box) => box.getAttribute("aria-label"));

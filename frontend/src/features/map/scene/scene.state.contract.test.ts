@@ -217,7 +217,7 @@ describe("状態を地図へ伝えた結果", () => {
       rebuild(
         map,
         sceneState({
-          look: { layerVisibility: { route: true } },
+          look: {},
           routes: [route] as never,
           selectedRouteId: "a",
           travelledKm: 1.5,
@@ -272,7 +272,7 @@ describe("状態を地図へ伝えた結果", () => {
       rebuild(
         map,
         sceneState({
-          look: { layerVisibility: { route: true }, lens },
+          look: { lens },
           catalog: {
             routeStyleModes: costRouteStyleModes(catalog, "light"),
           },
@@ -304,7 +304,7 @@ describe("状態を地図へ伝えた結果", () => {
       rebuild(
         map,
         sceneState({
-          look: { layerVisibility: { route: true } },
+          look: {},
           routes: [{ ...route, segments: [segment(139.7, 139.71), segment(139.71, 139.72)] }] as never,
           selectedRouteId: "a",
         }),
