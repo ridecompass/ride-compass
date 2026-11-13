@@ -9,7 +9,7 @@ import { mapDisplay } from "@/types/generated/mapDisplay";
 import palette from "@/types/generated/palette.json";
 import type { SelectedRouteSegment } from "@/types/route";
 
-import ProfileMarks, { type ValueTick } from "./ProfileMarks";
+import ProfileMarks, { type ProfileWaypoint, type ValueTick } from "./ProfileMarks";
 import { PROFILE_VIEW_HEIGHT, PROFILE_VIEW_WIDTH, type ProfileScale } from "./profileScale";
 import { useProfileGesture } from "./useProfileGesture";
 
@@ -29,8 +29,8 @@ interface ProfileChartProps {
   progressKm?: number | null;
   /** 現在地の印の縦の位置（0〜`PROFILE_VIEW_HEIGHT`）。無ければ図の中ほどに置く。 */
   progressMarkY?: number | null;
-  /** 置いた経由地を通る所のルートの上の距離（置いた順）。縦の線と、地図のピンと同じ番号の印を出す。走り終えた経由地は薄める。 */
-  waypointKms: readonly number[];
+  /** 置いた経由地（置いた順）。縦の線と、地図のピンと同じ番号の印と、着く見込みの時刻を出す。走り終えた経由地は薄める。 */
+  waypoints: readonly ProfileWaypoint[];
   /** 図の中身（`scale.xOf`の横座標と、0〜`PROFILE_VIEW_HEIGHT`の縦座標で描く）。 */
   children: ReactNode;
   /** 図の下の1行。 */
@@ -53,7 +53,7 @@ export default function ProfileChart({
   onSelect,
   progressKm = null,
   progressMarkY = null,
-  waypointKms,
+  waypoints,
   children,
   caption,
   valueTicks = [],
@@ -163,7 +163,7 @@ export default function ProfileChart({
               </g>
             </>
           )}
-          {waypointKms.map((km, index) => (
+          {waypoints.map(({ km }, index) => (
             <line
               key={index}
               data-waypoint={index + 1}
@@ -206,7 +206,7 @@ export default function ProfileChart({
         <ProfileMarks
           xOf={xOf}
           widthKm={widthKm}
-          waypointKms={waypointKms}
+          waypoints={waypoints}
           travelledKm={travelledKm}
           progressMarkY={progressMarkY}
           valueTicks={valueTicks}

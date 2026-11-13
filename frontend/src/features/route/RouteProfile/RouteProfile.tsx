@@ -52,6 +52,8 @@ interface RouteProfileProps {
   progressKm?: number | null;
   /** 置いた経由地を通る所のルートの上の距離（置いた順）。 */
   waypointKms: readonly number[];
+  /** ルートの上の距離を通る見込みの時刻（ms）を返す関数。あれば経由地の印に着く時刻を添える。 */
+  arrivalClock: ((km: number) => number) | null;
   /** グラフに出す情報の選択（結果と走行中の図で1つを共有する）。 */
   layers: ProfileLayerSelection;
   /** 走行中の地図の下の図。目盛り・図の下の文字を大きくし、「表示」の図に値の目盛りを出す。 */
@@ -71,11 +73,12 @@ export default function RouteProfile({
   segmentOnMap,
   progressKm = null,
   waypointKms,
+  arrivalClock,
   layers,
   riding = false,
 }: RouteProfileProps) {
   const [tab, setTab] = useState("lens");
-  const { axes, axisColors } = catalog;
+  const { axes } = catalog;
   const axisOrder = useMemo(() => axes.map((axis) => axis.axisId), [axes]);
   const scale = useProfileScale(segments, scaleKm);
   // 選んでいない間に積む軸は、このルートで塗る区間のある軸から選ぶ。
@@ -116,6 +119,10 @@ export default function RouteProfile({
     }),
     [chosen, scale],
   );
+  const waypoints = waypointKms.map((km) => ({
+    km,
+    arrivalAt: arrivalClock === null ? null : new Date(arrivalClock(km)),
+  }));
   return (
     <Tabs value={tab} onValueChange={setTab} className="relative flex flex-col gap-1">
       {/* 切り替えと見方・出す情報のボタンは、結果も走行中も図の右上に重ね、図の上に段を取らない（スマホの低い高さで図を大きく
@@ -224,11 +231,11 @@ export default function RouteProfile({
         <DifficultyProfile
           scale={scale}
           axisOrder={shownOrder}
-          axisColors={axisColors}
+          catalog={catalog}
           selected={selected}
           onSelect={onSelect}
           progressKm={progressKm}
-          waypointKms={waypointKms}
+          waypoints={waypoints}
           riding={riding}
         />
       </TabsContent>
@@ -239,7 +246,7 @@ export default function RouteProfile({
           selected={selected}
           onSelect={onSelect}
           progressKm={progressKm}
-          waypointKms={waypointKms}
+          waypoints={waypoints}
           riding={riding}
         />
       </TabsContent>

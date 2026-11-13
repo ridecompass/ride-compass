@@ -892,6 +892,8 @@ export interface components {
             description: string;
             /** Icon Id */
             icon_id: string;
+            /** Color */
+            color: string;
             lens: components["schemas"]["LensBands"];
         };
         /** CostAxisCatalogResponse */

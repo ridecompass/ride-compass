@@ -7,7 +7,7 @@ import { formatDelta } from "@/features/route/routeEditDiff";
 import SpliceDeltaBar, { type AxisDelta } from "@/features/route/RouteSplicePanel/SpliceDeltaBar";
 import SpliceMetricGrid from "@/features/route/RouteSplicePanel/SpliceMetricGrid";
 import { MINUTE_UNIT, secondsToMinutes } from "@/lib/duration";
-import { costAxisLabel, type PenaltyCatalog } from "@/lib/routePenalty";
+import { costAxisColor, costAxisLabel, type PenaltyCatalog } from "@/lib/routePenalty";
 import type { RouteCandidate } from "@/types/route";
 import { Button } from "@/components/ui/Button/Button";
 import { GuideText } from "@/components/ui/GuideText/GuideText";
@@ -58,6 +58,7 @@ function penaltyDeltas(base: RouteCandidate, after: RouteCandidate, catalog: Pen
     .map((axisId) => ({
       axisId,
       label: costAxisLabel(catalog, axisId),
+      color: costAxisColor(catalog, axisId),
       delta: secondsToMinutes(seconds(after, axisId) - seconds(base, axisId)),
     }))
     .filter((item) => Math.abs(item.delta) >= MIN_PENALTY_DELTA_MINUTES)
@@ -178,7 +179,7 @@ export default function RouteSplicePanel({
           <SpliceMetricGrid displayed={displayed} preview={preview} />
 
           {/* 軸別は元・編集後の2本を並べず、差だけの1本にする。中央が0で、左が楽になった側。 */}
-          {deltas.length > 0 && <SpliceDeltaBar deltas={deltas} axisColors={catalog.axisColors} />}
+          {deltas.length > 0 && <SpliceDeltaBar deltas={deltas} />}
 
           {sameRouteName !== null && (
             <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">

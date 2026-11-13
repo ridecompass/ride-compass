@@ -4,12 +4,6 @@ import { COST_AXIS_CATALOG_LABEL, getCostAxisCatalog } from "@/services/costAxis
 import { retrySharedCatalogFetch, useSharedCatalog } from "@/hooks/useSharedCatalog";
 import type { FetchFailure } from "@/types/fetchFailure";
 import type { CostAxisCatalogResponse } from "@/types/route";
-import palette from "@/types/generated/palette.json";
-
-/** 軸の識別色。一覧の順に当てる（色の並びは backend の宣言。`palette.json` の `cost_series`）。 */
-function seriesColor(index: number): string {
-  return palette.cost_series[index] ?? palette.semantic.neutral;
-}
 
 const COST_AXIS_CATALOG_QUERY_KEY = ["cost-axis-catalog"] as const;
 
@@ -67,7 +61,7 @@ export function costAxisCatalogFromResponse(response: CostAxisCatalogResponse): 
   }));
   return {
     axes,
-    axisColors: Object.fromEntries(axes.map((axis, index) => [axis.axisId, seriesColor(index)])),
+    axisColors: Object.fromEntries(response.axes.map((entry) => [entry.axis_id, entry.color])),
     lenses: {
       totalLens: {
         axisId: response.total_lens.lens_id,
