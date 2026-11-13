@@ -98,6 +98,12 @@ export interface CaptureContext {
 
 export type CaptureScript = (context: CaptureContext) => Promise<void>;
 
+/**
+ * 撮るときの描画の止め方。CSS のアニメーション・遷移は終わりの姿へ進めて撮る（Playwright の `animations: "disabled"`）。
+ * 前後の画像を画素で比べて同じかを決めるので、遷移の途中を撮ると、変えていない画面でも一致しない。
+ */
+const STILL = { animations: "disabled" } as const;
+
 /** 「表示」のボタンと、押すと開く一覧の名前（`MapOverlayControls`）。 */
 const OVERLAY_LIST_NAME = "地図に出す情報";
 
@@ -252,7 +258,7 @@ export function captureContext(
     },
     async shot(name, target) {
       const file = nextFile(name);
-      await (target ?? page).screenshot({ path: file });
+      await (target ?? page).screenshot({ path: file, ...STILL });
       console.log(`[capture] ${file}`);
       return file;
     },
@@ -265,7 +271,7 @@ export function captureContext(
       }
       // 見える範囲は、レイアウトの下端より下へはずれない。
       const shift = Math.min(keyboard, Math.max(0, box.y + box.height - (viewport.height - keyboard)));
-      const image = await composeKeyboard(page, await page.screenshot(), viewport, { shift, keyboard });
+      const image = await composeKeyboard(page, await page.screenshot(STILL), viewport, { shift, keyboard });
       const file = nextFile(name);
       await writeFile(file, image);
       console.log(`[capture] ${file}`);
