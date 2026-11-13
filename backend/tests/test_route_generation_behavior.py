@@ -215,8 +215,9 @@ async def test_a_spliced_route_through_a_road_the_search_excludes_is_refused(eng
     generator = engine_over(grid_network(motorway_ways={100}))
     through_motorway = (edge_key(100, 0, True), edge_key(101, 0, True), edge_key(202, 0, True), edge_key(205, 0, True))
 
-    assert await generator.generate_spliced_route(
-        at(SOUTH_WEST), FixedPoints(waypoints=[], destination=at(NORTH_EAST)), through_motorway, start_time=DEPARTURE) == []
+    assert (await generator.generate_spliced_route(
+        at(SOUTH_WEST), FixedPoints(waypoints=[], destination=at(NORTH_EAST)), through_motorway,
+        start_time=DEPARTURE)).candidates == []
 
 
 async def test_a_spliced_route_is_refused_when_the_destination_cannot_be_snapped(engine_over):
