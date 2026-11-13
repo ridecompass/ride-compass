@@ -43,8 +43,8 @@ const SCENE_LAYERS: readonly MapSceneLayer[] = [
   fillLayer("landcover-fill"),
   lineLayer("surface-line", "observedLine", { hitTargets: ["road"] }),
   lineLayer("lens-line", "lensLine"),
-  lineLayer("route", "route", { hitTargets: ["routeSegment"] }),
   lineLayer("poi", "point", { hitTargets: ["poi"] }),
+  lineLayer("route", "route", { hitTargets: ["routeSegment"] }),
 ];
 const SHUFFLED_LAYERS = [...SCENE_LAYERS].reverse();
 
@@ -55,15 +55,15 @@ const EXPECTED_ORDER = [
   "basemap-label",
   "surface-line",
   "lens-line",
-  "route",
   "poi",
+  "route",
 ];
 
 describe("mapScene", () => {
   it("押せるレイヤーの一覧は、当たり判定の宣言から段の順で導ける", () => {
     const shuffled = scene(SHUFFLED_LAYERS);
 
-    expect(interactiveSceneLayerIds(shuffled)).toEqual(["surface-line", "route", "poi"]);
+    expect(interactiveSceneLayerIds(shuffled)).toEqual(["surface-line", "poi", "route"]);
   });
 });
 

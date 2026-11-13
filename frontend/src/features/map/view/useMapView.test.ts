@@ -39,20 +39,23 @@ afterEach(() => {
 });
 
 describe("useMapView", () => {
-  it("レンズを選んでもルートの線の出し入れは変えず、ルートの確定後は周りを出す設定の間だけ道に付く層を地図全体に出す", () => {
+  it("レンズを選んでもルートの線の出し入れは変えず、ルートの確定後は線を出していて周りを出さない間だけ道に付く層をルート沿いに絞る", () => {
     serve();
     const { result, rerender } = renderMapView({ hasSelectedRoute: true });
     act(() => result.current.overlayControls.route.onChange(false));
 
     act(() => result.current.lensControl.onLensChange("ascent"));
 
-    expect(result.current.look).toMatchObject({ lens: "ascent", paintedLensId: "ascent" });
+    expect(result.current.look).toMatchObject({ lens: "ascent", surroundingsShown: true });
     expect(result.current.look.layerVisibility.route).toBe(false);
     expect(result.current.lensControl.routeHidden).toBe(true);
     rerender({ hasDetail: true });
-    expect(result.current.look).toMatchObject({ paintedLensId: null, surroundingsShown: false });
+    // 線を隠している間は、絞る線が地図に無いので絞らない。
+    expect(result.current.look.surroundingsShown).toBe(true);
+    act(() => result.current.overlayControls.route.onChange(true));
+    expect(result.current.look.surroundingsShown).toBe(false);
     act(() => result.current.overlayControls.surroundings.onChange(true));
-    expect(result.current.look).toMatchObject({ paintedLensId: "ascent", surroundingsShown: true });
+    expect(result.current.look.surroundingsShown).toBe(true);
   });
 
   it("塗っているレンズだけ表示範囲の材料を取り、塗りに効く走る条件と、取れなかったことをレンズに出す", async () => {

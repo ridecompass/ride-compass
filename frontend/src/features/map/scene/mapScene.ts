@@ -7,7 +7,6 @@ import { NO_BASEMAP_POI_KINDS, type BasemapPoiKinds } from "@/features/map/layer
  * （scene を組み立てる側が配列へ挿す位置では決まらない）。
  * 並びは「後から前面へ積まれる側が、先に積まれた側を塗り潰さない」ように決める。
  * 面の塗りは下にあるものを隠すため、基礎地図の道路網より下へ潜らせる。
- * 点はルートの線と選んだ区間の縁取りの上に描く（ルートの上の信号等を隠さない）。
  * 記号は前面の段から場所を取り、ぶつかる後の記号は描かれないので、気象の格子の印は点の段の下に置いて点の印を残す。
  */
 const MAP_SCENE_TIERS = [
@@ -15,8 +14,8 @@ const MAP_SCENE_TIERS = [
   { id: "observedLine", under: null },
   { id: "lensLine", under: null },
   { id: "weatherMark", under: null },
-  { id: "route", under: null },
   { id: "point", under: null },
+  { id: "route", under: null },
 ] as const;
 
 export type MapSceneTier = (typeof MAP_SCENE_TIERS)[number]["id"];

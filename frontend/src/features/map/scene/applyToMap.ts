@@ -87,9 +87,7 @@ export interface SceneLook {
   readonly dynamicWeather: Partial<Record<DynamicWeatherLayerId, DynamicWeatherGroupState>>;
   /** ルート線の色分けのモード。 */
   readonly lens: LensId;
-  /** 全道路を塗っている軸（塗っていなければnull）。 */
-  readonly paintedLensId: LensId | null;
-  /** 道に付く層（塗る負担の周りの道・点の層）を地図全体に出すか。ルートを選んでいて周りを出さない間だけ偽で、ルート沿いだけに出す。 */
+  /** 道に付く層（塗る負担の周りの道・点の層）を地図全体に出すか。偽の間は、周りの道を塗らず、点はルート沿いだけに出す。 */
   readonly surroundingsShown: boolean;
   /** 地図の道に塗る、道路タブの段。 */
   readonly roadAvoidance: AvoidanceChoice;
@@ -127,7 +125,7 @@ type SceneWiringProps = {
   readonly travelledKm: number | null;
   /** 道のりのグラフか地図で選んだ地点と、その地点を含む区間。選んでいなければnull。 */
   readonly selectedRouteSegment: SelectedRouteSegment | null;
-  /** 選んでいるルートの線。無ければnull。 */
+  /** 選んでいるルートの線。無ければnull。編集中は、点を`splicedRoute`の線の近くに絞る。 */
   readonly routePath: readonly (readonly [number, number])[] | null;
 };
 
@@ -199,7 +197,7 @@ function axisStateFrom(props: SceneWiringProps, sourceLayer: string | null): Axi
     return {
       axisId: lens.lensId,
       // 道の線を塗るレンズは、選んでいる1本だけ。
-      visible: lens.lensId === look.paintedLensId,
+      visible: look.surroundingsShown && lens.lensId === look.lens,
       bands: valueBands(lens.display),
       formula: lens.formula,
       materials: fetched?.materials ?? NO_MATERIALS,
@@ -268,7 +266,7 @@ export function sceneInputsFrom(props: SceneWiringProps): SceneInputs {
       tiles: versions === null ? null : { urls: pointTileUrls(versions), ...pointZoom },
       visible,
       hiddenKeys,
-      nearPath: props.look.surroundingsShown ? null : props.routePath,
+      nearPath: props.look.surroundingsShown ? null : (props.splicedRoute ?? props.routePath),
     },
     weather: weatherStateFrom(props.look.dynamicWeather),
     route: routeStateFrom(props),

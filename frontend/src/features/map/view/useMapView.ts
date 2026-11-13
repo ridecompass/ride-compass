@@ -161,8 +161,9 @@ export function useMapView({
     at: ride.at,
     now,
   });
-  // ルートを選んでいる間は、周りを出す設定のときだけ道に付く層（周りの道の塗り・点の層）を地図全体に出す。
-  const surroundingsShown = !hasDetail || keepSurroundings;
+  // ルートを選んで線を出している間は、周りを出す設定のときだけ道に付く層（周りの道の塗り・点の層）を地図全体に出す。
+  // 線を隠している間は、絞る線が地図に無いので絞らない。
+  const surroundingsShown = !hasDetail || keepSurroundings || layerVisibility[ROUTE_LAYER_ID] !== true;
   const painted = surroundingsShown ? lens : null;
   // 道ごとの材料は、全道路を塗っているレンズの分だけ取る（塗っていないレンズの値は地図に出ない。表示中のものだけ叩く）。
   const fetchLenses = useMemo(() => lenses.filter((candidate) => candidate.lensId === painted), [lenses, painted]);
@@ -203,7 +204,6 @@ export function useMapView({
       layerVisibility,
       dynamicWeather: weather.dynamicWeather,
       lens,
-      paintedLensId: painted,
       surroundingsShown,
       roadAvoidance: avoidanceChoice,
       roadAvoidanceShown,
@@ -219,7 +219,6 @@ export function useMapView({
       layerVisibility,
       weather.dynamicWeather,
       lens,
-      painted,
       surroundingsShown,
       avoidanceChoice,
       roadAvoidanceShown,
