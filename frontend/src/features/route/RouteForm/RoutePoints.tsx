@@ -259,7 +259,8 @@ export default function RoutePoints({
         />
         <Toggle
           variant="plain"
-          className={cn(toggleClass, "gap-0.5")}
+          className={toggleClass}
+          aria-label="編集"
           pressed={editing}
           disabled={!editable}
           onClick={() => {
@@ -268,8 +269,7 @@ export default function RoutePoints({
           }}
           usage="オンにすると、地点を名前で縦に並べ、通る順の入れ替えや削除ができます。もう一度押すと閉じます。"
         >
-          <EditPointsIcon />
-          編集
+          <EditPointsIcon size={18} />
         </Toggle>
         {/* 消すものが無い間も押せない状態で残す（置き場が動くと、並びの名前の出し分けが揺れる）。周回の間は並びに出ている
             経由地だけを消し、覚えている目的地は残す。 */}

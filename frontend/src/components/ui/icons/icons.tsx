@@ -162,13 +162,13 @@ export function ClearPointsIcon({ size = 16 }: IconProps) {
   );
 }
 
-/** 置いた地点の編集（通る順の入れ替えと消すこと）を開く: ルート＋上下の矢印（通る順の入れ替え）。 */
+/** 置いた地点の編集（通る順の入れ替えと消すこと）を開く: ルート＋鉛筆。 */
 export function EditPointsIcon({ size = 16 }: IconProps) {
   return (
     <svg width={size} height={size} {...svgProps}>
       {pointsRoute}
-      <path d="M13.6 18.4v-5.2M17.6 13.2v5.2" />
-      <path d="m12 14.8 1.6-1.6 1.6 1.6M16 16.8l1.6 1.6 1.6-1.6" strokeLinejoin="round" />
+      <path d="M17.2 11.8 18.6 13.2 13.9 17.9 12 18.4 12.5 16.5Z" strokeLinejoin="round" />
+      <path d="m16.2 12.8 1.4 1.4" />
     </svg>
   );
 }
