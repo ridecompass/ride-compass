@@ -85,11 +85,7 @@ export default function ProfileMarks({
       {valueTicks.map((tick) => (
         <span
           key={tick.label}
-          className={cn(
-            "pointer-events-none absolute left-1 -translate-y-1/2",
-            LABEL_CLASS,
-            profileTextClass(riding),
-          )}
+          className={cn("pointer-events-none absolute left-1 -translate-y-1/2", LABEL_CLASS, profileTextClass(riding))}
           style={{ top: `${(tick.y / PROFILE_VIEW_HEIGHT) * 100}%` }}
         >
           {tick.label}
