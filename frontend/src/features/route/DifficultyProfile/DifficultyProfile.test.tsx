@@ -56,7 +56,7 @@ function profileProps(props: Partial<Props> = {}): Props {
     selected: null,
     onSelect: vi.fn(),
     progressKm: null,
-    waypointKms: [],
+    waypoints: [],
     riding: false,
     ...props,
   };

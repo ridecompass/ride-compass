@@ -43,6 +43,8 @@ interface HomeMapPaneProps {
   ride: ReturnType<typeof useRideConditions>;
   mapView: ReturnType<typeof useMapView>;
   profileLayers: ProfileLayerSelection;
+  /** 走行中に、選んだ候補の上の距離を通る見込みの時刻（ms）を返す関数（走行の帯の到着予想と同じもの）。無ければnull。 */
+  rideArrivalClock: ((km: number) => number) | null;
   tapMode: MapTapMode;
   /** 地図に出した一時の選択（選んだ区間・小窓）の持ち主のパネル。 */
   selectionOwner: string | null;
@@ -71,6 +73,7 @@ export default function HomeMapPane({
   ride,
   mapView,
   profileLayers,
+  rideArrivalClock,
   tapMode,
   selectionOwner,
   focusPoint,
@@ -268,6 +271,7 @@ export default function HomeMapPane({
                 scaleKm={profile.distance_km}
                 progressKm={progress.km}
                 waypointKms={profile.waypoint_distances_km}
+                arrivalClock={rideArrivalClock}
                 selected={results.selectedRouteSegment}
                 onSelect={results.selectSegment}
                 segmentOnMap={results.segmentOnMap}
