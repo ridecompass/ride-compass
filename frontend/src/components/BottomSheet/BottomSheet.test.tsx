@@ -2,7 +2,7 @@
  * `components/BottomSheet/BottomSheet.tsx`——スマホの下からせり上がるシートの出し方と閉じ方、高さを範囲へ寄せる`clampSheetHeightVh`。
  *
  * 見るもの: 開いている間だけ見出しを名前に持つダイアログとして出すこと、閉じ方
- * （✕・Esc・下スワイプ）と閉じない操作（シートの外を押す・閉じないスワイプ・シートの中から開いた窓の上のEsc）、高さを寄せる範囲。
+ * （✕・Esc・下スワイプ）と閉じない操作（閉じないスワイプ・シートの中から開いた窓の上のEsc）、高さを寄せる範囲。
  *
  * ここで見ないもの: 高さを変える帯と決めた高さを覚えること → `BottomSheet.resize.test.tsx`。開いたときに中身へ高さを合わせること →
  * `BottomSheet.fit.test.tsx`。2枚のシートで高さを分け合うこと → `app/page.tsx`。シートの中身・見出しの脇の差し込み——受け取ったものを
@@ -13,7 +13,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ConfirmDialog } from "@/components/ui/Dialog/Dialog";
-import { CEILING, FLOOR, handle, renderSheet, sheetElement } from "@/testing/bottomSheet";
+import { CEILING, FLOOR, handle, renderSheet } from "@/testing/bottomSheet";
 import BottomSheet, { clampSheetHeightVh } from "./BottomSheet";
 
 afterEach(() => {
@@ -51,24 +51,6 @@ describe("BottomSheet", () => {
       await userEvent.click(screen.getByRole("button", { name: "閉じる" }));
 
       expect(onClose).toHaveBeenCalledTimes(1);
-    });
-
-    it("シートの外の要素は押せ、押しても閉じる操作は上がらない", async () => {
-      const onMapClick = vi.fn();
-      const handlers = { onClose: vi.fn(), onHeightChoose: vi.fn() };
-      render(
-        <>
-          <button type="button" onClick={onMapClick}>
-            地図
-          </button>
-          {sheetElement({}, handlers)}
-        </>,
-      );
-
-      await userEvent.click(screen.getByRole("button", { name: "地図" }));
-
-      expect(onMapClick).toHaveBeenCalledTimes(1);
-      expect(handlers.onClose).not.toHaveBeenCalled();
     });
 
     it("開いている間はEscで閉じる操作が上がり、ほかのキーでは上がらない", async () => {

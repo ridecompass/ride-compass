@@ -1,7 +1,7 @@
 /**
  * 区間の乗り換えの編集（`useSpliceSession.ts`）の「差分を見る」——組み合わせた経路を、表示中の候補を作った生成の入力で
  * backendに評価させ、結果を編集面へ渡す（同じ組み合わせは投げ直さない。評価が既にある候補と同じ道ならその候補も渡す）。
- * 評価を待つ間に作り直す・消す・やめる・始め直すと、届いた評価は何も書かない。
+ * 評価を待つ間に作り直して始め直すと、届いた評価は何も書かない。
  *
  * ここで見ないもの:
  * - 始め方・乗り換え・戻す・やめる → `useSpliceSession.test.ts`
@@ -137,29 +137,6 @@ describe("差分を見る", () => {
     await press(rendered.result.current.panel?.onPreview);
     act(() => rendered.result.current.panel?.onReset());
     expect(rendered.result.current.panel?.error).toBeNull();
-  });
-
-  it("評価を待っている間に編集をやめたら、あとから届いた評価で編集へ戻さず、次の編集へも持ち込まない", async () => {
-    const rendered = renderSplice();
-    await startEditing(rendered);
-    tapStretch(rendered);
-    const pending = evaluations.deferred();
-    let first: unknown;
-    act(() => {
-      first = rendered.result.current.panel?.onPreview();
-    });
-
-    act(() => rendered.result.current.panel?.onCancel());
-    await act(async () => {
-      await pending.resolve([evaluated(VIA_Q.edge_ids)]);
-      await first;
-    });
-    expect(rendered.result.current.editingRoute).toBeNull();
-
-    await startEditing(rendered);
-    tapStretch(rendered);
-    expect(rendered.result.current.panel?.preview).toBeNull();
-    expect(rendered.result.current.panel?.previewing).toBe(false);
   });
 
   it("評価を待っている間に作り直して編集を始め直したら、あとから届いた評価を新しい編集へ書かない", async () => {

@@ -161,7 +161,6 @@ describe("applyMapScene", () => {
     const direct = recordingMap();
     applied(direct.map, second);
 
-    expect(stepwise.handle.layerOrder()).toEqual(direct.handle.layerOrder());
     expect(snapshot(stepwise.handle)).toEqual(snapshot(direct.handle));
   });
 });

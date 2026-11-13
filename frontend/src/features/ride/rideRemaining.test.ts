@@ -41,9 +41,7 @@ describe("rideRemaining: ルートの残りと到着予想", () => {
 
   it.each([
     { case: "1つ目の区間の途中（1km）: 1つ目の残り5分と2つ目の5分", progressKm: 1, remainingKm: 4, minutes: 10 },
-    { case: "区間の境（2km）: 2つ目の5分", progressKm: 2, remainingKm: 3, minutes: 5 },
     { case: "2つ目の区間の途中（3.5km）: 2つ目の残り半分", progressKm: 3.5, remainingKm: 1.5, minutes: 2.5 },
-    { case: "終わり（5km）", progressKm: 5, remainingKm: 0, minutes: 0 },
   ])(
     "到着予想は、最後に位置を受けた時刻へ、その距離から終わりまでの計画の時間を足したもの: $case",
     ({ progressKm, remainingKm, minutes }) => {

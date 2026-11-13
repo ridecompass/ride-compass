@@ -13,7 +13,7 @@ export type BottomSheetProps = React.ComponentProps<typeof BottomSheet>;
 export const FLOOR = clampSheetHeightVh(0);
 export const CEILING = clampSheetHeightVh(100);
 
-export function sheetElement(
+function sheetElement(
   props: Partial<BottomSheetProps>,
   handlers: Pick<BottomSheetProps, "onClose" | "onHeightChoose">,
 ) {

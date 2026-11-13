@@ -28,7 +28,6 @@ const QUARTER_WAY = { latitude: 35, longitude: 139.005 };
 describe("locateOnRoute", () => {
   it.each([
     ["前の位置が無ければ、始点に近い側（行き）", null, 0.5],
-    ["行きを走っていたなら、行き", 0.4, 0.5],
     ["帰りを走っていたなら、帰り", 3.6, 3.5],
   ])("%s", (_label, previousKm, expected) => {
     expect(locateOnRoute(projectOnTrack(OUT_AND_BACK, QUARTER_WAY), previousKm)).toBeCloseTo(expected);

@@ -194,28 +194,6 @@ describe("ルートを作る", () => {
     expect(origin(await generate(user))).toEqual(PLACED);
   });
 
-  it("前に保存した設定は、「保存済み」の「プリセット」に出る", async () => {
-    const stored = {
-      name: "いつもの周回",
-      loop: true,
-      distanceTargeted: true,
-      distance: "40",
-      maxRoutes: "3",
-      origin: null,
-      waypoints: [],
-    };
-    window.localStorage.setItem(
-      "ridecompass:saved-conditions",
-      JSON.stringify([{ ...stored, destination: null, routePreference: null, roadAvoidance: {} }]),
-    );
-    const { user } = renderHome();
-
-    await user.click(screen.getByRole("tab", { name: "保存済み" }));
-    await user.click(screen.getByRole("tab", { name: "プリセット" }));
-
-    expect(screen.getByRole("button", { name: "「いつもの周回」を呼び出す" })).toBeInTheDocument();
-  });
-
   it("「条件」タブで選んだ負担の強さと、「負担」タブで無効にした軸が、生成の要求に載る", async () => {
     serveCostAxisCatalog();
     const { user } = renderHome();

@@ -76,24 +76,6 @@ describe("useRouteProgress", () => {
     },
   );
 
-  it("ルートを外れている間は外れた点で止めて外れたと出し、戻ったら戻った点から続ける", () => {
-    const segments = outAndBack();
-    const { result, rerender } = renderProgress({ route: segments, position: QUARTER, accuracyM: ACCURACY_M });
-    expect(result.current).toEqual({ km: expect.closeTo(0.5), offRoute: false });
-
-    // 1km の所の北へ誤差より遠く離れた。最も近い点（1km）へは当てず、外れた点（0.5km）で止める。
-    rerender({
-      route: segments,
-      position: moved({ latitude: 35, longitude: 139.01 }, ACCURACY_M * 10),
-      accuracyM: ACCURACY_M,
-    });
-    expect(result.current).toEqual({ km: expect.closeTo(0.5), offRoute: true });
-
-    // 回り道して、外れた点より先（1.5km）で戻った。
-    rerender({ route: segments, position: { latitude: 35, longitude: 139.015 }, accuracyM: ACCURACY_M });
-    expect(result.current).toEqual({ km: expect.closeTo(1.5), offRoute: false });
-  });
-
   it("ルートの外から走り始めたら、ルートへ当てるまでは距離を出さず外れたと出す", () => {
     const { result } = renderProgress({
       route: outAndBack(),

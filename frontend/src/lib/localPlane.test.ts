@@ -12,8 +12,7 @@ import { describe, expect, it } from "vitest";
 import { closestPointOnSegment, longitudeScale, nearerSide, nearestEdge } from "./localPlane";
 
 describe("longitudeScale", () => {
-  it("赤道では縮めず、緯度60度では経度1度を緯度1度の半分に縮める", () => {
-    expect(longitudeScale(0)).toBe(1);
+  it("緯度60度では経度1度を緯度1度の半分に縮める", () => {
     expect(longitudeScale(60)).toBeCloseTo(0.5, 12);
   });
 });

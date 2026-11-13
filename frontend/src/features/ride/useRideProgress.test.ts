@@ -3,7 +3,7 @@
  * 読み込み直して戻したルートではその位置から続ける。
  *
  * ここで見ないもの:
- * - 1つの位置から距離を選ぶ決まり・外れたときの止め方 → `routeProgress.test.ts`・`useRouteProgress.test.ts`
+ * - 1つの位置から距離を選ぶ決まり → `routeProgress.test.ts`・`useRouteProgress.test.ts`。外れたときの止め方 → `app/page.ride.test.tsx`
  * - 保存の書き方・期限・復元の知らせ → `rideSession.test.ts`・`useRideSession.test.ts`
  * - 当てた位置が保存に載り、読み込み直したあと続きから案内すること → `app/page.rideControl.test.tsx`
  */
