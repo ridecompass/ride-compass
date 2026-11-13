@@ -272,9 +272,10 @@ export default function RoutePoints({
           <EditPointsIcon size={18} />
         </Toggle>
         {/* 消すものが無い間も押せない状態で残す（置き場が動くと、並びの名前の出し分けが揺れる）。周回の間は並びに出ている
-            経由地だけを消し、覚えている目的地は残す。 */}
+            経由地だけを消し、覚えている目的地は残す。上下の余白を外し、行のほかの操作と高さをそろえる。 */}
         <Button
           size="panelIcon"
+          className="py-0"
           aria-label={loop ? "経由地を全部消す" : "経由地と目的地を全部消す"}
           disabled={waypointCount === 0 && destination === null}
           onClick={clearPoints}
