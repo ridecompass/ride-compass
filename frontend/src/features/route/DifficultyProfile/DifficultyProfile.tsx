@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 
 import ProfileChart from "@/features/route/ProfileChart/ProfileChart";
+import type { ProfileWaypoint } from "@/features/route/ProfileChart/ProfileMarks";
 import { PROFILE_VIEW_HEIGHT, type ProfileScale } from "@/features/route/ProfileChart/profileScale";
 import palette from "@/types/generated/palette.json";
 import { LENS_QUANTITY_LABEL } from "@/lib/mapDisplay/costLensPaint";
@@ -18,7 +19,7 @@ interface DifficultyProfileProps {
   selected: SelectedRouteSegment | null;
   onSelect?: (selection: SelectedRouteSegment) => void;
   progressKm: number | null;
-  waypointKms: readonly number[];
+  waypoints: readonly ProfileWaypoint[];
   riding: boolean;
 }
 
@@ -39,7 +40,7 @@ export default function DifficultyProfile({
   selected,
   onSelect,
   progressKm,
-  waypointKms,
+  waypoints,
   riding,
 }: DifficultyProfileProps) {
   // 塗る形はルートと横軸が変わったときだけ組む（なぞる間に動くのは、カーソルの線と選んだ区間の帯だけ）。
@@ -69,7 +70,7 @@ export default function DifficultyProfile({
       onSelect={onSelect}
       progressKm={progressKm}
       progressMarkY={progressMarkY}
-      waypointKms={waypointKms}
+      waypoints={waypoints}
       riding={riding}
     >
       {paths.byAxis.map(({ axisId, d }) => (

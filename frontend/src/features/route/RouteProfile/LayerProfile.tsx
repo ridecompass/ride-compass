@@ -1,6 +1,7 @@
 "use client";
 
 import ProfileChart from "@/features/route/ProfileChart/ProfileChart";
+import type { ProfileWaypoint } from "@/features/route/ProfileChart/ProfileMarks";
 import { PROFILE_VIEW_HEIGHT, profileTextClass, type ProfileScale } from "@/features/route/ProfileChart/profileScale";
 import { cn } from "@/lib/cn";
 import type { SelectedRouteSegment } from "@/types/route";
@@ -29,7 +30,7 @@ interface LayerProfileProps {
   selected: SelectedRouteSegment | null;
   onSelect?: (selection: SelectedRouteSegment) => void;
   progressKm: number | null;
-  waypointKms: readonly number[];
+  waypoints: readonly ProfileWaypoint[];
   riding: boolean;
 }
 
@@ -40,7 +41,7 @@ export default function LayerProfile({
   selected,
   onSelect,
   progressKm,
-  waypointKms,
+  waypoints,
   riding,
 }: LayerProfileProps) {
   const rowCount = shown.bands.length;
@@ -84,7 +85,7 @@ export default function LayerProfile({
       progressMarkY={progressMarkY}
       valueTicks={valueTicks}
       riding={riding}
-      waypointKms={waypointKms}
+      waypoints={waypoints}
       // 図の下の要約は、情報ごとに値の1行だけにする（凡例は「グラフに出す情報」の一覧の行に出し、図の場所を取らない）。
       // 帯は値が無いときだけ文で言う（その地点の区分は、区間の小窓のチップが出す）。
       caption={

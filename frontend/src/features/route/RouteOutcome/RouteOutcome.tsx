@@ -14,6 +14,7 @@ import { costLensPaint, LENS_QUANTITY_LABEL } from "@/lib/mapDisplay/costLensPai
 import type { MapTheme } from "@/lib/mapTheme";
 import { NO_DATA_LEGEND_BAND } from "@/lib/mapDisplay/mapColorLegend";
 import { bandAt, valueBands } from "@/lib/mapDisplay/valueScale";
+import { routeClock } from "@/lib/routeClock";
 import { formatPenaltyMinutes } from "@/lib/routePenalty";
 import RouteProfile from "@/features/route/RouteProfile/RouteProfile";
 import type { ProfileLayerSelection } from "@/features/route/RouteProfile/useProfileLayers";
@@ -224,6 +225,7 @@ export default function RouteOutcome({ results, generation, splice, profileLayer
                   facts={route.facts.axes}
                   scaleKm={longestDistanceKm}
                   waypointKms={route.waypoint_distances_km}
+                  arrivalClock={routeClock(route)}
                   selected={selectedRouteSegment}
                   onSelect={results.selectSegment}
                   segmentOnMap={results.segmentOnMap}

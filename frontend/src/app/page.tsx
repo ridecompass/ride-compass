@@ -223,6 +223,7 @@ export default function Home() {
             ride={ride}
             mapView={mapView}
             profileLayers={profileLayers}
+            rideArrivalClock={warningRoute?.clock ?? null}
             tapMode={tapMode}
             selectionOwner={mapSelectionOwner}
             focusPoint={focusPoint}
