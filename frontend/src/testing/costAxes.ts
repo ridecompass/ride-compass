@@ -11,6 +11,7 @@ export function costAxisEntry(axisId: string, overrides: Partial<CostAxisEntry> 
     label: `軸${axisId}`,
     description: `${axisId}の説明`,
     icon_id: "",
+    color: "",
     lens: { thresholds: [], band_labels: ["段"] },
     ...overrides,
   };
