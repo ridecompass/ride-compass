@@ -418,9 +418,12 @@ class PlaceRow(Base):
                         name="places_temple_shrine_from_heritage"),
         # 地図の点のタイルが範囲で引く。タイルは群を持つ行だけを読むので、群の無い行を索引に入れない。
         Index("idx_places_grouped_geom", "geom", postgresql_using="gist", postgresql_where=text(grouped_place_sql())),
+        # 地点の検索が、群の語でその群の行だけを近い順と円の中で引く（`infrastructure/facility_search.py: _SEARCH_SQL`）。群の列の
+        # B-tree の索引は張らない（群の店を全部引いてから並べる計画になる）。群の列を GiST に入れるのに`btree_gist`が要る。
+        Index("idx_places_group_geom", "place_group", "geom", postgresql_using="gist",
+              postgresql_where=text(grouped_place_sql())),
         # 地点の検索が、名前の部分一致（3文字以上）・名前の頭の一致（1〜2文字。照合順序`C`の範囲で引く）・チェーンで引く
         # （`infrastructure/facility_search.py: _SEARCH_SQL`）。部分一致の索引は3文字の組で引くので、3文字に満たない語には効かない。
-        # 群の店は上の位置の索引で近い順に引く（群の列の索引を張ると、群の店を全部引いてから並べる計画になる）。
         Index("idx_places_search_name_trgm", "search_name", postgresql_using="gin",
               postgresql_ops={"search_name": "gin_trgm_ops"}),
         Index("idx_places_search_name_prefix", text('search_name COLLATE "C"')),
