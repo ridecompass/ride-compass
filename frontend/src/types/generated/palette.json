@@ -105,6 +105,14 @@
     "crash": "#f08a24",
     "crash_bicycle": "#e2453c"
   },
+  "cost_series": [
+    "#2a78d6",
+    "#d9669a",
+    "#6a55dc",
+    "#139ab3",
+    "#9c6a2c",
+    "#b956c2"
+  ],
   "basemap_dark": {
     "lightness_range": [
       0.07,
