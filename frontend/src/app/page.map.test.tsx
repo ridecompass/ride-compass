@@ -82,7 +82,7 @@ describe("地図で扱えること", () => {
     expect(screen.getByRole("button", { name: "経由地1: 地図で選んだ地点" })).toBeInTheDocument();
   });
 
-  it("PC で2つの区分を開いているときは最後に触った区分が効いてその題に添える", async () => {
+  it("PC で2つの区分を開いているときは最後に触った区分が効いてその題に添え、「ルート結果」では候補の線を押すとそのルートを選ぶ", async () => {
     const { user } = renderHome();
     expect(section("ルート設定")).toHaveAccessibleDescription("地図で操作中");
     expect(section("ルート結果")).not.toHaveAccessibleDescription();
@@ -93,7 +93,17 @@ describe("地図で扱えること", () => {
     // 結果が届いたら「ルート結果」が効く。
     expect(section("ルート結果")).toHaveAccessibleDescription("地図で操作中");
     expect(section("ルート設定")).not.toHaveAccessibleDescription();
-    clickMap(ELSEWHERE);
+    const [secondLine] = mapOnScreen()
+      .sourceFeatures("route-candidates")
+      .filter((line) => line.properties?.routeId === SECOND.id);
+    clickMap(ELSEWHERE, [
+      {
+        layer: "route-candidates-candidateHit",
+        properties: secondLine.properties ?? {},
+        geometry: secondLine.geometry,
+      },
+    ]);
+    expect(linesOn("route-selected")).toEqual([SECOND.geometry.coordinates]);
     expect(marksAt(ELSEWHERE)).toEqual([]);
 
     await user.click(screen.getByRole("button", { name: "出発地: 現在地" }));
