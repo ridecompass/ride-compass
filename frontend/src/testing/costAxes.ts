@@ -4,6 +4,13 @@ import type { CostAxisCatalogResponse } from "@/types/route";
 
 type CostAxisEntry = CostAxisCatalogResponse["axes"][number];
 
+/** 軸idから決まる色（雛形の軸どうしが同じ色で塗られないよう、idの文字から作る）。 */
+function axisIdColor(axisId: string): string {
+  let hash = 0;
+  for (const char of axisId) hash = (hash * 31 + char.charCodeAt(0)) % 0x1000000;
+  return `#${hash.toString(16).padStart(6, "0")}`;
+}
+
 export function costAxisEntry(axisId: string, overrides: Partial<CostAxisEntry> = {}): CostAxisEntry {
   return {
     axis_id: axisId,
@@ -11,7 +18,7 @@ export function costAxisEntry(axisId: string, overrides: Partial<CostAxisEntry> 
     label: `軸${axisId}`,
     description: `${axisId}の説明`,
     icon_id: "",
-    color: "",
+    color: axisIdColor(axisId),
     lens: { thresholds: [], band_labels: ["段"] },
     ...overrides,
   };
