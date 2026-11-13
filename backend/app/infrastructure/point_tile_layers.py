@@ -143,7 +143,7 @@ _POI_POINTS_SQL = f"""
                       ST_MakeEnvelope(:xmin, :ymin, :xmax, :ymax, 4326),
                       (SELECT 2 * eps_m * :degrees_per_m FROM cluster)))
             UNION ALL
-            -- 補給POIの立ち寄り先の群（コンビニ）は地点の表から出す。群の値が種別の値。
+            -- 補給POIの凡例の行に入る立ち寄り先の群（コンビニ）は地点の表から出す。群の値が種別の値。
             SELECT s.place_group, s.place_group, s.geom,
                    's' || s.source || ':' || s.source_key, s.name
             FROM places s
