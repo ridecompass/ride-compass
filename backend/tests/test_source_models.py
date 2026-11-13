@@ -24,14 +24,10 @@ def _slot(**fields) -> RegulationSlot:
     return regulation_slots(json.dumps([{**_EMPTY, **fields}]))[0]
 
 
-@pytest.mark.parametrize(("hours", "minutes"), [
-    (("0", "2400"), (0, 24 * 60)),
-    (("830", "1745"), (8 * 60 + 30, 17 * 60 + 45)),
-    (("800", ""), (8 * 60, None)),
-])
-def test_regulation_hours_are_minutes_from_midnight(hours, minutes):
-    slot = _slot(hours_from=hours[0], hours_to=hours[1])
-    assert (slot.hours_from, slot.hours_to) == minutes
+def test_regulation_hours_until_2400_are_the_end_of_the_day():
+    """「2400」を24:00の分へ読めないと、終日の規制が時間帯の規制になる（時刻の読み替えの残りは派生の段のテストが通す）。"""
+    slot = _slot(hours_from="0", hours_to="2400")
+    assert (slot.hours_from, slot.hours_to) == (0, 24 * 60)
 
 
 def _vehicles(a: str = "", d: str = "") -> list[str]:
@@ -39,12 +35,11 @@ def _vehicles(a: str = "", d: str = "") -> list[str]:
 
 
 @pytest.mark.parametrize(("vehicles", "bicycle"), [
-    # 区分 A の車両は自転車を含み、自動車は含まない。
+    # 区分 A の車両は自転車を含む（自動車だけのコードは派生の段のテストが通す）。
     (_vehicles(a="1"), True),
-    (_vehicles(a="10"), False),
-    # 区分 D の自転車・軽車両は自転車を含み、歩行者は含まない。コードは車種の位を足した数。
+    # 区分 D の自転車の位と軽車両の位は自転車を含み、歩行者の位は含まない。コードは車種の位を足した数。
     (_vehicles(d="100"), True),
-    (_vehicles(d="1100000"), True),
+    (_vehicles(d="100000"), True),
     (_vehicles(d="1000000"), False),
 ])
 def test_vehicle_codes_include_bicycles(vehicles, bicycle):
