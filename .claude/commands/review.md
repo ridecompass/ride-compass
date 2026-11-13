@@ -51,6 +51,11 @@ $ARGUMENTS があればそれを対象範囲とする。
 前回のタグ（`periodic-review/*` の最新）が指すコミットから HEAD までを中心にする。
 タグが無ければ全体。`python scripts/review_checks.py trigger` が発火状況を出す。
 
+決める前に、前の回がタグを打ち忘れていないかを見る: 置き場で、最新のタグの日より後に作られた issue を「周期レビュー第」で検索し
+（`GH_TOKEN=$FLOW_BOT_TOKEN gh issue list -R ridecompass/ride-compass-tasks --state all --search '"周期レビュー第" in:body created:>=<最新のタグの日>'`）、
+本文の「周期レビュー第N回」の N が最新のタグの番号より大きい回があれば、その回はタグが無いので、その回が見た版（起票の本文に書いた版）へ注釈付きのタグを補い、push してから範囲を決める。
+打ち忘れると、範囲と発火の判定（`trigger`）が古い回を読む。
+
 ### 2. 観点ごとに、読むものを決める
 
 **「変更ファイルを全件・全文」を全観点の既定にしない。** 観点ごとに、その問いに要るものだけを読む。
