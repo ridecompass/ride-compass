@@ -11,7 +11,6 @@ import { avoidanceChoiceOf, type AvoidanceChoice } from "@/lib/roadAvoidance";
 import { AVOIDANCE_LEVELS, avoidanceRow, roadClass, roadClassCatalog, roadMapLayer } from "@/testing/clientConfig";
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import palette from "@/types/generated/palette.json";
-import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 
 import { ROAD_AVOIDANCE_ROLE, roadLineGroup, type RoadLineState } from "./roadLines";
 
@@ -23,7 +22,7 @@ function build(state: Partial<RoadLineState>) {
     tiles: { urls: ["https://example.test/{z}/{x}/{y}"], sourceLayer: "road", minZoom: 10, maxZoom: 14 },
     visible: { surface: true },
     hiddenKeys: {},
-    avoidance: { rows: [], order: [] },
+    avoidance: { levels: [], rows: [] },
     avoidanceShown: false,
     inspectedShape: null,
     ...state,
@@ -88,18 +87,20 @@ describe("道路タブの段", () => {
     avoidance: {
       levels: AVOIDANCE_LEVELS,
       rows: [
+        // 選べない行（自転車が通れない道）。タイルのプロパティとその値は配られたまま読む。
+        avoidanceRow("fixed.closed", "fixed", { default: "exclude", selectable: false }),
         avoidanceRow("surface.gravel", "surface"),
         avoidanceRow("surface.dirt", "surface"),
         avoidanceRow("highway.trunk", "highway", { default: "avoid" }),
       ],
     },
   }).avoidance;
-  // 好む道・好む道かつ避ける道・通らない道かつ避ける道・自転車が通れない道（0次ハードフィルタ）かつ好む道・どの行にも当たらない道。
+  // 好む道・好む道かつ避ける道・通らない道かつ避ける道・選べない行の道かつ好む道・どの行にも当たらない道。
   const roads = [
     { surface: "gravel" },
     { surface: "gravel", highway: "trunk" },
     { surface: "dirt", highway: "trunk" },
-    { surface: "gravel", [routeGenerateConfig.hard_filter_property]: routeGenerateConfig.hard_filters[0].key },
+    { surface: "gravel", fixed: "closed" },
     {},
   ];
 
@@ -117,16 +118,24 @@ describe("道路タブの段", () => {
     );
   }
 
-  const {
-    road_avoidance_prefer: prefer,
-    road_avoidance_avoid: avoid,
-    road_avoidance_exclude: exclude,
-  } = palette.semantic;
+  const colorOf = (key: string, theme: "light" | "dark" = "light") => {
+    const level = AVOIDANCE_LEVELS.find((candidate) => candidate.key === key)!;
+    return theme === "dark" ? level.color_on_dark : level.color;
+  };
 
-  it("道路タブの段（選んでいなければ既定。0次ハードフィルタの道はいつも通らない）のうち強い方の段の色で塗り、どの行にも当たらない道（通る）は描かず、見ていなければ線を出さない", () => {
-    const choice = avoidanceChoiceOf(avoidance, { "surface.gravel": "prefer", "surface.dirt": "exclude" });
-    expect(paintedColors(choice)).toEqual([prefer, avoid, exclude, exclude, null]);
-    expect(paintedColors({ rows: [], order: [] })).toEqual([null, null, null, null, null]);
-    expect(paintedColors(choice, false)).toBeNull();
+  it("道路タブの段（選んでいなければ既定。選べない行は選んだ段を読まない）のうち後ろの段の色で、地の明るさに合わせて塗り、どの行にも当たらない道（色の無い段）は描かず、見ていなければ線を出さない", () => {
+    const chosen = { "surface.gravel": "prefer", "surface.dirt": "exclude", "fixed.closed": "pass" } as const;
+    for (const theme of ["light", "dark"] as const) {
+      const [prefer, avoid, exclude] = (["prefer", "avoid", "exclude"] as const).map((key) => colorOf(key, theme));
+      expect(paintedColors(avoidanceChoiceOf(avoidance, chosen, theme)), theme).toEqual([
+        prefer,
+        avoid,
+        exclude,
+        exclude,
+        null,
+      ]);
+    }
+    expect(paintedColors({ levels: [], rows: [] })).toEqual([null, null, null, null, null]);
+    expect(paintedColors(avoidanceChoiceOf(avoidance, chosen, "light"), false)).toBeNull();
   });
 });

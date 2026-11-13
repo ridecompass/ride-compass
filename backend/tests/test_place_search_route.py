@@ -16,7 +16,7 @@
 ここで見ないもの:
 - 対象範囲を読むこと（どの取込の記録の範囲か） → `test_ingested_area.py`
 - 住所の区画・鍵・街区の作り方（範囲・祖先・鍵の別形・地番を区画に結ぶ名前・住居表示の区域で ABR を採る） → `test_address_areas.py`、表記の揃え方の1つずつ → `test_address_area.py`
-- 地点の群・絞り・まとめ・住所 → `test_stop_places.py`、入力を群の語として読むか → `test_stop_place_words.py`
+- 地点の群・絞り・まとめ・住所 → `test_places.py`、入力を群の語として読むか → `test_stop_place_words.py`
 - 辺りの決め方（辺の上・境界の外・名前の無い境界・配布の境界の読み方） → `test_stop_place_areas.py`。置いた位置の辺りも
   同じ SQL の部品（`infrastructure/place_area_query.py: area_label_sql`）で決めるので、ここでは境界の中と外の両側だけを見る
 - 回数制限の窓 → `test_rate_limiter.py`
@@ -350,27 +350,46 @@ async def test_a_facility_nearer_on_the_ground_comes_first_even_when_degrees_sca
 
 #: 群「コンビニ」に入る Overture の分類（群はチェーンの名前の店だけを入れる）。
 CONVENIENCE_STORE = ("shopping", "convenience_store")
+#: 群「銭湯・温泉」に入る Overture の分類。
+PUBLIC_BATH = ("beauty_and_spa", "public_bath_house")
+#: 群「自転車店」に入る Overture の分類。
+BIKE_STORE = ("shopping", "sporting_goods_store", "bike_store")
 
 
-@pytest.mark.usefixtures("area")
-async def test_a_name_of_a_group_finds_the_nearest_stores_of_the_group_before_the_names_it_matches():
-    """「コンビニ」と打つと、名前に「コンビニ」を含まない近くのコンビニの店が、名前が入力と同じ店（より近くても）より先に近い順に出る。"""
-    await _ingest_facilities([
+@pytest.mark.parametrize(("query", "records", "expected"), [
+    pytest.param("コンビニ", [
         overture_place_record(1, LON, LAT, "コンビニ"),
         overture_place_record(2, LON + 0.02, LAT, "セブン-イレブン 西新宿店", CONVENIENCE_STORE),
         overture_place_record(3, LON + 0.01, LAT, "ファミリーマート 新宿店", CONVENIENCE_STORE),
         overture_place_record(4, OUTSIDE_LON, OUTSIDE_LAT, "ローソン 道頓堀店", CONVENIENCE_STORE),
         overture_place_record(5, LON + 0.005, LAT, "ラーメン一風堂"),
-    ])
-
-    response = await _search("コンビニ")
-
-    assert response.status_code == 200
-    assert response.json() == {"candidates": [
+    ], [
         _facility("ファミリーマート 新宿店", LON + 0.01),
         _facility("セブン-イレブン 西新宿店", LON + 0.02),
         _facility("コンビニ", LON),
-    ]}
+    ], id="近くに多い群"),
+    # 銭湯は少なく、その群の一番遠い店までの円の中に、ほかの群の店が上限より多く入る。
+    pytest.param("銭湯", [
+        overture_place_record(1, LON, LAT, "銭湯"),
+        overture_place_record(2, LON + 0.04, LAT, "草津湯", PUBLIC_BATH),
+        overture_place_record(3, LON + 0.03, LAT, "大黒湯", PUBLIC_BATH),
+        *(overture_place_record(10 + i, LON + 0.001 * (i + 1), LAT, f"自転車屋{i}", BIKE_STORE)
+          for i in range(PLACE_PREDICTION_LIMIT)),
+    ], [
+        _facility("大黒湯", LON + 0.03),
+        _facility("草津湯", LON + 0.04),
+        _facility("銭湯", LON),
+    ], id="少ない群"),
+])
+@pytest.mark.usefixtures("area")
+async def test_a_name_of_a_group_finds_the_nearest_stores_of_the_group_before_the_names_it_matches(query, records, expected):
+    """群の語と打つと、名前に語を含まない近くのその群の店が、名前が入力と同じ店（より近くても）より先に近い順に出る。"""
+    await _ingest_facilities(records)
+
+    response = await _search(query)
+
+    assert response.status_code == 200
+    assert response.json() == {"candidates": expected}
 
 
 @pytest.mark.usefixtures("area")
@@ -385,10 +404,6 @@ async def test_a_place_outside_the_groups_is_found_by_its_name():
 
     assert response.status_code == 200
     assert response.json() == {"candidates": [_facility("新宿駅", LON), _facility("新宿区役所", LON + 0.01)]}
-
-
-#: 自転車屋の分類。
-BIKE_STORE = ("shopping", "sporting_goods_store", "bike_store")
 
 
 @pytest.mark.usefixtures("area")

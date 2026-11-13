@@ -81,7 +81,7 @@ class WeatherService:
             bbox.min_latitude, bbox.min_longitude, bbox.max_latitude, bbox.max_longitude,
         )
         if len(series.times) < 2:
-            raise MsmUnavailableError(f"MSMの風の予報の時刻が足りません（{len(series.times)}）")
+            raise MsmUnavailableError(f"MSMの風の予報の時刻が足りません: {len(series.times)}件")
         speed, direction = wind_speed_and_direction(series.wind_u_ms, series.wind_v_ms)
         return WindForecastSeries(
             times=series.times,

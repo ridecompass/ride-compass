@@ -23,7 +23,7 @@ import regionTileConfig from "@/types/generated/region-tile-config.json";
 import { sceneSourceId, valueInExpression, zoomScaleExpression } from "@/features/map/scene/sceneBuilders";
 import { LEGEND_NO_DATA_KEY } from "@/lib/mapDisplay/mapColorLegend";
 import { ROAD_OTHER_KEY, roadTrackRowOf, type RoadTrackRow } from "@/lib/mapDisplay/roadTracks";
-import { AVOIDANCE_LEVEL_COLORS, type AvoidanceChoice, type AvoidanceLevel } from "@/lib/roadAvoidance";
+import type { AvoidanceChoice } from "@/lib/roadAvoidance";
 import type { RoadMapLayerView } from "@/types/route";
 
 import { declareGroup, type SceneLayerEntry, type SceneSourceEntry } from "@/features/map/scene/mapSceneGroups";
@@ -104,13 +104,10 @@ function solidFilter(layer: RoadMapLayerView, hiddenKeys: readonly string[]): Fi
   ] as unknown as FilterSpecification;
 }
 
-/** 段ごとの、その段の行に当たる道の条件（強い段から。行の無い段は無い）。どの行にも当たらない道は通るで、塗らない。 */
-function avoidanceConditions(
-  choice: AvoidanceChoice,
-): readonly (readonly [Exclude<AvoidanceLevel, "pass">, unknown])[] {
-  return [...choice.order].reverse().flatMap((level) => {
-    if (level === "pass") return [];
-    // 分け方ごとに、この段にした区分の鍵（分け方1つにつき比べ1つ）。
+/** 塗る段ごとの、色とその段の行に当たる道の条件（強い段から。行の無い段は無い）。どの行にも当たらない道は塗らない。 */
+function avoidanceConditions(choice: AvoidanceChoice): readonly (readonly [string, unknown])[] {
+  return [...choice.levels].reverse().flatMap(({ key: level, color }) => {
+    // タイルのプロパティごとに、この段にした値（プロパティ1つにつき比べ1つ）。
     const classKeys = new Map<string, string[]>();
     for (const row of choice.rows) {
       if (row.level === level) classKeys.set(row.section, [...(classKeys.get(row.section) ?? []), row.classKey]);
@@ -119,7 +116,7 @@ function avoidanceConditions(
       ? []
       : [
           [
-            level,
+            color,
             ["any", ...[...classKeys].map(([section, keys]) => valueInExpression(valueOf(section), keys))],
           ] as const,
         ];
@@ -232,11 +229,7 @@ export const roadLineGroup = declareGroup<RoadLineState>((state) => {
       "line-color":
         avoided.length === 0
           ? palette.semantic.hidden
-          : [
-              "case",
-              ...avoided.flatMap(([level, condition]) => [condition, AVOIDANCE_LEVEL_COLORS[level]]),
-              palette.semantic.hidden,
-            ],
+          : ["case", ...avoided.flatMap(([color, condition]) => [condition, color]), palette.semantic.hidden],
       // 横に分けて並べた道の線の層を覆う（出している層の外側の線の縁まで太くする）。
       "line-width": zoomScaleExpression(
         1,

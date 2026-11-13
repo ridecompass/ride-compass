@@ -71,10 +71,10 @@ describe("AdminPage データ保守 派生データ鮮度台帳", () => {
   const TITLE = "派生データ鮮度台帳";
 
   function freshness(overrides: Partial<DerivedDataFreshnessResponse>): DerivedDataFreshnessResponse {
-    return { computed_at: "2026-09-24T01:02:03Z", sources: [], tables: [], ...overrides };
+    return { computed_at: "2026-09-24T01:02:03Z", sources: [], tables: [], tuning: [], ...overrides };
   }
 
-  it("作り直しの要るソースと表を数えて先頭に出し、開いた先に取込の番号・列の増減・値なしの件数を並べる。全部最新ならそう言う", async () => {
+  it("作り直しの要るソース・表・較正値を数えて先頭に出し、開いた先に取込の番号・列の増減・値なしの件数・較正値の新旧を並べる。全部最新ならそう言う", async () => {
     onSameOrigin(
       "GET",
       "/admin/api/derived-data/freshness",
@@ -98,6 +98,24 @@ describe("AdminPage データ保守 派生データ鮮度台帳", () => {
               },
               { table_name: "edges", row_count: 10, columns: [], columns_change: null, needs_rebuild: false },
             ],
+            tuning: [
+              {
+                param_id: "ring",
+                label: "帯の幅",
+                unit: "m",
+                derived_value: 30,
+                current_value: 40,
+                needs_rebuild: true,
+              },
+              {
+                param_id: "step",
+                label: "断面の刻み",
+                unit: "m",
+                derived_value: null,
+                current_value: 5,
+                needs_rebuild: true,
+              },
+            ],
           }),
         ),
         Response.json(
@@ -108,8 +126,18 @@ describe("AdminPage データ保守 派生データ鮮度台帳", () => {
     const user = await openMaintenanceTab();
     await user.click(within(card(TITLE)).getByRole("button", { name: "集計する" }));
 
-    expect(await within(card(TITLE)).findByText("2件が作り直し待ち")).toBeInTheDocument();
-    expect(rowNames(card(TITLE))).toEqual(["取込", "osm", "accidents", "派生の表", "way_values", "edges"]);
+    expect(await within(card(TITLE)).findByText("4件が作り直し待ち")).toBeInTheDocument();
+    expect(rowNames(card(TITLE))).toEqual([
+      "取込",
+      "osm",
+      "accidents",
+      "派生の表",
+      "way_values",
+      "edges",
+      "較正値",
+      "帯の幅",
+      "断面の刻み",
+    ]);
     expect(within(card(TITLE)).getByText("osm").closest("summary")).toHaveTextContent("作り直しが必要");
     expect(within(card(TITLE)).getByText("accidents").closest("summary")).toHaveTextContent("最新");
     expect(detailOf(card(TITLE), "osm")).toEqual([
@@ -127,6 +155,15 @@ describe("AdminPage データ保守 派生データ鮮度台帳", () => {
     ]);
     expect(detailOf(card(TITLE), "edges")).toEqual([
       ["作ったときの列", "記録なし（列を記録する作り直しをまだしていない）"],
+    ]);
+    expect(within(card(TITLE)).getByText("帯の幅").closest("summary")).toHaveTextContent("作り直しが必要");
+    expect(detailOf(card(TITLE), "帯の幅")).toEqual([
+      ["今の値", "40m"],
+      ["作り直しに使った値", "30m"],
+    ]);
+    expect(detailOf(card(TITLE), "断面の刻み")).toEqual([
+      ["今の値", "5m"],
+      ["作り直しに使った値", "なし（まだ作り直しに使っていない）"],
     ]);
 
     await user.click(within(card(TITLE)).getByRole("button", { name: "再集計する" }));

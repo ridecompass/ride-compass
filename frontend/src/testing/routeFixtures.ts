@@ -122,6 +122,7 @@ export function makeRouteSegment(overrides: Partial<RouteSegmentDetail> = {}): R
     penalty: { axis_seconds: {}, preferred_seconds: 0, avoided_seconds: 0, total_seconds: 0 },
     lens_seconds_per_km: null,
     elevations: [],
+    average_gradient_percent: null,
     sustained_gradient_percent: null,
     road_classes: {},
     ...overrides,

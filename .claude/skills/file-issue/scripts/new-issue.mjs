@@ -10,13 +10,12 @@ import { readFileSync } from "node:fs";
 import { bot, config, graphql, graphqlData, isNumber, messages, usage } from "../../../../tools/flow-gate/src/bot.js";
 import { CHILD_FIELDS, NO_GRANDCHILD, makesGrandchild, originLine, originOf } from "../../../../tools/flow-gate/src/family.js";
 import { SET_FIELDS, fieldProblems, fieldValues } from "../../../../tools/flow-gate/src/fields.js";
-import { conditions, misboundSteps, norm } from "../../../../tools/flow-gate/src/questions.js";
+import { conditions, folds, misboundSteps, norm } from "../../../../tools/flow-gate/src/questions.js";
 
 // 畳んだ節の名前と順（2 は種類ごとに1つ）。
 const SECTIONS = [["不具合: 起きていること", "要望: 困りごと", "保守: 背景", "調査: 明らかにしたいこと"], ["やること", "調べ方"], ["決めること"],
   ["完了の条件"], ["経緯"], ["規模と優先度の根拠"]];
-// 節の頭は <details> と <summary> が同じ行でも別の行でもよい。
-const sectionNames = (text) => [...text.matchAll(/^<details>\s*<summary>(.+?)<\/summary>/gm)].map((m) => m[1]);
+const sectionNames = (text) => folds(text).map((f) => f.name).filter(Boolean);
 
 // 2 の節が種類に合わない所（空なら合う）。子は親を読むまで種類が決まらないので、作る前にもう一度これだけを当てる。
 function typeProblems(body, type) {

@@ -4,7 +4,7 @@
 （出て戻れる集まり）、探索のJITの型。
 
 ここで見ないもの:
-- Edge Costの中身（勾配・路面・風がどう秒へ化けるか） → `domain/evaluation.py`側
+- Edge Costの中身（勾配・路面・風がどう秒へ化けるか） → `test_leg_costs.py`
 - 探索用グラフ・ターンの遷移の組み立て → `test_search_graph.py`・`test_turn_structure.py`
 - 候補ルートの並べ方・返し方 → `route_generator`側
 """
@@ -752,9 +752,9 @@ async def test_route_generation_calls_from_python_only_the_jit_that_the_image_ba
     )
     generator = generator_for(road_network_root, grid_network(), wind)
     departure = datetime(2026, 9, 22, 8, tzinfo=timezone(timedelta(hours=9)))
-    assert await generator.generate_loops(
-            at(CENTER), 4.0, 1.5, points=NO_POINTS, max_routes=3, start_time=departure)
-    assert await generator.generate_via_waypoints(
-        at(SOUTH_WEST), [], destination=at(NORTH_EAST), max_routes=3, start_time=departure)
+    assert (await generator.generate_loops(
+            at(CENTER), 4.0, 1.5, points=NO_POINTS, max_routes=3, start_time=departure)).candidates
+    assert (await generator.generate_via_waypoints(
+        at(SOUTH_WEST), [], destination=at(NORTH_EAST), max_routes=3, start_time=departure)).candidates
 
     assert called and called <= baked

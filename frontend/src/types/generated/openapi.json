@@ -2130,13 +2130,37 @@
           "label": {
             "type": "string",
             "title": "Label"
+          },
+          "color": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Color"
+          },
+          "color_on_dark": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Color On Dark"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
           "key",
-          "label"
+          "label",
+          "color",
+          "color_on_dark"
         ],
         "title": "AvoidanceLevelView"
       },
@@ -2199,6 +2223,10 @@
               "exclude"
             ],
             "title": "Default"
+          },
+          "selectable": {
+            "type": "boolean",
+            "title": "Selectable"
           }
         },
         "additionalProperties": false,
@@ -2209,7 +2237,8 @@
           "class_key",
           "label",
           "description",
-          "default"
+          "default",
+          "selectable"
         ],
         "title": "AvoidanceRowView"
       },
@@ -3256,6 +3285,13 @@
             },
             "type": "array",
             "title": "Tables"
+          },
+          "tuning": {
+            "items": {
+              "$ref": "#/components/schemas/TuningEntry"
+            },
+            "type": "array",
+            "title": "Tuning"
           }
         },
         "additionalProperties": false,
@@ -3263,7 +3299,8 @@
         "required": [
           "computed_at",
           "sources",
-          "tables"
+          "tables",
+          "tuning"
         ],
         "title": "DerivedDataFreshnessReport"
       },
@@ -5947,6 +5984,17 @@
             ],
             "title": "Sustained Gradient Percent"
           },
+          "average_gradient_percent": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Average Gradient Percent"
+          },
           "estimated_arrival_time": {
             "anyOf": [
               {
@@ -6001,6 +6049,7 @@
           "edge_end",
           "elevations",
           "sustained_gradient_percent",
+          "average_gradient_percent",
           "estimated_arrival_time",
           "penalty",
           "road_classes",
@@ -6303,6 +6352,52 @@
         ],
         "title": "TotalLens"
       },
+      "TuningEntry": {
+        "properties": {
+          "param_id": {
+            "type": "string",
+            "title": "Param Id"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "unit": {
+            "type": "string",
+            "title": "Unit"
+          },
+          "derived_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Derived Value"
+          },
+          "current_value": {
+            "type": "number",
+            "title": "Current Value"
+          },
+          "needs_rebuild": {
+            "type": "boolean",
+            "title": "Needs Rebuild"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "param_id",
+          "label",
+          "unit",
+          "derived_value",
+          "current_value",
+          "needs_rebuild"
+        ],
+        "title": "TuningEntry"
+      },
       "TuningParameterView": {
         "properties": {
           "id": {
@@ -6521,6 +6616,13 @@
           "type": {
             "type": "string",
             "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
           }
         },
         "type": "object",

@@ -683,6 +683,10 @@ export interface components {
             key: "pass" | "slight_prefer" | "prefer" | "slight_avoid" | "avoid" | "exclude";
             /** Label */
             label: string;
+            /** Color */
+            color: string | null;
+            /** Color On Dark */
+            color_on_dark: string | null;
         };
         /** AvoidanceOverride */
         AvoidanceOverride: {
@@ -708,6 +712,8 @@ export interface components {
              * @enum {string}
              */
             default: "pass" | "slight_prefer" | "prefer" | "slight_avoid" | "avoid" | "exclude";
+            /** Selectable */
+            selectable: boolean;
         };
         /** AvoidanceSectionView */
         AvoidanceSectionView: {
@@ -989,6 +995,8 @@ export interface components {
             sources: components["schemas"]["SourceEntry"][];
             /** Tables */
             tables: components["schemas"]["app__services__derived_data_freshness_service__TableEntry"][];
+            /** Tuning */
+            tuning: components["schemas"]["TuningEntry"][];
         };
         /** ElevationStretch */
         ElevationStretch: {
@@ -1801,6 +1809,8 @@ export interface components {
             elevations: components["schemas"]["ElevationStretch"][];
             /** Sustained Gradient Percent */
             sustained_gradient_percent: number | null;
+            /** Average Gradient Percent */
+            average_gradient_percent: number | null;
             /** Estimated Arrival Time */
             estimated_arrival_time: string | null;
             penalty: components["schemas"]["PenaltyBreakdown"];
@@ -1922,6 +1932,21 @@ export interface components {
             /** Lens Id */
             lens_id: string;
         };
+        /** TuningEntry */
+        TuningEntry: {
+            /** Param Id */
+            param_id: string;
+            /** Label */
+            label: string;
+            /** Unit */
+            unit: string;
+            /** Derived Value */
+            derived_value: number | null;
+            /** Current Value */
+            current_value: number;
+            /** Needs Rebuild */
+            needs_rebuild: boolean;
+        };
         /** TuningParameterView */
         TuningParameterView: {
             /** Id */
@@ -1979,6 +2004,10 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+            /** Input */
+            input?: unknown;
+            /** Context */
+            ctx?: Record<string, never>;
         };
         /** WayValueFormula */
         WayValueFormula: {

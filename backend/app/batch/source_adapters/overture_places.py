@@ -23,8 +23,9 @@ import duckdb
 
 from app.batch.ingest import AdapterInputs, SourceRecord, register_adapter
 from app.batch.source_profile import SourceProfile, SourceSpec
+from app.infrastructure import data_paths
 
-DATA_DIR = Path(__file__).resolve().parents[3] / "data" / "overture"
+DATA_DIR = data_paths.DATA_DIR / "overture"
 
 #: 1回に読み出す行の数。DuckDBから溜めずに流すための区切り。
 _FETCH_ROWS = 10_000

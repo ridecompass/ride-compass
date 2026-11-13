@@ -74,9 +74,9 @@ class _GeneratedRoutes:
     """1回の生成の候補と、それに実際に適用された条件。"""
 
     candidates: list[RouteCandidate]
-    # 候補が0件のときの原因の要約（`RouteGenerator.last_no_candidates_reason`）。1件以上ならNone。
+    # 候補が0件のときの原因の要約。1件以上ならNone。
     no_candidates_reason: str | None
-    # 目的地を道路網の届く点へ補正したときの座標（`RouteGenerator.last_destination_correction`）。
+    # 目的地を道路網の届く点へ補正したときの座標。
     corrected_destination: Coordinates | None
     # 候補数の上限。
     max_routes: int
@@ -102,14 +102,14 @@ async def generate_route_candidates(
         generator = setup.generator
         match target:
             case SplicedTarget():
-                candidates = await generator.generate_spliced_route(
+                generated = await generator.generate_spliced_route(
                     origin=origin,
                     points=target.points,
                     edge_ids=target.edge_ids,
                     start_time=start_time,
                 )
             case NoDistanceTarget():
-                candidates = await generator.generate_via_waypoints(
+                generated = await generator.generate_via_waypoints(
                     origin=origin,
                     waypoints=target.points.waypoints,
                     destination=target.points.destination,
@@ -118,7 +118,7 @@ async def generate_route_candidates(
                 )
             case DistanceTarget():
                 tolerance_km = distance_tolerance_km(target.distance_km)
-                candidates = await generator.generate_loops(
+                generated = await generator.generate_loops(
                     origin=origin,
                     distance_km=target.distance_km,
                     distance_tolerance_km=tolerance_km,
@@ -129,9 +129,9 @@ async def generate_route_candidates(
             case _:
                 assert_never(target)
         return _GeneratedRoutes(
-            candidates=candidates,
-            no_candidates_reason=generator.last_no_candidates_reason if not candidates else None,
-            corrected_destination=generator.last_destination_correction,
+            candidates=generated.candidates,
+            no_candidates_reason=generated.no_candidates_reason,
+            corrected_destination=generated.corrected_destination,
             max_routes=max_routes,
             distance_tolerance_km=tolerance_km,
             conditions=setup.conditions,

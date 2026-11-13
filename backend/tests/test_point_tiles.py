@@ -11,7 +11,7 @@
 - 配信（キャッシュ・空タイル・DB障害・未知のレイヤー） → `test_region_service.py`・`test_region_routes.py`
 - 範囲の中で点の無いタイルを空のバイト列にすること → `test_road_graph_repository_contracts.py`
 - 自転車・死亡の判定の両側（自転車ではない軽車両・死者0） → `test_derive_counts.py`（同じ式で数える）
-- 立ち寄り先の群・絞り・まとめ → `test_stop_places.py`
+- 立ち寄り先の群・絞り・まとめ → `test_places.py`
 
 束ねる升目は、タイルの端から升目の幅で測った位置に点を置いて作る（升目の境目にちょうど乗った点は、どちらの升目に入るかが
 浮動小数の丸めで決まる）。
@@ -92,7 +92,7 @@ def _features(tile: bytes | None, name: str) -> list[dict]:
     return decoded[POINT_TILE_LAYERS[name].source_layer]["features"]
 
 
-async def _ingest_stop_places(places: list[object]) -> None:
+async def _ingest_places(places: list[object]) -> None:
     """Overture の地点を取り込み、地点の表を作る派生の段を流す。"""
     await ingest_records("overture_place", places)
     async with raw_connection() as conn:
@@ -171,7 +171,7 @@ async def test_points_of_the_same_legend_row_in_one_cell_become_one_point_counti
     """同じ升目の同じ行の点は、束ねた点の1つの位置に1点だけ描き、数と、名前のある点の名前と位置を名前の順に持つ。
     押すと、中の店を1行ずつ並べられる。"""
     first, second = (LON + CELL / 4, LAT), (LON, LAT + CELL / 4)
-    await _ingest_stop_places([
+    await _ingest_places([
         overture_place_record(1, *first, "店B"),
         overture_place_record(2, *second, "店A"),
     ])
@@ -224,7 +224,7 @@ async def test_convenience_stores_come_from_the_stop_places_with_their_names_and
     ほかの群の立ち寄り先と、群を持たない地点（コンビニの分類でもコンビニのチェーンでない店）は補給の点に出ない。コンビニは
     押すと店の名前で外の地図を開けるように名前を持ち、OpenStreetMap の点は名前を焼かない。"""
     await _ingest_pois([(LON, LAT, {"shop": "convenience"}), (LON + FAR, LAT, {**TOILETS, "name": "公園のトイレ"})])
-    await _ingest_stop_places([
+    await _ingest_places([
         overture_place_record(1, LON - FAR, LAT, "ローソン 渋谷店", ("shopping", "convenience_store")),
         overture_place_record(2, LON, LAT + FAR, "店2"),
         overture_place_record(3, LON - FAR, LAT + FAR, "ダイソー 渋谷店", ("shopping", "convenience_store")),
@@ -284,7 +284,7 @@ async def test_an_accident_point_carries_bicycle_fatal_and_year(road_graph_repos
 async def test_a_stop_place_point_carries_its_group_and_name(road_graph_repository):
     """立ち寄り先は事故と同じく対象範囲を一括で取り込むので、道を取り込んでいない所でも出す。タイルの外の地点と、
     補給の点に出す群「コンビニ」と、群を持たない地点（検索にだけ出る駅等）は出ない。"""
-    await _ingest_stop_places([
+    await _ingest_places([
         overture_place_record(1, LON, LAT, "店1"),
         overture_place_record(2, LON + 10 * FAR, LAT, "店2"),
         overture_place_record(3, LON + FAR, LAT, "ローソン 渋谷店", ("shopping", "convenience_store")),

@@ -146,8 +146,7 @@ export default function RouteProfile({
             </p>
           </InfoPopover>
         )}
-        {/* 走行中の図は低く保つため一覧を出さず、結果で選んだ軸を積む。 */}
-        {tab === "lens" && !riding && (
+        {tab === "lens" && (
           <ProfileLayerPicker
             title="グラフに積む負担"
             usage="グラフに積む負担の種類を選ぶ一覧を開きます。数字は今積んでいる数です。"

@@ -164,7 +164,7 @@ WEATHER_ELEMENTS: tuple[WeatherElement, ...] = (
         "土砂災害キキクル",
         FrameRule("current"),
         level_scale="risk_levels",
-        description="大雨による土砂災害（がけ崩れ・土石流など）の危険度の高まりを段階で示す気象庁の情報。",
+        description="大雨による土砂災害[がけ崩れ・土石流など]の危険度の高まりを段階で示す気象庁の情報。",
     ),
     WeatherElement(
         "disaster",

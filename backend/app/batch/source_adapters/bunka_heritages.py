@@ -26,8 +26,9 @@ from shapely.geometry import Point
 
 from app.batch.ingest import AdapterInputs, SourceRecord, register_adapter
 from app.batch.source_profile import SourceProfile, SourceSpec
+from app.infrastructure import data_paths
 
-DATA_DIR = Path(__file__).resolve().parents[3] / "data" / "bunka"
+DATA_DIR = data_paths.DATA_DIR / "bunka"
 
 #: 指定の別の項目。
 DESIGNATION_FIELD = "bunka-11-s"

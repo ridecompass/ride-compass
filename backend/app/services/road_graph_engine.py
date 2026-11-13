@@ -48,7 +48,6 @@ from app.domain.route import (
     EvaluatedRoute,
     DISTANCE_KM_DECIMALS,
 )
-from app.domain.route_request import FixedPoints
 from app.domain.route_search import (
     LengthBand,
     MAX_SNAP_CORRECTION_KM,
@@ -98,6 +97,7 @@ from app.services.road_graph_context import (
     refuse_at_nodes,
     node_coordinates,
     snap_point,
+    ResolvedEnd,
     resolve_end,
     leg_name,
     path_km,
@@ -416,21 +416,26 @@ class RoadGraphEngine:
             leg.travel_bins_lazy, leg.bin_seconds, transition_cost=context.transition_cost
         )
 
-    async def trace_fixed_points(self, context: RoadGraphContext, points: FixedPoints) -> FixedLegs:
-        """前段: 出発地から、置いた経由地を置いた順に区間ごとのA*で結び、仕上げが向かう終点を決める。経由地が無ければ
-        出発地で止まる（区間は無い）。
+    def resolve_end(self, context: RoadGraphContext, destination: Coordinates | None) -> ResolvedEnd | None:
+        """仕上げの終点（`road_graph_context.py: resolve_end`）。前段と乗り換えの確かめへ渡す。"""
+        return resolve_end(context, destination)
 
-        起点は`prepare`がスナップ済みのNodeをそのまま使い、経由地と目的地はここで起点と同じく出て戻れるNodeへスナップする。
-        どれかを寄せられなければ`RoutingError`。
+    async def trace_fixed_points(
+        self, context: RoadGraphContext, waypoints: list[Coordinates], end: ResolvedEnd | None,
+    ) -> FixedLegs:
+        """前段: 出発地から、置いた経由地を置いた順に区間ごとのA*で結び、終点（`resolve_end`の結果）を仕上げへ渡す。
+        経由地が無ければ出発地で止まる（区間は無い）。
+
+        起点は`prepare`がスナップ済みのNodeをそのまま使い、経由地はここで起点と同じく出て戻れるNodeへスナップする。
+        経由地か終点を寄せられなければ`RoutingError`。
         """
-        end = resolve_end(context, points.destination)
         if end is None:
             raise RoutingError("could not snap destination to road graph")
-        end_node, end_point = end
-        if not points.waypoints:
+        end_node, end_point = end.node, end.point
+        if not waypoints:
             return FixedLegs(segments=[], nodes=[context.origin_node], length_m=0.0, end_node=end_node, end_point=end_point)
         node_sequence = [context.origin_node]
-        for point in points.waypoints:
+        for point in waypoints:
             snapped = snap_point(context, point)
             if snapped is None:
                 raise RoutingError("could not snap waypoints to road graph")
@@ -702,7 +707,8 @@ class RoadGraphEngine:
         )
 
     def build_traced_from_edge_ids(
-        self, context: RoadGraphContext, edge_ids: tuple[str, *tuple[str, ...]], points: FixedPoints,
+        self, context: RoadGraphContext, edge_ids: tuple[str, *tuple[str, ...]], waypoints: list[Coordinates],
+        end: ResolvedEnd | None,
     ) -> TracedLoop:
         """クライアントが組み立てたEdge id列を、評価できる経路として検証して`TracedLoop`にする。
 
@@ -713,9 +719,7 @@ class RoadGraphEngine:
 
         置いた経由地は生成と同じNodeへ寄せ、組んだ経路の中で置いた順に通る所を探す（`_waypoint_offsets_along`）。
 
-        終点は生成と同じく出て戻れるNodeへ寄せて解くため、比べる相手は元の候補が
-        実際に終わったNodeになる——目的地を寄せ直した場合も、
-        寄せ直した後の地点が条件として返っており、合成もその地点で送られてくる。
+        終点（`resolve_end`の結果）は生成と同じ所で決めるため、比べる相手は元の候補が実際に終わったNodeになる。
 
         合成経路はvia-nodeを持たないため、レグはこの経路自身の距離で`leg_of_edge_by_half`が
         切る。**レグ番号を振る側が、その番号のレグを
@@ -743,12 +747,10 @@ class RoadGraphEngine:
                 refuse_at_nodes(
                     context, f"経路がつながっていません index={index}", to_node=head, next_from_node=following_tail,
                 )
-        destination = points.destination
-        snapped = (context.origin_node, False) if destination is None else snap_point(context, destination)
-        if snapped is None:
+        if end is None:
             raise RoutingError("終点を道路網へ寄せられません")
-        if heads[-1] != snapped[0]:
-            refuse_at_nodes(context, "経路が終点に着いていません", expected=snapped[0], actual=heads[-1])
+        if heads[-1] != end.node:
+            refuse_at_nodes(context, "経路が終点に着いていません", expected=end.node, actual=heads[-1])
 
         lengths = context.statics.edge_length_m[path].tolist()
         total_m = sum(lengths)
@@ -764,7 +766,7 @@ class RoadGraphEngine:
             ]
         return TracedLoop(
             bearing=None, distance_km=round(total_m / 1000, DISTANCE_KM_DECIMALS), data=path, leg_of_edge=leg_of_edge,
-            waypoint_offsets=_waypoint_offsets_along(context, [tails[0], *heads], points.waypoints), reversible=False,
+            waypoint_offsets=_waypoint_offsets_along(context, [tails[0], *heads], waypoints), reversible=False,
         )
 
     def is_loop_too_similar(

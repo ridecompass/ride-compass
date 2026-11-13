@@ -12,7 +12,6 @@ from app.config import settings
 from app.infrastructure import tile_cache
 from app.infrastructure.cache_identity import (
     LANDCOVER_TILE_VERSION,
-    is_known_tile_version,
     raster_set_fingerprint,
     region_tile_generation_prefix,
     region_tile_key,
@@ -53,12 +52,7 @@ async def serve_region_tile(
     fetch_tile: Callable[[dict], Awaitable[bytes | None]],
     source_label: str = "postgis",
 ) -> bytes:
-    """キャッシュにあればそれを、無ければ`fetch_tile`で作ったものを返す。`fetch_tile`がNone（取込範囲の外）なら空タイル。
-
-    世代を読めていない（`cache_identity.py: is_known_tile_version`が偽）ときはディスクへ書かずに返す。
-    **どの世代の中身か分からないまま焼いたタイルを残さない**ため——残すと後で世代が判明しても正しいものと区別できない
-    （`infrastructure/cache_identity.py: UNKNOWN_REVISION`）。
-    """
+    """キャッシュにあればそれを、無ければ`fetch_tile`で作ってディスクへ書いたものを返す。`fetch_tile`がNone（取込範囲の外）なら空タイル。"""
     key = region_tile_key(kind, generation, z, x, y, extension)
     with log_external_call(external_call_name, z=z, x=x, y=y) as fields:
         # ディスクの読み書きは同期のI/O。地図を開くと多数のタイルが同時に来るため、イベントループの上で行うと
@@ -79,9 +73,7 @@ async def serve_region_tile(
         # 実際の取得元と食い違わないよう、呼び出し元が名乗る。
         fields["source"] = source_label
         fields["tile_bytes"] = len(tile_bytes)
-        persist = fields["persisted"] = is_known_tile_version(generation)
-        if persist:
-            await asyncio.to_thread(tile_cache.set, key, tile_bytes, content_type)
+        await asyncio.to_thread(tile_cache.set, key, tile_bytes, content_type)
         return tile_bytes
 
 
@@ -89,14 +81,10 @@ def prune_other_generations(tile_versions: Mapping[TileKind, str]) -> int:
     """配っていない世代の地域タイルをディスクから消し、消した数を返す。
 
     `tile_versions`はDBの世代から組んだ系統名→配信する世代（`services/tile_version_service.py:
-    current_tile_versions`）。土地被覆の世代はここで足す。
-
-    - 世代を読めていない系統（DBの世代が読めない）は消さない——どれが今の世代か分からない。
-    - どの系統の表にも無い系統（改名・廃止した系統）の鍵は消す——もう誰も読まない。
+    current_tile_versions`）。土地被覆の世代はここで足す。どの系統の表にも無い系統（改名・廃止した系統）の鍵も
+    消す——もう誰も読まない。
     """
-    generations: dict[str, str | None] = {
-        kind: version if is_known_tile_version(version) else None for kind, version in tile_versions.items()
-    }
+    generations: dict[str, str] = {kind: version for kind, version in tile_versions.items()}
     generations[LANDCOVER_TILE_KIND] = landcover_generation()
 
     def is_stale(key: str) -> bool:
@@ -105,7 +93,6 @@ def prune_other_generations(tile_versions: Mapping[TileKind, str]) -> int:
             return False
         if kind not in generations:
             return True
-        generation = generations[kind]
-        return generation is not None and not key.startswith(region_tile_generation_prefix(kind, generation))
+        return not key.startswith(region_tile_generation_prefix(kind, generations[kind]))
 
     return tile_cache.delete_where(is_stale)
