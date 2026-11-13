@@ -5984,6 +5984,17 @@
             ],
             "title": "Sustained Gradient Percent"
           },
+          "average_gradient_percent": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Average Gradient Percent"
+          },
           "estimated_arrival_time": {
             "anyOf": [
               {
@@ -6038,6 +6049,7 @@
           "edge_end",
           "elevations",
           "sustained_gradient_percent",
+          "average_gradient_percent",
           "estimated_arrival_time",
           "penalty",
           "road_classes",

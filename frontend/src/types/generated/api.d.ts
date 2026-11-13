@@ -1809,6 +1809,8 @@ export interface components {
             elevations: components["schemas"]["ElevationStretch"][];
             /** Sustained Gradient Percent */
             sustained_gradient_percent: number | null;
+            /** Average Gradient Percent */
+            average_gradient_percent: number | null;
             /** Estimated Arrival Time */
             estimated_arrival_time: string | null;
             penalty: components["schemas"]["PenaltyBreakdown"];
