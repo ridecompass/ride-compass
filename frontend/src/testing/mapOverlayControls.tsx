@@ -60,9 +60,12 @@ export async function setup(layers: OverlayLayerChip[], overrides: Overrides = {
 /** 群の外の先頭にある、ルートの行のチェックボックスの名前。 */
 export const ROUTE_ROW = "ルート";
 
+/** 群の外の先頭にある、ルートの後も周りを出すかの行のチェックボックスの名前。 */
+const SURROUNDINGS_ROW = "ルート後も周りを出す";
+
 /** 群に並んでいるレイヤーの行の名前（行のチェックボックスの名前）。 */
 export const rowNames = (list: HTMLElement) =>
   within(list)
     .queryAllByRole("checkbox")
     .map((box) => box.getAttribute("aria-label"))
-    .filter((name) => name !== ROUTE_ROW);
+    .filter((name) => name !== ROUTE_ROW && name !== SURROUNDINGS_ROW);
