@@ -12,7 +12,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.domain.cost_axes import CostAxisDefinitions, check_cost_axes
 from app.domain.road_classes import RoadClassDefinitions, replace_road_classes, undeclared_references
 from app.infrastructure.cost_axis_repository import read_cost_axes
-from app.infrastructure.definition_write_lock import acquire_definition_write_lock
 from app.infrastructure.road_class_repository import read_road_classes, replace_road_class_rows
 
 logger = logging.getLogger("ridecompass.road_classes")
@@ -63,14 +62,9 @@ class RoadClassAdminService:
         return await read_road_classes(self._session)
 
     async def replace(self, definitions: RoadClassDefinitions) -> RoadClassDefinitions:
-        """全体を入れ替え、書いた全体を返す。
-
-        定義の書き込みの鍵を取ってから費用の軸を読む——取らないと、確かめてから確定するまでの間に、消す区分を指す費用の軸が
-        書ける。
-        """
+        """全体を入れ替え、書いた全体を返す。"""
         session = self._session
         try:
-            await acquire_definition_write_lock(session)
             _check_writable(definitions, await read_cost_axes(session))
             await replace_road_class_rows(session, definitions)
             await session.commit()

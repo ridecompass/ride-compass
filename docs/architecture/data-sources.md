@@ -11,6 +11,7 @@
 - **既存のソースの使い方を変える前**（表示だけだったものを評価・ルート計算へ使う、
   取得したものを再配布する等）に、その行の条件がその使い方を許すかを読み直す。
 - **OSM の値を使う材料・配信を足す・変える前**と、OSM 以外の値を道へ結ぶ前に、下の「OSM から作った値と独自の層」の持ち方に合うかを見る。
+  道へ結ぶ OSM 以外のソースは、利用条件の欄に、道ごとの値へ加工して ODbL の派生データベースに含めて配れるかを書く。
 - 表記の要件は画面の出典表記（[static-map-layers.md](../modules/frontend/static-map-layers.md)
   「出典表記」）が満たす。行を足したら、表記が要件を満たしているかも見る。
 - 観測や第三者の記事から推測して埋めない。公式の文言を読めなかった項目は「要確認」と書き、
@@ -35,10 +36,10 @@ git grep -h -o -E "https?://[a-zA-Z0-9.-]+" -- backend/app backend/scripts front
 | ソース | 取りに行く場所 | 利用条件 | 商用 | 表記の要件 | 公式ページ | 確認日 |
 |---|---|---|---|---|---|---|
 | OpenStreetMap（Geofabrikの抽出PBF） | `backend/scripts/fetch_osm_pbf.py`、アダプタ`osm_pbf_way`・`osm_pbf_node` | ODbL 1.0 | 可 | 「© OpenStreetMap contributors」と、ODbLで提供されている旨（`/copyright`へのリンクで可）。DBそのものを配布するなら同じライセンスで出す義務がある | [copyright](https://www.openstreetmap.org/copyright) | 2026-09-23 |
-| 地理院タイル（標高タイル・色別標高図） | アダプタ`gsi_dem_tile`、`backend/app/batch/dem_tile_store.py`、`backend/app/infrastructure/gsi_tile_client.py` | 国土地理院コンテンツ利用規約（公共データ利用規約PDL1.0準拠） | 可 | 出典（「地理院タイル」＋一覧ページへのリンク）。加工した場合は出典とは別に**加工した旨**。アプリからの実時間読み込みは申請不要 | [利用規約](https://www.gsi.go.jp/kikakuchousei/kikakuchousei40182.html)・[タイル一覧](https://maps.gsi.go.jp/development/ichiran.html) | 2026-09-23 |
+| 地理院タイル（標高タイル・色別標高図） | アダプタ`gsi_dem_tile`、`backend/app/batch/dem_tile_store.py`、`backend/app/infrastructure/gsi_tile_client.py` | 国土地理院コンテンツ利用規約（公共データ利用規約PDL1.0準拠）。加工したものの利用・再配布を、ライセンスを問わず認める（求めるのは出典と加工した旨・加工した主体の表示）ので、勾配へ加工して ODbL の派生データベースに含めて配れる（2026-10-19確認） | 可 | 出典（「地理院タイル」＋一覧ページへのリンク）。加工した場合は出典とは別に**加工した旨**。アプリからの実時間読み込みは申請不要 | [利用規約](https://www.gsi.go.jp/kikakuchousei/kikakuchousei40182.html)・[タイル一覧](https://maps.gsi.go.jp/development/ichiran.html) | 2026-09-23 |
 | 気象庁 予報区等GISデータ（「市町村等（気象警報等）」の区域の境界） | `backend/scripts/fetch_jma_area_boundaries.py`（取得・変換）、`backend/app/infrastructure/jma_area_boundaries.py`（警報・洪水予報の区域を引く） | 配布ページが「気象庁ホームページの利用規約を遵守」と明記し、その規約（PDL1.0準拠）に従う。GISデータについての別段の定めは規約に無い。境界は簡略化して使う（加工に当たる） | 可 | 出典＋**加工した旨**（規約の記載例: 「気象庁『図・写真等の名称』（当該ページのURL）を加工して作成」） | [予報区等GISデータ](https://www.data.jma.go.jp/developer/gis.html)・[利用規約](https://www.jma.go.jp/jma/kishou/info/coment.html) | 2026-09-27 |
-| 交通事故統計オープンデータ（警察庁） | `backend/scripts/fetch_accident_csv.py`、アダプタ`npa_honhyo` | 警察庁ウェブサイト利用規約（PDL1.0準拠）。取り込む年数・量の定めは無い（公開している全年を取り込む） | 可 | 出典＋**加工した旨** | [利用規約](https://www.npa.go.jp/rules/index.html)・[オープンデータ](https://www.npa.go.jp/publications/statistics/koutsuu/opendata/index_opendata.html) | 2026-09-27 |
-| 10m Annual Land Use Land Cover（Impact Observatory・Microsoft・Esri） | アダプタ`io_lulc_tile`、`backend/scripts/fetch_lulc_raster.py` | CC BY 4.0 | 可 | 作成者の表示 | [AWS Open Data Registry](https://registry.opendata.aws/io-lulc/) | 2026-09-23 |
+| 交通事故統計オープンデータ（警察庁） | `backend/scripts/fetch_accident_csv.py`、アダプタ`npa_honhyo` | 警察庁ウェブサイト利用規約（PDL1.0準拠）。取り込む年数・量の定めは無い（公開している全年を取り込む）。PDL1.0 のとおり、区間ごとの件数へ加工して ODbL の派生データベースに含めて配れる（2026-10-19確認） | 可 | 出典＋**加工した旨** | [利用規約](https://www.npa.go.jp/rules/index.html)・[オープンデータ](https://www.npa.go.jp/publications/statistics/koutsuu/opendata/index_opendata.html) | 2026-09-27 |
+| 10m Annual Land Use Land Cover（Impact Observatory・Microsoft・Esri） | アダプタ`io_lulc_tile`、`backend/scripts/fetch_lulc_raster.py` | CC BY 4.0。加工したもの（Adapted Material）は、受け取った人が作成者の表示の条件を守るのを妨げないライセンスで出せる（3(a)(4)）ので、区間の周りの割合へ加工して ODbL の派生データベースに含めて配れる（2026-10-19確認） | 可 | 作成者の表示 | [AWS Open Data Registry](https://registry.opendata.aws/io-lulc/)・[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/legalcode) | 2026-09-23 |
 | 基礎地図（OpenFreeMap） | `backend/app/infrastructure/basemap_client.py` | 無料・登録不要・利用回数の制限なし（データはOSM、スキーマはOpenMapTiles） | 可 | 「OpenFreeMap © OpenMapTiles Data from OpenStreetMap」（MapLibreは配信元のTileJSONから自動で出す） | [openfreemap.org](https://openfreemap.org/) | 2026-09-23 |
 | 気象庁MSM（Open-MeteoがAWS Open Dataで公開する前処理済みデータ） | `backend/app/infrastructure/msm_client.py`（`msm_base_url`） | 配布物はCC BY 4.0（Open-Meteo）。元データは気象庁の利用条件（PDL1.0）に従い、**気象業務法の制約**（第17条 予報業務の許可）が別にかかる——格子の値をどう扱えば許可が要るかは下の「気象業務法の予報業務許可」節 | Open-Meteo分は可。気象業務法との関係は**要確認**（公式の文書で決まらない部分があり、気象庁への照会が要る。許可の要否は有償・無償で変わらないため、無償で公開している今も同じ問い） | Open-Meteoへのクレジット（表示箇所の近くにリンク）＋気象庁の出典 | [Open-Meteo licence](https://open-meteo.com/en/licence)・[open-data](https://github.com/open-meteo/open-data)・[気象庁 copyright](https://www.jma.go.jp/jma/en/copyright.html)・[予報業務許可Q&A](https://www.jma.go.jp/jma/kishou/minkan/q_a_m.html) | 2026-09-26 |
 | 気象庁ホームページの防災情報（アメダス・警報・ナウキャスト・キキクル・洪水予報・推計気象分布等のJSON・タイル） | `backend/app/infrastructure/`の`jma_*`・`flood_client.py` | 気象庁ホームページ利用規約（PDL1.0準拠）。**気象業務法の制約**（第17条 予報業務の許可・第23条 警報の制限）が別にかかる。推計気象分布（天気。実況で予報ではない）の地点の区分を晴れ・くもりに読み替えて観測所の降水と合わせ、天気のアイコンにするのと、降水ナウキャスト・降水短時間予報のタイルの色を、段をそのままにアプリの段の色へ1対1で塗り替えて重ねるのは加工に当たり、規約は出典と加工した旨の記載で加工を認める（観測値の加工についての別段の定めは無い）。塗り替えが気象業務法の上で「そのまま掲載」に入るかは、下の「気象業務法の予報業務許可」節の書いていないこと。出発時刻の予報で延ばす使い方は、下の「気象業務法の予報業務許可」節の確認が先 | 可（気象業務法の範囲で） | 出典。加工した場合は**加工した旨** | [利用規約](https://www.jma.go.jp/jma/kishou/info/coment.html)・[推計気象分布の解説](https://www.jma.go.jp/jma/kishou/know/suikei_kishou/kaisetsu.html) | 2026-10-05 |
@@ -48,7 +49,7 @@ git grep -h -o -E "https?://[a-zA-Z0-9.-]+" -- backend/app backend/scripts front
 | 街区レベル位置参照情報（国土交通省） | `backend/scripts/fetch_isj_blocks.py`（取得）、アダプタ`isj_block` | 位置参照情報利用約款。無償で使え（第3条）、位置参照情報か、編集・加工した成果物を転載・引用するときは出典を明記する（第2条第3項。例「街区レベル位置参照情報　国土交通省」、できる限り整備年・ファイル名・編集・加工の責任者も）。公共測量など高い精度の測量・証明には使えない（第2条第2項）。商用・再配布の定めは無い | 定めなし（禁止は無い） | 出典（「街区レベル位置参照情報」（国土交通省）＋リンク）と加工した旨。`backend/app/domain/place_search.py: ADDRESS_AREA_ATTRIBUTIONS`の行が`ALWAYS_SHOWN_ATTRIBUTIONS`に入って満たす | [利用約款](https://nlftp.mlit.go.jp/isj/agreement.html)・[位置参照情報ダウンロードサービス](https://nlftp.mlit.go.jp/isj/) | 2026-10-09 |
 | Overture Maps places（Overture Maps Foundation。地点の出どころは Meta・Microsoft・Foursquare・AllThePlaces・PinMeTo・DAC・Uberall・OpenTravel 等で、1つの地点の出どころは1つ） | `backend/scripts/fetch_overture_places.py`（取得）、アダプタ`overture_places` | テーマは出どころごとに CDLA Permissive 2.0（Meta・Microsoft・PinMeTo・DAC・Uberall・OpenTravel 等）・Apache 2.0（Foursquare）・CC0 1.0（AllThePlaces）。OpenStreetMap のデータを含まず、ODbL の共有の義務がかからない。Foursquare の NOTICE は、ライセンスの写しを渡すこと・変えた所を目立つように示すこと・NOTICE の全文を残すことを求め、API の形で配るなら NOTICE の内容を開発者向けの文書に目立つように載せることを勧める | 可（CDLA Permissive 2.0・Apache 2.0・CC0 1.0 のどれも商用の利用を制限しない） | 出どころごとの表示（Overture の出典の文書の文言。出典の文書に載る前の新しい出どころは、配布の地点が持つ`sources[].license`でライセンスを見る）。Foursquare は著作権の1行・Apache 2.0・Overture の形へ変えた旨・NOTICE。`backend/app/domain/map_display.py: ALWAYS_SHOWN_ATTRIBUTIONS`の行と、そこからリンクする`frontend/public/licenses/`の Apache 2.0 の本文・NOTICE の写し（変えた旨を末尾に足したもの）が満たす | [出典](https://docs.overturemaps.org/attribution/)・[places](https://docs.overturemaps.org/guides/places/)・[Foursquare NOTICE](https://opensource.foursquare.com/places-notice-txt/) | 2026-10-22 |
 | 文化遺産オンライン（文化庁・国立情報学研究所）の国の指定・登録の文化財の建造物を、ジャパンサーチ（国立国会図書館）の簡易Web APIで | `backend/scripts/fetch_bunka_heritages.py`（取得）、アダプタ`bunka_heritages` | ジャパンサーチのサイトポリシー「データの利用について」: メタデータはデータベースの紹介ページの条件に従い、書かれていなければ CC0 1.0。文化遺産オンラインの紹介ページの条件は「解説文：CC BY」だけで、使う項目（名称・位置・所有者・指定の別）に条件は無い（解説文は使わない）。文化遺産オンラインのサイト自体は「無断で転用・引用・改変することを禁じます」と書くが、簡易Web APIで取れるのは連携機関が API での提供を許したものだけ（簡易Web APIガイド 1.2）で、その条件がジャパンサーチの紹介ページに付いているので、それに従う。API は間を空けて打つよう求め、上限の目安は示さない（同 1.4） | 可（CC0・CC BY） | 条件は無いが、サイトポリシーの記載例の形（「ジャパンサーチ「文化遺産オンライン（文化庁・国立情報学研究所）」のメタデータを改変して利用」＋紹介ページのURL）で`ALWAYS_SHOWN_ATTRIBUTIONS`に出す | [サイトポリシー](https://jpsearch.go.jp/policy)・[紹介ページ](https://jpsearch.go.jp/database/bunka)・[簡易Web APIガイド](https://jpsearch.go.jp/static/developer/webapi/ja.html)・[文化遺産オンライン](https://online.bunka.go.jp/about) | 2026-10-08 |
-| 交通規制情報（公益財団法人日本道路交通情報センター（JARTIC）。都道府県警察の交通規制データベースを拡張版標準フォーマットにしたもの） | `backend/scripts/fetch_jartic_regulations.py`（取得）、アダプタ`jartic_regulation` | JARTIC のオープンデータの利用規約。商用を含めて使え、CC BY 4.0 と互換。出典の記載を求め、加工したら出典とは別に加工した旨を求める（記載例「（公益財団法人日本道路交通情報センター）（当該ページの URL）「断面交通量情報」を加工して作成」） | 可 | 出典（公益財団法人日本道路交通情報センター＋「各種情報の提供」のページの URL）と加工した旨。規約の記載例の形で`backend/app/domain/map_display.py: ALWAYS_SHOWN_ATTRIBUTIONS`に出す | [各種情報の提供](https://www.jartic.or.jp/service/opendata/) | 2026-11-08 |
+| 交通規制情報（公益財団法人日本道路交通情報センター（JARTIC）。都道府県警察の交通規制データベースを拡張版標準フォーマットにしたもの） | `backend/scripts/fetch_jartic_regulations.py`（取得）、アダプタ`jartic_regulation` | JARTIC のオープンデータの利用規約。商用を含めて使え、CC BY 4.0 と互換。出典の記載を求め、加工したら出典とは別に加工した旨を求める（記載例「（公益財団法人日本道路交通情報センター）（当該ページの URL）「断面交通量情報」を加工して作成」）。翻案・公衆送信を自由に認め（第2条）、ライセンスを問わないので、区間に掛かる規制へ加工して ODbL の派生データベースに含めて配れる（2026-11-14確認） | 可 | 出典（公益財団法人日本道路交通情報センター＋「各種情報の提供」のページの URL）と加工した旨。規約の記載例の形で`backend/app/domain/map_display.py: ALWAYS_SHOWN_ATTRIBUTIONS`に出す | [各種情報の提供](https://www.jartic.or.jp/service/opendata/)・[利用規約](https://www.jartic.or.jp/d/opendata/riyou_kiyaku.pdf) | 2026-11-08 |
 
 公共データ利用規約（PDL1.0）は商用利用を認め、CC BY 4.0と互換である
 （[デジタル庁](https://www.digital.go.jp/resources/open_data/public_data_license_v1.0)）。
@@ -205,8 +206,8 @@ MSMの値を画面と公開の口に出すときは、格子点の値を変え�
 ## OSM から作った値と独自の層
 
 道の形と属性は OpenStreetMap（ODbL 1.0）から取る。OSM から作った値を公に使うと共有の義務がかかり、独占できない。
-走りやすさ・較正のデータを独占できる資産として持つため、義務の外に置く「独自の層」を、**較正の値**と**OSM のデータを含まない値**の
-2つにする（ユーザーの判断）。根拠は ODbL 1.0 の本文と OSMF の理事会が承認したコミュニティの指針（ガイドライン）だけにする。
+義務の外に置く「独自の層」は、**人が決めた値**（較正の値）だけにする（ユーザーの判断）。道へ結ぶ値は、OSM 以外のソースから
+作ったものも含めて、OSM の派生データベースとして渡す。根拠は ODbL 1.0 の本文と OSMF の理事会が承認したコミュニティの指針（ガイドライン）だけにする。
 ガイドラインはライセンスの本文ではなく、場面を言い尽くしてもいない。
 
 ODbL 1.0 と指針に**書いてあること**（[ODbL 1.0](https://opendatacommons.org/licenses/odbl/1-0/)・
@@ -233,16 +234,18 @@ ODbL 1.0 と指針に**書いてあること**（[ODbL 1.0](https://opendatacomm
 - **OSM の値に依る値（道ごとの代償の秒・タイルへ焼く属性等）は独占しない**: OSM の派生データベースとして ODbL で出す。公に使う
   経路（認証の無い配信・タイル・ルートの応答）があるうちは、4.6 のとおり派生データベースを渡せるようにする。派生データベース
   全体を渡せば、較正の値を渡すことは求められない。道の鍵を付けた値の配信は取り出せる形なので、データベースとして扱う。
+- **派生データベースの渡し方**: 公に使う経路が出す道ごとの値（区間の形・長さ・名前と、材料の値）を、毎日1つのファイル（ODbL の表示と
+  OSM 以外の元データの出典・加工した旨を入れた ZIP）に書き出し、認証なし・無償の口 `/api/derived-database` で配る。画面の出典表記
+  （`backend/app/domain/map_display.py: ALWAYS_SHOWN_ATTRIBUTIONS`）がこの口へリンクする。気象の値は道ごとの派生データベースに含めない
+  （地点・格子ごとの値で、OSM の道に依らない）。書き出しの仕組みは[静的道路属性](../modules/backend/static-road-attributes.md)
+  「派生データベースの書き出し」。
 - **較正の値**（人が決めた段の境界・折れ点・区分ごとの1kmあたりの重さ・帳簿を秒に換える換算）は OSM の中身を含まず、独自の層にする。
   正本は本番の DB で、本番の値を公開のリポジトリ（コード・文書・テストの期待値・道の区分と費用の軸の定義の JSON）へ写さない。コードが持つ
   既定値も公開のリポジトリにあるので、守る較正は既定値でなく本番の DB の値として持つ。認証の無い API が出す較正は、画面が描くのに
   要るもの（地図の段の境界と名前等）だけにする。代償の秒から較正をある程度逆算できることと、すでに公開した履歴は消せないことは残る。
-- **OSM のデータを含まない値**（OSM 以外のソースの値・利用者の走行の記録等）は、OSM のタグや OSM の形から求めた量（長さ・向き等）を
-  入れずに求め、OSM の道・区間とは鍵で結ぶだけにする。結び付け（最寄りの区間を引く・区間の形の周りを数える）に OSM の形を使うのは
-  参照に当たる。OSM の値と同じ表に混ぜずに別の表へ置き、OSM の値と合わせる（長さで割る・向きで負荷にする・代償の秒にする）のは
-  評価・配信のときだけにする。合わせた結果は OSM の値に依る値として扱う。
-- **同じ種類の値は、国の単位で全部 OSM 以外にする**: OSM 以外の値の欠けを OSM から作った値で埋めない。OSM に無いものだけを足す形にもしない。
-- 材料・データを足すときは、どちらの層に入るか（OSM の値に依るか、OSM のデータを含まないか）を、そのタスクの issue に書く。
+- **OSM 以外のソースの値を道へ結ぶ**ときは、派生データベースに含めて渡す。そのソースの利用条件が ODbL での再配布を許すことを、
+  上の表の利用条件の欄で確かめてから結ぶ。
+- 材料・データを足すときは、人が決めた値（独自の層）か、道ごとの値（派生データベースに入る）かを、そのタスクの issue に書く。
 
 ## 使わないと決めたソース
 
