@@ -8,8 +8,8 @@ import logging
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.domain.cost_axes import CostAxisDefinitions, check_cost_axes, replace_cost_axes
-from app.domain.road_classes import current_road_classes
+from app.domain.cost_axes import CostAxisDefinitions, check_cost_axes, replace_cost_axes, surplus_class_weights
+from app.domain.road_classes import RoadClassDefinitions, current_road_classes
 from app.infrastructure.cost_axis_repository import read_cost_axes, replace_cost_axes_row
 from app.infrastructure.definition_write_lock import acquire_definition_write_lock
 from app.infrastructure.road_class_repository import read_road_classes
@@ -19,6 +19,14 @@ logger = logging.getLogger("ridecompass.cost_axes")
 
 class CostAxesRejectedError(ValueError):
     """書く全体を断った。文は運用者が読む断りの文。"""
+
+
+def warn_surplus_class_weights(definitions: CostAxisDefinitions, road_classes: RoadClassDefinitions) -> None:
+    """確定した書き込みに分け方に無い区分の重さが残れば、書いた運用者へ警告する（断らない代わりに、区分名の打ち間違いを
+    知らせる）。"""
+    surplus = surplus_class_weights(definitions, road_classes)
+    if surplus:
+        logger.warning("費用の軸に分け方に無い区分の重さが残っています（%s）", "／".join(surplus))
 
 
 async def refresh_cost_axes(session: AsyncSession) -> None:
@@ -50,11 +58,13 @@ class CostAxisAdminService:
         await acquire_definition_write_lock(self._session)
         # プロセス内の区分ではなくDBの区分に照らす——プロセス内は確定の後に書き換わるので、鍵の外れた隙に入れ替わった区分を
         # 見落とす。
-        problems = check_cost_axes(definitions, await read_road_classes(self._session))
+        road_classes = await read_road_classes(self._session)
+        problems = check_cost_axes(definitions, road_classes)
         if problems:
             await self._session.rollback()
             raise CostAxesRejectedError(f"費用の軸の定義が通りません（{'／'.join(problems)}）")
         await replace_cost_axes_row(self._session, definitions)
         await self._session.commit()
         replace_cost_axes(definitions)
+        warn_surplus_class_weights(definitions, road_classes)
         return definitions

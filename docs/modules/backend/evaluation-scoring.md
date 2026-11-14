@@ -119,7 +119,9 @@ wayの長さ（0はNULL）になる——件数と長さは必ず同じ側から
   （`services/definitions_loading.py`）、行が無いか通らない定義なら起動を止める——探索・地図のレンズ・応答の内訳はどれも
   費用の軸の定義から組むので、定義の無いまま動く経路を持たない。検証（`domain/cost_axes.py: check_cost_axes`）は書き込みと
   起動時の両方が通し、道の区分を入れ替えるときも今の定義を新しい区分で通し直す——区分の重さは分け方のすべての区分に
-  書かせるので、区分を足すと先に重さを足すまで区分の入れ替えが断られる。
+  書かせるので、区分を足すと先に重さを足すまで区分の入れ替えが断られる。分け方に無い区分の重さは費用に効かないので断らず
+  （重さを先に書いてから区分を足す・区分を先に消してから重さを消す順が通る）、どちらの書き込みも確定のあとに残っていれば
+  警告のログを出す（`services/cost_axis_service.py: warn_surplus_class_weights`）。
 - **合成**: `domain/leg_costs.py: LegCostComposer`は、ビンごとの費用を「所要時間 ＋ 代償の秒」で組む。代償の体力は走行の模型が
   点の間ごとに重みを掛けて返し（`domain/cycling_speed.py: SegmentSpeedModel.ride`）、道のストレスは時刻に依らないのでリクエストに1回
   だけ求める。曲がる所の費用も同じ換算で組み（`LegCostComposer.transition_costs`）、探索へは`RoadGraphContext.transition_cost`

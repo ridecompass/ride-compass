@@ -76,3 +76,43 @@ async def test_replacing_the_road_classes_rechecks_the_cost_axes(client):
 
     assert response.status_code == 409
     assert "重さの無い区分 ['soil']" in response.json()["detail"]
+
+
+def _vibration(per_km: dict[str, float]) -> dict:
+    return {**DEFINITIONS, "burden": {"vibration": {
+        **DEFINITIONS["burden"]["vibration"],
+        "burden": {"kind": "categorical", "material": "class:surface_estimate", "per_km": per_km}}}}
+
+
+def _surface(*classes: str) -> dict:
+    return road_classes({"surface_estimate": classification({name: [] for name in classes})}).model_dump(mode="json")
+
+
+def _surplus_warnings(caplog) -> list[str]:
+    return [record.getMessage() for record in caplog.records if "分け方に無い区分の重さ" in record.getMessage()]
+
+
+async def test_a_class_is_added_after_its_weight_without_taking_the_axis_off(client, caplog):
+    """区分を足すときは、費用の軸へ重さを先に書ける。区分を足すまでは余りの重さとして警告する（区分名の打ち間違いを知らせる）。"""
+    with caplog.at_level("WARNING", logger="ridecompass.cost_axes"):
+        response = await client.put(PATH, json=_vibration({"paved": 0.0, "gravel": 0.6, "soil": 0.8}), headers=AUTH_HEADERS)
+    assert response.status_code == 200
+    assert _surplus_warnings(caplog) == ["費用の軸に分け方に無い区分の重さが残っています（vibration: 分け方に無い区分の重さ ['soil']）"]
+    caplog.clear()
+
+    with caplog.at_level("WARNING", logger="ridecompass.cost_axes"):
+        response = await client.put(ROAD_CLASSES_PATH, json=_surface("paved", "gravel", "soil"), headers=AUTH_HEADERS)
+    assert response.status_code == 200
+    assert _surplus_warnings(caplog) == []
+
+
+async def test_a_class_is_removed_before_its_weight_without_taking_the_axis_off(client, caplog):
+    """区分を消すときは、区分を先に消せる。残った重さは余りとして警告し、あとで軸から消せる。"""
+    assert (await client.put(PATH, json=DEFINITIONS, headers=AUTH_HEADERS)).status_code == 200
+
+    with caplog.at_level("WARNING", logger="ridecompass.cost_axes"):
+        response = await client.put(ROAD_CLASSES_PATH, json=_surface("paved"), headers=AUTH_HEADERS)
+    assert response.status_code == 200
+    assert _surplus_warnings(caplog) == ["費用の軸に分け方に無い区分の重さが残っています（vibration: 分け方に無い区分の重さ ['gravel']）"]
+
+    assert (await client.put(PATH, json=_vibration({"paved": 0.0}), headers=AUTH_HEADERS)).status_code == 200
