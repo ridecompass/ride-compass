@@ -13,7 +13,7 @@ import { SET_FIELDS, fieldProblems, fieldValues } from "../../../../tools/flow-g
 import { conditions, folds, misboundSteps, norm } from "../../../../tools/flow-gate/src/questions.js";
 
 // 畳んだ節の名前と順（2 は種類ごとに1つ）。
-const SECTIONS = [["不具合: 起きていること", "要望: 困りごと", "保守: 背景", "調査: 明らかにしたいこと"], ["やること", "調べ方"], ["決めること"],
+const SECTIONS = [["不具合: 起きていること", "要望: 困りごと", "保守: 背景", "調査: 明らかにしたいこと"], ["ユーザーの言葉"], ["やること", "調べ方"], ["決めること"],
   ["完了の条件"], ["経緯"], ["規模と優先度の根拠"]];
 const sectionNames = (text) => folds(text).map((f) => f.name).filter(Boolean);
 
