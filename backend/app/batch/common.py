@@ -5,10 +5,12 @@
 
 import argparse
 import asyncio
+import json
 import logging
 import time
 from collections.abc import AsyncIterator, Callable, Coroutine
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, TypeVar
 
@@ -114,6 +116,25 @@ def format_progress(done: int, total: int | None, elapsed: float, unit: str = "�
 
 class FetchError(RuntimeError):
     """上流が宣言どおりのものを置いていない等、取りに行っても取れないと分かった失敗。"""
+
+
+#: 取得が置き場に残す、取ったものの記録の名前。
+FETCH_RECORD_NAME = "fetched.json"
+
+
+def write_fetch_record(store: Path, **facts: Any) -> None:
+    """取ったもの（版等の`facts`）と取った時刻を、置き場`store`に記録する。取得の最後に呼ぶ。
+
+    取込はこれを読んで`source_runs.origin`へ写すので、途中で落ちた取得の置き場は記録を持たず、取り込めない。
+    """
+    record = {"fetched_at": datetime.now(timezone.utc).isoformat(), **facts}
+    store.mkdir(parents=True, exist_ok=True)
+    (store / FETCH_RECORD_NAME).write_text(json.dumps(record, ensure_ascii=False), encoding="utf-8")
+
+
+def read_fetch_record(store: Path) -> dict[str, Any]:
+    """置き場`store`の取ったものの記録（`write_fetch_record`が書いたもの）。無ければ`FileNotFoundError`。"""
+    return json.loads((store / FETCH_RECORD_NAME).read_text(encoding="utf-8"))
 
 
 #: 取得途中の一時ファイルの印。所定の名前と紛れないもの。

@@ -15,7 +15,6 @@ import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.batch import derive_cli
-from app.batch.source_adapters.npa_honhyo import HonhyoRows
 from app.domain.accident import PartyType
 from app.domain.material_catalog import ACCIDENT_COUNT_PER_KM_YEAR
 from app.domain.tuning import TUNING_PARAMETERS, TuningEffect
@@ -259,11 +258,11 @@ async def test_the_accident_density_is_divided_by_the_years_of_the_import_that_w
     # 道100の途中のノード2の上で、自転車の関わった事故が1件。
     accident = accident_record("on-way-100", *zigzag_point(2), party_a=PARTY_TYPE_CODES[PartyType.BICYCLE],
                                party_b="59")
-    await ingest_records("accident", [accident], conn=derived_before, rows=HonhyoRows(years=[2024]))
+    await ingest_records("accident", [accident], conn=derived_before, origin={"years": [2024]})
     assert await derive_cli.run(postgis_database_url()) == 0
     one_year = density_on_way_100()
 
-    await ingest_records("accident", [accident], conn=derived_before, rows=HonhyoRows(years=[2023, 2024]))
+    await ingest_records("accident", [accident], conn=derived_before, origin={"years": [2023, 2024]})
     seen_while_rebuilding: list[list[int]] = []
 
     async def observe():

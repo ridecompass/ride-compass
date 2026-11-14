@@ -55,22 +55,24 @@ git grep -h -o -E "https?://[a-zA-Z0-9.-]+" -- backend/app backend/scripts front
 （[デジタル庁](https://www.digital.go.jp/resources/open_data/public_data_license_v1.0)）。
 どの提供元も、加工したものを国が作成したかのように見せることを禁じている。
 
-## 版を持つ配布物の入れ替え
+## 配布物の取り直し
 
-配布元が版ごとのファイルで配り、コードが版を1か所で名指して取りに行くものの、版と入れ替えの手順。
+取得（`backend/app/batch/fetch_cli.py`）は、配布元が今置いている最新の版を、配布元の一覧から決めて取る。宣言（`source_profile.yaml`）は版を
+持たない。取ったものの版と取った時刻は置き場の記録（`backend/app/batch/common.py: FETCH_RECORD_NAME`）に残り、取込がそれを取込の素性
+（`source_runs.origin`）へ写すので、取り込んだ行がどの版のものかは取込の記録で引ける。最後まで取れなかった取得は記録を残さず、その置き場は取り込めない。
 
 ### Overture Maps の地点（places）
 
 | 項目 | 内容 |
 |---|---|
-| 今の版 | `backend/app/batch/source_profile.yaml`の`overture_place`の`rows.release` |
+| 取る版 | 配布元の目録（`https://stac.overturemaps.org/catalog.json`の`latest`。公式の[Get the latest release](https://docs.overturemaps.org/getting-data/)が名指す） |
 | 配布の頻度 | 毎月（公式の[リリースの予定](https://docs.overturemaps.org/release-calendar/)）。配布元の S3 に残るのは最大60日（2つの版）で、それより古い版は取り直せない |
-| 新しい版の見つけ方 | [リリースの予定](https://docs.overturemaps.org/release-calendar/)の表。版ごとのリリースノート（`https://docs.overturemaps.org/blog/<年>/<月>/<日>/release-notes/`）へのリンクがある。版の名前（`2026-09-23.1`等）は S3 の置き場の`release/<版>/`になる |
+| 新しい版の中身 | [リリースの予定](https://docs.overturemaps.org/release-calendar/)の表から、版ごとのリリースノート（`https://docs.overturemaps.org/blog/<年>/<月>/<日>/release-notes/`）へのリンクがある |
 
 手元へ写したファイル（本番は VM の`/home/ubuntu/ridecompass-cache-data/overture/`）は配布元から消えても残るので、
-版を上げるのは、新しい地点を入れたいときと、写したファイルを失って取り直すとき（古い版が配布元から消えていれば取り直せない）。
+取り直すのは、新しい地点を入れたいときと、写したファイルを失ったとき。
 
-入れ替えの手順:
+取り直しの手順:
 
 1. リリースノートで places のスキーマの変更（列の名前・`taxonomy`の語）と、出どころ（`sources[].dataset`）の増減を読む。
    取込と派生が読む列（`backend/app/infrastructure/source_models.py: OVERTURE_PLACES_SOURCE_SQL`・アダプタの絞り）と群の語
@@ -80,8 +82,7 @@ git grep -h -o -E "https?://[a-zA-Z0-9.-]+" -- backend/app backend/scripts front
 2. [出典の文書](https://docs.overturemaps.org/attribution/)と Foursquare の NOTICE を読み、出どころと文言が変わっていれば
    `ALWAYS_SHOWN_ATTRIBUTIONS`の行と`frontend/public/licenses/foursquare-places-NOTICE.txt`を合わせる（生成物`mapDisplay.ts`を作り直す）。
    上の表の行の確認日も直す。
-3. `rows.release`を新しい版へ書き換えてマージする。
-4. 本番 VM で、別のコンテナ（[production-data/SKILL.md](../../.claude/skills/production-data/SKILL.md)「派生データの作り直し」と同じ`docker run`）から
+3. 本番 VM で、別のコンテナ（[production-data/SKILL.md](../../.claude/skills/production-data/SKILL.md)「派生データの作り直し」と同じ`docker run`）から
    `python -m app.batch.fetch_cli --source overture_place`（範囲の地点を写す。関東の枠で約190MB。Actions のランナーで17秒）→ `python -m app.batch.ingest_cli --source overture_place`
    → `python -m app.batch.derive_cli`の順に打つ。本番 DB へ書くので、開発機の対話のセッションで、ユーザーがチャットで言ったときだけ Claude が打つ（[dev-session/SKILL.md](../../.claude/skills/dev-session/SKILL.md)「本番へ書く」）。
 
@@ -89,19 +90,18 @@ git grep -h -o -E "https?://[a-zA-Z0-9.-]+" -- backend/app backend/scripts front
 
 | 項目 | 内容 |
 |---|---|
-| 今の版 | `backend/app/batch/source_profile.yaml`の`bunka_heritage`の`rows.snapshot`（取った日。配信元は版を持たず、今の一覧だけを返す） |
+| 取る版 | 配信元は版を持たず、今の一覧だけを返す。記録には取った時刻だけが残る |
 | 更新の頻度 | 公表されていない。ジャパンサーチが最後に取り込んだ時刻は、連携データベースの参照API（`https://jpsearch.go.jp/api/database/bunka`）の`lastDataUpdated`（ミリ秒）で見られる |
 | 取り方 | 全国の建造物（2026-10-08 に 17,560 件、1秒おきに18回・約30秒）を取る。取込の範囲は取込が絞るので、範囲を広げても取り直さない |
 
 手元へ写したファイル（本番は VM の`/home/ubuntu/ridecompass-cache-data/bunka/`）は配信元が変わっても残るので、取り直すのは、
 新しい指定を入れたいときと、写したファイルを失ったとき。
 
-入れ替えの手順:
+取り直しの手順:
 
 1. [紹介ページ](https://jpsearch.go.jp/database/bunka)のメタデータの条件と、[サイトポリシー](https://jpsearch.go.jp/policy)の
    出典の記載例を読み、変わっていれば`ALWAYS_SHOWN_ATTRIBUTIONS`の行を合わせる（生成物`mapDisplay.ts`を作り直す）。上の表の行の確認日も直す。
-2. `rows.snapshot`を取る日へ書き換えてマージする。
-3. 本番 VM で、別のコンテナ（[production-data/SKILL.md](../../.claude/skills/production-data/SKILL.md)「派生データの作り直し」と同じ`docker run`）から
+2. 本番 VM で、別のコンテナ（[production-data/SKILL.md](../../.claude/skills/production-data/SKILL.md)「派生データの作り直し」と同じ`docker run`）から
    `python -m app.batch.fetch_cli --source bunka_heritage` → `python -m app.batch.ingest_cli --source bunka_heritage` → `python -m app.batch.derive_cli`
    の順に打つ。本番 DB へ書くので、開発機の対話のセッションで、ユーザーがチャットで言ったときだけ Claude が打つ（[dev-session/SKILL.md](../../.claude/skills/dev-session/SKILL.md)「本番へ書く」）。
 
@@ -109,21 +109,19 @@ git grep -h -o -E "https?://[a-zA-Z0-9.-]+" -- backend/app backend/scripts front
 
 | 項目 | 内容 |
 |---|---|
-| 今の版 | `backend/app/batch/source_profile.yaml`の`jartic_regulation`の`rows.version`（配布元の置き場の名前。`202611010000`は 2026-11-01 の版） |
+| 取る版 | 配布の一覧（`https://www.jartic.or.jp/d/opendata/opendata.json`）の交通規制情報（`type`が`typeD`）の要素の`link`（`/<版>/<ファイル名>`）が指すもの。版は配布元の置き場の名前（`202611010000`は 2026-11-01 の版）で、都道府県ごとに記録に残る |
 | 配布の頻度 | 毎月。配布元は最新の版だけを置き、前の版は取り直せない |
-| 新しい版の見つけ方 | 配布の一覧（`https://www.jartic.or.jp/d/opendata/opendata.json`）の交通規制情報（`type`が`typeD`）の要素の`link`が`/<版>/<ファイル名>`になる。取得の道具は、一覧の版が`rows.version`と違えば取らずに止まる |
 | 取り方 | 取込の範囲に掛かる都道府県の zip（cp932 の CSV が1つ。東京都で約39MB・57万行。2026-11-08）。範囲に掛かる都道府県は ABR の市区町村の代表点で決める |
 
 手元へ写したファイル（本番は VM の`/home/ubuntu/ridecompass-cache-data/jartic/`）は配布元から消えても残るので、
-版を上げるのは、新しい規制を入れたいときと、写したファイルを失って取り直すとき（前の版は取り直せない）。
+取り直すのは、新しい規制を入れたいときと、写したファイルを失ったとき（前の版は取り直せない）。
 
-入れ替えの手順:
+取り直しの手順:
 
 1. [各種情報の提供](https://www.jartic.or.jp/service/opendata/)の利用規約と、拡張版標準フォーマットの説明書の版を読み、
    出典の求めが変わっていれば`ALWAYS_SHOWN_ATTRIBUTIONS`の行を合わせ（生成物`mapDisplay.ts`を作り直す）、列や共通規制種別コードが
    変わっていればアダプタと`rows.kinds`を合わせる。上の表の行の確認日も直す。
-2. `rows.version`を一覧の版へ書き換えてマージする。
-3. 本番 VM で、別のコンテナ（[production-data/SKILL.md](../../.claude/skills/production-data/SKILL.md)「派生データの作り直し」と同じ`docker run`）から
+2. 本番 VM で、別のコンテナ（[production-data/SKILL.md](../../.claude/skills/production-data/SKILL.md)「派生データの作り直し」と同じ`docker run`）から
    `python -m app.batch.fetch_cli --source abr --source jartic_regulation`（都道府県を ABR の市区町村の代表点から決める。入口は宣言の順に取るので ABR が先）
    → `python -m app.batch.ingest_cli --source jartic_regulation` → `python -m app.batch.derive_cli`の順に打つ。
    本番 DB へ書くので、開発機の対話のセッションで、ユーザーがチャットで言ったときだけ Claude が打つ（[dev-session/SKILL.md](../../.claude/skills/dev-session/SKILL.md)「本番へ書く」）。
@@ -132,20 +130,19 @@ git grep -h -o -E "https?://[a-zA-Z0-9.-]+" -- backend/app backend/scripts front
 
 | 項目 | 内容 |
 |---|---|
-| 今の版 | アドレス・ベース・レジストリは`backend/app/batch/source_profile.yaml`の`abr`の`rows.snapshot`（取った日。配布元は版を持たず、同じ URL に今の全件を置く）。e-Stat の境界は`estat_small_area`の`rows.survey`（統計調査の識別子。`A002005212020`が令和2年国勢調査の小地域）。街区レベル位置参照情報は`isj_block`の`rows.version`（配布元の置き場の名前。`24.0a`が2025年版） |
+| 取る版 | アドレス・ベース・レジストリは配布元が版を持たず、同じ URL に今の全件を置く（記録には取った時刻だけが残る）。e-Stat の境界は、境界データの一覧（`https://www.e-stat.go.jp/gis/statmap-search/search_detail?page=1&type=2&aggregateUnitForBoundary=A&toukeiCode=00200521`。画面の裏で JSON を返す）に並ぶ国勢調査の小地域のうち最も新しい年の統計調査（`A002005212020`が令和2年国勢調査の小地域）。街区レベル位置参照情報は、都道府県ごとに配布元の選ぶ画面（`https://nlftp.mlit.go.jp/cgi-bin/isj/dls/_choose_files.cgi`）が並べる全域の街区レベルの版のうち最も新しいもの（`24.0a`が2025年版）で、都道府県ごとに記録に残る |
 | 更新の頻度 | アドレス・ベース・レジストリは配布元のファイルの更新時刻（応答の`last-modified`。町字のテキストは 2026-10-02）で見る。e-Stat の境界は国勢調査ごと（5年おき）。街区レベル位置参照情報は年に1度（配布元の一覧に新しい版が出る） |
 | 取り方 | アドレス・ベース・レジストリは全国の1ファイルずつ（都道府県・市区町村・町字のテキストと、都道府県・市区町村の代表点）と、取込の範囲に掛かる都道府県の町字の代表点と住居表示の街区のテキストと代表点（関東で街区 267,612件・代表点 357,732行。2026-10-10）。e-Stat の境界と街区レベル位置参照情報は範囲に掛かる都道府県の zip（位置参照情報は山梨県で約1.4MB・26.6万行。2026-10-09）。範囲に掛かる都道府県は市区町村の代表点で決める（関東の範囲で12県。全国の1ファイルずつが約12MB、町字の代表点が約1MB、境界が約81MB。2026-10-09） |
 
 手元へ写したファイル（本番は VM の`/home/ubuntu/ridecompass-cache-data/abr/`・`estat/`）は配布元が変わっても残るので、取り直すのは、
 新しい住所を入れたいときと、写したファイルを失ったとき。
 
-入れ替えの手順:
+取り直しの手順:
 
 1. アドレス・ベース・レジストリは[利用規約](https://www.digital.go.jp/policies/base_registry_address_tos/)、e-Stat は
    [利用規約](https://www.e-stat.go.jp/terms-of-use)を読み、出典の求めが変わっていれば`ADDRESS_AREA_ATTRIBUTIONS`を合わせる。街区レベル位置参照情報は[利用約款](https://nlftp.mlit.go.jp/isj/agreement.html)を読む
    （生成物`mapDisplay.ts`を作り直す）。上の表の行の確認日も直す。
-2. `rows.snapshot`を取る日へ（e-Stat を新しい国勢調査にするなら`rows.survey`も）書き換えてマージする。
-3. 本番 VM で、別のコンテナ（[production-data/SKILL.md](../../.claude/skills/production-data/SKILL.md)「派生データの作り直し」と同じ`docker run`）から
+2. 本番 VM で、別のコンテナ（[production-data/SKILL.md](../../.claude/skills/production-data/SKILL.md)「派生データの作り直し」と同じ`docker run`）から
    `python -m app.batch.fetch_cli --source abr --source estat_small_area --source isj_block`（都道府県を ABR の市区町村の代表点から決める。入口は宣言の順に取るので ABR が先）
    → `python -m app.batch.ingest_cli --source abr --source estat_small_area --source isj_block` → `python -m app.batch.derive_cli`の順に打つ。
    本番 DB へ書くので、開発機の対話のセッションで、ユーザーがチャットで言ったときだけ Claude が打つ（[dev-session/SKILL.md](../../.claude/skills/dev-session/SKILL.md)「本番へ書く」）。

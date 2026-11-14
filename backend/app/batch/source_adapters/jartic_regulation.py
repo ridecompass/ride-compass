@@ -5,8 +5,7 @@
 取得（`fetch_jartic_regulations`）は配布元から、取込は手元から、配布の zip（都道府県ごと。中に cp932 の CSV が1つ）を扱う。
 都道府県は、住所の生データと同じく取込の範囲に掛かる都道府県（`source_adapters/abr.py: range_prefectures`。ABR の市区町村の
 代表点から決めるので、取得は ABR を取ったあとに流す）。都道府県とファイルの対応は配布元の一覧（`LISTING_URL`）が持ち、手で表を
-持たない。配布元は最新の版しか置かないので、一覧の版が宣言の版（`rows.version`）と違えば、宣言の版はもう取れず、取得は版を
-上げるよう言って止まる。
+持たない。配布元は最新の版しか置かないので、取得は一覧が指す版を取り、都道府県ごとの版を置き場に記録する。
 
 1つの規制を1行にし、鍵はユニークキー（全国で一意）、列は配布のまま全部を`attrs`へ入れる。列の意味は配布元の説明書
 （拡張版標準フォーマット）が持つ。落とすのは、共通規制種別コードが宣言（`rows.kinds`）に無い規制と、形が取込の範囲
@@ -24,7 +23,7 @@ import shapely
 from shapely.geometry import LineString, MultiPolygon, Polygon, box
 from shapely.geometry.base import BaseGeometry
 
-from app.batch.common import FetchError, fetch_once, fetch_timeout
+from app.batch.common import FetchError, fetch_once, fetch_timeout, read_fetch_record, write_fetch_record
 from app.batch.ingest import Fetcher, SourceRecord, register_adapter
 from app.batch.source_adapters.abr import RangeInputs, range_inputs
 from app.batch.source_adapters.zip_csv import read_zip_csv
@@ -56,19 +55,17 @@ _AREA = "3"
 class JarticRegulationRows:
     """`jartic_regulation`の`rows`。"""
 
-    #: 配布の版（配布元の置き場の名前。例: `202611010000`）。全都道府県で共通。
-    version: str
     #: 取り込む共通規制種別コード（例: 歩行者用道路は`1`）。
     kinds: list[str]
 
 
-def archive_path(version: str, prefecture: str) -> Path:
+def archive_path(prefecture: str) -> Path:
     """取り出した都道府県（JIS の2桁）の配布の置き場。取得と取込で同じ導き方を使う。"""
-    return DATA_DIR / version / f"{prefecture}.zip"
+    return DATA_DIR / f"{prefecture}.zip"
 
 
 def jartic_regulation_inputs(spec: SourceSpec, profile: SourceProfile) -> RangeInputs:
-    return range_inputs(profile, lambda code: archive_path(spec.rows.version, code))
+    return range_inputs(profile, archive_path)
 
 
 def _regulation_shape(kind: str, coordinates: str) -> BaseGeometry:
@@ -101,19 +98,15 @@ def _listed_links() -> dict[str, str]:
 
 
 def fetch_jartic_regulations(spec: SourceSpec, profile: SourceProfile) -> None:
-    version = spec.rows.version
     inputs = jartic_regulation_inputs(spec, profile)
     logger.info("範囲に掛かる都道府県: %s", ", ".join(inputs.prefectures))
     links = _listed_links()
     unlisted = [code for code in inputs.prefectures if code not in links]
     if unlisted:
         raise FetchError(f"配布の一覧に無い都道府県: {', '.join(unlisted)}")
-    stale = sorted({links[code] for code in inputs.prefectures if not links[code].startswith(f"/{version}/")})
-    if stale:
-        raise FetchError(f"配布元の版が宣言の版 {version} と違う: {', '.join(stale)}。"
-                         "source_profile.yaml の jartic_regulation の rows.version を配布元の版へ上げる")
     for code, path in zip(inputs.prefectures, inputs.archives, strict=True):
         fetch_once(FILES_URL + links[code], path, read_timeout=_READ_TIMEOUT_SECONDS, logger=logger)
+    write_fetch_record(DATA_DIR, versions={code: links[code].split("/")[1] for code in inputs.prefectures})
 
 
 @register_adapter("jartic_regulation", rows=JarticRegulationRows, inputs=jartic_regulation_inputs,
@@ -121,7 +114,7 @@ def fetch_jartic_regulations(spec: SourceSpec, profile: SourceProfile) -> None:
 async def read_jartic_regulations(spec: SourceSpec, profile: SourceProfile, inputs: RangeInputs,
                                   origin: dict[str, Any]) -> AsyncIterator[SourceRecord]:
     rows: JarticRegulationRows = spec.rows
-    origin["version"] = rows.version
+    origin.update(read_fetch_record(DATA_DIR))
     kinds = set(rows.kinds)
     min_lat, min_lon, max_lat, max_lon = profile.target.bbox
     frame = box(min_lon, min_lat, max_lon, max_lat)

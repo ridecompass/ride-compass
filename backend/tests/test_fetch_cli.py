@@ -11,7 +11,6 @@
 
 import sys
 from collections.abc import AsyncIterator
-from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -19,7 +18,7 @@ import httpx
 import pytest
 import yaml
 
-from app.batch.common import FetchError
+from app.batch.common import FETCH_RECORD_NAME, FetchError
 from app.batch.fetch_cli import fetch_sources, main
 from app.batch.ingest import ADAPTERS, AdapterInputs, Fetcher, RegisteredAdapter, SourceRecord
 from app.batch.source_adapters import npa_honhyo
@@ -77,19 +76,18 @@ def test_a_source_whose_adapter_registers_a_fetch_is_fetched_in_declared_order(t
 def test_refetches_from_the_upstream_even_when_a_previous_file_is_in_the_store(tmp_path: Path, monkeypatch, respx_mock):
     """手元に前のファイルがあっても上流から取り直す。大きなファイルは配布元から何度にも分けて届くので、つないで置く。"""
     monkeypatch.setattr(npa_honhyo, "DATA_DIR", tmp_path)
-    profile = load_source_profile(None)
-    spec = profile.source("accident")
-    profile = replace(profile, sources=(replace(spec, rows=replace(spec.rows, years=[2024])),))
     previous = npa_honhyo.honhyo_path(2024)
     previous.write_bytes(b"previous")
-    (tmp_path / "honhyo_2019.csv").write_bytes(b"undeclared")
+    (tmp_path / "honhyo_2019.csv").write_bytes(b"unlisted")
+    respx_mock.get(npa_honhyo.LISTING_URL).respond(
+        text='<a href="/publications/statistics/koutsuu/opendata/2024/opendata_2024.html">2024</a>')
     whole = "資料区分,都道府県コード,本票番号\n1,25,0001\n".encode(npa_honhyo.ENCODING)
     respx_mock.get(npa_honhyo.HONHYO_URL_TEMPLATE.format(year=2024)).respond(content=iter([whole[:10], whole[10:]]))
 
-    fetch_sources(profile, ["accident"])
+    fetch_sources(load_source_profile(None), ["accident"])
 
-    assert sorted(p.name for p in tmp_path.iterdir()) == [previous.name]
     assert previous.read_bytes() == whole
+    assert sorted(p.name for p in tmp_path.iterdir()) == sorted([previous.name, FETCH_RECORD_NAME])
 
 
 @pytest.mark.parametrize("failure", [

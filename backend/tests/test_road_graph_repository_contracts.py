@@ -261,10 +261,10 @@ async def test_unknown_way_has_no_tags():
 # --- 事故の収録年 -------------------------------------------------------------
 
 
-@pytest.mark.parametrize(("declared", "years"), [([2023, 2021, 2022], [2021, 2022, 2023]), (None, [])])
-async def test_accident_years_come_from_the_declared_profile(declared, years):
+@pytest.mark.parametrize(("read", "years"), [([2023, 2021, 2022], [2021, 2022, 2023]), (None, [])])
+async def test_accident_years_are_the_years_the_run_read(read, years):
     """実データの発生年を数えない——事故が1件も無かった年が落ちて、密度の分母がずれる。"""
-    repo, _ = _repo([_Row(years=declared)])
+    repo, _ = _repo([_Row(years=read)])
 
     assert await repo.get_accident_years() == years
 
