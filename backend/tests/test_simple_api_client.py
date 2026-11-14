@@ -9,15 +9,11 @@
   だけを見るため、`log_external_call`を差し替えて受け取る
 """
 
-import asyncio
-
-import httpx
-import respx
+import pytest
 from cachetools import TTLCache
 
 from app.infrastructure import simple_api_client
 from tests.fake_external_log import record_external_calls
-from tests.fake_http import client_for
 
 
 def _counting_fetch(value):
@@ -67,59 +63,16 @@ async def test_an_upstream_answer_of_nothing_is_cached_too():
     assert len(calls) == 1
 
 
-def _held_fetch(outcome):
-    """`release`が立つまで返らないfetch。先の要求が上流を待つ間に、次の要求を来させる。"""
-    release = asyncio.Event()
-    calls: list[int] = []
-
-    async def fetch():
-        calls.append(1)
-        await release.wait()
-        if isinstance(outcome, Exception):
-            raise outcome
-        return outcome
-
-    return fetch, calls, release
-
-
-async def test_a_dropped_request_does_not_stop_the_fetch_others_wait_for():
-    """先に来た要求が切れても（利用者が画面を離れる）、同じ取得を待つ要求は値を受け、値はキャッシュへ残る。"""
-    cache: TTLCache = TTLCache(maxsize=4, ttl=60)
-    fetch, calls, release = _held_fetch("v")
-
-    dropped = asyncio.ensure_future(simple_api_client.cached_fetch("cat", fetch, cache=cache, key="k"))
-    waiting = asyncio.ensure_future(simple_api_client.cached_fetch("cat", fetch, cache=cache, key="k"))
-    await asyncio.sleep(0)
-    dropped.cancel()
-    release.set()
-
-    assert await waiting == "v"
-    assert await simple_api_client.cached_fetch("cat", fetch, cache=cache, key="k") == "v"
-    assert len(calls) == 1
-
-
-async def test_requests_waiting_for_a_failing_fetch_fail_with_it(monkeypatch):
-    """同じ取得を待っていた要求も、上流へ取り直さずに同じ失敗を受ける。"""
+async def test_a_reading_that_trips_on_the_shape_fails_as_a_shape_error(monkeypatch):
+    """読み方が項目の欠け・型の違いでつまずいたら、配信の形の誤りとして投げる（口はそれを502にする）。"""
     recorded = record_external_calls(monkeypatch, simple_api_client)
     cache: TTLCache = TTLCache(maxsize=4, ttl=60)
-    fetch, calls, release = _held_fetch(ValueError("bad json"))
 
-    first = asyncio.ensure_future(simple_api_client.cached_fetch("cat", fetch, cache=cache, key="k"))
-    waiting = asyncio.ensure_future(simple_api_client.cached_fetch("cat", fetch, cache=cache, key="k"))
-    await asyncio.sleep(0)
-    release.set()
+    async def fetch():
+        raise ValueError("bad json")
 
-    failures = await asyncio.gather(first, waiting, return_exceptions=True)
-    assert [str(failure) for failure in failures] == ["cat: ValueError('bad json')"] * 2
-    assert len(calls) == 1
-    assert [call.fields["error_type"] for call in recorded] == ["UnexpectedShapeError"] * 2
+    with pytest.raises(simple_api_client.UnexpectedShapeError, match=r"cat: ValueError\('bad json'\)"):
+        await simple_api_client.cached_fetch("cat", fetch, cache=cache, key="k")
 
-
-async def test_get_json_waits_as_long_as_the_client_it_is_given():
-    # 上流ごとの待ち時間は、注入するクライアントが持つ。呼び出しで上書きすると、選んだ待ち時間が効かない。
-    router = respx.Router()
-    route = router.get("https://example.test/a.json").respond(json={})
-    client = client_for(router, timeout=httpx.Timeout(1.0, read=7.0))
-
-    assert await simple_api_client.get_json(client, "https://example.test/a.json", dict, "a is") == {}
-    assert route.calls.last.request.extensions["timeout"] == client.timeout.as_dict()
+    assert [call.fields["error_type"] for call in recorded] == ["UnexpectedShapeError"]
+    assert "k" not in cache

@@ -22,7 +22,6 @@ from shapely.geometry.base import BaseGeometry
 from app.domain.stopwatch import elapsed_ms, start_timer
 from app.domain.jma_area import NEAREST_LIMIT_DEG, ResolvedArea, resolve_area
 from app.infrastructure.data_paths import DATA_DIR
-from app.infrastructure.debug_log import log_throttled_warning
 from app.infrastructure.jma_warning_client import fetch_area_data
 
 logger = logging.getLogger("ridecompass.jma_area_boundaries")
@@ -110,8 +109,7 @@ async def _load_boundaries_or_raise() -> AreaBoundaries:
     try:
         return await asyncio.to_thread(_load_boundaries, BOUNDARY_PATH)
     except (OSError, ValueError, shapely.errors.GEOSException) as exc:
-        log_throttled_warning(
-            "weather:jma-area-boundaries",
+        logger.warning(
             "区域の境界を読めないため警報・洪水予報の区域を引けません path=%s error=%r"
             "（scripts/fetch_jma_area_boundaries.pyで取得する）",
             BOUNDARY_PATH, exc,

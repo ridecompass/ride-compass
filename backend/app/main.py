@@ -1,6 +1,7 @@
 import asyncio
 import gc
 import logging
+import sys
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
@@ -20,7 +21,7 @@ from app.config import settings
 from app.domain.time_zone import JST
 from app.infrastructure.database import get_session_factory
 from app.infrastructure.debug_control import install_ring_buffer_handler
-from app.infrastructure.http_client import JMA_JSON_TIMEOUT, SLOW_JSON_TIMEOUT, TILE_PROXY_TIMEOUT, get_http_client
+from app.infrastructure.http_client import get_http_client
 from app.infrastructure import road_network_store
 from app.infrastructure.region_tile_cache import PRUNE_INTERVAL_HOURS
 from app.infrastructure.msm_client import refresh as refresh_msm
@@ -91,7 +92,7 @@ async def _sync_msm_job() -> None:
     ルート評価と地図の道ごとの風はこのローカルファイルだけを読むため、同期が止まるとデータは
     順次古くなり、予報終端が現在時刻へ追いつくと風が読めなくなる。
     """
-    await refresh_msm(get_http_client(60.0))
+    await refresh_msm(get_http_client())
 
 
 async def _prune_stale_disk_generations_job() -> None:
@@ -136,12 +137,6 @@ async def _export_derived_database_job() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # httpx.AsyncClientの生成はSSLコンテキスト構築を伴い、環境によっては数百ms〜1秒かかる。
-    # 遅延生成のままだとデプロイ直後の最初のリクエストがこのコストを負い、接続タイムアウトが
-    # タイトな外部呼び出しではConnectTimeoutを誘発する。実際に使うtimeout値を先に構築しておく。
-    for timeout in (JMA_JSON_TIMEOUT, SLOW_JSON_TIMEOUT, TILE_PROXY_TIMEOUT):
-        get_http_client(timeout)
-
     async with get_session_factory()() as session:
         # 例外をここで捕捉しないため、費用の軸の定義を読めない状態では起動自体が失敗する（fail-fast）。
         await refresh_definitions(session)

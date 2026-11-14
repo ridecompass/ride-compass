@@ -34,7 +34,7 @@ paths:
 |---|---|---|
 | 更新頻度の低い外部JSON/CSV（警報・WBGT・洪水・地域マスタ） | `simple_api_client.py: cached_fetch` | プロセス内`cachetools.TTLCache`（クライアントのモジュールが作り、呼び出し側（`api/dependencies.py`）が持って`cached_fetch`へ渡す） |
 | アメダスの観測 | `simple_api_client.py: cached_fetch` | `jma_amedas_store.py`（Redis。定期の取得が書き、読む側はRedisから読む） |
-| 気象庁の動的タイル（ナウキャスト・キキクル等） | `jma_tile_client.py: JmaTileClient.fetch`（上流への秒間上限つき） | `jma_tile_redis_cache.py`（Redis） |
+| 気象庁の動的タイル（ナウキャスト・キキクル等） | `jma_tile_client.py: JmaTileClient.fetch` | `jma_tile_redis_cache.py`（Redis） |
 | 気象庁MSMの予報 | `msm_client.py: refresh`（ETag条件付きGETでファイル同期） | ローカルファイル（`backend/data/msm/`） |
 | 色別標高図・基礎地図 | 各クライアント（`gsi_tile_client`・`basemap_client`） | `tile_cache.py`（ディスク、生バイト列） |
 | PostGIS由来の重い中間結果 | リポジトリ層 | 用途で選ぶ（次節） |

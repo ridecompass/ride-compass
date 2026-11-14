@@ -1,12 +1,9 @@
-import asyncio
 import json
 import re
-import time
 
 import httpx
 from cachetools import TTLCache
 
-from app.config import settings
 from app.domain.jma_tile_specs import JmaFrame, TargetTimesRow
 from app.infrastructure import jma_tile_redis_cache
 from app.infrastructure.debug_log import log_external_call
@@ -34,7 +31,7 @@ def is_target_times_path(path: str) -> bool:
 
 
 class JmaTileSharedState:
-    """`JmaTileClient`がリクエストをまたいで持つもの（時刻一覧のキャッシュと、上流への間隔の起点）。
+    """`JmaTileClient`がリクエストをまたいで持つ時刻一覧のキャッシュ。
 
     クライアントはリクエストごとに使い捨てなので、プロセスに1つ持って渡す。プロセスをまたいでは効かない。
     """
@@ -42,20 +39,6 @@ class JmaTileSharedState:
     def __init__(self) -> None:
         # 同時に存在しうる時刻一覧の種類は要素の系統ぶんしかないため、上限は小さくてよい。
         self.target_times: TTLCache = TTLCache(maxsize=16, ttl=_TARGET_TIMES_TTL_SECONDS)
-        self._rate_limit_lock = asyncio.Lock()
-        self._last_fetch_at: float | None = None
-
-    async def wait_for_upstream_rate_limit(self) -> None:
-        """JMA非公式APIへの実フェッチを秒間`settings.jma_tile_upstream_max_requests_per_second`回までに抑える。
-        実際にJMAへ問い合わせる直前でだけ呼ぶ。"""
-        min_interval = 1.0 / settings.jma_tile_upstream_max_requests_per_second
-        async with self._rate_limit_lock:
-            now = time.monotonic()
-            if self._last_fetch_at is not None:
-                wait_seconds = self._last_fetch_at + min_interval - now
-                if wait_seconds > 0:
-                    await asyncio.sleep(wait_seconds)
-            self._last_fetch_at = time.monotonic()
 
 
 class JmaTileClient:
@@ -84,14 +67,12 @@ class JmaTileClient:
 
     async def fetch(self, path: str) -> tuple[bytes, str] | UpstreamNotFound:
         """キャッシュを一切参照せず外部フェッチのみ行い、結果をキャッシュへ書き戻す。
-        呼び出し側の歯止め（レート制限）は、ここを呼ぶ前に済んでいる前提。上流への間隔の待ちは、呼び出し元を
-        問わず総リクエスト数を抑えるためここに置き、実フェッチの所要時間に含めないよう`with`の前で待つ。
+        呼び出し側の歯止め（レート制限）は、ここを呼ぶ前に済んでいる前提。
 
         上流の404は`UPSTREAM_NOT_FOUND`を返す（疎な格子状タイルでは珍しくない正常系、配信前の
         地物では毎回の配信の間に必ず起きる正常系のため、WARNINGを出さない）。他の失敗は投げる。
         取得できたものは`store`が返す形で返す。
         """
-        await self._shared.wait_for_upstream_rate_limit()
         with log_external_call("weather:jma-tile", path=path, cache="miss") as fields:
             response = await fetch_upstream(self._http_client, f"{UPSTREAM_HOST}/{path}", fields)
             if isinstance(response, UpstreamNotFound):
@@ -120,7 +101,7 @@ class JmaTileClient:
         """キャッシュ参照→ミスなら外部フェッチ、という一括呼び出し。
         レート制限の適用順序を気にしない呼び出し元（プリウォームバッチ・テスト等）向け。
 
-        戻り値は3通り: 中身のあるタイル・`UPSTREAM_NOT_FOUND`（描くものが無い）・None（取得失敗）。
+        戻り値は中身のあるタイルか`UPSTREAM_NOT_FOUND`（描くものが無い）で、取得の失敗は投げる。
         **空と失敗を混ぜない**——プリウォームは空タイルを正常な結果として数える
         （平常時は取得のほとんどが空のため、失敗として数えるとエラー件数が常に大きくなり
         本物の障害が埋もれる）。"""

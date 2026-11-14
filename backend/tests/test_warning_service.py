@@ -9,7 +9,6 @@
 - 地点から区域を引くこと → `test_jma_area_boundaries.py`
 """
 
-import asyncio
 
 
 from app.infrastructure.jma_warning_client import new_area_data_cache, new_warning_cache
@@ -77,14 +76,3 @@ async def test_get_warnings_merges_across_documents(boundary_path):
         ("14", "雷注意報", "advisory"),
         ("43", "大雨危険警報", "severe_warning"),
     ]
-
-
-async def test_points_asked_at_once_fetch_each_document_once(boundary_path):
-    """同時に開いた画面の問い合わせは、地域マスタと警報の電文を気象庁へ1回ずつだけ取りに行く。"""
-    upstream = area_lookup_upstream(boundary_path, warning_documents=[])
-    service = _service(upstream)
-
-    await asyncio.gather(service.get_warnings(CHIYODA_POINT), service.get_warnings(CHIYODA_POINT))
-
-    urls = [str(call.request.url) for call in upstream.calls]
-    assert len(set(urls)) == len(urls) == 2
