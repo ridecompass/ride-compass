@@ -4,7 +4,6 @@ autouseがテストごとの一時ディレクトリへ差し替える。
 
 ここで見ないもの:
 - 読み出しのSQLが返す材料 → `test_feature_materials_in_tile.py`・`test_material_values.py`
-- 置き場の失敗と失効 → `test_tile_persistent_cache.py`
 """
 
 import functools

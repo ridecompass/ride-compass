@@ -65,7 +65,7 @@ def test_a_tile_is_served_as_png(override_dependency, path, upstream, served):
 
 # 整備区域外（珍しくない正常系）は上流障害の502にしない。`raster-dem`は整備区域外のタイルも視界へ入るたび要求し、
 # サーバー側が同じ事実をプロセス内に持って上流へ問い合わせ直さなくても、ブラウザからの要求は減らない——沿岸部を連続して
-# パンする利用者は404だけでレート制限に達しうるので、恒久404はブラウザにも覚えさせる。502は一時的なので覚えさせない。
+# パンする利用者は404だけでレート制限に達しうるので、恒久404はブラウザにも覚えさせる。
 @pytest.mark.parametrize("path", [RELIEF_TILE, TERRAIN_TILE])
 @pytest.mark.parametrize(("result", "status", "detail", "cache_control"), [
     (UPSTREAM_NOT_FOUND, 404, "指定されたタイルは存在しません", GSI_TILE_NOT_FOUND.header()),

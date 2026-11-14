@@ -9,7 +9,7 @@ from datetime import datetime
 
 from app.domain.jma_amedas import AmedasObservation, WindDirection
 from app.infrastructure.jma_amedas_client import AMEDAS_REFRESH_INTERVAL_MINUTES
-from app.infrastructure.redis_json_cache import UNAVAILABLE, get_hash, set_hashes
+from app.infrastructure.redis_json_cache import get_hash, set_hashes
 
 _KEY_PREFIX = "jma:amedas"
 #: 次のバッチが書き直すまで切らさない長さ。
@@ -22,27 +22,25 @@ def _observation_key(station_id: str) -> str:
 
 
 class AmedasUnavailableError(Exception):
-    """アメダスの観測値を出せない（置き場を読めない・観測所の観測値が無い）。口は503で理由を返す。"""
+    """アメダスの観測値を出せない（観測所の観測値が無い）。口は503で理由を返す。"""
 
 
 async def read_observation(station_id: str) -> AmedasObservation:
     """保存済みの観測値。日の出・日没（`twilight`）と天気コード（`weather_code`）は持たずNoneで返す（クエリ地点で決まるため）。
-    置き場を読めない・観測値が無いときは投げる。"""
+    観測値が無いときは投げる。"""
     observation = await get_hash(
         _observation_key(station_id),
         decode=lambda raw: _observation_from_fields({name.decode(): value.decode() for name, value in raw.items()}),
         category=_OBSERVATION_CATEGORY,
         station_id=station_id,
     )
-    if observation is UNAVAILABLE:
-        raise AmedasUnavailableError("アメダスの観測値の置き場[Redis]を読めません")
     if observation is None:
         raise AmedasUnavailableError(f"観測所 {station_id} の観測値がありません[まだ取り込まれていないか、期限が切れました]")
     return observation
 
 
 async def write_observations(observations: dict[str, AmedasObservation]) -> None:
-    """観測所ごと（観測所id → 観測値）に書き戻す。失敗は次のバッチで自己修復するため、記録だけして諦める。"""
+    """観測所ごと（観測所id → 観測値）に書き戻す。"""
     await set_hashes(
         {
             _observation_key(station_id): _fields_from_observation(observation)

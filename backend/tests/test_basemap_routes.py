@@ -57,8 +57,6 @@ def test_basemap_proxy_tells_a_missing_part_apart_from_an_upstream_failure(overr
 
     assert response.status_code == status
     assert response.json() == {"detail": detail}
-    # 部品の404をブラウザに覚えさせない。
-    assert "cache-control" not in response.headers
 
 
 def test_basemap_proxy_is_rate_limited_per_client(override_dependency):

@@ -129,8 +129,7 @@ RideCompass/
 - Node.js 22.12+（frontend のテストの道具 vitest の要件）
 - Python（版は `backend/Dockerfile` の `FROM` と同じ。CI もそこから取る）
 - PostgreSQL + PostGIS（Road Graph・路面タイル生成の一次系統。**DBなしでは起動しない**）
-- Redis（JMA気象データの短命キャッシュ。未接続でもフォールバックする箇所が
-  一部あるが、ローカル開発でも用意することを推奨）
+- Redis（JMA気象データの短命キャッシュ。未接続だと気象庁のタイル・アメダスの口が失敗する）
 - Docker / Docker Compose（任意。frontend/backend/postgres/redisをまとめて起動する場合）
 
 ### Docker Composeで起動する

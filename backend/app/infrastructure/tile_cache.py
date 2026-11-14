@@ -4,9 +4,6 @@
 保存の実体は`diskcache`で、容量上限を超えればライブラリが書き込みのついでに退避する。
 """
 
-import logging
-import pickle
-import sqlite3
 from collections.abc import Callable
 
 import diskcache
@@ -14,14 +11,7 @@ import diskcache
 from app.config import settings
 from app.infrastructure.data_paths import DATA_DIR
 
-logger = logging.getLogger("ridecompass.tile_cache")
-
 CACHE_DIR = DATA_DIR / "tile_cache"
-
-#: ディスクの置き場（`diskcache`）の障害（ディスクフル・権限・SQLiteの障害）として受ける例外。実装の誤り（pickleにできない値等）は受けない。
-DISK_STORE_ERRORS = (OSError, sqlite3.Error)
-#: 読んだ項目が壊れているときに出る例外。
-DISK_READ_ERRORS = (*DISK_STORE_ERRORS, pickle.UnpicklingError, EOFError)
 
 _opened_cache: diskcache.Cache | None = None
 
@@ -41,35 +31,22 @@ def _opened() -> diskcache.Cache:
 
 
 def get(path: str) -> tuple[bytes, str] | None:
-    """キャッシュ済みなら(内容, Content-Type)を返す。未キャッシュ・読めないときはNone（呼び出し元が取り直す）。"""
-    try:
-        return _opened().get(path)
-    except DISK_READ_ERRORS as exc:  # ディスク・SQLiteの障害と壊れた項目は、いずれも未キャッシュ扱いにする
-        logger.warning("tile cache read failed for path=%s, treating as cache miss error=%r", path, exc)
-        return None
+    """キャッシュ済みなら(内容, Content-Type)を返す。未キャッシュならNone（呼び出し元が取り直す）。"""
+    return _opened().get(path)
 
 
 def set(path: str, content: bytes, content_type: str) -> None:
-    """書き込みの失敗（ディスクフル等）は警告だけにする——キャッシュに書けないことが配信を止める理由にはならない。"""
-    try:
-        _opened().set(path, (content, content_type))
-    except DISK_STORE_ERRORS as exc:  # ディスクフル・権限・SQLiteの障害は、書かずに進む
-        logger.warning("tile cache write failed for path=%s (disk full/permission?) error=%r", path, exc)
+    _opened().set(path, (content, content_type))
 
 
 def delete_where(is_stale: Callable[[str], bool]) -> int:
     """`is_stale`が真を返す鍵を消し、消した数を返す。容量の上限とは別に、世代交代で読まれなくなった実体を消す口。
 
     鍵を全部読み終えてから消す（読みながら消すと、読み進める位置が消した分だけずれる）。
-    失敗は警告だけにする——消せなければ容量の上限が退避するまで残るだけで、配信は止めない。
     """
-    try:
-        cache = _opened()
-        stale = [key for key in cache.iterkeys() if is_stale(key)]
-        return sum(1 for key in stale if cache.delete(key))
-    except DISK_STORE_ERRORS as exc:  # ディスク・SQLiteの障害は、消さずに残すことへ倒す
-        logger.warning("tile cache prune failed, stale entries are kept error=%r", exc)
-        return 0
+    cache = _opened()
+    stale = [key for key in cache.iterkeys() if is_stale(key)]
+    return sum(1 for key in stale if cache.delete(key))
 
 
 def clear_all() -> None:
