@@ -1,0 +1,13 @@
+# 像のビルドへ手元の版を送らない。依存はコンテナのnpm ciが、ビルドの出力はnext buildが作り、
+# 手元のものを写すと上書きする（別のOS向けのネイティブの依存・手元の.envの宛先がビルドに焼き込まれる）。
+node_modules
+.next
+.env*
+# テストと変異テストの出力。ビルドは読まない。
+coverage
+playwright-report
+test-results
+blob-report
+reports
+.stryker-tmp
+*.tsbuildinfo

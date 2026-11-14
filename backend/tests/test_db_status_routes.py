@@ -1,6 +1,6 @@
 """`GET /api/admin/db-status`のルートテスト: レポートを応答へ受け渡す。
 
-ここで見ないもの: 認可 → `test_admin_route_authorization.py`、DB障害の503 → `test_admin_db_unavailable.py`、
+ここで見ないもの: 認可 → `test_admin_route_authorization.py`、
 注意が要るかの判断（しきい値） → `test_db_status_service.py`（ここではレポートを作る関数の結果がそのまま応答になることだけを見る）
 """
 
@@ -67,16 +67,9 @@ def _counts() -> DbStatusCounts:
     )
 
 
-def _override(service: _StubService) -> None:
-    app.dependency_overrides[get_db_status_service] = lambda: service
-
-
-def teardown_function() -> None:
-    app.dependency_overrides.clear()
-
-
-def test_returns_the_report(admin_credentials):
-    _override(_StubService(_counts()))
+def test_returns_the_report(override_dependency, admin_credentials):
+    service = _StubService(_counts())
+    override_dependency(get_db_status_service, lambda: service)
 
     body = client.get(STATUS_URL, headers=AUTH_HEADERS).json()
 

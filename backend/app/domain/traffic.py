@@ -3,25 +3,27 @@
 すべて純関数・unknown安全（タグが無い/未知の値は`None`または`"unknown"`を返し、
 根拠のない推測はしない）。OSMタグからこれらの分類を導く規則の正本はここ1箇所。
 
-道路種別・制限速度等から走りにくさを組み立てるのは軸定義（DBが正本、軸スタジオから増減する）の
-側で、ここは材料の分類までを持つ。自転車インフラは正規化フラグ材料（`domain/material_catalog.py`が宣言する
-`highway_is_cycleway`等）の組み合わせで表す。
-
-分類のほかに、**所要時間モデルのパラメータ**も持つ（`stop_seconds`: 停止要因1回あたりの
-時間損失、`HIGHWAY_RANK`: 交差点で優先関係を判定するための階級順）。読むのは
-走行時間の合成（`domain/leg_costs.py`）と交差点のターンの費用（`services/road_graph_engine.py`）で、評価軸の重み付けとは別の関心事
-——軸は「その道を走るときのつらさ」、こちらは「そこを通るのにかかる時間」を表す。
+分類のほかに、**所要時間モデルのパラメータ**も持つ（`StopEvent`・`stop_event`: 止まる出来事の割合と待ち、
+`HIGHWAY_RANK`: 交差点で優先関係を判定するための階級順）。道のストレスの軸とは別の関心事
+——道のストレスは「その道を走るときのつらさ」、こちらは「そこを通るのにかかる時間」を表す。
 """
 
 from collections.abc import Mapping
-from typing import Literal, TypeVar, get_args
+from dataclasses import dataclass
+from typing import Literal, get_args
 
-from app.domain.tuning import TUNING_PARAMETERS_BY_ID, stop_seconds_parameter_id, tuning_value
+from app.domain.geo import ground_m_sql
+from app.domain.tuning import (
+    TUNING_PARAMETERS_BY_ID,
+    event_seconds_parameter_id,
+    event_share_parameter_id,
+    tuning_value,
+)
 
 # 交差点判定の次数しきい値（この数以上の異なる隣接Nodeを持つNodeを交差点とみなす）。
 INTERSECTION_DEGREE_THRESHOLD = 3
 
-StopPoiKind = Literal[
+_StopPoiKind = Literal[
     "traffic_signals",
     "crossing",
     "stop",
@@ -32,18 +34,15 @@ StopPoiKind = Literal[
     "traffic_calming",
 ]
 
-_HIGHWAY_STOP_KINDS: dict[str, StopPoiKind] = {
-    "traffic_signals": "traffic_signals",
-    "crossing": "crossing",
-    "stop": "stop",
-    "give_way": "give_way",
+_HIGHWAY_STOP_KINDS: dict[str, _StopPoiKind] = {
+    kind: kind for kind in ("traffic_signals", "crossing", "stop", "give_way")
 }
 
 # 踏切。`level_crossing`は車道が線路を渡る踏切、`crossing`は歩道・自転車道が渡る踏切で、
 # 自転車にとってはどちらも同じ「線路を渡るため止まる/徐行する点」。路面電車側
 # （tram_*）も同じ扱いにする。kindを分けたまま持つのは、後から集計を分けたくなったときに
 # 生タグを読み直さずに済ませるため（集計キーへの写像は`COUNT_KIND_OF`が持つ）。
-_RAILWAY_STOP_KINDS: dict[str, StopPoiKind] = {
+_RAILWAY_STOP_KINDS: dict[str, _StopPoiKind] = {
     "level_crossing": "level_crossing",
     "tram_level_crossing": "level_crossing",
     "crossing": "railway_crossing",
@@ -104,14 +103,14 @@ _TRAFFIC_CALMING_VALUES: frozenset[str] = frozenset(
 #
 # **型の宣言から導く。** 集合を別に並べると、型に無いkindを集合へ入れられてしまい、
 # その分だけ停止密度が静かに増える（引き当ての表と突き合わせる検査が要らなくなる）。
-STOP_POI_KINDS: frozenset[str] = frozenset(get_args(StopPoiKind))
+STOP_POI_KINDS: frozenset[str] = frozenset(get_args(_StopPoiKind))
 
 
 # 停止要因の集計キー（`edge_counts`・`way_counts`の件数列`poi_<キー>`）と、
 # その日本語ラベル。**キーの単一ソース**で、材料
 # （`domain/material_catalog.py`の`poi_*_per_km`）はこの一覧から生成する。
 #
-# `StopPoiKind`（取込時の分類）と1対1ではない。分ける基準は「評価軸で違う重みを付けたいか」
+# `_StopPoiKind`（取込時の分類）と1対1ではない。分ける基準は「止まる割合と待ちを違えたいか」
 # だけで、次のように畳む:
 # - 信号は`highway=traffic_signals`と`highway=crossing`＋`crossing=traffic_signals`の
 #   両方の書かれ方があり、どちらも同じ「止まる信号」のため`signal`へまとめる
@@ -133,7 +132,7 @@ POI_COUNT_KINDS: dict[str, str] = {
 #: 取込時の種別 → 数える種別（`POI_COUNT_KINDS`のキー）。畳み方は上の説明のとおり。
 #: 数える側・地図へ出す側とも、この表と信号の読み替えは`count_kind_sql`・`stop_kind_sql`
 #: からだけ読む。
-COUNT_KIND_OF: dict[StopPoiKind, str] = {
+COUNT_KIND_OF: dict[_StopPoiKind, str] = {
     "traffic_signals": "signal",
     "crossing": "crossing",
     "stop": "stop",
@@ -157,26 +156,54 @@ if _UNFOLDED_STOP_KINDS or _UNKNOWN_COUNT_KINDS:
 # 宣言の欠けは「その種別の待ちが0秒」として所要時間から見分けられずに消える。
 _UNDECLARED_STOP_KINDS = tuple(
     kind for kind in POI_COUNT_KINDS
-    if stop_seconds_parameter_id(kind) not in TUNING_PARAMETERS_BY_ID
+    if not {event_seconds_parameter_id("stop", kind), event_share_parameter_id("stop", kind)} <= TUNING_PARAMETERS_BY_ID.keys()
 )
 if _UNDECLARED_STOP_KINDS:
     raise RuntimeError(
         f"停止要因の較正値が`domain/tuning.py`に宣言されていない種別: {_UNDECLARED_STOP_KINDS}")
 
 
-def stop_seconds_subjects() -> dict[str, tuple[str, ...]]:
-    """停止の待ちの較正値のid → 数える種別の名前。管理画面が較正値の名前へ添える。"""
-    return {stop_seconds_parameter_id(kind): (label,) for kind, label in POI_COUNT_KINDS.items()}
+def stop_parameter_subjects() -> dict[str, tuple[str, ...]]:
+    """停止要因の較正値（割合・待ち）のid → 数える種別の名前。管理画面が較正値の名前へ添える。"""
+    return {
+        parameter_id: (label,)
+        for kind, label in POI_COUNT_KINDS.items()
+        for parameter_id in (event_share_parameter_id("stop", kind), event_seconds_parameter_id("stop", kind))
+    }
 
 
-# 停止要因1回あたりの時間損失（秒）は**待ちの期待値＋減速と再加速のロス**の合計で、
-# 所要時間へそのまま足す量。信号の無い横断歩道が0なのは、自転車が止まらず通過できるため。
-def stop_seconds(kind: str) -> float:
-    """停止要因の種別から1回あたりの時間損失（秒）。
+#: 止まらず減速するだけの出来事（`(group, 種類)`。`group`は`stop`＝停止要因・`turn`＝曲がる所）。ほかは止まる。
+SLOWING_EVENTS = frozenset({("stop", "barrier"), ("turn", "left")})
 
-    秒数は`domain/tuning.py`が宣言する（走ってみて決める値のため、管理画面から変えられる）。
-    """
-    return tuning_value(stop_seconds_parameter_id(kind))
+
+@dataclass(frozen=True)
+class StopEvent:
+    """止まる出来事1種類（停止要因・曲がる所）。止まる割合と、止まった（減速した）ときに失う時間（秒）と、1回通るときの
+    漕ぎ出しを止まる出来事の回数に換えた期待値。割合と待ちは種類ごとの較正値で、所要時間と漕ぎ出しの体力に同じ割合を
+    使う——時間だけ割合を掛けて体力は毎回数えると、同じ出来事を時間と体力で別の回数として数える。"""
+
+    share: float
+    wait_seconds: float
+    kickoffs: float
+
+    @property
+    def expected_seconds(self) -> float:
+        """1回通るときに失う時間の期待値（割合 × 待ち）。"""
+        return self.share * self.wait_seconds
+
+
+#: 何も起きない出来事（曲がる所の直進）。
+NO_EVENT = StopEvent(share=0.0, wait_seconds=0.0, kickoffs=0.0)
+
+
+def stop_event(group: str, name: str) -> StopEvent:
+    """止まる出来事（`group`は`stop`＝停止要因［種類は`POI_COUNT_KINDS`のキー］・`turn`＝曲がる所）を、いま効いている
+    較正値から組む（走ってみて決める値のため、管理画面から変えられる）。減速だけの出来事は巡航速度の
+    `stop.slowed_speed_ratio`倍から戻すので、漕ぎ出しは止まってからの（1 − 割合²）倍。"""
+    share = tuning_value(event_share_parameter_id(group, name))
+    slowed = tuning_value("stop.slowed_speed_ratio")
+    return StopEvent(share=share, wait_seconds=tuning_value(event_seconds_parameter_id(group, name)),
+                     kickoffs=share * ((1.0 - slowed * slowed) if (group, name) in SLOWING_EVENTS else 1.0))
 
 
 def poi_count_column(kind: str) -> str:
@@ -194,12 +221,6 @@ def stop_count_material_ids() -> tuple[str, ...]:
     return tuple(poi_density_material_id(kind) for kind in POI_COUNT_KINDS)
 
 
-# 同じ場所にある同種の点を1つの停止としてまとめる距離（m）。日本のOSMは1つの信号交差点を
-# 流入路ごとの`highway=traffic_signals`と横断歩道位置の`highway=crossing`＋
-# `crossing=traffic_signals`という複数ノードで描くため、ノードを素直に数えると停止回数を
-# 上回る。集計時にこの距離でまとめてから数える。
-POI_CLUSTER_EPS_M = 40.0
-
 #: 道路網の上の1つの場所（停止要因のまとまり・交差点）を、そこに端を持つ区間1本が持つ割合。
 #: 場所へ入る区間と出る区間が半分ずつ持つので、経路がどう通っても合計1回になる。
 PLACE_SHARE_PER_END = 0.5
@@ -211,6 +232,11 @@ def place_count_sql(inside_ends: str) -> str:
     0本なら場所を通り抜けるので1、1本なら入るか出るかなので`PLACE_SHARE_PER_END`、2本なら場所の中なので0。
     """
     return f"CASE {inside_ends} WHEN 0 THEN 1.0 WHEN 1 THEN {PLACE_SHARE_PER_END} ELSE 0 END"
+
+
+def stop_cluster_sql(geom: str, eps_m: str, partition: str) -> str:
+    """停止要因の点`geom`を`partition`ごとに地面の m で`eps_m`以内に連なるまとまりへ分ける窓の式。"""
+    return f"ST_ClusterDBSCAN({ground_m_sql(geom)}, eps := {eps_m}, minpoints := 1) OVER (PARTITION BY {partition})"
 
 
 # コンビニは OpenStreetMap からは取らない——補給の点のコンビニは Overture の地点（`domain/stop_place.py`の群
@@ -229,7 +255,7 @@ _AMENITY_SUPPLY_KINDS: dict[str, _SupplyPoiKind] = {
 # 自販機のうち「口に入るものが買える」と言い切れる`vending`の値。OSM wikiで使用実績のある値の
 # うち飲食物を売る機械だけを挙げる。複数の値は`;`で連結されるため、分割した要素のどれかが
 # ここにあれば飲料自販機として扱う。
-SUPPLY_VENDING_VALUES: frozenset[str] = frozenset(
+_SUPPLY_VENDING_VALUES: frozenset[str] = frozenset(
     {
         "drinks", "beverages", "coffee", "water", "milk", "food", "sweets",
         "ice_cream", "chewing_gums", "bread", "fruit", "vegetables", "eggs",
@@ -239,7 +265,7 @@ SUPPLY_VENDING_VALUES: frozenset[str] = frozenset(
 
 # 交差点で「自分が走ってきた道より上位の道と交わるか」を判定するための階級順（大きいほど
 # 上位）。**優先関係の判定だけに使う**——値そのものに意味は無く、比較結果だけが使われる。
-# 評価軸が持つhighwayの重み付け（DBの軸定義）とは別の関心事で、
+# 道のストレスの軸が持つ区分の重さ（DBの費用の軸の定義）とは別の関心事で、
 # あちらは「その道を走るときの圧迫感」、こちらは「その道を横断・合流するときの待ち」。
 HIGHWAY_RANK: dict[str, int] = {
     "motorway": 6, "motorway_link": 6,
@@ -264,14 +290,14 @@ def highway_rank(highway: str) -> int:
 
 
 # OSMのoneway値のうち「逆方向への通行不可」を意味するもの。
-ONEWAY_FORWARD_ONLY = {"yes", "true", "1"}
-ONEWAY_BACKWARD_ONLY = {"-1", "reverse"}
+_ONEWAY_FORWARD_ONLY = {"yes", "true", "1"}
+_ONEWAY_BACKWARD_ONLY = {"-1", "reverse"}
 # 同じく「両方向通行可」を明示するもの。`oneway`が無い場合と区別が要る——無い場合は
 # `junction`による暗黙の一方通行へ進むが、明示されているならそちらが優先する。
-ONEWAY_BIDIRECTIONAL = {"no", "false", "0"}
+_ONEWAY_BIDIRECTIONAL = {"no", "false", "0"}
 # `oneway`タグが無くても一方通行になるjunctionの値。環状交差点は構造として一方向にしか
 # 通れず、OSMは個々のwayへ`oneway`を付けない慣行がある。
-ONEWAY_JUNCTION_VALUES = {"roundabout", "circular"}
+_ONEWAY_JUNCTION_VALUES = {"roundabout", "circular"}
 
 
 # --- タグの引き当てを、SQLへ渡せる表と式で持つ -------------------------------
@@ -323,15 +349,15 @@ TRAFFIC_SIGNAL_SQL = (
 )
 
 #: 道の形の向き（始点→終点）にだけ通れる道・逆にだけ通れる道の通行方向。
-DIRECTION_FORWARD = "forward"
+_DIRECTION_FORWARD = "forward"
 DIRECTION_BACKWARD = "backward"
 #: どの規則にも当たらない道は両方向。
-DIRECTION_DEFAULT = "both"
+_DIRECTION_DEFAULT = "both"
 
 _ONEWAY_DIRECTIONS: dict[str, str] = {
-    **{value: DIRECTION_FORWARD for value in sorted(ONEWAY_FORWARD_ONLY)},
-    **{value: DIRECTION_BACKWARD for value in sorted(ONEWAY_BACKWARD_ONLY)},
-    **{value: DIRECTION_DEFAULT for value in sorted(ONEWAY_BIDIRECTIONAL)},
+    **{value: _DIRECTION_FORWARD for value in sorted(_ONEWAY_FORWARD_ONLY)},
+    **{value: DIRECTION_BACKWARD for value in sorted(_ONEWAY_BACKWARD_ONLY)},
+    **{value: _DIRECTION_DEFAULT for value in sorted(_ONEWAY_BIDIRECTIONAL)},
 }
 
 #: 引き当ての順。`oneway:bicycle`（自転車に限り一方通行規制の対象外、という例外タグ）を
@@ -339,7 +365,7 @@ _ONEWAY_DIRECTIONS: dict[str, str] = {
 _DIRECTION_GROUPS: tuple[tuple[str, dict[str, str]], ...] = (
     ("oneway:bicycle", _ONEWAY_DIRECTIONS),
     ("oneway", _ONEWAY_DIRECTIONS),
-    ("junction", {value: DIRECTION_FORWARD for value in sorted(ONEWAY_JUNCTION_VALUES)}),
+    ("junction", {value: _DIRECTION_FORWARD for value in sorted(_ONEWAY_JUNCTION_VALUES)}),
 )
 
 #: (タグ名, 値, 通行方向, 優先順位)。
@@ -351,7 +377,7 @@ DIRECTION_RULES: tuple[tuple[str, str, str, int], ...] = tuple(
 
 #: `way_directions.direction`の語彙。表の検査制約もここから作る。
 DIRECTIONS: frozenset[str] = frozenset(
-    direction for _key, _value, direction, _priority in DIRECTION_RULES) | {DIRECTION_DEFAULT}
+    direction for _key, _value, direction, _priority in DIRECTION_RULES) | {_DIRECTION_DEFAULT}
 
 
 def _quote(value: str) -> str:
@@ -360,21 +386,18 @@ def _quote(value: str) -> str:
 
 def one_way_sql(direction: str) -> str:
     """通行方向の式`direction`の道が、片方向にだけ通れるかのSQL式。"""
-    return f"{direction} <> {_quote(DIRECTION_DEFAULT)}"
+    return f"{direction} <> {_quote(_DIRECTION_DEFAULT)}"
 
 
 def travel_allowed(direction: str) -> tuple[bool, bool]:
     """通行方向`direction`の道を、道の形の向き（始点→終点）に通れるか・逆に通れるか。"""
-    return direction != DIRECTION_BACKWARD, direction != DIRECTION_FORWARD
+    return direction != DIRECTION_BACKWARD, direction != _DIRECTION_FORWARD
 
 
 #: 信号の読み替え。近くに信号がある（`has_traffic_signals`）これらの種別の点は、利用者から
 #: 見れば信号である（信号は流入路ごと・横断歩道位置ごとの複数ノードで描かれる）。
-_SIGNAL_READ_KINDS: tuple[StopPoiKind, ...] = ("traffic_signals", "crossing")
-_SIGNAL_KIND: StopPoiKind = "traffic_signals"
-
-_Kind = TypeVar("_Kind", bound=str)
-
+_SIGNAL_READ_KINDS: tuple[_StopPoiKind, ...] = ("traffic_signals", "crossing")
+_SIGNAL_KIND: _StopPoiKind = "traffic_signals"
 
 def stop_kind_sql(alias: str) -> str:
     """`node_kinds`の別名`alias`の行の種別を、信号の読み替えを済ませて返すSQL式。
@@ -392,7 +415,7 @@ def kinds_shown_as(kind: str) -> tuple[str, ...]:
     return _SIGNAL_READ_KINDS if kind == _SIGNAL_KIND else (kind,)
 
 
-def kind_map_sql(kind_sql: str, mapping: Mapping[_Kind, str], *, otherwise: str = "NULL") -> str:
+def kind_map_sql[K: str](kind_sql: str, mapping: Mapping[K, str], *, otherwise: str = "NULL") -> str:
     """種別の式`kind_sql`を表`mapping`で読み替えるSQL式。表に無い種別は`otherwise`。"""
     whens = " ".join(
         f"WHEN {_quote(kind)} THEN {_quote(mapped)}" for kind, mapped in sorted(mapping.items()))
@@ -427,7 +450,7 @@ def tag_kind_sql(source: str) -> str:
 
     どれにも当たらない行は返らない。
     """
-    vending = ", ".join(_quote(v) for v in sorted(SUPPLY_VENDING_VALUES))
+    vending = ", ".join(_quote(v) for v in sorted(_SUPPLY_VENDING_VALUES))
     return f"""
 WITH src AS ({source}),
 matched AS ({_rule_match_sql(TAG_KIND_RULES)}
@@ -449,12 +472,12 @@ SELECT DISTINCT ON (id) id, result AS kind FROM matched ORDER BY id, priority
 def direction_sql(source: str) -> str:
     """`source`（`id`・`tags`を返す関係）の各行へ通行方向を付ける。
 
-    どれにも当たらない行も`DIRECTION_DEFAULT`で返る——道は必ずどちらかに通れる。
+    どれにも当たらない行も`_DIRECTION_DEFAULT`で返る——道は必ずどちらかに通れる。
     """
     return f"""
 WITH src AS ({source}),
 matched AS ({_rule_match_sql(DIRECTION_RULES)}),
 best AS (SELECT DISTINCT ON (id) id, result FROM matched ORDER BY id, priority)
-SELECT s.id, coalesce(b.result, {_quote(DIRECTION_DEFAULT)}) AS direction
+SELECT s.id, coalesce(b.result, {_quote(_DIRECTION_DEFAULT)}) AS direction
 FROM src s LEFT JOIN best b ON b.id = s.id
 """

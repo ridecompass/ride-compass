@@ -25,7 +25,7 @@ r"""起こし直したテストを機械で監査する。報告の自己申告�
     .venv\Scripts\python.exe scripts\audit_test_rewrite.py --backend ../.claude/worktrees/agent-x/backend \
         app/infrastructure/wbgt_client.py tests/test_wbgt_client.py
 
-`--no-jit`は`NUMBA_DISABLE_JIT=1`を立てる。`njit`の中はcoverage.pyが追えないため、
+`--no-jit`は`NUMBA_DISABLE_JIT=1`を立て、コンパイルの結果を確かめるテスト（`jit`の印）を外す。`njit`の中はcoverage.pyが追えないため、
 JITを通る対象はこれを付けないと⑤が実態より低く出る。
 
 カバレッジは対象の親ディレクトリを`--cov`に渡して測り、報告と④を対象ファイルへ絞る。
@@ -274,7 +274,7 @@ def test_file_sizes(backend: Path, tests: list[str], executed: set[str]) -> dict
 def test_database_unreachable(backend: Path) -> str | None:
     """PostGISのテストが繋ぐDBのサーバーへ繋がらない理由。繋がればNone。
 
-    行き先はテストと同じ規則（`tests/conftest.py: postgis_database_url`）から取る。作業ツリー
+    行き先はテストと同じ規則（`backend/tests/conftest.py: postgis_database_url`）から取る。作業ツリー
     専用のDBは最初のpytestの実行が作るため、`TEST_DATABASE_URL`が無ければサーバーの管理DBで確かめる。
     conftestは子プロセスで読む（このファイルからimportすると、型検査の対象外のtestsをmypyが辿る）。
     """
@@ -289,7 +289,7 @@ def test_database_unreachable(backend: Path) -> str | None:
 
     try:
         asyncio.run(connect())
-    except Exception as exc:  # 繋がらない理由はそのまま出す
+    except (OSError, asyncpg.PostgresError) as exc:  # 繋がらない理由はそのまま出す
         return f"{type(exc).__name__}: {exc}"
     return None
 
@@ -326,10 +326,12 @@ def line_ranges(lines: set[int] | frozenset[int]) -> str:
 
 
 def run_pytest(
-    backend: Path, tests: list[str], cov_dir: str, env: dict[str, str], with_postgis: bool, report: Path, results: Path
+    backend: Path, tests: list[str], cov_dir: str, env: dict[str, str], excluded_markers: list[str], report: Path,
+    results: Path,
 ) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        [sys.executable, "-m", "pytest", *tests, "-q", *([] if with_postgis else ["-m", "not postgis"]),
+        [sys.executable, "-m", "pytest", *tests, "-q",
+         *(["-m", " and ".join(f"not {marker}" for marker in excluded_markers)] if excluded_markers else []),
          "-p", "no:randomly", *junit_args(results),
          f"--cov={cov_dir}", "--cov-branch", "--cov-context=test",
          f"--cov-report=json:{report}"],
@@ -410,8 +412,12 @@ def main() -> int:
     except RuntimeError as e:
         print(f"\n① 実装の変更: **測れない**（origin/master との合流点が取れない: {e}）")
     else:
-        status = run("diff", "--stat", base, "--", args.implementation, cwd=backend).stdout.strip()
-        print(f"\n① 実装の変更（origin/master との合流点から）: {'**あり** → ' + status if status else 'なし'}")
+        diff = run("diff", "--stat", base, "--", args.implementation, cwd=backend)
+        status = diff.stdout.strip()
+        if diff.returncode != 0:
+            print(f"\n① 実装の変更: **測れない**（git diff が失敗した: {diff.stderr.strip()}）")
+        else:
+            print(f"\n① 実装の変更（origin/master との合流点から）: {'**あり** → ' + status if status else 'なし'}")
 
     defined, imported = module_symbols(source, impl_path)
     for test in tests:
@@ -469,7 +475,8 @@ def main() -> int:
         work = Path(work_dir)
         report = work / "measured.json"
         results = work / "results.xml"
-        result = run_pytest(backend, tests, cov_dir, env, not unreachable, report, results)
+        excluded = [marker for marker, off in (("postgis", bool(unreachable)), ("jit", args.no_jit)) if off]
+        result = run_pytest(backend, tests, cov_dir, env, excluded, report, results)
         lines = result.stdout.splitlines()
         cases = read_cases(results) if results.exists() else []
         outcomes = Counter(c.outcome for c in cases)

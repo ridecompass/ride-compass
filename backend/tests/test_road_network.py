@@ -3,7 +3,9 @@
 入口は次のとおり。
 - `RoadNetwork`: 組み立てた時点で行数・列数の食い違いを断る
 - `slice_network`: 範囲に掛かる区間と、その両端のノードを取り出す
+- `rows_in_tile`: 地図のタイルに掛かる区間の行
 - `road_class_columns`・`material_arrays_of`: 区分の列と、切り出した区間の材料
+- `material_fills`: 欠けた材料を埋める、取込範囲全体の分布
 - `elevation_attribute`: 1区間の標高属性
 - `edge_row_of`: `(道, 区間番号, 向き)`から区間の行
 
@@ -12,7 +14,7 @@
 - 材料の列の型（`EdgeMaterialArrays`・`CategoricalColumn`・`ElevationAttribute`）の振る舞い → `test_attributes.py`
 - 切り出した範囲で経路を探すこと → `test_route_generation_behavior.py`
 
-材料の名前は架空（`num_a` 等）。平均勾配だけは区間の材料の列から読むため、その材料の名前を対象の名前空間から読む。
+道路網は`tests/east_west_network.py: network`。
 """
 
 from dataclasses import replace
@@ -22,85 +24,20 @@ import pytest
 from hypothesis import example, given
 from hypothesis import strategies as st
 
-from app.domain import road_network
+from app.domain.material_catalog import GRADIENT_PERCENT
+from app.domain.region import ROAD_TILE_MAX_ZOOM, ROAD_TILE_MIN_ZOOM, tile_bounds_lonlat, tile_position
 from app.domain.road_classes import class_material_id
 from app.domain.road_network import (
-    RoadNetwork,
     edge_row_of,
     elevation_attribute,
     material_arrays_of,
+    material_fills,
     road_class_columns,
+    rows_in_tile,
     slice_network,
 )
+from tests.east_west_network import EDGES, NODES, network
 from tests.road_class_fixture import classification, fact_is, road_classes
-
-NAN = float("nan")
-GRADE = road_network.GRADIENT_PERCENT
-
-# ノード（osm_node_id の昇順）。すべて北緯35度の上に東西に並ぶ。
-NODES = [
-    (100, 139.000),
-    (101, 139.004),
-    (102, 139.010),
-    (103, 139.020),
-    (104, 139.100),
-    (105, 139.120),
-    (106, 139.140),
-]
-# 区間（道・区間番号の昇順、同じ区間は順方向が先）: (道, 区間番号, 順方向, 始点の行, 終点の行)。
-# 道10は両方向、道20は一方通行、道30は区間が2つの一方通行。
-EDGES = [
-    (10, 0, True, 0, 1),
-    (10, 0, False, 1, 0),
-    (20, 0, True, 2, 3),
-    (30, 0, True, 4, 5),
-    (30, 1, True, 5, 6),
-]
-
-
-def network() -> RoadNetwork:
-    """西に道10・道20（139.00〜139.02E）、東に道30（139.10〜139.14E）がある道路網。"""
-    lat = np.full(len(NODES), 35.0)
-    lon = np.array([node_lon for _, node_lon in NODES])
-    edge_from = np.array([tail for *_, tail, _ in EDGES], dtype=np.int32)
-    edge_to = np.array([head for *_, head in EDGES], dtype=np.int32)
-    n = len(EDGES)
-    row = np.arange(n, dtype=np.float64)
-    return RoadNetwork(
-        revision=7,
-        node_osm_id=np.array([osm_id for osm_id, _ in NODES], dtype=np.int64),
-        node_lat=lat,
-        node_lon=lon,
-        node_has_signals=np.zeros(len(NODES), dtype=bool),
-        node_max_rank=np.zeros(len(NODES), dtype=np.int64),
-        edge_way_id=np.array([way for way, *_ in EDGES], dtype=np.int64),
-        edge_segment=np.array([segment for _, segment, *_ in EDGES], dtype=np.int32),
-        edge_forward=np.array([forward for _, _, forward, *_ in EDGES], dtype=bool),
-        edge_from=edge_from,
-        edge_to=edge_to,
-        edge_highway=np.zeros(n, dtype=np.int16),
-        highway_vocab=("residential",),
-        edge_min_lon=np.minimum(lon[edge_from], lon[edge_to]),
-        edge_min_lat=np.minimum(lat[edge_from], lat[edge_to]),
-        edge_max_lon=np.maximum(lon[edge_from], lon[edge_to]),
-        edge_max_lat=np.maximum(lat[edge_from], lat[edge_to]),
-        edge_start_bearing_deg=np.array([80.0, 260.0, 100.0, 90.0, NAN]),
-        edge_end_bearing_deg=np.array([100.0, 280.0, 80.0, 90.0, NAN]),
-        numeric_ids=("num_a", GRADE),
-        numeric_values=np.column_stack([row * 10, [3.0, -3.0, NAN, 1.5, 2.5]]),
-        categorical_ids=("cat_a",),
-        categorical_codes=np.array([[1], [1], [2], [0], [2]], dtype=np.int16),
-        categorical_vocab=((None, "x", "y"),),
-        distance_m=row * 100 + 100,
-        bearing_deg=np.array([90.0, 270.0, 90.0, 90.0, NAN]),
-        mid_lat=lat[edge_from],
-        mid_lon=(lon[edge_from] + lon[edge_to]) / 2,
-        start_elevation_m=np.array([10.0, 22.0, 5.0, NAN, 7.0]),
-        end_elevation_m=np.array([22.0, 10.0, 5.0, NAN, 10.0]),
-        elevation_gain_m=np.array([12.0, 0.0, 0.0, NAN, 3.0]),
-        elevation_loss_m=np.array([0.0, 12.0, 0.0, NAN, 0.0]),
-    )
-
 
 @pytest.mark.parametrize(
     "broken",
@@ -145,20 +82,61 @@ def test_a_slice_keeps_the_edges_and_their_ends_of_the_whole_network(lon_a, lon_
         assert road.node_lon[road.edge_to[position]] == whole.node_lon[whole.edge_to[global_row]]
 
 
+#: 範囲の中の、地図の道のタイルの境目の経度・緯度（区間の端が境目ちょうどに乗る場面を引かせる）。
+_tile_edges = [tile_bounds_lonlat(z, *(int(v) for v in tile_position(lon, lat, z)))
+               for z in range(ROAD_TILE_MIN_ZOOM, ROAD_TILE_MAX_ZOOM + 1)
+               for lon in np.arange(138.99, 139.15, 0.005) for lat in np.arange(34.98, 35.02, 0.002)]
+edge_lons = st.one_of(lons, st.sampled_from(sorted({b.min_longitude for b in _tile_edges})))
+edge_lats = st.one_of(lats, st.sampled_from(sorted({b.min_latitude for b in _tile_edges})))
+boxes = st.lists(st.tuples(edge_lons, edge_lons, edge_lats, edge_lats), min_size=len(EDGES), max_size=len(EDGES))
+#: ズーム12で(139.05E, 35.0N)を含むタイルの東の境目。
+_EAST_EDGE = tile_bounds_lonlat(12, *(int(v) for v in tile_position(139.05, 35.0, 12))).max_longitude
+
+
+@given(boxes=boxes, lon=lons, lat=lats, z=st.integers(ROAD_TILE_MIN_ZOOM, ROAD_TILE_MAX_ZOOM))
+@example(boxes=[(_EAST_EDGE, _EAST_EDGE + 0.01, 35.0, 35.0)] * len(EDGES), lon=139.05, lat=35.0, z=12)  # 東の隣のタイルから境目に触れる
+def test_the_rows_in_a_tile_are_the_edges_whose_bounds_touch_it(boxes, lon, lat, z):
+    """地図のタイルに掛かる区間は、どのズーム・どの区間の形でも、区間の外接矩形をタイルの範囲と総当たりで比べた答えに
+    一致する。取りこぼすと、タイルの端に触れる道がレンズで塗られない。"""
+    min_lon, max_lon, min_lat, max_lat = (np.array(v) for v in zip(*(
+        (min(a, b), max(a, b), min(c, d), max(c, d)) for a, b, c, d in boxes)))
+    whole = replace(network(), edge_min_lon=min_lon, edge_max_lon=max_lon, edge_min_lat=min_lat, edge_max_lat=max_lat)
+    x, y = (int(v) for v in tile_position(lon, lat, z))
+    tile = tile_bounds_lonlat(z, x, y)
+
+    expected = [row for row in range(len(EDGES))
+                if max_lon[row] >= tile.min_longitude and min_lon[row] <= tile.max_longitude
+                and max_lat[row] >= tile.min_latitude and min_lat[row] <= tile.max_latitude]
+    assert rows_in_tile(whole, z, x, y).tolist() == expected
+
+
 def test_the_materials_and_road_classes_of_a_slice_follow_its_rows():
     """区分は取込範囲全体の事実から決め、切り出した区間の材料へ同じ行で足す。"""
     whole = network()
     classes = road_class_columns(whole, road_classes({"k": classification({"is_y": [fact_is("cat_a", "y")]})}))
     road = slice_network(whole, classes, 139.015, 34.99, 139.11, 35.01)
 
-    columns = material_arrays_of(road).columns()
+    columns = material_arrays_of(road).columns
 
     assert columns["num_a"].tolist() == [20.0, 30.0]
     assert [columns["cat_a"].value_at(i) for i in range(2)] == ["y", None]
     assert [columns[class_material_id("k")].value_at(i) for i in range(2)] == ["is_y", None]
 
 
-def test_the_elevation_attribute_reads_the_average_grade_from_the_material():
+def test_the_fills_are_the_distance_weighted_distributions_of_the_whole_network():
+    """欠けを埋める平均は取込範囲全体の距離で重みを付けたもの（値の無い区間を除く）。"""
+    whole = network()
+    rules = {"is_x": [fact_is("cat_a", "x")], "is_y": [fact_is("cat_a", "y")]}
+    classes = road_class_columns(whole, road_classes({"k": classification(rules)}))
+
+    fills = material_fills(whole, classes[0], [class_material_id("k")])
+
+    # 区間の距離は100〜500m。num_aは0〜40、勾配は3番目の区間だけ値が無い。区分は道30の1区間目だけ値が無い。
+    assert fills.numeric_means == pytest.approx({"num_a": 40000 / 1500, GRADIENT_PERCENT: 1550 / 1200})
+    assert fills.class_shares == {class_material_id("k"): pytest.approx({"is_x": 300 / 1100, "is_y": 800 / 1100})}
+
+
+def test_the_elevation_attribute_reads_the_average_grade_from_the_material_and_the_steepest_slopes():
     attribute = elevation_attribute(network(), 0, "10:0:f")
 
     assert attribute is not None
@@ -169,6 +147,8 @@ def test_the_elevation_attribute_reads_the_average_grade_from_the_material():
         "elevation_gain_m": 12.0,
         "elevation_loss_m": 0.0,
         "average_grade": 3.0,
+        "steepest_gain_percent": 12.0,
+        "steepest_loss_percent": 0.0,
     }
 
 

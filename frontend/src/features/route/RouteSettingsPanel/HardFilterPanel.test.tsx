@@ -1,22 +1,21 @@
 /**
- * `RouteSettingsPanel/HardFilterPanel.tsx`——「除外」タブ。道の区分の行ごとの避け方の選びと、自転車が通れない道の固定の行。
+ * `RouteSettingsPanel/HardFilterPanel.tsx`——「道路」タブ。道の区分の行ごとの避け方の選びと、自転車が通れない道の固定の行。
  *
- * 見るもの: 固定の行を「通らない」に鍵を付けて並びの先頭に出し、選ぶ操作を持たないこと（軸カタログが届く前も出す）。行の避け方を
+ * 見るもの: 選べない行を既定の段に鍵を付けて並びの先頭に出し、選ぶ操作を持たないこと。行の避け方を
  * 節ごとに畳んで並べ（行の無い節は出さない）、選ぶとその行だけを変えた値を上げ、既定から変えた行の数を畳んだ見出しに出すこと。
- * 選んでいない行は、前の鍵に選んだ段で出すこと。見出しの行と全部を既定へ戻す操作を持たないこと。
+ * 見出しの行と全部を既定へ戻す操作を持たないこと。
  *
  * ここで見ないもの: 保存値を読むこと → `features/route/useGenerationConditions.test.ts`。生成の要求へ載せること →
- * `features/route/useRouteGeneration.test.ts`。今の鍵・前の鍵・既定の段のどれを取るか → `features/route/roadAvoidance.test.ts`。
+ * `features/route/useRouteGeneration.test.ts`。
  * (i)の奥の文（配られた説明を写すだけ）。
  *
- * 固定の行は生成物（`route-generate-config.json`）から読む。行・段・節は軸カタログが配る（本番の値は管理DBが持つ）ので、テストが組む。
+ * 行・段・節は画面の設定が配る（本番の値は管理DBと0次ハードフィルタの宣言が持つ）ので、テストが組む。
  */
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
-import { AVOIDANCE_LEVELS, avoidanceRow } from "@/testing/catalogAxes";
-import routeGenerateConfig from "@/types/generated/route-generate-config.json";
+import { AVOIDANCE_LEVELS, avoidanceRow } from "@/testing/clientConfig";
 import type { RoadAvoidanceOverride, RoadAvoidanceView } from "@/types/route";
 
 import HardFilterPanel from "./HardFilterPanel";
@@ -24,13 +23,15 @@ import HardFilterPanel from "./HardFilterPanel";
 const AVOIDANCE: RoadAvoidanceView = {
   levels: AVOIDANCE_LEVELS,
   sections: [
-    { key: "surface", label: "路面", description: "路面の区分ごとに選びます。" },
-    { key: "empty", label: "行の無い節", description: "" },
-    { key: "access", label: "通行", description: "" },
+    { key: "surface", label: "路面" },
+    { key: "empty", label: "行の無い節" },
+    { key: "access", label: "通行" },
   ],
   rows: [
+    avoidanceRow("fixed.motorway", "fixed", { label: "高速道路", default: "exclude", selectable: false }),
+    avoidanceRow("fixed.closed", "fixed", { label: "自転車禁止", default: "exclude", selectable: false }),
     avoidanceRow("gravel", "surface", { label: "砂利" }),
-    avoidanceRow("unpaved", "surface", { label: "未舗装", default: "avoid", former_keys: ["dirt", "mud"] }),
+    avoidanceRow("unpaved", "surface", { label: "未舗装", default: "avoid" }),
     avoidanceRow("private", "access", { label: "私道", default: "exclude" }),
   ],
 };
@@ -42,6 +43,7 @@ function renderPanel(roadAvoidance: RoadAvoidanceOverride = {}) {
       avoidance={AVOIDANCE}
       roadAvoidance={roadAvoidance}
       onRoadAvoidanceChange={onRoadAvoidanceChange}
+      roadTabMap={{ on: true, onChange: vi.fn(), notice: null }}
     />,
   );
   return { ...view, onRoadAvoidanceChange };
@@ -52,13 +54,16 @@ const checkedLevel = (row: string) =>
   within(screen.getByRole("radiogroup", { name: `${row}の避け方` })).getByRole("radio", { checked: true });
 
 describe("HardFilterPanel", () => {
-  it("自転車が通れない道の行は、並びの先頭に畳まずに鍵で出し、選び直す操作を持たない", () => {
-    const { container } = renderPanel();
-    const [firstFixed] = routeGenerateConfig.hard_filters;
+  it("選べない行は、並びの先頭に畳まずに鍵と既定の段の名前で出し、選び直す操作を持たない", () => {
+    renderPanel({ "fixed.motorway": "pass" });
 
-    expect(container.firstElementChild!.firstElementChild).toHaveTextContent(new RegExp(`^${firstFixed.label}`));
-    for (const { label } of routeGenerateConfig.hard_filters) {
-      expect(screen.getByRole("img", { name: `${label}はいつも経路から外れます（変えられません）` })).toBeVisible();
+    // 行の並びは「地図で見る」の次から。
+    const firstRow = screen.getByRole("checkbox", { name: "地図で見る" }).closest("label")!.nextElementSibling;
+    expect(firstRow).toHaveTextContent(/^高速道路.*×∞$/);
+    for (const label of ["高速道路", "自転車禁止"]) {
+      expect(screen.getByRole("img", { name: `${label}はいつも経路から外れます（変えられません）` })).toHaveTextContent(
+        "×∞",
+      );
       expect(screen.queryByRole("radiogroup", { name: `${label}の避け方` })).toBeNull();
     }
   });
@@ -70,24 +75,16 @@ describe("HardFilterPanel", () => {
     expect(screen.queryByRole("button", { name: /^行の無い節/ })).toBeNull();
 
     await userEvent.click(sectionTrigger("路面"));
-    expect(screen.getByText("路面の区分ごとに選びます。")).toBeVisible();
-    expect(checkedLevel("砂利")).toHaveTextContent("通る");
+    expect(checkedLevel("砂利")).toHaveAccessibleName("×1");
     await userEvent.click(
-      within(screen.getByRole("radiogroup", { name: "砂利の避け方" })).getByRole("radio", { name: "通らない" }),
+      within(screen.getByRole("radiogroup", { name: "砂利の避け方" })).getByRole("radio", { name: "×∞" }),
     );
 
     expect(onRoadAvoidanceChange).toHaveBeenCalledExactlyOnceWith({ private: "avoid", gravel: "exclude" });
   });
 
-  it("選んでいない行は、前の鍵に選んだ段のうち強い方を出す", async () => {
-    renderPanel({ dirt: "exclude", mud: "pass" });
-    await userEvent.click(sectionTrigger("路面"));
-
-    expect(checkedLevel("未舗装")).toHaveTextContent("通らない");
-  });
-
   it("既定から変えた行がある節は、畳んだ見出しに変えた行の数を出す", () => {
-    renderPanel({ gravel: "avoid", dirt: "exclude", private: "exclude" });
+    renderPanel({ gravel: "avoid", unpaved: "exclude", private: "exclude" });
 
     expect(sectionTrigger("路面")).toHaveTextContent("既定から2件変更");
     expect(sectionTrigger("通行")).not.toHaveTextContent("既定から");

@@ -5,6 +5,7 @@ import { mapOnScreen } from "@/testing/maplibre";
 import { LIBERTY_POI_LAYERS } from "@/testing/libertyPoiLayers";
 import { matchesFilter } from "@/testing/mapExpressions";
 import type { StyleLayer } from "@/testing/mapTrace/recordingMap";
+import palette from "@/types/generated/palette.json";
 
 vi.mock("maplibre-gl", () => import("@/testing/maplibre"));
 
@@ -13,7 +14,6 @@ import {
   NO_BASEMAP_POI_KINDS,
   areaLayerAnchor,
   hideBasemapPois,
-  labelLayerAnchor,
   prepareBasemap,
   reloadStyle,
   runWhenStyleReady,
@@ -62,7 +62,7 @@ describe("面レイヤーの差し込み位置", () => {
       { id: "water", type: "fill", "source-layer": "water" },
       { id: "highway", type: "line", "source-layer": "transportation" },
     ];
-    reloadStyle(map, "replaced", () => prepareBasemap(map));
+    reloadStyle(map, "replaced", { onLoaded: () => prepareBasemap(map), onFailed: () => {} });
     screen.loadStyle(replaced);
     prepareBasemap(map);
     expect(areaLayerAnchor(map)).toBeUndefined();
@@ -94,21 +94,29 @@ describe("面レイヤーの差し込み位置", () => {
   });
 });
 
-describe("文字に場所を譲る点の差し込み位置", () => {
-  it("基礎地図が最後まで続けて描く記号の並びの頭にする（途中の記号の後ろに線・面があれば、その後ろ）", () => {
-    // libertyの並び: 道路網の途中に一方通行の矢印（記号）があり、その後ろに橋の線・建物・境界を描いてから文字が続く。
-    const { map } = drawMap([
+describe("基礎地図の細い道の縁取り", () => {
+  it("細い道の縁取りだけを源泉の濃い灰で描き、太い道の縁取りと細い道の白い線は配信元の色のまま残す", () => {
+    // libertyの道路網の層の一部。細い道は地上・橋・トンネルでそれぞれ別の縁取りの層を持つ。
+    const minorCasings = [
+      "road_minor_casing",
+      "road_service_track_casing",
+      "bridge_street_casing",
+      "bridge_path_pedestrian_casing",
+      "tunnel_street_casing",
+    ];
+    const { map, screen } = drawMap([
+      ...minorCasings.map((id) => ({ id, type: "line", "source-layer": "transportation" })),
+      { id: "road_secondary_tertiary_casing", type: "line", "source-layer": "transportation" },
       { id: "road_minor", type: "line", "source-layer": "transportation" },
-      { id: "road_one_way_arrow", type: "symbol", "source-layer": "transportation" },
-      { id: "bridge_street", type: "line", "source-layer": "transportation" },
-      { id: "building", type: "fill", "source-layer": "building" },
-      { id: "boundary_2", type: "line", "source-layer": "boundary" },
-      { id: "water_name_point_label", type: "symbol", "source-layer": "water_name" },
-      { id: "poi_r1", type: "symbol", "source-layer": "poi" },
-      { id: "label_city", type: "symbol", "source-layer": "place" },
     ]);
+
     prepareBasemap(map);
-    expect(labelLayerAnchor(map)).toBe("water_name_point_label");
+
+    for (const id of minorCasings) {
+      expect(screen.layerPaint(id)?.["line-color"]).toBe(palette.semantic.basemap_minor_road_casing);
+    }
+    expect(screen.layerPaint("road_secondary_tertiary_casing")?.["line-color"]).toBeUndefined();
+    expect(screen.layerPaint("road_minor")?.["line-color"]).toBeUndefined();
   });
 });
 
@@ -174,7 +182,7 @@ describe("基礎地図の店・施設", () => {
     apply(HIDE);
     const hidden = map.getStyle().layers;
 
-    reloadStyle(map, "basemap", () => apply(HIDE));
+    reloadStyle(map, "basemap", { onLoaded: () => apply(HIDE), onFailed: () => {} });
     apply(HIDE);
     screen.loadStyle(LIBERTY_POI_LAYERS);
     screen.emit("style.load");

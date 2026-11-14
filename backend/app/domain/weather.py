@@ -20,14 +20,14 @@ from app.domain.time_zone import jst_local_text
 
 # 天気コードは観測（アメダスと推計気象分布）からだけ導く。数値予報モデル（MSM）の値から天気を計算して出すことは、
 # 気象業務法の予報業務の許可の対象と気象庁の公式の説明が書いているため、しない（docs/architecture/data-sources.md
-# 「気象業務法の予報業務許可」節）。コードの分類と表示名はdomain/weather_display.py（WEATHER_CATEGORIES）が持つ。
+# 「気象業務法の予報業務許可」節）。
 #: これ未満（mm/h）は「降っていない」。
 PRECIPITATION_MIN_MM = 0.1
 _PRECIPITATION_MODERATE_MM = 1.0
 _PRECIPITATION_HEAVY_MM = 4.0
 _SNOW_MAX_TEMPERATURE_C = 0.0
 
-#: 推計気象分布（天気）の区分。配信元の色からの読み替えは`infrastructure/jma_suikei_client.py`。
+#: 推計気象分布（天気）の区分。
 SuikeiWeather = Literal["clear", "cloudy", "rain", "rain_or_snow", "snow"]
 
 
@@ -61,7 +61,7 @@ _DISTANCE_KM_DECIMALS = 1
 class GridPointToday(StrictModel):
     """地点に最も近いMSMの格子点の、今日の1時間ごとの値（`GET /api/weather`）。
 
-    値は格子点の値のままで、地点へ補間しない（domain/msm.py のモジュールの説明）。最も高い・低い値は、並べた1時間ごとの値から
+    値は格子点の値のままで、地点へ補間しない。最も高い・低い値は、並べた1時間ごとの値から
     選んだもので、日の最高・最低気温ではない。時刻の配列と値の配列の並びは揃う。
     """
 

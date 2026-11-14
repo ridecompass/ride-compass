@@ -17,12 +17,16 @@ export function useScreenWakeLock(active: boolean): ScreenWakeLockStatus {
     if (!active || !supported) return;
     let disposed = false;
     let sentinel: WakeLockSentinel | null = null;
+    // 返事を待つ間に見えたことが届いても重ねて頼まない（2本とも通ると、先の1本を外せなくなる）。
+    let pending = false;
 
     function request() {
       // 見えていない間の頼みは断られる。見えたときに頼み直す。
-      if (sentinel !== null || document.visibilityState !== "visible") return;
+      if (pending || sentinel !== null || document.visibilityState !== "visible") return;
+      pending = true;
       navigator.wakeLock.request("screen").then(
         (granted) => {
+          pending = false;
           if (disposed) {
             void granted.release();
             return;
@@ -34,6 +38,7 @@ export function useScreenWakeLock(active: boolean): ScreenWakeLockStatus {
           });
         },
         (error: unknown) => {
+          pending = false;
           debugLog("ride:wake-lock", "画面を点けたままにする頼みを断られた", { error: String(error) }, "warn");
           if (!disposed) setState("refused");
         },

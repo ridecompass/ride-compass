@@ -10,12 +10,11 @@ import { describe, expect, it } from "vitest";
 import { errorMessage, formatErrorDetail } from "@/lib/apiError";
 
 describe("formatErrorDetail", () => {
-  it("無ければ文言を作らない（呼び出し側が自分の文言を使う）", () => {
-    expect(formatErrorDetail(undefined)).toBeUndefined();
-  });
-
-  it("文字列はそのまま返す", () => {
-    expect(formatErrorDetail("経路が見つかりません")).toBe("経路が見つかりません");
+  it.each([
+    ["無ければ文言を作らない（呼び出し側が自分の文言を使う）", undefined, undefined],
+    ["文字列はそのまま返す", "経路が見つかりません", "経路が見つかりません"],
+  ])("%s", (_scene, detail, expected) => {
+    expect(formatErrorDetail(detail)).toBe(expected);
   });
 
   it("入力検証の失敗（`msg`を持つ項目の配列）は、各項目の`msg`を順に「 / 」でつなぐ", () => {

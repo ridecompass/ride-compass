@@ -18,12 +18,13 @@ import httpx
 import respx
 
 
-def client_for(router: respx.Router) -> httpx.AsyncClient:
+def client_for(router: respx.Router, **client_options) -> httpx.AsyncClient:
+    """`router`へ要求を渡すクライアント。`client_options`は`httpx.AsyncClient`の引数（`timeout`等）。"""
     async def handler(request: httpx.Request) -> httpx.Response:
         await asyncio.sleep(0)
         return router.handler(request)
 
-    return httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    return httpx.AsyncClient(transport=httpx.MockTransport(handler), **client_options)
 
 
 def answering(*args, **kwargs) -> httpx.AsyncClient:

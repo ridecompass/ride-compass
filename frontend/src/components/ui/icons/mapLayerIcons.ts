@@ -1,7 +1,7 @@
-// 地図のレイヤーのアイコン。地図の「表示」の一覧と、道のりのグラフの地点の詳しくのチップが同じこの表を引く——別々に持つと、
+// 地図のレイヤーのアイコン。地図の「表示」の一覧と、区間の小窓の層の値のチップが同じこの表を引く——別々に持つと、
 // 同じレイヤーが画面によって違う形に見える。
 
-import { RouteIcon, type MapIconComponent } from "@/components/ui/icons/icons";
+import type { MapIconComponent } from "@/components/ui/icons/icons";
 import {
   AccidentIcon,
   ElevationIcon,
@@ -34,10 +34,9 @@ export const MAP_LAYER_ICONS: Record<StaticMapLayerId, MapIconComponent> = {
   precipitationNowcast: RaindropIcon,
   windVector: WindIcon,
   disaster: ShieldIcon,
-  route: RouteIcon,
 };
 
-/** 道の線の層のアイコンの絵。鍵は層のデータ（軸カタログの`road_classes.map_layers`の`icon`）が指す。 */
+/** 道の線の層のアイコンの絵。鍵は層のデータ（画面の設定の`road_classes.map_layers`の`icon`）が指す。 */
 const ROAD_LAYER_ICONS: ReadonlyMap<string, MapIconComponent> = new Map([
   ["highway", RoadIcon],
   ["surface", RoadSurfaceIcon],

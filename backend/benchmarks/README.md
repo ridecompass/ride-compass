@@ -37,3 +37,5 @@ DATABASE_URL=...新 BENCH_LABEL=新構成 python -m benchmarks.bench_route_gener
 `revision.py`が実行時に作業コピーの素性（HEAD・未コミットの変更）を出し、origin/master より
 遅れていれば（遅れを確かめられなければ）警告する（遅れの定義は[setup.md](../../docs/architecture/setup.md)
 「開発機の本体のチェックアウトの遅れ」）。数字だけが残ると、古いコードのもっともらしい値と見分けが付かない。
+`backend/benchmarks/`はイメージに入らないので、ここだけの変更ではデプロイが走らず、VMの作業コピーも揃わない
+（`backend/scripts/deploy_gate.py: deploy_paths`）。VMで新しい版を測るときは、`deploy-backend.yml`を手動で起動して揃える。

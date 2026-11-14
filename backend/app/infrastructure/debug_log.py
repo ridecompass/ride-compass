@@ -9,12 +9,12 @@
 import logging
 import threading
 import time
+from collections import defaultdict
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-import httpx
 from pydantic import Field
 
 from app.domain.stopwatch import elapsed_ms, start_timer
@@ -58,8 +58,6 @@ class ExternalCallStats(StrictModel):
 class StatsSnapshot(StrictModel):
     """`get_stats`が返すプロセス内集計の写し。"""
 
-    # カテゴリは`log_external_call`の呼び出し元
-    # （msm:read・weather:jma-tile・basemap:openfreemap・region:road-surface-tile等）に対応する。
     external: dict[str, ExternalCallStats]
     # カテゴリ → 429拒否数（`record_rate_limit_rejection`）。
     rate_limit_rejections: dict[str, int]
@@ -81,9 +79,8 @@ def _empty_stats() -> ExternalCallStats:
 
 
 _lock = threading.Lock()
-_external_stats: dict[str, ExternalCallStats] = {}
-# category -> 429拒否数(record_rate_limit_rejection)
-_rate_limit_rejections: dict[str, int] = {}
+_external_stats: defaultdict[str, ExternalCallStats] = defaultdict(_empty_stats)
+_rate_limit_rejections: defaultdict[str, int] = defaultdict(int)
 
 
 @dataclass
@@ -123,9 +120,7 @@ def _round_floats(value: object) -> object:
 
 def _record(category: str, elapsed_ms: int, fields: dict, error: bool) -> None:
     with _lock:
-        stats = _external_stats.get(category)
-        if stats is None:
-            stats = _external_stats[category] = _empty_stats()
+        stats = _external_stats[category]
         stats.calls += 1
         if error:
             stats.errors += 1
@@ -153,20 +148,6 @@ def mark_failed(fields: dict, exc: BaseException) -> None:
     fields["result"] = "error"
     fields["error"] = repr(exc)
     fields["error_type"] = error_type_label(exc)
-
-
-def mark_status_error(fields: dict, exc: httpx.HTTPStatusError) -> bool:
-    """`log_external_call`の中で上流の失敗の応答を捕まえたときの記録の入口。404ならTrueを返す。
-
-    404は配信元に無いことを確かめた正常系で、成功として数え（`status`に404を残す）、WARNINGを出さない。
-    ほかの応答は`mark_failed`で失敗として記録する。
-    """
-    if exc.response.status_code == 404:
-        fields["result"] = "ok"
-        fields["status"] = 404
-        return True
-    mark_failed(fields, exc)
-    return False
 
 
 def log_throttled_warning(category: str, message: str, *args: object) -> None:
@@ -198,13 +179,9 @@ def log_throttled_warning(category: str, message: str, *args: object) -> None:
 
 
 def record_rate_limit_rejection(category: str, client_id: str, limit: str) -> None:
-    """429拒否を集計しつつ、抑制付きWARNINGで常時記録する。
-
-    「ユーザーが429を食らい続けている」状況に運用側が気づけるようにするのが目的。
-    limitは"120/min"・"concurrent=2"のような人間可読の上限表記。
-    """
+    """429拒否を集計しつつ、抑制付きWARNINGで常時記録する。limitは"120/min"・"concurrent=2"のような人間可読の上限表記。"""
     with _lock:
-        _rate_limit_rejections[category] = _rate_limit_rejections.get(category, 0) + 1
+        _rate_limit_rejections[category] += 1
     log_throttled_warning(f"ratelimit:{category}", "[ratelimit:%s] rejected client=%s limit=%s", category, client_id, limit)
 
 
@@ -223,10 +200,8 @@ def log_external_call(category: str, **fields: object) -> Iterator[dict]:
     """外部API呼び出し・キャッシュアクセスをカテゴリ単位でログ・集計する。
 
     `fields`はログ用の付帯情報(座標・パス等)。呼び出し元は`yield`されたdictに
-    結果情報(cache="hit"/"miss", result="ok"/"error", status等)を追記してから抜けると、
-    完了ログと統計にそれも反映される。失敗(例外、またはresult=="error")はWARNINGで
-    常時出力し、成功はDEBUG(debug_mode時のみ実質出力)に留める。例外を捕まえて既定値へ
-    倒す呼び出し元は`mark_failed`で失敗を記録する。
+    結果情報(cache="hit"/"miss", result="error", status等)を追記してから抜けると、
+    完了ログと統計にそれも反映される。失敗(例外、またはresult=="error")は抑制付きWARNING、成功はDEBUGで出す。
     """
     started = start_timer()
     logger.debug("[%s] start %s", category, fields)

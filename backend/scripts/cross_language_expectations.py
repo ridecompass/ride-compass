@@ -22,18 +22,8 @@ from app.domain.jma_tile_specs import (
     read_target_times,
 )
 from app.domain.region import BoundingBox, tile_bounds_lonlat, tile_position, tiles_covering_bbox
-from app.domain.road_avoidance import AvoidanceLevel, resolve_road_avoidance
-from app.domain.road_class_catalog import road_class_catalog
-from app.domain.road_classes import (
-    EMPTY_ROAD_CLASSES,
-    AvoidanceClassification,
-    AvoidanceOverride,
-    AvoidanceSection,
-    RoadClass,
-    RoadClassification,
-)
-from app.domain.route import RouteSegmentDetail, merge_overall_difficulty
 from app.domain.time_zone import jst_local_text
+from app.domain.tuning import TUNING_VALUES
 from app.domain.way_value_formula import (
     FALSE,
     Binary,
@@ -49,7 +39,6 @@ from app.domain.way_value_formula import (
     feature,
 )
 from app.domain.weather_elements import stage_first_frames
-from app.domain.wind import WIND_DRAG_RATIO_WAY_FORMULA
 from app.infrastructure.jma_tile_client import parse_target_times
 from app.infrastructure.jma_tile_paths import read_jma_tile_path
 
@@ -139,6 +128,19 @@ _READER_SCENES: list[tuple[str, TargetTimesReader, str, list[dict]]] = [
             _row(_t("0010"), _t("0020"), ["hrpns"]),
             _row(_t("0010"), _t("0010"), ["hrpns"]),
             _row(_t("0005"), _t("0005"), ["hrpns"]),
+        ],
+    ),
+    (
+        "実況と予測のファイルのbasetimeがずれる",
+        "nowcast",
+        "hrpns",
+        [
+            _row(_t("0005"), _t("0005"), ["hrpns"]),
+            _row(_t("0010"), _t("0010"), ["hrpns"]),
+            _row(_t("0005"), _t("0010"), ["hrpns"]),
+            _row(_t("0005"), _t("0015"), ["hrpns"]),
+            _row(_t("0010"), _t("0015"), ["hrpns"]),
+            _row(_t("0010"), _t("0020"), ["hrpns"]),
         ],
     ),
     ("その要素の行が0件", "nowcast", "thns", [_row(_t("0015"), _t("0015"), ["liden"])]),
@@ -394,53 +396,6 @@ def time_expectations() -> dict[str, list[dict]]:
     }
 
 
-def _segment(distance_km: float, contributions: dict[str, float] | None) -> RouteSegmentDetail:
-    """区間1本。寄与度の和が区間の難易度で、`None`は値の無い区間。"""
-    return RouteSegmentDetail(
-        start_latitude=35.0,
-        start_longitude=139.0,
-        end_latitude=35.0,
-        end_longitude=139.0,
-        cumulative_distance_km=0.0,
-        distance_km=distance_km,
-        elevations=[],
-        road_classes={},
-        axis_contributions=contributions or {},
-        difficulty=None if contributions is None else sum(contributions.values()),
-    )
-
-
-# ルート全体の難易度の場面: （場面, 区間（距離km, 軸ごとの寄与度。値の無い区間はNone））。平均が丸めで動かない値を選ぶ。
-_ROUTES: list[tuple[str, list[tuple[float, dict[str, float] | None]]]] = [
-    ("どの区間にも値がある", [(1.0, {"a": 10.0, "b": 10.0}), (1.0, {"a": 40.0})]),
-    ("値の無い区間がある", [(1.0, {"a": 10.0, "b": 10.0}), (2.0, None), (1.0, {"a": 40.0})]),
-    ("どの区間にも値が無い", [(1.0, None), (2.0, None)]),
-]
-
-
-def difficulty_expectations() -> dict[str, list[dict]]:
-    """ルート全体の難易度（平均と総量）。値の無い区間の数え方が分かれる場面を並べる。"""
-    rows = []
-    for scene, parts in _ROUTES:
-        segments = [_segment(distance_km, contributions) for distance_km, contributions in parts]
-        overall = merge_overall_difficulty(segments)
-        rows.append(
-            {
-                "scene": scene,
-                "segments": [
-                    {
-                        "distance_km": segment.distance_km,
-                        "difficulty": segment.difficulty,
-                        "axis_contributions": segment.axis_contributions,
-                    }
-                    for segment in segments
-                ],
-                "overall_difficulty": None if overall is None else overall.model_dump(),
-            }
-        )
-    return {"overall_difficulty": rows}
-
-
 def _values_only(value: object) -> WayValueFormula:
     return WayValueFormula(value=value, undetermined=FALSE)
 
@@ -449,6 +404,9 @@ _X = feature("x")
 _Y = feature("y")
 
 #: 場面 → 木と、木へ入れる道ごとの材料（値の無い材料は載せない）と条件の組。
+#: 直角とみなす幅（較正値。値の正本はDBなので、表の入力としてここで置く）。向きの行（104・105・106度）がこの幅の境目を挟む。
+TUNING_VALUES["gradient.perpendicular_band_deg"] = 15.0
+
 _WAY_VALUE_FORMULAS: list[tuple[str, WayValueFormula, list[tuple[dict[str, float], dict[str, float]]]]] = [
     (
         "丸め1桁（2進で中点ちょうど・中点のすぐ上下・負）",
@@ -499,14 +457,6 @@ _WAY_VALUE_FORMULAS: list[tuple[str, WayValueFormula, list[tuple[dict[str, float
                                (0.0, 255.5), (180.0, 359.75))]
         + [({"forward": 3.0, "backward": -3.0}, {"bearing_deg": 90.0}), ({ROAD_BEARING_LEAF: 0.0}, {"bearing_deg": 0.0})],
     ),
-    (
-        "風の追加負荷（向かい風・追い風・横風・風の無い道）",
-        WIND_DRAG_RATIO_WAY_FORMULA,
-        [({"wind_speed_ms": speed, "wind_direction_deg": direction}, {"bearing_deg": bearing, "speed_kmh": kmh})
-         for speed, direction, bearing, kmh in ((5.0, 0.0, 0.0, 20.0), (5.0, 180.0, 0.0, 20.0), (8.0, 90.0, 0.0, 25.0),
-                                                (3.2, 47.0, 312.5, 18.0), (12.0, 200.0, 20.0, 40.0))]
-        + [({}, {"bearing_deg": 0.0, "speed_kmh": 20.0})],
-    ),
 ]
 
 
@@ -533,72 +483,11 @@ def way_value_expectations() -> dict[str, list[dict]]:
     }
 
 
-def _road_class(sort_order: int, former_keys: list[str]) -> RoadClass:
-    return RoadClass(label="", description="", sort_order=sort_order, former_keys=former_keys, conditions=[])
-
-
-# 前の鍵の付き方が分かれる区分: 分けた区分（1つの前の鍵を2つの行が持ち、片方は既定が「なるべく避ける」）・合わせた区分
-# （前の鍵を2つ持つ）・前の鍵を持たない区分。
-_AVOIDANCE_DEFINITIONS = EMPTY_ROAD_CLASSES.model_copy(
-    update={
-        "classifications": {
-            "kind": RoadClassification(
-                label="",
-                description="",
-                is_published=True,
-                classes={
-                    "split_a": _road_class(0, ["old.split"]),
-                    "split_b": _road_class(1, ["old.split"]),
-                    "merged": _road_class(2, ["old.x", "old.y"]),
-                    "plain": _road_class(3, []),
-                },
-            )
-        },
-        "avoidance_sections": {"s": AvoidanceSection(label="", description="", sort_order=0)},
-        "avoidance_classifications": {
-            "kind": AvoidanceClassification(
-                section_key="s",
-                sort_order=0,
-                overrides={"split_b": AvoidanceOverride(section_key=None, default_level="avoid", selectable=True)},
-            )
-        },
-    }
-)
-
-# 要求の場面: （場面, 行の鍵 → 選んだ段）。
-_AVOIDANCE_REQUESTS: list[tuple[str, dict[str, AvoidanceLevel]]] = [
-    ("何も選んでいない", {}),
-    ("今の鍵だけ", {"kind.split_a": "exclude", "kind.plain": "avoid"}),
-    ("分けた区分の前の鍵は、分けてできたどの行にも効く", {"old.split": "exclude"}),
-    ("前の鍵の段は既定より弱くても効く", {"old.split": "pass"}),
-    ("合わせた区分の前の鍵は強い方（前に書いた方が強い）", {"old.x": "exclude", "old.y": "pass"}),
-    ("合わせた区分の前の鍵は強い方（後に書いた方が強い）", {"old.x": "pass", "old.y": "avoid"}),
-    ("今の鍵が前の鍵に勝つ", {"kind.split_b": "pass", "old.split": "exclude"}),
-    ("今の行でも前の鍵でもない鍵は読まない", {"gone.a": "exclude"}),
-]
-
-
-def road_avoidance_expectations() -> dict[str, list[dict]]:
-    """要求の避け方を今の行へ揃えた段。行と段は軸カタログが配る形で出す。"""
-    avoidance = road_class_catalog(_AVOIDANCE_DEFINITIONS).avoidance
-    return {
-        "levels": [level.model_dump() for level in avoidance.levels],
-        "rows": [row.model_dump() for row in avoidance.rows],
-        "resolve_road_avoidance": [
-            {"scene": scene, "requested": requested,
-             "resolved": resolve_road_avoidance(requested, _AVOIDANCE_DEFINITIONS)}
-            for scene, requested in _AVOIDANCE_REQUESTS
-        ],
-    }
-
-
 #: 組の名前 → 表を作る関数。組を足すときはここに1行足す（書き出しと置き場の名前はこれから決まる）。
 EXPECTATIONS: dict[str, Callable[[], dict[str, list[dict]]]] = {
     "geo": geo_expectations,
     "region": region_expectations,
     "time": time_expectations,
-    "difficulty": difficulty_expectations,
     "jma": jma_expectations,
     "way-value": way_value_expectations,
-    "road-avoidance": road_avoidance_expectations,
 }

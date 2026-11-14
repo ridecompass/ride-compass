@@ -21,9 +21,7 @@ _hits: TTLCache[str, deque[float]] = TTLCache(maxsize=_MAX_CLIENTS, ttl=WINDOW_S
 def check_rate_limit(client_id: str, max_requests: int) -> bool:
     """client_idからの直近1窓のリクエスト数がmax_requests未満なら、1回を数えてTrue（許可）。"""
     now = time.monotonic()
-    hits = _hits.get(client_id)
-    if hits is None:
-        hits = deque()
+    hits = _hits.get(client_id) or deque()
     while hits and hits[0] <= now - WINDOW_SECONDS:
         hits.popleft()
     if len(hits) >= max_requests:

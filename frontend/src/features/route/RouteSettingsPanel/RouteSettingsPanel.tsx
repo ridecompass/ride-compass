@@ -1,174 +1,60 @@
 "use client";
 
-import { useRef, useState } from "react";
 import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
 import { axisIconFor } from "@/components/ui/icons/axisIconPalette";
-import { ENABLED_AXIS_WEIGHT, clampBoundaryDrag, totalWeight, weightStep } from "@/features/route/routeWeightShare";
-import { axisCatalogFetchFailure, retryAxisCatalogFetch, useAxisCatalog } from "@/hooks/useAxisCatalog";
-import type { CatalogAxis } from "@/lib/catalogAxis";
-import type { RoutePreferenceWeights } from "@/types/route";
+import { COST_MULTIPLIER_LEVELS } from "@/features/route/costPreference";
+import {
+  AXIS_OFF,
+  DISABLED_LABEL,
+  STANDARD_COST_FACTOR,
+  STANDARD_COST_PREFERENCE,
+  axisSettingOf,
+  countsCosts,
+  withAxisSetting,
+  type AxisSetting,
+} from "@/lib/costPreference";
+import {
+  costAxisCatalogFetchFailure,
+  retryCostAxisCatalogFetch,
+  useCostAxisCatalog,
+  type CostAxis,
+} from "@/hooks/useCostAxisCatalog";
+import type { CostPreference } from "@/types/route";
 import { Button } from "@/components/ui/Button/Button";
 import { RetryIcon } from "@/components/ui/icons/lucideIcons";
-import { Toggle } from "@/components/ui/Toggle/Toggle";
+import CostLevelPicker from "./CostLevelPicker";
 import { cn } from "@/lib/cn";
-import { legendChipBodyClass, legendChipClass, legendIconClass } from "@/components/ui/AxisLegend/axisLegend";
+import { textVariants } from "@/components/ui/Text/Text";
 import { calloutVariants } from "@/components/ui/Callout/Callout";
-
-// 帯の区間へ文字を入れられる最小の取り分（%）。狭い区間はアイコン＋%→%だけ→何も出さない、の順に落とす
-// （どの軸の%もチップでは必ず読める）。
-const SEGMENT_ICON_MIN_PCT = 10;
-const SEGMENT_VALUE_MIN_PCT = 6;
+import { COST_AXIS_CATALOG_LABEL } from "@/services/costAxisCatalogApi";
 
 // 部品にせず関数で描く。部品の本体で`axisIconFor`の戻りを描くとreact-hooks/static-componentsが誤検知し、
 // パネルの本体の中で部品を定義すると、描き直しのたびにアイコンが作り直される。
-function renderAxisIcon(axis: CatalogAxis, size = 14) {
+function renderAxisIcon(axis: CostAxis) {
   const Icon = axisIconFor(axis.iconId);
-  return <Icon size={size} />;
+  return <Icon size={14} />;
 }
+
+/** 軸ごとの段: 無効（数えない）を先に、続けて倍率の段。 */
+const AXIS_LEVELS: readonly { value: AxisSetting; label: string }[] = [
+  { value: AXIS_OFF, label: DISABLED_LABEL },
+  ...COST_MULTIPLIER_LEVELS,
+];
 
 interface RouteSettingsPanelProps {
-  /** 軸カタログの公開軸へ揃えた重み（`features/route/routePreferenceSync.ts: alignRoutePreference`を通した値）。 */
-  routePreference: RoutePreferenceWeights;
-  onRoutePreferenceChange: (next: RoutePreferenceWeights) => void;
-  /** 重みを上書きするか。値を変えると自動でONになる（切り替えの操作はこのパネルに出さない）。 */
-  overrideEnabled: boolean;
-  onOverrideEnabledChange: (enabled: boolean) => void;
+  costPreference: CostPreference;
+  onCostPreferenceChange: (next: CostPreference) => void;
 }
 
-/** 「ルート設定」の「重み」タブ。配分の帯（境界のドラッグで配分し直す）と、軸のチップ（有効な軸を先頭に%付きで並べ、
- * 押すと有効/無効、(i)で説明）。軸は分類で分けず、公開軸を1本の並びで出す。 */
-export default function RouteSettingsPanel({
-  routePreference,
-  onRoutePreferenceChange,
-  overrideEnabled,
-  onOverrideEnabledChange,
-}: RouteSettingsPanelProps) {
-  const catalog = useAxisCatalog();
-  const catalogFailure = axisCatalogFetchFailure(catalog);
-  const handlePreferenceChange = (next: RoutePreferenceWeights) => {
-    if (!overrideEnabled) onOverrideEnabledChange(true);
-    onRoutePreferenceChange(next);
-  };
-
-  // 帯で動かした重みを覚えておき、無効にした軸を有効に戻したときに戻す（送る値の側は0になるので、ここでしか持てない）。
-  // 動かしていない軸は、そのときの既定の重みへ戻す。
-  const [movedWeights, setMovedWeights] = useState<Record<string, number>>({});
-
-  // 動かした重みは下限より上なので、0になるのは動かしていない、既定の重みが0の軸だけ。
-  function handleToggle(axisId: string, checked: boolean) {
-    const restored = checked ? (movedWeights[axisId] ?? catalog.defaultWeights[axisId]) || ENABLED_AXIS_WEIGHT : 0;
-    handlePreferenceChange({ ...routePreference, [axisId]: restored });
-  }
-
-  // 隣り合う2軸を1回の更新へまとめる（1軸ずつ2回呼ぶと、2回目が1回目を反映しない値から組むので1回目が消える）。
-  function handlePairWeightChange(axisIdA: string, valueA: number, axisIdB: string, valueB: number) {
-    setMovedWeights((prev) => ({ ...prev, [axisIdA]: valueA, [axisIdB]: valueB }));
-    handlePreferenceChange({ ...routePreference, [axisIdA]: valueA, [axisIdB]: valueB });
-  }
-
-  const total = totalWeight(routePreference);
-  // 有効な軸（重み>0）にだけ使うため、合計は必ず正。
-  const sharePct = (weight: number) => (weight / total) * 100;
-
-  // 有効な軸を先に並べる（スクロールせずに今の%を読める）。
-  const axesWithWeight = catalog.axes.map((axis) => ({
-    axis,
-    weight: routePreference[axis.axisId],
-  }));
-  const enabledAxes = axesWithWeight.filter(({ weight }) => weight > 0);
-  const orderedAxes = [...enabledAxes, ...axesWithWeight.filter(({ weight }) => weight <= 0)];
-  // 境界ごとの累積の%。
-  const cumulativePcts = enabledAxes.reduce<number[]>(
-    (acc, { weight }) => [...acc, (acc.at(-1) ?? 0) + sharePct(weight)],
-    [],
-  );
-
-  // 帯の境界を動かすと、両隣の2軸の間でだけ重みが移る。つまみは細く、ドラッグ中は外へ出るのが常なので、windowで
-  // 受ける（pointer captureは環境によって効かない）。
-  const stackBarRef = useRef<HTMLDivElement>(null);
-  function startBoundaryDrag(
-    e: React.PointerEvent<HTMLDivElement>,
-    axisIdA: string,
-    startWeightA: number,
-    axisIdB: string,
-    startWeightB: number,
-  ) {
-    const bar = stackBarRef.current;
-    if (!bar) return;
-    const startClientX = e.clientX;
-    const pixelsPerUnit = bar.getBoundingClientRect().width / total;
-    let applied: { weightA: number; weightB: number } | null = null;
-    const handleWindowPointerMove = (moveEvent: PointerEvent) => {
-      const rawDelta = (moveEvent.clientX - startClientX) / pixelsPerUnit;
-      const next = clampBoundaryDrag(startWeightA, startWeightB, rawDelta, total);
-      // 刻みに届かない動き・端で止まっている間は、保存と描き直しを繰り返さない。最初の動きは値が変わらなくても通す
-      // （動かした2軸の今の値を、有効に戻すときの値として覚える）。
-      if (applied !== null && next.weightA === applied.weightA && next.weightB === applied.weightB) return;
-      applied = next;
-      handlePairWeightChange(axisIdA, next.weightA, axisIdB, next.weightB);
-    };
-    const handleWindowPointerUp = () => {
-      window.removeEventListener("pointermove", handleWindowPointerMove);
-      window.removeEventListener("pointerup", handleWindowPointerUp);
-      window.removeEventListener("pointercancel", handleWindowPointerUp);
-    };
-    window.addEventListener("pointermove", handleWindowPointerMove);
-    window.addEventListener("pointerup", handleWindowPointerUp);
-    window.addEventListener("pointercancel", handleWindowPointerUp);
-  }
-
-  function handleBoundaryKeyDown(
-    e: React.KeyboardEvent<HTMLDivElement>,
-    axisIdA: string,
-    weightA: number,
-    axisIdB: string,
-    weightB: number,
-  ) {
-    const direction =
-      e.key === "ArrowLeft" || e.key === "ArrowDown" ? -1 : e.key === "ArrowRight" || e.key === "ArrowUp" ? 1 : 0;
-    if (direction === 0) return;
-    e.preventDefault();
-    const next = clampBoundaryDrag(weightA, weightB, direction * weightStep(total), total);
-    if (next.weightA === weightA && next.weightB === weightB) return;
-    handlePairWeightChange(axisIdA, next.weightA, axisIdB, next.weightB);
-  }
-
-  function renderLegendChip(axis: CatalogAxis, weight: number) {
-    const checked = weight > 0;
-    const color = catalog.axisColors[axis.axisId];
-    return (
-      <span key={axis.axisId} className={legendChipClass} data-checked={checked}>
-        <Toggle
-          variant="plain"
-          className={cn(legendChipBodyClass, "cursor-pointer")}
-          pressed={checked}
-          aria-label={checked ? `${axis.label}を無効にする` : `${axis.label}を有効にする`}
-          usage="この評価軸を道選びに使う・使わないを切り替えます。数字は重みの割合で、上の帯の境目を動かして変えます。"
-          onClick={() => handleToggle(axis.axisId, !checked)}
-        >
-          <span aria-hidden="true" className={legendIconClass} style={{ color }}>
-            {renderAxisIcon(axis)}
-          </span>
-          <span>{axis.label}</span>
-          {checked && (
-            <span className="text-[length:var(--font-size-sm)] font-semibold tabular-nums">
-              {Math.round(sharePct(weight))}%
-            </span>
-          )}
-        </Toggle>
-        <InfoPopover
-          triggerClassName={"w-7 border-l border-[var(--color-border-muted)] max-mobile:w-6"}
-          triggerAriaLabel={`${axis.label}の説明`}
-        >
-          {axis.description}
-        </InfoPopover>
-      </span>
-    );
-  }
+/** 「ルート設定」の「負担」タブ。費用の軸ごとに、倍率の段か無効（数えない）を選ぶ。全体のつまみは「条件」タブが持つ。 */
+export default function RouteSettingsPanel({ costPreference, onCostPreferenceChange }: RouteSettingsPanelProps) {
+  const catalog = useCostAxisCatalog();
+  const catalogFailure = costAxisCatalogFetchFailure(catalog);
+  const standard = catalog.axes.every((axis) => axisSettingOf(costPreference, axis.axisId) === STANDARD_COST_FACTOR);
 
   return (
     <div className="flex flex-col gap-3">
-      {/* 重みを触っている人へ、何が起きるかと再試行を常設ヘッダーの印と同じ文でここでも見せる。 */}
+      {/* 倍率を触っている人へ、何が起きるかと再試行を見せる。 */}
       {catalogFailure !== null && (
         <p
           className={cn(
@@ -178,70 +64,60 @@ export default function RouteSettingsPanel({
           role="status"
         >
           <span>{`${catalogFailure.label}を取得できませんでした。${catalogFailure.effect}`}</span>
-          <Button variant="warning" size="panelIcon" aria-label="再試行" onClick={retryAxisCatalogFetch}>
+          <Button
+            usage={`取得できなかった${COST_AXIS_CATALOG_LABEL}を、もう一度取得します。`}
+            variant="warning"
+            size="panelIcon"
+            aria-label="再試行"
+            onClick={retryCostAxisCatalogFetch}
+          >
             <RetryIcon />
           </Button>
         </p>
       )}
-      <div className="flex items-center gap-1">
-        <div className="relative min-w-0 flex-auto" ref={stackBarRef}>
-          <div className="flex h-7.5 gap-px overflow-hidden rounded-sm bg-[var(--color-surface-2)]">
-            {enabledAxes.map(({ axis, weight }) => {
-              const pct = sharePct(weight);
-              return (
-                <div
-                  key={axis.axisId}
-                  className="flex h-full min-w-0 flex-col items-center justify-center gap-px overflow-hidden"
-                  style={{ width: `${pct}%`, background: catalog.axisColors[axis.axisId] }}
-                  title={`${axis.label} ${Math.round(pct)}%`}
-                >
-                  {pct >= SEGMENT_ICON_MIN_PCT && (
-                    <span aria-hidden="true" className="inline-flex text-[rgba(15,23,42,0.85)]">
-                      {renderAxisIcon(axis, 13)}
-                    </span>
-                  )}
-                  {pct >= SEGMENT_VALUE_MIN_PCT && (
-                    <span
-                      aria-hidden="true"
-                      className="text-[0.625rem] leading-none font-bold text-[rgba(15,23,42,0.85)] tabular-nums"
-                    >
-                      {Math.round(pct)}
-                      {pct >= SEGMENT_ICON_MIN_PCT ? "%" : ""}
-                    </span>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-          {enabledAxes.slice(0, -1).map(({ axis: left, weight: leftWeight }, i) => {
-            const cumulativePct = cumulativePcts[i];
-            const right = enabledAxes[i + 1];
-            return (
-              <div
-                key={`boundary-${left.axisId}-${right.axis.axisId}`}
-                className="absolute -top-1.5 -bottom-1.5 flex w-6 -translate-x-1/2 cursor-col-resize touch-none items-center justify-center after:h-3.5 after:w-0.5 after:rounded-[1px] after:bg-[var(--color-surface)] after:shadow-[0_0_0_1px_var(--color-border-strong)] after:content-[''] hover:after:bg-[var(--color-accent)] hover:after:shadow-[0_0_0_1px_var(--color-accent)] focus-visible:outline-none focus-visible:after:bg-[var(--color-accent)] focus-visible:after:shadow-[0_0_0_1px_var(--color-accent)]"
-                style={{ left: `${cumulativePct}%` }}
-                role="slider"
-                aria-label={`${left.label}と${right.axis.label}の配分`}
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-valuenow={Math.round(cumulativePct)}
-                tabIndex={0}
-                data-usage="左右に動かして、両隣の評価軸の重みの割合を変えます。"
-                onPointerDown={(e) => startBoundaryDrag(e, left.axisId, leftWeight, right.axis.axisId, right.weight)}
-                onKeyDown={(e) => handleBoundaryKeyDown(e, left.axisId, leftWeight, right.axis.axisId, right.weight)}
+      {!catalog.loaded && !catalog.failed && (
+        <p className={textVariants({ variant: "hint" })}>{COST_AXIS_CATALOG_LABEL}を読み込んでいます。</p>
+      )}
+      {!countsCosts(costPreference) && catalog.axes.length > 0 && (
+        <p className={textVariants({ variant: "hint" })} role="status">
+          {`「条件」タブの負担の強さが${DISABLED_LABEL}のため、ここの倍率は使いません。`}
+        </p>
+      )}
+      <ul className={cn("flex flex-col gap-1.5", !countsCosts(costPreference) && "opacity-50")}>
+        {catalog.axes.map((axis) => {
+          const setting = axisSettingOf(costPreference, axis.axisId);
+          return (
+            <li key={axis.axisId} className="flex items-center gap-2">
+              {/* 無効の軸は、絵と名前を薄くして数えていないことを見せる（選ぶつまみは薄めない）。 */}
+              <span className={cn("flex min-w-0 flex-1 items-center gap-1", setting === AXIS_OFF && "opacity-50")}>
+                <span aria-hidden="true" className="inline-flex">
+                  {renderAxisIcon(axis)}
+                </span>
+                <span className="truncate">{axis.label}</span>
+                <InfoPopover triggerAriaLabel={`${axis.label}の説明`}>{axis.description}</InfoPopover>
+              </span>
+              <CostLevelPicker
+                aria-label={`${axis.label}の倍率`}
+                usage="この種類の負担を所要時間に足すときに掛ける倍率を選びます。「無効」はこの負担を数えず、結果にも地図にも出しません。"
+                levels={AXIS_LEVELS}
+                value={setting}
+                onChange={(next) => onCostPreferenceChange(withAxisSetting(costPreference, axis.axisId, next))}
               />
-            );
-          })}
-        </div>
-        <InfoPopover triggerAriaLabel="重みの配分の説明">
-          帯の境目を動かして、評価軸ごとの重みの割合を変えます。境目は、どの評価軸も重みが0（無効）になる手前で止まります。
-        </InfoPopover>
-      </div>
-
-      <div className="flex max-h-26 flex-wrap gap-2 overflow-y-auto">
-        {orderedAxes.map(({ axis, weight }) => renderLegendChip(axis, weight))}
-      </div>
+            </li>
+          );
+        })}
+      </ul>
+      {catalog.axes.length > 0 && (
+        <Button
+          usage="負担の種類ごとの倍率と無効を、すべて標準[×1]に戻します。"
+          variant="secondary"
+          className="self-end"
+          disabled={standard}
+          onClick={() => onCostPreferenceChange({ ...STANDARD_COST_PREFERENCE, strength: costPreference.strength })}
+        >
+          標準に戻す
+        </Button>
+      )}
     </div>
   );
 }

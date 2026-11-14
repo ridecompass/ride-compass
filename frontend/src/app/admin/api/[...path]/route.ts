@@ -24,9 +24,9 @@ async function forward(request: Request): Promise<Response> {
   if (!pathname.startsWith(`${ADMIN_PROXY_PREFIX}/`)) return new Response(null, { status: 404 });
   const backendPath = `${BACKEND_ADMIN_PREFIX}${pathname.slice(ADMIN_PROXY_PREFIX.length)}`;
   const hasBody = request.method === "POST" || request.method === "PUT";
-  let backendResponse: Response;
+  // 本文は応答の頭が届いたあとにも切れる・時間切れになるので、読み終えるまでを同じ失敗として扱う。
   try {
-    backendResponse = await fetch(`${BACKEND_INTERNAL_URL}${backendPath}${search}`, {
+    const backendResponse = await fetch(`${BACKEND_INTERNAL_URL}${backendPath}${search}`, {
       method: request.method,
       headers: {
         Authorization: `Basic ${Buffer.from(`${credentials.username}:${credentials.password}`).toString("base64")}`,
@@ -34,6 +34,11 @@ async function forward(request: Request): Promise<Response> {
       },
       body: hasBody ? await request.text() : undefined,
       signal: AbortSignal.timeout(ADMIN_PROXY_TIMEOUT_MS),
+    });
+    if (backendResponse.status === 204) return new Response(null, { status: 204 });
+    return new Response(await backendResponse.text(), {
+      status: backendResponse.status,
+      headers: { "Content-Type": backendResponse.headers.get("content-type") ?? "application/json" },
     });
   } catch (error) {
     // detailは管理画面の本文へそのまま出るため、ランタイム由来の英語の文言（"fetch failed"等）は
@@ -45,12 +50,6 @@ async function forward(request: Request): Promise<Response> {
       { status: 502 },
     );
   }
-
-  if (backendResponse.status === 204) return new Response(null, { status: 204 });
-  return new Response(await backendResponse.text(), {
-    status: backendResponse.status,
-    headers: { "Content-Type": backendResponse.headers.get("content-type") ?? "application/json" },
-  });
 }
 
 export const GET = forward;

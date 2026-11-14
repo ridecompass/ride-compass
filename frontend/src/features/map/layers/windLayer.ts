@@ -45,5 +45,9 @@ export function windArrows(grid: MsmGridForecast, timeIndex: number): DynamicWea
       properties: { speed, bearing: downwindDeg(direction) },
     }),
   );
-  return { kind: "gridMark", geojson };
+  return {
+    kind: "gridMark",
+    geojson,
+    gridStepDeg: { latitude: grid.latitude_step_deg, longitude: grid.longitude_step_deg },
+  };
 }

@@ -12,6 +12,7 @@
 """
 
 from collections.abc import Callable, Mapping, Sequence
+from functools import reduce
 from typing import Annotated, Literal, Union
 
 import numpy as np
@@ -19,13 +20,16 @@ from numpy.typing import ArrayLike
 from pydantic import ConfigDict, Field
 
 from app.domain.axis_templates import evaluate_breakpoint_linear
-from app.domain.difficulty import round_difficulty_array
 from app.domain.strict_model import StrictModel
 
 _NODE_CONFIG = ConfigDict(frozen=True, allow_inf_nan=False)
 
 #: 木が読む要求の条件の名前。地図の配信の要求のクエリパラメータの名前でもある。
-FormulaConditionName = Literal["bearing_deg", "speed_kmh"]
+_FormulaConditionName = Literal["bearing_deg", "speed_kmh"]
+
+
+#: 地図の式の木が読む走る条件（条件の葉`condition`の名前）。地図のレンズの要求のクエリパラメータの名前でもある。
+WayValueConditionName = Literal["at", "bearing_deg", "speed_kmh"]
 
 
 class Constant(StrictModel):
@@ -58,7 +62,7 @@ class Condition(StrictModel):
     model_config = _NODE_CONFIG
 
     op: Literal["condition"] = "condition"
-    name: FormulaConditionName
+    name: _FormulaConditionName
 
 
 class Unary(StrictModel):
@@ -142,7 +146,7 @@ def feature(name: str) -> FeatureValue:
     return FeatureValue(name=name)
 
 
-def condition(name: FormulaConditionName) -> Condition:
+def condition(name: _FormulaConditionName) -> Condition:
     return Condition(name=name)
 
 
@@ -168,48 +172,12 @@ def case(when: FormulaNode, then: FormulaNode, otherwise: FormulaNode) -> Case:
 
 def any_of(nodes: Sequence[FormulaNode]) -> FormulaNode:
     """どれかが真なら真（空なら偽）。"""
-    if not nodes:
-        return FALSE
-    out = nodes[0]
-    for node in nodes[1:]:
-        out = Binary(op="or", left=out, right=node)
-    return out
+    return reduce(lambda left, right: Binary(op="or", left=left, right=right), nodes) if nodes else FALSE
 
 
 def all_of(nodes: Sequence[FormulaNode]) -> FormulaNode:
     """どれもが真なら真（空なら真）。"""
-    if not nodes:
-        return TRUE
-    out = nodes[0]
-    for node in nodes[1:]:
-        out = Binary(op="and", left=out, right=node)
-    return out
-
-
-def feature_names(node: FormulaNode) -> set[str]:
-    """木が読む道ごとの材料の名前。"""
-    if isinstance(node, FeatureValue):
-        return {node.name}
-    return set().union(*(feature_names(child) for child in _children(node)))
-
-
-def condition_names(node: FormulaNode) -> set[str]:
-    """木が読む要求の条件の名前。"""
-    if isinstance(node, Condition):
-        return {node.name}
-    return set().union(*(condition_names(child) for child in _children(node)))
-
-
-def _children(node: FormulaNode) -> tuple[FormulaNode, ...]:
-    if isinstance(node, (Unary, Round)):
-        return (node.arg,)
-    if isinstance(node, Binary):
-        return (node.left, node.right)
-    if isinstance(node, Case):
-        return (node.when, node.then, node.otherwise)
-    if isinstance(node, Interpolate):
-        return (node.input,)
-    return ()
+    return reduce(lambda left, right: Binary(op="and", left=left, right=right), nodes) if nodes else TRUE
 
 
 def _truth(values: np.ndarray) -> np.ndarray:
@@ -281,26 +249,5 @@ def _evaluate(node: FormulaNode, features: Mapping[str, ArrayLike], conditions: 
     if isinstance(node, Interpolate):
         return evaluate_breakpoint_linear(_evaluate(node.input, features, conditions), node.stops)
     values = _evaluate(node.arg, features, conditions)
-    if node.decimals == 1:
-        return np.reshape(round_difficulty_array(np.atleast_1d(values)), np.shape(values))
     # `np.float64`の`round`はnumpyの丸め（10の冪を掛けて丸める）で、Pythonの`round`と値が食い違いうる。
     return np.vectorize(lambda value: round(float(value), node.decimals), otypes=[float])(values)
-
-
-def way_values_from_formula(
-    formula: WayValueFormula,
-    feature_keys: Sequence[str],
-    features: Mapping[str, ArrayLike],
-    conditions: Mapping[str, float],
-) -> dict[str, float | None]:
-    """道の鍵→地図が塗る値。値の決まらない道はNone、値の無い道は鍵ごと除く。"""
-    length = len(feature_keys)
-    undetermined = _truth(evaluate_formula(formula.undetermined, features, conditions, length))
-    values = evaluate_formula(formula.value, features, conditions, length)
-    out: dict[str, float | None] = {}
-    for key, value, unknown in zip(feature_keys, values.tolist(), undetermined.tolist()):
-        if unknown:
-            out[key] = None
-        elif not np.isnan(value):
-            out[key] = value
-    return out

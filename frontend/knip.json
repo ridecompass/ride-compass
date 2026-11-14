@@ -6,7 +6,8 @@
     "scripts/image.mjs",
     "scripts/structure-population.mjs",
     "scripts/mutation/*.{mjs,mts}",
-    "capture/examples/*.ts"
+    "capture/examples/*.ts",
+    "capture/ride-simulation.ts"
   ],
   "ignoreBinaries": ["fc-list"],
   "playwright": {

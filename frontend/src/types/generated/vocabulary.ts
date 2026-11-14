@@ -122,14 +122,14 @@ export const vocabulary = {
   "materialMissingSemantics": [
     {
       "key": "unknown",
-      "title": "評価に影響する欠損",
-      "hint": "元データが無い区間では、この材料を使う軸が評価対象外になる。",
+      "title": "データの欠けになる材料",
+      "hint": "元データが無い区間は値が分からない。費用はその区間を、取込の範囲全体の分布の平均で埋めて数える。",
       "affects_evaluation": true
     },
     {
       "key": "definite",
-      "title": "タグ不在を確定値として評価する材料（参考）",
-      "hint": "欠損は「該当なし」を意味し、評価に穴は開かない。",
+      "title": "タグ不在を「該当なし」と読む材料（参考）",
+      "hint": "タグが無いのは「該当なし」で、データの欠けではない。",
       "affects_evaluation": false
     }
   ],
@@ -193,13 +193,5 @@ export const vocabulary = {
       "label": "地点",
       "area": false
     }
-  ],
-  "quantiles": [
-    "p10",
-    "p25",
-    "p50",
-    "p75",
-    "p90",
-    "p99"
   ]
 } as const;

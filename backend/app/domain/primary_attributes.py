@@ -1,6 +1,6 @@
 """一次属性の語彙の宣言（地図での束ね方・凡例の行・名前）と、宣言だけから導く式。
 
-型は`domain/registry.py`が持つ（docs/modules/backend/axis-studio.md「一次属性の語彙」）。
+型は`domain/registry.py`が持つ。
 """
 
 from collections import Counter
@@ -10,11 +10,13 @@ from app.domain.registry import (
     DisplayAxisSpec,
     DisplayCategorySpec,
     PointFactSpec,
-    PointThinningSpec,
     PrimaryAttributeSpec,
 )
 from app.domain.stop_place import StopPlaceGroup
 from app.domain.traffic import NODE_KINDS, STOP_POI_KINDS, TAG_KIND_RULES, kind_map_sql, kinds_shown_as, stop_kind_sql
+
+#: 補給の点のタイル（`poi`）が地点の表から出す立ち寄り先の群。ほかの群は立ち寄り先のタイル（`stop_place`）が出す。
+SUPPLY_PLACE_GROUPS = frozenset({StopPlaceGroup.CONVENIENCE})
 
 #: 元のタグの値をこの数より多く持つ種別は、説明でタグの名前だけを言う（値を並べると説明が値の一覧になる）。
 _LISTED_TAG_VALUES = 3
@@ -36,7 +38,7 @@ def _kinds_note(kinds: tuple[str, ...]) -> str:
     ) + "]"
 
 
-def _kind_row(key: str, label: str, values: tuple[str, ...], meaning: str, glyph: str | None = None) -> DisplayCategorySpec:
+def _kind_row(key: str, label: str, values: tuple[str, ...], meaning: str, *, glyph: str) -> DisplayCategorySpec:
     """種別を行の値に持つ行。説明は意味の文`meaning`に元のタグを添える。"""
     return DisplayCategorySpec(
         key=key, label=label, values=values, glyph=glyph, description=f"{meaning}{_kinds_note(values)}。"
@@ -74,32 +76,44 @@ PRIMARY_ATTRIBUTES: tuple[PrimaryAttributeSpec, ...] = (
                 hue_slot=3,
                 tone="dark",
                 categories=(
-                    _kind_row("traffic_signals", "信号", ("traffic_signals",), "信号機。信号付きの横断歩道もここに入る"),
-                    _kind_row("crossing", "横断歩道", ("crossing",), "信号の無い横断歩道"),
-                    _kind_row("stop", "一時停止", ("stop",), "一時停止の標識がある所"),
-                    _kind_row("give_way", "徐行", ("give_way",), "相手に道を譲る（徐行する）標識がある所"),
+                    _kind_row(
+                        "traffic_signals",
+                        "信号",
+                        ("traffic_signals",),
+                        "信号機。信号付きの横断歩道もここに入る",
+                        glyph="signal",
+                    ),
+                    _kind_row("crossing", "横断歩道", ("crossing",), "信号の無い横断歩道", glyph="crosswalk"),
+                    _kind_row("stop", "一時停止", ("stop",), "一時停止の標識がある所", glyph="stop_sign"),
+                    _kind_row("give_way", "徐行", ("give_way",), "相手に道を譲る[徐行する]標識がある所", glyph="yield"),
                     # 車道用と歩道・自転車道用の踏切は、利用者から見れば同じ「線路を渡る点」。
                     _kind_row(
                         "level_crossing",
                         "踏切",
                         ("level_crossing", "railway_crossing"),
-                        "線路（路面電車を含む）を渡る所。車道の踏切も歩道・自転車道の踏切も入る",
+                        "線路[路面電車を含む]を渡る所。車道の踏切も歩道・自転車道の踏切も入る",
+                        glyph="railway",
                     ),
                     _kind_row(
                         "barrier",
                         "車止め・ゲート",
                         ("barrier",),
                         "車止めの柱・ゲート・柵など、道をふさいで止まるか押して通る所",
+                        glyph="barrier",
                     ),
                     _kind_row(
                         "traffic_calming",
                         "ハンプ・狭さく",
                         ("traffic_calming",),
-                        "車の速度を落とさせる段差（ハンプ）や道幅の絞り込み",
+                        "車の速度を落とさせる段差[ハンプ]や道幅の絞り込み",
+                        glyph="hump",
                     ),
                 ),
             ),
         ),
+        point_min_zoom=15,
+        # 点の印が重なると、停止要因 → 補給 → 立ち寄り先 → 事故の順に残す（走る前に知りたいのは、どこで止まるか）。
+        point_priority=3,
     ),
     ATTR_ACCIDENT_POINT := PrimaryAttributeSpec(
         attr_id="accident_point",
@@ -123,12 +137,14 @@ PRIMARY_ATTRIBUTES: tuple[PrimaryAttributeSpec, ...] = (
                         label="自転車関連",
                         values=(True,),
                         description="当事者に自転車が含まれる事故[警察庁の交通事故統計の当事者種別]。",
+                        glyph="bicycle_crash",
                     ),
                     DisplayCategorySpec(
                         key="other",
                         label="その他",
                         values=(False,),
-                        description="当事者に自転車が含まれない事故（車どうし・車と歩行者など）。",
+                        description="当事者に自転車が含まれない事故[車どうし・車と歩行者など]。",
+                        glyph="crash",
                     ),
                 ),
             ),
@@ -148,7 +164,7 @@ PRIMARY_ATTRIBUTES: tuple[PrimaryAttributeSpec, ...] = (
                         key="non_fatal",
                         label="死亡以外",
                         values=(False,),
-                        description="死者の記録が無い事故（負傷事故）。",
+                        description="死者の記録が無い事故[負傷事故]。",
                         radius_px=3,
                     ),
                 ),
@@ -157,6 +173,9 @@ PRIMARY_ATTRIBUTES: tuple[PrimaryAttributeSpec, ...] = (
         point_facts=(PointFactSpec(property="occurred_year", label="発生年"),),
         # 事故は面的に多く、同じ濃さだと停止要因の点が埋もれる。
         point_opacity=0.75,
+        point_min_zoom=15,
+        # 事故どうしが重なると、死亡事故を残し、その中で自転車の事故を残す。
+        point_priority_axes=("severity", "party"),
     ),
     ATTR_INTERSECTION := PrimaryAttributeSpec(attr_id="intersection", label="交差点", geometry="point"),
     ATTR_LANDCOVER := PrimaryAttributeSpec(attr_id="landcover", label="緑と水", geometry="area"),
@@ -211,6 +230,7 @@ PRIMARY_ATTRIBUTES: tuple[PrimaryAttributeSpec, ...] = (
         ),
         # 名前を持つのはコンビニの点だけ（OpenStreetMap の点の名前は焼かない）。
         point_name_property="name",
+        point_priority=2,
     ),
     # 群「コンビニ」は補給の点に出すので、ここの行に入れない。
     PrimaryAttributeSpec(
@@ -271,19 +291,8 @@ PRIMARY_ATTRIBUTES: tuple[PrimaryAttributeSpec, ...] = (
                 ),
             ),
         ),
-        # 街中は飲食店で埋まるので、地点の少ない群から残す（並びは都内の件数の少ない順）。
-        point_thinning=PointThinningSpec(
-            rows=(
-                StopPlaceGroup.TEMPLE_SHRINE.value,
-                StopPlaceGroup.BATH.value,
-                StopPlaceGroup.BICYCLE.value,
-                StopPlaceGroup.LODGING.value,
-                StopPlaceGroup.SCENIC.value,
-                StopPlaceGroup.EAT_DRINK.value,
-            ),
-            ratio_property="confidence",
-        ),
         point_name_property="name",
+        point_priority=1,
     ),
 )
 
@@ -315,7 +324,8 @@ check_primary_attributes(PRIMARY_ATTRIBUTES)
 PRIMARY_ATTRIBUTES_BY_ID = {attr.attr_id: attr for attr in PRIMARY_ATTRIBUTES}
 check_point_rows(ATTR_STOP_POI, STOP_POI_KINDS)
 # 補給の点のコンビニは、ノードの種別でなく立ち寄り先の群「コンビニ」から、点のタイルの`poi`のレイヤーが足す。
-check_point_rows(PRIMARY_ATTRIBUTES_BY_ID["supply_poi"], NODE_KINDS - STOP_POI_KINDS | {StopPlaceGroup.CONVENIENCE})
+check_point_rows(PRIMARY_ATTRIBUTES_BY_ID["supply_poi"], NODE_KINDS - STOP_POI_KINDS | SUPPLY_PLACE_GROUPS)
+
 
 
 def stop_poi_map_group_sql(alias: str) -> str:

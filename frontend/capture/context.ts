@@ -2,10 +2,15 @@ import { expect, type Locator, type Page } from "@playwright/test";
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { mapDisplay } from "@/types/generated/mapDisplay";
-import * as catalogAxes from "@/testing/catalogAxes";
+import * as costAxes from "@/testing/costAxes";
 import * as fixtures from "../e2e/fixtures";
 import * as states from "../e2e/states";
-import { LIVE_POINT, chooseLens, settleMap } from "../e2e-live/live";
+import { installPageHelpers } from "../e2e/pageHelpers";
+import { LIVE_POINT } from "../e2e-live/live";
+import { chooseLens, settleMap } from "../e2e-live/mapReads";
+import { fileName } from "./fileName.mjs";
+import { composeKeyboard } from "./keyboard";
+import { upstream, type WorktreeBackend } from "./worktreeBackend";
 
 // 脚本（scripts/capture.mjs の --script）が受け取る口。脚本はこの口だけを使い、何も読み込まない（型の読み込みは実行時に
 // 消えるのでよい）。そのため作業ツリーの外に置いても、読み込みの解決に頼らずに動く。e2e の段取りと応答の雛形はモジュールごと
@@ -16,7 +21,7 @@ interface OpenOptions {
   point?: { latitude: number; longitude: number };
   /** 開いたあとに寄せる地図の倍率。 */
   zoom?: number;
-  /** ON にするレイヤーの id（mapDisplay.layers と、軸カタログが配る道の線の層）。渡さないレイヤーは既定の表示のまま。 */
+  /** ON にするレイヤーの id（mapDisplay.layers と、画面の設定が配る道の線の層）。渡さないレイヤーは既定の表示のまま。 */
   layers?: string[];
   /** 開く前に入れる保存状態（localStorage）。 */
   storedState?: Record<string, string>;
@@ -38,8 +43,9 @@ export interface CaptureContext {
   fixtures: typeof fixtures;
   /** e2e/states.ts の全状態の走査の段取り（installScanMocks・splice 等）。 */
   states: typeof states;
-  /** src/testing/catalogAxes.ts の軸の雛形（catalogEntry・dedicatedEntry 等）。モックの軸カタログを組むときに fixtures.axisCatalogFixture へ渡す。 */
-  catalogAxes: typeof catalogAxes;
+  /** src/testing/costAxes.ts の費用の軸の一覧の雛形（costAxisCatalog・costAxisEntry 等）。モックの一覧を組むときに使う（画面の設定は
+   * fixtures.clientConfigFixture）。 */
+  costAxes: typeof costAxes;
   /** アプリを開き、地図の全ソースの読み終わりまで待つ。初回の案内は閉じた状態で開く。 */
   open(options?: OpenOptions): Promise<void>;
   /**
@@ -47,7 +53,7 @@ export interface CaptureContext {
    * backend は撮影用の資格情報を通さない）。選べなければ、選べるタブを並べて止まる。
    */
   openAdmin(options?: OpenAdminOptions): Promise<Locator>;
-  /** 「評価で塗る」の評価軸（レンズ）を名前で選び（null は選んでいない状態へ戻す）、読み終わりまで待つ。選べなければ、選べる名前を並べて止まる。 */
+  /** 「負担で塗る」のレンズを名前で選び（null は選んでいない状態へ戻す）、読み終わりまで待つ。選べなければ、選べる名前を並べて止まる。 */
   chooseLens(label: string | null): Promise<void>;
   /**
    * 「表示」の一覧の行の名前で凡例の内訳を開き、その内訳を返す。一覧が閉じていれば開く。`row` を渡せば、その行の説明も開く。
@@ -59,18 +65,20 @@ export interface CaptureContext {
   /** 地図の見えている所（部品に覆われていない所）へ経度・緯度の点を寄せてから押す。点が画面の外や部品の下に来うるときに使う。 */
   clickVisible(lngLat: [number, number]): Promise<void>;
   /**
-   * 地図に描かれた、押すと開くもの（道の詳細・点の詳細・ルートの区間・乗り換えの帯等）を、経度・緯度を渡さずに1つ押す。
-   * `target` は地図の当たり判定の対象の名前（例: "road"）で、いまの地図に無い名前を渡すと押せる名前を並べて止まる。持つレイヤーが
-   * 非表示・画面に描かれていないときも止まるので、open の layers・位置・倍率で描かれる状態にしてから呼ぶ（例は examples/road-detail.ts）。
+   * 地図に描かれた、押すと開くもの（点の詳細・ルートの区間・乗り換えの帯等）を、経度・緯度を渡さずに1つ押す。
+   * `target` は地図の当たり判定の対象の名前（例: "point"）で、いまの地図に無い名前を渡すと押せる名前を並べて止まる。持つレイヤーが
+   * 非表示・画面に描かれていないときも止まるので、open の layers・位置・倍率で描かれる状態にしてから呼ぶ。
    */
   clickFeature(target: string): Promise<void>;
+  /** 地図に描かれた道を経度・緯度を渡さずに1本長押しし、道の詳細を開く。open の layers で道の層を出してから呼ぶ（例は examples/road-detail.ts）。 */
+  longPressRoad(): Promise<void>;
   /**
    * URL が glob に当たる応答の本文を `transform` の返した JSON に替える。本物の応答を取ってから本文だけを替えるので、CORS 等の
    * ヘッダーは本物のまま残る（ヘッダーの無い応答で返すと、別オリジンの backend への取得としてブラウザが捨てる）。
    * 本物の応答が失敗（本番の backend にまだ無い経路の 404 等）なら、`transform` に undefined を渡し、返した JSON を成功（200）の
    * 応答として CORS のヘッダーを付けて返す。新しい経路の応答も、作業ツリーの版を本番の backend へ向けたまま替えられる（例は examples/place-area.ts）。
    * open より前に呼ぶ（open が開くときに取る応答も替える）。
-   * 本物の backend へ向けたときに使う（モックの応答を替えるなら open の routes で page.route を足す。例は examples/axis-catalog.ts）。
+   * 本物の backend へ向けたときに使う（モックの応答を替えるなら open の routes で page.route を足す。例は examples/cost-axes.ts）。
    * 本文を JSON として読み替えるだけなので、画像等の JSON でない応答は替えられない。作業ツリーの backend が変える、DB を読まない
    * 経路の応答は、scripts/capture.mjs の --backend で作業ツリーの backend に返させる（例は examples/jma-precipitation.ts）。
    */
@@ -90,78 +98,19 @@ export interface CaptureContext {
 
 export type CaptureScript = (context: CaptureContext) => Promise<void>;
 
-export interface WorktreeBackend {
-  /** 作業ツリーの backend（backend/scripts/serve_capture.py）のオリジン。 */
-  origin: string;
-  /** --api の backend のオリジン。 */
-  api: string;
-  /** 作業ツリーの backend に返させるパスの頭（scripts/capture.mjs の --backend）。 */
-  paths: string[];
-}
-
 /**
- * 作業ツリーの backend の応答を待つ上限。気象庁のタイルの中継は気象庁への秒間上限を守って待つ（backend/app/config.py:
- * jma_tile_upstream_max_requests_per_second）ので、地図が一度に取るタイルの数だけ待ちが積もる。
+ * 撮るときの描画の止め方。CSS のアニメーション・遷移は終わりの姿へ進めて撮る（Playwright の `animations: "disabled"`）。
+ * 前後の画像を画素で比べて同じかを決めるので、遷移の途中を撮ると、変えていない画面でも一致しない。
  */
-const WORKTREE_BACKEND_TIMEOUT_MS = 5 * 60_000;
-
-/**
- * 撮った画像（PNG）の上を `shift` だけ切り落とし、下から `keyboard` の高さを板で覆った画像を、同じ寸法で組み直す。iOS の
- * Safari はキーボードが出てもレイアウトの寸法を変えず、見える範囲を欄が見えるだけずらすので、画面の中身は動かない。
- */
-async function composeKeyboard(
-  page: Page,
-  image: Buffer,
-  { width, height }: { width: number; height: number },
-  { shift, keyboard }: { shift: number; keyboard: number },
-): Promise<Buffer> {
-  const sheet = await page.context().newPage();
-  try {
-    await sheet.setViewportSize({ width, height });
-    await sheet.setContent(`<!doctype html>
-<body style="margin:0;width:${width}px;height:${height}px;overflow:hidden;position:relative">
-  <img src="data:image/png;base64,${image.toString("base64")}"
-    style="position:absolute;left:0;top:${-shift}px;width:${width}px;height:${height}px">
-  <div style="position:absolute;left:0;right:0;bottom:0;height:${keyboard}px;background:#9ca3af;color:#fff;
-    display:flex;align-items:center;justify-content:center;font:20px sans-serif">キーボード（見立て）</div>
-</body>`);
-    await sheet.locator("img").evaluate((img: HTMLImageElement) => img.decode());
-    return await sheet.screenshot();
-  } finally {
-    await sheet.close();
-  }
-}
+const STILL = { animations: "disabled" } as const;
 
 /** 「表示」のボタンと、押すと開く一覧の名前（`MapOverlayControls`）。 */
 const OVERLAY_LIST_NAME = "地図に出す情報";
 
-/**
- * ブラウザが --api の backend へ選んだパスの頭で取りに行くものを、作業ツリーの backend から取って返す。page.route の
- * route.fetch は向け先のプロトコルを変えられない（本番の https から手元の http へ替えられない）ので、page.request で取る。
- * 脚本の routes・patch より先に登録する（後から登録したルートが先に当たる）。
- */
-export async function routeToWorktreeBackend(page: Page, { origin, api, paths }: WorktreeBackend): Promise<void> {
-  const apiOrigin = new URL(api).origin;
-  await page.route(
-    (url) => url.origin === apiOrigin && paths.some((head) => url.pathname.startsWith(head)),
-    async (route) => {
-      const url = new URL(route.request().url());
-      const response = await page.request.get(`${origin}${url.pathname}${url.search}`, {
-        timeout: WORKTREE_BACKEND_TIMEOUT_MS,
-      });
-      await route.fulfill({ response });
-    },
-  );
-}
-
-function fileName(name: string): string {
-  return name.replace(/[\\/:*?"<>|\s]+/g, "_");
-}
-
 /** 選び損ねた直後に呼ぶので、選択肢が閉じていれば開く。 */
 async function lensLabels(page: Page): Promise<string[]> {
-  const group = page.getByRole("radiogroup", { name: "評価で塗る" });
-  if (!(await group.isVisible())) await page.getByRole("button", { name: /^評価で塗る: / }).click();
+  const group = page.getByRole("radiogroup", { name: "負担で塗る" });
+  if (!(await group.isVisible())) await page.getByRole("button", { name: /^負担で塗る: / }).click();
   const labels = await group.getByRole("radio").allInnerTexts();
   return labels.map((label) => label.replace(/\s+/g, " ").trim());
 }
@@ -173,7 +122,10 @@ async function ariaLabels(scope: Page | Locator, suffix: string): Promise<string
   return labels.filter((label) => label.endsWith(suffix)).map((label) => label.slice(0, -suffix.length));
 }
 
-export function captureContext(page: Page, { out, mocked }: { out: string; mocked: boolean }): CaptureContext {
+export function captureContext(
+  page: Page,
+  { out, mocked, worktreeBackend }: { out: string; mocked: boolean; worktreeBackend: WorktreeBackend | null },
+): CaptureContext {
   let count = 0;
   const nextFile = (name: string) => {
     count += 1;
@@ -185,10 +137,10 @@ export function captureContext(page: Page, { out, mocked }: { out: string; mocke
     expect,
     fixtures,
     states,
-    catalogAxes,
+    costAxes,
     settle,
     async open({ point, zoom, layers = [], storedState, routes } = {}) {
-      // 道の線の層は軸カタログが配るので、前もって照らせるのはモックの層だけ（本物の backend の層は開いた画面が決める）。
+      // 道の線の層は画面の設定が配るので、前もって照らせるのはモックの層だけ（本物の backend の層は開いた画面が決める）。
       const layerIds: string[] = [...mapDisplay.layers, ...fixtures.E2E_ROAD_LAYERS].map(({ id }) => id);
       const unknown = mocked ? layers.filter((id) => !layerIds.includes(id)) : [];
       if (unknown.length > 0) {
@@ -200,7 +152,7 @@ export function captureContext(page: Page, { out, mocked }: { out: string; mocke
         await page.context().setGeolocation(point ?? LIVE_POINT);
       }
       if (routes) await routes(page);
-      await page.addInitScript(states.installPageHelpers);
+      await page.addInitScript(installPageHelpers);
       await page.addInitScript(fixtures.installMapFinder);
       await fixtures.seedStoredState(page, {
         ...fixtures.INTRO_CLOSED,
@@ -210,7 +162,7 @@ export function captureContext(page: Page, { out, mocked }: { out: string; mocke
         ...storedState,
       });
       await page.goto("/");
-      await expect(page.locator(".maplibregl-map")).toBeVisible({ timeout: 60_000 });
+      await expect(page.locator(fixtures.MAIN_MAP)).toBeVisible({ timeout: 60_000 });
       await expect(page.getByText("地図を読み込み中…")).toBeHidden({ timeout: 60_000 });
       await settle();
       if (zoom !== undefined) {
@@ -248,9 +200,9 @@ export function captureContext(page: Page, { out, mocked }: { out: string; mocke
       try {
         await chooseLens(page, label);
       } catch (error) {
-        throw new Error(`レンズ「${label}」を選べない。選べるレンズ: ${(await lensLabels(page)).join(" / ")}`, {
-          cause: error,
-        });
+        // 一覧も開けなければ、選べなかった元の失敗を出す。
+        const labels = await lensLabels(page).catch(() => ["（一覧を開けない）"]);
+        throw new Error(`レンズ「${label}」を選べない。選べるレンズ: ${labels.join(" / ")}`, { cause: error });
       }
       await settle();
     },
@@ -288,9 +240,14 @@ export function captureContext(page: Page, { out, mocked }: { out: string; mocke
       await settle();
       await fixtures.clickFeature(page, target);
     },
+    async longPressRoad() {
+      await settle();
+      await fixtures.longPressRoad(page);
+    },
     async patch(glob, transform) {
       await page.route(glob, async (route) => {
-        const response = await route.fetch();
+        // 後から登録したこのルートが先に当たるので、作業ツリーの backend へ向けるパスも、ここで向けて取る。
+        const response = await upstream(page, route, worktreeBackend);
         if (response.ok()) {
           await route.fulfill({ response, json: await transform(await response.json()) });
           return;
@@ -301,7 +258,7 @@ export function captureContext(page: Page, { out, mocked }: { out: string; mocke
     },
     async shot(name, target) {
       const file = nextFile(name);
-      await (target ?? page).screenshot({ path: file });
+      await (target ?? page).screenshot({ path: file, ...STILL });
       console.log(`[capture] ${file}`);
       return file;
     },
@@ -314,7 +271,7 @@ export function captureContext(page: Page, { out, mocked }: { out: string; mocke
       }
       // 見える範囲は、レイアウトの下端より下へはずれない。
       const shift = Math.min(keyboard, Math.max(0, box.y + box.height - (viewport.height - keyboard)));
-      const image = await composeKeyboard(page, await page.screenshot(), viewport, { shift, keyboard });
+      const image = await composeKeyboard(page, await page.screenshot(STILL), viewport, { shift, keyboard });
       const file = nextFile(name);
       await writeFile(file, image);
       console.log(`[capture] ${file}`);

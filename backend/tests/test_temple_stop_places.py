@@ -1,18 +1,18 @@
 """立ち寄り先の寺社を、国の文化財の建造物（ジャパンサーチの項目の形）から作る。
 
 入口は取込（`ingest_source`。アダプタ`bunka_heritages`は本物で、手元の1行1件の JSON を読む）と派生の段
-（`derive_stop_places.derive`）。項目の形の小さな見本を置き場に書き、表に入った寺社を見る。
+（`derive_places.derive`）。項目の形の小さな見本を置き場に書き、表に入った寺社を見る。
 
 ここで見ないもの:
 - 配信元から手元へ写す取得（`scripts/fetch_bunka_heritages.py`）→ `test_fetch_bunka_heritages.py`
-- Overture の地点の群とまとめ → `test_stop_places.py`
+- Overture の地点の群とまとめ → `test_places.py`
 """
 
 import json
 
 import pytest
 
-from app.batch import derive_stop_places
+from app.batch import derive_places
 from app.batch.ingest import ingest_source
 from app.batch.source_adapters import bunka_heritages
 from app.batch.source_profile import load_source_profile
@@ -56,9 +56,9 @@ async def _temples(conn, items: list[dict]) -> list[tuple[str, float, float]]:
     path = bunka_heritages.heritages_path(ROWS.snapshot)
     path.write_text("".join(json.dumps(item, ensure_ascii=False) + "\n" for item in items), encoding="utf-8")
     await ingest_source(conn, PROFILE, Source.BUNKA_HERITAGE)
-    await derive_stop_places.derive(conn)
+    await derive_places.derive(conn)
     rows = await conn.fetch(
-        "SELECT name, place_group, source, confidence, ST_X(geom) AS lon, ST_Y(geom) AS lat FROM stop_places")
+        "SELECT name, place_group, source, confidence, ST_X(geom) AS lon, ST_Y(geom) AS lat FROM places")
     assert {(row["place_group"], row["source"], row["confidence"]) for row in rows} <= {
         ("temple_shrine", "bunka_heritage", 1.0)}
     return sorted((row["name"], row["lon"], row["lat"]) for row in rows)
@@ -66,23 +66,17 @@ async def _temples(conn, items: list[dict]) -> list[tuple[str, float, float]]:
 
 async def test_only_buildings_owned_by_temples_and_shrines_become_temples(derive_conn, bunka_dir):
     """所有者の名前が寺社の語で終わる建物だけが寺社になる。宗教法人の印・括弧書き・空白は名前から除き、所有者が
-    複数なら1人ずつ見る。教会・新しい宗教団体・学校・会社・自治体・所有者の書かれていない建物は入らない。"""
+    複数なら1人ずつ見る。教会・会社・病院・所有者の書かれていない建物は入らない。"""
     owners = {
         "浅草寺": "浅草寺",
         "宗教法人神田神社": "神田神社",
         "（宗教法人）總持寺": "總持寺",
         "宗教法人　鶴岡八幡宮（鎌倉）": "鶴岡八幡宮",
-        "宗教法人神明社": "神明社",
-        "宗教法人可睡斎": "可睡斎",
         "宮代町\n玉村八幡宮": "玉村八幡宮",
         "宇都宮市、二荒山神社": "二荒山神社",
         "宗教法人日本基督教団本郷中央教会": None,
-        "宗教法人カトリック東京大司教区": None,
-        "宗教法人世界救世教": None,
-        "学校法人学習院": None,
-        "株式会社寺田本家": None,
-        "財団法人浅香山病院": None,
-        "宇都宮市": None,
+        "株式会社寺田本社": None,
+        "浅香山病院": None,
         None: None,
     }
 

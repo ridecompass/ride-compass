@@ -1,6 +1,6 @@
-/** 評価軸で道を塗る線。軸は管理画面で増減するため、**軸ごとの分岐・定数を持たない**。
+/** レンズで道を塗る線。費用の軸は管理APIで増減するため、**レンズごとの分岐・定数を持たない**。
  *
- * 道の値は、backend が配る式の木（軸カタログの `way_value_formula`）を地図の式へ置き換えて、地図が道ごとに求める。
+ * 道の値は、backend が配る式の木（費用の軸の一覧の `map_lens.formula`）を地図の式へ置き換えて、地図が道ごとに求める。
  * 木へ入れる道ごとの材料は feature-state で、走る条件（向き・想定速度）は地図全体の global-state で受け取る——向き・
  * 速度を変えても材料は取り直さず、global-state を置き直すだけで色が変わる。**feature-state の値は MapLibre の絞り込み
  * からも `line-dasharray` からも読めない**ため、凡例で隠した段は透明で落とし、値の無い道の破線は、破線だけの線を
@@ -13,17 +13,13 @@ import palette from "@/types/generated/palette.json";
 
 import type { MapSceneFeatureStates, MapSceneGlobalState } from "@/features/map/scene/mapScene";
 import { declareGroup, type SceneLayerEntry, type SceneSourceEntry } from "@/features/map/scene/mapSceneGroups";
+import { featureStatesByName } from "@/features/map/scene/sceneBuilders";
+import { LENS_LAYER_MIN_ZOOM } from "@/features/map/layers/mapLayers";
 import { missingExpression, wayValueExpressions, type WayValueFormula } from "@/features/map/scene/wayValueFormula";
 import { LEGEND_NO_DATA_KEY, NO_DATA_LEGEND_BAND, UNDETERMINED_LEGEND_BAND } from "@/lib/mapDisplay/mapColorLegend";
 import { bandStep, type ValueBand } from "@/lib/mapDisplay/valueScale";
 
 import { ROAD_LINE_SOURCE_ID } from "./roadLines";
-
-/** 材料が同時に出ているときの下敷きの幅。**道の線の層が全部出たときの帯幅**から決まるので、
- * 層が増えれば広がる（直書きすると追従しない）。 */
-function underlayWidthPx(roadLayerCount: number): number {
-  return Math.max(0, roadLayerCount - 1) * mapDisplay.road.trackOffsetStepPx + mapDisplay.road.lineWidthPx;
-}
 
 /** 道ごとの材料。feature_key → 材料の名前 → 値（値の無い材料は鍵ごと無い）。 */
 export type WayMaterials = ReadonlyMap<string, Readonly<Record<string, number>>>;
@@ -45,13 +41,9 @@ export type AxisLineState = {
     readonly loading: boolean;
     /** 凡例で隠した段の鍵。 */
     readonly hiddenBandKeys: readonly string[];
-    /** その軸の材料が同時に出ているか（判定は呼び出し側が持つ）。 */
-    readonly underlay: boolean;
   }[];
   readonly conditions: WayConditions;
   readonly sourceLayer: string | null;
-  /** 道の線の層の数（下敷きの幅を決める）。 */
-  readonly roadLayerCount: number;
 };
 
 type AxisLine = AxisLineState["axes"][number];
@@ -73,9 +65,9 @@ function expressionsOf(axis: AxisLine) {
   });
 }
 
-/** 値の無い道を破線の線が描くか。下敷きは全体を薄く敷くだけ、取得中は取得中の色を見せる。 */
+/** 値の無い道を破線の線が描くか。取得中は取得中の色を見せる。 */
 function dashesMissing(axis: AxisLine): boolean {
-  return !axis.underlay && !axis.loading && !axis.hiddenBandKeys.includes(LEGEND_NO_DATA_KEY);
+  return !axis.loading && !axis.hiddenBandKeys.includes(LEGEND_NO_DATA_KEY);
 }
 
 /** 道の値を `let` で束ね、向きで決まらない道・値の無い道・それ以外の順に場合分けする。値の無い道を先に分けるので、
@@ -121,32 +113,12 @@ function noDataOpacityExpression(axis: AxisLine): unknown {
   }));
 }
 
-const statesByMaterials = new WeakMap<WayMaterials, Map<string, Map<string, number>>>();
-
-/** 道ごとの材料を、材料の名前ごとの feature-state へ移す。同じ材料の結果からは同じ参照を返す——当てる側は
- * 参照が同じなら道ごとに比べ直さない。 */
-function materialStates(axisId: string, materials: WayMaterials): ReadonlyMap<string, ReadonlyMap<string, number>> {
-  const cached = statesByMaterials.get(materials);
-  if (cached !== undefined) return cached;
-  const states = new Map<string, Map<string, number>>();
-  for (const [featureId, values] of materials) {
-    for (const [name, value] of Object.entries(values)) {
-      const key = materialStateKey(axisId, name);
-      let byFeature = states.get(key);
-      if (byFeature === undefined) states.set(key, (byFeature = new Map()));
-      byFeature.set(featureId, value);
-    }
-  }
-  statesByMaterials.set(materials, states);
-  return states;
-}
-
 function featureStatesFor(state: AxisLineState): MapSceneFeatureStates {
-  const states = new Map<string, ReadonlyMap<string, number>>();
-  for (const axis of state.axes) {
-    for (const [key, values] of materialStates(axis.axisId, axis.materials)) states.set(key, values);
-  }
-  return states;
+  return new Map(
+    state.axes.flatMap((axis) => [
+      ...featureStatesByName(axis.materials, (name) => materialStateKey(axis.axisId, name)),
+    ]),
+  );
 }
 
 export const axisLineGroup = declareGroup<AxisLineState>((state) => {
@@ -168,15 +140,16 @@ export const axisLineGroup = declareGroup<AxisLineState>((state) => {
     source: ROAD_LINE_SOURCE_ID,
     sourceLayer: state.sourceLayer ?? undefined,
     type: "line",
+    minzoom: LENS_LAYER_MIN_ZOOM,
   });
   const layers: readonly SceneLayerEntry[] = state.axes.flatMap((axis) => [
     {
       ...lineOf(axis.axisId),
       paint: {
         "line-color": colorExpression(axis),
-        "line-width": axis.underlay ? underlayWidthPx(state.roadLayerCount) : mapDisplay.road.lineWidthPx,
+        "line-width": mapDisplay.road.lineWidthPx,
         // 取得中は薄くしない——薄くすると「まだ来ていない」と「対象外」が区別できない。
-        "line-opacity": axis.underlay ? mapDisplay.road.underlayOpacity : mapDisplay.road.knownOpacity,
+        "line-opacity": mapDisplay.road.knownOpacity,
       },
       visible: axis.visible,
     },

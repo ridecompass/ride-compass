@@ -56,7 +56,7 @@ LANの住所を入れて起きる（`backend/scripts/dev_prod_data_backend.py`�
 
 | 道具 | 呼ぶところ | 版に左右される理由 |
 |---|---|---|
-| 本番へつなぐ道具（例: `backend/scripts/run_probe.py`・`backend/scripts/axis_apply.py`） | `backend/scripts/_prod_env.py: read_prod_env`（接続情報を渡す前） | 本番へ流すのがこのチェックアウトのコード（プローブが読む`app`・管理APIへ送る形） |
+| 本番へつなぐ道具（例: `backend/scripts/run_probe.py`） | `backend/scripts/_prod_env.py: read_prod_env`（接続情報を渡す前） | 本番へ流すのがこのチェックアウトのコード（プローブが読む`app`） |
 | `scripts/review_checks.py`の`size`・`metrics`・`trigger` | `scripts/review_checks.py: main` | 前回のレビューから HEAD までを測るので、HEAD が古いと変更を数え漏らす |
 | ベンチマークの実行口（`backend/benchmarks/`） | `backend/benchmarks/revision.py: announce_revision`（止めずに警告を出す。手元の反復でも測るため） | 測った数字が実測として引用され、古いコードの数字と見分けが付かない |
 
@@ -82,6 +82,27 @@ Claude CodeのBashツールのコマンドは、実行環境の包みごと`bash
 
 - `next dev`が「プロジェクトルート外を指すリンク」として拒否する。
 - 一方の作業ツリーを`git worktree remove --force`すると、再帰削除がリンクの中へ入り共有元を壊す。
+
+## 残った作業ツリーとスクラッチの片付け
+
+セッションは作業ブランチごとに作業ツリーを作り（作業ツリーごとに`node_modules`を入れる）、スクラッチに作業ツリーの写しや
+テストの足場を置く。PR のマージやセッションの終わりのあとに消す者がいないと、開発機のディスクを使い切る（2026-11-08 に空きが 2.0GB まで減った）。
+セッションの始まりのフック（`.claude/settings.json`）が`scripts/worktree_sweep.py --detach`を打ち、裏で片付ける（Actions とクラウドのセッションでは
+打たない。片付けが走っている間は、次のセッションの片付けは打たずに戻る）。消したものは`<一時フォルダ>/claude/worktree-sweep.log`に残る。
+手で打つときは`python scripts/worktree_sweep.py --dry-run`で、消すものだけを見られる。
+
+消すもの:
+
+- 本体を除く登録された作業ツリーで、次を全部満たすもの。消すと、そのブランチ（手元）と登録も消える。
+  - 書きかけの変更（追跡外のファイルを含む）が無い。
+  - ロックされていない（`git worktree lock`で消させないようにできる）。
+  - git の操作（作業ツリーごとの HEAD と index の書き換え）が1日以上無い——作ったばかりで、まだ何もしていないセッションの作業ツリーを消さない。
+  - HEAD が origin/master に入っているか、同じブランチのマージ済みの PR の先頭に入っている（squash でマージした PR は master の祖先にならないので、PR で見る）。
+- 指す先の無い作業ツリーの登録。
+- 中身が3日以上書き換えられていないスクラッチ（`<一時フォルダ>/claude/<プロジェクト>/<セッション>/scratchpad`）。
+
+消さないもの: 片付けを打ったセッションの作業ディレクトリがある作業ツリーとスクラッチ、この道具のチェックアウトがある作業ツリー、
+消さずに残した作業ツリーを中に持つスクラッチ、本体のチェックアウト。
 
 ## リポジトリの構成
 
@@ -135,13 +156,13 @@ PostgreSQLの版は本番に合わせてある（[tech-stack.md](tech-stack.md)�
 docker compose run --rm backend python scripts/bootstrap_database.py --create-extensions --to schema
 ```
 
-**スキーマを作っても、軸定義が0行のままではbackendは起動しない**（`refresh_axis_definitions`が
-0行を起動失敗にする。[axis-studio.md](../modules/backend/axis-studio.md)「まっさらなDBに軸の行は
-入らない」）。軸を入れる管理APIも起動したbackendにしか無いため、新しい環境へ軸が入るのは管理データの
-バックアップから戻したときだけで、それは本番を作り直すための経路である（[production-data/SKILL.md](../../.claude/skills/production-data/SKILL.md)
+**スキーマを作っても、費用の軸の定義が無いままではbackendは起動しない**（`services/cost_axis_service.py: refresh_cost_axes`が
+表に行の無い定義を起動失敗にする。[費用・材料](../modules/backend/evaluation-scoring.md)「費目の帳簿の式」）。定義を入れる
+管理APIも起動したbackendにしか無いため、新しい環境へ定義が入るのは管理データのバックアップから戻したときだけで、
+それは本番を作り直すための経路である（[production-data/SKILL.md](../../.claude/skills/production-data/SKILL.md)
 「本番DBを失ったとき」）——composeのDB・クラウドのセッションは**テストを回す場**であり、アプリを実データで
-確かめるのは本番か手元の開発機で行う（地図に色を出すには軸のほかに取込済みのデータも要る）。
-テスト（`-m postgis`を含む）は軸を要らないので、この状態で回せる。
+確かめるのは本番か手元の開発機で行う（地図に色を出すには定義のほかに取込済みのデータも要る）。
+テスト（`-m postgis`を含む）は表を読まずにプロセス内へ定義を置く（`backend/tests/conftest.py`）ので、この状態で回せる。
 
 ### クラウドのセッション（Claude Code on the web）
 

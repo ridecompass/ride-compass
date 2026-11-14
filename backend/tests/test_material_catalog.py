@@ -5,34 +5,59 @@
 - カタログから導く一覧: `material_dtype`・`material_array_columns`（`material_value_sql`を通る）・
   `material_coverage_specs`・`material_coverage_exclusions`
 - `display_axis_missing_semantics`: 地図の表示の軸の値が欠けたときの意味
-- `check_material_catalog`・`labeled_every_value`: 材料を2通りに配るカタログ・見出しの欠けた表を断る
+- `check_material_catalog`: 材料を2通りに配るカタログを断る
 
 カタログの中身は架空の材料（`num_a` 等）へ差し替えて与える。本番のカタログは、読み込みの時点で`check_material_catalog`を通る。
 
 ここで見ないもの:
 - 材料の値を求めるSQLが返す値 → `test_material_values.py`
 - 欠損率をDBで数えること → `test_material_coverage.py`
+- 欠損率の見出しの表の過不足 → `test_material_coverage_spec.py`
 - 一次属性の行に配る色 → `test_display_palette.py`
 - 一次属性の表示の宣言の検証 → `test_registry.py`・`test_primary_attributes.py`
 - 停止要因の点を地図でまとめるSQL（`stop_poi_map_group_sql`）→ タイルを焼くテスト（`test_road_graph_repository_contracts.py`）
-- カタログを配るAPI → `test_material_catalog_routes.py`・`test_axis_catalog_routes.py`
+- 材料の欠損割合を配るAPI → `test_material_catalog_routes.py`
 """
 
-from typing import Literal
+from collections.abc import Iterable
+from contextlib import nullcontext
 
 import pytest
 from pydantic import ValidationError
 
 from app.domain import material_catalog
-from app.domain.material_catalog import (
-    CoverageExcluded,
-    EdgeMaterialCoverageSpec,
-    MaterialSpec,
-    WayMaterialCoverageSpec,
-)
+from app.domain.material_catalog import MaterialDType, MaterialSpec
+from app.domain.material_coverage_spec import CoverageExcluded, EdgeMaterialCoverageSpec, WayMaterialCoverageSpec
 from app.domain.primary_attributes import PRIMARY_ATTRIBUTES
 
 ATTR_A, ATTR_B = PRIMARY_ATTRIBUTES[:2]
+
+
+def material(material_id: str, dtype: MaterialDType = "numeric", **fields) -> MaterialSpec:
+    """中身がテストの主題でない材料を1つ作る。
+
+    既定は型を満たすためだけの値（表示名はid・タイルに載せない・DBの道の列を読む・網羅の集計から外す）。
+    DBに値を持たない材料（`source`が`db`でない）は値の式を持たない。見たい性質は呼び出し側が引数で書く。
+    """
+    db = fields.get("source", "db") == "db"
+    return MaterialSpec(**{
+        "material_id": material_id,
+        "label": material_id,
+        "description": "架空の材料",
+        "dtype": dtype,
+        "tile_property": None,
+        "value_sql": f"w.{material_id}" if db else None,
+        "coverage": CoverageExcluded(reason="架空", missing_semantics="definite"),
+        **fields,
+    })
+
+
+def replace_material_catalog(monkeypatch: pytest.MonkeyPatch, specs: Iterable[MaterialSpec]) -> dict[str, MaterialSpec]:
+    """テストの間だけ材料カタログを`specs`だけにする（同じidは後のものが勝つ）。差し替えた中身を返す。"""
+    catalog = {spec.material_id: spec for spec in specs}
+    monkeypatch.setattr(material_catalog, "MATERIAL_CATALOG", catalog)
+    return catalog
+
 
 WAY_UNKNOWN = WayMaterialCoverageSpec(missing_condition="w.x IS NULL", source="x", missing_semantics="unknown")
 WAY_DEFINITE = WayMaterialCoverageSpec(missing_condition="w.y IS NULL", source="y", missing_semantics="definite")
@@ -41,11 +66,8 @@ EXCLUDED = CoverageExcluded(reason="都度引く", missing_semantics="unknown")
 
 
 def spec(material_id: str, dtype="numeric", coverage=WAY_UNKNOWN, **fields) -> MaterialSpec:
-    fields.setdefault("tile_property", None)
-    fields.setdefault("value_sql", f"w.{material_id}")
-    return MaterialSpec(
-        material_id=material_id, label=f"名前{material_id}", description="説明", dtype=dtype, coverage=coverage, **fields
-    )
+    """欠損の見方が不明な材料（網羅の集計の対象）。"""
+    return material(material_id, dtype, coverage=coverage, **fields)
 
 
 @pytest.fixture
@@ -57,55 +79,26 @@ def catalog(monkeypatch):
         spec("bool_definite", "boolean", WAY_DEFINITE, tile_property="bool_tile", primary_attribute=ATTR_A),
         spec("bool_unknown", "boolean", WAY_UNKNOWN),
         spec("cat_a", "categorical", WAY_DEFINITE, tile_property="cat_tile", primary_attribute=ATTR_B),
-        spec("dynamic_a", source="request", value_sql=None, coverage=EXCLUDED),
+        spec("class_a", source="road_class", value_sql=None, coverage=EXCLUDED),
         spec("per_year_a", coverage=EXCLUDED),
     ]
-    monkeypatch.setattr(material_catalog, "MATERIAL_CATALOG", {s.material_id: s for s in specs})
+    replace_material_catalog(monkeypatch, specs)
 
 
 @pytest.mark.parametrize(
     "fields",
     [
-        {"total_unit": "回"},  # 掛ける相手の単位が無い
         {"value_labels": {"a": "あ"}},  # 対訳は分類の値にだけ付く
-    ],
-)
-def test_a_declaration_that_does_not_fit_its_dtype_is_refused(fields):
-    fields.setdefault("dtype", "numeric")
-    with pytest.raises(ValidationError):
-        spec("x", **fields)
-
-
-@pytest.mark.parametrize(
-    "fields",
-    [
         {"value_sql": None},  # DBが値を求めない静的材料は、全区間で値が欠ける
-        {"source": "request", "coverage": EXCLUDED},  # DBの列にも載り、要求の値と2つの出どころを持つ
-        {"source": "observation", "value_sql": None},  # DBに無い値の欠損率を数える
+        {"source": "road_class", "value_sql": "w.x", "coverage": EXCLUDED},  # DBの列にも載り、区分の値と2つの出どころを持つ
+        {"source": "road_class", "value_sql": None},  # DBに無い値の欠損率を数える
+        # 地図の表示の軸は材料を一次属性の宣言そのもので照らすので、同じ`attr_id`の写しは表に無いものとして断る。
+        {"primary_attribute": ATTR_A.model_copy()},
     ],
 )
-def test_a_declaration_that_does_not_fit_its_source_is_refused(fields):
+def test_a_declaration_that_does_not_fit_its_dtype_or_source_is_refused(fields):
     with pytest.raises(ValidationError):
         spec("x", **fields)
-
-
-def test_a_material_pointing_to_an_attribute_outside_the_table_is_refused():
-    """地図の表示の軸は材料を一次属性の宣言そのもので照らすので、同じ`attr_id`の写しを指す材料も表に無いものとして断る。"""
-    with pytest.raises(ValidationError):
-        spec("x", primary_attribute=ATTR_A.model_copy())
-
-
-def test_a_value_is_shown_with_its_label_when_the_table_has_one():
-    material = spec("cat_a", "categorical", value_labels={"paved": "舗装"})
-
-    assert material.value_label("paved") == "舗装 - paved"
-    assert material.value_label("new_value") == "new_value"
-
-
-def test_a_yes_no_value_is_shown_as_yes_or_no():
-    material = spec("flag_a", "boolean")
-
-    assert [material.value_label(v) for v in ("true", "false")] == ["はい - true", "いいえ - false"]
 
 
 def test_the_matrix_columns_are_the_materials_with_sql_sorted_by_id(catalog):
@@ -121,48 +114,39 @@ def test_every_material_is_either_measured_for_coverage_or_excluded_with_a_reaso
     excluded = material_catalog.material_coverage_exclusions()
 
     assert measured["num_a"] == EDGE_UNKNOWN
-    assert excluded == {"dynamic_a": "都度引く", "per_year_a": "都度引く"}
-
-
-def test_a_display_axis_takes_the_missing_semantics_of_the_material_on_its_tile_property(catalog):
-    assert material_catalog.display_axis_missing_semantics(ATTR_A, "num_b_tile") == "unknown"
-    assert material_catalog.display_axis_missing_semantics(ATTR_A, "bool_tile") == "definite"
-
-
-def test_a_display_axis_without_its_material_has_no_missing_semantics(catalog):
-    assert material_catalog.display_axis_missing_semantics(ATTR_B, "num_b_tile") is None  # 別の属性の材料
-    assert material_catalog.display_axis_missing_semantics(ATTR_A, "nothing") is None
+    assert excluded == {"class_a": "都度引く", "per_year_a": "都度引く"}
 
 
 @pytest.mark.parametrize(
-    "catalog_",
+    ("attribute", "tile_property", "semantics"),
     [
-        pytest.param({"num_a": spec("num_b")}, id="鍵と材料のidが食い違う"),
+        (ATTR_A, "num_b_tile", "unknown"),
+        (ATTR_A, "bool_tile", "definite"),
+        (ATTR_B, "num_b_tile", None),  # 別の属性の材料
+        (ATTR_A, "nothing", None),
+    ],
+)
+def test_a_display_axis_takes_the_missing_semantics_of_the_material_on_its_tile_property(
+        catalog, attribute, tile_property, semantics):
+    assert material_catalog.display_axis_missing_semantics(attribute, tile_property) == semantics
+
+
+@pytest.mark.parametrize(
+    ("catalog_", "refused"),
+    [
+        pytest.param({"num_a": spec("num_b")}, True, id="鍵と材料のidが食い違う"),
         pytest.param(
             {"num_a": spec("num_a", tile_property="t"), "num_b": spec("num_b", tile_property="t")},
+            True,
             id="同じタイルの列に2つの材料",
+        ),
+        pytest.param(
+            {"num_a": spec("num_a", tile_property="t"), "num_b": spec("num_b", tile_property="u")},
+            False,
+            id="材料ごとに1つの列",
         ),
     ],
 )
-def test_a_catalog_handing_out_a_material_two_ways_is_refused(catalog_):
-    with pytest.raises(ValueError):
+def test_a_catalog_handing_out_a_material_two_ways_is_refused(catalog_, refused):
+    with pytest.raises(ValueError) if refused else nullcontext():
         material_catalog.check_material_catalog(catalog_)
-
-
-def test_a_catalog_handing_out_each_material_one_way_is_accepted():
-    material_catalog.check_material_catalog(
-        {"num_a": spec("num_a", tile_property="t"), "num_b": spec("num_b", tile_property="u")})
-
-
-Kind = Literal["a", "b"]
-
-
-@pytest.mark.parametrize("labels", [{"a": "あ"}, {"a": "あ", "b": "い", "c": "う"}], ids=["見出しの無い値", "値に無い見出し"])
-def test_headings_that_do_not_match_the_values_are_refused(labels):
-    """管理画面の欠損率は母集団と欠損の扱いで束ねて見出しを付ける。見出しの無い値の材料は表から落ちる。"""
-    with pytest.raises(ValueError, match="食い違う"):
-        material_catalog.labeled_every_value(Kind, labels)
-
-
-def test_headings_for_every_value_are_kept_as_given():
-    assert material_catalog.labeled_every_value(Kind, {"b": "い", "a": "あ"}) == {"b": "い", "a": "あ"}

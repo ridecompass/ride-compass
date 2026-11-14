@@ -2,10 +2,10 @@
 アドレス・ベース・レジストリ（生データ`abr`）と街区レベル位置参照情報（`isj_block`）から作り直す。
 
 **区画の木はここで組む**。取込は配布の行をそのまま入れるだけで、行を区画の木（段・親・範囲）に組むのはこの段。段の語彙・
-町字区分と段の対応・表記の揃え方・鍵の作り方・地番の名前を区画に当てる鍵の順は`domain/address_area.py`から読む。
+表記の揃え方・鍵の作り方・地番の名前を区画に当てる鍵の順は`domain/address_area.py`から読む。
 
 - 都道府県・市区町村・区は廃止の日の無い行。区の親は同じ名前の政令市、市区町村の親は都道府県。
-- 町字は廃止の日の無い行のうち、区画にする町字区分（`MACHIAZA_TYPE_LEVELS`）のもの。大字・町の親は市区町村（区）、丁目・字の
+- 町字は廃止の日の無い行のうち、区画にする町字区分のもの（区分と段の対応は`source_models.py: ABR_TOWNS_SOURCE_SQL`）。大字・町の親は市区町村（区）、丁目・字の
   親は大字（大字の名前の無い字は市区町村か区）。ABR に大字自身の行が無い大字（代表点が無く取り込まれていないものも）は、
   子の町字IDの頭4桁で1つにまとめ、子の代表点の重心を代表点にする。
 - 表に入れるのは、代表点が取込の範囲（道路の成功した最新の取込の範囲。`source_models.py: INGESTED_BBOX_SQL`）の中に
@@ -34,7 +34,6 @@ from app.batch.common import affected_rows
 from app.domain.address_area import (
     ADDRESS_AREA_LEVELS,
     CONTINUABLE_LEVELS,
-    MACHIAZA_TYPE_LEVELS,
     chome_name,
     parcel_name_candidates,
     parcel_name_key,
@@ -141,7 +140,7 @@ def _build_areas(prefectures: Sequence[asyncpg.Record], cities: Sequence[asyncpg
     unowned_oaza: dict[str, tuple[str, str, list[tuple[str, str]]]] = {}
     child_points: dict[str, list[tuple[float, float]]] = defaultdict(list)
     for row in towns:
-        level = MACHIAZA_TYPE_LEVELS.get(row["town_type"])
+        level = row["level"]
         city = areas.get(row["city_code"])
         if row["abolished"] or level is None or city is None or city.level not in ("city", "ward"):
             continue

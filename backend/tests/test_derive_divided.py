@@ -17,13 +17,13 @@ import pytest_asyncio
 from app.batch import derive_topology, derive_way_directions
 from app.domain.divided_carriageway import GEOMETRIC_GAP_M, NAMED_GAP_M
 from app.domain.geo import KM_PER_DEGREE_LATITUDE
-from tests.source_ingest import ingest_records, way_record
+from tests.source_ingest import WAY_ORIGIN, ingest_records, way_record
 
-# road_graph_session（conftest.py）と同じDBを使うため、.claude/rules/testing-backend.mdのパターン2どおり
+# moduleスコープのroad_graph_engine（conftest.py）の上のDBを使うため、.claude/rules/testing-backend.mdのパターン2どおり
 # loop_scope="module"が必須。
 pytestmark = pytest.mark.asyncio(loop_scope="module")
 
-BASE_LON, BASE_LAT = 139.70, 35.68
+BASE_LON, BASE_LAT = WAY_ORIGIN
 #: 道の長さ（経度、約180m）。
 LENGTH = 0.002
 #: 場面どうしの間隔（緯度、約1.1km）。どの距離のしきい値よりも十分に遠い。
@@ -85,13 +85,12 @@ WAYS = _ways()
 @pytest_asyncio.fixture(scope="module", loop_scope="module")
 async def divided_conn(derive_conn):
     """場面ごとの道を取り込み、区間と道の性質まで作った状態。"""
-    conn = derive_conn
     await ingest_records("osm_way", [
         way_record(way_id, points, [way_id * 10 + k for k in range(len(points))], tags)
-        for ways in WAYS.values() for way_id, tags, points in ways], conn=conn)
-    await derive_topology.derive(conn)
-    await derive_way_directions.derive(conn)
-    return conn
+        for ways in WAYS.values() for way_id, tags, points in ways], conn=derive_conn)
+    await derive_topology.derive(derive_conn)
+    await derive_way_directions.derive(derive_conn)
+    return derive_conn
 
 
 @pytest.mark.parametrize("scene", SCENES)

@@ -50,14 +50,25 @@ class AreaBoundaries:
 
     def find(self, lat: float, lon: float) -> str | None:
         """地点を含む区域のコード。含む区域が無ければ`NEAREST_LIMIT_DEG`以内で最も近い区域。"""
-        point = shapely.Point(lon, lat)
-        # 含む判定は境界を準備済みの形で引けるため、距離の計算より2桁速い。距離は含まれないときだけ測る。
-        indices = self._tree.query(point, predicate="intersects")
-        if len(indices) == 0:
-            indices = self._tree.query_nearest(point, max_distance=NEAREST_LIMIT_DEG)
-        if len(indices) == 0:
-            return None
-        return self._codes[int(indices[0])]
+        return self.find_many([(lat, lon)])[0]
+
+    def find_many(self, points: list[tuple[float, float]]) -> list[str | None]:
+        """地点（緯度, 経度）ごとの`find`。木を地点ごとに引かず、まとめて引く。"""
+        # 含む判定は境界を準備済みの形で引けるため、距離の計算より2桁速い。距離は含まれない地点だけ測る。
+        geometries = shapely.points([(lon, lat) for lat, lon in points])
+        found: list[str | None] = [None] * len(points)
+        point_indices, area_indices = self._tree.query(geometries, predicate="intersects")
+        for point_index, area_index in zip(point_indices.tolist(), area_indices.tolist(), strict=True):
+            if found[point_index] is None:
+                found[point_index] = self._codes[area_index]
+        missing = [index for index, code in enumerate(found) if code is None]
+        if missing:
+            point_indices, area_indices = self._tree.query_nearest(geometries[missing], max_distance=NEAREST_LIMIT_DEG)
+            for point_index, area_index in zip(point_indices.tolist(), area_indices.tolist(), strict=True):
+                original = missing[point_index]
+                if found[original] is None:
+                    found[original] = self._codes[area_index]
+        return found
 
 
 def write_boundaries(path: Path, areas: dict[str, BaseGeometry]) -> None:
@@ -70,7 +81,7 @@ def write_boundaries(path: Path, areas: dict[str, BaseGeometry]) -> None:
 
 
 @cached(cache=LRUCache(maxsize=1), lock=threading.Lock())
-def load_boundaries(path: Path) -> AreaBoundaries:
+def _load_boundaries(path: Path) -> AreaBoundaries:
     started = start_timer()
     payload: dict[str, str] = json.loads(path.read_text(encoding="utf-8"))
     boundaries = AreaBoundaries(list(payload), list(shapely.from_wkb(list(payload.values()))))
@@ -91,8 +102,13 @@ async def find_class20_code(lat: float, lon: float) -> str | None:
     境界を読めなければ`AreaBoundariesUnavailableError`を送出する。初回だけ境界の読み込み（数秒かかる）が
     走るため、イベントループの外で読む。
     """
+    boundaries = await _load_boundaries_or_raise()
+    return boundaries.find(lat, lon)
+
+
+async def _load_boundaries_or_raise() -> AreaBoundaries:
     try:
-        boundaries = await asyncio.to_thread(load_boundaries, BOUNDARY_PATH)
+        return await asyncio.to_thread(_load_boundaries, BOUNDARY_PATH)
     except (OSError, ValueError, shapely.errors.GEOSException) as exc:
         log_throttled_warning(
             "weather:jma-area-boundaries",
@@ -100,13 +116,18 @@ async def find_class20_code(lat: float, lon: float) -> str | None:
             "（scripts/fetch_jma_area_boundaries.pyで取得する）",
             BOUNDARY_PATH, exc,
         )
-        raise AreaBoundariesUnavailableError from exc
-    return boundaries.find(lat, lon)
+        raise AreaBoundariesUnavailableError("区域の境界を読めないため、警報・洪水予報の区域を引けません") from exc
+
+
+async def find_class20_codes(points: list[tuple[float, float]]) -> list[str | None]:
+    """地点（緯度, 経度）ごとの`find_class20_code`。境界を読めなければ`AreaBoundariesUnavailableError`を送出する。"""
+    boundaries = await _load_boundaries_or_raise()
+    return await asyncio.to_thread(boundaries.find_many, points)
 
 
 async def area_shape(class20_code: str) -> BaseGeometry | None:
     """区域（area.jsonのclass20）の境界。無いコードならNone。境界は`find_class20_code`が読み込んだあとに呼ぶ。"""
-    boundaries = await asyncio.to_thread(load_boundaries, BOUNDARY_PATH)
+    boundaries = await asyncio.to_thread(_load_boundaries, BOUNDARY_PATH)
     return boundaries.shape(class20_code)
 
 
@@ -119,25 +140,12 @@ OUTSIDE_AREAS = OutsideAreas()
 
 async def resolve_point_area(
     http_client: httpx.AsyncClient, area_data_cache: TTLCache, lat: float, lon: float
-) -> ResolvedArea | OutsideAreas | None:
+) -> ResolvedArea | OutsideAreas:
     """地点が属する区域を、地域マスタ(area.json)で警報のエリアまで辿る。
 
-    どの区域にも入らなければ`OUTSIDE_AREAS`。境界か地域マスタを読めない・辿れないならNone（区域が分からない）。
+    どの区域にも入らなければ`OUTSIDE_AREAS`。境界か地域マスタを読めない・辿れないときは投げる。
     """
-    try:
-        class20_code = await find_class20_code(lat, lon)
-    except AreaBoundariesUnavailableError:
-        return None
+    class20_code = await find_class20_code(lat, lon)
     if class20_code is None:
         return OUTSIDE_AREAS
-
-    area_master = await fetch_area_data(http_client, area_data_cache)
-    if area_master is None:
-        return None
-
-    resolved = resolve_area(class20_code, area_master)
-    if resolved is None:
-        log_throttled_warning(
-            "weather:jma-area", "区域の境界が返したコードを地域マスタ(area.json)で警報のエリアへ辿れない class20=%s", class20_code
-        )
-    return resolved
+    return resolve_area(class20_code, await fetch_area_data(http_client, area_data_cache))

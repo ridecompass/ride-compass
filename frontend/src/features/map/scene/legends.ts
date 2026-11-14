@@ -2,19 +2,19 @@
  *
  * 分類と色は、道は`lib/mapDisplay/roadTracks.ts: roadTrackRows`、点はグループ（`groups/*.ts`）の宣言、災害は源泉の気象の段、値が無い行は
  * `NO_DATA_LEGEND_BAND`から引く——凡例が別に色を持つと、地図とチップの色が静かに食い違う。
- * 評価軸の凡例はここではなく`features/map/view/lens.ts`が、地図の線と同じ段の関数から作る。
  */
 import type { LegendEntry } from "@/lib/mapDisplay/legendFilter";
 import { NO_DATA_LEGEND_BAND } from "@/lib/mapDisplay/mapColorLegend";
 import { ROAD_OTHER_KEY, roadTrackRows } from "@/lib/mapDisplay/roadTracks";
 import type { RoadMapLayerView } from "@/types/route";
 
+import { mapDisplay } from "@/types/generated/mapDisplay";
 import palette from "@/types/generated/palette.json";
 import weatherScales from "@/types/generated/weather-scales.json";
 
 import { pointAxisKey } from "@/features/map/scene/groups/points";
-import { POINT_LAYERS, pointCategoryRadiusPx, type PointAxis } from "@/lib/mapDisplay/pointLayers";
-import { DISASTER_ELEMENTS, DISASTER_LAYER_ID, type DisasterElement } from "@/features/map/scene/groups/weather";
+import { POINT_LAYERS, pointIconScales, type PointAxis } from "@/lib/mapDisplay/pointLayers";
+import { DISASTER_ELEMENTS, DISASTER_LAYER_ID, type DisasterElement } from "@/features/map/layers/dynamicWeather";
 
 /** 凡例1本ぶん。1つのチップが複数の軸を持つことがある（事故は当事者と重大度）。 */
 type SceneLegendAxis = {
@@ -50,30 +50,27 @@ export function initiallyHiddenLegendKeys(
   );
 }
 
-/** 点の凡例。**色見本を出すのは、地図の色式が読む先頭の軸だけ**——2本目以降（重大度）は
- * 地図では大きさだけで表れるので、見本も色を持たない灰で、地図と同じ大きさにする。絵記号で描く行は見本も絵記号にする。 */
+/** 点の凡例。**色見本を出すのは、地図の色式が読む先頭の軸だけ**で、見本は地図と同じ絵にする。2本目以降（重大度）は
+ * 地図では大きさだけで表れるので、見本は先頭の軸の最初の行の絵の外形を、色を持たない灰で、地図の絵と同じ大きさにする。 */
 function pointAxisLegend(layer: (typeof POINT_LAYERS)[number], axis: PointAxis, index: number): SceneLegendAxis {
+  const scales = pointIconScales(axis);
+  const shape = layer.display_axes[0].categories[0];
   return {
     layerId: layer.attr_id,
     axisId: pointAxisKey(layer, axis),
     label: axis.label,
-    entries: axis.categories.map((category) =>
-      index === 0 && "color" in category
-        ? {
-            key: category.key,
-            label: category.label,
-            description: category.description,
-            color: category.color,
-            ...("glyph" in category ? { glyph: category.glyph } : {}),
-          }
+    entries: axis.categories.map((category, i) => ({
+      key: category.key,
+      label: category.label,
+      description: category.description,
+      ...(index === 0 && "color" in category
+        ? { color: category.color, ...("glyph" in category ? { glyph: category.glyph } : {}) }
         : {
-            key: category.key,
-            label: category.label,
-            description: category.description,
             color: palette.semantic.legend_size_only,
-            diameterPx: 2 * pointCategoryRadiusPx(category),
-          },
-    ),
+            diameterPx: mapDisplay.point.iconSizePx * scales[i],
+            ...("glyph" in shape ? { glyph: shape.glyph } : {}),
+          }),
+    })),
   };
 }
 

@@ -25,15 +25,6 @@ read -r db_name lock_name < <(docker run --rm --env-file /home/ubuntu/ridecompas
   python -c 'from sqlalchemy.engine import make_url; from app.config import settings; from app.batch.common import SOURCE_DATA_LOCK; print(make_url(settings.database_url).database, SOURCE_DATA_LOCK)')
 : "${db_name:?}" "${lock_name:?}"
 
-# 書き出す前に、書き出しが入る空きを確かめる。書き出しは圧縮してもDBより大きくはならない。
-db_bytes=$(runuser -u postgres -- psql --dbname="$db_name" --tuples-only --no-align \
-  --command='SELECT pg_database_size(current_database())')
-free_bytes=$(df --output=avail --block-size=1 "$backup_dir" | tail -n 1)
-if (( free_bytes < db_bytes )); then
-  echo "DBのディスクの空きがDBの大きさより少ないので書き出しません free=$free_bytes db=$db_bytes" >&2
-  exit 1
-fi
-
 # pg_dumpはホストのものを使う。サーバーと同じPGDGの版で入っているため、版が必ず揃う
 # （pg_dumpは自分より新しいメジャー版のサーバーからは書き出さない）。
 # 書き出しは、取込と作り直しが止まっている時点で取る。pg_dumpのスナップショットは、そのあとに取込が表を
@@ -48,6 +39,16 @@ echo "取込と作り直しの鍵を待ちます lock=$lock_name"
 echo "SELECT 'locked' FROM pg_advisory_lock(hashtext(:'lock'));" >&"${source_lock[1]}"
 read -r locked <&"${source_lock[0]}"
 [[ "$locked" == locked ]]
+
+# 書き出す前に、書き出しが入る空きを確かめる。書き出しは圧縮してもDBより大きくはならない。
+# 鍵を待つ間に取込がDBを育てるので、鍵を取ってから測る。
+db_bytes=$(runuser -u postgres -- psql --dbname="$db_name" --tuples-only --no-align \
+  --command='SELECT pg_database_size(current_database())')
+free_bytes=$(df --output=avail --block-size=1 "$backup_dir" | tail -n 1)
+if (( free_bytes < db_bytes )); then
+  echo "DBのディスクの空きがDBの大きさより少ないので書き出しません free=$free_bytes db=$db_bytes" >&2
+  exit 1
+fi
 
 next="$backup_dir/next.dump"
 runuser -u postgres -- pg_dump --format=custom --compress="$compress" --dbname="$db_name" > "$next"

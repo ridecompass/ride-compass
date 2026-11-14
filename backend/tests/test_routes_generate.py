@@ -1,56 +1,67 @@
 """`api/routers/routes.py`——ルート生成のHTTPの入口。
 
-確かめるのは、HTTPから見える振る舞いだけ: 要求の検証（422）、ジョブの投稿と取得（202・404）、生成の種類
+確かめるのは、HTTPから見える振る舞いだけ: 要求の検証（422）、ジョブの投稿と取得（202・404。終わるまで待つ取得を含む）、生成の種類
 （周回・目的地・経由地・区間の乗り換え。距離と置いた点の組み合わせ）の振り分け、実際に使った条件のエコー、候補0件の理由、失敗の伝え方、
-同時実行とレート制限（429）。
+同時実行の待ちとレート制限（429）。
 
 裏の生成は本物の`RouteGenerator`とエンジンを、小さな格子の道路網（`tests/route_world.py`）の上で通す。
 差し替えるのはプロセス境界だけ——DBのセッションと天気の予報ファイル（生成の開き方の注入の口`get_route_generation_setup_opener`）・
 道路網の置き場・レート制限の記録。
 
 ここで見ないもの:
-- 経路の中身（周回が閉じる・一方通行・重みの効き等） → `test_route_generation_behavior.py`
+- 経路の中身（周回が閉じる・一方通行・重みの効き等） → `test_route_generation_behavior.py`。ここではつまみと倍率が費用の式まで
+  届くことだけを、避ける道を通るかで見る
 - 候補の並べ方・理由の文面 → `test_route_generator.py`
 - レート制限の数え方そのもの → `test_rate_limiter.py`
-- 重みの値の検査（公開軸のidだけ・非負） → `test_route_preference.py`。ここでは寄せていることを1行で見る
 - 項目ごとの値の範囲（距離・件数等の`Field`の制約）→ 型の宣言が持つ
 - 本物の開き方（`api/dependencies.py`がDBのセッションと天気を開いて渡すだけの結線。判断を持たない）
 """
 
 import asyncio
+import logging
 import re
 from contextlib import asynccontextmanager
 from datetime import datetime
+from pathlib import Path
 
 import httpx
 import pytest
 
 from app.api import dependencies
+from app.api.generation_slots import GenerationSlots
 from app.config import settings
-from app.domain.road_classes import AvoidanceClassification, AvoidanceSection
-from app.domain.route_request import DEFAULT_MAX_ROUTES, MAX_SPLICED_EDGES, MAX_WAYPOINTS
-from app.domain.tuning import TUNING_VALUES
-from app.domain.route_request import ASSUMED_SPEED_KMH
+from app.domain.cost_axes import EFFORT_AXES
+from app.domain.errors import GENERATION_BUSY_MESSAGE
+from app.domain.graph import node_key, parse_edge_key
+from app.domain.road_network import RoadNetwork
+from app.domain.road_classes import AvoidanceClassification
+from app.domain.route_request import ASSUMED_SPEED_KMH, DEFAULT_MAX_ROUTES, MAX_SPLICED_EDGES, MAX_WAYPOINTS
+from app.domain.tuning import tuning_value
 from app.infrastructure import rate_limiter
-from app.infrastructure.road_network_store import RoadNetworkUnavailableError
+from app.infrastructure.job_registry import JOB_WAIT_MAX_SECONDS
 from app.main import app
-from app.services.graph_service import GraphService
+from app.services.graph_service import GraphService, SearchMemory
 from app.services.route_generation_setup import assemble_route_generation_setup
-from tests.road_class_fixture import classification, fact_is, replaced_road_classes, road_classes
+from tests.bound_fake import bound
+from tests.road_class_fixture import classification, fact_is, map_layer, replaced_road_classes, road_classes
+from tests.cost_axes_fixture import BAD_AXIS, cost_axes, cost_axes_declared
 from tests.route_world import (
-    AVOID_AXIS,
+    BAD_MATERIAL,
     CENTER,
+    COORDINATES,
     HIGHWAY,
     NORTH_EAST,
+    SOUTH_EAST,
     SOUTH_WEST,
     NetworkRepository,
     Weather,
     at,
-    avoid_axis_declared,
+    LATTICE,
     grid_network,
-    lattice_network,
+    lattice_at,
     lattice_node,
-    node_point,
+    lattice_ring_edges,
+    passes_in_order,
     serve_road_network,
 )
 
@@ -73,17 +84,18 @@ def _point(osm_node_id):
 
 
 class World:
-    """道路網の置き場と天気の代役。`network`を差し替えると次の生成から効く。"""
+    """道路網の置き場と天気の代役。`serve`で置いた道路網（Noneなら置き場が空）が次の生成から効く。
+    区間の形を返すDBの代役（`NetworkRepository`）は、最後に置いた道路網を読む。"""
 
-    def __init__(self):
-        self.network = grid_network()
-        self.unavailable = False
+    def __init__(self, root: Path):
+        self._root = root
         self.weather = Weather()
+        self.serve(grid_network())
 
-    def current(self):
-        if self.unavailable:
-            raise RoadNetworkUnavailableError("道路網の置き場がありません")
-        return self.network
+    def serve(self, network: RoadNetwork | None) -> None:
+        if network is not None:
+            self.network = network
+        serve_road_network(self._root, network)
 
 
 class GatedWeather(Weather):
@@ -93,24 +105,34 @@ class GatedWeather(Weather):
         super().__init__()
         self.gate = asyncio.Event()
 
-    async def get_departure_wind(self, origin):
+    async def get_wind_forecast_lattice(self, bbox):
         await self.gate.wait()
-        return None
+        return await super().get_wind_forecast_lattice(bbox)
 
 
 @pytest.fixture
-def world(monkeypatch):
-    """格子の道路網・天気の代役と、避けたい材料を読む公開軸1本（`avoid_axis_declared`）。"""
-    world = World()
+def world(override_dependency, road_network_root):
+    """格子の道路網と天気の代役。"""
+    world = World(road_network_root)
 
     @asynccontextmanager
     async def open_setup(requested):
-        yield assemble_route_generation_setup(GraphService(NetworkRepository(world.network)), world.weather, requested)
+        yield assemble_route_generation_setup(GraphService(NetworkRepository(world.network), SearchMemory()), world.weather, requested)
 
-    serve_road_network(monkeypatch, world.current)
-    monkeypatch.setitem(app.dependency_overrides, dependencies.get_route_generation_setup_opener, lambda: open_setup)
-    with avoid_axis_declared():
-        yield world
+    override_dependency(dependencies.get_route_generation_setup_opener, lambda: open_setup)
+    # 枠を待つ生成はテストごとのイベントループに結び付くので、持ち主をテストごとに作り直す。
+    slots = GenerationSlots(settings.generate_max_concurrent, settings.generate_max_queued)
+    override_dependency(dependencies.get_generation_slots, lambda: slots)
+    yield world
+
+
+
+
+@pytest.fixture
+def bad_axis():
+    """体力の軸と、避けたい材料の道（1kmあたり重さ10）を重く見る道のストレスの軸`BAD_AXIS`1本。"""
+    with cost_axes_declared(cost_axes(BAD_MATERIAL, 10.0)):
+        yield
 
 
 @pytest.fixture
@@ -123,6 +145,13 @@ async def client(world):
 
 async def _post(client, **body):
     return await client.post("/api/routes/generate", json={**_point(CENTER), "distance_km": 4.0, **ALWAYS_SENT, **body})
+
+
+async def _post_as(rider, **body):
+    """接続元を利用者ごとに分けて投稿する（同時に作る人数を、1人あたりの回数の制限に当てずに作る）。"""
+    transport = httpx.ASGITransport(app=app, client=(f"10.0.0.{rider}", 50000))
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as rider_client:
+        return await _post(rider_client, **body)
 
 
 async def _wait(client, job_id):
@@ -144,27 +173,6 @@ def _ends(route):
     return route["node_ids"][0], route["node_ids"][-1]
 
 
-def _node(osm_node_id):
-    return f"osm-node-{osm_node_id}"
-
-
-#: 置いた点を通って距離に合わせる生成を見る格子（6×6、1辺約1km）。3×3では、置いた点を通っても距離に合わせる長さが無い。
-LATTICE = lattice_network(6)
-
-
-def _lattice_point(row, col):
-    return node_point(LATTICE, lattice_node(row, col)).model_dump()
-
-
-def _passes_in_order(route, start, stops, end):
-    """経路が`start`から始まり、`stops`を置いた順に通り、`end`で終わる。"""
-    nodes = route["node_ids"]
-    position = 0
-    for stop in stops:
-        if _node(stop) not in nodes[position:]:
-            return False
-        position = nodes.index(_node(stop), position)
-    return _ends(route) == (_node(start), _node(end))
 
 
 # --- 生成の種類 ---
@@ -174,134 +182,185 @@ async def test_a_loop_is_generated_when_neither_destination_nor_waypoints_are_gi
     result = (await _generate(client))["result"]
 
     assert result["routes"]
-    assert all(_ends(route) == (_node(CENTER), _node(CENTER)) for route in result["routes"])
+    assert all(_ends(route) == (node_key(CENTER), node_key(CENTER)) for route in result["routes"])
     assert result["no_candidates_reason"] is None
 
 
-async def test_a_destination_route_ends_at_the_destination_with_up_to_the_requested_count(client):
-    result = (await _generate(
-        client, **_point(SOUTH_WEST), destination=_point(NORTH_EAST), distance_km=None, max_routes=2,
-    ))["result"]
-
-    assert 1 <= len(result["routes"]) <= 2
-    assert result["conditions"]["max_routes"] == 2
-    assert result["conditions"]["distance_km"] is None
-    assert all(_ends(route) == (_node(SOUTH_WEST), _node(NORTH_EAST)) for route in result["routes"])
-
-
-async def test_a_waypoint_route_returns_to_the_origin_with_up_to_the_requested_count(client):
-    result = (await _generate(
-        client, **_point(SOUTH_WEST), waypoints=[_point(NORTH_EAST)], distance_km=None, max_routes=2,
-    ))["result"]
-
-    assert 1 <= len(result["routes"]) <= 2
-    assert result["conditions"]["max_routes"] == 2
-    assert all(_ends(route) == (_node(SOUTH_WEST), _node(SOUTH_WEST)) for route in result["routes"])
-
-
 @pytest.mark.parametrize(
-    "body",
+    ("ending", "end"),
     [
-        pytest.param({**_point(SOUTH_WEST), "destination": _point(NORTH_EAST), "distance_km": None}, id="目的地ルート"),
+        pytest.param({"destination": _point(NORTH_EAST)}, NORTH_EAST, id="目的地ルートは目的地で終わる"),
+        pytest.param({"waypoints": [_point(NORTH_EAST)]}, SOUTH_WEST, id="経由地ルートは出発地へ戻る"),
     ],
 )
-async def test_a_spliced_route_is_evaluated_as_sent(client, body):
-    """区間を差し替えた経路は探索し直さず、そのまま1件として評価して返す。"""
+async def test_a_route_with_a_destination_or_waypoints_ends_where_it_should_with_up_to_the_requested_count(
+    client, ending, end,
+):
+    result = (await _generate(client, **_point(SOUTH_WEST), **ending, distance_km=None, max_routes=2))["result"]
+
+    assert 1 <= len(result["routes"]) <= 2
+    assert result["conditions"]["max_routes"] == 2
+    # 全長の目標が無ければ、許容も置かない
+    assert result["conditions"]["distance_km"] is None and result["conditions"]["distance_tolerance_km"] is None
+    assert all(_ends(route) == (node_key(SOUTH_WEST), node_key(end)) for route in result["routes"])
+
+
+#: 格子のノードの鍵→その地点（応答の`node_ids`から経由地を置き直す）。
+POINT_OF_NODE = {node_key(osm): _point(osm) for osm in COORDINATES}
+
+
+async def test_a_spliced_route_lists_the_placed_waypoints_where_it_passes_them(client):
+    """乗り換えて組んだ経路も、置いた経由地を通る所の道のりを置いた順に返す——空だと道のりのグラフに経由地の印が出ない。"""
+    body = {**_point(SOUTH_WEST), "destination": _point(NORTH_EAST), "distance_km": None}
+    (route, *_) = (await _generate(client, **body, max_routes=1))["result"]["routes"]
+    first, *_, last = route["node_ids"][1:-1]
+    waypoints = [POINT_OF_NODE[first], POINT_OF_NODE[last]]
+    (via, *_) = (await _generate(client, **body, waypoints=waypoints, max_routes=1))["result"]["routes"]
+
+    (spliced,) = (await _generate(client, **body, waypoints=waypoints, spliced_edge_ids=via["edge_ids"]))["result"]["routes"]
+
+    assert len(spliced["waypoint_distances_km"]) == len(waypoints)
+    assert spliced["waypoint_distances_km"] == via["waypoint_distances_km"]
+
+
+async def test_a_spliced_route_that_skips_a_placed_waypoint_lists_none_of_them(client):
+    """置いた順に通らない経由地が1つでもあれば、どれも返さない——通った分だけを並べると、何番目の経由地かがずれる。"""
+    body = {**_point(SOUTH_WEST), "destination": _point(NORTH_EAST), "distance_km": None}
+    (route, *_) = (await _generate(client, **body, max_routes=1))["result"]["routes"]
+    first, *_, last = route["node_ids"][1:-1]
+
+    # 経路は`last`を`first`より後に通るので、`last`→`first`の順には通らない。
+    (spliced,) = (await _generate(
+        client, **body, waypoints=[POINT_OF_NODE[last], POINT_OF_NODE[first]], spliced_edge_ids=route["edge_ids"],
+    ))["result"]["routes"]
+
+    assert spliced["waypoint_distances_km"] == []
+
+
+async def test_a_spliced_route_with_a_road_the_network_does_not_have_says_why(client):
+    """道路網に無い区間（古い候補の区間等）は利用者の側の事情なので、ジョブは終わり、0本と理由を返す。"""
+    body = {**_point(SOUTH_WEST), "destination": _point(NORTH_EAST), "distance_km": None}
     (route, *_) = (await _generate(client, **body, max_routes=1))["result"]["routes"]
 
-    spliced = (await _generate(client, **body, spliced_edge_ids=route["edge_ids"]))["result"]
+    status = await _generate(client, **body, spliced_edge_ids=[*route["edge_ids"], "way-999-seg0-fwd"])
 
-    assert [r["edge_ids"] for r in spliced["routes"]] == [route["edge_ids"]]
+    assert status["status"] == "done"
+    assert status["result"]["routes"] == []
+    assert JAPANESE.search(status["result"]["no_candidates_reason"])
 
 
-@pytest.mark.parametrize(
-    ("origin", "waypoints", "destination", "target"),
-    [
-        pytest.param((1, 1), [(1, 2)], None, 12.0, id="周回に経由地を置いて"),
-    ],
-)
-async def test_a_distance_with_placed_points_is_the_length_of_the_whole_route(
-    client, world, origin, waypoints, destination, target,
-):
+async def test_a_spliced_route_outside_the_search_area_fails_as_an_error_of_the_backend(client, world, monkeypatch, caplog):
+    """探索の範囲が送られた区間を覆わなかったら、利用者への理由（つながっていない等）にせず、ERRORを残してジョブを失敗させる
+    ——理由にすると、範囲の誤りが利用者の操作の誤りに見え、本番で気付けない。範囲を作る側が送られた区間を取りこぼした状態は、
+    区間の両端を引く口（`GraphService.edge_endpoints`）を空にして作る。"""
+    world.serve(LATTICE)
+    monkeypatch.setattr(GraphService, "edge_endpoints", bound(GraphService.edge_endpoints, lambda self, edge_ids: []))
+
+    with caplog.at_level(logging.ERROR):
+        status = await _generate(client, **lattice_at(0, 0).model_dump(), spliced_edge_ids=lattice_ring_edges(4))
+
+    assert status["status"] == "failed"
+    assert [r for r in caplog.records if r.levelno == logging.ERROR]
+
+
+async def test_a_distance_with_placed_points_is_the_length_of_the_whole_route(client, world):
     """経由地を置いても、距離は全長の目標として効く（夕食と銭湯に寄って30kmの周回）。
     探索は置いた点の近くに限らず、全長の目標に足りる広さで探す。"""
-    world.network = LATTICE
-    tolerance = 2.0
-    end = origin if destination is None else destination
+    world.serve(LATTICE)
+    tolerance_ratio = tuning_value("search.distance_tolerance_ratio")
+    origin, waypoint, target = (1, 1), (1, 2), 12.0
 
     result = (await _generate(
-        client, **_lattice_point(*origin), waypoints=[_lattice_point(*point) for point in waypoints] or None,
-        destination=_lattice_point(*destination) if destination else None,
-        distance_km=target, distance_tolerance_km=tolerance,
+        client, **lattice_at(*origin).model_dump(), waypoints=[lattice_at(*waypoint).model_dump()], distance_km=target,
     ))["result"]
 
     assert len(result["routes"]) >= 2
     for route in result["routes"]:
-        assert _passes_in_order(
-            route, lattice_node(*origin), [lattice_node(*point) for point in waypoints], lattice_node(*end),
+        assert passes_in_order(
+            route["node_ids"], lattice_node(*origin), [lattice_node(*waypoint)], lattice_node(*origin),
         )
-        assert abs(route["distance_km"] - target) <= tolerance
+        assert abs(route["distance_km"] - target) <= target * tolerance_ratio
     assert result["conditions"]["distance_km"] == target
-
-
-async def test_an_empty_result_says_why(client):
-    """置いた点を通るだけで距離を超えると、候補は無く、理由が返る。"""
-    status = await _generate(client, **_point(SOUTH_WEST), waypoints=[_point(NORTH_EAST)], distance_km=2.0,
-                             distance_tolerance_km=0.5)
-
-    assert status["status"] == "done"
-    assert status["result"]["routes"] == []
-    assert status["result"]["no_candidates_reason"]
 
 
 # --- 条件のエコー ---
 
 
 async def test_the_defaults_that_were_applied_are_echoed(client):
-    """画面が見る値と探索が使った値を分けない。省略した項目も、実際に使った値で返す。"""
+    """画面が見る値と探索が使った値を分けない。省略した項目も、実際に使った値で返す。許容は目標距離に割合の較正値を掛けた長さで返す。"""
     conditions = (await _generate(client))["result"]["conditions"]
 
-    assert conditions["route_preference"] == {AVOID_AXIS: 0.0}
+    assert conditions["cost_preference"] == {
+        "strength": 1.0, "multipliers": dict.fromkeys(EFFORT_AXES, 1.0), "disabled_axes": []}
     assert conditions["waypoints"] is None and conditions["destination"] is None
     assert conditions["corrected_destination"] is None
+    assert conditions["distance_tolerance_km"] == pytest.approx(
+        conditions["distance_km"] * tuning_value("search.distance_tolerance_ratio"))
 
 
-async def test_the_overrides_that_were_sent_are_echoed(client):
-    """保存したレスポンスの条件をそのまま送り直せば、同じ条件で生成し直せる。避け方は、区分を分け直す前の鍵で送っても
-    今の行の鍵で返る。"""
+async def test_the_overrides_that_were_sent_are_echoed(client, bad_axis):
+    """保存したレスポンスの条件をそのまま送り直せば、同じ条件で生成し直せる。書いていない軸の倍率は標準で、無効にした軸は
+    倍率でなく無効の側に返る。"""
     definitions = road_classes(
-        {"kind": classification({"local": [fact_is(HIGHWAY, "residential")]}, former_keys={"local": ["old.local"]})},
-        avoidance_sections={"s": AvoidanceSection(label="見出し", description="", sort_order=0)},
-        avoidance_classifications={"kind": AvoidanceClassification(section_key="s", sort_order=0, overrides={})},
+        {"kind": classification({"local": [fact_is(HIGHWAY, "residential")]})},
+        map_layers={"kind": map_layer()},
+        avoidance_classifications={"kind": AvoidanceClassification(overrides={})},
     )
     with replaced_road_classes(definitions):
         conditions = (await _generate(
-            client, route_preference={AVOID_AXIS: 2.0}, penalty_strength=0.5, max_average_grade_percent=8.0,
-            road_avoidance={"old.local": "avoid"}, assumed_speed_kmh=25.0, distance_tolerance_km=2.0,
+            client, cost_preference={"strength": 2.0, "multipliers": {BAD_AXIS: 0.5}, "disabled_axes": ["headwind"]},
+            road_avoidance={"kind.local": "avoid"}, assumed_speed_kmh=25.0,
         ))["result"]["conditions"]
 
-    assert conditions["route_preference"] == {AVOID_AXIS: 2.0}
-    assert conditions["penalty_strength"] == 0.5
-    assert conditions["max_average_grade_percent"] == 8.0
+    assert conditions["cost_preference"] == {
+        "strength": 2.0, "multipliers": {**{axis_id: 1.0 for axis_id in EFFORT_AXES if axis_id != "headwind"}, BAD_AXIS: 0.5},
+        "disabled_axes": ["headwind"]}
     assert conditions["road_avoidance"] == {"kind.local": "avoid"}
     assert conditions["assumed_speed_kmh"] == 25.0
-    assert conditions["distance_tolerance_km"] == 2.0
 
 
-@pytest.mark.parametrize(("field", "tuning_id", "values"), [
-    ("penalty_strength", "evaluation.penalty_strength", (0.37, 0.61)),
-    ("distance_tolerance_km", "search.distance_tolerance_km", (3.0, 4.0)),
+# --- つまみと倍率 ---
+
+
+@pytest.mark.parametrize(("cost_preference", "avoided"), [
+    pytest.param({}, True, id="標準では避ける"),
+    pytest.param({"disabled_axes": [BAD_AXIS]}, False, id="無効の軸は数えない"),
+    pytest.param({"strength": 0.0}, False, id="つまみ0は所要時間だけで選ぶ"),
 ])
-async def test_an_omitted_value_is_the_calibrated_value_at_the_time_of_generation(
-    client, monkeypatch, field, tuning_id, values,
-):
-    """管理画面で変えた較正値は、プロセスを入れ替えずに次の生成から効き、使った値として返る。"""
-    echoed = []
-    for value in values:
-        monkeypatch.setitem(TUNING_VALUES, tuning_id, value)
-        echoed.append((await _generate(client))["result"]["conditions"][field])
+async def test_the_strength_and_the_multipliers_weigh_the_cost_of_the_roads(client, world, bad_axis, cost_preference,
+                                                                            avoided):
+    """南の道（南西→南東の最短2km）だけが避けたい材料を持つ。代償を数えるなら北へ回る道（4km）を選び、数えなければ南の道を選ぶ。
+    候補は代償の最も小さい1本（と、それと違えば最速の1本）。"""
+    bad = {100, 101}
+    world.serve(grid_network(bad_ways=bad))
 
-    assert tuple(echoed) == values
+    routes = (await _generate(
+        client, destination=_point(SOUTH_EAST), distance_km=None, max_routes=1, cost_preference=cost_preference,
+    ))["result"]["routes"]
+
+    assert any(not {parse_edge_key(edge_id)[0] for edge_id in route["edge_ids"]} & bad for route in routes) == avoided
+
+
+async def test_a_disabled_axis_appears_nowhere_in_the_routes(client, world, bad_axis):
+    """無効にした軸（道のストレスの軸と停止）は、候補の内訳・区間の内訳と1kmあたり・事実のどこにも出ない。停止を無効にすると、
+    曲がる所の漕ぎ出しも数えないので、内訳の和は費用に合ったまま。"""
+    world.serve(grid_network(bad_ways={100, 101}, stop_density_of={101: 3.0}))
+    disabled = {BAD_AXIS, "stopping"}
+
+    routes = (await _generate(
+        client, destination=_point(NORTH_EAST), distance_km=None, max_routes=2,
+        cost_preference={"disabled_axes": sorted(disabled)},
+    ))["result"]["routes"]
+
+    assert routes
+    for route in routes:
+        shown = {*route["penalty"]["axis_seconds"], *route["facts"]["axes"]}
+        for segment in route["segments"]:
+            shown |= {*segment["penalty"]["axis_seconds"], *(segment["lens_seconds_per_km"] or {})}
+        assert not shown & disabled
+        assert set(route["penalty"]["axis_seconds"]) == set(EFFORT_AXES) - disabled
+        assert route["estimated_duration_seconds"] + route["penalty"]["total_seconds"] == pytest.approx(
+            route["cost_seconds"], abs=0.5)
 
 
 @pytest.mark.parametrize(("sent", "applied"), [
@@ -316,7 +375,7 @@ async def test_the_departure_time_is_read_in_japan_time(client, sent, applied):
 
 
 async def test_a_destination_moved_to_the_nearest_reachable_road_is_echoed(client, world):
-    world.network = grid_network(island=True)
+    world.serve(grid_network(island=True))
 
     conditions = (await _generate(
         client, **_point(SOUTH_WEST), destination=_point(91), distance_km=None,
@@ -326,15 +385,28 @@ async def test_a_destination_moved_to_the_nearest_reachable_road_is_echoed(clien
     assert conditions["destination"] == _point(91)
 
 
+async def test_a_spliced_route_to_a_destination_moved_to_the_nearest_reachable_road_echoes_the_move(client, world):
+    """乗り換えでも寄せ直した終点を返す——返さないと、画面の目的地のピンが経路の終わりから離れたままになる。"""
+    world.serve(grid_network(island=True))
+    body = {**_point(SOUTH_WEST), "destination": _point(91), "distance_km": None}
+    (route, *_) = (await _generate(client, **body, max_routes=1))["result"]["routes"]
+
+    conditions = (await _generate(client, **body, spliced_edge_ids=route["edge_ids"]))["result"]["conditions"]
+
+    assert conditions["corrected_destination"] == _point(NORTH_EAST)
+
+
 # --- 要求の検証 ---
 
 
-@pytest.mark.parametrize("body", [
-    {"route_preference": {}},                                        # 公開軸を全部書いていない
-    {"route_preference": {AVOID_AXIS: -1.0}},                        # 値の検査（`check_axis_weights`）へ寄せている
+@pytest.mark.parametrize("cost_preference", [
+    pytest.param({"multipliers": {"unknown": 1.0}}, id="知らない軸の倍率"),
+    pytest.param({"disabled_axes": ["unknown"]}, id="知らない軸の無効"),
+    pytest.param({"multipliers": {BAD_AXIS: 1.0}, "disabled_axes": [BAD_AXIS]}, id="無効と倍率の両方に書いた軸"),
 ])
-async def test_a_request_outside_what_can_be_generated_is_refused_before_any_job(client, body):
-    response = await _post(client, **body)
+async def test_a_preference_naming_an_unknown_or_an_ambiguous_axis_is_refused_before_any_job(client, bad_axis,
+                                                                                            cost_preference):
+    response = await _post(client, cost_preference=cost_preference)
 
     assert response.status_code == 422
 
@@ -361,9 +433,29 @@ async def test_a_job_that_is_not_known_is_404(client):
     assert (await client.get("/api/routes/generate/no-such-job")).status_code == 404
 
 
+async def test_a_poll_that_may_wait_returns_when_the_job_finishes_or_at_the_limit(client, world):
+    """待つ上限を渡した問い合わせは、終わればその場で結果を返し、上限までに終わらなければ待ちの応答を返す
+    （画面は固定の間隔で聞き直さずに済む）。"""
+    # 待っている問い合わせが上限で切れる前に生成を終わらせるため、JITのコンパイルを先に済ませておく。
+    assert (await _generate(client))["status"] == "done"
+    world.weather = GatedWeather()
+    job_id = (await _post(client)).json()["job_id"]
+    url = f"/api/routes/generate/{job_id}"
+
+    assert (await client.get(url, params={"wait_seconds": 1})).json() == {"status": "running"}
+
+    poll = asyncio.create_task(client.get(url, params={"wait_seconds": JOB_WAIT_MAX_SECONDS}))
+    await asyncio.sleep(0.1)
+    assert not poll.done()
+    world.weather.gate.set()
+    assert (await _wait(client, job_id))["status"] == "done"
+    # 終わった合図で起きるなら、完了が見えた直後に返る（上限まで待ち続けない）。
+    assert (await asyncio.wait_for(poll, timeout=1)).json()["status"] == "done"
+
+
 async def test_a_failed_job_says_so_without_leaking_its_internals(client, world):
     """例外の中身（接続先・SQL）はログだけに残す。失敗しても同時実行の枠は返る（上限より多く続けて投げても受け付ける）。"""
-    world.unavailable = True
+    world.serve(None)
 
     statuses = [await _generate(client) for _ in range(settings.generate_max_concurrent + 1)]
 
@@ -371,20 +463,37 @@ async def test_a_failed_job_says_so_without_leaking_its_internals(client, world)
     assert all("置き場" not in s["error"] and s["error"] for s in statuses)
 
 
-async def test_jobs_beyond_the_concurrency_limit_are_refused_at_once(client, world):
-    """待たせずに429を返す（連打やブラウザのリトライで裏の負荷を積み上げない）。枠が空けばまた受け付ける。"""
+async def test_jobs_beyond_the_concurrency_limit_wait_their_turn_and_beyond_the_queue_are_refused(client, world):
+    """同時実行の上限を越えた投稿も受け付け、待ちのまま枠の空きを待たせて作る。待てる数も越えた投稿は429で断る
+    （連打やブラウザのリトライで待ち行列を伸ばさない）。枠が空けばまた受け付ける。"""
     world.weather = GatedWeather()
-    running = [await _post(client) for _ in range(settings.generate_max_concurrent)]
+    riders = settings.generate_max_concurrent + settings.generate_max_queued
+    accepted = [await _post_as(rider) for rider in range(riders)]
 
-    # 上限を越えた投稿が枠の空きを待ってしまうと、応答が返らない。待たせないことを期限で確かめる。
-    refused = await asyncio.wait_for(_post(client), timeout=5)
+    refused = await _post_as(riders)
+    last = accepted[-1].json()["job_id"]
+    assert (await client.get(f"/api/routes/generate/{last}")).json() == {"status": "queued"}
 
     world.weather.gate.set()
-    for response in running:
+    for response in accepted:
         assert response.status_code == 202
         assert (await _wait(client, response.json()["job_id"]))["status"] == "done"
     assert refused.status_code == 429
     assert (await _generate(client))["status"] == "done"
+
+
+async def test_a_job_that_cannot_get_a_slot_in_time_fails_as_busy(client, world, monkeypatch):
+    """待てる時間のうちに枠が空かなければ、混み合いの文で失敗にする（作れない利用者を待たせ続けない）。"""
+    monkeypatch.setattr(settings, "generate_queue_wait_seconds", 0.1)
+    world.weather = GatedWeather()
+    running = [await _post(client) for _ in range(settings.generate_max_concurrent)]
+
+    waiting = await _post(client)
+
+    assert await _wait(client, waiting.json()["job_id"]) == {"status": "failed", "error": GENERATION_BUSY_MESSAGE}
+    world.weather.gate.set()
+    for response in running:
+        assert (await _wait(client, response.json()["job_id"]))["status"] == "done"
 
 
 async def test_too_many_requests_from_one_client_are_refused(client):
@@ -393,3 +502,4 @@ async def test_too_many_requests_from_one_client_are_refused(client):
 
     assert (await _generate(client))["status"] == "done"
     assert (await _post(client)).status_code == 429
+

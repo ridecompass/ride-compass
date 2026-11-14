@@ -1,12 +1,6 @@
-"""`domain/axis_templates.py`——軸の得点を求める2つの演算（区分線形・値ごとの対応表）。
+"""`domain/axis_templates.py`——軸の得点を求める区分線形の演算。
 
-入口は`evaluate_breakpoint_linear`と`evaluate_categorical`。どちらも配列で受け、欠損と引けない値はNaNで返す。
-`evaluate_categorical`は材料の列が本番で届く形（真偽の材料の真偽の配列と1.0/0.0/NaNの数値の配列、Pythonの値から作った
-objectの配列）ごとに確かめる——同じ値には形によらず同じ得点になる。
-
-ここで見ないもの:
-- 材料の線形結合・前処理・得点の丸め・0次条件 → `test_axis_definitions.py`
-- 分類の材料の列（`domain/attributes.py: CategoricalColumn`）はその列の引き方へそのまま渡す → `test_axis_definitions.py`
+入口は`evaluate_breakpoint_linear`。配列で受け、欠損はNaNで返す。
 """
 
 import bisect
@@ -17,13 +11,7 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from app.domain.axis_templates import evaluate_breakpoint_linear, evaluate_categorical
-
-
-def _object_column(values):
-    column = np.empty(len(values), dtype=object)
-    column[:] = values
-    return column
+from app.domain.axis_templates import evaluate_breakpoint_linear
 
 
 def _straight_line(x: float, breakpoints: list[tuple[float, float]]) -> float:
@@ -57,22 +45,3 @@ def test_the_score_follows_the_line_between_the_breakpoints_and_stops_at_its_end
 
     expected = [_straight_line(x, breakpoints) for x in values]
     assert scores.tolist() == pytest.approx(expected, rel=1e-9, abs=1e-9, nan_ok=True)
-
-
-
-
-FLAG = {True: 10.0, False: 90.0}
-
-
-@pytest.mark.parametrize(
-    ("column", "expected"),
-    [
-        (np.array([True, False, True]), [10.0, 90.0, 10.0]),
-        (np.array([1.0, 0.0, math.nan]), [10.0, 90.0, math.nan]),
-        (_object_column([True, False, None]), [10.0, 90.0, math.nan]),
-    ],
-    ids=["bool", "float", "object"],
-)
-def test_a_flag_is_scored_the_same_whichever_array_carries_it(column, expected):
-    """欠損を持たない真偽の材料は真偽の配列で、「不明」を持つものは数値の配列で届く。"""
-    assert evaluate_categorical(column, FLAG).tolist() == pytest.approx(expected, nan_ok=True)

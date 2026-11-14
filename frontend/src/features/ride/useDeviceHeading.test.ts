@@ -1,12 +1,17 @@
 /**
  * スマホが向いている方角（`features/ride/useDeviceHeading.ts`）——端末のコンパスの読みを画面の上が向いている方角へ直し、
- * 走行モードの間だけ読む。iPhone では始める操作の中で許しを求め、断られたら方角を出さない。
+ * 走行モードの間だけ読む。iPhone では始める操作の中で許しを求め、断られたら方角を出さない。操作の外で求めて聞けなかったら、
+ * 求め直す口を出す。
+ *
+ * ここで見ないもの: 求め直す口で許されたら現在地の印に向きを出すこと → `app/page.ride.test.tsx`
  *
  * 差し替えたもの: 端末の向きの出来事（`deviceorientationabsolute`・`deviceorientation`）と、iPhone の許しを求める口
  * （`DeviceOrientationEvent.requestPermission`）。どちらもテスト環境に無いブラウザの機能。
  */
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
+
+import { setOrientationPermission, unaskedPermission } from "@/testing/deviceOrientation";
 
 import { headingFromOrientation, useDeviceHeading } from "./useDeviceHeading";
 
@@ -21,9 +26,9 @@ describe("headingFromOrientation: 端末の向きの読みから、画面の上�
     },
     { case: "読みが無い", reading: { alpha: null }, absolute: true, angle: 0, heading: null },
   ])("$case", ({ reading, absolute, angle, heading }) => {
-    const result = headingFromOrientation(reading, absolute, angle);
-    if (heading === null) expect(result).toBeNull();
-    else expect(result).toBeCloseTo(heading, 6);
+    expect(headingFromOrientation(reading, absolute, angle)).toEqual(
+      heading === null ? null : expect.closeTo(heading, 6),
+    );
   });
 });
 
@@ -36,13 +41,8 @@ function orient(type: string, fields: Record<string, number | null>) {
   });
 }
 
-function setRequestPermission(answer: "granted" | "denied" | undefined) {
-  const holder = globalThis as unknown as { DeviceOrientationEvent?: { requestPermission?: () => Promise<string> } };
-  holder.DeviceOrientationEvent = answer === undefined ? undefined : { requestPermission: async () => answer };
-}
-
 afterEach(() => {
-  setRequestPermission(undefined);
+  setOrientationPermission(undefined);
 });
 
 describe("useDeviceHeading", () => {
@@ -52,22 +52,46 @@ describe("useDeviceHeading", () => {
     });
     act(() => result.current.request());
     orient("deviceorientationabsolute", { alpha: 270 });
-    expect(result.current.heading).toBeCloseTo(90, 6);
+    expect(result.current.heading.current()).toBeCloseTo(90, 6);
     // 同じ端末が並べて出す、北を基準にしない向きの出来事は読まない。
     orient("deviceorientation", { alpha: 0 });
-    expect(result.current.heading).toBeCloseTo(90, 6);
+    expect(result.current.heading.current()).toBeCloseTo(90, 6);
 
     rerender({ active: false });
-    expect(result.current.heading).toBeNull();
+    expect(result.current.heading.current()).toBeNull();
     orient("deviceorientationabsolute", { alpha: 180 });
-    expect(result.current.heading).toBeNull();
+    expect(result.current.heading.current()).toBeNull();
+  });
+
+  it("北を基準にした出来事が値を持たずに届いても（センサーの無い端末の受け始め）、もう一方の出来事の方角を読み続ける", () => {
+    const { result } = renderHook(() => useDeviceHeading(true));
+    act(() => result.current.request());
+    orient("deviceorientationabsolute", { alpha: null });
+    orient("deviceorientation", { webkitCompassHeading: 90, alpha: 0 });
+    expect(result.current.heading.current()).toBeCloseTo(90, 6);
   });
 
   it("iPhone では始める操作の中で許しを求め、断られたら方角を出さない", async () => {
-    setRequestPermission("denied");
+    setOrientationPermission(() => "denied");
     const { result } = renderHook(() => useDeviceHeading(true));
     await act(async () => result.current.request());
     orient("deviceorientation", { webkitCompassHeading: 90, alpha: 0 });
-    expect(result.current.heading).toBeNull();
+    expect(result.current.heading.current()).toBeNull();
+    // 利用者が断った答えは、求め直しても変わらないので、求め直す口を出さない。
+    expect(result.current.requestAgain).toBeNull();
+  });
+
+  it("iPhone で操作の外で求めて聞けなかったら、位置を受けている間だけ求め直す口を出す", async () => {
+    setOrientationPermission(() => {
+      throw unaskedPermission();
+    });
+    const { result, rerender } = renderHook(({ active }) => useDeviceHeading(active), {
+      initialProps: { active: true },
+    });
+    await act(async () => result.current.request());
+    expect(result.current.requestAgain).not.toBeNull();
+    // 位置を受けていない間は、求め直しても読まないので出さない。
+    rerender({ active: false });
+    expect(result.current.requestAgain).toBeNull();
   });
 });

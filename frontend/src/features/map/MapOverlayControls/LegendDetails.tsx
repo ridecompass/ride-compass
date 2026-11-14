@@ -3,11 +3,9 @@
 import { LEGEND_SWATCH_RING_CLASS, legendSwatchBackground, type LegendEntry } from "@/lib/mapDisplay/legendFilter";
 import LegendCheckboxList from "@/features/map/LegendCheckboxList/LegendCheckboxList";
 import LegendRow from "@/features/map/LegendCheckboxList/LegendRow";
-import { PointIconSwatch } from "@/features/map/layers/pointIcon";
-import { hiddenAfterToggleAll } from "@/features/map/view/legendFilters";
-import { Checkbox } from "@/components/ui/Checkbox/Checkbox";
 import { cn } from "@/lib/cn";
 import { badgeVariants } from "@/components/ui/Badge/Badge";
+import { PointIconSwatch } from "@/components/PointIconSwatch/PointIconSwatch";
 
 /** 色見本の点の直径と、線の見本の長さと太さ（px）。点は色が読める大きさにする。 */
 const SWATCH_DOT_PX = 12;
@@ -20,23 +18,18 @@ export interface LegendFilterSummaryAxis {
   label: string;
   legend: readonly LegendEntry[];
   hiddenKeys: readonly string[];
-  /** 非表示キーの保存先の軸id。**これを持つ軸だけが絞り込める**——配信元が色を焼き込み済みで
-   * カテゴリ単位に絞れない軸（降水・風・災害の危険度等）は持たず、読み取り専用の凡例になる。 */
+  /** 非表示キーの保存先の軸id。**これを持つ軸だけが絞り込め**、持たない軸は読み取り専用の凡例になる。 */
   axisId?: string;
 }
 
 /** 色見本。パネルへ直に、地図と同じ形（線なら線、点なら点、絵記号の点なら絵記号）で置く——明るい台に載せると、暗いパネルの上では台の
- * 白が色より目立ち、明るい色は台に溶ける。線の行は地図の線より太く、大きさで意味を示す行は地図の点と同じ直径で出す。
+ * 白が色より目立ち、明るい色は台に溶ける。線の行は地図の線より太く、大きさで意味を示す行は地図の点と同じ形の外形を同じ大きさで出す。
  * 見本の枠の幅はそろえ、ラベルの位置を行ごとにずらさない。 */
 function renderSwatch(entry: LegendEntry) {
   if (entry.glyph !== undefined) {
     return (
       <span aria-hidden="true" className="inline-flex w-6 flex-shrink-0 items-center justify-center">
-        <PointIconSwatch
-          color={entry.color}
-          glyph={entry.glyph}
-          className={cn("rounded-[4px]", LEGEND_SWATCH_RING_CLASS)}
-        />
+        <PointIconSwatch color={entry.color} glyph={entry.glyph} sizePx={entry.diameterPx} />
       </span>
     );
   }
@@ -71,33 +64,20 @@ export default function LegendDetails({
   return (
     <div
       className="flex flex-col gap-2"
-      data-usage="チェックを外した段階は、地図から隠れます。見出しのチェックで、その全部をまとめて切り替えます。"
+      data-usage="チェックを外した段階は地図から隠れます。見出しのチェックで、その全部をまとめて切り替えます。"
     >
       {axes.map(({ axisId, ...axis }, axisIndex) => (
         <div key={axisId ?? axisIndex} className="flex flex-col gap-1">
           {axisId ? (
-            <>
-              <label className="flex cursor-pointer items-center gap-1.5">
-                <Checkbox
-                  checked={axis.hiddenKeys.length === 0}
-                  onCheckedChange={() => onAxisSetHidden(axisId, hiddenAfterToggleAll(axis.legend, axis.hiddenKeys))}
-                  aria-label={axis.label ? `${axis.label}をまとめて表示/非表示` : "凡例の全段階をまとめて表示/非表示"}
-                />
-                <span className="text-[length:var(--font-size-xs)] font-bold text-[var(--color-neutral)]">
-                  {/* 軸の名前が無いのは、軸が1本だけでチップ名で足りる凡例（道の線）。地図の色分けと同じ名前にする。 */}
-                  {axis.label || "凡例"}
-                </span>
-              </label>
-              <LegendCheckboxList
-                legend={axis.legend}
-                hiddenKeys={axis.hiddenKeys}
-                onToggle={(key) => onEntryToggle(axisId, key)}
-                listClassName="m-0 flex list-none flex-col gap-0.5 p-0"
-                rowClassName="flex items-center gap-1.5 text-[length:var(--font-size-sm)]"
-                rowFallbackClassName={FALLBACK_ROW_CLASS}
-                renderSwatch={renderSwatch}
-              />
-            </>
+            <LegendCheckboxList
+              legend={axis.legend}
+              hiddenKeys={axis.hiddenKeys}
+              onToggle={(key) => onEntryToggle(axisId, key)}
+              onSetHidden={(hiddenKeys) => onAxisSetHidden(axisId, hiddenKeys)}
+              heading={axis.label}
+              rowFallbackClassName={FALLBACK_ROW_CLASS}
+              renderSwatch={renderSwatch}
+            />
           ) : (
             <>
               {axis.label && (

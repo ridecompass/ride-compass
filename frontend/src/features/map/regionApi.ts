@@ -1,5 +1,5 @@
 import type { components, paths } from "@/types/generated/api";
-import type { RoutePreferenceWeights } from "@/types/route";
+import type { CostPreference } from "@/types/route";
 import { apiPath } from "@/lib/apiPath";
 import { tileBaseUrl } from "@/lib/tileBaseUrl";
 import { backendApi, requestApi } from "@/lib/apiClient";
@@ -9,7 +9,7 @@ import type { PointTileLayer } from "@/lib/mapDisplay/pointLayers";
 
 const ROAD_SURFACE_TILE_PATH = apiPath("/api/region/road-surface-tiles/{z}/{x}/{y}.pbf");
 
-// タイルの世代。**手で上げない**——焼き込むSQLの署名とDBの派生データ・生データの世代からbackendが導き、実行時に配る（軸カタログの
+// タイルの世代。**手で上げない**——焼き込むSQLの署名とDBの派生データ・生データの世代からbackendが導き、実行時に配る（画面の設定の
 // `tile_versions`）。ビルド時の生成物に持たないのは、バッチがタイルを作り直してもデプロイは起きないため。
 // 既定値は置かない——届く前にタイルを要求すると、世代の違う中身がブラウザのキャッシュへ載って残る。
 // 既存の属性の意味を変える変更だけはデプロイの順序に注意が要る（docs/architecture/tech-stack.md「デプロイの反映確認」）。
@@ -24,7 +24,7 @@ export type TileVersions = Readonly<Record<string, string>> & { readonly [COMPLE
 
 /** 配られた世代から、全系統が揃ったものを取り出す。1つでも欠けたら`null`。
  *
- * **軸カタログの到着と同一視しない**。世代を返さない版のbackendが200で応答すると、カタログは「取得済み」なのに
+ * **画面の設定の到着と同一視しない**。世代を返さない版のbackendが200で応答すると、カタログは「取得済み」なのに
  * 世代は揃わない——そこでURLを組み立てると例外になる。空の辞書も「揃った」と見なさない。 */
 export function completeTileVersions(versions: Readonly<Record<string, string>>): TileVersions | null {
   return TILE_KINDS.every((kind) => Boolean(versions[kind])) ? (versions as TileVersions) : null;
@@ -67,7 +67,9 @@ export function landcoverTileUrl(): string {
   return `${tileBaseUrl()}${LANDCOVER_TILE_PATH}?v=${LANDCOVER_TILE_VERSION}`;
 }
 
-// 路面タイル（点のタイルも同じ）を要求するズーム範囲。正はbackendで、生成物で受け取る。
+// 道のタイルを要求するズーム範囲。正はbackendで、生成物で受け取る。点のタイルと道ごとの値（レンズ・押した所の道）は
+// `ROAD_TILE_MIN_ZOOM`から、路面タイル（道の線）だけは道ごとの鍵を持たずに`ROAD_SURFACE_TILE_MIN_ZOOM`から。
+export const ROAD_SURFACE_TILE_MIN_ZOOM = regionTileConfig.road_surface_tile_min_zoom;
 export const ROAD_TILE_MIN_ZOOM = regionTileConfig.road_tile_min_zoom;
 export const ROAD_TILE_MAX_ZOOM = regionTileConfig.road_tile_max_zoom;
 
@@ -79,32 +81,47 @@ export interface RideConditions {
   speedKmh: number;
 }
 
-/** 上記に、クリックされた点と、それを含む道路タイルを足したもの（レンズが引いたのと同じタイルを
+/** 上記に、クリックされた点を含む道路タイルを足したもの（レンズが引いたのと同じタイルを
  * 指すため、backendは同じキャッシュから値を引ける）。 */
-export interface AxisInspectorConditions extends RideConditions {
+export interface RoadInspectorConditions extends RideConditions {
   z: number;
   x: number;
   y: number;
-  latitude: number;
-  longitude: number;
 }
 
-export type AxisInspectorResult = components["schemas"]["AxisInspectorResult"];
+export type RoadInspection = components["schemas"]["RoadInspection"];
 
-/** 地図で押した道（`osm_way_id`）の一次属性と、押した区間・その区間を含む道1本の全軸・合成を取る。 */
-export async function fetchAxisInspector(
+type RoadAt = components["schemas"]["RoadAt"];
+
+/** 押した所から`radiusM`以内の道（近い順）。プロパティはズーム`z`の路面タイルと同じ。 */
+export async function fetchRoadsAt(
+  lngLat: readonly [number, number],
+  z: number,
+  radiusM: number,
+): Promise<readonly RoadAt[]> {
+  const body = { longitude: lngLat[0], latitude: lngLat[1], z, radius_m: radiusM };
+  return requestApi((init) => backendApi.POST("/api/region/roads-at", { body, ...init }), {
+    timeoutMs: API_TIMEOUT_MS.default,
+    category: "api:roads-at",
+    messages: { failure: "道の取得に失敗しました", parseFailure: "道の取得に失敗しました" },
+    requestMeta: { body },
+    successMeta: (data) => ({ found: data.length }),
+  });
+}
+
+/** 地図で押した道（`osm_way_id`）の一次属性と、押したフィーチャー（その倍率で地図が塗る区間か道1本）のレンズの値を取る。 */
+export async function fetchRoadInspection(
   osmWayId: number,
   featureKey: string,
-  conditions: AxisInspectorConditions,
-  routePreference: RoutePreferenceWeights | null,
-): Promise<AxisInspectorResult | null> {
+  conditions: RoadInspectorConditions,
+  costPreference: CostPreference,
+): Promise<RoadInspection | null> {
   const body = {
     osm_way_id: osmWayId,
-    // 合成に使う重み（利用者がいま設定しているもの）。送らなければbackendの既定の重み。
-    ...(routePreference != null ? { route_preference: routePreference } : {}),
-    // 押した地物の識別子と押した点。道1本で塗るズームで押した道は、押した点に最も近い区間がbackendで選ばれる。
+    // 費用のレンズの値を求める利用者の値（地図のレンズ・ルート生成と同じもの）。
+    cost_preference: costPreference,
+    // 押した地物の識別子（そのタイルが焼いた区間か道1本）。
     feature_key: featureKey,
-    point: { latitude: conditions.latitude, longitude: conditions.longitude },
     z: conditions.z,
     x: conditions.x,
     y: conditions.y,
@@ -112,82 +129,35 @@ export async function fetchAxisInspector(
     at: conditions.at.toISOString(),
     speed_kmh: conditions.speedKmh,
   };
-  return requestApi((init) => backendApi.POST("/api/region/axis-inspector", { body, ...init }), {
+  return requestApi((init) => backendApi.POST("/api/region/road-inspector", { body, ...init }), {
     timeoutMs: API_TIMEOUT_MS.default,
-    category: "api:axis-inspector",
-    messages: { failure: "内訳の取得に失敗しました", parseFailure: "内訳の取得に失敗しました" },
+    category: "api:road-inspector",
+    messages: { failure: "道の窓の取得に失敗しました", parseFailure: "道の窓の取得に失敗しました" },
     requestMeta: { body },
-    successMeta: (data) => ({ composite: data?.way.composite_difficulty }),
+    successMeta: (data) => ({ found: data !== null }),
   });
 }
 
-/** 1枚のタイルの中の道ごとの値。 */
-interface TileWayValues<Value> {
-  /** feature_key→値。 */
-  values: Record<string, Value>;
-  /** 通信失敗（HTTPエラー・ネットワークエラー・タイムアウト）ならtrue。backendが正常応答で
-   * 空オブジェクトを返した場合（対象範囲に本当に道が無い）はfalseのまま——呼び出し側が
-   * 「取得失敗」と「本当に空」を区別できるようにする。 */
-  error: boolean;
-}
+/** 費用の軸のレンズの道ごとの材料の要求の条件（想定速度は要る。`/api/cost-axes`の`map_lens.material_conditions`）。 */
+export type LensMaterialsQuery = paths["/api/region/lens/{lens_id}/{z}/{x}/{y}"]["get"]["parameters"]["query"];
 
-/** 道ごとの値の取得。失敗しても例外にせず`error: true`を返す（道の塗りは補助の機能なので、道路や他のレイヤーを
- * 巻き込んで止めない。失敗したことは利用者へ示せるよう返す）。 */
-async function tileWayValues<Value>(request: () => Promise<Record<string, Value>>): Promise<TileWayValues<Value>> {
-  try {
-    return { values: await request(), error: false };
-  } catch {
-    // 失敗の内訳は`requestApi`が記録済み。
-    return { values: {}, error: true };
-  }
-}
-
-// 軸の、タイルの中の道ごとの材料。パスは軸idで決まり、軸ごとの関数を持たない。世代のクエリを持たない
-// （ブラウザのキャッシュに載せない軽いJSONで、新しさはbackendが持つ）。
-
-/** 道ごとの材料の要求へ載せる走る条件（軸カタログの`dynamic_way_value_material_conditions`の名前だけ）。 */
-export type WayMaterialsQuery = NonNullable<
-  paths["/api/region/way-materials/{axis_id}/{z}/{x}/{y}"]["get"]["parameters"]["query"]
->;
-
-/** 路面タイルと同じz/x/yの中の道ごとの材料（材料の名前→値。値の無い材料は鍵ごと無い）。`query`は、軸が要求へ
- * 載せると宣言した条件だけを呼ぶ側が渡す。 */
-export async function fetchWayMaterials(
-  axisId: string,
+/** 路面タイルと同じz/x/yの中の道ごとの、レンズ`lensId`（総合か費用の軸）の材料（道の向き・逆向きに辿った1kmあたりの
+ * 代償の秒と道の向き。値の無い材料は鍵ごと無い）。 */
+export async function fetchLensMaterials(
+  lensId: string,
   z: number,
   x: number,
   y: number,
-  query: WayMaterialsQuery,
-): Promise<TileWayValues<Record<string, number>>> {
-  const params = { path: { axis_id: axisId, z, x, y }, query };
-  return tileWayValues(() =>
-    requestApi((init) => backendApi.GET("/api/region/way-materials/{axis_id}/{z}/{x}/{y}", { params, ...init }), {
-      timeoutMs: API_TIMEOUT_MS.default,
-      category: `api:${axisId}-way-materials`,
-      messages: {
-        failure: "道路の塗りの材料の取得に失敗しました",
-        parseFailure: "道路の塗りの材料の解析に失敗しました",
-      },
-      successMeta: (data) => ({ wayCount: Object.keys(data).length }),
-    }),
-  );
-}
-
-/** 路面タイルと同じz/x/yの中の道ごとの、道の線の層の値（層のid→区分の鍵か「データなし」。区分の外の道の層は無い）。 */
-export async function fetchRoadClasses(
-  z: number,
-  x: number,
-  y: number,
-): Promise<TileWayValues<Record<string, string>>> {
-  return tileWayValues(() =>
-    requestApi(
-      (init) => backendApi.GET("/api/region/road-classes/{z}/{x}/{y}", { params: { path: { z, x, y } }, ...init }),
-      {
-        timeoutMs: API_TIMEOUT_MS.default,
-        category: "api:road-classes",
-        messages: { failure: "道の区分の取得に失敗しました", parseFailure: "道の区分の解析に失敗しました" },
-        successMeta: (data) => ({ wayCount: Object.keys(data).length }),
-      },
-    ),
-  );
+  query: LensMaterialsQuery,
+): Promise<Record<string, Record<string, number>>> {
+  const params = { path: { lens_id: lensId, z, x, y }, query };
+  return requestApi((init) => backendApi.GET("/api/region/lens/{lens_id}/{z}/{x}/{y}", { params, ...init }), {
+    timeoutMs: API_TIMEOUT_MS.default,
+    category: `api:${lensId}-lens`,
+    messages: {
+      failure: "道路の塗りの値の取得に失敗しました",
+      parseFailure: "道路の塗りの値の解析に失敗しました",
+    },
+    successMeta: (data) => ({ wayCount: Object.keys(data).length }),
+  });
 }

@@ -28,7 +28,7 @@ from omfiles import OmFileReader
 
 from app.domain.time_zone import JST, as_series_time
 from app.config import settings
-from app.domain.msm import MsmGrid, MsmGridPoints, MsmThinnedPoints, MsmWindow
+from app.domain.msm import MsmGrid, MsmGridPoints, MsmThinnedPoints
 from app.domain.weather_elements import MSM_FORECAST_HOURS
 from app.infrastructure.data_paths import DATA_DIR
 from app.infrastructure.debug_log import log_external_call
@@ -41,16 +41,6 @@ MSM_DIR = DATA_DIR / "msm"
 # 置き場の中の名前。パスはチャンク（`_chunk_path`）と同じく、使うたびに`MSM_DIR`から作る。
 _META_FILE_NAME = "meta.json"
 _ETAGS_FILE_NAME = "etags.json"
-
-
-@dataclass(frozen=True)
-class MsmSeries:
-    """地点ごとの予報の時系列。値の配列はどれも[地点数, 時刻数]。"""
-
-    #: 正時の並び（タイムゾーン無しのローカル時刻[JST]）。
-    times: list[datetime]
-    wind_u_ms: np.ndarray
-    wind_v_ms: np.ndarray
 
 
 @dataclass(frozen=True)
@@ -227,10 +217,6 @@ def _chunk_number(timestamp: int, chunk_hours: int) -> int:
     return int(timestamp // 3600) // chunk_hours
 
 
-def _chunk_start(chunk_number: int, chunk_hours: int) -> int:
-    return chunk_number * chunk_hours * 3600
-
-
 async def _fetch_meta(client: httpx.AsyncClient) -> dict:
     url = f"{settings.msm_base_url}/static/meta.json"
     with log_external_call("msm:meta") as fields:
@@ -242,8 +228,9 @@ async def _fetch_meta(client: httpx.AsyncClient) -> dict:
         return meta
 
 
-async def _download_chunk(client: httpx.AsyncClient, variable: str, chunk_number: int, etags: dict) -> bool:
-    """1チャンクを取得する。配信元の内容が前回と同じなら（304）何もせずFalseを返す。"""
+async def _download_chunk(client: httpx.AsyncClient, variable: str, chunk_number: int, etags: dict) -> Path | None:
+    """1チャンクを取得し、置き場のチャンクの隣の一時ファイルへ書いてそのパスを返す。配信元の内容が前回と同じなら（304）
+    何もせずNoneを返す。置き場のチャンクを置き換えるのは呼び出し側（`refresh`）。"""
     path = _chunk_path(variable, chunk_number)
     key = f"{variable}/{chunk_number}"
     headers = {}
@@ -258,7 +245,7 @@ async def _download_chunk(client: httpx.AsyncClient, variable: str, chunk_number
             fields["result"] = "ok"
             fields["status"] = 304
             fields["cache"] = "hit"
-            return False
+            return None
         response.raise_for_status()
         content = response.content
         fields["result"] = "ok"
@@ -266,16 +253,23 @@ async def _download_chunk(client: httpx.AsyncClient, variable: str, chunk_number
         fields["cache"] = "miss"
         fields["bytes"] = len(content)
 
+    temporary = path.with_suffix(".om.tmp")
+
     def write() -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = path.with_suffix(".om.tmp")
         temporary.write_bytes(content)
-        temporary.replace(path)
 
     await asyncio.to_thread(write)
     if response.headers.get("ETag"):
         etags[key] = response.headers["ETag"]
-    return True
+    return temporary
+
+
+def _write_json(path: Path, payload: dict) -> None:
+    """読み出しのスレッドに書きかけを読ませないよう、隣の一時ファイルへ書いてから置き換える。"""
+    temporary = path.with_name(path.name + ".tmp")
+    temporary.write_text(json.dumps(payload), encoding="utf-8")
+    temporary.replace(path)
 
 
 def _prune(keep: set[Path]) -> None:
@@ -296,31 +290,46 @@ async def refresh(client: httpx.AsyncClient) -> int:
     現在時刻から`domain/weather_elements.py: MSM_FORECAST_HOURS`先までを覆うチャンク（通常1〜2個）を変数ごとに取得する。
     内容が変わっていないチャンクはETagによる条件付きGETで転送自体が起きない。
     """
-    horizon = MSM_FORECAST_HOURS
     meta = await _fetch_meta(client)
     chunk_hours = int(meta["chunk_time_length"])
     now = int(time.time())
     # 両端のチャンクだけを取る。配信元のチャンクは予報窓より長いため間は無いが、チャンクが
     # 予報窓より短くなると間のチャンクを取らず、読み出しが「未同期」で失敗する。
-    chunk_numbers = sorted({_chunk_number(now, chunk_hours), _chunk_number(now + horizon * 3600, chunk_hours)})
+    horizon_end = now + MSM_FORECAST_HOURS * 3600
+    chunk_numbers = sorted({_chunk_number(now, chunk_hours), _chunk_number(horizon_end, chunk_hours)})
 
     etags = _load_json(MSM_DIR / _ETAGS_FILE_NAME)
-    downloaded = 0
     keep: set[Path] = set()
     valid: set[str] = set()
-    for variable in FORECAST_VARIABLES:
-        for chunk_number in chunk_numbers:
-            keep.add(_chunk_path(variable, chunk_number))
-            valid.add(f"{variable}/{chunk_number}")
-            if await _download_chunk(client, variable, chunk_number, etags):
-                downloaded += 1
+    # 取れたチャンクは全部が揃うまで置き場へ入れない——途中の1つで失敗したときに入れておくと、次に同期が済むまで
+    # 変数ごとに別のrunを読み（風の東西と南北の成分が別のrunになる等）、実在しない値になる。
+    staged: list[tuple[Path, Path]] = []
+    try:
+        for variable in FORECAST_VARIABLES:
+            for chunk_number in chunk_numbers:
+                path = _chunk_path(variable, chunk_number)
+                keep.add(path)
+                valid.add(f"{variable}/{chunk_number}")
+                temporary = await _download_chunk(client, variable, chunk_number, etags)
+                if temporary is not None:
+                    staged.append((temporary, path))
+    except BaseException:
+        for temporary, _ in staged:
+            temporary.unlink(missing_ok=True)
+        raise
 
-    MSM_DIR.mkdir(parents=True, exist_ok=True)
-    (MSM_DIR / _META_FILE_NAME).write_text(json.dumps(meta), encoding="utf-8")
-    # 消したチャンクのETagが残ると、次に同じ番号を引いたとき「変更なし」と誤判定して
-    # 存在しないファイルを読みに行くため、保持するチャンクぶんだけを残す。
-    (MSM_DIR / _ETAGS_FILE_NAME).write_text(json.dumps({k: v for k, v in etags.items() if k in valid}), encoding="utf-8")
-    await asyncio.to_thread(_prune, keep)
+    def install() -> None:
+        for temporary, path in staged:
+            temporary.replace(path)
+        MSM_DIR.mkdir(parents=True, exist_ok=True)
+        _write_json(MSM_DIR / _META_FILE_NAME, meta)
+        # 消したチャンクのETagが残ると、次に同じ番号を引いたとき「変更なし」と誤判定して
+        # 存在しないファイルを読みに行くため、保持するチャンクぶんだけを残す。
+        _write_json(MSM_DIR / _ETAGS_FILE_NAME, {k: v for k, v in etags.items() if k in valid})
+        _prune(keep)
+
+    await asyncio.to_thread(install)
+    downloaded = len(staged)
 
     current = freshness_from_meta(meta, now=datetime.fromtimestamp(now, JST))
     if current is not None:
@@ -374,19 +383,21 @@ def _read_sync[S: _Selection](
     select: Callable[[MsmGrid], S],
     extract: Callable[[S, np.ndarray], np.ndarray],
     variables: tuple[str, ...],
-    hours: int,
     now: int,
 ) -> tuple[S, list[datetime], dict[str, np.ndarray]]:
-    """現在時刻の正時から`hours`時間ぶんの`variables`を、格子から`select`で選んだ範囲について読む。`extract`は切り出した
-    部分ブロック（形状[緯度, 経度, 時刻]）から[点の数, 時刻数]の値を取り出す。戻り値の値は`FORECAST_VARIABLES`の項目ごと。"""
+    """`now`の正時から`domain/weather_elements.py: MSM_FORECAST_HOURS`時間ぶんの`variables`を、格子から`select`で
+    選んだ範囲について読む。`extract`は切り出した部分ブロック（形状[緯度, 経度, 時刻]）から[点の数, 時刻数]の値を
+    取り出す。戻り値の値は`FORECAST_VARIABLES`の項目ごと。"""
     meta = _load_json(MSM_DIR / _META_FILE_NAME)
     if not meta:
         raise MsmUnavailableError("MSMのメタ情報が未同期です")
     chunk_hours = int(meta["chunk_time_length"])
-    data_end = int(meta["data_end_time"])
+    # 値は正時ごとなので、予報の終端も正時へ切り下げる。正時でない終端のまま読むと、最後のチャンクで読む時刻の幅が0になり
+    # 読む位置が進まない。
+    data_end = (int(meta["data_end_time"]) // 3600) * 3600
 
     start = (now // 3600) * 3600
-    end = min(start + hours * 3600, data_end)
+    end = min(start + MSM_FORECAST_HOURS * 3600, data_end)
     if end <= start:
         raise MsmUnavailableError("MSMの予報データが現在時刻に追いついていません")
 
@@ -401,7 +412,7 @@ def _read_sync[S: _Selection](
     cursor = start
     while cursor < end:
         chunk_number = _chunk_number(cursor, chunk_hours)
-        chunk_begin = _chunk_start(chunk_number, chunk_hours)
+        chunk_begin = chunk_number * chunk_hours * 3600
         t0 = (cursor - chunk_begin) // 3600
         t1 = min((end - chunk_begin) // 3600, chunk_hours)
         for variable in variables:
@@ -421,16 +432,15 @@ async def _read[S: _Selection](
     extract: Callable[[S, np.ndarray], np.ndarray],
     variables: tuple[str, ...] = _WIND_VARIABLES,
 ) -> tuple[S, list[datetime], dict[str, np.ndarray]]:
-    """`_read_sync`を、現在時刻の正時から`domain/weather_elements.py: MSM_FORECAST_HOURS`時間ぶんについて別スレッドで回す。
+    """`_read_sync`を別スレッドで回す。
 
     同期が済んでいない・予報が現在時刻へ追いついていない・置き場のファイルが読めない（壊れたメタ情報・チャンク）・
     地点が格子の外にある場合は`MsmUnavailableError`。
     """
-    requested = MSM_FORECAST_HOURS
-    with log_external_call("msm:read", hours=requested) as fields:
+    with log_external_call("msm:read", hours=MSM_FORECAST_HOURS) as fields:
         fields["cache"] = "hit"
         try:
-            result = await asyncio.to_thread(_read_sync, select, extract, variables, requested, int(time.time()))
+            result = await asyncio.to_thread(_read_sync, select, extract, variables, int(time.time()))
         except (OSError, ValueError, KeyError) as exc:
             raise MsmUnavailableError(f"MSMの置き場を読めません: {exc!r}") from exc
         _, times, values = result
@@ -440,17 +450,8 @@ async def _read[S: _Selection](
         return result
 
 
-async def read_series(latitudes: np.ndarray, longitudes: np.ndarray) -> MsmSeries:
-    """地点ごとの時系列（現在時刻の正時から`domain/weather_elements.py: MSM_FORECAST_HOURS`時間ぶん）を、周囲の格子点から補間して返す。
-    画面に出さない計算にだけ使う（domain/msm.py のモジュールの説明）。読めなければ`MsmUnavailableError`。"""
-    _, times, values = await _read(
-        lambda grid: grid.window(latitudes, longitudes), MsmWindow.interpolate,
-    )
-    return MsmSeries(times=times, **values)
-
-
 async def read_grid_points(latitudes: np.ndarray, longitudes: np.ndarray) -> MsmGridPointWeatherSeries:
-    """地点ごとの最寄りの格子点の風・降水・気温の時系列（格子点の値のまま、`read_series`と同じ時間ぶん）。読めなければ
+    """地点ごとの最寄りの格子点の風・降水・気温の時系列（格子点の値のまま、現在時刻の正時から`domain/weather_elements.py: MSM_FORECAST_HOURS`時間ぶん）。読めなければ
     `MsmUnavailableError`。"""
     points, times, values = await _read(
         lambda grid: grid.nearest_points(latitudes, longitudes), MsmGridPoints.values, tuple(FORECAST_VARIABLES),

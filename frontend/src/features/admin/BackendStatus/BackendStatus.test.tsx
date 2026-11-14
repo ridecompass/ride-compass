@@ -1,8 +1,8 @@
 /**
- * `BackendStatus.tsx`——backendの疎通を、確認中・OK・接続できないの3つで出すこと。
+ * `BackendStatus.tsx`——backendの疎通を、確認中・OK・失敗の文言の3つで出すこと。
  *
  * ここで見ないもの:
- * - 疎通の判定（応答の読み方・失敗を偽にすること） → `app/admin/adminApi.test.ts`
+ * - 疎通の失敗の文言 → `app/admin/adminApi.test.ts`
  */
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
@@ -20,7 +20,7 @@ describe("BackendStatus", () => {
 
   it.each([
     ["サーバー接続: OK", () => Response.json({ status: "ok" })],
-    ["サーバーに接続できません", () => new Response(null, { status: 503 })],
+    [/バックエンドへの疎通確認に失敗しました/, () => new Response(null, { status: 503 })],
   ])("疎通の答えが来たら「%s」と出す", async (shown, reply) => {
     onBackend("GET", "/health", reply);
     render(<BackendStatus />);

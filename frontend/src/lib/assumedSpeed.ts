@@ -4,8 +4,7 @@ import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 export const MIN_SPEED_KMH = routeGenerateConfig.min_assumed_speed_kmh;
 export const MAX_SPEED_KMH = routeGenerateConfig.max_assumed_speed_kmh;
 
-/** 整数へ丸め、backend が受け付ける範囲へ収める。数として読めなければ既定の速度。 */
+/** 整数へ丸め、backend が受け付ける範囲へ収める。 */
 export function clampSpeedKmh(value: number): number {
-  if (!Number.isFinite(value)) return routeGenerateConfig.default_assumed_speed_kmh;
   return Math.min(MAX_SPEED_KMH, Math.max(MIN_SPEED_KMH, Math.round(value)));
 }

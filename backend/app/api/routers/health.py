@@ -31,10 +31,8 @@ class DebugStatsResponse(StatsSnapshot):
 
 @router.get("/health")
 def health() -> dict[str, str | float | None]:
-    # commit（デプロイワークフローが注入するGIT_COMMIT）とstarted_at（プロセス起動時刻、
-    # デプロイのたびに再起動されるため実質デプロイ時刻の目安）で、本番に実際に
-    # デプロイされているコミットが最新かどうかを外部から確認できるようにする
-    # （ローカル開発ではcommitはnullのまま。詳細はdocs/architecture/tech-stack.md参照）。
+    # commitとstarted_at（プロセス起動時刻＝デプロイ時刻の目安）で、本番に実際に
+    # デプロイされているコミットが最新かどうかを外部から確認できるようにする（注入されなければcommitはnull）。
     # admin_data_backup_age_hoursはDBのバックアップが最後に置けてからの時間で、止まりに気づくために読む。
     age = backup_age_hours(datetime.now(UTC))
     return {
@@ -47,11 +45,8 @@ def health() -> dict[str, str | float | None]:
 
 @router.get("/api/debug/stats", response_model=DebugStatsResponse)
 def debug_stats() -> DebugStatsResponse:
-    # 外部API呼び出し・キャッシュの集計(カテゴリ別の呼び出し数/エラー数/ヒット率/所要時間)と
-    # 429拒否数のプロセス内スナップショット(infrastructure/debug_log.py)。ログを目視で数えずに
-    # キャッシュヒット率等を確認するための運用エンドポイント。集計値のみで秘匿情報や個別の
-    # 座標を含まないため、debug_modeに関わらず/healthと同様に常時公開する。
-    # プロセス再起動でリセットされる点に注意(started_atで起点を判別できる)。
+    # 外部API呼び出し・キャッシュの集計と429拒否数のプロセス内スナップショット。集計値のみで秘匿情報や
+    # 個別の座標を含まないため、debug_modeに関わらず常時公開する。再起動で戻るので、起点はstarted_atで見分ける。
     stats = get_stats()
     return DebugStatsResponse(
         commit=settings.git_commit,

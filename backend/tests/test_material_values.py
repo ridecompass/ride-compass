@@ -13,7 +13,7 @@ SQLの中の条件はPythonのカバレッジに現れないので、式をテ�
 本物の材料のidで引く——そこでは、その材料が何を返すかがテストの関心である。
 
 カタログの全部の式が、読み出しの各経路（`infrastructure/road_graph_repository.py: RoadGraphRepository`の区間の材料・
-道1本・道の標本・路面タイル・タイルのフィーチャーごとの材料・土地被覆の内訳）の中で実在の列だけを読むことも見る。上の節は別名を値で与えるので、
+道1本・道の標本・路面タイル・押した所に近い道・タイルのフィーチャーごとの材料・土地被覆の内訳）の中で実在の列だけを読むことも見る。上の節は別名を値で与えるので、
 綴りの合わない列や、経路に無い別名を読む式を見つけられない。道の標本の経路は、範囲を絞ると抽選しないことも見る
 （セッションを差し替える契約のテストには、SQLが返す値が現れない）。
 
@@ -29,16 +29,11 @@ import pytest
 from sqlalchemy import text
 
 from app.domain import material_sql
-from app.domain.material_catalog import (
-    ACCIDENT_COUNT_PER_KM_YEAR,
-    CoverageExcluded,
-    MaterialSpec,
-    material_value_sql,
-    tile_column_sql,
-)
+from app.domain.material_catalog import ACCIDENT_COUNT_PER_KM_YEAR, MaterialSpec, material_value_sql, tile_column_sql
+from app.domain.material_coverage_spec import CoverageExcluded
 from app.domain.region import BoundingBox
 from app.infrastructure.source_models import WAYS_SOURCE_SQL
-from tests.source_ingest import ingest_records, way_record
+from tests.source_ingest import ingest_records, parallel_way_record
 
 pytestmark = pytest.mark.asyncio(loop_scope="module")
 
@@ -46,8 +41,7 @@ pytestmark = pytest.mark.asyncio(loop_scope="module")
 async def _ingest_ways(tags_by_way: dict[int, dict[str, str]]) -> None:
     """道ごとのタグで道を取り込む。"""
     await ingest_records("osm_way", [
-        way_record(way_id, [(139.70, 35.68 + 0.001 * way_id), (139.701, 35.68 + 0.001 * way_id)],
-                   [way_id * 10, way_id * 10 + 1], tags)
+        parallel_way_record(way_id, tags)
         for way_id, tags in tags_by_way.items()])
 
 
@@ -80,10 +74,12 @@ async def _edge_value(session, expression: str, *, distance_m: float, accident_y
     ("40.7", 40),  # 小数は切り捨てる
     ("0.5", None),  # 切り捨てると0
     ("50 mph", None),
+    ("2147483647", 2147483647),
+    ("2147483648", None),  # 整数の列に入らない誤ったタグは、ほかの道の読み出しを落とさず値を持たない
 ])
 async def test_a_number_tag_has_a_value_only_when_it_is_a_positive_number(road_graph_session, tag, expected):
     values = await _way_values(road_graph_session, material_sql.positive_integer_tag_sql("tag_a"),
-                               {1: {} if tag is None else {"tag_a": tag}})
+                               {1: {"tag_a": tag}})
 
     assert values == {1: expected}
 
@@ -115,31 +111,16 @@ async def test_a_cycleway_value_on_any_side_counts(road_graph_session):
     assert values == {1: True, 2: False}
 
 
-# 停止要因の種別は区間の値の表の列名を決めるだけで、どの種別でも式は同じ。
-_POI_KIND = "signal"
-
-
-@pytest.mark.parametrize(("count", "distance_m", "expected"), [
-    (3.0, 500.0, 6.0),
-])
-async def test_a_poi_density_is_per_km(road_graph_session, count, distance_m, expected):
-    value = await _edge_value(road_graph_session, material_sql.poi_density_value_sql(_POI_KIND),
-                              distance_m=distance_m, **{f"poi_{_POI_KIND}": count})
-
-    assert value == (None if expected is None else pytest.approx(expected))
-
-
 # --- カタログに直に書かれた式（domain/material_catalog.py） -----------------------------
 
 
-@pytest.mark.parametrize(("count", "distance_m", "years", "expected"), [
-    (3.0, 500.0, 2, 3.0),
-    (3.0, 500.0, 0, None),  # 収録年の無い取込
+@pytest.mark.parametrize(("years", "expected"), [
+    (2, 3.0),
+    (0, None),  # 収録年の無い取込
 ])
-async def test_the_accident_density_is_per_km_and_per_year_covered(road_graph_session, count, distance_m, years,
-                                                                    expected):
+async def test_the_accident_density_is_per_km_and_per_year_covered(road_graph_session, years, expected):
     value = await _edge_value(road_graph_session, material_value_sql()[ACCIDENT_COUNT_PER_KM_YEAR],
-                              distance_m=distance_m, accident_years=years, accident_count=count)
+                              distance_m=500.0, accident_years=years, accident_count=3.0)
 
     assert value == (None if expected is None else pytest.approx(expected))
 
@@ -180,17 +161,6 @@ async def test_a_value_goes_on_the_tile_in_the_form_the_map_reads(road_graph_ses
 # --- 読み出しの経路（infrastructure/road_graph_repository.py） -----------------------------
 
 
-async def test_a_sample_within_a_range_takes_every_way_in_it_regardless_of_the_sampling_rate(road_graph_repository):
-    """`TABLESAMPLE`は表全体のページから抽選するため、狭い範囲と重ねると標本が数本へ落ちる。
-    割合0は、抽選が混ざれば1本も返さない。"""
-    await _ingest_ways({1: {}, 2: {}})
-    area = BoundingBox(min_latitude=35.68, min_longitude=139.69, max_latitude=35.69, max_longitude=139.71)
-
-    samples = await road_graph_repository.sample_way_material_values(1, 0.0, 10, area)
-
-    assert len(samples) == 2
-
-
 async def test_every_declared_expression_reads_only_what_each_reading_path_provides(road_graph_repository):
     """読む列が無い式が1つでもあると、その経路の読み出しは材料ぶん丸ごと落ちる。列はPostgreSQLが実行の前に
     解決するので、行が無くても確かめられる。"""
@@ -198,10 +168,7 @@ async def test_every_declared_expression_reads_only_what_each_reading_path_provi
 
     arrays = await road_graph_repository.get_edge_material_arrays([1], [0], [True], 1)
     assert len(arrays.distance_m) == 1
-    assert await road_graph_repository.sample_way_material_values(1, 100.0, 10, None) == []
-    assert await road_graph_repository.sample_way_material_values(1, 100.0, 10, area) == []
-    assert await road_graph_repository.get_feature_landcover(1, "1-0") is None
-    assert await road_graph_repository.get_feature_landcover(1, None) is None
     # 取込範囲の外なので焼かずにNoneを返すが、タイルの列は先に解決される。
-    assert await road_graph_repository.get_road_surface_tile_mvt(14, 14552, 6451, area) is None
+    assert await road_graph_repository.get_road_surface_tile_mvt(14, 14552, 6451, area, {}) is None
+    assert await road_graph_repository.roads_at(139.005, 35.005, 14, 10.0, 1) == []
     assert await road_graph_repository.get_feature_materials_in_tile(14, 14552, 6451, area, 1) is None

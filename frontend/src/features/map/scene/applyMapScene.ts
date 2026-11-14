@@ -39,7 +39,7 @@ type ApplyMapSceneOptions = {
    */
   readonly previous: MapScene;
   /**
-   * 基礎地図へ潜る段を、それぞれこのレイヤーの直下へ差し込む（`roads` は道路網の始まり、`labels` は文字の始まり）。
+   * 基礎地図へ潜る段を、それぞれこのレイヤーの直下へ差し込む（`roads` は道路網の始まり）。
    * 基礎地図のどこが位置になるかは呼び出し側が決め、この関数は地図を調べない。undefinedならその段も他の段と同じく
    * 基礎地図の上へ載る（段どうしの前後だけは保たれる）。
    */
@@ -192,10 +192,7 @@ function applyFeatureStates(
 ): void {
   const previousStates = before ?? NO_FEATURE_STATES;
   const nextStates = after ?? NO_FEATURE_STATES;
-  const sourceTarget: FeatureIdentifier = {
-    source: source.id,
-    sourceLayer: source.sourceLayer,
-  };
+  const sourceTarget: FeatureIdentifier = { source: source.id, sourceLayer: source.sourceLayer };
 
   if (nextStates.size === 0) {
     if (previousStates.size > 0) map.removeFeatureState(sourceTarget);
@@ -269,15 +266,14 @@ function applyRecordDiff(
   set: (name: string, value: unknown) => void,
 ): void {
   for (const [name, value] of Object.entries(after)) {
-    if (isSameValue(before[name], value)) continue;
-    set(name, value);
+    if (!isSameValue(before[name], value)) set(name, value);
   }
   for (const name of Object.keys(before)) {
-    if (name in after) continue;
-    set(name, null);
+    if (!(name in after)) set(name, null);
   }
 }
 
+// 依存に深い比較を持たず（maplibre-gl・style-spec も公開しない）、比べるのは宣言の JSON の値だけなので自前で持つ。
 function isSameValue(a: unknown, b: unknown): boolean {
   if (a === b) return true;
   if (Array.isArray(a) && Array.isArray(b)) {

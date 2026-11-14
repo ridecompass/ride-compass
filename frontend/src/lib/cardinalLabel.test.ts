@@ -8,7 +8,7 @@
  *
  * ここで見ないもの:
  * - 表の答えが正しいこと → backendのテスト（`domain/geo.py`）
- * - 呼び名をどこに出すか → 使う部品（`features/route/SegmentWind`等）
+ * - 呼び名をどこに出すか → 使う部品（`features/conditions/WeatherPanel/GridPointToday.tsx`等）
  */
 import { describe, expect, it } from "vitest";
 

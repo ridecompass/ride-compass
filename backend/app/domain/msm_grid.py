@@ -1,6 +1,6 @@
 """地図に描く、MSMの格子点の風と降水（`GET /api/weather/msm-grid`）。
 
-値は格子点の値のままで、補間しない（domain/msm.py のモジュールの説明）。表示範囲の格子点が多いときは、格子の原点から数えて
+値は格子点の値のままで、補間しない。表示範囲の格子点が多いときは、格子の原点から数えて
 同じ間隔おきの格子点だけを残す（`domain/msm.py: MsmBlock.thinned_points`）。
 """
 
@@ -10,6 +10,7 @@ from typing import Annotated
 import numpy as np
 from pydantic import PlainSerializer
 
+from app.domain.geo import COORDINATE_DECIMALS
 from app.domain.strict_model import StrictModel
 from app.domain.time_zone import jst_local_text
 
@@ -24,8 +25,6 @@ WIND_SPEED_MS_DECIMALS = 1
 WIND_DIRECTION_DEG_DECIMALS = 0
 PRECIPITATION_MM_DECIMALS = 1
 TEMPERATURE_C_DECIMALS = 1
-# 格子点の位置は格子の原点と間隔の積で、浮動小数の端数が付く。0.1m未満を落とす。
-_COORDINATE_DECIMALS = 6
 
 
 def rounded_rows(values: np.ndarray, digits: int) -> list[list[float | None]]:
@@ -36,7 +35,8 @@ def rounded_rows(values: np.ndarray, digits: int) -> list[list[float | None]]:
 
 
 def rounded_coordinates(values: np.ndarray) -> list[float]:
-    return np.round(values, _COORDINATE_DECIMALS).tolist()
+    """格子点の位置（格子の原点と間隔の積で、浮動小数の端数が付く）を丸める。"""
+    return np.round(values, COORDINATE_DECIMALS).tolist()
 
 
 class MsmGridPointForecast(StrictModel):

@@ -1,33 +1,35 @@
 """道の区分のPostGISスキーマ（SQLAlchemy ORM）。
 
-区分・地図の線の層・転がり抵抗・除外の設定の正本はこの表で、コードは写しを持たない。**守るべき形は表の制約だけが守る**
-（docs/architecture/design-principles.md 構造仕様15）。外部キーは全部トランザクションの終わりまで遅らせ、全体を1回で
+区分・地図の線の層・転がり抵抗・除外の設定の正本はこの表で、コードは写しを持たない。**表の中で閉じる形は表の制約だけが守る**
+（docs/architecture/design-principles.md 構造仕様15。コードの宣言と軸を名指す値は、書く側が確かめる）。外部キーは全部トランザクションの終わりまで遅らせ、全体を1回で
 入れ替える書き込み（`infrastructure/road_class_repository.py: replace_road_class_rows`）を、入れ替えた後の形で確かめる。
-改名は「新しい鍵＋前の鍵」でしかしないので、`ON UPDATE CASCADE`は置かない。
 """
 
-from datetime import datetime
 from typing import Any, Literal, TypedDict
 
 from sqlalchemy import (
     BigInteger,
     Boolean,
     CheckConstraint,
-    DateTime,
     ForeignKey,
     ForeignKeyConstraint,
     Identity,
     Integer,
     String,
     UniqueConstraint,
-    func,
 )
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, attribute_keyed_dict, mapped_column, relationship
 
+from app.domain.display_palette import NOMINAL_HUE_SLOTS
+from app.domain.material_sql import sql_literals
+from app.domain.registry import DISPLAY_PALETTES
+from app.domain.road_avoidance import AVOIDANCE_LEVELS
 from app.infrastructure.orm_base import Base
+from app.infrastructure.tuning_overrides import TuningOverrideRow
 
 _KEY_PATTERN = "^[a-z][a-z0-9_]*$"
+_OVERRIDE_LEVELS_SQL = sql_literals(level for level in AVOIDANCE_LEVELS if level != "pass")
 
 
 class _Deferral(TypedDict):
@@ -70,7 +72,6 @@ class RoadClassificationRow(Base):
     label: Mapped[str] = mapped_column(String, nullable=False)
     description: Mapped[str] = mapped_column(String, nullable=False)
     is_published: Mapped[bool] = mapped_column(Boolean, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     classes: Mapped[dict[str, "RoadClassRow"]] = _children("class_key", "RoadClassRow.class_key")
 
 
@@ -86,10 +87,9 @@ class RoadClassRow(Base):
     classification_key: Mapped[str] = mapped_column(String, _classification_fk(ondelete="CASCADE"), primary_key=True)
     class_key: Mapped[str] = mapped_column(String, primary_key=True)
     label: Mapped[str] = mapped_column(String, nullable=False)
-    #: 意味の文だけ。タグの注は配るときに条件から組む。
+    #: 意味の文だけ。
     description: Mapped[str] = mapped_column(String, nullable=False)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False)
-    former_keys: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=False, server_default="{}")
     condition_rows: Mapped[list["RoadClassConditionRow"]] = _children(None, "RoadClassConditionRow.condition_id")
 
     @property
@@ -136,8 +136,8 @@ class RoadMapLayerRow(Base):
 
     __tablename__ = "road_map_layers"
     __table_args__ = (
-        CheckConstraint("palette IN ('ordered', 'nominal')", name="road_map_layers_palette_check"),
-        CheckConstraint("hue_slot BETWEEN 0 AND 11", name="road_map_layers_hue_slot_check"),
+        CheckConstraint(f"palette IN ({sql_literals(DISPLAY_PALETTES)})", name="road_map_layers_palette_check"),
+        CheckConstraint(f"hue_slot BETWEEN 0 AND {NOMINAL_HUE_SLOTS - 1}", name="road_map_layers_hue_slot_check"),
         CheckConstraint("(palette = 'nominal') = (hue_slot IS NOT NULL)", name="road_map_layers_check"),
         UniqueConstraint("group_key", "sort_order", name="road_map_layers_group_key_sort_order_key", **_IMMEDIATE),
         UniqueConstraint("hue_slot", name="road_map_layers_hue_slot_key", **_IMMEDIATE),
@@ -178,49 +178,30 @@ class RoadRollingResistanceClassRow(Base):
 
     classification_key: Mapped[str] = mapped_column(String, primary_key=True)
     class_key: Mapped[str] = mapped_column(String, primary_key=True)
-    tuning_id: Mapped[str] = mapped_column(String, nullable=False)
-
-
-class RoadAvoidanceSectionRow(Base):
-    """除外タブの見出し1つ。"""
-
-    __tablename__ = "road_avoidance_sections"
-    __table_args__ = (UniqueConstraint("sort_order", name="road_avoidance_sections_sort_order_key", **_IMMEDIATE),)
-
-    section_key: Mapped[str] = mapped_column(String, primary_key=True)
-    label: Mapped[str] = mapped_column(String, nullable=False)
-    description: Mapped[str] = mapped_column(String, nullable=False)
-    sort_order: Mapped[int] = mapped_column(Integer, nullable=False)
+    tuning_id: Mapped[str] = mapped_column(String, ForeignKey(TuningOverrideRow.param_id, **_DEFERRED), nullable=False)
 
 
 class RoadAvoidanceClassificationRow(Base):
-    """除外タブに出す分け方。区分は全部、この見出しに「通る」で出る（違うものだけ`road_avoidance_overrides`が持つ）。"""
+    """道路タブに出す分け方（地図の線の層の分け方だけ。凡例に無い見出しを作らない）。区分は全部「通る」で出る（違うものだけ
+    `road_avoidance_overrides`が持つ）。"""
 
     __tablename__ = "road_avoidance_classifications"
-    __table_args__ = (UniqueConstraint("sort_order", name="road_avoidance_classifications_sort_order_key", **_IMMEDIATE),)
 
-    classification_key: Mapped[str] = mapped_column(String, _classification_fk(), primary_key=True)
-    section_key: Mapped[str] = mapped_column(
-        String, ForeignKey("road_avoidance_sections.section_key", **_DEFERRED), nullable=False
+    classification_key: Mapped[str] = mapped_column(
+        String, ForeignKey("road_map_layers.classification_key", **_DEFERRED), primary_key=True
     )
-    sort_order: Mapped[int] = mapped_column(Integer, nullable=False)
     overrides: Mapped[dict[str, "RoadAvoidanceOverrideRow"]] = _children("class_key", "RoadAvoidanceOverrideRow.class_key")
 
 
 class RoadAvoidanceOverrideRow(Base):
-    """既定（分け方の見出しに「通る」）と違う区分1つ。"""
+    """既定（「通る」で選べる）と違う区分1つ。"""
 
     __tablename__ = "road_avoidance_overrides"
     __table_args__ = (
         _class_fk(),
-        CheckConstraint("default_level IN ('avoid', 'exclude')", name="road_avoidance_overrides_default_level_check"),
-        CheckConstraint(
-            "selectable OR (default_level IS NULL AND section_key IS NULL)", name="road_avoidance_overrides_check"
-        ),
-        CheckConstraint(
-            "section_key IS NOT NULL OR default_level IS NOT NULL OR NOT selectable",
-            name="road_avoidance_overrides_check1",
-        ),
+        # 既定に置ける段は「通る」のほかの段のどれでも（「通る」は上書きの行を持たない）。
+        CheckConstraint(f"default_level IN ({_OVERRIDE_LEVELS_SQL})", name="road_avoidance_overrides_default_level_check"),
+        CheckConstraint("selectable <> (default_level IS NULL)", name="road_avoidance_overrides_check"),
     )
 
     classification_key: Mapped[str] = mapped_column(
@@ -229,10 +210,7 @@ class RoadAvoidanceOverrideRow(Base):
         primary_key=True,
     )
     class_key: Mapped[str] = mapped_column(String, primary_key=True)
-    section_key: Mapped[str | None] = mapped_column(
-        String, ForeignKey("road_avoidance_sections.section_key", **_DEFERRED), nullable=True
-    )
     #: NULLは「通る」。
     default_level: Mapped[str | None] = mapped_column(String, nullable=True)
-    #: falseは除外タブに出さず、段も効かせない。
-    selectable: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+    #: falseは道路タブに出さず、段も効かせない。
+    selectable: Mapped[bool] = mapped_column(Boolean, nullable=False)

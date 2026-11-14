@@ -3,9 +3,8 @@
 Esri×Impact Observatory Sentinel-2 10m Annual LULCの画素値ヒストグラム（バッチが
 道路centerline周囲のリングから集計したクラス別画素数）を、クラスごとの割合(%)へ
 変換するだけの純関数群。どのクラスが「遮蔽」でどのクラスが「開放」かという判断は
-一切行わない——その判断は評価軸（`domain/axis_definitions.py: AXIS_DEFINITIONS`）の
-`terms`（重み付き線形結合）が表現する。材料段階で分類を固定すると、軸定義を見ただけでは
-何が難易度に寄与しているか分からなくなるため。
+一切行わない——その判断は、割合を読む側（地図の面の塗り・ルートの区間の「緑と水」）が持つ。材料段階で分類を固定すると、
+読む側を見ただけでは何がどの分類に数えられているか分からなくなるため。
 """
 
 from dataclasses import dataclass, field
@@ -18,23 +17,18 @@ from app.domain.strict_model import StrictModel
 
 # 画素値とクラスの対応は配布元が決めたもの。出典は配布元のSTACの各ラスタの`file:values`
 # （https://api.impactobservatory.com/stac-aws/collections/io-10m-annual-lulc/items）。
-LULC_WATER = 1
-LULC_TREES = 2
-LULC_FLOODED_VEG = 4
-LULC_CROPS = 5
-LULC_BUILT = 7
-LULC_BARE = 8
-LULC_SNOW_ICE = 9
-LULC_CLOUDS = 10
-LULC_RANGELAND = 11
+_LULC_WATER = 1
+_LULC_TREES = 2
+_LULC_FLOODED_VEG = 4
+_LULC_CROPS = 5
+_LULC_BUILT = 7
+_LULC_BARE = 8
+_LULC_SNOW_ICE = 9
+_LULC_CLOUDS = 10
+_LULC_RANGELAND = 11
 
 # No Data(0)・Clouds(10)は分母（有効画素数）から除外する。
-LULC_INVALID_VALUES = frozenset({0, LULC_CLOUDS})
-
-#: 土地被覆を数える帯。中心線からこの距離までを見て、路面そのものの幅は除く。
-#: 材料の値を決める量であり、材料の説明文もこの値を読む。
-LANDCOVER_RING_OUTER_M = 100.0
-LANDCOVER_RING_INNER_M = 10.0
+_LULC_INVALID_VALUES = frozenset({0, _LULC_CLOUDS})
 
 # これ未満の有効画素数は「値なし」（行を作らない）。統計的に安定した割合と呼べる
 # 最低限の画素数（10m画素×20 = 2,000m2程度）。
@@ -46,7 +40,7 @@ class LandcoverClass:
     """土地被覆1クラスの表示上の定義。
 
     ラスタの画素値・`LandcoverPercentages`の割合列・表示名・色を1組で持つ。地図タイルの
-    塗り（`infrastructure/landcover_raster.py`）も、凡例と区間インスペクタの表示名
+    塗り（`infrastructure/landcover_raster.py`）も、凡例と道の窓の表示名
     （frontendへは`scripts/export_openapi.py`が`landcover-classes.json`として書き出す）も、
     このレジストリだけを見る。
     """
@@ -57,57 +51,57 @@ class LandcoverClass:
     percent_field: str
     label: str
     #: 地図へ塗る色。配信元の公式配色をそのまま使わない——建物が鮮やかな赤で、この
-    #: アプリでは赤が「難易度が高い」を表す色として既に使われているため、市街地が
+    #: アプリでは赤が「負担が重い」を表す色として既に使われているため、市街地が
     #: 常時その色で覆われると他の赤の意味が薄れる。色相は自然な連想（水=青・樹木=緑）を
     #: 保ちつつ、下の道路・地名が読める彩度に落とす。
     color: str
     #: 地図の凡例の行が開く説明。配信元のクラスの定義を利用者の言葉にしたもの。塗りに効かないので、タイルの世代を
     #: 導く署名（このクラスの`repr`）に入れない。
     description: str = field(repr=False)
-    #: 地図の面レイヤーで塗るか。Falseでも区間インスペクタの割合には出る（数値は他の
+    #: 地図の面レイヤーで塗るか。Falseでも道の窓の割合には出る（数値は他の
     #: クラスに薄められない）。塗らないのは、**そのクラスが広い範囲を単色で覆ってしまい、
     #: 基礎地図を隠すわりに何も足さない**場合に限る。
     painted: bool = True
 
 
 #: 表示順。割合の大きくなりやすいクラスから並べ、同率のときの並びもこれで決まる。
-#: `LULC_INVALID_VALUES`（No Data・Clouds）は表示対象を持たないため含まない。
+#: `_LULC_INVALID_VALUES`（No Data・Clouds）は表示対象を持たないため含まない。
 LANDCOVER_CLASSES: tuple[LandcoverClass, ...] = (
     # 建物は塗らない。既定の現在地（都心）では画素の85〜95%がこのクラスで、塗ると画面
     # 全体が単色で覆われ基礎地図が濁るだけになる（関東本土全体では中央値3%で、都心だけが
-    # 極端に偏る）。建物があることは基礎地図から分かる。色は区間インスペクタの内訳が使う
-    # ——他のクラスと違って無彩色なのは、数値の表でも「地」として読ませるため。
+    # 極端に偏る）。建物があることは基礎地図から分かる。塗らなくても色は配り、他のクラスの色と並べたときに
+    # 「地」として読ませるため無彩色にする。
     LandcoverClass(
-        LULC_BUILT, "built_percent", "建物", "#9AA0A6",
+        _LULC_BUILT, "built_percent", "建物", "#9AA0A6",
         "建物・大きな道路や線路・駐車場など、人が作った固い地面。",
         painted=False,
     ),
     LandcoverClass(
-        LULC_TREES, "trees_percent", "樹木", "#4C8C4A",
-        "背の高い木がまとまって茂る所（森林・林など）。",
+        _LULC_TREES, "trees_percent", "樹木", "#4C8C4A",
+        "背の高い木がまとまって茂る所[森林・林など]。",
     ),
     LandcoverClass(
-        LULC_CROPS, "crops_percent", "農地", "#E0C066",
-        "人が植えた作物の畑（木の高さにならないもの。休耕地を含む）。",
+        _LULC_CROPS, "crops_percent", "農地", "#E0C066",
+        "人が植えた作物の畑[木の高さにならないもの。休耕地を含む]。",
     ),
     LandcoverClass(
-        LULC_RANGELAND, "rangeland_percent", "草地", "#C3B78F",
+        _LULC_RANGELAND, "rangeland_percent", "草地", "#C3B78F",
         "高い木がほとんど無く、草に覆われた開けた所。",
     ),
     LandcoverClass(
-        LULC_WATER, "water_percent", "水面", "#4A7FB5",
-        "一年の大半に水がある所（川・湖・海など）。",
+        _LULC_WATER, "water_percent", "水面", "#4A7FB5",
+        "一年の大半に水がある所[川・湖・海など]。",
     ),
     LandcoverClass(
-        LULC_FLOODED_VEG, "flooded_veg_percent", "湿地", "#7FB99B",
-        "一年の大半、植物と水が混じっている所（冠水した草地など）。",
+        _LULC_FLOODED_VEG, "flooded_veg_percent", "湿地", "#7FB99B",
+        "一年の大半、植物と水が混じっている所[冠水した草地など]。",
     ),
     LandcoverClass(
-        LULC_BARE, "bare_percent", "裸地", "#C4B4A3",
-        "一年を通して植物がほとんど無い岩や土・砂の所（河川敷・造成地など）。",
+        _LULC_BARE, "bare_percent", "裸地", "#C4B4A3",
+        "一年を通して植物がほとんど無い岩や土・砂の所[河川敷・造成地など]。",
     ),
     LandcoverClass(
-        LULC_SNOW_ICE, "snow_ice_percent", "雪氷", "#D8E6F0",
+        _LULC_SNOW_ICE, "snow_ice_percent", "雪氷", "#D8E6F0",
         "一年中、雪か氷に覆われた所。",
     ),
 )
@@ -118,7 +112,7 @@ def check_landcover_classes(classes: Sequence[LandcoverClass]) -> None:
     """クラスの宣言が、画素・割合列・凡例のどこで読んでも1つのクラスに決まらなければ断る。
 
     画素値が重なると1つの画素が2クラスに数えられ、割合列の名前が重なると材料の列がぶつかる。表示名・色が重なると
-    凡例と区間インスペクタで見分けられない。割合列の名前は材料の列の名前を導く接尾辞で終わる。凡例の行は（i）から説明を開く。
+    凡例と道の窓で見分けられない。割合列の名前は材料の列の名前を導く接尾辞で終わる。凡例の行は（i）から説明を開く。
     """
     for attribute in ("value", "percent_field", "label", "color"):
         values = [getattr(cls, attribute) for cls in classes]
@@ -128,7 +122,7 @@ def check_landcover_classes(classes: Sequence[LandcoverClass]) -> None:
         raise ValueError("土地被覆の割合列の名前が`_percent`で終わらない")
     if not all(cls.description.strip() for cls in classes):
         raise ValueError("土地被覆のクラスに、凡例の行が開く説明が無い")
-    if {cls.value for cls in classes} & LULC_INVALID_VALUES:
+    if {cls.value for cls in classes} & _LULC_INVALID_VALUES:
         raise ValueError("土地被覆のクラスが、どのクラスでもない画素値（No Data・Clouds）を持つ")
 
 
@@ -178,7 +172,7 @@ def class_percentages_sql(counts: str) -> str:
     （No Data・Cloudsを除いた合計）が`MIN_VALID_PIXELS`未満の区間は返らない——
     帯がラスタの外へ大きくはみ出た・雲に覆われていた等、統計として信頼できないため。
     """
-    invalid = ", ".join(str(v) for v in sorted(LULC_INVALID_VALUES))
+    invalid = ", ".join(str(v) for v in sorted(_LULC_INVALID_VALUES))
     tally = ",\n           ".join(
         f"sum(n) FILTER (WHERE cls = {value}) AS {landcover_key(name)}"
         for name, value in PERCENT_CLASSES)

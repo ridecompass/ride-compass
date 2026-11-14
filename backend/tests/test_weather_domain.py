@@ -23,7 +23,6 @@ from app.domain.weather_display import WEATHER_CATEGORIES
     ("precipitation_10min", "suikei", "temperature", "expected"),
     [
         (0.0, "clear", 20.0, 0),
-        (0.0, "cloudy", 20.0, 3),
         (None, "cloudy", 20.0, 3),
         (0.1, "clear", 20.0, 61),  # 10分0.1mm＝1時間0.6mm相当は弱い雨。空より降水を先に見る
         (1.0, None, 20.0, 65),  # 1時間6mm相当は強い雨

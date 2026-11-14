@@ -1,32 +1,37 @@
-"""道の区分の全体を、公開の軸カタログで配る形（解決した見せ方）へ組む。
+"""道の区分の全体を、画面の設定で配る形（解決した見せ方）へ組む。
 
-配るのは公開した分け方だけで、管理用の欄（公開か）は配らない。色・タグの注・層の説明のうち区分から組む部分は
+配るのは公開した分け方だけで、管理用の欄（公開か・条件）は配らない
+（条件は管理の経路でだけ見せ、区分の説明は意味の文だけにする）。色・層の説明のうち区分から組む部分は
 ここで決め、受け取る側は組み直さない。並びは`sort_order`の順で、振り分けには使わない。
 """
 
-from typing import Literal
 
-from app.domain.display_palette import nominal_colors, ordered_colors, ordered_ends_phrase
-from app.domain.material_catalog import material_spec
-from app.domain.road_avoidance import AVOIDANCE_LEVEL_LABELS, AVOIDANCE_LEVELS, AvoidanceLevel, avoidance_rows
-from app.domain.road_classes import Condition, RoadClass, RoadClassDefinitions, by_sort_order, road_class_generation
+from app.domain.display_palette import (
+    SEMANTIC_COLORS,
+    SEMANTIC_COLORS_ON_DARK,
+    nominal_colors,
+    ordered_colors,
+    ordered_ends_phrase,
+)
+from app.domain.cost_preference import multiplier_label
+from app.domain.hard_filters import HARD_FILTER_PROPERTY, HARD_FILTERS
+from app.domain.road_avoidance import AVOIDANCE_LEVELS, AvoidanceLevel, avoidance_rows, level_multipliers
+from app.domain.tuning import tuning_value
+from app.domain.road_classes import (
+    RoadClassDefinitions,
+    by_sort_order,
+    published_map_layers,
+)
 from app.domain.strict_model import StrictModel
 
 
 class RoadClassView(StrictModel):
     key: str
     label: str
-    #: 意味の文に、条件から組んだタグの注を足したもの。
     description: str
     color: str
-
-
-class LayerTextSlotView(StrictModel):
-    """説明の文の差し込み口（`domain/map_display.py: LayerTextSlot`）。"""
-
-    name: Literal["axes"]
-    before: str
-    after: str
+    #: 暗い地図の上に塗る色。
+    color_on_dark: str
 
 
 class RoadMapLayerView(StrictModel):
@@ -37,7 +42,7 @@ class RoadMapLayerView(StrictModel):
     category: str
     icon: str
     description: list[str]
-    panel_hint: list[str | LayerTextSlotView]
+    panel_hint: str
     hide_missing_rows: bool
     #: 区分の外の道を「データなし」（`domain/road_classes.py: NO_DATA_VALUE`）と「該当なし」に分けるか。
     has_no_data: bool
@@ -46,82 +51,62 @@ class RoadMapLayerView(StrictModel):
 
 class AvoidanceLevelView(StrictModel):
     key: AvoidanceLevel
+    #: 掛ける倍率そのもの（`domain/cost_preference.py: multiplier_label`）。
     label: str
+    #: この段の行に当たる道を地図に塗る色と、暗い地図の上に塗る色。無い段は何も指定していない扱いで、塗らない。
+    color: str | None
+    color_on_dark: str | None
 
 
 class AvoidanceSectionView(StrictModel):
+    """道路タブの見出し1つ。鍵・名前は分け方の鍵・名前で、地図の線の層（`RoadMapLayerView`）と揃う。"""
+
     key: str
     label: str
-    description: str
 
 
 class AvoidanceRowView(StrictModel):
-    """除外タブの1行。`key`は`<分け方>.<区分>`。"""
+    """道路タブの1行。`key`は`<section>.<class_key>`。`section`・`class_key`は、行に当たる道を路面タイルから引く鍵（プロパティ名と
+    その値）で、選べる行では見出し（分け方）の鍵と区分の鍵（地図の線の層の値）。"""
 
     key: str
     section: str
+    class_key: str
     label: str
     description: str
     default: AvoidanceLevel
-    former_keys: list[str]
+    #: 選べない行（0次ハードフィルタ。いつも`default`の段で、要求の段を読まない）は見出しに入らない。
+    selectable: bool
 
 
 class RoadAvoidanceView(StrictModel):
+    #: 並びは倍率の小さい順。1つの道がいくつもの行に当たれば、後ろの段が効く。
     levels: list[AvoidanceLevelView]
+    #: 選べる行の見出し。並びは行の並び（地図の線の層の並び）。行の無い見出しは出さない。
     sections: list[AvoidanceSectionView]
+    #: 選べない行が先で、選べる行が続く。
     rows: list[AvoidanceRowView]
 
 
 class RoadClassCatalog(StrictModel):
-    #: 区分の中身から作る指紋（`domain/road_classes.py: road_class_generation`）。公開していない分け方の変化でも替わる。
-    generation: str
     map_layers: list[RoadMapLayerView]
     avoidance: RoadAvoidanceView
 
 
-_AXES_SLOT = LayerTextSlotView(name="axes", before="評価軸", after="の材料の1つです。")
-
-
-def _fact_label(fact_key: str) -> str:
-    spec = material_spec(fact_key)
-    return fact_key if spec is None else spec.label
-
-
-def _term_note(fact_key: str, values: list[str], negated: bool, matches_absent: bool) -> str:
-    label = _fact_label(fact_key)
-    if values:
-        text = f"{label}が{'・'.join(values)}{'以外' if negated else ''}"
-        return text + ("か無い" if matches_absent else "")
-    return f"{label}が{'ある' if negated else '無い'}"
-
-
-def _conditions_note(conditions: list[Condition]) -> str:
-    return "、または".join(
-        " かつ ".join(_term_note(key, t.fact_values, t.negated, t.matches_absent) for key, t in condition.items())
-        for condition in conditions
-    )
-
-
-def _described(road_class: RoadClass) -> str:
-    note = _conditions_note(road_class.conditions)
-    return f"{road_class.description}[{note}]" if note else road_class.description
-
-
 def road_class_catalog(definitions: RoadClassDefinitions) -> RoadClassCatalog:
-    published = {key: c for key, c in definitions.classifications.items() if c.is_published}
     layers = []
-    for key, layer in sorted(definitions.map_layers.items(), key=lambda item: (item[1].group_key, item[1].sort_order)):
-        classification = published.get(key)
-        if classification is None:
-            continue
+    for key, layer in published_map_layers(definitions):
+        classification = definitions.classifications[key]
         classes = by_sort_order(classification.classes)
         labels = [road_class.label for _, road_class in classes]
         if layer.palette == "ordered":
-            colors = ordered_colors(len(classes))
+            colors, colors_on_dark = ordered_colors(len(classes)), ordered_colors(len(classes), on_dark=True)
             part = ordered_ends_phrase(labels[0], labels[-1]) if labels else ""
         else:
-            colors = nominal_colors(layer.hue_slot or 0, len(classes), layer.tone)
-            part = "・".join(labels)
+            colors = nominal_colors(layer.hue_slot, len(classes), layer.tone)
+            colors_on_dark = nominal_colors(layer.hue_slot, len(classes), layer.tone, on_dark=True)
+            # 区分が1つだけなら、見分けるものが無く、名前は要約の言い直しになるので並べない。
+            part = "・".join(labels) if len(labels) > 1 else ""
         layers.append(
             RoadMapLayerView(
                 id=key,
@@ -129,39 +114,64 @@ def road_class_catalog(definitions: RoadClassDefinitions) -> RoadClassCatalog:
                 category=layer.group_key,
                 icon=layer.icon_key,
                 description=[f"{layer.summary}[{part}]" if part else layer.summary],
-                panel_hint=[layer.panel_hint, _AXES_SLOT],
+                panel_hint=layer.panel_hint,
                 hide_missing_rows=layer.hides_unclassified,
                 has_no_data=layer.no_data_fact_key is not None,
                 classes=[
                     RoadClassView(
                         key=class_key,
                         label=road_class.label,
-                        description=_described(road_class),
+                        description=road_class.description,
                         color=color,
+                        color_on_dark=color_on_dark,
                     )
-                    for (class_key, road_class), color in zip(classes, colors, strict=True)
+                    for (class_key, road_class), color, color_on_dark in zip(classes, colors, colors_on_dark, strict=True)
                 ],
             )
         )
-    rows = [
+    avoidance = avoidance_rows(definitions)
+    multipliers = level_multipliers(tuning_value("avoidance.avoid_cost_multiplier"))
+    # 0次ハードフィルタの行。路面タイルは道の当たるフィルタの名前を`HARD_FILTER_PROPERTY`に焼く。
+    fixed = [
+        AvoidanceRowView(
+            key=f"{HARD_FILTER_PROPERTY}.{name}",
+            section=HARD_FILTER_PROPERTY,
+            class_key=name,
+            label=spec.label,
+            description=spec.description,
+            default="exclude",
+            selectable=False,
+        )
+        for name, spec in HARD_FILTERS.items()
+    ]
+    rows = fixed + [
         AvoidanceRowView(
             key=row.key,
-            section=row.section_key,
+            section=row.classification_key,
+            class_key=row.class_key,
             label=row.road_class.label,
-            description=_described(row.road_class),
+            description=row.road_class.description,
             default=row.default_level,
-            former_keys=row.road_class.former_keys,
+            selectable=True,
         )
-        for row in avoidance_rows(definitions)
+        for row in avoidance
     ]
     return RoadClassCatalog(
-        generation=road_class_generation(definitions),
         map_layers=layers,
         avoidance=RoadAvoidanceView(
-            levels=[AvoidanceLevelView(key=level, label=AVOIDANCE_LEVEL_LABELS[level]) for level in AVOIDANCE_LEVELS],
+            levels=[
+                AvoidanceLevelView(
+                    key=level,
+                    label=multiplier_label(multipliers[level]),
+                    # 色の役割は`road_avoidance_<段>`。役割の無い段（通る）は塗らない。
+                    color=SEMANTIC_COLORS.get(f"road_avoidance_{level}"),
+                    color_on_dark=SEMANTIC_COLORS_ON_DARK.get(f"road_avoidance_{level}"),
+                )
+                for level in sorted(AVOIDANCE_LEVELS, key=multipliers.__getitem__)
+            ],
             sections=[
-                AvoidanceSectionView(key=key, label=section.label, description=section.description)
-                for key, section in by_sort_order(definitions.avoidance_sections)
+                AvoidanceSectionView(key=key, label=definitions.classifications[key].label)
+                for key in dict.fromkeys(row.classification_key for row in avoidance)
             ],
             rows=rows,
         ),

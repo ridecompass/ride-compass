@@ -12,17 +12,39 @@ from app.domain.strict_model import StrictModel
 # 要求しないが、直接APIを叩かれた場合に備えてバックエンド側でもこの範囲外を拒否する。
 ROAD_TILE_MIN_ZOOM = 12
 ROAD_TILE_MAX_ZOOM = 15
+#: 路面タイル（地図の道の線）だけは、道ごとの鍵を持つ`ROAD_TILE_MIN_ZOOM`より引いたここから配る。ここから
+#: `ROAD_TILE_MIN_ZOOM`の手前までは、地図の線の層の値が同じ道をつないで焼き、道ごとの鍵を持たない（道ごとの値を読むレンズ・
+#: 押した所の道・点は`ROAD_TILE_MIN_ZOOM`から）。下限の根拠は docs/modules/backend/static-road-attributes.md「路面タイルが焼くもの」。
+ROAD_SURFACE_TILE_MIN_ZOOM = 10
 #: 路面タイルが1フィーチャーとして焼く単位。**区間が読めるズームでは区間、それより引いた
 #: 表示ではway丸ごと**にする。区間で焼くとgzip後の費用はz14で1.48倍・z12で1.81倍へ増える
 #: 一方、z12は1pxが約38mで、交差点で切った区間は数pxにしかならず塗り分けても読めない。
 EDGE_UNIT_MIN_ZOOM = 14
 
 
-# タイル座標の型。ズームはレイヤーごとに範囲が違うので、レイヤーの宣言の隣に置く（路面・点は`RoadTileZoom`、
+# タイル座標の型。ズームはレイヤーごとに範囲が違うので、レイヤーの宣言の隣に置く（路面は`RoadSurfaceTileZoom`、点は`RoadTileZoom`、
 # 土地被覆は`domain/landcover.py`、標高は`domain/gsi_tiles.py`）。列・行の上限はズームに依り、欄の型だけでは
 # 書けないので`check_tile_index`が見る。
 RoadTileZoom = Annotated[int, Field(ge=ROAD_TILE_MIN_ZOOM, le=ROAD_TILE_MAX_ZOOM)]
+RoadSurfaceTileZoom = Annotated[int, Field(ge=ROAD_SURFACE_TILE_MIN_ZOOM, le=ROAD_TILE_MAX_ZOOM)]
 TileIndex = Annotated[int, Field(ge=0)]
+
+#: 押した所に近い道を拾う距離の上限（m）。地図は指の幅を今の倍率で m に直して送り、道のタイルの最も引いた
+#: ズーム（z12）では約300mになる。上限は、それより広い範囲を探させないためのもの。
+ROADS_AT_MAX_RADIUS_M = 400.0
+RoadsAtRadiusM = Annotated[float, Field(gt=0, le=ROADS_AT_MAX_RADIUS_M)]
+#: 押した所に近い道を返す数の上限。車道と別に線を持つ歩道・側道のように道が並ぶ所で、どれを拾ったかを選び直せるよう
+#: 近い順に複数返す。
+ROADS_AT_LIMIT = 3
+
+
+class RoadAt(StrictModel):
+    """押した所に近い道のフィーチャー1つ。"""
+
+    #: 地図の小窓が読むプロパティ（列名→値。値の無い列は省く）。鍵（`feature_key`）は路面タイルのフィーチャーと同じ。
+    properties: dict[str, str | int | float | bool]
+    #: フィーチャーの線の全体（経度, 緯度）。タイルで切らない。
+    shape: list[tuple[float, float]]
 
 
 def check_tile_index(z: int, x: int, y: int) -> None:
@@ -78,19 +100,6 @@ def bbox_covering_points(points: Sequence[LatLon], margin_km: float) -> Bounding
     )
 
 
-def parse_bbox(text: str) -> BoundingBox:
-    """CLIの--bbox（"min_lat,min_lon,max_lat,max_lon"）をBoundingBoxへ変換する。
-
-    緯度経度の順序はCLI間で揃える。値そのものの妥当性は`BoundingBox`が見る。
-    """
-    parts = [float(p) for p in text.split(",")]
-    if len(parts) != 4:
-        raise ValueError("--bboxは min_lat,min_lon,max_lat,max_lon の4値が必要です")
-    min_lat, min_lon, max_lat, max_lon = parts
-    return BoundingBox(
-        min_latitude=min_lat, min_longitude=min_lon, max_latitude=max_lat, max_longitude=max_lon
-    )
-
 
 def tile_bounds_lonlat(z: int, x: int, y: int) -> BoundingBox:
     """標準的なXYZスライピータイル（Web Mercator）のz/x/yから、そのタイルが覆う緯度経度の範囲を求める。"""
@@ -134,21 +143,6 @@ def tile_position(lon: float, lat: float, z: int) -> tuple[float, float]:
     lat_rad = math.radians(clamped_lat)
     y = (1.0 - math.log(math.tan(lat_rad) + 1.0 / math.cos(lat_rad)) / math.pi) / 2.0 * n
     return x, y
-
-
-def way_unit_tile(z: int, x: int, y: int) -> tuple[int, int, int]:
-    """タイル`(z, x, y)`の道を道1本のフィーチャーとして焼くタイル。道1本で焼くズームならそのタイル、区間で焼くズームなら
-    それを含む、道1本で焼く最も寄ったズームのタイル——中の道はどれもそのタイルにも在る。"""
-    if z < EDGE_UNIT_MIN_ZOOM:
-        return z, x, y
-    shift = z - (EDGE_UNIT_MIN_ZOOM - 1)
-    return EDGE_UNIT_MIN_ZOOM - 1, x >> shift, y >> shift
-
-
-def edge_unit_tile(lon: float, lat: float) -> tuple[int, int, int]:
-    """地点を含む、区間を1つのフィーチャーとして焼く最も引いたズームのタイル。"""
-    x, y = tile_position(lon, lat, EDGE_UNIT_MIN_ZOOM)
-    return EDGE_UNIT_MIN_ZOOM, int(x), int(y)
 
 
 def tile_position_sql(lon: str, lat: str, zoom: str) -> tuple[str, str]:

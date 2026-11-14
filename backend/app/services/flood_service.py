@@ -25,21 +25,17 @@ class FloodService:
         self._area_data_cache = area_data_cache
         self._flood_cache = flood_cache
 
-    async def get_forecasts(self, point: Coordinates) -> FloodForecasts | None:
+    async def get_forecasts(self, point: Coordinates) -> FloodForecasts:
         """出発地点近傍の指定河川洪水予報を取得する。
 
-        エリア解決か予報の取得に失敗したらNone（出ているかが分からない）。空は、地点がどの区域にも
+        エリア解決か予報の取得に失敗したら投げる（出ているかが分からない）。空は、地点がどの区域にも
         入らないときと、取れた予報にその区域のものが無いときだけ。
         """
         resolved = await resolve_point_area(self._http_client, self._area_data_cache, point.latitude, point.longitude)
-        if resolved is None:
-            return None
         if isinstance(resolved, OutsideAreas):
             return FloodForecasts(forecasts=[], valid_area=None)
 
         bulletins = await fetch_flood_documents(self._http_client, self._flood_cache)
-        if bulletins is None:
-            return None
 
         shape = await area_shape(resolved.class20_code)
         return FloodForecasts(

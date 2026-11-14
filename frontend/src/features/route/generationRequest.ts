@@ -1,4 +1,4 @@
-import type { Coordinates, RoadAvoidanceOverride, RouteGenerateRequest, RoutePreferenceWeights } from "@/types/route";
+import type { Coordinates, CostPreference, RoadAvoidanceOverride, RouteGenerateRequest } from "@/types/route";
 
 // 生成リクエストのpayloadと、「生成条件が変更されています」（conditionsDirty）の比較キーを
 // **同じ入力から**組み立てる。
@@ -15,10 +15,10 @@ export interface GenerationInput {
   maxRoutes: number;
   assumedSpeedKmh: number;
   startTime: Date;
-  /** 道の区分の行ごとに選んだ避け方（選んでいない行と前の鍵は、backendが今の行へ揃える）。 */
+  /** 道の区分の行ごとに選んだ避け方（選んでいない行は、backendが今の行へ揃える）。 */
   roadAvoidance: RoadAvoidanceOverride;
-  /** 重み上書きが有効なときのみ（無効ならbackendの既定値に委ねる）。 */
-  routePreference: RoutePreferenceWeights | null;
+  /** つまみと軸ごとの倍率（利用者が選んだまま）。 */
+  costPreference: CostPreference;
   /** 置いた経由地（通る順）と目的地。目的地が無ければ出発地へ戻る。 */
   waypoints: readonly Coordinates[];
   destination: Coordinates | null;
@@ -33,20 +33,17 @@ export function buildGenerateRequest(input: GenerationInput): RouteGenerateReque
     latitude: input.origin.latitude,
     longitude: input.origin.longitude,
     ...(input.distanceKm !== null ? { distance_km: input.distanceKm } : {}),
-    // 目標距離からの許容差と、主観と時間の換算レート（P）は**送らない**。このAPIでは省略が
-    // 「較正値から読む」の合図で、画面から変える手段が無いのに値を載せると、管理画面で調整しても
-    // 効かなくなる。画面から変えられるようになるまでは省略する。
     road_avoidance: input.roadAvoidance,
     max_routes: input.maxRoutes,
     assumed_speed_kmh: input.assumedSpeedKmh,
     start_time: input.startTime.toISOString(),
-    ...(input.routePreference !== null ? { route_preference: input.routePreference } : {}),
+    cost_preference: input.costPreference,
     ...(input.waypoints.length > 0 ? { waypoints: [...input.waypoints] } : {}),
     ...(input.destination !== null ? { destination: input.destination } : {}),
   };
 }
 
-/** キー順に依存しないJSON化。`road_avoidance`・`route_preference`のように、同じ内容でも
+/** キー順に依存しないJSON化。`road_avoidance`・`cost_preference`のように、同じ内容でも
  * 組み立て方（保存値からの復元・キー整合による補完）でプロパティの並びが変わりうる
  * オブジェクトを、並びの違いだけで「条件が変わった」と誤判定しないため。配列
  * （`waypoints`）は順序自体に意味があるのでそのまま保つ。 */

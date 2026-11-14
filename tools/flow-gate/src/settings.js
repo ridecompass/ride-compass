@@ -1,5 +1,5 @@
-// ゲートと同梱のスクリプトとテストが使う設定を、設定（flow.config.json）と問いのラベルごとの形（question_forms/ のファイルの中身）から組む。
-// 読み込み方だけが使う所ごとに違う（Worker は wrangler の rules で文字列として読み、スクリプトとテストはファイルから読む）。
+// ゲートと同梱のスクリプトが使う設定を、設定（flow.config.json）と問いのラベルごとの形（question_forms/ のファイルの中身）から組む。
+// 読み込み方だけが使う所ごとに違う（Worker は wrangler の rules で文字列として読み、スクリプトはファイルから読む）。
 import { loadForms } from "./questions.js";
 
 const repo = (full) => {

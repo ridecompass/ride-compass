@@ -52,10 +52,8 @@ class AmedasObservation(StrictModel):
     wind_direction: WindDirection | None
     precipitation_10min_mm: float | None
     # 最寄り観測所ではなくリクエストのlatitude/longitudeそのものに対する、当日（JST）の値。
-    # 外部には問い合わせず、domain/twilight.py: sunrise_sunset_jstのローカル天文計算で求める。
     twilight: Twilight | None
-    # WMO天気コード（`weather.derive_observed_weather_code`）。晴れ・くもりはリクエストの地点の推計気象分布で
-    # 決まるため、twilightと同じく応答のたびに入れ、Redisには持たない。
+    # WMO天気コード。晴れ・くもりはリクエストの地点の推計気象分布で決まるため、twilightと同じく地点ごとの値。
     weather_code: int | None
     #: 同じ観測所の観測が当たる範囲（その観測所が最寄りである範囲）。観測所の値（風・気温等）はこの中で変わらない。
     #: 天気コード・日の出と日没はリクエストの地点で決まり、この範囲の中でも変わる。

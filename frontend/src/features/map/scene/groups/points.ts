@@ -10,8 +10,16 @@
  * 取る。行が種別を取りこぼすと、その種別の点は地図から消える——行と種別の一覧が一致することは
  * backendのテスト（`test_primary_attributes.py`）が全種別で確かめる。
  *
- * 点の形も源泉が決める。先頭の軸の行が絵記号（`glyph`）を持つレイヤーは、行の色の角丸四角に絵記号を載せた
- * 記号で描き、持たないレイヤーは丸い点で描く。重なった絵を間引くか・どれを残すかも源泉（`point_thinning`）が決める。
+ * 点の形も源泉が決める。点は先頭の軸の行が持つ絵記号（`glyph`。形は`components/PointIconSwatch/PointIconSwatch.tsx: POINT_GLYPHS`）
+ * で描く。描き始める縮尺（`point_min_zoom`）と、重なったときどの層の印を残すか（`point_priority`）・同じ層の中でどの印を残すか
+ * （`point_priority_axes`）も源泉の宣言を読む。
+ * 重なる印は地図が省く（`pointLook`）。
+ *
+ * ルートを選んでいて周りを出さない間は、ルートの線から`lib/mapDisplay/sidePoints.ts: SIDE_POINT_MAX_DISTANCE_M`以内の点だけを通す。
+ * 近いかは地図の道具の`distance`式で決める（MapLibre の文書は、ズーム13未満では距離の精度が落ちうると書いている）。
+ *
+ * 近い点はタイルの側で1つの代表点に束ねてあり、代表点は束ねた点の数を持つ（`mapDisplay.point.countProperty`）。2点以上を
+ * 束ねた代表点は、点の右に数を出す。
  *
  * 行が出ている間は、同じ種類の基礎地図の店・施設の印を隠す（`BASEMAP_POIS_BY_ROW`）。
  *
@@ -20,6 +28,7 @@
  */
 import type { BasemapPoiKinds } from "@/features/map/layers/mapStyleOps";
 import { sceneLayerId, sceneSourceId, valueInExpression, type SceneSourceId } from "@/features/map/scene/sceneBuilders";
+import { SIDE_POINT_MAX_DISTANCE_M } from "@/lib/mapDisplay/sidePoints";
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import palette from "@/types/generated/palette.json";
 import regionTileConfig from "@/types/generated/region-tile-config.json";
@@ -29,7 +38,7 @@ import type { PointGlyph } from "@/lib/mapDisplay/legendFilter";
 import {
   isPointTileLayer,
   POINT_LAYERS,
-  pointCategoryRadiusPx,
+  pointIconScales,
   sizeAxis,
   type PointAxis,
   type PointLayer,
@@ -37,6 +46,7 @@ import {
 } from "@/lib/mapDisplay/pointLayers";
 
 import { drawPointIcon } from "@/features/map/layers/pointIcon";
+import { POINT_GLYPHS, type PointFrame } from "@/components/PointIconSwatch/PointIconSwatch";
 import type { MapSceneImage } from "@/features/map/scene/mapScene";
 import { declareGroup, type SceneLayerEntry, type SceneSourceEntry } from "@/features/map/scene/mapSceneGroups";
 
@@ -56,14 +66,13 @@ export const POINT_TILE_SOURCES = Object.fromEntries(
   ]),
 ) as Readonly<Record<PointTileLayer, { readonly sourceId: SceneSourceId; readonly sourceLayer: string }>>;
 
-/** 地図のレイヤーidから点の宣言を引く。idは`pointGroup`と同じソースと役割から決める。 */
-const POINT_LAYER_BY_SCENE_ID = new Map(
+const POINT_LAYER_BY_SCENE_LAYER = new Map(
   POINT_LAYERS.map((layer) => [sceneLayerId(POINT_TILE_SOURCES[layer.tile_kind].sourceId, layer.attr_id), layer]),
 );
 
 /** 押された地物のレイヤーidが点のレイヤーなら、その点の宣言。 */
 export function pointLayerOfSceneLayer(sceneLayerIdOfFeature: string): PointLayer | undefined {
-  return POINT_LAYER_BY_SCENE_ID.get(sceneLayerIdOfFeature);
+  return POINT_LAYER_BY_SCENE_LAYER.get(sceneLayerIdOfFeature);
 }
 
 /** 常に効く絞り込み。同じタイル・同じsource-layerを2つ以上のレイヤーが分け合うときは、
@@ -86,6 +95,8 @@ export type PointState = {
   readonly visible: Readonly<Record<string, boolean>>;
   /** 軸の鍵ごとの、凡例で隠した行の鍵。 */
   readonly hiddenKeys: Readonly<Record<string, readonly string[]>>;
+  /** 点を近くだけに絞るルートの線（[経度, 緯度]の並び）。地図全体に出すならnull。 */
+  readonly nearPath: readonly (readonly number[])[] | null;
 };
 
 /** 行が出ている間、基礎地図から隠す店・施設の種類（点の属性 → 行の鍵 → 種類）。OpenStreetMap でない出どころから
@@ -145,16 +156,16 @@ function categoryMatch(axis: PointAxis, category: PointAxis["categories"][number
   return valueInExpression(valueOf(axis), category.values);
 }
 
-/** 分類ごとの色。隠した行も含めて作る——隠しても残った分類の色が動かないようにする。 */
-function colorExpression(layer: PointLayer): unknown {
-  const axis = layer.display_axes[0];
-  const cases = axis.categories.flatMap((category) => [categoryMatch(axis, category), category.color]);
-  return ["case", ...cases, palette.semantic.no_data];
-}
-
-/** 通す分類だけを残す絞り込み。軸が複数あるときはすべてANDで効く。 */
-function layerFilter(layer: PointLayer, hiddenKeys: PointState["hiddenKeys"]): FilterSpecification | undefined {
+/** 通す分類だけを残す絞り込み。軸が複数あるときはすべてANDで効く。`nearPath`があれば、その線から近い点だけを通す。 */
+function layerFilter(
+  layer: PointLayer,
+  hiddenKeys: PointState["hiddenKeys"],
+  nearPath: PointState["nearPath"],
+): FilterSpecification | undefined {
   const clauses: unknown[] = [];
+  if (nearPath !== null) {
+    clauses.push(["<=", ["distance", { type: "LineString", coordinates: nearPath }], SIDE_POINT_MAX_DISTANCE_M]);
+  }
   const base = baseFilter(layer);
   if (base !== undefined) clauses.push(base);
   for (const axis of layer.display_axes) {
@@ -178,51 +189,132 @@ function glyphCategories(layer: PointLayer): readonly GlyphCategory[] {
 }
 
 /** 地図へ登録する絵の名前。**登録側と参照側が同じ1つを使う**（綴りがずれると点が出ない）。 */
-function pointIconId(layer: PointLayer, category: GlyphCategory): string {
-  return `point-icon:${layer.attr_id}:${category.key}`;
+function pointIconId(layer: PointLayer, category: GlyphCategory, frame: PointFrame): string {
+  const look = "sign" in POINT_GLYPHS[category.glyph] ? "sign" : frame;
+  return `point-icon:${layer.attr_id}:${category.key}:${look}`;
 }
 
-/** 絵記号で描く点の絵（名前・下地の色・絵記号）。 */
-export const POINT_ICONS: readonly { id: string; color: string; glyph: PointGlyph }[] = POINT_LAYERS.flatMap((layer) =>
-  glyphCategories(layer).map((category) => ({
-    id: pointIconId(layer, category),
-    color: category.color,
-    glyph: category.glyph,
-  })),
+/** 層の点が使う枠。名前を持つ層は押せる点（四角）と押せない点（丸）の両方、名前を持たない層は丸だけ。標識の絵は枠に依らない。 */
+function layerFrames(layer: PointLayer): readonly PointFrame[] {
+  return layer.point_name_property === null ? ["circle"] : ["box", "circle"];
+}
+
+/** 点の絵（名前・下地の色・絵記号・枠）。 */
+export const POINT_ICONS: readonly { id: string; color: string; glyph: PointGlyph; frame: PointFrame }[] =
+  POINT_LAYERS.flatMap((layer) =>
+    glyphCategories(layer).flatMap((category) =>
+      layerFrames(layer).map((frame) => ({
+        id: pointIconId(layer, category, frame),
+        color: category.color,
+        glyph: category.glyph,
+        frame,
+      })),
+    ),
+  );
+
+function iconImageExpression(layer: PointLayer, categories: readonly GlyphCategory[]): unknown {
+  const axis = layer.display_axes[0];
+  const imageOf = (frame: PointFrame) => [
+    "case",
+    ...categories.flatMap((category) => [categoryMatch(axis, category), pointIconId(layer, category, frame)]),
+    "",
+  ];
+  const named = namedExpression(layer);
+  return named === null ? imageOf("circle") : ["case", named, imageOf("box"), imageOf("circle")];
+}
+
+/** 名前を持つ層の、名前の無い点（押せない点）の濃さの割合。押せるかは主に枠の形（`PointFrame`）で見分け、濃さは控えめに添える。
+ * 名前を持たない層の点は全部押せないので、薄くしない。 */
+const UNNAMED_OPACITY_RATIO = 0.8;
+
+/** 名前のある点か（名前の欄が空でないか、束ねた中の名前のある点の欄を持つか）。押せる点を描き分けるため、
+ * `lib/mapDisplay/pointLayers.ts: pointPlaceName`・`pointMembers` が読む欄を描き方の式で読む。名前を持たない層は null。 */
+function namedExpression(layer: PointLayer): unknown | null {
+  const nameProperty = layer.point_name_property;
+  if (nameProperty === null) return null;
+  return ["any", ["all", ["has", nameProperty], ["!=", ["get", nameProperty], ""]], ["has", POINT.membersProperty]];
+}
+
+/** 名前のある点と名前を持たない層の点は`value`のまま、名前を持つ層の名前の無い点は`ratio`を掛けた値。 */
+function byNamed(layer: PointLayer, value: unknown, ratio: number): unknown {
+  const named = namedExpression(layer);
+  if (named === null) return value;
+  const unnamed = typeof value === "number" ? value * ratio : ["*", value, ratio];
+  return ["case", named, value, unnamed];
+}
+
+/** 点の大きさの倍率。点の大きさを持つ軸（事故の重大度等）があれば、行ごとの倍率。 */
+function iconScaleExpression(layer: PointLayer): unknown {
+  const axis = sizeAxis(layer);
+  if (axis === undefined) return 1;
+  const scales = pointIconScales(axis);
+  return ["case", ...axis.categories.flatMap((category, i) => [categoryMatch(axis, category), scales[i]]), 1];
+}
+
+/** 同じ層の中で重なった印をどれから置くか（小さい値の印から置かれて残る）。宣言した軸（`point_priority_axes`）の行の順で
+ * 決め、前の軸ほど強い。軸で決まらない印は束ねた点の数の多い印から置く——数の項は 0 より大きく 1 未満なので、軸の順を越えない。 */
+function sortKeyExpression(layer: PointLayer): unknown {
+  let rank: unknown = 0;
+  for (const key of layer.point_priority_axes) {
+    const axis = layer.display_axes.find((candidate) => candidate.key === key) as PointAxis;
+    const n = axis.categories.length;
+    const index = ["case", ...axis.categories.flatMap((category, i) => [categoryMatch(axis, category), i]), n];
+    rank = ["+", ["*", rank, n + 1], index];
+  }
+  return ["+", rank, ["/", 1, ["+", COUNT, 1]]];
+}
+
+/** 積む順（下から）に並べた点の層。重なった印は上に積んだ層の印から置かれるので、残す順（`point_priority`）の大きい層を上に積む。
+ * 同じ順の層は宣言の順のまま。 */
+const STACKED_POINT_LAYERS: readonly PointLayer[] = [...POINT_LAYERS].sort(
+  (a, b) => a.point_priority - b.point_priority,
 );
 
 /** 色を焼き込んだ絵なので、記号のレイヤーは色を付けない。 */
-const POINT_IMAGES: readonly MapSceneImage[] = POINT_ICONS.map((icon) => ({
+export const POINT_IMAGES: readonly MapSceneImage[] = POINT_ICONS.map((icon) => ({
   id: icon.id,
   draw: () => {
-    const { data, pixelRatio } = drawPointIcon(icon.color, icon.glyph);
+    const { data, pixelRatio } = drawPointIcon(icon.color, icon.glyph, icon.frame);
     return { data, options: { pixelRatio } };
   },
 }));
 
-/** 間引くときに先に残す順の鍵（小さいほど先に残す）。行の順位を2つ刻みにし、行の中では割合（0〜1）の大きいほうを
- * 先にする——刻みが割合の幅より広いので、行をまたいで順が入れ替わらない。 */
-function thinningSortKey(layer: PointLayer, thinning: NonNullable<PointLayer["point_thinning"]>): unknown {
-  const axis = layer.display_axes[0];
-  // 行の鍵は先頭の軸の行を1度ずつ全部並べる（backend の宣言の検査が守る）。
-  const cases = thinning.rows.flatMap((key, rank) => {
-    const category = axis.categories.find((c) => c.key === key)!;
-    return [categoryMatch(axis, category), rank * 2];
-  });
-  return ["+", ["case", ...cases, thinning.rows.length * 2], ["-", 1, ["to-number", ["get", thinning.ratio_property]]]];
-}
+/** 束ねた点の数の字の大きさ（画素）。 */
+const COUNT_TEXT_SIZE_PX = 12;
+/** 数の字。基礎地図（OpenFreeMap の liberty）の字の置き場にある字体を名指す（無い字体は字が出ない）。 */
+const COUNT_TEXT_FONT = ["Noto Sans Bold"];
 
-function iconImageExpression(layer: PointLayer, categories: readonly GlyphCategory[]): unknown {
-  const axis = layer.display_axes[0];
-  const cases = categories.flatMap((category) => [categoryMatch(axis, category), pointIconId(layer, category)]);
-  return ["case", ...cases, ""];
-}
+const COUNT = ["to-number", ["get", POINT.countProperty], 1];
 
-function radiusExpression(layer: PointLayer): unknown {
-  const axis = sizeAxis(layer);
-  if (axis === undefined) return POINT.radiusPx;
-  const cases = axis.categories.flatMap((category) => [categoryMatch(axis, category), pointCategoryRadiusPx(category)]);
-  return ["case", ...cases, POINT.radiusPx];
+/** 点の層の印（読むタイル・押したときに拾う対象・見た目）。重なりは MapLibre の既定のまま（ほかの記号とぶつかる印は描かず、寄せて重ならなくなると出る）で、点の層どうし・
+ * 基礎地図の文字とも判定する。同じ層の中で重なると、残す順（`sortKeyExpression`）の先の印を残す。2点以上を束ねた代表点は、同じ印の文字として右に数を出す（数だけが残ることは無い）。
+ * 名前を持つ層の押せない点（名前の無い点）は丸い枠で少し薄く描く。描き始める縮尺を宣言した層は、それより引いた縮尺では描かない。 */
+function pointLook(
+  layer: PointLayer,
+): Pick<SceneLayerEntry, "source" | "sourceLayer" | "type" | "paint" | "layout" | "minzoom" | "hitTargets"> {
+  return {
+    source: POINT_TILE_SOURCES[layer.tile_kind].sourceId,
+    sourceLayer: POINT_TILE_SOURCES[layer.tile_kind].sourceLayer,
+    type: "symbol",
+    hitTargets: [POINT_HIT_TARGET],
+    ...(layer.point_min_zoom === null ? {} : { minzoom: layer.point_min_zoom }),
+    paint: {
+      "icon-opacity": byNamed(layer, POINT.opacityByLayer[layer.attr_id] ?? 1, UNNAMED_OPACITY_RATIO),
+      "text-color": palette.semantic.mark_glyph,
+      "text-halo-color": palette.semantic.mark_halo,
+      "text-halo-width": 1.5,
+    },
+    layout: {
+      "icon-image": iconImageExpression(layer, glyphCategories(layer)),
+      "icon-size": iconScaleExpression(layer),
+      "symbol-sort-key": sortKeyExpression(layer),
+      "text-field": ["case", [">", COUNT, 1], ["to-string", COUNT], ""],
+      "text-font": COUNT_TEXT_FONT,
+      "text-size": COUNT_TEXT_SIZE_PX,
+      "text-anchor": "left",
+      "text-offset": ["literal", [POINT.iconSizePx / 2 / COUNT_TEXT_SIZE_PX, 0]],
+    },
+  };
 }
 
 export const pointGroup = declareGroup<PointState>((state) => {
@@ -236,50 +328,14 @@ export const pointGroup = declareGroup<PointState>((state) => {
     tiles: tiles.urls[name],
   }));
 
-  const layers: readonly SceneLayerEntry[] = POINT_LAYERS.map((layer) => {
-    const glyphs = glyphCategories(layer);
-    const opacity = POINT.opacityByLayer[layer.attr_id];
-    const filter = layerFilter(layer, state.hiddenKeys);
-    const hidesBasemapPois = basemapPoisHiddenBy(layer, state.hiddenKeys);
-    return {
-      role: layer.attr_id,
-      // 重なった絵を省く層は、基礎地図の文字に場所を譲る（文字と重なった絵のほうを省く）。
-      tier: layer.point_thinning === null ? "point" : "pointUnderLabels",
-      source: POINT_TILE_SOURCES[layer.tile_kind].sourceId,
-      sourceLayer: POINT_TILE_SOURCES[layer.tile_kind].sourceLayer,
-      ...(glyphs.length === 0
-        ? {
-            type: "circle" as const,
-            paint: {
-              "circle-color": colorExpression(layer),
-              "circle-radius": radiusExpression(layer),
-              "circle-stroke-width": POINT.strokeWidthPx,
-              "circle-stroke-color": palette.semantic.mark_stroke,
-              "circle-opacity": opacity,
-            },
-          }
-        : {
-            type: "symbol" as const,
-            paint: { "icon-opacity": opacity },
-            layout: {
-              "icon-image": iconImageExpression(layer, glyphs),
-              ...(layer.point_thinning === null
-                ? // 間引かない。丸い点と同じく、重なっても全部描く。
-                  { "icon-allow-overlap": true, "icon-ignore-placement": true }
-                : // 重なった絵を省く。自分どうしで省き合うには、置いた絵がほかの絵を退ける（ignore-placementを付けない）。
-                  {
-                    "icon-allow-overlap": false,
-                    "icon-ignore-placement": false,
-                    "symbol-sort-key": thinningSortKey(layer, layer.point_thinning),
-                  }),
-            },
-          }),
-      visible: state.visible[layer.attr_id] === true,
-      hitTargets: [POINT_HIT_TARGET],
-      filter,
-      hidesBasemapPois,
-    };
-  });
+  const points: readonly SceneLayerEntry[] = STACKED_POINT_LAYERS.map((layer) => ({
+    role: layer.attr_id,
+    tier: "point",
+    ...pointLook(layer),
+    visible: state.visible[layer.attr_id] === true,
+    filter: layerFilter(layer, state.hiddenKeys, state.nearPath),
+    hidesBasemapPois: basemapPoisHiddenBy(layer, state.hiddenKeys),
+  }));
 
-  return { sources, layers, images: POINT_IMAGES };
+  return { sources, layers: points, images: POINT_IMAGES };
 });

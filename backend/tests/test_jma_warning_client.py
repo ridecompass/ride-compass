@@ -2,19 +2,20 @@
 
 入口は`fetch_area_data`・`fetch_warning_documents`の2つで、気象庁の代役（respx）へ本物の`httpx.AsyncClient`を
 向けて呼ぶ。見るのは、返る値（`AreaMaster`・`WarningBulletin`。種別はコードを名称へ、状態を発表中かへ読み替えて
-持つ）と、取得に失敗したときのNone、プロセス内キャッシュで上流を引き直さないこと（電文は府県予報区ごと）。
+持つ）と、取得に失敗したときのNone、電文のキャッシュを府県予報区ごとに持つこと。
 コード表`WARNING_KINDS`（配信元の資料の写し）は差し替えず、期待する名称は配信元の資料の別表3から引く。
 
 ここで見ないもの:
-- キャッシュの骨格（失敗をキャッシュしない・ログの`fields`）→ `test_simple_api_client.py`
+- キャッシュの骨格（キャッシュ中は上流を引き直さない・失敗をキャッシュしない・ログの`fields`）→ `test_simple_api_client.py`
 - 地域マスタを辿って警報エリアを解く → `test_jma_area.py`
 - 電文から区域の種別を引く・発表中の警報の抽出 → `test_jma_warning_domain.py`
 - 地点から警報を返すまでの通し → `test_warning_service.py`
 """
 
-import logging
 
 import pytest
+
+from app.infrastructure.simple_api_client import UnexpectedShapeError
 import respx
 
 from app.domain.jma_area import AreaEntry, AreaMaster
@@ -31,7 +32,7 @@ def _warning_url(office_code: str) -> str:
 # --- 地域マスタ ---
 
 
-async def test_area_master_keeps_the_parent_of_each_level():
+async def test_area_master_keeps_the_parent_and_name_of_each_level():
     payload = {
         "centers": {"010300": {"name": "気象庁"}},
         "offices": {"130000": {"name": "東京都"}},
@@ -43,55 +44,10 @@ async def test_area_master_keeps_the_parent_of_each_level():
     master = await jma_warning_client.fetch_area_data(answering(json=payload), new_area_data_cache())
 
     assert master == AreaMaster(
-        class20s={"1310100": AreaEntry(parent="130011")},
-        class15s={"130011": AreaEntry(parent="130010")},
-        class10s={"130010": AreaEntry(parent="130000")},
+        class20s={"1310100": AreaEntry(parent="130011", name="千代田区")},
+        class15s={"130011": AreaEntry(parent="130010", name="２３区西部")},
+        class10s={"130010": AreaEntry(parent="130000", name="東京地方")},
     )
-
-
-async def test_area_master_tolerates_missing_or_malformed_sections(caplog):
-    """無い階層・辞書でない階層は空、辞書でない区域は載せず、載せなかった数を出す。親の無い区域と、
-    文字列でない親はNoneで持つ。"""
-    payload = {
-        "class20s": {"1310100": {"name": "千代田区"}, "1310200": {"parent": ["130011"], "name": 1}, "9999999": "壊れた行"},
-        "class15s": ["辞書でない"],
-    }
-
-    with caplog.at_level(logging.WARNING, logger="ridecompass.jma_warning_client"):
-        master = await jma_warning_client.fetch_area_data(answering(json=payload), new_area_data_cache())
-
-    assert master == AreaMaster(
-        class20s={"1310100": AreaEntry(parent=None), "1310200": AreaEntry(parent=None)},
-        class15s={},
-        class10s={},
-    )
-    assert "unreadable=1 entries=3" in caplog.text
-
-
-async def test_area_master_is_fetched_once_while_cached():
-    router = respx.Router()
-    route = router.get(jma_warning_client.JMA_AREA_JSON_URL).respond(json={"class20s": {}})
-    client = client_for(router)
-
-    cache = new_area_data_cache()
-
-    await jma_warning_client.fetch_area_data(client, cache)
-    await jma_warning_client.fetch_area_data(client, cache)
-
-    assert route.call_count == 1
-
-
-@pytest.mark.parametrize(
-    "response",
-    [
-        pytest.param({"status_code": 500}, id="サーバの失敗"),
-        pytest.param({"json": ["class20s"]}, id="辞書でない"),
-        pytest.param({"text": "<html>"}, id="JSONでない"),
-    ],
-)
-async def test_area_master_failure_is_none(response):
-    assert await jma_warning_client.fetch_area_data(answering(**response), new_area_data_cache()) is None
-
 
 # --- 警報・注意報の電文 ---
 
@@ -153,78 +109,19 @@ async def test_first_item_wins_when_an_area_appears_twice():
 
     assert bulletin.class20_kinds == {"1310100": (AreaWarningKind(code="10", name="大雨注意報", active=True, additions=()),)}
 
-
-async def test_malformed_parts_of_a_bulletin_are_skipped(caplog):
-    """辞書でない電文・項目・種別、コードが文字列でない地域、コード・状態が文字列でない種別は載せず、
-    載せなかった数を出す。区域の項目・種別が配列でない・`warning`が無い電文は、
-    その部分を空として持つ。付加事項は配列の中の文字列だけを持つ。"""
-    payload = [
-        "辞書でない電文",
-        {
-            "warning": {
-                "class20Items": [
-                    "辞書でない項目",
-                    {"areaCode": 1310100, "kinds": []},
-                    {"kinds": []},
-                    {
-                        "areaCode": "1310200",
-                        "kinds": [
-                            "辞書でない種別",
-                            {"code": 10, "status": "発表"},
-                            {"code": "14", "status": ["発表"]},
-                            {"code": "10", "status": "発表", "additions": None},
-                            {"code": "15", "status": "継続", "additions": ["雷", 1]},
-                        ],
-                    },
-                    {"areaCode": "1310300", "kinds": None},
-                ],
-                "class10Items": {"130010": "配列でない"},
-            },
-        },
-        {"reportDatetime": "2026-08-29T17:00:00+09:00", "warning": "辞書でない"},
-    ]
-
-    with caplog.at_level(logging.WARNING, logger="ridecompass.jma_warning_client"):
-        bulletins = await jma_warning_client.fetch_warning_documents(
-            answering(json=payload), "130000", new_warning_cache()
-        )
-
-    assert bulletins == [
-        WarningBulletin(
-            class20_kinds={
-                "1310200": (
-                    AreaWarningKind(code="10", name="大雨注意報", active=True, additions=()),
-                    AreaWarningKind(code="15", name="強風注意報", active=True, additions=("雷",)),
-                ),
-                "1310300": (),
-            },
-            class10_kinds={},
-        ),
-        WarningBulletin(class20_kinds={}, class10_kinds={}),
-    ]
-    assert "unreadable=7 bulletins=3" in caplog.text
-
-
-@pytest.mark.parametrize(("status", "logged"), [("発表", True), ("解除", False)], ids=["issued", "lifted"])
-async def test_a_code_missing_from_the_table_is_left_out_and_logged_once_per_fetch_while_issued(caplog, status, logged):
-    """表が配信元のコード表より古くなった印として、運用者に見えるように出す。電文ごとに出すと、同じコードが
-    種類の別の電文に並ぶたびに重なる。発表中でないものは画面へ出ないので、表に無くても出さない。"""
+@pytest.mark.parametrize("status", ["発表", "解除"])
+async def test_an_issued_code_missing_from_the_table_fails_the_fetch(status):
+    """表が配信元のコード表より古くなった印。発表中の警報を出さずに飛ばすと、出ている警報が消えて見える。発表中でないものは
+    画面へ出ないので、表に無くても失敗にしない。"""
     kinds = [{"code": "t_unknown", "status": status}]
-    payload = [
-        {"warning": {"class20Items": [{"areaCode": "1310100", "kinds": kinds}]}},
-        {"warning": {"class10Items": [{"areaCode": "130010", "kinds": kinds}]}},
-    ]
+    payload = [{"warning": {"class20Items": [{"areaCode": "1310100", "kinds": kinds}]}}]
+    fetch = jma_warning_client.fetch_warning_documents(answering(json=payload), "130000", new_warning_cache())
 
-    with caplog.at_level(logging.WARNING, logger="ridecompass.jma_warning_client"):
-        bulletins = await jma_warning_client.fetch_warning_documents(
-            answering(json=payload), "130000", new_warning_cache()
-        )
-
-    assert bulletins == [
-        WarningBulletin(class20_kinds={"1310100": ()}, class10_kinds={}),
-        WarningBulletin(class20_kinds={}, class10_kinds={"130010": ()}),
-    ]
-    assert [record.getMessage().count("t_unknown") for record in caplog.records] == ([1] if logged else [])
+    if status == "発表":
+        with pytest.raises(UnexpectedShapeError, match="t_unknown"):
+            await fetch
+    else:
+        assert await fetch == [WarningBulletin(class20_kinds={"1310100": ()}, class10_kinds={})]
 
 
 async def test_bulletins_are_cached_per_office():
@@ -241,14 +138,3 @@ async def test_bulletins_are_cached_per_office():
 
     assert (tokyo.call_count, osaka.call_count) == (1, 1)
 
-
-@pytest.mark.parametrize(
-    "response",
-    [
-        pytest.param({"status_code": 404}, id="無い府県予報区"),
-        pytest.param({"json": {"warning": {}}}, id="配列でない"),
-        pytest.param({"text": "["}, id="JSONでない"),
-    ],
-)
-async def test_bulletin_failure_is_none(response):
-    assert await jma_warning_client.fetch_warning_documents(answering(**response), "130000", new_warning_cache()) is None

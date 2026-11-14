@@ -1,12 +1,10 @@
 """本番DBの状態を返す管理API。
 
-`GET /api/admin/db-status`（Basic認証必須）は、派生データの鮮度
-（`derived_data_freshness.py`）が拠って立つ**土台**の側を返す——生データ取込そのものが
+`GET /api/admin/db-status`（Basic認証必須）は、派生データが拠って立つ**土台**の側を返す——生データ取込そのものが
 失敗していないか、行が本当に入っているか、プランナが使う統計が取れているか、
 トランザクションが放置されていないか。
 
-認可を要求する理由・DB例外の扱いは`get_derived_data_freshness`と同じ（全表走査を伴うため
-認可なしに公開しない、DB例外は空レポートへ倒さず503（`api/admin_db_errors.py`）で返す）。
+全表走査を伴うため認可なしに公開しない。DB例外は空レポートへ倒さず503で返す。
 """
 
 from fastapi import APIRouter, Depends

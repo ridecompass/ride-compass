@@ -6,13 +6,11 @@ import BackendStatus from "@/features/admin/BackendStatus/BackendStatus";
 import DebugPanel from "@/features/admin/DebugPanel/DebugPanel";
 import BackendLogsPanel from "@/features/admin/BackendLogsPanel/BackendLogsPanel";
 import SystemStatusPanel from "@/features/admin/SystemStatusPanel/SystemStatusPanel";
-import AxisStudio from "@/features/admin/AxisStudio/AxisStudio";
-import DraftWayValuesMap from "@/features/map/DraftWayValuesMap/DraftWayValuesMap";
-import MaterialCoveragePanel from "@/features/admin/AxisStudio/MaterialCoveragePanel";
-import DerivedDataFreshnessPanel from "@/features/admin/AxisStudio/DerivedDataFreshnessPanel";
-import DbStatusPanel from "@/features/admin/AxisStudio/DbStatusPanel";
-import TileCachePanel from "@/features/admin/AxisStudio/TileCachePanel";
-import TuningPanel from "@/features/admin/AxisStudio/TuningPanel";
+import MaterialCoveragePanel from "@/features/admin/AdminPanels/MaterialCoveragePanel";
+import DerivedDataFreshnessPanel from "@/features/admin/AdminPanels/DerivedDataFreshnessPanel";
+import DbStatusPanel from "@/features/admin/AdminPanels/DbStatusPanel";
+import TileCachePanel from "@/features/admin/AdminPanels/TileCachePanel";
+import TuningPanel from "@/features/admin/AdminPanels/TuningPanel";
 import { useDebugEnabled } from "@/hooks/useDebugLog";
 import { buttonVariants } from "@/components/ui/Button/Button";
 import { Toggle } from "@/components/ui/Toggle/Toggle";
@@ -22,30 +20,30 @@ import { cardVariants } from "@/components/ui/Card/Card";
 
 const TAB_PANEL_CLASS = cn(cardVariants({ variant: "outline" }), "flex flex-col gap-3");
 
-// 軸スタジオ・開発者向け機能をまとめた独立URLの管理画面。一般向けメイン
-// ページ（/）とはURLレベルで分離しており、権限制御はこのルーティング境界
-// （src/proxy.ts、matcher: ["/admin","/admin/:path*"]）にHTTP Basic認証として敷いている
-// （環境変数ADMIN_BASIC_AUTH_USERNAME/PASSWORD未設定時は常に到達不可）。
+// 管理（材料・較正値・データ保守）と開発者向け機能をまとめた画面。認証はこのページの外（URLの境界）が持つ。
 export default function AdminPage() {
   const debugEnabled = useDebugEnabled();
   const [systemStatusOpen, setSystemStatusOpen] = useState(false);
 
   return (
     <div className="mx-auto flex w-full min-w-0 max-w-3xl flex-col gap-4 p-4">
-      <h1 className={textVariants({ variant: "title" })}>軸スタジオ・開発者ツール</h1>
+      <h1 className={textVariants({ variant: "title" })}>管理・開発者ツール</h1>
 
-      <Tabs className="flex flex-col gap-3" defaultValue="axisStudio">
+      <Tabs className="flex flex-col gap-3" defaultValue="materials">
         <TabsList>
-          <TabsTrigger value="axisStudio">軸スタジオ</TabsTrigger>
-          <TabsTrigger value="materials">材料</TabsTrigger>
-          <TabsTrigger value="tuning">較正値</TabsTrigger>
-          <TabsTrigger value="maintenance">データ保守</TabsTrigger>
-          <TabsTrigger value="developer">開発者</TabsTrigger>
+          <TabsTrigger usage={null} value="materials">
+            材料
+          </TabsTrigger>
+          <TabsTrigger usage={null} value="tuning">
+            較正値
+          </TabsTrigger>
+          <TabsTrigger usage={null} value="maintenance">
+            データ保守
+          </TabsTrigger>
+          <TabsTrigger usage={null} value="developer">
+            開発者
+          </TabsTrigger>
         </TabsList>
-
-        <TabsContent className={TAB_PANEL_CLASS} value="axisStudio">
-          <AxisStudio calibrationMap={(props) => <DraftWayValuesMap {...props} />} />
-        </TabsContent>
 
         <TabsContent className={TAB_PANEL_CLASS} value="materials">
           <MaterialCoveragePanel />
@@ -66,6 +64,7 @@ export default function AdminPage() {
             <div className="inline-flex items-center gap-2">
               <DebugPanel />
               <Toggle
+                usage={null}
                 variant="plain"
                 className={buttonVariants({ size: "sm" })}
                 pressed={systemStatusOpen}
@@ -77,14 +76,9 @@ export default function AdminPage() {
             <BackendStatus />
           </div>
           {debugEnabled && (
-            // デバッグログ（地図の表示イベント・API呼び出しのライブログ）はDebugConsole
-            // 自体が地図インスタンスに紐づく情報のため、地図の無いこのページへ置いても
-            // 記録先lib/debugLog.tsがタブ間で共有されず実質機能しない。「/admin=デバッグ
-            // モードの設定」「/=地図を操作しながら見るライブログ本体」という役割分担にし、
-            // 閲覧はトップページ（/）で行う（デバッグモードのON/OFF自体は上のDebugPanelが
-            // localStorage経由でトップページと共有する）。
+            // ログは地図を操作しながら見るもので、地図の無いこのページには出さない。
             <p className={textVariants({ variant: "hint" })}>
-              デバッグログの表示はトップページ（/）のヘッダーアイコンで行えます。
+              デバッグログはトップページ（/）のヘッダーアイコンから表示できます。
             </p>
           )}
           <SystemStatusPanel open={systemStatusOpen} onClose={() => setSystemStatusOpen(false)} />

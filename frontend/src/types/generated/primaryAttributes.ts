@@ -6,8 +6,10 @@ export const primaryAttributes = [
     "geometry": "line",
     "point_facts": [],
     "tile_kind": null,
-    "point_thinning": null,
     "point_name_property": null,
+    "point_min_zoom": null,
+    "point_priority": 0,
+    "point_priority_axes": [],
     "display_axes": []
   },
   {
@@ -16,8 +18,10 @@ export const primaryAttributes = [
     "geometry": "line",
     "point_facts": [],
     "tile_kind": null,
-    "point_thinning": null,
     "point_name_property": null,
+    "point_min_zoom": null,
+    "point_priority": 0,
+    "point_priority_axes": [],
     "display_axes": []
   },
   {
@@ -26,8 +30,10 @@ export const primaryAttributes = [
     "geometry": "line",
     "point_facts": [],
     "tile_kind": null,
-    "point_thinning": null,
     "point_name_property": null,
+    "point_min_zoom": null,
+    "point_priority": 0,
+    "point_priority_axes": [],
     "display_axes": []
   },
   {
@@ -36,8 +42,10 @@ export const primaryAttributes = [
     "geometry": "line",
     "point_facts": [],
     "tile_kind": null,
-    "point_thinning": null,
     "point_name_property": null,
+    "point_min_zoom": null,
+    "point_priority": 0,
+    "point_priority_axes": [],
     "display_axes": []
   },
   {
@@ -46,8 +54,10 @@ export const primaryAttributes = [
     "geometry": "line",
     "point_facts": [],
     "tile_kind": null,
-    "point_thinning": null,
     "point_name_property": null,
+    "point_min_zoom": null,
+    "point_priority": 0,
+    "point_priority_axes": [],
     "display_axes": []
   },
   {
@@ -56,8 +66,10 @@ export const primaryAttributes = [
     "geometry": "line",
     "point_facts": [],
     "tile_kind": null,
-    "point_thinning": null,
     "point_name_property": null,
+    "point_min_zoom": null,
+    "point_priority": 0,
+    "point_priority_axes": [],
     "display_axes": []
   },
   {
@@ -66,8 +78,10 @@ export const primaryAttributes = [
     "geometry": "line",
     "point_facts": [],
     "tile_kind": null,
-    "point_thinning": null,
     "point_name_property": null,
+    "point_min_zoom": null,
+    "point_priority": 0,
+    "point_priority_axes": [],
     "display_axes": []
   },
   {
@@ -76,8 +90,10 @@ export const primaryAttributes = [
     "geometry": "line",
     "point_facts": [],
     "tile_kind": null,
-    "point_thinning": null,
     "point_name_property": null,
+    "point_min_zoom": null,
+    "point_priority": 0,
+    "point_priority_axes": [],
     "display_axes": []
   },
   {
@@ -86,8 +102,10 @@ export const primaryAttributes = [
     "geometry": "line",
     "point_facts": [],
     "tile_kind": null,
-    "point_thinning": null,
     "point_name_property": null,
+    "point_min_zoom": null,
+    "point_priority": 0,
+    "point_priority_axes": [],
     "display_axes": []
   },
   {
@@ -96,8 +114,10 @@ export const primaryAttributes = [
     "geometry": "line",
     "point_facts": [],
     "tile_kind": null,
-    "point_thinning": null,
     "point_name_property": null,
+    "point_min_zoom": null,
+    "point_priority": 0,
+    "point_priority_axes": [],
     "display_axes": []
   },
   {
@@ -106,8 +126,10 @@ export const primaryAttributes = [
     "geometry": "area",
     "point_facts": [],
     "tile_kind": null,
-    "point_thinning": null,
     "point_name_property": null,
+    "point_min_zoom": null,
+    "point_priority": 0,
+    "point_priority_axes": [],
     "display_axes": []
   },
   {
@@ -116,8 +138,10 @@ export const primaryAttributes = [
     "geometry": "point",
     "point_facts": [],
     "tile_kind": "poi",
-    "point_thinning": null,
     "point_name_property": null,
+    "point_min_zoom": 15,
+    "point_priority": 3,
+    "point_priority_axes": [],
     "display_axes": [
       {
         "key": "kind",
@@ -131,6 +155,7 @@ export const primaryAttributes = [
               "traffic_signals"
             ],
             "description": "信号機。信号付きの横断歩道もここに入る[OSM の highway=traffic_signals・crossing]。",
+            "glyph": "signal",
             "color": "#885270"
           },
           {
@@ -140,6 +165,7 @@ export const primaryAttributes = [
               "crossing"
             ],
             "description": "信号の無い横断歩道[OSM の highway=crossing]。",
+            "glyph": "crosswalk",
             "color": "#8d5449"
           },
           {
@@ -149,6 +175,7 @@ export const primaryAttributes = [
               "stop"
             ],
             "description": "一時停止の標識がある所[OSM の highway=stop]。",
+            "glyph": "stop_sign",
             "color": "#736134"
           },
           {
@@ -157,7 +184,8 @@ export const primaryAttributes = [
             "values": [
               "give_way"
             ],
-            "description": "相手に道を譲る（徐行する）標識がある所[OSM の highway=give_way]。",
+            "description": "相手に道を譲る[徐行する]標識がある所[OSM の highway=give_way]。",
+            "glyph": "yield",
             "color": "#496c44"
           },
           {
@@ -167,7 +195,8 @@ export const primaryAttributes = [
               "level_crossing",
               "railway_crossing"
             ],
-            "description": "線路（路面電車を含む）を渡る所。車道の踏切も歩道・自転車道の踏切も入る[OSM の railway タグ]。",
+            "description": "線路[路面電車を含む]を渡る所。車道の踏切も歩道・自転車道の踏切も入る[OSM の railway タグ]。",
+            "glyph": "railway",
             "color": "#016f6b"
           },
           {
@@ -177,6 +206,7 @@ export const primaryAttributes = [
               "barrier"
             ],
             "description": "車止めの柱・ゲート・柵など、道をふさいで止まるか押して通る所[OSM の barrier タグ]。",
+            "glyph": "barrier",
             "color": "#0c6b8b"
           },
           {
@@ -185,7 +215,8 @@ export const primaryAttributes = [
             "values": [
               "traffic_calming"
             ],
-            "description": "車の速度を落とさせる段差（ハンプ）や道幅の絞り込み[OSM の traffic_calming タグ]。",
+            "description": "車の速度を落とさせる段差[ハンプ]や道幅の絞り込み[OSM の traffic_calming タグ]。",
+            "glyph": "hump",
             "color": "#5e5f8d"
           }
         ],
@@ -204,8 +235,13 @@ export const primaryAttributes = [
       }
     ],
     "tile_kind": "accident",
-    "point_thinning": null,
     "point_name_property": null,
+    "point_min_zoom": 15,
+    "point_priority": 0,
+    "point_priority_axes": [
+      "severity",
+      "party"
+    ],
     "display_axes": [
       {
         "key": "party",
@@ -219,6 +255,7 @@ export const primaryAttributes = [
               true
             ],
             "description": "当事者に自転車が含まれる事故[警察庁の交通事故統計の当事者種別]。",
+            "glyph": "bicycle_crash",
             "color": "#5791ba"
           },
           {
@@ -227,7 +264,8 @@ export const primaryAttributes = [
             "values": [
               false
             ],
-            "description": "当事者に自転車が含まれない事故（車どうし・車と歩行者など）。",
+            "description": "当事者に自転車が含まれない事故[車どうし・車と歩行者など]。",
+            "glyph": "crash",
             "color": "#a7865c"
           }
         ],
@@ -253,7 +291,7 @@ export const primaryAttributes = [
             "values": [
               false
             ],
-            "description": "死者の記録が無い事故（負傷事故）。",
+            "description": "死者の記録が無い事故[負傷事故]。",
             "radius_px": 3
           }
         ],
@@ -267,8 +305,10 @@ export const primaryAttributes = [
     "geometry": "point",
     "point_facts": [],
     "tile_kind": null,
-    "point_thinning": null,
     "point_name_property": null,
+    "point_min_zoom": null,
+    "point_priority": 0,
+    "point_priority_axes": [],
     "display_axes": []
   },
   {
@@ -277,8 +317,10 @@ export const primaryAttributes = [
     "geometry": "area",
     "point_facts": [],
     "tile_kind": null,
-    "point_thinning": null,
     "point_name_property": null,
+    "point_min_zoom": null,
+    "point_priority": 0,
+    "point_priority_axes": [],
     "display_axes": []
   },
   {
@@ -287,8 +329,10 @@ export const primaryAttributes = [
     "geometry": "point",
     "point_facts": [],
     "tile_kind": "poi",
-    "point_thinning": null,
     "point_name_property": "name",
+    "point_min_zoom": null,
+    "point_priority": 2,
+    "point_priority_axes": [],
     "display_axes": [
       {
         "key": "kind",
@@ -366,18 +410,10 @@ export const primaryAttributes = [
     "geometry": "point",
     "point_facts": [],
     "tile_kind": "stop_place",
-    "point_thinning": {
-      "rows": [
-        "temple_shrine",
-        "bath",
-        "bicycle",
-        "lodging",
-        "scenic",
-        "eat_drink"
-      ],
-      "ratio_property": "confidence"
-    },
     "point_name_property": "name",
+    "point_min_zoom": null,
+    "point_priority": 1,
+    "point_priority_axes": [],
     "display_axes": [
       {
         "key": "group",

@@ -1,43 +1,45 @@
 """ルート生成を公開の入口から確かめるテストが共有する、小さな道路網とその渡し口。
 
-3×3の格子（1辺約1km。長さの要るテストには大きな格子・任意の道と地点の道路網も）を`RoadNetwork`で組み、プロセス境界（DB・道路網の置き場・天気の予報ファイル）だけを代役にして、
+3×3の格子（1辺約1km。長さの要るテストには大きな格子・任意の道と地点の道路網も）を`RoadNetwork`で組み、プロセス境界（DB・天気の予報ファイル）だけを代役にし、道路網は本番と同じ置き場（一時ディレクトリ）から読ませて、
 本物の`GraphService`・エンジンの組み立て（`services/route_generation_setup.py: assemble_route_generation_setup`）・戦略層を通す。
 
 使う側: `test_route_generation_behavior.py`（戦略層の入口）・`test_routes_generate.py`（HTTPの入口）・
 `test_routing.py`（生成の経路がPythonから呼ぶJIT）・`test_route_generator.py`（経由地の無い周回の指定だけ）。
 """
 
-from collections.abc import Callable
-from contextlib import contextmanager
+import itertools
+from datetime import datetime, timedelta
+import shutil
 from dataclasses import replace
+from pathlib import Path
 
 import numpy as np
 
 from app.services.route_generation_setup import assemble_route_generation_setup
 from app.domain.geo import bearing_between, haversine_distance_km
-from app.domain.graph import node_key
+from app.domain.graph import edge_key, node_key, parse_edge_key
 from app.domain.material_catalog import GRADIENT_PERCENT
 from app.domain.landcover import LANDCOVER_CLASSES
 from app.domain.traffic import stop_count_material_ids
+from app.domain.cost_preference import CostPreference
 from app.domain.road_avoidance import AvoidanceLevel
 from app.domain.road_network import RoadNetwork
 from app.domain.route import Coordinates
-from app.domain.route_points import RoutePointHit
-from app.domain.route_preference import RoutePreference
 from app.domain.route_request import FixedPoints, RequestedConditions
+from app.domain.msm import MsmBlock, MsmGrid
 from app.domain.wind import WindForecastSeries
 from app.infrastructure import road_network_store
-from app.services.graph_service import GraphService
-from app.services.weather_service import WeatherService
-from tests.axis_system_fixture import axis_definition, replaced_axis_definitions
+from app.services.graph_service import GraphService, SearchMemory
+from tests.profile_fixture import two_point_profiles
 
 #: 道の区分の条件と0次ハードフィルタが読む事実の列。
 HIGHWAY, TUNNEL = "highway", "has_tunnel"
 #: 経由地も目的地も置かない周回の指定。
 NO_POINTS = FixedPoints(waypoints=[], destination=None)
 
-AVOID_AXIS = "avoid"
-BAD_MATERIAL = "m_bad"
+#: 避けたい道の材料（値1の道）。道のストレスの軸（`tests/cost_axes_fixture.py: cost_axes`）が読む。本番の軸と同じく宣言のある
+#: 数の材料を使う（軸の事実は、その宣言の名前と単位で出す）。
+BAD_MATERIAL = "accident_count_per_km_year"
 BASE_LAT, BASE_LON = 35.60, 139.60
 LAT_STEP, LON_STEP = 0.009, 0.011  # 緯度・経度とも約1km
 
@@ -49,34 +51,27 @@ WAYS = {
     **{200 + row * 3 + col: (NODE_OF[row, col], NODE_OF[row + 1, col]) for row in range(2) for col in range(3)},
 }
 SOUTH_WEST, NORTH_EAST, CENTER = NODE_OF[0, 0], NODE_OF[2, 2], NODE_OF[1, 1]
-SOUTH_EAST, NORTH_WEST = NODE_OF[0, 2], NODE_OF[2, 0]
-COORDINATES = {
-    osm: (BASE_LAT + row * LAT_STEP, BASE_LON + col * LON_STEP) for (row, col), osm in NODE_OF.items()
-}
+SOUTH_EAST = NODE_OF[0, 2]
+
+
+def _grid_point(row: int, col: int) -> tuple[float, float]:
+    return BASE_LAT + row * LAT_STEP, BASE_LON + col * LON_STEP
+
+
+COORDINATES = {osm: _grid_point(row, col) for (row, col), osm in NODE_OF.items()}
 #: 北東の角のすぐ東にある、格子とつながらない短い道（2ノード）。孤立した小塊の代わり。
 ISLAND_NODES = {90: (COORDINATES[NORTH_EAST][0], COORDINATES[NORTH_EAST][1] + 0.004),
                 91: (COORDINATES[NORTH_EAST][0], COORDINATES[NORTH_EAST][1] + 0.008)}
 ISLAND_WAY = 300
+ALL_COORDINATES = {**COORDINATES, **ISLAND_NODES}
 
 
-def _coordinates(osm_node_id: int) -> tuple[float, float]:
-    return {**COORDINATES, **ISLAND_NODES}[osm_node_id]
-
-
-def grid_network(
-    *, bad_ways=(), oneway_ways=(), motorway_ways=(), island=False, no_gradient_ways=(),
-    stop_density_of=None, gradient_of=None, elevation_of=None, tunnel_ways=(), landcover_of=None,
-) -> RoadNetwork:
+def grid_network(*, island=False, **attributes) -> RoadNetwork:
     """3×3の格子。`island`で格子とつながらない道を足す。ほかの引数は`road_network`と同じ。"""
     ways = dict(WAYS)
     if island:
         ways[ISLAND_WAY] = tuple(ISLAND_NODES)
-    return road_network(
-        ways, {**COORDINATES, **ISLAND_NODES}, bad_ways=bad_ways, oneway_ways=oneway_ways,
-        motorway_ways=motorway_ways, no_gradient_ways=no_gradient_ways,
-        stop_density_of=stop_density_of, gradient_of=gradient_of, elevation_of=elevation_of, tunnel_ways=tunnel_ways,
-        landcover_of=landcover_of,
-    )
+    return road_network(ways, ALL_COORDINATES, **attributes)
 
 
 def lattice_node(row: int, col: int) -> int:
@@ -99,10 +94,7 @@ def lattice_ways(size: int) -> dict[int, tuple[int, int]]:
 def lattice_network(size: int, **attributes) -> RoadNetwork:
     """`size`×`size`の格子（1辺約1km、道は`lattice_ways`）。3×3では足りない長さ（経由地を通る周回等）を見るときに使う。
     `attributes`は`road_network`の道の性質（既定はどの道も平らで、避けたい材料を持たない）。"""
-    coordinates = {
-        lattice_node(row, col): (BASE_LAT + row * LAT_STEP, BASE_LON + col * LON_STEP)
-        for row in range(size) for col in range(size)
-    }
+    coordinates = {lattice_node(row, col): _grid_point(row, col) for row in range(size) for col in range(size)}
     return road_network(lattice_ways(size), coordinates, **attributes)
 
 
@@ -150,10 +142,20 @@ def road_network(
         start_elevation[way_of_row == way] = np.where(forward[way_of_row == way], start_m, end_m)
         end_elevation[way_of_row == way] = np.where(forward[way_of_row == way], end_m, start_m)
     climb = end_elevation - start_elevation
+    distance_m = np.array([haversine_distance_km(a, b) * 1000 for a, b in points])
+    # 道は一様な坂なので、一番急な勾配は平均の勾配そのもの。
+    grade = climb / distance_m * 100
+    # 断面は両端の2点。標高のある道はその標高、ほかは勾配の材料どおりに0mから登る（勾配の値の無い道は点を持たない）。
+    known = ~np.isnan(start_elevation)
+    profile_start = np.where(known, start_elevation, np.where(np.isnan(gradient), np.nan, 0.0))
+    profile_end = np.where(known, end_elevation, gradient / 100 * distance_m)
     return RoadNetwork(
         revision=1,
         node_osm_id=node_ids, node_lat=lat, node_lon=lon,
         node_has_signals=np.zeros(len(node_ids), dtype=bool), node_max_rank=np.zeros(len(node_ids), dtype=np.int64),
+        # 集まる道の本数は、1本1区間の道の端として現れる回数（一方通行の道も数える）。
+        node_branch_count=np.bincount(
+            [row_of[osm] for pair in ways.values() for osm in pair], minlength=len(node_ids)).astype(np.int16),
         edge_way_id=way_of_row, edge_segment=np.zeros(n, dtype=np.int32),
         edge_forward=forward,
         edge_from=tail, edge_to=head,
@@ -172,11 +174,13 @@ def road_network(
         categorical_ids=(HIGHWAY,),
         categorical_codes=np.where(np.isin(way_of_row, list(motorway_ways)), 2, 1).astype(np.int16)[:, None],
         categorical_vocab=((None, "residential", "motorway"),),
-        distance_m=np.array([haversine_distance_km(a, b) * 1000 for a, b in points]),
+        distance_m=distance_m,
         bearing_deg=np.array([bearing_between(a, b) for a, b in points]),
         mid_lat=(lat[tail] + lat[head]) / 2, mid_lon=(lon[tail] + lon[head]) / 2,
         start_elevation_m=start_elevation, end_elevation_m=end_elevation,
         elevation_gain_m=np.maximum(climb, 0.0), elevation_loss_m=np.maximum(-climb, 0.0),
+        steepest_gain_percent=np.maximum(grade, 0.0), steepest_loss_percent=np.maximum(-grade, 0.0),
+        **two_point_profiles(profile_start, profile_end, forward),
     )
 
 
@@ -184,16 +188,13 @@ def road_network(
 
 
 class NetworkRepository:
-    """DBの代役。道路網はどこでも取込範囲の中で、区間の形は両端のノードを結ぶ直線。近くの点は`side_points`
-    （区間の(way, segment)ごとの当たり。無ければどの区間にも無い）。"""
+    """DBの代役。道路網はどこでも取込範囲の中で、区間の形は両端のノードを結ぶ直線。"""
 
-    def __init__(self, network: RoadNetwork,
-                 side_points: dict[tuple[int, int], list[RoutePointHit]] | None = None):
+    def __init__(self, network: RoadNetwork):
         self._coordinates = {
             node_key(int(osm)): [float(lat), float(lon)]
             for osm, lat, lon in zip(network.node_osm_id, network.node_lat, network.node_lon, strict=True)
         }
-        self._side_points = side_points or {}
 
     async def is_covered(self, bbox):
         return True
@@ -204,61 +205,57 @@ class NetworkRepository:
             for edge in edges
         }
 
-    async def get_route_side_points(self, edges):
-        keys = {(edge.osm_way_id, edge.segment_index) for edge in edges}
-        return {key: hits for key, hits in self._side_points.items() if key in keys}
+
+#: 2020〜2035年の毎時の、どこでも無風の予報（格子点1つ。区間はどこでも、一番近い格子点のこの1つを引く）。
+_CALM_HOURS = int((datetime(2035, 1, 1) - datetime(2020, 1, 1)).total_seconds() // 3600)
+CALM = WindForecastSeries(
+    times=[datetime(2020, 1, 1) + timedelta(hours=hour) for hour in range(_CALM_HOURS)],
+    speed_ms=np.zeros((1, _CALM_HOURS)),
+    direction_deg=np.zeros((1, _CALM_HOURS)),
+    lattice=MsmBlock(grid=MsmGrid(lat_min=35.0, lon_min=139.0, d_lat=0.05, d_lon=0.0625, n_lat=1, n_lon=1),
+                     row0=0, col0=0, rows=1, cols=1),
+)
 
 
 class Weather:
-    """天気の代役。出発時点の風は無く、時別の風の予報は`series`（Noneなら無し）を返す。雨の観測は本物の
-    `WeatherService`から読む（Redisの履歴。`tests/rain_history_fake.py: observe`で作る）。"""
+    """天気の代役。時別の風の予報は`series`（省けば無風の`CALM`）を返す。"""
 
-    def __init__(self, series: WindForecastSeries | None = None):
+    def __init__(self, series: WindForecastSeries = CALM):
         self._series = series
-        self._rain = WeatherService()
-
-    async def get_departure_wind(self, origin):
-        return None
 
     async def get_wind_forecast_lattice(self, bbox):
         return self._series
 
-    async def get_station_rain_materials(self, now):
-        return await self._rain.get_station_rain_materials(now)
+
+#: 置くたびに進める道路網の世代。置き場は世代で見分けるので、中身を変えて置くたびに世代を変える。
+_REVISIONS = itertools.count(1)
 
 
-def serve_road_network(monkeypatch, current: Callable[[], RoadNetwork]) -> None:
-    """道路網全体の配列を置き場から読まず、`current`が返すものとして読ませる（`road_network_store.current`の差し替え）。"""
-    monkeypatch.setattr(road_network_store, "current", current)
+def serve_road_network(root: Path, network: RoadNetwork | None) -> None:
+    """道路網全体の配列を、本番と同じ置き場（`road_network_store.save`）へ新しい世代として置く。`root`は
+    `backend/tests/conftest.py: road_network_root`の置き場。`network`がNoneなら置き場を空にする（道路網が無い本番の状態）。"""
+    if network is None:
+        shutil.rmtree(root, ignore_errors=True)
+    else:
+        road_network_store.save(replace(network, revision=next(_REVISIONS)))
 
 
 def generator_for(
-    monkeypatch, network: RoadNetwork, avoid_weight: float, wind: WindForecastSeries | None,
-    max_average_grade_percent: float | None = None,
-    side_points: dict[tuple[int, int], list[RoutePointHit]] | None = None,
+    root: Path, network: RoadNetwork, wind: WindForecastSeries = CALM,
     *, assumed_speed_kmh: float = 20.0, road_avoidance: dict[str, AvoidanceLevel] | None = None,
 ):
-    """道路網を全体の配列として読ませ、本物の`GraphService`とエンジンの上に戦略層（`RouteGenerator`）を組む。"""
-    serve_road_network(monkeypatch, lambda: network)
+    """道路網を全体の配列として置き場へ置き、本物の`GraphService`とエンジンの上に戦略層（`RouteGenerator`）を組む。"""
+    serve_road_network(root, network)
     return assemble_route_generation_setup(
-        GraphService(NetworkRepository(network, side_points)), Weather(wind),
+        GraphService(NetworkRepository(network), SearchMemory()), Weather(wind),
         RequestedConditions(
-            preference_override=RoutePreference(weights={AVOID_AXIS: avoid_weight}),
-            penalty_strength=1.0, max_average_grade_percent=max_average_grade_percent,
-            road_avoidance=road_avoidance or {}, assumed_speed_kmh=assumed_speed_kmh,
+            cost_preference=CostPreference(), road_avoidance=road_avoidance or {}, assumed_speed_kmh=assumed_speed_kmh,
         ),
     ).generator
 
 
-@contextmanager
-def avoid_axis_declared():
-    """避けたい材料が1の区間ほど難しいと評価する公開軸を1本だけ宣言する。"""
-    with replaced_axis_definitions({AVOID_AXIS: axis_definition(AVOID_AXIS, material=BAD_MATERIAL, is_published=True)}):
-        yield
-
-
 def at(osm_node_id: int) -> Coordinates:
-    lat, lon = _coordinates(osm_node_id)
+    lat, lon = ALL_COORDINATES[osm_node_id]
     return Coordinates(latitude=lat, longitude=lon)
 
 
@@ -268,5 +265,53 @@ def node_point(network: RoadNetwork, osm_node_id: int) -> Coordinates:
     return Coordinates(latitude=float(network.node_lat[row]), longitude=float(network.node_lon[row]))
 
 
+def edges_of(candidate) -> list[tuple[int, int, bool]]:
+    """候補の区間の`(道, 区間番号, 順方向)`を、通る順に。"""
+    edges = []
+    for edge_id in candidate.edge_ids:
+        edge = parse_edge_key(edge_id)
+        assert edge is not None, edge_id
+        edges.append(edge)
+    return edges
+
+
+#: 置いた点（経由地・目的地）を通る生成を見る格子（6×6、1辺約1km）。3×3では、置いた点を通っても候補が分かれ、
+#: 距離に合わせる長さが無い。
+LATTICE = lattice_network(6)
+
+
+def lattice_at(row: int, col: int) -> Coordinates:
+    return node_point(LATTICE, lattice_node(row, col))
+
+
+def lattice_ring_edges(side: int) -> list[str]:
+    """`LATTICE`の南西の角（出発地）から東へ回って戻る、1辺`side`kmの正方形の周回の区間の鍵。"""
+    ring = [(0, col) for col in range(side)] + [(row, side) for row in range(side)] \
+        + [(side, col) for col in range(side, 0, -1)] + [(row, 0) for row in range(side, -1, -1)]
+    way_of = {pair: way for way, pair in lattice_ways(6).items()}
+    edges = []
+    for start, end in zip(ring, ring[1:]):
+        tail, head = lattice_node(*start), lattice_node(*end)
+        edges.append(edge_key(way_of[tail, head], 0, True) if (tail, head) in way_of else edge_key(way_of[head, tail], 0, False))
+    return edges
+
+
+def passes_in_order(node_ids: list[str], start: int, stops: list[int], end: int) -> bool:
+    """経路のノードの列`node_ids`が`start`から始まり、`stops`を置いた順に通り、`end`で終わる。"""
+    if node_ids[0] != node_key(start) or node_ids[-1] != node_key(end):
+        return False
+    position = 0
+    for stop in stops:
+        if node_key(stop) not in node_ids[position:]:
+            return False
+        position = node_ids.index(node_key(stop), position)
+    return True
+
+
 def ways_of(candidate) -> list[int]:
-    return [int(edge_id.split("-")[1]) for edge_id in candidate.edge_ids]
+    return [way for way, _, _ in edges_of(candidate)]
+
+
+def nodes_of(candidate) -> list[int]:
+    """候補が通るノードのOSMのid（`node_key`の逆）を、通る順に。"""
+    return [int(node_id.rsplit("-", 1)[1]) for node_id in candidate.node_ids]

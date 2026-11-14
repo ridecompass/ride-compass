@@ -51,25 +51,12 @@ def cache_identity(revision: str, *shape_sources: object) -> str:
     return f"{revision}-{shape_digest(*shape_sources)}"
 
 
-#: DBの世代を読めないときに使う印。**この値のタイルをディスクへ残さない**——世代が
-#: 分からないまま焼いたタイルは、後で世代が判明しても古いと判定できない。
-UNKNOWN_REVISION = "x"
-
-
-def tile_version(revisions: DataRevisions | None, shape: str) -> str:
+def tile_version(revisions: DataRevisions, shape: str) -> str:
     """配信するタイルの世代。`<派生の世代>.<生データの世代>-<形の署名>`。
 
-    `revisions`は`derived_data_meta.get_revisions()`の値。Noneはまだ読めていない状態で、
-    派生の世代の行が無いDBと同じく`UNKNOWN_REVISION`を使う。
+    `revisions`は`derived_data_meta.get_revisions()`の値。
     """
-    if revisions is None or revisions.derived is None:
-        return f"{UNKNOWN_REVISION}-{shape}"
     return f"{revisions.derived}.{revisions.imported}-{shape}"
-
-
-def is_known_tile_version(version: str) -> bool:
-    """`tile_version`が世代を読めて組んだものか。違えばディスクへ残さない。"""
-    return not version.startswith(f"{UNKNOWN_REVISION}-")
 
 
 #: 土地被覆ラスタタイルのURLへ入る世代（配色・クラス構成と手書きリビジョンから決まる）。

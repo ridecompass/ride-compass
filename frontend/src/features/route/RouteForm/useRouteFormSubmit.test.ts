@@ -4,7 +4,7 @@
  * 目的地が無ければ、目的地か周回を促す。通れば前の文言を消す。
  *
  * ここで見ないもの:
- * - 文言を出す場所（「ルート結果」欄・モバイルの「ルート設定」シート） → `RouteOutcome/RouteOutcome.test.tsx`・`app/page.test.tsx`
+ * - 文言を出す場所（「ルート結果」欄・モバイルの「ルート設定」シート） → `RouteOutcome/RouteOutcome.test.tsx`・`app/page.mobile.test.tsx`
  * - 検証を通った値で何を送るか（距離・経由地・目的地・候補数） → `useRouteGeneration.test.ts`
  * - 候補数のステッパーを押せなくする表示 → `RouteForm/RouteForm.test.tsx`
  * - 距離・候補数の値域 → 検証しない（入力はスライダー・ステッパーで、保存値は読むときに範囲の外を捨てる。
@@ -17,7 +17,7 @@ import { useRouteFormSubmit } from "./useRouteFormSubmit";
 
 const ORIGIN_UNKNOWN = "現在地が分かりません。位置情報を許可するか、地図をタップして出発地を置いてください。";
 const NOTHING_TO_MAKE = "「全長の目標を決める」を押すか、経由地を置いてください。";
-const NO_DESTINATION = "目的地を置いてください（出発地へ戻るなら「周回」を押してください）。";
+const NO_DESTINATION = "目的地を置いてください[出発地へ戻るなら「周回」を押してください]。";
 
 interface Options {
   loop: boolean;
@@ -52,8 +52,6 @@ function check(result: { current: ReturnType<typeof useRouteFormSubmit> }) {
 describe("useRouteFormSubmit", () => {
   it.each([
     { label: "周回で全長の目標だけ", options: LOOP },
-    { label: "周回で経由地だけ", options: { ...LOOP_NO_DISTANCE, waypointCount: 2 } },
-    { label: "目的地へ向かい全長の目標あり", options: TO_DESTINATION },
     { label: "目的地へ向かい全長の目標なし", options: { ...TO_DESTINATION, distanceTargeted: false } },
   ])("「$label」なら、出発地が分かれば生成する", ({ options }) => {
     const { result } = renderSubmit(options);

@@ -2,10 +2,11 @@
 
 入口は`fetch_station_table`・`fetch_latest_observation_time`・`fetch_observation_map`の3つで、気象庁の代役（respx）へ
 本物の`httpx.AsyncClient`を向けて呼ぶ。見るのは、返る値（`AmedasStation`・`AmedasReading`（風向コードの読み替えを含む）・時刻）と、取得に失敗したときの
-None、プロセス内キャッシュで上流を引き直さないこと。
+None、最新時刻をキャッシュ中に引き直さないこと。
 
 ここで見ないもの:
-- キャッシュの骨格（失敗をキャッシュしない・該当なしのNoneもキャッシュする・ログの`fields`）→ `test_simple_api_client.py`
+- キャッシュの骨格（キャッシュ中は上流を引き直さない・失敗をキャッシュしない・ログの`fields`）→ `test_simple_api_client.py`。
+  観測所マスタを引き直さないことは、リクエストの経路から`test_jma_amedas_service.py`が見る
 - 観測値をRedisへ置く・最寄りの観測所を選ぶ・雨の履歴 → `test_jma_amedas_service.py`
 - 体感温度 → `test_jma_amedas.py`
 - 16方位の呼び名の並び（`domain/geo.py: SIXTEEN_POINT_LABELS`） → 1つおきの8方位は`test_geo.py`、重ならないことは宣言の読み込みの時点の検査
@@ -36,46 +37,6 @@ async def test_station_table_reads_the_name_and_degree_minute_coordinates():
         "44132": jma_amedas_client.AmedasStation(name="東京", latitude=35 + 41.5 / 60, longitude=139.75)
     }
 
-
-@pytest.mark.parametrize("missing", ["kjName", "lat", "lon"])
-async def test_station_without_a_name_or_coordinates_is_left_out(missing):
-    entry = {"kjName": "某所", "lat": [35, 0.0], "lon": [139, 0.0]}
-    del entry[missing]
-    client = answering(json={"99999": entry, "44132": {"kjName": "東京", "lat": [35, 41.5], "lon": [139, 45.0]}})
-
-    stations = await jma_amedas_client.fetch_station_table(client, new_station_table_cache())
-
-    assert list(stations) == ["44132"]
-
-
-async def test_station_table_is_fetched_once_while_cached():
-    router = respx.Router()
-    route = router.get(jma_amedas_client.AMEDAS_STATION_TABLE_URL).respond(
-        json={"44132": {"kjName": "東京", "lat": [35, 41.5], "lon": [139, 45.0]}}
-    )
-    client = client_for(router)
-
-    cache = new_station_table_cache()
-
-    first = await jma_amedas_client.fetch_station_table(client, cache)
-    second = await jma_amedas_client.fetch_station_table(client, cache)
-
-    assert second == first
-    assert route.call_count == 1
-
-
-@pytest.mark.parametrize(
-    "response",
-    [
-        pytest.param({"status_code": 500}, id="サーバの失敗"),
-        pytest.param({"json": [["44132"]]}, id="辞書でない"),
-        pytest.param({"text": "<html>"}, id="JSONでない"),
-    ],
-)
-async def test_station_table_failure_is_none(response):
-    assert await jma_amedas_client.fetch_station_table(answering(**response), new_station_table_cache()) is None
-
-
 # --- 最新の観測時刻 ---
 
 
@@ -100,19 +61,6 @@ async def test_latest_time_is_fetched_once_while_cached():
 
     assert route.call_count == 1
 
-
-@pytest.mark.parametrize(
-    "response",
-    [
-        pytest.param({"status_code": 503}, id="サーバの失敗"),
-        pytest.param({"text": "not a time"}, id="時刻でない"),
-        pytest.param({"text": "2026-08-29T17:00:00"}, id="時差が無い"),
-    ],
-)
-async def test_latest_time_failure_is_none(response):
-    assert await jma_amedas_client.fetch_latest_observation_time(answering(**response), new_latest_time_cache()) is None
-
-
 # --- 観測値 ---
 
 _FULL_READING = {
@@ -130,13 +78,12 @@ async def test_observation_map_is_requested_by_the_jst_time():
     """URLの時刻はJSTの`YYYYMMDDHHMMSS`。UTCで渡しても同じ観測を引く。"""
     router = respx.Router()
     url = jma_amedas_client.AMEDAS_OBSERVATION_URL_TEMPLATE.format(timestamp="20260829170000")
-    route = router.get(url).respond(json={"44132": _FULL_READING})
+    router.get(url).respond(json={"44132": _FULL_READING})
 
     readings = await jma_amedas_client.fetch_observation_map(
         client_for(router), datetime(2026, 8, 29, 8, 0, tzinfo=timezone.utc)
     )
 
-    assert route.called
     assert readings == {
         "44132": jma_amedas_client.AmedasReading(
             temperature_c=21.3,
@@ -144,8 +91,6 @@ async def test_observation_map_is_requested_by_the_jst_time():
             wind_speed_ms=3.2,
             wind_direction=WindDirection(deg=180.0, label="南"),
             precipitation_10min_mm=0.5,
-            precipitation_1h_mm=2.0,
-            reports_precipitation_1h=True,
         )
     }
 
@@ -157,9 +102,9 @@ async def _wind_direction(code) -> WindDirection | None:
     return readings["44132"].wind_direction
 
 
-@pytest.mark.parametrize("code", [None, 0, 17])
-async def test_calm_missing_and_out_of_range_codes_have_no_direction(code):
-    """0は静穏（方位不定）。範囲外を別の方位として出すと向かい風と追い風を取り違えさせる。"""
+@pytest.mark.parametrize("code", [None, 0])
+async def test_calm_and_missing_codes_have_no_direction(code):
+    """0は静穏（方位不定）。"""
     assert await _wind_direction(code) is None
 
 

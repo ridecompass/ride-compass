@@ -2,6 +2,7 @@
 // **既定値は型を満たすための空だけ。** 見たい値（id・方位・距離等）は呼び出し側が書く。
 import { haversineKm } from "@/lib/geoDistance";
 import type { GenerationConditions, PlaceCandidate, RouteCandidate, RouteSegmentDetail } from "@/types/route";
+import { STANDARD_COST_PREFERENCE } from "@/lib/costPreference";
 
 /** `RouteCandidate`の組み立て（backendは既定値の項目も必ず返すため、型は全フィールドが必須）。 */
 export function makeRouteCandidate(overrides: Partial<RouteCandidate> = {}): RouteCandidate {
@@ -14,21 +15,17 @@ export function makeRouteCandidate(overrides: Partial<RouteCandidate> = {}): Rou
     geometry: { type: "LineString", coordinates: [] },
     elevation_gain_m: null,
     segments: [],
-    overall_difficulty: null,
     estimated_duration_seconds: null,
-    wind_unavailable: false,
+    cost_seconds: 0,
+    penalty: { axis_seconds: {}, preferred_seconds: 0, avoided_seconds: 0, total_seconds: 0 },
+    penalty_seconds_per_km: null,
+    facts: { axes: {} },
     missing_travel_data_share: null,
-    axis_difficulties: {},
-    material_values: {},
-    material_category_shares: {},
-    axis_raw_values: {},
     edge_ids: [],
     edge_point_offsets: [],
     node_ids: [],
     turns: [],
-    points: [],
     waypoint_distances_km: [],
-    axis_contributions: {},
     ...overrides,
   };
 }
@@ -73,6 +70,8 @@ export function routeThrough(
           end_longitude: lon,
           cumulative_distance_km: segments.reduce((km, segment) => km + segment.distance_km, 0),
           distance_km: distanceKm,
+          edge_start: index - 1,
+          edge_end: index,
         }),
       );
     }
@@ -94,9 +93,7 @@ export function makeGenerationConditions(overrides: Partial<GenerationConditions
     longitude: 0,
     distance_km: 0,
     distance_tolerance_km: 0,
-    route_preference: {},
-    penalty_strength: 0,
-    max_average_grade_percent: null,
+    cost_preference: STANDARD_COST_PREFERENCE,
     road_avoidance: {},
     max_routes: 0,
     start_time: "",
@@ -119,13 +116,14 @@ export function makeRouteSegment(overrides: Partial<RouteSegmentDetail> = {}): R
     end_longitude: 0,
     cumulative_distance_km: 0,
     distance_km: 0,
+    edge_start: 0,
+    edge_end: 0,
     estimated_arrival_time: null,
-    axis_difficulties: {},
-    axis_contributions: {},
-    material_values: {},
-    difficulty: null,
-    wind: null,
+    penalty: { axis_seconds: {}, preferred_seconds: 0, avoided_seconds: 0, total_seconds: 0 },
+    lens_seconds_per_km: null,
     elevations: [],
+    average_gradient_percent: null,
+    sustained_gradient_percent: null,
     road_classes: {},
     ...overrides,
   };
@@ -150,3 +148,37 @@ export const FACILITY_CANDIDATE: PlaceCandidate = {
   latitude: 35.7148,
   longitude: 139.7967,
 };
+
+/** 区間の代償の内訳（`penalty`）と、backend がそれから導く和（`total_seconds`）と地図のレンズと同じ1kmあたりの値
+ * （`lens_seconds_per_km`。避ける道で上乗せした秒は入れない。`backend/app/domain/route.py`）を対で返す。足場は内訳だけ・1kmあたりだけの
+ * backend が返さない組を作らない。 */
+export function penaltyFields(
+  axisSeconds: Record<string, number>,
+  distanceKm: number,
+  avoidedSeconds = 0,
+): Pick<RouteSegmentDetail, "penalty" | "lens_seconds_per_km"> {
+  const axisTotal = Object.values(axisSeconds).reduce((sum, seconds) => sum + seconds, 0);
+  return {
+    penalty: {
+      axis_seconds: axisSeconds,
+      preferred_seconds: 0,
+      avoided_seconds: avoidedSeconds,
+      total_seconds: axisTotal + avoidedSeconds,
+    },
+    lens_seconds_per_km: {
+      total: axisTotal / distanceKm,
+      ...Object.fromEntries(Object.entries(axisSeconds).map(([axisId, seconds]) => [axisId, seconds / distanceKm])),
+    },
+  };
+}
+
+/** 候補の代償の内訳（`penalty`）と、backend がそれから導く和（`total_seconds`）とルート全体の1kmあたりの代償の秒
+ * （`penalty_seconds_per_km`。避ける道で上乗せした秒も入れる。`backend/app/domain/route.py`）を対で返す。 */
+export function candidatePenaltyFields(
+  axisSeconds: Record<string, number>,
+  distanceKm: number,
+  avoidedSeconds = 0,
+): Pick<RouteCandidate, "penalty" | "penalty_seconds_per_km"> {
+  const { penalty } = penaltyFields(axisSeconds, distanceKm, avoidedSeconds);
+  return { penalty, penalty_seconds_per_km: penalty.total_seconds / distanceKm };
+}

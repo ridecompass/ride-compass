@@ -28,14 +28,11 @@ import shapely
 from sqlalchemy import text
 
 from app.domain.attributes import CategoricalColumn
-from app.domain.graph import LeanEdge
-from app.domain.landcover import LandcoverPercentages, landcover_key
+from app.domain.graph import LeanEdge, edge_key, node_key
 from app.domain.material_catalog import MATERIAL_CATALOG, material_array_columns
 from app.domain.region import BoundingBox
 from app.infrastructure.derived_models import EdgeCountsRow, EdgeElevationRow, EdgeLandcoverRow
-from app.domain.graph import edge_key, node_key
-from app.services.axis_preview_service import SAMPLE_LIMIT, SAMPLE_PERCENT
-from app.infrastructure.material_joins import reversed_material_expression
+from app.infrastructure.material_joins import reversed_partner
 from app.infrastructure.road_graph_repository import (
     ID_CHUNK_SIZE,
     MATERIAL_ARRAY_COLUMN_ORDER,
@@ -102,37 +99,33 @@ def _repo(*results) -> tuple[RoadGraphRepository, _FakeSession]:
 # --- 逆向きの読み替え ---------------------------------------------------------
 
 
-@pytest.mark.parametrize(("name", "expression"), [
-    ("start_a", "m.end_a"),
+@pytest.mark.parametrize(("name", "partner"), [
+    ("start_a", ("end_a", False)),
     # 勾配は符号を返す
-    ("a_grade", "-m.a_grade"),
+    ("a_grade", ("a_grade", True)),
     # 向きで変わらない列
     ("a_count", None),
 ])
-def test_reversed_expression_swaps_paired_tokens_and_flips_grades(name, expression):
-    assert reversed_material_expression(name) == expression
+def test_reversed_partner_swaps_paired_tokens_and_flips_grades(name, partner):
+    assert reversed_partner(name) == partner
 
 
 def test_reversing_twice_returns_to_the_original_column():
     """対が壊れると、逆向きの枝の標高が別の列から来る。列の一覧は宣言から導く。"""
-    reversed_columns = {column.name: expression
+    reversed_columns = {column.name: partner
                         for row in (EdgeCountsRow, EdgeElevationRow, EdgeLandcoverRow) for column in row.__table__.columns
-                        if (expression := reversed_material_expression(column.name)) is not None}
+                        if (partner := reversed_partner(column.name)) is not None}
     assert reversed_columns, "向きで変わる列が1つも無い"
-    for name, expression in reversed_columns.items():
-        partner = expression.lstrip("-").removeprefix("m.")
-        back = reversed_material_expression(partner)
-        assert back is not None
-        assert back.lstrip("-").removeprefix("m.") == name
-        assert back.startswith("-") == expression.startswith("-")
+    for name, (partner, negated) in reversed_columns.items():
+        assert reversed_partner(partner) == (name, negated)
 
 
 # --- ジオメトリ付きの取り直し -------------------------------------------------
 
 
-def _geometry_row(way_id=1, segment=0, coordinates=((139.0, 35.0), (139.1, 35.2))):
-    return _Row(osm_way_id=way_id, segment_index=segment, from_node_id=1, to_node_id=2,
-                distance_m=100.0, wkb=shapely.to_wkb(shapely.LineString(coordinates)))
+def _geometry_row():
+    return _Row(osm_way_id=1, segment_index=0, from_node_id=1, to_node_id=2,
+                distance_m=100.0, wkb=shapely.to_wkb(shapely.LineString(((139.0, 35.0), (139.1, 35.2)))))
 
 
 async def test_both_directions_of_a_segment_share_one_row():
@@ -181,14 +174,15 @@ async def test_material_values_land_in_the_matrix_of_their_dtype():
 
     arrays = await repo.get_edge_material_arrays([1, 1, 1], [0, 1, 2], [True, True, True], 5)
 
-    assert arrays.columns()[numeric][0] == 1.5
+    numbers = arrays.numeric_values[:, [arrays.numeric_ids.index(numeric), arrays.numeric_ids.index(boolean)]].T
+    assert numbers[0][0] == 1.5
     # 欠損は0ではなくNaN。0で埋めると「値が無い」が「一番良い値」として採点される。
-    assert np.isnan(arrays.columns()[numeric][1])
+    assert np.isnan(numbers[0][1])
     # 真偽の欠損（道の生データが無い区間）も、非該当（0.0）ではなく不明（NaN）。
-    assert arrays.columns()[boolean][:2].tolist() == [1.0, 0.0]
-    assert np.isnan(arrays.columns()[boolean][2])
+    assert numbers[1][:2].tolist() == [1.0, 0.0]
+    assert np.isnan(numbers[1][2])
     # 分類の材料は語彙への番号の列で、値へ戻すと行ごとの値（値なしはNone）になる。
-    column = arrays.columns()[categorical]
+    column = arrays.categorical_columns[arrays.categorical_ids.index(categorical)]
     assert isinstance(column, CategoricalColumn)
     assert [column.value_at(row) for row in range(len(column))] == ["value_a", None, None]
 
@@ -234,35 +228,34 @@ async def test_paired_edge_columns_are_not_swapped():
     assert (arrays.start_elevation_m[0], arrays.end_elevation_m[0]) == (10.0, 12.0)
 
 
+async def test_an_edge_without_an_elevation_row_has_no_profile_points():
+    """断面の点は区間ごとに渡した順に返し、標高の行が無い区間は点を持たない（点が2つ未満の区間は、所要時間が全体の
+    勾配の分布で埋める）。"""
+    repo, _ = _repo([_Row(elevation_profile_m=[1.0, np.nan, 3.0]), _Row(elevation_profile_m=None)])
+
+    known, missing = await repo.get_edge_elevation_profiles([1, 2], [0, 0])
+
+    assert np.array_equal(known, [1.0, np.nan, 3.0], equal_nan=True)
+    assert len(missing) == 0
+
+
 # --- way粒度の読み出し --------------------------------------------------------
 
 
 async def test_way_is_looked_up_by_its_key_as_text():
     """道の生データの主キー（`source_features.natural_key`）はtext。数で渡すと1件も当たらず、
-    区間インスペクタが常に空になる。"""
+    道の窓が常に空になる。"""
     repo, session = _repo([_Row(highway="highway_a", tags={"tag_a": "value_a"})], [])
 
     await repo.get_way_tags_by_osm_way_id(123)
-    await repo.get_nearest_way_segment(123, 35.0, 139.0)
 
-    assert [session.params[0]["osm_way_id"], session.params[1]["osm_way_key"]] == ["123", "123"]
+    assert session.params[0]["osm_way_id"] == "123"
 
 
-async def test_unknown_way_has_neither_tags_nor_a_segment():
+async def test_unknown_way_has_no_tags():
     repo, _ = _repo([], [])
 
     assert await repo.get_way_tags_by_osm_way_id(123) is None
-    assert await repo.get_nearest_way_segment(123, 35.0, 139.0) is None
-
-
-async def test_sampled_way_without_length_is_dropped():
-    """延長は分布の重み。0を混ぜると、その材料の値が重みなしで平均へ入る。"""
-    repo, _ = _repo([_Row(length_m=0.0, m_material_a=1.0),
-                     _Row(length_m=10.0, m_material_a=2.0)])
-
-    samples = await repo.sample_way_material_values(1, SAMPLE_PERCENT, SAMPLE_LIMIT, None)
-
-    assert samples == [(10.0, {"material_a": 2.0})]
 
 
 # --- 事故の収録年 -------------------------------------------------------------
@@ -274,35 +267,6 @@ async def test_accident_years_come_from_the_declared_profile(declared, years):
     repo, _ = _repo([_Row(years=declared)])
 
     assert await repo.get_accident_years() == years
-
-
-# --- 土地被覆の内訳 -----------------------------------------------------------
-
-
-def _landcover_row(valid_pixels: int | None = 100) -> _Row:
-    """表が入れる形の行。割合は有効画素が正の行だけが持つ。"""
-    values: dict[str, object] = {"lc_valid_pixels": valid_pixels}
-    for name in LandcoverPercentages.model_fields:
-        values[f"lc_{landcover_key(name)}"] = 12.5 if valid_pixels else None
-    return _Row(**values)
-
-
-@pytest.mark.parametrize(("feature_key", "segment_index"), [
-    ("123-4", 4),
-    # タイルは区間とway丸ごとを同じ名前の鍵で出す。区切りの無い鍵はway丸ごと
-    ("123", None),
-    # 鍵とwayが食い違うのは呼び出し側の取り違え。別の区間の内訳を返すよりway全体で答える
-    ("456-7", None),
-    # 鍵はフロントから来る。数でない鍵を区間として扱うと、引き直しが例外で落ちる
-    ("123-x", None),
-])
-async def test_landcover_is_read_at_the_unit_the_map_paints(feature_key, segment_index):
-    """鍵が区間を指すなら区間の値。way丸ごとの値を返すと、同じ場所で地図の色と数字が食い違う。"""
-    repo, session = _repo([_landcover_row()])
-
-    await repo.get_feature_landcover(123, feature_key)
-
-    assert session.params[0].get("segment_index") == segment_index
 
 
 # --- タイル -------------------------------------------------------------------
@@ -321,14 +285,3 @@ async def test_tile_inside_the_imported_area_is_bytes_even_without_features(tile
     repo, _ = _repo([_Row(covered=True, tile=tile)])
 
     assert await _read_mvt(repo) == payload
-
-
-async def test_feature_keys_are_returned_as_text():
-    """鍵はタイルが焼いたものと同じ文字列で配る。数で配ると、フロントのidと噛み合わず
-    色が一切付かない。"""
-    repo, _ = _repo([_Row(covered=True, midpoints=None)],
-                    [_Row(covered=True, midpoints={123: [35.1, 139.2], "123-4": [35, 139]})])
-
-    assert await repo.get_feature_midpoints_in_tile(14, 1, 2, BBOX) == {}
-    assert await repo.get_feature_midpoints_in_tile(14, 1, 2, BBOX) == {
-        "123": (35.1, 139.2), "123-4": (35.0, 139.0)}

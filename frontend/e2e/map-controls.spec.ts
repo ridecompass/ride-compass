@@ -1,16 +1,16 @@
 import { expect, test, type Page } from "@playwright/test";
-import { INTRO_CLOSED, installApiMocks, openMobileApp, openMobileSheet, seedStoredState } from "./fixtures";
+import { openMapApp, openMobileApp, openMobileSheet } from "./fixtures";
 import { WIDTHS } from "./states";
 
-// 地図の右の列（拡大・縮小か走行中の倍率から、走行モードまで）のボタンが、ほかの部品の下に潜らず押せ、継ぎ目の間隔が揃うこと（パターン4 観点1）。
+// 地図の右の列（拡大・縮小か走行中の縮尺から、走行モードまで）のボタンが、ほかの部品の下に潜らず押せ、継ぎ目の間隔が揃うこと（パターン4 観点1）。
 // 押す所の大きさ（24px四方）は全状態の走査が両方の幅で見るので、ここでは重なりと間隔だけを見る。どちらも実寸と重なりの順番で
 // 決まり、単体テストでは見えない。押す点（中心）のヒットテストがボタン自身か子孫を返せば、上に何も重なっていない。
-// 間隔は、方位磁針から下の継ぎ目が全部 `--map-ctrl-stack-gap` であること（拡大・縮小（走行中は倍率）・方位磁針は1つの枠に
+// 間隔は、方位磁針から下の継ぎ目が全部 `--map-ctrl-stack-gap` であること（拡大・縮小（走行中は縮尺）・方位磁針は1つの枠に
 // 隙間なく並ぶので見ない）。ボタンを包む要素が行の箱の分だけ高くなると、その継ぎ目だけ広がり、走行中に列の上の
 // ボタンの数が変わったのに積み始めの位置が追わなければ、方位磁針の下の継ぎ目が広がるか重なる。
 
 const RIGHT_COLUMN =
-  /^(拡大|縮小|倍率|地図の向き|北を上にする|進む向きを上にする|出発時刻|想定速度|現在地に移動|走行モード)/;
+  /^(拡大|縮小|縮尺|地図の向き|北を上にする|進む向きを上にする|出発時刻|想定速度|現在地に移動|走行モード)/;
 
 type ColumnButton = { name: string; onTop: boolean; top: number; bottom: number };
 
@@ -65,26 +65,21 @@ test("スマホ: ルート設定のシートを開いても、地図の右の列
   page,
 }) => {
   await openMobileApp(page);
-  await expect(page.getByText("地図を読み込み中…")).toBeHidden({ timeout: 15_000 });
   await openMobileSheet(page, "ルート設定");
   await expectColumnSound(page, NOT_RIDING);
 });
 
 test("PC: 地図の右の列のボタンはほかの部品の下に潜らず、継ぎ目の間隔が揃う", async ({ page }) => {
-  await installApiMocks(page);
   await page.setViewportSize(WIDTHS.desktop);
-  await seedStoredState(page, INTRO_CLOSED);
-  await page.goto("/");
-  await expect(page.getByText("地図を読み込み中…")).toBeHidden({ timeout: 15_000 });
+  await openMapApp(page);
   await expectColumnSound(page, NOT_RIDING);
 });
 
-// 走行モードの間は、拡大・縮小の代わりに倍率のボタン1つを方位磁針の上に置き、その下に走行モードのボタンを積む。
+// 走行モードの間は、拡大・縮小の代わりに縮尺のボタン1つを方位磁針の上に置き、その下に走行モードのボタンを積む。
 test("スマホ: 走行モードの間も、地図の右の列のボタンはほかの部品の下に潜らず、継ぎ目の間隔が揃う", async ({ page }) => {
   await openMobileApp(page);
-  await expect(page.getByText("地図を読み込み中…")).toBeHidden({ timeout: 15_000 });
   await page.getByRole("button", { name: "走行モード" }).click();
-  await expect(page.getByRole("button", { name: /^倍率/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^縮尺/ })).toBeVisible();
   await expectColumnSound(page, { head: [], compass: "進む向きを上にする（いまは北が上）", stacked: 1 });
 });
 
@@ -94,7 +89,6 @@ test("スマホ: ルート設定のシートを開いたまま「表示」の一
   page,
 }) => {
   await openMobileApp(page);
-  await expect(page.getByText("地図を読み込み中…")).toBeHidden({ timeout: 15_000 });
   const sheet = await openMobileSheet(page, "ルート設定");
   await page.getByRole("button", { name: "地図に出す情報", exact: true }).click();
   const last = page

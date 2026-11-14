@@ -2,11 +2,9 @@
 
 `GET /api/admin/derived-data/freshness`（Basic認証必須）は、ソースごとの**鮮度**（今の派生を作った取込が
 成功した最新の取込か）と、派生データの表ごとの**列**（今の表を作ったときの列が今の宣言の列と同じか）・値の列ごとの
-NULLの件数（参考）を返す。対象の表・列は宣言（ORM）から導くため、表や列を足しても増やす手当ては要らない。
+NULLの件数（参考）と、作り直すまで反映されない較正値ごとの**値**（今の派生を作った値が今の値と同じか）を返す。対象の表・列は宣言（ORM）から導くため、表や列を足しても増やす手当ては要らない。
 
-`GET /api/admin/material-catalog/coverage`（材料の欠損割合）とは別の切り口——あちらは
-「材料として値が取れるか」を材料の宣言から見る。認可を要求する理由・DB例外の扱いは
-同じ（全表走査を伴うため認可なしに公開しない、DB例外は空レポートへ倒さず503（`api/admin_db_errors.py`）で返す）。
+全表走査を伴うため認可なしに公開しない。DB例外は空レポートへ倒さず503で返す。
 """
 
 from fastapi import APIRouter, Depends
@@ -28,5 +26,5 @@ router = APIRouter(dependencies=[Depends(require_admin_basic_auth)])
 async def get_derived_data_freshness(
     service: DerivedDataFreshnessService = Depends(get_derived_data_freshness_service),
 ) -> DerivedDataFreshnessReport:
-    """ソースごとの鮮度と、派生データの表ごとの列の変化・値の列ごとのNULLの件数を返す。"""
+    """ソースごとの鮮度と、派生データの表ごとの列の変化・値の列ごとのNULLの件数と、較正値ごとの値の変化を返す。"""
     return await service.get_freshness_report()

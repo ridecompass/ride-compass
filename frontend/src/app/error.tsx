@@ -2,34 +2,30 @@
 
 import { useEffect } from "react";
 import { Button } from "@/components/ui/Button/Button";
+import { clearStoredValues } from "@/lib/safeStorage";
 
-// Reactのレンダリング時例外はError Boundaryが無いとアプリ全体が白画面になる
-// （WeatherPanel/MapView等のnull未ガード箇所を踏んだ場合の最終防衛線）。App Routerの
-// error.tsxはルートセグメント配下のレンダリングエラーをここで捕捉し、フォールバックUIを
-// 表示する。
 export default function Error({ error, retry }: { error: Error & { digest?: string }; retry: () => void }) {
   useEffect(() => {
     console.error(error);
   }, [error]);
 
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        height: "100vh",
-        gap: "1rem",
-        padding: "1rem",
-        textAlign: "center",
-      }}
-    >
+    <div className="flex h-screen flex-col items-center justify-center gap-4 p-4 text-center">
       <h2>予期しないエラーが発生しました</h2>
-      <p style={{ color: "var(--color-muted)" }}>
-        画面の表示中に問題が発生しました。再試行しても解決しない場合は、ページを再読み込みしてください。
-      </p>
-      <Button onClick={() => retry()}>再試行</Button>
+      <p className="text-[var(--color-muted)]">{error.message}</p>
+      {/* 端末の保存値で落ちている間は、再試行しても同じ値を読んで落ちる。全部消すと保存されていない状態から描き直せる。 */}
+      <Button
+        usage={null}
+        onClick={() => {
+          clearStoredValues();
+          retry();
+        }}
+      >
+        端末に保存した値を消して再試行
+      </Button>
+      <Button usage={null} onClick={() => retry()}>
+        再試行
+      </Button>
     </div>
   );
 }

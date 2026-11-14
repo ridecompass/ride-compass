@@ -1,4 +1,5 @@
-"""地点の検索の段取り: 対象範囲と住所と施設を同じ接続でDBから読み、住所と施設を並べる。置いた位置の辺りも引く。
+"""地点の検索の段取り: 対象範囲と住所と施設を同じ接続でDBから読み、住所と施設を配分して並べる。置いた位置の辺りと、
+地図の点の名前から開く外の地図のリンクも引く。
 
 対象範囲はサービスの対象範囲（取り込んだ道路の範囲、`RegionService.get_ingested_area`）で、範囲の外の地点では
 ルートを作れない。施設は範囲で絞る。住所の区画の表は派生の段が範囲の中の区画だけを入れるので、範囲で絞らない。
@@ -9,10 +10,11 @@ from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 
 from app.domain.geo import LatLon
-from app.domain.place_search import PlaceArea, PlaceSearchResult
+from app.domain.place_search import PlaceArea, PlaceLink, PlaceSearchResult, allot_candidates, maps_search_url
 from app.infrastructure.address_search import AddressSearchQuery
+from app.infrastructure.facility_search import FacilitySearchQuery
+from app.infrastructure.place_address_query import PlaceAddressQuery
 from app.infrastructure.place_area_query import PlaceAreaQuery
-from app.infrastructure.stop_place_search import StopPlaceSearchQuery
 from app.services.region_service import RegionService
 
 
@@ -26,8 +28,9 @@ class PlaceSearchReads:
 
     region: RegionService
     addresses: AddressSearchQuery
-    stop_places: StopPlaceSearchQuery
+    facilities: FacilitySearchQuery
     areas: PlaceAreaQuery
+    place_addresses: PlaceAddressQuery
 
 
 class PlaceSearchService:
@@ -41,10 +44,17 @@ class PlaceSearchService:
             if area is None:
                 raise PlaceSearchAreaUnavailable
             addresses = await reads.addresses.search(query, near)
-            facilities = await reads.stop_places.search(query, area, near)
-        return PlaceSearchResult(candidates=[*addresses, *facilities])
+            facilities = await reads.facilities.search(query, area, near)
+        return PlaceSearchResult(candidates=allot_candidates(addresses, facilities))
 
     async def area_at(self, point: LatLon) -> PlaceArea:
         """`point`を含む小地域の境界の辺り。範囲では絞らない（境界の生データは取込の範囲に掛かる都道府県の分だけ）。"""
         async with self._open_reads() as reads:
             return PlaceArea(area=await reads.areas.area_at(point))
+
+    async def link(self, name: str, point: LatLon) -> PlaceLink:
+        """地図の点（名前`name`・位置`point`）から開く外の地図のリンク。所在は、地点の表の同じ名前の近くの地点の住所 → その地点の
+        辺り → `point`の辺りの順に使う。どれも無ければリンクを持たない。"""
+        async with self._open_reads() as reads:
+            where = await reads.place_addresses.address_near(name, point) or await reads.areas.area_at(point)
+        return PlaceLink(url=None if where is None else maps_search_url(name, where))

@@ -71,4 +71,4 @@ for (const color of expressionColors) { expect(legendColors.has(color)).toBe(tru
 絞り込みの書き方は問わない。ループの中の条件で要素を選ぶ形（`if`の片側にだけアサーションを置く・`continue`で飛ばす）と、
 空なら真になる量化（`assert all(...)`・`assert not any(...)`・`expect(xs.every(...)).toBe(true)`）も同じに扱う。
 
-落とす規則は`backend/tests/structure/test_vacuous_loops.py`と`frontend/src/structure/vacuousLoops.test.ts`が持つ。
+落とす規則は`backend/tests/structure/test_vacuous_loops.py`と`frontend/src/structure/vacuousLoops.ts`が持つ。

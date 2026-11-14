@@ -1,7 +1,7 @@
 """`domain/display_palette.py`——一次属性の行に塗る色と、役割ごとの色。
 
 入口は`resolved_display_axes`（行の色を解決した表示定義。画面へ配る形）と、その色を作る`ordered_colors`・
-`nominal_colors`、役割ごとの色`SEMANTIC_COLORS`。前半は架空の属性で色の配り方を、後半は本番の一次属性の宣言
+`nominal_colors`、役割ごとの色`SEMANTIC_COLORS`、費用の軸の識別色`cost_series_colors`。前半は架空の属性で色の配り方を、後半は本番の一次属性の宣言
 （`domain/primary_attributes.py: PRIMARY_ATTRIBUTES`）に配った色が地図の上で読めること
 （`docs/modules/frontend/static-map-layers.md`の配色の読み方）を確かめる。
 
@@ -14,21 +14,48 @@
 - 行の値が画面の塗り分けの式になること → 画面側のテスト
 """
 
+import colorsys
 import itertools
 import math
 
 import pytest
+from hypothesis import example, given
+from hypothesis import strategies as st
 
 from app.domain import display_palette
-from app.domain.display_palette import SEMANTIC_COLORS, nominal_colors, ordered_colors, resolved_display_axes
-from app.domain.map_display import ROAD_UNKNOWN_OPACITY
+from app.domain.display_palette import (
+    BASEMAP_DARK_LIGHTNESS_RANGE,
+    BASEMAP_DARK_SATURATION_SCALE,
+    SEMANTIC_COLORS,
+    SEMANTIC_COLORS_ON_DARK,
+    cost_series_colors,
+    nominal_colors,
+    ordered_colors,
+    resolved_display_axes,
+)
+from app.domain.map_display import AREA_OPACITY, ROAD_UNKNOWN_OPACITY
 from app.domain.primary_attributes import PRIMARY_ATTRIBUTES
 from app.domain.registry import DisplayAxisSpec, DisplayCategorySpec, PrimaryAttributeSpec
+from app.domain.weather_display import PRECIPITATION_COLOR_STOPS
 
 GROUND = SEMANTIC_COLORS["basemap_ground"]
+
+
+def _dark_ground() -> str:
+    """暗い地図の地色。HSLの明るさを反転して範囲へ収め、彩度に割合を掛ける（`BASEMAP_DARK_*`の宣言の読み方）。"""
+    r, g, b = (int(GROUND[i : i + 2], 16) / 255 for i in (1, 3, 5))
+    hue, lightness, saturation = colorsys.rgb_to_hls(r, g, b)
+    low, high = BASEMAP_DARK_LIGHTNESS_RANGE
+    channels = colorsys.hls_to_rgb(hue, low + (1 - lightness) * (high - low), saturation * BASEMAP_DARK_SATURATION_SCALE)
+    return "#" + "".join(f"{round(c * 255):02x}" for c in channels)
+
+
+DARK_GROUND = _dark_ground()
+#: 明るい地図と暗い地図の地色と、その上に塗る色を選ぶ`on_dark`。
+GROUNDS = [pytest.param(GROUND, False, id="light"), pytest.param(DARK_GROUND, True, id="dark")]
 #: 分類色が地色から浮くコントラスト比（これを割ると「薄い＝対象外」と見分けられない）。
 CLASS_COLOR_CONTRAST = 3.0
-#: 値が無い道の線が、地色に対して見えるコントラスト比。
+#: 線が地に対して見えるコントラスト比（値が無い道の線・基礎地図の細い道の縁取り）。
 NO_DATA_LINE_CONTRAST = 1.5
 #: 軸の中の色の離れ具合。列挙はどの2行も、順序は隣どうし。
 NOMINAL_DELTA_E = 20.0
@@ -76,11 +103,17 @@ def over_ground(color: str, opacity: float) -> str:
     )
 
 
-def axis(key: str, count: int, **fields) -> DisplayAxisSpec:
+def axis(key: str, count: int, glyphs: bool = False, **fields) -> DisplayAxisSpec:
+    """`glyphs`は行ごとに違う絵記号を付ける（点の先頭の軸）。"""
     return DisplayAxisSpec(
         key=key,
         property=key,
-        categories=tuple(DisplayCategorySpec(key=f"{key}{i}", label=f"行{i}", values=(f"v{i}",), description=f"行{i}の道") for i in range(count)),
+        categories=tuple(
+            DisplayCategorySpec(
+                key=f"{key}{i}", label=f"行{i}", values=(f"v{i}",), description=f"行{i}の道", glyph=f"g{i}" if glyphs else None
+            )
+            for i in range(count)
+        ),
         **fields,
     )
 
@@ -88,47 +121,23 @@ def axis(key: str, count: int, **fields) -> DisplayAxisSpec:
 # --- 色の配り方 -------------------------------------------------------------------
 
 
-def test_only_the_first_axis_with_a_palette_gets_colors():
-    """2本目の軸（大きさで示す重大度等）に色を配ると、地図のどこにも塗られない色が凡例にだけ並ぶ。"""
+def test_only_the_first_axis_with_a_palette_gets_colors_and_only_declared_glyphs_reach_the_screen():
+    """2本目の軸（大きさで示す重大度等）に色を配ると、地図のどこにも塗られない色が凡例にだけ並ぶ。画面は行が`glyph`の
+    鍵を持つかで凡例の見本を絵にするかを分けるので、持たない行に空の値を配ると、大きさだけを示す行まで絵の見本になる。"""
     attribute = PrimaryAttributeSpec(
         attr_id="attr_a",
         label="属性A",
         geometry="point",
-        display_axes=(axis("main", 3, palette="nominal", hue_slot=4), axis("size", 2)),
+        display_axes=(axis("main", 3, glyphs=True, palette="nominal", hue_slot=4), axis("size", 2)),
         tile_kind="poi",
     )
 
     main, size = resolved_display_axes(attribute)
 
     assert [c["color"] for c in main["categories"]] == nominal_colors(4, 3, None)
-    assert all("color" not in c for c in size["categories"])
+    assert [c["glyph"] for c in main["categories"]] == ["g0", "g1", "g2"]
+    assert all("color" not in c and "glyph" not in c for c in size["categories"])
     assert "palette" not in main and "hue_slot" not in main
-
-
-def test_a_glyph_reaches_the_screen_only_on_rows_that_declare_one():
-    """画面は行が`glyph`の鍵を持つかで絵記号の点か丸い点かを分ける。持たない行に空の値を配ると、丸い点の行まで絵記号になる。"""
-    with_glyphs = DisplayAxisSpec(
-        key="main",
-        property="main",
-        palette="nominal",
-        hue_slot=4,
-        categories=(
-            DisplayCategorySpec(key="a", label="行a", values=("a",), description="行aの点", glyph="bag"),
-            DisplayCategorySpec(key="b", label="行b", values=("b",), description="行bの点", glyph="drop"),
-        ),
-    )
-    attribute = PrimaryAttributeSpec(
-        attr_id="attr_a", label="属性A", geometry="point", display_axes=(with_glyphs, axis("size", 2)), tile_kind="poi"
-    )
-
-    main, size = resolved_display_axes(attribute)
-
-    assert [c["glyph"] for c in main["categories"]] == ["bag", "drop"]
-    assert all("glyph" not in c for c in size["categories"])
-
-
-def test_an_ordered_axis_of_one_row_still_has_a_color():
-    assert len(ordered_colors(1)) == 1
 
 
 @pytest.mark.parametrize("slot", [-1, display_palette.NOMINAL_HUE_SLOTS])
@@ -137,23 +146,56 @@ def test_a_hue_slot_outside_the_wheel_is_refused(slot):
         nominal_colors(slot, 3, None)
 
 
-@pytest.mark.parametrize("tone", [None, "dark", "light"])
-def test_every_nominal_color_stands_out_from_the_ground(tone):
-    """どの起点・行数・段でも、配る色は地色に対してコントラスト比3を割らない（明度の上限で守る）。"""
+@pytest.mark.parametrize(("ground", "on_dark"), GROUNDS)
+@pytest.mark.parametrize("tone", list(display_palette.NOMINAL_TONES))
+def test_every_nominal_color_stands_out_from_the_ground(tone, ground, on_dark):
+    """どの起点・行数・段でも、配る色はその地図の地色に対してコントラスト比3を割らない。"""
     colors = [
         color
         for slot in range(display_palette.NOMINAL_HUE_SLOTS)
         for count in range(1, 13)
-        for color in nominal_colors(slot, count, tone)
+        for color in nominal_colors(slot, count, tone, on_dark=on_dark)
     ]
 
-    assert min(contrast(color, GROUND) for color in colors) >= CLASS_COLOR_CONTRAST
+    assert min(contrast(color, ground) for color in colors) >= CLASS_COLOR_CONTRAST
 
 
-def test_every_ordered_color_stands_out_from_the_ground():
-    colors = [color for count in range(1, 13) for color in ordered_colors(count)]
+@pytest.mark.parametrize(("ground", "on_dark"), GROUNDS)
+def test_every_ordered_color_stands_out_from_the_ground(ground, on_dark):
+    colors = [color for count in range(1, 13) for color in ordered_colors(count, on_dark=on_dark)]
 
-    assert min(contrast(color, GROUND) for color in colors) >= CLASS_COLOR_CONTRAST
+    assert min(contrast(color, ground) for color in colors) >= CLASS_COLOR_CONTRAST
+
+
+def test_ordered_colors_on_the_dark_ground_keep_neighbours_apart():
+    """暗い地図の上の順序の色も、隣の行どうしが見分けられる（明るい地図の色は本番の宣言の節が確かめる）。"""
+    for count in range(2, 13):
+        colors = ordered_colors(count, on_dark=True)
+        for a, b in zip(colors, colors[1:]):
+            assert delta_e(a, b) >= ORDERED_DELTA_E, (count, a, b)
+
+
+EVALUATION_COLORS = [SEMANTIC_COLORS[k] for k in ("evaluation_good", "evaluation_mid", "evaluation_bad", "evaluation_extreme")]
+
+
+@given(st.integers(min_value=1, max_value=200))
+@example(len(display_palette.COST_SERIES_COLORS) + 1)
+def test_cost_axis_colors_keep_neighbours_apart_however_many_axes(count):
+    """軸を管理APIで足しても、どの軸も色を持ち、積み上げのグラフと差の棒で隣り合う軸が見分けられ、地図の負担の塗り
+    （緑→赤）と取り違えない。灰色で埋めると、増えた軸どうしと値の無い所が見分けられない。"""
+    colors = cost_series_colors(count)
+
+    assert len(colors) == count
+    for a, b in zip(colors, colors[1:]):
+        assert delta_e(a, b) >= ORDERED_DELTA_E, (count, a, b)
+    for color in colors:
+        assert min(delta_e(color, e) for e in EVALUATION_COLORS) >= NOMINAL_DELTA_E, (count, color)
+
+
+@pytest.mark.parametrize("key", ["evaluation_good", "evaluation_mid", "evaluation_bad", "evaluation_extreme"])
+def test_evaluation_colors_stand_out_from_the_dark_ground(key):
+    """評価の配色は道とルートの線を地の上で塗る。暗い地図で最も悪い側が地へ沈むと、悪い道ほど見えなくなる。"""
+    assert contrast(SEMANTIC_COLORS_ON_DARK[key], DARK_GROUND) >= CLASS_COLOR_CONTRAST
 
 
 # --- 本番の宣言 -------------------------------------------------------------------
@@ -206,3 +248,12 @@ def test_a_road_without_a_value_is_still_visible_on_the_ground():
     line = over_ground(SEMANTIC_COLORS["no_data"], ROAD_UNKNOWN_OPACITY)
 
     assert contrast(line, GROUND) >= NO_DATA_LINE_CONTRAST
+
+
+def test_minor_road_casings_stay_visible_under_every_rain_band():
+    """細い道の縁取りは面の上に描かれず、面を重ねた地に載る。割ると、雨を出した所で細い道の並びが消える。"""
+    casing = SEMANTIC_COLORS["basemap_minor_road_casing"]
+    grounds = [GROUND, *(over_ground(stop.color, AREA_OPACITY) for stop in PRECIPITATION_COLOR_STOPS)]
+
+    for ground in grounds:
+        assert contrast(casing, ground) >= NO_DATA_LINE_CONTRAST, ground

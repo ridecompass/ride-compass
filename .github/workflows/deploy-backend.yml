@@ -17,6 +17,9 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    # 持ち時間は、2026-10-24 に測った成功した実行（masterのCIの直近60件のうちデプロイまで走った24件。最長10.0分）の
+    # 2倍を5分単位へ切り上げた値（決め方は ci.yml の先頭）。SSH が止まったジョブを既定の360分まで待たせない。
+    timeout-minutes: 20
     # 判定とデプロイを1つのジョブにし、まとめて1本ずつ走らせる。判定だけ先に済ませると、
     # 後から終わった古いCIの実行が、その間に出た新しいコミットを上書きしうる。どの ref から起こしても本番（公開先）は1つなので、
     # レーンの鍵は master に決めてある（レーンは docs/architecture/tech-stack.md「CIの実行枠」）。
@@ -27,19 +30,31 @@ jobs:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-      - name: 本番で動いているコミットを読む
-        id: deployed
+      # 本番のVMへは、ランナーにある ssh で `ssh prod` として入る。SSH を包むアクションは使わない——
+      # 実行のたびに GitHub のリリースから実行ファイルを取るので、その配布が落ちるとデプロイが出せなくなる。
+      - name: 本番のVMへ入る鍵を置く
         env:
           HOST: ${{ secrets.ORACLE_VM_HOST }}
           KEY: ${{ secrets.ORACLE_VM_SSH_KEY }}
         run: |
-          install -m 600 /dev/null "$RUNNER_TEMP/key"
-          printf '%s\n' "$KEY" > "$RUNNER_TEMP/key"
+          mkdir -p -m 700 ~/.ssh
+          install -m 600 /dev/null ~/.ssh/prod_key
+          printf '%s\n' "$KEY" > ~/.ssh/prod_key
+          cat > ~/.ssh/config <<EOF
+          Host prod
+            HostName $HOST
+            User ubuntu
+            IdentityFile ~/.ssh/prod_key
+            StrictHostKeyChecking accept-new
+            ConnectTimeout 20
+            ServerAliveInterval 30
+          EOF
+      - name: 本番で動いているコミットを読む
+        id: deployed
+        run: |
           # 読めなければ空のまま進む（判定は「分からないので出す」になる）。
-          sha=$(ssh -i "$RUNNER_TEMP/key" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 "ubuntu@$HOST" \
-            "sudo docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' ridecompass-backend" \
+          sha=$(ssh prod "sudo docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' ridecompass-backend" \
             | sed -n 's/^GIT_COMMIT=//p') || sha=""
-          rm -f "$RUNNER_TEMP/key"
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
       - name: 出すかを決める
         id: gate
@@ -57,13 +72,10 @@ jobs:
       - name: Deploy via SSH (native arm64 build on VM)
         id: deploy
         if: steps.gate.outputs.deploy == 'true'
-        uses: appleboy/ssh-action@v1.2.5
-        with:
-          host: ${{ secrets.ORACLE_VM_HOST }}
-          username: ubuntu
-          key: ${{ secrets.ORACLE_VM_SSH_KEY }}
-          command_timeout: 15m
-          script: |
+        timeout-minutes: 15
+        # VMで流す本文は標準入力で渡す。本文の中で標準入力を読むコマンド（`docker run -i` 等）を使うと、続きの本文を食う。
+        run: |
+          ssh prod bash -s <<'EOF'
             set -e
             cd ~/ridecompass-repo
             # CIを通ったそのコミットを出す（masterの先端はCIを通っていないことがある）。
@@ -83,7 +95,7 @@ jobs:
             # VM上の環境変数ファイルで手動管理されており、本番フロントのオリジンと
             # 食い違うと「ブラウザから直接叩くAPI（例: POST /api/routes/generate）だけが
             # TypeError: Failed to fetchで即時失敗するが、サーバー間通信を使う画面
-            # [軸スタジオ等]は正常」という診断しづらい障害になる(2026-08-18・
+            # [管理画面等]は正常」という診断しづらい障害になる(2026-08-18・
             # 2026-08-25の2回実際に発生)。デプロイのたびに本番フロントの既知オリジンが
             # 含まれているか確認し、無ければ追記する（既存の値・他のオリジンは変更しない、
             # 何度実行しても安全な冪等処理）。
@@ -174,14 +186,15 @@ jobs:
             # ブリッジネットワーク（既定）ではなくホストのネットワーク名前空間を共有する
             # 必要がある（ブリッジのままだとコンテナ内のlocalhostはコンテナ自身を指し、
             # ConnectionRefusedErrorになる）。
-            # --log-opt: 既定のjson-fileドライバはログサイズに上限が無く、無制限に
-            # ディスクを消費しうる。10MB×5世代=最大50MBに制限する。
+            # --log-driver=journald: ログをVMのjournalへ送り、デプロイでコンテナを消したあとも読めるようにする
+            # （json-fileのログはコンテナに付き、docker rmで一緒に消える）。残る期間と容量の上限はVMのjournaldの
+            # 設定が決める（docs/architecture/tech-stack.md「本番のログ」）。
             sudo docker run -d \
               --name ridecompass-backend \
               --restart unless-stopped \
               --memory=6g --memory-swap=6g \
               --network=host \
-              --log-opt max-size=10m --log-opt max-file=5 \
+              --log-driver=journald \
               -v /home/ubuntu/ridecompass-cache-data:/app/data \
               -v /home/ubuntu/ridecompass-raster:/app/raster:ro \
               --env-file /home/ubuntu/ridecompass-backend.env \
@@ -204,6 +217,7 @@ jobs:
             done
             echo "入れ替えたコンテナが/healthに応答するまで $((SECONDS - WAIT_STARTED))秒 commit=$GIT_COMMIT"
             sudo docker image prune -f
+          EOF
       # 出したbackendで、利用者と同じ操作（ルートを作ってレンズを替える）が壊れていないかを外から見る。
       # 落ちたらジョブが失敗し、GitHub Actionsの失敗の知らせが届く（出したものは戻さない）。
       # 何を見るか・上限の根拠は docs/architecture/tech-stack.md「本番でルートを作る確かめ」。
@@ -216,24 +230,27 @@ jobs:
         if: steps.gate.outputs.deploy == 'true'
         timeout-minutes: 3
         run: python backend/scripts/prod_route_check.py
-      # 本番のスキーマと、今出したコードのORMの宣言の差を測る。差が1件でもあれば終了コード1で
-      # ジョブを失敗させる（差の行はログに出る）。差は人が本番で埋めるもので、
+      # 出したbackendで、点の密な所の点のタイルが上限の中で空でなく返るかを外から見る。DBの上限で空へ倒れたタイルは
+      # 点の無い所と同じ見た目で、画面からは気づけない。上のルートの確かめとは別の段にし、互いの失敗で飛ばさない。
+      # 何を見るか・上限の根拠は docs/architecture/tech-stack.md「本番の点のタイルの確かめ」。
+      - name: 本番の点の密な所の点のタイルを見る
+        if: ${{ !cancelled() && steps.gate.outputs.deploy == 'true' && steps.deploy.outcome == 'success' }}
+        timeout-minutes: 3
+        run: python backend/scripts/prod_point_tile_check.py
+      # 本番のスキーマと、今出したコードのORMの宣言の差を測る。新しいコードの読み書きを壊しうる差があれば終了コード1で
+      # ジョブを失敗させ、本番が宣言より多く持つだけの差はログに出すだけにする（分け方は backend/scripts/schema_gap.py の
+      # モジュールの説明）。差の行はログに出る。差は人が本番で埋めるもので、
       # 出す前に埋めるもの（新しいコードが書く列を足す）と、出した後に埋めるもの（古いコードが
       # 読む列を消す・新しいコードが宣言した表を作る）がある。そのため**入れ替えの後に置き、
       # 出すのは止めない**——前に置くと、出した後に埋める差がデプロイを止め、埋められなくなる。
-      # 上のルートの確かめとは別の段にし、互いの失敗で飛ばさない——差を埋めるまで毎回赤になるので、
+      # 上のルートの確かめとは別の段にし、互いの失敗で飛ばさない——壊しうる差を埋めるまで毎回赤になるので、
       # 同じ段の後ろに確かめを置くと、その間ずっと確かめが回らない。
       # `public`には書かない（一時スキーマへ宣言を作って巻き戻す）。
       - name: 本番のスキーマとORMの宣言の差を測る
         if: ${{ !cancelled() && steps.deploy.outcome == 'success' }}
-        uses: appleboy/ssh-action@v1.2.5
-        with:
-          host: ${{ secrets.ORACLE_VM_HOST }}
-          username: ubuntu
-          key: ${{ secrets.ORACLE_VM_SSH_KEY }}
-          script: |
-            sudo docker run --rm \
-              --network=host \
-              --env-file /home/ubuntu/ridecompass-backend.env \
-              ridecompass-backend:latest \
-              python scripts/schema_gap.py
+        run: |
+          ssh prod sudo docker run --rm \
+            --network=host \
+            --env-file /home/ubuntu/ridecompass-backend.env \
+            ridecompass-backend:latest \
+            python scripts/schema_gap.py

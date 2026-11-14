@@ -1,7 +1,7 @@
 // @vitest-environment node
 /**
  * `features/route/routeEditDiff.ts`——編集で作ったルートが元から何を変えたか。
- * - `editDifference`: 距離・所要（分）・総合難易度・負荷の元・編集後と差（編集後 − 元。どちらかに値が無ければnull）と、
+ * - `editDifference`: 距離・所要（分）・負担（内訳の和の分）の元・編集後と差（編集後 − 元。どちらかに値が無ければnull）と、
  *   2本のEdgeの差から求めた変えた区間（元の始点からの位置と、長さの差）。指標は編集面と同じ1つの表（`metricDifferences`）から作る
  * - `formatDelta`: 差を表示の桁で丸めて符号付きで書く。丸めて0なら「±0」
  *
@@ -42,40 +42,41 @@ function deltasOf(metrics: MetricDifference[]): Record<string, number | null> {
 }
 
 describe("editDifference", () => {
-  it("距離・所要時間・総合難易度・負荷の差を、編集後から元を引いて出す", () => {
+  it("距離・所要時間・負担（避ける道で上乗せした秒を含む内訳の和）の差を、編集後から元を引いて出す", () => {
     const origin = route("ABCDEF", {
       distance_km: 20,
       estimated_duration_seconds: 3600,
-      overall_difficulty: { average: 40, load: 800 },
+      penalty: {
+        axis_seconds: { ascent: 300, vibration: 60 },
+        preferred_seconds: 0,
+        avoided_seconds: 60,
+        total_seconds: 420,
+      },
     });
     const edited = route("ABQDEF", {
       distance_km: 21.5,
       estimated_duration_seconds: 3300,
-      overall_difficulty: { average: 35, load: 752.5 },
+      penalty: {
+        axis_seconds: { ascent: 120, vibration: 60 },
+        preferred_seconds: 0,
+        avoided_seconds: 0,
+        total_seconds: 180,
+      },
     });
-    expect(deltasOf(editDifference(origin, edited).metrics)).toEqual({
-      距離: 1.5,
-      所要: -5,
-      総合難易度: -5,
-      負荷: -47.5,
-    });
+    expect(deltasOf(editDifference(origin, edited).metrics)).toEqual({ 距離: 1.5, 所要: -5, 負担: -4 });
   });
 
-  it("どちらかに所要時間・総合難易度が無ければ、その差はnull", () => {
+  it("どちらかに所要時間が無ければ、その差はnull", () => {
     const withValues = route("ABCDEF", {
       estimated_duration_seconds: 3600,
-      overall_difficulty: { average: 40, load: 800 },
+      penalty: { axis_seconds: { ascent: 300 }, preferred_seconds: 0, avoided_seconds: 0, total_seconds: 300 },
     });
-    const withoutValues = route("ABQDEF", { estimated_duration_seconds: null, overall_difficulty: null });
+    const withoutValues = route("ABQDEF", { estimated_duration_seconds: null });
     for (const [origin, edited] of [
       [withValues, withoutValues],
       [withoutValues, withValues],
     ]) {
-      expect(deltasOf(editDifference(origin, edited).metrics)).toMatchObject({
-        所要: null,
-        総合難易度: null,
-        負荷: null,
-      });
+      expect(deltasOf(editDifference(origin, edited).metrics)).toMatchObject({ 所要: null });
     }
   });
 
@@ -84,15 +85,15 @@ describe("editDifference", () => {
     const origin = route("ABCDEF", {}, [1, 2, 3, 4, 5]);
     const edited = route("APCDRF", {}, [1.5, 2.5, 3, 4.2, 5.1]);
     const ruler = routeStretches(origin.segments);
-    const difference = editDifference(origin, edited);
-    expect(difference.stretches).toHaveLength(2);
+    const stretches = editDifference(origin, edited).stretches ?? [];
+    expect(stretches).toHaveLength(2);
     [
       { startKm: ruler[0].startKm, endKm: ruler[1].endKm, lengthDiffKm: 1 },
       { startKm: ruler[3].startKm, endKm: ruler[4].endKm, lengthDiffKm: 0.3 },
     ].forEach((expected, index) => {
-      expect(difference.stretches[index].startKm).toBeCloseTo(expected.startKm, 10);
-      expect(difference.stretches[index].endKm).toBeCloseTo(expected.endKm, 10);
-      expect(difference.stretches[index].lengthDiffKm).toBeCloseTo(expected.lengthDiffKm, 10);
+      expect(stretches[index].startKm).toBeCloseTo(expected.startKm, 10);
+      expect(stretches[index].endKm).toBeCloseTo(expected.endKm, 10);
+      expect(stretches[index].lengthDiffKm).toBeCloseTo(expected.lengthDiffKm, 10);
     });
   });
 });

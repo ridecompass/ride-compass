@@ -13,12 +13,7 @@ import time
 
 import asyncpg
 
-from app.domain.accident import (
-    ACCIDENT_FATAL_WEIGHT,
-    ACCIDENT_MATCH_MAX_DISTANCE_M,
-    BICYCLE_SQL,
-    FATAL_SQL,
-)
+from app.domain.accident import BICYCLE_SQL, FATAL_SQL
 from app.domain.geo import degrees_covering_m
 from app.infrastructure.source_models import (
     ACCIDENTS_SOURCE_SQL,
@@ -28,11 +23,11 @@ from app.infrastructure.source_models import (
 from app.domain.traffic import (
     INTERSECTION_DEGREE_THRESHOLD,
     PLACE_SHARE_PER_END,
-    POI_CLUSTER_EPS_M,
     POI_COUNT_KINDS,
     count_kind_sql,
     place_count_sql,
     poi_count_column,
+    stop_cluster_sql,
 )
 
 logger = logging.getLogger("ridecompass.derive_counts")
@@ -47,8 +42,7 @@ WITH classified AS (
     WHERE {count_kind_sql("nm")} IS NOT NULL
 )
 SELECT osm_node_id, count_kind, geom,
-       ST_ClusterDBSCAN(ST_Transform(geom, 3857), eps := $1, minpoints := 1)
-           OVER (PARTITION BY count_kind) AS cluster_id
+       {stop_cluster_sql("geom", "$1", "count_kind")} AS cluster_id
 FROM classified
 """
 
@@ -133,8 +127,8 @@ FROM (
 WHERE c.osm_way_id = m.osm_way_id AND c.segment_index = m.segment_index
 """
 
-#: 自転車の関わった事故を、帰属の距離の内で最も近い区間へ1件だけ付ける。鍵の2列は同じ1回の
-#: 探索から取る——別々に探すと、等距離のタイで実在しない組を指しうる。
+#: 自転車の関わった事故を、帰属の距離（`$3`、地上のm。`$2`はそれを覆う度で、前置フィルタの箱）の内で最も近い区間へ1件だけ付ける。
+#: 等距離なら鍵の小さい方。鍵の2列は同じ1回の探索から取る——別々に探すと、等距離のタイで実在しない組を指しうる。
 _EDGE_ACCIDENTS = f"""
 WITH nearest AS (
     SELECT CASE WHEN {FATAL_SQL} THEN $1 ELSE 1.0 END AS weight, n.osm_way_id, n.segment_index
@@ -166,12 +160,13 @@ FROM edge_counts GROUP BY osm_way_id
 """
 
 
-async def derive(conn: asyncpg.Connection) -> None:
+async def derive(conn: asyncpg.Connection, *, cluster_distance_m: float, accident_fatal_weight: float,
+                 accident_match_distance_m: float) -> None:
     started = time.perf_counter()
 
     # 事故の行と、それを入れた取込を同じ時点から読む（間に取込が入れ替えても食い違わない）。
     async with conn.transaction(isolation="repeatable_read"):
-        await conn.execute(_CLUSTER_SQL, POI_CLUSTER_EPS_M)
+        await conn.execute(_CLUSTER_SQL, cluster_distance_m)
         await conn.execute("ANALYZE _stop_nodes")
         await conn.execute(_STOP_TOUCHES_SQL)
         await conn.execute("ANALYZE _stop_touches")
@@ -186,8 +181,8 @@ async def derive(conn: asyncpg.Connection) -> None:
         await conn.execute("ANALYZE edge_counts")
         await conn.execute(_EDGE_STOP_COUNTS)
         await conn.execute(_EDGE_INTERSECTIONS, INTERSECTION_DEGREE_THRESHOLD)
-        await conn.execute(_EDGE_ACCIDENTS, ACCIDENT_FATAL_WEIGHT, degrees_covering_m(ACCIDENT_MATCH_MAX_DISTANCE_M),
-                           ACCIDENT_MATCH_MAX_DISTANCE_M)
+        await conn.execute(_EDGE_ACCIDENTS, accident_fatal_weight, degrees_covering_m(accident_match_distance_m),
+                           accident_match_distance_m)
         await conn.execute(_WAY_FROM_EDGES)
 
     logger.info("数の値を埋めた: 停止要因 %d点（まとまり %d・区間に乗る点 %d） / %.1f秒",

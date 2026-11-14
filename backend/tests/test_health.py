@@ -14,11 +14,17 @@ from app.main import app
 client = TestClient(app)
 
 
+@pytest.fixture
+def marker(tmp_path, monkeypatch):
+    """バックアップの印の置き場。中身はテストが置く。"""
+    path = tmp_path / "admin_data_backup_at"
+    monkeypatch.setattr(admin_data_backup, "MARKER_PATH", path)
+    return path
+
+
 @pytest.mark.parametrize(("placed_hours_ago", "expected"), [(50, 50.0), (None, None)])
-def test_health_returns_hours_since_the_last_backup(tmp_path, monkeypatch, placed_hours_ago, expected):
+def test_health_returns_hours_since_the_last_backup(marker, placed_hours_ago, expected):
     """経過時間が狂うと止まっていても気づかず、記録が無いときに落ちると/healthを待つデプロイが失敗する。"""
-    marker = tmp_path / "admin_data_backup_at"
-    monkeypatch.setattr(admin_data_backup, "MARKER_PATH", marker)
     if placed_hours_ago is not None:
         marker.write_text((datetime.now(UTC) - timedelta(hours=placed_hours_ago)).strftime("%Y-%m-%dT%H:%M:%S+00:00") + "\n")
 
@@ -33,11 +39,9 @@ def test_health_returns_hours_since_the_last_backup(tmp_path, monkeypatch, place
         pytest.param(lambda marker: marker.mkdir(), id="ファイルとして読めない"),
     ],
 )
-def test_health_stays_ok_when_the_backup_marker_is_unreadable(tmp_path, monkeypatch, caplog, write_marker):
+def test_health_stays_ok_when_the_backup_marker_is_unreadable(marker, caplog, write_marker):
     """印のファイルが壊れて/healthが落ちると、それを待つデプロイと見回りまで止まる。読めないときは記録が無いときと同じく
     nullで返し（見回りが知らせに出す）、読めない理由はログにだけ出る。ログに置き場と理由が無いと、運用がなぜ読めないかを追えない。"""
-    marker = tmp_path / "admin_data_backup_at"
-    monkeypatch.setattr(admin_data_backup, "MARKER_PATH", marker)
     write_marker(marker)
 
     response = client.get("/health")

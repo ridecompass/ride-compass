@@ -1,7 +1,7 @@
 """`batch/source_adapters/npa_honhyo.py`——警察庁の本票の緯度・経度の列（度分秒を連結した数字列）を10進の度へ読む。
 
 入口は`latitude_from_raw`・`longitude_from_raw`。読めない列と、日本の範囲を外れた値はNoneになる。
-度分秒の読み方（どちらも同じ変換を通る）は、緯度の性質と、配布物の実データ1行（緯度と経度）で見る。
+度分秒の読み方（どちらも同じ変換を通る）は、配布物の実データ1行（緯度と経度）で見る。
 
 ここで見ないもの:
 - 本票CSVを読んで範囲の中の行を返す取込（`read_npa_honhyo`）→ どのテストも通さない（派生の段のテストは
@@ -12,7 +12,6 @@
 """
 
 import pytest
-from hypothesis import strategies as st
 
 from app.batch.source_adapters.npa_honhyo import latitude_from_raw, longitude_from_raw
 
@@ -82,6 +81,3 @@ def test_a_real_row_from_the_published_csv_is_read_correctly():
     assert latitude is not None and round(latitude, 4) == round(43 + 10 / 60 + 7.628 / 3600, 4)
     assert longitude is not None and round(longitude, 4) == round(141 + 3 / 60 + 28.320 / 3600, 4)
 
-
-minutes = st.integers(min_value=0, max_value=59)
-milliseconds = st.integers(min_value=0, max_value=59999)

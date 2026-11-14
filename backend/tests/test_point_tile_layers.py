@@ -39,10 +39,6 @@ def test_layers_that_do_not_serve_points_one_way_are_refused(layers, attributes)
         check_point_tile_layers(layers, attributes)
 
 
-def test_layers_serving_points_one_way_are_accepted():
-    check_point_tile_layers({"poi": _layer(), "accident": _layer("accident", "accidents")}, (_POINT,))
-
-
 def test_a_layers_generation_follows_only_its_own_sql_and_source_layer():
     """世代はレイヤーごとに独立している。1つのSQLを変えて作り直すとき、他のレイヤーのキャッシュを捨てない。
     source-layer名を変えたタイルを古い鍵で配ると、画面が新しい名前のレイヤーを見つけられない。"""

@@ -1,30 +1,40 @@
 # 変異テストの全部の測りと、テストの見直し。backend の app の関数の中を機械的に1か所ずつ書き換え（mutmut が作る変異。版と準備は .github/actions/mutmut）、
-# 変異ごとに、その関数を通るテストを最後まで回して、どのテストが落ちたかを記録し、.claude/rules/testing.md「テストを変異テストで
-# 見直す」の候補を出す（tasks#661）。回し方と結果の読み方は .claude/skills/test-review/SKILL.md。
+# 変異ごとに、その関数を通るテストを最後まで回して、どのテストが落ちたかを記録し、.claude/rules/testing-review.md「テストを変異テストで
+# 見直す」の候補を出す。回し方と結果の読み方は .claude/skills/test-review/SKILL.md。
 #
-# - 手で起こす（gh workflow run mutation.yml、または Actions → Mutation → Run workflow）。測る版と台本は、起こすときに
-#   選んだ ref から読む（台本は backend/scripts/mutation/。台本を直すたびにこのファイルを変えずに済む）。測りは入力の issue の
-#   レーンで動くので、本はその issue のほかのジョブ（担当の Pull Request の CI 等）と枠を分け合い、レーンより多い本は空くまで待つ
-#   （レーンは docs/architecture/tech-stack.md「CIの実行枠」）。
+# - 毎月1日の 02:23（日本時間）に定期に起き、手でも起こせる（gh workflow run mutation.yml、または Actions → Mutation →
+#   Run workflow）。測る版と台本は、手で起こすときは選んだ ref、定期は master の先端から読む（台本は backend/scripts/mutation/。
+#   台本を直すたびにこのファイルを変えずに済む）。version が版をコミットに1度だけ決め、どの段もそのコミットを取り出す（本が
+#   始まる時刻は待ちでずれるので、ref の名前を本ごとに読むと、master が進んだ間に本ごとに違う版を測る）。
+# - 手で起こした測りは入力の issue のレーンで動くので、本はその issue のほかのジョブ（担当の Pull Request の CI 等）と枠を分け合う。
+#   定期の測りは、どの issue にも属さない専用のレーン（鍵 mutation）で動き、作業中のタスクの CI を待たせない。どちらもレーンより
+#   多い本は空くまで待つ（レーンは docs/architecture/tech-stack.md「CIの実行枠」）。
+# - 定期の測りが変異を回し終え、重なりの候補があれば、review が置き場へ候補を消すタスクを起こす（cleanup_issue.py。進め方は
+#   .claude/skills/test-review/SKILL.md「定期の測りから起きた消すタスク」）。
 # - 2段で回る:
-#   1. shard（15本）: 変異と、テストの当たる関数ごとの基準（変異を入れずに同じテストを2回）を1つの無作為の並び（種を固定）に
+#   1. shard（30本）: 変異と、テストの当たる関数ごとの基準（変異を入れずに同じテストを2回）を1つの無作為の並び（種を固定）に
 #      して、行を順に配り、1本ずつ別のランナーで回す。1本の中ではテストDBを分けた4つの担い手で回す（CI の backend と同じ
 #      arm64・4コアのランナー）。回し終えたら、その本の生き残りのうち読み込みのときに呼ばれうる関数の変異（importtime.py）に、
 #      同じランナーでテスト全体を当て直す（読み込みのときに呼ばれうるかは関数ごとに決まるので、ほかの本の結果は要らない。
 #      別の段にすると、変異の生成とランナーの空き待ちがもう1回ずつ要る）。
-#   2. review（1本）: 1 を層に依らない表（Stryker の結果の JSON の形）にし（report.py）、その表から見直しの候補を出す
-#      （review.py）。前の実行の見直し（成果物 mutation-review）を取ってきて比べ、前回も重なりの候補だったテストに印を付ける。
-#      候補は消す一覧ではなく、1件ずつ壊れるものを書いてから決める（test-review/SKILL.md）。数の表は実行の要約に出す。
+#   2. review（1本）: 1 を層に依らない表（Stryker の結果の JSON の形）にし（report.py）、見直しは
+#      .github/actions/mutation-review に任せる（前の実行の見直し（成果物 mutation-review）と比べて候補を出す）。候補は消す
+#      一覧ではなく、1件ずつ壊れるものを書いてから決める（test-review/SKILL.md）。数の表は実行の要約に出す。
 # - 測る版の backend/scripts/mutation/ に一覧（only.txt・recheck.txt・baseline.txt）があれば、1 はその一覧だけを回し（当て直しも
 #   しない）、2 は走らない（消したあとの確かめ等。run-checks/SKILL.md「変異テストでテストの効きを測る」）。
-# - 持ち時間: 2026-10-18 の測り（15本、実行 39099279906）で、1本あたり変異と基準（約1,710件）が61〜87分、当て直し（26〜42件）が
-#   21〜72分、変異の生成が約4分で、1本は1時間28分〜2時間38分。本はレーンに3本ずつ載るので3巡して、実時間は約7時間25分
-#   （review は1分未満）。担い手は始めて stop_after 分で新しい変異を取らずに抜け、当て直しは90分で抜けて、持ち時間（240分）の
-#   前に結果を残す（この測りではどちらにも当たらずに回し切った）。
+# - 持ち時間: 担い手は始めて stop_after 分で新しい変異を取らずに抜け、当て直しは90分で抜けて、持ち時間（240分）の前に結果を
+#   残す。抜けた本の残りは Pending として表に残り、その見直しは次の前回にならない。本の数は、1本の変異と基準が stop_after の
+#   中で回り切るように決める。2026-11-01 の定時の測り（15本、実行 41239108862）では、1本に配った変異と基準の約1,920件のうち
+#   2時間で約1,350〜1,860件しか回らず（全体の 26,456件のうち 6,134件が Pending）、当て直しは33〜71分、変異の生成は約6分だった。
+#   30本（1本約960件）なら、同じ速さで1本85分ほどの見込み（未計測）。本はレーンに5本ずつ載るので6巡する。
 # - 成果物: 1 は mutation-<番号>・recheck-<番号>（14日）、2 は mutation-review（次の見直しが比べるので90日）。
 name: Mutation
 
 on:
+  schedule:
+    # backend と frontend（mutation-frontend.yml）は別の夜に回し、同時に動けるジョブの枠を取り合わない。毎時0分は混んで遅れるので外す。
+    - cron: "23 2 1 * *"
+      timezone: Asia/Tokyo
   workflow_dispatch:
     inputs:
       issue:
@@ -46,20 +56,37 @@ on:
 permissions:
   contents: read
 
+# 同じ issue の測りだけを1本ずつにする（前後の版の測りが同じ issue で並ぶ）。ほかの issue の測りは待たずに並べ、ジョブの本は issue のレーンが数える。
 concurrency:
-  group: mutation
+  group: mutation-${{ inputs.issue || 'schedule' }}
   queue: max
 
 env:
-  SHARDS: 15
+  SHARDS: 30
   WORKERS: 4
   MUT_OUT: /tmp/mutation
   MUT_DB_PREFIX: mut_w
 
 jobs:
-  shard:
+  version:
     concurrency:
-      group: orch/tasks-${{ inputs.issue }}-lane-${{ matrix.lane }}
+      group: ${{ inputs.issue && format('orch/tasks-{0}', inputs.issue) || 'mutation' }}-lane-1
+      queue: max
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      sha: ${{ steps.sha.outputs.sha }}
+    steps:
+      - id: sha
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REF: ${{ inputs.ref || github.sha }}
+        run: echo "sha=$(gh api "repos/$GITHUB_REPOSITORY/commits/$REF" -q .sha)" >> "$GITHUB_OUTPUT"
+
+  shard:
+    needs: version
+    concurrency:
+      group: ${{ inputs.issue && format('orch/tasks-{0}', inputs.issue) || 'mutation' }}-lane-${{ matrix.lane }}
       queue: max
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 240
@@ -83,6 +110,21 @@ jobs:
           - { shard: 12, lane: 3 }
           - { shard: 13, lane: 4 }
           - { shard: 14, lane: 5 }
+          - { shard: 15, lane: 1 }
+          - { shard: 16, lane: 2 }
+          - { shard: 17, lane: 3 }
+          - { shard: 18, lane: 4 }
+          - { shard: 19, lane: 5 }
+          - { shard: 20, lane: 1 }
+          - { shard: 21, lane: 2 }
+          - { shard: 22, lane: 3 }
+          - { shard: 23, lane: 4 }
+          - { shard: 24, lane: 5 }
+          - { shard: 25, lane: 1 }
+          - { shard: 26, lane: 2 }
+          - { shard: 27, lane: 3 }
+          - { shard: 28, lane: 4 }
+          - { shard: 29, lane: 5 }
     defaults:
       run:
         working-directory: backend
@@ -91,7 +133,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ inputs.ref }}
+          ref: ${{ needs.version.outputs.sha }}
       - id: mode
         name: 全部の測りか、一覧だけか
         run: |
@@ -112,7 +154,7 @@ jobs:
         working-directory: backend/mutants
         env:
           SHARD: ${{ matrix.shard }}
-          COUNT: ${{ inputs.count }}
+          COUNT: ${{ inputs.count || '0' }}
         run: |
           awk -v s="$SHARD" -v n="$SHARDS" '(NR - 1) % n == s' "$MUT_OUT/all.txt" > "$MUT_OUT/shard.txt"
           if [ "$COUNT" -gt 0 ]; then head -n "$COUNT" "$MUT_OUT/shard.txt" > "$MUT_OUT/shard.tmp" && mv "$MUT_OUT/shard.tmp" "$MUT_OUT/shard.txt"; fi
@@ -120,7 +162,7 @@ jobs:
       - name: 回す
         working-directory: backend/mutants
         env:
-          STOP_AFTER_MINUTES: ${{ inputs.stop_after }}
+          STOP_AFTER_MINUTES: ${{ inputs.stop_after || '120' }}
         run: |
           MUT_STOP_AFTER=$((STOP_AFTER_MINUTES * 60)) python ../scripts/mutation/runner.py "$MUT_OUT/shard.txt" "$MUT_OUT/results.jsonl" "$WORKERS"
           cp mutmut-stats.json "$MUT_OUT/"
@@ -135,7 +177,7 @@ jobs:
           cd mutants
           MUT_OUT="$RECHECK_OUT" MUT_STOP_AFTER=5400 python ../scripts/mutation/runner.py "$recheck" "$RECHECK_OUT/results.jsonl" "$WORKERS"
       - if: always() && steps.mode.outputs.full == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: recheck-${{ matrix.shard }}
           path: |
@@ -144,7 +186,7 @@ jobs:
           retention-days: 14
           if-no-files-found: warn
       - if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: mutation-${{ matrix.shard }}
           path: |
@@ -157,10 +199,10 @@ jobs:
           if-no-files-found: warn
 
   review:
-    needs: shard
+    needs: [version, shard]
     if: needs.shard.outputs.full == 'true'
     concurrency:
-      group: orch/tasks-${{ inputs.issue }}-lane-1
+      group: ${{ inputs.issue && format('orch/tasks-{0}', inputs.issue) || 'mutation' }}-lane-1
       queue: max
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 30
@@ -173,45 +215,22 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ inputs.ref }}
+          ref: ${{ needs.version.outputs.sha }}
       - uses: ./.github/actions/python
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: mutation-*
           path: /tmp/art
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: recheck-*
           path: /tmp/rart
-      - name: 前の実行の見直しを取る
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: 集計する
         run: |
-          mkdir -p /tmp/prev
-          # 一覧が成果物の ID まで返すので、ID で取る（gh run download はその実行の成果物を一覧し直してから取る）。
-          prev=$(gh api "repos/${{ github.repository }}/actions/artifacts?name=mutation-review&per_page=30" \
-            -q '[.artifacts[] | select(.expired | not) | select(.workflow_run.id != ${{ github.run_id }})][0] // empty | "\(.id) \(.workflow_run.id)"')
-          if [ -n "$prev" ]; then
-            gh api "repos/${{ github.repository }}/actions/artifacts/${prev% *}/zip" > /tmp/prev.zip
-            unzip -q /tmp/prev.zip -d /tmp/prev
-            echo "前の見直し: 実行 ${prev#* }"
-          else
-            echo "前の見直しは無い（前回も候補だった印は付かない）"
-          fi
-      - id: review
-        name: 集計して見直す
-        run: |
-          mkdir -p /tmp/review
           mkdir -p /tmp/rart
-          python scripts/mutation/report.py /tmp/art /tmp/rart /tmp/review/report.json
-          python scripts/mutation/review.py /tmp/review/report.json /tmp/prev /tmp/review
-          cat /tmp/review/summary.md >> "$GITHUB_STEP_SUMMARY"
-      # 変異を全部回し終えた測りの見直しだけを残す（途中で止まった測り・count で減らした試しを、次の見直しが前回として
-      # 読まないように）。見直しが落ちたときも残さない。
-      - if: steps.review.outputs.complete == 'true'
-        uses: actions/upload-artifact@v4
+          python scripts/mutation/report.py /tmp/art /tmp/rart /tmp/report.json
+      - uses: ./.github/actions/mutation-review
         with:
-          name: mutation-review
-          path: /tmp/review/
-          retention-days: 90
-          if-no-files-found: warn
+          layer: backend
+          report: /tmp/report.json
+          flow-token: ${{ secrets.FLOW_BOT_TOKEN }}

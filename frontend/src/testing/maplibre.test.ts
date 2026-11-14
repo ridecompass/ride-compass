@@ -109,16 +109,16 @@ describe("maplibre-gl の代役", () => {
     map.remove();
   });
 
-  it("動かすと、範囲を置く前は null だった範囲と倍率が置いた値になり、動き終わったことを出す", () => {
+  it("動かすと、範囲を置く前は世界の全体だった範囲と倍率が置いた値になり、動き終わったことを出す", () => {
     const map = drawMap();
-    const onMoveEnd = vi.fn(() => [map.getBounds()?.getWest(), map.getBounds()?.getNorth(), map.getZoom()]);
+    const onMoveEnd = vi.fn(() => [map.getBounds().getWest(), map.getBounds().getNorth(), map.getZoom()]);
     map.on("moveend", onMoveEnd);
-    expect(map.getBounds()).toBeNull();
+    expect(map.getBounds().getWest()).toBe(-180);
 
     mapOnScreen().moveTo({ west: 139.7, south: 35.6, east: 139.8, north: 35.7 }, 14);
 
     expect(onMoveEnd).toHaveReturnedWith([139.7, 35.7, 14]);
-    expect([map.getBounds()?.getSouth(), map.getBounds()?.getEast()]).toEqual([35.6, 139.8]);
+    expect([map.getBounds().getSouth(), map.getBounds().getEast()]).toEqual([35.6, 139.8]);
     map.remove();
   });
 

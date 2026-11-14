@@ -137,6 +137,19 @@ describe("配信の失敗の記録", () => {
     expect(jmaTileFailures().size).toBe(0);
   });
 
+  it("前のコマのタイルが返っても、いま描くコマの失敗は消さない（失敗の知らせが出ないまま、壊れたコマが透明に見える）", async () => {
+    const { request, jmaTileFailures } = await load();
+    const previous = jmaTilePayload("rasterTile", jmaDeliveryOf("inund"), {
+      ...FRAME,
+      basetime: "20260923230000",
+    }).tileUrlTemplate;
+    serveTiles(() => new Response(null, { status: 503 }));
+    onUrl(`${previous.slice(0, previous.indexOf("{"))}*`, () => new Response(new Uint8Array([1])));
+    await request(PRESENT_PNG_URL);
+    await request(at(previous, 28, 13));
+    expect(jmaTileFailures().get("inund")).toBe(TEMPLATE);
+  });
+
   it("到達できなければ失敗として記録して例外を返す。地図が取り消すと取りに行った要求も止め、失敗に数えない", async () => {
     const { request, jmaTileFailures } = await load();
     // 網は、中断されるまで答えない。

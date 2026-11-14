@@ -3,7 +3,7 @@
 
 この台帳は**対象を宣言から導く**（表の印`orm_base.py: DERIVED`を持つ表が派生データ）。表や列が増えても
 手当てが要らないことが値打ちなので、ここで見るのは個々の表の名前ではなく、導出の規則である: 派生の表・値の列、
-ソースごとの鮮度と表ごとの列の記録との比べ（DBで）、作り直した直後に値や行の無い道・区間があっても作り直しを求めないこと。
+ソースごとの鮮度・表ごとの列・較正値ごとの値の記録との比べ（DBで）、作り直した直後に値や行の無い道・区間があっても作り直しを求めないこと。
 """
 
 import pytest
@@ -17,11 +17,13 @@ from app.infrastructure.derived_data_freshness import (
     derived_tables,
     value_columns,
 )
+from app.domain.tuning import ELEVATION_PROFILE_STEP_ID, LANDCOVER_RING_OUTER_ID
 from app.infrastructure.orm_base import Base
 from app.infrastructure.source_models import Source
 from app.services.derived_data_freshness_service import build_freshness_report
-from tests.conftest import postgis_database_url, raw_connection
-from tests.source_ingest import abr_prefecture_record, ingest_records, point_record, way_record
+from tests.conftest import override_tuning, postgis_database_url, raw_connection
+from tests.tuning_fixture import TUNING
+from tests.source_ingest import abr_prefecture_record, ingest_records, interrupted, point_record, way_record
 
 from datetime import datetime, timezone
 
@@ -54,11 +56,6 @@ def test_値の列は鍵を除いた列():
 
 # --- ソースごとの鮮度 -------------------------------------------------------
 
-def _breaks_midway():
-    yield point_record(1, 139.7, 35.6)
-    raise OSError("配信元が途中で切れた")
-
-
 @on_postgis
 async def test_作り直しに使った取込が成功した最新の取込でないソースは作り直しが要る(road_graph_session):
     """取り直したソース・まだ作り直しに使っていないソース・取込が1度も成功していないソースが、作り直しが要る側に出る。"""
@@ -69,7 +66,7 @@ async def test_作り直しに使った取込が成功した最新の取込で�
     reingested_accident_run = await ingest_records(Source.ACCIDENT, [])
     node_run = await ingest_records(Source.OSM_NODE, [])
     with pytest.raises(OSError):
-        await ingest_records(Source.DEM, _breaks_midway())
+        await ingest_records(Source.DEM, interrupted(point_record(1, 139.7, 35.6)))
 
     freshness = await DerivedDataFreshnessQuery(road_graph_session).get_freshness()
     report = build_freshness_report(freshness, datetime(2026, 1, 1, tzinfo=timezone.utc))
@@ -113,6 +110,30 @@ async def test_作り直した後に列を足した表と消した表と列の�
     ]
 
 
+# --- 較正値ごとの値 -------------------------------------------------------
+
+@on_postgis
+async def test_作り直した後に変えた較正値と値の記録が無い較正値は作り直しが要る(road_graph_session):
+    """変えた較正値は、派生の表がまだ前の値で作られている。記録の無い較正値は、どの値で作ったかが分からない。
+    並ぶのは作り直しが読む較正値の全部で、ほかは記録と今の値が同じなので作り直しを求めない。"""
+    changed, unrecorded = LANDCOVER_RING_OUTER_ID, ELEVATION_PROFILE_STEP_ID
+    async with raw_connection() as conn:
+        await derived_data_meta.replace_tuning(
+            conn, {param_id: TUNING[param_id] for param_id in derive_cli.TUNING_USERS if param_id != unrecorded})
+    await override_tuning(changed, TUNING[changed] + 10)
+    try:
+        report = await _report(road_graph_session)
+    finally:
+        await override_tuning(changed, TUNING[changed])
+
+    assert {entry.param_id for entry in report.tuning} == set(derive_cli.TUNING_USERS)
+    assert {entry.param_id: (entry.derived_value, entry.current_value)
+            for entry in report.tuning if entry.needs_rebuild} == {
+        changed: (TUNING[changed], TUNING[changed] + 10),
+        unrecorded: (None, TUNING[unrecorded]),
+    }
+
+
 @on_postgis
 async def test_作り直した直後は値や行の無い道と区間があっても作り直しを求めない(road_graph_session, road_network_root):
     """区間に切れない道（同じ位置に点が重なる）は派生の表に行を持たず、標高と土地被覆のタイルが無い区間は値を持たない。
@@ -133,3 +154,4 @@ async def test_作り直した直後は値や行の無い道と区間があっ�
             tables[derived_models.EdgeLandcoverRow.__tablename__].row_count) == (0, 0)
     assert [source.source for source in report.sources if source.needs_rebuild] == []
     assert [table.table_name for table in report.tables if table.needs_rebuild] == []
+    assert [entry.param_id for entry in report.tuning if entry.needs_rebuild] == []

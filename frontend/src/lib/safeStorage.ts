@@ -1,24 +1,44 @@
-// localStorageの読み書きの失敗を、呼び出し側へ投げない薄いラッパ。
-//
-// サイトデータを全面的にブロックしている環境では`window.localStorage`のゲッター自体が
-// SecurityErrorを投げるので、`getItem`/`setItem`だけでなくゲッターも囲む。
+// 端末の保存値（localStorage）の読み書きの口。保存値はJSONで書き、JSONとして読む。失敗（ブラウザが断る・容量の上限・
+// JSONでない）は、どの保存値かを添えた`StoredValueError`にして投げ、その値を使う操作・画面が出す。保存されていないことだけは
+// 失敗でなく、読むとnull。
 
-/** localStorageの値を読む。使えない環境ではnullを返す（未保存と同じ扱い）。 */
-export function readStoredValue(key: string): string | null {
-  try {
-    if (typeof window === "undefined") return null;
-    return window.localStorage.getItem(key);
-  } catch {
-    return null;
+/** 端末の保存値`label`（画面の名前）を読めなかった・書けなかったこと。メッセージは利用者へそのまま出せる形（鍵は出さない）。 */
+export class StoredValueError extends Error {
+  constructor(operation: "read" | "write", label: string, cause: unknown) {
+    const reason = cause instanceof Error ? cause.message : String(cause);
+    super(`端末に保存した${label}を${operation === "read" ? "読めませんでした" : "保存できませんでした"}[${reason}]`, {
+      cause,
+    });
+    this.name = "StoredValueError";
   }
 }
 
-/** localStorageへ書く。使えない環境では黙って捨てる（このセッション内の値は有効なまま）。 */
-export function writeStoredValue(key: string, value: string): void {
+/** 保存値`label`を読む。保存されていなければnull。 */
+export function readStored<T>(key: string, label: string): T | null {
   try {
-    if (typeof window === "undefined") return;
-    window.localStorage.setItem(key, value);
-  } catch {
-    // 保存不可は無視（次回訪問時に既定値へ戻るだけ）
+    const raw = localStorage.getItem(key);
+    return raw === null ? null : (JSON.parse(raw) as T);
+  } catch (error) {
+    throw new StoredValueError("read", label, error);
   }
+}
+
+/** 保存値`label`を書く。 */
+export function writeStored(key: string, label: string, value: unknown): void {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch (error) {
+    throw new StoredValueError("write", label, error);
+  }
+}
+
+/** 保存値を消す。 */
+export function removeStoredValue(key: string): void {
+  localStorage.removeItem(key);
+}
+
+/** 端末の保存値を全部消し、どれも保存されていない状態へ戻す（画面のエラーの境目が出す。古い形の保存値で落ちたときも、どの値かを
+ * 知らずに抜けられる）。 */
+export function clearStoredValues(): void {
+  localStorage.clear();
 }

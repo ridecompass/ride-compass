@@ -5,33 +5,20 @@
 - ディスクのキャッシュの読み書きと、読めない・消せないときの扱い → `test_tile_cache.py`
 - 記録した項目のログ・統計への出し方 → `test_debug_log.py`
 
-骨格のテストは、ディスクのキャッシュ（`tile_cache`の読み書き）と記録の口（`log_external_call`）を代役へ差し替え、
-キャッシュの代役は本物の署名へ当てる（`bound`）。旧世代の掃除のテストは、ディスクを本物で通し（置き場は`tests/conftest.py`が
-テストごとの一時ディレクトリへ向けてある）、ラスタの口だけを代役にする。
+ディスクのキャッシュは本物で通す（置き場は`tests/conftest.py`がテストごとの一時ディレクトリへ向けてある）。骨格のテストは
+記録の口（`log_external_call`）を、旧世代の掃除のテストはラスタの口を代役にする。
 """
 
 
 import pytest
 
 from app.infrastructure import region_tile_cache, tile_cache
-from app.infrastructure.cache_identity import UNKNOWN_REVISION, region_tile_key
-from app.infrastructure.debug_log import mark_failed
-from tests.bound_fake import bound
+from app.infrastructure.cache_identity import LANDCOVER_TILE_VERSION, region_tile_key
 from tests.fake_external_log import record_external_calls
-from tests.fake_tile_cache import FakeTileCache
 
 EMPTY = b"empty-tile"
 TILE = {"kind": "kind", "generation": "1", "z": 10, "x": 905, "y": 403, "extension": "png"}
 KEY = region_tile_key(**TILE)
-
-
-@pytest.fixture
-def cache(monkeypatch):
-    fake = FakeTileCache()
-    disk = region_tile_cache.tile_cache
-    monkeypatch.setattr(disk, "get", bound(disk.get, fake.get))
-    monkeypatch.setattr(disk, "set", bound(disk.set, fake.set))
-    return fake
 
 
 @pytest.fixture
@@ -40,16 +27,11 @@ def records(monkeypatch):
     return record_external_calls(monkeypatch, region_tile_cache)
 
 
-def _fetch(result, failure=None):
-    calls: list[dict] = []
-
+def _fetch(result):
     async def fetch(fields):
-        calls.append(fields)
-        if failure is not None:
-            mark_failed(fields, failure)
         return result
 
-    return fetch, calls
+    return fetch
 
 
 async def _serve(fetch, **overrides):
@@ -65,45 +47,35 @@ async def _serve(fetch, **overrides):
     return await region_tile_cache.serve_region_tile(**arguments)
 
 
-async def test_a_cached_tile_is_returned_without_making_it_again(cache, records):
-    cache.entries[KEY] = (b"cached", "image/png")
-    fetch, fetched = _fetch(b"new")
+async def test_a_cached_tile_is_returned_without_making_it_again(records):
+    tile_cache.set(KEY, b"cached", "image/png")
+    fetch = _fetch(b"new")
 
     response = await _serve(fetch)
 
-    assert response == region_tile_cache.TileResponse(b"cached")
-    assert fetched == []
+    assert response == b"cached"
     assert records[0].fields["cache"] == "hit"
 
 
-async def test_a_missing_tile_is_made_stored_and_returned(cache, records):
-    fetch, _ = _fetch(b"new")
+async def test_a_missing_tile_is_made_stored_and_returned(records):
+    fetch = _fetch(b"new")
 
     response = await _serve(fetch)
 
-    assert response == region_tile_cache.TileResponse(b"new")
-    assert cache.entries == {KEY: (b"new", "image/png")}
+    assert response == b"new"
+    assert tile_cache.get(KEY) == (b"new", "image/png")
     # 取得元は呼び出し元が名乗る（統計の内訳が実際の取得元と食い違わないため）
     assert [call.fields for call in records] == [{
         "z": TILE["z"], "x": TILE["x"], "y": TILE["y"],
-        "cache": "miss", "source": "raster", "tile_bytes": 3, "persisted": True,
+        "cache": "miss", "source": "raster", "tile_bytes": 3,
     }]
 
 
-@pytest.mark.parametrize(
-    ("failure", "cacheable"),
-    [
-        (None, True),  # 範囲外で恒久的に無い
-        (ConnectionRefusedError("db down"), False),  # 一時的に取れなかった——ブラウザに空白を残さない
-    ],
-)
-async def test_a_tile_that_cannot_be_made_is_the_empty_tile_and_is_not_stored(cache, records, failure, cacheable):
-    fetch, _ = _fetch(None, failure)
+async def test_a_tile_outside_the_coverage_is_the_empty_tile_and_is_not_stored(records):
+    response = await _serve(_fetch(None))
 
-    response = await _serve(fetch)
-
-    assert response == region_tile_cache.TileResponse(EMPTY, cacheable=cacheable)
-    assert cache.entries == {}
+    assert response == EMPTY
+    assert tile_cache.get(KEY) is None
     assert records[0].fields["source"] == "uncovered_empty"
 
 
@@ -111,13 +83,14 @@ async def test_a_tile_that_cannot_be_made_is_the_empty_tile_and_is_not_stored(ca
 
 
 @pytest.fixture
-def opened_rasters(monkeypatch):
-    """開けている土地被覆ラスタのパス（代役）。空にすると1枚も開けない状態になる。"""
-    opened = ["/data/zone53.tif"]
-    raster = region_tile_cache.landcover_raster
-    monkeypatch.setattr(raster, "has_sources", bound(raster.has_sources, lambda: bool(opened)))
-    monkeypatch.setattr(raster, "opened_raster_paths", bound(raster.opened_raster_paths, lambda: list(opened)))
-    return opened
+def configure_rasters(monkeypatch):
+    """設定する土地被覆ラスタのパスを渡す口。"""
+
+    def configure(*paths: str) -> None:
+        monkeypatch.setattr(region_tile_cache.settings, "lulc_raster_paths", ",".join(paths))
+
+    configure("/data/zone53.tif")
+    return configure
 
 
 def _store(*keys: str) -> None:
@@ -129,16 +102,15 @@ def _kept(*keys: str) -> set[str]:
     return {key for key in keys if tile_cache.get(key) is not None}
 
 
-def test_only_the_generations_being_served_stay_on_disk(opened_rasters):
-    landcover_now = region_tile_cache.landcover_generation()
-    opened_rasters.append("/data/zone54.tif")
+def test_only_the_generations_being_served_stay_on_disk(configure_rasters):
+    configure_rasters("/data/zone53.tif", "/data/zone54.tif")
     landcover_with_another_zone = region_tile_cache.landcover_generation()
-    opened_rasters.pop()
+    configure_rasters("/data/zone53.tif")
+    landcover_now = region_tile_cache.landcover_generation()
     keys = {
         "路面の今の世代": region_tile_key("road_surface", "3.2-aaa", 12, 1, 1, "pbf"),
         "路面の前の世代": region_tile_key("road_surface", "2.2-aaa", 12, 1, 1, "pbf"),
         "形の署名だけ違う世代": region_tile_key("road_surface", "3.2-bbb", 12, 1, 1, "pbf"),
-        "世代を読めていない系統": region_tile_key("poi", "3.2-ccc", 12, 1, 1, "pbf"),
         "表に無い系統": region_tile_key("road-surface", "3.2-aaa", 12, 1, 1, "pbf"),
         "土地被覆の今のラスタ構成": region_tile_key("landcover", landcover_now, 12, 1, 1, "png"),
         "土地被覆の別のラスタ構成": region_tile_key("landcover", landcover_with_another_zone, 12, 1, 1, "png"),
@@ -147,25 +119,20 @@ def test_only_the_generations_being_served_stay_on_disk(opened_rasters):
     _store(*keys.values())
 
     removed = region_tile_cache.prune_other_generations(
-        {"road_surface": "3.2-aaa", "poi": f"{UNKNOWN_REVISION}-ccc"}
+        {"road_surface": "3.2-aaa"}
     )
 
     kept = _kept(*keys.values())
     assert {name for name, key in keys.items() if key in kept} == {
         "路面の今の世代",
-        "世代を読めていない系統",
         "土地被覆の今のラスタ構成",
         "基礎地図（地域タイルでない）",
     }
     assert removed == len(keys) - len(kept)
 
 
-def test_landcover_tiles_stay_while_no_raster_can_be_opened(opened_rasters):
-    """どれが今の構成か分からない間は消さない（起動時にラスタが一時に置かれていない等）。"""
-    key = region_tile_key("landcover", region_tile_cache.landcover_generation(), 12, 1, 1, "png")
-    _store(key)
-    opened_rasters.clear()
+def test_the_landcover_generation_carries_the_tile_version(configure_rasters):
+    """配色を変えて版を上げたら、前の版の絵をディスクから返さない。"""
+    assert region_tile_cache.landcover_generation().startswith(f"{LANDCOVER_TILE_VERSION}/")
 
-    region_tile_cache.prune_other_generations({})
 
-    assert _kept(key) == {key}

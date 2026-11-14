@@ -5,25 +5,17 @@ JMA動的タイルは疎で、平常時はほぼ全てのタイルが空であ�
 費やされる。`basetime`が10分ごとに変わりURLも変わるため、ブラウザキャッシュ
 （`api/cache_policy.py`）では救えない。
 
-`jma_tile_prewarm_service.py`が運用範囲のタイルを10分ごとに取得する過程で在否を判定し、
-ここへ記録する。クライアントは`GET /api/jma-tile-index`で1回受け取り、インデックスに
-無いタイルは要求しない。
-
-インデックスの形（`JmaTileIndex`）はここだけが宣言し、作る側（プリウォーム）・保存・応答が
-同じ型を使う。
-
-**正本を持たないキャッシュ**: 失っても機能は壊れない（インデックスが無ければクライアントは
-従来どおり全タイルを取りに行くだけ）。Redisとのやり取りは`redis_json_cache`の共通骨格へ
-委ね、このモジュールはキー設計・TTLだけを持つ（在否の判定自体は`jma_tile_content.py`）。
+プリウォームが運用範囲のタイルを取得する過程で在否を記録し、`GET /api/jma-tile-index`で配る。
+インデックスの形（`JmaTileIndex`）はここだけが宣言する。正本を持たないキャッシュで、失っても
+インデックスが無いときの取り方（全タイルを取りに行く）へ戻るだけ。
 """
 
 import json
 
 from app.domain.strict_model import StrictModel
 from app.infrastructure.cache_identity import shape_digest
+from app.infrastructure.jma_tile_redis_cache import TTL_SECONDS
 from app.infrastructure.redis_json_cache import UNAVAILABLE, get_json, set_json
-
-__all__ = ["JmaTileIndex", "JmaTileIndexCoverage", "JmaTileIndexElement", "get_index", "set_index"]
 
 
 class JmaTileIndexCoverage(StrictModel):
@@ -46,8 +38,7 @@ class JmaTileIndexElement(StrictModel):
     basetime: str | None = None
     validtime: str | None = None
     member: str = "none"
-    # ズーム（文字列キー）→ 中身のあるタイル座標[x, y]の一覧。JSONのオブジェクトキーは
-    # 文字列のため、生成側（`jma_tile_prewarm_service._store_index`）で揃えてある。
+    # ズーム（JSONのオブジェクトキーなので文字列）→ 中身のあるタイル座標[x, y]の一覧。
     zooms: dict[str, list[list[int]]] = {}
 
 
@@ -68,15 +59,12 @@ _LOG_CATEGORY = "cache:jma-tile-index"
 _LATEST_KEY = (
     f"jma:tile-index:{shape_digest(json.dumps(JmaTileIndex.model_json_schema(), sort_keys=True))}:latest"
 )
-# プリウォーム間隔（10分）より長く取り、1回の遅延で即座に空にならないようにする
-# （`jma_tile_redis_cache.py`のタイル本体TTLと同じ考え方）。
-_TTL_SECONDS = 20 * 60
 
 
 async def set_index(index: JmaTileIndex) -> None:
     """最新のインデックス全体を保存する。"""
     await set_json(
-        _LATEST_KEY, index.model_dump(), ttl_seconds=_TTL_SECONDS, category=_LOG_CATEGORY, operation="set"
+        _LATEST_KEY, index.model_dump(), ttl_seconds=TTL_SECONDS, category=_LOG_CATEGORY, operation="set"
     )
 
 

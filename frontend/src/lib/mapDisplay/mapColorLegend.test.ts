@@ -29,12 +29,10 @@ describe("buildRangeLegendBands", () => {
     expect(bands.map((band) => band.label)).toEqual(["弱い[2m/s未満]", "中くらい[2〜6m/s]", "強い[6m/s以上]"]);
   });
 
-  it("段の鍵は並びの位置だけで決まり、単位・ラベル・境界の値が違っても同じ段は同じ鍵になる", () => {
-    const keys = (bands: { key: string }[]) => bands.map((band) => band.key);
+  it("最初の段の下限を渡すと、最初の段もその下限からの範囲にする（それより下を塗らない段の並び）", () => {
+    const bands = buildRangeLegendBands([5], COLORS.slice(0, 2), "mm/h", undefined, 1);
 
-    expect(keys(buildRangeLegendBands([10, 20], COLORS, "", ["a", "b", "c"]))).toEqual(
-      keys(buildRangeLegendBands([-5, 0], COLORS, "%", undefined)),
-    );
+    expect(bands.map((band) => band.label)).toEqual(["1〜5mm/h", "5mm/h以上"]);
   });
 
   it("境界が無く段が1つなら、範囲の文字を空にする", () => {

@@ -24,10 +24,12 @@ LANES = range(6)
 # 担当の実行だけが使うレーン。担当は持ち時間いっぱいまで動くので、CI のジョブと同じレーンに置くと、CI が担当の終わりまで待つ。
 WORKER_LANE = 0
 # 鍵。Pull Request は元のブランチ、push・定時・手の起こしは ref の名前。担当と変異テストの測りは入力の issue の作業ブランチ。
+# 変異テストの定期の測りは、どの issue にも属さない専用の鍵。
 KEYS = (
     "${{ github.head_ref || github.ref_name }}",
     "master",
     "orch/tasks-${{ inputs.issue }}",
+    "${{ inputs.issue && format('orch/tasks-{0}', inputs.issue) || 'mutation' }}",
 )
 _GROUP = re.compile(r"^(?P<key>.+)-lane-(?P<lane>\d+|\$\{\{ matrix\.lane \}\})$")
 

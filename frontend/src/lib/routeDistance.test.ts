@@ -5,16 +5,24 @@
  * - `pointAlongSegment`: 区間の道なりの形の上で割合だけ進んだ地点。経度は緯度で縮めて長さを測る。形が無ければ両端を結ぶ直線の上
  * - `splitSegmentAt`: 区間の形を割合の地点で前と後ろに分ける（分けた点は両方に入る）
  * - `routeTrack`・`projectOnTrack`: ルートの形を辺へ分け、地点に最も近い辺の上の点のルートの上の距離と隔たり
+ * - `routePointsEvery`: ルートの形の上に一定の距離おきに置いた点
  *
  * ここで見ないもの:
- * - どの辺の点を現在地の位置と見るか（往復で続く側を選ぶこと） → `features/ride/routeProgress.test.ts`
+ * - どの辺の点を現在地の位置と見るか（往復で続く側を選ぶこと） → `lib/routeProgress.test.ts`
  */
 import { describe, expect, it } from "vitest";
 
 import { makeRouteSegment } from "@/testing/routeFixtures";
 import type { RouteSegmentDetail } from "@/types/route";
 
-import { pointAlongSegment, projectOnTrack, routeStretches, routeTrack, splitSegmentAt } from "./routeDistance";
+import {
+  pointAlongSegment,
+  projectOnTrack,
+  routePointsEvery,
+  routeStretches,
+  routeTrack,
+  splitSegmentAt,
+} from "./routeDistance";
 
 function segment(overrides: Partial<RouteSegmentDetail> = {}): RouteSegmentDetail {
   return makeRouteSegment({ distance_km: 1, end_longitude: 1, ...overrides });
@@ -139,26 +147,26 @@ describe("splitSegmentAt", () => {
   });
 });
 
-describe("projectOnTrack", () => {
-  // 北緯35度の上を東へ進む区間と、そこから北へ折れる区間。辺の両端の距離は、形の長さの割合を区間の距離へ当てたもの。
-  const track = routeTrack([
-    segment({
-      distance_km: 2,
-      geometry: line([
-        [139, 35],
-        [139.01, 35],
-        [139.02, 35],
-      ]),
-    }),
-    segment({
-      distance_km: 1,
-      geometry: line([
-        [139.02, 35],
-        [139.02, 35.01],
-      ]),
-    }),
-  ]);
+// 北緯35度の上を東へ進む区間と、そこから北へ折れる区間。辺の両端の距離は、形の長さの割合を区間の距離へ当てたもの。
+const track = routeTrack([
+  segment({
+    distance_km: 2,
+    geometry: line([
+      [139, 35],
+      [139.01, 35],
+      [139.02, 35],
+    ]),
+  }),
+  segment({
+    distance_km: 1,
+    geometry: line([
+      [139.02, 35],
+      [139.02, 35.01],
+    ]),
+  }),
+]);
 
+describe("projectOnTrack", () => {
   it("辺ごとに、地点に最も近い辺の上の点のルートの上の距離と、地点からの隔たり（m）を出す", () => {
     // 1つ目の区間の2本目の辺の真ん中から、真北へ緯度0.001度（約111m）。
     const projected = projectOnTrack(track, { latitude: 35.001, longitude: 139.015 });
@@ -175,5 +183,39 @@ describe("projectOnTrack", () => {
     const [, , last] = projectOnTrack(track, { latitude: 35.005, longitude: 139.021 });
     expect(last.km).toBeCloseTo(2.5);
     expect(last.offsetM).toBeCloseTo(91.1, 0);
+  });
+});
+
+describe("routePointsEvery", () => {
+  it("始まりから一定の距離おきに道なりの形の上へ点を置き、終わりの点も置く", () => {
+    // 東へ1km（経度0.01度を2本の辺で）と、そこから北へ0.5km。
+    const points = routePointsEvery(
+      [
+        segment({
+          distance_km: 1,
+          geometry: line([
+            [139, 35],
+            [139.005, 35],
+            [139.01, 35],
+          ]),
+        }),
+        segment({
+          distance_km: 0.5,
+          geometry: line([
+            [139.01, 35],
+            [139.01, 35.01],
+          ]),
+        }),
+      ],
+      0.4,
+    );
+
+    expect(points.map(({ km }) => km)).toEqual([0, 0.4, 0.8, expect.closeTo(1.2, 9), 1.5]);
+    const at = points.map(({ point }) => [point.longitude, point.latitude]);
+    expect(at[1][0]).toBeCloseTo(139.004, 6);
+    expect(at[2][0]).toBeCloseTo(139.008, 6);
+    // 2つ目の区間の0.2km（0.5kmの4割）は、北への辺の4割。
+    expect(at[3]).toEqual([expect.closeTo(139.01, 6), expect.closeTo(35.004, 6)]);
+    expect(at[4]).toEqual([139.01, 35.01]);
   });
 });

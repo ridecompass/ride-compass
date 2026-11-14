@@ -13,11 +13,14 @@ import redis.asyncio as redis
 
 from app.infrastructure.debug_log import log_external_call, mark_failed
 from app.infrastructure.redis_client import (
-    get_redis_client_or_none,
+    get_redis_client,
     record_redis_failure,
     record_redis_success,
     redis_available,
 )
+
+#: Redisの障害（届かない・時間切れ・コマンドの失敗）として受ける例外。実装の誤りは受けない。
+_REDIS_ERRORS = (redis.RedisError, OSError)
 
 
 class Unavailable(Enum):
@@ -32,7 +35,7 @@ UNAVAILABLE: Literal[Unavailable.UNAVAILABLE] = Unavailable.UNAVAILABLE
 
 def _client_or_none() -> redis.Redis | None:
     """サーキットブレーカーが開いている間は接続自体を試さない。"""
-    return get_redis_client_or_none() if redis_available() else None
+    return get_redis_client() if redis_available() else None
 
 
 async def _get(
@@ -49,7 +52,7 @@ async def _get(
     with log_external_call(category, **log_fields) as fields:
         try:
             raw = await read(client)
-        except Exception as exc:  # Redis障害は「取れない」へのfail-open対象
+        except _REDIS_ERRORS as exc:  # Redis障害は「取れない」へのfail-open対象
             record_redis_failure()
             mark_failed(fields, exc)
             return UNAVAILABLE
@@ -71,7 +74,7 @@ async def _set(
     with log_external_call(category, **log_fields) as fields:
         try:
             await write(client)
-        except Exception as exc:
+        except _REDIS_ERRORS as exc:
             record_redis_failure()
             mark_failed(fields, exc)
             return
@@ -126,16 +129,15 @@ async def get_hash(
     return await _get(read, decode, category, log_fields)
 
 
-async def set_hashes(
-    hashes: Mapping[str, Mapping[str, str]], *, ttl_seconds: int, category: str, **log_fields: Any
-) -> None:
+async def set_hashes(hashes: Mapping[str, Mapping[str, str]], *, ttl_seconds: int, category: str) -> None:
     """キーごとのHashを、TTLとともに1往復（pipeline）で書く。Redis障害時は黙って諦める。"""
 
     async def write(client: redis.Redis) -> None:
         pipe = client.pipeline(transaction=False)
         for key, mapping in hashes.items():
-            pipe.hset(key, mapping=dict(mapping))
+            # `dict(mapping)`だと`dict[str, str]`になり、`hset`が宣言する項目名の広い型（`FieldT`）へ渡せない。
+            pipe.hset(key, mapping={field: value for field, value in mapping.items()})
             pipe.expire(key, ttl_seconds)
         await pipe.execute()
 
-    await _set(write, category, log_fields)
+    await _set(write, category, {})

@@ -9,14 +9,17 @@ import logging
 from sqlalchemy.exc import DataError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.domain.road_classes import RoadClassDefinitions, replace_road_classes
+from app.domain.cost_axes import CostAxisDefinitions, check_cost_axes
+from app.domain.road_classes import RoadClassDefinitions, replace_road_classes, undeclared_references
+from app.infrastructure.cost_axis_repository import read_cost_axes
+from app.infrastructure.definition_write_lock import acquire_definition_write_lock
 from app.infrastructure.road_class_repository import read_road_classes, replace_road_class_rows
 
 logger = logging.getLogger("ridecompass.road_classes")
 
 
 class RoadClassRejectedError(ValueError):
-    """書く全体が表の制約に通らなかった。文はDBの断りの文。"""
+    """書く全体を断った。文は運用者が読む断りの文。"""
 
 
 def _apply(definitions: RoadClassDefinitions) -> None:
@@ -25,8 +28,29 @@ def _apply(definitions: RoadClassDefinitions) -> None:
 
 
 async def refresh_road_classes(session: AsyncSession) -> None:
-    """表の全体をプロセス内へ読み込む（起動時）。表が空なら区分は0件。表を読めなければ例外のまま起動を止める。"""
-    _apply(await read_road_classes(session))
+    """表の全体をプロセス内へ読み込む（起動時）。表が空なら区分は0件。表を読めないか、コードの宣言に無い名を指していれば
+    （`undeclared_references`）、名指して起動を止める。バックアップから戻した行は管理APIを通らないので、ここで初めて確かめる。"""
+    definitions = await read_road_classes(session)
+    undeclared = undeclared_references(definitions)
+    if undeclared:
+        raise RuntimeError(f"道の区分を読み込めません: コードの宣言に無い名を指しています（{'／'.join(undeclared)}）")
+    _apply(definitions)
+
+
+def _check_writable(definitions: RoadClassDefinitions, cost_axes: CostAxisDefinitions | None) -> None:
+    """書く全体が、コードの宣言に無い名を指さず、確定しても次の起動で費用の軸の定義を読み込めるか。通らなければ
+    `RoadClassRejectedError`。"""
+    undeclared = undeclared_references(definitions)
+    if undeclared:
+        raise RoadClassRejectedError(f"コードの宣言に無い名を指しています（{'／'.join(undeclared)}）")
+    if cost_axes is None:
+        return
+    cost_axis_problems = check_cost_axes(cost_axes, definitions)
+    if cost_axis_problems:
+        raise RoadClassRejectedError(
+            f"費用の軸の定義が新しい区分に合わなくなるため確定しません（{'／'.join(cost_axis_problems)}）。"
+            "先に費用の軸の区分の重さを直してください"
+        )
 
 
 class RoadClassAdminService:
@@ -39,13 +63,22 @@ class RoadClassAdminService:
         return await read_road_classes(self._session)
 
     async def replace(self, definitions: RoadClassDefinitions) -> RoadClassDefinitions:
-        """全体を入れ替え、書いた全体を返す。"""
+        """全体を入れ替え、書いた全体を返す。
+
+        定義の書き込みの鍵を取ってから費用の軸を読む——取らないと、確かめてから確定するまでの間に、消す区分を指す費用の軸が
+        書ける。
+        """
         session = self._session
         try:
+            await acquire_definition_write_lock(session)
+            _check_writable(definitions, await read_cost_axes(session))
             await replace_road_class_rows(session, definitions)
             await session.commit()
         except (IntegrityError, DataError) as error:
             await session.rollback()
-            raise RoadClassRejectedError(str(error.orig)) from error
+            raise RoadClassRejectedError(f"表の制約に通りません: {error.orig}") from error
+        except RoadClassRejectedError:
+            await session.rollback()
+            raise
         _apply(definitions)
         return definitions

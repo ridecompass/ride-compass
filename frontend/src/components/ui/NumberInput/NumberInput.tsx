@@ -8,7 +8,7 @@ import { cn } from "@/lib/cn";
 // 持つと打った文字が消える。打っている間の文字はこの部品が持ち、欄を離れると値の表示へ戻す。
 //
 // いつ値を渡すかは`commitOn`で選ぶ:
-// - "input": 数として読めた時点で毎回渡す（グラフを見ながら折れ点を動かす等、打った先から効かせたいとき）
+// - "input": 数として読めた時点で毎回渡す（較正値の欄が保存前の印を出す等、打った先から効かせたいとき）
 // - "commit": 欄を離れたとき・Enterで1回だけ渡す（走行条件の速度のように、桁の途中の値を効かせたくないとき）
 //
 // "commit"で打ったまま欄ごと消えた（ポップオーバーをEscで閉じた等。消える要素にはblurが届かない）ときも、
@@ -46,6 +46,8 @@ export const NumberInput = forwardRef<HTMLInputElement, NumberInputProps>(functi
   );
   const commit = (text: string | null) => {
     setDraft(null);
+    // 同じ操作で欄が消えると描き直しが来ないので、消えたときの片付けが読む文字もここで手放す。
+    pendingRef.current.draft = null;
     if (text === null || commitOn !== "commit") return;
     const parsed = parse(text);
     if (parsed !== null) onValueChange(parsed);

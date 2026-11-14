@@ -1,11 +1,10 @@
 /** 地図に載るものを、1つの形で宣言する。
  *
- * 種類（面・道路の線・点・評価軸・ルート・気象）で書き方を変えない——**どれも
+ * 種類（面・道路の線・点・レンズ・ルート・気象）で書き方を変えない——**どれも
  * 「いまの状態から、載っているべきレイヤーの並びを返す」1つの形**で表す。役割が固定の
  * ものは固定の並びを返し、実行時に増減するものは状態から導いた並びを返す。
  *
- * 見た目の値はこのファイルが持つ（呼び出し側は埋めない）。外から来る値——実行時に
- * 増減する軸・タイルの配信先と世代・取得した中身——だけを状態として受け取る。
+ * 状態として受け取るのは外から来る値——実行時に増減する軸・タイルの配信先と世代・取得した中身——だけ。
  */
 import type { FilterSpecification, LayerSpecification } from "maplibre-gl";
 
@@ -20,7 +19,7 @@ import type {
   MapSceneSource,
   MapSceneTier,
 } from "./mapScene";
-import { geojsonContent, layerSpec, sceneLayerId, type SceneSourceId, tilesContent } from "./sceneBuilders";
+import { geojsonContent, sceneLayerId, type SceneSourceId, tilesContent } from "./sceneBuilders";
 
 /** レイヤー1枚ぶんの宣言。id は役割から決まる。
  *
@@ -36,6 +35,9 @@ export type SceneLayerEntry = {
   readonly type: LayerSpecification["type"];
   readonly paint: Readonly<Record<string, unknown>>;
   readonly layout?: Readonly<Record<string, unknown>>;
+  /** 描く縮尺の範囲（MapLibre の層の`minzoom`・`maxzoom`。`maxzoom`の縮尺そのものは描かない）。作った後に変えない。 */
+  readonly minzoom?: number;
+  readonly maxzoom?: number;
   readonly visible: boolean;
   /** 押したときに拾う対象。空なら押せない。 */
   readonly hitTargets?: readonly string[];
@@ -100,14 +102,17 @@ export function composeScene<State>(groups: readonly SceneGroup<State>[], state:
 
 function toSceneLayer(entry: SceneLayerEntry): MapSceneLayer {
   return {
-    spec: layerSpec({
+    // `LayerSpecification` は `type` ごとの合併型のため、paint/layout を外から受け取る形では合併型として組み立て直せない。
+    spec: {
       id: sceneLayerId(entry.source, entry.role),
       type: entry.type,
       source: entry.source,
-      sourceLayer: entry.sourceLayer,
+      ...(entry.sourceLayer === undefined ? {} : { "source-layer": entry.sourceLayer }),
       paint: entry.paint,
       ...(entry.layout === undefined ? {} : { layout: entry.layout }),
-    }),
+      ...(entry.minzoom === undefined ? {} : { minzoom: entry.minzoom }),
+      ...(entry.maxzoom === undefined ? {} : { maxzoom: entry.maxzoom }),
+    } as unknown as LayerSpecification,
     tier: entry.tier,
     visible: entry.visible,
     hitTargets: entry.hitTargets ?? [],

@@ -28,9 +28,10 @@ from __future__ import annotations
 import ast
 from collections import defaultdict
 from collections.abc import Iterator
+from functools import cache
 from pathlib import Path
 
-from tests.structure.source_symbols import Scope, SourceTree, Symbol, is_scaffold, replacement_calls, replacement_of, scanned_tests
+from tests.structure.source_symbols import Scope, SourceTree, Symbol, is_scaffold, replacement_calls, replacement_of, scanned_tests, write_files
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent
 MIN_VALUE_LEAVES = 5
@@ -65,11 +66,17 @@ def _definitions(tree: ast.Module) -> Iterator[tuple[str, int, str]]:
                 yield names[0], stmt.lineno, ast.dump(stmt.value)
 
 
+@cache
+def _test_trees(root: Path) -> dict[Path, ast.Module]:
+    """テストのファイルの木。このファイルの3つの検査が1回の解析を共有する（木は書き換えない）。"""
+    return {path: ast.parse(path.read_text(encoding="utf-8")) for path in scanned_tests(root)}
+
+
 def copied_definitions(root: Path) -> list[str]:
     """3つ以上のファイルに同じ本体で現れる最上位の定義（`パス:行: 名前`）。"""
     places: dict[str, dict[str, str]] = defaultdict(dict)
-    for path in scanned_tests(root):
-        for name, line, shape in _definitions(ast.parse(path.read_text(encoding="utf-8"))):
+    for path, tree in _test_trees(root).items():
+        for name, line, shape in _definitions(tree):
             places[shape].setdefault(path.relative_to(root).as_posix(), f"{line}: {name}")
     return sorted(
         f"{file}:{where}（{len(files)}ファイル）"
@@ -95,7 +102,7 @@ def _replacements(source: SourceTree, path: Path, tree: ast.Module) -> Iterator[
 def scaffold_replacements_repeated(root: Path) -> list[str]:
     """共有の足場が差し替える名前を、テストのファイルも差し替えている箇所（`パス:行: 名前`）。"""
     source = SourceTree(root)
-    trees = {path: ast.parse(path.read_text(encoding="utf-8")) for path in scanned_tests(root)}
+    trees = _test_trees(root)
     owned: set[tuple[tuple | None, str]] = set()
     for path, tree in trees.items():
         if is_scaffold(path):
@@ -124,7 +131,7 @@ def _nested_calls(tree: ast.Module) -> Iterator[ast.Call]:
 
 def scaffold_expressions_rewritten(root: Path) -> list[str]:
     """共有の足場が組み立てる入れ子の呼び出しを、テストのファイルが同じ形で書いている箇所（`パス:行: 式`）。"""
-    trees = {path: ast.parse(path.read_text(encoding="utf-8")) for path in scanned_tests(root)}
+    trees = _test_trees(root)
     built = {ast.dump(call) for path, tree in trees.items() if is_scaffold(path) for call in _nested_calls(tree)}
     return sorted(
         f"{path.relative_to(root).as_posix()}:{call.lineno}: {ast.unparse(call)}"
@@ -160,15 +167,12 @@ def test_tests_do_not_rebuild_what_the_scaffold_builds() -> None:
 
 
 def _backend(tmp_path: Path, files: dict[str, str]) -> Path:
-    for relative, text in {
+    return write_files(tmp_path, {
         "app/__init__.py": "",
         "app/store.py": "ROOT = None\n\n\ndef log_call(name):\n    return name\n",
         "tests/__init__.py": "",
         **files,
-    }.items():
-        (tmp_path / relative).parent.mkdir(parents=True, exist_ok=True)
-        (tmp_path / relative).write_text(text, encoding="utf-8")
-    return tmp_path
+    })
 
 
 def test_detects_definitions_copied_into_three_files_but_not_two(tmp_path: Path) -> None:

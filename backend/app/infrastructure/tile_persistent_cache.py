@@ -7,6 +7,7 @@
 世代・失効は鍵と`expire`で呼び出し側が表す。容量上限を超えればライブラリが古いものから退避する。
 """
 
+import asyncio
 import logging
 import time
 from typing import Any
@@ -16,12 +17,17 @@ import diskcache
 from app.config import settings
 from app.infrastructure.data_paths import DATA_DIR
 from app.infrastructure.debug_log import log_throttled_warning
+from app.infrastructure.tile_cache import DISK_READ_ERRORS, DISK_STORE_ERRORS
 
 logger = logging.getLogger("ridecompass.tile_persistent_cache")
 
 CACHE_DIR = DATA_DIR / "tile_persistent_cache"
 
 _CATEGORY = "cache:tile-persistent"
+
+# 路面タイルの世代を鍵に持つ値は、派生の表と生データが変われば世代ごと読まれなくなる。鮮度の制約が無いので、
+# 失っても読み直すだけのものとして長く持ち、DBへの再問い合わせを抑える。
+_TILE_ENTRY_TTL_SECONDS = 24 * 3600
 
 _opened_cache: diskcache.Cache | None = None
 
@@ -42,7 +48,7 @@ def cache() -> diskcache.Cache:
 
 
 def close() -> None:
-    """開いたキャッシュを閉じる（プロセスの終わりに`process_resources.py`が呼ぶ）。次の読み書きで開き直す。"""
+    """開いたキャッシュを閉じる。次の読み書きで開き直す。"""
     global _opened_cache
     if _opened_cache is not None:
         _opened_cache.close()
@@ -56,7 +62,7 @@ def get_by_key(key: tuple) -> Any | None:
         started = time.monotonic()
         value = cache().get(key)
         read_ms = (time.monotonic() - started) * 1000
-    except Exception as exc:  # 破損エントリ・SQLite障害はいずれも未キャッシュ扱いにする
+    except DISK_READ_ERRORS as exc:  # 破損エントリ・SQLite障害はいずれも未キャッシュ扱いにする
         log_throttled_warning(
             _CATEGORY, "tile persistent cache read failed key=%r, treating as cache miss error=%r", key, exc
         )
@@ -69,11 +75,21 @@ def get_by_key(key: tuple) -> Any | None:
 def set_by_key(key: tuple, value: Any, *, expire: float) -> None:
     """任意のタプルキーで書き、`expire`（秒）で失効させる。
 
-    書き込み失敗（ディスクフル・pickle化不能な値等）は握りつぶし、警告ログのみで
-    no-opにフォールバックする（キャッシュ書き込みの失敗が応答を止める理由にはならない）。
+    置き場の障害（ディスクフル等）で書けなければ、警告ログを出して書かずに進む（キャッシュに書けないことが応答を
+    止める理由にはならない）。pickleにできない値は実装の誤りなので投げる。
     """
     try:
         cache().set(key, value, expire=expire)
-    except Exception as exc:  # OSError（ディスクフル）・pickle化不能のいずれも吸収する
+    except DISK_STORE_ERRORS as exc:  # 置き場の障害は、書かずに進む
         log_throttled_warning(_CATEGORY, "tile persistent cache write failed key=%r error=%r", key, exc)
 
+
+
+async def get_tile_entry(key: tuple) -> Any | None:
+    """`set_tile_entry`で書いた値を読む。"""
+    return await asyncio.to_thread(get_by_key, key)
+
+
+async def set_tile_entry(key: tuple, value: Any) -> None:
+    """路面タイルの世代（鍵に入れる）に結んだ値を書く。"""
+    await asyncio.to_thread(set_by_key, key, value, expire=_TILE_ENTRY_TTL_SECONDS)

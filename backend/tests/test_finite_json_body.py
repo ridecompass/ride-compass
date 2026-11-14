@@ -17,8 +17,8 @@ from app.main import app
     # 範囲の制約を持つ欄。前は検証エラーの応答へNaNを書けずに500だった
     ('{"latitude": 35.6, "longitude": 139.7, "distance_km": NaN}', ["body", "distance_km"]),
     # 辞書の中
-    ('{"latitude": 35.6, "longitude": 139.7, "distance_km": 4.0, "route_preference": {"axis": Infinity}}',
-     ["body", "route_preference", "axis"]),
+    ('{"latitude": 35.6, "longitude": 139.7, "distance_km": 4.0, "cost_preference": {"multipliers": {"axis": Infinity}}}',
+     ["body", "cost_preference", "multipliers", "axis"]),
     # 並びの中
     ('{"latitude": 35.6, "longitude": 139.7, "distance_km": 4.0, "waypoints": [{"latitude": -Infinity, "longitude": 139.7}]}',
      ["body", "waypoints", 0, "latitude"]),

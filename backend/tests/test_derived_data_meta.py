@@ -1,7 +1,7 @@
 """`infrastructure/derived_data_meta.py`——派生データと生データの世代。
 
-確かめるのは、派生の世代が行の無いDBで最初に進めたときに生まれて進むことと、成功した取込だけが生データの世代を
-進めること。後者は本物の取込を通して、配信するタイルの世代（`GET /api/axis-catalog`の`tile_versions`と同じ口）で見る。
+確かめるのは、表を作っただけのDBが派生の世代0の行を持ち、進めるたびに1つ進むことと、成功した取込だけが生データの世代を
+進めること。後者は本物の取込を通して、配信するタイルの世代（`GET /api/client-config`の`tile_versions`と同じ口）で見る。
 
 ここで見ないもの:
 - 世代の変化を読み手がどう使うか（キャッシュの追随・配列の作り直し） → それぞれの読み手のテスト
@@ -25,9 +25,10 @@ async def _bump_revision() -> int:
         return await derived_data_meta.bump_revision(conn)
 
 
-async def test_first_bump_creates_the_revision_and_later_bumps_advance_it(road_graph_session):
-    """行が無いDB（スキーマをORMの宣言から作っただけ）でも、最初に進めた時点で世代が生まれる。"""
-    assert (await derived_data_meta.get_revisions(road_graph_session)).derived is None
+async def test_creating_the_tables_starts_the_revision_at_zero_and_each_bump_advances_it(road_graph_session):
+    """行は表を作るとき（`road_graph_repository.py: create_tables`）に入る。足場は行を残して世代を0へ戻すだけなので、
+    行が無ければ世代を読めずに落ちる。"""
+    assert (await derived_data_meta.get_revisions(road_graph_session)).derived == 0
 
     first = await _bump_revision()
     second = await _bump_revision()
@@ -36,16 +37,11 @@ async def test_first_bump_creates_the_revision_and_later_bumps_advance_it(road_g
     assert (await derived_data_meta.get_revisions(road_graph_session)).derived == 2
 
 
-@pytest.fixture
-def reread_every_time(monkeypatch):
-    monkeypatch.setattr(settings, "derived_data_revision_check_interval_seconds", 0.0)
-
-
 async def _tile_versions(session) -> dict[str, str]:
     return await RegionService(repository=RoadGraphRepository(session)).tile_versions()
 
 
-async def test_a_succeeded_ingest_of_any_source_changes_every_tile_version(road_graph_session, reread_every_time):
+async def test_a_succeeded_ingest_of_any_source_changes_every_tile_version(road_graph_session, monotonic_clock):
     """取込だけを流すと派生の世代は動かないが、タイルは生データも直接読む。どのソースの取り直しでも
     全系統の鍵が変わらないと、取込の前と後に焼いたタイルが同じ鍵で混ざる。成功した取込はソースを問わず
     同じに数える（`source_models.py: succeeded_run_count`）ので、1つのソースで見る。"""
@@ -53,6 +49,7 @@ async def test_a_succeeded_ingest_of_any_source_changes_every_tile_version(road_
     before = await _tile_versions(road_graph_session)
 
     await ingest_records("dem", [])
+    monotonic_clock.advance(settings.derived_data_revision_check_interval_seconds)
 
     after = await _tile_versions(road_graph_session)
     assert [name for name in before if before[name] == after[name]] == []

@@ -55,7 +55,7 @@ class DbStatusReport(StrictModel):
 def _import_entry(counts: ImportRunCounts) -> ImportRunEntry:
     status = counts.latest.status
     reasons = import_attention(
-        succeeded=status == SourceRunStatus.SUCCEEDED, status_label=SOURCE_RUN_STATUS_LABELS.get(status, status),
+        succeeded=status == SourceRunStatus.SUCCEEDED, status_label=SOURCE_RUN_STATUS_LABELS[status],
         latest_succeeded_id=None if counts.latest_succeeded is None else counts.latest_succeeded.id,
     )
     return ImportRunEntry(**dict(counts), needs_attention=bool(reasons), note="／".join(reasons))

@@ -1,7 +1,7 @@
 """`infrastructure/road_network_store.py`——取込範囲全体の道路網をDBから組み、ディスクの置き場へ置き、読む。
 
-入口は`ensure_current`（DBから組んで置く）・`write_pending`か`reuse_pending`と`publish`（派生の作り直しが置く2段）・`save`・
-`current`（読む）・`prune_other_shapes`（起動後の片付け）。置き場（`ROOT`）はテストごとの一時ディレクトリ（`tests/conftest.py: road_network_root`）。
+入口は`ensure_current`（DBから組んで置く）・`write_pending`と`publish`（派生の作り直しが置く2段）・`save`・
+`current`（読む）・`prune_other_shapes`（起動後の片付け）。置き場（`ROOT`）はテストごとの一時ディレクトリ（`backend/tests/conftest.py: road_network_root`）。
 
 DBから組むテストは、道とノードを取込の入口から入れ、派生の作り直し（`batch/derive_cli.py: run`）で区間と材料まで
 作ってから組む（本番で作れる行だけを使う。.claude/rules/testing-backend.md パターン8）。置き場を読み書きするテストは、
@@ -33,8 +33,9 @@ from app.domain.attributes import CategoricalColumn, EdgeMaterialArrays
 from app.domain.road_network import RoadNetwork
 from app.infrastructure import road_network_store
 from app.infrastructure.road_graph_repository import RoadGraphRepository
-from tests.conftest import postgis_database_url
-from tests.source_ingest import abr_prefecture_record, ingest_records, point_record, way_record
+from tests.conftest import postgis_database_url, raw_connection
+from tests.source_ingest import abr_prefecture_record, ingest_records, point_record, way_record, zigzag_point
+from tests.profile_fixture import two_point_profiles
 
 #: DBから組むテストの印（テスト用DBへ繋ぎ、接続とイベントループをファイルで共有する。testing-backend.md パターン2）。
 _ON_TEST_DB = (pytest.mark.asyncio(loop_scope="module"), pytest.mark.usefixtures("road_graph_session"))
@@ -48,14 +49,14 @@ def _on_test_db(test):
 
 @pytest.fixture(autouse=True)
 def store(road_network_root):
-    """置き場を空の一時ディレクトリにする（`tests/conftest.py: road_network_root`）。"""
+    """置き場を空の一時ディレクトリにする（`backend/tests/conftest.py: road_network_root`）。"""
     return road_network_root
 
 
 # --- 置き場の読み書き（DBを使わない） -------------------------------------------------
 
 
-def _network(revision: int | None, distance_m: float = 100.0) -> RoadNetwork:
+def _network(revision: int, distance_m: float = 100.0) -> RoadNetwork:
     """ノード2つ・有向の区間2本（同じ区間の両向き）の道路網。材料の名前は架空。"""
     return RoadNetwork(
         revision=revision,
@@ -64,6 +65,7 @@ def _network(revision: int | None, distance_m: float = 100.0) -> RoadNetwork:
         node_lon=np.array([139.0, 139.001]),
         node_has_signals=np.array([False, True]),
         node_max_rank=np.array([0, 3], dtype=np.int64),
+        node_branch_count=np.array([1, 1], dtype=np.int16),
         edge_way_id=np.array([10, 10], dtype=np.int64),
         edge_segment=np.array([0, 0], dtype=np.int32),
         edge_forward=np.array([True, False]),
@@ -90,6 +92,9 @@ def _network(revision: int | None, distance_m: float = 100.0) -> RoadNetwork:
         end_elevation_m=np.array([12.0, np.nan]),
         elevation_gain_m=np.array([2.0, np.nan]),
         elevation_loss_m=np.array([0.0, np.nan]),
+        steepest_gain_percent=np.array([4.0, np.nan]),
+        steepest_loss_percent=np.array([0.0, np.nan]),
+        **two_point_profiles(np.array([10.0, np.nan]), np.array([12.0, np.nan]), np.array([True, False])),
     )
 
 
@@ -144,24 +149,20 @@ def test_publishing_a_revision_that_another_process_published_first_keeps_the_fi
     assert road_network_store.current().distance_m[0] == 100.0
 
 
-@pytest.mark.parametrize(("written", "asked", "reused"), [
-    ("a", "a", True),
-    ("a", "b", False),
-    (None, "a", False),
-], ids=["同じ入力", "違う入力", "入力を持たない置き場"])
-def test_a_network_built_from_the_same_inputs_is_placed_again_under_the_new_revision(store, written, asked, reused):
-    """今の形で最も新しい置き場が同じ入力から作ったものなら、その配列を新しい世代の名前で出し直し、前の世代を消す。
-    入力が違う・入力を持たない（デプロイの前処理が作った）置き場は出し直さない。"""
-    road_network_store.publish(road_network_store.write_pending(_network(revision=3), written))
+def _disk_full(*args, **kwargs):
+    raise OSError(28, "No space left on device")
 
-    pending = road_network_store.reuse_pending(asked, 4)
 
-    assert (pending is not None) == reused
-    if pending is None:
-        return
-    road_network_store.publish(pending)
-    _assert_same(road_network_store.current(), _network(revision=4))
-    assert [path.name for path in store.iterdir()] == [road_network_store.directory_name(4)]
+def test_a_network_that_fails_while_being_placed_leaves_nothing_behind(store, monkeypatch):
+    """置く途中で落ちると、呼び手は書きかけのディレクトリを受け取れず消せない。書きかけは名前の形に合わず、
+    片付け（`prune`・`prune_other_shapes`）にも拾われないので、残せば道路網1つぶんのディスクを持ち続ける。"""
+    road_network_store.publish(road_network_store.write_pending(_network(revision=3)))
+    monkeypatch.setattr(np, "save", _disk_full)
+
+    with pytest.raises(OSError):
+        road_network_store.write_pending(_network(revision=4))
+
+    assert [path.name for path in store.iterdir()] == [road_network_store.directory_name(3)]
 
 
 def test_the_newest_revision_of_the_current_shape_is_read(store):
@@ -186,6 +187,20 @@ def test_a_newer_revision_placed_by_the_batch_is_read_on_the_next_call():
 
     assert road_network_store.current().revision == 3
 
+
+def test_a_network_replaced_between_choosing_and_opening_is_chosen_again(monkeypatch):
+    """選んだ置き場を開く前に、派生の作り直しが新しい世代へ入れ替えて古い置き場を消しても、ルート生成は新しい世代で続く。"""
+    road_network_store.save(_network(revision=2))
+    opened = road_network_store.load
+
+    def replaced_before_opening(directory):
+        if directory.name == road_network_store.directory_name(2):
+            road_network_store.publish(road_network_store.write_pending(_network(revision=3)))
+        return opened(directory)
+
+    monkeypatch.setattr(road_network_store, "load", replaced_before_opening)
+
+    assert road_network_store.current().revision == 3
 
 def test_cleaning_up_after_start_removes_only_networks_of_other_shapes(store):
     road_network_store.save(_network(revision=2))
@@ -213,7 +228,7 @@ def _batch(distance_m: list[float], surface: list[str | None]) -> EdgeMaterialAr
         categorical_ids=("surface",), categorical_columns=(CategoricalColumn.encode(surface),),
         distance_m=np.array(distance_m), bearing_deg=nan, mid_lat=nan, mid_lon=nan,
         start_elevation_m=nan, end_elevation_m=nan,
-        elevation_gain_m=nan, elevation_loss_m=nan,
+        elevation_gain_m=nan, elevation_loss_m=nan, steepest_gain_percent=nan, steepest_loss_percent=nan,
     )
 
 
@@ -232,10 +247,8 @@ def test_batches_fill_consecutive_rows_and_share_one_vocabulary():
 
 # --- DBから組む ---------------------------------------------------------------------
 
-_BASE_LON, _BASE_LAT, _STEP = 139.70, 35.68, 0.001
-
 #: ノード → (経度, 緯度)。ノード9は道が参照するのに取り込まれていない。
-_NODES = {n: (_BASE_LON + _STEP * n, _BASE_LAT + _STEP * (n % 2)) for n in (1, 2, 3, 4, 5, 6, 9)}
+_NODES = {n: zigzag_point(n) for n in (1, 2, 3, 4, 5, 6, 9)}
 _INGESTED_NODES = (1, 2, 3, 4, 5, 6)
 _SIGNAL_NODE = 3
 
@@ -251,11 +264,14 @@ _WAYS = (
 
 async def _derive(ways=_WAYS, nodes=_INGESTED_NODES) -> None:
     """取込の入口から道とノードを入れ、派生の作り直しで区間と材料まで作る。作り直しが置いた道路網は消す。"""
-    await ingest_records("osm_node", [
-        point_record(n, *_NODES[n], {"highway": "traffic_signals"} if n == _SIGNAL_NODE else None) for n in nodes])
-    await ingest_records("osm_way", [
-        way_record(way_id, [_NODES[n] for n in node_ids], node_ids, tags) for way_id, node_ids, tags in ways])
-    await ingest_records("abr", [abr_prefecture_record("130001", "東京都", *_NODES[1])])
+    async with raw_connection() as conn:
+        await ingest_records("osm_node", [
+            point_record(n, *_NODES[n], {"highway": "traffic_signals"} if n == _SIGNAL_NODE else None) for n in nodes],
+            conn=conn)
+        await ingest_records("osm_way", [
+            way_record(way_id, [_NODES[n] for n in node_ids], node_ids, tags) for way_id, node_ids, tags in ways],
+            conn=conn)
+        await ingest_records("abr", [abr_prefecture_record("130001", "東京都", *_NODES[1])], conn=conn)
     assert await derive_cli.run(postgis_database_url()) == 0
     shutil.rmtree(road_network_store.ROOT)
 

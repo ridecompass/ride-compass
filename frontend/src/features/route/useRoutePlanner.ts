@@ -70,7 +70,5 @@ export function useRoutePlanner({ conditions, onOutcome, ...generationInputs }: 
     clear,
     /** 地図に描くルート。 */
     mapRoutes,
-    /** 軸を「未使用」と分ける重み。生成に使われた重みで、生成前は今の設定の重み（重みタブが薄く出す軸と同じ軸になる）。 */
-    routeWeights: results.usedWeights ?? conditions.routePreference,
   };
 }

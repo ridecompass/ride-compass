@@ -24,6 +24,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.domain.route_request import (
     ASSUMED_SPEED_KMH,
+    BUSY_SAFE_DISTANCE_KM,
     DEFAULT_MAX_ROUTES,
     MAX_ASSUMED_SPEED_KMH,
     MAX_ROUTE_DISTANCE_KM,
@@ -37,10 +38,8 @@ from app.infrastructure.source_models import SOURCE_RUN_STATUS_LABELS
 from app.infrastructure.point_tile_layers import POINT_TILE_LAYERS
 from app.infrastructure.vector_tile import ROAD_FEATURE_PROPERTIES, ROAD_SURFACE_LAYER_NAME
 from app.main import app
-from app.domain.hard_filters import HARD_FILTERS
 from app.domain.address_area import ADDRESS_AREA_LEVELS
 from app.domain.geo import COMPASS_LABELS, EARTH_RADIUS_KM
-from app.domain.value_distribution import QUANTILE_TARGETS
 from app.domain.place_search import (
     PLACE_KIND_LABELS,
     PLACE_MATCH_LEVEL_LABELS,
@@ -50,7 +49,6 @@ from app.domain.place_search import (
     PlaceMatchLevel,
 )
 from cross_language_expectations import EXPECTATIONS
-from schema_shape import schema_shape_mark
 from app.domain.weather_elements import (
     MSM_FORECAST_HOURS,
     WEATHER_ELEMENTS,
@@ -60,8 +58,6 @@ from app.domain.weather_elements import (
     weather_element_tile,
 )
 from app.domain.cycling_speed import SEGMENT_SPEED_CONDITIONS
-from app.domain.difficulty import DIFFICULTY_DECIMALS, OVERALL_DIFFICULTY_WORDING
-from app.domain.map_paint import DEFAULT_DIFFICULTY_BOUNDARIES
 from app.domain.road_classes import NO_DATA_VALUE
 from app.domain.map_display import (
     ALWAYS_SHOWN_ATTRIBUTIONS,
@@ -72,7 +68,6 @@ from app.domain.map_display import (
     MAP_LAYER_CATEGORIES,
     MAP_LAYERS,
     map_layer_label,
-    MAP_LAYER_KINDS,
     MapLayerSpec,
     ROUTE_ARROW_HALO_SCALE,
     ROUTE_ARROW_SIZE_BY_ZOOM,
@@ -99,13 +94,19 @@ from app.domain.map_display import (
     POINT_OPACITY_BY_ATTR,
     POINT_RADIUS_PX,
     POINT_ICON_SIZE_PX,
+    POINT_COUNT_PROPERTY,
+    POINT_MEMBERS_PROPERTY,
     POINT_STROKE_WIDTH_PX,
+    SEGMENT_NEARBY_POINT_MAX_DISTANCE_M,
     ROAD_INSPECTED_WIDTH_PX,
+    AVOIDANCE_RAIL_WIDTH_PX,
+    AVOIDANCE_RAIL_GAP_PX,
+    AVOIDANCE_AVOIDED_DASH,
+    ROAD_AVOIDANCE_WIDTH_BY_ZOOM,
     ROAD_KNOWN_OPACITY,
     ROAD_LINE_WIDTH_PX,
     ROAD_TRACK_OFFSET_STEP_PX,
     NO_DATA_DASH,
-    ROAD_UNDERLAY_OPACITY,
     ROAD_UNKNOWN_OPACITY,
     MAP_LAYER_DATA_NATURES,
     MAP_LAYER_DATA_SOURCES,
@@ -114,7 +115,6 @@ from app.domain.map_display import (
 from app.domain.warning_display import WARNING_BADGE_DISPLAY
 from app.domain.weather_display import (
     WEATHER_CATEGORIES,
-    LINEAR_RAINBAND_COLOR,
     LINEAR_RAINBAND_OUTLINE_CASING_COLOR,
     LINEAR_RAINBAND_OUTLINE_COLOR,
     PRECIPITATION_COLOR_STOPS,
@@ -125,7 +125,14 @@ from app.domain.weather_display import (
     WIND_SPEED_COLOR_STOPS,
 )
 from app.domain.display_palette import (
+    BASEMAP_DARK_ICON_OPACITY_SCALE,
+    BASEMAP_DARK_LIGHTNESS_RANGE,
+    BASEMAP_DARK_SATURATION_SCALE,
+    BASEMAP_MUTED_GROUND_PULL,
+    BASEMAP_MUTED_ICON_OPACITY_SCALE,
+    BASEMAP_MUTED_SATURATION_SCALE,
     SEMANTIC_COLORS,
+    SEMANTIC_COLORS_ON_DARK,
     resolved_display_axes,
 )
 from app.api.routers.gsi_tile import RELIEF_TILE_URL, TERRAIN_TILE_URL
@@ -134,29 +141,31 @@ from app.domain.gsi_tiles import RELIEF_ATTRIBUTION, RELIEF_MAX_ZOOM, TERRAIN_MA
 from app.domain.terrain_rgb import TERRAIN_RGB_BASE_M, TERRAIN_RGB_UNIT_M
 from app.domain.landcover import (
     LANDCOVER_CLASSES,
-    LANDCOVER_RING_OUTER_M,
     LANDCOVER_TILE_MAX_ZOOM,
     LANDCOVER_TILE_MIN_ZOOM,
 )
 from app.infrastructure.cache_identity import LANDCOVER_TILE_VERSION
 from app.domain.jma_tile_specs import JMA_ELEMENTS, JMA_TILE_MIN_ZOOM, effective_max_zoom
-from app.domain.material_catalog import (
-    MATERIAL_CATALOG,
-    MISSING_SEMANTICS_DISPLAY,
-    POPULATION_LABELS,
-    display_axis_missing_semantics,
-)
+from app.domain.material_catalog import MATERIAL_CATALOG, display_axis_missing_semantics
+from app.domain.material_coverage_spec import MISSING_SEMANTICS_DISPLAY, POPULATION_LABELS
 from app.domain.primary_attributes import PRIMARY_ATTRIBUTES
-from app.domain.region import MAX_MERCATOR_LATITUDE, ROAD_TILE_MAX_ZOOM, ROAD_TILE_MIN_ZOOM
-from app.domain.leg_costs import MAX_TIME_BINS, MISSING_TRAVEL_DATA_WORDING, TIME_BIN_HOURS
+from app.domain.region import (
+    MAX_MERCATOR_LATITUDE,
+    ROAD_SURFACE_TILE_MIN_ZOOM,
+    ROAD_TILE_MAX_ZOOM,
+    ROAD_TILE_MIN_ZOOM,
+)
+from app.domain.leg_costs import MISSING_TRAVEL_DATA_WORDING
+from app.domain.cost_axes import LENS_QUANTITY_LABEL, LENS_UNIT
+from app.domain.lens_equivalents import LENS_EQUIVALENTS_CONDITION_WORDING
 from app.config import Settings
-from app.domain.route_preference import ENABLED_AXIS_WEIGHT
-from app.domain.tuning import client_tuning_values
+from app.domain.cost_preference import COST_MULTIPLIER_LEVELS, COST_STRENGTH_LEVELS, DISABLED_LABEL, STANDARD_COST_FACTOR
+from app.domain.tuning import client_tuning_ids
 from app.domain.weather import PRECIPITATION_MIN_MM
 from app.infrastructure.msm_client import DEFAULT_UPDATE_INTERVAL_SECONDS as MSM_UPDATE_INTERVAL_SECONDS
 from app.infrastructure.jma_amedas_client import AMEDAS_REFRESH_INTERVAL_MINUTES
-from app.infrastructure.job_registry import JOB_TTL_SECONDS
-from app.services.tile_version_service import TILE_SHAPES
+from app.infrastructure.job_registry import JOB_TTL_SECONDS, JOB_WAIT_MAX_SECONDS
+from app.services.tile_version_service import tile_shapes
 
 GENERATED_DIR = Path(__file__).resolve().parents[2] / "frontend" / "src" / "types" / "generated"
 OUTPUT_PATH = GENERATED_DIR / "openapi.json"
@@ -225,9 +234,9 @@ def _map_layer_entry(spec: MapLayerSpec) -> dict:
     return {
         "dataSource": spec.data_source,
         "category": spec.category,
-        "kind": spec.kind,
         "dataNature": spec.data_nature,
         "defaultOn": spec.default_on,
+        "drawMinZoom": spec.draw_min_zoom,
     }
 
 
@@ -247,6 +256,7 @@ def _weather_element_entry(element: WeatherElement) -> dict:
         "gridValue": element.grid_value,
         "levelScale": element.level_scale,
         "description": element.description,
+        "legendColor": element.legend_color,
         # 時刻の段の順（近い時刻から）。画面のデータ層は、時刻一覧をそのパスから取り、行を読み方に従って
         # コマにし、コマの時刻と系列でパスのテンプレートを埋めて取りに行く。
         "jmaElements": [
@@ -284,7 +294,7 @@ def main() -> None:
         {
             # **DBの中身から決まる世代はここへ書かない。** バッチが中身を作り直しても
             # デプロイは起きず、ビルド時の値は次のデプロイまで古いままになる。そちらは
-            # `GET /api/axis-catalog`の`tile_versions`が実行時に配る
+            # `GET /api/client-config`の`tile_versions`が実行時に配る
             # （`services/tile_version_service.py`）。
             # 下の`landcover.tile_version`だけは例外で、**コードとクラス定義だけから
             # 決まる**（DBを読まない）ためビルド時に確定する。実際に開いているラスタの
@@ -293,13 +303,17 @@ def main() -> None:
             # 実行時に世代が配られる系統の名前。**frontendはこの一覧を手で持たず、
             # ここから照合する**——片側だけ系統を足すと、足りない側は「世代が揃った」と
             # 判定したまま配られない世代を待ち続ける。
-            "tile_version_kinds": sorted(TILE_SHAPES),
+            "tile_version_kinds": sorted(tile_shapes()),
+            # 路面タイルのレイヤー名と、道のフィーチャーの列の名前（路面タイルは`feature_key`だけを持ち、ほかの列は押した所に
+            # 近い道の口が返す）。
             "road_surface": {"layer_name": ROAD_SURFACE_LAYER_NAME, "properties": ROAD_FEATURE_PROPERTIES},
             # 点のレイヤーの名前→source-layer名。画面はタイルのURLをこの名前で組み、source-layerを写さない。
             "point_layers": {layer.name: layer.source_layer for layer in POINT_TILE_LAYERS.values()},
-            # 路面タイルを要求するズーム範囲。frontendのMapLibreソース設定
+            # 道のタイルを要求するズーム範囲。frontendのMapLibreソース設定
             # （minzoom/maxzoom）とタイル要求のガードがこの値を使う。手書きで複製すると、
-            # backendだけ広げてもfrontendが要求せずレイヤーが黙って消える。
+            # backendだけ広げてもfrontendが要求せずレイヤーが黙って消える。路面タイルだけは
+            # `road_surface_tile_min_zoom`から配り、道ごとの鍵は`road_tile_min_zoom`から持つ。
+            "road_surface_tile_min_zoom": ROAD_SURFACE_TILE_MIN_ZOOM,
             "road_tile_min_zoom": ROAD_TILE_MIN_ZOOM,
             "road_tile_max_zoom": ROAD_TILE_MAX_ZOOM,
             # 画面が点からタイル座標を求めるときに緯度を挟む限界（`domain/region.py`と同じ式を使う）。
@@ -326,8 +340,6 @@ def main() -> None:
             # backendが決める（domain/landcover.py）。
             "landcover": {
                 "tile_version": LANDCOVER_TILE_VERSION,
-                # 評価の材料が土地被覆を数える帯の外側（道路の中心線からm）。地図の説明がこの距離を出す。
-                "ring_outer_m": LANDCOVER_RING_OUTER_M,
                 "min_zoom": LANDCOVER_TILE_MIN_ZOOM,
                 "max_zoom": LANDCOVER_TILE_MAX_ZOOM,
             },
@@ -341,6 +353,17 @@ def main() -> None:
         PALETTE_PATH,
         {
             "semantic": SEMANTIC_COLORS,
+            "semantic_on_dark": SEMANTIC_COLORS_ON_DARK,
+            "basemap_dark": {
+                "lightness_range": list(BASEMAP_DARK_LIGHTNESS_RANGE),
+                "saturation_scale": BASEMAP_DARK_SATURATION_SCALE,
+                "icon_opacity_scale": BASEMAP_DARK_ICON_OPACITY_SCALE,
+            },
+            "basemap_muted": {
+                "saturation_scale": BASEMAP_MUTED_SATURATION_SCALE,
+                "ground_pull": BASEMAP_MUTED_GROUND_PULL,
+                "icon_opacity_scale": BASEMAP_MUTED_ICON_OPACITY_SCALE,
+            },
         },
     )
     # 地図に出すものの最上位の束ね方（domain/map_display.py）。並びが「表示」の一覧の並び順。
@@ -359,7 +382,6 @@ def main() -> None:
                 {"key": source.key, "minZoom": source.min_zoom} for source in MAP_LAYER_DATA_SOURCES
             ],
             "layerDataNatures": list(MAP_LAYER_DATA_NATURES),
-            "layerKinds": list(MAP_LAYER_KINDS),
             # 地図に載るものの、描き方以外の宣言（種別・情報源・性質・既定表示・最初に隠す行）。
             "layers": [
                 {
@@ -369,6 +391,7 @@ def main() -> None:
                     "description": _layer_text(spec.description),
                     "panelHint": _layer_text(spec.panel_hint) or None,
                     "hideMissingRows": spec.hide_missing_rows,
+                    "segmentSeries": spec.segment_series,
                 }
                 for layer_id, spec in MAP_LAYERS
             ],
@@ -384,23 +407,35 @@ def main() -> None:
             "modelValueDisclaimer": MODEL_VALUE_DISCLAIMER,
             # 地図へ常に出す出典。
             "alwaysShownAttributions": list(ALWAYS_SHOWN_ATTRIBUTIONS),
-            # 値が無い線の破線（道・評価軸・ルートで共有）。
+            # 値が無い線の破線（道・レンズ・ルートで共有）。
             "noDataDash": list(NO_DATA_DASH),
             "road": {
                 "lineWidthPx": ROAD_LINE_WIDTH_PX,
                 "trackOffsetStepPx": ROAD_TRACK_OFFSET_STEP_PX,
                 "knownOpacity": ROAD_KNOWN_OPACITY,
                 "unknownOpacity": ROAD_UNKNOWN_OPACITY,
-                "underlayOpacity": ROAD_UNDERLAY_OPACITY,
                 "inspectedWidthPx": ROAD_INSPECTED_WIDTH_PX,
                 # 地図の線の層の値で「データなし」。
                 "noDataValue": NO_DATA_VALUE,
+            },
+            # 好む・避けるの道を通ったルートの区間の両脇に添える線。
+            "avoidanceRail": {
+                "widthPx": AVOIDANCE_RAIL_WIDTH_PX,
+                "gapPx": AVOIDANCE_RAIL_GAP_PX,
+                "avoidedDash": list(AVOIDANCE_AVOIDED_DASH),
+            },
+            # 道路タブの段（好む・避ける・通らない）を地図の道に塗る線の太さ（縮尺→px）。
+            "roadAvoidance": {
+                "widthByZoom": [list(pair) for pair in ROAD_AVOIDANCE_WIDTH_BY_ZOOM],
             },
             "point": {
                 "radiusPx": POINT_RADIUS_PX,
                 "strokeWidthPx": POINT_STROKE_WIDTH_PX,
                 "iconSizePx": POINT_ICON_SIZE_PX,
                 "opacityByLayer": POINT_OPACITY_BY_ATTR,
+                "segmentNearbyMaxDistanceM": SEGMENT_NEARBY_POINT_MAX_DISTANCE_M,
+                "countProperty": POINT_COUNT_PROPERTY,
+                "membersProperty": POINT_MEMBERS_PROPERTY,
             },
             "area": {
                 "opacity": AREA_OPACITY,
@@ -422,11 +457,6 @@ def main() -> None:
                 "rainbandOutlineCasingWidthPx": RAINBAND_OUTLINE_CASING_WIDTH_PX,
                 # MSMの予報を読む先の長さ（時間）。出発時刻を選べる先の長さがこれを読む。
                 "msmForecastHours": MSM_FORECAST_HOURS,
-            },
-            "valueScale": {
-                "difficultyBoundaries": list(DEFAULT_DIFFICULTY_BOUNDARIES),
-                # 難易度を区別する桁。画面の式（タイルから組む点数の丸め）と表示の桁がこれを読む。
-                "difficultyDecimals": DIFFICULTY_DECIMALS,
             },
             "route": {
                 "lineWidthsPx": ROUTE_LINE_WIDTHS_PX,
@@ -464,8 +494,6 @@ def main() -> None:
                 {"key": key, "label": PLACE_MATCH_LEVEL_LABELS[key], "area": key in ADDRESS_AREA_LEVELS}
                 for key in get_args(PlaceMatchLevel)
             ],
-            # 値の分布の分位点の名前（小さい比率から）。応答の`quantiles`の鍵がこの名前。
-            "quantiles": [name for name, _ in QUANTILE_TARGETS],
         },
     )
     # 気象の値を色へ写す段（domain/weather_display.py）。危険度・雷・竜巻は配信元が
@@ -476,7 +504,6 @@ def main() -> None:
             "precipitation": [s._asdict() for s in PRECIPITATION_COLOR_STOPS],
             "wind_speed": [s._asdict() for s in WIND_SPEED_COLOR_STOPS],
             "risk_levels": [level._asdict() for level in RISK_LEVEL_COLORS],
-            "linear_rainband_color": LINEAR_RAINBAND_COLOR,
             "linear_rainband_outline_color": LINEAR_RAINBAND_OUTLINE_COLOR,
             "linear_rainband_outline_casing_color": LINEAR_RAINBAND_OUTLINE_CASING_COLOR,
             "thunder_activity": [level._asdict() for level in THUNDER_ACTIVITY_LEVELS],
@@ -499,7 +526,7 @@ def main() -> None:
         },
     )
     # 土地被覆のクラス（画素値・割合列・表示名・色）。地図タイルの塗りと同じレジストリから
-    # 書き出し、frontendの凡例・区間インスペクタの表示名がこれを読む。
+    # 書き出し、frontendの凡例・道の窓の表示名がこれを読む。
     _write_json(
         LANDCOVER_CLASSES_PATH,
         [
@@ -516,13 +543,13 @@ def main() -> None:
     )
     # 材料の一覧。frontendが材料を知る唯一の経路（材料はコードの宣言で決まり、再デプロイでしか変わらない）。
     # value_labels（smoothness等の値→日本語ラベル）も含める——同じ対訳表をfrontendが
-    # 独自に持つと、地図のポップアップと軸スタジオで同じ値の呼び方が食い違う。
+    # 独自に持つと、地図のポップアップと管理画面で同じ値の呼び方が食い違う。
     _write_json(
         MATERIAL_CATALOG_PATH,
         [
             {
                 "material_id": spec.material_id,
-                # 「論理名 - 物理名」（軸スタジオ向け）。論理名だけは`name`。frontendで`name`と
+                # 「論理名 - 物理名」（管理画面向け）。論理名だけは`name`。frontendで`name`と
                 # idから組み立て直さない——組み立て方の正本は`MaterialSpec.full_label`。
                 "label": spec.full_label(),
                 "name": spec.label,
@@ -537,15 +564,13 @@ def main() -> None:
     for name, build in EXPECTATIONS.items():
         _write_json(GENERATED_DIR / f"{name}-expectations.json", build())
     # **軸そのものはここへ書き出さない。** 軸定義の正本は本番DBで、実行時の
-    # `GET /api/axis-catalog`が配る。ビルド時に写しを持つと、API障害時に古い軸で
+    # `GET /api/client-config`が配る。ビルド時に写しを持つと、API障害時に古い軸で
     # 地図が描かれ、伝播の失敗が見えなくなる。
     _write_ts(
         PRIMARY_ATTRIBUTES_PATH,
         "primaryAttributes",
         # 一次属性カタログ（地図レイヤー階層の次数反転）。宣言
-        # （`domain/primary_attributes.py: PRIMARY_ATTRIBUTES`）だけから決まり、DBを読まない。各軸の
-        # `primary_attribute_ids`は実行時の`GET /api/axis-catalog`が配るため、フロントは
-        # この一覧のlabel（正式名）と突き合わせて1次↔2次の双方向導出ができる。
+        # （`domain/primary_attributes.py: PRIMARY_ATTRIBUTES`）だけから決まり、DBを読まない。
         # 宣言をそのまま配る。色だけは宣言に無いので`resolved_display_axes`が決め、値が欠けたときの意味は
         # その値を載せる材料の宣言から引く（地図の凡例が「不明」を出すかを決める）。
         [
@@ -566,6 +591,8 @@ def main() -> None:
         ROUTE_GENERATE_CONFIG_PATH,
         {
             "max_distance_km": MAX_ROUTE_DISTANCE_KM,
+            # これより長い全長の目標は、混み合っているときに作れないことがある。全長の目標の説明が差し込む。
+            "busy_safe_distance_km": BUSY_SAFE_DISTANCE_KM,
             "min_routes": MIN_ROUTES,
             "max_routes": MAX_ROUTES,
             "default_max_routes": DEFAULT_MAX_ROUTES,
@@ -575,34 +602,30 @@ def main() -> None:
             # 住所の検索の欄が打ちかけで引き始める長さと、打つのが止まってから引くまでの間。口の回数制限はこの間から導く。
             "place_prediction_min_length": PLACE_PREDICTION_MIN_LENGTH,
             "place_prediction_delay_seconds": PLACE_PREDICTION_DELAY_SECONDS,
-            "enabled_axis_weight": ENABLED_AXIS_WEIGHT,
+            # 代償の全体に掛けるつまみと、費用の軸ごとの倍率の標準と、画面が選ばせる段。
+            "standard_cost_factor": STANDARD_COST_FACTOR,
+            "cost_strength_levels": [level._asdict() for level in COST_STRENGTH_LEVELS],
+            "cost_multiplier_levels": [level._asdict() for level in COST_MULTIPLIER_LEVELS],
+            # 負担を数えないことの名前（費用の軸の無効の段と、全体のつまみの0の段）。
+            "disabled_label": DISABLED_LABEL,
             "min_assumed_speed_kmh": MIN_ASSUMED_SPEED_KMH,
             "max_assumed_speed_kmh": MAX_ASSUMED_SPEED_KMH,
             # フロントのポーリングの打ち切り。backendが結果を持つ時間より長く待つと、
             # 掃除済みのjob_idを引いて「ジョブが見つかりません」になる。
             "job_result_ttl_seconds": JOB_TTL_SECONDS,
-            # ルート候補の型の契約の印。画面は端末に置いた候補にこの印を添え、印が違う候補は今の型で読めないとして使わない。
-            "route_candidate_shape": schema_shape_mark(openapi, "RouteCandidate"),  # type: ignore[arg-type]
-            # 風の予報を追う長さ（レグごと、時刻ビンの本数×幅）。区間の詳細の説明が、この先は最後に追った時刻の予報を
-            # そのまま使うことを数字で示す。
-            "wind_forecast_hours_per_leg": MAX_TIME_BINS * TIME_BIN_HOURS,
-            # 区間の風を引く時刻の刻み（時刻ビンの幅）。区間の詳細の説明が評価の刻みを数字で示す。
-            "wind_time_bin_hours": TIME_BIN_HOURS,
+            # フロントが状態を問い合わせるとき、終わるまで待たせる秒（口が受け付ける上限そのもの）。
+            "job_wait_seconds": JOB_WAIT_MAX_SECONDS,
             # 区間ごとに速度を変える条件の名前（走行モデルの並び）。所要時間の説明が差し込む。
             "segment_speed_conditions": list(SEGMENT_SPEED_CONDITIONS),
-            # ルート全体の難易度（平均・総量）の数え方の文。結果の難易度の説明が差し込む。
-            "overall_difficulty_wording": OVERALL_DIFFICULTY_WORDING,
             # 所要時間の計算が値の無い区間をどう数えるかの文。結果の「データの無い区間」の注記が差し込む。
             "missing_travel_data_wording": MISSING_TRAVEL_DATA_WORDING,
-            # フロントが使う較正値の**既定**（`domain/tuning.py`の宣言そのまま）。フロントはidの型にだけ使い、
-            # 値は読まない——効いている値はGET /api/axis-catalogが返し、取れるまではその値を使う機能を出さない。
-            "client_tuning": client_tuning_values(),
-            # 0次ハードフィルタ。除外タブにいつも「通らない」の行として見せる（要求では受けない）。選べる行と段は
-            # 管理DBの道の区分から、GET /api/axis-catalogが配る。
-            "hard_filters": [
-                {"key": name, "label": spec.label, "description": spec.description}
-                for name, spec in HARD_FILTERS.items()
-            ],
+            # 地図のレンズ（総合と費用の軸ごと）の量の名前と単位と、凡例の目安の条件の文。レンズを述べる画面の文が差し込む。
+            "lens_quantity_label": LENS_QUANTITY_LABEL,
+            "lens_unit": LENS_UNIT,
+            "lens_equivalents_condition_wording": LENS_EQUIVALENTS_CONDITION_WORDING,
+            # フロントが使う較正値のid（値は持たない。フロントはidの型にだけ使う）。効いている値はGET /api/client-configが
+            # 返し、取れるまではその値を使う機能を出さない。
+            "client_tuning": dict.fromkeys(client_tuning_ids()),
         },
     )
 

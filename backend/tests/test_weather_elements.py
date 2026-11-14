@@ -63,9 +63,8 @@ def test_stages_sharing_one_zoom_range_give_the_first_stage_spec():
         ("rasterTile", ()),
         ("rasterTile", ["t_even10", "t_even12"]),
         ("vectorTile", ["t_vector", "t_even10"]),
-        ("rasterTile", ["t_even10", "t_points"]),
     ],
-    ids=["no_delivery", "max_zooms_differ", "vector_layers_differ", "stage_not_delivered_as_tiles"],
+    ids=["no_delivery", "max_zooms_differ", "vector_layers_differ"],
 )
 def test_a_tile_element_whose_stages_cannot_share_one_source_is_refused(kind, jma_elements):
     with pytest.raises(ValueError):
@@ -105,8 +104,13 @@ def _frames(*validtimes: str) -> list[JmaFrame]:
     [
         ([_frames("01", "02"), _frames("02", "03", "04")], ["01", "03"]),
         ([_frames("01", "05"), _frames("02", "03"), _frames("04", "06")], ["01", None, "06"]),
+        ([[], _frames("02", "03")], [None, "02"]),
     ],
-    ids=["next_stage_continues_after_the_last_frame_before", "covered_stage_does_not_move_the_join"],
+    ids=[
+        "next_stage_continues_after_the_last_frame_before",
+        "covered_stage_does_not_move_the_join",
+        "stage_after_an_empty_one_starts_at_its_first_frame",
+    ],
 )
 def test_each_stage_starts_after_the_last_frame_of_the_stages_before(stages, first_validtimes):
     first_frames = stage_first_frames(stages)
@@ -128,18 +132,13 @@ def _fetched(source, kind="rasterTile", jma=("t_even10",), label="架空", rule=
         pytest.param((_fetched("a"), _fetched("a", "gridMark", ("t_points",))), id="配信元から取る要素が重なる"),
         pytest.param((_fetched("a", "vectorTile"),), id="ベクタのレイヤー名が無い"),
         pytest.param((_fetched("a", "gridMark", ("undeclared",)),), id="宣言の無い配信要素"),
+        pytest.param((_fetched("a")._replace(legend_color="#ff0000"),), id="凡例の色だけで説明が無い"),
     ],
 )
 def test_elements_the_screen_cannot_read_one_way_are_refused(_declared, elements):
     """画面はレイヤー・行・時系列・配信要素を、チップと名前付きソースから1つに決めて引く。"""
     with pytest.raises((ValueError, KeyError)):
         weather_elements.check_weather_elements(elements)
-
-
-def test_elements_read_one_way_are_accepted(_declared):
-    weather_elements.check_weather_elements(
-        (_fetched("a"), _fetched("a", "gridMark", (), grid="wind"), _fetched("b", "vectorTile", ("t_vector",)))
-    )
 
 
 @pytest.mark.parametrize(("element_ids", "words"), [(("t_reach45", "t_reach45b"), "45分"), (("t_reach120",), "2時間")])

@@ -1,74 +1,26 @@
 "use client";
 
-import {
-  useEffect,
-  useId,
-  useMemo,
-  useRef,
-  useState,
-  type KeyboardEvent,
-  type PointerEvent,
-  type ReactNode,
-} from "react";
+import { useId, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
 
-import { pinMarkName } from "@/components/PinMark/PinMark";
-import PointMark from "@/components/PinMark/PointMark";
 import { columnAtKm } from "@/features/route/DifficultyProfile/profileGeometry";
-import { cn } from "@/lib/cn";
 import { roundToDigits } from "@/lib/numberFormat";
-import {
-  findSameSegment,
-  pointAlongSegment,
-  projectOnTrack,
-  routeStretches,
-  routeTrack,
-  type RouteStretch,
-} from "@/lib/routeDistance";
+import { kmOfPickedPoint, pointAlongSegment } from "@/lib/routeDistance";
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import palette from "@/types/generated/palette.json";
-import type { RouteSegmentDetail, SelectedRouteSegment } from "@/types/route";
+import type { SelectedRouteSegment } from "@/types/route";
 
-/** 描画の座標。横は距離を`PROFILE_VIEW_WIDTH`へ、縦は`PROFILE_VIEW_HEIGHT`の中へ描き、枠いっぱいへ伸ばす。 */
-const PROFILE_VIEW_WIDTH = 1000;
-export const PROFILE_VIEW_HEIGHT = 100;
+import ProfileMarks, { type ProfileWaypoint, type ValueTick } from "./ProfileMarks";
+import { PROFILE_VIEW_HEIGHT, PROFILE_VIEW_WIDTH, type ProfileScale } from "./profileScale";
+import { useProfileGesture } from "./useProfileGesture";
+
 /** 矢印キー1回で動く距離（全長に対する割合）。 */
 const KEY_STEP_RATIO = 0.01;
-/** 図の目盛りと図の下の文字の大きさ。走行中は走りながら読めるよう、結果の図より大きくする。 */
-export function profileTextClass(riding: boolean): string {
-  return riding ? "text-base" : "text-[length:var(--font-size-xs)]";
-}
-
-export type ProfileScale = {
-  readonly columns: readonly RouteStretch<RouteSegmentDetail>[];
-  /** ルートの長さ。 */
-  readonly routeKm: number;
-  /** 横軸の右端の距離。 */
-  readonly widthKm: number;
-  /** 距離を描画の横座標へ。 */
-  readonly xOf: (km: number) => number;
-};
-
-/** 区間の並びと横軸。横軸の右端は`scaleKm`とルートの長さの長い方。 */
-export function useProfileScale(segments: readonly RouteSegmentDetail[], scaleKm: number): ProfileScale {
-  const columns = useMemo(() => routeStretches(segments), [segments]);
-  const routeKm = columns.length === 0 ? 0 : columns[columns.length - 1].endKm;
-  const widthKm = Math.max(scaleKm, routeKm);
-  return useMemo(
-    () => ({
-      columns,
-      routeKm,
-      widthKm,
-      xOf: (km: number) => (widthKm > 0 ? roundToDigits((km / widthKm) * PROFILE_VIEW_WIDTH, 2) : 0),
-    }),
-    [columns, routeKm, widthKm],
-  );
-}
 
 interface ProfileChartProps {
   scale: ProfileScale;
   /** 図の名前。押せる図では、動かすとその地点を地図に出すことを添える。 */
   label: string;
-  /** 押せる図の使い方の文。 */
+  /** 押せる図の使い方の文のうち、図の読み方。選ぶ操作の文は後ろに足す。 */
   usage: string;
   selected: SelectedRouteSegment | null;
   /** なぞる・押して離すと、その地点の区間を選ぶ。無ければ押せない見るだけの図にする。 */
@@ -77,30 +29,21 @@ interface ProfileChartProps {
   progressKm?: number | null;
   /** 現在地の印の縦の位置（0〜`PROFILE_VIEW_HEIGHT`）。無ければ図の中ほどに置く。 */
   progressMarkY?: number | null;
-  /** 置いた経由地を通る所のルートの上の距離（置いた順）。縦の線と、地図のピンと同じ番号の印を出す。走り終えた経由地は薄める。 */
-  waypointKms: readonly number[];
+  /** 置いた経由地（置いた順）。縦の線と、地図のピンと同じ番号の印と、着く見込みの時刻を出す。走り終えた経由地は薄める。 */
+  waypoints: readonly ProfileWaypoint[];
   /** 図の中身（`scale.xOf`の横座標と、0〜`PROFILE_VIEW_HEIGHT`の縦座標で描く）。 */
   children: ReactNode;
-  /** 図の下の1行。区間を選んでいれば、その地点の距離を受け取る。 */
-  caption?: (pointKm: number | null) => ReactNode;
+  /** 図の下の1行。 */
+  caption?: ReactNode;
   /** 縦の値の目盛り（0〜`PROFILE_VIEW_HEIGHT`の縦の位置と文字）。図の左の端に重ねる。 */
-  valueTicks?: readonly { readonly y: number; readonly label: string }[];
+  valueTicks?: readonly ValueTick[];
   /** 走行中の地図の下の図。目盛りの文字を大きくする。 */
   riding?: boolean;
 }
 
-/** 地図で押した所を区間`column`の道なりの形に当てた、ルートの上の距離。 */
-function kmOfPickedPoint(column: RouteStretch<RouteSegmentDetail>, picked: SelectedRouteSegment): number {
-  const projections = projectOnTrack(routeTrack([column.segment]), picked);
-  const nearest = projections.reduce((best, p) => (p.offsetM < best.offsetM ? p : best), projections[0]);
-  return Math.min(column.endKm, column.startKm + (nearest?.km ?? 0));
-}
-
 /** 道のりに沿った図の枠。横が距離で、選んだ区間の帯・走行中の現在地・動かした地点の線を中身の上に引き、下に距離の目盛りを
- * 出す。1本の指（マウス）で横になぞるか押して離すと、その距離の地点を選ぶ（地図に印が出て、下にその区間の詳細が出る）。
- * **押しただけでは選ばず、途中で2本目の指が触れた操作は選択にしない**——図の上で始めたピンチ（拡大しようとした操作）で
- * 区間が選ばれ、表示が区間の詳細へ切り替わらないようにする。**縦に動き出した操作も選択にしない**——縦のなぞりは、図を
- * 載せたシート・パネルのスクロールとしてブラウザに渡す（図の上に指を置いても下へ送れる）。高さは置き場が CSS の変数
+ * 出す。1本の指（マウス）で横になぞるか押して離すと、その距離の地点を選ぶ（選ばない操作は
+ * `features/route/ProfileChart/useProfileGesture.ts: useProfileGesture`が決める）。高さは置き場が CSS の変数
  * `--profile-chart-height` で決める（無ければ走行中の地図の下に出す図の高さ）。 */
 export default function ProfileChart({
   scale,
@@ -110,56 +53,20 @@ export default function ProfileChart({
   onSelect,
   progressKm = null,
   progressMarkY = null,
-  waypointKms,
+  waypoints,
   children,
   caption,
   valueTicks = [],
   riding = false,
 }: ProfileChartProps) {
-  const [scrubKm, setScrubKm] = useState<number | null>(null);
   const clipId = `profile${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
-  // 図に触れている指（ポインター）と、いまの操作に2本目が加わったか、操作の始まりの点と、動き出した向き（横は地点を選び、
-  // 縦はスクロールに渡す。まだ動いていなければnull）。
-  const gesture = useRef<{
-    pointers: Set<number>;
-    multi: boolean;
-    start: { x: number; y: number };
-    axis: "x" | "y" | null;
-  }>({ pointers: new Set(), multi: false, start: { x: 0, y: 0 }, axis: null });
-  // 画面のどこかに触れている指。2本目は図の外に触れることがあり、図のポインターだけでは数えられない
-  // （タッチイベントの指の数は、図のpointermoveより後に届くので間に合わない）。
-  const screenPointers = useRef<Set<number>>(new Set());
-  useEffect(() => {
-    const pointers = screenPointers.current;
-    const down = (event: globalThis.PointerEvent) => {
-      pointers.add(event.pointerId);
-      if (pointers.size > 1 && gesture.current.pointers.size > 0) gesture.current.multi = true;
-    };
-    const up = (event: globalThis.PointerEvent) => pointers.delete(event.pointerId);
-    window.addEventListener("pointerdown", down, true);
-    window.addEventListener("pointerup", up, true);
-    window.addEventListener("pointercancel", up, true);
-    return () => {
-      window.removeEventListener("pointerdown", down, true);
-      window.removeEventListener("pointerup", up, true);
-      window.removeEventListener("pointercancel", up, true);
-    };
-  }, []);
+  const pointerHandlers = useProfileGesture();
   const { columns, routeKm, widthKm, xOf } = scale;
   if (routeKm <= 0) return null;
 
-  const selectedColumn =
-    selected === null ? undefined : findSameSegment(columns, selected.segment, (column) => column.segment);
-  // 線を引く地点。図で選んだ区間は、自分で動かした地点がその区間の中にあるときだけ。地図で押した区間（地図は区間を自分の
-  // 地物から組み直すので、図の区間と同じものではない）は、押した所を区間の道なりの形に当てた地点。
-  const cursorKm =
-    selected === null || selectedColumn === undefined
-      ? null
-      : selectedColumn.segment !== selected.segment
-        ? kmOfPickedPoint(selectedColumn, selected)
-        : scrubKm !== null && scrubKm >= selectedColumn.startKm && scrubKm <= selectedColumn.endKm
-          ? scrubKm
-          : null;
+  const selectedColumn = selected === null ? undefined : columns.find((column) => column.segment === selected.segment);
+  // 線を引く地点。図で選んでも地図で押しても、選んだ地点を区間の道なりの形に当てた所。
+  const cursorKm = selected === null || selectedColumn === undefined ? null : kmOfPickedPoint(selectedColumn, selected);
   const positionKm = cursorKm ?? selectedColumn?.startKm ?? 0;
   const travelledKm = progressKm === null ? null : Math.min(routeKm, Math.max(0, progressKm));
 
@@ -169,7 +76,6 @@ export default function ProfileChart({
     const hit = columnAtKm(columns, clamped);
     if (hit === null) return;
     const [longitude, latitude] = pointAlongSegment(hit.column.segment, hit.fraction);
-    setScrubKm(clamped);
     onSelect?.({ segment: hit.column.segment, latitude, longitude });
   }
 
@@ -180,38 +86,16 @@ export default function ProfileChart({
 
   function handleKeyDown(event: KeyboardEvent<SVGSVGElement>) {
     const step = routeKm * KEY_STEP_RATIO;
-    const next =
-      event.key === "ArrowRight"
-        ? positionKm + step
-        : event.key === "ArrowLeft"
-          ? positionKm - step
-          : event.key === "Home"
-            ? 0
-            : event.key === "End"
-              ? routeKm
-              : null;
-    if (next === null) return;
+    const targets: Partial<Record<string, number>> = {
+      ArrowRight: positionKm + step,
+      ArrowLeft: positionKm - step,
+      Home: 0,
+      End: routeKm,
+    };
+    const next = targets[event.key];
+    if (next === undefined) return;
     event.preventDefault();
     selectAt(next);
-  }
-
-  function releasePointer(pointerId: number) {
-    gesture.current.pointers.delete(pointerId);
-    if (gesture.current.pointers.size === 0) {
-      gesture.current.multi = false;
-      gesture.current.axis = null;
-    }
-  }
-
-  // 動き出した向きを、始まりの点から横と縦のどちらへ多く動いたかで1度だけ決める（同じだけなら、まだ決めない）。
-  // 縦に決まった操作は、ブラウザがスクロールに取って取り消す（pointercancel）。
-  function axisOf(event: PointerEvent<SVGSVGElement>): "x" | "y" | null {
-    if (gesture.current.axis === null) {
-      const dx = Math.abs(event.clientX - gesture.current.start.x);
-      const dy = Math.abs(event.clientY - gesture.current.start.y);
-      if (dx !== dy) gesture.current.axis = dx > dy ? "x" : "y";
-    }
-    return gesture.current.axis;
   }
 
   return (
@@ -231,34 +115,12 @@ export default function ProfileChart({
                 role: "slider",
                 tabIndex: 0,
                 "aria-label": `${label}（動かすと、その地点を地図に出す）`,
-                "data-usage": usage,
+                "data-usage": `${usage}なぞるか押して離すと、その地点の印と区間の小窓を地図に出します。`,
                 "aria-valuemin": 0,
                 "aria-valuemax": roundToDigits(routeKm, 1),
                 "aria-valuenow": roundToDigits(positionKm, 1),
                 "aria-valuetext": `${positionKm.toFixed(1)} km地点`,
-                onPointerDown: (event: PointerEvent<SVGSVGElement>) => {
-                  event.currentTarget.setPointerCapture?.(event.pointerId);
-                  if (gesture.current.pointers.size === 0)
-                    gesture.current.start = { x: event.clientX, y: event.clientY };
-                  gesture.current.pointers.add(event.pointerId);
-                  // 画面全体の指は窓の捕捉の段で先に数えてあるので、図の上の指もそこに含まれる。
-                  if (screenPointers.current.size > 1) gesture.current.multi = true;
-                },
-                onPointerMove: (event: PointerEvent<SVGSVGElement>) => {
-                  if (event.buttons === 0 || gesture.current.multi || !gesture.current.pointers.has(event.pointerId))
-                    return;
-                  if (axisOf(event) === "x") selectAt(kmAtPointer(event));
-                },
-                onPointerUp: (event: PointerEvent<SVGSVGElement>) => {
-                  if (
-                    !gesture.current.multi &&
-                    gesture.current.pointers.has(event.pointerId) &&
-                    gesture.current.axis !== "y"
-                  )
-                    selectAt(kmAtPointer(event));
-                  releasePointer(event.pointerId);
-                },
-                onPointerCancel: (event: PointerEvent<SVGSVGElement>) => releasePointer(event.pointerId),
+                ...pointerHandlers((event) => selectAt(kmAtPointer(event))),
                 onKeyDown: handleKeyDown,
               })}
         >
@@ -301,7 +163,7 @@ export default function ProfileChart({
               </g>
             </>
           )}
-          {waypointKms.map((km, index) => (
+          {waypoints.map(({ km }, index) => (
             <line
               key={index}
               data-waypoint={index + 1}
@@ -341,50 +203,17 @@ export default function ProfileChart({
             />
           )}
         </svg>
-        {waypointKms.map((km, index) => (
-          <span
-            key={index}
-            role="img"
-            aria-label={`${pinMarkName("waypoint", String(index + 1))}（${km.toFixed(1)}km地点）`}
-            className="pointer-events-none absolute top-1/2 -translate-x-1/2 -translate-y-1/2"
-            style={{
-              left: `${(xOf(km) / PROFILE_VIEW_WIDTH) * 100}%`,
-              opacity: travelledKm !== null && km <= travelledKm ? mapDisplay.route.opacities.travelled : undefined,
-            }}
-          >
-            <PointMark role="waypoint" label={String(index + 1)} originLocated={false} />
-          </span>
-        ))}
-        {travelledKm !== null && (
-          <span
-            role="img"
-            aria-label="現在地"
-            data-progress="mark"
-            className="pointer-events-none absolute size-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-[3px] border-white bg-[var(--color-accent)] shadow"
-            style={{
-              left: `${(xOf(travelledKm) / PROFILE_VIEW_WIDTH) * 100}%`,
-              top: `${((progressMarkY ?? PROFILE_VIEW_HEIGHT / 2) / PROFILE_VIEW_HEIGHT) * 100}%`,
-            }}
-          />
-        )}
-        {valueTicks.map((tick) => (
-          <span
-            key={tick.label}
-            className={cn(
-              "pointer-events-none absolute left-1 -translate-y-1/2 rounded-sm bg-[color-mix(in_srgb,var(--color-surface-2)_75%,transparent)] px-0.5 text-[var(--foreground)] tabular-nums",
-              profileTextClass(riding),
-            )}
-            style={{ top: `${(tick.y / PROFILE_VIEW_HEIGHT) * 100}%` }}
-          >
-            {tick.label}
-          </span>
-        ))}
-        <div className="pointer-events-none absolute inset-x-1 bottom-0 flex justify-between text-[var(--color-muted)] tabular-nums">
-          <span className={profileTextClass(riding)}>0</span>
-          <span className={profileTextClass(riding)}>{widthKm.toFixed(1)}km</span>
-        </div>
+        <ProfileMarks
+          xOf={xOf}
+          widthKm={widthKm}
+          waypoints={waypoints}
+          travelledKm={travelledKm}
+          progressMarkY={progressMarkY}
+          valueTicks={valueTicks}
+          riding={riding}
+        />
       </div>
-      {caption?.(selectedColumn === undefined ? null : positionKm)}
+      {caption}
     </div>
   );
 }

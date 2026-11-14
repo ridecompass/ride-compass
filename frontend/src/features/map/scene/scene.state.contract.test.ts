@@ -2,61 +2,38 @@
 /** 画面の状態を地図へ伝えたとき、**最後にどうなっているか**。
  *
  * 入口は本番と同じ`sceneInputsFrom`→`buildMapScene`→`applyScene`の1本で、面・道路の線・点・
- * 評価軸・気象・ルートのすべてがここを通る。
+ * レンズ・気象・ルートのすべてがここを通る。
+ *
+ * ここで見ないもの:
+ * - レンズの線 → `scene.axisLines.contract.test.ts`
+ * - 出せるものを全部出した状態で見る、レイヤーを横断する要求 → `scene.allLayers.contract.test.ts`
  */
-import { latest, validateStyleMin } from "@maplibre/maplibre-gl-style-spec";
 import { describe, expect, it } from "vitest";
 
 import { LIBERTY_POI_LAYERS } from "@/testing/libertyPoiLayers";
-import { evaluateExpression, matchesFilter } from "@/testing/mapExpressions";
+import { evaluateExpression, matchesFilter, matchesFilterAtPoint } from "@/testing/mapExpressions";
 import { createRecordingMap, type StyleLayer } from "@/testing/mapTrace/recordingMap";
-import { catalogEntry, dedicatedEntry, MATERIAL_VALUE_FORMULA, roadClass, roadMapLayer } from "@/testing/catalogAxes";
-import { dedicatedWayValueAxesFromCatalogAxes } from "@/lib/mapDisplay/axisLayers";
+import { rebuild, ROAD_LAYERS, roadLayerId, shown } from "@/testing/sceneContract";
 import { AREA_SOURCE_ID } from "@/features/map/scene/groups/areaRasters";
 import { POINT_TILE_SOURCES, pointAxisKey } from "@/features/map/scene/groups/points";
 import { POINT_LAYERS } from "@/lib/mapDisplay/pointLayers";
 import { ROAD_LINE_SOURCE_ID } from "@/features/map/scene/groups/roadLines";
-import { pointLegendAxes, roadLegendAxes } from "@/features/map/scene/legends";
-import { LEGEND_NO_DATA_KEY } from "@/lib/mapDisplay/mapColorLegend";
-import { valueBands } from "@/lib/mapDisplay/valueScale";
 import { applyScene, sceneInputsFrom } from "@/features/map/scene/applyToMap";
-import { sceneState, type SceneState, type SceneStateOverrides } from "@/testing/sceneState";
+import { sceneState } from "@/testing/sceneState";
 import { buildMapScene } from "@/features/map/scene/buildScene";
 import { sceneLayerId } from "@/features/map/scene/sceneBuilders";
+import { LENS_NEUTRAL_COLOR, UNSELECTED_LENS_ID } from "@/lib/mapDisplay/routeStyleModes";
+import { costLensPaint } from "@/lib/mapDisplay/costLensPaint";
+import { valueBands } from "@/lib/mapDisplay/valueScale";
+import { costRouteStyleModes } from "@/features/map/costLens";
+import { costAxisCatalogFromResponse } from "@/hooks/useCostAxisCatalog";
+import { costAxisCatalog, costAxisEntry } from "@/testing/costAxes";
 import { mapDisplay } from "@/types/generated/mapDisplay";
+import { penaltyFields } from "@/testing/routeFixtures";
 
-const DEDICATED_AXES = dedicatedWayValueAxesFromCatalogAxes([
-  catalogEntry({ axis_id: "ded1", way_value_formula: MATERIAL_VALUE_FORMULA }),
-  catalogEntry({ axis_id: "ded2", way_value_formula: MATERIAL_VALUE_FORMULA }),
-  catalogEntry({ axis_id: "unformulated" }),
-]);
-
-// 道の線の層はテストが組む（本番の区分は管理DBが持つ）。絞り込みの式も検証の対象にするため、どの層も区分の条件を持つ。
-const ROAD_LAYERS = ["surface", "highway"].map((id) =>
-  roadMapLayer(id, {
-    has_no_data: true,
-    classes: [roadClass("first")],
-  }),
-);
-
-const CATALOG = { dedicatedAxes: DEDICATED_AXES, roadLayers: ROAD_LAYERS };
-
-/** 表示ONのレイヤーだけを持つ状態。 */
-function shown(layerVisibility: Record<string, boolean>, look: SceneStateOverrides["look"] = {}) {
-  return sceneState({ catalog: CATALOG, look: { ...look, layerVisibility } });
-}
-
-// レイヤーidは**ソース名＋役割**で決まる。綴りは`sceneLayerId`からしか作らない
-// ——ここで組み立て直すと、規則を変えたときテストだけが古い綴りのまま残る。
 const areaLayerId = (role: keyof typeof AREA_SOURCE_ID) => sceneLayerId(AREA_SOURCE_ID[role], role);
-const roadLayerId = (role: string) => sceneLayerId(ROAD_LINE_SOURCE_ID, role);
 const pointLayerId = (role: string) =>
   sceneLayerId(POINT_TILE_SOURCES[POINT_LAYERS.find((layer) => layer.attr_id === role)!.tile_kind].sourceId, role);
-
-/** 空から作り直す経路（スタイルを差し替えた後に通るのはこちら）。 */
-function rebuild(map: unknown, state: SceneState) {
-  applyScene(map as never, buildMapScene(sceneInputsFrom(state)), { reset: true });
-}
 
 describe("状態を地図へ伝えた結果", () => {
   describe("面（標高図・土地被覆・起伏）", () => {
@@ -109,6 +86,53 @@ describe("状態を地図へ伝えた結果", () => {
       // 停止要因と補給は同じタイルを分け合う。分ける条件を持たないと、補給の点が停止要因の色で出る。
       expect(stop?.filter).toBeDefined();
     });
+
+    // 東西に1kmずつ離れた2本の線。緯度0.001度（約110m）より近い点だけを通す。
+    const ROUTE: [number, number][] = [
+      [139.7, 35.7],
+      [139.71, 35.7],
+    ];
+    const EDITED: [number, number][] = [
+      [139.7, 35.71],
+      [139.71, 35.71],
+    ];
+    const CONVENIENCE = { kind: "convenience" };
+    it.each([
+      {
+        case: "周りを出す間は、どちらの線からも遠い点も描く",
+        surroundingsShown: true,
+        splicedRoute: null,
+        near: [true, true, true],
+      },
+      {
+        case: "ルート沿いだけの間は、ルートの線の近くだけ",
+        surroundingsShown: false,
+        splicedRoute: null,
+        near: [true, false, false],
+      },
+      {
+        case: "編集中は、編集している線の近くだけ",
+        surroundingsShown: false,
+        splicedRoute: EDITED,
+        near: [false, true, false],
+      },
+    ])("$case", ({ surroundingsShown, splicedRoute, near }) => {
+      const { map, handle } = createRecordingMap();
+
+      rebuild(map, {
+        ...shown({ supply_poi: true }, { surroundingsShown }),
+        routePath: ROUTE,
+        splicedRoute,
+      });
+
+      const filter = handle.layer(pointLayerId("supply_poi"))?.filter;
+      const at: [number, number][] = [
+        [139.705, 35.7001],
+        [139.705, 35.7101],
+        [139.705, 35.705],
+      ];
+      expect(at.map((lngLat) => matchesFilterAtPoint(filter, CONVENIENCE, lngLat))).toEqual(near);
+    });
   });
   describe("基礎地図の店・施設の印", () => {
     const CONVENIENCE = { class: "shop", subclass: "convenience" };
@@ -159,75 +183,11 @@ describe("状態を地図へ伝えた結果", () => {
     });
   });
 
-  describe("評価軸の線", () => {
-    const fetched = (byAxis: Record<string, Record<string, Record<string, number>>>) =>
-      new Map(
-        Object.entries(byAxis).map(([axisId, byWay]) => [
-          axisId,
-          { materials: new Map(Object.entries(byWay)), loading: false },
-        ]),
-      );
-    const MATERIALS = fetched({ ded1: { w1: { value: 3 } }, ded2: { w1: { value: 7 } } });
-
-    it("取った材料は道路のソースの地物へ軸ごとに載り、塗っている軸の線が見える", () => {
-      const { map, handle } = createRecordingMap();
-      rebuild(map, shown({ surface: true }, { paintedAxisId: "ded1", wayMaterials: MATERIALS }));
-
-      expect(handle.featureState(ROAD_LINE_SOURCE_ID, "w1")).toEqual({ "ded1:value": 3, "ded2:value": 7 });
-      expect(handle.layer(roadLayerId("ded1"))?.visibility).toBe("visible");
-      expect(handle.layer(roadLayerId("ded2"))?.visibility).toBe("none");
-    });
-
-    it("走る条件だけを変えると、地図全体の状態だけを置き直し、材料もレイヤーも当て直さない", () => {
-      const { map, handle } = createRecordingMap();
-      const look = { paintedAxisId: "ded1", wayMaterials: MATERIALS };
-      rebuild(map, shown({ surface: true }, { ...look, wayConditions: { bearing_deg: 0, speed_kmh: 20 } }));
-      const callsBefore = handle.trace.length;
-
-      applyScene(
-        map as never,
-        buildMapScene(
-          sceneInputsFrom(shown({ surface: true }, { ...look, wayConditions: { bearing_deg: 135.5, speed_kmh: 20 } })),
-        ),
-      );
-
-      expect(handle.trace.slice(callsBefore)).toEqual([
-        { call: "setGlobalStateProperty", args: ["bearing_deg", 135.5] },
-      ]);
-    });
-
-    it("式の木の無い軸は、塗っていても周りの道の線を持たない", () => {
-      const { map, handle } = createRecordingMap();
-      rebuild(map, shown({ surface: true }, { paintedAxisId: "unformulated" }));
-
-      expect(handle.layerOrder().filter((id) => id.includes("unformulated"))).toEqual([]);
-    });
-
-    it("塗っている軸は、その材料のレイヤーが出ている間だけ下敷きになる", () => {
-      const dedicatedAxes = dedicatedWayValueAxesFromCatalogAxes([
-        dedicatedEntry("paved", [50], {
-          road_layer_ids: ["surface"],
-          way_value_formula: MATERIAL_VALUE_FORMULA,
-        }),
-      ]);
-      const opacityWith = (surface: boolean) => {
-        const { map, handle } = createRecordingMap();
-        rebuild(
-          map,
-          sceneState({ catalog: { dedicatedAxes }, look: { paintedAxisId: "paved", layerVisibility: { surface } } }),
-        );
-        return handle.layer(roadLayerId("paved"))?.paint["line-opacity"];
-      };
-
-      expect(opacityWith(true)).toBe(mapDisplay.road.underlayOpacity);
-      expect(opacityWith(false)).not.toBe(mapDisplay.road.underlayOpacity);
-    });
-  });
-
   describe("ルート", () => {
     // 北緯35.6度の上を東へ進む、長さ1kmの区間を2つつないだルート。
     const segment = (from: number, to: number) => ({
       distance_km: 1,
+      ...penaltyFields({}, 1),
       start_longitude: from,
       start_latitude: 35.6,
       end_longitude: to,
@@ -257,7 +217,7 @@ describe("状態を地図へ伝えた結果", () => {
       rebuild(
         map,
         sceneState({
-          look: { layerVisibility: { route: true } },
+          look: {},
           routes: [route] as never,
           selectedRouteId: "a",
           travelledKm: 1.5,
@@ -282,159 +242,76 @@ describe("状態を地図へ伝えた結果", () => {
         ]);
       }
     });
-  });
-});
 
-describe("レイヤーを横断する要求", () => {
-  const EMPTY_GEOJSON: GeoJSON.FeatureCollection = { type: "FeatureCollection", features: [] };
-
-  /** 地図へ足したレイヤーの宣言（足した順）。 */
-  const addedLayers = (handle: ReturnType<typeof createRecordingMap>["handle"]) =>
-    handle.trace.filter((entry) => entry.call === "addLayer").map((entry) => entry.args[2]);
-
-  /** 宣言された描き方に合う中身を、全要素ぶん作る。**名指ししない**——母集団は源泉の
-   * 宣言（生成物）なので、backendが要素を増やせばそのまま対象になる。 */
-  function everyWeatherGroupState(): Record<string, Record<string, unknown>> {
-    const groups: Record<string, Record<string, unknown>> = {};
-    for (const element of mapDisplay.weatherElements) {
-      const payload =
-        element.kind === "rasterTile"
-          ? { kind: "rasterTile", tileUrlTemplate: "https://example.test/{z}/{x}/{y}.png" }
-          : element.kind === "vectorTile"
-            ? { kind: "vectorTile", tileUrlTemplate: "https://example.test/{z}/{x}/{y}.pbf" }
-            : { kind: element.kind, geojson: EMPTY_GEOJSON };
-      groups[element.group] = { ...groups[element.group], [element.source]: { visible: true, payload } };
-    }
-    return groups;
-  }
-
-  /** 出せるものを全部出した状態。チップのidは各グループの宣言から取る。 */
-  function everythingVisible(): SceneState {
-    const visibility: Record<string, boolean> = {};
-    for (const layer of ROAD_LAYERS) visibility[layer.id] = true;
-    for (const layer of POINT_LAYERS) visibility[layer.attr_id] = true;
-    for (const role of Object.keys(AREA_SOURCE_ID)) visibility[role] = true;
-    visibility.route = true;
-    const mode = { id: "difficulty", label: "難易度", colorExpression: ["literal", "#16a34a"], legend: [] };
-    const line = {
-      type: "LineString",
-      coordinates: [
-        [139.7, 35.6],
-        [139.71, 35.61],
-      ],
+    /** 選んだルートの細い線の、区間ごとの色。 */
+    const detailColors = (handle: ReturnType<typeof createRecordingMap>["handle"]) => {
+      const layer = handle.layer(handle.layerOrder().find((id) => id.endsWith("-detailLine"))!)!;
+      const { features } = handle.sourceContent(layer.source!)!.data as {
+        features: { properties: Record<string, unknown> }[];
+      };
+      return features.map((feature) => evaluateExpression(layer.paint["line-color"], feature.properties));
     };
-    const candidate = {
-      id: "a",
-      geometry: line,
-      segments: [
-        { start_longitude: 139.7, start_latitude: 35.6, end_longitude: 139.71, end_latitude: 35.61, geometry: line },
-      ],
-    };
-    // 絞り込みの式も検証の対象にするため、凡例の先頭の行と「値なし」を隠しておく。
-    const firstKeyHidden = (axes: readonly { axisId: string; entries: readonly { key: string }[] }[]) =>
-      Object.fromEntries(axes.map((axis) => [axis.axisId, axis.entries.slice(0, 1).map((entry) => entry.key)]));
-    const firstBandAndNoData = (bands: readonly { key: string }[]) => [bands[0].key, LEGEND_NO_DATA_KEY];
-    // 評価軸は一度に1本しか塗らないが、どの軸のレイヤーも常に宣言され、塗るかは表示だけが変わる。
-    return sceneState({
-      catalog: { ...CATALOG, routeStyleModes: [mode] as never },
-      look: {
-        layerVisibility: visibility,
-        paintedAxisId: DEDICATED_AXES[0].axisId,
-        lens: "difficulty",
-        hiddenLegendKeys: {
-          ...firstKeyHidden(roadLegendAxes(ROAD_LAYERS)),
-          ...firstKeyHidden(pointLegendAxes()),
-          ...Object.fromEntries(
-            DEDICATED_AXES.map((axis) => [axis.axisId, firstBandAndNoData(valueBands(axis.display))]),
-          ),
-        },
-        dynamicWeather: everyWeatherGroupState() as never,
-      },
-      routes: [candidate] as never,
-      selectedRouteId: "a",
+
+    it.each([
+      ["総合のレンズ", "total", ["軽い", "重い", "重い"]],
+      ["レンズを選んでいないとき", UNSELECTED_LENS_ID, ["軽い", "重い", "重い"]],
+      ["軸のレンズ", "vibration", ["軽い", "重い", "軽い"]],
+    ] as const)("%s（%s）は、区間の1kmあたりの代償の秒をそのレンズの段で塗る", (_, lens, expected) => {
+      // どの段も境目は1kmあたり10秒。区間は2kmずつで、1kmあたり 前: 登坂2・振動2（避ける道300）、中: 振動15、後: 登坂15。
+      const bands = { thresholds: [10], band_labels: ["軽い", "重い"] };
+      const catalog = costAxisCatalogFromResponse(
+        costAxisCatalog(
+          costAxisEntry("ascent", { lens: bands }),
+          costAxisEntry("vibration", { ledger: "burden", lens: bands }),
+        ),
+      );
+      // 2kmの区間の内訳と、backend がそれから導く1kmあたりの値。
+      const penalty = (ascent: number, vibration: number, avoided = 0) =>
+        penaltyFields({ ascent, vibration }, 2, avoided);
+      const { map, handle } = createRecordingMap();
+      rebuild(
+        map,
+        sceneState({
+          look: { lens },
+          catalog: {
+            routeStyleModes: costRouteStyleModes(catalog, "light"),
+          },
+          routes: [
+            {
+              ...route,
+              segments: [
+                { ...segment(139.7, 139.71), distance_km: 2, ...penalty(4, 4, 600) },
+                { ...segment(139.71, 139.72), distance_km: 2, ...penalty(0, 30) },
+                { ...segment(139.72, 139.73), distance_km: 2, ...penalty(30, 0) },
+              ],
+            },
+          ] as never,
+          selectedRouteId: "a",
+        }),
+      );
+
+      const colorOf = Object.fromEntries(
+        valueBands(costLensPaint({ lens: bands }, "light")).map((band, index) => [
+          bands.band_labels[index],
+          band.color,
+        ]),
+      );
+      expect(detailColors(handle)).toEqual(expected.map((label) => colorOf[label]));
     });
-  }
 
-  // 「差し替え後に戻るか」はレイヤーごとの性質ではないので、家族ごとに繰り返さず
-  // **全部を載せた状態で1回**見る。新しいレイヤーが増えればそのまま対象になる。
-  it("スタイルを差し替えても、同じ状態を伝え直せば元へ戻る", () => {
-    const { map, handle } = createRecordingMap();
-    const state = everythingVisible();
-    rebuild(map, state);
-    const before = handle.layerOrder();
-    // 空振りしていないこと（載っていなければ比較は常に通る）。
-    expect(before.length).toBeGreaterThan(mapDisplay.weatherElements.length);
+    it("費用の軸の一覧が届く前（モードが0件）も、ルート線を値に依らず中立色の1色で引く", () => {
+      const { map, handle } = createRecordingMap();
+      rebuild(
+        map,
+        sceneState({
+          look: {},
+          routes: [{ ...route, segments: [segment(139.7, 139.71), segment(139.71, 139.72)] }] as never,
+          selectedRouteId: "a",
+        }),
+      );
 
-    handle.dropEverything();
-    rebuild(map, state);
-
-    expect(handle.layerOrder()).toEqual(before);
-  });
-
-  // 式の誤りは例外にならず、そのレイヤーだけが黙って描かれない（代役地図は式を検証しない）。
-  // 出せるものを全部出した状態の宣言を、MapLibreと同じ版のstyle検証へ通す。
-  it("地図へ渡すソースとレイヤーは、すべてMapLibreのstyle検証を通る", () => {
-    const { map, handle } = createRecordingMap();
-    rebuild(map, everythingVisible());
-    const sources = Object.fromEntries(
-      handle.trace.filter((entry) => entry.call === "addSource").map((entry) => [entry.args[0], entry.args[1]]),
-    );
-    const layers = addedLayers(handle);
-    // 空振りしていないこと（載っていなければ検証は常に通る）。
-    expect(layers.length).toBeGreaterThan(mapDisplay.weatherElements.length);
-
-    const errors = validateStyleMin({
-      version: 8,
-      glyphs: "https://example.test/{fontstack}/{range}.pbf",
-      sources,
-      layers,
-    } as never);
-
-    expect(errors.map((error) => error.message)).toEqual([]);
-  });
-
-  // MapLibreはfeature-stateを読めるプロパティを限っている（例: 色・不透明度は読めるが、破線の刻み・絞り込みは読めない）。
-  // 読めない場所に書いた式は検証も通り、例外も出さず、値が無いものとして評価される——配信値の軸の線が全部破線になる。
-  // 可否はstyle-specの各プロパティの`expression.parameters`が持つ。
-  it("feature-stateを読む式は、feature-stateを読めるプロパティにだけ置かれる", () => {
-    const { map, handle } = createRecordingMap();
-    rebuild(map, everythingVisible());
-    const layers = addedLayers(handle) as (Record<string, unknown> & { id: string; type: string })[];
-    const readsState = (expression: unknown): boolean =>
-      Array.isArray(expression) && (expression[0] === "feature-state" || expression.some(readsState));
-    const spec = latest as unknown as Record<string, Record<string, { expression?: { parameters?: string[] } }>>;
-
-    const misplaced: string[] = [];
-    let stateReaders = 0;
-    for (const layer of layers) {
-      if (readsState(layer.filter)) misplaced.push(`${layer.id}: filter`);
-      for (const group of ["paint", "layout"] as const) {
-        for (const [property, value] of Object.entries((layer[group] ?? {}) as Record<string, unknown>)) {
-          if (!readsState(value)) continue;
-          stateReaders += 1;
-          const parameters = spec[`${group}_${layer.type}`]?.[property]?.expression?.parameters ?? [];
-          if (!parameters.includes("feature-state")) misplaced.push(`${layer.id}: ${property}`);
-        }
-      }
-    }
-    // feature-stateを読む式が実際にあること（0件なら、この検査は何も見ていない）。
-    expect(stateReaders).toBeGreaterThan(0);
-    expect(misplaced).toEqual([]);
-  });
-
-  // 世代が届く前にソースを作ると、世代の違う中身がブラウザのキャッシュへ載って以後ずっと残る。
-  it("世代を要るソースは、世代が届くまで1つも作られない", () => {
-    const state = everythingVisible();
-
-    const ready = createRecordingMap();
-    rebuild(ready.map, state);
-
-    const pending = createRecordingMap();
-    rebuild(pending.map, { ...state, tileVersions: null });
-
-    const gated = ready.handle.sources().filter((id) => !pending.handle.sources().includes(id));
-    // 世代で守られているソースが実際にあること（0件なら、この検査は何も見ていない）。
-    expect(gated.length).toBeGreaterThan(0);
-    expect(gated).toContain(ROAD_LINE_SOURCE_ID);
+      const neutral = evaluateExpression(["to-color", LENS_NEUTRAL_COLOR], {});
+      expect(detailColors(handle)).toEqual([neutral, neutral]);
+    });
   });
 });

@@ -1,18 +1,18 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useId, useLayoutEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button/Button";
 import { textVariants } from "@/components/ui/Text/Text";
 import { useStoredState } from "@/hooks/useStoredState";
 import { cn } from "@/lib/cn";
 import { mapOverlayEdge } from "@/lib/mapOverlayEdges";
+import { TAP_SLOP_PX } from "@/lib/tapSlop";
 
 interface BottomSheetProps {
   open: boolean;
   onClose: () => void;
   /** 見出し（シートのアクセシブル名にもなる）。 */
   title: string;
-  titleId: string;
   /** 見出しの行の右、閉じるボタンの手前に置く操作。 */
   headerAction: React.ReactNode;
   /** 見出しのすぐ右に置くもの（中身を切り替えるタブ等、右の操作と役割が違うもの）。 */
@@ -44,13 +44,7 @@ const CHOSEN_HEIGHT_STORAGE_KEY = "ridecompass:mobile-sheet-height-vh";
 /** 利用者が帯で決めた高さ（vh。決めていなければnull）と、決める関数。保存値があることが「決めた」印で、決めた後は
  * 中身に合わせるのをやめる。 */
 export function useChosenSheetHeight(): [number | null, (vh: number) => void] {
-  return useStoredState<number | null>(CHOSEN_HEIGHT_STORAGE_KEY, null, {
-    serialize: JSON.stringify,
-    deserialize: (raw) => {
-      const parsed: unknown = JSON.parse(raw);
-      return typeof parsed === "number" && Number.isFinite(parsed) ? clampSheetHeightVh(parsed) : null;
-    },
-  });
+  return useStoredState<number | null>(CHOSEN_HEIGHT_STORAGE_KEY, "パネルの高さ", null);
 }
 
 /** 中身がそのまま並んだときの高さ。高さの指定を一時的に外して測る（`scrollHeight`や子の合算は、中身が箱より
@@ -89,7 +83,6 @@ export default function BottomSheet({ open, ...props }: BottomSheetProps) {
 function OpenBottomSheet({
   onClose,
   title,
-  titleId,
   headerAction,
   headerLead,
   children,
@@ -97,6 +90,7 @@ function OpenBottomSheet({
   onHeightChoose,
   fitKey,
 }: Omit<BottomSheetProps, "open">) {
+  const titleId = useId();
   // 中身に合わせた高さ・ドラッグの途中の高さ。持ち主へ上げないので、動かす間に持ち主は描き直されない。
   const [workingHeightVh, setWorkingHeightVh] = useState<number | null>(null);
   const heightVh = workingHeightVh ?? chosenHeightVh ?? DEFAULT_SHEET_HEIGHT_VH;
@@ -104,10 +98,6 @@ function OpenBottomSheet({
   const sheetRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
-  const onCloseRef = useRef(onClose);
-  useEffect(() => {
-    onCloseRef.current = onClose;
-  });
 
   // 開いたときの中身に合う高さ（印があればその下端まで）へ合わせる（高すぎると空白で地図を隠す）。開いている間は合わせ直さない（候補や区間を
   // 押すたびに地図の見える範囲が動かないように）。実寸が取れない環境では何もしない。
@@ -126,15 +116,22 @@ function OpenBottomSheet({
     setWorkingHeightVh(fittedVh);
   }, [autoFitHeight, fitKey]);
   // つまみのドラッグ。始めた指（pointerId）の動きだけを見る（別の指のmove/upに反応しない）。
-  const dragRef = useRef<{ pointerId: number; startClientY: number; startHeightVh: number } | null>(null);
+  // つまむ前のシートの中の高さ（`startWorkingHeightVh`）は、決めずに終えたときに戻す先。
+  const dragRef = useRef<{
+    pointerId: number;
+    startClientY: number;
+    startHeightVh: number;
+    startWorkingHeightVh: number | null;
+  } | null>(null);
 
+  const handleKeyDown = useEffectEvent((e: KeyboardEvent) => {
+    // シートの中から開いた窓（Radix）は、捕捉の段で受けたEscで自分を閉じて既定の動きを止める。そのEscでシートまで閉じない。
+    if (e.key === "Escape" && !e.defaultPrevented) onClose();
+  });
   useEffect(() => {
-    function handleKeyDown(e: KeyboardEvent) {
-      // シートの中から開いた窓（Radix）は、捕捉の段で受けたEscで自分を閉じて既定の動きを止める。そのEscでシートまで閉じない。
-      if (e.key === "Escape" && !e.defaultPrevented) onCloseRef.current();
-    }
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
+    const listener = (e: KeyboardEvent) => handleKeyDown(e);
+    document.addEventListener("keydown", listener);
+    return () => document.removeEventListener("keydown", listener);
   }, []);
 
   function handleTouchStart(e: React.TouchEvent) {
@@ -156,22 +153,42 @@ function OpenBottomSheet({
   }
 
   function handleHandlePointerDown(e: React.PointerEvent<HTMLDivElement>) {
-    dragRef.current = { pointerId: e.pointerId, startClientY: e.clientY, startHeightVh: heightVh };
+    dragRef.current = {
+      pointerId: e.pointerId,
+      startClientY: e.clientY,
+      startHeightVh: heightVh,
+      startWorkingHeightVh: workingHeightVh,
+    };
     e.currentTarget.setPointerCapture(e.pointerId);
+  }
+
+  /** つまんだ指が今の位置にあるときの高さ。 */
+  function draggedHeightVh(drag: NonNullable<typeof dragRef.current>, clientY: number): number {
+    return clampSheetHeightVh(drag.startHeightVh + ((drag.startClientY - clientY) / window.innerHeight) * 100);
   }
 
   function handleHandlePointerMove(e: React.PointerEvent<HTMLDivElement>) {
     const drag = dragRef.current;
     if (!drag || e.pointerId !== drag.pointerId) return;
-    const deltaVh = ((drag.startClientY - e.clientY) / window.innerHeight) * 100;
-    setWorkingHeightVh(clampSheetHeightVh(drag.startHeightVh + deltaVh));
+    setWorkingHeightVh(draggedHeightVh(drag, e.clientY));
   }
 
+  // 離した位置から決める（最後の動きの描き直しが済む前に離しが届くことがある）。動かさずに離したなら決めない——決めると
+  // 開くたびに中身へ合わせるのが止まる。
   function handleHandlePointerUp(e: React.PointerEvent<HTMLDivElement>) {
     const drag = dragRef.current;
     if (!drag || e.pointerId !== drag.pointerId) return;
     dragRef.current = null;
-    choose(heightVh);
+    if (Math.abs(e.clientY - drag.startClientY) <= TAP_SLOP_PX) setWorkingHeightVh(drag.startWorkingHeightVh);
+    else choose(draggedHeightVh(drag, e.clientY));
+  }
+
+  // 端末がつまみの操作を取り上げた（OSのジェスチャー等）ら、つまむ前の高さへ戻す。
+  function handleHandlePointerCancel(e: React.PointerEvent<HTMLDivElement>) {
+    const drag = dragRef.current;
+    if (!drag || e.pointerId !== drag.pointerId) return;
+    dragRef.current = null;
+    setWorkingHeightVh(drag.startWorkingHeightVh);
   }
 
   function choose(vh: number) {
@@ -211,6 +228,7 @@ function OpenBottomSheet({
         onPointerDown={handleHandlePointerDown}
         onPointerMove={handleHandlePointerMove}
         onPointerUp={handleHandlePointerUp}
+        onPointerCancel={handleHandlePointerCancel}
         // つまみのtouchstartがシートの下スワイプの判定まで届くと、ドラッグの後の指離しで閉じてしまう。
         onTouchStart={(e) => e.stopPropagation()}
         onKeyDown={handleHandleKeyDown}
@@ -230,6 +248,7 @@ function OpenBottomSheet({
         <div className="flex flex-shrink-0 items-center gap-2">
           {headerAction}
           <Button
+            usage="シートを閉じて、地図を広く見せます。下のタブを押すと、また開きます。"
             variant="ghost"
             size="icon"
             onClick={onClose}

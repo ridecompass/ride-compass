@@ -1,41 +1,33 @@
-# 評価・スコアリング（backend）
+# 費用・材料（backend）
 
 ## 責務
 
-道路のEdge/区間から、0次フィルタ判定・軸別difficulty・合成difficulty・探索用cost・
-候補集合内の相対スコアを算出する。軸ごとの評価式自体（`AxisDefinition.shape`の評価）は
-[軸スタジオ・評価軸定義](axis-studio.md)が持ち、本モジュールはその1段上（材料の解決・
-複数軸の合成・0次フィルタ）を担う。
+探索の費用（所要時間と代償の秒）を区間の材料から組む決まりと、その材料・管理DBの定義（道の区分・費用の軸）を持つ。
+費用の式の構造は[評価モデル](../../architecture/evaluation-model.md)、探索への差し込みは[ルート生成エンジン](routing-engine.md)。
 
 **対象ファイル**
 
 | レイヤー | ファイル |
 |---|---|
-| domain | `evaluation.py`（Edge Costの算出。探索範囲の静的スコア行列と、コストの合成・逆算）・`hard_filters.py`（0次フィルタ）・`road_avoidance.py`（道の行ごとの避け方）・`route_preference.py`（重み指定）・`dynamic_materials.py`（風などリクエスト時に決まる材料）・`axis_inspector.py`（区間インスペクタ）・`difficulty.py`（軸の得点の合成と、区間からルートへの集約）・`material_catalog.py`・`material_sql.py`（材料の値をSQLで導出する式。道・ノードの生データを読む副問い合わせは`infrastructure/source_models.py`） |
-| services | `material_coverage_service.py` |
-| infrastructure | `material_coverage.py`（材料ごとの欠損割合の集計クエリ） |
-| api | `material_catalog.py`（材料カタログ・材料値一覧・欠損割合のエンドポイント） |
-
-domainのファイルは**変更理由で分けてある**。`evaluation.py`が変わるのはコストの
-計算方法を変えるとき、`hard_filters.py`はフィルタを増減するとき、`road_avoidance.py`は避け方の段や既定を変えるとき、`route_preference.py`は
-APIが受け取る重みの形を変えるとき、`dynamic_materials.py`は動的材料を増やすとき、
-`axis_inspector.py`は区間インスペクタの内訳表示を変えるとき。
+| domain | `hard_filters.py`（0次フィルタ）・`road_avoidance.py`（道の行ごとの避け方）・`cost_preference.py`（費用の式の利用者の値: 全体のつまみと費用の軸ごとの倍率と、その範囲）・`cost_axes.py`（費用の軸の定義の型・検証と、プロセス内の定義）・`ledger_costs.py`（費目の帳簿の式。代償の秒と、その較正値の束）・`axis_templates.py`（道のストレスの重さを材料から引く折れ線と表引き）・`search_materials.py`（探索の材料の表）・`material_catalog.py`・`material_coverage_spec.py`（材料の欠損率の測り方の型と、欠損率の見出し）・`material_value_labels.py`（材料のタグの値ごとの日本語の対訳表）・`material_sql.py`（材料の値をSQLで導出する式。道・ノードの生データを読む副問い合わせは`infrastructure/source_models.py`。SQLの値の綴り［`material_sql.py: sql_literals`］と、`LIKE`の型の中で文字として当てる式［`material_sql.py: like_escaped_sql`］も持つ）・`road_classes.py`（道の区分の全体の型と、区分に道を振り分ける式）・`road_class_catalog.py`（道の区分を画面の設定で配る形） |
+| services | `material_coverage_service.py`・`cost_axis_service.py`（費用の軸の定義の読み込みと管理APIの入れ替え）・`road_class_service.py`（道の区分の読み込みと管理APIの入れ替え） |
+| infrastructure | `material_coverage.py`（材料ごとの欠損割合の集計クエリ）・`cost_axis_models.py`・`cost_axis_repository.py`・`road_class_models.py`・`road_class_repository.py`・`definition_write_lock.py`（定義の書き込みを直列にする鍵） |
+| api | `material_catalog.py`（材料の欠損割合のエンドポイント）・`cost_axis_catalog.py`（`GET /api/cost-axes`で費用の軸の見せ方・総合のレンズを、`GET /api/cost-axes/lens-equivalents`で利用者の値での段の境目の目安を画面へ配る。両方の要求の利用者の値の受け口`cost_preference_query`も持つ）・`cost_axis_admin.py`・`road_class_admin.py`（どちらも全体の読みと入れ替えの管理API）・`client_config.py`（`GET /api/client-config`。較正値・タイルの世代・事故の収録年・道の区分を画面へ配る） |
 
 `material_sql.py`が**domainにある**のは、材料が何から導かれるかがdomainの知識だから。
 [routing-engine.md](routing-engine.md)の`ROAD_SURFACE_TILE_MVT_SQL`と本モジュールの
 `material_coverage.py`が同じ式を参照する——infrastructureの各所がそれぞれSQLを書くと、
 一方だけ変わったときに気付けない。
 
-**材料の導出は`MaterialSpec.value_sql`1本**。評価・地図タイル配信・欠損率の集計・
-軸スタジオの分布プレビューは、すべて同じ式を読む。入力に対するあるべき値は
-`tests/test_material_values.py`が期待値の表で固定する。式が実在の列と、読み出しの経路ごとのFROM句に
+**材料の導出は`MaterialSpec.value_sql`1本**。探索・地図タイル配信・欠損率の集計は、すべて同じ式を読む。入力に対する
+あるべき値は`tests/test_material_values.py`が期待値の表で固定する。式が実在の列と、読み出しの経路ごとのFROM句に
 ある別名だけを読むことも同じファイルが見る——値の表は別名を値で与えるため、綴りの合わない列や、
 経路に無い別名（路面タイルの`re`等）を読む式は、値の表だけでは見つからない。
 
 **タイルへ焼く列は、値式を載せ方で包むだけ**。`tile_property`を持つ全材料について、タイルの列を
 `domain/material_catalog.py: tile_column_sql`が値式から組み、路面タイルの文
 （`road_tile_sql.py: ROAD_SURFACE_TILE_MVT_SQL`）は`material_tile_columns`をそのまま並べる——材料を1つ足せば
-タイルにも列が増え、式を直せば地図と評価が一緒に変わる（タイルの形の署名も変わり、配信中のタイルは作り直しになる）。
+タイルにも列が増え、式を直せば地図と探索が一緒に変わる（タイルの形の署名も変わり、配信中のタイルは作り直しになる）。
 `tile_property`を持つ材料は値式を必ず持つ（宣言の検証が断る）。載せ方は型ごとに決まる:
 
 | 型 | 載せ方 |
@@ -49,40 +41,37 @@ wayの長さ（0はNULL）になる——件数と長さは必ず同じ側から
 
 ## 0次ハードフィルタと道の行ごとの避け方（`domain/hard_filters.py`・`domain/road_avoidance.py`）
 
-`domain/hard_filters.py: compute_search_exclusion`が、静的スコア行列の0次フィルタに当たる区間（`domain/evaluation.py: StaticEdgeScoreMatrix.hard_filtered`）と区分の列（`domain/evaluation.py: StaticEdgeScoreMatrix.road_classes`）と、
-リクエストが指定した行ごとの避け方の段・勾配の上限から、Edgeごとに「探索から除く」と「割り増す」を求める。
+`domain/hard_filters.py: compute_search_exclusion`が、探索の材料の表の0次フィルタに当たる区間（`domain/search_materials.py: SearchMaterials.hard_filtered`）と区分の列（`domain/search_materials.py: SearchMaterials.road_classes`）と、
+リクエストが指定した行ごとの避け方の段から、Edgeごとに「探索から除く」と、費用に掛ける倍率の段（なるべく避ける・好む）を求める。
 0次フィルタは宣言されたものがいつも全部効き、リクエストでは切れない（要求の欄も持たない）。
 
 要求の行の鍵は断らない（`api/routers/routes.py: RoadAvoidanceOverride`）。区分は管理DBが持ち、デプロイを待たずに直せるので、
-直す前に読み込んだ画面が前の鍵や消えた行の鍵を送りうる。今の行へ揃えるのは`domain/road_avoidance.py: resolve_road_avoidance`で、
+直す前に読み込んだ画面が消えた行の鍵を送りうる。今の行へ揃えるのは`domain/road_avoidance.py: resolve_road_avoidance`で、
 応答には揃えた後の今の行を全部返す。
 
 - 0次フィルタは法的に自転車が通行できない道を外す（高速道路・自動車専用道路と、`bicycle=no`の道）。
   走れるが走りにくい道（国道等）は、0次フィルタではなく下の避け方で扱う。
   `domain/hard_filters.py: HARD_FILTERS`が名前・画面に出す名前と説明・該当する道の条件をまとめて持つ唯一のレジストリで、
   条件は道の区分と同じ形（`domain/road_classes.py: conditions_match`）で事実の列に当てる。`compute_search_exclusion`は
-  静的スコア行列が組んだときに求めた「どれかのフィルタに当たる」の配列を読み、フィルタごとの専用引数・専用フィールドは持たない。
-  フィルタを足しても変わるのはこの辞書だけ。名前と説明は生成物`route-generate-config.json`の`hard_filters`で配り、
-  画面は避け方の行の並びの先頭に「通らない」で固定して出す。フィルタは区分の宣言とは別に持つ——区分は管理DBで直せるが、
+  探索の材料の表が組んだときに求めた「どれかのフィルタに当たる」の配列を読み、フィルタごとの専用引数・専用フィールドは持たない。
+  フィルタを足しても変わるのはこの辞書だけ。名前と説明は画面の設定の`road_classes.avoidance`の行（`domain/road_class_catalog.py: AvoidanceRowView`）に
+  選べない行（`selectable`が偽・既定は「通らない」・鍵は`<HARD_FILTER_PROPERTY>.<名前>`）として並びの先頭に載せて配る。路面タイルは道の当たるフィルタの名前を焼き
+  （`domain/hard_filters.py: HARD_FILTER_PROPERTY`。判定は探索と同じ`hard_filter_column`）、地図は道路タブの「通らない」の色で塗る。フィルタは区分の宣言とは別に持つ——区分は管理DBで直せるが、
   通れない道を外すことは直してはいけない。
-  タグが無い道は除外しない（判断材料が無い区間まで一律に除外すると探索対象が過度に狭まるため、不明な場合は許可しSoft Constraint側へ委ねる）。
+  タグが無い道は除外しない（判断材料が無い区間まで一律に除外すると探索対象が過度に狭まるため、不明な場合は許可し費用の側へ委ねる）。
 - **道の区分ごとの避け方**: 除外の設定（管理DBの道の区分。`domain/road_classes.py: RoadClassDefinitions.avoidance_classifications`）が
-  指す公開した分け方の区分ごとに、「通る」「なるべく避ける」「通らない」を選ぶ（行の鍵は`<分け方>.<区分>`。選べないとした区分は行にならない）。
+  指す公開した分け方の区分ごとに、「好む」「少し好む」「通る」「少し避ける」「なるべく避ける」「通らない」を選ぶ（行の鍵は`<分け方>.<区分>`。選べないとした区分は行にならない）。
   区間が行に当たるかは、地図がその分け方の線を塗るのと同じ区分の列（`domain/road_classes.py: class_material_id`）から求める。
-  「通らない」の行に当たる区間は除き、「なるべく避ける」の行に当たる区間は費用に較正値`avoidance.avoid_cost_multiplier`を
-  掛ける（所要時間には掛けない。`domain/leg_costs.py: LegCostComposer`）。1つの区間が複数の行に当たれば強い段が効く。
-  要求に無い行は、区分が持つ前の鍵の段のうち強い方を、それも無ければ管理DBが持つ既定の段を取る——区分を分けたあとも、
-  分ける前に選んだ段を分けてできたどの行へも引き継ぎ、分けた区分のどちらかで「通らない」を選んでいた人を通る側へ倒さない。
+  「通らない」の行に当たる区間は除き、「なるべく避ける」の行に当たる区間は費用に較正値`avoidance.avoid_cost_multiplier`を、
+  「好む」の行に当たる区間はその逆数を掛け、「少し」の段はそれぞれの平方根を掛ける（倍率の対数で「通る」との真ん中。
+  `domain/road_avoidance.py: level_multipliers`・`domain/leg_costs.py: LegCostComposer`）。好む・少しの段は新しい較正値を持たず、
+  避けると逆向きに同じ強さで効く。1つの区間が複数の行に当たれば倍率の大きい段が効く（通るは何も指定していない扱い。
+  `domain/road_avoidance.py: road_avoidance_masks`）。管理DBの区分の既定には、通るのほかのどの段も置ける（通るは上書きの行を持たない）。
+  要求に無い行は、管理DBが持つ既定の段を取る。画面に配る段の名前は掛ける倍率そのもの（×0.5・×1・×2・×∞の形。
+  `domain/cost_preference.py: multiplier_label`。費用の軸の倍率の段と同じ書き方）で、較正値から作るので、管理画面で倍率を変えると段の数字も変わる。並びは倍率の順。
   倍率は本番で前後の幹線の割合・距離を比べて決める。
-- `max_average_grade_percent`（省略時None＝除外なし）が指定され、かつ
-  勾配の材料（`GRADIENT_PERCENT`）の列に値がある場合、その絶対値（登り・下りどちらの
-  急勾配も対象）がしきい値を超えるEdgeを除外する。
 - `motor_vehicle=no`（自転車可の車両通行禁止）はここでは扱わない。自転車は法的に通行
-  可能なため0次のハード除外対象にはせず、軸の側（材料`motor_vehicle_no`）で扱う。
-
-軸単位の評価（[軸スタジオ](axis-studio.md)の`priority_overrides`、材料の値が一致すれば
-評価を優先確定する仕組み）とは別の概念——0次フィルタは道路そのものを探索グラフから
-除外する。
+  可能なため0次のハード除外対象にはしない。
 
 ## 材料の求め方は1本（読む経路は粒度ごとに分かれる）
 
@@ -91,13 +80,10 @@ wayの長さ（0はNULL）になる——件数と長さは必ず同じ側から
 
 | 経路 | 入口 | 粒度 |
 |---|---|---|
-| 区間の評価 | `road_graph_repository.py: get_edge_material_arrays` | 区間群（タイル1枚ぶん） |
-| タイルのフィーチャー | `road_graph_repository.py: get_feature_materials_in_tile` | タイル1枚の区間か道1本（地図の配信・区間インスペクタ） |
-| way標本 | `road_graph_repository.py: sample_way_material_values` | way標本（軸スタジオの分布プレビュー） |
+| 探索の材料 | `road_graph_repository.py: get_edge_material_arrays` | 区間群（取込範囲の道路網） |
+| タイルのフィーチャー | `road_graph_repository.py: get_feature_materials_in_tile` | タイル1枚の区間か道1本（地図のレンズ・道の窓） |
 
-way粒度の経路も**区間向けと同じ式**を使う。`way_from_clause`がwayの行から同じ名前の
-エイリアス（`wm`/`re`/`em`）を組み立てるだけで、式を2組持たない。
-区間の値を持つ`em`は、way粒度では道1本の値の同じ名前の列を引く別名になる——**区間の値をway1本へ
+区間の値を持つ`em`は、道1本を単位に読む文脈では道1本の値の同じ名前の列を引く別名になる——**区間の値をway1本へ
 落としているのではなく、way粒度の値を同じ名前で読んでいる**（way側の値は
 `derive_landcover`等の段が区間から集約して持つ）。
 
@@ -106,241 +92,90 @@ way粒度の経路も**区間向けと同じ式**を使う。`way_from_clause`�
 理由で全部持つ設計で、許可リストは持たない。
 
 **この1本道が壊れたときに起きること**: 経路ごとに式を書くと、片方だけ変更されたときに
-同じ道の同じ場所で地図の色と採点・内訳の数字が食い違う。合成コストは他の軸でも決まるため、
+同じ道の同じ場所で地図の色とルートの費用・内訳の数字が食い違う。費用はほかの軸でも決まるため、
 食い違ってもルートは返り続け、誰も気づかない。
 
-## 材料の解決から合成コストまで（3段階）
+## 探索の材料の表（`domain/search_materials.py`）
 
-```
-一次: 材料の値（DBが`MaterialSpec.value_sql`で導出、`EdgeMaterialArrays`）
-        │  観測を引く材料（雨）は探索範囲を組むときに区間の中点に最も近い雨量計の今の観測を
-        │  列として足す（`RoadGraphEngine`の気象の段が観測を読み→`domain/rain.py: rain_material_columns`）
-        │  動的材料（風）だけはリクエスト時に`evaluate_dynamic_material_arrays`が
-        │  bearing配列・天候・走行速度から求める
-        ▼
-  二次: 軸id → difficulty(0-100) の辞書
-        │  domain/axis_definitions.py: evaluate_axes_array が AXIS_DEFINITIONS を評価
-        │  （軸が他の軸のdifficultyをmaterialとして参照する階層構造も含む）
-        ▼
-  三次: compose_costs_from_axis_matrix(distance_m, axis_arrays, weights, penalty_strength, density=…)
-        │  difficulty = Σᵢ wᵢ × axisᵢ / Σᵢ wᵢ（difficulty.py: composite_from_sums）
-        │  cost = 所要時間 × (1 + P × difficulty′ / 100) + 密度の軸の分
-        │  （difficulty′は分子から密度の軸を外した合成。密度の軸の分は回数に比例する秒）
-        ▼
-  cost・difficulty配列（0次フィルタの除外と避け方は`compute_search_exclusion`が別途判定）
-```
+`domain/search_materials.py: build_search_materials`が、切り出した範囲の材料（`EdgeMaterialColumns`）から、生成のたびに1回
+`SearchMaterials`を組む。行は切り出した区間の順で、数値の材料は材料のidごとに区間の値が連続する行列で持つ。キャッシュしない。
 
-区間インスペクタも同じ評価・合成を通す（得点は地図の配信と同じ値、合成は`difficulty.py: composite_difficulty`を
-長さ1の配列で）。軸の評価と合成の式は配列版の1本ずつで、入口ごとに書き写さない——書き写すと、区間を押して見える
-得点とルート選びが使う得点が同じ道で食い違う。
+- **運ぶ材料**は、所要時間が読む材料（`domain/cycling_speed.py: travel_model_material_ids`）と、費用の式が読む材料（道のストレスの軸の
+  材料。`domain/cost_axes.py: burden_material_ids`）だけ。所要時間が読む材料の列が欠けた表は組み立てで断る（`ValueError`）——欠けたまま
+  通すと、全区間が取込の範囲全体の平均で数えられ、道ごとの坂・待ちの違いが黙って消える。区間ごとの値の欠け（NaN）は
+  取込の範囲全体の平均（坂の割合・停止要因の密度）で数え、その区間の距離の割合を`missing_travel_data_share`で数える。
+- **DBに無い材料**は、材料カタログにあれば値の無い列で読める（`_ColumnsOrEmpty`が読まれたときに埋める）。
+- **分類の材料**（`highway`・路面の見込み等）は、道路網の置き場が持つ語彙への番号の列（`domain/attributes.py: CategoricalColumn`）
+  のまま運ぶ。区分の表引き・0次条件・走行モデルの転がり抵抗は、語彙の値ごとに1回引いた表を番号で配る——区間ごとに値の
+  文字列へ戻して1件ずつ引くと、区間数に比例したPythonの仕事になり、探索範囲の広い生成では1回に数秒単位で効く。
+- **区間の幾何**（距離・方位・中点）も同じ行順で持つ。中点は通過予定時刻の推定と風の格子点の引き当てに使う。
 
-- 評価できなかった軸は合成から除外され、残りの重みで再正規化される。
-- `penalty_strength`（P）は**主観的割増と時間の換算レート**。リクエストが省略したときの値は
-  較正値`evaluation.penalty_strength`（`domain/tuning.py`）だけが持ち、`resolve_penalty_strength`が
-  リクエスト処理時に読む（`compose_costs_from_axis_matrix`は既定を持たない）。探索のコストは
-  `所要時間 × (1 + P × difficulty/100)`＝体感の所要時間（密度の軸の分は下の「密度の軸」のとおり足す）で、P=1は
-  「難易度100の道は体感で2倍の時間」を意味する。P=0で`cost=所要時間`（好みを一切考慮しない＝時間最短、
-  `select_fastest_route`が返す基準線と同じ物差し）、Pを上げるほど悪路が強く避けられる。
-  `cost >= 所要時間`という不変条件はP>=0の間常に成り立つ。
-- **`build_static_edge_score_matrix`**: `AXIS_DEFINITIONS`を軸ごとに適用して
-  difficulty配列を求める（`StaticEdgeScoreMatrix`: 公開軸別配列に加え、0次フィルタ判定用の
-  0次ハードフィルタに当たる区間と区分の列も持つ——リクエストごとに変わる絞り込みと割り増しは
-  `domain/hard_filters.py: compute_search_exclusion`が決めるため、ここでは確定させない）。所要時間が読む材料（勾配・路面・停止の密度。
-  `domain/cycling_speed.py: travel_model_material_ids`）は軸の構成と無関係にいつも材料の列として持ち、0次フィルタの
-  勾配しきい値も同じ勾配の列を読む。その列が欠けた行列は組み立てで断る（`ValueError`）——欠けたまま通すと、
-  欠けた材料の待ち・坂が全区間で黙って0秒になる。区間ごとの値の欠け（NaN）は平地・待ち無しとして
-  扱い、`missing_travel_data_share`で数える。動的材料
-  （出どころが要求の材料、`REQUEST_DYNAMIC_MATERIAL_IDS`、風）の列はNaNのままで、それに依存する軸の列も自然に
-  NaNへ伝播する（動的軸の特別扱いが不要）。観測を引く材料（雨、`observed_materials`。鍵は出どころが観測の材料に
-  限り、それ以外は断る）はDBの材料と
-  同じ列として重ねる——向きにも通過の時刻にも依らず、生成1回につき1つの値で済むため、軸の得点・
-  生値（mm）・内訳にDBの材料と同じ経路で載り、道の材料と1つの軸で組み合わせることもできる（動的材料は
-  静的材料と同じ軸に置けない。`axis_definitions.py: _check_dynamic_and_static_materials_are_not_mixed`）。
-  観測の履歴が無ければ空で、その材料を読む軸はその生成で「データなし」になる。
-- **`compose_costs_from_axis_matrix`**: 軸別スコア配列群と重み辞書から合成difficulty
-  （`difficulty.py: composite_from_sums`）→割増の倍率と足す秒（`AxisComposition`。費用は`AxisComposition.cost`に
-  所要時間を渡して求める）まで配列演算で行う。costからdifficultyへの
-  逆算（折返し点・経由Nodeの並べ替えが使う）は同じファイルの`difficulty_from_cost`が持つ。密度の軸の分は、逆算では
-  足した秒を所要時間で割った値として入る——回数 ÷ (所要時間 × 想定速度)の点数で、所要時間が想定速度で走る時間に
-  近いほど、範囲の平均の密度に傾きを掛けた点数（頭打ちの無い直線）に近い。停止の待ちや上り坂で所要時間が延びた
-  範囲ほど、平均の密度の点数より小さく入る。0次フィルタによる除外
-  （`compute_search_exclusion`が0次フィルタ・`road_avoidance`・`max_average_grade_percent`を反映して
-  別途判定）はここには含まれない。重み付き軸がすべて欠損のEdgeはcost算出だけbbox内平均
-  difficultyを代入する（表示用の戻り値には影響しない、詳細は後述「探索コストの既定経路」節）。
+## 費目の帳簿の式（`domain/ledger_costs.py`・`domain/cost_axes.py`）
 
-**暗黙の前提（浮動小数点の丸め）**: 合成の和は補償加算（`difficulty.py: _neumaier_accumulate`）で
-求める。単純な逐次`+=`では誤差が項の数だけ積み上がり、真の値がちょうど.X5境界にある合成値の
-最終丸めが誤差の向きしだいで別の側へ倒れる。最終丸めは難易度の桁（`difficulty.py: DIFFICULTY_DECIMALS`）の`round()`と同じ値へ丸める
-（`round_difficulty_array`）。`×10→np.rint→÷10`を配列全体で
-まとめて計算し、計算後の値がちょうど`.5`に乗った要素だけ、元の値と10進の中点の大小を
-仮数の整数で正確に比べて決め直す（配列のまま。要素ごとにPythonの`round()`を呼ぶと、
-小数1桁の得点を重み0.5ずつ足した軸・同じ重みの2軸の合成のように半数近くの要素が`.5`に乗る入力で、
-時刻のビンごとに評価し直す動的軸の合成が1回あたり数十ms重くなる）。軸1本の得点
-（`evaluate_axis_array`）も同じ`round_difficulty_array`で丸める。
+構造は[評価モデル](../../architecture/evaluation-model.md)「費目の帳簿の式」。ここは実装の受け渡し。
 
-**暗黙の前提**: 軸が読む材料の配列は`MATERIAL_CATALOG`の全材料ぶん確保する
-（出どころがDBでない材料も既定値[NaN/False/値なし]で確保）。確保しないと、値式が無い材料を
-軸スタジオでGUI作成した軸を評価した際に`evaluate_axis_array`が`KeyError`で
-`/api/routes/generate`自体を落とす（Pythonの値の入口`evaluate_axes_values`は、無い材料を
-全要素欠損の列として埋めてから配列へ通す）。
+- **費用の軸の定義**は表`cost_axis_definitions`（`infrastructure/cost_axis_models.py`。1行のJSONB）に全体を1つで持ち、
+  管理API（`/api/admin/cost-axes`の GET・PUT）で全体を1回で読み書きする（道の区分と同じ）。起動時は区分の後に読み
+  （`services/definitions_loading.py`）、行が無いか通らない定義なら起動を止める——探索・地図のレンズ・応答の内訳はどれも
+  費用の軸の定義から組むので、定義の無いまま動く経路を持たない。検証（`domain/cost_axes.py: check_cost_axes`）は書き込みと
+  起動時の両方が通し、道の区分を入れ替えるときも今の定義を新しい区分で通し直す——区分の重さは分け方のすべての区分に
+  書かせるので、区分を足すと先に重さを足すまで区分の入れ替えが断られる。
+- **合成**: `domain/leg_costs.py: LegCostComposer`は、ビンごとの費用を「所要時間 ＋ 代償の秒」で組む。代償の体力は走行の模型が
+  点の間ごとに重みを掛けて返し（`domain/cycling_speed.py: SegmentSpeedModel.ride`）、道のストレスは時刻に依らないのでリクエストに1回
+  だけ求める。曲がる所の費用も同じ換算で組み（`LegCostComposer.transition_costs`）、探索へは`RoadGraphContext.transition_cost`
+  で渡る。
+- **利用者の値**: つまみと倍率は生成の要求の`cost_preference`（`domain/cost_preference.py: CostPreference`）で届く。つまみは
+  較正値`evaluation.penalty_strength`に掛ける比で、帳簿の較正値の束（`domain/ledger_costs.py: current_ledger_parameters`）が
+  呼ぶたびに今の較正値で組む——較正値を変えても利用者の値は標準のまま。倍率は書いていない軸を標準とし、条件のエコーへは
+  今の費用の軸を全部書いた形（`CostPreference.resolved`）を返す。
+- **組み立ての部品**: 走行の模型の入力（転がり抵抗・止まる出来事の待ちと漕ぎ出し・断面。`domain/leg_costs.py: travel_inputs`）と
+  道のストレスの1kmあたりの重さ（`domain/leg_costs.py: burden_weights`）は、材料の列（材料id→区間の列）から組む関数で、探索の合成と
+  地図のレンズ（[レンズ・フィーチャー値配信](dynamic-way-values.md)「費用の軸のレンズ」）が同じものを呼ぶ。代償の秒は軸ごとの内訳
+  （`domain/ledger_costs.py: LedgerCosts.penalty_by_axis`）を持ち、その和が区間の代償の秒（`LedgerCosts.penalty_seconds`）になる。
+- **ルートの内訳**: 経路の区間の代償は、探索がその区間に使ったビンの風で、経路上の行だけを解き直して求める
+  （`domain/leg_costs.py: LegCostComposer.values_at_rows`が`domain/ledger_costs.py: LedgerCosts.row_seconds`を呼び、走行の模型は
+  `SegmentSpeedModel.ride`に行を渡すとその行の点の間だけを解く）。点の間ごとの計算は互いに依らないので、全部を解いた探索の
+  値と同じになり、所要時間と内訳の和が探索の費用に合う。避け方の秒は、避け方の倍率と1の差 ×（区間の所要時間＋代償）で、
+  負の分（好む側の段）と正の分（避ける側の段）を分けて持つ（`domain/route.py: PenaltyBreakdown`の`preferred_seconds`・`avoided_seconds`）。
+  曲がる所の漕ぎ出しの代償（`domain/ledger_costs.py: LedgerCosts.turn_penalty_by_axis`。その費目を持つ軸の秒）は、区間には
+  置かず、候補の内訳の軸の秒に足す（`services/road_graph_candidates.py`。区間の軸の秒は地図のレンズと同じ道の量）。
+- **欠けの埋め方**: 停止要因の密度と、道のストレスの軸の材料の欠けは、`domain/road_network.py: material_fills`の分布で埋める
+  （数値の材料の平均は`RoadNetwork.numeric_means`で道路網と同じ寿命で1回だけ、区分の材料の割合は道のストレスの軸が読む分だけ
+  道路網・区分の列・材料の組ごとに1回だけ求めて取っておく。`services/graph_service.py: network_fills`）。停止要因の密度は所要時間（待ち）と体力（漕ぎ出し）の両方に同じ値を使う。
 
-## 探索範囲の静的スコア行列と動的軸合成（探索コストの既定経路）
+## 管理DBの定義（道の区分・費用の軸）
 
-`RoadGraphEngine`（[routing-engine.md](routing-engine.md)参照）が実際に使う探索コスト
-算出の既定経路。探索中にEdge1本ごとにPythonのコスト計算コールバックを呼ぶ構造を避け、
-bbox全体ぶんのコストをリクエストにつき1回だけnumpyで合成することで、A*本体へは配列への
-`list.__getitem__`だけを渡す。
+道の分け方と区分（条件）・地図の線の層・転がり抵抗の較正値の割り当て・道路タブに出す分け方と区分ごとの既定は、管理DBの表
+（`infrastructure/road_class_models.py`）が、費用の軸は上の表`cost_axis_definitions`が正本で、コードは写しも既定も持たない。
 
-- **`build_static_edge_score_matrix`**: 生成のたびに、切り出した探索範囲の材料
-  （`GraphService.get_search_slice`）と雨の観測（`RoadGraphEngine`の気象の段）から`StaticEdgeScoreMatrix`（Edge×公開軸の静的スコア行列＋distance_m・
-  bearing_deg・0次フィルタ判定用の生配列、行は切り出した区間の順）を構築する。キャッシュしない——
-  軸定義の編集がそのまま次の生成に効く。`asyncio.to_thread`の先で組むため、軸定義は入口で写し
-  （`axis_definitions.py: copy_axis_definitions`）を1回取り、組み終えるまでそれだけを読む（軸の保存と重なっても、
-  列は1つの軸の集合から組まれる。[軸スタジオ](axis-studio.md)「ライフサイクル」）。
-  分類の材料（`highway`・路面の見込み等）は、道路網の置き場が持つ語彙への番号の列
-  （`domain/attributes.py: CategoricalColumn`）のまま受け取って運ぶ。軸の対応表・0次条件・走行モデルの
-  転がり抵抗は、語彙の値ごとに1回引いた表を番号で配る——区間ごとに値の文字列へ戻して1件ずつ引くと、
-  区間数に比例したPythonの仕事になり、探索範囲の広い生成では1回に数秒単位で効く。
-- **`DynamicAxisRequestContext`/`DYNAMIC_MATERIAL_EVALUATORS`/
-  `evaluate_dynamic_material_arrays`/`evaluate_dynamic_axis_arrays`**: リクエスト時点で
-  風などの動的材料（`REQUEST_DYNAMIC_MATERIAL_IDS`）を実際の値へ差し替える。
-  `DYNAMIC_MATERIAL_EVALUATORS`は材料id→evaluator関数（Edgeの幾何配列＋動的contextを
-  受け取りその材料の配列を返す統一シグネチャ）の登録制ディスパッチで、
-  `REQUEST_DYNAMIC_MATERIAL_IDS`（出どころ`MaterialSpec.source`が`"request"`の材料から導く）と1対1に揃える（式の実体は
-  `domain/wind.py`にあり、ここは配線のみ）——
-  `REQUEST_DYNAMIC_MATERIAL_IDS`自体が材料id集合として宣言されているため軸id単位では
-  なく材料id単位で登録する（`dynamic_axis_topological_order`・`evaluate_axis_array`
-  という既存の汎用トポロジカル合成が「動的材料さえ埋まればどんな軸[軸スタジオが
-  動的材料を直接参照して作ったカスタム軸を含む]でも正しく合成する」ため、
-  軸名のハードコードは呼び出し側に一切現れない）。動的材料を足すときは、材料の宣言に
-  出どころ`"request"`を書き、この辞書へ1エントリ足す（
-  [設計原則](../../architecture/design-principles.md)構造仕様8、軸カタログから軸を列挙して塗るのと同種の汎用ディスパッチ）。
-  `evaluate_dynamic_material_arrays`が全動的材料を評価する唯一の経路で、静的行列への
-  動的軸合成（`evaluate_dynamic_axis_arrays`）もここを通るため、式が乖離しない。
-  `DynamicAxisRequestContext`は出発時点の風のスナップショット（`departure_wind`）・走行速度
-  （`travel_speed_ms`、m/s。既定値を持たない必須フィールドで、伝播漏れは構築時点で
-  失敗する）に加え、時刻依存の材料向けに時別予報（`wind_series`、格子点ごと）・出発時刻
-  （`start`）・Edgeごとの通過予定時刻（`passage_hours`）と最寄りの格子点（`wind_points`。どちらも
-  `bearing_deg`と同じ行順）を持つ。
-  これらが揃えば風の材料はEdgeごとにその時刻の風で求め、揃わなければ
-  スナップショットを全Edgeへ一様に使う。風は進行方向の成分と横成分に分けて
-  （`wind_components_ms`、contextごとに1回だけ求める）読み、走行モデルも同じ成分を読む。
-  `StaticEdgeScoreMatrix`は通過予定時刻の推定と風の格子点の引き当てに使うEdge中点座標
-  （`mid_lat`/`mid_lon`、from/toノードの平均）も持つ（キャッシュしない）。
-- リクエスト時（`RoadGraphEngine._build_search_graph`）は、`StaticEdgeScoreMatrix`を
-  軸id→配列の辞書へ展開→`evaluate_dynamic_axis_arrays`で動的軸を上書き→
-  `compose_costs_from_axis_matrix`で重み合成→`compute_search_exclusion`で0次
-  フィルタと避け方を適用、の順にbbox全体ぶん1回だけ実行してコスト配列を得る。並行Edge
-  （同一Node間の複数Edge）は`domain/routing.py: build_lazy_road_graph`が元の行（切り出した区間の順）の
-  最も小さい1本を採る決定的な規則で解消する（コストはリクエストごとに変わるため見ない）。
-  時刻ビンごとに合成し直すときの、風に依らない計算の使い回しは[routing-engine.md](routing-engine.md)
-  「レグ別コスト配列」節。
-  同じコスト配列・軸別スコア配列は`_build_segment_details`（区間表示）からも参照され、
-  探索と表示の二重計算を避ける。区間の軸別寄与度（表示用）は`difficulty.py: axis_contributions_at_row`が
-  経路上の区間ぶんだけ、合成が返した重みの和（`AxisComposition.weight_sums`）を分母に求める
-  ——全区間ぶんは作らない。**唯一の例外**（探索コストのみ補完・表示は変えない、
-  `docs/architecture/design-principles.md`「探索コストと表示difficultyの一致」参照）: 重み付き軸が
-  すべて欠損（composite=NaN）のEdgeは、探索コスト算出にだけbbox内の距離加重平均
-  difficultyを代入する（`compose_costs_from_axis_matrix`が内部で
-  `distance_weighted_difficulty_array`により算出、`RouteSegmentDetail`側のdifficulty・
-  axis_difficultiesはNaN=Noneのまま変わらない）。`_build_search_graph`のINFOサマリ
-  （`missing_axis_edges`/`missing_axis_distance_ratio`）でリクエストごとの発生比率を
-  観測できる。
-
-## ルート単位の集約（`domain/difficulty.py`）
-
-区間ごとのdifficultyをルート1本の値へまとめる2つの指標を持つ。どちらも
-`route_generator.py: SEGMENT_AGGREGATES`の宣言を`_evaluate_and_aggregate`が同じsegmentsへ同時に当てて付ける。
-
-| 指標 | 定義 | 性質 |
-|---|---|---|
-| `overall_difficulty.average` | 距離加重平均（`route.py: merge_difficulty`。密度の軸の分は下の「密度の軸」） | 距離で正規化されるため、遠回りして難所を避けるほど下がる。候補の並び順はこの昇順 |
-| `overall_difficulty.load` | 平均×距離合計（`route.py: merge_overall_difficulty`） | 距離が伸びればそのまま増える。「走り切るまでのしんどさ」に近く、遠回りが不利に出る |
-
-平均と総量は同じ区間から一緒に決まる（平均が出なければ総量も出ない）ため、1つの任意の項目
-`overall_difficulty`にまとめて返す。
-
-距離加重平均は、区間の並び（Pythonの値）を受ける`weighted_mean_by_distance`と、探索範囲全体の
-配列を受ける`distance_weighted_difficulty_array`の2本が同じ規則（値の無い区間は分母からも外す・
-距離の合計が0以下ならNone）を持つ。前者を配列へ並べ替えて後者を通すと、1呼び出しあたりの所要が
-数µsから十数µsへ増え（区間5〜20件で2〜4µs→10〜14µs）、ビンごと・値の種類ごとに呼ぶルートの
-集約で積み上がるため、2本のままにしている。
-
-**密度の軸は、得点ではなく回数を平均してから得点にする。** 軸の折れ線の横軸の値が1kmあたりの量（密度）の重み付き和の軸
-（`axis_definitions.py: averages_density`。足せる材料`MaterialSpec.additive`だけを項に持ち、前処理が無い）は、ビン（500m）と候補の
-得点を、区間の得点の平均ではなく、横軸の値を距離で平均した値（その範囲の回数÷距離）を折れ線に通して作る。折れ線は(0, 0)から
-始まる直線で、もう1点より先は頭打ちになる（軸の検査が断る。[軸スタジオ](axis-studio.md)「軸の外に照らす値の不変条件」）。
-信号が交差点の脇の短い区間に集まる幹線では、その区間が頭打ちになり、区間ごとの得点の平均が回数どおりの得点より低く出る。
-勾配のように密度でない材料の軸・他の軸を項に持つ軸は得点の平均のまま（短い急坂を平均でならすと坂のつらさが消える）。
-- 運び方: 静的スコア行列が密度の軸の横軸の値の列（`StaticEdgeScoreMatrix.density_axes`）を持ち、`LegCostArrays.density_axes`を
-  経て、`_build_segment_details`が区間ごとの値・丸めない距離・その軸の重みの割合（`difficulty.py: axis_weight_shares_at_row`）を
-  区間の器の内部の値（`RouteSegmentDetail._density_inputs`。応答に出ない）として載せる。距離を丸めないのは、応答の区間の距離が
-  10m単位で、信号の脇の数mの区間が長さ0になって回数ごと消えるため。
-- 畳み方（`route.py`）: 得点は横軸の値の距離平均を折れ線に通した値（`merge_axis_difficulties`）、寄与度はその得点×重みの割合の
-  距離平均（`merge_axis_contributions`）、合成の難しさは区間の値の距離加重平均の、その軸の寄与度の項だけを作り直した寄与度へ
-  差し替えた値（`merge_difficulty`。寄与度の和と合成の難しさの関係を保つ）。ビンは区間から、候補はビンからもう一度同じ畳み方で作り、
-  ビンも中の区間の平均を内部の値として持つ。順回り・逆回りの比べ（`route_search.py: pick_better_candidate`）も同じ`merge_difficulty`を読む。
-- 探索の費用（`evaluation.py: compose_costs_from_axis_matrix`）: 密度の軸の得点は割増の倍率から外し、代わりに
-  `P × 重みの割合 × 傾き/100 × 区間の回数 × 3600/想定速度`の秒を足す（回数は横軸の値×区間の長さ。`evaluation.py: density_costs`）。
-  想定速度で走る時間に得点の割増を掛けたものに当たり、回数だけで決まる——区間の端の場所は端を持つ区間が0.5ずつ分け持つので
-  （`domain/traffic.py: place_count_sql`）、道をどこで切っても経路上の和は変わらず、ルートの値と同じ回数から出る。重みの割合の分母は表示の
-  合成と同じ（密度の軸の重みも入る）。実際の所要時間に掛けないのは、停止の待ちの秒も回数に比例するため（得点を掛けると回数の2乗÷長さに
-  なり、短い区間に回数が集まる道ほど重く数える）。想定速度は利用者の巡航速度で、勾配や風で変わる走行の速さではない。
-  頭打ちは持たない（経路全体の平均で決まる頭打ちは、区間ごとに費用を足すA*へ持ち込めない）ので、密度が直線の先へ出る経路では、探索は
-  ルートの値より回数を重く数える。
-
-同じ集約を軸の**生値**（折れ点を通す前の値、`StaticEdgeScoreMatrix.axis_raw_values`）にも
-掛ける。区間の応答は生値を持たず、エンジンがEdge単位の生値を区間と同じ切り方でビンへ畳んでから
-候補全体へ畳む（`road_graph_engine.py: _build_candidate`→`route.py: route_axis_raw_values`→
-`RouteCandidate.axis_raw_values`）。得点0-100は目盛りの引き方に依存する相対評価のため、
-軸単体で経路を判断するには絶対値が要る。生値を持つのは単位が定まる軸
-（[軸スタジオ](axis-studio.md)「生値の単位」節）だけで、かつリクエストごとに変わる
-材料（風等）を参照する軸は静的スコア行列へ載らないため対象外。
-
-**単位が定まらない軸は、代わりに材料まで分解した絶対量を持つ。** 分解は
-`axis_raw_value.py: axis_material_shares`が軸定義から機械的に行い、軸参照
-（内部軸）は葉の材料まで再帰的に辿る——途中の軸の得点は内訳に含めない。
-得点を内訳へ混ぜると、この仕組みが解こうとしている「較正依存の数字しか出せない」問題が
-入れ子で再発するため。並び順は各階層で`|w| / Σ|w|`へ正規化した重みの積の降順
-（生の重みは階層をまたぐと比較できない——内部軸の`breakpoints`・`mapping`が非線形変換の
-ため。一方、同じshape内のtermどうしは、重み付き和が得点として意味を持つよう作者が
-重みを決めていることが前提なので比較できる）。重み0の材料は含めない。
-
-参照材料が1件へ分解される軸は分解せず、軸単位の生値をそのまま使う（`axis_material_shares`
-が空リストを返す）。分解しても情報が増えず、`shape.preprocess`（勾配の`"abs"`）が材料単位
-では効かなくなり、登りと下りが相殺されて平均がほぼ0になるため。
-
-値の運搬は生値と同じ形で、静的スコア行列の材料列
-（`StaticEdgeScoreMatrix.material_ids`/`material_values`、列を決める述語は
-`route_facing_material_ids`が唯一の定義元）→`RouteSegmentDetail.material_values`→
-`merge_material_values`→`RouteCandidate.material_values`。真偽値材料は0/1のfloatで持つため、
-距離加重平均がそのまま「該当区間の延長割合」になり、割合専用の機構を持たずに済む。
-categorical材料は数値列に載せられないため、対になる別の列で運ぶ:
-`StaticEdgeScoreMatrix.categorical_material_ids`/`categorical_material_columns`
-（語彙への番号の列、列を決める述語は`route_facing_categorical_material_ids`）→
-区間ごとの値（`road_graph_engine.py: _build_segment_details`が区間の並びと対で返す。
-区間の器`RouteSegmentDetail`は約500mのビンへ畳まれ、分類値はビンの代表値1つにすると
-割合がビンの粒度へ量子化されるため、器には載せない）→
-`merge_material_category_shares`（距離加重で「値ごとの延長割合」へ畳む。分母はその材料の値を
-持つ区間だけで、値の無い区間は分母にも入れない）→`RouteCandidate.material_category_shares`。
-真偽値材料を0/1で運んで平均が割合になるのと同じ考え方を、値が3つ以上ある材料へ広げたもの。
-
-**丸めは値の種類で分ける**。距離加重平均そのものは`weighted_mean_by_distance`
-（`domain/difficulty.py`、丸めない）が求め、丸め方は呼び出し側が決める——
-difficulty系（0〜100）は難易度の桁（`difficulty.py: round_difficulty`。候補の並びの同点もこの桁で決まる）、生値・材料値は**有効数字4桁**。
-生値のスケールは軸ごとに違い（勾配は`%`で0〜15程度、事故密度は`件/(km・年)`で
-有効域0〜0.5）、固定の小数桁で丸めると桁の小さい軸で値がまるごと潰れて
-「値が無い道」と区別できなくなる。frontendの表示（`axisRawValue.ts: formatNumber`）も
-同じ理由で1未満は有効数字2桁を残す。
-
-総量は順位付けには使わず、平均と併せて判断材料として返す。difficultyが
-Noneの区間の扱いは平均と一致させる（区間ごとに積分して欠損を飛ばすと、データの無い区間が
-多いルートほど総量が小さく見えてしまうため、平均×全区間の距離合計で求める）。
+- **形の良し悪しは表の制約だけが決める**（[設計原則](../../architecture/design-principles.md)構造仕様15）。鍵の綴り・参照先の実在・
+  並びの重なり等は制約が守り、appは読む前・書く前に確かめ直さない。外部キーは取引の終わりまで遅らせるので、全体を消して入れ直す
+  書き込みは入れ替えた後の形で確かめられる。制約で表せない良し悪し（条件が重なる・条件の値の綴りが事実の語彙に無い）は判定せず、
+  振り分けの式が1つの答えを出す: 2つ以上の区分に当たる道は区分なし、知らない事実はどの道にも無い事実として扱う。
+- **コードの宣言と費用の軸が名指す値は、入れ替えるときだけ確かめる**。事実・まとめ先・色の段・較正値の名が宣言に無い
+  （`domain/road_classes.py: undeclared_references`）か、今の費用の軸が新しい区分で通らない（`domain/cost_axes.py: check_cost_axes`）
+  入れ替えは断る。区分と費用の軸の書き込みは同じ鍵（`infrastructure/definition_write_lock.py: acquire_definition_write_lock`）で
+  直列にするので、確かめてから確定するまでの間に相手の定義は入れ替わらない。
+- **管理APIは全体の読みと全体の入れ替えだけ**。入れ替えは1つの取引で、表の制約・上の確かめに通らなければ何も変えずに409で
+  断りの文を返す。確定してからプロセス内の全体を差し替え、起動時も表から読む（単一プロセスが前提）。管理APIのDB障害は、どの口でも
+  503で返す（`api/failure_replies.py: install_failure_replies`）。
+- **画面の設定は解決した形で配る**（`GET /api/client-config`の`road_classes`の欄。`domain/road_class_catalog.py`）。公開した分け方
+  だけを出し、色・層の説明のうち区分から組む部分をbackendが決める。区分の説明は意味の文だけで、条件は管理の経路
+  （`/api/admin/road-classes`）でだけ見せる。
+- **道路タブの見出しは地図の線の層から作る**: 見出しは除外に出す分け方ごとに1つで、名前は分け方の名前、並びは凡例の層の並び
+  （`domain/road_classes.py: published_map_layers`）。見出しの名前・並びを別に持たないので、凡例と道路タブは食い違わない。
+  除外に出す分け方は地図の線の層でなければならない（外部キー）——凡例に無い見出しを作らない。
+- **地図の線の層の値もbackendが決める**（`domain/road_classes.py: layer_columns`）。値は区分の鍵か「データなし」で、地図の線
+  （路面タイルに焼く）とルートの区間の帯が同じ値を読む。地図は条件を当てない。
+- **本番へは管理APIで全体を入れる**（`PUT /api/admin/road-classes`・`PUT /api/admin/cost-axes`）。全体のJSONは本番の今の全体
+  （`GET`）から作り、リポジトリの外に置く（[本番のデータ](../../../.claude/skills/production-data/SKILL.md)）。
+- **区分の鍵は読み替えない**: 区分の鍵を改める・分ける・合わせると、前の鍵で選んだ避け方は既定の段で読まれる
+  （`domain/road_avoidance.py: resolve_road_avoidance`）。費用の軸が前の鍵に重さを書いていれば入れ替えは断られるので、費用の軸を
+  先に直す。
 
 ## 材料カタログ（`domain/material_catalog.py`）
 
-評価軸が参照する材料（material）の正式カタログ。`MATERIAL_CATALOG: dict[str,
-MaterialSpec]`が単一ソース。
+費用の式・地図・走行モデルが参照する材料（material）の正式カタログ。`MATERIAL_CATALOG: dict[str, MaterialSpec]`が単一ソース。
 
 `MaterialSpec`の主なフィールド:
 
@@ -348,35 +183,24 @@ MaterialSpec]`が単一ソース。
 |---|---|
 | `dtype` | `"numeric"`/`"boolean"`/`"categorical"` |
 | `unit` | 値の単位（凡例・数値表示用、無次元・真偽値・カテゴリ値は空文字）。生成物`material-catalog.json`がfrontendへ届け、frontendは単位を持たない（唯一の正）。**`material-catalog.json: label`へ単位を書かない**——ラベルと単位を別々に組み立てる画面で「制限速度(km/h) 35km/h」のように二重になる |
-| `additive` | 同じ単位の他の材料と**足し合わせて意味を持つ量**か（示量／示強の区別）。個数と、それを同じ距離で割った密度はTrue。%・km/h・倍率のような割合・率はFalse。`raw_value_unit`が2項以上の和を見せてよいかの判定に使う |
-| `total_unit` | 生値へ走行距離を掛けた**総量**を出すときの単位（出す意味が無ければ`None`）。`additive`とは別の問い——事故密度（件/[km・年]）は足せるが、総量に比べる尺度が無い。|
 | `tile_property` | MVTタイルへ既に焼き込み済みのプロパティ名。`None`はタイルに載らない材料。列は`value_sql`から組む（上の「タイルへ焼く列」） |
-| `primary_attribute` | 対応する一次属性（`PRIMARY_ATTRIBUTES`の宣言そのもの。idの文字列では指さない。[軸スタジオ](axis-studio.md)「一次属性の語彙」節）。材料idと一次属性id（frontendの`primaryAttributes.ts`が使う名前空間）は名前が異なるため明示的に対応させる |
-| `source` | 値の出どころ（`"db"`・`"request"`・`"observation"`）。DB（`value_sql`で求める）・要求の向きや時刻で決まる値（風）・生成の時点の外部の観測（雨）。動的材料の集合（`REQUEST_DYNAMIC_MATERIAL_IDS`）や観測の材料の集合は、この欄から`domain/material_catalog.py: materials_of_source`で導く |
-| `value_sql` | その材料の値をDBから求めるSQL式。出どころが`"db"`の材料だけが持ち、それ以外は`None`（出どころがDBでない材料は欠損率も測らず、`coverage`は対象外）。揃わない宣言は登録時に断る。タイルへ焼く材料は必ず持つ |
+| `primary_attribute` | 対応する一次属性（`PRIMARY_ATTRIBUTES`の宣言そのもの。idの文字列では指さない）。材料idと一次属性id（frontendの`primaryAttributes.ts`が使う名前空間）は名前が異なるため明示的に対応させる |
+| `source` | 値の出どころ（`"db"`・`"road_class"`）。DB（`value_sql`で求める）か、道の区分から都度作る区分の列（`domain/road_classes.py: class_columns`） |
+| `value_sql` | その材料の値をDBから求めるSQL式。出どころが`"db"`の材料だけが持つ。揃わない宣言は登録時に断る。タイルへ焼く材料は必ず持つ |
 | `coverage` | 欠損率の測り方。way単位・区間単位・対象外の3択で、**どれかを必ず持つ**（どちらの一覧にも載っていない材料を型として作れなくする） |
 | `value_labels` | categorical材料の値ごとの日本語ラベル対訳表（生成物`material-catalog.json`が届ける） |
 
-- **評価軸が参照する材料は、正規化された生データ（数値・boolean・単純categorical）に
-  統一する。** 地図表示・API応答向けの人間可読な分類ラベル（「この道は自転車レーンあり」
-  のような優先順位付きの多値分類）は別レイヤーの関心事で、材料にしない——分類の順位付けが
-  評価の重み付けと二重になり、片方だけ変えたときに気づけない。逆に、評価軸から参照され
-  なくなったという理由**だけ**では表示側の分類を消さない（別の独立した消費者が実在する
-  限りは残す）。
-- 材料の「登録」（本カタログに載る）と「評価軸での利用」（`AxisDefinition.shape`が
-  実際に参照する）は独立している。登録済みでも対応する軸が無ければ評価には使われない
-  （軸スタジオの材料選択肢には現れる）。
+- **費用の式が参照する材料は、正規化された生データ（数値・boolean・単純categorical）に統一する。** 地図表示・API応答向けの
+  人間可読な分類ラベル（「この道は自転車レーンあり」のような優先順位付きの多値分類）は道の区分（管理DB）の関心事で、材料にしない。
+- 材料の「登録」（本カタログに載る）と「費用の軸での利用」（道のストレスの軸の`burden.material`が名指す）は独立している。
 - 材料自体はGUIから追加・編集・削除できない（コード変更＋デプロイが前提）。frontendが材料を知る
   経路はビルド時の生成物`material-catalog.json`（`scripts/export_openapi.py`）だけで、実行時のAPIでは
   配らない——材料は再デプロイでしか変わらないため、実行時に取りに行くと取得失敗という状態だけが増える。
-  生成物の`label`は「論理名 - 物理名」（`MaterialSpec.full_label`、軸スタジオ向け）、`name`は論理名だけ
+  生成物の`label`は「論理名 - 物理名」（`MaterialSpec.full_label`）、`name`は論理名だけ
   （一般向けの画面・地図のポップアップ向け）。
-- コードが名指しで読む材料（例: 勾配・風・路面の良否）は、同じファイルのid定数（`GRADIENT_PERCENT`等）で
+- コードが名指しで読む材料（例: 勾配・路面の良否）は、同じファイルのid定数（`GRADIENT_PERCENT`等）で
   指し、カタログのキーにも同じ定数を使う。文字列で書き写すと、綴りがずれたときに読む側が材料を
-  見つけられず、黙って欠損（区間の表示から値が消える・全区間が舗装路扱いになる等）として扱う。
-- 風の材料は`wind_drag_ratio`（無次元。相対風速ベクトルの二乗則で求めた、時速20kmで無風の
-  ときの空気抵抗を1とする進行方向の抵抗増分。`domain/wind.py: wind_drag_ratio_array`、
-  基準速度`WIND_DRAG_REFERENCE_SPEED_MS`は`ASSUMED_SPEED_KMH`とは独立の定数）。
+  見つけられず、黙って欠損（全区間が舗装路扱いになる等）として扱う。
 - 土地被覆の割合材料は`edge_landcover.lc_*`／`way_landcover.lc_*`（区間単位・way単位、
   [静的道路属性・タイル配信](static-road-attributes.md)）が持つクラス別の割合で、
   **どのクラスが割合列を持つかは`landcover.py: LANDCOVER_CLASSES`が単一の正本**で、
@@ -387,13 +211,13 @@ MaterialSpec]`が単一ソース。
   **材料の値式は`em.lc_*`だけを読み、区間の値が無いときに道1本の値へ落とさない**——区間の値は全区間ぶん
   計算されており、落とす先は同じ道の平均でしかない。道1本を単位に値を求める文脈
   （`material_joins.py: material_from_clause`が`em`を道1本の行へ読み替える）では道の値になる。
-  路面タイルと区間インスペクタ（`get_feature_landcover`）も、フィーチャーの単位（区間かway丸ごとか）で
-  読む列を選ぶ——単位を揃えないと、同じ場所で地図の色と内訳の数字が食い違う。
+  路面タイルも、フィーチャーの単位（区間かway丸ごとか）で読む列を選ぶ——単位を揃えないと、同じ場所で地図の色と
+  内訳の数字が食い違う。
 
   **欠損判定に1クラスを名指ししない。** 判定も読み出し列もクラスの宣言から導く
   ——名指しすると、クラスを1つ足して既存行を埋め戻す前に、その列がNULLというだけで
   行ごと捨てる。
-  **1つの軸で複数のクラスを足さないこと**——割合の合計が100%へ固定されているため
+  **1つの道のストレスの軸で複数のクラスを足さないこと**——割合の合計が100%へ固定されているため
   同じ地面を二重に数える（[設計原則](../../architecture/design-principles.md)構造仕様14）。
 - 値式は`domain/material_sql.py`の組み立て関数から作る（タグの正規化・タグ値の一致・
   数値パース・件数の密度化・タグが無いときの非該当）。同じ判定を材料ごとに書き写さないため、
@@ -417,17 +241,12 @@ MaterialSpec]`が単一ソース。
 区間へ結ばずに値のある区間だけを数える欠損割合は、式が読む区間の値の表を同じ宣言から引き（`material_joins.py: edge_material_table`）、
 その表を直に`em`として走査する。
 
-way粒度で引くときは、同じ式のまま`w`の行から同じ名前の別名を組み立てる
-（`road_graph_repository.py: way_from_clause`）。`em`はway側の同名列かNULLを返す1行になる
-ため、区間にしか無い値（標高）はNULLになる。
-
 **行の有無と値の有無を分ける。** `w`の行が無い（求めた区間がDBに無い・取込で消えた道を、派生を
 作り直すまでの区間が指す）ときはタグ由来の材料が不明（NULL）になり、行があればタグが無くても非該当（false）として
-確定する（`tag_absent_is_false_sql`。真偽の材料（照明・橋・トンネル・自転車道の有無等）が使う）。ルート選びの配列でも
+確定する（`tag_absent_is_false_sql`。真偽の材料（照明・橋・トンネル・自転車道の有無等）が使う）。探索の配列でも
 真偽の材料は数値の行列に1.0/0.0で載り、不明は`NaN`のまま届く（`material_catalog.material_array_columns`）——真偽の行列に
 載せると欠損を持てず、不明が非該当に化ける。件数も同じで、集計行が無ければ不明、行があれば
-載っていないキーは0件。集計前を0件として読むと、全区間が「停止要因ゼロ＝最も易しい」と
-評価されてルート選択が静かに歪む。
+載っていないキーは0件。集計前を0件として読むと、全区間が「停止要因ゼロ」と扱われてルート選択が静かに歪む。
 
 `MaterialDType`（`numeric`/`boolean`/`categorical`）は、元データの出どころを
 増やしても増えない。
@@ -443,15 +262,14 @@ way粒度で引くときは、同じ式のまま`w`の行から同じ名前の�
 
 | エンドポイント | 認可 | 内容 |
 |---|---|---|
-| `GET /api/admin/material-catalog/{material_id}/value-shares` | Basic認証 | 値ごとの道の延長の割合（[軸スタジオ](axis-studio.md)の分布プレビューと同じ抽選の道から集める） |
 | `GET /api/admin/material-catalog/coverage` | Basic認証必須 | 材料ごとの欠損割合（下記）。全表走査を伴うため認可なしには公開しない |
 
 ## 材料の欠損割合（`infrastructure/material_coverage.py`・`services/material_coverage_service.py`）
 
 欠損データを取込側で推測して埋めるのではなく、欠損の実態を管理画面
-（[軸スタジオ管理画面（frontend）](../frontend/axis-studio.md)「材料」タブ）で可視化し、
-埋めるかどうかの判断は軸定義側へ委ねる。「欠損」は元データ（OSMタグ・派生テーブルの行）の
-不在を指し、評価パイプラインが不在をどう扱うかは`missing_semantics`として併記する。
+（[開発者ツール（frontend）](../frontend/developer-tools.md)「材料」タブ）で可視化し、
+埋めるかどうかの判断は費用の軸の定義の側へ委ねる。「欠損」は元データ（OSMタグ・派生テーブルの行）の
+不在を指し、探索が不在をどう扱うかは`missing_semantics`として併記する。
 
 材料id→「どの母集団の、どの条件が成り立てば欠損か」は各材料の`MaterialSpec.coverage`が宣言し、
 `material_coverage_specs()`がカタログから集めて`MATERIAL_COVERAGE_SPECS`（導いた値で、宣言ではない）にする。
@@ -463,45 +281,20 @@ way粒度で引くときは、同じ式のまま`w`の行から同じ名前の�
 
 - **「行がある」と「値がある」を混同しない**。派生の表は区間ごとに行を持ち、値を出せない列は
   NULLのまま残す（土地被覆の`lc_*`がそう。NULLの意味は[静的道路属性](static-road-attributes.md)「値が無ければNULL」）。
-  行の有無だけで数えると、値がNULLの行を「データあり」と数えてしまう。判定は評価が実際に読む**列**のNULLまで見る。
-- `missing_semantics`: `"unknown"`（欠損は不明値[NaN/None]として扱われ、その材料を使う軸は
-  評価対象外になる）／`"definite"`（欠損は確定値[タグ不在=非該当等]として扱われ、軸は
-  通常どおり評価される）。宣言はタグの不在の意味で、値の式がそれに合わせて`NULL`か`false`を返し、配列では読み替えない
+  行の有無だけで数えると、値がNULLの行を「データあり」と数えてしまう。判定は探索が実際に読む**列**のNULLまで見る。
+- `missing_semantics`: `"unknown"`（欠損は不明値[NaN/None]として扱われる）／`"definite"`（欠損は確定値[タグ不在=非該当等]として
+  扱われる）。宣言はタグの不在の意味で、値の式がそれに合わせて`NULL`か`false`を返し、配列では読み替えない
   （真偽の材料はどちらでも数値の行列へ載り、`NULL`を`NaN`で持つ）。地図の不明の帯（`domain/material_catalog.py: display_axis_missing_semantics`）もこの宣言から引く。
-- `CoverageExcluded(reason=...)`: 集計対象外の材料とその理由（動的計算材料の
-  `wind_drag_ratio`、NOT NULL列由来の`oneway`、生データの道のCHECK`source_features_way_has_kind`でhighwayを必ず持つ`highway`・`highway_is_cycleway`等）。
+- `CoverageExcluded(reason=...)`: 集計対象外の材料とその理由（NOT NULL列由来の`oneway`、生データの道のCHECK
+  `source_features_way_has_kind`でhighwayを必ず持つ`highway`・`highway_is_cycleway`等）。
   欠損し得ない材料を集計対象へ置かない——欠損の判定が常に0件を数える式になり、DBが持つ前提を式の側でもう一度持つことになる。
   管理画面はこの理由をそのまま表示する。
 - **どちらか一方を必ず持つことは型が保証する**: `MaterialSpec.coverage`は必須で、
-  way単位・Edge単位・対象外の3択（`MaterialCoverage`）のいずれかしか取れない。
+  way単位・Edge単位・対象外の3択（`domain/material_coverage_spec.py: MaterialCoverage`）のいずれかしか取れない。
   「どちらの一覧にも載っていない材料」を作れないため、網羅性を確かめるテストは要らない。
-- `MaterialCoverageService.get_material_coverage`はDB例外を握りつぶさず伝播させ、管理API共通の例外の扱い
-  （`api/admin_db_errors.py`）が503で返す（診断用APIのため空レポートへ倒して「欠損0件」に見せない）。
+- `MaterialCoverageService.get_material_coverage`はDB例外を握りつぶさず伝播させ、アプリ共通の例外の扱い
+  （`api/failure_replies.py`）が503で返す（診断用APIのため空レポートへ倒して「欠損0件」に見せない）。
   `api/dependencies.py: get_material_coverage_service`はルート生成用の長い
   `command_timeout`（180秒）を持つセッションを渡す（全表走査がタイル配信用の20秒を
   超えうるため）。
-- 欠損の扱いと母集団の画面の名前（管理画面の欠損率の見出し・説明）は、同じファイルの`MISSING_SEMANTICS_DISPLAY`・`POPULATION_LABELS`が持ち、生成物`vocabulary.ts`で画面へ届く。
-
-## 区間インスペクタ（`axis_inspector.py: inspector_values`）
-
-単独でクリックされた道（ルート文脈が無い）の押した区間と道1本それぞれについて、軸ごとの得点から「二次軸→三次合成
-コスト」の内訳を作る。得点は呼び出し側が地図の配信と同じ値で求めて渡し（[動的材料・フィーチャー値配信](dynamic-way-values.md)
-「区間インスペクタの値」）、評価できない軸はNoneで渡る。合成（`composite_difficulty`）は値と`covered_weight_fraction`
-（全軸の重み合計に対する取得できた軸の重み合計の割合）を1つの任意の項目で持ち、取得できた軸が無ければNone。割合は
-フロントの「参考値」表示に使う。
-
-
-## RoutePreference（`domain/route_preference.py`）
-
-`weights: dict[str, float]`（axis_id→重み、既定値は`default_axis_weights()`）。
-既定の重みの入口は`RoutePreference()`だけで、組み立てるたびにその時点の公開軸から導く
-（ルート生成・区間インスペクタのどちらも、重みを省略されたらこれを使う）。
-部分指定を許し、書かれなかった公開軸は`default_weight`で補う。値の不変条件は`check_axis_weights`が持ち、
-組み立てるたびに通す——キーは公開軸（`is_published=True`）のidだけ（内部軸は重み付けの対象外）、値は有限かつ非負
-（負の重みは合成difficultyの分母と分子の符号を食い違わせ、NaN・無限大は合成difficultyと寄与を黙って欠損にする）。ルート生成の要求を通らずに組み立てる書き手
-（研究のスクリプト・テスト）も同じ検査を通る。「上書きするなら公開軸を全部書く」は要求の形で、
-`api/routers/routes.py: RoutePreferenceWeights`が持ち、値の検査は同じ`check_axis_weights`を呼ぶ。
-
-時間帯を持つ軸（`time_scope`が`"always"`以外）の重みは`RoutePreference`では切り替えない——区間を通る時刻で
-区間ごとに決まるため、合成器が`domain/axis_definitions.py: time_scoped_weights`で区間ごとの配列にする
-（[routing-engine.md](routing-engine.md)「夜間軸の動的重み付け」）。
+- 欠損の扱いと母集団の画面の名前（管理画面の欠損率の見出し・説明）は、`domain/material_coverage_spec.py: MISSING_SEMANTICS_DISPLAY`・`domain/material_coverage_spec.py: POPULATION_LABELS`が持ち、生成物`vocabulary.ts`で画面へ届く。

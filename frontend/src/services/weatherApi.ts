@@ -42,6 +42,16 @@ export const getFloodForecasts = (point: Coordinates) =>
     weatherOptions("api:floodForecast", "河川氾濫予報"),
   );
 
+/** ルートを通る順に並べた点から、通る区域ごとの警報級の時系列の段（気象庁のコマのまま）。通過は点の番号で返る。 */
+export const getRouteWarningTimeline = (points: readonly Coordinates[]) =>
+  requestApi(
+    (init) => backendApi.POST("/api/weather/route-warning-timeline", { body: { points: [...points] }, ...init }),
+    {
+      ...weatherOptions("api:routeWarningTimeline", "ルートの警報級の見込み"),
+      successMeta: (data) => ({ points: points.length, areas: data.areas.length }),
+    },
+  );
+
 export interface Bbox {
   minLon: number;
   minLat: number;

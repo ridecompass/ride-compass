@@ -1,7 +1,7 @@
 """生データから導いたもののPostGISスキーマ（SQLAlchemy ORM）。
 
 **表は「書く段 × 行の母集団」ごとに分ける**。どの表も書く段（`batch/derive_cli.py: STAGES`）は1つで、段は自分の表を
-空にしてから埋める。段の指紋は書く表の列を読むので、表に列を1つ足して流れるのは、その表を書く段と後ろの段だけになる。
+空にしてから埋める。表に列を1つ足したら、作り直すのはその表を書く段（と、入口が足す後ろの段）だけでよい。
 読む側は、材料の式が読む列を持つ表だけを主キーで結ぶ（`material_joins.py: material_from_clause`）。
 
 | 粒度 | 形・鍵の表（区間を切る段が書く） | 値の表 |
@@ -9,7 +9,7 @@
 | 線（細） | `road_edges`（交差点で切った区間の形） | 値を出す段ごとに1表。区間の鍵が主キーで、`road_edges`を指す |
 | 線（粗） | `road_ways`（区間を持つ道の鍵） | 値を出す段ごとに1表。道の鍵が主キーで、`road_ways`を指す |
 | 点 | `road_nodes`（区間の端点と、集まる道の本数） | 頂点の値は`road_nodes`を指す。種別は頂点でない点にも付くので指さない |
-| 地点 | `stop_places` | 立ち寄り先。道の網とは別の点で、OpenStreetMap由来の値を持たない |
+| 地点 | `places` | 名前のある地点の全部（立ち寄り先は群を持つ行）。道の網とは別の点で、OpenStreetMap由来の値を持たない |
 | 住所の区画 | `address_areas` / `address_search_keys` / `address_blocks` | 区画と、区画を引く鍵と、区画の中の街区・地番 |
 
 値の表は、段が値を出せた行だけを持つ表と、母集団の全行を持つ表がある（どちらかは表ごとのdocstringが書く）。値を出せた行だけの
@@ -24,19 +24,21 @@
 
 from geoalchemy2 import Geometry
 from sqlalchemy import (
+    REAL,
     BigInteger,
-    CheckConstraint,
     Boolean,
+    CheckConstraint,
     ForeignKey,
     ForeignKeyConstraint,
     Index,
     Integer,
-    REAL,
     SmallInteger,
     String,
     column,
+    text,
     func,
 )
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.infrastructure.orm_base import DERIVED, Base
@@ -44,8 +46,9 @@ from app.infrastructure.source_models import Source
 from app.domain.address_area import ADDRESS_AREA_LEVELS, BLOCK_KINDS
 from app.domain.landcover import PERCENT_CLASSES, landcover_key
 from app.domain.material_sql import sql_literals
-from app.domain.stop_place import StopPlaceGroup
+from app.domain.stop_place import BRAND_CHAIN_PREFIX, StopPlaceGroup
 from app.domain.traffic import DIRECTIONS, NODE_KINDS, POI_COUNT_KINDS, poi_count_column
+from app.domain.traffic_regulation import REGULATION_HOURS
 
 #: 数えた値は負にならない。0は数えた結果の「1つも無い」。
 #: 件数は小数を持つ——区間の端に乗るものは前後の区間が0.5ずつ持つ（`batch/derive_counts.py`）。
@@ -61,7 +64,7 @@ _LANDCOVER_COLUMNS = tuple(
 _PERCENT_SUM_TOLERANCE = 0.1
 
 
-def count_checks(table: str) -> tuple[CheckConstraint, ...]:
+def _count_checks(table: str) -> tuple[CheckConstraint, ...]:
     """数の表（区間・道）の「値が不整合になりえない」制約。読み出し側が毎回この条件を書かずに済むように、入れられない側で止める。"""
     return tuple(CheckConstraint(f"{column} >= 0", name=f"{table}_{column}_not_negative")
                  for column in _COUNT_COLUMNS)
@@ -81,6 +84,15 @@ def landcover_checks(table: str) -> tuple[CheckConstraint, ...]:
 def vocabulary_check(table: str, column: str, values: frozenset[str]) -> CheckConstraint:
     """派生の段がSQLで直接書く語彙の列に、domainの宣言の外の値を入れさせない制約。NULLは通す。"""
     return CheckConstraint(f"{column} IN ({sql_literals(sorted(values))})", name=f"{table}_{column}_known")
+
+
+def grouped_place_sql(alias: str | None = None) -> str:
+    """群を持つ地点（立ち寄り先）の条件。地点の位置の部分索引の条件で、範囲で引く読み手もこの式で絞ると索引が使われる。"""
+    return f"{alias + '.' if alias else ''}place_group IS NOT NULL"
+
+
+# 続きに使う住所の鍵の条件。鍵の長さの部分索引の条件で、続きを引く読み手もこの式で絞ると索引が使われる。
+CONTINUABLE_KEY_SQL = "continuable"
 
 
 def _edge_key(table: str) -> ForeignKeyConstraint:
@@ -181,8 +193,8 @@ class RoadNodeRow(Base):
     """区間の端点（グラフの頂点）1つ。ただの形状頂点は持たない。**生データのノードを覆わない**。
 
     `branch_count`は**そこに集まる道の本数**。グラフの位相としての次数（隣接する頂点の
-    数）とは別物で、2本の枝が同じ次の交差点へ向かうと次数は1つに潰れる。交差点の密度を
-    測るのに要るのは枝の本数のほうで、位相としての次数は探索がメモリ上で数える。
+    数）とは別物で、2本の枝が同じ次の交差点へ向かうと次数は1つに潰れる。交差点の密度と、
+    曲がりの待ち・案内を足す分かれ道の判定に要るのは枝の本数のほう。
     """
 
     __tablename__ = "road_nodes"
@@ -206,12 +218,17 @@ class EdgeElevationRow(_EdgeKey, Base):
     end_elevation_m: Mapped[float] = mapped_column(REAL, nullable=False)
     elevation_gain_m: Mapped[float] = mapped_column(REAL, nullable=False)
     elevation_loss_m: Mapped[float] = mapped_column(REAL, nullable=False)
-    # 標高が付いた区間でも、両端の差が道としてありえない勾配になる区間は平均勾配を持たない
+    # 標高が付いた区間でも、勾配として数える点の間が無い区間は平均勾配を持たない
     # （`domain/attributes.py: elevation_values_sql`）。
     average_grade: Mapped[float | None] = mapped_column(REAL, nullable=True)
-    #: 作り直しの時点の道のタグで、区間が橋かトンネルだったか。値はこれに依る（両端だけを使う）ので、形が同じでも
-    #: これが変われば前回の値を使い回せない。
-    on_structure: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    #: 順方向に走ったときの、断面の刻みの間で一番急な登りと下りの勾配（%、どちらも0以上）。勾配として数える点の間が
+    #: 無い区間は持たない（`domain/attributes.py: elevation_values_sql`）。逆向きは2列を入れ替えて読む。
+    steepest_gain_percent: Mapped[float | None] = mapped_column(REAL, nullable=True)
+    steepest_loss_percent: Mapped[float | None] = mapped_column(REAL, nullable=True)
+    #: 順方向に並べた断面の点の標高（m）。点は区間を等しい道のりに刻んだ位置で、間隔は区間の長さ÷（点の数−1）。値の無い
+    #: 点はNULL。上の要約の列は、どれもこの点から出す（`domain/attributes.py: elevation_values_sql`）。作り直す前の行は持たない
+    #: （空を許すのは、行の入った本番の表へ列を足せるようにするため）。
+    elevation_profile_m: Mapped[list[float | None] | None] = mapped_column(ARRAY(REAL), nullable=True)
 
 
 class EdgeLandcoverRow(_EdgeKey, _Landcover, Base):
@@ -225,7 +242,32 @@ class EdgeCountsRow(_EdgeKey, _Counts, Base):
     """区間に付く数（事故・交差点・停止要因）。全区間が行を持つ。"""
 
     __tablename__ = "edge_counts"
-    __table_args__ = (_edge_key("edge_counts"), *count_checks("edge_counts"), {"info": DERIVED})
+    __table_args__ = (_edge_key("edge_counts"), *_count_checks("edge_counts"), {"info": DERIVED})
+
+
+def _not_stronger_check(table: str, weaker: str, stronger: str) -> CheckConstraint:
+    """時間帯の列`weaker`が列`stronger`より強くならない制約（強さは`REGULATION_HOURS`の並び）。どちらかがNULLなら通す。"""
+    order = f"ARRAY[{sql_literals(REGULATION_HOURS)}]"
+    return CheckConstraint(f"array_position({order}, {weaker}) >= array_position({order}, {stronger})",
+                           name=f"{table}_{weaker}_not_stronger")
+
+
+class EdgeTrafficRegulationRow(_EdgeKey, Base):
+    """区間に当たった交通規制が効く時間帯。規制が当たった区間だけが行を持つ。"""
+
+    __tablename__ = "edge_traffic_regulations"
+    __table_args__ = (
+        _edge_key(__tablename__),
+        vocabulary_check(__tablename__, "pedestrian_road", frozenset(REGULATION_HOURS)),
+        vocabulary_check(__tablename__, "pedestrian_road_bicycle", frozenset(REGULATION_HOURS)),
+        _not_stronger_check(__tablename__, "pedestrian_road_bicycle", "pedestrian_road"),
+        {"info": DERIVED},
+    )
+
+    #: 歩行者用道路の規制が効く時間帯。
+    pedestrian_road: Mapped[str] = mapped_column(String, nullable=False)
+    #: 普通自転車も対象の歩行者用道路の規制が効く時間帯。自転車が対象の規制が当たらない区間はNULL。
+    pedestrian_road_bicycle: Mapped[str | None] = mapped_column(String, nullable=True)
 
 
 class WayDirectionRow(_WayKey, Base):
@@ -237,7 +279,7 @@ class WayDirectionRow(_WayKey, Base):
 
     #: 通行方向（forward/backward/both）。タグからの判断なので、生データではなくここに置く。
     #: 探索が有向グラフをメモリ上で組むときに、逆向きの枝を作ってよいかを決める。
-    direction: Mapped[str] = mapped_column(String, nullable=False, server_default="both")
+    direction: Mapped[str] = mapped_column(String, nullable=False)
 
     #: 上下線が分かれた道の片側か。
     divided: Mapped[bool] = mapped_column(Boolean, nullable=False)
@@ -258,7 +300,7 @@ class WayCountsRow(_WayKey, _Counts, Base):
     """道1本の数（区間の和）。全部の道が行を持つ。"""
 
     __tablename__ = "way_counts"
-    __table_args__ = (*count_checks("way_counts"), {"info": DERIVED})
+    __table_args__ = (*_count_checks("way_counts"), {"info": DERIVED})
 
 
 class NodeKindRow(Base):
@@ -323,7 +365,7 @@ class AddressSearchKeyRow(Base):
     __table_args__ = (
         # 続きを引くとき、長さごとの件数を数えて短い鍵から引く。
         Index("idx_address_search_keys_continuable", func.length(column("key")), "key",
-              postgresql_where=column("continuable")),
+              postgresql_where=text(CONTINUABLE_KEY_SQL)),
         {"info": DERIVED},
     )
 
@@ -352,24 +394,40 @@ class AddressBlockRow(Base):
     geom: Mapped[object] = mapped_column(Geometry("POINT", srid=4326, spatial_index=False), nullable=False)
 
 
-#: 立ち寄り先の表へ地点を入れるソース。
-STOP_PLACE_SOURCES: frozenset[str] = frozenset({Source.OVERTURE_PLACE, Source.BUNKA_HERITAGE})
+class PlaceRow(Base):
+    """名前のある地点1つ。地点の生データ（Overture の地点・国の文化財の建造物）から、近くの同じ店をまとめたあとの地点
+    （`batch/derive_places.py`）。立ち寄り先は、このうち群（`place_group`）を持つ行。
 
-
-class StopPlaceRow(Base):
-    """立ち寄り先1つ。群へ入れ、近くの同じ店をまとめたあとの地点（`batch/derive_stop_places.py`）。
+    列が空のときの意味は docs/modules/backend/static-road-attributes.md「値が無ければNULL」。
 
     **OpenStreetMap由来の値（最寄りの道・道へ寄せた座標）を持たない**——ODbLの共有の義務が表にかかる。
     経由地へ寄せるのは要求のたびに計算する。出どころの違う地点（文化財の一覧等）も同じ表へ、`source`で分けて入れる。
     """
 
-    __tablename__ = "stop_places"
+    __tablename__ = "places"
     __table_args__ = (
-        vocabulary_check("stop_places", "source", STOP_PLACE_SOURCES),
-        vocabulary_check("stop_places", "place_group", frozenset(StopPlaceGroup)),
-        CheckConstraint("confidence BETWEEN 0 AND 1", name="stop_places_confidence_is_ratio"),
-        # タイルが範囲で引く。
-        Index("idx_stop_places_geom", "geom", postgresql_using="gist"),
+        vocabulary_check("places", "source", frozenset({Source.OVERTURE_PLACE, Source.BUNKA_HERITAGE})),
+        vocabulary_check("places", "place_group", frozenset(StopPlaceGroup)),
+        CheckConstraint("confidence BETWEEN 0 AND 1", name="places_confidence_is_ratio"),
+        # チェーンの鍵の語彙は並べない——チェーンの語（`domain/stop_place.py: CHAIN_WORDS`）を足すたびに本番の表の制約を
+        # 変えることになる。
+        CheckConstraint(f"chain <> '' AND chain <> '{BRAND_CHAIN_PREFIX}'", name="places_chain_not_empty"),
+        CheckConstraint("address <> ''", name="places_address_not_empty"),
+        # 寺社の群は文化財の一覧からだけ出す（`domain/stop_place.py`の頭の docstring）。素の`=`では群が NULL の行が素通りする。
+        CheckConstraint(f"coalesce(place_group = '{StopPlaceGroup.TEMPLE_SHRINE}', false) = (source = '{Source.BUNKA_HERITAGE}')",
+                        name="places_temple_shrine_from_heritage"),
+        # 地図の点のタイルが範囲で引く。タイルは群を持つ行だけを読むので、群の無い行を索引に入れない。
+        Index("idx_places_grouped_geom", "geom", postgresql_using="gist", postgresql_where=text(grouped_place_sql())),
+        # 地点の検索が、群の語でその群の行だけを近い順と円の中で引く（`infrastructure/facility_search.py: _SEARCH_SQL`）。群の列の
+        # B-tree の索引は張らない（群の店を全部引いてから並べる計画になる）。群の列を GiST に入れるのに`btree_gist`が要る。
+        Index("idx_places_group_geom", "place_group", "geom", postgresql_using="gist",
+              postgresql_where=text(grouped_place_sql())),
+        # 地点の検索が、名前の部分一致（3文字以上）・名前の頭の一致（1〜2文字。照合順序`C`の範囲で引く）・チェーンで引く
+        # （`infrastructure/facility_search.py: _SEARCH_SQL`）。部分一致の索引は3文字の組で引くので、3文字に満たない語には効かない。
+        Index("idx_places_search_name_trgm", "search_name", postgresql_using="gin",
+              postgresql_ops={"search_name": "gin_trgm_ops"}),
+        Index("idx_places_search_name_prefix", text('search_name COLLATE "C"')),
+        Index("idx_places_chain", "chain", postgresql_where=column("chain").isnot(None)),
         {"info": DERIVED},
     )
 
@@ -380,12 +438,15 @@ class StopPlaceRow(Base):
     name: Mapped[str] = mapped_column(String, nullable=False)
     #: 名前の表記の揺れを除いた形（`domain/stop_place.py: normalized_sql`）。地点の検索が引く。
     search_name: Mapped[str] = mapped_column(String, nullable=False)
-    place_group: Mapped[str] = mapped_column(String, nullable=False)
+    place_group: Mapped[str | None] = mapped_column(String, nullable=True)
+    #: 同じチェーンかを比べるだけの鍵で、表示しない（`domain/stop_place.py: chain_sql`）。地点の検索がチェーンの語で引く。
+    chain: Mapped[str | None] = mapped_column(String, nullable=True)
+    #: Overture の分類の道筋（上の段から下の段への語の並び）。地点の検索が、検索に出さない分類と照らす。
+    categories: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)
+    #: 外の地図の検索に渡す住所（`domain/stop_place.py: address_sql`）。
+    address: Mapped[str | None] = mapped_column(String, nullable=True)
     #: 地点が実在する見込み（0〜1）。地図で重なった点のどれを残すかに使う。
     confidence: Mapped[float] = mapped_column(REAL, nullable=False)
-    #: チェーンの名前。無ければ個店。
-    brand: Mapped[str | None] = mapped_column(String, nullable=True)
     #: 辺り（市区町村から字・丁目まで。位置を含む小地域の境界の名前）。地点の検索が名前に添え、同じ名前の店を見分ける。
-    #: 位置を含む名前のある境界が無ければNULL。
     area: Mapped[str | None] = mapped_column(String, nullable=True)
     geom: Mapped[object] = mapped_column(Geometry("POINT", srid=4326, spatial_index=False), nullable=False)

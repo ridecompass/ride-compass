@@ -4,7 +4,7 @@
  * 表示・絞り込みが1箇所で決まる（家族を1つ足すのは、下の並びへ1行足すこと）。
  *
  * 受け取るのは**実行時にしか決まらない値だけ**——タイルの配信先と世代・取得した中身・
- * 表示ON/OFF・凡例で隠した行・実行時に増える軸。見た目の値は各グループが持つ。
+ * 表示ON/OFF・凡例で隠した行・実行時に増える軸。
  */
 import type { MapScene } from "./mapScene";
 import { composeScene, type SceneGroup } from "./mapSceneGroups";
@@ -33,11 +33,16 @@ const GROUPS: readonly SceneGroup<SceneInputs>[] = [
   selecting(areaRasterGroup, (inputs) => inputs.area),
   selecting(roadLineGroup, (inputs) => inputs.road),
   selecting(axisLineGroup, (inputs) => inputs.axis),
-  selecting(pointGroup, (inputs) => inputs.point),
   selecting(weatherGroup, (inputs) => inputs.weather),
   selecting(routeGroup, (inputs) => inputs.route),
+  selecting(pointGroup, (inputs) => inputs.point),
 ];
 
 export function buildMapScene(inputs: SceneInputs): MapScene {
   return composeScene(GROUPS, inputs);
+}
+
+/** 俯瞰図（`MapOverview/MapOverview.tsx`）に載せる、気象の家族だけの scene。 */
+export function buildOverviewScene(weather: WeatherState): MapScene {
+  return composeScene([weatherGroup], weather);
 }

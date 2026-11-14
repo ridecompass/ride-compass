@@ -9,7 +9,7 @@
 - 一次属性の行の色と、値の無い道の線が地色から見えること → `test_display_palette.py`
 - 一次属性の表示の行の宣言 → `test_registry.py`・`test_primary_attributes.py`
 - 宣言を生成物へ書き出すこと → `scripts/export_openapi.py`の生成物のドリフト検査
-- 説明の差し込み口を軸カタログの値で埋めること → frontend `mapLayers.test.ts`
+- 説明の差し込み口を画面の設定・費用の軸の一覧の値で埋めること → frontend `mapLayers.test.ts`
 """
 
 import pytest
@@ -85,11 +85,6 @@ def test_declarations_pointing_to_no_single_name_are_refused(groups, categories,
     """指した先が無いレイヤーは取得状態を判定できず一覧に出ない。名前が2つあると指した側は一方だけを読み、空のチップは押しても何も出ない。"""
     with pytest.raises(ValueError):
         map_display.check_map_layer_declarations(groups, categories, sources, specs)
-
-
-def test_declarations_pointing_to_single_names_are_accepted():
-    map_display.check_map_layer_declarations(
-        (G("g", "群"),), (C("c", "g"),), (S("s"),), (_layer(), MapLayerSpec("s", None)))
 
 
 @pytest.mark.parametrize("stops", [(), ((10, 1), (10, 2)), ((13, 1), (10, 2))], ids=["空", "同じズーム", "降順"])

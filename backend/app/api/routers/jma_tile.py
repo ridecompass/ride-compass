@@ -27,7 +27,7 @@ class JmaTileIndexAvailable(JmaTileIndex):
 
 
 class JmaTileIndexUnavailable(StrictModel):
-    """インデックス未保存・Redis障害。クライアントは従来どおり全タイルを取りに行く。"""
+    """インデックス未保存・Redis障害。どのタイルについても在否を言わない。"""
 
     available: Literal[False] = False
 
@@ -38,13 +38,11 @@ JmaTileIndexResponse = JmaTileIndexAvailable | JmaTileIndexUnavailable
 
 @router.get("/api/jma-tile-index", response_model=JmaTileIndexResponse)
 async def jma_tile_index() -> JmaTileIndexResponse:
-    """どのタイルに描くものがあるかの一覧（`infrastructure/jma_tile_index.py`）。
+    """どのタイルに描くものがあるかの一覧。
 
-    JMA動的タイルは疎で、平常時はほぼ全てのタイルが空である。クライアントはこれを1回
-    受け取り、載っていないタイルは要求しない。`available: false`のときは従来どおり
-    全タイルを取りに行く（インデックスが無いことで表示が欠けてはならない）。
-
-    `coverage`の外は在否が不明のため、クライアントはその範囲のタイルを従来どおり取得する。
+    JMA動的タイルは疎で、平常時はほぼ全てのタイルが空である。載っていないタイルは要求しなくてよい。
+    `available: false`のときと`coverage`の外は在否が不明で、タイルを取りに行く側に倒す
+    （インデックスが無いことで表示が欠けてはならない）。
     """
     index = await get_index()
     if index is None:
@@ -61,8 +59,7 @@ async def jma_tile_proxy(
     if request.url.query:
         path = f"{path}?{request.url.query}"
     # キャッシュヒットならレート制限を一切経由しない。認証なしで叩けるプロキシへの
-    # 簡易な歯止め（basemap_proxyと同じ方針）は、実際に外部フェッチが発生する
-    # ミス時のみ適用する。
+    # 簡易な歯止めは、実際に外部フェッチが発生するミス時のみ適用する。
     tile = await proxied_tile(
         jma_tile_client,
         path,

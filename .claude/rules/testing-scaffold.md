@@ -4,6 +4,7 @@ paths:
   - "frontend/src/testing/**"
   - "frontend/vitest.setup.ts"
   - "frontend/e2e/fixtures.ts"
+  - "frontend/e2e/mockResponses.ts"
 ---
 
 # テストの足場とフェイク
@@ -104,7 +105,7 @@ paths:
 | 時計 | freezegun | フィクスチャ`clock`（`tests/conftest.py`）。`tick`・`move_to`で進める |
 | Redis | fakeredis | フィクスチャ`fake_redis`（`tests/conftest.py`）。接続の失敗は`redis_server.connected = False` |
 
-例外は窓・TTLを数える単調時計（`tests/conftest.py: MonotonicClock`。回数制限・外部I/Oの警告の抑制・
+例外は窓・TTLを数える単調時計（`backend/tests/conftest.py: MonotonicClock`。回数制限・外部I/Oの警告の抑制・
 データの世代の読み直しが読む）で、これらのモジュールが読む時計だけを差し替える。
 
 `admin_credentials`は、認証情報が設定されている前提に立つテストが引数で取る。ファイル内の
@@ -114,5 +115,5 @@ paths:
 確かめるには`pytest <対象> --setup-plan`でセットアップ順を出す。
 
 frontendは`frontend/src/testing/`配下が同じ役割を持ち、用途は各ファイルの先頭のコメントが書く
-（例: `routeFixtures.ts: makeRouteCandidate()`は、`e2e/fixtures.ts`も含めてルート候補を組み立てる
+（例: `routeFixtures.ts: makeRouteCandidate()`は、`e2e/mockResponses.ts`も含めてルート候補を組み立てる
 すべての場所が使う）。

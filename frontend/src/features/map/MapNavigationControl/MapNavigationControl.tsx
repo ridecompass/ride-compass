@@ -1,13 +1,11 @@
 "use client";
 
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import { Button } from "@/components/ui/Button/Button";
 import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/Popover/Popover";
 import { CompassNeedleIcon, RideZoomIcon } from "@/components/ui/icons/icons";
 import { ZoomInIcon, ZoomOutIcon } from "@/components/ui/icons/lucideIcons";
-import { useAxisCatalog } from "@/hooks/useAxisCatalog";
-import { axisNamesUsing } from "@/lib/catalogAxis";
 import { normalizeDeg } from "@/lib/cardinalLabel";
 import { cn } from "@/lib/cn";
 import { LENS_LINK_CLASS, LENS_LINK_DESCRIPTION } from "@/lib/lensLink";
@@ -25,10 +23,17 @@ interface MapNavigationControlProps {
   onBearingChange: (bearing: number) => void;
   /** 北を上に戻す。 */
   onResetNorth: () => void;
-  /** いまの「評価で塗る」の周りの道の塗りが、地図の向きで決まっている。 */
+  /** いまの「負担で塗る」の周りの道の塗りが、地図の向きで決まっている。 */
   linked: boolean;
-  /** 走行モードの間だけ渡る。拡大・縮小の代わりに倍率のボタンを出し、方位磁針はダイヤルを開かず、北が上と進む向きが上を切り替える。 */
-  ride: { headingUp: boolean; onToggleHeadingUp: () => void; zoomBase: number; onNextZoom: () => void } | null;
+  /** 走行モードの間だけ渡る。拡大・縮小の代わりに倍率のボタンを出し、方位磁針はダイヤルを開かず、現在地を追っている間は北が上と
+   * 進む向きが上を切り替え、追っていない間は北が上に戻す。 */
+  ride: {
+    headingUp: boolean;
+    following: boolean;
+    onCompass: () => void;
+    zoomBase: number;
+    onNextZoom: () => void;
+  } | null;
 }
 
 const DIAL_SIZE_PX = 176;
@@ -37,7 +42,7 @@ const TICK_STEP_DEG = 15;
 // ダイヤルの絵の座標（中心が0、外周の半径が RING_RADIUS）。
 const RING_RADIUS = 86;
 const LABEL_RADIUS = 60;
-const ZOOM_GESTURE_USAGE = "地図を1回たたいてから、続けて触れたまま上下に滑らせても拡大・縮小できます。";
+const ZOOM_GESTURE_USAGE = "地図を1回タップし、指を離さずに上下へ動かしても拡大・縮小できます。";
 
 /** 中心から角度`deg`（上が0・時計回り）へ半径`r`の点。 */
 function pointAt(deg: number, r: number): [number, number] {
@@ -59,16 +64,17 @@ export default function MapNavigationControl({
   const heading = headingOf(bearing);
   // 北が上でないことを縁で示す（走行モードの間は、進む向きが上の間）。
   const turned = ride !== null ? ride.headingUp : heading.degrees !== 0;
-  const compassClassName = cn(
-    "rounded-t-none border-t border-[var(--color-border)] shadow-none",
-    turned && "shadow-[inset_0_0_0_2px_var(--color-accent)]",
-    linked && LENS_LINK_CLASS,
-  );
-  const needle = (
-    <span aria-hidden="true" className="inline-flex" style={{ transform: `rotate(${-bearing}deg)` }}>
-      <CompassNeedleIcon />
-    </span>
-  );
+  const compassProps = {
+    variant: "mapCtrl",
+    size: "mapCtrl",
+    className: cn(
+      "rounded-t-none border-t border-[var(--color-border)] shadow-none",
+      turned && "shadow-[inset_0_0_0_2px_var(--color-accent)]",
+      linked && LENS_LINK_CLASS,
+    ),
+    "aria-description": linked ? LENS_LINK_DESCRIPTION : undefined,
+    children: <Needle bearing={bearing} />,
+  } as const;
   return (
     <div
       className="absolute top-[var(--map-ctrl-margin)] right-[var(--map-ctrl-margin)] z-[var(--z-map-control)] flex flex-col rounded-[4px] shadow-[0_0_0_2px_rgba(0,0,0,0.1)]"
@@ -102,29 +108,19 @@ export default function MapNavigationControl({
       )}
       {ride !== null ? (
         <Button
-          variant="mapCtrl"
-          size="mapCtrl"
-          className={compassClassName}
-          aria-label={ride.headingUp ? "北を上にする（いまは進む向きが上）" : "進む向きを上にする（いまは北が上）"}
-          aria-description={linked ? LENS_LINK_DESCRIPTION : undefined}
-          usage="走っている間は、押すと北が上と進む向きが上を切り替えます。"
-          onClick={ride.onToggleHeadingUp}
-        >
-          {needle}
-        </Button>
+          {...compassProps}
+          aria-label={rideCompassLabel(ride)}
+          usage="走行中は、押すたびに「北が上」と「進む向きが上」を切り替えます。地図を指で動かした後は、押すと北が上に戻ります。"
+          onClick={ride.onCompass}
+        />
       ) : (
         <Popover>
           <PopoverTrigger asChild>
             <Button
-              variant="mapCtrl"
-              size="mapCtrl"
-              className={compassClassName}
+              {...compassProps}
               aria-label="地図の向き"
-              aria-description={linked ? LENS_LINK_DESCRIPTION : undefined}
               usage="針は地図の北を指します。押すと、地図を回すダイヤルが開きます。"
-            >
-              {needle}
-            </Button>
+            />
           </PopoverTrigger>
           <PopoverContent className="p-2" side="left" align="start" sideOffset={8}>
             <HeadingDial
@@ -140,6 +136,21 @@ export default function MapNavigationControl({
   );
 }
 
+/** 地図の北を指す針。 */
+function Needle({ bearing, size }: { bearing: number; size?: number }) {
+  return (
+    <span aria-hidden="true" className="inline-flex" style={{ transform: `rotate(${-bearing}deg)` }}>
+      <CompassNeedleIcon size={size} />
+    </span>
+  );
+}
+
+/** 走行中の方位磁針のボタンの名前。追っていない間は、押すと北が上に戻る。 */
+function rideCompassLabel({ headingUp, following }: { headingUp: boolean; following: boolean }): string {
+  if (headingUp) return "北を上にする（いまは進む向きが上）";
+  return following ? "進む向きを上にする（いまは北が上）" : "北を上にする";
+}
+
 /** 走行モードの倍率のボタン: 押すたびに基準の倍率を中→遠→近と回す。絵は基準の倍率にいちばん近い段。 */
 function RideZoomButton({ zoomBase, onNextZoom }: { zoomBase: number; onNextZoom: () => void }) {
   const step = nearestRideZoomStep(zoomBase);
@@ -148,8 +159,8 @@ function RideZoomButton({ zoomBase, onNextZoom }: { zoomBase: number; onNextZoom
       variant="mapCtrl"
       size="mapCtrl"
       className="rounded-b-none shadow-none"
-      aria-label={`倍率（いまは${step.label}）`}
-      usage="押すたびに、追う地図の倍率を中・遠・近の順に切り替えます。2本指でつまんでも変えられます。速く走るほど、その倍率から引いて先を見せます。"
+      aria-label={`縮尺（いまは${step.label}）`}
+      usage="押すたびに、走行中の地図の縮尺を中・遠・近の順に切り替えます。2本指でつまんでも変えられます。速く走るほど、選んだ縮尺より広い範囲を表示します。"
       onClick={onNextZoom}
     >
       <RideZoomIcon reach={step.reach} />
@@ -167,8 +178,9 @@ interface HeadingDialProps {
 /** 地図と一緒に回る方位の輪。輪をなぞると地図が回り、真ん中の針を押すと北が上に戻る。 */
 function HeadingDial({ bearing, heading, onBearingChange, onResetNorth }: HeadingDialProps) {
   const dialRef = useRef<HTMLDivElement>(null);
-  // 向きで値の変わる評価の名前は軸カタログから引く。無ければ評価に触れる文を出さない。
-  const bearingAxes = axisNamesUsing(useAxisCatalog().axes, "bearing_deg");
+  // なぞっている間にwindowへ付けた受け手を外す。なぞる途中でダイヤルを閉じても（Escape等）外す。
+  const endDragRef = useRef<(() => void) | null>(null);
+  useEffect(() => () => endDragRef.current?.(), []);
 
   /** 中心からポインタへの角度（上が0・時計回り）。 */
   function angleAt(clientX: number, clientY: number): number {
@@ -190,7 +202,10 @@ function HeadingDial({ bearing, heading, onBearingChange, onResetNorth }: Headin
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
       window.removeEventListener("pointercancel", onUp);
+      endDragRef.current = null;
     };
+    endDragRef.current?.();
+    endDragRef.current = onUp;
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
     window.addEventListener("pointercancel", onUp);
@@ -210,9 +225,8 @@ function HeadingDial({ bearing, heading, onBearingChange, onResetNorth }: Headin
     <div className="flex flex-col gap-1" style={{ width: DIAL_SIZE_PX }}>
       <div className="flex items-center justify-between">
         <InfoPopover triggerAriaLabel="地図の向きの使い方">
-          輪をなぞると地図が回り、真ん中の針を押すと北が上に戻ります。
-          {bearingAxes &&
-            `${bearingAxes}で周りの道を塗るときと、道の評価を見るときの走る向きは、地図の上の向きを${WAY_BEARING_STEP_DEG}°刻みに丸めた向きです。ルートの評価は、ルートを実際に走る向きで決まります。`}
+          輪をなぞると地図が回ります。真ん中の針を押すと、北が上に戻ります。
+          {`周りの道を負担で塗るときと道の小窓では、地図の上の向きを${WAY_BEARING_STEP_DEG}°刻みに丸めて、走る向きとみなします。ルートの負担は、実際に走る向きで決まります。`}
         </InfoPopover>
         <span className="tabular-nums">
           <span className="text-[length:var(--font-size-md)] font-semibold text-[var(--color-accent)]">
@@ -288,9 +302,7 @@ function HeadingDial({ bearing, heading, onBearingChange, onResetNorth }: Headin
           usage="押すと北が上に戻ります。"
           onClick={onResetNorth}
         >
-          <span aria-hidden="true" className="inline-flex" style={{ transform: `rotate(${-bearing}deg)` }}>
-            <CompassNeedleIcon size={28} />
-          </span>
+          <Needle bearing={bearing} size={28} />
         </Button>
       </div>
     </div>

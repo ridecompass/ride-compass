@@ -4,9 +4,8 @@
  * 凡例は`scene/legends.ts`、表示専用の凡例は記述子の`readOnlyLegend`。
  */
 import {
-  isAxisStudioLayer,
-  TILE_VERSIONS_MISSING_NOTICE,
-  TILE_ZOOM_TOO_WIDE_NOTICE,
+  isLensLayer,
+  tileNotice,
   type LayerDataStatusByLayer,
   type ChipLayerDescriptor,
   type MapLayerDescriptor,
@@ -42,9 +41,8 @@ function chipLegends(
   ];
 }
 
-/** 地図上チップの一覧。軸スタジオ由来のレイヤーと、選択中のルートにひもづくレイヤー（`kind`が`dynamic`）は出さない
- * ——どちらも出し入れは色分け（`LensControl`）が持つ。チップの束ね方（`mapLayers.ts: mapOverlayGroupFor`）は中分類しか
- * 見ないので、除くのはここの1か所で、束ねる前に除く。 */
+/** 地図上チップの一覧。レンズの層は出さない——出し入れは色分け（`LensControl`）が持つ。チップの束ね方
+ * （`mapLayers.ts: mapOverlayGroupFor`）は中分類しか見ないので、除くのはここの1か所で、束ねる前に除く。 */
 export function overlayChips(options: {
   layers: readonly MapLayerDescriptor[];
   roadLayers: readonly RoadMapLayerView[];
@@ -54,14 +52,13 @@ export function overlayChips(options: {
   zoomTooWideLayerIds: readonly MapLayerId[];
   /** タイル世代が届くまで描けず、いま世代が無いレイヤー。 */
   versionMissingLayerIds: readonly MapLayerId[];
-  /** 軸カタログの取得を終えたか。終えたのに世代が無いなら、待っても直らない。 */
+  /** 画面の設定の取得を終えたか。終えたのに世代が無いなら、待っても直らない。 */
   catalogSettled: boolean;
 }): OverlayLayerChip[] {
   const { hidden, catalogSettled } = options;
   const legendAxes = [...roadLegendAxes(options.roadLayers), ...DECLARED_LEGEND_AXES];
   return options.layers
-    .filter((layer): layer is ChipLayerDescriptor => !isAxisStudioLayer(layer))
-    .filter((layer) => layer.kind !== "dynamic")
+    .filter((layer): layer is ChipLayerDescriptor => !isLensLayer(layer))
     .map((layer) => {
       const versionMissing = options.versionMissingLayerIds.includes(layer.id);
       return {
@@ -70,12 +67,11 @@ export function overlayChips(options: {
         icon: layer.icon,
         on: options.visibility[layer.id] === true,
         title: layer.description,
-        notice:
-          versionMissing && catalogSettled
-            ? TILE_VERSIONS_MISSING_NOTICE
-            : options.zoomTooWideLayerIds.includes(layer.id)
-              ? TILE_ZOOM_TOO_WIDE_NOTICE
-              : null,
+        notice: tileNotice({
+          versionMissing,
+          catalogSettled,
+          zoomTooWide: options.zoomTooWideLayerIds.includes(layer.id),
+        }),
         legendDetails: chipLegends(layer, legendAxes).map((axis): LegendFilterSummaryAxis => ({
           ...axis,
           hiddenKeys:
@@ -87,12 +83,4 @@ export function overlayChips(options: {
         dataStatus: versionMissing ? (catalogSettled ? "error" : "loading") : options.dataStatus[layer.id],
       };
     });
-}
-
-/** 保存値のうち、真偽値の鍵だけを読む。既定は読む側が層の一覧から重ねる（道の線の層は軸カタログが届くまで分からず、
- * 届く前に読んだ保存値から道の層の真偽を落とすと、選んだ表示が消える）。 */
-export function deserializeLayerVisibility(raw: string): MapLayerVisibility | null {
-  const stored: unknown = JSON.parse(raw);
-  if (stored === null || typeof stored !== "object") return null;
-  return Object.fromEntries(Object.entries(stored).filter((entry) => typeof entry[1] === "boolean"));
 }

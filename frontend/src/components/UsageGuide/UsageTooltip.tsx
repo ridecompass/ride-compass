@@ -3,20 +3,18 @@
 import { useEffect, useMemo, useState } from "react";
 import { Popover, PopoverAnchor, PopoverContent, POPOVER_COLLISION_PADDING_PX } from "@/components/ui/Popover/Popover";
 import { GuideText } from "@/components/ui/GuideText/GuideText";
+import { TAP_SLOP_PX } from "@/lib/tapSlop";
 import { iconTargetOf, type UsageTarget } from "./usageTarget";
 
 /** 押し続けて（マウスは重ねて）からツールチップを出すまでの時間。 */
 export const LONG_PRESS_MS = 500;
-
-/** 押している間にこれ以上動いたら、長押しではなく動かした（なぞった・スクロールした）とみなす。 */
-const TAP_SLOP_PX = 10;
 
 /** 長押しのあと、部品へ押した扱いを届けないために止める出来事。 */
 const PRESS_EVENTS = ["pointerup", "mousedown", "mouseup", "click", "contextmenu"] as const;
 
 /**
  * アイコンだけの部品の名前と使い方を出すツールチップ。タッチ・ペンは長押しで出し、ほかを押すまで残す。
- * 長押しのあとの押し操作は、次に押すまで窓の捕捉段階で止める（部品の側は止め方を持たない）。
+ * 長押しのあとの押し操作は、次に押すかキーを打つまで窓の捕捉段階で止める（部品の側は止め方を持たない）。
  * マウスは重ねて出し、外す・押すと消す。文字を出す部品は、名前が見えているので出さない。
  */
 export default function UsageTooltip() {
@@ -25,7 +23,7 @@ export default function UsageTooltip() {
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined;
     let pressStart: { x: number; y: number } | null = null;
-    /** 長押しで出したあと、次に押すまでの間か。 */
+    /** 長押しで出したあと、次に押すかキーを打つまでの間か。 */
     let swallowing = false;
     /** マウスを重ねている、アイコンだけの部品。 */
     let hovered: Element | null = null;
@@ -68,6 +66,10 @@ export default function UsageTooltip() {
         event.preventDefault();
       }
     };
+    // キーで押す（外付けのキーボード等）clickは、ポインタを伴わないので次の押し始めを待たずに通す。
+    const onKeyDown = () => {
+      swallowing = false;
+    };
     const onPointerOver = (event: PointerEvent) => {
       if (event.pointerType !== "mouse" || !(event.target instanceof Element)) return;
       const icon = iconTargetOf(event.target);
@@ -88,6 +90,7 @@ export default function UsageTooltip() {
     window.addEventListener("pointerdown", onPointerDown, options);
     window.addEventListener("pointermove", onPointerMove, options);
     window.addEventListener("pointercancel", cancelTimer, options);
+    window.addEventListener("keydown", onKeyDown, options);
     window.addEventListener("pointerover", onPointerOver, options);
     window.addEventListener("pointerout", onPointerOut, options);
     // 部品が動くと吹き出しだけが取り残される。

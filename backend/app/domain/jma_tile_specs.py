@@ -5,10 +5,6 @@
 偶奇）と`maxNativeZoom`（XML中のコメントで「画像が実在する最大ズームレベル」と説明されて
 いる値）を持つ。アプリがタイルを要求してよい最大ズームはこの2つの組み合わせで決まり、
 どちらか一方だけを見ると実データの無いズームを指してしまう。
-
-MapLibreの`maxzoom`（frontendへは`domain/weather_elements.py: WEATHER_ELEMENTS`の生成物
-`mapDisplay.weatherElements`経由で届く）とプリウォームバッチの対象ズーム
-（`services/jma_tile_prewarm_service.py`）は、いずれも`effective_max_zoom()`でこの1箇所から導く。
 """
 
 import re
@@ -39,8 +35,7 @@ class JmaTileSpec:
     max_native_zoom: int
     #: ベクタタイル（.pbf）の中のレイヤー名。ラスタの要素はNone。
     vector_layer: str | None = None
-    #: 降水の段の色（`infrastructure/jma_tile_recolor.py: JMA_PRECIPITATION_TILE_COLORS`）で塗った画像で、中継がアプリの
-    #: 降水の段の色へ塗り替えて配る。
+    #: 気象庁の降水の段の色で塗った画像で、アプリの降水の段の色へ塗り替えて配る。
     precipitation_colors: bool = False
 
 
@@ -166,10 +161,8 @@ def read_target_times(reader: TargetTimesReader, rows: Sequence[TargetTimesRow],
     """時刻一覧の行を、その要素のコマ（`validtime`の順）にする。
 
     画面も同じ読み方でコマにする——温めるフレームと在否インデックスのフレームは、画面が描くフレームと一致しないと
-    役に立たない（インデックスは一致したフレームにしか使われない）。同じコマになることは、場面ごとの時刻一覧と
-    この関数の答えを`scripts/cross_language_expectations.py: jma_expectations`が表にして配り、画面のテストが通す。
-    1つの時刻一覧には別の要素の行も載るため、先にその要素の行へ絞る。時刻一覧の形は
-    `infrastructure/jma_tile_client.py: parse_target_times`が行へ解く。"""
+    役に立たない（インデックスは一致したフレームにしか使われない）。1つの時刻一覧には別の要素の行も載るため、
+    先にその要素の行へ絞る。"""
     frames = [row.frame for row in rows if element_id in row.elements]
     match reader:
         case "nowcast":
@@ -183,10 +176,22 @@ def read_target_times(reader: TargetTimesReader, rows: Sequence[TargetTimesRow],
 
 
 def _read_nowcast(frames: list[JmaFrame]) -> list[JmaFrame]:
-    """最新の実況（`validtime`==`basetime`）より前を捨てる。実況が1つも無ければ何も捨てない。"""
-    ordered = sorted(frames, key=lambda frame: frame.validtime)
+    """`validtime`ごとに1コマへ絞り、最新の実況（`validtime`==`basetime`）より前を捨てる。実況が1つも無ければ何も捨てない。
+
+    実況と予測は別のファイルに載り、別々に取るので、取った時点がずれると前の`basetime`の予測と新しい実況が
+    同じ`validtime`を持つ。同じ`validtime`では実況を予測より、新しい`basetime`を古いものより先に採る。"""
+    by_validtime: dict[str, JmaFrame] = {}
+    for frame in frames:
+        taken = by_validtime.get(frame.validtime)
+        if taken is None or _nowcast_precedence(frame) > _nowcast_precedence(taken):
+            by_validtime[frame.validtime] = frame
+    ordered = sorted(by_validtime.values(), key=lambda frame: frame.validtime)
     observed = [index for index, frame in enumerate(ordered) if frame.validtime == frame.basetime]
     return ordered[observed[-1] :] if observed else ordered
+
+
+def _nowcast_precedence(frame: JmaFrame) -> tuple[bool, str]:
+    return (frame.validtime == frame.basetime, frame.basetime)
 
 
 def _read_latest_full_run(frames: list[JmaFrame]) -> list[JmaFrame]:
@@ -225,11 +230,6 @@ def _fill(template: str, **values: str) -> str:
     return TEMPLATE_PLACEHOLDER.sub(lambda match: values.get(match.group(1), match.group(0)), template)
 
 
-def tile_extension(spec: JmaTileSpec) -> str:
-    """配信元はベクタをMapbox Vector Tile（.pbf）、ラスタを画像（.png）で配る。"""
-    return "pbf" if spec.vector_layer else "png"
-
-
 def jma_target_times_paths(element_id: str) -> tuple[str, ...]:
     """その要素の時刻一覧の、配信元のパス。"""
     element = JMA_ELEMENTS[element_id]
@@ -242,12 +242,9 @@ def jma_url_template(element_id: str) -> str:
     element = JMA_ELEMENTS[element_id]
     if element.tile is None:
         return _fill(f"{_FRAME_PATH}/{_FEATURES_FILE}", group=element.path_group, element=element_id)
-    return _fill(
-        f"{_FRAME_PATH}/{_TILE_FILE}",
-        group=element.path_group,
-        element=element_id,
-        extension=tile_extension(element.tile),
-    )
+    # 配信元はベクタをMapbox Vector Tile（.pbf）、ラスタを画像（.png）で配る。
+    extension = "pbf" if element.tile.vector_layer else "png"
+    return _fill(f"{_FRAME_PATH}/{_TILE_FILE}", group=element.path_group, element=element_id, extension=extension)
 
 
 class JmaTile(NamedTuple):

@@ -1,6 +1,5 @@
-// 動的気象レイヤー（時刻で中身が変わる格子・タイルのレイヤー）のデータ層。共通の契約（格子の共有・表現の種類・
-// 時刻の1本のスライダー・データの差はデータ層で吸収）と、要素を足す手順は
-// docs/modules/frontend/dynamic-weather-layers.mdが持つ。
+// 動的気象レイヤー（時刻で中身が変わる格子・タイルのレイヤー）のデータ層の型と、コマ選び・格子の地物化の部品。
+// 共通の契約はdocs/modules/frontend/dynamic-weather-layers.md「共通契約」。
 
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import { nearestTimeIndex } from "@/lib/time";
@@ -13,6 +12,16 @@ interface DynamicWeatherSourceState {
 /** 動的気象のチップ（1つのチップが複数の名前付きソースを束ねる。どれがチップかは源泉が決める）。 */
 export type DynamicWeatherLayerId = (typeof mapDisplay.weatherLayerGroups)[number];
 
+/** 災害のチップのid（源泉の気象のグループの名前）。 */
+export const DISASTER_LAYER_ID = "disaster" as const;
+
+export type DisasterElement = Extract<(typeof mapDisplay.weatherElements)[number], { group: typeof DISASTER_LAYER_ID }>;
+
+/** 災害のチップに載る要素。並びは源泉の宣言のまま。 */
+export const DISASTER_ELEMENTS: readonly DisasterElement[] = mapDisplay.weatherElements.filter(
+  (element): element is DisasterElement => element.group === DISASTER_LAYER_ID,
+);
+
 /** 配信元のタイルで描く描き方。それ以外の描き方は、中身をGeoJSONで持つ。 */
 export type TileRenderKind = "rasterTile" | "vectorTile";
 
@@ -22,7 +31,13 @@ type TileRenderPayload = { kind: TileRenderKind; tileUrlTemplate: string };
 /** 1コマの描画内容。表示層はkindだけで描き方を決める（どの配信元由来かはデータ層が吸収済み）。
  * GeoJSONの`outline`は配信元が配る領域の輪郭線で、属性は読まず線として描くだけ。 */
 export type DynamicWeatherRenderPayload =
-  TileRenderPayload | { kind: "gridFill" | "gridMark" | "outline"; geojson: GeoJSON.FeatureCollection };
+  | TileRenderPayload
+  | {
+      kind: "gridFill" | "gridMark" | "outline";
+      geojson: GeoJSON.FeatureCollection;
+      /** 地物が格子点に並ぶなら、格子点どうしの緯度・経度の間隔（度）。 */
+      gridStepDeg?: { latitude: number; longitude: number };
+    };
 
 /** 配信元のタイルで描く描き方か。 */
 export function isTileRenderKind(kind: DynamicWeatherRenderPayload["kind"]): kind is TileRenderKind {

@@ -3,7 +3,7 @@
     python scripts/prose_copies.py
 
 frontend の文∩宣言の名前は `frontend/scripts/structure-population.mjs` の (b) が持ち、ここは backend の文と、
-走行モデル・難易度の数え方を述べる文を見る。出すのは候補で、判じない（外の製品の名前・宣言そのものの説明が混ざる）。
+走行モデル・費用の数え方を述べる文を見る。出すのは候補で、判じない（外の製品の名前・宣言そのものの説明が混ざる）。
 どれを直すかは読む人が決める。
 
 backend の文は宣言と応答を作る層（`BACKEND_SOURCES`）の文字列の字句（f 文字列の地の部分を含む。docstring・コメントは除く）のうち
@@ -15,7 +15,7 @@ backend の文は宣言と応答を作る層（`BACKEND_SOURCES`）の文字列�
   (3) 説明∩同じ行の値: 1つの呼び出しの中で、説明の文が、同じ呼び出しのほかの文字列（`values` の並び・位置で
       渡した値を含む）のうち英数字の3字以上のものを含む。
 frontend と backend の文:
-  (4) 走行モデル・難易度の数え方を述べる文: 所要時間の語（所要・走行時間・速度・速さ）と道や天気の条件の語
+  (4) 走行モデル・費用の数え方を述べる文: 所要時間の語（所要・走行時間・速度・速さ）と道や天気の条件の語
       （坂・勾配・風・路面）を同じ行に持つ文と、平均・負荷・総量の語と距離・区間の語を同じ行に持つ文。frontend は
       `frontend/src` の .ts・.tsx（テスト・テストの足場・生成物を除く。`frontend/scripts/structure-population.mjs` と同じ母集団）の
       行で、コメントの行（`//`・`*`・`/*`・`{/*` で始まる行）を除く。
@@ -38,7 +38,7 @@ frontend の文:
   - タグを `=` を使わずに書いた形（「tunnel タグ」「高架橋等」）は、名前でも値でもないので (1)(3) に当たらない。説明の文の中の
     `[a-z_:]+=[a-z_]+` を grep して、宣言の値と並べて読む。
   - `BACKEND_SOURCES` の外の backend の文（`backend/app/infrastructure`・`backend/app/batch` 等）と、実行時の応答の文
-    （軸カタログ等、DB から来る文）は、どれにも当たらない。
+    （費用の軸の一覧・道の区分等、DB から来る文）は、どれにも当たらない。
 """
 
 import ast
@@ -183,7 +183,7 @@ LABELS = {
     "1": "(1) backend の文∩宣言の名前",
     "2": "(2) backend の文∩色・寸法・時間幅の語",
     "3": "(3) backend の説明∩同じ行の値",
-    "4": "(4) 走行モデル・難易度の数え方を述べる文",
+    "4": "(4) 走行モデル・費用の数え方を述べる文",
     "5": "(5) backend の文∩較正値の id",
     "6": "(6) frontend の文∩数と単位",
 }
@@ -268,6 +268,8 @@ def frontend_findings() -> dict[str, list[str]]:
 
 
 def main() -> int:
+    # 文に端末の文字コード（Windows の既定は cp932）で出せない文字があると途中で落ち、母集団が黙って欠ける。
+    sys.stdout.reconfigure(encoding="utf-8")
     found = backend_findings(generated_names())
     for kind, lines in frontend_findings().items():
         found.setdefault(kind, []).extend(lines)

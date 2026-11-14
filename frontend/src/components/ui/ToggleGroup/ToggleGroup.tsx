@@ -7,8 +7,6 @@ import { cn } from "@/lib/cn";
 
 // 並んだ選択肢から1つを選ぶ。選択状態（role="radio"・aria-checked・data-state）と矢印キーでの
 // 移動はRadix ToggleGroupが持つ。
-//
-// 選んでいるものをもう一度押しても外れない（「選ばない」が無い選択）。
 const groupVariants = cva("inline-flex", {
   variants: {
     variant: {
@@ -16,6 +14,9 @@ const groupVariants = cva("inline-flex", {
       segmented: "max-w-full overflow-hidden rounded-full border border-[var(--color-border)]",
       /** 札を横へ流して選ぶ（レンズの軸）。 */
       chips: "w-full flex-wrap gap-1",
+      /** 1本の目盛りの上の点から選ぶ（並びに大小の向きがある段）。目盛りの線を項目の後ろに引き、項目の中身は呼ぶ側が描く。 */
+      scale:
+        "relative items-center before:absolute before:inset-x-3 before:top-1/2 before:h-px before:-translate-y-1/2 before:bg-[var(--color-muted)]",
     },
   },
   defaultVariants: { variant: "segmented" },
@@ -30,6 +31,7 @@ const itemVariants = cva(
           "justify-center bg-transparent px-3 py-1.5 text-center text-[length:var(--font-size-xs)] text-[var(--foreground)] data-[state=on]:bg-[var(--color-accent)] data-[state=on]:text-white",
         chips:
           "gap-1 whitespace-nowrap rounded-full border border-[var(--color-border)] bg-transparent px-2 py-0.5 text-inherit hover:bg-[var(--color-surface-hover)] data-[state=on]:border-[var(--color-accent)] data-[state=on]:bg-[var(--color-accent-soft)] data-[state=on]:font-semibold",
+        scale: "relative justify-center bg-transparent p-0",
       },
     },
     defaultVariants: { variant: "segmented" },
@@ -45,7 +47,7 @@ interface ToggleGroupProps extends VariantProps<typeof groupVariants> {
   "aria-label": string;
   className?: string;
   /** 使い方の文（`Button`の`usage`と同じ）。文を持たない選択肢を押したときも、これを出す。 */
-  usage?: string;
+  usage: string | null;
   /** 選んでいる項目をもう一度押すと外せる（`onValueChange`へ空文字を渡す）。無ければ外せない。 */
   deselectable?: boolean;
   children: React.ReactNode;
@@ -72,7 +74,7 @@ export function ToggleGroup({
           onValueChange(next);
         }}
         className={cn(groupVariants({ variant: v }), className)}
-        data-usage={usage}
+        data-usage={usage ?? undefined}
         {...props}
       >
         {children}

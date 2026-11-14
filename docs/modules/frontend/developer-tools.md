@@ -2,24 +2,33 @@
 
 ## 責務
 
-`/admin`（`app/admin/page.tsx`、Basic認証保護下）にある開発者向け補助機能（ログ表示・
-システム状況）と、一般公開ページ`page.tsx`（`/`、認証なし）のヘッダーメニューから直接操作
+`/admin`（`app/admin/page.tsx`、Basic認証保護下。画面の題は「管理・開発者ツール」）にある管理の画面（材料・較正値・データ保守）と
+開発者向け補助機能（ログ表示・システム状況）、その認証の境界と、一般公開ページ`page.tsx`（`/`、認証なし）のヘッダーメニューから直接操作
 できる機能（デバッグログ表示）。
 
 **対象ファイル**
 
 | ファイル | 責務 | マウント先 |
 |---|---|---|
-| `app/admin/page.tsx` | `/admin`のタブ構成を束ねるコンポジションルート（開いたときは軸スタジオのタブ） | 独立URL |
-| `components/HeaderMenu/HeaderMenu.tsx` | 使い方の説明の入口（「使い方を見る」。[ページ全体構成](page-composition.md)「使い方の説明」）・地図の表示を再描画（[地図: 静的レイヤー](static-map-layers.md)「まとめて戻す操作」）・デバッグログ表示・バージョン表示を1個のメニューアイコンへ集約したRadix Popover。バージョン表示は、動いている版（コミットの頭8文字）を窓に出し、確かめ待ちの変更が本番に出たかを利用者が画面から見分けられるようにする | `page.tsx`（`/`）のヘッダー |
+| `app/admin/page.tsx` | `/admin`のタブ構成を束ねるコンポジションルート（開いたときは「材料」のタブ） | 独立URL |
+| `proxy.ts`・`lib/adminBasicAuth.ts` | `/admin`のページと管理APIの転送の口（`/admin/api/**`）への到達をHTTP Basic認証で止めるNext.jsのルーティング境界（ファイル名はフレームワークの規約）と、その資格情報を環境変数から読む口（`lib/adminBasicAuth.ts: adminBasicAuthCredentials`。片方でも空なら認証を通さない）。転送先のbackendの管理APIは別にbackendが同じ方式で守る | `/admin`の手前 |
+| `features/admin/adminApi.ts` | `/admin`の各パネルが叩く口の薄いラッパー（例: 材料の欠損割合・較正値の書き換え・直近のログ・死活）。管理APIは`lib/apiClient.ts: adminApiClient`、認証の要らない稼働状況の口は`lib/apiClient.ts: backendApi`を通る | `/admin`の各パネル |
+| `features/admin/AdminPanels/MaterialCoveragePanel.tsx` | 材料ごとの欠損割合（backend `GET /api/admin/material-catalog/coverage`）を欠損の扱いごとに分けて欠損の高い順に並べる。欠損を取込側で推測して埋めず、実態を見せて「埋めるか」の判断を定義の側へ委ねる。母集団の名前と欠損の扱いの見出しは材料カタログの宣言が配り、宣言に無い扱いの材料は未分類の群が拾う | `/admin`「材料」タブ |
+| `features/admin/AdminPanels/TuningPanel.tsx` | 走ってみて決める較正値（backendの`domain/tuning.py`の宣言）をデプロイなしに変える画面。並べる項目はbackendが宣言から導き、効き方ごとにまとめる（変えたのに効かない群を見分ける）。入力は「DBへ保存」でまとめて送る（値の正本はDBで、画面に既定は無い） | `/admin`「較正値」タブ |
+| `features/admin/AdminPanels/DerivedDataFreshnessPanel.tsx` | 派生データ（precomputeバッチの出力）が、取り込んだ生データより古いまま残っていないかを見る。作り直しが要るかはbackendが決める | `/admin`「データ保守」タブ |
+| `features/admin/AdminPanels/DbStatusPanel.tsx` | 派生データの鮮度台帳が拠る土台（取込のrunの失敗・行の有無・プランナの統計・放置されたトランザクション）を、ほかのパネルと同じ1行の形で見せる | `/admin`「データ保守」タブ |
+| `features/admin/AdminPanels/TileCachePanel.tsx` | サーバー側のタイルファイルキャッシュの全消去。全利用者へ影響するため認証の内側にだけ置き、基礎地図のタイルをブラウザが持つ時間（消去が各利用者の画面へ届くまでの遅れ）を添える | `/admin`「データ保守」タブ |
+| `features/admin/AdminPanels/ReportCard.tsx`・`features/admin/AdminPanels/StatusRowList.tsx` | 「材料」「データ保守」の集計のカード（DB全体の走査を伴うので、開いたときには取らず「集計する」を押したときだけ取る。説明はⓘの奥）と、点検の行の一覧（名前の右に規模、開くと中身。手当ての要否を丸の色と読み上げの文の両方で持つ）。件数・時点の書き方（`features/admin/AdminPanels/ReportCard.tsx: formatCount`・`features/admin/AdminPanels/ReportCard.tsx: formatMoment`）も持つ | 上記のパネル |
+| `components/HeaderMenu/HeaderMenu.tsx` | 使い方の説明の入口（「使い方を見る」。[ページ全体構成](page-composition.md)「使い方の説明」）・地図の表示を再描画（[地図: 静的レイヤー](static-map-layers.md)「まとめて戻す操作」）・走行の記録のコピー（下記「走行の計測」。記録があるときだけ）・デバッグログ表示・バージョン表示を1個のメニューアイコンへ集約したRadix Popover。バージョン表示は、動いている版（コミットの頭8文字）を窓に出し、確かめ待ちの変更が本番に出たかを利用者が画面から見分けられるようにする | `app/HomeHeader.tsx`（`/`のヘッダー） |
 | `features/admin/DebugPanel/DebugPanel.tsx` | デバッグログ表示のON/OFFトグル | `/admin`「開発者」タブ |
-| `components/DebugConsole/DebugConsole.tsx` | 地図イベント・外部API呼び出しの詳細ログを時系列表示するフローティングパネル。**表示中の行をそのままの形でコピーできる**（絞り込みを無視して全件にすると、絞って見つけた数行を渡したいときに関係ない行まで混ざる） | `page.tsx`（`/`）、`HeaderMenu.tsx: HeaderMenu`から開閉 |
+| `components/DebugConsole/DebugConsole.tsx` | 地図イベント・外部API呼び出しの詳細ログを時系列表示するフローティングパネル。**表示中の行をそのままの形でコピーできる**（絞り込みを無視して全件にすると、絞って見つけた数行を渡したいときに関係ない行まで混ざる） | `app/HomeHeader.tsx`（`/`のヘッダーの下）、`HeaderMenu.tsx: HeaderMenu`から開閉 |
 | `features/admin/SystemStatusPanel/SystemStatusPanel.tsx` | backend `/api/debug/stats`の集計・フロントバージョン・予報（MSM）の同期鮮度を表示するフローティングパネル | `/admin`「開発者」タブ |
 | `features/admin/BackendStatus/BackendStatus.tsx` | バックエンドの死活確認の簡易表示 | `/admin`「開発者」タブ |
 | `features/admin/BackendLogsPanel/BackendLogsPanel.tsx` | backend `GET /api/admin/debug/logs`の直近ログをレベル（DEBUG〜CRITICAL）・部分一致で絞り込んで表示するパネル。取得は「取得」ボタン押下時のみ（ポーリングなし） | `/admin`「開発者」タブ |
-| `components/FloatingPanel/FloatingPanel.tsx` | `DebugConsole`/`SystemStatusPanel`が共有するドラッグ可能な浮動パネルの共通シェル（`react-rnd`ベース）。使い方の説明の案内（[ページ全体構成](page-composition.md)「使い方の説明」）も使う | 両パネルと使い方の説明の案内の実装基盤 |
+| `components/FloatingPanel/FloatingPanel.tsx` | `DebugConsole`/`SystemStatusPanel`が共有するドラッグ可能な浮動パネルの共通シェル（`react-rnd`ベース）。画面の大きさが変わったら（端末の回転等）画面の中へ寄せ直す。使い方の説明の案内（[ページ全体構成](page-composition.md)「使い方の説明」）も使う | 両パネルと使い方の説明の案内の実装基盤 |
 | `hooks/useCopyToClipboard.ts` | クリップボードへの書き込みと結果表示（コピー済み・失敗）。Clipboard APIは[SecureContext]のため、httpのIPアクセス等では`navigator.clipboard`自体がundefinedになる——`.catch()`はPromiseの拒否しか捕まえず、プロパティアクセスの同期TypeErrorをtryで受けないとボタンが無反応のままになる。失敗は握り潰さず文言を返す | `DebugConsole`・`BackendLogsPanel` |
 | `hooks/useDebugLog.ts`・`lib/debugLog.ts` | デバッグモードON/OFF状態・ログエントリのシングルストア（`useSyncExternalStore`） | |
+| `lib/rideMetrics.ts` | 走行の計測: 走行モードの間、1分ごとの数をまとめた行を端末に残す（下記「走行の計測」） | 位置（`features/ride/useRideMode.ts`）・向き（`features/ride/useDeviceHeading.ts`）・地図（`features/map/MapView/useMapLifecycle.ts`）・ページ（`app/page.tsx`）が数える口を呼び、`HeaderMenu`の「走行の記録をコピー」で写す |
 | `app/api/version/route.ts`・`services/versionApi.ts` | フロントエンドの動いている版（コミット・起動時刻）を返すNext.js route handlerと、それを読む口（`SystemStatusPanel`と`HeaderMenu`のバージョン表示が読む） | |
 
 ## 開発の道具（`frontend/scripts/`）
@@ -31,22 +40,23 @@
 | `scripts/copy-maplibre-worker.mjs` | maplibre-glのWorkerを静的配信できる場所へ複製する（[静的レイヤー](static-map-layers.md)の`features/map/maplibreWorker.ts`の行）。複製物はリポジトリへ置かない |
 | `scripts/prepare-standalone.mjs` | standalone構成のビルド成果物へ`.next/static`と`public`を写し、手元・CIのE2Eで本番と同じ入口を起こせるようにする |
 | `scripts/image.mjs` | 本番のfrontendの像を作る（CIと、frontendのデプロイの手動の起動が呼ぶ）。像へ渡す環境変数の組は撮影の道具も同じものを使う |
-| `scripts/capture.mjs` | 画面を、選んだ版と応答で開き、脚本で進めた状態を撮る（[デザイン基盤](frontend-design-system.md)「7. 実機確認の方法」） |
+| `scripts/capture.mjs`・`scripts/capture/` | 画面を、選んだ版と応答で開き、脚本で進めた状態を撮る（[デザイン基盤](frontend-design-system.md)「7. 実機確認の方法」） |
+| `capture/` | 撮影の段（Playwright）の足場。`scripts/capture.mjs`が渡した脚本を流して撮る段と、脚本へ渡す道具（画面の操作・キーボードを重ねた画像・作業ツリーの backend への振り向け・画像の名前）と、脚本の例（`capture/examples/`）を持つ |
+| `capture/ride-simulation.ts` | 模擬走行の脚本（`scripts/capture.mjs --script`で流す）。ルートを作って走行モードを始め、選んだルートの線に沿って毎秒1点ずつ位置と、Android の Chrome と同じ向きの出来事を届け、走行の記録（下記「走行の計測」）とページの CPU の時間を出力へ書く。直す前と後を同じ条件で比べるためのもので、地図を GPU を使わずに描くので時間の絶対値はスマホと合わない（回数で比べる）。打ち方は脚本の先頭 |
 | `scripts/dev-prod-data.mjs` | 開発機の画面を本番のbackendのデータで開く開発サーバーを起こす（[setup.md](../../architecture/setup.md)「開発機の画面を本番のデータで開く」）。取り次ぎの向け先とAPIの宛先は`next.config.ts`が切り替えから決める |
 | `scripts/audit-test-rewrite.mjs` | 実装から起こし直したテストを外から測る（`.claude/rules/testing-rewrite.md`の手順） |
-| `scripts/structure-population.mjs` | 画面がbackendの宣言を持ち直している形の候補を構文木から列挙する（周期レビューの「構造の問い」のfrontendの母集団）。候補を出すだけで判じない |
+| `scripts/structure-population.mjs`・`scripts/structure-population/` | 画面がbackendの宣言を持ち直している形の候補を構文木から列挙する（周期レビューの「構造の問い」のfrontendの母集団）。候補を出すだけで判じない。語彙（生成物の値・現象の語・軸名）の読み取りと、字句の置かれた文脈の判定は`scripts/structure-population/`の下に分けて持つ |
 | `scripts/mutation/` | 変異テスト（Stryker）の設定と、書き換えるファイルを本に分ける・結果を比べる・報告する台本 |
+| `src/structure/`（`*.test.ts`を除く） | 構造の検査（同じ場所の`*.test.ts`）が読む道具: 検査の母集団の根と木の歩き方（`src/structure/sourceTree.ts`）・テストの構文の読み取り・足場の境界と写しの判定・母集団が空のときに何も確かめずに通るループの判定等。画面には載らない |
 
 ## `/admin`とpage.tsx（`/`）の境界
 
 ```
 app/admin/page.tsx（独立URL、Basic認証保護下）
-  ├─ タブ「軸スタジオ」: AxisStudio（本モジュール対象外）
-  ├─ タブ「材料」　　　: MaterialCoveragePanel（材料ごとの欠損割合、本モジュール対象外）
-  ├─ タブ「較正値」　　: TuningPanel（走ってみて決める値の編集、本モジュール対象外）
+  ├─ タブ「材料」（既定）: MaterialCoveragePanel（材料ごとの欠損割合）
+  ├─ タブ「較正値」　　: TuningPanel（走ってみて決める値の編集）
   ├─ タブ「データ保守」: DerivedDataFreshnessPanel（派生データの鮮度台帳）+ DbStatusPanel
-  │                     （本番DBの状態）+ TileCachePanel（タイルファイルキャッシュの全消去、
-  │                     いずれも本モジュール対象外）
+  │                     （本番DBの状態）+ TileCachePanel（タイルファイルキャッシュの全消去）
   └─ タブ「開発者」　　: DebugPanel + BackendStatus + SystemStatusPanel + BackendLogsPanel
 
 app/page.tsx（メインページ、地図を持つ、認証なし）
@@ -66,17 +76,29 @@ localStorage経由で`/`側へ共有される（`HeaderMenu`はデバッグロ�
    `ridecompass:debug-enabled`）: ログの**記録自体**の有効/無効。`/admin`の
    `DebugPanel`で切り替える。
 2. **記録**（`debugLog(category, message, detail, level)`、`lib/debugLog.ts`）:
-   デバッグモードON中、`services/`配下のfetchラッパー・`MapView.tsx`のmapイベント
-   ハンドラから直接呼ばれるフレームワーク非依存のシングルトン（最大300件、
+   デバッグモードON中、`services/`配下のfetchラッパー・地図のイベント
+   ハンドラ（`features/map/MapView/useMapLifecycle.ts`）から直接呼ばれるフレームワーク非依存のシングルトン（最大300件、
    `console.debug`/`warn`/`error`にも同時出力）。
-3. **パネルの開閉**（`app/page.tsx: debugConsoleOpen`）: `DebugConsole`自体の表示/非表示。
+3. **パネルの開閉**（`app/HomeHeader.tsx: debugConsoleOpen`）: `DebugConsole`自体の表示/非表示。
    デバッグモードONでも常時パネルを占有させない、記録の有効/無効とは独立したstate。
+
+## 走行の計測
+
+実走中は開発機の DevTools をつなげない（Android の Chrome は USB でつなぐ）ので、電池の減りの原因を切り分ける数を、走っている端末の中に残す。
+開発者向けの機能ではなく、デバッグモードに依らない（一般の画面に開発者向けの切り替えを置かない）。走行モードを始めると記録を始め、止めると途中の1分も行にして止める。
+休んでいる間も記録を続け、行に走行の状態を残す。残すのは数だけで、位置の座標は残さず、どこへも送らない。走り終えてから、ヘッダーのメニューの「走行の記録をコピー」で写す。写す形は1分1行の CSV（1行目に始まりと端末、2行目に列の名前）で、
+項目の名前を行ごとに繰り返さず、長い走行でもチャットへ貼れる長さに収める（端末に残す形は JSON のまま）。
+端末には直近の1回の走行だけを残し（`localStorage`の`ridecompass:ride-metrics`。行の上限は`lib/rideMetrics.ts: MAX_ROWS`）、次の走行を始めると前の記録を消す。
+走っていない間は、数える口が最初の比べだけで戻る。
+
+1分の行に残すもの: 電池の残量と充電中か・位置の数と誤差・届く間隔・速さ・向きの出来事の数と向きの変わった数・地図の描き直しと動きとタイルの読み込みの数・描いたコマを次のコマも描く理由ごとに数えた数（MapLibre が描き続ける判定の非公開の値を写す。
+移り変わり中のタイルの溶け込みはソースの id を添える。どれにも当たらないコマは `end`）・
+1分の終わりの倍率と層の数・ページの描き直しの数・通信の行き先ごとの数と転送の量・50ms 以上かかった処理（Long Tasks）・描き遅れたコマ（Long Animation Frames）と
+その中で時間を使ったスクリプトの上位・JavaScript のメモリ・画面が隠れていた秒数。電池（`navigator.getBattery`）・メモリ（`performance.memory`）・Long Animation Frames は
+Chrome にだけある口で、無い端末ではその項目を null・0 のまま残す。転送の量は、キャッシュから読んだ分と、量を明かさない別のオリジンの応答を0に数える。
 
 ## 暗黙の前提
 
-- `useAxisCatalog()`（`GET /api/axis-catalog`）の共有・取り直しの規則は
-  [ルート設定・結果パネル](route-settings-and-results.md)「暗黙の前提」が持つ。`/admin`と`/`を別タブで
-  開くと、タブごとに別のキャッシュで取る。
 - `SystemStatusPanel`・`DebugConsole`はポーリングをせず、開いたとき（`open`が`true`に
   なった瞬間）と明示的な「更新」ボタン押下時にのみ`fetchAll`/エントリ取得を行う
   （プロセス内カウンタ・モジュール評価時刻のスナップショットという性質のため）。

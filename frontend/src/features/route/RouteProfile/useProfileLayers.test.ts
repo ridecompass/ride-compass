@@ -1,7 +1,7 @@
 /**
  * `features/route/RouteProfile/useProfileLayers.ts`——道のりのグラフに重ねるレイヤの選択と、端末に覚えること。
  *
- * ここで見ないもの: チップで選ぶ画面 → `RouteProfile.test.tsx`。保存・復元の仕組み → `hooks/useStoredState.ts`。
+ * ここで見ないもの: 一覧で選ぶ画面 → `RouteProfile.layers.test.tsx`。保存・復元の仕組み → `hooks/useStoredState.ts`。
  */
 import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
@@ -22,8 +22,8 @@ describe("useProfileLayers", () => {
     expect(reopened.result.current.ids).toEqual(["elevation"]);
   });
 
-  it("覚えた中に今は分からないレイヤ（軸カタログが届く前の道の層）があっても捨てない", () => {
-    // 読むときに捨てると、軸カタログが届く前に開いた回で、選んでいた道の層が選択から消える。
+  it("覚えた中に今は分からないレイヤ（画面の設定が届く前の道の層）があっても捨てない", () => {
+    // 読むときに捨てると、画面の設定が届く前に開いた回で、選んでいた道の層が選択から消える。
     localStorage.setItem("ridecompass:profile-layers", JSON.stringify(["road_layer", "elevation"]));
     const { result } = renderHook(() => useProfileLayers());
     expect(result.current.ids).toEqual(["road_layer", "elevation"]);

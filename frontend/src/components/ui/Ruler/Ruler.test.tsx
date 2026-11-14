@@ -45,7 +45,14 @@ beforeEach(() => {
 function renderRuler(index: number, disabled?: boolean) {
   const onIndexChange = vi.fn();
   const view = render(
-    <Ruler frames={FRAMES} index={index} onIndexChange={onIndexChange} ariaLabel="距離" disabled={disabled} />,
+    <Ruler
+      frames={FRAMES}
+      index={index}
+      onIndexChange={onIndexChange}
+      ariaLabel="距離"
+      usage={null}
+      disabled={disabled}
+    />,
   );
   return { onIndexChange, ...view };
 }
@@ -70,7 +77,7 @@ describe("Ruler 表示", () => {
 });
 
 describe("Ruler 操作", () => {
-  it("矢印キーで1コマ、Home・Endで端へ動かす。もう動けない向きと他のキーでは何もしない", async () => {
+  it("矢印キーで1コマ、Home・Endで端へ動かす。他のキーでは何もしない", async () => {
     const { onIndexChange } = renderRuler(1);
     act(() => ruler().focus());
     for (const key of ["{ArrowRight}", "{ArrowLeft}", "{Home}", "{End}", "{Enter}"]) await userEvent.keyboard(key);
@@ -113,7 +120,7 @@ describe("Ruler Emblaとのつなぎ", () => {
     const { rerender, onIndexChange } = renderRuler(0);
     embla.scrollTo.mockClear();
     act(() => embla.select(2));
-    const props = { frames: FRAMES, onIndexChange, ariaLabel: "距離" };
+    const props = { frames: FRAMES, onIndexChange, ariaLabel: "距離", usage: null };
     rerender(<Ruler {...props} index={2} />);
     expect(embla.scrollTo).not.toHaveBeenCalled();
     rerender(<Ruler {...props} index={0} />);

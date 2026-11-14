@@ -8,7 +8,7 @@
 ここで見ないもの:
 - 道の周りの帯から画素を数えること → `test_derive_landcover.py`
 - ラスタを読んでタイルを塗ること → `test_landcover_raster.py`
-- どのクラスが難易度に効くか（評価軸の項）→ 軸の宣言のテスト
+- どのクラスが費用に効くか（道のストレスの軸の材料）→ 費用の軸の定義のテスト
 - 割合列の名前から材料の列の名前を導く規則（`landcover_key`）→ 書く側も読む側も
   同じ関数で名前を導くので、食い違いようが無い
 """
@@ -114,7 +114,3 @@ def _class(value=1, field="a_percent", label="甲", color="#000001", description
 def test_classes_that_cannot_be_told_apart_where_read_are_refused(classes):
     with pytest.raises(ValueError, match="土地被覆"):
         landcover.check_landcover_classes(classes)
-
-
-def test_classes_told_apart_where_read_are_accepted():
-    landcover.check_landcover_classes((_class(), _class(value=2, field="b_percent", label="乙", color="#000002")))

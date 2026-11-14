@@ -24,7 +24,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as adminApi from "@/features/admin/adminApi";
 import * as adminRoute from "@/app/admin/api/[...path]/route";
 import { ADMIN_PROXY_TIMEOUT_MS } from "@/lib/apiTimeouts";
-import { inTurn, onBackend, onUrl } from "@/testing/backendServer";
+import { onBackend, onUrl } from "@/testing/backendServer";
 import { openApi } from "@/testing/openApi";
 
 vi.mock("@/lib/adminBasicAuth", () => ({
@@ -127,14 +127,8 @@ describe("叩く先", () => {
 });
 
 describe("checkBackendHealth", () => {
-  it("backendが status: ok を返したときだけ真で、ほかの応答も通信の失敗も偽（例外にしない）", async () => {
-    onBackend(
-      "GET",
-      "/health",
-      inTurn(Response.json({ status: "ok" }), Response.json({ status: "degraded" }), HttpResponse.error()),
-    );
-    await expect(adminApi.checkBackendHealth()).resolves.toBe(true);
-    await expect(adminApi.checkBackendHealth()).resolves.toBe(false);
-    await expect(adminApi.checkBackendHealth()).resolves.toBe(false);
+  it("疎通できなければ、疎通確認の失敗の文言で投げる", async () => {
+    onBackend("GET", "/health", () => HttpResponse.error());
+    await expect(adminApi.checkBackendHealth()).rejects.toThrow("バックエンドへの疎通確認に失敗しました");
   });
 });

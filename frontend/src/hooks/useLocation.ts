@@ -1,11 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { samePosition } from "@/lib/geoDistance";
 import type { FetchFailure } from "@/types/fetchFailure";
 import type { Coordinates, LocationSource } from "@/types/route";
 
 // 位置が取れないときの初期地点（東京都北区・王子駅付近）。ここからはルートを生成せず、天候・警報も取らない。
-export const DEFAULT_LOCATION: Coordinates = { latitude: 35.7597, longitude: 139.7387 };
+const DEFAULT_LOCATION: Coordinates = { latitude: 35.7597, longitude: 139.7387 };
 const GEOLOCATION_TIMEOUT_MS = 8000;
 
 interface Origin {
@@ -116,13 +117,12 @@ export function useLocation(ridingAt: Coordinates | null): UseLocationResult {
     setOrigin({ point, source: "manual" });
   }, []);
 
+  // 走行モードが受けた位置も最後に取れた位置に数える（走行モードを抜けたあと、走り出す前の位置へ戻さない）。
+  if (ridingAt !== null && ridingAt !== here) setHere(ridingAt);
   const locationKnown = origin.source !== "default";
   const currentHere = ridingAt ?? here;
   const originAtHere =
-    origin.source === "geolocation" &&
-    currentHere !== null &&
-    currentHere.latitude === origin.point.latitude &&
-    currentHere.longitude === origin.point.longitude;
+    origin.source === "geolocation" && currentHere !== null && samePosition(currentHere, origin.point);
   const locationFailure = useMemo<FetchFailure | null>(
     () =>
       locationReady && !locationKnown

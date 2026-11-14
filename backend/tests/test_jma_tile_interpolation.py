@@ -21,6 +21,7 @@ from PIL import Image
 from shapely.geometry import LineString, Point, Polygon, shape
 
 from app.infrastructure.jma_tile_interpolation import crop_and_upscale, crop_and_upscale_mvt, parse_tile_path
+from tests.tile_images import encode
 
 FRAME = "bosai/jmatile/data/nowc/20260101000000/none/20260101000500/surf"
 EXTENT = 4096
@@ -47,12 +48,6 @@ def test_the_parent_is_the_tile_one_zoom_up_whose_quadrant_covers_the_child(z, d
     assert coords.parent_path().startswith(f"{FRAME}/hrpns/")
 
 
-def png_bytes(image: Image.Image) -> bytes:
-    buffer = io.BytesIO()
-    image.save(buffer, format="PNG")
-    return buffer.getvalue()
-
-
 def pixels(content: bytes) -> np.ndarray:
     with Image.open(io.BytesIO(content)) as image:
         return np.asarray(image.convert("RGBA"))
@@ -66,7 +61,7 @@ def test_a_raster_quadrant_is_doubled_pixel_for_pixel(quadrant):
     parent = rng.integers(0, 256, size=(SIZE, SIZE, 4), dtype=np.uint8)
     left, top = quadrant[0] * SIZE // 2, quadrant[1] * SIZE // 2
 
-    child = pixels(crop_and_upscale(png_bytes(Image.fromarray(parent, "RGBA")), quadrant))
+    child = pixels(crop_and_upscale(encode(Image.fromarray(parent, "RGBA")), quadrant))
 
     part = parent[top : top + SIZE // 2, left : left + SIZE // 2]
     assert np.array_equal(child, part.repeat(2, axis=0).repeat(2, axis=1))

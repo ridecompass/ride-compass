@@ -1,9 +1,4 @@
-/** 角度を方位の呼び名へ（と、風向を矢印の向きへ）。**画面部品ではなくここに置く**（描くものの持ち物ではない）。
- *
- * 呼び名の並びは源泉が配り（`domain/geo.py: COMPASS_LABELS`）、区分の幅はその数から決まる。
- * 丸め方だけが画面側にあり、区分の境界を含む角度でbackendと同じ呼び名になることは、backendが出す
- * 表（生成物`geo-expectations.json`）をテストが通して確かめる。
- */
+/** 角度を方位の呼び名へ（と、風向を矢印の向きへ）。区分の幅は配られた呼び名の数から決まる。 */
 import { mapDisplay } from "@/types/generated/mapDisplay";
 
 const CARDINAL_LABELS = mapDisplay.compassLabels;

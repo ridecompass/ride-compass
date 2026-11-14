@@ -1,4 +1,5 @@
-"""地点の検索（`GET /api/place-search`）と、置いた位置の辺り（`GET /api/place-area`）。"""
+"""地点の検索（`GET /api/place-search`）と、置いた位置の辺り（`GET /api/place-area`）と、地図の点の名前から開く外の地図の
+リンク（`GET /api/place-link`）。"""
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
@@ -6,7 +7,7 @@ from app.api.dependencies import get_place_search_service
 from app.api.rate_limit import enforce_rate_limit
 from app.config import settings
 from app.domain.geo import Latitude, LatLonPoint, Longitude
-from app.domain.place_search import PlaceArea, PlaceQuery, PlaceSearchResult
+from app.domain.place_search import PlaceArea, PlaceLink, PlaceName, PlaceQuery, PlaceSearchResult
 from app.services.place_search_service import PlaceSearchAreaUnavailable, PlaceSearchService
 
 router = APIRouter()
@@ -26,7 +27,7 @@ async def search_places(
     try:
         return await service.search(q, LatLonPoint(latitude, longitude))
     except PlaceSearchAreaUnavailable:
-        raise HTTPException(status_code=502, detail="対象範囲を読めませんでした") from None
+        raise HTTPException(status_code=502, detail="検索する範囲の情報を取得できませんでした") from None
 
 
 @router.get("/api/place-area", response_model=PlaceArea)
@@ -39,3 +40,17 @@ async def place_area(
     """位置の辺り（市区町村から字・丁目まで）。名前を持つ小地域の境界に含まれなければ`area`が空。"""
     enforce_rate_limit(http_request, "place-area", settings.place_area_rate_limit_per_minute)
     return await service.area_at(LatLonPoint(latitude, longitude))
+
+
+@router.get("/api/place-link", response_model=PlaceLink)
+async def place_link(
+    http_request: Request,
+    name: PlaceName,
+    latitude: Latitude,
+    longitude: Longitude,
+    service: PlaceSearchService = Depends(get_place_search_service),
+) -> PlaceLink:
+    """地図の点（名前と位置）から開く外の地図（Google マップ）のリンク。点の住所が分かれば「名前,住所」、分からなければ辺りで
+    組む。"""
+    enforce_rate_limit(http_request, "place-link", settings.place_link_rate_limit_per_minute)
+    return await service.link(name, LatLonPoint(latitude, longitude))

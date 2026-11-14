@@ -45,26 +45,36 @@ class Settings(BaseSettings):
     weather_wbgt_rate_limit_per_minute: int = 30
     weather_flood_forecast_rate_limit_per_minute: int = 30
     weather_amedas_rate_limit_per_minute: int = 30
+    # ルートの警報級の時系列は、ルートが変わったときと一定の間ごとに呼ばれる。
+    weather_warning_timeline_rate_limit_per_minute: int = 30
     # 今日の最寄りの格子点の値も同じ地点の変化を起点に呼ばれ、ローカルのMSMファイルから読む。
     weather_rate_limit_per_minute: int = 30
     # 地点の検索は打つのが止まるたびに呼ばれる。止まってから引くまでの間で決まる1分あたりの最大に当たらない値。
-    # 1件はDBの住所の区画の表と立ち寄り先の表を索引で引くだけ（時間は docs/modules/backend/place-search.md「引き方」）。
+    # 1件はDBの住所の区画の表と地点の表を引くだけ（時間は docs/modules/backend/place-search.md「引き方」）。
     place_search_rate_limit_per_minute: int = math.ceil(60 / PLACE_PREDICTION_DELAY_SECONDS)
     # 置いた位置の辺りは、地点を置く（地図をタップする・現在地を取る）たびに1回呼ばれる。1件は境界を索引で1つ引くだけ。
     place_area_rate_limit_per_minute: int = 60
+    # 地図の点の名前から開くリンクは、点の小窓を開くたびに、小窓に並ぶ名前のある点（束ねた点はその中の店の全部）の数だけ
+    # 呼ばれる。1件は地点を索引で1つ引くだけ。
+    place_link_rate_limit_per_minute: int = 600
     # ルート生成は最も高コストなエンドポイント（1件で数秒〜数十秒CPUを使い、探索範囲に比例して
     # メモリを使う）のため、per-IPレート制限に加えプロセス全体の同時実行数も絞る。
-    # 1回の生成が扱える探索範囲の上限（`graph_service`）は、メモリ上限をこの件数で割って決まる。
+    # 同時に動く生成は、この件数の枠とは別に、探索範囲の大きさに比例するメモリを分け合う（`services/graph_service.py: SearchMemory`）。
     generate_rate_limit_per_minute: int = 10
     generate_max_concurrent: int = 2
+    # 同時実行の枠を待てる生成の数と、待てる時間（秒）。根拠は docs/modules/backend/routing-engine.md「同時実行の枠と待ち行列」。
+    generate_max_queued: int = 8
+    generate_queue_wait_seconds: float = 50.0
     # タイル処理の律速はDB側の同時クエリ負荷とSQLAlchemyの接続プール
     # （既定pool_size=5+max_overflow=10=最大15接続）。地域タイル（路面・点）は1つの同時実行上限を
     # 共有し、それがこのプール上限に収まるようにする（ルート生成は別エンジン・別プールで取り合わない）。
     road_tile_rate_limit_per_minute: int = 120
     road_tile_max_concurrent: int = 6
-    # 区間インスペクタは道を押すたびの単発リクエストで、パン/ズームのたびに多数のz/x/y
+    # 道の窓は道を押すたびの単発リクエストで、パン/ズームのたびに多数のz/x/y
     # タイルを連続要求するroad_tileとは負荷特性が異なるため別の上限を持つ。
-    axis_inspector_rate_limit_per_minute: int = 120
+    road_inspector_rate_limit_per_minute: int = 120
+    # 押した所に近い道も、道を押すたびの単発リクエスト（道の窓と同じ負荷特性）。
+    roads_at_rate_limit_per_minute: int = 120
     # 土地被覆ラスタタイルはDBを読まず、GeoTIFFの読み取り・再投影（GDAL）をスレッドプールで
     # 行う。律速がCPUとディスクI/Oになるため、DB向けのタイル上限とは別に持つ。
     # `asyncio.to_thread`の既定スレッドプールを1画面ぶんのタイルで埋めないための値。
@@ -97,9 +107,8 @@ class Settings(BaseSettings):
     # --network=hostで起動するためこの既定値のまま到達できる。
     redis_url: str = "redis://localhost:6379/0"
 
-    # ディスク永続キャッシュ（way_id別の動的値）の容量上限（MB）。上限に達するとdiskcacheが
-    # 古いものから退避する。置く値は鍵ごとの失効（expire）で入れ替わるため、上限は伸び続けた
-    # ときの頭打ちとして置いている（本番VMのディスクは48GB）。
+    # ディスク永続キャッシュ（`infrastructure/tile_persistent_cache.py`）の容量上限（MB）。置く値は鍵ごとの
+    # 失効（expire）で入れ替わるため、上限は伸び続けたときの頭打ちとして置いている（本番VMのディスクは48GB）。
     tile_persistent_cache_size_limit_mb: int = 1024
 
     # 焼き済みタイル・外部タイルの置き場の容量上限（MB）。この置き場は鍵に世代を持たない
@@ -119,11 +128,16 @@ class Settings(BaseSettings):
 
     @property
     def cors_allowed_origins_list(self) -> list[str]:
-        return self.cors_allowed_origins.split(",")
+        return _comma_separated(self.cors_allowed_origins)
 
     @property
     def lulc_raster_paths_list(self) -> list[str]:
-        return [p for p in self.lulc_raster_paths.split(",") if p]
+        return _comma_separated(self.lulc_raster_paths)
+
+
+def _comma_separated(value: str) -> list[str]:
+    """カンマ区切りの設定値を、前後の空白と空の要素を落として分ける（手で書いた`.env`の「a, b」や末尾のカンマ）。"""
+    return [item for item in (part.strip() for part in value.split(",")) if item]
 
 
 settings = Settings()

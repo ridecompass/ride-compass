@@ -1,4 +1,4 @@
-import { MINUTE_UNIT, secondsToMinutes } from "@/lib/duration";
+import { MINUTE_UNIT, roundedMinutes } from "@/lib/duration";
 import { signMark } from "@/lib/numberFormat";
 import type { RouteCandidate } from "@/types/route";
 
@@ -89,26 +89,7 @@ export function durationDifferenceLabel(
   if (baselineSeconds === null) return null;
   const seconds = route.estimated_duration_seconds;
   if (seconds === null) return null;
-  const minutes = Math.round(secondsToMinutes(seconds - baselineSeconds));
+  const minutes = roundedMinutes(seconds - baselineSeconds);
   if (minutes === 0) return null;
   return `${signMark(minutes)}${Math.abs(minutes)}${MINUTE_UNIT}`;
-}
-
-/**
- * 生成した候補の並び: 最速の印の付いた1本を先頭に、残りを所要時間の短い順。所要時間の無い候補は末尾。同じ所要時間は
- * 受け取った並び（backendの総合難易度の昇順）を保つので、同着なら易しい方が先。
- */
-export function orderGenerated<T extends Pick<RouteCandidate, "estimated_duration_seconds" | "is_fastest">>(
-  routes: readonly T[],
-): T[] {
-  const secondsOf = (route: T) => route.estimated_duration_seconds ?? Number.POSITIVE_INFINITY;
-  return routes
-    .map((route, index) => ({ route, index }))
-    .sort(
-      (a, b) =>
-        Number(b.route.is_fastest) - Number(a.route.is_fastest) ||
-        secondsOf(a.route) - secondsOf(b.route) ||
-        a.index - b.index,
-    )
-    .map(({ route }) => route);
 }

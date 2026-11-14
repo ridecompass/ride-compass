@@ -49,6 +49,73 @@ export function conditions(body) {
   }
   return all;
 }
+// 本文の畳んだ節（.claude/skills/file-issue/SKILL.md「issue の形」）。節は字下げの無い <details> の行から、入れ子の <details> を数えて対になる
+// </details> の行までで、入れ子は節の中身に数える。name は節の頭の <summary> の中身（<details> と同じ行でも次の行でもよい。無ければ undefined）、
+// lines は頭と終わりの間の行。閉じない節は本文の終わりまで。コードの中（`…` と ``` の囲み）の綴りは開き・閉じに数えない（本文はタグを綴りで語る）。
+const OPEN = /<details[\s>]/g;
+const CLOSE = /<\/details>/g;
+const FENCE = /^\s*(```|~~~)/;
+export function folds(body) {
+  const lines = bodyRest(body).split("\n");
+  const all = [];
+  let depth = 0;
+  let from = -1;
+  let fenced = false;
+  lines.forEach((line, i) => {
+    if (FENCE.test(line)) {
+      fenced = !fenced;
+      return;
+    }
+    if (fenced) return;
+    const l = line.replace(/`[^`]*`/g, "");
+    if (!depth && l.startsWith("<details")) {
+      from = i;
+      all.push({ name: /^<details>\s*<summary>(.+?)<\/summary>/.exec(lines.slice(i, i + 2).join("\n"))?.[1], lines: lines.slice(i + 1) });
+    }
+    depth = Math.max(0, depth + (l.match(OPEN)?.length ?? 0) - (l.match(CLOSE)?.length ?? 0));
+    if (!depth && from >= 0) {
+      all.at(-1).lines = lines.slice(from + 1, i);
+      from = -1;
+    }
+  });
+  return all;
+}
+// 本文の「やること」の節（.claude/skills/file-issue/SKILL.md「issue の形」）の項目。項目は節の中の字下げの無い番号付きの行から、次の項目の
+// 前までで、字下げした続きの行のうち「- 行き先: 」で始まる行が行き先。字下げの無い箇条の行（前提の1行等）は項目に数えない。
+// name は番号と文の頭（番号を振り直した並びが節に2つあっても見分ける）。
+const STEP = /^(\d+)\. (.+)$/;
+const TO = /^- 行き先: (.+)$/;
+function steps(body) {
+  const all = [];
+  for (const l of folds(body).find((f) => f.name === "やること")?.lines ?? []) {
+    const m = STEP.exec(l);
+    const t = TO.exec(l.trim());
+    if (m) all.push({ name: `${m[1]}「${m[2].slice(0, 20)}」`, to: [] });
+    else if (t && indent(l) && all.length) all.at(-1).to.push(t[1].trim());
+  }
+  return all;
+}
+// 行き先が当たるか: 今の完了の条件の文の頭に当たる「完了の条件「<条件の文の頭>」」か、ほかの issue の「#<番号>」か、理由を添えた「見送り（<理由>）」。
+// unboundSteps は行き先を名指していない「やること」の項目の name（ゲートは、これが残る間は完成で閉じない）。
+function naming(body, number) {
+  const texts = conditions(body).map((c) => c.text);
+  return (to) => {
+    const c = /^完了の条件「(.+)」$/.exec(to);
+    if (c) return texts.some((t) => t.startsWith(c[1]));
+    const n = /^#(\d+)(?!\d)/.exec(to);
+    return n ? Number(n[1]) !== number : /^見送り（.+）$/.test(to);
+  };
+}
+export function unboundSteps(body, number) {
+  const named = naming(body, number);
+  return steps(body).filter((s) => !s.to.some(named)).map((s) => s.name);
+}
+// 行き先を書いたのに、どれも当たらない項目の name（書いた時点で照らす: 起票の new-issue.mjs と、条件に印を付ける check.mjs）。
+// 行き先がまだ無い項目は数えない（起票のときに決まらなければ、着手した実装担当が書く）。
+export function misboundSteps(body, number) {
+  const named = naming(body, number);
+  return steps(body).filter((s) => s.to.length && !s.to.some(named)).map((s) => s.name);
+}
 // 本文の、index の行のチェックに印を付ける（同じ文の条件が2つあっても、指した行にだけ付ける）。
 // 本文の完了の条件の行に値（チェック）を書いた本文。marks は [条件の行, 済んだか] の並び。本文の頭の回答のボタンは残す。
 export function markLines(body, marks) {
@@ -120,7 +187,7 @@ export function loadForms(texts) {
 }
 // 問いの頭の行と、問いの組み立て（rows は回答内容の節の行と属性、material は判断材料の節の名前と中身の並び）。
 export const questionHead = (kind) => `## 問い（${kind}）`;
-export const render = (kind, text, header, rows, material) => [`${questionHead(kind)}\n${text}`,
+const render = (kind, text, header, rows, material) => [`${questionHead(kind)}\n${text}`,
   header && [header, ...rows.flatMap((r) => [`- ${r.text}`, ...r.attrs.map(([n, v]) => `  - ${n}: ${v}`)])].join("\n"),
   `<details><summary>判断材料</summary>\n\n${material.map((s) => `**${s.name}**: ${s.value}`).join("\n\n")}\n</details>`].filter(Boolean).join("\n\n");
 
