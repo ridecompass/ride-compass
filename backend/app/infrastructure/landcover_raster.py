@@ -56,7 +56,8 @@ class _RasterSource:
     lock: threading.Lock
 
 
-_opened_sources: list[_RasterSource] | None = None
+#: 開いたラスタと、開いたときの置き場の一覧。
+_opened: tuple[list[str], list[_RasterSource]] | None = None
 _sources_lock = threading.Lock()
 
 
@@ -73,21 +74,24 @@ def raster_paths() -> list[str]:
 
 
 def _open_sources() -> list[_RasterSource]:
-    """置き場のラスタを全部開いて持つ（開けたら以後は開き直さない）。"""
-    global _opened_sources
+    """置き場のラスタを全部開いて持つ。置き場の一覧が開いたときと変われば開き直す——取得は配信中の置き場を入れ替え、
+    タイルの鍵（`region_tile_cache.py: landcover_generation`）も同じ一覧から作るので、前のファイルを描き続けると
+    前の絵が新しい鍵で残る。入れ替えた前のラスタは閉じずに手放す（読んでいる途中の要求があり、最後の参照が消えたときに閉じる）。"""
+    global _opened
     with _sources_lock:
-        if _opened_sources is None:
-            _opened_sources = [_RasterSource(rasterio.open(path), threading.Lock()) for path in raster_paths()]
-        return _opened_sources
+        paths = raster_paths()
+        if _opened is None or _opened[0] != paths:
+            _opened = (paths, [_RasterSource(rasterio.open(path), threading.Lock()) for path in paths])
+        return _opened[1]
 
 
 def close_sources() -> None:
     """開いたラスタを閉じる。次の読み取りで開き直す。"""
-    global _opened_sources
+    global _opened
     with _sources_lock:
-        for source in _opened_sources or []:
+        for source in _opened[1] if _opened else []:
             source.dataset.close()
-        _opened_sources = None
+        _opened = None
 
 
 def _read_decimated(source: _RasterSource, bounds: tuple[float, float, float, float]):

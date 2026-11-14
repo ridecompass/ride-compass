@@ -157,17 +157,14 @@ def place_once(
     source: str,
     logger: logging.Logger,
 ) -> None:
-    """配布元から取ったものを手元の所定の名前へ置く。何度実行しても安全で、終わる。
+    """配布元から取ったものを手元の所定の名前へ置く。
 
-    - 手元にあるファイルは取り直さない
-    - `write`に一時ファイルへ書かせてから所定の名前へ移す。途中で落ちた半端なものを「取得済み」に見せない
+    `write`に一時ファイルへ書かせてから所定の名前へ移す（手元に同じ名前のものがあれば置き換える）。途中で落ちた
+    半端なものを「取得済み」に見せない。取り直すかは呼ぶ側が決める（取得の入口は毎回取り直す）。
 
     中身は開いて確かめないので、配布元が200で返したエラーの本文も置かれ、読めないことはそれを読む取込が知らせる。
     `source`は取りに行く先で、ログにだけ使う。`write`の例外はそのまま呼び出し側へ出す。
     """
-    if destination.exists():
-        logger.info("既にある %s", destination)
-        return
     logger.info("取りに行く %s", source)
     destination.parent.mkdir(parents=True, exist_ok=True)
     temporary = destination.with_name(destination.name + FETCH_PART_SUFFIX)

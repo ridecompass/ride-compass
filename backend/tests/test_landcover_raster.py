@@ -139,3 +139,15 @@ def test_the_empty_tile_is_a_fully_clear_image_of_tile_size():
 
     assert image.shape == (SIZE, SIZE, 4)
     assert (image[:, :, 3] == 0).all()
+
+
+def test_the_rasters_are_reopened_whenever_the_store_changes(raster_store):
+    """置き場にラスタが現れれば次の読みで開き、取得が置き場のラスタを替えたら開き直す
+    （前に開いたものを描き続けると、置き場の一覧から作るタイルの鍵と描いた絵が食い違う）。"""
+    assert landcover_raster.opened_raster_paths() == []
+
+    first = over_tile(raster_store / "54S_2024.tif", stripes(2), *TOKYO)
+    assert landcover_raster.opened_raster_paths() == [first]
+
+    added = over_tile(raster_store / "53S_2024.tif", stripes(5), *TOKYO)
+    assert landcover_raster.opened_raster_paths() == [added, first]

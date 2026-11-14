@@ -1,7 +1,7 @@
 """`batch/fetch_cli.py`——取得の入口。
 
 入口は`fetch_sources`と`main`。見るのは、アダプタの登録に取得を足したソースを入口が書き換えなしに宣言の並び順で取り、
-取得を持たないソースを飛ばすことと、取る前に置き場を消して上流から取り直すことと、取れなければ落ちずに失敗の終了コードを返すこと。
+取得を持たないソースを飛ばすことと、ソースを取る直前に置き場の中身だけを消して上流から取り直すことと、取れなければ落ちずに失敗の終了コードを返すこと。
 取り直しは本物のアダプタ（警察庁の本票CSV）で、配布元の応答（`respx_mock`）と置き場だけを差し替えて見る。
 
 ここで見ないもの:
@@ -58,7 +58,6 @@ def test_a_source_whose_adapter_registers_a_fetch_is_fetched_in_declared_order(t
     fetched: list[str] = []
 
     def fetch(spec: SourceSpec, profile: SourceProfile) -> None:
-        store.mkdir(exist_ok=True)
         (store / spec.name).write_text(spec.name)
         fetched.append(spec.name)
 
@@ -71,6 +70,31 @@ def test_a_source_whose_adapter_registers_a_fetch_is_fetched_in_declared_order(t
 
     assert fetched == ["first", "second"]
     assert sorted(p.name for p in store.iterdir()) == ["first", "second"]
+
+
+def test_a_store_is_emptied_just_before_its_source_and_kept_as_a_directory(tmp_path: Path, monkeypatch):
+    """置き場は、そのソースを取る直前に中身だけを消す。先にまとめて消すと、配信中のbackendが読む置き場（土地被覆）が
+    前のソースを取る間ずっと空になる。置き場そのものを消すと、本番でコンテナへつないだ所そのものの置き場で落ちる。"""
+    early, late = tmp_path / "early", tmp_path / "late"
+    for store in (early, late):
+        (store / "nested").mkdir(parents=True)
+        (store / "previous").write_text("previous")
+    seen_late: list[str] = []
+
+    def fetch_early(spec: SourceSpec, profile: SourceProfile) -> None:
+        seen_late.extend(sorted(p.name for p in late.iterdir()))
+
+    def fetch_late(spec: SourceSpec, profile: SourceProfile) -> None:
+        (late / "latest").write_text("latest")
+
+    _register(monkeypatch, "given_early", Fetcher(fetch_early, lambda: (early,)))
+    _register(monkeypatch, "given_late", Fetcher(fetch_late, lambda: (late,)))
+
+    fetch_sources(_profile(_spec("early", "given_early"), _spec("late", "given_late")), ["early", "late"])
+
+    assert seen_late == ["nested", "previous"]
+    assert list(early.iterdir()) == []
+    assert [p.name for p in late.iterdir()] == ["latest"]
 
 
 def test_refetches_from_the_upstream_even_when_a_previous_file_is_in_the_store(tmp_path: Path, monkeypatch, respx_mock):
