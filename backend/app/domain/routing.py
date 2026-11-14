@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 import numpy as np
 from numba import njit
 from app.domain.leg_costs import compile_leg_cost_kernels
+from app.domain.route_diversity import EdgeSetOverlap
 from app.domain.stopwatch import elapsed_ms, start_timer
 from app.domain.search_graph import (
     EDGE_VALUE_DTYPE,
@@ -536,11 +537,9 @@ class TurnExpandedTree:
     # `node_best_state`に対応する実距離（m）・所要時間（秒）。到達不能はNaN。
     node_length_m: np.ndarray
     node_seconds: np.ndarray
-    # 木の親となる状態。始点の区間・到達不能は-1。JITが読む配列と、Pythonのlist（numpy配列への添字アクセスより、
-    # Pythonの経路復元のループが速い）の両方で持つ。既定値を持たせない——省略できると、渡し忘れた木が黙って
+    # 木の親となる状態。始点の区間・到達不能は-1。既定値を持たせない——省略できると、渡し忘れた木が黙って
     # 「どの状態からも経路が1本も辿れない」ふるまいになる。
     predecessor: np.ndarray = field(repr=False, compare=False)
-    predecessor_list: list[int] = field(repr=False, compare=False)
 
 
 def build_turn_expanded_tree(
@@ -619,7 +618,7 @@ def build_turn_expanded_tree(
         state_cost=state_cost, state_length_m=state_length_m,
         state_seconds=state_seconds, node_cost=node_cost, node_best_state=node_best_state,
         node_length_m=node_length_m, node_seconds=node_seconds,
-        predecessor=predecessor, predecessor_list=predecessor.tolist(),
+        predecessor=predecessor,
     )
 
 
@@ -670,30 +669,30 @@ def tree_cost_bound(
         k *= 4
 
 
-def _walk_predecessors(predecessors: Sequence[int] | np.ndarray, state_index: int) -> list[int]:
-    """`state_index`から探索の始点まで前任者（-1で終わる）を辿った状態（＝Edge index）の列。"""
-    edges: list[int] = []
-    state = int(state_index)
-    while state >= 0:
-        edges.append(state)
-        state = int(predecessors[state])
+@njit(cache=True, nogil=True)
+def _walk_predecessors(predecessor: np.ndarray, state: int) -> np.ndarray:
+    """`state`から探索の始点まで前任者（-1で終わる）を辿った状態（＝Edge index）の列。"""
+    count = 0
+    current = state
+    while current >= 0:
+        count += 1
+        current = predecessor[current]
+    edges = np.empty(count, dtype=np.int64)
+    current = state
+    for position in range(count):
+        edges[position] = current
+        current = predecessor[current]
     return edges
 
 
-def _walk_from_source(predecessors: Sequence[int] | np.ndarray, state_index: int) -> list[int]:
+def _walk_from_source(predecessor: np.ndarray, state_index: int) -> list[int]:
     """前向きの探索で、始点→`state_index`の経路を進行順に返す。"""
-    return _walk_predecessors(predecessors, state_index)[::-1]
+    return _walk_predecessors(predecessor, int(state_index))[::-1].tolist()
 
 
 def turn_expanded_path_from_state(tree: TurnExpandedTree, state_index: int) -> list[int]:
     """前向き木で、始点→`state_index`の経路をEdge index列（進行順）で返す。"""
-    return _walk_from_source(tree.predecessor_list, state_index)
-
-
-def turn_expanded_path_from_state_to_source(tree: TurnExpandedTree, state_index: int) -> list[int]:
-    """`reverse=True`で作った木で、`state_index`から木の始点（目的地）までの経路を進行順で
-    返す。逆向きの木では前任者を辿ることが目的地へ近づくことに当たるため、反転しない。"""
-    return _walk_predecessors(tree.predecessor_list, state_index)
+    return _walk_from_source(tree.predecessor, state_index)
 
 
 def turn_expanded_path_edge_indices(tree: TurnExpandedTree, target_node_index: int) -> list[int] | None:
@@ -840,6 +839,75 @@ def _junction_best_transitions(
                 best_source[node] = source
                 best_transition[node] = transition
     return best_cost, best_source, best_transition
+
+
+class JunctionPaths:
+    """`NodeJunction`が各Nodeで継いだ経路（前向き木の始点→Node→後ろ向き木の始点）を取り出す。
+
+    経路は前向き・後ろ向きの区間の番号列を継いだもので、両側が同じ物理区間（進行方向を無視した両端のNodeの組）を
+    通るNodeは、行って戻る形で経路にならない——同じ道を逆向きの区間で戻る形は、区間の番号の比較では見つからない。
+    """
+
+    def __init__(
+        self, junction: NodeJunction, forward: TurnExpandedTree, backward: TurnExpandedTree,
+        edge_from: np.ndarray, edge_to: np.ndarray,
+    ):
+        self._junction = junction
+        self._forward_predecessor = forward.predecessor
+        self._backward_predecessor = backward.predecessor
+        self._edge_from = kernel_array(edge_from, np.int64)
+        self._edge_to = kernel_array(edge_to, np.int64)
+
+    def edges(self, node_index: int) -> np.ndarray | None:
+        """`node_index`を経由する経路の区間の番号列（進行順）。経路にならなければNone。"""
+        found = self._path(node_index)
+        return None if found is None else found[0]
+
+    def halves(self, node_index: int) -> tuple[list[int], list[int]] | None:
+        """`node_index`を経由する経路の（前向き, 後ろ向き）の区間の番号列。経路にならなければNone。"""
+        found = self._path(node_index)
+        if found is None:
+            return None
+        edges, forward_count = found
+        return edges[:forward_count].tolist(), edges[forward_count:].tolist()
+
+    def _path(self, node_index: int) -> tuple[np.ndarray, int] | None:
+        forward_state = int(self._junction.forward_state[node_index])
+        if forward_state < 0:
+            return None
+        # backward_stateが-1なのは終点そのものを指す場合で、後ろ向きの区間は無い。
+        edges, forward_count = _junction_path(
+            self._forward_predecessor, self._backward_predecessor,
+            forward_state, int(self._junction.backward_state[node_index]),
+            self._edge_from, self._edge_to, len(self._junction.cost),
+        )
+        return None if forward_count < 0 else (edges, forward_count)
+
+
+@njit(cache=True, nogil=True)
+def _junction_path(
+    forward_predecessor: np.ndarray, backward_predecessor: np.ndarray, forward_state: int, backward_state: int,
+    edge_from: np.ndarray, edge_to: np.ndarray, node_count: int,
+) -> tuple[np.ndarray, int]:
+    """前向き木の`forward_state`までと、後ろ向き木の`backward_state`から（-1なら無し）を継いだ区間の番号列と前向き側の
+    区間の数。両側が同じ物理区間を通るなら、前向き側の数を-1で返す。"""
+    forward = _walk_predecessors(forward_predecessor, forward_state)[::-1]
+    if backward_state >= 0:
+        backward = _walk_predecessors(backward_predecessor, backward_state)
+    else:
+        backward = np.empty(0, dtype=np.int64)
+    forward_keys = np.empty(len(forward), dtype=np.int64)
+    for position in range(len(forward)):
+        tail, head = edge_from[forward[position]], edge_to[forward[position]]
+        forward_keys[position] = min(tail, head) * node_count + max(tail, head)
+    forward_keys.sort()
+    for position in range(len(backward)):
+        tail, head = edge_from[backward[position]], edge_to[backward[position]]
+        key = min(tail, head) * node_count + max(tail, head)
+        found = np.searchsorted(forward_keys, key)
+        if found < len(forward_keys) and forward_keys[found] == key:
+            return np.concatenate((forward, backward)), -1
+    return np.concatenate((forward, backward)), len(forward)
 
 
 def _as_time_bins(caller: str, values: np.ndarray) -> np.ndarray:
@@ -992,7 +1060,7 @@ def turn_expanded_shortest_path(
 
 
 def compile_search_kernels() -> None:
-    """探索のJIT（出て戻れるNodeの集まり・来た道を戻らずに行き来できるNode・一対全木・木の繋ぎ目・木の経路どうしの重複率・2点間探索）を、最小の道路網で1回ずつ呼んでコンパイルする。
+    """探索のJIT（出て戻れるNodeの集まり・来た道を戻らずに行き来できるNode・一対全木・木の繋ぎ目・木の経路どうしの重複率・木を継いだ経路の取り出しと重複率・2点間探索）を、最小の道路網で1回ずつ呼んでコンパイルする。
     探索が読む費用を組み立てるJIT（`domain/leg_costs.py: compile_leg_cost_kernels`）も併せて焼く。
 
     `@njit(cache=True)`の結果はこのファイルの隣の`__pycache__`に残り、別のプロセスはそこから読む。
@@ -1031,6 +1099,13 @@ def _call_search_kernels() -> None:
     overlap = TreePathOverlap(tree)
     overlap.accept(1)
     overlap.max_ratio(0)
+    _junction_path(
+        tree.predecessor, tree.predecessor, 0, 0,
+        kernel_array(lazy_graph.edge_from, np.int64), kernel_array(lazy_graph.edge_to, np.int64), lazy_graph.node_count,
+    )
+    edge_overlap = EdgeSetOverlap[int](lambda item: np.array([item]), statics.edge_length_m, 1)
+    edge_overlap.accept(0)
+    edge_overlap.max_ratio(0)
     turn_expanded_shortest_path(structure, cost, np.zeros(2), origin_states, 0, edge_seconds=cost,
                                 transition_cost=structure.turn_seconds)
     compile_leg_cost_kernels()
