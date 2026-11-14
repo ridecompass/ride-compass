@@ -55,17 +55,25 @@ export function pointPlaceName(
   return typeof name === "string" && name !== "" ? name : null;
 }
 
-/** 点が束ねた名前のある点の名前と位置（`mapDisplay.point.membersProperty`の値）。持たない点は、名前があれば自分（位置`at`）
- * だけ、無ければ空。 */
+/** 点が表す1か所か、名前の無い点をまとめた数か所（名前・位置・数）。 */
+export type PointMember = { name: string | null; at: [number, number]; count: number };
+
+/** 点が表す中身。束ねた代表点は、名前のある点（`mapDisplay.point.membersProperty`の値）を1か所ずつ並べ、束ねた数
+ * （`mapDisplay.point.countProperty`）に足りない分を名前の無い点として代表点の位置`at`に1つにまとめる。名前のある点を
+ * 束ねていない点は、自分（名前が無ければnull）を束ねた数で1つ。 */
 export function pointMembers(
   layer: { point_name_property: string | null },
   properties: Readonly<Record<string, unknown>>,
   at: readonly [number, number],
-): { name: string; at: [number, number] }[] {
+): PointMember[] {
+  const count = Number(properties[mapDisplay.point.countProperty] ?? 1);
   const members = properties[mapDisplay.point.membersProperty];
-  if (typeof members === "string") {
-    return (JSON.parse(members) as [string, number, number][]).map(([name, lng, lat]) => ({ name, at: [lng, lat] }));
-  }
-  const name = pointPlaceName(layer, properties);
-  return name === null ? [] : [{ name, at: [at[0], at[1]] }];
+  if (typeof members !== "string") return [{ name: pointPlaceName(layer, properties), at: [at[0], at[1]], count }];
+  const named = (JSON.parse(members) as [string, number, number][]).map(([name, lng, lat]): PointMember => ({
+    name,
+    at: [lng, lat],
+    count: 1,
+  }));
+  const unnamed = count - named.length;
+  return unnamed > 0 ? [...named, { name: null, at: [at[0], at[1]], count: unnamed }] : named;
 }

@@ -1,7 +1,7 @@
 // 地図の点（施設・事故）を1つ1行で見せるための、行の中身。地図の点の層・区間の小窓の区分の一覧が
 // 同じ行を読む。区分の名前・色・絵記号は地図の点と同じ宣言から引く。
 import type { PointGlyph } from "@/lib/mapDisplay/legendFilter";
-import { pointCategoryOf, pointPlaceName, type PointAxis } from "@/lib/mapDisplay/pointLayers";
+import { pointCategoryOf, type PointAxis, type PointMember } from "@/lib/mapDisplay/pointLayers";
 import { formatAlongDistance } from "@/lib/geoDistance";
 import palette from "@/types/generated/palette.json";
 
@@ -25,7 +25,7 @@ export type Facility = {
   readonly name: string | null;
   /** 点の位置（経度・緯度）。外の地図のリンクを引くときに名前と一緒に渡す。 */
   readonly lngLat: readonly [number, number];
-  /** 宣言が点に添える事実（「<名前> <値>」）。値の無い事実は持たない。 */
+  /** 宣言が点に添える事実（「<名前> <値>」）。値の無い事実は持たない。数か所をまとめた行は、事実の代わりに数（「3か所」）を持つ。 */
   readonly facts: readonly string[];
   /** ルートの上の位置（候補の始点からの道のりkm。画面には走行中の現在地から見た前後で出す）と、道からの距離（m）。
    * ルートを選んでいる間だけ持つ。 */
@@ -33,20 +33,24 @@ export type Facility = {
   readonly offsetM: number | null;
 };
 
-/** 1つの点の行。区分の名前は凡例と同じ宣言から引く（値は分類器が付ける内部名で、そのまま画面へ出さない）。 */
+/** 点の中身`member`の行。区分と事実は点の属性`properties`から、区分の名前は凡例と同じ宣言から引く（値は分類器が付ける
+ * 内部名で、そのまま画面へ出さない）。数か所をまとめた中身は、代表点の事実がほかの点に当たらないので、事実を添えない。 */
 export function facilityOf(
   layer: FacilityLayer,
   properties: Readonly<Record<string, unknown>>,
-  lngLat: readonly [number, number],
+  member: PointMember,
   along: { km: number; offsetM: number } | null = null,
 ): Facility {
-  const name = pointPlaceName(layer, properties);
+  const { name, at: lngLat, count } = member;
   const first = pointCategoryOf(layer.display_axes[0], properties);
   const kindLabel = layer.display_axes.map((axis) => pointCategoryOf(axis, properties)?.label ?? "不明").join("・");
-  const facts = layer.point_facts.flatMap((fact) => {
-    const value = properties[fact.property];
-    return value == null ? [] : [`${fact.label} ${String(value)}`];
-  });
+  const facts =
+    count > 1
+      ? [`${count}か所`]
+      : layer.point_facts.flatMap((fact) => {
+          const value = properties[fact.property];
+          return value == null ? [] : [`${fact.label} ${String(value)}`];
+        });
   return {
     key: [layer.attr_id, kindLabel, name ?? "", ...facts, lngLat[0].toFixed(6), lngLat[1].toFixed(6)].join("|"),
     color: first !== undefined && "color" in first ? first.color : palette.semantic.no_data,

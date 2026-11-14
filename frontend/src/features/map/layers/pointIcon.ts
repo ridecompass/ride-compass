@@ -6,7 +6,6 @@ import {
   SIGN_FONT_FAMILY,
   SIGN_FONT_WEIGHT,
   type IconPart,
-  type PointFrame,
 } from "@/components/PointIconSwatch/PointIconSwatch";
 import { drawCanvasIcon } from "@/features/map/layers/sdfIcon";
 import type { PointGlyph } from "@/lib/mapDisplay/legendFilter";
@@ -16,17 +15,13 @@ import { mapDisplay } from "@/types/generated/mapDisplay";
 const PIXEL_RATIO = 2;
 
 /** 地図へ登録する絵。canvasの2D描画が使えなければ投げる——空の絵を返すと点が地図から消えるだけで誰も気づけない。 */
-export function drawPointIcon(
-  color: string,
-  glyph: PointGlyph,
-  frame: PointFrame,
-): { data: ImageData; pixelRatio: number } {
+export function drawPointIcon(color: string, glyph: PointGlyph): { data: ImageData; pixelRatio: number } {
   const sizePx = mapDisplay.point.iconSizePx * PIXEL_RATIO;
   const data = drawCanvasIcon(sizePx, (ctx) => {
     ctx.scale(sizePx / FRAME, sizePx / FRAME);
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
-    for (const part of pointIconParts(color, glyph, frame)) drawPart(ctx, part);
+    for (const part of pointIconParts(color, glyph)) drawPart(ctx, part);
   });
   return { data, pixelRatio: PIXEL_RATIO };
 }

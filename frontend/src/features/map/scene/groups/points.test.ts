@@ -1,6 +1,6 @@
 // @vitest-environment node
 /** 点の層の印が、MapLibre の既定のまま重なるものを地図に省かせ、重なるとユーザーが決めた順に印を残すこと。宣言した縮尺から描くこと。
- * 2点以上を束ねた代表点に、点の右へ数を出すこと。名前を持つ層は押せる点（名前のある点）と押せない点を絵の枠の形で描き分けること。
+ * 2点以上を束ねた代表点に、点の右へ数を出すこと。
  *
  * ここで見ないもの:
  * - 凡例の見本と地図の点の色・絵の一致、凡例の行ごとの絞り込み → `scene/legends.test.ts`
@@ -14,7 +14,7 @@ import { mapDisplay } from "@/types/generated/mapDisplay";
 
 import { POINT_LAYERS, type PointLayer } from "@/lib/mapDisplay/pointLayers";
 
-import { POINT_ICONS, POINT_IMAGES, pointGroup } from "./points";
+import { POINT_IMAGES, pointGroup } from "./points";
 
 const TILES = {
   urls: {
@@ -121,33 +121,6 @@ describe("束ねた点の数", () => {
       const layout = layoutOf(attrId);
       const text = (count?: number) => evaluateAt(layout["text-field"], representative(layer, count), 14);
       expect([text(), text(1), text(12)]).toEqual(["", "", "12"]);
-    },
-  );
-});
-
-/** 寄せた地図での絵の枠の形（押せるか）。 */
-function frameOf(layer: PointLayer, properties: Record<string, unknown>) {
-  const id = evaluateAt(layoutOf(layer.attr_id)["icon-image"], { ...representative(layer), ...properties }, NEAR_ZOOM);
-  return POINT_ICONS.find((icon) => icon.id === id)?.frame;
-}
-
-const NAMED_LAYERS = POINT_LAYERS.filter((layer) => layer.point_name_property !== null);
-
-describe("押せる点の枠", () => {
-  it("名前を持つ層がある", () => {
-    expect(NAMED_LAYERS).not.toHaveLength(0);
-  });
-
-  it.each(NAMED_LAYERS.map((layer) => [layer.attr_id, layer] as const))(
-    "%s は、名前のある点と名前のある点を束ねた代表点を角丸四角、名前の無い点を丸い枠で描く",
-    (_, layer) => {
-      const name = layer.point_name_property as string;
-      expect([
-        frameOf(layer, { [name]: "店" }),
-        frameOf(layer, { [mapDisplay.point.membersProperty]: "[]" }),
-        frameOf(layer, { [name]: "" }),
-        frameOf(layer, {}),
-      ]).toEqual(["box", "box", "circle", "circle"]);
     },
   );
 });
