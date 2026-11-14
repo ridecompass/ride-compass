@@ -35,8 +35,7 @@ Redisへ置くもの・TTL・判断のキャッシュ・無効化の決まり。
 
 ### ワーカー複数化に備えて注意すること
 
-backendは1プロセスでしか正しく動かず、ワーカーを増やすと起動を止める（`infrastructure/single_process.py: require_single_worker`。
-[cross-cutting-infrastructure.md](../../docs/modules/backend/cross-cutting-infrastructure.md)「1プロセスの境界」）。複数化するときは、キャッシュの
+backendは1プロセスでしか正しく動かない（[cross-cutting-infrastructure.md](../../docs/modules/backend/cross-cutting-infrastructure.md)「1プロセスの境界」）。複数化するときは、キャッシュの
 ほかに次の2つが問題になる:
 
 - **APSchedulerのバッチ**（アメダス更新・JMAタイルのプリウォーム・MSM同期）は`main.py`のlifespanで登録されるため、
