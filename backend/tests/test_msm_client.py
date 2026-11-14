@@ -87,13 +87,15 @@ class Source:
 
     `run`は配信しているrunの番号で、値に10000ずつ足して出す。`failing`に挙げた変数のチャンクは500を返す。
     `missing_from`（時刻の秒）から先は、どのrunも値を持たない時刻として欠け（NaN）で出す。
+    `unpublished_from`（チャンクの番号）から先のチャンクは、配信元にまだ無いものとして404を返す。
     """
 
-    def __init__(self, tmp_path, meta=None, *, run=0, failing=(), missing_from=None):
+    def __init__(self, tmp_path, meta=None, *, run=0, failing=(), missing_from=None, unpublished_from=None):
         self.tmp_path = tmp_path
         self.run = run
         self.failing = failing
         self.missing_from = missing_from
+        self.unpublished_from = unpublished_from
         self.router = respx.Router()
         self.router.get(path__regex=r"/static/meta\.json$").respond(json=_meta() if meta is None else meta)
         self.chunks = self.router.get(path__regex=r"/(?P<variable>[^/]+)/chunk_(?P<number>\d+)\.om$").mock(
@@ -103,6 +105,8 @@ class Source:
     def _chunk(self, request: httpx.Request, variable: str, number: str) -> httpx.Response:
         if variable in self.failing:
             return httpx.Response(500)
+        if self.unpublished_from is not None and int(number) >= self.unpublished_from:
+            return httpx.Response(404)
         etag = f'"{variable}-{number}-{self.run}"'
         if request.headers.get("If-None-Match") == etag:
             return httpx.Response(304)
@@ -237,6 +241,26 @@ class TestReading:
         assert series.times == [datetime(2026, 9, 22, hour, 0) for hour in range(5, 10)]
         assert series.wind_u_ms[0].tolist() == [2.0, 3.0, 4.0, 5.0, 1000.0]
         assert series.latest_run_end == datetime(2026, 9, 22, 6, 0)
+
+    async def test_a_chunk_the_source_has_not_published_yet_ends_the_series_at_the_current_chunk(self, tmp_path, msm_dir):
+        """新しいrunが出ない間、窓の終わりを含むチャンクは配信元にまだ無い（404）。今のチャンクに残る値まではルートを作れる。"""
+        source = Source(tmp_path, unpublished_from=NOW_CHUNK + 1)
+        msm_dir.forecast_hours(6)
+        async with source.client() as client:
+            await msm_client.refresh(client)
+
+        series = await msm_client.read_grid_points(*_points(SOUTH_WEST))
+
+        assert series.times == [datetime(2026, 9, 22, hour, 0) for hour in range(5, 9)]
+        assert series.wind_u_ms[0].tolist() == [2.0, 3.0, 4.0, 5.0]
+
+    async def test_a_source_without_the_current_chunk_fails_to_sync(self, tmp_path, msm_dir):
+        """まだ無いだけと見なすと、配信元から今の値が消えたことが同期の失敗（`/api/debug/stats`・WARNING）に出ない。"""
+        source = Source(tmp_path, unpublished_from=NOW_CHUNK)
+        msm_dir.forecast_hours(6)
+        async with source.client() as client:
+            with pytest.raises(msm_client.MsmUnavailableError):
+                await msm_client.refresh(client)
 
     async def test_a_source_without_values_at_this_hour_is_unavailable(self, tmp_path, msm_dir):
         """欠けを風0として読むと、無風のルートを黙って作る。"""

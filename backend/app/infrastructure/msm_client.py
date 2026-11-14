@@ -32,6 +32,7 @@ from app.domain.msm import MsmGrid, MsmGridPoints, MsmThinnedPoints
 from app.domain.weather_elements import MSM_FORECAST_HOURS
 from app.infrastructure.data_paths import DATA_DIR
 from app.infrastructure.debug_log import log_external_call
+from app.infrastructure.http_client import UpstreamNotFound, fetch_upstream
 
 logger = logging.getLogger("ridecompass.msm_client")
 
@@ -230,9 +231,12 @@ async def _fetch_meta(client: httpx.AsyncClient) -> dict:
         return meta
 
 
-async def _download_chunk(client: httpx.AsyncClient, variable: str, chunk_number: int, etags: dict) -> Path | None:
+async def _download_chunk(
+    client: httpx.AsyncClient, variable: str, chunk_number: int, etags: dict, *, required: bool,
+) -> Path | None | UpstreamNotFound:
     """1チャンクを取得し、置き場のチャンクの隣の一時ファイルへ書いてそのパスを返す。配信元の内容が前回と同じなら（304）
-    何もせずNoneを返す。置き場のチャンクを置き換えるのは呼び出し側（`refresh`）。"""
+    何もせずNoneを返す。配信元にまだ無ければ（新しいrunが出ない間の、窓の終わりのチャンク）`UPSTREAM_NOT_FOUND`で、
+    `required`のチャンクなら`MsmUnavailableError`。置き場のチャンクを置き換えるのは呼び出し側（`refresh`）。"""
     path = _chunk_path(variable, chunk_number)
     key = f"{variable}/{chunk_number}"
     headers = {}
@@ -242,24 +246,22 @@ async def _download_chunk(client: httpx.AsyncClient, variable: str, chunk_number
 
     url = f"{settings.msm_base_url}/{variable}/chunk_{chunk_number}.om"
     with log_external_call("msm:chunk", variable=variable, chunk=chunk_number) as fields:
-        response = await client.get(url, headers=headers)
-        if response.status_code == 304:
-            fields["result"] = "ok"
-            fields["status"] = 304
+        response = await fetch_upstream(client, url, fields, headers)
+        if isinstance(response, UpstreamNotFound):
+            if required:
+                raise MsmUnavailableError(f"MSMの配信元に今を含むチャンクがありません: {variable}/chunk_{chunk_number}")
+            return response
+        if response.status_code == httpx.codes.NOT_MODIFIED:
             fields["cache"] = "hit"
             return None
-        response.raise_for_status()
-        content = response.content
-        fields["result"] = "ok"
-        fields["status"] = response.status_code
         fields["cache"] = "miss"
-        fields["bytes"] = len(content)
+        fields["bytes"] = len(response.content)
 
     temporary = path.with_suffix(".om.tmp")
 
     def write() -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
-        temporary.write_bytes(content)
+        temporary.write_bytes(response.content)
 
     await asyncio.to_thread(write)
     if response.headers.get("ETag"):
@@ -291,14 +293,16 @@ async def refresh(client: httpx.AsyncClient) -> int:
 
     現在時刻から`domain/weather_elements.py: MSM_FORECAST_HOURS`先までを覆うチャンク（通常1〜2個）を変数ごとに取得する。
     内容が変わっていないチャンクはETagによる条件付きGETで転送自体が起きない。
+    今を含むチャンクより先で配信元にまだ無いもの（新しいrunが出ない間）は置かない。今を含むチャンクが無ければ失敗する。
     """
     meta = await _fetch_meta(client)
     chunk_hours = int(meta["chunk_time_length"])
     now = int(time.time())
     # 両端のチャンクだけを取る。配信元のチャンクは予報窓より長いため間は無いが、チャンクが
-    # 予報窓より短くなると間のチャンクを取らず、読み出しが「未同期」で失敗する。
+    # 予報窓より短くなると間のチャンクを取らず、読み出しはそこで値が尽きたと見なす。
     horizon_end = now + MSM_FORECAST_HOURS * 3600
-    chunk_numbers = sorted({_chunk_number(now, chunk_hours), _chunk_number(horizon_end, chunk_hours)})
+    now_chunk = _chunk_number(now, chunk_hours)
+    chunk_numbers = sorted({now_chunk, _chunk_number(horizon_end, chunk_hours)})
 
     etags = _load_json(MSM_DIR / _ETAGS_FILE_NAME)
     keep: set[Path] = set()
@@ -309,10 +313,14 @@ async def refresh(client: httpx.AsyncClient) -> int:
     try:
         for variable in FORECAST_VARIABLES:
             for chunk_number in chunk_numbers:
+                temporary = await _download_chunk(
+                    client, variable, chunk_number, etags, required=chunk_number == now_chunk,
+                )
+                if isinstance(temporary, UpstreamNotFound):
+                    continue
                 path = _chunk_path(variable, chunk_number)
                 keep.add(path)
                 valid.add(f"{variable}/{chunk_number}")
-                temporary = await _download_chunk(client, variable, chunk_number, etags)
                 if temporary is not None:
                     staged.append((temporary, path))
     except BaseException:
@@ -393,7 +401,8 @@ def _read_sync[S: _Selection](
 
     読むのは最新のrunの終わり（メタ情報の`data_end_time`）までではなく、チャンクに値のある時刻まで。配信元のチャンクは
     最新のrunの終わりより先にも、前に出た長いrunの値を持つ（新しいrunが出ない間も、それが尽きるまでは読める）。
-    値の無い時刻は、読んだ範囲の値が全部欠けている（NaN）ことで見分け、その時刻から先を捨てる。"""
+    値の無い時刻は、読んだ範囲の値が全部欠けている（NaN）ことか、2つ目以降のチャンクが置き場に無いことで見分け、
+    その時刻から先を捨てる。"""
     meta = _load_json(MSM_DIR / _META_FILE_NAME)
     if not meta:
         raise MsmUnavailableError("MSMのメタ情報が未同期です")
@@ -413,6 +422,8 @@ def _read_sync[S: _Selection](
     cursor = start
     while cursor < end:
         chunk_number = _chunk_number(cursor, chunk_hours)
+        if cursor > start and not all(_chunk_path(variable, chunk_number).exists() for variable in variables):
+            break
         chunk_begin = chunk_number * chunk_hours * 3600
         t0 = (cursor - chunk_begin) // 3600
         t1 = min((end - chunk_begin) // 3600, chunk_hours)

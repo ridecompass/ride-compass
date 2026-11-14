@@ -32,14 +32,18 @@ class UpstreamNotFound:
 UPSTREAM_NOT_FOUND = UpstreamNotFound()
 
 
-async def fetch_upstream(http_client: httpx.AsyncClient, url: str, fields: dict) -> httpx.Response | UpstreamNotFound:
-    """`log_external_call`の中で上流から1件取る。404は`UPSTREAM_NOT_FOUND`。ほかの失敗は`httpx`の例外のまま投げる
-    （`log_external_call`が失敗として記録し、口は`api/failure_replies.py`が502にする）。"""
-    response = await http_client.get(url)
+async def fetch_upstream(
+    http_client: httpx.AsyncClient, url: str, fields: dict, headers: dict[str, str] | None = None,
+) -> httpx.Response | UpstreamNotFound:
+    """`log_external_call`の中で上流から1件取る。404は`UPSTREAM_NOT_FOUND`、条件付きの要求（`headers`の`If-None-Match`）への
+    304は応答のまま返す。ほかの失敗は`httpx`の例外のまま投げる（`log_external_call`が失敗として記録し、口は
+    `api/failure_replies.py`が502にする）。"""
+    response = await http_client.get(url, headers=headers)
     fields["status"] = response.status_code
-    if response.status_code == 404:
+    if response.status_code == httpx.codes.NOT_FOUND:
         fields["result"] = "ok"
         return UPSTREAM_NOT_FOUND
-    response.raise_for_status()
+    if response.status_code != httpx.codes.NOT_MODIFIED:
+        response.raise_for_status()
     fields["result"] = "ok"
     return response
