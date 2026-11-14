@@ -12,6 +12,7 @@ import { Dot } from "@/components/ui/Dot/Dot";
 import { ClearAllFiltersIcon, ClearAllLayersIcon } from "@/components/ui/icons/icons";
 import { BurdenPaintIcon } from "@/components/ui/icons/lucideIcons";
 import { cn } from "@/lib/cn";
+import { textVariants } from "@/components/ui/Text/Text";
 import { BURDEN_PAINT_NAME } from "@/lib/screenNames";
 import { LENS_QUANTITY_LABEL } from "@/lib/mapDisplay/costLensPaint";
 import { LensRow, type LensOption } from "./LensRow";
@@ -34,6 +35,8 @@ interface LensControlProps {
   hasDetail: boolean;
   /** 凡例の下に書く、周りの道の色の前提（`features/map/costLens.ts: costLensPremises`）。 */
   premises: readonly string[];
+  /** 周りの道の塗りが引いている値の扱いの但し書き（前に出た予報の風で塗っている等）。無ければnull。 */
+  caveat: string | null;
   /** 選べるレンズが無い理由（費用の軸の一覧が届くまで・取れない間）。届いていればnull。 */
   catalogNotice: string | null;
   /** 今のレンズの取得の状態（塗っている間だけ）。塗りは失敗でもデータ無しでも同じ無彩色なので、印で見分ける。 */
@@ -61,6 +64,7 @@ export default function LensControl({
   onSetHiddenLegendKeys,
   hasDetail,
   premises,
+  caveat,
   catalogNotice,
   dataStatus,
 }: LensControlProps) {
@@ -81,7 +85,7 @@ export default function LensControl({
 
   // 選んでいる行の ▶ の中身。「表示」の一覧の凡例と同じ形（見出しのチェックと段ごとのチェック）と、前提の文。
   const legendPanel =
-    legend.length > 0 || premises.length > 0 ? (
+    legend.length > 0 || premises.length > 0 || caveat ? (
       <div
         className="flex flex-col gap-1"
         data-usage="チェックを外した段階は地図から隠れます。見出しのチェックで、その全部をまとめて切り替えます。"
@@ -99,6 +103,7 @@ export default function LensControl({
             {premise}
           </p>
         ))}
+        {caveat && <p className={cn(textVariants({ variant: "warning" }), "m-0")}>{caveat}</p>}
       </div>
     ) : null;
 

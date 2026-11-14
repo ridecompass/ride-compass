@@ -49,6 +49,8 @@ export function overlayChips(options: {
   visibility: MapLayerVisibility;
   hidden: HiddenLegendKeys;
   dataStatus: LayerDataStatusByLayer;
+  /** レイヤーごとの、描いている値の扱いの但し書き。 */
+  caveats: Partial<Record<MapLayerId, string>>;
   zoomTooWideLayerIds: readonly MapLayerId[];
   /** タイル世代が届くまで描けず、いま世代が無いレイヤー。 */
   versionMissingLayerIds: readonly MapLayerId[];
@@ -81,6 +83,7 @@ export function overlayChips(options: {
         panelHint: layer.panelHint,
         // 世代が無いとソースを作らないため、MapLibreのイベントは何も言わない。
         dataStatus: versionMissing ? (catalogSettled ? "error" : "loading") : options.dataStatus[layer.id],
+        caveat: options.caveats[layer.id],
       };
     });
 }

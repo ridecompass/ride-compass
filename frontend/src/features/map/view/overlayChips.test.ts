@@ -29,6 +29,7 @@ function chips(options: Partial<Options> = {}) {
     visibility: buildDefaultLayerVisibility(LAYERS),
     hidden: {},
     dataStatus: {},
+    caveats: {},
     zoomTooWideLayerIds: [],
     versionMissingLayerIds: [],
     catalogSettled: true,

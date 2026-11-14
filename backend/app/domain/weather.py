@@ -1,14 +1,14 @@
 from collections.abc import Callable
 from datetime import datetime
-from typing import Annotated, Literal
+from typing import Literal
 
 import numpy as np
-from pydantic import PlainSerializer
 
 from app.domain.geo import LatLon, LatLonPoint, bearing_between, compass_degrees, haversine_distance_km
 from app.domain.msm import wind_speed_and_direction
 from app.domain.msm_grid import (
     PRECIPITATION_MM_DECIMALS,
+    ForecastTime,
     TEMPERATURE_C_DECIMALS,
     WIND_DIRECTION_DEG_DECIMALS,
     WIND_SPEED_MS_DECIMALS,
@@ -16,7 +16,6 @@ from app.domain.msm_grid import (
     rounded_rows,
 )
 from app.domain.strict_model import StrictModel
-from app.domain.time_zone import jst_local_text
 
 # 天気コードは観測（アメダスと推計気象分布）からだけ導く。数値予報モデル（MSM）の値から天気を計算して出すことは、
 # 気象業務法の予報業務の許可の対象と気象庁の公式の説明が書いているため、しない（docs/architecture/data-sources.md
@@ -72,8 +71,8 @@ class GridPointToday(StrictModel):
     distance_km: float
     #: 地点から格子点を見た方位（北=0、東=90）。
     bearing_deg: int
-    #: 今の正時から今日の終わりまでの正時。JSTのローカル時刻を分までのISO文字列（タイムゾーン指定なし）で出す。
-    times: list[Annotated[datetime, PlainSerializer(jst_local_text, return_type=str)]]
+    #: 今の正時から今日の終わりまでの正時。
+    times: list[ForecastTime]
     temperature_c: list[float | None]
     #: その時刻までの1時間の降水量。
     precipitation_mm: list[float | None]
@@ -87,6 +86,8 @@ class GridPointToday(StrictModel):
     highest_hourly_precipitation_mm: float | None
     #: 1時間ごとの風速の中で最も強い値。
     highest_hourly_wind_speed_ms: float | None
+    #: 最新のrunの予報の終わり（`domain/msm_grid.py: MsmGridForecast.latest_run_end`）。
+    latest_run_end: ForecastTime
 
 
 def _rounded(values: np.ndarray, digits: int) -> list[float | None]:
@@ -107,6 +108,7 @@ def grid_point_today(
     precipitation_mm: np.ndarray,
     wind_u_ms: np.ndarray,
     wind_v_ms: np.ndarray,
+    latest_run_end: datetime,
 ) -> GridPointToday:
     """格子点1つの時系列（値の配列は`times`の並び）から、先頭の時刻と同じ日付の時刻を今日として切り出す。"""
     hours = sum(1 for time in times if time.date() == times[0].date())
@@ -130,4 +132,5 @@ def grid_point_today(
         lowest_hourly_temperature_c=_extreme(temperature, min),
         highest_hourly_precipitation_mm=_extreme(precipitation, max),
         highest_hourly_wind_speed_ms=_extreme(wind_speed, max),
+        latest_run_end=latest_run_end,
     )

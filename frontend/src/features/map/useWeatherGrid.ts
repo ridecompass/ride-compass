@@ -4,7 +4,7 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { OVERVIEW_MIN_ZOOM, overviewBounds } from "@/features/map/MapOverview/overview";
 import type { MapViewport } from "@/features/map/view/mapLook";
 import type { MsmGridForecast } from "@/types/weather";
-import { getMsmGrid, type Bbox } from "@/services/weatherApi";
+import { getMsmGrid, getMsmStatus, type Bbox } from "@/services/weatherApi";
 import { MAP_FETCH_DEBOUNCE_MS, useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { getQueryClient } from "@/lib/queryClient";
 import { SECOND_MS } from "@/lib/duration";
@@ -81,4 +81,19 @@ export function useWeatherGrid(enabled: boolean, mapViewport: MapViewport | null
     error: query.error?.message ?? null,
     hasFetched: query.isFetched,
   };
+}
+
+/** 最新のrunの予報の終わり（MSMの時刻の文字列）。格子を載せない口（道ごとの負担の塗り）で、前に出た予報の値を引いているかを
+ * 見分けるのに使う。`enabled`の間だけ、格子と同じ間隔で取り直す。取れない・届くまではundefined。 */
+export function useLatestRunEnd(enabled: boolean): string | undefined {
+  const { data } = useQuery(
+    {
+      queryKey: ["msm-status"],
+      queryFn: getMsmStatus,
+      enabled,
+      refetchInterval: WEATHER_GRID_REFRESH_INTERVAL_MS,
+    },
+    getQueryClient(),
+  );
+  return enabled ? data?.latest_run_end : undefined;
 }

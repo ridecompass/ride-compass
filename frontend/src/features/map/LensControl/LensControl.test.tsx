@@ -46,6 +46,7 @@ function renderLens(props: Partial<Parameters<typeof LensControl>[0]> = {}) {
       hiddenLegendKeys={[]}
       hasDetail={false}
       premises={[]}
+      caveat={null}
       catalogNotice={null}
       {...handlers}
       {...props}
@@ -129,6 +130,15 @@ describe("LensControl", () => {
     const panel = screen.getByRole("region", { name: "usedの軸の内訳" });
     expect(within(panel).getByText("低い")).toBeInTheDocument();
     expect(within(panel).getByText("前提の文")).toBeInTheDocument();
+  });
+
+  it("塗りの値の但し書きは、凡例が無くても ▶ の中に出す", async () => {
+    renderLens({ legend: [], caveat: "但し書きの文" });
+    await open();
+    await userEvent.click(screen.getByRole("button", { name: "usedの軸の凡例" }));
+    expect(
+      within(screen.getByRole("region", { name: "usedの軸の内訳" })).getByText("但し書きの文"),
+    ).toBeInTheDocument();
   });
 
   it("凡例も前提も無い軸には ▶ を出さない", async () => {
