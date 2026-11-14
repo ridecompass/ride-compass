@@ -346,8 +346,8 @@ SSLコンテキスト構築（CA証明書バンドルの読み込み・パース
 lifespanが起動時に使うtimeout値を事前ウォームアップするのもこのため）。待ち時間は上流ごとにここで選んで
 クライアントへ持たせ、使う側は要求ごとに`timeout`を渡さない（渡すと選んだ値が効かない）。
 
-タイルを中継するクライアントは、上流から1件取る所を`fetch_upstream`へ寄せる。上流の404（このパスで得るものが無い事実）は
-`UPSTREAM_NOT_FOUND`で返して`log_external_call`の失敗に数えず、ほかの失敗は`httpx`の例外のまま投げる。404を受けた応答の本文と
+タイルを中継するクライアントとMSMの同期は、上流から1件取る所を`fetch_upstream`へ寄せる。上流の404（このパスで得るものが無い事実）は
+`UPSTREAM_NOT_FOUND`で返して`log_external_call`の失敗に数えず、条件付きの要求への304は応答のまま返し、ほかの失敗は`httpx`の例外のまま投げる。404を受けた応答の本文と
 `Cache-Control`は、配信元ごとの宣言（`api/routers/_tile_http.py: UpstreamReplies`）から引く。
 
 上流から取れなかった例外（`httpx.HTTPError`・JSONでない本文・`UnexpectedShapeError`）は、途中の層で値に替えず、口の1か所
