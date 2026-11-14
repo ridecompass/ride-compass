@@ -48,6 +48,8 @@ import {
   Thermometer,
   Trash,
   TriangleAlert,
+  Volume2,
+  VolumeOff,
   Weight,
   Wind,
   Zap,
@@ -137,6 +139,10 @@ export const LockedIcon = fromLucide(Lock);
 export const MapLockedIcon = fromLucide(Lock);
 /** 走行中の地図のロックを外している間（押すとロックする）。 */
 export const MapUnlockedIcon = fromLucide(LockOpen);
+/** 走行中の音声案内を入れている間。 */
+export const VoiceOnIcon = fromLucide(Volume2);
+/** 走行中の音声案内を切っている間（押すと入れる）。 */
+export const VoiceOffIcon = fromLucide(VolumeOff);
 /** 取れなかったものを取り直す。 */
 export const RetryIcon = fromLucide(RotateCw);
 /** 取れていない情報がある印。警報の色と取り違えないよう、三角の形を使わない。 */

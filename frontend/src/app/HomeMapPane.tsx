@@ -20,6 +20,7 @@ import type { useMapView } from "@/features/map/view/useMapView";
 import RideBottom from "@/features/ride/RideBottom/RideBottom";
 import RideLockButton from "@/features/ride/RideLockButton/RideLockButton";
 import RideModeButton from "@/features/ride/RideModeButton/RideModeButton";
+import RideVoiceButton from "@/features/ride/RideVoiceButton/RideVoiceButton";
 import TurnCard from "@/features/ride/TurnCard/TurnCard";
 import type { useRideMode } from "@/features/ride/useRideMode";
 import RouteProfile from "@/features/route/RouteProfile/RouteProfile";
@@ -88,7 +89,7 @@ export default function HomeMapPane({
 }: HomeMapPaneProps) {
   const costCatalog = useCostAxisCatalog();
   const { results, splice } = route;
-  const { progress, upcomingTurn } = guidance;
+  const { progress, upcomingTurn, voice } = guidance;
   const navigating = riding.status !== "off";
   const selected = results.selectedCandidate;
   const selection = results.selectedRouteSegment;
@@ -254,6 +255,7 @@ export default function HomeMapPane({
           onResume={riding.resume}
         />
         {navigating && <RideLockButton locked={riding.locked} onLock={riding.lock} onUnlock={riding.unlock} />}
+        {voice.available && <RideVoiceButton on={voice.on} onToggle={voice.toggle} />}
       </div>
       {navigating && (
         <RideBottom

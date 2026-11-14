@@ -18,7 +18,13 @@ describe("nextTurn", () => {
     {
       case: "最初の曲がる所を過ぎた",
       progressKm: 1.2,
-      expected: { direction: "right", latitude: 35.2, longitude: 139.2, distanceM: expect.closeTo(2300, 6) },
+      expected: {
+        direction: "right",
+        latitude: 35.2,
+        longitude: 139.2,
+        alongKm: 3.5,
+        distanceM: expect.closeTo(2300, 6),
+      },
     },
     { case: "曲がる所を全部過ぎた", progressKm: 3.5, expected: null },
     { case: "現在地をまだルートへ当てていない", progressKm: null, expected: null },
