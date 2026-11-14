@@ -14,13 +14,13 @@ export const STANDARD_COST_PREFERENCE: CostPreference = {
   disabled_axes: [],
 };
 
-/** 負担を数えるか（全体のつまみを無効（0）にしていないか）。無効の間は、どの軸も総合も数えない。 */
+/** 全体のつまみを無効（0）にしていないか。無効の間は、どの軸も数えない。 */
 export function countsCosts(preference: CostPreference): boolean {
   return preference.strength > 0;
 }
 
-/** 軸`axisId`を数えるか（負担を数えていて、その軸を無効にしていないか。backendの
- * `domain/ledger_costs.py: LedgerParameters.counts`と同じ決め方）。数えない軸は、費用にも結果にも地図にも出ない。 */
+/** 軸`axisId`を数えるか（全体のつまみを無効にしておらず、その軸を無効にしていないか。利用者の値だけで決め、backendの
+ * `domain/cost_preference.py: CostPreference.counts`と同じ答えになる）。数えない軸は、費用にも結果にも地図にも出ない。 */
 export function countsAxis(preference: CostPreference, axisId: string): boolean {
   return countsCosts(preference) && !preference.disabled_axes.includes(axisId);
 }
