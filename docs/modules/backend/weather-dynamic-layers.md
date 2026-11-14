@@ -38,6 +38,7 @@ MSMは数値予報モデルの出力で観測値・公式発表の代わりに�
 | infrastructure | `msm_client.py`（MSMの同期・読み出し）・`jma_tile_client.py`・`jma_tile_redis_cache.py`（タイル本体のRedis cache-aside）・`jma_tile_paths.py`（配信元のパスをテンプレートに当ててタイルとして読み戻す・404が確定した事実かを決める）・`jma_tile_interpolation.py`（配信元が持たないズームの補間）・`jma_tile_index.py`（在否インデックス）・`jma_tile_content.py`（タイルが空かどうかの判定。キャッシュと在否インデックスが共有する）・`jma_tile_recolor.py`（気象庁の降水のタイルの色をアプリの降水の段の色へ塗り替える、後述）・`jma_amedas_client.py`・`jma_suikei_client.py`（推計気象分布（天気）の地点の天気の区分。時刻一覧とタイルのパス・地点を含むタイルと画素・凡例の色から区分への読み替えを持つ。地図に重ねる`JMA_ELEMENTS`のタイルとは画素数と座標の数え方が違うので、宣言に入れずに持つ。時刻一覧とタイルは`jma_tile_client.py: JmaTileClient`を通る）・`jma_amedas_store.py`（アメダスの観測値と1時間雨量の履歴のRedisの置き場。鍵・項目名・TTL・保存した形の検査を持ち、サービスとは値でやり取りする）・`jma_warning_client.py`（警報のコード→種別の名称の表（配信元のコード表の写し）と、状態の文字列→発表中か）・`jma_warning_timeline_client.py`（警報級の時系列のJSONを`jma_warning_timeline.py: WarningTimeline`へ解く。段のコードが注意報級以上かの読み替えも持つ）・`wbgt_client.py`・`flood_client.py`（洪水予報のコード→段の表（配信元のコード表の写し））・`basemap_client.py`・`gsi_tile_client.py`・`simple_api_client.py`（TTLキャッシュで持つクライアントが共有する定型文、後述）・`gsi_dem_png.py`（地理院の標高タイルの画素を標高として読み、Terrain-RGBのPNGへ詰め直す、後述。読む部分は標高の取込も使う。画面へは変換したタイルを自前のルートで配るので、取得元のパスも持つ）・`jma_area_boundaries.py`（地点→区域のコード。気象庁の区域の境界をディスクから読む。引いた区域を地域マスタで警報のエリアまで辿る段取りも持ち、警報と洪水予報が共有する、後述） |
 | api | `weather.py`・`jma_tile.py`・`basemap.py`・`gsi_tile.py` |
 | scripts | `fetch_jma_area_boundaries.py`（気象庁の区域の境界を取得し、`jma_area_boundaries.py`が読む形で置く。デプロイが呼ぶ） |
+| scripts | `prod_msm_check.py`（本番の`/api/debug/stats`の`msm`を読み、予報の鮮度が落ちていれば失敗で終わる。下の「配信が止まったことの検知」） |
 
 ## domain層: 2つの異なる役割
 
@@ -502,7 +503,7 @@ MSM（`.om`形式、CC-BY-4.0）をローカルへ同期して読む。予報を
 | 置き換え | 取れたチャンクは一時ファイルに置き、全変数・全チャンクが取れてから置き場へ入れる。途中で失敗した回は何も入れない（変数ごとに別のrunを読むと、風の東西と南北の成分が別のrunから組まれる）。メタ情報・ETagも一時ファイルから置き換え、読み出しのスレッドに書きかけを読ませない |
 | 不要ファイル | 予報窓の外に出たチャンクと、`FORECAST_VARIABLES`から外した変数のチャンクは同期のたびに削除する（置き場の全ディレクトリを見る） |
 | 定期実行 | `main.py`のAPScheduler（`msm_sync_interval_minutes`、`next_run_time=now`で起動直後にも1回） |
-| 配信停止の検知 | 同期のたびに`freshness_from_meta`で最新run・予報終端を見て`warn_if_stale`がWARNINGを出す。値は`GET /api/debug/stats`の`msm`にも載る |
+| 配信停止の検知 | 同期のたびに`freshness_from_meta`で最新run・予報終端を見て`warn_if_stale`がWARNINGを出す。値は`GET /api/debug/stats`の`msm`にも載り、毎日の本番の見張りが読む（下の「配信が止まったことの検知」） |
 
 **配信が止まったことの検知**: 配信元が新しいrunを出さなくても同期そのものは成功する
 （ETagで304になり取得0件）。「取得0件」は正常時と区別がつかないため、件数ではなく配信元
@@ -518,6 +519,9 @@ MSM（`.om`形式、CC-BY-4.0）をローカルへ同期して読む。予報を
 ため、正常時でも「更新間隔＋公開遅れ」まで育つ。そこを境目にすると毎サイクルの末尾で発報する。
 更新間隔を時間数として書き写さず配信元のメタから取るのは、格子の幾何と同じ理由（後述）。
 判定結果は`GET /api/debug/stats`の`msm`にも載り、`/admin`のシステム状況パネルが表示する。
+**人へ届けるのは毎日の本番の見張り**: WARNINGはログにしか出ず、人へは届かない。`prod-route-check.yml`が毎日1回
+`scripts/prod_msm_check.py`で`msm`を外から読み、判定が健全でないか、値が無いか、応答が読めなければ失敗で終わり、GitHub Actionsの失敗の知らせが届く。
+しきい値は見張りに写さず、backendの判定（`healthy`）だけを読む。
 
 **格子の幾何を定数として持たない**: 緯度・経度の原点と間隔は、配信元が公開するメタ情報（S3上の static/meta.json）が
 持つbbox（`crs_wkt`。WKTの表記から範囲を読むのは`msm_client.py`）と実データ配列の形状から

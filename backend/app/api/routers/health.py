@@ -14,7 +14,7 @@ router = APIRouter()
 
 class MsmFreshnessResponse(StrictModel):
     """予報（MSM）の同期がどれだけ新しいか。配信元が止まると古い予報を配り続けるため、
-    ログ（WARNING）だけでなく外からも確認できるようにする。未同期のときはnull。"""
+    ログ（WARNING）は人へ届かないので、外から`healthy`で読めるようにする。未同期のときはnull。"""
 
     last_run_at: str
     run_age_hours: float

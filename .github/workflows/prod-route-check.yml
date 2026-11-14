@@ -4,6 +4,7 @@
 # 何を見るか・上限の根拠は docs/architecture/tech-stack.md「本番でルートを作る確かめ」。
 # 同じ時刻に、本番の点の密な所の点のタイルが上限の中で空でなく返るか（docs/architecture/tech-stack.md「本番の点のタイルの確かめ」）と、
 # 本番のDBのバックアップが止まっていないかも見る（docs/modules/backend/cross-cutting-infrastructure.md「本番DBのバックアップ」）。
+# 予報（MSM）の配信が止まっていないかも見る（docs/modules/backend/weather-dynamic-layers.md「配信が止まったことの検知」）。
 name: Prod Route Check
 
 on:
@@ -59,3 +60,15 @@ jobs:
       - uses: actions/checkout@v5
       - name: 本番のDBのバックアップの経過時間を見る
         run: python3 backend/scripts/prod_backup_check.py
+
+  # ルートの確かめとは別のジョブにし、互いの失敗で飛ばさない。標準ライブラリだけで読むので、ランナーのPythonで打つ。
+  msm:
+    concurrency:
+      group: ${{ github.head_ref || github.ref_name }}-lane-1
+      queue: max
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - name: 本番の予報の鮮度を見る
+        run: python3 backend/scripts/prod_msm_check.py
