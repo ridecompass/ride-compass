@@ -4,7 +4,7 @@
 （`derive_places.derive`）。配布の形の小さな見本を Parquet に書いて置き場に置き、表に入った地点を見る。
 
 ここで見ないもの:
-- 配布元から手元へ写す取得（`scripts/fetch_overture_places.py`）→ どのテストも通さない（網の向こうの S3 を読むだけで、
+- 配布元から手元へ写す取得（`app/batch/source_adapters/overture_places.py: fetch_overture_places`）→ どのテストも通さない（網の向こうの S3 を読むだけで、
   判断を持たない）
 - 表を焼いた点のタイル → `test_point_tiles.py`
 - 地点の辺り → `test_stop_place_areas.py`

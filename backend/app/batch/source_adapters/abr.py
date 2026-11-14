@@ -1,9 +1,11 @@
 """アドレス・ベース・レジストリ（ABR、デジタル庁）の都道府県・市区町村・町字・住居表示の街区のアダプタ。
 
-**外部の形を読んで1件ずつ返すことだけ**を行う。区画の木にする・範囲で選ぶ・検索の鍵を作るのは派生の段
+**入力を上流から手元へ写すことと、外部の形を読んで1件ずつ返すことだけ**を行う。区画の木にする・範囲で選ぶ・検索の鍵を作るのは派生の段
 （`batch/derive_addresses.py`）で、ここは代表点の無い行を落とすだけである。
 
-**配信元は叩かない。** 取りに行くのは`scripts/fetch_abr.py`の仕事で、ここは手元の配布の zip（中に CSV が1つ）を読む。
+取得（`fetch_abr`）は全国の1ファイルずつ（都道府県・市区町村・町字のテキストと、都道府県・市区町村の代表点）と、町字の代表点と
+住居表示の街区のテキストと代表点のうち範囲に掛かる都道府県のもの（`range_prefectures`。市区町村の代表点から決めるので、
+市区町村の代表点を先に取る）を配布元から写す。取込は手元の配布の zip（中に CSV が1つ）を読む。
 
 1回の取込に4種の行を入れる。テキストの行と位置参照拡張（代表点）の行を同じ鍵で1つにし、両方の列を全部`attrs`へ入れる
 （同じ名前の列はテキストの値）。
@@ -23,6 +25,7 @@
 代表点の座標系は日本測地系2000（EPSG:4612）と2011（EPSG:6668）が混ざり（列`rep_srid`）、どちらも EPSG の変換で 4326 へ移す。
 """
 
+import logging
 import re
 from collections import defaultdict
 from collections.abc import AsyncIterator, Callable, Generator, Iterable, Iterator
@@ -35,12 +38,17 @@ import pyproj
 import shapely
 from shapely.geometry import Point
 
-from app.batch.ingest import AdapterInputs, SourceRecord, register_adapter
+from app.batch.common import fetch_once
+from app.batch.ingest import AdapterInputs, Fetcher, SourceRecord, register_adapter
 from app.batch.source_adapters.zip_csv import read_zip_csv
 from app.batch.source_profile import SourceProfile, SourceSpec, Target
 from app.infrastructure import data_paths
 
 DATA_DIR = data_paths.DATA_DIR / "abr"
+
+logger = logging.getLogger("ridecompass.ingest.abr")
+
+_READ_TIMEOUT_SECONDS = 120.0
 
 #: 配布の置き場。全国の1ファイルずつのもの（キーはファイルの名前の頭）。
 NATIONWIDE_ARCHIVES = ("mt_pref_all", "mt_pref_pos_all", "mt_city_all", "mt_city_pos_all", "mt_town_fullset_all")
@@ -90,7 +98,7 @@ def archive_url(stem: str) -> str:
 
 
 def archive_path(snapshot: str, stem: str) -> Path:
-    """取り出したファイルの置き場。取得（`scripts/fetch_abr.py`）と取込で同じ導き方を使う。"""
+    """取り出したファイルの置き場。取得と取込で同じ導き方を使う。"""
     return DATA_DIR / snapshot / archive_name(stem)
 
 
@@ -223,7 +231,22 @@ def abr_inputs(spec: SourceSpec, profile: SourceProfile) -> AbrInputs:
                      nationwide=nationwide, town_positions=town_positions, blocks=blocks)
 
 
-@register_adapter("abr", rows=AbrRows, inputs=abr_inputs)
+def fetch_abr(spec: SourceSpec, profile: SourceProfile) -> None:
+    snapshot = spec.rows.snapshot
+
+    def fetch(stem: str) -> None:
+        fetch_once(archive_url(stem), archive_path(snapshot, stem), read_timeout=_READ_TIMEOUT_SECONDS, logger=logger)
+
+    for stem in NATIONWIDE_ARCHIVES:
+        fetch(stem)
+    prefectures = range_prefectures(snapshot, profile.target)
+    logger.info("範囲に掛かる都道府県: %s", ", ".join(prefectures))
+    for code in prefectures:
+        for stem in prefecture_stems(code):
+            fetch(stem)
+
+
+@register_adapter("abr", rows=AbrRows, inputs=abr_inputs, fetcher=Fetcher(fetch_abr, lambda: (DATA_DIR,)))
 async def read_abr(spec: SourceSpec, profile: SourceProfile, inputs: AbrInputs,
                    origin: dict[str, Any]) -> AsyncIterator[SourceRecord]:
     paths, town_positions = inputs.nationwide, inputs.town_positions

@@ -1,32 +1,48 @@
 """日本道路交通情報センター（JARTIC）の交通規制情報（都道府県警察の交通規制データベースを拡張版標準フォーマットにしたもの）のアダプタ。
 
-**外部の形を読んで1件ずつ返すことだけ**を行う。規制を区間へ当てるのは派生の段である。
+**入力を上流から手元へ写すことと、外部の形を読んで1件ずつ返すことだけ**を行う。規制を区間へ当てるのは派生の段である。
 
-**配信元は叩かない。** 取りに行くのは`scripts/fetch_jartic_regulations.py`の仕事で、ここは手元の配布の zip（都道府県ごと。中に
-cp932 の CSV が1つ）を読む。読む都道府県は、住所の生データと同じく取込の範囲に掛かる都道府県
-（`source_adapters/abr.py: range_prefectures`。ABR の市区町村の代表点から決める）。
+取得（`fetch_jartic_regulations`）は配布元から、取込は手元から、配布の zip（都道府県ごと。中に cp932 の CSV が1つ）を扱う。
+都道府県は、住所の生データと同じく取込の範囲に掛かる都道府県（`source_adapters/abr.py: range_prefectures`。ABR の市区町村の
+代表点から決めるので、取得は ABR を取ったあとに流す）。都道府県とファイルの対応は配布元の一覧（`LISTING_URL`）が持ち、手で表を
+持たない。配布元は最新の版しか置かないので、一覧の版が宣言の版（`rows.version`）と違えば、宣言の版はもう取れず、取得は版を
+上げるよう言って止まる。
 
 1つの規制を1行にし、鍵はユニークキー（全国で一意）、列は配布のまま全部を`attrs`へ入れる。列の意味は配布元の説明書
 （拡張版標準フォーマット）が持つ。落とすのは、共通規制種別コードが宣言（`rows.kinds`）に無い規制と、形が取込の範囲
 （`target.bbox`）の枠に掛からない規制。
 """
 
+import logging
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import httpx
 import shapely
 from shapely.geometry import LineString, MultiPolygon, Polygon, box
 from shapely.geometry.base import BaseGeometry
 
-from app.batch.ingest import SourceRecord, register_adapter
+from app.batch.common import FetchError, fetch_once, fetch_timeout
+from app.batch.ingest import Fetcher, SourceRecord, register_adapter
 from app.batch.source_adapters.abr import RangeInputs, range_inputs
 from app.batch.source_adapters.zip_csv import read_zip_csv
 from app.batch.source_profile import SourceProfile, SourceSpec
 from app.infrastructure import data_paths
 
 DATA_DIR = data_paths.DATA_DIR / "jartic"
+
+logger = logging.getLogger("ridecompass.ingest.jartic_regulation")
+
+#: 配布の一覧。交通規制情報は`type`が`typeD`の要素で、`targetList`の`id`は`R`＋JIS の都道府県コード2桁、`link`は
+#: `/<版>/<ファイル名>`（`FILES_URL`からの道）。
+LISTING_URL = "https://www.jartic.or.jp/d/opendata/opendata.json"
+FILES_URL = "https://www.jartic.or.jp/d/opendata"
+_REGULATIONS_TYPE = "typeD"
+
+_LISTING_READ_TIMEOUT_SECONDS = 30.0
+_READ_TIMEOUT_SECONDS = 300.0
 
 ENCODING = "cp932"
 #: 規制の鍵（全国で一意）。
@@ -47,7 +63,7 @@ class JarticRegulationRows:
 
 
 def archive_path(version: str, prefecture: str) -> Path:
-    """取り出した都道府県（JIS の2桁）の配布の置き場。取得（`scripts/fetch_jartic_regulations.py`）と取込で同じ導き方を使う。"""
+    """取り出した都道府県（JIS の2桁）の配布の置き場。取得と取込で同じ導き方を使う。"""
     return DATA_DIR / version / f"{prefecture}.zip"
 
 
@@ -76,7 +92,32 @@ def _regulation_shape(kind: str, coordinates: str) -> BaseGeometry:
     return areas[0] if len(areas) == 1 else MultiPolygon([p for area in areas for p in shapely.get_parts(area)])
 
 
-@register_adapter("jartic_regulation", rows=JarticRegulationRows, inputs=jartic_regulation_inputs)
+def _listed_links() -> dict[str, str]:
+    """一覧の交通規制情報の、都道府県コード（2桁）→ ファイルへの道。"""
+    response = httpx.get(LISTING_URL, timeout=fetch_timeout(_LISTING_READ_TIMEOUT_SECONDS), follow_redirects=True)
+    response.raise_for_status()
+    [entry] = [item for item in response.json() if item["type"] == _REGULATIONS_TYPE]
+    return {target["id"].removeprefix("R"): target["link"] for target in entry["targetList"]}
+
+
+def fetch_jartic_regulations(spec: SourceSpec, profile: SourceProfile) -> None:
+    version = spec.rows.version
+    inputs = jartic_regulation_inputs(spec, profile)
+    logger.info("範囲に掛かる都道府県: %s", ", ".join(inputs.prefectures))
+    links = _listed_links()
+    unlisted = [code for code in inputs.prefectures if code not in links]
+    if unlisted:
+        raise FetchError(f"配布の一覧に無い都道府県: {', '.join(unlisted)}")
+    stale = sorted({links[code] for code in inputs.prefectures if not links[code].startswith(f"/{version}/")})
+    if stale:
+        raise FetchError(f"配布元の版が宣言の版 {version} と違う: {', '.join(stale)}。"
+                         "source_profile.yaml の jartic_regulation の rows.version を配布元の版へ上げる")
+    for code, path in zip(inputs.prefectures, inputs.archives, strict=True):
+        fetch_once(FILES_URL + links[code], path, read_timeout=_READ_TIMEOUT_SECONDS, logger=logger)
+
+
+@register_adapter("jartic_regulation", rows=JarticRegulationRows, inputs=jartic_regulation_inputs,
+                  fetcher=Fetcher(fetch_jartic_regulations, lambda: (DATA_DIR,)))
 async def read_jartic_regulations(spec: SourceSpec, profile: SourceProfile, inputs: RangeInputs,
                                   origin: dict[str, Any]) -> AsyncIterator[SourceRecord]:
     rows: JarticRegulationRows = spec.rows

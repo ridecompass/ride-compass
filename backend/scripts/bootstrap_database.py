@@ -8,7 +8,7 @@ r"""まっさらなDBを、使える状態まで立ち上げる。
 環境（docker composeのDB等）では`--create-extensions`で`REQUIRED_EXTENSIONS`を入れてから進める。
 
 **外部ソースの取得は含まない。** `.pbf`・標高タイル・土地被覆のGeoTIFFは先に手元へ
-写しておく（`scripts/fetch_dem_tiles.py`・`scripts/fetch_lulc_raster.py`）——取込の
+写しておく（`python -m app.batch.fetch_cli --all`）——取込の
 途中でHTTPを叩くと、外部の一時的な失敗ひとつで数時間ぶんがやり直しになる。
 
 途中で落ちても`--from`で続きから流せる。段ごとの所要を出すので、時間がどこへ

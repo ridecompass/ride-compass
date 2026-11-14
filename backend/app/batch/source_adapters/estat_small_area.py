@@ -1,10 +1,10 @@
 """e-Stat の小地域（国勢調査の町丁・字等）の境界のアダプタ。
 
-**外部の形を読んで1件ずつ返すことだけ**を行う。境界を住所の区画へ結ぶのは派生の段（`batch/derive_addresses.py`）である。
+**入力を上流から手元へ写すことと、外部の形を読んで1件ずつ返すことだけ**を行う。境界を住所の区画へ結ぶのは派生の段（`batch/derive_addresses.py`）である。
 
-**配信元は叩かない。** 取りに行くのは`scripts/fetch_estat_small_areas.py`の仕事で、ここは手元の配布の zip（都道府県ごとの
-Shapefile。座標は日本測地系2011（EPSG:6668）の経緯度、dbf は CP932）を読む。読む都道府県は、住所の生データと同じく
-取込の範囲に掛かる都道府県（`source_adapters/abr.py: range_prefectures`。ABR の市区町村の代表点から決める）。
+取得（`fetch_estat_small_areas`）は配布元から、取込は手元から、配布の zip（都道府県ごとの Shapefile。座標は日本測地系2011
+（EPSG:6668）の経緯度、dbf は CP932）を扱う。都道府県は、住所の生データと同じく取込の範囲に掛かる都道府県
+（`source_adapters/abr.py: range_prefectures`。ABR の市区町村の代表点から決めるので、取得は ABR を取ったあとに流す）。
 
 1つの小地域が離れた島・飛び地で何枚かの多角形に分かれて入っているので、小地域のコード（都道府県2桁＋市区町村3桁＋
 町丁・字等6桁）ごとに1つの多角形にまとめ、それを鍵にする（配布の`KEY_CODE`は名前の無い小地域で桁が欠ける）。属性は
@@ -13,6 +13,7 @@ Shapefile。座標は日本測地系2011（EPSG:6668）の経緯度、dbf は CP
 """
 
 import io
+import logging
 import zipfile
 from collections import defaultdict
 from collections.abc import AsyncIterator
@@ -27,12 +28,17 @@ import shapely
 from shapely.geometry import shape
 from shapely.geometry.base import BaseGeometry
 
-from app.batch.ingest import SourceRecord, register_adapter
+from app.batch.common import fetch_once
+from app.batch.ingest import Fetcher, SourceRecord, register_adapter
 from app.batch.source_adapters.abr import JGD2011, RangeInputs, range_inputs, wgs84_transformer
 from app.batch.source_profile import SourceProfile, SourceSpec
 from app.infrastructure import data_paths
 
 DATA_DIR = data_paths.DATA_DIR / "estat"
+
+logger = logging.getLogger("ridecompass.ingest.estat_small_area")
+
+_READ_TIMEOUT_SECONDS = 300.0
 
 #: 通常の小地域の境界の区分（`HCODE`）。
 NORMAL_AREA_HCODE = 8101
@@ -53,7 +59,7 @@ class EstatSmallAreaRows:
 
 
 def boundary_path(survey: str, prefecture: str) -> Path:
-    """取り出した都道府県の境界の置き場。取得（`scripts/fetch_estat_small_areas.py`）と取込で同じ導き方を使う。"""
+    """取り出した都道府県の境界の置き場。取得と取込で同じ導き方を使う。"""
     return DATA_DIR / survey / f"{prefecture}.zip"
 
 
@@ -93,7 +99,16 @@ def _read_prefecture(path: Path, transformer: pyproj.Transformer) -> list[Source
     return records
 
 
-@register_adapter("estat_small_area", rows=EstatSmallAreaRows, inputs=estat_small_area_inputs)
+def fetch_estat_small_areas(spec: SourceSpec, profile: SourceProfile) -> None:
+    inputs = estat_small_area_inputs(spec, profile)
+    logger.info("範囲に掛かる都道府県: %s", ", ".join(inputs.prefectures))
+    for code, path in zip(inputs.prefectures, inputs.archives, strict=True):
+        fetch_once(DOWNLOAD_URL.format(survey=spec.rows.survey, prefecture=code), path,
+                   read_timeout=_READ_TIMEOUT_SECONDS, logger=logger)
+
+
+@register_adapter("estat_small_area", rows=EstatSmallAreaRows, inputs=estat_small_area_inputs,
+                  fetcher=Fetcher(fetch_estat_small_areas, lambda: (DATA_DIR,)))
 async def read_estat_small_areas(spec: SourceSpec, profile: SourceProfile, inputs: RangeInputs,
                                  origin: dict[str, Any]) -> AsyncIterator[SourceRecord]:
     origin["survey"] = spec.rows.survey

@@ -7,7 +7,7 @@
 
 ここで見ないもの:
 - 一時ファイル経由の取得の手順（`app/batch/common.py: fetch_once`）
-  → `test_fetch_accident_csv.py`
+  → `test_fetch_cli.py`
 - 置き場の境界から地点の区域を引く規則（含む・寄せる・区域なし）→ `test_jma_area_boundaries.py`
 """
 
