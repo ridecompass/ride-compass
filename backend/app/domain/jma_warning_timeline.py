@@ -18,6 +18,12 @@ class TimelineKind(StrEnum):
     """画面へ出す種別。種別を足すときは、ここと`TIMELINE_KINDS`へ1つずつ足す。"""
 
     THUNDER = "thunder"
+    SNOW = "snow"
+    SNOW_ACCRETION = "snow_accretion"
+    ICING = "icing"
+    AVALANCHE = "avalanche"
+    LOW_TEMPERATURE = "low_temperature"
+    FROST = "frost"
 
 
 class _TimelineKindNames(NamedTuple):
@@ -29,6 +35,12 @@ class _TimelineKindNames(NamedTuple):
 
 TIMELINE_KINDS: dict[TimelineKind, _TimelineKindNames] = {
     TimelineKind.THUNDER: _TimelineKindNames("雷危険度", "雷[注意報級]"),
+    TimelineKind.SNOW: _TimelineKindNames("雪危険度", "大雪[注意報級]"),
+    TimelineKind.SNOW_ACCRETION: _TimelineKindNames("着雪危険度", "着雪[注意報級]"),
+    TimelineKind.ICING: _TimelineKindNames("着氷危険度", "着氷[注意報級]"),
+    TimelineKind.AVALANCHE: _TimelineKindNames("なだれ危険度", "なだれ[注意報級]"),
+    TimelineKind.LOW_TEMPERATURE: _TimelineKindNames("低温危険度", "低温[注意報級]"),
+    TimelineKind.FROST: _TimelineKindNames("霜危険度", "霜[注意報級]"),
 }
 
 #: 区域の中を陸と海で分けた段のうち、陸の側の所の名前。
