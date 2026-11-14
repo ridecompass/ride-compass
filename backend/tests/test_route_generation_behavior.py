@@ -19,6 +19,7 @@ import math
 import re
 from datetime import datetime, timedelta
 from contextlib import ExitStack
+from dataclasses import replace
 from itertools import accumulate
 
 import numpy as np
@@ -776,6 +777,20 @@ async def test_a_point_with_no_road_it_can_ride_nearby_is_refused(engine_over, n
 DEPARTURE = datetime(2026, 9, 22, 8, 10, tzinfo=JST)
 
 
+@pytest.mark.parametrize(
+    ("latest_run_end", "expected"), [(datetime(2026, 9, 22, 9), False), (datetime(2026, 9, 22, 8), True)],
+    ids=["最新のrunの中で着く", "最新のrunの終わりから先の風を引く"],
+)
+async def test_a_route_ridden_on_the_wind_of_a_previous_run_is_marked(engine_over, latest_run_end, expected):
+    """配信元が新しいrunを出さない間も前に出たrunの風で作り、画面が但し書きを出せるよう候補に印を付ける。08:10に出て
+    数分で着くので、08:00の風を引く。"""
+    candidates = (await engine_over(grid_network(), wind=replace(CALM, latest_run_end=latest_run_end)).generate_via_waypoints(
+        at(SOUTH_WEST), [], destination=at(SOUTH_EAST), max_routes=3, start_time=DEPARTURE)).candidates
+
+    assert candidates
+    assert {candidate.wind_from_previous_run for candidate in candidates} == {expected}
+
+
 async def test_segment_arrival_times_run_from_the_departure_within_the_duration(engine_over):
     """到達予想は探索と同じ時計で積む。最初の区間は出発時刻に始まり、どの区間も所要時間の内に入る。"""
     generator = engine_over(grid_network())
@@ -923,7 +938,10 @@ def _wind(times: list[datetime], speed_by_point: list[float]) -> WindForecastSer
             grid=MsmGrid(lat_min=BASE_LAT, lon_min=BASE_LON, d_lat=2 * LAT_STEP, d_lon=2 * LON_STEP, n_lat=2, n_lon=2), row0=0, col0=0, rows=2, cols=2,
         )
     speed = np.repeat(np.array(speed_by_point, dtype=float)[:, None], len(times), axis=1)
-    return WindForecastSeries(times=times, speed_ms=speed, direction_deg=np.zeros_like(speed), lattice=lattice)
+    return WindForecastSeries(
+        times=times, speed_ms=speed, direction_deg=np.zeros_like(speed), lattice=lattice,
+        latest_run_end=times[-1] + timedelta(hours=1),
+    )
 
 
 HOURS_OF_THE_DAY = [datetime(2026, 9, 22, h) for h in range(24)]

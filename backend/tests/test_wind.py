@@ -45,7 +45,8 @@ def _series() -> WindForecastSeries:
     speed = np.array([[p * 100.0 + t for t in range(hours)] for p in range(points)])
     direction = np.array([[t * 10.0 for t in range(hours)] for _ in range(points)])
     return WindForecastSeries(
-        times=[T0 + timedelta(hours=t) for t in range(hours)], speed_ms=speed, direction_deg=direction, lattice=lattice
+        times=[T0 + timedelta(hours=t) for t in range(hours)], speed_ms=speed, direction_deg=direction, lattice=lattice,
+        latest_run_end=T0 + timedelta(hours=hours),
     )
 
 
@@ -92,6 +93,18 @@ def test_the_edge_hours_extend_beyond_the_series():
     speed, _ = series.sample_at(series.time_index(T0, np.array([-5.0, 10.0])), np.array([1, 1]))
 
     assert speed.tolist() == [100.0, 102.0]
+
+
+@pytest.mark.parametrize(
+    ("latest_run_end", "hours", "expected"),
+    [(2, 1.4, False), (2, 1.5, True), (2, 10.0, True)],
+    ids=["終わりの前の時刻まで", "終わりの時刻を引く", "範囲の外は端の時刻へ寄せる"],
+)
+def test_a_ride_reading_hours_after_the_latest_run_is_told(latest_run_end, hours, expected):
+    """前に出たrunの風で作ったルートに、但し書きを出す。"""
+    series = dataclasses.replace(_series(), latest_run_end=T0 + timedelta(hours=latest_run_end))
+
+    assert series.reads_previous_run(T0, hours) is expected
 
 
 # --- 通過予定時刻 ---

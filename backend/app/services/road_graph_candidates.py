@@ -257,6 +257,7 @@ def _build_candidate(
     segments = aggregate_segments_into_bins(segments, orientation.bin_slices)
     add_elapsed_ms(context.evaluate_steps_ms, "bins", bins_started)
 
+    duration_seconds = passages[-1].elapsed_seconds + passages[-1].seconds if passages else None
     return EvaluatedRoute(
         # 方位を持たない経路の名前は、種類と一緒に`route_generator.py: _label`が付ける。
         direction_label=compass_label(traced.bearing) if traced.bearing is not None else "",
@@ -275,7 +276,8 @@ def _build_candidate(
         penalty=penalty,
         facts=facts,
         # 所要時間＝区間の走行時間＋停止の待ち＋ターンの待ち（最後の区間を抜けた時刻）。
-        estimated_duration_seconds=passages[-1].elapsed_seconds + passages[-1].seconds if passages else None,
+        estimated_duration_seconds=duration_seconds,
+        wind_from_previous_run=context.composer.reads_previous_run((duration_seconds or 0.0) / 3600),
         missing_travel_data_share=(
             context.composer.missing_travel_data_share(np.asarray(orientation.rows, dtype=np.int64))
             if orientation.rows else None

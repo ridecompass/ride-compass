@@ -87,6 +87,8 @@ class WindForecastSeries:
     speed_ms: np.ndarray
     direction_deg: np.ndarray
     lattice: MsmBlock
+    #: 最新のrunの予報の終わり（`times`と同じ形の時刻、この時刻を含まない）。この時刻から先の値は前に出たrunのもの。
+    latest_run_end: datetime
 
     def __post_init__(self) -> None:
         expected = (self.lattice.size, len(self.times))
@@ -117,6 +119,11 @@ class WindForecastSeries:
         """予報の時刻の添字`index`（`time_index`。数なら全格子点が同じ時刻、配列なら`points`と同じ並び）の（風速, 風向）
         配列を、`points`の格子点ごとに返す。"""
         return self.speed_ms[points, index], self.direction_deg[points, index]
+
+    def reads_previous_run(self, start: datetime, hours: float) -> bool:
+        """`start`から`hours`時間後までに引く風に、最新のrunの終わりから先の（前に出たrunの）時刻があるか。引く時刻は
+        経過とともに後ろへ進むので、終わりの時刻に引く時刻で見る（範囲の外で端へ寄せたなら、寄せた先の時刻）。"""
+        return self.times[self.time_index(start, hours)] >= self.latest_run_end
 
     def covers(self, at: datetime) -> bool:
         """`at`に最も近い時刻が系列の範囲の中にあるか（端の値で延ばさずに引けるか）。"""

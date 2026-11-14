@@ -142,6 +142,11 @@ export default function RouteOutcome({ results, generation, splice, profileLayer
       {generation.destinationCorrected && (
         <WarningText>指定した地点は自転車で行けない場所だったため、近くの自転車で行ける地点へ移しました。</WarningText>
       )}
+      {routes.some((route) => route.wind_from_previous_run) && (
+        <WarningText>
+          風の予報の新しい配信が止まっているため、前に出た予報の風で作りました。風の見込みが外れやすくなっています。
+        </WarningText>
+      )}
       {reusedRouteId !== null && (
         <p className={cn(textVariants({ variant: "hint" }), "m-0")}>
           作った組み合わせは既存の候補「{nameOf(reusedRouteId)}」と同じ道のため、その候補を選びました

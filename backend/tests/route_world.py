@@ -214,6 +214,7 @@ CALM = WindForecastSeries(
     direction_deg=np.zeros((1, _CALM_HOURS)),
     lattice=MsmBlock(grid=MsmGrid(lat_min=35.0, lon_min=139.0, d_lat=0.05, d_lon=0.0625, n_lat=1, n_lon=1),
                      row0=0, col0=0, rows=1, cols=1),
+    latest_run_end=datetime(2035, 1, 1),
 )
 
 

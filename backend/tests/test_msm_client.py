@@ -54,15 +54,18 @@ def _meta(**overrides):
     return meta
 
 
-def _chunk_values(chunk_number: int, run: int) -> np.ndarray:
+def _chunk_values(chunk_number: int, run: int, missing_from: int | None) -> np.ndarray:
     i, j, t = np.meshgrid(np.arange(3), np.arange(3), np.arange(CHUNK_HOURS), indexing="ij")
-    return (100 * i + 10 * j + t + 1000 * (chunk_number - NOW_CHUNK) + 10000 * run).astype(np.float32)
+    values = (100 * i + 10 * j + t + 1000 * (chunk_number - NOW_CHUNK) + 10000 * run).astype(np.float32)
+    if missing_from is not None:
+        values[chunk_number * CHUNK_HOURS * 3600 + t * 3600 >= missing_from] = np.nan
+    return values
 
 
-def _om_bytes(tmp_path, chunk_number: int, run: int) -> bytes:
+def _om_bytes(tmp_path, chunk_number: int, run: int, missing_from: int | None) -> bytes:
     path = tmp_path / f"source_{chunk_number}_{run}.om"
     writer = OmFileWriter.at_path(str(path))
-    writer.close(writer.write_array(_chunk_values(chunk_number, run), chunks=[3, 3, CHUNK_HOURS]))
+    writer.close(writer.write_array(_chunk_values(chunk_number, run, missing_from), chunks=[3, 3, CHUNK_HOURS]))
     return path.read_bytes()
 
 
@@ -83,12 +86,14 @@ class Source:
     """配信元の代役。チャンクはETagを付けて返し、`If-None-Match`が一致すれば304を返す。
 
     `run`は配信しているrunの番号で、値に10000ずつ足して出す。`failing`に挙げた変数のチャンクは500を返す。
+    `missing_from`（時刻の秒）から先は、どのrunも値を持たない時刻として欠け（NaN）で出す。
     """
 
-    def __init__(self, tmp_path, meta=None, *, run=0, failing=()):
+    def __init__(self, tmp_path, meta=None, *, run=0, failing=(), missing_from=None):
         self.tmp_path = tmp_path
         self.run = run
         self.failing = failing
+        self.missing_from = missing_from
         self.router = respx.Router()
         self.router.get(path__regex=r"/static/meta\.json$").respond(json=_meta() if meta is None else meta)
         self.chunks = self.router.get(path__regex=r"/(?P<variable>[^/]+)/chunk_(?P<number>\d+)\.om$").mock(
@@ -101,7 +106,9 @@ class Source:
         etag = f'"{variable}-{number}-{self.run}"'
         if request.headers.get("If-None-Match") == etag:
             return httpx.Response(304)
-        return httpx.Response(200, content=_om_bytes(self.tmp_path, int(number), self.run), headers={"ETag": etag})
+        return httpx.Response(
+            200, content=_om_bytes(self.tmp_path, int(number), self.run, self.missing_from), headers={"ETag": etag},
+        )
 
     def client(self) -> httpx.AsyncClient:
         return client_for(self.router)
@@ -110,8 +117,8 @@ class Source:
         return [call.request for call in self.chunks.calls]
 
 
-async def _synced(tmp_path, msm_dir, meta=None, horizon_hours=CHUNK_HOURS):
-    source = Source(tmp_path, meta)
+async def _synced(tmp_path, msm_dir, meta=None, horizon_hours=CHUNK_HOURS, missing_from=None):
+    source = Source(tmp_path, meta, missing_from=missing_from)
     msm_dir.forecast_hours(horizon_hours)
     async with source.client() as client:
         await msm_client.refresh(client)
@@ -217,12 +224,26 @@ class TestReading:
         assert series.times[3:] == [datetime(2026, 9, 22, 8, 0), datetime(2026, 9, 22, 9, 0), datetime(2026, 9, 22, 10, 0)]
         assert series.wind_u_ms[0].tolist() == [2.0, 3.0, 4.0, 5.0, 1000.0, 1001.0]
 
-    async def test_a_forecast_ending_between_hours_is_read_up_to_its_last_hour(self, tmp_path, msm_dir):
-        await _synced(tmp_path, msm_dir, _meta(data_end_time=CHUNK_START + 3 * 3600 + 1800))
+    async def test_hours_after_the_latest_run_are_read_until_the_source_has_no_values(self, tmp_path, msm_dir):
+        """新しいrunが出ない間も、前に出た長いrunの値がチャンクに残る間はルートを作れる。最新のrunの終わり（06:00）から先を
+        前のrunの値として見分けられるよう、その終わりも返す。"""
+        await _synced(
+            tmp_path, msm_dir, _meta(data_end_time=CHUNK_START + 3 * 3600), missing_from=CHUNK_START + 7 * 3600,
+        )
+        msm_dir.forecast_hours(6)
 
-        series = await _read(msm_dir, _points(SOUTH_WEST), 6)
+        series = await msm_client.read_grid_block(*SOUTH_WEST, *SOUTH_WEST)
 
-        assert series.times == [datetime(2026, 9, 22, 5, 0)]
+        assert series.times == [datetime(2026, 9, 22, hour, 0) for hour in range(5, 10)]
+        assert series.wind_u_ms[0].tolist() == [2.0, 3.0, 4.0, 5.0, 1000.0]
+        assert series.latest_run_end == datetime(2026, 9, 22, 6, 0)
+
+    async def test_a_source_without_values_at_this_hour_is_unavailable(self, tmp_path, msm_dir):
+        """欠けを風0として読むと、無風のルートを黙って作る。"""
+        await _synced(tmp_path, msm_dir, missing_from=CHUNK_START + 2 * 3600)
+
+        with pytest.raises(msm_client.MsmUnavailableError):
+            await _read(msm_dir, _points(SOUTH_WEST), 6)
 
     async def test_each_point_reads_its_nearest_grid_point_unchanged(self, tmp_path, msm_dir):
         """中間を少し越えた地点は、補間せずに近い方の格子点の値そのもの（i=1で100）を読む。"""
