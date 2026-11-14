@@ -51,8 +51,6 @@ export function useMapLifecycle(
   const [mapBearing, setMapBearing] = useState(0);
   // スタイルが取れないとMapLibreは"load"ではなく"error"だけを出し、地図は白紙のまま止まる。そのとき案内を出す。
   const [styleLoadFailed, setStyleLoadFailed] = useState(false);
-  // スタイルを取り直している間（"style.load"か取り直しの失敗の待ち）。
-  const styleReloadPendingRef = useRef(false);
   // 最初のタイルが揃うまでの白紙を覆う。
   const [initialTilesLoading, setInitialTilesLoading] = useState(true);
   const layerDataSources = useMemo(() => buildLayerDataSources(layers), [layers]);
@@ -192,19 +190,13 @@ export function useMapLifecycle(
   useEffect(() => {
     const map = mapRef.current;
     if (!map || refreshToken === 0) return;
-    // 連打で取り直しを重ねない（新しい取り直しが前の読み込みを打ち切ると、当て直しが一度も走らない）。
-    if (styleReloadPendingRef.current) return;
-    styleReloadPendingRef.current = true;
-
     // クエリでスタイルURLを変えることで、ブラウザのHTTPキャッシュではなく取り直しにする。
     reloadStyle(map, `${mapStyleUrl()}?t=${Date.now()}`, {
       onLoaded: () => {
-        styleReloadPendingRef.current = false;
         setStyleLoadFailed(false);
         redraw(map);
       },
       onFailed: () => {
-        styleReloadPendingRef.current = false;
         setStyleLoadFailed(true);
       },
     });
