@@ -39,7 +39,7 @@ function issueProblems(body, { type, child = false, size, priority, start }) {
   problems.push(...typeProblems(text, type));
   // 子も自分の約束（完了の条件）を持つ。子は優先度・着手可能日時を持たず、親の値を読む。
   if (!conditions(text).length) problems.push("完了の条件が無い");
-  problems.push(...misboundSteps(text).map((n) => `やることの ${n} の行き先が、完了の条件の文の頭・#<番号>・見送り（<理由>）のどれにも当たらない`));
+  problems.push(...misboundSteps(text).map((n) => `${n} の行き先が、完了の条件の文の頭・#<番号>・見送り（<理由>）のどれにも当たらない`));
   if (child && (priority || start)) problems.push(CHILD_FIELDS);
   if (!child && type !== config.dialogType && (!size || !priority)) problems.push("規模と優先度を入れる（--size・--priority）");
   return [...problems, ...fieldProblems(config, fieldsOf({ size, priority, start }))];

@@ -80,41 +80,50 @@ export function folds(body) {
   });
   return all;
 }
-// 本文の「やること」の節（.claude/skills/file-issue/SKILL.md「issue の形」）の項目。項目は節の中の字下げの無い番号付きの行から、次の項目の
-// 前までで、字下げした続きの行のうち「- 行き先: 」で始まる行が行き先。字下げの無い箇条の行（前提の1行等）は項目に数えない。
-// name は番号と文の頭（番号を振り直した並びが節に2つあっても見分ける）。
+// 行き先を持つ項目（.claude/skills/file-issue/SKILL.md「issue の形」）: 本文の「やること」の節の字下げの無い番号付きの行と、「ユーザーの言葉」の
+// 節の字下げの無い箇条の行。項目は次の項目の前までで、字下げした続きの行のうち「- 行き先: 」で始まる行が行き先。「やること」の字下げの無い
+// 箇条の行（前提の1行等）は項目に数えない。section は節の名前、name は節と項目の文の頭（番号を振り直した並びが節に2つあっても見分ける。
+// 言葉は引用の「」の部分）、text は項目の文。
 const STEP = /^(\d+)\. (.+)$/;
+const WORD = /^- (.+)$/;
 const TO = /^- 行き先: (.+)$/;
-function steps(body) {
+const KINDS = [["やること", (l) => STEP.exec(l), (m) => `やることの ${m[1]}「${m[2].slice(0, 20)}」`, (m) => m[2]],
+  ["ユーザーの言葉", (l) => !TO.test(l) && WORD.exec(l), (m) => `ユーザーの言葉の ${(/^「[^」]*」/.exec(m[1])?.[0] ?? m[1]).slice(0, 22)}`, (m) => m[1]]];
+function items(body) {
   const all = [];
-  for (const l of folds(body).find((f) => f.name === "やること")?.lines ?? []) {
-    const m = STEP.exec(l);
-    const t = TO.exec(l.trim());
-    if (m) all.push({ name: `${m[1]}「${m[2].slice(0, 20)}」`, to: [] });
-    else if (t && indent(l) && all.length) all.at(-1).to.push(t[1].trim());
+  const fs = folds(body);
+  for (const [section, head, name, text] of KINDS) {
+    let last = null;
+    for (const l of fs.find((f) => f.name === section)?.lines ?? []) {
+      const m = head(l);
+      const t = TO.exec(l.trim());
+      if (m) all.push(last = { section, name: name(m), text: text(m).trim(), to: [] });
+      else if (t && indent(l) && last) last.to.push(t[1].trim());
+    }
   }
   return all;
 }
 // 行き先が当たるか: 今の完了の条件の文の頭に当たる「完了の条件「<条件の文の頭>」」か、ほかの issue の「#<番号>」か、理由を添えた「見送り（<理由>）」。
-// unboundSteps は行き先を名指していない「やること」の項目の name（ゲートは、これが残る間は完成で閉じない）。
+// unboundSteps は行き先を名指していない項目の name（ゲートは、これが残る間は完成で閉じない）。
+const conditionHead = (to) => /^完了の条件「(.+)」$/.exec(to)?.[1];
 function naming(body, number) {
   const texts = conditions(body).map((c) => c.text);
   return (to) => {
-    const c = /^完了の条件「(.+)」$/.exec(to);
-    if (c) return texts.some((t) => t.startsWith(c[1]));
+    const c = conditionHead(to);
+    if (c) return texts.some((t) => t.startsWith(c));
     const n = /^#(\d+)(?!\d)/.exec(to);
     return n ? Number(n[1]) !== number : /^見送り（.+）$/.test(to);
   };
 }
 export function unboundSteps(body, number) {
   const named = naming(body, number);
-  return steps(body).filter((s) => !s.to.some(named)).map((s) => s.name);
+  return items(body).filter((s) => !s.to.some(named)).map((s) => s.name);
 }
 // 行き先を書いたのに、どれも当たらない項目の name（書いた時点で照らす: 起票の new-issue.mjs と、条件に印を付ける check.mjs）。
 // 行き先がまだ無い項目は数えない（起票のときに決まらなければ、着手した実装担当が書く）。
 export function misboundSteps(body, number) {
   const named = naming(body, number);
-  return steps(body).filter((s) => s.to.length && !s.to.some(named)).map((s) => s.name);
+  return items(body).filter((s) => s.to.length && !s.to.some(named)).map((s) => s.name);
 }
 // 本文の、index の行のチェックに印を付ける（同じ文の条件が2つあっても、指した行にだけ付ける）。
 // 本文の完了の条件の行に値（チェック）を書いた本文。marks は [条件の行, 済んだか] の並び。本文の頭の回答のボタンは残す。
@@ -124,7 +133,18 @@ export function markLines(body, marks) {
   return (splitBody(body).foreign.length ? "" : (BLOCK.exec(norm(body))?.[0] ?? "")) + lines.join("\n");
 }
 export const remaining = (body) => conditions(body).filter((c) => !c.done);
-export const confirmConditions = (body) => remaining(body).filter((c) => c.verify === "ユーザー");
+// ユーザーが確かめる残りの条件と、それぞれを行き先にしたユーザーの言葉の文（words。確かめの問いで見る所と要点の前に並べる）。
+export function confirmConditions(body) {
+  const words = items(body).filter((s) => s.section === "ユーザーの言葉");
+  const names = (c) => (to) => {
+    const h = conditionHead(to);
+    return Boolean(h) && c.text.startsWith(h);
+  };
+  return remaining(body).filter((c) => c.verify === "ユーザー").map((c) => ({ ...c, words: words.filter((w) => w.to.some(names(c))).map((w) => w.text) }));
+}
+// 見る所と要点に、書く者が埋める印（「<…>」・「（…で埋める）」）が残るか。ゲートは、残る条件があれば確かめを問わない。
+// 自動のリンク（<https://…>）は印に数えない。
+export const unfilled = (c) => /<(?!https?:)[^<>\n]+>|（[^）\n]*で埋める）/.test(c.look ?? "");
 // Claude が条件の文の頭で指した行に印を付けた本文（.claude/skills/task-work/scripts/check.mjs）。指せるのは残りの条件のうちちょうど1つに
 // 当たるものだけで、ユーザーが確かめる行（ユーザーが値を入れる）は指せない。
 // 本文の頭の回答のボタンは残す。合わなければ problems を返し、本文は返さない。
@@ -291,10 +311,11 @@ function looseQuestion(text) {
 }
 
 // ゲートが出す問い（形の「出す者」がゲートのもの）。形の決まった値をそのまま使い、問いの文は text（続行の相手の番号）、確かめることはユーザーが
-// 確かめる条件（conds。src/questions.js: confirmConditions）の文と見る所と要点（書かれていない条件も隠さずにそう出す）で埋める。
+// 確かめる条件（conds。src/questions.js: confirmConditions）の文と、その条件を行き先にしたユーザーの言葉と、見る所と要点（書かれていない条件も
+// 隠さずにそう出す）で埋める。
 const NO_LOOK = "書かれていません";
 export const askText = (kind, forms, conds = [], text = forms[kind].text) =>
-  render(kind, text, forms[kind].header, conds.map((c) => ({ text: c.text, attrs: [["見る所と要点", c.look ?? NO_LOOK]] })), forms[kind].sections);
+  render(kind, text, forms[kind].header, conds.map((c) => ({ text: c.text, attrs: [...(c.words ?? []).map((w) => ["ユーザーの言葉", w]), ["見る所と要点", c.look ?? NO_LOOK]] })), forms[kind].sections);
 
 // 待つ相手（前提・子）が見送りで閉じたときの続行の問いの文。相手の番号を入れ、同じ文の問いが既にあれば二度は問わない
 // （答えで「続ける」を選んだあとも、相手は見送りのまま残るため）。
