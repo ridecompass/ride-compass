@@ -30,7 +30,7 @@ from typing import Any
 import shapely
 from shapely.geometry import LineString, Point, Polygon
 
-from app.batch.common import fetch_once
+from app.batch.common import fetch_file
 from app.batch.ingest import AdapterInputs, Fetcher, SourceRecord, register_adapter
 from app.batch.source_profile import SourceProfile, SourceProfileError, SourceSpec
 from app.domain.traffic import has_supply_poi_tag
@@ -210,7 +210,7 @@ def osm_way_inputs(spec: SourceSpec, profile: SourceProfile) -> AdapterInputs:
 
 def fetch_osm_way(spec: SourceSpec, profile: SourceProfile) -> None:
     """wayのソースが読む抽出ファイルを取る。頂点のソースは参照先のwayと同じファイルを読むので、取得を持たない。"""
-    fetch_once(PBF_URL.format(name=spec.rows.file), DATA_DIR / spec.rows.file,
+    fetch_file(PBF_URL.format(name=spec.rows.file), DATA_DIR / spec.rows.file,
                read_timeout=_READ_TIMEOUT_SECONDS, logger=logger)
 
 

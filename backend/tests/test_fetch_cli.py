@@ -1,7 +1,7 @@
 """`batch/fetch_cli.py`——取得の入口。
 
 入口は`fetch_sources`と`main`。見るのは、アダプタの登録に取得を足したソースを入口が書き換えなしに宣言の並び順で取り、
-取得を持たないソースを飛ばすことと、ソースを取る直前に置き場の中身だけを消して上流から取り直すことと、取れなければ落ちずに失敗の終了コードを返すこと。
+取得を持たないソースを飛ばすことと、上流から取り直してから今回置かなかった前のものを消すことと、取れなければ落ちずに失敗の終了コードを返すこと。
 取り直しは本物のアダプタ（警察庁の本票CSV）で、配布元の応答（`respx_mock`）と置き場だけを差し替えて見る。
 
 ここで見ないもの:
@@ -9,6 +9,7 @@
 - 本票の列の読み方 → `test_npa_honhyo.py`
 """
 
+import os
 import sys
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -50,8 +51,8 @@ def _profile(*specs: SourceSpec) -> SourceProfile:
 
 def test_a_source_whose_adapter_registers_a_fetch_is_fetched_in_declared_order(tmp_path: Path, monkeypatch):
     """取得を足したアダプタのソースは、入口を書き換えずに取られる。並び順を守らないと、ほかのソースが置いたもの
-    （範囲の都道府県を決める住所の代表点等）を読む取得が、読む元より先に走る。同じ置き場を分け合うソースの片方を取ってから
-    置き場を消すと、取ったものが消える。"""
+    （範囲の都道府県を決める住所の代表点等）を読む取得が、読む元より先に走る。同じ置き場を分け合うソースの片方を取った
+    あとで前のものを消すと、取ったものが消える。"""
     store = tmp_path / "given"
     store.mkdir()
     (store / "previous").write_text("previous")
@@ -72,29 +73,33 @@ def test_a_source_whose_adapter_registers_a_fetch_is_fetched_in_declared_order(t
     assert sorted(p.name for p in store.iterdir()) == ["first", "second"]
 
 
-def test_a_store_is_emptied_just_before_its_source_and_kept_as_a_directory(tmp_path: Path, monkeypatch):
-    """置き場は、そのソースを取る直前に中身だけを消す。先にまとめて消すと、配信中のbackendが読む置き場（土地被覆）が
-    前のソースを取る間ずっと空になる。置き場そのものを消すと、本番でコンテナへつないだ所そのものの置き場で落ちる。"""
-    early, late = tmp_path / "early", tmp_path / "late"
-    for store in (early, late):
-        (store / "nested").mkdir(parents=True)
-        (store / "previous").write_text("previous")
-    seen_late: list[str] = []
+def test_a_store_keeps_the_previous_files_while_fetching_and_drops_those_not_placed_again(tmp_path: Path, monkeypatch):
+    """取っている間、置き場は前のもので埋まったままで（配信中のbackendが読む土地被覆の置き場が空にも半分にもならない）、
+    取ったものの記録だけは先に消える（途中で落ちた置き場を取り込ませない）。取り終えたら、置き換えたもの・書き直したものを残し、
+    置き換わらなかった前のもの（前の年の版等）を消す。置き場のディレクトリは残す（つないだ所そのものの置き場は消せない）。
+    前のものの更新時刻は先週へ戻す（同じ時刻の刻みの中で書き直すと、書き直したことが時刻に出ない）。"""
+    store = tmp_path / "given"
+    (store / "nested").mkdir(parents=True)
+    for name in ("replaced", "rewritten", "stale", "nested/stale", FETCH_RECORD_NAME):
+        (store / name).write_text("previous")
+        os.utime(store / name, (0, 0))
+    seen: list[str] = []
 
-    def fetch_early(spec: SourceSpec, profile: SourceProfile) -> None:
-        seen_late.extend(sorted(p.name for p in late.iterdir()))
+    def fetch(spec: SourceSpec, profile: SourceProfile) -> None:
+        seen.extend(sorted(str(p.relative_to(store).as_posix()) for p in store.rglob("*")))
+        (store / "replaced.part").write_text("latest")
+        os.utime(store / "replaced.part", (0, 0))  # 配信元の更新時刻を写す取得（標高のタイル）は、置き換えても時刻が前と同じになる
+        (store / "replaced.part").replace(store / "replaced")
+        (store / "rewritten").write_text("latest")
+        (store / "added").write_text("latest")
 
-    def fetch_late(spec: SourceSpec, profile: SourceProfile) -> None:
-        (late / "latest").write_text("latest")
+    _register(monkeypatch, "given_fetched", Fetcher(fetch, lambda: (store,)))
 
-    _register(monkeypatch, "given_early", Fetcher(fetch_early, lambda: (early,)))
-    _register(monkeypatch, "given_late", Fetcher(fetch_late, lambda: (late,)))
+    fetch_sources(_profile(_spec("given", "given_fetched")), ["given"])
 
-    fetch_sources(_profile(_spec("early", "given_early"), _spec("late", "given_late")), ["early", "late"])
-
-    assert seen_late == ["nested", "previous"]
-    assert list(early.iterdir()) == []
-    assert [p.name for p in late.iterdir()] == ["latest"]
+    assert seen == ["nested", "nested/stale", "replaced", "rewritten", "stale"]
+    assert sorted(str(p.relative_to(store).as_posix()) for p in store.rglob("*")) == [
+        "added", "nested", "replaced", "rewritten"]
 
 
 def test_refetches_from_the_upstream_even_when_a_previous_file_is_in_the_store(tmp_path: Path, monkeypatch, respx_mock):

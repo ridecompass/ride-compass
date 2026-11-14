@@ -27,14 +27,13 @@ LANDCOVER_TILE_KIND = "landcover"
 PRUNE_INTERVAL_HOURS = 24
 
 
-def landcover_generation() -> str:
-    """土地被覆ラスタタイルのディスクの世代。**ラスタの構成**も入れる。
+def landcover_generation(raster_paths: list[str]) -> str:
+    """`raster_paths`のラスタから描く土地被覆ラスタタイルのディスクの世代。**ラスタの構成**も入れる。
 
     タイルの中身はどのラスタから描いたかに従属する。対応範囲を広げるためゾーンを1枚
     足しても鍵が同じだと、継ぎ目のタイルは古い絵（片側が透明のまま）を返し続ける。
-    描くのは置き場のラスタが全部開けたときだけなので、置き場の一覧から作る。
     """
-    raster_set = raster_set_fingerprint(raster_paths())
+    raster_set = raster_set_fingerprint(raster_paths)
     return f"{LANDCOVER_TILE_VERSION}/{raster_set}"
 
 
@@ -85,7 +84,7 @@ def prune_other_generations(tile_versions: Mapping[TileKind, str]) -> int:
     消す——もう誰も読まない。
     """
     generations: dict[str, str] = {kind: version for kind, version in tile_versions.items()}
-    generations[LANDCOVER_TILE_KIND] = landcover_generation()
+    generations[LANDCOVER_TILE_KIND] = landcover_generation(raster_paths())
 
     def is_stale(key: str) -> bool:
         kind = region_tile_kind(key)

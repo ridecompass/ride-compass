@@ -13,6 +13,7 @@
 
 import io
 import math
+import os
 
 import numpy as np
 import pytest
@@ -89,7 +90,7 @@ def test_reprojecting_a_utm_raster_keeps_class_numbers_and_invents_none(raster_s
     write_raster(raster_store / "54S.tif", stripes(5, 7, size=600), "EPSG:32654",
                  easting - half_m, northing + half_m, 10)
 
-    classes = landcover_raster.tile_classes(*TOKYO)
+    classes = landcover_raster.tile_classes(landcover_raster.open_rasters(), *TOKYO)
 
     # タイルはラスタの内側にあるので、縁まで全画素がクラスを持つ。
     assert set(np.unique(classes)) == {5, 7}
@@ -100,7 +101,7 @@ def test_where_rasters_overlap_the_first_by_name_wins_and_the_next_fills_its_gap
     over_tile(raster_store / "53S_2024.tif", stripes(2, 0), *TOKYO)
     over_tile(raster_store / "54S_2024.tif", stripes(5), *TOKYO)
 
-    classes = landcover_raster.tile_classes(*TOKYO)
+    classes = landcover_raster.tile_classes(landcover_raster.open_rasters(), *TOKYO)
 
     assert (classes[:, : SIZE // 2] == 2).all()
     assert (classes[:, SIZE // 2 :] == 5).all()
@@ -111,7 +112,7 @@ def test_a_raster_finer_than_the_read_limit_still_fills_the_whole_tile(raster_st
     z, x, y = 12, TOKYO[1] // 4, TOKYO[2] // 4
     over_tile(raster_store / "fine.tif", stripes(2, 5, size=2048), z, x, y)
 
-    classes = landcover_raster.tile_classes(z, x, y)
+    classes = landcover_raster.tile_classes(landcover_raster.open_rasters(), z, x, y)
 
     assert (classes[:, : SIZE // 2] == 2).all()
     assert (classes[:, SIZE // 2 :] == 5).all()
@@ -126,7 +127,7 @@ def test_the_image_paints_painted_classes_in_their_colour_and_leaves_the_rest_cl
     unknown = next(v for v in range(1, 256) if v not in {c.value for c in classes})
     over_tile(raster_store / "a.tif", stripes(painted[0].value, unpainted[0].value, unknown), *TOKYO)
 
-    image = decoded(landcover_raster.render_tile(*TOKYO))
+    image = decoded(landcover_raster.render_tile(landcover_raster.open_rasters(), *TOKYO))
 
     hex_colour = painted[0].color.lstrip("#")
     assert tuple(image[SIZE // 2, 10]) == (*bytes.fromhex(hex_colour), 255)
@@ -142,12 +143,18 @@ def test_the_empty_tile_is_a_fully_clear_image_of_tile_size():
 
 
 def test_the_rasters_are_reopened_whenever_the_store_changes(raster_store):
-    """置き場にラスタが現れれば次の読みで開き、取得が置き場のラスタを替えたら開き直す
-    （前に開いたものを描き続けると、置き場の一覧から作るタイルの鍵と描いた絵が食い違う）。"""
-    assert landcover_raster.opened_raster_paths() == []
+    """取得が置き場のラスタを替えたら、次の読みで開き直して新しいものを描く（前に開いたものを描き続けると、
+    年が替わっても前の年の絵が出る）。前のものの更新時刻は先週へ戻す（同じ時刻の刻みの中で置き換えると、時刻に出ない）。
+    同じ名前での置き換えは、更新時刻だけを進めて表す（Windowsは開いたファイルを置き換えも消しもできない）。"""
+    previous = over_tile(raster_store / "54S_2024.tif", stripes(2), *TOKYO)
+    os.utime(previous, (0, 0))
+    opened = landcover_raster.open_rasters()
+    assert landcover_raster.tile_classes(opened, *TOKYO)[0, 0] == 2
 
-    first = over_tile(raster_store / "54S_2024.tif", stripes(2), *TOKYO)
-    assert landcover_raster.opened_raster_paths() == [first]
+    os.utime(previous)
+    replaced = landcover_raster.open_rasters()
+    assert replaced is not opened
+    assert landcover_raster.open_rasters() is replaced
 
-    added = over_tile(raster_store / "53S_2024.tif", stripes(5), *TOKYO)
-    assert landcover_raster.opened_raster_paths() == [added, first]
+    over_tile(raster_store / "53S_2024.tif", stripes(5), *TOKYO)
+    assert landcover_raster.tile_classes(landcover_raster.open_rasters(), *TOKYO)[0, 0] == 5
