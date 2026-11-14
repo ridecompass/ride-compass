@@ -10,7 +10,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
-import { heldReplies, inTurn, onSameOrigin } from "@/testing/backendServer";
+import { inTurn, onSameOrigin } from "@/testing/backendServer";
 
 import { LogLine } from "@/components/ui/LogLine/LogLine";
 import BackendLogsPanel from "./BackendLogsPanel";
@@ -29,9 +29,8 @@ describe("BackendLogsPanel", () => {
     ["既定のまま", {}, { min_level: "WARNING", limit: "200" }],
     ["すべてのレベル", { contains: "  jma-tile  ", level: "すべてのレベル" }, { contains: "jma-tile", limit: "200" }],
     ["ERROR以上", { contains: "jma-tile", level: "ERROR" }, { contains: "jma-tile", min_level: "ERROR", limit: "200" }],
-    ["件数が正の数でない", { limit: "0" }, { min_level: "WARNING" }],
   ])(
-    "押したとき、入れた絞り込みを問い合わせにする（%s）: 部分一致は前後の空白を落とし、すべてのレベル・正でない件数では絞らない",
+    "押したとき、入れた絞り込みを問い合わせにする（%s）: 部分一致は前後の空白を落とし、すべてのレベルでは絞らない",
     async (_case, input: { contains?: string; level?: string; limit?: string }, query) => {
       const sentQuery = echoQuery();
       const user = userEvent.setup();
@@ -49,19 +48,6 @@ describe("BackendLogsPanel", () => {
       expect(await sentQuery()).toEqual(query);
     },
   );
-
-  it("取得中はボタンを押せず、終わると戻る", async () => {
-    const held = heldReplies();
-    onSameOrigin("GET", LOGS, held.reply);
-    const user = userEvent.setup();
-    render(<BackendLogsPanel />);
-
-    await user.click(screen.getByRole("button", { name: "取得" }));
-    expect(screen.getByRole("button", { name: "取得中…" })).toBeDisabled();
-
-    await held.answer(0, Response.json([]));
-    expect(await screen.findByRole("button", { name: "取得" })).toBeEnabled();
-  });
 
   it("行ごとに、行の中の[LEVEL]から重さを決める（ERROR・CRITICALはエラー、WARNINGは警告、それ以外は通常）", async () => {
     serveLogs(["2026-09-24 [ERROR] a", "2026-09-24 [CRITICAL] b", "2026-09-24 [WARNING] c", "レベルの無い行"]);

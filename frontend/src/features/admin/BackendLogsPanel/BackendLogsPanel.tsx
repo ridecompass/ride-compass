@@ -50,11 +50,10 @@ export default function BackendLogsPanel() {
   const { copied, error: copyError, copy } = useCopyToClipboard();
 
   const handleFetch = () => {
-    const parsedLimit = Number(limit);
     fetchLogs.mutate({
       contains: contains.trim() || undefined,
       min_level: minLevel || undefined,
-      limit: Number.isFinite(parsedLimit) && parsedLimit > 0 ? parsedLimit : undefined,
+      limit: Number(limit),
     });
   };
 
@@ -87,13 +86,12 @@ export default function BackendLogsPanel() {
         />
         <Input
           type="number"
-          min={1}
           value={limit}
           onChange={(e) => setLimit(e.target.value)}
           className="w-24"
           aria-label="件数"
         />
-        <Button usage={null} onClick={handleFetch} disabled={fetchLogs.isPending}>
+        <Button usage={null} onClick={handleFetch}>
           {fetchLogs.isPending ? "取得中…" : "取得"}
         </Button>
       </div>

@@ -5,7 +5,6 @@
 // ここでサーバーの環境変数から組み立てるため、ブラウザへは出ない。route handlerはサーバーでだけ動く。
 
 import { BACKEND_INTERNAL_URL } from "@/lib/backendInternalUrl";
-import { ADMIN_PROXY_TIMEOUT_MS } from "@/lib/apiTimeouts";
 import { adminBasicAuthCredentials } from "@/lib/adminBasicAuth";
 import { ADMIN_PROXY_PREFIX, BACKEND_ADMIN_PREFIX } from "@/lib/adminApiPrefix";
 
@@ -24,7 +23,7 @@ async function forward(request: Request): Promise<Response> {
   if (!pathname.startsWith(`${ADMIN_PROXY_PREFIX}/`)) return new Response(null, { status: 404 });
   const backendPath = `${BACKEND_ADMIN_PREFIX}${pathname.slice(ADMIN_PROXY_PREFIX.length)}`;
   const hasBody = request.method === "POST" || request.method === "PUT";
-  // 本文は応答の頭が届いたあとにも切れる・時間切れになるので、読み終えるまでを同じ失敗として扱う。
+  // 本文は応答の頭が届いたあとにも切れるので、読み終えるまでを同じ失敗として扱う。
   try {
     const backendResponse = await fetch(`${BACKEND_INTERNAL_URL}${backendPath}${search}`, {
       method: request.method,
@@ -33,7 +32,6 @@ async function forward(request: Request): Promise<Response> {
         ...(hasBody ? { "Content-Type": "application/json" } : {}),
       },
       body: hasBody ? await request.text() : undefined,
-      signal: AbortSignal.timeout(ADMIN_PROXY_TIMEOUT_MS),
     });
     if (backendResponse.status === 204) return new Response(null, { status: 204 });
     return new Response(await backendResponse.text(), {
@@ -44,11 +42,7 @@ async function forward(request: Request): Promise<Response> {
     // detailは管理画面の本文へそのまま出るため、ランタイム由来の英語の文言（"fetch failed"等）は
     // 入れず、原因の追跡用にサーバーのログへだけ残す。
     console.error(`admin proxy: ${backendPath}`, error);
-    const isTimeout = error instanceof DOMException && error.name === "TimeoutError";
-    return Response.json(
-      { detail: `backendへの接続に失敗しました[${isTimeout ? "タイムアウト" : "通信エラー"}]` },
-      { status: 502 },
-    );
+    return Response.json({ detail: "backendへの接続に失敗しました[通信エラー]" }, { status: 502 });
   }
 }
 

@@ -4,7 +4,6 @@ import { apiPath } from "@/lib/apiPath";
 import { tileBaseUrl } from "@/lib/tileBaseUrl";
 import { backendApi, requestApi } from "@/lib/apiClient";
 import regionTileConfig from "@/types/generated/region-tile-config.json";
-import { API_TIMEOUT_MS } from "@/lib/apiTimeouts";
 import type { PointTileLayer } from "@/lib/mapDisplay/pointLayers";
 
 const ROAD_SURFACE_TILE_PATH = apiPath("/api/region/road-surface-tiles/{z}/{x}/{y}.pbf");
@@ -101,7 +100,6 @@ export async function fetchRoadsAt(
 ): Promise<readonly RoadAt[]> {
   const body = { longitude: lngLat[0], latitude: lngLat[1], z, radius_m: radiusM };
   return requestApi((init) => backendApi.POST("/api/region/roads-at", { body, ...init }), {
-    timeoutMs: API_TIMEOUT_MS.default,
     category: "api:roads-at",
     messages: { failure: "道の取得に失敗しました", parseFailure: "道の取得に失敗しました" },
     requestMeta: { body },
@@ -130,7 +128,6 @@ export async function fetchRoadInspection(
     speed_kmh: conditions.speedKmh,
   };
   return requestApi((init) => backendApi.POST("/api/region/road-inspector", { body, ...init }), {
-    timeoutMs: API_TIMEOUT_MS.default,
     category: "api:road-inspector",
     messages: { failure: "道の窓の取得に失敗しました", parseFailure: "道の窓の取得に失敗しました" },
     requestMeta: { body },
@@ -152,7 +149,6 @@ export async function fetchLensMaterials(
 ): Promise<Record<string, Record<string, number>>> {
   const params = { path: { lens_id: lensId, z, x, y }, query };
   return requestApi((init) => backendApi.GET("/api/region/lens/{lens_id}/{z}/{x}/{y}", { params, ...init }), {
-    timeoutMs: API_TIMEOUT_MS.default,
     category: `api:${lensId}-lens`,
     messages: {
       failure: "道路の塗りの値の取得に失敗しました",

@@ -1,9 +1,8 @@
 import type { Coordinates } from "@/types/route";
 import { backendApi, getOptions, requestApi } from "@/lib/apiClient";
-import { API_TIMEOUT_MS } from "@/lib/apiTimeouts";
 
 function weatherOptions(category: string, errorLabel: string) {
-  return getOptions({ timeoutMs: API_TIMEOUT_MS.default, category, errorLabel });
+  return getOptions({ category, errorLabel });
 }
 
 /** 地点1つを問い合わせる項目。 */
