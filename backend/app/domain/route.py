@@ -1,9 +1,10 @@
 from collections import defaultdict
+from dataclasses import dataclass
 
-from typing import Annotated, Any, Callable, Iterable, Literal, Sequence
+from typing import Annotated, Any, Callable, Iterable, Literal, Protocol, Sequence
 
 import numpy as np
-from pydantic import ConfigDict, WithJsonSchema, computed_field
+from pydantic import WithJsonSchema, computed_field
 
 from app.domain.attributes import ElevationAttribute
 from app.domain.lens_total import lens_values_with_total
@@ -48,8 +49,7 @@ class Coordinates(StrictModel):
 
 
 class RoadClassStretch(StrictModel):
-    """区間の中で、道の区分が同じまま続く部分。区間では検証せずに組み（`model_construct`）、ビンでは`merge_road_classes`が
-    検証して作り直す。"""
+    """区間の中で、道の区分が同じまま続く部分。"""
 
     distance_km: float
     # 区分の鍵（`domain/route_road_classes.py: SegmentClassReader.values_at`）。どの区分にも入らない道はNone。
@@ -58,9 +58,6 @@ class RoadClassStretch(StrictModel):
 
 class ElevationStretch(StrictModel):
     """区間の中の道（Edge）1本の、走る向きの始まりと終わりの標高（m）。その道に標高が無ければどちらもNone。"""
-
-    # 区間では検証せずに組み（`model_construct`）、入れたビンを検証するときに検証する（`_merge_segment_bin`）。
-    model_config = ConfigDict(revalidate_instances="always")
 
     distance_km: float
     start_elevation_m: float | None
@@ -105,7 +102,18 @@ def lens_seconds_per_km(penalty: PenaltyBreakdown, distance_km: float) -> dict[s
     return {lens_id: round(value, COST_SECONDS_DECIMALS) for lens_id, value in per_km.items()}
 
 
-def merge_penalty_breakdowns(parts: Iterable[PenaltyBreakdown]) -> PenaltyBreakdown:
+class PenaltyParts(Protocol):
+    """代償の秒の内訳の値（`PenaltyBreakdown`と、道ごとの区間`EdgeSegment`が持つ）。"""
+
+    @property
+    def axis_seconds(self) -> dict[str, float]: ...
+    @property
+    def preferred_seconds(self) -> float: ...
+    @property
+    def avoided_seconds(self) -> float: ...
+
+
+def merge_penalty_breakdowns(parts: Iterable[PenaltyParts]) -> PenaltyBreakdown:
     """内訳を足し合わせる（秒は足せる）。"""
     present = list(parts)
     totals: dict[str, float] = defaultdict(float)
@@ -173,6 +181,35 @@ class RouteSegmentDetail(StrictModel):
 
     # 分け方（地図の道の線の層のid）と「緑と水」の層のid→区間の始まりから並べた、区分が同じまま続く部分。部分の距離の和は区間の距離と丸めの分だけずれうる。
     road_classes: dict[str, list[RoadClassStretch]]
+
+
+@dataclass(frozen=True, slots=True)
+class EdgeSegment:
+    """ビンへ畳む前の、道（Edge）1本の区間。応答へは`aggregate_segments_into_bins`がビンの`RouteSegmentDetail`にして出す。
+    経路の道の数だけ作るので、pydantic のモデルにせず素の値で持ち、検証はビンでだけ行う。同じ名前のフィールドの意味は
+    `RouteSegmentDetail`が書き、ここには名前か形が違うものだけを書く。"""
+
+    geometry: dict | None
+    start_latitude: float
+    start_longitude: float
+    end_latitude: float
+    end_longitude: float
+    cumulative_distance_km: float
+    distance_km: float
+    # 候補の`edge_ids`の中の、この道の位置。
+    edge_index: int
+    # 走る向きの始まりと終わりの標高（m）。標高が無ければどちらもNone。
+    start_elevation_m: float | None
+    end_elevation_m: float | None
+    sustained_gradient_percent: float | None
+    average_gradient_percent: float | None
+    estimated_arrival_time: str
+    # 代償の秒の内訳（`PenaltyBreakdown`の同じ名前の値）。
+    axis_seconds: dict[str, float]
+    preferred_seconds: float
+    avoided_seconds: float
+    # 層のid→この道の区分の鍵（区分に入らない道はNone）。道1本の中で区分は変わらない。
+    road_classes: dict[str, str | None]
 
 
 #: 候補の種類。周回（出発地へ戻る経路。経由地の有無を問わない）・目的地（目的地で終わる経路。経由地の有無を問わない）・
@@ -304,8 +341,8 @@ def route_bin_slices(distances_km: Sequence[float]) -> list[slice]:
     return slices
 
 
-def aggregate_segments_into_bins(segments: list[RouteSegmentDetail], slices: Sequence[slice]) -> list[RouteSegmentDetail]:
-    """連続するEdge単位の`RouteSegmentDetail`を、ビン（`route_bin_slices`）ごとに1件の`RouteSegmentDetail`へ集約する。
+def aggregate_segments_into_bins(segments: list[EdgeSegment], slices: Sequence[slice]) -> list[RouteSegmentDetail]:
+    """連続するEdge単位の区間を、ビン（`route_bin_slices`）ごとに1件の`RouteSegmentDetail`へ集約する。
 
     値の性質ごとに畳み方が違う（`BIN_FIELD_MERGERS`）: 平均勾配は距離加重平均（値がNoneの区間は除外し、残りの距離で
     再正規化）、代償の秒は和、位置はビンの始点・終点、距離は合計、geometryは隣接区間の境界点を重複させずに連結する。
@@ -320,7 +357,7 @@ def _append_continuing(coordinates: list[list[float]], points: list[list[float]]
     coordinates.extend(points)
 
 
-def _concat_segment_geometries(segments: list[RouteSegmentDetail]) -> dict | None:
+def _concat_segment_geometries(segments: list[EdgeSegment]) -> dict | None:
     coordinates: list[list[float]] = []
     for segment in segments:
         if segment.geometry is not None:
@@ -336,16 +373,17 @@ def _summed_km(distances: Iterable[float]) -> float:
     return round(sum(distances), DISTANCE_KM_DECIMALS)
 
 
-def merge_road_classes(segments: list[RouteSegmentDetail]) -> dict[str, list[RoadClassStretch]]:
-    """区間の並びの道の区分を、レイヤごとにつなぐ。距離0の部分を落とし、隣どうしで値が同じ部分は1つにまとめる。"""
+def merge_road_classes(segments: list[EdgeSegment]) -> dict[str, list[RoadClassStretch]]:
+    """区間の並びの道の区分を、レイヤごとにつなぐ。距離0の区間を落とし、隣どうしで値が同じ区間は1つにまとめる。"""
     merged: dict[str, list[RoadClassStretch]] = {}
     for layer in segments[0].road_classes:
         runs: list[tuple[str | None, list[float]]] = []
-        for stretch in (s for segment in segments for s in segment.road_classes[layer] if s.distance_km > 0):
-            if runs and runs[-1][0] == stretch.value:
-                runs[-1][1].append(stretch.distance_km)
+        for segment in (segment for segment in segments if segment.distance_km > 0):
+            value = segment.road_classes[layer]
+            if runs and runs[-1][0] == value:
+                runs[-1][1].append(segment.distance_km)
             else:
-                runs.append((stretch.value, [stretch.distance_km]))
+                runs.append((value, [segment.distance_km]))
         merged[layer] = [RoadClassStretch(distance_km=_summed_km(distances), value=value) for value, distances in runs]
     return merged
 
@@ -363,7 +401,7 @@ def steepest_signed_percent(elevation: ElevationAttribute | None) -> float | Non
     return 0.0
 
 
-def merge_sustained_gradients(segments: Sequence[RouteSegmentDetail]) -> float | None:
+def merge_sustained_gradients(segments: Sequence[EdgeSegment]) -> float | None:
     """区間の続く坂の斜度をビンへ畳む。登りの区間があれば登りの最大、無ければ一番急な下り（最も負の値）。
     区間の値は「登りがあれば登り」で作ってあるので、区間の値だけから道全体で同じ決まりの値になる。値が無ければNone。"""
     values = [segment.sustained_gradient_percent for segment in segments if segment.sustained_gradient_percent is not None]
@@ -373,7 +411,7 @@ def merge_sustained_gradients(segments: Sequence[RouteSegmentDetail]) -> float |
     return steepest_climb if steepest_climb > 0 else min(values)
 
 
-def merge_average_gradients(segments: Sequence[RouteSegmentDetail]) -> float | None:
+def merge_average_gradients(segments: Sequence[EdgeSegment]) -> float | None:
     """区間の平均勾配をビンへ畳む。値のある区間の平均勾配を、その区間の距離で重みづけた平均（-0にしない）。
     値のある区間が無ければNone。"""
     mean = length_weighted_mean(
@@ -383,7 +421,7 @@ def merge_average_gradients(segments: Sequence[RouteSegmentDetail]) -> float | N
 
 
 #: ビンのフィールドと、ビンに入る区間の並びからその値を作る畳み方。`_merge_segment_bin`はこの表だけからビンを組み立てる。
-BIN_FIELD_MERGERS: dict[str, Callable[[list[RouteSegmentDetail]], object]] = {
+BIN_FIELD_MERGERS: dict[str, Callable[[list[EdgeSegment]], object]] = {
     "geometry": _concat_segment_geometries,
     "start_latitude": lambda segments: segments[0].start_latitude,
     "start_longitude": lambda segments: segments[0].start_longitude,
@@ -391,14 +429,17 @@ BIN_FIELD_MERGERS: dict[str, Callable[[list[RouteSegmentDetail]], object]] = {
     "end_longitude": lambda segments: segments[-1].end_longitude,
     "cumulative_distance_km": lambda segments: segments[0].cumulative_distance_km,
     "distance_km": lambda segments: _summed_km(segment.distance_km for segment in segments),
-    "edge_start": lambda segments: segments[0].edge_start,
-    "edge_end": lambda segments: segments[-1].edge_end,
-    "elevations": lambda segments: [stretch for segment in segments for stretch in segment.elevations],
+    "edge_start": lambda segments: segments[0].edge_index,
+    "edge_end": lambda segments: segments[-1].edge_index + 1,
+    "elevations": lambda segments: [
+        {"distance_km": s.distance_km, "start_elevation_m": s.start_elevation_m, "end_elevation_m": s.end_elevation_m}
+        for s in segments
+    ],
     "sustained_gradient_percent": merge_sustained_gradients,
     "average_gradient_percent": merge_average_gradients,
     "estimated_arrival_time": lambda segments: segments[0].estimated_arrival_time,
     "road_classes": merge_road_classes,
-    "penalty": lambda segments: merge_penalty_breakdowns(segment.penalty for segment in segments),
+    "penalty": merge_penalty_breakdowns,
 }
 
 
@@ -416,9 +457,8 @@ if undeclared := _undeclared_fields():
     )
 
 
-def _merge_segment_bin(segments: list[RouteSegmentDetail]) -> RouteSegmentDetail:
-    """ビンを組み立てる。区間は検証せずに組んだ値（`RouteSegmentDetail.model_construct`）でよく、検証はビンでだけ行う
-    （中の標高・区分の部分も、ビンを検証するときに検証し直す）。"""
+def _merge_segment_bin(segments: list[EdgeSegment]) -> RouteSegmentDetail:
+    """ビンを組み立てて検証する。"""
     return RouteSegmentDetail.model_validate({name: merge(segments) for name, merge in BIN_FIELD_MERGERS.items()})
 
 
