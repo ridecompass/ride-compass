@@ -18,7 +18,7 @@ from app.domain.leg_costs import LegCostArrays, LegCostComposer
 from app.domain.route import EvaluatedRoute, penalty_seconds_per_km
 from app.domain.route_diversity import pareto_layer_index
 from app.domain.routing import time_bin_of
-from app.domain.tuning import tuning_value
+from app.domain.tuning import checked_tuning_value, tuning_value
 from app.domain.wind import cruise_hours, kmh_to_ms
 
 # --- フロンティア方式の折返し点選定・復路探索 ---
@@ -155,9 +155,11 @@ def turnaround_band(
 def retrace_penalized(costs: np.ndarray, travel_seconds: np.ndarray) -> np.ndarray:
     """復路探索の間に、往路の区間（と同じNode対の逆向きの区間）へ置くコスト。罰は区間の所要時間`travel_seconds`（`costs`と
     同じ形）に掛け、費用には掛けない——費用に掛けると、避け方の倍率で費用を下げた「好む」の道ほど罰が縮み、帰りが好む道を
-    往復する。倍率は有限にする（較正値の範囲が持つ）——帰りが往路を戻るほかに道が無い区間（袋小路等）は通れる必要がある。"""
+    往復する。倍率は有限でなければ断る——帰りが往路を戻るほかに道が無い区間（袋小路等）は通れる必要がある。1未満も断る
+    （費用が負になりうる）。"""
+    multiplier = checked_tuning_value("search.retrace_penalty_multiplier", lambda v: v >= 1, "1以上")
     # 通れない区間（所要時間も費用も無限大）は罰を足さない（倍率がちょうど1のとき 0 × 無限大 が NaN になる）。
-    return costs + (tuning_value("search.retrace_penalty_multiplier") - 1.0) * np.where(np.isinf(travel_seconds), 0.0, travel_seconds)
+    return costs + (multiplier - 1.0) * np.where(np.isinf(travel_seconds), 0.0, travel_seconds)
 
 
 #: 1kmあたりの代償の秒（`penalty_seconds_per_km`）の、区別する最小の差。並べ方とパレート層は、この刻みで同点とみなす。
@@ -218,7 +220,7 @@ def rank_by_pareto_layers(
     keyed = penalty_key(penalty)
     layer = pareto_layer_index(
         distance_key, penalty,
-        quantum_a=tuning_value("search.pareto_distance_quantum_m"), quantum_b=PENALTY_PER_KM_QUANTUM, max_items=max_items,
+        quantum_a=checked_tuning_value("search.pareto_distance_quantum_m", lambda v: v > 0, "0より大きい"), quantum_b=PENALTY_PER_KM_QUANTUM, max_items=max_items,
     )
     layer_key = np.where(layer >= 0, layer, np.iinfo(np.int32).max)
     keys = (ids, distance_key, keyed, layer_key) if tie_by_distance else (ids, keyed, layer_key)

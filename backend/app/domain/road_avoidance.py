@@ -20,6 +20,7 @@ from app.domain.road_classes import (
     class_material_id,
     published_map_layers,
 )
+from app.domain.tuning import require_tuning
 
 #: 避け方の段。1つの区間が複数の行に当たれば、倍率の大きい段を取る。「通る」は何も指定していない扱いで、ほかの行の段を
 #: 打ち消さない。
@@ -31,6 +32,7 @@ def level_multipliers(avoid_cost_multiplier: float) -> dict[AvoidanceLevel, floa
     """段→その段の区間の費用に掛ける倍率。「好む」は「なるべく避ける」の倍率（較正値`avoidance.avoid_cost_multiplier`）の
     逆数で、逆向きに同じ強さで効く。「少し」の段はその平方根（倍率の対数で「通る」との真ん中）。「通らない」は探索から除くので
     無限大。"""
+    require_tuning({"avoidance.avoid_cost_multiplier": avoid_cost_multiplier}, avoid_cost_multiplier > 0, "0より大きい")
     slight = math.sqrt(avoid_cost_multiplier)
     return {
         "pass": 1.0,
