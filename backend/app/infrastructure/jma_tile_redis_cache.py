@@ -10,7 +10,7 @@ import hashlib
 from app.infrastructure.http_client import UPSTREAM_NOT_FOUND, UpstreamNotFound
 from app.infrastructure.jma_tile_content import is_empty_tile
 from app.infrastructure.jma_tile_recolor import RECOLOR_VERSION
-from app.infrastructure.redis_json_cache import UNAVAILABLE, get_bytes, set_bytes
+from app.infrastructure.redis_json_cache import get_bytes, set_bytes
 
 # 保存するのは中継が塗り替えたあとのタイルなので、塗り替えの版を鍵に入れる。
 _KEY_PREFIX = f"jma:tile:{RECOLOR_VERSION}"
@@ -37,9 +37,8 @@ def _decode(raw: bytes) -> tuple[bytes, str] | UpstreamNotFound:
 
 
 async def get(path: str) -> tuple[bytes, str] | UpstreamNotFound | None:
-    """Redisキャッシュ済みなら(内容, Content-Type)または`UPSTREAM_NOT_FOUND`。未キャッシュ・Redis障害時はNone。"""
-    cached = await get_bytes(_key(path), decode=_decode, category=_CATEGORY, path=path)
-    return None if cached is UNAVAILABLE else cached
+    """Redisキャッシュ済みなら(内容, Content-Type)または`UPSTREAM_NOT_FOUND`。未キャッシュならNone。"""
+    return await get_bytes(_key(path), decode=_decode, category=_CATEGORY, path=path)
 
 
 async def set(path: str, content: bytes, content_type: str) -> tuple[bytes, str] | UpstreamNotFound:

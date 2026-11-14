@@ -1,18 +1,17 @@
 """Redisキャッシュの骨格が、各所へ写経されていないことの検査。
 
-cache-asideの骨格（可用性チェック→クライアント取得→計測→fail-open→成否記録）は
+cache-asideの骨格（クライアント取得→計測→未保存・壊れた値を外れとして数える）は
 `infrastructure/redis_json_cache.py: get_json`/`infrastructure/redis_json_cache.py: set_json`（生のバイト列なら
 `infrastructure/redis_json_cache.py: get_bytes`/`infrastructure/redis_json_cache.py: set_bytes`、Hashなら
 `infrastructure/redis_json_cache.py: get_hash`/`infrastructure/redis_json_cache.py: set_hashes`）が内包している。自前で書き直すと、
-写経ミス（`record_redis_failure`の呼び忘れ等）でRedis障害の検知だけが静かに欠ける
-——アプリはfail-openのまま動き続けるため表に出ない。
+写経ミス（計測の囲み忘れ等）で、そのキャッシュの当たり外れと失敗だけが`/api/debug/stats`の集計から静かに欠ける。
 
 母集団はソースから導く（`backend/app`配下の全`.py`）。骨格を自前で持ってよいファイルは
 下に列挙し、**列挙が古くなったらこのテスト自身が落ちる**ようにしてある
 （載っているのに使っていない＝寄せ終わったのに列挙が残っている、も違反）。
 
 ここで見ないもの:
-- 骨格の振る舞い（fail-open・成否の記録） → `tests/test_redis_json_cache.py`
+- 骨格の振る舞い（当たり外れの記録） → `tests/test_redis_json_cache.py`
 """
 
 from __future__ import annotations
@@ -21,16 +20,11 @@ from pathlib import Path
 
 APP_ROOT = Path(__file__).resolve().parent.parent.parent / "app"
 
-SKELETON_SYMBOLS = (
-    "get_redis_client",
-    "record_redis_failure",
-    "record_redis_success",
-    "redis_available",
-)
+SKELETON_SYMBOLS = ("get_redis_client",)
 
 # 骨格を自前で持ってよいファイルと、その理由。
 ALLOWED = {
-    "infrastructure/redis_client.py": "骨格が使う接続・サーキットブレーカー本体",
+    "infrastructure/redis_client.py": "骨格が使う接続の本体",
     "infrastructure/redis_json_cache.py": "骨格そのもの",
 }
 

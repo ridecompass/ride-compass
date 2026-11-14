@@ -303,38 +303,21 @@ frontend側（`src/proxy.ts`）も同じ資格情報を別のBasic認証チェ�
 どの層に持つか・TTLをどう決めるか・無効化の手段といった方針は[.claude/rules/caching.md](../../../.claude/rules/caching.md)と[.claude/rules/caching-retention.md](../../../.claude/rules/caching-retention.md)が
 正本で、ここは実装の説明に絞る。
 
-「Redisが使えるか確認→クライアント取得→`log_external_call`で計測→失敗は握り潰して
-未キャッシュ扱い→成否をサーキットブレーカーへ記録」という定型文を1本にまとめたもの。値の形で入口が分かれる——
+「クライアント取得→`log_external_call`で計測→未保存・壊れた値を外れとして数える」という定型文を1本にまとめたもの。値の形で入口が分かれる——
 JSONは`get_json`/`set_json`、バイナリは`get_bytes`/`set_bytes`、観測所ごとのような複数の項目はHashの`get_hash`と、
 複数のキーのHashをTTLとともに1往復（pipeline）で書く`set_hashes`。接続は値を生のバイト列で返し、JSONはここでデコードする。
 `get_bytes`・`get_hash`は呼び出し元の解釈関数へ生のバイト列を渡し、解釈できない値は未キャッシュ（miss）として扱う。呼び出し元はキー設計・TTL・値の意味づけだけを持つ。
 
-読みの口は「値・保存なし（None）・取れない（`UNAVAILABLE`。冷却中・接続を作れない・コマンドの失敗）」の3通りを返す。
-保存なしなら上流から取り直して書けばよいが、取れない間に取り直すと上流へ同じ問い合わせを繰り返すので、
-取り直しの重い呼び出し元はこれで分けられる。分けない呼び出し元は両方を未キャッシュとして扱う。
-`simple_api_client.py: cached_fetch`がプロセス内`TTLCache`側で担っている役割の、Redis版。
-
-**fail-openが前提**: 扱うのはいずれも正本を持たないキャッシュのため、Redis障害・接続不能・
-壊れたエントリはすべて「未キャッシュ」（`get_json`はNone）へ倒し、呼び出し元が通常の取得
-経路へ進めるようにする。キャッシュの不調でアプリの機能を止めない。
+Redisの障害（届かない・コマンドの失敗）は捕まえずに送り出す。`log_external_call`が失敗として記録し、その要求・バッチの回が失敗する。
 
 新しくRedisへ持つキャッシュはこれを使う（例: 気象庁タイル本体の`jma_tile_redis_cache`・在否インデックスの
 `jma_tile_index`・アメダスの`jma_amedas_store`）。タイル本体は値がバイナリ（PNG/PBF）なので`get_bytes`/`set_bytes`に乗せている。
 自前の骨格を持ってよい場合は.claude/rules/caching-retention.md「Redisへ持つときは`redis_json_cache`を使う」の「自前で骨格を書いてよい例外」が決める。
 
-## Redisクライアント（`redis_client.py`、サーキットブレーカー）
+## Redisクライアント（`redis_client.py`）
 
-JMA気象データの短命キャッシュが使う共有接続。値を生のバイト列で読み書きする接続を1本だけ持つ。
-接続を作れない（`redis_url`の誤り等）ときはサーキットブレーカーを開け、WARNING（`cache:redis-client`）を出す。**接続/ソケットタイムアウトを明示的に0.2秒へ短縮**している（既定タイムアウトの
-ままだと疎通不能環境で1回の接続試行に数秒かかりうるため。ルート生成の
-ホットパスに乗ると「PostGIS往復を減らす」という本来の目的に反する遅延になる）。
-
-**サーキットブレーカー**: `redis_available()`が直近の失敗（`record_redis_failure()`）から
-`CIRCUIT_COOLDOWN_SECONDS=10.0`秒以内なら`False`を返し、呼び出し元はRedis自体への
-接続試行そのものをスキップしてPostGISへ即座にフォールバックできる（0.2秒×リクエスト数の
-累積コストを避ける）。Redis接続自体の障害はfail-fastさせない設計（`main.py`のlifespanでも
-疎通確認しない）。すべての用途がTTL付きキャッシュまたはPostGIS[正本]への即座フォールバック
-可能なcache-asideであるため。
+JMA気象データの短命キャッシュが使う共有接続。値を生のバイト列で読み書きする接続を1本だけ持ち、待ちと打ち直しは`redis-py`の既定に任せる。
+`main.py`のlifespanでは疎通を確かめない。
 
 ## HTTPクライアントの共有（`http_client.py`）
 
@@ -533,7 +516,7 @@ push型更新と同じ前提）。`JobRecord`は状態ごとの型の共用体�
 - ジョブ本体（ルート生成）が読む状態は、webプロセスの中にある（道路網全体の配列・道の区分と費用の軸の定義と較正値。
   管理APIの書き込みで読み直す）。別プロセスのワーカーはそれを共有できず、同じものを別に持って別に
   読み直すことになる——上の「1プロセスの境界」が止めている形そのもの。
-- Redisは失っても困らないキャッシュだけを置くfail-openの層で、ルート生成はRedisを読まない
+- Redisは失っても困らないキャッシュだけを置く層で、ルート生成はRedisを読まない
   （[ルート生成エンジン](routing-engine.md)「キャッシュ」）。ジョブの列をRedisへ置くと、
   Redisの障害が生成の失敗になる。
 

@@ -9,7 +9,7 @@
 - MSMの格子点を選んで読むこと → `test_msm.py`（間引き・最寄り）・`test_msm_client.py`（読み出し）
 - 最寄りの格子点の時系列から今日の値を組み立てること → `test_weather_domain.py`
 - 回数制限の窓 → `test_rate_limiter.py`
-- Cache-Control の値と、失敗の応答に付けないこと → `test_cache_policy.py`
+- Cache-Control の値 → `test_cache_policy.py`
 - 範囲外の緯度経度を断ること（`domain/geo.py: Latitude`・`Longitude` の制約で、FastAPI が422で返す）
 """
 

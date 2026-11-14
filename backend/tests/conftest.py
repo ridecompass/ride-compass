@@ -151,17 +151,6 @@ async def app_database_at(monkeypatch: pytest.MonkeyPatch, url: str):
         await database.dispose_engines()
 
 
-@pytest.fixture(autouse=True)
-def _closed_redis_circuit_breaker():
-    """redis_client.pyのサーキットブレーカーは閉じた状態から始める。
-
-    状態はプロセス内のモジュール変数に残るため、Redis疎通不能をシミュレートするテストが
-    1つでも実行されると、無関係な後続テスト（正常系のフェイクRedisを使うテスト）まで
-    「クールダウン中」と誤判定されてしまう。
-    """
-    redis_client.record_redis_success()
-
-
 @pytest.fixture
 def clock():
     """時計を止める（freezegun）。`tick(秒)`で進めたぶんだけ進み、`move_to`でその時刻へ飛ぶ。
@@ -180,21 +169,15 @@ def clock():
 
 
 @pytest.fixture
-def redis_server():
-    """Redisの代役（fakeredis）のサーバ。`connected = False`にすると、以後のコマンドが接続の失敗になる。
-
-    テストごとに作る——サーバを渡さずに作ったfakeredisのクライアントは同じ接続先どうしで中身を共有し、
-    前のテストが書いたキーが残る。
-    """
-    return fakeredis.FakeServer()
-
-
-@pytest.fixture
-async def fake_redis(monkeypatch, redis_server):
-    """空のRedis。接続を作る所（`redis.asyncio.from_url`）を同じサーバのfakeredisへ差し、共有クライアントを
+async def fake_redis(monkeypatch):
+    """空のRedis。接続を作る所（`redis.asyncio.from_url`）をテストごとに作ったfakeredisのサーバへ差し、共有クライアントを
     閉じる口（`redis_client.py: close_redis_client`）で作る前に戻すので、`get_redis_client`を読むどの
-    モジュールからも同じものが見える。返すのはその共有クライアントで、値は生のバイト列で返る。"""
-    monkeypatch.setattr(redis.asyncio, "from_url", functools.partial(fakeredis.FakeAsyncRedis.from_url, server=redis_server))
+    モジュールからも同じものが見える。返すのはその共有クライアントで、値は生のバイト列で返る。
+
+    サーバをテストごとに作る——サーバを渡さずに作ったfakeredisのクライアントは同じ接続先どうしで中身を共有し、
+    前のテストが書いたキーが残る。"""
+    server = fakeredis.FakeServer()
+    monkeypatch.setattr(redis.asyncio, "from_url", functools.partial(fakeredis.FakeAsyncRedis.from_url, server=server))
     await redis_client.close_redis_client()
     yield redis_client.get_redis_client()
     await redis_client.close_redis_client()

@@ -16,7 +16,6 @@ import diskcache
 
 from app.config import settings
 from app.infrastructure.data_paths import DATA_DIR
-from app.infrastructure.tile_cache import DISK_READ_ERRORS, DISK_STORE_ERRORS
 
 logger = logging.getLogger("ridecompass.tile_persistent_cache")
 
@@ -54,30 +53,18 @@ def close() -> None:
 
 def get_by_key(key: tuple) -> Any | None:
     """任意のタプルキーで読む。キーの設計は呼び出し元が持つ（先頭要素をnamespaceにする）。
-    未キャッシュ・破損時はNone。"""
-    try:
-        started = time.monotonic()
-        value = cache().get(key)
-        read_ms = (time.monotonic() - started) * 1000
-    except DISK_READ_ERRORS as exc:  # 破損エントリ・SQLite障害はいずれも未キャッシュ扱いにする
-        logger.warning("tile persistent cache read failed key=%r, treating as cache miss error=%r", key, exc)
-        return None
+    未キャッシュならNone。"""
+    started = time.monotonic()
+    value = cache().get(key)
+    read_ms = (time.monotonic() - started) * 1000
     if value is not None:
         logger.debug("tile persistent cache hit key=%r read_ms=%.1f", key, read_ms)
     return value
 
 
 def set_by_key(key: tuple, value: Any, *, expire: float) -> None:
-    """任意のタプルキーで書き、`expire`（秒）で失効させる。
-
-    置き場の障害（ディスクフル等）で書けなければ、警告ログを出して書かずに進む（キャッシュに書けないことが応答を
-    止める理由にはならない）。pickleにできない値は実装の誤りなので投げる。
-    """
-    try:
-        cache().set(key, value, expire=expire)
-    except DISK_STORE_ERRORS as exc:  # 置き場の障害は、書かずに進む
-        logger.warning("tile persistent cache write failed key=%r error=%r", key, exc)
-
+    """任意のタプルキーで書き、`expire`（秒）で失効させる。"""
+    cache().set(key, value, expire=expire)
 
 
 async def get_tile_entry(key: tuple) -> Any | None:
