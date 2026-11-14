@@ -6,14 +6,14 @@
 ここで見ないもの: 表の各行の秒数（宣言の書き写しになる）、`Cache-Control`の書式 → `test_jma_tile_routes.py`
 """
 
-from fastapi.routing import APIRoute
+from fastapi.routing import APIRoute, iter_route_contexts
 
 from app.api.cache_policy import ROUTE_POLICIES, policy_for_path
 from app.main import app
 
 
 def _api_routes():
-    return [route for route in app.routes if isinstance(route, APIRoute)]
+    return [route for route in iter_route_contexts(app.routes) if isinstance(route.route, APIRoute)]
 
 
 def test_every_route_has_a_cache_policy():

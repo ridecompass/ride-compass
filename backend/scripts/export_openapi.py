@@ -38,7 +38,6 @@ from app.infrastructure.source_models import SOURCE_RUN_STATUS_LABELS
 from app.infrastructure.point_tile_layers import POINT_TILE_LAYERS
 from app.infrastructure.vector_tile import ROAD_FEATURE_PROPERTIES, ROAD_SURFACE_LAYER_NAME
 from app.main import app
-from app.domain.hard_filters import HARD_FILTER_PROPERTY, HARD_FILTERS
 from app.domain.address_area import ADDRESS_AREA_LEVELS
 from app.domain.geo import COMPASS_LABELS, EARTH_RADIUS_KM
 from app.domain.place_search import (
@@ -69,7 +68,6 @@ from app.domain.map_display import (
     MAP_LAYER_CATEGORIES,
     MAP_LAYERS,
     map_layer_label,
-    MAP_LAYER_KINDS,
     MapLayerSpec,
     ROUTE_ARROW_HALO_SCALE,
     ROUTE_ARROW_SIZE_BY_ZOOM,
@@ -133,7 +131,6 @@ from app.domain.display_palette import (
     BASEMAP_MUTED_GROUND_PULL,
     BASEMAP_MUTED_ICON_OPACITY_SCALE,
     BASEMAP_MUTED_SATURATION_SCALE,
-    COST_SERIES_COLORS,
     SEMANTIC_COLORS,
     SEMANTIC_COLORS_ON_DARK,
     resolved_display_axes,
@@ -237,7 +234,6 @@ def _map_layer_entry(spec: MapLayerSpec) -> dict:
     return {
         "dataSource": spec.data_source,
         "category": spec.category,
-        "kind": spec.kind,
         "dataNature": spec.data_nature,
         "defaultOn": spec.default_on,
         "drawMinZoom": spec.draw_min_zoom,
@@ -358,7 +354,6 @@ def main() -> None:
         {
             "semantic": SEMANTIC_COLORS,
             "semantic_on_dark": SEMANTIC_COLORS_ON_DARK,
-            "cost_series": list(COST_SERIES_COLORS),
             "basemap_dark": {
                 "lightness_range": list(BASEMAP_DARK_LIGHTNESS_RANGE),
                 "saturation_scale": BASEMAP_DARK_SATURATION_SCALE,
@@ -387,7 +382,6 @@ def main() -> None:
                 {"key": source.key, "minZoom": source.min_zoom} for source in MAP_LAYER_DATA_SOURCES
             ],
             "layerDataNatures": list(MAP_LAYER_DATA_NATURES),
-            "layerKinds": list(MAP_LAYER_KINDS),
             # 地図に載るものの、描き方以外の宣言（種別・情報源・性質・既定表示・最初に隠す行）。
             "layers": [
                 {
@@ -576,9 +570,7 @@ def main() -> None:
         PRIMARY_ATTRIBUTES_PATH,
         "primaryAttributes",
         # 一次属性カタログ（地図レイヤー階層の次数反転）。宣言
-        # （`domain/primary_attributes.py: PRIMARY_ATTRIBUTES`）だけから決まり、DBを読まない。各軸の
-        # `primary_attribute_ids`は実行時の`GET /api/client-config`が配るため、フロントは
-        # この一覧のlabel（正式名）と突き合わせて1次↔2次の双方向導出ができる。
+        # （`domain/primary_attributes.py: PRIMARY_ATTRIBUTES`）だけから決まり、DBを読まない。
         # 宣言をそのまま配る。色だけは宣言に無いので`resolved_display_axes`が決め、値が欠けたときの意味は
         # その値を載せる材料の宣言から引く（地図の凡例が「不明」を出すかを決める）。
         [
@@ -634,14 +626,6 @@ def main() -> None:
             # フロントが使う較正値のid（値は持たない。フロントはidの型にだけ使う）。効いている値はGET /api/client-configが
             # 返し、取れるまではその値を使う機能を出さない。
             "client_tuning": dict.fromkeys(client_tuning_ids()),
-            # 0次ハードフィルタ。道路タブにいつも「通らない」の行として見せる（要求では受けない）。選べる行と段は
-            # 管理DBの道の区分から、GET /api/client-configが配る。
-            "hard_filters": [
-                {"key": name, "label": spec.label, "description": spec.description}
-                for name, spec in HARD_FILTERS.items()
-            ],
-            # 路面タイルが、道の当たる0次ハードフィルタの名前を載せるプロパティ（地図は「通らない」の色で塗る）。
-            "hard_filter_property": HARD_FILTER_PROPERTY,
         },
     )
 

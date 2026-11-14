@@ -6,7 +6,6 @@ import LegendCheckboxList from "@/features/map/LegendCheckboxList/LegendCheckbox
 import { LEGEND_SWATCH_RING_CLASS, legendSwatchBackground, type LegendEntry } from "@/lib/mapDisplay/legendFilter";
 import { LAYER_DATA_STATUS_LABELS, layerDataStatusNotice, type LayerDataStatus } from "@/features/map/layers/mapLayers";
 import { UNSELECTED_LENS_ID, LENS_NEUTRAL_COLOR, type LensId } from "@/lib/mapDisplay/routeStyleModes";
-import { Checkbox } from "@/components/ui/Checkbox/Checkbox";
 import { Button } from "@/components/ui/Button/Button";
 import { ToggleGroup } from "@/components/ui/ToggleGroup/ToggleGroup";
 import { Dot } from "@/components/ui/Dot/Dot";
@@ -31,12 +30,8 @@ interface LensControlProps {
   onToggleLegendKey: (key: string) => void;
   /** 全部の段をまとめて置き換える（段の細かい軸で「1つだけ見たい」を1つずつ外させない）。 */
   onSetHiddenLegendKeys: (hiddenKeys: string[]) => void;
-  keepAfterRoute: boolean;
-  onKeepAfterRouteChange: (keep: boolean) => void;
   /** ルート確定済みか（レンズを選んでいないときのピルの名前が、ルートの前後で変わる）。 */
   hasDetail: boolean;
-  /** 候補を選んでいるのに、ルートの線を「表示」で出していない（色分けがルートの線に効かない）。 */
-  routeHidden: boolean;
   /** 凡例の下に書く、周りの道の色の前提（`features/map/costLens.ts: costLensPremises`）。 */
   premises: readonly string[];
   /** 選べるレンズが無い理由（費用の軸の一覧が届くまで・取れない間）。届いていればnull。 */
@@ -64,10 +59,7 @@ export default function LensControl({
   hiddenLegendKeys,
   onToggleLegendKey,
   onSetHiddenLegendKeys,
-  keepAfterRoute,
-  onKeepAfterRouteChange,
   hasDetail,
-  routeHidden,
   premises,
   catalogNotice,
   dataStatus,
@@ -92,7 +84,7 @@ export default function LensControl({
     legend.length > 0 || premises.length > 0 ? (
       <div
         className="flex flex-col gap-1"
-        data-usage="チェックを外した段階は、地図から隠れます。見出しのチェックで、その全部をまとめて切り替えます。"
+        data-usage="チェックを外した段階は地図から隠れます。見出しのチェックで、その全部をまとめて切り替えます。"
       >
         {legend.length > 0 && (
           <LegendCheckboxList
@@ -121,7 +113,7 @@ export default function LensControl({
             className="max-w-full flex-row items-center gap-1.5 border-0 px-2.5 py-1 text-[length:var(--font-size-sm)] whitespace-nowrap focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent-strong)]"
             aria-label={`${LENS_SCREEN_NAME}: ${pillLabel}（タップで変更）`}
             title={statusLabel}
-            usage={`選んだ負担の種類の${LENS_QUANTITY_LABEL}で、地図の道路（ルートを作った後はルートの線）を塗ります。横の帯は負担の凡例です。`}
+            usage={`選んだ負担の種類の${LENS_QUANTITY_LABEL}で、地図の道路[ルートを作った後はルートの線]を塗ります。横の帯は負担の凡例です。`}
           >
             {/* 道のりのグラフの「負担で塗る」の切り替えと同じ絵で、どちらも同じ入口と分かるようにする。 */}
             <BurdenPaintIcon size={14} />
@@ -156,11 +148,6 @@ export default function LensControl({
           collisionPadding={POPOVER_COLLISION_PADDING_PX}
         >
           <p className="mb-1.5 font-semibold">{LENS_SCREEN_NAME}</p>
-          {routeHidden && (
-            <p className="mb-1.5 text-[length:var(--font-size-sm)]" role="status">
-              「表示」でルートの線を隠しているため、ルートは塗っていません。
-            </p>
-          )}
           {/* ピルの状態ドットの意味。titleはスマホでは出ないため、開いた先で文として読ませる。 */}
           {statusNotice && (
             <p className="mb-1.5 text-[length:var(--font-size-sm)]" role="status">
@@ -179,7 +166,7 @@ export default function LensControl({
             value={unselected ? "" : lens}
             onValueChange={(id) => onLensChange(id === "" ? UNSELECTED_LENS_ID : id)}
             aria-label={LENS_SCREEN_NAME}
-            usage={`押した負担の種類の${LENS_QUANTITY_LABEL}で、地図の道路（ルートを作った後はルートの線）を塗ります。選んでいる行をもう一度押すと外れます。`}
+            usage={`押した負担の種類の${LENS_QUANTITY_LABEL}で、地図の道路[ルートを作った後はルートの線]を塗ります。選んでいる行をもう一度押すと外れます。`}
           >
             {axisOptions.map((option) => (
               <LensRow
@@ -190,17 +177,6 @@ export default function LensControl({
               />
             ))}
           </ToggleGroup>
-          <label
-            className="mt-2 flex items-center gap-1.5 border-t border-dashed border-[var(--color-border)] pt-2"
-            data-usage="ルートを作った後も、ルートの外の道路を薄く塗ったまま残します。"
-          >
-            <Checkbox
-              checked={keepAfterRoute}
-              onCheckedChange={onKeepAfterRouteChange}
-              aria-label="ルート後も周囲の道路を薄く塗る"
-            />
-            ルート後も周囲の道路を薄く塗る
-          </label>
           <div className="mt-1.5 flex justify-end gap-1 border-t border-[var(--color-border)] pt-1.5">
             <Button
               size="panelIcon"

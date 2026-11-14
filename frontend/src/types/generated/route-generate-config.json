@@ -68,18 +68,5 @@
     "search.distance_tolerance_ratio": null,
     "gradient.perpendicular_band_deg": null,
     "splice.min_stretch_km": null
-  },
-  "hard_filters": [
-    {
-      "key": "motorway",
-      "label": "高速道路・自動車専用道路",
-      "description": "高速道路と、自動車専用の標識のある一般道（バイパス等）。自転車は通れないので、いつも経路から外します。"
-    },
-    {
-      "key": "no_bicycle",
-      "label": "自転車通行禁止",
-      "description": "自転車の通行が禁止された道。いつも経路から外します。"
-    }
-  ],
-  "hard_filter_property": "hard-filter"
+  }
 }

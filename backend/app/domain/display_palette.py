@@ -225,9 +225,29 @@ SEMANTIC_COLORS_ON_DARK: dict[str, str] = {
 
 #: 費用の軸の識別色。費用の軸の一覧の順に当てる。
 #: 地図の負担の塗り（評価の配色の緑→赤）と取り違えないよう赤・緑・黄・橙を使わず、隣り合う2色が色覚の違いでも、明るい地・
-#: 暗い地のどちらでも見分けられる並び（データの見せ方の検証の道具で確かめた）。足りない分は`SEMANTIC_COLORS["neutral"]`で
-#: 塗る（色を作って足すと、隣と見分けられる保証が無い）。
+#: 暗い地のどちらでも見分けられる並び（データの見せ方の検証の道具で確かめた）。
 COST_SERIES_COLORS: tuple[str, ...] = ("#2a78d6", "#d9669a", "#6a55dc", "#139ab3", "#9c6a2c", "#b956c2")
+#: 軸が上の並びより多いときに作る色。色相は評価の配色（緑〜赤）を避けて青緑→赤紫に限り、並びの順に進める。隣どうしは
+#: 色相の差が軸の数とともに縮むので、明度を2段で交互にして離す（色覚の違いでも明度の差は残る）。
+_COST_SERIES_HUE_RANGE_DEG = (205.0, 355.0)
+_COST_SERIES_LIGHTNESS_STEPS = (44.0, _MAX_LIGHTNESS)
+_COST_SERIES_CHROMA = 50.0
+
+
+def cost_series_colors(count: int) -> list[str]:
+    """費用の軸`count`本の識別色（一覧の順）。確かめた並びに収まればその先頭を、超えれば全部の軸の色を作り直す
+    ——確かめた色に作った色を継ぎ足すと、継ぎ目の2色が見分けられる保証が無い。"""
+    if count <= len(COST_SERIES_COLORS):
+        return list(COST_SERIES_COLORS[:count])
+    (h_start, h_end) = _COST_SERIES_HUE_RANGE_DEG
+    return [
+        _fit_chroma(
+            _COST_SERIES_LIGHTNESS_STEPS[i % len(_COST_SERIES_LIGHTNESS_STEPS)],
+            _COST_SERIES_CHROMA,
+            h_start + (h_end - h_start) * i / (count - 1),
+        )
+        for i in range(count)
+    ]
 
 
 def resolved_display_axes(attr: PrimaryAttributeSpec) -> list[dict]:

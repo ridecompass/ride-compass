@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 import numpy as np
 from numba import njit
 from app.domain.leg_costs import compile_leg_cost_kernels
+from app.domain.route_diversity import EdgeSetOverlap
 from app.domain.stopwatch import elapsed_ms, start_timer
 from app.domain.search_graph import (
     EDGE_VALUE_DTYPE,
@@ -32,7 +33,6 @@ from app.domain.search_graph import (
     build_lazy_road_graph,
     build_search_graph_statics,
     kernel_array,
-    run_starts,
 )
 from app.domain.tuning import TUNING_PARAMETERS_BY_ID, TUNING_VALUES
 from app.domain.turn_structure import TurnExpandedStructure, build_turn_expanded_structure, current_turn_cost
@@ -537,11 +537,9 @@ class TurnExpandedTree:
     # `node_best_state`に対応する実距離（m）・所要時間（秒）。到達不能はNaN。
     node_length_m: np.ndarray
     node_seconds: np.ndarray
-    # 木の親となる状態。始点の区間・到達不能は-1。JITが読む配列と、Pythonのlist（numpy配列への添字アクセスより、
-    # Pythonの経路復元のループが速い）の両方で持つ。既定値を持たせない——省略できると、渡し忘れた木が黙って
+    # 木の親となる状態。始点の区間・到達不能は-1。既定値を持たせない——省略できると、渡し忘れた木が黙って
     # 「どの状態からも経路が1本も辿れない」ふるまいになる。
     predecessor: np.ndarray = field(repr=False, compare=False)
-    predecessor_list: list[int] = field(repr=False, compare=False)
 
 
 def build_turn_expanded_tree(
@@ -601,17 +599,15 @@ def build_turn_expanded_tree(
     fold_started = start_timer()
     # Nodeごとに最小コストの状態を1つ選ぶ（正方向はNodeへ入る状態、逆方向は出る状態）。
     incoming = structure.edge_from if reverse else structure.edge_to
-    order = np.lexsort((state_cost, incoming))
-    best_states = order[run_starts(incoming[order])]
-    node_best_state = np.full(node_count, -1, dtype=np.int64)
+    node_best_state = _node_best_states(kernel_array(incoming, np.int64), state_cost, int(node_count))
+    reached = np.flatnonzero(node_best_state >= 0)
+    best = node_best_state[reached]
     node_cost = np.full(node_count, np.inf)
     node_length_m = np.full(node_count, np.nan)
     node_seconds = np.full(node_count, np.nan)
-    finite_best = best_states[np.isfinite(state_cost[best_states])]
-    node_best_state[incoming[finite_best]] = finite_best
-    node_cost[incoming[finite_best]] = state_cost[finite_best]
-    node_length_m[incoming[finite_best]] = state_length_m[finite_best]
-    node_seconds[incoming[finite_best]] = state_seconds[finite_best]
+    node_cost[reached] = state_cost[best]
+    node_length_m[reached] = state_length_m[best]
+    node_seconds[reached] = state_seconds[best]
 
     logger.info(
         "turn_expanded_tree reverse=%s states=%d bins=%d dijkstra_ms=%d fold_ms=%d",
@@ -622,8 +618,24 @@ def build_turn_expanded_tree(
         state_cost=state_cost, state_length_m=state_length_m,
         state_seconds=state_seconds, node_cost=node_cost, node_best_state=node_best_state,
         node_length_m=node_length_m, node_seconds=node_seconds,
-        predecessor=predecessor, predecessor_list=predecessor.tolist(),
+        predecessor=predecessor,
     )
+
+
+@njit(cache=True, nogil=True)
+def _node_best_states(node_of_state: np.ndarray, state_cost: np.ndarray, node_count: int) -> np.ndarray:
+    """Nodeごとに、費用が有限で最小の状態（無ければ-1）。同じ費用なら番号の小さい状態を残す（厳密な`<`で先に見たものを残す）。
+
+    numpyの`ufunc.at`は群ごとの最小の値までしか取れず、その番号を並べ替えずに取る標準の関数が無いので、1回の走査で持つ。
+    """
+    best_state = np.full(node_count, -1, dtype=np.int64)
+    best_cost = np.full(node_count, np.inf)
+    for state in range(len(state_cost)):
+        node = node_of_state[state]
+        if state_cost[state] < best_cost[node]:
+            best_cost[node] = state_cost[state]
+            best_state[node] = state
+    return best_state
 
 
 def tree_cost_bound(
@@ -657,30 +669,30 @@ def tree_cost_bound(
         k *= 4
 
 
-def _walk_predecessors(predecessors: Sequence[int] | np.ndarray, state_index: int) -> list[int]:
-    """`state_index`から探索の始点まで前任者（-1で終わる）を辿った状態（＝Edge index）の列。"""
-    edges: list[int] = []
-    state = int(state_index)
-    while state >= 0:
-        edges.append(state)
-        state = int(predecessors[state])
+@njit(cache=True, nogil=True)
+def _walk_predecessors(predecessor: np.ndarray, state: int) -> np.ndarray:
+    """`state`から探索の始点まで前任者（-1で終わる）を辿った状態（＝Edge index）の列。"""
+    count = 0
+    current = state
+    while current >= 0:
+        count += 1
+        current = predecessor[current]
+    edges = np.empty(count, dtype=np.int64)
+    current = state
+    for position in range(count):
+        edges[position] = current
+        current = predecessor[current]
     return edges
 
 
-def _walk_from_source(predecessors: Sequence[int] | np.ndarray, state_index: int) -> list[int]:
+def _walk_from_source(predecessor: np.ndarray, state_index: int) -> list[int]:
     """前向きの探索で、始点→`state_index`の経路を進行順に返す。"""
-    return _walk_predecessors(predecessors, state_index)[::-1]
+    return _walk_predecessors(predecessor, int(state_index))[::-1].tolist()
 
 
 def turn_expanded_path_from_state(tree: TurnExpandedTree, state_index: int) -> list[int]:
     """前向き木で、始点→`state_index`の経路をEdge index列（進行順）で返す。"""
-    return _walk_from_source(tree.predecessor_list, state_index)
-
-
-def turn_expanded_path_from_state_to_source(tree: TurnExpandedTree, state_index: int) -> list[int]:
-    """`reverse=True`で作った木で、`state_index`から木の始点（目的地）までの経路を進行順で
-    返す。逆向きの木では前任者を辿ることが目的地へ近づくことに当たるため、反転しない。"""
-    return _walk_predecessors(tree.predecessor_list, state_index)
+    return _walk_from_source(tree.predecessor, state_index)
 
 
 def turn_expanded_path_edge_indices(tree: TurnExpandedTree, target_node_index: int) -> list[int] | None:
@@ -782,35 +794,120 @@ def combine_forward_backward_at_nodes(
     ターンの費用が抜ける（入る方向と出る方向の組み合わせで決まるため）。遷移（入る区間×出る
     区間の対）ごとに合計を求め、Nodeごとの最小を採る。
     """
-    state_count = structure.state_count
-    source = np.repeat(np.arange(state_count, dtype=np.int64), np.diff(structure.indptr))
-    target = structure.target_state
-    total = forward.state_cost[source] + transition_cost + backward.state_cost[target]
-    length = forward.state_length_m[source] + backward.state_length_m[target]
-    # 繋ぎ目のターンも、費用には費用、所要時間には時間で入る。
-    seconds_total = forward.state_seconds[source] + structure.turn_seconds + backward.state_seconds[target]
-    junction_node = structure.edge_to[source]
-
-    cost = np.full(node_count, np.inf)
+    cost, forward_state, transition = _junction_best_transitions(
+        kernel_array(structure.indptr, SEARCH_INDEX_DTYPE), kernel_array(structure.target_state, SEARCH_INDEX_DTYPE),
+        kernel_array(structure.edge_to, np.int64), kernel_array(transition_cost, EDGE_VALUE_DTYPE),
+        forward.state_cost, backward.state_cost, int(node_count),
+    )
+    backward_state = np.full(node_count, -1, dtype=np.int64)
     length_m = np.full(node_count, np.nan)
     seconds = np.full(node_count, np.nan)
-    forward_state = np.full(node_count, -1, dtype=np.int64)
-    backward_state = np.full(node_count, -1, dtype=np.int64)
-
-    finite = np.flatnonzero(np.isfinite(total))
-    if len(finite):
-        order = finite[np.lexsort((total[finite], junction_node[finite]))]
-        best = order[run_starts(junction_node[order])]
-        best_nodes = junction_node[best]
-        cost[best_nodes] = total[best]
-        length_m[best_nodes] = length[best]
-        seconds[best_nodes] = seconds_total[best]
-        forward_state[best_nodes] = source[best]
-        backward_state[best_nodes] = target[best]
+    joined = np.flatnonzero(transition >= 0)
+    source, picked = forward_state[joined], transition[joined]
+    target = structure.target_state[picked]
+    backward_state[joined] = target
+    length_m[joined] = forward.state_length_m[source] + backward.state_length_m[target]
+    # 繋ぎ目のターンも、費用には費用、所要時間には時間で入る。
+    seconds[joined] = forward.state_seconds[source] + structure.turn_seconds[picked] + backward.state_seconds[target]
     return NodeJunction(
         cost=cost, length_m=length_m, seconds=seconds,
         forward_state=forward_state, backward_state=backward_state,
     )
+
+
+@njit(cache=True, nogil=True)
+def _junction_best_transitions(
+    indptr: np.ndarray, target_state: np.ndarray, edge_to: np.ndarray, transition_cost: np.ndarray,
+    forward_cost: np.ndarray, backward_cost: np.ndarray, node_count: int,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Nodeごとに、合計の費用が有限で最小の遷移（合計・前向きの状態・遷移の番号。無ければinf・-1・-1）。
+
+    遷移を番号の順に1回だけ見て、厳密な`<`で先に見たものを残す（同じ合計なら番号の小さい遷移が残る）。
+    """
+    best_cost = np.full(node_count, np.inf)
+    best_source = np.full(node_count, -1, dtype=np.int64)
+    best_transition = np.full(node_count, -1, dtype=np.int64)
+    for source in range(len(indptr) - 1):
+        forward = forward_cost[source]
+        if not forward < np.inf:
+            continue
+        node = edge_to[source]
+        for transition in range(indptr[source], indptr[source + 1]):
+            total = forward + transition_cost[transition] + backward_cost[target_state[transition]]
+            if total < best_cost[node]:
+                best_cost[node] = total
+                best_source[node] = source
+                best_transition[node] = transition
+    return best_cost, best_source, best_transition
+
+
+class JunctionPaths:
+    """`NodeJunction`が各Nodeで継いだ経路（前向き木の始点→Node→後ろ向き木の始点）を取り出す。
+
+    経路は前向き・後ろ向きの区間の番号列を継いだもので、両側が同じ物理区間（進行方向を無視した両端のNodeの組）を
+    通るNodeは、行って戻る形で経路にならない——同じ道を逆向きの区間で戻る形は、区間の番号の比較では見つからない。
+    """
+
+    def __init__(
+        self, junction: NodeJunction, forward: TurnExpandedTree, backward: TurnExpandedTree,
+        edge_from: np.ndarray, edge_to: np.ndarray,
+    ):
+        self._junction = junction
+        self._forward_predecessor = forward.predecessor
+        self._backward_predecessor = backward.predecessor
+        self._edge_from = kernel_array(edge_from, np.int64)
+        self._edge_to = kernel_array(edge_to, np.int64)
+
+    def edges(self, node_index: int) -> np.ndarray | None:
+        """`node_index`を経由する経路の区間の番号列（進行順）。経路にならなければNone。"""
+        found = self._path(node_index)
+        return None if found is None else found[0]
+
+    def halves(self, node_index: int) -> tuple[list[int], list[int]] | None:
+        """`node_index`を経由する経路の（前向き, 後ろ向き）の区間の番号列。経路にならなければNone。"""
+        found = self._path(node_index)
+        if found is None:
+            return None
+        edges, forward_count = found
+        return edges[:forward_count].tolist(), edges[forward_count:].tolist()
+
+    def _path(self, node_index: int) -> tuple[np.ndarray, int] | None:
+        forward_state = int(self._junction.forward_state[node_index])
+        if forward_state < 0:
+            return None
+        # backward_stateが-1なのは終点そのものを指す場合で、後ろ向きの区間は無い。
+        edges, forward_count = _junction_path(
+            self._forward_predecessor, self._backward_predecessor,
+            forward_state, int(self._junction.backward_state[node_index]),
+            self._edge_from, self._edge_to, len(self._junction.cost),
+        )
+        return None if forward_count < 0 else (edges, forward_count)
+
+
+@njit(cache=True, nogil=True)
+def _junction_path(
+    forward_predecessor: np.ndarray, backward_predecessor: np.ndarray, forward_state: int, backward_state: int,
+    edge_from: np.ndarray, edge_to: np.ndarray, node_count: int,
+) -> tuple[np.ndarray, int]:
+    """前向き木の`forward_state`までと、後ろ向き木の`backward_state`から（-1なら無し）を継いだ区間の番号列と前向き側の
+    区間の数。両側が同じ物理区間を通るなら、前向き側の数を-1で返す。"""
+    forward = _walk_predecessors(forward_predecessor, forward_state)[::-1]
+    if backward_state >= 0:
+        backward = _walk_predecessors(backward_predecessor, backward_state)
+    else:
+        backward = np.empty(0, dtype=np.int64)
+    forward_keys = np.empty(len(forward), dtype=np.int64)
+    for position in range(len(forward)):
+        tail, head = edge_from[forward[position]], edge_to[forward[position]]
+        forward_keys[position] = min(tail, head) * node_count + max(tail, head)
+    forward_keys.sort()
+    for position in range(len(backward)):
+        tail, head = edge_from[backward[position]], edge_to[backward[position]]
+        key = min(tail, head) * node_count + max(tail, head)
+        found = np.searchsorted(forward_keys, key)
+        if found < len(forward_keys) and forward_keys[found] == key:
+            return np.concatenate((forward, backward)), -1
+    return np.concatenate((forward, backward)), len(forward)
 
 
 def _as_time_bins(caller: str, values: np.ndarray) -> np.ndarray:
@@ -963,7 +1060,7 @@ def turn_expanded_shortest_path(
 
 
 def compile_search_kernels() -> None:
-    """探索のJIT（出て戻れるNodeの集まり・来た道を戻らずに行き来できるNode・一対全木・木の経路どうしの重複率・2点間探索）を、最小の道路網で1回ずつ呼んでコンパイルする。
+    """探索のJIT（出て戻れるNodeの集まり・来た道を戻らずに行き来できるNode・一対全木・木の繋ぎ目・木の経路どうしの重複率・木を継いだ経路の取り出しと重複率・2点間探索）を、最小の道路網で1回ずつ呼んでコンパイルする。
     探索が読む費用を組み立てるJIT（`domain/leg_costs.py: compile_leg_cost_kernels`）も併せて焼く。
 
     `@njit(cache=True)`の結果はこのファイルの隣の`__pycache__`に残り、別のプロセスはそこから読む。
@@ -998,9 +1095,17 @@ def _call_search_kernels() -> None:
         structure, cost, statics.edge_length_m, origin_states, lazy_graph.node_count, edge_seconds=cost,
         transition_cost=structure.turn_seconds,
     )
+    combine_forward_backward_at_nodes(structure, tree, tree, lazy_graph.node_count, structure.turn_seconds)
     overlap = TreePathOverlap(tree)
     overlap.accept(1)
     overlap.max_ratio(0)
+    _junction_path(
+        tree.predecessor, tree.predecessor, 0, 0,
+        kernel_array(lazy_graph.edge_from, np.int64), kernel_array(lazy_graph.edge_to, np.int64), lazy_graph.node_count,
+    )
+    edge_overlap = EdgeSetOverlap[int](lambda item: np.array([item]), statics.edge_length_m, 1)
+    edge_overlap.accept(0)
+    edge_overlap.max_ratio(0)
     turn_expanded_shortest_path(structure, cost, np.zeros(2), origin_states, 0, edge_seconds=cost,
                                 transition_cost=structure.turn_seconds)
     compile_leg_cost_kernels()

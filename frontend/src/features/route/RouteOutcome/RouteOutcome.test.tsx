@@ -17,7 +17,7 @@
  *
  * 差し替えたもの: 画面の設定と費用の軸の一覧の応答（網の層）。結果の状態は値で組む（`testing/routeOutcome.tsx`）。
  *
- * 軸は架空のもの（`axis_a`等）を`src/testing/catalogAxes.ts`の雛形から作る。
+ * 軸は架空のもの（`axis_a`等）を`testing/costAxes.ts: costAxisEntry`の雛形から作る。
  */
 import { screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -67,7 +67,7 @@ describe("候補の上の知らせ", () => {
       results: resultsOf({ generated: [FAST] }),
       generation: generationOf({ conditionsDirty: on, destinationCorrected: on }),
     });
-    for (const text of ["生成条件が変更されています", /近くのアクセス可能な地点へ補正しました/]) {
+    for (const text of ["生成条件が変更されています", /近くの自転車で行ける地点へ移しました/]) {
       expect(screen.queryByText(text) !== null).toBe(on);
     }
   });

@@ -1,15 +1,13 @@
 """Overture Maps の地点（places の GeoParquet）のアダプタ。
 
 **外部の形を読んで1件ずつ返すことだけ**を行う。群へ入れる・近くの同じ店をまとめるのは派生の段
-（`batch/derive_stop_places.py`）で、ここは取り込む母集団の外の地点を落とすだけである。
+（`batch/derive_places.py`）で、ここは取り込む母集団の外の地点を落とすだけである。
 
 **配信元は叩かない。** 取りに行くのは`scripts/fetch_overture_places.py`の仕事で、ここは手元にあるものを読む。
 
 落とすのは次の地点:
 - 取込の範囲（`target.bbox`）の外
 - 確からしさ（`confidence`）が宣言（`rows.min_confidence`）より低い。閉じた地点は0になる
-- 分類の道筋に、どの群の語（`domain/stop_place.py: OVERTURE_GROUPED_WORDS`）も無い——群の外の地点が配布の大半で、
-  取り込んでも読む者がいない
 - 名前が無い（地図にも検索にも出せない）
 
 残した地点の列は、位置（`geometry`・`bbox`）を除いて全部`attrs`へ入れる。
@@ -25,9 +23,9 @@ import duckdb
 
 from app.batch.ingest import AdapterInputs, SourceRecord, register_adapter
 from app.batch.source_profile import SourceProfile, SourceSpec
-from app.domain.stop_place import OVERTURE_GROUPED_WORDS
+from app.infrastructure import data_paths
 
-DATA_DIR = Path(__file__).resolve().parents[3] / "data" / "overture"
+DATA_DIR = data_paths.DATA_DIR / "overture"
 
 #: 1回に読み出す行の数。DuckDBから溜めずに流すための区切り。
 _FETCH_ROWS = 10_000
@@ -38,7 +36,6 @@ SELECT p.id, ST_AsWKB(p.geometry), json_merge_patch(to_json(p), '{"geometry": nu
 FROM read_parquet(?) p
 WHERE p.bbox.xmin BETWEEN ? AND ? AND p.bbox.ymin BETWEEN ? AND ?
   AND p.confidence >= ?
-  AND list_has_any(p.taxonomy.hierarchy, ?::VARCHAR[])
   AND p.names.primary IS NOT NULL
 """
 
@@ -78,8 +75,7 @@ async def read_overture_places(spec: SourceSpec, profile: SourceProfile, inputs:
     min_lat, min_lon, max_lat, max_lon = profile.target.bbox
     # 点の`bbox`の最小は点そのもの（公式の文書「DuckDB」の Overture の読み方）。
     with duckdb.connect() as conn:
-        conn.execute(_SELECT_SQL, [str(path), min_lon, max_lon, min_lat, max_lat, rows.min_confidence,
-                                   sorted(OVERTURE_GROUPED_WORDS)])
+        conn.execute(_SELECT_SQL, [str(path), min_lon, max_lon, min_lat, max_lat, rows.min_confidence])
         while batch := conn.fetchmany(_FETCH_ROWS):
             for place_id, wkb, attrs in batch:
                 yield SourceRecord(natural_key=place_id, geom_wkb=bytes(wkb), attrs=json.loads(attrs))

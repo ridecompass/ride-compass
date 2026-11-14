@@ -14,7 +14,7 @@ import httpx
 import pytest
 import pytest_asyncio
 
-from app.domain.cycling_speed import BASE_CRR_ID
+from app.domain.tuning import BASE_CRR_ID
 from app.domain.map_display import MAP_LAYER_CATEGORIES
 from app.domain.material_catalog import MATERIAL_CATALOG
 from app.domain.road_classes import (

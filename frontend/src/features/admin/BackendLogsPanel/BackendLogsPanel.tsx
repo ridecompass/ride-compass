@@ -62,8 +62,7 @@ export default function BackendLogsPanel() {
     <Card className="flex flex-col gap-2">
       <div className={textVariants({ variant: "heading" })}>バックエンドの直近ログ</div>
       <p className={textVariants({ variant: "hint" })}>
-        debug_modeがOFFの間もWARNING以上（エラー・429拒否等）は記録されている。DEBUGレベルの
-        詳細を見るには上の「デバッグログを表示」ではなく、backend側でdebug_modeを有効化する 必要がある（`POST
+        debug_modeがOFFの間もWARNING以上（エラー・429拒否等）は記録されている。DEBUGレベルの詳細を見るには上の「デバッグログを表示」ではなく、backend側でdebug_modeを有効化する必要がある（`POST
         /api/admin/debug/mode`、このパネルの対象外）。
       </p>
       <div className="flex flex-wrap items-center gap-2">

@@ -20,9 +20,9 @@ const settingsTabs = (axisNames: string): readonly { value: SettingsTab; label: 
   {
     value: "exclusions",
     label: ROAD_SETTINGS_TAB_NAME,
-    usage: "道路の種類ごとに、費用に掛ける倍率で、好んで通るか・なるべく避けるか・通らないかを選びます。",
+    usage: "道路の種類ごとに、好んで通るか・なるべく避けるか・通らないかを、費用に掛ける倍率で選びます。",
   },
-  { value: "saved", label: "保存済み", usage: "名前を付けて保存した地点とプリセット（設定）を並べ、呼び出します。" },
+  { value: "saved", label: "保存済み", usage: "名前を付けて保存した地点とプリセット[設定]を並べ、呼び出します。" },
 ];
 
 /**

@@ -163,9 +163,7 @@ def _trace(
     # 経路を探索と同じ規則でたどった区間ごとの時刻。区間の到達予想と候補の所要時間が同じ時計を使う。
     turn_waits = transition_values_along(context.turn_structure.turn_seconds, entries)
     turn_kickoffs = transition_values_along(context.turn_structure.turn_kickoffs, entries)
-    passages = route_passages(
-        context.legs, turn_waits, path, [edge.distance_m for edge in edges_in_path], leg_of_edge, context.composer.speed_kmh,
-    )
+    passages = route_passages(context.legs, turn_waits, path, leg_of_edge)
     return _Traced(edges_in_path, path, leg_of_edge, waypoint_offsets, rows, entries, turn_kickoffs, passages,
                    route_cost(passages, turn_waits, turn_kickoffs, context.composer))
 
@@ -343,6 +341,7 @@ def _build_segment_details(
                     )
                 ],
                 sustained_gradient_percent=steepest_signed_percent(elevation_attr),
+                average_gradient_percent=elevation_attr.average_grade if elevation_attr else None,
                 estimated_arrival_time=arrival_time.isoformat(),
                 penalty=penalties[index],
                 road_classes={

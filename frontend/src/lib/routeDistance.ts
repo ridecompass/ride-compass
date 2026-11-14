@@ -129,9 +129,14 @@ export function routeTrack(segments: readonly RouteSegmentShape[]): RouteTrackEd
   return edges;
 }
 
+/** 辺`edge`の上の、ルートの上の距離`km`の位置。辺の両端を距離の割合で結んだ位置に置く。 */
+function lngLatOnEdge(edge: RouteTrackEdge, km: number): LngLat {
+  const fraction = edge.toKm > edge.fromKm ? (km - edge.fromKm) / (edge.toKm - edge.fromKm) : 0;
+  return [edge.from[0] + (edge.to[0] - edge.from[0]) * fraction, edge.from[1] + (edge.to[1] - edge.from[1]) * fraction];
+}
+
 /**
  * ルートの道なりの形の上に、始まりから`stepKm`おきに置いた点と、そのルートの上の距離。終わりの点も必ず含む。
- * 辺の中の点は、辺の両端を距離の割合で結んだ位置に置く。
  */
 export function routePointsEvery(
   segments: readonly RouteSegmentShape[],
@@ -139,19 +144,13 @@ export function routePointsEvery(
 ): { km: number; point: Coordinates }[] {
   const track = routeTrack(segments);
   if (track.length === 0) return [];
-  const pointAt = (edge: RouteTrackEdge, km: number): Coordinates => {
-    const fraction = edge.toKm > edge.fromKm ? (km - edge.fromKm) / (edge.toKm - edge.fromKm) : 0;
-    return {
-      longitude: edge.from[0] + (edge.to[0] - edge.from[0]) * fraction,
-      latitude: edge.from[1] + (edge.to[1] - edge.from[1]) * fraction,
-    };
-  };
   const points: { km: number; point: Coordinates }[] = [];
   const last = track[track.length - 1];
   let edgeIndex = 0;
   for (let index = 0, km = 0; km < last.toKm; index += 1, km = index * stepKm) {
     while (track[edgeIndex].toKm < km) edgeIndex += 1;
-    points.push({ km, point: pointAt(track[edgeIndex], km) });
+    const [longitude, latitude] = lngLatOnEdge(track[edgeIndex], km);
+    points.push({ km, point: { longitude, latitude } });
   }
   points.push({ km: last.toKm, point: { longitude: last.to[0], latitude: last.to[1] } });
   return points;
@@ -173,7 +172,7 @@ export function projectOnTrack(track: readonly RouteTrackEdge[], position: Coord
 }
 
 /** 地点`position`を道なりの形`track`に当てた、いちばん近い点の距離（km）と、地点からの隔たり（m）。 */
-export function nearestOnTrack(track: readonly RouteTrackEdge[], position: Coordinates): TrackProjection {
+function nearestOnTrack(track: readonly RouteTrackEdge[], position: Coordinates): TrackProjection {
   const projections = projectOnTrack(track, position);
   const nearest = projections.reduce((best, p) => (p.offsetM < best.offsetM ? p : best), projections[0]);
   return nearest ?? { km: 0, offsetM: 0 };

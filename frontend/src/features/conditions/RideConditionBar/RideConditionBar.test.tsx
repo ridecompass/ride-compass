@@ -170,7 +170,7 @@ describe("RideConditionBar 想定速度", () => {
     renderBar();
     await userEvent.click(screen.getByRole("button", { name: /^想定速度:/ }));
     await userEvent.click(await screen.findByRole("button", { name: "想定速度の説明を表示" }));
-    expect(await screen.findByText(/区間ごとの条件ア・条件イで速度を変えて計算します/)).toBeInTheDocument();
+    expect(await screen.findByText(/区間ごとの条件ア・条件イに合わせて速度を変えて計算します/)).toBeInTheDocument();
   });
 
   it("(i)の奥に、画面の設定が配る体格・機材の標準値を書く", async () => {
@@ -187,7 +187,7 @@ describe("RideConditionBar 想定速度", () => {
     renderBar();
     await userEvent.click(screen.getByRole("button", { name: /^想定速度:/ }));
     await userEvent.click(await screen.findByRole("button", { name: "想定速度の説明を表示" }));
-    expect(await screen.findByText(/総質量72kg.*CdA 0.4m².*下りは50km\/hまで.*5km\/h以下/)).toBeInTheDocument();
+    expect(await screen.findByText(/総質量は72kg.*CdAは0.4m².*下りは50km\/hまで.*5km\/h以下/)).toBeInTheDocument();
   });
 
   it("体格・機材の標準値を画面の設定から1つでも引けなければ、標準値の文を出さない", async () => {

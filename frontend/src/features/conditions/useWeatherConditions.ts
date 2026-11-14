@@ -167,7 +167,7 @@ export function useWeatherConditions(
           label: warning.name,
           level: warning.level,
           source: "jma",
-          title: warning.additions.length > 0 ? `付随事項: ${warning.additions.join("・")}` : undefined,
+          title: warning.additions.length > 0 ? `付加事項: ${warning.additions.join("・")}` : undefined,
         }))
       : [];
     // 暑さ指数は段が無い間（値の無い提供期間外・「ほぼ安全」等）は出さない。

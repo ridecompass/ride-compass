@@ -7,7 +7,6 @@
 区間の向きと線の向きの差で外す。
 """
 
-import json
 import logging
 import time
 
@@ -15,14 +14,8 @@ import asyncpg
 
 from app.batch.common import affected_rows
 from app.domain.geo import bearing_sql
-from app.domain.traffic_regulation import (
-    PEDESTRIAN_ROAD_KIND,
-    REGULATION_HOURS,
-    RegulationSlot,
-    applies_to_bicycles,
-    regulation_hours,
-)
-from app.infrastructure.source_models import JARTIC_REGULATIONS_SOURCE_SQL
+from app.domain.traffic_regulation import REGULATION_HOURS, applies_to_bicycles, regulation_hours
+from app.infrastructure.source_models import JARTIC_REGULATIONS_SOURCE_SQL, PEDESTRIAN_ROAD_KIND, regulation_slots
 
 logger = logging.getLogger("ridecompass.derive_traffic_regulations")
 
@@ -69,9 +62,7 @@ GROUP BY h.osm_way_id, h.segment_index
 
 def _classify(slots_json: str) -> tuple[int, int | None]:
     """規制1件の、時間帯と自転車も対象のときの時間帯の強さ（`_HOURS_TABLE`の値）。"""
-    slots = [RegulationSlot(**{**slot, "vehicles": tuple(slot["vehicles"]),
-                               "except_vehicles": tuple(slot["except_vehicles"])})
-             for slot in json.loads(slots_json)]
+    slots = regulation_slots(slots_json)
     rank = REGULATION_HOURS.index(regulation_hours(slots)) + 1
     return rank, rank if applies_to_bicycles(slots) else None
 

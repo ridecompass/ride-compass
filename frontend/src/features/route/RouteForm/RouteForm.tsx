@@ -81,7 +81,7 @@ function KeptTabContent({ value, children }: { value: string; children: React.Re
 function toleranceSentence(ratio: number, distanceInput: string): string {
   const percent = Math.round(ratio * 1000) / 10;
   const km = Math.round(Number(distanceInput) * ratio * 10) / 10;
-  return `作る候補は、この長さの±${percent}%（${distanceInput}kmなら±${km}km）に入るものだけです。`;
+  return `候補は、この長さの±${percent}%[${distanceInput}kmなら±${km}km]に収まるものだけを作ります。`;
 }
 
 export default function RouteForm({
@@ -153,7 +153,7 @@ export default function RouteForm({
               {[
                 "ルート全体の長さの目標です。",
                 distanceToleranceRatio === undefined ? "" : toleranceSentence(distanceToleranceRatio, distanceInput),
-                "外すと長さを決めず、目的地（周回なら経由地を回って出発地）へ、所要時間と負担の和が小さい道で向かいます。",
+                "オフにすると長さを決めず、所要時間と負担の和が小さい道で目的地へ向かいます[周回なら、経由地を回って出発地へ]。",
                 `${routeGenerateConfig.busy_safe_distance_km}kmより長い目標は、混み合っているときに作れないことがあります。`,
               ].join("")}
             </InfoPopover>
@@ -192,18 +192,18 @@ export default function RouteForm({
           <span className={cn(textVariants({ variant: "hint" }), "flex-shrink-0")}>負担の強さ</span>
           <CostLevelPicker
             aria-label="負担の強さ"
-            usage="所要時間に足す負担に掛ける倍率を選びます。"
+            usage="所要時間に足す負担を、どれだけ強く数えるかを選びます。"
             levels={COST_STRENGTH_LEVELS}
             value={costPreference.strength}
             onChange={(strength) => setCostPreference((prev) => ({ ...prev, strength }))}
           />
           <InfoPopover triggerAriaLabel="負担の強さの説明" triggerClassName="flex-none">
             {/* JSXの改行は半角スペースになるので、文字列として繋ぐ。 */}
-            {"所要時間に足す負担に掛ける倍率です。" +
-              `負担は、平地を走るより余分にかかるもの${costAxisNamesNote(costCatalog)}を、時間に換算したものです。` +
-              "道は、所要時間とこの倍率を掛けた負担の和が小さくなるように選びます。×1 が標準です。" +
-              "×2 は負担を2倍にして足すので、所要時間が延びても負担の小さい道を選びやすくなります。" +
-              `${DISABLED_LABEL}は負担を数えず、所要時間だけで選びます（結果にも地図にも負担を出しません）。` +
+            {"所要時間に足す負担を、どれだけ強く数えるかを決めます。" +
+              `負担は、平地を走るより余分にかかるもの${costAxisNamesNote(costCatalog)}を時間に直したものです。` +
+              "道は、所要時間と、この強さを掛けた負担との和が小さくなるように選びます。" +
+              "×1 が標準で、×2 にすると所要時間が延びても負担の小さい道を選びやすくなります。" +
+              `${DISABLED_LABEL}にすると負担を数えず、所要時間だけで選びます[結果にも地図にも負担を出しません]。` +
               "負担の種類ごとの倍率は「負担」タブで選べます。"}
           </InfoPopover>
         </div>
@@ -227,7 +227,7 @@ export default function RouteForm({
             </TabsTrigger>
             <TabsTrigger
               value="conditions"
-              usage="条件タブで名前を付けて保存した設定（プリセット）の一覧です。呼び出すと、各タブの値を入れ替えます。"
+              usage="条件タブで名前を付けて保存した設定[プリセット]の一覧です。呼び出すと、各タブの値を入れ替えます。"
             >
               プリセット
             </TabsTrigger>

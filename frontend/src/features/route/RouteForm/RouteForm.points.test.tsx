@@ -125,7 +125,7 @@ describe("RouteForm 地点の編集", () => {
 
   async function openEdit() {
     await userEvent.click(button("編集"));
-    await within(editList() as HTMLElement).findByRole("listitem", { name: "出発地: 現在地（王子）" });
+    await within(editList() as HTMLElement).findByRole("listitem", { name: "出発地: 現在地[王子]" });
   }
 
   // 行の高さはテスト環境に無いレイアウトの実寸なので、テストが決める（高さ44・間6で、上から50ずつ）。
@@ -165,13 +165,13 @@ describe("RouteForm 地点の編集", () => {
       label: "目的地を置いていなければ、空の目的地の行を出す",
       loop: false,
       destination: null,
-      names: ["出発地: 現在地（王子）", "経由地1: 浅草", "経由地2: 上野", "目的地: 未設定"],
+      names: ["出発地: 現在地[王子]", "経由地1: 浅草", "経由地2: 上野", "目的地: 未設定"],
     },
     {
       label: "周回の間は、目的地の行を出さない",
       loop: true,
       destination: DESTINATION,
-      names: ["出発地: 現在地（王子）", "経由地1: 浅草", "経由地2: 上野"],
+      names: ["出発地: 現在地[王子]", "経由地1: 浅草", "経由地2: 上野"],
     },
   ])(
     "編集を押すと、詳しくの代わりに地点を通る順に名前の行で並べ、地図で置いた地点は辺りで呼ぶ: $label",

@@ -36,6 +36,8 @@ HOST_PATHS = (
     "backend/ops/**",
     # デプロイの手順そのもの。
     ".github/workflows/deploy-backend.yml",
+    # 本番の宛先。像に入らないが、デプロイがここのfrontendの宛先をCORSの許可へ足す。
+    "production-origins.json",
 )
 
 #: イメージに届いても、本番へ出す理由にならないもの。

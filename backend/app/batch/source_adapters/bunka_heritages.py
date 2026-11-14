@@ -1,7 +1,7 @@
 """国の指定・登録の文化財の建造物（文化遺産オンラインの項目をジャパンサーチの API で取ったもの）のアダプタ。
 
 **外部の形を読んで1件ずつ返すことだけ**を行う。寺社かの判断と、同じ寺社の建物を1つにまとめるのは派生の段
-（`batch/derive_stop_places.py`）で、ここは取り込む母集団の外の行を落とすだけである。
+（`batch/derive_places.py`）で、ここは取り込む母集団の外の行を落とすだけである。
 
 **配信元は叩かない。** 取りに行くのは`scripts/fetch_bunka_heritages.py`の仕事で、ここは手元にあるもの
 （全国の建造物の項目を1行1件の JSON で並べたファイル）を読む。
@@ -26,8 +26,9 @@ from shapely.geometry import Point
 
 from app.batch.ingest import AdapterInputs, SourceRecord, register_adapter
 from app.batch.source_profile import SourceProfile, SourceSpec
+from app.infrastructure import data_paths
 
-DATA_DIR = Path(__file__).resolve().parents[3] / "data" / "bunka"
+DATA_DIR = data_paths.DATA_DIR / "bunka"
 
 #: 指定の別の項目。
 DESIGNATION_FIELD = "bunka-11-s"

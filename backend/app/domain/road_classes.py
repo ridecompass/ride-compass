@@ -197,17 +197,15 @@ def published_map_layers(definitions: RoadClassDefinitions) -> list[tuple[str, R
     return sorted(published, key=position)
 
 
-def _present(column: MaterialColumn | None, n: int) -> np.ndarray:
-    """区間ごとに事実があるか。知らない事実（列が無い）は、どの区間にも無い。分類の事実は値があれば「事実あり」。分類でない列は
-    真偽として読み、1.0のときだけ（`TRUE_FACT_VALUE`の値で）「事実あり」、ほかの値と値なしは「事実なし」。"""
-    if column is None:
-        return np.zeros(n, dtype=bool)
+def _present(column: MaterialColumn) -> np.ndarray:
+    """区間ごとに事実があるか。分類の事実は値があれば「事実あり」。分類でない列は真偽として読み、1.0のときだけ
+    （`TRUE_FACT_VALUE`の値で）「事実あり」、ほかの値と値なしは「事実なし」。"""
     return column.codes != 0 if isinstance(column, CategoricalColumn) else column == 1.0
 
 
-def _term_matches(term: ConditionTerm, column: MaterialColumn | None, n: int) -> np.ndarray:
+def _term_matches(term: ConditionTerm, column: MaterialColumn, n: int) -> np.ndarray:
     """区間ごとに項が当たるか。"""
-    present = _present(column, n)
+    present = _present(column)
     if isinstance(column, CategoricalColumn):
         listed = np.isin(column.codes, [code for code, value in enumerate(column.vocab) if value in term.fact_values])
     else:
@@ -216,18 +214,15 @@ def _term_matches(term: ConditionTerm, column: MaterialColumn | None, n: int) ->
 
 
 def conditions_match(conditions: Sequence[Condition], columns: Mapping[str, MaterialColumn], n: int) -> np.ndarray:
-    """区間ごとに、条件のどれかに当たるか。条件は項が全部当たる道に当たる。"""
+    """区間ごとに、条件のどれかに当たるか。条件は項が全部当たる道に当たる。条件の事実は材料にあるもの（`undeclared_references`）で、
+    `columns`はその列を全部持つ。無ければ投げる——どの区間にも事実が無いとして続けると、区分が黙って空になる。"""
     matched = np.zeros(n, dtype=bool)
     for condition in conditions:
         within = np.ones(n, dtype=bool)
         for fact_key, term in condition.items():
-            within &= _term_matches(term, columns.get(fact_key), n)
+            within &= _term_matches(term, columns[fact_key], n)
         matched |= within
     return matched
-
-
-def _facts(classification: RoadClassification) -> set[str]:
-    return {fact_key for c in classification.classes.values() for condition in c.conditions for fact_key in condition}
 
 
 def class_labels(classification: RoadClassification | None) -> dict[str, str]:
@@ -268,7 +263,7 @@ def layer_columns(
             continue
         column = cast(CategoricalColumn, columns[class_material_id(key)])
         if layer.no_data_fact_key is not None:
-            missing = (column.codes == 0) & ~_present(columns.get(layer.no_data_fact_key), n)
+            missing = (column.codes == 0) & ~_present(columns[layer.no_data_fact_key])
             column = CategoricalColumn(
                 np.where(missing, len(column.vocab), column.codes).astype(np.int16), (*column.vocab, NO_DATA_VALUE)
             )

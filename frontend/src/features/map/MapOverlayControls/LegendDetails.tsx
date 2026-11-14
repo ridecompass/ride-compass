@@ -64,7 +64,7 @@ export default function LegendDetails({
   return (
     <div
       className="flex flex-col gap-2"
-      data-usage="チェックを外した段階は、地図から隠れます。見出しのチェックで、その全部をまとめて切り替えます。"
+      data-usage="チェックを外した段階は地図から隠れます。見出しのチェックで、その全部をまとめて切り替えます。"
     >
       {axes.map(({ axisId, ...axis }, axisIndex) => (
         <div key={axisId ?? axisIndex} className="flex flex-col gap-1">

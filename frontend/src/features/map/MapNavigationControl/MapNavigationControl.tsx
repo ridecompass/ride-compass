@@ -159,8 +159,8 @@ function RideZoomButton({ zoomBase, onNextZoom }: { zoomBase: number; onNextZoom
       variant="mapCtrl"
       size="mapCtrl"
       className="rounded-b-none shadow-none"
-      aria-label={`倍率（いまは${step.label}）`}
-      usage="押すたびに、走行中の地図の倍率を中・遠・近の順に切り替えます。2本指でつまんでも変えられます。速く走るほど、選んだ倍率より広い範囲を表示します。"
+      aria-label={`縮尺（いまは${step.label}）`}
+      usage="押すたびに、走行中の地図の縮尺を中・遠・近の順に切り替えます。2本指でつまんでも変えられます。速く走るほど、選んだ縮尺より広い範囲を表示します。"
       onClick={onNextZoom}
     >
       <RideZoomIcon reach={step.reach} />
@@ -225,8 +225,8 @@ function HeadingDial({ bearing, heading, onBearingChange, onResetNorth }: Headin
     <div className="flex flex-col gap-1" style={{ width: DIAL_SIZE_PX }}>
       <div className="flex items-center justify-between">
         <InfoPopover triggerAriaLabel="地図の向きの使い方">
-          輪をなぞると地図が回り、真ん中の針を押すと北が上に戻ります。
-          {`周りの道を負担で塗るときと道の小窓では、地図の上の向きを${WAY_BEARING_STEP_DEG}°刻みに丸めた向きを、走る向きとみなします。ルートの負担は、実際に走る向きで決まります。`}
+          輪をなぞると地図が回ります。真ん中の針を押すと、北が上に戻ります。
+          {`周りの道を負担で塗るときと道の小窓では、地図の上の向きを${WAY_BEARING_STEP_DEG}°刻みに丸めて、走る向きとみなします。ルートの負担は、実際に走る向きで決まります。`}
         </InfoPopover>
         <span className="tabular-nums">
           <span className="text-[length:var(--font-size-md)] font-semibold text-[var(--color-accent)]">

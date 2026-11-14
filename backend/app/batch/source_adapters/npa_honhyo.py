@@ -26,10 +26,11 @@ from shapely.geometry import Point
 
 from app.batch.ingest import AdapterInputs, SourceRecord, register_adapter
 from app.batch.source_profile import SourceProfile, SourceSpec
+from app.infrastructure import data_paths
 
 logger = logging.getLogger("ridecompass.ingest.npa_honhyo")
 
-DATA_DIR = Path(__file__).resolve().parents[3] / "data" / "accidents"
+DATA_DIR = data_paths.DATA_DIR / "accidents"
 
 #: 本票CSVの文字コード。
 ENCODING = "cp932"

@@ -56,10 +56,12 @@ logger = logging.getLogger("ridecompass.road_graph_repository")
 ID_CHUNK_SIZE = 50_000
 
 
-#: スキーマが依存する拡張。**アプリの権限では入れられない**（どちらもスーパーユーザーを
+#: スキーマが依存する拡張。PostGIS の2つは**アプリの権限では入れられない**（スーパーユーザーを
 #: 要求し、trustedでもない）ため、DBを作る人が先に入れる。`raster`は面のソースの列の型で、
-#: 画素の数え上げをDB側で行うために要る。
-REQUIRED_EXTENSIONS = ("postgis", "postgis_raster")
+#: 画素の数え上げをDB側で行うために要る。`pg_trgm`は地点の名前の部分一致の索引（`derived_models.py: PlaceRow`）の
+#: 演算子の類、`btree_gist`は地点の群と位置を組にした索引（同じ）の群の列の演算子の類で、どちらも trusted なのでDBに
+#: CREATE の権限があれば入れられる。
+REQUIRED_EXTENSIONS = ("postgis", "postgis_raster", "pg_trgm", "btree_gist")
 
 
 async def create_tables(engine: AsyncEngine) -> None:
@@ -81,6 +83,7 @@ async def create_tables(engine: AsyncEngine) -> None:
                 f"このDBに拡張 {', '.join(missing)} が入っていません。"
                 f"スーパーユーザーで先に実行してください: {commands}")
         await conn.run_sync(declared_metadata().create_all)
+        await derived_data_meta.insert_first_revision(conn)
 
 
 # --- 区間粒度の材料 -----------------------------------------------------------

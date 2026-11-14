@@ -36,7 +36,6 @@ function renderLens(props: Partial<Parameters<typeof LensControl>[0]> = {}) {
     onLensChange: vi.fn(),
     onToggleLegendKey: vi.fn(),
     onSetHiddenLegendKeys: vi.fn(),
-    onKeepAfterRouteChange: vi.fn(),
   };
   render(
     <LensControl
@@ -45,9 +44,7 @@ function renderLens(props: Partial<Parameters<typeof LensControl>[0]> = {}) {
       totalLabel="総合"
       legend={LEGEND}
       hiddenLegendKeys={[]}
-      keepAfterRoute
       hasDetail={false}
-      routeHidden={false}
       premises={[]}
       catalogNotice={null}
       {...handlers}
@@ -162,18 +159,5 @@ describe("LensControl", () => {
     }
     await userEvent.click(clear);
     expect(onSetHiddenLegendKeys).toHaveBeenCalledWith([]);
-  });
-
-  it("ルートの線を出していなければ、塗っていないことを開いた先で伝える", async () => {
-    renderLens({ routeHidden: true });
-    await open();
-    expect(screen.getByRole("status")).toHaveTextContent("ルートは塗っていません");
-  });
-
-  it("「ルート後も周囲の道路を薄く塗る」を押すと、反転した値で知らせる", async () => {
-    const { onKeepAfterRouteChange } = renderLens({ keepAfterRoute: true });
-    await open();
-    await userEvent.click(screen.getByRole("checkbox", { name: "ルート後も周囲の道路を薄く塗る" }));
-    expect(onKeepAfterRouteChange).toHaveBeenCalledWith(false);
   });
 });

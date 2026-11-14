@@ -32,7 +32,7 @@ import { useMapScene } from "@/features/map/MapView/useMapScene";
 import { useRideFollow, type RideFollow } from "@/features/map/MapView/useRideFollow";
 import { useSectionFocus } from "@/features/map/MapView/useSectionFocus";
 import { type TurnMarkPoint, useTurnMark } from "@/features/map/MapView/useTurnMark";
-import { sidePointLocator } from "@/lib/mapDisplay/sidePoints";
+import { routeSide } from "@/lib/mapDisplay/sidePoints";
 import { segmentPath } from "@/lib/routeDistance";
 
 interface MapViewProps {
@@ -172,11 +172,8 @@ export default function MapView({
     () => (selectedSection === null ? null : segmentPath(selectedSection)),
     [selectedSection],
   );
-  // 選んだ区間の道なりの形に、点の小窓の点を当てる（区間を選び直したときだけ組み直す）。
-  const locateOnSection = useMemo(
-    () => (selectedSection === null ? null : sidePointLocator(selectedSection)),
-    [selectedSection],
-  );
+  // 選んでいるルートの線と、点の小窓の点をそれに当てる関数（候補を選び直したときだけ組み直す）。
+  const side = useMemo(() => (selectedSegments === undefined ? null : routeSide(selectedSegments)), [selectedSegments]);
   const { scene, interactiveLayerIds } = useMapScene({
     look,
     catalog: mapCatalog,
@@ -187,8 +184,7 @@ export default function MapView({
     inspectedShape,
     travelledKm: travelledKm === null ? null : shadedTravelledKm(travelledKm),
     selectedRouteSegment,
-    // 区間を選んでいる間、その近くの点を描く。
-    sidePointPath: selectedSectionPath,
+    routePath: side?.path ?? null,
   });
   const tapsLocked = ride?.locked ?? false;
   // 地図のイベント（初期化のeffectで一度だけ登録する）が、いまのpropsを読むための参照。
@@ -201,7 +197,7 @@ export default function MapView({
     tapsLocked,
     onPointPlace,
     onRouteSegmentSelect,
-    sidePointAlong: (lngLat: readonly [number, number]) => locateOnSection?.(lngLat) ?? null,
+    sidePointAlong: (lngLat: readonly [number, number]) => side?.locate(lngLat, travelledKm) ?? null,
     onSpliceStretchSelect,
     onRouteSelect,
     ride,
@@ -263,6 +259,8 @@ export default function MapView({
     controls: popups,
     segmentDetail,
     segmentPath: selectedSectionPath,
+    routePath: (selectedRoute?.geometry.coordinates as [number, number][] | undefined) ?? null,
+    travelBearing: ride?.bearing ?? null,
     rideConditions,
     costPreference,
     travelledKm,

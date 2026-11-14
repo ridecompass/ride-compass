@@ -23,15 +23,11 @@ export default function TileCachePanel() {
     <Card className="flex flex-col gap-2">
       <div className={textVariants({ variant: "heading" })}>タイルキャッシュの消去</div>
       <p className={textVariants({ variant: "hint" })}>
-        サーバーが持つタイルのファイルキャッシュを全て消す。基礎地図（OpenFreeMap中継）と
-        路面・事故・POIのベクタタイルは同じキャッシュを共有するため、まとめて消える。
-        影響は押した人だけでなく全利用者に及び、次のタイル要求で作り直されるまでは
-        外部サービスへの実問い合わせやタイル生成が走る。押しても管理者自身の画面は変わらない
-        （この画面は地図を持たない）。
+        サーバーが持つタイルのファイルキャッシュを全て消す。基礎地図（OpenFreeMap中継）と路面・事故・POIのベクタタイルは同じキャッシュを共有するため、まとめて消える。影響は押した人だけでなく全利用者に及ぶ。次のタイル要求で作り直されるまでは、外部サービスへの実際の問い合わせやタイル生成が走る。押しても管理者自身の画面は変わらない（この画面には地図が無い）。
       </p>
       <p className={textVariants({ variant: "hint" })}>
-        各利用者の画面へ反映されるのは、ブラウザが持つ既存タイルのCache-Controlが切れた後 （基礎地図は最大
-        {BASEMAP_BROWSER_CACHE}）。取込バッチや軸の変更を本番へ反映した直後など、 古いタイルを掴ませたくないときに使う。
+        各利用者の画面へ反映されるのは、ブラウザが持つ既存タイルのCache-Controlが切れた後（基礎地図は最大
+        {BASEMAP_BROWSER_CACHE}）。取込バッチや軸の変更を本番へ反映した直後など、古いタイルを配りたくないときに使う。
       </p>
       <div className="flex flex-wrap items-center gap-2">
         <Button usage={null} onClick={() => clear.mutate()} disabled={clear.isPending}>

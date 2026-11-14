@@ -13,9 +13,12 @@ import {
   PopupHeader,
 } from "@/components/MapPopup/MapPopupParts";
 import type { Facility } from "@/components/MapPopup/facilityRows";
-import { Button } from "@/components/ui/Button/Button";
-import { ShowSectionOnMapIcon } from "@/components/ui/icons/lucideIcons";
+import { Button, buttonVariants } from "@/components/ui/Button/Button";
+import { ShowSectionOnMapIcon, StreetViewIcon } from "@/components/ui/icons/lucideIcons";
+import { nearerSide, nearestEdge } from "@/lib/localPlane";
+import { streetViewUrl } from "@/lib/streetViewUrl";
 import type { RoadTrackRow } from "@/lib/mapDisplay/roadTracks";
+import { cn } from "@/lib/cn";
 import { visiblePadding } from "@/lib/routeFit";
 import type { RideConditions } from "@/features/map/regionApi";
 import type { TileXY } from "@/features/map/layers/dynamicWayValues";
@@ -31,10 +34,14 @@ const POPUP_GAP_PX = 8;
 const POPUP_MAX_WIDTH = "calc(100% - 1.5rem)";
 
 /**
- * ずらした小窓が、見えている所に残す幅と高さ（px）。上の帯の右端の2つのアイコン（`MapPopupParts.tsx: PopupHeader`の右の空き）より広く
+ * ずらした小窓が、見えている所に残す幅と高さ（px）。上の帯の右端の3つのアイコン（`MapPopupParts.tsx: PopupHeader`の右の空き）より広く
  * 残し、つまんで戻せる所が見えているようにする。
  */
-const DRAGGED_POPUP_KEEP_PX = 96;
+const DRAGGED_POPUP_KEEP_PX = 128;
+
+/** 押した道がルートと重なるとみる、道の上で押した所に最も近い点とルートの線の隔たりの上限（m）。ルートは道の線をつないだ形なので
+ * 重なる道ではほぼ0になり、並んで走る別の道を重なるとみないよう小さく取る。 */
+const ROUTE_OVERLAP_M = 5;
 
 /** 押した所を指さない（ずらした・押し込めた）小窓に付ける印。矢印を隠す（`app/globals.css`）。 */
 const FREE_POPUP_CLASS = "map-popup-free";
@@ -144,6 +151,10 @@ interface MapPopupMountOptions {
   segmentDetail: ReactNode | null;
   /** 選んでいる区間の形。形が引けなければnull。 */
   segmentPath: Shape | null;
+  /** 選んでいるルートの線。選んでいなければnull。 */
+  routePath: Shape | null;
+  /** 走行中の今の進む向き（真北0・時計回りの度）。走っていない・まだ分からなければnull。 */
+  travelBearing: number | null;
   rideConditions: RideConditions;
   costPreference: CostPreference;
   /** 走行中の現在地の道のり（km）。施設の位置をここから見た前後で言う。走っていない間はnull。 */
@@ -161,6 +172,25 @@ function targetOf(popup: MapPopup, segmentPath: Shape | null): { lngLat: [number
     : { lngLat: popup.lngLat, shape: popup.shape };
 }
 
+/**
+ * 小窓の地点で見る向き（真北0・時計回りの度。nullなら Google に任せる）。押した物の線のうち地点に最も近い辺の向きを、進む向きへ
+ * 向ける。区間はルートの一部で、線の向きがそのまま進む向き。道は両向きに走れるので、辺の両向きのうち、押した道がルートと重なれば
+ * ルートの進む向きに、重ならず走行中なら今の進む向きに近い側。点は線を持たない（束ねた点の形は点の並びで、道筋ではない）。
+ */
+function lookingOf(
+  popup: MapPopup,
+  { lngLat, shape }: ReturnType<typeof targetOf>,
+  routePath: Shape | null,
+  travelBearing: number | null,
+): number | null {
+  if (popup.kind === "point" || shape === null) return null;
+  const along = nearestEdge(shape, lngLat);
+  if (along === null || popup.kind === "segment") return along?.bearing ?? null;
+  const onRoute = routePath === null ? null : nearestEdge(routePath, along.point);
+  const forward = onRoute !== null && onRoute.offsetM <= ROUTE_OVERLAP_M ? onRoute.bearing : travelBearing;
+  return forward === null ? null : nearerSide(along.bearing, forward);
+}
+
 /** 小窓を地図へ載せ、中身をportalで描く。返した要素を地図の部品の中に置く。 */
 export function useMapPopupMount(
   mapRef: RefObject<MapLibreMap | null>,
@@ -169,6 +199,8 @@ export function useMapPopupMount(
     controls,
     segmentDetail,
     segmentPath,
+    routePath,
+    travelBearing,
     rideConditions,
     costPreference,
     travelledKm,
@@ -323,24 +355,38 @@ export function useMapPopupMount(
   }, [mapRef, mountKey, controls]);
 
   if (onMap === null || mount?.key !== mountKey) return null;
-  const { shape } = targetOf(onMap, segmentPath);
+  const target = targetOf(onMap, segmentPath);
+  const { lngLat, shape } = target;
   return createPortal(
     // 高さに上限を付け、あふれたら中でスクロールする——地図の上の枠は、中身が伸びても画面の外へ出てはいけない。縦をスクロールに
     // すると横も切り取られるので、端に接する見本の枠（箱の1px外に描く`ring`）が欠けないよう、四辺に1pxの余白を置く。
     <div className="max-h-[min(24rem,50vh)] overflow-y-auto p-px text-[length:var(--font-size-md)] leading-[1.4]">
-      {shape !== null && shape.length > 0 && (
-        // ×（MapLibreが本文の器の右上に置く）の左に並べる。幅を×と同じに詰め、上の帯のつまめる所を広く残す。
-        <Button
-          variant="ghost"
-          size="icon"
-          className="absolute top-0 right-8 h-11"
-          aria-label="地図をここへ寄せる"
-          usage="地図を動かして、この小窓の道や地点を画面に収めます。道や地点を押して小窓を開いただけでは、地図は動きません。"
-          onClick={() => onFocus(shape)}
+      {/* ×（MapLibreが本文の器の右上に置く）の左に並べる。幅を×と同じに詰め、上の帯のつまめる所を広く残す。 */}
+      <div className="absolute top-0 right-8 flex">
+        {/* 開く先は地点だけで決まるので、押す前に決まったリンクにする（押してから開くと、iPhone の Safari が新しい窓を止める）。 */}
+        <a
+          href={streetViewUrl(lngLat, lookingOf(onMap, target, routePath, travelBearing))}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label="ここのストリートビューを開く"
+          data-usage="この小窓の地点の Street View を、別のタブの Google マップで開きます。"
+          className={cn(buttonVariants({ variant: "ghost", size: "icon" }), "h-11")}
         >
-          <ShowSectionOnMapIcon size={18} />
-        </Button>
-      )}
+          <StreetViewIcon size={18} />
+        </a>
+        {shape !== null && shape.length > 0 && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-11"
+            aria-label="地図をここへ寄せる"
+            usage="地図を動かして、この小窓の道や地点を画面に収めます。道や地点を押して小窓を開いただけでは、地図は動きません。"
+            onClick={() => onFocus(shape)}
+          >
+            <ShowSectionOnMapIcon size={18} />
+          </Button>
+        )}
+      </div>
       {onMap.kind === "road" ? (
         <RoadInspectorPopup
           properties={onMap.properties}

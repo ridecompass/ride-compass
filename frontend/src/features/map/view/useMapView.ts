@@ -43,7 +43,7 @@ import { initiallyHiddenLegendKeys } from "@/features/map/scene/legends";
 import { WAY_BEARING_STEP_DEG } from "@/features/map/mapHeading";
 
 import { hiddenKeysOf, presentHiddenKeys, toggleHiddenKey, withHiddenKeys } from "./legendFilters";
-import { lensLegend, paintedLensId } from "./lens";
+import { lensLegend } from "./lens";
 import type { HiddenLegendKeys, MapLook } from "./mapLook";
 import { overlayChips } from "./overlayChips";
 import type { CostPreference } from "@/types/route";
@@ -53,11 +53,8 @@ import { useLensEquivalents } from "@/features/map/useLensEquivalents";
  * 1回へまとめる（チェックの見た目は即座に変わる）。 */
 export const LEGEND_FILTER_DEBOUNCE_MS = 400;
 
-const ROUTE_LAYER_ID = "route";
 const NO_STORED_VALUES = {};
 interface MapViewInputs {
-  /** 候補を選んでいるか。 */
-  hasSelectedRoute: boolean;
   /** 選択中の候補の区間まで確定しているか（ルート確定後）。 */
   hasDetail: boolean;
   /** 出発時刻と想定速度。専用配信軸の値と気象レイヤーの表示時刻がこれに従う。 */
@@ -84,8 +81,6 @@ interface MapViewState {
   lensConditions: readonly WayValueCondition[];
   /** 押した人の地図だけを、スタイルから取り直して組み直す。 */
   redrawMap: () => void;
-  /** 地図の地の明るさを変える（利用者がメニューで選ぶ。端末に覚える。今の値は`look.mapTheme`）。 */
-  onMapThemeChange: (theme: MapTheme) => void;
   roadTabMap: RoadTabMap;
   /** 地図の見えている範囲の真ん中。地図がまだ範囲を知らせていなければnull。 */
   center: Coordinates | null;
@@ -100,7 +95,6 @@ interface MapViewState {
 }
 
 export function useMapView({
-  hasSelectedRoute,
   hasDetail,
   ride,
   riding,
@@ -128,10 +122,10 @@ export function useMapView({
   const [storedLens, setLens] = useStoredState<LensId>("ridecompass:route-style-mode", "塗る負担", UNSELECTED_LENS_ID);
   // 選んでいた軸をあとから無効にしたら、選んでいない状態として扱う（選びは残し、無効を戻せばまた塗る）。
   const lens = countsAxis(costPreference, storedLens) ? storedLens : UNSELECTED_LENS_ID;
-  const [keepAfterRoute, setKeepAfterRoute] = useStoredState(
-    "ridecompass:lens-keep-after-route",
-    "ルートの後も周りを塗るか",
-    true,
+  const [keepSurroundings, setKeepSurroundings] = useStoredState(
+    "ridecompass:route-keep-surroundings",
+    "ルートの後も周りを出すか",
+    false,
   );
   const [storedHidden, setStoredHidden] = useStoredState<HiddenLegendKeys>(
     "ridecompass:hidden-legend-keys",
@@ -161,7 +155,9 @@ export function useMapView({
     at: ride.at,
     now,
   });
-  const painted = paintedLensId(lens, hasDetail, keepAfterRoute);
+  // ルートを選んでいる間は、地図全体に出す設定のときだけ道に付く層（周りの道の塗り・点の層）を地図全体に出す。
+  const surroundingsShown = !hasDetail || keepSurroundings;
+  const painted = surroundingsShown ? lens : null;
   // 道ごとの材料は、全道路を塗っているレンズの分だけ取る（塗っていないレンズの値は地図に出ない。表示中のものだけ叩く）。
   const fetchLenses = useMemo(() => lenses.filter((candidate) => candidate.lensId === painted), [lenses, painted]);
   const lensEquivalents = useLensEquivalents(costPreference, fetchLenses.length > 0);
@@ -176,8 +172,8 @@ export function useMapView({
   // 道路タブを出していて「地図で見る」がONの間だけ、段を地図の道に塗る。段の値は出し入れで作り直さない。
   const roadAvoidanceShown = roadTabShown && roadTabOnMap;
   const avoidanceChoice = useMemo(
-    () => avoidanceChoiceOf(config.roadClasses.avoidance, roadAvoidance),
-    [config.roadClasses.avoidance, roadAvoidance],
+    () => avoidanceChoiceOf(config.roadClasses.avoidance, roadAvoidance, mapTheme),
+    [config.roadClasses.avoidance, roadAvoidance, mapTheme],
   );
   // 道路タブで塗っている間は、塗れない理由（拡大が足りない・タイルの世代が届かない）を道路タブに出す（道の層を出していないと、地図の上の
   // 行の状態の印が無い）。
@@ -201,7 +197,7 @@ export function useMapView({
       layerVisibility,
       dynamicWeather: weather.dynamicWeather,
       lens,
-      paintedLensId: painted,
+      surroundingsShown,
       roadAvoidance: avoidanceChoice,
       roadAvoidanceShown,
       wayMaterials,
@@ -216,7 +212,7 @@ export function useMapView({
       layerVisibility,
       weather.dynamicWeather,
       lens,
-      painted,
+      surroundingsShown,
       avoidanceChoice,
       roadAvoidanceShown,
       wayMaterials,
@@ -261,10 +257,7 @@ export function useMapView({
       hiddenLegendKeys: lensHidden,
       onToggleLegendKey: (key) => toggleHiddenFor(lens, key),
       onSetHiddenLegendKeys: (keys) => setHiddenFor(lens, keys),
-      keepAfterRoute,
-      onKeepAfterRouteChange: setKeepAfterRoute,
       hasDetail,
-      routeHidden: hasSelectedRoute && layerVisibility[ROUTE_LAYER_ID] !== true,
       premises: costLensPremises(painted, costCatalog, lensEquivalents),
       catalogNotice: !costCatalog.loaded
         ? costCatalog.failed
@@ -285,11 +278,12 @@ export function useMapView({
     },
     overlayControls: {
       layers: chips,
-      route: {
-        shown: layerVisibility[ROUTE_LAYER_ID] === true,
-        selectable: hasSelectedRoute,
-        onChange: (on) => setShown(ROUTE_LAYER_ID, on),
+      range: {
+        routeOnly: !surroundingsShown,
+        selectable: hasDetail,
+        onChange: (routeOnly) => setKeepSurroundings(!routeOnly),
       },
+      mapTheme: { value: mapTheme, onChange: setMapTheme },
       onToggle: setShown,
       onLegendEntryToggle: toggleHiddenFor,
       onLegendAxisSetHidden: setHiddenFor,
@@ -308,7 +302,6 @@ export function useMapView({
     },
     lensConditions: lenses.find((candidate) => candidate.lensId === painted)?.conditions ?? [],
     redrawMap: () => setRefreshToken((token) => token + 1),
-    onMapThemeChange: setMapTheme,
     roadTabMap: { on: roadTabOnMap, onChange: setRoadTabOnMap, notice: roadTabMapNotice },
     center,
     viewport,

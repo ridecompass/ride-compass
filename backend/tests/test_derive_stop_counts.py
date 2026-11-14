@@ -10,6 +10,8 @@ import pytest
 import pytest_asyncio
 
 from app.batch import derive_topology
+from app.domain.geo import KM_PER_DEGREE_LATITUDE
+from app.domain.tuning import STOP_CLUSTER_DISTANCE_ID
 from tests.source_ingest import (
     WAY_ORIGIN,
     derive_counts_at_default_tuning,
@@ -18,6 +20,7 @@ from tests.source_ingest import (
     point_record,
     way_record,
 )
+from tests.tuning_fixture import TUNING
 
 # moduleスコープのroad_graph_engine（conftest.py）の上のDBを使うため、.claude/rules/testing-backend.mdのパターン2どおり
 # loop_scope="module"が必須。
@@ -26,6 +29,8 @@ pytestmark = pytest.mark.asyncio(loop_scope="module")
 BASE_LON, BASE_LAT = WAY_ORIGIN
 SIGNAL = {"highway": "traffic_signals"}
 LEVEL_CROSSING = {"railway": "level_crossing"}
+#: まとめる距離を緯度の差の度へ直す係数。南北に並べた2点の地面の距離が、まとめる距離の何倍かを決める。
+_CLUSTER_DISTANCE_DEGREES = TUNING[STOP_CLUSTER_DISTANCE_ID] / (KM_PER_DEGREE_LATITUDE * 1000.0)
 
 #: ノード → (経度の差, 緯度の差, タグ)。0.0001度は約10m、同じ種別の点をまとめる距離の内側。
 NODES: dict[int, tuple[float, float, dict[str, str]]] = {
@@ -42,6 +47,11 @@ NODES: dict[int, tuple[float, float, dict[str, str]]] = {
     # 複線の踏切（線路1本ごとに1点）。
     81: (0.0, 0.02, {}), 82: (0.0005, 0.02, LEVEL_CROSSING),
     83: (0.00055, 0.02, LEVEL_CROSSING), 84: (0.001, 0.02, {}),
+    # 南北に並んだ2つの信号。地面の距離がまとめる距離のすぐ内側の組と、すぐ外側の組。
+    91: (0.0, 0.03, {}), 92: (0.0, 0.0305, SIGNAL),
+    93: (0.0, 0.0305 + 0.9 * _CLUSTER_DISTANCE_DEGREES, SIGNAL), 94: (0.0, 0.032, {}),
+    101: (0.0, 0.04, {}), 102: (0.0, 0.0405, SIGNAL),
+    103: (0.0, 0.0405 + 1.1 * _CLUSTER_DISTANCE_DEGREES, SIGNAL), 104: (0.0, 0.042, {}),
 }
 
 WAYS: dict[int, list[int]] = {
@@ -49,6 +59,7 @@ WAYS: dict[int, list[int]] = {
     5: [51, 52, 53],
     6: [61, 62], 7: [62, 63],
     8: [81, 82, 83, 84],
+    9: [91, 92, 93, 94], 10: [101, 102, 103, 104],
 }
 
 #: 経路（通る道の並び）。どの道も区間1本になる（途中のノードはどれも2本以上の道が通らない）。
@@ -100,6 +111,17 @@ async def test_each_stop_place_counts_once_on_any_route_through_it(stop_conn):
     level_crossing_route = "複線の踏切を渡る"
     assert signals == {name: 0.0 if name == level_crossing_route else 1.0 for name in ROUTES}
     assert crossings == {name: 1.0 if name == level_crossing_route else 0.0 for name in ROUTES}
+
+
+async def test_stop_points_are_grouped_by_their_distance_on_the_ground(stop_conn):
+    """同じ種別の点は、地面の距離がまとめる距離の内なら1か所、外なら2か所に数える。
+
+    Web Mercator の m で測ると、関東の緯度では南北の地面の距離を約1.2倍に測り、内側の組まで2か所になって
+    経路の所要時間へ信号の待ちを余計に足す。
+    """
+    values = {r["osm_way_id"]: r["poi_signal"] for r in await stop_conn.fetch(
+        "SELECT osm_way_id, poi_signal FROM edge_counts WHERE osm_way_id IN (9, 10)")}
+    assert values == {9: 1.0, 10: 2.0}
 
 
 async def test_an_intersection_counts_once_on_a_route_through_it(stop_conn):

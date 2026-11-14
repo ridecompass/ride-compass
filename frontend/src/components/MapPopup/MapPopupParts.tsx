@@ -3,6 +3,7 @@
 // 地図の小窓（点の吹き出し・道の小窓・区間の小窓）を組む部品。どの小窓も「上の帯」と塊（負担の塊・施設の行）だけで組む
 // ——小窓ごとに別の組み方をすると、同じ値が小窓によって違う形に見える。
 
+import { useQuery } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 
 import { PointIconSwatch } from "@/components/PointIconSwatch/PointIconSwatch";
@@ -11,6 +12,8 @@ import { OffRoadDistanceIcon, SelectedSpotIcon } from "@/components/ui/icons/luc
 import { textVariants } from "@/components/ui/Text/Text";
 import { cn } from "@/lib/cn";
 import type { PointGlyph } from "@/lib/mapDisplay/legendFilter";
+import { getQueryClient } from "@/lib/queryClient";
+import { placeLinkQuery } from "@/services/placeLinkApi";
 
 import { facilityPosition, type Facility } from "./facilityRows";
 
@@ -20,8 +23,8 @@ const hintClass = cn(textVariants({ variant: "hint" }), "m-0");
 export const POPUP_HANDLE_ATTRIBUTE = "data-popup-handle";
 
 /**
- * 小窓の上の帯。つまんで小窓をずらす所で、触れても中身をスクロールせず文字を選ばない。右端は、小窓の器の右上に重なる寄せるアイコンと
- * ×（どちらも幅32px・高さ44px）の幅だけ空ける。
+ * 小窓の上の帯。つまんで小窓をずらす所で、触れても中身をスクロールせず文字を選ばない。右端は、小窓の器の右上に重なる Street View・
+ * 寄せるアイコンと×（どれも幅32px・高さ44px）の幅だけ空ける。
  */
 export function PopupHeader({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -29,7 +32,7 @@ export function PopupHeader({ label, children }: { label: string; children: Reac
       role="group"
       aria-label={label}
       {...{ [POPUP_HANDLE_ATTRIBUTE]: "" }}
-      className="flex min-h-7 min-w-0 cursor-grab touch-none items-center gap-1.5 pr-16 text-[length:var(--font-size-md)] tabular-nums select-none"
+      className="flex min-h-7 min-w-0 cursor-grab touch-none items-center gap-1.5 pr-24 text-[length:var(--font-size-md)] tabular-nums select-none"
     >
       {children}
     </div>
@@ -73,6 +76,25 @@ function IconValue({ icon, label, value }: { icon: ReactNode; label: string; val
   );
 }
 
+/** 施設の名前。外の地図（Google マップ）の店のページを開くリンクにする。閉店にデータが追いついていないことがあるので、
+ * 営業を外で確かめられるようにする。リンクは行が出たときに引き、引けるまで・引けない・点の所在が分からずリンクが無いときは
+ * 名前だけを出す。 */
+function FacilityName({ name, lngLat }: { name: string; lngLat: readonly [number, number] }) {
+  const { data: url } = useQuery(placeLinkQuery(name, lngLat), getQueryClient());
+  if (url == null) return name;
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      data-usage="この施設を別のタブの地図で開きます。"
+      className="text-[var(--foreground)] underline"
+    >
+      {name}
+    </a>
+  );
+}
+
 /** 施設を1つ1行で並べる。左から地図の印の見本・名前（名前のある施設は外の地図で探すリンク）・走行中の現在地から見たルートの前後・
  * 道からの距離。長い名前は名前の列の中で折り返す（値の位置は動かない）。走っていない間（`travelledKm`が無い）は前後を出さない。 */
 export function FacilityRows({
@@ -89,16 +111,8 @@ export function FacilityRows({
           <KindSwatch color={facility.color} glyph={facility.glyph} label={facility.kindLabel} />
           {/* 名前は空白（「吉野家 ボートレース戸田店」の間）で折り、語の途中では1語が行に収まらないときだけ折る。 */}
           <span className="min-w-0 flex-1 break-keep [overflow-wrap:anywhere]">
-            {facility.mapUrl !== null ? (
-              <a
-                href={facility.mapUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                data-usage="この施設を、別のタブの地図で開きます。"
-                className="text-[var(--foreground)] underline"
-              >
-                {facility.name}
-              </a>
+            {facility.name !== null ? (
+              <FacilityName name={facility.name} lngLat={facility.lngLat} />
             ) : (
               facility.kindLabel
             )}

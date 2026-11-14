@@ -45,7 +45,7 @@ def _imported(name: str, path: Path) -> frozenset[str]:
     return _imported_by_source(package, path.read_bytes())
 
 
-# 読み解きは中身で決まるので、同じ中身は1プロセスで1度だけ読み解く。取込・派生の段は1回ごとに全部のモジュールを
+# 読み解きは中身で決まるので、同じ中身は1プロセスで1度だけ読み解く。取込は1回ごとに全部のモジュールを
 # たどり直し、読み解きが指紋の時間の大半を占める。
 @functools.cache
 def _imported_by_source(package: str, source: bytes) -> frozenset[str]:

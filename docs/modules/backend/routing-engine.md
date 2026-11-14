@@ -13,10 +13,10 @@
 
 | レイヤー | ファイル |
 |---|---|
-| domain | `road_network.py`（取込範囲全体の道路網を、有向の区間とノードの番号で引ける列の配列として持つ型。行の並び・分類の材料を語彙への番号で持つことはそのdocstringが持つ）・`routing.py`（numbaでJITする探索。一対全の木・2点間探索・経路の復元・木の経路どうしの重複率・木の繋ぎ目・出て戻れるノードの集まり）・`search_graph.py`（探索用グラフと、同じ番号を持つCSRの構造）・`turn_structure.py`（状態＝有向区間・辺＝ターンの遷移構造と、経路の曲がる所）・`route_diversity.py`（候補の経路どうしの重なりの測り方と、重なり・パレートの層で候補を間引く手順）・`node_spatial_index.py`（置いた点に一番近いノードの索引と、寄せてよいノードへの寄せ方）・`graph.py`・`route.py`・`route_road_classes.py`（区間に載せる道の区分の値を道路網の行から読む`route_road_classes.py: SegmentClassReader`。値は地図がそのレイヤを塗るのと同じ値で、「緑と水」は割合が最も多いクラス。「緑と水」の鍵は、区間に土地被覆のクラスの並びを載せると宣言した地図の層（`domain/map_display.py: MapLayerSpec.segment_series`）のid）・`geo.py`・`errors.py`・`region.py`（矩形（`domain/region.py: BoundingBox`）と地点を覆う矩形の組み立て、XYZタイルとの相互変換（緯度経度・Web Mercatorのメートル・同じ式のSQL）。タイル座標の型（路面のズーム`domain/region.py: RoadTileZoom`・列と行`domain/region.py: TileIndex`。ほかのレイヤーのズームの型はそのレイヤーの宣言の隣）と、列・行がズームの範囲にあるかの検査`domain/region.py: check_tile_index`も持ち、タイルを受ける入口（path・本文）はどれもこれで書く。タイル配信・取込・派生バッチ・推計気象分布の画素（`infrastructure/jma_suikei_client.py`）もこの変換を共有する）・`cycling_speed.py`（自転車の走行モデル。平地・無風の巡航速度からホイール出力を逆算し、勾配・向かい風・転がり抵抗から区間ごとの速度を走行方程式で解く。速度の逆算は`v`の3次方程式になるため二分法で、区間ごとのループをnumbaでJITする。候補の所要時間と基準線の探索コストがここから出る）・`tuning.py`（ルーティング評価が読む固定値の宣言。走ってみて決める値［較正値］のid・効き方はここが持ち（値はDBの表）、エンジンが読む値・管理画面が並べる項目・変更が効くために何をやり直す必要があるかをそこから導く。較正値ではない固定値は載せない）・`tuning_labels.py`（較正値の管理画面での名前。値を使う側の宣言が持つ対象を添える）・`route_search.py`（探索が候補を選ぶ判断の値と手順。折返し点・復路・代替経路の間引きのしきい値、往路と周回全長の比の範囲と折返し点を探すリング、候補を同じとみなす距離の粒度、目的地を寄せてよい距離、候補の並べ方（パレート層と1kmあたりの代償の秒）・同点の組・離れているかの判定・逆回りとの比べ方・A*の下界・迂回率の測り方と共有の粒度、応答の候補の並び）・`loop_routing.py`（周回・目的地ルートの探索結果を運ぶ型。探索の実装と候補を並べる戦略のどちらにも属さない）・`route_request.py`（ルート生成の要求が受け付ける値の範囲（返す候補数の既定と上限・想定速度の既定と範囲の型`route_request.py: AssumedSpeedKmh`を含む。想定速度は地図のレンズ・道の窓の入口も同じ型で受ける）と、その外れを知らせる文。経由地・目的地が出発地から届く範囲にあるかの検査`route_request.py: check_points_within_reach`。要求の検証と、画面が操作を止める上限の生成物が同じ宣言を読む。検証を通った要求が何を生成するか（距離あり・距離なし・差し替えた経路）の型も持ち、仕上げの戦略を選ぶのはこの型だけ）・`wind.py`（風の予報の系列と格子・出発時点の風・通過予定時刻と迂回率の模型）・`wind_context.py`（1つの時刻の風を区間の向きへ分けた成分。走行モデルと区間の表示が同じ値を読む）・`leg_costs.py`（レグごとのコスト配列の合成。探索の材料の表・費用の軸の定義・0次フィルタ・風の予報から、探索のコストと区間の表示が読む配列を時刻ビンごとに作る。ルートの事実と道の窓が共有する軸の事実の作り方（`axis_facts`）も持つ。外部とやり取りせず配列だけを受け取るので、エンジンの途中状態を組まずに確かめられる。下記「レグ別コスト配列」） |
-| services | `route_generator.py`（戦略層。生成の骨組みと、距離の有無で分かれる仕上げの戦略）・`road_graph_engine.py`（探索範囲の準備・前段・距離ありの仕上げ）・`road_graph_context.py`（1回の生成の間、エンジン・仕上げ・候補の組み立てが共有する状態`road_graph_context.py: RoadGraphContext`と前段の結果`road_graph_context.py: FixedLegs`、そこから区間・ノードを引く部品）・`road_graph_via_routes.py`（距離なしの仕上げ。via-nodeの代わりの道と基準線）・`road_graph_candidates.py`（選んだ経路を応答の候補へ組み立てる`road_graph_candidates.py: evaluate_routes`）・`graph_service.py`・`route_generation_setup.py`（エンジンの組み立てと評価条件の既定の解決。組んだエンジンで要求の対象の候補を作る段取り`route_generation_setup.py: generate_route_candidates`） |
+| domain | `road_network.py`（取込範囲全体の道路網を、有向の区間とノードの番号で引ける列の配列として持つ型。行の並び・分類の材料を語彙への番号で持つことはそのdocstringが持つ）・`routing.py`（numbaでJITする探索。一対全の木・2点間探索・経路の復元・木の経路どうしの重複率・木の繋ぎ目とそこで継いだ経路・出て戻れるノードの集まり）・`search_graph.py`（探索用グラフと、同じ番号を持つCSRの構造）・`turn_structure.py`（状態＝有向区間・辺＝ターンの遷移構造と、経路の曲がる所）・`route_diversity.py`（候補の経路どうしの重なりの測り方と、重なり・パレートの層で候補を間引く手順）・`node_spatial_index.py`（置いた点に一番近いノードの索引と、寄せてよいノードへの寄せ方）・`graph.py`・`route.py`・`route_road_classes.py`（区間に載せる道の区分の値を道路網の行から読む`route_road_classes.py: SegmentClassReader`。値は地図がそのレイヤを塗るのと同じ値で、「緑と水」は割合が最も多いクラス。「緑と水」の鍵は、区間に土地被覆のクラスの並びを載せると宣言した地図の層（`domain/map_display.py: MapLayerSpec.segment_series`）のid）・`geo.py`・`errors.py`・`region.py`（矩形（`domain/region.py: BoundingBox`）と地点を覆う矩形の組み立て、XYZタイルとの相互変換（緯度経度・Web Mercatorのメートル・同じ式のSQL）。タイル座標の型（路面のズーム`domain/region.py: RoadTileZoom`・列と行`domain/region.py: TileIndex`。ほかのレイヤーのズームの型はそのレイヤーの宣言の隣）と、列・行がズームの範囲にあるかの検査`domain/region.py: check_tile_index`も持ち、タイルを受ける入口（path・本文）はどれもこれで書く。タイル配信・取込・派生バッチ・推計気象分布の画素（`infrastructure/jma_suikei_client.py`）もこの変換を共有する）・`cycling_speed.py`（自転車の走行モデル。平地・無風の巡航速度からホイール出力を逆算し、勾配・向かい風・転がり抵抗から区間ごとの速度を走行方程式で解く。速度の逆算は`v`の3次方程式になるため二分法で、区間ごとのループをnumbaでJITする。候補の所要時間と基準線の探索コストがここから出る）・`tuning.py`（ルーティング評価が読む固定値の宣言。走ってみて決める値［較正値］のid・効き方はここが持ち（値はDBの表）、エンジンが読む値・管理画面が並べる項目・変更が効くために何をやり直す必要があるかをそこから導く。較正値ではない固定値は載せない）・`tuning_labels.py`（較正値の管理画面での名前。値を使う側の宣言が持つ対象を添える）・`route_search.py`（探索が候補を選ぶ判断の値と手順。折返し点・復路・代替経路の間引きのしきい値、往路と周回全長の比の範囲と折返し点を探すリング、候補を同じとみなす距離の粒度、目的地を寄せてよい距離、候補の並べ方（パレート層と1kmあたりの代償の秒）・同点の組・離れているかの判定・逆回りとの比べ方・A*の下界・迂回率の測り方と共有の粒度、応答の候補の並び）・`loop_routing.py`（周回・目的地ルートの探索結果を運ぶ型。探索の実装と候補を並べる戦略のどちらにも属さない）・`route_request.py`（ルート生成の要求が受け付ける値の範囲（返す候補数の既定と上限・想定速度の既定と範囲の型`route_request.py: AssumedSpeedKmh`を含む。想定速度は地図のレンズ・道の窓の入口も同じ型で受ける）と、その外れを知らせる文。経由地・目的地が出発地から届く範囲にあるかの検査`route_request.py: check_points_within_reach`。要求の検証と、画面が操作を止める上限の生成物が同じ宣言を読む。検証を通った要求が何を生成するか（距離あり・距離なし・差し替えた経路）の型も持ち、仕上げの戦略を選ぶのはこの型だけ）・`wind.py`（風の予報の系列と格子・出発時点の風・通過予定時刻と迂回率の模型）・`wind_context.py`（1つの時刻の風を区間の向きへ分けた成分。走行モデルと区間の表示が同じ値を読む）・`leg_costs.py`（レグごとのコスト配列の合成。探索の材料の表・費用の軸の定義・0次フィルタ・風の予報から、探索のコストと区間の表示が読む配列を時刻ビンごとに作る。ルートの事実と道の窓が共有する軸の事実の作り方（`axis_facts`）も持つ。外部とやり取りせず配列だけを受け取るので、エンジンの途中状態を組まずに確かめられる。下記「レグ別コスト配列」） |
+| services | `route_generator.py`（戦略層。生成の骨組みと、距離の有無で分かれる仕上げの戦略）・`road_graph_engine.py`（探索範囲の準備・前段・距離ありの仕上げ）・`road_graph_context.py`（1回の生成の間、エンジン・仕上げ・候補の組み立てが共有する状態`road_graph_context.py: RoadGraphContext`と前段の結果`road_graph_context.py: FixedLegs`、生成と乗り換えが共に使う終点`road_graph_context.py: ResolvedEnd`、そこから区間・ノードを引く部品）・`road_graph_via_routes.py`（距離なしの仕上げ。via-nodeの代わりの道と基準線）・`road_graph_candidates.py`（選んだ経路を応答の候補へ組み立てる`road_graph_candidates.py: evaluate_routes`）・`graph_service.py`・`route_generation_setup.py`（エンジンの組み立てと評価条件の既定の解決。組んだエンジンで要求の対象の候補を作る段取り`route_generation_setup.py: generate_route_candidates`） |
 | infrastructure | `road_graph_repository.py`（道路網・材料の読み出し専用）・`material_joins.py`（材料の式が読む別名`material_joins.py: em`・`material_joins.py: wm`を与える表の結び方）・`road_tile_sql.py`（地図のタイルと、タイルと同じフィーチャーごとに値を配る読み出しのSQL）・`road_network_store.py`（道路網全体の配列をDBから作り、ディスクへ置き、読む）・`detour_ratio_cache.py`（探索範囲ごとに学習した迂回率）・`cache_identity.py`（キャッシュ鍵の組み立て方の正本。手で書くリビジョンと、焼き込みSQL・列構成から導く署名を合成する。道路網の置き場の形の署名とタイル配信側の世代も同じ関数を使う）・`container_memory.py`（このプロセスのコンテナのメモリ上限。読み込む量の上限を導く）・`heap_release.py`（解放した割り当ての領域を OS へ返す。生成のジョブの終わりに呼ぶ）・`derived_data_meta.py`（派生データの世代と、今の派生の表を作った全ソースの取込・較正値。世代はバッチが中身を書き直すたびに進む単調カウンタで、デプロイを伴わない変化を表せる唯一の経路。配信するタイルのために生データの世代も一緒に読む） |
-| api | `routes.py` |
+| api | `routes.py`・`generation_slots.py`（同時実行の枠と、枠を待つ待ち行列。プロセスに1つ） |
 
 探索が読む`road_edges`と材料のテーブル（ORMの宣言）・それを作るバッチは
 [静的道路属性・タイル配信](static-road-attributes.md)の対象ファイル表が持つ。
@@ -214,8 +214,11 @@ RouteGenerator.generate_loops(origin, distance_km, distance_tolerance_km, max_ro
   engine.prepare(origin, points, radius_km)
         │  1リクエスト分の共有準備（Road Graph構築等）。失敗時はNone→候補0件
         ▼
-  engine.trace_fixed_points(context, points)
-        │  前段。置いた経由地を順に結び、終点（目的地を寄せたNode、無ければ出発地）を決める。
+  engine.resolve_end(context, destination)
+        │  終点（目的地を寄せたNode、無ければ出発地）と、目的地を寄せ直したときの座標を決める
+        ▼
+  engine.trace_fixed_points(context, waypoints, end)
+        │  前段。置いた経由地を順に結び、終点を仕上げへ渡す。
         │  経由地が無ければ区間を結ばず出発地で止まる。経由地・目的地を寄せられなければ候補0件
         ▼
   仕上げ: engine.select_loop_turnarounds(context, fixed, distance_km, distance_tolerance_km, pool_size)
@@ -257,8 +260,8 @@ RouteGenerator.generate_loops(origin, distance_km, distance_tolerance_km, max_ro
   距離なしの代わりの道はNone。逆回りを作るかは`TracedLoop.reversible`（下の`_build_best_candidate`）。
 - 候補は折返し点候補のランク順に逐次処理する。距離フィルタ合格が
   `max_routes`件に達した時点で処理を打ち切る。
-- 候補0件になった理由は`RouteGenerator.last_no_candidates_reason`に人間可読な文字列で
-  残り、`RouteGenerateResponse.no_candidates_reason`としてクライアントへ返る。文は利用者の語で書き、
+- 候補0件になった理由と目的地を寄せ直した座標は、生成の入口の戻り値が候補と一緒に運び（可変の欄に残さない）、
+  `RouteGenerateResponse.no_candidates_reason`と条件の`corrected_destination`としてクライアントへ返る。理由の文は利用者の語で書き、
   ログ用の座標のラベル（`origin_label`）を差し込まない（座標はログにだけ出す）。
 
 ### `generate_spliced_route`（区間の乗り換え）
@@ -279,9 +282,9 @@ RouteGenerator.generate_loops(origin, distance_km, distance_tolerance_km, max_ro
 `engine.build_traced_from_edge_ids`が確かめ（鍵は`lazy_index_of`で区間の番号へ戻す。道路網に無い・
 探索用グラフに載らない区間は実在しない扱い）、成立しなければ`RoutingError`で落とす
 （グラフを知るのはエンジンのため戦略層には置けない）。道路網にあるのに探索範囲の外の区間は、範囲を送られた区間を覆って作る
-約束が破れた backend の誤りなので、`RoutingError`にせず生成のジョブを失敗させる。終点は生成と同じく出て戻れるNodeへ寄せて解く
-（下の「地点をNodeへ寄せる範囲」）ため、比べる相手は元の候補が実際に終わったNodeになる
-——目的地を寄せ直した場合、寄せ直した後の地点を条件として返す。
+約束が破れた backend の誤りなので、`RoutingError`にせず生成のジョブを失敗させる。終点は生成と同じ`resolve_end`で決める
+（下の「地点をNodeへ寄せる範囲」）ため、比べる相手は元の候補が実際に終わったNodeになり、目的地を寄せ直したら生成と同じく
+寄せ直した後の地点を条件として返す。
 **同じ地点を2度通る列はここでは落とさない**。走れはするので「経路として成立しない」形では
 なく、選択肢として出さない側（フロント）で止める。レグは合成経路自身の距離の半分で
 切る（`domain/route_search.py: leg_of_edge_by_half`）——via-nodeが無く前向き木・後ろ向き木の境目が存在しないため。
@@ -543,7 +546,8 @@ idの文字列や要求の形から決め直さない。
 一緒に渡す。**状態ごとに保つラベルはコスト最小の1本だけ**（1ラベル法）で、「コストは高いが
 早く着く」経路を捨てる近似になる。
 
-Nodeごとのコストは、そのNodeへ入る区間の最小を採る（木を作るときに畳む）。
+Nodeごとのコストは、そのNodeへ入る区間の最小を採る（木を作るときに畳む）。木の畳み込みも繋ぎ目も、
+状態・遷移を番号の順に1回だけ見て最小を残すJITで、同じ費用なら番号の小さい状態・遷移が残る。
 **起点Nodeだけは「起点へ戻ってくるコスト」になる**——状態の空間に「まだ走っていない」が
 無いため。前向き木と後ろ向き木をNodeで繋ぐときは`combine_forward_backward_at_nodes`を
 通す。Nodeごとのコストを単に足すと、そのNodeで曲がる費用が抜ける。
@@ -647,15 +651,14 @@ A*のヒューリスティックは、直線距離÷出せる最大速度（所�
    選定と同じ規則。**並べる前に切ると**Node index順の任意の集合を残すことになり、良い
    候補が理由なく落ちる）。打ち切ったときはWARNINGを出す。
 5. `domain/route_diversity.py: select_diverse_by_overlap`で、前向き経路・後ろ向き経路が同じ
-   物理区間を共有するNode（行って戻る形、`domain/route_diversity.py: lengths_by_physical_segment`で
-   進行方向を無視した判定——単純なEdge index集合の比較だと同じ道の逆方向Edgeを
+   物理区間を共有するNode（行って戻る形、`domain/routing.py: JunctionPaths`が両端のNodeの組で
+   進行方向を無視して判定する——単純なEdge index集合の比較だと同じ道の逆方向Edgeを
    見逃す）を除外しつつ、採用済み候補との重複率が重なりの上限（周回の折返し点と同じ較正値、
    `domain/route_search.py: corridor_overlap_ratios`。埋まらなければ緩めた上限へ）を超える
    ものを飛ばして`max_routes`件採る。
 
 `trace_loop_from_turnaround`と違い、選ばれたNodeの経路（前向き＋後ろ向きの経路復元の
-連結）がそのまま最終候補になる（`turn_expanded_path_from_state`/
-`turn_expanded_path_from_state_to_source`で確定済み、候補ごとに失敗しうる探索が無い）ため、戻り値の`TracedLoop`一覧が
+連結）がそのまま最終候補になる（`domain/routing.py: JunctionPaths`が木から取り出すだけで、候補ごとに失敗しうる探索が無い）ため、戻り値の`TracedLoop`一覧が
 距離なしの仕上げ（`route_generator.py: _NoDistanceFinish`）にとってそのまま`evaluate_loops`への入力になる。
 
 ### `select_fastest_route`（代償を0にしたときの基準線）
@@ -738,7 +741,7 @@ segments構築はEdge単位の軽量な計算のため並行化してよい）�
    プロセスに1つで、生成ごとの`GraphService`へ渡す）。切り出した区間の分が生成に回せる全部に1件でも収まらなければ
    `SearchAreaTooLargeError`、ほかの生成が取っている分と合わせて収まらなければ`SearchMemoryBusyError`を送出する
    （WARNING常時ログ）。取った分は生成のジョブの開き方（`api/dependencies.py: get_route_generation_setup_opener`）が
-   生成を終えて閉じるときに返す。同時の件数の枠（`generate_max_concurrent`）は投稿の時点で別に効き、ふだんの距離は
+   生成を終えて閉じるときに返す。同時の件数の枠（`generate_max_concurrent`）は別に効き、ふだんの距離は
    その件数まで同時に作れる。都心の80〜100kmのように生成に回せるメモリの半分を超える範囲は、ほかの生成と合わせて
    収まるときだけ組む。上限は定数で持たない——メモリを増やすときに直すのはデプロイのメモリ上限の1か所だけで、
    分け合う量はそれに付いてくる。
@@ -750,7 +753,7 @@ segments構築はEdge単位の軽量な計算のため並行化してよい）�
    OS へ返さず（抱える量はそれまでで一番大きい生成の大きさで決まる）、抱えた分も anon に数えられるので、生成のジョブは
    終わりに`heap_release.py: release_freed_heap`で返す（`malloc_trim(0)`。glibc の無い開発機では何もしない）。
    戦略層（`RouteGenerator._prepare`）は、範囲が大きすぎる例外を「探索範囲の道路が多すぎる」理由付きの候補0件に、
-   混んでいる例外を投稿の時点で同時の件数の枠が埋まっているときと同じ文（`domain/errors.py: GENERATION_BUSY_MESSAGE`）の理由付きの候補0件にする。
+   混んでいる例外を同時の件数の枠で断るときと同じ文（`domain/errors.py: GENERATION_BUSY_MESSAGE`）の理由付きの候補0件にする。
 
 戻り値は`(RoadSlice, タイル集合)`。材料を読むだけで、観測を引くこともスコアを組むこともしない
 （`RoadGraphEngine`の`prepare`節）。
@@ -811,15 +814,17 @@ numbaでJITする探索とその部品はこのファイルにまとめて置く
   **逆向きの木は時刻ビンを使えない**——目的地から遡るため各状態の到達時刻が決まらない。
   複数ビンを渡すと`ValueError`で弾く（黙って通すと、到達時刻の代わりに「残り時間」で
   ビンが引かれ、例外もNaNも出ないまま時刻が反転した条件で評価した経路が返る）。
-- **`turn_expanded_path_from_state`/`turn_expanded_path_from_state_to_source`/
-  `turn_expanded_path_edge_indices`**: 木上の経路をEdge index列で復元する（順に
-  「始点→その状態」「その状態→目的地（後ろ向き木）」「始点→そのNode」）。
+- **`turn_expanded_path_from_state`/`turn_expanded_path_edge_indices`**: 前向き木の経路をEdge index列で復元する（順に
+  「始点→その状態」「始点→そのNode」）。後ろ向き木の経路は`JunctionPaths`が前向き木の経路と継いで取り出す。
 - **`combine_forward_backward_at_nodes`/`NodeJunction`**: 前向き木と後ろ向き木を
   Nodeで繋ぐ。Nodeごとのコストを単に足すとそのNodeで曲がる費用が抜けるため、
   繋ぎ目の区間の対ごとにターンの費用を足して最小を採る。
+- **`JunctionPaths`**: `NodeJunction`が継いだ経路を、前任者を辿るJITで区間の番号列として取り出し、行って戻る形を
+  経路にならないとする。目的地ルートの代わりの道の選定は候補ごとにこれを呼ぶので、物理区間の辞書を作らず、両端のNodeの組を
+  並べて引く。
 - **`turn_expanded_shortest_path`/`_turn_expanded_astar`**: 2点間探索。numbaでJITし、
   優先度キューをnumpy配列のバイナリヒープとして自前で持つ（numbaの`heapq`より速いため。下の部品の項）。
-- **JITのコンパイル（`compile_search_kernels`・`domain/search_graph.py: kernel_array`）**: 一対全木・木の経路どうしの重複率・2点間探索のJITは`cache=True`で、
+- **JITのコンパイル（`compile_search_kernels`・`domain/search_graph.py: kernel_array`）**: 一対全木・木の繋ぎ目・木の経路どうしの重複率・木を継いだ経路の取り出しと重複率・2点間探索のJITは`cache=True`で、
   コンパイル結果を`routing.py`の隣の`__pycache__`に置き、別のプロセスはそこから読む。イメージの組み立て
   （`backend/Dockerfile`）が`compile_search_kernels`（最小の道路網でどれも1回ずつ呼ぶ。探索が読む費用を組み立てるJITは`domain/leg_costs.py: compile_leg_cost_kernels`を呼んで焼く）で焼き、入れ替えた
   コンテナの最初のルート生成はコンパイルを待たない。numbaは引数の型（dtype・並び・読み取り専用か）ごとに
@@ -866,7 +871,7 @@ numbaでJITする探索とその部品はこのファイルにまとめて置く
   候補列の代わりに同点グループ列（`tie_groups`）と、グループ内の試行順を採用済みリストに
   応じて返す`prefer`を渡せる（1件採用するたびに残り候補へ呼び直す。周回の折返し点選定が
   方位タイブレークに使う）。
-- **`EdgeSetOverlap`**: 経路をEdge index列で取り出して測る。
+- **`EdgeSetOverlap`**: 経路をEdge index列で取り出して、JITで測る。
   採用済み集合はEdgeごとのuint64ビットマスク1本（bit `i`＝「採用済み`i`件目がこのEdgeを
   含む」、常駐メモリはEdge数×8B）で持つ——`max_count`（実際の呼び出し元の上限は
   `route_request.py: MAX_ROUTES`=15）は64を超えられず、超えると`ValueError`になる。
@@ -924,7 +929,8 @@ numbaでJITする探索とその部品はこのファイルにまとめて置く
   区間の続く坂の斜度（`domain/route.py: steepest_signed_percent`）は、道の一番急な登りと下り（区間の標高の表。ならす幅は
   断面の刻み、[標高](elevation.md)「断面の刻み」）から作り、ビンへは登りがあれば登りの最大、無ければ一番急な下りで畳む
   （`domain/route.py: merge_sustained_gradients`）。区間の平均勾配は登って下る区間で打ち消し合うので、区間の小窓の「最大」は
-  この値を読む。
+  この値を読む。区間の平均勾配（`average_gradient_percent`）は道の平均勾配（区間の標高の表）で、ビンへは値のある道の距離で
+  重みづけて畳む（`domain/route.py: merge_average_gradients`）。
   道の区分（`road_classes`）は平均せず、中の区間の部分をつないで隣どうしの同じ値を1つにまとめる（`merge_road_classes`）。
   宣言の無いフィールドは
   `domain/route.py`の読み込み時に落ちる——放っておくと、型でも例外でも現れないまま
@@ -1056,13 +1062,9 @@ backendは置き場を読むだけで、読むのは`current()`の1か所であ�
 
 | エンドポイント | 内容 |
 |---|---|
-| `POST /api/routes/generate` | 202を即座に返す非同期ジョブ投稿。`asyncio.create_task`でジョブ本体（`_run_generate_job`）を起動し、タスク参照を`_running_generate_tasks`が保持する（`BackgroundTasks`だとレスポンス送出の失敗でジョブが起動せず、投稿時点で取得済みのセマフォが解放されない） |
+| `POST /api/routes/generate` | 202を即座に返す非同期ジョブ投稿。`asyncio.create_task`でジョブ本体（`_run_generate_job`）を起動し、タスク参照を`api/generation_slots.py: GenerationSlots`が保持する（`BackgroundTasks`だとレスポンス送出の失敗でジョブが起動せず、記録したジョブが待ちのまま残る） |
 | `GET /api/routes/generate/{job_id}` | ジョブの状態・結果を取得（`job_registry`、サーバー再起動で失われる）。`wait_seconds`を渡すと終わるまで（上限まで）待って返す |
 
-- **同時実行数の制限**: `generate_routes`ハンドラ内で`_generate_semaphore.locked()`
-  確認と`acquire()`をawaitを挟まず連続実行する（HTTPレスポンス送出という実I/Oを挟んでから
-  acquireすると、複数リクエストが同時に届いた際に上限を超えて受理してしまうため）。
-  セマフォの解放は`_run_generate_job`側の`finally`で行う。
 - **バックグラウンドジョブはリクエストスコープのDBセッションを使えない**。
   ハンドラへは開き方（`api/dependencies.py: get_route_generation_setup_opener`）を注入し、ジョブは要求の条件を
   束ねた開き方を`services/route_generation_setup.py: generate_route_candidates`へ渡す。そこが独立したセッションを開き、
@@ -1081,6 +1083,21 @@ backendは置き場を読むだけで、読むのは`current()`の1か所であ�
 - ジョブ失敗時、クライアントへは汎用メッセージのみ返す: 例外の生メッセージ
   （PostGIS/内部処理のエラー詳細を含みうる）は`logger.exception`でサーバーログに
   のみ残す。
+
+### 同時実行の枠と待ち行列
+
+- 同時に走る生成は`config.py: Settings.generate_max_concurrent`の数まで。それを超えた投稿も202で受け付け、ジョブは
+  待ち（`queued`）のまま受け付けた順に枠の空きを待つ。待てる数（`config.py: Settings.generate_max_queued`）を超える
+  投稿はその場で429、待てる時間（`config.py: Settings.generate_queue_wait_seconds`）のうちに枠が空かないジョブは
+  混み合い（`domain/errors.py: GENERATION_BUSY_MESSAGE`）の失敗にする。どちらの断りも`/api/debug/stats`の429拒否数に
+  数える（投稿時の断りと待ちの時間切れは、カテゴリを分けて数える）。
+- 受け付けの数は、受け付けて終わっていないジョブの数で数える（`api/generation_slots.py: GenerationSlots`）。枠はジョブの中で取り、
+  取れたときだけ`finally`で返す。結果を持つ時間（`infrastructure/job_registry.py: JOB_TTL_SECONDS`）での打ち切りは、待ちと
+  生成を合わせて数える（その時間を生成物`route-generate-config.json`で問い合わせの打ち切りとして配るため）。
+- 値の根拠は、利用者に約束する線（同時に10人までは断られる人が1割以下で、作れた人の待ちが60秒以内）。
+  走る分と待てる分の和をその人数にし、待てる時間は線から本番の1件の生成の所要（同時に作る人数によらず3〜6秒、
+  2026-10-30 の本番の計測）を引いた残りに収める。待ちの時間切れも断りに数えるので、待てる時間を
+  詰めるほど断られる人が増える。同時に流す数を増やすときは、待てる数を減らして和を保つ。
 
 ## 交差点の信号・最大階級（`batch/derive_nodes.py`が埋める）
 

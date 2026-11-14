@@ -3,22 +3,24 @@
 import { useMemo } from "react";
 
 import ProfileChart from "@/features/route/ProfileChart/ProfileChart";
+import type { ProfileWaypoint } from "@/features/route/ProfileChart/ProfileMarks";
 import { PROFILE_VIEW_HEIGHT, type ProfileScale } from "@/features/route/ProfileChart/profileScale";
-import palette from "@/types/generated/palette.json";
 import { LENS_QUANTITY_LABEL } from "@/lib/mapDisplay/costLensPaint";
+import { costAxisColor, type PenaltyCatalog } from "@/lib/routePenalty";
 import type { SelectedRouteSegment } from "@/types/route";
 
 import { columnAtKm, profileBoxes, type ProfileBox } from "./profileGeometry";
 
 interface DifficultyProfileProps {
   scale: ProfileScale;
-  /** 下から積む軸の並びと色。 */
+  /** 下から積む軸の並び。 */
   axisOrder: readonly string[];
-  axisColors: Readonly<Record<string, string>>;
+  /** 軸の色を引く、費用の軸の一覧。 */
+  catalog: Pick<PenaltyCatalog, "axisColors" | "loaded">;
   selected: SelectedRouteSegment | null;
   onSelect?: (selection: SelectedRouteSegment) => void;
   progressKm: number | null;
-  waypointKms: readonly number[];
+  waypoints: readonly ProfileWaypoint[];
   riding: boolean;
 }
 
@@ -35,11 +37,11 @@ function boxesPath(boxes: readonly ProfileBox[], xOf: (km: number) => number): s
 export default function DifficultyProfile({
   scale,
   axisOrder,
-  axisColors,
+  catalog,
   selected,
   onSelect,
   progressKm,
-  waypointKms,
+  waypoints,
   riding,
 }: DifficultyProfileProps) {
   // 塗る形はルートと横軸が変わったときだけ組む（なぞる間に動くのは、カーソルの線と選んだ区間の帯だけ）。
@@ -64,16 +66,16 @@ export default function DifficultyProfile({
     <ProfileChart
       scale={scale}
       label="道のりに沿った負担"
-      usage={`横は道のり、縦はその区間の${LENS_QUANTITY_LABEL}です。色ごとの面積は、その種類の負担のルート全体での合計を表します。`}
+      usage={`横は道のり、縦はその区間の${LENS_QUANTITY_LABEL}です。色ごとの面積は、その種類の負担をルート全体で合計した値を表します。`}
       selected={selected}
       onSelect={onSelect}
       progressKm={progressKm}
       progressMarkY={progressMarkY}
-      waypointKms={waypointKms}
+      waypoints={waypoints}
       riding={riding}
     >
       {paths.byAxis.map(({ axisId, d }) => (
-        <path key={axisId} d={d} fill={axisColors[axisId] ?? palette.semantic.no_data} />
+        <path key={axisId} d={d} fill={costAxisColor(catalog, axisId)} />
       ))}
     </ProfileChart>
   );

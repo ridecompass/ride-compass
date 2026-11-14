@@ -87,8 +87,8 @@ export interface SceneLook {
   readonly dynamicWeather: Partial<Record<DynamicWeatherLayerId, DynamicWeatherGroupState>>;
   /** ルート線の色分けのモード。 */
   readonly lens: LensId;
-  /** 全道路を塗っている軸（塗っていなければnull）。 */
-  readonly paintedLensId: LensId | null;
+  /** 道に付く層（塗る負担の周りの道・点の層）を地図全体に出すか。偽の間は、周りの道を塗らず、点はルート沿いだけに出す。 */
+  readonly surroundingsShown: boolean;
   /** 地図の道に塗る、道路タブの段。 */
   readonly roadAvoidance: AvoidanceChoice;
   /** 道路タブを地図で見ているか。 */
@@ -125,8 +125,8 @@ type SceneWiringProps = {
   readonly travelledKm: number | null;
   /** 道のりのグラフか地図で選んだ地点と、その地点を含む区間。選んでいなければnull。 */
   readonly selectedRouteSegment: SelectedRouteSegment | null;
-  /** 選んでいる区間の線（近くの点を描く）。選んでいなければnull。 */
-  readonly sidePointPath: readonly (readonly [number, number])[] | null;
+  /** 選んでいるルートの線。無ければnull。編集中は、点を`splicedRoute`の線の近くに絞る。 */
+  readonly routePath: readonly (readonly [number, number])[] | null;
 };
 
 const NO_KEYS: readonly string[] = [];
@@ -135,20 +135,18 @@ const NO_MATERIALS: WayMaterials = new Map();
 
 function routeStateFrom(props: SceneWiringProps): RouteState {
   const { look } = props;
-  const visible = look.layerVisibility.route === true;
   const selected = props.routes.find((route) => route.id === props.selectedRouteId) ?? null;
   const mode = getRouteStyleMode(props.catalog.routeStyleModes, look.lens);
-  const segments = visible ? (selected?.segments ?? []) : [];
-  const bands = visible ? props.spliceStretches : [];
-  const composite = visible ? props.splicedRoute : null;
-  const picked = visible ? props.selectedRouteSegment : null;
+  const segments = selected?.segments ?? [];
+  const bands = props.spliceStretches;
+  const composite = props.splicedRoute;
+  const picked = props.selectedRouteSegment;
   const pickedSegment = picked !== null && segments.includes(picked.segment) ? picked.segment : null;
   const hiddenBandFilter = buildLegendFilterExpression(
     mode.legend,
     look.hiddenLegendKeys[look.lens] ?? NO_KEYS,
   ) as maplibregl.FilterSpecification | null;
   return {
-    visible,
     candidates: props.routes.map((route) => ({
       routeId: route.id,
       path: route.geometry.coordinates,
@@ -197,7 +195,7 @@ function axisStateFrom(props: SceneWiringProps, sourceLayer: string | null): Axi
     return {
       axisId: lens.lensId,
       // 道の線を塗るレンズは、選んでいる1本だけ。
-      visible: lens.lensId === look.paintedLensId,
+      visible: look.surroundingsShown && lens.lensId === look.lens,
       bands: valueBands(lens.display),
       formula: lens.formula,
       materials: fetched?.materials ?? NO_MATERIALS,
@@ -266,13 +264,10 @@ export function sceneInputsFrom(props: SceneWiringProps): SceneInputs {
       tiles: versions === null ? null : { urls: pointTileUrls(versions), ...pointZoom },
       visible,
       hiddenKeys,
+      nearPath: props.look.surroundingsShown ? null : (props.splicedRoute ?? props.routePath),
     },
     weather: weatherStateFrom(props.look.dynamicWeather),
     route: routeStateFrom(props),
-    sidePoint: {
-      path: props.sidePointPath,
-      tilesReady: versions !== null,
-    },
   };
 }
 
@@ -315,7 +310,7 @@ function getRouteStyleMode(modes: readonly RouteStyleMode[], id: LensId): RouteS
   const found = modes.find((mode) => mode.id === id);
   if (found) return found;
   if (modes.length === 0) return UNPAINTED_ROUTE_STYLE_MODE;
-  // 軸の非公開等でidのモードが消えていたら先頭へ倒す。選択中の色分けが黙って変わるため警告を残す。
+  // 軸が消えた等でidのモードが無くなっていたら先頭へ倒す。選択中の色分けが黙って変わるため警告を残す。
   debugLog(
     "map:route-style-mode",
     `route style mode "${id}" not found, falling back to "${modes[0].id}"`,

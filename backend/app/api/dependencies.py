@@ -17,6 +17,7 @@ from cachetools import LRUCache
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.api.generation_slots import GenerationSlots
 from app.config import settings
 from app.domain.route_request import RequestedConditions
 from app.infrastructure.address_search import AddressSearchQuery
@@ -34,7 +35,8 @@ from app.infrastructure.jma_warning_timeline_client import new_timeline_cache
 from app.infrastructure.material_coverage import MaterialCoverageQuery
 from app.infrastructure.place_area_query import PlaceAreaQuery
 from app.infrastructure.road_graph_repository import RoadGraphRepository
-from app.infrastructure.stop_place_search import StopPlaceSearchQuery
+from app.infrastructure.facility_search import FacilitySearchQuery
+from app.infrastructure.place_address_query import PlaceAddressQuery
 from app.infrastructure.tuning_overrides import TuningOverrideStore
 from app.infrastructure.wbgt_client import new_forecast_cache, new_point_master_cache
 from app.services.db_status_service import DbStatusService
@@ -148,6 +150,14 @@ def get_route_generation_setup_opener(long_sessions: LongSessions) -> RouteGener
     return partial(_open_route_generation_setup, long_sessions)
 
 
+#: ルート生成の同時実行の枠と待ち行列。生成はリクエストをまたいで走るため、プロセスの側で持つ。
+_generation_slots = GenerationSlots(settings.generate_max_concurrent, settings.generate_max_queued)
+
+
+def get_generation_slots() -> GenerationSlots:
+    return _generation_slots
+
+
 LandcoverTileReader = Callable[[int, int, int], Awaitable[bytes]]
 
 
@@ -173,7 +183,7 @@ async def get_region_service(tile_sessions: TileSessions):
 async def _open_place_search_reads(tile_sessions: async_sessionmaker[AsyncSession]) -> AsyncIterator[PlaceSearchReads]:
     async with tile_sessions() as session:
         yield PlaceSearchReads(RegionService(repository=RoadGraphRepository(session)), AddressSearchQuery(session),
-                               StopPlaceSearchQuery(session), PlaceAreaQuery(session))
+                               FacilitySearchQuery(session), PlaceAreaQuery(session), PlaceAddressQuery(session))
 
 
 def get_place_search_service(tile_sessions: TileSessions):

@@ -55,11 +55,11 @@ class _LegendSharedRow(NamedTuple):
 LEGEND_SHARED_ROWS: dict[str, _LegendSharedRow] = {
     "other": _LegendSharedRow(
         "その他",
-        "値は書かれているが、上のどの行にも当てはまらない道（まれな種類など）。",
+        "値は書かれているが、上のどの行にも当てはまらない道[まれな種類など]。",
     ),
     "notApplicable": _LegendSharedRow(
         "該当なし",
-        "この種類に当たらない道（例: トンネルの凡例では、トンネルでない道）。",
+        "この種類に当たらない道[例: トンネルの凡例では、トンネルでない道]。",
     ),
     "noData": _LegendSharedRow(
         "データなし",
@@ -67,7 +67,7 @@ LEGEND_SHARED_ROWS: dict[str, _LegendSharedRow] = {
     ),
     "undetermined": _LegendSharedRow(
         "向きで決まらない",
-        "地図の上の向き（走行中は進む向き）とほぼ直角に交わるため、値を決められない道（勾配なら登りか下りか）。"
+        "地図の上の向き[走行中は進む向き]とほぼ直角に交わるため、値を決められない道[勾配なら登りか下りか]。"
         "地図を回して向きが変わると色が付く。",
     ),
 }
@@ -120,14 +120,6 @@ MAP_LAYER_CATEGORIES: tuple[LayerCategory, ...] = (
 )
 
 
-#: 描き直しの種類。`dynamic`は選択中ルートにひもづくもの、`static`はそれ以外。
-#: **値が時間で変わるかとは別軸**——降水は中身が変わるがルートとは無関係なので`static`。
-MapLayerKind = Literal["static", "dynamic"]
-MAP_LAYER_KINDS: tuple[str, ...] = get_args(MapLayerKind)
-
-#: 利用者が作った線。属性でも配信でもないので、ここだけが名前を持つ。
-_ROUTE_LAYER_ID = "route"
-
 #: 陰影は属性ではなく標高の別の描き方。源泉に属性として現れないのが正しい。
 _HILLSHADE_LAYER_ID = "hillshade"
 
@@ -136,7 +128,7 @@ _HILLSHADE_LAYER_ID = "hillshade"
 #: 出典も消える）。公共データ利用規約（PDL1.0）とCC BY 4.0は出典とは別に加工した旨を求め、標高からは勾配を、事故の点から
 #: は区間ごとの件数を、アメダスと推計気象分布からは天気を、区域の境界は簡略化して、配信タイルは欠けたズームを隣の
 #: ズームから補い降水の色を塗り替えて、MSMの格子は地点・時刻へ補間して使っている。気象レイヤーの出典もここが持つ（気象庁のデータは常設の表示
-#: で常に使うため）。住所の区画は地点の検索で常に使う。立ち寄り先は出典を1か所にまとめるためここに置く。基礎地図は配信元のTileJSONが出典を持つので
+#: で常に使うため）。住所の区画は地点の検索で常に使う。地点（立ち寄り先と地点の検索の施設）は出典を1か所にまとめるためここに置く。基礎地図は配信元のTileJSONが出典を持つので
 #: 入れない（入れると2回並ぶ）。データ源を足したら、利用条件（docs/architecture/data-sources.md）と合わせてここも見る。
 ALWAYS_SHOWN_ATTRIBUTIONS: tuple[str, ...] = (
     '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">'
@@ -157,8 +149,8 @@ ALWAYS_SHOWN_ATTRIBUTIONS: tuple[str, ...] = (
     *ADDRESS_AREA_ATTRIBUTIONS,
     # Overture の地点は出どころごとに表示が要る（公式の文書 https://docs.overturemaps.org/attribution/ ）。
     # Foursquare の行は Apache 2.0 で、ライセンスの写し・変えた旨・NOTICE の全文を渡す（frontend/public/licenses/）。
-    '立ち寄り先: <a href="https://overturemaps.org/" target="_blank" rel="noreferrer">Overture Maps Foundation</a>'
-    "の地点を、種類を選び近くの同じ店をまとめて加工。"
+    '地点: <a href="https://overturemaps.org/" target="_blank" rel="noreferrer">Overture Maps Foundation</a>'
+    "の名前のある地点を、種類で分け近くの同じ店をまとめて加工。"
     "Data from Meta, Microsoft, PinMeTo, DAC, Uberall, OpenTravel "
     '(<a href="https://cdla.dev/permissive-2-0/" target="_blank" rel="noreferrer">CDLA Permissive 2.0</a>), '
     "AllThePlaces "
@@ -169,7 +161,7 @@ ALWAYS_SHOWN_ATTRIBUTIONS: tuple[str, ...] = (
     '<a href="/licenses/foursquare-places-NOTICE.txt" target="_blank" rel="noreferrer">NOTICE</a>)',
     # ジャパンサーチのサイトポリシーの出典の記載例（編集・加工して使う場合）の形。
     '寺社: ジャパンサーチ「<a href="https://jpsearch.go.jp/database/bunka" target="_blank" rel="noreferrer">'
-    "文化遺産オンライン（文化庁・国立情報学研究所）</a>」のメタデータを改変して利用（所有者で寺社ごとにまとめた）",
+    "文化遺産オンライン[文化庁・国立情報学研究所]</a>」のメタデータを改変して利用[所有者で寺社ごとにまとめた]",
     # JARTIC のオープンデータの利用規約の、加工した旨の記載例の形。
     '交通規制: 公益財団法人日本道路交通情報センター「<a href="https://www.jartic.or.jp/service/opendata/" '
     'target="_blank" rel="noreferrer">交通規制情報</a>」を加工して作成',
@@ -183,13 +175,12 @@ def _static_layer_ids() -> tuple[str, ...]:
 
 
 #: 地図に載るものの名前。費用の軸のレンズは実行時に決まるためここには現れない。
-_MAP_LAYER_IDS: tuple[str, ...] = (*_static_layer_ids(), *WEATHER_LAYER_GROUPS, _ROUTE_LAYER_ID)
+_MAP_LAYER_IDS: tuple[str, ...] = (*_static_layer_ids(), *WEATHER_LAYER_GROUPS)
 
 
 #: 説明の文の差し込み口の名前。どれも実行時の応答（画面の設定・費用の軸の一覧）から来る値で、画面が埋める。
-#: `accidentYears`は事故の収録年、`routeLenses`はルートの線を塗れるもの（総合と費用の軸のレンズ）、`landcoverRingOuterM`は
-#: 土地被覆の割合を数えた帯の外の幅（m。作り直しに使った値）。
-LayerTextSlotName = Literal["accidentYears", "routeLenses", "landcoverRingOuterM"]
+#: `accidentYears`は事故の収録年、`landcoverRingOuterM`は土地被覆の割合を数えた帯の外の幅（m。作り直しに使った値）。
+LayerTextSlotName = Literal["accidentYears", "landcoverRingOuterM"]
 
 
 class LayerTextSlot(NamedTuple):
@@ -213,12 +204,11 @@ SegmentSeries = Literal["landcoverClass"]
 class MapLayerSpec(NamedTuple):
     #: 絵の出所（`MAP_LAYER_DATA_SOURCES`の`key`）。
     data_source: str
-    #: 種別（`MAP_LAYER_CATEGORIES`の`key`）。どのグループにも属さないもの（ルート）はNone。
+    #: 種別（`MAP_LAYER_CATEGORIES`の`key`）。どのグループにも属さないものはNone。
     category: str | None
-    kind: MapLayerKind = "static"
     data_nature: MapLayerDataNature = "raw"
     #: 利用者の操作を待たずに表示するか。**性質で決める**——明示的にONにして初めて出るのが
-    #: 地図レイヤーの原則で、既定ONの根拠になるのは防災級の情報と、探索の結果そのものだけ。
+    #: 地図レイヤーの原則で、既定ONの根拠になるのは防災級の情報だけ。
     default_on: bool = False
     #: 名前。一次属性を描くレイヤーは書かない——属性の名前をそのまま使う（`map_layer_label`）。
     label: str | None = None
@@ -508,15 +498,6 @@ _LAYER_SPECS: dict[str, MapLayerSpec] = {
             + "平常時は危険度ゼロの領域が透明のため、ONのままでも地図の見た目は"
             "変わりません。非公式の内部APIを利用しているため、取得に失敗することがあります。",
         ),
-    ),
-    # 候補を出したら見えている必要がある（探索の結果そのもの）。
-    _ROUTE_LAYER_ID: MapLayerSpec(
-        "ownFetch",
-        None,
-        kind="dynamic",
-        default_on=True,
-        label="ルート",
-        description=("選択中ルート沿いの情報", LayerTextSlot("routeLenses", "[", "]"), "で塗って表示"),
     ),
 }
 

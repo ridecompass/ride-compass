@@ -8,8 +8,7 @@ import { Checkbox } from "@/components/ui/Checkbox/Checkbox";
 import { Dot } from "@/components/ui/Dot/Dot";
 import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs/Tabs";
-import { DisplayItemsIcon } from "@/components/ui/icons/icons";
-import { BurdenPaintIcon } from "@/components/ui/icons/lucideIcons";
+import { BurdenPaintIcon, LayersStackIcon } from "@/components/ui/icons/lucideIcons";
 import { AxisMark } from "@/components/ui/icons/axisIconPalette";
 import DifficultyProfile from "@/features/route/DifficultyProfile/DifficultyProfile";
 import { profileBoxes } from "@/features/route/DifficultyProfile/profileGeometry";
@@ -52,6 +51,8 @@ interface RouteProfileProps {
   progressKm?: number | null;
   /** 置いた経由地を通る所のルートの上の距離（置いた順）。 */
   waypointKms: readonly number[];
+  /** ルートの上の距離を通る見込みの時刻（ms）を返す関数。あれば経由地の印に着く時刻を添える。 */
+  arrivalClock: ((km: number) => number) | null;
   /** グラフに出す情報の選択（結果と走行中の図で1つを共有する）。 */
   layers: ProfileLayerSelection;
   /** 走行中の地図の下の図。目盛り・図の下の文字を大きくし、「表示」の図に値の目盛りを出す。 */
@@ -71,11 +72,12 @@ export default function RouteProfile({
   segmentOnMap,
   progressKm = null,
   waypointKms,
+  arrivalClock,
   layers,
   riding = false,
 }: RouteProfileProps) {
   const [tab, setTab] = useState("lens");
-  const { axes, axisColors } = catalog;
+  const { axes } = catalog;
   const axisOrder = useMemo(() => axes.map((axis) => axis.axisId), [axes]);
   const scale = useProfileScale(segments, scaleKm);
   // 選んでいない間に積む軸は、このルートで塗る区間のある軸から選ぶ。
@@ -116,6 +118,10 @@ export default function RouteProfile({
     }),
     [chosen, scale],
   );
+  const waypoints = waypointKms.map((km) => ({
+    km,
+    arrivalAt: arrivalClock === null ? null : new Date(arrivalClock(km)),
+  }));
   return (
     <Tabs value={tab} onValueChange={setTab} className="relative flex flex-col gap-1">
       {/* 切り替えと見方・出す情報のボタンは、結果も走行中も図の右上に重ね、図の上に段を取らない（スマホの低い高さで図を大きく
@@ -123,8 +129,8 @@ export default function RouteProfile({
           ボタンと「負担で塗る」のピルと同じ絵だけで出し、名前は読み上げに残す。 */}
       <div className="pointer-events-none absolute top-1 right-1 z-10 flex items-start gap-1 [&>*]:pointer-events-auto">
         <TabsList aria-label="道のりのグラフ" variant="overlay">
-          <TabsTrigger value="layer" usage="選んだ情報（標高・道の区分等）を、道のりに沿って出します。">
-            <DisplayItemsIcon size={14} />
+          <TabsTrigger value="layer" usage="選んだ情報[標高・道の区分等]を、道のりに沿って出します。">
+            <LayersStackIcon size={14} />
             <span className="sr-only">{FACT_DISPLAY_NAME}</span>
           </TabsTrigger>
           <TabsTrigger
@@ -141,13 +147,12 @@ export default function RouteProfile({
             triggerClassName="rounded-full bg-[color-mix(in_srgb,var(--background)_85%,transparent)]"
           >
             <p>
-              右上の一覧でチェックした種類だけを積みます。高さは区間ごとの{LENS_QUANTITY_LABEL}
-              で、上端はこのルートで最も大きい区間の値です（曲がる所と、好む道・避ける道の増減は含みません）。色ごとの面積は、その種類の負担の合計を表します。横の右端は、一覧で最も長い候補の距離です。
+              右上の一覧でチェックした種類だけを積み上げます。高さは区間ごとの{LENS_QUANTITY_LABEL}
+              で、上端はこのルートでいちばん大きい区間の値です[曲がる所の負担と、好む道・避ける道による増減は含みません]。色ごとの面積は、その種類の負担の合計です。横軸の右端は、一覧でいちばん長い候補の距離です。
             </p>
           </InfoPopover>
         )}
-        {/* 走行中の図は低く保つため一覧を出さず、結果で選んだ軸を積む。 */}
-        {tab === "lens" && !riding && (
+        {tab === "lens" && (
           <ProfileLayerPicker
             title="グラフに積む負担"
             usage="グラフに積む負担の種類を選ぶ一覧を開きます。数字は今積んでいる数です。"
@@ -157,7 +162,10 @@ export default function RouteProfile({
               const on = shownAxes.includes(row.id);
               const fact = facts[row.id];
               return (
-                <li key={row.id} data-usage="チェックした種類の負担を、グラフに積みます。選びはこの端末に覚えます。">
+                <li
+                  key={row.id}
+                  data-usage="チェックした種類の負担を、グラフに積みます。選んだ種類はこの端末に保存します。"
+                >
                   <label className="flex cursor-pointer items-center gap-1.5">
                     <Checkbox
                       checked={on}
@@ -181,7 +189,7 @@ export default function RouteProfile({
         {tab === "layer" && (
           <ProfileLayerPicker
             title="グラフに出す情報"
-            usage="グラフに重ねる情報（標高・道の区分等）を選ぶ一覧を開きます。数字は今重ねている数です。"
+            usage="グラフに重ねる情報[標高・道の区分等]を選ぶ一覧を開きます。数字は今重ねている数です。"
             // 覚えた選択には今は無いレイヤも残るので、数は今重ねているものだけで数える。
             count={shownLayers.lines.length + shownLayers.bands.length}
           >
@@ -222,11 +230,11 @@ export default function RouteProfile({
         <DifficultyProfile
           scale={scale}
           axisOrder={shownOrder}
-          axisColors={axisColors}
+          catalog={catalog}
           selected={selected}
           onSelect={onSelect}
           progressKm={progressKm}
-          waypointKms={waypointKms}
+          waypoints={waypoints}
           riding={riding}
         />
       </TabsContent>
@@ -237,7 +245,7 @@ export default function RouteProfile({
           selected={selected}
           onSelect={onSelect}
           progressKm={progressKm}
-          waypointKms={waypointKms}
+          waypoints={waypoints}
           riding={riding}
         />
       </TabsContent>

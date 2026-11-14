@@ -212,6 +212,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/place-link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["place_link_api_place_link_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/region/road-surface-tiles/{z}/{x}/{y}.pbf": {
         parameters: {
             query?: never;
@@ -667,6 +683,10 @@ export interface components {
             key: "pass" | "slight_prefer" | "prefer" | "slight_avoid" | "avoid" | "exclude";
             /** Label */
             label: string;
+            /** Color */
+            color: string | null;
+            /** Color On Dark */
+            color_on_dark: string | null;
         };
         /** AvoidanceOverride */
         AvoidanceOverride: {
@@ -692,6 +712,8 @@ export interface components {
              * @enum {string}
              */
             default: "pass" | "slight_prefer" | "prefer" | "slight_avoid" | "avoid" | "exclude";
+            /** Selectable */
+            selectable: boolean;
         };
         /** AvoidanceSectionView */
         AvoidanceSectionView: {
@@ -870,6 +892,8 @@ export interface components {
             description: string;
             /** Icon Id */
             icon_id: string;
+            /** Color */
+            color: string;
             lens: components["schemas"]["LensBands"];
         };
         /** CostAxisCatalogResponse */
@@ -973,6 +997,8 @@ export interface components {
             sources: components["schemas"]["SourceEntry"][];
             /** Tables */
             tables: components["schemas"]["app__services__derived_data_freshness_service__TableEntry"][];
+            /** Tuning */
+            tuning: components["schemas"]["TuningEntry"][];
         };
         /** ElevationStretch */
         ElevationStretch: {
@@ -1440,6 +1466,11 @@ export interface components {
             /** Longitude */
             longitude: number;
         };
+        /** PlaceLink */
+        PlaceLink: {
+            /** Url */
+            url: string | null;
+        };
         /** PlaceSearchResult */
         PlaceSearchResult: {
             /** Candidates */
@@ -1780,6 +1811,8 @@ export interface components {
             elevations: components["schemas"]["ElevationStretch"][];
             /** Sustained Gradient Percent */
             sustained_gradient_percent: number | null;
+            /** Average Gradient Percent */
+            average_gradient_percent: number | null;
             /** Estimated Arrival Time */
             estimated_arrival_time: string | null;
             penalty: components["schemas"]["PenaltyBreakdown"];
@@ -1901,6 +1934,21 @@ export interface components {
             /** Lens Id */
             lens_id: string;
         };
+        /** TuningEntry */
+        TuningEntry: {
+            /** Param Id */
+            param_id: string;
+            /** Label */
+            label: string;
+            /** Unit */
+            unit: string;
+            /** Derived Value */
+            derived_value: number | null;
+            /** Current Value */
+            current_value: number;
+            /** Needs Rebuild */
+            needs_rebuild: boolean;
+        };
         /** TuningParameterView */
         TuningParameterView: {
             /** Id */
@@ -1958,6 +2006,10 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+            /** Input */
+            input?: unknown;
+            /** Context */
+            ctx?: Record<string, never>;
         };
         /** WayValueFormula */
         WayValueFormula: {
@@ -2423,6 +2475,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PlaceArea"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    place_link_api_place_link_get: {
+        parameters: {
+            query: {
+                name: string;
+                latitude: number;
+                longitude: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaceLink"];
                 };
             };
             /** @description Validation Error */

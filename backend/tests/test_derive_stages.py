@@ -26,12 +26,17 @@ from app.batch.source_adapters.raster_wkb import tile_raster_wkb
 from app.domain.accident import PartyType
 from app.domain.landcover import PERCENT_CLASSES
 from app.domain.region import BoundingBox
-from app.domain.traffic_regulation import PEDESTRIAN_ROAD_KIND
 from app.domain.tuning import LANDCOVER_RING_OUTER_ID
 from app.infrastructure import derived_data_meta, road_network_store
 from app.infrastructure.derived_data_freshness import derived_tables
-from app.infrastructure.source_models import PARTY_TYPE_CODES, Source
-from tests.conftest import empty_ingested_tables, override_tuning, postgis_database_url, raw_connection
+from app.infrastructure.source_models import PARTY_TYPE_CODES, PEDESTRIAN_ROAD_KIND, Source
+from tests.conftest import (
+    empty_ingested_tables,
+    override_tuning,
+    postgis_database_url,
+    raw_connection,
+    reset_derived_revision,
+)
 from tests.tuning_fixture import TUNING
 from tests.source_ingest import (
     abr_block_record,
@@ -152,7 +157,7 @@ async def world(road_graph_engine, road_network_root):
             for param_id in OVERRIDDEN:
                 await override_tuning(param_id, TUNING[param_id])
             await empty_ingested_tables(conn)
-            await conn.execute("TRUNCATE derived_data_meta")
+            await reset_derived_revision(conn)
 
 
 @dataclass
@@ -210,7 +215,7 @@ async def test_the_world_fills_every_derived_table_and_each_has_statistics(world
     (["elevation"], ["elevation"]),
     (["nodes"], ["nodes", "counts"]),
     (["topology"], ["topology", "nodes", "counts", "elevation", "landcover", "traffic_regulations", "directions"]),
-    (["stop_places", "elevation"], ["elevation", "stop_places"]),
+    (["places", "elevation"], ["elevation", "places"]),
     ([derive_cli.NETWORK], []),
 ], ids=["選ばない", "後ろの段の無い段", "数の段が読む段", "区間を切る段", "2つの段", "道路網の配列だけ"])
 async def test_choosing_stages_adds_the_stages_that_read_them(chosen, expected):

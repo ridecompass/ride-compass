@@ -14,8 +14,9 @@ from shapely.geometry import LineString, Polygon
 
 from app.batch import derive_topology, derive_traffic_regulations
 from app.batch.ingest import SourceRecord
-from app.domain.traffic_regulation import ALL_DAY, PEDESTRIAN_ROAD_KIND, TIMED
+from app.domain.traffic_regulation import ALL_DAY, TIMED
 from app.domain.tuning import REGULATION_EDGE_SHARE_ID, REGULATION_LINE_HALF_WIDTH_ID, REGULATION_MAX_ANGLE_ID
+from app.infrastructure.source_models import PEDESTRIAN_ROAD_KIND
 from tests.source_ingest import ingest_records, way_record
 from tests.tuning_fixture import TUNING
 

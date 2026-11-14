@@ -8,7 +8,7 @@
  * - `routePointsEvery`: ルートの形の上に一定の距離おきに置いた点
  *
  * ここで見ないもの:
- * - どの辺の点を現在地の位置と見るか（往復で続く側を選ぶこと） → `features/ride/routeProgress.test.ts`
+ * - どの辺の点を現在地の位置と見るか（往復で続く側を選ぶこと） → `lib/routeProgress.test.ts`
  */
 import { describe, expect, it } from "vitest";
 
@@ -147,26 +147,26 @@ describe("splitSegmentAt", () => {
   });
 });
 
-describe("projectOnTrack", () => {
-  // 北緯35度の上を東へ進む区間と、そこから北へ折れる区間。辺の両端の距離は、形の長さの割合を区間の距離へ当てたもの。
-  const track = routeTrack([
-    segment({
-      distance_km: 2,
-      geometry: line([
-        [139, 35],
-        [139.01, 35],
-        [139.02, 35],
-      ]),
-    }),
-    segment({
-      distance_km: 1,
-      geometry: line([
-        [139.02, 35],
-        [139.02, 35.01],
-      ]),
-    }),
-  ]);
+// 北緯35度の上を東へ進む区間と、そこから北へ折れる区間。辺の両端の距離は、形の長さの割合を区間の距離へ当てたもの。
+const track = routeTrack([
+  segment({
+    distance_km: 2,
+    geometry: line([
+      [139, 35],
+      [139.01, 35],
+      [139.02, 35],
+    ]),
+  }),
+  segment({
+    distance_km: 1,
+    geometry: line([
+      [139.02, 35],
+      [139.02, 35.01],
+    ]),
+  }),
+]);
 
+describe("projectOnTrack", () => {
   it("辺ごとに、地点に最も近い辺の上の点のルートの上の距離と、地点からの隔たり（m）を出す", () => {
     // 1つ目の区間の2本目の辺の真ん中から、真北へ緯度0.001度（約111m）。
     const projected = projectOnTrack(track, { latitude: 35.001, longitude: 139.015 });

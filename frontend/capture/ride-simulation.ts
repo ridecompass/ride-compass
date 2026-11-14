@@ -58,7 +58,7 @@ const script: CaptureScript = async ({ page, fixtures, open, shot, expect }) => 
   const layers = (process.env.RIDE_SIM_LAYERS ?? "").split(",").filter((id) => id !== "");
   const mapTheme = process.env.RIDE_SIM_MAP_THEME ?? "light";
 
-  // 地図の明るさは、メニューの「地図を暗くする」が端末に残す値を開く前に置いて選ぶ（`view/useMapView.ts: mapTheme`）。
+  // 地図の明るさは、「表示」の「範囲と色」の地図の色が端末に残す値を開く前に置いて選ぶ（`view/useMapView.ts: mapTheme`）。
   await page.addInitScript((theme) => localStorage.setItem("ridecompass:map-theme", theme), mapTheme);
   await open({ layers });
   await fixtures.generateRoutes(page, { distanceKm: 10 });

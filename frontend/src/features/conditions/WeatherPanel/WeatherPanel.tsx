@@ -59,7 +59,7 @@ export default function WeatherPanel({ amedas, error, today, todayError, mapBear
         <span
           role="img"
           aria-label="観測値を取得できません"
-          data-usage={`現在地の観測値を取得できていません（${error}）。取得は自動で続けており、取得できればここに表示します。`}
+          data-usage={`現在地の観測値を取得できていません[${error}]。取得は自動で続けており、取得できればここに表示します。`}
           className="inline-flex size-7 items-center justify-center text-[var(--color-danger)]"
         >
           <NotFetchedIcon size={18} />
@@ -78,7 +78,7 @@ export default function WeatherPanel({ amedas, error, today, todayError, mapBear
       term: "気温",
       value:
         `${temperature}℃` +
-        (amedas.apparent_temperature_c != null ? `（体感 ${amedas.apparent_temperature_c.toFixed(1)}℃）` : ""),
+        (amedas.apparent_temperature_c != null ? `[体感 ${amedas.apparent_temperature_c.toFixed(1)}℃]` : ""),
       stat: (
         <>
           <ThermometerIcon size={16} />
@@ -100,7 +100,7 @@ export default function WeatherPanel({ amedas, error, today, todayError, mapBear
       ? [
           {
             term: "降水量",
-            value: `${amedas.precipitation_10min_mm.toFixed(1)}mm（直近10分間）`,
+            value: `${amedas.precipitation_10min_mm.toFixed(1)}mm[直近10分間]`,
             stat: (
               <>
                 <RaindropIcon size={16} />
@@ -134,7 +134,7 @@ export default function WeatherPanel({ amedas, error, today, todayError, mapBear
           variant="ghost"
           size="bare"
           className="min-w-0 rounded-sm"
-          usage="ヘッダーの天気がどの観測所のいつの観測かを開きます。"
+          usage="ヘッダーの天気を観測した観測所と時刻を開きます。"
         >
           {/* 気温・風向風速・降水量・天気アイコンをアイコン+数値だけの統計チップとして1行に並べる
               （はみ出した分は横へ流し、ヘッダーを2行にしない）。ボタンの中に置くのでdivでなくspan。 */}

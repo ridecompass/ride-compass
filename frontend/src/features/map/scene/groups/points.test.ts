@@ -15,7 +15,6 @@ import { mapDisplay } from "@/types/generated/mapDisplay";
 import { POINT_LAYERS, type PointLayer } from "@/lib/mapDisplay/pointLayers";
 
 import { POINT_ICONS, POINT_IMAGES, pointGroup } from "./points";
-import { sidePointGroup } from "./sidePoints";
 
 const TILES = {
   urls: {
@@ -30,14 +29,7 @@ const TILES = {
 /** 寄せた地図の倍率。 */
 const NEAR_ZOOM = 20;
 
-const POINT_SCENE_LAYERS = pointGroup.build({ tiles: TILES, visible: {}, hiddenKeys: {} }).layers;
-const SIDE_POINT_SCENE_LAYERS = sidePointGroup.build({
-  path: [
-    [139.7, 35.6],
-    [139.71, 35.61],
-  ],
-  tilesReady: true,
-}).layers;
+const POINT_SCENE_LAYERS = pointGroup.build({ tiles: TILES, visible: {}, hiddenKeys: {}, nearPath: null }).layers;
 
 function layerOf(role: string) {
   const layer = POINT_SCENE_LAYERS.find((l) => l.role === role);
@@ -61,20 +53,13 @@ function representative(layer: PointLayer, count?: number): Record<string, unkno
 describe("重なった印", () => {
   const registered = new Set(POINT_IMAGES.map((image) => image.id));
 
-  it("点の層と区間の近くの点の層がある", () => {
-    expect([POINT_SCENE_LAYERS.length, SIDE_POINT_SCENE_LAYERS.length]).toEqual([
-      POINT_LAYERS.length,
-      POINT_LAYERS.length,
-    ]);
-  });
-
   // 登録していない名前の絵を引くと点が出ない。重なりの設定（`icon-allow-overlap`等）は既定（ぶつかる印は描かない）を上書きしない
   // ——上書きすると、重なった印が積み重なり、残す順も効かなくなる。
-  // 描き始める縮尺を宣言した層は、それより引いた縮尺では描かない（区間の近くの点も同じ）。
-  it.each([...POINT_SCENE_LAYERS, ...SIDE_POINT_SCENE_LAYERS].map((layer) => [layer.role, layer] as const))(
+  // 描き始める縮尺を宣言した層は、それより引いた縮尺では描かない。
+  it.each(POINT_SCENE_LAYERS.map((layer) => [layer.role, layer] as const))(
     "%s は、登録した絵の印で、宣言した縮尺から描き、重なりの判定を既定のまま使う",
     (_, entry) => {
-      const layer = POINT_LAYERS.find((c) => [c.attr_id, `side-${c.attr_id}`].includes(entry.role)) as PointLayer;
+      const layer = POINT_LAYERS.find((c) => c.attr_id === entry.role) as PointLayer;
       const layout = entry.layout as Record<string, unknown>;
       expect(entry.type).toBe("symbol");
       expect(Object.keys(layout).filter((key) => /overlap|placement|optional/.test(key))).toEqual([]);
@@ -84,12 +69,9 @@ describe("重なった印", () => {
   );
 
   // 上に積んだ層の印から先に置かれるので、重なると上の層の印が残る。
-  it.each([
-    ["点の層", POINT_SCENE_LAYERS, ""],
-    ["区間の近くの点の層", SIDE_POINT_SCENE_LAYERS, "side-"],
-  ] as const)("%s は、停止要因・補給・立ち寄り先・事故の順に上から積む", (_, entries, prefix) => {
-    const fromTop = entries.map((entry) => entry.role).reverse();
-    expect(fromTop).toEqual(["stop_poi", "supply_poi", "stop_place", "accident_point"].map((id) => prefix + id));
+  it("停止要因・補給・立ち寄り先・事故の順に上から積む", () => {
+    const fromTop = POINT_SCENE_LAYERS.map((entry) => entry.role).reverse();
+    expect(fromTop).toEqual(["stop_poi", "supply_poi", "stop_place", "accident_point"]);
   });
 });
 

@@ -28,20 +28,11 @@ class _TimelineKindNames(NamedTuple):
 
 
 TIMELINE_KINDS: dict[TimelineKind, _TimelineKindNames] = {
-    TimelineKind.THUNDER: _TimelineKindNames("雷危険度", "雷（注意報級）"),
+    TimelineKind.THUNDER: _TimelineKindNames("雷危険度", "雷[注意報級]"),
 }
 
 #: 区域の中を陸と海で分けた段のうち、陸の側の所の名前。
 LAND_AREA_NAME = "陸上"
-
-#: 段のコードの十の位がこれ以上なら注意報級。気象庁のページの「注意報級以上」の絞り込みと同じ境目。
-_ADVISORY_TENS_DIGIT = 2
-
-
-def is_advisory_level(code: str) -> bool:
-    """段のコード（`01`・`20`等の2桁の数字）が注意報級以上か。"""
-    return int(code) // 10 >= _ADVISORY_TENS_DIGIT
-
 
 @dataclass(frozen=True)
 class TimeSlot:
@@ -54,12 +45,14 @@ class TimeSlot:
 @dataclass(frozen=True)
 class TimelineLevels:
     """区域1つ・種別1つの段の並び。`area_name`は区域の中を分けた所（「陸上」「海上」等）で、分けていなければNone。
-    `codes`は`slots`と同じ並びで、`additions`（突風・ひょう等）はコマに依らずこの並び全体に付く。"""
+    `codes`（段のコード）と`advisories`（その段が注意報級以上か）は`slots`と同じ並びで、`additions`（突風・ひょう等）は
+    コマに依らずこの並び全体に付く。"""
 
     kind_type: str
     area_name: str | None
     slots: tuple[TimeSlot, ...]
     codes: tuple[str, ...]
+    advisories: tuple[bool, ...]
     additions: tuple[str, ...]
 
 

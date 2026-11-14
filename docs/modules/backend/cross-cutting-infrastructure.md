@@ -35,7 +35,7 @@ DB接続・Redis・HTTPクライアント・レート制限・ログ・デバッ
 | infrastructure | `request_log.py` | 1リクエスト=1行のHTTPアクセスサマリログ、ログ1行の書式（リクエストIDの差し込みとJSTでの時刻整形）、500応答へのリクエストIDの付与 |
 | infrastructure | `response_compression.py` | 応答のgzip圧縮（対象content-typeのみ） |
 | infrastructure | `media_types.py` | 自前で作って配るタイルのメディアタイプ（MVT・PNG）。作る側・配る側・gzipの対象の判定が同じ値を読む |
-| infrastructure | `data_paths.py` | backendがディスクへ置くものの根（本番ではホストのディレクトリを載せ、コンテナを入れ替えても残る） |
+| infrastructure | `data_paths.py` | backendがディスクへ置くものの根（本番ではホストのディレクトリを載せ、コンテナを入れ替えても残る）。取込が落とすファイルの置き場もここから組む |
 | infrastructure | `debug_log.py` | 外部I/O（外部API・タイル/標高キャッシュ）イベントのログと集計。集計の型（`debug_log.py: ExternalCallStats`）はプロセス内のカウンタと`/api/debug/stats`の応答が共有する（ヒット率・平均の計算元の回数・合計時間は応答に載せない） |
 | infrastructure | `debug_control.py` | `debug_control.py: debug_mode`のランタイム切替・直近ログの保持 |
 | infrastructure | `admin_data_backup.py` | DBのバックアップが最後に置けてからの時間（`/health`が返す）。下の「本番DBのバックアップ」 |
@@ -299,7 +299,7 @@ frontend側（`src/proxy.ts`）も同じ資格情報を別のBasic認証チェ�
 
 `install_ring_buffer_handler()`（`debug_control.py`、`main.py`起動時に1回）が
 `_LogRingBufferHandler`（`deque(maxlen=1000)`）をルートロガーへ追加する。既存の
-標準出力ハンドラ（Dockerのjson-fileドライバへ渡る）はそのまま残るため、既存の
+標準出力ハンドラ（本番ではVMのjournalへ渡る。[tech-stack.md](../../architecture/tech-stack.md)「本番のログ」）はそのまま残るため、既存の
 常時ログ出力には影響しない。`_LogRingBufferHandler`は各行を`(levelno, 整形済み文字列)`
 のタプルで保持し、`min_level`フィルタは整形済み文字列を`[LEVELNAME]`のような
 部分文字列でパースせずこの数値で判定する。
@@ -356,7 +356,7 @@ lifespanが起動時に使うtimeout値を事前ウォームアップするの�
 `Cache-Control`は、配信元ごとの宣言（`api/routers/_tile_http.py: UpstreamReplies`）から引く。
 
 上流から取れなかった例外（`httpx.HTTPError`・JSONでない本文・`UnexpectedShapeError`）は、途中の層で値に替えず、口の1か所
-（`api/failure_replies.py`）が502と失敗の種類の文（「外部の配信元から取得できませんでした（…）」）にする。
+（`api/failure_replies.py`）が502と失敗の種類の文（「外部の配信元から取得できませんでした[…]」）にする。
 
 ## 応答のgzip圧縮（`response_compression.py`）
 

@@ -25,8 +25,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from app.batch.common import FETCH_PART_SUFFIX
+from app.infrastructure import data_paths
 
-TILE_ROOT = Path(__file__).resolve().parents[2] / "data" / "dem"
+TILE_ROOT = data_paths.DATA_DIR / "dem"
 
 TILE_URL = "https://cyberjapandata.gsi.go.jp/xyz/{product}_png/{z}/{x}/{y}.png"
 
