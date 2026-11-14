@@ -83,13 +83,16 @@ async def test_a_tile_outside_the_coverage_is_the_empty_tile_and_is_not_stored(r
 
 
 @pytest.fixture
-def configure_rasters(monkeypatch):
-    """設定する土地被覆ラスタのパスを渡す口。"""
+def configure_rasters(raster_dir):
+    """土地被覆ラスタの置き場を、名前を渡したファイルだけにする口（世代はファイルの名前の集合で決まり、中身は読まない）。"""
 
-    def configure(*paths: str) -> None:
-        monkeypatch.setattr(region_tile_cache.settings, "lulc_raster_paths", ",".join(paths))
+    def configure(*names: str) -> None:
+        for path in raster_dir.iterdir():
+            path.unlink()
+        for name in names:
+            (raster_dir / name).write_bytes(b"")
 
-    configure("/data/zone53.tif")
+    configure("53S_2024.tif")
     return configure
 
 
@@ -103,9 +106,9 @@ def _kept(*keys: str) -> set[str]:
 
 
 def test_only_the_generations_being_served_stay_on_disk(configure_rasters):
-    configure_rasters("/data/zone53.tif", "/data/zone54.tif")
+    configure_rasters("53S_2024.tif", "54S_2024.tif")
     landcover_with_another_zone = region_tile_cache.landcover_generation()
-    configure_rasters("/data/zone53.tif")
+    configure_rasters("53S_2024.tif")
     landcover_now = region_tile_cache.landcover_generation()
     keys = {
         "路面の今の世代": region_tile_key("road_surface", "3.2-aaa", 12, 1, 1, "pbf"),

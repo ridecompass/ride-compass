@@ -38,6 +38,9 @@ postgres-data/
 # 永続キャッシュ（標高/路面/地図タイル）
 backend/data/
 
+# 土地被覆のラスタ（取得の入口が配布元から取る）
+backend/raster/
+
 # 変異テスト（backend/scripts/mutation/）が作る差し込んだ版と、そこへ写す設定
 backend/mutants/
 backend/setup.cfg

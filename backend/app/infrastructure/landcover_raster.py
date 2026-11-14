@@ -1,6 +1,6 @@
 """土地被覆ラスタ（Esri×Impact Observatory Sentinel-2 10m Annual LULC）のタイル描画。
 
-`settings.lulc_raster_paths`のGeoTIFFから、要求されたXYZタイルが覆う範囲を切り出し、
+置き場（`data_paths.py: RASTER_DIR`）のGeoTIFFから、要求されたXYZタイルが覆う範囲を切り出し、
 `domain/landcover.py: LANDCOVER_CLASSES`の配色で塗ったPNG（RGBA）を返す。集約を挟まず
 元の10m画素を1画素1色のまま出すため、割合の混合（材料が持つクラス別の割合）を
 どう塗るかという問題が起きない。
@@ -21,9 +21,9 @@ from io import BytesIO
 import numpy as np
 from PIL import Image, ImageColor
 
-from app.config import settings
 from app.domain.landcover import LANDCOVER_CLASSES
 from app.domain.region import tile_bounds_3857
+from app.infrastructure import data_paths
 from app.infrastructure.proj_data import pin_bundled_proj_data
 
 pin_bundled_proj_data()
@@ -63,7 +63,7 @@ _sources_lock = threading.Lock()
 
 
 class LandcoverUnavailableError(Exception):
-    """土地被覆のラスタが設定されていないか、1枚でも開けない（開けた分だけで配ると、欠けた区域が透明な絵として配られ、
+    """土地被覆のラスタが置き場に無いか、1枚でも開けない（開けた分だけで配ると、欠けた区域が透明な絵として配られ、
     キャッシュにも残る）。範囲の外（どのラスタも覆っていない）とは別の事実。"""
 
 #: 画素値→RGBA。`LANDCOVER_CLASSES`に無い値（No Data・Clouds）と、塗らないと宣言した
@@ -73,16 +73,21 @@ for _cls in (c for c in LANDCOVER_CLASSES if c.painted):
     _PALETTE[_cls.value] = (*ImageColor.getrgb(_cls.color), 255)
 
 
+def raster_paths() -> list[str]:
+    """置き場にあるラスタのパス（名前の順）。"""
+    return sorted(str(path) for path in data_paths.RASTER_DIR.glob("*.tif"))
+
+
 def _open_sources() -> list[_RasterSource]:
-    """設定されたラスタを全部開いて持つ（開けたら以後は開き直さない）。開けなければ`LandcoverUnavailableError`で、次の読みで
+    """置き場のラスタを全部開いて持つ（開けたら以後は開き直さない）。開けなければ`LandcoverUnavailableError`で、次の読みで
     開き直す——デプロイはラスタの取得とコンテナ入れ替えを別のステップで行うため、起動時に無くても後から現れる。"""
     global _opened_sources
     with _sources_lock:
         if _opened_sources is None:
-            paths = settings.lulc_raster_paths_list
+            paths = raster_paths()
             try:
                 if not paths:
-                    raise FileNotFoundError("環境変数LULC_RASTER_PATHSが未設定")
+                    raise FileNotFoundError(f"置き場にラスタがありません: {data_paths.RASTER_DIR}")
                 _opened_sources = [_RasterSource(rasterio.open(path), threading.Lock()) for path in paths]
             except (OSError, rasterio.errors.RasterioIOError) as exc:
                 logger.warning("土地被覆のラスタを開けません paths=%s error=%r", paths, exc)

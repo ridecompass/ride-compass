@@ -117,17 +117,9 @@ class Settings(BaseSettings):
     # 数十分かかるためこの程度の遅れは運用上の差にならず、読むのは1行テーブルの1列と取込の記録の件数だけ。
     derived_data_revision_check_interval_seconds: float = 300.0
 
-    # Esri×Impact Observatory LULCのGeoTIFFファイルパス（カンマ区切り、複数ゾーン対応）。
-    # ラスタ自体はリポジトリにコミットせず手動取得するため.envでのみ設定する。
-    lulc_raster_paths: str = ""
-
     @property
     def cors_allowed_origins_list(self) -> list[str]:
         return _comma_separated(self.cors_allowed_origins)
-
-    @property
-    def lulc_raster_paths_list(self) -> list[str]:
-        return _comma_separated(self.lulc_raster_paths)
 
 
 def _comma_separated(value: str) -> list[str]:
