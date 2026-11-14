@@ -1,8 +1,6 @@
 import asyncio
 import gc
 import logging
-import os
-import sys
 from contextlib import asynccontextmanager
 from datetime import datetime
 
@@ -31,7 +29,6 @@ from app.infrastructure.request_log import (
     unhandled_exception_handler,
 )
 from app.infrastructure.response_compression import ContentTypeGZipMiddleware
-from app.infrastructure.single_process import require_single_worker
 from app.infrastructure.jma_amedas_client import AMEDAS_REFRESH_INTERVAL_MINUTES
 from app.services.definitions_loading import refresh_definitions
 from app.services.jma_tile_prewarm_service import prewarm_jma_tiles
@@ -120,8 +117,6 @@ async def _prune_stale_region_tiles_job() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    require_single_worker(sys.argv, os.environ)
-
     # httpx.AsyncClientの生成はSSLコンテキスト構築を伴い、環境によっては数百ms〜1秒かかる。
     # 遅延生成のままだとデプロイ直後の最初のリクエストがこのコストを負い、接続タイムアウトが
     # タイトな外部呼び出しではConnectTimeoutを誘発する。実際に使うtimeout値を先に構築しておく。
