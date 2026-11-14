@@ -23,7 +23,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.domain.material_catalog import MATERIAL_CATALOG
 from app.infrastructure.cache_identity import shape_digest
 from app.infrastructure.data_paths import DATA_DIR
-from app.infrastructure.derived_data_meta import DataRevisions
 from app.infrastructure.road_graph_repository import RoadGraphRepository
 from app.infrastructure.road_tile_sql import DERIVED_DATABASE_MATERIAL_IDS, DERIVED_DATABASE_ROWS_SQL
 
@@ -36,7 +35,6 @@ ROOT = DATA_DIR / "derived_database"
 COLUMNS = ("osm_way_id", "segment_index", "length_m", "name", "ref", *DERIVED_DATABASE_MATERIAL_IDS, "geometry_wkt")
 DATA_FILE = "roads.csv"
 README_FILE = "README.txt"
-
 
 
 def _material_line(material_id: str) -> str:
@@ -60,6 +58,8 @@ following sources, which were processed by RideCompass:
   加工して作成。区間の周りの事故の件数を、区間の長さと収録の年数で割った値。
 - 10m Annual Land Use Land Cover: Esri, Impact Observatory, Microsoft (CC BY 4.0,
   https://creativecommons.org/licenses/by/4.0/)。区間の周りの土地被覆の割合に加工。
+- 公益財団法人日本道路交通情報センター「交通規制情報」（https://www.jartic.or.jp/service/opendata/）を加工して作成。
+  区間に掛かる歩行者用道路の規制に加工。
 These processed values are not made by, and are not endorsed by, the original providers.
 加工した値は、元データの提供元が作成したものではありません。
 
@@ -85,11 +85,6 @@ MIN_FREE_BYTES = 2 * 1024**3
 _PROGRESS_INTERVAL_SECONDS = 30.0
 
 
-def file_name(revisions: DataRevisions) -> str:
-    derived = "x" if revisions.derived is None else revisions.derived
-    return f"ridecompass-derived-database-{EXPORT_SHAPE}-r{derived}-i{revisions.imported}.zip"
-
-
 def latest() -> Path | None:
     """置いてある書き出し（書き終えたもの）。置くのは1つだけなので、名前の形に合う最初のもの。無ければNone。"""
     for path in sorted(ROOT.glob("*.zip")):
@@ -101,7 +96,9 @@ def latest() -> Path | None:
 async def ensure_current(session: AsyncSession) -> Path:
     """今の世代・今の形の書き出しを置く。既にあれば書かない。"""
     repository = RoadGraphRepository(session)
-    target = ROOT / file_name(await repository.get_data_revisions())
+    revisions = await repository.get_data_revisions()
+    derived = "x" if revisions.derived is None else revisions.derived
+    target = ROOT / f"ridecompass-derived-database-{EXPORT_SHAPE}-r{derived}-i{revisions.imported}.zip"
     if target.exists():
         logger.info("派生データベースは書き出し済みです %s", target.name)
         return target
