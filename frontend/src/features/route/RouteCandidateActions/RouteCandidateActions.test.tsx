@@ -7,21 +7,18 @@
  * ここで見ないもの: どの候補が相手か・走るを押すとその候補で走り始めること・編集中に出さないこと・走ったあとシートを閉じること
  * → `app/page.tsx`（見出しの行に置く`RouteOutcomeHeaderActions.tsx`ごと見る）。使い方の文——受け取った値を文へそのまま入れるだけ。
  *
- * 差し替えたもの: GPXのファイルを落とす関数（`features/route/gpxExport.ts: downloadGpx`）。
+ * 差し替えたもの: ファイルを落とす関数（`lib/downloadFile.ts: downloadFile`）。GPXの中身は`features/route/gpxExport.test.ts`が見る。
  */
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ComponentProps } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { downloadGpx } from "@/features/route/gpxExport";
+import { downloadFile } from "@/lib/downloadFile";
 import { makeRouteCandidate } from "@/testing/routeFixtures";
 import RouteCandidateActions from "./RouteCandidateActions";
 
-vi.mock("@/features/route/gpxExport", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/features/route/gpxExport")>()),
-  downloadGpx: vi.fn(),
-}));
+vi.mock("@/lib/downloadFile", () => ({ downloadFile: vi.fn() }));
 
 afterEach(() => {
   vi.clearAllMocks();
@@ -57,6 +54,6 @@ describe("RouteCandidateActions", () => {
   it("GPX出力はその候補を書き出す", async () => {
     renderActions();
     await userEvent.click(screen.getByRole("button", { name: "GPX出力" }));
-    expect(downloadGpx).toHaveBeenCalledWith(ROUTE);
+    expect(downloadFile).toHaveBeenCalledWith("ridecompass-slow.gpx", expect.any(String), "application/gpx+xml");
   });
 });

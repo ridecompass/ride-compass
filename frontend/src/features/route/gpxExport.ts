@@ -1,5 +1,6 @@
 import { METERS_PER_DEGREE, closestPointOnSegment, longitudeScale, type PlanePoint } from "@/lib/localPlane";
 import type { RouteCandidate } from "@/types/route";
+import { downloadFile } from "@/lib/downloadFile";
 
 // Suuntoアプリは1000点を超えるGPXの取り込みで問題が起きることがある
 // （長い周回・目的地ルートのOSM道なり形状は数千点になりうる）。GarminはGarmin Connect側で
@@ -99,14 +100,5 @@ function buildGpxDocument(candidate: RouteCandidate): string {
 
 /** ブラウザへGPXファイルのダウンロードを発火する。 */
 export function downloadGpx(candidate: RouteCandidate): void {
-  const xml = buildGpxDocument(candidate);
-  const blob = new Blob([xml], { type: "application/gpx+xml" });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = `ridecompass-${candidate.id}.gpx`;
-  document.body.appendChild(anchor);
-  anchor.click();
-  document.body.removeChild(anchor);
-  URL.revokeObjectURL(url);
+  downloadFile(`ridecompass-${candidate.id}.gpx`, buildGpxDocument(candidate), "application/gpx+xml");
 }
