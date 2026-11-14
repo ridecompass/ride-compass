@@ -92,6 +92,11 @@ Dependabotは、masterが同じ版になってもPull Requestを閉じないこ�
   いない間は利用者の操作の中で呼ばないと断られる（[W3C Device Orientation](https://www.w3.org/TR/orientation-event/)
   「requestPermission()」）。この口を持つのはiPhoneのSafariで、ほかのブラウザは許しを求めずに向きを届ける。Safariは、既に許した・断った
   答えは操作の外でもそのまま返し、まだ聞いていないときだけ`NotAllowedError`で断る（[WebKitの`DeviceOrientationEvent::requestPermission`](https://github.com/WebKit/WebKit/blob/main/Source/WebCore/dom/DeviceOrientationEvent.cpp)）。
+- **読み上げは、利用者の操作のあとでしか始められず、画面が隠れると止まる**: Chrome はページが利用者の操作を一度も受けていない間は
+  `speechSynthesis.speak()`を断る（[Chrome 71 の削除](https://developer.chrome.com/blog/chrome-71-deps-rems/)）。iPhone の Safari は最初の読み上げを
+  利用者の操作の中でしか始めず、一度始めればその後は操作の外でも読む（[WebKit の`SpeechSynthesis.cpp`](https://github.com/WebKit/WebKit/blob/main/Source/WebCore/Modules/speech/SpeechSynthesis.cpp)の`speak`）。
+  Android の Chrome は画面が見えていない間は読み上げを始めず、話している途中なら止める（[Chromium の`tts_environment_android_impl.cc`](https://chromium.googlesource.com/chromium/src/+/main/content/browser/speech/tts_environment_android_impl.cc)の`CanSpeakNow`）。
+  日本語の声は端末の読み上げエンジンが持ち、Android は端末に日本語の声が入っていなければ読めない。ほかのアプリの音（音楽）との重なり方は標準の決まりが無い。
 - **裏に回したタブは捨てられることがある**: スマホのブラウザはメモリが足りないと、裏のタブを捨て、戻ったときに読み込み直す
   （Chromeは[Page Lifecycle API](https://developer.chrome.com/docs/web-platform/page-lifecycle-api)の`discarded`）。画面の中の
   状態だけに持った値は消えるので、走行中のルートは端末へ一時保存する。
