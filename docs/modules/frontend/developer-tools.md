@@ -29,6 +29,9 @@
 | `hooks/useCopyToClipboard.ts` | クリップボードへの書き込みと結果表示（コピー済み・失敗）。Clipboard APIは[SecureContext]のため、httpのIPアクセス等では`navigator.clipboard`自体がundefinedになる——`.catch()`はPromiseの拒否しか捕まえず、プロパティアクセスの同期TypeErrorをtryで受けないとボタンが無反応のままになる。失敗は握り潰さず文言を返す | `DebugConsole`・`BackendLogsPanel` |
 | `hooks/useDebugLog.ts`・`lib/debugLog.ts` | デバッグモードON/OFF状態・ログエントリのシングルストア（`useSyncExternalStore`） | |
 | `lib/rideMetrics.ts` | 走行の計測: 走行モードの間、1分ごとの数をまとめた行を端末に残す（下記「走行の計測」） | 位置（`features/ride/useRideMode.ts`）・向き（`features/ride/useDeviceHeading.ts`）・地図（`features/map/MapView/useMapLifecycle.ts`）・ページ（`app/page.tsx`）が数える口を呼び、`HeaderMenu`の「走行の記録をコピー」で写す |
+| `lib/rideTrack.ts` | 走りの位置の記録: 管理画面で記録を入れた端末だけ、走行モードの間に受けた位置と走行の状態の移り変わりを走りごとに溜める（下記「走りの位置の記録」） | 位置と状態（`features/ride/useRideMode.ts`）が記録の口を呼ぶ |
+| `features/admin/RideTrackPanel/RideTrackPanel.tsx` | 走りの位置の記録の入り切りと、溜めた走りの一覧・JSON の書き出し・消去 | `/admin`「開発者」タブ |
+| `lib/downloadFile.ts` | ブラウザにファイルを保存させる | `RideTrackPanel`・`features/route/gpxExport.ts: downloadGpx` |
 | `app/api/version/route.ts`・`services/versionApi.ts` | フロントエンドの動いている版（コミット・起動時刻）を返すNext.js route handlerと、それを読む口（`SystemStatusPanel`と`HeaderMenu`のバージョン表示が読む） | |
 
 ## 開発の道具（`frontend/scripts/`）
@@ -96,6 +99,18 @@ localStorage経由で`/`側へ共有される（`HeaderMenu`はデバッグロ�
 1分の終わりの倍率と層の数・ページの描き直しの数・通信の行き先ごとの数と転送の量・50ms 以上かかった処理（Long Tasks）・描き遅れたコマ（Long Animation Frames）と
 その中で時間を使ったスクリプトの上位・JavaScript のメモリ・画面が隠れていた秒数。電池（`navigator.getBattery`）・メモリ（`performance.memory`）・Long Animation Frames は
 Chrome にだけある口で、無い端末ではその項目を null・0 のまま残す。転送の量は、キャッシュから読んだ分と、量を明かさない別のオリジンの応答を0に数える。
+
+## 走りの位置の記録
+
+ブラウザの GPS で止まった秒が測れるかを、時計の記録と比べて確かめるための記録。走行の計測（座標を残さない）と違って座標を残すので、
+`/admin`の「開発者」タブで記録を入れた端末だけが溜め、どこへも送らない。走行モードを始めると走りを1つ始め、休んで続けても同じ走りを
+続け、止めると終える。位置ごとに走り始めからの時刻・緯度経度・誤差・端末が出した速さを、状態の移り変わりと一緒に残す。
+
+- 位置が届くたびに走り全体を書き直すと、点の数に比例して重くなるので、点は区切りごとの鍵へ足す（区切りの点の数・1回の走りの点の上限・
+  残す走りの数は`lib/rideTrack.ts`の定数）。書けなかったら（容量の上限等）、案内を止めずにその走りの記録だけをやめる。
+- 画面のエラーの境目の「端末に保存した値を消して再試行」は、走りの記録（鍵の頭`lib/rideTrack.ts: RIDE_TRACK_KEY_PREFIX`）を消さない。
+  地図の画面は記録を読まないので落ちる元にならず、ほかに写しが無いため。
+- 書き出したファイルは、開発機で時計の記録と並べて比べる。
 
 ## 暗黙の前提
 
