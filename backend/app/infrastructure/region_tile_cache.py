@@ -95,7 +95,8 @@ def prune_other_generations() -> int:
     形が変わるのはデプロイだけなので、起動のあとに1回呼ぶ（`main.py`）。土地被覆は今の置き場のラスタ構成の世代を残す。
     どの系統の表にも無い系統（改名・廃止した系統）の鍵も消す——もう誰も読まない。
     """
-    generations: dict[str, str] = {**MVT_TILE_GENERATIONS, LANDCOVER_TILE_KIND: landcover_generation(raster_paths())}
+    generations: dict[str, str] = dict(MVT_TILE_GENERATIONS.items())
+    generations[LANDCOVER_TILE_KIND] = landcover_generation(raster_paths())
 
     def is_stale(key: str) -> bool:
         kind = region_tile_kind(key)
