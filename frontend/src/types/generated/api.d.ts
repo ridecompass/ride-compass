@@ -1895,7 +1895,7 @@ export interface components {
          * TimelineKind
          * @enum {string}
          */
-        TimelineKind: "thunder";
+        TimelineKind: "thunder" | "snow" | "snow_accretion" | "icing" | "avalanche" | "low_temperature" | "frost";
         /** TimelineKindLevels */
         TimelineKindLevels: {
             /** Advisory Label */

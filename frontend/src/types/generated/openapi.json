@@ -6258,7 +6258,13 @@
       "TimelineKind": {
         "type": "string",
         "enum": [
-          "thunder"
+          "thunder",
+          "snow",
+          "snow_accretion",
+          "icing",
+          "avalanche",
+          "low_temperature",
+          "frost"
         ],
         "title": "TimelineKind"
       },
