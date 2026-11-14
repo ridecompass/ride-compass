@@ -546,7 +546,8 @@ idの文字列や要求の形から決め直さない。
 一緒に渡す。**状態ごとに保つラベルはコスト最小の1本だけ**（1ラベル法）で、「コストは高いが
 早く着く」経路を捨てる近似になる。
 
-Nodeごとのコストは、そのNodeへ入る区間の最小を採る（木を作るときに畳む）。
+Nodeごとのコストは、そのNodeへ入る区間の最小を採る（木を作るときに畳む）。木の畳み込みも繋ぎ目も、
+状態・遷移を番号の順に1回だけ見て最小を残すJITで、同じ費用なら番号の小さい状態・遷移が残る。
 **起点Nodeだけは「起点へ戻ってくるコスト」になる**——状態の空間に「まだ走っていない」が
 無いため。前向き木と後ろ向き木をNodeで繋ぐときは`combine_forward_backward_at_nodes`を
 通す。Nodeごとのコストを単に足すと、そのNodeで曲がる費用が抜ける。
@@ -822,7 +823,7 @@ numbaでJITする探索とその部品はこのファイルにまとめて置く
   繋ぎ目の区間の対ごとにターンの費用を足して最小を採る。
 - **`turn_expanded_shortest_path`/`_turn_expanded_astar`**: 2点間探索。numbaでJITし、
   優先度キューをnumpy配列のバイナリヒープとして自前で持つ（numbaの`heapq`より速いため。下の部品の項）。
-- **JITのコンパイル（`compile_search_kernels`・`domain/search_graph.py: kernel_array`）**: 一対全木・木の経路どうしの重複率・2点間探索のJITは`cache=True`で、
+- **JITのコンパイル（`compile_search_kernels`・`domain/search_graph.py: kernel_array`）**: 一対全木・木の繋ぎ目・木の経路どうしの重複率・2点間探索のJITは`cache=True`で、
   コンパイル結果を`routing.py`の隣の`__pycache__`に置き、別のプロセスはそこから読む。イメージの組み立て
   （`backend/Dockerfile`）が`compile_search_kernels`（最小の道路網でどれも1回ずつ呼ぶ。探索が読む費用を組み立てるJITは`domain/leg_costs.py: compile_leg_cost_kernels`を呼んで焼く）で焼き、入れ替えた
   コンテナの最初のルート生成はコンパイルを待たない。numbaは引数の型（dtype・並び・読み取り専用か）ごとに

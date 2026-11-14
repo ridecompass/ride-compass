@@ -32,7 +32,6 @@ from app.domain.search_graph import (
     build_lazy_road_graph,
     build_search_graph_statics,
     kernel_array,
-    run_starts,
 )
 from app.domain.tuning import TUNING_PARAMETERS_BY_ID, TUNING_VALUES
 from app.domain.turn_structure import TurnExpandedStructure, build_turn_expanded_structure, current_turn_cost
@@ -601,17 +600,15 @@ def build_turn_expanded_tree(
     fold_started = start_timer()
     # Nodeごとに最小コストの状態を1つ選ぶ（正方向はNodeへ入る状態、逆方向は出る状態）。
     incoming = structure.edge_from if reverse else structure.edge_to
-    order = np.lexsort((state_cost, incoming))
-    best_states = order[run_starts(incoming[order])]
-    node_best_state = np.full(node_count, -1, dtype=np.int64)
+    node_best_state = _node_best_states(kernel_array(incoming, np.int64), state_cost, int(node_count))
+    reached = np.flatnonzero(node_best_state >= 0)
+    best = node_best_state[reached]
     node_cost = np.full(node_count, np.inf)
     node_length_m = np.full(node_count, np.nan)
     node_seconds = np.full(node_count, np.nan)
-    finite_best = best_states[np.isfinite(state_cost[best_states])]
-    node_best_state[incoming[finite_best]] = finite_best
-    node_cost[incoming[finite_best]] = state_cost[finite_best]
-    node_length_m[incoming[finite_best]] = state_length_m[finite_best]
-    node_seconds[incoming[finite_best]] = state_seconds[finite_best]
+    node_cost[reached] = state_cost[best]
+    node_length_m[reached] = state_length_m[best]
+    node_seconds[reached] = state_seconds[best]
 
     logger.info(
         "turn_expanded_tree reverse=%s states=%d bins=%d dijkstra_ms=%d fold_ms=%d",
@@ -624,6 +621,22 @@ def build_turn_expanded_tree(
         node_length_m=node_length_m, node_seconds=node_seconds,
         predecessor=predecessor, predecessor_list=predecessor.tolist(),
     )
+
+
+@njit(cache=True, nogil=True)
+def _node_best_states(node_of_state: np.ndarray, state_cost: np.ndarray, node_count: int) -> np.ndarray:
+    """Nodeごとに、費用が有限で最小の状態（無ければ-1）。同じ費用なら番号の小さい状態を残す（厳密な`<`で先に見たものを残す）。
+
+    numpyの`ufunc.at`は群ごとの最小の値までしか取れず、その番号を並べ替えずに取る標準の関数が無いので、1回の走査で持つ。
+    """
+    best_state = np.full(node_count, -1, dtype=np.int64)
+    best_cost = np.full(node_count, np.inf)
+    for state in range(len(state_cost)):
+        node = node_of_state[state]
+        if state_cost[state] < best_cost[node]:
+            best_cost[node] = state_cost[state]
+            best_state[node] = state
+    return best_state
 
 
 def tree_cost_bound(
@@ -782,35 +795,51 @@ def combine_forward_backward_at_nodes(
     ターンの費用が抜ける（入る方向と出る方向の組み合わせで決まるため）。遷移（入る区間×出る
     区間の対）ごとに合計を求め、Nodeごとの最小を採る。
     """
-    state_count = structure.state_count
-    source = np.repeat(np.arange(state_count, dtype=np.int64), np.diff(structure.indptr))
-    target = structure.target_state
-    total = forward.state_cost[source] + transition_cost + backward.state_cost[target]
-    length = forward.state_length_m[source] + backward.state_length_m[target]
-    # 繋ぎ目のターンも、費用には費用、所要時間には時間で入る。
-    seconds_total = forward.state_seconds[source] + structure.turn_seconds + backward.state_seconds[target]
-    junction_node = structure.edge_to[source]
-
-    cost = np.full(node_count, np.inf)
+    cost, forward_state, transition = _junction_best_transitions(
+        kernel_array(structure.indptr, SEARCH_INDEX_DTYPE), kernel_array(structure.target_state, SEARCH_INDEX_DTYPE),
+        kernel_array(structure.edge_to, np.int64), kernel_array(transition_cost, EDGE_VALUE_DTYPE),
+        forward.state_cost, backward.state_cost, int(node_count),
+    )
+    backward_state = np.full(node_count, -1, dtype=np.int64)
     length_m = np.full(node_count, np.nan)
     seconds = np.full(node_count, np.nan)
-    forward_state = np.full(node_count, -1, dtype=np.int64)
-    backward_state = np.full(node_count, -1, dtype=np.int64)
-
-    finite = np.flatnonzero(np.isfinite(total))
-    if len(finite):
-        order = finite[np.lexsort((total[finite], junction_node[finite]))]
-        best = order[run_starts(junction_node[order])]
-        best_nodes = junction_node[best]
-        cost[best_nodes] = total[best]
-        length_m[best_nodes] = length[best]
-        seconds[best_nodes] = seconds_total[best]
-        forward_state[best_nodes] = source[best]
-        backward_state[best_nodes] = target[best]
+    joined = np.flatnonzero(transition >= 0)
+    source, picked = forward_state[joined], transition[joined]
+    target = structure.target_state[picked]
+    backward_state[joined] = target
+    length_m[joined] = forward.state_length_m[source] + backward.state_length_m[target]
+    # 繋ぎ目のターンも、費用には費用、所要時間には時間で入る。
+    seconds[joined] = forward.state_seconds[source] + structure.turn_seconds[picked] + backward.state_seconds[target]
     return NodeJunction(
         cost=cost, length_m=length_m, seconds=seconds,
         forward_state=forward_state, backward_state=backward_state,
     )
+
+
+@njit(cache=True, nogil=True)
+def _junction_best_transitions(
+    indptr: np.ndarray, target_state: np.ndarray, edge_to: np.ndarray, transition_cost: np.ndarray,
+    forward_cost: np.ndarray, backward_cost: np.ndarray, node_count: int,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Nodeごとに、合計の費用が有限で最小の遷移（合計・前向きの状態・遷移の番号。無ければinf・-1・-1）。
+
+    遷移を番号の順に1回だけ見て、厳密な`<`で先に見たものを残す（同じ合計なら番号の小さい遷移が残る）。
+    """
+    best_cost = np.full(node_count, np.inf)
+    best_source = np.full(node_count, -1, dtype=np.int64)
+    best_transition = np.full(node_count, -1, dtype=np.int64)
+    for source in range(len(indptr) - 1):
+        forward = forward_cost[source]
+        if not forward < np.inf:
+            continue
+        node = edge_to[source]
+        for transition in range(indptr[source], indptr[source + 1]):
+            total = forward + transition_cost[transition] + backward_cost[target_state[transition]]
+            if total < best_cost[node]:
+                best_cost[node] = total
+                best_source[node] = source
+                best_transition[node] = transition
+    return best_cost, best_source, best_transition
 
 
 def _as_time_bins(caller: str, values: np.ndarray) -> np.ndarray:
@@ -963,7 +992,7 @@ def turn_expanded_shortest_path(
 
 
 def compile_search_kernels() -> None:
-    """探索のJIT（出て戻れるNodeの集まり・来た道を戻らずに行き来できるNode・一対全木・木の経路どうしの重複率・2点間探索）を、最小の道路網で1回ずつ呼んでコンパイルする。
+    """探索のJIT（出て戻れるNodeの集まり・来た道を戻らずに行き来できるNode・一対全木・木の繋ぎ目・木の経路どうしの重複率・2点間探索）を、最小の道路網で1回ずつ呼んでコンパイルする。
     探索が読む費用を組み立てるJIT（`domain/leg_costs.py: compile_leg_cost_kernels`）も併せて焼く。
 
     `@njit(cache=True)`の結果はこのファイルの隣の`__pycache__`に残り、別のプロセスはそこから読む。
@@ -998,6 +1027,7 @@ def _call_search_kernels() -> None:
         structure, cost, statics.edge_length_m, origin_states, lazy_graph.node_count, edge_seconds=cost,
         transition_cost=structure.turn_seconds,
     )
+    combine_forward_backward_at_nodes(structure, tree, tree, lazy_graph.node_count, structure.turn_seconds)
     overlap = TreePathOverlap(tree)
     overlap.accept(1)
     overlap.max_ratio(0)
