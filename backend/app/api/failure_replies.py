@@ -1,4 +1,4 @@
-"""想定した失敗（上流から取れない・MSMを読めない・手元の置き場を読めない・DBに届かない・較正値で計算できない）を、利用者へ返す状態と文にする。
+"""想定した失敗（上流から取れない・MSMを読めない・観測値の置き場を読めない・DBに届かない・較正値で計算できない）を、利用者へ返す状態と文にする。
 
 失敗は途中の層で値に替えずに投げ、口では捕まえずに、ここがアプリ単位の例外の扱いで返す（口ごとに書くと、書き忘れた口だけが
 500になる）。ルート生成のジョブの失敗の文も同じ`failure_reply`で決める。決め方に無い例外（実装の誤り等）は500のまま表へ出す。
@@ -16,18 +16,11 @@ from app.domain.tuning import TuningValueError
 from app.infrastructure.database import DB_UNAVAILABLE_ERRORS
 from app.infrastructure.debug_log import error_type_label
 from app.infrastructure.jma_amedas_store import AmedasUnavailableError
-from app.infrastructure.jma_area_boundaries import AreaBoundariesUnavailableError
-from app.infrastructure.landcover_raster import LandcoverUnavailableError
 from app.infrastructure.msm_client import MsmUnavailableError
-from app.infrastructure.road_network_store import RoadNetworkUnavailableError
 from app.infrastructure.simple_api_client import UnexpectedShapeError
 
 #: 上流が返した本文がJSONでないとき（`httpx.Response.json`）も、上流の障害として数える。
 UPSTREAM_ERRORS: tuple[type[Exception], ...] = (httpx.HTTPError, json.JSONDecodeError, UnexpectedShapeError)
-#: 手元の置き場（観測値・区域の境界・土地被覆のラスタ・道路網）を読めない・較正値の値で計算できない。文は例外が持つ。
-UNAVAILABLE_ERRORS: tuple[type[Exception], ...] = (
-    AmedasUnavailableError, AreaBoundariesUnavailableError, LandcoverUnavailableError, RoadNetworkUnavailableError,
-    TuningValueError)
 
 
 def failure_reply(exc: BaseException) -> tuple[int, str] | None:
@@ -36,7 +29,9 @@ def failure_reply(exc: BaseException) -> tuple[int, str] | None:
         return status.HTTP_502_BAD_GATEWAY, f"外部の配信元から取得できませんでした[{error_type_label(exc)}]"
     if isinstance(exc, MsmUnavailableError):
         return status.HTTP_503_SERVICE_UNAVAILABLE, f"気象の数値予報を読めません[{exc}]"
-    if isinstance(exc, UNAVAILABLE_ERRORS):
+    if isinstance(exc, AmedasUnavailableError):
+        return status.HTTP_503_SERVICE_UNAVAILABLE, str(exc)
+    if isinstance(exc, TuningValueError):
         return status.HTTP_503_SERVICE_UNAVAILABLE, str(exc)
     if isinstance(exc, DB_UNAVAILABLE_ERRORS):
         return status.HTTP_503_SERVICE_UNAVAILABLE, "DBへのアクセスに失敗しました[DB接続と、テーブルが作られているかを確認してください]"
@@ -53,5 +48,5 @@ async def _reply(request: Request, exc: Exception) -> JSONResponse:
 
 
 def install_failure_replies(app: FastAPI) -> None:
-    for error_type in (*UPSTREAM_ERRORS, MsmUnavailableError, *UNAVAILABLE_ERRORS, *DB_UNAVAILABLE_ERRORS):
+    for error_type in (*UPSTREAM_ERRORS, MsmUnavailableError, AmedasUnavailableError, TuningValueError, *DB_UNAVAILABLE_ERRORS):
         app.add_exception_handler(error_type, _reply)

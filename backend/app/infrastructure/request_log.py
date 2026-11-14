@@ -1,16 +1,15 @@
 """リクエスト1件=1行のHTTPアクセスサマリログと、ログ1行の書式(方針は .claude/rules/logging.md)。
 
 リクエストIDの引き継ぎ・発行・応答ヘッダへの付与は`asgi_correlation_id.CorrelationIdMiddleware`
-（`main.py`で登録）が持ち、ここはそのIDをログ行と500応答へ載せる側だけを持つ。
+（`main.py`で登録）が持ち、ここはそのIDをログ行へ載せる側だけを持つ。
 """
 
 import logging
 from collections.abc import Awaitable, Callable
 from datetime import datetime
 
-from asgi_correlation_id import CorrelationIdFilter, correlation_id
+from asgi_correlation_id import CorrelationIdFilter
 from fastapi import Request, Response
-from fastapi.responses import PlainTextResponse
 
 from app.domain.stopwatch import elapsed_ms, start_timer
 from app.domain.time_zone import JST
@@ -44,19 +43,6 @@ def format_log_lines(handler: logging.Handler) -> None:
     handler.setFormatter(JstLogFormatter(LOG_FORMAT))
 
 
-async def unhandled_exception_handler(request: Request, exc: Exception) -> Response:
-    """FastAPIの`Exception`ハンドラとして登録する(main.py: `app.add_exception_handler`)。
-
-    500応答は本来Starletteの`ServerErrorMiddleware`（リクエストIDのミドルウェアの外側）が
-    作るため、そこにはX-Request-IDが付かない。FastAPIのExceptionハンドラはその中で
-    呼ばれるので、ここで同じ形のプレーンテキスト応答を組み立ててヘッダを載せる。
-    """
-    del request, exc  # スタックトレースはrequest_log_middleware側で既にERRORログ済み
-    return PlainTextResponse(
-        "Internal Server Error", status_code=500, headers={"X-Request-ID": correlation_id.get() or "-"}
-    )
-
-
 def access_level(path: str, status_code: int, tile_path_prefixes: tuple[str, ...]) -> int:
     """アクセスログの1行のレベル。`tile_path_prefixes`は地図タイルの経路（GETだけで、通常操作でも毎分数百件になる）。"""
     if status_code >= 500:
@@ -80,17 +66,7 @@ def request_log_middleware(tile_path_prefixes: tuple[str, ...]) -> Callable[...,
     async def log_access(request: Request, call_next) -> Response:
         started = start_timer()
         client = request.client.host if request.client else "unknown"
-        try:
-            response = await call_next(request)
-        except Exception:
-            _access_logger.exception(
-                "%s %s -> unhandled exception after %dms client=%s",
-                request.method,
-                request.url.path,
-                elapsed_ms(started),
-                client,
-            )
-            raise
+        response = await call_next(request)
         _access_logger.log(
             access_level(request.url.path, response.status_code, tile_path_prefixes),
             "%s %s -> %d in %dms client=%s",

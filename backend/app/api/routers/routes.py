@@ -1,5 +1,4 @@
 import asyncio
-import logging
 from functools import partial
 from datetime import datetime
 from typing import Annotated, Literal
@@ -47,7 +46,6 @@ from app.services.route_generation_setup import generate_route_candidates
 from app.domain.strict_model import StrictModel
 
 router = APIRouter()
-logger = logging.getLogger("ridecompass.generate")
 
 
 class RoadAvoidanceOverride(RootModel[dict[str, AvoidanceLevel]]):
@@ -318,10 +316,10 @@ async def _run_generate_job(
             ),
         )
         job_registry.set_done(job_id, response)
-    except Exception as exc:  # バックグラウンドジョブの例外はここで必ず捕捉し記録する
+    # ジョブの例外は何であれジョブの失敗としてポーリングへ返す（握りつぶさない）。
+    except Exception as exc:  # noqa: BLE001
         # 想定した失敗は口と同じ文（`failure_reply`）で、時間切れはその旨で返す。決め方に無い例外（実装の誤り等）は、文に
-        # 接続先やSQLが混じりうるので詳細はログ（トレースバック込み）にだけ残し、決まった文を返す。突き合わせにはjob_idを使う。
-        logger.exception("ルート生成ジョブが失敗 job_id=%s", job_id)
+        # 接続先やSQLが混じりうるので決まった文を返す。
         reply = failure_reply(exc)
         job_registry.set_failed(
             job_id,

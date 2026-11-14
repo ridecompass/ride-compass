@@ -138,7 +138,7 @@ ORDER BY r.source
 
 
 class DbStatusQuery:
-    """読み取り専用。全表を走査するので、長いcommand_timeoutのセッションを渡す。"""
+    """読み取り専用。全表を走査するので、ルート生成と同じプールのセッションを渡す。"""
 
     def __init__(self, session: AsyncSession):
         self._session = session

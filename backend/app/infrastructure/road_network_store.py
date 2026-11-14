@@ -65,14 +65,14 @@ def _directories() -> Iterator[tuple[Path, re.Match[str]]]:
             yield path, match
 
 
-def _latest_directory() -> Path | None:
-    """形の署名が一致するもののうち、世代が最も新しい置き場。無ければNone。"""
+def _latest_directory() -> Path:
+    """形の署名が一致するもののうち、世代が最も新しい置き場。"""
     candidates = (
         (int(match["revision"]), path)
         for path, match in _directories()
         if match["shape"] == NETWORK_SHAPE
     )
-    return max(candidates, key=lambda candidate: candidate[0], default=(None, None))[1]
+    return max(candidates, key=lambda candidate: candidate[0])[1]
 
 
 def save(network: RoadNetwork) -> Path:
@@ -146,10 +146,6 @@ def load(directory: Path) -> RoadNetwork:
     return RoadNetwork(**arguments)  # type: ignore[arg-type]
 
 
-class RoadNetworkUnavailableError(RuntimeError):
-    """今のコードの形の置き場が1つも無い（デプロイの前処理かバッチが作っていない）。"""
-
-
 #: 読み込み済みの置き場とその中身。プロセスの中で全リクエストが共有する（読み取り専用）。
 _loaded: tuple[Path, RoadNetwork] | None = None
 
@@ -163,18 +159,9 @@ def current() -> RoadNetwork:
     global _loaded
     latest = _latest_directory()
     if _loaded is None or _loaded[0] != latest:
-        _loaded = _open_latest()
+        _loaded = latest, load(latest)
         logger.info("道路網を読みました %s 有向の区間=%d", _loaded[0].name, _loaded[1].edge_count)
     return _loaded[1]
-
-
-def _open_latest() -> tuple[Path, RoadNetwork]:
-    latest = _latest_directory()
-    if latest is None:
-        # 利用者へ返す文（例外の文）に置き場のパスを載せない。
-        logger.error("道路網の置き場がありません（%s、形の署名 %s）。scripts/build_road_network.py で作る", ROOT, NETWORK_SHAPE)
-        raise RoadNetworkUnavailableError("道路網が用意されていないため、ルートを作れません")
-    return latest, load(latest)
 
 
 def _as_tuples(value: object) -> object:

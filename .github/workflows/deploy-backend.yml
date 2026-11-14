@@ -124,16 +124,6 @@ jobs:
             # ディレクトリにする——消しても作り直せるキャッシュと違い、これは取り直すまで
             # 地図レイヤーを出せなくなる生データで、一緒に消えてよいものではない。
             sudo mkdir -p /home/ubuntu/ridecompass-raster
-            # ラスタの所在（コンテナ内のパス）を環境変数ファイルへ用意する（上の
-            # CORS_ALLOWED_ORIGINSと同じ流儀の自己修復。何度実行しても安全）。
-            # **キーの有無ではなく値が入っているかで見る**——`LULC_RASTER_PATHS=`（空）が
-            # 1行あるだけで「設定済み」と判定すると、土地被覆だけが恒久的に503のまま直らない。
-            # 空行は消してから書き直す。値が入っていれば触らない（ゾーンを足した運用中の
-            # 設定を、デプロイのたびに1枚へ戻さないため）。
-            if ! grep -qE "^LULC_RASTER_PATHS=.+" "$ENV_FILE"; then
-              sudo sed -i '/^LULC_RASTER_PATHS=/d' "$ENV_FILE"
-              echo "LULC_RASTER_PATHS=/app/raster/54S_2024.tif" | sudo tee -a "$ENV_FILE" > /dev/null
-            fi
             # 土地被覆ラスタの取得。既にあれば何もしないため、実際に効くのは初回と、差し替えたい
             # とき（ファイルを消してデプロイし直す）だけ。失敗したらset -eで止める——ラスタ無しで
             # 起動すると土地被覆レイヤーだけが黙って出なくなる。
@@ -172,8 +162,7 @@ jobs:
             # -t 90: uvicorn(単一プロセス、backend/Dockerfile)はSIGTERMで新しい接続を止め、
             # 応答中のリクエストが終わるのを待ってから止まる。docker stopの既定の猶予(10秒)では
             # その途中で強制終了され、接続がRSTで切れてフロントで「Failed to fetch」になる。
-            # 90秒は、通常のリクエストのDBクエリの上限(20秒、app/infrastructure/database.py)を
-            # 上回る。待つのはHTTPのリクエストだけで、ルート生成のジョブ(リクエストの外で走る
+            # 待つのはHTTPのリクエストだけで、ルート生成のジョブ(リクエストの外で走る
             # タスク)は待たれずに失われる(docs/architecture/api-design.md)。
             # 真のゼロダウンタイム(新コンテナを起動しヘルスチェック後に旧を止める
             # blue/green)は、--network=hostで単一ポートを共有する現在の構成では

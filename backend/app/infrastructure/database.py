@@ -7,7 +7,7 @@ from app.config import settings
 # （TypeError・AttributeError等）とほかのOSError（ファイルの読み書き等）は500のまま表へ出す。
 # - SQLAlchemyError: 接続を張る段階と実行中の失敗（asyncpgの例外はDBAPIErrorへ訳される）とプールの待ち切れ
 # - ConnectionError: 接続の拒否・切断（asyncpgが訳さずに出す）
-# - TimeoutError: command_timeoutの時間切れ（実行中のasyncpgのタイムアウトは訳されない）
+# - TimeoutError: 接続を張る段階の時間切れ（asyncpgの接続の`timeout`。SQLAlchemyは訳さない）
 DB_UNAVAILABLE_ERRORS: tuple[type[Exception], ...] = (SQLAlchemyError, ConnectionError, TimeoutError)
 
 # エンジン（コネクションプール）は系統ごとにアプリ全体で1つだけ生成し、セッションファクトリが持つ。
@@ -15,35 +15,26 @@ DB_UNAVAILABLE_ERRORS: tuple[type[Exception], ...] = (SQLAlchemyError, Connectio
 _session_factory: async_sessionmaker[AsyncSession] | None = None
 
 
-def _new_session_factory(command_timeout: float) -> async_sessionmaker[AsyncSession]:
-    engine = create_async_engine(
-        settings.database_url, pool_pre_ping=True, connect_args={"command_timeout": command_timeout}
-    )
+def _new_session_factory() -> async_sessionmaker[AsyncSession]:
+    engine = create_async_engine(settings.database_url, pool_pre_ping=True)
     return async_sessionmaker(engine, expire_on_commit=False)
 
 
 def get_session_factory() -> async_sessionmaker[AsyncSession]:
     global _session_factory
     if _session_factory is None:
-        # command_timeout: 路面タイルのバースト（短時間の連続パン/ズーム）でDB側が混雑すると
-        # クエリが数分返らないことがあり、上限が無いとリクエストが無期限にハングする。
-        # ここで出るTimeoutErrorはDB_UNAVAILABLE_ERRORSに入るため、503で返る。
-        _session_factory = _new_session_factory(20)
+        _session_factory = _new_session_factory()
     return _session_factory
 
 
-# ルート生成と、全表走査を伴う管理APIの集計が使う。生成は接続を取ってから終わるまで1本の接続を持つため、
-# タイル配信とはプールを分ける。上限が長いのは集計がタイル配信用の20秒では最後まで走らない
-# ためで、生成のクエリ（確定した経路の形の取り直し）はこの上限に近づかない。
-_ROUTE_GENERATION_COMMAND_TIMEOUT_SECONDS = 180
-
+# ルート生成と、全表走査を伴う管理APIの集計が使う。どちらも1本の接続を長く持つため、タイル配信とはプールを分ける。
 _route_generation_session_factory: async_sessionmaker[AsyncSession] | None = None
 
 
 def get_route_generation_session_factory() -> async_sessionmaker[AsyncSession]:
     global _route_generation_session_factory
     if _route_generation_session_factory is None:
-        _route_generation_session_factory = _new_session_factory(_ROUTE_GENERATION_COMMAND_TIMEOUT_SECONDS)
+        _route_generation_session_factory = _new_session_factory()
     return _route_generation_session_factory
 
 

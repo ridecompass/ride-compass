@@ -1,8 +1,8 @@
-"""`services/landcover_tile_service.py`——土地被覆ラスタタイルの配信（キャッシュの鍵・ラスタが無いときの扱い）。
+"""`services/landcover_tile_service.py`——土地被覆ラスタタイルの配信（キャッシュの鍵・範囲外の空のタイル）。
 
 ここで見ないもの:
 - ラスタの読み取り・再投影・PNGへの描画 → `test_landcover_raster.py`
-- 配信の口（ズームの範囲・503） → `test_region_routes.py`
+- 配信の口（ズームの範囲） → `test_region_routes.py`
 - キャッシュの読み書きと空タイルの扱いの骨格 → `test_region_tile_cache.py`
 - 骨格へ渡すタイルの種類（`content_type`）——キャッシュの項目に書かれるだけで読み手が無く、応答の種類はルーターが
   決める（`test_region_routes.py`）

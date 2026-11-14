@@ -20,7 +20,7 @@ _EMPTY_TILE = landcover_raster.empty_tile_png()
 
 
 async def get_landcover_tile(z: int, x: int, y: int) -> bytes:
-    """タイル1枚を返す。ラスタを開けなければ`landcover_raster.LandcoverUnavailableError`。"""
+    """タイル1枚を返す。"""
 
     async def fetch_tile(_fields: dict) -> bytes | None:
         return await asyncio.to_thread(landcover_raster.render_tile, z, x, y)
