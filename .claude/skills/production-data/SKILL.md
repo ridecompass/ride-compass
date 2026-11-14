@@ -25,8 +25,6 @@ description: "本番の派生データを作り直す・本番へ道の区分と
 - 住所の区画の段は、住所の生データ（`abr`）の取込が無いと止まり、作り直し全体が何も入れ替えない。初めて流す前と住所を取り直すときは、
   同じ別のコンテナで取得と取込を先に打つ（手順は[data-sources.md](../../../docs/architecture/data-sources.md)「住所の区画の元データ」）。
 
-- **`/app/data`のマウントを外さない**（同じ入口が道路網全体の配列`data/road_network/`を作ってから表を入れ替える。配列は本番で数分かかる）。
-  途中で落ちたとき（配列を作れなかったときを含む）は何も入れ替わらないので、原因を直して打ち直す。
 - **`/app/data`のマウントを外さない**（同じ入口が道路網全体の配列`data/road_network/`を作ってから表を入れ替える。配列は本番で数分かかる。
   外すと配列がコンテナと一緒に消え、表だけが入れ替わってルート生成は古い配列を読み続ける）。
   途中で落ちたとき（配列を作れなかったときを含む）は何も入れ替わらず、backendは前の表と配列を読み続けるので、原因を直して打ち直す。
@@ -95,9 +93,11 @@ description: "本番の派生データを作り直す・本番へ道の区分と
      テナンシの詳細の「Object Storage namespace」に出る。
   2. VMを動的グループに入れる: Identity → Dynamic groups で、ルール`instance.id = '<VMのインスタンスのOCID>'`
      の動的グループを作る（例: `ridecompass-vm`。OCIDはコンソールのインスタンスの詳細に出る）。
-  3. そのバケットのオブジェクトの一覧・作成・削除だけを許す: Identity → Policies で、バケットのあるコンパートメントに次の3文のポリシーを作る。
+  3. そのバケットのオブジェクトの一覧・作成・削除・読み出しだけを許す（読み出しは、下の「本番DBを失ったとき」でバケットから取るため。
+     上書きの権限は足さない）: Identity → Policies で、バケットのあるコンパートメントに次の4文のポリシーを作る。
      ```
      Allow dynamic-group ridecompass-vm to manage objects in compartment <コンパートメント名> where all {target.bucket.name='ridecompass-admin-data', request.permission='OBJECT_INSPECT'}
+     Allow dynamic-group ridecompass-vm to manage objects in compartment <コンパートメント名> where all {target.bucket.name='ridecompass-admin-data', request.permission='OBJECT_READ'}
      Allow dynamic-group ridecompass-vm to manage objects in compartment <コンパートメント名> where all {target.bucket.name='ridecompass-admin-data', request.permission='OBJECT_CREATE'}
      Allow dynamic-group ridecompass-vm to manage objects in compartment <コンパートメント名> where all {target.bucket.name='ridecompass-admin-data', request.permission='OBJECT_DELETE'}
      ```
@@ -129,8 +129,17 @@ description: "本番の派生データを作り直す・本番へ道の区分と
 - 対象: 本番DB（またはVMごと）を失った・誤操作で壊したとき。
 - 戻る材料: 上の「DBのバックアップ」の書き出し1個。戻すと、DBは書き出した時点の全体（管理データ・生データ・派生データ）になる。
   それより後の管理画面の変更と取込は戻らないので、要るならやり直す。
-- 戻すファイルを取る: VMが残っていれば`/mnt/pgdata/ridecompass-backup/latest.dump`を使う。VMを失ったときは、コンソールの
-  Storage → Buckets → バケット → `db/`のオブジェクトをダウンロードし、`scp`で新しいVMのDBのディスク（例: `/mnt/pgdata/restore.dump`）へ送る。
+- 戻すファイルを取る: VMのDBのディスクが残っていれば`/mnt/pgdata/ridecompass-backup/latest.dump`を使う。残っていなければ、
+  VMからバケットの`db/`のオブジェクトを取る（登録の2.〜4.を済ませたVMで。書き出しの8GBほどが2分ほどで取れる）:
+  ```
+  set -a; . /etc/ridecompass/admin-data-backup.env; set +a
+  cfg=$(mktemp -d); echo '{}' > "$cfg/config.json"; sudo mkdir -p /mnt/pgdata/restore && sudo chmod 1777 /mnt/pgdata/restore
+  oci() { sudo docker --config "$cfg" run --rm --network=host -v /mnt/pgdata/restore:/restore ghcr.io/oracle/oci-cli:latest --auth instance_principal "$@"; }
+  name=$(oci os object list --namespace "$OCI_NAMESPACE" --bucket-name "$BACKUP_BUCKET" --prefix db/ --query 'data[-1].name' --raw-output)
+  oci os object get --namespace "$OCI_NAMESPACE" --bucket-name "$BACKUP_BUCKET" --name "$name" --file /restore/restore.dump
+  ```
+  取れたら、大きさがバケットの値（`oci os object head … --query '"content-length"'`）と同じで、`sudo -u postgres pg_restore --list <ファイル>`が
+  目録を出すことを確かめる。コンソールのStorage → Buckets → バケット → `db/`からダウンロードして`scp`で送ってもよい。
 - 戻す順番（本番VMで。DB名・利用者は`/home/ubuntu/ridecompass-backend.env`の`DATABASE_URL`のもの）:
   1. backendを止める: `sudo docker stop ridecompass-backend`（コンテナが無ければ飛ばす）
   2. DBが無ければ、利用者とDBを作る（利用者は書き出しに入らない）:
@@ -138,14 +147,18 @@ description: "本番の派生データを作り直す・本番へ道の区分と
      sudo -u postgres createuser --pwprompt <利用者>
      sudo -u postgres createdb --owner=<利用者> <DB名>
      ```
-  3. 戻す（表を作り直して行を入れる。数十分かかる）:
+  3. 戻す（表を作り直して行を入れる。30GBのDBを`--jobs=1`で戻して37分かかった）:
      ```
      sudo chmod 644 <ファイル>
      sudo -u postgres pg_restore --clean --if-exists --jobs=4 --dbname=<DB名> <ファイル>
      ```
-  4. 書き出しのあとに派生を作り直していたら、道路網の配列の置き場（`/home/ubuntu/ridecompass-cache-data/road_network/`の中）を消す
+  4. 書き出しのあとに較正値を宣言へ足していたら、その行は戻したDBに無く、backendは起動のときに
+     「較正値の行がありません（本番の表へ行を入れてから起動する）: <id>」で止まる（宣言は初めの値を持たない）。名指された行を、
+     その較正値を足したタスクの issue に記録した値で表`tuning_overrides`へ入れてから起動する。書き出しのあとに管理画面で変えた
+     較正値・道の区分・費用の軸も戻らないので、上の「戻る材料」のとおり要ればやり直す。
+  5. 書き出しのあとに派生を作り直していたら、道路網の配列の置き場（`/home/ubuntu/ridecompass-cache-data/road_network/`の中）を消す
      （戻したDBより新しい世代の置き場が残ると、backendはそれを読む）。
-  5. `deploy-backend.yml`を`workflow_dispatch`で打つ（ラスタを取り、道路網の配列が無ければ作り、backendを起動する）。
+  6. `deploy-backend.yml`を`workflow_dispatch`で打つ（ラスタを取り、道路網の配列が無ければ作り、backendを起動する）。
      戻ったことを確かめる:
      ```
      curl -fsS http://localhost:8000/health
@@ -153,4 +166,4 @@ description: "本番の派生データを作り直す・本番へ道の区分と
      sudo docker logs --tail 50 ridecompass-backend 2>&1 | grep -E '道の区分|費用の軸の定義|較正値'
      ```
      `/health`が応答し、ログに「道の区分を読み込みました」と「費用の軸の定義を読み込みました axes=<戻した軸の数>」が出ていれば済み。
-  6. VMを作り直したときは、上の「DBのバックアップ」の登録の2.〜4.をやり直す（動的グループのルールはVMのOCIDを指す）。
+  7. VMを作り直したときは、上の「DBのバックアップ」の登録の2.〜4.をやり直す（動的グループのルールはVMのOCIDを指す）。
