@@ -22,7 +22,6 @@ DB接続・Redis・HTTPクライアント・レート制限・ログ・デバッ
 | api | `admin_paths.py` | 管理APIの経路の接頭辞（認可・キャッシュの決まりが、この下の口をまとめて扱う） |
 | api | `cache_policy.py` | 応答の`Cache-Control`（パスとポリシーの対応表・付与ミドルウェア） |
 | api | `dependencies.py`（横断的な部分のみ、他は各モジュール参照） | DI工場（公開関数は注入の口だけ） |
-| api | `finite_json_body.py` | 要求の本文のNaN・無限大を、アプリ全体の依存として経路の処理より前に422で断る（Starletteの本文の読み方はJSONの外の`NaN`・`Infinity`を通す） |
 | api | `rate_limit.py` | per-IPレート制限（`rate_limit.py: enforce_rate_limit`集約・`rate_limit.py: client_id`） |
 | api/routers | `health.py` | `/health`・`/api/debug/stats` |
 | api/routers | `debug_admin.py` | `debug_admin.py: debug_mode`のランタイム切替・直近ログ取得 |
@@ -131,8 +130,6 @@ FastAPI(lifespan=lifespan)
             → CorrelationIdMiddleware（リクエストID付与、最も外側）
         ▼
   api_router（api/routers/__init__.py、全routerを集約）
-        │  全経路に掛かる依存（FastAPI(dependencies=...)）: reject_non_finite_json_body（finite_json_body.py）が
-        │  本文のNaN・無限大を経路の処理（管理APIの認可を含む）より前に422で断る
         ▼
       yield（アプリ稼働中）
         ▼
@@ -205,8 +202,8 @@ composeのfrontendの公開先に従う値で、既定値（手元で`next dev`�
 | `get_session_factory()` | 20秒 | タイル配信（路面/POI/事故）・管理APIの読み書き等、通常のリクエスト |
 | `get_route_generation_session_factory()` | 180秒 | ルート生成（`api/dependencies.py: _open_route_generation_setup`）と、全表走査を伴う管理APIの集計（DBの状態・材料の欠損率等） |
 
-ルート生成は取込範囲の判定（`is_covered`）で接続を取り、確定した経路の形の取り直し
-（`get_edges_with_geometry`）を終えるまで、1件の生成の間（本番で数秒〜数十秒）その接続を持ち続ける。
+ルート生成は確定した経路の形の取り直し（`get_edges_with_geometry`）で接続を取り、生成を終えてセッションを閉じるまで
+その接続を持ち続ける。
 プールを分けているのはこのためで、ルート生成とタイル配信は接続を取り合わない（プール合計は
 最大30接続、本番PostgreSQLの`max_connections=100`に余裕）。上限を長くしているのは全表走査の集計の
 ためで（タイル配信用の20秒では最後まで走らない）、生成のクエリはこの上限に近づかない——本番の

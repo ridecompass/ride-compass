@@ -227,11 +227,8 @@ class RoadGraphEngine:
         そのまま渡すだけにする。
         """
         stage_started = start_timer()
-        built = await self._graph_service.get_search_slice(bbox)
+        road, tile_set = await self._graph_service.get_search_slice(bbox)
         slice_ms = elapsed_ms(stage_started)
-        if built is None:
-            return None
-        road, tile_set = built
         if road.edge_count == 0:
             return None
 

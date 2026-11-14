@@ -6,7 +6,6 @@
 
 ここで見ないもの:
 - `Weather`（与えた値を返すだけで、本物を真似る振る舞いを持たない）
-- 本物の倉庫が取込範囲の外を断ること（代役はどこでも範囲の中にする。`test_ingested_area.py`）
 """
 
 
@@ -14,7 +13,6 @@ import pytest
 
 from app.batch import derive_cli
 from app.domain.graph import LeanEdge, edge_key, node_key
-from app.domain.region import BoundingBox
 from app.infrastructure.road_graph_repository import RoadGraphRepository
 from tests.conftest import postgis_database_url
 from tests.route_world import (
@@ -38,12 +36,8 @@ async def _geometry_runs_from_the_start_node_to_the_end_node(repository) -> None
                  geometry=[], distance_m=0.0, osm_way_id=WAY, segment_index=0, forward=forward)
         for forward, (a, b) in ((True, (START, END)), (False, (END, START)))
     ]
-    lat, lon = COORDINATES[START]
-    inside = BoundingBox(min_latitude=lat, min_longitude=lon, max_latitude=lat + 0.001, max_longitude=lon + 0.001)
-
     edges = await repository.get_edges_with_geometry(requested)
 
-    assert await repository.is_covered(inside)
     for edge in requested:
         geometry = edges[edge.edge_id].geometry
         start, end = (START, END) if edge.forward else (END, START)
