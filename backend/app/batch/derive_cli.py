@@ -79,6 +79,7 @@ from app.domain.tuning import (
     LANDCOVER_RING_OUTER_ID,
     REGULATION_EDGE_SHARE_ID,
     REGULATION_LINE_HALF_WIDTH_ID,
+    REGULATION_MAX_ANGLE_ID,
     SIGNAL_MATCH_RADIUS_ID,
     STOP_CLUSTER_DISTANCE_ID,
 )
@@ -126,7 +127,8 @@ STAGES: tuple[DeriveStage, ...] = (
                 {"ring_outer_m": LANDCOVER_RING_OUTER_ID, "ring_inner_m": LANDCOVER_RING_INNER_ID}),
     DeriveStage("traffic_regulations", derive_traffic_regulations, frozenset({Source.JARTIC_REGULATION}), ("topology",),
                 ("edge_traffic_regulations",),
-                {"line_half_width_m": REGULATION_LINE_HALF_WIDTH_ID, "edge_share": REGULATION_EDGE_SHARE_ID}),
+                {"line_half_width_m": REGULATION_LINE_HALF_WIDTH_ID, "edge_share": REGULATION_EDGE_SHARE_ID,
+                 "max_angle_deg": REGULATION_MAX_ANGLE_ID}),
     DeriveStage("directions", derive_way_directions, frozenset({Source.OSM_WAY}), ("topology",), ("way_directions",)),
     # 住所の区画は、道路（`osm_way`）のパーティションを読まず、取込の記録から範囲だけを読む（読んだ数の見張りに出ないので、
     # 手で挙げる）。
