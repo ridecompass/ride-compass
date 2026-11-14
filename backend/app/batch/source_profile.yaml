@@ -112,3 +112,18 @@ sources:
     grid:
       zoom: 14             # 7.73 m/画素。元データは10m画素
 
+  # --- 道の写真 -----------------------------------------------------------
+  # Mapillary の道の写真から見つけた街灯の点と、写真を撮った線。ズームは点の層を配る唯一のズーム
+  # （https://www.mapillary.com/developer/api-documentation の Vector tiles）。
+  # 取得はタイルの口に断られると止まるので、ほかのソースの取得が先に済むよう最後に並べる。
+  - name: mapillary_street_light
+    adapter: mapillary_map_feature_point
+    rows:
+      values: [object--street-light]
+    grid:
+      zoom: 14
+
+  - name: mapillary_sequence
+    adapter: mapillary_sequence
+    grid:
+      zoom: 14

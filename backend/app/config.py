@@ -33,6 +33,8 @@ class Settings(BaseSettings):
     # デプロイ先でビルド・起動されたコミットのフルSHA。`GIT_COMMIT`環境変数から渡し、
     # .envには書かない（ローカル開発では未設定のままでよい）。
     git_commit: str | None = None
+    # Mapillaryのタイルの口の鍵（`MAPILLARY_TOKEN`）。
+    mapillary_token: str | None = None
 
     # --- 認証なしエンドポイントのper-IPレート制限・同時実行上限 ---
     # 環境（本番/ローカル/負荷試験）ごとに調整したい運用値のため.envで上書きできる。

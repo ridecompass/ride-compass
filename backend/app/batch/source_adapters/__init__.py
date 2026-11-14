@@ -15,3 +15,4 @@ from app.batch.source_adapters import abr  # noqa: F401
 from app.batch.source_adapters import estat_small_area  # noqa: F401
 from app.batch.source_adapters import isj_block  # noqa: F401
 from app.batch.source_adapters import jartic_regulation  # noqa: F401
+from app.batch.source_adapters import mapillary_tile  # noqa: F401
