@@ -1,10 +1,9 @@
 """警察庁 交通事故統計オープンデータ（本票CSV）のアダプタ。
 
-**外部の形を読んで1件ずつ返すことだけ**を行う。ステージング・差し替え・run記録は
+**入力を上流から手元へ写すことと、外部の形を読んで1件ずつ返すことだけ**を行う。ステージング・差し替え・run記録は
 `ingest.py`の共通経路が持つ。
 
-**配信元は叩かない。** 取りに行くのは`scripts/fetch_accident_csv.py`の仕事で、ここは
-手元にあるものを読む。
+取得（`fetch_honhyo`）は配布元から年ごとの本票CSVを手元へ写し、取込は手元にあるものを読む。
 
 列は捨てずに全部`attrs`へ入れる。何が後で要るかは取込の時点では決められない——
 2022年に列構成が58列から68列へ変わっており、そのとき何を拾うべきだったかは
@@ -24,13 +23,20 @@ from pathlib import Path
 import shapely
 from shapely.geometry import Point
 
-from app.batch.ingest import AdapterInputs, SourceRecord, register_adapter
+from app.batch.common import fetch_once
+from app.batch.ingest import AdapterInputs, Fetcher, SourceRecord, register_adapter
 from app.batch.source_profile import SourceProfile, SourceSpec
 from app.infrastructure import data_paths
 
 logger = logging.getLogger("ridecompass.ingest.npa_honhyo")
 
 DATA_DIR = data_paths.DATA_DIR / "accidents"
+
+#: 配布元。年ごとに1ファイル。
+HONHYO_URL_TEMPLATE = (
+    "https://www.npa.go.jp/publications/statistics/koutsuu/opendata/{year}/honhyo_{year}.csv")
+
+_READ_TIMEOUT_SECONDS = 120.0
 
 #: 本票CSVの文字コード。
 ENCODING = "cp932"
@@ -79,7 +85,7 @@ def longitude_from_raw(raw: str) -> float | None:
 
 
 def honhyo_path(year: int) -> Path:
-    """本票CSVの置き場。取得（`scripts/fetch_accident_csv.py`）と取込で同じ導き方を使う。"""
+    """本票CSVの置き場。取得と取込で同じ導き方を使う。"""
     return DATA_DIR / f"honhyo_{year}.csv"
 
 
@@ -95,7 +101,14 @@ def npa_honhyo_inputs(spec: SourceSpec, profile: SourceProfile) -> AdapterInputs
     return AdapterInputs(files=tuple(honhyo_path(int(year)) for year in spec.rows.years))
 
 
-@register_adapter("npa_honhyo", rows=HonhyoRows, inputs=npa_honhyo_inputs)
+def fetch_honhyo(spec: SourceSpec, profile: SourceProfile) -> None:
+    for year in spec.rows.years:
+        fetch_once(HONHYO_URL_TEMPLATE.format(year=year), honhyo_path(int(year)),
+                   read_timeout=_READ_TIMEOUT_SECONDS, logger=logger)
+
+
+@register_adapter("npa_honhyo", rows=HonhyoRows, inputs=npa_honhyo_inputs,
+                  fetcher=Fetcher(fetch_honhyo, lambda: (DATA_DIR,)))
 async def read_npa_honhyo(spec: SourceSpec, profile: SourceProfile, inputs: AdapterInputs,
                           origin: dict[str, Any]) -> AsyncIterator[SourceRecord]:
     target = profile.target

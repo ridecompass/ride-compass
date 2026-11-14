@@ -112,6 +112,10 @@ def format_progress(done: int, total: int | None, elapsed: float, unit: str = "�
     return f"{done:,}{unit} / 経過 {format_duration(elapsed)} / {rate:.1f}{unit}/秒"
 
 
+class FetchError(RuntimeError):
+    """上流が宣言どおりのものを置いていない等、取りに行っても取れないと分かった失敗。"""
+
+
 #: 取得途中の一時ファイルの印。所定の名前と紛れないもの。
 FETCH_PART_SUFFIX = ".part"
 

@@ -6,7 +6,7 @@ Overture の地点を取り込んで段を流し、表に入った辺りを見�
 
 ここで見ないもの:
 - 地点の検索の候補に辺りを添えること・置いた位置の辺りの口 → `test_place_search_route.py`
-- 配布元から手元へ写す取得（`scripts/fetch_estat_small_areas.py`）→ どのテストも通さない
+- 配布元から手元へ写す取得（`app/batch/source_adapters/estat_small_area.py: fetch_estat_small_areas`）→ どのテストも通さない
 """
 
 import csv

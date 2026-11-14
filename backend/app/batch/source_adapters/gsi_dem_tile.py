@@ -4,8 +4,11 @@
 分けずに済む。同じタイル座標に複数の製品があれば、その数だけ行ができる——どの製品の値を
 採るかは画素ごとの判断で、派生（`derive_elevation.py`）が持つ。
 
-**配信元は叩かない。**取りに行くのは`scripts/fetch_dem_tiles.py`の仕事で、ここは
-`app/batch/dem_tile_store.py`が指す置き場にあるものを読む。
+取得（`fetch_dem_tiles`）は、取込のトランザクションの外で配信元から`app/batch/dem_tile_store.py`が指す置き場へタイルを写し、
+取込はそこにあるものを読む——トランザクションの中でHTTPを叩くと、関東全域（z15で約6万枚）では外部の一時的な失敗ひとつで
+全部やり直しになる。取得は**プロファイルが挙げた製品を、それぞれのズームで全タイル取る**。1つの製品が返したからといって
+他の製品を取りやめない。その製品に無いタイル（404）は製品ごとに区域外の印を置き、置くタイルの更新時刻は配信元の最終更新
+（`Last-Modified`）にする。返さなかったタイルは置かずに止まる。
 
 標高をint32（0.01m単位）で並べ、`raster`として持つ。配信元のPNGは画素の色に標高を
 符号化しており、DBの中で画素を読むには値の並びへ戻しておく必要がある。位置・画素の大きさ・
@@ -14,15 +17,21 @@
 どの製品をどのズームで読むかはプロファイルが持ち、実装は持たない。
 """
 
+import asyncio
 import logging
+import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
+from datetime import datetime
+from email.utils import parsedate_to_datetime
 from typing import Any
 
+import httpx
 import numpy as np
 
 from app.batch import dem_tile_store
-from app.batch.ingest import AdapterInputs, SourceRecord, register_adapter
+from app.batch.common import PROGRESS_INTERVAL_SECONDS, format_progress
+from app.batch.ingest import AdapterInputs, Fetcher, SourceRecord, register_adapter
 from app.batch.source_adapters.raster_wkb import tile_bbox_wkb, tile_raster_wkb
 from app.batch.source_profile import SourceProfile, SourceProfileError, SourceSpec
 from app.domain.region import tiles_covering_bbox
@@ -117,10 +126,81 @@ def gsi_dem_adapter_inputs(spec: SourceSpec, profile: SourceProfile) -> DemInput
                      products=products)
 
 
-@register_adapter("gsi_dem_tile", grid=DemGrid, required=(SourceFeatureRow.rast,), inputs=gsi_dem_adapter_inputs)
+#: 配信元へ並べてよい数の上限。公共サービスなので控えめにする。
+_MAX_CONCURRENT = 8
+
+#: 進捗を数えて出す区切りの枚数。
+_CHUNK = _MAX_CONCURRENT * 8
+
+_REQUEST_TIMEOUT = httpx.Timeout(connect=5.0, read=30.0, write=10.0, pool=10.0)
+
+
+async def _fetch_tile(client: httpx.AsyncClient, product: str, zoom: int,
+                      x: int, y: int) -> tuple[bytes, datetime] | None:
+    """本文と配信元での最終更新。その製品に無ければ（404）None。"""
+    response = await client.get(
+        dem_tile_store.TILE_URL.format(product=product, z=zoom, x=x, y=y), timeout=_REQUEST_TIMEOUT)
+    if response.status_code == 404:
+        return None
+    response.raise_for_status()
+    header = response.headers.get("Last-Modified")
+    if header is None:
+        # 置くと、取込がいつ時点の標高かを記録できない。
+        raise RuntimeError("Last-Modified がありません")
+    return response.content, parsedate_to_datetime(header)
+
+
+async def _fetch_product(client: httpx.AsyncClient, product: str, zoom: int,
+                         tiles: list[tuple[int, int]]) -> dict[str, int]:
+    """1製品ぶんのタイルを取りに行く。結果の内訳を返す。"""
+    root = dem_tile_store.TILE_ROOT
+    counts = {"取得": 0, "区域外": 0}
+    semaphore = asyncio.Semaphore(_MAX_CONCURRENT)
+    started = time.perf_counter()
+
+    async def one(x: int, y: int) -> None:
+        async with semaphore:
+            fetched = await _fetch_tile(client, product, zoom, x, y)
+        if fetched is None:
+            dem_tile_store.mark_absent(root, product, zoom, x, y)
+            counts["区域外"] += 1
+        else:
+            dem_tile_store.write_tile(root, product, zoom, x, y, *fetched)
+            counts["取得"] += 1
+
+    last_report = started
+    for start in range(0, len(tiles), _CHUNK):
+        await asyncio.gather(*(one(x, y) for x, y in tiles[start:start + _CHUNK]))
+        now = time.perf_counter()
+        done = counts["取得"] + counts["区域外"]
+        if now - last_report < PROGRESS_INTERVAL_SECONDS and done < len(tiles):
+            continue
+        last_report = now
+        logger.info("進捗 %s %s", product, format_progress(done, len(tiles), now - started, "枚"))
+    return counts
+
+
+async def _fetch_products(spec: SourceSpec, profile: SourceProfile) -> None:
+    bbox = profile.target.bounding_box()
+    async with httpx.AsyncClient() as client:
+        for product, zoom in spec.grid.products.items():
+            tiles = tiles_covering_bbox(bbox, int(zoom))
+            logger.info("標高タイル: product=%s zoom=%d 対象%d枚 / 置き場 %s",
+                        product, zoom, len(tiles), dem_tile_store.TILE_ROOT)
+            started = time.perf_counter()
+            counts = await _fetch_product(client, str(product), int(zoom), tiles)
+            logger.info("完了 product=%s zoom=%d: %s / %.1f秒", product, zoom,
+                        " / ".join(f"{k} {v:,}" for k, v in counts.items()), time.perf_counter() - started)
+
+
+def fetch_dem_tiles(spec: SourceSpec, profile: SourceProfile) -> None:
+    asyncio.run(_fetch_products(spec, profile))
+
+
+@register_adapter("gsi_dem_tile", grid=DemGrid, required=(SourceFeatureRow.rast,), inputs=gsi_dem_adapter_inputs,
+                  fetcher=Fetcher(fetch_dem_tiles, lambda: (dem_tile_store.TILE_ROOT,)))
 async def read_gsi_dem_tiles(spec: SourceSpec, profile: SourceProfile, inputs: DemInputs,
                              origin: dict[str, Any]) -> AsyncIterator[SourceRecord]:
-    # タイルは`fetch_dem_tiles.py`が先に写している。取込が読むのはその置き場。
     root = dem_tile_store.TILE_ROOT
     newest = None
 
@@ -149,5 +229,5 @@ async def read_gsi_dem_tiles(spec: SourceSpec, profile: SourceProfile, inputs: D
                     product, zoom, tiles.covering, len(tiles.stored), tiles.absent, root)
         if tiles.unfetched:
             logger.warning("まだ写していない標高タイル: product=%s zoom=%d %d枚"
-                           "（scripts/fetch_dem_tiles.py が写す）", product, zoom, tiles.unfetched)
+                           "（python -m app.batch.fetch_cli --source dem が写す）", product, zoom, tiles.unfetched)
     origin["tiles_last_modified"] = None if newest is None else newest.isoformat()

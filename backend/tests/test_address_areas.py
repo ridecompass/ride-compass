@@ -6,7 +6,7 @@
 書き、表に入った区画・鍵・街区を見る。範囲は道路の取込の範囲で、見本の道を範囲の宣言つきで取り込んで決める。
 
 ここで見ないもの:
-- 配布元から手元へ写す取得（`scripts/fetch_abr.py`・`scripts/fetch_isj_blocks.py`）→ どのテストも通さない
+- 配布元から手元へ写す取得（`app/batch/source_adapters/abr.py: fetch_abr`・`app/batch/source_adapters/isj_block.py: fetch_isj_blocks`）→ どのテストも通さない
   （網の向こうを読むだけで、範囲に掛かる都道府県の決め方はアダプタと同じ関数を通る）
 - 表記の揃え方の1つずつ → `test_address_area.py`
 """

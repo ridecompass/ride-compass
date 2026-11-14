@@ -21,11 +21,10 @@
 | レイヤー | ファイル |
 |---|---|
 | domain | `place_search.py`（種類・段の語彙と表示名、候補と答えの形、続きを足す最短の長さと候補の件数・住所と施設への配分（`domain/place_search.py: allot_candidates`）・画面が打ちかけで引くまでの間、住所の区画の元データの出典の文言、外の地図のリンクの組み方と答えの形（`domain/place_search.py: maps_search_url`・`domain/place_search.py: PlaceLink`））・`address_area.py`（住所の区画の段の語彙・続きに使う段・町字区分と段の対応、街区の種類と表示名で番号に付ける語、表記の揃え方、区画の名前から鍵を作る形、番地付きの残りの頭の形と残りから街区の番号を取る形、区画の祖先から住所の表示名を組み立てる形。下の「住所の区画の表」） |
-| batch | `derive_addresses.py`（住所の区画・鍵・街区を作る派生の段）・`source_adapters/abr.py`（アドレス・ベース・レジストリの配布の zip を読む。テキストと代表点を1行に合わせ、代表点の無い行を落とす。範囲に掛かる都道府県の決め方も持つ）・`source_adapters/estat_small_area.py`（e-Stat の小地域の境界の Shapefile の zip を読む。分かれた多角形を小地域のコードごとに1つにし、通常の小地域でない行を落とす）・`source_adapters/isj_block.py`（街区レベル位置参照情報の都道府県ごとの zip を読む。代表でない点・削除の行・範囲の外の点を落とす）・`source_adapters/zip_csv.py`（配布の zip の中の CSV を1つ読む。文字コードは呼び手が渡す。取得スクリプトが落としたものを読めるかの確かめも持つ） |
+| batch | `derive_addresses.py`（住所の区画・鍵・街区を作る派生の段）・`source_adapters/abr.py`（アドレス・ベース・レジストリの配布の zip を読む。テキストと代表点を1行に合わせ、代表点の無い行を落とす。範囲に掛かる都道府県の決め方と、全国の1ファイルずつと範囲に掛かる都道府県の町字の代表点・住居表示の街区のテキストと代表点を取る取得も持つ）・`source_adapters/estat_small_area.py`（e-Stat の小地域の境界の Shapefile の zip を読む。分かれた多角形を小地域のコードごとに1つにし、通常の小地域でない行を落とす。範囲に掛かる都道府県の zip を取る取得も持つ）・`source_adapters/isj_block.py`（街区レベル位置参照情報の都道府県ごとの zip を読む。代表でない点・削除の行・範囲の外の点を落とす。範囲に掛かる都道府県の zip を取る取得も持つ）・`source_adapters/zip_csv.py`（配布の zip の中の CSV を1つ読む。文字コードは呼び手が渡す） |
 | infrastructure | `address_search.py`（住所の区画の表を入力で引き、並べて上限で切り、祖先をたどった表示名の候補へ写す。下の「引き方」）・`facility_search.py`（地点の表を名前・群・チェーンで引き、検索に出さない分類を外して点に近い順に並べ、施設の候補へ写す）・`place_area_query.py`（位置の辺りを小地域の境界から引く SQL の部品と、置いた位置の辺りを引く口。下の「施設の辺り」）・`place_address_query.py`（地図の点の名前と位置から、地点の表の住所と辺りを引く。下の「地図の点の名前から開くリンク」） |
 | services | `place_search_service.py`（対象範囲・住所・施設（渡された点に近い順）を同じ接続で読み、住所と施設を配分して並べる。置いた位置の辺りと、地図の点の名前から開くリンクも引く） |
 | api | `routers/place_search.py`（検索・置いた位置の辺り・地図の点の名前から開くリンクの口。回数制限と、範囲を読めないときの応答） |
-| scripts | `fetch_abr.py`（アドレス・ベース・レジストリの全国の1ファイルずつと、範囲に掛かる都道府県の町字の代表点・住居表示の街区のテキストと代表点を取る）・`fetch_estat_small_areas.py`（範囲に掛かる都道府県の e-Stat の小地域の境界を取る）・`fetch_isj_blocks.py`（範囲に掛かる都道府県の街区レベル位置参照情報を取る） |
 
 ## 候補の形
 

@@ -2,8 +2,8 @@
 
 アダプタが持つのは「外部の形を開いて1件ずつ返す」ことだけである。ステージング・
 差し替え・run記録・パーティションの選択・絞り込みの宣言の記録は、すべてこのモジュールが
-引き受ける。ソースを足すときに書くのはアダプタ（`source_adapters/__init__.py`で読み込んで登録する）と
-`source_profile.yaml`のエントリで、この経路は書き換えない。派生・読み手がそのソースを名指して読むなら、
+引き受ける。ソースを足すときに書くのはアダプタ（`source_adapters/__init__.py`で読み込んで登録する。入力を上流から取るなら、取得
+（`Fetcher`）も一緒に登録する）と`source_profile.yaml`のエントリで、この経路も取得の入口も書き換えない。派生・読み手がそのソースを名指して読むなら、
 `infrastructure/source_models.py: Source`にも名前を足す。
 
 ジオメトリはアダプタからWKBで受け取る。点・線・面を同じ経路へ載せるためで、形ごとに
@@ -84,6 +84,17 @@ type SourceAdapter[I: AdapterInputs] = Callable[
 
 
 @dataclass(frozen=True)
+class Fetcher:
+    """アダプタが読む入力を、上流から取って手元へ置く取得。取得の入口（`fetch_cli.py`）がプロファイルの並び順に呼ぶ。"""
+
+    #: そのソースの入力を上流から取って置く。取れなければ例外を投げる。
+    fetch: Callable[[SourceSpec, SourceProfile], None]
+    #: 取得の置き場（ディレクトリかファイル）。入口が取る前に消し、手元に前のものがあっても取り直させる。
+    #: 呼ぶたびに読むのは、置き場がモジュールの名前（テストが差し替える）と設定から決まるため。
+    store: Callable[[], tuple[Path, ...]]
+
+
+@dataclass(frozen=True)
 class RegisteredAdapter[I: AdapterInputs]:
     read: SourceAdapter[I]
     #: プロファイルの`rows`/`grid`の型。読み込みはこのフィールドにある欄だけを受け付ける。
@@ -94,18 +105,21 @@ class RegisteredAdapter[I: AdapterInputs]:
     #: このアダプタのソースの行が必ず持つ列（`SourceFeatureRow`の空を許す列）。取込が区画を作るときに
     #: NOT NULLで張り、`scripts/schema_gap.py`が実DBの区画と比べる。
     required: tuple[InstrumentedAttribute[Any], ...] = ()
+    #: 入力を上流から取る取得。無いアダプタ（ほかのソースと同じファイルを読む等）は取得の入口が飛ばす。
+    fetcher: Fetcher | None = None
 
 
 ADAPTERS: dict[str, RegisteredAdapter] = {}
 
 
 def register_adapter[I: AdapterInputs](name: str, *, inputs: InputsOf[I], rows: type = NoFields,
-                                       grid: type = NoFields, required: tuple[InstrumentedAttribute[Any], ...] = ()
-                                       ) -> Callable[[SourceAdapter[I]], SourceAdapter[I]]:
+                                       grid: type = NoFields, required: tuple[InstrumentedAttribute[Any], ...] = (),
+                                       fetcher: Fetcher | None = None) -> Callable[[SourceAdapter[I]], SourceAdapter[I]]:
     def decorate(fn: SourceAdapter[I]) -> SourceAdapter[I]:
         if name in ADAPTERS:
             raise ValueError(f"アダプタ名が重複しています: {name}")
-        ADAPTERS[name] = RegisteredAdapter(read=fn, rows=rows, grid=grid, required=required, inputs=inputs)
+        ADAPTERS[name] = RegisteredAdapter(read=fn, rows=rows, grid=grid, required=required, inputs=inputs,
+                                           fetcher=fetcher)
         return fn
 
     return decorate
