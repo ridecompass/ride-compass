@@ -1,3 +1,4 @@
+import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime
@@ -9,7 +10,7 @@ from app.domain.region import ROADS_AT_LIMIT, BoundingBox, RoadAt, tile_bounds_l
 from app.domain.registry import TileKind
 from app.domain.road_classes import current_road_classes
 from app.domain.tuning import REBUILT_CLIENT_TUNING_IDS
-from app.infrastructure.debug_log import log_external_call, log_throttled_warning
+from app.infrastructure.debug_log import log_external_call
 from app.infrastructure.point_tile_layers import PointTileLayer
 from app.infrastructure.road_graph_repository import RoadGraphRepository
 from app.infrastructure.vector_tile import ROAD_SURFACE_LAYER_NAME, encode_empty_tile
@@ -23,6 +24,8 @@ from app.services.tile_version_service import (
     road_surface_tile_shape,
     served_tile_version,
 )
+
+logger = logging.getLogger("ridecompass.region_service")
 
 # z・x・yとその範囲（経度・緯度）から、PostGISが生成したタイル1枚を返す読み出し。
 _TileReader = Callable[[int, int, int, BoundingBox], Awaitable[bytes | None]]
@@ -179,7 +182,7 @@ class RegionService:
             area = await self._repository.get_ingested_area()
             fields["ingested"] = area is not None
             if area is None:
-                log_throttled_warning("region:ingested-area", "道路の取込が成功した記録が無く、対象範囲が決まらない")
+                logger.warning("道路の取込が成功した記録が無く、対象範囲が決まらない")
             return area
 
 

@@ -28,7 +28,6 @@ from app.batch.common import asyncpg_dsn
 from app.domain import stopwatch
 from app.infrastructure import (
     database,
-    debug_log,
     jma_area_boundaries,
     rate_limiter,
     redis_client,
@@ -206,7 +205,7 @@ class MonotonicClock:
 
 @pytest.fixture(autouse=True, scope="session")
 def _monotonic_clock_for_the_session():
-    """回数制限・外部I/Oの記録・所要時間の測り・データの世代の読み直しが読む時計を、テストが進める時計へ替える。
+    """回数制限・所要時間の測り・データの世代の読み直しが読む時計を、テストが進める時計へ替える。
 
     戻すのはセッションの終わりだけ。途中で実時計へ戻すと、進めた時計で数えた回数・窓の始まり・TTLが
     未来の時刻として残り、後のテストに食い込む。freezegun（`clock`）はこの時計を動かさない——止めた時刻は
@@ -215,7 +214,6 @@ def _monotonic_clock_for_the_session():
     clock = MonotonicClock()
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(rate_limiter, "time", clock)
-        patch.setattr(debug_log, "time", clock)
         patch.setattr(stopwatch, "time", clock)
         patch.setattr(derived_data_revision_service, "time", clock)
         yield clock
@@ -223,17 +221,16 @@ def _monotonic_clock_for_the_session():
 
 @pytest.fixture(autouse=True)
 def monotonic_clock(_monotonic_clock_for_the_session) -> MonotonicClock:
-    """テストごとに、回数制限の窓・警告の抑制の窓・データの世代のTTLのどれよりも長く進める。
+    """テストごとに、回数制限の窓・データの世代のTTLのどちらよりも長く進める。
 
-    どれもプロセス大域の記録で、進めないと前のテストの回数が今のテストの上限に食い込み、前のテストの
-    窓の中で警告が抑えられ、前のテストが読んだ世代のままTTLの内側でリポジトリが世代を聞かれない。
+    どれもプロセス大域の記録で、進めないと前のテストの回数が今のテストの上限に食い込み、
+    前のテストが読んだ世代のままTTLの内側でリポジトリが世代を聞かれない。
     記録そのものには触らない。
     """
     clock = _monotonic_clock_for_the_session
     clock.advance(
         max(
             rate_limiter.WINDOW_SECONDS,
-            debug_log.WARN_WINDOW_SECONDS,
             settings.derived_data_revision_check_interval_seconds,
         )
     )

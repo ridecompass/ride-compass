@@ -5,10 +5,12 @@
 この名前は揃える。`/health`が経過時間を返し、定時のActions（`backend/scripts/prod_backup_check.py`）がそれを読んで止まりを知らせる。
 """
 
+import logging
 from datetime import datetime
 
 from app.infrastructure.data_paths import DATA_DIR
-from app.infrastructure.debug_log import log_throttled_warning
+
+logger = logging.getLogger("ridecompass.admin_data_backup")
 
 #: 本番の読み手はこのファイルだけだが、テストがディスク（プロセス境界）の置き場を一時ディレクトリへ差し替えるために公開する
 #: （testing.md「確かめる高さ」の (c)）。
@@ -25,8 +27,6 @@ def backup_age_hours(now: datetime) -> float | None:
         return None
     except (OSError, ValueError) as exc:
         # `/health`が毎回読むので、ここで落とすとそれを待つデプロイまで止まる。読めない理由はここでしか分からない。
-        log_throttled_warning(
-            "admin-data-backup", "DBのバックアップの印のファイルが読めない path=%s error=%r", MARKER_PATH, exc
-        )
+        logger.warning("DBのバックアップの印のファイルが読めない path=%s error=%r", MARKER_PATH, exc)
         return None
     return (now - placed_at).total_seconds() / 3600

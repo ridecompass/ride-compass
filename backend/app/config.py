@@ -84,11 +84,6 @@ class Settings(BaseSettings):
     gsi_tile_rate_limit_per_minute: int = 300
     # JMA動的タイルの定期プリウォーム間隔。JMA側の実更新間隔は5〜10分おき。
     jma_tile_prewarm_interval_minutes: int = 10
-    # JMA非公式APIへ実際に投げる秒間リクエスト数の上限。プリウォーム本体の同時実行数制御
-    # だけでは、各リクエストの応答が速いと総スループットが青天井になるため、実フェッチ
-    # 直前でこの秒間上限を守るよう待機する（jma_tile_client.py、キャッシュヒットは対象外）。
-    # 1回のプリウォームがこの秒間上限のままでも次の間隔までに終わる値にしてある。
-    jma_tile_upstream_max_requests_per_second: float = 5.0
 
     # 気象庁MSM（前処理済み.omファイル、CC-BY-4.0）の配信元。REST APIではなく静的
     # ファイルのため、レート制限・クォータの制約を受けない。

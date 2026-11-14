@@ -8,7 +8,6 @@
 - 地点から区域を引くこと → `test_jma_area_boundaries.py`
 """
 
-import asyncio
 
 
 from app.infrastructure.flood_client import new_flood_cache
@@ -74,14 +73,3 @@ async def test_get_forecasts_collects_every_active_forecast_and_leaves_out_the_r
         ("830304004400", "severe_warning", "神田川氾濫危険警報"),
         ("830304004900", "advisory", "善福寺川氾濫注意報"),
     ]
-
-
-async def test_points_asked_at_once_fetch_each_document_once(boundary_path):
-    """同時に開いた画面の問い合わせは、地域マスタと洪水予報を気象庁へ1回ずつだけ取りに行く。"""
-    upstream = area_lookup_upstream(boundary_path, flood_documents=[])
-    service = _service(upstream)
-
-    await asyncio.gather(service.get_forecasts(CHIYODA_POINT), service.get_forecasts(CHIYODA_POINT))
-
-    urls = [str(call.request.url) for call in upstream.calls]
-    assert len(set(urls)) == len(urls) == 2

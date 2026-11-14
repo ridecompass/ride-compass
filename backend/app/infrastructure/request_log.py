@@ -62,7 +62,7 @@ def access_level(path: str, status_code: int, tile_path_prefixes: tuple[str, ...
     if status_code >= 500:
         return logging.ERROR
     if status_code == 429:
-        # 429はrecord_rate_limit_rejection(debug_log.py)が抑制付きWARNINGで別途記録する
+        # 429はrecord_rate_limit_rejection(debug_log.py)がWARNINGで別途記録する
         # ため、アクセスログ側で重ねてWARNINGにしない。
         return logging.DEBUG
     # タイルの成功と「そのタイルは無い」404はログを埋めないようDEBUGへ落とす。疎な格子・整備区域の外・

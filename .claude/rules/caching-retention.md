@@ -36,13 +36,12 @@ Redisへ置くもの・TTL・判断のキャッシュ・無効化の決まり。
 ### ワーカー複数化に備えて注意すること
 
 backendは1プロセスでしか正しく動かない（[cross-cutting-infrastructure.md](../../docs/modules/backend/cross-cutting-infrastructure.md)「1プロセスの境界」）。複数化するときは、キャッシュの
-ほかに次の2つが問題になる:
+ほかに次が問題になる:
 
 - **APSchedulerのバッチ**（アメダス更新・JMAタイルのプリウォーム・MSM同期）は`main.py`のlifespanで登録されるため、
   ワーカーごとに起動する。複数化するなら、バッチを1プロセスへ寄せる仕組み（専用ワーカー・Redisロック等）が要る
-- 上流への秒間上限（`jma_tile_upstream_max_requests_per_second`）は**プロセス内の状態**のため、実効値がN倍になる
 
-**キャッシュをRedisへ寄せてもこの2つは解決しない。** 複数化に着手するときは別途扱うこと。
+**キャッシュをRedisへ寄せてもこれは解決しない。** 複数化に着手するときは別途扱うこと。
 
 ## Redisへ持つときは`redis_json_cache`を使う
 

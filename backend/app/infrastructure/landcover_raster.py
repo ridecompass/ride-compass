@@ -24,7 +24,6 @@ from PIL import Image, ImageColor
 from app.config import settings
 from app.domain.landcover import LANDCOVER_CLASSES
 from app.domain.region import tile_bounds_3857
-from app.infrastructure.debug_log import log_throttled_warning
 from app.infrastructure.proj_data import pin_bundled_proj_data
 
 pin_bundled_proj_data()
@@ -86,7 +85,7 @@ def _open_sources() -> list[_RasterSource]:
                     raise FileNotFoundError("環境変数LULC_RASTER_PATHSが未設定")
                 _opened_sources = [_RasterSource(rasterio.open(path), threading.Lock()) for path in paths]
             except (OSError, rasterio.errors.RasterioIOError) as exc:
-                log_throttled_warning("region:landcover-raster", "土地被覆のラスタを開けません paths=%s error=%r", paths, exc)
+                logger.warning("土地被覆のラスタを開けません paths=%s error=%r", paths, exc)
                 raise LandcoverUnavailableError("土地被覆のラスタを開けないため、土地被覆を配れません") from exc
         return _opened_sources
 

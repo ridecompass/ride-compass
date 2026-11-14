@@ -11,12 +11,6 @@ export interface WorktreeBackend {
   paths: string[];
 }
 
-/**
- * 作業ツリーの backend の応答を待つ上限。気象庁のタイルの中継は気象庁への秒間上限を守って待つ（backend/app/config.py:
- * jma_tile_upstream_max_requests_per_second）ので、地図が一度に取るタイルの数だけ待ちが積もる。
- */
-const WORKTREE_BACKEND_TIMEOUT_MS = 5 * 60_000;
-
 function forWorktreeBackend(url: URL, { api, paths }: WorktreeBackend): boolean {
   return url.origin === new URL(api).origin && paths.some((head) => url.pathname.startsWith(head));
 }
@@ -38,7 +32,6 @@ export async function upstream(
     method: request.method(),
     headers: request.headers(),
     data: request.postDataBuffer() ?? undefined,
-    timeout: WORKTREE_BACKEND_TIMEOUT_MS,
   });
 }
 

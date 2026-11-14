@@ -27,7 +27,7 @@ from app.infrastructure.db_status import DbStatusQuery
 from app.infrastructure.derived_data_freshness import DerivedDataFreshnessQuery
 from app.infrastructure.flood_client import new_flood_cache
 from app.infrastructure.gsi_tile_client import NOT_FOUND_MAX_ENTRIES, GsiTileClient
-from app.infrastructure.http_client import JMA_JSON_TIMEOUT, SLOW_JSON_TIMEOUT, TILE_PROXY_TIMEOUT, get_http_client
+from app.infrastructure.http_client import get_http_client
 from app.infrastructure.jma_amedas_client import new_latest_time_cache, new_station_table_cache
 from app.infrastructure.jma_tile_client import JmaTileClient, JmaTileSharedState
 from app.infrastructure.jma_warning_client import new_area_data_cache, new_warning_cache
@@ -89,18 +89,18 @@ def get_weather_service():
 
 
 def get_warning_service():
-    return WarningService(get_http_client(JMA_JSON_TIMEOUT), area_data_cache=_area_data_cache, warning_cache=_warning_cache)
+    return WarningService(get_http_client(), area_data_cache=_area_data_cache, warning_cache=_warning_cache)
 
 
 def get_warning_timeline_service():
     return WarningTimelineService(
-        get_http_client(JMA_JSON_TIMEOUT), area_data_cache=_area_data_cache, timeline_cache=_timeline_cache
+        get_http_client(), area_data_cache=_area_data_cache, timeline_cache=_timeline_cache
     )
 
 
 def get_amedas_service():
     return JmaAmedasService(
-        get_http_client(JMA_JSON_TIMEOUT),
+        get_http_client(),
         get_jma_tile_client(),
         station_table_cache=_station_table_cache,
         latest_time_cache=_latest_time_cache,
@@ -110,7 +110,7 @@ def get_amedas_service():
 
 def get_wbgt_service():
     return WbgtService(
-        get_http_client(SLOW_JSON_TIMEOUT),
+        get_http_client(),
         point_master_cache=_point_master_cache,
         forecast_cache=_forecast_cache,
         cells_cache=_point_cells_cache,
@@ -118,7 +118,7 @@ def get_wbgt_service():
 
 
 def get_flood_service():
-    return FloodService(get_http_client(SLOW_JSON_TIMEOUT), area_data_cache=_area_data_cache, flood_cache=_flood_cache)
+    return FloodService(get_http_client(), area_data_cache=_area_data_cache, flood_cache=_flood_cache)
 
 
 #: 同時に動く生成どうしが分け合うメモリ。生成ごとのサービスはリクエストごとに作られるため、プロセスの側で持つ。
@@ -202,11 +202,11 @@ async def get_road_inspector_service(tile_sessions: TileSessions, lens: LensServ
 
 
 def get_basemap_client():
-    return BasemapClient(get_http_client(TILE_PROXY_TIMEOUT), settings.basemap_public_base_url)
+    return BasemapClient(get_http_client(), settings.basemap_public_base_url)
 
 
 def get_jma_tile_client():
-    return JmaTileClient(get_http_client(TILE_PROXY_TIMEOUT), _jma_tile_shared)
+    return JmaTileClient(get_http_client(), _jma_tile_shared)
 
 
 #: 整備区域外の記憶。クライアントはリクエストごとに作られるため、プロセスの側で持つ。
@@ -214,7 +214,7 @@ _gsi_not_found_paths: LRUCache = LRUCache(maxsize=NOT_FOUND_MAX_ENTRIES)
 
 
 def get_gsi_tile_client():
-    return GsiTileClient(get_http_client(TILE_PROXY_TIMEOUT), _gsi_not_found_paths)
+    return GsiTileClient(get_http_client(), _gsi_not_found_paths)
 
 
 # 以下の管理API向けのうち、書き込み・1テーブル読みで足りるものはタイル配信と同じ

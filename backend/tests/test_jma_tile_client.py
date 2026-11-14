@@ -1,7 +1,7 @@
-"""`infrastructure/jma_tile_client.py`——気象庁のタイルと時刻一覧の取得、キャッシュの持ち分け、上流への間隔。
+"""`infrastructure/jma_tile_client.py`——気象庁のタイルと時刻一覧の取得、キャッシュの持ち分け。
 
 入口は`JmaTileClient`の`get_cached`・`fetch`・`store`・`get`と、`is_target_times_path`・`get_target_times`。
-上流はrespxの経路、Redisはfakeredis、時計はfreezegunで与え、待ちは時計を進める代役で受ける。
+上流はrespxの経路、Redisはfakeredis、時計はfreezegunで与える。
 どのパスが「配信前に404が返る地物」か（`infrastructure/jma_tile_paths.py: is_final_absence`）も、ここで404を覚えるか
 どうかで見る。入力には宣言にある地物（落雷）とタイル（土砂キキクル）のパスを1つずつ使う。
 
@@ -10,13 +10,9 @@
 - 降水のタイルの色の塗り替え → `test_jma_tile_recolor.py`。ここでは取得したタイルに塗り替えが当たることだけを見る
 - 404・502・`Cache-Control`への振り分け、レート制限を当てる順序 → `test_jma_tile_routes.py`
 - 解いた行をコマにする読み方 → `test_jma_tile_specs.py`
-- 上流が404・失敗を返した取得も間隔に数えること → 待ちは結果を問わず問い合わせの前に置かれる（`fetch`の先頭）
 - 別のパスのタイルが混ざらないこと → `test_jma_tile_redis_cache.py`
 - 上流の失敗の種類（404・失敗の応答・通信の失敗）の見分け → `test_http_client.py`
 """
-
-import asyncio
-import types
 
 import pytest
 import respx
@@ -48,22 +44,8 @@ def upstream():
 
 
 @pytest.fixture
-def waits(monkeypatch, clock):
-    """上流への間隔の待ちを記録し、待った分だけ止めた時計を進める。"""
-    recorded: list[float] = []
-
-    async def sleep(seconds: float) -> None:
-        recorded.append(seconds)
-        clock.tick(seconds)
-
-    # 錠は本物のまま使う（待ちだけを受ける）。
-    monkeypatch.setattr(jma_tile_client, "asyncio", types.SimpleNamespace(sleep=sleep, Lock=asyncio.Lock))
-    return recorded
-
-
-@pytest.fixture
 def client():
-    """使い捨てのクライアントを作る。リクエストをまたぐ状態（時刻一覧のキャッシュ・上流への間隔の起点）は、
+    """使い捨てのクライアントを作る。リクエストをまたぐ状態（時刻一覧のキャッシュ）は、
     本番の組み立てと同じく1つを共有し、テストごとに空から始まる。"""
     shared = JmaTileSharedState()
     return lambda upstream: JmaTileClient(client_for(upstream), shared)
@@ -113,7 +95,7 @@ async def test_a_fetch_without_a_content_type_is_served_as_generic_bytes(upstrea
 
 
 async def test_tiles_are_shared_through_redis_and_time_listings_are_kept_in_this_process(
-    upstream, fake_redis, redis_server, waits, client
+    upstream, fake_redis, redis_server, client
 ):
     """タイルは全プロセスで共有し、時刻一覧は2分で変わるのでプロセス内に置く。Redisが落ちると片方だけが消える。"""
     upstream.get(f"/{TILE}").respond(content=OPAQUE, content_type="image/png")
@@ -159,30 +141,14 @@ async def test_features_not_yet_delivered_are_missing_but_not_remembered(upstrea
     assert await client(upstream).get_cached(FEATURES) is None
 
 
-async def test_upstream_requests_are_spaced_by_the_configured_rate_only_until_the_interval_has_passed(
-    monkeypatch, upstream, fake_redis, waits, clock, client
-):
-    """プリウォームと利用者の取得のどちらも、プロセス全体で秒間の上限を守る（使い捨てのクライアントをまたぐ）。"""
-    monkeypatch.setattr(jma_tile_client.settings, "jma_tile_upstream_max_requests_per_second", 4.0)
-    upstream.get(f"/{TILE}").respond(content=OPAQUE, content_type="image/png")
-    await client(upstream).fetch(TILE)
-
-    clock.tick(0.1)
-    await client(upstream).fetch(TILE)
-    clock.tick(0.25)
-    await client(upstream).fetch(TILE)
-
-    assert waits == [pytest.approx(0.15)]
-
-
-async def test_get_serves_the_cache_without_counting_toward_the_interval(upstream, fake_redis, waits, client):
+async def test_get_serves_the_cache_and_fetches_only_what_is_missing(upstream, fake_redis, client):
     await client(upstream).store(TILE, OPAQUE, "image/png")
     upstream.get(f"/{OTHER_TILE}").respond(content=OPAQUE, content_type="image/png")
 
     assert await client(upstream).get(TILE) == (OPAQUE, "image/png")
-    await client(upstream).get(OTHER_TILE)
+    assert await client(upstream).get(OTHER_TILE) == (OPAQUE, "image/png")
 
-    assert waits == []
+    assert upstream.calls.call_count == 1
 
 
 async def test_a_time_listing_reads_as_its_frames_and_the_elements_with_tiles(upstream, fake_redis, client):

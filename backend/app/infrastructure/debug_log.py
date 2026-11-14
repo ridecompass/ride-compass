@@ -1,18 +1,14 @@
 """外部I/O(外部API・タイル/標高キャッシュ)イベントのログと集計
 （ログレベルの方針は .claude/rules/logging.md）。
 
-失敗はdebug_modeに関わらず常時WARNINGで出す。外部サービス障害時に同種の警告でログが
-埋まらないよう、カテゴリごとに固定窓で抑制し、超過分は窓の切り替わり時に件数だけ報告する。
-集計はプロセス内カウンタに持ち、`/api/debug/stats`が読む。
+失敗はdebug_modeに関わらず常時WARNINGで出す。集計はプロセス内カウンタに持ち、`/api/debug/stats`が読む。
 """
 
 import logging
 import threading
-import time
 from collections import defaultdict
 from collections.abc import Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from pydantic import Field
@@ -21,9 +17,6 @@ from app.domain.stopwatch import elapsed_ms, start_timer
 from app.domain.strict_model import StrictModel
 
 logger = logging.getLogger("ridecompass.external")
-
-WARN_WINDOW_SECONDS = 60.0
-WARN_BURST_PER_WINDOW = 5
 
 # 常時出力されるWARNINGにはユーザーの現在地由来の座標が含まれうるため、float値は
 # 小数2桁(≈1km)へ丸めて出す。DEBUG(debug_mode時のみ)は調査精度を優先しそのまま出す。
@@ -83,18 +76,6 @@ _external_stats: defaultdict[str, ExternalCallStats] = defaultdict(_empty_stats)
 _rate_limit_rejections: defaultdict[str, int] = defaultdict(int)
 
 
-@dataclass
-class _WarnWindow:
-    """抑制付きWARNINGのカテゴリごとの固定窓。"""
-
-    start: float  # 窓の始まり（monotonic）
-    emitted: int = 0
-    suppressed: int = 0
-
-
-_warn_windows: dict[str, _WarnWindow] = {}
-
-
 def error_type_label(exc: BaseException) -> str:
     """例外を`/api/debug/stats`へ出しても安全な粗いラベルへ変換する。
 
@@ -143,46 +124,18 @@ def mark_failed(fields: dict, exc: BaseException) -> None:
     """`log_external_call`の中で例外を捕まえて既定値へ倒すときの、失敗の記録の入口。
 
     `log_external_call`を抜けるとき、結果が失敗としてカテゴリの集計（`error_types`）へ入り、
-    抑制付きWARNINGが`fields`（対象のタイル・ID等）と例外を添えて出る。
+    WARNINGが`fields`（対象のタイル・ID等）と例外を添えて出る。
     """
     fields["result"] = "error"
     fields["error"] = repr(exc)
     fields["error_type"] = error_type_label(exc)
 
 
-def log_throttled_warning(category: str, message: str, *args: object) -> None:
-    """カテゴリ単位の抑制付きWARNING（カテゴリごとの固定窓で数を絞る）。
-
-    `log_external_call`で囲む形にできない失敗（本処理へフォールバックして呼び出し自体は
-    成功扱いになるもの）を記録するための入口。
-    """
-    emit = False
-    suppression_notice: int | None = None
-    with _lock:
-        now = time.monotonic()
-        window = _warn_windows.get(category)
-        if window is None or now - window.start >= WARN_WINDOW_SECONDS:
-            if window is not None and window.suppressed:
-                suppression_notice = window.suppressed
-            window = _warn_windows[category] = _WarnWindow(start=now)
-        if window.emitted < WARN_BURST_PER_WINDOW:
-            window.emitted += 1
-            emit = True
-        else:
-            window.suppressed += 1
-    if suppression_notice is not None:
-        logger.warning(
-            "[%s] suppressed %d similar warnings in last %ds", category, suppression_notice, int(WARN_WINDOW_SECONDS)
-        )
-    if emit:
-        logger.warning(message, *args)
-
-
 def record_rate_limit_rejection(category: str, client_id: str, limit: str) -> None:
-    """429拒否を集計しつつ、抑制付きWARNINGで常時記録する。limitは"120/min"・"concurrent=2"のような人間可読の上限表記。"""
+    """429拒否を集計しつつ、WARNINGで常時記録する。limitは"120/min"・"concurrent=2"のような人間可読の上限表記。"""
     with _lock:
         _rate_limit_rejections[category] += 1
-    log_throttled_warning(f"ratelimit:{category}", "[ratelimit:%s] rejected client=%s limit=%s", category, client_id, limit)
+    logger.warning("[ratelimit:%s] rejected client=%s limit=%s", category, client_id, limit)
 
 
 def get_stats() -> StatsSnapshot:
@@ -201,7 +154,7 @@ def log_external_call(category: str, **fields: object) -> Iterator[dict]:
 
     `fields`はログ用の付帯情報(座標・パス等)。呼び出し元は`yield`されたdictに
     結果情報(cache="hit"/"miss", result="error", status等)を追記してから抜けると、
-    完了ログと統計にそれも反映される。失敗(例外、またはresult=="error")は抑制付きWARNING、成功はDEBUGで出す。
+    完了ログと統計にそれも反映される。失敗(例外、またはresult=="error")はWARNING、成功はDEBUGで出す。
     """
     started = start_timer()
     logger.debug("[%s] start %s", category, fields)
@@ -211,15 +164,13 @@ def log_external_call(category: str, **fields: object) -> Iterator[dict]:
         took_ms = elapsed_ms(started)
         fields["error_type"] = error_type_label(exc)
         _record(category, took_ms, fields, error=True)
-        log_throttled_warning(
-            category, "[%s] error after %dms %s error=%r", category, took_ms, _round_floats(fields), exc
-        )
+        logger.warning("[%s] error after %dms %s error=%r", category, took_ms, _round_floats(fields), exc)
         raise
     else:
         took_ms = elapsed_ms(started)
         error = fields.get("result") == "error"
         _record(category, took_ms, fields, error=error)
         if error:
-            log_throttled_warning(category, "[%s] failed after %dms %s", category, took_ms, _round_floats(fields))
+            logger.warning("[%s] failed after %dms %s", category, took_ms, _round_floats(fields))
         else:
             logger.debug("[%s] done in %dms %s", category, took_ms, fields)

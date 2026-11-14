@@ -16,14 +16,11 @@ import diskcache
 
 from app.config import settings
 from app.infrastructure.data_paths import DATA_DIR
-from app.infrastructure.debug_log import log_throttled_warning
 from app.infrastructure.tile_cache import DISK_READ_ERRORS, DISK_STORE_ERRORS
 
 logger = logging.getLogger("ridecompass.tile_persistent_cache")
 
 CACHE_DIR = DATA_DIR / "tile_persistent_cache"
-
-_CATEGORY = "cache:tile-persistent"
 
 # 路面タイルの世代を鍵に持つ値は、派生の表と生データが変われば世代ごと読まれなくなる。鮮度の制約が無いので、
 # 失っても読み直すだけのものとして長く持ち、DBへの再問い合わせを抑える。
@@ -63,9 +60,7 @@ def get_by_key(key: tuple) -> Any | None:
         value = cache().get(key)
         read_ms = (time.monotonic() - started) * 1000
     except DISK_READ_ERRORS as exc:  # 破損エントリ・SQLite障害はいずれも未キャッシュ扱いにする
-        log_throttled_warning(
-            _CATEGORY, "tile persistent cache read failed key=%r, treating as cache miss error=%r", key, exc
-        )
+        logger.warning("tile persistent cache read failed key=%r, treating as cache miss error=%r", key, exc)
         return None
     if value is not None:
         logger.debug("tile persistent cache hit key=%r read_ms=%.1f", key, read_ms)
@@ -81,7 +76,7 @@ def set_by_key(key: tuple, value: Any, *, expire: float) -> None:
     try:
         cache().set(key, value, expire=expire)
     except DISK_STORE_ERRORS as exc:  # 置き場の障害は、書かずに進む
-        log_throttled_warning(_CATEGORY, "tile persistent cache write failed key=%r error=%r", key, exc)
+        logger.warning("tile persistent cache write failed key=%r error=%r", key, exc)
 
 
 
