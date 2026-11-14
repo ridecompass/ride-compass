@@ -112,11 +112,6 @@ class Settings(BaseSettings):
     # 伸び続けたときの頭打ちとして置いている。
     tile_cache_size_limit_mb: int = 512
 
-    # ディスクキャッシュをDBの派生データ・生データの世代へ追随させる確認の間隔（秒）。バッチは
-    # backendを再起動させないため、材料を使う経路からこの間隔で読み直す。バッチ自体が
-    # 数十分かかるためこの程度の遅れは運用上の差にならず、読むのは1行テーブルの1列と取込の記録の件数だけ。
-    derived_data_revision_check_interval_seconds: float = 300.0
-
     @property
     def cors_allowed_origins_list(self) -> list[str]:
         return _comma_separated(self.cors_allowed_origins)

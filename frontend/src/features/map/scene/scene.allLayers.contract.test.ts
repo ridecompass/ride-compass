@@ -11,7 +11,6 @@ import { CATALOG, LENSES, rebuild, ROAD_LAYERS } from "@/testing/sceneContract";
 import { AREA_SOURCE_ID } from "@/features/map/scene/groups/areaRasters";
 import { POINT_TILE_SOURCES } from "@/features/map/scene/groups/points";
 import { POINT_LAYERS } from "@/lib/mapDisplay/pointLayers";
-import { ROAD_LINE_SOURCE_ID } from "@/features/map/scene/groups/roadLines";
 import { pointLegendAxes, roadLegendAxes } from "@/features/map/scene/legends";
 import { LEGEND_NO_DATA_KEY } from "@/lib/mapDisplay/mapColorLegend";
 import { valueBands } from "@/lib/mapDisplay/valueScale";
@@ -179,21 +178,5 @@ describe("レイヤーを横断する要求", () => {
     const order = handle.layerOrder();
     const lowestPoint = Math.min(...points.map((id) => order.indexOf(id)));
     for (const below of [...weatherMarks, "basemap-label"]) expect(order.indexOf(below)).toBeLessThan(lowestPoint);
-  });
-
-  // 世代が届く前にソースを作ると、世代の違う中身がブラウザのキャッシュへ載って以後ずっと残る。
-  it("世代を要るソースは、世代が届くまで1つも作られない", () => {
-    const state = everythingVisible();
-
-    const ready = createRecordingMap();
-    rebuild(ready.map, state);
-
-    const pending = createRecordingMap();
-    rebuild(pending.map, { ...state, tileVersions: null });
-
-    const gated = ready.handle.sources().filter((id) => !pending.handle.sources().includes(id));
-    // 世代で守られているソースが実際にあること（0件なら、この検査は何も見ていない）。
-    expect(gated.length).toBeGreaterThan(0);
-    expect(gated).toContain(ROAD_LINE_SOURCE_ID);
   });
 });

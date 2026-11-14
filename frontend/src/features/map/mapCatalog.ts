@@ -1,7 +1,6 @@
 /** 画面の設定（`GET /api/client-config`）と費用の軸の一覧（`GET /api/cost-axes`）のうち、地図だけが読むものを導く。 */
 import type { MapLens } from "@/lib/mapDisplay/mapLens";
 import type { RouteStyleMode } from "@/lib/mapDisplay/routeStyleModes";
-import { completeTileVersions, type TileVersions } from "@/features/map/regionApi";
 import { buildMapLayers, type MapLayerDescriptor } from "@/features/map/layers/mapLayers";
 import type { ClientConfigResponse, RoadMapLayerView } from "@/types/route";
 import type { MapTheme } from "@/lib/mapTheme";
@@ -19,17 +18,15 @@ export interface MapCatalog {
   clientTuning: Readonly<Record<string, number>>;
   /** 道の線の層（公開した分け方1つが層1つ）。地図の線・チップ・凡例・帯がこの並びから作る。取得できるまでは空。 */
   roadLayers: readonly RoadMapLayerView[];
-  /** タイルの世代。全系統が揃うまで`null`で、その間は地図がタイルのソースを作らない。 */
-  tileVersions: TileVersions | null;
   /** 地図に載るものの一覧。上のレンズと収録年から1回だけ組む。 */
   layers: readonly MapLayerDescriptor[];
 }
 
 /** 画面の設定のうち地図が読むもの（`theme`は塗る地図の地の明るさ。道の区分の色はこの地の上の色へ解いて持つ）。 */
-export type MapConfig = Pick<MapCatalog, "accidentYears" | "clientTuning" | "roadLayers" | "tileVersions">;
+export type MapConfig = Pick<MapCatalog, "accidentYears" | "clientTuning" | "roadLayers">;
 
 // 取得できるまではどれも無い状態（ビルド時の写しで埋めない）。
-export const EMPTY_MAP_CONFIG: MapConfig = { accidentYears: [], clientTuning: {}, roadLayers: [], tileVersions: null };
+export const EMPTY_MAP_CONFIG: MapConfig = { accidentYears: [], clientTuning: {}, roadLayers: [] };
 
 export function mapConfigFromResponse(response: ClientConfigResponse, theme: MapTheme = "light"): MapConfig {
   return {
@@ -42,7 +39,6 @@ export function mapConfigFromResponse(response: ClientConfigResponse, theme: Map
             classes: layer.classes.map((roadClass) => ({ ...roadClass, color: roadClass.color_on_dark })),
           }))
         : response.road_classes.map_layers,
-    tileVersions: completeTileVersions(response.tile_versions),
   };
 }
 

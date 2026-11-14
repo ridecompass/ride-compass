@@ -2782,13 +2782,6 @@
             "type": "object",
             "title": "Client Tuning"
           },
-          "tile_versions": {
-            "additionalProperties": {
-              "type": "string"
-            },
-            "type": "object",
-            "title": "Tile Versions"
-          },
           "accident_years": {
             "items": {
               "type": "integer"
@@ -2804,7 +2797,6 @@
         "type": "object",
         "required": [
           "client_tuning",
-          "tile_versions",
           "accident_years",
           "road_classes"
         ],

@@ -17,7 +17,6 @@ import { rebuild, ROAD_LAYERS, roadLayerId, shown } from "@/testing/sceneContrac
 import { AREA_SOURCE_ID } from "@/features/map/scene/groups/areaRasters";
 import { POINT_TILE_SOURCES, pointAxisKey } from "@/features/map/scene/groups/points";
 import { POINT_LAYERS } from "@/lib/mapDisplay/pointLayers";
-import { ROAD_LINE_SOURCE_ID } from "@/features/map/scene/groups/roadLines";
 import { applyScene, sceneInputsFrom } from "@/features/map/scene/applyToMap";
 import { sceneState } from "@/testing/sceneState";
 import { buildMapScene } from "@/features/map/scene/buildScene";
@@ -49,17 +48,6 @@ describe("状態を地図へ伝えた結果", () => {
   });
 
   describe("道路の線", () => {
-    it("世代が届いた後に同じ状態を伝えると、道路の線が見えている", () => {
-      const { map, handle } = createRecordingMap();
-      const state = shown({ surface: true });
-      rebuild(map, { ...state, tileVersions: null });
-
-      rebuild(map, state);
-
-      expect(handle.sources()).toContain(ROAD_LINE_SOURCE_ID);
-      expect(handle.layer(roadLayerId("surface"))?.visibility).toBe("visible");
-    });
-
     // 同じ道へ複数の線を重ねると後から描いた方が隠す。ON中の本数から対称に割り付ける。
     it("路面と道路種別を同時に出すと、線が左右へ分かれる", () => {
       const { map, handle } = createRecordingMap();

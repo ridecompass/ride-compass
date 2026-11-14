@@ -3,7 +3,6 @@
 import { getClientConfig, CLIENT_CONFIG_LABEL } from "@/services/clientConfigApi";
 import { retrySharedCatalogFetch, useSharedCatalog } from "@/hooks/useSharedCatalog";
 import { clientConfigFromResponse, EMPTY_CLIENT_CONFIG, type ClientConfig } from "@/lib/clientConfig";
-import { tileVersionGatedGroupLabels } from "@/lib/mapDisplay/tileVersionGated";
 import type { FetchFailure } from "@/types/fetchFailure";
 import type { ClientConfigResponse } from "@/types/route";
 
@@ -16,13 +15,11 @@ function retryClientConfigFetch(): void {
   retrySharedCatalogFetch(CLIENT_CONFIG_QUERY_KEY);
 }
 
-// 道の線の層とタイルの世代は画面の設定で配られるので、取れなければ道の線とタイルの層は描けない。
-const UNDRAWABLE_WITHOUT_CONFIG = ["道の線", ...tileVersionGatedGroupLabels()];
-
 const CLIENT_CONFIG_FETCH_FAILURE: FetchFailure = {
   id: "client-config",
   label: CLIENT_CONFIG_LABEL,
-  effect: `地図の${UNDRAWABLE_WITHOUT_CONFIG.join("・")}を表示できません。ルートの合成も使えません。`,
+  // 道の線の層は画面の設定で配られるので、取れなければ道の線は描けない。
+  effect: "地図の道の線を表示できません。ルートの合成も使えません。",
   onRetry: retryClientConfigFetch,
 };
 

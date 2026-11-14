@@ -1,4 +1,4 @@
-"""地図の道の線の層が区分を塗る、タイル1枚ぶんのフィーチャーごとの材料を読む（路面タイルの世代ごとにディスクへ持つ）。"""
+"""地図の道の線の層が区分を塗る、タイル1枚ぶんのフィーチャーごとの材料を読む（ディスクへ持つ）。"""
 
 import asyncio
 from collections.abc import Awaitable
@@ -12,8 +12,7 @@ from app.infrastructure.cache_identity import cache_identity
 from app.infrastructure.debug_log import log_external_call
 from app.infrastructure.feature_material_cache import get_tile_materials, set_tile_materials
 from app.infrastructure.road_graph_repository import RoadGraphRepository
-from app.infrastructure.road_tile_sql import FEATURE_MATERIALS_SHAPE, ROAD_SURFACE_TILE_SHAPE
-from app.services.tile_version_service import served_tile_version
+from app.infrastructure.road_tile_sql import FEATURE_MATERIALS_SHAPE
 
 #: 材料の値の読み方の署名。キャッシュの鍵に入り、読み出しのSQLか持つ列の組を変えれば作り直す。
 FEATURE_MATERIALS_VALUE_SHAPE = cache_identity("1", FEATURE_MATERIALS_SHAPE, FeatureMaterials)
@@ -74,11 +73,7 @@ class FeatureMaterialService:
     async def _cached(self, z: int, x: int, y: int) -> FeatureMaterials | None:
         value_shape = FEATURE_MATERIALS_VALUE_SHAPE
         with log_external_call("region:feature-materials", z=z, x=x, y=y) as fields:
-            # 路面タイルの世代は鍵の一部。渡し忘れると世代をまたいだ鍵の材料を配る。
-            surface_tile_version = await served_tile_version(self._repository, ROAD_SURFACE_TILE_SHAPE)
-            cached = await get_tile_materials(
-                z, x, y, surface_tile_version=surface_tile_version, value_shape=value_shape
-            )
+            cached = await get_tile_materials(z, x, y, value_shape=value_shape)
             if cached is not None:
                 fields["cache"] = "hit"
                 fields["feature_count"] = len(cached)
@@ -92,7 +87,5 @@ class FeatureMaterialService:
 
             materials = await _tile_features(read_tile(), fields)
             if materials is not None:
-                await set_tile_materials(
-                    z, x, y, materials, surface_tile_version=surface_tile_version, value_shape=value_shape
-                )
+                await set_tile_materials(z, x, y, materials, value_shape=value_shape)
             return materials

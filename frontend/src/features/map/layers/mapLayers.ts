@@ -7,7 +7,6 @@
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import type { MapIconComponent } from "@/components/ui/icons/icons";
 import { MAP_LAYER_ICONS, roadLayerIcon, type StaticMapLayerId } from "@/components/ui/icons/mapLayerIcons";
-import { TILE_VERSION_GATED_SOURCES } from "@/lib/mapDisplay/tileVersionGated";
 import type { MapCatalog } from "@/features/map/mapCatalog";
 import { CLIENT_TUNING_IDS, clientTuningValue } from "@/lib/clientConfig";
 import { READ_ONLY_LEGENDS, type ReadOnlyLegendBlock } from "./readOnlyLegends";
@@ -169,26 +168,6 @@ export type MapLayerVisibility = Record<MapLayerId, boolean>;
 
 /** チップ下に出す、ズーム不足の案内。 */
 export const TILE_ZOOM_TOO_WIDE_NOTICE = "ズームインすると表示されます";
-
-/** チップ下に出す、タイルの世代が届いていないときの案内（届くまでソースを作らないので何も描けない）。 */
-export const TILE_VERSIONS_MISSING_NOTICE = "配信情報を取得できず表示できません";
-
-/** 描けない理由の案内。世代が届かない（画面の設定を取り終えたのに無い）ことを、拡大が足りないことより先に出す。 */
-export function tileNotice(reasons: {
-  versionMissing: boolean;
-  catalogSettled: boolean;
-  zoomTooWide: boolean;
-}): string | null {
-  if (reasons.versionMissing && reasons.catalogSettled) return TILE_VERSIONS_MISSING_NOTICE;
-  return reasons.zoomTooWide ? TILE_ZOOM_TOO_WIDE_NOTICE : null;
-}
-
-/** タイルの世代が届くまで何も描けないレイヤー。軸のレイヤーはチップが無く案内の出し先が無いので含めない。 */
-export function tileVersionGatedLayerIds(layers: readonly MapLayerDescriptor[]): readonly MapLayerId[] {
-  return layers
-    .filter((layer) => !isLensLayer(layer) && TILE_VERSION_GATED_SOURCES.has(layer.dataSource))
-    .map((layer) => layer.id);
-}
 
 /** そのズームでは描かれず、ONにしても何も出ないレイヤー。軸のレイヤーはチップが無く案内の出し先が無いので含めない。 */
 export function tileZoomTooWideLayerIds(layers: readonly MapLayerDescriptor[], zoom: number): readonly MapLayerId[] {

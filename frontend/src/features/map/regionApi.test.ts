@@ -1,6 +1,6 @@
 // @vitest-environment node
 /**
- * `features/map/regionApi.ts`——地域のデータの口。地図ライブラリへ渡すタイルのURL（世代つき）と、backendを呼ぶ口
+ * `features/map/regionApi.ts`——地域のデータの口。地図ライブラリへ渡すタイルのURLと、backendを呼ぶ口
  * （道の窓・地図が塗るレンズの道ごとの材料）。入口は公開の関数。差し替えるのは網（msw）とタイルのオリジンの
  * 読み取り口（`lib/tileBaseUrl.ts: tileBaseUrl`）で、確かめるのは戻り値と送った要求。
  *
@@ -8,7 +8,6 @@
  * - タイルのオリジンの決め方 → `lib/tileBaseUrl.test.ts`
  * - パスの`{名前}`の埋め方 → `lib/apiPath.ts`を通る全URLが同じで、ここでは結果のURLだけを見る
  * - 失敗の文言の組み立て・通信の失敗の包み直し → `lib/apiClient.test.ts`
- * - 画面の設定の応答から世代を引き、揃うまで地図を描かないこと → `features/map/view/useMapView.layerStatus.test.ts`
  * - 道の窓の値・道ごとの材料を画面へ出すこと → `features/map/MapView/RoadInspectorPopup.test.tsx`・
  *   `features/map/useWayMaterials.test.ts`
  */
@@ -23,40 +22,18 @@ vi.mock("@/lib/tileBaseUrl", () => ({ tileBaseUrl: () => "https://tiles.example"
 import * as api from "./regionApi";
 import { STANDARD_COST_PREFERENCE } from "@/lib/costPreference";
 
-/** 配信される全系統へ、系統名から作った世代を入れた辞書。 */
-function allVersions(): Record<string, string> {
-  const kinds = regionTileConfig.tile_version_kinds;
-  expect(kinds.length).toBeGreaterThan(0);
-  return Object.fromEntries(kinds.map((kind) => [kind, `${kind}-v1`]));
-}
-
-describe("タイルの世代とURL", () => {
-  it("配信される全系統に空でない世代があるときだけ揃ったとし、揃った世代をそのまま返す", () => {
-    const versions = allVersions();
-    const [missing] = regionTileConfig.tile_version_kinds;
-
-    expect(api.completeTileVersions(versions)).toEqual(versions);
-    expect(api.completeTileVersions({ ...versions, [missing]: "" })).toBeNull();
+describe("タイルのURL", () => {
+  it("路面のタイルは、オリジンと地図ライブラリが埋める{z}/{x}/{y}を持つ", () => {
+    expect(api.roadSurfaceTileUrl()).toBe("https://tiles.example/api/region/road-surface-tiles/{z}/{x}/{y}.pbf");
   });
 
-  it("路面のタイルは、オリジン・地図ライブラリが埋める{z}/{x}/{y}・路面の世代を持つ", () => {
-    const versions = api.completeTileVersions(allVersions())!;
-
-    expect(api.roadSurfaceTileUrl(versions)).toBe(
-      "https://tiles.example/api/region/road-surface-tiles/{z}/{x}/{y}.pbf?v=road_surface-v1",
-    );
-  });
-
-  it("点のタイルは、1つの配信のパスにレイヤー名を持ち、そのレイヤーの世代を持つ", () => {
-    const versions = api.completeTileVersions(allVersions())!;
+  it("点のタイルは、1つの配信のパスにレイヤー名を持つ", () => {
     const [layer] = Object.keys(regionTileConfig.point_layers) as PointTileLayer[];
 
-    expect(api.pointTileUrl(versions, layer)).toBe(
-      `https://tiles.example/api/region/point-tiles/${layer}/{z}/{x}/{y}.pbf?v=${layer}-v1`,
-    );
+    expect(api.pointTileUrl(layer)).toBe(`https://tiles.example/api/region/point-tiles/${layer}/{z}/{x}/{y}.pbf`);
   });
 
-  it("土地被覆のタイルは実行時の世代を待たず、生成物の世代で組み立てる", () => {
+  it("土地被覆のタイルは、生成物の世代で組み立てる", () => {
     expect(api.landcoverTileUrl()).toBe(
       `https://tiles.example/api/region/landcover-tiles/{z}/{x}/{y}.png?v=${regionTileConfig.landcover.tile_version}`,
     );

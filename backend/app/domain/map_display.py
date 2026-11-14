@@ -78,8 +78,8 @@ class MapLayerDataSource(NamedTuple):
     min_zoom: int | None = None
 
 
-#: タイルで配る一次属性の系統（`tile_version_service.py: tile_shapes`の名前）。道の線の層の情報源は`_ROAD_LAYER_DATA_SOURCE`。
-#: 情報源の名前にそのまま使う——世代が届くまで要求できないのは、この名前の情報源だけ。
+#: タイルで配る一次属性の系統（`domain/registry.py: TileKind`の名前）。道の線の層の情報源は`_ROAD_LAYER_DATA_SOURCE`。
+#: 情報源の名前にそのまま使う。
 _TILE_KINDS: tuple[str, ...] = tuple(
     dict.fromkeys(attr.tile_kind for attr in PRIMARY_ATTRIBUTES if attr.tile_kind is not None)
 )

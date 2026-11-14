@@ -4,7 +4,6 @@ import { describe, expect, it } from "vitest";
 import {
   buildDefaultLayerVisibility,
   buildMapLayers,
-  TILE_VERSIONS_MISSING_NOTICE,
   TILE_ZOOM_TOO_WIDE_NOTICE,
 } from "@/features/map/layers/mapLayers";
 import { roadLegendAxes } from "@/features/map/scene/legends";
@@ -30,8 +29,6 @@ function chips(options: Partial<Options> = {}) {
     hidden: {},
     dataStatus: {},
     zoomTooWideLayerIds: [],
-    versionMissingLayerIds: [],
-    catalogSettled: true,
     ...options,
   });
 }
@@ -45,18 +42,7 @@ describe("overlayChips（地図上チップの状態）", () => {
     expect(ids).toContain("tunnel");
   });
 
-  it("タイル世代が無いときは、カタログを取り終えていれば失敗・取得中なら読み込み中として出す", () => {
-    const settled = chipOf(chips({ versionMissingLayerIds: ["tunnel"], zoomTooWideLayerIds: ["tunnel"] }), "tunnel");
-    expect(settled).toMatchObject({ notice: TILE_VERSIONS_MISSING_NOTICE, dataStatus: "error" });
-
-    const waiting = chipOf(
-      chips({ versionMissingLayerIds: ["tunnel"], zoomTooWideLayerIds: ["tunnel"], catalogSettled: false }),
-      "tunnel",
-    );
-    expect(waiting).toMatchObject({ notice: TILE_ZOOM_TOO_WIDE_NOTICE, dataStatus: "loading" });
-  });
-
-  it("世代があれば、ズーム不足の案内と、地図が報告した取得状態を出す", () => {
+  it("ズーム不足の案内と、地図が報告した取得状態を出す", () => {
     const list = chips({ zoomTooWideLayerIds: ["surface"], dataStatus: { surface: "empty" } });
     expect(chipOf(list, "surface")).toMatchObject({ notice: TILE_ZOOM_TOO_WIDE_NOTICE, dataStatus: "empty" });
     expect(chipOf(list, "tunnel")).toMatchObject({ notice: null, dataStatus: undefined });

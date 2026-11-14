@@ -5,7 +5,7 @@
  */
 import {
   isLensLayer,
-  tileNotice,
+  TILE_ZOOM_TOO_WIDE_NOTICE,
   type LayerDataStatusByLayer,
   type ChipLayerDescriptor,
   type MapLayerDescriptor,
@@ -50,37 +50,24 @@ export function overlayChips(options: {
   hidden: HiddenLegendKeys;
   dataStatus: LayerDataStatusByLayer;
   zoomTooWideLayerIds: readonly MapLayerId[];
-  /** タイル世代が届くまで描けず、いま世代が無いレイヤー。 */
-  versionMissingLayerIds: readonly MapLayerId[];
-  /** 画面の設定の取得を終えたか。終えたのに世代が無いなら、待っても直らない。 */
-  catalogSettled: boolean;
 }): OverlayLayerChip[] {
-  const { hidden, catalogSettled } = options;
+  const { hidden } = options;
   const legendAxes = [...roadLegendAxes(options.roadLayers), ...DECLARED_LEGEND_AXES];
   return options.layers
     .filter((layer): layer is ChipLayerDescriptor => !isLensLayer(layer))
-    .map((layer) => {
-      const versionMissing = options.versionMissingLayerIds.includes(layer.id);
-      return {
-        id: layer.id,
-        label: layer.label,
-        icon: layer.icon,
-        on: options.visibility[layer.id] === true,
-        title: layer.description,
-        notice: tileNotice({
-          versionMissing,
-          catalogSettled,
-          zoomTooWide: options.zoomTooWideLayerIds.includes(layer.id),
-        }),
-        legendDetails: chipLegends(layer, legendAxes).map((axis): LegendFilterSummaryAxis => ({
-          ...axis,
-          hiddenKeys:
-            axis.axisId === undefined ? [] : presentHiddenKeys(axis.legend, hiddenKeysOf(hidden, axis.axisId)),
-        })),
-        category: layer.category,
-        panelHint: layer.panelHint,
-        // 世代が無いとソースを作らないため、MapLibreのイベントは何も言わない。
-        dataStatus: versionMissing ? (catalogSettled ? "error" : "loading") : options.dataStatus[layer.id],
-      };
-    });
+    .map((layer) => ({
+      id: layer.id,
+      label: layer.label,
+      icon: layer.icon,
+      on: options.visibility[layer.id] === true,
+      title: layer.description,
+      notice: options.zoomTooWideLayerIds.includes(layer.id) ? TILE_ZOOM_TOO_WIDE_NOTICE : null,
+      legendDetails: chipLegends(layer, legendAxes).map((axis): LegendFilterSummaryAxis => ({
+        ...axis,
+        hiddenKeys: axis.axisId === undefined ? [] : presentHiddenKeys(axis.legend, hiddenKeysOf(hidden, axis.axisId)),
+      })),
+      category: layer.category,
+      panelHint: layer.panelHint,
+      dataStatus: options.dataStatus[layer.id],
+    }));
 }

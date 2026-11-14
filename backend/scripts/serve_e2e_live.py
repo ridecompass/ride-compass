@@ -14,7 +14,6 @@
 
 import argparse
 import asyncio
-import json
 import os
 import socket
 import subprocess
@@ -118,13 +117,11 @@ def road_tile_counter(api: str) -> Callable[[float, float], int]:
     from app.domain.region import ROAD_TILE_MAX_ZOOM, tile_position
     from app.infrastructure.vector_tile import ROAD_SURFACE_LAYER_NAME
 
-    catalog = json.loads(get(f"{api}/api/client-config") or b"{}")
-    version = (catalog.get("tile_versions") or {}).get("road_surface")
     z = ROAD_TILE_MAX_ZOOM
 
     def roads_in_tile(lat: float, lon: float) -> int:
         x, y = (int(v) for v in tile_position(lon, lat, z))
-        body = get(f"{api}/api/region/road-surface-tiles/{z}/{x}/{y}.pbf?v={version}")
+        body = get(f"{api}/api/region/road-surface-tiles/{z}/{x}/{y}.pbf")
         if not body:
             return 0
         layer = mapbox_vector_tile.decode(body).get(ROAD_SURFACE_LAYER_NAME) or {}

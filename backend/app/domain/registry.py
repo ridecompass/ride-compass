@@ -14,7 +14,7 @@ from app.domain.strict_model import StrictModel
 #: **地図へ出すかどうかはこれとは別で、画面側が決める**（点である交差点は出していない）。
 _PrimaryAttributeGeometry = Literal["line", "point", "area"]
 
-#: DBから焼いて配るタイルの系統。配信のパス・世代の表（`services/tile_version_service.py: tile_shapes`）・
+#: DBから焼いて配るタイルの系統。配信のパス・世代の表（`infrastructure/region_tile_cache.py: MVT_TILE_GENERATIONS`）・
 #: ディスクの鍵・点のレイヤーの名前（`infrastructure/point_tile_layers.py`）が、この名前でつながる。
 TileKind = Literal["road_surface", "poi", "accident", "stop_place"]
 
@@ -114,7 +114,7 @@ class PrimaryAttributeSpec(StrictModel):
     display_axes: tuple[DisplayAxisSpec, ...] = ()
     #: 点を押したときに区分の行に続けて出す事実。値がその点に無ければ出さない。
     point_facts: tuple[PointFactSpec, ...] = ()
-    #: 値が載るタイルの系統（`tile_version_service.py: tile_shapes`の名前）。地図へ出す
+    #: 値が載るタイルの系統（`TileKind`の名前）。地図へ出す
     #: 属性だけが持つ。**どのソースから読むかを画面が決めない**——決めさせると、系統を
     #: 1つ足したときに画面側の対応表も直すことになる。
     tile_kind: TileKind | None = None
