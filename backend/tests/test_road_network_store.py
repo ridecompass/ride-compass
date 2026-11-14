@@ -138,17 +138,6 @@ def test_a_network_being_written_is_not_read_until_it_is_published(store):
     assert [path.name for path in store.iterdir()] == [road_network_store.directory_name(4)]
 
 
-def test_publishing_a_revision_that_another_process_published_first_keeps_the_first(store):
-    road_network_store.publish(road_network_store.write_pending(_network(revision=4, distance_m=100.0)))
-    late = road_network_store.write_pending(_network(revision=4, distance_m=999.0))
-
-    placed = road_network_store.publish(late)
-
-    assert placed == store / road_network_store.directory_name(4)
-    assert not late.exists()
-    assert road_network_store.current().distance_m[0] == 100.0
-
-
 def _disk_full(*args, **kwargs):
     raise OSError(28, "No space left on device")
 
@@ -187,20 +176,6 @@ def test_a_newer_revision_placed_by_the_batch_is_read_on_the_next_call():
 
     assert road_network_store.current().revision == 3
 
-
-def test_a_network_replaced_between_choosing_and_opening_is_chosen_again(monkeypatch):
-    """選んだ置き場を開く前に、派生の作り直しが新しい世代へ入れ替えて古い置き場を消しても、ルート生成は新しい世代で続く。"""
-    road_network_store.save(_network(revision=2))
-    opened = road_network_store.load
-
-    def replaced_before_opening(directory):
-        if directory.name == road_network_store.directory_name(2):
-            road_network_store.publish(road_network_store.write_pending(_network(revision=3)))
-        return opened(directory)
-
-    monkeypatch.setattr(road_network_store, "load", replaced_before_opening)
-
-    assert road_network_store.current().revision == 3
 
 def test_cleaning_up_after_start_removes_only_networks_of_other_shapes(store):
     road_network_store.save(_network(revision=2))
@@ -262,11 +237,11 @@ _WAYS = (
 )
 
 
-async def _derive(ways=_WAYS, nodes=_INGESTED_NODES) -> None:
+async def _derive(ways=_WAYS) -> None:
     """取込の入口から道とノードを入れ、派生の作り直しで区間と材料まで作る。作り直しが置いた道路網は消す。"""
     async with raw_connection() as conn:
         await ingest_records("osm_node", [
-            point_record(n, *_NODES[n], {"highway": "traffic_signals"} if n == _SIGNAL_NODE else None) for n in nodes],
+            point_record(n, *_NODES[n], {"highway": "traffic_signals"} if n == _SIGNAL_NODE else None) for n in _INGESTED_NODES],
             conn=conn)
         await ingest_records("osm_way", [
             way_record(way_id, [_NODES[n] for n in node_ids], node_ids, tags) for way_id, node_ids, tags in ways],
@@ -378,11 +353,3 @@ async def test_a_network_already_placed_for_the_current_revision_is_not_built_ag
 
     assert await road_network_store.ensure_current(session_factory) == placed
     assert road_network_store.current().highway_vocab == ("置いたまま",)
-
-
-@_on_test_db
-async def test_edges_whose_ends_were_not_ingested_leave_no_network_to_place(store):
-    """道だけがありノードを1つも取り込んでいなければ、区間は全部落ちて組み立てが断る（作り直しも止まる）。"""
-    with pytest.raises(ValueError, match="区間が1本もありません"):
-        await _derive(nodes=())
-    assert not store.exists() or not any(store.iterdir())

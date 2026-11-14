@@ -55,15 +55,8 @@ def places_path(release: str) -> Path:
     return DATA_DIR / f"places_{release}.parquet"
 
 
-def _existing_places_path(rows: OverturePlaceRows) -> Path:
-    path = places_path(rows.release)
-    if not path.exists():
-        raise FileNotFoundError(f"Overture の地点がありません: {path}（scripts/fetch_overture_places.py が写す）")
-    return path
-
-
 def overture_places_inputs(spec: SourceSpec, profile: SourceProfile) -> AdapterInputs:
-    return AdapterInputs(files=(_existing_places_path(spec.rows),))
+    return AdapterInputs(files=(places_path(spec.rows.release),))
 
 
 @register_adapter("overture_places", rows=OverturePlaceRows, inputs=overture_places_inputs)

@@ -20,7 +20,7 @@ from app.batch.ingest import (
 )
 from app.batch.source_profile import NoFields, SourceProfile, SourceSpec, load_source_profile
 from tests.conftest import postgis_database_url, raw_connection
-from tests.source_ingest import fetched_anew, point_record
+from tests.source_ingest import no_files, point_record
 
 # moduleスコープのroad_graph_engine（conftest.py）の上のDBを使うため、.claude/rules/testing-backend.mdのパターン2どおり
 # loop_scope="module"が必須。
@@ -35,7 +35,7 @@ def _only(source: str, adapter: str) -> SourceProfile:
 
 
 def _adapter(read) -> RegisteredAdapter:
-    return RegisteredAdapter(read=read, rows=NoFields, grid=NoFields, inputs=fetched_anew)
+    return RegisteredAdapter(read=read, rows=NoFields, grid=NoFields, inputs=no_files)
 
 
 @pytest_asyncio.fixture(scope="module", loop_scope="module")

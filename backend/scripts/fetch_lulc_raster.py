@@ -49,17 +49,10 @@ def _readable(path: Path) -> bool:
 
 
 def fetch() -> bool:
-    paths = settings.lulc_raster_paths_list
-    if not paths:
-        logger.warning(
-            "LULC_RASTER_PATHSが未設定のため取得するものがありません"
-            "（土地被覆の地図レイヤーは配信できない状態になります）"
-        )
-        return True
     return fetched_all(
         fetch_verified(f"{BUCKET_BASE_URL}/{Path(raw_path).name}", Path(raw_path), _readable,
                        read_timeout=_READ_TIMEOUT_SECONDS, logger=logger)
-        for raw_path in paths
+        for raw_path in settings.lulc_raster_paths_list
     )
 
 

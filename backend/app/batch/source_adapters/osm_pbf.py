@@ -101,8 +101,6 @@ def _pbf_path(rows: OsmWayRows) -> Path:
     非ASCIIを含む絶対パスを渡すとpyosmiumがファイルを開けない。
     """
     path = DATA_DIR / rows.file
-    if not path.exists():
-        raise FileNotFoundError(f"PBFがありません: {path}")
     try:
         return path.relative_to(Path.cwd())
     except ValueError:
@@ -255,8 +253,7 @@ def _referenced_way_rows(spec: SourceSpec, profile: SourceProfile) -> OsmWayRows
 
 
 def osm_node_inputs(spec: SourceSpec, profile: SourceProfile) -> AdapterInputs:
-    return AdapterInputs(files=(_pbf_path(_referenced_way_rows(spec, profile)),),
-                         sources=(spec.rows.referenced_by,))
+    return AdapterInputs(files=(_pbf_path(_referenced_way_rows(spec, profile)),))
 
 
 @register_adapter("osm_pbf_node", rows=OsmNodeRows, inputs=osm_node_inputs)

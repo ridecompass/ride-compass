@@ -144,9 +144,7 @@ async def derive(conn: asyncpg.Connection) -> None:
         logger.info("切り終えた: 区間の候補 %d本。表へ入れる",
                     await conn.fetchval("SELECT count(*) FROM _seg"))
 
-        unusable = await conn.fetchrow(_COUNT_UNUSABLE)
-        if unusable is None:
-            raise RuntimeError("集計の問い合わせが行を返さなかった")
+        [unusable] = await conn.fetch(_COUNT_UNUSABLE)
         if any(unusable.values()):
             logger.warning(
                 "表へ入れられない区間を落とした: 方位が定義できない %d本 / 長さ0 %d本 / "

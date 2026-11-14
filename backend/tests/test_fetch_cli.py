@@ -21,7 +21,6 @@ from app.batch.fetch_cli import run_profile_fetch_cli
 def _write_profile(tmp_path: Path) -> Path:
     path = tmp_path / "profile.yaml"
     path.write_text(yaml.safe_dump({
-        "version": 1,
         "target": {"bbox": [35.0, 139.0, 36.0, 140.0]},
         "sources": [{"name": "given-accident", "adapter": "npa_honhyo", "rows": {"years": [2024]}}],
     }), encoding="utf-8")

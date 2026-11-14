@@ -61,8 +61,7 @@ def read_rows(path: Path) -> Generator[dict[str, str]]:
 
 
 def isj_block_inputs(spec: SourceSpec, profile: SourceProfile) -> RangeInputs:
-    return range_inputs(profile, lambda code: archive_path(spec.rows.version, code),
-                        "街区レベル位置参照情報がありません（scripts/fetch_isj_blocks.py が写す）")
+    return range_inputs(profile, lambda code: archive_path(spec.rows.version, code))
 
 
 @register_adapter("isj_block", rows=IsjBlockRows, inputs=isj_block_inputs)

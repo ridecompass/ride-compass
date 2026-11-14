@@ -7,12 +7,12 @@
 **プロファイルが挙げた製品を、それぞれのズームで全タイル取る。**1つの製品が返したから
 といって他の製品を取りやめない——どの製品の値を採るかは画素ごとに派生が決める。
 
-**何度実行しても安全で、終わる。**
+**何度実行しても安全。**
 
 - 手元にあるタイルは叩かない
 - その製品に無いタイル（区域外）は製品ごとに印を置き、次からは叩かない
-- 置くタイルの更新時刻は配信元の最終更新（`Last-Modified`）にする。返さなかったタイルは置かず、失敗に数える
-- 一時的な失敗は`--attempts`回で打ち切り、件数を報告して終える。無限に粘らない
+- 置くタイルの更新時刻は配信元の最終更新（`Last-Modified`）にする。返さなかったタイルは置かない
+- 取れなかったタイルがあれば、その例外で止まる。置いた分は残るので、もう一度実行すると欠けた分だけ取りに行く
 
 実行方法（backendディレクトリから）:
     .venv\\Scripts\\python.exe scripts\\fetch_dem_tiles.py
@@ -51,17 +51,10 @@ logger = logging.getLogger("ridecompass.fetch_dem_tiles")
 #: 配信元へ並べてよい数の上限。公共サービスなので控えめにする。
 _MAX_CONCURRENT = 8
 
-#: 1タイルあたりの試行回数の既定。超えたらそのタイルは諦め、件数として報告する。
-_DEFAULT_ATTEMPTS = 3
-
 #: 進捗を数えて出す区切りの枚数。
 _CHUNK = _MAX_CONCURRENT * 8
 
 _REQUEST_TIMEOUT = httpx.Timeout(connect=5.0, read=30.0, write=10.0, pool=10.0)
-
-
-class _NoLastModified(Exception):
-    """配信元が最終更新を返さなかった。置くと、取込がいつ時点の標高かを記録できない。"""
 
 
 async def _fetch_one(client: httpx.AsyncClient, product: str, zoom: int,
@@ -74,19 +67,19 @@ async def _fetch_one(client: httpx.AsyncClient, product: str, zoom: int,
     response.raise_for_status()
     header = response.headers.get("Last-Modified")
     if header is None:
-        raise _NoLastModified("Last-Modified がありません")
+        # 置くと、取込がいつ時点の標高かを記録できない。
+        raise RuntimeError("Last-Modified がありません")
     return response.content, parsedate_to_datetime(header)
 
 
 async def _fetch_product(client: httpx.AsyncClient, root: Path, product: str, zoom: int,
-                         tiles: list[tuple[int, int]], attempts: int) -> dict[str, int]:
+                         tiles: list[tuple[int, int]]) -> dict[str, int]:
     """1製品ぶん、手元に無いタイルだけ取りに行く。結果の内訳を返す。"""
     wanted = [
         (x, y) for x, y in tiles
         if not is_stored(root, product, zoom, x, y) and not is_absent(root, product, zoom, x, y)
     ]
-    counts = {"既にある": len(tiles) - len(wanted), "取得": 0, "区域外": 0, "諦めた": 0,
-              "往復": 0}
+    counts = {"既にある": len(tiles) - len(wanted), "取得": 0, "区域外": 0}
     if not wanted:
         return counts
 
@@ -94,32 +87,21 @@ async def _fetch_product(client: httpx.AsyncClient, root: Path, product: str, zo
     started = time.perf_counter()
 
     async def one(x: int, y: int) -> None:
-        for attempt in range(1, attempts + 1):
-            try:
-                async with semaphore:
-                    counts["往復"] += 1
-                    fetched = await _fetch_one(client, product, zoom, x, y)
-            except (httpx.HTTPError, httpx.StreamError, _NoLastModified) as exc:
-                if attempt == attempts:
-                    logger.warning("諦めた %s z%d/%d/%d: %s", product, zoom, x, y, exc)
-                    counts["諦めた"] += 1
-                    return
-                await asyncio.sleep(2 ** attempt)
-                continue
-            if fetched is None:
-                mark_absent(root, product, zoom, x, y)
-                counts["区域外"] += 1
-            else:
-                write_tile(root, product, zoom, x, y, *fetched)
-                counts["取得"] += 1
-            return
+        async with semaphore:
+            fetched = await _fetch_one(client, product, zoom, x, y)
+        if fetched is None:
+            mark_absent(root, product, zoom, x, y)
+            counts["区域外"] += 1
+        else:
+            write_tile(root, product, zoom, x, y, *fetched)
+            counts["取得"] += 1
 
     last_report = started
     for start in range(0, len(wanted), _CHUNK):
         chunk = wanted[start:start + _CHUNK]
         await asyncio.gather(*(one(x, y) for x, y in chunk))
         now = time.perf_counter()
-        done = counts["取得"] + counts["区域外"] + counts["諦めた"]
+        done = counts["取得"] + counts["区域外"]
         if now - last_report < PROGRESS_INTERVAL_SECONDS and done < len(wanted):
             continue
         last_report = now
@@ -127,41 +109,32 @@ async def _fetch_product(client: httpx.AsyncClient, root: Path, product: str, zo
     return counts
 
 
-async def fetch(client: httpx.AsyncClient, root: Path, profile: SourceProfile,
-                attempts: int) -> dict[str, dict[str, int]]:
-    """プロファイルが挙げた製品ごとに、対象範囲のタイルを写す。製品ごとの内訳を返す。"""
+async def fetch(client: httpx.AsyncClient, root: Path, profile: SourceProfile) -> None:
+    """プロファイルが挙げた製品ごとに、対象範囲のタイルを写す。"""
     bbox = profile.target.bounding_box()
-    results: dict[str, dict[str, int]] = {}
     for product, zoom in profile.source(Source.DEM).grid.products.items():
         tiles = tiles_covering_bbox(bbox, zoom)
         logger.info("標高タイル: product=%s zoom=%d 対象%d枚 / 置き場 %s",
                     product, zoom, len(tiles), root)
         started = time.perf_counter()
-        counts = await _fetch_product(client, root, product, zoom, tiles, attempts)
+        counts = await _fetch_product(client, root, product, zoom, tiles)
         logger.info("完了 product=%s zoom=%d: %s / %.1f秒", product, zoom,
                     " / ".join(f"{k} {v:,}" for k, v in counts.items()),
                     time.perf_counter() - started)
-        results[product] = counts
-    return results
 
 
-async def _run(profile: SourceProfile, attempts: int) -> bool:
+async def _run(profile: SourceProfile) -> bool:
     async with httpx.AsyncClient() as client:
-        results = await fetch(client, TILE_ROOT, profile, attempts)
-    if any(counts["諦めた"] for counts in results.values()):
-        logger.warning("諦めたタイルがあります。もう一度実行すると、その分だけ取りに行きます")
-        return False
+        await fetch(client, TILE_ROOT, profile)
     return True
 
 
 def _fetch_specs(args: argparse.Namespace, profile: SourceProfile, specs: list[SourceSpec]) -> bool:
-    return asyncio.run(_run(profile, args.attempts))
+    return asyncio.run(_run(profile))
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="標高タイルを手元へ写す")
-    parser.add_argument("--attempts", default=_DEFAULT_ATTEMPTS, type=int,
-                        help="1タイルあたりの試行回数。超えたら諦めて件数で報告する")
     return run_profile_fetch_cli(parser, "gsi_dem_tile", _fetch_specs, logger=logger)
 
 

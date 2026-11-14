@@ -83,14 +83,6 @@ def honhyo_path(year: int) -> Path:
     return DATA_DIR / f"honhyo_{year}.csv"
 
 
-def _existing_honhyo_path(year: int) -> Path:
-    path = honhyo_path(year)
-    if not path.exists():
-        raise FileNotFoundError(
-            f"本票CSVがありません: {path}（scripts/fetch_accident_csv.py が写す）")
-    return path
-
-
 @dataclass(frozen=True)
 class HonhyoRows:
     """`npa_honhyo`の`rows`。"""
@@ -100,7 +92,7 @@ class HonhyoRows:
 
 
 def npa_honhyo_inputs(spec: SourceSpec, profile: SourceProfile) -> AdapterInputs:
-    return AdapterInputs(files=tuple(_existing_honhyo_path(int(year)) for year in spec.rows.years))
+    return AdapterInputs(files=tuple(honhyo_path(int(year)) for year in spec.rows.years))
 
 
 @register_adapter("npa_honhyo", rows=HonhyoRows, inputs=npa_honhyo_inputs)

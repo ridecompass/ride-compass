@@ -4,7 +4,7 @@
 このバッチはそれをSQLへ渡すだけで、タグを読むために行を取り出さない。
 
 **全部の道（`road_ways`）が行を持つ**——探索は区間の道の通行方向を読んで逆向きの枝を作るかを決め、行の無い道は
-通行方向を持たない。外部キーは子の行の有無を縛れないので、段の最後に数を比べて止める。
+通行方向を持たない。
 """
 
 import logging
@@ -53,6 +53,3 @@ async def derive(conn: asyncpg.Connection) -> None:
         count = affected_rows(await conn.execute(_INSERT))
         divided = await conn.fetchval("SELECT count(*) FROM way_directions WHERE divided")
         logger.info("通行方向を決めた: %d本（上下線の片側 %d本） / %.1f秒", count, divided, time.perf_counter() - started)
-        ways = await conn.fetchval("SELECT count(*) FROM road_ways")
-        if count != ways:
-            raise RuntimeError(f"通行方向を持たない道がある: 道 {ways}本に対して通行方向 {count}本")

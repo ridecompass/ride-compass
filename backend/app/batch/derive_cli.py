@@ -37,7 +37,6 @@
 """
 
 import argparse
-import asyncio
 import logging
 import shutil
 import time
@@ -206,13 +205,6 @@ def carried_over(previous: Mapping[str, _V], current: Mapping[str, _V], users: M
 #: （`SOURCE_DATA_LOCK`）を取って1本に限る。
 _WORK_SCHEMA = "derived_rebuild"
 
-#: 入れ替えが読み手を待つ上限。入れ替えは表の排他ロックを取り、待つ間は後から来た読み手も
-#: 後ろに並ぶ——長く読む相手（道路網の配列を作るデプロイの前処理等）がいると、その間の
-#: タイル配信が止まる。上限で諦め、間を置いてやり直す。
-_SWAP_LOCK_TIMEOUT = "5s"
-_SWAP_ATTEMPTS = 60
-_SWAP_RETRY_SECONDS = 10.0
-
 #: 作業用のスキーマに作る表の、索引を伴う制約（主キー・一意）と外部キー。外部キーは参照先の鍵の後に作る。
 #: 定義は`search_path`が`public`だけのときに読むので、`public`の表は名前だけで出る——
 #: 作業用のスキーマを先に探す接続で打てば、作業用のスキーマに作った表どうしを指し、作らなかった派生の表と生データの表は
@@ -275,30 +267,15 @@ async def _build_road_network(database_url: str, revision: int) -> Path:
     return pending
 
 
-async def _swap(conn: asyncpg.Connection, tables: list[str], revision: int) -> None:
-    """`public`の派生の表を作業用のスキーマの表で置き換え、世代を`revision`へ進める（1トランザクション）。"""
-    for attempt in range(1, _SWAP_ATTEMPTS + 1):
-        started = time.perf_counter()
-        try:
-            async with conn.transaction():
-                await conn.execute(f"SET LOCAL lock_timeout = '{_SWAP_LOCK_TIMEOUT}'")
-                await conn.execute("DROP TABLE " + ", ".join(f"public.{table}" for table in tables))
-                for table in tables:
-                    await conn.execute(f"ALTER TABLE {_WORK_SCHEMA}.{table} SET SCHEMA public")
-                bumped = await derived_data_meta.bump_revision(conn)
-                if bumped != revision:
-                    raise RuntimeError(
-                        f"派生データの世代が作り直しの間に動いた（道路網は {revision} で作った。今 {bumped}）")
-            logger.info("派生の表を入れ替えた（%d回目） / 表の排他ロック（待ちを含む）=%.1fs",
-                        attempt, time.perf_counter() - started)
-            return
-        # 読み手とのデッドロックでは、DBがどちらを止めるかを約束しない。止められたのが入れ替えなら巻き戻っているので、
-        # 待ち切れと同じにやり直してよい。
-        except (asyncpg.exceptions.LockNotAvailableError, asyncpg.exceptions.DeadlockDetectedError) as error:
-            logger.warning("入れ替えが表を読んでいる相手に止められた（%s）。%.0f秒後にやり直す（%d/%d）",
-                           type(error).__name__, _SWAP_RETRY_SECONDS, attempt, _SWAP_ATTEMPTS)
-            await asyncio.sleep(_SWAP_RETRY_SECONDS)
-    raise RuntimeError("入れ替えられなかった: 派生の表を読み続けている相手がいる")
+async def _swap(conn: asyncpg.Connection, tables: list[str]) -> None:
+    """`public`の派生の表を作業用のスキーマの表で置き換え、世代を進める（1トランザクション）。"""
+    started = time.perf_counter()
+    async with conn.transaction():
+        await conn.execute("DROP TABLE " + ", ".join(f"public.{table}" for table in tables))
+        for table in tables:
+            await conn.execute(f"ALTER TABLE {_WORK_SCHEMA}.{table} SET SCHEMA public")
+        await derived_data_meta.bump_revision(conn)
+    logger.info("派生の表を入れ替えた / 表の排他ロック（待ちを含む）=%.1fs", time.perf_counter() - started)
 
 
 async def _read_tuning(database_url: str) -> dict[str, float]:
@@ -337,7 +314,7 @@ async def run(database_url: str, stages: Sequence[str] | None = None) -> int:
             logger.info("段 %s 完了 / %s", stage.name, format_duration(time.perf_counter() - stage_started))
         revision = await conn.fetchval("SELECT revision FROM derived_data_meta") + 1
         pending = await _build_road_network(database_url, revision)
-        await _swap(conn, tables, revision)
+        await _swap(conn, tables)
         road_network_store.publish(pending)
         pending = None
     finally:

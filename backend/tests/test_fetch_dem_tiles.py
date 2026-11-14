@@ -10,7 +10,6 @@
 
 ここで見ないもの:
 - 置き場のパスと印の形（`app/batch/dem_tile_store.py`）→ 置いたものを同じモジュールで読み戻すだけで、形は見ない
-- 一時的な失敗の試し直しと、諦めたタイルがあれば失敗で終えること → どのテストも通さない
 """
 
 import re
@@ -90,7 +89,7 @@ def profile():
 async def test_served_tiles_are_stored_and_the_rest_marked_absent_per_product(tmp_path, profile):
     """1つの製品が返しても他の製品を取りやめず、各製品を宣言したズームで取る。"""
     async with client_for(_origin()) as client:
-        await fetch_dem_tiles.fetch(client, tmp_path, profile, attempts=1)
+        await fetch_dem_tiles.fetch(client, tmp_path, profile)
 
     declared = _declared_requests(profile)
     assert ("dem5a", ZOOM, *UNSERVED_TILE) in declared  # 範囲が2×2枚に掛かっている
@@ -107,7 +106,8 @@ async def test_served_tiles_are_stored_and_the_rest_marked_absent_per_product(tm
 async def test_a_tile_without_last_modified_is_not_stored(tmp_path, profile):
     """置かないので、次の実行がまた取りに行く。"""
     async with client_for(_origin(stamps=False)) as client:
-        await fetch_dem_tiles.fetch(client, tmp_path, profile, attempts=1)
+        with pytest.raises(RuntimeError, match="Last-Modified"):
+            await fetch_dem_tiles.fetch(client, tmp_path, profile)
 
     for product, zoom, x, y in _declared_requests(profile):
         assert not dem_tile_store.is_stored(tmp_path, product, zoom, x, y), (product, zoom, x, y)
@@ -116,10 +116,10 @@ async def test_a_tile_without_last_modified_is_not_stored(tmp_path, profile):
 async def test_a_second_run_does_not_ask_the_origin_again(tmp_path, profile):
     """取れたものも、区域外と分かったものも、次からは叩かない。"""
     async with client_for(_origin()) as client:
-        await fetch_dem_tiles.fetch(client, tmp_path, profile, attempts=1)
+        await fetch_dem_tiles.fetch(client, tmp_path, profile)
 
     second = _origin()
     async with client_for(second) as client:
-        await fetch_dem_tiles.fetch(client, tmp_path, profile, attempts=1)
+        await fetch_dem_tiles.fetch(client, tmp_path, profile)
 
     assert second.calls.call_count == 0
