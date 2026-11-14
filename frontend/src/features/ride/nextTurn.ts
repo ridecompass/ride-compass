@@ -5,6 +5,8 @@ export interface UpcomingTurn {
   direction: RouteTurn["direction"];
   latitude: number;
   longitude: number;
+  /** 曲がる所の、ルートの始点からの距離（km）。同じ地点を2度曲がるルートでも、曲がる所ごとに違う。 */
+  alongKm: number;
   distanceM: number;
 }
 
@@ -20,6 +22,7 @@ export function nextTurn(turns: readonly RouteTurn[], progressKm: number | null)
     direction: turn.direction,
     latitude: turn.latitude,
     longitude: turn.longitude,
+    alongKm: turn.distance_km,
     distanceM: (turn.distance_km - progressKm) * 1000,
   };
 }

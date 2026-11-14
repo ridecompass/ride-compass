@@ -5,15 +5,15 @@
  * 見るだけで地図の下に出すこと・「表示」と「負担で塗る」は走っていないときと同じに出し、走行中に効かない操作は出さないこと・
  * 方位磁針で北が上と進む向きが上を切り替え、地図を指で動かして休んでいる間はその場で北が上に戻すこと）と、
  * 届いた現在地がプロファイルの印と地図のルート線の薄めと走りの帯の残りへ同じ距離で渡り、到着予想が位置を受けた時刻と選んだ候補の計画から出ること、この先の経由地の印に同じ見込みの時刻が添わること、
- * 次に曲がる所がカードと地図の札に出ること、ルートを外れた・戻ったことが走りの帯に出ること、読み込み直しても走行モードが続くこと、
+ * 次に曲がる所がカードと地図の札に出ること、音声案内を入れると次に曲がる所を手前の段ごとに読むこと（読み上げを持たない端末ではボタンを出さないこと）、ルートを外れた・戻ったことが走りの帯に出ること、読み込み直しても走行モードが続くこと、
  * 読み込み直しで iPhone がスマホの向きを読む許しを聞けなかったら、ボタンの横から求め直して現在地の印に向きを出せること、
  * 走行中も左下に俯瞰図を出すこと。
  *
  * ここで見ないもの: 休む・帯の「ルート」で出したパネル・地図を押すこと・「このルートで走る」・スマホで走行中に下部タブを隠すこと（帯の「ルート」のシートを閉じた後に見る）は`app/page.rideControl.test.tsx`が見る。
- * 残りの距離・次に曲がる所の選び方・走りの帯の書式は`features/ride/`の各テストが見る。
+ * 残りの距離・次に曲がる所の選び方・読み上げの段と言葉・走りの帯の書式は`features/ride/`の各テストが見る。
  *
  * 差し替えたもの: backend の応答（網の層）、位置情報の取得、iPhone の向きを読む許しを求める口（`DeviceOrientationEvent.requestPermission`）と
- * 向きの出来事、地図の描画（`maplibre-gl`）。子の部品は本物を描く。
+ * 向きの出来事、読み上げ（`speechSynthesis`）、地図の描画（`maplibre-gl`）。子の部品は本物を描く。
  */
 import { FACT_DISPLAY_NAME } from "@/lib/screenNames";
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
@@ -24,6 +24,7 @@ import { formatJstHourMinute } from "@/lib/time";
 import { onBackend } from "@/testing/backendServer";
 import { setOrientationPermission, unaskedPermission } from "@/testing/deviceOrientation";
 import { installGeolocation } from "@/testing/geolocation";
+import { installSpeechSynthesis } from "@/testing/speechSynthesis";
 import {
   FIRST,
   HERE,
@@ -235,6 +236,53 @@ describe("走行モード", () => {
     geolocation.deliver({ latitude: 35.7, longitude: 139.709, accuracy: 20 });
     expect(screen.queryByRole("status", { name: /先で右折$/ })).toBeNull();
     expect(marksAt(turnPoint)).toEqual([]);
+  });
+
+  it("音声案内を入れると、入れたことを読み、次に曲がる所の手前の段に入るたびに向きを日本語で1回ずつ読む。案内を終えると読み上げを捨てて切に戻す", async () => {
+    const geolocation = installGeolocation(HERE);
+    const speech = installSpeechSynthesis();
+    const { user } = renderHome();
+    const turnPoint = { latitude: 35.7, longitude: 139.708 };
+    jobs.respond([{ ...RIDDEN, turns: [{ distance_km: 0.8, direction: "right", ...turnPoint }] }], LOOP_CONDITIONS);
+    await generate(user);
+    await waitFor(() => expect(candidateTabs()).toHaveLength(1));
+    await user.click(screen.getByRole("button", { name: "走行モード" }));
+    const voice = screen.getByRole("button", { name: "音声案内" });
+    expect(voice).toHaveAttribute("aria-pressed", "false");
+
+    // 切っている間は、曲がる所に近づいても読まない。
+    geolocation.deliver({ ...RIDDEN_MIDDLE, accuracy: 20 });
+    expect(speech.texts()).toEqual([]);
+
+    // 入れると、その操作の中で入れたことを読み、すでに手前の段にいる曲がる所を読む。
+    await user.click(voice);
+    expect(voice).toHaveAttribute("aria-pressed", "true");
+    expect(speech.texts()).toEqual(["音声案内を入れました", "300メートル先、右折です"]);
+    // 同じ段の中を進んでも読み直さない。
+    geolocation.deliver({ latitude: 35.7, longitude: 139.706, accuracy: 20 });
+    // 曲がる所の40m手前。
+    geolocation.deliver({ latitude: 35.7, longitude: 139.7076, accuracy: 20 });
+    geolocation.deliver({ latitude: 35.7, longitude: 139.7078, accuracy: 20 });
+    expect(speech.texts()).toEqual(["音声案内を入れました", "300メートル先、右折です", "まもなく右折です"]);
+    expect(new Set(speech.langs())).toEqual(new Set(["ja-JP"]));
+
+    await user.click(screen.getByRole("button", { name: "走行モード" }));
+    await user.click(screen.getByRole("button", { name: "案内を終える" }));
+    expect(speech.cancels()).toBe(1);
+    await user.click(screen.getByRole("button", { name: "走行モード" }));
+    expect(screen.getByRole("button", { name: "音声案内" })).toHaveAttribute("aria-pressed", "false");
+    vi.unstubAllGlobals();
+  });
+
+  it("読み上げを持たない端末では、走行中に音声案内のボタンを出さない", async () => {
+    installGeolocation(HERE);
+    const { user } = renderHome();
+    jobs.respond([RIDDEN], LOOP_CONDITIONS);
+    await generate(user);
+    await waitFor(() => expect(candidateTabs()).toHaveLength(1));
+    await user.click(screen.getByRole("button", { name: "走行モード" }));
+    expect(screen.getByRole("button", { name: "ロック" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "音声案内" })).toBeNull();
   });
 
   it("走行中にルートを外れたら、走りの帯に外れたと出して残りを外れた点のまま止め、ルートへ戻ったら戻った点から続ける", async () => {
