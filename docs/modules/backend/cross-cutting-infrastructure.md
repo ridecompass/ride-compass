@@ -38,7 +38,7 @@ DB接続・Redis・HTTPクライアント・レート制限・ログ・デバッ
 | infrastructure | `data_paths.py` | backendがディスクへ置くものの根（本番ではホストのディレクトリを載せ、コンテナを入れ替えても残る）。取込が落とすファイルの置き場もここから組む |
 | infrastructure | `debug_log.py` | 外部I/O（外部API・タイル/標高キャッシュ）イベントのログと集計。集計の型（`debug_log.py: ExternalCallStats`）はプロセス内のカウンタと`/api/debug/stats`の応答が共有する（ヒット率・平均の計算元の回数・合計時間は応答に載せない） |
 | infrastructure | `debug_control.py` | `debug_control.py: debug_mode`のランタイム切替・直近ログの保持 |
-| infrastructure | `admin_data_backup.py` | DBのバックアップが最後に置けてからの時間（`/health`が返す）。下の「本番DBのバックアップ」 |
+| infrastructure | `host_markers.py` | 本番VMのホストの定期の仕組み（`ops/`）が最後に通ってからの時間（`/health`が返す）。下の「本番DBのバックアップ」「元の取り直し」 |
 | infrastructure | `job_registry.py` | 汎用の非同期ジョブレジストリ（プロセス内メモリのみ） |
 | infrastructure | `tuning_overrides.py` | 較正値の値（宣言の全idの行をDBへ持つ。値の正本）の読み書き。プロセス内の値へは書かない |
 | services | `definitions_loading.py` | DBの定義（道の区分・軸定義・較正値）をプロセスへ読み込む1つの入口と、その順。起動時と、起動を通らない道具が呼ぶ |
@@ -46,6 +46,8 @@ DB接続・Redis・HTTPクライアント・レート制限・ログ・デバッ
 | api | `tuning_admin.py` | 較正値の一覧・更新（管理画面用、`api/admin_auth.py: require_admin_basic_auth`の内側）。並べる項目も、効き方ごとの見出しと並び順も宣言から導く。名前は`domain/tuning_labels.py: tuning_label`が付ける |
 | ops | `admin_data_backup.sh` | 本番VMのホストで、DBの全体を`pg_dump`し、Object Storageの非公開バケットの前の1個と入れ替え、置けた時刻を書く |
 | ops | `ridecompass-admin-data-backup.service`・`ridecompass-admin-data-backup.timer` | それを毎日打つsystemdのユニット（VMへの登録は手で1回） |
+| ops | `source_refresh.sh` | 本番VMのホストで、別のコンテナを立てて全部の元の取得・取込・派生の作り直しを順に打ち、通った時刻を書く。下の「元の取り直し」 |
+| ops | `ridecompass-source-refresh.service`・`ridecompass-source-refresh.timer` | それを週1回打つsystemdのユニット（VMへの登録は手で1回） |
 | scripts | `schema_gap.py` | 実DBのスキーマとORMの宣言（`orm_base.declared_metadata`）の差を出す。宣言どおりの表を同じ接続の一時スキーマへ作ってから巻き戻すまでの間に、`public`とカタログを突き合わせる——制約・既定値・索引の式をPostgreSQLが正規化した形で比べるので、CHECKの式・主キー・一意も比べられる。名前は比べない。取込が作る子パーティション（生データの区画）は、列のNULL許容だけをアダプタの宣言（`batch/ingest.py: partition_required_columns`）と比べ、カタログの値だけを読む（取込が入れ直している最中でも、そのロックを待たずに測れる）。本番DBへは、backendのデプロイがコンテナを入れ替えたあとに毎回当てる（新しいコードの読み書きを壊しうる差があればデプロイが失敗で終わり、本番が宣言より多く持つだけの差は出すだけ。docs/architecture/tech-stack.md「デプロイの反映確認」）ほか、手で`run_probe.py`から当てる |
 | scripts | `lost_constraints.py` | 2つの版の`backend/app`をgitから取り出し、ORMが宣言する表・制約を名前抜きの同じ形へ揃えて、消えたものを出す（DBは使わない）。SQLの文の中の絞り込みは見ない——断片をつないで組み立てるSQLは文字列から構文木を取れないものが残るため |
 | scripts | `mutation/` | 変異テストの台本。mutmut 3.8.0（測るときだけ入れる）には`app`の関数の中の変異の生成と、関数ごとに通るテストの記録だけをさせ（`gen.py`）、変異ごとに別のプロセスでそのテストを最後まで回して、落ちたテストを記録する（`runner.py`・`mutkill.py`）。回す変異と基準の並べ方と一覧の口（`plan.py`）・記録を層や道具に依らない表（Stryker の結果の JSON の形）にする（`report.py`）・生き残りの振り分け（`classify.py`・`importtime.py`）・その表からテストの見直しの候補を出し、前回と比べる（`review.py`）。定時の測りで重なりの候補を消すタスクの本文を書く（`cleanup_issue.py`）・テストを消す前とあとの検知率を出す（`score.py`）。台本どうしが同じに読むもの（変異と基準の名前・記録・一覧の口）と生き残りの判断は`_shared.py`が持ち、全部の測りの表と Pull Request の知らせは同じ判断で数える。回し方は[run-checks/SKILL.md](../../../.claude/skills/run-checks/SKILL.md)「変異テストでテストの効きを測る」、見直しの1回の進め方は[test-review/SKILL.md](../../../.claude/skills/test-review/SKILL.md) |
@@ -53,7 +55,7 @@ DB接続・Redis・HTTPクライアント・レート制限・ログ・デバッ
 | scripts | `run_probe.py` | 調査用のスクリプトを本番DBに対して走らせる（手元のPythonから本番DBを引くか、本番のbackendコンテナの中で走らせる）。手元実行では接続文字列をSQLAlchemy用と素のasyncpg用の両方の形で環境変数へ渡す。プローブの後ろに書いた引数はそのままプローブへ渡す |
 | scripts | `_prod_env.py` | 本番へつなぐ道具（`run_probe.py`・`prod_route_check.py`等）が共有する、手元の接続情報（`backend/.env.oracle.local`）の読み方。worktreeから打ったときは本体のチェックアウト側のファイルを読む（gitignore対象のファイルはworktreeへ写らない）。接続情報を渡す前に、このチェックアウトがorigin/masterより遅れていれば止まる（[setup.md](../../architecture/setup.md)「開発機の本体のチェックアウトの遅れ」） |
 | scripts | `_probe_env.py` | 調査のスクリプト（`schema_gap.py`等）が接続先を決める口。引数で渡された接続先、無ければ`run_probe.py`が環境変数で渡した本番の接続先、無ければ設定値を使う。DBへ書くバッチはこれを読まない——調査のつもりの環境から本番へ書かないため。本番のコンテナの中でも読めるよう、`.env.oracle.local`もリポジトリの根の`scripts/`も読まない |
-| scripts | `prod_backup_check.py` | 本番の`/health`からDBのバックアップの経過時間を読み、止まっていれば失敗で終わる。下の「本番DBのバックアップ」 |
+| scripts | `prod_marker_check.py` | 本番の`/health`からホストの定期の仕組みの経過時間を、指定した欄だけ読み、止まっていれば失敗で終わる。下の「本番DBのバックアップ」「元の取り直し」 |
 | scripts | `_production_origins.py` | 本番の宛先（リポジトリの根の`production-origins.json`）の読み方。標準ライブラリだけで読むので、依存を入れないランナー（`prod-route-check.yml`）からも打てる |
 | scripts | `drop_orphan_test_databases.py` | 作業ツリーごとに作られるPostGIS統合テストのDBのうち、作業ツリーが無くなったものを出し、`--drop`で落とす。どの作業ツリーのものかはDB自身のコメントから読む（名前から推測しない） |
 | scripts | `serve_e2e_live.py` | e2e-live（`frontend/e2e-live/`）のために、この作業ツリーのbackendを開発DBへ向けて空いたポートで起動し、路面タイルに道が出る起点を開発DBの区間から選んで、ビルドと実行のコマンドを出す（手順の正本は[run-checks/SKILL.md](../../../.claude/skills/run-checks/SKILL.md)「E2E・画面の撮影の走らせ方」） |
@@ -271,7 +273,7 @@ frontend側（`src/proxy.ts`）も同じ資格情報を別のBasic認証チェ�
 
 | エンドポイント | 認可 | 内容 |
 |---|---|---|
-| `GET /health` | 不要 | `status`・`commit`（デプロイされたコミットSHA）・`started_at`・`admin_data_backup_age_hours`（DBのバックアップが最後に置けてからの時間。記録が無いか印のファイルが読めなければnull（読めない理由はWARNINGのログ）。下の「本番DBのバックアップ」） |
+| `GET /health` | 不要 | `status`・`commit`（デプロイされたコミットSHA）・`started_at`・`admin_data_backup_age_hours`（DBのバックアップが最後に置けてからの時間。下の「本番DBのバックアップ」）・`source_refresh_age_hours`（元の取り直しが最後に通ってからの時間。下の「元の取り直し」）。どちらも記録が無いか印のファイルが読めなければnull（読めない理由はWARNINGのログ） |
 | `GET /api/debug/stats` | 不要（集計値のみ、秘匿情報なし） | `debug_log.py`の集計（呼び出し数・エラー数・ヒット率・所要時間・429拒否数）と、予報（MSM）の同期の鮮度 |
 
 どちらも集計値だけで機微情報を含まないため無認証。本番DBがコードの期待に追いついているか
@@ -463,11 +465,11 @@ systemdのtimerが毎日、DBの全体を`pg_dump`（custom形式・圧縮あり
   そのバケットのオブジェクトの一覧・作成・削除だけで、ほかのバケットには触れない。前の1個を消すのがこのスクリプトなので、
   VMが乗っ取られればバケットのものは消せる——そのときは手元の1個も同じVMにあり、戻す材料が無くなる。
 - **止まりは`/health`で外へ出す**。置けたらその時刻を、ホストの`/home/ubuntu/ridecompass-cache-data`（コンテナの`data/`）の
-  `admin_data_backup_at`へ書き、`infrastructure/admin_data_backup.py`が経過時間を出す。DBに表を足さないのは、本番のスキーマを
+  `admin_data_backup_at`へ書き、`infrastructure/host_markers.py`が経過時間を出す。DBに表を足さないのは、本番のスキーマを
   人が埋める手間（docs/architecture/tech-stack.md「デプロイの反映確認」）を、1行の時刻のために増やさないため。
   スクリプトは途中のどこで落ちても（`set -e`）時刻を書かないので、置けなかった日は経過時間が伸びる。
-- **止まりの見張りは定時のActions**。`prod-route-check.yml`が毎日06:23（日本時間）に`scripts/prod_backup_check.py`で
-  `/health`を外から読み、経過時間が`prod_backup_check.py: MAX_AGE_HOURS`（25）を超えたか、値が無いか、`/health`が読めなければ
+- **止まりの見張りは定時のActions**。`prod-route-check.yml`が毎日06:23（日本時間）に`scripts/prod_marker_check.py`（ジョブ`backup`）で
+  `/health`を外から読み、経過時間が`prod_marker_check.py: MAX_AGE_HOURS`の上限（25時間）を超えたか、値が無いか、`/health`が読めなければ
   落とし、GitHub Actionsの失敗の知らせが届く。上限は、timerの間隔（24時間）に、1回の所要（本番で書き出し約28分・送り約2分半）と
   取込・作り直しの鍵の待ちの分を足したもの。03:17に始まった回が置けていれば06:23の経過時間は3時間ほどで、置けなかった日は
   前の日の回が05:23までに置けていれば26時間を超えてその日に落ちる。それより遅く置けた日の翌日に止まると、知らせは1日遅れる。
@@ -476,6 +478,28 @@ systemdのtimerが毎日、DBの全体を`pg_dump`（custom形式・圧縮あり
   （`services/definitions_loading.py: refresh_definitions`・`infrastructure/tuning_overrides.py: load_tuning_values`）が管理APIの本文と同じ
   検査に通し、通らなければ起動しない。残るのは1個なので、前の日のものへは戻れない。
 - 稼働中のbackendは戻した行を読み直さない（読み込みは起動時と管理APIの書き込み直後だけ）。戻したら再起動する。
+
+## 元の取り直し（`ops/source_refresh.sh`）
+
+宣言（`batch/source_profile.yaml`）に挙がる全部の元を上流から最新で取り直し、全部取り込み直し、派生を全部作り直す。
+上流と手元を比べて飛ばすことはしない。本番VMのsystemdのtimerが週1回打ち、急ぎのときは同じserviceを手で起こす。
+
+- **3段は1つの別のコンテナの中で順に打つ**: 取得（`batch/fetch_cli.py`）→ 取込（`batch/ingest_cli.py`）→ 作り直し
+  （`batch/derive_cli.py`、全段）。後ろの段は前の段の結果を読むので、どれかが落ちたらそこで止める。コンテナは稼働中のbackendとは
+  別にメモリの上限を付けて立て（使い切っても止まるのはこのコンテナだけ）、名前を決めて付ける——前の回のコンテナが残っていれば
+  起動が断られ、2回が重ならない。ログはVMのjournalへ送る（新しいログの置き場は作らない）。
+- **取込と作り直しは、DBのバックアップと同じ鍵（`backend/app/batch/common.py: SOURCE_DATA_LOCK`）で止まる**。重なった回は落ちて
+  知らされ、次の週に流れる（待つ仕組みは持たない）。timerの時刻は、DBのバックアップ・VMの自動更新（PostgreSQLを止める）・派生データベースの
+  書き出しと重ねない。
+- **serviceは上限の時間（`RuntimeMaxSec=`）を持ち**、詰まった回を次の回まで残さない。`RuntimeMaxSec=`は`Type=oneshot`には効かない
+  （systemd.serviceの文書）ので、`Type=exec`にする。止めたときに`docker run`の端末だけが殺されてもコンテナが残らないよう、
+  止まったあとに名前でコンテナを消す。
+- **止まりは`/health`で外へ出す**。全部通ったら時刻を、ホストの`/home/ubuntu/ridecompass-cache-data`（コンテナの`data/`）の
+  `source_refresh_at`へ書き、`infrastructure/host_markers.py`が経過時間を出す（DBに表を足さない理由はDBのバックアップと同じ）。
+  途中のどこで落ちても時刻を書かない。
+- **止まりの見張りは定時のActions**。`prod-route-check.yml`のジョブ`source-refresh`が毎日、`scripts/prod_marker_check.py`で
+  経過時間を読み、`prod_marker_check.py: MAX_AGE_HOURS`の上限（192時間）を超えたか、値が無いか、`/health`が読めなければ落とす。
+  上限は、timerの間隔（7日）に1日足した8日。まだ1回も通っていない本番では値が無いので、初回が通るまで毎日落ちる。
 
 ## 非同期ジョブレジストリ詳細（`job_registry.py`）
 
