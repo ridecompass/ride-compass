@@ -299,13 +299,29 @@ describe("状態を地図へ伝えた結果", () => {
       expect(detailColors(handle)).toEqual(expected.map((label) => colorOf[label]));
     });
 
-    it("費用の軸の一覧が届く前（モードが0件）も、ルート線を値に依らず中立色の1色で引く", () => {
+    it.each([
+      { case: "費用の軸の一覧が届く前（モードが0件）", look: {}, routeStyleModes: [] },
+      {
+        case: "負担を数える軸が無い間（何も数えていないのに、評価して1色になったように読ませない）",
+        look: { costsCounted: false },
+        routeStyleModes: costRouteStyleModes(costAxisCatalogFromResponse(costAxisCatalog()), "light"),
+      },
+    ])("$case も、ルート線を値に依らず中立色の1色で引く", ({ look, routeStyleModes }) => {
       const { map, handle } = createRecordingMap();
       rebuild(
         map,
         sceneState({
-          look: {},
-          routes: [{ ...route, segments: [segment(139.7, 139.71), segment(139.71, 139.72)] }] as never,
+          look,
+          catalog: { routeStyleModes },
+          routes: [
+            {
+              ...route,
+              segments: [
+                { ...segment(139.7, 139.71), distance_km: 2, ...penaltyFields({ ascent: 30 }, 2) },
+                { ...segment(139.71, 139.72), distance_km: 2, ...penaltyFields({ ascent: 0 }, 2) },
+              ],
+            },
+          ] as never,
           selectedRouteId: "a",
         }),
       );
