@@ -1,10 +1,10 @@
 """`services/region_service.py`——地域のレイヤー（路面・点のタイル）の配信と、道の窓・押した所に近い道・事故の収録年。
 
-確かめるのは、焼けなかったタイル（範囲外）の空タイル、焼いたタイルを世代付きの鍵でディスクへ残すか。差し替えるのはDBの口だけ。
+確かめるのは、焼けなかったタイル（範囲外）の空タイル、焼いたタイルを捨てるまでディスクから配るか。差し替えるのはDBの口だけ。
 
 ここで見ないもの:
 - キャッシュの読み書きの骨格 → `test_region_tile_cache.py`
-- 世代の文字列の組み立て → `test_cache_identity.py`。世代をTTLで読み直すこと → `test_derived_data_revision_service.py`
+- 作り直し・区分の書き換えが捨てること → `test_derive_cli.py`・`test_road_class_admin_routes.py`
 - 焼き込むSQLが出す点 → `test_point_tiles.py`
 - HTTPの受け渡し → `test_region_routes.py`
 - 道の窓のレンズの値（地図のレンズと同じ値） → `test_region_lens.py`
@@ -12,12 +12,10 @@
 
 import pytest
 
-from app.config import settings
-from app.infrastructure.derived_data_meta import DataRevisions
+from app.infrastructure.region_tile_cache import discard_region_tiles
 from app.infrastructure.point_tile_layers import POINT_TILE_LAYERS
 from app.infrastructure.vector_tile import ROAD_SURFACE_LAYER_NAME, encode_empty_tile
 from app.services.region_service import RegionService
-from tests.road_class_fixture import classification, fact_is, replaced_road_classes, road_classes
 
 
 Z, X, Y = 14, 14551, 6447
@@ -25,15 +23,11 @@ POINT_LAYER = next(iter(POINT_TILE_LAYERS.values()))
 
 
 class _TileRepository:
-    """路面・点のMVTを焼く口とデータの世代だけを持つフェイク。取込範囲外はNone。路面タイルが焼く地図の線の層の値の元
+    """路面・点のMVTを焼く口だけを持つフェイク。取込範囲外はNone。路面タイルが焼く地図の線の層の値の元
     （タイルの材料）は無い（範囲外）。"""
 
-    def __init__(self, tile: bytes | None = None, derived: int = 1):
+    def __init__(self, tile: bytes | None = None):
         self.tile = tile
-        self.derived = derived
-
-    async def get_data_revisions(self):
-        return DataRevisions(derived=self.derived, imported=1)
 
     async def get_road_surface_tile_mvt(self, z, x, y, bbox, layer_values):
         return self.tile
@@ -67,37 +61,17 @@ async def test_a_tile_outside_the_coverage_is_the_empty_tile_of_its_layer(serve,
     assert await serve(service) == empty_tile
 
 
-@pytest.mark.parametrize(("before", "after", "kept"), [
-    (1, 1, True),
-    (1, 2, False),
-], ids=["同じ世代", "派生を作り直した"])
-async def test_a_baked_tile_is_served_from_disk_only_while_its_generation_is_unchanged(
-        monkeypatch, before, after, kept):
-    """世代はタイルを配る経路が自分で読む。起動後に誰もカタログを取っていなくても、焼いたタイルは世代付きの鍵で
-    ディスクへ残り、世代が変わると焼き直す。"""
-    monkeypatch.setattr(settings, "derived_data_revision_check_interval_seconds", 0.0)
-    repository = _TileRepository(tile=b"first", derived=before)
+async def test_a_baked_tile_is_served_from_disk_until_the_region_tiles_are_discarded():
+    """焼いたタイルはDBが変わってもディスクから配り続け、作り直しの終わりに捨てると焼き直す。"""
+    repository = _TileRepository(tile=b"first")
     service = RegionService(repository=repository)
     await _road_surface_tile(service)
 
-    repository.tile, repository.derived = b"second", after
-    tile = await _road_surface_tile(service)
-
-    assert tile == (b"first" if kept else b"second")
-
-
-async def test_a_road_surface_tile_is_baked_again_when_the_road_classes_are_replaced():
-    """路面タイルは地図の線の層の値を焼くので、管理画面で道の区分を書き換えると焼き直す（古い区分の色で塗り続けない）。"""
-    repository = _TileRepository(tile=b"first")
-    service = RegionService(repository=repository)
-    with replaced_road_classes(road_classes({"k": classification({"a": [fact_is("cat_a", "a")]})})):
-        await _road_surface_tile(service)
-
     repository.tile = b"second"
-    with replaced_road_classes(road_classes({"k": classification({"b": [fact_is("cat_a", "b")]})})):
-        tile = await _road_surface_tile(service)
+    kept = await _road_surface_tile(service)
+    discard_region_tiles()
 
-    assert tile == b"second"
+    assert (kept, await _road_surface_tile(service)) == (b"first", b"second")
 
 
 # --- 道の窓 ---

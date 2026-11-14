@@ -165,7 +165,6 @@ from app.domain.weather import PRECIPITATION_MIN_MM
 from app.infrastructure.msm_client import DEFAULT_UPDATE_INTERVAL_SECONDS as MSM_UPDATE_INTERVAL_SECONDS
 from app.infrastructure.jma_amedas_client import AMEDAS_REFRESH_INTERVAL_MINUTES
 from app.infrastructure.job_registry import JOB_WAIT_MAX_SECONDS
-from app.services.tile_version_service import tile_shapes
 
 GENERATED_DIR = Path(__file__).resolve().parents[2] / "frontend" / "src" / "types" / "generated"
 OUTPUT_PATH = GENERATED_DIR / "openapi.json"
@@ -292,18 +291,10 @@ def main() -> None:
     _write_json(
         REGION_TILE_CONFIG_PATH,
         {
-            # **DBの中身から決まる世代はここへ書かない。** バッチが中身を作り直しても
-            # デプロイは起きず、ビルド時の値は次のデプロイまで古いままになる。そちらは
-            # `GET /api/client-config`の`tile_versions`が実行時に配る
-            # （`services/tile_version_service.py`）。
-            # 下の`landcover.tile_version`だけは例外で、**コードとクラス定義だけから
-            # 決まる**（DBを読まない）ためビルド時に確定する。実際に開いているラスタの
-            # 構成はサーバー側のディスクキャッシュの鍵が持ち、URLには入らない
+            # **DBの中身から決まる世代はここへ書かない**（バッチが中身を作り直してもデプロイは起きない）。
+            # 下の`landcover.tile_version`は、コードとクラス定義だけから決まる（DBを読まない）ためビルド時に確定する。
+            # 実際に開いているラスタの構成はサーバー側のディスクキャッシュの鍵が持ち、URLには入らない
             # （環境ごとに違う値をビルド機の設定で固定してしまうため）。
-            # 実行時に世代が配られる系統の名前。**frontendはこの一覧を手で持たず、
-            # ここから照合する**——片側だけ系統を足すと、足りない側は「世代が揃った」と
-            # 判定したまま配られない世代を待ち続ける。
-            "tile_version_kinds": sorted(tile_shapes()),
             # 路面タイルのレイヤー名と、道のフィーチャーの列の名前（路面タイルは`feature_key`だけを持ち、ほかの列は押した所に
             # 近い道の口が返す）。
             "road_surface": {"layer_name": ROAD_SURFACE_LAYER_NAME, "properties": ROAD_FEATURE_PROPERTIES},

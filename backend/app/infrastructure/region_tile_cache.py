@@ -1,14 +1,20 @@
 """地域タイル（路面・点・土地被覆）のディスクの口。鍵（`cache_identity.py`）・キャッシュ確認→取得→書き戻しの骨格・
-旧世代の掃除を持ち、配信のサービスとは系統・世代・座標の値でやり取りする。
+前の形の掃除・作り直したあとに捨てる口を持ち、配信のサービスとは系統・世代・座標の値でやり取りする。
+
+**鍵の世代はコードから決まる形だけで、DBの中身を持たない。** 派生の表を作り直した・道の区分を書き換えたことは鍵に表れないので、
+書いた側が終わりに`discard_region_tiles`で捨てる。捨てたあとも、ブラウザは持っているタイルを`Cache-Control`の`max-age`の間
+出し続ける（`api/cache_policy.py`）。
 
 取込範囲の外かはタイル種別ごとに違うため、呼び出し元が渡す`fetch_tile`がNoneで知らせる。
 """
 
 import asyncio
 from collections.abc import Awaitable, Callable, Mapping
+from types import MappingProxyType
 
+from app.domain.hard_filters import HARD_FILTERS
 from app.domain.registry import TileKind
-from app.infrastructure import tile_cache
+from app.infrastructure import feature_material_cache, tile_cache
 from app.infrastructure.landcover_raster import raster_paths
 from app.infrastructure.cache_identity import (
     LANDCOVER_TILE_VERSION,
@@ -16,15 +22,22 @@ from app.infrastructure.cache_identity import (
     region_tile_generation_prefix,
     region_tile_key,
     region_tile_kind,
+    shape_digest,
 )
 from app.infrastructure.debug_log import log_external_call
+from app.infrastructure.point_tile_layers import POINT_TILE_LAYERS
+from app.infrastructure.road_tile_sql import FEATURE_MATERIALS_SHAPE, ROAD_SURFACE_TILE_SHAPE
 
-#: 土地被覆ラスタタイルの系統名。DBの世代を持たないので、世代の表（`TileKind`）の外にある。
+#: 土地被覆ラスタタイルの系統名。DBから焼かないので、DBから焼くタイルの系統（`TileKind`）の外にある。
 LANDCOVER_TILE_KIND = "landcover"
 
-#: 旧世代を消す間隔。世代が変わるのは派生の作り直し・取込・タイルのSQLを変えたデプロイで、どれも日に1回より
-#: 稀なので、消し遅れて積むのはおおむね1世代ぶんで済む（それ以上は容量の上限が退避する）。
-PRUNE_INTERVAL_HOURS = 24
+#: DBから焼いて配るタイルの系統と、ディスクの鍵の世代（形の署名）。路面タイルは地図の線の層の値（材料に道の区分を当てた
+#: もの）と、当たる0次ハードフィルタを焼くので、材料の読み方とフィルタの条件も入れる。点のレイヤーはそれぞれ自分のSQLだけから
+#: 署名を持つので、1つのSQLを変えても他のレイヤーの鍵は変わらない。
+MVT_TILE_GENERATIONS: Mapping[TileKind, str] = MappingProxyType({
+    "road_surface": shape_digest(ROAD_SURFACE_TILE_SHAPE, FEATURE_MATERIALS_SHAPE, HARD_FILTERS),
+    **{layer.name: layer.shape for layer in POINT_TILE_LAYERS.values()},
+})
 
 
 def landcover_generation(raster_paths: list[str]) -> str:
@@ -76,15 +89,13 @@ async def serve_region_tile(
         return tile_bytes
 
 
-def prune_other_generations(tile_versions: Mapping[TileKind, str]) -> int:
-    """配っていない世代の地域タイルをディスクから消し、消した数を返す。
+def prune_other_generations() -> int:
+    """今のコードの形でない地域タイルをディスクから消し、消した数を返す。
 
-    `tile_versions`はDBの世代から組んだ系統名→配信する世代（`services/tile_version_service.py:
-    current_tile_versions`）。土地被覆の世代はここで足す。どの系統の表にも無い系統（改名・廃止した系統）の鍵も
-    消す——もう誰も読まない。
+    形が変わるのはデプロイだけなので、起動のあとに1回呼ぶ（`main.py`）。土地被覆は今の置き場のラスタ構成の世代を残す。
+    どの系統の表にも無い系統（改名・廃止した系統）の鍵も消す——もう誰も読まない。
     """
-    generations: dict[str, str] = {kind: version for kind, version in tile_versions.items()}
-    generations[LANDCOVER_TILE_KIND] = landcover_generation(raster_paths())
+    generations: dict[str, str] = {**MVT_TILE_GENERATIONS, LANDCOVER_TILE_KIND: landcover_generation(raster_paths())}
 
     def is_stale(key: str) -> bool:
         kind = region_tile_kind(key)
@@ -95,3 +106,13 @@ def prune_other_generations(tile_versions: Mapping[TileKind, str]) -> int:
         return not key.startswith(region_tile_generation_prefix(kind, generations[kind]))
 
     return tile_cache.delete_where(is_stale)
+
+
+def discard_region_tiles() -> int:
+    """ディスクの地域タイル（全系統）と、路面タイルが焼くタイルの材料を全部消し、消したタイルの数を返す。
+
+    タイルが焼く中身（派生の表・道の区分）を変えた側が、変更をコミットしたあとに呼ぶ。コミットの前に読み始めて捨てたあとに
+    書き終えた1枚は、前の中身のまま次に捨てるまで残る。
+    """
+    feature_material_cache.discard_all()
+    return tile_cache.delete_where(lambda key: region_tile_kind(key) is not None)

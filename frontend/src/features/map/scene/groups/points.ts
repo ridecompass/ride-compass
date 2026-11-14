@@ -22,9 +22,6 @@
  * 束ねた代表点は、点の右に数を出す。
  *
  * 行が出ている間は、同じ種類の基礎地図の店・施設の印を隠す（`BASEMAP_POIS_BY_ROW`）。
- *
- * **タイルの世代が届くまでソースを作らない**。先に作ると、世代の違う中身がブラウザの
- * キャッシュへ載って以後ずっと残る。
  */
 import type { BasemapPoiKinds } from "@/features/map/layers/mapStyleOps";
 import { sceneLayerId, sceneSourceId, valueInExpression, type SceneSourceId } from "@/features/map/scene/sceneBuilders";
@@ -84,12 +81,12 @@ function baseFilter(layer: PointLayer): FilterSpecification | undefined {
 }
 
 export type PointState = {
-  /** タイルの配信先。**世代が届くまでは null**——その間は何も作らない。 */
+  /** タイルの配信先。 */
   readonly tiles: {
     readonly urls: Readonly<Record<PointTileLayer, readonly string[]>>;
     readonly minZoom: number;
     readonly maxZoom: number;
-  } | null;
+  };
   /** 役割ごとの表示ON/OFF。 */
   readonly visible: Readonly<Record<string, boolean>>;
   /** 軸の鍵ごとの、凡例で隠した行の鍵。 */
@@ -285,7 +282,6 @@ function pointLook(
 }
 
 export const pointGroup = declareGroup<PointState>((state) => {
-  if (state.tiles === null) return { sources: [], layers: [] };
   const tiles = state.tiles;
 
   const sources: readonly SceneSourceEntry[] = POINT_TILE_LAYERS.map((name) => ({

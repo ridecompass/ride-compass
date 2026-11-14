@@ -14,7 +14,6 @@ import { installGeolocation } from "@/testing/geolocation";
 import { TAP_CONFIRM_MS } from "@/features/map/MapView/mapTaps";
 import { mapOnScreen, type PointedFeature } from "@/testing/maplibre";
 import { makeGenerationConditions, makeRouteCandidate, makeRouteSegment } from "@/testing/routeFixtures";
-import regionTileConfig from "@/types/generated/region-tile-config.json";
 import type { Coordinates, RouteCandidate } from "@/types/route";
 import type { AmedasObservation, GridPointToday } from "@/types/weather";
 
@@ -25,10 +24,8 @@ export const ELSEWHERE: Coordinates = { latitude: 35.65, longitude: 139.72 };
 /** 路面の層の唯一の区分の、明るい地図と暗い地図の上の色。 */
 export const ROAD_CLASS_COLOR = { light: "#123456", dark: "#abcdef" } as const;
 
-// 地図が道路のタイルを載せる（レンズで塗れる）のは、タイルの世代が全部の系統で揃ってから。
 const CLIENT_CONFIG = clientConfigResponse({
   client_tuning: { [CLIENT_TUNING_IDS.minStretchKm]: 0.1 },
-  tile_versions: Object.fromEntries(regionTileConfig.tile_version_kinds.map((kind) => [kind, "1-test"])),
   // 道路のレイヤーは画面の設定が配る道の線の層で、一覧から出せる層が1つあればよい。
   road_classes: roadClassCatalog({
     map_layers: [

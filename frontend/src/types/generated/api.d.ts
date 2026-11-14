@@ -815,10 +815,6 @@ export interface components {
             client_tuning: {
                 [key: string]: number;
             };
-            /** Tile Versions */
-            tile_versions: {
-                [key: string]: string;
-            };
             /** Accident Years */
             accident_years: number[];
             road_classes: components["schemas"]["RoadClassCatalog"];

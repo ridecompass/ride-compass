@@ -4,9 +4,8 @@ import { mapDisplay } from "@/types/generated/mapDisplay";
 import { primaryAttributes } from "@/types/generated/primaryAttributes";
 import regionTileConfig from "@/types/generated/region-tile-config.json";
 
-/** 点のレイヤーの名前（生成物の`point_layers`の鍵）。名前が配信のパスとタイルの世代の系統を兼ねる。 */
-export type PointTileLayer = keyof typeof regionTileConfig.point_layers &
-  (typeof regionTileConfig.tile_version_kinds)[number];
+/** 点のレイヤーの名前（生成物の`point_layers`の鍵）。名前が配信のパスを兼ねる。 */
+export type PointTileLayer = keyof typeof regionTileConfig.point_layers;
 
 export function isPointTileLayer(name: string | null): name is PointTileLayer {
   return name !== null && Object.hasOwn(regionTileConfig.point_layers, name);

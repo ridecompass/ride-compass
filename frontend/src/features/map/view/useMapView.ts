@@ -4,7 +4,7 @@
  * 地図への値・操作部品への値。
  *
  * 画面から受け取るのはルートの文脈・走行条件・利用者の値だけで、レンズやレイヤーの種類を知らない。画面の設定・費用の
- * 軸の一覧・タイル世代は共有の源泉から読む。
+ * 軸の一覧は共有の源泉から読む。
  */
 import { useMemo, useState, type ComponentProps } from "react";
 
@@ -13,8 +13,7 @@ import {
   buildDefaultLayerVisibility,
   deriveFetchLayerStatus,
   ROAD_LINE_MIN_ZOOM,
-  tileNotice,
-  tileVersionGatedLayerIds,
+  TILE_ZOOM_TOO_WIDE_NOTICE,
   tileZoomTooWideLayerIds,
   type LayerDataStatusByLayer,
   type MapLayerVisibility,
@@ -193,15 +192,11 @@ export function useMapView({
     () => avoidanceChoiceOf(config.roadClasses.avoidance, roadAvoidance, mapTheme),
     [config.roadClasses.avoidance, roadAvoidance, mapTheme],
   );
-  // 道路タブで塗っている間は、塗れない理由（拡大が足りない・タイルの世代が届かない）を道路タブに出す（道の層を出していないと、地図の上の
-  // 行の状態の印が無い）。
-  const roadTabMapNotice = roadAvoidanceShown
-    ? tileNotice({
-        versionMissing: mapCatalog.tileVersions === null,
-        catalogSettled: config.loaded || config.failed,
-        zoomTooWide: viewport !== null && ROAD_LINE_MIN_ZOOM !== undefined && viewport.zoom < ROAD_LINE_MIN_ZOOM,
-      })
-    : null;
+  // 道路タブで塗っている間は、拡大が足りず塗れないことを道路タブに出す（道の層を出していないと、地図の上の行の状態の印が無い）。
+  const roadTabMapNotice =
+    roadAvoidanceShown && viewport !== null && ROAD_LINE_MIN_ZOOM !== undefined && viewport.zoom < ROAD_LINE_MIN_ZOOM
+      ? TILE_ZOOM_TOO_WIDE_NOTICE
+      : null;
   // 式の木の条件の名前（`bearing_deg`・`speed_kmh`）で地図へ渡す。速度が数でない間は値の無いことにする。
   const formulaConditions = useMemo(
     () => ({ bearing_deg: bearingDeg, ...(Number.isFinite(speedKmh) ? { speed_kmh: speedKmh } : {}) }),
@@ -253,8 +248,6 @@ export function useMapView({
     hidden,
     dataStatus: { ...mapLayerStatus, ...weather.dynamicWeatherDataStatus },
     zoomTooWideLayerIds: viewport ? tileZoomTooWideLayerIds(mapCatalog.layers, viewport.zoom) : [],
-    versionMissingLayerIds: mapCatalog.tileVersions ? [] : tileVersionGatedLayerIds(mapCatalog.layers),
-    catalogSettled: config.loaded || config.failed,
   });
   const setShown = (id: string, on: boolean) => setLayerVisibility((prev) => ({ ...prev, [id]: on }));
   const setHiddenFor = (key: string, keys: readonly string[]) => setHidden((prev) => withHiddenKeys(prev, key, keys));

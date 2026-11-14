@@ -35,7 +35,7 @@ from app.infrastructure.vector_tile import ROAD_SURFACE_LAYER_NAME, TILE_BUFFER
 
 @dataclass(frozen=True)
 class PointTileLayer:
-    #: 配信のパス・タイルの世代の系統・キャッシュのパスに入る名前。一次属性の`tile_kind`はこの名前を指す。
+    #: 配信のパス・キャッシュのパスに入る名前。一次属性の`tile_kind`はこの名前を指す。
     name: TileKind
     #: タイルの中のレイヤー名（MapLibreのsource-layer）。空タイルもこの名前を名乗る。
     source_layer: str
