@@ -148,7 +148,7 @@ class EdgeSetOverlap(Generic[T]):
     """
 
     def __init__(
-        self, edge_indices_of: Callable[[T], Sequence[int] | None], edge_length_m: np.ndarray, max_count: int,
+        self, edge_indices_of: Callable[[T], Sequence[int] | np.ndarray | None], edge_length_m: np.ndarray, max_count: int,
     ):
         if max_count > 64:
             raise ValueError(f"EdgeSetOverlap: max_count={max_count} exceeds the uint64 bitmask limit (64)")

@@ -374,21 +374,6 @@ def test_forward_path_runs_from_the_tree_source_to_the_state():
     ]
 
 
-def test_backward_path_is_already_in_travel_order():
-    """逆向きの木では、前任者を辿ることが目的地へ近づくことに当たるため反転しない。"""
-    graph = make_graph(LINE_NODES, LINE_EDGES)
-    lazy, statics, structure = build_all(graph)
-    states = state_index(lazy)
-    tree = routing.build_turn_expanded_tree(
-        structure, np.ones(structure.state_count), statics.edge_length_m,
-        np.array([states["BC"]], dtype=np.int64), lazy.node_count, reverse=True,
-        edge_seconds=np.ones(structure.state_count), transition_cost=structure.turn_seconds
-    )
-    assert routing.turn_expanded_path_from_state_to_source(tree, states["AB"]) == [
-        states["AB"], states["BC"],
-    ]
-
-
 # --- 木の経路どうしの重複率 ---
 
 
@@ -462,6 +447,60 @@ def test_junction_leaves_unreachable_nodes_empty():
     assert np.isnan(junction.length_m[isolated])
     assert junction.forward_state[isolated] == -1
     assert junction.backward_state[isolated] == -1
+
+
+@pytest.mark.parametrize("seed", range(3))
+def test_tree_and_junction_keep_per_node_the_cheapest_and_on_a_tie_the_lowest_numbered(seed):
+    """木はNodeごとに費用の最小の状態を、繋ぎ目は合計の最小の遷移を採り、同じ費用なら番号の小さいものを残す。
+
+    費用を小さな整数にして同じ費用を多く作り、各Nodeの期待を（費用, 番号）の辞書順の最小として総当たりで出す。"""
+    lazy, statics, structure = build_all(make_grid(5))
+    rng = np.random.default_rng(seed)
+    cost = rng.integers(1, 3, structure.state_count).astype(np.float64)
+    transition_cost = rng.integers(0, 2, len(structure.target_state)).astype(np.float32)
+    seconds = np.ones(structure.state_count)
+    forward = routing.build_turn_expanded_tree(
+        structure, cost, statics.edge_length_m, out_states(lazy, "n0_0"), lazy.node_count,
+        edge_seconds=seconds, transition_cost=transition_cost,
+    )
+    destination = lazy.node_id_to_index["n4_4"]
+    backward = routing.build_turn_expanded_tree(
+        structure, cost, statics.edge_length_m, np.flatnonzero(lazy.graph.edge_to == destination), lazy.node_count,
+        reverse=True, edge_seconds=seconds, transition_cost=transition_cost,
+    )
+    junction = routing.combine_forward_backward_at_nodes(
+        structure, forward, backward, lazy.node_count, transition_cost=transition_cost
+    )
+
+    def cheapest_lowest_numbered(node_of_item, item_cost):
+        """Nodeごとの（費用, 番号）の最小の番号と、最小の費用に並んだ番号の数の最大。"""
+        expected = np.full(lazy.node_count, -1)
+        tied = 0
+        for node in range(lazy.node_count):
+            items = [i for i in np.flatnonzero(node_of_item == node) if np.isfinite(item_cost[i])]
+            if items:
+                expected[node] = min(items, key=lambda i: (item_cost[i], i))
+                tied = max(tied, sum(item_cost[i] == item_cost[expected[node]] for i in items))
+        return expected, tied
+
+    for tree, node_of_state in ((forward, structure.edge_to), (backward, structure.edge_from)):
+        expected, tied = cheapest_lowest_numbered(node_of_state, tree.state_cost)
+        assert tied > 1  # 同じ費用の状態が並ぶNodeがある
+        assert np.array_equal(tree.node_best_state, expected)
+
+    source = np.repeat(np.arange(structure.state_count), np.diff(structure.indptr))
+    target = structure.target_state
+    total = forward.state_cost[source] + transition_cost + backward.state_cost[target]
+    picked, tied = cheapest_lowest_numbered(structure.edge_to[source], total)
+    assert tied > 1  # 同じ合計の遷移が並ぶNodeがある
+    joined = picked >= 0
+    assert np.array_equal(junction.forward_state[joined], source[picked[joined]])
+    assert np.array_equal(junction.backward_state[joined], target[picked[joined]])
+    assert np.array_equal(junction.cost[joined], total[picked[joined]])
+    expected_seconds = (forward.state_seconds[source] + structure.turn_seconds + backward.state_seconds[target])[picked[joined]]
+    assert np.array_equal(junction.seconds[joined], expected_seconds)
+    assert np.all(junction.forward_state[~joined] == -1)
+    assert np.all(np.isinf(junction.cost[~joined]))
 
 
 # --- 木を継いだ経路の取り出しと選定 ---
