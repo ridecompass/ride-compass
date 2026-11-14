@@ -7,7 +7,7 @@ r"""国の指定・登録の文化財の建造物（文化遺産オンライン�
 `from`・`size`は2,000件で止まる）。配信元は間を空けて打つよう求め、上限の目安を示さないので、1回ごとに
 `_REQUEST_INTERVAL_SECONDS`待つ（同じガイドの1.4）。
 
-置く手順（読めるものは取り直さない・一時ファイル経由・書き終えたら開いてみる）は`app.batch.common.place_verified`が持つ。
+置く手順（手元にあるものは取り直さない・一時ファイル経由）は`app.batch.common.place_once`が持つ。
 
 置き場の名前はプロファイルの取った日（`bunka_heritages`ソースの`rows.snapshot`）で決まる。取り直すときは日を変える。
 
@@ -27,7 +27,7 @@ import httpx
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.batch.common import fetch_timeout, fetched_all, place_verified
+from app.batch.common import fetch_timeout, place_once
 from app.batch.fetch_cli import run_profile_fetch_cli
 from app.batch.source_adapters.bunka_heritages import heritages_path
 from app.batch.source_profile import SourceProfile, SourceSpec
@@ -41,16 +41,6 @@ SEARCH_PARAMS = {"f-db": "bunka", "f-type": "architecture"}
 
 _REQUEST_INTERVAL_SECONDS = 1.0
 _READ_TIMEOUT_SECONDS = 120.0
-
-
-def _readable(path: Path) -> bool:
-    """1行1件の JSON として読め、1行以上あるか。"""
-    try:
-        with path.open(encoding="utf-8") as lines:
-            first = lines.readline()
-            return bool(first) and "id" in json.loads(first)
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-        return False
 
 
 def _write(temporary: Path) -> None:
@@ -74,12 +64,14 @@ def _write(temporary: Path) -> None:
             time.sleep(_REQUEST_INTERVAL_SECONDS)
 
 
-def fetch(snapshot: str) -> bool:
-    return place_verified(heritages_path(snapshot), _readable, _write, source=SCROLL_URL, logger=logger)
+def fetch(snapshot: str) -> None:
+    place_once(heritages_path(snapshot), _write, source=SCROLL_URL, logger=logger)
 
 
 def _fetch_specs(args: argparse.Namespace, profile: SourceProfile, specs: list[SourceSpec]) -> bool:
-    return fetched_all(fetch(snapshot) for snapshot in sorted({spec.rows.snapshot for spec in specs}))
+    for snapshot in sorted({spec.rows.snapshot for spec in specs}):
+        fetch(snapshot)
+    return True
 
 
 def main() -> int:

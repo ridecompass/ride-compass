@@ -4,7 +4,7 @@
 一覧の版が宣言の版と違えば取らずに止まることを確かめる。
 
 ここで見ないもの:
-- 一時ファイル経由の取得・読めるものを取り直さない・読めないものを退ける手順（`app/batch/common.py: place_verified`）
+- 一時ファイル経由の取得・手元にあるものを取り直さない手順（`app/batch/common.py: place_once`）
   → `test_fetch_accident_csv.py`
 - 置いた配布の読み方 → `test_jartic_regulation.py`
 """

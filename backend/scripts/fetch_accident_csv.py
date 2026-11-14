@@ -2,8 +2,8 @@ r"""警察庁の交通事故統計（本票CSV）を配布元から手元へ写�
 
 取込はローカルのファイルを読むだけにする（`source_adapters/npa_honhyo.py`）。
 
-取得の手順（読めるものは落とし直さない・一時ファイル経由・落とし終えたら開いてみる）は
-`app.batch.common.fetch_verified`が持つ。
+取得の手順（手元にあるものは落とし直さない・一時ファイル経由）は
+`app.batch.common.fetch_once`が持つ。
 
 どの年を要するかはプロファイルが持つ（`npa_honhyo`ソースの`rows.years`）。配布元のURLの
 組み立て方だけがここにある。
@@ -14,16 +14,15 @@ r"""警察庁の交通事故統計（本票CSV）を配布元から手元へ写�
 """
 
 import argparse
-import csv
 import logging
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.batch.common import fetch_verified, fetched_all
+from app.batch.common import fetch_once
 from app.batch.fetch_cli import run_profile_fetch_cli
-from app.batch.source_adapters.npa_honhyo import ENCODING, honhyo_path
+from app.batch.source_adapters.npa_honhyo import honhyo_path
 from app.batch.source_profile import SourceProfile, SourceSpec
 
 logger = logging.getLogger("ridecompass.fetch_accident_csv")
@@ -35,26 +34,15 @@ HONHYO_URL_TEMPLATE = (
 _READ_TIMEOUT_SECONDS = 120.0
 
 
-def _readable(path: Path) -> bool:
-    """本票として読めるか（見出しと1行以上）。"""
-    try:
-        with open(path, encoding=ENCODING, newline="") as f:
-            reader = csv.DictReader(f)
-            return bool(reader.fieldnames) and next(reader, None) is not None
-    except (OSError, UnicodeDecodeError, csv.Error):
-        return False
-
-
-def fetch(years: list[int]) -> bool:
-    return fetched_all(
-        fetch_verified(HONHYO_URL_TEMPLATE.format(year=year), honhyo_path(year), _readable,
-                       read_timeout=_READ_TIMEOUT_SECONDS, logger=logger)
-        for year in years
-    )
+def fetch(years: list[int]) -> None:
+    for year in years:
+        fetch_once(HONHYO_URL_TEMPLATE.format(year=year), honhyo_path(year),
+                   read_timeout=_READ_TIMEOUT_SECONDS, logger=logger)
 
 
 def _fetch_specs(args: argparse.Namespace, profile: SourceProfile, specs: list[SourceSpec]) -> bool:
-    return fetch(sorted({int(year) for spec in specs for year in spec.rows.years}))
+    fetch(sorted({int(year) for spec in specs for year in spec.rows.years}))
+    return True
 
 
 def main() -> int:
