@@ -74,7 +74,7 @@ describe("候補の上の知らせ", () => {
 
   it.each([true, false])("前に出た予報の風で作った候補が並ぶ間だけ、そのことを知らせる（当たる: %s）", (on) => {
     renderOutcome({ results: resultsOf({ generated: [FAST, { ...SLOW, wind_from_previous_run: on }] }) });
-    expect(screen.queryByText(/前に出た予報の風で作りました/) !== null).toBe(on);
+    expect(screen.queryByText(/前の予報で作りました/) !== null).toBe(on);
   });
 
   it("乗り換えで作った経路と同じ道だったので選んだ候補は、一覧の名前で知らせ、そのカードを一覧の横の見える範囲へ送る", () => {
