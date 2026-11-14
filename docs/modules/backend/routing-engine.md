@@ -694,8 +694,9 @@ A*のヒューリスティックは好むの倍率で緩めない所要時間の
 DB問い合わせを避ける2段階分割を維持したまま、候補ごとには問い合わせない）。
 取得後は候補ごとに`_build_best_candidate`を`asyncio.gather`で並行評価する（標高取得・
 segments構築はEdge単位の軽量な計算のため並行化してよい）。`_build_segment_details`は、
-レグのビンの時刻で経路上の行だけを合成し直した値を読み（上記「レグ内の時刻ビン」）、`RouteSegmentDetail`列へ組み立てる（標高・路面等の表示専用
-フィールドはEdge単位の軽量な計算のまま）。
+レグのビンの時刻で経路上の行だけを合成し直した値を読み（上記「レグ内の時刻ビン」）、Edge単位の区間（`domain/route.py: EdgeSegment`）の列へ組み立てる（標高・路面等の表示専用
+フィールドはEdge単位の軽量な計算のまま）。Edge単位の区間は経路の道の数だけ作るので pydantic のモデルにせず、応答のモデルはビンでだけ作って検証する
+（区間ごとに作ると、長い経路で評価の段の別スレッドの計算の約3分の1を占めた）。
 
 **戻り値は入力の`traced`と同じ件数・同じ順**（位置で対応づける契約）。戦略層は
 `TracedLoop.data`の中身を知らないため、どの候補がどの`TracedLoop`由来かを位置以外で
@@ -922,7 +923,7 @@ numbaでJITする探索とその部品はこのファイルにまとめて置く
 
 - `Coordinates`・`RouteSegmentDetail`（`road_classes`は道の区分のレイヤごとに、区間の中で値が同じまま続く部分を並べる）・`EvaluatedRoute`（エンジンが評価した経路。費用・代償の内訳・事実の量を持つ）・`RouteCandidate`（`EvaluatedRoute`に
   応答のid・種類・最速の印を足したもの）・`PenaltyBreakdown`（代償の秒の内訳とその和。地図のレンズと同じ1kmあたりの量は区間と候補が内訳と距離から導く。区間とビンと候補が同じ形で持つ）・`RouteFacts`（軸ごとの事実。`domain/leg_costs.py: axis_facts`が作る）。
-- `aggregate_segments_into_bins`（500m区間ビニング）・`_merge_segment_bin`・`merge_penalty_breakdowns`（代償の秒は足す）。
+- `aggregate_segments_into_bins`（Edge単位の区間`EdgeSegment`を500mのビンの`RouteSegmentDetail`へ畳む）・`_merge_segment_bin`・`merge_penalty_breakdowns`（代償の秒は足す）。
   **`RouteSegmentDetail`のフィールドは、ビンへの畳み方（`BIN_FIELD_MERGERS`）を必ず宣言する**。`_merge_segment_bin`は
   この表だけからビンを組み立てる。候補の代償の内訳は、丸める前のEdge単位の区間から足す（丸めたビンを足すと、丸めの分が積もる）。
   区間の中の道ごとの両端の標高（`elevations`）は平均せず、中の区間の並びをつなぐ（画面は道ごとの両端を結んで標高の線を描く）。

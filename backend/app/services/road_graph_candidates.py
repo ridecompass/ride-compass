@@ -23,10 +23,8 @@ from app.domain.route import (
     PenaltyBreakdown,
     RouteFacts,
     merge_penalty_breakdowns,
-    ElevationStretch,
+    EdgeSegment,
     EvaluatedRoute,
-    RoadClassStretch,
-    RouteSegmentDetail,
     RouteTurn,
     DISTANCE_KM_DECIMALS,
     ELEVATION_M_DECIMALS,
@@ -252,9 +250,9 @@ def _build_candidate(
     # 決まる曲がる所の漕ぎ出しを、その費目を持つ軸の秒として足す。
     turn_penalty = PenaltyBreakdown.model_construct(
         axis_seconds=context.composer.turn_penalty_by_axis(turn_kickoffs), preferred_seconds=0.0, avoided_seconds=0.0)
-    penalty = merge_penalty_breakdowns([*(segment.penalty for segment in segments), turn_penalty])
+    penalty = merge_penalty_breakdowns([*segments, turn_penalty])
     # 返すsegmentsは集約する。Edge単位のままだとペイロードとフロントの描画費用が嵩む。
-    segments = aggregate_segments_into_bins(segments, orientation.bin_slices)
+    bins = aggregate_segments_into_bins(segments, orientation.bin_slices)
     add_elapsed_ms(context.evaluate_steps_ms, "bins", bins_started)
 
     duration_seconds = passages[-1].elapsed_seconds + passages[-1].seconds if passages else None
@@ -271,7 +269,7 @@ def _build_candidate(
         ),
         turns=turns,
         waypoint_distances_km=[along_km[offset] for offset in orientation.waypoint_offsets],
-        segments=segments,
+        segments=bins,
         cost_seconds=round(orientation.cost_seconds, COST_SECONDS_DECIMALS),
         penalty=penalty,
         facts=facts,
@@ -291,22 +289,18 @@ def _build_segment_details(
     elevation_by_edge: dict,
     context: RoadGraphContext,
     start_time: datetime,
-) -> list[RouteSegmentDetail]:
+) -> list[EdgeSegment]:
     """区間ごとの表示値（ビンへ畳む前の、Edge単位の区間）。
 
-    代償の秒は値の組（`_Orientation.reads`）から読む。区間は検証せずに組み、検証はビン
-    （`domain/route.py: aggregate_segments_into_bins`）でだけ行う。到達予想時刻は経路を探索と同じ規則でたどった時刻（`passages`）。
+    代償の秒は値の組（`_Orientation.reads`）から読む。到達予想時刻は経路を探索と同じ規則でたどった時刻（`passages`）。
     """
     penalties = _segment_penalties(orientation)
 
     segments = []
     road_classes = SegmentClassReader.of(context.road)
     for index, (edge, row) in enumerate(zip(orientation.edges, orientation.rows)):
-        rounded_km = orientation.distances_km[index]
         elevation_attr = elevation_by_edge.get(edge.edge_id)
-
-        arrival_time = start_time + timedelta(seconds=orientation.passages[index].elapsed_seconds)
-
+        axis_seconds, preferred_seconds, avoided_seconds = penalties[index]
         start_lat, start_lon = edge.geometry[0]
         end_lat, end_lon = edge.geometry[-1]
         # 区間の道なり形状はEdgeの形状点列そのもの（追加取得なし）。2点未満のEdgeは
@@ -314,7 +308,7 @@ def _build_segment_details(
         segment_coordinates = [[lon, lat] for lat, lon in edge.geometry]
 
         segments.append(
-            RouteSegmentDetail.model_construct(
+            EdgeSegment(
                 geometry=(
                     {"type": "LineString", "coordinates": segment_coordinates}
                     if len(segment_coordinates) >= 2
@@ -325,48 +319,36 @@ def _build_segment_details(
                 end_latitude=end_lat,
                 end_longitude=end_lon,
                 cumulative_distance_km=along_km[index],
-                distance_km=rounded_km,
-                edge_start=index,
-                edge_end=index + 1,
+                distance_km=orientation.distances_km[index],
+                edge_index=index,
                 # 標高の表は単精度で持つので、表に入れた桁へ丸め直す。
-                elevations=[
-                    ElevationStretch.model_construct(
-                        distance_km=rounded_km,
-                        start_elevation_m=(
-                            round(elevation_attr.start_elevation_m, ELEVATION_M_DECIMALS)
-                            if elevation_attr
-                            else None
-                        ),
-                        end_elevation_m=(
-                            round(elevation_attr.end_elevation_m, ELEVATION_M_DECIMALS) if elevation_attr else None
-                        ),
-                    )
-                ],
+                start_elevation_m=(
+                    round(elevation_attr.start_elevation_m, ELEVATION_M_DECIMALS) if elevation_attr else None
+                ),
+                end_elevation_m=round(elevation_attr.end_elevation_m, ELEVATION_M_DECIMALS) if elevation_attr else None,
                 sustained_gradient_percent=steepest_signed_percent(elevation_attr),
                 average_gradient_percent=elevation_attr.average_grade if elevation_attr else None,
-                estimated_arrival_time=arrival_time.isoformat(),
-                penalty=penalties[index],
-                road_classes={
-                    layer: [RoadClassStretch.model_construct(distance_km=rounded_km, value=value)]
-                    for layer, value in road_classes.values_at(row).items()
-                },
+                estimated_arrival_time=(
+                    start_time + timedelta(seconds=orientation.passages[index].elapsed_seconds)).isoformat(),
+                axis_seconds=axis_seconds,
+                preferred_seconds=preferred_seconds,
+                avoided_seconds=avoided_seconds,
+                road_classes=road_classes.values_at(row),
             )
         )
 
     return segments
 
 
-def _segment_penalties(orientation: _Orientation) -> list[PenaltyBreakdown]:
-    """区間ごとの代償の秒の内訳（通った道の分。`LegValues.penalty_by_axis`）。"""
+def _segment_penalties(orientation: _Orientation) -> list[tuple[dict[str, float], float, float]]:
+    """区間ごとの代償の秒の内訳（通った道の分。`LegValues.penalty_by_axis`）。軸ごとの秒・好む道で下げた秒・避ける道で上乗せした秒の組。"""
 
-    def of(read: _RowRead) -> list[PenaltyBreakdown]:
+    def of(read: _RowRead) -> list[tuple[dict[str, float], float, float]]:
         values = read.values
         axis_lists = {axis_id: seconds.tolist() for axis_id, seconds in values.penalty_by_axis.items()}
         preferred, avoided = values.preferred_seconds.tolist(), values.avoided_seconds.tolist()
         return [
-            PenaltyBreakdown.model_construct(
-                axis_seconds={axis_id: seconds[position] for axis_id, seconds in axis_lists.items()},
-                preferred_seconds=preferred[position], avoided_seconds=avoided[position])
+            ({axis_id: seconds[position] for axis_id, seconds in axis_lists.items()}, preferred[position], avoided[position])
             for position in range(len(read.indices))
         ]
 
