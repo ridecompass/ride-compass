@@ -1,15 +1,20 @@
-from datetime import UTC, datetime
-
 from fastapi import APIRouter
 
 from app.config import settings
-from app.infrastructure.admin_data_backup import backup_age_hours
+from app.infrastructure.host_markers import hours_since
 from app.infrastructure.msm_client import freshness as msm_freshness
 from app.infrastructure.debug_log import StatsSnapshot, get_stats
 from app.version import STARTED_AT
 from app.domain.strict_model import StrictModel
 
 router = APIRouter()
+
+#: `/health`の欄と、それが経過時間を出す印の名前。印の名前は、それを書く`backend/ops/`のスクリプトの書き先と揃える。
+#: 欄は、その仕組みが最後に通ってからの時間で、止まりに気づくために読む。
+_MARKER_FIELDS = {
+    "admin_data_backup_age_hours": "admin_data_backup_at",
+    "source_refresh_age_hours": "source_refresh_at",
+}
 
 
 class MsmFreshnessResponse(StrictModel):
@@ -33,13 +38,14 @@ class DebugStatsResponse(StatsSnapshot):
 def health() -> dict[str, str | float | None]:
     # commitとstarted_at（プロセス起動時刻＝デプロイ時刻の目安）で、本番に実際に
     # デプロイされているコミットが最新かどうかを外部から確認できるようにする（注入されなければcommitはnull）。
-    # admin_data_backup_age_hoursはDBのバックアップが最後に置けてからの時間で、止まりに気づくために読む。
-    age = backup_age_hours(datetime.now(UTC))
     return {
         "status": "ok",
         "commit": settings.git_commit,
         "started_at": STARTED_AT.isoformat(),
-        "admin_data_backup_age_hours": None if age is None else round(age, 1),
+        **{
+            field: None if (age := hours_since(marker)) is None else round(age, 1)
+            for field, marker in _MARKER_FIELDS.items()
+        },
     }
 
 
