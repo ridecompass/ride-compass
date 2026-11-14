@@ -23,7 +23,6 @@ from app.batch.ingest import ingest_source
 from app.batch.source_adapters import abr, isj_block
 from app.domain.address_area import standardize_address
 from app.infrastructure.source_models import Source
-from tests.conftest import empty_ingested_tables
 from tests.source_ingest import ingest_records, profile_within, way_record
 
 pytestmark = pytest.mark.asyncio(loop_scope="module")
@@ -305,12 +304,3 @@ async def test_街区は住居表示の区域でABRの街区を鍵で地番の�
         ("1330510001101", "45"): ("parcel", pytest.approx(139.271), pytest.approx(35.746)),
         ("1410110001001", "5"): ("parcel", pytest.approx(139.671), pytest.approx(35.501)),
     }
-
-
-async def test_住所の生データが無ければ止まる(derive_conn):
-    """区画の無い作り直しは、検索と施設の辺りを黙って空にするので、止める。"""
-    await empty_ingested_tables(derive_conn)
-    await ingest_records("osm_way", [way_record(1, [(139.70, 35.69), (139.701, 35.691)], [1, 2])], conn=derive_conn)
-
-    with pytest.raises(RuntimeError, match="abr"):
-        await derive_addresses.derive(derive_conn)

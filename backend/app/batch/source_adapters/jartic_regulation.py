@@ -52,8 +52,7 @@ def archive_path(version: str, prefecture: str) -> Path:
 
 
 def jartic_regulation_inputs(spec: SourceSpec, profile: SourceProfile) -> RangeInputs:
-    return range_inputs(profile, lambda code: archive_path(spec.rows.version, code),
-                        "JARTIC の交通規制情報がありません（scripts/fetch_jartic_regulations.py が写す）")
+    return range_inputs(profile, lambda code: archive_path(spec.rows.version, code))
 
 
 def _regulation_shape(kind: str, coordinates: str) -> BaseGeometry:

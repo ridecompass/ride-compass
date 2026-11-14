@@ -103,15 +103,9 @@ def _has_point(row: dict[str, str]) -> bool:
     return bool(row.get("rep_lon")) and bool(row.get("rep_lat"))
 
 
-def _require(path: Path) -> Path:
-    if not path.exists():
-        raise FileNotFoundError(f"アドレス・ベース・レジストリの配布がありません: {path}（scripts/fetch_abr.py が写す）")
-    return path
-
-
 def city_positions_path(snapshot: str) -> Path:
     """市区町村の代表点の配布。範囲に掛かる都道府県はこれで決める。"""
-    return _require(archive_path(snapshot, "mt_city_pos_all"))
+    return archive_path(snapshot, "mt_city_pos_all")
 
 
 def range_prefectures(snapshot: str, target: Target) -> list[str]:
@@ -147,17 +141,12 @@ class RangeInputs(AdapterInputs):
         return {**super().origin(), "prefectures": list(self.prefectures)}
 
 
-def range_inputs(profile: SourceProfile, archive_of: Callable[[str], Path], missing: str) -> RangeInputs:
-    """範囲に掛かる都道府県と、`archive_of`が都道府県ごとに決めた配布。範囲を決めるのに読む ABR の市区町村の代表点と、
-    その取った日を宣言する ABR のソースも入力に入れる。配布が無ければ、無い置き場を`missing`（何が無く、何が写すか）に添えて止まる。"""
+def range_inputs(profile: SourceProfile, archive_of: Callable[[str], Path]) -> RangeInputs:
+    """範囲に掛かる都道府県と、`archive_of`が都道府県ごとに決めた配布。範囲を決めるのに読む ABR の市区町村の代表点も入力に入れる。"""
     snapshot = abr_snapshot(profile)
     prefectures = range_prefectures(snapshot, profile.target)
     archives = tuple(archive_of(code) for code in prefectures)
-    absent = [str(path) for path in archives if not path.exists()]
-    if absent:
-        raise FileNotFoundError(f"{missing}: {absent}")
     return RangeInputs(files=(city_positions_path(snapshot), *archives),
-                       sources=tuple(spec.name for spec in _abr_sources(profile)),
                        prefectures=tuple(prefectures), archives=archives)
 
 
@@ -225,10 +214,10 @@ class AbrInputs(AdapterInputs):
 
 def abr_inputs(spec: SourceSpec, profile: SourceProfile) -> AbrInputs:
     snapshot = spec.rows.snapshot
-    nationwide = {stem: _require(archive_path(snapshot, stem)) for stem in NATIONWIDE_ARCHIVES}
+    nationwide = {stem: archive_path(snapshot, stem) for stem in NATIONWIDE_ARCHIVES}
     prefectures = range_prefectures(snapshot, profile.target)
-    town_positions = {code: _require(archive_path(snapshot, town_position_stem(code))) for code in prefectures}
-    blocks = tuple((_require(archive_path(snapshot, texts)), _require(archive_path(snapshot, positions)))
+    town_positions = {code: archive_path(snapshot, town_position_stem(code)) for code in prefectures}
+    blocks = tuple((archive_path(snapshot, texts), archive_path(snapshot, positions))
                    for texts, positions in (block_stems(code) for code in prefectures))
     return AbrInputs(files=(*nationwide.values(), *town_positions.values(), *(path for pair in blocks for path in pair)),
                      nationwide=nationwide, town_positions=town_positions, blocks=blocks)

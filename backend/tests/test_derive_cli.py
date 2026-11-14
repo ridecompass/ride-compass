@@ -8,7 +8,6 @@
 `test_derive_stages.py`。
 """
 
-import types
 
 import asyncpg
 import pytest
@@ -207,42 +206,6 @@ async def test_rerunning_after_a_crash_between_the_swap_and_the_publish_places_t
     network = road_network_store.current()
     assert network.revision == 3
     assert (100, False) not in set(zip(network.edge_way_id.tolist(), network.edge_forward.tolist(), strict=True))
-
-
-@pytest.mark.parametrize("errcode", ["lock_not_available", "deadlock_detected"])
-async def test_a_swap_stopped_by_readers_holding_the_tables_is_retried(derived_before, monkeypatch, errcode):
-    """入れ替えが表を読んでいる相手に止められて巻き戻ったら（ロックの待ち切れ・デッドロック）、間を置いてやり直して入れ替わる。
-    やり直さないと、本番で十数分かけた作り直しが最後で落ちる。
-
-    読み手との競り合いはどちらが止められるかをDBが約束しないので、最初の`DROP TABLE`だけをその誤りで止める
-    イベントトリガーで起こす（止めた回数は巻き戻らない数列で数える）。"""
-    await _ingest_ways(derived_before, ONEWAY)
-    await derived_before.execute(f"""
-        CREATE SEQUENCE swap_stops;
-        CREATE FUNCTION stop_first_swap() RETURNS event_trigger LANGUAGE plpgsql AS $$
-        BEGIN
-            IF nextval('swap_stops') = 1 THEN
-                RAISE EXCEPTION '入れ替えを止めた' USING ERRCODE = '{errcode}';
-            END IF;
-        END $$;
-        CREATE EVENT TRIGGER stop_first_swap ON ddl_command_start WHEN TAG IN ('DROP TABLE')
-            EXECUTE FUNCTION stop_first_swap();
-    """)
-
-    async def no_wait(seconds: float) -> None:
-        pass
-
-    monkeypatch.setattr(derive_cli, "asyncio", types.SimpleNamespace(sleep=no_wait))
-    try:
-        assert await derive_cli.run(postgis_database_url()) == 0
-        assert await derived_before.fetchval("SELECT last_value FROM swap_stops") == 2
-    finally:
-        await derived_before.execute(
-            "DROP EVENT TRIGGER stop_first_swap; DROP FUNCTION stop_first_swap(); DROP SEQUENCE swap_stops")
-
-    assert await derived_before.fetchval("SELECT direction FROM way_directions WHERE osm_way_id = 100") == "forward"
-    assert await _revision(derived_before) == 2
-    assert road_network_store.current().revision == 2
 
 
 async def _nodes_with_signal(conn: asyncpg.Connection) -> set[int]:

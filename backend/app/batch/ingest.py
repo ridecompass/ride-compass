@@ -14,17 +14,10 @@
 
 取込は派生の作り直し・DBのバックアップと同時に走らない（`common.py: SOURCE_DATA_LOCK`）。どちらかが走っていれば
 始めずに止まる。
-
-**入力が前回と同じなら取り込まない。** 取込の行は、アダプタが読むファイルの中身・プロファイルの宣言・
-アダプタのコード・ライブラリの版だけで決まる（どのアダプタも時刻・乱数・網の向こうを読まない）。取込はこれらから
-指紋（`input_fingerprint`）を作って成功したrunへ残し、そのソースの成功した最新のrunと同じなら、行を入れ替えず、
-新しいrunも作らずに、そのrunを返す。runが変わらないので、派生の作り直しも生データが変わっていないと読める。
 """
 
-import hashlib
 import json
 import logging
-import sys
 import time
 from collections.abc import AsyncIterator, Callable
 from dataclasses import asdict, dataclass
@@ -35,10 +28,9 @@ from typing import Any
 import asyncpg
 from sqlalchemy.orm import InstrumentedAttribute
 
-from app.batch.code_fingerprint import code_fingerprint, library_versions
 from app.batch.common import PROGRESS_INTERVAL_SECONDS, SOURCE_DATA_LOCK, format_progress
 from app.batch.source_profile import NoFields, SourceProfile, SourceSpec
-from app.infrastructure.source_models import SourceRunStatus, latest_succeeded_run_by_column_sql
+from app.infrastructure.source_models import SourceRunStatus
 
 logger = logging.getLogger("ridecompass.ingest")
 
@@ -61,15 +53,13 @@ class SourceRecord:
 
 @dataclass(frozen=True)
 class AdapterInputs:
-    """アダプタが読む入力。取込は、行を読む前にこれを聞いて指紋（`input_fingerprint`）を作り、同じものを読み手へ渡す。
+    """アダプタが読む入力。取込は、行を読む前にこれを聞いて素性（`origin`）を作り、同じものを読み手へ渡す。
 
     読み方の材料（範囲に掛かる都道府県等）が要るアダプタは、欄を足した型を作って返す——読み手は入力を求め直さない。
     """
 
     #: 読むファイル全部。読み方（どのファイルを開くか）はプロファイルと置き場で決まる。
     files: tuple[Path, ...]
-    #: このソースのほかに、宣言（`rows`・`grid`）を読むソースの名前。
-    sources: tuple[str, ...] = ()
 
     def origin(self) -> dict[str, Any]:
         """runの`origin`へ残す、読んだ入力の素性。"""
@@ -84,7 +74,7 @@ type InputsOf[I: AdapterInputs] = Callable[[SourceSpec, SourceProfile], I]
 #: 非同期にするのは、外部からタイル単位で取るソースが並行取得を要るため。同期で足りる
 #: ソース（ローカルのCSVを読むだけ等）も同じ契約に乗せ、経路を2本にしない。
 #:
-#: 第3引数は、取込が指紋のために求めた入力（`InputsOf`の答え）。
+#: 第3引数は、取込が求めた入力（`InputsOf`の答え）。
 #: 第4引数は`origin`。**どこから取ったかを知っているのはアダプタだけ**なので、読んだ入力の素性
 #: （`AdapterInputs.origin`）のほかに分かったこと（配信元の断面の時刻等）をここへ書き込ませて
 #: `source_runs.origin`へ残す。呼び出し側は中身を知らない——ソースごとに意味のある項目が違い、
@@ -99,7 +89,7 @@ class RegisteredAdapter[I: AdapterInputs]:
     #: プロファイルの`rows`/`grid`の型。読み込みはこのフィールドにある欄だけを受け付ける。
     rows: type
     grid: type
-    #: 読む入力。取込はこれで指紋を作り、同じ入力を読み手へ渡す。
+    #: 読む入力。取込が求めて読み手へ渡す。
     inputs: InputsOf[I]
     #: このアダプタのソースの行が必ず持つ列（`SourceFeatureRow`の空を許す列）。取込が区画を作るときに
     #: NOT NULLで張り、`scripts/schema_gap.py`が実DBの区画と比べる。
@@ -121,36 +111,8 @@ def register_adapter[I: AdapterInputs](name: str, *, inputs: InputsOf[I], rows: 
     return decorate
 
 
-#: 成功したrunの`origin`に、取込が入力の指紋を書く項目。
-INPUT_FINGERPRINT = "input_fingerprint"
-
-
-def input_fingerprint(spec: SourceSpec, profile: SourceProfile, inputs: AdapterInputs) -> str:
-    """そのソースの取込の入力（アダプタが答えた`inputs`）の指紋。
-
-    入力は、読むファイルの場所と中身・範囲と読むソースの宣言・アダプタからたどれるコード
-    （`code_fingerprint.py`）・Pythonとアダプタからたどれるコードが読むライブラリの版。ファイルは中身を全部読む——大きさと更新時刻が
-    同じでも、中身が同じとは言えない。
-    """
-    digest = hashlib.sha256(_json({
-        "target": asdict(profile.target),
-        "sources": [_source_dict(profile.source(name)) for name in (spec.name, *inputs.sources)],
-        "code": code_fingerprint(ADAPTERS[spec.adapter].read.__module__),
-        "python": sys.version,
-        "libraries": library_versions(ADAPTERS[spec.adapter].read.__module__),
-    }).encode())
-    for name, path in sorted({str(path.resolve()): path for path in inputs.files}.items()):
-        digest.update(name.encode())
-        with path.open("rb") as file:
-            digest.update(hashlib.file_digest(file, "sha256").digest())
-    return digest.hexdigest()
-
-
 def file_origin(path: Path) -> dict[str, Any]:
-    """読んだファイルの素性。**取り直したかどうかを後から言えるだけの材料**を残す。
-
-    中身が同じかは、取込が別に残す入力の指紋（`input_fingerprint`）で言う。
-    """
+    """読んだファイルの素性。**取り直したかどうかを後から言えるだけの材料**を残す。"""
     stat = path.stat()
     return {"path": str(path), "bytes": stat.st_size,
             "mtime": datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat()}
@@ -231,9 +193,6 @@ async def ingest_source(
     失敗の記録は、行の入れ替えとは別のトランザクションで書く。入れ替えが途中で落ちても行は元の
     ままで、runは`failed`で残る。成功の記録は入れ替えと同じトランザクションで書くので、
     `succeeded`のrunの行は必ず入っている。
-
-    入力の指紋がそのソースの成功した最新のrunと同じなら、取り込まずにそのrunの`run_id`を返す。読むファイルが
-    揃っていなければ、runを作らずに止まる。
     """
     if conn.is_in_transaction():
         raise RuntimeError("取込はトランザクションの外の接続で呼ぶ（中で呼ぶと、失敗の記録が行と一緒に巻き戻る）")
@@ -249,18 +208,7 @@ async def _ingest(conn: asyncpg.Connection, profile: SourceProfile, source_name:
     spec = profile.source(source_name)
     registered = ADAPTERS[spec.adapter]
 
-    hashing = time.perf_counter()
     inputs = registered.inputs(spec, profile)
-    fingerprint = input_fingerprint(spec, profile, inputs)
-    hashed = time.perf_counter() - hashing
-    previous = await conn.fetchrow(
-        f"SELECT run_id, origin ->> '{INPUT_FINGERPRINT}' AS fingerprint "
-        f"FROM {latest_succeeded_run_by_column_sql('$1')} r", spec.name)
-    if previous is not None and previous["fingerprint"] == fingerprint:
-        logger.info("取り込まなかった（入力が前回と同じ）: source=%s 前回のrun_id=%d 入力の指紋=%.1fs",
-                    spec.name, previous["run_id"], hashed)
-        return previous["run_id"]
-
     await _ensure_partition(conn, spec)
     origin = inputs.origin()
     run_id = await _open_run(conn, spec, profile)
@@ -287,8 +235,7 @@ async def _ingest(conn: asyncpg.Connection, profile: SourceProfile, source_name:
         async with conn.transaction():
             locked_at = await _replace_rows(conn, spec.name, run_id, rows())
             elapsed = time.perf_counter() - started
-            await _close_run(conn, run_id, SourceRunStatus.SUCCEEDED, counts(elapsed),
-                             {**origin, INPUT_FINGERPRINT: fingerprint})
+            await _close_run(conn, run_id, SourceRunStatus.SUCCEEDED, counts(elapsed), origin)
         locked = time.perf_counter() - locked_at
     except BaseException:
         elapsed = time.perf_counter() - started
@@ -300,8 +247,8 @@ async def _ingest(conn: asyncpg.Connection, profile: SourceProfile, source_name:
             logger.warning("取込の失敗をrunへ書けなかった（runは running のまま残る）: run_id=%d",
                            run_id, exc_info=True)
         raise
-    logger.info("取込完了: source=%s run_id=%d records=%d elapsed=%.1fs パーティションの排他ロック（待ちを含む）=%.1fs"
-                " 入力の指紋=%.1fs", spec.name, run_id, written, elapsed, locked, hashed)
+    logger.info("取込完了: source=%s run_id=%d records=%d elapsed=%.1fs パーティションの排他ロック（待ちを含む）=%.1fs",
+                spec.name, run_id, written, elapsed, locked)
     return run_id
 
 

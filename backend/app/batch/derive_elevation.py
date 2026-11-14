@@ -158,31 +158,17 @@ FROM ({elevation_values_sql(_VERTEX_ELEVATIONS, "$1::float8")}) v
 
 
 async def _products_in_priority(conn: asyncpg.Connection) -> list[tuple[str, int]]:
-    """取り込まれた製品とそのズームを、画素の値を採る順に並べる。
-
-    順を知らない製品や、1製品に2つのズームがあれば止める——どちらも、どの値を採るかを
-    決められない。
-    """
+    """取り込まれた製品とそのズームを、画素の値を採る順に並べる。順を知らない製品は読まない。"""
     rows = await conn.fetch(
-        "SELECT attrs->>'product' AS product, array_agg(DISTINCT (attrs->>'z')::int) AS zooms"
-        f" FROM {DEM_TILES_SQL} t GROUP BY 1")
-    zooms = {r["product"]: r["zooms"] for r in rows}
-    unknown = sorted(set(zooms) - set(PRODUCT_PRIORITY))
-    mixed = sorted(p for p, z in zooms.items() if len(z) != 1)
-    if unknown or mixed:
-        raise ValueError(f"標高タイルの製品を並べられません: 順を知らない {unknown}"
-                         f" / ズームが複数 {mixed}")
-    return [(p, zooms[p][0]) for p in PRODUCT_PRIORITY if p in zooms]
+        f"SELECT attrs->>'product' AS product, min((attrs->>'z')::int) AS zoom FROM {DEM_TILES_SQL} t GROUP BY 1")
+    zooms = {r["product"]: r["zoom"] for r in rows}
+    return [(p, zooms[p]) for p in PRODUCT_PRIORITY if p in zooms]
 
 
 async def _derive_elevation(conn: asyncpg.Connection, profile_step_m: float, bridge_end_radius_m: float) -> None:
     started = time.perf_counter()
     products = await _products_in_priority(conn)
     await conn.execute("TRUNCATE edge_elevation")
-    if not products:
-        logger.warning("標高タイルが1枚も取り込まれていません")
-        return
-
     edges = await conn.fetchval("SELECT count(*) FROM road_edges")
     await conn.execute(_SHAPES)
     await conn.execute("ANALYZE _shape")

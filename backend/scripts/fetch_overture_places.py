@@ -49,7 +49,7 @@ def fetch(release: str, bbox: tuple[float, float, float, float]) -> bool:
     url = PLACES_URL_TEMPLATE.format(release=release)
     min_lat, min_lon, max_lat, max_lon = bbox
 
-    def write(temporary: Path) -> bool:
+    def write(temporary: Path) -> None:
         with duckdb.connect() as conn:
             conn.execute(f"SET s3_region = '{_S3_REGION}'")
             # 点の`bbox`の最小は点そのもの。`hive_partitioning`は置き場のパスの`theme=`・`type=`を列にする。
@@ -58,7 +58,6 @@ def fetch(release: str, bbox: tuple[float, float, float, float]) -> bool:
                 " WHERE bbox.xmin BETWEEN ? AND ? AND bbox.ymin BETWEEN ? AND ?)"
                 f" TO '{temporary}' (FORMAT parquet)",
                 [url, min_lon, max_lon, min_lat, max_lat])
-        return True
 
     return place_verified(places_path(release), _readable, write, source=url, logger=logger)
 

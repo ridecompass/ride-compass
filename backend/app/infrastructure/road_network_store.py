@@ -127,13 +127,7 @@ def publish(pending: Path) -> Path:
     """`write_pending`が書いたものを世代の名前へ付け替え、同じ形で世代の古い置き場を消す。"""
     revision = _read_manifest(pending)["revision"]
     target = ROOT / directory_name(revision)
-    try:
-        pending.rename(target)
-    except OSError:
-        # 同じ世代を別の処理が先に書き終えた。中身は同じなので、こちらの書きかけを捨てる。
-        shutil.rmtree(pending, ignore_errors=True)
-        if not target.exists():
-            raise
+    pending.rename(target)
     for removed in prune(target):
         logger.info("古い道路網の置き場を消しました %s", removed.name)
     logger.info("道路網の置き場を作りました %s", target.name)
@@ -169,11 +163,7 @@ def current() -> RoadNetwork:
     global _loaded
     latest = _latest_directory()
     if _loaded is None or _loaded[0] != latest:
-        try:
-            _loaded = _open_latest()
-        except FileNotFoundError:
-            # 選んでから開くまでに、派生の作り直し（`publish`）が新しい世代へ付け替えて古い置き場を消した。
-            _loaded = _open_latest()
+        _loaded = _open_latest()
         logger.info("道路網を読みました %s 有向の区間=%d", _loaded[0].name, _loaded[1].edge_count)
     return _loaded[1]
 
@@ -407,9 +397,7 @@ class MaterialColumns:
         self._filled = stop
 
     def result(self) -> dict[str, Any]:
-        """`RoadNetwork`の材料の欄。束が1つも無ければ断る。"""
-        if not self._arrays:
-            raise ValueError("道路網に区間が1本もありません")
+        """`RoadNetwork`の材料の欄。"""
         return {
             **self._ids,
             **self._arrays,

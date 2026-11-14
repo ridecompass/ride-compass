@@ -66,8 +66,7 @@ def open_shapefile(archive: zipfile.ZipFile) -> shapefile.Reader:
 
 
 def estat_small_area_inputs(spec: SourceSpec, profile: SourceProfile) -> RangeInputs:
-    return range_inputs(profile, lambda code: boundary_path(spec.rows.survey, code),
-                        "e-Stat の小地域の境界がありません（scripts/fetch_estat_small_areas.py が写す）")
+    return range_inputs(profile, lambda code: boundary_path(spec.rows.survey, code))
 
 
 def _to_wgs84(geometry: BaseGeometry, transformer: pyproj.Transformer) -> BaseGeometry:

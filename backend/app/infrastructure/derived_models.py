@@ -271,8 +271,7 @@ class EdgeTrafficRegulationRow(_EdgeKey, Base):
 
 
 class WayDirectionRow(_WayKey, Base):
-    """道1本の性質（通行方向・上下線分離）。区間粒度の対応物を持たない。全部の道が行を持つ
-    （`batch/derive_way_directions.py`が段の最後に数を比べて守る）。"""
+    """道1本の性質（通行方向・上下線分離）。区間粒度の対応物を持たない。道ごとに1行。"""
 
     __tablename__ = "way_directions"
     __table_args__ = (vocabulary_check("way_directions", "direction", DIRECTIONS), {"info": DERIVED})

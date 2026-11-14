@@ -132,7 +132,7 @@ def fetch_timeout(read_seconds: float) -> httpx.Timeout:
 def place_verified(
     destination: Path,
     readable: Callable[[Path], bool],
-    write: Callable[[Path], bool],
+    write: Callable[[Path], None],
     *,
     source: str,
     logger: logging.Logger,
@@ -141,8 +141,8 @@ def place_verified(
 
     - 手元にあって読めるファイルは取り直さない
     - `write`に一時ファイルへ書かせてから所定の名前へ移す。途中で落ちた半端なものを「取得済み」に見せない
-    - 書き終えたら`readable`で実際に開いてみる。開けないか、`write`が欠けていると返したら（False）退けてFalseを
-      返す——読めないファイルを置いたまま成功を報告すると、次に落ちるのはそれを読む取込の途中になる
+    - 書き終えたら`readable`で実際に開いてみる。開けなければ退けてFalseを返す——読めないファイルを置いたまま
+      成功を報告すると、次に落ちるのはそれを読む取込の途中になる
 
     開いてみるのは所定の名前へ移してから——開く道具には名前の拡張子で形を決めるものがあり、一時ファイルの印の付いた
     名前では開けない。`source`は取りに行く先で、ログにだけ使う。`write`の例外はそのまま呼び出し側へ出す。
@@ -155,15 +155,13 @@ def place_verified(
     temporary = destination.with_name(destination.name + FETCH_PART_SUFFIX)
     broken = destination.with_name(destination.name + FETCH_BROKEN_SUFFIX)
     started = time.perf_counter()
-    if write(temporary):
-        temporary.replace(destination)
-        logger.info("取得した %s（%.1f MB / %s）", destination.name,
-                    destination.stat().st_size / (1024 * 1024), format_duration(time.perf_counter() - started))
-        if readable(destination):
-            return True
-        destination.replace(broken)
-    else:
-        temporary.replace(broken)
+    write(temporary)
+    temporary.replace(destination)
+    logger.info("取得した %s（%.1f MB / %s）", destination.name,
+                destination.stat().st_size / (1024 * 1024), format_duration(time.perf_counter() - started))
+    if readable(destination):
+        return True
+    destination.replace(broken)
     logger.error("取ったが読めない: %s（%s へ退けた。もう一度実行すると取り直す）", destination.name, broken.name)
     return False
 
@@ -181,7 +179,7 @@ def fetch_verified(
     大きさだけでは半端なファイルも配布元が200で返すエラー本文も弾けないため、`readable`は中身を開いて確かめる
     ものを渡す。`read_timeout`は`fetch_timeout`へ渡す。通信の失敗は例外のまま呼び出し側へ出す。
     """
-    def write(temporary: Path) -> bool:
+    def write(temporary: Path) -> None:
         started = time.perf_counter()
         last_report = started
         written = 0
@@ -200,7 +198,6 @@ def fetch_verified(
                         written // (1024 * 1024),
                         total // (1024 * 1024) if total else None,
                         now - started, "MB"))
-        return True
 
     return place_verified(destination, readable, write, source=url, logger=logger)
 

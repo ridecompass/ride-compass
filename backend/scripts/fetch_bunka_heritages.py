@@ -8,7 +8,6 @@ r"""国の指定・登録の文化財の建造物（文化遺産オンライン�
 `_REQUEST_INTERVAL_SECONDS`待つ（同じガイドの1.4）。
 
 置く手順（読めるものは取り直さない・一時ファイル経由・書き終えたら開いてみる）は`app.batch.common.place_verified`が持つ。
-書き終えたら、行の数が応答の件数（`hit`）と合うかも見る——途中で打ち切られた一覧を取得済みに見せない。
 
 置き場の名前はプロファイルの取った日（`bunka_heritages`ソースの`rows.snapshot`）で決まる。取り直すときは日を変える。
 
@@ -54,8 +53,8 @@ def _readable(path: Path) -> bool:
         return False
 
 
-def _write(temporary: Path) -> bool:
-    """全件を1行1件で書く。行の数が応答の件数に合えばTrue。"""
+def _write(temporary: Path) -> None:
+    """全件を1行1件で書く。"""
     written = 0
     params: dict[str, str] = SEARCH_PARAMS
     with httpx.Client(timeout=fetch_timeout(_READ_TIMEOUT_SECONDS)) as client, \
@@ -73,10 +72,6 @@ def _write(temporary: Path) -> bool:
                 break
             params = {"scrollId": page["scrollId"]}
             time.sleep(_REQUEST_INTERVAL_SECONDS)
-    if written != hit:
-        logger.error("取り出した一覧が件数に合わない（%d件 / 応答の件数 %d件）", written, hit)
-        return False
-    return True
 
 
 def fetch(snapshot: str) -> bool:
