@@ -6,7 +6,7 @@
  * 2つの区分を開いていれば最後に触った区分が効いてその題に添えること、区間を選んでいる間は地図にその区間の範囲の縁取りが
  * 出ること、効いているパネルが移ると前のパネルで地図に出した選択を外すこと。ルートを選んでいる間は「表示」で出した点の層を
  * ルートの線から近い点だけに描き（区間を選んでも変えず、「範囲と色」で地図全体を選ぶと地図全体へ戻す）、描いた名前のある点を押すと
- * 道からの距離を添えた点の小窓を出して区間へ戻れ、名前の無い点だけの所を押すと下の区間を開くこと。走行中は点の小窓の位置を
+ * 道からの距離を添えた点の小窓を出して区間へ戻れ、名前の無い点を押すと種類の名前で点の小窓を開くこと。走行中は点の小窓の位置を
  * 現在地からの残りで出し、同じ道を2度通るルートでは現在地から続く側で数えること。地図は選んでいるルート1本へ収め（生成直後は先頭、タブで選び直すとその1本）、地図の候補の線を押して
  * 選んだときは収め直さないこと。
  *
@@ -356,7 +356,7 @@ describe("ルートの近くの点", () => {
     expect(pointsOnMap()).toHaveProperty(SUPPLY);
   });
 
-  it("描いた名前のある点を押すと、道からの距離を添えた点の小窓を出して区間へ戻れ、名前の無い点だけの所を押すと下の区間を開く", async () => {
+  it("描いた名前のある点を押すと、道からの距離を添えた点の小窓を出して区間へ戻れ、名前の無い点を押すと種類の名前で点の小窓を開く", async () => {
     const { user } = renderHome();
     await showLayers(user, ["補給・休憩ポイント"]);
     await generateNear(user);
@@ -384,12 +384,10 @@ describe("ルートの近くの点", () => {
     );
     expect(screen.getByRole("group", { name: "区間の小窓の上の帯" })).toBeInTheDocument();
 
-    const [, second] = mapOnScreen().sourceFeatures("route-segments");
-    clickMap(ELSEWHERE, [
-      drawn(undefined),
-      { layer: "route-segments-detailHit", properties: second.properties ?? {}, geometry: second.geometry },
-    ]);
-    expect(screen.getByRole("group", { name: "区間の小窓の上の帯" })).toBeInTheDocument();
+    clickMap(ELSEWHERE, [drawn(undefined)]);
+    const popup = screen.getByRole("group", { name: "点の小窓の上の帯" }).parentElement!;
+    expect(within(popup).getByText("トイレ")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "ここのストリートビューを開く" })).toBeInTheDocument();
   });
 
   it("走行中は、点の小窓の位置を現在地からの残りで出し、同じ道を2度通るルートでは現在地から続く側で数える", async () => {

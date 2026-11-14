@@ -12,13 +12,6 @@ export const FRAME = 24;
 const BOX_PATH = "M6 1h12a5 5 0 0 1 5 5v12a5 5 0 0 1-5 5H6a5 5 0 0 1-5-5V6a5 5 0 0 1 5-5Z";
 const circle = (x: number, y: number, r: number) =>
   `M${x - r} ${y}a${r} ${r} 0 1 0 ${2 * r} 0a${r} ${r} 0 1 0 ${-2 * r} 0Z`;
-/** 線の絵の枠。押せる点（名前のある点）は角丸の四角、押せない点（名前の無い点）は丸——枠の形で押せるかを、絵記号で何の点かを表す。
- * 標識の絵は枠を持たない。 */
-export type PointFrame = "box" | "circle";
-const FRAME_PATHS: Record<PointFrame, string> = {
-  box: BOX_PATH,
-  circle: circle(12, 12, 11),
-};
 /** 枠の縁取りの画面上の太さは源泉が決める。 */
 const BOX_STROKE = (mapDisplay.point.strokeWidthPx * FRAME) / mapDisplay.point.iconSizePx;
 /** 線の絵は枠の内側へ縮めて載せる。 */
@@ -41,7 +34,7 @@ export type IconPart =
   | { readonly text: string; readonly x: number; readonly y: number; readonly size: number; readonly fill: string };
 
 /** 点の絵の形。線の絵は行の色の枠に白い線で載せ、標識の絵は色を持つ部品を順に描く（枠も行の色も使わない）。名前を持たない層
- * （押せない点だけの層）の絵は標識の絵で、日本の道路標識・信号機に似せて何の点かを直感的に読ませる。 */
+ * の絵は標識の絵で、日本の道路標識・信号機に似せて何の点かを直感的に読ませる。 */
 type PointGlyphShape = { readonly line: string } | { readonly sign: readonly IconPart[] };
 
 const SIGN = palette.semantic;
@@ -54,7 +47,7 @@ const BICYCLE =
   "M2.5 17a3.5 3.5 0 1 0 7 0a3.5 3.5 0 1 0-7 0 M14.5 17a3.5 3.5 0 1 0 7 0a3.5 3.5 0 1 0-7 0 M6 17l3.5-8h6l2.5 8 M9.5 9l3 8H6 M14 6h2.5";
 
 /** 点の絵（絵記号の名前 → 形）。 */
-export const POINT_GLYPHS: Record<PointGlyph, PointGlyphShape> = {
+const POINT_GLYPHS: Record<PointGlyph, PointGlyphShape> = {
   bag: { line: "M6 9h12l-1 11H7Z M9 9V7.5a3 3 0 0 1 6 0V9" },
   bottle: { line: "M10 3h4 M10.5 3v3.5l-2 3V20a1 1 0 0 0 1 1h5a1 1 0 0 0 1-1V9.5l-2-3V3 M8.5 13h7" },
   question: { line: "M9 9a3 3 0 1 1 4.2 2.75c-.75.33-1.2 1-1.2 1.8V15 M12 19h.01" },
@@ -69,7 +62,7 @@ export const POINT_GLYPHS: Record<PointGlyph, PointGlyphShape> = {
   mountain: { line: "M2.5 19L9 8l4 6.5L15.5 11l6 8Z" },
   bed: { line: "M3 7v12 M3 15h18v4 M21 15v-3a3 3 0 0 0-3-3h-7v6 M7 12h.01" },
   gate: { line: "M3 6c6 1 12 1 18 0 M5 10h14 M7 6.5V21 M17 6.5V21" },
-  // 両端の丸い横長の信号機（青・黄・赤）。押せる点の角丸四角と形で見分けるよう、四角い箱にしない。
+  // 両端の丸い横長の信号機（青・黄・赤）。線の絵の角丸四角と形で見分けるよう、四角い箱にしない。
   signal: {
     sign: [
       {
@@ -83,7 +76,7 @@ export const POINT_GLYPHS: Record<PointGlyph, PointGlyphShape> = {
       { d: circle(18, 12, 2.9), fill: SIGN.signal_stop },
     ],
   },
-  // 路面の白黒の縞（横断歩道）。押せる点の角丸四角と形で見分けるよう、囲む四角を持たない。
+  // 路面の白黒の縞（横断歩道）。線の絵の角丸四角と形で見分けるよう、囲む四角を持たない。
   crosswalk: {
     sign: [
       {
@@ -148,13 +141,13 @@ export const POINT_GLYPHS: Record<PointGlyph, PointGlyphShape> = {
   },
 };
 
-/** 点の絵の部品の列。標識の絵は宣言の部品のまま（枠も行の色も使わない）、線の絵は行の色`color`の枠`frame`に白い線を載せる。
+/** 点の絵の部品の列。標識の絵は宣言の部品のまま（枠も行の色も使わない）、線の絵は行の色`color`の角丸の四角の枠に白い線を載せる。
  * 地図へ登録する画素（`features/map/layers/pointIcon.ts: drawPointIcon`）と見本が同じ列を描く。 */
-export function pointIconParts(color: string, glyph: PointGlyph, frame: PointFrame): readonly IconPart[] {
+export function pointIconParts(color: string, glyph: PointGlyph): readonly IconPart[] {
   const shape = POINT_GLYPHS[glyph];
   if ("sign" in shape) return shape.sign;
   return [
-    { d: FRAME_PATHS[frame], fill: color, stroke: palette.semantic.mark_stroke, width: BOX_STROKE },
+    { d: BOX_PATH, fill: color, stroke: palette.semantic.mark_stroke, width: BOX_STROKE },
     {
       d: shape.line,
       stroke: palette.semantic.mark_glyph,
@@ -164,19 +157,19 @@ export function pointIconParts(color: string, glyph: PointGlyph, frame: PointFra
   ];
 }
 
-/** 点の絵の外形（標識の絵は最初の部品、線の絵は押せる点の枠）だけを色`color`で塗った部品。大きさだけで意味を示す行の見本が、
+/** 点の絵の外形（標識の絵は最初の部品、線の絵は枠）だけを色`color`で塗った部品。大きさだけで意味を示す行の見本が、
  * 地図の点と同じ形で大小を見せるのに使う（中の印や行の色を載せると、先頭の軸のどれかの行に見える）。 */
 function pointOutlineParts(color: string, glyph: PointGlyph): readonly IconPart[] {
-  const [outline] = pointIconParts(color, glyph, "box");
+  const [outline] = pointIconParts(color, glyph);
   if ("text" in outline) throw new Error(`絵の最初の部品が形でない: ${glyph}`);
   return [{ ...outline, fill: color }];
 }
 
-/** 点の見本。地図と同じ形・同じ大きさで、線の絵は押せる点の枠（角丸四角）で出す。大きさ`sizePx`を渡すと、絵の外形だけを
+/** 点の見本。地図と同じ形・同じ大きさで出す。大きさ`sizePx`を渡すと、絵の外形だけを
  * その大きさで出す（大きさで意味を示す行の見本）。 */
 export function PointIconSwatch({ color, glyph, sizePx }: { color: string; glyph: PointGlyph; sizePx?: number }) {
   const size = sizePx ?? mapDisplay.point.iconSizePx;
-  const parts = sizePx === undefined ? pointIconParts(color, glyph, "box") : pointOutlineParts(color, glyph);
+  const parts = sizePx === undefined ? pointIconParts(color, glyph) : pointOutlineParts(color, glyph);
   return (
     <svg
       aria-hidden="true"
