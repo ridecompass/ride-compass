@@ -49,7 +49,7 @@ class LulcGrid:
 
 
 def lulc_adapter_inputs(spec: SourceSpec, profile: SourceProfile) -> AdapterInputs:
-    """置き場のGeoTIFF（全部が開けなければ`LandcoverUnavailableError`）。"""
+    """置き場のGeoTIFF。"""
     # rasterioのimport順の制約（PROJデータの固定）を持つモジュールを経由して読む。
     from app.infrastructure.landcover_raster import opened_raster_paths
 

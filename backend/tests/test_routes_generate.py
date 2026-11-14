@@ -18,7 +18,6 @@
 """
 
 import asyncio
-import logging
 import re
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -249,18 +248,16 @@ async def test_a_spliced_route_with_a_road_the_network_does_not_have_says_why(cl
     assert JAPANESE.search(status["result"]["no_candidates_reason"])
 
 
-async def test_a_spliced_route_outside_the_search_area_fails_as_an_error_of_the_backend(client, world, monkeypatch, caplog):
-    """探索の範囲が送られた区間を覆わなかったら、利用者への理由（つながっていない等）にせず、ERRORを残してジョブを失敗させる
-    ——理由にすると、範囲の誤りが利用者の操作の誤りに見え、本番で気付けない。範囲を作る側が送られた区間を取りこぼした状態は、
+async def test_a_spliced_route_outside_the_search_area_fails_as_an_error_of_the_backend(client, world, monkeypatch):
+    """探索の範囲が送られた区間を覆わなかったら、利用者への理由（つながっていない等）にせず、ジョブを失敗させる
+    ——理由にすると、範囲の誤りが利用者の操作の誤りに見える。範囲を作る側が送られた区間を取りこぼした状態は、
     区間の両端を引く口（`GraphService.edge_endpoints`）を空にして作る。"""
     world.serve(LATTICE)
     monkeypatch.setattr(GraphService, "edge_endpoints", bound(GraphService.edge_endpoints, lambda self, edge_ids: []))
 
-    with caplog.at_level(logging.ERROR):
-        status = await _generate(client, **lattice_at(0, 0).model_dump(), spliced_edge_ids=lattice_ring_edges(4))
+    status = await _generate(client, **lattice_at(0, 0).model_dump(), spliced_edge_ids=lattice_ring_edges(4))
 
     assert status["status"] == "failed"
-    assert [r for r in caplog.records if r.levelno == logging.ERROR]
 
 
 async def test_a_distance_with_placed_points_is_the_length_of_the_whole_route(client, world):

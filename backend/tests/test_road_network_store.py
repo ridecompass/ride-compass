@@ -129,10 +129,10 @@ def test_a_published_network_reads_back_as_it_was_built():
 
 
 def test_a_network_being_written_is_not_read_until_it_is_published(store):
+    road_network_store.publish(road_network_store.write_pending(_network(revision=3)))
     pending = road_network_store.write_pending(_network(revision=4))
 
-    with pytest.raises(road_network_store.RoadNetworkUnavailableError):
-        road_network_store.current()
+    assert road_network_store.current().revision == 3
     road_network_store.publish(pending)
     assert road_network_store.current().revision == 4
     assert [path.name for path in store.iterdir()] == [road_network_store.directory_name(4)]

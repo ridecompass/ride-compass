@@ -16,7 +16,7 @@
 
 | レイヤー | ファイル |
 |---|---|
-| app | `page.tsx`（機能のフックをつなぎ、下の枠へ渡す）・`HomeHeader.tsx`（ヘッダー［走行中は走りの帯］と、取れていないことの印・開発者向けのログ）・`HomeMapPane.tsx`（地図と、地図の上に重ねる操作・走行中の下端）・`RoutePanels.tsx`（デスクトップの左のパネルとモバイルの下部タブ・シート。どちらも「ルート設定」「ルート結果」の2区分）・`useRideGuidance.ts`（走行モードの間の進み・次に曲がる所・残り）・`usePagePanels.ts`（画面の枠: 区分・シートの開閉と高さ・地図で効いているパネル・まだ見ていない結果と、地図を押したときの意味の決まり）・`layout.tsx`・`error.tsx`・`global-error.tsx` |
+| app | `page.tsx`（機能のフックをつなぎ、下の枠へ渡す）・`HomeHeader.tsx`（ヘッダー［走行中は走りの帯］と、取れていないことの印・開発者向けのログ）・`HomeMapPane.tsx`（地図と、地図の上に重ねる操作・走行中の下端）・`RoutePanels.tsx`（デスクトップの左のパネルとモバイルの下部タブ・シート。どちらも「ルート設定」「ルート結果」の2区分）・`useRideGuidance.ts`（走行モードの間の進み・次に曲がる所・残り）・`usePagePanels.ts`（画面の枠: 区分・シートの開閉と高さ・地図で効いているパネル・まだ見ていない結果と、地図を押したときの意味の決まり）・`layout.tsx`・`error.tsx` |
 | hooks | `useStoredState.ts`・`useIsMobile.ts`・`useVisualViewport.ts`・`useLocation.ts`・`useDebouncedValue.ts`・`useIsomorphicLayoutEffect.ts` |
 | features/map/view | `useMapView.ts`（地図の見え方の状態と、地図・操作部品へ渡す値）・`mapLook.ts`（地図へ渡す見え方の値の型）・`lens.ts`（選んだレンズから全道路を塗るレンズ・凡例を導く）・`overlayChips.ts`（地図上チップの状態とレイヤー表示の保存形式）・`legendFilters.ts`（凡例で隠した行の保存先の読み書き） |
 | features/map/MapView | `useLayerDataStatus.ts`（MapLibreのソースイベントからレイヤーごとの取得状態を算出して渡す）・`useMapLifecycle.ts`（地図を作り、読み込み・失敗・動かした範囲・向き・ソースの取得のイベントを状態と知らせ先へつなぐ。「地図の表示を再描画」のスタイルの取り直しも持つ）・`MapLoadStatus.tsx`（読み込みの間の覆いと、地図が白紙のまま止まったときの案内）・`mapCamera.ts`（ルート・選んだ区間を収める・地点へ寄せるときに、地図の上に重ねた部品を避ける。線が見えている所に入るかも同じ避け方で測る）・`useSectionFocus.ts`（頼まれたときだけ形へ寄せ〔小窓の寄せるアイコンとグラフの寄せるボタンが同じ手続きを使う〕、選んだ区間が見えている所の外にあるかを知らせる） |
