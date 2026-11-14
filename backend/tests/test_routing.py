@@ -1,6 +1,6 @@
 """`app/domain/routing.py`——計算済みのEdge Costで経路を探す層。
 
-見るもの: 一対全の木と2点間探索の結果（コスト・時刻ビン・経路の復元）、木の繋ぎ目、置いた点を寄せてよいノード
+見るもの: 一対全の木と2点間探索の結果（コスト・時刻ビン・経路の復元）、木の繋ぎ目とそこで継いだ経路の選定、置いた点を寄せてよいノード
 （出て戻れる集まり）、探索のJITの型。
 
 ここで見ないもの:
@@ -462,6 +462,103 @@ def test_junction_leaves_unreachable_nodes_empty():
     assert np.isnan(junction.length_m[isolated])
     assert junction.forward_state[isolated] == -1
     assert junction.backward_state[isolated] == -1
+
+
+# --- 木を継いだ経路の取り出しと選定 ---
+
+JUNCTION_OVERLAP_RATIOS = [0.3, 0.6]
+
+
+def _python_walk(predecessor, state):
+    edges = []
+    while state >= 0:
+        edges.append(int(state))
+        state = int(predecessor[state])
+    return edges
+
+
+class _SetOverlap:
+    """採用済みの経路ごとに`overlap_ratio`を測り直す素直な重複率（比べる相手）。測った値を残す。"""
+
+    def __init__(self, paths, edge_length_m):
+        self._paths, self._edge_length_m, self._accepted, self.ratios = paths, edge_length_m, [], []
+
+    def max_ratio(self, node):
+        path = self._paths[node]
+        if path is None:
+            return None
+        ratio = max(
+            (route_diversity.overlap_ratio(np.asarray(path), np.asarray(other), self._edge_length_m)
+             for other in self._accepted),
+            default=0.0,
+        )
+        self.ratios.append(ratio)
+        return ratio
+
+    def accept(self, node):
+        self._accepted.append(self._paths[node])
+
+
+def _junction_selection(costs):
+    """4×4の格子の隅から対角の隅へ、全Nodeを経由の候補として番号順に選んだ結果を、`JunctionPaths`と素直な書き方の両方で
+    求める。素直な書き方は、前任者をPythonで辿り、両側の区間を両端のNodeのfrozensetにして重なりを見る。"""
+    lazy, statics, structure = build_all(make_grid(4))
+    cost = np.resize(np.asarray(costs), structure.state_count)
+    edge_length_m = cost * 100.0
+    destination = lazy.node_id_to_index["n3_3"]
+    forward = routing.build_turn_expanded_tree(
+        structure, cost, edge_length_m, out_states(lazy, "n0_0"), lazy.node_count, edge_seconds=cost,
+        transition_cost=structure.turn_seconds,
+    )
+    backward = routing.build_turn_expanded_tree(
+        structure, cost, edge_length_m, np.flatnonzero(lazy.graph.edge_to == destination), lazy.node_count,
+        reverse=True, edge_seconds=cost, transition_cost=structure.turn_seconds,
+    )
+    junction = routing.combine_forward_backward_at_nodes(
+        structure, forward, backward, lazy.node_count, transition_cost=structure.turn_seconds,
+    )
+    routing.add_terminal_candidate(junction, forward, destination)
+    paths = routing.JunctionPaths(junction, forward, backward, lazy.graph.edge_from, lazy.graph.edge_to)
+
+    def segments(path):
+        return {frozenset({int(lazy.graph.edge_from[e]), int(lazy.graph.edge_to[e])}) for e in path}
+
+    reference = {}
+    for node in range(lazy.node_count):
+        forward_state, backward_state = int(junction.forward_state[node]), int(junction.backward_state[node])
+        if forward_state < 0:
+            reference[node] = None
+            continue
+        halves = (
+            _python_walk(forward.predecessor, forward_state)[::-1],
+            _python_walk(backward.predecessor, backward_state),
+        )
+        reference[node] = None if segments(halves[0]) & segments(halves[1]) else halves
+    measure = _SetOverlap({node: found and found[0] + found[1] for node, found in reference.items()}, edge_length_m)
+    expected = route_diversity.select_diverse_by_overlap(range(lazy.node_count), measure, JUNCTION_OVERLAP_RATIOS, 4)
+    selected = route_diversity.select_diverse_by_overlap(
+        range(lazy.node_count), route_diversity.EdgeSetOverlap(paths.edges, edge_length_m, 4), JUNCTION_OVERLAP_RATIOS, 4,
+    )
+    return (
+        [paths.halves(node) for node in selected], [reference[node] for node in expected],
+        sum(found is None for found in reference.values()), measure.ratios,
+    )
+
+
+@given(st.lists(st.floats(0.5, 5.0), min_size=48, max_size=48))
+def test_junction_paths_pick_the_same_via_routes_as_walking_the_trees_in_python(costs):
+    """目的地ルートの代わりの道は、継いだ経路が行って戻る形のNodeを除き、採用済みと重なりすぎる候補を飛ばして選ぶ。
+    前任者を辿るのと重なりを測るのをJITへ移しても、選ぶNodeと順・経路は素直な書き方と同じでなければ、候補の道が変わる。"""
+    actual, expected, _, _ = _junction_selection(costs)
+    assert actual == expected
+
+
+def test_junction_selection_example_covers_retraced_and_overlapping_candidates():
+    """上の比べ合いが、行って戻る形のNodeと重なりで飛ばす候補の両方を通る入力で成り立つ。"""
+    actual, expected, retraced, ratios = _junction_selection([1.0] * 48)
+    assert actual == expected
+    assert retraced > 0
+    assert max(ratios) > JUNCTION_OVERLAP_RATIOS[-1]
 
 
 # --- 時刻ビンの契約 ---

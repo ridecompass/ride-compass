@@ -15,11 +15,10 @@ from app.domain.route_search import (
     rank_by_pareto_layers,
 )
 from app.domain.routing import (
+    JunctionPaths,
     add_terminal_candidate,
     build_turn_expanded_tree,
     combine_forward_backward_at_nodes,
-    turn_expanded_path_from_state,
-    turn_expanded_path_from_state_to_source,
     turn_expanded_shortest_path,
 )
 from app.domain.route_diversity import EdgeSetOverlap, select_diverse_by_overlap
@@ -45,7 +44,6 @@ from app.services.road_graph_context import (
     heuristic_to,
     traveled_columns,
     avoiding_traveled,
-    physical_segments,
 )
 
 # ランキング上位から間引き判定にかけるvia-node候補数の上限（経路復元コストの上限）。目的地ルートのbboxは周回より
@@ -73,7 +71,7 @@ async def select_via_nodes(
        常に先頭へ回す——合成コスト最小であっても、伸び率の許す範囲でより1kmあたりの代償の
        小さい経路が他に存在すればその並びではそちらが上位に来うるため、「最良路は必ず
        結果に含まれる」をランキングとは独立に保証する。
-    3. `select_diverse_by_overlap`で、前向き経路・後ろ向き経路が同じEdgeを共有する
+    3. `select_diverse_by_overlap`で、前向き経路・後ろ向き経路が同じ道（逆向きの区間を含む）を通る
        Node（行って戻る形になり経路として成立しない）を除外しつつ、採用済み候補との
        重複率（最後の区間どうし）が閾値超のものを飛ばして`max_routes`件採る。
 
@@ -186,45 +184,16 @@ async def select_via_nodes(
         )
     ranked = best_first(ranked, best_index)
 
-    halves_cache: dict[int, tuple[list[int], list[int]] | None] = {}
-
-    def halves(node_index: int) -> tuple[list[int], list[int]] | None:
-        """経由Nodeを通る最後の区間の（前向き, 後ろ向き）の区間の番号列。行って戻る形ならNone。"""
-        if node_index in halves_cache:
-            return halves_cache[node_index]
-        halves_cache[node_index] = None
-        forward_state = int(junction.forward_state[node_index])
-        if forward_state < 0:
-            return None
-        forward_edges = turn_expanded_path_from_state(forward_tree, forward_state)
-        backward_state = int(junction.backward_state[node_index])
-        # backward_stateが-1なのは終点そのものを指す場合で、後ろ向きの区間は無い。
-        backward_edges = (
-            turn_expanded_path_from_state_to_source(backward_tree, backward_state) if backward_state >= 0 else []
-        )
-        # 行って戻る形（前向き・後ろ向きが同じ物理区間を通る）の判定は、
-        # 進行方向を無視した物理区間キーで行う——
-        # 同じ道でも逆方向Edge（別のedge_id/index）を通れば単純なEdge index
-        # 集合の比較では検出できないため。
-        if physical_segments(context, forward_edges).keys() & physical_segments(context, backward_edges).keys():
-            return None
-        halves_cache[node_index] = (forward_edges, backward_edges)
-        return halves_cache[node_index]
-
-    def full_edges(node_index: int) -> list[int] | None:
-        found = halves(node_index)
-        return None if found is None else found[0] + found[1]
-
+    paths = JunctionPaths(junction, forward_tree, backward_tree, context.lazy_graph.edge_from, context.lazy_graph.edge_to)
     selected = select_diverse_by_overlap(
-        ranked, EdgeSetOverlap(full_edges, context.statics.edge_length_m, max_routes),
+        ranked, EdgeSetOverlap(paths.edges, context.statics.edge_length_m, max_routes),
         corridor_overlap_ratios(), max_routes,
     )
 
     traced: list[TracedLoop] = []
     for node_index in selected:
-        found = halves(node_index)
-        if found is None or not (found[0] or found[1]):
-            continue
+        found = paths.halves(node_index)
+        assert found is not None
         path, leg_of_edge = fixed.joined(*found)
         traced.append(TracedLoop(
             bearing=None, distance_km=path_km(context, path), data=path, leg_of_edge=leg_of_edge,

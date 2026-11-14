@@ -3,8 +3,9 @@ from collections.abc import Callable, Container, Mapping, Sequence
 from typing import Generic, Protocol, TypeVar
 
 import numpy as np
+from numba import njit
 
-from app.domain.search_graph import run_starts
+from app.domain.search_graph import kernel_array, run_starts
 
 
 def overlap_ratio(candidate_edges: np.ndarray, accepted_edges: np.ndarray, edge_length_m: np.ndarray) -> float:
@@ -143,8 +144,7 @@ class EdgeSetOverlap(Generic[T]):
     """経路をEdge index列で取り出して、`overlap_ratio`の割合で測る`OverlapMeasure`（どんな経路どうしにも使える）。
 
     採用済み候補ごとの集合をEdgeごとのuint64ビットマスク1本（bit `i` が「採用済み`i`件目がこのEdgeを含む」を表す）で
-    持ち、候補のEdge index配列で行を抜き出して距離加重和を1回のnumpy演算で求める。そのため`max_count`はuint64の
-    64bitを超えられない。
+    持ち、候補のEdgeを1回なめて採用済みごとの距離加重和を求める。そのため`max_count`はuint64の64bitを超えられない。
     """
 
     def __init__(
@@ -153,15 +153,14 @@ class EdgeSetOverlap(Generic[T]):
         if max_count > 64:
             raise ValueError(f"EdgeSetOverlap: max_count={max_count} exceeds the uint64 bitmask limit (64)")
         self._edge_indices_of = edge_indices_of
-        self._edge_length_m = edge_length_m
+        self._edge_length_m = kernel_array(edge_length_m, np.float64)
         self._edge_bits = np.zeros(len(edge_length_m), dtype=np.uint64)
-        self._slot_bits = np.uint64(1) << np.arange(max(max_count, 1), dtype=np.uint64)
         self._accepted_count = 0
 
     def _edges(self, item: T) -> np.ndarray | None:
         edges = self._edge_indices_of(item)
         # 空は「どれとも重複しない候補」ではなく「経路にならない」。Noneと同じ扱い。
-        return np.asarray(edges, dtype=np.int64) if edges else None
+        return None if edges is None or len(edges) == 0 else kernel_array(edges, np.int64)
 
     def max_ratio(self, item: T) -> float | None:
         edge_array = self._edges(item)
@@ -169,16 +168,28 @@ class EdgeSetOverlap(Generic[T]):
             return None
         if not self._accepted_count:
             return 0.0
-        lengths = self._edge_length_m[edge_array]
-        candidate_bits = self._edge_bits[edge_array]
-        shared_mask = (candidate_bits[:, None] & self._slot_bits[: self._accepted_count]) != 0
-        return max(_shared_ratio(lengths, shared_mask[:, slot]) for slot in range(self._accepted_count))
+        return _max_shared_ratio(self._edge_length_m, self._edge_bits, edge_array, self._accepted_count)
 
     def accept(self, item: T) -> None:
         edge_array = self._edges(item)
         assert edge_array is not None
-        self._edge_bits[edge_array] |= self._slot_bits[self._accepted_count]
+        self._edge_bits[edge_array] |= np.uint64(1) << np.uint64(self._accepted_count)
         self._accepted_count += 1
+
+
+@njit(cache=True, nogil=True)
+def _max_shared_ratio(edge_length_m: np.ndarray, edge_bits: np.ndarray, edges: np.ndarray, accepted_count: int) -> float:
+    """`edges`のうち、採用済みのそれぞれ（`edge_bits`のbit）と共有する部分の距離加重割合の最大。"""
+    shared = np.zeros(accepted_count)
+    total = 0.0
+    for edge in edges:
+        length = edge_length_m[edge]
+        total += length
+        bits = edge_bits[edge]
+        for slot in range(accepted_count):
+            if (bits >> np.uint64(slot)) & np.uint64(1):
+                shared[slot] += length
+    return shared.max() / total
 
 
 def select_diverse_by_overlap(
