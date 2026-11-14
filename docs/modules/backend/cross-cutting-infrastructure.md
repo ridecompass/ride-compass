@@ -299,7 +299,7 @@ frontend側（`src/proxy.ts`）も同じ資格情報を別のBasic認証チェ�
 
 `install_ring_buffer_handler()`（`debug_control.py`、`main.py`起動時に1回）が
 `_LogRingBufferHandler`（`deque(maxlen=1000)`）をルートロガーへ追加する。既存の
-標準出力ハンドラ（Dockerのjson-fileドライバへ渡る）はそのまま残るため、既存の
+標準出力ハンドラ（本番ではVMのjournalへ渡る。[tech-stack.md](../../architecture/tech-stack.md)「本番のログ」）はそのまま残るため、既存の
 常時ログ出力には影響しない。`_LogRingBufferHandler`は各行を`(levelno, 整形済み文字列)`
 のタプルで保持し、`min_level`フィルタは整形済み文字列を`[LEVELNAME]`のような
 部分文字列でパースせずこの数値で判定する。
