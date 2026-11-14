@@ -293,7 +293,7 @@ backendの答え、タイルで配る要素ごとのタイルのパスを`script
 一律にこの上限へ従う。直前フェッチ時刻は時刻一覧のキャッシュと一緒に`jma_tile_client.py: JmaTileSharedState`が持ち、
 DI工場（`api/dependencies.py`）がプロセスに1つ持ってクライアントへ渡す（`JmaTileClient`はリクエストごとに使い捨てで
 作られるため。アメダスのサービスが推計気象分布を読むクライアントも同じものを受ける）。プロセスをまたいでは
-効かないため、ワーカーを複数にした起動は`single_process.py`が止める
+効かず、backendは1プロセスで動かす前提に立つ
 （[横断的な基盤](cross-cutting-infrastructure.md)「1プロセスの境界」）。
 
 ## 天候取得（`weather_service.py: WeatherService`）
