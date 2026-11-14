@@ -35,7 +35,8 @@ description: "タスクを実装担当・検証担当として進める手順（
 3. issue の本文とコメントを読む（`GH_TOKEN=$FLOW_BOT_TOKEN gh issue view <番号> -R ridecompass/ride-compass-tasks --json title,body,comments --jq '.title, .body, (.comments[] | "--- \(.author.login) \(.createdAt)", .body)'`。
    `--comments` は本文を出さない）。下書きへ戻されたタスクなら、Pull Request のコメントも読む。CLAUDE.md と規約のとおりに作る。
    - ユーザーが書いた文（答えの文・コメント）のうち、前の担当の終わりの「読み始め」より後のものを読む。直してほしいこと・同じ要望の足し分なら
-     完了の条件に行を足して作り、別の要望なら切り出し（.claude/skills/file-issue/SKILL.md「分ける」）、問いなら答える。
+     完了の条件に行を足して作り、別の要望なら切り出し（.claude/skills/file-issue/SKILL.md「分ける」）、問いなら答える。読んだ文の言葉は、
+     本文の「ユーザーの言葉」に行き先つきで足す（.claude/skills/file-issue/SKILL.md「issue の形」の「ユーザーの言葉の行き先」）。
    - 作る前に、答えの無い判断（方針・目的の読み・見た目の案・本番への書き込み・長く残る形。長く残る形は
      .claude/skills/file-issue/SKILL.md「issue の形」の「長く残る形は、作る前に合意する」の設計の項を書いてから）が残っていれば、問いに要る分だけ調べて、作らずに問う
      （.claude/skills/ask/SKILL.md「問い」）。issue の本文が「この issue で決める」としているものも、ここに当たる。
@@ -96,7 +97,7 @@ description: "タスクを実装担当・検証担当として進める手順（
 **検証担当**（検査が合格したタスク。作った担当とは別）
 1. 作業ブランチと依存を取り（冒頭の「作業ブランチ」「依存」）、Pull Request（`gh pr view <番号> -R ridecompass/ride-compass --json title,body,comments,reviews`）・差分・
    issue の完了の条件・変更が届く範囲を、実装担当の報告を写さずに自分で見る。完了の条件と、利用者に見える結果（画面・API の応答・
-   テストが見る振る舞い）を先に見る。画面は実装担当と同じ道具・脚本で後を撮り、前は貼られた画像（コメントの添付の URL を
+   テストが見る振る舞い）を先に見る。本文の「ユーザーの言葉」を読み、行き先の条件が言葉の意図に入るものを外していれば満たしていない。画面は実装担当と同じ道具・脚本で後を撮り、前は貼られた画像（コメントの添付の URL を
    `curl -sSL -o <作業ツリーの外> <URL>` で取って Read で見る）と比べる。`lost_constraints.py` も回し、「消えた」制約に本文の処置が無ければ満たしていない。
    ゲート（`tools/flow-gate/`）の変更は、事実を `tools/flow-gate/src/decide.js: decide` へ渡して出る値で見る（本物の GitHub へは書かない）。
    増減は `python scripts/review_checks.py change` で自分で測る。実装かテストが増えていれば、足したもの（関数・クラス・ファイル・テスト）1件ずつに、
