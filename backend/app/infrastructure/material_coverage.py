@@ -87,7 +87,7 @@ def _edge_coverage_sql():
 
 class MaterialCoverageQuery:
     """読み取り専用でcommit対象の書き込みは無い。全表走査を伴うため管理API専用
-    （`api/dependencies.py: get_material_coverage_service`が長いcommand_timeoutのセッションを渡す）。"""
+    （`api/dependencies.py: get_material_coverage_service`がルート生成と同じプールのセッションを渡す）。"""
 
     def __init__(self, session: AsyncSession):
         self._session = session

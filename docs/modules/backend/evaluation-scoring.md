@@ -296,7 +296,6 @@ wayの長さ（0はNULL）になる——件数と長さは必ず同じ側から
   「どちらの一覧にも載っていない材料」を作れないため、網羅性を確かめるテストは要らない。
 - `MaterialCoverageService.get_material_coverage`はDB例外を握りつぶさず伝播させ、アプリ共通の例外の扱い
   （`api/failure_replies.py`）が503で返す（診断用APIのため空レポートへ倒して「欠損0件」に見せない）。
-  `api/dependencies.py: get_material_coverage_service`はルート生成用の長い
-  `command_timeout`（180秒）を持つセッションを渡す（全表走査がタイル配信用の20秒を
-  超えうるため）。
+  `api/dependencies.py: get_material_coverage_service`はルート生成用のプールのセッションを渡す（全表走査が
+  1本の接続を長く持つため、タイル配信の接続と取り合わせない）。
 - 欠損の扱いと母集団の画面の名前（管理画面の欠損率の見出し・説明）は、`domain/material_coverage_spec.py: MISSING_SEMANTICS_DISPLAY`・`domain/material_coverage_spec.py: POPULATION_LABELS`が持ち、生成物`vocabulary.ts`で画面へ届く。

@@ -29,7 +29,7 @@ DENSE_POINT = (35.6896, 139.7006)
 ZOOMS = range(ROAD_TILE_MIN_ZOOM, ROAD_TILE_MAX_ZOOM + 1)
 #: 1枚を取り終えるまでの上限（秒）。超えたら失敗にする。
 TILE_LIMIT_SECONDS = 10.0
-#: 1回の要求の上限（秒）。DBの上限（20秒）で返る503を受け取れる長さにする。
+#: 1回の要求の上限（秒）。1枚の上限（`TILE_LIMIT_SECONDS`）を超えた遅さを、時間切れでなく所要として測れる長さにする。
 REQUEST_TIMEOUT_SECONDS = 30
 
 

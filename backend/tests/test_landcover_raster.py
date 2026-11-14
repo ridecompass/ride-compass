@@ -1,6 +1,6 @@
 """`infrastructure/landcover_raster.py`——土地被覆のGeoTIFFから、XYZタイル1枚ぶんのクラスと絵を作る。
 
-入口は`tile_classes`・`render_tile`・`empty_tile_png`・`opened_raster_paths`。
+入口は`tile_classes`・`render_tile`・`empty_tile_png`。
 ラスタは置き場（フィクスチャ`raster_dir`）に本物のGeoTIFFを書く。開いたラスタはプロセスに残るので、テストごとに閉じる口（`close_sources`）で開く前の状態に戻してから始め、同じ口で閉じる。
 タイルの範囲はXYZの公開の定義（Web Mercatorの全幅を2^z等分し、yは北から数える）から作る。
 
@@ -139,14 +139,3 @@ def test_the_empty_tile_is_a_fully_clear_image_of_tile_size():
 
     assert image.shape == (SIZE, SIZE, 4)
     assert (image[:, :, 3] == 0).all()
-
-
-def test_a_raster_that_cannot_be_opened_is_an_error_and_is_opened_once_it_appears(raster_store):
-    """開けなければエラー。デプロイはラスタの取得とコンテナの入れ替えを別に行うので、起動時に無くても後から現れ、次の読みで開く。"""
-    path = raster_store / "54S_2024.tif"
-    with pytest.raises(landcover_raster.LandcoverUnavailableError):
-        landcover_raster.opened_raster_paths()
-
-    over_tile(path, stripes(2), *TOKYO)
-
-    assert landcover_raster.opened_raster_paths() == [str(path)]

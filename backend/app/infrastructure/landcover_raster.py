@@ -12,7 +12,6 @@
 モジュールはimport順に依存する（呼ばないとEPSG解決が環境によって失敗する）。
 """
 
-import logging
 import math
 import threading
 from dataclasses import dataclass
@@ -35,7 +34,6 @@ from rasterio.enums import Resampling  # noqa: E402
 from rasterio.warp import reproject, transform_bounds  # noqa: E402
 from rasterio.windows import Window, transform as window_transform  # noqa: E402
 
-logger = logging.getLogger("ridecompass.landcover_raster")
 
 TILE_SIZE = 256
 _TILE_CRS = "EPSG:3857"
@@ -62,10 +60,6 @@ _opened_sources: list[_RasterSource] | None = None
 _sources_lock = threading.Lock()
 
 
-class LandcoverUnavailableError(Exception):
-    """土地被覆のラスタが置き場に無いか、1枚でも開けない（開けた分だけで配ると、欠けた区域が透明な絵として配られ、
-    キャッシュにも残る）。範囲の外（どのラスタも覆っていない）とは別の事実。"""
-
 #: 画素値→RGBA。`LANDCOVER_CLASSES`に無い値（No Data・Clouds）と、塗らないと宣言した
 #: クラスは透明のまま残る。
 _PALETTE = np.zeros((256, 4), dtype=np.uint8)
@@ -79,19 +73,11 @@ def raster_paths() -> list[str]:
 
 
 def _open_sources() -> list[_RasterSource]:
-    """置き場のラスタを全部開いて持つ（開けたら以後は開き直さない）。開けなければ`LandcoverUnavailableError`で、次の読みで
-    開き直す——デプロイはラスタの取得とコンテナ入れ替えを別のステップで行うため、起動時に無くても後から現れる。"""
+    """置き場のラスタを全部開いて持つ（開けたら以後は開き直さない）。"""
     global _opened_sources
     with _sources_lock:
         if _opened_sources is None:
-            paths = raster_paths()
-            try:
-                if not paths:
-                    raise FileNotFoundError(f"置き場にラスタがありません: {data_paths.RASTER_DIR}")
-                _opened_sources = [_RasterSource(rasterio.open(path), threading.Lock()) for path in paths]
-            except (OSError, rasterio.errors.RasterioIOError) as exc:
-                logger.warning("土地被覆のラスタを開けません paths=%s error=%r", paths, exc)
-                raise LandcoverUnavailableError("土地被覆のラスタを開けないため、土地被覆を配れません") from exc
+            _opened_sources = [_RasterSource(rasterio.open(path), threading.Lock()) for path in raster_paths()]
         return _opened_sources
 
 
@@ -151,7 +137,7 @@ def _png(image: Image.Image) -> bytes:
 
 
 def opened_raster_paths() -> list[str]:
-    """開いたラスタのパス（開けなければ`LandcoverUnavailableError`）。"""
+    """開いたラスタのパス。"""
     return [source.dataset.name for source in _open_sources()]
 
 

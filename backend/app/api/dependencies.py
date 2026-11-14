@@ -63,7 +63,7 @@ from app.services.wbgt_service import WbgtService
 from app.services.weather_service import WeatherService
 
 
-#: DBのセッション工場。タイル配信と同じ短いcommand_timeoutのものと、ルート生成・全表走査の集計が使う長いもの。
+#: DBのセッション工場。タイル配信と同じプールのものと、1本の接続を長く持つルート生成・全表走査の集計が使うもの。
 TileSessions = Annotated[async_sessionmaker[AsyncSession], Depends(get_session_factory)]
 LongSessions = Annotated[async_sessionmaker[AsyncSession], Depends(get_route_generation_session_factory)]
 
@@ -218,8 +218,7 @@ def get_gsi_tile_client():
 
 
 # 以下の管理API向けのうち、書き込み・1テーブル読みで足りるものはタイル配信と同じ
-# セッション工場を使い、全表走査を伴う集計はルート生成用の長いcommand_timeoutを使う
-# （短い方だと集計が最後まで走らずキャンセルされる）。
+# セッション工場を使い、全表走査を伴う集計はルート生成と同じプールを使う（タイル配信の接続を長く塞がない）。
 async def get_tuning_service(tile_sessions: TileSessions):
     async with tile_sessions() as session:
         yield TuningService(session, TuningOverrideStore(session))

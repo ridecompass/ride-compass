@@ -23,27 +23,19 @@ async function forward(request: Request): Promise<Response> {
   if (!pathname.startsWith(`${ADMIN_PROXY_PREFIX}/`)) return new Response(null, { status: 404 });
   const backendPath = `${BACKEND_ADMIN_PREFIX}${pathname.slice(ADMIN_PROXY_PREFIX.length)}`;
   const hasBody = request.method === "POST" || request.method === "PUT";
-  // 本文は応答の頭が届いたあとにも切れるので、読み終えるまでを同じ失敗として扱う。
-  try {
-    const backendResponse = await fetch(`${BACKEND_INTERNAL_URL}${backendPath}${search}`, {
-      method: request.method,
-      headers: {
-        Authorization: `Basic ${Buffer.from(`${credentials.username}:${credentials.password}`).toString("base64")}`,
-        ...(hasBody ? { "Content-Type": "application/json" } : {}),
-      },
-      body: hasBody ? await request.text() : undefined,
-    });
-    if (backendResponse.status === 204) return new Response(null, { status: 204 });
-    return new Response(await backendResponse.text(), {
-      status: backendResponse.status,
-      headers: { "Content-Type": backendResponse.headers.get("content-type") ?? "application/json" },
-    });
-  } catch (error) {
-    // detailは管理画面の本文へそのまま出るため、ランタイム由来の英語の文言（"fetch failed"等）は
-    // 入れず、原因の追跡用にサーバーのログへだけ残す。
-    console.error(`admin proxy: ${backendPath}`, error);
-    return Response.json({ detail: "backendへの接続に失敗しました[通信エラー]" }, { status: 502 });
-  }
+  const backendResponse = await fetch(`${BACKEND_INTERNAL_URL}${backendPath}${search}`, {
+    method: request.method,
+    headers: {
+      Authorization: `Basic ${Buffer.from(`${credentials.username}:${credentials.password}`).toString("base64")}`,
+      ...(hasBody ? { "Content-Type": "application/json" } : {}),
+    },
+    body: hasBody ? await request.text() : undefined,
+  });
+  if (backendResponse.status === 204) return new Response(null, { status: 204 });
+  return new Response(await backendResponse.text(), {
+    status: backendResponse.status,
+    headers: { "Content-Type": backendResponse.headers.get("content-type") ?? "application/json" },
+  });
 }
 
 export const GET = forward;

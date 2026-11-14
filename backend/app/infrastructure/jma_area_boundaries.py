@@ -91,35 +91,18 @@ def _load_boundaries(path: Path) -> AreaBoundaries:
     return boundaries
 
 
-class AreaBoundariesUnavailableError(Exception):
-    """区域の境界を読めない。地点が区域の外（None）とは別の事実で、区域を引けたかが分からない。"""
-
-
 async def find_class20_code(lat: float, lon: float) -> str | None:
     """地点が属する区域（area.jsonのclass20）のコード。どの区域にも入らなければNone。
 
-    境界を読めなければ`AreaBoundariesUnavailableError`を送出する。初回だけ境界の読み込み（数秒かかる）が
-    走るため、イベントループの外で読む。
+    初回だけ境界の読み込み（数秒かかる）が走るため、イベントループの外で読む。
     """
-    boundaries = await _load_boundaries_or_raise()
+    boundaries = await asyncio.to_thread(_load_boundaries, BOUNDARY_PATH)
     return boundaries.find(lat, lon)
 
 
-async def _load_boundaries_or_raise() -> AreaBoundaries:
-    try:
-        return await asyncio.to_thread(_load_boundaries, BOUNDARY_PATH)
-    except (OSError, ValueError, shapely.errors.GEOSException) as exc:
-        logger.warning(
-            "区域の境界を読めないため警報・洪水予報の区域を引けません path=%s error=%r"
-            "（scripts/fetch_jma_area_boundaries.pyで取得する）",
-            BOUNDARY_PATH, exc,
-        )
-        raise AreaBoundariesUnavailableError("区域の境界を読めないため、警報・洪水予報の区域を引けません") from exc
-
-
 async def find_class20_codes(points: list[tuple[float, float]]) -> list[str | None]:
-    """地点（緯度, 経度）ごとの`find_class20_code`。境界を読めなければ`AreaBoundariesUnavailableError`を送出する。"""
-    boundaries = await _load_boundaries_or_raise()
+    """地点（緯度, 経度）ごとの`find_class20_code`。"""
+    boundaries = await asyncio.to_thread(_load_boundaries, BOUNDARY_PATH)
     return await asyncio.to_thread(boundaries.find_many, points)
 
 
