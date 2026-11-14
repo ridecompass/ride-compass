@@ -164,7 +164,7 @@ from app.domain.tuning import client_tuning_ids
 from app.domain.weather import PRECIPITATION_MIN_MM
 from app.infrastructure.msm_client import DEFAULT_UPDATE_INTERVAL_SECONDS as MSM_UPDATE_INTERVAL_SECONDS
 from app.infrastructure.jma_amedas_client import AMEDAS_REFRESH_INTERVAL_MINUTES
-from app.infrastructure.job_registry import JOB_TTL_SECONDS, JOB_WAIT_MAX_SECONDS
+from app.infrastructure.job_registry import JOB_WAIT_MAX_SECONDS
 from app.services.tile_version_service import tile_shapes
 
 GENERATED_DIR = Path(__file__).resolve().parents[2] / "frontend" / "src" / "types" / "generated"
@@ -610,9 +610,6 @@ def main() -> None:
             "disabled_label": DISABLED_LABEL,
             "min_assumed_speed_kmh": MIN_ASSUMED_SPEED_KMH,
             "max_assumed_speed_kmh": MAX_ASSUMED_SPEED_KMH,
-            # フロントのポーリングの打ち切り。backendが結果を持つ時間より長く待つと、
-            # 掃除済みのjob_idを引いて「ジョブが見つかりません」になる。
-            "job_result_ttl_seconds": JOB_TTL_SECONDS,
             # フロントが状態を問い合わせるとき、終わるまで待たせる秒（口が受け付ける上限そのもの）。
             "job_wait_seconds": JOB_WAIT_MAX_SECONDS,
             # 区間ごとに速度を変える条件の名前（走行モデルの並び）。所要時間の説明が差し込む。

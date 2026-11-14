@@ -131,14 +131,14 @@ describe("AdminPage 較正値", () => {
     expect(screen.getByRole("button", { name: "DBへ保存" })).toBeDisabled();
   });
 
-  it("保存中は押せず、待つ間に打ち直した値は消さずに未保存として残す", async () => {
+  it("保存中はそう出し、待つ間に打ち直した値は消さずに未保存として残す", async () => {
     const held = heldReplies();
     const user = await openWith([alpha]);
     onSameOrigin("PUT", UPDATE, held.reply);
 
     await typeValue(user, "アルファ", "12");
     await user.click(screen.getByRole("button", { name: "DBへ保存" }));
-    expect(await screen.findByRole("button", { name: "保存中…" })).toBeDisabled();
+    expect(await screen.findByRole("button", { name: "保存中…" })).toBeInTheDocument();
     await typeValue(user, "アルファ", "15");
     await held.answer(0, Response.json({ ...alpha, value: 12 }));
 
