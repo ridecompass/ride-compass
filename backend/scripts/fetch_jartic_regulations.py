@@ -7,8 +7,8 @@ r"""日本道路交通情報センター（JARTIC）の交通規制情報（都�
 配布元の一覧（`LISTING_URL`）が持ち、手で表を持たない。
 
 配布元は最新の版しか置かないので、一覧の版がプロファイルの版（`jartic_regulation`ソースの`rows.version`）と違えば、
-その版のファイルはもう取れない。手元に読めるファイルがあればそれを使い、無ければ版を上げるよう言って止まる。
-手元の全部が読めるなら一覧も読まない。取得の手順は`app.batch.common.fetch_verified`が持つ。
+その版のファイルはもう取れない。手元にファイルがあればそれを使い、無ければ版を上げるよう言って止まる。
+手元に全部あるなら一覧も読まない。取得の手順は`app.batch.common.fetch_once`が持つ。
 
 実行方法（backendディレクトリから）:
     .venv\Scripts\python.exe scripts\fetch_jartic_regulations.py
@@ -24,11 +24,10 @@ import httpx
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.batch.common import fetch_timeout, fetch_verified, fetched_all
+from app.batch.common import fetch_once, fetch_timeout
 from app.batch.fetch_cli import run_profile_fetch_cli
 from app.batch.source_adapters.abr import abr_snapshot, range_prefectures
-from app.batch.source_adapters.jartic_regulation import ENCODING, archive_path
-from app.batch.source_adapters.zip_csv import zip_csv_readable
+from app.batch.source_adapters.jartic_regulation import archive_path
 from app.batch.source_profile import SourceProfile, SourceSpec
 
 logger = logging.getLogger("ridecompass.fetch_jartic_regulations")
@@ -43,11 +42,6 @@ _LISTING_READ_TIMEOUT_SECONDS = 30.0
 _READ_TIMEOUT_SECONDS = 300.0
 
 
-def _readable(path: Path) -> bool:
-    """見出しにユニークキーがあり、1行以上あるか。"""
-    return zip_csv_readable(path, ENCODING, "ユニークキー")
-
-
 def _listed_links() -> dict[str, str]:
     """一覧の交通規制情報の、都道府県コード（2桁）→ ファイルへの道。"""
     response = httpx.get(LISTING_URL, timeout=fetch_timeout(_LISTING_READ_TIMEOUT_SECONDS), follow_redirects=True)
@@ -57,8 +51,8 @@ def _listed_links() -> dict[str, str]:
 
 
 def fetch(version: str, prefectures: list[str]) -> bool:
-    """`version`の版の`prefectures`の配布を置く。全部を置けたか（手元にあって読めたか）。"""
-    missing = [code for code in prefectures if not _readable(archive_path(version, code))]
+    """`version`の版の`prefectures`の配布を置く。全部が手元にあるか、置けたか。"""
+    missing = [code for code in prefectures if not archive_path(version, code).exists()]
     if not missing:
         logger.info("版 %s の配布は全部手元にある", version)
         return True
@@ -69,19 +63,20 @@ def fetch(version: str, prefectures: list[str]) -> bool:
         return False
     stale = sorted({links[code] for code in missing if not links[code].startswith(f"/{version}/")})
     if stale:
-        logger.error("配布元の版が宣言の版 %s と違い、手元にも読める配布が無い: %s。"
+        logger.error("配布元の版が宣言の版 %s と違い、手元にも配布が無い: %s。"
                      "source_profile.yaml の jartic_regulation の rows.version を配布元の版へ上げる", version, ", ".join(stale))
         return False
-    return fetched_all(
-        fetch_verified(FILES_URL + links[code], archive_path(version, code), _readable,
-                       read_timeout=_READ_TIMEOUT_SECONDS, logger=logger)
-        for code in missing)
+    for code in missing:
+        fetch_once(FILES_URL + links[code], archive_path(version, code),
+                   read_timeout=_READ_TIMEOUT_SECONDS, logger=logger)
+    return True
 
 
 def _fetch_specs(args: argparse.Namespace, profile: SourceProfile, specs: list[SourceSpec]) -> bool:
     prefectures = range_prefectures(abr_snapshot(profile), profile.target)
     logger.info("範囲に掛かる都道府県: %s", ", ".join(prefectures))
-    return fetched_all(fetch(version, prefectures) for version in sorted({spec.rows.version for spec in specs}))
+    # 1つの版で止まっても残りの版を取りに行くよう、`all`へは生成器でなく並べ終えた一覧を渡す。
+    return all([fetch(version, prefectures) for version in sorted({spec.rows.version for spec in specs})])
 
 
 def main() -> int:

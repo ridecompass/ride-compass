@@ -57,14 +57,6 @@ def boundary_path(survey: str, prefecture: str) -> Path:
     return DATA_DIR / survey / f"{prefecture}.zip"
 
 
-def open_shapefile(archive: zipfile.ZipFile) -> shapefile.Reader:
-    """配布の zip の中の Shapefile（`.shp`・`.shx`・`.dbf`）を開く。"""
-    members = {Path(name).suffix.lower(): name for name in archive.namelist()}
-    return shapefile.Reader(shp=io.BytesIO(archive.read(members[".shp"])),
-                            shx=io.BytesIO(archive.read(members[".shx"])),
-                            dbf=io.BytesIO(archive.read(members[".dbf"])), encoding=_ENCODING)
-
-
 def estat_small_area_inputs(spec: SourceSpec, profile: SourceProfile) -> RangeInputs:
     return range_inputs(profile, lambda code: boundary_path(spec.rows.survey, code))
 
@@ -81,7 +73,10 @@ def _read_prefecture(path: Path, transformer: pyproj.Transformer) -> list[Source
     parts: dict[str, list[BaseGeometry]] = defaultdict(list)
     attrs: dict[str, dict[str, Any]] = {}
     with zipfile.ZipFile(path) as archive:
-        reader = open_shapefile(archive)
+        members = {Path(name).suffix.lower(): name for name in archive.namelist()}
+        reader = shapefile.Reader(shp=io.BytesIO(archive.read(members[".shp"])),
+                                  shx=io.BytesIO(archive.read(members[".shx"])),
+                                  dbf=io.BytesIO(archive.read(members[".dbf"])), encoding=_ENCODING)
         for item in reader.iterShapeRecords():
             record = item.record.as_dict()
             if record["HCODE"] != NORMAL_AREA_HCODE:

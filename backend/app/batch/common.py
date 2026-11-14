@@ -7,7 +7,7 @@ import argparse
 import asyncio
 import logging
 import time
-from collections.abc import AsyncIterator, Callable, Coroutine, Iterable
+from collections.abc import AsyncIterator, Callable, Coroutine
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, TypeVar
@@ -115,10 +115,6 @@ def format_progress(done: int, total: int | None, elapsed: float, unit: str = "�
 #: 取得途中の一時ファイルの印。所定の名前と紛れないもの。
 FETCH_PART_SUFFIX = ".part"
 
-#: 落としたが開けなかったものを退ける先。消さないのは、開けない理由が壊れていることとは
-#: 限らず、消すと落とし直しにまた時間を払うため。
-FETCH_BROKEN_SUFFIX = ".broken"
-
 
 def fetch_timeout(read_seconds: float) -> httpx.Timeout:
     """配布元から1つのファイルを取るときのタイムアウト。
@@ -129,55 +125,44 @@ def fetch_timeout(read_seconds: float) -> httpx.Timeout:
     return httpx.Timeout(connect=10.0, read=read_seconds, write=30.0, pool=30.0)
 
 
-def place_verified(
+def place_once(
     destination: Path,
-    readable: Callable[[Path], bool],
     write: Callable[[Path], None],
     *,
     source: str,
     logger: logging.Logger,
-) -> bool:
+) -> None:
     """配布元から取ったものを手元の所定の名前へ置く。何度実行しても安全で、終わる。
 
-    - 手元にあって読めるファイルは取り直さない
+    - 手元にあるファイルは取り直さない
     - `write`に一時ファイルへ書かせてから所定の名前へ移す。途中で落ちた半端なものを「取得済み」に見せない
-    - 書き終えたら`readable`で実際に開いてみる。開けなければ退けてFalseを返す——読めないファイルを置いたまま
-      成功を報告すると、次に落ちるのはそれを読む取込の途中になる
 
-    開いてみるのは所定の名前へ移してから——開く道具には名前の拡張子で形を決めるものがあり、一時ファイルの印の付いた
-    名前では開けない。`source`は取りに行く先で、ログにだけ使う。`write`の例外はそのまま呼び出し側へ出す。
+    中身は開いて確かめないので、配布元が200で返したエラーの本文も置かれ、読めないことはそれを読む取込が知らせる。
+    `source`は取りに行く先で、ログにだけ使う。`write`の例外はそのまま呼び出し側へ出す。
     """
-    if destination.exists() and readable(destination):
+    if destination.exists():
         logger.info("既にある %s", destination)
-        return True
+        return
     logger.info("取りに行く %s", source)
     destination.parent.mkdir(parents=True, exist_ok=True)
     temporary = destination.with_name(destination.name + FETCH_PART_SUFFIX)
-    broken = destination.with_name(destination.name + FETCH_BROKEN_SUFFIX)
     started = time.perf_counter()
     write(temporary)
     temporary.replace(destination)
     logger.info("取得した %s（%.1f MB / %s）", destination.name,
                 destination.stat().st_size / (1024 * 1024), format_duration(time.perf_counter() - started))
-    if readable(destination):
-        return True
-    destination.replace(broken)
-    logger.error("取ったが読めない: %s（%s へ退けた。もう一度実行すると取り直す）", destination.name, broken.name)
-    return False
 
 
-def fetch_verified(
+def fetch_once(
     url: str,
     destination: Path,
-    readable: Callable[[Path], bool],
     *,
     read_timeout: float,
     logger: logging.Logger,
-) -> bool:
-    """配布元のURLのファイルを、`place_verified`の手順で手元の所定の名前へ写す。
+) -> None:
+    """配布元のURLのファイルを、`place_once`の手順で手元の所定の名前へ写す。
 
-    大きさだけでは半端なファイルも配布元が200で返すエラー本文も弾けないため、`readable`は中身を開いて確かめる
-    ものを渡す。`read_timeout`は`fetch_timeout`へ渡す。通信の失敗は例外のまま呼び出し側へ出す。
+    `read_timeout`は`fetch_timeout`へ渡す。通信の失敗は例外のまま呼び出し側へ出す。
     """
     def write(temporary: Path) -> None:
         started = time.perf_counter()
@@ -199,13 +184,4 @@ def fetch_verified(
                         total // (1024 * 1024) if total else None,
                         now - started, "MB"))
 
-    return place_verified(destination, readable, write, source=url, logger=logger)
-
-
-def fetched_all(attempts: Iterable[bool]) -> bool:
-    """取得を全部試してから、全部を置けたかを返す。
-
-    `attempts`は1件ずつ取りに行く生成器を渡す。1つ置けなくても残りを取りに行く——置けたものは次の実行で取り直さない
-    ので、止めると直したあとの実行で残りを初めて取ることになる。`all`へ生成器をそのまま渡すと最初の失敗で止まる。
-    """
-    return all(list(attempts))
+    place_once(destination, write, source=url, logger=logger)
