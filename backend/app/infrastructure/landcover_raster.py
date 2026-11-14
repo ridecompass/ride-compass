@@ -58,7 +58,8 @@ class _RasterSource:
     lock: threading.Lock
 
 
-_opened_sources: list[_RasterSource] | None = None
+#: 開いたラスタと、開いたときの置き場の一覧。
+_opened: tuple[list[str], list[_RasterSource]] | None = None
 _sources_lock = threading.Lock()
 
 
@@ -79,29 +80,31 @@ def raster_paths() -> list[str]:
 
 
 def _open_sources() -> list[_RasterSource]:
-    """置き場のラスタを全部開いて持つ（開けたら以後は開き直さない）。開けなければ`LandcoverUnavailableError`で、次の読みで
-    開き直す——デプロイはラスタの取得とコンテナ入れ替えを別のステップで行うため、起動時に無くても後から現れる。"""
-    global _opened_sources
+    """置き場のラスタを全部開いて持つ。置き場の一覧が開いたときと変われば開き直す——取得は配信中の置き場を入れ替え、
+    タイルの鍵（`region_tile_cache.py: landcover_generation`）も同じ一覧から作るので、前のファイルを描き続けると
+    前の絵が新しい鍵で残る。開けなければ`LandcoverUnavailableError`で、次の読みで開き直す。
+    入れ替えた前のラスタは閉じずに手放す（読んでいる途中の要求があり、最後の参照が消えたときに閉じる）。"""
+    global _opened
     with _sources_lock:
-        if _opened_sources is None:
-            paths = raster_paths()
+        paths = raster_paths()
+        if _opened is None or _opened[0] != paths:
             try:
                 if not paths:
                     raise FileNotFoundError(f"置き場にラスタがありません: {data_paths.RASTER_DIR}")
-                _opened_sources = [_RasterSource(rasterio.open(path), threading.Lock()) for path in paths]
+                _opened = (paths, [_RasterSource(rasterio.open(path), threading.Lock()) for path in paths])
             except (OSError, rasterio.errors.RasterioIOError) as exc:
                 logger.warning("土地被覆のラスタを開けません paths=%s error=%r", paths, exc)
                 raise LandcoverUnavailableError("土地被覆のラスタを開けないため、土地被覆を配れません") from exc
-        return _opened_sources
+        return _opened[1]
 
 
 def close_sources() -> None:
     """開いたラスタを閉じる。次の読み取りで開き直す。"""
-    global _opened_sources
+    global _opened
     with _sources_lock:
-        for source in _opened_sources or []:
+        for source in _opened[1] if _opened else []:
             source.dataset.close()
-        _opened_sources = None
+        _opened = None
 
 
 def _read_decimated(source: _RasterSource, bounds: tuple[float, float, float, float]):

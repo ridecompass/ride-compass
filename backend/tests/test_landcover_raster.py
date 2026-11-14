@@ -141,12 +141,15 @@ def test_the_empty_tile_is_a_fully_clear_image_of_tile_size():
     assert (image[:, :, 3] == 0).all()
 
 
-def test_a_raster_that_cannot_be_opened_is_an_error_and_is_opened_once_it_appears(raster_store):
-    """開けなければエラー。デプロイはラスタの取得とコンテナの入れ替えを別に行うので、起動時に無くても後から現れ、次の読みで開く。"""
-    path = raster_store / "54S_2024.tif"
+def test_the_rasters_are_reopened_whenever_the_store_changes(raster_store):
+    """開けなければエラーで、置き場にラスタが現れれば次の読みで開く。取得が置き場のラスタを替えたら開き直す
+    （前に開いたものを描き続けると、置き場の一覧から作るタイルの鍵と描いた絵が食い違う）。"""
+    first = raster_store / "54S_2024.tif"
     with pytest.raises(landcover_raster.LandcoverUnavailableError):
         landcover_raster.opened_raster_paths()
 
-    over_tile(path, stripes(2), *TOKYO)
+    over_tile(first, stripes(2), *TOKYO)
+    assert landcover_raster.opened_raster_paths() == [str(first)]
 
-    assert landcover_raster.opened_raster_paths() == [str(path)]
+    added = over_tile(raster_store / "53S_2024.tif", stripes(5), *TOKYO)
+    assert landcover_raster.opened_raster_paths() == [added, str(first)]

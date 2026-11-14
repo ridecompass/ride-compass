@@ -77,12 +77,12 @@ def _remove_other_versions(keep: Path) -> None:
             logger.info("他の版を消した %s", path.name)
 
 
-def fetch() -> bool:
+def fetch() -> None:
     destination = jma_area_boundaries.BOUNDARY_PATH
     if destination.exists():
         logger.info("既にある %s", destination)
         _remove_other_versions(destination)
-        return True
+        return
 
     archive = destination.with_suffix(".zip")
     fetch_once(jma_area_boundaries.SOURCE_URL, archive, read_timeout=_READ_TIMEOUT_SECONDS, logger=logger)
@@ -95,7 +95,6 @@ def fetch() -> bool:
                 sum(shapely.get_num_coordinates(geometry) for geometry in areas.values()),
                 time.perf_counter() - started)
     _remove_other_versions(destination)
-    return True
 
 
 def main() -> int:

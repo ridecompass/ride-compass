@@ -39,7 +39,7 @@ git grep -h -o -E "https?://[a-zA-Z0-9.-]+" -- backend/app backend/scripts front
 | 地理院タイル（標高タイル・色別標高図） | アダプタ`gsi_dem_tile`、`backend/app/batch/dem_tile_store.py`、`backend/app/infrastructure/gsi_tile_client.py` | 国土地理院コンテンツ利用規約（公共データ利用規約PDL1.0準拠）。加工したものの利用・再配布を、ライセンスを問わず認める（求めるのは出典と加工した旨・加工した主体の表示）ので、勾配へ加工して ODbL の派生データベースに含めて配れる（2026-10-19確認） | 可 | 出典（「地理院タイル」＋一覧ページへのリンク）。加工した場合は出典とは別に**加工した旨**。アプリからの実時間読み込みは申請不要 | [利用規約](https://www.gsi.go.jp/kikakuchousei/kikakuchousei40182.html)・[タイル一覧](https://maps.gsi.go.jp/development/ichiran.html) | 2026-09-23 |
 | 気象庁 予報区等GISデータ（「市町村等（気象警報等）」の区域の境界） | `backend/scripts/fetch_jma_area_boundaries.py`（取得・変換）、`backend/app/infrastructure/jma_area_boundaries.py`（警報・洪水予報の区域を引く） | 配布ページが「気象庁ホームページの利用規約を遵守」と明記し、その規約（PDL1.0準拠）に従う。GISデータについての別段の定めは規約に無い。境界は簡略化して使う（加工に当たる） | 可 | 出典＋**加工した旨**（規約の記載例: 「気象庁『図・写真等の名称』（当該ページのURL）を加工して作成」） | [予報区等GISデータ](https://www.data.jma.go.jp/developer/gis.html)・[利用規約](https://www.jma.go.jp/jma/kishou/info/coment.html) | 2026-09-27 |
 | 交通事故統計オープンデータ（警察庁） | アダプタ`npa_honhyo` | 警察庁ウェブサイト利用規約（PDL1.0準拠）。取り込む年数・量の定めは無い（公開している全年を取り込む）。PDL1.0 のとおり、区間ごとの件数へ加工して ODbL の派生データベースに含めて配れる（2026-10-19確認） | 可 | 出典＋**加工した旨** | [利用規約](https://www.npa.go.jp/rules/index.html)・[オープンデータ](https://www.npa.go.jp/publications/statistics/koutsuu/opendata/index_opendata.html) | 2026-09-27 |
-| 10m Annual Land Use Land Cover（Impact Observatory・Microsoft・Esri） | アダプタ`io_lulc_tile`、`backend/scripts/fetch_lulc_raster.py` | CC BY 4.0。加工したもの（Adapted Material）は、受け取った人が作成者の表示の条件を守るのを妨げないライセンスで出せる（3(a)(4)）ので、区間の周りの割合へ加工して ODbL の派生データベースに含めて配れる（2026-10-19確認） | 可 | 作成者の表示 | [AWS Open Data Registry](https://registry.opendata.aws/io-lulc/)・[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/legalcode) | 2026-09-23 |
+| 10m Annual Land Use Land Cover（Impact Observatory・Microsoft・Esri） | アダプタ`io_lulc_tile` | CC BY 4.0。加工したもの（Adapted Material）は、受け取った人が作成者の表示の条件を守るのを妨げないライセンスで出せる（3(a)(4)）ので、区間の周りの割合へ加工して ODbL の派生データベースに含めて配れる（2026-10-19確認） | 可 | 作成者の表示 | [AWS Open Data Registry](https://registry.opendata.aws/io-lulc/)・[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/legalcode) | 2026-09-23 |
 | 基礎地図（OpenFreeMap） | `backend/app/infrastructure/basemap_client.py` | 無料・登録不要・利用回数の制限なし（データはOSM、スキーマはOpenMapTiles） | 可 | 「OpenFreeMap © OpenMapTiles Data from OpenStreetMap」（MapLibreは配信元のTileJSONから自動で出す） | [openfreemap.org](https://openfreemap.org/) | 2026-09-23 |
 | 気象庁MSM（Open-MeteoがAWS Open Dataで公開する前処理済みデータ） | `backend/app/infrastructure/msm_client.py`（`msm_base_url`） | 配布物はCC BY 4.0（Open-Meteo）。元データは気象庁の利用条件（PDL1.0）に従い、**気象業務法の制約**（第17条 予報業務の許可）が別にかかる——格子の値をどう扱えば許可が要るかは下の「気象業務法の予報業務許可」節 | 可（気象業務法の範囲で。格子点の値を最寄りの格子点の値として示すか、値を出さずにルートの計算にだけ使う。格子点に無い地点・時刻の値を出すのは予報業務許可が要る。気象庁の答え、下の「気象業務法の予報業務許可」節） | Open-Meteoへのクレジット（表示箇所の近くにリンク）＋気象庁の出典 | [Open-Meteo licence](https://open-meteo.com/en/licence)・[open-data](https://github.com/open-meteo/open-data)・[気象庁 copyright](https://www.jma.go.jp/jma/en/copyright.html)・[予報業務許可Q&A](https://www.jma.go.jp/jma/kishou/minkan/q_a_m.html)・気象庁 情報基盤部 情報利用推進課への照会の答え | 2026-10-19 |
 | 気象庁ホームページの防災情報（アメダス・警報・ナウキャスト・キキクル・洪水予報・推計気象分布等のJSON・タイル） | `backend/app/infrastructure/`の`jma_*`・`flood_client.py` | 気象庁ホームページ利用規約（PDL1.0準拠）。**気象業務法の制約**（第17条 予報業務の許可・第23条 警報の制限）が別にかかる。推計気象分布（天気。実況で予報ではない）の地点の区分を晴れ・くもりに読み替えて観測所の降水と合わせ、天気のアイコンにするのと、降水ナウキャスト・降水短時間予報のタイルの色を、段をそのままにアプリの段の色へ1対1で塗り替えて重ねるのは加工に当たり、規約は出典と加工した旨の記載で加工を認める（観測値の加工についての別段の定めは無い）。塗り替えが気象業務法の上で「そのまま掲載」に入るかは、下の「気象業務法の予報業務許可」節の書いていないこと。観測から今の路面の状態を推定して示すのは予報に当たらず、出発時刻・通過時刻の路面の状態を予報で延ばして示すのは地象の予報業務許可が要る（同じ節の気象庁の答え） | 可（気象業務法の範囲で） | 出典。加工した場合は**加工した旨** | [利用規約](https://www.jma.go.jp/jma/kishou/info/coment.html)・[推計気象分布の解説](https://www.jma.go.jp/jma/kishou/know/suikei_kishou/kaisetsu.html) | 2026-10-05 |
@@ -61,6 +61,10 @@ git grep -h -o -E "https?://[a-zA-Z0-9.-]+" -- backend/app backend/scripts front
 持たない。取ったものの版と取った時刻は置き場の記録（`backend/app/batch/common.py: FETCH_RECORD_NAME`）に残り、取込がそれを取込の素性
 （`source_runs.origin`）へ写すので、取り込んだ行がどの版のものかは取込の記録で引ける。最後まで取れなかった取得は記録を残さず、その置き場は取り込めない。
 
+取り直すのは週1回の元の取り直し（[production-data/SKILL.md](../../.claude/skills/production-data/SKILL.md)「元の取り直し」）で、全部の元を
+人が読まずに最新の版で入れる。元ごとの節の「版ごとに人が見るもの」は、周期レビュー（[review.md](../../.claude/commands/review.md)「整合性」の
+「外部データソースの利用条件」）が見る。列が変わって読めなければ取込が落ち、その回は止まって知らされる。
+
 ### Overture Maps の地点（places）
 
 | 項目 | 内容 |
@@ -69,10 +73,7 @@ git grep -h -o -E "https?://[a-zA-Z0-9.-]+" -- backend/app backend/scripts front
 | 配布の頻度 | 毎月（公式の[リリースの予定](https://docs.overturemaps.org/release-calendar/)）。配布元の S3 に残るのは最大60日（2つの版）で、それより古い版は取り直せない |
 | 新しい版の中身 | [リリースの予定](https://docs.overturemaps.org/release-calendar/)の表から、版ごとのリリースノート（`https://docs.overturemaps.org/blog/<年>/<月>/<日>/release-notes/`）へのリンクがある |
 
-手元へ写したファイル（本番は VM の`/home/ubuntu/ridecompass-cache-data/overture/`）は配布元から消えても残るので、
-取り直すのは、新しい地点を入れたいときと、写したファイルを失ったとき。
-
-取り直しの手順:
+版ごとに人が見るもの:
 
 1. リリースノートで places のスキーマの変更（列の名前・`taxonomy`の語）と、出どころ（`sources[].dataset`）の増減を読む。
    取込と派生が読む列（`backend/app/infrastructure/source_models.py: OVERTURE_PLACES_SOURCE_SQL`・アダプタの絞り）と群の語
@@ -81,10 +82,6 @@ git grep -h -o -E "https?://[a-zA-Z0-9.-]+" -- backend/app backend/scripts front
    数え、新しいコンビニのチェーン・看板の掛け替え・まとまった表記の崩れがあれば語を足す（当たらない店は補給休憩のコンビニに出ない）。
 2. [出典の文書](https://docs.overturemaps.org/attribution/)と Foursquare の NOTICE を読み、出どころと文言が変わっていれば
    `ALWAYS_SHOWN_ATTRIBUTIONS`の行と`frontend/public/licenses/foursquare-places-NOTICE.txt`を合わせる（生成物`mapDisplay.ts`を作り直す）。
-   上の表の行の確認日も直す。
-3. 本番 VM で、別のコンテナ（[production-data/SKILL.md](../../.claude/skills/production-data/SKILL.md)「派生データの作り直し」と同じ`docker run`）から
-   `python -m app.batch.fetch_cli --source overture_place`（範囲の地点を写す。関東の枠で約190MB。Actions のランナーで17秒）→ `python -m app.batch.ingest_cli --source overture_place`
-   → `python -m app.batch.derive_cli`の順に打つ。本番 DB へ書くので、開発機の対話のセッションで、ユーザーがチャットで言ったときだけ Claude が打つ（[dev-session/SKILL.md](../../.claude/skills/dev-session/SKILL.md)「本番へ書く」）。
 
 ### 文化財の建造物（文化遺産オンライン）
 
@@ -94,16 +91,10 @@ git grep -h -o -E "https?://[a-zA-Z0-9.-]+" -- backend/app backend/scripts front
 | 更新の頻度 | 公表されていない。ジャパンサーチが最後に取り込んだ時刻は、連携データベースの参照API（`https://jpsearch.go.jp/api/database/bunka`）の`lastDataUpdated`（ミリ秒）で見られる |
 | 取り方 | 全国の建造物（2026-10-08 に 17,560 件、1秒おきに18回・約30秒）を取る。取込の範囲は取込が絞るので、範囲を広げても取り直さない |
 
-手元へ写したファイル（本番は VM の`/home/ubuntu/ridecompass-cache-data/bunka/`）は配信元が変わっても残るので、取り直すのは、
-新しい指定を入れたいときと、写したファイルを失ったとき。
-
-取り直しの手順:
+版ごとに人が見るもの:
 
 1. [紹介ページ](https://jpsearch.go.jp/database/bunka)のメタデータの条件と、[サイトポリシー](https://jpsearch.go.jp/policy)の
-   出典の記載例を読み、変わっていれば`ALWAYS_SHOWN_ATTRIBUTIONS`の行を合わせる（生成物`mapDisplay.ts`を作り直す）。上の表の行の確認日も直す。
-2. 本番 VM で、別のコンテナ（[production-data/SKILL.md](../../.claude/skills/production-data/SKILL.md)「派生データの作り直し」と同じ`docker run`）から
-   `python -m app.batch.fetch_cli --source bunka_heritage` → `python -m app.batch.ingest_cli --source bunka_heritage` → `python -m app.batch.derive_cli`
-   の順に打つ。本番 DB へ書くので、開発機の対話のセッションで、ユーザーがチャットで言ったときだけ Claude が打つ（[dev-session/SKILL.md](../../.claude/skills/dev-session/SKILL.md)「本番へ書く」）。
+   出典の記載例を読み、変わっていれば`ALWAYS_SHOWN_ATTRIBUTIONS`の行を合わせる（生成物`mapDisplay.ts`を作り直す）。
 
 ### 交通規制情報（JARTIC）
 
@@ -113,18 +104,11 @@ git grep -h -o -E "https?://[a-zA-Z0-9.-]+" -- backend/app backend/scripts front
 | 配布の頻度 | 毎月。配布元は最新の版だけを置き、前の版は取り直せない |
 | 取り方 | 取込の範囲に掛かる都道府県の zip（cp932 の CSV が1つ。東京都で約39MB・57万行。2026-11-08）。範囲に掛かる都道府県は ABR の市区町村の代表点で決める |
 
-手元へ写したファイル（本番は VM の`/home/ubuntu/ridecompass-cache-data/jartic/`）は配布元から消えても残るので、
-取り直すのは、新しい規制を入れたいときと、写したファイルを失ったとき（前の版は取り直せない）。
-
-取り直しの手順:
+版ごとに人が見るもの:
 
 1. [各種情報の提供](https://www.jartic.or.jp/service/opendata/)の利用規約と、拡張版標準フォーマットの説明書の版を読み、
    出典の求めが変わっていれば`ALWAYS_SHOWN_ATTRIBUTIONS`の行を合わせ（生成物`mapDisplay.ts`を作り直す）、列や共通規制種別コードが
-   変わっていればアダプタと`rows.kinds`を合わせる。上の表の行の確認日も直す。
-2. 本番 VM で、別のコンテナ（[production-data/SKILL.md](../../.claude/skills/production-data/SKILL.md)「派生データの作り直し」と同じ`docker run`）から
-   `python -m app.batch.fetch_cli --source abr --source jartic_regulation`（都道府県を ABR の市区町村の代表点から決める。入口は宣言の順に取るので ABR が先）
-   → `python -m app.batch.ingest_cli --source jartic_regulation` → `python -m app.batch.derive_cli`の順に打つ。
-   本番 DB へ書くので、開発機の対話のセッションで、ユーザーがチャットで言ったときだけ Claude が打つ（[dev-session/SKILL.md](../../.claude/skills/dev-session/SKILL.md)「本番へ書く」）。
+   変わっていればアダプタと`rows.kinds`を合わせる。
 
 ### 住所の区画の元データ（アドレス・ベース・レジストリ・e-Stat の小地域の境界・街区レベル位置参照情報）
 
@@ -134,18 +118,11 @@ git grep -h -o -E "https?://[a-zA-Z0-9.-]+" -- backend/app backend/scripts front
 | 更新の頻度 | アドレス・ベース・レジストリは配布元のファイルの更新時刻（応答の`last-modified`。町字のテキストは 2026-10-02）で見る。e-Stat の境界は国勢調査ごと（5年おき）。街区レベル位置参照情報は年に1度（配布元の一覧に新しい版が出る） |
 | 取り方 | アドレス・ベース・レジストリは全国の1ファイルずつ（都道府県・市区町村・町字のテキストと、都道府県・市区町村の代表点）と、取込の範囲に掛かる都道府県の町字の代表点と住居表示の街区のテキストと代表点（関東で街区 267,612件・代表点 357,732行。2026-10-10）。e-Stat の境界と街区レベル位置参照情報は範囲に掛かる都道府県の zip（位置参照情報は山梨県で約1.4MB・26.6万行。2026-10-09）。範囲に掛かる都道府県は市区町村の代表点で決める（関東の範囲で12県。全国の1ファイルずつが約12MB、町字の代表点が約1MB、境界が約81MB。2026-10-09） |
 
-手元へ写したファイル（本番は VM の`/home/ubuntu/ridecompass-cache-data/abr/`・`estat/`）は配布元が変わっても残るので、取り直すのは、
-新しい住所を入れたいときと、写したファイルを失ったとき。
-
-取り直しの手順:
+版ごとに人が見るもの:
 
 1. アドレス・ベース・レジストリは[利用規約](https://www.digital.go.jp/policies/base_registry_address_tos/)、e-Stat は
    [利用規約](https://www.e-stat.go.jp/terms-of-use)を読み、出典の求めが変わっていれば`ADDRESS_AREA_ATTRIBUTIONS`を合わせる。街区レベル位置参照情報は[利用約款](https://nlftp.mlit.go.jp/isj/agreement.html)を読む
-   （生成物`mapDisplay.ts`を作り直す）。上の表の行の確認日も直す。
-2. 本番 VM で、別のコンテナ（[production-data/SKILL.md](../../.claude/skills/production-data/SKILL.md)「派生データの作り直し」と同じ`docker run`）から
-   `python -m app.batch.fetch_cli --source abr --source estat_small_area --source isj_block`（都道府県を ABR の市区町村の代表点から決める。入口は宣言の順に取るので ABR が先）
-   → `python -m app.batch.ingest_cli --source abr --source estat_small_area --source isj_block` → `python -m app.batch.derive_cli`の順に打つ。
-   本番 DB へ書くので、開発機の対話のセッションで、ユーザーがチャットで言ったときだけ Claude が打つ（[dev-session/SKILL.md](../../.claude/skills/dev-session/SKILL.md)「本番へ書く」）。
+   （生成物`mapDisplay.ts`を作り直す）。
 
 ## 気象業務法の予報業務許可
 

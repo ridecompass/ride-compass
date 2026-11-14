@@ -6,8 +6,10 @@
 
 ソースごとの取り方は、取込と同じアダプタの登録（`ingest.py: Fetcher`）が持つ。ソースを足しても、この入口は書き換えない。
 
-**取る前に、取るソースの置き場を消す。** 手元に前のファイルがあっても、毎回上流から取り直す。消すのは並べたソースの
-置き場だけで、`backend/data`の下のほかのもの（地図のタイルのキャッシュ・道路網の配列等）には触らない。
+**ソースを取る直前に、その置き場の中身を消す。** 手元に前のファイルがあっても、毎回上流から取り直す。消すのは並べたソースの
+置き場の中身だけで、`backend/data`の下のほかのもの（地図のタイルのキャッシュ・道路網の配列等）と置き場そのものには触らない
+（本番では土地被覆の置き場がコンテナへつないだ所そのもので、消せない）。全部を先に消さないのは、配信中のbackendが読む
+置き場（土地被覆のラスタ）が、ほかのソースを取る間ずっと空になるため。
 ほかのソースの置いたものを読む取得（住所の代表点から範囲の都道府県を決める等）は、宣言で読む元より後に並べる。
 並べたソースが読む元を並べなければ、手元にある元を読む。
 
@@ -30,42 +32,51 @@ from app.batch.source_profile import SourceProfile, load_source_profile
 logger = logging.getLogger("ridecompass.fetch_cli")
 
 
-def run_fetch_cli(fetch: Callable[[], bool], *, logger: logging.Logger) -> int:
+def run_fetch_cli(fetch: Callable[[], None], *, logger: logging.Logger) -> int:
     """取得の道具の入口の骨格。ログを整え、取得を流し、終了コードにする。
 
-    全部を置けたら（`fetch`がTrue）0、置けないものがあったか通信に失敗したら1。失敗は理由の1行にして返す
+    `fetch`が終われば0、取得が断ったか通信に失敗したら1。失敗は理由の1行にして返す
     （どこへ取りに行ったかは、その前の行が出している）。
     """
     configure_cli_logging()
     try:
-        return 0 if fetch() else 1
+        fetch()
+        return 0
     except (httpx.HTTPError, FetchError) as exc:
         logger.error("取得に失敗しました error=%r", exc)
         return 1
 
 
-def _clear(path: Path) -> None:
-    if path.is_dir():
-        shutil.rmtree(path)
-    else:
-        path.unlink(missing_ok=True)
+def _empty(store: Path) -> None:
+    """置き場の中身を消す。置き場がディレクトリなら、ディレクトリそのものは残す。"""
+    if not store.is_dir():
+        store.unlink(missing_ok=True)
+        return
+    for child in store.iterdir():
+        if child.is_dir() and not child.is_symlink():
+            shutil.rmtree(child)
+        else:
+            child.unlink()
 
 
 def fetch_sources(profile: SourceProfile, source_names: list[str]) -> None:
-    """`source_names`のソースの置き場を消してから、宣言の並び順に取る。取得を持たないアダプタのソースは飛ばす。"""
+    """`source_names`のソースを、宣言の並び順に、置き場の中身を消してから取る。取得を持たないアダプタのソースは飛ばす。"""
     names = set(source_names)
     for name in names:
         profile.source(name)  # 無い名前はここで断る
     specs = [spec for spec in profile.sources if spec.name in names]
     fetchers = [(spec, ADAPTERS[spec.adapter].fetcher) for spec in specs]
-    # 同じアダプタのソースは置き場を分け合うので、取る前にまとめて消す（1つ取ってから消すと、取ったものを消す）。
-    for store in dict.fromkeys(path for _, fetcher in fetchers if fetcher for path in fetcher.store()):
-        logger.info("置き場を消す %s", store)
-        _clear(store)
+    emptied: set[Path] = set()
     for spec, fetcher in fetchers:
         if fetcher is None:
             logger.info("取得を持たないソース source=%s", spec.name)
             continue
+        # 同じアダプタのソースは置き場を分け合うので、最初の1つの前にだけ消す（2つ目の前に消すと、取ったものを消す）。
+        for store in fetcher.store():
+            if store not in emptied:
+                emptied.add(store)
+                logger.info("置き場の中身を消す %s", store)
+                _empty(store)
         logger.info("取得 source=%s", spec.name)
         fetcher.fetch(spec, profile)
 
@@ -79,10 +90,9 @@ def main() -> int:
     if not args.all and not args.source:
         parser.error("--all か --source を渡す")
 
-    def start() -> bool:
+    def start() -> None:
         profile = load_source_profile(args.profile)
         fetch_sources(profile, [spec.name for spec in profile.sources] if args.all else args.source)
-        return True
 
     return run_fetch_cli(start, logger=logger)
 
