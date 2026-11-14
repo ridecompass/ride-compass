@@ -15,7 +15,7 @@ from app.api.rate_limit import enforce_rate_limit
 from app.config import settings
 from app.domain.geo import Latitude, Longitude
 from app.domain.jma_amedas import AmedasObservation
-from app.domain.msm_grid import MSM_GRID_MAX_AREA_SQ_DEG, MsmGridForecast
+from app.domain.msm_grid import MSM_GRID_MAX_AREA_SQ_DEG, MsmForecastStatus, MsmGridForecast
 from app.domain.region import BoundingBox
 from app.domain.route import Coordinates
 from app.domain.time_zone import JST
@@ -133,3 +133,9 @@ async def get_msm_grid(
     if (max_lat - min_lat) * (max_lon - min_lon) > MSM_GRID_MAX_AREA_SQ_DEG:
         raise HTTPException(status_code=400, detail="表示範囲が広すぎます。ズームインしてください。")
     return await weather_service.get_msm_grid(bbox)
+
+
+@router.get("/api/weather/msm-status", response_model=MsmForecastStatus)
+def get_msm_status(weather_service: WeatherService = Depends(get_weather_service)) -> MsmForecastStatus:
+    """同期した数値予報モデル（MSM）の予報の状態（最新のrunの予報の終わり）。同期が済んでいなければ502。"""
+    return weather_service.get_forecast_status()

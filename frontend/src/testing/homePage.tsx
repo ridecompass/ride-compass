@@ -69,6 +69,7 @@ const GRID_POINT_TODAY: GridPointToday = {
   lowest_hourly_temperature_c: null,
   highest_hourly_precipitation_mm: null,
   highest_hourly_wind_speed_ms: null,
+  latest_run_end: "2026-01-01T00:00",
 };
 
 let jobs: ReturnType<typeof serveGenerationJobs>;
@@ -87,6 +88,7 @@ export function serveHome() {
   onBackend("GET", "/api/weather/warnings", () => Response.json({ warnings: [] }));
   onBackend("GET", "/api/weather/wbgt", () => Response.json({ reading: null }));
   onBackend("GET", "/api/weather/flood-forecast", () => Response.json({ forecasts: [] }));
+  onBackend("GET", "/api/weather/msm-status", () => Response.json({ latest_run_end: "2099-01-01T00:00" }));
   onBackend("POST", "/api/weather/route-warning-timeline", () => Response.json({ areas: [] }));
   onBackend("GET", "/api/place-area", () => Response.json({ area: null }));
   onBackend("GET", "/api/place-link", ({ query }) =>

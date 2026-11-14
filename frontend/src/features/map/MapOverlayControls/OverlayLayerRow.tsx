@@ -13,6 +13,7 @@ import { Checkbox } from "@/components/ui/Checkbox/Checkbox";
 import type { MapIconComponent } from "@/components/ui/icons/icons";
 import { cn } from "@/lib/cn";
 import { Dot } from "@/components/ui/Dot/Dot";
+import { textVariants } from "@/components/ui/Text/Text";
 import LegendDetails, { type LegendFilterSummaryAxis } from "./LegendDetails";
 
 export interface OverlayLayerChip {
@@ -32,6 +33,8 @@ export interface OverlayLayerChip {
   panelHint?: string;
   /** データの取得状態。ONの間だけ状態のドットと▶の中の一文で出す。 */
   dataStatus?: LayerDataStatus;
+  /** 描いている値の扱いの但し書き（前に出た予報の値を描いている等）。ONの間だけ▶の中の凡例の上に出す。 */
+  caveat?: string;
 }
 
 export interface LegendHandlers {
@@ -67,8 +70,9 @@ function panelContentFor(layer: OverlayLayerChip, handlers: LegendHandlers): Rea
     return <p className="m-0 text-[length:var(--font-size-sm)] text-[var(--foreground)]">{layer.notice}</p>;
   // 状態のドットの意味を文で読ませる置き場は▶の中（`title`はスマホでは出ない）。
   const status = layer.on ? layerDataStatusNotice(layer.dataStatus) : null;
+  const caveat = layer.on ? layer.caveat : undefined;
   const axes = layer.legendDetails ?? [];
-  if (!status && axes.length === 0) return null;
+  if (!status && !caveat && axes.length === 0) return null;
   return (
     <>
       {status && (
@@ -76,6 +80,7 @@ function panelContentFor(layer: OverlayLayerChip, handlers: LegendHandlers): Rea
           {status}
         </p>
       )}
+      {caveat && <p className={cn(textVariants({ variant: "warning" }), "mb-2")}>{caveat}</p>}
       <LegendDetails
         axes={axes}
         onEntryToggle={handlers.onLegendEntryToggle}

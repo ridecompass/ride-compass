@@ -142,6 +142,7 @@ export function gridPointTodayFixture(): components["schemas"]["GridPointToday"]
     lowest_hourly_temperature_c: 6,
     highest_hourly_precipitation_mm: 1.5,
     highest_hourly_wind_speed_ms: 6,
+    latest_run_end: "2026-01-02T00:00",
   };
 }
 

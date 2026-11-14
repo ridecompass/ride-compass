@@ -525,6 +525,23 @@
         }
       }
     },
+    "/api/weather/msm-status": {
+      "get": {
+        "operationId": "get_msm_status_api_weather_msm_status_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MsmForecastStatus"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/place-search": {
       "get": {
         "operationId": "search_places_api_place_search_get",
@@ -3730,6 +3747,10 @@
               }
             ],
             "title": "Highest Hourly Wind Speed Ms"
+          },
+          "latest_run_end": {
+            "type": "string",
+            "title": "Latest Run End"
           }
         },
         "additionalProperties": false,
@@ -3747,7 +3768,8 @@
           "highest_hourly_temperature_c",
           "lowest_hourly_temperature_c",
           "highest_hourly_precipitation_mm",
-          "highest_hourly_wind_speed_ms"
+          "highest_hourly_wind_speed_ms",
+          "latest_run_end"
         ],
         "title": "GridPointToday"
       },
@@ -4462,6 +4484,20 @@
         ],
         "title": "Missing"
       },
+      "MsmForecastStatus": {
+        "properties": {
+          "latest_run_end": {
+            "type": "string",
+            "title": "Latest Run End"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "latest_run_end"
+        ],
+        "title": "MsmForecastStatus"
+      },
       "MsmFreshnessResponse": {
         "properties": {
           "last_run_at": {
@@ -4514,6 +4550,10 @@
             },
             "type": "array",
             "title": "Points"
+          },
+          "latest_run_end": {
+            "type": "string",
+            "title": "Latest Run End"
           }
         },
         "additionalProperties": false,
@@ -4522,7 +4562,8 @@
           "times",
           "latitude_step_deg",
           "longitude_step_deg",
-          "points"
+          "points",
+          "latest_run_end"
         ],
         "title": "MsmGridForecast"
       },

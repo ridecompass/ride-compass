@@ -30,6 +30,9 @@ import { costLensOptions, costLensPremises } from "@/features/map/costLens";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useWayMaterials } from "@/features/map/useWayMaterials";
 import { useDynamicWeatherLayers } from "@/features/map/useDynamicWeatherLayers";
+import { useLatestRunEnd } from "@/features/map/useWeatherGrid";
+import { isPreviousRunTime, previousRunNotice } from "@/lib/previousRun";
+import { HOUR_MS } from "@/lib/duration";
 import { useStoredState } from "@/hooks/useStoredState";
 import type { Coordinates, RoadAvoidanceOverride } from "@/types/route";
 import { avoidanceChoiceOf, type RoadTabMap } from "@/lib/roadAvoidance";
@@ -186,6 +189,15 @@ export function useMapView({
   const speedKmh = riding?.speedKmh ?? ride.speedKmh;
   const wayConditions = useMemo(() => ({ bearingDeg, at: ride.at, speedKmh }), [bearingDeg, ride.at, speedKmh]);
   const wayMaterials = useWayMaterials(fetchLenses, viewport, wayConditions, costPreference, totalLens?.axisId ?? null);
+  // 出発時刻の風を引くレンズは、引く予報の時刻が最新のrunの終わりから先なら前に出た予報の風で塗っている。材料の口は
+  // 出発時刻に最も近い正時（ちょうど中間は後の正時）の風を引く。
+  const paintsForecast = fetchLenses.some((candidate) => candidate.materialConditions.includes("at"));
+  const latestRunEnd = useLatestRunEnd(paintsForecast);
+  const forecastHour = new Date(Math.floor((ride.at.getTime() + HOUR_MS / 2) / HOUR_MS) * HOUR_MS);
+  const lensCaveat =
+    latestRunEnd !== undefined && isPreviousRunTime(forecastHour, latestRunEnd)
+      ? previousRunNotice("この時刻の風")
+      : null;
   const [roadTabOnMap, setRoadTabOnMap] = useStoredState("ridecompass:road-tab-on-map", "道路タブを地図で見るか", true);
   // 道路タブを出していて「地図で見る」がONの間だけ、段を地図の道に塗る。段の値は出し入れで作り直さない。
   const roadAvoidanceShown = roadTabShown && roadTabOnMap;
@@ -252,6 +264,7 @@ export function useMapView({
     visibility: layerVisibility,
     hidden,
     dataStatus: { ...mapLayerStatus, ...weather.dynamicWeatherDataStatus },
+    caveats: weather.dynamicWeatherNotices,
     zoomTooWideLayerIds: viewport ? tileZoomTooWideLayerIds(mapCatalog.layers, viewport.zoom) : [],
     versionMissingLayerIds: mapCatalog.tileVersions ? [] : tileVersionGatedLayerIds(mapCatalog.layers),
     catalogSettled: config.loaded || config.failed,
@@ -279,6 +292,7 @@ export function useMapView({
       onSetHiddenLegendKeys: (keys) => setHiddenFor(lens, keys),
       hasDetail,
       premises: costLensPremises(painted, costCatalog, lensEquivalents),
+      caveat: lensCaveat,
       catalogNotice: !costCatalog.loaded
         ? costCatalog.failed
           ? "負担の種類の一覧を取得できないため、塗る負担を選べません。"
