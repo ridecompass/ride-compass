@@ -164,8 +164,8 @@ await set_json(key, payload, ttl_seconds=TTL, category="cache:xxx")
 **全消し（`tile_cache.clear_all()`）は例外**。他レイヤーのキャッシュまで巻き添えにするため、運用操作としてのみ残す。
 新しいキャッシュへ全消し手段を足さない。
 
-**「元データの世代」には、どの元データを開いていたかも含む。** 土地被覆タイルは`LULC_RASTER_PATHS`（環境変数）で開く
-GeoTIFFが決まるため、ラスタ構成の指紋（`infrastructure/cache_identity.py: raster_set_fingerprint`）をディスクの鍵へ入れる。
+**「元データの世代」には、どの元データを開いていたかも含む。** 土地被覆タイルは置き場（`data_paths.py: RASTER_DIR`）に
+あるGeoTIFFを開くため、ラスタ構成の指紋（`infrastructure/cache_identity.py: raster_set_fingerprint`）をディスクの鍵へ入れる。
 **この指紋はURLへは入れない**（URLの世代は生成物（`region-tile-config.json`）としてビルド機で作られる）。そのぶんブラウザ側は
 `immutable`を付けず再検証できるようにする（`api/cache_policy.py`）。
 

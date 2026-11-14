@@ -12,6 +12,5 @@ from app.config import Settings
 
 def test_comma_separated_settings_drop_spaces_and_empty_entries():
     # 空白の付いた origin は要求の Origin と一致せず、そのフロントからの要求が全部 CORS で断られる。
-    settings = Settings(cors_allowed_origins="https://a.example, https://b.example,", lulc_raster_paths="a.tif,,b.tif")
+    settings = Settings(cors_allowed_origins="https://a.example, https://b.example,")
     assert settings.cors_allowed_origins_list == ["https://a.example", "https://b.example"]
-    assert settings.lulc_raster_paths_list == ["a.tif", "b.tif"]

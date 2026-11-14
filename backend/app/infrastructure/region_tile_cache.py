@@ -8,8 +8,8 @@ import asyncio
 from collections.abc import Awaitable, Callable, Mapping
 
 from app.domain.registry import TileKind
-from app.config import settings
 from app.infrastructure import tile_cache
+from app.infrastructure.landcover_raster import raster_paths
 from app.infrastructure.cache_identity import (
     LANDCOVER_TILE_VERSION,
     raster_set_fingerprint,
@@ -32,9 +32,9 @@ def landcover_generation() -> str:
 
     タイルの中身はどのラスタから描いたかに従属する。対応範囲を広げるためゾーンを1枚
     足しても鍵が同じだと、継ぎ目のタイルは古い絵（片側が透明のまま）を返し続ける。
-    描くのは設定したラスタが全部開けたときだけなので、設定の一覧から作る。
+    描くのは置き場のラスタが全部開けたときだけなので、置き場の一覧から作る。
     """
-    raster_set = raster_set_fingerprint(settings.lulc_raster_paths_list)
+    raster_set = raster_set_fingerprint(raster_paths())
     return f"{LANDCOVER_TILE_VERSION}/{raster_set}"
 
 

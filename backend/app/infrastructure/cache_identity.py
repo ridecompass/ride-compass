@@ -63,8 +63,8 @@ def tile_version(revisions: DataRevisions, shape: str) -> str:
 #:
 #: **どのラスタを開いているかはここへ入れられない**。この値は生成物
 #: （`region-tile-config.json`）を通してフロントのURLへ焼き込まれ、生成はビルド機で行う
-#: ——ラスタの置き場所は環境変数（`LULC_RASTER_PATHS`）で環境ごとに違うため、入れると
-#: 生成物がビルド機の設定で決まり、本番の実際の構成とずれる。**実際に開けている**ラスタ
+#: ——どのラスタ（ゾーン・年）があるかは環境の置き場の中身で決まるため、入れると
+#: 生成物がビルド機の置き場で決まり、本番の実際の構成とずれる。**実際に開けている**ラスタ
 #: 構成への追随はサーバー側のディスクの鍵（`region_tile_cache.py: landcover_generation`）で行い、
 #: ブラウザ側は`cache_policy.py`が`immutable`を付けないことで再検証できるようにしてある。
 LANDCOVER_TILE_VERSION = cache_identity(LANDCOVER_REVISION, LANDCOVER_CLASSES)
