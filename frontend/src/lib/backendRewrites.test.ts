@@ -46,7 +46,9 @@ describe("backendRewrites", () => {
   });
 
   it("地図の出典表記が同じオリジンの住所でリンクする backend の口は、どれも取り次ぐ（取り次がないと、リンクが画面の 404 になる）", () => {
-    const linked = mapDisplay.alwaysShownAttributions.flatMap((html) => [...html.matchAll(/href="(\/api\/[^"]+)"/g)].map((m) => m[1]));
+    const linked = mapDisplay.alwaysShownAttributions.flatMap((html) =>
+      [...html.matchAll(/href="(\/api\/[^"]+)"/g)].map((m) => m[1]),
+    );
     expect(linked).not.toHaveLength(0);
     const sources = backendRewrites(LOCAL, null).map((r) => r.source);
     expect(linked.filter((path) => !sources.includes(path))).toEqual([]);
