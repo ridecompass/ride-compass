@@ -13,6 +13,7 @@ from app.domain.cost_axes import CostAxisDefinitions, check_cost_axes
 from app.domain.road_classes import RoadClassDefinitions, replace_road_classes, undeclared_references
 from app.infrastructure.cost_axis_repository import read_cost_axes
 from app.infrastructure.road_class_repository import read_road_classes, replace_road_class_rows
+from app.services.cost_axis_service import warn_surplus_class_weights
 
 logger = logging.getLogger("ridecompass.road_classes")
 
@@ -48,7 +49,7 @@ def _check_writable(definitions: RoadClassDefinitions, cost_axes: CostAxisDefini
     if cost_axis_problems:
         raise RoadClassRejectedError(
             f"費用の軸の定義が新しい区分に合わなくなるため確定しません（{'／'.join(cost_axis_problems)}）。"
-            "先に費用の軸の区分の重さを直してください"
+            "先に費用の軸の定義を新しい区分に合わせてください（足す区分の重さは、区分より先に書ける）"
         )
 
 
@@ -65,7 +66,8 @@ class RoadClassAdminService:
         """全体を入れ替え、書いた全体を返す。"""
         session = self._session
         try:
-            _check_writable(definitions, await read_cost_axes(session))
+            cost_axes = await read_cost_axes(session)
+            _check_writable(definitions, cost_axes)
             await replace_road_class_rows(session, definitions)
             await session.commit()
         except (IntegrityError, DataError) as error:
@@ -75,4 +77,6 @@ class RoadClassAdminService:
             await session.rollback()
             raise
         _apply(definitions)
+        if cost_axes is not None:
+            warn_surplus_class_weights(cost_axes, definitions)
         return definitions
