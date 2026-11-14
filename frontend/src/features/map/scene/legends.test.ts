@@ -63,8 +63,7 @@ describe("点の凡例", () => {
         expect(POINT_ICONS).toContainEqual(expect.objectContaining({ color: entry.color, glyph: entry.glyph }));
       } else {
         // 点の大きさの見本は、地図のどの行の絵とも同じ外形で、地図の絵記号の大きさに現れる。
-        const outlineOf = (color: string, glyph: PointGlyph) =>
-          (pointIconParts(color, glyph, "box")[0] as { d: string }).d;
+        const outlineOf = (color: string, glyph: PointGlyph) => (pointIconParts(color, glyph)[0] as { d: string }).d;
         for (const drawn of colorAxis.categories) {
           expect(entry.glyph && outlineOf(entry.color, entry.glyph)).toBe(outlineOf(drawn.color, drawn.glyph));
         }

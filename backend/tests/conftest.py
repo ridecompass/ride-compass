@@ -27,6 +27,7 @@ from app.batch import derive_cli
 from app.batch.common import asyncpg_dsn
 from app.domain import stopwatch
 from app.infrastructure import (
+    data_paths,
     database,
     jma_area_boundaries,
     rate_limiter,
@@ -85,6 +86,15 @@ def road_network_root(monkeypatch, tmp_path) -> Path:
     """
     root = tmp_path / "road_network"
     monkeypatch.setattr(road_network_store, "ROOT", root)
+    return root
+
+
+@pytest.fixture
+def raster_dir(monkeypatch, tmp_path) -> Path:
+    """土地被覆のラスタの置き場（`data_paths.RASTER_DIR`）を、テストごとの空の一時ディレクトリへ移したパス。"""
+    root = tmp_path / "raster"
+    root.mkdir()
+    monkeypatch.setattr(data_paths, "RASTER_DIR", root)
     return root
 
 

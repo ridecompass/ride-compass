@@ -4,7 +4,7 @@
 （`derive_places.derive`）。項目の形の小さな見本を置き場に書き、表に入った寺社を見る。
 
 ここで見ないもの:
-- 配信元から手元へ写す取得（`scripts/fetch_bunka_heritages.py`）→ どのテストも通さない
+- 配信元から手元へ写す取得（`app/batch/source_adapters/bunka_heritages.py: fetch_bunka_heritages`）→ どのテストも通さない
 - Overture の地点の群とまとめ → `test_places.py`
 """
 
@@ -13,6 +13,7 @@ import json
 import pytest
 
 from app.batch import derive_places
+from app.batch.common import write_fetch_record
 from app.batch.ingest import ingest_source
 from app.batch.source_adapters import bunka_heritages
 from app.batch.source_profile import load_source_profile
@@ -22,7 +23,6 @@ from app.infrastructure.source_models import Source
 pytestmark = pytest.mark.asyncio(loop_scope="module")
 
 PROFILE = load_source_profile(None)
-ROWS: bunka_heritages.BunkaHeritageRows = PROFILE.source(Source.BUNKA_HERITAGE).rows
 
 LON = 139.70
 LAT = 35.65
@@ -53,8 +53,9 @@ def bunka_dir(monkeypatch, tmp_path):
 
 async def _temples(conn, items: list[dict]) -> list[tuple[str, float, float]]:
     """見本を取り込んで立ち寄り先を作り直し、入った寺社の（名前・経度・緯度）を名前と経度の順で返す。"""
-    path = bunka_heritages.heritages_path(ROWS.snapshot)
+    path = bunka_heritages.heritages_path()
     path.write_text("".join(json.dumps(item, ensure_ascii=False) + "\n" for item in items), encoding="utf-8")
+    write_fetch_record(bunka_heritages.DATA_DIR)
     await ingest_source(conn, PROFILE, Source.BUNKA_HERITAGE)
     await derive_places.derive(conn)
     rows = await conn.fetch(

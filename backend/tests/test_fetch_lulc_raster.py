@@ -1,57 +1,69 @@
-"""土地被覆ラスタの取得（scripts/fetch_lulc_raster.py）。
+"""土地被覆ラスタの取得。取得の入口（`app/batch/fetch_cli.py: fetch_sources`）の`lulc`と、デプロイが呼ぶ
+`scripts/fetch_lulc_raster.py`の`main`。
 
-入口は`main`。実ダウンロード（70MB規模）はテストで行わず、配布元の応答と置き場の設定だけを差し替えて、
-設定のファイル名でバケットから取ることと、ラスタとして開けるかで取得済みかを決めることを確かめる。
+実ダウンロード（70MB規模）はテストで行わず、配布元（STACの品目の検索とバケット）の応答と置き場（フィクスチャ`raster_dir`）
+だけを差し替える。配布元へ応答を与えていない要求は`respx_mock`が落とすので、取りに行かないことは応答を与えないことで見る。
 
 ここで見ないもの:
-- 一時ファイル経由の取得・読めるものを落とし直さない手順（`app/batch/common.py: fetch_verified`）
-  → `test_fetch_accident_csv.py`
+- 取得の入口が、取得を持つ元を宣言の順に呼ぶこと → `test_fetch_cli.py`
 """
 
-import numpy as np
-import pytest
-import rasterio
-from rasterio.transform import from_origin
-
-from app.config import settings
+from app.batch.fetch_cli import fetch_sources
+from app.batch.source_adapters.io_lulc_tile import COLLECTION, STAC_SEARCH_URL
+from app.batch.source_profile import load_source_profile
 from scripts import fetch_lulc_raster
 
-
-def _geotiff_bytes(tmp_path) -> bytes:
-    path = tmp_path / "source.tif"
-    with rasterio.open(
-        path,
-        "w",
-        driver="GTiff",
-        width=4,
-        height=4,
-        count=1,
-        dtype="uint8",
-        crs="EPSG:32654",
-        transform=from_origin(380000.0, 3950000.0, 10.0, 10.0),
-        nodata=0,
-    ) as dataset:
-        dataset.write(np.full((4, 4), 5, dtype="uint8"), 1)
-    return path.read_bytes()
+BUCKET = "https://io-10m-annual-lulc.s3.us-west-2.amazonaws.com"
+NEXT_PAGE = f"{STAC_SEARCH_URL}?token=next"
 
 
-@pytest.mark.parametrize(
-    ("readable", "status", "kept"),
-    [
-        (True, 0, True),
-        # ラスタとして読めない応答（配布元のエラー本文等）を「取得済み」にしない。残すと次の実行が再取得せず、壊れたラスタを読み続ける。
-        (False, 1, False),
-    ],
-)
-def test_downloads_the_raster_from_the_bucket_and_keeps_only_a_readable_one(
-        tmp_path, monkeypatch, respx_mock, readable, status, kept):
-    # バケット内のキーは設定されたパスのファイル名そのもの（ゾーン・年は設定側の決定）。
-    respx_mock.get(f"{fetch_lulc_raster.BUCKET_BASE_URL}/54S_2024.tif").respond(
-        content=_geotiff_bytes(tmp_path) if readable else b"<Error>NoSuchKey</Error>"
-    )
-    destination = tmp_path / "raster" / "54S_2024.tif"
-    monkeypatch.setattr(settings, "lulc_raster_paths", str(destination))
+def item(zone: str, year: int, href_base: str = BUCKET) -> dict:
+    return {
+        "id": f"{zone}-{year}",
+        "properties": {"datetime": f"{year}-01-01T00:00:00Z"},
+        "assets": {"supercell": {"href": f"{href_base}/{zone}_{year}.tif"}},
+    }
 
-    assert fetch_lulc_raster.main() == status
 
-    assert destination.exists() == kept
+def answer_search(respx_mock, profile) -> None:
+    """範囲に掛かる2ゾーンの品目を、2ページに分けて返す（新しい年は2ページ目にある）。"""
+    min_lat, min_lon, max_lat, max_lon = profile.target.bbox
+    respx_mock.get(STAC_SEARCH_URL, params={
+        "collections": COLLECTION, "bbox": f"{min_lon},{min_lat},{max_lon},{max_lat}"}).respond(json={
+            "features": [item("54S", 2023, "https://s3.us-west-2.amazonaws.com/io-10m-annual-lulc"), item("53S", 2024)],
+            "links": [{"rel": "next", "href": NEXT_PAGE}],
+        })
+    respx_mock.get(NEXT_PAGE).respond(json={"features": [item("54S", 2024)], "links": []})
+
+
+def test_the_fetch_entry_replaces_the_store_with_the_latest_year_of_each_zone(raster_dir, respx_mock):
+    """新しい年が出たら、置き場の前の年を残さずに替える（両方残ると、取込と地図が古い年の画素も読む）。"""
+    (raster_dir / "54S_2023.tif").write_bytes(b"previous year")
+    profile = load_source_profile(None)
+    answer_search(respx_mock, profile)
+    respx_mock.get(f"{BUCKET}/54S_2024.tif").respond(content=b"54S latest")
+    respx_mock.get(f"{BUCKET}/53S_2024.tif").respond(content=b"53S latest")
+
+    fetch_sources(profile, ["lulc"])
+
+    assert {path.name: path.read_bytes() for path in raster_dir.iterdir()} == {
+        "54S_2024.tif": b"54S latest", "53S_2024.tif": b"53S latest"}
+
+
+def test_the_deploy_fetches_into_an_empty_store(raster_dir, respx_mock):
+    answer_search(respx_mock, load_source_profile(None))
+    respx_mock.get(f"{BUCKET}/54S_2024.tif").respond(content=b"54S latest")
+    respx_mock.get(f"{BUCKET}/53S_2024.tif").respond(content=b"53S latest")
+
+    assert fetch_lulc_raster.main() == 0
+
+    assert sorted(path.name for path in raster_dir.iterdir()) == ["53S_2024.tif", "54S_2024.tif"]
+
+
+def test_the_deploy_keeps_the_rasters_already_in_place(raster_dir, respx_mock):
+    """デプロイのたびに呼ばれるので、取り直すと毎回70MB規模を落とす。"""
+    (raster_dir / "54S_2023.tif").write_bytes(b"previous")
+
+    assert fetch_lulc_raster.main() == 0
+
+    assert (raster_dir / "54S_2023.tif").read_bytes() == b"previous"

@@ -47,7 +47,6 @@
   "disabled_label": "無効",
   "min_assumed_speed_kmh": 5.0,
   "max_assumed_speed_kmh": 60.0,
-  "job_result_ttl_seconds": 600.0,
   "job_wait_seconds": 10,
   "segment_speed_conditions": [
     "坂",

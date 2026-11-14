@@ -1,15 +1,15 @@
-"""標高タイルの取得（scripts/fetch_dem_tiles.py）。
+"""標高タイルの取得（アダプタ`gsi_dem_tile`の取得）。
 
-入口は`fetch`。配信元はrespxの経路の代役に、置き場は一時ディレクトリに差し替える。取る母集団は
+入口は取得の入口（`app/batch/fetch_cli.py: fetch_sources`）。配信元はrespxの経路の代役に、置き場は一時ディレクトリに差し替える。取る母集団は
 本物のプロファイルの宣言（製品とズーム）から導き、範囲だけをz15のタイル2×2枚ぶんへ絞る。
 見るのは、宣言した製品をそれぞれのズームでPNG形式のURLから取り、返ったものを配信元の最終更新（`Last-Modified`）とともに
-タイルごとに置いて404は区域外の印にすることと、次の実行がどちらも叩かないこと。最終更新を返さなかったタイルは置かない——置くと、
+タイルごとに置いて404は区域外の印にすること。最終更新を返さなかったタイルは置かない——置くと、
 取込がいつ時点の標高かを記録できない。同じ製品の中で列・行の違うタイル（同じ列に縦に並ぶ2枚——列のディレクトリが既にあっても
-書ける——を含む）と、置いたタイルと区域外の印が隣り合う形を含め、置き場で別のタイルが重なると、別の場所の標高を読むか、
-取るべきタイルを取らない。
+書ける——を含む）と、置いたタイルと区域外の印が隣り合う形を含め、置き場で別のタイルが重なると、別の場所の標高を読む。
 
 ここで見ないもの:
 - 置き場のパスと印の形（`app/batch/dem_tile_store.py`）→ 置いたものを同じモジュールで読み戻すだけで、形は見ない
+- 置き場を消して取り直すこと → `test_fetch_cli.py`
 """
 
 import re
@@ -18,12 +18,10 @@ from email.utils import format_datetime
 
 import httpx
 import pytest
-import respx
 
 from app.batch import dem_tile_store
+from app.batch.fetch_cli import fetch_sources
 from app.domain.region import BoundingBox, tile_bounds_lonlat, tiles_covering_bbox
-from scripts import fetch_dem_tiles
-from tests.fake_http import client_for
 from tests.source_ingest import profile_within
 
 #: 範囲の左上に使うz15のタイル（東京）。範囲はここから右と下へ1枚ずつ広げる。
@@ -36,7 +34,6 @@ UNSERVED_TILE = (X + 1, Y + 1)
 
 #: 配信元のPNG形式のURLの道（https://maps.gsi.go.jp/development/ichiran.html）。製品名に`_png`が付く。
 PNG_PATH = re.compile(r"^/xyz/(?P<product>\w+)_png/(?P<z>\d+)/(?P<x>\d+)/(?P<y>\d+)\.png$")
-
 
 
 def _body(product: str, x: int, y: int) -> bytes:
@@ -64,7 +61,7 @@ def _declared_requests(profile) -> set[tuple[str, int, int, int]]:
             for x, y in tiles_covering_bbox(bbox, zoom)}
 
 
-def _origin(stamps: bool = True) -> respx.Router:
+def _serve(respx_mock, stamps: bool = True) -> None:
     """配信元の代役。PNG形式のURLにだけ答える（ほかのURLはrespxが落とす）。`stamps`が偽なら最終更新を返さない。"""
     def respond(request: httpx.Request, product: str, z: str, x: str, y: str) -> httpx.Response:
         if not _served(product, int(z), int(x), int(y)):
@@ -72,13 +69,12 @@ def _origin(stamps: bool = True) -> respx.Router:
         headers = {"Last-Modified": format_datetime(_modified(product, int(x), int(y)), usegmt=True)} if stamps else {}
         return httpx.Response(200, content=_body(product, int(x), int(y)), headers=headers)
 
-    router = respx.Router()
-    router.get(path__regex=PNG_PATH).mock(side_effect=respond)
-    return router
+    respx_mock.get(path__regex=PNG_PATH).mock(side_effect=respond)
 
 
 @pytest.fixture
-def profile():
+def profile(monkeypatch, tmp_path):
+    monkeypatch.setattr(dem_tile_store, "TILE_ROOT", tmp_path)
     top_left = tile_bounds_lonlat(ZOOM, X, Y)
     bottom_right = tile_bounds_lonlat(ZOOM, X + 1, Y + 1)
     inset = 1e-6
@@ -86,10 +82,11 @@ def profile():
                            top_left.max_latitude - inset, bottom_right.max_longitude - inset))
 
 
-async def test_served_tiles_are_stored_and_the_rest_marked_absent_per_product(tmp_path, profile):
+def test_served_tiles_are_stored_and_the_rest_marked_absent_per_product(tmp_path, profile, respx_mock):
     """1つの製品が返しても他の製品を取りやめず、各製品を宣言したズームで取る。"""
-    async with client_for(_origin()) as client:
-        await fetch_dem_tiles.fetch(client, tmp_path, profile)
+    _serve(respx_mock)
+
+    fetch_sources(profile, ["dem"])
 
     declared = _declared_requests(profile)
     assert ("dem5a", ZOOM, *UNSERVED_TILE) in declared  # 範囲が2×2枚に掛かっている
@@ -103,23 +100,12 @@ async def test_served_tiles_are_stored_and_the_rest_marked_absent_per_product(tm
             assert dem_tile_store.tile_modified(tmp_path, product, zoom, x, y) == _modified(product, x, y)
 
 
-async def test_a_tile_without_last_modified_is_not_stored(tmp_path, profile):
-    """置かないので、次の実行がまた取りに行く。"""
-    async with client_for(_origin(stamps=False)) as client:
-        with pytest.raises(RuntimeError, match="Last-Modified"):
-            await fetch_dem_tiles.fetch(client, tmp_path, profile)
+def test_a_tile_without_last_modified_is_not_stored(tmp_path, profile, respx_mock):
+    _serve(respx_mock, stamps=False)
+
+    with pytest.raises(RuntimeError, match="Last-Modified"):
+        fetch_sources(profile, ["dem"])
 
     for product, zoom, x, y in _declared_requests(profile):
         assert not dem_tile_store.is_stored(tmp_path, product, zoom, x, y), (product, zoom, x, y)
 
-
-async def test_a_second_run_does_not_ask_the_origin_again(tmp_path, profile):
-    """取れたものも、区域外と分かったものも、次からは叩かない。"""
-    async with client_for(_origin()) as client:
-        await fetch_dem_tiles.fetch(client, tmp_path, profile)
-
-    second = _origin()
-    async with client_for(second) as client:
-        await fetch_dem_tiles.fetch(client, tmp_path, profile)
-
-    assert second.calls.call_count == 0

@@ -86,7 +86,7 @@
 | `features/route/useGenerationConditions.ts` | 生成の条件（「ルート設定」の入力）: 周回か・全長の目標を決めるか・距離・候補数・経由地と目的地（周回の間は置いた目的地を覚えておくだけで、返す`features/route/useGenerationConditions.ts: destination`はnull）・通る順の入れ替え（出発地・経由地・目的地を1つの並びとして動かし、置いた位置の役割にする。先頭が変わると新しい先頭を出発地として呼び出し側へ渡す。選んでいる地点は同じ地点に付けたまま。`features/route/useGenerationConditions.ts: reorderPoints`）・地図のタップで置ける役割・住所の検索と地図の点の小窓で選んだ地点の置き方（`features/route/useGenerationConditions.ts: placeFound`）・つまみと倍率・除外・道の行ごとの避け方と、保存した条件での入れ替え（`features/route/useGenerationConditions.ts: restore`）。いまの条件を保存と同じ形1つ（`features/route/useGenerationConditions.ts: snapshot`）で返し、保存・生成の入力はそれを読む。入れ替えは項目ごとの入れ方の表で書き、形に項目を足すと、いまの条件・保存値の読み方・入れ方のどれが欠けても型の誤りになる。保存する値は読むときに今の画面が受け付ける範囲・今の項目へ揃え、倍率は今の費用の軸のものだけを送る（下記「RouteSettingsPanel.tsx」）。出発地は位置の取得と同じ持ち主（`hooks/useLocation.ts`）が持ち、地図で置いた出発地は呼び出し側へ渡す |
 | `features/route/useRouteGeneration.ts` | ルート生成: 検証と送信（`features/route/useRouteGeneration.ts: useRouteFormSubmit`）・実行中の進み方・直近の案内（候補0件の理由・失敗の文言）・表示中の候補を作った条件といまのフォームのずれ（`features/route/useRouteGeneration.ts: conditionsDirty`）。生成の入力は生成と「条件が変わったか」の判定が同じ関数で組み立て、目的地が補正されたら補正後の地点で組み直す。補正後の地点で目的地のピンを書き換えるのは、生成を待つ間に目的地を置き直していないときだけ。候補の一覧と選択は持たず、結果を`features/route/useRouteGeneration.ts: onGenerated`で呼び出し側へ渡す。押した「生成」1回ごとに結果の種類（新しい結果か失敗か）を`features/route/useRouteGeneration.ts: onOutcome`で1度だけ知らせる——候補が出たときも、候補0件・失敗・入力の誤りと同じく知らせる |
 | `features/route/useRoutePlanner.ts` | ルートを作る機能の入口。結果・生成・区間の乗り換えをつなぐ: 生成と乗り換えが作った候補を結果へ入れ、全消去は結果と生成を一緒に消し（乗り換えの編集は生成に結びつくので一緒に終わる）、乗り換えで作り始めると直前の生成の失敗の文言を消す。生成と乗り換えの結果は1本の`features/route/useRoutePlanner.ts: onOutcome`で呼び出し側へ知らせる。地図に描くルート（`features/route/useRoutePlanner.ts: mapRoutes`。編集で作ったルートを選んでいる間は元と2本だけ）もここが決める |
-| `features/route/useSpliceSession.ts` | 区間の乗り換えの編集1回ぶんの状態（編集の元の候補・適用した乗り換え・評価結果の控え・処理状態）と操作。**抜けると中身ごと消え、次の編集へ持ち込まない**。編集は始めたときの生成に結びつき、作り直す・消すと効かなくなる（候補のidは作り直しでも同じ値が振られうる）。組み合わせた経路は**表示中の候補を作った生成の入力**で評価する——いまのフォームで評価すると、生成後に負担の設定を変えた1本だけが別の条件で並ぶ。評価は組み合わせ（適用した順を含む）ごとに覚え、「差分を見る」と「作成」で投げ直さない（生成APIには回数の上限がある）。backendが0本で返したら、どちらの操作でもその理由（`noCandidatesReason`）を編集面に出し、理由が無いときだけ汎用の文言にする。評価を待つ間に作り直す・消す・やめる・始め直すと、届いた評価は何も書かない（評価の控え・処理の状態・作った経路の受け渡しのどれも。編集は始めた1回ごとの印で見分ける）。「作成」は連打の2回目を同じタスクの中で止め、作った経路が既にある候補と同じ道ならその候補を選ぶだけにする。差分を見た時点でも、同じ道の候補があればそのidを編集面へ渡す。入口は、表示中の候補が2本以上あれば周回でも目的地ルートでも出す（終点［目的地、無ければ出発地］へ着くかはbackendが確かめる）。区間を割る下限（画面の設定の較正値）を引けない間は乗り換え先を作らず入口も出さない。返すのは地図へ渡す値（乗り換え先の帯・いま作っているルート・帯のタップ）と`features/route/useSpliceSession.ts: RouteSplicePanel`へ渡す値で、作った経路と元を結果へ足すのは呼び出し側（`features/route/useSpliceSession.ts: onApplied`） |
+| `features/route/useSpliceSession.ts` | 区間の乗り換えの編集1回ぶんの状態（編集の元の候補・適用した乗り換え・評価結果の控え・処理状態）と操作。**抜けると中身ごと消え、次の編集へ持ち込まない**。編集は始めたときの生成に結びつき、作り直す・消すと効かなくなる（候補のidは作り直しでも同じ値が振られうる）。組み合わせた経路は**表示中の候補を作った生成の入力**で評価する——いまのフォームで評価すると、生成後に負担の設定を変えた1本だけが別の条件で並ぶ。評価は組み合わせ（適用した順を含む）ごとに覚え、「差分を見る」と「作成」で投げ直さない（生成APIには回数の上限がある）。backendが0本で返したら、どちらの操作でもその理由（`noCandidatesReason`）を編集面に出し、理由が無いときだけ汎用の文言にする。評価を待つ間に作り直す・消す・やめる・始め直すと、届いた評価は何も書かない（評価の控え・処理の状態・作った経路の受け渡しのどれも。編集は始めた1回ごとの印で見分ける）。「作成」は、作った経路が既にある候補と同じ道ならその候補を選ぶだけにする。差分を見た時点でも、同じ道の候補があればそのidを編集面へ渡す。入口は、表示中の候補が2本以上あれば周回でも目的地ルートでも出す（終点［目的地、無ければ出発地］へ着くかはbackendが確かめる）。区間を割る下限（画面の設定の較正値）を引けない間は乗り換え先を作らず入口も出さない。返すのは地図へ渡す値（乗り換え先の帯・いま作っているルート・帯のタップ）と`features/route/useSpliceSession.ts: RouteSplicePanel`へ渡す値で、作った経路と元を結果へ足すのは呼び出し側（`features/route/useSpliceSession.ts: onApplied`） |
 | `features/route/useSpliceOptions.ts` | 区間の乗り換えの編集で、いまの組み合わせ（元の候補へ適用した乗り換えを当てた形。`features/route/routeSplice.ts: buildSplicedShape`）と、そこから次に選べる乗り換え先（`features/route/stretchAlternatives.ts: stretchAlternativeGroups`）と地図の帯を導く。区間を割る下限が無い間は乗り換え先を作らない |
 | `features/map/scene/groups/routes.ts`（乗り換え帯の箇所） | 他の候補が別の道を通る区間を地図へ帯で描き、**タップでその道を選べる**（`onSpliceStretchSelect`。選ぶ操作の中心を地図へ置く——パネルの行だけで選ばせると、どの行がどの帯かを目で対応づける必要がある。帯と当たり判定は役割`features/map/scene/groups/routes.ts: spliceBandLine`・`features/map/scene/groups/routes.ts: spliceBandHit`として宣言する）。帯はどれも破線で描く。タップして乗り換えた先は帯ではなく、いま作っているルート（太い実線）の一部として描かれる。破線の刻みは配列で持つ（feature式に依存しない） |
 | `features/map/scene/groups/routes.ts` | ルート候補・選択中ルート・区間色分け・乗り換え帯・選んだ区間の範囲の縁取りの宣言。状態から載るべきレイヤーの並びを返すだけで、地図を直接は触らない |
@@ -226,7 +226,7 @@
 事実・生値・材料の値は区間の詳細には出さない（事実はルート全体だけが持つ）。
 
 **近くの点**は、生成の応答に載せず、ルートを選んでいる間、地図が「表示」で出している点の層のうちルートの線に近い点だけを描く
-（近さと描き方は[静的地図レイヤー](static-map-layers.md)「ルートの近くの点」）。名前のある点を押すと点の小窓を開き、
+（近さと描き方は[静的地図レイヤー](static-map-layers.md)「ルートの近くの点」）。点を押すと点の小窓を開き、
 区間の小窓から開いたときは上の帯の「‹ 区間」で区間の中身へ戻れる。点の小窓の行には、走行中だけ現在地からの残り（「あと1.2km」）を
 出す（`lib/mapDisplay/sidePoints.ts: routeSide`）。走っていない間は、ルートの上の前後の距離を出さない（起点にする点が無い）。
 
@@ -295,32 +295,13 @@
 
 ## 生成を待つ時間・投げる回数の根拠
 
-**ポーリングの打ち切り（`features/route/routeApi.ts: MAX_POLL_DURATION_MS`）は、生成の最悪の所要を
-安全マージン込みで上回る値にする。** 値はフロントに書かず、backendがジョブの結果を持つ時間
-（`infrastructure/job_registry.py: JOB_TTL_SECONDS`）を生成物`route-generate-config.json`経由で
-そのまま使う——保持時間より長く待つと、掃除済みのjob_idを引いて結果の代わりに404を見る。
-動かすときはbackendの宣言を変える。
-
-根拠にする最悪ケースは本番の実測（2026-09、本番と同じイメージ・メモリ上限の使い捨てコンテナ、
-JITのコンパイル結果をイメージへ焼く前）:
-
-| 場面 | 所要 |
-|---|---|
-| 同時に動く上限（2件）まで重ねる | 都心60km×2で29秒・都心80km×2で35秒 |
-| デプロイ直後の最初の生成（JITのコンパイル込み） | 都心60kmで21秒・都心80kmで24秒 |
-
-生成は探索範囲の区間数に比例して長くなり、区間数は読み込む量の上限（[ルート生成エンジン](../backend/routing-engine.md)
-「取得の入口」）で抑えられている。開発機の所要は根拠にしない（取込範囲が本番と違い、並行する処理で振れる）。
-
-**縮めるときは生成の所要だけを見ない**。打ち切りは生成の開始から数え、問い合わせの前に判定するため、
-生成の間に画面を離れて打ち切りより後に戻った利用者は、終わっている結果を受け取らずにタイムアウトを見る。
-生成のDBのセッションが持つ上限（`command_timeout`）はクエリ1本ごとの上限で、この値とは独立。
+**画面は生成が終わるまで問い合わせ続け、待ちの上限を持たない。** 問い合わせが失敗しても（backendが応えない・
+backendの入れ替えでジョブが消えて見つからない等）、打ち切らずに問い合わせ直す。
 
 **1回の問い合わせでbackendに終わるまで待たせる秒（`infrastructure/job_registry.py: JOB_WAIT_MAX_SECONDS`、生成物の
-`job_wait_seconds`）は、問い合わせの時間切れ（`lib/apiTimeouts.ts: API_TIMEOUT_MS`の`default`）より短くする。** 長いと、
-生成がまだ走っているだけの問い合わせが時間切れの失敗に数えられ、続けて失敗してよい回数を食う。本番のbackendの手前の
-nginxが応答を待つ上限（`proxy_read_timeout`、300秒）にも収まる。待ってから返った後はすぐ次を問い合わせ、待たずに
-返った（問い合わせの失敗・待つ上限を知らないbackend）ときだけ`features/route/routeApi.ts: POLL_INTERVAL_MS`の間をおく。
+`job_wait_seconds`）は、本番のbackendの手前のnginxが応答を待つ上限（`proxy_read_timeout`、300秒）に収める。** 待ってから
+返った後はすぐ次を問い合わせ、待たずに返った（問い合わせの失敗・待つ上限を知らないbackend）ときだけ
+`features/route/routeApi.ts: POLL_INTERVAL_MS`の間をおく。
 
 **実行中の経過秒は画面の時計で1秒ごとに数える**（`features/route/useRouteGeneration.ts`）。問い合わせは終わるまで返らないので、
 応答のたびに経過を更新すると、表示が待つ上限ごとに飛ぶ。

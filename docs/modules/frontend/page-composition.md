@@ -20,7 +20,7 @@
 | hooks | `useStoredState.ts`・`useIsMobile.ts`・`useVisualViewport.ts`・`useLocation.ts`・`useDebouncedValue.ts`・`useIsomorphicLayoutEffect.ts` |
 | features/map/view | `useMapView.ts`（地図の見え方の状態と、地図・操作部品へ渡す値）・`mapLook.ts`（地図へ渡す見え方の値の型）・`lens.ts`（選んだレンズから全道路を塗るレンズ・凡例を導く）・`overlayChips.ts`（地図上チップの状態とレイヤー表示の保存形式）・`legendFilters.ts`（凡例で隠した行の保存先の読み書き） |
 | features/map/MapView | `useLayerDataStatus.ts`（MapLibreのソースイベントからレイヤーごとの取得状態を算出して渡す）・`useMapLifecycle.ts`（地図を作り、読み込み・失敗・動かした範囲・向き・ソースの取得のイベントを状態と知らせ先へつなぐ。「地図の表示を再描画」のスタイルの取り直しも持つ）・`MapLoadStatus.tsx`（読み込みの間の覆いと、地図が白紙のまま止まったときの案内）・`mapCamera.ts`（ルート・選んだ区間を収める・地点へ寄せるときに、地図の上に重ねた部品を避ける。線が見えている所に入るかも同じ避け方で測る）・`useSectionFocus.ts`（頼まれたときだけ形へ寄せ〔小窓の寄せるアイコンとグラフの寄せるボタンが同じ手続きを使う〕、選んだ区間が見えている所の外にあるかを知らせる） |
-| lib | `apiBaseUrl.ts`・`apiClient.ts`（backendのAPIを呼ぶ口と、全呼び出しが共有する骨格。下記）・`apiPath.ts`（アプリ自身が呼ばないURL［地図ライブラリへ渡すタイル・スタイル］のパスをOpenAPIの宣言と型で照合して作る）・`apiError.ts`・`backendInternalUrl.ts`・`queryClient.ts`（画面のデータ取得が共有するTanStack Queryのキャッシュ。下記「データ取得の骨格」）・`apiTimeouts.ts`（APIリクエストのタイムアウト。呼び出しの性質ごとの名前付き定数）・`safeStorage.ts`（localStorageの読み書きの口。読めない・書けないときは、どの保存値かを添えて投げる。下記「状態の永続化」）・`paletteCssVariables.ts`（地図に塗る色と同じ色をUIにも出す箇所へ、配信された値をCSS変数として流す。`layout.tsx`がサーバー側で`:root`へ入れる。CSSが値を持つのはライト/ダークで2値を持つものだけ）・`duration.ts`（時間の長さの単位［秒・分・時のミリ秒］と、所要時間・待ち時間を「N分」で書く書き方。1時間を超えても分で書き、候補の一覧・候補の中身・差し替えの比較で同じ単位で見比べる）・`numberFormat.ts`（桁での丸めと、差の前に置く符号）・`urlTemplate.ts`（パスのテンプレートの`{名前}`を埋める。`apiPath.ts`と気象庁の配信のパスが使う）・`geoDistance.ts`（2点間の大円距離と、ルートに沿った道のりの書き方〔1km未満は10m単位、以上は0.1km単位。走行中の曲がる所のカードと近くの施設の位置が同じ桁で出す〕。地球の半径はbackendの値を生成物`geo-config.json`で読み、2点の距離がbackendと合うことは、`cardinalLabel`と同じ表をテストが通して確かめる）・`localPlane.ts`（狭い範囲の緯度経度を、経度方向をcos(緯度)で縮めた平面として扱う近似と、緯度1度の長さ・辺の上で地点に最も近い点・2点の間の方位・線の地点に最も近い辺の進む向き。地図の上で最も近い点を求める所はどれもこれを通す）・`mapScale.ts`（MapLibre の地図のズームと緯度から、1画素が地上の何 m か・経度1度が何画素か。地図の縮尺を地上の長さへ直す所はどれもこれを通し、自分で式を持たない）・`routeClock.ts`（ルートの計画の時刻を、ルートの上の距離で読む。区間の中は、区間の到達予想と次の区間の到達予想［最後の区間は所要時間の終わり］の間を距離に比例させる）・`routeDistance.ts`（ルートの区間を始点からの距離で読む: 候補の中の同じ区間・区間の道なりの形・形の上で距離の割合ぶん進んだ点とそこで分けた前後・2つの距離の間の形・ある点に最も近いルートの上の点・Edgeの境界ごとの距離。区間の`routeDistance.ts: distance_km`を始点から積んだ値を物差しにし、道のりのグラフと地図と走行モードと編集の差が同じ距離で読む）・`streetViewUrl.ts`（地図の地点から開く Google マップの Street View の URL。公式の Maps URLs の形で、位置と向きだけで決まるので backend へは問い合わせない。施設の名前のリンクは所在を引くので backend が形を持つ（`services/placeLinkApi.ts`）のと違う）・`storedList.ts`（この端末に保存した一覧への入れ方）・`adminApiPrefix.ts`（管理APIの転送の口と、backendの管理APIのパスの接頭辞）・`mapOverlayEdges.ts`（地図の上に重ねる部品へ付ける「どの辺を覆うか」の印と、印の付いた部品が覆う幅の実測。印を付ける部品は地図の機能の外にもあるので共有の層に置く。下記「`MapView`との境界」）・`routeFit.ts`（ルート・区間の形を地図へ収める範囲と、地図の上に重ねた部品を避けて収める・寄せるときの余白とずれ。`MapView`が地図を動かす瞬間に呼ぶ）・`validArea.ts`（backend が添える値の範囲が地点を含むか・走行中に取る地点を動かすか）・`assumedSpeed.ts`（想定速度の範囲と丸め。走行条件の入力と、走行中に地図の道の値へ載せる速さが使う）・`magneticDeclination.ts`（日本付近の偏角と、磁北を基準にした方角を真北の基準へ直すこと）・`tapSlop.ts`（押したか動かしたかを分ける遊びの幅。使い方の説明・長押しのツールチップ・下部シートのつまみが使う） |
+| lib | `apiBaseUrl.ts`・`apiClient.ts`（backendのAPIを呼ぶ口と、全呼び出しが共有する骨格。下記）・`apiPath.ts`（アプリ自身が呼ばないURL［地図ライブラリへ渡すタイル・スタイル］のパスをOpenAPIの宣言と型で照合して作る）・`apiError.ts`・`backendInternalUrl.ts`・`queryClient.ts`（画面のデータ取得が共有するTanStack Queryのキャッシュ。下記「データ取得の骨格」）・`safeStorage.ts`（localStorageの読み書きの口。読めない・書けないときは、どの保存値かを添えて投げる。下記「状態の永続化」）・`paletteCssVariables.ts`（地図に塗る色と同じ色をUIにも出す箇所へ、配信された値をCSS変数として流す。`layout.tsx`がサーバー側で`:root`へ入れる。CSSが値を持つのはライト/ダークで2値を持つものだけ）・`duration.ts`（時間の長さの単位［秒・分・時のミリ秒］と、所要時間・待ち時間を「N分」で書く書き方。1時間を超えても分で書き、候補の一覧・候補の中身・差し替えの比較で同じ単位で見比べる）・`numberFormat.ts`（桁での丸めと、差の前に置く符号）・`urlTemplate.ts`（パスのテンプレートの`{名前}`を埋める。`apiPath.ts`と気象庁の配信のパスが使う）・`geoDistance.ts`（2点間の大円距離と、ルートに沿った道のりの書き方〔1km未満は10m単位、以上は0.1km単位。走行中の曲がる所のカードと近くの施設の位置が同じ桁で出す〕。地球の半径はbackendの値を生成物`geo-config.json`で読み、2点の距離がbackendと合うことは、`cardinalLabel`と同じ表をテストが通して確かめる）・`localPlane.ts`（狭い範囲の緯度経度を、経度方向をcos(緯度)で縮めた平面として扱う近似と、緯度1度の長さ・辺の上で地点に最も近い点・2点の間の方位・線の地点に最も近い辺の進む向き。地図の上で最も近い点を求める所はどれもこれを通す）・`mapScale.ts`（MapLibre の地図のズームと緯度から、1画素が地上の何 m か・経度1度が何画素か。地図の縮尺を地上の長さへ直す所はどれもこれを通し、自分で式を持たない）・`routeClock.ts`（ルートの計画の時刻を、ルートの上の距離で読む。区間の中は、区間の到達予想と次の区間の到達予想［最後の区間は所要時間の終わり］の間を距離に比例させる）・`routeDistance.ts`（ルートの区間を始点からの距離で読む: 候補の中の同じ区間・区間の道なりの形・形の上で距離の割合ぶん進んだ点とそこで分けた前後・2つの距離の間の形・ある点に最も近いルートの上の点・Edgeの境界ごとの距離。区間の`routeDistance.ts: distance_km`を始点から積んだ値を物差しにし、道のりのグラフと地図と走行モードと編集の差が同じ距離で読む）・`streetViewUrl.ts`（地図の地点から開く Google マップの Street View の URL。公式の Maps URLs の形で、位置と向きだけで決まるので backend へは問い合わせない。施設の名前のリンクは所在を引くので backend が形を持つ（`services/placeLinkApi.ts`）のと違う）・`storedList.ts`（この端末に保存した一覧への入れ方）・`adminApiPrefix.ts`（管理APIの転送の口と、backendの管理APIのパスの接頭辞）・`mapOverlayEdges.ts`（地図の上に重ねる部品へ付ける「どの辺を覆うか」の印と、印の付いた部品が覆う幅の実測。印を付ける部品は地図の機能の外にもあるので共有の層に置く。下記「`MapView`との境界」）・`routeFit.ts`（ルート・区間の形を地図へ収める範囲と、地図の上に重ねた部品を避けて収める・寄せるときの余白とずれ。`MapView`が地図を動かす瞬間に呼ぶ）・`validArea.ts`（backend が添える値の範囲が地点を含むか・走行中に取る地点を動かすか）・`assumedSpeed.ts`（想定速度の範囲と丸め。走行条件の入力と、走行中に地図の道の値へ載せる速さが使う）・`magneticDeclination.ts`（日本付近の偏角と、磁北を基準にした方角を真北の基準へ直すこと）・`tapSlop.ts`（押したか動かしたかを分ける遊びの幅。使い方の説明・長押しのツールチップ・下部シートのつまみが使う） |
 | features/route | `routeApi.ts`（ルート生成API。ジョブを投げ、終わるまで問い合わせる）・`generationRequest.ts`（生成リクエストのpayloadと`conditionsDirty`の比較キーを同じ入力から導出する純関数）・`routeSplice.ts`（候補どうしが別々の道を通る区間を`edge_ids`の集合演算で求め、表示中の側と相手側を対応づけ、選んだ区間を差し替えた経路を組み立てる純関数。差し替えた経路の評価はbackendが行うため計算式は持たない）・`stretchAlternatives.ts`（元の経路の区間ごとに、全候補から乗り換えられる道を集める純関数。区間を割る下限は持たず呼び出し側から受け取る［backendの較正値で、管理画面から変えられる］） |
 | features/conditions | `useRideConditions.ts`（走行条件: 出発時刻・想定速度。想定速度だけを保存し、保存値は画面の範囲内の整数だけを受け入れる）・`useDepartureTime.ts`（出発時刻。選ぶまでは5分刻みの「今」へ追従し、選んだ時刻は動かさない）・`rideConditions.ts`（走行条件の出発時刻ラベルと出発時刻の刻み。想定速度の範囲と丸めは`lib/assumedSpeed.ts`） |
 | types | `types/route.ts`（`types/route.ts: RouteCandidate`等の生成APIレスポンス型）・`types/generated/api.d.ts`（backendのOpenAPIから生成した口の型。下記の呼び出し口が型を推論する元）・`types/fetchFailure.ts`（常設ヘッダーの「未取得」の印に並ぶ項目の型。下記「失敗・空・待ちの伝え方」） |
@@ -61,13 +61,9 @@ undefinedにする）。パスの`{名前}`へ入る値は呼び出し口が1区
 （手で置いた出発地を、地図を動かしただけで失わない）。位置が分かっているか（取れたか、手で置いたか）を
 1つの値（`locationKnown`）で返し、読み手は位置の出所から自分で導かない。
 
-タイムアウトは`lib/apiTimeouts.ts: API_TIMEOUT_MS`の待ち時間の種類から選ぶ。管理画面のbackendへの転送（Next.js route handler）は
-`lib/apiTimeouts.ts: ADMIN_PROXY_TIMEOUT_MS`で、どの種類よりも先に打ち切らない——転送が先に打ち切ると、呼び出しの側の種類を
-延ばしても症状が変わらない。
-
 `apiClient.ts`/`apiError.ts`は全呼び出しが共有する骨格とエラー正規化。骨格（`requestApi`）は呼び出し口の1回の呼び出しを包み、
 「開始→通信の失敗・HTTPの失敗・本文の解析の失敗・成功のどれかをdebugLogに記録→失敗は`Error`をthrow」を行う。
-**呼び出しごとに違うのは、待ち時間・ログのカテゴリ・エラー文言・成功ログへ足す項目だけ**で、それを引数で受け取る。
+**呼び出しごとに違うのは、ログのカテゴリ・エラー文言・成功ログへ足す項目だけ**で、それを引数で受け取る。
 取得（GET）の多くは文言を`errorLabel`から「◯◯の取得/解析に失敗しました」で組み立てる（`getOptions`）。通信の失敗は
 openapi-fetchのmiddlewareの`onError`で包み直し、本文の解析の失敗は応答が届いた後の例外として見分ける（`onResponse`で
 届いたことを記録する）。HTTPの失敗は呼び出し口が例外にせず`error`として返すので、骨格が`detail`から文言を作って投げる。
@@ -80,9 +76,9 @@ HTTPステータスが`message`に入るのは、応答に`detail`が無い（JS
 利用者に意味が無いまま長くなり、狭い幅のレイアウト（常設ヘッダー）を溢れさせる。
 
 **暗黙の前提**: 骨格を各クライアントへ写経すると、片方だけ改良された非対称が静かに生まれる
-（タイムアウト判別と`error.cause`のログがPOST系1箇所にしか無い状態が実際に生まれていた）。
-通信エラー・タイムアウトは常に`messages.failure`へ`[通信エラー]`/`[タイムアウト]`を添えた
-日本語の`Error`へ包み直し、ブラウザ由来の英語の文言（`Failed to fetch`・`signal timed out`）は
+（`error.cause`のログがPOST系1箇所にしか無い状態が実際に生まれていた）。
+通信エラーは常に`messages.failure`へ`[通信エラー]`を添えた
+日本語の`Error`へ包み直し、ブラウザ由来の英語の文言（`Failed to fetch`）は
 `cause`とdebugLogにだけ残す——呼び出し元の多くが`error.message`をそのまま画面へ出すため、
 包むかどうかを呼び出し元に選ばせると、選び忘れた経路から英語が本文へ漏れる。
 
@@ -145,7 +141,7 @@ backendも日本時間で扱う。`domain/time_zone.py`）。暦と時刻の取�
    区別できない経路（backendが欠測と取得失敗を同じ502で返す等）は、「取得できません」の
    ように失敗側へ倒して書く。
 2. **文言は常に日本語。** 失敗の文言の出所は、backendの`detail`（429の混雑案内を含む、
-   HTTPエラー時）か、`messages.failure`（通信エラー・タイムアウト・本文の無いHTTPエラー）の
+   HTTPエラー時）か、`messages.failure`（通信エラー・本文の無いHTTPエラー）の
    どちらかだけにする（上記`apiClient.ts`）。Next.js route handlerが自前で組み立てる`detail`
    （管理APIの転送の口`app/admin/api/[...path]`の転送失敗）も同じで、ランタイム由来の英語はサーバーのログにだけ
    残す。**エラーを受け取って言い直す側は、原因を断定
@@ -528,7 +524,7 @@ Reactの外（デバッグの記録・走行の計測・走行中のルートの
 ## モバイル/デスクトップのレイアウト分岐
 
 `useIsMobile()`で分岐する。幅のしきい値はCSSだけが持ち（`globals.css`の`@media`が立てる
-`--is-mobile`。メディアクエリの中で立てなくなると`frontend/src/structure/isMobileFlag.test.ts`が落とす）、
+`--is-mobile`）、
 JSはその旗を読むだけで数値を写さない:
 
 - デスクトップ: サイドバー（`aside.app-sidebar`）にモバイルの下部タブと同じ2区分

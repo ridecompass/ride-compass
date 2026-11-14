@@ -1,6 +1,5 @@
 import { queryOptions } from "@tanstack/react-query";
 import { fetchJson } from "@/lib/apiClient";
-import { API_TIMEOUT_MS } from "@/lib/apiTimeouts";
 
 /** `app/api/version/route.ts`の応答。 */
 export interface FrontendVersion {
@@ -11,7 +10,6 @@ export interface FrontendVersion {
 // フロント自身が動いている版。メニューのバージョン表示と管理画面のシステム状況が読む。
 function getFrontendVersion() {
   return fetchJson<FrontendVersion>("/api/version", {
-    timeoutMs: API_TIMEOUT_MS.status,
     category: "api:version",
     errorLabel: "フロントエンドのバージョン",
   });

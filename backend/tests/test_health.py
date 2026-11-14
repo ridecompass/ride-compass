@@ -1,4 +1,5 @@
-"""`/health`のうち、DBのバックアップからの経過時間を見る（見回りがこれを読んで止まりに気づく）。
+"""`/health`のうち、ホストの定期の仕組み（DBのバックアップ・元の取り直し）が最後に通ってからの経過時間を見る
+（見回りがこれを読んで止まりに気づく）。
 
 ここで見ないもの: `commit`・`started_at`（値を詰めて返すだけ）。
 """
@@ -8,27 +9,44 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from fastapi.testclient import TestClient
 
-from app.infrastructure import admin_data_backup
+from app.infrastructure import host_markers
 from app.main import app
 
 client = TestClient(app)
 
 
 @pytest.fixture
-def marker(tmp_path, monkeypatch):
-    """バックアップの印の置き場。中身はテストが置く。"""
-    path = tmp_path / "admin_data_backup_at"
-    monkeypatch.setattr(admin_data_backup, "MARKER_PATH", path)
-    return path
+def marker_dir(tmp_path, monkeypatch):
+    """印の置き場。中身はテストが置く。"""
+    monkeypatch.setattr(host_markers, "MARKER_DIR", tmp_path)
+    return tmp_path
 
 
-@pytest.mark.parametrize(("placed_hours_ago", "expected"), [(50, 50.0), (None, None)])
-def test_health_returns_hours_since_the_last_backup(marker, placed_hours_ago, expected):
-    """経過時間が狂うと止まっていても気づかず、記録が無いときに落ちると/healthを待つデプロイが失敗する。"""
-    if placed_hours_ago is not None:
-        marker.write_text((datetime.now(UTC) - timedelta(hours=placed_hours_ago)).strftime("%Y-%m-%dT%H:%M:%S+00:00") + "\n")
+@pytest.fixture
+def marker(marker_dir):
+    """DBのバックアップの印。"""
+    return marker_dir / "admin_data_backup_at"
 
-    assert client.get("/health").json()["admin_data_backup_age_hours"] == expected
+
+def _passed_hours_ago(hours: float) -> str:
+    return (datetime.now(UTC) - timedelta(hours=hours)).strftime("%Y-%m-%dT%H:%M:%S+00:00") + "\n"
+
+
+def test_health_returns_hours_since_each_marker(marker_dir):
+    """経過時間が狂うと止まっていても気づかず、欄と印を取り違えると片方が止まっても他方の時刻で通って見える。"""
+    (marker_dir / "admin_data_backup_at").write_text(_passed_hours_ago(50))
+    (marker_dir / "source_refresh_at").write_text(_passed_hours_ago(100))
+
+    health = client.get("/health").json()
+
+    assert (health["admin_data_backup_age_hours"], health["source_refresh_age_hours"]) == (50.0, 100.0)
+
+
+def test_health_returns_null_without_a_marker(marker_dir):
+    """まだ1回も通っていない（印が無い）ときに落ちると、/healthを待つデプロイが失敗する。"""
+    health = client.get("/health").json()
+
+    assert (health["admin_data_backup_age_hours"], health["source_refresh_age_hours"]) == (None, None)
 
 
 @pytest.mark.parametrize(
@@ -47,6 +65,6 @@ def test_health_stays_ok_when_the_backup_marker_is_unreadable(marker, caplog, wr
     response = client.get("/health")
 
     assert (response.status_code, response.json()["status"], response.json()["admin_data_backup_age_hours"]) == (200, "ok", None)
-    message = next(r.getMessage() for r in caplog.records if "DBのバックアップの印のファイルが読めない" in r.getMessage())
+    message = next(r.getMessage() for r in caplog.records if "印のファイルが読めない" in r.getMessage())
     assert f"path={marker} " in message
     assert "Error(" in message

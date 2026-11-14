@@ -14,6 +14,7 @@ import zipfile
 
 import pytest
 
+from app.batch.common import write_fetch_record
 from app.batch.ingest import ingest_source
 from app.batch.source_adapters import abr, jartic_regulation
 from app.infrastructure.source_models import Source
@@ -24,7 +25,6 @@ pytestmark = pytest.mark.asyncio(loop_scope="module")
 #: 取込の範囲（min_lat, min_lon, max_lat, max_lon）。
 BBOX = (35.40, 139.20, 35.80, 139.80)
 PROFILE = profile_within(BBOX)
-VERSION = PROFILE.source(Source.JARTIC_REGULATION).rows.version
 PEDESTRIAN = PROFILE.source(Source.JARTIC_REGULATION).rows.kinds[0]
 
 #: 配布の CSV の見出しの一部（配布のまま）。
@@ -64,7 +64,8 @@ def _csv(header: list[str], rows: list[list[str]]) -> str:
 
 def _write_regulations(regulations) -> None:
     rows = [["k_2.1", kind, shape, "通行禁止", key, coordinates, ""] for key, kind, shape, coordinates in regulations]
-    _write_zip(jartic_regulation.archive_path(VERSION, "13"), _csv(COLUMNS, rows), "cp932")
+    _write_zip(jartic_regulation.archive_path("13"), _csv(COLUMNS, rows), "cp932")
+    write_fetch_record(jartic_regulation.DATA_DIR, versions={"13": "given"})
 
 
 @pytest.fixture
@@ -72,7 +73,7 @@ def city_positions(monkeypatch, tmp_path):
     """取り込む都道府県を東京都（範囲の中に代表点を持つ新宿区）に決める ABR の市区町村の代表点。"""
     monkeypatch.setattr(abr, "DATA_DIR", tmp_path / "abr")
     monkeypatch.setattr(jartic_regulation, "DATA_DIR", tmp_path / "jartic")
-    _write_zip(abr.archive_path(PROFILE.source(Source.ABR).rows.snapshot, "mt_city_pos_all"),
+    _write_zip(abr.archive_path("mt_city_pos_all"),
                _csv(["lg_code", "rep_lon", "rep_lat"], [["131041", "139.70", "35.69"]]), "utf-8")
 
 

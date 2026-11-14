@@ -1,17 +1,12 @@
 import { adminApiClient, backendApi, getOptions, requestApi } from "@/lib/apiClient";
-import { API_TIMEOUT_MS } from "@/lib/apiTimeouts";
 import type { components, paths } from "@/types/generated/api";
 
 type Schemas = components["schemas"];
 
 /** 管理APIの呼び出しの骨格の設定。`label`は失敗の文言の主語（例: "DB状態の取得"→「DB状態の取得に失敗しました」）。
  * 本文を送る呼び出しは`body`を渡すと開始のログに載る。 */
-function adminOptions(
-  label: string,
-  { timeoutMs = API_TIMEOUT_MS.default, body }: { timeoutMs?: number; body?: unknown } = {},
-) {
+function adminOptions(label: string, { body }: { body?: unknown } = {}) {
   return {
-    timeoutMs,
     category: "api:admin",
     messages: { failure: `${label}に失敗しました`, parseFailure: `${label}の結果を解析できませんでした` },
     ...(body !== undefined ? { requestMeta: { body } } : {}),
@@ -21,7 +16,7 @@ function adminOptions(
 export function getMaterialCoverage() {
   return requestApi(
     (init) => adminApiClient.GET("/material-catalog/coverage", init),
-    adminOptions("材料の欠損割合の取得", { timeoutMs: API_TIMEOUT_MS.heavyAdmin }),
+    adminOptions("材料の欠損割合の取得"),
   );
 }
 
@@ -30,15 +25,12 @@ export function getMaterialCoverage() {
 export function getDerivedDataFreshness() {
   return requestApi(
     (init) => adminApiClient.GET("/derived-data/freshness", init),
-    adminOptions("派生データ鮮度台帳の取得", { timeoutMs: API_TIMEOUT_MS.heavyAdmin }),
+    adminOptions("派生データ鮮度台帳の取得"),
   );
 }
 
 export function getDbStatus() {
-  return requestApi(
-    (init) => adminApiClient.GET("/db-status", init),
-    adminOptions("DB状態の取得", { timeoutMs: API_TIMEOUT_MS.heavyAdmin }),
-  );
+  return requestApi((init) => adminApiClient.GET("/db-status", init), adminOptions("DB状態の取得"));
 }
 
 export async function refreshTileCache(): Promise<void> {
@@ -83,7 +75,7 @@ export function getRecentLogs(query: LogsQuery) {
 export function getDebugStats() {
   return requestApi(
     (init) => backendApi.GET("/api/debug/stats", init),
-    getOptions({ timeoutMs: API_TIMEOUT_MS.status, category: "api:debug-stats", errorLabel: "システム状況" }),
+    getOptions({ category: "api:debug-stats", errorLabel: "システム状況" }),
   );
 }
 
@@ -91,7 +83,6 @@ export function getDebugStats() {
 export function checkBackendHealth() {
   const failure = "バックエンドへの疎通確認に失敗しました";
   return requestApi((init) => backendApi.GET("/health", init), {
-    timeoutMs: API_TIMEOUT_MS.status,
     category: "api:health",
     messages: { failure, parseFailure: failure },
   });

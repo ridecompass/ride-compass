@@ -83,7 +83,6 @@ export default function RouteSplicePanel({
 }: RouteSplicePanelProps) {
   // `edge_ids`が空の候補では区間を出せない。
   const unavailable = displayed.edge_ids.length === 0;
-  const busy = previewing || applying;
   const deltas = preview ? penaltyDeltas(displayed, preview, catalog) : [];
 
   return (
@@ -126,7 +125,6 @@ export default function RouteSplicePanel({
                 <Button
                   size="panelIcon"
                   onClick={onUndo}
-                  disabled={busy}
                   aria-label="1つ戻す"
                   usage="直前の乗り換えを1つ取り消します。"
                 >
@@ -135,7 +133,6 @@ export default function RouteSplicePanel({
                 <Button
                   size="panelIcon"
                   onClick={onReset}
-                  disabled={busy}
                   aria-label="全部戻す"
                   usage="乗り換えをすべて取り消して、元の候補に戻します。"
                 >
@@ -146,7 +143,7 @@ export default function RouteSplicePanel({
             <Button
               size="panelIcon"
               onClick={onPreview}
-              disabled={appliedCount === 0 || busy}
+              disabled={appliedCount === 0}
               aria-busy={previewing}
               aria-label="差分を見る"
               usage="いまの乗り換えで、距離・所要時間・負担が元の候補からどう変わるかを出します。"
@@ -158,7 +155,7 @@ export default function RouteSplicePanel({
               <Button
                 size="panelIcon"
                 onClick={onApply}
-                disabled={appliedCount === 0 || busy}
+                disabled={appliedCount === 0}
                 aria-busy={applying}
                 aria-label="新しいルートを作成"
                 usage="いまの乗り換えで作ったルートを、合成ルートに加えます。元のルートは残ります。"
@@ -187,7 +184,6 @@ export default function RouteSplicePanel({
               <Button
                 size="sm"
                 onClick={onApply}
-                disabled={busy}
                 aria-busy={applying}
                 usage="編集を閉じて、この組み合わせと同じ道の候補を選びます。"
               >

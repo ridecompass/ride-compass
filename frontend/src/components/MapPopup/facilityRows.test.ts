@@ -1,7 +1,7 @@
 // @vitest-environment node
 /**
  * `components/MapPopup/facilityRows.ts`——地図の点を1施設1行で見せる行の中身が、区分の名前（凡例と同じ宣言）を並べ、引けない値を
- * 「不明」にし、宣言が点に添える事実を値のあるものだけ並べ、名前の空の点は名前を持たないこと。
+ * 「不明」にし、宣言が点に添える事実を値のあるものだけ並べ、数か所をまとめた行は事実の代わりに数を出すこと。
  * 同じ場所の同じ施設を1行にし、道のりの順に並べること。施設の位置を、走行中の現在地から見た前後（残りか手前）で言うこと。
  *
  * 点の宣言は架空のもので与える（実在の区分の名前をテストへ書き写さない）。
@@ -16,6 +16,10 @@ import type { PointAxis } from "@/lib/mapDisplay/pointLayers";
 import { distinctFacilities, facilityOf, facilityPosition } from "./facilityRows";
 
 const AT = [139.6497, 35.7053] as const;
+
+function member(name: string | null = null, at: readonly [number, number] = AT, count = 1) {
+  return { name, at: [at[0], at[1]] as [number, number], count };
+}
 
 function axis(property: string, categories: [string, (string | boolean)[]][]): PointAxis {
   return {
@@ -39,30 +43,30 @@ const LAYER = { attr_id: "point", display_axes: [KIND], point_facts: [], point_n
 
 describe("facilityOf", () => {
   it("値が属する区分の名前を出し、区分に無い値は「不明」にする", () => {
-    expect(facilityOf(LAYER, { kind: "a2" }, AT).kindLabel).toBe("区分A");
-    expect(facilityOf(LAYER, { kind: "unregistered" }, AT).kindLabel).toBe("不明");
+    expect(facilityOf(LAYER, { kind: "a2" }, member()).kindLabel).toBe("区分A");
+    expect(facilityOf(LAYER, { kind: "unregistered" }, member()).kindLabel).toBe("不明");
   });
 
   it("区分の軸が複数なら並べ、宣言の事実は値のあるものだけを添える", () => {
     const facility = facilityOf(
       { ...LAYER, display_axes: [KIND, FLAG], point_facts: [YEAR, NOTE] },
       { kind: "a1", flag: false, year: 2023 },
-      AT,
+      member(),
     );
     expect(facility.kindLabel).toBe("区分A・当てはまらない");
     expect(facility.facts).toEqual(["年 2023"]);
   });
 
-  it("名前の空の点は名前を持たない（名前の代わりに区分の名前を出し、外の地図のリンクを引かない）", () => {
-    expect(facilityOf(LAYER, { kind: "a1", name: "店 1&2/3" }, AT).name).toBe("店 1&2/3");
-    expect(facilityOf(LAYER, { kind: "a1", name: "" }, AT).name).toBeNull();
+  it("数か所をまとめた行は、代表点の事実の代わりに数を出す", () => {
+    const layer = { ...LAYER, point_facts: [YEAR] };
+    expect(facilityOf(layer, { kind: "a1", year: 2023 }, member(null, AT, 3)).facts).toEqual(["3か所"]);
   });
 });
 
 describe("distinctFacilities", () => {
   it("同じ場所の同じ施設は1行にし、道のりの順（同じ位置なら道に近い順）に並べる", () => {
     const at = (name: string, km: number, offsetM: number, lngLat: readonly [number, number] = AT) =>
-      facilityOf(LAYER, { kind: "a1", name }, lngLat, { km, offsetM });
+      facilityOf(LAYER, { kind: "a1" }, member(name, lngLat), { km, offsetM });
     const rows = distinctFacilities([
       at("遠い店", 2, 5),
       at("同じ位置の遠い店", 1, 30),

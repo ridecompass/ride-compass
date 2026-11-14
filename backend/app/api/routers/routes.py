@@ -269,8 +269,7 @@ async def _run_generate_job(
     同時実行の枠が空くまで待ちの状態で待ち、`settings.generate_queue_wait_seconds`のうちに空かなければ混み合いとして
     失敗にする。
 
-    待ちと生成を合わせて、結果を持つ時間（`job_registry.JOB_TTL_SECONDS`）で打ち切る。それより遅く作れても、画面は
-    問い合わせを諦めている。"""
+    待ちと生成を合わせて、結果を持つ時間（`job_registry.JOB_TTL_SECONDS`）で打ち切る。"""
     deadline = asyncio.timeout(job_registry.JOB_TTL_SECONDS)
     acquired = False
     try:

@@ -21,7 +21,6 @@ from shapely.geometry import box
 from app.batch import derive_cli
 from app.batch.dem_tile_store import PRODUCT_PRIORITY
 from app.batch.ingest import SourceRecord
-from app.batch.source_adapters.npa_honhyo import HonhyoRows
 from app.batch.source_adapters.raster_wkb import tile_raster_wkb
 from app.domain.accident import PartyType
 from app.domain.landcover import PERCENT_CLASSES
@@ -87,7 +86,7 @@ async def _ingest_nodes(conn: asyncpg.Connection) -> None:
 async def _ingest_accidents(conn: asyncpg.Connection) -> int:
     return await ingest_records("accident", [
         accident_record("on-way-100", *_point(2), party_a=PARTY_TYPE_CODES[PartyType.BICYCLE], party_b="59")],
-        conn=conn, rows=HonhyoRows(years=[2024]))
+        conn=conn, origin={"years": [2024]})
 
 
 @functools.cache
