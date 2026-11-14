@@ -12,7 +12,7 @@ function check(gh, number, heads) {
   const before = read();
   // 当たらない行き先が残ると、条件が全部済んでもゲートが閉じずに実装担当へ戻すので、印を付ける前に直させる。
   const misbound = misboundSteps(before, Number(number));
-  if (misbound.length) return { error: `印を付けない: やることの ${misbound.join("・")} の行き先が、完了の条件の文の頭・#<番号>・見送り（<理由>）のどれにも当たらない（行き先を直してから打ち直す）` };
+  if (misbound.length) return { error: `印を付けない: ${misbound.join("・")} の行き先が、完了の条件の文の頭・#<番号>・見送り（<理由>）のどれにも当たらない（行き先を直してから打ち直す）` };
   const result = checkByText(before, heads);
   if (result.problems) return { error: `印を付けない: ${result.problems.join("・")}` };
   if (read() !== before) return { error: `#${number} の本文が読んだあとに変わったので、上書きしない（打ち直す）` };
