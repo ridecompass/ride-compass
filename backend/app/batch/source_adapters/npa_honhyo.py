@@ -3,7 +3,8 @@
 **入力を上流から手元へ写すことと、外部の形を読んで1件ずつ返すことだけ**を行う。ステージング・差し替え・run記録は
 `ingest.py`の共通経路が持つ。
 
-取得（`fetch_honhyo`）は配布元から年ごとの本票CSVを手元へ写し、取込は手元にあるものを読む。
+取得（`fetch_honhyo`）は配布元が一覧に載せる全部の年の本票CSVを手元へ写し、取った年を置き場に記録する。
+取込は記録の年の本票CSVを手元から読む。
 
 列は捨てずに全部`attrs`へ入れる。何が後で要るかは取込の時点では決められない——
 2022年に列構成が58列から68列へ変わっており、そのとき何を拾うべきだったかは
@@ -15,15 +16,16 @@
 
 import csv
 import logging
+import re
 from collections.abc import AsyncIterator
-from dataclasses import dataclass, field
 from typing import Any
 from pathlib import Path
 
+import httpx
 import shapely
 from shapely.geometry import Point
 
-from app.batch.common import fetch_once
+from app.batch.common import fetch_once, fetch_timeout, read_fetch_record, write_fetch_record
 from app.batch.ingest import AdapterInputs, Fetcher, SourceRecord, register_adapter
 from app.batch.source_profile import SourceProfile, SourceSpec
 from app.infrastructure import data_paths
@@ -32,6 +34,10 @@ logger = logging.getLogger("ridecompass.ingest.npa_honhyo")
 
 DATA_DIR = data_paths.DATA_DIR / "accidents"
 
+#: 配布元の一覧のページ。年ごとのページ（`opendata/<年>/opendata_<年>.html`）へのリンクが並ぶ。
+LISTING_URL = "https://www.npa.go.jp/publications/statistics/koutsuu/opendata/index_opendata.html"
+_LISTED_YEAR = re.compile(r"opendata/(\d{4})/opendata_\d{4}\.html")
+_LISTING_READ_TIMEOUT_SECONDS = 30.0
 #: 配布元。年ごとに1ファイル。
 HONHYO_URL_TEMPLATE = (
     "https://www.npa.go.jp/publications/statistics/koutsuu/opendata/{year}/honhyo_{year}.csv")
@@ -89,31 +95,37 @@ def honhyo_path(year: int) -> Path:
     return DATA_DIR / f"honhyo_{year}.csv"
 
 
-@dataclass(frozen=True)
-class HonhyoRows:
-    """`npa_honhyo`の`rows`。"""
-
-    #: 取り込む年。1年が本票CSV1ファイル。
-    years: list[int] = field(default_factory=list)
+def listed_years() -> list[int]:
+    """配布元の一覧のページが載せる年（古い順）。"""
+    response = httpx.get(LISTING_URL, timeout=fetch_timeout(_LISTING_READ_TIMEOUT_SECONDS), follow_redirects=True)
+    response.raise_for_status()
+    years = sorted({int(year) for year in _LISTED_YEAR.findall(response.text)})
+    if not years:
+        raise ValueError("配布元の一覧に年が無い")
+    return years
 
 
 def npa_honhyo_inputs(spec: SourceSpec, profile: SourceProfile) -> AdapterInputs:
-    return AdapterInputs(files=tuple(honhyo_path(int(year)) for year in spec.rows.years))
+    return AdapterInputs(files=tuple(honhyo_path(year) for year in read_fetch_record(DATA_DIR)["years"]))
 
 
 def fetch_honhyo(spec: SourceSpec, profile: SourceProfile) -> None:
-    for year in spec.rows.years:
-        fetch_once(HONHYO_URL_TEMPLATE.format(year=year), honhyo_path(int(year)),
+    years = listed_years()
+    for year in years:
+        fetch_once(HONHYO_URL_TEMPLATE.format(year=year), honhyo_path(year),
                    read_timeout=_READ_TIMEOUT_SECONDS, logger=logger)
+    write_fetch_record(DATA_DIR, years=years)
 
 
-@register_adapter("npa_honhyo", rows=HonhyoRows, inputs=npa_honhyo_inputs,
+@register_adapter("npa_honhyo", inputs=npa_honhyo_inputs,
                   fetcher=Fetcher(fetch_honhyo, lambda: (DATA_DIR,)))
 async def read_npa_honhyo(spec: SourceSpec, profile: SourceProfile, inputs: AdapterInputs,
                           origin: dict[str, Any]) -> AsyncIterator[SourceRecord]:
     target = profile.target
+    record = read_fetch_record(DATA_DIR)
+    origin.update(record)
     skipped = 0
-    for year, path in zip(spec.rows.years, inputs.files, strict=True):
+    for year, path in zip(record["years"], inputs.files, strict=True):
         with open(path, encoding=ENCODING, newline="") as f:
             reader = csv.DictReader(f)
             for row in reader:

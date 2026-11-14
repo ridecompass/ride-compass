@@ -17,6 +17,7 @@ import duckdb
 import pytest
 
 from app.batch import derive_places
+from app.batch.common import write_fetch_record
 from app.batch.ingest import ingest_source
 from app.batch.source_adapters import overture_places
 from app.batch.source_profile import load_source_profile
@@ -77,7 +78,8 @@ def overture_dir(monkeypatch, tmp_path):
 
 async def _places(conn, places: list[dict]) -> dict[str, str | None]:
     """見本を取り込んで地点を作り直し、入った地点の 名前 → 群（群を持たなければNone）を返す。"""
-    _write_parquet(overture_places.places_path(ROWS.release), places)
+    _write_parquet(overture_places.places_path(), places)
+    write_fetch_record(overture_places.DATA_DIR, release="given")
     await ingest_source(conn, PROFILE, Source.OVERTURE_PLACE)
     await derive_places.derive(conn)
     return {row["name"]: row["place_group"]

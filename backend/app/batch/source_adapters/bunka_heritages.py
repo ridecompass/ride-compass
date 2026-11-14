@@ -6,7 +6,8 @@
 取得（`fetch_bunka_heritages`）は**全国を取る**（取込の範囲は取込が絞るので、範囲を広げても取り直さない）。口は全件取得
 （scroll）で、1回目に検索の条件を、2回目からは応答の`scrollId`を渡し、`scrollId`の無い応答で終わる（公式の「簡易Web APIガイド」
 4.2.2。検索の口の`from`・`size`は2,000件で止まる）。配信元は間を空けて打つよう求め、上限の目安を示さないので、1回ごとに
-`_REQUEST_INTERVAL_SECONDS`待つ（同じガイドの1.4）。取込は手元にあるもの（全国の建造物の項目を1行1件の JSON で並べたファイル）を読む。
+`_REQUEST_INTERVAL_SECONDS`待つ（同じガイドの1.4）。配信元は版を持たず今の一覧だけを返すので、取った時刻を置き場に記録する。
+取込は手元にあるもの（全国の建造物の項目を1行1件の JSON で並べたファイル）を読む。
 
 落とすのは次の行:
 - 位置が無い
@@ -29,7 +30,7 @@ import httpx
 import shapely
 from shapely.geometry import Point
 
-from app.batch.common import fetch_timeout, place_once
+from app.batch.common import fetch_timeout, place_once, read_fetch_record, write_fetch_record
 from app.batch.ingest import AdapterInputs, Fetcher, SourceRecord, register_adapter
 from app.batch.source_profile import SourceProfile, SourceSpec
 from app.infrastructure import data_paths
@@ -54,19 +55,17 @@ DESIGNATION_FIELD = "bunka-11-s"
 class BunkaHeritageRows:
     """`bunka_heritages`の`rows`。"""
 
-    #: 取った日（例: `2026-10-08`）。配信元は版を持たず今の一覧だけを返すので、取った日ごとに置き場を分ける。
-    snapshot: str
     #: 取り込む指定の別（文化遺産オンラインの表記のまま）。
     designations: list[str]
 
 
-def heritages_path(snapshot: str) -> Path:
+def heritages_path() -> Path:
     """取り出した項目の置き場。取得と取込で同じ導き方を使う。"""
-    return DATA_DIR / f"architecture_{snapshot}.jsonl"
+    return DATA_DIR / "architecture.jsonl"
 
 
 def bunka_heritages_inputs(spec: SourceSpec, profile: SourceProfile) -> AdapterInputs:
-    return AdapterInputs(files=(heritages_path(spec.rows.snapshot),))
+    return AdapterInputs(files=(heritages_path(),))
 
 
 def _write_heritages(temporary: Path) -> None:
@@ -90,7 +89,8 @@ def _write_heritages(temporary: Path) -> None:
 
 
 def fetch_bunka_heritages(spec: SourceSpec, profile: SourceProfile) -> None:
-    place_once(heritages_path(spec.rows.snapshot), _write_heritages, source=SCROLL_URL, logger=logger)
+    place_once(heritages_path(), _write_heritages, source=SCROLL_URL, logger=logger)
+    write_fetch_record(DATA_DIR)
 
 
 @register_adapter("bunka_heritages", rows=BunkaHeritageRows, inputs=bunka_heritages_inputs,
@@ -99,7 +99,7 @@ async def read_bunka_heritages(spec: SourceSpec, profile: SourceProfile, inputs:
                                origin: dict[str, Any]) -> AsyncIterator[SourceRecord]:
     rows: BunkaHeritageRows = spec.rows
     (path,) = inputs.files
-    origin["snapshot"] = rows.snapshot
+    origin.update(read_fetch_record(DATA_DIR))
     designations = set(rows.designations)
     with path.open(encoding="utf-8") as lines:
         for line in lines:
