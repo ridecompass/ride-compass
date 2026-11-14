@@ -7,9 +7,7 @@
 読むのは値が取れるかだけで、管理画面から書いた値はそのまま持つ。プロセス内の`domain/tuning.py: TUNING_VALUES`へは書かない。
 """
 
-from datetime import datetime
-
-from sqlalchemy import DateTime, Float, String, func, select
+from sqlalchemy import Float, String, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
@@ -23,10 +21,6 @@ class TuningOverrideRow(Base):
 
     param_id: Mapped[str] = mapped_column(String, primary_key=True)
     value: Mapped[float] = mapped_column(Float, nullable=False)
-    #: いつこの値へ動かしたか。アプリのプロセスの時計ではなくDBの時計（`now()`）で揃える。
-    #: 列の既定は挿入にしか効かないため、既存の行を書き換えるときは`set_value`が明示する。
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
 async def load_tuning_values(session: AsyncSession) -> dict[str, float]:
@@ -54,5 +48,5 @@ class TuningOverrideStore:
         await self._session.execute(
             pg_insert(TuningOverrideRow)
             .values(param_id=param_id, value=value)
-            .on_conflict_do_update(index_elements=["param_id"], set_={"value": value, "updated_at": func.now()})
+            .on_conflict_do_update(index_elements=["param_id"], set_={"value": value})
         )
