@@ -524,7 +524,7 @@ Reactの外（デバッグの記録・走行の計測・走行中のルートの
 ## モバイル/デスクトップのレイアウト分岐
 
 `useIsMobile()`で分岐する。幅のしきい値はCSSだけが持ち（`globals.css`の`@media`が立てる
-`--is-mobile`。メディアクエリの中で立てなくなると`frontend/src/structure/isMobileFlag.test.ts`が落とす）、
+`--is-mobile`）、
 JSはその旗を読むだけで数値を写さない:
 
 - デスクトップ: サイドバー（`aside.app-sidebar`）にモバイルの下部タブと同じ2区分
