@@ -6,7 +6,7 @@
   （`domain/cycling_speed.py: SegmentSpeedModel.ride`）。平地の出力で割ると「平地をその秒だけ走る体力」になる。
 - 道のストレスは、道のストレスの軸（`domain/cost_axes.py: BurdenAxis`）の1kmあたりの重さ × km（重さ1の道に換算したkm）。βは
   換算したkm1つを何秒とみなすか。
-- 倍率は軸ごと（費目と1対1）の利用者の値で、書いていない軸は標準の1。無効の軸（`LedgerParameters.counts`）は組まず、その費目は
+- 倍率は軸ごと（費目と1対1）の利用者の値で、書いていない軸は標準の1。数えない軸（`LedgerParameters.counts`）は組まず、その費目は
   費用にも内訳にも入らない。つまみは代償の全体に掛ける利用者の強さ。α・β・γは
   全部の軸に共通の換算なので較正値。代償の項はどれも0以上で、費用が所要時間を下回るのは、避け方の倍率が1より小さい
   「好む」の区間だけ（探索の見込みはその倍率で緩める、`domain/route_search.py: heuristic_seconds`）。
@@ -41,7 +41,7 @@ _EFFORT_ITEM_J: dict[EffortItem, Callable[[SegmentRide], np.ndarray]] = {
 
 @dataclass(frozen=True)
 class LedgerParameters:
-    """費用の式の利用者の値（つまみ・軸ごとの倍率・無効の軸）と較正値（α・β・γ）。"""
+    """費用の式の利用者の値（つまみ・軸ごとの倍率・数える軸）と較正値（α・β・γ）。"""
 
     #: 代償の全体に掛ける強さ（利用者のつまみの比 × 標準的な人の強さの較正値`evaluation.penalty_strength`）。
     effective_strength: float
@@ -49,16 +49,11 @@ class LedgerParameters:
     effort_alpha: float
     burden_seconds_per_km: float
     effort_weight_exponent: float
-    #: 数えない（無効にした）軸のid。
-    disabled_axes: frozenset[str] = frozenset()
+    #: 軸idを数えるか（`CostPreference.counts`）。
+    counts: Callable[[str], bool]
 
     def multiplier(self, axis_id: str) -> float:
         return self.multipliers.get(axis_id, STANDARD_COST_FACTOR)
-
-    def counts(self, axis_id: str) -> bool:
-        """軸`axis_id`を数えるか（全体のつまみを無効（0）にしておらず、その軸を無効にしていないか）。費用・内訳・地図のレンズ・
-        凡例の目安は、どれもこれで軸を選ぶ。"""
-        return self.effective_strength > 0 and axis_id not in self.disabled_axes
 
 
 def current_ledger_parameters(preference: CostPreference) -> LedgerParameters:
@@ -67,7 +62,7 @@ def current_ledger_parameters(preference: CostPreference) -> LedgerParameters:
     return LedgerParameters(
         effective_strength=preference.strength * checked_tuning_value("evaluation.penalty_strength", lambda v: v > 0, "0より大きい"),
         multipliers=preference.multipliers,
-        disabled_axes=frozenset(preference.disabled_axes),
+        counts=preference.counts,
         effort_alpha=checked_tuning_value("cost.effort_alpha", lambda v: v >= 0, "0以上"),
         burden_seconds_per_km=checked_tuning_value("cost.burden_seconds_per_km", lambda v: v >= 0, "0以上"),
         effort_weight_exponent=tuning_value("cost.effort_weight_exponent"),

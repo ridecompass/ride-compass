@@ -188,16 +188,13 @@ def road_network(
 
 
 class NetworkRepository:
-    """DBの代役。道路網はどこでも取込範囲の中で、区間の形は両端のノードを結ぶ直線。"""
+    """DBの代役。区間の形は両端のノードを結ぶ直線。"""
 
     def __init__(self, network: RoadNetwork):
         self._coordinates = {
             node_key(int(osm)): [float(lat), float(lon)]
             for osm, lat, lon in zip(network.node_osm_id, network.node_lat, network.node_lon, strict=True)
         }
-
-    async def is_covered(self, bbox):
-        return True
 
     async def get_edges_with_geometry(self, edges):
         return {

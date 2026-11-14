@@ -87,6 +87,8 @@ export interface SceneLook {
   readonly dynamicWeather: Partial<Record<DynamicWeatherLayerId, DynamicWeatherGroupState>>;
   /** ルート線の色分けのモード。 */
   readonly lens: LensId;
+  /** 負担を数える軸があるか。無ければルートの線を負担で塗らず、中立色の1色にする。 */
+  readonly costsCounted: boolean;
   /** 道に付く層（塗る負担の周りの道・点の層）を地図全体に出すか。偽の間は、周りの道を塗らず、点はルート沿いだけに出す。 */
   readonly surroundingsShown: boolean;
   /** 地図の道に塗る、道路タブの段。 */
@@ -136,7 +138,9 @@ const NO_MATERIALS: WayMaterials = new Map();
 function routeStateFrom(props: SceneWiringProps): RouteState {
   const { look } = props;
   const selected = props.routes.find((route) => route.id === props.selectedRouteId) ?? null;
-  const mode = getRouteStyleMode(props.catalog.routeStyleModes, look.lens);
+  const mode = look.costsCounted
+    ? getRouteStyleMode(props.catalog.routeStyleModes, look.lens)
+    : UNPAINTED_ROUTE_STYLE_MODE;
   const segments = selected?.segments ?? [];
   const bands = props.spliceStretches;
   const composite = props.splicedRoute;
@@ -299,7 +303,7 @@ export function applyScene(
   });
 }
 
-// 費用の軸の一覧が届く前・失敗の間（モードが0件）のルートの線。値を読まず中立色の1色で塗り、凡例を持たない。
+// 負担を数える軸が無い間と、費用の軸の一覧が届く前・失敗の間（モードが0件）のルートの線。値を読まず中立色の1色で塗り、凡例を持たない。
 const UNPAINTED_ROUTE_STYLE_MODE: RouteStyleMode = {
   id: UNSELECTED_LENS_ID,
   legend: [],

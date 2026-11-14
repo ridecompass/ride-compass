@@ -115,8 +115,7 @@ class GraphService:
     """探索範囲の道路網を、取込範囲全体の配列（`infrastructure/road_network_store.py`）から
     切り出す。**読むだけで、作らない。**
 
-    取込範囲の外はデータ未整備としてNoneを返す。カバレッジは取込の宣言
-    （`source_runs.profile`のtarget.bbox）から決まる。
+    道路網は取込範囲の中にしか無いので、取込範囲の外は区間が0本の切り出しになる。
     """
 
     def __init__(self, repository: RoadGraphRepository, memory: SearchMemory):
@@ -129,18 +128,12 @@ class GraphService:
         self._memory.release(self._reserved)
         self._reserved = 0
 
-    async def get_search_slice(self, bbox: BoundingBox) -> tuple[RoadSlice, TileSet] | None:
+    async def get_search_slice(self, bbox: BoundingBox) -> tuple[RoadSlice, TileSet]:
         """探索範囲の区間を返す。返したら、その区間の数に比例する生成のメモリを`release_search_memory`まで取っておく。
 
         切り出すのはbboxそのもの。あわせて返すbboxを覆うz12タイルの集合は、近い範囲をまとめて
         指す鍵として使う（学習した迂回率の鍵）。
         """
-        if not await self._repository.is_covered(bbox):
-            logger.warning(
-                "取込範囲外のbbox (%.2f,%.2f,%.2f,%.2f)",
-                bbox.min_latitude, bbox.min_longitude, bbox.max_latitude, bbox.max_longitude)
-            return None
-
         started = start_timer()
         tiles = tiles_covering_bbox(bbox, DETOUR_RATIO_SHARING_ZOOM)
         # 全区間を走査するので、読み込みと一緒にイベントループの外で切り出す。
