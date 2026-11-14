@@ -39,7 +39,7 @@ from app.batch.dem_tile_store import PRODUCT_PRIORITY
 from app.domain.attributes import elevation_values_sql
 from app.domain.region import tile_position_sql
 from app.domain.material_sql import IS_BRIDGE_SQL, IS_TUNNEL_SQL
-from app.domain.tuning import BRIDGE_END_BEARINGS
+from app.domain.tuning import BRIDGE_END_BEARINGS, ELEVATION_PROFILE_STEP_ID, require_tuning
 from app.infrastructure.source_models import DEM_TILES_SQL, WAYS_SOURCE_SQL
 
 logger = logging.getLogger("ridecompass.derive_elevation")
@@ -196,5 +196,6 @@ async def _derive_elevation(conn: asyncpg.Connection, profile_step_m: float, bri
 
 async def derive(conn: asyncpg.Connection, *, profile_step_m: float, bridge_end_radius_m: float) -> None:
     """`profile_step_m`は断面の刻みの上限（m）、`bridge_end_radius_m`は橋の端の標高を探す半径（m）。"""
+    require_tuning({ELEVATION_PROFILE_STEP_ID: profile_step_m}, profile_step_m > 0, "0より大きい")
     async with conn.transaction():
         await _derive_elevation(conn, profile_step_m, bridge_end_radius_m)

@@ -1,4 +1,4 @@
-"""想定した失敗（上流から取れない・MSMを読めない・手元の置き場を読めない・DBに届かない）を、利用者へ返す状態と文にする。
+"""想定した失敗（上流から取れない・MSMを読めない・手元の置き場を読めない・DBに届かない・較正値で計算できない）を、利用者へ返す状態と文にする。
 
 失敗は途中の層で値に替えずに投げ、口では捕まえずに、ここがアプリ単位の例外の扱いで返す（口ごとに書くと、書き忘れた口だけが
 500になる）。ルート生成のジョブの失敗の文も同じ`failure_reply`で決める。決め方に無い例外（実装の誤り等）は500のまま表へ出す。
@@ -12,6 +12,7 @@ import httpx
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 
+from app.domain.tuning import TuningValueError
 from app.infrastructure.database import DB_UNAVAILABLE_ERRORS
 from app.infrastructure.debug_log import error_type_label
 from app.infrastructure.jma_amedas_store import AmedasUnavailableError
@@ -23,9 +24,10 @@ from app.infrastructure.simple_api_client import UnexpectedShapeError
 
 #: 上流が返した本文がJSONでないとき（`httpx.Response.json`）も、上流の障害として数える。
 UPSTREAM_ERRORS: tuple[type[Exception], ...] = (httpx.HTTPError, json.JSONDecodeError, UnexpectedShapeError)
-#: 手元の置き場（観測値・区域の境界・土地被覆のラスタ・道路網）を読めない。文は例外が持つ。
+#: 手元の置き場（観測値・区域の境界・土地被覆のラスタ・道路網）を読めない・較正値の値で計算できない。文は例外が持つ。
 UNAVAILABLE_ERRORS: tuple[type[Exception], ...] = (
-    AmedasUnavailableError, AreaBoundariesUnavailableError, LandcoverUnavailableError, RoadNetworkUnavailableError)
+    AmedasUnavailableError, AreaBoundariesUnavailableError, LandcoverUnavailableError, RoadNetworkUnavailableError,
+    TuningValueError)
 
 
 def failure_reply(exc: BaseException) -> tuple[int, str] | None:

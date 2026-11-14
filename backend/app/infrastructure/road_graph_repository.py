@@ -32,7 +32,7 @@ from app.domain.material_catalog import (
     material_value_sql,
 )
 from app.domain.region import BoundingBox, RoadAt
-from app.domain.tuning import TURN_BEARING_DISTANCE_ID
+from app.domain.tuning import TURN_BEARING_DISTANCE_ID, require_tuning
 from app.infrastructure import derived_data_meta
 from app.infrastructure.material_joins import material_from_clause
 from app.infrastructure.orm_base import declared_metadata
@@ -312,7 +312,9 @@ class RoadGraphRepository:
 
     def stream_network_edges(self, chunk_size: int, tuning: Mapping[str, float]) -> AsyncIterator[Sequence[Row]]:
         """取込範囲全体の区間を`chunk_size`行ずつ流す（`_NETWORK_EDGES_SQL`の並び）。`tuning`は`get_network_tuning`の値。"""
-        return self._stream(_NETWORK_EDGES_SQL.bindparams(bearing_distance_m=tuning[TURN_BEARING_DISTANCE_ID]), chunk_size)
+        bearing_distance_m = tuning[TURN_BEARING_DISTANCE_ID]
+        require_tuning({TURN_BEARING_DISTANCE_ID: bearing_distance_m}, bearing_distance_m >= 0, "0以上")
+        return self._stream(_NETWORK_EDGES_SQL.bindparams(bearing_distance_m=bearing_distance_m), chunk_size)
 
     def stream_network_nodes(self, chunk_size: int) -> AsyncIterator[Sequence[Row]]:
         """区間の端点になりうるノード全件を`chunk_size`行ずつ流す（`osm_node_id`の昇順）。"""

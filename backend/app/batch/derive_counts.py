@@ -15,6 +15,7 @@ import asyncpg
 
 from app.domain.accident import BICYCLE_SQL, FATAL_SQL
 from app.domain.geo import degrees_covering_m
+from app.domain.tuning import STOP_CLUSTER_DISTANCE_ID, require_tuning
 from app.infrastructure.source_models import (
     ACCIDENTS_SOURCE_SQL,
     WAYS_SOURCE_SQL,
@@ -162,6 +163,7 @@ FROM edge_counts GROUP BY osm_way_id
 
 async def derive(conn: asyncpg.Connection, *, cluster_distance_m: float, accident_fatal_weight: float,
                  accident_match_distance_m: float) -> None:
+    require_tuning({STOP_CLUSTER_DISTANCE_ID: cluster_distance_m}, cluster_distance_m >= 0, "0以上")
     started = time.perf_counter()
 
     # 事故の行と、それを入れた取込を同じ時点から読む（間に取込が入れ替えても食い違わない）。
