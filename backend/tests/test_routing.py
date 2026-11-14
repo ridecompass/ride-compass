@@ -885,6 +885,7 @@ async def test_route_generation_calls_from_python_only_the_jit_that_the_image_ba
         lattice=MsmBlock(
             grid=MsmGrid(lat_min=BASE_LAT, lon_min=BASE_LON, d_lat=0.018, d_lon=0.022, n_lat=2, n_lon=2), row0=0, col0=0, rows=2, cols=2,
         ),
+        latest_run_end=times[-1] + timedelta(hours=1),
     )
     generator = generator_for(road_network_root, grid_network(), wind)
     departure = datetime(2026, 9, 22, 8, tzinfo=timezone(timedelta(hours=9)))
