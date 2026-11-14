@@ -37,8 +37,7 @@ def _levels(*values: float) -> tuple[CostLevel, ...]:
     return tuple(CostLevel(value, DISABLED_LABEL if value == 0 else multiplier_label(value)) for value in values)
 
 
-#: 全体のつまみの段。0は「無効」で、どの軸も数えない（全部の軸を無効にしたのと同じ。`domain/ledger_costs.py:
-#: LedgerParameters.counts`）。
+#: 全体のつまみの段。0は「無効」で、どの軸も数えない（全部の軸を無効にしたのと同じ。`CostPreference.counts`）。
 COST_STRENGTH_LEVELS = _levels(0.0, 0.5, STANDARD_COST_FACTOR, 1.5, 2.0)
 #: 軸ごとの倍率の段（数えない軸は倍率でなく無効で表すので、0の段は無い）。
 COST_MULTIPLIER_LEVELS = _levels(0.5, STANDARD_COST_FACTOR, 2.0)
@@ -58,6 +57,11 @@ class CostPreference(StrictModel):
         default_factory=dict)
     # 数えない（無効にした）軸のid。
     disabled_axes: list[str] = Field(default_factory=list)
+
+    def counts(self, axis_id: str) -> bool:
+        """軸`axis_id`を数えるか（つまみを無効（0）にしておらず、その軸を無効にしていないか）。利用者の値だけで決め、較正値には
+        依らない（利用者の値を持つ側は、較正値を受け取らずに同じ答えを出せる）。"""
+        return self.strength > 0 and axis_id not in self.disabled_axes
 
     def check_cost_axis_ids(self) -> "CostPreference":
         """倍率と無効のキーが今の費用の軸のidだけで、同じ軸を両方に書いていないか。知らない軸は効かず、両方に書いた軸は

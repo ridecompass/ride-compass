@@ -152,8 +152,7 @@ jobs:
             # -t 90: uvicorn(単一プロセス、backend/Dockerfile)はSIGTERMで新しい接続を止め、
             # 応答中のリクエストが終わるのを待ってから止まる。docker stopの既定の猶予(10秒)では
             # その途中で強制終了され、接続がRSTで切れてフロントで「Failed to fetch」になる。
-            # 90秒は、通常のリクエストのDBクエリの上限(20秒、app/infrastructure/database.py)を
-            # 上回る。待つのはHTTPのリクエストだけで、ルート生成のジョブ(リクエストの外で走る
+            # 待つのはHTTPのリクエストだけで、ルート生成のジョブ(リクエストの外で走る
             # タスク)は待たれずに失われる(docs/architecture/api-design.md)。
             # 真のゼロダウンタイム(新コンテナを起動しヘルスチェック後に旧を止める
             # blue/green)は、--network=hostで単一ポートを共有する現在の構成では

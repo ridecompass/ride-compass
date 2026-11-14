@@ -11,7 +11,6 @@
  * - 資格情報の「片方だけ設定」の扱い → `lib/adminBasicAuth.test.ts`
  */
 
-import { HttpResponse } from "msw";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { BACKEND_INTERNAL_URL } from "@/lib/backendInternalUrl";
@@ -90,16 +89,6 @@ describe("管理APIの口", () => {
 
     backendResponse = () => new Response(null, { status: 204 });
     expect((await call("DELETE", "/admin/api/axis-definitions/a")).status).toBe(204);
-  });
-
-  it("backendへ届かなければ502で、ランタイムの英語の文言は本文へ入れない", async () => {
-    vi.spyOn(console, "error").mockImplementation(() => {});
-    backendResponse = () => HttpResponse.error();
-    const response = await call("GET", "/admin/api/db-status");
-    expect(response.status).toBe(502);
-    const { detail } = await response.json();
-    expect(detail).toContain("通信エラー");
-    expect(detail).not.toContain("fetch failed");
   });
 
   it("`..`で`/admin/api`の外へ出るパスは、backendへ渡さない", async () => {

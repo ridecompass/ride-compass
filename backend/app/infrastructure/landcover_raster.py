@@ -12,7 +12,6 @@
 モジュールはimport順に依存する（呼ばないとEPSG解決が環境によって失敗する）。
 """
 
-import logging
 import math
 import threading
 from dataclasses import dataclass
@@ -35,7 +34,6 @@ from rasterio.enums import Resampling  # noqa: E402
 from rasterio.warp import reproject, transform_bounds  # noqa: E402
 from rasterio.windows import Window, transform as window_transform  # noqa: E402
 
-logger = logging.getLogger("ridecompass.landcover_raster")
 
 TILE_SIZE = 256
 _TILE_CRS = "EPSG:3857"
@@ -63,10 +61,6 @@ _opened: tuple[list[str], list[_RasterSource]] | None = None
 _sources_lock = threading.Lock()
 
 
-class LandcoverUnavailableError(Exception):
-    """土地被覆のラスタが置き場に無いか、1枚でも開けない（開けた分だけで配ると、欠けた区域が透明な絵として配られ、
-    キャッシュにも残る）。範囲の外（どのラスタも覆っていない）とは別の事実。"""
-
 #: 画素値→RGBA。`LANDCOVER_CLASSES`に無い値（No Data・Clouds）と、塗らないと宣言した
 #: クラスは透明のまま残る。
 _PALETTE = np.zeros((256, 4), dtype=np.uint8)
@@ -82,19 +76,12 @@ def raster_paths() -> list[str]:
 def _open_sources() -> list[_RasterSource]:
     """置き場のラスタを全部開いて持つ。置き場の一覧が開いたときと変われば開き直す——取得は配信中の置き場を入れ替え、
     タイルの鍵（`region_tile_cache.py: landcover_generation`）も同じ一覧から作るので、前のファイルを描き続けると
-    前の絵が新しい鍵で残る。開けなければ`LandcoverUnavailableError`で、次の読みで開き直す。
-    入れ替えた前のラスタは閉じずに手放す（読んでいる途中の要求があり、最後の参照が消えたときに閉じる）。"""
+    前の絵が新しい鍵で残る。入れ替えた前のラスタは閉じずに手放す（読んでいる途中の要求があり、最後の参照が消えたときに閉じる）。"""
     global _opened
     with _sources_lock:
         paths = raster_paths()
         if _opened is None or _opened[0] != paths:
-            try:
-                if not paths:
-                    raise FileNotFoundError(f"置き場にラスタがありません: {data_paths.RASTER_DIR}")
-                _opened = (paths, [_RasterSource(rasterio.open(path), threading.Lock()) for path in paths])
-            except (OSError, rasterio.errors.RasterioIOError) as exc:
-                logger.warning("土地被覆のラスタを開けません paths=%s error=%r", paths, exc)
-                raise LandcoverUnavailableError("土地被覆のラスタを開けないため、土地被覆を配れません") from exc
+            _opened = (paths, [_RasterSource(rasterio.open(path), threading.Lock()) for path in paths])
         return _opened[1]
 
 
@@ -154,7 +141,7 @@ def _png(image: Image.Image) -> bytes:
 
 
 def opened_raster_paths() -> list[str]:
-    """開いたラスタのパス（開けなければ`LandcoverUnavailableError`）。"""
+    """開いたラスタのパス。"""
     return [source.dataset.name for source in _open_sources()]
 
 

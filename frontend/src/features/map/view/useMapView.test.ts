@@ -113,6 +113,31 @@ describe("useMapView", () => {
     expect(result.current.look.lens).toBe("ascent");
   });
 
+  it.each([
+    { case: "負担の強さを無効にした間", costPreference: { ...STANDARD_COST_PREFERENCE, strength: 0 } },
+    {
+      case: "全部の軸を個別に無効にした間",
+      costPreference: { ...STANDARD_COST_PREFERENCE, disabled_axes: ["ascent", "vibration"] },
+    },
+  ])("$case、数える軸が無いので、総合も選べず凡例も出さず、ルートの線を負担で塗らない", async ({ costPreference }) => {
+    serve();
+    const { result, rerender } = renderMapView({ hasDetail: true });
+    await waitFor(() => expect(result.current.lensControl.axisOptions).toHaveLength(LENS_COUNT));
+    act(() => result.current.lensControl.onLensChange("total"));
+    expect(result.current.lensControl.totalLabel).not.toBeNull();
+
+    rerender({ costPreference });
+
+    expect(result.current.lensControl).toMatchObject({
+      lens: UNSELECTED_LENS_ID,
+      totalLabel: null,
+      legend: [],
+      axisOptions: [],
+    });
+    expect(result.current.lensControl.catalogNotice).toContain("塗れる負担はありません");
+    expect(result.current.look).toMatchObject({ lens: UNSELECTED_LENS_ID, costsCounted: false });
+  });
+
   it("走る向きは地図の上の向きを [0, 360) の10°刻みへ丸めて地図へ渡し、材料の要求へ向きを載せないので向きを変えても取り直さない。走行中は実際に走る向きと速度を渡す", async () => {
     serve();
     const sent = onBackend("GET", "/api/region/lens/ascent/:z/:x/:y", () =>

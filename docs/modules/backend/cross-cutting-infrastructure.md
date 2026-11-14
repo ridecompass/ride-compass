@@ -18,11 +18,10 @@ DB接続・Redis・HTTPクライアント・レート制限・ログ・デバッ
 | domain | `stopwatch.py` | ログへ出す所要時間の測り方（測り始めの`stopwatch.py: start_timer`とミリ秒の整数の`stopwatch.py: elapsed_ms`）。測り始めと終わりは同じ時計で読む |
 | domain | `strict_model.py` | 全Pydanticモデルの基底（`strict_model.py: StrictModel`）。未知のフィールドを黙って捨てず例外にする |
 | api | `admin_auth.py` | 管理API共通の認可境界 |
-| api | `failure_replies.py` | 想定した失敗（上流から取れない→502・MSMを読めない・手元の置き場［アメダスの観測値・区域の境界・土地被覆のラスタ・道路網］を読めない・DBに届かない→503）を、どの口でも理由つきで返すアプリ単位の例外の扱い。ルート生成のジョブの失敗の文も同じ`failure_reply`で決める（下の「DB障害として扱う例外」・`fetch_upstream`の段） |
+| api | `failure_replies.py` | 想定した失敗（上流から取れない→502・MSMを読めない・アメダスの観測値の置き場を読めない・DBに届かない→503）を、どの口でも理由つきで返すアプリ単位の例外の扱い。ルート生成のジョブの失敗の文も同じ`failure_reply`で決める（下の「DB障害として扱う例外」・`fetch_upstream`の段） |
 | api | `admin_paths.py` | 管理APIの経路の接頭辞（認可・キャッシュの決まりが、この下の口をまとめて扱う） |
 | api | `cache_policy.py` | 応答の`Cache-Control`（パスとポリシーの対応表・付与ミドルウェア） |
 | api | `dependencies.py`（横断的な部分のみ、他は各モジュール参照） | DI工場（公開関数は注入の口だけ） |
-| api | `finite_json_body.py` | 要求の本文のNaN・無限大を、アプリ全体の依存として経路の処理より前に422で断る（Starletteの本文の読み方はJSONの外の`NaN`・`Infinity`を通す） |
 | api | `rate_limit.py` | per-IPレート制限（`rate_limit.py: enforce_rate_limit`集約・`rate_limit.py: client_id`） |
 | api/routers | `health.py` | `/health`・`/api/debug/stats` |
 | api/routers | `debug_admin.py` | `debug_admin.py: debug_mode`のランタイム切替・直近ログ取得 |
@@ -32,7 +31,7 @@ DB接続・Redis・HTTPクライアント・レート制限・ログ・デバッ
 | infrastructure | `http_client.py` | 外部API向け共有HTTPクライアント |
 | infrastructure | `process_resources.py` | プロセスで持ち回る接続と資源（HTTP・Redis・DBのエンジン・土地被覆ラスタ・ディスクのキャッシュ）を、lifespanのシャットダウン段でまとめて閉じる |
 | infrastructure | `rate_limiter.py` | プロセス内メモリのみの移動窓レート制限 |
-| infrastructure | `request_log.py` | 1リクエスト=1行のHTTPアクセスサマリログ、ログ1行の書式（リクエストIDの差し込みとJSTでの時刻整形）、500応答へのリクエストIDの付与 |
+| infrastructure | `request_log.py` | 1リクエスト=1行のHTTPアクセスサマリログ、ログ1行の書式（リクエストIDの差し込みとJSTでの時刻整形） |
 | infrastructure | `response_compression.py` | 応答のgzip圧縮（対象content-typeのみ） |
 | infrastructure | `media_types.py` | 自前で作って配るタイルのメディアタイプ（MVT・PNG）。作る側・配る側・gzipの対象の判定が同じ値を読む |
 | infrastructure | `data_paths.py` | backendがディスクへ置くものの根（本番ではホストのディレクトリを載せ、コンテナを入れ替えても残る）。取込が落とすファイルの置き場もここから組む |
@@ -131,8 +130,6 @@ FastAPI(lifespan=lifespan)
             → CorrelationIdMiddleware（リクエストID付与、最も外側）
         ▼
   api_router（api/routers/__init__.py、全routerを集約）
-        │  全経路に掛かる依存（FastAPI(dependencies=...)）: reject_non_finite_json_body（finite_json_body.py）が
-        │  本文のNaN・無限大を経路の処理（管理APIの認可を含む）より前に422で断る
         ▼
       yield（アプリ稼働中）
         ▼
@@ -147,8 +144,6 @@ FastAPI(lifespan=lifespan)
   `debug_admin.py`経由でSSH無しに直近ログを取得できるようにする。
 - `httpx`ロガー自体はWARNING以上に抑制する（1リクエストごとのINFOでログが埋まるため。
   外部呼び出しの記録は`debug_log.py: log_external_call`が別途担う）。
-- 未処理例外（500）発生時も`unhandled_exception_handler`（`request_log.py`）経由で
-  `X-Request-ID`ヘッダを付けて返す（通常レスポンスと同じ追跡性を保つ）。
 
 ### 定期ジョブの失敗
 
@@ -200,17 +195,15 @@ composeのfrontendの公開先に従う値で、既定値（手元で`next dev`�
 
 **暗黙の前提（見落としやすい重要な分岐）**: DBセッションファクトリは**2系統**存在する。
 
-| ファクトリ | command_timeout | 用途 |
-|---|---|---|
-| `get_session_factory()` | 20秒 | タイル配信（路面/POI/事故）・管理APIの読み書き等、通常のリクエスト |
-| `get_route_generation_session_factory()` | 180秒 | ルート生成（`api/dependencies.py: _open_route_generation_setup`）と、全表走査を伴う管理APIの集計（DBの状態・材料の欠損率等） |
+| ファクトリ | 用途 |
+|---|---|
+| `get_session_factory()` | タイル配信（路面/POI/事故）・管理APIの読み書き等、通常のリクエスト |
+| `get_route_generation_session_factory()` | ルート生成（`api/dependencies.py: _open_route_generation_setup`）と、全表走査を伴う管理APIの集計（DBの状態・材料の欠損率等） |
 
-ルート生成は取込範囲の判定（`is_covered`）で接続を取り、確定した経路の形の取り直し
-（`get_edges_with_geometry`）を終えるまで、1件の生成の間（本番で数秒〜数十秒）その接続を持ち続ける。
-プールを分けているのはこのためで、ルート生成とタイル配信は接続を取り合わない（プール合計は
-最大30接続、本番PostgreSQLの`max_connections=100`に余裕）。上限を長くしているのは全表走査の集計の
-ためで（タイル配信用の20秒では最後まで走らない）、生成のクエリはこの上限に近づかない——本番の
-都心40〜80kmで、形の取り直しを含む評価の段が全体で1.3秒以下（2026-09の計測）。
+ルート生成は確定した経路の形の取り直し（`get_edges_with_geometry`）で接続を取り、生成を終えてセッションを閉じるまで
+その接続を持ち続ける。全表走査の集計も1本の接続を長く持つ。
+プールを分けているのはこのためで、これらとタイル配信は接続を取り合わない（プール合計は
+最大30接続、本番PostgreSQLの`max_connections=100`に余裕）。クエリ1本の実行時間には上限を付けない。
 
 DI工場はどちらの系統を使うかを、工場を受ける依存（`api/dependencies.py: TileSessions`・`api/dependencies.py: LongSessions`）の
 型で宣言し、中で工場を呼んで開かない。テストは`app.dependency_overrides`で工場を差し替える（例: DBに届かない状態）。
@@ -228,7 +221,7 @@ DBの読み取りの失敗は、どの層でも空（空タイル・空dict・No
 - 接続を張る段階（接続数の上限・認証等）と実行中の失敗は、asyncpgの例外（`asyncpg.PostgresError`・
   `asyncpg.InterfaceError`）が`DBAPIError`へ訳される（方言の`_asyncpg_error_translate`）。プールの待ち切れは
   `sqlalchemy.exc.TimeoutError`。どれも`SQLAlchemyError`。
-- `command_timeout`の`TimeoutError`は訳されずに届く（Python 3.11以降は`OSError`の派生）。
+- 接続を張る段階の時間切れ（asyncpgの接続の`timeout`）の`TimeoutError`は訳されずに届く（Python 3.11以降は`OSError`の派生）。
   接続の拒否・切断も`OSError`。
 
 ## レート制限の集約（`api/rate_limit.py: enforce_rate_limit`）
@@ -399,15 +392,11 @@ Basic認証必須）はサーバー側のファイルキャッシュしか消せ
 ハイフンの有無は問わない）のときだけ引き継ぎ、無い・形が違うときは`uuid4().hex`で作り直す
 （作り直したときはライブラリの`asgi_correlation_id`ロガーがWARNINGを出す）。長さも文字種も
 確かめずにログと応答ヘッダへ流すと、任意の文字列を行へ差し込める。IDは`contextvars`で持たれ、
-応答の`X-Request-ID`にも付く。
+応答の`X-Request-ID`にも付く（捕まえていない例外の500は、ミドルウェアの外で作られるので付かない）。
 
 `format_log_lines`がハンドラへ付ける`CorrelationIdFilter`が全ログレコードへ`correlation_id`
 属性を注入するため、1リクエスト中に出た外部API呼び出しログ・ルート生成ステージログ等が
 すべて同じIDで紐づく（リクエストの外で出た行は`-`）。
-
-500応答は`ServerErrorMiddleware`（ミドルウェアの最も外）が作るため、ミドルウェアはそこへ
-ヘッダを付けられない。`unhandled_exception_handler`がIDを読んでヘッダ付きの応答を組み立てる。
-ミドルウェアはcontextvarを巻き戻さないので、そこでもIDが読める。
 
 `request_log_middleware`は1リクエスト=1行のアクセスログを出す。
 
@@ -421,8 +410,7 @@ Basic認証必須）はサーバー側のファイルキャッシュしか消せ
 | ステータス4xx（429以外。タイルの経路の404を除く） | WARNING |
 | それ以外 | INFO |
 
-未処理例外はスタックトレース付きERRORで記録してから再送出する（`HTTPException`は
-FastAPI側で処理済みのためここには来ない）。
+捕まえていない例外で応答が無いリクエストは、アクセスログの行を出さない。
 
 ### ログ1行の書式と時刻（`LOG_FORMAT`・`JstLogFormatter`）
 
@@ -521,7 +509,6 @@ push型更新と同じ前提）。`JobRecord`は状態ごとの型の共用体�
 
 生成は探索範囲の区間数に比例して長くなり、区間数は読み込む量の上限（[ルート生成エンジン](routing-engine.md)
 「取得の入口」）で抑えられている。開発機の所要は根拠にしない（取込範囲が本番と違い、並行する処理で振れる）。
-生成のDBのセッションが持つ上限（`command_timeout`）はクエリ1本ごとの上限で、この時間とは独立。
 
 終わるまで待つ問い合わせ（`wait_until_finished`）は、まだ終わっていないジョブごとの`asyncio.Event`を待ち、
 `set_done`・`set_failed`がそれを鳴らす。合図も台帳と同じプロセスの中にあるので、複数ワーカーにするときは

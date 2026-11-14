@@ -9,13 +9,12 @@ from pathlib import Path
 from apscheduler.events import EVENT_JOB_ERROR, JobExecutionEvent
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from asgi_correlation_id import CorrelationIdMiddleware
-from fastapi import Depends, FastAPI
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.failure_replies import install_failure_replies
 from app.api.cache_policy import TILE_PATH_PREFIXES, CachePolicyMiddleware
 from app.api.dependencies import get_amedas_service, get_jma_tile_client, open_region_service
-from app.api.finite_json_body import reject_non_finite_json_body
 from app.api.routers import api_router
 from app.config import settings
 from app.domain.time_zone import JST
@@ -26,11 +25,7 @@ from app.infrastructure import road_network_store
 from app.infrastructure.region_tile_cache import PRUNE_INTERVAL_HOURS
 from app.infrastructure.msm_client import refresh as refresh_msm
 from app.infrastructure.process_resources import close_process_resources
-from app.infrastructure.request_log import (
-    format_log_lines,
-    request_log_middleware,
-    unhandled_exception_handler,
-)
+from app.infrastructure.request_log import format_log_lines, request_log_middleware
 from app.infrastructure.response_compression import ContentTypeGZipMiddleware
 from app.infrastructure.jma_amedas_client import AMEDAS_REFRESH_INTERVAL_MINUTES
 from app.services.definitions_loading import refresh_definitions
@@ -204,7 +199,7 @@ async def lifespan(app: FastAPI):
     gc.unfreeze()
 
 
-app = FastAPI(title="RideCompass API", lifespan=lifespan, dependencies=[Depends(reject_non_finite_json_body)])
+app = FastAPI(title="RideCompass API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -224,8 +219,6 @@ app.add_middleware(CachePolicyMiddleware)
 # ため、CORSより外側に置く。リクエストIDはアクセスログの行にも載るよう、さらにその外側に置く)。
 app.middleware("http")(request_log_middleware(TILE_PATH_PREFIXES))
 app.add_middleware(CorrelationIdMiddleware)
-# 未処理例外(500)発生時もX-Request-IDヘッダを付ける。
-app.add_exception_handler(Exception, unhandled_exception_handler)
 
 app.include_router(api_router)
 install_failure_replies(app)

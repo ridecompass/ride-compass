@@ -5,8 +5,7 @@
 
 ここで見ないもの:
 - どのリクエストがどちらの系統を使うか → `api/dependencies.py`を通る各ルーターのテスト
-- DB障害の例外を受けて空・503へ倒すこと → 倒す側のテスト（例: `test_region_service.py`）
-- 実行中の待ちの上限（`command_timeout`）。上限は通常の系統で20秒あり、届かせるにはその時間だけ待つ
+- DB障害の例外を503で返すこと → `test_admin_db_unavailable.py`
 """
 
 import pytest
