@@ -16,16 +16,6 @@ export interface ReadOnlyLegendBlock {
   legend: readonly LegendEntry[];
 }
 
-/** 名前付きソースの宣言（同じソースを名乗る要素は名前・説明を共有するので、先頭の要素で引く）。 */
-function weatherSourceOf(source: string) {
-  const element = mapDisplay.weatherElements.find((candidate) => candidate.source === source);
-  if (!element?.description) throw new Error(`${source}は説明を宣言していない`);
-  return { label: element.label, description: element.description };
-}
-
-const LINEAR_RAINBAND = weatherSourceOf("linearRainband");
-const LINEAR_RAINBAND_AREA = weatherSourceOf("linearRainbandArea");
-
 type WeatherElementDeclaration = (typeof mapDisplay.weatherElements)[number];
 
 /** 名前の並び。同じ名前を名乗る要素（描き方違いの同じ名前付きソース）は1つにする。 */
@@ -39,6 +29,21 @@ function disasterLegendBlocks(): ReadOnlyLegendBlock[] {
   return scales.map((scale) => ({
     label: labelList(DISASTER_ELEMENTS.filter((element) => element.levelScale === scale)),
     legend: weatherScales[scale],
+  }));
+}
+
+type LegendColoredElement = Extract<WeatherElementDeclaration, { legendColor: string }>;
+
+/** 降水の凡例のうち、凡例の色を持つ要素の行。同じ名前の要素（描き方・時刻の段の違い）は、先に現れた要素の1ブロックにする。 */
+function precipitationElementLegendBlocks(): ReadOnlyLegendBlock[] {
+  const byLabel = new Map<string, LegendColoredElement>();
+  for (const element of mapDisplay.weatherElements) {
+    if (element.group !== "precipitationNowcast" || element.legendColor === null) continue;
+    if (!byLabel.has(element.label)) byLabel.set(element.label, element);
+  }
+  return [...byLabel.values()].map((element) => ({
+    label: element.label,
+    legend: [{ key: element.source, label: element.description, color: element.legendColor }],
   }));
 }
 
@@ -60,27 +65,7 @@ export const READ_ONLY_LEGENDS: Partial<Record<StaticMapLayerId, readonly ReadOn
       label: PRECIPITATION_LEGEND_HEADING,
       legend: PRECIPITATION_INTENSITY_LEVELS,
     },
-    {
-      label: LINEAR_RAINBAND.label,
-      // 色は配信元の塗り色そのもの。
-      legend: [
-        {
-          key: "linearRainband",
-          label: LINEAR_RAINBAND.description,
-          color: weatherScales.linear_rainband_color,
-        },
-      ],
-    },
-    {
-      label: LINEAR_RAINBAND_AREA.label,
-      legend: [
-        {
-          key: "linearRainbandArea",
-          label: LINEAR_RAINBAND_AREA.description,
-          color: weatherScales.linear_rainband_outline_color,
-        },
-      ],
-    },
+    ...precipitationElementLegendBlocks(),
   ],
   // 道路の色分け（向かい風・追い風）と別の配色なので、凡例は「矢印[風速]」と明示する。
   windVector: [

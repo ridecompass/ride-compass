@@ -16,20 +16,19 @@ from typing import Literal
 
 import numpy as np
 
-from app.domain.attributes import CategoricalColumn, MaterialColumn
-from app.domain.cost_axes import HEADWIND_FACT_LABEL, STOPS_FACT_LABEL, CostAxisDefinitions
+from app.domain.attributes import MaterialColumn
+from app.domain.cost_axes import CostAxisDefinitions
 from app.domain.lens_total import TOTAL_LENS_ID, lens_values_with_total
 from app.domain.elevation_profile import ElevationProfiles
-from app.domain.geo import bearings_between, length_weighted_mean
+from app.domain.geo import bearings_between
 from app.domain.graph import edge_feature_key
-from app.domain.cycling_speed import rolling_resistance_material_id
 from app.domain.gradient import ROAD_BEARING_LEAF, travel_direction_formula
 from app.domain.ledger_costs import LedgerCosts, LedgerParameters
-from app.domain.leg_costs import burden_weights, travel_inputs
-from app.domain.region import EDGE_UNIT_MIN_ZOOM, tile_bounds_lonlat
-from app.domain.road_network import MaterialFills, RoadNetwork, rows_in_bbox
+from app.domain.leg_costs import axis_facts, burden_weights, travel_inputs
+from app.domain.region import EDGE_UNIT_MIN_ZOOM
+from app.domain.road_network import MaterialFills, RoadNetwork, rows_in_tile
 from app.domain.strict_model import StrictModel
-from app.domain.route import AxisFact
+from app.domain.route import AxisFact, elevation_gain
 from app.domain.way_value_formula import WayValueConditionName, WayValueFormula, evaluate_formula, feature
 
 
@@ -78,8 +77,7 @@ class LensFeatures:
 def tile_features(network: RoadNetwork, z: int, x: int, y: int) -> LensFeatures:
     """タイルに掛かる区間（形の外接矩形が重なるもの）のフィーチャー。道1本で塗るズームは、タイルの外の区間も含めた道の全区間で
     1つのフィーチャーにする（どのタイルから見ても道1本の値が同じ）。"""
-    bbox = tile_bounds_lonlat(z, x, y)
-    hit = rows_in_bbox(network, bbox.min_longitude, bbox.min_latitude, bbox.max_longitude, bbox.max_latitude)
+    hit = rows_in_tile(network, z, x, y)
     way_ids = np.asarray(network.edge_way_id)
     if z >= EDGE_UNIT_MIN_ZOOM:
         rows = hit
@@ -135,25 +133,29 @@ class LensTable:
 
 @dataclass(frozen=True)
 class LensFactInputs:
-    """道の窓が出す事実の入力（どれも`features.rows`の行の順）。事実の入力はここだけが持つ。"""
+    """道の窓が出す区間の秒と事実の入力（配列はどれも`features.rows`の行の順）。"""
 
-    #: 材料id→列（路面の区分を引く）と、区間の長さ（m）。
+    axes: CostAxisDefinitions
+    #: 材料id→列と、欠けを埋める取込の範囲全体の平均（`domain/leg_costs.py: axis_facts`が読む）。
     materials: Mapping[str, MaterialColumn]
+    fills: MaterialFills
     distance_m: np.ndarray
+    #: 数える軸id→行ごとの代償の秒（レンズの値と同じ秒）。
+    penalties: Mapping[str, np.ndarray]
+    #: 行の向きの登り（m、NaNは標高が無い）。
+    elevation_gain_m: np.ndarray
     #: 止まってから漕ぎ出す回数（探索・停止の軸と同じ量。`domain/leg_costs.py: TravelInputs.stops`）。
     stops: np.ndarray
-    #: 向かい風・横風の成分。風を読めず無風で求めたときはNone（向かい風を事実として出さない）。
-    wind_ms: tuple[np.ndarray, np.ndarray] | None
-    #: 断面の一番急な登りと下り（%、行の向き）。
-    steepest: tuple[np.ndarray, np.ndarray]
+    #: 向かい風の成分。フィーチャーが無く風を求めなかったときはNone。
+    headwind_ms: np.ndarray | None
 
 
 def lens_table(features: LensFeatures, materials: Mapping[str, MaterialColumn], distance_m: np.ndarray,
                profiles: ElevationProfiles, axes: CostAxisDefinitions, parameters: LedgerParameters, speed_kmh: float,
                fills: MaterialFills, wind_ms: tuple[np.ndarray, np.ndarray] | None,
-               steepest: tuple[np.ndarray, np.ndarray]) -> tuple[LensTable, LensFactInputs]:
-    """`features.rows`の行の順の材料・長さ・断面・風の成分（向かい風・横風。Noneは風を読めず無風で求める）・断面の一番急な
-    登りと下りから、レンズの値と、道の窓が出す事実の入力を求める。"""
+               elevation_gain_m: np.ndarray) -> tuple[LensTable, LensFactInputs]:
+    """`features.rows`の行の順の材料・長さ・断面・風の成分（向かい風・横風。Noneはフィーチャーが無く風を求めなかったとき）・行の向きの登りから、
+    レンズの値と、道の窓が出す区間の秒と事実の入力を求める。"""
     travel = travel_inputs(materials, distance_m, profiles, speed_kmh, fills)
     ledger = LedgerCosts.for_model(axes, parameters, travel.model, burden_weights(axes, parameters, materials, fills))
     calm = (np.zeros(len(distance_m)), np.zeros(len(distance_m)))
@@ -162,7 +164,8 @@ def lens_table(features: LensFeatures, materials: Mapping[str, MaterialColumn], 
     with np.errstate(invalid="ignore", divide="ignore"):
         per_km = {axis_id: _summed_by_direction(features, seconds) / km for axis_id, seconds in penalties.items()}
     return (LensTable(features=features, values=lens_values_with_total(per_km, np.zeros_like(km))),
-            LensFactInputs(materials, travel.model.distance_m, travel.stops, wind_ms, steepest))
+            LensFactInputs(axes, materials, fills, travel.model.distance_m, penalties, elevation_gain_m, travel.stops,
+                           None if wind_ms is None else wind_ms[0]))
 
 
 def _summed_by_direction(features: LensFeatures, per_row: np.ndarray) -> np.ndarray:
@@ -176,39 +179,35 @@ def _summed_by_direction(features: LensFeatures, per_row: np.ndarray) -> np.ndar
 
 class LensAxisSeconds(StrictModel):
     axis_id: str
-    seconds_per_km: float
+    seconds: float
 
 
 class LensDirection(StrictModel):
-    """道を1つの向きに辿ったときの、レンズの値（1kmあたりの代償の秒）と、その元の事実。事実は値の無い道ではNone。"""
+    """押したフィーチャーを1つの向きに辿ったときの代償の秒（地図のレンズと同じ秒を、区間の長さぶん足したもの）と、その元の事実。"""
 
-    total_seconds_per_km: float
-    #: 軸ごとの1kmあたりの代償の秒（体力の軸をコードの表の順、続けて道のストレスの軸。和が総合）。
+    total_seconds: float
+    #: 数える軸ごとの秒（体力の軸をコードの表の順、続けて道のストレスの軸。和が総合）。
     axes: list[LensAxisSeconds]
-    #: 値の元の事実（名前と単位つき。求められない事実は載せない）: 断面の一番急な登りと下り（%、辿る向き）・辿る向きへの
-    #: 向かい風の成分（m/s、長さで重みを付けた平均。負は追い風）・止まる回数（1kmあたり）。
-    facts: list[AxisFact]
+    #: 軸id→その軸の事実（`domain/leg_costs.py: axis_facts`。ルートの事実と同じ作り方）。
+    facts: dict[str, AxisFact]
 
 
 class LensInspection(StrictModel):
-    """押したフィーチャーの、両方の向きのレンズの値と事実。"""
+    """押したフィーチャーの、両方の向きの秒と事実。"""
 
     #: 地図が走行方位で塗っている向き（`along`は道の向き。直角に近くて決まらなければNone）。
     painted: Literal["along", "against"] | None
     #: 辿れない向き（一方通行の逆）はNone。
     along: LensDirection | None
     against: LensDirection | None
-    #: 路面の区分（走行の模型が転がり抵抗を引く分け方）の名前。長さの一番長い区分。区分の無い道はNone。
-    surface: str | None
 
 
 class RoadInspection(StrictModel):
     """道の窓（地図の道を押すと出る）。押した道の一次属性と、押したフィーチャー（その倍率で地図が塗る区間か道1本）の
-    レンズの値。"""
+    代償の秒と事実。"""
 
     highway: str
     tags: dict[str, str]
-    #: 費用の軸のレンズの値（1kmあたりの代償の秒）と、その元の事実。地図のレンズと同じ値。
     lens: LensInspection
 
 
@@ -222,53 +221,23 @@ def painted_direction(bearing_deg: float, road_bearing_deg: float) -> Literal["a
     return "along" if evaluate_formula(formula.value, leaves, conditions, 1)[0] == 0.0 else "against"
 
 
-def lens_inspection(table: LensTable, index: int, painted: Literal["along", "against"] | None, facts: LensFactInputs,
-                    surface_labels: Mapping[str, str]) -> LensInspection:
-    """`table`のフィーチャー`index`の両方の向きの値と、`facts`から引いた事実。"""
-    features = table.features
+def lens_inspection(features: LensFeatures, index: int, painted: Literal["along", "against"] | None,
+                    facts: LensFactInputs) -> LensInspection:
+    """`features`のフィーチャー`index`の両方の向きの秒と、`facts`から引いた事実。"""
     of_feature = features.feature == index
-    distance = np.asarray(facts.distance_m, dtype=np.float64)
-    steepest, wind_ms = facts.steepest, facts.wind_ms
 
     def direction(slot: int) -> LensDirection | None:
-        rows = of_feature & (features.direction == slot)
-        total = float(table.values[TOTAL_LENS_ID][index, slot])
-        # 長さ0の区間だけの向きは1kmあたりが求まらない（0/0）。辿れない向きと同じく値を持たない。
-        if not rows.any() or not np.isfinite(total):
+        rows = np.flatnonzero(of_feature & (features.direction == slot))
+        if not len(rows):
             return None
-        km = float(distance[rows].sum()) / 1000.0
-        measured = [
-            ("一番急な登り", _largest(steepest[0][rows]), "%"),
-            ("一番急な下り", _largest(steepest[1][rows]), "%"),
-            (HEADWIND_FACT_LABEL, None if wind_ms is None else length_weighted_mean(wind_ms[0][rows], distance[rows]), "m/s"),
-            (STOPS_FACT_LABEL, float(facts.stops[rows].sum()) / km if km > 0 else None, "回/km"),
-        ]
+        seconds = {axis_id: per_row[rows] for axis_id, per_row in facts.penalties.items()}
+        sums = {axis_id: float(values.sum()) for axis_id, values in seconds.items()}
         return LensDirection(
-            total_seconds_per_km=total,
-            axes=[LensAxisSeconds(axis_id=lens_id, seconds_per_km=float(values[index, slot]))
-                  for lens_id, values in table.values.items() if lens_id != TOTAL_LENS_ID],
-            facts=[AxisFact(label=label, value=value, unit=unit) for label, value, unit in measured if value is not None],
+            total_seconds=lens_values_with_total(sums, 0.0)[TOTAL_LENS_ID],
+            axes=[LensAxisSeconds(axis_id=axis_id, seconds=value) for axis_id, value in sums.items()],
+            facts=axis_facts(facts.axes, facts.materials, facts.fills, rows, facts.distance_m[rows], seconds,
+                             elevation_gain(facts.elevation_gain_m[rows]),
+                             None if facts.headwind_ms is None else facts.headwind_ms[rows], float(facts.stops[rows].sum())),
         )
 
-    return LensInspection(painted=painted, along=direction(ALONG), against=direction(AGAINST),
-                          surface=_longest_class(facts.materials, of_feature, distance, surface_labels))
-
-
-def _largest(values: np.ndarray) -> float | None:
-    known = values[~np.isnan(values)]
-    return float(known.max()) if len(known) else None
-
-
-def _longest_class(materials: Mapping[str, MaterialColumn], rows: np.ndarray, distance: np.ndarray,
-                   labels: Mapping[str, str]) -> str | None:
-    rolling = rolling_resistance_material_id()
-    column = materials.get(rolling) if rolling is not None else None
-    if not isinstance(column, CategoricalColumn):
-        return None
-    codes = column.codes[rows]
-    lengths = np.bincount(codes, weights=distance[rows], minlength=len(column.vocab))
-    lengths[0] = 0.0  # 値なし
-    if not lengths.any():
-        return None
-    key = column.vocab[int(lengths.argmax())]
-    return labels.get(str(key), str(key))
+    return LensInspection(painted=painted, along=direction(ALONG), against=direction(AGAINST))

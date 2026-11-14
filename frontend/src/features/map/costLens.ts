@@ -10,10 +10,11 @@ import {
   type RouteStyleMode,
 } from "@/lib/mapDisplay/routeStyleModes";
 import { costLensPaint, formatLensNumber, LENS_SECONDS_UNIT } from "@/lib/mapDisplay/costLensPaint";
+import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 import type { MapTheme } from "@/lib/mapTheme";
 import type { LensOption } from "@/features/map/LensControl/LensRow";
-import type { CostPreference } from "@/types/route";
 import type { LensEquivalentsResponse } from "@/services/costAxisCatalogApi";
+import { formulaConditions } from "@/features/map/scene/wayValueFormula";
 
 type LensPresentation = CostLensCatalog["totalLens"];
 
@@ -24,8 +25,7 @@ function mapLens(presentation: LensPresentation, lenses: CostLensCatalog, ground
     label: presentation.label,
     description: presentation.description,
     iconId: presentation.iconId,
-    // 式の木が走行方位で辿る向きを選ぶので、値は走行方位でも変わる。
-    conditions: [...conditions, "bearing_deg"],
+    conditions: [...new Set([...conditions, ...formulaConditions(lenses.mapLens.formula)])],
     materialConditions: conditions,
     display: costLensPaint(presentation, ground),
     formula: lenses.mapLens.formula,
@@ -47,7 +47,6 @@ export function costRouteStyleModes(catalog: CostAxisCatalog, ground: MapTheme):
   const mode = (id: string, presentation: LensPresentation, valueExpression: unknown[]) =>
     buildRangeSteppedMode({
       id,
-      label: presentation.label,
       valueExpression,
       paint: costLensPaint(presentation, ground),
     });
@@ -59,22 +58,20 @@ export function costRouteStyleModes(catalog: CostAxisCatalog, ground: MapTheme):
   ];
 }
 
-/** レンズの選択肢（総合を先に、続けて軸の順。無効の軸のレンズは、選べるレンズの一覧`lenses`に無い）。全体のつまみが×0なら、
- * どのレンズも代償が0なので「未使用」にする。 */
-export function costLensOptions(lenses: readonly MapLens[], preference: CostPreference): LensOption[] {
+/** レンズの選択肢（総合を先に、続けて軸の順。数えない軸のレンズは、選べるレンズの一覧`lenses`に無い）。 */
+export function costLensOptions(lenses: readonly MapLens[]): LensOption[] {
   return lenses.map((lens) => ({
     id: lens.lensId,
     label: lens.label,
     color: LENS_NEUTRAL_COLOR,
-    unused: preference.strength === 0,
     description: lens.description,
     iconId: lens.iconId,
     conditions: lens.conditions,
   }));
 }
 
-/** 凡例の下に書く、段の境目の秒の目安（地図と同じ利用者の値・無風の1kmの道で、その事実1つだけが効いたとき。
- * `features/map/useLensEquivalents.ts`）。軸でないレンズ（総合）・目安の届いていない軸は空。 */
+/** 凡例の下に書く、段の境目の秒の目安（`features/map/useLensEquivalents.ts`が引く）。
+ * 軸でないレンズ（総合）・目安の届いていない軸は空。 */
 export function costLensPremises(
   lensId: string | null,
   catalog: CostAxisCatalog,
@@ -96,7 +93,5 @@ export function costLensPremises(
       : equivalents.examples.map(
           (example) => `${example.label} ${formatLensNumber(example.seconds_per_km)}${LENS_SECONDS_UNIT}`,
         );
-  return lines.length === 0
-    ? []
-    : ["目安（いまの負担の強さと倍率で、その条件だけを持つ1kmの道を無風で走った場合）", ...lines];
+  return lines.length === 0 ? [] : [`目安[${routeGenerateConfig.lens_equivalents_condition_wording}]`, ...lines];
 }

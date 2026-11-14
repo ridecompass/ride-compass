@@ -8,6 +8,8 @@ import { cn } from "@/lib/cn";
 export interface AxisDelta {
   axisId: string;
   label: string;
+  /** 軸の識別色。 */
+  color: string;
   delta: number;
 }
 
@@ -17,12 +19,9 @@ export interface AxisDelta {
  */
 export default function SpliceDeltaBar({
   deltas,
-  axisColors,
 }: {
   /** 動いた軸（空でない）。 */
   deltas: readonly AxisDelta[];
-  /** 軸id→色（ルート設定パネルの軸チップと同じ色）。 */
-  axisColors: Readonly<Record<string, string>>;
 }) {
   const scale = deltas.reduce((max, item) => Math.max(max, Math.abs(item.delta)), 0);
 
@@ -35,7 +34,7 @@ export default function SpliceDeltaBar({
             <span
               key={item.axisId}
               className="block h-full"
-              style={{ width: `${(Math.abs(item.delta) / scale) * 50}%`, background: axisColors[item.axisId] }}
+              style={{ width: `${(Math.abs(item.delta) / scale) * 50}%`, background: item.color }}
             />
           ))}
       </div>

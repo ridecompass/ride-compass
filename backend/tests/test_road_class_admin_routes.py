@@ -14,7 +14,7 @@ import httpx
 import pytest
 import pytest_asyncio
 
-from app.domain.cycling_speed import BASE_CRR_ID
+from app.domain.tuning import BASE_CRR_ID
 from app.domain.map_display import MAP_LAYER_CATEGORIES
 from app.domain.material_catalog import MATERIAL_CATALOG
 from app.domain.road_classes import (
@@ -39,7 +39,8 @@ DEFINITIONS = road_classes(
     rolling_resistance_classes={"surface": {"paved": BASE_CRR_ID}},
     avoidance_classifications={
         "surface": AvoidanceClassification(
-            overrides={"unpaved": AvoidanceOverride(default_level="avoid", selectable=True)},
+            # 既定は「通る」のほかのどの段にも置ける（好む側も）。
+            overrides={"unpaved": AvoidanceOverride(default_level="slight_prefer", selectable=True)},
         ),
     },
 ).model_dump(mode="json")
@@ -62,7 +63,7 @@ async def test_written_definitions_are_read_back_and_served(client):
 
 
 def _two_avoidance_layers(labels: tuple[str, str], sort_orders: tuple[int, int]) -> dict:
-    """回避タブに出す分け方を2つ持つ全体。分け方の名前と層の並びは引数で決める。"""
+    """道路タブに出す分け方を2つ持つ全体。分け方の名前と層の並びは引数で決める。"""
     group = MAP_LAYER_CATEGORIES[0].key
     return road_classes(
         {key: classification({"c": []}).model_copy(update={"label": label}) for key, label in zip(("a", "b"), labels, strict=True)},
@@ -75,7 +76,7 @@ def _two_avoidance_layers(labels: tuple[str, str], sort_orders: tuple[int, int])
 
 
 async def test_avoidance_sections_follow_classification_labels_and_layer_order(client):
-    """回避タブの見出しは、管理APIで直した分け方の名前と層の並びに、次の読み込みから従う（凡例と食い違わない）。"""
+    """道路タブの見出しは、管理APIで直した分け方の名前と層の並びに、次の読み込みから従う（凡例と食い違わない）。"""
     async def served_sections() -> list[tuple[str, str]]:
         avoidance = (await client.get("/api/client-config")).json()["road_classes"]["avoidance"]
         return [(section["key"], section["label"]) for section in avoidance["sections"]]

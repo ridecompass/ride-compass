@@ -20,8 +20,8 @@ backendが公開するHTTP APIの**全体の形**と、エンドポイントを�
 | ルート生成 | `/api/routes/generate` | 不要 | ジョブの`error` |
 | 天候・防災バッジ | `/api/weather/*` | 不要 | 502（警報系の空応答は「出ていない」だけ） |
 | 地点の検索 | `/api/place-search`・`/api/place-area` | 不要 | 502（対象範囲を読めない）。空の応答は「当たらなかった」・「辺りが無い」だけ |
-| 地図タイル | `/api/region/*-tiles`・`/api/basemap/*`・`/api/jma-tile/*`・`/api/gsi-*-tile/*` | 不要 | 空タイル／502 |
-| 画面の設定・費用の軸 | `/api/client-config`・`/api/cost-axes`・`/api/cost-axes/lens-equivalents` | 不要（読み取り専用） | DBから読む値（事故の収録年等）だけ空へ倒す |
+| 地図タイル | `/api/region/*-tiles`・`/api/basemap/*`・`/api/jma-tile/*`・`/api/gsi-*-tile/*` | 不要 | 空タイル（取込範囲の外）／502／503（DBの障害） |
+| 画面の設定・費用の軸 | `/api/client-config`・`/api/cost-axes`・`/api/cost-axes/lens-equivalents` | 不要（読み取り専用） | 503（DBの障害） |
 | 管理 | `/api/admin/*` | HTTP Basic必須 | 401／404／422／503（DBの障害。どの口も`api/failure_replies.py`の1か所で返す） |
 
 ## 全体に効く約束
@@ -58,7 +58,7 @@ backendが公開するHTTP APIの**全体の形**と、エンドポイントを�
   （`infrastructure/job_registry.py`、完了から一定時間でパージ）。
 - バックグラウンドタスクの例外はHTTPレスポンスへ伝播できないため、`status="failed"`と
   `error`に記録して初めてクライアントが知る。
-- per-IPのレート制限と同時実行数の上限は**投稿時点**で効く（待ち行列化していない）。
+- per-IPのレート制限は**投稿時点**で効く。同時実行数の上限を超えた投稿は、待てる数までは受け付けて枠の空きを待たせ（ジョブの状態は`queued`）、それを超える投稿は投稿時点で429にする。
   ポーリング側は軽量なメモリ参照のみのため制限を課さない。
 
 実行が`asyncio.create_task`であってFastAPIの`BackgroundTasks`でない理由・タスク参照の
@@ -75,8 +75,6 @@ backendが公開するHTTP APIの**全体の形**と、エンドポイントを�
 - ズーム範囲外・タイル座標が範囲外（`0 <= x,y < 2**z`）は、ほかの要求の欄の外れと同じ422。ズームと列・行の
   下限は経路の引数の型（`domain/region.py: RoadTileZoom`・`TileIndex`等）、列・行の上限は
   `domain/region.py: check_tile_index`が見る。通常はMapLibreが要求しないため、直接叩かれた場合の安全弁。
-- 取込範囲外・DB障害は**エラーではなく空タイル**を返す（MapLibreは失敗したタイル要求を
-  再試行しないため、広範囲が永久に空白になるのを避ける）。**恒久的な空と一時的な空を
-  `Cache-Control`で区別する**——詳細は
+- 取込範囲外は**エラーではなく空タイル**を返す（恒久的にデータが無い）。DB障害は空へ倒さず503を返す——詳細は
   [静的道路属性・タイル配信](../modules/backend/static-road-attributes.md)。
 - 同時実行数の超過は429ではなく**待たせて全件処理**する（同じ理由）。

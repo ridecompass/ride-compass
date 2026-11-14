@@ -3,7 +3,7 @@
 TTLが切れるまでDBを読み直さないことと、DBが読めないとき前回の値のまま配ること。
 
 ここで見ないもの:
-- 世代の文字列の組み立て・世代が分からないときの印 → `test_cache_identity.py`
+- 世代の文字列の組み立て → `test_cache_identity.py`
 - タイルを配る経路が世代を読み、世代付きの鍵でディスクへ残すこと → `test_region_service.py`
 - 取込が実際に世代を進め、配信するタイルの世代がそれを持つこと → `test_derived_data_meta.py`（本物の取込で見る）
 """
@@ -19,7 +19,7 @@ pytestmark = pytest.mark.asyncio
 class FakeRepository:
     """世代を返すだけのリポジトリ。サービスはフラットなリポジトリ契約にのみ依存する。"""
 
-    def __init__(self, revision: int | None, imported: int = 3):
+    def __init__(self, revision: int, imported: int = 3):
         self.revision = revision
         self.imported = imported
         self.error: Exception | None = None

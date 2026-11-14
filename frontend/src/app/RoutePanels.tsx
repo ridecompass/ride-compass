@@ -8,6 +8,7 @@ import { dotVariants } from "@/components/ui/Dot/Dot";
 import { RouteIcon } from "@/components/ui/icons/icons";
 import { RouteSettingsIcon } from "@/components/ui/icons/lucideIcons";
 import { Tabs } from "@/components/ui/Tabs/Tabs";
+import { ROAD_SETTINGS_TAB_NAME } from "@/lib/screenNames";
 import GenerateRouteActions from "@/features/route/GenerateRouteActions/GenerateRouteActions";
 import type { SettingsTab } from "@/features/route/RouteForm/RouteForm";
 import SettingsTabsList from "@/features/route/RouteForm/SettingsTabsList";
@@ -27,15 +28,14 @@ const MOBILE_TABS = [
     sheet: "routeSettings",
     label: "ルート設定",
     Icon: RouteSettingsIcon,
-    usage:
-      "ルートを作る条件[距離・地点・負担・回避・保存した地点と設定]と「ルート生成」を開きます。もう一度押すと閉じます。",
+    usage: `ルートを作る条件[距離・地点・負担・${ROAD_SETTINGS_TAB_NAME}・保存した地点と設定]と「ルート生成」を開きます。もう一度押すと閉じます。`,
   },
   {
     sheet: "routeOutcome",
     label: "ルート結果",
     Icon: RouteIcon,
     usage:
-      "作った候補の一覧と、その負担の内訳を開きます。点は新しい結果か条件の変更の合図で、赤は失敗、中が空いた丸は候補が無かったことです。",
+      "作った候補の一覧と、その負担の内訳を開きます。点は新しい結果か条件の変更の合図です。赤は失敗を、中が空いた丸は候補が無かったことを示します。",
   },
 ] as const;
 
@@ -99,7 +99,7 @@ export function DesktopRoutePanels(props: RoutePanelsProps) {
           onClick={panels.toggleSidebar}
           aria-label={panels.sidebarCollapsed ? "パネルを開く" : "パネルを閉じる"}
           className="self-start"
-          usage="左のパネルを畳んで地図を広く見ます。もう一度押すと開きます。"
+          usage="左のパネルを畳んで、地図を広く見せます。もう一度押すと開きます。"
         >
           {panels.sidebarCollapsed ? "☰" : "✕"}
         </Button>
@@ -121,7 +121,7 @@ export function DesktopRoutePanels(props: RoutePanelsProps) {
                 }
                 open={panels.generateOpen}
                 onOpenChange={panels.setGenerateOpen}
-                usage="押すと開き・畳みます。ルートを作る条件をここで決め、右の「ルート生成」で作ります。"
+                usage="押すと開いたり畳んだりします。ルートを作る条件をここで決め、右の「ルート生成」で作ります。"
               >
                 {settingsBody}
               </SectionDisclosure>
@@ -139,7 +139,7 @@ export function DesktopRoutePanels(props: RoutePanelsProps) {
               }
               open={panels.outcomeOpen}
               onOpenChange={panels.setOutcomeOpen}
-              usage="押すと開き・畳みます。作った候補と、その負担の内訳がここに並びます。"
+              usage="押すと開いたり畳んだりします。作った候補と、その負担の内訳がここに並びます。"
             >
               {outcome.body}
             </SectionDisclosure>

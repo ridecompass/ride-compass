@@ -6,7 +6,7 @@
 区画の名前から鍵を作る形（`search_keys`）・番地付きの残りから街区の番号を取る形（`BLOCK_NUMBER_PATTERN`）・
 区画と街区の表示の名前（地点の検索の住所の表示名。`area_label`・`block_label`）・地点の検索の住所の並び
 （`address_hit_order_sql`）・地番の名前を区画に当てる鍵の順（`parcel_name_candidates`）を持つ。
-アドレス・ベース・レジストリ（ABR）の列の読み方は`infrastructure/source_models.py`が持ち、ここへは名前で届く。
+アドレス・ベース・レジストリ（ABR）の列とコードの読み方は`infrastructure/source_models.py`が持ち、ここへは名前と段で届く。
 """
 
 import re
@@ -21,10 +21,6 @@ ADDRESS_AREA_LEVELS: tuple[PlaceMatchLevel, ...] = ("prefecture", "city", "ward"
 
 #: 鍵を続き（打ちかけの語を頭に持つ区画）に使う段。大字・町までで、丁目・字は続きに出さない。
 CONTINUABLE_LEVELS: frozenset[PlaceMatchLevel] = frozenset({"prefecture", "city", "ward", "oaza"})
-
-#: ABR の町字区分（`machiaza_type`）→ 区画の段。1 が大字・町、2 が丁目、3 が小字。ここに無い区分（4 町字なし・
-#: 5 道路名）は区画の行を作らない。
-MACHIAZA_TYPE_LEVELS: dict[str, PlaceMatchLevel] = {"1": "oaza", "2": "aza", "3": "aza"}
 
 #: 番地まで打った入力（「西新宿2-8-1」）で、区画の鍵の後ろの残りの頭に来る文字（番地・地番の数字・区切り・甲乙丙丁の
 #: 地番）を見る正規表現（PostgreSQL の`~`）。残りは揃えた形（`standardize_address`）なので、数字は算用数字・区切りは`-`。

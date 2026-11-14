@@ -7,7 +7,7 @@ from pydantic import ConfigDict, WithJsonSchema, computed_field
 
 from app.domain.attributes import ElevationAttribute
 from app.domain.lens_total import lens_values_with_total
-from app.domain.geo import Latitude, Longitude
+from app.domain.geo import Latitude, Longitude, length_weighted_mean
 from app.domain.gradient import GRADIENT_VALUE_DECIMALS
 from app.domain.graph import LeanEdge
 from app.domain.strict_model import StrictModel
@@ -68,23 +68,24 @@ class ElevationStretch(StrictModel):
 
 
 class PenaltyBreakdown(StrictModel):
-    """代償の秒の内訳（費目の帳簿の式、`domain/ledger_costs.py`）。所要時間・軸ごとの代償・回避指定の和が費用になる。
+    """代償の秒の内訳（費目の帳簿の式、`domain/ledger_costs.py`）。所要時間・軸ごとの代償・避け方の倍率が増減した秒の和が費用になる。
 
     区間（ルートの線の一片）の内訳は通った道の分で、地図のレンズと同じ量。候補の内訳はルート全体の損で、区間の和に、通る道筋で
-    決まる曲がる所の漕ぎ出しを、その費目（慣性）を持つ軸の秒として足したもの。軸の名前と帳簿は`GET /api/cost-axes`が持ち、
-    回避指定の行の名前は同じ応答の`avoidance_label`が持つ。
+    決まる曲がる所の漕ぎ出しを、その費目（慣性）を持つ軸の秒として足したもの。軸の名前と帳簿は`GET /api/cost-axes`が持つ。
     """
 
     # 軸id→代償の秒（つまみ×倍率を掛けたもの）。数える軸だけを持ち（無効の軸は無い）、秒が0の軸も0として持つ。
     axis_seconds: dict[str, float]
-    # 避け方の倍率（道の区分ごとの「なるべく避ける」）が、その道の所要時間と代償に上乗せした秒。
-    avoidance_seconds: float
+    # 避け方の倍率（道の区分ごとの段）が、その道の所要時間と代償から「好む」で下げた秒（0以下）と、「なるべく避ける」で
+    # 上乗せした秒（0以上）。
+    preferred_seconds: float
+    avoided_seconds: float
 
     @computed_field  # type: ignore[prop-decorator]
     @property
     def total_seconds(self) -> float:
-        """代償の秒の和（軸ごとの秒と回避指定の秒）。所要時間に足すと、候補を並べた費用になる。"""
-        return round(sum(self.axis_seconds.values(), self.avoidance_seconds), COST_SECONDS_DECIMALS)
+        """代償の秒の和（軸ごとの秒と避け方の秒）。所要時間に足すと、候補を並べた費用になる。好む道を通ると負になりうる。"""
+        return round(sum(self.axis_seconds.values(), self.preferred_seconds + self.avoided_seconds), COST_SECONDS_DECIMALS)
 
 
 def penalty_seconds_per_km(cost: np.ndarray | float, seconds: np.ndarray | float, length_m: np.ndarray | float) -> np.ndarray:
@@ -96,7 +97,7 @@ def penalty_seconds_per_km(cost: np.ndarray | float, seconds: np.ndarray | float
 
 
 def lens_seconds_per_km(penalty: PenaltyBreakdown, distance_km: float) -> dict[str, float] | None:
-    """区間の、地図のレンズと同じ量（レンズid→1kmあたりの代償の秒。総合`TOTAL_LENS_ID`は軸の和）。回避指定は軸の値ではないので
+    """区間の、地図のレンズと同じ量（レンズid→1kmあたりの代償の秒。総合`TOTAL_LENS_ID`は軸の和）。避け方の秒は軸の値ではないので
     入れない（ルートの線と周りの道を同じ量で塗る）。長さが0ならNone。"""
     if not distance_km > 0:
         return None
@@ -113,26 +114,25 @@ def merge_penalty_breakdowns(parts: Iterable[PenaltyBreakdown]) -> PenaltyBreakd
             totals[axis_id] += seconds
     return PenaltyBreakdown.model_construct(
         axis_seconds={axis_id: round(seconds, COST_SECONDS_DECIMALS) for axis_id, seconds in totals.items()},
-        avoidance_seconds=round(sum(part.avoidance_seconds for part in present), COST_SECONDS_DECIMALS),
+        preferred_seconds=round(sum(part.preferred_seconds for part in present), COST_SECONDS_DECIMALS),
+        avoided_seconds=round(sum(part.avoided_seconds for part in present), COST_SECONDS_DECIMALS),
     )
 
 
 class AxisFact(StrictModel):
-    """費用の軸1つの損の元になった、ルートの事実の量。名前と単位は求める側が付け、画面は軸idで出し分けずにそのまま出す。"""
+    """費用の軸1つの秒の元になった事実（`domain/leg_costs.py: axis_facts`）。名前と単位は求める側が付け、画面は軸idで出し分けずに
+    そのまま出す。"""
 
     label: str
-    # 値を求められなければNone（風を使えないときの向かい風）。
+    # 区分の事実（路面の区分等）はNoneで、`label`が区分の名前。
     value: float | None
     unit: str
 
 
 class RouteFacts(StrictModel):
-    """ルートの事実の量（費用の式にも利用者の倍率にも依らない）。"""
+    """ルートの事実（費用の式にも利用者の倍率にも依らない）。"""
 
-    # 標高の無い道の長さ（km）。獲得標高に数えず、所要時間は道路網全体の坂の割合で走った長さ。
-    elevation_unknown_km: float
-    # 費用の軸id→その軸の事実（`services/road_graph_candidates.py: _route_facts`）。体力の軸は全部、道のストレスの軸は
-    # 定義にあるもの。
+    # 費用の軸id→その軸の事実。数える軸のうち、事実を求められたものだけ。
     axes: dict[str, AxisFact]
 
 
@@ -158,6 +158,9 @@ class RouteSegmentDetail(StrictModel):
     # 区間の続く坂の斜度（%、走る向きの符号つき）。道の一番急な登りと下りから`steepest_signed_percent`が作り、ビンへは
     # `merge_sustained_gradients`で畳む。値が無ければNone。
     sustained_gradient_percent: float | None = None
+    # 区間の平均勾配（%、走る向きの符号つき）。道の平均勾配（区間の標高の表）を、ビンへは`merge_average_gradients`で
+    # 値のある道の距離で重みづけて畳む。値が無ければNone。
+    average_gradient_percent: float | None = None
     estimated_arrival_time: str | None = None
     # 区間の代償の秒の内訳。
     penalty: PenaltyBreakdown
@@ -208,7 +211,7 @@ class EvaluatedRoute(StrictModel):
     penalty: PenaltyBreakdown
 
     def penalty_per_km(self) -> float | None:
-        """候補全体の1kmあたりの代償の秒（曲がる所と回避指定を含むルート全体の損。`penalty_seconds_per_km`）。周回はこの値で
+        """候補全体の1kmあたりの代償の秒（曲がる所と避け方の秒を含むルート全体の損。`penalty_seconds_per_km`）。周回はこの値で
         並べ（`domain/route_search.py: candidate_order`）、候補の帯は応答の`penalty_seconds_per_km`で塗る。所要時間か長さが
         無ければNone。"""
         if self.estimated_duration_seconds is None or not self.distance_km > 0:
@@ -223,7 +226,7 @@ class EvaluatedRoute(StrictModel):
         return None if per_km is None else round(per_km, COST_SECONDS_DECIMALS)
 
     facts: RouteFacts
-    # 所要時間の見積もりで、勾配か停止要因の件数の値が無く、既定（平地・待ち無し）で数えた区間の距離の割合（0〜1）。
+    # 所要時間の見積もりで、勾配か停止要因の件数の値が無く、取込の範囲全体の平均で数えた区間の距離の割合（0〜1）。
     # 数えるのはビンへ畳む前のEdge単位。画面が「データの無い区間が◯%」と知らせる。区間が無ければNone。
     missing_travel_data_share: float | None
     # 経路を構成するEdge idの列（起点から順）。フロントは候補どうしの共通部分を集合演算で
@@ -302,7 +305,7 @@ def route_bin_slices(distances_km: Sequence[float]) -> list[slice]:
 def aggregate_segments_into_bins(segments: list[RouteSegmentDetail], slices: Sequence[slice]) -> list[RouteSegmentDetail]:
     """連続するEdge単位の`RouteSegmentDetail`を、ビン（`route_bin_slices`）ごとに1件の`RouteSegmentDetail`へ集約する。
 
-    値の性質ごとに畳み方が違う（`BIN_FIELD_MERGERS`）: 材料値は距離加重平均（値がNoneの区間は除外し、残りの距離で
+    値の性質ごとに畳み方が違う（`BIN_FIELD_MERGERS`）: 平均勾配は距離加重平均（値がNoneの区間は除外し、残りの距離で
     再正規化）、代償の秒は和、位置はビンの始点・終点、距離は合計、geometryは隣接区間の境界点を重複させずに連結する。
     """
     return [_merge_segment_bin(segments[chunk]) for chunk in slices]
@@ -368,6 +371,15 @@ def merge_sustained_gradients(segments: Sequence[RouteSegmentDetail]) -> float |
     return steepest_climb if steepest_climb > 0 else min(values)
 
 
+def merge_average_gradients(segments: Sequence[RouteSegmentDetail]) -> float | None:
+    """区間の平均勾配をビンへ畳む。値のある区間の平均勾配を、その区間の距離で重みづけた平均（-0にしない）。
+    値のある区間が無ければNone。"""
+    mean = length_weighted_mean(
+        np.array([np.nan if s.average_gradient_percent is None else s.average_gradient_percent for s in segments]),
+        np.array([s.distance_km for s in segments]))
+    return None if mean is None else round(mean, GRADIENT_VALUE_DECIMALS) + 0.0
+
+
 #: ビンのフィールドと、ビンに入る区間の並びからその値を作る畳み方。`_merge_segment_bin`はこの表だけからビンを組み立てる。
 BIN_FIELD_MERGERS: dict[str, Callable[[list[RouteSegmentDetail]], object]] = {
     "geometry": _concat_segment_geometries,
@@ -381,6 +393,7 @@ BIN_FIELD_MERGERS: dict[str, Callable[[list[RouteSegmentDetail]], object]] = {
     "edge_end": lambda segments: segments[-1].edge_end,
     "elevations": lambda segments: [stretch for segment in segments for stretch in segment.elevations],
     "sustained_gradient_percent": merge_sustained_gradients,
+    "average_gradient_percent": merge_average_gradients,
     "estimated_arrival_time": lambda segments: segments[0].estimated_arrival_time,
     "road_classes": merge_road_classes,
     "penalty": lambda segments: merge_penalty_breakdowns(segment.penalty for segment in segments),
@@ -444,11 +457,8 @@ def reverse_elevation_by_edge(
     return result
 
 
-def route_elevation_gain(edges: list[LeanEdge], elevation_by_edge: dict) -> float | None:
-    """経路の獲得標高（m、`ELEVATION_M_DECIMALS`の桁）。値が1つも無ければNone（0mと「標高が取れなかった」を分ける）。"""
-    gains = [
-        attribute.elevation_gain_m
-        for edge in edges
-        if (attribute := elevation_by_edge.get(edge.edge_id)) is not None
-    ]
-    return round(sum(gains), ELEVATION_M_DECIMALS) if gains else None
+def elevation_gain(gains: np.ndarray) -> float | None:
+    """区間ごとの登り（m、NaNは標高が無い）の和（`ELEVATION_M_DECIMALS`の桁）。値が1つも無ければNone（0mと「標高が取れなかった」
+    を分ける）。経路の獲得標高と、道の窓の押した区間の登りが読む。"""
+    known = gains[~np.isnan(gains)]
+    return round(float(known.sum()), ELEVATION_M_DECIMALS) if len(known) else None

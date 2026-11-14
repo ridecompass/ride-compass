@@ -152,10 +152,12 @@ def turnaround_band(
     return in_band, np.abs(length_m - center_m)
 
 
-def retrace_penalized(costs: np.ndarray) -> np.ndarray:
-    """復路探索の間に、往路の区間（と同じNode対の逆向きの区間）へ置くコスト。倍率は有限にする
-    （較正値の範囲が持つ）——帰りが往路を戻るほかに道が無い区間（袋小路等）は通れる必要がある。"""
-    return costs * tuning_value("search.retrace_penalty_multiplier")
+def retrace_penalized(costs: np.ndarray, travel_seconds: np.ndarray) -> np.ndarray:
+    """復路探索の間に、往路の区間（と同じNode対の逆向きの区間）へ置くコスト。罰は区間の所要時間`travel_seconds`（`costs`と
+    同じ形）に掛け、費用には掛けない——費用に掛けると、避け方の倍率で費用を下げた「好む」の道ほど罰が縮み、帰りが好む道を
+    往復する。倍率は有限にする（較正値の範囲が持つ）——帰りが往路を戻るほかに道が無い区間（袋小路等）は通れる必要がある。"""
+    # 通れない区間（所要時間も費用も無限大）は罰を足さない（倍率がちょうど1のとき 0 × 無限大 が NaN になる）。
+    return costs + (tuning_value("search.retrace_penalty_multiplier") - 1.0) * np.where(np.isinf(travel_seconds), 0.0, travel_seconds)
 
 
 #: 1kmあたりの代償の秒（`penalty_seconds_per_km`）の、区別する最小の差。並べ方とパレート層は、この刻みで同点とみなす。
@@ -293,14 +295,15 @@ def straight_distances_m(node_lat: np.ndarray, node_lon: np.ndarray, target_node
     return haversine_distance_km_array(node_lat, node_lon, target) * 1000
 
 
-def heuristic_seconds(straight_m: np.ndarray, cruise_speed_kmh: float) -> np.ndarray:
-    """Nodeごとの直線距離（m）を、所要時間の下界（秒）へ直す。
+def heuristic_seconds(straight_m: np.ndarray, cruise_speed_kmh: float, cost_scale: float) -> np.ndarray:
+    """Nodeごとの直線距離（m）を、費用の下界（秒）へ直す。`cost_scale`は区間の費用が所要時間に対して下がる最小の倍率
+    （`domain/leg_costs.py: LegCostComposer.min_cost_scale`）。所要時間で探すときも同じ値で、下界のまま緩むだけ。
 
-    実経路は直線より長く、実際の速度は走行モデルの速度の上限以下のため、これは真の
-    所要時間を上回らない＝A*のヒューリスティックとして使える（admissible）。主観的割増は
-    1以上の倍率のため、割増を含むコストに対しても下界であり続ける。
+    実経路は直線より長く、実際の速度は走行モデルの速度の上限以下のため、直線距離÷速度の上限は真の
+    所要時間を上回らない。区間の費用は所要時間に代償（0以上）を足して避け方の倍率を掛けたもので、所要時間の`cost_scale`倍を
+    下回らないので、それを掛けた値は費用の下界になる＝A*のヒューリスティックとして使える（admissible）。
     """
-    return np.asarray(straight_m, dtype=float) / kmh_to_ms(top_speed_kmh(cruise_speed_kmh))
+    return np.asarray(straight_m, dtype=float) / kmh_to_ms(top_speed_kmh(cruise_speed_kmh)) * cost_scale
 
 
 def reverse_leg_assignment(leg_of_edge: list[int]) -> list[int]:
@@ -367,31 +370,24 @@ def route_passages(
     legs: Sequence[LegCostArrays],
     turn_waits: Sequence[float],
     path: Sequence[int],
-    distances_m: Sequence[float],
     leg_of_edge: Sequence[int],
-    speed_kmh: float,
 ) -> list[EdgePassage]:
     """経路を探索と同じ規則でたどり、区間ごとに時刻ビンと出発からの秒を決める。
 
-    `path`は区間の番号（探索の行）、`turn_waits`はその遷移ごとの曲がる待ち（`transition_values_along`）、
-    `distances_m`は区間の長さ。
+    `path`は区間の番号（探索の行）、`turn_waits`はその遷移ごとの曲がる待ち（`transition_values_along`）。
     探索（`domain/routing.py`の前向きDijkstra・A*）はレグの中の経過時間でビンを選ぶ: レグの最初の区間は
     ビン0、次の区間は前の区間を抜けた時点（曲がる待ちを足す前）の経過時間のビン。区間ごとの秒は、探索の
     コストの下地になっている配列（`LegCostArrays.travel_bins_lazy`、走行モデル＋停止の待ち）を
     そのビンで読む——表示の時刻と探索の時刻を別々に計算すると、片方だけ直したときに静かに食い違う。
     出発からの秒は、レグをまたいで走行と曲がる待ち（`turn_waits`）を積む。
-
-    走行時間が有限でない区間は巡航速度で走ったものとして数える——0にすると所要時間が
-    実態より短く出る。
     """
-    fallback_ms = kmh_to_ms(speed_kmh)
     passages: list[EdgePassage] = []
     elapsed = 0.0
     leg_elapsed = 0.0
     # この区間へ入るときの曲がる待ち。ビンを選んだあとでレグの経過時間へ足す。
     entry_wait = 0.0
     previous_leg: int | None = None
-    for i, (index, distance_m, leg_index) in enumerate(zip(path, distances_m, leg_of_edge)):
+    for i, (index, leg_index) in enumerate(zip(path, leg_of_edge)):
         leg = legs[leg_index]
         if leg_index != previous_leg:
             leg_elapsed = 0.0
@@ -401,10 +397,6 @@ def route_passages(
         time_bin = time_bin_of(leg_elapsed, leg.bin_seconds, bin_count)
         seconds = float(leg.travel_bins_lazy[time_bin, index])
         cost = float(leg.cost_bins_lazy[time_bin, index])
-        if not np.isfinite(seconds):
-            seconds = distance_m / fallback_ms
-        if not np.isfinite(cost):
-            cost = seconds
         passages.append(EdgePassage(time_bin=time_bin, elapsed_seconds=elapsed, seconds=seconds, cost=cost))
         leg_elapsed += entry_wait + seconds
         entry_wait = turn_waits[i] if i < len(turn_waits) else 0.0

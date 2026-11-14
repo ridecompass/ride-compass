@@ -17,9 +17,9 @@ export function makeRouteCandidate(overrides: Partial<RouteCandidate> = {}): Rou
     segments: [],
     estimated_duration_seconds: null,
     cost_seconds: 0,
-    penalty: { axis_seconds: {}, avoidance_seconds: 0, total_seconds: 0 },
+    penalty: { axis_seconds: {}, preferred_seconds: 0, avoided_seconds: 0, total_seconds: 0 },
     penalty_seconds_per_km: null,
-    facts: { elevation_unknown_km: 0, axes: {} },
+    facts: { axes: {} },
     missing_travel_data_share: null,
     edge_ids: [],
     edge_point_offsets: [],
@@ -119,9 +119,10 @@ export function makeRouteSegment(overrides: Partial<RouteSegmentDetail> = {}): R
     edge_start: 0,
     edge_end: 0,
     estimated_arrival_time: null,
-    penalty: { axis_seconds: {}, avoidance_seconds: 0, total_seconds: 0 },
+    penalty: { axis_seconds: {}, preferred_seconds: 0, avoided_seconds: 0, total_seconds: 0 },
     lens_seconds_per_km: null,
     elevations: [],
+    average_gradient_percent: null,
     sustained_gradient_percent: null,
     road_classes: {},
     ...overrides,
@@ -149,19 +150,20 @@ export const FACILITY_CANDIDATE: PlaceCandidate = {
 };
 
 /** 区間の代償の内訳（`penalty`）と、backend がそれから導く和（`total_seconds`）と地図のレンズと同じ1kmあたりの値
- * （`lens_seconds_per_km`。回避指定は入れない。`backend/app/domain/route.py`）を対で返す。足場は内訳だけ・1kmあたりだけの
+ * （`lens_seconds_per_km`。避ける道で上乗せした秒は入れない。`backend/app/domain/route.py`）を対で返す。足場は内訳だけ・1kmあたりだけの
  * backend が返さない組を作らない。 */
 export function penaltyFields(
   axisSeconds: Record<string, number>,
   distanceKm: number,
-  avoidanceSeconds = 0,
+  avoidedSeconds = 0,
 ): Pick<RouteSegmentDetail, "penalty" | "lens_seconds_per_km"> {
   const axisTotal = Object.values(axisSeconds).reduce((sum, seconds) => sum + seconds, 0);
   return {
     penalty: {
       axis_seconds: axisSeconds,
-      avoidance_seconds: avoidanceSeconds,
-      total_seconds: axisTotal + avoidanceSeconds,
+      preferred_seconds: 0,
+      avoided_seconds: avoidedSeconds,
+      total_seconds: axisTotal + avoidedSeconds,
     },
     lens_seconds_per_km: {
       total: axisTotal / distanceKm,
@@ -171,12 +173,12 @@ export function penaltyFields(
 }
 
 /** 候補の代償の内訳（`penalty`）と、backend がそれから導く和（`total_seconds`）とルート全体の1kmあたりの代償の秒
- * （`penalty_seconds_per_km`。回避指定も入れる。`backend/app/domain/route.py`）を対で返す。 */
+ * （`penalty_seconds_per_km`。避ける道で上乗せした秒も入れる。`backend/app/domain/route.py`）を対で返す。 */
 export function candidatePenaltyFields(
   axisSeconds: Record<string, number>,
   distanceKm: number,
-  avoidanceSeconds = 0,
+  avoidedSeconds = 0,
 ): Pick<RouteCandidate, "penalty" | "penalty_seconds_per_km"> {
-  const { penalty } = penaltyFields(axisSeconds, distanceKm, avoidanceSeconds);
+  const { penalty } = penaltyFields(axisSeconds, distanceKm, avoidedSeconds);
   return { penalty, penalty_seconds_per_km: penalty.total_seconds / distanceKm };
 }

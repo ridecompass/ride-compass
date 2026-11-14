@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { generateInMobileSheet, openMobileSheet } from "../e2e/fixtures";
+import { generateInMobileSheet, openMobileSheet, setDistance } from "../e2e/fixtures";
 import { branch, expectNoOwnFailures, externalErrors, fetchCatalog, openLive, reportExternal } from "./live";
 import { chooseLens, currentLensLabel, routeSegmentsPainted, settleMap } from "./mapReads";
 
@@ -21,7 +21,7 @@ test("S2 ルート生成（生成後）", async ({ page }) => {
 
   const settings = await openMobileSheet(page, "ルート設定");
   const distanceKm = 15;
-  await settings.getByLabel("距離").fill(String(distanceKm));
+  await setDistance(settings, distanceKm);
   const started = Date.now();
   // 生成は探索範囲の区間の数に比例して数秒〜数十秒かかる。
   const outcome = await generateInMobileSheet(page, settings, { timeout: 240_000 });

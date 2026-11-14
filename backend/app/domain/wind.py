@@ -107,18 +107,11 @@ class WindForecastSeries:
         return index, index != raw
 
     def time_index(self, start: datetime, passage_hours: float | np.ndarray) -> int | np.ndarray:
-        """`start`から`passage_hours`時間後に`sample`が引く予報の時刻の添字（`passage_hours`が配列なら同じ並びの配列）。
+        """`start`（タイムゾーン無しのローカル時刻）から`passage_hours`時間後に最も近い予報の時刻の添字（`passage_hours`が
+        配列なら同じ並びの配列）。系列の範囲外は端の時刻へ寄せる（探索では欠損より端の値の方が妥当）。
         同じ添字の時刻は、どの格子点でも同じ風を引く。"""
         index, _clamped = self._sample_index(start, np.asarray(passage_hours))
         return index if index.ndim else int(index)
-
-    def sample(
-        self, start: datetime, passage_hours: np.ndarray, points: np.ndarray
-    ) -> tuple[np.ndarray, np.ndarray]:
-        """`start`（タイムゾーン無しのローカル時刻）から`passage_hours`時間後に最も近い
-        時刻の（風速, 風向）配列を、`points`（`passage_hours`と同じ並びの格子点の番号、`lattice.points_of`）
-        ごとに返す。系列の範囲外は端の値へクランプする（探索では欠損より端の値の方が妥当）。"""
-        return self.sample_at(self.time_index(start, passage_hours), points)
 
     def sample_at(self, index: int | np.ndarray, points: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         """予報の時刻の添字`index`（`time_index`。数なら全格子点が同じ時刻、配列なら`points`と同じ並び）の（風速, 風向）

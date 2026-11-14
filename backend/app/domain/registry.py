@@ -4,7 +4,7 @@
 （ビルド時生成物`primaryAttributes.ts`の元）。
 """
 
-from typing import Literal
+from typing import Literal, get_args
 
 from pydantic import Field, model_validator
 from app.domain.strict_model import StrictModel
@@ -14,9 +14,13 @@ from app.domain.strict_model import StrictModel
 #: **地図へ出すかどうかはこれとは別で、画面側が決める**（点である交差点は出していない）。
 _PrimaryAttributeGeometry = Literal["line", "point", "area"]
 
-#: DBから焼いて配るタイルの系統。配信のパス・世代の表（`services/tile_version_service.py: TILE_SHAPES`）・
+#: DBから焼いて配るタイルの系統。配信のパス・世代の表（`services/tile_version_service.py: tile_shapes`）・
 #: ディスクの鍵・点のレイヤーの名前（`infrastructure/point_tile_layers.py`）が、この名前でつながる。
 TileKind = Literal["road_surface", "poi", "accident", "stop_place"]
+
+#: 一次属性の軸・地図の線の層の色の作り方（`DisplayAxisSpec.palette`）。
+DisplayPalette = Literal["ordered", "nominal"]
+DISPLAY_PALETTES: tuple[DisplayPalette, ...] = get_args(DisplayPalette)
 
 
 class DisplayCategorySpec(StrictModel):
@@ -68,7 +72,7 @@ class DisplayAxisSpec(StrictModel):
     #: `nominal`＝順序を持たない列挙を中立の色相で分ける。**評価配色（緑〜赤）は
     #: 使わない**——観測された事実の分類へ良し悪しの順序を持ち込むと、地図の上で
     #: 事実と評価が混ざる。先頭以外の軸は持たない（`None`）。
-    palette: Literal["ordered", "nominal"] | None = None
+    palette: DisplayPalette | None = None
     #: 順序を持たない列挙の、色相の起点（色相環を12に分けた枠の番号）。軸の行はここから
     #: 色相環を等分して配る。**軸をまたいで重複させない**——同じ起点だと、1行しか持たない
     #: 軸どうし（トンネルと一方通行）が必ず同じ色になる。
@@ -110,7 +114,7 @@ class PrimaryAttributeSpec(StrictModel):
     display_axes: tuple[DisplayAxisSpec, ...] = ()
     #: 点を押したときに区分の行に続けて出す事実。値がその点に無ければ出さない。
     point_facts: tuple[PointFactSpec, ...] = ()
-    #: 値が載るタイルの系統（`tile_version_service.py: TILE_SHAPES`の名前）。地図へ出す
+    #: 値が載るタイルの系統（`tile_version_service.py: tile_shapes`の名前）。地図へ出す
     #: 属性だけが持つ。**どのソースから読むかを画面が決めない**——決めさせると、系統を
     #: 1つ足したときに画面側の対応表も直すことになる。
     tile_kind: TileKind | None = None

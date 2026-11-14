@@ -24,7 +24,14 @@ from app.domain.landcover import (
 )
 from app.domain.divided_carriageway import DIVIDED_ROAD_NOTE, oneway_material_sql
 from app.domain.registry import PrimaryAttributeSpec
-from app.domain.tuning import LANDCOVER_RING_INNER_ID, LANDCOVER_RING_OUTER_ID, TUNING_PARAMETERS_BY_ID
+from app.domain.tuning import (
+    LANDCOVER_RING_INNER_ID,
+    LANDCOVER_RING_OUTER_ID,
+    REGULATION_EDGE_SHARE_ID,
+    REGULATION_LINE_HALF_WIDTH_ID,
+    TUNING_PARAMETERS_BY_ID,
+)
+from app.domain.traffic_regulation import REGULATION_HOURS_LABELS
 from app.domain.primary_attributes import (
     PRIMARY_ATTRIBUTES,
     ATTR_ACCIDENT_POINT,
@@ -143,9 +150,6 @@ _EDGE_COUNTS_COVERAGE = EdgeMaterialCoverageSpec(
 
 MaterialDType = Literal["numeric", "boolean", "categorical"]
 
-#: はい/いいえの材料の値の論理名（対応表のキーの綴り→論理名）。
-_BOOLEAN_VALUE_LABELS = {"true": "はい", "false": "いいえ"}
-
 #: 材料の値の出どころ。`db`はDBの値式（`MaterialSpec.value_sql`）で求める。`road_class`は道の区分から都度作る
 #: （`domain/road_classes.py: class_columns`）。
 _MaterialSource = Literal["db", "road_class"]
@@ -188,17 +192,6 @@ class MaterialSpec(StrictModel):
     # highway/surface/smoothnessのようなオープンエンドな多値材料だけが持つ（他は空dict）。
     # 値ごとの表示ラベルの単一ソース。
     value_labels: dict[str, str] = {}
-
-    def value_label(self, value: str) -> str:
-        """タグ生値から「論理名 - 物理名」形式の表示用ラベルを組み立てる
-        （例: "自転車専用道 - cycleway"）。対訳表に無い値は物理名のみ返す
-        （フォールバック、新しいOSMタグ値がDBに現れてもAPIが失敗しないようにするため。
-        この場合論理名が無いため" - "を付けない）。はい/いいえの材料の値は対応表のキーの綴り（"true"/"false"）で受ける。"""
-        labels = _BOOLEAN_VALUE_LABELS if self.dtype == "boolean" else self.value_labels
-        label = labels.get(value)
-        if label is None:
-            return value
-        return f"{label} - {value}"
 
     def full_label(self) -> str:
         """材料名を「論理名 - 物理名」形式の表示用ラベルにする（例: "道路種別 - highway"）。"""
@@ -281,6 +274,29 @@ def _landcover_description(cls: LandcoverClass) -> str:
     return (
         "衛星画像の土地被覆データ（Esri×Impact Observatory）から算出した、道路の周りの帯（幅は較正値の"
         f"「{_RING_OUTER_LABEL}」「{_RING_INNER_LABEL}」）の中の{cls.label}の割合(%)。{cls.label}は、{cls.description}"
+    )
+
+
+def _pedestrian_road_material(column: str, label: str, subject: str) -> MaterialSpec:
+    """区間に当たった歩行者用道路の規制が効く時間帯の材料（`edge_traffic_regulations`の列`column`）。"""
+    return MaterialSpec(
+        material_id=column,
+        label=label,
+        description=(
+            f"日本道路交通情報センターの交通規制情報から、{subject}歩行者用道路の規制が当たった区間の、規制が効く時間帯"
+            "（終日か、時間・曜日を限るか）。区間の長さのうち較正値の"
+            f"「{TUNING_PARAMETERS_BY_ID[REGULATION_EDGE_SHARE_ID].label}」以上が規制の場所（線の規制は較正値の"
+            f"「{TUNING_PARAMETERS_BY_ID[REGULATION_LINE_HALF_WIDTH_ID].label}」の帯、面の規制は面）の中にある区間に当てます。"
+            "規制が当たらない区間は値を持ちません。"
+        ),
+        dtype="categorical",
+        tile_property=None,
+        value_labels=REGULATION_HOURS_LABELS,
+        value_sql=f"em.{column}",
+        coverage=CoverageExcluded(
+            reason="edge_traffic_regulationsは規制が当たった区間だけが行を持ち、行が無いのは規制が無いこと（データの欠けではない）",
+            missing_semantics="definite",
+        ),
     )
 
 
@@ -442,7 +458,7 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
     "highway": MaterialSpec(
         material_id="highway",
         label="道路種別",
-        description="OSMの道路種別タグ(highway)の生値（例: residential/primary/cycleway等）。値ごとに個別のスコアを設定できます。",
+        description="OSMの道路種別タグ(highway)の生値（例: residential/primary/cycleway等）。道の区分の条件に値ごとに書けます。",
         dtype="categorical",
         # 取込プロファイル（`batch/source_profile.yaml: osm_way.rows`）で許可された値のみ実際に現れる。
         # 正準の閉じた値集合はこのプロジェクトで管理していない（OSMタグの生値のため）。
@@ -455,7 +471,7 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
     "surface": MaterialSpec(
         material_id="surface",
         label="路面種別",
-        description="OSMの路面種別タグ(surface)の生値（例: asphalt/gravel等）。区分（路面の区分）より細かく、タグの値ごとにスコアを設定したい場合に使います。",
+        description="OSMの路面種別タグ(surface)の生値（例: asphalt/gravel等）。路面の区分より細かく、道の区分の条件に値ごとに書けます。",
         dtype="categorical",
         # タグの値そのもの（正規化: lower/btrim）。
         tile_property="surface",
@@ -524,6 +540,9 @@ MATERIAL_CATALOG: dict[str, MaterialSpec] = {
         coverage=_tag_coverage(BICYCLE_NORMALIZED_SQL, f"bicycle（{SHARED_PEDESTRIAN_PATH_NOTE}で判定、タグ不在は非該当扱い）", "definite"),
     ),
     # --- 道の区分を決める事実（タグの値を束ねずに持つ）。道の区分の条件はこれらを読む ---
+    "pedestrian_road": _pedestrian_road_material("pedestrian_road", "歩行者用道路", ""),
+    "pedestrian_road_bicycle": _pedestrian_road_material(
+        "pedestrian_road_bicycle", "歩行者用道路[自転車も対象]", "普通自転車も通行の禁止の対象とする"),
     "bicycle": _tag_fact_material(
         "bicycle", "自転車の通行", "自転車が通ってよいか（禁止・指定・許可等）。",
         ACCESS_VALUE_LABELS, ATTR_CYCLEWAY, "unknown",

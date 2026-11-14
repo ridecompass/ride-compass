@@ -17,11 +17,11 @@ export const mapDisplay = {
   "legendSharedRows": {
     "other": {
       "label": "その他",
-      "description": "値は書かれているが、上のどの行にも当てはまらない道（まれな種類など）。"
+      "description": "値は書かれているが、上のどの行にも当てはまらない道[まれな種類など]。"
     },
     "notApplicable": {
       "label": "該当なし",
-      "description": "この種類に当たらない道（例: トンネルの凡例では、トンネルでない道）。"
+      "description": "この種類に当たらない道[例: トンネルの凡例では、トンネルでない道]。"
     },
     "noData": {
       "label": "データなし",
@@ -29,7 +29,7 @@ export const mapDisplay = {
     },
     "undetermined": {
       "label": "向きで決まらない",
-      "description": "地図の上の向き（走行中は進む向き）とほぼ直角に交わるため、値を決められない道（勾配なら登りか下りか）。地図を回して向きが変わると色が付く。"
+      "description": "地図の上の向き[走行中は進む向き]とほぼ直角に交わるため、値を決められない道[勾配なら登りか下りか]。地図を回して向きが変わると色が付く。"
     }
   },
   "layerCategories": [
@@ -61,7 +61,7 @@ export const mapDisplay = {
   "layerDataSources": [
     {
       "key": "road_surface",
-      "minZoom": 12
+      "minZoom": 10
     },
     {
       "key": "poi",
@@ -100,17 +100,12 @@ export const mapDisplay = {
     "raw",
     "dynamic"
   ],
-  "layerKinds": [
-    "static",
-    "dynamic"
-  ],
   "layers": [
     {
       "id": "elevation",
       "label": "標高図",
       "dataSource": "gsiRelief",
       "category": "terrain",
-      "kind": "static",
       "dataNature": "raw",
       "defaultOn": false,
       "drawMinZoom": null,
@@ -120,14 +115,14 @@ export const mapDisplay = {
       "panelHint": [
         "国土地理院の色別標高図を重ねる"
       ],
-      "hideMissingRows": false
+      "hideMissingRows": false,
+      "segmentSeries": null
     },
     {
       "id": "hillshade",
       "label": "起伏",
       "dataSource": "gsiTerrain",
       "category": "terrain",
-      "kind": "static",
       "dataNature": "raw",
       "defaultOn": false,
       "drawMinZoom": null,
@@ -137,14 +132,14 @@ export const mapDisplay = {
       "panelHint": [
         "国土地理院の標高データから斜面の陰影を作る。平らな所は塗らないため、下の地図の色が残る"
       ],
-      "hideMissingRows": false
+      "hideMissingRows": false,
+      "segmentSeries": null
     },
     {
       "id": "landcover",
       "label": "緑と水",
       "dataSource": "landcoverRaster",
       "category": "terrain",
-      "kind": "static",
       "dataNature": "raw",
       "defaultOn": false,
       "drawMinZoom": null,
@@ -160,14 +155,14 @@ export const mapDisplay = {
         },
         "の割合」とは違い、混ざらずそのまま見えます。建物は塗りません。広い範囲を単色で覆い、基礎地図を隠すだけになるためです。"
       ],
-      "hideMissingRows": false
+      "hideMissingRows": false,
+      "segmentSeries": "landcoverClass"
     },
     {
       "id": "stop_poi",
       "label": "停止要因",
       "dataSource": "poi",
       "category": "trafficSafety",
-      "kind": "static",
       "dataNature": "raw",
       "defaultOn": false,
       "drawMinZoom": 15,
@@ -177,14 +172,14 @@ export const mapDisplay = {
       "panelHint": [
         "信号、横断歩道、一時停止、徐行、踏切、車止め・ゲート、ハンプ・狭さくの位置です。"
       ],
-      "hideMissingRows": false
+      "hideMissingRows": false,
+      "segmentSeries": null
     },
     {
       "id": "supply_poi",
       "label": "補給・休憩ポイント",
       "dataSource": "poi",
       "category": "amenity",
-      "kind": "static",
       "dataNature": "raw",
       "defaultOn": false,
       "drawMinZoom": null,
@@ -194,14 +189,14 @@ export const mapDisplay = {
       "panelHint": [
         "コンビニ、飲料自販機、自販機(中身不明)、トイレ、給水、駐輪場の位置です。自販機は飲み物が買えると分かっているものだけを「飲料自販機」として出し、売っているものが分からないものは「自販機(中身不明)」として区別します[たばこ・切符の機械は出しません]。コンビニはOverture Mapsの地点のうちチェーンの店を、ほかはOSMのデータを出します。どれも閉店・撤去にデータが追いついていないことがあります。現地の状況と異なる場合があることをご留意ください。"
       ],
-      "hideMissingRows": false
+      "hideMissingRows": false,
+      "segmentSeries": null
     },
     {
       "id": "stop_place",
       "label": "立ち寄り先",
       "dataSource": "stop_place",
       "category": "amenity",
-      "kind": "static",
       "dataNature": "raw",
       "defaultOn": false,
       "drawMinZoom": null,
@@ -211,14 +206,14 @@ export const mapDisplay = {
       "panelHint": [
         "飲食店、銭湯・温泉、自転車、景色・名所、宿、寺社の位置です。寺社は国の文化財の建造物を持つものを、ほかはOverture Mapsの地点を出します。閉店にデータが追いついていないことがあります。現地の状況と異なる場合があることをご留意ください。"
       ],
-      "hideMissingRows": false
+      "hideMissingRows": false,
+      "segmentSeries": null
     },
     {
       "id": "accident_point",
       "label": "事故[警察庁統計]",
       "dataSource": "accident",
       "category": "trafficSafety",
-      "kind": "static",
       "dataNature": "raw",
       "defaultOn": false,
       "drawMinZoom": 15,
@@ -240,14 +235,14 @@ export const mapDisplay = {
         },
         "]の発生地点です。死亡事故は円を大きく表示します。"
       ],
-      "hideMissingRows": false
+      "hideMissingRows": false,
+      "segmentSeries": null
     },
     {
       "id": "precipitationNowcast",
       "label": "降水ナウキャスト",
       "dataSource": "ownFetch",
       "category": "weather",
-      "kind": "static",
       "dataNature": "dynamic",
       "defaultOn": false,
       "drawMinZoom": null,
@@ -257,14 +252,14 @@ export const mapDisplay = {
       "panelHint": [
         "気象庁の高解像度降水ナウキャストです。ONにすると地図上に時刻スライダーが現れ、実況[直近]から60分先までの雨雲の分布を切り替えて確認できます。60分より先は、同じ気象庁の降水短時間予報へ自動的に切り替わり、15時間先まで確認できます——こちらは実況の外挿ではなく数値予報モデルによる予測のため、先になるほど不確実性が増します。15時間より先は、ズーム8以上まで寄せると、気象庁の数値予報モデルMSMの格子点[約5km間隔]の降水量で、格子点を中心にした升目を降水の強さの色で塗り、48時間先まで1時間刻みで確認できます。升目の中は、どこもその格子点の値です[格子点が多い範囲では、格子点を一定の間隔おきに選び、升目を広げて塗ります]。数値予報モデルの計算結果で、大きな誤差を含む可能性があります。予報ではありません。加えて、現在〜3時間先の間だけ、気象庁の線状降水帯予測マップを重ねて表示します[今後3時間以内に大雨のおそれがある領域を赤で示すもので、予測は格子単位のため矩形に見えます。今まさに発生している線状降水帯の雨域を示すものではありません]。今まさに発生している線状降水帯は、実況から30分先までの間、その雨域を赤い輪郭線で重ねます[気象庁が線状降水帯を解析しているときだけ出ます]。非公式の内部APIを利用している実況・60分先までの部分・線状降水帯予測マップ・線状降水帯の雨域は、取得に失敗することがあります。"
       ],
-      "hideMissingRows": false
+      "hideMissingRows": false,
+      "segmentSeries": null
     },
     {
       "id": "windVector",
       "label": "風[矢印]",
       "dataSource": "msmGrid",
       "category": "weather",
-      "kind": "static",
       "dataNature": "dynamic",
       "defaultOn": false,
       "drawMinZoom": null,
@@ -274,14 +269,14 @@ export const mapDisplay = {
       "panelHint": [
         "気象庁MSM[メソ数値予報モデル]の格子点[約5km間隔]の風向・風速を、格子点の位置に矢印で表示します。矢印の値は格子点の値そのもので、格子点の間の地点の風ではありません。格子点が多い範囲では、格子点を一定の間隔おきに選んで表示します。数値予報モデルの計算結果で、大きな誤差を含む可能性があります。予報ではありません。矢印の向きが風の吹いていく向き、長さ・太さ・色の濃淡が風速の強さを表します。ごく弱い風の格子点は矢印を表示しません。ズーム8以上で表示され、ONにすると地図上に時刻スライダーが現れ、1時間刻みで切り替えられます[先まで見られる範囲は配信中の計算値の長さによって変わり、長くて48時間先までです]。"
       ],
-      "hideMissingRows": false
+      "hideMissingRows": false,
+      "segmentSeries": null
     },
     {
       "id": "disaster",
       "label": "災害",
       "dataSource": "ownFetch",
       "category": "disaster",
-      "kind": "static",
       "dataNature": "dynamic",
       "defaultOn": true,
       "drawMinZoom": null,
@@ -291,43 +286,21 @@ export const mapDisplay = {
       "panelHint": [
         "気象庁の防災情報をまとめて表示します。雷ナウキャスト・竜巻発生確度は時刻スライダーに連動し、実況[直近]から60分先までを切り替えて確認できます。落雷[発生地点]は観測だけのため、最新の観測より先の時刻には出ません。大雨キキクル・土砂災害キキクル・浸水キキクル・洪水キキクル[河川]は色で示した現在の危険度です。現在の危険度だけを配信しているため、時刻スライダーには連動しません。平常時は危険度ゼロの領域が透明のため、ONのままでも地図の見た目は変わりません。非公式の内部APIを利用しているため、取得に失敗することがあります。"
       ],
-      "hideMissingRows": false
-    },
-    {
-      "id": "route",
-      "label": "ルート",
-      "dataSource": "ownFetch",
-      "category": null,
-      "kind": "dynamic",
-      "dataNature": "raw",
-      "defaultOn": true,
-      "drawMinZoom": null,
-      "description": [
-        "選択中ルート沿いの情報",
-        {
-          "name": "routeLenses",
-          "before": "[",
-          "after": "]"
-        },
-        "で塗って表示"
-      ],
-      "panelHint": null,
-      "hideMissingRows": false
+      "hideMissingRows": false,
+      "segmentSeries": null
     }
   ],
   "axisLayers": {
     "dedicated": {
       "dataSource": "road_surface",
       "category": null,
-      "kind": "static",
       "dataNature": "dynamic",
       "defaultOn": false,
-      "drawMinZoom": null
+      "drawMinZoom": 12
     },
     "road": {
       "dataSource": "road_surface",
       "category": null,
-      "kind": "static",
       "dataNature": "raw",
       "defaultOn": false,
       "drawMinZoom": null
@@ -351,6 +324,7 @@ export const mapDisplay = {
       "gridValue": null,
       "levelScale": null,
       "description": null,
+      "legendColor": null,
       "jmaElements": [
         {
           "id": "hrpns",
@@ -394,6 +368,7 @@ export const mapDisplay = {
       "gridValue": "precipitation",
       "levelScale": null,
       "description": null,
+      "legendColor": null,
       "jmaElements": [],
       "tile": null
     },
@@ -409,6 +384,7 @@ export const mapDisplay = {
       "gridValue": null,
       "levelScale": null,
       "description": "今後3時間以内に大雨のおそれ[矩形の予測領域。現在〜3時間先のみ]",
+      "legendColor": "#ff2800",
       "jmaElements": [
         {
           "id": "sjfcstmap",
@@ -440,6 +416,7 @@ export const mapDisplay = {
       "gridValue": null,
       "levelScale": null,
       "description": "大雨災害発生の危険度が急激に高まっている線状降水帯の雨域[赤い輪郭線。実況〜30分先のみ]",
+      "legendColor": "#ff0000",
       "jmaElements": [
         {
           "id": "slmcs_unify",
@@ -467,6 +444,7 @@ export const mapDisplay = {
       "gridValue": null,
       "levelScale": null,
       "description": "大雨災害発生の危険度が急激に高まっている線状降水帯の雨域[赤い輪郭線。実況〜30分先のみ]",
+      "legendColor": "#ff0000",
       "jmaElements": [
         {
           "id": "slmcs_unifyfcst",
@@ -494,6 +472,7 @@ export const mapDisplay = {
       "gridValue": "wind",
       "levelScale": null,
       "description": null,
+      "legendColor": null,
       "jmaElements": [],
       "tile": null
     },
@@ -509,6 +488,7 @@ export const mapDisplay = {
       "gridValue": null,
       "levelScale": "risk_levels",
       "description": "大雨による土砂災害と浸水害の危険度の高まりを、まとめて段階で示す気象庁の情報。",
+      "legendColor": null,
       "jmaElements": [
         {
           "id": "rain_mesh",
@@ -539,7 +519,8 @@ export const mapDisplay = {
       },
       "gridValue": null,
       "levelScale": "risk_levels",
-      "description": "大雨による土砂災害（がけ崩れ・土石流など）の危険度の高まりを段階で示す気象庁の情報。",
+      "description": "大雨による土砂災害[がけ崩れ・土石流など]の危険度の高まりを段階で示す気象庁の情報。",
+      "legendColor": null,
       "jmaElements": [
         {
           "id": "land",
@@ -571,6 +552,7 @@ export const mapDisplay = {
       "gridValue": null,
       "levelScale": "risk_levels",
       "description": "短い時間の強い雨で、道路や低い土地が水につかる危険度の高まりを段階で示す気象庁の情報。",
+      "legendColor": null,
       "jmaElements": [
         {
           "id": "inund",
@@ -602,6 +584,7 @@ export const mapDisplay = {
       "gridValue": null,
       "levelScale": "thunder_activity",
       "description": "雷の激しさと雷が起こる可能性を、活動度の段階で示す気象庁の実況と60分先までの予測。",
+      "legendColor": null,
       "jmaElements": [
         {
           "id": "thns",
@@ -633,6 +616,7 @@ export const mapDisplay = {
       "gridValue": null,
       "levelScale": "tornado_potential",
       "description": "竜巻などの激しい突風が起こりやすい所を、確度の段階で示す気象庁の実況と60分先までの予測。",
+      "legendColor": null,
       "jmaElements": [
         {
           "id": "trns",
@@ -664,6 +648,7 @@ export const mapDisplay = {
       "gridValue": null,
       "levelScale": "risk_levels",
       "description": "大雨で川があふれる危険度の高まりを、川に沿った色で示す気象庁の情報。",
+      "legendColor": null,
       "jmaElements": [
         {
           "id": "flood",
@@ -695,6 +680,7 @@ export const mapDisplay = {
       "gridValue": null,
       "levelScale": null,
       "description": "気象庁の雷の観測が捉えた、直近の雷の発生地点。",
+      "legendColor": null,
       "jmaElements": [
         {
           "id": "liden",
@@ -730,11 +716,12 @@ export const mapDisplay = {
     "気象庁メソ数値予報モデル(MSM)を加工して作成。配布: <a href=\"https://open-meteo.com/\" target=\"_blank\" rel=\"noreferrer\">Weather data by Open-Meteo.com</a> (<a href=\"https://creativecommons.org/licenses/by/4.0/\" target=\"_blank\" rel=\"noreferrer\">CC BY 4.0</a>)",
     "暑さ指数: 出典 <a href=\"https://www.wbgt.env.go.jp/\" target=\"_blank\" rel=\"noreferrer\">環境省熱中症予防情報サイト</a>",
     "土地被覆: <a href=\"https://livingatlas.arcgis.com/landcover/\" target=\"_blank\" rel=\"noreferrer\">Esri, Impact Observatory, Microsoft</a> (CC BY 4.0)",
-    "住所: 「<a href=\"https://www.digital.go.jp/policies/base_registry_address/\" target=\"_blank\" rel=\"noreferrer\">アドレス・ベース・レジストリ</a>」（デジタル庁）の町字マスター・住居表示の街区マスター・位置参照拡張を加工して作成 (<a href=\"https://creativecommons.org/licenses/by/4.0/\" target=\"_blank\" rel=\"noreferrer\">CC BY 4.0</a>)",
-    "住所の境界: 出典 <a href=\"https://www.e-stat.go.jp/\" target=\"_blank\" rel=\"noreferrer\">政府統計の総合窓口(e-Stat)</a>。「令和2年国勢調査 小地域（町丁・字等別）境界データ」（総務省統計局）を加工して作成",
-    "住所の地番: 「<a href=\"https://nlftp.mlit.go.jp/isj/\" target=\"_blank\" rel=\"noreferrer\">街区レベル位置参照情報</a>」（国土交通省）を加工して作成",
-    "立ち寄り先: <a href=\"https://overturemaps.org/\" target=\"_blank\" rel=\"noreferrer\">Overture Maps Foundation</a>の地点を、種類を選び近くの同じ店をまとめて加工。Data from Meta, Microsoft, PinMeTo, DAC, Uberall, OpenTravel (<a href=\"https://cdla.dev/permissive-2-0/\" target=\"_blank\" rel=\"noreferrer\">CDLA Permissive 2.0</a>), AllThePlaces (<a href=\"https://creativecommons.org/publicdomain/zero/1.0/\" target=\"_blank\" rel=\"noreferrer\">CC0 1.0</a>), Foursquare (Copyright 2024 Foursquare Labs, Inc. All rights reserved. Available under <a href=\"/licenses/apache-2.0.txt\" target=\"_blank\" rel=\"noreferrer\">Apache 2.0</a>. Foursquare data was transformed to the Overture schema. <a href=\"/licenses/foursquare-places-NOTICE.txt\" target=\"_blank\" rel=\"noreferrer\">NOTICE</a>)",
-    "寺社: ジャパンサーチ「<a href=\"https://jpsearch.go.jp/database/bunka\" target=\"_blank\" rel=\"noreferrer\">文化遺産オンライン（文化庁・国立情報学研究所）</a>」のメタデータを改変して利用（所有者で寺社ごとにまとめた）"
+    "住所: 「<a href=\"https://www.digital.go.jp/policies/base_registry_address/\" target=\"_blank\" rel=\"noreferrer\">アドレス・ベース・レジストリ</a>」[デジタル庁]の町字マスター・住居表示の街区マスター・位置参照拡張を加工して作成 (<a href=\"https://creativecommons.org/licenses/by/4.0/\" target=\"_blank\" rel=\"noreferrer\">CC BY 4.0</a>)",
+    "住所の境界: 出典 <a href=\"https://www.e-stat.go.jp/\" target=\"_blank\" rel=\"noreferrer\">政府統計の総合窓口(e-Stat)</a>。「令和2年国勢調査 小地域(町丁・字等別)境界データ」[総務省統計局]を加工して作成",
+    "住所の地番: 「<a href=\"https://nlftp.mlit.go.jp/isj/\" target=\"_blank\" rel=\"noreferrer\">街区レベル位置参照情報</a>」[国土交通省]を加工して作成",
+    "地点: <a href=\"https://overturemaps.org/\" target=\"_blank\" rel=\"noreferrer\">Overture Maps Foundation</a>の名前のある地点を、種類で分け近くの同じ店をまとめて加工。Data from Meta, Microsoft, PinMeTo, DAC, Uberall, OpenTravel (<a href=\"https://cdla.dev/permissive-2-0/\" target=\"_blank\" rel=\"noreferrer\">CDLA Permissive 2.0</a>), AllThePlaces (<a href=\"https://creativecommons.org/publicdomain/zero/1.0/\" target=\"_blank\" rel=\"noreferrer\">CC0 1.0</a>), Foursquare (Copyright 2024 Foursquare Labs, Inc. All rights reserved. Available under <a href=\"/licenses/apache-2.0.txt\" target=\"_blank\" rel=\"noreferrer\">Apache 2.0</a>. Foursquare data was transformed to the Overture schema. <a href=\"/licenses/foursquare-places-NOTICE.txt\" target=\"_blank\" rel=\"noreferrer\">NOTICE</a>)",
+    "寺社: ジャパンサーチ「<a href=\"https://jpsearch.go.jp/database/bunka\" target=\"_blank\" rel=\"noreferrer\">文化遺産オンライン[文化庁・国立情報学研究所]</a>」のメタデータを改変して利用[所有者で寺社ごとにまとめた]",
+    "交通規制: 公益財団法人日本道路交通情報センター「<a href=\"https://www.jartic.or.jp/service/opendata/\" target=\"_blank\" rel=\"noreferrer\">交通規制情報</a>」を加工して作成"
   ],
   "noDataDash": [
     1,
@@ -747,6 +734,34 @@ export const mapDisplay = {
     "unknownOpacity": 0.6,
     "inspectedWidthPx": 8,
     "noDataValue": "-"
+  },
+  "avoidanceRail": {
+    "widthPx": 2,
+    "gapPx": 2,
+    "avoidedDash": [
+      3,
+      2
+    ]
+  },
+  "roadAvoidance": {
+    "widthByZoom": [
+      [
+        12,
+        3
+      ],
+      [
+        14,
+        5
+      ],
+      [
+        16,
+        9
+      ],
+      [
+        18,
+        18
+      ]
+    ]
   },
   "point": {
     "radiusPx": 4,

@@ -1,12 +1,13 @@
 // @vitest-environment node
 /**
  * `components/MapPopup/facilityRows.ts`——地図の点を1施設1行で見せる行の中身が、区分の名前（凡例と同じ宣言）を並べ、引けない値を
- * 「不明」にし、宣言が点に添える事実を値のあるものだけ並べ、名前のある点には名前と座標を1つの検索語にした外の地図の検索を持たせること。
+ * 「不明」にし、宣言が点に添える事実を値のあるものだけ並べ、名前の空の点は名前を持たないこと。
  * 同じ場所の同じ施設を1行にし、道のりの順に並べること。施設の位置を、走行中の現在地から見た前後（残りか手前）で言うこと。
  *
  * 点の宣言は架空のもので与える（実在の区分の名前をテストへ書き写さない）。
  *
- * ここで見ないもの: 行の描き方（リンク・見本・km・道から）→ `app/page.map.test.tsx`の「区間の近くの施設」。
+ * ここで見ないもの: 行の描き方（リンク・見本・km・道から）→ `app/page.map.test.tsx`の「ルートの近くの点」。名前から開く外の地図の
+ * リンクの形 → backend の`test_place_search_route.py`（地図の点の名前から開くリンク）。
  */
 import { describe, expect, it } from "vitest";
 
@@ -52,15 +53,9 @@ describe("facilityOf", () => {
     expect(facility.facts).toEqual(["年 2023"]);
   });
 
-  it("名前のある点は、名前と座標を1つの検索語にした外の地図の検索を持ち、名前が空の点は持たない", () => {
-    const named = facilityOf(LAYER, { kind: "a1", name: "店 1&2/3" }, AT);
-    expect(named.name).toBe("店 1&2/3");
-    const url = new URL(named.mapUrl!);
-    expect(`${url.origin}${url.pathname}`).toBe("https://www.google.com/maps/search/");
-    expect(Object.fromEntries(url.searchParams)).toEqual({ api: "1", query: "店 1&2/3 35.705300,139.649700" });
-
-    const unnamed = facilityOf(LAYER, { kind: "a1", name: "" }, AT);
-    expect([unnamed.name, unnamed.mapUrl]).toEqual([null, null]);
+  it("名前の空の点は名前を持たない（名前の代わりに区分の名前を出し、外の地図のリンクを引かない）", () => {
+    expect(facilityOf(LAYER, { kind: "a1", name: "店 1&2/3" }, AT).name).toBe("店 1&2/3");
+    expect(facilityOf(LAYER, { kind: "a1", name: "" }, AT).name).toBeNull();
   });
 });
 

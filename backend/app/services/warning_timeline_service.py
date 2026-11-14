@@ -18,7 +18,6 @@ from app.domain.jma_warning_timeline import (
     TIMELINE_KINDS,
     TimelineKind,
     WarningTimeline,
-    is_advisory_level,
     route_passes,
 )
 from app.domain.route import Coordinates
@@ -118,8 +117,8 @@ def _kind_levels(timeline: WarningTimeline, class20_code: str, class10_code: str
         kinds[kind] = TimelineKindLevels(
             advisory_label=TIMELINE_KINDS[kind].advisory_label,
             slots=[
-                TimelineSlotLevel(start=slot.start, end=slot.end, code=code, advisory=is_advisory_level(code))
-                for slot, code in zip(levels.slots, levels.codes, strict=True)
+                TimelineSlotLevel(start=slot.start, end=slot.end, code=code, advisory=advisory)
+                for slot, code, advisory in zip(levels.slots, levels.codes, levels.advisories, strict=True)
             ],
             additions=list(levels.additions),
         )

@@ -26,7 +26,9 @@ from app.domain.address_area import (
     standardize_address,
 )
 from app.domain.geo import LatLon
+from app.domain.material_sql import like_escaped_sql
 from app.domain.place_search import PLACE_PREDICTION_LIMIT, PLACE_PREDICTION_MIN_LENGTH, PlaceCandidate
+from app.infrastructure.derived_models import CONTINUABLE_KEY_SQL
 
 #: 上限までの区画（`found`）ごとに、祖先を都道府県から自分まで並べた名前（`names`）の配列を1行ずつ出す。
 _AREA_CHAINS = """
@@ -43,6 +45,9 @@ FROM chain GROUP BY leaf
 
 #: 続きの件数を長さごとに数える幅（入力より何文字長い鍵まで数えるか）。この幅で上限に届かなければ、長さで切らずに引く。
 _CONTINUATION_LENGTH_WINDOW = 40
+
+#: 入力を頭に持つ鍵に当たる`LIKE`の型。入力の`%`・`_`・`\\`は文字として当てる。
+_CONTINUED_PATTERN = f"{like_escaped_sql('CAST(:query AS text)')} || '%'"
 
 # 同じ区画に当たった鍵は1件にまとめる（当たり方は良いほうを採る）。並びは`domain/address_area.py: address_hit_order_sql`で、
 # 近さは検索の中心からの測地の距離（街区・地番はその点から）。並びの最後の鍵は、同じ位置の区画の並びを毎回同じにするため。
@@ -68,13 +73,13 @@ _SEARCH_SQL = text(f"""
         UNION ALL
         SELECT area_id, 0, 1, NULL
         FROM address_search_keys
-        WHERE :continues AND continuable AND key LIKE :prefix AND length(key) > :query_length
+        WHERE :continues AND {CONTINUABLE_KEY_SQL} AND key LIKE {_CONTINUED_PATTERN} AND length(key) > :query_length
           AND length(key) <= coalesce((
               SELECT min(counted.n) FROM (
                   SELECT l.n, sum(c.count) OVER (ORDER BY l.n) AS total
                   FROM generate_series(:query_length + 1, :query_length + {_CONTINUATION_LENGTH_WINDOW}) AS l(n),
                        LATERAL (SELECT count(*) AS count FROM address_search_keys
-                                WHERE continuable AND length(key) = l.n AND key LIKE :prefix) c
+                                WHERE {CONTINUABLE_KEY_SQL} AND length(key) = l.n AND key LIKE {_CONTINUED_PATTERN}) c
               ) counted
               WHERE counted.total >= CAST(:limit AS integer)), 2147483647)
     ),
@@ -94,12 +99,6 @@ _SEARCH_SQL = text(f"""
 """)
 
 
-def _like_prefix(query: str) -> str:
-    """`query`を頭に持つ文字列に当たる`LIKE`の型。入力の`%`・`_`・`\\`は文字として当てる。"""
-    escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-    return escaped + "%"
-
-
 class AddressSearchQuery:
     def __init__(self, session: AsyncSession):
         self._session = session
@@ -114,7 +113,6 @@ class AddressSearchQuery:
             "query": q,
             "query_with_separator": q + "-",
             "query_length": len(q),
-            "prefix": _like_prefix(q),
             "heads": [q[:n] for n in range(1, len(q))],
             "numbered_remainder": NUMBERED_REMAINDER_PATTERN,
             "block_number": BLOCK_NUMBER_PATTERN,

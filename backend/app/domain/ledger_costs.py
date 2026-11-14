@@ -8,7 +8,8 @@
   換算したkm1つを何秒とみなすか。
 - 倍率は軸ごと（費目と1対1）の利用者の値で、書いていない軸は標準の1。無効の軸（`LedgerParameters.counts`）は組まず、その費目は
   費用にも内訳にも入らない。つまみは代償の全体に掛ける利用者の強さ。α・β・γは
-  全部の軸に共通の換算なので較正値。どの項も0以上なので、費用は所要時間を下回らない（探索の見込みがそのまま使える）。
+  全部の軸に共通の換算なので較正値。代償の項はどれも0以上で、費用が所要時間を下回るのは、避け方の倍率が1より小さい
+  「好む」の区間だけ（探索の見込みはその倍率で緩める、`domain/route_search.py: heuristic_seconds`）。
 
 **欠けた材料は、取込の範囲全体の分布の平均で埋める**（`domain/road_network.py: MaterialFills`。探索の範囲には依らない）。区分の材料は区分ごとの
 距離の割合で重さを平均し、数値の材料は距離で重みを付けた平均の値で引く。
@@ -55,8 +56,9 @@ class LedgerParameters:
         return self.multipliers.get(axis_id, STANDARD_COST_FACTOR)
 
     def counts(self, axis_id: str) -> bool:
-        """軸`axis_id`を数えるか（無効にしていないか）。費用・内訳・地図のレンズ・凡例の目安は、どれもこれで軸を選ぶ。"""
-        return axis_id not in self.disabled_axes
+        """軸`axis_id`を数えるか（全体のつまみを無効（0）にしておらず、その軸を無効にしていないか）。費用・内訳・地図のレンズ・
+        凡例の目安は、どれもこれで軸を選ぶ。"""
+        return self.effective_strength > 0 and axis_id not in self.disabled_axes
 
 
 def current_ledger_parameters(preference: CostPreference) -> LedgerParameters:

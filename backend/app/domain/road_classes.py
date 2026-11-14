@@ -3,7 +3,7 @@
 正本は管理DBの表（`infrastructure/road_class_models.py`）で、コードは写しも既定も持たない——表が空なら区分は0件。
 型は表の行を写すだけで、表の制約が守る形（鍵の綴り・参照先の実在・並びの重なり）をもう一度確かめない。制約で表せない
 データの良し悪し（条件の重なり・条件の値の綴り）も判定せず、振り分けの式がどんなデータにも1つの答えを出す。
-コードの宣言を名指す値は、書く側だけが宣言に照らす（`undeclared_references`）。
+コードの宣言を名指す値は、書く側と起動時の読み込みが宣言に照らす（`undeclared_references`）。
 """
 
 import hashlib
@@ -45,7 +45,7 @@ Condition = dict[str, ConditionTerm]
 class RoadClass(StrictModel):
     label: str
     description: str
-    #: 凡例・回避タブ・帯で共通の並び。色もこの順で決まる。振り分けには使わない。
+    #: 凡例・道路タブ・帯で共通の並び。色もこの順で決まる。振り分けには使わない。
     sort_order: int
     #: 区分は、条件のどれかに当たる道。
     conditions: list[Condition]
@@ -95,7 +95,7 @@ class AvoidanceOverride(StrictModel):
 
 
 class AvoidanceClassification(StrictModel):
-    """回避タブに出す分け方1つ。鍵は分け方で、地図の線の層でもある（凡例と回避タブの見出しを揃える）。"""
+    """道路タブに出す分け方1つ。鍵は分け方で、地図の線の層でもある（凡例と道路タブの見出しを揃える）。"""
 
     overrides: dict[str, AvoidanceOverride]
 
@@ -121,11 +121,8 @@ EMPTY_ROAD_CLASSES = RoadClassDefinitions(
 )
 
 def undeclared_references(definitions: RoadClassDefinitions) -> list[str]:
-    """コードの宣言を名指す値のうち、宣言に無いもの（運用者が読む文）。空なら全部が宣言にある。
-
-    読む側は知らない値を1つの振る舞いへ倒す（どの道にも無い事実・標準の段・基準の転がり抵抗等）ので、綴り違いは書いた
-    あと黙って効く。書く側（管理APIの入れ替え）だけがこれで断る。宣言から値を消しても、残った行は読む側が倒すだけで起動は止まらない。
-    """
+    """コードの宣言を名指す値のうち、宣言に無いもの（運用者が読む文）。空なら全部が宣言にある。書く側（管理APIの入れ替え）は
+    これで断り、起動時の読み込みはこれで止まるので、読む側は宣言に無い値を受け取らない。"""
     problems = [
         f"区分「{class_key}」（分け方 {key}）の条件の事実 {fact_key} は材料にありません"
         for key, classification in definitions.classifications.items()
@@ -151,6 +148,21 @@ def undeclared_references(definitions: RoadClassDefinitions) -> list[str]:
 
 
 _current = EMPTY_ROAD_CLASSES
+#: 直前に指紋を求めた全体とその指紋（画面の設定と地図のタイルの世代が要求のたびに読むので、同じ全体なら求め直さない）。
+#: 全体の写し（`model_copy`）は別の全体なので、同じものかは中身でなく同一性で見る。
+_generation_memo: tuple[RoadClassDefinitions, str] | None = None
+
+
+def road_class_generation(definitions: RoadClassDefinitions) -> str:
+    """中身から作る指紋。鍵の順に依らない。"""
+    global _generation_memo
+    memo = _generation_memo
+    if memo is not None and memo[0] is definitions:
+        return memo[1]
+    text = json.dumps(definitions.model_dump(mode="json"), sort_keys=True, ensure_ascii=False)
+    generation = hashlib.sha256(text.encode("utf-8")).hexdigest()[:12]
+    _generation_memo = (definitions, generation)
+    return generation
 
 
 def current_road_classes() -> RoadClassDefinitions:
@@ -174,7 +186,7 @@ def by_sort_order[T: _Sorted](items: Mapping[str, T]) -> list[tuple[str, T]]:
 
 def published_map_layers(definitions: RoadClassDefinitions) -> list[tuple[str, RoadMapLayer]]:
     """公開した分け方の地図の線の層を、画面が出す並び（群は`domain/map_display.py: MAP_LAYER_CATEGORIES`の順、その中は層の
-    `sort_order`の順）で。凡例と回避タブの見出しが同じ並びに従う。知らない群の層は最後に置く。"""
+    `sort_order`の順）で。凡例と道路タブの見出しが同じ並びに従う。知らない群の層は最後に置く。"""
     groups = [category.key for category in MAP_LAYER_CATEGORIES]
 
     def position(item: tuple[str, RoadMapLayer]) -> tuple[int, int]:
@@ -185,23 +197,15 @@ def published_map_layers(definitions: RoadClassDefinitions) -> list[tuple[str, R
     return sorted(published, key=position)
 
 
-def road_class_generation(definitions: RoadClassDefinitions) -> str:
-    """中身から作る指紋。鍵の順に依らない。"""
-    text = json.dumps(definitions.model_dump(mode="json"), sort_keys=True, ensure_ascii=False)
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:12]
-
-
-def _present(column: MaterialColumn | None, n: int) -> np.ndarray:
-    """区間ごとに事実があるか。知らない事実（列が無い）は、どの区間にも無い。分類の事実は値があれば「事実あり」。分類でない列は
-    真偽として読み、1.0のときだけ（`TRUE_FACT_VALUE`の値で）「事実あり」、ほかの値と値なしは「事実なし」。"""
-    if column is None:
-        return np.zeros(n, dtype=bool)
+def _present(column: MaterialColumn) -> np.ndarray:
+    """区間ごとに事実があるか。分類の事実は値があれば「事実あり」。分類でない列は真偽として読み、1.0のときだけ
+    （`TRUE_FACT_VALUE`の値で）「事実あり」、ほかの値と値なしは「事実なし」。"""
     return column.codes != 0 if isinstance(column, CategoricalColumn) else column == 1.0
 
 
-def _term_matches(term: ConditionTerm, column: MaterialColumn | None, n: int) -> np.ndarray:
+def _term_matches(term: ConditionTerm, column: MaterialColumn, n: int) -> np.ndarray:
     """区間ごとに項が当たるか。"""
-    present = _present(column, n)
+    present = _present(column)
     if isinstance(column, CategoricalColumn):
         listed = np.isin(column.codes, [code for code, value in enumerate(column.vocab) if value in term.fact_values])
     else:
@@ -210,18 +214,15 @@ def _term_matches(term: ConditionTerm, column: MaterialColumn | None, n: int) ->
 
 
 def conditions_match(conditions: Sequence[Condition], columns: Mapping[str, MaterialColumn], n: int) -> np.ndarray:
-    """区間ごとに、条件のどれかに当たるか。条件は項が全部当たる道に当たる。"""
+    """区間ごとに、条件のどれかに当たるか。条件は項が全部当たる道に当たる。条件の事実は材料にあるもの（`undeclared_references`）で、
+    `columns`はその列を全部持つ。無ければ投げる——どの区間にも事実が無いとして続けると、区分が黙って空になる。"""
     matched = np.zeros(n, dtype=bool)
     for condition in conditions:
         within = np.ones(n, dtype=bool)
         for fact_key, term in condition.items():
-            within &= _term_matches(term, columns.get(fact_key), n)
+            within &= _term_matches(term, columns[fact_key], n)
         matched |= within
     return matched
-
-
-def _facts(classification: RoadClassification) -> set[str]:
-    return {fact_key for c in classification.classes.values() for condition in c.conditions for fact_key in condition}
 
 
 def class_labels(classification: RoadClassification | None) -> dict[str, str]:
@@ -262,7 +263,7 @@ def layer_columns(
             continue
         column = cast(CategoricalColumn, columns[class_material_id(key)])
         if layer.no_data_fact_key is not None:
-            missing = (column.codes == 0) & ~_present(columns.get(layer.no_data_fact_key), n)
+            missing = (column.codes == 0) & ~_present(columns[layer.no_data_fact_key])
             column = CategoricalColumn(
                 np.where(missing, len(column.vocab), column.codes).astype(np.int16), (*column.vocab, NO_DATA_VALUE)
             )

@@ -4,18 +4,10 @@ import { describe, expect, it } from "vitest";
 import { mapCatalogFor } from "@/testing/mapCatalog";
 import { LEGEND_NO_DATA_KEY, LEGEND_UNDETERMINED_KEY } from "@/lib/mapDisplay/mapColorLegend";
 
-import { lensLegend, paintedLensId } from "./lens";
+import { lensLegend } from "./lens";
 
 /** 総合・登坂・振動のレンズ（`testing/costAxes.ts: TWO_COST_AXES`）。 */
 const catalog = mapCatalogFor();
-
-describe("paintedLensId（全道路を塗るレンズ）", () => {
-  it("ルートを確定するまでは選んだレンズ、確定後は周囲も塗り続ける設定の間だけ", () => {
-    expect(paintedLensId("ascent", false, false)).toBe("ascent");
-    expect(paintedLensId("ascent", true, true)).toBe("ascent");
-    expect(paintedLensId("ascent", true, false)).toBeNull();
-  });
-});
 
 describe("lensLegend（レンズの凡例）", () => {
   it("ルート確定後は、ルート線の色分けモードの凡例。無いレンズは前後とも空", () => {

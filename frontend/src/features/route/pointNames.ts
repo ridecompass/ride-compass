@@ -28,7 +28,7 @@ export function pointNames(inputs: PointNamesInputs): { origin: string; waypoint
   const areaOf = (at: Coordinates) => areas?.areaOf(at) ?? null;
   const placed = (at: Coordinates) => areaOf(at) ?? MAP_PLACED;
   const originArea = areas === undefined ? null : areaOf(areas.origin);
-  const current = originArea === null ? "現在地" : `現在地（${originArea}）`;
+  const current = originArea === null ? "現在地" : `現在地[${originArea}]`;
   return {
     origin:
       originFound?.name ??

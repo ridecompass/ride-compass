@@ -114,7 +114,7 @@ describe("区間の乗り換え", () => {
     ]);
 
     expect(await screen.findByRole("button", { name: "1つ戻す" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "この道の評価を見る" })).toBeNull();
+    expect(screen.queryByRole("group", { name: "道の小窓の上の帯" })).toBeNull();
     await user.click(screen.getByRole("button", { name: "編集をやめて候補へ戻る" }));
     expect(selectedSectionOnMap()).toEqual([]);
   });

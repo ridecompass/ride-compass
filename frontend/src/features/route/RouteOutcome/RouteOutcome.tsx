@@ -10,10 +10,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs/T
 import { textVariants } from "@/components/ui/Text/Text";
 import { useCostAxisCatalog, type CostAxisCatalog } from "@/hooks/useCostAxisCatalog";
 import { cn } from "@/lib/cn";
-import { costLensPaint } from "@/lib/mapDisplay/costLensPaint";
+import { costLensPaint, LENS_QUANTITY_LABEL } from "@/lib/mapDisplay/costLensPaint";
 import type { MapTheme } from "@/lib/mapTheme";
 import { NO_DATA_LEGEND_BAND } from "@/lib/mapDisplay/mapColorLegend";
 import { bandAt, valueBands } from "@/lib/mapDisplay/valueScale";
+import { routeClock } from "@/lib/routeClock";
 import { formatPenaltyMinutes } from "@/lib/routePenalty";
 import RouteProfile from "@/features/route/RouteProfile/RouteProfile";
 import type { ProfileLayerSelection } from "@/features/route/RouteProfile/useProfileLayers";
@@ -33,8 +34,7 @@ import type { RouteResults } from "@/features/route/useRouteResults";
 import type { SpliceSessionView } from "@/features/route/useSpliceSession";
 import type { RouteCandidate } from "@/types/route";
 
-const CANDIDATE_TAB_USAGE =
-  "この候補を地図と内訳に出し、地図を候補の全体に合わせます。稲妻の印は最速ルート、合成の印は区間を乗り換えた合成ルート、番号だけのものは生成した候補です。上の段は距離です。下の段は時間（最速ルート［無ければ最も早い候補］は所要時間、ほかはそれとの差で、速ければ−）と負担（重りの印）です。下の帯は、1kmあたりの負担を地図と同じ色で表します。";
+const CANDIDATE_TAB_USAGE = `この候補を地図と内訳に出し、地図を候補の全体に合わせます。稲妻の印は最速ルート、合成の印は区間を乗り換えた合成ルート、番号だけのものは生成した候補です。上の段は距離です。下の段は時間と負担[重りの印]です。時間は、最速ルート[無ければ最も早い候補]では所要時間、ほかはそれとの差で、速ければ−です。下の帯は、${LENS_QUANTITY_LABEL}を地図と同じ色で表します。`;
 
 /** 名前の列で群を見分ける印と、その意味（指を置いたときの吹き出しと読み上げの名前）。生成した候補は印を持たない。 */
 const GROUP_MARKS: Partial<Record<RouteListGroup, { Icon: typeof FastestRouteIcon; meaning: string }>> = {
@@ -42,7 +42,7 @@ const GROUP_MARKS: Partial<Record<RouteListGroup, { Icon: typeof FastestRouteIco
   spliced: { Icon: RouteSpliceIcon, meaning: "合成ルート" },
 };
 
-/** カードの下の帯の色。候補を並べるのと同じ、ルート全体の1kmあたりの負担（曲がる所と回避指定を含む）を、総合のレンズの段で
+/** カードの下の帯の色。候補を並べるのと同じ、ルート全体の1kmあたりの負担（曲がる所と、好む道・避ける道の増減を含む）を、総合のレンズの段で
  * 示す。値が無ければ値なしの色。 */
 function penaltyColor(route: RouteCandidate, catalog: CostAxisCatalog, ground: MapTheme): string {
   if (catalog.lenses === null || route.penalty_seconds_per_km === null) return NO_DATA_LEGEND_BAND.color;
@@ -140,9 +140,7 @@ export default function RouteOutcome({ results, generation, splice, profileLayer
     <>
       {generation.conditionsDirty && <WarningText>生成条件が変更されています</WarningText>}
       {generation.destinationCorrected && (
-        <WarningText>
-          指定した地点は自転車で行けない場所だったため、近くのアクセス可能な地点へ補正しました。
-        </WarningText>
+        <WarningText>指定した地点は自転車で行けない場所だったため、近くの自転車で行ける地点へ移しました。</WarningText>
       )}
       {reusedRouteId !== null && (
         <p className={cn(textVariants({ variant: "hint" }), "m-0")}>
@@ -223,8 +221,11 @@ export default function RouteOutcome({ results, generation, splice, profileLayer
                 <RouteProfile
                   segments={route.segments}
                   catalog={costCatalog}
+                  penalty={route.penalty}
+                  facts={route.facts.axes}
                   scaleKm={longestDistanceKm}
                   waypointKms={route.waypoint_distances_km}
+                  arrivalClock={routeClock(route)}
                   selected={selectedRouteSegment}
                   onSelect={results.selectSegment}
                   segmentOnMap={results.segmentOnMap}
@@ -235,8 +236,6 @@ export default function RouteOutcome({ results, generation, splice, profileLayer
             {renderEditDifference(route)}
             <RouteAxisProfile
               penalty={route.penalty}
-              facts={route.facts}
-              catalog={costCatalog}
               estimatedDurationSeconds={route.estimated_duration_seconds}
               missingTravelDataShare={route.missing_travel_data_share}
             />

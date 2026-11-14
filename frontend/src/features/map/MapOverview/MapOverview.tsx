@@ -122,7 +122,7 @@ function OverviewMap({
     [dynamicWeather, zoom, center.latitude, center.longitude],
   );
   useEffect(() => {
-    if (mapRef.current) applyScene(mapRef.current, scene, { basemapTheme: theme });
+    if (mapRef.current) applyScene(mapRef.current, scene, { basemap: { theme, muted: false } });
   }, [scene, theme]);
 
   useEffect(() => {

@@ -10,8 +10,6 @@
 - 道の窓の押した道の読み出し → `test_region_service.py`
 """
 
-from dataclasses import replace
-
 import httpx
 import numpy as np
 import pytest
@@ -24,6 +22,8 @@ from app.domain.route_request import ASSUMED_SPEED_KMH
 from app.domain.traffic import POI_COUNT_KINDS, stop_event
 from app.domain.tuning import tuning_value
 from app.domain.lens_values import LENS_AGAINST_LEAF, LENS_ALONG_LEAF
+from app.domain.material_catalog import material_spec
+from app.domain.route import AxisFact
 from app.main import app
 from app.services.lens_service import LensService
 from datetime import datetime
@@ -101,8 +101,8 @@ async def test_the_route_and_the_map_lens_count_the_same_seconds_on_the_same_roa
     来た道と曲がる向きで決まる曲がる所の漕ぎ出しを停止の軸の秒に含め、ほかの軸は区間の和のまま、和は費用に合う。"""
     network = road_network(WAYS, COORDINATES, bad_ways=(FLAT_ROUGH_WAY,), gradient_of={CLIMBING_WAY: 6.0},
                            stop_density_of={STOPPING_WAY: 3.0})
-    candidates = await generator_for(road_network_root, network).generate_via_waypoints(
-        at(SOUTH_WEST), [], destination=at(NORTH_EAST), max_routes=3, start_time=datetime(2026, 5, 1, 9, tzinfo=JST))
+    candidates = (await generator_for(road_network_root, network).generate_via_waypoints(
+        at(SOUTH_WEST), [], destination=at(NORTH_EAST), max_routes=3, start_time=datetime(2026, 5, 1, 9, tzinfo=JST))).candidates
     # 格子はタイルの端をまたぐので、格子のノードを含むタイルを全部取って重ねる（またぐ道は両方のタイルに同じ値で載る）。
     tiles = {tuple(int(v) for v in tile_position(lon, lat, Z)) for lat, lon in COORDINATES.values()}
     lenses: dict[str, dict[str, dict[str, float]]] = {}
@@ -190,22 +190,40 @@ def _kickoffs_per_stop() -> float:
 
 
 async def test_the_inspector_gives_both_directions_and_the_facts_behind_them(cost_axes, road_network_root):
-    """道の窓は地図と同じ秒を両方の向きで返し、地図が塗っている向きと、断面の一番急な所の斜度を事実として出す。
-    北へ走る地図では、南から北へ向く道を道の向きで塗る。"""
-    network = road_network(WAYS, COORDINATES, gradient_of={CLIMBING_WAY: 2.0})
-    climbing = (np.asarray(network.edge_way_id) == CLIMBING_WAY) & np.asarray(network.edge_forward)
-    serve_road_network(road_network_root, replace(
-        network, steepest_gain_percent=np.where(climbing, 12.0, network.steepest_gain_percent)))
+    """道の窓は、地図と同じ1kmあたりの秒を押した区間の長さぶん足して両方の向きで返し、地図が塗っている向きと、その秒の元の事実を
+    出す。北へ走る地図では、南から北へ向く道を道の向きで塗る。登坂の事実は辿る向きの登り、数の材料の軸はその材料の値。"""
+    network = road_network(WAYS, COORDINATES, bad_ways=(CLIMBING_WAY,), elevation_of={CLIMBING_WAY: (10.0, 70.0)})
+    serve_road_network(road_network_root, network)
     service = LensService(Weather())
 
     inspection = await service.inspect(str(CLIMBING_WAY), Z, X, Y, 0.0, None, ASSUMED_SPEED_KMH, CostPreference())
     table = await service.tile_table(Z, X, Y, None, ASSUMED_SPEED_KMH, CostPreference())
 
-    assert inspection is not None and table is not None
+    assert inspection is not None and inspection.along is not None and inspection.against is not None
     index = table.features.keys.index(str(CLIMBING_WAY))
+    (row,) = np.flatnonzero((network.edge_way_id == CLIMBING_WAY) & network.edge_forward)
     assert inspection.painted == "along"
-    assert inspection.along.total_seconds_per_km == pytest.approx(table.values["total"][index, 0])
-    assert {fact.label: fact.value for fact in inspection.along.facts}["一番急な登り"] == 12.0
+    assert inspection.along.total_seconds == pytest.approx(
+        table.values["total"][index, 0] * float(network.distance_m[row]) / 1000.0)
+    assert inspection.along.facts["ascent"].value == pytest.approx(network.elevation_gain_m[row], abs=0.05)
+    assert inspection.against.facts["ascent"].value == 0.0
+    bad = material_spec(BAD_MATERIAL)
+    assert bad is not None
+    assert inspection.along.facts["rough"] == AxisFact(label=bad.label, value=1.0, unit=bad.unit)
+
+
+async def test_a_new_road_network_generation_paints_its_own_roads(client, cost_axes, road_network_root):
+    """道路網が作り直されたら、同じタイルでも新しい網の道で塗る。前の網のタイルの区間を引き続けると、増えた道が地図で
+    塗られない。増やす道は番号が一番大きく、網の行の末尾に載る（前の網の行の範囲の外）。"""
+    new_way, new_node = max(WAYS) + 1, max(COORDINATES) + 1
+    lat, lon = COORDINATES[CENTER]
+    serve_road_network(road_network_root, road_network(WAYS, COORDINATES))
+    assert str(new_way) not in await _lens(client, "total")
+
+    serve_road_network(road_network_root, road_network(
+        {**WAYS, new_way: (CENTER, new_node)}, {**COORDINATES, new_node: (lat, lon + 0.001)}))
+
+    assert str(new_way) in await _lens(client, "total")
 
 
 async def test_an_unknown_lens_has_nothing_to_paint(client, road_network_root, cost_axes):

@@ -6,9 +6,10 @@
 - 表との往復と、応答のどこへ出るか → `test_road_class_admin_routes.py`
 """
 
+from app.domain.hard_filters import HARD_FILTER_PROPERTY, HARD_FILTERS
 from app.domain.road_class_catalog import road_class_catalog
 from app.domain.map_display import MAP_LAYER_CATEGORIES
-from app.domain.road_classes import AvoidanceClassification, AvoidanceOverride
+from app.domain.road_classes import EMPTY_ROAD_CLASSES, AvoidanceClassification, AvoidanceOverride
 from tests.road_class_fixture import classification, fact_is, map_layer, road_classes
 
 
@@ -26,8 +27,7 @@ def test_layers_are_published_and_ordered() -> None:
                 "other": map_layer(0).model_copy(update={"group_key": second}),
                 "draft": map_layer(0).model_copy(update={"group_key": first}),
             },
-        )
-    )
+        ))
     assert [(layer.id, [c.key for c in layer.classes]) for layer in catalog.map_layers] == [
         ("early", ["b", "a"]),
         ("late", ["b", "a"]),
@@ -44,10 +44,9 @@ def test_class_description_is_the_meaning_without_its_conditions() -> None:
             {"k": kinds.model_copy(update={"classes": {"a": meant}})},
             map_layers={"k": map_layer()},
             avoidance_classifications={"k": AvoidanceClassification(overrides={})},
-        )
-    )
+        ))
     (layer,) = catalog.map_layers
-    (row,) = catalog.avoidance.rows
+    (row,) = [row for row in catalog.avoidance.rows if row.selectable]
     assert (layer.classes[0].description, row.description) == ("意味の文", "意味の文")
 
 
@@ -79,13 +78,41 @@ def test_avoidance_rows_are_grouped_under_their_map_layers() -> None:
                 "draft": AvoidanceClassification(overrides={}),
                 "unmapped": AvoidanceClassification(overrides={}),
             },
-        )
-    )
+        ))
     assert [(section.key, section.label) for section in catalog.avoidance.sections] == [("y", "分け方Y"), ("x", "分け方X")]
-    assert [(row.key, row.section, row.default) for row in catalog.avoidance.rows] == [
+    assert [(row.key, row.section, row.default) for row in catalog.avoidance.rows if row.selectable] == [
         ("y.plain", "y", "pass"),
         ("y.avoided", "y", "pass"),
         ("y.hidden", "y", "pass"),
         ("x.plain", "x", "pass"),
         ("x.avoided", "x", "avoid"),
     ]
+
+
+def test_levels_are_named_by_the_multiplier_derived_from_the_calibrated_avoid_multiplier():
+    """段の名前は区間の費用に掛ける倍率で、並びは倍率の順。「好む」は「なるべく避ける」の倍率（テストの較正値は2）の逆数で、
+    「少し」の段はその平方根。"""
+    catalog = road_class_catalog(EMPTY_ROAD_CLASSES)
+
+    assert [(level.key, level.label) for level in catalog.avoidance.levels] == [
+        ("prefer", "×0.5"), ("slight_prefer", "×0.7"), ("pass", "×1"), ("slight_avoid", "×1.4"), ("avoid", "×2"),
+        ("exclude", "×∞"),
+    ]
+
+
+def test_hard_filters_lead_the_rows_as_unselectable_exclusions() -> None:
+    """0次ハードフィルタは選べない「通らない」の行として選べる行より先に並び、路面タイルが焼くプロパティと名前で道を指す
+    （食い違うと、通れない道を地図が塗らない）。見出しには入らない。"""
+    catalog = road_class_catalog(
+        road_classes(
+            {"k": classification({"a": []})},
+            map_layers={"k": map_layer()},
+            avoidance_classifications={"k": AvoidanceClassification(overrides={})},
+        ))
+    rows = catalog.avoidance.rows
+    assert [(row.section, row.class_key, row.default, row.selectable) for row in rows] == [
+        *((HARD_FILTER_PROPERTY, name, "exclude", False) for name in HARD_FILTERS),
+        ("k", "a", "pass", True),
+    ]
+    assert [section.key for section in catalog.avoidance.sections] == ["k"]
+

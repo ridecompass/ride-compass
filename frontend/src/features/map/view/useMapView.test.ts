@@ -20,6 +20,15 @@ import { costAxisCatalog, costAxisEntry } from "@/testing/costAxes";
 
 import { LEGEND_FILTER_DEBOUNCE_MS, type useMapView } from "./useMapView";
 import { STANDARD_COST_PREFERENCE } from "@/lib/costPreference";
+import type routeGenerateConfig from "@/types/generated/route-generate-config.json";
+
+// レンズの単位と目安の条件の文はbackendの宣言。架空の値へ差し替え、凡例の下の目安がそれを書くことを見る。
+vi.mock("@/types/generated/route-generate-config.json", async (importOriginal) => {
+  const original = await importOriginal<{ default: typeof routeGenerateConfig }>();
+  return {
+    default: { ...original.default, lens_unit: "単位ア", lens_equivalents_condition_wording: "条件イの道の場合" },
+  };
+});
 
 /** 既定の一覧（`TWO_COST_AXES`）のレンズ: 総合・登坂・振動。 */
 const LENS_COUNT = 3;
@@ -30,19 +39,18 @@ afterEach(() => {
 });
 
 describe("useMapView", () => {
-  it("レンズを選んでもルートの線の出し入れは変えず、ルートの確定後に周りを塗らない設定なら全道路を塗らない", () => {
+  it("ルートの区間が確定するまでは範囲を選べず地図全体に出し、確定後は既定でルート沿いだけ、地図全体を選べば地図全体に出す", () => {
     serve();
-    const { result, rerender } = renderMapView({ hasSelectedRoute: true });
-    act(() => result.current.overlayControls.route.onChange(false));
-
+    const { result, rerender } = renderMapView();
     act(() => result.current.lensControl.onLensChange("ascent"));
+    expect(result.current.look).toMatchObject({ lens: "ascent", surroundingsShown: true });
+    expect(result.current.overlayControls.range).toMatchObject({ routeOnly: false, selectable: false });
 
-    expect(result.current.look).toMatchObject({ lens: "ascent", paintedLensId: "ascent" });
-    expect(result.current.look.layerVisibility.route).toBe(false);
-    expect(result.current.lensControl.routeHidden).toBe(true);
     rerender({ hasDetail: true });
-    act(() => result.current.lensControl.onKeepAfterRouteChange(false));
-    expect(result.current.look.paintedLensId).toBeNull();
+    expect(result.current.look.surroundingsShown).toBe(false);
+    expect(result.current.overlayControls.range).toMatchObject({ routeOnly: true, selectable: true });
+    act(() => result.current.overlayControls.range.onChange(false));
+    expect(result.current.look.surroundingsShown).toBe(true);
   });
 
   it("塗っているレンズだけ表示範囲の材料を取り、塗りに効く走る条件と、取れなかったことをレンズに出す", async () => {
@@ -54,7 +62,7 @@ describe("useMapView", () => {
     act(() => result.current.lensControl.onLensChange("ascent"));
     act(() => result.current.look.onViewportChange(VIEWPORT));
 
-    expect(result.current.lensConditions).toEqual(["at", "speed_kmh", "bearing_deg"]);
+    expect(result.current.lensConditions).toEqual(["at", "speed_kmh"]);
     // 表示範囲は間引いてから取るので、そのレンズの結果が出て取り終えるまで待つ。
     await waitFor(() => expect(result.current.look.wayMaterials.get("ascent")?.loading).toBe(false), {
       timeout: 3000,
@@ -90,7 +98,7 @@ describe("useMapView", () => {
       timeout: 3000,
     });
     expect(sent[0].query.speed_kmh).toBe("20");
-    expect(result.current.lensControl.premises).toContain("4秒/km ≈ 斜度 2.1%");
+    expect(result.current.lensControl.premises).toEqual(["目安[条件イの道の場合]", "4単位ア ≈ 斜度 2.1%"]);
   });
 
   it("選んでいた軸を無効にすると、選んでいない状態で塗り、無効を戻すとまたその軸で塗る", async () => {
@@ -204,21 +212,23 @@ describe("useMapView", () => {
     expect(chip(result, "disaster")?.legendDetails?.[0].hiddenKeys).toEqual(["heavyRain"]);
   });
 
-  it("表示・レンズ・周りを塗る設定・隠した行は、次に開いたときも残る", async () => {
+  it("表示・レンズ・表示する範囲・地図の色・隠した行は、次に開いたときも残る", async () => {
     serve();
-    const first = renderMapView();
+    const first = renderMapView({ hasDetail: true });
     await waitFor(() => expect(first.result.current.lensControl.axisOptions).toHaveLength(LENS_COUNT));
     act(() => first.result.current.overlayControls.onToggle("hillshade", true));
     act(() => first.result.current.lensControl.onLensChange("ascent"));
-    act(() => first.result.current.lensControl.onKeepAfterRouteChange(false));
+    act(() => first.result.current.overlayControls.range.onChange(false));
+    act(() => first.result.current.overlayControls.mapTheme.onChange("dark"));
     act(() => first.result.current.overlayControls.onLegendEntryToggle("disaster", "heavyRain"));
     first.unmount();
 
-    const { result } = renderMapView();
+    const { result } = renderMapView({ hasDetail: true });
 
     await waitFor(() => expect(result.current.lensControl.lens).toBe("ascent"));
     expect(result.current.look.layerVisibility.hillshade).toBe(true);
-    expect(result.current.lensControl.keepAfterRoute).toBe(false);
+    expect(result.current.overlayControls.range.routeOnly).toBe(false);
+    expect(result.current.look.mapTheme).toBe("dark");
     expect(chip(result, "disaster")?.legendDetails?.[0].hiddenKeys).toEqual(["heavyRain"]);
   });
 
@@ -232,17 +242,5 @@ describe("useMapView", () => {
     if (reported !== null) act(() => result.current.look.onViewportChange({ ...VIEWPORT, bearing: reported }));
 
     expect(result.current.bearing).toBe(bearing);
-  });
-
-  it("ルートの出し入れは「表示」の一覧が持ち、候補を選ぶまで押せない", () => {
-    serve();
-    const { result, rerender } = renderMapView();
-    expect(result.current.overlayControls.route).toMatchObject({ shown: true, selectable: false });
-    expect(result.current.lensControl.routeHidden).toBe(false);
-
-    rerender({ hasSelectedRoute: true });
-    act(() => result.current.overlayControls.route.onChange(false));
-
-    expect(result.current.overlayControls.route).toMatchObject({ shown: false, selectable: true });
   });
 });

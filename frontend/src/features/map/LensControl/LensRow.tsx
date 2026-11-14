@@ -10,14 +10,11 @@ import { textVariants } from "@/components/ui/Text/Text";
 import { axisIconFor } from "@/components/ui/icons/axisIconPalette";
 import { CompassNeedleIcon } from "@/components/ui/icons/icons";
 import { ClockIcon, SpeedGaugeIcon } from "@/components/ui/icons/lucideIcons";
-import { cn } from "@/lib/cn";
 
 export interface LensOption {
   id: LensId;
   label: string;
   color: string;
-  /** 代償が0（全体のつまみ×0）。選べるが薄く出し、「未使用」を添えて後ろに並べる。 */
-  unused: boolean;
   /** レンズの説明（倍率のタブと同じ費用の軸の一覧の説明文）。(i) で行の下に開く。 */
   description: string;
   /** レンズのアイコン（倍率のタブと同じ）。未設定は汎用のアイコン。 */
@@ -69,7 +66,7 @@ export function LensRow({
           >
             <AxisIcon iconId={option.iconId} />
           </span>
-          <span className={cn("min-w-0", option.unused && "text-[var(--color-muted)]")}>{option.label}</span>
+          <span className="min-w-0">{option.label}</span>
           {option.conditions.map((condition) => {
             const { Icon, name } = CONDITION_MARKS[condition];
             return (
@@ -79,7 +76,6 @@ export function LensRow({
               </span>
             );
           })}
-          {option.unused && <span className={textVariants({ variant: "note" })}>未使用</span>}
           {filtered && <span className={textVariants({ variant: "note" })}>{FILTERED_LABEL}</span>}
         </ToggleGroupItem>
         {hint.toggle}

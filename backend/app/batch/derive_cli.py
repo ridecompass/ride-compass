@@ -55,8 +55,9 @@ from app.batch import (
     derive_elevation,
     derive_landcover,
     derive_nodes,
-    derive_stop_places,
+    derive_places,
     derive_topology,
+    derive_traffic_regulations,
     derive_way_directions,
 )
 from app.batch.common import (
@@ -70,11 +71,15 @@ from app.infrastructure.tuning_overrides import load_tuning_values
 from app.infrastructure import derived_data_meta, road_network_store
 from app.infrastructure.derived_data_freshness import declared_columns
 from app.domain.tuning import (
+    ACCIDENT_FATAL_WEIGHT_ID,
     ACCIDENT_MATCH_DISTANCE_ID,
     ELEVATION_BRIDGE_END_RADIUS_ID,
     ELEVATION_PROFILE_STEP_ID,
     LANDCOVER_RING_INNER_ID,
     LANDCOVER_RING_OUTER_ID,
+    REGULATION_EDGE_SHARE_ID,
+    REGULATION_LINE_HALF_WIDTH_ID,
+    SIGNAL_MATCH_RADIUS_ID,
     STOP_CLUSTER_DISTANCE_ID,
 )
 from app.infrastructure.road_graph_repository import NETWORK_TUNING, RoadGraphRepository
@@ -109,24 +114,27 @@ class DeriveStage:
 STAGES: tuple[DeriveStage, ...] = (
     DeriveStage("topology", derive_topology, frozenset({Source.OSM_WAY}), (), ("road_edges", "road_ways", "road_nodes")),
     DeriveStage("nodes", derive_nodes, frozenset({Source.OSM_NODE, Source.OSM_WAY}), ("topology",),
-                ("node_kinds", "node_turns"), {"signal_radius_m": "signal.match_radius_m"}),
+                ("node_kinds", "node_turns"), {"signal_radius_m": SIGNAL_MATCH_RADIUS_ID}),
     DeriveStage("counts", derive_counts, frozenset({Source.OSM_NODE, Source.OSM_WAY, Source.ACCIDENT}),
                 ("topology", "nodes"), ("edge_counts", "way_counts"),
-                {"cluster_distance_m": STOP_CLUSTER_DISTANCE_ID, "accident_fatal_weight": "accident.fatal_weight",
+                {"cluster_distance_m": STOP_CLUSTER_DISTANCE_ID, "accident_fatal_weight": ACCIDENT_FATAL_WEIGHT_ID,
                  "accident_match_distance_m": ACCIDENT_MATCH_DISTANCE_ID}),
     # 標高の段は、道から区間が橋かトンネルかだけを読み、その値を区間ごとに表へ残す。
     DeriveStage("elevation", derive_elevation, frozenset({Source.OSM_WAY, Source.DEM}), ("topology",), ("edge_elevation",),
                 {"profile_step_m": ELEVATION_PROFILE_STEP_ID, "bridge_end_radius_m": ELEVATION_BRIDGE_END_RADIUS_ID}),
     DeriveStage("landcover", derive_landcover, frozenset({Source.LULC}), ("topology",), ("edge_landcover", "way_landcover"),
                 {"ring_outer_m": LANDCOVER_RING_OUTER_ID, "ring_inner_m": LANDCOVER_RING_INNER_ID}),
+    DeriveStage("traffic_regulations", derive_traffic_regulations, frozenset({Source.JARTIC_REGULATION}), ("topology",),
+                ("edge_traffic_regulations",),
+                {"line_half_width_m": REGULATION_LINE_HALF_WIDTH_ID, "edge_share": REGULATION_EDGE_SHARE_ID}),
     DeriveStage("directions", derive_way_directions, frozenset({Source.OSM_WAY}), ("topology",), ("way_directions",)),
     # 住所の区画は、道路（`osm_way`）のパーティションを読まず、取込の記録から範囲だけを読む（読んだ数の見張りに出ないので、
     # 手で挙げる）。
     DeriveStage("addresses", derive_addresses, frozenset({Source.ABR, Source.ISJ_BLOCK, Source.OSM_WAY}), (),
                 ("address_areas", "address_search_keys", "address_blocks")),
-    DeriveStage("stop_places", derive_stop_places,
+    DeriveStage("places", derive_places,
                 frozenset({Source.OVERTURE_PLACE, Source.BUNKA_HERITAGE, Source.ESTAT_SMALL_AREA}), (),
-                ("stop_places",)),
+                ("places",)),
 )
 
 
@@ -181,7 +189,7 @@ _V = TypeVar("_V")
 def carried_over(previous: Mapping[str, _V], current: Mapping[str, _V], users: Mapping[str, frozenset[str]],
                  ran: Iterable[str]) -> dict[str, _V]:
     """作り直しの記録に書く値（鍵は`users`の鍵）: 使う段が全部流れた鍵は今の値、ほかは前回の記録。前回に無ければ書かない——
-    読み手は記録の無い較正値を読めず（読む段を流し直す）、鮮度の台帳は記録の無い取込を作り直しが要る側に数える。"""
+    読み手は記録の無い較正値を読めず（読む段を流し直す）、鮮度の台帳は記録の無い鍵を作り直しが要る側に数える。"""
     done = {*ran, NETWORK}
     result: dict[str, _V] = {}
     for key, used_by in users.items():
@@ -282,9 +290,11 @@ async def _swap(conn: asyncpg.Connection, tables: list[str], revision: int) -> N
             logger.info("派生の表を入れ替えた（%d回目） / 表の排他ロック（待ちを含む）=%.1fs",
                         attempt, time.perf_counter() - started)
             return
-        except asyncpg.exceptions.LockNotAvailableError:
-            logger.warning("入れ替えが表を読んでいる相手を待ちきれなかった。%.0f秒後にやり直す（%d/%d）",
-                           _SWAP_RETRY_SECONDS, attempt, _SWAP_ATTEMPTS)
+        # 読み手とのデッドロックでは、DBがどちらを止めるかを約束しない。止められたのが入れ替えなら巻き戻っているので、
+        # 待ち切れと同じにやり直してよい。
+        except (asyncpg.exceptions.LockNotAvailableError, asyncpg.exceptions.DeadlockDetectedError) as error:
+            logger.warning("入れ替えが表を読んでいる相手に止められた（%s）。%.0f秒後にやり直す（%d/%d）",
+                           type(error).__name__, _SWAP_RETRY_SECONDS, attempt, _SWAP_ATTEMPTS)
             await asyncio.sleep(_SWAP_RETRY_SECONDS)
     raise RuntimeError("入れ替えられなかった: 派生の表を読み続けている相手がいる")
 
@@ -323,7 +333,7 @@ async def run(database_url: str, stages: Sequence[str] | None = None) -> int:
             logger.info("段 %s を開始（%d/%d）", stage.name, index, len(ran))
             await stage.run(conn, tuning)
             logger.info("段 %s 完了 / %s", stage.name, format_duration(time.perf_counter() - stage_started))
-        revision = (await conn.fetchval("SELECT revision FROM derived_data_meta") or 0) + 1
+        revision = await conn.fetchval("SELECT revision FROM derived_data_meta") + 1
         pending = await _build_road_network(database_url, revision)
         await _swap(conn, tables, revision)
         road_network_store.publish(pending)

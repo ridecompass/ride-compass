@@ -65,11 +65,13 @@ export interface CaptureContext {
   /** 地図の見えている所（部品に覆われていない所）へ経度・緯度の点を寄せてから押す。点が画面の外や部品の下に来うるときに使う。 */
   clickVisible(lngLat: [number, number]): Promise<void>;
   /**
-   * 地図に描かれた、押すと開くもの（道の詳細・点の詳細・ルートの区間・乗り換えの帯等）を、経度・緯度を渡さずに1つ押す。
-   * `target` は地図の当たり判定の対象の名前（例: "road"）で、いまの地図に無い名前を渡すと押せる名前を並べて止まる。持つレイヤーが
-   * 非表示・画面に描かれていないときも止まるので、open の layers・位置・倍率で描かれる状態にしてから呼ぶ（例は examples/road-detail.ts）。
+   * 地図に描かれた、押すと開くもの（点の詳細・ルートの区間・乗り換えの帯等）を、経度・緯度を渡さずに1つ押す。
+   * `target` は地図の当たり判定の対象の名前（例: "point"）で、いまの地図に無い名前を渡すと押せる名前を並べて止まる。持つレイヤーが
+   * 非表示・画面に描かれていないときも止まるので、open の layers・位置・倍率で描かれる状態にしてから呼ぶ。
    */
   clickFeature(target: string): Promise<void>;
+  /** 地図に描かれた道を経度・緯度を渡さずに1本長押しし、道の詳細を開く。open の layers で道の層を出してから呼ぶ（例は examples/road-detail.ts）。 */
+  longPressRoad(): Promise<void>;
   /**
    * URL が glob に当たる応答の本文を `transform` の返した JSON に替える。本物の応答を取ってから本文だけを替えるので、CORS 等の
    * ヘッダーは本物のまま残る（ヘッダーの無い応答で返すと、別オリジンの backend への取得としてブラウザが捨てる）。
@@ -95,6 +97,12 @@ export interface CaptureContext {
 }
 
 export type CaptureScript = (context: CaptureContext) => Promise<void>;
+
+/**
+ * 撮るときの描画の止め方。CSS のアニメーション・遷移は終わりの姿へ進めて撮る（Playwright の `animations: "disabled"`）。
+ * 前後の画像を画素で比べて同じかを決めるので、遷移の途中を撮ると、変えていない画面でも一致しない。
+ */
+const STILL = { animations: "disabled" } as const;
 
 /** 「表示」のボタンと、押すと開く一覧の名前（`MapOverlayControls`）。 */
 const OVERLAY_LIST_NAME = "地図に出す情報";
@@ -232,6 +240,10 @@ export function captureContext(
       await settle();
       await fixtures.clickFeature(page, target);
     },
+    async longPressRoad() {
+      await settle();
+      await fixtures.longPressRoad(page);
+    },
     async patch(glob, transform) {
       await page.route(glob, async (route) => {
         // 後から登録したこのルートが先に当たるので、作業ツリーの backend へ向けるパスも、ここで向けて取る。
@@ -246,7 +258,7 @@ export function captureContext(
     },
     async shot(name, target) {
       const file = nextFile(name);
-      await (target ?? page).screenshot({ path: file });
+      await (target ?? page).screenshot({ path: file, ...STILL });
       console.log(`[capture] ${file}`);
       return file;
     },
@@ -259,7 +271,7 @@ export function captureContext(
       }
       // 見える範囲は、レイアウトの下端より下へはずれない。
       const shift = Math.min(keyboard, Math.max(0, box.y + box.height - (viewport.height - keyboard)));
-      const image = await composeKeyboard(page, await page.screenshot(), viewport, { shift, keyboard });
+      const image = await composeKeyboard(page, await page.screenshot(STILL), viewport, { shift, keyboard });
       const file = nextFile(name);
       await writeFile(file, image);
       console.log(`[capture] ${file}`);

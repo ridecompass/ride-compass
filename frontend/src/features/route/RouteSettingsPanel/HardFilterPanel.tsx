@@ -3,57 +3,94 @@
 import Disclosure, { DisclosureChevron } from "@/components/Disclosure/Disclosure";
 import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
 import { Badge } from "@/components/ui/Badge/Badge";
+import { Checkbox } from "@/components/ui/Checkbox/Checkbox";
 import { LockedIcon } from "@/components/ui/icons/lucideIcons";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/ToggleGroup/ToggleGroup";
-import { avoidanceLevelOf, type AvoidanceLevel, type AvoidanceRow } from "@/features/route/roadAvoidance";
+import { Dot } from "@/components/ui/Dot/Dot";
+import { textVariants } from "@/components/ui/Text/Text";
+import {
+  avoidanceLevelOf,
+  isPainted,
+  type AvoidanceLevel,
+  type AvoidanceRow,
+  type RoadTabMap,
+} from "@/lib/roadAvoidance";
 import { cn } from "@/lib/cn";
 import type { RoadAvoidanceOverride, RoadAvoidanceView } from "@/types/route";
-import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 
-// 「ルート設定」区分の「回避」タブ。道の区分の行ごとに「通る・なるべく避ける・通らない」を選び、
-// 自転車が通れない道の行は「通らない」に固定して同じ並びの先頭に出す。
-
-// 固定の行。backendがいつも経路から外す道で、名前と説明は生成物（route-generate-config.json）から受け取る。
-const FIXED_ROWS: readonly { key: string; label: string; description: string }[] = routeGenerateConfig.hard_filters;
+// 「ルート設定」区分の「道路」タブ。道の区分の行ごとに、費用に掛ける倍率の段（好む・少し好む・通る・少し避ける・なるべく避ける・通らない）を目盛りで選び、
+// 選べない行（自転車が通れない道）は既定の段に固定して同じ並びの先頭に出す。行・段の名前（倍率）と色は画面の設定が配る。並びの上の
+// 「地図で見る」は、このタブを出している間に段を地図の道に塗るかを選ぶ。
 
 interface HardFilterPanelProps {
-  /** 選べる行・段と、行をまとめる節（道の分け方ごと。画面の設定が配る。届くまでは行も段も無い）。 */
+  /** 行（選べない行を含む）・段と、選べる行をまとめる節（道の分け方ごと。画面の設定が配る。届くまでは行も段も無い）。 */
   avoidance: RoadAvoidanceView;
   /** 選んだ段（選んでいない行は無い）。 */
   roadAvoidance: RoadAvoidanceOverride;
   onRoadAvoidanceChange: (next: RoadAvoidanceOverride) => void;
+  /** 「地図で見る」（このタブを出している間、段を地図の道に塗るか）と、塗れない理由。 */
+  roadTabMap: RoadTabMap;
 }
 
-export default function HardFilterPanel({ avoidance, roadAvoidance, onRoadAvoidanceChange }: HardFilterPanelProps) {
+export default function HardFilterPanel({
+  avoidance,
+  roadAvoidance,
+  onRoadAvoidanceChange,
+  roadTabMap,
+}: HardFilterPanelProps) {
   const { levels } = avoidance;
-  const excludeLabel = levels.find(({ key }) => key === "exclude")?.label;
   const levelOf = (row: AvoidanceRow) => avoidanceLevelOf(row, roadAvoidance);
-  // 行を節ごとにまとめる（並びは節の並び、その中は行の並び）。
+  const fixedRows = avoidance.rows.filter((row) => !row.selectable);
+  // 選べる行を節ごとにまとめる（並びは節の並び、その中は行の並び）。
   const sections = avoidance.sections
-    .map((section) => ({ ...section, rows: avoidance.rows.filter((row) => row.section === section.key) }))
+    .map((section) => ({
+      ...section,
+      rows: avoidance.rows.filter((row) => row.selectable && row.section === section.key),
+    }))
     .filter(({ rows }) => rows.length > 0);
   return (
     <div className="flex flex-col">
-      {FIXED_ROWS.map(({ key, label, description }) => (
+      <label
+        className="flex items-center gap-1.5 pb-1 text-[length:var(--font-size-sm)]"
+        data-usage="このタブを出している間、選んだ段の色で地図の道を塗り、下の地図を灰色に薄めます。選んだものはこの端末に保存します。"
+      >
+        <Checkbox checked={roadTabMap.on} onCheckedChange={roadTabMap.onChange} aria-label="地図で見る" />
+        地図で見る
+        {/* 地図の色が段のどれかを、行の段の名前（倍率）と並べて読ませる。 */}
+        <span className={cn(textVariants({ variant: "note" }), "ml-auto flex items-center gap-2")}>
+          {levels.filter(isPainted).map(({ key, label, color }) => (
+            <span key={key} className="inline-flex items-center gap-1">
+              <Dot tone="none" style={{ backgroundColor: color }} />
+              {label}
+            </span>
+          ))}
+        </span>
+      </label>
+      {roadTabMap.notice !== null && (
+        <p className={cn(textVariants({ variant: "note" }), "pb-1")} role="status">
+          {roadTabMap.notice}
+        </p>
+      )}
+      {fixedRows.map((row) => (
         <div
-          key={key}
+          key={row.key}
           className="flex items-center justify-between gap-2 border-t border-[var(--color-border-muted)] py-1"
         >
           <InfoPopover
-            label={label}
+            label={row.label}
             labelClassName="text-[length:var(--font-size-sm)] font-semibold"
-            triggerAriaLabel={`${label}の説明`}
+            triggerAriaLabel={`${row.label}の説明`}
           >
-            {description}
+            {row.description}
           </InfoPopover>
           <span
             role="img"
-            aria-label={`${label}はいつも経路から外れます（変えられません）`}
+            aria-label={`${row.label}はいつも経路から外れます（変えられません）`}
             data-usage="自転車が通れない道で、いつも経路から外れます。変えられません。"
             className="flex flex-shrink-0 items-center gap-1 text-[length:var(--font-size-xs)] text-[var(--color-muted)]"
           >
             <LockedIcon size={14} />
-            {excludeLabel !== undefined && <span aria-hidden="true">{excludeLabel}</span>}
+            <span aria-hidden="true">{levels.find(({ key }) => key === row.default)?.label}</span>
           </span>
         </div>
       ))}
@@ -95,13 +132,14 @@ export default function HardFilterPanel({ avoidance, roadAvoidance, onRoadAvoida
   );
 }
 
-// 畳んだ見出しに、「通る」以外を選んだ行の数を段ごとに出す（開かずに何を避けているかが分かる）。
+// 畳んだ見出しに、地図に塗る段を選んだ行の数を段ごとに出す（開かずに何を好み・避けているかが分かる）。段の名前は倍率の数字
+// なので、行の数には「件」を付けて見分ける。
 function avoidedSummary(levels: RoadAvoidanceView["levels"], rowLevels: readonly AvoidanceLevel[]): string {
   return levels
-    .filter(({ key }) => key !== "pass")
+    .filter(isPainted)
     .map(({ key: level, label }) => ({ label, count: rowLevels.filter((rowLevel) => rowLevel === level).length }))
     .filter(({ count }) => count > 0)
-    .map(({ label, count }) => `${label} ${count}`)
+    .map(({ label, count }) => `${label} ${count}件`)
     .join("・");
 }
 
@@ -129,19 +167,37 @@ function AvoidanceLevelRow({
       >
         {description}
       </InfoPopover>
-      <ToggleGroup
-        className="ml-auto"
-        aria-label={`${label}の避け方`}
-        usage="この行に該当する道を、通る・なるべく避ける・通らないから選びます。「なるべく避ける」は遠回りが小さければ別の道を通り、「通らない」は経路から完全に外します。複数の行に該当する道には、より強い避け方を適用します。"
-        value={level}
-        onValueChange={(next) => onLevelChange(next as AvoidanceLevel)}
-      >
-        {levels.map(({ key, label: levelLabel }) => (
-          <ToggleGroupItem key={key} value={key}>
-            {levelLabel}
-          </ToggleGroupItem>
-        ))}
-      </ToggleGroup>
+      <span className="ml-auto flex items-center gap-1.5">
+        <ToggleGroup
+          variant="scale"
+          aria-label={`${label}の避け方`}
+          usage="この行に該当する道の費用に掛ける倍率を、目盛りの点を押して選びます。長い目盛りは指定なしです。左ほど好んで通り[遠回りでも選びやすくなります]、右ほど避けます[遠回りが小さければ別の道を通ります]。右端は経路から完全に外します。"
+          value={level}
+          onValueChange={(next) => onLevelChange(next as AvoidanceLevel)}
+        >
+          {levels.map((option) => (
+            <ToggleGroupItem key={option.key} value={option.key} aria-label={option.label}>
+              {option.key === level ? (
+                <span
+                  aria-hidden="true"
+                  className="block size-3.5 rounded-full border-2 border-[var(--background)]"
+                  // 塗らない段は目立たない色。
+                  style={{ background: option.color ?? "var(--color-muted)" }}
+                />
+              ) : (
+                <span
+                  aria-hidden="true"
+                  className={cn("block w-px bg-[var(--color-muted)]", isPainted(option) ? "h-2.5" : "h-3.5")}
+                />
+              )}
+            </ToggleGroupItem>
+          ))}
+        </ToggleGroup>
+        {/* 選んでいる段の倍率。色はつまみが持つ（薄い色の文字は明るい画面で読めない）。 */}
+        <span className="w-9 text-right text-[length:var(--font-size-xs)] tabular-nums">
+          {levels.find(({ key }) => key === level)?.label}
+        </span>
+      </span>
     </div>
   );
 }

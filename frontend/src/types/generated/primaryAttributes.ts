@@ -184,7 +184,7 @@ export const primaryAttributes = [
             "values": [
               "give_way"
             ],
-            "description": "相手に道を譲る（徐行する）標識がある所[OSM の highway=give_way]。",
+            "description": "相手に道を譲る[徐行する]標識がある所[OSM の highway=give_way]。",
             "glyph": "yield",
             "color": "#496c44"
           },
@@ -195,7 +195,7 @@ export const primaryAttributes = [
               "level_crossing",
               "railway_crossing"
             ],
-            "description": "線路（路面電車を含む）を渡る所。車道の踏切も歩道・自転車道の踏切も入る[OSM の railway タグ]。",
+            "description": "線路[路面電車を含む]を渡る所。車道の踏切も歩道・自転車道の踏切も入る[OSM の railway タグ]。",
             "glyph": "railway",
             "color": "#016f6b"
           },
@@ -215,7 +215,7 @@ export const primaryAttributes = [
             "values": [
               "traffic_calming"
             ],
-            "description": "車の速度を落とさせる段差（ハンプ）や道幅の絞り込み[OSM の traffic_calming タグ]。",
+            "description": "車の速度を落とさせる段差[ハンプ]や道幅の絞り込み[OSM の traffic_calming タグ]。",
             "glyph": "hump",
             "color": "#5e5f8d"
           }
@@ -264,7 +264,7 @@ export const primaryAttributes = [
             "values": [
               false
             ],
-            "description": "当事者に自転車が含まれない事故（車どうし・車と歩行者など）。",
+            "description": "当事者に自転車が含まれない事故[車どうし・車と歩行者など]。",
             "glyph": "crash",
             "color": "#a7865c"
           }
@@ -291,7 +291,7 @@ export const primaryAttributes = [
             "values": [
               false
             ],
-            "description": "死者の記録が無い事故（負傷事故）。",
+            "description": "死者の記録が無い事故[負傷事故]。",
             "radius_px": 3
           }
         ],

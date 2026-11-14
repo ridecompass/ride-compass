@@ -13,13 +13,15 @@ import numpy as np
 
 from app.domain.attributes import CategoricalColumn
 from app.domain.feature_materials import FeatureMaterials
+from app.domain.hard_filters import HARD_FILTER_PROPERTY
+from app.domain.road_classes import EMPTY_ROAD_CLASSES
 from app.infrastructure import debug_log
 from app.infrastructure.derived_data_meta import DataRevisions
 from app.infrastructure.road_graph_repository import RoadGraphRepository
 from app.services import feature_materials
 from app.services.feature_materials import FeatureMaterialService
 from tests.bound_fake import bound
-from tests.road_class_fixture import classification, fact_is, map_layer, replaced_road_classes, road_classes
+from tests.road_class_fixture import classification, fact_is, map_layer, road_classes
 
 Z, X, Y = 14, 14551, 6447
 
@@ -47,7 +49,7 @@ class FakeFeatureMaterialsRepository:
 
 
 async def _num_a(service: FeatureMaterialService) -> float:
-    materials = await service.materials(Z, X, Y)
+    materials = await service.materials(Z, X, Y, EMPTY_ROAD_CLASSES)
     assert materials is not None
     return float(materials.columns["num_a"][0])
 
@@ -82,25 +84,17 @@ async def test_a_deploy_that_changes_how_the_materials_are_read_reads_the_tile_a
     assert await _num_a(service) == 2.0
 
 
-async def test_tiles_read_while_the_revision_is_unknown_are_not_kept():
-    """DBの世代を読めない間に読んだ材料は、どの世代の道の鍵か分からない。残すと、後で世代を読めない間に同じ印の鍵で
-    別の世代の材料を返す。"""
-    repository = FakeFeatureMaterialsRepository(_materials(1.0))
-    repository.revision = None
-    service = FeatureMaterialService(repository)
-    await _num_a(service)
-
-    repository.materials = _materials(2.0)
-
-    assert await _num_a(service) == 2.0
-
-
 async def test_road_layer_values_are_served_per_feature_without_roads_outside_every_class():
-    """地図は道ごとの層の値で道の線を塗る。区分の外の道の層を載せると、地図はその道を区分の色で塗れない値として受け取る。"""
-    tile = FeatureMaterials(feature_keys=("1-0", "2-0"), columns={"cat_a": CategoricalColumn.encode(["a", "b"])})
+    """地図は道ごとの層の値で道の線を塗り、0次ハードフィルタに当たる道を「通らない」の色で塗る。区分の外の道の層を載せると、
+    地図はその道を区分の色で塗れない値として受け取る。"""
+    tile = FeatureMaterials(feature_keys=("1-0", "2-0", "3-0"), columns={
+        "cat_a": CategoricalColumn.encode(["a", "b", "b"]),
+        "highway": CategoricalColumn.encode([None, None, None]),
+        "motorroad": CategoricalColumn.encode([None, None, None]),
+        "bicycle": CategoricalColumn.encode([None, None, "no"]),
+    })
     definitions = road_classes({"k": classification({"is_a": [fact_is("cat_a", "a")]})}, map_layers={"k": map_layer()})
 
-    with replaced_road_classes(definitions):
-        values = await FeatureMaterialService(FakeFeatureMaterialsRepository(tile)).road_layer_values(Z, X, Y)
+    values = await FeatureMaterialService(FakeFeatureMaterialsRepository(tile)).road_layer_values(Z, X, Y, definitions)
 
-    assert values == {"1-0": {"k": "is_a"}}
+    assert values == {"1-0": {"k": "is_a"}, "3-0": {HARD_FILTER_PROPERTY: "no_bicycle"}}

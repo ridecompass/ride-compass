@@ -33,8 +33,6 @@ async function openMenu(props: Partial<React.ComponentProps<typeof HeaderMenu>> 
       onToggleDebugConsole={onToggleDebugConsole}
       onStartUsageGuide={onStartUsageGuide}
       onRedrawMap={onRedrawMap}
-      mapTheme="light"
-      onMapThemeChange={() => {}}
       {...props}
     />,
   );
@@ -113,13 +111,15 @@ describe("HeaderMenu", () => {
         started_at: "2026-10-08T22:00:00Z",
       });
 
-      expect(await within(dialog).findByText(/版/)).toHaveTextContent(/^版 9c2521ce$/);
+      expect(await within(dialog).findByText(/コミット/)).toHaveTextContent(/^コミット 9c2521ce$/);
     });
 
     it("手元で動いている版は、版の代わりにそう出す", async () => {
       const dialog = await openVersion({ commit: null, started_at: "2026-10-08T22:00:00Z" });
 
-      expect(await within(dialog).findByText("手元で動いている版です（本番の版ではありません）。")).toBeInTheDocument();
+      expect(
+        await within(dialog).findByText("手元で動いているバージョンです[本番のバージョンではありません]。"),
+      ).toBeInTheDocument();
     });
   });
 });

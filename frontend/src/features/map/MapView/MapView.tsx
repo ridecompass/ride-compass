@@ -15,7 +15,7 @@ import type {
   SelectedRouteSegment,
 } from "@/types/route";
 import type { RideConditions } from "@/features/map/regionApi";
-import { applyScene, type SpliceStretchInput } from "@/features/map/scene/applyToMap";
+import { applyScene, basemapLookOf, type SpliceStretchInput } from "@/features/map/scene/applyToMap";
 import type { MapLook } from "@/features/map/view/mapLook";
 import { useMapCatalog } from "@/features/map/useMapCatalog";
 import { useJmaTileIndex } from "@/features/map/useJmaTileIndex";
@@ -32,7 +32,7 @@ import { useMapScene } from "@/features/map/MapView/useMapScene";
 import { useRideFollow, type RideFollow } from "@/features/map/MapView/useRideFollow";
 import { useSectionFocus } from "@/features/map/MapView/useSectionFocus";
 import { type TurnMarkPoint, useTurnMark } from "@/features/map/MapView/useTurnMark";
-import { sidePointLocator } from "@/lib/mapDisplay/sidePoints";
+import { routeSide } from "@/lib/mapDisplay/sidePoints";
 import { segmentPath } from "@/lib/routeDistance";
 
 interface MapViewProps {
@@ -172,11 +172,8 @@ export default function MapView({
     () => (selectedSection === null ? null : segmentPath(selectedSection)),
     [selectedSection],
   );
-  // 選んだ区間の道なりの形に、点の小窓の点を当てる（区間を選び直したときだけ組み直す）。
-  const locateOnSection = useMemo(
-    () => (selectedSection === null ? null : sidePointLocator(selectedSection)),
-    [selectedSection],
-  );
+  // 選んでいるルートの線と、点の小窓の点をそれに当てる関数（候補を選び直したときだけ組み直す）。
+  const side = useMemo(() => (selectedSegments === undefined ? null : routeSide(selectedSegments)), [selectedSegments]);
   const { scene, interactiveLayerIds } = useMapScene({
     look,
     catalog: mapCatalog,
@@ -187,8 +184,7 @@ export default function MapView({
     inspectedShape,
     travelledKm: travelledKm === null ? null : shadedTravelledKm(travelledKm),
     selectedRouteSegment,
-    // 区間を選んでいる間、その近くの点を描く。
-    sidePointPath: selectedSectionPath,
+    routePath: side?.path ?? null,
   });
   const tapsLocked = ride?.locked ?? false;
   // 地図のイベント（初期化のeffectで一度だけ登録する）が、いまのpropsを読むための参照。
@@ -201,7 +197,7 @@ export default function MapView({
     tapsLocked,
     onPointPlace,
     onRouteSegmentSelect,
-    sidePointAlong: (lngLat: readonly [number, number]) => locateOnSection?.(lngLat) ?? null,
+    sidePointAlong: (lngLat: readonly [number, number]) => side?.locate(lngLat, travelledKm) ?? null,
     onSpliceStretchSelect,
     onRouteSelect,
     ride,
@@ -214,7 +210,7 @@ export default function MapView({
 
   // スタイルを差し替えた後、いまの宣言を空から当て直す。
   const redrawFromCurrentProps = useCallback((map: MapLibreMap) => {
-    applyScene(map, latest.current.scene, { basemapTheme: latest.current.look.mapTheme, reset: true });
+    applyScene(map, latest.current.scene, { basemap: basemapLookOf(latest.current.look), reset: true });
   }, []);
 
   const getLook = useCallback(() => latest.current.look, []);
@@ -263,6 +259,8 @@ export default function MapView({
     controls: popups,
     segmentDetail,
     segmentPath: selectedSectionPath,
+    routePath: (selectedRoute?.geometry.coordinates as [number, number][] | undefined) ?? null,
+    travelBearing: ride?.bearing ?? null,
     rideConditions,
     costPreference,
     travelledKm,
@@ -278,15 +276,17 @@ export default function MapView({
     flyToVisible(map, focusPoint);
   }, [focusPoint]);
 
+  // 基礎地図の見え方は、作るたびに新しくなる組でなく値で依存に入れる。
+  const { theme: basemapTheme, muted: basemapMuted } = basemapLookOf(look);
   // 地図に載るもの（面・道路の線・レンズ・点・気象・ルート）は、1つの scene として
   // 組み立てて1本の経路で当てる。**表示・絞り込み・重なり順はすべてここを通る。**
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    applyScene(map, scene, { basemapTheme: look.mapTheme });
+    applyScene(map, scene, { basemap: { theme: basemapTheme, muted: basemapMuted } });
     // 表示をONにしたレイヤーの状態をすぐ出す（タイルがキャッシュ済みだとsourcedataが来ない）。
     recomputeLayerDataStatus();
-  }, [scene, look.mapTheme, recomputeLayerDataStatus]);
+  }, [scene, basemapTheme, basemapMuted, recomputeLayerDataStatus]);
 
   // 選んでいるルートの全体へ収める（生成した・カードを押した・乗り換えで作ったとき）。追っている間（追う側が地図を動かす）は収めない。
   useEffect(() => {

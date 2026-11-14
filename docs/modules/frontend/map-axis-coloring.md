@@ -24,17 +24,17 @@
 | `features/map/layers/dynamicWayValues.ts` | 材料を引く道路タイルの選び方（地図のズームをタイルのある範囲へ丸め、画面を覆うタイルを並べる。1回の数の上限を超える傾けた・回した大きな画面では、画面の中心に近いタイルから上限まで取り、端を落としたことを返す）・複数タイル応答の統合 |
 | `features/map/layers/webMercatorTile.ts` | Web MercatorのXYZタイルと緯度経度の行き来（点のタイル座標・点を含むタイル（世界の端はタイルの番号の範囲へ寄せる）・タイルが覆う範囲）。backendと同じ式で、一致は表の組`region`で照らす。道路タイルの値を引くタイルと、気象庁のタイルの在否の判定（`jmaTileIndex.ts`）が同じ式を通る |
 | `lib/mapDisplay/mapColorLegend.ts` | 地図上の色分け凡例（`lib/mapDisplay/mapColorLegend.ts: MapColorLegendBand`型・`lib/mapDisplay/mapColorLegend.ts: buildRangeLegendBands`・`lib/mapDisplay/mapColorLegend.ts: rangeStepLabel`）の共通ロジックと、値が無い行（`lib/mapDisplay/mapColorLegend.ts: NO_DATA_LEGEND_BAND`）・向きで決まらない行（`lib/mapDisplay/mapColorLegend.ts: UNDETERMINED_LEGEND_BAND`）。凡例を作る関数（`features/map/view/lens.ts`）・道の属性の凡例（`features/map/scene/legends.ts`）が使う |
-| `features/map/view/lens.ts` | 全道路を塗っているレンズ（`features/map/view/lens.ts: paintedLensId`）と、レンズの凡例（`features/map/view/lens.ts: lensLegend`。ルート後はルートの線のモードの凡例） |
-| `features/map/LensControl/LensControl.tsx` | レンズ（地図を何で塗るか）の唯一の入口。画面での名前は「負担で塗る」（見出し・読み上げ名。「レンズ」はコードの中の名前で、画面には出さない）。地図の上のピルが、道のりのグラフの「負担で塗る」の切り替えと同じ筆の絵（`lucideIcons.tsx: BurdenPaintIcon`）と、選んでいるレンズの名前と凡例の色の帯（段の数に依らない固定の幅）を示し、タップで縦の一覧（使用中のレンズを先、未使用のレンズを後。各行にアイコン・値が変わる走る条件のアイコン・「未使用」・(i) の説明）を開く。一覧は「表示」の一覧（`MapOverlayControls.tsx`）と同じ形と操作にそろえる——選んでも閉じず、選んでいる行をもう一度押すと外れ、選んでいる行の ▶ で凡例と段の境目の目安を開き、下に「ルート後も周囲の道路を薄く塗る」と「選択を外す」「絞り込みをすべて解除」（この一覧の凡例だけを戻す）を置く（選択肢・凡例は`features/map/view/useMapView.ts`が組み立て、`app/HomeMapPane.tsx`はそのまま渡す）。走行中も同じ大きさで出す |
+| `features/map/view/lens.ts` | レンズの凡例（`features/map/view/lens.ts: lensLegend`。ルート後はルートの線のモードの凡例） |
+| `features/map/LensControl/LensControl.tsx` | レンズ（地図を何で塗るか）の唯一の入口。画面での名前は「負担で塗る」（見出し・読み上げ名。「レンズ」はコードの中の名前で、画面には出さない）。地図の上のピルが、道のりのグラフの「負担で塗る」の切り替えと同じ筆の絵（`lucideIcons.tsx: BurdenPaintIcon`）と、選んでいるレンズの名前と凡例の色の帯（段の数に依らない固定の幅）を示し、タップで縦の一覧（各行にアイコン・値が変わる走る条件のアイコン・(i) の説明）を開く。一覧は「表示」の一覧（`MapOverlayControls.tsx`）と同じ形と操作にそろえる——選んでも閉じず、選んでいる行をもう一度押すと外れ、選んでいる行の ▶ で凡例と段の境目の目安を開き、下に「選択を外す」「絞り込みをすべて解除」（この一覧の凡例だけを戻す）を置く（選択肢・凡例は`features/map/view/useMapView.ts`が組み立て、`app/HomeMapPane.tsx`はそのまま渡す）。走行中も同じ大きさで出す |
 | `features/map/LensControl/LensRow.tsx` | 一覧の1行（`features/map/LensControl/LensRow.tsx: LensRow`）と選択肢の型（`features/map/LensControl/LensRow.tsx: LensOption`）。行の (i) と ▶ の開閉は「表示」の一覧の行と同じ部品（`features/map/LegendCheckboxList/LegendRow.tsx: useRowDescription`・`features/map/LegendCheckboxList/LegendRow.tsx: useRowPanel`）を使い、チェックの代わりに1つだけ選ぶ印を出し、(i) で説明を、▶（選んでいる行だけ）で凡例を行のすぐ下に開く |
 | `lib/lensLink.ts` | 走る条件のボタン（地図の向きの方位磁針・出発時刻・想定速度）に付ける、いまの周りの道の塗りがその条件で決まっている印（輪と読み上げ）。下記「周りの道の色が拠る走る条件」 |
 | `features/map/layers/mapLayers.ts` | レンズの層（`features/map/layers/mapLayers.ts: isLensLayer`。記述子の印で判定。地図上チップの一覧`overlayChips`が除くのに使う） |
 | `features/map/MapView/MapView.tsx`（レンズの線の箇所のみ） | 画面の状態を宣言の入力へ渡すだけの配線（下記「MapView.tsx側の配線」）。レンズごとの処理は持たない |
 | `features/map/scene/groups/routes.ts` | 色分け線そのものを引く側。レンズの配色式・凡例フィルタを受け取ってMapLibreの線レイヤーへ流す |
 | `features/map/useWayMaterials.ts` | 道ごとの材料のフェッチ・状態管理（viewportデバウンス＋タイル単位取得、全レンズを1つのフックで賄う） |
-| `features/map/tileQueries.ts` | 道ごとの値をタイル1枚ずつ取る問い合わせ（レンズの材料・道の線の層の値が共有する）。タイルを鍵にして新しく入ったタイルだけを取り、入力が変わったタイルを取り直す間は前の入力の値を仮に見せる。取れなかったタイルは値を持たず、次に見えたときに取り直す。失敗はタイルの取得が投げたまま TanStack Query が持ち、その文言を層の取得の状態へ渡す |
+| `features/map/tileQueries.ts` | 道ごとの値をタイル1枚ずつ取る問い合わせ（レンズの材料が使う）。タイルを鍵にして新しく入ったタイルだけを取り、入力が変わったタイルを取り直す間は前の入力の値を仮に見せる。取れなかったタイルは値を持たず、次に見えたときに取り直す。失敗はタイルの取得が投げたまま TanStack Query が持ち、その文言を層の取得の状態へ渡す |
 | `features/map/regionApi.ts`（`features/map/regionApi.ts: fetchLensMaterials`・`features/map/regionApi.ts: fetchRoadInspection`） | backend APIラッパー |
-| `features/map/MapView/RoadInspectorPopup.tsx` | 道を押したときの窓。押した道の負担を押したときだけ取りに行き、地図が塗っている向きの総合と軸ごとの秒/kmと、その元の事実（backendが名前と単位を付けた一番急な登り・下り・向かい風・止まる回数と、路面）を並べる。属性は畳む |
+| `features/map/MapView/RoadInspectorPopup.tsx` | 道を押したときの窓。開いたら道の負担を取りに行き、地図が塗っている向きの区間の合計と負担のある軸ごとの秒を、区間の小窓と同じ1行（`components/MapPopup/PenaltyBreakdown.tsx`）で並べる。「秒／換算前」の切り替えで、軸ごとの秒の元の事実（backendが名前と単位を付けたもの。区分の事実は区分の名前だけ）に替える。属性は畳む |
 
 **`MapView.tsx`は路面タイル・動的気象（降水/雷/竜巻）・POI等のロジックも持つ
 ファイルで、それらは[地図: 静的レイヤー・道路表示](static-map-layers.md)・
@@ -71,23 +71,22 @@
 
 レンズの選択肢は総合と費用の軸の順（`features/map/costLens.ts: costLensOptions`）。利用者が無効にした軸のレンズは選択肢に無い
 （`features/map/view/useMapView.ts`が一覧を絞る。選んでいた軸を無効にすると選んでいない状態で塗り、無効を戻すとまた塗る）。
-全体のつまみが×0なら、どのレンズも代償が0なので、選べるまま`LensControl`が「未使用」を添える。
+全体のつまみが無効（0）なら、どの軸も数えないので、総合を含めてどのレンズも選択肢に無い（`lib/costPreference.ts: countsAxis`）。
 **レンズを選んでいない状態は`UNSELECTED_LENS_ID`で表す**: ルート前は道を塗らず（ピルは「塗る負担を選ぶ」）、ルート後はルートの
-線を総合の負担で塗る（ピルはその名前）。塗らない選択肢は持たない——レンズを選ばないことで表せ、ルートの線は「表示」で消せる。
+線を総合のレンズで塗る（ピルは費用の軸の一覧の総合の名前）。塗らない選択肢は持たない——レンズを選ばないことで表せ、ルートの線は「表示」で消せる。
 
 **周りの道の色が拠る走る条件は、その条件を決めるボタンに印を付けて見せる**（`features/map/view/useMapView.ts: lensConditions`を
 `app/HomeMapPane.tsx`が地図の右の列の方位磁針・出発時刻・想定速度のボタンへ渡し、ボタンは`lib/lensLink.ts`の輪と読み上げを付ける）。
-周りの道を塗っている間、そのレンズが変わる条件（`MapLens.conditions`。材料の要求へ載せる条件と、木が辿る向きを選ぶ走行方位）の
+周りの道を塗っている間、そのレンズが変わる条件（`MapLens.conditions`。材料の要求へ載せる条件と、式の木の条件の節が読む条件）の
 ボタンにだけ付ける。走る向きは地図の向きで決まり、保存されない——印が無いと、見えない条件で同じ道の色が変わる。一覧の各行
 には、値が変わる走る条件を同じアイコンで添える。
 
 **レンズ状態は1つ**（`features/map/view/useMapView.ts: lens`。localStorageキーは`ridecompass:route-style-mode`。選択肢に無い値は
 `UNSELECTED_LENS_ID`へ戻す——費用の軸の一覧が届いてから読み直す）。ルート前は全道路、ルート後はルート線をこの1つの値から
-導く——地図へは「全道路を塗っているレンズ」（`paintedLensId`）1つを渡し、どのレンズの線を出すかは地図側（`scene/applyToMap.ts`）が
+導く——地図へはレンズと周りを出すか（`surroundingsShown`）を渡し、どのレンズの線を出すかは地図側（`scene/applyToMap.ts`）が
 導く。道ごとの材料は塗っているレンズの分だけ取り（`useMapView`）、塗っていないレンズの材料は取らない。ルート後も全道路の塗りを
-残すかは「ルート後も周囲を塗る」（既定ON）。
-**ルートの線の出し入れは「表示」の一覧の先頭の行が持ち、レンズを選んでも変えない**——候補を選んでいるのに線を出していない間は、
-`LensControl`の開いた先でルートの線を塗っていないことを伝える（`routeHidden`）。レンズは生成リクエストに載らず、切り替えてもルートを作り直さない。
+残すかは「表示」の「範囲と色」の表示する範囲（既定はルート沿い。点の層も同じ切り替えに従う）。ルートの線はいつも出す。
+レンズは生成リクエストに載らず、切り替えてもルートを作り直さない。
 **レンズは代償の秒で塗り、場所の事実（点・面）は「表示」の一覧が出す**（レンズは「表示」の一覧のレイヤーの入切を変えない
 ——片方を選んだ副作用でもう片方の状態を残さない）。
 
@@ -271,12 +270,12 @@ viewportと走る条件（時刻・想定速度）をそれぞれデバウンス
 
 ```
 features/map/view/useMapView.ts
-  ├─ 取りに行くレンズ = [塗っているレンズ]（paintedLensId）
+  ├─ 取りに行くレンズ = [塗っているレンズ]（周りを出す間の lens）
   ├─ 走る条件 = {bearing_deg: 走行方位（段に丸める）, speed_kmh: 想定速度}
   ├─ useWayMaterials(取りに行くレンズ, 表示範囲, 出発時刻と走る条件, 利用者の値, 総合のレンズのid)
   │     → ReadonlyMap<lensId, {materials, loading, error, hasFetched, truncated}>
   ▼
-<MapView look={{ …, paintedLensId, wayMaterials: 上のMapそのもの, wayConditions: 走る条件 }} .../>
+<MapView look={{ …, lens, surroundingsShown, wayMaterials: 上のMapそのもの, wayConditions: 走る条件 }} .../>
   │   （レンズの一覧は MapView が地図の一覧の共有ストアから読む）
   ├─ sceneInputsFrom(...)（scene/applyToMap.ts）がレンズごとの段（レンズのdisplayから）・式の木・材料・
   │   取得中フラグ・隠した段と走る条件をレンズの線の入力へ移す
@@ -320,7 +319,7 @@ features/map/view/useMapView.ts
 |---|---|
 | `MapLayerId`・`MapLayerDescriptor`（地図UIからの除外を含む） | 地図の一覧の`layers`（`buildMapLayers`） |
 | MapLibreの線レイヤー・色式・濃さ・feature-state | `scene/applyToMap.ts: sceneInputsFrom`が`lenses`をレンズの線（`scene/groups/axisLines.ts`）の入力へ移す |
-| 表示ON/OFF（レンズ選択） | 塗っているレンズ（`useMapView`の`paintedLensId`）から`scene/applyToMap.ts`が導く |
+| 表示ON/OFF（レンズ選択） | レンズと周りを出すか（`useMapView`の`surroundingsShown`）から`scene/applyToMap.ts`が導く |
 | 道ごとの材料のフェッチと走る条件の取捨 | `useWayMaterials` + 一覧の`map_lens.material_conditions` |
 | 道の値の式 | 一覧の`map_lens.formula`（`scene/wayValueFormula.ts`が地図の式へ置き換える） |
 | 塗る段・凡例・ルートの線のモード | `costLenses`（レンズの`display`）・`lensLegend`・`costRouteStyleModes` |

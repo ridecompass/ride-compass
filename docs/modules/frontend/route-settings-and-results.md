@@ -2,7 +2,7 @@
 
 ## 責務
 
-一般ユーザー向けのルート生成条件入力（距離・負担の強さと軸ごとの倍率・回避する道路と、名前を付けて保存した地点・条件の呼び出し）と、生成結果の表示・比較
+一般ユーザー向けのルート生成条件入力（距離・負担の強さと軸ごとの倍率・道路の種類ごとの好む・避ける段と、名前を付けて保存した地点・条件の呼び出し）と、生成結果の表示・比較
 （負担の内訳・候補一覧）を担う。画面が起動のときに取る画面の設定（`GET /api/client-config`）の取得もここで扱う。
 
 **対象ファイル**
@@ -12,8 +12,8 @@
 | `features/route/RouteForm/RouteForm.tsx` | 全長の目標（入り切りとルーラー）と候補数ステッパーを並べた1行（どの幅でも折り返さない）・地点（出発地・経由地・目的地）の置き場。「ルート設定」区分の各タブの中身を`Tabs.Content`として並べる（タブ列と選択状態は外、下記参照） |
 | `features/route/RouteSettingsPanel/CostLevelPicker.tsx` | 全体のつまみと軸ごとの倍率の段（×0.5・×1…）を選ぶ横並びの選び手。軸ごとの倍率では、段の前に無効を並べる |
 | `lib/costPreference.ts` | 利用者の費用の好み（つまみと倍率と無効の軸）そのものの決まり: 標準・軸を数えるか・軸の倍率の引き方・地図のレンズの要求へ載せる書き方（ルートと地図の両方が読む） |
-| `features/route/RouteForm/SettingsTabsList.tsx` | 「ルート設定」のタブ列（条件・負担・回避・保存済み）。見出し行に置き、選ぶ状態は囲む`Tabs.Root`から読む |
-| `features/route/RouteForm/RouteSettingsForm.tsx` | `RouteForm`へ、負担・回避・条件の保存・保存した条件の一覧の4つのタブの中身を、生成の条件と保存した条件から組んで渡す |
+| `features/route/RouteForm/SettingsTabsList.tsx` | 「ルート設定」のタブ列（条件・負担・道路・保存済み）。道路のタブの名前は、地図の道路のまとまりの名前（`lib/screenNames.ts: ROAD_SETTINGS_TAB_NAME`）。見出し行に置き、選ぶ状態は囲む`Tabs.Root`から読む |
+| `features/route/RouteForm/RouteSettingsForm.tsx` | `RouteForm`へ、負担・道路・条件の保存・保存した条件の一覧の4つのタブの中身を、生成の条件と保存した条件から組んで渡す |
 | `features/route/GenerateRouteActions/GenerateRouteActions.tsx` | 「ルート設定」の見出し行の右端: 条件が変わった印と「ルート生成」のボタン（下記参照） |
 | `features/route/RouteForm/RoutePoints.tsx` | 左端の周回の切り替えと、地点の並び（`PointStrip.tsx`）と、その右の並びに出ている地点を全部消す操作。全部消す操作の前の「編集」の切り替え。押した地点の詳しく（`PointDetail.tsx`）を地点の役割ごとに組んで下に出し、編集の間は詳しくの代わりに地点の編集（`PointEditList.tsx`）を、スマホで探した候補の札を出している間は札を出す（下記「地点の指定」「住所・施設で探す」） |
 | `features/route/RouteForm/PointStrip.tsx` | 地点の並び（出発地 › 経由地の番号の丸・足す › 終点［周回の間は出発地、外せば目的地］）と、押した地点の選び。名前は生成の条件から引く。並びが1行に入りきるかを測って両端の札の名前と丸の大きさを出し分ける。探した候補を置く先としても出す（名前を出さず、押すとその地点に置く。下記「地点の指定」「住所・施設で探す」） |
@@ -33,8 +33,8 @@
 | `hooks/useCostAxisCatalog.ts` | `GET /api/cost-axes`の取得。費用の軸（名前・説明・アイコン・地図のレンズ）を`hooks/useCostAxisCatalog.ts: useCostAxisCatalog`が返す（届くまで・失敗の間は軸0件。レンズの読み方は[地図: レンズ・ルート色分け](map-axis-coloring.md)）。軸ごとの色（`hooks/useCostAxisCatalog.ts: CostAxisCatalog.axisColors`）と、取れていないことの項目（`hooks/useCostAxisCatalog.ts: costAxisCatalogFetchFailure`。常設ヘッダーの印と負担タブの告知）もここが持つ |
 | `hooks/useSharedCatalog.ts` | 画面の全体が読む一覧（画面の設定・費用の軸の一覧）の取得の共通の形: 読み手の間で1つの取得を共有し、マウントのたびに取り直し、届いた応答を後の失敗で巻き戻さない（`hooks/useSharedCatalog.ts: useSharedCatalog`）。まだ届いていないときだけ取り直す再試行（`hooks/useSharedCatalog.ts: retrySharedCatalogFetch`） |
 | `services/costAxisCatalogApi.ts` | 上記フックが叩くbackend APIの薄いラッパーと、凡例の段の境目の目安（`GET /api/cost-axes/lens-equivalents`。`services/costAxisCatalogApi.ts: getLensEquivalents`）の口 |
-| `features/route/RouteSettingsPanel/HardFilterPanel.tsx` | 「回避」タブの中身。地図の道のレイヤの凡例の行ごとの避け方を1つの並びに出し、自転車が通れない道の行は「通らない」に固定して鍵を付ける（下記「除外」）。選べる行の鍵・名前・既定の段と行をまとめる節は画面の設定の`road_classes.avoidance`が、固定の行の名前と説明は生成物`route-generate-config.json`の`route-generate-config.json: hard_filters`が正で、名前をフロントに持たない——キーと名前を別々に持つと、足した行に名前が無く内部名が出る。画面の設定が届くまでは選べる行を出さない |
-| `features/route/roadAvoidance.ts` | 画面に出す行の段を決める（`features/route/roadAvoidance.ts: avoidanceLevelOf`。選んでいなければ既定の段）。要求には選んだ段をそのまま送り、行の増減はbackendが揃える |
+| `features/route/RouteSettingsPanel/HardFilterPanel.tsx` | 「道路」タブの中身。地図の道のレイヤの凡例の行ごとの避け方を1つの並びに出し、自転車が通れない道の行は「通らない」に固定して鍵を付ける（下記「除外」）。選べる行の鍵・名前・既定の段と行をまとめる節は画面の設定の`road_classes.avoidance`が、選べない行（自転車が通れない道）も同じ一覧に`selectable`が偽の行として載り、名前をフロントに持たない——キーと名前を別々に持つと、足した行に名前が無く内部名が出る。画面の設定が届くまでは選べる行を出さない。並びの上に「地図で見る」（このタブを出している間、段を地図の道に塗るか。値は`features/map/view/useMapView.ts`が端末に覚える）を置く |
+| `lib/roadAvoidance.ts` | 画面に出す行の段を決める（`lib/roadAvoidance.ts: avoidanceLevelOf`。道路タブを地図で見ている間に道へ塗る段も同じ決め方で読む。選んでいなければ既定の段）。要求には選んだ段をそのまま送り、行の増減はbackendが揃える |
 | `features/route/SavedPlacesPanel/SavedPlacesPanel.tsx` | 「保存済み」タブの「地点」の中身: 保存した地点の一覧（行は名前・辺りと、アイコンの「呼び出す」「消す」。呼び出すはメニューで出発地・経由地・目的地のどれに置くかを選び（周回の間は目的地を使わないので「目的地にする」を押せない）、消すは確認の窓で「消す」を押すと消す）。無ければ無いと出し、保存の仕方は(i)の奥（下記「保存した地点」） |
 | `features/route/SavedList/SavedList.tsx` | 「保存済み」タブの一覧（地点・プリセット）の形: 空の案内と保存の仕方の(i)・行の枠・消す操作と確認の窓。行の名前の欄と行ごとの操作（「呼び出す」）は使う側が渡す |
 | `features/route/useSavedPlaces.ts` | 保存した地点の一覧（この端末の`localStorage`）と、保存・削除 |
@@ -44,8 +44,8 @@
 | `features/route/useSavedConditions.ts` | 保存した条件の一覧（この端末の`localStorage`）と、いまの条件（`useGenerationConditions.ts: snapshot`）の保存（出発地を固定するかを受け取る）・呼び出し・削除。呼び出すと`useGenerationConditions.ts: restore`で条件を入れ替え、出発地は位置の持ち主（`hooks/useLocation.ts`）へ渡す |
 | `features/route/savedConditions.ts` | 生成の条件の形（`features/route/savedConditions.ts: GenerationConditionsSnapshot`。いまの条件・保存・呼び出しが同じ形を使い、保存の1件はそれに名前と出発地を足す）と、仮の名前・何が保存されるかの説明（`features/route/savedConditions.ts: describeConditions`）・同じ名前の上書き。距離の刻み（`DISTANCE_STEP_KM`。5km刻みで、下限も1刻み分）は画面だけの値で、`RouteForm`のルーラーのコマも読む。候補数の下限・上限は生成物`route-generate-config.json`から読む |
 | `lib/cardinalLabel.ts` | 角度を方位の呼び名へ（天気欄等が使う）と、気象の風向（吹いてくる向き）を矢印が指す吹いていく向きへ（`lib/cardinalLabel.ts: downwindDeg`。地図の風の矢印が使う）と、それを回った地図の上の向きへ（`lib/cardinalLabel.ts: downwindOnMapDeg`。走りの帯と天気欄の矢印が使う）。呼び名の並びはbackend（`domain/geo.py: COMPASS_LABELS`）が配り、丸めは画面が持つ。区分の境界を含む角度でbackendと同じ呼び名になることは、backendが出す表（生成物`geo-expectations.json`）をテストが通して確かめる |
-| `features/route/RouteAxisProfile/RouteAxisProfile.tsx` | 候補ごとのタブの中身（所要・負担と、負担の内訳と事実。下記「RouteAxisProfile.tsx」）。地図の色分けを選ぶ操作はここには無い（`LensControl`）。候補一覧のタブ自体は`RouteOutcome.tsx`が組み立てる |
-| `features/route/PenaltyBreakdown/PenaltyBreakdown.tsx` | 負担の内訳（軸ごとの秒を積んだ帯1本と、軸ごとの名前・事実・負担の分の行）。候補の中身と区間の小窓が同じこの形で出す（下記「RouteAxisProfile.tsx」） |
+| `features/route/RouteAxisProfile/RouteAxisProfile.tsx` | 候補ごとのタブの中身（所要・負担。下記「RouteAxisProfile.tsx」）。地図の色分けを選ぶ操作はここには無い（`LensControl`）。候補一覧のタブ自体は`RouteOutcome.tsx`が組み立てる |
+| `components/MapPopup/PenaltyBreakdown.tsx` | 区間の小窓と道の小窓の負担の内訳（合計と、軸ごとの絵と値の1行。下記「PenaltyBreakdown.tsx」） |
 | `lib/routePenalty.ts` | 応答の代償の内訳を画面が読む形にする純関数（内訳の和・行の並べ方・「+N分」の書き方・1kmあたりの代償の秒）。候補・区間・編集の差・ルートの線の塗りが同じ関数を読む |
 | `features/route/routeTabLabel.ts` | 候補タブの時間の列の基準線と差を組み立てる純関数（`features/route/routeTabLabel.ts: durationBaseline`・`features/route/routeTabLabel.ts: durationDifferenceLabel`）、一覧の並び・群・名前（`features/route/routeTabLabel.ts: routeListEntries`。最速ルート・生成した候補・合成ルートの分け方は[ページ全体構成・状態管理](page-composition.md)「ルート結果の中身」）。種類と最速の印はbackendが付ける値（`route_generator.py: _label`）を読むだけで、idの文字列や要求の形から決め直さない。タブ列自体は`RouteOutcome.tsx`が組み立てる |
 | `features/route/routeEditDiff.ts` | 編集で作ったルートの元との差（距離・所要・負担［代償の内訳の和の分］と、変えた区間の元の位置・長さの差）と、差の表記（`features/route/routeEditDiff.ts: formatDelta`）。指標は1つの表から作り（`features/route/routeEditDiff.ts: metricDifferences`。名前・桁・単位と元・編集後・差）、編集面（`RouteSplicePanel`）と「元との違い」（`features/route/routeEditDiff.ts: EditDifference`）が同じ表を読む——別々に持つと、片方だけ指標や桁が変わる。変えた区間は適用した乗り換えの手順からではなく、できた2本のEdge id列の差（`routeSplice.ts: pairedStretches`）から求める——乗り換えの範囲は適用した時点の経路に対する位置で、元の位置へ戻すには手順の全部が要る。区間の位置と長さは、道のりのグラフと同じ物差し（`lib/routeDistance.ts: routeEdgeKms`）で読む |
@@ -61,20 +61,20 @@
 | `hooks/useClientConfig.ts` | 画面の設定（`GET /api/client-config`。較正値・道の区分等）の取得。機能をまたいで読む形を`hooks/useClientConfig.ts: useClientConfig`が返す。1つの機能だけが読む形は、その機能が同じ取得の応答から`hooks/useClientConfig.ts: useClientConfigSelect`で導く（地図の道の線の層・タイルの世代は[地図: レンズ・ルート色分け](map-axis-coloring.md)の`features/map/useMapCatalog.ts`）——共有の設定へ相乗りさせると、読み手が1機能だけの知識を共有の層が運ぶ。取れていないことの項目（`hooks/useClientConfig.ts: clientConfigFetchFailure`。常設ヘッダーの印）もここが持つ |
 | `lib/clientConfig.ts` | 上記フックが返す画面の設定の形（`lib/clientConfig.ts: ClientConfig`）を応答から導く純関数（`lib/clientConfig.ts: clientConfigFromResponse`）と、画面が読む較正値（`lib/clientConfig.ts: CLIENT_TUNING_IDS`・`lib/clientConfig.ts: clientTuningValue`。並べるidは生成物`route-generate-config.json`に在るものだけを型が通し、引けなければ既定を作らず`undefined`を返す）。取れるまでは較正値も道の区分も空で、ビルド時の写しで埋めない。フックが持つのは「いつ取りに行き、誰と共有するか」だけ |
 | `services/clientConfigApi.ts` | 上記フックが叩くbackend APIの薄いラッパーと、取れなかったときの知らせが名指す呼び名（`services/clientConfigApi.ts: CLIENT_CONFIG_LABEL`。「画面の設定」） |
-| `features/route/RouteProfile/RouteProfile.tsx` | 候補の中身の先頭と走行中の地図の下に出す道のりのグラフ。「負担で塗る」（既定）と「表示」のタブを持つ（名前は地図の2つの入口と同じ`lib/screenNames.ts`から引き、絵も地図の「表示」のボタンと「負担で塗る」のピルと同じ`DisplayItemsIcon`・`BurdenPaintIcon`を付ける。出す情報のボタンは`ChooseItemsIcon`）。タブの切り替えは、結果も走行中も文字の無い小さい絵だけにし（名前は読み上げに残す）、(i)・出す情報のボタンと並べて図の右上に重ねる。距離の目盛り（0・全長）は図の中の下の角に重ね、図の上下に段を取らない（スマホの低い高さで図を大きく見せる。図の左上は値の目盛りに空けておく）。走りながら遠目に読むので、走行中は距離の目盛り・図の下の文字を結果の図より大きくし（`features/route/ProfileChart/profileScale.ts: profileTextClass`）、「表示」の図には最初の折れ線の最高と最低の高さに単位つきの目盛り（「標高 32m」「12m」）を出す。結果も走行中もなぞって地点を選び（地図に印が出て、区間の小窓に中身が出る。図の下には出さない）、地点を選んでいる間は図の右上に「区間を地図で見る」（`features/route/SegmentDetail/SegmentDetail.tsx: SectionOnMapButton`）を置く。「負担で塗る」は負担のグラフ（`DifficultyProfile`）で、図の下にこのルートで塗る区間のある費用の軸の札を並べ（凡例を兼ねる）、押した札の軸だけを積む——全部の軸を積むと色が混ざって、どの軸の難所かが読めない。選びは端末に覚え、選んでいなければこのルートで負担の大きい2つを積む。走行中の図は低く保つため札を出さず、同じ選びで積む。(i) はグラフの意味を出す。「表示」は、チップで選んだ情報（地図の「表示」とは別の選択）を同じ横軸に重ねた図（`features/route/RouteProfile/LayerProfile.tsx`）で、地点の選び方は「負担で塗る」と同じ。どちらのタブも、置いた経由地を通る距離（応答の`waypoint_distances_km`）に縦の線と地図のピンと同じ番号の印を出す |
+| `features/route/RouteProfile/RouteProfile.tsx` | 候補の中身の先頭と走行中の地図の下に出す道のりのグラフ。「負担で塗る」（既定）と「表示」のタブを持つ（名前は地図の2つの入口と同じ`lib/screenNames.ts`から引き、絵も地図の「表示」のボタンと「負担で塗る」のピルと同じ`lucideIcons.tsx: LayersStackIcon`・`BurdenPaintIcon`を付ける。出す情報のボタンは`ChooseItemsIcon`）。タブの切り替えは、結果も走行中も文字の無い小さい絵だけにし（名前は読み上げに残す）、(i)・出す情報のボタンと並べて図の右上に重ねる。距離の目盛り（0・全長）は図の中の下の角に重ね、図の上下に段を取らない（スマホの低い高さで図を大きく見せる。図の左上は値の目盛りに空けておく）。走りながら遠目に読むので、走行中は距離の目盛り・図の下の文字を結果の図より大きくし（`features/route/ProfileChart/profileScale.ts: profileTextClass`）、「表示」の図には最初の折れ線の最高と最低の高さに単位つきの目盛り（「標高 32m」「12m」）を出す。結果も走行中もなぞって地点を選び（地図に印が出て、区間の小窓に中身が出る。図の下には出さない）、地点を選んでいる間は図の右上に「区間を地図で見る」（`features/route/SegmentDetail/SegmentDetail.tsx: SectionOnMapButton`）を置く。「負担で塗る」は負担のグラフ（`DifficultyProfile`）で、図の右上の「グラフに積む負担」の一覧（下記「積む負担の一覧」）でチェックした軸だけを積む——全部の軸を積むと色が混ざって、どの軸の難所かが読めない。選びは端末に覚え、選んでいなければこのルートで塗る区間のある軸のうち負担の大きい2つを積む。一覧は図の右上に重なって開くので図の高さを変えず、走行中の図にも出して、結果の図と同じ選びで積む。(i) はグラフの意味を出す。「表示」は、一覧で選んだ情報（地図の「表示」とは別の選択）を同じ横軸に重ねた図（`features/route/RouteProfile/LayerProfile.tsx`）で、地点の選び方は「負担で塗る」と同じ。どちらのタブも、置いた経由地を通る距離（応答の`waypoint_distances_km`）に縦の線と地図のピンと同じ番号の印を出す。印の下にその経由地へ着く見込みの時刻（「09:20着」）を添える——結果の図は候補の計画の時刻を`lib/routeClock.ts: routeClock`で距離から読み、走行中の図は走りの帯の到着予想と同じく最後に位置を受けた時刻から見込み直し、走り終えた経由地には添えない。利用者はそれを見て出発時刻・速度・経由地を変えて作り直す（時刻を指定してルートを合わせる形は持たない） |
 | `features/route/RouteProfile/LayerProfile.tsx` | 道のりのグラフの「表示」の図。選んだ情報を同じ横軸に重ね、各情報の最高・最低を1行で図の下に出す（地点を選んでいるかに関わらず出し、選んでも図の高さを変えない）。道の区分の情報（道路の種類・路面の種類・トンネル・緑と水等）は折れ線の下に1本ずつ帯で並べる。現在地の印は最初の折れ線のその地点の値の高さに置く |
-| `features/route/RouteProfile/ProfileLayerPicker.tsx` | 「表示」の図に重ねる情報を選ぶ一覧（図の右上の出す情報のボタンから開く）。ボタンに今重ねている数を出し、帯の情報の行には、帯に現れた行の凡例を添える |
-| `features/route/RouteProfile/profileLayers.ts` | 道のりのグラフに重ねられるレイヤの宣言（`features/route/RouteProfile/profileLayers.ts: profileLayers`）。レイヤごとに名前・描き方・区間の応答から値を引く所を1か所に持ち、レイヤを足すときはここへ1行足す。描き方は2つで、折れ線は区間の中の道ごとの両端の値（応答の`features/route/RouteProfile/profileLayers.ts: elevations`）を、道の距離の比で区間の長さへ割り振ってつなぎ、値の無い道・道の無い区間で線を切る。区間の小窓の勾配は、区間の中の値のある道の上り下りの和を長さの和で割った平均と、区間の続く坂の斜度（応答の`sustained_gradient_percent`。道1本の勾配から作らない——数十mの道の跳ね上がりを拾う）（`features/route/RouteProfile/profileLayers.ts: segmentGrades`）。帯は区間の中の区分の値（応答の`features/route/RouteProfile/profileLayers.ts: road_classes`）を距離の比で並べ、隣どうしで同じ行になる部分をつなぐ。区間の小窓の区分は、区間の区分の付く道（その他・該当なし・データなしを除く）に占める行の割合の多い順（`profileLayers.ts: segmentBandShares`）。帯にできるのは画面の設定が配る道の線の層（`features/route/RouteProfile/profileLayers.ts: profileLayers`が受け取る）と「緑と水」で、行の色・呼び名・「該当なし」「データなし」の分け方は地図の凡例と同じ行（`lib/mapDisplay/roadTracks.ts: roadTrackRows`）から引き、アイコンは地図の「表示」の一覧と同じ引き方（`components/ui/icons/mapLayerIcons.ts: roadLayerIcon`・`mapLayerIcons.ts: MAP_LAYER_ICONS`）で引く。 |
+| `features/route/RouteProfile/ProfileLayerPicker.tsx` | 道のりのグラフの右上のボタンから開く、図に出すものを選ぶ一覧の枠（ボタンに今出している数を出す）。「表示」は重ねる情報の一覧（帯の情報の行には、帯に現れた行の凡例を添える）、「負担で塗る」は積む負担の一覧で、行は`RouteProfile.tsx`が並べる |
+| `features/route/RouteProfile/profileLayers.ts` | 道のりのグラフに重ねられるレイヤの宣言（`features/route/RouteProfile/profileLayers.ts: profileLayers`）。レイヤごとに名前・描き方・区間の応答から値を引く所を1か所に持ち、レイヤを足すときはここへ1行足す。描き方は2つで、折れ線は区間の中の道ごとの両端の値（応答の`features/route/RouteProfile/profileLayers.ts: elevations`）を、道の距離の比で区間の長さへ割り振ってつなぎ、値の無い道・道の無い区間で線を切る。区間の小窓の勾配は、区間の平均勾配（応答の`average_gradient_percent`）と区間の続く坂の斜度（応答の`sustained_gradient_percent`）で、どちらも区間の中の道の標高から計算し直さない——作り直すと、公道としてありえない間を外す backend の平均と食い違い、数十mの道の跳ね上がりを最大に拾う（`features/route/RouteProfile/profileLayers.ts: segmentGrades`）。帯は区間の中の区分の値（応答の`features/route/RouteProfile/profileLayers.ts: road_classes`）を距離の比で並べ、隣どうしで同じ行になる部分をつなぐ。区間の小窓の区分は、区間の区分の付く道（その他・該当なし・データなしを除く）に占める行の割合の多い順（`profileLayers.ts: segmentBandShares`）。帯にできるのは画面の設定が配る道の線の層（`features/route/RouteProfile/profileLayers.ts: profileLayers`が受け取る）と、区間に区分の並びを載せると源泉が宣言した層（生成物`mapDisplay.ts: mapDisplay.layers`の`segmentSeries`。値の語彙ごとの行は`profileLayers.ts: SERIES_BANDS`が持ち、語彙が増えれば型検査が落ちる）で、行の色・呼び名・「該当なし」「データなし」の分け方は地図の凡例と同じ行（`lib/mapDisplay/roadTracks.ts: roadTrackRows`）から引き、アイコンは地図の「表示」の一覧と同じ引き方（`components/ui/icons/mapLayerIcons.ts: roadLayerIcon`・`mapLayerIcons.ts: MAP_LAYER_ICONS`）で引く。 |
 | `features/route/RouteProfile/useProfileLayers.ts` | グラフに出す情報（コードの名前はレイヤ）の選択。端末に覚え（既定は標高）、宣言から消えたレイヤは読むときに捨てる。ページが1つ持ち、結果と走行中の図が同じ選択を読む |
 | `features/route/ProfileChart/ProfileChart.tsx` | 道のりのグラフの枠（横軸の尺・横になぞる・押して地点を選ぶ・走行中の現在地・経由地の線と番号の印）。負担のグラフとレイヤのグラフが中身だけを差し込む。押せる図は縦のなぞりをシート・パネルのスクロールへ渡し（`touch-action: pan-y`）、縦に動き出した操作では地点を選ばない。走行中は、現在地の距離に縦の線（折れ線の青と見分ける文字の色）と地図の現在地と同じ青の丸い印（高さは中身が渡す）を出し、走り終えた所は中身の色を抜いて地図の走り終えた線と同じ濃さへ薄め、残りは元の色のまま描く。走り終えた経由地の線と番号の印も同じ濃さまで薄める。中身が渡す値の目盛り（`features/route/ProfileChart/ProfileChart.tsx: valueTicks`）を図の左の端に重ねる。高さは置き場が CSS の変数`--profile-chart-height`で決め、無ければ走行中の地図の下に出す図の高さになる |
 | `features/route/ProfileChart/profileScale.ts` | 道のりのグラフの横軸の尺（`features/route/ProfileChart/profileScale.ts: useProfileScale`。右端は渡された距離とルートの長さの長い方）と描画の座標の大きさ、図の文字の大きさ（`features/route/ProfileChart/profileScale.ts: profileTextClass`）。枠と中身の両方が読む |
 | `features/route/ProfileChart/useProfileGesture.ts` | 道のりのグラフの上で地点を選ぶ指（マウス）の操作。1本の指で横になぞるか押して離したときだけ選び、押しただけ・2本目の指が加わった操作（図の外に触れた指も、画面全体の指を窓の捕捉の段で数えて含める）・縦に動き出した操作では選ばない |
-| `features/route/ProfileChart/ProfileMarks.tsx` | 道のりのグラフの上に重ねる印と文字（経由地の番号・現在地の丸・値の目盛り・距離の目盛り）。図の絵は横へ伸ばして描くので、形の崩れる印と文字は図の上に重ねた要素で出す |
-| `features/route/DifficultyProfile/DifficultyProfile.tsx`・`profileGeometry.ts` | 道のりのグラフの「負担で塗る」に出す、道のりに沿った負担のグラフ。横が始点からの距離、縦が区間ごとの1kmあたりの負担（区間の軸ごとの代償の秒を区間の長さで割ったもの。地図のレンズと同じ量で、回避指定は入れない）で、区間ごとの階段を、図の下の札で選んだ費用の軸の色で下から積む。図の上端はそのルートで最も大きい区間の値で、塗った面積は軸ごとの負担の和になる。区間はbackendがEdgeを約500mのビンへ畳んだもの（`aggregate_segments_into_bins`）で、Edge 1本ずつではない。横軸の右端は**一覧の中で最も長い候補の距離**で、候補どうしで道のりを見比べられる。押したまま動かす（キーボードは矢印・Home・End）と、その距離の区間と、区間の道なりの形の上で距離の割合ぶん進んだ地点を選ぶ——選択は地図で区間を押したときと同じ`selectedRouteSegment`で、地図に地点の印と区間の縁取りと区間の小窓が出る。グラフ自体は区間を選んでいる間も残る。選ぶ受け口を渡さなければ、押せない見るだけの図になる。走行モードでは現在地の距離を受け取り、枠へ渡す（距離の決め方はpage-composition.md「走行モード」）。現在地の印はその距離の柱の上端に置く |
+| `features/route/ProfileChart/ProfileMarks.tsx` | 道のりのグラフの上に重ねる印と文字（経由地の番号と着く見込みの時刻・現在地の丸・値の目盛り・距離の目盛り）。図の絵は横へ伸ばして描くので、形の崩れる印と文字は図の上に重ねた要素で出す |
+| `features/route/DifficultyProfile/DifficultyProfile.tsx`・`profileGeometry.ts` | 道のりのグラフの「負担で塗る」に出す、道のりに沿った負担のグラフ。横が始点からの距離、縦が区間ごとの1kmあたりの負担（区間の軸ごとの代償の秒を区間の長さで割ったもの。地図のレンズと同じ量で、好む道・避ける道の秒は入れない）で、区間ごとの階段を、図の下の札で選んだ費用の軸の色で下から積む。図の上端はそのルートで最も大きい区間の値で、塗った面積は軸ごとの負担の和になる。区間はbackendがEdgeを約500mのビンへ畳んだもの（`aggregate_segments_into_bins`）で、Edge 1本ずつではない。横軸の右端は**一覧の中で最も長い候補の距離**で、候補どうしで道のりを見比べられる。押したまま動かす（キーボードは矢印・Home・End）と、その距離の区間と、区間の道なりの形の上で距離の割合ぶん進んだ地点を選ぶ——選択は地図で区間を押したときと同じ`selectedRouteSegment`で、地図に地点の印と区間の縁取りと区間の小窓が出る。グラフ自体は区間を選んでいる間も残る。選ぶ受け口を渡さなければ、押せない見るだけの図になる。走行モードでは現在地の距離を受け取り、枠へ渡す（距離の決め方はpage-composition.md「走行モード」）。現在地の印はその距離の柱の上端に置く |
 | `features/route/ErrorText/ErrorText.tsx` | 操作した箇所の直下に出すエラー文言（`role=alert`）。ルート結果と区間の乗り換えの面が使う |
 | `features/route/WarningText/WarningText.tsx` | 表示中の結果について注意を促す1行（条件のずれ・目的地の補正・所要時間の前提の崩れ）。ルート結果と候補の中身が使う |
 | `features/route/GenerationNotice/GenerationNotice.tsx` | 押した「生成」が候補を出せなかった理由（入力の誤りか失敗・候補0件の理由）を知らせる窓。`app/page.tsx`がデスクトップとモバイルの両方に1つ置き、閉じると案内を消す |
-| `features/route/SegmentDetail/SegmentDetail.tsx` | 選んだ区間の地図の小窓の中身（道のりのグラフの表示の断面。下記「区間クリック詳細」）。上の帯に到達予想、その下にグラフで選んでいる層の区間の値（線の層は平均と最大の勾配、帯の層は区間に占める区分の割合の行。負担の内訳と同じ1行ずつの形で、札にして横へ並べない——小窓の幅が札の行で決まって広がる）と、区間の負担の内訳（`features/route/PenaltyBreakdown/PenaltyBreakdown.tsx: PenaltyBreakdown`）を出す（閉じる・寄せる操作は小窓が持つ）。到達予想の書き方（`features/route/SegmentDetail/SegmentDetail.tsx: formatSegmentArrivalTime`）と、グラフの右上の「区間を地図で見る」（`features/route/SegmentDetail/SegmentDetail.tsx: SectionOnMapButton`）もここが持つ |
+| `features/route/SegmentDetail/SegmentDetail.tsx` | 選んだ区間の地図の小窓の中身（道のりのグラフの表示の断面。下記「区間クリック詳細」）。上の帯に到達予想、その下にグラフで選んでいる層の区間の値（線の層は平均と最大の勾配、帯の層は区間に占める区分の割合の行。負担の内訳と同じ1行ずつの形で、札にして横へ並べない——小窓の幅が札の行で決まって広がる）と、区間の負担の内訳（`components/MapPopup/PenaltyBreakdown.tsx: PenaltyBreakdown`）を出す（閉じる・寄せる操作は小窓が持つ）。到達予想の書き方（`features/route/SegmentDetail/SegmentDetail.tsx: formatSegmentArrivalTime`）と、グラフの右上の「区間を地図で見る」（`features/route/SegmentDetail/SegmentDetail.tsx: SectionOnMapButton`）もここが持つ |
 | `features/route/pointNames.ts` | 地点の名前（探して置いた候補の名前・辺り・「地図で選んだ地点」・「現在地」・「未設定」）と、通る順を入れ替えたときに何がどこへ動いたかの文と、候補を置くボタンの置ける先と文言（探した候補・保存した地点の呼び出しが使う）。探して・名前のある点を押して置いた地点の名前に、地点の並びは呼び名を補って出す（下記「地点の指定」） |
 | `features/route/RouteSplicePanel/RouteSplicePanel.tsx` | 区間の乗り換えの結果面（「ルート結果」が編集モードのときの中身）。**選ぶのは地図、パネルは結果だけ**——地図の破線が「いまの道から乗り換えられる先」・太い実線が「いま作っているルート」で、タップすると乗り換わり、その先の分かれ道が次の破線になる（次に選べる区間は`features/route/routeSplice.ts: buildSplicedShape`が組む「いまの組み合わせ」との差として求めるため、乗り換え先の道の上の分岐もそのまま現れる。候補どうしが同じ地点を通るかはbackendが返すNode id［`node_ids`］で判定し、**当てると一度通った地点へ戻る代替は選択肢に出さない**——backendは連結性しか見ず、折り返しも走れはするため落とさない）。パネルは元と編集後の指標の表（`SpliceMetricGrid.tsx`）と、軸別の負担の差の棒（`SpliceDeltaBar.tsx`）を出す。棒に出すのは差が下限に届いた軸だけで、差の大きい順に並べる。戻すのは見出し行の「1つ戻す」「全部戻す」で、巻き戻せるのは直前の1手ずつ（適用済みの範囲はその時点の経路に対する位置のため、途中だけは外せない）。評価した組み合わせが既にある候補と同じ道なら、その候補の一覧での名前で同じ道だと出し、見出し行の作成を外してその行に「「◯」に切り替える」を置く（押しても新しく足さずにその候補を選ぶので、押す前にそれと分かるようにする。押すと作成と同じく編集を閉じてその候補を選ぶ）。差分を見たのにどの軸の差も棒に出す下限に届かなければ、「差分を見る」を押す案内を残さず、どの軸もほぼ変わらないと出す（押しても何も変わらない案内にしない）。`edge_ids`が空の候補では「差が無い」と「そもそも出せない」を区別して伝える。使い方は画面へ書かず見出し脇の(i)の奥に置き、見出し行の操作（1つ戻す・全部戻す・差分を見る・作成）はパネルの他の操作と同じアイコンだけの形 |
 | `features/route/RouteSplicePanel/SpliceMetricGrid.tsx` | 編集面の指標の表。ルート結果と同じ指標（`features/route/routeEditDiff.ts: metricDifferences`。距離・所要・負担）で元と編集後を並べる（1セルに「元→編集後 差」を収め、列見出しを持たない） |
@@ -98,11 +98,11 @@
 **全体のつまみ**（代償の全体に掛ける強さ）は「条件」タブ（`RouteForm`。出発地・距離と同じ所）に、**軸ごとの倍率と無効**は
 「負担」タブ（このパネル）に置く。どちらも段で選ばせ、段の値と名前は生成物（`route-generate-config.json`の`cost_strength_levels`・
 `cost_multiplier_levels`、backendの`domain/cost_preference.py`が正本）から読む。段の名前は掛ける数そのもの（×0.5・×1…。
-言葉では量が伝わらない）で、標準は×1（全体の×0は所要時間だけで道を選ぶ）。軸を数えないことは倍率の値でなく「無効」という
+言葉では量が伝わらない）で、標準は×1（全体の0は「無効」と呼び、所要時間だけで道を選ぶ）。軸を数えないことは倍率の値でなく「無効」という
 別の状態で、軸ごとの段の前に並べて選ぶ。無効の軸は、負担タブの行のほかには出ない（ルート結果の内訳・事実・地図のレンズ・
 道の窓は、応答がその軸を持たない）。保存した好みは、段に無い倍率を標準に戻し、無効の一覧は文字列のものだけを読む（前の形の
-値を読み替えない）。段の選び手は`features/route/RouteSettingsPanel/CostLevelPicker.tsx`。全体のつまみが×0の間は、「負担」タブの倍率の段を淡くし、効かないことを添える
-（選べるままにして、つまみを戻したときの倍率を先に決めておける）。利用者の値そのものの決まり（標準・軸の倍率の引き方・地図のレンズの要求へ
+値を読み替えない）。段の選び手は`features/route/RouteSettingsPanel/CostLevelPicker.tsx`。全体のつまみが無効（0）の間は、どの軸も数えない（全部の軸を無効にしたのと同じ）。「負担」タブの倍率の段は淡くし、効かないことを添える
+（選べるままにして、つまみを戻したときの倍率を先に決めておける。段は軸ごとに選んだ設定を出す。`lib/costPreference.ts: axisSettingOf`）。利用者の値そのものの決まり（標準・軸の倍率の引き方・地図のレンズの要求へ
 載せる書き方）は`lib/costPreference.ts`が持ち、地図のレンズと道の窓もルート生成と同じ値を読む。
 
 - 軸の一覧・名前・アイコン・説明は`GET /api/cost-axes`（`hooks/useCostAxisCatalog.ts: useCostAxisCatalog`）から読み、ビルド時の
@@ -114,14 +114,18 @@
   負担を触っている人へ向けたこのパネルの両方にある。
 - 向きを選ぶ操作はこのパネルには存在しない。風・勾配で周りの道を塗るときの走る向きは地図の上の向きで決まる
   （[ページ全体構成・状態管理](page-composition.md)「走る条件で変わる道の値（風・勾配）の状態別表現契約」の「地図の向き」）。
-- 回避は独立したタブ（`HardFilterPanel`）に置き、道ごとの避け方を1つの並びにする。負担のタブと同じく見出しの行を持たず、タブを開くと
-  すぐ並びが始まる。負担と違い「通らない」「なるべく避ける」指定であることは、行ごとの選ぶ口の使い方の文（説明を見る状態で出る）で
-  明示し、将来の除外条件もこのタブへ足す。
-  - **固定の行**: 自転車が通れない道（生成物の`hard_filters`）は、並びの先頭に畳まずに置き、選ぶ口の代わりに鍵と「通らない」を出す。
+- 道の避け方は独立したタブ（`HardFilterPanel`。名前は「道路」）に置き、道ごとの避け方を1つの並びにする。負担のタブと同じく見出しの行を持たず、タブを開くと
+  「地図で見る」の下からすぐ並びが始まる。段の名前は費用に掛ける倍率（×0.5・×1・×2・×∞の形。backendが較正値から作って配る）で、行ごとの選ぶ口は段を倍率の順に並べた
+  1本の目盛り（真ん中の長い目盛りが×1、左ほど好む・右ほど避ける）と、選んでいる倍率の数字（地図で塗る色の文字）。段の並びと色は配られたまま使い、
+  1つの道が複数の行に当たるときにどの段が効くかを画面は書き写さない。将来の除外条件もこのタブへ足す。
+  - **固定の行**: 選べない行（自転車が通れない道）は、並びの先頭に畳まずに置き、選ぶ口の代わりに鍵と「通らない」を出す。
     backendはこの道をいつも除き、要求でも変えられない。
-  - **選べる行**: 地図の道のレイヤの凡例の行を、配られた行のままレイヤごとに畳んで並べ（見出しの名前と並びは凡例のレイヤと同じものが配られる）、行ごとに「通る・なるべく避ける・通らない」を
+  - **地図で見る**: このタブを出している間だけ、選んだ段のとおりに地図の道を塗り、下の地図を灰色に薄める（決まりは
+    [地図: 静的レイヤー](static-map-layers.md)の「道路タブの段」の段落）。ほかのタブを出している間・「ルート設定」の区分やシートを
+    閉じている間は塗らない（デスクトップで「ルート結果」の区分を触っても、道路タブが見えていれば塗ったまま）。タブの上の「地図で見る」をOFFにすると、タブを出していても塗らない（端末に覚え、既定はON）。
+  - **選べる行**: 地図の道のレイヤの凡例の行を、配られた行のままレイヤごとに畳んで並べ（見出しの名前と並びは凡例のレイヤと同じものが配られる）、行ごとに倍率の段（好む・少し好む・通る・少し避ける・なるべく避ける・通らない）を
     選ぶ。行は20近くあり全部を開くとスマホで長くなるので、レイヤは畳んで始め、畳んだ見出しに既定から変えた行の数と、「通る」以外を
-    選んだ行の数を段ごとに出す（開かずに何を避けているかが分かる）。行の説明は行の名前の(i)の奥に置く。
+    選んだ行の数を段ごとに「×2 3件」の形で出す（開かずに何を好み・避けているかが分かる）。行の説明は行の名前の(i)の奥に置く。
   - 全部の行を1回で既定へ戻す操作は持たない（見出しの行を置かないため）。既定から変えた行は畳んだ見出しの印で分かり、行ごとに
     選び直すか、保存した条件を呼び出して戻す。
 
@@ -143,36 +147,45 @@
 その数から決める。丸め方だけを画面側に持ち、区分の境界ではbackendと同じく次の区分へ倒す（違うと境界の角度で
 食い違う）。同じ呼び名になることは、backendが入力と答えを出す表（生成物`geo-expectations.json`）をテストが全行通して確かめる。
 
-## RouteAxisProfile.tsx（候補ごとタブの中身: 所要・負担＋内訳と事実）
+## RouteAxisProfile.tsx（候補ごとタブの中身: 所要・負担）
 
 `RouteOutcome.tsx`（[ページ全体構成・状態管理](page-composition.md)「ルート結果の中身」参照）が組み立てる候補ごとの
-タブの中身として、候補1件につき1つ表示する。数の行（所要・負担）、所要時間の前提が崩れたことの注記、負担の内訳（帯と軸ごとの行）、
-標高の無い道の注記の順に並べる。
+タブの中身として、候補1件につき1つ表示する。数の行（所要・負担）と、所要時間の前提が崩れたことの注記を並べる。負担の種類ごとの
+内訳と事実は、道のりのグラフの右上の一覧（下記「積む負担の一覧」）が出す。
 
 - **負担**: 避けたいもの（登り・止まる回数・路面の振動等の費用の軸）を通る代償を、所要時間に上乗せした秒として数えたもの
-  （`RouteCandidate.penalty`）。数は内訳の和（軸ごとの秒と回避指定の秒。応答の`total_seconds`）を、候補のカードは「負担」の語と分の数字（「負担 +18」。所要時間の差と読み違えさせない）、開いた内訳は「+N分」で書き、
+  （`RouteCandidate.penalty`）。数は内訳の和（軸ごとの秒と、好む道で下げた秒・避ける道で上乗せした秒。応答の`total_seconds`）を、候補のカードは「負担」の語と分の数字（「負担 +18」。所要時間の差と読み違えさせない）、開いた内訳は「+N分」で書き、
+  好む道で下げて負になった秒は「−」で書く（`lib/routePenalty.ts: formatPenalty`・`formatPenaltyMinutes`）。
   所要時間と負担の和が候補を並べた費用になる。
-- **内訳と事実**（`features/route/PenaltyBreakdown/PenaltyBreakdown.tsx: PenaltyBreakdown`。区間の小窓も同じ部品）: 軸ごとの秒を積んだ帯
-  1本と、軸ごとの行（軸の名前・その軸の事実・負担の分）。行は費用の軸の一覧（`GET /api/cost-axes`）の順で、一覧に無い軸は応答の
-  順で後ろに軸idの名前で置き、回避指定の行（秒があるときだけ）を最後に置く（`lib/routePenalty.ts: penaltyRows`）。秒が0の
-  軸も行に残す——効くはずの軸が効かなかったことも判断の材料になる。事実（`RouteCandidate.facts.axes`）は軸ごとに backend が名前・
-  値・単位を付けて返すので、画面は軸idで出し分けずにそのまま出す（値の無い事実は「—」）。
-  行の色は費用の軸の一覧の並びから決める（`hooks/useCostAxisCatalog.ts: CostAxisCatalog.axisColors`。道のりのグラフ・編集面の差の棒も同じ色）。色の並びは backend の宣言（`domain/display_palette.py: COST_SERIES_COLORS`）が持ち、生成物`palette.json`の`cost_series`で届く。並びより多い行は軸の無い行の色にする。回避指定の行は軸の無い行の色（データなしの灰色とは別）。一覧が届くまでは
-  軸・回避指定の行の名前を「読み込み中」、取れない間は「取得できません」と出す。
-- **標高の無い道**: `RouteCandidate.facts.elevation_unknown_km`が0より大きければ、その長さを登りに数えていないことを注記する。
 - **所要時間の説明**: (i)は、区間ごとに速度を変える条件の名前を走行モデルの宣言（`domain/cycling_speed.py: SEGMENT_SPEED_CONDITIONS`。
   生成物`route-generate-config.json`の`segment_speed_conditions`）から差し込む。想定速度の(i)（`RideConditionBar`）も同じ並びを使う。
 - **所要時間の前提が崩れたことの注記**: 所要時間のすぐ下に、`missing_travel_data_share`（勾配か停止要因の件数の値が無く、
-  平地・待ち無しとして数えた区間の距離の割合）が丸めて1%以上なら「データの無い区間が◯%」を出す——黙って短い所要時間を
-  見せない。0%は判断の材料にならないため出さない。backendがEdge単位で数えた値をそのまま使う。
+  全体の平均で数えた区間の距離の割合）が丸めて1%以上なら「データの無い区間が◯%」を出す——平均で埋めた所要時間を
+  黙って見せない。0%は判断の材料にならないため出さない。backendがEdge単位で数えた値をそのまま使う。
 - 候補タブの並び順は、最速の印の1本が比べる基準として先頭、残りはbackendの費用の順（`routeTabLabel.ts: routeListEntries`。
   [ページ全体構成・状態管理](page-composition.md)参照）。
 
-## PenaltyBreakdown.tsx（負担の内訳の共有表示部品）
+## 積む負担の一覧（`RouteProfile.tsx`の「グラフに積む負担」）
 
-候補の中身と区間の小窓が同じこの部品で出す（中身は上記「RouteAxisProfile.tsx」の「内訳と事実」）。値の出どころ（ルート全体か区間か）は
-知らず、渡された内訳と費用の軸の一覧だけで描く。帯の色は軸ごとの色（`hooks/useCostAxisCatalog.ts: CostAxisCatalog.axisColors`）で、
-道のりのグラフの負担の面と編集面の差の棒も同じ色で塗る。
+道のりのグラフの「負担で塗る」の右上のボタン（「表示」の一覧と同じ`ProfileLayerPicker.tsx`。今積んでいる数の印つき）から開く。行は
+「チェック・色・軸の名前・その軸の事実・ルート全体の負担の分」で、チェックで積む軸を足し・外す（選びは端末に覚える）。
+
+- 行は費用の軸の一覧（`GET /api/cost-axes`）の順で（`lib/routePenalty.ts: penaltyRows`）、届いた一覧に無い軸は投げる。秒が0の軸も行に
+  残す——効くはずの軸が効かなかったことも判断の材料になる。数えない（無効の）軸は応答に無いので行も無い。避け方の倍率が好む道で下げた秒・
+  避ける道で上乗せした秒は行に出さない（区間の内訳も同じ）。どこで効いたかは、地図のルートの線の両脇の線が見せる（下の「好む・避けるの区間の
+  両脇の線」）。候補のカードの負担の数には入ったまま。
+- 事実（`RouteCandidate.facts.axes`）は軸ごとに backend が名前・値・単位を付けて返すので、画面は軸idで出し分けずにそのまま出す。区分の
+  事実（値が無い）は名前だけを出す（`lib/routePenalty.ts: factText`。道の窓も同じ書き方）。求められない事実は届かず、その行は事実を出さない。
+- 行の色は費用の軸の一覧が軸ごとに配る`color`で塗る（`hooks/useCostAxisCatalog.ts: CostAxisCatalog.axisColors`。道のりのグラフ・区間の内訳・
+  編集面の差の棒も同じ色）。軸の数に合わせて見分けられる色を作るのは backend（`domain/display_palette.py: cost_series_colors`）で、画面は
+  色の並びを持たない。一覧が届くまでは軸の行の名前を「読み込み中」、取れない間は「取得できません」と出す。
+
+## PenaltyBreakdown.tsx（区間と道の負担の内訳）
+
+区間の小窓と道の小窓が出す、負担の内訳。負担の合計（太字）と、軸ごとの絵と値を1行に並べ（軸の名前は読み上げにだけ出す）、
+合計の文・出す軸・値の文は呼ぶ側が決める（区間は分で0の軸を外す。道は秒で0の軸を外すか、「換算前」なら事実のある軸の事実）。並びと色は上の「積む負担の一覧」と同じ`penaltyRows`から作る。絵の色は軸ごとの色
+（`hooks/useCostAxisCatalog.ts: CostAxisCatalog.axisColors`）で、道のりのグラフの負担の面と編集面の差の棒も同じ色で塗る。
+割合の帯は持たない（長さがいつも全幅で、区間の重さが読めない）。行は小窓の幅を決めず、上の行が決めた幅の中で軸のまとまりごとに折り返す。
 
 **軸の並び順に連続的な意味は無い。** 軸を横に並べて見せるUIでは、隣り合う軸の間に傾き・
 推移があるように見せない——値どうしを線やグラデーションでつなぐと、「隣の軸へ向かって
@@ -192,6 +205,11 @@
 - **選んだ区間の範囲の縁取り**（`scene/groups/routes.ts`の役割`selectedSection`）: グラフの区間の帯と同じ区間の形を、どのルートの線より
   後ろに太い半透明の線で敷き、線の外側へはみ出た所で範囲を示す（線の上に重ねると区間の色分けを隠す）。選んでいる区間が選んでいる候補の
   区間のときだけ敷く。
+- **好む・避けるの区間の両脇の線**（役割`preferredRail*`・`avoidedRail*`）: 道路タブで好む・避けるにした道を通った区間（区間の内訳の
+  好む道で下げた秒・避ける道で上乗せした秒が0でない区間）に、縁取りの外へ細い線を左右に添える。好むは実線、避けるは破線で、色・太さ・
+  間隔・刻みは源泉の宣言（`palette.semantic.avoidance_preferred`・`avoidance_avoided`、`mapDisplay.avoidanceRail`）。選んだ区間の縁取り
+  （線の後ろの太い帯）とは形で見分け、好む区間を選ぶと帯の上に両脇の線が残る。地図の道そのものの段は、道路タブを出している間に
+  塗る（[地図: 静的レイヤー](static-map-layers.md)の「道路タブの段」の段落）。
 
 中身は道のりのグラフの表示の断面で、到達予想時刻と、グラフで選んでいる層の区間の値（線の層は区間の平均と最大の勾配
 〔`features/route/RouteProfile/profileLayers.ts: segmentGrades`〕、帯の層は区間の区分の付く道に占める割合の多い順の行
@@ -207,10 +225,10 @@
 地図の小窓の×か、何も無い所を押すと`selectedRouteSegment`をnullへ戻す。
 事実・生値・材料の値は区間の詳細には出さない（事実はルート全体だけが持つ）。
 
-**近くの点**は、生成の応答に載せず、区間を選んでいる間、地図が点の層のタイルのうち区間の線に近い点を描く（近さと描き方は
-[静的地図レイヤー](static-map-layers.md)「選んだ区間の近くの点」）。描いた点は「表示」の点と同じ点で、名前のある点を押すと点の小窓を開き、
+**近くの点**は、生成の応答に載せず、ルートを選んでいる間、地図が「表示」で出している点の層のうちルートの線に近い点だけを描く
+（近さと描き方は[静的地図レイヤー](static-map-layers.md)「ルートの近くの点」）。名前のある点を押すと点の小窓を開き、
 区間の小窓から開いたときは上の帯の「‹ 区間」で区間の中身へ戻れる。点の小窓の行には、走行中だけ現在地からの残り（「あと1.2km」）を
-出す（`lib/mapDisplay/sidePoints.ts: sidePointLocator`）。走っていない間は、ルートの上の前後の距離を出さない（起点にする点が無い）。
+出す（`lib/mapDisplay/sidePoints.ts: routeSide`）。走っていない間は、ルートの上の前後の距離を出さない（起点にする点が無い）。
 
 ## 保存した条件（SavedConditionsPanel.tsx・useSavedConditions.ts）
 
@@ -218,7 +236,7 @@
 （保存先はこの端末のブラウザの`localStorage`だけで、別の端末とは共有しない）。保存は「条件」タブ、呼び出しは4つ目のタブ
 「保存済み」の中の「プリセット」で行う（「保存済み」の中は「地点」「プリセット」のタブに分かれ、地点は下記「保存した地点」）——地点の保存と同じく、
 条件を詰める所で保存し、「保存済み」タブは設定も地点も呼び出す・消すだけを持つ。タブは保存したものが並ぶ所だと名前で読め、
-保存した設定は呼び出すと各タブの値をまとめて入れ替えるものなので「プリセット」と呼ぶ。保存するものは負担・回避まで及ぶが、保存の
+保存した設定は呼び出すと各タブの値をまとめて入れ替えるものなので「プリセット」と呼ぶ。保存するものは負担・道路まで及ぶが、保存の
 アイコンは「条件」タブの1行目（全長の目標・候補数の行）の右端に置き、縦の幅を増やさない。見出しの行には置かない。
 
 - **保存するもの**: 周回か・全長の目標を決めるか・距離・候補数・出発地（固定したときだけ。下記）・経由地・目的地（周回の間に覚えている目的地も）・つまみと倍率・
@@ -226,12 +244,12 @@
   生成し直すと、道路データや気象が変わっていれば前と同じ候補になるとは限らない。
 - **何が保存されるかを押す前に読める**: 「いまの設定を保存」で開く窓
   （`Dialog/Dialog.tsx`）に、残るものだけ——条件（目的地へ向かうか出発地へ戻る周回か・全長の目標・経由地・候補数）・出発地の扱いの切り替え・負担・
-  回避する道路——を並べる。保存は条件を詰めたあとに1度する操作で、走行中に繰り返すのは呼び出しなので、スマホで中身の高さに
+  道路の種類ごとの段——を並べる。保存は条件を詰めたあとに1度する操作で、走行中に繰り返すのは呼び出しなので、スマホで中身の高さに
   合わせて開くシートが一覧まで短く収まるように、保存の中身を窓へ出す。保存しないものは書かない（スマホでは
   パネルの高さが限られ、残る中身が埋もれる）。負担は、標準でない全体の強さと軸の倍率だけを「全体 強め・登坂 ×2」の形（段の名前）で、
-  軸の並びで出し、どれも標準なら「標準」と出す。除外は段ごとに、強い段から「通らない 高速道路・…／なるべく避ける 国道・…」の形で
+  軸の並びで出し、どれも標準なら「標準」と出す。道路は段ごとに、倍率の大きい段から「×∞ 高速道路・…／×2 国道・…／×0.5 自転車道・…」の形で
   名前を並べ（除外する道路の種類は「通らない」に入れる）、どれも無ければ「なし」と出す。一覧は見出しを持たず、行は名前と、アイコンだけの「呼び出す」「消す」（[デザイン基盤](frontend-design-system.md)
-  「5-1. パネルの操作ボタンの形」）だけを出す——条件・出発地・負担・回避は呼び出しの窓で読む（ブックマークのように見渡せる簡素な一覧にし、
+  「5-1. パネルの操作ボタンの形」）だけを出す——条件・出発地・負担・道路は呼び出しの窓で読む（ブックマークのように見渡せる簡素な一覧にし、
   名前と同じことを言い換える行を置かない）。
 - **出発地**: 保存のときに「呼び出した時の現在地」か「今の出発地に固定」かを選ぶ。選ぶまでは、地図で出発地を置いていれば
   固定・現在地のままなら呼び出した時の現在地（保存すると選び直す前のこの既定へ戻る）。固定はいまの出発地（現在地でも地図で
@@ -241,13 +259,13 @@
 - **保存**: 名前の欄に、いまの条件から作った仮の名前（「周回 30km」等、`savedConditions.ts: suggestedConditionName`）が
   入った状態で出て、そのまま保存もできる（空にして保存しても仮の名前）。同じ名前で保存すると上書きし、そのときはボタンが
   「上書き保存」になる。保存すると窓を閉じ、保存した件は「保存済み」タブの「プリセット」の一覧の先頭に入る。
-- **呼び出し**: 一覧の行の「呼び出す」を押すと窓（`Dialog/Dialog.tsx`）が開き、保存の窓と同じ並び（条件・出発地・負担・回避）で
+- **呼び出し**: 一覧の行の「呼び出す」を押すと窓（`Dialog/Dialog.tsx`）が開き、保存の窓と同じ並び（条件・出発地・負担・道路）で
   その設定の中身を出す。「反映する」を押したときだけ各タブの値と地図のピンが入れ替わり、一覧の上に反映したことを出す
   （何に入れ替わるかを押す前に読め、入れ替わったことが分かるように。出発地は窓と「条件」タブで
   読めるので、知らせには書かない）。知らせの行は読み上げのためにいつも置き、知らせが無い間は場所を取らない（一覧の上に空白を作らない）。生成はいつもの「ルート生成」で行う——
   入れ替えたあとに値を確かめたり少し変えたりできる。地点を入れ替えるので、地図のタップで置ける役割は解く。
 - **消す**: 行の「消す」は確認の窓（`Dialog/Dialog.tsx: ConfirmDialog`）を出し、「消す」を押したときだけ消す。消した設定を戻す手段は無く、
-  条件・負担・回避を組み直すことになるため（[デザイン基盤](frontend-design-system.md)「意図的に作らない・統合しないもの」の確認の窓の決まり）。
+  条件・負担・道路を組み直すことになるため（[デザイン基盤](frontend-design-system.md)「意図的に作らない・統合しないもの」の確認の窓の決まり）。
 - **送り方**: 消えた軸の倍率は送るときに外す（「RouteSettingsPanel.tsx」）。
 
 ## 保存した地点（SavedPlacesPanel.tsx・useSavedPlaces.ts・usePlaceHistory.ts・PointDetail.tsx・PlaceSearch.tsx・KnownPlaces.tsx）
@@ -338,7 +356,7 @@ nginxが応答を待つ上限（`proxy_read_timeout`、300秒）にも収まる�
 
 「ルート設定」区分自体を「条件」（`RouteForm`の地点・全長の目標・候補数と、`saveConditionsButton`propの「いまの設定を保存」）・
 「負担」（`weightsPanel`propで受け取る`RouteSettingsPanel`一式）・
-「回避」（`exclusionsPanel`prop、`HardFilterPanel`）・「保存済み」（中の「地点」は`SavedPlacesPanel`、「プリセット」は`savedConditionsPanel`propの`SavedConditionsPanel`）のタブへ分ける。
+「道路」（`exclusionsPanel`prop、`HardFilterPanel`）・「保存済み」（中の「地点」は`SavedPlacesPanel`、「プリセット」は`savedConditionsPanel`propの`SavedConditionsPanel`）のタブへ分ける。
 **タブ列（`Tabs.List`）は見出し行の左（見出しのすぐ右）に置き、タブの中身
 （`Tabs.Content`）は本文に出る**ため、
 両方を囲む`Tabs.Root`（`@radix-ui/react-tabs`）は`app/RoutePanels.tsx`、選択状態は`app/page.tsx`が持つ
@@ -459,7 +477,7 @@ page-composition.md「生成に関するフィードバックの置き場」）�
   `domain/route_request.py: MAX_WAYPOINTS`。達したかの判断は`useGenerationConditions.ts: waypointsFull`）。達したら地図を押しても足さず、
   足す（＋）と新しい経由地の探すボタン・地図の上端の欄と、保存した地点の「経由地に足す」を押せなくして、上限まで置いてあると名前で伝える（置いた経由地を選んで消すことはできる）。超える点を置かせると、生成を押して初めて断られる。
 - **置いた経由地と目的地は、並びの右の「経由地と目的地を全部消す」で一度に消せる**（`RoutePoints.tsx`。パネルの操作と同じアイコンだけの形で、
-  アイコンは消す対象の地点のピンにバツを添えたもの）。出発地は残す——出発地は自宅・駅など決まった所に置いて行き先だけを試し直すことが多く、
+  アイコンは消す対象のルート［始点と終点の丸をつなぐ道］にバツを添えたもの。地点のピン1本にバツだと、地点を1つ消すように読める。隣の「編集」も同じルートの形に鉛筆を添えたアイコンだけにする）。出発地は残す——出発地は自宅・駅など決まった所に置いて行き先だけを試し直すことが多く、
   消すたびに置き直させない（戻すなら出発地の「現在地に戻す」）。周回の間は並びに出ている経由地だけを消し（名前は「経由地を全部消す」）、
   覚えている目的地は残す（見えない物を消さない）。消すと選んでいる地点も出発地に戻す（`useGenerationConditions.ts: clearPoints`）。
   すぐ置き直せるので確認の窓は通さない。消すものが無い間も押せない状態で残す（置き場が動くと、
@@ -473,7 +491,7 @@ page-composition.md「生成に関するフィードバックの置き場」）�
 
 #### 住所・施設で探す（`PlaceSearch/usePlaceLookup.ts`・`PlaceSearch/PlaceCandidates.tsx`・`PlaceSearch/PlaceCandidateCard.tsx`）
 
-地点は地図のタップのほかに、住所か施設（立ち寄り先の表のお店・施設）の名前で探して置ける（[地点の検索（backend）](../backend/place-search.md)）。探す欄は
+地点は地図のタップのほかに、住所か施設（地点の表のお店・駅・施設）の名前で探して置ける（[地点の検索（backend）](../backend/place-search.md)）。探す欄は
 **地図の上端にいつも1つ出す**（`PlaceSearch/PlaceSearch.tsx`。パネルを閉じていても、地図を見たまま探せる）。置く地点は「ルート設定」で
 選んでいる地点（何も選んでいなければ出発地）で、欄の案内と読み上げ名にその呼び名を出す（「目的地を住所・施設で探す」）。詳しくの探すボタンは
 この欄へ focus を移して開く（iOS はキーボードを、押した操作の中で focus したときだけ出すので、押した処理の中で同期して移す）。

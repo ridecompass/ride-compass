@@ -14,6 +14,9 @@ const groupVariants = cva("inline-flex", {
       segmented: "max-w-full overflow-hidden rounded-full border border-[var(--color-border)]",
       /** 札を横へ流して選ぶ（レンズの軸）。 */
       chips: "w-full flex-wrap gap-1",
+      /** 1本の目盛りの上の点から選ぶ（並びに大小の向きがある段）。目盛りの線を項目の後ろに引き、項目の中身は呼ぶ側が描く。 */
+      scale:
+        "relative items-center before:absolute before:inset-x-3 before:top-1/2 before:h-px before:-translate-y-1/2 before:bg-[var(--color-muted)]",
     },
   },
   defaultVariants: { variant: "segmented" },
@@ -28,6 +31,7 @@ const itemVariants = cva(
           "justify-center bg-transparent px-3 py-1.5 text-center text-[length:var(--font-size-xs)] text-[var(--foreground)] data-[state=on]:bg-[var(--color-accent)] data-[state=on]:text-white",
         chips:
           "gap-1 whitespace-nowrap rounded-full border border-[var(--color-border)] bg-transparent px-2 py-0.5 text-inherit hover:bg-[var(--color-surface-hover)] data-[state=on]:border-[var(--color-accent)] data-[state=on]:bg-[var(--color-accent-soft)] data-[state=on]:font-semibold",
+        scale: "relative justify-center bg-transparent p-0",
       },
     },
     defaultVariants: { variant: "segmented" },

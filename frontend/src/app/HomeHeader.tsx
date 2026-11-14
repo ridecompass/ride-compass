@@ -3,7 +3,6 @@
 import { useMemo, useState } from "react";
 import DebugConsole from "@/components/DebugConsole/DebugConsole";
 import HeaderMenu from "@/components/HeaderMenu/HeaderMenu";
-import type { MapTheme } from "@/lib/mapTheme";
 import { Button } from "@/components/ui/Button/Button";
 import { RouteIcon } from "@/components/ui/icons/icons";
 import WarningBadgeList from "@/features/conditions/WarningBadge/WarningBadge";
@@ -30,8 +29,6 @@ interface HomeHeaderProps {
   locationFailure: FetchFailure | null;
   mapBearingDeg: number;
   onRedrawMap: () => void;
-  mapTheme: MapTheme;
-  onMapThemeChange: (theme: MapTheme) => void;
   onStartUsageGuide: () => void;
   /** 走行中にパネルを出しているか。 */
   panelsShown: boolean;
@@ -48,8 +45,6 @@ export default function HomeHeader({
   locationFailure,
   mapBearingDeg,
   onRedrawMap,
-  mapTheme,
-  onMapThemeChange,
   onStartUsageGuide,
   panelsShown,
   onToggleRidePanel,
@@ -103,7 +98,7 @@ export default function HomeHeader({
               onClick={onToggleRidePanel}
               aria-label="ルート"
               aria-expanded={panelsShown}
-              usage="走行モードのまま「ルート設定」と「ルート結果」を開きます。候補を選び直す・作り直すと、走行モードはその候補を追います。もう一度押すと閉じます。"
+              usage="走行モードのまま「ルート設定」と「ルート結果」を開きます。候補を選び直したり作り直したりすると、走行モードはその候補に切り替わります。もう一度押すと閉じます。"
             >
               <RouteIcon size={18} />
             </Button>
@@ -115,8 +110,6 @@ export default function HomeHeader({
                 onToggleDebugConsole={() => setDebugConsoleOpen((v) => !v)}
                 onStartUsageGuide={onStartUsageGuide}
                 onRedrawMap={onRedrawMap}
-                mapTheme={mapTheme}
-                onMapThemeChange={onMapThemeChange}
               />
             </div>
           )}

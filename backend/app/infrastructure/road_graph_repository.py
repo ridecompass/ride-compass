@@ -13,6 +13,7 @@
 """
 
 import asyncio
+import json
 import logging
 from collections.abc import AsyncIterator, Mapping, Sequence
 from itertools import batched
@@ -55,10 +56,12 @@ logger = logging.getLogger("ridecompass.road_graph_repository")
 ID_CHUNK_SIZE = 50_000
 
 
-#: スキーマが依存する拡張。**アプリの権限では入れられない**（どちらもスーパーユーザーを
+#: スキーマが依存する拡張。PostGIS の2つは**アプリの権限では入れられない**（スーパーユーザーを
 #: 要求し、trustedでもない）ため、DBを作る人が先に入れる。`raster`は面のソースの列の型で、
-#: 画素の数え上げをDB側で行うために要る。
-REQUIRED_EXTENSIONS = ("postgis", "postgis_raster")
+#: 画素の数え上げをDB側で行うために要る。`pg_trgm`は地点の名前の部分一致の索引（`derived_models.py: PlaceRow`）の
+#: 演算子の類、`btree_gist`は地点の群と位置を組にした索引（同じ）の群の列の演算子の類で、どちらも trusted なのでDBに
+#: CREATE の権限があれば入れられる。
+REQUIRED_EXTENSIONS = ("postgis", "postgis_raster", "pg_trgm", "btree_gist")
 
 
 async def create_tables(engine: AsyncEngine) -> None:
@@ -80,6 +83,7 @@ async def create_tables(engine: AsyncEngine) -> None:
                 f"このDBに拡張 {', '.join(missing)} が入っていません。"
                 f"スーパーユーザーで先に実行してください: {commands}")
         await conn.run_sync(declared_metadata().create_all)
+        await derived_data_meta.insert_first_revision(conn)
 
 
 # --- 区間粒度の材料 -----------------------------------------------------------
@@ -305,7 +309,7 @@ class RoadGraphRepository:
         return {param_id: recorded[param_id] for param_id in param_ids}
 
     def stream_network_edges(self, chunk_size: int, tuning: Mapping[str, float]) -> AsyncIterator[Sequence[Row]]:
-        """取込範囲全体の区間を`chunk_size`行ずつ流す（`_network_edges_sql`の並び）。`tuning`は`get_network_tuning`の値。"""
+        """取込範囲全体の区間を`chunk_size`行ずつ流す（`_NETWORK_EDGES_SQL`の並び）。`tuning`は`get_network_tuning`の値。"""
         return self._stream(_NETWORK_EDGES_SQL.bindparams(bearing_distance_m=tuning[TURN_BEARING_DISTANCE_ID]), chunk_size)
 
     def stream_network_nodes(self, chunk_size: int) -> AsyncIterator[Sequence[Row]]:
@@ -422,10 +426,12 @@ class RoadGraphRepository:
         ]
 
     async def get_road_surface_tile_mvt(
-        self, z: int, x: int, y: int, bbox: BoundingBox
+        self, z: int, x: int, y: int, bbox: BoundingBox, layer_values: Mapping[str, Mapping[str, str]]
     ) -> bytes | None:
-        """路面レイヤーのMVTタイル1枚。契約は`get_tile_mvt`と同じ。"""
-        return await self.get_tile_mvt(ROAD_SURFACE_TILE_MVT_SQL, ROAD_SURFACE_LAYER_NAME, z, x, y, bbox)
+        """路面レイヤーのMVTタイル1枚。`layer_values`はフィーチャーの鍵→地図の線の層のid→値（値の無い道は載せない）。契約は
+        `get_tile_mvt`と同じ。"""
+        return await self._tile_mvt(ROAD_SURFACE_TILE_MVT_SQL, ROAD_SURFACE_LAYER_NAME, z, x, y, bbox,
+                                    {"layer_values": json.dumps(layer_values, ensure_ascii=False)})
 
     async def get_tile_mvt(
         self, sql: TextClause, layer_name: str, z: int, x: int, y: int, bbox: BoundingBox
@@ -436,9 +442,14 @@ class RoadGraphRepository:
         対象が1つも無い場合は空バイト列（有効な空MVT、「無いことを確認済み」の
         正常応答でNoneとは区別される）。
         """
+        return await self._tile_mvt(sql, layer_name, z, x, y, bbox, {})
+
+    async def _tile_mvt(
+        self, sql: TextClause, layer_name: str, z: int, x: int, y: int, bbox: BoundingBox, params: Mapping[str, object]
+    ) -> bytes | None:
         result = await self._session.execute(sql, {
             **_tile_params(z, x, y, bbox),
-            "layer_name": layer_name, "extent": TILE_EXTENT,
+            "layer_name": layer_name, "extent": TILE_EXTENT, **params,
         })
         covered, tile = result.one()
         if not covered:

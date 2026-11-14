@@ -1,7 +1,9 @@
 // 意味の決まった汎用の形（lucide-react）を、自前の形と同じ呼び方と線の太さへ包んで書き出す。
 import {
+  Mountain,
+  Road,
+  Sigma,
   ArrowUp,
-  ArrowUpDown,
   Bike,
   CircleQuestionMark,
   Clock,
@@ -26,11 +28,11 @@ import {
   LockOpen,
   Map as MapShape,
   MapPin,
-  MapPinX,
   Minus,
   Moon,
   Navigation,
   Paintbrush,
+  PersonStanding,
   Play,
   Plus,
   RotateCw,
@@ -64,6 +66,9 @@ function fromLucide(Icon: LucideIcon, defaultSize = 16): MapIconComponent {
 
 export const WarningTriangleIcon = fromLucide(TriangleAlert);
 export const WindIcon = fromLucide(Wind);
+export const MountainIcon = fromLucide(Mountain);
+export const RoadIcon = fromLucide(Road);
+export const SigmaIcon = fromLucide(Sigma);
 export const BicycleIcon = fromLucide(Bike);
 /** 呼び出し側が風向のぶん回転させて使うため、上向きのまっすぐな矢印にしてある。 */
 export const WindDirectionArrowIcon = fromLucide(ArrowUp);
@@ -120,14 +125,10 @@ export const HelpIcon = fromLucide(CircleQuestionMark);
 export const VersionIcon = fromLucide(GitCommitHorizontal);
 /** 地図で選んでいる区間の地点。 */
 export const SelectedSpotIcon = fromLucide(MapPin);
-/** 置いた経由地と目的地を一度に消す。ClearAllLayersIconと同じく、消す対象の形（地点のピン）にバツを添える。 */
-export const ClearPointsIcon = fromLucide(MapPinX);
 /** ルートの全長の目標を決める（押している間は全長が目標に合うルートを作る）。 */
 export const DistanceTargetIcon = fromLucide(Ruler);
 /** 置いた地点を1つ消す。保存したものを消す`DeleteSavedIcon`と同じく、消す操作はごみ箱の形にそろえる。 */
 export const RemovePointIcon = fromLucide(Trash);
-/** 置いた地点の編集（通る順の入れ替えと消すこと）を開く。 */
-export const EditPointsIcon = fromLucide(ArrowUpDown);
 /** 押さえたまま上下へ動かして、行の順を入れ替える所。 */
 export const ReorderHandleIcon = fromLucide(GripVertical);
 /** 利用者が変えられない選び方（いつも決まった値の行）。 */
@@ -142,12 +143,12 @@ export const RetryIcon = fromLucide(RotateCw);
 export const NotFetchedIcon = fromLucide(CloudOff);
 /** 時刻を送った重ねを、いまの時刻に戻す。 */
 export const BackToNowIcon = fromLucide(History);
-/** 地図で選んだ道の評価を調べる。 */
-export const InspectRoadIcon = fromLucide(Search);
 /** 地点を住所・施設で探す。 */
 export const SearchPlaceIcon = fromLucide(Search);
 /** 選んだ区間へ地図を寄せる。 */
 export const ShowSectionOnMapIcon = fromLucide(ZoomIn);
+/** 小窓の地点の Street View を開く（Google マップの Street View の人の形）。 */
+export const StreetViewIcon = fromLucide(PersonStanding);
 /** 編集で作ったルートの元にしたルートを見る。 */
 export const ShowOriginIcon = fromLucide(CornerUpLeft);
 /** 走行中の曲がる所の案内: 左折。 */

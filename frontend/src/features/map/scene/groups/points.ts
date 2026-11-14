@@ -15,6 +15,9 @@
  * （`point_priority_axes`）も源泉の宣言を読む。
  * 重なる印は地図が省く（`pointLook`）。
  *
+ * ルートを選んでいて周りを出さない間は、ルートの線から`lib/mapDisplay/sidePoints.ts: SIDE_POINT_MAX_DISTANCE_M`以内の点だけを通す。
+ * 近いかは地図の道具の`distance`式で決める（MapLibre の文書は、ズーム13未満では距離の精度が落ちうると書いている）。
+ *
  * 近い点はタイルの側で1つの代表点に束ねてあり、代表点は束ねた点の数を持つ（`mapDisplay.point.countProperty`）。2点以上を
  * 束ねた代表点は、点の右に数を出す。
  *
@@ -25,6 +28,7 @@
  */
 import type { BasemapPoiKinds } from "@/features/map/layers/mapStyleOps";
 import { sceneLayerId, sceneSourceId, valueInExpression, type SceneSourceId } from "@/features/map/scene/sceneBuilders";
+import { SIDE_POINT_MAX_DISTANCE_M } from "@/lib/mapDisplay/sidePoints";
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import palette from "@/types/generated/palette.json";
 import regionTileConfig from "@/types/generated/region-tile-config.json";
@@ -62,22 +66,18 @@ export const POINT_TILE_SOURCES = Object.fromEntries(
   ]),
 ) as Readonly<Record<PointTileLayer, { readonly sourceId: SceneSourceId; readonly sourceLayer: string }>>;
 
-/** 押された地物のレイヤーidから、点の宣言を引く関数。idは点のタイルのソースと役割`roleOf(宣言)`から決める。 */
-export function pointLayerLookup(
-  roleOf: (layer: PointLayer) => string,
-): (sceneLayerIdOfFeature: string) => PointLayer | undefined {
-  const byId = new Map(
-    POINT_LAYERS.map((layer) => [sceneLayerId(POINT_TILE_SOURCES[layer.tile_kind].sourceId, roleOf(layer)), layer]),
-  );
-  return (sceneLayerIdOfFeature) => byId.get(sceneLayerIdOfFeature);
-}
+const POINT_LAYER_BY_SCENE_LAYER = new Map(
+  POINT_LAYERS.map((layer) => [sceneLayerId(POINT_TILE_SOURCES[layer.tile_kind].sourceId, layer.attr_id), layer]),
+);
 
 /** 押された地物のレイヤーidが点のレイヤーなら、その点の宣言。 */
-export const pointLayerOfSceneLayer = pointLayerLookup((layer) => layer.attr_id);
+export function pointLayerOfSceneLayer(sceneLayerIdOfFeature: string): PointLayer | undefined {
+  return POINT_LAYER_BY_SCENE_LAYER.get(sceneLayerIdOfFeature);
+}
 
 /** 常に効く絞り込み。同じタイル・同じsource-layerを2つ以上のレイヤーが分け合うときは、
  * 自分の行に属する値だけを通す（持たないと互いの点が混ざる）。 */
-export function baseFilter(layer: PointLayer): FilterSpecification | undefined {
+function baseFilter(layer: PointLayer): FilterSpecification | undefined {
   if (POINT_LAYERS.filter((other) => other.tile_kind === layer.tile_kind).length < 2) return undefined;
   const axis = layer.display_axes[0];
   const values = axis.categories.flatMap((category) => [...category.values]);
@@ -95,6 +95,8 @@ export type PointState = {
   readonly visible: Readonly<Record<string, boolean>>;
   /** 軸の鍵ごとの、凡例で隠した行の鍵。 */
   readonly hiddenKeys: Readonly<Record<string, readonly string[]>>;
+  /** 点を近くだけに絞るルートの線（[経度, 緯度]の並び）。地図全体に出すならnull。 */
+  readonly nearPath: readonly (readonly number[])[] | null;
 };
 
 /** 行が出ている間、基礎地図から隠す店・施設の種類（点の属性 → 行の鍵 → 種類）。OpenStreetMap でない出どころから
@@ -154,9 +156,16 @@ function categoryMatch(axis: PointAxis, category: PointAxis["categories"][number
   return valueInExpression(valueOf(axis), category.values);
 }
 
-/** 通す分類だけを残す絞り込み。軸が複数あるときはすべてANDで効く。 */
-function layerFilter(layer: PointLayer, hiddenKeys: PointState["hiddenKeys"]): FilterSpecification | undefined {
+/** 通す分類だけを残す絞り込み。軸が複数あるときはすべてANDで効く。`nearPath`があれば、その線から近い点だけを通す。 */
+function layerFilter(
+  layer: PointLayer,
+  hiddenKeys: PointState["hiddenKeys"],
+  nearPath: PointState["nearPath"],
+): FilterSpecification | undefined {
   const clauses: unknown[] = [];
+  if (nearPath !== null) {
+    clauses.push(["<=", ["distance", { type: "LineString", coordinates: nearPath }], SIDE_POINT_MAX_DISTANCE_M]);
+  }
   const base = baseFilter(layer);
   if (base !== undefined) clauses.push(base);
   for (const axis of layer.display_axes) {
@@ -257,7 +266,7 @@ function sortKeyExpression(layer: PointLayer): unknown {
 
 /** 積む順（下から）に並べた点の層。重なった印は上に積んだ層の印から置かれるので、残す順（`point_priority`）の大きい層を上に積む。
  * 同じ順の層は宣言の順のまま。 */
-export const STACKED_POINT_LAYERS: readonly PointLayer[] = [...POINT_LAYERS].sort(
+const STACKED_POINT_LAYERS: readonly PointLayer[] = [...POINT_LAYERS].sort(
   (a, b) => a.point_priority - b.point_priority,
 );
 
@@ -278,9 +287,9 @@ const COUNT_TEXT_FONT = ["Noto Sans Bold"];
 const COUNT = ["to-number", ["get", POINT.countProperty], 1];
 
 /** 点の層の印（読むタイル・押したときに拾う対象・見た目）。重なりは MapLibre の既定のまま（ほかの記号とぶつかる印は描かず、寄せて重ならなくなると出る）で、点の層どうし・
- * 区間の近くの点・基礎地図の文字とも判定する。同じ層の中で重なると、残す順（`sortKeyExpression`）の先の印を残す。2点以上を束ねた代表点は、同じ印の文字として右に数を出す（数だけが残ることは無い）。
+ * 基礎地図の文字とも判定する。同じ層の中で重なると、残す順（`sortKeyExpression`）の先の印を残す。2点以上を束ねた代表点は、同じ印の文字として右に数を出す（数だけが残ることは無い）。
  * 名前を持つ層の押せない点（名前の無い点）は丸い枠で少し薄く描く。描き始める縮尺を宣言した層は、それより引いた縮尺では描かない。 */
-export function pointLook(
+function pointLook(
   layer: PointLayer,
 ): Pick<SceneLayerEntry, "source" | "sourceLayer" | "type" | "paint" | "layout" | "minzoom" | "hitTargets"> {
   return {
@@ -324,7 +333,7 @@ export const pointGroup = declareGroup<PointState>((state) => {
     tier: "point",
     ...pointLook(layer),
     visible: state.visible[layer.attr_id] === true,
-    filter: layerFilter(layer, state.hiddenKeys),
+    filter: layerFilter(layer, state.hiddenKeys, state.nearPath),
     hidesBasemapPois: basemapPoisHiddenBy(layer, state.hiddenKeys),
   }));
 

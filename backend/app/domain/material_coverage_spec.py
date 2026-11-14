@@ -7,8 +7,8 @@ from dataclasses import dataclass
 from typing import Literal, NamedTuple, get_args
 
 Population = Literal["way", "edge"]
-# "unknown": 欠損は不明値（NaN/None）として扱われ、その材料を使う軸は評価対象外になる。
-# "definite": 欠損は確定値（タグ不在=非該当等）として扱われ、軸は通常どおり評価される。
+# "unknown": 欠損はデータの欠けで、値の無さ（NaN/None）として残る。
+# "definite": 欠損は確定値（タグ不在=非該当等）を意味し、データの欠けではない。
 MissingSemantics = Literal["unknown", "definite"]
 
 
@@ -27,7 +27,7 @@ POPULATION_LABELS: dict[Population, str] = labeled_every_value(Population, {"way
 class _MissingSemanticsDisplay(NamedTuple):
     title: str
     hint: str
-    #: 欠損が評価に穴を開けるか。開けない扱いの欠損率は参考として、画面は薄く出す。
+    #: 欠損がデータの欠けか。欠けでない扱いの欠損率は参考として、画面は薄く出す。
     affects_evaluation: bool
 
 
@@ -35,10 +35,12 @@ class _MissingSemanticsDisplay(NamedTuple):
 #: 並びが画面の並び順。
 MISSING_SEMANTICS_DISPLAY: dict[MissingSemantics, _MissingSemanticsDisplay] = labeled_every_value(MissingSemantics, {
     "unknown": _MissingSemanticsDisplay(
-        "評価に影響する欠損", "元データが無い区間では、この材料を使う負担の種類を評価しない。", True
+        "データの欠けになる材料",
+        "元データが無い区間は値が分からない。費用はその区間を、取込の範囲全体の分布の平均で埋めて数える。",
+        True,
     ),
     "definite": _MissingSemanticsDisplay(
-        "タグ不在を確定値として評価する材料（参考）", "欠損は「該当なし」を意味し、評価に穴は開かない。", False
+        "タグ不在を「該当なし」と読む材料（参考）", "タグが無いのは「該当なし」で、データの欠けではない。", False
     ),
 })
 

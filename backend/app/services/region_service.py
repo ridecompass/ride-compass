@@ -7,6 +7,7 @@ from app.domain.cost_preference import CostPreference
 from app.domain.lens_values import RoadInspection
 from app.domain.region import ROADS_AT_LIMIT, BoundingBox, RoadAt, tile_bounds_lonlat
 from app.domain.registry import TileKind
+from app.domain.road_classes import current_road_classes
 from app.domain.tuning import REBUILT_CLIENT_TUNING_IDS
 from app.infrastructure.debug_log import log_external_call, log_throttled_warning
 from app.infrastructure.point_tile_layers import PointTileLayer
@@ -14,11 +15,12 @@ from app.infrastructure.road_graph_repository import RoadGraphRepository
 from app.infrastructure.vector_tile import ROAD_SURFACE_LAYER_NAME, encode_empty_tile
 from app.infrastructure.media_types import MVT_CONTENT_TYPE
 from app.infrastructure.region_tile_cache import serve_region_tile
+from app.services.feature_materials import FeatureMaterialService
 from app.services.lens_service import LensService
 from app.services.tile_version_service import (
-    TILE_SHAPES,
     current_tile_versions,
     prune_other_tile_generations,
+    road_surface_tile_shape,
     served_tile_version,
 )
 
@@ -38,9 +40,7 @@ class RegionService:
     生成したタイルは基礎地図タイルと同じファイルキャッシュへ置く。そのため管理画面からの
     一括クリア（`api/routers/basemap.py: basemap_refresh`）で両方とも消える。
 
-    カバレッジ外・DB障害はいずれも空タイルを返す。取れなかったときに
-    別の経路から取り直すフォールバックは持たない（背景は
-    docs/records/decisions/pre-static-attributes-gate.md 決定2）。
+    カバレッジ外は空タイルを返し、DB障害は投げる（503）。取れなかったときに別の経路から取り直すフォールバックは持たない。
     """
 
     def __init__(self, repository: RoadGraphRepository):
@@ -67,6 +67,7 @@ class RegionService:
         *,
         read_tile: _TileReader,
         kind: TileKind,
+        shape: str,
         empty_tile: bytes,
         external_call_name: str,
         z: int, x: int, y: int,
@@ -89,7 +90,7 @@ class RegionService:
 
         return await serve_region_tile(
             kind=kind,
-            generation=await served_tile_version(self._repository, TILE_SHAPES[kind]),
+            generation=await served_tile_version(self._repository, shape),
             z=z, x=x, y=y,
             extension="pbf",
             empty_tile=empty_tile,
@@ -99,9 +100,19 @@ class RegionService:
         )
 
     async def get_road_surface_tile(self, z: int, x: int, y: int) -> bytes:
+        """地図の道の線のタイル。地図の線の層の値（`services/feature_materials.py: FeatureMaterialService.road_layer_values`）を
+        焼く。世代と焼く値は同じ区分の全体から求める（間に区分を書き換えられても、古い世代の鍵へ新しい値を残さない）。"""
+        materials = FeatureMaterialService(self._repository)
+        definitions = current_road_classes()
+
+        async def read_tile(z: int, x: int, y: int, bbox: BoundingBox) -> bytes | None:
+            layer_values = await materials.road_layer_values(z, x, y, definitions)
+            return await self._repository.get_road_surface_tile_mvt(z, x, y, bbox, layer_values)
+
         return await self._get_tile(
-            read_tile=self._repository.get_road_surface_tile_mvt,
+            read_tile=read_tile,
             kind="road_surface",
+            shape=road_surface_tile_shape(definitions),
             empty_tile=encode_empty_tile(ROAD_SURFACE_LAYER_NAME),
             external_call_name="region:road-surface-tile",
             z=z, x=x, y=y,
@@ -112,6 +123,7 @@ class RegionService:
         return await self._get_tile(
             read_tile=partial(self._repository.get_tile_mvt, layer.sql, layer.source_layer),
             kind=layer.name,
+            shape=layer.shape,
             empty_tile=encode_empty_tile(layer.source_layer),
             external_call_name=f"region:{layer.name}-tile",
             z=z, x=x, y=y,

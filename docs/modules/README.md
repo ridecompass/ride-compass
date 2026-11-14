@@ -14,7 +14,7 @@
 **このディレクトリの各ファイルは「今のコードがどう動くか」だけを書く。「なぜ今の形に
 なったか」は書かない**——経緯の書き込みは積み重なって設計書を肥大化させ、今の動きを埋もれさせる。
 
-- **禁止**: 「以前は…」「tasks#123で…に変更した」「実機/実測で…だったため」といった
+- **禁止**: 「以前は…」「tasks#<番号>で…に変更した」「実機/実測で…だったため」といった
   経緯の説明、変更前後のbefore/afterの数値比較、事故・インシデントの詳細な顛末。
   これらはタスクの issue（経緯の置き場。[documentation.md](../../.claude/rules/documentation.md)「用語集」）の役割である。
   **タスク番号もここへは書かない**——タスクの issue は閉じたあと更新されないため、
@@ -62,6 +62,7 @@
 | クラウドのセッションの用意（`scripts/remote_dev/`） | [architecture/setup.md](../architecture/setup.md)「クラウドのセッション」 | 依存の導入とDB・Redisの起動 |
 | 壊れ方の確かめ（`scripts/break_tests.py`） | [.claude/rules/testing-review.md](../../.claude/rules/testing-review.md)「消す・まとめる前に、残す側が落ちるかを見る」 | 壊れ方の一覧の形・断る条件・前の版のテストの並べ方 |
 | チェックアウトの遅れの確かめ（`scripts/checkout_freshness.py`） | [architecture/setup.md](../architecture/setup.md)「開発機の本体のチェックアウトの遅れ」 | どの道具が遅れで止まるか・早送りを打つ条件 |
+| 残った作業ツリーとスクラッチの片付け（`scripts/worktree_sweep.py`） | [architecture/setup.md](../architecture/setup.md)「残った作業ツリーとスクラッチの片付け」 | 消すものと消さないもの・打つ所 |
 | 本番でルートを作る確かめ（`backend/scripts/prod_route_check.py`） | [architecture/tech-stack.md](../architecture/tech-stack.md)「本番でルートを作る確かめ」 | 何を見て落とすか・どこから回すか・待ちの上限の根拠 |
 | 本番の点のタイルの確かめ（`backend/scripts/prod_point_tile_check.py`） | [architecture/tech-stack.md](../architecture/tech-stack.md)「本番の点のタイルの確かめ」 | 何を見て落とすか・どこから回すか・上限の根拠 |
 
@@ -74,11 +75,11 @@
 |---|---|
 | [ルート生成エンジン・経路探索](backend/routing-engine.md) | road_graphエンジン、周回生成戦略 |
 | [費用・材料](backend/evaluation-scoring.md) | 0次フィルタ・費目の帳簿の式・道の区分と費用の軸の管理DB・材料カタログ |
-| [レンズ・道ごとの値の配信](backend/dynamic-way-values.md) | 地図のレンズ・道の線の層の値・道の窓を、路面タイルのフィーチャーの鍵で配る層 |
+| [レンズ・道ごとの値の配信](backend/dynamic-way-values.md) | 地図のレンズ・道の窓を路面タイルのフィーチャーの鍵で配り、路面タイルが焼く地図の線の層の値を求める層 |
 | [静的道路属性・タイル配信](backend/static-road-attributes.md) | OSM取込・MVTタイル配信 |
 | [気象・動的レイヤー](backend/weather-dynamic-layers.md) | 気象庁MSM（数値予報モデル）・気象庁観測/防災データ |
 | [標高](backend/elevation.md) | GSI DEMタイル |
-| [地点の検索](backend/place-search.md) | 住所の区画の表と立ち寄り先の表を引き、出発地・経由地・目的地の候補を返す。住所の区画の表を作る |
+| [地点の検索](backend/place-search.md) | 住所の区画の表と地点の表を引き、出発地・経由地・目的地の候補を返す。住所の区画の表を作る |
 | [横断基盤](backend/cross-cutting-infrastructure.md) | DB・Redis・ログ・レート制限・ジョブ管理 |
 
 ## frontend

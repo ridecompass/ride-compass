@@ -4,12 +4,6 @@ import { COST_AXIS_CATALOG_LABEL, getCostAxisCatalog } from "@/services/costAxis
 import { retrySharedCatalogFetch, useSharedCatalog } from "@/hooks/useSharedCatalog";
 import type { FetchFailure } from "@/types/fetchFailure";
 import type { CostAxisCatalogResponse } from "@/types/route";
-import palette from "@/types/generated/palette.json";
-
-/** 軸の識別色。一覧の順に当てる（色の並びは backend の宣言。`palette.json` の `cost_series`）。 */
-function seriesColor(index: number): string {
-  return palette.cost_series[index] ?? palette.semantic.neutral;
-}
 
 const COST_AXIS_CATALOG_QUERY_KEY = ["cost-axis-catalog"] as const;
 
@@ -39,8 +33,6 @@ export interface CostAxisCatalog {
   axes: readonly CostAxis[];
   /** 軸id→識別色（どの画面でも同じ軸は同じ色）。 */
   axisColors: Readonly<Record<string, string>>;
-  /** 代償の内訳の、避け方の倍率で上乗せした秒の行の名前。 */
-  avoidanceLabel: string;
   /** 地図のレンズ。届くまで・失敗の間はnull。 */
   lenses: CostLensCatalog | null;
   /** 取得が成功したか。falseの間は`axes`が空なので、今の軸と揃うことを要る処理（倍率を送る）はこれで未確定を区別する。 */
@@ -52,7 +44,6 @@ export interface CostAxisCatalog {
 const EMPTY: CostAxisCatalog = {
   axes: [],
   axisColors: {},
-  avoidanceLabel: "",
   lenses: null,
   loaded: false,
   failed: false,
@@ -70,8 +61,7 @@ export function costAxisCatalogFromResponse(response: CostAxisCatalogResponse): 
   }));
   return {
     axes,
-    axisColors: Object.fromEntries(axes.map((axis, index) => [axis.axisId, seriesColor(index)])),
-    avoidanceLabel: response.avoidance_label,
+    axisColors: Object.fromEntries(response.axes.map((entry) => [entry.axis_id, entry.color])),
     lenses: {
       totalLens: {
         axisId: response.total_lens.lens_id,
@@ -85,6 +75,11 @@ export function costAxisCatalogFromResponse(response: CostAxisCatalogResponse): 
     loaded: true,
     failed: false,
   };
+}
+
+/** 文の中に括弧で添える、軸の名前の並び（一覧の順。例:「[登坂・振動]」）。届くまで・失敗の間は軸が無いので空。 */
+export function costAxisNamesNote(catalog: CostAxisCatalog): string {
+  return catalog.axes.length === 0 ? "" : `[${catalog.axes.map((axis) => axis.label).join("・")}]`;
 }
 
 /** 費用の軸の一覧の取得をやり直す（`failed`からの再試行）。 */

@@ -18,8 +18,8 @@ import {
 } from "@/features/map/scene/groups/routes";
 import { ROUTE_SEGMENT_INDEX_PROPERTY } from "@/features/map/scene/groups/routeSources";
 import { POINT_HIT_TARGET, pointLayerOfSceneLayer } from "@/features/map/scene/groups/points";
-import { sidePointLayerOfSceneLayer } from "@/features/map/scene/groups/sidePoints";
-import { shownRoadTrackOf } from "@/features/map/scene/groups/roadLines";
+import { FEATURE_KEY_PROPERTY, ROAD_LINE_SOURCE_ID, shownRoadTrackOf } from "@/features/map/scene/groups/roadLines";
+import { ROAD_TILE_SOURCE_LAYER } from "@/features/map/scene/applyToMap";
 import { roadFeatureKey } from "@/features/map/MapView/roadFacts";
 import type { MapLook } from "@/features/map/view/mapLook";
 import { distinctFacilities, facilityOf } from "@/components/MapPopup/facilityRows";
@@ -59,7 +59,7 @@ export interface MapTapState {
   onRouteSegmentSelect: (selection: SelectedRouteSegment | null) => void;
   /** 選んでいる候補。押した区間は、この候補の同じ番号の区間。 */
   selectedRoute: { readonly segments: readonly RouteSegmentDetail[] } | null;
-  /** 点の位置を、選んでいる区間に当てたルートの上の位置。区間を選んでいない・区間の形が無ければnull。 */
+  /** 点の位置を、選んでいるルートに当てたルートの上の位置。ルートを選んでいない・ルートの形が無ければnull。 */
   sidePointAlong: (lngLat: readonly [number, number]) => { km: number; offsetM: number } | null;
   onSpliceStretchSelect: (index: number) => void;
   onRouteSelect: (routeId: string) => void;
@@ -81,9 +81,9 @@ function nearestPointOnLineString(
   return [lng, lat];
 }
 
-/** 押された地物のレイヤーが点の層（「表示」の層か、区間の近くに描いた層）なら、その点の宣言。 */
+/** 押された地物のレイヤーが点の層なら、その点の宣言。 */
 function pointLayerAt(feature: MapGeoJSONFeature): PointLayer | undefined {
-  return pointLayerOfSceneLayer(feature.layer.id) ?? sidePointLayerOfSceneLayer(feature.layer.id);
+  return pointLayerOfSceneLayer(feature.layer.id);
 }
 
 /** 名前のある点（店など）の地物なら、探して選んだ施設と同じ形の候補（辺りは置いた位置から引く）。 */
@@ -280,11 +280,16 @@ export function bindMapTaps(map: MapLibreMap, latest: { readonly current: MapTap
     if (ask !== roadAsk || road === null) return;
     const { look, roadLayers } = latest.current;
     const featureKey = roadFeatureKey(road.properties);
+    // 道の層の値は、地図が塗っている同じ鍵のタイルの地物から読む（地図の線の色と同じ値）。
+    const [baked] =
+      featureKey === null
+        ? []
+        : map.querySourceFeatures(ROAD_LINE_SOURCE_ID, {
+            sourceLayer: ROAD_TILE_SOURCE_LAYER,
+            filter: ["==", ["get", FEATURE_KEY_PROPERTY], featureKey],
+          });
     popups.openRoad({
-      track:
-        featureKey === null
-          ? null
-          : shownRoadTrackOf(featureKey, roadLayers, look.layerVisibility, look.roadClasses.values),
+      track: baked === undefined ? null : shownRoadTrackOf(baked.properties, roadLayers, look.layerVisibility),
       lngLat,
       shape: road.shape,
       properties: road.properties,

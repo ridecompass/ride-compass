@@ -4,7 +4,7 @@
 （出て戻れる集まり）、探索のJITの型。
 
 ここで見ないもの:
-- Edge Costの中身（勾配・路面・風がどう秒へ化けるか） → `domain/evaluation.py`側
+- Edge Costの中身（勾配・路面・風がどう秒へ化けるか） → `test_leg_costs.py`
 - 探索用グラフ・ターンの遷移の組み立て → `test_search_graph.py`・`test_turn_structure.py`
 - 候補ルートの並べ方・返し方 → `route_generator`側
 """
@@ -464,6 +464,60 @@ def test_junction_leaves_unreachable_nodes_empty():
     assert junction.backward_state[isolated] == -1
 
 
+@pytest.mark.parametrize("seed", range(3))
+def test_tree_and_junction_keep_per_node_the_cheapest_and_on_a_tie_the_lowest_numbered(seed):
+    """木はNodeごとに費用の最小の状態を、繋ぎ目は合計の最小の遷移を採り、同じ費用なら番号の小さいものを残す。
+
+    費用を小さな整数にして同じ費用を多く作り、各Nodeの期待を（費用, 番号）の辞書順の最小として総当たりで出す。"""
+    lazy, statics, structure = build_all(make_grid(5))
+    rng = np.random.default_rng(seed)
+    cost = rng.integers(1, 3, structure.state_count).astype(np.float64)
+    transition_cost = rng.integers(0, 2, len(structure.target_state)).astype(np.float32)
+    seconds = np.ones(structure.state_count)
+    forward = routing.build_turn_expanded_tree(
+        structure, cost, statics.edge_length_m, out_states(lazy, "n0_0"), lazy.node_count,
+        edge_seconds=seconds, transition_cost=transition_cost,
+    )
+    destination = lazy.node_id_to_index["n4_4"]
+    backward = routing.build_turn_expanded_tree(
+        structure, cost, statics.edge_length_m, np.flatnonzero(lazy.graph.edge_to == destination), lazy.node_count,
+        reverse=True, edge_seconds=seconds, transition_cost=transition_cost,
+    )
+    junction = routing.combine_forward_backward_at_nodes(
+        structure, forward, backward, lazy.node_count, transition_cost=transition_cost
+    )
+
+    def cheapest_lowest_numbered(node_of_item, item_cost):
+        """Nodeごとの（費用, 番号）の最小の番号と、最小の費用に並んだ番号の数の最大。"""
+        expected = np.full(lazy.node_count, -1)
+        tied = 0
+        for node in range(lazy.node_count):
+            items = [i for i in np.flatnonzero(node_of_item == node) if np.isfinite(item_cost[i])]
+            if items:
+                expected[node] = min(items, key=lambda i: (item_cost[i], i))
+                tied = max(tied, sum(item_cost[i] == item_cost[expected[node]] for i in items))
+        return expected, tied
+
+    for tree, node_of_state in ((forward, structure.edge_to), (backward, structure.edge_from)):
+        expected, tied = cheapest_lowest_numbered(node_of_state, tree.state_cost)
+        assert tied > 1  # 同じ費用の状態が並ぶNodeがある
+        assert np.array_equal(tree.node_best_state, expected)
+
+    source = np.repeat(np.arange(structure.state_count), np.diff(structure.indptr))
+    target = structure.target_state
+    total = forward.state_cost[source] + transition_cost + backward.state_cost[target]
+    picked, tied = cheapest_lowest_numbered(structure.edge_to[source], total)
+    assert tied > 1  # 同じ合計の遷移が並ぶNodeがある
+    joined = picked >= 0
+    assert np.array_equal(junction.forward_state[joined], source[picked[joined]])
+    assert np.array_equal(junction.backward_state[joined], target[picked[joined]])
+    assert np.array_equal(junction.cost[joined], total[picked[joined]])
+    expected_seconds = (forward.state_seconds[source] + structure.turn_seconds + backward.state_seconds[target])[picked[joined]]
+    assert np.array_equal(junction.seconds[joined], expected_seconds)
+    assert np.all(junction.forward_state[~joined] == -1)
+    assert np.all(np.isinf(junction.cost[~joined]))
+
+
 # --- 時刻ビンの契約 ---
 
 
@@ -752,9 +806,9 @@ async def test_route_generation_calls_from_python_only_the_jit_that_the_image_ba
     )
     generator = generator_for(road_network_root, grid_network(), wind)
     departure = datetime(2026, 9, 22, 8, tzinfo=timezone(timedelta(hours=9)))
-    assert await generator.generate_loops(
-            at(CENTER), 4.0, 1.5, points=NO_POINTS, max_routes=3, start_time=departure)
-    assert await generator.generate_via_waypoints(
-        at(SOUTH_WEST), [], destination=at(NORTH_EAST), max_routes=3, start_time=departure)
+    assert (await generator.generate_loops(
+            at(CENTER), 4.0, 1.5, points=NO_POINTS, max_routes=3, start_time=departure)).candidates
+    assert (await generator.generate_via_waypoints(
+        at(SOUTH_WEST), [], destination=at(NORTH_EAST), max_routes=3, start_time=departure)).candidates
 
     assert called and called <= baked

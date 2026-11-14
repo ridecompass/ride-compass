@@ -1,6 +1,6 @@
 """テストが置く較正値（id → 値）。本番は起動で表`tuning_overrides`から全部を読み、行の無い宣言があれば起動しない。
 
-テストは`conftest.py`がテストごとにこの値を置く。値を変えて確かめるテストは`TUNING_VALUES`を差し替える。
+テストは`conftest.py`がテストごとにこの値を置く。テストはこの値から入力を組み、値を差し替えない。
 """
 
 TUNING = {
@@ -35,6 +35,8 @@ TUNING = {
     'elevation.bridge_end_radius_m': 10.0,
     'landcover.ring_outer_m': 100.0,
     'landcover.ring_inner_m': 10.0,
+    'traffic_regulation.line_half_width_m': 12.0,
+    'traffic_regulation.edge_share': 0.5,
     'speed.cda_m2': 0.32,
     'speed.crr': 0.005,
     'speed.crr_paving_stones': 0.0065,

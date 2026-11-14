@@ -4,7 +4,7 @@
  * 見ること: 走行モードの間の配置（上の帯を走りの数字に替え、パネルと「現在地に移動」を隠し、選んだ候補のプロファイルを
  * 見るだけで地図の下に出すこと・「表示」と「負担で塗る」は走っていないときと同じに出し、走行中に効かない操作は出さないこと・
  * 方位磁針で北が上と進む向きが上を切り替え、地図を指で動かして休んでいる間はその場で北が上に戻すこと）と、
- * 届いた現在地がプロファイルの印と地図のルート線の薄めと走りの帯の残りへ同じ距離で渡り、到着予想が位置を受けた時刻と選んだ候補の計画から出ること、
+ * 届いた現在地がプロファイルの印と地図のルート線の薄めと走りの帯の残りへ同じ距離で渡り、到着予想が位置を受けた時刻と選んだ候補の計画から出ること、この先の経由地の印に同じ見込みの時刻が添わること、
  * 次に曲がる所がカードと地図の札に出ること、ルートを外れた・戻ったことが走りの帯に出ること、読み込み直しても走行モードが続くこと、
  * 読み込み直しで iPhone がスマホの向きを読む許しを聞けなかったら、ボタンの横から求め直して現在地の印に向きを出せること、
  * 走行中も左下に俯瞰図を出すこと。
@@ -22,6 +22,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MINUTE_MS } from "@/lib/duration";
 import { formatJstHourMinute } from "@/lib/time";
 import { onBackend } from "@/testing/backendServer";
+import { setOrientationPermission, unaskedPermission } from "@/testing/deviceOrientation";
 import { installGeolocation } from "@/testing/geolocation";
 import {
   FIRST,
@@ -156,10 +157,10 @@ describe("走行モード", () => {
     expect(await screen.findByRole("region", { name: "俯瞰図" })).toBeInTheDocument();
   });
 
-  it("走行モードで届いた現在地を選んだ候補の上の距離へ当て、プロファイルに印を出し、地図のルート線のそこまでを薄め、走りの帯に残りと到着予想を出す", async () => {
+  it("走行モードで届いた現在地を選んだ候補の上の距離へ当て、プロファイルに印を出し、地図のルート線のそこまでを薄め、走りの帯に残りと到着予想を出し、この先の経由地の印にも同じ見込みの時刻を添える", async () => {
     const geolocation = installGeolocation(HERE);
     const { user } = renderHome();
-    jobs.respond([RIDDEN], LOOP_CONDITIONS);
+    jobs.respond([{ ...RIDDEN, waypoint_distances_km: [0.2, 0.75] }], LOOP_CONDITIONS);
     await generate(user);
     await waitFor(() => expect(candidateTabs()).toHaveLength(1));
 
@@ -176,6 +177,14 @@ describe("走行モード", () => {
     expect(profile.querySelector('[data-progress="position"]')).not.toBeNull();
     const drawn = mapOnScreen().sourceFeatures("route-segments");
     expect(drawn.map((feature) => feature.properties?.travelled ?? false)).toEqual([true, false]);
+    // 走り終えた経由地には時刻を添えず、この先の経由地（残り0.25kmは計画で1分）は位置を受けた時刻から数える。
+    const waypoints = within(profile)
+      .getAllByRole("img", { name: /^経由地/ })
+      .map((mark) => mark.getAttribute("aria-label"));
+    expect(waypoints).toEqual([
+      "経由地 1（0.2km地点）",
+      `経由地 2（0.8km地点・${formatJstHourMinute(new Date(fixedAt + MINUTE_MS))}着）`,
+    ]);
   });
 
   it("地図のルート線を薄める所は、走った距離が刻みをまたいだときだけ動かす（刻みの中の動きでは線を入れ直さない）", async () => {
@@ -280,17 +289,10 @@ describe("走行モード", () => {
 
     // iPhone の Safari は、まだ聞いていない許しを操作の外で求められると断り、利用者が許したあとは許しを返す。
     let answer: "granted" | null = null;
-    const holder = globalThis as unknown as { DeviceOrientationEvent?: { requestPermission?: () => Promise<string> } };
-    holder.DeviceOrientationEvent = {
-      requestPermission: async () => {
-        if (answer === null)
-          throw new DOMException(
-            "Requesting device orientation access requires a user gesture to prompt",
-            "NotAllowedError",
-          );
-        return answer;
-      },
-    };
+    setOrientationPermission(() => {
+      if (answer === null) throw unaskedPermission();
+      return answer;
+    });
     const facingCone = () => document.querySelector("[data-facing-cone]");
     const turnPhone = () =>
       act(() => {
@@ -312,7 +314,7 @@ describe("走行モード", () => {
       turnPhone();
       expect(facingCone()).toHaveAttribute("visibility", "visible");
     } finally {
-      holder.DeviceOrientationEvent = undefined;
+      setOrientationPermission(undefined);
     }
   });
 });

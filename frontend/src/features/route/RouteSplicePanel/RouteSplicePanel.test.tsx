@@ -25,13 +25,12 @@ type Props = ComponentProps<typeof RouteSplicePanel>;
 
 const CATALOG = {
   axes: [
-    { axisId: "width", label: "道幅" },
-    { axisId: "traffic", label: "交通" },
-    { axisId: "slope", label: "勾配" },
-    { axisId: "light", label: "街灯" },
+    { axisId: "width", label: "道幅", iconId: "" },
+    { axisId: "traffic", label: "交通", iconId: "" },
+    { axisId: "slope", label: "勾配", iconId: "" },
+    { axisId: "light", label: "街灯", iconId: "" },
   ],
   axisColors: { width: "red", traffic: "green", slope: "blue", light: "gray" },
-  avoidanceLabel: "回避指定",
   loaded: true,
   failed: false,
 };
@@ -39,7 +38,8 @@ const CATALOG = {
 /** 軸ごとの負担（秒）を持つ内訳。 */
 const penalty = (axisSeconds: Record<string, number>, totalSeconds: number): RouteCandidate["penalty"] => ({
   axis_seconds: axisSeconds,
-  avoidance_seconds: 0,
+  preferred_seconds: 0,
+  avoided_seconds: 0,
   total_seconds: totalSeconds,
 });
 

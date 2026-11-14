@@ -84,11 +84,6 @@ class CategoricalColumn:
         per_code = np.array([np.nan if value is None else table.get(value, np.nan) for value in self.vocab])
         return per_code[self.codes]
 
-    def equals(self, value: object) -> np.ndarray:
-        """区間ごとに、値が`value`と一致するか。値なしはどの`value`にも一致しない。"""
-        matching = [code for code, known in enumerate(self.vocab) if known is not None and known == value]
-        return np.isin(self.codes, matching)
-
 
 # 材料1列の配列の形。分類の材料は`CategoricalColumn`、それ以外は数値・真偽のnumpy配列。
 MaterialColumn = np.ndarray | CategoricalColumn

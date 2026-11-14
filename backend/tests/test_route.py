@@ -1,5 +1,5 @@
 """`domain/route.py`——区間（交差点の間）を`SEGMENT_BIN_DISTANCE_KM`ごとのビンへ束ねる`aggregate_segments_into_bins`と、
-区間の続く坂の斜度。
+区間の続く坂の斜度と平均勾配。
 
 入口は`aggregate_segments_into_bins`・`steepest_signed_percent`。
 応答の型（`RouteCandidate`等）の検証はPydanticが持つ。
@@ -28,7 +28,7 @@ def _segments(distances: list[float], **fields_per_segment) -> list[RouteSegment
             start_latitude=35.0, start_longitude=139.0 + i * 0.01,
             end_latitude=35.0, end_longitude=139.0 + (i + 1) * 0.01,
             cumulative_distance_km=cumulative, distance_km=distance, edge_start=i, edge_end=i + 1,
-            **({"elevations": [], "road_classes": {}, "penalty": PenaltyBreakdown(axis_seconds={}, avoidance_seconds=0.0)}
+            **({"elevations": [], "road_classes": {}, "penalty": PenaltyBreakdown(axis_seconds={}, preferred_seconds=0.0, avoided_seconds=0.0)}
                | {name: values[i] for name, values in fields_per_segment.items()}),
         ))
         cumulative += distance
@@ -100,6 +100,22 @@ def test_a_bin_shows_the_steepest_slope_of_its_roads(sustained, expected):
     [bin_] = _binned(_segments([0.1] * len(sustained), sustained_gradient_percent=sustained))
 
     assert bin_.sustained_gradient_percent == expected
+
+
+@pytest.mark.parametrize(
+    ("distances", "grades", "expected"),
+    [
+        pytest.param([0.1, 0.3], [4.0, -4.0], -2.0, id="道の距離で重みづける"),
+        pytest.param([0.1, 0.1], [None, 3.0], 3.0, id="値の無い道は距離にも数えない"),
+        pytest.param([0.1, 0.1], [-0.04, 0.0], 0.0, id="0へ丸まる下りは-0にしない"),
+        pytest.param([0.1], [None], None, id="値が無ければ値が無い"),
+    ],
+)
+def test_a_bin_shows_the_average_slope_of_its_roads_weighted_by_distance(distances, grades, expected):
+    """区間の小窓の「平均」はこの値を出す。"""
+    [bin_] = _binned(_segments(distances, average_gradient_percent=grades))
+
+    assert repr(bin_.average_gradient_percent) == repr(expected)
 
 
 def test_the_shape_of_a_bin_joins_the_segment_shapes_without_repeating_shared_points():

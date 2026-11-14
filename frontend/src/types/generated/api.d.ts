@@ -212,6 +212,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/place-link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["place_link_api_place_link_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/region/road-surface-tiles/{z}/{x}/{y}.pbf": {
         parameters: {
             query?: never;
@@ -268,22 +284,6 @@ export interface paths {
             cookie?: never;
         };
         get: operations["region_lens_api_region_lens__lens_id___z___x___y__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/region/road-classes/{z}/{x}/{y}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["region_road_classes_api_region_road_classes__z___x___y__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -680,9 +680,13 @@ export interface components {
              * Key
              * @enum {string}
              */
-            key: "pass" | "avoid" | "exclude";
+            key: "pass" | "slight_prefer" | "prefer" | "slight_avoid" | "avoid" | "exclude";
             /** Label */
             label: string;
+            /** Color */
+            color: string | null;
+            /** Color On Dark */
+            color_on_dark: string | null;
         };
         /** AvoidanceOverride */
         AvoidanceOverride: {
@@ -697,6 +701,8 @@ export interface components {
             key: string;
             /** Section */
             section: string;
+            /** Class Key */
+            class_key: string;
             /** Label */
             label: string;
             /** Description */
@@ -705,7 +711,9 @@ export interface components {
              * Default
              * @enum {string}
              */
-            default: "pass" | "avoid" | "exclude";
+            default: "pass" | "slight_prefer" | "prefer" | "slight_avoid" | "avoid" | "exclude";
+            /** Selectable */
+            selectable: boolean;
         };
         /** AvoidanceSectionView */
         AvoidanceSectionView: {
@@ -884,14 +892,14 @@ export interface components {
             description: string;
             /** Icon Id */
             icon_id: string;
+            /** Color */
+            color: string;
             lens: components["schemas"]["LensBands"];
         };
         /** CostAxisCatalogResponse */
         CostAxisCatalogResponse: {
             /** Axes */
             axes: components["schemas"]["CostAxisCatalogEntry"][];
-            /** Avoidance Label */
-            avoidance_label: string;
             total_lens: components["schemas"]["TotalLens"];
             map_lens: components["schemas"]["MapLens"];
         };
@@ -989,6 +997,8 @@ export interface components {
             sources: components["schemas"]["SourceEntry"][];
             /** Tables */
             tables: components["schemas"]["app__services__derived_data_freshness_service__TableEntry"][];
+            /** Tuning */
+            tuning: components["schemas"]["TuningEntry"][];
         };
         /** ElevationStretch */
         ElevationStretch: {
@@ -1210,8 +1220,8 @@ export interface components {
         LensAxisSeconds: {
             /** Axis Id */
             axis_id: string;
-            /** Seconds Per Km */
-            seconds_per_km: number;
+            /** Seconds */
+            seconds: number;
         };
         /** LensBands */
         LensBands: {
@@ -1222,12 +1232,14 @@ export interface components {
         };
         /** LensDirection */
         LensDirection: {
-            /** Total Seconds Per Km */
-            total_seconds_per_km: number;
+            /** Total Seconds */
+            total_seconds: number;
             /** Axes */
             axes: components["schemas"]["LensAxisSeconds"][];
             /** Facts */
-            facts: components["schemas"]["AxisFact"][];
+            facts: {
+                [key: string]: components["schemas"]["AxisFact"];
+            };
         };
         /** LensInspection */
         LensInspection: {
@@ -1235,8 +1247,6 @@ export interface components {
             painted: ("along" | "against") | null;
             along: components["schemas"]["LensDirection"] | null;
             against: components["schemas"]["LensDirection"] | null;
-            /** Surface */
-            surface: string | null;
         };
         /** LinearBurden */
         LinearBurden: {
@@ -1423,8 +1433,10 @@ export interface components {
             axis_seconds: {
                 [key: string]: number;
             };
-            /** Avoidance Seconds */
-            avoidance_seconds: number;
+            /** Preferred Seconds */
+            preferred_seconds: number;
+            /** Avoided Seconds */
+            avoided_seconds: number;
             /** Total Seconds */
             readonly total_seconds: number;
         };
@@ -1454,6 +1466,11 @@ export interface components {
             /** Longitude */
             longitude: number;
         };
+        /** PlaceLink */
+        PlaceLink: {
+            /** Url */
+            url: string | null;
+        };
         /** PlaceSearchResult */
         PlaceSearchResult: {
             /** Candidates */
@@ -1473,7 +1490,7 @@ export interface components {
         };
         /** RoadAvoidanceOverride */
         RoadAvoidanceOverride: {
-            [key: string]: "pass" | "avoid" | "exclude";
+            [key: string]: "pass" | "slight_prefer" | "prefer" | "slight_avoid" | "avoid" | "exclude";
         };
         /** RoadAvoidanceView */
         RoadAvoidanceView: {
@@ -1499,8 +1516,6 @@ export interface components {
         };
         /** RoadClassCatalog */
         RoadClassCatalog: {
-            /** Generation */
-            generation: string;
             /** Map Layers */
             map_layers: components["schemas"]["RoadMapLayerView"][];
             avoidance: components["schemas"]["RoadAvoidanceView"];
@@ -1698,8 +1713,6 @@ export interface components {
         };
         /** RouteFacts */
         RouteFacts: {
-            /** Elevation Unknown Km */
-            elevation_unknown_km: number;
             /** Axes */
             axes: {
                 [key: string]: components["schemas"]["AxisFact"];
@@ -1798,6 +1811,8 @@ export interface components {
             elevations: components["schemas"]["ElevationStretch"][];
             /** Sustained Gradient Percent */
             sustained_gradient_percent: number | null;
+            /** Average Gradient Percent */
+            average_gradient_percent: number | null;
             /** Estimated Arrival Time */
             estimated_arrival_time: string | null;
             penalty: components["schemas"]["PenaltyBreakdown"];
@@ -1919,6 +1934,21 @@ export interface components {
             /** Lens Id */
             lens_id: string;
         };
+        /** TuningEntry */
+        TuningEntry: {
+            /** Param Id */
+            param_id: string;
+            /** Label */
+            label: string;
+            /** Unit */
+            unit: string;
+            /** Derived Value */
+            derived_value: number | null;
+            /** Current Value */
+            current_value: number;
+            /** Needs Rebuild */
+            needs_rebuild: boolean;
+        };
         /** TuningParameterView */
         TuningParameterView: {
             /** Id */
@@ -1976,6 +2006,10 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+            /** Input */
+            input?: unknown;
+            /** Context */
+            ctx?: Record<string, never>;
         };
         /** WayValueFormula */
         WayValueFormula: {
@@ -2454,6 +2488,39 @@ export interface operations {
             };
         };
     };
+    place_link_api_place_link_get: {
+        parameters: {
+            query: {
+                name: string;
+                latitude: number;
+                longitude: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaceLink"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     region_road_surface_tile_api_region_road_surface_tiles__z___x___y__pbf_get: {
         parameters: {
             query?: never;
@@ -2583,43 +2650,6 @@ export interface operations {
                     "application/json": {
                         [key: string]: {
                             [key: string]: number;
-                        };
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    region_road_classes_api_region_road_classes__z___x___y__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                z: number;
-                x: number;
-                y: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: {
-                            [key: string]: string;
                         };
                     };
                 };

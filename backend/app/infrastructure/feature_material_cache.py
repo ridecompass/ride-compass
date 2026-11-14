@@ -24,5 +24,4 @@ async def get_tile_materials(
 async def set_tile_materials(
     z: int, x: int, y: int, materials: FeatureMaterials, *, surface_tile_version: str, value_shape: str
 ) -> None:
-    await set_tile_entry(
-        _key(z, x, y, surface_tile_version, value_shape), materials, surface_tile_version=surface_tile_version)
+    await set_tile_entry(_key(z, x, y, surface_tile_version, value_shape), materials)
