@@ -74,6 +74,7 @@ def _series(speeds_by_hour: list[float], from_deg: float = NORTH) -> WindForecas
         lattice=MsmBlock(
             grid=MsmGrid(lat_min=35.0, lon_min=139.0, d_lat=0.05, d_lon=0.0625, n_lat=1, n_lon=1), row0=0, col0=0, rows=1, cols=1,
         ),
+        latest_run_end=START + timedelta(hours=len(speeds_by_hour)),
     )
 
 

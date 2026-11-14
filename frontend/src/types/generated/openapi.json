@@ -1885,6 +1885,22 @@
         ]
       }
     },
+    "/api/derived-database": {
+      "get": {
+        "operationId": "get_derived_database_api_derived_database_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/zip": {}
+            }
+          },
+          "404": {
+            "description": "書き出しがまだ無い"
+          }
+        }
+      }
+    },
     "/api/admin/db-status": {
       "get": {
         "operationId": "get_db_status_api_admin_db_status_get",
@@ -5569,6 +5585,10 @@
             ],
             "title": "Estimated Duration Seconds"
           },
+          "wind_from_previous_run": {
+            "type": "boolean",
+            "title": "Wind From Previous Run"
+          },
           "cost_seconds": {
             "type": "number",
             "title": "Cost Seconds"
@@ -5664,6 +5684,7 @@
           "elevation_gain_m",
           "segments",
           "estimated_duration_seconds",
+          "wind_from_previous_run",
           "cost_seconds",
           "penalty",
           "facts",

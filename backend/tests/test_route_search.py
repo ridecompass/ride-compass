@@ -104,7 +104,8 @@ def draft(distance_km, duration_seconds, cost_seconds):
     """並びの鍵が読む距離・所要時間・費用だけを持つ候補。ほかの欄は空。"""
     return EvaluatedRoute(
         direction_label="", distance_km=distance_km, geometry={"type": "LineString", "coordinates": []},
-        elevation_gain_m=None, segments=[], estimated_duration_seconds=duration_seconds, cost_seconds=cost_seconds,
+        elevation_gain_m=None, segments=[], estimated_duration_seconds=duration_seconds, wind_from_previous_run=False,
+        cost_seconds=cost_seconds,
         penalty=PenaltyBreakdown(axis_seconds={}, preferred_seconds=0.0, avoided_seconds=0.0),
         facts=RouteFacts(axes={}),
         missing_travel_data_share=None,

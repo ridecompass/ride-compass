@@ -1,10 +1,9 @@
 import asyncio
 import gc
 import logging
-import os
-import sys
 from contextlib import asynccontextmanager
 from datetime import datetime
+from pathlib import Path
 
 from apscheduler.events import EVENT_JOB_ERROR, JobExecutionEvent
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -18,6 +17,7 @@ from app.api.dependencies import get_amedas_service, get_jma_tile_client, open_r
 from app.api.finite_json_body import reject_non_finite_json_body
 from app.api.routers import api_router
 from app.config import settings
+from app.domain.time_zone import JST
 from app.infrastructure.database import get_session_factory
 from app.infrastructure.debug_control import install_ring_buffer_handler
 from app.infrastructure.http_client import JMA_JSON_TIMEOUT, SLOW_JSON_TIMEOUT, TILE_PROXY_TIMEOUT, get_http_client
@@ -31,7 +31,6 @@ from app.infrastructure.request_log import (
     unhandled_exception_handler,
 )
 from app.infrastructure.response_compression import ContentTypeGZipMiddleware
-from app.infrastructure.single_process import require_single_worker
 from app.infrastructure.jma_amedas_client import AMEDAS_REFRESH_INTERVAL_MINUTES
 from app.services.definitions_loading import refresh_definitions
 from app.services.jma_tile_prewarm_service import prewarm_jma_tiles
@@ -118,10 +117,25 @@ async def _prune_stale_region_tiles_job() -> None:
         )
 
 
+#: 派生データベースの書き出しの入口（`scripts/export_derived_database.py`）。
+_EXPORT_DERIVED_DATABASE_SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "export_derived_database.py"
+#: 書き出しを打つ時刻（日本時間）。DBのバックアップ
+#: （`backend/ops/ridecompass-admin-data-backup.timer`）が鍵を外したあとの、利用の少ない時間に置く——バックアップが鍵を
+#: 持つ間は書かずに終わる。
+_EXPORT_DERIVED_DATABASE_AT = {"hour": 4, "minute": 40, "timezone": JST}
+
+
+async def _export_derived_database_job() -> None:
+    """派生データベースを書き出す。全件を読んでZIPに詰めるのに数分以上かかり、圧縮がCPUを使い切るので、配信の
+    イベントループで回さず、優先度を下げた別のプロセスで打つ。ログはそのプロセスが同じ出力へ書く。"""
+    process = await asyncio.create_subprocess_exec(
+        "nice", "-n", "10", sys.executable, str(_EXPORT_DERIVED_DATABASE_SCRIPT))
+    if await process.wait() != 0:
+        raise RuntimeError(f"派生データベースの書き出しが終了コード{process.returncode}で終わりました")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    require_single_worker(sys.argv, os.environ)
-
     # httpx.AsyncClientの生成はSSLコンテキスト構築を伴い、環境によっては数百ms〜1秒かかる。
     # 遅延生成のままだとデプロイ直後の最初のリクエストがこのコストを負い、接続タイムアウトが
     # タイトな外部呼び出しではConnectTimeoutを誘発する。実際に使うtimeout値を先に構築しておく。
@@ -178,6 +192,13 @@ async def lifespan(app: FastAPI):
         hours=PRUNE_INTERVAL_HOURS,
         next_run_time=datetime.now(),
         id="prune_stale_region_tiles",
+    )
+    # 置くのは派生を作り直した世代のときだけで、同じ世代なら書き出しのプロセスが何もせずに終える。
+    scheduler.add_job(
+        _export_derived_database_job,
+        trigger="cron",
+        **_EXPORT_DERIVED_DATABASE_AT,
+        id="export_derived_database",
     )
     scheduler.start()
     yield

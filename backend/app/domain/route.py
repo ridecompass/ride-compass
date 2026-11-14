@@ -204,6 +204,8 @@ class EvaluatedRoute(StrictModel):
     # 所要時間の見積もり（秒）。区間の走行時間（`domain/cycling_speed.py`の走行モデルが巡航速度と区間の条件から求めた
     # 速度）＋停止の待ち＋ターンの待ち。経路の選び方には使っておらず、表示のためだけに持つ。
     estimated_duration_seconds: float | None
+    # 出発から着くまでに、風の予報の最新のrunの終わりから先の（前に出たrunの）風を引いたか。
+    wind_from_previous_run: bool
     # 並べ方の値（秒）。探索が最小にした費用そのもの（区間の費用＋曲がる所の費用）。所要時間と内訳（`penalty`）の和に、
     # 丸めの差を除いて等しい。
     cost_seconds: float

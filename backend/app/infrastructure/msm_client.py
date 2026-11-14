@@ -52,6 +52,8 @@ class MsmGridPointSeries:
     points: MsmGridPoints
     wind_u_ms: np.ndarray
     wind_v_ms: np.ndarray
+    #: 最新のrunの予報の終わり（`times`と同じ形の時刻、この時刻を含まない）。この時刻から先の値は前に出たrunのもの。
+    latest_run_end: datetime
 
 
 @dataclass(frozen=True)
@@ -384,22 +386,21 @@ def _read_sync[S: _Selection](
     extract: Callable[[S, np.ndarray], np.ndarray],
     variables: tuple[str, ...],
     now: int,
-) -> tuple[S, list[datetime], dict[str, np.ndarray]]:
+) -> tuple[S, list[datetime], dict[str, np.ndarray], datetime]:
     """`now`の正時から`domain/weather_elements.py: MSM_FORECAST_HOURS`時間ぶんの`variables`を、格子から`select`で
     選んだ範囲について読む。`extract`は切り出した部分ブロック（形状[緯度, 経度, 時刻]）から[点の数, 時刻数]の値を
-    取り出す。戻り値の値は`FORECAST_VARIABLES`の項目ごと。"""
+    取り出す。戻り値の値は`FORECAST_VARIABLES`の項目ごとで、最後は最新のrunの予報の終わり（系列の時刻の形）。
+
+    読むのは最新のrunの終わり（メタ情報の`data_end_time`）までではなく、チャンクに値のある時刻まで。配信元のチャンクは
+    最新のrunの終わりより先にも、前に出た長いrunの値を持つ（新しいrunが出ない間も、それが尽きるまでは読める）。
+    値の無い時刻は、読んだ範囲の値が全部欠けている（NaN）ことで見分け、その時刻から先を捨てる。"""
     meta = _load_json(MSM_DIR / _META_FILE_NAME)
     if not meta:
         raise MsmUnavailableError("MSMのメタ情報が未同期です")
     chunk_hours = int(meta["chunk_time_length"])
-    # 値は正時ごとなので、予報の終端も正時へ切り下げる。正時でない終端のまま読むと、最後のチャンクで読む時刻の幅が0になり
-    # 読む位置が進まない。
-    data_end = (int(meta["data_end_time"]) // 3600) * 3600
 
     start = (now // 3600) * 3600
-    end = min(start + MSM_FORECAST_HOURS * 3600, data_end)
-    if end <= start:
-        raise MsmUnavailableError("MSMの予報データが現在時刻に追いついていません")
+    end = start + MSM_FORECAST_HOURS * 3600
 
     # 形状は実データから読む（緯度・経度方向の格子点数を定数として持たないため）。
     sample_path = _synced_chunk_path(variables[0], _chunk_number(start, chunk_hours))
@@ -422,19 +423,25 @@ def _read_sync[S: _Selection](
         )
         cursor = chunk_begin + t1 * 3600
 
-    return selection, times, {
-        FORECAST_VARIABLES[variable]: np.concatenate(parts, axis=1) for variable, parts in series.items()
-    }
+    values = {FORECAST_VARIABLES[variable]: np.concatenate(parts, axis=1) for variable, parts in series.items()}
+    missing = np.logical_or.reduce([np.isnan(value).all(axis=0) for value in values.values()])
+    available = int(np.argmax(missing)) if missing.any() else len(times)
+    if available == 0:
+        raise MsmUnavailableError("MSMの予報データに現在時刻の値がありません")
+    latest_run_end = as_series_time(datetime.fromtimestamp(int(meta["data_end_time"]), JST))
+    return (
+        selection, times[:available], {item: value[:, :available] for item, value in values.items()}, latest_run_end,
+    )
 
 
 async def _read[S: _Selection](
     select: Callable[[MsmGrid], S],
     extract: Callable[[S, np.ndarray], np.ndarray],
     variables: tuple[str, ...] = _WIND_VARIABLES,
-) -> tuple[S, list[datetime], dict[str, np.ndarray]]:
+) -> tuple[S, list[datetime], dict[str, np.ndarray], datetime]:
     """`_read_sync`を別スレッドで回す。
 
-    同期が済んでいない・予報が現在時刻へ追いついていない・置き場のファイルが読めない（壊れたメタ情報・チャンク）・
+    同期が済んでいない・現在時刻にどのrunの値も無い・置き場のファイルが読めない（壊れたメタ情報・チャンク）・
     地点が格子の外にある場合は`MsmUnavailableError`。
     """
     with log_external_call("msm:read", hours=MSM_FORECAST_HOURS) as fields:
@@ -443,7 +450,7 @@ async def _read[S: _Selection](
             result = await asyncio.to_thread(_read_sync, select, extract, variables, int(time.time()))
         except (OSError, ValueError, KeyError) as exc:
             raise MsmUnavailableError(f"MSMの置き場を読めません: {exc!r}") from exc
-        _, times, values = result
+        _, times, values, _ = result
         fields["result"] = "ok"
         fields["locations"] = len(next(iter(values.values())))
         fields["times"] = len(times)
@@ -453,7 +460,7 @@ async def _read[S: _Selection](
 async def read_grid_points(latitudes: np.ndarray, longitudes: np.ndarray) -> MsmGridPointWeatherSeries:
     """地点ごとの最寄りの格子点の風・降水・気温の時系列（格子点の値のまま、現在時刻の正時から`domain/weather_elements.py: MSM_FORECAST_HOURS`時間ぶん）。読めなければ
     `MsmUnavailableError`。"""
-    points, times, values = await _read(
+    points, times, values, _ = await _read(
         lambda grid: grid.nearest_points(latitudes, longitudes), MsmGridPoints.values, tuple(FORECAST_VARIABLES),
     )
     return MsmGridPointWeatherSeries(times=times, points=points, **values)
@@ -462,10 +469,10 @@ async def read_grid_points(latitudes: np.ndarray, longitudes: np.ndarray) -> Msm
 async def read_grid_block(south: float, west: float, north: float, east: float) -> MsmGridPointSeries:
     """矩形を覆う格子点（`domain/msm.py: MsmGrid.block_covering`）の全部の時系列（格子点の値のまま、点の番号の順）。
     読めなければ`MsmUnavailableError`。"""
-    points, times, values = await _read(
+    points, times, values, latest_run_end = await _read(
         lambda grid: grid.block_covering(south, west, north, east).all_points(), MsmGridPoints.values,
     )
-    return MsmGridPointSeries(times=times, points=points, **values)
+    return MsmGridPointSeries(times=times, points=points, latest_run_end=latest_run_end, **values)
 
 
 async def read_weather_grid(
@@ -474,7 +481,7 @@ async def read_weather_grid(
     """矩形のうち格子の範囲に入る部分の格子点を、点の数が`max_points`以下になるよう間引いた
     （`domain/msm.py: MsmBlock.thinned_points`）格子点ごとの風と降水の時系列（格子点の値のまま、点の番号の順）。
     読めなければ`MsmUnavailableError`。"""
-    points, times, values = await _read(
+    points, times, values, _ = await _read(
         lambda grid: grid.block_overlapping(south, west, north, east).thinned_points(max_points),
         MsmGridPoints.values,
         _WIND_AND_PRECIPITATION_VARIABLES,

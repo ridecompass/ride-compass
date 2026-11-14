@@ -40,7 +40,6 @@ DB接続・Redis・HTTPクライアント・レート制限・ログ・デバッ
 | infrastructure | `debug_control.py` | `debug_control.py: debug_mode`のランタイム切替・直近ログの保持 |
 | infrastructure | `admin_data_backup.py` | DBのバックアップが最後に置けてからの時間（`/health`が返す）。下の「本番DBのバックアップ」 |
 | infrastructure | `job_registry.py` | 汎用の非同期ジョブレジストリ（プロセス内メモリのみ） |
-| infrastructure | `single_process.py` | 起動時にワーカー数を読み、複数なら起動を止める（プロセス内に持つ状態の前提を落ちる形にする） |
 | infrastructure | `tuning_overrides.py` | 較正値の値（宣言の全idの行をDBへ持つ。値の正本）の読み書き。プロセス内の値へは書かない |
 | services | `definitions_loading.py` | DBの定義（道の区分・軸定義・較正値）をプロセスへ読み込む1つの入口と、その順。起動時と、起動を通らない道具が呼ぶ |
 | services | `tuning_service.py` | 較正値の書き込みの取引境界（構造仕様7）と、プロセス内の値への反映（起動時の読み込みと、書いた直後） |
@@ -98,7 +97,6 @@ DB接続・Redis・HTTPクライアント・レート制限・ログ・デバッ
 ```
 FastAPI(lifespan=lifespan)
         │
-        ├─ (0) require_single_worker()。ワーカーが複数なら起動を止める（下記「1プロセスの境界」）
         ├─ (1) httpx.AsyncClientのウォームアップ（10.0秒/15.0秒タイムアウト分を事前構築。
         │       SSLコンテキスト構築が数百ms〜1秒かかるため、デプロイ直後の最初のリクエストが
         │       このコストを負わないようにする）
@@ -162,19 +160,16 @@ FastAPI(lifespan=lifespan)
 レベルを絞ると漏れるため（[logging.md](../../../.claude/rules/logging.md)「その他の運用上の注意」）。
 スケジューラも受け口もlifespanの中で作って付けるので、lifespanを通るたびに同じ受け口の付いた新しいスケジューラになる。
 
-## 1プロセスの境界（`single_process.py`）
+## 1プロセスの境界
 
 backendは**1プロセスでしか正しく動かない**。プロセス内に持つ状態が多数あり（ジョブ台帳・
 JMAへの実フェッチの秒間上限・軸定義と較正値の反映・レート制限・APSchedulerの定期ジョブ等）、
 ワーカーを増やしても何も落ちずに意味だけが変わる——上限はワーカー数倍になり、ジョブは
 別ワーカーへ届いたポーリングから見つからず、定期ジョブはワーカー数だけ重なって走る。
 
-そこでlifespanの最初に`require_single_worker(sys.argv, os.environ)`を呼び、複数なら
-`RuntimeError`で起動を止める。ワーカーは`multiprocessing`のspawnで起動され親の`sys.argv`を
-受け継ぐため、ワーカーの中からuvicornに渡された引数が読める。引数の解釈はuvicorn自身の
-CLI定義（`uvicorn.main.main.make_context`）に任せ、`--reload`ではワーカー指定を無視する・
-未指定なら`WEB_CONCURRENCY`を読む、という既定の決め方だけをuvicornの`Config`に合わせる。
-uvicorn以外からの起動（テスト・スクリプト）は1とみなす。
+ワーカーの数は`backend/Dockerfile`の`CMD`（uvicornの起動の引数）で決まり、`--workers`も`WEB_CONCURRENCY`も
+渡さないので1つで動く。複数にした起動を止める仕組みは持たないので、ワーカーを増やすなら
+先にプロセス内の状態を移す。
 
 プロセスをまたいで状態を持つ（Redisへ置く）形にしないのは、状態が1つではないため——
 秒間上限だけをRedisへ移しても、他の状態がワーカーごとに分かれたまま残る。
