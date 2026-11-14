@@ -1,4 +1,4 @@
-// 地図の点（施設・事故）を1つ1行で見せるための、行の中身。地図の点の層・区間の近くの施設の印・区間の小窓の区分の一覧が
+// 地図の点（施設・事故）を1つ1行で見せるための、行の中身。地図の点の層・区間の小窓の区分の一覧が
 // 同じ行を読む。区分の名前・色・絵記号は地図の点と同じ宣言から引く。
 import type { PointGlyph } from "@/lib/mapDisplay/legendFilter";
 import { pointCategoryOf, pointPlaceName, type PointAxis } from "@/lib/mapDisplay/pointLayers";
@@ -21,24 +21,17 @@ export type Facility = {
   readonly glyph: PointGlyph;
   /** 区分の名前（軸の並びで「・」でつなぐ。引けない値は「不明」）。名前の無い施設は、これを名前の代わりに出す。 */
   readonly kindLabel: string;
-  /** 施設の名前。名前のある施設は、名前を外の地図で探すリンクにする。 */
+  /** 施設の名前。名前のある施設は、名前を外の地図の店のページを開くリンクにする（リンクは`placeLinkQuery`が引く）。 */
   readonly name: string | null;
-  readonly mapUrl: string | null;
+  /** 点の位置（経度・緯度）。外の地図のリンクを引くときに名前と一緒に渡す。 */
+  readonly lngLat: readonly [number, number];
   /** 宣言が点に添える事実（「<名前> <値>」）。値の無い事実は持たない。 */
   readonly facts: readonly string[];
   /** ルートの上の位置（候補の始点からの道のりkm。画面には走行中の現在地から見た前後で出す）と、道からの距離（m）。
-   * 区間の近くの点だけが持つ。 */
+   * ルートを選んでいる間だけ持つ。 */
   readonly km: number | null;
   readonly offsetM: number | null;
 };
-
-/** 施設の点を開く外の地図（Google マップの検索。公式の文書「Maps URLs」の`search`）。閉店にデータが追いついていないことが
- * あるので、営業を外で確かめられるようにする。施設は住所も店の ID も持たないので、公式の文書が店を開く形「名前,住所」は組めない。
- * 座標だけではピンしか出ず、名前だけでは同じ名前の別の店舗へ落ちるので、名前と座標を1つの検索語にする。 */
-function externalMapSearchUrl(name: string, lngLat: readonly [number, number]): string {
-  const query = `${name} ${lngLat[1].toFixed(6)},${lngLat[0].toFixed(6)}`;
-  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
-}
 
 /** 1つの点の行。区分の名前は凡例と同じ宣言から引く（値は分類器が付ける内部名で、そのまま画面へ出さない）。 */
 export function facilityOf(
@@ -60,7 +53,7 @@ export function facilityOf(
     glyph: first !== undefined && "glyph" in first ? first.glyph : "question",
     kindLabel,
     name,
-    mapUrl: name === null ? null : externalMapSearchUrl(name, lngLat),
+    lngLat,
     facts,
     km: along?.km ?? null,
     offsetM: along?.offsetM ?? null,

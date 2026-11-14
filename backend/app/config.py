@@ -50,15 +50,21 @@ class Settings(BaseSettings):
     # 今日の最寄りの格子点の値も同じ地点の変化を起点に呼ばれ、ローカルのMSMファイルから読む。
     weather_rate_limit_per_minute: int = 30
     # 地点の検索は打つのが止まるたびに呼ばれる。止まってから引くまでの間で決まる1分あたりの最大に当たらない値。
-    # 1件はDBの住所の区画の表と立ち寄り先の表を索引で引くだけ（時間は docs/modules/backend/place-search.md「引き方」）。
+    # 1件はDBの住所の区画の表と地点の表を引くだけ（時間は docs/modules/backend/place-search.md「引き方」）。
     place_search_rate_limit_per_minute: int = math.ceil(60 / PLACE_PREDICTION_DELAY_SECONDS)
     # 置いた位置の辺りは、地点を置く（地図をタップする・現在地を取る）たびに1回呼ばれる。1件は境界を索引で1つ引くだけ。
     place_area_rate_limit_per_minute: int = 60
+    # 地図の点の名前から開くリンクは、点の小窓を開くたびに、小窓に並ぶ名前のある点（束ねた点はその中の店の全部）の数だけ
+    # 呼ばれる。1件は地点を索引で1つ引くだけ。
+    place_link_rate_limit_per_minute: int = 600
     # ルート生成は最も高コストなエンドポイント（1件で数秒〜数十秒CPUを使い、探索範囲に比例して
     # メモリを使う）のため、per-IPレート制限に加えプロセス全体の同時実行数も絞る。
     # 同時に動く生成は、この件数の枠とは別に、探索範囲の大きさに比例するメモリを分け合う（`services/graph_service.py: SearchMemory`）。
     generate_rate_limit_per_minute: int = 10
     generate_max_concurrent: int = 2
+    # 同時実行の枠を待てる生成の数と、待てる時間（秒）。根拠は docs/modules/backend/routing-engine.md「同時実行の枠と待ち行列」。
+    generate_max_queued: int = 8
+    generate_queue_wait_seconds: float = 50.0
     # タイル処理の律速はDB側の同時クエリ負荷とSQLAlchemyの接続プール
     # （既定pool_size=5+max_overflow=10=最大15接続）。地域タイル（路面・点）は1つの同時実行上限を
     # 共有し、それがこのプール上限に収まるようにする（ルート生成は別エンジン・別プールで取り合わない）。

@@ -14,7 +14,7 @@ from app.domain.msm_grid import MSM_GRID_MIN_ZOOM
 from app.domain.place_search import ADDRESS_AREA_ATTRIBUTIONS
 from app.domain.primary_attributes import PRIMARY_ATTRIBUTES, PRIMARY_ATTRIBUTES_BY_ID
 from app.domain.registry import DisplayAxisSpec
-from app.domain.region import ROAD_TILE_MIN_ZOOM
+from app.domain.region import ROAD_SURFACE_TILE_MIN_ZOOM, ROAD_TILE_MIN_ZOOM
 from app.domain.weather_elements import (
     MSM_FORECAST_HOURS,
     WEATHER_ELEMENTS,
@@ -55,11 +55,11 @@ class _LegendSharedRow(NamedTuple):
 LEGEND_SHARED_ROWS: dict[str, _LegendSharedRow] = {
     "other": _LegendSharedRow(
         "その他",
-        "値は書かれているが、上のどの行にも当てはまらない道（まれな種類など）。",
+        "値は書かれているが、上のどの行にも当てはまらない道[まれな種類など]。",
     ),
     "notApplicable": _LegendSharedRow(
         "該当なし",
-        "この種類に当たらない道（例: トンネルの凡例では、トンネルでない道）。",
+        "この種類に当たらない道[例: トンネルの凡例では、トンネルでない道]。",
     ),
     "noData": _LegendSharedRow(
         "データなし",
@@ -67,7 +67,7 @@ LEGEND_SHARED_ROWS: dict[str, _LegendSharedRow] = {
     ),
     "undetermined": _LegendSharedRow(
         "向きで決まらない",
-        "地図の上の向き（走行中は進む向き）とほぼ直角に交わるため、値を決められない道（勾配なら登りか下りか）。"
+        "地図の上の向き[走行中は進む向き]とほぼ直角に交わるため、値を決められない道[勾配なら登りか下りか]。"
         "地図を回して向きが変わると色が付く。",
     ),
 }
@@ -78,7 +78,7 @@ class MapLayerDataSource(NamedTuple):
     min_zoom: int | None = None
 
 
-#: タイルで配る一次属性の系統（`tile_version_service.py: TILE_SHAPES`の名前）。道の線の層の系統は区分の配りが持つ。
+#: タイルで配る一次属性の系統（`tile_version_service.py: tile_shapes`の名前）。道の線の層の情報源は`_ROAD_LAYER_DATA_SOURCE`。
 #: 情報源の名前にそのまま使う——世代が届くまで要求できないのは、この名前の情報源だけ。
 _TILE_KINDS: tuple[str, ...] = tuple(
     dict.fromkeys(attr.tile_kind for attr in PRIMARY_ATTRIBUTES if attr.tile_kind is not None)
@@ -91,7 +91,8 @@ _ROAD_LAYER_DATA_SOURCE = "road_surface"
 #: 最小ズームは配信の性質なので情報源の側で持つ——レイヤーごとに書くと、同じタイルを
 #: 読むレイヤーの1つだけ書き忘れても型が通り、その行だけ案内が出ない。
 MAP_LAYER_DATA_SOURCES: tuple[MapLayerDataSource, ...] = (
-    *(MapLayerDataSource(kind, ROAD_TILE_MIN_ZOOM) for kind in (_ROAD_LAYER_DATA_SOURCE, *_TILE_KINDS)),
+    MapLayerDataSource(_ROAD_LAYER_DATA_SOURCE, ROAD_SURFACE_TILE_MIN_ZOOM),
+    *(MapLayerDataSource(kind, ROAD_TILE_MIN_ZOOM) for kind in _TILE_KINDS),
     MapLayerDataSource("gsiRelief"),
     MapLayerDataSource("gsiTerrain", TERRAIN_MIN_ZOOM),
     MapLayerDataSource("landcoverRaster", LANDCOVER_TILE_MIN_ZOOM),
@@ -119,14 +120,6 @@ MAP_LAYER_CATEGORIES: tuple[LayerCategory, ...] = (
 )
 
 
-#: 描き直しの種類。`dynamic`は選択中ルートにひもづくもの、`static`はそれ以外。
-#: **値が時間で変わるかとは別軸**——降水は中身が変わるがルートとは無関係なので`static`。
-MapLayerKind = Literal["static", "dynamic"]
-MAP_LAYER_KINDS: tuple[str, ...] = get_args(MapLayerKind)
-
-#: 利用者が作った線。属性でも配信でもないので、ここだけが名前を持つ。
-_ROUTE_LAYER_ID = "route"
-
 #: 陰影は属性ではなく標高の別の描き方。源泉に属性として現れないのが正しい。
 _HILLSHADE_LAYER_ID = "hillshade"
 
@@ -135,7 +128,7 @@ _HILLSHADE_LAYER_ID = "hillshade"
 #: 出典も消える）。公共データ利用規約（PDL1.0）とCC BY 4.0は出典とは別に加工した旨を求め、標高からは勾配を、事故の点から
 #: は区間ごとの件数を、アメダスと推計気象分布からは天気を、区域の境界は簡略化して、配信タイルは欠けたズームを隣の
 #: ズームから補い降水の色を塗り替えて、MSMの格子は地点・時刻へ補間して使っている。気象レイヤーの出典もここが持つ（気象庁のデータは常設の表示
-#: で常に使うため）。住所の区画は地点の検索で常に使う。立ち寄り先は出典を1か所にまとめるためここに置く。基礎地図は配信元のTileJSONが出典を持つので
+#: で常に使うため）。住所の区画は地点の検索で常に使う。地点（立ち寄り先と地点の検索の施設）は出典を1か所にまとめるためここに置く。基礎地図は配信元のTileJSONが出典を持つので
 #: 入れない（入れると2回並ぶ）。データ源を足したら、利用条件（docs/architecture/data-sources.md）と合わせてここも見る。
 ALWAYS_SHOWN_ATTRIBUTIONS: tuple[str, ...] = (
     '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">'
@@ -160,8 +153,8 @@ ALWAYS_SHOWN_ATTRIBUTIONS: tuple[str, ...] = (
     *ADDRESS_AREA_ATTRIBUTIONS,
     # Overture の地点は出どころごとに表示が要る（公式の文書 https://docs.overturemaps.org/attribution/ ）。
     # Foursquare の行は Apache 2.0 で、ライセンスの写し・変えた旨・NOTICE の全文を渡す（frontend/public/licenses/）。
-    '立ち寄り先: <a href="https://overturemaps.org/" target="_blank" rel="noreferrer">Overture Maps Foundation</a>'
-    "の地点を、種類を選び近くの同じ店をまとめて加工。"
+    '地点: <a href="https://overturemaps.org/" target="_blank" rel="noreferrer">Overture Maps Foundation</a>'
+    "の名前のある地点を、種類で分け近くの同じ店をまとめて加工。"
     "Data from Meta, Microsoft, PinMeTo, DAC, Uberall, OpenTravel "
     '(<a href="https://cdla.dev/permissive-2-0/" target="_blank" rel="noreferrer">CDLA Permissive 2.0</a>), '
     "AllThePlaces "
@@ -172,7 +165,10 @@ ALWAYS_SHOWN_ATTRIBUTIONS: tuple[str, ...] = (
     '<a href="/licenses/foursquare-places-NOTICE.txt" target="_blank" rel="noreferrer">NOTICE</a>)',
     # ジャパンサーチのサイトポリシーの出典の記載例（編集・加工して使う場合）の形。
     '寺社: ジャパンサーチ「<a href="https://jpsearch.go.jp/database/bunka" target="_blank" rel="noreferrer">'
-    "文化遺産オンライン（文化庁・国立情報学研究所）</a>」のメタデータを改変して利用（所有者で寺社ごとにまとめた）",
+    "文化遺産オンライン[文化庁・国立情報学研究所]</a>」のメタデータを改変して利用[所有者で寺社ごとにまとめた]",
+    # JARTIC のオープンデータの利用規約の、加工した旨の記載例の形。
+    '交通規制: 公益財団法人日本道路交通情報センター「<a href="https://www.jartic.or.jp/service/opendata/" '
+    'target="_blank" rel="noreferrer">交通規制情報</a>」を加工して作成',
 )
 
 
@@ -183,13 +179,12 @@ def _static_layer_ids() -> tuple[str, ...]:
 
 
 #: 地図に載るものの名前。費用の軸のレンズは実行時に決まるためここには現れない。
-_MAP_LAYER_IDS: tuple[str, ...] = (*_static_layer_ids(), *WEATHER_LAYER_GROUPS, _ROUTE_LAYER_ID)
+_MAP_LAYER_IDS: tuple[str, ...] = (*_static_layer_ids(), *WEATHER_LAYER_GROUPS)
 
 
 #: 説明の文の差し込み口の名前。どれも実行時の応答（画面の設定・費用の軸の一覧）から来る値で、画面が埋める。
-#: `accidentYears`は事故の収録年、`routeLenses`はルートの線を塗れるもの（総合と費用の軸のレンズ）、`landcoverRingOuterM`は
-#: 土地被覆の割合を数えた帯の外の幅（m。作り直しに使った値）。
-LayerTextSlotName = Literal["accidentYears", "routeLenses", "landcoverRingOuterM"]
+#: `accidentYears`は事故の収録年、`landcoverRingOuterM`は土地被覆の割合を数えた帯の外の幅（m。作り直しに使った値）。
+LayerTextSlotName = Literal["accidentYears", "landcoverRingOuterM"]
 
 
 class LayerTextSlot(NamedTuple):
@@ -205,15 +200,19 @@ class LayerTextSlot(NamedTuple):
 LayerText = tuple[str | LayerTextSlot, ...]
 
 
+#: ルートの区間が層のidを鍵に持つ区分の並び（応答の`road_classes`）の、値の語彙。`landcoverClass`は土地被覆のクラスの割合の
+#: 材料のid（`domain/landcover.py: LandcoverClass.percent_field`）。
+SegmentSeries = Literal["landcoverClass"]
+
+
 class MapLayerSpec(NamedTuple):
     #: 絵の出所（`MAP_LAYER_DATA_SOURCES`の`key`）。
     data_source: str
-    #: 種別（`MAP_LAYER_CATEGORIES`の`key`）。どのグループにも属さないもの（ルート）はNone。
+    #: 種別（`MAP_LAYER_CATEGORIES`の`key`）。どのグループにも属さないものはNone。
     category: str | None
-    kind: MapLayerKind = "static"
     data_nature: MapLayerDataNature = "raw"
     #: 利用者の操作を待たずに表示するか。**性質で決める**——明示的にONにして初めて出るのが
-    #: 地図レイヤーの原則で、既定ONの根拠になるのは防災級の情報と、探索の結果そのものだけ。
+    #: 地図レイヤーの原則で、既定ONの根拠になるのは防災級の情報だけ。
     default_on: bool = False
     #: 名前。一次属性を描くレイヤーは書かない——属性の名前をそのまま使う（`map_layer_label`）。
     label: str | None = None
@@ -227,6 +226,8 @@ class MapLayerSpec(NamedTuple):
     hide_missing_rows: bool = False
     #: 描き始める縮尺。情報源がタイルを配る縮尺より寄ってから描く層だけが持つ。
     draw_min_zoom: int | None = None
+    #: ルートの区間がこの層のidを鍵に区分の並びを持つなら、その値の語彙。道の線の層の並びは区分の配りが持つので、ここには書かない。
+    segment_series: SegmentSeries | None = None
 
 
 def _tile_layer(
@@ -371,6 +372,7 @@ _LAYER_SPECS: dict[str, MapLayerSpec] = {
     "landcover": MapLayerSpec(
         "landcoverRaster",
         "terrain",
+        segment_series="landcoverClass",
         description=(f"周囲の緑・水辺・農地を面で重ねる{f'[{_UNPAINTED_LANDCOVER}は塗らない]' if _UNPAINTED_LANDCOVER else ''}",),
         panel_hint=(
             "衛星画像から分類した10m四方ごとの土地の使われ方です。1区画に1種類だけが入るため、"
@@ -501,15 +503,6 @@ _LAYER_SPECS: dict[str, MapLayerSpec] = {
             "変わりません。非公式の内部APIを利用しているため、取得に失敗することがあります。",
         ),
     ),
-    # 候補を出したら見えている必要がある（探索の結果そのもの）。
-    _ROUTE_LAYER_ID: MapLayerSpec(
-        "ownFetch",
-        None,
-        kind="dynamic",
-        default_on=True,
-        label="ルート",
-        description=("選択中ルート沿いの情報", LayerTextSlot("routeLenses", "[", "]"), "で塗って表示"),
-    ),
 }
 
 
@@ -537,10 +530,20 @@ def _map_layers() -> tuple[tuple[str, MapLayerSpec], ...]:
 #: 地図に載るものの宣言（`_LAYER_SPECS`の順）。
 MAP_LAYERS: tuple[tuple[str, MapLayerSpec], ...] = _map_layers()
 
+
+def segment_series_layer(series: SegmentSeries) -> str:
+    """区間に`series`の並びを載せる層のid。ちょうど1つの層が宣言していなければ`ValueError`。"""
+    layer_ids = [layer_id for layer_id, spec in MAP_LAYERS if spec.segment_series == series]
+    if len(layer_ids) != 1:
+        raise ValueError(f"区間の区分の並び'{series}'を載せる層が1つに決まらない: {layer_ids}")
+    return layer_ids[0]
+
+
 #: 実行時に決まるレイヤーに共通の宣言。`dedicated`は費用の軸のレンズのレイヤーで、路面タイルの道へ道ごとに配る
 #: 1kmあたりの代償の秒の色を塗る（値は時刻の風で変わりうる）。`road`は道の線の層で、種別は層ごとに画面の設定の`road_classes`が配る。
 AXIS_LAYER_SPECS: dict[str, MapLayerSpec] = {
-    "dedicated": MapLayerSpec(_ROAD_LAYER_DATA_SOURCE, None, data_nature="dynamic"),
+    # レンズは道ごとの値を路面タイルの道ごとの鍵で置くので、鍵を持つ縮尺から描く。
+    "dedicated": MapLayerSpec(_ROAD_LAYER_DATA_SOURCE, None, data_nature="dynamic", draw_min_zoom=ROAD_TILE_MIN_ZOOM),
     "road": MapLayerSpec(_ROAD_LAYER_DATA_SOURCE, None),
 }
 
@@ -677,6 +680,16 @@ ROAD_KNOWN_OPACITY = 0.8
 ROAD_UNKNOWN_OPACITY = 0.6
 #: 詳細を見ている1本の強調。元の線が上に乗ったままになる太さにする。
 ROAD_INSPECTED_WIDTH_PX = 8
+
+#: 道路タブで好む・避けるにした道を通ったルートの区間の強調。ルートの線の両脇に細い線を添え、ルートの線の後ろに太く敷く
+#: 選んだ区間の帯（`ROUTE_LINE_WIDTHS_PX["selectedSection"]`）と形で見分ける。好むは実線、避けるは破線で、破線の刻みは値の無い線
+#: （`NO_DATA_DASH`）・乗り換え帯（`ROUTE_SPLICE_DASH`）と別にする。添える線の中心は、ルートの線の縁取りから間隔だけ外に置く。
+AVOIDANCE_RAIL_WIDTH_PX = 2
+AVOIDANCE_RAIL_GAP_PX = 2
+AVOIDANCE_AVOIDED_DASH: tuple[float, ...] = (3, 2)
+#: 道路タブを地図で見ている間に、好む・避ける・通らないの道を塗る線の太さ（縮尺→px）。横に分けて並べた道の線の層を覆い、
+#: 寄るほど基礎地図の道そのものの太さに近づける。
+ROAD_AVOIDANCE_WIDTH_BY_ZOOM = zoom_curve((12, 3), (14, 5), (16, 9), (18, 18))
 
 #: 値が無い（不明・データなし）線の破線の刻み（線の太さを1とする長さ）。道の線・レンズの線・ルートの線で共有する。
 #: 乗り換え帯の破線（`ROUTE_SPLICE_DASH`）より細かく刻み、操作の状態と見分けられるようにする。

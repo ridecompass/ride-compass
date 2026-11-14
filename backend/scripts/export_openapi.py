@@ -38,7 +38,6 @@ from app.infrastructure.source_models import SOURCE_RUN_STATUS_LABELS
 from app.infrastructure.point_tile_layers import POINT_TILE_LAYERS
 from app.infrastructure.vector_tile import ROAD_FEATURE_PROPERTIES, ROAD_SURFACE_LAYER_NAME
 from app.main import app
-from app.domain.hard_filters import HARD_FILTERS
 from app.domain.address_area import ADDRESS_AREA_LEVELS
 from app.domain.geo import COMPASS_LABELS, EARTH_RADIUS_KM
 from app.domain.place_search import (
@@ -69,7 +68,6 @@ from app.domain.map_display import (
     MAP_LAYER_CATEGORIES,
     MAP_LAYERS,
     map_layer_label,
-    MAP_LAYER_KINDS,
     MapLayerSpec,
     ROUTE_ARROW_HALO_SCALE,
     ROUTE_ARROW_SIZE_BY_ZOOM,
@@ -101,6 +99,10 @@ from app.domain.map_display import (
     POINT_STROKE_WIDTH_PX,
     SEGMENT_NEARBY_POINT_MAX_DISTANCE_M,
     ROAD_INSPECTED_WIDTH_PX,
+    AVOIDANCE_RAIL_WIDTH_PX,
+    AVOIDANCE_RAIL_GAP_PX,
+    AVOIDANCE_AVOIDED_DASH,
+    ROAD_AVOIDANCE_WIDTH_BY_ZOOM,
     ROAD_KNOWN_OPACITY,
     ROAD_LINE_WIDTH_PX,
     ROAD_TRACK_OFFSET_STEP_PX,
@@ -113,7 +115,6 @@ from app.domain.map_display import (
 from app.domain.warning_display import WARNING_BADGE_DISPLAY
 from app.domain.weather_display import (
     WEATHER_CATEGORIES,
-    LINEAR_RAINBAND_COLOR,
     LINEAR_RAINBAND_OUTLINE_CASING_COLOR,
     LINEAR_RAINBAND_OUTLINE_COLOR,
     PRECIPITATION_COLOR_STOPS,
@@ -127,7 +128,9 @@ from app.domain.display_palette import (
     BASEMAP_DARK_ICON_OPACITY_SCALE,
     BASEMAP_DARK_LIGHTNESS_RANGE,
     BASEMAP_DARK_SATURATION_SCALE,
-    COST_SERIES_COLORS,
+    BASEMAP_MUTED_GROUND_PULL,
+    BASEMAP_MUTED_ICON_OPACITY_SCALE,
+    BASEMAP_MUTED_SATURATION_SCALE,
     SEMANTIC_COLORS,
     SEMANTIC_COLORS_ON_DARK,
     resolved_display_axes,
@@ -146,16 +149,23 @@ from app.domain.jma_tile_specs import JMA_ELEMENTS, JMA_TILE_MIN_ZOOM, effective
 from app.domain.material_catalog import MATERIAL_CATALOG, display_axis_missing_semantics
 from app.domain.material_coverage_spec import MISSING_SEMANTICS_DISPLAY, POPULATION_LABELS
 from app.domain.primary_attributes import PRIMARY_ATTRIBUTES
-from app.domain.region import MAX_MERCATOR_LATITUDE, ROAD_TILE_MAX_ZOOM, ROAD_TILE_MIN_ZOOM
+from app.domain.region import (
+    MAX_MERCATOR_LATITUDE,
+    ROAD_SURFACE_TILE_MIN_ZOOM,
+    ROAD_TILE_MAX_ZOOM,
+    ROAD_TILE_MIN_ZOOM,
+)
 from app.domain.leg_costs import MISSING_TRAVEL_DATA_WORDING
+from app.domain.cost_axes import LENS_QUANTITY_LABEL, LENS_UNIT
+from app.domain.lens_equivalents import LENS_EQUIVALENTS_CONDITION_WORDING
 from app.config import Settings
-from app.domain.cost_preference import COST_MULTIPLIER_LEVELS, COST_STRENGTH_LEVELS, STANDARD_COST_FACTOR
+from app.domain.cost_preference import COST_MULTIPLIER_LEVELS, COST_STRENGTH_LEVELS, DISABLED_LABEL, STANDARD_COST_FACTOR
 from app.domain.tuning import client_tuning_ids
 from app.domain.weather import PRECIPITATION_MIN_MM
 from app.infrastructure.msm_client import DEFAULT_UPDATE_INTERVAL_SECONDS as MSM_UPDATE_INTERVAL_SECONDS
 from app.infrastructure.jma_amedas_client import AMEDAS_REFRESH_INTERVAL_MINUTES
 from app.infrastructure.job_registry import JOB_TTL_SECONDS, JOB_WAIT_MAX_SECONDS
-from app.services.tile_version_service import TILE_SHAPES
+from app.services.tile_version_service import tile_shapes
 
 GENERATED_DIR = Path(__file__).resolve().parents[2] / "frontend" / "src" / "types" / "generated"
 OUTPUT_PATH = GENERATED_DIR / "openapi.json"
@@ -224,7 +234,6 @@ def _map_layer_entry(spec: MapLayerSpec) -> dict:
     return {
         "dataSource": spec.data_source,
         "category": spec.category,
-        "kind": spec.kind,
         "dataNature": spec.data_nature,
         "defaultOn": spec.default_on,
         "drawMinZoom": spec.draw_min_zoom,
@@ -247,6 +256,7 @@ def _weather_element_entry(element: WeatherElement) -> dict:
         "gridValue": element.grid_value,
         "levelScale": element.level_scale,
         "description": element.description,
+        "legendColor": element.legend_color,
         # 時刻の段の順（近い時刻から）。画面のデータ層は、時刻一覧をそのパスから取り、行を読み方に従って
         # コマにし、コマの時刻と系列でパスのテンプレートを埋めて取りに行く。
         "jmaElements": [
@@ -293,13 +303,17 @@ def main() -> None:
             # 実行時に世代が配られる系統の名前。**frontendはこの一覧を手で持たず、
             # ここから照合する**——片側だけ系統を足すと、足りない側は「世代が揃った」と
             # 判定したまま配られない世代を待ち続ける。
-            "tile_version_kinds": sorted(TILE_SHAPES),
+            "tile_version_kinds": sorted(tile_shapes()),
+            # 路面タイルのレイヤー名と、道のフィーチャーの列の名前（路面タイルは`feature_key`だけを持ち、ほかの列は押した所に
+            # 近い道の口が返す）。
             "road_surface": {"layer_name": ROAD_SURFACE_LAYER_NAME, "properties": ROAD_FEATURE_PROPERTIES},
             # 点のレイヤーの名前→source-layer名。画面はタイルのURLをこの名前で組み、source-layerを写さない。
             "point_layers": {layer.name: layer.source_layer for layer in POINT_TILE_LAYERS.values()},
-            # 路面タイルを要求するズーム範囲。frontendのMapLibreソース設定
+            # 道のタイルを要求するズーム範囲。frontendのMapLibreソース設定
             # （minzoom/maxzoom）とタイル要求のガードがこの値を使う。手書きで複製すると、
-            # backendだけ広げてもfrontendが要求せずレイヤーが黙って消える。
+            # backendだけ広げてもfrontendが要求せずレイヤーが黙って消える。路面タイルだけは
+            # `road_surface_tile_min_zoom`から配り、道ごとの鍵は`road_tile_min_zoom`から持つ。
+            "road_surface_tile_min_zoom": ROAD_SURFACE_TILE_MIN_ZOOM,
             "road_tile_min_zoom": ROAD_TILE_MIN_ZOOM,
             "road_tile_max_zoom": ROAD_TILE_MAX_ZOOM,
             # 画面が点からタイル座標を求めるときに緯度を挟む限界（`domain/region.py`と同じ式を使う）。
@@ -340,11 +354,15 @@ def main() -> None:
         {
             "semantic": SEMANTIC_COLORS,
             "semantic_on_dark": SEMANTIC_COLORS_ON_DARK,
-            "cost_series": list(COST_SERIES_COLORS),
             "basemap_dark": {
                 "lightness_range": list(BASEMAP_DARK_LIGHTNESS_RANGE),
                 "saturation_scale": BASEMAP_DARK_SATURATION_SCALE,
                 "icon_opacity_scale": BASEMAP_DARK_ICON_OPACITY_SCALE,
+            },
+            "basemap_muted": {
+                "saturation_scale": BASEMAP_MUTED_SATURATION_SCALE,
+                "ground_pull": BASEMAP_MUTED_GROUND_PULL,
+                "icon_opacity_scale": BASEMAP_MUTED_ICON_OPACITY_SCALE,
             },
         },
     )
@@ -364,7 +382,6 @@ def main() -> None:
                 {"key": source.key, "minZoom": source.min_zoom} for source in MAP_LAYER_DATA_SOURCES
             ],
             "layerDataNatures": list(MAP_LAYER_DATA_NATURES),
-            "layerKinds": list(MAP_LAYER_KINDS),
             # 地図に載るものの、描き方以外の宣言（種別・情報源・性質・既定表示・最初に隠す行）。
             "layers": [
                 {
@@ -374,6 +391,7 @@ def main() -> None:
                     "description": _layer_text(spec.description),
                     "panelHint": _layer_text(spec.panel_hint) or None,
                     "hideMissingRows": spec.hide_missing_rows,
+                    "segmentSeries": spec.segment_series,
                 }
                 for layer_id, spec in MAP_LAYERS
             ],
@@ -399,6 +417,16 @@ def main() -> None:
                 "inspectedWidthPx": ROAD_INSPECTED_WIDTH_PX,
                 # 地図の線の層の値で「データなし」。
                 "noDataValue": NO_DATA_VALUE,
+            },
+            # 好む・避けるの道を通ったルートの区間の両脇に添える線。
+            "avoidanceRail": {
+                "widthPx": AVOIDANCE_RAIL_WIDTH_PX,
+                "gapPx": AVOIDANCE_RAIL_GAP_PX,
+                "avoidedDash": list(AVOIDANCE_AVOIDED_DASH),
+            },
+            # 道路タブの段（好む・避ける・通らない）を地図の道に塗る線の太さ（縮尺→px）。
+            "roadAvoidance": {
+                "widthByZoom": [list(pair) for pair in ROAD_AVOIDANCE_WIDTH_BY_ZOOM],
             },
             "point": {
                 "radiusPx": POINT_RADIUS_PX,
@@ -476,7 +504,6 @@ def main() -> None:
             "precipitation": [s._asdict() for s in PRECIPITATION_COLOR_STOPS],
             "wind_speed": [s._asdict() for s in WIND_SPEED_COLOR_STOPS],
             "risk_levels": [level._asdict() for level in RISK_LEVEL_COLORS],
-            "linear_rainband_color": LINEAR_RAINBAND_COLOR,
             "linear_rainband_outline_color": LINEAR_RAINBAND_OUTLINE_COLOR,
             "linear_rainband_outline_casing_color": LINEAR_RAINBAND_OUTLINE_CASING_COLOR,
             "thunder_activity": [level._asdict() for level in THUNDER_ACTIVITY_LEVELS],
@@ -543,9 +570,7 @@ def main() -> None:
         PRIMARY_ATTRIBUTES_PATH,
         "primaryAttributes",
         # 一次属性カタログ（地図レイヤー階層の次数反転）。宣言
-        # （`domain/primary_attributes.py: PRIMARY_ATTRIBUTES`）だけから決まり、DBを読まない。各軸の
-        # `primary_attribute_ids`は実行時の`GET /api/client-config`が配るため、フロントは
-        # この一覧のlabel（正式名）と突き合わせて1次↔2次の双方向導出ができる。
+        # （`domain/primary_attributes.py: PRIMARY_ATTRIBUTES`）だけから決まり、DBを読まない。
         # 宣言をそのまま配る。色だけは宣言に無いので`resolved_display_axes`が決め、値が欠けたときの意味は
         # その値を載せる材料の宣言から引く（地図の凡例が「不明」を出すかを決める）。
         [
@@ -581,6 +606,8 @@ def main() -> None:
             "standard_cost_factor": STANDARD_COST_FACTOR,
             "cost_strength_levels": [level._asdict() for level in COST_STRENGTH_LEVELS],
             "cost_multiplier_levels": [level._asdict() for level in COST_MULTIPLIER_LEVELS],
+            # 負担を数えないことの名前（費用の軸の無効の段と、全体のつまみの0の段）。
+            "disabled_label": DISABLED_LABEL,
             "min_assumed_speed_kmh": MIN_ASSUMED_SPEED_KMH,
             "max_assumed_speed_kmh": MAX_ASSUMED_SPEED_KMH,
             # フロントのポーリングの打ち切り。backendが結果を持つ時間より長く待つと、
@@ -592,15 +619,13 @@ def main() -> None:
             "segment_speed_conditions": list(SEGMENT_SPEED_CONDITIONS),
             # 所要時間の計算が値の無い区間をどう数えるかの文。結果の「データの無い区間」の注記が差し込む。
             "missing_travel_data_wording": MISSING_TRAVEL_DATA_WORDING,
+            # 地図のレンズ（総合と費用の軸ごと）の量の名前と単位と、凡例の目安の条件の文。レンズを述べる画面の文が差し込む。
+            "lens_quantity_label": LENS_QUANTITY_LABEL,
+            "lens_unit": LENS_UNIT,
+            "lens_equivalents_condition_wording": LENS_EQUIVALENTS_CONDITION_WORDING,
             # フロントが使う較正値のid（値は持たない。フロントはidの型にだけ使う）。効いている値はGET /api/client-configが
             # 返し、取れるまではその値を使う機能を出さない。
             "client_tuning": dict.fromkeys(client_tuning_ids()),
-            # 0次ハードフィルタ。回避タブにいつも「通らない」の行として見せる（要求では受けない）。選べる行と段は
-            # 管理DBの道の区分から、GET /api/client-configが配る。
-            "hard_filters": [
-                {"key": name, "label": spec.label, "description": spec.description}
-                for name, spec in HARD_FILTERS.items()
-            ],
         },
     )
 

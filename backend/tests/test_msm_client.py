@@ -1,6 +1,6 @@
 """`infrastructure/msm_client.py`——気象庁MSMの予報を配信元と同期し、ローカルの`.om`ファイルから読む。
 
-確かめるのは公開の入口（`refresh`・`read_series`・`read_grid_points`・`read_grid_block`・`read_weather_grid`・
+確かめるのは公開の入口（`refresh`・`read_grid_points`・`read_grid_block`・`read_weather_grid`・
 `freshness`/`freshness_from_meta`/`warn_if_stale`）から
 見える振る舞いだけ。差し替えるのはプロセス境界だけで、網は本物の`httpx.AsyncClient`へ配信元の代役
 （respxの経路）を付け、ディスクは一時ディレクトリ、時計は固定する。何時間先まで同期し・読むかは
@@ -8,11 +8,11 @@
 `.om`ファイルは本物のライブラリ（omfiles）で書く。
 
 ここで見ないもの:
-- 範囲と形状から導いた格子の幾何と、双一次補間・最寄りの格子点の選び方そのもの・格子の外の地点を断ること → `test_msm.py`
+- 範囲と形状から導いた格子の幾何と、最寄りの格子点の選び方そのもの・格子の外の地点を断ること → `test_msm.py`
 - 予報を風へ組み立てる側 → `test_weather_service.py`
 
 予報の値は「格子点(i, j)・チャンク内の時刻tで 100i + 10j + t（チャンクごとに1000ずつ足す）」にしてある。
-補間した値の期待値が足し算で書け、格子点の値はどの格子点を読んだかが値に出る。チャンクの番号は配信元の決まり（1970年からの経過時間÷チャンクの長さ）。
+格子点の値はどの格子点を読んだかが値に出る。チャンクの番号は配信元の決まり（1970年からの経過時間÷チャンクの長さ）。
 """
 
 import logging
@@ -120,7 +120,7 @@ async def _synced(tmp_path, msm_dir, meta=None, horizon_hours=CHUNK_HOURS):
 
 async def _read(msm_dir, points, hours):
     msm_dir.forecast_hours(hours)
-    return await msm_client.read_series(*points)
+    return await msm_client.read_grid_points(*points)
 
 
 def _points(*points):
@@ -205,19 +205,10 @@ class TestSyncing:
         assert any("公開されていません" in r.getMessage() for r in caplog.records)
 
 
-# --- 読み出し（read_series） ---
+# --- 読み出し ---
 
 
 class TestReading:
-    async def test_each_point_is_interpolated_between_the_grid_points_around_it(self, tmp_path, msm_dir):
-        """南西の格子点はそのまま、北隣との中間は2点の平均（100i + 10j + t で i=0.5）。"""
-        await _synced(tmp_path, msm_dir)
-
-        series = await _read(msm_dir, _points(SOUTH_WEST, HALF_NORTH), 2)
-
-        # 05:00はチャンクの先頭から2時間目（t=2）。
-        assert series.wind_u_ms == pytest.approx(np.array([[2.0, 3.0], [52.0, 53.0]]))
-
     async def test_a_series_crossing_into_the_next_chunk_continues_from_it(self, tmp_path, msm_dir):
         await _synced(tmp_path, msm_dir)
 

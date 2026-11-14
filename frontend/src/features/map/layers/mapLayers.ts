@@ -16,10 +16,6 @@ import { coverageYearsLabel, fillLayerText } from "./layerText";
 /** 地図に載るものの名前。静的な一覧は源泉が持ち、道の線の層（鍵は層のデータが決める）とレンズの層は実行時に決まる。 */
 export type MapLayerId = StaticMapLayerId | string;
 
-// 選んだルートに付くデータ（選び直すたびに描き直す）か、地域に固定のデータ（表示の切り替えだけ）か。値が時間で
-// 変わるかは別の`dataNature`が表す（降水ナウキャストは地域に固定で、値が時間で変わる）。
-type MapLayerKind = (typeof mapDisplay.layerKinds)[number];
-
 // 地域に固定のレイヤーの中分類（▶パネルの見出し）。ルートは持たない。
 export type MapLayerCategory = (typeof mapDisplay.layerCategories)[number]["key"];
 
@@ -64,7 +60,6 @@ export function mapOverlayGroupFor(layer: { category?: MapLayerCategory }): MapO
 export interface ChipLayerDescriptor {
   id: MapLayerId;
   label: string;
-  kind: MapLayerKind;
   icon: MapIconComponent;
   /** 省略できない（書き忘れたレイヤーは取得状態を持たず、チップの状態の印が出ない）。 */
   dataSource: MapLayerDataSource;
@@ -83,10 +78,7 @@ export interface ChipLayerDescriptor {
   minZoom?: number;
 }
 
-type LayerDeclaration = Pick<
-  ChipLayerDescriptor,
-  "dataSource" | "kind" | "category" | "dataNature" | "defaultOn" | "minZoom"
->;
+type LayerDeclaration = Pick<ChipLayerDescriptor, "dataSource" | "category" | "dataNature" | "defaultOn" | "minZoom">;
 
 /** レンズの層。チップに出ない（表示はレンズの選択だけが決める）ので、名前・アイコン・説明を持たず、
  * 地図の組み立てが情報源を引くためのidと源泉の宣言だけを持つ。 */
@@ -101,7 +93,6 @@ export type MapLayerDescriptor = ChipLayerDescriptor | LensLayerDescriptor;
 function declaredLayer(spec: {
   dataSource: MapLayerDataSource;
   category: MapLayerCategory | null;
-  kind: MapLayerKind;
   dataNature: MapLayerDataNature;
   defaultOn: boolean;
   drawMinZoom: number | null;
@@ -110,13 +101,17 @@ function declaredLayer(spec: {
   const minZooms = [sourceMinZoom, spec.drawMinZoom].filter((zoom): zoom is number => zoom !== null);
   return {
     dataSource: spec.dataSource,
-    kind: spec.kind,
     category: spec.category ?? undefined,
     dataNature: spec.dataNature,
     defaultOn: spec.defaultOn,
     minZoom: minZooms.length === 0 ? undefined : Math.max(...minZooms),
   };
 }
+
+/** レンズの層が描き始める縮尺（源泉の宣言。路面タイルの道ごとの鍵を持つ縮尺）。 */
+export const LENS_LAYER_MIN_ZOOM = declaredLayer(mapDisplay.axisLayers.dedicated).minZoom;
+/** 道の線の層（道路タブの段も同じ路面タイルを塗る）が描き始める縮尺。 */
+export const ROAD_LINE_MIN_ZOOM = declaredLayer(mapDisplay.axisLayers.road).minZoom;
 
 /** レイヤーの一覧を組むのに要る項目。 */
 type LayerCatalog = Pick<MapCatalog, "lenses" | "accidentYears" | "clientTuning" | "roadLayers">;
@@ -136,12 +131,10 @@ export function buildMapLayers({
 }: LayerCatalog): readonly MapLayerDescriptor[] {
   // 取れていないときは年に触れない（既定の年を出すと、それが正しいように見える）。
   const accidentCoverage = coverageYearsLabel(accidentYears);
-  // 並びはレンズの選択肢と同じ（総合を先に、続けて費用の軸）。
-  const routeLenses = lenses.map((lens) => lens.label).join("・");
   // 取れていないときは帯の幅に触れない（既定の幅を出すと、作り直しに使った幅と食い違いうる）。
   const landcoverRingOuterM = String(clientTuningValue({ clientTuning }, CLIENT_TUNING_IDS.landcoverRingOuterM) ?? "");
   const staticLayers = mapDisplay.layers.map((layer): ChipLayerDescriptor => {
-    const slots = { accidentYears: accidentCoverage, routeLenses, landcoverRingOuterM };
+    const slots = { accidentYears: accidentCoverage, landcoverRingOuterM };
     return {
       id: layer.id,
       label: layer.label,
@@ -179,6 +172,16 @@ export const TILE_ZOOM_TOO_WIDE_NOTICE = "ズームインすると表示され�
 
 /** チップ下に出す、タイルの世代が届いていないときの案内（届くまでソースを作らないので何も描けない）。 */
 export const TILE_VERSIONS_MISSING_NOTICE = "配信情報を取得できず表示できません";
+
+/** 描けない理由の案内。世代が届かない（画面の設定を取り終えたのに無い）ことを、拡大が足りないことより先に出す。 */
+export function tileNotice(reasons: {
+  versionMissing: boolean;
+  catalogSettled: boolean;
+  zoomTooWide: boolean;
+}): string | null {
+  if (reasons.versionMissing && reasons.catalogSettled) return TILE_VERSIONS_MISSING_NOTICE;
+  return reasons.zoomTooWide ? TILE_ZOOM_TOO_WIDE_NOTICE : null;
+}
 
 /** タイルの世代が届くまで何も描けないレイヤー。軸のレイヤーはチップが無く案内の出し先が無いので含めない。 */
 export function tileVersionGatedLayerIds(layers: readonly MapLayerDescriptor[]): readonly MapLayerId[] {

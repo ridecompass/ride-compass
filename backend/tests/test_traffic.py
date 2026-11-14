@@ -9,12 +9,9 @@
 - 停止要因の種別を地図の凡例の行へ写すこと → `test_primary_attributes.py`
 """
 
-from unittest.mock import patch
-
 import pytest
 
 from app.domain import traffic
-from app.domain.tuning import TUNING_VALUES
 
 
 def test_minor_roads_share_one_rank_below_tertiary_and_above_paths():
@@ -26,12 +23,10 @@ def test_minor_roads_share_one_rank_below_tertiary_and_above_paths():
 
 def test_a_stop_event_takes_its_share_of_the_wait_and_of_the_kickoff_and_a_slowdown_only_part_of_the_kickoff():
     """止まる出来事は 割合 × 待ち を時間に、割合ぶんの漕ぎ出しを体力に数える。減速だけの出来事（車止め・左折）は、巡航速度の
-    残る割合から戻すので、漕ぎ出しは（1 − 割合²）回ぶん。値は管理画面の較正値から組む。"""
-    values = {"stop.signal_share": 0.5, "stop.signal_seconds": 42.0, "stop.barrier_share": 1.0,
-              "stop.barrier_seconds": 8.0, "turn.left_share": 1.0, "stop.slowed_speed_ratio": 0.5}
-    with patch.dict(TUNING_VALUES, values):
-        signal, barrier, left = (traffic.stop_event(*event) for event in (("stop", "signal"), ("stop", "barrier"),
-                                                                           ("turn", "left")))
+    残る割合から戻すので、漕ぎ出しは（1 − 割合²）回ぶん。値はテストの較正値（信号は割合0.5・待ち42秒、車止めは割合1・
+    待ち8秒、左折は割合1、減速で残る速さの割合0.5）から組む。"""
+    signal, barrier, left = (traffic.stop_event(*event) for event in (("stop", "signal"), ("stop", "barrier"),
+                                                                       ("turn", "left")))
 
     assert (signal.expected_seconds, signal.kickoffs) == pytest.approx((21.0, 0.5))
     assert (barrier.expected_seconds, barrier.kickoffs) == pytest.approx((8.0, 0.75))

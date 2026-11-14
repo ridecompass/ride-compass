@@ -13,21 +13,14 @@ from typing import TypeVar, cast
 import numpy as np
 
 from app.domain.attributes import ElevationAttribute
-from app.domain.cost_axes import EFFORT_AXES, HEADWIND_FACT_LABEL, STOPS_FACT_LABEL, EffortItem
 from app.domain.leg_costs import LegValues
-from app.domain.geo import (
-    compass_label,
-    length_weighted_mean,
-)
+from app.domain.geo import compass_label
 from app.domain.graph import LeanEdge
 from app.domain.road_network import elevation_attribute
 from app.domain.route_road_classes import SegmentClassReader
 from app.domain.route import (
     COST_SECONDS_DECIMALS,
-    STOP_COUNT_DECIMALS,
-    WIND_MS_DECIMALS,
     PenaltyBreakdown,
-    AxisFact,
     RouteFacts,
     merge_penalty_breakdowns,
     ElevationStretch,
@@ -43,7 +36,7 @@ from app.domain.route import (
     along_route_km,
     concat_edge_geometries,
     reverse_elevation_by_edge,
-    route_elevation_gain,
+    elevation_gain,
 )
 from app.domain.route_search import (
     EdgePassage,
@@ -170,9 +163,7 @@ def _trace(
     # 経路を探索と同じ規則でたどった区間ごとの時刻。区間の到達予想と候補の所要時間が同じ時計を使う。
     turn_waits = transition_values_along(context.turn_structure.turn_seconds, entries)
     turn_kickoffs = transition_values_along(context.turn_structure.turn_kickoffs, entries)
-    passages = route_passages(
-        context.legs, turn_waits, path, [edge.distance_m for edge in edges_in_path], leg_of_edge, context.composer.speed_kmh,
-    )
+    passages = route_passages(context.legs, turn_waits, path, leg_of_edge)
     return _Traced(edges_in_path, path, leg_of_edge, waypoint_offsets, rows, entries, turn_kickoffs, passages,
                    route_cost(passages, turn_waits, turn_kickoffs, context.composer))
 
@@ -249,15 +240,18 @@ def _build_candidate(
     geometry, edge_point_offsets = concat_edge_geometries(edges_in_path)
     along_km = along_route_km(edge.distance_m / 1000 for edge in edges_in_path)
     segments = _build_segment_details(orientation, along_km, elevation_by_edge, context, start_time)
-    elevation_gain_m = route_elevation_gain(edges_in_path, elevation_by_edge)
+    elevation_gain_m = elevation_gain(np.array([
+        attribute.elevation_gain_m if (attribute := elevation_by_edge.get(edge.edge_id)) is not None else np.nan
+        for edge in edges_in_path]))
     turns = _route_turns(context.turn_structure, orientation.entries, edges_in_path, along_km)
+    turn_kickoffs = float(sum(orientation.turn_kickoffs))
+    facts = _route_facts(orientation, context, elevation_gain_m, turn_kickoffs)
     add_elapsed_ms(context.evaluate_steps_ms, "segments", segments_started)
     bins_started = start_timer()
     # 候補の内訳は丸める前の区間から足す（丸めたビンを足すと、丸めの分が候補の内訳へ積もる）。区間は通った道の分なので、通る道筋で
     # 決まる曲がる所の漕ぎ出しを、その費目を持つ軸の秒として足す。
-    turn_kickoffs = float(sum(orientation.turn_kickoffs))
     turn_penalty = PenaltyBreakdown.model_construct(
-        axis_seconds=context.composer.turn_penalty_by_axis(turn_kickoffs), avoidance_seconds=0.0)
+        axis_seconds=context.composer.turn_penalty_by_axis(turn_kickoffs), preferred_seconds=0.0, avoided_seconds=0.0)
     penalty = merge_penalty_breakdowns([*(segment.penalty for segment in segments), turn_penalty])
     # 返すsegmentsは集約する。Edge単位のままだとペイロードとフロントの描画費用が嵩む。
     segments = aggregate_segments_into_bins(segments, orientation.bin_slices)
@@ -279,7 +273,7 @@ def _build_candidate(
         segments=segments,
         cost_seconds=round(orientation.cost_seconds, COST_SECONDS_DECIMALS),
         penalty=penalty,
-        facts=_route_facts(orientation, context, elevation_gain_m, turn_kickoffs),
+        facts=facts,
         # 所要時間＝区間の走行時間＋停止の待ち＋ターンの待ち（最後の区間を抜けた時刻）。
         estimated_duration_seconds=passages[-1].elapsed_seconds + passages[-1].seconds if passages else None,
         missing_travel_data_share=(
@@ -347,6 +341,7 @@ def _build_segment_details(
                     )
                 ],
                 sustained_gradient_percent=steepest_signed_percent(elevation_attr),
+                average_gradient_percent=elevation_attr.average_grade if elevation_attr else None,
                 estimated_arrival_time=arrival_time.isoformat(),
                 penalty=penalties[index],
                 road_classes={
@@ -365,57 +360,29 @@ def _segment_penalties(orientation: _Orientation) -> list[PenaltyBreakdown]:
     def of(read: _RowRead) -> list[PenaltyBreakdown]:
         values = read.values
         axis_lists = {axis_id: seconds.tolist() for axis_id, seconds in values.penalty_by_axis.items()}
-        avoidance = values.avoidance_seconds.tolist()
+        preferred, avoided = values.preferred_seconds.tolist(), values.avoided_seconds.tolist()
         return [
             PenaltyBreakdown.model_construct(
                 axis_seconds={axis_id: seconds[position] for axis_id, seconds in axis_lists.items()},
-                avoidance_seconds=avoidance[position])
+                preferred_seconds=preferred[position], avoided_seconds=avoided[position])
             for position in range(len(read.indices))
         ]
 
     return _per_segment(orientation.reads, len(orientation.edges), of)
 
 
-#: 体力の費目 → 候補の事実の名前と単位（値は`_route_facts`が求める）。道のストレスの軸は「<軸の名前>のある道」のkm。
-_EFFORT_FACTS: dict[EffortItem, tuple[str, str]] = {
-    "gravity": ("登り", "m"),
-    "air": (HEADWIND_FACT_LABEL, "m/s"),
-    "inertia": (STOPS_FACT_LABEL, "回"),
-    "rolling": ("転がり抵抗の大きい道", "km"),
-}
-
-
 def _route_facts(orientation: _Orientation, context: RoadGraphContext, elevation_gain_m: float | None,
                  turn_kickoffs: float) -> RouteFacts:
-    """経路の事実の量。区間ごとの値（`domain/leg_costs.py: LegCostComposer.row_facts`・`LegValues.headwind_ms`）を
-    経路の区間の長さで足し、止まる回数には曲がる所の漕ぎ出し`turn_kickoffs`回を足す。事実を返すのは、利用者が数える軸
-    （体力の軸は`LegCostComposer.counts`、道のストレスの軸は`row_facts`が数える軸だけを持つ）だけ。"""
+    """経路の事実（`domain/leg_costs.py: LegCostComposer.axis_facts`）。軸ごとの秒と向かい風は区間を通る時刻の値で、止まる回数には
+    曲がる所の漕ぎ出し`turn_kickoffs`回を足す。"""
     rows = np.asarray(orientation.rows, dtype=np.int64)
-    distance_km = np.array([edge.distance_m for edge in orientation.edges], dtype=float) / 1000.0
-    facts = context.composer.row_facts(rows)
-    headwind_ms = np.array(_per_segment(orientation.reads, len(rows), lambda read: read.values.headwind_ms.tolist()))
-    # 止まる回数は、道と曲がる所の止まる出来事を、止まってから漕ぎ出す回数に換えて足したもの（減速だけの出来事は、落とした速さから
-    # 戻す分だけ1回より少なく数える）。停止の軸の秒と同じ回数。
-    values: dict[EffortItem, float | None] = {
-        "gravity": elevation_gain_m,
-        "air": (
-            None if (mean := length_weighted_mean(headwind_ms, distance_km)) is None else round(mean, WIND_MS_DECIMALS)
-        ),
-        "inertia": round(float(facts.stops.sum()) + turn_kickoffs, STOP_COUNT_DECIMALS),
-        "rolling": round(float(distance_km[facts.rough].sum()), DISTANCE_KM_DECIMALS),
-    }
-    axes = {
-        axis_id: AxisFact(label=_EFFORT_FACTS[item][0], value=values[item], unit=_EFFORT_FACTS[item][1])
-        for axis_id, item in EFFORT_AXES.items() if context.composer.counts(axis_id)
-    }
-    burden_axes = context.cost_axes.burden
-    for axis_id, burdened in facts.burdened.items():
-        axes[axis_id] = AxisFact(label=f"{burden_axes[axis_id].label}のある道",
-                                 value=round(float(distance_km[burdened].sum()), DISTANCE_KM_DECIMALS), unit="km")
-    return RouteFacts(
-        elevation_unknown_km=round(float(facts.unknown_elevation_m.sum()) / 1000.0, DISTANCE_KM_DECIMALS),
-        axes=axes,
-    )
+    headwind_ms = np.empty(len(rows))
+    penalty_by_axis = {axis_id: np.empty(len(rows)) for axis_id in orientation.reads[0].values.penalty_by_axis}
+    for read in orientation.reads:
+        headwind_ms[read.indices] = read.values.headwind_ms
+        for axis_id, seconds in penalty_by_axis.items():
+            seconds[read.indices] = read.values.penalty_by_axis[axis_id]
+    return RouteFacts(axes=context.composer.axis_facts(rows, penalty_by_axis, elevation_gain_m, headwind_ms, turn_kickoffs))
 
 
 _TURN_DIRECTION = {TurnKind.LEFT: "left", TurnKind.RIGHT: "right", TurnKind.UTURN: "uturn"}

@@ -33,11 +33,12 @@ from shapely.geometry import LineString, Point, Polygon
 from app.batch.ingest import AdapterInputs, SourceRecord, register_adapter
 from app.batch.source_profile import SourceProfile, SourceProfileError, SourceSpec
 from app.domain.traffic import has_supply_poi_tag
+from app.infrastructure import data_paths
 from app.infrastructure.source_models import WAY_KIND_TAG, SourceFeatureRow
 
 logger = logging.getLogger("ridecompass.ingest.osm_pbf")
 
-DATA_DIR = Path(__file__).resolve().parents[3] / "data" / "pbf"
+DATA_DIR = data_paths.DATA_DIR / "pbf"
 
 #: スレッド間で受け渡すまとまりの件数と、待ち行列の深さ。深さは読み手が遅れたときに
 #: 読み側が先へ行きすぎないための背圧で、メモリの上限を決める。

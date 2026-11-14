@@ -16,7 +16,7 @@ import type { ScreenWakeLockStatus } from "../useScreenWakeLock";
 const WAKE_LOCK_UNAVAILABLE =
   "この端末では画面を点けたままにできません。画面が消えると現在地も届かなくなるので、自動ロックの設定を確かめてください。";
 
-const HEADING_NEEDS_GESTURE = "現在地の印にスマホの向きを表示するには、向きの取得を許可する必要があります。";
+const HEADING_NEEDS_GESTURE = "現在地のマーカーにスマホの向きを表示するには、向きの取得を許可する必要があります。";
 
 const NOTICE_CARD = "absolute top-0 right-full mr-2 w-max max-w-55 border-0 px-2.5 py-1.5";
 
@@ -71,7 +71,7 @@ export default function RideModeButton({
             aria-haspopup={status === "off" ? undefined : "dialog"}
             aria-expanded={status === "off" ? undefined : choosing}
             aria-description={wakeLockUnavailable ? WAKE_LOCK_UNAVAILABLE : undefined}
-            usage="押すと走行モードを始め、現在地に合わせて地図を動かし続けます（画面も点けたままにします）。走行中に押すと、「案内を終える」か「休む」を選べます。休んだ後は、地図の下の「続きから走る」で再開します。地図を指で動かすと追従だけが止まり、「現在地へ戻る」で再開します。"
+            usage="押すと走行モードを始め、現在地に合わせて地図を動かし続けます[画面も点けたままにします]。走行中に押すと、「案内を終える」か「休む」を選べます。休んだ後は、地図の下の「続きから走る」で再開します。地図を指で動かすと追従だけが止まり、「現在地へ戻る」で再開します。"
             data-ride={status}
             className={cn(
               "relative",
@@ -140,7 +140,7 @@ export default function RideModeButton({
             variant="primary"
             size="sm"
             onClick={onRequestHeading}
-            usage="スマホの向きの取得の許可を求めます。許可すると、現在地の印にスマホが向いている方角を表示します。"
+            usage="スマホの向きを取得する許可を求めます。許可すると、現在地のマーカーにスマホが向いている方角を表示します。"
           >
             向きを出す
           </Button>

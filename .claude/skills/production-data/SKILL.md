@@ -12,12 +12,15 @@ description: "本番の派生データを作り直す・本番へ道の区分と
   コンテナごとOOM killされてサービス全体が止まる。`--memory`付きの別のコンテナなら止まるのはバッチだけ）:
 
   ```
-  sudo docker run --rm --network=host --memory=4g \
+  sudo docker run --rm --network=host --memory=4g --log-driver=journald \
     -v /home/ubuntu/ridecompass-cache-data:/app/data \
     --env-file /home/ubuntu/ridecompass-backend.env \
     ridecompass-backend:latest \
     python -m app.batch.derive_cli
   ```
+
+  `--log-driver=journald` で打った分のログは、打った端末を閉じても VM の journal に残る（読み方は
+  [tech-stack.md](../../../docs/architecture/tech-stack.md)「本番のログ」）。
 
 - 住所の区画の段は、住所の生データ（`abr`）の取込が無いと止まり、作り直し全体が何も入れ替えない。初めて流す前と住所を取り直すときは、
   同じ別のコンテナで取得と取込を先に打つ（手順は[data-sources.md](../../../docs/architecture/data-sources.md)「住所の区画の元データ」）。
@@ -40,7 +43,7 @@ description: "本番の派生データを作り直す・本番へ道の区分と
   | 標高（`dem`）を取り直した | `elevation` |
   | 土地被覆（`lulc`）を取り直した | `landcover` |
   | 住所（`abr`・`isj_block`）を取り直した | `addresses` |
-  | 地点・寺社・小地域（`overture_place`・`bunka_heritage`・`estat_small_area`）を取り直した | `stop_places` |
+  | 地点・寺社・小地域（`overture_place`・`bunka_heritage`・`estat_small_area`）を取り直した | `places` |
   | 段のコード（`app/batch/derive_<段>.py`と、それが使う式）を変えた | その段 |
   | 段が読む較正値を変えた | その較正値を宣言した段（`app/batch/derive_cli.py: STAGES`の`tuning`） |
   | 派生の表に列を足した・消した | その表を書く段（`STAGES`の`tables`） |
@@ -52,7 +55,7 @@ description: "本番の派生データを作り直す・本番へ道の区分と
 
 ## 本番へ効かせたい道の区分・費用の軸の変更は、本番の管理APIへ入れる
 
-- 対象: 道の区分（分け方・区分の条件・地図の線の層・転がり抵抗の割り当て・回避タブの設定）と費用の軸の定義（体力の軸の
+- 対象: 道の区分（分け方・区分の条件・地図の線の層・転がり抵抗の割り当て・道路タブの設定）と費用の軸の定義（体力の軸の
   見せ方・道のストレスの軸・総合のレンズ）を変える全ての作業。どちらも各環境のDBの表が正本で、管理API
   （`/api/admin/road-classes`・`/api/admin/cost-axes`）の全体の`GET`・`PUT`だけで読み書きする（仕組みは
   [費用・材料](../../../docs/modules/backend/evaluation-scoring.md)「管理DBの定義（道の区分・費用の軸）」）。

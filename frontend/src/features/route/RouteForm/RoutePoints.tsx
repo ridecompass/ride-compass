@@ -3,8 +3,8 @@
 import { useState } from "react";
 
 import { Button } from "@/components/ui/Button/Button";
-import { LocateIcon, LoopRouteIcon } from "@/components/ui/icons/icons";
-import { ClearPointsIcon, EditPointsIcon, RemovePointIcon } from "@/components/ui/icons/lucideIcons";
+import { ClearPointsIcon, EditPointsIcon, LocateIcon, LoopRouteIcon } from "@/components/ui/icons/icons";
+import { RemovePointIcon } from "@/components/ui/icons/lucideIcons";
 import { Toggle } from "@/components/ui/Toggle/Toggle";
 import { waypointsFull, type GenerationConditionsState } from "@/features/route/useGenerationConditions";
 import { usePlaceAreas } from "@/features/route/usePlaceAreas";
@@ -245,7 +245,7 @@ export default function RoutePoints({
           className={toggleClass}
           pressed={loop}
           onClick={() => setLoop(!loop)}
-          usage="オンにすると、出発地へ戻る周回を作ります（変えられるのは経由地だけです）。オフにすると目的地へ向かいます。"
+          usage="オンにすると、出発地へ戻る周回を作ります[変えられるのは経由地だけです]。オフにすると目的地へ向かいます。"
         >
           <LoopRouteIcon />
           周回
@@ -259,7 +259,8 @@ export default function RoutePoints({
         />
         <Toggle
           variant="plain"
-          className={cn(toggleClass, "gap-0.5")}
+          className={toggleClass}
+          aria-label="編集"
           pressed={editing}
           disabled={!editable}
           onClick={() => {
@@ -268,13 +269,13 @@ export default function RoutePoints({
           }}
           usage="オンにすると、地点を名前で縦に並べ、通る順の入れ替えや削除ができます。もう一度押すと閉じます。"
         >
-          <EditPointsIcon />
-          編集
+          <EditPointsIcon size={18} />
         </Toggle>
         {/* 消すものが無い間も押せない状態で残す（置き場が動くと、並びの名前の出し分けが揺れる）。周回の間は並びに出ている
-            経由地だけを消し、覚えている目的地は残す。 */}
+            経由地だけを消し、覚えている目的地は残す。上下の余白を外し、行のほかの操作と高さをそろえる。 */}
         <Button
           size="panelIcon"
+          className="py-0"
           aria-label={loop ? "経由地を全部消す" : "経由地と目的地を全部消す"}
           disabled={waypointCount === 0 && destination === null}
           onClick={clearPoints}

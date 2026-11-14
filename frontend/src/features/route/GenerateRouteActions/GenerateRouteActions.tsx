@@ -5,6 +5,7 @@ import { dotVariants } from "@/components/ui/Dot/Dot";
 import { GenerateRoutesIcon } from "@/components/ui/icons/lucideIcons";
 import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
 import type { useRouteGeneration } from "@/features/route/useRouteGeneration";
+import { ROAD_SETTINGS_TAB_NAME } from "@/lib/screenNames";
 
 interface GenerateRouteActionsProps {
   generation: Pick<ReturnType<typeof useRouteGeneration>, "conditionsDirty" | "running" | "progressLabel" | "submit">;
@@ -29,7 +30,7 @@ export default function GenerateRouteActions({ generation }: GenerateRouteAction
         disabled={generation.running}
         onClick={() => void generation.submit()}
         aria-label={generation.running ? generation.progressLabel : "ルート生成"}
-        usage="いまの条件・負担・回避でルートの候補を作ります。候補は「ルート結果」に並び、地図に線が出ます。"
+        usage={`いまの条件・負担・${ROAD_SETTINGS_TAB_NAME}でルートの候補を作ります。候補は「ルート結果」に並び、地図に線が出ます。`}
       >
         <GenerateRoutesIcon size={18} />
       </Button>

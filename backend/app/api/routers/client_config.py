@@ -17,8 +17,7 @@ router = APIRouter()
 
 
 class ClientConfigResponse(StrictModel):
-    # フロントが使う較正値（id → いま効いている値、`domain/tuning.py`が宣言。作り直しで効く値は作り直しに使った値）。ビルド時
-    # 生成物の route-generate-config.json が持つ既定値は、画面が id の型にだけ使い、値は読まない。
+    # フロントが使う較正値（id → いま効いている値、`domain/tuning.py`が宣言。作り直しで効く値は作り直しに使った値）。
     client_tuning: dict[str, float]
     # 配信するタイルの世代（系統名 → `<派生の世代>.<生データの世代>-<形の署名>`、`services/tile_version_service.py`）。
     # フロントはこれをタイルURLのクエリへ入れてブラウザのキャッシュを分ける。
@@ -32,7 +31,7 @@ class ClientConfigResponse(StrictModel):
 
 @router.get("/api/client-config", response_model=ClientConfigResponse)
 async def get_client_config(region_service: RegionService = Depends(get_region_service)) -> ClientConfigResponse:
-    # 区分と較正値の既定はプロセス内の値。事故の収録年・作り直しで効く較正値・タイルの世代だけがDBを見る。
+    # 区分と較正値はプロセス内の値。事故の収録年・作り直しで効く較正値・タイルの世代だけがDBを見る。
     return ClientConfigResponse(
         client_tuning={**client_tuning_values(), **await region_service.get_rebuilt_client_tuning()},
         tile_versions=await region_service.tile_versions(),

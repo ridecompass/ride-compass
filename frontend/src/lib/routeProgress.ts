@@ -44,7 +44,7 @@ export function locateOnRoute(projected: readonly TrackProjection[], previousKm:
 /**
  * 現在地が、ルートから外れているか。`projected`は現在地をルートの辺へ射影したもの（`projectOnTrack`）。端末が位置と一緒に
  * 返す誤差`accuracyM`（m）に`ROUTE_MATCH_SLACK_M`を足した幅を超えてルートから離れていれば外れている。誤差だけを
- * 境目にすると、線は道の中心を通るので、広い道の端を走るだけで外れたと出る（tasks#1212）。誤差が分からなければ、
+ * 境目にすると、線は道の中心を通るので、広い道の端を走るだけで外れたと出る。誤差が分からなければ、
  * 外れていないとみなす。
  */
 export function offRoute(projected: readonly TrackProjection[], accuracyM: number | null): boolean {

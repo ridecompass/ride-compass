@@ -145,7 +145,7 @@ test("モバイル: 「保存済み」の「プリセット」の一覧は、「
           origin: null,
           waypoints: [],
           destination: null,
-          routePreference: null,
+          costPreference: { strength: 1, multipliers: {}, disabled_axes: [] },
           roadAvoidance: {},
         },
       ]),

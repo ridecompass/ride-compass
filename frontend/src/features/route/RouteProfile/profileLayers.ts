@@ -13,7 +13,10 @@ import type { RouteStretch } from "@/lib/routeDistance";
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import type { RoadMapLayerView, RouteSegmentDetail } from "@/types/route";
 
-type LayerSegment = Pick<RouteSegmentDetail, "elevations" | "sustained_gradient_percent" | "road_classes">;
+type LayerSegment = Pick<
+  RouteSegmentDetail,
+  "elevations" | "average_gradient_percent" | "sustained_gradient_percent" | "road_classes"
+>;
 type RoadClassValue = RouteSegmentDetail["road_classes"][string][number]["value"];
 
 type LineStretch = { readonly distance_km: number; readonly start: number | null; readonly end: number | null };
@@ -26,6 +29,8 @@ export type LineLayer = {
     readonly unit: string;
     /** 区間の中の道ごとの、道の距離と始まり・終わりの値（無ければnull）を通る順に。 */
     readonly stretches: (segment: LayerSegment) => readonly LineStretch[];
+    /** 区間の平均勾配（%、走る向きの符号つき）。無ければnull。 */
+    readonly meanGrade: (segment: LayerSegment) => number | null;
     /** 区間の続く坂の斜度（%、走る向きの符号つき。登りがあれば登りの最大、無ければ下りの最大）。無ければnull。 */
     readonly sustainedGrade: (segment: LayerSegment) => number | null;
   };
@@ -78,22 +83,30 @@ const ELEVATION_LAYER: LineLayer = {
         start: stretch.start_elevation_m,
         end: stretch.end_elevation_m,
       })),
+    meanGrade: (segment) => segment.average_gradient_percent,
     sustainedGrade: (segment) => segment.sustained_gradient_percent,
   },
 };
 
-// 並びと名前は地図の「表示」のレイヤのまま。
+type SegmentSeries = NonNullable<(typeof mapDisplay.layers)[number]["segmentSeries"]>;
+
+/** 区間の区分の並びの値の語彙ごとの、凡例の行と値の入る行。語彙が増えれば型検査が落ちる。 */
+const SERIES_BANDS: Record<SegmentSeries, Pick<BandLayer["draw"], "rows" | "rowOf">> = {
+  landcoverClass: { rows: LANDCOVER_ROWS, rowOf: landcoverRowOf },
+};
+
+// 区間に区分の並びを載せると宣言した層。並びと名前は地図の「表示」のレイヤのまま。
 const DECLARED_LAYERS = mapDisplay.layers.flatMap((layer): BandLayer[] =>
-  layer.id === "landcover"
-    ? [
+  layer.segmentSeries === null
+    ? []
+    : [
         {
           id: layer.id,
           label: layer.label,
           icon: MAP_LAYER_ICONS[layer.id],
-          draw: { kind: "band", rows: LANDCOVER_ROWS, rowOf: landcoverRowOf },
+          draw: { kind: "band", ...SERIES_BANDS[layer.segmentSeries] },
         },
-      ]
-    : [],
+      ],
 );
 
 /** グラフに重ねられるレイヤ。道の帯は、画面の設定が配る道の線の層（地図のチップと同じ並び）から作る。 */
@@ -177,19 +190,13 @@ export function layerValueAtKm(
   return start === null || end === null ? null : start + (end - start) * hit.fraction;
 }
 
-/** 区間の勾配（%）。平均は値のある道の上り下りの和を道の長さの和で割り、最大は区間の続く坂の斜度。値のある道が無ければnull。 */
+/** 区間の勾配（%）。平均と最大（区間の続く坂の斜度）はどちらも区間の応答の値で、区間の中で計算し直さない。平均が無ければnull。 */
 export function segmentGrades(
   segment: LayerSegment,
   layer: LineLayer,
 ): { mean: number; sustained: number | null } | null {
-  let rise = 0;
-  let meters = 0;
-  for (const { distance_km, start, end } of layer.draw.stretches(segment)) {
-    if (start === null || end === null || distance_km <= 0) continue;
-    rise += end - start;
-    meters += distance_km * 1000;
-  }
-  return meters === 0 ? null : { mean: (rise / meters) * 100, sustained: layer.draw.sustainedGrade(segment) };
+  const mean = layer.draw.meanGrade(segment);
+  return mean === null ? null : { mean, sustained: layer.draw.sustainedGrade(segment) };
 }
 
 export type BandPiece = { readonly startKm: number; readonly endKm: number; readonly row: RoadTrackRow };

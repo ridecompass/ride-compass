@@ -7,7 +7,7 @@ import { formatDelta } from "@/features/route/routeEditDiff";
 import SpliceDeltaBar, { type AxisDelta } from "@/features/route/RouteSplicePanel/SpliceDeltaBar";
 import SpliceMetricGrid from "@/features/route/RouteSplicePanel/SpliceMetricGrid";
 import { MINUTE_UNIT, secondsToMinutes } from "@/lib/duration";
-import { costAxisLabel, type PenaltyCatalog } from "@/lib/routePenalty";
+import { costAxisColor, costAxisLabel, type PenaltyCatalog } from "@/lib/routePenalty";
 import type { RouteCandidate } from "@/types/route";
 import { Button } from "@/components/ui/Button/Button";
 import { GuideText } from "@/components/ui/GuideText/GuideText";
@@ -58,6 +58,7 @@ function penaltyDeltas(base: RouteCandidate, after: RouteCandidate, catalog: Pen
     .map((axisId) => ({
       axisId,
       label: costAxisLabel(catalog, axisId),
+      color: costAxisColor(catalog, axisId),
       delta: secondsToMinutes(seconds(after, axisId) - seconds(base, axisId)),
     }))
     .filter((item) => Math.abs(item.delta) >= MIN_PENALTY_DELTA_MINUTES)
@@ -111,9 +112,9 @@ export default function RouteSplicePanel({
         {/* 使い方は画面へ書かずここへ置く（設計原則「冗長なものは削る」）。 */}
         {/* 押す所（24px四方）の余りを両脇の間に重ね、デスクトップのパネルの幅に1行で収める。「‹」は余りをカードの余白へ寄せる。 */}
         <InfoPopover triggerAriaLabel="区間の乗り換えの説明" triggerClassName="-mx-1">
-          {"地図の破線が、いまの道から乗り換えられる先です。タップするとそこへ乗り換わり、その先に分かれ道があれば次の破線が" +
-            "出ます。太い線が、いま作っているルートです。負担の棒は中央が0で、左[−]へ伸びた種類ほど負担が減り、右[＋]へ" +
-            "伸びた種類ほど増えています。"}
+          {"地図の破線は、いまの道から乗り換えられる道です。破線をタップするとその道に乗り換え、先に分かれ道があれば次の破線が" +
+            "出ます。太い線は、いま作っているルートです。負担の棒は真ん中が0で、左[−]へ伸びた種類ほど負担が減り、右[＋]へ" +
+            "伸びた種類ほど増えます。"}
         </InfoPopover>
         {appliedCount > 0 && (
           <span className={cn(textVariants({ variant: "hint" }), "ml-1 whitespace-nowrap")}>{appliedCount}回</span>
@@ -178,7 +179,7 @@ export default function RouteSplicePanel({
           <SpliceMetricGrid displayed={displayed} preview={preview} />
 
           {/* 軸別は元・編集後の2本を並べず、差だけの1本にする。中央が0で、左が楽になった側。 */}
-          {deltas.length > 0 && <SpliceDeltaBar deltas={deltas} axisColors={catalog.axisColors} />}
+          {deltas.length > 0 && <SpliceDeltaBar deltas={deltas} />}
 
           {sameRouteName !== null && (
             <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">

@@ -33,7 +33,8 @@ from tests.profile_fixture import grade_profiles, profiles
 
 START = datetime(2026, 10, 3, 9, 0)
 CRUISE_KMH = 20.0
-AVOID_MULTIPLIER = 3.0
+#: 避け方の倍率の例（避ける側の区間の費用に掛ける）。
+COST_SCALE = 3.0
 SURFACE = "class:rolling"
 STOP_DENSITY = dict(zip(leg_costs.POI_COUNT_KINDS, leg_costs.stop_count_material_ids(), strict=True))
 NORTH, SOUTH = 0.0, 180.0
@@ -80,16 +81,15 @@ def _series(speeds_by_hour: list[float], from_deg: float = NORTH) -> WindForecas
 CALM_SERIES = _series([0.0, 0.0])
 
 
-def _composer(matrix: SearchMaterials, *, excluded=None, avoided=None, series=CALM_SERIES, lazy=None,
+def _composer(matrix: SearchMaterials, *, excluded=None, cost_scale=None, series=CALM_SERIES, lazy=None,
               fills=NO_FILLS, axes: CostAxisDefinitions | None = None, parameters=NO_PENALTY) -> LegCostComposer:
     n = len(matrix.distance_m)
-    none = np.zeros(n, dtype=bool)
     masks = RoadAvoidanceMasks(
-        excluded=none if excluded is None else np.asarray(excluded, dtype=bool),
-        avoided=none if avoided is None else np.asarray(avoided, dtype=bool),
+        excluded=np.zeros(n, dtype=bool) if excluded is None else np.asarray(excluded, dtype=bool),
+        cost_scale=np.ones(n) if cost_scale is None else np.asarray(cost_scale, dtype=float),
     )
     return LegCostComposer(
-        matrix, masks, AVOID_MULTIPLIER, series, START, CRUISE_KMH,
+        matrix, masks, series, START, CRUISE_KMH,
         np.arange(n) if lazy is None else np.asarray(lazy), detour_ratio=1.3, material_fills=fills,
         axes=cost_axes() if axes is None else axes, parameters=parameters,
     )
@@ -175,12 +175,13 @@ def test_an_excluded_segment_cannot_be_passed():
     assert np.isfinite(leg.cost_lazy[1])
 
 
-def test_a_segment_to_avoid_costs_more_but_takes_the_same_time():
-    """割り増しが所要時間へ混ざると、避けた道を通った候補の所要時間と到着の予想が延びる。"""
-    leg = _snapshot(_matrix(2), avoided=[True, False])
+def test_a_segment_to_avoid_costs_more_and_one_to_prefer_costs_less_but_both_take_the_same_time():
+    """避け方の倍率は費用にだけ掛かる。倍率が所要時間へ混ざると、避けた道・好む道を通った候補の所要時間と到着の予想が延び縮みする。"""
+    leg = _snapshot(_matrix(3), cost_scale=[COST_SCALE, 1.0, 1.0 / COST_SCALE])
 
-    assert leg.cost_lazy[0] == pytest.approx(AVOID_MULTIPLIER * leg.cost_lazy[1])
-    assert leg.travel_seconds_lazy[0] == pytest.approx(leg.travel_seconds_lazy[1])
+    assert leg.cost_lazy[0] == pytest.approx(COST_SCALE * leg.cost_lazy[1])
+    assert leg.cost_lazy[2] == pytest.approx(leg.cost_lazy[1] / COST_SCALE)
+    assert leg.travel_seconds_lazy.tolist() == pytest.approx([leg.travel_seconds_lazy[1]] * 3)
 
 
 # --- 探索の行順 ---------------------------------------------------------------
@@ -325,7 +326,7 @@ def test_composing_compiles_nothing_after_baking_whatever_arrays_the_matrix_hold
 
     with event.install_recorder("numba:compile") as compiled:
         for each in matrices:
-            _composer(each, parameters=STRENGTH, avoided=[True, False, False],
+            _composer(each, parameters=STRENGTH, cost_scale=[COST_SCALE, 1.0, 1.0],
                       series=_series([0.0, 3.0])).compose("leg", 0.0, +1, duration_hours=2.0)
 
     assert compiled.buffer == []

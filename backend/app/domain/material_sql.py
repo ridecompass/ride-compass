@@ -53,6 +53,11 @@ def sql_literals(values: Iterable[str]) -> str:
     return ", ".join("'" + value.replace("'", "''") + "'" for value in values)
 
 
+def like_escaped_sql(text_expr: str) -> str:
+    """文字列のSQL式`text_expr`の`%`・`_`・`\\`を、`LIKE`の型の中で文字として当たる形にするSQL式（エスケープ文字は既定の`\\`）。"""
+    return f"replace(replace(replace({text_expr}, '\\', '\\\\'), '%', '\\%'), '_', '\\_')"
+
+
 SMOOTHNESS_NORMALIZED_SQL = normalized_tag_sql("smoothness")
 MAXSPEED_KMH_CASE_SQL = positive_integer_tag_sql("maxspeed")
 LANES_COUNT_CASE_SQL = positive_integer_tag_sql("lanes")

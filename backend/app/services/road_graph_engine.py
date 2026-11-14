@@ -35,7 +35,7 @@ from app.domain.leg_costs import LegCostArrays, LegCostComposer
 from app.domain.cost_axes import burden_material_ids, current_cost_axes
 from app.domain.cost_preference import CostPreference
 from app.domain.ledger_costs import current_ledger_parameters
-from app.domain.road_avoidance import AvoidanceLevel, RoadAvoidanceMasks
+from app.domain.road_avoidance import AvoidanceLevel, RoadAvoidanceMasks, level_multipliers
 from app.domain.geo import (
     bearing_between,
     bearing_between_array,
@@ -48,7 +48,6 @@ from app.domain.route import (
     EvaluatedRoute,
     DISTANCE_KM_DECIMALS,
 )
-from app.domain.route_request import FixedPoints
 from app.domain.route_search import (
     LengthBand,
     MAX_SNAP_CORRECTION_KM,
@@ -98,6 +97,7 @@ from app.services.road_graph_context import (
     refuse_at_nodes,
     node_coordinates,
     snap_point,
+    ResolvedEnd,
     resolve_end,
     leg_name,
     path_km,
@@ -208,8 +208,8 @@ class RoadGraphEngine:
         self._cost_preference = cost_preference
         # 道のレイヤの行→避け方の段。
         self._road_avoidance = road_avoidance
-        # 「なるべく避ける」区間の費用の倍率。較正値のため、組み立てた時点の値で1回の生成を通す。
-        self._avoid_cost_multiplier = tuning_value("avoidance.avoid_cost_multiplier")
+        # 避け方の段→区間の費用の倍率。較正値から作るため、組み立てた時点の値で1回の生成を通す。
+        self._avoidance_multipliers = level_multipliers(tuning_value("avoidance.avoid_cost_multiplier"))
         # 交差点でのターンの費用（秒）。較正値のため、組み立てた時点の値で1回の生成を通す。
         self._turn_cost = current_turn_cost()
         # 費用の軸の定義。管理APIの書き込みが途中で差し替えても、表の列・欠けの埋め方・費用の式が同じ写しを読むよう、
@@ -260,9 +260,9 @@ class RoadGraphEngine:
         cost_axes = self._cost_axes
 
         def compose_outbound() -> tuple[RoadAvoidanceMasks, LegCostComposer, LegCostArrays]:
-            search_masks = compute_search_exclusion(materials, self._road_avoidance)
+            search_masks = compute_search_exclusion(materials, self._road_avoidance, self._avoidance_multipliers)
             composer = LegCostComposer(
-                materials, search_masks, self._avoid_cost_multiplier,
+                materials, search_masks,
                 wind_series, start, self._assumed_speed_kmh, lazy_graph.edge_rows,
                 detour_ratio=detour_ratio_or_default(learned_detour_ratio),
                 material_fills=network_fills(road.network, burden_material_ids(cost_axes)),
@@ -416,21 +416,26 @@ class RoadGraphEngine:
             leg.travel_bins_lazy, leg.bin_seconds, transition_cost=context.transition_cost
         )
 
-    async def trace_fixed_points(self, context: RoadGraphContext, points: FixedPoints) -> FixedLegs:
-        """前段: 出発地から、置いた経由地を置いた順に区間ごとのA*で結び、仕上げが向かう終点を決める。経由地が無ければ
-        出発地で止まる（区間は無い）。
+    def resolve_end(self, context: RoadGraphContext, destination: Coordinates | None) -> ResolvedEnd | None:
+        """仕上げの終点（`road_graph_context.py: resolve_end`）。前段と乗り換えの確かめへ渡す。"""
+        return resolve_end(context, destination)
 
-        起点は`prepare`がスナップ済みのNodeをそのまま使い、経由地と目的地はここで起点と同じく出て戻れるNodeへスナップする。
-        どれかを寄せられなければ`RoutingError`。
+    async def trace_fixed_points(
+        self, context: RoadGraphContext, waypoints: list[Coordinates], end: ResolvedEnd | None,
+    ) -> FixedLegs:
+        """前段: 出発地から、置いた経由地を置いた順に区間ごとのA*で結び、終点（`resolve_end`の結果）を仕上げへ渡す。
+        経由地が無ければ出発地で止まる（区間は無い）。
+
+        起点は`prepare`がスナップ済みのNodeをそのまま使い、経由地はここで起点と同じく出て戻れるNodeへスナップする。
+        経由地か終点を寄せられなければ`RoutingError`。
         """
-        end = resolve_end(context, points.destination)
         if end is None:
             raise RoutingError("could not snap destination to road graph")
-        end_node, end_point = end
-        if not points.waypoints:
+        end_node, end_point = end.node, end.point
+        if not waypoints:
             return FixedLegs(segments=[], nodes=[context.origin_node], length_m=0.0, end_node=end_node, end_point=end_point)
         node_sequence = [context.origin_node]
-        for point in points.waypoints:
+        for point in waypoints:
             snapped = snap_point(context, point)
             if snapped is None:
                 raise RoutingError("could not snap waypoints to road graph")
@@ -515,7 +520,8 @@ class RoadGraphEngine:
             context.legs = [*context.legs[:leg_index + 1], inbound]
             backward_tree = await asyncio.to_thread(
                 lambda: build_turn_expanded_tree(
-                    context.turn_structure, avoiding_traveled(inbound.cost_lazy, traveled), statics.edge_length_m,
+                    context.turn_structure, avoiding_traveled(inbound.cost_lazy, inbound.travel_seconds_lazy, traveled),
+                    statics.edge_length_m,
                     destination_states(context.turn_structure, end_node), statics.csr.node_count,
                     reverse=True, edge_seconds=inbound.travel_seconds_lazy, transition_cost=context.transition_cost
                 )
@@ -523,7 +529,7 @@ class RoadGraphEngine:
         tree_started = start_timer()
 
         def outbound_tree() -> TurnExpandedTree:
-            outbound_costs = avoiding_traveled(outbound.cost_bins_lazy, traveled)
+            outbound_costs = avoiding_traveled(outbound.cost_bins_lazy, outbound.travel_bins_lazy, traveled)
             cost_limit = tree_cost_bound(context.turn_structure, outbound_costs, statics.edge_length_m, outbound_upper_m, transition_cost=context.transition_cost)
             return build_turn_expanded_tree(
                 context.turn_structure, outbound_costs, statics.edge_length_m,
@@ -675,7 +681,8 @@ class RoadGraphEngine:
         trace_started = start_timer()
         return_edge_index_list = await asyncio.to_thread(
             lambda: turn_expanded_shortest_path(
-                context.turn_structure, avoiding_traveled(inbound_leg.cost_bins_lazy, penalized_columns), heuristic,
+                context.turn_structure,
+                avoiding_traveled(inbound_leg.cost_bins_lazy, inbound_leg.travel_bins_lazy, penalized_columns), heuristic,
                 origin_states(context.statics, data.node), fixed.end_node,
                 inbound_leg.travel_bins_lazy, inbound_leg.bin_seconds, transition_cost=context.transition_cost
             )
@@ -700,20 +707,19 @@ class RoadGraphEngine:
         )
 
     def build_traced_from_edge_ids(
-        self, context: RoadGraphContext, edge_ids: tuple[str, *tuple[str, ...]], points: FixedPoints,
+        self, context: RoadGraphContext, edge_ids: tuple[str, *tuple[str, ...]], waypoints: list[Coordinates],
+        end: ResolvedEnd | None,
     ) -> TracedLoop:
         """クライアントが組み立てたEdge id列を、評価できる経路として検証して`TracedLoop`にする。
 
         区間の乗り換えで使う。フロントは候補の`edge_ids`から
-        「Aの前半＋Bの後半」を作って送り返すため、**このグラフに実在し・順につながり・
+        「Aの前半＋Bの後半」を作って送り返すため、**このグラフに実在し・探索から除く区間を通らず・順につながり・
         起点から始まり・終点（目的地、無ければ出発地）へ着く**ことをここで確かめる（送られた列をそのまま信じると、
         評価は成功するのに経路として成立しないルートが候補一覧へ並ぶ。周回どうしを乗り換えた経路が出発地へ戻ることもここで決まる）。
 
         置いた経由地は生成と同じNodeへ寄せ、組んだ経路の中で置いた順に通る所を探す（`_waypoint_offsets_along`）。
 
-        終点は生成と同じく出て戻れるNodeへ寄せて解くため、比べる相手は元の候補が
-        実際に終わったNodeになる——目的地を寄せ直した場合も、
-        寄せ直した後の地点が条件として返っており、合成もその地点で送られてくる。
+        終点（`resolve_end`の結果）は生成と同じ所で決めるため、比べる相手は元の候補が実際に終わったNodeになる。
 
         合成経路はvia-nodeを持たないため、レグはこの経路自身の距離で`leg_of_edge_by_half`が
         切る。**レグ番号を振る側が、その番号のレグを
@@ -727,6 +733,10 @@ class RoadGraphEngine:
             logger.debug("経路に未知のEdgeが含まれています first=%s", unknown[0])
             raise RoutingError(f"経路に未知のEdgeが含まれています count={len(unknown)}")
         path = [index for index in resolved if index is not None]
+        # 除く区間は秒も費用も無限で、評価できる値が無い（生成したときから区分やハードフィルタが変わると送られうる）。
+        impassable = int(np.count_nonzero(~context.passable[path]))
+        if impassable:
+            raise RoutingError(f"経路が探索から除く区間を通ります count={impassable}")
         lazy_graph = context.lazy_graph
         tails = [int(lazy_graph.edge_from[index]) for index in path]
         heads = [int(lazy_graph.edge_to[index]) for index in path]
@@ -737,12 +747,10 @@ class RoadGraphEngine:
                 refuse_at_nodes(
                     context, f"経路がつながっていません index={index}", to_node=head, next_from_node=following_tail,
                 )
-        destination = points.destination
-        snapped = (context.origin_node, False) if destination is None else snap_point(context, destination)
-        if snapped is None:
+        if end is None:
             raise RoutingError("終点を道路網へ寄せられません")
-        if heads[-1] != snapped[0]:
-            refuse_at_nodes(context, "経路が終点に着いていません", expected=snapped[0], actual=heads[-1])
+        if heads[-1] != end.node:
+            refuse_at_nodes(context, "経路が終点に着いていません", expected=end.node, actual=heads[-1])
 
         lengths = context.statics.edge_length_m[path].tolist()
         total_m = sum(lengths)
@@ -758,7 +766,7 @@ class RoadGraphEngine:
             ]
         return TracedLoop(
             bearing=None, distance_km=round(total_m / 1000, DISTANCE_KM_DECIMALS), data=path, leg_of_edge=leg_of_edge,
-            waypoint_offsets=_waypoint_offsets_along(context, [tails[0], *heads], points.waypoints), reversible=False,
+            waypoint_offsets=_waypoint_offsets_along(context, [tails[0], *heads], waypoints), reversible=False,
         )
 
     def is_loop_too_similar(

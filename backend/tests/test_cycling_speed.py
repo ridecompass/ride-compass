@@ -1,7 +1,7 @@
 """`domain/cycling_speed.py`——平地・無風の巡航速度から出力を逆算し、区間の断面の点の間ごとに勾配・風・路面から速さを解いて
 区間の所要時間と、平地を越えて踏んだ体力の内訳にする走行モデル。
 
-入口は`RiderProfile`・`wheel_power_w`・`pushed_power_w`・`top_speed_kmh`・`SegmentSpeedModel`（`travel_seconds`・`ride`）・
+入口は`RiderProfile`・`wheel_power_w`・`top_speed_kmh`・`SegmentSpeedModel`（`travel_seconds`・`ride`）・
 `crr_for_surface`。
 期待値は走行方程式（公開の物理）と、モデルが約束する性質（平地・無風なら巡航速度に戻る・向かい風で遅くなる・上下限で止まる）から書く。
 
@@ -10,8 +10,6 @@
 - 点の間の勾配と、標高の無い長さ・全体の分布を求めること → `test_elevation_profile.py`
 - 風を進行方向の成分と横成分へ分けること → `test_wind.py`
 """
-
-from unittest.mock import patch
 
 import numpy as np
 import pytest
@@ -22,7 +20,6 @@ from app.domain import cycling_speed
 from app.domain.attributes import CategoricalColumn
 from app.domain.cycling_speed import RiderProfile, SegmentSpeedModel
 from app.domain.elevation_profile import GradeDistribution
-from app.domain.tuning import TUNING_VALUES
 from app.domain.route_request import MAX_ASSUMED_SPEED_KMH, MIN_ASSUMED_SPEED_KMH
 from tests.profile_fixture import profiles as road_profiles
 from tests.road_class_fixture import classification, replaced_road_classes, road_classes
@@ -33,12 +30,6 @@ SOLVE_TOLERANCE_MS = 0.005
 
 def _kmh(name: str) -> float:
     return cycling_speed.tuning_value(name) / 3.6
-
-
-def _rider(cruise_speed_kmh: float, **standard: float) -> RiderProfile:
-    """標準値（`cda_m2`・`crr`・`mass_kg`）を、管理画面から変えるのと同じ較正値で変えて作る。"""
-    with patch.dict(TUNING_VALUES, {f"speed.{name}": value for name, value in standard.items()}):
-        return RiderProfile(cruise_speed_kmh=cruise_speed_kmh)
 
 
 def _model(profile: RiderProfile, grade: float = 0.0, crr: float | None = None) -> SegmentSpeedModel:
@@ -53,30 +44,17 @@ def _speed(profile: RiderProfile, grade: float = 0.0, headwind: float = 0.0, cro
 
 
 def test_the_power_of_a_rider_cruising_at_20kmh_is_that_of_an_easy_ride():
-    """CdA 0.32m²・Crr 0.005・総質量80kgで20km/hを保つ出力は、走行方程式で約55W（趣味の自転車のゆっくりした巡航）。"""
-    profile = _rider(20.0, cda_m2=0.32, crr=0.005, mass_kg=80.0)
+    """テストの較正値（CdA 0.32m²・Crr 0.005・総質量80kg）で20km/hを保つ出力は、走行方程式で約55W（趣味の自転車の
+    ゆっくりした巡航）。"""
+    profile = RiderProfile(cruise_speed_kmh=20.0)
 
     assert cycling_speed.wheel_power_w(profile) == pytest.approx(55.4, abs=0.5)
 
 
-def test_the_standard_values_follow_the_values_changed_from_the_admin_screen(monkeypatch):
-    """標準値は作るたびに読む。管理画面から変えた値が、プロセスを入れ替えずに次の生成から効く。"""
-    monkeypatch.setitem(TUNING_VALUES, "speed.cda_m2", 0.5)
-    monkeypatch.setitem(TUNING_VALUES, "speed.crr", 0.02)
-    monkeypatch.setitem(TUNING_VALUES, "speed.mass_kg", 100.0)
-
-    profile = RiderProfile(cruise_speed_kmh=20.0)
-
-    assert (profile.cda_m2, profile.crr, profile.mass_kg) == (0.5, 0.02, 100.0)
-
-
 profiles = st.builds(
-    _rider,
+    RiderProfile,
     # ルート生成の要求が受け付ける巡航速度の全範囲（下りの上限より速い巡航を含む）。
     cruise_speed_kmh=st.floats(min_value=MIN_ASSUMED_SPEED_KMH, max_value=MAX_ASSUMED_SPEED_KMH),
-    cda_m2=st.floats(min_value=0.2, max_value=0.6),
-    crr=st.floats(min_value=0.002, max_value=0.02),
-    mass_kg=st.floats(min_value=50.0, max_value=150.0),
 )
 grades = st.floats(min_value=-0.3, max_value=0.3)
 winds = st.floats(min_value=-20.0, max_value=20.0)
@@ -105,7 +83,7 @@ def test_the_same_headwind_takes_a_larger_share_from_a_slower_rider():
     """向かい風5m/sで、巡航20km/hの人は25%、30km/hの人は23.5%落ちる（増えた空気抵抗のぶん踏み増したうえで、向かい風への
     強さの差は巡航速度の差として式から出る）。"""
     for cruise_kmh, share in ((20.0, 0.247), (30.0, 0.235)):
-        rider = _rider(cruise_kmh, cda_m2=0.32, crr=0.005, mass_kg=80.0)
+        rider = RiderProfile(cruise_speed_kmh=cruise_kmh)
 
         assert 1 - _speed(rider, headwind=5.0) / rider.cruise_speed_ms == pytest.approx(share, abs=0.01)
 
@@ -119,17 +97,36 @@ def test_a_crosswind_slows_the_rider_less_than_a_headwind_of_the_same_strength()
     assert headwind < crosswind < calm
 
 
-def test_more_resistance_adds_the_declared_watts_per_newton_whatever_the_flat_power():
-    """管理画面の「抵抗が増えたときの踏み増し」（W/N）のとおり、増えた抵抗に比例してWを足し、上限倍率で止まる。平地の出力に
-    比例させると、巡航が速い人ほど坂で平地並みの速度を保ち、所要時間が短く出る。平地より楽なら平地の出力のまま。"""
-    flat_power_w = 60.0
-    per_newton = cycling_speed.tuning_value("speed.extra_power_per_force")
-    ceiling = flat_power_w * cycling_speed.tuning_value("speed.max_climb_power_ratio")
+GRAVITY_M_S2 = 9.80665  # 標準重力加速度
 
-    desired, power = zip(*(cycling_speed.pushed_power_w(flat_power_w, extra) for extra in (10.0, 1000.0, -10.0)))
 
-    assert desired == pytest.approx((flat_power_w + 10 * per_newton, flat_power_w + 1000 * per_newton, flat_power_w))
-    assert power == pytest.approx((flat_power_w + 10 * per_newton, ceiling, flat_power_w))
+def _desired_power(flat_power_w: float, extra_n: float) -> float:
+    """管理画面の「抵抗が増えたときの踏み増し」（W/N）のとおりに踏みたい出力。"""
+    return flat_power_w + cycling_speed.tuning_value("speed.extra_power_per_force") * extra_n
+
+
+@pytest.mark.parametrize(
+    ("grade", "power"),
+    [(-0.01, "flat"), (0.02, "desired"), (0.06, "ceiling")],
+    ids=["下り", "登り", "上限を越える登り"],
+)
+def test_more_resistance_adds_the_declared_watts_per_newton_up_to_the_ceiling(grade, power):
+    """増えた抵抗に比例してWを足し、上限倍率で止まる。平地より楽なら平地の出力のまま。解いた速さを走行方程式へ戻すと、
+    その出力になる（空気抵抗の係数は、平地・無風の巡航速度と出力から戻す）。"""
+    flat_power_w = cycling_speed.wheel_power_w(RIDER)
+    cruise = RIDER.cruise_speed_ms
+    rolling_n = RIDER.crr * RIDER.mass_kg * GRAVITY_M_S2
+    drag = (flat_power_w / cruise - rolling_n) / cruise**2
+    gravity_n = RIDER.mass_kg * GRAVITY_M_S2 * grade
+    expected = {
+        "flat": flat_power_w,
+        "desired": _desired_power(flat_power_w, gravity_n),
+        "ceiling": flat_power_w * cycling_speed.tuning_value("speed.max_climb_power_ratio"),
+    }[power]
+
+    speed = _speed(RIDER, grade)
+
+    assert (drag * speed**2 + rolling_n + gravity_n) * speed == pytest.approx(expected, rel=0.01)
 
 
 def _ride(profile: RiderProfile, grade: float = 0.0, headwind: float = 0.0, crr: float | None = None):
@@ -160,9 +157,9 @@ def test_the_pushed_watts_are_shared_by_the_resistances_that_grew_and_add_up_to_
     flat_power_w = cycling_speed.wheel_power_w(RIDER)
     ride = _ride(RIDER, grade=0.02, headwind=3.0)
     gravity, air, seconds = float(ride.gravity_extra_j[0]), float(ride.air_extra_j[0]), float(ride.seconds[0])
-    gravity_n = RIDER.mass_kg * 9.80665 * 0.02  # 標準重力加速度
+    gravity_n = RIDER.mass_kg * GRAVITY_M_S2 * 0.02
 
-    _, power = cycling_speed.pushed_power_w(flat_power_w, gravity_n * (1 + air / gravity))
+    power = _desired_power(flat_power_w, gravity_n * (1 + air / gravity))
     assert gravity + air == pytest.approx((power - flat_power_w) * seconds)
     assert gravity > 0 and air > 0
 
@@ -173,8 +170,7 @@ def test_the_effort_weight_grows_with_the_power_the_rider_wants_over_the_flat_po
     flat_power_w = cycling_speed.wheel_power_w(RIDER)
     model = _model(RIDER, 0.03)
     facts, weighted = (model.ride(np.zeros(1), np.zeros(1), exponent) for exponent in (0.0, 1.0))
-    extra_n = RIDER.mass_kg * 9.80665 * 0.03  # 標準重力加速度
-    desired, _ = cycling_speed.pushed_power_w(flat_power_w, extra_n)
+    desired = _desired_power(flat_power_w, RIDER.mass_kg * GRAVITY_M_S2 * 0.03)
 
     assert float(weighted.gravity_extra_j[0]) == pytest.approx(float(facts.gravity_extra_j[0]) * desired / flat_power_w)
     assert float(weighted.seconds[0]) == pytest.approx(float(facts.seconds[0]))
@@ -191,10 +187,10 @@ def test_a_tailwind_takes_from_the_push_on_a_climb():
 
 def test_a_kickoff_pushes_beyond_the_flat_power_the_share_of_the_kinetic_energy_above_the_flat_power():
     """止まった所から巡航速度まで平地の出力の上限倍率で踏んで加速すると、要る運動エネルギー½mv²のうち、平地の出力を
-    越えた分（1 − 1/上限倍率）を越えて踏む。80kgで時速20km、上限2.5倍なら 0.5 × 80 × (20/3.6)² × 0.6 ≈ 741J。"""
-    rider = _rider(20.0, mass_kg=80.0)
-    with patch.dict(TUNING_VALUES, {"speed.max_climb_power_ratio": 2.5}):
-        assert cycling_speed.kickoff_extra_j(rider) == pytest.approx(0.5 * 80.0 * (20 / 3.6) ** 2 * 0.6)
+    越えた分（1 − 1/上限倍率）を越えて踏む。テストの較正値の80kg・上限2.5倍で時速20kmなら 0.5 × 80 × (20/3.6)² × 0.6 ≈ 741J。"""
+    rider = RiderProfile(cruise_speed_kmh=20.0)
+
+    assert cycling_speed.kickoff_extra_j(rider) == pytest.approx(0.5 * 80.0 * (20 / 3.6) ** 2 * 0.6)
 
 
 def test_the_stops_on_a_road_go_to_the_inertia_item_of_the_effort_ledger():
@@ -269,12 +265,8 @@ def test_riding_only_some_rows_gives_those_rows_of_riding_them_all():
         (0.3, "speed.walking_kmh"),  # 急な登りは押して歩く
     ],
 )
-def test_the_limits_follow_the_values_changed_from_the_admin_screen(monkeypatch, grade, limit):
-    """上下限は値をそのまま読み返せないので、頭打ちになる入力を通して、変えた値で止まることを見る。"""
-    changed = TUNING_VALUES[limit] * 0.8
-    monkeypatch.setitem(TUNING_VALUES, limit, changed)
-
-    assert _speed(RIDER, grade=grade) == pytest.approx(changed / 3.6, abs=SOLVE_TOLERANCE_MS)
+def test_a_steep_road_stops_at_the_limit_of_the_calibrated_value(grade, limit):
+    assert _speed(RIDER, grade=grade) == pytest.approx(_kmh(limit), abs=SOLVE_TOLERANCE_MS)
 
 
 @pytest.mark.parametrize(
@@ -294,18 +286,18 @@ def test_arrays_of_different_lengths_are_refused_instead_of_spread_over_every_se
         call()
 
 
-def test_the_rolling_resistance_of_a_road_follows_the_value_of_its_class_and_the_base_value_elsewhere(monkeypatch):
-    """管理画面で変えた区分の値が所要時間に効く。区分の外の道・表に無い区分・宣言に無い較正値は、走れないとせず
-    基準の転がり抵抗で走る（区分を足し替えるたびに経路が作れなくなると困る）。"""
-    monkeypatch.setitem(TUNING_VALUES, "speed.crr_gravel", 0.0421)
+def test_the_rolling_resistance_of_a_road_follows_the_value_of_its_class_and_the_base_value_elsewhere():
+    """区分の道は、区分に結んだ較正値の転がり抵抗で走る。区分の外の道・表に無い区分は、走れないとせず基準の転がり抵抗で走る
+    （区分を足し替えるたびに経路が作れなくなると困る）。"""
+    gravel = cycling_speed.tuning_value("speed.crr_gravel")
     definitions = road_classes(
-        {"surface": classification({"rough": [], "smooth": [], "unknown_id": []})},
+        {"surface": classification({"rough": [], "smooth": []})},
         rolling_resistance_classification="surface",
-        rolling_resistance_classes={"surface": {"rough": "speed.crr_gravel", "unknown_id": "no_such_tuning"}},
+        rolling_resistance_classes={"surface": {"rough": "speed.crr_gravel"}},
     )
-    base = TUNING_VALUES[cycling_speed.BASE_CRR_ID]
+    base = cycling_speed.tuning_value(cycling_speed.BASE_CRR_ID)
 
     with replaced_road_classes(definitions):
-        crr = cycling_speed.crr_for_surface(CategoricalColumn.encode(["rough", "smooth", "unknown_id", None]))
+        crr = cycling_speed.crr_for_surface(CategoricalColumn.encode(["rough", "smooth", None]))
 
-    assert crr.tolist() == [0.0421, base, base, base]
+    assert crr.tolist() == [gravel, base, base]

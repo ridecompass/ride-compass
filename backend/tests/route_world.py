@@ -37,8 +37,9 @@ HIGHWAY, TUNNEL = "highway", "has_tunnel"
 #: 経由地も目的地も置かない周回の指定。
 NO_POINTS = FixedPoints(waypoints=[], destination=None)
 
-#: 避けたい道の材料（値1の道）。道のストレスの軸（`tests/cost_axes_fixture.py: cost_axes`）が読む。
-BAD_MATERIAL = "m_bad"
+#: 避けたい道の材料（値1の道）。道のストレスの軸（`tests/cost_axes_fixture.py: cost_axes`）が読む。本番の軸と同じく宣言のある
+#: 数の材料を使う（軸の事実は、その宣言の名前と単位で出す）。
+BAD_MATERIAL = "accident_count_per_km_year"
 BASE_LAT, BASE_LON = 35.60, 139.60
 LAT_STEP, LON_STEP = 0.009, 0.011  # 緯度・経度とも約1km
 
@@ -232,7 +233,7 @@ _REVISIONS = itertools.count(1)
 
 def serve_road_network(root: Path, network: RoadNetwork | None) -> None:
     """道路網全体の配列を、本番と同じ置き場（`road_network_store.save`）へ新しい世代として置く。`root`は
-    `conftest.py: road_network_root`の置き場。`network`がNoneなら置き場を空にする（道路網が無い本番の状態）。"""
+    `backend/tests/conftest.py: road_network_root`の置き場。`network`がNoneなら置き場を空にする（道路網が無い本番の状態）。"""
     if network is None:
         shutil.rmtree(root, ignore_errors=True)
     else:

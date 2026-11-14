@@ -114,12 +114,13 @@ export default function Home() {
   const mapCostPreference = generatedPreference ?? conditions.costPreference;
 
   const mapView = useMapView({
-    hasSelectedRoute: results.selectedCandidate !== null,
     hasDetail: results.hasDetail,
     ride: ride.ride,
     riding: ridingWayConditions,
     now: ride.departure.now,
     costPreference: mapCostPreference,
+    roadAvoidance: conditions.roadAvoidance,
+    roadTabShown: panels.routeSettingsShown && settingsTab === "exclusions",
   });
 
   // 地図は出発地を真ん中にして開くので、地図が範囲を知らせる前は出発地が真ん中。
@@ -149,6 +150,7 @@ export default function Home() {
       <RouteSettingsForm
         conditions={conditions}
         savedConditions={savedConditions}
+        roadTabMap={mapView.roadTabMap}
         origin={location}
         originManual={originManual}
         originLocated={locationKnown}
@@ -201,8 +203,6 @@ export default function Home() {
         locationFailure={place.locationFailure}
         mapBearingDeg={mapView.bearing}
         onRedrawMap={mapView.redrawMap}
-        mapTheme={mapView.look.mapTheme}
-        onMapThemeChange={mapView.onMapThemeChange}
         onStartUsageGuide={() => setUsageGuideActive(true)}
         panelsShown={panels.panelsShown}
         onToggleRidePanel={panels.toggleRidePanel}
@@ -220,6 +220,7 @@ export default function Home() {
             ride={ride}
             mapView={mapView}
             profileLayers={profileLayers}
+            rideArrivalClock={warningRoute?.clock ?? null}
             tapMode={tapMode}
             selectionOwner={mapSelectionOwner}
             focusPoint={focusPoint}

@@ -638,6 +638,68 @@
         }
       }
     },
+    "/api/place-link": {
+      "get": {
+        "operationId": "place_link_api_place_link_get",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200,
+              "title": "Name"
+            }
+          },
+          {
+            "name": "latitude",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "number",
+              "maximum": 90,
+              "minimum": -90,
+              "title": "Latitude"
+            }
+          },
+          {
+            "name": "longitude",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "number",
+              "maximum": 180,
+              "minimum": -180,
+              "title": "Longitude"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaceLink"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/region/road-surface-tiles/{z}/{x}/{y}.pbf": {
       "get": {
         "operationId": "region_road_surface_tile_api_region_road_surface_tiles__z___x___y__pbf_get",
@@ -649,7 +711,7 @@
             "schema": {
               "type": "integer",
               "maximum": 15,
-              "minimum": 12,
+              "minimum": 10,
               "title": "Z"
             }
           },
@@ -950,73 +1012,6 @@
                     }
                   },
                   "title": "Response Region Lens Api Region Lens  Lens Id   Z   X   Y  Get"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/region/road-classes/{z}/{x}/{y}": {
-      "get": {
-        "operationId": "region_road_classes_api_region_road_classes__z___x___y__get",
-        "parameters": [
-          {
-            "name": "z",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "maximum": 15,
-              "minimum": 12,
-              "title": "Z"
-            }
-          },
-          {
-            "name": "x",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "minimum": 0,
-              "title": "X"
-            }
-          },
-          {
-            "name": "y",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "minimum": 0,
-              "title": "Y"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "additionalProperties": {
-                    "type": "object",
-                    "additionalProperties": {
-                      "type": "string"
-                    }
-                  },
-                  "title": "Response Region Road Classes Api Region Road Classes  Z   X   Y  Get"
                 }
               }
             }
@@ -2140,6 +2135,9 @@
             "type": "string",
             "enum": [
               "pass",
+              "slight_prefer",
+              "prefer",
+              "slight_avoid",
               "avoid",
               "exclude"
             ],
@@ -2148,13 +2146,37 @@
           "label": {
             "type": "string",
             "title": "Label"
+          },
+          "color": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Color"
+          },
+          "color_on_dark": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Color On Dark"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
           "key",
-          "label"
+          "label",
+          "color",
+          "color_on_dark"
         ],
         "title": "AvoidanceLevelView"
       },
@@ -2194,6 +2216,10 @@
             "type": "string",
             "title": "Section"
           },
+          "class_key": {
+            "type": "string",
+            "title": "Class Key"
+          },
           "label": {
             "type": "string",
             "title": "Label"
@@ -2206,10 +2232,17 @@
             "type": "string",
             "enum": [
               "pass",
+              "slight_prefer",
+              "prefer",
+              "slight_avoid",
               "avoid",
               "exclude"
             ],
             "title": "Default"
+          },
+          "selectable": {
+            "type": "boolean",
+            "title": "Selectable"
           }
         },
         "additionalProperties": false,
@@ -2217,9 +2250,11 @@
         "required": [
           "key",
           "section",
+          "class_key",
           "label",
           "description",
-          "default"
+          "default",
+          "selectable"
         ],
         "title": "AvoidanceRowView"
       },
@@ -2985,6 +3020,10 @@
             "type": "string",
             "title": "Icon Id"
           },
+          "color": {
+            "type": "string",
+            "title": "Color"
+          },
           "lens": {
             "$ref": "#/components/schemas/LensBands"
           }
@@ -2997,6 +3036,7 @@
           "label",
           "description",
           "icon_id",
+          "color",
           "lens"
         ],
         "title": "CostAxisCatalogEntry"
@@ -3010,10 +3050,6 @@
             "type": "array",
             "title": "Axes"
           },
-          "avoidance_label": {
-            "type": "string",
-            "title": "Avoidance Label"
-          },
           "total_lens": {
             "$ref": "#/components/schemas/TotalLens"
           },
@@ -3025,7 +3061,6 @@
         "type": "object",
         "required": [
           "axes",
-          "avoidance_label",
           "total_lens",
           "map_lens"
         ],
@@ -3271,6 +3306,13 @@
             },
             "type": "array",
             "title": "Tables"
+          },
+          "tuning": {
+            "items": {
+              "$ref": "#/components/schemas/TuningEntry"
+            },
+            "type": "array",
+            "title": "Tuning"
           }
         },
         "additionalProperties": false,
@@ -3278,7 +3320,8 @@
         "required": [
           "computed_at",
           "sources",
-          "tables"
+          "tables",
+          "tuning"
         ],
         "title": "DerivedDataFreshnessReport"
       },
@@ -4062,16 +4105,16 @@
             "type": "string",
             "title": "Axis Id"
           },
-          "seconds_per_km": {
+          "seconds": {
             "type": "number",
-            "title": "Seconds Per Km"
+            "title": "Seconds"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
           "axis_id",
-          "seconds_per_km"
+          "seconds"
         ],
         "title": "LensAxisSeconds"
       },
@@ -4103,9 +4146,9 @@
       },
       "LensDirection": {
         "properties": {
-          "total_seconds_per_km": {
+          "total_seconds": {
             "type": "number",
-            "title": "Total Seconds Per Km"
+            "title": "Total Seconds"
           },
           "axes": {
             "items": {
@@ -4115,17 +4158,17 @@
             "title": "Axes"
           },
           "facts": {
-            "items": {
+            "additionalProperties": {
               "$ref": "#/components/schemas/AxisFact"
             },
-            "type": "array",
+            "type": "object",
             "title": "Facts"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
-          "total_seconds_per_km",
+          "total_seconds",
           "axes",
           "facts"
         ],
@@ -4167,17 +4210,6 @@
                 "type": "null"
               }
             ]
-          },
-          "surface": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Surface"
           }
         },
         "additionalProperties": false,
@@ -4185,8 +4217,7 @@
         "required": [
           "painted",
           "along",
-          "against",
-          "surface"
+          "against"
         ],
         "title": "LensInspection"
       },
@@ -4559,6 +4590,154 @@
         ],
         "title": "MsmGridPointForecast"
       },
+      "NominalRoadMapLayer": {
+        "properties": {
+          "group_key": {
+            "type": "string",
+            "title": "Group Key"
+          },
+          "sort_order": {
+            "type": "integer",
+            "title": "Sort Order"
+          },
+          "icon_key": {
+            "type": "string",
+            "title": "Icon Key"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          },
+          "panel_hint": {
+            "type": "string",
+            "title": "Panel Hint"
+          },
+          "tone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tone"
+          },
+          "no_data_fact_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "No Data Fact Key"
+          },
+          "hides_unclassified": {
+            "type": "boolean",
+            "title": "Hides Unclassified"
+          },
+          "palette": {
+            "type": "string",
+            "const": "nominal",
+            "title": "Palette"
+          },
+          "hue_slot": {
+            "type": "integer",
+            "title": "Hue Slot"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "group_key",
+          "sort_order",
+          "icon_key",
+          "summary",
+          "panel_hint",
+          "tone",
+          "no_data_fact_key",
+          "hides_unclassified",
+          "palette",
+          "hue_slot"
+        ],
+        "title": "NominalRoadMapLayer"
+      },
+      "OrderedRoadMapLayer": {
+        "properties": {
+          "group_key": {
+            "type": "string",
+            "title": "Group Key"
+          },
+          "sort_order": {
+            "type": "integer",
+            "title": "Sort Order"
+          },
+          "icon_key": {
+            "type": "string",
+            "title": "Icon Key"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          },
+          "panel_hint": {
+            "type": "string",
+            "title": "Panel Hint"
+          },
+          "tone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tone"
+          },
+          "no_data_fact_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "No Data Fact Key"
+          },
+          "hides_unclassified": {
+            "type": "boolean",
+            "title": "Hides Unclassified"
+          },
+          "palette": {
+            "type": "string",
+            "const": "ordered",
+            "title": "Palette"
+          },
+          "hue_slot": {
+            "type": "null",
+            "title": "Hue Slot"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "group_key",
+          "sort_order",
+          "icon_key",
+          "summary",
+          "panel_hint",
+          "tone",
+          "no_data_fact_key",
+          "hides_unclassified",
+          "palette",
+          "hue_slot"
+        ],
+        "title": "OrderedRoadMapLayer"
+      },
       "PenaltyBreakdown": {
         "properties": {
           "axis_seconds": {
@@ -4568,9 +4747,13 @@
             "type": "object",
             "title": "Axis Seconds"
           },
-          "avoidance_seconds": {
+          "preferred_seconds": {
             "type": "number",
-            "title": "Avoidance Seconds"
+            "title": "Preferred Seconds"
+          },
+          "avoided_seconds": {
+            "type": "number",
+            "title": "Avoided Seconds"
           },
           "total_seconds": {
             "type": "number",
@@ -4582,7 +4765,8 @@
         "type": "object",
         "required": [
           "axis_seconds",
-          "avoidance_seconds",
+          "preferred_seconds",
+          "avoided_seconds",
           "total_seconds"
         ],
         "title": "PenaltyBreakdown"
@@ -4671,6 +4855,27 @@
         ],
         "title": "PlaceCandidate"
       },
+      "PlaceLink": {
+        "properties": {
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "url"
+        ],
+        "title": "PlaceLink"
+      },
       "PlaceSearchResult": {
         "properties": {
           "candidates": {
@@ -4741,6 +4946,9 @@
           "type": "string",
           "enum": [
             "pass",
+            "slight_prefer",
+            "prefer",
+            "slight_avoid",
             "avoid",
             "exclude"
           ]
@@ -4818,10 +5026,6 @@
       },
       "RoadClassCatalog": {
         "properties": {
-          "generation": {
-            "type": "string",
-            "title": "Generation"
-          },
           "map_layers": {
             "items": {
               "$ref": "#/components/schemas/RoadMapLayerView"
@@ -4836,7 +5040,6 @@
         "additionalProperties": false,
         "type": "object",
         "required": [
-          "generation",
           "map_layers",
           "avoidance"
         ],
@@ -4853,7 +5056,21 @@
           },
           "map_layers": {
             "additionalProperties": {
-              "$ref": "#/components/schemas/RoadMapLayer"
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/OrderedRoadMapLayer"
+                },
+                {
+                  "$ref": "#/components/schemas/NominalRoadMapLayer"
+                }
+              ],
+              "discriminator": {
+                "propertyName": "palette",
+                "mapping": {
+                  "nominal": "#/components/schemas/NominalRoadMapLayer",
+                  "ordered": "#/components/schemas/OrderedRoadMapLayer"
+                }
+              }
             },
             "type": "object",
             "title": "Map Layers"
@@ -5083,86 +5300,6 @@
           "speed_kmh"
         ],
         "title": "RoadInspectorRequest"
-      },
-      "RoadMapLayer": {
-        "properties": {
-          "group_key": {
-            "type": "string",
-            "title": "Group Key"
-          },
-          "sort_order": {
-            "type": "integer",
-            "title": "Sort Order"
-          },
-          "icon_key": {
-            "type": "string",
-            "title": "Icon Key"
-          },
-          "summary": {
-            "type": "string",
-            "title": "Summary"
-          },
-          "panel_hint": {
-            "type": "string",
-            "title": "Panel Hint"
-          },
-          "palette": {
-            "type": "string",
-            "title": "Palette"
-          },
-          "hue_slot": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Hue Slot"
-          },
-          "tone": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Tone"
-          },
-          "no_data_fact_key": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "No Data Fact Key"
-          },
-          "hides_unclassified": {
-            "type": "boolean",
-            "title": "Hides Unclassified"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "group_key",
-          "sort_order",
-          "icon_key",
-          "summary",
-          "panel_hint",
-          "palette",
-          "hue_slot",
-          "tone",
-          "no_data_fact_key",
-          "hides_unclassified"
-        ],
-        "title": "RoadMapLayer"
       },
       "RoadMapLayerView": {
         "properties": {
@@ -5561,10 +5698,6 @@
       },
       "RouteFacts": {
         "properties": {
-          "elevation_unknown_km": {
-            "type": "number",
-            "title": "Elevation Unknown Km"
-          },
           "axes": {
             "additionalProperties": {
               "$ref": "#/components/schemas/AxisFact"
@@ -5576,7 +5709,6 @@
         "additionalProperties": false,
         "type": "object",
         "required": [
-          "elevation_unknown_km",
           "axes"
         ],
         "title": "RouteFacts"
@@ -5873,6 +6005,17 @@
             ],
             "title": "Sustained Gradient Percent"
           },
+          "average_gradient_percent": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Average Gradient Percent"
+          },
           "estimated_arrival_time": {
             "anyOf": [
               {
@@ -5927,6 +6070,7 @@
           "edge_end",
           "elevations",
           "sustained_gradient_percent",
+          "average_gradient_percent",
           "estimated_arrival_time",
           "penalty",
           "road_classes",
@@ -6229,6 +6373,52 @@
         ],
         "title": "TotalLens"
       },
+      "TuningEntry": {
+        "properties": {
+          "param_id": {
+            "type": "string",
+            "title": "Param Id"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "unit": {
+            "type": "string",
+            "title": "Unit"
+          },
+          "derived_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Derived Value"
+          },
+          "current_value": {
+            "type": "number",
+            "title": "Current Value"
+          },
+          "needs_rebuild": {
+            "type": "boolean",
+            "title": "Needs Rebuild"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "param_id",
+          "label",
+          "unit",
+          "derived_value",
+          "current_value",
+          "needs_rebuild"
+        ],
+        "title": "TuningEntry"
+      },
       "TuningParameterView": {
         "properties": {
           "id": {
@@ -6447,6 +6637,13 @@
           "type": {
             "type": "string",
             "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
           }
         },
         "type": "object",

@@ -12,6 +12,8 @@ import type LensControl from "@/features/map/LensControl/LensControl";
 import {
   buildDefaultLayerVisibility,
   deriveFetchLayerStatus,
+  ROAD_LINE_MIN_ZOOM,
+  tileNotice,
   tileVersionGatedLayerIds,
   tileZoomTooWideLayerIds,
   type LayerDataStatusByLayer,
@@ -27,21 +29,21 @@ import { useCostAxisCatalog } from "@/hooks/useCostAxisCatalog";
 import { costLensOptions, costLensPremises } from "@/features/map/costLens";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useWayMaterials } from "@/features/map/useWayMaterials";
-import { useRoadClasses } from "@/features/map/useRoadClasses";
 import { useDynamicWeatherLayers } from "@/features/map/useDynamicWeatherLayers";
 import { useStoredState } from "@/hooks/useStoredState";
-import type { Coordinates } from "@/types/route";
+import type { Coordinates, RoadAvoidanceOverride } from "@/types/route";
+import { avoidanceChoiceOf, type RoadTabMap } from "@/lib/roadAvoidance";
 import type { MapTheme } from "@/lib/mapTheme";
 import type { RideConditions } from "@/features/map/regionApi";
 import { snapDeg } from "@/lib/cardinalLabel";
-import { countsAxis } from "@/lib/costPreference";
+import { countsAxis, countsCosts, DISABLED_LABEL } from "@/lib/costPreference";
 import type { WayValueCondition } from "@/lib/mapDisplay/mapLens";
 import { useMapCatalog } from "@/features/map/useMapCatalog";
 import { initiallyHiddenLegendKeys } from "@/features/map/scene/legends";
 import { WAY_BEARING_STEP_DEG } from "@/features/map/mapHeading";
 
 import { hiddenKeysOf, presentHiddenKeys, toggleHiddenKey, withHiddenKeys } from "./legendFilters";
-import { lensLegend, paintedLensId } from "./lens";
+import { lensLegend } from "./lens";
 import type { HiddenLegendKeys, MapLook } from "./mapLook";
 import { overlayChips } from "./overlayChips";
 import type { CostPreference } from "@/types/route";
@@ -51,12 +53,8 @@ import { useLensEquivalents } from "@/features/map/useLensEquivalents";
  * 1回へまとめる（チェックの見た目は即座に変わる）。 */
 export const LEGEND_FILTER_DEBOUNCE_MS = 400;
 
-const ROUTE_LAYER_ID = "route";
 const NO_STORED_VALUES = {};
-
 interface MapViewInputs {
-  /** 候補を選んでいるか。 */
-  hasSelectedRoute: boolean;
   /** 選択中の候補の区間まで確定しているか（ルート確定後）。 */
   hasDetail: boolean;
   /** 出発時刻と想定速度。専用配信軸の値と気象レイヤーの表示時刻がこれに従う。 */
@@ -68,6 +66,11 @@ interface MapViewInputs {
   /** 費用のレンズを塗る利用者のつまみと倍率（生成の要求へ送る形）。ルートを出している間はそのルートを生成したときの値、
    * 無ければ今の設定——ルートの線と周りの道を同じ量で塗る。 */
   costPreference: CostPreference;
+  /** 道路タブの今の段（選んだ段だけ。選んでいない行は既定の段）。道路タブを地図で見ている間、地図の道に塗る。 */
+  roadAvoidance: RoadAvoidanceOverride;
+  /** 道路タブが画面に見えているか（`app/usePagePanels.ts`の`routeSettingsShown`とタブ）。見えていて「地図で見る」がONの間だけ、段を
+   * 地図の道に塗る。 */
+  roadTabShown: boolean;
 }
 
 interface MapViewState {
@@ -78,8 +81,7 @@ interface MapViewState {
   lensConditions: readonly WayValueCondition[];
   /** 押した人の地図だけを、スタイルから取り直して組み直す。 */
   redrawMap: () => void;
-  /** 地図の地の明るさを変える（利用者がメニューで選ぶ。端末に覚える。今の値は`look.mapTheme`）。 */
-  onMapThemeChange: (theme: MapTheme) => void;
+  roadTabMap: RoadTabMap;
   /** 地図の見えている範囲の真ん中。地図がまだ範囲を知らせていなければnull。 */
   center: Coordinates | null;
   /** 地図が今映している範囲。地図がまだ範囲を知らせていなければnull。 */
@@ -93,12 +95,13 @@ interface MapViewState {
 }
 
 export function useMapView({
-  hasSelectedRoute,
   hasDetail,
   ride,
   riding,
   now,
   costPreference,
+  roadAvoidance,
+  roadTabShown,
 }: MapViewInputs): MapViewState {
   const config = useClientConfig();
   // 暗い地図は利用者がメニューで選ぶ（いつ暗くするかを自動では決めない）。
@@ -119,10 +122,10 @@ export function useMapView({
   const [storedLens, setLens] = useStoredState<LensId>("ridecompass:route-style-mode", "塗る負担", UNSELECTED_LENS_ID);
   // 選んでいた軸をあとから無効にしたら、選んでいない状態として扱う（選びは残し、無効を戻せばまた塗る）。
   const lens = countsAxis(costPreference, storedLens) ? storedLens : UNSELECTED_LENS_ID;
-  const [keepAfterRoute, setKeepAfterRoute] = useStoredState(
-    "ridecompass:lens-keep-after-route",
-    "ルートの後も周りを塗るか",
-    true,
+  const [keepSurroundings, setKeepSurroundings] = useStoredState(
+    "ridecompass:route-keep-surroundings",
+    "ルートの後も周りを出すか",
+    false,
   );
   const [storedHidden, setStoredHidden] = useStoredState<HiddenLegendKeys>(
     "ridecompass:hidden-legend-keys",
@@ -152,7 +155,9 @@ export function useMapView({
     at: ride.at,
     now,
   });
-  const painted = paintedLensId(lens, hasDetail, keepAfterRoute);
+  // ルートを選んでいる間は、地図全体に出す設定のときだけ道に付く層（周りの道の塗り・点の層）を地図全体に出す。
+  const surroundingsShown = !hasDetail || keepSurroundings;
+  const painted = surroundingsShown ? lens : null;
   // 道ごとの材料は、全道路を塗っているレンズの分だけ取る（塗っていないレンズの値は地図に出ない。表示中のものだけ叩く）。
   const fetchLenses = useMemo(() => lenses.filter((candidate) => candidate.lensId === painted), [lenses, painted]);
   const lensEquivalents = useLensEquivalents(costPreference, fetchLenses.length > 0);
@@ -161,26 +166,24 @@ export function useMapView({
   const bearingDeg = snapDeg(riding?.bearingDeg ?? viewport?.bearing ?? 0, WAY_BEARING_STEP_DEG);
   const speedKmh = riding?.speedKmh ?? ride.speedKmh;
   const wayConditions = useMemo(() => ({ bearingDeg, at: ride.at, speedKmh }), [bearingDeg, ride.at, speedKmh]);
-  const wayMaterials = useWayMaterials(
-    fetchLenses,
-    viewport,
-    wayConditions,
-    costPreference,
-    costCatalog.lenses?.totalLens.axisId ?? null,
+  const totalLens = costCatalog.lenses?.totalLens ?? null;
+  const wayMaterials = useWayMaterials(fetchLenses, viewport, wayConditions, costPreference, totalLens?.axisId ?? null);
+  const [roadTabOnMap, setRoadTabOnMap] = useStoredState("ridecompass:road-tab-on-map", "道路タブを地図で見るか", true);
+  // 道路タブを出していて「地図で見る」がONの間だけ、段を地図の道に塗る。段の値は出し入れで作り直さない。
+  const roadAvoidanceShown = roadTabShown && roadTabOnMap;
+  const avoidanceChoice = useMemo(
+    () => avoidanceChoiceOf(config.roadClasses.avoidance, roadAvoidance, mapTheme),
+    [config.roadClasses.avoidance, roadAvoidance, mapTheme],
   );
-  const shownRoadLayers = mapCatalog.roadLayers.filter((layer) => layerVisibility[layer.id] === true);
-  const roadClasses = useRoadClasses(shownRoadLayers.length > 0, viewport, config.roadClasses.generation);
-  // 層の値はどの道の線の層も同じ取得から読むので、取得の状態は出ている層のどれにも出す。
-  const roadClassStatus = deriveFetchLayerStatus(
-    roadClasses.loading,
-    roadClasses.error,
-    true,
-    true,
-    roadClasses.truncated,
-  );
-  const roadLayerStatus = roadClassStatus
-    ? Object.fromEntries(shownRoadLayers.map((layer) => [layer.id, roadClassStatus]))
-    : {};
+  // 道路タブで塗っている間は、塗れない理由（拡大が足りない・タイルの世代が届かない）を道路タブに出す（道の層を出していないと、地図の上の
+  // 行の状態の印が無い）。
+  const roadTabMapNotice = roadAvoidanceShown
+    ? tileNotice({
+        versionMissing: mapCatalog.tileVersions === null,
+        catalogSettled: config.loaded || config.failed,
+        zoomTooWide: viewport !== null && ROAD_LINE_MIN_ZOOM !== undefined && viewport.zoom < ROAD_LINE_MIN_ZOOM,
+      })
+    : null;
   // 式の木の条件の名前（`bearing_deg`・`speed_kmh`）で地図へ渡す。速度が数でない間は値の無いことにする。
   const formulaConditions = useMemo(
     () => ({ bearing_deg: bearingDeg, ...(Number.isFinite(speedKmh) ? { speed_kmh: speedKmh } : {}) }),
@@ -194,8 +197,9 @@ export function useMapView({
       layerVisibility,
       dynamicWeather: weather.dynamicWeather,
       lens,
-      paintedLensId: painted,
-      roadClasses,
+      surroundingsShown,
+      roadAvoidance: avoidanceChoice,
+      roadAvoidanceShown,
       wayMaterials,
       wayConditions: formulaConditions,
       hiddenLegendKeys: debouncedHidden,
@@ -208,8 +212,9 @@ export function useMapView({
       layerVisibility,
       weather.dynamicWeather,
       lens,
-      painted,
-      roadClasses,
+      surroundingsShown,
+      avoidanceChoice,
+      roadAvoidanceShown,
       wayMaterials,
       formulaConditions,
       debouncedHidden,
@@ -218,7 +223,9 @@ export function useMapView({
     ],
   );
 
-  const legend = lensLegend(lens, hasDetail, mapCatalog);
+  // 負担の強さが無効の間は総合も数えないので、総合の名前と凡例を出さず、選べる負担が無いことを添える。
+  const totalCounted = countsCosts(costPreference);
+  const legend = totalCounted ? lensLegend(lens, hasDetail, mapCatalog) : [];
   const lensHidden = presentHiddenKeys(legend, hiddenKeysOf(hidden, lens));
   const lensFetch = wayMaterials.get(lens);
   const chips = overlayChips({
@@ -226,7 +233,7 @@ export function useMapView({
     roadLayers: mapCatalog.roadLayers,
     visibility: layerVisibility,
     hidden,
-    dataStatus: { ...mapLayerStatus, ...roadLayerStatus, ...weather.dynamicWeatherDataStatus },
+    dataStatus: { ...mapLayerStatus, ...weather.dynamicWeatherDataStatus },
     zoomTooWideLayerIds: viewport ? tileZoomTooWideLayerIds(mapCatalog.layers, viewport.zoom) : [],
     versionMissingLayerIds: mapCatalog.tileVersions ? [] : tileVersionGatedLayerIds(mapCatalog.layers),
     catalogSettled: config.loaded || config.failed,
@@ -243,25 +250,22 @@ export function useMapView({
     lensControl: {
       lens,
       onLensChange: setLens,
-      // 選べるレンズは、総合と、利用者が無効にしていない軸（無効の軸は地図のどこにも出さない）。
-      axisOptions: costLensOptions(
-        lenses.filter((candidate) => countsAxis(costPreference, candidate.lensId)),
-        costPreference,
-      ),
+      // 選べるレンズは、総合と、数える軸（無効の軸は地図のどこにも出さない。負担の強さが無効なら総合も無い）。
+      axisOptions: costLensOptions(lenses.filter((candidate) => countsAxis(costPreference, candidate.lensId))),
+      totalLabel: totalCounted ? (totalLens?.label ?? null) : null,
       legend,
       hiddenLegendKeys: lensHidden,
       onToggleLegendKey: (key) => toggleHiddenFor(lens, key),
       onSetHiddenLegendKeys: (keys) => setHiddenFor(lens, keys),
-      keepAfterRoute,
-      onKeepAfterRouteChange: setKeepAfterRoute,
       hasDetail,
-      routeHidden: hasSelectedRoute && layerVisibility[ROUTE_LAYER_ID] !== true,
       premises: costLensPremises(painted, costCatalog, lensEquivalents),
-      catalogNotice: costCatalog.loaded
-        ? null
-        : costCatalog.failed
+      catalogNotice: !costCatalog.loaded
+        ? costCatalog.failed
           ? "負担の種類の一覧を取得できないため、塗る負担を選べません。"
-          : "負担の種類の一覧を読み込んでいます。",
+          : "負担の種類の一覧を読み込んでいます。"
+        : totalCounted
+          ? null
+          : `「条件」タブの負担の強さが${DISABLED_LABEL}のため、塗れる負担はありません。`,
       dataStatus: lensFetch
         ? deriveFetchLayerStatus(
             lensFetch.loading,
@@ -274,11 +278,12 @@ export function useMapView({
     },
     overlayControls: {
       layers: chips,
-      route: {
-        shown: layerVisibility[ROUTE_LAYER_ID] === true,
-        selectable: hasSelectedRoute,
-        onChange: (on) => setShown(ROUTE_LAYER_ID, on),
+      range: {
+        routeOnly: !surroundingsShown,
+        selectable: hasDetail,
+        onChange: (routeOnly) => setKeepSurroundings(!routeOnly),
       },
+      mapTheme: { value: mapTheme, onChange: setMapTheme },
       onToggle: setShown,
       onLegendEntryToggle: toggleHiddenFor,
       onLegendAxisSetHidden: setHiddenFor,
@@ -297,7 +302,7 @@ export function useMapView({
     },
     lensConditions: lenses.find((candidate) => candidate.lensId === painted)?.conditions ?? [],
     redrawMap: () => setRefreshToken((token) => token + 1),
-    onMapThemeChange: setMapTheme,
+    roadTabMap: { on: roadTabOnMap, onChange: setRoadTabOnMap, notice: roadTabMapNotice },
     center,
     viewport,
     bearing: viewport?.bearing ?? 0,

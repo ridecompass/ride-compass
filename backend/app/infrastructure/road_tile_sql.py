@@ -13,7 +13,7 @@ from app.domain.material_catalog import (
     material_tile_columns,
     material_value_sql,
 )
-from app.domain.region import EDGE_UNIT_MIN_ZOOM
+from app.domain.region import EDGE_UNIT_MIN_ZOOM, ROAD_TILE_MIN_ZOOM
 from app.infrastructure.cache_identity import shape_digest
 from app.infrastructure.material_joins import material_from_clause
 from app.infrastructure.source_models import COVERAGE_SQL, WAYS_SOURCE_SQL, ways_lookup_sql
@@ -92,8 +92,7 @@ def _tile_material_joins(expressions: Iterable[str]) -> str:
                     ) re
 """
 
-#: 路面タイルがフィーチャーごとに焼くプロパティの列（フィーチャーは別名`src`）。押した所に近い道（`ROADS_AT_SQL`）も
-#: 同じ列を返し、地図の小窓はどちらから来たプロパティも同じに読む。
+#: 押した所に近い道（`ROADS_AT_SQL`）がフィーチャー（別名`src`）ごとに返すプロパティの列。地図の小窓が読む。
 _FEATURE_PROPERTY_COLUMNS_SQL = f"""                    src.feature_key AS {ROAD_FEATURE_PROPERTIES['feature_key']},
                     -- 道の窓が、ポップアップに出た値と同じ行を曖昧さ無く引き
                     -- 直すための識別子。空間マッチ（半径内最近傍）だと交差点付近で別の
@@ -107,32 +106,43 @@ _FEATURE_PROPERTY_COLUMNS_SQL = f"""                    src.feature_key AS {ROAD
 {_MATERIAL_TILE_COLUMNS_SQL}"""
 _FEATURE_PROPERTY_JOINS_SQL = _tile_material_joins(material_tile_columns().values())
 
-# 路面タイル（MVT）をPostGIS側で丸ごと生成する。転送は完成済みタイル1個（数十KB）で済み、
-# エンコードはPostGISのC実装が担う。bbox内の全way行をPythonへ転送してshapelyでdecode→
-# encodeする構成だと、行転送とGILを握るCPU処理で数秒かかる。
+# 路面タイル（MVT）をPostGIS側で丸ごと生成する。転送は完成済みタイル1個で済み、エンコードはPostGISのC実装が担う。
+# bbox内の全way行をPythonへ転送してshapelyでdecode→encodeする構成だと、行転送とGILを握るCPU処理で数秒かかる。
 #
-# **最終値（軸の得点）を焼かない。** タイルは全利用者で共有してキャッシュされるため、
-# 判定基準を変えるたびに世界中のタイルを作り直すことになる。焼くのは材料の値（レシピに
-# 依存しない静的な事実）だけで、最終値はフロントとルート採点がそれぞれ同じ材料から計算する。
+# 焼くのは地図が塗るものだけ: 線の形と、地図の線の層の値と当たる0次ハードフィルタ（`:layer_values`。`feature_key`→層のid→値の
+# JSON。値の無い道は載らない）。層の値はjsonbの列のまま渡し、ST_AsMVTが層のidごとのプロパティに広げる。`ROAD_TILE_MIN_ZOOM`以上は道ごとの
+# 鍵（`feature_key`。地図が道ごとの値を置く）も焼き、それより引いたズームは層の値が同じ道を1つにつなぐ（道ごとの鍵が要らず、
+# 線の本数と点が減る）。つなぐのはタイルの座標へ写した後の形で、タイルの外へ出た所は切れたまま。
 #
 # カバレッジ判定も同じクエリへ畳み込み、1タイルあたりのDB往復を1回にする。CASE式は条件が
 # falseの分岐を評価しないため、カバレッジ外ではMVT生成のサブクエリ自体が実行されない。
 ROAD_SURFACE_TILE_MVT_SQL = text(
     f"""
-    WITH coverage AS ({COVERAGE_SQL})
+    WITH coverage AS ({COVERAGE_SQL}),
+    layer_values AS (SELECT key AS feature_key, value AS layers FROM jsonb_each(CAST(:layer_values AS jsonb))),
+    features AS NOT MATERIALIZED (
+        SELECT
+            ST_AsMVTGeom(
+                ST_Transform(src.geom, 3857), ST_TileEnvelope(:z, :x, :y), :extent, {TILE_BUFFER}, true
+            ) AS geom,
+            src.feature_key,
+            layer_values.layers
+        FROM ({_TILE_FEATURE_SOURCE_SQL}) src
+        LEFT JOIN layer_values ON layer_values.feature_key = src.feature_key
+    )
     SELECT
         coverage.covered,
         CASE WHEN coverage.covered THEN (
             SELECT ST_AsMVT(mvt.*, :layer_name, :extent, 'geom') FROM (
-                SELECT
-                    ST_AsMVTGeom(
-                        ST_Transform(src.geom, 3857), ST_TileEnvelope(:z, :x, :y), :extent, {TILE_BUFFER}, true
-                    ) AS geom,
-{_FEATURE_PROPERTY_COLUMNS_SQL}
-                FROM ({_TILE_FEATURE_SOURCE_SQL}) src
-                {_FEATURE_PROPERTY_JOINS_SQL}
+                SELECT geom, feature_key AS {ROAD_FEATURE_PROPERTIES['feature_key']}, layers
+                FROM features
+                WHERE :z >= {ROAD_TILE_MIN_ZOOM} AND geom IS NOT NULL
+                UNION ALL
+                SELECT ST_LineMerge(ST_Collect(geom)), NULL, layers
+                FROM features
+                WHERE :z < {ROAD_TILE_MIN_ZOOM} AND geom IS NOT NULL
+                GROUP BY layers
             ) mvt
-            WHERE mvt.geom IS NOT NULL
         ) END AS tile
     FROM coverage
     """

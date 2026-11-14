@@ -1,10 +1,10 @@
 /**
  * 端末に保存して、開き直しても戻る状態（`hooks/useStoredState.ts`）——保存値を読んで復元し、変えるたびに保存する。
- * 読めない保存値は、どの保存値かを添えた`StoredValueError`を投げ、消すと保存されていない状態へ戻る。
+ * 読めない保存値は、どの保存値かを添えた`StoredValueError`を投げる。
  *
  * 保存はテスト環境の `localStorage` を本物のまま使う。
  */
-import { act, render, renderHook, screen } from "@testing-library/react";
+import { act, render, renderHook } from "@testing-library/react";
 import { Component, type ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -48,7 +48,7 @@ describe("useStoredState", () => {
     expect(second.result.current[0]).toBe(3);
   });
 
-  it("読めない保存値は、保存値の名前を添えて投げ、消すと保存されていない状態から描き直せる", () => {
+  it("読めない保存値は、保存値の名前を添えて投げる", () => {
     window.localStorage.setItem(KEY, "{");
     vi.spyOn(console, "error").mockImplementation(() => {});
     const onError = vi.fn();
@@ -61,9 +61,5 @@ describe("useStoredState", () => {
     const error = onError.mock.calls[0][0] as StoredValueError;
     expect(error).toBeInstanceOf(StoredValueError);
     expect(error.message).toContain("端末に保存した大きさを読めませんでした");
-
-    error.clear();
-    render(<Size />);
-    expect(screen.getByText("1")).toBeInTheDocument();
   });
 });

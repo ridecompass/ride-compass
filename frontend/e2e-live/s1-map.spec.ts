@@ -1,7 +1,8 @@
 import { expect, test } from "@playwright/test";
 import { branch, expectNoOwnFailures, externalErrors, fetchCatalog, openLive, reportExternal } from "./live";
 import { chooseLens, currentLensLabel, renderedRoads, roadSourceId, settleMap } from "./mapReads";
-import { allLayersOn, clickFeature } from "../e2e/fixtures";
+import { allLayersOn, longPressRoad } from "../e2e/fixtures";
+import { FEATURE_KEY_PROPERTY } from "@/features/map/scene/groups/roadLines";
 import materialCatalog from "@/types/generated/material-catalog.json";
 
 /** 道の詳細が必ず持つ行（路面の種類）の項目名。名前は材料カタログが持つ。 */
@@ -40,11 +41,11 @@ test("S1 地図の描画（生成前）", async ({ page }) => {
         await settleMap(page);
         const drawn = await renderedRoads(page, source);
         expect.soft(drawn.length, `「${lens.label}」: 道が描かれていない`).toBeGreaterThan(0);
-        // 道ごとの材料を受け取り、それが描かれている道を指すこと。
+        // 道ごとの材料を受け取り、それが描かれている道を指すこと（材料の鍵は路面の地物の鍵）。
         const received = watch.wayMaterials.slice(materialsBefore).filter((entry) => entry.lensId === lens.lensId);
-        const wayIds = new Set(received.flatMap((entry) => Object.keys(entry.materials)));
-        expect.soft(wayIds.size, `「${lens.label}」: 道ごとの材料を1件も受け取っていない`).toBeGreaterThan(0);
-        const drawnWithMaterials = drawn.filter((road) => wayIds.has(String(road.osm_way_id))).length;
+        const featureKeys = new Set(received.flatMap((entry) => Object.keys(entry.materials)));
+        expect.soft(featureKeys.size, `「${lens.label}」: 道ごとの材料を1件も受け取っていない`).toBeGreaterThan(0);
+        const drawnWithMaterials = drawn.filter((road) => featureKeys.has(String(road[FEATURE_KEY_PROPERTY]))).length;
         expect
           .soft(drawnWithMaterials, `「${lens.label}」: 材料を受け取った道が1本も描かれていない`)
           .toBeGreaterThan(0);
@@ -54,14 +55,14 @@ test("S1 地図の描画（生成前）", async ({ page }) => {
     );
   }
 
-  // G: 道を1本押す → 道の詳細が開き、例外・エラー表示が無い。
+  // G: 道を1本長押しする → 道の詳細が開き、例外・エラー表示が無い。
   const popup = page.locator(".maplibregl-popup");
   await branch(
     page,
     "道を押す",
     async () => {
       const errorsBefore = watch.pageErrors.length;
-      await clickFeature(page, "road");
+      await longPressRoad(page);
       await expect(popup).toBeVisible({ timeout: 10_000 });
       // 開いたのが道の詳細であること（道の詳細は路面の種類の行を必ず持つ。属性は畳んで開くので、開いてから見る）。
       // 描画の例外はエラー境界（app/error.tsx）が受けてページの例外にならないので、中身が出たかで見る。

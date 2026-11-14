@@ -9,8 +9,10 @@
  * 送ること、結果が出たら閉じていた「ルート結果」を開くこと、候補が「ルート結果」と地図の両方へ出て、選んだ候補が地図でも
  * 選ばれ、区間を持つかで周りの塗りが決まること、全消去は確認の窓で「消す」を押してから両方から消えること、候補がある間だけ
  * 条件のずれの印が点き全消去で消えること、走行条件の想定速度・出発時刻が生成と地図の道の詳細へ同じ値で渡ること、
- * 「条件」タブの負担の強さと「負担」タブの軸ごとの無効が生成の要求に載り、無効の軸が「負担で塗る」に出ないこと、「条件」タブで保存した条件が地図で置いた
- * 出発地を持ち、呼び出すとその出発地から生成すること。
+ * 「条件」タブの負担の強さと「負担」タブの軸ごとの無効が生成の要求に載り、無効の軸が「負担で塗る」に出ないこと、負担を説明する文の
+ * 軸の並びとルートの後の「負担で塗る」の総合の名前が費用の軸の一覧から引かれること、「条件」タブで保存した条件が地図で置いた
+ * 出発地を持ち、呼び出すとその出発地から生成すること、「道路」タブの段を、タブを出していて「地図で見る」がONの間だけ地図の道に
+ * 塗ること。
  *
  * ここで見ないもの: 子の部品は本物を描き、子が値をどう描くか（一覧の書式・印の色・天候の値）は各部品のテストが見る。
  * 地図の見え方の中身（どのレイヤーをどの色・重なりで描くか・レンズの選択肢・凡例）は地図の側（`features/map/scene/`）の
@@ -27,7 +29,12 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { heldReplies, onBackend, serveCostAxisCatalog } from "@/testing/backendServer";
+import { heldReplies, onBackend, serveClientConfig, serveCostAxisCatalog } from "@/testing/backendServer";
+import { AVOIDANCE_LEVELS, avoidanceRow, clientConfigResponse, roadClassCatalog } from "@/testing/clientConfig";
+import { ROAD_AVOIDANCE_ROLE, ROAD_LINE_SOURCE_ID } from "@/features/map/scene/groups/roadLines";
+import { sceneLayerId } from "@/features/map/scene/sceneBuilders";
+import { ROAD_SETTINGS_TAB_NAME } from "@/lib/screenNames";
+import regionTileConfig from "@/types/generated/region-tile-config.json";
 import {
   FIRST,
   HERE,
@@ -46,6 +53,7 @@ import {
   rightClickMap,
 } from "@/testing/homePage";
 import { mapOnScreen } from "@/testing/maplibre";
+import { costAxisCatalog, costAxisEntry } from "@/testing/costAxes";
 import type { Coordinates } from "@/types/route";
 import { inspectorResult } from "@/testing/roadInspector";
 
@@ -70,7 +78,6 @@ describe("ルートを作る", () => {
 
     await user.click(screen.getByRole("button", { name: /^負担で塗る: / }));
     await user.click(await screen.findByRole("radio", { name: /登坂/ }));
-    await user.click(screen.getByRole("checkbox", { name: "ルート後も周囲の道路を薄く塗る" }));
     await user.keyboard("{Escape}");
     expect(paints("ascent")).toBe(true);
 
@@ -143,8 +150,7 @@ describe("ルートを作る", () => {
     serveRoadsAt([{ at: HERE, properties: { osm_way_id: 1, feature_key: "1" } }]);
     await user.click(screen.getByRole("button", { name: "パネルを閉じる" }));
     rightClickMap(HERE);
-    await user.click(await screen.findByRole("button", { name: "この道の負担を見る" }));
-    expect(await screen.findByText("総合の負担 12秒/km")).toBeInTheDocument();
+    expect(await screen.findByText("+12秒")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "パネルを開く" }));
     jobs.respond([FIRST], LOOP_CONDITIONS);
     expect(await generate(user)).toMatchObject({ assumed_speed_kmh: 25, start_time: departure.toISOString() });
@@ -206,6 +212,26 @@ describe("ルートを作る", () => {
     });
   });
 
+  it("負担を説明する文の軸の並びと、ルートの後に選ばずに塗る総合の名前は、費用の軸の一覧の名前で出る", async () => {
+    const catalog = costAxisCatalog(costAxisEntry("first", { label: "甲" }), costAxisEntry("second", { label: "乙" }));
+    serveCostAxisCatalog({ ...catalog, total_lens: { ...catalog.total_lens, label: "全部" } });
+    const { user } = renderHome();
+
+    await waitFor(() =>
+      expect(screen.getByRole("tab", { name: "負担" })).toHaveAttribute(
+        "data-usage",
+        expect.stringContaining("負担[甲・乙]の"),
+      ),
+    );
+    await user.click(screen.getByRole("button", { name: "負担の強さの説明を表示" }));
+    expect(await screen.findByText(/余分にかかるもの\[甲・乙\]を時間に直した/)).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+
+    jobs.respond([FIRST], LOOP_CONDITIONS);
+    await generate(user);
+    expect(await screen.findByRole("button", { name: "負担で塗る: 全部（タップで変更）" })).toBeInTheDocument();
+  });
+
   it("「負担」タブで無効にした軸は、「負担で塗る」の一覧に出ない", async () => {
     const { user } = renderHome();
     await user.click(screen.getByRole("tab", { name: "負担" }));
@@ -222,5 +248,33 @@ describe("ルートを作る", () => {
 
     expect(names).not.toContain("振動");
     expect(names).toContain("登坂");
+  });
+
+  it("「道路」タブの段は、タブを出していて「地図で見る」がONの間だけ地図の道に塗る", async () => {
+    serveClientConfig(
+      clientConfigResponse({
+        tile_versions: Object.fromEntries(regionTileConfig.tile_version_kinds.map((kind) => [kind, "1-test"])),
+        road_classes: roadClassCatalog({
+          avoidance: {
+            levels: AVOIDANCE_LEVELS,
+            sections: [{ key: "surface", label: "路面" }],
+            rows: [avoidanceRow("surface.gravel", "surface", { default: "avoid" })],
+          },
+        }),
+      }),
+    );
+    const { user } = renderHome();
+    const painted = () =>
+      mapOnScreen().visibleLayerIds().includes(sceneLayerId(ROAD_LINE_SOURCE_ID, ROAD_AVOIDANCE_ROLE));
+    const onMap = () => screen.getByRole("checkbox", { name: "地図で見る" });
+
+    await user.click(screen.getByRole("tab", { name: ROAD_SETTINGS_TAB_NAME }));
+    await waitFor(() => expect(painted()).toBe(true));
+    await user.click(onMap());
+    expect(painted()).toBe(false);
+    await user.click(onMap());
+    expect(painted()).toBe(true);
+    await user.click(screen.getByRole("tab", { name: "条件" }));
+    expect(painted()).toBe(false);
   });
 });

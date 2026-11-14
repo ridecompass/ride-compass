@@ -249,7 +249,7 @@ backendが先に配信すると、そのプロパティの有無を見ている�
   2026-10-10に本番で同じ条件を測った値は、デプロイで再起動した直後の1回目が生成36.6秒（結果を聞いた回数21）、2回目以降が
   約4秒で、上限は再起動の直後の生成の約3倍（乗り換えの評価の所要は未計測）。デプロイのあとの確かめはいつも再起動の直後の形になる。
 - **利用者への影響**: 本番は生成を同時に決まった本数までしか受けないので、確かめの生成が走っている間（約4秒、再起動の直後は
-  約40秒。乗り換えの評価の所要は未計測）に利用者の生成が重なると、上限を超えた分が混み合いとして断られる。
+  約40秒。乗り換えの評価の所要は未計測）に利用者の生成が重なると、上限を超えた分は枠の空きを待たされ、待てる数か時間を超えた分は混み合いとして断られる。
 - **受け付ける全長の上限（`domain/route_request.py: MAX_ROUTE_DISTANCE_KM`）の距離は試さない。** 上限の距離の探索範囲は、
   1本で`services/graph_service.py: SearchMemory`の予算の大半を取り、走っている間は利用者の生成をほぼすべて混み合いとして
   断らせる。上限の距離は混んでいれば作れないことを画面が断っている（`domain/route_request.py: BUSY_SAFE_DISTANCE_KM`）ので、
@@ -310,7 +310,7 @@ publicリポジトリで標準のGitHubホストランナーを使う実行を�
   定義が変わったジョブ（使う`.github/actions/`の手順が変わったジョブと、それらが出力を読むジョブを含む）だけを足して走らせ、ほかのジョブは
   置き場で決める。手順の変わっていないジョブのテストを回しても定義の確かめにはならず、ジョブどうしのつながりはいつも走る`doc-reading-tests`の
   ワークフローを読むテストが見る。ジョブの外（`on`・`concurrency`等）が変わったときは、全部を走らせる。
-  YAMLとして読んだ中身で比べ、コメントだけの変更は定義の変更に数えない（`run`のシェルの中のコメントは中身なので数える）。置き場をまたいで読むものは数えず、テストを読む側の置き場へ置く（backendのための道具は`backend/scripts/`）。
+  YAMLとして読んだ中身で比べ、コメントだけの変更は定義の変更に数えない（`run`のシェルの中のコメントは中身なので数える）。置き場の外を読むテストは読む側の置き場へ置き（backendのための道具は`backend/scripts/`）、それでも外のファイルを読むなら、そのファイルを読む側の置き場の判定に足す（道具のテストが`scripts`の判定に当たらない外のファイルを読むと、`scripts/tests/conftest.py`が落とす）。
   走らせるジョブの組は`changes`の段だけが持ち、ジョブの`if`と`ci-ok`が読む。
 - **masterのpushの`changes`は、pushの実行が成功した一番近い祖先と比べる。** 直前のコミット
   （`github.event.before`）と比べると、直前の実行が失敗で終わったか待ちのまま取り消された（上の`concurrency`）とき、その変更が
@@ -446,6 +446,23 @@ DB のバックアップの書き出しの後に置く。派生の作り直し�
 VM の上書きは `/etc/systemd/system/apt-daily-upgrade.timer.d/override.conf`（`OnCalendar=*-*-* 04:30:00 Asia/Tokyo`・
 `RandomizedDelaySec=0`）で、デプロイは届けない（VM で手で置いた）。消して `systemctl daemon-reload` を打てば Ubuntu の既定へ戻る。
 VM が止まっていて時刻を逃した回は、`Persistent=true`（既定）で起動のときに回る。
+
+## 本番のログ
+
+**backend のコンテナと、別のコンテナで打つバッチ（派生の作り直し・取込）は、ログを VM の journal へ送る（`--log-driver=journald`）。**
+Docker の既定（`json-file`）のログはコンテナに付き、デプロイがコンテナを消して作り直すたびに一緒に消える。journal へ送った分は
+コンテナを消しても残り、運用者への警告や本番で起きたことの調べに後から読める。
+
+- **残る期間**: VM の journald は既定の設定のまま（`/var/log/journal` があるので、ディスクに残す）。期限は決めず、容量の上限
+  （journald の `SystemMaxUse=` の既定。ファイルシステムの10%か4GBの小さい方）に届いたら古いものから消える。backend のログは1日に
+  1MB に届かない量なので、上限に届くまでは数か月分が残る。期限を言い切る要が出たら `MaxRetentionSec=` を VM の設定に足す。
+- **読み方**: 開発機から SSH で、`sudo journalctl CONTAINER_NAME=<コンテナの名前> --since "<日時>"`（配信のコンテナは
+  `ridecompass-backend`。`docker run --rm` のバッチは名前を付けなければ Docker が付けた名前になるので、`IMAGE_NAME=ridecompass-backend:latest`
+  で絞って日時で見分ける）。動いているコンテナの分は `docker logs` でも読める。
+- **管理画面の「開発者」タブ**の直近のログはプロセスのメモリの中だけにあり、再起動で消える。後から調べる記録には journal を読む。
+
+根拠は Docker の journald ドライバの公式の文書（https://docs.docker.com/engine/logging/drivers/journald/ ）と
+journald.conf（https://www.freedesktop.org/software/systemd/man/latest/journald.conf.html ）。
 
 ## 本番Redisの設定
 

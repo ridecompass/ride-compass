@@ -17,19 +17,22 @@ import numpy as np
 from app.domain.cost_axes import (
     EFFORT_AXES, HEADWIND_FACT_LABEL, STOPS_FACT_LABEL, CategoricalBurden, CostAxisDefinitions, EffortItem,
 )
-from app.domain.cycling_speed import BASE_CRR_ID, RiderProfile, SegmentSpeedModel, crr_for_surface
+from app.domain.cycling_speed import RiderProfile, SegmentSpeedModel, crr_for_surface
 from app.domain.attributes import CategoricalColumn
 from app.domain.elevation_profile import FLAT, ElevationProfiles
 from app.domain.ledger_costs import LedgerCosts, LedgerParameters
 from app.domain.road_classes import CLASS_MATERIAL_PREFIX, RoadClassDefinitions, class_labels
 from app.domain.route_request import ASSUMED_SPEED_KMH
 from app.domain.strict_model import StrictModel
-from app.domain.tuning import tuning_value
+from app.domain.tuning import BASE_CRR_ID, tuning_value
 
 _ROAD_M = 1000.0
 #: 引き戻す事実の値の刻み（最小・最大・刻み）。最大は、それより大きい事実の道がほぼ無い所に置く。
 _GRADE_PERCENT = (0.0, 25.0, 0.05)
 _HEADWIND_MS = (0.0, 20.0, 0.05)
+
+#: 目安の条件（このモジュールの冒頭）を、利用者に言う文。条件を変えたら、ここも変える。
+LENS_EQUIVALENTS_CONDITION_WORDING = "いまの負担の強さと倍率で、その条件だけを持つ1kmの道を無風で走った場合"
 
 
 class ThresholdEquivalents(StrictModel):

@@ -126,9 +126,9 @@ describe("WeatherPanel 観測の出所", () => {
     const panel = screen.getByRole("dialog");
     expect(panel).toHaveTextContent("アメダスの観測");
     expect(panel).toHaveTextContent("練馬11:50");
-    expect(panel).toHaveTextContent("気温21.4℃（体感 20.0℃）");
+    expect(panel).toHaveTextContent("気温21.4℃[体感 20.0℃]");
     expect(panel).toHaveTextContent("風東の風 3.3m/s");
-    expect(panel).toHaveTextContent("降水量1.3mm（直近10分間）");
+    expect(panel).toHaveTextContent("降水量1.3mm[直近10分間]");
     const clear = vocabulary.weatherCategories.find((category) => category.key === "clear")!;
     expect(panel).toHaveTextContent(`天気${clear.label}`);
   });

@@ -1,4 +1,4 @@
-import { expect, type Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 import { featureFilter } from "@maplibre/maplibre-gl-style-spec";
 import type { LiveCatalog } from "./live";
 import { ROUTE_HIT_TARGET_SEGMENT } from "@/features/map/scene/groups/routes";
@@ -58,29 +58,41 @@ function lensPill(page: Page) {
   return page.getByRole("button", { name: /^負担で塗る: / });
 }
 
-/** レンズを名前で選ぶ（null はレンズを選んでいない状態へ戻す）。一覧は選んでも閉じず、選んでいる行をもう一度押すと外れるので、
- *  選び済みなら押さず、Escape で閉じる。行の名前には走る条件・「未使用」の印が続くので、名前の要素で当てる。 */
-export async function chooseLens(page: Page, label: string | null): Promise<void> {
+/** レンズの一覧を開いて`read`を当て、Escape で閉じる。 */
+async function inLensList<T>(page: Page, read: (group: Locator) => Promise<T>): Promise<T> {
   await lensPill(page).click();
   const group = page.getByRole("radiogroup", { name: "負担で塗る" });
   await expect(group).toBeVisible();
-  if (label === null) {
-    const clear = page.getByRole("button", { name: "選択を外す" });
-    if (await clear.isEnabled()) await clear.click();
-  } else {
-    const row = group.getByRole("radio").filter({ has: page.getByText(label, { exact: true }) });
-    if ((await row.getAttribute("aria-checked")) !== "true") await row.click();
-  }
+  const result = await read(group);
   await page.keyboard.press("Escape");
   await expect(group).toBeHidden();
+  return result;
 }
 
-/** 今のレンズの名前。ピルがどのレンズの名前も出していなければ、レンズを選んでいない（null）。 */
+/** レンズを名前で選ぶ（null はレンズを選んでいない状態へ戻す）。一覧は選んでも閉じず、選んでいる行をもう一度押すと外れるので、
+ *  選び済みなら押さず、Escape で閉じる。行の名前には走る条件の印が続くので、名前の要素で当てる。 */
+export async function chooseLens(page: Page, label: string | null): Promise<void> {
+  await inLensList(page, async (group) => {
+    if (label === null) {
+      const clear = page.getByRole("button", { name: "選択を外す" });
+      if (await clear.isEnabled()) await clear.click();
+    } else {
+      const row = group.getByRole("radio").filter({ has: page.getByText(label, { exact: true }) });
+      if ((await row.getAttribute("aria-checked")) !== "true") await row.click();
+    }
+  });
+}
+
+/** 今のレンズの名前。一覧で選んでいる行が無ければ、レンズを選んでいない（null）。ピルの名前は、選んでいない状態と
+ *  あるレンズを選んだ状態で同じになりうるので読まない。 */
 export async function currentLensLabel(page: Page, catalog: LiveCatalog): Promise<string | null> {
-  for (const { label } of catalog.lenses) {
-    if (await lensPill(page).getByText(label, { exact: true }).isVisible()) return label;
-  }
-  return null;
+  return inLensList(page, async (group) => {
+    const checked = group.getByRole("radio", { checked: true });
+    for (const { label } of catalog.lenses) {
+      if ((await checked.getByText(label, { exact: true }).count()) > 0) return label;
+    }
+    return null;
+  });
 }
 
 /**

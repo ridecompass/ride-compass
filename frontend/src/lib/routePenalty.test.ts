@@ -1,22 +1,41 @@
 /**
- * `lib/routePenalty.ts: penaltyRows`——内訳の行の名前。
+ * `lib/routePenalty.ts`——内訳の行と負担の書き方。
  *
- * 見るもの: 一覧が届くまで・取れない間の行の名前。
+ * 見るもの: 一覧が届くまで・取れない間の行の名前と軸の色。好む道で下げた分が上回った負担を「−」で書くこと。
  *
- * ここで見ないもの: 行の並びと分の書き方 → `features/route/RouteAxisProfile/RouteAxisProfile.test.tsx`。
+ * ここで見ないもの: 軸の行の並びと事実 → `features/route/RouteProfile/RouteProfile.test.tsx`。
  */
 import { describe, expect, it } from "vitest";
 
-import { penaltyRows, type PenaltyCatalog } from "./routePenalty";
+import palette from "@/types/generated/palette.json";
 
-const PENALTY = { axis_seconds: { stopping: 30 }, avoidance_seconds: 120, total_seconds: 150 };
-const NOT_LOADED: Omit<PenaltyCatalog, "failed"> = { axes: [], axisColors: {}, avoidanceLabel: "", loaded: false };
+import { costAxisColor, formatPenalty, formatPenaltyMinutes, penaltyRows, type PenaltyCatalog } from "./routePenalty";
+
+const AXIS_SECONDS = { stopping: 30 };
+const NOT_LOADED: Omit<PenaltyCatalog, "failed"> = {
+  axes: [],
+  axisColors: {},
+  loaded: false,
+};
 
 describe("penaltyRows", () => {
   it.each([
     [false, "読み込み中"],
     [true, "取得できません"],
   ])("一覧が届いていない間（失敗 %s）は、どの行の名前も「%s」", (failed, label) => {
-    expect(penaltyRows(PENALTY, { ...NOT_LOADED, failed }).map((row) => row.label)).toEqual([label, label]);
+    expect(penaltyRows(AXIS_SECONDS, { ...NOT_LOADED, failed }).map((row) => row.label)).toEqual([label]);
+  });
+
+  it("好む道で下げた分が上乗せを上回った負担は「−」で書く", () => {
+    expect([formatPenalty(-180), formatPenaltyMinutes(-180)]).toEqual(["−3分", "−3"]);
+  });
+});
+
+describe("costAxisColor", () => {
+  it("一覧が届くまでは中立の色で、届いた一覧に無い軸は既定の色で塗らずに投げる", () => {
+    expect(costAxisColor(NOT_LOADED, "stopping")).toBe(palette.semantic.neutral);
+    expect(() => costAxisColor({ axisColors: { other: "red" }, loaded: true }, "stopping")).toThrow(
+      "負担の種類 stopping の色が一覧にありません",
+    );
   });
 });

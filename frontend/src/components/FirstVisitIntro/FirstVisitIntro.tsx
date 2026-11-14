@@ -72,7 +72,7 @@ export default function FirstVisitIntro({ isMobile, locationUnknown }: FirstVisi
               text={
                 locationUnknown
                   ? "現在地が分からないため、この灰色の印は仮の地点です。「ルート設定」を開いて地図をタップすると、そこが出発地になります。"
-                  : "この印が出発地です（はじめは現在地）。地図の上でつかんで動かせます。"
+                  : "この印が出発地です[はじめは現在地]。地図の上でつかんで動かせます。"
               }
             />
           </span>
@@ -87,11 +87,11 @@ export default function FirstVisitIntro({ isMobile, locationUnknown }: FirstVisi
           />
         </li>
         <li>
-          部品の使い方は、右上のメニュー（
+          部品の使い方は、右上のメニュー
           <span role="img" aria-label="メニュー" className="inline-flex align-[-2px]">
             <MenuIcon size={13} />
           </span>
-          ）の「使い方を見る」から、部品を押して見られます。
+          の「使い方を見る」から、部品を押して見られます。
         </li>
       </ul>
       <Button

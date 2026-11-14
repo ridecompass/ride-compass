@@ -1,8 +1,5 @@
 // 押した道の詳細（`features/map/MapView/RoadInspectorPopup.tsx`）へ渡す走行の条件と、道の窓の応答（backend
-// `POST /api/region/road-inspector`）を組み立て、負担を開く道具。
-import { screen } from "@testing-library/react";
-import type { UserEvent } from "@testing-library/user-event";
-
+// `POST /api/region/road-inspector`）を組み立てる道具。
 import { onBackend, serveCostAxisCatalog } from "@/testing/backendServer";
 import { TWO_COST_AXES } from "@/testing/costAxes";
 import type { RoadInspection } from "@/features/map/regionApi";
@@ -31,12 +28,9 @@ export const RIDE = {
   },
 };
 
-export const openInspection = (user: UserEvent) =>
-  user.click(screen.getByRole("button", { name: "この道の負担を見る" }));
-
 /** 1つの向きの負担。軸ごとの秒と元の事実は、見たい呼び出し側が書く。 */
-export function lensDirection(totalSecondsPerKm: number, overrides: Partial<LensDirection> = {}): LensDirection {
-  return { total_seconds_per_km: totalSecondsPerKm, axes: [], facts: [], ...overrides };
+export function lensDirection(totalSeconds: number, overrides: Partial<LensDirection> = {}): LensDirection {
+  return { total_seconds: totalSeconds, axes: [], facts: {}, ...overrides };
 }
 
 /** 道の向きを塗る道の応答。レンズの値は一部だけを上書きできる。 */
@@ -44,6 +38,6 @@ export function inspectorResult(lens: Partial<LensInspection> = {}): RoadInspect
   return {
     highway: "residential",
     tags: { lit: "yes", name: "明治通り" },
-    lens: { painted: "along", along: lensDirection(12), against: lensDirection(3), surface: null, ...lens },
+    lens: { painted: "along", along: lensDirection(12), against: lensDirection(3), ...lens },
   };
 }

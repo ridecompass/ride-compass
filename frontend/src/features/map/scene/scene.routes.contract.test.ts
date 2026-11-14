@@ -24,7 +24,6 @@ import { semanticColorsOn } from "@/lib/mapTheme";
 type RoutePathShape = RouteState["segments"][number];
 
 const NO_ROUTES: RouteState = {
-  visible: true,
   candidates: [],
   selectedRouteId: null,
   segments: [],

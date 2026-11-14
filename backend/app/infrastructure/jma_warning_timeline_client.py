@@ -1,8 +1,8 @@
 """気象庁の警報級の時系列（府県予報区ごと）のクライアント。
 
 警報・注意報のページが時間帯ごとの危険度の表を描くのに読むJSONで、応答の形はここで解き、呼び出し元へは
-`domain/jma_warning_timeline.py: WarningTimeline`で渡す。読むのは段のコード（`significancyParts`）だけで、雨量等の
-見込みの値（`forecastParts`）は読まない。取得失敗はNoneを返し、「段がどこも注意報級でない」とは分ける。
+`domain/jma_warning_timeline.py: WarningTimeline`で渡す（段のコードが注意報級以上かも、ここで読み替えて添える）。
+読むのは段のコード（`significancyParts`）だけで、雨量等の見込みの値（`forecastParts`）は読まない。取得の失敗は投げ、「段がどこも注意報級でない」とは分ける。
 """
 
 import re
@@ -21,6 +21,10 @@ _TIMELINE_CACHE_TTL_SECONDS = 10 * 60
 
 # コマの長さ（ISO 8601の期間）。気象庁は時間の単位でしか出さない。
 _DURATION_HOURS = re.compile(r"PT(\d+)H")
+
+#: 段のコード（`01`・`20`等の2桁の数字）の十の位がこれ以上なら注意報級。気象庁のページの「注意報級以上」の絞り込みと
+#: 同じ境目。
+_ADVISORY_TENS_DIGIT = 2
 
 def new_timeline_cache() -> TTLCache:
     """`fetch_warning_timeline`へ渡すキャッシュ。府県予報区（約50）が退避されない大きさで、鮮度はTTLで保つ。"""
@@ -42,6 +46,7 @@ def _parse_local(kind_type: str, local: dict, slots: tuple[TimeSlot, ...]) -> Ti
         raise UnexpectedShapeError(f"warning timeline local has {len(codes)} levels for {len(slots)} slots")
     return TimelineLevels(
         kind_type=kind_type, area_name=local.get("areaName"), slots=slots, codes=codes,
+        advisories=tuple(int(code) // 10 >= _ADVISORY_TENS_DIGIT for code in codes),
         additions=tuple(local.get("additions", ())),
     )
 

@@ -49,6 +49,7 @@ git grep -h -o -E "https?://[a-zA-Z0-9.-]+" -- backend/app backend/scripts front
 | 街区レベル位置参照情報（国土交通省） | `backend/scripts/fetch_isj_blocks.py`（取得）、アダプタ`isj_block` | 位置参照情報利用約款。無償で使え（第3条）、位置参照情報か、編集・加工した成果物を転載・引用するときは出典を明記する（第2条第3項。例「街区レベル位置参照情報　国土交通省」、できる限り整備年・ファイル名・編集・加工の責任者も）。公共測量など高い精度の測量・証明には使えない（第2条第2項）。商用・再配布の定めは無い | 定めなし（禁止は無い） | 出典（「街区レベル位置参照情報」（国土交通省）＋リンク）と加工した旨。`backend/app/domain/place_search.py: ADDRESS_AREA_ATTRIBUTIONS`の行が`ALWAYS_SHOWN_ATTRIBUTIONS`に入って満たす | [利用約款](https://nlftp.mlit.go.jp/isj/agreement.html)・[位置参照情報ダウンロードサービス](https://nlftp.mlit.go.jp/isj/) | 2026-10-09 |
 | Overture Maps places（Overture Maps Foundation。地点の出どころは Meta・Microsoft・Foursquare・AllThePlaces・PinMeTo・DAC・Uberall・OpenTravel 等で、1つの地点の出どころは1つ） | `backend/scripts/fetch_overture_places.py`（取得）、アダプタ`overture_places` | テーマは出どころごとに CDLA Permissive 2.0（Meta・Microsoft・PinMeTo・DAC・Uberall・OpenTravel 等）・Apache 2.0（Foursquare）・CC0 1.0（AllThePlaces）。OpenStreetMap のデータを含まず、ODbL の共有の義務がかからない。Foursquare の NOTICE は、ライセンスの写しを渡すこと・変えた所を目立つように示すこと・NOTICE の全文を残すことを求め、API の形で配るなら NOTICE の内容を開発者向けの文書に目立つように載せることを勧める | 可（CDLA Permissive 2.0・Apache 2.0・CC0 1.0 のどれも商用の利用を制限しない） | 出どころごとの表示（Overture の出典の文書の文言。出典の文書に載る前の新しい出どころは、配布の地点が持つ`sources[].license`でライセンスを見る）。Foursquare は著作権の1行・Apache 2.0・Overture の形へ変えた旨・NOTICE。`backend/app/domain/map_display.py: ALWAYS_SHOWN_ATTRIBUTIONS`の行と、そこからリンクする`frontend/public/licenses/`の Apache 2.0 の本文・NOTICE の写し（変えた旨を末尾に足したもの）が満たす | [出典](https://docs.overturemaps.org/attribution/)・[places](https://docs.overturemaps.org/guides/places/)・[Foursquare NOTICE](https://opensource.foursquare.com/places-notice-txt/) | 2026-10-22 |
 | 文化遺産オンライン（文化庁・国立情報学研究所）の国の指定・登録の文化財の建造物を、ジャパンサーチ（国立国会図書館）の簡易Web APIで | `backend/scripts/fetch_bunka_heritages.py`（取得）、アダプタ`bunka_heritages` | ジャパンサーチのサイトポリシー「データの利用について」: メタデータはデータベースの紹介ページの条件に従い、書かれていなければ CC0 1.0。文化遺産オンラインの紹介ページの条件は「解説文：CC BY」だけで、使う項目（名称・位置・所有者・指定の別）に条件は無い（解説文は使わない）。文化遺産オンラインのサイト自体は「無断で転用・引用・改変することを禁じます」と書くが、簡易Web APIで取れるのは連携機関が API での提供を許したものだけ（簡易Web APIガイド 1.2）で、その条件がジャパンサーチの紹介ページに付いているので、それに従う。API は間を空けて打つよう求め、上限の目安は示さない（同 1.4） | 可（CC0・CC BY） | 条件は無いが、サイトポリシーの記載例の形（「ジャパンサーチ「文化遺産オンライン（文化庁・国立情報学研究所）」のメタデータを改変して利用」＋紹介ページのURL）で`ALWAYS_SHOWN_ATTRIBUTIONS`に出す | [サイトポリシー](https://jpsearch.go.jp/policy)・[紹介ページ](https://jpsearch.go.jp/database/bunka)・[簡易Web APIガイド](https://jpsearch.go.jp/static/developer/webapi/ja.html)・[文化遺産オンライン](https://online.bunka.go.jp/about) | 2026-10-08 |
+| 交通規制情報（公益財団法人日本道路交通情報センター（JARTIC）。都道府県警察の交通規制データベースを拡張版標準フォーマットにしたもの） | `backend/scripts/fetch_jartic_regulations.py`（取得）、アダプタ`jartic_regulation` | JARTIC のオープンデータの利用規約。商用を含めて使え、CC BY 4.0 と互換。出典の記載を求め、加工したら出典とは別に加工した旨を求める（記載例「（公益財団法人日本道路交通情報センター）（当該ページの URL）「断面交通量情報」を加工して作成」） | 可 | 出典（公益財団法人日本道路交通情報センター＋「各種情報の提供」のページの URL）と加工した旨。規約の記載例の形で`backend/app/domain/map_display.py: ALWAYS_SHOWN_ATTRIBUTIONS`に出す | [各種情報の提供](https://www.jartic.or.jp/service/opendata/) | 2026-11-08 |
 
 公共データ利用規約（PDL1.0）は商用利用を認め、CC BY 4.0と互換である
 （[デジタル庁](https://www.digital.go.jp/resources/open_data/public_data_license_v1.0)）。
@@ -103,6 +104,29 @@ git grep -h -o -E "https?://[a-zA-Z0-9.-]+" -- backend/app backend/scripts front
 3. 本番 VM で、別のコンテナ（[production-data/SKILL.md](../../.claude/skills/production-data/SKILL.md)「派生データの作り直し」と同じ`docker run`）から
    `python scripts/fetch_bunka_heritages.py` → `python -m app.batch.ingest_cli --source bunka_heritage` → `python -m app.batch.derive_cli`
    の順に打つ。本番 DB へ書くので、開発機の対話のセッションで、ユーザーがチャットで言ったときだけ Claude が打つ（[dev-session/SKILL.md](../../.claude/skills/dev-session/SKILL.md)「本番へ書く」）。
+
+### 交通規制情報（JARTIC）
+
+| 項目 | 内容 |
+|---|---|
+| 今の版 | `backend/app/batch/source_profile.yaml`の`jartic_regulation`の`rows.version`（配布元の置き場の名前。`202611010000`は 2026-11-01 の版） |
+| 配布の頻度 | 毎月。配布元は最新の版だけを置き、前の版は取り直せない |
+| 新しい版の見つけ方 | 配布の一覧（`https://www.jartic.or.jp/d/opendata/opendata.json`）の交通規制情報（`type`が`typeD`）の要素の`link`が`/<版>/<ファイル名>`になる。取得の道具は、一覧の版が`rows.version`と違えば取らずに止まる |
+| 取り方 | 取込の範囲に掛かる都道府県の zip（cp932 の CSV が1つ。東京都で約39MB・57万行。2026-11-08）。範囲に掛かる都道府県は ABR の市区町村の代表点で決める |
+
+手元へ写したファイル（本番は VM の`/home/ubuntu/ridecompass-cache-data/jartic/`）は配布元から消えても残るので、
+版を上げるのは、新しい規制を入れたいときと、写したファイルを失って取り直すとき（前の版は取り直せない）。
+
+入れ替えの手順:
+
+1. [各種情報の提供](https://www.jartic.or.jp/service/opendata/)の利用規約と、拡張版標準フォーマットの説明書の版を読み、
+   出典の求めが変わっていれば`ALWAYS_SHOWN_ATTRIBUTIONS`の行を合わせ（生成物`mapDisplay.ts`を作り直す）、列や共通規制種別コードが
+   変わっていればアダプタと`rows.kinds`を合わせる。上の表の行の確認日も直す。
+2. `rows.version`を一覧の版へ書き換えてマージする。
+3. 本番 VM で、別のコンテナ（[production-data/SKILL.md](../../.claude/skills/production-data/SKILL.md)「派生データの作り直し」と同じ`docker run`）から
+   `python scripts/fetch_abr.py`（都道府県を ABR の市区町村の代表点から決めるので先に）→ `python scripts/fetch_jartic_regulations.py`
+   → `python -m app.batch.ingest_cli --source jartic_regulation` → `python -m app.batch.derive_cli`の順に打つ。
+   本番 DB へ書くので、開発機の対話のセッションで、ユーザーがチャットで言ったときだけ Claude が打つ（[dev-session/SKILL.md](../../.claude/skills/dev-session/SKILL.md)「本番へ書く」）。
 
 ### 住所の区画の元データ（アドレス・ベース・レジストリ・e-Stat の小地域の境界・街区レベル位置参照情報）
 

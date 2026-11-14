@@ -11,23 +11,24 @@
 （`domain/map_display.py: POINT_MEMBERS_PROPERTY`）を持つ。
 """
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from functools import cached_property
 
-from sqlalchemy import Float, Integer, Text, TextClause, bindparam, text
+from sqlalchemy import BindParameter, Float, Integer, Text, TextClause, bindparam, text
 from sqlalchemy.dialects.postgresql import ARRAY
 
 from app.domain.accident import BICYCLE_SQL, FATAL_SQL
-from app.domain.geo import degrees_covering_m
+from app.domain.geo import COORDINATE_DECIMALS, degrees_covering_m
 from app.domain.map_display import POINT_CLUSTER_CELLS_PER_TILE, POINT_COUNT_PROPERTY, POINT_MEMBERS_PROPERTY
-from app.domain.primary_attributes import PRIMARY_ATTRIBUTES, stop_poi_map_group_sql
+from app.domain.primary_attributes import PRIMARY_ATTRIBUTES, SUPPLY_PLACE_GROUPS, stop_poi_map_group_sql
 from app.domain.registry import PrimaryAttributeSpec, TileKind
 from app.domain.stop_place import StopPlaceGroup
 from app.domain.traffic import STOP_POI_KINDS, stop_cluster_sql, stop_kind_sql
 from app.domain.tuning import STOP_CLUSTER_DISTANCE_ID
 from app.infrastructure.cache_identity import shape_digest
 from app.infrastructure.derived_data_meta import recorded_tuning_sql
+from app.infrastructure.derived_models import grouped_place_sql
 from app.infrastructure.source_models import COVERAGE_SQL, NODES_SOURCE_SQL, accidents_within_sql
 from app.infrastructure.vector_tile import ROAD_SURFACE_LAYER_NAME, TILE_BUFFER
 
@@ -46,7 +47,14 @@ class PointTileLayer:
         return shape_digest(self.sql, self.source_layer)
 
 
-_CONVENIENCE_GROUP = bindparam("convenience_group", value=StopPlaceGroup.CONVENIENCE.value, type_=Text())
+def _place_groups_param(groups: Iterable[StopPlaceGroup]) -> BindParameter[Sequence[str]]:
+    """タイルが地点の表から出す群`groups`（`:place_groups`）。"""
+    return bindparam("place_groups", value=sorted(groups), type_=ARRAY(Text()))
+
+
+# 地点の表は、位置の部分索引の条件（`derived_models.py: grouped_place_sql`）で絞ってから、タイルが出す群で選ぶ。
+_PLACE_POINTS_WHERE = f"""{grouped_place_sql("s")} AND s.place_group = ANY(:place_groups)
+              AND ST_Intersects(s.geom, ST_MakeEnvelope(:xmin, :ymin, :xmax, :ymax, 4326))"""
 
 _CLUSTER_PARAMS = (bindparam("cluster_cells", value=POINT_CLUSTER_CELLS_PER_TILE, type_=Integer()),)
 
@@ -83,8 +91,8 @@ def _clustered_mvt_sql(points: str, rows: tuple[str, ...], properties: tuple[str
                 celled.name AS name,
                 count(*) OVER cell AS {POINT_COUNT_PROPERTY},
                 CASE WHEN count(*) OVER cell > 1 THEN
-                    (json_agg(json_build_array(celled.name, round(ST_X(celled.geom)::numeric, 6),
-                                               round(ST_Y(celled.geom)::numeric, 6)))
+                    (json_agg(json_build_array(celled.name, round(ST_X(celled.geom)::numeric, {COORDINATE_DECIMALS}),
+                                               round(ST_Y(celled.geom)::numeric, {COORDINATE_DECIMALS})))
                          FILTER (WHERE celled.name IS NOT NULL) OVER members)::text
                 END AS {POINT_MEMBERS_PROPERTY}
             FROM celled
@@ -99,7 +107,7 @@ def _clustered_mvt_sql(points: str, rows: tuple[str, ...], properties: tuple[str
 
 
 # 種別は`node_kinds.kind`（派生側の分類器が付けたもの）に信号の読み替えを済ませたもので、
-# 位置は`source_features`の点。コンビニだけは立ち寄り先の表（`stop_places`）から足し、店の名前も添える。
+# 位置は`source_features`の点。コンビニだけは地点の表（`places`）の群「コンビニ」の行から足し、店の名前も添える。
 _POI_KIND_EXPR = stop_kind_sql("nm")
 _POI_GROUP_EXPR = stop_poi_map_group_sql("nm")
 
@@ -108,7 +116,7 @@ _DEGREES_PER_M = degrees_covering_m(1.0)
 
 # 停止要因POI・補給POIを1タイルへ焼き込む。停止要因は派生を作り直したときのまとめる距離で`domain/traffic.py: stop_cluster_sql`で
 # まとめてから、ほかの点と同じく升目で束ねる。タイル境界で塊が切れると同じ交差点が隣り合うタイルで別々の点になるので、境目の外へ
-# まとめる距離ずつ2つ先まで連なる点を読む（式の間隔は地面のm以下なので、地面のmで覆えば足りる）。
+# まとめる距離ずつ2つ先まで連なる点を読む（式の間隔は地面のmを下回らないので、地面のmで覆えば足りる）。
 _POI_POINTS_SQL = f"""
     SELECT grouped.kind, grouped.map_group, grouped.name, grouped.geom
     FROM (
@@ -135,12 +143,11 @@ _POI_POINTS_SQL = f"""
                       ST_MakeEnvelope(:xmin, :ymin, :xmax, :ymax, 4326),
                       (SELECT 2 * eps_m * :degrees_per_m FROM cluster)))
             UNION ALL
-            -- 補給POIのコンビニは立ち寄り先の群「コンビニ」の行から出す。群の値が種別の値。
+            -- 補給POIの凡例の行に入る立ち寄り先の群（コンビニ）は地点の表から出す。群の値が種別の値。
             SELECT s.place_group, s.place_group, s.geom,
                    's' || s.source || ':' || s.source_key, s.name
-            FROM stop_places s
-            WHERE s.place_group = :convenience_group
-              AND ST_Intersects(s.geom, ST_MakeEnvelope(:xmin, :ymin, :xmax, :ymax, 4326))
+            FROM places s
+            WHERE {_PLACE_POINTS_WHERE}
         ) clustered
         GROUP BY clustered.map_group, clustered.cluster_key
     ) grouped
@@ -161,7 +168,7 @@ _POI_TILE_MVT_SQL = text(
 ).bindparams(
     bindparam("stop_kinds", value=sorted(STOP_POI_KINDS), type_=ARRAY(Text())),
     bindparam("degrees_per_m", value=_DEGREES_PER_M, type_=Float()),
-    _CONVENIENCE_GROUP,
+    _place_groups_param(SUPPLY_PLACE_GROUPS),
     *_CLUSTER_PARAMS,
 )
 
@@ -187,13 +194,12 @@ _ACCIDENT_TILE_MVT_SQL = text(
     """
 ).bindparams(*_CLUSTER_PARAMS)
 
-# 立ち寄り先。群へ入れ、近くの同じ店をまとめた後の表（`batch/derive_stop_places.py`）をそのまま出す。代表点は確からしい地点を先に選ぶ。
-_STOP_PLACE_POINTS_SQL = """
+# 立ち寄り先。地点の表（`batch/derive_places.py`）のうち、補給の点のタイルが出さない群の行をそのまま出す。代表点は確からしい
+# 地点を先に選ぶ。
+_STOP_PLACE_POINTS_SQL = f"""
     SELECT s.geom, s.name, s.place_group AS "group", s.confidence
-    FROM stop_places s
-    -- 群「コンビニ」は補給の点のタイル（`poi`）が出す。
-    WHERE s.place_group <> :convenience_group
-      AND ST_Intersects(s.geom, ST_MakeEnvelope(:xmin, :ymin, :xmax, :ymax, 4326))
+    FROM places s
+    WHERE {_PLACE_POINTS_WHERE}
 """
 
 _STOP_PLACE_CLUSTERED_SQL = _clustered_mvt_sql(
@@ -206,7 +212,7 @@ _STOP_PLACE_TILE_MVT_SQL = text(
         true AS covered,
         {_STOP_PLACE_CLUSTERED_SQL} AS tile
     """
-).bindparams(_CONVENIENCE_GROUP, *_CLUSTER_PARAMS)
+).bindparams(_place_groups_param(set(StopPlaceGroup) - SUPPLY_PLACE_GROUPS), *_CLUSTER_PARAMS)
 
 #: 名前→点のレイヤー。
 POINT_TILE_LAYERS: dict[str, PointTileLayer] = {

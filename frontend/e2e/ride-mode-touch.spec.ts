@@ -6,11 +6,11 @@ import { START, deliverPosition, expectDrawnAt, settledScreenPoint, settledZoom 
 
 // 2本指でつまむ・広げる操作は、MapLibre が先に指の重心のずれを移動として受け、倍率が変わるのはそのあとになり、指がひねれば
 // 回し始める。出来事の並び（移動の始まり→拡大の始まり）と回すかどうかは実ブラウザの MapLibre でしか出ないので、ここで
-// 指ごとのタッチを送って見る（パターン4 観点2）。倍率のボタンが地図の倍率まで届くことも、ここで見る。
+// 指ごとのタッチを送って見る（パターン4 観点2）。縮尺のボタンが地図の倍率まで届くことも、ここで見る。
 test.describe("タッチ端末", () => {
   test.use({ viewport: MOBILE_VIEWPORT, isMobile: true, hasTouch: true });
 
-  test("走行モードで追っている間、倍率のボタンで基準の倍率が段を回り、2本指でひねりながらつまんでも地図は回らず、休まずにその倍率で追い続け、つまむ最中に位置が届いても倍率を戻さず、1本指で動かすと休む", async ({
+  test("走行モードで追っている間、縮尺のボタンで基準の倍率が段を回り、2本指でひねりながらつまんでも地図は回らず、休まずにその倍率で追い続け、つまむ最中に位置が届いても倍率を戻さず、1本指で動かすと休む", async ({
     page,
     context,
     browserName,
@@ -24,8 +24,8 @@ test.describe("タッチ端末", () => {
     const zoom = () => page.evaluate(() => window.__liveMap().getZoom());
     const backToHere = page.getByRole("button", { name: "現在地へ戻る" });
 
-    // 走っている間の倍率のボタンは、押すたびに中→遠→近→中と倍率を替える。
-    const zoomButton = page.getByRole("button", { name: /^倍率/ });
+    // 走っている間の縮尺のボタンは、押すたびに中→遠→近→中と倍率を替える。
+    const zoomButton = page.getByRole("button", { name: /^縮尺/ });
     expect(await settledZoom(page)).toBeCloseTo(17, 2);
     for (const expected of [15, 18, 17]) {
       await zoomButton.click();

@@ -269,7 +269,7 @@ describe("useWeatherConditions 警報のバッジ", () => {
           label: "大雨警報",
           level: "warning",
           source: "jma",
-          title: "付随事項: 土砂災害・浸水害",
+          title: "付加事項: 土砂災害・浸水害",
         },
         { id: "10", label: "雷注意報", level: "advisory", source: "jma" },
         { id: "wbgt", label: "暑さ指数厳重警戒", level: "warning", source: "wbgt", title: "暑さ指数 29.0" },
@@ -331,7 +331,7 @@ describe("useWeatherConditions ルートの警報級の時系列", () => {
         end_index: 4,
         kinds: {
           thunder: {
-            advisory_label: "雷（注意報級）",
+            advisory_label: "雷[注意報級]",
             slots: [
               slot("2026-10-21T18:00:00+09:00", "2026-10-21T21:00:00+09:00", "20"),
               slot("2026-10-21T21:00:00+09:00", "2026-10-22T00:00:00+09:00", "01"),
@@ -355,7 +355,7 @@ describe("useWeatherConditions ルートの警報級の時系列", () => {
     await vi.waitFor(() =>
       expect(result.current.warningBadgeItems).toEqual([
         expect.objectContaining({
-          label: "雷（注意報級）千代田区",
+          label: "雷[注意報級]千代田区",
           level: "advisory",
           title: "10/22 00:00〜03:00に通る見込み。付加事項: 突風",
         }),

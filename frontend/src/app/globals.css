@@ -273,7 +273,7 @@
   z-index: var(--z-map-popup);
 }
 
-/* 地図ポップアップの×に、高さ44pxの押す所を持たせる（セレクタの詳細度の理由は上と同じ）。幅は左に並ぶ寄せるアイコンと
+/* 地図ポップアップの×に、高さ44pxの押す所を持たせる（セレクタの詳細度の理由は上と同じ）。幅は左に並ぶ Street View・寄せるアイコンと
    同じに詰め、上の帯のつまめる所を広く残す。MapLibreは×を本文の器（.maplibregl-popup-content）の中の右上に置くので、
    本文の上の帯は×の幅だけ右を空ける。 */
 .maplibregl-popup-content > .maplibregl-popup-close-button {

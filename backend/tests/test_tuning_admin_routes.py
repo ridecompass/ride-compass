@@ -12,7 +12,7 @@
 
 **宣言は本物の宣言から作った架空の較正値へ差し替える**（`dataclasses.replace`で本物の型のまま、
 効き方と並びだけをテストが決める）。値を使う側（転がり抵抗の分け方の区分・停止要因の種別）も、名前を見るテストでは
-架空のものを入れる。いま効いている値は`TUNING_VALUES`へ差し込む。
+架空のものを入れる。idはテストの較正値（`tests/tuning_fixture.py`）にあるものを使い、いま効いている値はそこから読む。
 """
 
 import dataclasses
@@ -23,7 +23,6 @@ from fastapi.testclient import TestClient
 
 from app.api.routers import tuning_admin
 from app.domain import traffic, tuning
-from app.domain.tuning import TUNING_VALUES
 from tests.admin_auth import AUTH_HEADERS
 from tests.road_class_fixture import classification, replaced_road_classes, road_classes
 
@@ -48,15 +47,16 @@ def _declare(monkeypatch, *params) -> None:
         monkeypatch.setitem(tuning.TUNING_PARAMETERS_BY_ID, param.id, param)
 
 
+A, B = "speed.crr_gravel", "speed.cda_m2"
+
+
 @pytest.fixture
 def declarations(monkeypatch):
     params = (
-        _declared("a", tuning.TuningEffect.CLIENT_RELOAD),
-        _declared("b", tuning.TuningEffect.IMMEDIATE),
+        _declared(A, tuning.TuningEffect.CLIENT_RELOAD),
+        _declared(B, tuning.TuningEffect.IMMEDIATE),
     )
     _declare(monkeypatch, *params)
-    for param_id, value in {"a": 11.0, "b": 12.0}.items():
-        monkeypatch.setitem(TUNING_VALUES, param_id, value)
     return params
 
 
@@ -73,21 +73,20 @@ def client(app, admin_credentials):
 
 
 def test_list_names_the_surfaces_and_stop_kinds_that_use_a_value(client, declarations, monkeypatch):
-    stop = _declared(tuning.event_seconds_parameter_id("stop", "k"), tuning.TuningEffect.IMMEDIATE)
+    stop = _declared(tuning.event_seconds_parameter_id("stop", "signal"), tuning.TuningEffect.IMMEDIATE)
     _declare(monkeypatch, *declarations, stop)
-    monkeypatch.setitem(TUNING_VALUES, stop.id, 1.0)
-    monkeypatch.setattr(traffic, "POI_COUNT_KINDS", {"k": "種別K"})
+    monkeypatch.setattr(traffic, "POI_COUNT_KINDS", {"signal": "種別K"})
     definitions = road_classes(
         {"surface": classification({"x": [], "y": []})},
         rolling_resistance_classification="surface",
-        rolling_resistance_classes={"surface": {"x": "a", "y": "a"}},
+        rolling_resistance_classes={"surface": {"x": A, "y": A}},
     )
 
     with replaced_road_classes(definitions):
         labels = {p["id"]: p["label"] for p in client.get("/api/admin/tuning").json()}
 
     assert labels == {
-        "a": "表示名-a（区分x／区分y）",
-        "b": "表示名-b",
+        A: f"表示名-{A}（区分x／区分y）",
+        B: f"表示名-{B}",
         stop.id: f"表示名-{stop.id}（種別K）",
     }

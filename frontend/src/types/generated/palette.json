@@ -31,6 +31,13 @@
     "pin_waypoint": "#2563eb",
     "pin_destination": "#059669",
     "selected_section": "#7c3aed",
+    "avoidance_preferred": "#0d9488",
+    "avoidance_avoided": "#db2777",
+    "road_avoidance_prefer": "#16a34a",
+    "road_avoidance_slight_prefer": "#86efac",
+    "road_avoidance_slight_avoid": "#fdba74",
+    "road_avoidance_avoid": "#ea580c",
+    "road_avoidance_exclude": "#dc2626",
     "place_candidate": "#334155",
     "place_candidate_picked": "#be185d",
     "sign_regulatory": "#d8262e",
@@ -77,6 +84,13 @@
     "pin_waypoint": "#2563eb",
     "pin_destination": "#059669",
     "selected_section": "#7c3aed",
+    "avoidance_preferred": "#0d9488",
+    "avoidance_avoided": "#db2777",
+    "road_avoidance_prefer": "#16a34a",
+    "road_avoidance_slight_prefer": "#86efac",
+    "road_avoidance_slight_avoid": "#fdba74",
+    "road_avoidance_avoid": "#ea580c",
+    "road_avoidance_exclude": "#dc2626",
     "place_candidate": "#334155",
     "place_candidate_picked": "#be185d",
     "sign_regulatory": "#d8262e",
@@ -91,14 +105,6 @@
     "crash": "#f08a24",
     "crash_bicycle": "#e2453c"
   },
-  "cost_series": [
-    "#2a78d6",
-    "#d9669a",
-    "#6a55dc",
-    "#139ab3",
-    "#9c6a2c",
-    "#b956c2"
-  ],
   "basemap_dark": {
     "lightness_range": [
       0.07,
@@ -106,5 +112,10 @@
     ],
     "saturation_scale": 0.6,
     "icon_opacity_scale": 0.5
+  },
+  "basemap_muted": {
+    "saturation_scale": 0.1,
+    "ground_pull": 0.5,
+    "icon_opacity_scale": 0.4
   }
 }

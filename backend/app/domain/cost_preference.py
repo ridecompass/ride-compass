@@ -5,6 +5,7 @@
 つまみは較正値`evaluation.penalty_strength`（標準的な人の強さ）に掛ける比なので、較正値を変えても利用者の値は標準のまま。
 """
 
+import math
 from typing import Annotated, NamedTuple
 
 from pydantic import AfterValidator, Field
@@ -23,11 +24,21 @@ class CostLevel(NamedTuple):
     label: str
 
 
+def multiplier_label(value: float) -> str:
+    """掛ける数の段の画面に出す名前（掛ける数を小数1桁に丸め、末尾の0は書かない。無限大は「×∞」）。"""
+    return "×∞" if math.isinf(value) else f"×{round(value, 1):g}"
+
+
+#: 負担を数えないことの、段と並べて出す名前（費用の軸の無効と、全体のつまみの0）。
+DISABLED_LABEL = "無効"
+
+
 def _levels(*values: float) -> tuple[CostLevel, ...]:
-    return tuple(CostLevel(value, f"×{value:g}") for value in values)
+    return tuple(CostLevel(value, DISABLED_LABEL if value == 0 else multiplier_label(value)) for value in values)
 
 
-#: 全体のつまみの段。
+#: 全体のつまみの段。0は「無効」で、どの軸も数えない（全部の軸を無効にしたのと同じ。`domain/ledger_costs.py:
+#: LedgerParameters.counts`）。
 COST_STRENGTH_LEVELS = _levels(0.0, 0.5, STANDARD_COST_FACTOR, 1.5, 2.0)
 #: 軸ごとの倍率の段（数えない軸は倍率でなく無効で表すので、0の段は無い）。
 COST_MULTIPLIER_LEVELS = _levels(0.5, STANDARD_COST_FACTOR, 2.0)

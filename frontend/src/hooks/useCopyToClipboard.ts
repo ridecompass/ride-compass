@@ -7,7 +7,7 @@ import { errorMessage } from "@/lib/apiError";
 const COPIED_RESET_MS = 2000;
 
 function describeFailure(err: unknown): string {
-  return `クリップボードへコピーできませんでした（httpsまたはlocalhostでのみ利用できます）: ${errorMessage(err)}`;
+  return `クリップボードへコピーできませんでした[httpsまたはlocalhostでのみ利用できます]: ${errorMessage(err)}`;
 }
 
 /** クリップボードへの書き込みと、その結果表示（コピー済み・失敗）をまとめて持つ。

@@ -274,7 +274,7 @@ def test_file_sizes(backend: Path, tests: list[str], executed: set[str]) -> dict
 def test_database_unreachable(backend: Path) -> str | None:
     """PostGISのテストが繋ぐDBのサーバーへ繋がらない理由。繋がればNone。
 
-    行き先はテストと同じ規則（`tests/conftest.py: postgis_database_url`）から取る。作業ツリー
+    行き先はテストと同じ規則（`backend/tests/conftest.py: postgis_database_url`）から取る。作業ツリー
     専用のDBは最初のpytestの実行が作るため、`TEST_DATABASE_URL`が無ければサーバーの管理DBで確かめる。
     conftestは子プロセスで読む（このファイルからimportすると、型検査の対象外のtestsをmypyが辿る）。
     """

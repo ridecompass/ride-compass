@@ -39,8 +39,9 @@ _NonNegative = Annotated[float, Field(ge=0.0, allow_inf_nan=False)]
 STOPS_FACT_LABEL = "止まる回数"
 HEADWIND_FACT_LABEL = "向かい風"
 
-#: 代償の内訳で、避け方の倍率（道の区分ごとの「なるべく避ける」）が上乗せした秒の行の名前。軸ではないので倍率を持たない。
-AVOIDANCE_LABEL = "回避指定"
+#: 地図のレンズの量（道の1kmあたりの代償の秒）を、利用者に言う名前と単位。
+LENS_QUANTITY_LABEL = "1kmあたりの負担"
+LENS_UNIT = "秒/km"
 
 
 class LensBands(StrictModel):

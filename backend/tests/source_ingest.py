@@ -104,11 +104,14 @@ def point_record(key: int | str, lon: float, lat: float,
 
 
 def overture_place_record(key: int | str, lon: float, lat: float, name: str,
-                          hierarchy: Sequence[str] = ("food_and_drink", "cafe")) -> SourceRecord:
-    """Overture の地点（`overture_place`）の1件。`hierarchy`は分類の階層（既定は群「食べる・飲む」に入る分類）。"""
+                          hierarchy: Sequence[str] = ("food_and_drink", "cafe"),
+                          address: dict[str, str | None] | None = None) -> SourceRecord:
+    """Overture の地点（`overture_place`）の1件。`hierarchy`は分類の階層（既定は群「食べる・飲む」に入る分類）、`address`は
+    最初の住所（`freeform`・`locality`・`region`。省くと住所を持たない）。"""
     return point_record(key, lon, lat, {
         "names": {"primary": name}, "confidence": 0.75,
-        "brand": {"names": {"primary": None}}, "taxonomy": {"hierarchy": list(hierarchy)}})
+        "brand": {"names": {"primary": None}}, "taxonomy": {"hierarchy": list(hierarchy)},
+        "addresses": None if address is None else [address]})
 
 
 def accident_record(key: int | str, lon: float, lat: float, *, party_a: str = "03", party_b: str = "03",

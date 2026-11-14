@@ -26,7 +26,13 @@ from app.api.cache_policy import BATCH_TILE
 from app.api.dependencies import get_region_service, get_road_inspector_service
 from app.config import settings
 from app.domain.lens_values import LensInspection, RoadInspection
-from app.domain.region import ROAD_TILE_MAX_ZOOM, ROAD_TILE_MIN_ZOOM, ROADS_AT_MAX_RADIUS_M, RoadAt
+from app.domain.region import (
+    ROAD_SURFACE_TILE_MIN_ZOOM,
+    ROAD_TILE_MAX_ZOOM,
+    ROAD_TILE_MIN_ZOOM,
+    ROADS_AT_MAX_RADIUS_M,
+    RoadAt,
+)
 from app.infrastructure import rate_limiter
 from app.infrastructure.point_tile_layers import POINT_TILE_LAYERS
 from app.domain.cost_preference import CostPreference
@@ -106,6 +112,7 @@ def test_region_tiles_hand_the_services_mvt_over(override_dependency, path, requ
 @pytest.mark.parametrize(
     ("path", "body"),
     [
+        (f"/api/region/road-surface-tiles/{ROAD_SURFACE_TILE_MIN_ZOOM - 1}/0/0.pbf", None),
         (f"/api/region/road-surface-tiles/{ROAD_TILE_MAX_ZOOM + 1}/0/0.pbf", None),
         ("/api/region/road-surface-tiles/14/-1/6447.pbf", None),
         (f"/api/region/road-surface-tiles/14/{2**14}/6447.pbf", None),
@@ -175,7 +182,7 @@ def test_region_road_inspector_hands_the_pressed_feature_and_the_maps_conditions
     別の物の値が出る。
     """
     result = RoadInspection(highway="primary", tags={},
-                            lens=LensInspection(painted="along", along=None, against=None, surface=None))
+                            lens=LensInspection(painted="along", along=None, against=None))
     fake = FakeRoadInspector(result)
     override_dependency(get_road_inspector_service, lambda: fake)
     response = client.post(

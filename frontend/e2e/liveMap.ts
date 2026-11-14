@@ -1,4 +1,5 @@
 import type { Page } from "@playwright/test";
+import { ROAD_LINE_SOURCE_ID } from "@/features/map/scene/groups/roadLines";
 
 declare global {
   interface Window {
@@ -44,19 +45,27 @@ function defineMapFinder(mainMap: string): void {
 /** `page.addInitScript(installMapFinder)`で入れる。ページへは関数の文だけが渡るので、本体の地図の選び方を文に埋めて渡す。 */
 export const installMapFinder = { content: `(${defineMapFinder.toString()})(${JSON.stringify(MAIN_MAP)});` };
 
-/**
- * 地図に描かれた、押すと詳細や選択が開くもの（scene が当たり判定の対象 `target` を宣言したレイヤーの地物）を1つ押す
- * （`installMapFinder`を入れたページで）。押す点は、地図そのものが押され（上に部品が重ならない）、そこで一番上に来る
- * 押せる地物が `target` のものである点に限る——アプリはその地物を開く（ルートの線は道・点より上の段にある）。
- * 対象の名前は scene の宣言から読むので、当たり判定を足せばここを変えずに押せる。押せなければ理由を出して止める。
- */
-export async function clickFeature(page: Page, target: string): Promise<void> {
-  const found = await page.evaluate((wanted) => {
+/** 押す地物の選び方。`target`: scene が当たり判定の対象を宣言したレイヤーの地物で、押した所の一番上に来るもの。`source`: その
+ * ソースを描くレイヤーの地物（当たり判定を持たない道等）で、押した所に当たり判定を持つ地物が無いもの（あればアプリはそれを開く）。 */
+type PressWanted = { target: string } | { source: string };
+
+/** `wanted` の地物を1つ押せる画面の点。押せなければ理由。 */
+async function pressPoint(
+  page: Page,
+  wanted: PressWanted,
+): Promise<{ point: { x: number; y: number } } | { error: string }> {
+  return page.evaluate((wanted) => {
     const map = window.__liveMap();
     const layers = window.__liveScene().layers;
-    const targets = [...new Set(layers.flatMap((layer) => layer.hitTargets))];
-    if (!targets.includes(wanted)) return { error: `いまの地図に無い。押せる対象: ${targets.join(" / ")}` };
-    const carrying = layers.filter((layer) => layer.hitTargets.includes(wanted));
+    let carrying: typeof layers;
+    if ("target" in wanted) {
+      const targets = [...new Set(layers.flatMap((layer) => layer.hitTargets))];
+      if (!targets.includes(wanted.target)) return { error: `いまの地図に無い。押せる対象: ${targets.join(" / ")}` };
+      carrying = layers.filter((layer) => layer.hitTargets.includes(wanted.target));
+    } else {
+      carrying = layers.filter((layer) => (layer.spec as { source?: string }).source === wanted.source);
+      if (carrying.length === 0) return { error: "描くレイヤーがいまの地図に無い" };
+    }
     const shown = carrying.filter((layer) => layer.visible && map.getLayer(layer.spec.id));
     if (shown.length === 0) {
       const hidden = carrying.map((layer) => layer.spec.id).join(" / ");
@@ -89,19 +98,40 @@ export async function clickFeature(page: Page, target: string): Promise<void> {
         const client = { x: box.left + x, y: box.top + y };
         if (client.x < 0 || client.y < 0 || client.x >= window.innerWidth || client.y >= window.innerHeight) continue;
         if (document.elementFromPoint(client.x, client.y) !== canvas) continue;
-        const top = map.queryRenderedFeatures([x, y], { layers: interactive })[0];
-        if (top && own.has(top.layer.id)) return { point: client };
+        const top =
+          interactive.length === 0 ? undefined : map.queryRenderedFeatures([x, y], { layers: interactive })[0];
+        if ("target" in wanted ? top && own.has(top.layer.id) : top === undefined) return { point: client };
       }
     }
     return {
       error:
         features.length === 0
           ? "画面に描かれていない（位置・倍率を変える）"
-          : `描かれた ${features.length} 件のどれも、地図の見えている所で一番上に来ない（位置・倍率を変える）`,
+          : `描かれた ${features.length} 件のどれも、地図の見えている所で押せる所に無い（位置・倍率を変える）`,
     };
-  }, target);
+  }, wanted);
+}
+
+/**
+ * 地図に描かれた、押すと詳細や選択が開くもの（scene が当たり判定の対象 `target` を宣言したレイヤーの地物）を1つ押す
+ * （`installMapFinder`を入れたページで）。押す点は、地図そのものが押され（上に部品が重ならない）、そこで一番上に来る
+ * 押せる地物が `target` のものである点に限る——アプリはその地物を開く（ルートの線は道・点より上の段にある）。
+ * 対象の名前は scene の宣言から読むので、当たり判定を足せばここを変えずに押せる。押せなければ理由を出して止める。
+ */
+export async function clickFeature(page: Page, target: string): Promise<void> {
+  const found = await pressPoint(page, { target });
   if ("error" in found) throw new Error(`地図の「${target}」を押せない: ${found.error}`);
   await page.mouse.click(found.point.x, found.point.y);
+}
+
+/**
+ * 地図に描かれた道を1本、マウスの右ボタンで長押しする（`installMapFinder`を入れたページで）。道は当たり判定を持たないので、押す点は
+ * 当たり判定を持つ地物の重ならない道の上に限る。道の層を出してから呼ぶ。押せなければ理由を出して止める。
+ */
+export async function longPressRoad(page: Page): Promise<void> {
+  const found = await pressPoint(page, { source: ROAD_LINE_SOURCE_ID });
+  if ("error" in found) throw new Error(`地図の道を長押しできない: ${found.error}`);
+  await page.mouse.click(found.point.x, found.point.y, { button: "right" });
 }
 
 /** 地図の上の経度・緯度の点を押す（`installMapFinder`を入れたページで）。その点が画面の外か、地図の上に別の部品が重なっていれば止める。 */

@@ -22,7 +22,7 @@ describe("レンズの線", () => {
 
   it("取った材料は道路のソースの地物へレンズごとに載り、塗っているレンズの線が見える", () => {
     const { map, handle } = createRecordingMap();
-    rebuild(map, shown({ surface: true }, { paintedLensId: "ascent", wayMaterials: MATERIALS }));
+    rebuild(map, shown({ surface: true }, { lens: "ascent", wayMaterials: MATERIALS }));
 
     expect(handle.featureState(ROAD_LINE_SOURCE_ID, "w1")).toEqual({
       "ascent:lens_along": 3,
@@ -34,7 +34,7 @@ describe("レンズの線", () => {
 
   it("走る条件だけを変えると、地図全体の状態だけを置き直し、材料もレイヤーも当て直さない", () => {
     const { map, handle } = createRecordingMap();
-    const look = { paintedLensId: "ascent", wayMaterials: MATERIALS };
+    const look = { lens: "ascent", wayMaterials: MATERIALS };
     rebuild(map, shown({ surface: true }, { ...look, wayConditions: { bearing_deg: 0, speed_kmh: 20 } }));
     const callsBefore = handle.trace.length;
 

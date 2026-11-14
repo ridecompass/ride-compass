@@ -9,7 +9,7 @@
 
 | レイヤー | ファイル |
 |---|---|
-| domain | `hard_filters.py`（0次フィルタ）・`road_avoidance.py`（道の行ごとの避け方）・`cost_preference.py`（費用の式の利用者の値: 全体のつまみと費用の軸ごとの倍率と、その範囲）・`cost_axes.py`（費用の軸の定義の型・検証と、プロセス内の定義）・`ledger_costs.py`（費目の帳簿の式。代償の秒と、その較正値の束）・`axis_templates.py`（道のストレスの重さを材料から引く折れ線と表引き）・`search_materials.py`（探索の材料の表）・`material_catalog.py`・`material_coverage_spec.py`（材料の欠損率の測り方の型と、欠損率の見出し）・`material_value_labels.py`（材料のタグの値ごとの日本語の対訳表）・`material_sql.py`（材料の値をSQLで導出する式。道・ノードの生データを読む副問い合わせは`infrastructure/source_models.py`）・`road_classes.py`（道の区分の全体の型と、区分に道を振り分ける式）・`road_class_catalog.py`（道の区分を画面の設定で配る形） |
+| domain | `hard_filters.py`（0次フィルタ）・`road_avoidance.py`（道の行ごとの避け方）・`cost_preference.py`（費用の式の利用者の値: 全体のつまみと費用の軸ごとの倍率と、その範囲）・`cost_axes.py`（費用の軸の定義の型・検証と、プロセス内の定義）・`ledger_costs.py`（費目の帳簿の式。代償の秒と、その較正値の束）・`axis_templates.py`（道のストレスの重さを材料から引く折れ線と表引き）・`search_materials.py`（探索の材料の表）・`material_catalog.py`・`material_coverage_spec.py`（材料の欠損率の測り方の型と、欠損率の見出し）・`material_value_labels.py`（材料のタグの値ごとの日本語の対訳表）・`material_sql.py`（材料の値をSQLで導出する式。道・ノードの生データを読む副問い合わせは`infrastructure/source_models.py`。SQLの値の綴り［`material_sql.py: sql_literals`］と、`LIKE`の型の中で文字として当てる式［`material_sql.py: like_escaped_sql`］も持つ）・`road_classes.py`（道の区分の全体の型と、区分に道を振り分ける式）・`road_class_catalog.py`（道の区分を画面の設定で配る形） |
 | services | `material_coverage_service.py`・`cost_axis_service.py`（費用の軸の定義の読み込みと管理APIの入れ替え）・`road_class_service.py`（道の区分の読み込みと管理APIの入れ替え） |
 | infrastructure | `material_coverage.py`（材料ごとの欠損割合の集計クエリ）・`cost_axis_models.py`・`cost_axis_repository.py`・`road_class_models.py`・`road_class_repository.py`・`definition_write_lock.py`（定義の書き込みを直列にする鍵） |
 | api | `material_catalog.py`（材料の欠損割合のエンドポイント）・`cost_axis_catalog.py`（`GET /api/cost-axes`で費用の軸の見せ方・総合のレンズを、`GET /api/cost-axes/lens-equivalents`で利用者の値での段の境目の目安を画面へ配る。両方の要求の利用者の値の受け口`cost_preference_query`も持つ）・`cost_axis_admin.py`・`road_class_admin.py`（どちらも全体の読みと入れ替えの管理API）・`client_config.py`（`GET /api/client-config`。較正値・タイルの世代・事故の収録年・道の区分を画面へ配る） |
@@ -42,7 +42,7 @@ wayの長さ（0はNULL）になる——件数と長さは必ず同じ側から
 ## 0次ハードフィルタと道の行ごとの避け方（`domain/hard_filters.py`・`domain/road_avoidance.py`）
 
 `domain/hard_filters.py: compute_search_exclusion`が、探索の材料の表の0次フィルタに当たる区間（`domain/search_materials.py: SearchMaterials.hard_filtered`）と区分の列（`domain/search_materials.py: SearchMaterials.road_classes`）と、
-リクエストが指定した行ごとの避け方の段から、Edgeごとに「探索から除く」と「割り増す」を求める。
+リクエストが指定した行ごとの避け方の段から、Edgeごとに「探索から除く」と、費用に掛ける倍率の段（なるべく避ける・好む）を求める。
 0次フィルタは宣言されたものがいつも全部効き、リクエストでは切れない（要求の欄も持たない）。
 
 要求の行の鍵は断らない（`api/routers/routes.py: RoadAvoidanceOverride`）。区分は管理DBが持ち、デプロイを待たずに直せるので、
@@ -54,16 +54,21 @@ wayの長さ（0はNULL）になる——件数と長さは必ず同じ側から
   `domain/hard_filters.py: HARD_FILTERS`が名前・画面に出す名前と説明・該当する道の条件をまとめて持つ唯一のレジストリで、
   条件は道の区分と同じ形（`domain/road_classes.py: conditions_match`）で事実の列に当てる。`compute_search_exclusion`は
   探索の材料の表が組んだときに求めた「どれかのフィルタに当たる」の配列を読み、フィルタごとの専用引数・専用フィールドは持たない。
-  フィルタを足しても変わるのはこの辞書だけ。名前と説明は生成物`route-generate-config.json`の`hard_filters`で配り、
-  画面は避け方の行の並びの先頭に「通らない」で固定して出す。フィルタは区分の宣言とは別に持つ——区分は管理DBで直せるが、
+  フィルタを足しても変わるのはこの辞書だけ。名前と説明は画面の設定の`road_classes.avoidance`の行（`domain/road_class_catalog.py: AvoidanceRowView`）に
+  選べない行（`selectable`が偽・既定は「通らない」・鍵は`<HARD_FILTER_PROPERTY>.<名前>`）として並びの先頭に載せて配る。路面タイルは道の当たるフィルタの名前を焼き
+  （`domain/hard_filters.py: HARD_FILTER_PROPERTY`。判定は探索と同じ`hard_filter_column`）、地図は道路タブの「通らない」の色で塗る。フィルタは区分の宣言とは別に持つ——区分は管理DBで直せるが、
   通れない道を外すことは直してはいけない。
   タグが無い道は除外しない（判断材料が無い区間まで一律に除外すると探索対象が過度に狭まるため、不明な場合は許可し費用の側へ委ねる）。
 - **道の区分ごとの避け方**: 除外の設定（管理DBの道の区分。`domain/road_classes.py: RoadClassDefinitions.avoidance_classifications`）が
-  指す公開した分け方の区分ごとに、「通る」「なるべく避ける」「通らない」を選ぶ（行の鍵は`<分け方>.<区分>`。選べないとした区分は行にならない）。
+  指す公開した分け方の区分ごとに、「好む」「少し好む」「通る」「少し避ける」「なるべく避ける」「通らない」を選ぶ（行の鍵は`<分け方>.<区分>`。選べないとした区分は行にならない）。
   区間が行に当たるかは、地図がその分け方の線を塗るのと同じ区分の列（`domain/road_classes.py: class_material_id`）から求める。
-  「通らない」の行に当たる区間は除き、「なるべく避ける」の行に当たる区間は費用に較正値`avoidance.avoid_cost_multiplier`を
-  掛ける（`domain/leg_costs.py: LegCostComposer`）。1つの区間が複数の行に当たれば強い段が効く。
-  要求に無い行は、管理DBが持つ既定の段を取る。
+  「通らない」の行に当たる区間は除き、「なるべく避ける」の行に当たる区間は費用に較正値`avoidance.avoid_cost_multiplier`を、
+  「好む」の行に当たる区間はその逆数を掛け、「少し」の段はそれぞれの平方根を掛ける（倍率の対数で「通る」との真ん中。
+  `domain/road_avoidance.py: level_multipliers`・`domain/leg_costs.py: LegCostComposer`）。好む・少しの段は新しい較正値を持たず、
+  避けると逆向きに同じ強さで効く。1つの区間が複数の行に当たれば倍率の大きい段が効く（通るは何も指定していない扱い。
+  `domain/road_avoidance.py: road_avoidance_masks`）。管理DBの区分の既定には、通るのほかのどの段も置ける（通るは上書きの行を持たない）。
+  要求に無い行は、管理DBが持つ既定の段を取る。画面に配る段の名前は掛ける倍率そのもの（×0.5・×1・×2・×∞の形。
+  `domain/cost_preference.py: multiplier_label`。費用の軸の倍率の段と同じ書き方）で、較正値から作るので、管理画面で倍率を変えると段の数字も変わる。並びは倍率の順。
   倍率は本番で前後の幹線の割合・距離を比べて決める。
 - `motor_vehicle=no`（自転車可の車両通行禁止）はここでは扱わない。自転車は法的に通行
   可能なため0次のハード除外対象にはしない。
@@ -97,8 +102,8 @@ wayの長さ（0はNULL）になる——件数と長さは必ず同じ側から
 
 - **運ぶ材料**は、所要時間が読む材料（`domain/cycling_speed.py: travel_model_material_ids`）と、費用の式が読む材料（道のストレスの軸の
   材料。`domain/cost_axes.py: burden_material_ids`）だけ。所要時間が読む材料の列が欠けた表は組み立てで断る（`ValueError`）——欠けたまま
-  通すと、欠けた材料の待ち・坂が全区間で黙って0秒になる。区間ごとの値の欠け（NaN）は平地・待ち無しとして扱い、
-  `missing_travel_data_share`で数える。
+  通すと、全区間が取込の範囲全体の平均で数えられ、道ごとの坂・待ちの違いが黙って消える。区間ごとの値の欠け（NaN）は
+  取込の範囲全体の平均（坂の割合・停止要因の密度）で数え、その区間の距離の割合を`missing_travel_data_share`で数える。
 - **DBに無い材料**は、材料カタログにあれば値の無い列で読める（`_ColumnsOrEmpty`が読まれたときに埋める）。
 - **分類の材料**（`highway`・路面の見込み等）は、道路網の置き場が持つ語彙への番号の列（`domain/attributes.py: CategoricalColumn`）
   のまま運ぶ。区分の表引き・0次条件・走行モデルの転がり抵抗は、語彙の値ごとに1回引いた表を番号で配る——区間ごとに値の
@@ -130,7 +135,8 @@ wayの長さ（0はNULL）になる——件数と長さは必ず同じ側から
 - **ルートの内訳**: 経路の区間の代償は、探索がその区間に使ったビンの風で、経路上の行だけを解き直して求める
   （`domain/leg_costs.py: LegCostComposer.values_at_rows`が`domain/ledger_costs.py: LedgerCosts.row_seconds`を呼び、走行の模型は
   `SegmentSpeedModel.ride`に行を渡すとその行の点の間だけを解く）。点の間ごとの計算は互いに依らないので、全部を解いた探索の
-  値と同じになり、所要時間と内訳の和が探索の費用に合う。回避指定の秒は、避け方の倍率の1を越えた分 ×（区間の所要時間＋代償）。
+  値と同じになり、所要時間と内訳の和が探索の費用に合う。避け方の秒は、避け方の倍率と1の差 ×（区間の所要時間＋代償）で、
+  負の分（好む側の段）と正の分（避ける側の段）を分けて持つ（`domain/route.py: PenaltyBreakdown`の`preferred_seconds`・`avoided_seconds`）。
   曲がる所の漕ぎ出しの代償（`domain/ledger_costs.py: LedgerCosts.turn_penalty_by_axis`。その費目を持つ軸の秒）は、区間には
   置かず、候補の内訳の軸の秒に足す（`services/road_graph_candidates.py`。区間の軸の秒は地図のレンズと同じ道の量）。
 - **欠けの埋め方**: 停止要因の密度と、道のストレスの軸の材料の欠けは、`domain/road_network.py: material_fills`の分布で埋める
@@ -139,7 +145,7 @@ wayの長さ（0はNULL）になる——件数と長さは必ず同じ側から
 
 ## 管理DBの定義（道の区分・費用の軸）
 
-道の分け方と区分（条件）・地図の線の層・転がり抵抗の較正値の割り当て・回避タブに出す分け方と区分ごとの既定は、管理DBの表
+道の分け方と区分（条件）・地図の線の層・転がり抵抗の較正値の割り当て・道路タブに出す分け方と区分ごとの既定は、管理DBの表
 （`infrastructure/road_class_models.py`）が、費用の軸は上の表`cost_axis_definitions`が正本で、コードは写しも既定も持たない。
 
 - **形の良し悪しは表の制約だけが決める**（[設計原則](../../architecture/design-principles.md)構造仕様15）。鍵の綴り・参照先の実在・
@@ -155,12 +161,12 @@ wayの長さ（0はNULL）になる——件数と長さは必ず同じ側から
   503で返す（`api/failure_replies.py: install_failure_replies`）。
 - **画面の設定は解決した形で配る**（`GET /api/client-config`の`road_classes`の欄。`domain/road_class_catalog.py`）。公開した分け方
   だけを出し、色・層の説明のうち区分から組む部分をbackendが決める。区分の説明は意味の文だけで、条件は管理の経路
-  （`/api/admin/road-classes`）でだけ見せる。指紋（`generation`）は全体の中身から作る。
-- **回避タブの見出しは地図の線の層から作る**: 見出しは除外に出す分け方ごとに1つで、名前は分け方の名前、並びは凡例の層の並び
-  （`domain/road_classes.py: published_map_layers`）。見出しの名前・並びを別に持たないので、凡例と回避タブは食い違わない。
+  （`/api/admin/road-classes`）でだけ見せる。
+- **道路タブの見出しは地図の線の層から作る**: 見出しは除外に出す分け方ごとに1つで、名前は分け方の名前、並びは凡例の層の並び
+  （`domain/road_classes.py: published_map_layers`）。見出しの名前・並びを別に持たないので、凡例と道路タブは食い違わない。
   除外に出す分け方は地図の線の層でなければならない（外部キー）——凡例に無い見出しを作らない。
 - **地図の線の層の値もbackendが決める**（`domain/road_classes.py: layer_columns`）。値は区分の鍵か「データなし」で、地図の線
-  （`/api/region/road-classes`）とルートの区間の帯が同じ値を読む。地図は条件を当てない。
+  （路面タイルに焼く）とルートの区間の帯が同じ値を読む。地図は条件を当てない。
 - **本番へは管理APIで全体を入れる**（`PUT /api/admin/road-classes`・`PUT /api/admin/cost-axes`）。全体のJSONは本番の今の全体
   （`GET`）から作り、リポジトリの外に置く（[本番のデータ](../../../.claude/skills/production-data/SKILL.md)）。
 - **区分の鍵は読み替えない**: 区分の鍵を改める・分ける・合わせると、前の鍵で選んだ避け方は既定の段で読まれる

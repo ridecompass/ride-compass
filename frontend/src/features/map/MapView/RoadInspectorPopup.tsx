@@ -20,16 +20,17 @@ import {
   type RoadSurfacePopupProperties,
 } from "./roadFacts";
 import { Button } from "@/components/ui/Button/Button";
-import { InspectRoadIcon } from "@/components/ui/icons/lucideIcons";
+import { RetryIcon } from "@/components/ui/icons/lucideIcons";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/ToggleGroup/ToggleGroup";
+import PenaltyBreakdown from "@/components/MapPopup/PenaltyBreakdown";
 import { textVariants } from "@/components/ui/Text/Text";
 import { cn } from "@/lib/cn";
 import { useCostAxisCatalog } from "@/hooks/useCostAxisCatalog";
-import { formatLensNumber, LENS_SECONDS_UNIT } from "@/lib/mapDisplay/costLensPaint";
-import { costAxisLabel, factValueText } from "@/lib/routePenalty";
+import { factText, penaltyRows } from "@/lib/routePenalty";
 
 interface RoadInspectorPopupProps {
   properties: RoadSurfacePopupProperties;
-  /** 押した道の線が入る凡例の行（地図の道の色と道の種類の名前）。引けなければnull。 */
+  /** 押した道の線が入る凡例の行（上の帯の線の見本の色）。引けなければnull。 */
   track: RoadTrackRow | null;
   /** 地図が今指定している走行の条件＋押した点のタイル。レンズの値はこの条件で求める。 */
   conditions: RoadInspectorConditions;
@@ -39,40 +40,32 @@ interface RoadInspectorPopupProps {
 
 const hintClass = cn(textVariants({ variant: "hint" }), "m-0");
 
-// 地図の道をクリックしたときの中身。答えるのは「この道は何者で、どれだけの負担か」。
-// 負担は押したときだけ取りに行く（クリックのたびに引くとレート制限に当たる）。
-// 開いたときに見せるのは上の帯（道の種類・名前・路面など）と負担だけで、属性は畳む（地図の上の小さな枠に収めるため）。
+// 地図の道をクリックしたときの中身。答えるのは「この道は何者で、どれだけの負担か」。開いたら負担を取りに行く。
+// 開いたときに見せるのは上の帯（名前・路面など）と負担だけで、属性は畳む（地図の上の小さな枠に収めるため）。
 export default function RoadInspectorPopup({ properties, track, conditions, costPreference }: RoadInspectorPopupProps) {
-  // 負担は道・走行の条件・利用者の値ごとに持つ。値を変えたら、古い値の負担を見せずに取り直しへ戻す。条件は押したときの
-  // ものに留める——出発時刻は「今」へ5分刻みで進むので、今の条件で引き直すと開いている間に負担が消える。
-  const preferenceKey = JSON.stringify(costPreference);
-  const [pressed, setPressed] = useState<{ preferenceKey: string; conditions: RoadInspectorConditions } | null>(null);
-  const pinned = pressed !== null && pressed.preferenceKey === preferenceKey ? pressed : null;
-  const name = roadDisplayName(properties) ?? track?.label ?? null;
+  // 負担は道・走行の条件・利用者の値ごとに持つ（値を変えたら取り直す）。条件は開いたときのものに留める——出発時刻は「今」へ
+  // 5分刻みで進むので、今の条件で引き直すと開いている間に負担が消える。
+  const [opened] = useState(conditions);
+  const name = roadDisplayName(properties);
   const summary = roadFactSummary(properties);
   const wayId = roadWayId(properties);
   const featureKey = roadFeatureKey(properties);
+  const inspectable = wayId != null && featureKey != null;
   const inspector = useQuery(
     {
-      queryKey: ["road-inspector", wayId, featureKey, JSON.stringify(pinned?.conditions ?? conditions), preferenceKey],
-      // 取りに行くのは押したあと（`pinned`がある間）だけ。
+      queryKey: ["road-inspector", wayId, featureKey, opened, costPreference],
       queryFn: async () => {
-        const value = await fetchRoadInspection(wayId!, featureKey!, pinned!.conditions, costPreference);
+        const value = await fetchRoadInspection(wayId!, featureKey!, opened, costPreference);
         if (value === null) throw new Error("負担が返りませんでした");
         return value;
       },
-      enabled: pinned !== null && wayId != null && featureKey != null,
-      // 同じ道を同じ条件・利用者の値で開き直したときは、前に取った負担を出す（押すたびに引くとレート制限に当たる）。
+      enabled: inspectable,
+      // 同じ道を同じ条件・利用者の値で開き直したときは、前に取った負担を出す。
       staleTime: Infinity,
     },
     getQueryClient(),
   );
   const result: RoadInspection | null = inspector.data ?? null;
-
-  const load = () => {
-    if (pinned !== null) void inspector.refetch();
-    else setPressed({ preferenceKey, conditions });
-  };
 
   return (
     <div className="flex max-w-68 flex-col gap-1.5">
@@ -89,20 +82,21 @@ export default function RoadInspectorPopup({ properties, track, conditions, cost
           {summary.length > 0 && <span className={cn(hintClass, "ml-1.5")}>{summary.join("・")}</span>}
         </span>
       </PopupHeader>
-      {wayId != null && featureKey != null && result === null && (
-        <Button
-          size="panelIcon"
-          className="self-start disabled:cursor-progress"
-          onClick={load}
-          disabled={inspector.isFetching}
-          aria-busy={inspector.isFetching}
-          aria-label="この道の負担を見る"
-          usage="いまの走行条件と、負担の強さ・倍率で、この道の負担を計算します。"
-        >
-          <InspectRoadIcon />
-        </Button>
+      {inspectable && inspector.isPending && <p className={hintClass}>負担を読み込んでいます</p>}
+      {inspector.isError && (
+        <p className={cn(hintClass, "flex items-center gap-1.5")}>
+          負担を取得できませんでした。
+          <Button
+            usage="取得できなかったこの道の負担を、もう一度取得します。"
+            variant="ghost"
+            size="panelIcon"
+            aria-label="再試行"
+            onClick={() => void inspector.refetch()}
+          >
+            <RetryIcon />
+          </Button>
+        </p>
       )}
-      {inspector.isError && <p className={hintClass}>負担を取得できませんでした。</p>}
       {result !== null && <LensValues lens={result.lens} />}
       <RoadAttributeRows properties={properties} result={result} />
       {isDebugEnabled() && wayId != null && <p className={hintClass}>OSM way id: {wayId}</p>}
@@ -112,42 +106,64 @@ export default function RoadInspectorPopup({ properties, track, conditions, cost
 
 type LensInspection = RoadInspection["lens"];
 
-/** 押したフィーチャーの、地図のレンズと同じ1kmあたりの代償の秒（総合と軸ごと）と、その元の事実。地図が塗っている向きの
- * 値を出す（直角に近くて向きが決まらない道は、辿れる向きのうち道の向きを先に）。 */
+/** 区間の代償の秒を「+52秒」の形にする（道1本の区間は分に丸めると0ばかりになる）。 */
+function sectionSeconds(seconds: number): string {
+  return `+${Math.round(seconds)}秒`;
+}
+
+/** 押したフィーチャーの、地図が塗っている向きの区間の代償の秒（総合と軸ごと）。「換算前」に切り替えると、軸ごとに秒の元の事実を
+ * 出す（求められない事実の軸は出さない）。直角に近くて向きが決まらない道は、辿れる向きのうち道の向きを先に出す。 */
 function LensValues({ lens }: { lens: LensInspection }) {
   const costCatalog = useCostAxisCatalog();
+  const [view, setView] = useState("seconds");
   const slot = lens.painted ?? (lens.along !== null ? "along" : "against");
   const values = lens[slot];
   if (values === null) return <p className={hintClass}>この向きには走れません。</p>;
-  // 事実の名前と単位は backend が付ける（ルートの内訳・凡例の目安と同じ事実は同じ名前）。
-  const facts: RoadFactRow[] = [
-    ...values.facts.map((fact) => ({ label: fact.label, value: factValueText(fact) })),
-    ...(lens.surface !== null ? [{ label: "路面", value: lens.surface }] : []),
-  ];
+  const rows = penaltyRows(Object.fromEntries(values.axes.map((axis) => [axis.axis_id, axis.seconds])), costCatalog);
   return (
     <div className="flex flex-col gap-1">
-      <p className="m-0">
-        <span className="font-semibold">
-          {costCatalog.lenses?.totalLens.label ?? "負担"} {formatLensNumber(values.total_seconds_per_km)}
-          {LENS_SECONDS_UNIT}
-        </span>
-        <span className={cn(hintClass, "ml-1.5")}>
+      <div className="flex flex-wrap items-center gap-1.5">
+        <p className={hintClass}>
           {slot === "along" ? "道の向き" : "逆向き"}
-          {lens.painted === null ? "（地図の向きに直角に近い道）" : ""}
-        </span>
-      </p>
-      <FactList
-        rows={values.axes.map((axis) => ({
-          label: costAxisLabel(costCatalog, axis.axis_id),
-          value: `${formatLensNumber(axis.seconds_per_km)}${LENS_SECONDS_UNIT}`,
-        }))}
-      />
-      {facts.length > 0 && <FactList rows={facts} />}
+          {lens.painted === null ? "[地図の向きに直角に近い道]" : ""}
+        </p>
+        <ToggleGroup
+          value={view}
+          onValueChange={setView}
+          aria-label="負担の出し方"
+          usage="軸ごとの負担を、秒で出すか、秒にする前の事実[登り・止まる回数等]で出すかを切り替えます。"
+          className="ml-auto"
+        >
+          <ToggleGroupItem value="seconds" className="py-0.5">
+            秒
+          </ToggleGroupItem>
+          <ToggleGroupItem value="facts" className="py-0.5">
+            換算前
+          </ToggleGroupItem>
+        </ToggleGroup>
+      </div>
+      {/* 事実の名前と単位は backend が付ける（ルートの一覧と同じ作り方）。 */}
+      {view === "seconds" ? (
+        <PenaltyBreakdown
+          total={sectionSeconds(values.total_seconds)}
+          items={rows.flatMap((row) =>
+            Math.round(row.seconds) === 0 ? [] : [{ row, text: sectionSeconds(row.seconds) }],
+          )}
+        />
+      ) : (
+        <PenaltyBreakdown
+          total={null}
+          items={rows.flatMap((row) => {
+            const fact = values.facts[row.id];
+            return fact === undefined ? [] : [{ row, text: factText(fact, row.label) }];
+          })}
+        />
+      )}
     </div>
   );
 }
 
-/** 「項目: 値」の行の並び。項目の名前は並びの中で重ならない。 */
+/** 「項目: 値」の行の並び（項目の名前は重ならない）。 */
 function FactList({ rows }: { rows: readonly RoadFactRow[] }) {
   return (
     <dl className="m-0 grid gap-0.5">

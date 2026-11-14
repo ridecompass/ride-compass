@@ -3,7 +3,7 @@
 情報提供地点マスタ（CSV）と暑さ指数（WBGT）予測値取得WebAPI（JSON、典拠は
 `man15NH/wbgt_data_api_service_manual.pdf`）を叩く。サイト側の利用上の注意
 （wbgt_data_download.php）が自動化ツールからの高頻度アクセスを控えるよう求めるため、再試行は設けず
-TTLキャッシュで呼び出し頻度自体を抑える。取得失敗はNoneを返す。
+TTLキャッシュで呼び出し頻度自体を抑える。取得の失敗は投げる。
 """
 
 import csv

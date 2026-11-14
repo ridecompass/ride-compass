@@ -28,7 +28,7 @@ from omfiles import OmFileReader
 
 from app.domain.time_zone import JST, as_series_time
 from app.config import settings
-from app.domain.msm import MsmGrid, MsmGridPoints, MsmThinnedPoints, MsmWindow
+from app.domain.msm import MsmGrid, MsmGridPoints, MsmThinnedPoints
 from app.domain.weather_elements import MSM_FORECAST_HOURS
 from app.infrastructure.data_paths import DATA_DIR
 from app.infrastructure.debug_log import log_external_call
@@ -41,16 +41,6 @@ MSM_DIR = DATA_DIR / "msm"
 # 置き場の中の名前。パスはチャンク（`_chunk_path`）と同じく、使うたびに`MSM_DIR`から作る。
 _META_FILE_NAME = "meta.json"
 _ETAGS_FILE_NAME = "etags.json"
-
-
-@dataclass(frozen=True)
-class MsmSeries:
-    """地点ごとの予報の時系列。値の配列はどれも[地点数, 時刻数]。"""
-
-    #: 正時の並び（タイムゾーン無しのローカル時刻[JST]）。
-    times: list[datetime]
-    wind_u_ms: np.ndarray
-    wind_v_ms: np.ndarray
 
 
 @dataclass(frozen=True)
@@ -460,17 +450,8 @@ async def _read[S: _Selection](
         return result
 
 
-async def read_series(latitudes: np.ndarray, longitudes: np.ndarray) -> MsmSeries:
-    """地点ごとの時系列（現在時刻の正時から`domain/weather_elements.py: MSM_FORECAST_HOURS`時間ぶん）を、周囲の格子点から補間して返す。
-    画面に出さない計算にだけ使う（domain/msm.py のモジュールの説明）。読めなければ`MsmUnavailableError`。"""
-    _, times, values = await _read(
-        lambda grid: grid.window(latitudes, longitudes), MsmWindow.interpolate,
-    )
-    return MsmSeries(times=times, **values)
-
-
 async def read_grid_points(latitudes: np.ndarray, longitudes: np.ndarray) -> MsmGridPointWeatherSeries:
-    """地点ごとの最寄りの格子点の風・降水・気温の時系列（格子点の値のまま、`read_series`と同じ時間ぶん）。読めなければ
+    """地点ごとの最寄りの格子点の風・降水・気温の時系列（格子点の値のまま、現在時刻の正時から`domain/weather_elements.py: MSM_FORECAST_HOURS`時間ぶん）。読めなければ
     `MsmUnavailableError`。"""
     points, times, values = await _read(
         lambda grid: grid.nearest_points(latitudes, longitudes), MsmGridPoints.values, tuple(FORECAST_VARIABLES),

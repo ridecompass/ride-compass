@@ -1,7 +1,7 @@
 """`infrastructure/road_network_store.py`——取込範囲全体の道路網をDBから組み、ディスクの置き場へ置き、読む。
 
 入口は`ensure_current`（DBから組んで置く）・`write_pending`と`publish`（派生の作り直しが置く2段）・`save`・
-`current`（読む）・`prune_other_shapes`（起動後の片付け）。置き場（`ROOT`）はテストごとの一時ディレクトリ（`tests/conftest.py: road_network_root`）。
+`current`（読む）・`prune_other_shapes`（起動後の片付け）。置き場（`ROOT`）はテストごとの一時ディレクトリ（`backend/tests/conftest.py: road_network_root`）。
 
 DBから組むテストは、道とノードを取込の入口から入れ、派生の作り直し（`batch/derive_cli.py: run`）で区間と材料まで
 作ってから組む（本番で作れる行だけを使う。.claude/rules/testing-backend.md パターン8）。置き場を読み書きするテストは、
@@ -49,14 +49,14 @@ def _on_test_db(test):
 
 @pytest.fixture(autouse=True)
 def store(road_network_root):
-    """置き場を空の一時ディレクトリにする（`tests/conftest.py: road_network_root`）。"""
+    """置き場を空の一時ディレクトリにする（`backend/tests/conftest.py: road_network_root`）。"""
     return road_network_root
 
 
 # --- 置き場の読み書き（DBを使わない） -------------------------------------------------
 
 
-def _network(revision: int | None, distance_m: float = 100.0) -> RoadNetwork:
+def _network(revision: int, distance_m: float = 100.0) -> RoadNetwork:
     """ノード2つ・有向の区間2本（同じ区間の両向き）の道路網。材料の名前は架空。"""
     return RoadNetwork(
         revision=revision,

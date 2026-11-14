@@ -28,11 +28,13 @@
 
 import asyncio
 
+from app.domain.hard_filters import HARD_FILTERS
 from app.domain.registry import TileKind
-from app.infrastructure.cache_identity import tile_version
+from app.domain.road_classes import RoadClassDefinitions, current_road_classes, road_class_generation
+from app.infrastructure.cache_identity import shape_digest, tile_version
 from app.infrastructure.point_tile_layers import POINT_TILE_LAYERS
 from app.infrastructure.region_tile_cache import prune_other_generations
-from app.infrastructure.road_tile_sql import ROAD_SURFACE_TILE_SHAPE
+from app.infrastructure.road_tile_sql import FEATURE_MATERIALS_SHAPE, ROAD_SURFACE_TILE_SHAPE
 from app.services import derived_data_revision_service
 
 
@@ -48,12 +50,21 @@ async def served_tile_version(repository, shape: str) -> str:
     return tile_version(await derived_data_revision_service.current_revisions(repository), shape)
 
 
-#: 配信するタイルの系統と、その形の署名。フロントが受け取る辞書のキーでもある。点のレイヤーは
-#: それぞれ自分のSQLだけから署名を持つので、1つのSQLを変えても他のレイヤーの世代は変わらない。
-TILE_SHAPES: dict[TileKind, str] = {
-    "road_surface": ROAD_SURFACE_TILE_SHAPE,
-    **{layer.name: layer.shape for layer in POINT_TILE_LAYERS.values()},
-}
+def road_surface_tile_shape(definitions: RoadClassDefinitions) -> str:
+    """路面タイルの形の署名。路面タイルは地図の線の層の値（材料に道の区分の全体`definitions`を当てたもの）と、当たる0次
+    ハードフィルタを焼くので、材料の読み方と区分の全体の指紋とフィルタの条件も入れる——管理画面で区分を書き換えると世代が変わる。"""
+    return shape_digest(
+        ROAD_SURFACE_TILE_SHAPE, FEATURE_MATERIALS_SHAPE, road_class_generation(definitions), HARD_FILTERS
+    )
+
+
+def tile_shapes() -> dict[TileKind, str]:
+    """配信するタイルの系統と、その形の署名（路面タイルは今の区分の全体で）。フロントが受け取る辞書のキーでもある。点のレイヤーは
+    それぞれ自分のSQLだけから署名を持つので、1つのSQLを変えても他のレイヤーの世代は変わらない。"""
+    return {
+        "road_surface": road_surface_tile_shape(current_road_classes()),
+        **{layer.name: layer.shape for layer in POINT_TILE_LAYERS.values()},
+    }
 
 
 async def current_tile_versions(repository) -> dict[TileKind, str]:
@@ -63,7 +74,7 @@ async def current_tile_versions(repository) -> dict[TileKind, str]:
     読み直さないため、リクエストごとに呼んでよい。
     """
     revisions = await derived_data_revision_service.current_revisions(repository)
-    return {name: tile_version(revisions, shape) for name, shape in TILE_SHAPES.items()}
+    return {name: tile_version(revisions, shape) for name, shape in tile_shapes().items()}
 
 
 async def prune_other_tile_generations(repository) -> int:

@@ -24,7 +24,7 @@ source_features(source='dem')          ← 生データ。取り直さない限�
 edge_elevation（start/end・gain/loss・average・一番急な登りと下り・断面の点）
    │ 探索フェーズが材料として読む（road_graph_repository.py）
    ▼
-経路の集計（domain/route.py: route_elevation_gain）
+経路の集計（domain/route.py: elevation_gain）
 ```
 
 値の出し方そのものは`domain/attributes.py: elevation_values_sql`が持つ。派生バッチは
@@ -69,7 +69,7 @@ DEMが返すのは地表面の標高で、桁や坑道の高さではない—�
 測っている**ため、値の側では直せない。そこで橋・トンネルの区間は、道が地面と接する両端の
 標高だけで上り下りと勾配を出す（派生が断面の点を両端の2点だけにする。`batch/derive_elevation.py`）。
 
-**橋の端の点は、その点と周りの8方位（較正値`elevation.bridge_end_radius_m`の半径）のうち一番高い値を採る**。配信元はDEMから
+**橋の端の点は、その点と周りの方位（`domain/tuning.py: BRIDGE_END_BEARINGS`。較正値`elevation.bridge_end_radius_m`の半径）のうち一番高い値を採る**。配信元はDEMから
 構造物を除いているので、OSM の橋の端がその除かれた範囲に入ると、端の点は水面や谷底を返す（例: 荒川の朝霞水門の端が2.7m・
 堤防の上は約13m）。橋の両端だけを引く作りではその値がそのまま橋の高さになり、端を共有する隣の道にも急な偽の坂ができる。
 除かれた所は周りより低いので、周りの一番高い値が橋台の高さに近い。同じ頂点を端に持つ区間（橋と、続く道）は同じ値を採る。
@@ -108,11 +108,11 @@ DEMが返すのは地表面の標高で、桁や坑道の高さではない—�
 区間の長さで割った足せる材料（`elevation_gain_m_per_km`）として別に持つ。足せるので密度の軸の項にでき、区間をどこで
 切っても経路で登った量の和は変わらない。上の入れ替えにより、逆向きの区間ではその区間の下りの量が値になる。
 
-## 経路の集計（`domain/route.py: route_elevation_gain`）
+## 経路の集計（`domain/route.py: elevation_gain`）
 
-確定した経路の区間ぶんの値から、獲得標高を組み立てる（エンジンが呼ぶ domain の関数で、
-ファイルは[ルート生成エンジン](routing-engine.md)の対象）。区間の値は探索フェーズで読んだ
-材料がそのまま持っているため、ここでDBへ問い合わせ直さない。値が1つも無ければNone
+区間ごとの登りの値から、獲得標高を組み立てる（エンジンと道の窓が呼ぶ domain の関数で、
+ファイルは[ルート生成エンジン](routing-engine.md)の対象）。経路の区間の値は探索フェーズで読んだ
+材料がそのまま持っているため、ここでDBへ問い合わせ直さない。道の窓は押した区間の登りをこれで足す。値が1つも無ければNone
 （0mと「標高が取れなかった」を分ける）。
 
 ## タイルの読み方（`batch/source_adapters/gsi_dem_tile.py`）

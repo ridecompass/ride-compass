@@ -160,6 +160,9 @@ export function usePagePanels({ navigating, isMobile }: { navigating: boolean; i
     sharedSheetProps,
     panelsShown,
     desktopPanels,
+    // 「ルート設定」が画面に見えているか（モバイルはそのシートを開いている、デスクトップは出していて畳んでいない左のパネルで
+    // その区分を開いている）。地図で効いている区分（`activePanel`）と違い、もう一方の区分を触っても変わらない。
+    routeSettingsShown: isMobile ? mobileSheet === "routeSettings" : desktopPanels && generateOpen,
     activePanel,
     touchPanel,
   };

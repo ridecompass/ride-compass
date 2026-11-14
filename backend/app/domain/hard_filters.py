@@ -1,18 +1,19 @@
 """0次ハードフィルタ（Hard Constraint）。
 
-スコア計算には一切登場させず、ルーティンググラフから除外する判定だけを担う。
+費用の計算には登場させず、ルーティンググラフから除外する判定だけを担う。
 フィルタはどれもいつも効き、要求で切れない。判定（`compute_search_exclusion`）は
 レジストリをループするため、フィルタを増やしても判定側は無変更で反映される。フィルタは道の区分（`domain/road_classes.py`）と
 同じ形の条件で事実の列に当て、区分の宣言とは別に持つ。道の区分ごとの避け方（`domain/road_avoidance.py`）も同じ判定で、除く区間と
-割り増す区間に分ける。
+避け方の倍率を掛ける区間に分ける。
 """
 
 from collections.abc import Mapping
+from dataclasses import replace
 from typing import TYPE_CHECKING, NamedTuple
 
 import numpy as np
 
-from app.domain.attributes import MaterialColumn
+from app.domain.attributes import CategoricalColumn, MaterialColumn
 from app.domain.road_avoidance import AvoidanceLevel, RoadAvoidanceMasks, road_avoidance_masks
 from app.domain.road_classes import Condition, ConditionTerm, conditions_match
 
@@ -38,7 +39,7 @@ def _tag_is(fact_key: str, *values: str) -> Condition:
 HARD_FILTERS: dict[str, _HardFilter] = {
     "motorway": _HardFilter(
         "高速道路・自動車専用道路",
-        "高速道路と、自動車専用の標識のある一般道（バイパス等）。自転車は通れないので、いつも経路から外します。",
+        "高速道路と、自動車専用の標識のある一般道[バイパス等]。自転車は通れないので、いつも経路から外します。",
         [_tag_is("highway", "motorway", "motorway_link"), _tag_is("motorroad", "yes")],
     ),
     "no_bicycle": _HardFilter(
@@ -49,9 +50,22 @@ HARD_FILTERS: dict[str, _HardFilter] = {
 }
 
 
+#: 路面タイルが、道の当たる0次ハードフィルタの名前を載せるプロパティ。地図の線の層のid（分け方の鍵。英小文字・数字・`_`の綴り）と
+#: 重ならないよう`-`を含める。
+HARD_FILTER_PROPERTY = "hard-filter"
+
+
+def hard_filter_column(columns: Mapping[str, MaterialColumn], n: int) -> CategoricalColumn:
+    """区間ごとに、当たる0次ハードフィルタの名前（当たらなければ値なし。いくつも当たれば`HARD_FILTERS`の先のもの）。"""
+    codes = np.zeros(n, dtype=np.int16)
+    for code, spec in reversed(list(enumerate(HARD_FILTERS.values(), start=1))):
+        codes[conditions_match(spec.conditions, columns, n)] = code
+    return CategoricalColumn(codes, (None, *HARD_FILTERS))
+
+
 def hard_filtered(columns: Mapping[str, MaterialColumn], n: int) -> np.ndarray:
     """区間ごとに、0次ハードフィルタのどれかに当たるか。"""
-    return conditions_match([c for spec in HARD_FILTERS.values() for c in spec.conditions], columns, n)
+    return hard_filter_column(columns, n).codes != 0
 
 
 def compute_routable_nodes(
@@ -79,8 +93,10 @@ def compute_routable_nodes(
 def compute_search_exclusion(
     search_materials: "SearchMaterials",
     road_avoidance: Mapping[str, AvoidanceLevel],
+    multipliers: Mapping[AvoidanceLevel, float],
 ) -> RoadAvoidanceMasks:
-    """探索の材料の表が持つ0次ハードフィルタ・区分の列から、リクエスト時点の`road_avoidance`を反映した、
-    探索から除く区間と割り増す区間を求める。"""
-    rows = road_avoidance_masks(search_materials.road_classes, road_avoidance, len(search_materials.distance_m))
-    return RoadAvoidanceMasks(excluded=rows.excluded | search_materials.hard_filtered, avoided=rows.avoided)
+    """探索の材料の表が持つ0次ハードフィルタ・区分の列から、リクエスト時点の`road_avoidance`（段の倍率は`multipliers`）を
+    反映した、探索から除く区間と、区間の費用に掛ける避け方の倍率を求める。"""
+    rows = road_avoidance_masks(
+        search_materials.road_classes, road_avoidance, multipliers, len(search_materials.distance_m))
+    return replace(rows, excluded=rows.excluded | search_materials.hard_filtered)

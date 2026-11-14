@@ -1,0 +1,81 @@
+# 変異テストの全部の測りの見直し（.github/workflows/mutation.yml・mutation-frontend.yml の review が、層の表を作ってから呼ぶ）。
+# 前の実行の見直しを取ってきて比べ、候補を出し、回し終えた測りの見直しを次の前回として残し、定期の測りなら重なりの候補を消す
+# タスクを起こす（cleanup_issue.py。進め方は .claude/skills/test-review/SKILL.md「定期の測りから起きた消すタスク」）。
+# 呼ぶジョブは、測った版を取り出し、Python 3 と、成果物を読む権限（actions: read）を持つ。
+name: 変異テストの見直し
+description: 層の表から見直しの候補を出し、前回と比べ、次の前回として残し、定期の測りなら消すタスクを起こす
+
+inputs:
+  layer:
+    description: 表を書いた層（backend か frontend）。見直しの台本はこの層の下で打つ
+    required: true
+  report:
+    description: 層の表（Stryker の結果の JSON の形）のファイル
+    required: true
+  keep:
+    description: 変異を回し終えたとき、この見直しを次の見直しの前回にしてよいか（本が落ちて欠けた・範囲を絞った測りは false）
+    default: "true"
+  flow-token:
+    description: 置き場へ消すタスクを起こす鍵（定期の測りだけが使う）
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - id: prev
+      name: 前の実行の見直しを取る
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        ARTIFACT: ${{ inputs.layer == 'backend' && 'mutation-review' || 'mutation-frontend-review' }}
+      run: |
+        mkdir -p /tmp/prev
+        # 一覧が成果物の ID まで返すので、ID で取る（gh run download はその実行の成果物を一覧し直してから取る）。
+        prev=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$ARTIFACT&per_page=30" \
+          -q "[.artifacts[] | select(.expired | not) | select(.workflow_run.id != $GITHUB_RUN_ID)][0] // empty | \"\(.id) \(.workflow_run.id)\"")
+        if [ -n "$prev" ]; then
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/${prev% *}/zip" > /tmp/prev.zip
+          unzip -q /tmp/prev.zip -d /tmp/prev
+          echo "前の見直し: 実行 ${prev#* }"
+        else
+          echo "前の見直しは無い（前回も候補だった印は付かない）"
+        fi
+        echo "artifact=$ARTIFACT" >> "$GITHUB_OUTPUT"
+    - id: review
+      name: 見直す
+      shell: bash
+      working-directory: ${{ github.workspace }}/${{ inputs.layer }}
+      env:
+        REPORT: ${{ inputs.report }}
+      run: |
+        mkdir -p /tmp/review
+        cp "$REPORT" /tmp/review/report.json
+        python3 ../backend/scripts/mutation/review.py /tmp/review/report.json /tmp/prev /tmp/review
+        cat /tmp/review/summary.md >> "$GITHUB_STEP_SUMMARY"
+    # 変異を全部回し終え、欠けていない測りの見直しだけを残す（途中で止まった測り・本が落ちた測り・範囲を絞った測りを、次の見直しが
+    # 前回として読まないように）。見直しが落ちたときも残さない。
+    - if: steps.review.outputs.complete == 'true' && inputs.keep == 'true'
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ steps.prev.outputs.artifact }}
+        path: /tmp/review/
+        retention-days: 90
+        if-no-files-found: warn
+    - if: github.event_name == 'schedule' && steps.review.outputs.complete == 'true' && inputs.keep == 'true'
+      uses: actions/setup-node@v7
+      with:
+        node-version-file: frontend/package.json
+    # shell を名指すと pipefail が付き、起票が落ちたら tee の成功で隠さずに段を落とす。
+    - name: 重なりの候補を消すタスクを起こす
+      if: github.event_name == 'schedule' && steps.review.outputs.complete == 'true' && inputs.keep == 'true'
+      shell: bash
+      working-directory: ${{ github.workspace }}
+      env:
+        LAYER: ${{ inputs.layer }}
+        FLOW_BOT_TOKEN: ${{ inputs.flow-token }}
+        RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      run: |
+        size=$(python3 backend/scripts/mutation/cleanup_issue.py "$LAYER" /tmp/review "$RUN_URL" /tmp/cleanup.md)
+        if [ -z "$size" ]; then echo "重なりの候補が無いので、消すタスクは起こさない。" >> "$GITHUB_STEP_SUMMARY"; exit 0; fi
+        node .claude/skills/file-issue/scripts/new-issue.mjs --type 保守 --body-file /tmp/cleanup.md --size "$size" --priority 低 \
+          --title "テストの重なりを消す（$LAYER、$(TZ=Asia/Tokyo date +%Y-%m) の定期の測りから）" | tee -a "$GITHUB_STEP_SUMMARY"

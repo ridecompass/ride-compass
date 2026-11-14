@@ -98,11 +98,11 @@ def ordered_ends_phrase(first_label: str, last_label: str) -> str:
 
 def nominal_colors(hue_slot: int, count: int, tone: str | None, on_dark: bool = False) -> list[str]:
     """順序を持たない列挙の1軸ぶん。起点から色相環を行数で等分する。**同じ起点・同じ行数・同じ段なら
-    常に同じ色**（行を足すと、その軸の色は配り直される）。知らない段は標準の段で塗る。`on_dark`は暗い地図の上に塗る色。"""
+    常に同じ色**（行を足すと、その軸の色は配り直される）。`on_dark`は暗い地図の上に塗る色。"""
     if not 0 <= hue_slot < NOMINAL_HUE_SLOTS:
         raise ValueError(f"色相の起点は0〜{NOMINAL_HUE_SLOTS - 1}: {hue_slot}")
     start = _NOMINAL_START_HUE_DEG + (360.0 / NOMINAL_HUE_SLOTS) * hue_slot
-    lightness, chroma = NOMINAL_TONES.get(tone, NOMINAL_TONES[None])
+    lightness, chroma = NOMINAL_TONES[tone]
     if on_dark:
         lightness = max(lightness, _MIN_NOMINAL_LIGHTNESS_ON_DARK)
     return [_fit_chroma(lightness, chroma, start + 360.0 * i / count) for i in range(count)]
@@ -167,6 +167,17 @@ SEMANTIC_COLORS: dict[str, str] = {
     "pin_destination": "#059669",
     # 道のりのグラフ・地図で選んだ区間の範囲の縁取り。ルートの線の下に敷いても線の色（評価・候補・乗り換え）に溶けない紫にする。
     "selected_section": "#7c3aed",
+    # 道路タブで好む・避けるにした道の両脇の線。負担の塗り（緑→赤）・選んだ区間の紫・乗り換えの橙と重ならない色にする。
+    "avoidance_preferred": "#0d9488",
+    "avoidance_avoided": "#db2777",
+    # 道路タブを地図で見ている間に、道路タブの段ごとに道を塗る線。灰色に薄めた基礎地図の上で段を読ませるので、
+    # 好む＝緑・避ける＝橙・通らない＝赤の信号の並びにし、「少し」の段は同じ色相の薄い色にする（通るは塗らない）。詳細を見ている道の強調（`inspected`）の黄みと
+    # 離すため、避けるは赤寄りの橙。
+    "road_avoidance_prefer": "#16a34a",
+    "road_avoidance_slight_prefer": "#86efac",
+    "road_avoidance_slight_avoid": "#fdba74",
+    "road_avoidance_avoid": "#ea580c",
+    "road_avoidance_exclude": "#dc2626",
     # 地点の検索で探した候補の番号の点。地点のピン（白い台）と見分けるよう塗りの丸にし、選んでいる候補はピンの役割の色・
     # ルートの線の色のどれとも重ならない色で塗る。
     "place_candidate": "#334155",
@@ -187,7 +198,7 @@ SEMANTIC_COLORS: dict[str, str] = {
 }
 
 #: 暗い地図の基礎地図。配信元のスタイル（liberty）の塗りの色を、色相を残して明るさを反転して作る（反転の式は画面の
-#: `features/map/basemapTheme.ts: darkColor`）。明るさの範囲は、HSLの明るさ（0〜1）で、最も明るい塗り（地色）と最も暗い塗り
+#: `features/map/basemapTheme.ts: darkHsl`）。明るさの範囲は、HSLの明るさ（0〜1）で、最も明るい塗り（地色）と最も暗い塗り
 #: （文字）の行き先。下端はまぶしさを抑えるため黒の手前に置き、上端は1にすると反転した文字が白く光るので抑える。彩度の割合を
 #: 掛けないと、反転した暗い色が地図の上で浮く。
 BASEMAP_DARK_LIGHTNESS_RANGE: tuple[float, float] = (0.07, 0.85)
@@ -195,6 +206,13 @@ BASEMAP_DARK_SATURATION_SCALE = 0.6
 #: 暗い地図の基礎地図の絵の印（道の番号の標識・バス停・施設の印等）の不透明度に掛ける割合。絵は画像で色を変えられないので、
 #: 透かして暗い地へ沈める（1のままだと白い標識が暗い地図の上で光る）。
 BASEMAP_DARK_ICON_OPACITY_SCALE = 0.5
+#: 道路タブを地図で見ている間の、灰色に薄めた基礎地図。地の明るさ（明るい地図・暗い地図）で作った塗りの色の彩度に割合を
+#: 掛け、明るさを地色（`SEMANTIC_COLORS["basemap_ground"]`を同じ地の明るさで作った色）の明るさへ割合だけ寄せる（生成物
+#: `palette.json`の`basemap_muted`で配り、当てるのは画面）。地色へ寄せるので、暗い地図と重ねても暗いまま薄まる。絵の印は色を
+#: 変えられないので、不透明度に割合を掛けて沈める。
+BASEMAP_MUTED_SATURATION_SCALE = 0.1
+BASEMAP_MUTED_GROUND_PULL = 0.5
+BASEMAP_MUTED_ICON_OPACITY_SCALE = 0.4
 
 #: 暗い地図の上の役割の色。暗い地に対してコントラスト比3:1を割る色だけを差し替える。白い縁取りで地から浮く印（点の四角・
 #: 地点の検索の候補）の塗りと、地の上で読ませない色（当たり判定・標識の絵・矢印の縁）は差し替えない。
@@ -207,9 +225,29 @@ SEMANTIC_COLORS_ON_DARK: dict[str, str] = {
 
 #: 費用の軸の識別色。費用の軸の一覧の順に当てる。
 #: 地図の負担の塗り（評価の配色の緑→赤）と取り違えないよう赤・緑・黄・橙を使わず、隣り合う2色が色覚の違いでも、明るい地・
-#: 暗い地のどちらでも見分けられる並び（データの見せ方の検証の道具で確かめた）。足りない分は`SEMANTIC_COLORS["neutral"]`で
-#: 塗る（色を作って足すと、隣と見分けられる保証が無い）。
+#: 暗い地のどちらでも見分けられる並び（データの見せ方の検証の道具で確かめた）。
 COST_SERIES_COLORS: tuple[str, ...] = ("#2a78d6", "#d9669a", "#6a55dc", "#139ab3", "#9c6a2c", "#b956c2")
+#: 軸が上の並びより多いときに作る色。色相は評価の配色（緑〜赤）を避けて青緑→赤紫に限り、並びの順に進める。隣どうしは
+#: 色相の差が軸の数とともに縮むので、明度を2段で交互にして離す（色覚の違いでも明度の差は残る）。
+_COST_SERIES_HUE_RANGE_DEG = (205.0, 355.0)
+_COST_SERIES_LIGHTNESS_STEPS = (44.0, _MAX_LIGHTNESS)
+_COST_SERIES_CHROMA = 50.0
+
+
+def cost_series_colors(count: int) -> list[str]:
+    """費用の軸`count`本の識別色（一覧の順）。確かめた並びに収まればその先頭を、超えれば全部の軸の色を作り直す
+    ——確かめた色に作った色を継ぎ足すと、継ぎ目の2色が見分けられる保証が無い。"""
+    if count <= len(COST_SERIES_COLORS):
+        return list(COST_SERIES_COLORS[:count])
+    (h_start, h_end) = _COST_SERIES_HUE_RANGE_DEG
+    return [
+        _fit_chroma(
+            _COST_SERIES_LIGHTNESS_STEPS[i % len(_COST_SERIES_LIGHTNESS_STEPS)],
+            _COST_SERIES_CHROMA,
+            h_start + (h_end - h_start) * i / (count - 1),
+        )
+        for i in range(count)
+    ]
 
 
 def resolved_display_axes(attr: PrimaryAttributeSpec) -> list[dict]:

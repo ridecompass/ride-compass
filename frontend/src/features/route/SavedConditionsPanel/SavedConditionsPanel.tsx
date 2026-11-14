@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/Input/Input";
 import { textVariants } from "@/components/ui/Text/Text";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/ToggleGroup/ToggleGroup";
 import { cn } from "@/lib/cn";
+import { ROAD_SETTINGS_TAB_NAME } from "@/lib/screenNames";
 import {
   describeConditions,
   originDescription,
@@ -87,7 +88,7 @@ export function SaveConditionsButton({
         aria-label="いまの設定を保存"
         aria-haspopup="dialog"
         aria-expanded={saving}
-        usage="いまの設定（条件・出発地・負担・回避）を開いて確かめ、名前を付けてプリセットとしてこの端末に保存します。保存したプリセットは、「保存済み」タブの「プリセット」から呼び出せます。"
+        usage={`いまの設定[条件・出発地・負担・${ROAD_SETTINGS_TAB_NAME}]を開いて確かめ、名前を付けてプリセットとしてこの端末に保存します。保存したプリセットは、「保存済み」タブの「プリセット」から呼び出せます。`}
         onClick={() => setSaving(true)}
       >
         <SaveConditionsIcon size={18} />
@@ -120,7 +121,7 @@ export function SaveConditionsButton({
                   </ToggleGroup>,
                 ],
                 ["負担", currentDescription.costPreference],
-                ["回避", currentDescription.exclusions],
+                [ROAD_SETTINGS_TAB_NAME, currentDescription.exclusions],
               ]}
             />
             <form
@@ -179,7 +180,7 @@ export default function SavedConditionsPanel({ saved, onRecall, onRemove }: Save
       <SavedList
         items={saved}
         noun="プリセット"
-        howToSave="条件タブの「いまの設定を保存」で、いまの設定（条件・出発地・負担・回避）に名前を付けてプリセットとして保存します。保存したプリセットは、ここで行の「呼び出す」を押すと各タブへ戻せます。"
+        howToSave={`条件タブの「いまの設定を保存」で、いまの設定[条件・出発地・負担・${ROAD_SETTINGS_TAB_NAME}]に名前を付けてプリセットとして保存します。保存したプリセットは、行の「呼び出す」を押すと各タブに戻せます。`}
         renderMain={(entry) => <span className="min-w-0 flex-auto truncate font-semibold">{entry.name}</span>}
         renderActions={(entry) => (
           <Button
@@ -208,7 +209,7 @@ export default function SavedConditionsPanel({ saved, onRecall, onRemove }: Save
                 ["条件", recallingDescription.route],
                 ["出発地", originDescription(recalling.origin !== null)],
                 ["負担", recallingDescription.costPreference],
-                ["回避", recallingDescription.exclusions],
+                [ROAD_SETTINGS_TAB_NAME, recallingDescription.exclusions],
               ]}
             />
             <div className="mt-3 flex justify-end gap-2">
