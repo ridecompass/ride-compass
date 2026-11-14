@@ -15,7 +15,7 @@
 |---|---|
 | domain | `road_network.py`（取込範囲全体の道路網を、有向の区間とノードの番号で引ける列の配列として持つ型。行の並び・分類の材料を語彙への番号で持つことはそのdocstringが持つ）・`routing.py`（numbaでJITする探索。一対全の木・2点間探索・経路の復元・木の経路どうしの重複率・木の繋ぎ目とそこで継いだ経路・出て戻れるノードの集まり）・`search_graph.py`（探索用グラフと、同じ番号を持つCSRの構造）・`turn_structure.py`（状態＝有向区間・辺＝ターンの遷移構造と、経路の曲がる所）・`route_diversity.py`（候補の経路どうしの重なりの測り方と、重なり・パレートの層で候補を間引く手順）・`node_spatial_index.py`（置いた点に一番近いノードの索引と、寄せてよいノードへの寄せ方）・`graph.py`・`route.py`・`route_road_classes.py`（区間に載せる道の区分の値を道路網の行から読む`route_road_classes.py: SegmentClassReader`。値は地図がそのレイヤを塗るのと同じ値で、「緑と水」は割合が最も多いクラス。「緑と水」の鍵は、区間に土地被覆のクラスの並びを載せると宣言した地図の層（`domain/map_display.py: MapLayerSpec.segment_series`）のid）・`geo.py`・`errors.py`・`region.py`（矩形（`domain/region.py: BoundingBox`）と地点を覆う矩形の組み立て、XYZタイルとの相互変換（緯度経度・Web Mercatorのメートル・同じ式のSQL）。タイル座標の型（路面のズーム`domain/region.py: RoadTileZoom`・列と行`domain/region.py: TileIndex`。ほかのレイヤーのズームの型はそのレイヤーの宣言の隣）と、列・行がズームの範囲にあるかの検査`domain/region.py: check_tile_index`も持ち、タイルを受ける入口（path・本文）はどれもこれで書く。タイル配信・取込・派生バッチ・推計気象分布の画素（`infrastructure/jma_suikei_client.py`）もこの変換を共有する）・`cycling_speed.py`（自転車の走行モデル。平地・無風の巡航速度からホイール出力を逆算し、勾配・向かい風・転がり抵抗から区間ごとの速度を走行方程式で解く。速度の逆算は`v`の3次方程式になるため二分法で、区間ごとのループをnumbaでJITする。候補の所要時間と基準線の探索コストがここから出る）・`tuning.py`（ルーティング評価が読む固定値の宣言。走ってみて決める値［較正値］のid・効き方はここが持ち（値はDBの表）、エンジンが読む値・管理画面が並べる項目・変更が効くために何をやり直す必要があるかをそこから導く。較正値ではない固定値は載せない）・`tuning_labels.py`（較正値の管理画面での名前。値を使う側の宣言が持つ対象を添える）・`route_search.py`（探索が候補を選ぶ判断の値と手順。折返し点・復路・代替経路の間引きのしきい値、往路と周回全長の比の範囲と折返し点を探すリング、候補を同じとみなす距離の粒度、目的地を寄せてよい距離、候補の並べ方（パレート層と1kmあたりの代償の秒）・同点の組・離れているかの判定・逆回りとの比べ方・A*の下界・迂回率の測り方と共有の粒度、応答の候補の並び）・`loop_routing.py`（周回・目的地ルートの探索結果を運ぶ型。探索の実装と候補を並べる戦略のどちらにも属さない）・`route_request.py`（ルート生成の要求が受け付ける値の範囲（返す候補数の既定と上限・想定速度の既定と範囲の型`route_request.py: AssumedSpeedKmh`を含む。想定速度は地図のレンズ・道の窓の入口も同じ型で受ける）と、その外れを知らせる文。経由地・目的地が出発地から届く範囲にあるかの検査`route_request.py: check_points_within_reach`。要求の検証と、画面が操作を止める上限の生成物が同じ宣言を読む。検証を通った要求が何を生成するか（距離あり・距離なし・差し替えた経路）の型も持ち、仕上げの戦略を選ぶのはこの型だけ）・`wind.py`（風の予報の系列と格子・出発時点の風・通過予定時刻と迂回率の模型）・`wind_context.py`（1つの時刻の風を区間の向きへ分けた成分。走行モデルと区間の表示が同じ値を読む）・`leg_costs.py`（レグごとのコスト配列の合成。探索の材料の表・費用の軸の定義・0次フィルタ・風の予報から、探索のコストと区間の表示が読む配列を時刻ビンごとに作る。ルートの事実と道の窓が共有する軸の事実の作り方（`axis_facts`）も持つ。外部とやり取りせず配列だけを受け取るので、エンジンの途中状態を組まずに確かめられる。下記「レグ別コスト配列」） |
 | services | `route_generator.py`（戦略層。生成の骨組みと、距離の有無で分かれる仕上げの戦略）・`road_graph_engine.py`（探索範囲の準備・前段・距離ありの仕上げ）・`road_graph_context.py`（1回の生成の間、エンジン・仕上げ・候補の組み立てが共有する状態`road_graph_context.py: RoadGraphContext`と前段の結果`road_graph_context.py: FixedLegs`、生成と乗り換えが共に使う終点`road_graph_context.py: ResolvedEnd`、そこから区間・ノードを引く部品）・`road_graph_via_routes.py`（距離なしの仕上げ。via-nodeの代わりの道と基準線）・`road_graph_candidates.py`（選んだ経路を応答の候補へ組み立てる`road_graph_candidates.py: evaluate_routes`）・`graph_service.py`・`route_generation_setup.py`（エンジンの組み立てと評価条件の既定の解決。組んだエンジンで要求の対象の候補を作る段取り`route_generation_setup.py: generate_route_candidates`） |
-| infrastructure | `road_graph_repository.py`（道路網・材料の読み出し専用）・`material_joins.py`（材料の式が読む別名`material_joins.py: em`・`material_joins.py: wm`を与える表の結び方）・`road_tile_sql.py`（地図のタイルと、タイルと同じフィーチャーごとに値を配る読み出しのSQL）・`road_network_store.py`（道路網全体の配列をDBから作り、ディスクへ置き、読む）・`detour_ratio_cache.py`（探索範囲ごとに学習した迂回率）・`cache_identity.py`（キャッシュ鍵の組み立て方の正本。手で書くリビジョンと、焼き込みSQL・列構成から導く署名を合成する。道路網の置き場の形の署名とタイル配信側の世代も同じ関数を使う）・`container_memory.py`（このプロセスのコンテナのメモリ上限。読み込む量の上限を導く）・`heap_release.py`（解放した割り当ての領域を OS へ返す。生成のジョブの終わりに呼ぶ）・`derived_data_meta.py`（派生データの世代と、今の派生の表を作った全ソースの取込・較正値。世代はバッチが中身を書き直すたびに進む単調カウンタで、デプロイを伴わない変化を表せる唯一の経路。配信するタイルのために生データの世代も一緒に読む） |
+| infrastructure | `road_graph_repository.py`（道路網・材料の読み出し専用）・`material_joins.py`（材料の式が読む別名`material_joins.py: em`・`material_joins.py: wm`を与える表の結び方）・`road_tile_sql.py`（地図のタイルと、タイルと同じフィーチャーごとに値を配る読み出しのSQL）・`road_network_store.py`（道路網全体の配列をDBから作り、ディスクへ置き、読む）・`detour_ratio_cache.py`（探索範囲ごとに学習した迂回率）・`cache_identity.py`（キャッシュ鍵の組み立て方の正本。手で書くリビジョンと、焼き込みSQL・列構成から導く署名を合成する。道路網の置き場の形の署名とタイル配信側の世代も同じ関数を使う）・`heap_release.py`（解放した割り当ての領域を OS へ返す。生成のジョブの終わりに呼ぶ）・`derived_data_meta.py`（派生データの世代と、今の派生の表を作った全ソースの取込・較正値。世代はバッチが中身を書き直すたびに進む単調カウンタで、デプロイを伴わない変化を表せる唯一の経路。配信するタイルのために生データの世代も一緒に読む） |
 | api | `routes.py`・`generation_slots.py`（同時実行の枠と、枠を待つ待ち行列。プロセスに1つ） |
 
 探索が読む`road_edges`と材料のテーブル（ORMの宣言）・それを作るバッチは
@@ -724,37 +724,17 @@ segments構築はEdge単位の軽量な計算のため並行化してよい）�
 
 ### 取得の入口（`get_search_slice`）
 
-1. **カバレッジ判定**: `RoadGraphRepository.is_covered`が、bboxが取込の宣言した範囲
-   （成功した最新の`osm_way`取込の`source_runs.profile`のtarget.bbox。取込はパーティションを入れ替え、派生も最新の
-   runから作るため、古いrunの範囲は手元のデータの範囲ではない）に触れるかを1クエリで判定する。
-   範囲外ならNone（WARNING常時ログ）。マーカーの表は持たない——持つと取込範囲を広げたときに
-   2箇所を揃える必要が生まれる（判定式は路面タイルのMVT生成と共有、下記「派生delivery系
-   クエリ」）。
-2. **切り出し**: bboxに、区間の形の外接矩形が重なる区間を取り出す
+1. **切り出し**: bboxに、区間の形の外接矩形が重なる区間を取り出す
    （`domain/road_network.py: slice_network`。範囲の外へはみ出す区間も端点ごと含む）。道路網は
    `road_network_store.current()`が返すプロセス内で1つの配列で、生成のたびに増えない。あわせて
    bboxを覆うz12タイルの集合を返し、学習した迂回率の鍵にする（近い範囲の生成が同じ鍵を共有する。
-   切り出しの範囲そのものはタイルに揃えない）。
-3. **読み込む量の上限**: 探索用グラフ・コスト配列・ターン構造・候補の評価は区間の数に比例してメモリを使い、
-   backendのコンテナの上限を超えるとプロセスごと落ちて全員の生成と地図が止まるため、生成が組む量をここで抑える。
-   同時に動く生成は、生成に回せるメモリ（コンテナのメモリ上限（cgroupの`memory.max`、`container_memory.py`）から
-   生成以外への取り置きを引いた分）を、切り出した区間の数×1本あたりのメモリで分け合う（`services/graph_service.py: SearchMemory`。
-   プロセスに1つで、生成ごとの`GraphService`へ渡す）。切り出した区間の分が生成に回せる全部に1件でも収まらなければ
-   `SearchAreaTooLargeError`、ほかの生成が取っている分と合わせて収まらなければ`SearchMemoryBusyError`を送出する
-   （WARNING常時ログ）。取った分は生成のジョブの開き方（`api/dependencies.py: get_route_generation_setup_opener`）が
-   生成を終えて閉じるときに返す。同時の件数の枠（`generate_max_concurrent`）は別に効き、ふだんの距離は
-   その件数まで同時に作れる。都心の80〜100kmのように生成に回せるメモリの半分を超える範囲は、ほかの生成と合わせて
-   収まるときだけ組む。上限は定数で持たない——メモリを増やすときに直すのはデプロイのメモリ上限の1か所だけで、
-   分け合う量はそれに付いてくる。
-   1本あたりの値は、本番と同じ上限の使い捨てコンテナで都心の40・60・80kmを2件同時に流し、cgroupの退避できない
-   メモリ（anon）の最大を切り出した区間の合計で割った値の最大（約1.1KB）から決めてある。探索・評価の
-   配列の持ち方を変えたら測り直す。取り置きは本番の常駐分（地図タイルの配信を含む）と、生成のあとに返しきれずに残る領域に
-   余裕を見た値。上限が付いていない環境（開発機）では断らない。
-   上限は、生成が終わればそのメモリが戻る前提で導いている。glibc の割り当ては生成が捨てた配列の領域を抱えたまま
-   OS へ返さず（抱える量はそれまでで一番大きい生成の大きさで決まる）、抱えた分も anon に数えられるので、生成のジョブは
-   終わりに`heap_release.py: release_freed_heap`で返す（`malloc_trim(0)`。glibc の無い開発機では何もしない）。
-   戦略層（`RouteGenerator._prepare`）は、範囲が大きすぎる例外を「探索範囲の道路が多すぎる」理由付きの候補0件に、
-   混んでいる例外を同時の件数の枠で断るときと同じ文（`domain/errors.py: GENERATION_BUSY_MESSAGE`）の理由付きの候補0件にする。
+   切り出しの範囲そのものはタイルに揃えない）。道路網は取込範囲の中にしか無いので、取込範囲の外は区間が0本の切り出しになり、
+   エンジンは土台を作らない（戦略層が「道路データが未整備」の理由付きの候補0件にする）。
+2. **読み込む量**: 探索用グラフ・コスト配列・ターン構造・候補の評価は区間の数に比例してメモリを使う。読む量は抑えず、
+   同時に動く生成の合計がbackendのコンテナのメモリ上限を超えると、プロセスごと落ちて全員の生成と地図が止まる。
+   glibc の割り当ては生成が捨てた配列の領域を抱えたまま OS へ返さず（抱える量はそれまでで一番大きい生成の大きさで決まる）、
+   抱えた分もコンテナのメモリに数えられるので、生成のジョブは終わりに`heap_release.py: release_freed_heap`で返す
+   （`malloc_trim(0)`。glibc の無い開発機では何もしない）。
 
 戻り値は`(RoadSlice, タイル集合)`。材料を読むだけで、観測を引くこともスコアを組むこともしない
 （`RoadGraphEngine`の`prepare`節）。
@@ -782,7 +762,7 @@ segments構築はEdge単位の軽量な計算のため並行化してよい）�
   最初に必要になった時点で1度だけ作って保持する。辺基準グラフの遷移は`build_turn_expanded_structure`が
   CSRの3配列から導くため、Node対からCSRエントリ位置を引き直す整列キーは持たない。
 - **列の型（`domain/search_graph.py: SEARCH_INDEX_DTYPE`・`domain/search_graph.py: EDGE_VALUE_DTYPE`）**: 生成1本が持つ配列は
-  区間の数に比例し、1回の生成が切り出してよい区間の上限はその大きさから決まる（`services/graph_service.py: BYTES_PER_EDGE`）ため、区間・遷移ごとの列を狭い型で持つ。CSRとターン構造の番号の列は
+  区間の数に比例し、その合計がコンテナのメモリに収まる範囲までしか生成できないため、区間・遷移ごとの列を狭い型で持つ。CSRとターン構造の番号の列は
   `SEARCH_INDEX_DTYPE`（実データ規模のNode・Edge・遷移の数はその値域に対して桁違いに小さい）、区間・遷移ごとの値（探索の材料の表の
   材料の値、レグの費用と所要時間、ターンの待ち）は`EDGE_VALUE_DTYPE`で持つ。**足し合わせはfloat64で行う**——探索の
   ラベル・経路に沿った積算・軸ごとの代償の和は、1本ずつの値を読んでfloat64へ足す。値の列を狭い型のまま掛け合わせると結果も狭い型に
@@ -966,11 +946,7 @@ numbaでJITする探索とその部品はこのファイルにまとめて置く
 表にして生成物へ出し、画面のテストが全行を通す（置き場と作り方は[testing-frontend.md](../../../.claude/rules/testing-frontend.md)
 「パターン11」）。
 
-`errors.py`は`RoutingError`と`SearchAreaTooLargeError`を持つ。`RoutingError`は
-`RoadGraphEngine`・`RouteGenerator`が経路探索の失敗を表すのに共通で使う。
-`SearchAreaTooLargeError`は経路が無いのではなく読み込む範囲が広すぎることを表し、
-`RoutingError`とは別の型にしてある——利用者へは「範囲を狭めれば作れる」と伝えるため、
-経路の失敗と同じ扱い（候補ごとの失敗として数える・502）に混ぜない。
+`errors.py`の`RoutingError`は、`RoadGraphEngine`・`RouteGenerator`が経路探索の失敗を表すのに共通で使う。
 
 ## infrastructure層
 
@@ -1053,10 +1029,7 @@ backendは置き場を読むだけで、読むのは`current()`の1か所であ�
 探索用グラフ・CSR・索引・ターン構造・探索の材料の表はキャッシュせず、生成のたびに切り出しから組む。
 範囲ごとに持つと、範囲を変えながら生成が続くだけで常駐が積み上がるため。
 
-カバレッジ判定（`is_covered`、`source_runs`への1クエリ）はキャッシュせず毎回PostGISへ
-問い合わせる。エッジの実ジオメトリ（`get_edges_with_geometry`）も同様に毎回読む。
-判断をキャッシュしない理由は[.claude/rules/caching-retention.md](../../../.claude/rules/caching-retention.md)参照——別プロセスのバッチが
-取込の記録を書き換えるため、判断を保持すると古い範囲で答えうる。派生データそのものの
+エッジの実ジオメトリ（`get_edges_with_geometry`）はキャッシュせず毎回PostGISから読む。派生データの
 書き換えへは、道路網の置き場の世代（派生の表を入れ替えた直後に置き換わる）で追随する。
 
 ## API（`api/routers/routes.py`）

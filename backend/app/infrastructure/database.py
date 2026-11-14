@@ -32,9 +32,9 @@ def get_session_factory() -> async_sessionmaker[AsyncSession]:
     return _session_factory
 
 
-# ルート生成と、全表走査を伴う管理APIの集計が使う。生成は1件の間ずっと1本の接続を持つため、
+# ルート生成と、全表走査を伴う管理APIの集計が使う。生成は接続を取ってから終わるまで1本の接続を持つため、
 # タイル配信とはプールを分ける。上限が長いのは集計がタイル配信用の20秒では最後まで走らない
-# ためで、生成のクエリ（取込範囲の判定・確定した経路の形の取り直し）はこの上限に近づかない。
+# ためで、生成のクエリ（確定した経路の形の取り直し）はこの上限に近づかない。
 _ROUTE_GENERATION_COMMAND_TIMEOUT_SECONDS = 180
 
 _route_generation_session_factory: async_sessionmaker[AsyncSession] | None = None

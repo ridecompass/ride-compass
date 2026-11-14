@@ -3,35 +3,22 @@
 ここで見ないもの:
 - 切り出しそのもの（どの区間が範囲に入るか） → `test_road_network.py`
 - 切り出した範囲で経路を探す → `test_route_generation_behavior.py`
-- 断られたときに利用者へ出す理由 → `test_route_generator.py`
 - 切り出した区間の材料と雨の観測から組む得点 → `test_route_generation_behavior.py`
 
-リポジトリは代役で、各メソッドを`RoadGraphRepository`の同名メソッドの署名へ当ててから呼ぶ（`bound`）。
-道路網全体の配列は`tests/route_world.py: serve_road_network`で、コンテナのメモリ上限はcgroupのファイルの置き場を差し替えて与える。
+切り出しはリポジトリを読まないので、リポジトリは何も持たない代役にする（読めば落ちる）。
+道路網全体の配列は`tests/route_world.py: serve_road_network`で与える。
 """
 
 import pytest
 
-from app.domain.errors import SearchAreaTooLargeError, SearchMemoryBusyError
 from app.domain.region import BoundingBox
-from app.infrastructure import container_memory
-from app.infrastructure.road_graph_repository import RoadGraphRepository
-from app.services.graph_service import BYTES_PER_EDGE, RESERVED_BYTES, GraphService, SearchMemory
-from tests.bound_fake import bound
+from app.services.graph_service import GraphService
 from tests.east_west_network import network
 from tests.route_world import serve_road_network
 
-#: `east_west_network.network()`の西側の2本の道（35.00N・139.00〜139.02E）を覆う。
-BBOX = BoundingBox(min_latitude=34.99, min_longitude=138.99, max_latitude=35.01, max_longitude=139.03)
 
-def _repository_method(fake):
-    return bound(getattr(RoadGraphRepository, fake.__name__), fake)
-
-
-class FakeRepository:
-    @_repository_method
-    async def is_covered(self, bbox):
-        return True
+class NoRepository:
+    """メソッドを持たない。読まれたら`AttributeError`で落ちる。"""
 
 
 @pytest.fixture
@@ -44,51 +31,8 @@ async def test_the_range_is_cut_along_the_bbox_itself(road_network):
     """切り出しはbboxそのもの——同じz12タイル（138.955〜139.043E）の中でも、bboxの外の道20は取らない。
     タイル集合は迂回率の鍵としてz12で返る。"""
     narrow = BoundingBox(min_latitude=34.99, min_longitude=138.99, max_latitude=35.01, max_longitude=139.005)
-    road, tile_set = await GraphService(FakeRepository(), SearchMemory()).get_search_slice(narrow)
+    road, tile_set = await GraphService(NoRepository()).get_search_slice(narrow)
 
     assert road.rows.tolist() == [0, 1]
     assert tile_set and all(zoom == 12 for zoom, _x, _y in tile_set)
 
-
-def _memory_limit(monkeypatch, tmp_path, content):
-    """コンテナのメモリ上限（cgroupの`memory.max`）。Noneならファイルが無い環境（開発機）。"""
-    path = tmp_path / "memory.max"
-    if content is not None:
-        path.write_text(content)
-    monkeypatch.setattr(container_memory, "CGROUP_MEMORY_MAX", path)
-
-
-async def test_a_range_too_large_for_the_memory_limit_is_refused(monkeypatch, tmp_path, road_network):
-    """取り置きぶんしか無いメモリ上限では、どの範囲も組めない。"""
-    _memory_limit(monkeypatch, tmp_path, str(RESERVED_BYTES))
-
-    with pytest.raises(SearchAreaTooLargeError) as raised:
-        await GraphService(FakeRepository(), SearchMemory()).get_search_slice(BBOX)
-
-    assert (raised.value.edges, raised.value.limit) == (3, 0)
-
-
-async def test_generations_share_the_memory_by_the_size_of_their_ranges(monkeypatch, tmp_path, road_network):
-    """生成に回せるメモリの半分を超える範囲（80〜100kmの都心）も、1件なら組める。ほかの生成が組んでいる間は
-    合わせて収まらない範囲を混んでいるとして断り、その生成が返したらまた組める。"""
-    _memory_limit(monkeypatch, tmp_path, str(RESERVED_BYTES + 5 * BYTES_PER_EDGE))
-    memory = SearchMemory()
-    first, second = GraphService(FakeRepository(), memory), GraphService(FakeRepository(), memory)
-
-    road, _tiles = await first.get_search_slice(BBOX)
-    with pytest.raises(SearchMemoryBusyError) as raised:
-        await second.get_search_slice(BBOX)
-    first.release_search_memory()
-
-    assert road.edge_count == 3
-    assert (raised.value.edges, raised.value.available) == (3, 2)
-    assert (await second.get_search_slice(BBOX))[0].edge_count == 3
-
-
-@pytest.mark.parametrize("content", ["max\n", None], ids=["上限なし", "cgroupの外"])
-async def test_without_a_memory_limit_no_range_is_refused(monkeypatch, tmp_path, content, road_network):
-    _memory_limit(monkeypatch, tmp_path, content)
-
-    road, _tiles = await GraphService(FakeRepository(), SearchMemory()).get_search_slice(BBOX)
-
-    assert road.edge_count == 3

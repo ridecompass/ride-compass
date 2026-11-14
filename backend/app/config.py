@@ -59,7 +59,6 @@ class Settings(BaseSettings):
     place_link_rate_limit_per_minute: int = 600
     # ルート生成は最も高コストなエンドポイント（1件で数秒〜数十秒CPUを使い、探索範囲に比例して
     # メモリを使う）のため、per-IPレート制限に加えプロセス全体の同時実行数も絞る。
-    # 同時に動く生成は、この件数の枠とは別に、探索範囲の大きさに比例するメモリを分け合う（`services/graph_service.py: SearchMemory`）。
     generate_rate_limit_per_minute: int = 10
     generate_max_concurrent: int = 2
     # 同時実行の枠を待てる生成の数と、待てる時間（秒）。根拠は docs/modules/backend/routing-engine.md「同時実行の枠と待ち行列」。

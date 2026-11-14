@@ -29,7 +29,7 @@ from app.domain.route_request import FixedPoints, RequestedConditions
 from app.domain.msm import MsmBlock, MsmGrid
 from app.domain.wind import WindForecastSeries
 from app.infrastructure import road_network_store
-from app.services.graph_service import GraphService, SearchMemory
+from app.services.graph_service import GraphService
 from tests.profile_fixture import two_point_profiles
 
 #: 道の区分の条件と0次ハードフィルタが読む事実の列。
@@ -188,16 +188,13 @@ def road_network(
 
 
 class NetworkRepository:
-    """DBの代役。道路網はどこでも取込範囲の中で、区間の形は両端のノードを結ぶ直線。"""
+    """DBの代役。区間の形は両端のノードを結ぶ直線。"""
 
     def __init__(self, network: RoadNetwork):
         self._coordinates = {
             node_key(int(osm)): [float(lat), float(lon)]
             for osm, lat, lon in zip(network.node_osm_id, network.node_lat, network.node_lon, strict=True)
         }
-
-    async def is_covered(self, bbox):
-        return True
 
     async def get_edges_with_geometry(self, edges):
         return {
@@ -248,7 +245,7 @@ def generator_for(
     """道路網を全体の配列として置き場へ置き、本物の`GraphService`とエンジンの上に戦略層（`RouteGenerator`）を組む。"""
     serve_road_network(root, network)
     return assemble_route_generation_setup(
-        GraphService(NetworkRepository(network), SearchMemory()), Weather(wind),
+        GraphService(NetworkRepository(network)), Weather(wind),
         RequestedConditions(
             cost_preference=CostPreference(), road_avoidance=road_avoidance or {}, assumed_speed_kmh=assumed_speed_kmh,
         ),

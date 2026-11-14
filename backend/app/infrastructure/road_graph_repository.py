@@ -43,7 +43,6 @@ from app.infrastructure.road_tile_sql import (
     ROADS_AT_SQL,
 )
 from app.infrastructure.source_models import (
-    COVERAGE_SQL,
     INGESTED_BBOX_SQL,
     Source,
     nodes_lookup_sql,
@@ -280,13 +279,8 @@ class RoadGraphRepository:
         """事故データの収録年数。`accident_count_per_km_year`の分母。"""
         return len(await self.get_accident_years())
 
-    async def is_covered(self, bbox: BoundingBox) -> bool:
-        """その範囲の生データを取り込んでいるか。判定は取込の宣言から導く。"""
-        row = await self._session.execute(text(f"SELECT covered FROM ({COVERAGE_SQL}) c"), _bbox_params(bbox))
-        return bool(row.scalar())
-
     async def get_ingested_area(self) -> BoundingBox | None:
-        """取り込んだ範囲（`is_covered`が判定に使うのと同じ範囲）。道路をまだ取り込んでいなければNone。"""
+        """取り込んだ範囲（成功した最新の道路の取込が宣言した範囲）。道路をまだ取り込んでいなければNone。"""
         row = (await self._session.execute(text(INGESTED_BBOX_SQL))).mappings().one_or_none()
         if row is None:
             return None

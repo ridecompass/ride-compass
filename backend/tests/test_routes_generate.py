@@ -40,7 +40,7 @@ from app.domain.tuning import tuning_value
 from app.infrastructure import rate_limiter
 from app.infrastructure.job_registry import JOB_WAIT_MAX_SECONDS
 from app.main import app
-from app.services.graph_service import GraphService, SearchMemory
+from app.services.graph_service import GraphService
 from app.services.route_generation_setup import assemble_route_generation_setup
 from tests.bound_fake import bound
 from tests.road_class_fixture import classification, fact_is, map_layer, replaced_road_classes, road_classes
@@ -117,7 +117,7 @@ def world(override_dependency, road_network_root):
 
     @asynccontextmanager
     async def open_setup(requested):
-        yield assemble_route_generation_setup(GraphService(NetworkRepository(world.network), SearchMemory()), world.weather, requested)
+        yield assemble_route_generation_setup(GraphService(NetworkRepository(world.network)), world.weather, requested)
 
     override_dependency(dependencies.get_route_generation_setup_opener, lambda: open_setup)
     # 枠を待つ生成はテストごとのイベントループに結び付くので、持ち主をテストごとに作り直す。
