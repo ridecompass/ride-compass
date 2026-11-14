@@ -23,7 +23,7 @@ import shapely
 from shapely.geometry import LineString, MultiPolygon, Polygon, box
 from shapely.geometry.base import BaseGeometry
 
-from app.batch.common import FetchError, fetch_once, fetch_timeout, read_fetch_record, write_fetch_record
+from app.batch.common import FetchError, fetch_file, fetch_timeout, read_fetch_record, write_fetch_record
 from app.batch.ingest import Fetcher, SourceRecord, register_adapter
 from app.batch.source_adapters.abr import RangeInputs, range_inputs
 from app.batch.source_adapters.zip_csv import read_zip_csv
@@ -105,7 +105,7 @@ def fetch_jartic_regulations(spec: SourceSpec, profile: SourceProfile) -> None:
     if unlisted:
         raise FetchError(f"配布の一覧に無い都道府県: {', '.join(unlisted)}")
     for code, path in zip(inputs.prefectures, inputs.archives, strict=True):
-        fetch_once(FILES_URL + links[code], path, read_timeout=_READ_TIMEOUT_SECONDS, logger=logger)
+        fetch_file(FILES_URL + links[code], path, read_timeout=_READ_TIMEOUT_SECONDS, logger=logger)
     write_fetch_record(DATA_DIR, versions={code: links[code].split("/")[1] for code in inputs.prefectures})
 
 

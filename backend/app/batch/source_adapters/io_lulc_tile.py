@@ -19,7 +19,7 @@ from typing import Any
 
 import httpx
 
-from app.batch.common import FetchError, fetch_once, fetch_timeout
+from app.batch.common import FetchError, fetch_file, fetch_timeout
 from app.batch.ingest import AdapterInputs, Fetcher, SourceRecord, register_adapter
 from app.batch.source_adapters.raster_wkb import tile_bbox_wkb, tile_raster_wkb
 from app.batch.source_profile import SourceProfile, SourceSpec
@@ -51,9 +51,9 @@ class LulcGrid:
 def lulc_adapter_inputs(spec: SourceSpec, profile: SourceProfile) -> AdapterInputs:
     """置き場のGeoTIFF。"""
     # rasterioのimport順の制約（PROJデータの固定）を持つモジュールを経由して読む。
-    from app.infrastructure.landcover_raster import opened_raster_paths
+    from app.infrastructure.landcover_raster import open_rasters
 
-    return AdapterInputs(files=tuple(Path(raster) for raster in opened_raster_paths()))
+    return AdapterInputs(files=tuple(Path(raster) for raster in open_rasters().paths))
 
 
 def _latest_rasters(items: Iterable[dict[str, Any]]) -> list[str]:
@@ -95,7 +95,7 @@ def fetch_lulc_rasters(spec: SourceSpec, profile: SourceProfile) -> None:
     if not hrefs:
         raise FetchError("範囲に掛かる土地被覆のラスタが配布元にありません")
     for href in hrefs:
-        fetch_once(href, data_paths.RASTER_DIR / href.rsplit("/", 1)[-1],
+        fetch_file(href, data_paths.RASTER_DIR / href.rsplit("/", 1)[-1],
                    read_timeout=_READ_TIMEOUT_SECONDS, logger=logger)
 
 
@@ -103,16 +103,17 @@ def fetch_lulc_rasters(spec: SourceSpec, profile: SourceProfile) -> None:
                   fetcher=Fetcher(fetch_lulc_rasters, lambda: (data_paths.RASTER_DIR,)))
 async def read_lulc_tiles(spec: SourceSpec, profile: SourceProfile, inputs: AdapterInputs,
                           origin: dict[str, Any]) -> AsyncIterator[SourceRecord]:
-    from app.infrastructure.landcover_raster import tile_classes
+    from app.infrastructure.landcover_raster import open_rasters, tile_classes
 
     zoom = int(spec.grid.zoom)
     origin["zoom"] = zoom
     tiles = tiles_covering_bbox(profile.target.bounding_box(), zoom)
     logger.info("土地被覆タイル: zoom=%d 対象%d枚", zoom, len(tiles))
 
+    rasters = open_rasters()
     uncovered = 0
     for x, y in tiles:
-        classes = tile_classes(zoom, x, y)
+        classes = tile_classes(rasters, zoom, x, y)
         if classes is None:
             uncovered += 1
             continue

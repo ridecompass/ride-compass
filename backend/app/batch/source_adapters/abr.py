@@ -39,7 +39,7 @@ import pyproj
 import shapely
 from shapely.geometry import Point
 
-from app.batch.common import fetch_once, read_fetch_record, write_fetch_record
+from app.batch.common import fetch_file, read_fetch_record, write_fetch_record
 from app.batch.ingest import AdapterInputs, Fetcher, SourceRecord, register_adapter
 from app.batch.source_adapters.zip_csv import read_zip_csv
 from app.batch.source_profile import SourceProfile, SourceSpec, Target
@@ -212,7 +212,7 @@ def abr_inputs(spec: SourceSpec, profile: SourceProfile) -> AbrInputs:
 
 def fetch_abr(spec: SourceSpec, profile: SourceProfile) -> None:
     def fetch(stem: str) -> None:
-        fetch_once(archive_url(stem), archive_path(stem), read_timeout=_READ_TIMEOUT_SECONDS, logger=logger)
+        fetch_file(archive_url(stem), archive_path(stem), read_timeout=_READ_TIMEOUT_SECONDS, logger=logger)
 
     for stem in NATIONWIDE_ARCHIVES:
         fetch(stem)

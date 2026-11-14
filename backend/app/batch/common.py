@@ -150,7 +150,7 @@ def fetch_timeout(read_seconds: float) -> httpx.Timeout:
     return httpx.Timeout(connect=10.0, read=read_seconds, write=30.0, pool=30.0)
 
 
-def place_once(
+def place_file(
     destination: Path,
     write: Callable[[Path], None],
     *,
@@ -175,14 +175,14 @@ def place_once(
                 destination.stat().st_size / (1024 * 1024), format_duration(time.perf_counter() - started))
 
 
-def fetch_once(
+def fetch_file(
     url: str,
     destination: Path,
     *,
     read_timeout: float,
     logger: logging.Logger,
 ) -> None:
-    """配布元のURLのファイルを、`place_once`の手順で手元の所定の名前へ写す。
+    """配布元のURLのファイルを、`place_file`の手順で手元の所定の名前へ写す。
 
     `read_timeout`は`fetch_timeout`へ渡す。通信の失敗は例外のまま呼び出し側へ出す。
     """
@@ -206,4 +206,4 @@ def fetch_once(
                         total // (1024 * 1024) if total else None,
                         now - started, "MB"))
 
-    place_once(destination, write, source=url, logger=logger)
+    place_file(destination, write, source=url, logger=logger)

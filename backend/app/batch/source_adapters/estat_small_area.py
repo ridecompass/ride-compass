@@ -30,7 +30,7 @@ import shapely
 from shapely.geometry import shape
 from shapely.geometry.base import BaseGeometry
 
-from app.batch.common import fetch_once, fetch_timeout, read_fetch_record, write_fetch_record
+from app.batch.common import fetch_file, fetch_timeout, read_fetch_record, write_fetch_record
 from app.batch.ingest import Fetcher, SourceRecord, register_adapter
 from app.batch.source_adapters.abr import JGD2011, RangeInputs, range_inputs, wgs84_transformer
 from app.batch.source_profile import SourceProfile, SourceSpec
@@ -114,7 +114,7 @@ def fetch_estat_small_areas(spec: SourceSpec, profile: SourceProfile) -> None:
     inputs = estat_small_area_inputs(spec, profile)
     logger.info("統計調査 %s の範囲に掛かる都道府県: %s", survey, ", ".join(inputs.prefectures))
     for code, path in zip(inputs.prefectures, inputs.archives, strict=True):
-        fetch_once(DOWNLOAD_URL.format(survey=survey, prefecture=code), path,
+        fetch_file(DOWNLOAD_URL.format(survey=survey, prefecture=code), path,
                    read_timeout=_READ_TIMEOUT_SECONDS, logger=logger)
     write_fetch_record(DATA_DIR, survey=survey)
 

@@ -6,7 +6,7 @@
 他の版の掃除・コードの空の図形を落とすこと・同じコードの図形をまとめること・簡略化。
 
 ここで見ないもの:
-- 一時ファイル経由の取得の手順（`app/batch/common.py: fetch_once`）
+- 一時ファイル経由の取得の手順（`app/batch/common.py: fetch_file`）
   → `test_fetch_cli.py`
 - 置き場の境界から地点の区域を引く規則（含む・寄せる・区域なし）→ `test_jma_area_boundaries.py`
 """

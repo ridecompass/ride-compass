@@ -25,7 +25,7 @@ import httpx
 import shapely
 from shapely.geometry import Point
 
-from app.batch.common import fetch_once, fetch_timeout, read_fetch_record, write_fetch_record
+from app.batch.common import fetch_file, fetch_timeout, read_fetch_record, write_fetch_record
 from app.batch.ingest import AdapterInputs, Fetcher, SourceRecord, register_adapter
 from app.batch.source_profile import SourceProfile, SourceSpec
 from app.infrastructure import data_paths
@@ -112,7 +112,7 @@ def npa_honhyo_inputs(spec: SourceSpec, profile: SourceProfile) -> AdapterInputs
 def fetch_honhyo(spec: SourceSpec, profile: SourceProfile) -> None:
     years = listed_years()
     for year in years:
-        fetch_once(HONHYO_URL_TEMPLATE.format(year=year), honhyo_path(year),
+        fetch_file(HONHYO_URL_TEMPLATE.format(year=year), honhyo_path(year),
                    read_timeout=_READ_TIMEOUT_SECONDS, logger=logger)
     write_fetch_record(DATA_DIR, years=years)
 

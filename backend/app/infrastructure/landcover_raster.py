@@ -16,6 +16,7 @@ import math
 import threading
 from dataclasses import dataclass
 from io import BytesIO
+from pathlib import Path
 
 import numpy as np
 from PIL import Image, ImageColor
@@ -56,8 +57,20 @@ class _RasterSource:
     lock: threading.Lock
 
 
-#: 開いたラスタと、開いたときの置き場の一覧。
-_opened: tuple[list[str], list[_RasterSource]] | None = None
+@dataclass(frozen=True)
+class Rasters:
+    """置き場から開いたラスタの一揃い。"""
+
+    #: 開いたときの置き場のファイル（パスの順）と、それぞれの更新時刻。
+    listing: tuple[tuple[str, int], ...]
+    sources: tuple[_RasterSource, ...]
+
+    @property
+    def paths(self) -> list[str]:
+        return [path for path, _ in self.listing]
+
+
+_opened: Rasters | None = None
 _sources_lock = threading.Lock()
 
 
@@ -73,23 +86,24 @@ def raster_paths() -> list[str]:
     return sorted(str(path) for path in data_paths.RASTER_DIR.glob("*.tif"))
 
 
-def _open_sources() -> list[_RasterSource]:
-    """置き場のラスタを全部開いて持つ。置き場の一覧が開いたときと変われば開き直す——取得は配信中の置き場を入れ替え、
-    タイルの鍵（`region_tile_cache.py: landcover_generation`）も同じ一覧から作るので、前のファイルを描き続けると
-    前の絵が新しい鍵で残る。入れ替えた前のラスタは閉じずに手放す（読んでいる途中の要求があり、最後の参照が消えたときに閉じる）。"""
+def open_rasters() -> Rasters:
+    """置き場のラスタを全部開いた一揃い。置き場のファイルが開いたときから変われば（足す・消す・同じ名前で置き換える）
+    開き直す。置き場は配信中にも入れ替わりうるので、1つの用（タイル1枚・取込1回）は1つの一揃いを使い通す。
+    入れ替えた前のラスタは閉じずに手放す（読んでいる途中の要求があり、最後の参照が消えたときに閉じる）。"""
     global _opened
     with _sources_lock:
-        paths = raster_paths()
-        if _opened is None or _opened[0] != paths:
-            _opened = (paths, [_RasterSource(rasterio.open(path), threading.Lock()) for path in paths])
-        return _opened[1]
+        listing = tuple((path, Path(path).stat().st_mtime_ns) for path in raster_paths())
+        if _opened is None or _opened.listing != listing:
+            _opened = Rasters(listing, tuple(_RasterSource(rasterio.open(path), threading.Lock())
+                                             for path, _ in listing))
+        return _opened
 
 
 def close_sources() -> None:
     """開いたラスタを閉じる。次の読み取りで開き直す。"""
     global _opened
     with _sources_lock:
-        for source in _opened[1] if _opened else []:
+        for source in _opened.sources if _opened else ():
             source.dataset.close()
         _opened = None
 
@@ -140,23 +154,17 @@ def _png(image: Image.Image) -> bytes:
     return buffer.getvalue()
 
 
-def opened_raster_paths() -> list[str]:
-    """開いたラスタのパス。"""
-    return [source.dataset.name for source in _open_sources()]
-
-
-def tile_classes(z: int, x: int, y: int) -> "np.ndarray | None":
+def tile_classes(rasters: Rasters, z: int, x: int, y: int) -> "np.ndarray | None":
     """1タイルぶんのクラス番号（uint8、`TILE_SIZE`四方）を返す。
 
     どのラスタも覆っていない範囲ではNone——ラスタの外側は「土地被覆が無い」のではなく
     このデータが何も言えない場所である。
     """
-    sources = _open_sources()
     bounds = tile_bounds_3857(z, x, y)
     dst_transform = from_bounds(*bounds, TILE_SIZE, TILE_SIZE)
     classes = np.zeros((TILE_SIZE, TILE_SIZE), dtype=np.uint8)
 
-    for source in sources:
+    for source in rasters.sources:
         dataset = source.dataset
         # densify_pts: 投影をまたぐと矩形の辺は直線でなくなる。角だけで変換すると、
         # 辺のふくらみぶんが読み取り範囲から落ちてタイルの縁が欠ける。
@@ -184,13 +192,13 @@ def tile_classes(z: int, x: int, y: int) -> "np.ndarray | None":
     return classes if classes.any() else None
 
 
-def render_tile(z: int, x: int, y: int) -> bytes | None:
+def render_tile(rasters: Rasters, z: int, x: int, y: int) -> bytes | None:
     """1タイルぶんのPNG（RGBA、`TILE_SIZE`四方）を返す。覆っていない範囲ではNone。
 
     呼び出し側は覆っていない範囲を空タイルとして扱う（後からラスタを足せば値を
     持ちうるため、キャッシュへは残さない）。
     """
-    classes = tile_classes(z, x, y)
+    classes = tile_classes(rasters, z, x, y)
     if classes is None:
         return None
     return _png(Image.fromarray(_PALETTE[classes], mode="RGBA"))

@@ -14,6 +14,7 @@ import pytest
 
 from app.infrastructure import region_tile_cache, tile_cache
 from app.infrastructure.cache_identity import LANDCOVER_TILE_VERSION, region_tile_key
+from app.infrastructure.landcover_raster import raster_paths
 from tests.fake_external_log import record_external_calls
 
 EMPTY = b"empty-tile"
@@ -107,9 +108,9 @@ def _kept(*keys: str) -> set[str]:
 
 def test_only_the_generations_being_served_stay_on_disk(configure_rasters):
     configure_rasters("53S_2024.tif", "54S_2024.tif")
-    landcover_with_another_zone = region_tile_cache.landcover_generation()
+    landcover_with_another_zone = region_tile_cache.landcover_generation(raster_paths())
     configure_rasters("53S_2024.tif")
-    landcover_now = region_tile_cache.landcover_generation()
+    landcover_now = region_tile_cache.landcover_generation(raster_paths())
     keys = {
         "路面の今の世代": region_tile_key("road_surface", "3.2-aaa", 12, 1, 1, "pbf"),
         "路面の前の世代": region_tile_key("road_surface", "2.2-aaa", 12, 1, 1, "pbf"),
@@ -136,6 +137,6 @@ def test_only_the_generations_being_served_stay_on_disk(configure_rasters):
 
 def test_the_landcover_generation_carries_the_tile_version(configure_rasters):
     """配色を変えて版を上げたら、前の版の絵をディスクから返さない。"""
-    assert region_tile_cache.landcover_generation().startswith(f"{LANDCOVER_TILE_VERSION}/")
+    assert region_tile_cache.landcover_generation(raster_paths()).startswith(f"{LANDCOVER_TILE_VERSION}/")
 
 
