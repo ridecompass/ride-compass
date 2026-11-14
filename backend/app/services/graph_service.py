@@ -3,6 +3,7 @@ import logging
 from collections.abc import Mapping, Sequence
 
 from app.domain.stopwatch import elapsed_ms, start_timer
+from app.domain.errors import SearchAreaTooLargeError, SearchMemoryBusyError
 from app.domain.geo import LatLonPoint
 from app.domain.graph import LeanEdge, parse_edge_key
 from app.domain.region import BoundingBox, tiles_covering_bbox
@@ -18,11 +19,51 @@ from app.domain.road_network import (
     slice_network,
 )
 from app.domain.route_search import DETOUR_RATIO_SHARING_ZOOM
-from app.infrastructure import road_network_store
+from app.infrastructure import container_memory, road_network_store
 from app.infrastructure.detour_ratio_cache import TileSet
 from app.infrastructure.road_graph_repository import RoadGraphRepository
 
 logger = logging.getLogger("ridecompass.graph")
+
+#: 生成以外（地図タイルの配信・プロセスの常駐分と、生成のあとに返しきれずに残る領域）のために取り置くメモリ。
+RESERVED_BYTES = 2 * 1024**3
+#: 1件の生成が、切り出した有向の区間1本あたりに使うメモリ（探索用グラフ・コスト配列・ターン構造・候補の評価の合計）。
+BYTES_PER_EDGE = 1100
+
+
+class SearchMemory:
+    """同時に動く生成どうしが分け合う、生成に回せるメモリ（コンテナのメモリ上限から取り置きを引いた分）。
+
+    プロセスに1つ置き、生成ごとの`GraphService`へ渡す。上限を超えるとプロセスごと落ち、全員の生成と地図が止まるので、
+    生成は切り出した区間の数に比例する分を組む前に取り、終わったら返す。数えるのはイベントループの中だけで、
+    確かめてから足すまでに`await`を挟まない（別のスレッドから呼ぶとほかの生成の分と競う）。
+    """
+
+    def __init__(self) -> None:
+        self._in_use = 0
+
+    def reserve(self, edges: int) -> int:
+        """区間`edges`本の生成の分を取り、取ったバイト数を返す。コンテナのメモリ上限が無ければ取らない（0、断らない）。
+
+        生成に回せる全部へ1件でも収まらなければ`SearchAreaTooLargeError`、ほかの生成の分と合わせて収まらなければ
+        `SearchMemoryBusyError`を送出する。
+        """
+        limit = container_memory.memory_limit_bytes()
+        if limit is None:
+            return 0
+        budget = max(0, limit - RESERVED_BYTES)
+        needed = edges * BYTES_PER_EDGE
+        if needed > budget:
+            raise SearchAreaTooLargeError(edges, budget // BYTES_PER_EDGE)
+        if self._in_use + needed > budget:
+            raise SearchMemoryBusyError(edges, (budget - self._in_use) // BYTES_PER_EDGE)
+        self._in_use += needed
+        return needed
+
+    def release(self, reserved: int) -> None:
+        """`reserve`が返したバイト数を返す。"""
+        self._in_use -= reserved
+
 
 #: 最後に作った区分の列と、作ったときの道路網・区分の全体。どちらかが入れ替わったら作り直す。
 _classes: tuple[RoadNetwork, RoadClassDefinitions, tuple[dict[str, CategoricalColumn], dict[str, CategoricalColumn]]] | None = None
@@ -77,11 +118,18 @@ class GraphService:
     道路網は取込範囲の中にしか無いので、取込範囲の外は区間が0本の切り出しになる。
     """
 
-    def __init__(self, repository: RoadGraphRepository):
+    def __init__(self, repository: RoadGraphRepository, memory: SearchMemory):
         self._repository = repository
+        self._memory = memory
+        self._reserved = 0
+
+    def release_search_memory(self) -> None:
+        """`get_search_slice`が取った生成のメモリを返す。生成が終わったら（組んだ配列を捨てたら）呼ぶ。"""
+        self._memory.release(self._reserved)
+        self._reserved = 0
 
     async def get_search_slice(self, bbox: BoundingBox) -> tuple[RoadSlice, TileSet]:
-        """探索範囲の区間を返す。
+        """探索範囲の区間を返す。返したら、その区間の数に比例する生成のメモリを`release_search_memory`まで取っておく。
 
         切り出すのはbboxそのもの。あわせて返すbboxを覆うz12タイルの集合は、近い範囲をまとめて
         指す鍵として使う（学習した迂回率の鍵）。
@@ -90,6 +138,13 @@ class GraphService:
         tiles = tiles_covering_bbox(bbox, DETOUR_RATIO_SHARING_ZOOM)
         # 全区間を走査するので、読み込みと一緒にイベントループの外で切り出す。
         road = await asyncio.to_thread(_slice_current, bbox)
+        try:
+            self._reserved += self._memory.reserve(road.edge_count)
+        except (SearchAreaTooLargeError, SearchMemoryBusyError) as exc:
+            logger.warning(
+                "探索範囲の区間がメモリに収まらないため使わない bbox=(%.2f,%.2f,%.2f,%.2f) tiles=%d %s",
+                bbox.min_latitude, bbox.min_longitude, bbox.max_latitude, bbox.max_longitude, len(tiles), exc)
+            raise
         logger.info(
             "get_search_slice tiles=%d edges=%d nodes=%d slice_ms=%d",
             len(tiles), road.edge_count, road.node_count, elapsed_ms(started),

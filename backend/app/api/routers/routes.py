@@ -333,5 +333,5 @@ async def _run_generate_job(
         if acquired:
             slots.release()
             # 生成が作って捨てた配列の領域を返す。返さないと、それまでで一番大きい生成の分が anon に残り、
-            # 次の生成と地図の配信が使えるコンテナのメモリを食う。
+            # 生成どうしが分け合うメモリ（`services/graph_service.py: SearchMemory`）が前提にする取り置きを食う。
             await asyncio.to_thread(release_freed_heap)

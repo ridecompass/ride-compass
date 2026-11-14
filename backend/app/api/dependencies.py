@@ -42,7 +42,7 @@ from app.infrastructure.wbgt_client import new_forecast_cache, new_point_master_
 from app.services.db_status_service import DbStatusService
 from app.services.derived_data_freshness_service import DerivedDataFreshnessService
 from app.services.flood_service import FloodService
-from app.services.graph_service import GraphService
+from app.services.graph_service import GraphService, SearchMemory
 from app.services.jma_amedas_service import JmaAmedasService
 from app.services.landcover_tile_service import get_landcover_tile
 from app.services.lens_service import LensService
@@ -121,13 +121,21 @@ def get_flood_service():
     return FloodService(get_http_client(), area_data_cache=_area_data_cache, flood_cache=_flood_cache)
 
 
+#: 同時に動く生成どうしが分け合うメモリ。生成ごとのサービスはリクエストごとに作られるため、プロセスの側で持つ。
+_search_memory = SearchMemory()
+
+
 @asynccontextmanager
 async def _open_route_generation_setup(
     long_sessions: async_sessionmaker[AsyncSession], requested: RequestedConditions
 ) -> AsyncIterator[RouteGenerationSetup]:
     """ルート生成ジョブが使う`RouteGenerationSetup`を組み立てる非同期コンテキストマネージャ。"""
     async with long_sessions() as session:
-        yield assemble_route_generation_setup(GraphService(RoadGraphRepository(session)), get_weather_service(), requested)
+        graph_service = GraphService(RoadGraphRepository(session), _search_memory)
+        try:
+            yield assemble_route_generation_setup(graph_service, get_weather_service(), requested)
+        finally:
+            graph_service.release_search_memory()
 
 
 RouteGenerationSetupOpener = Callable[[RequestedConditions], AbstractAsyncContextManager[RouteGenerationSetup]]

@@ -26,7 +26,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Protocol
 
 from app.domain.stopwatch import elapsed_ms, start_timer, steps_note
-from app.domain.errors import RoutingError
+from app.domain.errors import GENERATION_BUSY_MESSAGE, RoutingError, SearchAreaTooLargeError, SearchMemoryBusyError
 from app.domain.geo import haversine_distance_km
 from app.domain.map_display import MAP_OVERLAY_GROUPS
 from app.domain.loop_routing import TracedLoop
@@ -388,6 +388,22 @@ class RouteGenerator:
         try:
             context = await self._engine.prepare(
                 origin, points, radius_km, now=start_time, covering_edge_ids=covering_edge_ids)
+        except SearchAreaTooLargeError as exc:
+            logger.warning(
+                "%s origin=%s %s -> search area too large edges=%d limit=%d prepare_ms=%d",
+                log_label, origin_label, log_detail, exc.edges, exc.limit,
+                elapsed_ms(started),
+            )
+            return (
+                "探索範囲の道路が多すぎるため、ルートを生成できませんでした。"
+                "距離を短くするか、経由地・目的地を出発地に近づけてお試しください。")
+        except SearchMemoryBusyError as exc:
+            logger.warning(
+                "%s origin=%s %s -> search memory busy edges=%d available=%d prepare_ms=%d",
+                log_label, origin_label, log_detail, exc.edges, exc.available,
+                elapsed_ms(started),
+            )
+            return GENERATION_BUSY_MESSAGE
         except RoutingError as exc:
             logger.warning(
                 "%s origin=%s %s -> origin not snapped: %s prepare_ms=%d",

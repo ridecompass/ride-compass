@@ -154,6 +154,7 @@ export default function RouteForm({
                 "ルート全体の長さの目標です。",
                 distanceToleranceRatio === undefined ? "" : toleranceSentence(distanceToleranceRatio, distanceInput),
                 "オフにすると長さを決めず、所要時間と負担の和が小さい道で目的地へ向かいます[周回なら、経由地を回って出発地へ]。",
+                `${routeGenerateConfig.busy_safe_distance_km}kmより長い目標は、混み合っているときに作れないことがあります。`,
               ].join("")}
             </InfoPopover>
           </div>

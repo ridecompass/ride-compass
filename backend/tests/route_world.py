@@ -29,7 +29,7 @@ from app.domain.route_request import FixedPoints, RequestedConditions
 from app.domain.msm import MsmBlock, MsmGrid
 from app.domain.wind import WindForecastSeries
 from app.infrastructure import road_network_store
-from app.services.graph_service import GraphService
+from app.services.graph_service import GraphService, SearchMemory
 from tests.profile_fixture import two_point_profiles
 
 #: 道の区分の条件と0次ハードフィルタが読む事実の列。
@@ -245,7 +245,7 @@ def generator_for(
     """道路網を全体の配列として置き場へ置き、本物の`GraphService`とエンジンの上に戦略層（`RouteGenerator`）を組む。"""
     serve_road_network(root, network)
     return assemble_route_generation_setup(
-        GraphService(NetworkRepository(network)), Weather(wind),
+        GraphService(NetworkRepository(network), SearchMemory()), Weather(wind),
         RequestedConditions(
             cost_preference=CostPreference(), road_avoidance=road_avoidance or {}, assumed_speed_kmh=assumed_speed_kmh,
         ),
