@@ -9,7 +9,7 @@
 
 import pytest
 from pydantic import ValidationError
-from sqlalchemy import func, insert
+from sqlalchemy import insert
 
 from app.domain.cost_axes import CostAxisDefinitions, current_cost_axes
 from app.domain.road_classes import EMPTY_ROAD_CLASSES, class_material_id
@@ -52,7 +52,7 @@ async def test_definitions_naming_what_left_the_code_stop_the_start_naming_it(ro
     """コードの宣言から消した材料・体力の軸を保存済みの定義が指していたら、外したり既定へ戻したりせず、それを名指して止まる
     （運用者が定義を直してから起動する）。"""
     raw = change(cost_axes().model_dump(mode="json"))
-    await road_graph_session.execute(insert(CostAxisDefinitionsRow).values(only_one=True, definitions=raw, updated_at=func.now()))
+    await road_graph_session.execute(insert(CostAxisDefinitionsRow).values(only_one=True, definitions=raw))
     await road_graph_session.commit()
 
     with pytest.raises((RuntimeError, ValidationError), match=named):
