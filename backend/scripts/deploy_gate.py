@@ -55,6 +55,8 @@ NOT_DEPLOYED = (
     "backend/scripts/prod_point_tile_check.py",
     # 本番のDBのバックアップの止まりの見張り。定時に、ランナーから本番の`/health`を読む（像の中では動かさない）。
     "backend/scripts/prod_backup_check.py",
+    # 本番の予報（MSM）の配信の止まりの見張り。定時に、ランナーから本番の`/api/debug/stats`を読む（像の中では動かさない）。
+    "backend/scripts/prod_msm_check.py",
     "backend/app/domain/warning_display.py",
 )
 
