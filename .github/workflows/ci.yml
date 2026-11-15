@@ -518,8 +518,8 @@ jobs:
       # backendの外のPythonすべて。backendの下はbackendジョブが見る。設定ファイルが無いので
       # ruffの既定のルールで見る（backend/ruff.tomlが選ぶものと同じ）。構文の誤りもruffが出す。
       - run: ruff check --extend-exclude backend .
-      # 追跡しているshの構文。
-      - run: git ls-files -z '*.sh' | xargs -0 -n1 bash -n
+      # 追跡しているshの構文と、set -uの下で落ちる定まっていない変数の読み等の誤り。
+      - run: git ls-files -z '*.sh' | xargs -0 shellcheck --external-sources --severity=warning
   # タスクの流れのゲート（tools/flow-gate/）の lint と、Pull Request の本文の形（本文は master のコミットになるので、
   # 直したときも照らす。上の on の edited）。
   flow-gate:

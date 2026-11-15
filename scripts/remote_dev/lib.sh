@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # クラウドのセッション（Claude Code on the web）の開発環境を用意する処理。
 # setup.sh（環境の初回だけ走り、終了時のファイルシステムが保存される）と
 # session_start.sh（毎セッションの開始時に走る）と、DBを待つwait_db.shから読む。
@@ -14,7 +15,9 @@ RC_PYTHON="${RC_PYTHON:-python$(sed -n 's/^FROM python:\([0-9.]*\).*/\1/p' "$RC_
 # 読み込むだけでファイルを作らない（wait_db.shも読む）。$$は裏で走らせた段の中でも読み込んだシェルのpid。
 RC_TIMES="/tmp/ridecompass-times.$$"
 # DB・Redisの裏の起動（session_start.sh db）の結果とログ。待つのはwait_db.sh。
+# shellcheck disable=SC2034  # 読み込んだスクリプトが使う
 RC_DB_STATUS=/tmp/ridecompass-db-status
+# shellcheck disable=SC2034  # 読み込んだスクリプトが使う
 RC_DB_LOG=/tmp/ridecompass-db.log
 
 rc_log() { printf '[remote_dev %s] %s\n' "$(date +%H:%M:%S)" "$*" >&2; }
@@ -105,8 +108,7 @@ rc_ensure_dockerd() {
   rc_clear_stale_pid /var/run/docker/containerd/containerd.pid containerd
   rc_log "dockerdを起動する"
   setsid nohup dockerd >/var/log/ridecompass-dockerd.log 2>&1 < /dev/null &
-  local i
-  for i in $(seq 1 60); do
+  for _ in $(seq 1 60); do
     docker info >/dev/null 2>&1 && return 0
     sleep 0.5
   done
