@@ -16,7 +16,7 @@ def _key(z: int, x: int, y: int, value_shape: str) -> tuple:
 
 
 async def get_tile_materials(z: int, x: int, y: int, *, value_shape: str) -> FeatureMaterials | None:
-    """タイルの材料。未キャッシュ・読み出し失敗はいずれもNone（フィーチャーの無いタイルは0行の値で返る）。"""
+    """タイルの材料。未キャッシュならNone（フィーチャーの無いタイルは0行の値で返る）。"""
     cached = await get_tile_entry(_key(z, x, y, value_shape))
     return cached if isinstance(cached, FeatureMaterials) else None
 

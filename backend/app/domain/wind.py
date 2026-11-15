@@ -120,10 +120,11 @@ class WindForecastSeries:
         配列を、`points`の格子点ごとに返す。"""
         return self.speed_ms[points, index], self.direction_deg[points, index]
 
-    def reads_previous_run(self, start: datetime, hours: float) -> bool:
-        """`start`から`hours`時間後までに引く風に、最新のrunの終わりから先の（前に出たrunの）時刻があるか。引く時刻は
-        経過とともに後ろへ進むので、終わりの時刻に引く時刻で見る（範囲の外で端へ寄せたなら、寄せた先の時刻）。"""
-        return self.times[self.time_index(start, hours)] >= self.latest_run_end
+    def previous_run_from(self, start: datetime, hours: float) -> datetime | None:
+        """`start`から`hours`時間後までに引く風に、最新のrunの終わりから先の（前に出たrunの）時刻があれば、その終わりの時刻
+        （この時刻から先の風が前に出たrunのもの）。無ければNone。引く時刻は経過とともに後ろへ進むので、終わりの時刻に引く
+        時刻で見る（範囲の外で端へ寄せたなら、寄せた先の時刻）。"""
+        return self.latest_run_end if self.times[self.time_index(start, hours)] >= self.latest_run_end else None
 
     def covers(self, at: datetime) -> bool:
         """`at`に最も近い時刻が系列の範囲の中にあるか（端の値で延ばさずに引けるか）。"""

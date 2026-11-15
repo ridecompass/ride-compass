@@ -62,13 +62,13 @@ describe("GridPointToday", () => {
   });
 
   it.each([
-    ["2026-09-24T23:00", "23時から先は前に出た予報の値です"],
+    ["2026-09-24T23:00", "9/24 23:00から先は、前の予報の値です。"],
     ["2026-09-25T00:00", null],
   ])("最新の予報の終わりが%sなら、前に出た予報の値の時刻を知らせる", (latestRunEnd, notice) => {
     render(<GridPointToday today={gridPointToday({ latest_run_end: latestRunEnd })} error={null} mapBearingDeg={0} />);
 
     const today = screen.getByRole("region", { name: "今日・最寄りの格子点の値" });
-    if (notice === null) expect(today).not.toHaveTextContent("前に出た予報");
+    if (notice === null) expect(today).not.toHaveTextContent("前の予報");
     else expect(today).toHaveTextContent(notice);
   });
 
