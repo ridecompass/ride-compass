@@ -52,6 +52,7 @@ async def test_connections_to_other_databases_count_toward_the_connection_limit(
     # 上限（max_connections）はサーバー全体の枠なので、別のDBへの接続も残り枠を減らす。
     # 並べて走る他のテストも接続を開け閉めするので、前後の差では比べない。pg_stat_activityは
     # トランザクションの中で最初に読んだ時点に固定されるので、数えたのと同じ時点のこのDBへの接続と比べる。
+    # autovacuum・並列の担い手もこのDBにつながるので、数え方を合わせて client backend だけを比べる。
     other = create_async_engine(make_url(postgis_database_url()).set(database="postgres"))
     try:
         async with other.connect() as connection:
@@ -59,7 +60,8 @@ async def test_connections_to_other_databases_count_toward_the_connection_limit(
             counts = await DbStatusQuery(road_graph_session).fetch_counts()
             this_database = (await road_graph_session.execute(text(
                 "SELECT count(*) FROM pg_stat_activity"
-                " WHERE datname = current_database() AND pid <> pg_backend_pid()"))).scalar_one()
+                " WHERE datname = current_database() AND backend_type = 'client backend'"
+                " AND pid <> pg_backend_pid()"))).scalar_one()
     finally:
         await other.dispose()
 
