@@ -33,7 +33,7 @@ description: "流れの摩擦の記録の仕方、起票の仕方、issue の本
   `node .claude/skills/file-issue/scripts/new-issue.mjs --type <種類> --title <題名> --body-file <ファイル> --size <規模> --priority <優先度> [--blocked-by <前,...>] [--start <着手可能日時>] [--hold]`
   で起こす（形と欄を照らし、合わなければ作らずに合わない所を返すので、直して打ち直す）。開発機で起こしてそのまま持つなら `--hold` を付ける
   （作るときからラベル「開発機で作業中」が付き、ゲートが担当へ振り出さない）。前後関係と組を張り（「前後関係と組」）、起こした番号を自分のタスクの報告に書く。
-- 入口はゲートが決める（`docs/conventions/flow.md`「ステータスと割り当て」の「入口」）。Claude が起こした issue は、種類によらずゲートが採否を問う。
+- 入口はゲートが決める（`docs/conventions/flow.md`「ステータスと割り当て」の「入口」）。Claude が起こした issue は、種類によらずゲートが採否を問う（開発機で持つものと、前提に張った対話作業を除く）。
 
 ## issue の形
 
