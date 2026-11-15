@@ -1,6 +1,7 @@
-"""`api/routers/weather.py`——警報・ルートの警報級の時系列・暑さ指数・洪水予報・アメダス・今日の最寄りの格子点の値・MSMの格子点の経路。
+"""`api/routers/weather.py`——警報・ルートの警報級の時系列・暑さ指数・洪水予報・アメダス・今日の最寄りの格子点の値・MSMの格子点・
+MSMの予報の状態の経路。
 
-経路ごとに回数制限を通し、MSMの格子点とルートの警報級の時系列の経路はサービスの答えが応答に出ることも見る。ルーターが持つ判断
+回数制限のある経路ごとに回数制限を通し、MSMの格子点・MSMの予報の状態とルートの警報級の時系列の経路はサービスの答えが応答に出ることも見る。ルーターが持つ判断
 （取れなかったら502・表示範囲が不正か広すぎたら400）をこの経路から見る。サービスは依存の差し替えで与える。
 
 ここで見ないもの:
@@ -31,7 +32,7 @@ from app.config import settings
 from app.domain.flood_forecast import ActiveFloodForecast
 from app.domain.jma_amedas import AmedasObservation, WindDirection
 from app.domain.jma_warning import ActiveWarning
-from app.domain.msm_grid import MSM_GRID_MAX_AREA_SQ_DEG, MsmGridForecast, MsmGridPointForecast
+from app.domain.msm_grid import MSM_GRID_MAX_AREA_SQ_DEG, MsmForecastStatus, MsmGridForecast, MsmGridPointForecast
 from app.domain.time_zone import JST
 from app.domain.twilight import Twilight
 from app.domain.weather import GridPointToday
@@ -91,6 +92,7 @@ MSM_GRID = MsmGridForecast(
             latitude=35.65, longitude=139.75, wind_speed_ms=[5.5], wind_direction_deg=[270.0], precipitation_mm=[None],
         ),
     ],
+    latest_run_end=datetime(2026, 10, 9, 0, 0),
 )
 GRID_POINT_TODAY = GridPointToday(
     latitude=35.7,
@@ -106,7 +108,9 @@ GRID_POINT_TODAY = GridPointToday(
     lowest_hourly_temperature_c=14.2,
     highest_hourly_precipitation_mm=None,
     highest_hourly_wind_speed_ms=3.1,
+    latest_run_end=datetime(2026, 10, 21, 0, 0),
 )
+MSM_STATUS = MsmForecastStatus(latest_run_end=datetime(2026, 10, 9, 0, 0))
 ROUTE_TIMELINE = RouteWarningTimeline(
     areas=[
         RouteAreaTimeline(
@@ -165,6 +169,9 @@ class FakeService:
     async def get_msm_grid(self, bbox):
         return self._give()
 
+    def get_forecast_status(self):
+        return self._give()
+
     async def get_route_timeline(self, points):
         return self._give()
 
@@ -188,7 +195,16 @@ def test_the_msm_grid_route_returns_the_grid_points_with_local_times(override_de
                 "precipitation_mm": [None],
             },
         ],
+        "latest_run_end": "2026-10-09T00:00",
     }
+
+
+def test_the_msm_status_route_returns_the_end_of_the_latest_run_as_a_local_time(override_dependency):
+    override_dependency(get_weather_service, lambda: FakeService(MSM_STATUS))
+
+    response = client.get("/api/weather/msm-status")
+
+    assert (response.status_code, response.json()) == (200, {"latest_run_end": "2026-10-09T00:00"})
 
 
 #: 面積が上限をわずかに超える正方形の一辺[度]。
@@ -225,6 +241,7 @@ _AMEDAS_UNAVAILABLE = (AmedasUnavailableError("置き場を読めない"), 503, 
     ("GET", "/api/weather/amedas", {"params": POINT}, get_amedas_service, _AMEDAS_UNAVAILABLE),
     ("GET", "/api/weather", {"params": POINT}, get_weather_service, _MSM_UNAVAILABLE),
     ("GET", "/api/weather/msm-grid", {"params": TOKYO_BBOX}, get_weather_service, _MSM_UNAVAILABLE),
+    ("GET", "/api/weather/msm-status", {}, get_weather_service, _MSM_UNAVAILABLE),
     ("POST", "/api/weather/route-warning-timeline", {"json": ROUTE_POINTS}, get_warning_timeline_service, _UPSTREAM_FAILED),
 ])
 def test_a_source_that_could_not_be_obtained_is_a_failure_not_an_empty_answer(

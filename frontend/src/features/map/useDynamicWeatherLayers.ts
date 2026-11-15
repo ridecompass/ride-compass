@@ -45,7 +45,9 @@ import {
 } from "@/features/map/layers/dynamicWeather";
 import { jmaTileFailures, subscribeJmaTileFailures } from "@/features/map/layers/jmaTileProtocol";
 import { useWeatherGrid } from "@/features/map/useWeatherGrid";
+import { isPreviousRunTime, previousRunNotice } from "@/lib/previousRun";
 import { getQueryClient } from "@/lib/queryClient";
+import { parseJstLocalValue } from "@/lib/time";
 import type { MsmGridForecast } from "@/types/weather";
 
 /** 格子の段の描き方。読む値ごとに1つ。 */
@@ -79,6 +81,8 @@ interface UseDynamicWeatherLayersResult {
    * ——時刻一覧・格子・地物は自前のJSで取りに行き、結果を流し込むだけのため、MapLibre側の
    * ソースイベントはその待ち時間・失敗を観測できない。 */
   dynamicWeatherDataStatus: Partial<Record<DynamicWeatherLayerId, LayerDataStatus>>;
+  /** チップごとの、描いている値の扱いの但し書き（前に出た予報の値を描いている間だけ）。 */
+  dynamicWeatherNotices: Partial<Record<DynamicWeatherLayerId, string>>;
 }
 
 export function useDynamicWeatherLayers({
@@ -253,5 +257,23 @@ export function useDynamicWeatherLayers({
     tileFailures,
   ]);
 
-  return { dynamicWeather, dynamicWeatherDataStatus };
+  // 格子の時刻が最新のrunの終わりから先なら、その値は前に出たrunのもの。
+  const dynamicWeatherNotices = useMemo(() => {
+    const notices: Partial<Record<DynamicWeatherLayerId, string>> = {};
+    const latestRunEnd = grid.grid?.latest_run_end;
+    if (latestRunEnd === undefined) return notices;
+    for (const group of WEATHER_GROUPS) {
+      const labels = shownSources
+        .filter((source) => source.group === group)
+        .filter((source) => {
+          const ref = selected.get(source);
+          return ref?.origin === "grid" && isPreviousRunTime(parseJstLocalValue(ref.time), latestRunEnd);
+        })
+        .map((source) => source.label);
+      if (labels.length > 0) notices[group] = previousRunNotice(`この時刻の${labels.join("・")}`);
+    }
+    return notices;
+  }, [shownSources, selected, grid.grid]);
+
+  return { dynamicWeather, dynamicWeatherDataStatus, dynamicWeatherNotices };
 }

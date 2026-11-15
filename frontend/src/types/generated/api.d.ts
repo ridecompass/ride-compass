@@ -180,6 +180,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/weather/msm-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_msm_status_api_weather_msm_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/place-search": {
         parameters: {
             query?: never;
@@ -815,10 +831,6 @@ export interface components {
             client_tuning: {
                 [key: string]: number;
             };
-            /** Tile Versions */
-            tile_versions: {
-                [key: string]: string;
-            };
             /** Accident Years */
             accident_years: number[];
             road_classes: components["schemas"]["RoadClassCatalog"];
@@ -1125,6 +1137,8 @@ export interface components {
             highest_hourly_precipitation_mm: number | null;
             /** Highest Hourly Wind Speed Ms */
             highest_hourly_wind_speed_ms: number | null;
+            /** Latest Run End */
+            latest_run_end: string;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -1356,6 +1370,11 @@ export interface components {
              */
             op: "missing";
         };
+        /** MsmForecastStatus */
+        MsmForecastStatus: {
+            /** Latest Run End */
+            latest_run_end: string;
+        };
         /** MsmFreshnessResponse */
         MsmFreshnessResponse: {
             /** Last Run At */
@@ -1377,6 +1396,8 @@ export interface components {
             longitude_step_deg: number;
             /** Points */
             points: components["schemas"]["MsmGridPointForecast"][];
+            /** Latest Run End */
+            latest_run_end: string;
         };
         /** MsmGridPointForecast */
         MsmGridPointForecast: {
@@ -2437,6 +2458,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_msm_status_api_weather_msm_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MsmForecastStatus"];
                 };
             };
         };

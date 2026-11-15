@@ -4,6 +4,7 @@
 反映はプロセス単位で、ほかのプロセスでの書き込みはこのプロセスへ届かない（単一プロセスのデプロイが前提）。
 """
 
+import asyncio
 import logging
 
 from sqlalchemy.exc import DataError, IntegrityError
@@ -12,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.domain.cost_axes import CostAxisDefinitions, check_cost_axes
 from app.domain.road_classes import RoadClassDefinitions, replace_road_classes, undeclared_references
 from app.infrastructure.cost_axis_repository import read_cost_axes
+from app.infrastructure.region_tile_cache import discard_region_tiles
 from app.infrastructure.road_class_repository import read_road_classes, replace_road_class_rows
 from app.services.cost_axis_service import warn_surplus_class_weights
 
@@ -77,6 +79,8 @@ class RoadClassAdminService:
             await session.rollback()
             raise
         _apply(definitions)
+        # 路面タイルは区分の色を焼いているので、前の区分で焼いたものを捨てる。
+        await asyncio.to_thread(discard_region_tiles)
         if cost_axes is not None:
             warn_surplus_class_weights(cost_axes, definitions)
         return definitions

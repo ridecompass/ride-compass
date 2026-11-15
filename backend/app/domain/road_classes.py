@@ -6,8 +6,6 @@
 コードの宣言を名指す値は、書く側と起動時の読み込みが宣言に照らす（`undeclared_references`）。
 """
 
-import hashlib
-import json
 from collections.abc import Mapping, Sequence
 from typing import Annotated, Literal, Protocol, cast
 
@@ -148,21 +146,6 @@ def undeclared_references(definitions: RoadClassDefinitions) -> list[str]:
 
 
 _current = EMPTY_ROAD_CLASSES
-#: 直前に指紋を求めた全体とその指紋（画面の設定と地図のタイルの世代が要求のたびに読むので、同じ全体なら求め直さない）。
-#: 全体の写し（`model_copy`）は別の全体なので、同じものかは中身でなく同一性で見る。
-_generation_memo: tuple[RoadClassDefinitions, str] | None = None
-
-
-def road_class_generation(definitions: RoadClassDefinitions) -> str:
-    """中身から作る指紋。鍵の順に依らない。"""
-    global _generation_memo
-    memo = _generation_memo
-    if memo is not None and memo[0] is definitions:
-        return memo[1]
-    text = json.dumps(definitions.model_dump(mode="json"), sort_keys=True, ensure_ascii=False)
-    generation = hashlib.sha256(text.encode("utf-8")).hexdigest()[:12]
-    _generation_memo = (definitions, generation)
-    return generation
 
 
 def current_road_classes() -> RoadClassDefinitions:

@@ -116,6 +116,18 @@ describe("▶の内訳", () => {
     await setup([chip("status_only", { on: true, dataStatus: "empty" })]);
     expect(screen.getByRole("button", { name: "status_onlyの凡例" })).toBeInTheDocument();
   });
+
+  it("値の但し書きは、ONの間だけ凡例と並べて出す（OFFでは出さない）", async () => {
+    const { panel, unmount } = await openDetails(
+      chip("layer", { on: true, caveat: "但し書きの文", legendDetails: [legend("a", ["1"])] }),
+    );
+    expect(panel).toHaveTextContent("但し書きの文");
+    expect(within(panel).getByText("項目1")).toBeInTheDocument();
+    unmount();
+
+    const off = await openDetails(chip("layer", { caveat: "但し書きの文", legendDetails: [legend("a", ["1"])] }));
+    expect(off.panel).not.toHaveTextContent("但し書きの文");
+  });
 });
 
 describe("行の印", () => {

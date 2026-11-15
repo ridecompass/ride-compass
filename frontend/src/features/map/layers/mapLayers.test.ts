@@ -15,7 +15,6 @@ import {
   LAYER_DATA_STATUS_LABELS,
   layerDataStatusNotice,
   mapOverlayGroupFor,
-  tileVersionGatedLayerIds,
   tileZoomTooWideLayerIds,
   type ChipLayerDescriptor,
   type MapLayerDescriptor,
@@ -83,12 +82,6 @@ describe("buildMapLayers（レイヤーの一覧）", () => {
 });
 
 describe("出せない理由の案内", () => {
-  it("タイル世代が届くまで描けないのは、世代を持つ配信を読むレイヤー", () => {
-    const gated = tileVersionGatedLayerIds(layers);
-    expect(gated).toContain("accident_point");
-    expect(gated).not.toContain("elevation");
-  });
-
   it("最小ズーム未満のレイヤーだけを、ズーム不足として出す", () => {
     // レンズの層はチップが無く案内の出し先が無いので、ズーム不足に数えない。
     const tileLayers = layers.filter((entry) => !isLensLayer(entry) && entry.minZoom !== undefined);

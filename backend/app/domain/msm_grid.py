@@ -26,6 +26,9 @@ WIND_DIRECTION_DEG_DECIMALS = 0
 PRECIPITATION_MM_DECIMALS = 1
 TEMPERATURE_C_DECIMALS = 1
 
+#: 予報の時刻の欄の形。JSTのローカル時刻を分までのISO文字列（タイムゾーン指定なし）で出す。画面の時刻の読み方と揃える。
+ForecastTime = Annotated[datetime, PlainSerializer(jst_local_text, return_type=str)]
+
 
 def rounded_rows(values: np.ndarray, digits: int) -> list[list[float | None]]:
     """(点, 時刻)の配列を点ごとのリストへ丸める。格子の欠損（NaN）はNone。"""
@@ -54,9 +57,18 @@ class MsmGridPointForecast(StrictModel):
 class MsmGridForecast(StrictModel):
     """表示範囲の中の、間引いた格子点ごとの予報。時刻は全部の格子点で共通なので1本だけ持つ。"""
 
-    #: JSTのローカル時刻を分までのISO文字列（タイムゾーン指定なし）で出す。画面の時刻の読み方と揃える。
-    times: list[Annotated[datetime, PlainSerializer(jst_local_text, return_type=str)]]
+    times: list[ForecastTime]
     #: 隣り合う格子点どうしの緯度・経度の間隔[度]。格子点はこの間隔の格子の上に並ぶ。
     latitude_step_deg: float
     longitude_step_deg: float
     points: list[MsmGridPointForecast]
+    #: 最新のrunの予報の終わり（この時刻を含まない）。この時刻から先の値は、配信が止まっている間に前に出たrunの値を読んだもの。
+    latest_run_end: ForecastTime
+
+
+class MsmForecastStatus(StrictModel):
+    """MSMの予報の状態（`GET /api/weather/msm-status`）。値を応答に載せない読み手（道ごとの負担の塗り等）が、選んだ時刻が
+    前のrunの値かを見分けるために読む。"""
+
+    #: 最新のrunの予報の終わり（`MsmGridForecast.latest_run_end`）。
+    latest_run_end: ForecastTime

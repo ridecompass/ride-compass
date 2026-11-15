@@ -20,14 +20,15 @@ _EMPTY_TILE = landcover_raster.empty_tile_png()
 
 
 async def get_landcover_tile(z: int, x: int, y: int) -> bytes:
-    """タイル1枚を返す。"""
+    """タイル1枚を返す。鍵の世代と絵は、置き場から開いた同じ一揃いから作る。"""
+    rasters = await asyncio.to_thread(landcover_raster.open_rasters)
 
     async def fetch_tile(_fields: dict) -> bytes | None:
-        return await asyncio.to_thread(landcover_raster.render_tile, z, x, y)
+        return await asyncio.to_thread(landcover_raster.render_tile, rasters, z, x, y)
 
     return await serve_region_tile(
         kind=LANDCOVER_TILE_KIND,
-        generation=landcover_generation(),
+        generation=landcover_generation(rasters.paths),
         z=z,
         x=x,
         y=y,

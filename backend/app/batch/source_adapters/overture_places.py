@@ -25,7 +25,7 @@ from typing import Any
 import duckdb
 import httpx
 
-from app.batch.common import fetch_timeout, place_once, read_fetch_record, write_fetch_record
+from app.batch.common import fetch_timeout, place_file, read_fetch_record, write_fetch_record
 from app.batch.ingest import AdapterInputs, Fetcher, SourceRecord, register_adapter
 from app.batch.source_profile import SourceProfile, SourceSpec
 from app.infrastructure import data_paths
@@ -94,7 +94,7 @@ def fetch_overture_places(spec: SourceSpec, profile: SourceProfile) -> None:
                 f" TO '{temporary}' (FORMAT parquet)",
                 [url, min_lon, max_lon, min_lat, max_lat])
 
-    place_once(places_path(), write, source=url, logger=logger)
+    place_file(places_path(), write, source=url, logger=logger)
     write_fetch_record(DATA_DIR, release=release)
 
 

@@ -28,7 +28,7 @@ import httpx
 import shapely
 from shapely.geometry import Point
 
-from app.batch.common import fetch_once, fetch_timeout, read_fetch_record, write_fetch_record
+from app.batch.common import fetch_file, fetch_timeout, read_fetch_record, write_fetch_record
 from app.batch.ingest import Fetcher, SourceRecord, register_adapter
 from app.batch.source_adapters.abr import JGD2011, RangeInputs, range_inputs, wgs84_transformer
 from app.batch.source_adapters.zip_csv import read_zip_csv
@@ -95,7 +95,7 @@ def fetch_isj_blocks(spec: SourceSpec, profile: SourceProfile) -> None:
     versions = {}
     for code, path in zip(inputs.prefectures, inputs.archives, strict=True):
         versions[code] = latest_version(code)
-        fetch_once(DOWNLOAD_URL.format(version=versions[code], prefecture=code), path,
+        fetch_file(DOWNLOAD_URL.format(version=versions[code], prefecture=code), path,
                    read_timeout=_READ_TIMEOUT_SECONDS, logger=logger)
     write_fetch_record(DATA_DIR, versions=versions)
 

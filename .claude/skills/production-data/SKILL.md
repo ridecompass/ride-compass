@@ -1,7 +1,29 @@
 ---
 name: production-data
-description: "本番の派生データを作り直す・本番へ道の区分と費用の軸の変更を入れる・DBのバックアップを登録する・本番DBを失ったときに戻す手順。本番のデータに触る作業の前に使う。"
+description: "本番の元を取り直す・派生データを作り直す・本番へ道の区分と費用の軸の変更を入れる・元の取り直しとDBのバックアップを登録する・本番DBを失ったときに戻す手順。本番のデータに触る作業の前に使う。"
 ---
+
+## 元の取り直し
+
+- 対象: 全部の元（`backend/app/batch/source_profile.yaml`）を上流から最新で取り直し、全部取り込み直し、派生を全部作り直す。本番VMの
+  systemdのtimer（`backend/ops/ridecompass-source-refresh.timer`）が週1回起こし、`backend/ops/source_refresh.sh`が別のコンテナで
+  取得 → 取込 → 作り直しを順に打つ。仕組みは[横断基盤](../../../docs/modules/backend/cross-cutting-infrastructure.md)「元の取り直し」。
+  元ごとに手で取得・取込を打つ手順は持たない。
+- 急ぐとき（元を足した・配布物を次の回より前に入れたい・前の回が落ちた）は、同じserviceを手で起こす。本番へ書くので、
+  開発機の対話のセッションがユーザーがチャットで言ったときだけ打つ（[dev-session/SKILL.md](../dev-session/SKILL.md)「本番へ書く」）:
+
+  ```
+  sudo systemctl start --no-block ridecompass-source-refresh.service
+  sudo journalctl -u ridecompass-source-refresh.service -f
+  ```
+
+  最後に「全部の元を取り直し、取り込み直し、作り直しました」が出て、`curl -fsS http://localhost:8000/health`の
+  `source_refresh_age_hours`が0.0なら済み。
+- 落ちた回は印を書かず、そこで止まる。取得が落ちればその元の置き場には前のファイルが残り（取ったものの記録は消えている）、
+  取込が落ちれば前の生データが、作り直しが落ちれば前の派生データが残る。
+  知らせは毎日の見張り（`/health`の`source_refresh_age_hours`。上限8日）が落ちて届く。理由はserviceのjournalにある。
+- 定期の回が走る間に手で取込・作り直しを打つと、後から始めた方が止まる（下の「派生データの作り直し」の最後の行）。
+  時刻はtimerの`OnCalendar=`が持つ。
 
 ## 派生データの作り直し
 
@@ -22,14 +44,14 @@ description: "本番の派生データを作り直す・本番へ道の区分と
   `--log-driver=journald` で打った分のログは、打った端末を閉じても VM の journal に残る（読み方は
   [tech-stack.md](../../../docs/architecture/tech-stack.md)「本番のログ」）。
 
-- 住所の区画の段は、住所の生データ（`abr`）の取込が無いと止まり、作り直し全体が何も入れ替えない。初めて流す前と住所を取り直すときは、
-  同じ別のコンテナで取得と取込を先に打つ（手順は[data-sources.md](../../../docs/architecture/data-sources.md)「住所の区画の元データ」）。
+- 住所の区画の段は、住所の生データ（`abr`）の取込が無いと止まり、作り直し全体が何も入れ替えない。初めて流す前は、上の
+  「元の取り直し」を手で起こす。
 
 - **`/app/data`のマウントを外さない**（同じ入口が道路網全体の配列`data/road_network/`を作ってから表を入れ替える。配列は本番で数分かかる。
   外すと配列がコンテナと一緒に消え、表だけが入れ替わってルート生成は古い配列を読み続ける）。
   途中で落ちたとき（配列を作れなかったときを含む）は何も入れ替わらず、backendは前の表と配列を読み続けるので、原因を直して打ち直す。
 - 取込（`app.batch.ingest_cli`）は派生の表・派生の世代・道路網の配列を変えない。取り込んだら続けて派生を作り直す。
-  地図のタイルは生データも直接読むので、成功した取込は配信するタイルの世代を進める（読み直しのTTLの後から、全系統のタイルを焼き直す）。
+  地図のタイルは生データも直接読むが、焼いておいたタイルを捨てるのは続けて作り直した派生の入口なので、取り込んだだけでは地図は前のタイルを配り続ける。
 - 作り直す段は、上のコマンドの末尾に`--stages <段>...`で選ぶ（選ばなければ全部の段。本番で約1時間10分）。選んだ段の出力を
   読む後ろの段は入口が足し、道路網の配列は毎回作る。何が変わったかの自動判定は無いので、変えたものから段を選ぶ:
 
@@ -77,6 +99,23 @@ description: "本番の派生データを作り直す・本番へ道の区分と
 ## 付録
 
 作業の前には読まない。一度きりの準備（登録）と、災害時の手順。
+
+### 元の取り直しの登録
+
+- VMを作り直したらやり直す。土地被覆のラスタ（`/home/ubuntu/ridecompass-raster`）も、新しいVMではこの初回が置く。
+- 登録（1回。VMにSSHで入って打つ。ユニットはデプロイが揃える作業コピーのものを`systemctl link`で指す）。初回を手で流し、成功で
+  終わったのを見てから、timerを有効にする。1回は取得・取込・作り直しで3時間ほど（取得30分・取込1時間・作り直し1時間半ほど）かかり、
+  timerの時刻は、DBのバックアップ（毎日03:17（日本時間）から30分ほど）・VMの自動更新（毎日04:30。PostgreSQLを止める）・派生データベースの
+  書き出し（毎日04:40から10分ほど）のあとに置いてある。1回が延びて重なりそうなら、timerの`OnCalendar=`を変える:
+
+  ```
+  sudo systemctl link /home/ubuntu/ridecompass-repo/backend/ops/ridecompass-source-refresh.service \
+    /home/ubuntu/ridecompass-repo/backend/ops/ridecompass-source-refresh.timer
+  sudo systemctl start --no-block ridecompass-source-refresh.service
+  sudo journalctl -u ridecompass-source-refresh.service -f
+  sudo systemctl enable --now ridecompass-source-refresh.timer
+  systemctl list-timers ridecompass-source-refresh.timer
+  ```
 
 ### DBのバックアップ
 

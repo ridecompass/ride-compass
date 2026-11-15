@@ -123,21 +123,11 @@ jobs:
             # 土地被覆ラスタ（Esri×Impact Observatory 10m LULC）の置き場。キャッシュとは別の
             # ディレクトリにする——消しても作り直せるキャッシュと違い、これは取り直すまで
             # 地図レイヤーを出せなくなる生データで、一緒に消えてよいものではない。
+            # ラスタを置くのは元の取り直し（backend/ops/source_refresh.sh）。
             sudo mkdir -p /home/ubuntu/ridecompass-raster
-            # 土地被覆ラスタの取得。既にあれば何もしないため、実際に効くのは初回と、差し替えたい
-            # とき（ファイルを消してデプロイし直す）だけ。失敗したらset -eで止める——ラスタ無しで
-            # 起動すると土地被覆レイヤーだけが黙って出なくなる。
-            # **旧コンテナを止めるより前に置く**。外部（配布元のS3）に依存するステップで、
-            # ここで落ちても本番は旧コンテナのまま動き続ける。
-            sudo docker run --rm \
-              --network=host \
-              -v /home/ubuntu/ridecompass-raster:/app/raster \
-              --env-file /home/ubuntu/ridecompass-backend.env \
-              ridecompass-backend:latest \
-              python scripts/fetch_lulc_raster.py
             # 警報・洪水予報の区域を引く境界（気象庁の区域の境界データ）の取得。今のコードが指す版が
             # 既にあれば何もしないため、実際に効くのは初回と、コードが版を上げたときだけ（取得と変換で
-            # 数分）。ラスタと同じく旧コンテナを止めるより前に置き、落ちたら止める——境界無しで起動
+            # 数分）。旧コンテナを止めるより前に置き、落ちたら止める——境界無しで起動
             # すると警報・洪水予報だけが黙って出なくなる。上限付きにするのは、変換が元の境界全体
             # （開発機の実測でピーク約660MB）を読むため。
             sudo docker run --rm \

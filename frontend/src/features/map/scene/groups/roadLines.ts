@@ -44,13 +44,13 @@ export const FEATURE_KEY_PROPERTY = regionTileConfig.road_surface.properties.fea
 export type RoadLineState = {
   /** 道の線の層。**画面の設定が届くまでは空**。 */
   readonly layers: readonly RoadMapLayerView[];
-  /** タイルの配信先。**世代が届くまでは null**。 */
+  /** タイルの配信先。 */
   readonly tiles: {
     readonly urls: readonly string[];
     readonly sourceLayer: string;
     readonly minZoom: number;
     readonly maxZoom: number;
-  } | null;
+  };
   /** 層の鍵ごとの表示ON/OFF。 */
   readonly visible: Readonly<Record<string, boolean>>;
   /** 層の鍵ごとの、凡例で隠した行の鍵。 */
@@ -156,7 +156,6 @@ export const roadLineGroup = declareGroup<RoadLineState>((state) => {
     paint: { "line-color": palette.semantic.inspected, "line-width": ROAD.inspectedWidthPx, "line-opacity": 1 },
     visible: state.inspectedShape !== null,
   };
-  if (state.tiles === null) return { sources: [inspectedSource], layers: [inspected] };
   const tiles = state.tiles;
 
   const sources: readonly SceneSourceEntry[] = [

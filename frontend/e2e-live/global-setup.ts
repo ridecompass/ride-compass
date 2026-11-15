@@ -1,4 +1,4 @@
-import { LIVE_API, LIVE_POINT, decodeRoadTile, fetchCatalog, tileOf } from "./live";
+import { LIVE_API, LIVE_POINT, decodeRoadTile, tileOf } from "./live";
 import regionTileConfig from "@/types/generated/region-tile-config.json";
 import { LIVE_ORIGIN } from "../playwright.live.config";
 
@@ -20,12 +20,8 @@ export default async function globalSetup(): Promise<void> {
     );
   }
 
-  const catalog = await fetchCatalog();
-  const version = catalog.config.tile_versions.road_surface;
-  if (!version) throw new Unmet("画面の設定に路面タイルの世代が無い", "backendのDBの接続先と起動ログを確かめる");
-
   const { z, x, y } = tileOf(regionTileConfig.road_tile_max_zoom, LIVE_POINT);
-  const tile = await fetch(`${LIVE_API}/api/region/road-surface-tiles/${z}/${x}/${y}.pbf?v=${version}`);
+  const tile = await fetch(`${LIVE_API}/api/region/road-surface-tiles/${z}/${x}/${y}.pbf`);
   const roads = tile.ok ? decodeRoadTile(Buffer.from(await tile.arrayBuffer())) : [];
   if (roads.length === 0) {
     throw new Unmet(

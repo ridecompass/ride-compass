@@ -1,5 +1,4 @@
-"""土地被覆ラスタの取得。取得の入口（`app/batch/fetch_cli.py: fetch_sources`）の`lulc`と、デプロイが呼ぶ
-`scripts/fetch_lulc_raster.py`の`main`。
+"""土地被覆ラスタの取得。取得の入口（`app/batch/fetch_cli.py: fetch_sources`）の`lulc`。
 
 実ダウンロード（70MB規模）はテストで行わず、配布元（STACの品目の検索とバケット）の応答と置き場（フィクスチャ`raster_dir`）
 だけを差し替える。配布元へ応答を与えていない要求は`respx_mock`が落とすので、取りに行かないことは応答を与えないことで見る。
@@ -11,7 +10,6 @@
 from app.batch.fetch_cli import fetch_sources
 from app.batch.source_adapters.io_lulc_tile import COLLECTION, STAC_SEARCH_URL
 from app.batch.source_profile import load_source_profile
-from scripts import fetch_lulc_raster
 
 BUCKET = "https://io-10m-annual-lulc.s3.us-west-2.amazonaws.com"
 NEXT_PAGE = f"{STAC_SEARCH_URL}?token=next"
@@ -48,22 +46,3 @@ def test_the_fetch_entry_replaces_the_store_with_the_latest_year_of_each_zone(ra
 
     assert {path.name: path.read_bytes() for path in raster_dir.iterdir()} == {
         "54S_2024.tif": b"54S latest", "53S_2024.tif": b"53S latest"}
-
-
-def test_the_deploy_fetches_into_an_empty_store(raster_dir, respx_mock):
-    answer_search(respx_mock, load_source_profile(None))
-    respx_mock.get(f"{BUCKET}/54S_2024.tif").respond(content=b"54S latest")
-    respx_mock.get(f"{BUCKET}/53S_2024.tif").respond(content=b"53S latest")
-
-    assert fetch_lulc_raster.main() == 0
-
-    assert sorted(path.name for path in raster_dir.iterdir()) == ["53S_2024.tif", "54S_2024.tif"]
-
-
-def test_the_deploy_keeps_the_rasters_already_in_place(raster_dir, respx_mock):
-    """デプロイのたびに呼ばれるので、取り直すと毎回70MB規模を落とす。"""
-    (raster_dir / "54S_2023.tif").write_bytes(b"previous")
-
-    assert fetch_lulc_raster.main() == 0
-
-    assert (raster_dir / "54S_2023.tif").read_bytes() == b"previous"

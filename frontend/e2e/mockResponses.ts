@@ -16,7 +16,6 @@ import {
   penaltyFields,
 } from "@/testing/routeFixtures";
 import type { AmedasObservation } from "@/types/weather";
-import regionTileConfig from "@/types/generated/region-tile-config.json";
 
 // e2e/fixtures.ts: installApiMocks が返す既定の応答の雛形。テストが自分の応答を組むときも使う。
 
@@ -142,6 +141,7 @@ export function gridPointTodayFixture(): components["schemas"]["GridPointToday"]
     lowest_hourly_temperature_c: 6,
     highest_hourly_precipitation_mm: 1.5,
     highest_hourly_wind_speed_ms: 6,
+    latest_run_end: "2026-01-02T00:00",
   };
 }
 
@@ -169,12 +169,10 @@ const E2E_ROAD_CLASSES = roadClassCatalog({
   },
 });
 
-/** `GET /api/client-config`の応答。世代は本物のbackendと同じく全種類を返し（無いと凡例が配信情報を取得できない表示になる）、
- * 世代と道の区分以外（調整値・事故の収録年）は、見たい呼び出し側が上書きする。型は契約のもので、項目を欠いた応答を作れない
+/** `GET /api/client-config`の応答。道の区分以外（調整値・事故の収録年）は、見たい呼び出し側が上書きする。型は契約のもので、項目を欠いた応答を作れない
  * （欠けると、本物のbackendなら必ず来る値が画面で`undefined`になる）。 */
 export function clientConfigFixture(
   overrides: Partial<components["schemas"]["ClientConfigResponse"]> = {},
 ): components["schemas"]["ClientConfigResponse"] {
-  const tile_versions = Object.fromEntries(regionTileConfig.tile_version_kinds.map((kind) => [kind, "e2e"]));
-  return clientConfigResponse({ tile_versions, road_classes: E2E_ROAD_CLASSES, ...overrides });
+  return clientConfigResponse({ road_classes: E2E_ROAD_CLASSES, ...overrides });
 }

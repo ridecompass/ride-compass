@@ -150,24 +150,21 @@ def fetch_timeout(read_seconds: float) -> httpx.Timeout:
     return httpx.Timeout(connect=10.0, read=read_seconds, write=30.0, pool=30.0)
 
 
-def place_once(
+def place_file(
     destination: Path,
     write: Callable[[Path], None],
     *,
     source: str,
     logger: logging.Logger,
 ) -> None:
-    """配布元から取ったものを手元の所定の名前へ置く。何度実行しても安全で、終わる。
+    """配布元から取ったものを手元の所定の名前へ置く。
 
-    - 手元にあるファイルは取り直さない
-    - `write`に一時ファイルへ書かせてから所定の名前へ移す。途中で落ちた半端なものを「取得済み」に見せない
+    `write`に一時ファイルへ書かせてから所定の名前へ移す（手元に同じ名前のものがあれば置き換える）。途中で落ちた
+    半端なものを「取得済み」に見せない。取り直すかは呼ぶ側が決める（取得の入口は毎回取り直す）。
 
     中身は開いて確かめないので、配布元が200で返したエラーの本文も置かれ、読めないことはそれを読む取込が知らせる。
     `source`は取りに行く先で、ログにだけ使う。`write`の例外はそのまま呼び出し側へ出す。
     """
-    if destination.exists():
-        logger.info("既にある %s", destination)
-        return
     logger.info("取りに行く %s", source)
     destination.parent.mkdir(parents=True, exist_ok=True)
     temporary = destination.with_name(destination.name + FETCH_PART_SUFFIX)
@@ -178,14 +175,14 @@ def place_once(
                 destination.stat().st_size / (1024 * 1024), format_duration(time.perf_counter() - started))
 
 
-def fetch_once(
+def fetch_file(
     url: str,
     destination: Path,
     *,
     read_timeout: float,
     logger: logging.Logger,
 ) -> None:
-    """配布元のURLのファイルを、`place_once`の手順で手元の所定の名前へ写す。
+    """配布元のURLのファイルを、`place_file`の手順で手元の所定の名前へ写す。
 
     `read_timeout`は`fetch_timeout`へ渡す。通信の失敗は例外のまま呼び出し側へ出す。
     """
@@ -209,4 +206,4 @@ def fetch_once(
                         total // (1024 * 1024) if total else None,
                         now - started, "MB"))
 
-    place_once(destination, write, source=url, logger=logger)
+    place_file(destination, write, source=url, logger=logger)

@@ -30,7 +30,7 @@ import httpx
 import shapely
 from shapely.geometry import Point
 
-from app.batch.common import fetch_timeout, place_once, read_fetch_record, write_fetch_record
+from app.batch.common import fetch_timeout, place_file, read_fetch_record, write_fetch_record
 from app.batch.ingest import AdapterInputs, Fetcher, SourceRecord, register_adapter
 from app.batch.source_profile import SourceProfile, SourceSpec
 from app.infrastructure import data_paths
@@ -89,7 +89,7 @@ def _write_heritages(temporary: Path) -> None:
 
 
 def fetch_bunka_heritages(spec: SourceSpec, profile: SourceProfile) -> None:
-    place_once(heritages_path(), _write_heritages, source=SCROLL_URL, logger=logger)
+    place_file(heritages_path(), _write_heritages, source=SCROLL_URL, logger=logger)
     write_fetch_record(DATA_DIR)
 
 

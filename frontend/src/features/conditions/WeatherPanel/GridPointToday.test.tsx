@@ -1,7 +1,8 @@
 /**
  * `features/conditions/WeatherPanel/GridPointToday.tsx`——観測値のパネルの中に出す、最寄りの格子点の今日の値。
  *
- * 見るもの: 格子点の方位と距離・1時間ごとの値の幅・時刻ごとの値・計算値の断り、風の矢印の向き、取得に失敗したときの文。
+ * 見るもの: 格子点の方位と距離・1時間ごとの値の幅・時刻ごとの値・計算値の断り、風の矢印の向き、前に出た予報の値を並べたときの
+ * 但し書き、取得に失敗したときの文。
  *
  * ここで見ないもの: パネルを開くこと → `WeatherPanel.test.tsx`。
  */
@@ -27,6 +28,7 @@ const gridPointToday = (overrides: Partial<GridPointTodayValues> = {}): GridPoin
   lowest_hourly_temperature_c: 17.6,
   highest_hourly_precipitation_mm: 1.2,
   highest_hourly_wind_speed_ms: 5.1,
+  latest_run_end: "2026-09-25T12:00",
   ...overrides,
 });
 
@@ -57,6 +59,17 @@ describe("GridPointToday", () => {
     const wind = screen.getByRole("rowheader", { name: "風速（m/s）" }).parentElement!;
     const arrows = wind.querySelectorAll<HTMLElement>("[style]");
     expect(Array.from(arrows).map((arrow) => arrow.style.transform)).toEqual(["rotate(240deg)"]);
+  });
+
+  it.each([
+    ["2026-09-24T23:00", "23時から先は前に出た予報の値です"],
+    ["2026-09-25T00:00", null],
+  ])("最新の予報の終わりが%sなら、前に出た予報の値の時刻を知らせる", (latestRunEnd, notice) => {
+    render(<GridPointToday today={gridPointToday({ latest_run_end: latestRunEnd })} error={null} mapBearingDeg={0} />);
+
+    const today = screen.getByRole("region", { name: "今日・最寄りの格子点の値" });
+    if (notice === null) expect(today).not.toHaveTextContent("前に出た予報");
+    else expect(today).toHaveTextContent(notice);
   });
 
   it("取得に失敗したら、その旨だけを出す", () => {

@@ -14,7 +14,7 @@
 | `lib/mapDisplay/mapLens.ts` | 地図のレンズの形（`lib/mapDisplay/mapLens.ts: MapLens`。id・名前・説明・アイコン・値が変わる走る条件・材料の要求へ載せる条件・塗る段・式の木） |
 | `lib/mapDisplay/routeStyleModes.ts` | ルート確定後の色分けモードの形（`lib/mapDisplay/routeStyleModes.ts: RouteStyleMode`）と、段で塗るモードの組み立て（`lib/mapDisplay/routeStyleModes.ts: buildRangeSteppedMode`）・未選択のレンズのid・区間の地物が1kmあたりの代償の秒を持つ欄の名前（下記「routeStyleModes.ts」） |
 | `features/map/costLens.ts` | 費用の軸の一覧から、地図のレンズ（`features/map/costLens.ts: costLenses`）・レンズの選択肢（`features/map/costLens.ts: costLensOptions`）・凡例の下の段の境目の目安の文（`features/map/costLens.ts: costLensPremises`）・ルートの線のレンズのモード（`features/map/costLens.ts: costRouteStyleModes`。区間の1kmあたりの代償の秒を地図と同じ段で塗り、レンズを選んでいないときは総合で塗る）を導く |
-| `features/map/mapCatalog.ts`・`features/map/useMapCatalog.ts` | 画面の設定と費用の軸の一覧のうち、地図だけが読むもの（`features/map/mapCatalog.ts: MapCatalog`。レンズ・ルートの線のモード・事故の収録年・較正値・道の線の層・タイルの世代・地図に載るものの一覧）。届くまで・失敗の間はどれも無い |
+| `features/map/mapCatalog.ts`・`features/map/useMapCatalog.ts` | 画面の設定と費用の軸の一覧のうち、地図だけが読むもの（`features/map/mapCatalog.ts: MapCatalog`。レンズ・ルートの線のモード・事故の収録年・較正値・道の線の層・地図に載るものの一覧）。届くまで・失敗の間はどれも無い |
 | `features/map/useLensEquivalents.ts` | 凡例の段の境目の目安を、地図のレンズと同じ利用者の値で引く |
 | `lib/mapDisplay/costLensPaint.ts` | 費用のレンズの段の塗りの宣言（`lib/mapDisplay/costLensPaint.ts: costLensPaint`）と、レンズの値と事実の数の書き方。地図の道・ルートの線・候補の帯・道の窓が同じ段と同じ書き方にする |
 | `hooks/useCostAxisCatalog.ts` | 費用の軸の一覧（`GET /api/cost-axes`）を画面が読む形で共有する取得（`services/costAxisCatalogApi.ts: getCostAxisCatalog`） |
@@ -254,6 +254,10 @@ viewportと走る条件（時刻・想定速度）をそれぞれデバウンス
   畳むため区別しない（[ページ全体構成](page-composition.md)「失敗・空・待ちの伝え方」）。判定には`hasFetched`（一度でも取得を試みて完了したか）も
   渡す——`"empty"`（「この範囲に表示できるデータがありません」）は「読込済みだが値なし」
   だけを指し、まだ取りに行っていない状態はどの`LayerDataStatus`にも当てはめない。
+- 出発時刻の風を引くレンズ（材料の条件に`at`を持つ）を塗っている間は、`useMapView`が予報の状態
+  （`useWeatherGrid.ts: useLatestRunEnd`、backendの`GET /api/weather/msm-status`）も取る。材料の応答は道の鍵から材料への表で欄を
+  載せられないため、別の口で読む。材料の口が風を引く、出発時刻に最も近い正時が
+  最新の予報の終わりから先なら、前に出た予報の風で塗っているとして、選んでいる行の ▶ の中に但し書きを出す。
 - `truncated: boolean`（上限で画面の端のタイルを取らなかったか）——上記の判定で、失敗・待ちの次に強い
   `"partial"`（「画面の端の道は、拡大すると色が付きます」）にする。取らなかった所に値があるかは分からないので、
   `"empty"`にしない。

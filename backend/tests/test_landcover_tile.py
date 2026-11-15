@@ -22,24 +22,24 @@ RASTER = service.landcover_raster
 
 
 class Raster:
-    """ラスタの口の代役。開けているパスを持ち、描いた絵として z/x/y を返す。"""
+    """ラスタの口の代役。開いた一揃いを返し、描いた絵として z/x/y を返す。"""
 
     def __init__(self, opened: list[str]):
-        self.opened = list(opened)
+        self.rasters = RASTER.Rasters(listing=tuple((path, 0) for path in opened), sources=())
         #: False なら範囲外で描けない。
         self.inside = True
 
-    def opened_raster_paths(self) -> list[str]:
-        return list(self.opened)
+    def open_rasters(self):
+        return self.rasters
 
-    def render_tile(self, z, x, y):
+    def render_tile(self, rasters, z, x, y):
         return f"{z}/{x}/{y}".encode() if self.inside else None
 
 
 @pytest.fixture
 def raster(monkeypatch):
     fake = Raster(["/data/zone53.tif"])
-    for name in ("opened_raster_paths", "render_tile"):
+    for name in ("open_rasters", "render_tile"):
         monkeypatch.setattr(RASTER, name, bound(getattr(RASTER, name), getattr(fake, name)))
     return fake
 

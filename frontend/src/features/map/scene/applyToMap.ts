@@ -52,7 +52,6 @@ import {
   landcoverTileUrl,
   pointTileUrl,
   roadSurfaceTileUrl,
-  type TileVersions,
 } from "@/features/map/regionApi";
 import type { PointTileLayer } from "@/lib/mapDisplay/pointLayers";
 import regionTileConfig from "@/types/generated/region-tile-config.json";
@@ -119,8 +118,6 @@ type SceneWiringProps = {
   readonly spliceStretches: readonly SpliceStretchInput[];
   /** 編集中に「いま作っているルート」として描く座標列（編集していなければnull）。 */
   readonly splicedRoute: readonly GeoJSON.Position[] | null;
-  /** タイルの世代。全系統が揃うまで`null`。 */
-  readonly tileVersions: TileVersions | null;
   /** 詳細を見ている道の線の形（小窓が開いている間だけ非null）。 */
   readonly inspectedShape: readonly (readonly [number, number])[] | null;
   /** 選んだ候補の上で走り終えた距離（km）。走っていなければnull。 */
@@ -192,7 +189,7 @@ function routeStateFrom(props: SceneWiringProps): RouteState {
   };
 }
 
-function axisStateFrom(props: SceneWiringProps, sourceLayer: string | null): AxisLineState {
+function axisStateFrom(props: SceneWiringProps, sourceLayer: string): AxisLineState {
   const { look } = props;
   const axes = props.catalog.lenses.map((lens) => {
     const fetched = look.wayMaterials.get(lens.lensId);
@@ -227,24 +224,19 @@ export function weatherStateFrom(dynamicWeather: SceneLook["dynamicWeather"]): W
 }
 
 /** 点のタイルごとのURL。 */
-function pointTileUrls(versions: TileVersions): Record<PointTileLayer, readonly string[]> {
-  const urls = POINT_TILE_LAYERS.map((name) => [name, [pointTileUrl(versions, name)]]);
+function pointTileUrls(): Record<PointTileLayer, readonly string[]> {
+  const urls = POINT_TILE_LAYERS.map((name) => [name, [pointTileUrl(name)]]);
   return Object.fromEntries(urls) as Record<PointTileLayer, readonly string[]>;
 }
 
 export function sceneInputsFrom(props: SceneWiringProps): SceneInputs {
-  // 世代が届く前にタイルのソースを作ると、世代の違う中身がブラウザのキャッシュへ載る。
-  const versions = props.tileVersions;
   const pointZoom = { minZoom: ROAD_TILE_MIN_ZOOM, maxZoom: ROAD_TILE_MAX_ZOOM };
-  const roadTiles =
-    versions === null
-      ? null
-      : {
-          urls: [roadSurfaceTileUrl(versions)],
-          sourceLayer: ROAD_TILE_SOURCE_LAYER,
-          minZoom: ROAD_SURFACE_TILE_MIN_ZOOM,
-          maxZoom: ROAD_TILE_MAX_ZOOM,
-        };
+  const roadTiles = {
+    urls: [roadSurfaceTileUrl()],
+    sourceLayer: ROAD_TILE_SOURCE_LAYER,
+    minZoom: ROAD_SURFACE_TILE_MIN_ZOOM,
+    maxZoom: ROAD_TILE_MAX_ZOOM,
+  };
   // 家族はどれも自分の役割の鍵だけを読むため、状態をそのまま渡す。
   const visible = props.look.layerVisibility;
   const hiddenKeys = props.look.hiddenLegendKeys;
@@ -263,9 +255,9 @@ export function sceneInputsFrom(props: SceneWiringProps): SceneInputs {
       avoidanceShown: props.look.roadAvoidanceShown,
       inspectedShape: props.inspectedShape,
     },
-    axis: axisStateFrom(props, roadTiles?.sourceLayer ?? null),
+    axis: axisStateFrom(props, roadTiles.sourceLayer),
     point: {
-      tiles: versions === null ? null : { urls: pointTileUrls(versions), ...pointZoom },
+      tiles: { urls: pointTileUrls(), ...pointZoom },
       visible,
       hiddenKeys,
       nearPath: props.look.surroundingsShown ? null : (props.splicedRoute ?? props.routePath),
