@@ -102,7 +102,8 @@ const unboundText = (names) => `本文の ${names.join("・")} が行き先を�
 const hollowText = (conds) => `完了の条件 ${conds.map((c) => `「${c.text.slice(0, 20)}」`).join("・")} の見る所と要点に、埋めていない印が残る`;
 
 // 入口で採否を問う issue: Claude が起こした issue（種類によらない）。子と分割元のある切り出しは、採否を親か元から受け継ぐ。
-export const adoptable = (f, config) => f.author === config.claude && !f.parent && !f.origin;
+// 開発機で持つもの（ユーザーがチャットで頼んだ作業）と、ほかの issue の前提に張った対話作業（採否を前提にした元から継ぐ）は問わない。
+export const adoptable = (f, config) => f.author === config.claude && !f.parent && !f.origin && !f.dev && !(f.dialog && f.blocks);
 
 function status(f, config) {
   // 完了は、完成（完了の条件が全部済んだ）か見送りでだけ受ける。条件が残ったまま完成で閉じたら、誰が閉じても開き直して決め直す。

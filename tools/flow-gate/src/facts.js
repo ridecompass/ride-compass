@@ -204,7 +204,7 @@ export async function readFacts(gh, config, number, runs) {
   // （deployOf。マージした issue と子を持つ issue だけが読む）。
   const later = { deploy: () => (merged || i.subIssues.nodes.length ? deployOf(gh, config, [number, ...i.subIssues.nodes.map((x) => x.number)], merged?.mergedAt) : null), superseded: () => movedSince(gh, config, number, answer.createdAt), droppedAsked: () => ever((x) => x.includes(asking)),
     adoptAsked: () => ever((x) => x.startsWith(questionHead("採否"))), ranMoved: async () => handed > Date.parse(ended.from) || (await blockedDuring(gh, config, number, ended.from)) || movedOf(gh, config, number, ended, conds) };
-  return { ...task, later, author: i.author?.login, parent: p && { number: p.number }, origin: originOf(norm(i.body)), unread, answerRead, answerApplied, number,
+  return { ...task, later, author: i.author?.login, parent: p && { number: p.number }, origin: originOf(norm(i.body)), blocks: i.blocking.nodes.length > 0, unread, answerRead, answerApplied, number,
     id: i.id, closedAs: i.stateReason, body: i.body, remaining: conds.filter((x) => !x.done), unbound: unboundSteps(i.body, number), question, dead, types, dialog,
     ids: { types: byName(t.issueTypes), labels: byName(t.labels) }, handed, ended: ended && { kind: ended.kind }, runs: held,
     // 閉じた・開き直したときに決め直す、矢印1本でつながる開いた issue（後・親・子）。
