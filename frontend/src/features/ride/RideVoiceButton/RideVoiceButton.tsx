@@ -16,7 +16,7 @@ export default function RideVoiceButton({ on, onToggle }: RideVoiceButtonProps) 
       onClick={onToggle}
       aria-label="音声案内"
       aria-pressed={on}
-      usage="押すと、次に曲がる所の手前で向きを声で知らせます。画面を点けたまま走る間だけ読み上げます。もう一度押すと切ります。"
+      usage="押すと、次に曲がる所の向きを手前で声で知らせ、ルートを外れた・戻ったことも知らせます。画面を点けたまま走る間だけ読み上げます。もう一度押すと切ります。"
       className={cn(on && "bg-[var(--color-accent)] text-white")}
     >
       {on ? <VoiceOnIcon /> : <VoiceOffIcon />}
