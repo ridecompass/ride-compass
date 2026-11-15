@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 import pytest
 
 from app.batch import derive_topology
-from app.batch.dem_tile_store import PRODUCT_PRIORITY
+from app.domain.gsi_tiles import PRODUCT_PRIORITY
 from app.domain.region import BoundingBox
 from app.infrastructure.material_coverage import (
     MATERIAL_COVERAGE_SPECS,

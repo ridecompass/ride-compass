@@ -30,12 +30,13 @@ import httpx
 import numpy as np
 
 from app.batch import dem_tile_store
+from app.domain.gsi_tiles import DEM_PRODUCT_MAX_ZOOM, GSI_TILE_ORIGIN, PRODUCT_PRIORITY
 from app.batch.common import PROGRESS_INTERVAL_SECONDS, format_progress
 from app.batch.ingest import AdapterInputs, Fetcher, SourceRecord, register_adapter
 from app.batch.source_adapters.raster_wkb import tile_bbox_wkb, tile_raster_wkb
 from app.batch.source_profile import SourceProfile, SourceProfileError, SourceSpec
 from app.domain.region import tiles_covering_bbox
-from app.infrastructure.gsi_dem_png import read_gsi_dem_png
+from app.infrastructure.gsi_dem_png import gsi_dem_png_path, read_gsi_dem_png
 from app.infrastructure.source_models import SourceFeatureRow
 
 logger = logging.getLogger("ridecompass.ingest.gsi_dem_tile")
@@ -70,11 +71,16 @@ class DemGrid:
     products: dict[str, int]
 
     def __post_init__(self) -> None:
-        unknown = sorted(set(self.products) - set(dem_tile_store.PRODUCT_PRIORITY))
+        unknown = sorted(set(self.products) - set(PRODUCT_PRIORITY))
         if not self.products or unknown:
             raise SourceProfileError(
-                f"gsi_dem_tile の grid.products は {dem_tile_store.PRODUCT_PRIORITY} から"
+                f"gsi_dem_tile の grid.products は {PRODUCT_PRIORITY} から"
                 f"選んでください（知らない製品: {unknown}）")
+        # 取るズームは配信元が公表する最大ズーム（`domain/gsi_tiles.py: DEM_PRODUCT_MAX_ZOOM`。地図の陰影も同じズームで読む）。
+        wrong = {product: zoom for product, zoom in self.products.items() if zoom != DEM_PRODUCT_MAX_ZOOM[product]}
+        if wrong:
+            raise SourceProfileError(
+                f"gsi_dem_tile の grid.products のズームは配信元の最大ズーム {DEM_PRODUCT_MAX_ZOOM} にしてください（違う製品: {wrong}）")
 
 
 @dataclass(frozen=True)
@@ -139,7 +145,7 @@ async def _fetch_tile(client: httpx.AsyncClient, product: str, zoom: int,
                       x: int, y: int) -> tuple[bytes, datetime] | None:
     """本文と配信元での最終更新。その製品に無ければ（404）None。"""
     response = await client.get(
-        dem_tile_store.TILE_URL.format(product=product, z=zoom, x=x, y=y), timeout=_REQUEST_TIMEOUT)
+        f"{GSI_TILE_ORIGIN}/{gsi_dem_png_path(product, zoom, x, y)}", timeout=_REQUEST_TIMEOUT)
     if response.status_code == 404:
         return None
     response.raise_for_status()

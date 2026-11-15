@@ -25,7 +25,7 @@
     },
     "terrain": {
       "tile_url": "/api/gsi-terrain-tile/{z}/{x}/{y}.png",
-      "max_zoom": 14,
+      "max_zoom": 15,
       "rgb_unit_m": 0.1,
       "rgb_base_m": -10000.0
     }

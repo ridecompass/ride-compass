@@ -17,7 +17,7 @@ import numpy as np
 import pytest
 
 from app.batch import derive_topology
-from app.batch.dem_tile_store import PRODUCT_PRIORITY
+from app.domain.gsi_tiles import PRODUCT_PRIORITY
 from app.batch.ingest import SourceRecord
 from app.domain.attributes import CategoricalColumn, EdgeMaterialArrays
 from app.domain.region import EDGE_UNIT_MIN_ZOOM, BoundingBox

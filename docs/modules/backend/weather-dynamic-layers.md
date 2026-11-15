@@ -426,7 +426,7 @@ backendの答え、タイルで配る要素ごとのタイルのパスを`script
 
 ## 地理院タイルの取得（`gsi_tile_client.py`・`api/routers/gsi_tile.py`）
 
-国土地理院の標高タイル（`xyz/dem_png/…`）を**パスで指定して**取り、`tile_cache`（ディスク）の
+国土地理院の標高タイル（`xyz/dem5a_png/…`等。製品ごとのパスは`infrastructure/gsi_dem_png.py: gsi_dem_png_path`）を**パスで指定して**取り、`tile_cache`（ディスク）の
 永続の置き場へキャッシュする。地理院タイルは`basetime`/`validtime`のような時刻依存パラメータを
 持たない静的データのため、TTL付きキャッシュも不要。クライアントは書式の解釈を持たず、変換は下記が持つ。
 色別標高図はbackendを通らず、画面が地理院の住所（`domain/gsi_tiles.py: RELIEF_TILE_URL`、生成物
@@ -435,7 +435,11 @@ backendの答え、タイルで配る要素ごとのタイルのパスを`script
 ### 標高タイルの変換（`services/terrain_tile_service.py`・`infrastructure/gsi_dem_png.py`）
 
 `GET /api/gsi-terrain-tile/{z}/{x}/{y}.png`は、地理院の標高タイルをMapLibreの`raster-dem`が
-読むTerrain-RGBへ移して返す（フロントはこれを`hillshade`レイヤーの入力にする）。
+読むTerrain-RGBへ移して返す（フロントはこれを`hillshade`レイヤーの入力にする）。画素は道の標高と同じ製品の並び
+（`domain/gsi_tiles.py: PRODUCT_PRIORITY`。DEM5A→DEM5B→DEM5C→DEM10B）で、上の製品に値の無い画素がある間だけ次の製品の
+タイルを読んで埋める——欠けの無い所が読むのは1枚で、どの製品も持たない所（海等）は全部の製品を読んでから整備区域外とする
+（整備区域外と分かったパスは`GsiTileClient`が覚えて、二度目は問い合わせない）。製品の上限より細かいズーム（DEM10Bはz14まで）
+では、上限のズームのタイルの当たる部分を引き伸ばす。
 **配信元のエンコードのままでは渡せない**——地理院はセンチメートル単位の符号付き整数を2の補数で
 置き、標高が無い画素に決め打ちの値（2^23）を入れるが、Terrain-RGBは-10000mを原点とする0.1m
 刻みの符号なし整数で、無効値の表し方を持たない。無効値をそのまま大きな数として渡すと、標高の
@@ -444,8 +448,9 @@ Terrain-RGBの刻みと原点は製品の定義として`domain/terrain_rgb.py`�
 生成物へも出る。地理院の書式の読み取りとPNGの読み書きは`infrastructure/gsi_dem_png.py`が持つ。
 
 変換後のタイルはキャッシュしない（ネットワークを使う変換前の取得だけが`tile_cache`に載る。
-変換自体はタイル1枚ぶんの配列演算とPNGの書き出しで、同じものを二重に置く価値が無い）。
-配信元が実データを持つのはz14まで（`domain/gsi_tiles.py: TERRAIN_MAX_ZOOM`）。
+変換自体はタイル数枚ぶんの配列演算とPNGの書き出しで、同じものを二重に置く価値が無い）。
+ズームの上限は、一番細かい製品の上限（`domain/gsi_tiles.py: TERRAIN_MAX_ZOOM`）。製品の上限より細かいズームの引き伸ばしは
+双一次の補間で、画素を同じ値で並べないので陰影が画素の境で段にならない。
 
 **恒久404のキャッシュ**: 標高タイルの整備区域外（404）は珍しくない正常系
 で、他の失敗（タイムアウト・
