@@ -15,7 +15,12 @@ from app.domain.gsi_tiles import PRODUCT_PRIORITY
 from app.domain.region import MAX_MERCATOR_LATITUDE, tile_position_sql
 from app.domain.ride_track import RideUpload, ride_gpx
 from app.infrastructure.orm_base import Base
-from app.infrastructure.source_models import DEM_TILES_SQL, INGESTED_DEM_PRODUCTS_SQL, dem_pixel_value_sql
+from app.infrastructure.source_models import (
+    DEM_TILES_SQL,
+    INGESTED_DEM_PRODUCTS_SQL,
+    dem_pixel_value_sql,
+    dem_tile_pixels_sql,
+)
 
 
 class RideTrackRow(Base):
@@ -31,7 +36,8 @@ class RideTrackRow(Base):
 
 _GROUND_X, _GROUND_Y = tile_position_sql("p.lon", "p.lat", "pr.z")
 #: 地点ごとの地形の標高（m。値が無ければNULL）を、渡した順に。画素は道の標高の派生と同じく、取り込んだ標高タイルを製品の並び
-#: （`:products`）の順に見て、値のある最初の製品を採る。製品はそれぞれ取り込んだズームで番地を出す。
+#: （`:products`）の順に見て、値のある最初の製品を採る。製品はそれぞれ取り込んだズームで番地を出す。地点はタイルごとに束ね、
+#: タイルを1回だけ展開して引く（`infrastructure/source_models.py: dem_tile_pixels_sql`）。
 _GROUND_ELEVATIONS_SQL = text(f"""
 WITH p AS (
   SELECT i, lat, lon FROM unnest(CAST(:lats AS float8[]), CAST(:lons AS float8[])) WITH ORDINALITY AS t(lat, lon, i)),
@@ -44,10 +50,15 @@ a AS (
   FROM p CROSS JOIN pr CROSS JOIN LATERAL (SELECT {_GROUND_X} AS fx, {_GROUND_Y} AS fy) f
   -- 地図の投影（Web Mercator）の範囲の外の点はタイルの番地を出せない（端末が誤った位置を送りうる）。
   WHERE abs(p.lat) < {MAX_MERCATOR_LATITUDE}),
+k AS (
+  SELECT a.product, a.rank, a.tx, a.ty, array_agg(a.i) AS i, array_agg(a.fx) AS fx, array_agg(a.fy) AS fy
+  FROM a GROUP BY a.product, a.rank, a.tx, a.ty),
 v AS (
-  SELECT a.i, a.rank, {dem_pixel_value_sql("t", "a.fx", "a.fy", "a.tx", "a.ty")} AS elev
-  FROM a JOIN {DEM_TILES_SQL} t
-    ON t.attrs->>'product' = a.product AND (t.attrs->>'x')::int = a.tx AND (t.attrs->>'y')::int = a.ty)
+  SELECT q.i, k.rank, {dem_pixel_value_sql("g", "q.fx", "q.fy", "k.tx", "k.ty")} AS elev
+  FROM k JOIN {DEM_TILES_SQL} t
+    ON t.attrs->>'product' = k.product AND (t.attrs->>'x')::int = k.tx AND (t.attrs->>'y')::int = k.ty
+  {dem_tile_pixels_sql("t", "g")}
+  CROSS JOIN LATERAL unnest(k.i, k.fx, k.fy) AS q(i, fx, fy))
 SELECT (array_agg(v.elev ORDER BY v.rank) FILTER (WHERE v.elev IS NOT NULL))[1] AS elev
 FROM p LEFT JOIN v ON v.i = p.i
 GROUP BY p.i ORDER BY p.i
