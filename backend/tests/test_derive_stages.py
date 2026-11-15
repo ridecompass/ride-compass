@@ -19,7 +19,7 @@ import shapely
 from shapely.geometry import box
 
 from app.batch import derive_cli
-from app.batch.dem_tile_store import PRODUCT_PRIORITY
+from app.domain.gsi_tiles import PRODUCT_PRIORITY
 from app.batch.ingest import SourceRecord
 from app.batch.source_adapters.raster_wkb import tile_raster_wkb
 from app.domain.accident import PartyType

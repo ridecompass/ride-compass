@@ -8,6 +8,7 @@
 import gzip
 import json
 from uuid import uuid4
+from xml.etree import ElementTree as ET
 
 import httpx
 import pytest
@@ -15,12 +16,17 @@ import pytest_asyncio
 from sqlalchemy import delete, select
 
 from app.api.routers.ride_tracks import MAX_DECOMPRESSED_BYTES
+from app.domain.gsi_tiles import PRODUCT_PRIORITY
+from app.domain.region import BoundingBox
+from app.domain.ride_track import GPX_NAMESPACE, RIDE_NAMESPACE
 from app.infrastructure.ride_track_models import RideTrackRow
 from app.main import app
+from tests.source_ingest import dem_tile_records, ingest_records
 
 pytestmark = pytest.mark.asyncio(loop_scope="module")
 
 PATH = "/api/rides"
+NS = {"g": GPX_NAMESPACE, "rc": RIDE_NAMESPACE}
 
 
 def _ride(ride_id: str) -> dict:
@@ -68,6 +74,32 @@ async def test_a_ride_with_the_key_is_written_once_even_when_sent_again(client, 
     assert '<trkpt lat="35.681234" lon="139.767124">' in row.gpx
     assert row.routes == _ride(ride_id)["routes"]
     assert row.context == {"conditions": {"r1": {"distance_km": 40}}, "forecasts": [{"areas": []}]}
+
+
+async def test_the_gpx_takes_the_ground_elevation_where_the_tiles_are_and_keeps_the_device_altitude(
+        client, road_graph_session):
+    """GPX の標準の標高の欄は、走った地点の地形の標高（取り込んだ標高タイルを製品の並びの順に見て、値のある最初の製品）。
+    取り込んだ範囲の外の点（地図の投影の範囲の外の誤った位置も）は端末の高さで、端末の高さはどの点も自前の欄に残す。"""
+    area = BoundingBox(min_latitude=35.6800, min_longitude=139.7660, max_latitude=35.6830, max_longitude=139.7690)
+    first, second = PRODUCT_PRIORITY[:2]
+    await ingest_records("dem", [
+        *dem_tile_records(first, 15, area, lambda lon, lat: None if lon > 139.7675 else 21.5),
+        *dem_tile_records(second, 15, area, lambda lon, lat: 30.0),
+    ])
+    ride = _ride(str(uuid4())) | {"points": [
+        [1000, 35681234, 139767124, 124, None, None, None, None],
+        [2000, 35681234, 139768000, 125, None, None, None, None],
+        [3000, 35700000, 139800000, 130, None, None, None, None],
+        [4000, 100000000, 139800000, 140, None, None, None, None],
+    ]}
+
+    assert (await client.post(PATH, **_gzipped(json.dumps(ride).encode()))).status_code == 204
+
+    [row] = await _rows(road_graph_session)
+    points = ET.fromstring(row.gpx).findall(".//g:trkpt", NS)
+    assert [point.findtext("g:ele", namespaces=NS) for point in points] == ["21.5", "30.0", "13.0", "14.0"]
+    assert [point.findtext("g:extensions/rc:deviceAltitude", namespaces=NS) for point in points] == [
+        "12.4", "12.5", "13.0", "14.0"]
 
 
 async def test_a_body_that_inflates_past_the_limit_is_refused_and_not_written(client, road_graph_session):

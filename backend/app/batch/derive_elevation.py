@@ -21,7 +21,7 @@ DEM が構造物を除いた範囲（水門の下の水面・高架の下の谷�
 **処理はDB内で完結する。**画素をプロセスへ取り出さず、1点の画素を引く（`ST_Value`）。
 
 同じ地点に複数の製品のタイルがありうる。**どの製品の値を採るかは画素ごとに決める**
-——配信元の定める精度の順（`dem_tile_store.PRODUCT_PRIORITY`）に見て、値のある最初の製品を
+——配信元の定める精度の順（`domain/gsi_tiles.py: PRODUCT_PRIORITY`）に見て、値のある最初の製品を
 採る。どの製品にも値が無い画素は欠測のまま残る。
 
 
@@ -35,8 +35,8 @@ import time
 import asyncpg
 
 from app.batch.common import affected_rows
-from app.batch.dem_tile_store import PRODUCT_PRIORITY
 from app.domain.attributes import elevation_values_sql
+from app.domain.gsi_tiles import PRODUCT_PRIORITY
 from app.domain.region import tile_position_sql
 from app.domain.material_sql import IS_BRIDGE_SQL, IS_TUNNEL_SQL
 from app.domain.tuning import (
@@ -45,7 +45,12 @@ from app.domain.tuning import (
     ELEVATION_PROFILE_TOLERANCE_ID,
     require_tuning,
 )
-from app.infrastructure.source_models import DEM_TILES_SQL, WAYS_SOURCE_SQL
+from app.infrastructure.source_models import (
+    DEM_TILES_SQL,
+    INGESTED_DEM_PRODUCTS_SQL,
+    WAYS_SOURCE_SQL,
+    dem_pixel_value_sql,
+)
 
 logger = logging.getLogger("ridecompass.derive_elevation")
 
@@ -106,21 +111,12 @@ _VERTEX_TILE_X, _VERTEX_TILE_Y = tile_position_sql("v.lon", "v.lat", "$2")
 #: 1製品ぶん、まだ値の無い頂点に画素を引く。**製品を優先順に1つずつ流す**ので、上の製品に
 #: 値のある頂点は下の製品を読まない——読む画素は欠けた頂点の分だけ増える。
 #:
-#: **どのタイルのどの画素かは算術で出す。**`ST_Intersects(rast, 点)`で絞ると当たり判定の
-#: たびにタイルの画素が実体化され、外枠だけで絞ると境界線上の点が隣のタイルへ割り当たる。
-#: 番地で決めれば、rasterに触らずに1枚・1画素へ確定する。製品ごとにズームが違っても、
+#: どのタイルのどの画素かは番地で出す（`infrastructure/source_models.py: dem_pixel_value_sql`）。製品ごとにズームが違っても、
 #: その製品のズームで番地を出せば同じ式で済む。
-#:
-#: 標高は`scale`で割って戻す（取込が整数へ詰めているため。尺度だけはrasterが持てない）。
-#: 幅は`attrs`が持つ——rasterから読むと、そのたびに画素が実体化される。
 _FILL_FROM_PRODUCT = f"""
 INSERT INTO _vertex_elev (vid, elev)
 SELECT vid, elev FROM (
-  SELECT a.vid,
-         ST_Value(t.rast, 1,
-                  least(w.n, floor((a.fx - a.tx) * w.n)::int + 1),
-                  least(w.n, floor((a.fy - a.ty) * w.n)::int + 1))
-         / (t.attrs->>'scale')::float AS elev
+  SELECT a.vid, {dem_pixel_value_sql("t", "a.fx", "a.fy", "a.tx", "a.ty")} AS elev
   FROM (SELECT v.vid, p.fx, p.fy, floor(p.fx)::int AS tx, floor(p.fy)::int AS ty
         FROM _vertex v
         CROSS JOIN LATERAL (SELECT {_VERTEX_TILE_X} AS fx, {_VERTEX_TILE_Y} AS fy) p
@@ -128,7 +124,6 @@ SELECT vid, elev FROM (
   JOIN {DEM_TILES_SQL} t
     ON t.attrs->>'product' = $1
    AND (t.attrs->>'x')::int = a.tx AND (t.attrs->>'y')::int = a.ty
-  CROSS JOIN LATERAL (SELECT (t.attrs->>'width')::int AS n) w
 ) s
 WHERE elev IS NOT NULL
 """
@@ -165,8 +160,7 @@ FROM ({elevation_values_sql(_VERTEX_ELEVATIONS, "$1::float8")}) v
 
 async def _products_in_priority(conn: asyncpg.Connection) -> list[tuple[str, int]]:
     """取り込まれた製品とそのズームを、画素の値を採る順に並べる。順を知らない製品は読まない。"""
-    rows = await conn.fetch(
-        f"SELECT attrs->>'product' AS product, min((attrs->>'z')::int) AS zoom FROM {DEM_TILES_SQL} t GROUP BY 1")
+    rows = await conn.fetch(INGESTED_DEM_PRODUCTS_SQL)
     zooms = {r["product"]: r["zoom"] for r in rows}
     return [(p, zooms[p]) for p in PRODUCT_PRIORITY if p in zooms]
 

@@ -21,17 +21,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from app.batch.common import FETCH_PART_SUFFIX
-from app.domain.gsi_tiles import GSI_TILE_ORIGIN
 from app.infrastructure import data_paths
 
 TILE_ROOT = data_paths.DATA_DIR / "dem"
-
-TILE_URL = f"{GSI_TILE_ORIGIN}/xyz/{{product}}_png/{{z}}/{{x}}/{{y}}.png"
-
-#: 画素ごとに値を採る順。配信元が「最も計測精度の良い標高タイル」から順に参照すると
-#: 定める順（DEM5A→DEM5B→DEM5C→DEM10B）。
-#: 出典: https://maps.gsi.go.jp/development/hyokochi.html
-PRODUCT_PRIORITY = ("dem5a", "dem5b", "dem5c", "dem")
 
 TILE_SUFFIX = ".png"
 #: その製品が持たないことの印。

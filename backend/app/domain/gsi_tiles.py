@@ -19,7 +19,14 @@ RELIEF_ATTRIBUTION = (
     ' rel="noreferrer">地理院タイル(色別標高図)</a>'
 )
 
-#: 標高タイル（DEM10B、10mメッシュ）。配信元が実データを持つのはz14まで。
+#: 標高タイルの製品（配信元の名前）と、配信元が実データを持つ最大のズーム。画素ごとに値を採る順に並べる——配信元が
+#: 「最も計測精度の良い標高タイル」から順に参照すると定める順（DEM5A→DEM5B→DEM5C→DEM10B）。道の標高の派生と地図の陰影が
+#: この順で画素を埋める。出典: https://maps.gsi.go.jp/development/hyokochi.html
+#: （ズームは https://maps.gsi.go.jp/development/ichiran.html の標高タイルの欄）
+DEM_PRODUCT_MAX_ZOOM = {"dem5a": 15, "dem5b": 15, "dem5c": 15, "dem": 14}
+PRODUCT_PRIORITY = tuple(DEM_PRODUCT_MAX_ZOOM)
+
+#: 地図の陰影（Terrain-RGB）のズーム。上限は一番細かい製品の上限。
 TERRAIN_MIN_ZOOM = 2
-TERRAIN_MAX_ZOOM = 14
+TERRAIN_MAX_ZOOM = max(DEM_PRODUCT_MAX_ZOOM.values())
 TerrainTileZoom = Annotated[int, Field(ge=TERRAIN_MIN_ZOOM, le=TERRAIN_MAX_ZOOM)]

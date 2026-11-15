@@ -1203,7 +1203,7 @@
             "required": true,
             "schema": {
               "type": "integer",
-              "maximum": 14,
+              "maximum": 15,
               "minimum": 2,
               "title": "Z"
             }

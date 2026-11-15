@@ -21,6 +21,8 @@ import pytest
 
 from app.batch import dem_tile_store
 from app.batch.fetch_cli import fetch_sources
+from app.batch.source_adapters.gsi_dem_tile import DemGrid
+from app.batch.source_profile import SourceProfileError
 from app.domain.region import BoundingBox, tile_bounds_lonlat, tiles_covering_bbox
 from tests.source_ingest import profile_within
 
@@ -98,6 +100,14 @@ def test_served_tiles_are_stored_and_the_rest_marked_absent_per_product(tmp_path
         if served:
             assert dem_tile_store.read_tile(tmp_path, product, zoom, x, y) == _body(product, x, y)
             assert dem_tile_store.tile_modified(tmp_path, product, zoom, x, y) == _modified(product, x, y)
+
+
+@pytest.mark.parametrize("products", [{"dem5a": 14}, {"dem1a": 17}], ids=["配信元の最大と違うズーム", "知らない製品"])
+def test_a_grid_that_does_not_match_the_published_products_is_refused(products):
+    """取る製品は配信元の製品の並び（地図の陰影と道の標高が同じ順で画素を埋める）から選び、ズームは配信元が公表する最大の
+    ズームにする——違うズームで取ると、地図の陰影が読むタイルと道の標高のタイルがずれる。取得を始める前に止める。"""
+    with pytest.raises(SourceProfileError):
+        DemGrid(products=products)
 
 
 def test_a_tile_without_last_modified_is_not_stored(tmp_path, profile, respx_mock):

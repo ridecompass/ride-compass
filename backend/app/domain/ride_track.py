@@ -1,17 +1,20 @@
 """走りの記録（端末が走行モードの間に溜め、走り終えに送るもの）の形と、それを GPX 1.1 に直す処理。
 
 端末は欄の名前を毎点くり返さない詰めた形で送り、ここで GPX に直す。GPX の書き方を知るのはこのモジュールだけにする。
-点の値は端末が出したままで、止まり・外れ等の解釈は足さない（解釈は、取り出した GPX を読む側がする）。
+点の値は端末が出したままで、止まり・外れ等の解釈は足さない（解釈は、取り出した GPX を読む側がする）。ただし標高の標準の欄は、
+走った地点の地形の標高（道の標高と同じ地理院の製品の並び。呼び出し元が引いて渡す）にする——端末の GPS の高さは誤差が大きく、
+地図と道の標高と食い違う。地形の標高が無い点（取り込んだ範囲の外）は端末の高さにし、端末の高さはどの点も自前の欄に残す。
 
 GPX の置き場:
-- 時刻・緯度経度・標高は GPX 1.1 の標準の欄（`http://www.topografix.com/GPX/1/1`）。
+- 時刻・緯度経度・標高（地形の標高）は GPX 1.1 の標準の欄（`http://www.topografix.com/GPX/1/1`）。
 - 端末の速さ（m/s）と進む向き（真北からの度）は Garmin の `TrackPointExtension` v2 の `speed`・`course`。
-- 位置と標高の誤差（m）・走りの出来事・画面とサーバーの版・端末の名前は GPX にも Garmin の拡張にも置き場が無いので、自前の名前空間
+- 端末の高さ・位置と標高の誤差（m）・走りの出来事・画面とサーバーの版・端末の名前は GPX にも Garmin の拡張にも置き場が無いので、自前の名前空間
   （`RIDE_NAMESPACE`）に入れる。
 - 走りを休む（`rest`）と点が途切れるので、休むごとに `trkseg` を分ける。
 """
 
 from bisect import bisect_right
+from collections.abc import Sequence
 from datetime import datetime, timedelta, timezone
 from typing import Annotated, Literal
 from uuid import UUID
@@ -72,8 +75,9 @@ def _scaled(value: int, digits: int) -> str:
     return f"{value / 10**digits:.{digits}f}"
 
 
-def ride_gpx(upload: RideUpload, *, server_commit: str | None) -> str:
-    """走り1回を GPX 1.1 の文字にする。受けたサーバーの版（`server_commit`）を先頭の情報に添える（道路網の世代は推したルートの候補が持つ）。"""
+def ride_gpx(upload: RideUpload, *, server_commit: str | None, ground_elevation_m: Sequence[float | None]) -> str:
+    """走り1回を GPX 1.1 の文字にする。受けたサーバーの版（`server_commit`）を先頭の情報に添える（道路網の世代は推したルートの候補が持つ）。
+    `ground_elevation_m`は点ごとの地形の標高（m。`upload.points`と同じ並びで、無い点はNone）。"""
     start = upload.started_at.astimezone(timezone.utc)
 
     root = ET.Element(_q(GPX_NAMESPACE, "gpx"), {"version": "1.1", "creator": "RideCompass"})
@@ -95,16 +99,19 @@ def ride_gpx(upload: RideUpload, *, server_commit: str | None) -> str:
     track = ET.SubElement(root, _q(GPX_NAMESPACE, "trk"))
     segment = None
     segment_rests = -1
-    for at_ms, lat, lon, ele, accuracy, speed, course, ele_accuracy in upload.points:
+    for (at_ms, lat, lon, ele, accuracy, speed, course, ele_accuracy), ground_m in zip(
+            upload.points, ground_elevation_m, strict=True):
         rests_before = bisect_right(rests, at_ms)
         if segment is None or rests_before != segment_rests:
             segment = ET.SubElement(track, _q(GPX_NAMESPACE, "trkseg"))
             segment_rests = rests_before
         point = ET.SubElement(segment, _q(GPX_NAMESPACE, "trkpt"), {"lat": _scaled(lat, 6), "lon": _scaled(lon, 6)})
-        if ele is not None:
+        if ground_m is not None:
+            ET.SubElement(point, _q(GPX_NAMESPACE, "ele")).text = f"{ground_m:.1f}"
+        elif ele is not None:
             ET.SubElement(point, _q(GPX_NAMESPACE, "ele")).text = _scaled(ele, 1)
         ET.SubElement(point, _q(GPX_NAMESPACE, "time")).text = _time(start + timedelta(milliseconds=at_ms))
-        if speed is None and course is None and accuracy is None and ele_accuracy is None:
+        if speed is None and course is None and accuracy is None and ele_accuracy is None and ele is None:
             continue
         point_extensions = ET.SubElement(point, _q(GPX_NAMESPACE, "extensions"))
         if speed is not None or course is not None:
@@ -115,6 +122,8 @@ def ride_gpx(upload: RideUpload, *, server_commit: str | None) -> str:
                 ET.SubElement(garmin, _q(TRACK_POINT_EXTENSION_NAMESPACE, "course")).text = str(course)
         if accuracy is not None:
             ET.SubElement(point_extensions, _q(RIDE_NAMESPACE, "accuracy")).text = _scaled(accuracy, 1)
+        if ele is not None:
+            ET.SubElement(point_extensions, _q(RIDE_NAMESPACE, "deviceAltitude")).text = _scaled(ele, 1)
         if ele_accuracy is not None:
             ET.SubElement(point_extensions, _q(RIDE_NAMESPACE, "altitudeAccuracy")).text = _scaled(ele_accuracy, 1)
     return ET.tostring(root, encoding="unicode", xml_declaration=True)

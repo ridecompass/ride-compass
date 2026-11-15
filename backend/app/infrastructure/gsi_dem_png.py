@@ -27,9 +27,9 @@ _GSI_UNIT_M = 0.01
 _TERRAIN_RGB_MAX = _GSI_WRAP - 1
 
 
-def gsi_dem_png_path(z: int, x: int, y: int) -> str:
-    """配信元の標高タイル（DEM10B、PNG形式）1枚の、`GsiTileClient`へ渡すパス。"""
-    return f"xyz/dem_png/{z}/{x}/{y}.png"
+def gsi_dem_png_path(product: str, z: int, x: int, y: int) -> str:
+    """配信元の標高タイル（製品`product`、PNG形式）1枚の、`GsiTileClient`へ渡すパス。"""
+    return f"xyz/{product}_png/{z}/{x}/{y}.png"
 
 
 def read_gsi_dem_png(png: bytes) -> tuple[np.ndarray, np.ndarray]:
@@ -43,9 +43,8 @@ def read_gsi_dem_png(png: bytes) -> tuple[np.ndarray, np.ndarray]:
     return np.where(packed > _GSI_NO_DATA, packed - _GSI_WRAP, packed), packed == _GSI_NO_DATA
 
 
-def gsi_dem_png_to_terrain_rgb(png: bytes) -> bytes:
-    """地理院の標高タイル1枚をTerrain-RGBのPNGへ変換する。"""
-    signed, missing = read_gsi_dem_png(png)
+def terrain_rgb_png(signed: np.ndarray, missing: np.ndarray) -> bytes:
+    """地理院の標高の格子（`read_gsi_dem_png`の2つの格子。製品を重ねて埋めたものでもよい）をTerrain-RGBのPNGにする。"""
     meters = np.where(missing, 0.0, signed * _GSI_UNIT_M)
 
     encoded = np.rint((meters - TERRAIN_RGB_BASE_M) / TERRAIN_RGB_UNIT_M).astype(np.int64)

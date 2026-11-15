@@ -10,7 +10,7 @@
 | レイヤー | ファイル |
 |---|---|
 | domain | `attributes.py`（`attributes.py: elevation_values_sql`。区間の断面の点列から標高・勾配を出すSQLを組み立てる） |
-| batch | `source_adapters/gsi_dem_tile.py`（取込と取得。取得はプロファイルが挙げた製品ごとに全タイルを置き場へ写し、取込は写したタイルを製品ごとに読んでint32へ詰める。取込は配信元を叩かない）・`dem_tile_store.py`（写したタイルの置き場と、配信元のURL・画素の値を採る製品の順・その製品に無いことの印）・`source_adapters/raster_wkb.py`（画素の並びをPostGISの`raster`へ包む）・`derive_elevation.py`（派生） |
+| batch | `source_adapters/gsi_dem_tile.py`（取込と取得。取得はプロファイルが挙げた製品ごとに全タイルを置き場へ写し、取込は写したタイルを製品ごとに読んでint32へ詰める。取込は配信元を叩かない）・`dem_tile_store.py`（写したタイルの置き場と、その製品に無いことの印）・`source_adapters/raster_wkb.py`（画素の並びをPostGISの`raster`へ包む）・`derive_elevation.py`（派生） |
 
 ## 3段に分かれている
 
@@ -123,8 +123,9 @@ DEMが返すのは地表面の標高で、桁や坑道の高さではない—�
 
 ## タイルの読み方（`batch/source_adapters/gsi_dem_tile.py`）
 
-画素の詰め方を持つ。配信元のURLと製品の順は`dem_tile_store.py`が持ち、取込・取得・派生だけが
-使う（web側は読まない）。どの製品をどのズームで取るかは`source_profile.yaml`が持つ。
+画素の詰め方を持つ。配信元のパスは`infrastructure/gsi_dem_png.py: gsi_dem_png_path`、製品の順と配信元が公表する最大ズームは
+`domain/gsi_tiles.py`が持ち、地図の陰影も同じものを読む。どの製品を取るかは`source_profile.yaml`が持ち、ズームが配信元の最大と
+違えば取込の前に止まる（`batch/source_adapters/gsi_dem_tile.py: DemGrid`）。
 
 タイルはPNG形式（256×256。画素の色に0.01m単位の標高を符号化し、欠測は決め打ちの色）で、取込は
 画素を標高へ戻し、int32（0.01m単位）へ詰めてPostGISの`raster`（`rast`列）へ入れる。画素の読み方は
@@ -140,7 +141,7 @@ DEMが返すのは地表面の標高で、桁や坑道の高さではない—�
 
 ### 製品ごとの性質（配信元の仕様、コードからは導けない）
 
-`PRODUCT_PRIORITY`（`dem_tile_store.py`）は、配信元が「その地点で最も計測精度の良い値」を
+`PRODUCT_PRIORITY`（`domain/gsi_tiles.py`。地図の陰影・走った記録の標高も同じ順で画素を埋める）は、配信元が「その地点で最も計測精度の良い値」を
 採るときの順（DEM5A→DEM5B→DEM5C→DEM10B）である。配信元はこの順を**画素ごと**に当てる
 （https://maps.gsi.go.jp/development/hyokochi.html ）ので、派生も画素ごとに当てる——タイル
 単位で1製品を選ぶと、選んだ製品の欠測画素が、他の製品に値があっても埋まらない。取得は

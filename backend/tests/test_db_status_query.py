@@ -8,7 +8,7 @@ from sqlalchemy import make_url, text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from app.batch.dem_tile_store import PRODUCT_PRIORITY
+from app.domain.gsi_tiles import PRODUCT_PRIORITY
 from app.batch.ingest import partition_table_name
 from app.domain.region import BoundingBox
 from app.infrastructure.db_status import DbStatusQuery

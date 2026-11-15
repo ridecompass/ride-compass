@@ -484,6 +484,24 @@ def _raster_tiles_sql(source: Source) -> str:
 #: 標高タイル（1枚=1行）。`attrs`に製品・ズーム・番地・幅・尺度を持つ。
 DEM_TILES_SQL = _raster_tiles_sql(Source.DEM)
 
+
+#: 取り込んだ標高タイルの製品ごとの、取り込んだズーム（`product`・`zoom`）。製品はそのズームで画素の番地を出す。
+INGESTED_DEM_PRODUCTS_SQL = (
+    f"SELECT attrs->>'product' AS product, min((attrs->>'z')::int) AS zoom FROM {DEM_TILES_SQL} t GROUP BY 1")
+
+
+def dem_pixel_value_sql(tile: str, fx: str, fy: str, tx: str, ty: str) -> str:
+    """標高タイルの行`tile`（`DEM_TILES_SQL`の行の別名）の、タイル座標（小数）`fx`・`fy`（整数部`tx`・`ty`）に当たる画素の
+    標高（m）の式。値の無い画素はNULL。
+
+    **どの画素かは算術で出す。**`ST_Intersects(rast, 点)`で絞ると当たり判定のたびにタイルの画素が実体化され、外枠だけで
+    絞ると境界線上の点が隣のタイルへ割り当たる。番地で決めれば、rasterに触らずに1画素へ確定する。標高は`scale`で割って戻す
+    （取込が整数へ詰めているため。尺度だけはrasterが持てない）。幅は`attrs`が持つ——rasterから読むと、そのたびに画素が
+    実体化される。"""
+    width = f"({tile}.attrs->>'width')::int"
+    return (f"ST_Value({tile}.rast, 1, least({width}, floor(({fx} - {tx}) * {width})::int + 1), "
+            f"least({width}, floor(({fy} - {ty}) * {width})::int + 1)) / ({tile}.attrs->>'scale')::float")
+
 #: 土地被覆タイル（1枚=1行）。
 LANDCOVER_TILES_SQL = _raster_tiles_sql(Source.LULC)
 
