@@ -1,6 +1,9 @@
 {
   "language": "japanese",
   "permissions": {
+    "allow": [
+      "Bash(GH_TOKEN=$FLOW_BOT_TOKEN node .claude/skills/*/scripts/*.mjs *)"
+    ],
     "ask": [
       "Edit(scripts/size_thresholds.json)"
     ]
