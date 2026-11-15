@@ -16,7 +16,7 @@ import { describe, expect, it } from "vitest";
 
 import { candidate, groupsFor, shape } from "@/testing/stretchShapes";
 
-import { buildSplicedShape, pairedStretches } from "./routeSplice";
+import { buildSplicedShape, pairedStretches, type SplicedRouteShape } from "./routeSplice";
 import { stretchAlternativeGroups } from "./stretchAlternatives";
 
 describe("pairedStretches", () => {
@@ -32,6 +32,15 @@ describe("pairedStretches", () => {
   });
 });
 
+/** 同じ形か。道のりは乗り換えの差し引きと、点の道のり（m）からの換算で、浮動小数の最後の桁だけ違いうるので桁を決めて比べる。 */
+function expectSameShape(actual: SplicedRouteShape, expected: SplicedRouteShape) {
+  const { edgeKms, ...rest } = actual;
+  const { edgeKms: expectedKms, ...expectedRest } = expected;
+  expect(rest).toEqual(expectedRest);
+  expect(edgeKms).toHaveLength(expectedKms.length);
+  edgeKms.forEach((km, index) => expect(km).toBeCloseTo(expectedKms[index], 9));
+}
+
 describe("buildSplicedShape", () => {
   const byId = (candidates: ReturnType<typeof candidate>[]) => (id: string) =>
     candidates.find((c) => c.id === id)?.shape;
@@ -46,7 +55,7 @@ describe("buildSplicedShape", () => {
     const second = candidate("second", "ABCDSF");
     const shapeOf = byId([first, second]);
     const afterFirst = buildSplicedShape(shape("ABCDEF"), [groupsFor("ABCDEF", [first])[0].options[0]], shapeOf);
-    expect(afterFirst).toEqual(shape("ABPQDEF"));
+    expectSameShape(afterFirst, shape("ABPQDEF"));
 
     // 1つ目でEdgeが1本増えたので、2つ目の範囲は乗り換えた後の形に対する位置で求める。
     const next = stretchAlternativeGroups(afterFirst, [second], 0.1);
@@ -54,6 +63,6 @@ describe("buildSplicedShape", () => {
     expect(secondOption?.stretch).toEqual({ start: 4, end: 6 });
 
     const applied = [groupsFor("ABCDEF", [first])[0].options[0], secondOption!];
-    expect(buildSplicedShape(shape("ABCDEF"), applied, shapeOf)).toEqual(shape("ABPQDSF"));
+    expectSameShape(buildSplicedShape(shape("ABCDEF"), applied, shapeOf), shape("ABPQDSF"));
   });
 });

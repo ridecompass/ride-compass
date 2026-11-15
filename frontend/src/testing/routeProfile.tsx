@@ -52,7 +52,14 @@ const PROFILE_PENALTY = {
 export const CLIMB = makeRouteSegment({
   distance_km: 1,
   ...penaltyFields({ ascent: 40 }, 1),
-  elevations: [{ distance_km: 1, start_elevation_m: 12, end_elevation_m: 31.6 }],
+  geometry: {
+    type: "LineString",
+    coordinates: [
+      [139, 35, 12],
+      [139.01, 35, 31.6],
+    ],
+  },
+  point_distances_m: [0, 1000],
   start_latitude: 35,
   start_longitude: 139,
   end_latitude: 35,

@@ -28,7 +28,7 @@ def _segments(distances: list[float], **fields_per_segment) -> list[EdgeSegment]
             start_latitude=35.0, start_longitude=139.0 + i * 0.01,
             end_latitude=35.0, end_longitude=139.0 + (i + 1) * 0.01,
             cumulative_distance_km=cumulative, distance_km=distance, edge_index=i,
-            **({"geometry": None, "start_elevation_m": None, "end_elevation_m": None, "sustained_gradient_percent": None,
+            **({"geometry": None, "point_distances_m": None, "start_elevation_m": None, "end_elevation_m": None, "sustained_gradient_percent": None,
                 "average_gradient_percent": None, "estimated_arrival_time": "2026-09-22T08:10:00+09:00",
                 "axis_seconds": {}, "preferred_seconds": 0.0, "avoided_seconds": 0.0, "road_classes": {}}
                | {name: values[i] for name, values in fields_per_segment.items()}),
@@ -121,17 +121,21 @@ def test_a_bin_shows_the_average_slope_of_its_roads_weighted_by_distance(distanc
 
 
 def test_the_shape_of_a_bin_joins_the_segment_shapes_without_repeating_shared_points():
+    """境界の点は経度・緯度で同じなら1つにする（前後の道で標高が違いうる）。点ごとの道のりも同じ点を落として並べる。"""
     bins = _binned(_segments(
         [0.1, 0.1, 0.1, 0.3],
         geometry=[
-            {"type": "LineString", "coordinates": [[0.0, 0.0], [1.0, 0.0]]},
+            {"type": "LineString", "coordinates": [[0.0, 0.0, 5.0], [1.0, 0.0, 6.0]]},
             None,  # 形の無い区間は飛ばす
-            {"type": "LineString", "coordinates": [[1.0, 0.0], [2.0, 0.0]]},
+            {"type": "LineString", "coordinates": [[1.0, 0.0, 6.5], [2.0, 0.0]]},
             {"type": "LineString", "coordinates": [[3.0, 0.0], [4.0, 0.0]]},  # 前と離れた区間はそのまま続ける
         ],
+        point_distances_m=[[0.0, 100.0], None, [100.0, 200.0], [300.0, 600.0]],
     ))
 
-    assert bins[0].geometry == {"type": "LineString", "coordinates": [[0.0, 0.0], [1.0, 0.0], [2.0, 0.0], [3.0, 0.0], [4.0, 0.0]]}
+    assert bins[0].geometry == {"type": "LineString", "coordinates": [
+        [0.0, 0.0, 5.0], [1.0, 0.0, 6.0], [2.0, 0.0], [3.0, 0.0], [4.0, 0.0]]}
+    assert bins[0].point_distances_m == [0.0, 100.0, 200.0, 300.0, 600.0]
 
 
 def test_a_bin_lists_the_road_classes_of_its_segments_joining_equal_neighbours_and_dropping_empty_ones():

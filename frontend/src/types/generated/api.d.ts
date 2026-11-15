@@ -1683,6 +1683,8 @@ export interface components {
                 type: "LineString";
                 coordinates: number[][];
             };
+            /** Point Distances M */
+            point_distances_m: number[];
             /** Elevation Gain M */
             elevation_gain_m: number | null;
             /** Segments */
@@ -1801,6 +1803,8 @@ export interface components {
                 type: "LineString";
                 coordinates: number[][];
             } | null;
+            /** Point Distances M */
+            point_distances_m: number[] | null;
             /** Start Latitude */
             start_latitude: number;
             /** Start Longitude */

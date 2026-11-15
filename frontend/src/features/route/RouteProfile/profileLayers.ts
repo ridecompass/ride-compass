@@ -1,25 +1,26 @@
 // 道のりのグラフに重ねるレイヤ。各レイヤの描き方と、応答の区間から値を引く所をここで宣言する。地図の「表示」とは別に選ぶ。
 //
-// 描き方は2つ。折れ線は区間の中の道ごとの両端の値（応答の`elevations`）を距離に沿ってつなぎ、値の無い道で線を切る。帯は区間の中の区分の並び
+// 描き方は2つ。折れ線は区間の形の点ごとの値（標高は点の3つ目。RFC 7946）を点ごとの道のりに沿ってつなぎ、値の無い点で線を切る。帯は区間の中の区分の並び
 // （応答の`road_classes`）を距離に沿って色で塗る。帯のレイヤと名前・行（色と呼び名）は地図の「表示」と同じ宣言から引く。
 
 import type { MapIconComponent } from "@/components/ui/icons/icons";
 import { MAP_LAYER_ICONS, roadLayerIcon } from "@/components/ui/icons/mapLayerIcons";
-import { columnAtKm } from "@/features/route/DifficultyProfile/profileGeometry";
 import { LANDCOVER_CLASSES } from "@/lib/mapDisplay/landcoverClasses";
 import { NO_DATA_LEGEND_BAND } from "@/lib/mapDisplay/mapColorLegend";
 import { isUnclassifiedRow, roadTrackRowOf, roadTrackRows, type RoadTrackRow } from "@/lib/mapDisplay/roadTracks";
-import type { RouteStretch } from "@/lib/routeDistance";
+import { segmentPointKms, type RouteSegmentShape, type RouteStretch } from "@/lib/routeDistance";
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import type { RoadMapLayerView, RouteSegmentDetail } from "@/types/route";
 
 type LayerSegment = Pick<
   RouteSegmentDetail,
-  "elevations" | "average_gradient_percent" | "sustained_gradient_percent" | "road_classes"
->;
+  "average_gradient_percent" | "sustained_gradient_percent" | "road_classes"
+> &
+  RouteSegmentShape;
 type RoadClassValue = RouteSegmentDetail["road_classes"][string][number]["value"];
 
-type LineStretch = { readonly distance_km: number; readonly start: number | null; readonly end: number | null };
+/** 折れ線の点。値が無ければnull（線を切る）。 */
+type LineValue = { readonly km: number; readonly value: number | null };
 
 export type LineLayer = {
   readonly id: string;
@@ -27,8 +28,8 @@ export type LineLayer = {
   readonly draw: {
     readonly kind: "line";
     readonly unit: string;
-    /** 区間の中の道ごとの、道の距離と始まり・終わりの値（無ければnull）を通る順に。 */
-    readonly stretches: (segment: LayerSegment) => readonly LineStretch[];
+    /** 区間の形の点ごとの、ルートの上の距離と値を通る順に。形の無い区間は点を持たない。 */
+    readonly points: (column: RouteStretch<LayerSegment>) => readonly LineValue[];
     /** 区間の平均勾配（%、走る向きの符号つき）。無ければnull。 */
     readonly meanGrade: (segment: LayerSegment) => number | null;
     /** 区間の続く坂の斜度（%、走る向きの符号つき。登りがあれば登りの最大、無ければ下りの最大）。無ければnull。 */
@@ -77,12 +78,14 @@ const ELEVATION_LAYER: LineLayer = {
   draw: {
     kind: "line",
     unit: "m",
-    stretches: (segment) =>
-      segment.elevations.map((stretch) => ({
-        distance_km: stretch.distance_km,
-        start: stretch.start_elevation_m,
-        end: stretch.end_elevation_m,
-      })),
+    points: ({ segment, startKm }) => {
+      if (segment.geometry === null) return [];
+      const kms = segmentPointKms(segment, startKm);
+      return segment.geometry.coordinates.map((point, i) => ({
+        km: kms[i],
+        value: point.length > 2 ? point[2] : null,
+      }));
+    },
     meanGrade: (segment) => segment.average_gradient_percent,
     sustainedGrade: (segment) => segment.sustained_gradient_percent,
   },
@@ -147,47 +150,53 @@ function spread<T extends { readonly distance_km: number }>(
   });
 }
 
-/** 折れ線の道ごとの部分。道の並びを持たない区間は、値の無い1つの部分にする（線を切る）。 */
-function linePieces(columns: readonly RouteStretch<LayerSegment>[], layer: LineLayer): Spread<LineStretch>[] {
-  return columns.flatMap(({ segment, startKm, endKm }) => {
-    if (endKm <= startKm) return [];
-    const pieces = spread(startKm, endKm, layer.draw.stretches(segment));
-    return pieces.length > 0
-      ? pieces
-      : [{ startKm, endKm, stretch: { distance_km: endKm - startKm, start: null, end: null } }];
-  });
-}
-
-/** 折れ線の切れ目の無い連なりと、値の最低・最高。値が1つも無ければ`range`はnull。 */
+/** 折れ線の切れ目の無い連なりと、値の最低・最高。値の無い点・形の無い区間で線を切る。値が1つも無ければ`range`はnull。 */
 export function layerLine(
   columns: readonly RouteStretch<LayerSegment>[],
   layer: LineLayer,
 ): { runs: LinePoint[][]; range: { min: number; max: number } | null } {
   const runs: LinePoint[][] = [];
   let run: LinePoint[] = [];
-  for (const { startKm, endKm, stretch } of linePieces(columns, layer)) {
-    if (stretch.start === null || stretch.end === null) {
-      if (run.length > 0) runs.push(run);
-      run = [];
-      continue;
+  const close = () => {
+    if (run.length > 0) runs.push(run);
+    run = [];
+  };
+  for (const column of columns) {
+    const points = layer.draw.points(column);
+    if (points.length === 0) close();
+    for (const { km, value } of points) {
+      if (value === null) {
+        close();
+        continue;
+      }
+      const last = run.at(-1);
+      // 区間の境目の点は前後の区間の両方にある。
+      if (last === undefined || last.km !== km || last.value !== value) run.push({ km, value });
     }
-    run.push({ km: startKm, value: stretch.start }, { km: endKm, value: stretch.end });
   }
-  if (run.length > 0) runs.push(run);
+  close();
   const values = runs.flat().map((point) => point.value);
   return { runs, range: values.length === 0 ? null : { min: Math.min(...values), max: Math.max(...values) } };
 }
 
-/** 距離`km`の地点の値。道の中は両端の間を距離で割り振り、範囲の外は端の道へ寄せる。値の無い道ではnull。 */
+/** 距離`km`の地点の値。`runs`は`layerLine`の折れ線。点の間は両端の値を距離で割り振り、ルートの範囲の外は端へ寄せる。
+ * 線の切れ目ではnull。走行中は位置が届くたびに呼ぶので、折れ線を組み直さずに受け取る。 */
 export function layerValueAtKm(
   columns: readonly RouteStretch<LayerSegment>[],
-  layer: LineLayer,
+  runs: readonly (readonly LinePoint[])[],
   km: number,
 ): number | null {
-  const hit = columnAtKm(linePieces(columns, layer), km);
-  if (hit === null) return null;
-  const { start, end } = hit.column.stretch;
-  return start === null || end === null ? null : start + (end - start) * hit.fraction;
+  if (runs.length === 0) return null;
+  const at = Math.min(columns[columns.length - 1].endKm, Math.max(columns[0].startKm, km));
+  for (const run of runs) {
+    if (at < run[0].km || at > run[run.length - 1].km) continue;
+    if (run.length === 1) return run[0].value;
+    const i = Math.max(0, run.findIndex((point) => point.km >= at) - 1);
+    const from = run[i];
+    const to = run[Math.min(i + 1, run.length - 1)];
+    return to.km > from.km ? from.value + ((to.value - from.value) * (at - from.km)) / (to.km - from.km) : from.value;
+  }
+  return null;
 }
 
 /** 区間の勾配（%）。平均と最大（区間の続く坂の斜度）はどちらも区間の応答の値で、区間の中で計算し直さない。平均が無ければnull。 */

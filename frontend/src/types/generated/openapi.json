@@ -5590,6 +5590,13 @@
             ],
             "title": "Geometry"
           },
+          "point_distances_m": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Point Distances M"
+          },
           "elevation_gain_m": {
             "anyOf": [
               {
@@ -5733,6 +5740,7 @@
           "direction_label",
           "distance_km",
           "geometry",
+          "point_distances_m",
           "elevation_gain_m",
           "segments",
           "estimated_duration_seconds",
@@ -6013,6 +6021,20 @@
             ],
             "title": "Geometry"
           },
+          "point_distances_m": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Point Distances M"
+          },
           "start_latitude": {
             "type": "number",
             "title": "Start Latitude"
@@ -6118,6 +6140,7 @@
         "type": "object",
         "required": [
           "geometry",
+          "point_distances_m",
           "start_latitude",
           "start_longitude",
           "end_latitude",

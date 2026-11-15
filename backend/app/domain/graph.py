@@ -21,6 +21,9 @@ class LeanEdge:
     osm_way_id: int
     segment_index: int
     forward: bool
+    # 走る向きに並べた断面の点の`(道の長さに対する位置（始まりが0、終わりが1）, 標高（m。値が無ければNone）)`。形と同じく
+    # 表示の線の形（ルートの線の点の標高）で、評価の材料ではない。`get_edges_with_geometry`が埋め、作った時点では空。
+    profile: tuple[tuple[float, float | None], ...] = ()
 
 
 def node_key(osm_node_id: int) -> str:

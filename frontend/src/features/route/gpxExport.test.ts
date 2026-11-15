@@ -1,9 +1,9 @@
 /**
  * `features/route/gpxExport.ts: downloadGpx`——候補1本をGPX（`<trk>`1本）のファイルとして落とす。
  * - ファイル: 名前は`ridecompass-<候補のid>.gpx`、種類は`application/gpx+xml`。落としたあとにリンクとURLを片付ける
- * - 中身: トラックの名前（方位と距離。XMLの特殊文字は逃がす）と、経路の点を順に並べたもの
- * - 点が上限より多い経路は上限以下へ間引く。残す点は折れ線の形から選び、両端は必ず残す。ずれは東西も南北も
- *   実際の距離で測る
+ * - 中身: トラックの名前（方位と距離。XMLの特殊文字は逃がす）と、経路の点を順に並べたもの。標高のある点は`<ele>`を持つ
+ * - 点が上限より多い経路は上限以下へ間引く。残す点は折れ線の形と断面（道のりと標高）の形から選び、両端は必ず残す。ずれは
+ *   東西も南北も実際の距離で測る
  *
  * ここで見ないもの:
  * - どの候補をいつ書き出すか（ボタン） → `RouteOutcome/RouteOutcome.test.tsx`
@@ -102,6 +102,28 @@ describe("downloadGpx", () => {
     expect(doc.getElementsByTagName("trk")).toHaveLength(1);
     expect(doc.querySelector("trk > name")?.textContent).toBe("RideCompass 北 12.3km");
     expect(points).toEqual(coordinates);
+  });
+
+  it("標高のある点（RFC 7946 の3つ目）は<ele>を持ち、無い点は持たない", async () => {
+    const { doc } = await exportGpx(
+      candidate([
+        [139.7, 35.6, 10.5],
+        [139.705, 35.602],
+        [139.71, 35.61, 12],
+      ]),
+    );
+    expect([...doc.getElementsByTagName("trkpt")].map((p) => p.querySelector("ele")?.textContent ?? null)).toEqual([
+      "10.5",
+      null,
+      "12",
+    ]);
+  });
+
+  it("上限を超える点数でも、一直線の途中の坂の折れ目は断面の形から残す", async () => {
+    // 東へ5mずつの一直線で、途中から登る（平らな所と登る所の境目だけが折れ目）。
+    const line = straightLine(1001, 5, 0).map(([lon, lat], i) => [lon, lat, i < 500 ? 10 : 10 + (i - 500) * 0.5]);
+    const { points } = await exportGpx(candidate(line, { point_distances_m: line.map((_, i) => i * 5) }));
+    expect(points).toEqual([line[0], line[500], line[1000]].map(([lon, lat]) => [lon, lat]));
   });
 
   it("名前に含まれるXMLの特殊文字は逃がして書く", async () => {

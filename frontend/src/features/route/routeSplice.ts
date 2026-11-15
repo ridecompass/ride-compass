@@ -82,18 +82,18 @@ export interface SplicedRouteShape {
   edgePointOffsets: readonly number[];
   /** Edge iの始点のNode id（末尾に終点を持つ）。backendの`node_ids`。 */
   nodeIds: readonly string[];
-  /** Edge iの始点のルートの上の距離（km。末尾に全体）。道のりのグラフと同じ物差しで区間から求める。 */
+  /** Edge iの始点のルートの上の距離（km。末尾に全体）。道のりのグラフと同じ物差し（線の点ごとの道のり）。 */
   edgeKms: readonly number[];
 }
 
 export const routeShape = (
-  route: Pick<RouteCandidate, "edge_ids" | "geometry" | "edge_point_offsets" | "node_ids" | "segments">,
+  route: Pick<RouteCandidate, "edge_ids" | "geometry" | "edge_point_offsets" | "node_ids" | "point_distances_m">,
 ): SplicedRouteShape => ({
   edgeIds: route.edge_ids,
   coordinates: route.geometry.coordinates,
   edgePointOffsets: route.edge_point_offsets,
   nodeIds: route.node_ids,
-  edgeKms: routeEdgeKms(route.segments, route.edge_point_offsets),
+  edgeKms: routeEdgeKms(route),
 });
 
 /** ある区間を、どの候補のどの道へ差し替えられるか。 */

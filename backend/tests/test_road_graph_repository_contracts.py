@@ -125,11 +125,12 @@ def test_reversing_twice_returns_to_the_original_column():
 
 def _geometry_row():
     return _Row(osm_way_id=1, segment_index=0, from_node_id=1, to_node_id=2,
-                distance_m=100.0, wkb=shapely.to_wkb(shapely.LineString(((139.0, 35.0), (139.1, 35.2)))))
+                distance_m=100.0, wkb=shapely.to_wkb(shapely.LineString(((139.0, 35.0), (139.1, 35.2)))),
+                elevation_profile_m=[10.0, None, 14.0], elevation_profile_along_m=[0.0, 30.0, 100.0])
 
 
 async def test_both_directions_of_a_segment_share_one_row():
-    """形は向きに依らず、逆向きは同じ行の形を逆順にし、端点を入れ替える。
+    """形は向きに依らず、逆向きは同じ行の形を逆順にし、端点を入れ替える。断面の点も逆順にし、位置を終わりから測り直す。
 
     同じ区間を向きの数だけ引き直さないことは見ない——結果の辞書は引き直しても同じで、違いはDBの手間だけ
     （読むだけの問い合わせの引数になる）。理由は実装のコメントが持つ。"""
@@ -143,6 +144,8 @@ async def test_both_directions_of_a_segment_share_one_row():
     assert forward.geometry == [[35.0, 139.0], [35.2, 139.1]]
     assert backward.geometry == [[35.2, 139.1], [35.0, 139.0]]
     assert (backward.from_node_id, backward.to_node_id) == (node_key(2), node_key(1))
+    assert forward.profile == ((0.0, 10.0), (pytest.approx(0.3), None), (1.0, 14.0))
+    assert backward.profile == ((0.0, 14.0), (pytest.approx(0.7), None), (1.0, 10.0))
 
 
 def _lean_edge(way_id=1, segment=0, forward=True) -> LeanEdge:

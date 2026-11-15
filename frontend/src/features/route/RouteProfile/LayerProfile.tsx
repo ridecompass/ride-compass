@@ -57,7 +57,7 @@ export default function LayerProfile({
   // 現在地の印は、最初の折れ線（標高等）のその地点の値の高さに置く。
   const firstLine = shown.lines.find(({ range }) => range !== null);
   const progressValue =
-    progressKm === null || firstLine === undefined ? null : layerValueAtKm(scale.columns, firstLine.layer, progressKm);
+    progressKm === null || firstLine === undefined ? null : layerValueAtKm(scale.columns, firstLine.runs, progressKm);
   const progressMarkY = progressValue === null || firstLine?.range == null ? null : yOf(progressValue, firstLine.range);
   // 走行中は図を遠目に読むので、最初の折れ線の最高と最低の高さに単位つきの目盛りを出す。
   const valueTicks =

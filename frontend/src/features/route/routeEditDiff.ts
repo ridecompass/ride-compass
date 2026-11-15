@@ -77,8 +77,8 @@ export function formatMetric(metric: Pick<MetricDifference, "digits" | "unit">, 
 
 export function editDifference(origin: RouteCandidate, edited: RouteCandidate): EditDifference {
   const pairs = pairedStretches(origin.edge_ids, edited.edge_ids);
-  const originKm = routeEdgeKms(origin.segments, origin.edge_point_offsets);
-  const editedKm = routeEdgeKms(edited.segments, edited.edge_point_offsets);
+  const originKm = routeEdgeKms(origin);
+  const editedKm = routeEdgeKms(edited);
   const stretches =
     pairs === null
       ? null
