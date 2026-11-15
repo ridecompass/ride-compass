@@ -115,9 +115,11 @@ sources:
   # --- 道の写真 -----------------------------------------------------------
   # Mapillary の道の写真から見つけた街灯の点と、写真を撮った線。ズームは点の層を配る唯一のズーム
   # （https://www.mapillary.com/developer/api-documentation の Vector tiles）。
-  # 取得はタイルの口に断られると止まるので、ほかのソースの取得が先に済むよう最後に並べる。
+  # タイルの口は1回で範囲の全部を読ませないので、週の元の取り直しとまっさらなDBの立ち上げでは取らず（bulk: false）、
+  # --source で名指して取る（docs/architecture/data-sources.md「Mapillary のタイル」）。
   - name: mapillary_street_light
     adapter: mapillary_map_feature_point
+    bulk: false
     rows:
       values: [object--street-light]
     grid:
@@ -125,5 +127,6 @@ sources:
 
   - name: mapillary_sequence
     adapter: mapillary_sequence
+    bulk: false
     grid:
       zoom: 14

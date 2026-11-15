@@ -61,7 +61,7 @@ async def _create_extensions(database_url: str) -> None:
 
 async def _ingest(database_url: str, profile_path: Path | None) -> None:
     profile = load_source_profile(profile_path)
-    await ingest_cli.run([s.name for s in profile.sources], database_url, profile)
+    await ingest_cli.run(profile.bulk_names(), database_url, profile)
 
 
 async def _derive(database_url: str, profile_path: Path | None) -> None:

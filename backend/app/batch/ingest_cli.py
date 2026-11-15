@@ -43,7 +43,7 @@ def main() -> int:
 
     def start(args: argparse.Namespace, database_url: str) -> Coroutine[Any, Any, int]:
         profile = load_source_profile(args.profile)
-        names = [s.name for s in profile.sources] if args.all else args.source
+        names = profile.bulk_names() if args.all else args.source
         return run(names, database_url, profile)
 
     return run_batch_cli(parser, start)
