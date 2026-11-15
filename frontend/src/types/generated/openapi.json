@@ -1193,42 +1193,6 @@
         }
       }
     },
-    "/api/gsi-relief-tile/{path}": {
-      "get": {
-        "operationId": "gsi_relief_tile_proxy_api_gsi_relief_tile__path__get",
-        "parameters": [
-          {
-            "name": "path",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Path"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/gsi-terrain-tile/{z}/{x}/{y}.png": {
       "get": {
         "operationId": "gsi_terrain_tile_api_gsi_terrain_tile__z___x___y__png_get",

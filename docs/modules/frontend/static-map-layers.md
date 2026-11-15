@@ -59,7 +59,7 @@
 | `features/map/MapView/RoadInspectorPopup.tsx`（上の帯と属性の箇所） | 道をクリックしたときの詳細（**Reactで描き、MapLibreのPopupへportalで差し込む**）。上の帯に、道の層を出していればその先頭の層の線と同じ見本（`features/map/scene/groups/roadLines.ts: shownRoadTrackOf`）・名前（名前の無い道は出さない）・事実の要約（路面等）を出し、属性（タイルの事実と、負担を取ったときに届くタグ。**同じ項目は1度だけ**で、日本語の値だけを出し、英語の生の値と登録外のタグはその中の「その他のタグ」にさらに畳む）は畳む——地図の上の小さな枠に収めるため。中身の高さには上限を付けて中でスクロールさせ、中身が伸び縮みしたら置く向きを決め直す（MapLibreのPopupは地図が動いたときにしか決め直さず、開いた後に伸びた中身が画面の外へはみ出す）。道のストレス（開いたら取りに行く、地図のレンズと同じ値と事実）は[地図: レンズ・ルート色分け](map-axis-coloring.md)の同じファイルの行。**デバッグログONのときだけ`osm_way_id`を出す**——値がおかしい道を見つけたとき、地図で押した1本をそのままbackendの調査へ渡せるようにする。一般の利用者には読めない値のため常時は出さない |
 | `features/map/MapView/roadFacts.ts` | クリックした道の「事実」（例: 道路名・路面の種類・農道・林道の等級・トンネル）をタイルのプロパティから組み立てる純関数。項目名と値の呼び名、タイルのどの属性を読むか（`features/map/MapView/roadFacts.ts: tile_property`）は材料カタログ（生成物`material-catalog.json`）から引く。材料の外の列（識別子・道路名）の名前は生成物`region-tile-config.json`の`region-tile-config.json: road_surface.properties`から引き、押した道のway_id・フィーチャーの鍵もここの関数（`roadWayId`・`roadFeatureKey`）で読む。該当しない項目は行ごと出さない（「なし」が並ぶと該当する項目が埋もれる）。路面の種類（材料`surface`。区分ではなくタグの値の呼び名）だけは値が無くても「不明」として出す——どの道でも最初に見たい項目で、行ごと消すと「舗装されていない」と読める |
 | `features/map/regionApi.ts`（`features/map/regionApi.ts: roadSurfaceTileUrl`/`features/map/regionApi.ts: pointTileUrl`） | ベクタタイルのURLテンプレート（`features/map/regionApi.ts: fetchLensMaterials`は[地図: レンズ・ルート色分け](map-axis-coloring.md)の管轄）。点のレイヤーはどれも1つの配信（backend `GET /api/region/point-tiles/{layer}/...`）で、URLはレイヤー名（生成物`region-tile-config.json`の`region-tile-config.json: point_layers`の鍵）で組み、source-layer名も同じ一覧から読む |
-| `lib/tileBaseUrl.ts` | タイル配信元オリジンの決定（既定はフロント自身のオリジン＝rewrites経由、`lib/tileBaseUrl.ts: NEXT_PUBLIC_TILE_BASE_URL`設定時はbackend直接）。路面/POI/事故タイル・国土地理院色別標高図・JMA動的タイル（[動的気象レイヤー](dynamic-weather-layers.md)）が共通に使う |
+| `lib/tileBaseUrl.ts` | タイル配信元オリジンの決定（既定はフロント自身のオリジン＝rewrites経由、`lib/tileBaseUrl.ts: NEXT_PUBLIC_TILE_BASE_URL`設定時はbackend直接）。路面/POI/事故タイル・国土地理院の標高タイル（地形の陰影）・JMA動的タイル（[動的気象レイヤー](dynamic-weather-layers.md)）が共通に使う |
 | `features/map/MapOverlayControls/MapOverlayControls.tsx` | 地図の左上の「表示」のボタンと、押すと開く地図に出す情報の一覧（下記「最上位グルーピング」）。群への束ね方と並びはレイヤーカタログ（`features/map/MapOverlayControls/MapOverlayControls.tsx: mapOverlayGroupFor`・`mapLayers.ts: MAP_OVERLAY_GROUP_ORDER`）から導く。一覧は「重ねる情報」と「範囲と色」のタブに分ける。「重ねる情報」は群の見出しで中身をたため、群ごとに一覧に並べる項目を選べ、末尾にまとめて戻す操作（下記「まとめて戻す操作」）を並べる。「範囲と色」は`features/map/MapOverlayControls/MapLookSettings.tsx`が描く |
 | `features/map/MapOverlayControls/MapLookSettings.tsx` | 「表示」の「範囲と色」のタブ。表示する範囲（ルート沿い・地図全体。下記「ルートの近くの点」）と地図の色（明るい・暗い。下記「暗い地図」）を2択で選び、説明は見出しのⓘで行のすぐ下に開く |
 | `features/map/MapOverlayControls/OverlayLayerRow.tsx` | 一覧の1行（`features/map/MapOverlayControls/OverlayLayerRow.tsx: OverlayLayerChip`）。行のチェックでON/OFFし、ⓘで説明を、▶で凡例の内訳か案内・取得状態を行のすぐ下に開く。絞り込みの合図（漏斗の印と`features/map/MapOverlayControls/OverlayLayerRow.tsx: isLegendFiltered`）も持つ |
@@ -79,15 +79,15 @@
 ホスティング経由の往復を省く）、未設定ならフロント自身のオリジン（`next.config.ts`の
 rewritesでbackendへプロキシ）。`window`をSSR時に参照しないよう、モジュール定数ではなく
 呼び出し時に評価する関数になっている。適用範囲は路面/POI/事故のベクタタイルに限らず、
-国土地理院色別標高図
-（URLは源泉が配る。`region-tile-config.json: gsi`）・土地被覆ラスタ（`regionApi.ts: landcoverTileUrl`）・JMA動的タイル
+国土地理院の標高タイル（地形の陰影。URLは源泉が配る。`region-tile-config.json: gsi`）・土地被覆ラスタ（`regionApi.ts: landcoverTileUrl`）・JMA動的タイル
 （`jmaDelivery.ts`のURLテンプレート）も同じ関数でオリジンを決める。JMAの`targetTimes`
 JSONや落雷の地点のGeoJSONのようにアプリのfetch()で読む小さなデータも同じオリジンを使う
 （タイルのURLは時刻一覧が返るまで決まらないため、ここでフロントのホスティングを経由すると
 往復1つぶんが初回表示へ直列に乗る。[動的気象レイヤー](dynamic-weather-layers.md)「暗黙の前提」）。
 
 基礎地図はこの関数を通らず、画面が配信元（OpenFreeMap）のスタイル（`features/map/basemapStyle.ts: BASEMAP_STYLE_URL`）を
-直に読み、中のタイル・スプライト・グリフも配信元の住所のまま読む。
+直に読み、中のタイル・スプライト・グリフも配信元の住所のまま読む。国土地理院の色別標高図もこの関数を通らず、源泉が配る
+地理院の住所（`region-tile-config.json: gsi.relief.tile_url`）を直に読む。
 
 **暗黙の前提**: backend直接にすると、API呼び出し（`lib/apiBaseUrl.ts`）と同じオリジンに
 タイル要求が載る。backend前段がHTTP/1.1のままだとブラウザのオリジン単位の同時接続数上限

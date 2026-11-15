@@ -17,7 +17,7 @@ export const AREA_OPACITY = AREA.opacity;
 /** 土地被覆タイルが実データを持つ範囲（正本は配信側。生成物から受け取る）。 */
 const LANDCOVER_ZOOM = { min: regionTileConfig.landcover.min_zoom, max: regionTileConfig.landcover.max_zoom };
 
-/** 国土地理院タイル（実データを持つ上限・要求するURL・出典表記）。 */
+/** 国土地理院タイル（実データを持つ上限・要求するURL・出典表記）。色別標高図のURLは配信元の住所で、画面が直に読む。 */
 const GSI = regionTileConfig.gsi;
 
 /** 標高(m) = 原点 + (R*65536 + G*256 + B) * 刻み。**係数は詰め方から決まる**ので、
@@ -51,7 +51,7 @@ function sourcesFor(state: AreaRasterState): readonly SceneSourceEntry[] {
     {
       id: AREA_SOURCE_ID.elevation,
       spec: { type: "raster", tileSize: 256, maxzoom: GSI.relief.max_zoom, attribution: GSI.relief.attribution },
-      tiles: [`${state.tileOrigin}${GSI.relief.tile_url}`],
+      tiles: [GSI.relief.tile_url],
     },
     {
       id: AREA_SOURCE_ID.landcover,

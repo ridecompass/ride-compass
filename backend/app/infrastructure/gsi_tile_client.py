@@ -3,22 +3,20 @@ import asyncio
 import httpx
 from cachetools import LRUCache
 
+from app.domain.gsi_tiles import GSI_TILE_ORIGIN
 from app.infrastructure import tile_cache
 from app.infrastructure.debug_log import log_external_call
 from app.infrastructure.http_client import UPSTREAM_NOT_FOUND, UpstreamNotFound, fetch_upstream
 from app.infrastructure.media_types import PNG_CONTENT_TYPE
-
-UPSTREAM_HOST = "https://cyberjapandata.gsi.go.jp"
 
 #: 整備区域外の記憶に使う上限付きLRUの大きさ（キー=path）。
 NOT_FOUND_MAX_ENTRIES = 2000
 
 
 class GsiTileClient:
-    """国土地理院のタイル（色別標高図・標高タイル等）をパスで指定して透過的にプロキシしつつ
-    ファイルシステムにキャッシュする。
+    """国土地理院の標高タイルをパスで指定して取り、ファイルシステムにキャッシュする。
 
-    製品ごとの解釈は持たない——標高タイルをMapLibreが読む形へ移す変換は
+    書式の解釈は持たない——標高タイルをMapLibreが読む形へ移す変換は
     `gsi_dem_png.py`が担う。地理院タイルは時刻依存パラメータを持たない
     静的データのため、キャッシュにTTLは要らない。
     """
@@ -34,12 +32,10 @@ class GsiTileClient:
         self._http_client = http_client
         self._not_found_paths = not_found_paths
 
-    async def get(self, path: str, *, category: str) -> tuple[bytes, str] | UpstreamNotFound:
-        """`category`は運用の統計とWARNINGが数える名前で、製品ごとに呼び出し側が名乗る（色別標高図と標高タイルの
-        失敗を見分ける）。パスから作らない——パスは利用者の要求そのままで、名前の数に上限が無くなる。"""
+    async def get(self, path: str) -> tuple[bytes, str] | UpstreamNotFound:
         if path in self._not_found_paths:
             return UPSTREAM_NOT_FOUND
-        with log_external_call(category, path=path) as fields:
+        with log_external_call("gsi:dem-tile", path=path) as fields:
             # tile_cacheの読み書きは同期的なディスクI/Oなので、多数のタイル要求でイベントループを止めないよう別スレッドへ逃がす。
             cached = await asyncio.to_thread(tile_cache.get, path)
             if cached is not None:
@@ -47,7 +43,7 @@ class GsiTileClient:
                 return cached
             fields["cache"] = "miss"
 
-            response = await fetch_upstream(self._http_client, f"{UPSTREAM_HOST}/{path}", fields)
+            response = await fetch_upstream(self._http_client, f"{GSI_TILE_ORIGIN}/{path}", fields)
             if isinstance(response, UpstreamNotFound):
                 # 404は整備区域外。
                 self._not_found_paths[path] = None

@@ -34,7 +34,7 @@ paths:
 | アメダスの観測 | `simple_api_client.py: cached_fetch` | `jma_amedas_store.py`（Redis。定期の取得が書き、読む側はRedisから読む） |
 | 気象庁の動的タイル（ナウキャスト・キキクル等） | `jma_tile_client.py: JmaTileClient.fetch` | `jma_tile_redis_cache.py`（Redis） |
 | 気象庁MSMの予報 | `msm_client.py: refresh`（ETag条件付きGETでファイル同期） | ローカルファイル（`backend/data/msm/`） |
-| 色別標高図 | `gsi_tile_client` | `tile_cache.py`（ディスク、生バイト列） |
+| 地理院の標高タイル（地形の陰影の元） | `gsi_tile_client` | `tile_cache.py`（ディスク、生バイト列） |
 | PostGIS由来の重い中間結果 | リポジトリ層 | 用途で選ぶ（次節） |
 
 新しい外部連携を足すときは、まず上表のどれと同じ性質かを考え、同じならその行の組み合わせをそのまま使う。
@@ -100,7 +100,7 @@ paths:
 
 | 用途 | 掃除 |
 |---|---|
-| `tile_cache`（DEM・色別標高図の生バイト） | 容量上限（`tile_cache_size_limit_mb`）を超えると`diskcache`が書いた時刻の古い順に退避する（実測11MB、2026-09-07。上限は1桁の余裕があり今は発火しない。鍵に世代を持たないので、伸び続けたときの頭打ちとしてだけ置く） |
+| `tile_cache`（地理院の標高タイルの生バイト） | 容量上限（`tile_cache_size_limit_mb`）を超えると`diskcache`が書いた時刻の古い順に退避する（実測11MB、2026-09-07。上限は1桁の余裕があり今は発火しない。鍵に世代を持たないので、伸び続けたときの頭打ちとしてだけ置く） |
 | `tile_cache`のうち土地被覆タイル（PNG） | 地域のMVTタイルと一緒に捨て（下の行）、起動直後に置き場のラスタ構成でない世代を消す（[caching-retention.md](caching-retention.md)「無効化」）。容量上限の対象でもある（関東本土の全ズームで45MB・21,264枚の見積もり、2026-09-16） |
 | `tile_cache`のうち地域のMVTタイル（路面・点。鍵`region/<系統>/v<形の署名>/…`） | 派生の作り直し・道の区分の書き換えのあとに捨て、起動直後に今のコードの形でない世代を消す（[caching-retention.md](caching-retention.md)「無効化」）。容量上限の対象でもある |
 | `msm`（予報の`.om`ファイル） | 同期のたびに予報窓の外を削除（実測87MB） |

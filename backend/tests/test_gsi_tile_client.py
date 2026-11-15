@@ -1,4 +1,4 @@
-"""`infrastructure/gsi_tile_client.py`——国土地理院のタイルをパスで中継し、ディスクに残す。
+"""`infrastructure/gsi_tile_client.py`——国土地理院の標高タイルをパスで取り、ディスクに残す。
 
 入口は`GsiTileClient.get`。網は respx の経路（`tests/fake_http.py: client_for`）で、ディスクは
 本物の`tile_cache`（置き場は`tests/conftest.py`がテストごとの一時ディレクトリへ向ける）で通す。
@@ -24,8 +24,7 @@ from app.infrastructure.http_client import UPSTREAM_NOT_FOUND
 from tests.fake_http import client_for
 
 UPSTREAM = "https://cyberjapandata.gsi.go.jp"
-RELIEF = "xyz/relief/10/909/403.png"
-CATEGORY = "gsi:relief-tile"
+DEM = "xyz/dem_png/10/909/403.png"
 
 
 def client(router: respx.Router, not_found: LRUCache | None = None) -> gsi_tile_client.GsiTileClient:
@@ -45,12 +44,12 @@ def warnings(caplog):
     return lambda: [r for r in caplog.records if r.levelno >= logging.WARNING]
 
 
-async def test_a_tile_is_relayed_and_served_from_disk_after_a_restart():
+async def test_a_tile_is_fetched_and_served_from_disk_after_a_restart():
     router = respx.Router()
-    router.get(f"{UPSTREAM}/{RELIEF}").respond(content=b"\x89PNG", headers={"content-type": "image/png"})
+    router.get(f"{UPSTREAM}/{DEM}").respond(content=b"\x89PNG", headers={"content-type": "image/png"})
 
-    first = await client(router).get(RELIEF, category=CATEGORY)
-    later = await client(unreachable()).get(RELIEF, category=CATEGORY)
+    first = await client(router).get(DEM)
+    later = await client(unreachable()).get(DEM)
 
     assert first == later == (b"\x89PNG", "image/png")
 
@@ -58,12 +57,12 @@ async def test_a_tile_is_relayed_and_served_from_disk_after_a_restart():
 async def test_outside_coverage_is_remembered_for_the_process_but_not_across_a_restart(warnings):
     """整備区域は広がりうるので、区域外の記憶はディスクへ残さない。"""
     router = respx.Router()
-    router.get(f"{UPSTREAM}/{RELIEF}").side_effect = [httpx.Response(404), httpx.Response(200, content=b"\x89PNG")]
+    router.get(f"{UPSTREAM}/{DEM}").side_effect = [httpx.Response(404), httpx.Response(200, content=b"\x89PNG")]
     not_found = LRUCache(maxsize=16)
 
-    first = await client(router, not_found).get(RELIEF, category=CATEGORY)
-    same_process = await client(unreachable(), not_found).get(RELIEF, category=CATEGORY)
-    after_restart = await client(router).get(RELIEF, category=CATEGORY)
+    first = await client(router, not_found).get(DEM)
+    same_process = await client(unreachable(), not_found).get(DEM)
+    after_restart = await client(router).get(DEM)
 
     assert first is same_process is UPSTREAM_NOT_FOUND
     assert after_restart == (b"\x89PNG", "image/png")

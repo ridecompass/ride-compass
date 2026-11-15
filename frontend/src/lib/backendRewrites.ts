@@ -15,7 +15,6 @@ const TILE_PATHS = [
   "/api/region/point-tiles",
   "/api/region/landcover-tiles",
   "/api/jma-tile",
-  "/api/gsi-relief-tile",
 ] as const;
 
 const DERIVED_DATABASE_PATH = "/api/derived-database";

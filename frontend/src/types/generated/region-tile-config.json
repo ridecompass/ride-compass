@@ -19,7 +19,7 @@
   "max_mercator_latitude": 85.05112878,
   "gsi": {
     "relief": {
-      "tile_url": "/api/gsi-relief-tile/xyz/relief/{z}/{x}/{y}.png",
+      "tile_url": "https://cyberjapandata.gsi.go.jp/xyz/relief/{z}/{x}/{y}.png",
       "max_zoom": 15,
       "attribution": "<a href=\"https://maps.gsi.go.jp/development/ichiran.html\" target=\"_blank\" rel=\"noreferrer\">地理院タイル(色別標高図)</a>"
     },
