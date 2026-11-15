@@ -265,6 +265,7 @@ describe("走行モード", () => {
     geolocation.deliver({ latitude: 35.7, longitude: 139.7078, accuracy: 20 });
     expect(speech.texts()).toEqual(["音声案内を入れました", "300メートル先、右折です", "まもなく右折です"]);
     expect(new Set(speech.langs())).toEqual(new Set(["ja-JP"]));
+    expect(speech.volumes()).toEqual([0, 1, 0, 1, 0, 1]);
 
     await user.click(screen.getByRole("button", { name: "走行モード" }));
     await user.click(screen.getByRole("button", { name: "案内を終える" }));

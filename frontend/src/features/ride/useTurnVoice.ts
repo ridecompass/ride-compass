@@ -5,10 +5,20 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { UpcomingTurn } from "./nextTurn";
 import { turnCallStage, turnCallText, type TurnCallStage } from "./turnCall";
 
-function speak(text: string) {
+// 音を鳴らさずに読む前置き。端末は音の出口を黙っている間に休ませ、起こす間の頭の音を落とす（ほかのアプリの音を下げる間も同じ）ので、
+// 落ちてよい無音を先に読んで出口を起こし、すぐ続けて本文を読む。
+const WAKE_TEXT = "音声案内";
+
+function utter(text: string, volume: number) {
   const utterance = new SpeechSynthesisUtterance(text);
   utterance.lang = "ja-JP";
+  utterance.volume = volume;
   window.speechSynthesis.speak(utterance);
+}
+
+function speak(text: string) {
+  utter(WAKE_TEXT, 0);
+  utter(text, 1);
 }
 
 /**
