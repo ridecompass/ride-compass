@@ -135,8 +135,8 @@ from app.domain.display_palette import (
     SEMANTIC_COLORS_ON_DARK,
     resolved_display_axes,
 )
-from app.api.routers.gsi_tile import RELIEF_TILE_URL, TERRAIN_TILE_URL
-from app.domain.gsi_tiles import RELIEF_ATTRIBUTION, RELIEF_MAX_ZOOM, TERRAIN_MAX_ZOOM
+from app.api.routers.gsi_tile import TERRAIN_TILE_URL
+from app.domain.gsi_tiles import RELIEF_ATTRIBUTION, RELIEF_MAX_ZOOM, RELIEF_TILE_URL, TERRAIN_MAX_ZOOM
 from app.domain.terrain_rgb import TERRAIN_RGB_BASE_M, TERRAIN_RGB_UNIT_M
 from app.domain.landcover import (
     LANDCOVER_CLASSES,
@@ -309,7 +309,7 @@ def main() -> None:
             # 画面が点からタイル座標を求めるときに緯度を挟む限界（`domain/region.py`と同じ式を使う）。
             "max_mercator_latitude": MAX_MERCATOR_LATITUDE,
             # 国土地理院タイル（色別標高図・標高）。配信元が実データを持つ範囲・画面が
-            # 要求するURL・出典表記・標高の読み戻し係数は、すべてbackendが正本を持つ
+            # 要求するURL（色別標高図は配信元の住所、標高はbackendの口）・出典表記・標高の読み戻し係数は、すべてbackendが正本を持つ
             # （domain/gsi_tiles.py・domain/terrain_rgb.py）。**画面はこれを写さない**。
             "gsi": {
                 "relief": {

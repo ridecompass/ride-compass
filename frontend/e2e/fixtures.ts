@@ -11,6 +11,7 @@ import { installMapFinder } from "./liveMap";
 import { BASEMAP_STYLE_URL } from "@/features/map/basemapStyle";
 import { TWO_COST_AXES } from "@/testing/costAxes";
 import { mapDisplay } from "@/types/generated/mapDisplay";
+import regionTileConfig from "@/types/generated/region-tile-config.json";
 import nextConfig from "../next.config";
 
 // 応答の雛形と地図を押す段取りは別のファイルが持ち、ここから出し直す（撮影の口 `capture/context.ts` の `fixtures` は
@@ -19,7 +20,7 @@ export * from "./mockResponses";
 export * from "./liveMap";
 
 // CIのE2Eスモークテストは「実バックエンド＋実外部API（
-// OpenFreeMap）」には依存しない。APIコントラクトの正しさはCIのapi-contractジョブ
+// OpenFreeMap・国土地理院）」には依存しない。APIコントラクトの正しさはCIのapi-contractジョブ
 // （OpenAPIドリフト検知）が別途担保しており、E2Eはフロントの画面挙動（生成→表示、
 // レイヤー切替）だけを決定的に検証する。バックエンドプロセスの起動・DB・APIキーが
 // 不要になるぶん、CIが速く安定する。
@@ -30,6 +31,9 @@ export const API_BASE = process.env.E2E_API_BASE ?? "http://localhost:8000";
 
 /** 基礎地図の配信元。画面はここから直にスタイル・タイル・スプライト・書体を読む。 */
 export const BASEMAP_ORIGIN = new URL(BASEMAP_STYLE_URL).origin;
+
+/** 色別標高図の配信元（国土地理院）。画面はここから直にタイルを読む。 */
+const GSI_RELIEF_ORIGIN = new URL(regionTileConfig.gsi.relief.tile_url).origin;
 
 /**
  * バックエンド・外部APIへの依存を断ち切るネットワークモックを登録する。
@@ -99,6 +103,8 @@ export async function installApiMocks(page: Page): Promise<void> {
   // 基礎地図の配信元（OpenFreeMap）への要求を、sources/layersの空の自己完結スタイルで応答する
   // （外部タイル・グリフ・スプライトへの追加リクエストが起きない。地図の見た目は検証対象外）。
   await page.route(`${BASEMAP_ORIGIN}/**`, (route) => route.fulfill({ json: { version: 8, sources: {}, layers: [] } }));
+  // 色別標高図の配信元（国土地理院）への要求も外へ出さず、中身無しで返す（取り次ぐタイルの口と同じ扱い）。
+  await page.route(`${GSI_RELIEF_ORIGIN}/**`, (route) => route.fulfill({ status: 204, body: Buffer.alloc(0) }));
 
   // 気象庁の時刻一覧は配列が要る。空の配列（取得できたが時刻が無い）で返す。
   await page.route(

@@ -94,8 +94,7 @@ GSI_TILE_NOT_FOUND = CachePolicy(max_age_seconds=60 * 60)
 #: 地図タイル系（1画面あたり数十〜数百枚が飛ぶ。キャッシュの有無が最も効き、アクセスログも埋める）。
 TILE_ROUTE_POLICIES: Final[tuple[tuple[str, CachePolicy], ...]] = (
     ("/api/jma-tile/", HANDLER_MANAGED),
-    ("/api/gsi-relief-tile/", PERMANENT),
-    # 同じ国土地理院のDEMタイルを、MapLibreが読めるTerrain-RGBへ変換して返す。
+    # 国土地理院のDEMタイルを、MapLibreが読めるTerrain-RGBへ変換して返す。
     # 変換は決定的で、元のタイルと同じく配信元が更新しない。
     ("/api/gsi-terrain-tile/", PERMANENT),
     ("/api/region/road-surface-tiles/", BATCH_TILE),

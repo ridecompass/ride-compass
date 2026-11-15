@@ -20,7 +20,7 @@ backendが公開するHTTP APIの**全体の形**と、エンドポイントを�
 | ルート生成 | `/api/routes/generate` | 不要 | ジョブの`error` |
 | 天候・防災バッジ | `/api/weather/*` | 不要 | 502（警報系の空応答は「出ていない」だけ） |
 | 地点の検索 | `/api/place-search`・`/api/place-area` | 不要 | 502（対象範囲を読めない）。空の応答は「当たらなかった」・「辺りが無い」だけ |
-| 地図タイル | `/api/region/*-tiles`・`/api/jma-tile/*`・`/api/gsi-*-tile/*` | 不要 | 空タイル（取込範囲の外）／502／503（DBの障害） |
+| 地図タイル | `/api/region/*-tiles`・`/api/jma-tile/*`・`/api/gsi-terrain-tile/*` | 不要 | 空タイル（取込範囲の外）／502／503（DBの障害） |
 | 画面の設定・費用の軸 | `/api/client-config`・`/api/cost-axes`・`/api/cost-axes/lens-equivalents` | 不要（読み取り専用） | 503（DBの障害） |
 | 管理 | `/api/admin/*` | HTTP Basic必須 | 401／404／422／503（DBの障害。どの口も`api/failure_replies.py`の1か所で返す） |
 

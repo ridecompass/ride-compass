@@ -7,8 +7,8 @@
 として配信する。外部の気象予報APIには依存しない（MSMはファイルをローカルへ同期して
 読む）。
 
-**外部タイルのプロキシ配信もここが持つ**（国土地理院）。気象のデータではないが、
-「外部のタイルを中継してキャッシュする」という仕組みを気象庁タイルと共有しており（気象庁はRedis、
+**外部タイルを取って配る口もここが持つ**（国土地理院の標高タイルを変換して配る）。気象のデータではないが、
+「外部のタイルを取りに行ってキャッシュし、画面へ配る」という仕組みを気象庁タイルと共有しており（気象庁はRedis、
 地理院はディスクの`tile_cache`）、
 片方だけを別の文書へ移すと同じ仕組みの説明が二手に分かれる。標高そのものの取得（DEM→
 Edge属性、ルート評価の入力）は[elevation.md](elevation.md)が持つ。
@@ -33,7 +33,7 @@ MSMは数値予報モデルの出力で観測値・公式発表の代わりに�
 
 | レイヤー | ファイル |
 |---|---|
-| domain | `msm.py`（MSM格子の幾何・格子点の値の取り出し）・`jma_tile_specs.py`（配信元の要素ごとの宣言`jma_tile_specs.py: JMA_ELEMENTS`。要素1件がパスの系統・時刻一覧のファイルと読み方・タイルで配るならズームとベクタのレイヤー名と降水の段の色で塗った画像か・配信の遅れを持つ（遅れは画面だけが読み、プリウォームの読み方は持たないので、タイルで配る要素には宣言できない）。予測を持つ要素は予測が届く先（地図の説明の文と凡例が引く）も持つ。ほかに系統ごとの時刻一覧の更新間隔。読み方に従って時刻一覧の行をコマにする`jma_tile_specs.py: read_target_times`と、配信元のパスの形——時刻一覧のパス・コマのパスのテンプレート`jma_tile_specs.py: jma_url_template`・タイルのパスの組み立て`jma_tile_specs.py: jma_tile_path`——も持つ）・`weather_elements.py`（動的気象で地図に描くものの宣言。要素ごとに、選んだ時刻に描くコマの規則と、配信元が段の色を焼き込むなら塗る段（`weather_display.py`の段の名前。画面の凡例と説明文がこれでまとめる）も持つ。時刻の段をつないだとき各段が最初に描くコマを求める`stage_first_frames`と、配信要素の予測が届く先を説明の文の語にする`forecast_reach`も持つ。画面へは生成物で届き、本番プロセスではプリウォームが温める要素をここから導く。**本番が読むため**、地図の束ね方と表示値の宣言`map_display.py`とは別のファイルに置く）・`weather.py`・`jma_amedas.py`・`jma_area.py`・`jma_warning.py`・`jma_warning_timeline.py`（警報級の時系列、後述）・`wbgt.py`・`twilight.py`・`flood_forecast.py`・`terrain_rgb.py`（Terrain-RGBの刻みと原点。画面が標高を読み戻す係数として生成物へ出る）・`gsi_tiles.py`（国土地理院タイルの製品ごとの事実——実データを持つズーム範囲・画面へ中継する上流のパス・出典表記。中継ルートと画面へ配るURLは受ける層の`api/routers/gsi_tile.py`が上流のパスから導く）・`weather_display.py`（気象の値を色へ写す段と、天気コードの分類と名前。段は値の昇順でなければ読み込んだ時点で落とす——画面はこの順のまま塗り分けの式を組み、MapLibreの`step`式は昇順でないと式ごと失敗してレイヤーが黙って消える。画面へは`scripts/export_openapi.py`の生成物で届き、本番プロセスは気象庁の降水のタイルの塗り替え（`jma_tile_recolor.py`）で降水の段と気象庁の色を読む）・`warning_display.py`（警戒度バッジの出所ごとの段階の呼び名と色。呼び名はそれぞれの段階の宣言（`jma_warning.py`・`wbgt.py`・`flood_forecast.py`）から読む。本番プロセスは読まず、生成物`vocabulary.ts`だけが届く） |
+| domain | `msm.py`（MSM格子の幾何・格子点の値の取り出し）・`jma_tile_specs.py`（配信元の要素ごとの宣言`jma_tile_specs.py: JMA_ELEMENTS`。要素1件がパスの系統・時刻一覧のファイルと読み方・タイルで配るならズームとベクタのレイヤー名と降水の段の色で塗った画像か・配信の遅れを持つ（遅れは画面だけが読み、プリウォームの読み方は持たないので、タイルで配る要素には宣言できない）。予測を持つ要素は予測が届く先（地図の説明の文と凡例が引く）も持つ。ほかに系統ごとの時刻一覧の更新間隔。読み方に従って時刻一覧の行をコマにする`jma_tile_specs.py: read_target_times`と、配信元のパスの形——時刻一覧のパス・コマのパスのテンプレート`jma_tile_specs.py: jma_url_template`・タイルのパスの組み立て`jma_tile_specs.py: jma_tile_path`——も持つ）・`weather_elements.py`（動的気象で地図に描くものの宣言。要素ごとに、選んだ時刻に描くコマの規則と、配信元が段の色を焼き込むなら塗る段（`weather_display.py`の段の名前。画面の凡例と説明文がこれでまとめる）も持つ。時刻の段をつないだとき各段が最初に描くコマを求める`stage_first_frames`と、配信要素の予測が届く先を説明の文の語にする`forecast_reach`も持つ。画面へは生成物で届き、本番プロセスではプリウォームが温める要素をここから導く。**本番が読むため**、地図の束ね方と表示値の宣言`map_display.py`とは別のファイルに置く）・`weather.py`・`jma_amedas.py`・`jma_area.py`・`jma_warning.py`・`jma_warning_timeline.py`（警報級の時系列、後述）・`wbgt.py`・`twilight.py`・`flood_forecast.py`・`terrain_rgb.py`（Terrain-RGBの刻みと原点。画面が標高を読み戻す係数として生成物へ出る）・`gsi_tiles.py`（国土地理院タイルの製品ごとの事実——配信元の住所・実データを持つズーム範囲・色別標高図を画面が直に読む住所・出典表記。標高タイルの画面へ配るURLは受ける層の`api/routers/gsi_tile.py`が持つ）・`weather_display.py`（気象の値を色へ写す段と、天気コードの分類と名前。段は値の昇順でなければ読み込んだ時点で落とす——画面はこの順のまま塗り分けの式を組み、MapLibreの`step`式は昇順でないと式ごと失敗してレイヤーが黙って消える。画面へは`scripts/export_openapi.py`の生成物で届き、本番プロセスは気象庁の降水のタイルの塗り替え（`jma_tile_recolor.py`）で降水の段と気象庁の色を読む）・`warning_display.py`（警戒度バッジの出所ごとの段階の呼び名と色。呼び名はそれぞれの段階の宣言（`jma_warning.py`・`wbgt.py`・`flood_forecast.py`）から読む。本番プロセスは読まず、生成物`vocabulary.ts`だけが届く） |
 | services | `weather_service.py`・`jma_amedas_service.py`・`wbgt_service.py`・`warning_service.py`・`warning_timeline_service.py`（ルートが通る区域ごとの警報級の時系列、後述）・`flood_service.py`・`nearest_point_areas.py`（最寄りの点の範囲の図を、点の表ごとに一度だけ作って引く。後述）・`jma_tile_prewarm_service.py`（定期プリウォームバッチ）・`jma_tile_proxy_service.py`（タイルの中継の段取り。キャッシュ→配信元が持たないズームの補間と書き戻し→上流）・`terrain_tile_service.py`（地理院の標高タイルをTerrain-RGBへ変換して配信） |
 | infrastructure | `msm_client.py`（MSMの同期・読み出し）・`jma_tile_client.py`・`jma_tile_redis_cache.py`（タイル本体のRedis cache-aside）・`jma_tile_paths.py`（配信元のパスをテンプレートに当ててタイルとして読み戻す・404が確定した事実かを決める）・`jma_tile_interpolation.py`（配信元が持たないズームの補間）・`jma_tile_index.py`（在否インデックス）・`jma_tile_content.py`（タイルが空かどうかの判定。キャッシュと在否インデックスが共有する）・`jma_tile_recolor.py`（気象庁の降水のタイルの色をアプリの降水の段の色へ塗り替える、後述）・`jma_amedas_client.py`・`jma_suikei_client.py`（推計気象分布（天気）の地点の天気の区分。時刻一覧とタイルのパス・地点を含むタイルと画素・凡例の色から区分への読み替えを持つ。地図に重ねる`JMA_ELEMENTS`のタイルとは画素数と座標の数え方が違うので、宣言に入れずに持つ。時刻一覧とタイルは`jma_tile_client.py: JmaTileClient`を通る）・`jma_amedas_store.py`（アメダスの観測値と1時間雨量の履歴のRedisの置き場。鍵・項目名・TTL・保存した形の検査を持ち、サービスとは値でやり取りする）・`jma_warning_client.py`（警報のコード→種別の名称の表（配信元のコード表の写し）と、状態の文字列→発表中か）・`jma_warning_timeline_client.py`（警報級の時系列のJSONを`jma_warning_timeline.py: WarningTimeline`へ解く。段のコードが注意報級以上かの読み替えも持つ）・`wbgt_client.py`・`flood_client.py`（洪水予報のコード→段の表（配信元のコード表の写し））・`gsi_tile_client.py`・`simple_api_client.py`（TTLキャッシュで持つクライアントが共有する定型文、後述）・`gsi_dem_png.py`（地理院の標高タイルの画素を標高として読み、Terrain-RGBのPNGへ詰め直す、後述。読む部分は標高の取込も使う。画面へは変換したタイルを自前のルートで配るので、取得元のパスも持つ）・`jma_area_boundaries.py`（地点→区域のコード。気象庁の区域の境界をディスクから読む。引いた区域を地域マスタで警報のエリアまで辿る段取りも持ち、警報と洪水予報が共有する、後述） |
 | api | `weather.py`・`jma_tile.py`・`gsi_tile.py` |
@@ -424,13 +424,13 @@ backendの答え、タイルで配る要素ごとのタイルのパスを`script
 `gsi_tile_client.py`（TTLCache以外のキャッシュバックエンド）は
 対象外のまま各自の実装を維持する。
 
-## 地理院タイルプロキシ（`gsi_tile_client.py`・`api/routers/gsi_tile.py`）
+## 地理院タイルの取得（`gsi_tile_client.py`・`api/routers/gsi_tile.py`）
 
-国土地理院のタイルを**パスで指定して**透過的にプロキシしつつ`tile_cache`（ディスク）へ
-キャッシュする（pathを丸ごとプロキシし、`tile_cache`の永続ディスクに持つ）。地理院タイルは
-`basetime`/`validtime`のような時刻依存パラメータを持たない静的データのため、TTL付きキャッシュも
-不要。クライアントは製品ごとの解釈を持たない——現在は色別標高図（`xyz/relief/…`、
-`GET /api/gsi-relief-tile/{path}`がそのまま中継）と標高タイル（`xyz/dem_png/…`、下記）が使う。
+国土地理院の標高タイル（`xyz/dem_png/…`）を**パスで指定して**取り、`tile_cache`（ディスク）の
+永続の置き場へキャッシュする。地理院タイルは`basetime`/`validtime`のような時刻依存パラメータを
+持たない静的データのため、TTL付きキャッシュも不要。クライアントは書式の解釈を持たず、変換は下記が持つ。
+色別標高図はbackendを通らず、画面が地理院の住所（`domain/gsi_tiles.py: RELIEF_TILE_URL`、生成物
+`region-tile-config.json`で届く）から直に読む（理由は[技術選定](../../architecture/tech-stack.md)「地図タイルプロバイダ」）。
 
 ### 標高タイルの変換（`services/terrain_tile_service.py`・`infrastructure/gsi_dem_png.py`）
 
@@ -447,7 +447,7 @@ Terrain-RGBの刻みと原点は製品の定義として`domain/terrain_rgb.py`�
 変換自体はタイル1枚ぶんの配列演算とPNGの書き出しで、同じものを二重に置く価値が無い）。
 配信元が実データを持つのはz14まで（`domain/gsi_tiles.py: TERRAIN_MAX_ZOOM`）。
 
-**恒久404のキャッシュ**: 色別標高図の整備区域外（404）は珍しくない正常系
+**恒久404のキャッシュ**: 標高タイルの整備区域外（404）は珍しくない正常系
 で、他の失敗（タイムアウト・
 5xx等）と区別して502・WARNINGログ・`/api/debug/stats`のerror集計へは乗せない。確認済みの
 404は`UPSTREAM_NOT_FOUND`としてプロセス内メモリのみ（上限付きLRU、キー=path）に
