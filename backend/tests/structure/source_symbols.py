@@ -9,7 +9,6 @@
 from __future__ import annotations
 
 import ast
-from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -169,17 +168,6 @@ class Scope:
         return None
 
 
-#: 持ち主と名前の文字列を受けて差し替える呼び出し（`monkeypatch.setattr`・`monkeypatch.delattr`・`patch.object`）。
-REPLACING_BY_NAME = frozenset({"setattr", "delattr", "object"})
-#: `"app.x.y"`の道筋を受けて差し替える呼び出し（`monkeypatch.setattr`・`monkeypatch.delattr`・`patch`）。
-REPLACING_BY_PATH = frozenset({"setattr", "delattr", "patch"})
-
-
-def within(module: str, package: str) -> bool:
-    """`module`が`package`そのものか、その中のモジュールか。"""
-    return module == package or module.startswith(f"{package}.")
-
-
 def write_files(root: Path, files: dict[str, str]) -> Path:
     """`root`の下へ`{相対パス: 本文}`を書く（検査が効くことを確かめる架空の置き場を組む）。"""
     for relative, text in files.items():
@@ -194,14 +182,6 @@ def called_name(call: ast.Call) -> str | None:
     return func.attr if isinstance(func, ast.Attribute) else func.id if isinstance(func, ast.Name) else None
 
 
-def replacement_calls(tree: ast.Module) -> Iterator[tuple[ast.Call, ast.AST]]:
-    """差し替えの呼び出しと、それを含む最上位の定義（関数・クラス。無ければモジュール）。"""
-    for top in tree.body:
-        for node in ast.walk(top):
-            if isinstance(node, ast.Call) and node.args and called_name(node) in REPLACING_BY_NAME | REPLACING_BY_PATH:
-                yield node, top
-
-
 @dataclass(frozen=True)
 class Replaced:
     """差し替えの呼び出しが差し替える先。`owner`は持ち主が決まらなければNone、`name`は名前を変数で渡せばNone。"""
@@ -213,7 +193,7 @@ class Replaced:
 
 
 def replacement_of(scope: Scope, call: ast.Call) -> Replaced | None:
-    """差し替えの呼び出し（`replacement_calls`）が差し替える先。持ち主も名前も読めない形はNone。"""
+    """差し替えの呼び出しが差し替える先。持ち主も名前も読めない形はNone。"""
     first = call.args[0]
     if isinstance(first, ast.Constant) and isinstance(first.value, str):
         owner_text, _, name = first.value.rpartition(".")
@@ -230,11 +210,6 @@ def scanned_tests(root: Path) -> list[Path]:
     """`root`（`backend`）の`tests`のうち、構造テストが読むファイル（構造テストのディレクトリを除く全`.py`）。"""
     tests = root / "tests"
     return [path for path in sorted(tests.rglob("*.py")) if "structure" not in path.relative_to(tests).parts]
-
-
-def is_scaffold(path: Path) -> bool:
-    """テストのファイルでなく、共有の足場（`conftest.py`・組み立ての関数・代役）か。"""
-    return not path.name.startswith("test_")
 
 
 def declares_table(tree: ast.Module) -> bool:

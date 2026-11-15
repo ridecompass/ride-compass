@@ -4,7 +4,6 @@
 キャッシュの当たり外れは`/api/debug/stats`の集計（`debug_log.py: get_stats`）で見る。
 
 ここで見ないもの:
-- 骨格を写さずにここを通しているか → `tests/structure/test_redis_skeleton.py`
 - キー設計・TTL・値の意味づけ → 呼び出し元のテスト（例: `test_jma_tile_redis_cache.py`）
 """
 

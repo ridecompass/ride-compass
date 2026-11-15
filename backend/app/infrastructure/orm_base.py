@@ -19,8 +19,7 @@ class Base(DeclarativeBase):
     pass
 
 
-#: 表を宣言するモジュールの全部。足し忘れは`tests/structure/test_table_modules.py`が落とす（`Base.metadata`の
-#: 中身は同じ実行でほかに誰がimportしたかで変わるので、テストの集まりの中では欠けが出ない）。
+#: 表を宣言するモジュールの全部（`Base.metadata`の中身は同じ実行でほかに誰がimportしたかで変わるので、`declared_metadata`が全部をimportする）。
 TABLE_MODULES = (
     "app.infrastructure.cost_axis_models",
     "app.infrastructure.derived_data_meta",

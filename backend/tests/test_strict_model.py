@@ -2,9 +2,6 @@
 
 入口は基底を継承したモデルの検証（`model_validate`）とJSONスキーマの生成。基底はフィールドを持たないので、
 本番と同じく継承したモデルで確かめる。
-
-ここで見ないもの:
-- `app/`のモデルが素の`BaseModel`を継承せず未知のフィールドの扱いを宣言していること → `structure/test_model_strictness.py`
 """
 
 import pytest

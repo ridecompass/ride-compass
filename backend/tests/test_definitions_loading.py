@@ -4,7 +4,6 @@
 ここで見ないもの:
 - 費用の軸の定義の検算（材料・区分の重さ） → `test_cost_axes.py`
 - 較正値の読み込み → `test_tuning_overrides.py`
-- 起動時・ベンチ・道具がこの関数だけを通ること → `tests/structure/test_definitions_loading_entry.py`
 """
 
 import pytest
