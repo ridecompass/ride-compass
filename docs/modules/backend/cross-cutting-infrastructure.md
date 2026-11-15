@@ -58,7 +58,6 @@ DB接続・Redis・HTTPクライアント・レート制限・ログ・デバッ
 | scripts | `drop_orphan_test_databases.py` | 作業ツリーごとに作られるPostGIS統合テストのDBのうち、作業ツリーが無くなったものを出し、`--drop`で落とす。どの作業ツリーのものかはDB自身のコメントから読む（名前から推測しない） |
 | scripts | `serve_e2e_live.py` | e2e-live（`frontend/e2e-live/`）のために、この作業ツリーのbackendを開発DBへ向けて空いたポートで起動し、路面タイルに道が出る起点を開発DBの区間から選んで、ビルドと実行のコマンドを出す（手順の正本は[run-checks/SKILL.md](../../../.claude/skills/run-checks/SKILL.md)「E2E・画面の撮影の走らせ方」） |
 | scripts | `serve_capture.py` | 撮影の道具（`frontend/scripts/capture.mjs`の`--backend`）のために、この作業ツリーのbackendを、起動の段（DBの軸定義の読み込み・定期ジョブ）を外して起動する。ルーターとミドルウェアは`main.py: app`のまま。DBを読む経路は失敗するので、撮影の道具はDBを読まない経路（タイルの中継等）だけをここへ向ける |
-| scripts | `audit_test_rewrite.py` | 実装から起こし直したテストを外から測る（実装を変えていないか・テストが読む`app.*`・対象の属性の出どころ・seams 数・実装へ1行も入らないテスト・そのテストだけが通す行が0行のテスト・カバレッジ・テストファイルごとの項目と関数と行の数・テストからしか使われない公開の名前の候補。テストは対象を読む母集団を並べて渡す。PostGISのテストはテスト用DBへ繋がるときだけ含める）。起こし直しの手順は[testing-rewrite.md](../../../.claude/rules/testing-rewrite.md) |
 | scripts | `build_road_network.py` | 取込範囲全体の道路網の配列を作り、ディスクへ置く（[経路探索エンジン](routing-engine.md)）。今の派生データの世代とコードの形の置き場が既にあれば何もしない。デプロイの前処理が旧コンテナを止める前に打つ |
 | scripts | `cross_language_expectations.py` | backendと画面が同じ計算を持つところの「入力→答え」の表（`cross_language_expectations.py: EXPECTATIONS`）。答えはbackendの関数が出し、`export_openapi.py`が組ごとに生成物へ書き出す |
 | scripts | `deploy_gate.py` | 本番へ出すかを決める（デプロイのワークフローが呼ぶ）。本番がそのコミットか、より新しいコミットで動いていれば出さない |
