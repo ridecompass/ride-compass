@@ -37,8 +37,11 @@ export function removeStoredValue(key: string): void {
   localStorage.removeItem(key);
 }
 
-/** 端末の保存値を全部消し、どれも保存されていない状態へ戻す（画面のエラーの境目が出す。古い形の保存値で落ちたときも、どの値かを
- * 知らずに抜けられる）。 */
-export function clearStoredValues(): void {
-  localStorage.clear();
+/** 端末の保存値を、鍵が`keepPrefixes`のどれかで始まるものを除いて全部消し、保存されていない状態へ戻す（画面のエラーの境目が出す。
+ * 古い形の保存値で落ちたときも、どの値かを知らずに抜けられる）。 */
+export function clearStoredValues(keepPrefixes: readonly string[]): void {
+  const keys = Array.from({ length: localStorage.length }, (_, index) => localStorage.key(index));
+  for (const key of keys) {
+    if (key !== null && !keepPrefixes.some((prefix) => key.startsWith(prefix))) localStorage.removeItem(key);
+  }
 }

@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { debugLog } from "@/lib/debugLog";
 import type { LiveValue } from "@/lib/liveValue";
 import { recordRideFix, setRideMetricsStatus, startRideMetrics, stopRideMetrics } from "@/lib/rideMetrics";
+import { recordRideTrackFix, recordRideTrackStatus, startRideTrack, stopRideTrack } from "@/lib/rideTrack";
 import { haversineKm } from "@/lib/geoDistance";
 import { trueHeadingDeg } from "@/lib/magneticDeclination";
 import type { Coordinates } from "@/types/route";
@@ -201,6 +202,7 @@ export function useRideMode(plausibleMaxKmh: number | undefined): UseRideModeRes
   }, [plausibleMaxKmh]);
   useEffect(() => {
     setRideMetricsStatus(status);
+    recordRideTrackStatus(status, Date.now());
   }, [status]);
   // 位置を受けている間だけ、向きを読み、画面を点けたままにする。
   const receiving = status !== "off" && status !== "resting";
@@ -230,6 +232,7 @@ export function useRideMode(plausibleMaxKmh: number | undefined): UseRideModeRes
   const stop = useCallback(() => {
     leave("off");
     stopRideMetrics();
+    stopRideTrack();
     setHeadingUp(false);
     setZoomBase(null);
     setLocked(false);
@@ -245,21 +248,30 @@ export function useRideMode(plausibleMaxKmh: number | undefined): UseRideModeRes
     setError(null);
     setStatus("waiting");
     startRideMetrics();
+    startRideTrack(Date.now());
     debugLog("ride:mode", "始めた");
     watchId.current = navigator.geolocation.watchPosition(
       (received) => {
         const { latitude, longitude, heading, speed, accuracy } = received.coords;
         const here = { latitude, longitude };
         const accuracyM = Number.isFinite(accuracy) ? accuracy : null;
+        const deviceSpeedMs = speed !== null && Number.isFinite(speed) ? speed : null;
         const next = nextMotion(motion.current, {
           at: here,
           timestamp: received.timestamp,
           accuracyM,
-          speedMs: speed !== null && Number.isFinite(speed) ? speed : null,
+          speedMs: deviceSpeedMs,
         });
         motion.current = next.anchor;
         debugLog("ride:position", "受け取った", { speed, accuracy, speedMs: next.speedMs });
         recordRideFix(accuracyM, next.speedMs, received.timestamp);
+        recordRideTrackFix({
+          latitude,
+          longitude,
+          accuracyM,
+          speedMs: deviceSpeedMs,
+          timestampMs: received.timestamp,
+        });
         const speedKmh = next.speedMs === null ? null : next.speedMs * 3.6;
         const limit = plausibleMax.current;
         if (speedKmh !== null && limit !== undefined && speedKmh > limit) {

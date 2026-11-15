@@ -11,8 +11,9 @@
  * 差し替えたもの: backend の応答（網の層）、位置情報の取得、地図の描画（`maplibre-gl`）。子の部品は本物を描く。
  */
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { clearRideTracks, readRideTracks, setRideTrackEnabled, stopRideTrack } from "@/lib/rideTrack";
 import { installGeolocation } from "@/testing/geolocation";
 import {
   ELSEWHERE,
@@ -46,7 +47,41 @@ beforeEach(() => {
   jobs = serveHome();
 });
 
+afterEach(() => {
+  stopRideTrack();
+  clearRideTracks();
+});
+
 describe("走行モードの操作", () => {
+  it("走りの位置の記録を入れていれば、走行モードの間に受けた位置と速さと状態の移り変わりを、休んで続けても1つの走りとして溜める", async () => {
+    setRideTrackEnabled(true);
+    const geolocation = installGeolocation(HERE);
+    const { user } = renderHome();
+    jobs.respond([RIDDEN], LOOP_CONDITIONS);
+    await generate(user);
+    await waitFor(() => expect(candidateTabs()).toHaveLength(1));
+    const rideButton = () => screen.getByRole("button", { name: "走行モード" });
+
+    await user.click(rideButton());
+    geolocation.deliver({ ...RIDDEN_MIDDLE, speed: 4, timestamp: Date.now() + 1_000 });
+    await user.click(rideButton());
+    await user.click(screen.getByRole("button", { name: "休む" }));
+    await user.click(screen.getByRole("button", { name: "続きから走る" }));
+    geolocation.deliver({ latitude: 35.7, longitude: 139.708, timestamp: Date.now() + 2_000 });
+    await user.click(rideButton());
+    await user.click(screen.getByRole("button", { name: "案内を終える" }));
+
+    const tracks = readRideTracks();
+    expect(tracks).toHaveLength(1);
+    expect(tracks[0].points.map(({ latitude, longitude, speedMs }) => [latitude, longitude, speedMs])).toEqual([
+      [RIDDEN_MIDDLE.latitude, RIDDEN_MIDDLE.longitude, 4],
+      [35.7, 139.708, null],
+    ]);
+    expect(tracks[0].statuses.map(({ status }) => status)).toEqual(
+      expect.arrayContaining(["waiting", "following", "resting"]),
+    );
+  });
+
   it("走行モードのボタンで休むと、位置を受けるのをやめてルートと進み具合を残し、読み込み直しても休んだまま戻り、地図の下の「続きから走る」で休む前の進み具合から続ける。地図を指で動かすと「現在地へ戻る」を出し、ボタンで案内を終えると止める", async () => {
     const geolocation = installGeolocation(HERE);
     const first = renderHome();
