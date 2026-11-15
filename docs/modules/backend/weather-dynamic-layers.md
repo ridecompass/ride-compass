@@ -554,7 +554,7 @@ run初期時刻から数時間遅れる。そのため現在時刻から先の�
 読む範囲のうち全部の格子点が欠けた最初の時刻の手前までを返す（配信元が新しいrunを出さない間も、前のrunの値が尽きるまで
 ルートを作れる）。配信元は値の書かれていないチャンクを置かない（404）ので、同期は今を含むチャンクより先のまだ無いチャンクを
 置き場に置かずに成功し、読み出しはそのチャンクから先を値の無い時刻として扱う（今を含むチャンクが無ければ同期は失敗する）。どこから先が前のrunの値かは`infrastructure/msm_client.py: MsmGridPointSeries.latest_run_end`で返し、風の予報（`domain/wind.py: WindForecastSeries.latest_run_end`）を
-経て、ルートの候補が着くまでにその先の風を引いたかを応答の`wind_from_previous_run`に載せる。地図の格子点（`GET /api/weather/msm-grid`）と
+経て、ルートの候補が着くまでにその先の風を引いたなら、前に出たrunの風に替わる時刻（最新のrunの終わり）を応答の`wind_previous_run_from`に載せる。地図の格子点（`GET /api/weather/msm-grid`）と
 今日の値（`GET /api/weather`）は同じ境を応答の`latest_run_end`に載せ、これより先の時刻の値が前のrunのものとする（この時刻を含む）。
 レンズの材料は道の鍵から材料への表で欄を載せられないので、同じ境を`GET /api/weather/msm-status`で別に返す。
 どの応答も、値そのものは前のrunかを区別しない。

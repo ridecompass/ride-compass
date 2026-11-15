@@ -270,7 +270,7 @@ export function useDynamicWeatherLayers({
           return ref?.origin === "grid" && isPreviousRunTime(parseJstLocalValue(ref.time), latestRunEnd);
         })
         .map((source) => source.label);
-      if (labels.length > 0) notices[group] = previousRunNotice(`この時刻の${labels.join("・")}`);
+      if (labels.length > 0) notices[group] = previousRunNotice(latestRunEnd, labels.join("・"));
     }
     return notices;
   }, [shownSources, selected, grid.grid]);
