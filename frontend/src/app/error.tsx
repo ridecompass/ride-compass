@@ -15,7 +15,7 @@ export default function Error({ error, retry }: { error: Error & { digest?: stri
       <h2>予期しないエラーが発生しました</h2>
       <p className="text-[var(--color-muted)]">{error.message}</p>
       {/* 端末の保存値で落ちている間は、再試行しても同じ値を読んで落ちる。全部消すと保存されていない状態から描き直せる。
-          走りの位置の記録は地図の画面が読まないので落ちる元にならず、ほかに写しの無い記録なので残す。 */}
+          走りの記録は、読めない値を無いものとして扱って落ちる元にならず、送るまでほかに写しの無い記録なので残す。 */}
       <Button
         usage={null}
         onClick={() => {

@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.api.generation_slots import GenerationSlots
 from app.config import settings
+from app.domain.road_network import RoadNetwork
 from app.domain.route_request import RequestedConditions
 from app.infrastructure.address_search import AddressSearchQuery
 from app.infrastructure.database import get_route_generation_session_factory, get_session_factory
@@ -124,18 +125,18 @@ _search_memory = SearchMemory()
 
 @asynccontextmanager
 async def _open_route_generation_setup(
-    long_sessions: async_sessionmaker[AsyncSession], requested: RequestedConditions
+    long_sessions: async_sessionmaker[AsyncSession], requested: RequestedConditions, network: RoadNetwork
 ) -> AsyncIterator[RouteGenerationSetup]:
-    """ルート生成ジョブが使う`RouteGenerationSetup`を組み立てる非同期コンテキストマネージャ。"""
+    """ルート生成ジョブが使う`RouteGenerationSetup`を、生成の入口が1度だけ読んだ道路網`network`の上に組み立てる非同期コンテキストマネージャ。"""
     async with long_sessions() as session:
-        graph_service = GraphService(RoadGraphRepository(session), _search_memory)
+        graph_service = GraphService(RoadGraphRepository(session), _search_memory, network)
         try:
             yield assemble_route_generation_setup(graph_service, get_weather_service(), requested)
         finally:
             graph_service.release_search_memory()
 
 
-RouteGenerationSetupOpener = Callable[[RequestedConditions], AbstractAsyncContextManager[RouteGenerationSetup]]
+RouteGenerationSetupOpener = Callable[[RequestedConditions, RoadNetwork], AbstractAsyncContextManager[RouteGenerationSetup]]
 
 
 def get_route_generation_setup_opener(long_sessions: LongSessions) -> RouteGenerationSetupOpener:

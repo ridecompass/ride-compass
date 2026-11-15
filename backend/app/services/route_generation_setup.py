@@ -1,5 +1,6 @@
 """探索エンジンの組み立てと、省略された評価条件の既定の解決。組んだエンジンで要求の対象の候補を作る段取り。"""
 
+import asyncio
 from collections.abc import Callable, Mapping
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
@@ -9,6 +10,7 @@ from typing import assert_never
 from app.domain.cost_preference import CostPreference
 from app.domain.road_avoidance import AvoidanceLevel, resolve_road_avoidance
 from app.domain.road_classes import current_road_classes
+from app.domain.road_network import RoadNetwork
 from app.domain.route import Coordinates, RouteCandidate
 from app.domain.route_request import (
     DistanceTarget,
@@ -18,6 +20,7 @@ from app.domain.route_request import (
     SplicedTarget,
 )
 from app.domain.route_search import distance_tolerance_km
+from app.infrastructure import road_network_store
 from app.services.graph_service import GraphService
 from app.services.road_graph_engine import RoadGraphEngine
 from app.services.route_generator import RouteGenerator
@@ -86,7 +89,7 @@ class _GeneratedRoutes:
 
 
 async def generate_route_candidates(
-    open_setup: Callable[[], AbstractAsyncContextManager[RouteGenerationSetup]],
+    open_setup: Callable[[RoadNetwork], AbstractAsyncContextManager[RouteGenerationSetup]],
     *,
     origin: Coordinates,
     target: RouteTarget,
@@ -95,10 +98,15 @@ async def generate_route_candidates(
 ) -> _GeneratedRoutes:
     """`open_setup`で組んだエンジンで、対象（距離あり・距離なし・差し替えた経路）の候補を作る。
 
+    道路網はここで1度だけ読んで`open_setup`へ渡し、生成の間は区間をそれだけから切り出す（`GraphService`）。生成の途中で作り直しが
+    入れ替わっても切り出す区間の世代は混ざらず、候補にはその世代を付ける。
+
     仕上げの戦略は要求の検証が型で選び済みで、ここは型ごとの入口へ渡すだけ（距離の有無を見直さない）。
     """
     tolerance_km: float | None = None
-    async with open_setup() as setup:
+    # 読むのはディスクの置き場なので、イベントループの外で。
+    network = await asyncio.to_thread(road_network_store.current)
+    async with open_setup(network) as setup:
         generator = setup.generator
         match target:
             case SplicedTarget():
@@ -129,7 +137,10 @@ async def generate_route_candidates(
             case _:
                 assert_never(target)
         return _GeneratedRoutes(
-            candidates=generated.candidates,
+            candidates=[
+                candidate.model_copy(update={"network_revision": network.revision})
+                for candidate in generated.candidates
+            ],
             no_candidates_reason=generated.no_candidates_reason,
             corrected_destination=generated.corrected_destination,
             max_routes=max_routes,

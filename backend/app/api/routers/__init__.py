@@ -17,6 +17,7 @@ from app.api.routers import (
     material_catalog,
     place_search,
     region,
+    ride_tracks,
     cost_axis_admin,
     cost_axis_catalog,
     road_class_admin,
@@ -42,3 +43,4 @@ api_router.include_router(material_catalog.router)
 api_router.include_router(debug_admin.router)
 api_router.include_router(derived_database.router)
 api_router.include_router(db_status.router)
+api_router.include_router(ride_tracks.router)

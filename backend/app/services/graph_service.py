@@ -19,7 +19,7 @@ from app.domain.road_network import (
     slice_network,
 )
 from app.domain.route_search import DETOUR_RATIO_SHARING_ZOOM
-from app.infrastructure import container_memory, road_network_store
+from app.infrastructure import container_memory
 from app.infrastructure.detour_ratio_cache import TileSet
 from app.infrastructure.road_graph_repository import RoadGraphRepository
 
@@ -103,8 +103,7 @@ def network_fills(network: RoadNetwork, material_ids: tuple[str, ...]) -> Materi
     return fills
 
 
-def _slice_current(bbox: BoundingBox) -> RoadSlice:
-    network = road_network_store.current()
+def _slice(network: RoadNetwork, bbox: BoundingBox) -> RoadSlice:
     return slice_network(
         network, network_classes(network),
         bbox.min_longitude, bbox.min_latitude, bbox.max_longitude, bbox.max_latitude,
@@ -116,12 +115,16 @@ class GraphService:
     切り出す。**読むだけで、作らない。**
 
     道路網は取込範囲の中にしか無いので、取込範囲の外は区間が0本の切り出しになる。
+    作ったときに渡した道路網だけを切り出す（切り出しのたびに置き場を読み直さない）。確定した経路の形は DB
+    （`get_edges_with_geometry`）から引くので、派生の表を入れ替えた直後は、切り出した区間と形の世代が揃わないことがある。
     """
 
-    def __init__(self, repository: RoadGraphRepository, memory: SearchMemory):
+    def __init__(self, repository: RoadGraphRepository, memory: SearchMemory, network: RoadNetwork):
         self._repository = repository
         self._memory = memory
+        self._network = network
         self._reserved = 0
+
 
     def release_search_memory(self) -> None:
         """`get_search_slice`が取った生成のメモリを返す。生成が終わったら（組んだ配列を捨てたら）呼ぶ。"""
@@ -136,8 +139,8 @@ class GraphService:
         """
         started = start_timer()
         tiles = tiles_covering_bbox(bbox, DETOUR_RATIO_SHARING_ZOOM)
-        # 全区間を走査するので、読み込みと一緒にイベントループの外で切り出す。
-        road = await asyncio.to_thread(_slice_current, bbox)
+        # 全区間を走査するので、イベントループの外で切り出す。
+        road = await asyncio.to_thread(_slice, self._network, bbox)
         try:
             self._reserved += self._memory.reserve(road.edge_count)
         except (SearchAreaTooLargeError, SearchMemoryBusyError) as exc:
@@ -155,7 +158,7 @@ class GraphService:
     def edge_endpoints(self, edge_ids: Sequence[str]) -> list[LatLonPoint]:
         """区間の鍵の列の、両端の地点（取込範囲全体の道路網から引く）。形の合わない鍵と道路網に無い区間は飛ばす。"""
         edges = [parsed for edge_id in edge_ids if (parsed := parse_edge_key(edge_id)) is not None]
-        return edge_endpoint_points(road_network_store.current(), edges)
+        return edge_endpoint_points(self._network, edges)
 
     async def get_edges_with_geometry(self, edges: list[LeanEdge]) -> dict[str, LeanEdge]:
         """探索用グラフは形を持たない。確定した経路の区間へ実体を後付けする。"""

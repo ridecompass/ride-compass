@@ -4,7 +4,6 @@ import { useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs/Tabs";
 import BackendStatus from "@/features/admin/BackendStatus/BackendStatus";
 import DebugPanel from "@/features/admin/DebugPanel/DebugPanel";
-import RideTrackPanel from "@/features/admin/RideTrackPanel/RideTrackPanel";
 import BackendLogsPanel from "@/features/admin/BackendLogsPanel/BackendLogsPanel";
 import SystemStatusPanel from "@/features/admin/SystemStatusPanel/SystemStatusPanel";
 import MaterialCoveragePanel from "@/features/admin/AdminPanels/MaterialCoveragePanel";
@@ -80,7 +79,6 @@ export default function AdminPage() {
           )}
           <SystemStatusPanel open={systemStatusOpen} onClose={() => setSystemStatusOpen(false)} />
           <BackendLogsPanel />
-          <RideTrackPanel />
         </TabsContent>
       </Tabs>
     </div>

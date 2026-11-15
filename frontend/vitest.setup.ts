@@ -1,9 +1,13 @@
 import { format } from "node:util";
+import { CompressionStream, DecompressionStream } from "node:stream/web";
 import { BroadcastChannel } from "node:worker_threads";
 import { afterAll, afterEach, beforeAll } from "vitest";
 
 // mswは読み込んだ時点で`BroadcastChannel`を使う。`pool: "vmThreads"`のテストの文脈にはNodeのそれが無いので、先に置いてから読み込む。
 globalThis.BroadcastChannel ??= BroadcastChannel as unknown as typeof globalThis.BroadcastChannel;
+// ブラウザの圧縮の口（`CompressionStream`・`DecompressionStream`）も、テストの文脈には無いので置く。
+globalThis.CompressionStream ??= CompressionStream as unknown as typeof globalThis.CompressionStream;
+globalThis.DecompressionStream ??= DecompressionStream as unknown as typeof globalThis.DecompressionStream;
 const { backendServer, closeHeldReplies } = await import("@/testing/backendServer");
 
 // node の環境のテスト（DOM を使わない）にも、端末の保存値の口を置く。デバッグの記録の表示など、保存値を読む処理を通るテストが

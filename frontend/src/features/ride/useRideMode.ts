@@ -5,7 +5,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { debugLog } from "@/lib/debugLog";
 import type { LiveValue } from "@/lib/liveValue";
 import { recordRideFix, setRideMetricsStatus, startRideMetrics, stopRideMetrics } from "@/lib/rideMetrics";
-import { recordRideTrackFix, recordRideTrackStatus, startRideTrack, stopRideTrack } from "@/lib/rideTrack";
+import { getQueryClient } from "@/lib/queryClient";
+import {
+  recordRideTrackFix,
+  recordRideTrackStatus,
+  setRideTrackAppVersion,
+  startRideTrack,
+  stopRideTrack,
+} from "@/lib/rideTrack";
+import { sendRideTracks } from "@/services/rideTrackApi";
+import { frontendVersionQuery } from "@/services/versionApi";
 import { haversineKm } from "@/lib/geoDistance";
 import { trueHeadingDeg } from "@/lib/magneticDeclination";
 import type { Coordinates } from "@/types/route";
@@ -232,7 +241,8 @@ export function useRideMode(plausibleMaxKmh: number | undefined): UseRideModeRes
   const stop = useCallback(() => {
     leave("off");
     stopRideMetrics();
-    stopRideTrack();
+    stopRideTrack(Date.now());
+    void sendRideTracks();
     setHeadingUp(false);
     setZoomBase(null);
     setLocked(false);
@@ -249,10 +259,17 @@ export function useRideMode(plausibleMaxKmh: number | undefined): UseRideModeRes
     setStatus("waiting");
     startRideMetrics();
     startRideTrack(Date.now());
+    // 走りを記録した画面の版を添える（読めなければ null。版のために走りを止めない）。
+    void getQueryClient()
+      .fetchQuery(frontendVersionQuery)
+      .then(
+        (version) => setRideTrackAppVersion(version.commit),
+        () => setRideTrackAppVersion(null),
+      );
     debugLog("ride:mode", "始めた");
     watchId.current = navigator.geolocation.watchPosition(
       (received) => {
-        const { latitude, longitude, heading, speed, accuracy } = received.coords;
+        const { latitude, longitude, altitude, altitudeAccuracy, heading, speed, accuracy } = received.coords;
         const here = { latitude, longitude };
         const accuracyM = Number.isFinite(accuracy) ? accuracy : null;
         const deviceSpeedMs = speed !== null && Number.isFinite(speed) ? speed : null;
@@ -268,8 +285,11 @@ export function useRideMode(plausibleMaxKmh: number | undefined): UseRideModeRes
         recordRideTrackFix({
           latitude,
           longitude,
+          altitudeM: altitude !== null && Number.isFinite(altitude) ? altitude : null,
           accuracyM,
+          altitudeAccuracyM: altitudeAccuracy !== null && Number.isFinite(altitudeAccuracy) ? altitudeAccuracy : null,
           speedMs: deviceSpeedMs,
+          headingDeg: heading !== null && Number.isFinite(heading) ? heading : null,
           timestampMs: received.timestamp,
         });
         const speedKmh = next.speedMs === null ? null : next.speedMs * 3.6;

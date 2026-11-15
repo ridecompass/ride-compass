@@ -36,7 +36,7 @@ from app.domain.road_network import RoadNetwork
 from app.domain.road_classes import AvoidanceClassification
 from app.domain.route_request import ASSUMED_SPEED_KMH, DEFAULT_MAX_ROUTES, MAX_SPLICED_EDGES, MAX_WAYPOINTS
 from app.domain.tuning import tuning_value
-from app.infrastructure import rate_limiter
+from app.infrastructure import rate_limiter, road_network_store
 from app.infrastructure.job_registry import JOB_WAIT_MAX_SECONDS
 from app.main import app
 from app.services.graph_service import GraphService, SearchMemory
@@ -115,8 +115,8 @@ def world(override_dependency, road_network_root):
     world = World(road_network_root)
 
     @asynccontextmanager
-    async def open_setup(requested):
-        yield assemble_route_generation_setup(GraphService(NetworkRepository(world.network), SearchMemory()), world.weather, requested)
+    async def open_setup(requested, network):
+        yield assemble_route_generation_setup(GraphService(NetworkRepository(world.network), SearchMemory(), network), world.weather, requested)
 
     override_dependency(dependencies.get_route_generation_setup_opener, lambda: open_setup)
     # 枠を待つ生成はテストごとのイベントループに結び付くので、持ち主をテストごとに作り直す。
@@ -183,6 +183,15 @@ async def test_a_loop_is_generated_when_neither_destination_nor_waypoints_are_gi
     assert result["routes"]
     assert all(_ends(route) == (node_key(CENTER), node_key(CENTER)) for route in result["routes"])
     assert result["no_candidates_reason"] is None
+
+
+async def test_the_candidates_carry_the_revision_of_the_road_network_they_were_searched_on(client, world):
+    """候補には、生成が切り出した道路網の世代が付く（区間の鍵がどの版の道路網のものかを、後から照らすときに分ける）。"""
+    world.serve(grid_network())
+
+    routes = (await _generate(client))["result"]["routes"]
+
+    assert {route["network_revision"] for route in routes} == {road_network_store.current().revision}
 
 
 @pytest.mark.parametrize(
