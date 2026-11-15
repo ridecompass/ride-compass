@@ -49,6 +49,8 @@ export function overlayChips(options: {
   visibility: MapLayerVisibility;
   hidden: HiddenLegendKeys;
   dataStatus: LayerDataStatusByLayer;
+  /** レイヤーごとの、描いている値の扱いの但し書き。 */
+  caveats: Partial<Record<MapLayerId, string>>;
   zoomTooWideLayerIds: readonly MapLayerId[];
 }): OverlayLayerChip[] {
   const { hidden } = options;
@@ -69,5 +71,6 @@ export function overlayChips(options: {
       category: layer.category,
       panelHint: layer.panelHint,
       dataStatus: options.dataStatus[layer.id],
+      caveat: options.caveats[layer.id],
     }));
 }

@@ -69,6 +69,13 @@ export const getMsmGrid = (bbox: Bbox) =>
     { ...weatherOptions("api:msmGrid", "MSMの格子点"), successMeta: (data) => ({ points: data.points.length }) },
   );
 
+/** 同期したMSMの予報の状態（最新のrunの予報の終わり）。 */
+export const getMsmStatus = () =>
+  requestApi(
+    (init) => backendApi.GET("/api/weather/msm-status", init),
+    weatherOptions("api:msmStatus", "MSMの予報の状態"),
+  );
+
 /** JMAの動的タイルの在否。取れなくても呼ぶ側は間引きが効かないだけで表示は成り立つ。 */
 export const fetchJmaTileIndex = () =>
   requestApi(

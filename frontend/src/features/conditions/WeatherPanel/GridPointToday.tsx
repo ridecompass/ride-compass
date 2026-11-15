@@ -9,6 +9,7 @@ import {
 import { textVariants } from "@/components/ui/Text/Text";
 import { cardinalLabel, downwindOnMapDeg } from "@/lib/cardinalLabel";
 import { cn } from "@/lib/cn";
+import { isPreviousRunTime, previousRunNotice } from "@/lib/previousRun";
 import { jstParts, parseJstLocalValue } from "@/lib/time";
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import weatherScales from "@/types/generated/weather-scales.json";
@@ -53,6 +54,9 @@ export default function GridPointToday({ today, error, mapBearingDeg }: GridPoin
   }
 
   const hours = today.times.map((time) => `${jstParts(parseJstLocalValue(time)).hour}時`);
+  const previousRunFrom = today.times.findIndex((time) =>
+    isPreviousRunTime(parseJstLocalValue(time), today.latest_run_end),
+  );
 
   return (
     <section aria-label="今日・最寄りの格子点の値" className="mt-2 border-t border-[var(--color-border)] pt-2">
@@ -141,6 +145,11 @@ export default function GridPointToday({ today, error, mapBearingDeg }: GridPoin
           </tbody>
         </table>
       </div>
+      {previousRunFrom >= 0 && (
+        <p className={cn(textVariants({ variant: "warning" }), "mt-1")}>
+          {previousRunNotice(`${hours[previousRunFrom]}から先`)}
+        </p>
+      )}
       <p className={cn(textVariants({ variant: "note" }), "mt-1")}>{mapDisplay.modelValueDisclaimer}</p>
     </section>
   );

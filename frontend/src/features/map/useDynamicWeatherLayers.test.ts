@@ -264,6 +264,28 @@ describe("useDynamicWeatherLayers", () => {
     expect(cells?.kind === "gridFill" && cells.geojson.features).toHaveLength(1);
   });
 
+  it("MSMの格子点で描くチップは、選んだ時刻が最新の予報の終わりから先の間だけ、前に出た予報の値だと但し書きを出す", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    // 最新の予報は日本時間の13時の手前まで。13時の値は前に出た予報のもの。
+    onBackend("GET", "/api/weather/msm-grid", () =>
+      Response.json({
+        times: ["2026-10-07T12:00", "2026-10-07T13:00"],
+        latitude_step_deg: 0.1,
+        longitude_step_deg: 0.125,
+        points: [],
+        latest_run_end: "2026-10-07T13:00",
+      }),
+    );
+    const viewport = { west: 139.7, south: 35.55, east: 139.9, north: 35.75, zoom: GRID_ZOOM, bearing: 0 };
+
+    const { result, rerender } = render({ windVector: true }, {}, viewport);
+    await vi.waitFor(() => expect(result.current.dynamicWeatherDataStatus.windVector).not.toBe("loading"));
+    expect(result.current.dynamicWeatherNotices.windVector).toBeUndefined();
+
+    rerender({ at: new Date("2026-10-07T04:00:00Z") });
+    expect(result.current.dynamicWeatherNotices.windVector).toMatch(/この時刻の.+は前に出た予報の値です/);
+  });
+
   it("表示範囲が少し動くだけなら格子点を取り直さず、矢印を描き直さない。大きく動けば取り直す", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     const sent = onBackend("GET", "/api/weather/msm-grid", () =>

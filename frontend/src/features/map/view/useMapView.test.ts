@@ -70,6 +70,30 @@ describe("useMapView", () => {
     expect(result.current.lensControl.dataStatus).toBe("error");
   });
 
+  it.each([
+    ["2026-10-07T13:00", null],
+    ["2026-10-07T12:00", "この時刻の風は前に出た予報の値です"],
+  ])(
+    "出発時刻の風で塗るレンズは、最新の予報の終わりが%sなら、前に出た予報の風だと凡例に添える",
+    async (latestRunEnd, notice) => {
+      serve();
+      onBackend("GET", "/api/weather/msm-status", () => Response.json({ latest_run_end: latestRunEnd }));
+      onBackend("GET", "/api/region/lens/ascent/:z/:x/:y", () => Response.json({}));
+      // 出発時刻は日本時間の12時。最も近い正時の12時の風を引く。
+      const { result } = renderMapView();
+      await waitFor(() => expect(result.current.lensControl.axisOptions).toHaveLength(LENS_COUNT));
+
+      act(() => result.current.lensControl.onLensChange("ascent"));
+      act(() => result.current.look.onViewportChange(VIEWPORT));
+      // 予報の状態は材料と同時に取りに行き、材料は間引いてから取るので、材料を取り終えれば状態も届いている。
+      await waitFor(() => expect(result.current.look.wayMaterials.get("ascent")?.loading).toBe(false), {
+        timeout: 3000,
+      });
+      if (notice === null) expect(result.current.lensControl.caveat).toBeNull();
+      else expect(result.current.lensControl.caveat).toContain(notice);
+    },
+  );
+
   it("レンズは総合と費用の軸の順に並び、選んだレンズの1kmあたりの負担の秒を想定速度つきで取り、凡例の下に段の境目の目安を出す", async () => {
     serve(
       undefined,

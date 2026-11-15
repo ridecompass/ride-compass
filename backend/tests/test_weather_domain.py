@@ -67,6 +67,7 @@ def test_today_at_a_grid_point_is_its_hourly_values_until_midnight_with_where_it
         precipitation_mm=np.array([nan, nan, nan, 3.0]),
         wind_u_ms=np.array([-3.0, 0.0, 4.0, 30.0]),
         wind_v_ms=np.array([-4.0, 2.0, 0.0, 0.0]),
+        latest_run_end=datetime(2026, 10, 19, 23),
     )
 
     assert today.model_dump() == {
@@ -83,4 +84,5 @@ def test_today_at_a_grid_point_is_its_hourly_values_until_midnight_with_where_it
         "lowest_hourly_temperature_c": 12.3,
         "highest_hourly_precipitation_mm": None,
         "highest_hourly_wind_speed_ms": 5.0,
+        "latest_run_end": "2026-10-19T23:00",
     }
