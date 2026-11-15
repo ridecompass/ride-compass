@@ -8,6 +8,7 @@ import {
   gridPointTodayFixture,
 } from "./mockResponses";
 import { installMapFinder } from "./liveMap";
+import { BASEMAP_STYLE_URL } from "@/features/map/basemapStyle";
 import { TWO_COST_AXES } from "@/testing/costAxes";
 import { mapDisplay } from "@/types/generated/mapDisplay";
 import nextConfig from "../next.config";
@@ -26,6 +27,9 @@ export * from "./liveMap";
 /** モックを当てるbackendの宛先。試すアプリがビルドに焼き込んだ宛先（`NEXT_PUBLIC_API_URL`）と同じでないと、モックが当たらない。
  * CIは本番の宛先を焼き込んだ像の中身を試すので、その宛先を`E2E_API_BASE`で渡す。 */
 export const API_BASE = process.env.E2E_API_BASE ?? "http://localhost:8000";
+
+/** 基礎地図の配信元。画面はここから直にスタイル・タイル・スプライト・書体を読む。 */
+export const BASEMAP_ORIGIN = new URL(BASEMAP_STYLE_URL).origin;
 
 /**
  * バックエンド・外部APIへの依存を断ち切るネットワークモックを登録する。
@@ -92,9 +96,9 @@ export async function installApiMocks(page: Page): Promise<void> {
     );
   }
 
-  // 基礎地図スタイル（/api/basemap/styles/liberty）と、それ以外のbasemap配下を、sources/layersの空の自己完結スタイルで応答する
+  // 基礎地図の配信元（OpenFreeMap）への要求を、sources/layersの空の自己完結スタイルで応答する
   // （外部タイル・グリフ・スプライトへの追加リクエストが起きない。地図の見た目は検証対象外）。
-  await page.route("**/api/basemap/**", (route) => route.fulfill({ json: { version: 8, sources: {}, layers: [] } }));
+  await page.route(`${BASEMAP_ORIGIN}/**`, (route) => route.fulfill({ json: { version: 8, sources: {}, layers: [] } }));
 
   // 気象庁の時刻一覧は配列が要る。空の配列（取得できたが時刻が無い）で返す。
   await page.route(

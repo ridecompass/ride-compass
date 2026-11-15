@@ -5,9 +5,9 @@ import { CHROMIUM_PROJECTS, standaloneServer } from "./playwright.config";
 // 走らせ方・誰がいつ回すかは.claude/skills/run-checks/SKILL.md「E2E・画面の撮影の走らせ方」。backendはここから起動しない——DBの
 // 向け先・.envは人ごとに違い、設定ファイルが向け先を決めることになるため。前提はglobalSetupが最初に確かめる。
 
-/** `frontend/e2e/`・devサーバーと取り合わないポート。手元のbackendの基礎地図のURLもこのオリジンに合わせる。 */
+/** `frontend/e2e/`・devサーバーと取り合わないポート。 */
 const LIVE_PORT = 3200;
-export const LIVE_ORIGIN = `http://localhost:${LIVE_PORT}`;
+const LIVE_ORIGIN = `http://localhost:${LIVE_PORT}`;
 
 export default defineConfig({
   testDir: "./e2e-live",

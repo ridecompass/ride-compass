@@ -60,11 +60,10 @@ DB接続・Redis・HTTPクライアント・レート制限・ログ・デバッ
 | scripts | `_production_origins.py` | 本番の宛先（リポジトリの根の`production-origins.json`）の読み方。標準ライブラリだけで読むので、依存を入れないランナー（`prod-route-check.yml`）からも打てる |
 | scripts | `drop_orphan_test_databases.py` | 作業ツリーごとに作られるPostGIS統合テストのDBのうち、作業ツリーが無くなったものを出し、`--drop`で落とす。どの作業ツリーのものかはDB自身のコメントから読む（名前から推測しない） |
 | scripts | `serve_e2e_live.py` | e2e-live（`frontend/e2e-live/`）のために、この作業ツリーのbackendを開発DBへ向けて空いたポートで起動し、路面タイルに道が出る起点を開発DBの区間から選んで、ビルドと実行のコマンドを出す（手順の正本は[run-checks/SKILL.md](../../../.claude/skills/run-checks/SKILL.md)「E2E・画面の撮影の走らせ方」） |
-| scripts | `serve_capture.py` | 撮影の道具（`frontend/scripts/capture.mjs`の`--backend`）のために、この作業ツリーのbackendを、起動の段（DBの軸定義の読み込み・定期ジョブ）を外して起動する。ルーターとミドルウェアは`main.py: app`のまま。DBを読む経路は失敗するので、撮影の道具はDBを読まない経路（タイルの中継等）だけをここへ向ける |
+| scripts | `serve_without_db.py` | この作業ツリーのbackendを、起動の段（DBの定義の読み込み・定期ジョブ）を外して起こす（`serve_without_db.py: serve`）。ルーターとミドルウェアは`main.py: app`のまま。定義に依る口とDBを読む口は失敗する。撮影の道具（`frontend/scripts/capture.mjs`の`--backend`）が起こす |
 | scripts | `build_road_network.py` | 取込範囲全体の道路網の配列を作り、ディスクへ置く（[経路探索エンジン](routing-engine.md)）。今の派生データの世代とコードの形の置き場が既にあれば何もしない。デプロイの前処理が旧コンテナを止める前に打つ |
 | scripts | `cross_language_expectations.py` | backendと画面が同じ計算を持つところの「入力→答え」の表（`cross_language_expectations.py: EXPECTATIONS`）。答えはbackendの関数が出し、`export_openapi.py`が組ごとに生成物へ書き出す |
 | scripts | `deploy_gate.py` | 本番へ出すかを決める（デプロイのワークフローが呼ぶ）。本番がそのコミットか、より新しいコミットで動いていれば出さない |
-| scripts | `dev_prod_data_backend.py` | 開発機の画面を本番のデータで開くときの、開発機のbackendを起こす（[setup.md](../../architecture/setup.md)「開発機の画面を本番のデータで開く」）。同じLANの端末から届くよう、LANの住所のfrontendを許す相手に足す |
 
 ## Pydanticモデルの基底（`domain/strict_model.py`）
 
@@ -182,7 +181,7 @@ backendは**1プロセスでしか正しく動かない**。プロセス内に�
 
 **既定値はこのクラスだけが持つ。** `.env`の雛形（`backend/.env.example`・リポジトリ直下の`.env.example`）は項目と
 上書きの仕方だけを書き、値を写さない——写した値は`.env`へコピーされた時点で固定され、既定値を直しても手元では
-古い値が効き続ける。`docker-compose.yml: environment`がCORSの許可元・基礎地図の書き換え先を書くのは写しではない:
+古い値が効き続ける。`docker-compose.yml: environment`がCORSの許可元を書くのは写しではない:
 composeのfrontendの公開先に従う値で、既定値（手元で`next dev`を起動したときのオリジン）を変えても変わらない。
 
 **暗黙の前提**: DBの口（repository）を受け取るサービスは、口が無い状態を持たない。
@@ -328,7 +327,7 @@ JMA気象データの短命キャッシュが使う共有接続。値を生の�
 
 `ContentTypeGZipMiddleware`はStarletteの`GZipMiddleware`を、応答の`content-type`が
 JSON・MVT・protobuf・JavaScript等（`response_compression.py: _COMPRESSIBLE_CONTENT_TYPES`）または`text/*`のときだけ
-圧縮するよう絞ったもの。basemap/JMA/国土地理院のラスタタイル（PNG等）は圧縮済み形式のため
+圧縮するよう絞ったもの。JMA/国土地理院のラスタタイル（PNG等）は圧縮済み形式のため
 素通しする。`Accept-Encoding: gzip`を持つリクエストで、本文が`DEFAULT_MINIMUM_SIZE`
 （1000バイト）以上の応答が対象。`compresslevel`は3（圧縮はイベントループ上で同期的に
 走るため、縮小率がほぼ変わらない高レベルは使わない。z12の路面タイル約680KBで、level 3は約57%・level 9は約55%へ縮み、所要は6倍近く違う）。`Vary: Accept-Encoding`は
@@ -348,7 +347,7 @@ Starlette側が付与する。
 | `immutable` | 「URLが同じなら内容も同じ」と保証できる場合のみ。ブラウザはリロード時の条件付きリクエストすら省くため、内容が更新されうるURLに付けると更新が届かなくなる |
 
 ポリシーは秒数の直書きではなく意味を持つ名前（`PERMANENT`・`IMMUTABLE_TILE`・`BATCH_TILE`・
-`BASEMAP`・`SHORT`・`VOLATILE`・`LIVE`・`NO_STORE`）で定義し、時間の調整は
+`SHORT`・`VOLATILE`・`LIVE`・`NO_STORE`）で定義し、時間の調整は
 その定義1箇所で行う。同じ秒数でも意味が違うものは別の定数として持つ（片方だけを後から
 動かせるようにするため）。
 
@@ -361,11 +360,6 @@ Starlette側が付与する。
 `tests/test_cache_policy.py`が全`APIRoute`と表を突き合わせ、表に無いルート（ポリシーの
 決め忘れ）とどの実ルートにも一致しないエントリ（リファクタで残った死んだエントリ）の
 両方を検出する。
-
-**暗黙の前提**: `POST /api/admin/basemap/refresh`（管理画面のタイルキャッシュ消去、
-Basic認証必須）はサーバー側のファイルキャッシュしか消せず、利用者のブラウザが保持する分へは
-手が届かない。基礎地図の`max-age`（`BASEMAP`）は、消した効果が各利用者の画面へ現れるまでの
-最大の遅れでもある。
 
 ## リクエストIDとアクセスログ（`request_log.py`）
 

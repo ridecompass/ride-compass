@@ -120,7 +120,7 @@ HTTPステータスが`message`に入るのは、応答に`detail`が無い（JS
 - **いくつものstateにまたがる判断は、今の値をrefに控えて比べる**: 描画の確定と同時に`useIsomorphicLayoutEffect`で控え、
   待った後はrefを読む。例: 編集1回の印（`useSpliceSession.ts`）。
 - **照合しなくてよいのは、その流れだけが書く状態**（自分の結果・自分の失敗）で、始める操作が待つ間押せないとき
-  （`ReportCard.tsx`・`TileCachePanel.tsx`）。
+  （`ReportCard.tsx`）。
 - **`useMutation`は使わない**。`mutate`ごとの後書き（`onSuccess`等）を捨てるのは、同じ観測者で次の`mutate`を呼んだときと
   購読が外れたときだけで（`query-core/src/mutationObserver.ts`）、ほかの操作が変えた状態とは照合しないので、使っても照合は要る。
 

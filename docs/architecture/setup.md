@@ -30,20 +30,17 @@ PostGIS統合テスト（`road_graph_session`フィクスチャを使うもの�
 本番のbackendのデータ（APIとタイル）で開く。読むだけで、本番のデータは書き換えない（ルートの生成も、本番でふつうの
 利用者と同じに作られる）。
 
-1. 起こす設定（`.claude/launch.json`）の`backend-prod-data`と`frontend-prod-data`を起こす（手で起こすなら、根で
-   `backend/.venv/Scripts/python.exe backend/scripts/dev_prod_data_backend.py`と`npm run dev:prod-data --prefix frontend`）。
-2. この PC では`http://localhost:3000`を開く。同じ Wi-Fi のスマホでは、backend が起動の最初の行に出す
-   `http://<開発機の LAN の住所>:3000`を開く。
-   - 外へ出る口が複数あって違う住所が出たら、`RC_LAN_HOST`に正しい住所を入れて backend を起こし直す。
+1. 起こす設定（`.claude/launch.json`）の`frontend-prod-data`を起こす（手で起こすなら、根で
+   `npm run dev:prod-data --prefix frontend`）。開発機のbackendは要らない。
+2. この PC では`http://localhost:3000`を開く。同じ Wi-Fi のスマホでは、`http://<開発機の LAN の住所>:3000`を開く
+   （LAN の住所は`ipconfig`の IPv4 アドレス。開発サーバーはプライベートの範囲の住所をどれも開いてよい相手に入れて起きる）。
    - スマホから開けないときは、Windows のファイアウォールで、開発機の node（3000番）への受信をプライベートのネットワークで許す
      （許すのはユーザーが行う）。
    - 現在地は`https`か`localhost`でしか取れないので、スマホの`http://<LAN の住所>`では現在地が出ない。出発地は地図で置く。
 
 取り次ぎの向け先は`frontend/src/lib/backendRewrites.ts`が決める: APIの呼び出し（`/prod/…`）とタイルは本番のbackend
-（宛先は`production-origins.json`）へ、地図の下地だけは開発機のbackendへ向ける（本番の下地のスタイルは本番のbackendの
-住所を中に持ち、画面から直接は読めない）。開発機のbackendは、下地のスタイルが中に持つ住所と許す相手に、開発機の
-LANの住所を入れて起きる（`backend/scripts/dev_prod_data_backend.py`）。管理画面（`/admin`）は、本番を読み書きしないよう
-いつも開発機のbackendへ転送する。
+（宛先は`production-origins.json`）へ向ける。地図の下地は、画面が配信元（OpenFreeMap）から直に読む。管理画面（`/admin`）は、
+本番を読み書きしないよういつも開発機のbackendへ転送するので、試すときは開発機のbackendをふつうに起こす。
 
 ## 開発機の本体のチェックアウトの遅れ
 
@@ -252,12 +249,12 @@ npm run dev
 バックエンドのURLは既定で`http://localhost:8000`（`NEXT_PUBLIC_API_URL`で上書き可、
 `.env.local`は無くても動く）。
 
-frontendは`next dev`の既定の3000番で動かす。backendのCORSの許可元と基礎地図の書き換え先の既定
+frontendは`next dev`の既定の3000番で動かす。backendのCORSの許可元の既定
 （`backend/app/config.py: _LOCAL_FRONTEND_ORIGIN`）がこの番号を前提にしており、ほかの番号で開くと
-基礎地図のタイル・スプライト・フォントが3000番へ向かって地図が真っ白になる。Claude Codeのプレビューの
+画面からAPIを呼べない。Claude Codeのプレビューの
 起動の設定（`.claude/launch.json`）も番号を書かずにプレビューの既定の3000番で起動し、使用中なら別の番号へ
 逃がさずに失敗する（`autoPort: false`）。`restart-dev.bat`・`stop-dev.bat`は番号を持たず、backendの設定の
-基礎地図の書き換え先（`.env`の上書きを含む）から番号を読み、その番号で止め、その番号を明示して`next dev`を起こす
-（使用中なら別の番号へ逃げずに失敗する）。ほかの番号で動かすときは、`backend/.env`に`CORS_ALLOWED_ORIGINS`と
-`BASEMAP_PUBLIC_BASE_URL`をその番号で書く（書いた値は既定を直しても残るので、戻すときは消す）。batはそれで
+CORSの許可元の最初のオリジン（`.env`の上書きを含む）から番号を読み、その番号で止め、その番号を明示して`next dev`を起こす
+（使用中なら別の番号へ逃げずに失敗する）。ほかの番号で動かすときは、`backend/.env`の`CORS_ALLOWED_ORIGINS`の最初に
+その番号のオリジンを書く（書いた値は既定を直しても残るので、戻すときは消す）。batはそれで
 その番号へ移る。

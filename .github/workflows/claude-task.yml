@@ -42,7 +42,6 @@ jobs:
       # 置き場へは hidakagit-bot、コードのリポジトリの gh は hidakagit の名義（GITHUB_TOKEN のマージは master の CI とデプロイを起こさない）。
       FLOW_BOT_TOKEN: ${{ secrets.FLOW_BOT_TOKEN }}
       GH_TOKEN: ${{ secrets.CODE_TOKEN }}
-      MAPILLARY_TOKEN: ${{ secrets.MAPILLARY_TOKEN }}
       ISSUE: ${{ inputs.issue }}
       KIND: ${{ inputs.kind }}
       # 担当は最初の結果で終わる。裏の処理（run_in_background・裏の subagent）は外す。

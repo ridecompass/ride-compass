@@ -49,10 +49,6 @@ def delete_where(is_stale: Callable[[str], bool]) -> int:
     return sum(1 for key in stale if cache.delete(key))
 
 
-def clear_all() -> None:
-    _opened().clear()
-
-
 def close() -> None:
     """開いたキャッシュを閉じる。次の読み書きで開き直す。"""
     global _opened_cache

@@ -11,7 +11,7 @@ _ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
 
 # 手元で`next dev`を起動したときのfrontendのオリジン。`next dev`と`.claude/launch.json`は番号を書かず、
 # どちらも既定の3000番で動くので、ここもその番号に合わせる。`restart-dev.bat`・`stop-dev.bat`は番号を持たず、
-# `basemap_public_base_url`（.envの上書きを含む）の番号でfrontendを止め・起こす。
+# `cors_allowed_origins`（.envの上書きを含む）の最初のオリジンの番号でfrontendを止め・起こす。
 _LOCAL_FRONTEND_ORIGIN = "http://localhost:3000"
 
 #: 手元のPostgreSQL（開発機に入れたものと、composeのpostgres）。開発のDBとPostGIS統合テストのDBが載る。
@@ -23,18 +23,10 @@ class Settings(BaseSettings):
 
     cors_allowed_origins: str = _LOCAL_FRONTEND_ORIGIN
     database_url: str = f"{LOCAL_DATABASE_SERVER}/ridecompass"
-    # 基礎地図プロキシのスタイルJSON内URLを書き換える先。MapLibreは相対URLをスタイルの
-    # 取得元ではなくページのオリジンに対して解決するため絶対URLが必須で、かつ**backend自身
-    # ではなくフロントエンドのオリジン**にする（タイルの大量リクエストとAPI呼び出しを
-    # ブラウザの同一オリジン接続数上限で競合させない。フロントエンドのオリジンは`/api/basemap/*`を
-    # backendへ中継する）。
-    basemap_public_base_url: str = f"{_LOCAL_FRONTEND_ORIGIN}/api/basemap"
     debug_mode: bool = False
     # デプロイ先でビルド・起動されたコミットのフルSHA。`GIT_COMMIT`環境変数から渡し、
     # .envには書かない（ローカル開発では未設定のままでよい）。
     git_commit: str | None = None
-    # Mapillaryのタイルの口の鍵（`MAPILLARY_TOKEN`）。
-    mapillary_token: str | None = None
 
     # --- 認証なしエンドポイントのper-IPレート制限・同時実行上限 ---
     # 環境（本番/ローカル/負荷試験）ごとに調整したい運用値のため.envで上書きできる。
@@ -81,7 +73,6 @@ class Settings(BaseSettings):
     # 行う。律速がCPUとディスクI/Oになるため、DB向けのタイル上限とは別に持つ。
     # `asyncio.to_thread`の既定スレッドプールを1画面ぶんのタイルで埋めないための値。
     landcover_tile_max_concurrent: int = 4
-    basemap_rate_limit_per_minute: int = 300
     jma_tile_rate_limit_per_minute: int = 300
     gsi_tile_rate_limit_per_minute: int = 300
     # JMA動的タイルの定期プリウォーム間隔。JMA側の実更新間隔は5〜10分おき。

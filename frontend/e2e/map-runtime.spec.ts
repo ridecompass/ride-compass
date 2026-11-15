@@ -1,5 +1,12 @@
 import { expect, test, type Page } from "@playwright/test";
-import { MAIN_MAP_CANVAS, allLayersOn, installApiMocks, runGeneration, seedStoredState } from "./fixtures";
+import {
+  BASEMAP_ORIGIN,
+  MAIN_MAP_CANVAS,
+  allLayersOn,
+  installApiMocks,
+  runGeneration,
+  seedStoredState,
+} from "./fixtures";
 
 // 地図（MapLibre）が実ブラウザでしか見せない挙動（パターン4 観点2）。単体テストの代役地図は
 // Worker・描画・スタイル検証・`idle`・canvasへの実クリックを持たないため、ここでしか確かめられない。
@@ -48,7 +55,7 @@ async function probeFillRatio(page: Page): Promise<number> {
 // この色が1画素も出ない。DOMの状態・canvasの有無・サイズは、その状態でも変わらない。
 test("地図が描ける（Workerが動き、ソースの面が画素になる）", async ({ page }) => {
   await installApiMocks(page);
-  await page.route("**/api/basemap/**", (route) =>
+  await page.route(`${BASEMAP_ORIGIN}/**`, (route) =>
     route.fulfill({
       json: {
         version: 8,

@@ -41,8 +41,7 @@ paths:
 成功はDEBUG、失敗（例外 or `fields["result"]="error"`）はWARNINGが自動で出て、
 `/api/debug/stats`の統計（呼び出し数・エラー数・キャッシュヒット率・平均/最大所要時間）にも自動集計される。
 
-- カテゴリ名は`ドメイン:サービス名`形式（例: `msm:read`, `weather:jma-tile`,
-  `basemap:openfreemap`）。
+- カテゴリ名は`ドメイン:サービス名`形式（例: `msm:read`, `weather:jma-tile`）。
 - キャッシュを挟む場合は`fields["cache"] = "hit" / "miss"`を必ず設定する。
 - 失敗は`fields["result"] = "error"`で示す（例外を捕まえて倒すときは下の`mark_failed`）。集計が失敗として
   数えるのはこれと捕まえずに送り出した例外だけで、ほかは成功に数える。`"ok"`等の状態は、ログに
@@ -58,7 +57,7 @@ paths:
   `tile_persistent_cache.py`（ディスクI/O）は`log_external_call`を経由せず、障害を捕まえずに送り出す——`feature_material_cache.py`を
   読む材料のサービス（`services/feature_materials.py`）が`log_external_call`で囲み、そちらがhit/missと失敗を
   数えるため、下の層で二重に数えない。`tile_cache.py`（タイルの生バイトのディスクキャッシュ）も同じ形で、hit/missと失敗は
-  読むクライアント（`basemap_client.py`等）の`log_external_call`が数える。
+  読むクライアント（`gsi_tile_client.py`等）の`log_external_call`が数える。
 
 ### 429拒否 → `record_rate_limit_rejection`
 

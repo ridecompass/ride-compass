@@ -136,7 +136,6 @@ from app.domain.display_palette import (
     resolved_display_axes,
 )
 from app.api.routers.gsi_tile import RELIEF_TILE_URL, TERRAIN_TILE_URL
-from app.api.cache_policy import BASEMAP
 from app.domain.gsi_tiles import RELIEF_ATTRIBUTION, RELIEF_MAX_ZOOM, TERRAIN_MAX_ZOOM
 from app.domain.terrain_rgb import TERRAIN_RGB_BASE_M, TERRAIN_RGB_UNIT_M
 from app.domain.landcover import (
@@ -512,8 +511,6 @@ def main() -> None:
             "amedas_seconds": AMEDAS_REFRESH_INTERVAL_MINUTES * 60,
             "jma_tile_index_seconds": Settings.model_fields["jma_tile_prewarm_interval_minutes"].default * 60,
             "msm_seconds": MSM_UPDATE_INTERVAL_SECONDS,
-            # 基礎地図のタイルをブラウザが持つ時間。管理画面のタイルキャッシュの消去が各利用者の画面へ届くまでの遅れ。
-            "basemap_browser_cache_seconds": BASEMAP.max_age_seconds,
         },
     )
     # 土地被覆のクラス（画素値・割合列・表示名・色）。地図タイルの塗りと同じレジストリから

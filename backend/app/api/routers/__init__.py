@@ -8,7 +8,6 @@ from fastapi import APIRouter
 
 from app.api.routers import (
     client_config,
-    basemap,
     db_status,
     debug_admin,
     derived_database,
@@ -33,7 +32,6 @@ api_router.include_router(routes.router)
 api_router.include_router(weather.router)
 api_router.include_router(place_search.router)
 api_router.include_router(region.router)
-api_router.include_router(basemap.router)
 api_router.include_router(jma_tile.router)
 api_router.include_router(gsi_tile.router)
 api_router.include_router(tuning_admin.router)

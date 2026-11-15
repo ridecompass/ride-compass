@@ -71,24 +71,22 @@ def tile_response(content: bytes, media_type: str = MVT_CONTENT_TYPE) -> Respons
 class UpstreamReplies:
     """上流から中継する配信元の、上流に無い（404）ときの応答（取得の失敗は`api/failure_replies.py`が502にする）。"""
 
-    not_found_detail: str
-    #: この404をブラウザに持たせる時間。Noneは`Cache-Control`を付けない（ミドルウェアは2xxにしか付けない）。
-    not_found_policy: CachePolicy | None
+    #: この404をブラウザに持たせる時間。
+    not_found_policy: CachePolicy
 
     def found(self, result: T | UpstreamNotFound) -> T:
         """取れた中身。上流に無いは404として送出する（配信元が持たない正常系で、上流障害の502と分ける）。"""
         if isinstance(result, UpstreamNotFound):
-            headers = None if self.not_found_policy is None else {"Cache-Control": self.not_found_policy.header()}
-            raise HTTPException(status_code=404, detail=self.not_found_detail, headers=headers)
+            raise HTTPException(
+                status_code=404,
+                detail="指定されたタイルは存在しません",
+                headers={"Cache-Control": self.not_found_policy.header()},
+            )
         return result
 
 
-_TILE_NOT_FOUND_DETAIL = "指定されたタイルは存在しません"
-
-#: 基礎地図の部品（書体の一部等）。
-BASEMAP_REPLIES = UpstreamReplies("指定されたリソースは存在しません", None)
-GSI_TILE_REPLIES = UpstreamReplies(_TILE_NOT_FOUND_DETAIL, GSI_TILE_NOT_FOUND)
+GSI_TILE_REPLIES = UpstreamReplies(GSI_TILE_NOT_FOUND)
 #: 気象庁の、404が確定した事実のパス（`infrastructure/jma_tile_paths.py: is_final_absence`）。
-JMA_TILE_REPLIES = UpstreamReplies(_TILE_NOT_FOUND_DETAIL, JMA_TILE_NOT_FOUND)
+JMA_TILE_REPLIES = UpstreamReplies(JMA_TILE_NOT_FOUND)
 #: 気象庁の、配信前にも404を返すパス。
-JMA_NOT_YET_DELIVERED_REPLIES = UpstreamReplies(_TILE_NOT_FOUND_DETAIL, JMA_NOT_YET_DELIVERED)
+JMA_NOT_YET_DELIVERED_REPLIES = UpstreamReplies(JMA_NOT_YET_DELIVERED)

@@ -1,9 +1,9 @@
 import * as maplibregl from "maplibre-gl";
 import type { Map as MapLibreMap } from "maplibre-gl";
 
+import { BASEMAP_STYLE_URL } from "@/features/map/basemapStyle";
 import { TAP_TOLERANCE_PX } from "@/features/map/MapView/mapGestures";
 import { configureMaplibreWorker } from "@/features/map/maplibreWorker";
-import { mapStyleUrl } from "@/features/map/regionApi";
 import type { MapViewport } from "@/features/map/view/mapLook";
 import { debugLog } from "@/lib/debugLog";
 import { mapDisplay } from "@/types/generated/mapDisplay";
@@ -32,7 +32,7 @@ export function createBaseMap({
   configureMaplibreWorker();
   const map = new maplibregl.Map({
     container,
-    style: mapStyleUrl(),
+    style: BASEMAP_STYLE_URL,
     center,
     zoom,
     // 地図は傾けない（奥へ倒れると道とルートが読みにくい）。回すのは使うので、回す操作は残す。
