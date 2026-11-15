@@ -54,7 +54,7 @@ export default function GridPointToday({ today, error, mapBearingDeg }: GridPoin
   }
 
   const hours = today.times.map((time) => `${jstParts(parseJstLocalValue(time)).hour}時`);
-  const previousRunFrom = today.times.findIndex((time) =>
+  const showsPreviousRun = today.times.some((time) =>
     isPreviousRunTime(parseJstLocalValue(time), today.latest_run_end),
   );
 
@@ -145,10 +145,8 @@ export default function GridPointToday({ today, error, mapBearingDeg }: GridPoin
           </tbody>
         </table>
       </div>
-      {previousRunFrom >= 0 && (
-        <p className={cn(textVariants({ variant: "warning" }), "mt-1")}>
-          {previousRunNotice(`${hours[previousRunFrom]}から先`)}
-        </p>
+      {showsPreviousRun && (
+        <p className={cn(textVariants({ variant: "warning" }), "mt-1")}>{previousRunNotice(today.latest_run_end)}</p>
       )}
       <p className={cn(textVariants({ variant: "note" }), "mt-1")}>{mapDisplay.modelValueDisclaimer}</p>
     </section>

@@ -66,18 +66,15 @@ def set_by_key(key: tuple, value: Any, *, expire: float) -> None:
     """任意のタプルキーで書き、`expire`（秒）で失効させる。"""
     cache().set(key, value, expire=expire)
 
+
 def delete_namespace(namespace: str) -> None:
     """先頭の要素が`namespace`の鍵を全部消す。
 
-    鍵を全部読み終えてから消す（読みながら消すと、読み進める位置が消した分だけずれる）。置き場の障害は警告だけにする——
-    消せなければ失効か容量の上限が退避するまで残るだけで、配信は止めない。
+    鍵を全部読み終えてから消す（読みながら消すと、読み進める位置が消した分だけずれる）。
     """
-    try:
-        stale = [key for key in cache().iterkeys() if isinstance(key, tuple) and key[:1] == (namespace,)]
-        for key in stale:
-            cache().delete(key)
-    except DISK_STORE_ERRORS as exc:  # 置き場の障害は、消さずに残すことへ倒す
-        logger.warning("tile persistent cache delete failed namespace=%s error=%r", namespace, exc)
+    stale = [key for key in cache().iterkeys() if isinstance(key, tuple) and key[:1] == (namespace,)]
+    for key in stale:
+        cache().delete(key)
 
 
 async def get_tile_entry(key: tuple) -> Any | None:
