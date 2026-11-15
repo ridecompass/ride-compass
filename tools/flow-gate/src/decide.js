@@ -101,9 +101,9 @@ function notice(f, status, hollow) {
 const unboundText = (names) => `本文の ${names.join("・")} が行き先を名指していない`;
 const hollowText = (conds) => `完了の条件 ${conds.map((c) => `「${c.text.slice(0, 20)}」`).join("・")} の見る所と要点に、埋めていない印が残る`;
 
-// 入口で採否を問う issue: Claude が起こした issue（種類によらない）。子と分割元のある切り出しは、採否を親か元から受け継ぐ。
-// 開発機で持つもの（ユーザーがチャットで頼んだ作業）と、ほかの issue の前提に張った対話作業（採否を前提にした元から継ぐ）は問わない。
-export const adoptable = (f, config) => f.author === config.claude && !f.parent && !f.origin && !f.dev && !(f.dialog && f.blocks);
+// 入口で採否を問う issue: Claude が起こした issue は、例外なく問う。Claude の裁量（分けるか・分割元を付けるか・開発機で持つか）では外れない。
+// 外れるのは、親か分割元でユーザーが「分割」の問いに続けると答え、その問いに並べた題名で起こした子・切り出しだけ（splitApproved）。
+export const adoptable = (f, config) => f.author === config.claude;
 
 function status(f, config) {
   // 完了は、完成（完了の条件が全部済んだ）か見送りでだけ受ける。条件が残ったまま完成で閉じたら、誰が閉じても開き直して決め直す。
@@ -121,7 +121,7 @@ function status(f, config) {
     : { status: f.runs.some((r) => r.kind === "実装") ? "実装" : "検証", cancel: f.runs.slice(1).map((r) => r.id) };
   if (f.status === "保留") return { status: "保留" }; // ユーザーが置いた保留は、ユーザーが出すまで保つ
   // 入口: 採否を問う issue（adoptable）には、一度だけ問う。
-  if (adoptable(f, config) && !need(f, "adoptAsked")) return { status: "回答", ask: "採否" };
+  if (adoptable(f, config) && !need(f, "splitApproved") && !need(f, "adoptAsked")) return { status: "回答", ask: "採否" };
   // ユーザーが書いた文（答えの文・コメント）を Claude がまだ読んでいなければ、Claude の番にする（閉じていれば開き直す）。ゲートは文の中身を読まない。
   if (f.unread) return { status: "実装" };
   // 答えの無い問いは、答えを待つ。

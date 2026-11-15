@@ -37,7 +37,7 @@ description: "タスクを実装担当・検証担当として進める手順（
 3. issue の本文とコメントを読む（`GH_TOKEN=$FLOW_BOT_TOKEN gh issue view <番号> -R ridecompass/ride-compass-tasks --json title,body,comments --jq '.title, .body, (.comments[] | "--- \(.author.login) \(.createdAt)", .body)'`。
    `--comments` は本文を出さない）。下書きへ戻されたタスクなら、Pull Request のコメントも読む。CLAUDE.md と規約のとおりに作る。
    - ユーザーが書いた文（答えの文・コメント）のうち、前の担当の終わりの「読み始め」より後のものを読む。直してほしいこと・同じ要望の足し分なら
-     完了の条件に行を足して作り、別の要望なら切り出し（.claude/skills/file-issue/SKILL.md「分ける」）、問いなら答える。読んだ文の言葉は、
+     完了の条件に行を足して作り、別の要望なら「分割」の問いを出してから切り出し（.claude/skills/file-issue/SKILL.md「分ける」）、問いなら答える。読んだ文の言葉は、
      本文の「ユーザーの言葉」に行き先つきで足す（.claude/skills/file-issue/SKILL.md「issue の形」の「ユーザーの言葉の行き先」）。
    - 作る前に、答えの無い判断（方針・目的の読み・見た目の案・本番への書き込み・長く残る形。長く残る形は
      .claude/skills/file-issue/SKILL.md「issue の形」の「長く残る形は、作る前に合意する」の設計の項を書いてから）が残っていれば、問いに要る分だけ調べて、作らずに問う
@@ -45,7 +45,7 @@ description: "タスクを実装担当・検証担当として進める手順（
    - 自分の直す場所で開いた issue を探し、前後関係と組を張る（.claude/skills/file-issue/SKILL.md「前後関係と組」）。
    - 開発機にしか無いもので確かめる完了の条件は、同じことをテスト DB・CI で確かめる形へ書き換え、経緯に理由を書く。確かめる範囲が
      狭まるなら書き換えず、`docs/conventions/flow.md`「担当」の「開発機でしかできない作業」のとおり返す。
-   - 1つの Pull Request に収まらないと分かったら、.claude/skills/file-issue/SKILL.md「分ける」のとおり約束の行を移管して終える（約束が動いたので、
+   - 1つの Pull Request に収まらないと分かったら、先に親で「分割」の問いを出して止まり、続けると答えが来てから、.claude/skills/file-issue/SKILL.md「分ける」のとおり約束の行を移管して終える（約束が動いたので、
      ゲートは絞った残りを次の実装担当へ渡す。docs/conventions/flow.md「issue のライフサイクル」の実行の終わり）。
    - マージのあとの master の CI が落ちても、このタスクの実装担当には戻らない（ゲートが「master の検査が落ちている」の issue を起こし、その担当が直す。
      `docs/conventions/flow.md`「ステータスと割り当て」）。その issue の担当は、master の最新のコミットの実行の落ちたジョブ（`gh run list -R ridecompass/ride-compass --branch master`）を読み、
