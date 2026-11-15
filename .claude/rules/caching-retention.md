@@ -45,7 +45,7 @@ backendは1プロセスでしか正しく動かない（[cross-cutting-infrastru
 
 ## Redisへ持つときは`redis_json_cache`を使う
 
-可用性の確認・クライアント取得・`log_external_call`での計測・失敗を未キャッシュ扱いにする・サーキットブレーカーへの記録は、
+クライアント取得と`log_external_call`での計測は、
 `redis_json_cache.py: get_json`/`redis_json_cache.py: set_json`が内包している。値がバイナリなら
 `redis_json_cache.py: get_bytes`/`redis_json_cache.py: set_bytes`を使う（base64にしてJSONへ包まない）。キーごとの項目を
 まとめて書くなら、Hashの`redis_json_cache.py: get_hash`/`redis_json_cache.py: set_hashes`（pipelineで1往復）を使う。**呼び出し元が持つのは
@@ -68,7 +68,7 @@ await set_json(key, payload, ttl_seconds=TTL, category="cache:xxx")
 - 骨格に無い一括読み書きが必要（`mget`で1リクエストに数百キーを引く等）
 - キーの生存期間を個別に操作する必要がある（TTLの付与以外のRedis機能を使う）
 
-例外に当たる場合も、原則3（失敗の記録）と原則2（fail-open）は必ず満たす。
+例外に当たる場合も、原則2（障害を捕まえずに送り出し、失敗として記録する）は必ず満たす。
 
 ## TTLの決め方
 
