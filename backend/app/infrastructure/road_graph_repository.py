@@ -197,16 +197,18 @@ NETWORK_SQL_SOURCES = (
 
 _EDGE_GEOMETRIES_SQL = text("""
 SELECT re.osm_way_id, re.segment_index, re.from_node_id, re.to_node_id,
-       re.distance_m, ST_AsBinary(re.geom) AS wkb
+       re.distance_m, ST_AsBinary(re.geom) AS wkb, ee.elevation_profile_m, ee.elevation_profile_along_m
 FROM unnest(CAST(:way_ids AS bigint[]), CAST(:segment_indexes AS int[]))
      AS ids(osm_way_id, segment_index)
 JOIN road_edges re
   ON re.osm_way_id = ids.osm_way_id AND re.segment_index = ids.segment_index
+LEFT JOIN edge_elevation ee
+  ON ee.osm_way_id = ids.osm_way_id AND ee.segment_index = ids.segment_index
 """)
 
 
 def _rows_to_directed_edges(rows, wanted: dict[tuple[int, int], list[bool]]) -> dict[str, LeanEdge]:
-    """ジオメトリ付きの`LeanEdge`。逆向きは形状点列を逆順にする。
+    """ジオメトリと断面の点付きの`LeanEdge`。逆向きは形状点列と断面の点を逆順にし、断面の位置を終わりから測り直す。
 
     `shapely.from_wkb`のバッチAPIで一括デコードする（GEOS呼び出しのループをPythonでは
     なくC側で回す）。
@@ -216,6 +218,9 @@ def _rows_to_directed_edges(rows, wanted: dict[tuple[int, int], list[bool]]) -> 
     edges: dict[str, LeanEdge] = {}
     for row, line in zip(rows, lines):
         points = [[lat, lon] for lon, lat in line.coords]
+        elevations = row.elevation_profile_m or []
+        profile = tuple(zip((float(p) for p in along_fractions(row.elevation_profile_along_m or (), len(elevations))),
+                            elevations))
         for forward in wanted.get((row.osm_way_id, row.segment_index), ()):
             from_id, to_id = ((row.from_node_id, row.to_node_id) if forward
                               else (row.to_node_id, row.from_node_id))
@@ -223,6 +228,7 @@ def _rows_to_directed_edges(rows, wanted: dict[tuple[int, int], list[bool]]) -> 
             edges[key] = LeanEdge(
                 edge_id=key, from_node_id=node_key(from_id), to_node_id=node_key(to_id),
                 geometry=points if forward else list(reversed(points)),
+                profile=profile if forward else tuple((1.0 - p, e) for p, e in reversed(profile)),
                 distance_m=row.distance_m, osm_way_id=row.osm_way_id,
                 segment_index=row.segment_index, forward=forward,
             )

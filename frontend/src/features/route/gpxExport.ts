@@ -10,6 +10,9 @@ export const MAX_GPX_TRACK_POINTS = 1000;
 // 間引きで元の折れ線からずれてよい距離（m）。読み込んだ側のナビが描く線として、この程度の
 // ずれは道の形として見分けられない。上限点数に収まらない場合はこの値を倍にして数え直す。
 const SIMPLIFY_TOLERANCE_M = 3;
+// 間引きで元の断面（横が道のり、縦が標高）からずれてよい高さ（m）の始まり。断面の点は道のまっすぐな所にあり、横の形だけで
+// 間引くと真っ先に落ちるので、断面の形からも残す点を選ぶ。上限点数に収まらない場合は横の許容と一緒に倍にする。
+const SIMPLIFY_ELEVATION_TOLERANCE_M = 1;
 
 /** 緯度経度を、座標列の中央緯度を基準にした局所平面（m）へ落とす。緯度経度のまま測ると、東西の曲がりだけが残りやすくなる。 */
 function toLocalPlane(coordinates: readonly GeoJSON.Position[]): PlanePoint[] {
@@ -58,17 +61,43 @@ function keepingTolerances(points: readonly PlanePoint[], minToleranceM: number)
   return tolerances;
 }
 
-/** 座標列を`MAX_GPX_TRACK_POINTS`以下へ間引く。残す点は折れ線の形から選ぶ（両端を結んだ線分からのずれが
- * 大きい点を残す）ため、残る点の間隔より短い区間に収まった曲がりも直線へ潰れない。
+/** 標高を持つ点の、断面（横が道のり、縦が標高）の上で残す許容（`keepingTolerances`の値）。標高を持たない点は0（横の形だけで決める）。 */
+function elevationKeepingTolerances(coordinates: readonly GeoJSON.Position[], distancesM: readonly number[]): number[] {
+  const withElevation = coordinates.flatMap((position, index) => (position.length > 2 ? [index] : []));
+  const tolerances = new Array<number>(coordinates.length).fill(0);
+  if (withElevation.length < 2) return tolerances;
+  const profile = withElevation.map((index) => ({ x: distancesM[index], y: coordinates[index][2] }));
+  keepingTolerances(profile, SIMPLIFY_ELEVATION_TOLERANCE_M).forEach((tolerance, i) => {
+    tolerances[withElevation[i]] = tolerance;
+  });
+  return tolerances;
+}
+
+/** 座標列を`MAX_GPX_TRACK_POINTS`以下へ間引く。残す点は折れ線の形と断面の形から選ぶ（両端を結んだ線分からのずれが
+ * 大きい点を残す）ため、残る点の間隔より短い区間に収まった曲がりや坂の折れ目も潰れない。
  * `MAX_GPX_TRACK_POINTS`以下ならそのまま返す。 */
-function simplifyCoordinates(coordinates: readonly GeoJSON.Position[]): GeoJSON.Position[] {
+function simplifyCoordinates(
+  coordinates: readonly GeoJSON.Position[],
+  distancesM: readonly number[],
+): GeoJSON.Position[] {
   if (coordinates.length <= MAX_GPX_TRACK_POINTS) return [...coordinates];
-  const tolerances = keepingTolerances(toLocalPlane(coordinates), SIMPLIFY_TOLERANCE_M);
+  const planeTolerances = keepingTolerances(toLocalPlane(coordinates), SIMPLIFY_TOLERANCE_M);
+  const elevationTolerances = elevationKeepingTolerances(coordinates, distancesM);
   // 両端は常に残るため、許容するずれを増やし続ければ2点まで減らせる（＝必ず収まる）。
-  for (let tolerance = SIMPLIFY_TOLERANCE_M; ; tolerance *= 2) {
-    const kept = tolerances.map((keptBelow) => keptBelow > tolerance);
+  for (let scale = 1; ; scale *= 2) {
+    const kept = planeTolerances.map(
+      (keptBelow, index) =>
+        keptBelow > SIMPLIFY_TOLERANCE_M * scale || elevationTolerances[index] > SIMPLIFY_ELEVATION_TOLERANCE_M * scale,
+    );
     if (kept.filter(Boolean).length <= MAX_GPX_TRACK_POINTS) return coordinates.filter((_, index) => kept[index]);
   }
+}
+
+/** 点1つ。標高のある点（RFC 7946 の3つ目）は`<ele>`を持つ（GPX の`<ele>`も点ごとに任意）。 */
+function trackPoint([lon, lat, elevation]: GeoJSON.Position): string {
+  return elevation === undefined
+    ? `      <trkpt lat="${lat}" lon="${lon}"/>`
+    : `      <trkpt lat="${lat}" lon="${lon}"><ele>${elevation}</ele></trkpt>`;
 }
 
 function escapeXmlText(value: string): string {
@@ -77,12 +106,12 @@ function escapeXmlText(value: string): string {
 
 /** Garminは`<rte>`（ルート点）を「コース」としてのみ取り込め、`<trk>`（トラック点）は
  * 「コース」「アクティビティ」の両方に取り込める。Suuntoアプリは`<trk>`以外
- * （`<rte>`・単独の`<wpt>`）を取り込めない。両対応のため`<trk>`固定にする。標高・時刻は
- * RouteCandidateが点単位で持たないため含めない（候補全体の集約値のみ）。 */
+ * （`<rte>`・単独の`<wpt>`）を取り込めない。両対応のため`<trk>`固定にする。標高は点ごとに書き、時刻は
+ * RouteCandidateが点単位で持たないため含めない。 */
 function buildGpxDocument(candidate: RouteCandidate): string {
-  const coordinates = simplifyCoordinates(candidate.geometry.coordinates);
+  const coordinates = simplifyCoordinates(candidate.geometry.coordinates, candidate.point_distances_m);
   const name = escapeXmlText(`RideCompass ${candidate.direction_label} ${candidate.distance_km.toFixed(1)}km`);
-  const trackPoints = coordinates.map(([lon, lat]) => `      <trkpt lat="${lat}" lon="${lon}"/>`).join("\n");
+  const trackPoints = coordinates.map(trackPoint).join("\n");
   return [
     '<?xml version="1.0" encoding="UTF-8"?>',
     '<gpx version="1.1" creator="RideCompass" xmlns="http://www.topografix.com/GPX/1/1">',

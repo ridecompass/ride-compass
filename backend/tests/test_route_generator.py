@@ -54,7 +54,7 @@ def _candidate(key: str, penalty: float = 10.0, **fields) -> EvaluatedRoute:
     と目的地の並び（費用）が同じ順になる。戦略層は名前を付け替えうるので、どの候補かは`edge_ids`で見分ける。"""
     return EvaluatedRoute(**{
         "direction_label": f"方位-{key}", "distance_km": 1.0, "geometry": {"type": "LineString", "coordinates": []},
-        "elevation_gain_m": None, "segments": [_segment()], "estimated_duration_seconds": 100.0,
+        "point_distances_m": [], "elevation_gain_m": None, "segments": [_segment()], "estimated_duration_seconds": 100.0,
         "wind_previous_run_from": None,
         "cost_seconds": 100.0 + penalty, "penalty": PenaltyBreakdown(axis_seconds={"a": penalty}, preferred_seconds=0.0, avoided_seconds=0.0),
         "facts": RouteFacts(axes={}),

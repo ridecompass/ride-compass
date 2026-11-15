@@ -1,3 +1,4 @@
+from bisect import bisect_left, bisect_right
 from collections import defaultdict
 from dataclasses import dataclass
 
@@ -9,7 +10,7 @@ from pydantic import WithJsonSchema, computed_field
 from app.domain.attributes import ElevationAttribute
 from app.domain.lens_total import lens_values_with_total
 from app.domain.msm_grid import ForecastTime
-from app.domain.geo import Latitude, Longitude, length_weighted_mean
+from app.domain.geo import Latitude, Longitude, haversine_distance_km_pairs, length_weighted_mean
 from app.domain.gradient import GRADIENT_VALUE_DECIMALS
 from app.domain.graph import LeanEdge
 from app.domain.strict_model import StrictModel
@@ -28,9 +29,9 @@ WIND_MS_DECIMALS = 1
 ROAD_BEARING_DEG_DECIMALS = 0
 
 
-# GeoJSONのLineString（座標は[経度, 緯度]）。契約には形を載せるが、検証はしない——数千点の座標を
-# 組み立てのたびにたどることになる。形は組み立てる側（`_concat_segment_geometries`・
-# `concat_edge_geometries`）が決める。
+# GeoJSONのLineString。点は RFC 7946 の位置で、標高のある点は[経度, 緯度, 標高（m）]、標高の無い点は[経度, 緯度]
+# （https://www.rfc-editor.org/rfc/rfc7946 の 3.1.1。標高は点ごとに任意の3つ目）。契約には形を載せるが、検証はしない——数千点の
+# 座標を組み立てのたびにたどることになる。形は組み立てる側（`_concat_segment_geometries`・`concat_edge_geometries`）が決める。
 LineStringGeometry = Annotated[
     dict[str, Any],
     WithJsonSchema(
@@ -155,6 +156,9 @@ class RouteSegmentDetail(StrictModel):
     """
 
     geometry: LineStringGeometry | None = None
+    # `geometry.coordinates`の点ごとの、ルートの始まりからの道のり（m）。点と同じ並び（RFC 7946 は位置を3つより伸ばさない
+    # よう求めるので、点の4つ目にしない）。`geometry`が無ければNone。
+    point_distances_m: list[float] | None = None
     start_latitude: float
     start_longitude: float
     end_latitude: float
@@ -193,6 +197,7 @@ class EdgeSegment:
     `RouteSegmentDetail`が書き、ここには名前か形が違うものだけを書く。"""
 
     geometry: dict | None
+    point_distances_m: list[float] | None
     start_latitude: float
     start_longitude: float
     end_latitude: float
@@ -223,7 +228,7 @@ RouteKind = Literal["loop", "destination", "spliced"]
 class RouteTurn(StrictModel):
     """経路が分かれ道で曲がる所。画面が走行中の曲がる所の案内に使う。
 
-    `distance_km`は始点からその点までの道のりで、区間の`distance_km`を始点から足した値と同じ物差し（`along_route_km`）。
+    `distance_km`は始点からその点までの道のりで、線の点ごとの道のり（`point_distances_m`）と同じ物差し。
     """
 
     distance_km: float
@@ -242,6 +247,9 @@ class EvaluatedRoute(StrictModel):
     direction_label: str
     distance_km: float
     geometry: LineStringGeometry
+    # `geometry.coordinates`の点ごとの、ルートの始まりからの道のり（m）。点と同じ並び。区間の始まり・曲がる所・経由地の
+    # 道のりも同じ物差し（`concat_edge_geometries`が作る）。
+    point_distances_m: list[float]
     elevation_gain_m: float | None
     segments: list[RouteSegmentDetail]
     # 所要時間の見積もり（秒）。区間の走行時間（`domain/cycling_speed.py`の走行モデルが巡航速度と区間の条件から求めた
@@ -294,7 +302,7 @@ class EvaluatedRoute(StrictModel):
     # 経路が分かれ道で曲がる所（左折・右折・Uターン）を経路の順に。分かれ道の無い点の曲がりと、浅い分岐で
     # いちばんまっすぐに近い道へ進む所は入れない（`domain/turn_structure.py: turns_along`）。`edge_ids`が空の候補では空のまま。
     turns: list[RouteTurn]
-    # 置いた経由地を通る所の始点からの道のり（km）を、置いた順に。区間の始まりの道のりと同じ物差し（`along_route_km`）。
+    # 置いた経由地を通る所の始点からの道のり（km）を、置いた順に。線の点ごとの道のり（`point_distances_m`）と同じ物差し。
     # 区間の乗り換えで組んだ経路が置いた経由地を1つでも通らなければ空のまま（何番目が何番目の経由地かを崩さないため、一部だけ抜かない）。
     waypoint_distances_km: list[float]
 
@@ -320,13 +328,11 @@ class RouteCandidate(EvaluatedRoute):
     network_revision: int | None = None
 
 
-def along_route_km(distances_km: Iterable[float]) -> list[float]:
-    """始点から、並んだ区間それぞれの始まりまでの道のり（km）と、末尾に終わりまでの道のり。区間の距離を応答の桁へ丸めてから
-    積むので、区間の`distance_km`を始点から足した値と同じ物差しになる（区間の始まりの道のりと曲がる所の道のりがこれを読む）。"""
-    along = [0.0]
-    for distance_km in distances_km:
-        along.append(round(along[-1] + round(distance_km, DISTANCE_KM_DECIMALS), DISTANCE_KM_DECIMALS))
-    return along
+def along_route_km(point_distances_m: list[float], offsets: list[int]) -> list[float]:
+    """始点から、並んだEdgeそれぞれの始まりまでの道のり（km）と、末尾に終わりまでの道のり。線の点ごとの道のり
+    （`concat_edge_geometries`）をEdgeの境界の点で読むので、線の点と同じ物差しになる（区間の始まり・曲がる所・経由地の
+    道のりがこれを読む）。線に点が無ければ0。"""
+    return [point_distances_m[offset] / 1000 if point_distances_m else 0.0 for offset in offsets]
 
 
 # エンジンが返すsegmentsはEdge単位（交差点間）でAPIペイロード・フロント描画コストが
@@ -360,21 +366,32 @@ def aggregate_segments_into_bins(segments: list[EdgeSegment], slices: Sequence[s
     return [_merge_segment_bin(segments[chunk]) for chunk in slices]
 
 
-def _append_continuing(coordinates: list[list[float]], points: list[list[float]]) -> None:
-    """`points`を`coordinates`へ継ぐ。先頭の点が前の終点と同じなら重ねない。"""
-    if coordinates and points and coordinates[-1] == points[0]:
-        points = points[1:]
-    coordinates.extend(points)
+def _continues(coordinates: list[list[float]], points: list[list[float]]) -> bool:
+    """`points`の先頭の点が、`coordinates`の終点と同じ位置か（経度・緯度で比べる。境界の点は前後の道で標高が違いうる）。"""
+    return bool(coordinates and points) and coordinates[-1][:2] == points[0][:2]
+
+
+def _concat_segment_lines(segments: list[EdgeSegment]) -> tuple[list[list[float]], list[float]]:
+    """区間の線の点と点ごとの道のりを、境界の点を重ねずにつなぐ。"""
+    coordinates: list[list[float]] = []
+    distances: list[float] = []
+    for segment in segments:
+        if segment.geometry is None or segment.point_distances_m is None:
+            continue
+        skip = 1 if _continues(coordinates, segment.geometry["coordinates"]) else 0
+        coordinates.extend(segment.geometry["coordinates"][skip:])
+        distances.extend(segment.point_distances_m[skip:])
+    return coordinates, distances
 
 
 def _concat_segment_geometries(segments: list[EdgeSegment]) -> dict | None:
-    coordinates: list[list[float]] = []
-    for segment in segments:
-        if segment.geometry is not None:
-            _append_continuing(coordinates, segment.geometry["coordinates"])
-    if len(coordinates) < 2:
-        return None
-    return {"type": "LineString", "coordinates": coordinates}
+    coordinates, _ = _concat_segment_lines(segments)
+    return {"type": "LineString", "coordinates": coordinates} if len(coordinates) >= 2 else None
+
+
+def _concat_segment_point_distances(segments: list[EdgeSegment]) -> list[float] | None:
+    coordinates, distances = _concat_segment_lines(segments)
+    return distances if len(coordinates) >= 2 else None
 
 
 
@@ -433,6 +450,7 @@ def merge_average_gradients(segments: Sequence[EdgeSegment]) -> float | None:
 #: ビンのフィールドと、ビンに入る区間の並びからその値を作る畳み方。`_merge_segment_bin`はこの表だけからビンを組み立てる。
 BIN_FIELD_MERGERS: dict[str, Callable[[list[EdgeSegment]], object]] = {
     "geometry": _concat_segment_geometries,
+    "point_distances_m": _concat_segment_point_distances,
     "start_latitude": lambda segments: segments[0].start_latitude,
     "start_longitude": lambda segments: segments[0].start_longitude,
     "end_latitude": lambda segments: segments[-1].end_latitude,
@@ -472,24 +490,114 @@ def _merge_segment_bin(segments: list[EdgeSegment]) -> RouteSegmentDetail:
     return RouteSegmentDetail.model_validate({name: merge(segments) for name, merge in BIN_FIELD_MERGERS.items()})
 
 
-def concat_edge_geometries(edges: list[LeanEdge]) -> tuple[dict, list[int]]:
-    """経路上のEdge群を、ひとつながりのGeoJSON LineStringとEdgeの境界点の位置へ変換する。
+#: 線の点ごとの道のり（m）の桁。
+POINT_DISTANCE_M_DECIMALS = 1
+#: 断面の点を線へ差し込むときの経度・緯度の桁（約1cm）。
+_INSERTED_DEGREE_DECIMALS = 7
+#: 道の長さに対する位置がこれ以下しか違わない断面の点と形の点は、同じ点とみなす（単精度の丸めの幅）。
+_SAME_POSITION = 1e-6
+
+
+def _shape_positions(edges: list[LeanEdge]) -> list[list[float]]:
+    """Edgeごとの、道の形の点の道の長さに対する位置（点の間の球面の距離の割合。始まりが0、終わりが1）。全部のEdgeの点を
+    1回のnumpy演算で測って割る（Edgeごとに測ると、ルート1本で数千回の小さな配列の演算になる）。"""
+    counts = np.array([len(edge.geometry) for edge in edges], dtype=np.int64)
+    if counts.sum() == 0:
+        return [[] for _ in edges]
+    lats = np.array([lat for edge in edges for lat, _ in edge.geometry])
+    lons = np.array([lon for edge in edges for _, lon in edge.geometry])
+    along = np.concatenate([[0.0], np.cumsum(haversine_distance_km_pairs(lats[:-1], lons[:-1], lats[1:], lons[1:]))])
+    first = np.cumsum(counts) - counts  # Edgeの始まりの点の番号（前のEdgeの終わりとの間は、引き算で落ちる）
+    # 点の無いEdgeの番号は点の並びの外を指しうるので、並びの中へ収める（その値は点の数0で繰り返されず、使われない）。
+    first_at = np.minimum(first, len(along) - 1)
+    last_at = np.minimum(np.maximum(first + counts - 1, first), len(along) - 1)
+    total = np.repeat(along[last_at] - along[first_at], counts)
+    within = np.arange(counts.sum()) - np.repeat(first, counts)
+    even = within / np.repeat(np.maximum(counts - 1, 1), counts)  # 長さ0のEdgeは等しい間隔
+    with np.errstate(divide="ignore", invalid="ignore"):
+        at = np.where(total > 0, (along - np.repeat(along[first_at], counts)) / total, even)
+    at[np.repeat(counts > 0, counts) & (within == 0)] = 0.0
+    at[within == np.repeat(counts - 1, counts)] = 1.0
+    flat = at.tolist()
+    return [flat[start:start + count] for start, count in zip(first.tolist(), counts.tolist())]
+
+
+def _between(positions: list[float], values: list[float], at: float) -> float:
+    """位置の並び`positions`（昇順）の上の値の並び`values`を、位置`at`で直線に読む（範囲の外は端の値）。道1本の点の数個に
+    使うので`np.interp`を呼ばない（1回ごとに配列へ写す手間で、ルート1本の線の組み立てが数倍遅くなる）。"""
+    i = min(max(bisect_right(positions, at) - 1, 0), len(positions) - 2)
+    span = positions[i + 1] - positions[i]
+    t = min(max((at - positions[i]) / span, 0.0), 1.0) if span > 0 else 0.0
+    return values[i] + (values[i + 1] - values[i]) * t
+
+
+def edge_points(edge: LeanEdge, shape_at: list[float]) -> list[tuple[list[float], float]]:
+    """道1本の、走る向きに並べた線の点（RFC 7946 の位置）と、点ごとの道の長さに対する位置（始まりが0、終わりが1）。
+    `shape_at`は道の形の点の位置（`_shape_positions`）。
+
+    道の形の点（OSM の点。道の向きが変わる所にある）と断面の点（標高の折れ目にある。`LeanEdge.profile`）を位置の順に合わせる。
+    断面の点は形の上の同じ位置へ差し込み、形の点の標高は前後の断面の点の間を位置で直線に読む——どちらかの点の標高が無ければ、
+    その点は標高を持たない。
+    """
+    shape = edge.geometry
+    if not shape:
+        return []
+    lats = [lat for lat, _ in shape]
+    lons = [lon for _, lon in shape]
+    profile_at = [at for at, _ in edge.profile]
+
+    def elevation_at(at: float) -> float | None:
+        if len(profile_at) < 2:
+            return None
+        i = min(max(bisect_right(profile_at, at) - 1, 0), len(profile_at) - 2)
+        lower, upper = edge.profile[i][1], edge.profile[i + 1][1]
+        if lower is None or upper is None:
+            return None
+        return round(_between(profile_at[i:i + 2], [lower, upper], at), ELEVATION_M_DECIMALS)
+
+    points: dict[float, tuple[float, float, float | None]] = {
+        at: (lon, lat, elevation_at(at)) for at, lat, lon in zip(shape_at, lats, lons)}
+    for at, elevation_m in edge.profile:
+        j = bisect_left(shape_at, at)
+        nearest = min(shape_at[max(j - 1, 0):j + 1], key=lambda candidate: abs(candidate - at))
+        if abs(nearest - at) <= _SAME_POSITION:  # 断面の位置は単精度で持つので、形の点とわずかにずれうる
+            at = nearest
+        if at in points:
+            lon, lat, _ = points[at]
+        else:
+            lon = round(_between(shape_at, lons, at), _INSERTED_DEGREE_DECIMALS)
+            lat = round(_between(shape_at, lats, at), _INSERTED_DEGREE_DECIMALS)
+        points[at] = (lon, lat, None if elevation_m is None else round(elevation_m, ELEVATION_M_DECIMALS))
+    return [([lon, lat] if m is None else [lon, lat, m], at) for at, (lon, lat, m) in sorted(points.items())]
+
+
+def concat_edge_geometries(edges: list[LeanEdge]) -> tuple[dict, list[int], list[float]]:
+    """経路上のEdge群を、ひとつながりのGeoJSON LineStringと、Edgeの境界点の位置と、点ごとのルートの始まりからの道のり（m）へ
+    変換する。線の点は`edge_points`（形の点と断面の点を合わせ、標高を持つ）。点ごとの道のりは、Edgeの始まりまでの長さの和に、
+    Edgeの中の位置×Edgeの長さを足したもの。
 
     隣接するEdgeの境界点（前Edgeの終端＝次Edgeの始端）は重複させないため、**座標列だけ
     からはどこがEdgeの境目か復元できない**。Edge単位で決めた区間を地図へ帯として描く
     ために境界の位置を併せて返す。
 
     2つ目の戻り値は`len(edges) + 1`件で、`coordinates[offsets[i]:offsets[j] + 1]`が
-    Edge i〜j-1のひとつながりの形状になる。**同じ関数が両方を作る**——別々に組み立てると
+    Edge i〜j-1のひとつながりの形状になる。**同じ関数が線と境界の位置と道のりを作る**——別々に組み立てると
     ずれても型でも例外でも現れず、地図上で帯だけが1点ずれる。
     """
     coordinates: list[list[float]] = []
+    distances: list[float] = []
     offsets: list[int] = []
-    for edge in edges:
+    start_m = 0.0
+    for edge, shape_at in zip(edges, _shape_positions(edges)):
         offsets.append(max(len(coordinates) - 1, 0))
-        _append_continuing(coordinates, [[lon, lat] for lat, lon in edge.geometry])
+        points = edge_points(edge, shape_at)
+        skip = 1 if _continues(coordinates, [point for point, _ in points[:1]]) else 0
+        for point, at in points[skip:]:
+            coordinates.append(point)
+            distances.append(round(start_m + at * edge.distance_m, POINT_DISTANCE_M_DECIMALS))
+        start_m += edge.distance_m
     offsets.append(max(len(coordinates) - 1, 0))
-    return {"type": "LineString", "coordinates": coordinates}, offsets
+    return {"type": "LineString", "coordinates": coordinates}, offsets, distances
 
 
 def reverse_elevation_by_edge(

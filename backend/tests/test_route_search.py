@@ -71,13 +71,13 @@ from tests.search_graph_world import LINE_EDGES, LINE_NODES, build_all, make_gra
 # --------------------------------------------------------------------------------------
 
 
-def lean_edge(edge_id, *, geometry=None):
+def lean_edge(edge_id, *, geometry=None, profile=()):
     """探索用グラフの区間と同じく、`geometry`を省くと空のプレースホルダになる。端のNode・長さ・DBの区間の番号は
     ここを通るテストが読まないため、どの区間にも同じ値を入れる。"""
     return LeanEdge(
         edge_id=edge_id, from_node_id="n0", to_node_id="n1",
         geometry=[] if geometry is None else geometry, distance_m=100.0,
-        osm_way_id=1, segment_index=0, forward=True,
+        osm_way_id=1, segment_index=0, forward=True, profile=profile,
     )
 
 
@@ -104,7 +104,7 @@ def draft(distance_km, duration_seconds, cost_seconds):
     """並びの鍵が読む距離・所要時間・費用だけを持つ候補。ほかの欄は空。"""
     return EvaluatedRoute(
         direction_label="", distance_km=distance_km, geometry={"type": "LineString", "coordinates": []},
-        elevation_gain_m=None, segments=[], estimated_duration_seconds=duration_seconds, wind_previous_run_from=None,
+        point_distances_m=[], elevation_gain_m=None, segments=[], estimated_duration_seconds=duration_seconds, wind_previous_run_from=None,
         cost_seconds=cost_seconds,
         penalty=PenaltyBreakdown(axis_seconds={}, preferred_seconds=0.0, avoided_seconds=0.0),
         facts=RouteFacts(axes={}),
@@ -120,16 +120,33 @@ def draft(distance_km, duration_seconds, cost_seconds):
 
 def test_concat_edge_geometries_offsets_slice_back_to_each_edge():
     """隣接Edgeの境界点を二重に持たせない（線が同じ点で折り返して見える）ため、境界の位置は座標列からは
-    復元できない。offsetsが各Edgeの形状を切り出せること。"""
+    復元できない。offsetsが各Edgeの形状を切り出せ、点ごとの道のりは手前のEdgeの長さの和から積む。断面の無いEdgeの点は
+    標高を持たない（[経度, 緯度]）。"""
     edges = [
         lean_edge("e1", geometry=[[35.0, 139.0], [35.1, 139.1], [35.2, 139.2]]),
         lean_edge("e2", geometry=[[35.2, 139.2], [35.3, 139.3]]),
     ]
-    geometry, offsets = concat_edge_geometries(edges)
+    geometry, offsets, distances = concat_edge_geometries(edges)
     coordinates = geometry["coordinates"]
 
     assert coordinates[offsets[0]:offsets[1] + 1] == [[139.0, 35.0], [139.1, 35.1], [139.2, 35.2]]
     assert coordinates[offsets[1]:offsets[2] + 1] == [[139.2, 35.2], [139.3, 35.3]]
+    assert len(distances) == len(coordinates)
+    assert (distances[0], distances[offsets[1]], distances[-1]) == (0.0, 100.0, 200.0)
+
+
+def test_the_profile_points_are_inserted_into_the_line_with_their_elevation():
+    """断面の点は線の上の同じ位置へ差し込まれ、標高を持つ（RFC 7946 の3つ目）。形の点の標高は前後の断面の点の間を直線に
+    読み、前後のどちらかに標高が無ければ形の点は標高を持たない。道のりは道の中の位置×道の長さ。"""
+    edge = lean_edge("e1", geometry=[[35.0, 139.0], [35.0, 139.002]],
+                     profile=((0.0, 10.0), (0.25, 12.0), (0.5, None), (1.0, 20.0)))
+
+    geometry, _, distances = concat_edge_geometries([edge])
+
+    assert geometry["coordinates"] == [
+        [139.0, 35.0, 10.0], [pytest.approx(139.0005), pytest.approx(35.0), 12.0],
+        [pytest.approx(139.001), pytest.approx(35.0)], [139.002, 35.0, 20.0]]
+    assert distances == [0.0, 25.0, 50.0, 100.0]
 
 
 # --------------------------------------------------------------------------------------

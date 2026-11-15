@@ -580,6 +580,22 @@ async def test_a_loop_is_ridden_the_easier_way_round_only_when_that_keeps_the_pl
     assert [candidate.node_ids for candidate in candidates] == [[node_key(n) for n in expected]]
 
 
+async def test_a_loop_ridden_the_other_way_round_keeps_the_elevation_of_its_line(engine_over):
+    """逆に回って出る周回も、線の点は標高を持つ（RFC 7946 の3つ目）。逆回りの道は、順方向に引いた形と断面を反転して使う
+    ——断面を写し忘れると、逆回りの候補だけ標高のグラフと GPX の標高が消える。"""
+    ring = road_network(
+        {1: (1, 2), 2: (2, 3), 3: (3, 4), 4: (4, 5), 5: (5, 6), 6: (6, 1)}, RING_COORDINATES, bad_forward_ways={1, 2},
+        elevation_of={way: (10.0 + way, 11.0 + way) for way in range(1, 7)},
+    )
+    generator = engine_over(ring, avoid_weight=1.0)
+
+    (candidate,) = (await generator.generate_via_waypoints(
+        node_point(ring, 1), [node_point(ring, 3)], destination=None, max_routes=1, start_time=DEPARTURE)).candidates
+
+    assert candidate.node_ids == [node_key(n) for n in [1, 6, 5, 4, 3, 2, 1]]
+    assert all(len(point) == 3 for point in candidate.geometry["coordinates"])
+
+
 def _made_alike(candidates) -> list[tuple]:
     """候補の作り方・種類・名前・逆回りが見える所（id・種類・名前・最速の印・通るノードの並び）。"""
     return [(c.id, c.kind, c.direction_label, c.is_fastest, c.node_ids) for c in candidates]
@@ -856,10 +872,10 @@ async def test_a_turn_lists_the_other_roads_of_its_crossing_by_the_direction_the
         (pytest.approx(crossing), "right", away)]
 
 
-async def test_a_segment_and_a_turn_sit_where_the_segments_before_them_add_up_to(engine_over):
-    """区間の始まりの道のり（`cumulative_distance_km`）と曲がる所の道のりは、手前の区間の`distance_km`を始点から足した値に
-    載る——別の積み方だと、同じ地点の距離が「km地点」・道のりのグラフ・曲がる所までの残りで食い違う。格子の1辺は区間の
-    まとめる幅より長いので、区間は辺ごとに分かれ、曲がる所はどれかの区間の始まりに来る。区間を足し切ると経路の全長になる。"""
+async def test_a_segment_and_a_turn_sit_where_the_line_points_say(engine_over):
+    """区間の始まりの道のり（`cumulative_distance_km`）と曲がる所の道のりは、その地点の線の点の道のり（`point_distances_m`）に
+    載る——別の物差しだと、同じ地点の距離が「km地点」・道のりのグラフ・曲がる所までの残りで食い違う。格子の1辺は区間の
+    まとめる幅より長いので、区間は辺ごとに分かれ、曲がる所は線のどれかの点に来る。線の終わりの道のりは経路の全長になる。"""
     generator = engine_over(grid_network())
 
     candidates = (await generator.generate_via_waypoints(
@@ -867,12 +883,14 @@ async def test_a_segment_and_a_turn_sit_where_the_segments_before_them_add_up_to
 
     assert any(candidate.turns for candidate in candidates)
     for candidate in candidates:
-        added_up = list(accumulate((segment.distance_km for segment in candidate.segments), initial=0.0))
-        assert [segment.cumulative_distance_km for segment in candidate.segments] == pytest.approx(added_up[:-1])
-        assert added_up[-1] == pytest.approx(candidate.distance_km, abs=0.02)
-        segment_at = {(s.start_latitude, s.start_longitude): i for i, s in enumerate(candidate.segments)}
+        distances = candidate.point_distances_m
+        assert len(distances) == len(candidate.geometry["coordinates"])
+        assert [segment.cumulative_distance_km for segment in candidate.segments] == pytest.approx(
+            [segment.point_distances_m[0] / 1000 for segment in candidate.segments])
+        assert distances[-1] / 1000 == pytest.approx(candidate.distance_km, abs=0.02)
+        point_at = {tuple(point[:2]): i for i, point in enumerate(candidate.geometry["coordinates"])}
         for turn in candidate.turns:
-            assert turn.distance_km == pytest.approx(added_up[segment_at[(turn.latitude, turn.longitude)]])
+            assert turn.distance_km == pytest.approx(distances[point_at[(turn.longitude, turn.latitude)]] / 1000)
 
 
 async def test_the_distance_along_the_route_is_the_length_of_the_roads_behind(engine_over):

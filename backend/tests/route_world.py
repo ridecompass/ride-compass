@@ -188,17 +188,26 @@ def road_network(
 
 
 class NetworkRepository:
-    """DBの代役。区間の形は両端のノードを結ぶ直線。"""
+    """DBの代役。区間の形は両端のノードを結ぶ直線で、断面の点は区間の両端の標高（標高の無い区間は持たない）。"""
 
     def __init__(self, network: RoadNetwork):
         self._coordinates = {
             node_key(int(osm)): [float(lat), float(lon)]
             for osm, lat, lon in zip(network.node_osm_id, network.node_lat, network.node_lon, strict=True)
         }
+        self._profiles = {
+            (int(way), int(segment), bool(forward)): ((0.0, float(start)), (1.0, float(end)))
+            for way, segment, forward, start, end in zip(
+                network.edge_way_id, network.edge_segment, network.edge_forward,
+                network.start_elevation_m, network.end_elevation_m, strict=True)
+            if not (np.isnan(start) or np.isnan(end))
+        }
 
     async def get_edges_with_geometry(self, edges):
         return {
-            edge.edge_id: replace(edge, geometry=[self._coordinates[edge.from_node_id], self._coordinates[edge.to_node_id]])
+            edge.edge_id: replace(
+                edge, geometry=[self._coordinates[edge.from_node_id], self._coordinates[edge.to_node_id]],
+                profile=self._profiles.get((edge.osm_way_id, edge.segment_index, edge.forward), ()))
             for edge in edges
         }
 

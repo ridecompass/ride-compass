@@ -14,6 +14,7 @@ export function makeRouteCandidate(overrides: Partial<RouteCandidate> = {}): Rou
     network_revision: 1,
     distance_km: 0,
     geometry: { type: "LineString", coordinates: [] },
+    point_distances_m: [],
     elevation_gain_m: null,
     segments: [],
     estimated_duration_seconds: null,
@@ -39,15 +40,21 @@ export type Places = Readonly<Record<string, readonly [number, number]>>;
  * 地点を順に通る経路の形（`edge_ids`・`edge_point_offsets`・`node_ids`・`geometry`・`segments`）を、backendの契約
  * （`backend/app/domain/route.py: RouteCandidate`）どおりに組む。Edge idは両端の地点の名前を「-」でつないだもの、
  * Node idは地点の名前。Edgeごとに中間点を1つ挟むので、Edgeの境界の位置（`edge_point_offsets`）は座標の位置と食い違う。
- * 区間はEdge1本ずつで、長さはEdgeごとの`segmentKm`（省いたら形の大円距離）。
+ * 区間はEdge1本ずつで、長さはEdgeごとの`segmentKm`（省いたら形の大円距離）。点ごとの道のり（`point_distances_m`）は、
+ * Edgeの始まりまでの長さの和に、中間点は長さの半分、終わりは長さを足したもの。
  */
 export function routeThrough(
   places: Places,
   names: readonly string[],
   segmentKm?: readonly number[],
-): Pick<RouteCandidate, "edge_ids" | "edge_point_offsets" | "node_ids" | "geometry" | "segments"> {
+): Pick<
+  RouteCandidate,
+  "edge_ids" | "edge_point_offsets" | "node_ids" | "geometry" | "point_distances_m" | "segments"
+> {
   const coordinates: number[][] = [];
+  const distances: number[] = [];
   const segments: RouteSegmentDetail[] = [];
+  let startM = 0;
   names.forEach((name, index) => {
     const [lon, lat] = places[name];
     if (index > 0) {
@@ -63,9 +70,13 @@ export function routeThrough(
           0,
         );
       const distanceKm = segmentKm?.[index - 1] ?? shapeKm;
+      const shapeM = [startM, startM + (distanceKm * 1000) / 2, startM + distanceKm * 1000];
+      distances.push(shapeM[1]);
+      startM = shapeM[2];
       segments.push(
         makeRouteSegment({
           geometry: { type: "LineString", coordinates: shape },
+          point_distances_m: shapeM,
           start_latitude: prevLat,
           start_longitude: prevLon,
           end_latitude: lat,
@@ -78,12 +89,14 @@ export function routeThrough(
       );
     }
     coordinates.push([lon, lat]);
+    distances.push(startM);
   });
   return {
     edge_ids: names.slice(1).map((name, index) => `${names[index]}-${name}`),
     edge_point_offsets: names.map((_, index) => index * 2),
     node_ids: [...names],
     geometry: { type: "LineString", coordinates },
+    point_distances_m: distances,
     segments,
   };
 }
@@ -112,6 +125,7 @@ export function makeGenerationConditions(overrides: Partial<GenerationConditions
 export function makeRouteSegment(overrides: Partial<RouteSegmentDetail> = {}): RouteSegmentDetail {
   return {
     geometry: null,
+    point_distances_m: null,
     start_latitude: 0,
     start_longitude: 0,
     end_latitude: 0,

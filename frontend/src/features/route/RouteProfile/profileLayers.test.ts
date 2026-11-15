@@ -36,41 +36,54 @@ const band = (id: string) => LAYERS.find((layer): layer is BandLayer => layer.id
 const surface = band("surface");
 const row = (layer: BandLayer, key: string) => layer.draw.rows.find((candidate) => candidate.key === key)!;
 
-type Road = [number | null, number | null, number];
+/** 区間の形の点（ルートの上の距離（km）と標高（m）。nullは標高の無い点で、RFC 7946 の3つ目を持たない）。 */
+type Point = [number, number | null];
 
-/** 区間ごとに、中の道の並び（始まりと終わりの標高・道の距離）と区間の距離。 */
-function stretches(...segments: [Road[], number][]) {
+/** 区間ごとの形の点。点の無い区間は形を持たず、長さ`gapKm`の区間になる。 */
+function stretches(...segments: (Point[] | { gapKm: number })[]) {
   return routeStretches(
-    segments.map(([roads, km]) =>
-      makeRouteSegment({
-        distance_km: km,
-        elevations: roads.map(([start, end, roadKm]) => ({
-          distance_km: roadKm,
-          start_elevation_m: start,
-          end_elevation_m: end,
-        })),
-      }),
+    segments.map((points) =>
+      "gapKm" in points
+        ? makeRouteSegment({ distance_km: points.gapKm })
+        : makeRouteSegment({
+            distance_km: points[points.length - 1][0] - points[0][0],
+            geometry: {
+              type: "LineString",
+              coordinates: points.map(([km, m]) => (m === null ? [139 + km * 0.01, 35] : [139 + km * 0.01, 35, m])),
+            },
+            point_distances_m: points.map(([km]) => km * 1000),
+          }),
     ),
   );
 }
 
 describe("layerLine", () => {
-  it("区間の中の道を距離の比で区間の長さへ割り振って道ごとの両端をつなぎ、値の無い道・道の無い区間で線を切り、長さの無い区間では切らない", () => {
+  it("形の点の標高を点ごとの道のりでつなぎ、標高の無い点・形の無い区間で線を切り、区間の境目の同じ点は1つにする", () => {
     const line = layerLine(
       stretches(
         [
-          [
-            [10, 25, 0.2],
-            [25, 20, 0.2],
-          ],
-          1,
+          [0, 10],
+          [0.5, 25],
+          [1, 20],
         ],
-        [[[20, 30, 0.1]], 0],
-        [[[20, 15, 1]], 1],
-        [[[null, 40, 0.5]], 1],
-        [[[50, 60, 1]], 2],
-        [[], 1],
-        [[[5, 5, 1]], 1],
+        [
+          [1, 20],
+          [2, 15],
+        ],
+        [
+          [2, 15],
+          [2.5, null],
+          [3, 50],
+        ],
+        [
+          [3, 50],
+          [5, 60],
+        ],
+        { gapKm: 1 },
+        [
+          [6, 5],
+          [7, 5],
+        ],
       ),
       elevation,
     );
@@ -78,8 +91,6 @@ describe("layerLine", () => {
       [
         { km: 0, value: 10 },
         { km: 0.5, value: 25 },
-        { km: 0.5, value: 25 },
-        { km: 1, value: 20 },
         { km: 1, value: 20 },
         { km: 2, value: 15 },
       ],
@@ -96,33 +107,42 @@ describe("layerLine", () => {
   });
 
   it("値が1つも無ければ、線も最高・最低も無い", () => {
-    expect(layerLine(stretches([[[null, null, 1]], 1], [[[5, null, 1]], 1]), elevation)).toEqual({
-      runs: [],
-      range: null,
-    });
+    expect(
+      layerLine(
+        stretches([
+          [0, null],
+          [1, null],
+        ]),
+        elevation,
+      ),
+    ).toEqual({ runs: [], range: null });
   });
 });
 
 describe("layerValueAtKm", () => {
   it.each([
-    { km: 0.75, value: 30, why: "区間の中は、その地点の道の両端の間を距離で割り振る" },
-    { km: 1.5, value: null, why: "道の並びの無い区間" },
-    { km: 2.5, value: null, why: "値の無い道" },
-    { km: 99, value: 60, why: "終わりより先は終点の道" },
+    { km: 0.75, value: 30, why: "点の間は、両端の値を距離で割り振る" },
+    { km: 1.5, value: null, why: "形の無い区間" },
+    { km: 2.5, value: null, why: "標高の無い点の間" },
+    { km: 99, value: 60, why: "終わりより先は終点の値" },
   ])("$why", ({ km, value }) => {
     const columns = stretches(
       [
-        [
-          [10, 20, 0.5],
-          [20, 40, 0.5],
-        ],
-        1,
+        [0, 10],
+        [0.5, 20],
+        [1, 40],
       ],
-      [[], 1],
-      [[[null, 40, 1]], 1],
-      [[[50, 60, 1]], 1],
+      { gapKm: 1 },
+      [
+        [2, null],
+        [3, null],
+      ],
+      [
+        [3, 50],
+        [4, 60],
+      ],
     );
-    expect(layerValueAtKm(columns, elevation, km)).toBe(value);
+    expect(layerValueAtKm(columns, layerLine(columns, elevation).runs, km)).toBe(value);
   });
 });
 
@@ -133,10 +153,17 @@ describe("segmentGrades", () => {
     ["区間の平均勾配と続く坂の斜度", -1, 3.5, { mean: -1, sustained: 3.5 }],
     ["平均勾配が無ければ出さない", null, 3.5, null],
   ])("%s", (_, mean, sustained, grades) => {
-    // 道の両端の標高は平均と合わない値にしておく（両端から作り直すと+10%）。
-    const elevations = [{ distance_km: 0.1, start_elevation_m: 10, end_elevation_m: 20 }];
+    // 形の点の標高は平均と合わない値にしておく（点から作り直すと+10%）。
     const segment = makeRouteSegment({
-      elevations,
+      distance_km: 0.1,
+      geometry: {
+        type: "LineString",
+        coordinates: [
+          [139, 35, 10],
+          [139.001, 35, 20],
+        ],
+      },
+      point_distances_m: [0, 100],
       average_gradient_percent: mean,
       sustained_gradient_percent: sustained,
     });

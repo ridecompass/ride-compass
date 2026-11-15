@@ -159,20 +159,24 @@ def haversine_distance_km(a: LatLon, b: LatLon) -> float:
 
 
 def haversine_distance_km_array(lat: np.ndarray, lon: np.ndarray, target: LatLon) -> np.ndarray:
-    """`haversine_distance_km`を多数の地点へまとめて求める。式はここ1本で、2地点の
-    `haversine_distance_km`もこれを通す。
+    """`haversine_distance_km`を多数の地点へまとめて求める。
 
     `lat`/`lon`は複数地点の緯度経度配列（同一形状）、`target`は単一の目的地。
     A*ヒューリスティック（`domain/route_search.py: straight_distances_m`）が、向かう先ごとにグラフ上の
     全Nodeとの距離を1回のnumpy演算で求めるために使う。
     """
-    lat1 = np.radians(lat)
-    lon1 = np.radians(lon)
-    lat2 = math.radians(target.latitude)
-    lon2 = math.radians(target.longitude)
-    dlat = lat2 - lat1
-    dlon = lon2 - lon1
-    h = np.sin(dlat / 2) ** 2 + np.cos(lat1) * math.cos(lat2) * np.sin(dlon / 2) ** 2
+    return haversine_distance_km_pairs(lat, lon, np.asarray(target.latitude), np.asarray(target.longitude))
+
+
+def haversine_distance_km_pairs(lat1: np.ndarray, lon1: np.ndarray, lat2: np.ndarray, lon2: np.ndarray) -> np.ndarray:
+    """2組の地点の配列（numpy のブロードキャストで並ぶ）の、組ごとの球面距離（km）。式はここ1本で、`haversine_distance_km`・
+    `haversine_distance_km_array`もこれを通す。線の点の間の長さを1回のnumpy演算で求めるのにも使う
+    （`domain/route.py: concat_edge_geometries`）。"""
+    phi1 = np.radians(lat1)
+    phi2 = np.radians(lat2)
+    dlat = phi2 - phi1
+    dlon = np.radians(lon2) - np.radians(lon1)
+    h = np.sin(dlat / 2) ** 2 + np.cos(phi1) * np.cos(phi2) * np.sin(dlon / 2) ** 2
     return 2 * EARTH_RADIUS_KM * np.arcsin(np.sqrt(h))
 
 

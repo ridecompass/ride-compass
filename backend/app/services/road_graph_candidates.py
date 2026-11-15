@@ -236,9 +236,10 @@ def _build_candidate(
     edges_in_path = orientation.edges
     passages = orientation.passages
     segments_started = start_timer()
-    geometry, edge_point_offsets = concat_edge_geometries(edges_in_path)
-    along_km = along_route_km(edge.distance_m / 1000 for edge in edges_in_path)
-    segments = _build_segment_details(orientation, along_km, elevation_by_edge, context, start_time)
+    geometry, edge_point_offsets, point_distances_m = concat_edge_geometries(edges_in_path)
+    along_km = along_route_km(point_distances_m, edge_point_offsets)
+    segments = _build_segment_details(orientation, along_km, (geometry["coordinates"], point_distances_m, edge_point_offsets),
+                                      elevation_by_edge, context, start_time)
     elevation_gain_m = elevation_gain(np.array([
         attribute.elevation_gain_m if (attribute := elevation_by_edge.get(edge.edge_id)) is not None else np.nan
         for edge in edges_in_path]))
@@ -262,6 +263,7 @@ def _build_candidate(
         direction_label=compass_label(traced.bearing) if traced.bearing is not None else "",
         distance_km=traced.distance_km,
         geometry=geometry,
+        point_distances_m=point_distances_m,
         edge_ids=[edge.edge_id for edge in edges_in_path],
         edge_point_offsets=edge_point_offsets,
         node_ids=(
@@ -287,11 +289,13 @@ def _build_candidate(
 def _build_segment_details(
     orientation: _Orientation,
     along_km: list[float],
+    line: tuple[list[list[float]], list[float], list[int]],
     elevation_by_edge: dict,
     context: RoadGraphContext,
     start_time: datetime,
 ) -> list[EdgeSegment]:
-    """区間ごとの表示値（ビンへ畳む前の、Edge単位の区間）。
+    """区間ごとの表示値（ビンへ畳む前の、Edge単位の区間）。区間の線と点ごとの道のりは、ルート全体の線（`line`は
+    `concat_edge_geometries`の点・道のり・Edgeの境界の位置）からEdgeの境界で切り出す——別に組むと、区間と全体の点がずれる。
 
     代償の秒は値の組（`_Orientation.reads`）から読む。到達予想時刻は経路を探索と同じ規則でたどった時刻（`passages`）。
     """
@@ -299,14 +303,15 @@ def _build_segment_details(
 
     segments = []
     road_classes = SegmentClassReader.of(context.road)
+    coordinates, point_distances_m, offsets = line
     for index, (edge, row) in enumerate(zip(orientation.edges, orientation.rows)):
         elevation_attr = elevation_by_edge.get(edge.edge_id)
         axis_seconds, preferred_seconds, avoided_seconds = penalties[index]
         start_lat, start_lon = edge.geometry[0]
         end_lat, end_lon = edge.geometry[-1]
-        # 区間の道なり形状はEdgeの形状点列そのもの（追加取得なし）。2点未満のEdgeは
-        # 形状にならないためNone（フロントは始点・終点の直線で代替描画する）。
-        segment_coordinates = [[lon, lat] for lat, lon in edge.geometry]
+        # 2点未満のEdgeは形状にならないためNone（フロントは始点・終点の直線で代替描画する）。
+        cut = slice(offsets[index], offsets[index + 1] + 1)
+        segment_coordinates = coordinates[cut]
 
         segments.append(
             EdgeSegment(
@@ -315,6 +320,7 @@ def _build_segment_details(
                     if len(segment_coordinates) >= 2
                     else None
                 ),
+                point_distances_m=point_distances_m[cut] if len(segment_coordinates) >= 2 else None,
                 start_latitude=start_lat,
                 start_longitude=start_lon,
                 end_latitude=end_lat,
@@ -400,7 +406,7 @@ def _reverse_traced_edges(
     その番号列を構築する。経路中に一方通行（逆方向の区間が存在しない）区間が1つでもあれば
     物理的に逆走不可能なため`None`を返す。
 
-    `geometry`だけは逆方向の区間自身（形を持たない）からではなく、順方向で取得済みの
+    `geometry`と`profile`（断面の点）だけは逆方向の区間自身（形を持たない）からではなく、順方向で取得済みの
     ものを反転して使う——同じ物理区間を逆順に辿るだけなので、取り直す必要が無い。
     進行方向に依存しない値も**逆方向の区間自身から**引く。
     """
@@ -411,6 +417,7 @@ def _reverse_traced_edges(
         if reverse_index is None:
             return None
         topology = lean_edge(context, reverse_index)
-        reverse_edges.append(replace(topology, geometry=list(reversed(edge.geometry))))
+        reverse_edges.append(replace(topology, geometry=list(reversed(edge.geometry)),
+                                     profile=tuple((1.0 - at, m) for at, m in reversed(edge.profile))))
         reverse_path.append(reverse_index)
     return reverse_edges, reverse_path

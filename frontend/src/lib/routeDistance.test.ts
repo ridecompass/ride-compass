@@ -1,7 +1,8 @@
 // @vitest-environment node
 /**
  * `lib/routeDistance.ts`——ルートの上の距離と、地図の地点の行き来。
- * - `routeStretches`: 区間の長さを積み上げて、区間ごとの始まりと終わりの距離にする
+ * - `routeStretches`: 区間ごとの始まりと終わりの距離。線の点ごとの道のりがあればそれを読み、無い区間は区間の長さを積み上げる
+ * - `routeEdgeKms`: Edgeの境界ごとの距離（線の点ごとの道のりを境界の位置で引く）
  * - `pointAlongSegment`: 区間の道なりの形の上で割合だけ進んだ地点。経度は緯度で縮めて長さを測る。形が無ければ両端を結ぶ直線の上
  * - `splitSegmentAt`: 区間の形を割合の地点で前と後ろに分ける（分けた点は両方に入る）
  * - `routeTrack`・`projectOnTrack`: ルートの形を辺へ分け、地点に最も近い辺の上の点のルートの上の距離と隔たり
@@ -16,8 +17,10 @@ import { makeRouteSegment } from "@/testing/routeFixtures";
 import type { RouteSegmentDetail } from "@/types/route";
 
 import {
+  kmOfPickedPoint,
   pointAlongSegment,
   projectOnTrack,
+  routeEdgeKms,
   routePointsEvery,
   routeStretches,
   routeTrack,
@@ -42,6 +45,55 @@ describe("routeStretches", () => {
       [0.75, 1.15],
     ]);
     expect(stretches.map((s) => s.segment)).toEqual(segments);
+  });
+});
+
+describe("点ごとの道のり", () => {
+  it("区間の始まりと終わり・辺の両端は、線の点ごとの道のりを読む（区間の長さと形の長さの割合からは決めない）", () => {
+    const first = segment({
+      distance_km: 0.5,
+      geometry: line([
+        [0, 0],
+        [0.5, 0],
+        [1, 0],
+      ]),
+      point_distances_m: [0, 100, 300],
+    });
+    const second = segment({
+      distance_km: 0.5,
+      geometry: line([
+        [1, 0],
+        [2, 0],
+      ]),
+      point_distances_m: [300, 1000],
+    });
+    expect(routeStretches([first, second]).map(({ startKm, endKm }) => [startKm, endKm])).toEqual([
+      [0, 0.3],
+      [0.3, 1],
+    ]);
+    expect(routeTrack([first, second]).map(({ fromKm, toKm }) => [fromKm, toKm])).toEqual([
+      [0, 0.1],
+      [0.1, 0.3],
+      [0.3, 1],
+    ]);
+  });
+
+  it("選んだ地点のルートの上の距離は、区間の始まりから当てた点までを、区間の始まりに足す（始まりを二重に足さない）", () => {
+    const later = segment({
+      geometry: line([
+        [1, 0],
+        [2, 0],
+      ]),
+      point_distances_m: [5000, 6000],
+    });
+    const [column] = routeStretches([later]);
+    expect(kmOfPickedPoint(column, { longitude: 1.5, latitude: 0 })).toBeCloseTo(5.5, 9);
+  });
+
+  it("Edgeの境界の距離は、候補の線の点ごとの道のりを境界の位置で引く", () => {
+    expect(routeEdgeKms({ point_distances_m: [0, 500, 1500, 2000], edge_point_offsets: [0, 2, 3] })).toEqual([
+      0, 1.5, 2,
+    ]);
   });
 });
 
