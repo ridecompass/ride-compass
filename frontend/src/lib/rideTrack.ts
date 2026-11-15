@@ -5,7 +5,8 @@
 // 点は送る形（受ける口`POST /api/rides`の`points`）のまま溜め、送るときに詰め替えない。位置が届くたびに走り全体を書き直すと、
 // 点の数に比例して重くなるので、点は区切り（`POINTS_PER_CHUNK`）ごとの鍵へ足し、位置ごとに書き直す見出しは小さく保つ
 // （ルートの線・条件・予報は別の鍵に、変わったときだけ書く）。
-// 書けなかった（容量の上限等）ときは、案内を止めずにその走りの記録だけをやめる（溜めた分は、案内を終えたときに送る）。読めない（壊れた）値は無いものとして
+// 書けなかった（容量の上限等）ときは、送っていない古い走りを古い順に消して書き直し、消せる走りが無いのに書けなければ、案内を止めずに
+// その走りの記録だけをやめる（溜めた分は、案内を終えたときに送る）。読めない（壊れた）値は無いものとして
 // 扱い、投げない——走行モード・メニューの窓が描く中で読むので、投げると画面ごと落ち、エラーの境目の全消しもこの記録は残すため抜けられない。
 // 送るまで消さないので、送れない走りが溜まって端末の保存領域を埋めないよう、溜める走りの数に上限（`MAX_STORED_RIDES`）を持ち、
 // 上限に当たったら一番古い走りを捨てて新しい走りを記録する（送れないまま残る走りで、記録が止まらないように）。
@@ -32,6 +33,8 @@ const LABEL = "走りの記録";
 const POINTS_PER_CHUNK = 60;
 /** 端末に溜める走りの数（送っていないものと、記録中のもの）。これだけ溜まっていたら、一番古い走りを捨てて新しい走りを記録する。 */
 export const MAX_STORED_RIDES = 3;
+/** 1回の走りに溜める点の上限（1秒に1点で24時間）。越えた分は溜めない。 */
+export const MAX_POINTS_PER_RIDE = 24 * 3600;
 
 /** 走りの見出し。位置が届くたびに書き直すので、大きくなるものを持たない。 */
 type TrackMeta = {
@@ -123,25 +126,39 @@ function readChunk(id: string, index: number): StoredPoint[] {
   return readOrNull<StoredPoint[]>(chunkKey(id, index)) ?? [];
 }
 
-// 書けなかったら、その走りの記録をやめる（案内は続ける）。書けたか返す。
-function save(write: () => void): boolean {
-  try {
-    write();
-    return true;
-  } catch (error) {
-    debugLog(
-      "ride:track",
-      "走りの記録を端末に書けなかったので、この走りの記録をやめた",
-      { error: String(error) },
-      "warn",
-    );
-    if (recording !== null) recording.full = true;
-    return false;
+// 書けなかったら、送っていない古い走り（書く走り`keep`のほか）を古い順に消して書き直し、消せる走りが無ければその走りの記録をやめる
+// （案内は続ける）。書けたか返す。
+function save(write: () => void, keep: string | undefined = recording?.meta.id): boolean {
+  for (;;) {
+    try {
+      write();
+      return true;
+    } catch (error) {
+      // 書く走りのほかに、送っていない古い走りがあれば、古い順に消して書き直す。
+      const oldest = rideIds().find((id) => id !== keep);
+      if (oldest !== undefined) {
+        debugLog("ride:track", "端末に書けなかったので、送っていない一番古い走りを消した", { id: oldest }, "warn");
+        try {
+          removeRideTrack(oldest);
+          continue;
+        } catch {
+          // 消すのにも書けなければ、下でこの走りの記録をやめる。
+        }
+      }
+      debugLog(
+        "ride:track",
+        "走りの記録を端末に書けなかったので、この走りの記録をやめた",
+        { error: String(error) },
+        "warn",
+      );
+      if (recording !== null) recording.full = true;
+      return false;
+    }
   }
 }
 
 function saveMeta(meta: TrackMeta): void {
-  save(() => writeStored(metaKey(meta.id), LABEL, meta));
+  save(() => writeStored(metaKey(meta.id), LABEL, meta), meta.id);
 }
 
 function saveExtras(current: Recording): void {
@@ -229,14 +246,14 @@ export function setRideTrackAppVersion(version: string | null): void {
 export function stopRideTrack(nowMs: number): void {
   if (recording === null) return;
   const { meta, startedMs } = recording;
-  recording = null;
   saveMeta({ ...meta, events: [...meta.events, [Math.max(0, nowMs - startedMs), "end", null]], ended: true });
+  recording = null;
 }
 
 /** 受けた位置。 */
 export function recordRideTrackFix(fix: TrackFix): void {
   const current = recording;
-  if (current === null || current.full) return;
+  if (current === null || current.full || current.meta.points >= MAX_POINTS_PER_RIDE) return;
   const { meta, chunk } = current;
   const scaled = (value: number | null, scale: number) => (value === null ? null : Math.round(value * scale));
   // 区切りが空なら、新しい区切りを始める。書くのは今の区切り（最後の鍵）と、点の数を持つ走りの見出しだけ。

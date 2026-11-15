@@ -145,6 +145,45 @@ describe("走りの記録", () => {
     expect(track.pendingRideCount()).toBe(0);
   });
 
+  it("端末に書けなくなったら、送っていない古い走りを消して書き直し、今の走りの記録を続ける", () => {
+    track.setRideTrackWriteKey("key");
+    track.startRideTrack(START_MS);
+    track.stopRideTrack(START_MS + 1_000);
+    track.startRideTrack(START_MS + HOUR_MS);
+    const storage = window.localStorage;
+    let refusals = 1;
+    vi.spyOn(window, "localStorage", "get").mockReturnValue(
+      new Proxy(storage, {
+        get: (target, name) =>
+          name === "setItem" && refusals > 0
+            ? () => {
+                refusals -= 1;
+                throw new DOMException("容量の上限", "QuotaExceededError");
+              }
+            : Reflect.get(target, name).bind(target),
+      }),
+    );
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    track.recordRideTrackFix(fix(HOUR_MS + 1_000));
+    track.recordRideTrackFix(fix(HOUR_MS + 2_000));
+    track.stopRideTrack(START_MS + HOUR_MS + 3_000);
+
+    const rides = track.pendingRideUploads();
+    expect(rides.map((ride) => ride.started_at)).toEqual(["2026-11-16T01:00:00.000Z"]);
+    expect(rides[0].points.map(([atMs]) => atMs)).toEqual([1_000, 2_000]);
+  });
+
+  it("1回の走りに溜める点は上限まで", () => {
+    track.setRideTrackWriteKey("key");
+    track.startRideTrack(START_MS);
+    for (let second = 0; second <= track.MAX_POINTS_PER_RIDE; second += 1)
+      track.recordRideTrackFix(fix(second * 1_000));
+    track.stopRideTrack(START_MS + (track.MAX_POINTS_PER_RIDE + 1) * 1_000);
+
+    expect(track.pendingRideUploads()[0].points).toHaveLength(track.MAX_POINTS_PER_RIDE);
+  });
+
   it("端末に書けなくなったら、投げずにその走りの記録をやめ、案内を終えると溜めた分を送る側へ出す", () => {
     track.setRideTrackWriteKey("key");
     track.startRideTrack(START_MS);
