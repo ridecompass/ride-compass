@@ -6,10 +6,9 @@
  * - `splitSegmentAt`: 区間の形を割合の地点で前と後ろに分ける（分けた点は両方に入る）
  * - `routeTrack`・`projectOnTrack`: ルートの形を辺へ分け、地点に最も近い辺の上の点のルートの上の距離と隔たり
  * - `routePointsEvery`: ルートの形の上に一定の距離おきに置いた点
- * - `trackBetween`: ルートの形のうち、2つの距離の間の部分
  *
  * ここで見ないもの:
- * - どの辺の点を現在地の位置と見るか（往復で続く側を選ぶこと） → `features/ride/routeProgress.test.ts`
+ * - どの辺の点を現在地の位置と見るか（往復で続く側を選ぶこと） → `lib/routeProgress.test.ts`
  */
 import { describe, expect, it } from "vitest";
 
@@ -23,7 +22,6 @@ import {
   routeStretches,
   routeTrack,
   splitSegmentAt,
-  trackBetween,
 } from "./routeDistance";
 
 function segment(overrides: Partial<RouteSegmentDetail> = {}): RouteSegmentDetail {
@@ -185,28 +183,6 @@ describe("projectOnTrack", () => {
     const [, , last] = projectOnTrack(track, { latitude: 35.005, longitude: 139.021 });
     expect(last.km).toBeCloseTo(2.5);
     expect(last.offsetM).toBeCloseTo(91.1, 0);
-  });
-});
-
-describe("trackBetween", () => {
-  it("2つの距離の間の辺だけを残し、両端にかかる辺はその距離の位置で切る", () => {
-    const between = trackBetween(track, 0.5, 2.5);
-    expect(between.map(({ fromKm, toKm }) => [fromKm, toKm].map((km) => km.toFixed(6)))).toEqual([
-      ["0.500000", "1.000000"],
-      ["1.000000", "2.000000"],
-      ["2.000000", "2.500000"],
-    ]);
-    expect(between[0].from[0]).toBeCloseTo(139.005);
-    expect(between[0].from[1]).toBe(35);
-    expect(between[2].to[0]).toBe(139.02);
-    expect(between[2].to[1]).toBeCloseTo(35.005);
-  });
-
-  it("ルートの終わりを越える分は無く、範囲がルートの外なら辺も無い", () => {
-    expect(trackBetween(track, 2.5, 4.5).map(({ fromKm, toKm }) => [fromKm, toKm].map((km) => km.toFixed(6)))).toEqual([
-      ["2.500000", "3.000000"],
-    ]);
-    expect(trackBetween(track, 3, 5)).toEqual([]);
   });
 });
 

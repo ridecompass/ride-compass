@@ -39,8 +39,6 @@ interface ApiRequestMessages {
 }
 
 interface ApiRequestOptions<D> {
-  /** タイムアウト（ミリ秒）。バックエンドがハングした場合に無期限に待たされるのを防ぐ。 */
-  timeoutMs: number;
   /** DebugConsole上のカテゴリ（例: "api:weather"）。 */
   category: string;
   messages: ApiRequestMessages;
@@ -61,7 +59,6 @@ type DataOf<R> = R extends { data: infer D } ? D : never;
 
 /** 呼び出しに骨格が渡すもの。呼び出し口の第2引数へ展開する（呼び出し口が任意の項目を受ける型なので`type`で書く）。 */
 type SkeletonInit = {
-  signal: AbortSignal;
   middleware: Middleware[];
 };
 
@@ -72,27 +69,25 @@ function errorDetail(body: unknown): unknown {
 /**
  * `send`の呼び出しを骨格で包み、成功した応答の本体を返す。失敗は常に日本語の文言の`Error`で投げる。
  *
- * 通信エラー・タイムアウトは`messages.failure`へ`[通信エラー]`/`[タイムアウト]`を添えて包み直し、ブラウザ由来の英語の
- * 文言（"Failed to fetch"・"signal timed out"）は`cause`とdebugLogにだけ残す——呼び出し元の多くは`message`をそのまま
+ * 通信エラーは`messages.failure`へ`[通信エラー]`を添えて包み直し、ブラウザ由来の英語の
+ * 文言（"Failed to fetch"）は`cause`とdebugLogにだけ残す——呼び出し元の多くは`message`をそのまま
  * 画面へ出す。`x-request-id`は失敗のログに残し、画面へ出す文言には混ぜない。
  */
 export async function requestApi<R extends ApiResult>(
   send: (init: SkeletonInit) => Promise<R>,
   options: ApiRequestOptions<DataOf<R>>,
 ): Promise<DataOf<R>> {
-  const { timeoutMs, category, messages, requestMeta, successMeta } = options;
+  const { category, messages, requestMeta, successMeta } = options;
   const startedAt = performance.now();
   const elapsedMs = () => Math.round(performance.now() - startedAt);
   const seen = { url: "", responded: false };
 
   function transportFailure(error: unknown): Error {
-    // AbortSignal.timeout由来の中断はDOMException("TimeoutError")として送出される（fetch仕様）。
-    const isTimeout = error instanceof DOMException && error.name === "TimeoutError";
     // CORS・CSP・拡張機能による遮断の理由はfetchの仕様でJSへ渡らず、ブラウザのコンソールにだけ出る。
     const cause = typeof error === "object" && error !== null && "cause" in error ? error.cause : undefined;
     debugLog(
       category,
-      isTimeout ? `失敗 (タイムアウト ${timeoutMs}ms)` : "失敗 (通信エラー)",
+      "失敗 (通信エラー)",
       {
         url: seen.url,
         durationMs: elapsedMs(),
@@ -101,7 +96,7 @@ export async function requestApi<R extends ApiResult>(
       },
       "error",
     );
-    return new Error(`${messages.failure}[${isTimeout ? "タイムアウト" : "通信エラー"}]`, { cause: error });
+    return new Error(`${messages.failure}[通信エラー]`, { cause: error });
   }
 
   const skeleton: Middleware = {
@@ -119,10 +114,10 @@ export async function requestApi<R extends ApiResult>(
 
   let result: R;
   try {
-    result = await send({ signal: AbortSignal.timeout(timeoutMs), middleware: [skeleton] });
+    result = await send({ middleware: [skeleton] });
   } catch (error) {
     // 応答が届く前の失敗は`onError`が包み直してある。届いた後は、本文が読めた上での解析の失敗（SyntaxError）と、
-    // 本文を読む途中の時間切れ・通信の切断がある（`onError`は本文の読み取りを見ない）。
+    // 本文を読む途中の通信の切断がある（`onError`は本文の読み取りを見ない）。
     if (!seen.responded) throw error;
     if (!(error instanceof SyntaxError)) throw transportFailure(error);
     debugLog(category, "失敗 (不正なレスポンス)", { url: seen.url, durationMs: elapsedMs() }, "error");

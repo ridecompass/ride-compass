@@ -135,7 +135,7 @@ export default function TuningPanel() {
             usage={null}
             variant="primary"
             onClick={() => save.mutate(edited.map((parameter) => ({ parameter, next: drafts[parameter.id]! })))}
-            disabled={save.isPending || edited.length === 0}
+            disabled={edited.length === 0}
           >
             {save.isPending ? "保存中…" : "DBへ保存"}
           </Button>

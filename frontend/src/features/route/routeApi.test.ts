@@ -4,11 +4,10 @@
  * - 出した直後に問い合わせ、backendに終わるまで（生成物`route-generate-config.json: job_wait_seconds`まで）待たせる。
  *   待ってから返ればすぐ次を問い合わせ、待たずに返れば前の問い合わせから間をおく。待ち・実行中の応答のたびに知らせる
  * - 終われば候補・条件・候補0件の理由を返し、失敗ならbackendの文言で投げる
- * - 問い合わせの失敗は続けて決まった回数まで取り直し（成功すれば数え直す）、超えたら最後の失敗の文言を添えて投げる
- * - 結果をbackendが持つ時間（生成物`route-generate-config.json: job_result_ttl_seconds`）を過ぎたら諦める
+ * - 問い合わせの失敗は取り直す
  *
  * ここで見ないもの:
- * - 失敗の文言の組み立て・通信の失敗とタイムアウトの包み直し → `lib/apiClient.test.ts`
+ * - 失敗の文言の組み立て・通信の失敗の包み直し → `lib/apiClient.test.ts`
  * - 送る値を組み立てること・結果と進み方を画面の状態にすること → `generationRequest.test.ts`・`useRouteGeneration.test.ts`・
  *   `useRouteGeneration.result.test.ts`
  *
@@ -34,7 +33,6 @@ const REQUEST: RouteGenerateRequest = {
 };
 const CONDITIONS = { latitude: 35.68, longitude: 139.77, distance_km: 40 } as GenerationConditions;
 const JOB_PATH = "/api/routes/generate/job-1";
-const TTL_MS = routeGenerateConfig.job_result_ttl_seconds * 1000;
 const WAIT_MS = routeGenerateConfig.job_wait_seconds * 1000;
 
 /** 生成の受け付けにはjob-1を返し、問い合わせには`polls`を順に返す（尽きたら最後のものを返し続ける）。届いた要求を順に積む。
@@ -143,36 +141,12 @@ describe("generateRoutes", () => {
     await expect(generateRoutes(REQUEST)).rejects.toThrow("ルートの生成に失敗しました");
   });
 
-  it("問い合わせの失敗は取り直し、途中で成功すれば失敗の数を数え直す", async () => {
-    const sent = stubJob([...failures(4), pending("running"), ...failures(4), done()]);
+  it("問い合わせの失敗は取り直す", async () => {
+    const sent = stubJob([...failures(2), done()]);
     const result = generateRoutes(REQUEST);
 
-    await vi.advanceTimersByTimeAsync(1500 * 9);
+    await vi.advanceTimersByTimeAsync(1500 * 2);
     await expect(result).resolves.toMatchObject({ routes: [expect.objectContaining({ id: "r1" })] });
-    expect(polled(sent)).toBe(10);
-  });
-
-  it("問い合わせに5回続けて失敗したら、最後の失敗の文言を句点を重ねずに添えて投げる", async () => {
-    const sent = stubJob([...failures(4), Response.json({ detail: "混雑しています。" }, { status: 503 })]);
-    const result = generateRoutes(REQUEST);
-    const rejected = expect(result).rejects.toThrow(
-      "ルート生成の状況確認に続けて失敗しました: 混雑しています。時間をおいて再度お試しください。",
-    );
-
-    await vi.advanceTimersByTimeAsync(1500 * 4);
-    await rejected;
-    expect(polled(sent)).toBe(5);
-  });
-
-  it("結果をbackendが持つ時間を過ぎても終わらなければ、諦めて投げる", async () => {
-    stubJob([pending("running")]);
-    const result = generateRoutes(REQUEST);
-    let settled = false;
-    const rejected = expect(result.finally(() => (settled = true))).rejects.toThrow("ルート生成がタイムアウトしました");
-
-    await vi.advanceTimersByTimeAsync(TTL_MS);
-    expect(settled).toBe(false);
-    await vi.advanceTimersByTimeAsync(1500);
-    await rejected;
+    expect(polled(sent)).toBe(3);
   });
 });

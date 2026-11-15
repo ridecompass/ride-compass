@@ -11,13 +11,8 @@ runの記録・パーティション・入れ替えは本物を通す。外部�
 変えた後の全行を渡して入れ直す。失敗したrunは、途中で例外を投げる`records`（`interrupted`）を渡して作る。
 """
 
-import atexit
-import os
-import tempfile
-import uuid
 from collections.abc import AsyncIterator, Callable, Iterable, Iterator, Sequence
 from dataclasses import replace
-from pathlib import Path
 from typing import Any
 
 import asyncpg
@@ -48,18 +43,9 @@ from tests.tuning_fixture import TUNING
 #: テストが渡した行を返すアダプタの名前。取込の間だけ`ADAPTERS`に置く。
 _ADAPTER = "given_records"
 
-#: 取り直したファイルの置き場。プロセスごとに1つで、プロセスが終わると消す。
-_FETCHED = Path(tempfile.gettempdir()) / f"source_ingest_{os.getpid()}"
-atexit.register(_FETCHED.unlink, missing_ok=True)
-
-
-def fetched_anew(spec: SourceSpec, profile: SourceProfile) -> AdapterInputs:
-    """取込のたびに配信元から取り直した、前と中身の違うファイルを読む入力（アダプタの`inputs`）。
-
-    指紋が毎回変わるので、取込は入力が前回と同じとは読まず、毎回行を入れ替えて新しいrunにする。
-    """
-    _FETCHED.write_text(uuid.uuid4().hex)
-    return AdapterInputs(files=(_FETCHED,))
+def no_files(spec: SourceSpec, profile: SourceProfile) -> AdapterInputs:
+    """ファイルを読まないアダプタの入力（アダプタの`inputs`）。"""
+    return AdapterInputs(files=())
 
 
 def way_record(way_id: int, points: Sequence[tuple[float, float]], node_ids: Sequence[int],
@@ -262,35 +248,34 @@ def profile_within(bbox: Area) -> SourceProfile:
     return replace(load_source_profile(None), target=Target(bbox=bbox))
 
 
-def _profile(source: str, bbox: Area | None, rows: Any) -> SourceProfile:
+def _profile(source: str, bbox: Area | None) -> SourceProfile:
     """本物の宣言のまま、`source`のアダプタだけを差し替えたもの。runにはそのソースの本物の絞り込みが残る。"""
     profile = load_source_profile(None) if bbox is None else profile_within(bbox)
     spec: SourceSpec = replace(profile.source(source), adapter=_ADAPTER)
-    if rows is not None:
-        spec = replace(spec, rows=rows)
     return replace(profile, sources=tuple(spec if s.name == source else s for s in profile.sources))
 
 
 async def ingest_records(source: str, records: Iterable[SourceRecord], *,
                          conn: asyncpg.Connection | None = None,
                          bbox: Area | None = None,
-                         rows: Any = None) -> int:
+                         origin: dict[str, Any] | None = None) -> int:
     """`records`を`source`の生データとして取り込み、`run_id`を返す。
 
     `conn`はトランザクションの外の接続（取込の入口の求め）。渡さなければ自分で開いて閉じる——SQLAlchemyの
     セッションで書くテストは、取込を先に済ませてからセッションで読み書きする。`bbox`は取込の範囲の宣言で、
-    省けば本物の宣言の範囲。`rows`はそのソースの絞り込みの宣言（例: 事故の年`HonhyoRows`）で、省けば本物の宣言。
+    省けば本物の宣言の範囲。`origin`は取込が素性（`source_runs.origin`）へ足す、取得が記録したもの（例: 事故の年`years`）。
     """
     async def read(spec: SourceSpec, profile: SourceProfile, inputs: AdapterInputs,
-                   origin: dict[str, Any]) -> AsyncIterator[SourceRecord]:
+                   run_origin: dict[str, Any]) -> AsyncIterator[SourceRecord]:
+        run_origin.update(origin or {})
         for record in records:
             yield record
 
     if conn is None:
         async with raw_connection() as connection:
-            return await ingest_records(source, records, conn=connection, bbox=bbox, rows=rows)
-    ADAPTERS[_ADAPTER] = RegisteredAdapter(read=read, rows=NoFields, grid=NoFields, inputs=fetched_anew)
+            return await ingest_records(source, records, conn=connection, bbox=bbox, origin=origin)
+    ADAPTERS[_ADAPTER] = RegisteredAdapter(read=read, rows=NoFields, grid=NoFields, inputs=no_files)
     try:
-        return await ingest_source(conn, _profile(source, bbox, rows), source)
+        return await ingest_source(conn, _profile(source, bbox), source)
     finally:
         del ADAPTERS[_ADAPTER]

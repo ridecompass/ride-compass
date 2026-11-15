@@ -4,7 +4,7 @@
  *
  * 見るもの: 既定で「負担で塗る」（負担のグラフ）を出すこと、選んでいなければルートで負担の大きい2つを積み、右上の
  * 「グラフに積む負担」の一覧に軸ごとの事実と負担の分を並べ、チェックで積む軸を足し・外して端末に覚えること（避け方の倍率が増減した
- * 分は行に出さず、走行中の図は一覧を出さない）、両方のタブで経由地を通る所に線と番号の印を出し、走り終えた経由地を薄めること。タブは結果も
+ * 分は行に出さない）を、結果と走行中の両方の図で行うこと、両方のタブで経由地を通る所に線と番号の印を出し、走り終えた経由地を薄めること。タブは結果も
  * 走行中も地図の入口と同じ絵だけで出し（名前は読み上げに残す）、押すと図が替わること。走行中の図は、目盛り・図の下の文字を
  * 結果の図より大きくすること。地点を選ぶと、右上に「区間を地図で見る」を出すこと。
  *
@@ -36,67 +36,71 @@ import type { SelectedRouteSegment } from "@/types/route";
 beforeEach(serveProfileCatalog);
 
 describe("RouteProfile", () => {
-  it("はじめは「負担で塗る」で、負担の大きい2つを積む。右上の「グラフに積む負担」の一覧は軸ごとに事実と負担の分を並べ、チェックで積む軸を足し・外して端末に覚え、避ける道で上乗せした分は行に出さない", async () => {
-    window.localStorage.clear();
-    const catalog = {
-      ...PROFILE_COST_CATALOG,
-      axes: [
-        ...PROFILE_COST_CATALOG.axes,
-        { axisId: "stopping", label: "停止", iconId: "" },
-        { axisId: "friction", label: "摩擦", iconId: "" },
-      ],
-      axisColors: { ...PROFILE_COST_CATALOG.axisColors, stopping: "rgb(1, 2, 3)", friction: "rgb(4, 5, 6)" },
-    };
-    const segment = makeRouteSegment({
-      distance_km: 1,
-      ...penaltyFields({ ascent: 40, vibration: 10, stopping: 25 }, 1),
-    });
-    const element = () =>
-      profileElement({
-        segments: [segment],
-        scaleKm: 1,
-        catalog,
-        penalty: {
-          axis_seconds: { ascent: 300, vibration: 60, stopping: 120 },
-          preferred_seconds: 0,
-          avoided_seconds: 120,
-          total_seconds: 600,
-        },
-        // 区分の事実は値を持たず、区分の名前だけを出す。
-        facts: {
-          ascent: { label: "登り", value: 240, unit: "m" },
-          vibration: { label: "砂利", value: null, unit: "" },
-        },
+  it.each([{ riding: false }, { riding: true }])(
+    "結果も走行中（$riding）も、はじめは「負担で塗る」で、負担の大きい2つを積む。右上の「グラフに積む負担」の一覧は軸ごとに事実と負担の分を並べ、チェックで積む軸を足し・外して端末に覚え、避ける道で上乗せした分は行に出さない",
+    async ({ riding }) => {
+      window.localStorage.clear();
+      const catalog = {
+        ...PROFILE_COST_CATALOG,
+        axes: [
+          ...PROFILE_COST_CATALOG.axes,
+          { axisId: "stopping", label: "停止", iconId: "" },
+          { axisId: "friction", label: "摩擦", iconId: "" },
+        ],
+        axisColors: { ...PROFILE_COST_CATALOG.axisColors, stopping: "rgb(1, 2, 3)", friction: "rgb(4, 5, 6)" },
+      };
+      const segment = makeRouteSegment({
+        distance_km: 1,
+        ...penaltyFields({ ascent: 40, vibration: 10, stopping: 25 }, 1),
       });
-    const { unmount } = render(element());
-    expect(screen.getByRole("tab", { name: BURDEN_PAINT_NAME })).toHaveAttribute("aria-selected", "true");
-    const openList = () => userEvent.click(screen.getByRole("button", { name: "グラフに積む負担" }));
-    const rows = () =>
-      within(screen.getByRole("dialog"))
-        .getAllByRole("listitem")
-        .map((row) => [row.textContent, within(row).queryByRole("checkbox")?.getAttribute("aria-checked") ?? null]);
-    const fills = () =>
-      [...screen.getByRole("img", { name: "道のりに沿った負担" }).querySelectorAll("path[fill]")].map((path) =>
-        path.getAttribute("fill"),
-      );
+      const element = () =>
+        profileElement({
+          segments: [segment],
+          scaleKm: 1,
+          catalog,
+          penalty: {
+            axis_seconds: { ascent: 300, vibration: 60, stopping: 120 },
+            preferred_seconds: 0,
+            avoided_seconds: 120,
+            total_seconds: 600,
+          },
+          // 区分の事実は値を持たず、区分の名前だけを出す。
+          facts: {
+            ascent: { label: "登り", value: 240, unit: "m" },
+            vibration: { label: "砂利", value: null, unit: "" },
+          },
+          riding,
+        });
+      const { unmount } = render(element());
+      expect(screen.getByRole("tab", { name: BURDEN_PAINT_NAME })).toHaveAttribute("aria-selected", "true");
+      const openList = () => userEvent.click(screen.getByRole("button", { name: "グラフに積む負担" }));
+      const rows = () =>
+        within(screen.getByRole("dialog"))
+          .getAllByRole("listitem")
+          .map((row) => [row.textContent, within(row).queryByRole("checkbox")?.getAttribute("aria-checked") ?? null]);
+      const fills = () =>
+        [...screen.getByRole("img", { name: "道のりに沿った負担" }).querySelectorAll("path[fill]")].map((path) =>
+          path.getAttribute("fill"),
+        );
 
-    await openList();
-    expect(rows()).toEqual([
-      ["登坂登り 240m+5分", "true"],
-      ["振動砂利+1分", "false"],
-      ["停止+2分", "true"],
-    ]);
-    expect(fills()).toEqual([catalog.axisColors.ascent, catalog.axisColors.stopping]);
+      await openList();
+      expect(rows()).toEqual([
+        ["登坂登り 240m+5分", "true"],
+        ["振動砂利+1分", "false"],
+        ["停止+2分", "true"],
+      ]);
+      expect(fills()).toEqual([catalog.axisColors.ascent, catalog.axisColors.stopping]);
 
-    await userEvent.click(screen.getByRole("checkbox", { name: "振動" }));
-    await userEvent.click(screen.getByRole("checkbox", { name: "登坂" }));
-    expect(fills()).toEqual([catalog.axisColors.vibration, catalog.axisColors.stopping]);
+      await userEvent.click(screen.getByRole("checkbox", { name: "振動" }));
+      await userEvent.click(screen.getByRole("checkbox", { name: "登坂" }));
+      expect(fills()).toEqual([catalog.axisColors.vibration, catalog.axisColors.stopping]);
 
-    unmount();
-    render(element());
-    await openList();
-    expect(rows().map(([, checked]) => checked)).toEqual(["false", "true", "true"]);
-  });
+      unmount();
+      render(element());
+      await openList();
+      expect(rows().map(([, checked]) => checked)).toEqual(["false", "true", "true"]);
+    },
+  );
 
   it("両方のタブで、経由地を通る所に縦の線と地図のピンと同じ番号の印を出し、走行中は走り終えた経由地を薄める", async () => {
     renderProfile({ waypointKms: [0.5, 1.5], progressKm: 1 });

@@ -114,7 +114,6 @@ export default function Home() {
   const mapCostPreference = generatedPreference ?? conditions.costPreference;
 
   const mapView = useMapView({
-    hasSelectedRoute: results.selectedCandidate !== null,
     hasDetail: results.hasDetail,
     ride: ride.ride,
     riding: ridingWayConditions,
@@ -204,8 +203,6 @@ export default function Home() {
         locationFailure={place.locationFailure}
         mapBearingDeg={mapView.bearing}
         onRedrawMap={mapView.redrawMap}
-        mapTheme={mapView.look.mapTheme}
-        onMapThemeChange={mapView.onMapThemeChange}
         onStartUsageGuide={() => setUsageGuideActive(true)}
         panelsShown={panels.panelsShown}
         onToggleRidePanel={panels.toggleRidePanel}
@@ -223,6 +220,7 @@ export default function Home() {
             ride={ride}
             mapView={mapView}
             profileLayers={profileLayers}
+            rideArrivalClock={warningRoute?.clock ?? null}
             tapMode={tapMode}
             selectionOwner={mapSelectionOwner}
             focusPoint={focusPoint}

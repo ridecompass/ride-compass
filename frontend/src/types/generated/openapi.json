@@ -1885,6 +1885,22 @@
         ]
       }
     },
+    "/api/derived-database": {
+      "get": {
+        "operationId": "get_derived_database_api_derived_database_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/zip": {}
+            }
+          },
+          "404": {
+            "description": "書き出しがまだ無い"
+          }
+        }
+      }
+    },
     "/api/admin/db-status": {
       "get": {
         "operationId": "get_db_status_api_admin_db_status_get",
@@ -2766,13 +2782,6 @@
             "type": "object",
             "title": "Client Tuning"
           },
-          "tile_versions": {
-            "additionalProperties": {
-              "type": "string"
-            },
-            "type": "object",
-            "title": "Tile Versions"
-          },
           "accident_years": {
             "items": {
               "type": "integer"
@@ -2788,7 +2797,6 @@
         "type": "object",
         "required": [
           "client_tuning",
-          "tile_versions",
           "accident_years",
           "road_classes"
         ],
@@ -3004,6 +3012,10 @@
             "type": "string",
             "title": "Icon Id"
           },
+          "color": {
+            "type": "string",
+            "title": "Color"
+          },
           "lens": {
             "$ref": "#/components/schemas/LensBands"
           }
@@ -3016,6 +3028,7 @@
           "label",
           "description",
           "icon_id",
+          "color",
           "lens"
         ],
         "title": "CostAxisCatalogEntry"
@@ -5564,6 +5577,10 @@
             ],
             "title": "Estimated Duration Seconds"
           },
+          "wind_from_previous_run": {
+            "type": "boolean",
+            "title": "Wind From Previous Run"
+          },
           "cost_seconds": {
             "type": "number",
             "title": "Cost Seconds"
@@ -5659,6 +5676,7 @@
           "elevation_gain_m",
           "segments",
           "estimated_duration_seconds",
+          "wind_from_previous_run",
           "cost_seconds",
           "penalty",
           "facts",
@@ -6253,7 +6271,13 @@
       "TimelineKind": {
         "type": "string",
         "enum": [
-          "thunder"
+          "thunder",
+          "snow",
+          "snow_accretion",
+          "icing",
+          "avalanche",
+          "low_temperature",
+          "frost"
         ],
         "title": "TimelineKind"
       },
@@ -6616,6 +6640,13 @@
           "type": {
             "type": "string",
             "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
           }
         },
         "type": "object",

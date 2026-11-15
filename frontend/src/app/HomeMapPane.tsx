@@ -20,6 +20,7 @@ import type { useMapView } from "@/features/map/view/useMapView";
 import RideBottom from "@/features/ride/RideBottom/RideBottom";
 import RideLockButton from "@/features/ride/RideLockButton/RideLockButton";
 import RideModeButton from "@/features/ride/RideModeButton/RideModeButton";
+import RideVoiceButton from "@/features/ride/RideVoiceButton/RideVoiceButton";
 import TurnCard from "@/features/ride/TurnCard/TurnCard";
 import type { useRideMode } from "@/features/ride/useRideMode";
 import RouteProfile from "@/features/route/RouteProfile/RouteProfile";
@@ -43,6 +44,8 @@ interface HomeMapPaneProps {
   ride: ReturnType<typeof useRideConditions>;
   mapView: ReturnType<typeof useMapView>;
   profileLayers: ProfileLayerSelection;
+  /** 走行中に、選んだ候補の上の距離を通る見込みの時刻（ms）を返す関数（走行の帯の到着予想と同じもの）。無ければnull。 */
+  rideArrivalClock: ((km: number) => number) | null;
   tapMode: MapTapMode;
   /** 地図に出した一時の選択（選んだ区間・小窓）の持ち主のパネル。 */
   selectionOwner: string | null;
@@ -71,6 +74,7 @@ export default function HomeMapPane({
   ride,
   mapView,
   profileLayers,
+  rideArrivalClock,
   tapMode,
   selectionOwner,
   focusPoint,
@@ -85,7 +89,7 @@ export default function HomeMapPane({
 }: HomeMapPaneProps) {
   const costCatalog = useCostAxisCatalog();
   const { results, splice } = route;
-  const { progress, upcomingTurn } = guidance;
+  const { progress, upcomingTurn, voice } = guidance;
   const navigating = riding.status !== "off";
   const selected = results.selectedCandidate;
   const selection = results.selectedRouteSegment;
@@ -251,6 +255,7 @@ export default function HomeMapPane({
           onResume={riding.resume}
         />
         {navigating && <RideLockButton locked={riding.locked} onLock={riding.lock} onUnlock={riding.unlock} />}
+        {voice.available && <RideVoiceButton on={voice.on} onToggle={voice.toggle} />}
       </div>
       {navigating && (
         <RideBottom
@@ -268,6 +273,7 @@ export default function HomeMapPane({
                 scaleKm={profile.distance_km}
                 progressKm={progress.km}
                 waypointKms={profile.waypoint_distances_km}
+                arrivalClock={rideArrivalClock}
                 selected={results.selectedRouteSegment}
                 onSelect={results.selectSegment}
                 segmentOnMap={results.segmentOnMap}

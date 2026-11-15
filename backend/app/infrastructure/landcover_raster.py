@@ -1,6 +1,6 @@
 """土地被覆ラスタ（Esri×Impact Observatory Sentinel-2 10m Annual LULC）のタイル描画。
 
-`settings.lulc_raster_paths`のGeoTIFFから、要求されたXYZタイルが覆う範囲を切り出し、
+置き場（`data_paths.py: RASTER_DIR`）のGeoTIFFから、要求されたXYZタイルが覆う範囲を切り出し、
 `domain/landcover.py: LANDCOVER_CLASSES`の配色で塗ったPNG（RGBA）を返す。集約を挟まず
 元の10m画素を1画素1色のまま出すため、割合の混合（材料が持つクラス別の割合）を
 どう塗るかという問題が起きない。
@@ -12,19 +12,18 @@
 モジュールはimport順に依存する（呼ばないとEPSG解決が環境によって失敗する）。
 """
 
-import logging
 import math
 import threading
 from dataclasses import dataclass
 from io import BytesIO
+from pathlib import Path
 
 import numpy as np
 from PIL import Image, ImageColor
 
-from app.config import settings
 from app.domain.landcover import LANDCOVER_CLASSES
 from app.domain.region import tile_bounds_3857
-from app.infrastructure.debug_log import log_throttled_warning
+from app.infrastructure import data_paths
 from app.infrastructure.proj_data import pin_bundled_proj_data
 
 pin_bundled_proj_data()
@@ -36,7 +35,6 @@ from rasterio.enums import Resampling  # noqa: E402
 from rasterio.warp import reproject, transform_bounds  # noqa: E402
 from rasterio.windows import Window, transform as window_transform  # noqa: E402
 
-logger = logging.getLogger("ridecompass.landcover_raster")
 
 TILE_SIZE = 256
 _TILE_CRS = "EPSG:3857"
@@ -59,13 +57,22 @@ class _RasterSource:
     lock: threading.Lock
 
 
-_opened_sources: list[_RasterSource] | None = None
+@dataclass(frozen=True)
+class Rasters:
+    """置き場から開いたラスタの一揃い。"""
+
+    #: 開いたときの置き場のファイル（パスの順）と、それぞれの更新時刻。
+    listing: tuple[tuple[str, int], ...]
+    sources: tuple[_RasterSource, ...]
+
+    @property
+    def paths(self) -> list[str]:
+        return [path for path, _ in self.listing]
+
+
+_opened: Rasters | None = None
 _sources_lock = threading.Lock()
 
-
-class LandcoverUnavailableError(Exception):
-    """土地被覆のラスタが設定されていないか、1枚でも開けない（開けた分だけで配ると、欠けた区域が透明な絵として配られ、
-    キャッシュにも残る）。範囲の外（どのラスタも覆っていない）とは別の事実。"""
 
 #: 画素値→RGBA。`LANDCOVER_CLASSES`に無い値（No Data・Clouds）と、塗らないと宣言した
 #: クラスは透明のまま残る。
@@ -74,30 +81,31 @@ for _cls in (c for c in LANDCOVER_CLASSES if c.painted):
     _PALETTE[_cls.value] = (*ImageColor.getrgb(_cls.color), 255)
 
 
-def _open_sources() -> list[_RasterSource]:
-    """設定されたラスタを全部開いて持つ（開けたら以後は開き直さない）。開けなければ`LandcoverUnavailableError`で、次の読みで
-    開き直す——デプロイはラスタの取得とコンテナ入れ替えを別のステップで行うため、起動時に無くても後から現れる。"""
-    global _opened_sources
+def raster_paths() -> list[str]:
+    """置き場にあるラスタのパス（名前の順）。"""
+    return sorted(str(path) for path in data_paths.RASTER_DIR.glob("*.tif"))
+
+
+def open_rasters() -> Rasters:
+    """置き場のラスタを全部開いた一揃い。置き場のファイルが開いたときから変われば（足す・消す・同じ名前で置き換える）
+    開き直す。置き場は配信中にも入れ替わりうるので、1つの用（タイル1枚・取込1回）は1つの一揃いを使い通す。
+    入れ替えた前のラスタは閉じずに手放す（読んでいる途中の要求があり、最後の参照が消えたときに閉じる）。"""
+    global _opened
     with _sources_lock:
-        if _opened_sources is None:
-            paths = settings.lulc_raster_paths_list
-            try:
-                if not paths:
-                    raise FileNotFoundError("環境変数LULC_RASTER_PATHSが未設定")
-                _opened_sources = [_RasterSource(rasterio.open(path), threading.Lock()) for path in paths]
-            except (OSError, rasterio.errors.RasterioIOError) as exc:
-                log_throttled_warning("region:landcover-raster", "土地被覆のラスタを開けません paths=%s error=%r", paths, exc)
-                raise LandcoverUnavailableError("土地被覆のラスタを開けないため、土地被覆を配れません") from exc
-        return _opened_sources
+        listing = tuple((path, Path(path).stat().st_mtime_ns) for path in raster_paths())
+        if _opened is None or _opened.listing != listing:
+            _opened = Rasters(listing, tuple(_RasterSource(rasterio.open(path), threading.Lock())
+                                             for path, _ in listing))
+        return _opened
 
 
 def close_sources() -> None:
     """開いたラスタを閉じる。次の読み取りで開き直す。"""
-    global _opened_sources
+    global _opened
     with _sources_lock:
-        for source in _opened_sources or []:
+        for source in _opened.sources if _opened else ():
             source.dataset.close()
-        _opened_sources = None
+        _opened = None
 
 
 def _read_decimated(source: _RasterSource, bounds: tuple[float, float, float, float]):
@@ -146,23 +154,17 @@ def _png(image: Image.Image) -> bytes:
     return buffer.getvalue()
 
 
-def opened_raster_paths() -> list[str]:
-    """開いたラスタのパス（開けなければ`LandcoverUnavailableError`）。"""
-    return [source.dataset.name for source in _open_sources()]
-
-
-def tile_classes(z: int, x: int, y: int) -> "np.ndarray | None":
+def tile_classes(rasters: Rasters, z: int, x: int, y: int) -> "np.ndarray | None":
     """1タイルぶんのクラス番号（uint8、`TILE_SIZE`四方）を返す。
 
     どのラスタも覆っていない範囲ではNone——ラスタの外側は「土地被覆が無い」のではなく
     このデータが何も言えない場所である。
     """
-    sources = _open_sources()
     bounds = tile_bounds_3857(z, x, y)
     dst_transform = from_bounds(*bounds, TILE_SIZE, TILE_SIZE)
     classes = np.zeros((TILE_SIZE, TILE_SIZE), dtype=np.uint8)
 
-    for source in sources:
+    for source in rasters.sources:
         dataset = source.dataset
         # densify_pts: 投影をまたぐと矩形の辺は直線でなくなる。角だけで変換すると、
         # 辺のふくらみぶんが読み取り範囲から落ちてタイルの縁が欠ける。
@@ -190,13 +192,13 @@ def tile_classes(z: int, x: int, y: int) -> "np.ndarray | None":
     return classes if classes.any() else None
 
 
-def render_tile(z: int, x: int, y: int) -> bytes | None:
+def render_tile(rasters: Rasters, z: int, x: int, y: int) -> bytes | None:
     """1タイルぶんのPNG（RGBA、`TILE_SIZE`四方）を返す。覆っていない範囲ではNone。
 
     呼び出し側は覆っていない範囲を空タイルとして扱う（後からラスタを足せば値を
     持ちうるため、キャッシュへは残さない）。
     """
-    classes = tile_classes(z, x, y)
+    classes = tile_classes(rasters, z, x, y)
     if classes is None:
         return None
     return _png(Image.fromarray(_PALETTE[classes], mode="RGBA"))

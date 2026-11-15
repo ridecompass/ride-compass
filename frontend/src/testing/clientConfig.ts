@@ -10,11 +10,10 @@ import type {
   RoadMapLayerView,
 } from "@/types/route";
 
-/** 応答。較正値・タイルの世代・事故の収録年・道の区分は、見たい呼び出し側が上書きする。 */
+/** 応答。較正値・事故の収録年・道の区分は、見たい呼び出し側が上書きする。 */
 export function clientConfigResponse(overrides: Partial<ClientConfigResponse> = {}): ClientConfigResponse {
   return {
     client_tuning: {},
-    tile_versions: {},
     accident_years: [],
     road_classes: roadClassCatalog(),
     ...overrides,

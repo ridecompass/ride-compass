@@ -1,8 +1,7 @@
 """リクエストID・アクセスサマリログ(infrastructure/request_log.py)のテスト。
 
 .claude/rules/logging.mdの方針のうち「クライアント指定のX-Request-IDを応答とログ行へ引き継ぐ」
-「アクセスサマリのレベルはステータス・経路で変わる」「未処理例外はスタックトレース付きERRORで残り、
-500応答にもIDが付く」を守る。ログ行の時刻がJSTで、オフセットを名乗ることも併せて検査する
+「アクセスサマリのレベルはステータス・経路で変わる」を守る。ログ行の時刻がJSTで、オフセットを名乗ることも併せて検査する
 （書式はこのモジュールが1つだけ持つ）。
 
 ここで見ないもの: IDの形式の確かめ方・指定が無いときの発行 → `asgi_correlation_id`の持ち物
@@ -13,18 +12,12 @@ import logging
 import re
 
 import pytest
-from asgi_correlation_id import CorrelationIdMiddleware
 from fastapi import FastAPI, Response
 from fastapi.testclient import TestClient
 
 from app.api.cache_policy import TILE_PATH_PREFIXES
 from app.main import app as main_app
-from app.infrastructure.request_log import (
-    access_level,
-    format_log_lines,
-    request_log_middleware,
-    unhandled_exception_handler,
-)
+from app.infrastructure.request_log import access_level, format_log_lines, request_log_middleware
 
 CLIENT_REQUEST_ID = "0f8fad5bd9cb469fa16570867728950e"
 
@@ -60,18 +53,13 @@ def test_access_level_policy(path, status_code, level):
 
 
 def _app_with_access_log() -> FastAPI:
-    """アクセスログのミドルウェアだけを載せたアプリ。タイルの経路の404と、未処理例外の経路を持つ。"""
+    """アクセスログのミドルウェアだけを載せたアプリ。タイルの経路の404を持つ。"""
     test_app = FastAPI()
     test_app.middleware("http")(request_log_middleware(TILE_PATH_PREFIXES))
 
     @test_app.get("/api/basemap/missing")
     def missing_tile():
         return Response(status_code=404)
-
-    @test_app.get("/boom")
-    def boom():
-        raise RuntimeError("kaboom")
-
     return test_app
 
 
@@ -104,31 +92,6 @@ def test_access_log_line_names_unknown_client_when_the_server_gives_none(caplog)
 
     [record] = _access_records(caplog)
     assert re.fullmatch(r"GET /api/basemap/missing -> 404 in \d+ms client=unknown", record.getMessage())
-
-
-def test_unhandled_exception_logged_as_error_with_traceback(caplog):
-    caplog.set_level(logging.ERROR, logger="ridecompass.access")
-
-    with pytest.raises(RuntimeError):
-        TestClient(_app_with_access_log()).get("/boom")
-
-    [record] = _access_records(caplog)
-    assert record.levelno == logging.ERROR
-    assert re.fullmatch(r"GET /boom -> unhandled exception after \d+ms client=testclient", record.getMessage())
-    assert record.exc_info is not None
-
-
-# 未処理例外(500)でもX-Request-IDヘッダが付く。TestClientは既定で
-# raise_server_exceptions=Trueのため、実際のHTTPレスポンスを得るにはFalseを指定する。
-def test_unhandled_exception_response_has_request_id_header():
-    test_app = _app_with_access_log()
-    test_app.add_middleware(CorrelationIdMiddleware)
-    test_app.add_exception_handler(Exception, unhandled_exception_handler)
-    client = TestClient(test_app, raise_server_exceptions=False)
-    response = client.get("/boom", headers={"X-Request-ID": CLIENT_REQUEST_ID})
-
-    assert response.status_code == 500
-    assert response.headers["X-Request-ID"] == CLIENT_REQUEST_ID
 
 
 def _formatted_line(created_utc: tuple[int, int, int, int, int, int], msecs: float) -> str:

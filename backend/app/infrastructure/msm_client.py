@@ -32,6 +32,7 @@ from app.domain.msm import MsmGrid, MsmGridPoints, MsmThinnedPoints
 from app.domain.weather_elements import MSM_FORECAST_HOURS
 from app.infrastructure.data_paths import DATA_DIR
 from app.infrastructure.debug_log import log_external_call
+from app.infrastructure.http_client import UpstreamNotFound, fetch_upstream
 
 logger = logging.getLogger("ridecompass.msm_client")
 
@@ -52,6 +53,8 @@ class MsmGridPointSeries:
     points: MsmGridPoints
     wind_u_ms: np.ndarray
     wind_v_ms: np.ndarray
+    #: 最新のrunの予報の終わり（`times`と同じ形の時刻、この時刻を含まない）。この時刻から先の値は前に出たrunのもの。
+    latest_run_end: datetime
 
 
 @dataclass(frozen=True)
@@ -228,9 +231,12 @@ async def _fetch_meta(client: httpx.AsyncClient) -> dict:
         return meta
 
 
-async def _download_chunk(client: httpx.AsyncClient, variable: str, chunk_number: int, etags: dict) -> Path | None:
+async def _download_chunk(
+    client: httpx.AsyncClient, variable: str, chunk_number: int, etags: dict, *, required: bool,
+) -> Path | None | UpstreamNotFound:
     """1チャンクを取得し、置き場のチャンクの隣の一時ファイルへ書いてそのパスを返す。配信元の内容が前回と同じなら（304）
-    何もせずNoneを返す。置き場のチャンクを置き換えるのは呼び出し側（`refresh`）。"""
+    何もせずNoneを返す。配信元にまだ無ければ（新しいrunが出ない間の、窓の終わりのチャンク）`UPSTREAM_NOT_FOUND`で、
+    `required`のチャンクなら`MsmUnavailableError`。置き場のチャンクを置き換えるのは呼び出し側（`refresh`）。"""
     path = _chunk_path(variable, chunk_number)
     key = f"{variable}/{chunk_number}"
     headers = {}
@@ -240,24 +246,22 @@ async def _download_chunk(client: httpx.AsyncClient, variable: str, chunk_number
 
     url = f"{settings.msm_base_url}/{variable}/chunk_{chunk_number}.om"
     with log_external_call("msm:chunk", variable=variable, chunk=chunk_number) as fields:
-        response = await client.get(url, headers=headers)
-        if response.status_code == 304:
-            fields["result"] = "ok"
-            fields["status"] = 304
+        response = await fetch_upstream(client, url, fields, headers)
+        if isinstance(response, UpstreamNotFound):
+            if required:
+                raise MsmUnavailableError(f"MSMの配信元に今を含むチャンクがありません: {variable}/chunk_{chunk_number}")
+            return response
+        if response.status_code == httpx.codes.NOT_MODIFIED:
             fields["cache"] = "hit"
             return None
-        response.raise_for_status()
-        content = response.content
-        fields["result"] = "ok"
-        fields["status"] = response.status_code
         fields["cache"] = "miss"
-        fields["bytes"] = len(content)
+        fields["bytes"] = len(response.content)
 
     temporary = path.with_suffix(".om.tmp")
 
     def write() -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
-        temporary.write_bytes(content)
+        temporary.write_bytes(response.content)
 
     await asyncio.to_thread(write)
     if response.headers.get("ETag"):
@@ -289,14 +293,16 @@ async def refresh(client: httpx.AsyncClient) -> int:
 
     現在時刻から`domain/weather_elements.py: MSM_FORECAST_HOURS`先までを覆うチャンク（通常1〜2個）を変数ごとに取得する。
     内容が変わっていないチャンクはETagによる条件付きGETで転送自体が起きない。
+    今を含むチャンクより先で配信元にまだ無いもの（新しいrunが出ない間）は置かない。今を含むチャンクが無ければ失敗する。
     """
     meta = await _fetch_meta(client)
     chunk_hours = int(meta["chunk_time_length"])
     now = int(time.time())
     # 両端のチャンクだけを取る。配信元のチャンクは予報窓より長いため間は無いが、チャンクが
-    # 予報窓より短くなると間のチャンクを取らず、読み出しが「未同期」で失敗する。
+    # 予報窓より短くなると間のチャンクを取らず、読み出しはそこで値が尽きたと見なす。
     horizon_end = now + MSM_FORECAST_HOURS * 3600
-    chunk_numbers = sorted({_chunk_number(now, chunk_hours), _chunk_number(horizon_end, chunk_hours)})
+    now_chunk = _chunk_number(now, chunk_hours)
+    chunk_numbers = sorted({now_chunk, _chunk_number(horizon_end, chunk_hours)})
 
     etags = _load_json(MSM_DIR / _ETAGS_FILE_NAME)
     keep: set[Path] = set()
@@ -307,10 +313,14 @@ async def refresh(client: httpx.AsyncClient) -> int:
     try:
         for variable in FORECAST_VARIABLES:
             for chunk_number in chunk_numbers:
+                temporary = await _download_chunk(
+                    client, variable, chunk_number, etags, required=chunk_number == now_chunk,
+                )
+                if isinstance(temporary, UpstreamNotFound):
+                    continue
                 path = _chunk_path(variable, chunk_number)
                 keep.add(path)
                 valid.add(f"{variable}/{chunk_number}")
-                temporary = await _download_chunk(client, variable, chunk_number, etags)
                 if temporary is not None:
                     staged.append((temporary, path))
     except BaseException:
@@ -384,22 +394,22 @@ def _read_sync[S: _Selection](
     extract: Callable[[S, np.ndarray], np.ndarray],
     variables: tuple[str, ...],
     now: int,
-) -> tuple[S, list[datetime], dict[str, np.ndarray]]:
+) -> tuple[S, list[datetime], dict[str, np.ndarray], datetime]:
     """`now`の正時から`domain/weather_elements.py: MSM_FORECAST_HOURS`時間ぶんの`variables`を、格子から`select`で
     選んだ範囲について読む。`extract`は切り出した部分ブロック（形状[緯度, 経度, 時刻]）から[点の数, 時刻数]の値を
-    取り出す。戻り値の値は`FORECAST_VARIABLES`の項目ごと。"""
+    取り出す。戻り値の値は`FORECAST_VARIABLES`の項目ごとで、最後は最新のrunの予報の終わり（系列の時刻の形）。
+
+    読むのは最新のrunの終わり（メタ情報の`data_end_time`）までではなく、チャンクに値のある時刻まで。配信元のチャンクは
+    最新のrunの終わりより先にも、前に出た長いrunの値を持つ（新しいrunが出ない間も、それが尽きるまでは読める）。
+    値の無い時刻は、読んだ範囲の値が全部欠けている（NaN）ことか、2つ目以降のチャンクが置き場に無いことで見分け、
+    その時刻から先を捨てる。"""
     meta = _load_json(MSM_DIR / _META_FILE_NAME)
     if not meta:
         raise MsmUnavailableError("MSMのメタ情報が未同期です")
     chunk_hours = int(meta["chunk_time_length"])
-    # 値は正時ごとなので、予報の終端も正時へ切り下げる。正時でない終端のまま読むと、最後のチャンクで読む時刻の幅が0になり
-    # 読む位置が進まない。
-    data_end = (int(meta["data_end_time"]) // 3600) * 3600
 
     start = (now // 3600) * 3600
-    end = min(start + MSM_FORECAST_HOURS * 3600, data_end)
-    if end <= start:
-        raise MsmUnavailableError("MSMの予報データが現在時刻に追いついていません")
+    end = start + MSM_FORECAST_HOURS * 3600
 
     # 形状は実データから読む（緯度・経度方向の格子点数を定数として持たないため）。
     sample_path = _synced_chunk_path(variables[0], _chunk_number(start, chunk_hours))
@@ -412,6 +422,8 @@ def _read_sync[S: _Selection](
     cursor = start
     while cursor < end:
         chunk_number = _chunk_number(cursor, chunk_hours)
+        if cursor > start and not all(_chunk_path(variable, chunk_number).exists() for variable in variables):
+            break
         chunk_begin = chunk_number * chunk_hours * 3600
         t0 = (cursor - chunk_begin) // 3600
         t1 = min((end - chunk_begin) // 3600, chunk_hours)
@@ -422,19 +434,25 @@ def _read_sync[S: _Selection](
         )
         cursor = chunk_begin + t1 * 3600
 
-    return selection, times, {
-        FORECAST_VARIABLES[variable]: np.concatenate(parts, axis=1) for variable, parts in series.items()
-    }
+    values = {FORECAST_VARIABLES[variable]: np.concatenate(parts, axis=1) for variable, parts in series.items()}
+    missing = np.logical_or.reduce([np.isnan(value).all(axis=0) for value in values.values()])
+    available = int(np.argmax(missing)) if missing.any() else len(times)
+    if available == 0:
+        raise MsmUnavailableError("MSMの予報データに現在時刻の値がありません")
+    latest_run_end = as_series_time(datetime.fromtimestamp(int(meta["data_end_time"]), JST))
+    return (
+        selection, times[:available], {item: value[:, :available] for item, value in values.items()}, latest_run_end,
+    )
 
 
 async def _read[S: _Selection](
     select: Callable[[MsmGrid], S],
     extract: Callable[[S, np.ndarray], np.ndarray],
     variables: tuple[str, ...] = _WIND_VARIABLES,
-) -> tuple[S, list[datetime], dict[str, np.ndarray]]:
+) -> tuple[S, list[datetime], dict[str, np.ndarray], datetime]:
     """`_read_sync`を別スレッドで回す。
 
-    同期が済んでいない・予報が現在時刻へ追いついていない・置き場のファイルが読めない（壊れたメタ情報・チャンク）・
+    同期が済んでいない・現在時刻にどのrunの値も無い・置き場のファイルが読めない（壊れたメタ情報・チャンク）・
     地点が格子の外にある場合は`MsmUnavailableError`。
     """
     with log_external_call("msm:read", hours=MSM_FORECAST_HOURS) as fields:
@@ -443,7 +461,7 @@ async def _read[S: _Selection](
             result = await asyncio.to_thread(_read_sync, select, extract, variables, int(time.time()))
         except (OSError, ValueError, KeyError) as exc:
             raise MsmUnavailableError(f"MSMの置き場を読めません: {exc!r}") from exc
-        _, times, values = result
+        _, times, values, _ = result
         fields["result"] = "ok"
         fields["locations"] = len(next(iter(values.values())))
         fields["times"] = len(times)
@@ -453,7 +471,7 @@ async def _read[S: _Selection](
 async def read_grid_points(latitudes: np.ndarray, longitudes: np.ndarray) -> MsmGridPointWeatherSeries:
     """地点ごとの最寄りの格子点の風・降水・気温の時系列（格子点の値のまま、現在時刻の正時から`domain/weather_elements.py: MSM_FORECAST_HOURS`時間ぶん）。読めなければ
     `MsmUnavailableError`。"""
-    points, times, values = await _read(
+    points, times, values, _ = await _read(
         lambda grid: grid.nearest_points(latitudes, longitudes), MsmGridPoints.values, tuple(FORECAST_VARIABLES),
     )
     return MsmGridPointWeatherSeries(times=times, points=points, **values)
@@ -462,10 +480,10 @@ async def read_grid_points(latitudes: np.ndarray, longitudes: np.ndarray) -> Msm
 async def read_grid_block(south: float, west: float, north: float, east: float) -> MsmGridPointSeries:
     """矩形を覆う格子点（`domain/msm.py: MsmGrid.block_covering`）の全部の時系列（格子点の値のまま、点の番号の順）。
     読めなければ`MsmUnavailableError`。"""
-    points, times, values = await _read(
+    points, times, values, latest_run_end = await _read(
         lambda grid: grid.block_covering(south, west, north, east).all_points(), MsmGridPoints.values,
     )
-    return MsmGridPointSeries(times=times, points=points, **values)
+    return MsmGridPointSeries(times=times, points=points, latest_run_end=latest_run_end, **values)
 
 
 async def read_weather_grid(
@@ -474,7 +492,7 @@ async def read_weather_grid(
     """矩形のうち格子の範囲に入る部分の格子点を、点の数が`max_points`以下になるよう間引いた
     （`domain/msm.py: MsmBlock.thinned_points`）格子点ごとの風と降水の時系列（格子点の値のまま、点の番号の順）。
     読めなければ`MsmUnavailableError`。"""
-    points, times, values = await _read(
+    points, times, values, _ = await _read(
         lambda grid: grid.block_overlapping(south, west, north, east).thinned_points(max_points),
         MsmGridPoints.values,
         _WIND_AND_PRECIPITATION_VARIABLES,

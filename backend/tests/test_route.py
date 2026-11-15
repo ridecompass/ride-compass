@@ -14,28 +14,30 @@ from hypothesis import strategies as st
 
 from app.domain import route
 from app.domain.attributes import ElevationAttribute
-from app.domain.route import PenaltyBreakdown, RouteSegmentDetail
+from app.domain.route import EdgeSegment, RouteSegmentDetail
 
 WIDTH = route.SEGMENT_BIN_DISTANCE_KM
 
 
-def _segments(distances: list[float], **fields_per_segment) -> list[RouteSegmentDetail]:
+def _segments(distances: list[float], **fields_per_segment) -> list[EdgeSegment]:
     """東へ一直線に連なる区間。`fields_per_segment`は名前 → 区間ごとの値の並び。"""
     segments = []
     cumulative = 0.0
     for i, distance in enumerate(distances):
-        segments.append(RouteSegmentDetail(
+        segments.append(EdgeSegment(
             start_latitude=35.0, start_longitude=139.0 + i * 0.01,
             end_latitude=35.0, end_longitude=139.0 + (i + 1) * 0.01,
-            cumulative_distance_km=cumulative, distance_km=distance, edge_start=i, edge_end=i + 1,
-            **({"elevations": [], "road_classes": {}, "penalty": PenaltyBreakdown(axis_seconds={}, preferred_seconds=0.0, avoided_seconds=0.0)}
+            cumulative_distance_km=cumulative, distance_km=distance, edge_index=i,
+            **({"geometry": None, "start_elevation_m": None, "end_elevation_m": None, "sustained_gradient_percent": None,
+                "average_gradient_percent": None, "estimated_arrival_time": "2026-09-22T08:10:00+09:00",
+                "axis_seconds": {}, "preferred_seconds": 0.0, "avoided_seconds": 0.0, "road_classes": {}}
                | {name: values[i] for name, values in fields_per_segment.items()}),
         ))
         cumulative += distance
     return segments
 
 
-def _binned(segments: list[RouteSegmentDetail]) -> list[RouteSegmentDetail]:
+def _binned(segments: list[EdgeSegment]) -> list[RouteSegmentDetail]:
     """区間をビンへ束ねる。"""
     return route.aggregate_segments_into_bins(segments, route.route_bin_slices([s.distance_km for s in segments]))
 
@@ -138,12 +140,7 @@ def test_a_bin_lists_the_road_classes_of_its_segments_joining_equal_neighbours_a
     stretch = route.RoadClassStretch
     bins = _binned(_segments(
         [0.1, 0.0, 0.2, 0.3],
-        road_classes=[
-            {"surface": [stretch(distance_km=0.1, value="paved")]},
-            {"surface": [stretch(distance_km=0.0, value="gravel")]},
-            {"surface": [stretch(distance_km=0.2, value="paved")]},
-            {"surface": [stretch(distance_km=0.3, value=None)]},
-        ],
+        road_classes=[{"surface": "paved"}, {"surface": "gravel"}, {"surface": "paved"}, {"surface": None}],
     ))
 
     assert [b.road_classes for b in bins] == [

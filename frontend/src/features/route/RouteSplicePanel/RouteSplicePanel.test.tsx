@@ -128,12 +128,11 @@ describe("RouteSplicePanel 見出しと操作", () => {
   it.each([
     ["差分の評価", { previewing: true }, "差分を見る"],
     ["作成", { applying: true }, "新しいルートを作成"],
-  ] as const)("%sを待つ間は、どの操作も押せず、待っている操作に待ちの印を付ける", (_waiting, props, busy) => {
+  ] as const)("%sを待つ間は、待っている操作にだけ待ちの印を付ける", (_waiting, props, busy) => {
     renderPanel({ appliedCount: 1, ...props });
 
     for (const name of ACTIONS) {
       const button = screen.getByRole("button", { name });
-      expect(button).toBeDisabled();
       if (name === busy) expect(button).toHaveAttribute("aria-busy", "true");
       else expect(button).not.toHaveAttribute("aria-busy", "true");
     }

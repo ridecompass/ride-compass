@@ -68,7 +68,6 @@ from app.domain.map_display import (
     MAP_LAYER_CATEGORIES,
     MAP_LAYERS,
     map_layer_label,
-    MAP_LAYER_KINDS,
     MapLayerSpec,
     ROUTE_ARROW_HALO_SCALE,
     ROUTE_ARROW_SIZE_BY_ZOOM,
@@ -132,7 +131,6 @@ from app.domain.display_palette import (
     BASEMAP_MUTED_GROUND_PULL,
     BASEMAP_MUTED_ICON_OPACITY_SCALE,
     BASEMAP_MUTED_SATURATION_SCALE,
-    COST_SERIES_COLORS,
     SEMANTIC_COLORS,
     SEMANTIC_COLORS_ON_DARK,
     resolved_display_axes,
@@ -166,8 +164,7 @@ from app.domain.tuning import client_tuning_ids
 from app.domain.weather import PRECIPITATION_MIN_MM
 from app.infrastructure.msm_client import DEFAULT_UPDATE_INTERVAL_SECONDS as MSM_UPDATE_INTERVAL_SECONDS
 from app.infrastructure.jma_amedas_client import AMEDAS_REFRESH_INTERVAL_MINUTES
-from app.infrastructure.job_registry import JOB_TTL_SECONDS, JOB_WAIT_MAX_SECONDS
-from app.services.tile_version_service import tile_shapes
+from app.infrastructure.job_registry import JOB_WAIT_MAX_SECONDS
 
 GENERATED_DIR = Path(__file__).resolve().parents[2] / "frontend" / "src" / "types" / "generated"
 OUTPUT_PATH = GENERATED_DIR / "openapi.json"
@@ -236,7 +233,6 @@ def _map_layer_entry(spec: MapLayerSpec) -> dict:
     return {
         "dataSource": spec.data_source,
         "category": spec.category,
-        "kind": spec.kind,
         "dataNature": spec.data_nature,
         "defaultOn": spec.default_on,
         "drawMinZoom": spec.draw_min_zoom,
@@ -295,18 +291,10 @@ def main() -> None:
     _write_json(
         REGION_TILE_CONFIG_PATH,
         {
-            # **DBの中身から決まる世代はここへ書かない。** バッチが中身を作り直しても
-            # デプロイは起きず、ビルド時の値は次のデプロイまで古いままになる。そちらは
-            # `GET /api/client-config`の`tile_versions`が実行時に配る
-            # （`services/tile_version_service.py`）。
-            # 下の`landcover.tile_version`だけは例外で、**コードとクラス定義だけから
-            # 決まる**（DBを読まない）ためビルド時に確定する。実際に開いているラスタの
-            # 構成はサーバー側のディスクキャッシュの鍵が持ち、URLには入らない
+            # **DBの中身から決まる世代はここへ書かない**（バッチが中身を作り直してもデプロイは起きない）。
+            # 下の`landcover.tile_version`は、コードとクラス定義だけから決まる（DBを読まない）ためビルド時に確定する。
+            # 実際に開いているラスタの構成はサーバー側のディスクキャッシュの鍵が持ち、URLには入らない
             # （環境ごとに違う値をビルド機の設定で固定してしまうため）。
-            # 実行時に世代が配られる系統の名前。**frontendはこの一覧を手で持たず、
-            # ここから照合する**——片側だけ系統を足すと、足りない側は「世代が揃った」と
-            # 判定したまま配られない世代を待ち続ける。
-            "tile_version_kinds": sorted(tile_shapes()),
             # 路面タイルのレイヤー名と、道のフィーチャーの列の名前（路面タイルは`feature_key`だけを持ち、ほかの列は押した所に
             # 近い道の口が返す）。
             "road_surface": {"layer_name": ROAD_SURFACE_LAYER_NAME, "properties": ROAD_FEATURE_PROPERTIES},
@@ -357,7 +345,6 @@ def main() -> None:
         {
             "semantic": SEMANTIC_COLORS,
             "semantic_on_dark": SEMANTIC_COLORS_ON_DARK,
-            "cost_series": list(COST_SERIES_COLORS),
             "basemap_dark": {
                 "lightness_range": list(BASEMAP_DARK_LIGHTNESS_RANGE),
                 "saturation_scale": BASEMAP_DARK_SATURATION_SCALE,
@@ -386,7 +373,6 @@ def main() -> None:
                 {"key": source.key, "minZoom": source.min_zoom} for source in MAP_LAYER_DATA_SOURCES
             ],
             "layerDataNatures": list(MAP_LAYER_DATA_NATURES),
-            "layerKinds": list(MAP_LAYER_KINDS),
             # 地図に載るものの、描き方以外の宣言（種別・情報源・性質・既定表示・最初に隠す行）。
             "layers": [
                 {
@@ -615,9 +601,6 @@ def main() -> None:
             "disabled_label": DISABLED_LABEL,
             "min_assumed_speed_kmh": MIN_ASSUMED_SPEED_KMH,
             "max_assumed_speed_kmh": MAX_ASSUMED_SPEED_KMH,
-            # フロントのポーリングの打ち切り。backendが結果を持つ時間より長く待つと、
-            # 掃除済みのjob_idを引いて「ジョブが見つかりません」になる。
-            "job_result_ttl_seconds": JOB_TTL_SECONDS,
             # フロントが状態を問い合わせるとき、終わるまで待たせる秒（口が受け付ける上限そのもの）。
             "job_wait_seconds": JOB_WAIT_MAX_SECONDS,
             # 区間ごとに速度を変える条件の名前（走行モデルの並び）。所要時間の説明が差し込む。

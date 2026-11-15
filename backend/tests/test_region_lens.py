@@ -211,6 +211,11 @@ async def test_the_inspector_gives_both_directions_and_the_facts_behind_them(cos
     assert bad is not None
     assert inspection.along.facts["rough"] == AxisFact(label=bad.label, value=1.0, unit=bad.unit)
 
+    without_rough = await service.inspect(str(CLIMBING_WAY), Z, X, Y, 0.0, None, ASSUMED_SPEED_KMH,
+                                          CostPreference(disabled_axes=["rough"]))
+    assert without_rough is not None and without_rough.along is not None
+    assert "rough" not in {axis.axis_id for axis in without_rough.along.axes} | set(without_rough.along.facts)
+
 
 async def test_a_new_road_network_generation_paints_its_own_roads(client, cost_axes, road_network_root):
     """道路網が作り直されたら、同じタイルでも新しい網の道で塗る。前の網のタイルの区間を引き続けると、増えた道が地図で

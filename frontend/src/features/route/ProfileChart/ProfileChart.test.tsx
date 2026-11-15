@@ -52,7 +52,7 @@ function Chart({ segments, scaleKm, selected, onSelect }: Props) {
       usage="なぞると地点を選ぶ"
       selected={selected}
       onSelect={onSelect}
-      waypointKms={[]}
+      waypoints={[]}
     >
       {null}
     </ProfileChart>

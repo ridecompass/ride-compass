@@ -4,6 +4,7 @@
 保存の実体は`diskcache`で、容量上限を超えればライブラリが書き込みのついでに退避する。
 """
 
+import logging
 import pickle
 import sqlite3
 from collections.abc import Callable
@@ -12,11 +13,10 @@ import diskcache
 
 from app.config import settings
 from app.infrastructure.data_paths import DATA_DIR
-from app.infrastructure.debug_log import log_throttled_warning
+
+logger = logging.getLogger("ridecompass.tile_cache")
 
 CACHE_DIR = DATA_DIR / "tile_cache"
-
-_CATEGORY = "cache:tile-disk"
 
 #: ディスクの置き場（`diskcache`）の障害（ディスクフル・権限・SQLiteの障害）として受ける例外。実装の誤り（pickleにできない値等）は受けない。
 DISK_STORE_ERRORS = (OSError, sqlite3.Error)
@@ -45,7 +45,7 @@ def get(path: str) -> tuple[bytes, str] | None:
     try:
         return _opened().get(path)
     except DISK_READ_ERRORS as exc:  # ディスク・SQLiteの障害と壊れた項目は、いずれも未キャッシュ扱いにする
-        log_throttled_warning(_CATEGORY, "tile cache read failed for path=%s, treating as cache miss error=%r", path, exc)
+        logger.warning("tile cache read failed for path=%s, treating as cache miss error=%r", path, exc)
         return None
 
 
@@ -54,7 +54,7 @@ def set(path: str, content: bytes, content_type: str) -> None:
     try:
         _opened().set(path, (content, content_type))
     except DISK_STORE_ERRORS as exc:  # ディスクフル・権限・SQLiteの障害は、書かずに進む
-        log_throttled_warning(_CATEGORY, "tile cache write failed for path=%s (disk full/permission?) error=%r", path, exc)
+        logger.warning("tile cache write failed for path=%s (disk full/permission?) error=%r", path, exc)
 
 
 def delete_where(is_stale: Callable[[str], bool]) -> int:
@@ -68,7 +68,7 @@ def delete_where(is_stale: Callable[[str], bool]) -> int:
         stale = [key for key in cache.iterkeys() if is_stale(key)]
         return sum(1 for key in stale if cache.delete(key))
     except DISK_STORE_ERRORS as exc:  # ディスク・SQLiteの障害は、消さずに残すことへ倒す
-        log_throttled_warning(_CATEGORY, "tile cache prune failed, stale entries are kept error=%r", exc)
+        logger.warning("tile cache prune failed, stale entries are kept error=%r", exc)
         return 0
 
 

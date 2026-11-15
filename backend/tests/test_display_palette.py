@@ -1,7 +1,7 @@
 """`domain/display_palette.py`——一次属性の行に塗る色と、役割ごとの色。
 
 入口は`resolved_display_axes`（行の色を解決した表示定義。画面へ配る形）と、その色を作る`ordered_colors`・
-`nominal_colors`、役割ごとの色`SEMANTIC_COLORS`。前半は架空の属性で色の配り方を、後半は本番の一次属性の宣言
+`nominal_colors`、役割ごとの色`SEMANTIC_COLORS`、費用の軸の識別色`cost_series_colors`。前半は架空の属性で色の配り方を、後半は本番の一次属性の宣言
 （`domain/primary_attributes.py: PRIMARY_ATTRIBUTES`）に配った色が地図の上で読めること
 （`docs/modules/frontend/static-map-layers.md`の配色の読み方）を確かめる。
 
@@ -19,6 +19,8 @@ import itertools
 import math
 
 import pytest
+from hypothesis import example, given
+from hypothesis import strategies as st
 
 from app.domain import display_palette
 from app.domain.display_palette import (
@@ -26,6 +28,7 @@ from app.domain.display_palette import (
     BASEMAP_DARK_SATURATION_SCALE,
     SEMANTIC_COLORS,
     SEMANTIC_COLORS_ON_DARK,
+    cost_series_colors,
     nominal_colors,
     ordered_colors,
     resolved_display_axes,
@@ -170,6 +173,23 @@ def test_ordered_colors_on_the_dark_ground_keep_neighbours_apart():
         colors = ordered_colors(count, on_dark=True)
         for a, b in zip(colors, colors[1:]):
             assert delta_e(a, b) >= ORDERED_DELTA_E, (count, a, b)
+
+
+EVALUATION_COLORS = [SEMANTIC_COLORS[k] for k in ("evaluation_good", "evaluation_mid", "evaluation_bad", "evaluation_extreme")]
+
+
+@given(st.integers(min_value=1, max_value=200))
+@example(len(display_palette.COST_SERIES_COLORS) + 1)
+def test_cost_axis_colors_keep_neighbours_apart_however_many_axes(count):
+    """軸を管理APIで足しても、どの軸も色を持ち、積み上げのグラフと差の棒で隣り合う軸が見分けられ、地図の負担の塗り
+    （緑→赤）と取り違えない。灰色で埋めると、増えた軸どうしと値の無い所が見分けられない。"""
+    colors = cost_series_colors(count)
+
+    assert len(colors) == count
+    for a, b in zip(colors, colors[1:]):
+        assert delta_e(a, b) >= ORDERED_DELTA_E, (count, a, b)
+    for color in colors:
+        assert min(delta_e(color, e) for e in EVALUATION_COLORS) >= NOMINAL_DELTA_E, (count, color)
 
 
 @pytest.mark.parametrize("key", ["evaluation_good", "evaluation_mid", "evaluation_bad", "evaluation_extreme"])

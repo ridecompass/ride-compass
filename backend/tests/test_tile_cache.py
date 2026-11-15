@@ -10,7 +10,6 @@
 - 容量の上限と退避の順 → `diskcache`が持つ（設定は宣言で、振る舞いはライブラリのもの）
 - 読み書きをイベントループの外で行うこと → 呼び出し元の順序の約束で、結果に現れない
   （理由は`docs/modules/backend/static-road-attributes.md`「vector_tile.py・tile_cache.py」）
-- 抑制付きWARNINGの抑制の窓 → `test_debug_log.py`
 """
 
 import logging

@@ -1,7 +1,7 @@
 /**
  * `features/route/RouteOutcome/RouteOutcome.tsx`——「ルート結果」の中身のうち、選んだ候補の中身。
  *
- * 見るもの: 編集で作ったルートの「元との違い」の元と名前、道のりのグラフ（横軸・押した区間・動かして選ぶこと）、
+ * 見るもの: 編集で作ったルートの「元との違い」の元と名前、道のりのグラフ（横軸・押した区間・動かして選ぶこと）、経由地の着く見込みの時刻、
  * 候補の内訳、編集中は編集面だけを出し、
  * 同じ道の候補を一覧の名前で渡すこと。
  *
@@ -74,6 +74,26 @@ describe("選んだ候補の中身", () => {
     graph.focus();
     await userEvent.keyboard("{Home}");
     expect(results.selectSegment).toHaveBeenCalledWith(expect.objectContaining({ segment: first }));
+  });
+
+  it("道のりのグラフの経由地の印に、選んだ候補の区間の到着予想と所要時間から読んだ、着く見込みの時刻を添える", () => {
+    // 2つ目の区間は 09:10 に入り、所要時間の終わりの 09:30 に抜ける。経由地はその中ほど。
+    renderOutcome({
+      results: resultsOf({
+        generated: [
+          route("fast", {
+            distance_km: 2,
+            estimated_duration_seconds: 30 * 60,
+            waypoint_distances_km: [1.5],
+            segments: [
+              makeRouteSegment({ distance_km: 1, estimated_arrival_time: "2026-11-14T09:00:00+09:00" }),
+              makeRouteSegment({ distance_km: 1, estimated_arrival_time: "2026-11-14T09:10:00+09:00" }),
+            ],
+          }),
+        ],
+      }),
+    });
+    expect(screen.getByRole("img", { name: "経由地 1（1.5km地点・09:20着）" })).toHaveTextContent("09:20着");
   });
 
   it("候補の負担を出し、道のりのグラフの「グラフに積む負担」の一覧に軸の名前（費用の軸の一覧）の付いた内訳と事実を出す", async () => {

@@ -4,7 +4,7 @@
 （`derive_places.derive`）。配布の形の小さな見本を Parquet に書いて置き場に置き、表に入った地点を見る。
 
 ここで見ないもの:
-- 配布元から手元へ写す取得（`scripts/fetch_overture_places.py`）→ どのテストも通さない（網の向こうの S3 を読むだけで、
+- 配布元から手元へ写す取得（`app/batch/source_adapters/overture_places.py: fetch_overture_places`）→ どのテストも通さない（網の向こうの S3 を読むだけで、
   判断を持たない）
 - 表を焼いた点のタイル → `test_point_tiles.py`
 - 地点の辺り → `test_stop_place_areas.py`
@@ -17,6 +17,7 @@ import duckdb
 import pytest
 
 from app.batch import derive_places
+from app.batch.common import write_fetch_record
 from app.batch.ingest import ingest_source
 from app.batch.source_adapters import overture_places
 from app.batch.source_profile import load_source_profile
@@ -77,7 +78,8 @@ def overture_dir(monkeypatch, tmp_path):
 
 async def _places(conn, places: list[dict]) -> dict[str, str | None]:
     """見本を取り込んで地点を作り直し、入った地点の 名前 → 群（群を持たなければNone）を返す。"""
-    _write_parquet(overture_places.places_path(ROWS.release), places)
+    _write_parquet(overture_places.places_path(), places)
+    write_fetch_record(overture_places.DATA_DIR, release="given")
     await ingest_source(conn, PROFILE, Source.OVERTURE_PLACE)
     await derive_places.derive(conn)
     return {row["name"]: row["place_group"]

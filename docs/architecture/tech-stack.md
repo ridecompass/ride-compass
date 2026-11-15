@@ -21,7 +21,7 @@
 | 天候（予報） | 気象庁MSM（Open-MeteoがAWS Open Dataで公開する前処理済み`.om`をローカル同期） | 外部の気象予報APIを実行時に叩かないため、レート制限・クォータの制約を受けない |
 | 天候（実測）・防災 | 気象庁の公開API（アメダス・警報・ナウキャスト・キキクル・洪水予報）・環境省WBGT | 予報と統合しない。数値予報モデルの出力は公式発表の代わりにならない |
 | 標高 | 国土地理院DEMタイル（APIキー不要、日本国内限定） | 評価の材料（勾配）は取込バッチだけが叩き、**ルート生成・評価が実行時に取りに行く経路は無い**。地図の地形の表示は、backendが実行時に取りに行って中継し、ディスクに持つ |
-| 土地被覆 | Esri × Impact Observatory の10m LULC（GeoTIFF） | リポジトリに持たず、デプロイがVMへ取得して読み取り専用でマウントする |
+| 土地被覆 | Esri × Impact Observatory の10m LULC（GeoTIFF） | リポジトリに持たず、元の取り直し（`backend/ops/source_refresh.sh`）がVMへ取得し、配信のコンテナへは読み取り専用でマウントする |
 | 立ち寄り先の地点 | Overture Maps の places（GeoParquet）を DuckDB（MIT）で取込の範囲だけ切り出す | 取得と取込のバッチだけが使う（`backend/requirements-batch.txt`）。利用条件と版の入れ替えは[data-sources.md](data-sources.md) |
 | 本番DBの退避先 | Oracle Cloud Object Storage（非公開のバケット） | 本番VMのtimerがDBの全体の書き出しを置き、前の1個を消す（無料の枠に1個だけ入る）。仕組みと登録の手順は[production-data/SKILL.md](../../.claude/skills/production-data/SKILL.md)付録「DBのバックアップ」 |
 | タスクの流れのゲート | Cloudflare Workers（`tools/flow-gate/wrangler.toml`。Webhookを受けるWorkerと、Cloudflare Accessで守る回答フォームのWorker） | アプリの外の運用の道具で、本番の利用者の経路に無い。公開するトークンは下の「秘密の値とトークン」、決まりは[flow.md](../conventions/flow.md) |
@@ -92,6 +92,11 @@ Dependabotは、masterが同じ版になってもPull Requestを閉じないこ�
   いない間は利用者の操作の中で呼ばないと断られる（[W3C Device Orientation](https://www.w3.org/TR/orientation-event/)
   「requestPermission()」）。この口を持つのはiPhoneのSafariで、ほかのブラウザは許しを求めずに向きを届ける。Safariは、既に許した・断った
   答えは操作の外でもそのまま返し、まだ聞いていないときだけ`NotAllowedError`で断る（[WebKitの`DeviceOrientationEvent::requestPermission`](https://github.com/WebKit/WebKit/blob/main/Source/WebCore/dom/DeviceOrientationEvent.cpp)）。
+- **読み上げは、利用者の操作のあとでしか始められず、画面が隠れると止まる**: Chrome はページが利用者の操作を一度も受けていない間は
+  `speechSynthesis.speak()`を断る（[Chrome 71 の削除](https://developer.chrome.com/blog/chrome-71-deps-rems/)）。iPhone の Safari は最初の読み上げを
+  利用者の操作の中でしか始めず、一度始めればその後は操作の外でも読む（[WebKit の`SpeechSynthesis.cpp`](https://github.com/WebKit/WebKit/blob/main/Source/WebCore/Modules/speech/SpeechSynthesis.cpp)の`speak`）。
+  Android の Chrome は画面が見えていない間は読み上げを始めず、話している途中なら止める（[Chromium の`tts_environment_android_impl.cc`](https://chromium.googlesource.com/chromium/src/+/main/content/browser/speech/tts_environment_android_impl.cc)の`CanSpeakNow`）。
+  日本語の声は端末の読み上げエンジンが持ち、Android は端末に日本語の声が入っていなければ読めない。ほかのアプリの音（音楽）との重なり方は標準の決まりが無い。
 - **裏に回したタブは捨てられることがある**: スマホのブラウザはメモリが足りないと、裏のタブを捨て、戻ったときに読み込み直す
   （Chromeは[Page Lifecycle API](https://developer.chrome.com/docs/web-platform/page-lifecycle-api)の`discarded`）。画面の中の
   状態だけに持った値は消えるので、走行中のルートは端末へ一時保存する。
@@ -249,7 +254,7 @@ backendが先に配信すると、そのプロパティの有無を見ている�
   2026-10-10に本番で同じ条件を測った値は、デプロイで再起動した直後の1回目が生成36.6秒（結果を聞いた回数21）、2回目以降が
   約4秒で、上限は再起動の直後の生成の約3倍（乗り換えの評価の所要は未計測）。デプロイのあとの確かめはいつも再起動の直後の形になる。
 - **利用者への影響**: 本番は生成を同時に決まった本数までしか受けないので、確かめの生成が走っている間（約4秒、再起動の直後は
-  約40秒。乗り換えの評価の所要は未計測）に利用者の生成が重なると、上限を超えた分が混み合いとして断られる。
+  約40秒。乗り換えの評価の所要は未計測）に利用者の生成が重なると、上限を超えた分は枠の空きを待たされ、待てる数か時間を超えた分は混み合いとして断られる。
 - **受け付ける全長の上限（`domain/route_request.py: MAX_ROUTE_DISTANCE_KM`）の距離は試さない。** 上限の距離の探索範囲は、
   1本で`services/graph_service.py: SearchMemory`の予算の大半を取り、走っている間は利用者の生成をほぼすべて混み合いとして
   断らせる。上限の距離は混んでいれば作れないことを画面が断っている（`domain/route_request.py: BUSY_SAFE_DISTANCE_KM`）ので、
@@ -257,9 +262,8 @@ backendが先に配信すると、そのプロパティの有無を見ている�
 
 ## 本番の点のタイルの確かめ
 
-**本番のbackendで、点の密な所の点のタイルが上限の中で空でなく返るかを外から見る。** タイルを作る問い合わせがDBの上限
-（`infrastructure/database.py`の`command_timeout`）を超えると、配信は空のタイルへ倒れる。空のタイルは点の無い所と同じ見た目で、
-画面を見ても不具合と気づきにくい。点のタイルのテストは小さな見本の点で束ね方を見ていて、テストのDBに本番の規模の点は無いので、
+**本番のbackendで、点の密な所の点のタイルが上限の中で空でなく返るかを外から見る。** タイルを作る問い合わせが遅いと、地図に点が
+出るまで待たされる。返ったタイルが空なら点の無い所と同じ見た目で、画面を見ても不具合と気づきにくい。点のタイルのテストは小さな見本の点で束ね方を見ていて、テストのDBに本番の規模の点は無いので、
 作る時間はこの確かめでしか見ない。`backend/scripts/prod_point_tile_check.py`が、点の層（`infrastructure/point_tile_layers.py: POINT_TILE_LAYERS`）
 ごと・配る倍率ごとに、点の密な所（`prod_point_tile_check.py: DENSE_POINT`）を含む1枚を公開の口で取り、200で返らない・空のタイル
 （`infrastructure/vector_tile.py: encode_empty_tile`の形）・`prod_point_tile_check.py: TILE_LIMIT_SECONDS`（10）秒を超えたのどれかなら、
@@ -272,7 +276,7 @@ backendが先に配信すると、そのプロパティの有無を見ている�
   変わるので、デプロイのあとの確かめは作り直しを測る。DBの障害は503で返る。
 - **上限**: 2026-10-28に本番のDBで新宿駅の真ん中を含むタイルを作った所要は、点の層と倍率のどれも1.4秒以内（ridecompass/ride-compass#1395の
   直したSQL。直す前の補給・停止要因のz12は33.8秒で、配信は20.6秒で17バイトの空のタイルを返した）。同じ日に直したSQLを出したあと、
-  公開の口から取った所要は0.5〜3.1秒（一番遅いのは約1.3MBの立ち寄り先のz12）。上限は作り直しの所要の約7倍で、DBの上限より短くし、503になる手前の遅さも拾う。
+  公開の口から取った所要は0.5〜3.1秒（一番遅いのは約1.3MBの立ち寄り先のz12）。上限は作り直しの所要の約7倍にする。
 
 ## CIの実行枠（リポジトリがpublicである間の前提）
 
@@ -446,6 +450,23 @@ DB のバックアップの書き出しの後に置く。派生の作り直し�
 VM の上書きは `/etc/systemd/system/apt-daily-upgrade.timer.d/override.conf`（`OnCalendar=*-*-* 04:30:00 Asia/Tokyo`・
 `RandomizedDelaySec=0`）で、デプロイは届けない（VM で手で置いた）。消して `systemctl daemon-reload` を打てば Ubuntu の既定へ戻る。
 VM が止まっていて時刻を逃した回は、`Persistent=true`（既定）で起動のときに回る。
+
+## 本番のログ
+
+**backend のコンテナと、別のコンテナで打つバッチ（派生の作り直し・取込）は、ログを VM の journal へ送る（`--log-driver=journald`）。**
+Docker の既定（`json-file`）のログはコンテナに付き、デプロイがコンテナを消して作り直すたびに一緒に消える。journal へ送った分は
+コンテナを消しても残り、運用者への警告や本番で起きたことの調べに後から読める。
+
+- **残る期間**: VM の journald は既定の設定のまま（`/var/log/journal` があるので、ディスクに残す）。期限は決めず、容量の上限
+  （journald の `SystemMaxUse=` の既定。ファイルシステムの10%か4GBの小さい方）に届いたら古いものから消える。backend のログは1日に
+  1MB に届かない量なので、上限に届くまでは数か月分が残る。期限を言い切る要が出たら `MaxRetentionSec=` を VM の設定に足す。
+- **読み方**: 開発機から SSH で、`sudo journalctl CONTAINER_NAME=<コンテナの名前> --since "<日時>"`（配信のコンテナは
+  `ridecompass-backend`。`docker run --rm` のバッチは名前を付けなければ Docker が付けた名前になるので、`IMAGE_NAME=ridecompass-backend:latest`
+  で絞って日時で見分ける）。動いているコンテナの分は `docker logs` でも読める。
+- **管理画面の「開発者」タブ**の直近のログはプロセスのメモリの中だけにあり、再起動で消える。後から調べる記録には journal を読む。
+
+根拠は Docker の journald ドライバの公式の文書（https://docs.docker.com/engine/logging/drivers/journald/ ）と
+journald.conf（https://www.freedesktop.org/software/systemd/man/latest/journald.conf.html ）。
 
 ## 本番Redisの設定
 

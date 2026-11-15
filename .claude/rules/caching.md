@@ -34,7 +34,7 @@ paths:
 |---|---|---|
 | 更新頻度の低い外部JSON/CSV（警報・WBGT・洪水・地域マスタ） | `simple_api_client.py: cached_fetch` | プロセス内`cachetools.TTLCache`（クライアントのモジュールが作り、呼び出し側（`api/dependencies.py`）が持って`cached_fetch`へ渡す） |
 | アメダスの観測 | `simple_api_client.py: cached_fetch` | `jma_amedas_store.py`（Redis。定期の取得が書き、読む側はRedisから読む） |
-| 気象庁の動的タイル（ナウキャスト・キキクル等） | `jma_tile_client.py: JmaTileClient.fetch`（上流への秒間上限つき） | `jma_tile_redis_cache.py`（Redis） |
+| 気象庁の動的タイル（ナウキャスト・キキクル等） | `jma_tile_client.py: JmaTileClient.fetch` | `jma_tile_redis_cache.py`（Redis） |
 | 気象庁MSMの予報 | `msm_client.py: refresh`（ETag条件付きGETでファイル同期） | ローカルファイル（`backend/data/msm/`） |
 | 色別標高図・基礎地図 | 各クライアント（`gsi_tile_client`・`basemap_client`） | `tile_cache.py`（ディスク、生バイト列） |
 | PostGIS由来の重い中間結果 | リポジトリ層 | 用途で選ぶ（次節） |
@@ -103,11 +103,12 @@ paths:
 | 用途 | 掃除 |
 |---|---|
 | `tile_cache`（基礎地図・DEM・色別標高図の生バイト） | 容量上限（`tile_cache_size_limit_mb`）を超えると`diskcache`が書いた時刻の古い順に退避する（実測11MB、2026-09-07。上限は1桁の余裕があり今は発火しない。鍵に世代を持たないので、伸び続けたときの頭打ちとしてだけ置く） |
-| `tile_cache`のうち土地被覆タイル（PNG） | 起動直後と24時間ごとに、設定したラスタ構成でない世代を消す（[caching-retention.md](caching-retention.md)「無効化」）。容量上限の対象でもある（関東本土の全ズームで45MB・21,264枚の見積もり、2026-09-16） |
-| `tile_cache`のうち地域のMVTタイル（路面・点。鍵`region/<系統>/v<世代>/…`） | 起動直後と24時間ごとに、配っていない世代を消す（[caching-retention.md](caching-retention.md)「無効化」）。容量上限の対象でもある |
+| `tile_cache`のうち土地被覆タイル（PNG） | 地域のMVTタイルと一緒に捨て（下の行）、起動直後に置き場のラスタ構成でない世代を消す（[caching-retention.md](caching-retention.md)「無効化」）。容量上限の対象でもある（関東本土の全ズームで45MB・21,264枚の見積もり、2026-09-16） |
+| `tile_cache`のうち地域のMVTタイル（路面・点。鍵`region/<系統>/v<形の署名>/…`） | 派生の作り直し・道の区分の書き換えのあとに捨て、起動直後に今のコードの形でない世代を消す（[caching-retention.md](caching-retention.md)「無効化」）。容量上限の対象でもある |
 | `msm`（予報の`.om`ファイル） | 同期のたびに予報窓の外を削除（実測87MB） |
-| `tile_persistent_cache`（way_id別の動的値・タイルのフィーチャーごとの材料のpickle） | 容量上限＋`expire`による失効 |
+| `tile_persistent_cache`（way_id別の動的値・タイルのフィーチャーごとの材料のpickle） | 容量上限＋`expire`による失効。材料は地域タイルと一緒に捨てる |
 | `road_network`（取込範囲全体の道路網の配列、世代ごとの置き場。メモリマップで開く） | 作ったときに同じ形の古い世代を削除、起動後に形の違う置き場を削除（実測1.6GB、2026-09-26） |
+| `derived_database`（OSM の派生データベースの書き出しの ZIP。キャッシュではなく配る物で、正本は DB） | 書いたら他の書き出しを消し、最新の1つだけを置く。書き始めに書きかけの残りを消す（[静的道路属性](../../docs/modules/backend/static-road-attributes.md)「派生データベースの書き出し」） |
 
 これらをRedisへ移さない（数百MB規模をRAMへ移すことになり、同居するPostgreSQLのページキャッシュを圧迫する）。
 

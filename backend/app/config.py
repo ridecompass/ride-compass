@@ -62,6 +62,9 @@ class Settings(BaseSettings):
     # 同時に動く生成は、この件数の枠とは別に、探索範囲の大きさに比例するメモリを分け合う（`services/graph_service.py: SearchMemory`）。
     generate_rate_limit_per_minute: int = 10
     generate_max_concurrent: int = 2
+    # 同時実行の枠を待てる生成の数と、待てる時間（秒）。根拠は docs/modules/backend/routing-engine.md「同時実行の枠と待ち行列」。
+    generate_max_queued: int = 8
+    generate_queue_wait_seconds: float = 50.0
     # タイル処理の律速はDB側の同時クエリ負荷とSQLAlchemyの接続プール
     # （既定pool_size=5+max_overflow=10=最大15接続）。地域タイル（路面・点）は1つの同時実行上限を
     # 共有し、それがこのプール上限に収まるようにする（ルート生成は別エンジン・別プールで取り合わない）。
@@ -81,11 +84,6 @@ class Settings(BaseSettings):
     gsi_tile_rate_limit_per_minute: int = 300
     # JMA動的タイルの定期プリウォーム間隔。JMA側の実更新間隔は5〜10分おき。
     jma_tile_prewarm_interval_minutes: int = 10
-    # JMA非公式APIへ実際に投げる秒間リクエスト数の上限。プリウォーム本体の同時実行数制御
-    # だけでは、各リクエストの応答が速いと総スループットが青天井になるため、実フェッチ
-    # 直前でこの秒間上限を守るよう待機する（jma_tile_client.py、キャッシュヒットは対象外）。
-    # 1回のプリウォームがこの秒間上限のままでも次の間隔までに終わる値にしてある。
-    jma_tile_upstream_max_requests_per_second: float = 5.0
 
     # 気象庁MSM（前処理済み.omファイル、CC-BY-4.0）の配信元。REST APIではなく静的
     # ファイルのため、レート制限・クォータの制約を受けない。
@@ -114,22 +112,9 @@ class Settings(BaseSettings):
     # 伸び続けたときの頭打ちとして置いている。
     tile_cache_size_limit_mb: int = 512
 
-    # ディスクキャッシュをDBの派生データ・生データの世代へ追随させる確認の間隔（秒）。バッチは
-    # backendを再起動させないため、材料を使う経路からこの間隔で読み直す。バッチ自体が
-    # 数十分かかるためこの程度の遅れは運用上の差にならず、読むのは1行テーブルの1列と取込の記録の件数だけ。
-    derived_data_revision_check_interval_seconds: float = 300.0
-
-    # Esri×Impact Observatory LULCのGeoTIFFファイルパス（カンマ区切り、複数ゾーン対応）。
-    # ラスタ自体はリポジトリにコミットせず手動取得するため.envでのみ設定する。
-    lulc_raster_paths: str = ""
-
     @property
     def cors_allowed_origins_list(self) -> list[str]:
         return _comma_separated(self.cors_allowed_origins)
-
-    @property
-    def lulc_raster_paths_list(self) -> list[str]:
-        return _comma_separated(self.lulc_raster_paths)
 
 
 def _comma_separated(value: str) -> list[str]:

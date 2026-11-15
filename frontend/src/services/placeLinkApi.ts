@@ -1,6 +1,5 @@
 import { queryOptions } from "@tanstack/react-query";
 import { backendApi, getOptions, requestApi } from "@/lib/apiClient";
-import { API_TIMEOUT_MS } from "@/lib/apiTimeouts";
 
 /** 地図の点（名前と位置。位置は経度・緯度の順）から開く外の地図のリンク。所在（住所か辺り）の決め方とリンクの形は backend が持ち、
  * 所在が分からなければ null。 */
@@ -11,7 +10,7 @@ async function placeLink(name: string, lngLat: readonly [number, number]): Promi
         params: { query: { name, latitude: lngLat[1], longitude: lngLat[0] } },
         ...init,
       }),
-    getOptions({ timeoutMs: API_TIMEOUT_MS.default, category: "api:placeLink", errorLabel: "外の地図のリンク" }),
+    getOptions({ category: "api:placeLink", errorLabel: "外の地図のリンク" }),
   );
   return data.url;
 }

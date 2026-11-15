@@ -162,13 +162,13 @@ export function ClearPointsIcon({ size = 16 }: IconProps) {
   );
 }
 
-/** 置いた地点の編集（通る順の入れ替えと消すこと）を開く: ルート＋上下の矢印（通る順の入れ替え）。 */
+/** 置いた地点の編集（通る順の入れ替えと消すこと）を開く: ルート＋鉛筆。 */
 export function EditPointsIcon({ size = 16 }: IconProps) {
   return (
     <svg width={size} height={size} {...svgProps}>
       {pointsRoute}
-      <path d="M13.6 18.4v-5.2M17.6 13.2v5.2" />
-      <path d="m12 14.8 1.6-1.6 1.6 1.6M16 16.8l1.6 1.6 1.6-1.6" strokeLinejoin="round" />
+      <path d="M17.2 11.8 18.6 13.2 13.9 17.9 12 18.4 12.5 16.5Z" strokeLinejoin="round" />
+      <path d="m16.2 12.8 1.4 1.4" />
     </svg>
   );
 }
@@ -193,17 +193,6 @@ export function ClearAllFiltersIcon({ size = 16 }: IconProps) {
     <svg width={size} height={size} {...svgProps}>
       <path d="M1.8 3.4h11.4L8.9 8.3v4.4L6.1 14V8.3L1.8 3.4Z" strokeLinejoin="round" strokeLinecap="butt" />
       <path d="M12.4 12.4 17.6 17.6M17.6 12.4 12.4 17.6" />
-    </svg>
-  );
-}
-
-/** 地図に出す情報を選ぶ（「表示」のボタン）: 中抜きのつまみが付いた横線2本。RouteSettingsIcon（短い縦線のつまみが3つ）とは、つまみの形と本数で見分ける。 */
-export function DisplayItemsIcon({ size = 16 }: IconProps) {
-  return (
-    <svg width={size} height={size} {...svgProps}>
-      <path d="M3 6.5h4.7M12.3 6.5H17M3 13.5h1.2M8.8 13.5H17" />
-      <circle cx="10" cy="6.5" r="2.3" />
-      <circle cx="6.5" cy="13.5" r="2.3" />
     </svg>
   );
 }

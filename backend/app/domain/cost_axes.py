@@ -122,8 +122,8 @@ class CostAxisDefinitions(StrictModel):
 
 
 def check_cost_axes(definitions: CostAxisDefinitions, road_classes: RoadClassDefinitions) -> list[str]:
-    """型の外で決まる不備（材料が在るか・材料の型に合うか・区分の重さに漏れや知らない区分が無いか）。不備が無ければ空。管理APIの書き込みと起動時の読み込みの両方が通す（復元した行は起動時に初めて検査を通る）。道の
-    区分を書き換えたときも、今の軸の定義を新しい区分で通し直す。"""
+    """型の外で決まる不備（材料が在るか・材料の型に合うか・区分の重さに漏れが無いか）。不備が無ければ空。管理APIの書き込みと起動時の読み込みの両方が通す（復元した行は起動時に初めて検査を通る）。道の
+    区分を書き換えたときも、今の軸の定義を新しい区分で通し直す。分け方に無い区分の重さは断らない（`surplus_class_weights`）。"""
     problems: list[str] = []
     for axis_id, axis in definitions.burden.items():
         burden = axis.burden
@@ -135,11 +135,8 @@ def check_cost_axes(definitions: CostAxisDefinitions, road_classes: RoadClassDef
                 problems.append(f"{axis_id}: 区分の材料には区分ごとの重さを書く: {burden.material}")
             else:
                 missing = sorted(set(classification.classes) - set(burden.per_km))
-                unknown = sorted(set(burden.per_km) - set(classification.classes))
                 if missing:
                     problems.append(f"{axis_id}: 重さの無い区分 {missing}")
-                if unknown:
-                    problems.append(f"{axis_id}: 分け方に無い区分 {unknown}")
             continue
         dtype = material_dtype(burden.material)
         if dtype is None:
@@ -149,6 +146,21 @@ def check_cost_axes(definitions: CostAxisDefinitions, road_classes: RoadClassDef
         elif dtype != "numeric":
             problems.append(f"{axis_id}: 折れ線は数値の材料にだけ書ける: {burden.material}（{dtype}）")
     return problems
+
+
+def surplus_class_weights(definitions: CostAxisDefinitions, road_classes: RoadClassDefinitions) -> list[str]:
+    """分け方に無い区分の重さ（軸ごとに1件）。区分の材料の値に現れないので費用に効かず、区分を足す前に重さを書く・区分を消した
+    あとに重さを消す途中の形なので断らない。区分名の打ち間違いもここに出る。"""
+    surplus: list[str] = []
+    for axis_id, axis in definitions.burden.items():
+        burden = axis.burden
+        if not isinstance(burden, CategoricalBurden) or not burden.material.startswith(CLASS_MATERIAL_PREFIX):
+            continue
+        classification = road_classes.classifications.get(burden.material.removeprefix(CLASS_MATERIAL_PREFIX))
+        unknown = sorted(set(burden.per_km) - set(classification.classes)) if classification else []
+        if unknown:
+            surplus.append(f"{axis_id}: 分け方に無い区分の重さ {unknown}")
+    return surplus
 
 
 #: プロセス内の費用の軸の定義。起動で読み込む（`services/cost_axis_service.py: refresh_cost_axes`。表に行が無ければ起動を

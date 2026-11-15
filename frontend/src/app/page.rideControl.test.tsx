@@ -4,7 +4,7 @@
  * 見ること: スマホで走行中は下部タブを隠すこと・休んでいる間は位置を受けずにルートと進み具合を残し、「続きから走る」で続けること・地図を指で動かした間だけ
  * 「現在地へ戻る」を出すこと、走行中に帯の「ルート」で開いたパネルで選び直す・作り直すと走行モードが新しい候補を追い（地図をその候補へ収め直さない）、
  * パネルを出していない間は地図で何も変えも開きもしないこと、「このルートで走る」でその候補で走り始めてシートを閉じ、
- * 止めると走る前のシートへ戻ること。鍵のボタンでロックすると追い直して地図の手ぶりと押しを受けず、2か所を順に押すと外れること。パネルの中で区間を選んでも追い続けて地図を動かさず、「区間を地図で見る」で追うのを休んでその区間へ寄せ、選びを外すと追い直すこと。
+ * 止めると走る前のシートへ戻ること。走行中にロックしていても「表示」で地図の色を暗くできること。鍵のボタンでロックすると追い直して地図の手ぶりと押しを受けず、2か所を順に押すと外れること。パネルの中で区間を選んでも追い続けて地図を動かさず、「区間を地図で見る」で追うのを休んでその区間へ寄せ、選びを外すと追い直すこと。
  *
  * ここで見ないもの: 走っている間に見えるもの（帯・プロファイル・進み具合・次に曲がる所）は`app/page.ride.test.tsx`が見る。
  *
@@ -35,6 +35,7 @@ import {
 } from "@/testing/homePage";
 import { UNLOCK_CHOICE_MS } from "@/features/ride/RideLockButton/RideLockButton";
 import { mapOnScreen } from "@/testing/maplibre";
+import { themedPaint } from "@/features/map/basemapTheme";
 import { makeRouteSegment } from "@/testing/routeFixtures";
 
 vi.mock("maplibre-gl", () => import("@/testing/maplibre"));
@@ -227,6 +228,33 @@ describe("走行モードの操作", () => {
     expect(mapOnScreen().stoppedGestures()).toEqual([]);
     await user.click(rideButton());
     expect(lockButton()).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("走行中にロックしていても、「表示」の「範囲と色」で地図の色を暗いにでき、基礎地図が暗くなる", async () => {
+    const geolocation = installGeolocation(HERE);
+    const { user } = renderHome();
+    jobs.respond([RIDDEN], LOOP_CONDITIONS);
+    await generate(user);
+    await waitFor(() => expect(candidateTabs()).toHaveLength(1));
+    const basemap = [{ id: "background", type: "background", paint: { "background-color": "#f8f4f0" } }];
+    // 基礎地図の色は、描き直して読み込んだ基礎地図の様式に当てる。
+    await user.click(screen.getByRole("button", { name: "メニュー" }));
+    await user.click(screen.getByRole("button", { name: "地図の表示を再描画" }));
+    act(() => {
+      mapOnScreen().loadStyle(basemap);
+      mapOnScreen().emit("style.load");
+    });
+    await user.click(screen.getByRole("button", { name: "走行モード" }));
+    geolocation.deliver({ ...RIDDEN_MIDDLE, accuracy: 20 });
+    await user.click(screen.getByRole("button", { name: "ロック" }));
+
+    await user.click(screen.getByRole("button", { name: "地図に出す情報" }));
+    await user.click(screen.getByRole("tab", { name: "範囲と色" }));
+    await user.click(screen.getByRole("radio", { name: "暗い" }));
+
+    expect(mapOnScreen().layerPaint("background")?.["background-color"]).toBe(
+      themedPaint({ theme: "dark", muted: false }, basemap[0].paint)["background-color"],
+    );
   });
 
   it("走行中も、地図を押しても地点を置かず、押した物は走っていない間と同じに扱い（線を押すとそのルートを選び、区間を押すと小窓を出す）、ピンは押せる物に数えない", async () => {

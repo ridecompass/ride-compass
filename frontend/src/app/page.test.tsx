@@ -34,7 +34,6 @@ import { AVOIDANCE_LEVELS, avoidanceRow, clientConfigResponse, roadClassCatalog 
 import { ROAD_AVOIDANCE_ROLE, ROAD_LINE_SOURCE_ID } from "@/features/map/scene/groups/roadLines";
 import { sceneLayerId } from "@/features/map/scene/sceneBuilders";
 import { ROAD_SETTINGS_TAB_NAME } from "@/lib/screenNames";
-import regionTileConfig from "@/types/generated/region-tile-config.json";
 import {
   FIRST,
   HERE,
@@ -78,7 +77,6 @@ describe("ルートを作る", () => {
 
     await user.click(screen.getByRole("button", { name: /^負担で塗る: / }));
     await user.click(await screen.findByRole("radio", { name: /登坂/ }));
-    await user.click(screen.getByRole("checkbox", { name: "ルート後も周囲の道路を薄く塗る" }));
     await user.keyboard("{Escape}");
     expect(paints("ascent")).toBe(true);
 
@@ -254,7 +252,6 @@ describe("ルートを作る", () => {
   it("「道路」タブの段は、タブを出していて「地図で見る」がONの間だけ地図の道に塗る", async () => {
     serveClientConfig(
       clientConfigResponse({
-        tile_versions: Object.fromEntries(regionTileConfig.tile_version_kinds.map((kind) => [kind, "1-test"])),
         road_classes: roadClassCatalog({
           avoidance: {
             levels: AVOIDANCE_LEVELS,

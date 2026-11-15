@@ -100,17 +100,12 @@ export const mapDisplay = {
     "raw",
     "dynamic"
   ],
-  "layerKinds": [
-    "static",
-    "dynamic"
-  ],
   "layers": [
     {
       "id": "elevation",
       "label": "標高図",
       "dataSource": "gsiRelief",
       "category": "terrain",
-      "kind": "static",
       "dataNature": "raw",
       "defaultOn": false,
       "drawMinZoom": null,
@@ -128,7 +123,6 @@ export const mapDisplay = {
       "label": "起伏",
       "dataSource": "gsiTerrain",
       "category": "terrain",
-      "kind": "static",
       "dataNature": "raw",
       "defaultOn": false,
       "drawMinZoom": null,
@@ -146,7 +140,6 @@ export const mapDisplay = {
       "label": "緑と水",
       "dataSource": "landcoverRaster",
       "category": "terrain",
-      "kind": "static",
       "dataNature": "raw",
       "defaultOn": false,
       "drawMinZoom": null,
@@ -170,7 +163,6 @@ export const mapDisplay = {
       "label": "停止要因",
       "dataSource": "poi",
       "category": "trafficSafety",
-      "kind": "static",
       "dataNature": "raw",
       "defaultOn": false,
       "drawMinZoom": 15,
@@ -188,7 +180,6 @@ export const mapDisplay = {
       "label": "補給・休憩ポイント",
       "dataSource": "poi",
       "category": "amenity",
-      "kind": "static",
       "dataNature": "raw",
       "defaultOn": false,
       "drawMinZoom": null,
@@ -206,7 +197,6 @@ export const mapDisplay = {
       "label": "立ち寄り先",
       "dataSource": "stop_place",
       "category": "amenity",
-      "kind": "static",
       "dataNature": "raw",
       "defaultOn": false,
       "drawMinZoom": null,
@@ -224,7 +214,6 @@ export const mapDisplay = {
       "label": "事故[警察庁統計]",
       "dataSource": "accident",
       "category": "trafficSafety",
-      "kind": "static",
       "dataNature": "raw",
       "defaultOn": false,
       "drawMinZoom": 15,
@@ -254,7 +243,6 @@ export const mapDisplay = {
       "label": "降水ナウキャスト",
       "dataSource": "ownFetch",
       "category": "weather",
-      "kind": "static",
       "dataNature": "dynamic",
       "defaultOn": false,
       "drawMinZoom": null,
@@ -272,7 +260,6 @@ export const mapDisplay = {
       "label": "風[矢印]",
       "dataSource": "msmGrid",
       "category": "weather",
-      "kind": "static",
       "dataNature": "dynamic",
       "defaultOn": false,
       "drawMinZoom": null,
@@ -290,7 +277,6 @@ export const mapDisplay = {
       "label": "災害",
       "dataSource": "ownFetch",
       "category": "disaster",
-      "kind": "static",
       "dataNature": "dynamic",
       "defaultOn": true,
       "drawMinZoom": null,
@@ -302,35 +288,12 @@ export const mapDisplay = {
       ],
       "hideMissingRows": false,
       "segmentSeries": null
-    },
-    {
-      "id": "route",
-      "label": "ルート",
-      "dataSource": "ownFetch",
-      "category": null,
-      "kind": "dynamic",
-      "dataNature": "raw",
-      "defaultOn": true,
-      "drawMinZoom": null,
-      "description": [
-        "選択中ルート沿いの情報",
-        {
-          "name": "routeLenses",
-          "before": "[",
-          "after": "]"
-        },
-        "で塗って表示"
-      ],
-      "panelHint": null,
-      "hideMissingRows": false,
-      "segmentSeries": null
     }
   ],
   "axisLayers": {
     "dedicated": {
       "dataSource": "road_surface",
       "category": null,
-      "kind": "static",
       "dataNature": "dynamic",
       "defaultOn": false,
       "drawMinZoom": 12
@@ -338,7 +301,6 @@ export const mapDisplay = {
     "road": {
       "dataSource": "road_surface",
       "category": null,
-      "kind": "static",
       "dataNature": "raw",
       "defaultOn": false,
       "drawMinZoom": null
@@ -748,6 +710,7 @@ export const mapDisplay = {
   "modelValueDisclaimer": "数値予報モデルの計算結果で、大きな誤差を含む可能性があります。予報ではありません。",
   "alwaysShownAttributions": [
     "&copy; <a href=\"https://www.openstreetmap.org/copyright\" target=\"_blank\" rel=\"noreferrer\">OpenStreetMap contributors</a>",
+    "道ごとの値の<a href=\"/api/derived-database\" target=\"_blank\" rel=\"noreferrer\">派生データベース</a>(<a href=\"https://opendatacommons.org/licenses/odbl/1-0/\" target=\"_blank\" rel=\"noreferrer\">ODbL 1.0</a>)",
     "<a href=\"https://maps.gsi.go.jp/development/ichiran.html\" target=\"_blank\" rel=\"noreferrer\">地理院タイル(標高タイル)</a>を加工して作成",
     "交通事故統計情報[警察庁]を加工して作成",
     "<a href=\"https://www.jma.go.jp/\" target=\"_blank\" rel=\"noreferrer\">気象庁ホームページ</a>(アメダス・警報・キキクル・ナウキャスト等)と気象庁「<a href=\"https://www.data.jma.go.jp/developer/gis.html\" target=\"_blank\" rel=\"noreferrer\">予報区等GISデータ</a>」を加工して作成",

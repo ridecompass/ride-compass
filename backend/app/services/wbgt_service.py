@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta
 
 import httpx
@@ -18,11 +19,12 @@ from app.domain.wbgt import (
     is_within_provision_period,
     wbgt_level,
 )
-from app.infrastructure.debug_log import log_throttled_warning
 from app.infrastructure.simple_api_client import UnexpectedShapeError
 from app.infrastructure.wbgt_client import fetch_forecast, fetch_point_master
 from app.services.nearest_point_areas import nearest_point_area
 from app.domain.strict_model import StrictModel
+
+logger = logging.getLogger("ridecompass.wbgt_service")
 
 
 class WbgtReading(StrictModel):
@@ -100,8 +102,7 @@ class WbgtService:
         forecasts = await fetch_forecast(self._http_client, nearest.no, range_from, now, self._forecast_cache)
         if not forecasts and is_within_provision_period(now):
             # 提供期間の中で発表が無いのは配信の止まりで、配信元の失敗ではないためクライアントは出さず、ここで出さないと未取得の理由が残らない。
-            log_throttled_warning(
-                "weather:wbgt-no-issuance",
+            logger.warning(
                 "暑さ指数の検索窓に発表がありません wbgt_no=%s range_from=%s range_to=%s",
                 nearest.no, range_from.isoformat(), now.isoformat(),
             )

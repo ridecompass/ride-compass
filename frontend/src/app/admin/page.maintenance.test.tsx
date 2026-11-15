@@ -49,13 +49,13 @@ function detailOf(container: HTMLElement, name: string): [string | null, string 
 describe("AdminPage データ保守 タイルキャッシュ", () => {
   const CLEAR = "タイルキャッシュを消去する";
 
-  it("押すまで消さない。消去中は押せず、失敗なら理由を、押し直して成功すれば消したことだけを出す", async () => {
+  it("押すまで消さない。消去中はそう出し、失敗なら理由を、押し直して成功すれば消したことだけを出す", async () => {
     const held = heldReplies();
     const user = await openMaintenanceTab();
     const sent = onSameOrigin("POST", "/admin/api/basemap/refresh", held.reply);
 
     await user.click(screen.getByRole("button", { name: CLEAR }));
-    expect(screen.getByRole("button", { name: "消去中…" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "消去中…" })).toBeInTheDocument();
     await held.answer(0, Response.json({ detail: "タイルキャッシュの消去に失敗しました" }, { status: 500 }));
     expect(await screen.findByText("タイルキャッシュの消去に失敗しました")).toBeInTheDocument();
 

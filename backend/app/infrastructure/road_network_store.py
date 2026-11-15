@@ -65,14 +65,14 @@ def _directories() -> Iterator[tuple[Path, re.Match[str]]]:
             yield path, match
 
 
-def _latest_directory() -> Path | None:
-    """形の署名が一致するもののうち、世代が最も新しい置き場。無ければNone。"""
+def _latest_directory() -> Path:
+    """形の署名が一致するもののうち、世代が最も新しい置き場。"""
     candidates = (
         (int(match["revision"]), path)
         for path, match in _directories()
         if match["shape"] == NETWORK_SHAPE
     )
-    return max(candidates, key=lambda candidate: candidate[0], default=(None, None))[1]
+    return max(candidates, key=lambda candidate: candidate[0])[1]
 
 
 def save(network: RoadNetwork) -> Path:
@@ -127,13 +127,7 @@ def publish(pending: Path) -> Path:
     """`write_pending`が書いたものを世代の名前へ付け替え、同じ形で世代の古い置き場を消す。"""
     revision = _read_manifest(pending)["revision"]
     target = ROOT / directory_name(revision)
-    try:
-        pending.rename(target)
-    except OSError:
-        # 同じ世代を別の処理が先に書き終えた。中身は同じなので、こちらの書きかけを捨てる。
-        shutil.rmtree(pending, ignore_errors=True)
-        if not target.exists():
-            raise
+    pending.rename(target)
     for removed in prune(target):
         logger.info("古い道路網の置き場を消しました %s", removed.name)
     logger.info("道路網の置き場を作りました %s", target.name)
@@ -152,10 +146,6 @@ def load(directory: Path) -> RoadNetwork:
     return RoadNetwork(**arguments)  # type: ignore[arg-type]
 
 
-class RoadNetworkUnavailableError(RuntimeError):
-    """今のコードの形の置き場が1つも無い（デプロイの前処理かバッチが作っていない）。"""
-
-
 #: 読み込み済みの置き場とその中身。プロセスの中で全リクエストが共有する（読み取り専用）。
 _loaded: tuple[Path, RoadNetwork] | None = None
 
@@ -169,22 +159,9 @@ def current() -> RoadNetwork:
     global _loaded
     latest = _latest_directory()
     if _loaded is None or _loaded[0] != latest:
-        try:
-            _loaded = _open_latest()
-        except FileNotFoundError:
-            # 選んでから開くまでに、派生の作り直し（`publish`）が新しい世代へ付け替えて古い置き場を消した。
-            _loaded = _open_latest()
+        _loaded = latest, load(latest)
         logger.info("道路網を読みました %s 有向の区間=%d", _loaded[0].name, _loaded[1].edge_count)
     return _loaded[1]
-
-
-def _open_latest() -> tuple[Path, RoadNetwork]:
-    latest = _latest_directory()
-    if latest is None:
-        # 利用者へ返す文（例外の文）に置き場のパスを載せない。
-        logger.error("道路網の置き場がありません（%s、形の署名 %s）。scripts/build_road_network.py で作る", ROOT, NETWORK_SHAPE)
-        raise RoadNetworkUnavailableError("道路網が用意されていないため、ルートを作れません")
-    return latest, load(latest)
 
 
 def _as_tuples(value: object) -> object:
@@ -407,9 +384,7 @@ class MaterialColumns:
         self._filled = stop
 
     def result(self) -> dict[str, Any]:
-        """`RoadNetwork`の材料の欄。束が1つも無ければ断る。"""
-        if not self._arrays:
-            raise ValueError("道路網に区間が1本もありません")
+        """`RoadNetwork`の材料の欄。"""
         return {
             **self._ids,
             **self._arrays,

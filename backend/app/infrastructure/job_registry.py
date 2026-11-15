@@ -11,9 +11,7 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 # 完了したジョブを保持する時間。掃除は次の`create_job()`のついでに行い、定期タスクを持たない。
-# 生成物`route-generate-config.json`でポーリングの打ち切りとして配る——短くすると待機上限も一緒に縮む。
-# **動かす前に docs/modules/frontend/route-settings-and-results.md「生成を待つ時間・投げる
-# 回数の根拠」を読む**。
+# ルート生成のジョブを打ち切る時間でもあり、根拠は docs/modules/backend/cross-cutting-infrastructure.md「非同期ジョブレジストリ詳細」。
 JOB_TTL_SECONDS = 600.0
 
 # 問い合わせが終わるまで待ってよい上限（秒）。生成物`route-generate-config.json`で画面が問い合わせるときの待ちとして配る。

@@ -11,15 +11,17 @@
 # - 定期の測りが全部の本を回し終え、重なりの候補があれば、review が置き場へ候補を消すタスクを起こす
 #   （backend/scripts/mutation/cleanup_issue.py。進め方は .claude/skills/test-review/SKILL.md「定期の測りから起きた消すタスク」）。
 # - 2段で回る:
-#   1. shard（16本）: 書き換えるファイルを行数がそろうように分け（plan.mjs）、1本ずつ別のランナーで Stryker を回す。mutate に
+#   1. shard（32本）: 書き換えるファイルを行数がそろうように分け（plan.mjs）、1本ずつ別のランナーで Stryker を回す。mutate に
 #      ファイルを渡すと、そのファイルだけを1本で回す（分けない）。
-#   2. review（1本）: 1 を1つの表にし（report.mjs）、表から見直しの候補を出す（backend/scripts/mutation/review.py）。前の実行の
-#      見直し（成果物 mutation-frontend-review）を取ってきて比べ、前回も重なりの候補だったテストに印を付ける。mutate で範囲を
-#      絞った測りの見直しは、次の見直しの前回にしない（残さない）。
+#   2. review（1本）: 1 を1つの表にし（report.mjs）、見直しは .github/actions/mutation-review に任せる（前の実行の
+#      見直し（成果物 mutation-frontend-review）と比べて候補を出す）。本が落ちた測り・mutate で範囲を絞った測りの見直しは、
+#      次の見直しの前回にしない（残さない）。
 # - compare にファイル（frontend からのパス）を渡すと、1・2 の代わりに、そのファイルを vitest の口と command の口（書き換えごとに
 #   テスト全体を回す。並び1本）で回して判定を突き合わせる（compare.mjs）。口の直しを外す・版を上げるときに使う。
-# - 持ち時間: 8本に分けた試しで、1本の書き換えは約1,400〜1,900件、Stryker の見込みで1本4時間ほどだった
-#   （書き換えを通るテストが重いもの（画面全体のテスト）ほど遅い）。16本に分けて、ジョブの上限（6時間）より前に終える。
+# - 持ち時間: Stryker には途中で抜ける口が無く、ジョブの上限（340分）を超えた本は結果を残さないので、本の数で1本を上限より
+#   短くする。書き換えを通るテストが重いもの（画面全体のテスト）ほど遅く、行数で分けても本ごとの所要はそろわない。
+#   2026-11-02 の定時の測り（16本、実行 41351266684）では、1本1時間47分〜4時間41分で、3本が上限を超えた。32本にして
+#   1本を半分ほどにする（所要は未計測）。本はレーンに5本ずつ載る。
 # - 成果物: 1 は mutation-frontend-shard-<番号>（14日）、2 は mutation-frontend-review（次の見直しが比べるので90日）。
 name: Mutation frontend
 
@@ -38,7 +40,7 @@ on:
         required: true
         default: master
       mutate:
-        description: 書き換えるファイル（frontend からのパスをカンマでつなぐ。Stryker の --mutate に渡す。空なら src/ の全部を16本に分ける）
+        description: 書き換えるファイル（frontend からのパスをカンマでつなぐ。Stryker の --mutate に渡す。空なら src/ の全部を分ける）
         required: false
         default: ""
       compare:
@@ -55,7 +57,7 @@ concurrency:
   queue: max
 
 env:
-  SHARDS: 16
+  SHARDS: 32
 
 jobs:
   version:
@@ -102,6 +104,22 @@ jobs:
           - { shard: 13, lane: 4 }
           - { shard: 14, lane: 5 }
           - { shard: 15, lane: 1 }
+          - { shard: 16, lane: 2 }
+          - { shard: 17, lane: 3 }
+          - { shard: 18, lane: 4 }
+          - { shard: 19, lane: 5 }
+          - { shard: 20, lane: 1 }
+          - { shard: 21, lane: 2 }
+          - { shard: 22, lane: 3 }
+          - { shard: 23, lane: 4 }
+          - { shard: 24, lane: 5 }
+          - { shard: 25, lane: 1 }
+          - { shard: 26, lane: 2 }
+          - { shard: 27, lane: 3 }
+          - { shard: 28, lane: 4 }
+          - { shard: 29, lane: 5 }
+          - { shard: 30, lane: 1 }
+          - { shard: 31, lane: 2 }
     defaults: &frontend
       run:
         working-directory: frontend
@@ -109,7 +127,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           ref: ${{ needs.version.outputs.sha }}
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
           node-version-file: frontend/package.json
           cache: npm
@@ -166,7 +184,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           ref: ${{ needs.version.outputs.sha }}
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
           node-version-file: frontend/package.json
           cache: npm
@@ -176,50 +194,18 @@ jobs:
         with:
           pattern: mutation-frontend-shard-*
           path: /tmp/art
-      - name: 前の実行の見直しを取る
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          mkdir -p /tmp/prev
-          prev=$(gh api "repos/${{ github.repository }}/actions/artifacts?name=mutation-frontend-review&per_page=30" \
-            -q '[.artifacts[] | select(.expired | not) | select(.workflow_run.id != ${{ github.run_id }})][0].workflow_run.id // empty')
-          if [ -n "$prev" ]; then
-            gh run download "$prev" -R "${{ github.repository }}" -n mutation-frontend-review -D /tmp/prev
-            echo "前の見直し: 実行 $prev"
-          else
-            echo "前の見直しは無い（前回も候補だった印は付かない）"
-          fi
-      - id: review
-        name: 集計して見直す
-        run: |
-          mkdir -p /tmp/review
-          node scripts/mutation/report.mjs /tmp/art /tmp/review/report.json
-          python3 ../backend/scripts/mutation/review.py /tmp/review/report.json /tmp/prev /tmp/review
-          cat /tmp/review/summary.md >> "$GITHUB_STEP_SUMMARY"
+      - name: 集計する
+        run: node scripts/mutation/report.mjs /tmp/art /tmp/report.json
       - if: (inputs.mutate == '' && needs.shard.result || needs.file.result) != 'success'
         run: echo "落ちた本があり、書き換えが欠けているので、この見直しは次の見直しの前回にしない。" >> "$GITHUB_STEP_SUMMARY"
       - if: inputs.mutate != ''
         run: echo "範囲を絞った測り（mutate）なので、この見直しは次の見直しの前回にしない。" >> "$GITHUB_STEP_SUMMARY"
-      # src/ の全部の書き換えを回し終えた測りの見直しだけを残す（本が落ちて欠けた測り・範囲を絞った測りを、次の見直しが前回として読まないように）。
-      - if: steps.review.outputs.complete == 'true' && needs.shard.result == 'success' && inputs.mutate == ''
-        uses: actions/upload-artifact@v7
+      - uses: ./.github/actions/mutation-review
         with:
-          name: mutation-frontend-review
-          path: /tmp/review/
-          retention-days: 90
-          if-no-files-found: warn
-      # shell を名指すと pipefail が付き、起票が落ちたら tee の成功で隠さずに段を落とす。
-      - name: 重なりの候補を消すタスクを起こす
-        if: github.event_name == 'schedule' && steps.review.outputs.complete == 'true' && needs.shard.result == 'success'
-        shell: bash
-        env:
-          FLOW_BOT_TOKEN: ${{ secrets.FLOW_BOT_TOKEN }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: |
-          size=$(cd ../backend/scripts/mutation && python3 cleanup_issue.py frontend /tmp/review "$RUN_URL" /tmp/cleanup.md)
-          if [ -z "$size" ]; then echo "重なりの候補が無いので、消すタスクは起こさない。" >> "$GITHUB_STEP_SUMMARY"; exit 0; fi
-          node ../.claude/skills/file-issue/scripts/new-issue.mjs --type 保守 --body-file /tmp/cleanup.md --size "$size" --priority 低 \
-            --title "テストの重なりを消す（frontend、$(TZ=Asia/Tokyo date +%Y-%m) の定期の測りから）" | tee -a "$GITHUB_STEP_SUMMARY"
+          layer: frontend
+          report: /tmp/report.json
+          keep: ${{ needs.shard.result == 'success' && inputs.mutate == '' }}
+          flow-token: ${{ secrets.FLOW_BOT_TOKEN }}
 
   compare:
     needs: version
@@ -236,7 +222,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           ref: ${{ needs.version.outputs.sha }}
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
           node-version-file: frontend/package.json
           cache: npm

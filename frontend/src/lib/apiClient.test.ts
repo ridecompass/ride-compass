@@ -3,7 +3,7 @@
  * `lib/apiClient.ts`——backendを呼ぶ全呼び出しが共有する骨格。成功した応答の本体を返し、失敗は利用者へ出せる
  * 日本語の文言の`Error`で投げ、経過をデバッグの記録へ残す。
  *
- * 網は`testing/backendServer.ts`の手引きで作る（応答・通信の失敗・時間切れ）。記録は本物の`lib/debugLog.ts`へ届いたものを読む
+ * 網は`testing/backendServer.ts`の手引きで作る（応答・通信の失敗）。記録は本物の`lib/debugLog.ts`へ届いたものを読む
  * （記録はデバッグの画面に出る、この骨格の出力）。
  *
  * ここで見ないもの:
@@ -17,10 +17,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { adminApiClient, backendApi, fetchJson, requestApi } from "@/lib/apiClient";
 import { clearDebugLog, getDebugLogEntries, setDebugEnabled } from "@/lib/debugLog";
-import { heldReplies, onBackend, onUrl } from "@/testing/backendServer";
+import { onBackend, onUrl } from "@/testing/backendServer";
 
 const URL_A = "https://example.test/feed.json";
-const OPTIONS = { timeoutMs: 1000, category: "api:a", errorLabel: "資料A" };
+const OPTIONS = { category: "api:a", errorLabel: "資料A" };
 
 beforeEach(() => {
   setDebugEnabled(true);
@@ -88,7 +88,6 @@ describe("成功", () => {
     onBackend("GET", "/api/cost-axes", () => Response.json({ axes: [{}, {}, {}] }));
 
     await requestApi((init) => backendApi.GET("/api/cost-axes", init), {
-      timeoutMs: 1000,
       category: "api:a",
       messages: { failure: "失敗", parseFailure: "解析の失敗" },
       successMeta: (data) => ({ count: data.axes.length }),
@@ -151,15 +150,6 @@ describe("応答が届く前の失敗", () => {
       },
       level: "error",
     });
-  });
-
-  it("待ち時間を過ぎたら打ち切り、呼び出し側の文言に[タイムアウト]を添え、待ち時間を記録する", async () => {
-    onUrl(URL_A, heldReplies().reply);
-
-    const error = await rejection(fetchJson(URL_A, { ...OPTIONS, timeoutMs: 1 }));
-
-    expect(error.message).toBe("資料Aの取得に失敗しました[タイムアウト]");
-    expect(logged().at(-1)).toMatchObject({ message: "失敗 (タイムアウト 1ms)", level: "error" });
   });
 });
 

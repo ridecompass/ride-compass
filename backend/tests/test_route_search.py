@@ -96,7 +96,7 @@ def turn_tree(state_count, *, node_cost, node_length_m, node_seconds, node_best_
         state_length_m=np.full(state_count, np.nan), state_seconds=np.full(state_count, np.nan),
         node_cost=np.asarray(node_cost, dtype=float), node_best_state=np.asarray(node_best_state, dtype=np.int64),
         node_length_m=np.asarray(node_length_m, dtype=float), node_seconds=np.asarray(node_seconds, dtype=float),
-        predecessor=np.full(state_count, -1, dtype=np.int64), predecessor_list=[-1] * state_count,
+        predecessor=np.full(state_count, -1, dtype=np.int64),
     )
 
 
@@ -104,7 +104,8 @@ def draft(distance_km, duration_seconds, cost_seconds):
     """並びの鍵が読む距離・所要時間・費用だけを持つ候補。ほかの欄は空。"""
     return EvaluatedRoute(
         direction_label="", distance_km=distance_km, geometry={"type": "LineString", "coordinates": []},
-        elevation_gain_m=None, segments=[], estimated_duration_seconds=duration_seconds, cost_seconds=cost_seconds,
+        elevation_gain_m=None, segments=[], estimated_duration_seconds=duration_seconds, wind_from_previous_run=False,
+        cost_seconds=cost_seconds,
         penalty=PenaltyBreakdown(axis_seconds={}, preferred_seconds=0.0, avoided_seconds=0.0),
         facts=RouteFacts(axes={}),
         missing_travel_data_share=None,
@@ -248,7 +249,7 @@ def test_route_passages_reads_each_edge_in_the_time_bin_the_search_used():
     )
 
     passages = route_passages(
-        [leg], transition_values_along(structure.turn_seconds, structure.entries_along(path)), path, [100.0, 100.0], [0, 0], speed_kmh=20.0
+        [leg], transition_values_along(structure.turn_seconds, structure.entries_along(path)), path, [0, 0]
     )
 
     assert passages[-1].elapsed_seconds + passages[-1].seconds == pytest.approx(tree.state_seconds[states["BC"]])

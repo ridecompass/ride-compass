@@ -1,6 +1,6 @@
 """応答のgzip圧縮（content-typeで対象を絞ったGZipMiddleware）。
 
-StarletteのGZipMiddlewareはcontent-typeを見ずに全応答を圧縮し、既に圧縮済みのラスタタイルにもCPUを使うため、
+StarletteのGZipMiddlewareは除く型の一覧に無いcontent-type（型の無い応答等）を全部圧縮し、既に圧縮済みの中身にもCPUを使うため、
 対象のcontent-typeの応答だけを圧縮して、それ以外は素通しする。
 """
 
@@ -37,14 +37,14 @@ class _ContentTypeGZipResponder(GZipResponder):
         super().__init__(app, minimum_size, compresslevel=compresslevel)
         self._passthrough = False
 
-    async def send_with_gzip(self, message: Message) -> None:
+    async def send_with_compression(self, message: Message) -> None:
         if message["type"] == "http.response.start":
             headers = Headers(raw=message["headers"])
             self._passthrough = not _is_compressible_content_type(headers.get("content-type"))
         if self._passthrough:
             await self.send(message)
             return
-        await super().send_with_gzip(message)
+        await super().send_with_compression(message)
 
 
 class ContentTypeGZipMiddleware(GZipMiddleware):

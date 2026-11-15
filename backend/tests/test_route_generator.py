@@ -55,6 +55,7 @@ def _candidate(key: str, penalty: float = 10.0, **fields) -> EvaluatedRoute:
     return EvaluatedRoute(**{
         "direction_label": f"方位-{key}", "distance_km": 1.0, "geometry": {"type": "LineString", "coordinates": []},
         "elevation_gain_m": None, "segments": [_segment()], "estimated_duration_seconds": 100.0,
+        "wind_from_previous_run": False,
         "cost_seconds": 100.0 + penalty, "penalty": PenaltyBreakdown(axis_seconds={"a": penalty}, preferred_seconds=0.0, avoided_seconds=0.0),
         "facts": RouteFacts(axes={}),
         "missing_travel_data_share": None, "edge_ids": [key], "edge_point_offsets": [], "node_ids": [], "turns": [],
@@ -471,6 +472,6 @@ async def test_spliced_route_that_does_not_connect_says_so_without_internal_ids(
         assert (result := await generator.generate_spliced_route(ORIGIN, FixedPoints(waypoints=[], destination=DESTINATION), ("osm-123",), START)).candidates == []
 
     assert result.no_candidates_reason == (
-        "組み合わせた経路がつながっていないため評価できませんでした。区間の選び直しか、ルートの再生成をお試しください。")
+        "組み合わせた経路がつながっていないか、今の条件で通らない道を含むため評価できませんでした。区間の選び直しか、ルートの再生成をお試しください。")
     # 原因（内部の識別子を含む）はログにだけ残す
     assert any("osm-123" in r.getMessage() for r in caplog.records)

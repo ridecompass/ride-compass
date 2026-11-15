@@ -52,7 +52,6 @@ export const ROUTE_HIT_TARGET_CANDIDATE = "routeCandidate";
 export const ROUTE_HIT_TARGET_SPLICE_BAND = "routeSpliceBand";
 
 export type RouteState = {
-  readonly visible: boolean;
   readonly candidates: readonly { readonly routeId: string; readonly path: RoutePath }[];
   readonly selectedRouteId: string | null;
   /** 区間の形。`properties.travelled`が真の区間は、走り終えたものとして薄める。 */
@@ -84,7 +83,7 @@ export const routeGroup = declareGroup<RouteState>((state) => {
     tier: "route",
     source: SOURCE.selected,
     type: "symbol",
-    visible: state.visible,
+    visible: true,
     layout: {
       "icon-image": ROUTE_ARROW_ICON_ID,
       "symbol-placement": "line",
@@ -143,7 +142,7 @@ export const routeGroup = declareGroup<RouteState>((state) => {
     tier: "route",
     source,
     type: "line",
-    visible: state.visible,
+    visible: true,
     paint: { ...paint, "line-offset": ROUTE_OFFSET_PX },
     ...extra,
   });
@@ -171,7 +170,7 @@ export const routeGroup = declareGroup<RouteState>((state) => {
         "line-width": ROUTE.lineWidthsPx.selectedSection,
         "line-opacity": ROUTE.opacities.selectedSection,
       },
-      { visible: state.visible && state.selectedSection !== null, layout: ROUND_CAP },
+      { visible: state.selectedSection !== null, layout: ROUND_CAP },
     ),
     lineLayer("selectedHalo", SOURCE.selected, {
       "line-color": state.semantic.route_selected_halo,
@@ -194,7 +193,7 @@ export const routeGroup = declareGroup<RouteState>((state) => {
         "line-opacity": ROUTE.opacities.splice,
         "line-dasharray": [...ROUTE.spliceDash],
       },
-      { visible: state.visible && state.spliceBands.length > 0 },
+      { visible: state.spliceBands.length > 0 },
     ),
     lineLayer(
       "compositeCasing",

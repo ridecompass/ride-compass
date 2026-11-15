@@ -7,7 +7,7 @@ import { sceneInputsFrom } from "@/features/map/scene/applyToMap";
 import { buildMapScene, type SceneInputs } from "@/features/map/scene/buildScene";
 import { interactiveSceneLayerIds } from "@/features/map/scene/mapScene";
 
-type MapSceneSources = Omit<Parameters<typeof sceneInputsFrom>[0], "catalog" | "tileVersions"> & {
+type MapSceneSources = Omit<Parameters<typeof sceneInputsFrom>[0], "catalog"> & {
   readonly catalog: MapCatalog;
 };
 
@@ -22,7 +22,7 @@ export function useMapScene({
   inspectedShape,
   travelledKm,
   selectedRouteSegment,
-  sidePointPath,
+  routePath,
 }: MapSceneSources) {
   const sceneInputs = useMemo<SceneInputs>(
     () =>
@@ -33,11 +33,10 @@ export function useMapScene({
         selectedRouteId,
         spliceStretches,
         splicedRoute,
-        tileVersions: catalog.tileVersions,
         inspectedShape,
         travelledKm,
         selectedRouteSegment,
-        sidePointPath,
+        routePath,
       }),
     [
       look,
@@ -49,7 +48,7 @@ export function useMapScene({
       inspectedShape,
       travelledKm,
       selectedRouteSegment,
-      sidePointPath,
+      routePath,
     ],
   );
   const scene = useMemo(() => buildMapScene(sceneInputs), [sceneInputs]);

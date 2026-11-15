@@ -30,7 +30,8 @@ from typing import Any
 import shapely
 from shapely.geometry import LineString, Point, Polygon
 
-from app.batch.ingest import AdapterInputs, SourceRecord, register_adapter
+from app.batch.common import fetch_file
+from app.batch.ingest import AdapterInputs, Fetcher, SourceRecord, register_adapter
 from app.batch.source_profile import SourceProfile, SourceProfileError, SourceSpec
 from app.domain.traffic import has_supply_poi_tag
 from app.infrastructure import data_paths
@@ -39,6 +40,12 @@ from app.infrastructure.source_models import WAY_KIND_TAG, SourceFeatureRow
 logger = logging.getLogger("ridecompass.ingest.osm_pbf")
 
 DATA_DIR = data_paths.DATA_DIR / "pbf"
+
+#: 配布元。`{name}`は抽出ファイルの名前（`kanto-latest.osm.pbf`等）。
+#: Geofabrikの日本の抽出は`asia/japan/`の下に地方ごとに置かれている。
+PBF_URL = "https://download.geofabrik.de/asia/japan/{name}"
+
+_READ_TIMEOUT_SECONDS = 60.0
 
 #: スレッド間で受け渡すまとまりの件数と、待ち行列の深さ。深さは読み手が遅れたときに
 #: 読み側が先へ行きすぎないための背圧で、メモリの上限を決める。
@@ -101,8 +108,6 @@ def _pbf_path(rows: OsmWayRows) -> Path:
     非ASCIIを含む絶対パスを渡すとpyosmiumがファイルを開けない。
     """
     path = DATA_DIR / rows.file
-    if not path.exists():
-        raise FileNotFoundError(f"PBFがありません: {path}")
     try:
         return path.relative_to(Path.cwd())
     except ValueError:
@@ -203,7 +208,14 @@ def osm_way_inputs(spec: SourceSpec, profile: SourceProfile) -> AdapterInputs:
     return AdapterInputs(files=(_pbf_path(spec.rows),))
 
 
-@register_adapter("osm_pbf_way", rows=OsmWayRows, required=(SourceFeatureRow.payload,), inputs=osm_way_inputs)
+def fetch_osm_way(spec: SourceSpec, profile: SourceProfile) -> None:
+    """wayのソースが読む抽出ファイルを取る。頂点のソースは参照先のwayと同じファイルを読むので、取得を持たない。"""
+    fetch_file(PBF_URL.format(name=spec.rows.file), DATA_DIR / spec.rows.file,
+               read_timeout=_READ_TIMEOUT_SECONDS, logger=logger)
+
+
+@register_adapter("osm_pbf_way", rows=OsmWayRows, required=(SourceFeatureRow.payload,), inputs=osm_way_inputs,
+                  fetcher=Fetcher(fetch_osm_way, lambda: (DATA_DIR,)))
 async def read_osm_ways(spec: SourceSpec, profile: SourceProfile, inputs: AdapterInputs,
                         origin: dict[str, Any]) -> AsyncIterator[SourceRecord]:
     from app.batch.pbf_source import stream_ways
@@ -255,8 +267,7 @@ def _referenced_way_rows(spec: SourceSpec, profile: SourceProfile) -> OsmWayRows
 
 
 def osm_node_inputs(spec: SourceSpec, profile: SourceProfile) -> AdapterInputs:
-    return AdapterInputs(files=(_pbf_path(_referenced_way_rows(spec, profile)),),
-                         sources=(spec.rows.referenced_by,))
+    return AdapterInputs(files=(_pbf_path(_referenced_way_rows(spec, profile)),))
 
 
 @register_adapter("osm_pbf_node", rows=OsmNodeRows, inputs=osm_node_inputs)

@@ -1,0 +1,15 @@
+# 全部の元を取り直し、取り込み直し、作り直す（source_refresh.sh）。急ぎのときは`sudo systemctl start`で手で起こす。
+[Unit]
+Description=RideCompass source refetch, reingest and rederive
+Requires=docker.service
+After=docker.service postgresql.service network-online.target
+Wants=network-online.target
+
+[Service]
+# RuntimeMaxSec=はType=oneshotには効かないので、走っている間を起動済みとして数えるexecにする。
+Type=exec
+# 詰まった回を次の回まで残さない。上限を越えると止めて失敗にする。
+RuntimeMaxSec=12h
+ExecStart=/bin/bash /home/ubuntu/ridecompass-repo/backend/ops/source_refresh.sh
+# 止めたときにdocker runの端末だけが殺され、コンテナが残ると次の回が名前で断られるので、止まったあとに消す（無ければ何もしない）。
+ExecStopPost=-/usr/bin/docker rm -f ridecompass-source-refresh

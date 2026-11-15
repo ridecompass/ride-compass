@@ -123,31 +123,11 @@ jobs:
             # 土地被覆ラスタ（Esri×Impact Observatory 10m LULC）の置き場。キャッシュとは別の
             # ディレクトリにする——消しても作り直せるキャッシュと違い、これは取り直すまで
             # 地図レイヤーを出せなくなる生データで、一緒に消えてよいものではない。
+            # ラスタを置くのは元の取り直し（backend/ops/source_refresh.sh）。
             sudo mkdir -p /home/ubuntu/ridecompass-raster
-            # ラスタの所在（コンテナ内のパス）を環境変数ファイルへ用意する（上の
-            # CORS_ALLOWED_ORIGINSと同じ流儀の自己修復。何度実行しても安全）。
-            # **キーの有無ではなく値が入っているかで見る**——`LULC_RASTER_PATHS=`（空）が
-            # 1行あるだけで「設定済み」と判定すると、土地被覆だけが恒久的に503のまま直らない。
-            # 空行は消してから書き直す。値が入っていれば触らない（ゾーンを足した運用中の
-            # 設定を、デプロイのたびに1枚へ戻さないため）。
-            if ! grep -qE "^LULC_RASTER_PATHS=.+" "$ENV_FILE"; then
-              sudo sed -i '/^LULC_RASTER_PATHS=/d' "$ENV_FILE"
-              echo "LULC_RASTER_PATHS=/app/raster/54S_2024.tif" | sudo tee -a "$ENV_FILE" > /dev/null
-            fi
-            # 土地被覆ラスタの取得。既にあれば何もしないため、実際に効くのは初回と、差し替えたい
-            # とき（ファイルを消してデプロイし直す）だけ。失敗したらset -eで止める——ラスタ無しで
-            # 起動すると土地被覆レイヤーだけが黙って出なくなる。
-            # **旧コンテナを止めるより前に置く**。外部（配布元のS3）に依存するステップで、
-            # ここで落ちても本番は旧コンテナのまま動き続ける。
-            sudo docker run --rm \
-              --network=host \
-              -v /home/ubuntu/ridecompass-raster:/app/raster \
-              --env-file /home/ubuntu/ridecompass-backend.env \
-              ridecompass-backend:latest \
-              python scripts/fetch_lulc_raster.py
             # 警報・洪水予報の区域を引く境界（気象庁の区域の境界データ）の取得。今のコードが指す版が
             # 既にあれば何もしないため、実際に効くのは初回と、コードが版を上げたときだけ（取得と変換で
-            # 数分）。ラスタと同じく旧コンテナを止めるより前に置き、落ちたら止める——境界無しで起動
+            # 数分）。旧コンテナを止めるより前に置き、落ちたら止める——境界無しで起動
             # すると警報・洪水予報だけが黙って出なくなる。上限付きにするのは、変換が元の境界全体
             # （開発機の実測でピーク約660MB）を読むため。
             sudo docker run --rm \
@@ -172,8 +152,7 @@ jobs:
             # -t 90: uvicorn(単一プロセス、backend/Dockerfile)はSIGTERMで新しい接続を止め、
             # 応答中のリクエストが終わるのを待ってから止まる。docker stopの既定の猶予(10秒)では
             # その途中で強制終了され、接続がRSTで切れてフロントで「Failed to fetch」になる。
-            # 90秒は、通常のリクエストのDBクエリの上限(20秒、app/infrastructure/database.py)を
-            # 上回る。待つのはHTTPのリクエストだけで、ルート生成のジョブ(リクエストの外で走る
+            # 待つのはHTTPのリクエストだけで、ルート生成のジョブ(リクエストの外で走る
             # タスク)は待たれずに失われる(docs/architecture/api-design.md)。
             # 真のゼロダウンタイム(新コンテナを起動しヘルスチェック後に旧を止める
             # blue/green)は、--network=hostで単一ポートを共有する現在の構成では
@@ -186,14 +165,15 @@ jobs:
             # ブリッジネットワーク（既定）ではなくホストのネットワーク名前空間を共有する
             # 必要がある（ブリッジのままだとコンテナ内のlocalhostはコンテナ自身を指し、
             # ConnectionRefusedErrorになる）。
-            # --log-opt: 既定のjson-fileドライバはログサイズに上限が無く、無制限に
-            # ディスクを消費しうる。10MB×5世代=最大50MBに制限する。
+            # --log-driver=journald: ログをVMのjournalへ送り、デプロイでコンテナを消したあとも読めるようにする
+            # （json-fileのログはコンテナに付き、docker rmで一緒に消える）。残る期間と容量の上限はVMのjournaldの
+            # 設定が決める（docs/architecture/tech-stack.md「本番のログ」）。
             sudo docker run -d \
               --name ridecompass-backend \
               --restart unless-stopped \
               --memory=6g --memory-swap=6g \
               --network=host \
-              --log-opt max-size=10m --log-opt max-file=5 \
+              --log-driver=journald \
               -v /home/ubuntu/ridecompass-cache-data:/app/data \
               -v /home/ubuntu/ridecompass-raster:/app/raster:ro \
               --env-file /home/ubuntu/ridecompass-backend.env \

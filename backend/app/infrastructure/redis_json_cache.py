@@ -135,7 +135,8 @@ async def set_hashes(hashes: Mapping[str, Mapping[str, str]], *, ttl_seconds: in
     async def write(client: redis.Redis) -> None:
         pipe = client.pipeline(transaction=False)
         for key, mapping in hashes.items():
-            pipe.hset(key, mapping=dict(mapping))
+            # `dict(mapping)`だと`dict[str, str]`になり、`hset`が宣言する項目名の広い型（`FieldT`）へ渡せない。
+            pipe.hset(key, mapping={field: value for field, value in mapping.items()})
             pipe.expire(key, ttl_seconds)
         await pipe.execute()
 

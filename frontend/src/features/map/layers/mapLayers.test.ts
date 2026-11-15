@@ -15,7 +15,6 @@ import {
   LAYER_DATA_STATUS_LABELS,
   layerDataStatusNotice,
   mapOverlayGroupFor,
-  tileVersionGatedLayerIds,
   tileZoomTooWideLayerIds,
   type ChipLayerDescriptor,
   type MapLayerDescriptor,
@@ -69,10 +68,6 @@ describe("buildMapLayers（レイヤーの一覧）", () => {
     expect(layer(layers, "unknown").icon).toBe(layer(layers, "known").icon);
   });
 
-  it("ルートの説明は、レンズで選べる色分け（総合と費用の軸）をレンズの選択肢と同じ順に並べる", () => {
-    expect(layer(layers, "route").description).toContain("[総合の負担・登坂・振動]");
-  });
-
   it("災害の凡例は、要素が塗る段ごとに1つ並び、見出しにその段で塗る要素の名前が入る", () => {
     const blocks = layer(layers, "disaster").readOnlyLegend ?? [];
     const scaled = mapDisplay.weatherElements.filter((element) => element.group === "disaster" && element.levelScale);
@@ -87,12 +82,6 @@ describe("buildMapLayers（レイヤーの一覧）", () => {
 });
 
 describe("出せない理由の案内", () => {
-  it("タイル世代が届くまで描けないのは、世代を持つ配信を読むレイヤー", () => {
-    const gated = tileVersionGatedLayerIds(layers);
-    expect(gated).toContain("accident_point");
-    expect(gated).not.toContain("elevation");
-  });
-
   it("最小ズーム未満のレイヤーだけを、ズーム不足として出す", () => {
     // レンズの層はチップが無く案内の出し先が無いので、ズーム不足に数えない。
     const tileLayers = layers.filter((entry) => !isLensLayer(entry) && entry.minZoom !== undefined);

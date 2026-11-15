@@ -1,6 +1,6 @@
 """`services/weather_service.py`——MSMの読み出しから、出発時点の風と格子点ごとの時別の予報・地図に描く格子点の風と降水を組み立てる。
 
-MSMの読み出し（`msm_client.read_grid_points`・`msm_client.read_grid_block`・`msm_client.read_weather_grid`）だけを差し替え、domainの計算は本物を通す。
+MSMの読み出し（`msm_client.read_grid_points`・`msm_client.read_weather_grid`）だけを差し替え、domainの計算は本物を通す。
 
 ここで見ないもの:
 - 風の成分から風速・風向を求めること・格子点の並びの作り方と間引き → `test_msm.py`
@@ -16,7 +16,6 @@ from app.domain.region import BoundingBox
 from app.domain.route import Coordinates
 from app.infrastructure import msm_client
 from app.infrastructure.msm_client import (
-    MsmGridPointSeries,
     MsmGridPointWeatherSeries,
     MsmWeatherGridSeries,
 )
@@ -54,15 +53,6 @@ async def test_the_point_gets_today_at_its_nearest_grid_point(monkeypatch):
     assert today.times == [datetime(2026, 10, 7, 23, 0)]
     assert (today.temperature_c, today.precipitation_mm, today.wind_speed_ms) == ([18.4], [1.3], [3.0])
 
-def _patch_read_grid_block(monkeypatch, *, times):
-    async def read_grid_block(south, west, north, east):
-        points = MSM_GRID.block_covering(south, west, north, east).all_points()
-        values = np.ones((len(points.points), len(times)))
-        return MsmGridPointSeries(
-            times=[datetime.fromisoformat(t) for t in times], points=points, wind_u_ms=values, wind_v_ms=values,
-        )
-
-    monkeypatch.setattr(msm_client, "read_grid_block", bound(msm_client.read_grid_block, read_grid_block))
 
 async def test_the_map_grid_gives_each_grid_point_its_rounded_wind_and_rain_with_missing_values_as_none(monkeypatch):
     """東西成分だけの風（u=3.04）は西から吹くため270度。格子の欠損（NaN）を0と読むと、降っていないと見せる。"""

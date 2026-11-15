@@ -13,11 +13,6 @@ import type { LegendEntry } from "@/lib/mapDisplay/legendFilter";
 import type { LensId } from "@/lib/mapDisplay/routeStyleModes";
 import type { MapCatalog } from "@/features/map/mapCatalog";
 
-/** 全道路を塗っているレンズ。ルート確定後は、周囲も塗り続ける設定の間だけ塗る。 */
-export function paintedLensId(lens: LensId, hasDetail: boolean, keepAfterRoute: boolean): LensId | null {
-  return !hasDetail || keepAfterRoute ? lens : null;
-}
-
 /** レンズの凡例。地図がいま塗っているものの凡例だけを出す——塗っていない間に出すと、
  * 地図のどこにも無い色見本の表になる。ルート確定後はルート線のモードの凡例。 */
 export function lensLegend(

@@ -6,7 +6,6 @@
 ここで見ないもの:
 - 焼き込むSQLが出す点 → `test_point_tiles.py`
 - 配信（キャッシュ・空タイル・未知のレイヤーの404） → `test_region_service.py`・`test_region_routes.py`
-- 世代の文字列の組み立て → `test_derived_data_revision_service.py`
 """
 
 import dataclasses

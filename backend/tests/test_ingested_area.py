@@ -1,11 +1,10 @@
-"""`infrastructure/road_graph_repository.py`の取込範囲——`RoadGraphRepository.get_ingested_area`・`is_covered`。
+"""`infrastructure/road_graph_repository.py`の取込範囲——`RoadGraphRepository.get_ingested_area`。
 
 範囲は、成功した最新の道路の取込が記録した宣言（`profile.target.bbox`）。取込の記録は取込の入口
 （`tests/source_ingest.py`）から作る。
 
 ここで見ないもの:
 - タイルの問い合わせが範囲の外をNone・範囲の内の0件を空で返すこと → `test_road_graph_repository_contracts.py`
-- 範囲の外で生成を断ること → `test_graph_service.py`
 """
 
 import pytest
@@ -42,15 +41,4 @@ async def test_the_area_is_the_one_declared_by_the_latest_successful_road_ingest
     await ingest_records("accident", [point_record(1, 141.5, 40.5)], bbox=_ELSEWHERE)
 
     assert await road_graph_repository.get_ingested_area() == _AREA
-    assert await road_graph_repository.is_covered(_box(30.2, 130.2, 30.8, 130.8)) is False
 
-
-@pytest.mark.parametrize(("area", "covered"), [
-    (_box(36.0, 140.0, 36.5, 140.5), True),   # 角で接する
-    (_box(36.01, 139.4, 36.5, 139.6), False),  # 北へ外れる
-    (_box(35.4, 140.01, 35.6, 140.5), False),  # 東へ外れる
-])
-async def test_an_area_is_covered_when_it_overlaps_the_ingested_area(road_graph_repository, area, covered):
-    await _ingest_roads(_AREA)
-
-    assert await road_graph_repository.is_covered(area) is covered

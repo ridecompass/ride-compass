@@ -7,8 +7,6 @@ import type {
 import { backendApi, getOptions, requestApi } from "@/lib/apiClient";
 import { errorMessage } from "@/lib/apiError";
 import { debugLog } from "@/lib/debugLog";
-import { API_TIMEOUT_MS } from "@/lib/apiTimeouts";
-import { SECOND_MS } from "@/lib/duration";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 
 interface GenerateRoutesResult {
@@ -26,15 +24,9 @@ export interface GenerationProgress {
 // 問い合わせを打ち始める間隔の下限。backendが待たずに返したとき（問い合わせの失敗・待つ上限を知らない版）に、
 // これより詰めて打たない。
 const POLL_INTERVAL_MS = 1500;
-// 1回の問い合わせでbackendに終わるまで待たせる秒。問い合わせの時間切れ（`API_TIMEOUT_MS.default`）より短い
+// 1回の問い合わせでbackendに終わるまで待たせる秒
 // （docs/modules/frontend/route-settings-and-results.md「生成を待つ時間・投げる回数の根拠」）。
 const JOB_WAIT_SECONDS = routeGenerateConfig.job_wait_seconds;
-// backendがジョブの結果を持つ時間そのもの。これより長く待つと掃除済みのjob_idを引くため、
-// 独立に値を持たない（値を動かすのはbackendの宣言側）。
-const MAX_POLL_DURATION_MS = routeGenerateConfig.job_result_ttl_seconds * SECOND_MS;
-// 続けて失敗してよい回数。backendはジョブを取り消せないので、早く諦めると同時実行の枠を孤立したジョブが占める。
-// 遅すぎると本当に切れたときの検知が遅れるので、間隔と合わせて数十秒に収める。
-const MAX_CONSECUTIVE_POLL_FAILURES = 5;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -48,7 +40,7 @@ async function pollGenerationJob(jobId: string): Promise<RouteGenerateJobStatusR
         params: { path: { job_id: jobId }, query: { wait_seconds: JOB_WAIT_SECONDS } },
         ...init,
       }),
-    getOptions({ timeoutMs: API_TIMEOUT_MS.default, category: "api:route", errorLabel: "ルート生成の状態" }),
+    getOptions({ category: "api:route", errorLabel: "ルート生成の状態" }),
   );
 }
 
@@ -64,7 +56,6 @@ export async function generateRoutes(
   const { job_id: jobId } = await requestApi(
     (init) => backendApi.POST("/api/routes/generate", { body: request, ...init }),
     {
-      timeoutMs: API_TIMEOUT_MS.default,
       category: "api:route",
       messages: {
         failure: "リクエストに失敗しました。時間をおいて再度お試しください",
@@ -73,20 +64,9 @@ export async function generateRoutes(
       requestMeta: { body: request },
     },
   );
-  const startedAt = performance.now();
-  let consecutivePollFailures = 0;
-  let pollStartedAt = startedAt;
+  let pollStartedAt = performance.now();
 
   for (let pollCount = 0; ; pollCount += 1) {
-    if (performance.now() - startedAt > MAX_POLL_DURATION_MS) {
-      debugLog(
-        "api:route",
-        "失敗 (ポーリングタイムアウト)",
-        { jobId, elapsedMs: performance.now() - startedAt },
-        "error",
-      );
-      throw new Error("ルート生成がタイムアウトしました");
-    }
     // 初回と、backendが待ってから返した後は、待たずに問い合わせる。
     if (pollCount > 0) await sleep(Math.max(0, POLL_INTERVAL_MS - (performance.now() - pollStartedAt)));
 
@@ -94,30 +74,9 @@ export async function generateRoutes(
     pollStartedAt = performance.now();
     try {
       status = await pollGenerationJob(jobId);
-      consecutivePollFailures = 0;
     } catch (error) {
-      consecutivePollFailures += 1;
-      // 一時の失敗は次の問い合わせで取り直す（まだ失敗が決まっていないのでwarn）。
-      debugLog(
-        "api:route",
-        `ポーリング失敗、リトライします (${consecutivePollFailures}/${MAX_CONSECUTIVE_POLL_FAILURES})`,
-        { jobId, error: errorMessage(error) },
-        "warn",
-      );
-      if (consecutivePollFailures >= MAX_CONSECUTIVE_POLL_FAILURES) {
-        debugLog(
-          "api:route",
-          "失敗 (ポーリング連続失敗で諦め)",
-          { jobId, elapsedMs: performance.now() - startedAt },
-          "error",
-        );
-        // 原因（通信・混雑・ジョブの消失）は断定せず、最後の失敗の文言を添える。
-        const lastCause = error instanceof Error ? error.message.replace(/。$/, "") : null;
-        throw new Error(
-          `ルート生成の状況確認に続けて失敗しました${lastCause ? `: ${lastCause}` : ""}。時間をおいて再度お試しください。`,
-          { cause: error },
-        );
-      }
+      // 失敗は次の問い合わせで取り直す（まだ失敗が決まっていないのでwarn）。
+      debugLog("api:route", "ポーリング失敗、リトライします", { jobId, error: errorMessage(error) }, "warn");
       continue;
     }
 

@@ -27,8 +27,8 @@ from app.batch import derive_cli
 from app.batch.common import asyncpg_dsn
 from app.domain import stopwatch
 from app.infrastructure import (
+    data_paths,
     database,
-    debug_log,
     jma_area_boundaries,
     rate_limiter,
     redis_client,
@@ -49,7 +49,6 @@ from app.infrastructure.road_graph_repository import (
 from app.config import settings
 from app.domain.cost_axes import replace_cost_axes
 from app.domain.tuning import TUNING_VALUES
-from app.services import derived_data_revision_service
 from scripts.schema_gap import collect_gaps
 from tests.admin_auth import ADMIN_PASSWORD, ADMIN_USERNAME
 from tests.cost_axes_fixture import cost_axes
@@ -86,6 +85,15 @@ def road_network_root(monkeypatch, tmp_path) -> Path:
     """
     root = tmp_path / "road_network"
     monkeypatch.setattr(road_network_store, "ROOT", root)
+    return root
+
+
+@pytest.fixture
+def raster_dir(monkeypatch, tmp_path) -> Path:
+    """土地被覆のラスタの置き場（`data_paths.RASTER_DIR`）を、テストごとの空の一時ディレクトリへ移したパス。"""
+    root = tmp_path / "raster"
+    root.mkdir()
+    monkeypatch.setattr(data_paths, "RASTER_DIR", root)
     return root
 
 
@@ -192,7 +200,7 @@ async def fake_redis(monkeypatch, redis_server):
 
 
 class MonotonicClock:
-    """回数制限・外部I/Oの記録・所要時間の測り・データの世代の読み直しが読む単調時計。止まっていて、進めたぶんだけ進む。"""
+    """回数制限・外部I/Oの記録・所要時間の測りが読む単調時計。止まっていて、進めたぶんだけ進む。"""
 
     def __init__(self) -> None:
         self._now = 0.0
@@ -206,37 +214,28 @@ class MonotonicClock:
 
 @pytest.fixture(autouse=True, scope="session")
 def _monotonic_clock_for_the_session():
-    """回数制限・外部I/Oの記録・所要時間の測り・データの世代の読み直しが読む時計を、テストが進める時計へ替える。
+    """回数制限・所要時間の測りが読む時計を、テストが進める時計へ替える。
 
-    戻すのはセッションの終わりだけ。途中で実時計へ戻すと、進めた時計で数えた回数・窓の始まり・TTLが
+    戻すのはセッションの終わりだけ。途中で実時計へ戻すと、進めた時計で数えた回数・窓の始まりが
     未来の時刻として残り、後のテストに食い込む。freezegun（`clock`）はこの時計を動かさない——止めた時刻は
-    2026年の暦の秒で、実時計の単調時計より大きいので、戻った後の窓・TTLが明けなくなる。
+    2026年の暦の秒で、実時計の単調時計より大きいので、戻った後の窓が明けなくなる。
     """
     clock = MonotonicClock()
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(rate_limiter, "time", clock)
-        patch.setattr(debug_log, "time", clock)
         patch.setattr(stopwatch, "time", clock)
-        patch.setattr(derived_data_revision_service, "time", clock)
         yield clock
 
 
 @pytest.fixture(autouse=True)
 def monotonic_clock(_monotonic_clock_for_the_session) -> MonotonicClock:
-    """テストごとに、回数制限の窓・警告の抑制の窓・データの世代のTTLのどれよりも長く進める。
+    """テストごとに、回数制限の窓より長く進める。
 
-    どれもプロセス大域の記録で、進めないと前のテストの回数が今のテストの上限に食い込み、前のテストの
-    窓の中で警告が抑えられ、前のテストが読んだ世代のままTTLの内側でリポジトリが世代を聞かれない。
+    回数はプロセス大域の記録で、進めないと前のテストの回数が今のテストの上限に食い込む。
     記録そのものには触らない。
     """
     clock = _monotonic_clock_for_the_session
-    clock.advance(
-        max(
-            rate_limiter.WINDOW_SECONDS,
-            debug_log.WARN_WINDOW_SECONDS,
-            settings.derived_data_revision_check_interval_seconds,
-        )
-    )
+    clock.advance(rate_limiter.WINDOW_SECONDS)
     return clock
 
 

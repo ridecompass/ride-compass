@@ -1,7 +1,7 @@
 /** `GET /api/client-config`の応答（画面が起動のときに1回取る、再デプロイなしに変わる値）から、画面が読む形を導く。 */
 import type { ClientConfigResponse, RoadClassCatalog } from "@/types/route";
 
-/** 画面の設定。地図だけが読む形（タイルの世代・事故の年）は地図の機能が同じ応答から導く。 */
+/** 画面の設定。地図だけが読む形（道の線の層・事故の年）は地図の機能が同じ応答から導く。 */
 export interface ClientConfig {
   /** フロントが使う較正値（id → いま効いている値）。backendの`domain/tuning.py`が宣言し、
    * 管理画面から変えた値が再デプロイなしにここへ届く。**取得できるまでは空**——ビルド時生成物の既定で

@@ -170,12 +170,10 @@ async def derive(conn: asyncpg.Connection, *, cluster_distance_m: float, acciden
         await conn.execute("ANALYZE _stop_nodes")
         await conn.execute(_STOP_TOUCHES_SQL)
         await conn.execute("ANALYZE _stop_touches")
-        stops = await conn.fetchrow(
+        [stops] = await conn.fetch(
             "SELECT (SELECT count(*) FROM _stop_nodes) AS points,"
             " (SELECT count(DISTINCT (count_kind, cluster_id)) FROM _stop_nodes) AS clusters,"
             " (SELECT count(DISTINCT osm_node_id) FROM _stop_touches) AS on_network")
-        if stops is None:
-            raise RuntimeError("集計の問い合わせが行を返さなかった")
         await conn.execute("TRUNCATE edge_counts, way_counts")
         await conn.execute(_EDGE_ROWS)
         await conn.execute("ANALYZE edge_counts")

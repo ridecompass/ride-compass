@@ -1,18 +1,15 @@
 """`infrastructure/jma_area_boundaries.py`——置き場の区域の境界から、地点が属する区域（area.jsonのclass20）のコードを引く。
 
 入口は`find_class20_code`と、引いた区域を地域マスタで警報のエリアまで辿る`resolve_point_area`で、境界は`write_boundaries`で置き場（`backend/tests/conftest.py: boundary_path`）に書いたものを
-本物の読み込みで読む。区域は架空のコードと矩形で作る。見るのは、境界を読めないとき（区域なしとは別の例外と
-WARNING）と、置いたあとは再起動せずに引けること。地点から区域を引く規則（含む区域・寄せる距離の内側の最寄りの区域・
-どこにも入らない地点のNone）は、境界を直接与えた`AreaBoundaries.find_many`（1地点の`find`はこれへ委ねる）の性質で見る。`resolve_point_area`は、区域の外と
-区域が分からない（境界を読めない・地域マスタを取れない・辿れない）を分けることと、辿れない区域の名前を出すことを見る。
+本物の読み込みで読む。区域は架空のコードと矩形で作る。地点から区域を引く規則（含む区域・寄せる距離の内側の最寄りの区域・
+どこにも入らない地点のNone）は、境界を直接与えた`AreaBoundaries.find_many`（1地点の`find`はこれへ委ねる）の性質で見る。`resolve_point_area`は、警報のエリアまで
+辿れることと、区域の外を区域が分からないと分けて返すことを見る。
 
 ここで見ないもの:
 - 配布元のシェープファイルから境界を作る・置き場の版の入れ替え → `test_fetch_jma_area_boundaries.py`
 - 区域のコードから警報エリアを辿る → `test_jma_area.py`
 - 区域の外・区域が分からないが警報・洪水予報の応答のどこへ出るか → `test_warning_service.py`・`test_flood_service.py`
 """
-
-import logging
 
 import pytest
 import shapely
@@ -36,8 +33,6 @@ from tests.jma_area_fixtures import (
 
 LIMIT = NEAREST_LIMIT_DEG
 
-#: 経度方向に長い矩形（緯度35.6〜35.7・経度139.6〜139.9）を東西に分けた区域。緯度と経度を取り違えると外れる。
-WEST = box(139.6, 35.6, 139.75, 35.7)
 #: 寄せる距離と同じ程度の大きさの区域を、寄せる距離ちょうどの隙間で並べた架空の区域。区域の中・隙間・
 #: 寄せる距離の内外が、どれも乱数で十分に引かれる大きさにする。経度方向に長いので、緯度と経度を取り違えると外れる。
 _SMALL_AREAS = {
@@ -72,33 +67,19 @@ def test_each_point_gets_the_nearest_area_within_the_limit(points):
             assert distances[code] <= nearest + 1e-12
 
 
-async def test_missing_boundaries_raise_and_warn_until_they_are_written(boundary_path, caplog):
-    """置き場に無ければ、区域なし（None）ではなく読めない例外とWARNING。置いたあとは再起動せずに引ける。"""
-    with caplog.at_level(logging.WARNING, logger="ridecompass.external"):
-        with pytest.raises(jma_area_boundaries.AreaBoundariesUnavailableError):
-            await jma_area_boundaries.find_class20_code(35.65, 139.7)
-    assert [record.levelno for record in caplog.records] == [logging.WARNING]
-
-    jma_area_boundaries.write_boundaries(boundary_path, {"0000010": WEST})
-
-    assert await jma_area_boundaries.find_class20_code(35.65, 139.7) == "0000010"
-
-
 @pytest.mark.parametrize(
-    ("point", "upstream", "unreadable", "expected"),
+    ("point", "expected"),
     [
-        (CHIYODA_POINT, {}, False, ResolvedArea(CLASS20_CODE, CLASS10_CODE, OFFICE_CODE)),
-        (OFFSHORE_POINT, {}, False, OUTSIDE_AREAS),
+        (CHIYODA_POINT, ResolvedArea(CLASS20_CODE, CLASS10_CODE, OFFICE_CODE)),
+        (OFFSHORE_POINT, OUTSIDE_AREAS),
     ],
     ids=["resolved", "outside"],
 )
 async def test_a_point_resolves_to_its_warning_area_or_says_it_is_unknown(
-    boundary_path, point, upstream, unreadable, expected
+    boundary_path, point, expected
 ):
     """区域が分からない（None）を区域の外（`OUTSIDE_AREAS`）と同じに扱うと、警報・洪水予報が出ていないと見せる。"""
-    client = client_for(area_lookup_upstream(boundary_path, **upstream))
-    if unreadable:
-        boundary_path.unlink()
+    client = client_for(area_lookup_upstream(boundary_path))
 
     resolved = await jma_area_boundaries.resolve_point_area(
         client, new_area_data_cache(), point.latitude, point.longitude

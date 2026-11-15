@@ -8,8 +8,7 @@
 区域のコードが空の図形（北方領土・帰属の決まっていない埋立地等。どの区域にも警報が出ない）は
 書かない。
 
-取得の手順（一時ファイル経由・落とし終えたら開いてみる）は`app.batch.common.fetch_verified`が
-持つ。
+取得の手順（一時ファイル経由）は`app.batch.common.fetch_file`が持つ。
 
 実行方法（backendディレクトリから）:
     .venv\\Scripts\\python.exe scripts\\fetch_jma_area_boundaries.py
@@ -31,7 +30,7 @@ from shapely.geometry.base import BaseGeometry
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.batch.common import fetch_verified
+from app.batch.common import fetch_file
 from app.batch.fetch_cli import run_fetch_cli
 from app.infrastructure import jma_area_boundaries
 
@@ -78,17 +77,15 @@ def _remove_other_versions(keep: Path) -> None:
             logger.info("他の版を消した %s", path.name)
 
 
-def fetch() -> bool:
+def fetch() -> None:
     destination = jma_area_boundaries.BOUNDARY_PATH
     if destination.exists():
         logger.info("既にある %s", destination)
         _remove_other_versions(destination)
-        return True
+        return
 
     archive = destination.with_suffix(".zip")
-    if not fetch_verified(jma_area_boundaries.SOURCE_URL, archive, zipfile.is_zipfile,
-                          read_timeout=_READ_TIMEOUT_SECONDS, logger=logger):
-        return False
+    fetch_file(jma_area_boundaries.SOURCE_URL, archive, read_timeout=_READ_TIMEOUT_SECONDS, logger=logger)
 
     started = time.perf_counter()
     areas = read_areas(archive)
@@ -98,7 +95,6 @@ def fetch() -> bool:
                 sum(shapely.get_num_coordinates(geometry) for geometry in areas.values()),
                 time.perf_counter() - started)
     _remove_other_versions(destination)
-    return True
 
 
 def main() -> int:

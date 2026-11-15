@@ -49,6 +49,18 @@ export function costAxisLabel(
   return axis.label;
 }
 
+/** 費用の軸`axisId`の識別色。一覧が届いていなければ`palette.semantic.neutral`。届いた一覧に無い軸は、名前（`costAxisLabel`）と
+ * 同じく投げる——既定の色で塗ると、どの軸か分からない面や棒が黙って出る。 */
+export function costAxisColor(
+  catalog: { readonly axisColors: Readonly<Record<string, string>>; readonly loaded: boolean },
+  axisId: string,
+): string {
+  if (!catalog.loaded) return palette.semantic.neutral;
+  const color = catalog.axisColors[axisId];
+  if (color === undefined) throw new Error(`負担の種類 ${axisId} の色が一覧にありません`);
+  return color;
+}
+
 /** 軸`axisLabel`の行に添える、事実の名前と値と単位（区分の事実は値を持たず、名前が区分の名前）。事実の名前が軸の名前と同じなら
  * 名前を省く（「向かい風 向かい風 2.3m/s」と重ねない）。ルートの一覧と道の窓が同じ書き方で出す。 */
 export function factText(fact: AxisFact, axisLabel: string): string {
@@ -68,7 +80,7 @@ export function penaltyRows(axisSeconds: Readonly<Record<string, number>>, catal
       label: costAxisLabel(catalog, id),
       iconId: catalog.axes.find((axis) => axis.axisId === id)?.iconId ?? null,
       seconds: axisSeconds[id],
-      color: catalog.axisColors[id] ?? palette.semantic.neutral,
+      color: costAxisColor(catalog, id),
     }));
 }
 

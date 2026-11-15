@@ -18,6 +18,8 @@ const TILE_PATHS = [
   "/api/gsi-relief-tile",
 ] as const;
 
+const DERIVED_DATABASE_PATH = "/api/derived-database";
+
 /** 本番のデータで開くとき、API の呼び出しを本番の backend へ取り次ぐ口。画面の API の宛先（NEXT_PUBLIC_API_URL）にこれを置く。 */
 export const PROD_DATA_API_PREFIX = "/prod";
 
@@ -42,6 +44,8 @@ export function backendRewrites(internalBackend: string, prodData: string | null
   return [
     { source: "/api/basemap/:path*", destination: `${internalBackend}/api/basemap/:path*` },
     ...TILE_PATHS.map((path) => ({ source: `${path}/:path*`, destination: `${tiles}${path}/:path*` })),
+    // 地図の出典表記が同じオリジンの相対の住所でリンクする、派生データベースの書き出し。
+    { source: DERIVED_DATABASE_PATH, destination: `${tiles}${DERIVED_DATABASE_PATH}` },
     ...(prodData ? [{ source: `${PROD_DATA_API_PREFIX}/:path*`, destination: `${prodData}/:path*` }] : []),
   ];
 }

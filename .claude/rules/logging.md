@@ -29,7 +29,7 @@ paths:
 | レベル | 出力条件 | 用途 |
 |---|---|---|
 | ERROR | 常時 | 未処理例外（スタックトレース付き）、想定外の内部エラー |
-| WARNING | 常時 | 外部API失敗、429拒否、候補0件などユーザー影響のある準異常。**同種の警告はカテゴリごとに毎分5件で抑制**（`debug_log.py: log_throttled_warning`） |
+| WARNING | 常時 | 外部API失敗、429拒否、候補0件などユーザー影響のある準異常 |
 | INFO | 常時 | リクエスト1件=1行のアクセスサマリ、ルート生成のステージサマリ、起動時の構成スナップショット |
 | DEBUG | debug_mode時のみ | 外部API/キャッシュのイベント単位ログ、方位別のtrace失敗理由、距離フィルタの棄却詳細 |
 
@@ -38,11 +38,11 @@ paths:
 ### 外部API・キャッシュアクセス → `log_external_call`
 
 `app/infrastructure/debug_log.py: log_external_call(category, **fields)`で囲む。
-成功はDEBUG、失敗（例外 or `fields["result"]="error"`）は抑制付きWARNINGが自動で出て、
+成功はDEBUG、失敗（例外 or `fields["result"]="error"`）はWARNINGが自動で出て、
 `/api/debug/stats`の統計（呼び出し数・エラー数・キャッシュヒット率・平均/最大所要時間）にも自動集計される。
 
 - カテゴリ名は`ドメイン:サービス名`形式（例: `msm:read`, `weather:jma-tile`,
-  `basemap:openfreemap`）。`log_throttled_warning`のカテゴリも同じ形にする。
+  `basemap:openfreemap`）。
 - キャッシュを挟む場合は`fields["cache"] = "hit" / "miss"`を必ず設定する。
 - 失敗は`fields["result"] = "error"`で示す（例外を捕まえて倒すときは下の`mark_failed`）。集計が失敗として
   数えるのはこれと捕まえずに送り出した例外だけで、ほかは成功に数える。`"ok"`等の状態は、ログに
@@ -53,22 +53,17 @@ paths:
 - 例外を捕まえて既定値（空・None）へ倒すときは、`debug_log.py: mark_failed`で失敗を記録する。
   独自のWARNINGを書き足さない——対象を示す値（対象のタイル・ID等）は`log_external_call`へ渡す`fields`に入れる。
   捕まえずに送り出す例外は何も書かなくてよい。
-- **タイル単位の口**（タイル1枚ごとに呼ばれる処理と、そこから呼ばれるキャッシュ等の下の層）では、
-  呼び出しの失敗ではない劣化（入力の時刻が予報の範囲外・キャッシュを読めず取り直す・補間できない等）を
-  知らせる警告を`debug_log.py: log_throttled_warning`で出し、`logger.warning`を直接書かない。タイルでない口でも、利用者の
-  要求ごとに通り、要求の中身に依らない原因（配信元の配色・コード・配信の止まり、置き場のファイル、プロキシの設定等）を
-  知らせる警告は同じにする。1回の操作で1度しか通らない口（ルート生成・定期の同期・起動時の確認等）は、この限りでない。
 - **例外（`log_external_call`を使わないキャッシュ）**: `infrastructure/detour_ratio_cache.py`
   （プロセス内メモリのみのLRUで、失敗しうる経路が無い）は対象外。
   `tile_persistent_cache.py`（ディスクI/O、失敗しうる）は`log_external_call`を経由せず、成功を専用loggerの
-  DEBUG、失敗を`log_throttled_warning`で出す——`feature_material_cache.py`を
+  DEBUG、失敗をWARNINGで出す——`feature_material_cache.py`を
   読む材料のサービス（`services/feature_materials.py`）が`log_external_call`で囲み、そちらがhit/missを
   数えるため、下の層で二重に数えない。`tile_cache.py`（タイルの生バイトのディスクキャッシュ）も同じ形で、失敗を
-  `log_throttled_warning`で出し、hit/missは読むクライアント（`basemap_client.py`等）の`log_external_call`が数える。
+  WARNINGで出し、hit/missは読むクライアント（`basemap_client.py`等）の`log_external_call`が数える。
 
 ### 429拒否 → `record_rate_limit_rejection`
 
-レート制限・同時実行制限で429を返す箇所では`record_rate_limit_rejection(category, client_id, limit)`を呼ぶ。抑制付きWARNINGと`/api/debug/stats`の`rate_limit_rejections`集計が付く。
+レート制限・同時実行制限で429を返す箇所では`record_rate_limit_rejection(category, client_id, limit)`を呼ぶ。WARNINGと`/api/debug/stats`の`rate_limit_rejections`集計が付く。
 
 ### リクエストID
 

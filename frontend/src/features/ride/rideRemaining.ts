@@ -2,14 +2,8 @@
 // 位置を受けた時刻へ計画の残り時間を足すだけで、走った実績で計画を伸び縮みさせない（止まっていたかは位置の揺れで
 // 見分けられず、休憩をこの先へ引き延ばしてしまう）。
 
-import { routeStretches, type RouteSegmentShape } from "@/lib/routeDistance";
-import type { RouteCandidate, RouteSegmentDetail } from "@/types/route";
-
-/** 到着予想に読むルートの計画。区間の到達予想は、その区間へ入る時刻。所要時間は、出発から最後の区間を抜けるまで。 */
-export interface RidePlan {
-  segments: readonly (RouteSegmentShape & Pick<RouteSegmentDetail, "estimated_arrival_time">)[];
-  estimated_duration_seconds: RouteCandidate["estimated_duration_seconds"];
-}
+import { routeClock, type RoutePlan } from "@/lib/routeClock";
+import { routeStretches } from "@/lib/routeDistance";
 
 /** 走りの帯に出す、ルートの残り。`remainingKm`は現在地をまだルートへ当てていなければnull。 */
 export interface RideRemaining {
@@ -17,34 +11,15 @@ export interface RideRemaining {
   arrivalAt: Date | null;
 }
 
-/** 計画で、ルートの上の距離を通る時刻（ms）を返す関数。区間の中は距離に比例させる。計画の時刻が欠けていればnull。 */
-function plannedClock(plan: RidePlan, stretches: readonly { startKm: number; endKm: number }[]) {
-  const entries = plan.segments.map((segment) =>
-    segment.estimated_arrival_time === null ? Number.NaN : Date.parse(segment.estimated_arrival_time),
-  );
-  if (entries.some((at) => Number.isNaN(at)) || plan.estimated_duration_seconds === null) return null;
-  const finishedAt = entries[0] + plan.estimated_duration_seconds * 1000;
-  return (km: number) => {
-    // 終わりを越えた距離は、最後の区間で読む。
-    const found = stretches.findIndex(({ endKm }) => km <= endKm);
-    const index = found === -1 ? stretches.length - 1 : found;
-    const { startKm, endKm } = stretches[index];
-    const leftAt = entries[index + 1] ?? finishedAt;
-    const fraction = endKm > startKm ? Math.min(1, Math.max(0, (km - startKm) / (endKm - startKm))) : 1;
-    return entries[index] + (leftAt - entries[index]) * fraction;
-  };
-}
-
 /**
  * ルート`plan`の上の距離を通る見込みの時刻（ms）を返す関数。走る前（`at`がnull）は計画の時刻のまま、走行中は`at.km`を
  * `at.fixedAtMs`（最後に位置を受けた時刻）に通ったとして、その先へ計画の時間を足す。ルートが無い・計画の時刻が欠けていればnull。
  */
 export function rideClock(
-  plan: RidePlan,
+  plan: RoutePlan,
   at: { km: number; fixedAtMs: number } | null,
 ): ((km: number) => number) | null {
-  if (plan.segments.length === 0) return null;
-  const clock = plannedClock(plan, routeStretches(plan.segments));
+  const clock = routeClock(plan);
   if (clock === null || at === null) return clock;
   const shift = at.fixedAtMs - clock(at.km);
   return (km) => clock(km) + shift;
@@ -55,7 +30,7 @@ export function rideClock(
  * ルートが無ければnull。位置をまだ受けていない・計画の時刻が欠けているときは、到着予想だけ出さない。
  */
 export function rideRemaining(
-  plan: RidePlan | null,
+  plan: RoutePlan | null,
   progressKm: number | null,
   fixedAtMs: number | null,
 ): RideRemaining | null {

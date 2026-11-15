@@ -52,7 +52,6 @@ import {
   landcoverTileUrl,
   pointTileUrl,
   roadSurfaceTileUrl,
-  type TileVersions,
 } from "@/features/map/regionApi";
 import type { PointTileLayer } from "@/lib/mapDisplay/pointLayers";
 import regionTileConfig from "@/types/generated/region-tile-config.json";
@@ -87,8 +86,10 @@ export interface SceneLook {
   readonly dynamicWeather: Partial<Record<DynamicWeatherLayerId, DynamicWeatherGroupState>>;
   /** ルート線の色分けのモード。 */
   readonly lens: LensId;
-  /** 全道路を塗っている軸（塗っていなければnull）。 */
-  readonly paintedLensId: LensId | null;
+  /** 負担を数える軸があるか。無ければルートの線を負担で塗らず、中立色の1色にする。 */
+  readonly costsCounted: boolean;
+  /** 道に付く層（塗る負担の周りの道・点の層）を地図全体に出すか。偽の間は、周りの道を塗らず、点はルート沿いだけに出す。 */
+  readonly surroundingsShown: boolean;
   /** 地図の道に塗る、道路タブの段。 */
   readonly roadAvoidance: AvoidanceChoice;
   /** 道路タブを地図で見ているか。 */
@@ -117,16 +118,14 @@ type SceneWiringProps = {
   readonly spliceStretches: readonly SpliceStretchInput[];
   /** 編集中に「いま作っているルート」として描く座標列（編集していなければnull）。 */
   readonly splicedRoute: readonly GeoJSON.Position[] | null;
-  /** タイルの世代。全系統が揃うまで`null`。 */
-  readonly tileVersions: TileVersions | null;
   /** 詳細を見ている道の線の形（小窓が開いている間だけ非null）。 */
   readonly inspectedShape: readonly (readonly [number, number])[] | null;
   /** 選んだ候補の上で走り終えた距離（km）。走っていなければnull。 */
   readonly travelledKm: number | null;
   /** 道のりのグラフか地図で選んだ地点と、その地点を含む区間。選んでいなければnull。 */
   readonly selectedRouteSegment: SelectedRouteSegment | null;
-  /** 近くの点を描く線（選んでいる区間か、走行中に選んでいない間は現在地から先の道のり）。どちらも無ければnull。 */
-  readonly sidePointPath: readonly (readonly [number, number])[] | null;
+  /** 選んでいるルートの線。無ければnull。編集中は、点を`splicedRoute`の線の近くに絞る。 */
+  readonly routePath: readonly (readonly [number, number])[] | null;
 };
 
 const NO_KEYS: readonly string[] = [];
@@ -135,20 +134,20 @@ const NO_MATERIALS: WayMaterials = new Map();
 
 function routeStateFrom(props: SceneWiringProps): RouteState {
   const { look } = props;
-  const visible = look.layerVisibility.route === true;
   const selected = props.routes.find((route) => route.id === props.selectedRouteId) ?? null;
-  const mode = getRouteStyleMode(props.catalog.routeStyleModes, look.lens);
-  const segments = visible ? (selected?.segments ?? []) : [];
-  const bands = visible ? props.spliceStretches : [];
-  const composite = visible ? props.splicedRoute : null;
-  const picked = visible ? props.selectedRouteSegment : null;
+  const mode = look.costsCounted
+    ? getRouteStyleMode(props.catalog.routeStyleModes, look.lens)
+    : UNPAINTED_ROUTE_STYLE_MODE;
+  const segments = selected?.segments ?? [];
+  const bands = props.spliceStretches;
+  const composite = props.splicedRoute;
+  const picked = props.selectedRouteSegment;
   const pickedSegment = picked !== null && segments.includes(picked.segment) ? picked.segment : null;
   const hiddenBandFilter = buildLegendFilterExpression(
     mode.legend,
     look.hiddenLegendKeys[look.lens] ?? NO_KEYS,
   ) as maplibregl.FilterSpecification | null;
   return {
-    visible,
     candidates: props.routes.map((route) => ({
       routeId: route.id,
       path: route.geometry.coordinates,
@@ -190,14 +189,14 @@ function routeStateFrom(props: SceneWiringProps): RouteState {
   };
 }
 
-function axisStateFrom(props: SceneWiringProps, sourceLayer: string | null): AxisLineState {
+function axisStateFrom(props: SceneWiringProps, sourceLayer: string): AxisLineState {
   const { look } = props;
   const axes = props.catalog.lenses.map((lens) => {
     const fetched = look.wayMaterials.get(lens.lensId);
     return {
       axisId: lens.lensId,
       // 道の線を塗るレンズは、選んでいる1本だけ。
-      visible: lens.lensId === look.paintedLensId,
+      visible: look.surroundingsShown && lens.lensId === look.lens,
       bands: valueBands(lens.display),
       formula: lens.formula,
       materials: fetched?.materials ?? NO_MATERIALS,
@@ -225,24 +224,19 @@ export function weatherStateFrom(dynamicWeather: SceneLook["dynamicWeather"]): W
 }
 
 /** 点のタイルごとのURL。 */
-function pointTileUrls(versions: TileVersions): Record<PointTileLayer, readonly string[]> {
-  const urls = POINT_TILE_LAYERS.map((name) => [name, [pointTileUrl(versions, name)]]);
+function pointTileUrls(): Record<PointTileLayer, readonly string[]> {
+  const urls = POINT_TILE_LAYERS.map((name) => [name, [pointTileUrl(name)]]);
   return Object.fromEntries(urls) as Record<PointTileLayer, readonly string[]>;
 }
 
 export function sceneInputsFrom(props: SceneWiringProps): SceneInputs {
-  // 世代が届く前にタイルのソースを作ると、世代の違う中身がブラウザのキャッシュへ載る。
-  const versions = props.tileVersions;
   const pointZoom = { minZoom: ROAD_TILE_MIN_ZOOM, maxZoom: ROAD_TILE_MAX_ZOOM };
-  const roadTiles =
-    versions === null
-      ? null
-      : {
-          urls: [roadSurfaceTileUrl(versions)],
-          sourceLayer: ROAD_TILE_SOURCE_LAYER,
-          minZoom: ROAD_SURFACE_TILE_MIN_ZOOM,
-          maxZoom: ROAD_TILE_MAX_ZOOM,
-        };
+  const roadTiles = {
+    urls: [roadSurfaceTileUrl()],
+    sourceLayer: ROAD_TILE_SOURCE_LAYER,
+    minZoom: ROAD_SURFACE_TILE_MIN_ZOOM,
+    maxZoom: ROAD_TILE_MAX_ZOOM,
+  };
   // 家族はどれも自分の役割の鍵だけを読むため、状態をそのまま渡す。
   const visible = props.look.layerVisibility;
   const hiddenKeys = props.look.hiddenLegendKeys;
@@ -261,19 +255,15 @@ export function sceneInputsFrom(props: SceneWiringProps): SceneInputs {
       avoidanceShown: props.look.roadAvoidanceShown,
       inspectedShape: props.inspectedShape,
     },
-    axis: axisStateFrom(props, roadTiles?.sourceLayer ?? null),
+    axis: axisStateFrom(props, roadTiles.sourceLayer),
     point: {
-      tiles: versions === null ? null : { urls: pointTileUrls(versions), ...pointZoom },
+      tiles: { urls: pointTileUrls(), ...pointZoom },
       visible,
       hiddenKeys,
+      nearPath: props.look.surroundingsShown ? null : (props.splicedRoute ?? props.routePath),
     },
     weather: weatherStateFrom(props.look.dynamicWeather),
     route: routeStateFrom(props),
-    sidePoint: {
-      path: props.sidePointPath,
-      tilesReady: versions !== null,
-      hiddenKeys,
-    },
   };
 }
 
@@ -305,7 +295,7 @@ export function applyScene(
   });
 }
 
-// 費用の軸の一覧が届く前・失敗の間（モードが0件）のルートの線。値を読まず中立色の1色で塗り、凡例を持たない。
+// 負担を数える軸が無い間と、費用の軸の一覧が届く前・失敗の間（モードが0件）のルートの線。値を読まず中立色の1色で塗り、凡例を持たない。
 const UNPAINTED_ROUTE_STYLE_MODE: RouteStyleMode = {
   id: UNSELECTED_LENS_ID,
   legend: [],

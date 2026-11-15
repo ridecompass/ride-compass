@@ -1,4 +1,4 @@
-"""`infrastructure/region_tile_cache.py`——地域タイルのディスクの口（キャッシュ確認・取得・キャッシュ書き込みの骨格と、旧世代の掃除）。
+"""`infrastructure/region_tile_cache.py`——地域タイルのディスクの口（キャッシュ確認・取得・キャッシュ書き込みの骨格と、旧世代の掃除・作り直しのあとの捨て）。
 
 ここで見ないもの:
 - 各タイル種別の取得の仕方 → `test_landcover_tile.py`等、種別ごとのテスト
@@ -12,8 +12,12 @@
 
 import pytest
 
-from app.infrastructure import region_tile_cache, tile_cache
+import numpy as np
+
+from app.domain.feature_materials import FeatureMaterials
+from app.infrastructure import feature_material_cache, region_tile_cache, tile_cache
 from app.infrastructure.cache_identity import LANDCOVER_TILE_VERSION, region_tile_key
+from app.infrastructure.landcover_raster import raster_paths
 from tests.fake_external_log import record_external_calls
 
 EMPTY = b"empty-tile"
@@ -83,13 +87,16 @@ async def test_a_tile_outside_the_coverage_is_the_empty_tile_and_is_not_stored(r
 
 
 @pytest.fixture
-def configure_rasters(monkeypatch):
-    """設定する土地被覆ラスタのパスを渡す口。"""
+def configure_rasters(raster_dir):
+    """土地被覆ラスタの置き場を、名前を渡したファイルだけにする口（世代はファイルの名前の集合で決まり、中身は読まない）。"""
 
-    def configure(*paths: str) -> None:
-        monkeypatch.setattr(region_tile_cache.settings, "lulc_raster_paths", ",".join(paths))
+    def configure(*names: str) -> None:
+        for path in raster_dir.iterdir():
+            path.unlink()
+        for name in names:
+            (raster_dir / name).write_bytes(b"")
 
-    configure("/data/zone53.tif")
+    configure("53S_2024.tif")
     return configure
 
 
@@ -103,28 +110,26 @@ def _kept(*keys: str) -> set[str]:
 
 
 def test_only_the_generations_being_served_stay_on_disk(configure_rasters):
-    configure_rasters("/data/zone53.tif", "/data/zone54.tif")
-    landcover_with_another_zone = region_tile_cache.landcover_generation()
-    configure_rasters("/data/zone53.tif")
-    landcover_now = region_tile_cache.landcover_generation()
+    configure_rasters("53S_2024.tif", "54S_2024.tif")
+    landcover_with_another_zone = region_tile_cache.landcover_generation(raster_paths())
+    configure_rasters("53S_2024.tif")
+    landcover_now = region_tile_cache.landcover_generation(raster_paths())
+    road_surface_now = region_tile_cache.MVT_TILE_GENERATIONS["road_surface"]
     keys = {
-        "路面の今の世代": region_tile_key("road_surface", "3.2-aaa", 12, 1, 1, "pbf"),
-        "路面の前の世代": region_tile_key("road_surface", "2.2-aaa", 12, 1, 1, "pbf"),
-        "形の署名だけ違う世代": region_tile_key("road_surface", "3.2-bbb", 12, 1, 1, "pbf"),
-        "表に無い系統": region_tile_key("road-surface", "3.2-aaa", 12, 1, 1, "pbf"),
+        "路面の今の形": region_tile_key("road_surface", road_surface_now, 12, 1, 1, "pbf"),
+        "路面の前の形": region_tile_key("road_surface", "another-shape", 12, 1, 1, "pbf"),
+        "表に無い系統": region_tile_key("road-surface", road_surface_now, 12, 1, 1, "pbf"),
         "土地被覆の今のラスタ構成": region_tile_key("landcover", landcover_now, 12, 1, 1, "png"),
         "土地被覆の別のラスタ構成": region_tile_key("landcover", landcover_with_another_zone, 12, 1, 1, "png"),
         "基礎地図（地域タイルでない）": "styles/liberty",
     }
     _store(*keys.values())
 
-    removed = region_tile_cache.prune_other_generations(
-        {"road_surface": "3.2-aaa"}
-    )
+    removed = region_tile_cache.prune_other_generations()
 
     kept = _kept(*keys.values())
     assert {name for name, key in keys.items() if key in kept} == {
-        "路面の今の世代",
+        "路面の今の形",
         "土地被覆の今のラスタ構成",
         "基礎地図（地域タイルでない）",
     }
@@ -133,6 +138,21 @@ def test_only_the_generations_being_served_stay_on_disk(configure_rasters):
 
 def test_the_landcover_generation_carries_the_tile_version(configure_rasters):
     """配色を変えて版を上げたら、前の版の絵をディスクから返さない。"""
-    assert region_tile_cache.landcover_generation().startswith(f"{LANDCOVER_TILE_VERSION}/")
+    assert region_tile_cache.landcover_generation(raster_paths()).startswith(f"{LANDCOVER_TILE_VERSION}/")
 
 
+async def test_discarding_after_a_rebuild_drops_every_region_tile_and_the_feature_materials(configure_rasters):
+    """作り直しのあと、前の表で焼いた絵と材料を配らない。基礎地図は表から作らないので残す。"""
+    landcover = region_tile_cache.landcover_generation(raster_paths())
+    region_keys = [
+        region_tile_key("road_surface", region_tile_cache.MVT_TILE_GENERATIONS["road_surface"], 12, 1, 1, "pbf"),
+        region_tile_key("landcover", landcover, 12, 1, 1, "png"),
+    ]
+    _store(*region_keys, "styles/liberty")
+    materials = FeatureMaterials(feature_keys=("1-0",), columns={"num_a": np.array([1.0])})
+    await feature_material_cache.set_tile_materials(12, 1, 1, materials, value_shape="shape")
+
+    removed = region_tile_cache.discard_region_tiles()
+
+    assert (removed, _kept(*region_keys, "styles/liberty")) == (len(region_keys), {"styles/liberty"})
+    assert await feature_material_cache.get_tile_materials(12, 1, 1, value_shape="shape") is None

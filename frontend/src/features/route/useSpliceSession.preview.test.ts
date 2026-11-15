@@ -83,7 +83,7 @@ describe("差分を見る", () => {
     expect(rendered.result.current.panel?.sameRouteId).toBe(sameRouteId);
   });
 
-  it("評価を待っている間は待っていると返し、選び直しても続ける。待っている間に押しても投げ直さない", async () => {
+  it("評価を待っている間は待っていると返し、選び直しても続ける", async () => {
     const rendered = renderSplice({ routes: [BASE, VIA_Q, VIA_Q_R] });
     await startEditing(rendered);
     tapStretch(rendered);
@@ -94,10 +94,8 @@ describe("差分を見る", () => {
     });
     expect(rendered.result.current.panel?.previewing).toBe(true);
 
-    await press(rendered.result.current.panel?.onPreview);
     tapStretch(rendered);
     expect(rendered.result.current.panel?.previewing).toBe(true);
-    expect(evaluations.submitted).toHaveLength(1);
 
     await act(async () => {
       await pending.resolve([evaluated(VIA_Q.edge_ids)]);

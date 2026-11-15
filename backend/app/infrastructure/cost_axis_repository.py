@@ -1,7 +1,7 @@
 """費用の軸の定義の表の、全体の読みと全体の入れ替え。書く関数はcommitしない（取引の区切りは
 `services/cost_axis_service.py`が持つ）。"""
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,7 +17,7 @@ async def read_cost_axes(session: AsyncSession) -> CostAxisDefinitions | None:
 
 async def replace_cost_axes_row(session: AsyncSession, definitions: CostAxisDefinitions) -> None:
     """全体を入れ替える（行が無ければ入れる）。"""
-    values = {"only_one": True, "definitions": definitions.model_dump(mode="json"), "updated_at": func.now()}
+    values = {"only_one": True, "definitions": definitions.model_dump(mode="json")}
     statement = insert(CostAxisDefinitionsRow).values(values)
     await session.execute(statement.on_conflict_do_update(
-        index_elements=["only_one"], set_={"definitions": statement.excluded.definitions, "updated_at": func.now()}))
+        index_elements=["only_one"], set_={"definitions": statement.excluded.definitions}))

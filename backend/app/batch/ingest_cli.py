@@ -44,11 +44,6 @@ def main() -> int:
     def start(args: argparse.Namespace, database_url: str) -> Coroutine[Any, Any, int]:
         profile = load_source_profile(args.profile)
         names = [s.name for s in profile.sources] if args.all else args.source
-        if not names:
-            parser.error("--source か --all が必要です")
-        unknown = [n for n in names if n not in {s.name for s in profile.sources}]
-        if unknown:
-            parser.error(f"プロファイルに無いソースです: {unknown}")
         return run(names, database_url, profile)
 
     return run_batch_cli(parser, start)

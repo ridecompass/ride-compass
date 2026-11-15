@@ -11,8 +11,8 @@
 |---|---|
 | domain | `hard_filters.py`（0次フィルタ）・`road_avoidance.py`（道の行ごとの避け方）・`cost_preference.py`（費用の式の利用者の値: 全体のつまみと費用の軸ごとの倍率と、その範囲）・`cost_axes.py`（費用の軸の定義の型・検証と、プロセス内の定義）・`ledger_costs.py`（費目の帳簿の式。代償の秒と、その較正値の束）・`axis_templates.py`（道のストレスの重さを材料から引く折れ線と表引き）・`search_materials.py`（探索の材料の表）・`material_catalog.py`・`material_coverage_spec.py`（材料の欠損率の測り方の型と、欠損率の見出し）・`material_value_labels.py`（材料のタグの値ごとの日本語の対訳表）・`material_sql.py`（材料の値をSQLで導出する式。道・ノードの生データを読む副問い合わせは`infrastructure/source_models.py`。SQLの値の綴り［`material_sql.py: sql_literals`］と、`LIKE`の型の中で文字として当てる式［`material_sql.py: like_escaped_sql`］も持つ）・`road_classes.py`（道の区分の全体の型と、区分に道を振り分ける式）・`road_class_catalog.py`（道の区分を画面の設定で配る形） |
 | services | `material_coverage_service.py`・`cost_axis_service.py`（費用の軸の定義の読み込みと管理APIの入れ替え）・`road_class_service.py`（道の区分の読み込みと管理APIの入れ替え） |
-| infrastructure | `material_coverage.py`（材料ごとの欠損割合の集計クエリ）・`cost_axis_models.py`・`cost_axis_repository.py`・`road_class_models.py`・`road_class_repository.py`・`definition_write_lock.py`（定義の書き込みを直列にする鍵） |
-| api | `material_catalog.py`（材料の欠損割合のエンドポイント）・`cost_axis_catalog.py`（`GET /api/cost-axes`で費用の軸の見せ方・総合のレンズを、`GET /api/cost-axes/lens-equivalents`で利用者の値での段の境目の目安を画面へ配る。両方の要求の利用者の値の受け口`cost_preference_query`も持つ）・`cost_axis_admin.py`・`road_class_admin.py`（どちらも全体の読みと入れ替えの管理API）・`client_config.py`（`GET /api/client-config`。較正値・タイルの世代・事故の収録年・道の区分を画面へ配る） |
+| infrastructure | `material_coverage.py`（材料ごとの欠損割合の集計クエリ）・`cost_axis_models.py`・`cost_axis_repository.py`・`road_class_models.py`・`road_class_repository.py` |
+| api | `material_catalog.py`（材料の欠損割合のエンドポイント）・`cost_axis_catalog.py`（`GET /api/cost-axes`で費用の軸の見せ方・総合のレンズを、`GET /api/cost-axes/lens-equivalents`で利用者の値での段の境目の目安を画面へ配る。両方の要求の利用者の値の受け口`cost_preference_query`も持つ）・`cost_axis_admin.py`・`road_class_admin.py`（どちらも全体の読みと入れ替えの管理API）・`client_config.py`（`GET /api/client-config`。較正値・事故の収録年・道の区分を画面へ配る） |
 
 `material_sql.py`が**domainにある**のは、材料が何から導かれるかがdomainの知識だから。
 [routing-engine.md](routing-engine.md)の`ROAD_SURFACE_TILE_MVT_SQL`と本モジュールの
@@ -119,7 +119,9 @@ wayの長さ（0はNULL）になる——件数と長さは必ず同じ側から
   （`services/definitions_loading.py`）、行が無いか通らない定義なら起動を止める——探索・地図のレンズ・応答の内訳はどれも
   費用の軸の定義から組むので、定義の無いまま動く経路を持たない。検証（`domain/cost_axes.py: check_cost_axes`）は書き込みと
   起動時の両方が通し、道の区分を入れ替えるときも今の定義を新しい区分で通し直す——区分の重さは分け方のすべての区分に
-  書かせるので、区分を足すと先に重さを足すまで区分の入れ替えが断られる。
+  書かせるので、区分を足すと先に重さを足すまで区分の入れ替えが断られる。分け方に無い区分の重さは費用に効かないので断らず
+  （重さを先に書いてから区分を足す・区分を先に消してから重さを消す順が通る）、どちらの書き込みも確定のあとに残っていれば
+  警告のログを出す（`services/cost_axis_service.py: warn_surplus_class_weights`）。
 - **合成**: `domain/leg_costs.py: LegCostComposer`は、ビンごとの費用を「所要時間 ＋ 代償の秒」で組む。代償の体力は走行の模型が
   点の間ごとに重みを掛けて返し（`domain/cycling_speed.py: SegmentSpeedModel.ride`）、道のストレスは時刻に依らないのでリクエストに1回
   だけ求める。曲がる所の費用も同じ換算で組み（`LegCostComposer.transition_costs`）、探索へは`RoadGraphContext.transition_cost`
@@ -154,8 +156,8 @@ wayの長さ（0はNULL）になる——件数と長さは必ず同じ側から
   振り分けの式が1つの答えを出す: 2つ以上の区分に当たる道は区分なし、知らない事実はどの道にも無い事実として扱う。
 - **コードの宣言と費用の軸が名指す値は、入れ替えるときだけ確かめる**。事実・まとめ先・色の段・較正値の名が宣言に無い
   （`domain/road_classes.py: undeclared_references`）か、今の費用の軸が新しい区分で通らない（`domain/cost_axes.py: check_cost_axes`）
-  入れ替えは断る。区分と費用の軸の書き込みは同じ鍵（`infrastructure/definition_write_lock.py: acquire_definition_write_lock`）で
-  直列にするので、確かめてから確定するまでの間に相手の定義は入れ替わらない。
+  入れ替えは断る。区分と費用の軸の書き込みは直列にしない（管理画面で書くのは1人）ので、2つを同時に書くと、確かめてから
+  確定するまでの間に相手の定義が入れ替わりうる。
 - **管理APIは全体の読みと全体の入れ替えだけ**。入れ替えは1つの取引で、表の制約・上の確かめに通らなければ何も変えずに409で
   断りの文を返す。確定してからプロセス内の全体を差し替え、起動時も表から読む（単一プロセスが前提）。管理APIのDB障害は、どの口でも
   503で返す（`api/failure_replies.py: install_failure_replies`）。
@@ -294,7 +296,6 @@ wayの長さ（0はNULL）になる——件数と長さは必ず同じ側から
   「どちらの一覧にも載っていない材料」を作れないため、網羅性を確かめるテストは要らない。
 - `MaterialCoverageService.get_material_coverage`はDB例外を握りつぶさず伝播させ、アプリ共通の例外の扱い
   （`api/failure_replies.py`）が503で返す（診断用APIのため空レポートへ倒して「欠損0件」に見せない）。
-  `api/dependencies.py: get_material_coverage_service`はルート生成用の長い
-  `command_timeout`（180秒）を持つセッションを渡す（全表走査がタイル配信用の20秒を
-  超えうるため）。
+  `api/dependencies.py: get_material_coverage_service`はルート生成用のプールのセッションを渡す（全表走査が
+  1本の接続を長く持つため、タイル配信の接続と取り合わせない）。
 - 欠損の扱いと母集団の画面の名前（管理画面の欠損率の見出し・説明）は、`domain/material_coverage_spec.py: MISSING_SEMANTICS_DISPLAY`・`domain/material_coverage_spec.py: POPULATION_LABELS`が持ち、生成物`vocabulary.ts`で画面へ届く。

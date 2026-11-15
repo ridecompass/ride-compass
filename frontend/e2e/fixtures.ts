@@ -224,7 +224,7 @@ export async function generateInMobileSheet(
   return outcome;
 }
 
-/** 「ルート生成」を押し、生成が終わってボタンが再び押せるまで待つ。`scope`はボタンを含む範囲
+/** 「ルート生成」を押し、生成が終わってボタンの名前が「ルート生成」へ戻るまで待つ（実行中は進み方の名前になる）。`scope`はボタンを含む範囲
  * （スマホ幅はシート、それ以外は画面）。スマホ幅で候補が出ると「ルート設定」シートを離れるので、そのときは
  * `generateInMobileSheet`を使う。 */
 export async function runGeneration(
@@ -232,5 +232,5 @@ export async function runGeneration(
   { timeout = 60_000 }: { timeout?: number } = {},
 ): Promise<void> {
   await scope.getByRole("button", { name: "ルート生成" }).click();
-  await expect(scope.getByRole("button", { name: "ルート生成" })).toBeEnabled({ timeout });
+  await expect(scope.getByRole("button", { name: "ルート生成" })).toBeVisible({ timeout });
 }

@@ -370,31 +370,24 @@ def route_passages(
     legs: Sequence[LegCostArrays],
     turn_waits: Sequence[float],
     path: Sequence[int],
-    distances_m: Sequence[float],
     leg_of_edge: Sequence[int],
-    speed_kmh: float,
 ) -> list[EdgePassage]:
     """経路を探索と同じ規則でたどり、区間ごとに時刻ビンと出発からの秒を決める。
 
-    `path`は区間の番号（探索の行）、`turn_waits`はその遷移ごとの曲がる待ち（`transition_values_along`）、
-    `distances_m`は区間の長さ。
+    `path`は区間の番号（探索の行）、`turn_waits`はその遷移ごとの曲がる待ち（`transition_values_along`）。
     探索（`domain/routing.py`の前向きDijkstra・A*）はレグの中の経過時間でビンを選ぶ: レグの最初の区間は
     ビン0、次の区間は前の区間を抜けた時点（曲がる待ちを足す前）の経過時間のビン。区間ごとの秒は、探索の
     コストの下地になっている配列（`LegCostArrays.travel_bins_lazy`、走行モデル＋停止の待ち）を
     そのビンで読む——表示の時刻と探索の時刻を別々に計算すると、片方だけ直したときに静かに食い違う。
     出発からの秒は、レグをまたいで走行と曲がる待ち（`turn_waits`）を積む。
-
-    走行時間が有限でない区間は巡航速度で走ったものとして数える——0にすると所要時間が
-    実態より短く出る。
     """
-    fallback_ms = kmh_to_ms(speed_kmh)
     passages: list[EdgePassage] = []
     elapsed = 0.0
     leg_elapsed = 0.0
     # この区間へ入るときの曲がる待ち。ビンを選んだあとでレグの経過時間へ足す。
     entry_wait = 0.0
     previous_leg: int | None = None
-    for i, (index, distance_m, leg_index) in enumerate(zip(path, distances_m, leg_of_edge)):
+    for i, (index, leg_index) in enumerate(zip(path, leg_of_edge)):
         leg = legs[leg_index]
         if leg_index != previous_leg:
             leg_elapsed = 0.0
@@ -404,10 +397,6 @@ def route_passages(
         time_bin = time_bin_of(leg_elapsed, leg.bin_seconds, bin_count)
         seconds = float(leg.travel_bins_lazy[time_bin, index])
         cost = float(leg.cost_bins_lazy[time_bin, index])
-        if not np.isfinite(seconds):
-            seconds = distance_m / fallback_ms
-        if not np.isfinite(cost):
-            cost = seconds
         passages.append(EdgePassage(time_bin=time_bin, elapsed_seconds=elapsed, seconds=seconds, cost=cost))
         leg_elapsed += entry_wait + seconds
         entry_wait = turn_waits[i] if i < len(turn_waits) else 0.0

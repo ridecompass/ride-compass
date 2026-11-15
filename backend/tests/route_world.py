@@ -188,16 +188,13 @@ def road_network(
 
 
 class NetworkRepository:
-    """DBの代役。道路網はどこでも取込範囲の中で、区間の形は両端のノードを結ぶ直線。"""
+    """DBの代役。区間の形は両端のノードを結ぶ直線。"""
 
     def __init__(self, network: RoadNetwork):
         self._coordinates = {
             node_key(int(osm)): [float(lat), float(lon)]
             for osm, lat, lon in zip(network.node_osm_id, network.node_lat, network.node_lon, strict=True)
         }
-
-    async def is_covered(self, bbox):
-        return True
 
     async def get_edges_with_geometry(self, edges):
         return {
@@ -214,6 +211,7 @@ CALM = WindForecastSeries(
     direction_deg=np.zeros((1, _CALM_HOURS)),
     lattice=MsmBlock(grid=MsmGrid(lat_min=35.0, lon_min=139.0, d_lat=0.05, d_lon=0.0625, n_lat=1, n_lon=1),
                      row0=0, col0=0, rows=1, cols=1),
+    latest_run_end=datetime(2035, 1, 1),
 )
 
 

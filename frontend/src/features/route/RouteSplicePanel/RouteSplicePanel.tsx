@@ -7,7 +7,7 @@ import { formatDelta } from "@/features/route/routeEditDiff";
 import SpliceDeltaBar, { type AxisDelta } from "@/features/route/RouteSplicePanel/SpliceDeltaBar";
 import SpliceMetricGrid from "@/features/route/RouteSplicePanel/SpliceMetricGrid";
 import { MINUTE_UNIT, secondsToMinutes } from "@/lib/duration";
-import { costAxisLabel, type PenaltyCatalog } from "@/lib/routePenalty";
+import { costAxisColor, costAxisLabel, type PenaltyCatalog } from "@/lib/routePenalty";
 import type { RouteCandidate } from "@/types/route";
 import { Button } from "@/components/ui/Button/Button";
 import { GuideText } from "@/components/ui/GuideText/GuideText";
@@ -58,6 +58,7 @@ function penaltyDeltas(base: RouteCandidate, after: RouteCandidate, catalog: Pen
     .map((axisId) => ({
       axisId,
       label: costAxisLabel(catalog, axisId),
+      color: costAxisColor(catalog, axisId),
       delta: secondsToMinutes(seconds(after, axisId) - seconds(base, axisId)),
     }))
     .filter((item) => Math.abs(item.delta) >= MIN_PENALTY_DELTA_MINUTES)
@@ -82,7 +83,6 @@ export default function RouteSplicePanel({
 }: RouteSplicePanelProps) {
   // `edge_ids`が空の候補では区間を出せない。
   const unavailable = displayed.edge_ids.length === 0;
-  const busy = previewing || applying;
   const deltas = preview ? penaltyDeltas(displayed, preview, catalog) : [];
 
   return (
@@ -125,7 +125,6 @@ export default function RouteSplicePanel({
                 <Button
                   size="panelIcon"
                   onClick={onUndo}
-                  disabled={busy}
                   aria-label="1つ戻す"
                   usage="直前の乗り換えを1つ取り消します。"
                 >
@@ -134,7 +133,6 @@ export default function RouteSplicePanel({
                 <Button
                   size="panelIcon"
                   onClick={onReset}
-                  disabled={busy}
                   aria-label="全部戻す"
                   usage="乗り換えをすべて取り消して、元の候補に戻します。"
                 >
@@ -145,7 +143,7 @@ export default function RouteSplicePanel({
             <Button
               size="panelIcon"
               onClick={onPreview}
-              disabled={appliedCount === 0 || busy}
+              disabled={appliedCount === 0}
               aria-busy={previewing}
               aria-label="差分を見る"
               usage="いまの乗り換えで、距離・所要時間・負担が元の候補からどう変わるかを出します。"
@@ -157,7 +155,7 @@ export default function RouteSplicePanel({
               <Button
                 size="panelIcon"
                 onClick={onApply}
-                disabled={appliedCount === 0 || busy}
+                disabled={appliedCount === 0}
                 aria-busy={applying}
                 aria-label="新しいルートを作成"
                 usage="いまの乗り換えで作ったルートを、合成ルートに加えます。元のルートは残ります。"
@@ -178,7 +176,7 @@ export default function RouteSplicePanel({
           <SpliceMetricGrid displayed={displayed} preview={preview} />
 
           {/* 軸別は元・編集後の2本を並べず、差だけの1本にする。中央が0で、左が楽になった側。 */}
-          {deltas.length > 0 && <SpliceDeltaBar deltas={deltas} axisColors={catalog.axisColors} />}
+          {deltas.length > 0 && <SpliceDeltaBar deltas={deltas} />}
 
           {sameRouteName !== null && (
             <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
@@ -186,7 +184,6 @@ export default function RouteSplicePanel({
               <Button
                 size="sm"
                 onClick={onApply}
-                disabled={busy}
                 aria-busy={applying}
                 usage="編集を閉じて、この組み合わせと同じ道の候補を選びます。"
               >

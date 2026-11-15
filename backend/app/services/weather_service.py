@@ -88,4 +88,5 @@ class WeatherService:
             speed_ms=speed,
             direction_deg=direction,
             lattice=series.points.block,
+            latest_run_end=series.latest_run_end,
         )

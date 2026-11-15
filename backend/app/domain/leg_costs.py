@@ -376,6 +376,11 @@ class LegCostComposer:
         """全区間を出発から`hours`時間後の時刻で合成するビンの、時刻の入力（`BinTime`）。"""
         return BinTime(self._wind_series.time_index(self.start, hours))
 
+    def reads_previous_run(self, hours: float) -> bool:
+        """出発から`hours`時間後までに、最新のrunの終わりから先の（前に出たrunの）風を引くか
+        （`domain/wind.py: WindForecastSeries.reads_previous_run`）。"""
+        return self._wind_series.reads_previous_run(self.start, hours)
+
     def _passage_time(self, passage_hours: np.ndarray) -> BinTime:
         """区間ごとの通過時刻（出発からの経過[h]、切り出した区間の順）で合成するビンの、時刻の入力（`BinTime`）。"""
         return BinTime(self._wind_series.time_index(self.start, passage_hours))

@@ -11,13 +11,12 @@
 import { describe, expect, it } from "vitest";
 
 import { LIBERTY_POI_LAYERS } from "@/testing/libertyPoiLayers";
-import { evaluateExpression, matchesFilter } from "@/testing/mapExpressions";
+import { evaluateExpression, matchesFilter, matchesFilterAtPoint } from "@/testing/mapExpressions";
 import { createRecordingMap, type StyleLayer } from "@/testing/mapTrace/recordingMap";
 import { rebuild, ROAD_LAYERS, roadLayerId, shown } from "@/testing/sceneContract";
 import { AREA_SOURCE_ID } from "@/features/map/scene/groups/areaRasters";
 import { POINT_TILE_SOURCES, pointAxisKey } from "@/features/map/scene/groups/points";
 import { POINT_LAYERS } from "@/lib/mapDisplay/pointLayers";
-import { ROAD_LINE_SOURCE_ID } from "@/features/map/scene/groups/roadLines";
 import { applyScene, sceneInputsFrom } from "@/features/map/scene/applyToMap";
 import { sceneState } from "@/testing/sceneState";
 import { buildMapScene } from "@/features/map/scene/buildScene";
@@ -49,17 +48,6 @@ describe("状態を地図へ伝えた結果", () => {
   });
 
   describe("道路の線", () => {
-    it("世代が届いた後に同じ状態を伝えると、道路の線が見えている", () => {
-      const { map, handle } = createRecordingMap();
-      const state = shown({ surface: true });
-      rebuild(map, { ...state, tileVersions: null });
-
-      rebuild(map, state);
-
-      expect(handle.sources()).toContain(ROAD_LINE_SOURCE_ID);
-      expect(handle.layer(roadLayerId("surface"))?.visibility).toBe("visible");
-    });
-
     // 同じ道へ複数の線を重ねると後から描いた方が隠す。ON中の本数から対称に割り付ける。
     it("路面と道路種別を同時に出すと、線が左右へ分かれる", () => {
       const { map, handle } = createRecordingMap();
@@ -85,6 +73,53 @@ describe("状態を地図へ伝えた結果", () => {
       expect(stop?.visibility).toBe("visible");
       // 停止要因と補給は同じタイルを分け合う。分ける条件を持たないと、補給の点が停止要因の色で出る。
       expect(stop?.filter).toBeDefined();
+    });
+
+    // 東西に1kmずつ離れた2本の線。緯度0.001度（約110m）より近い点だけを通す。
+    const ROUTE: [number, number][] = [
+      [139.7, 35.7],
+      [139.71, 35.7],
+    ];
+    const EDITED: [number, number][] = [
+      [139.7, 35.71],
+      [139.71, 35.71],
+    ];
+    const CONVENIENCE = { kind: "convenience" };
+    it.each([
+      {
+        case: "周りを出す間は、どちらの線からも遠い点も描く",
+        surroundingsShown: true,
+        splicedRoute: null,
+        near: [true, true, true],
+      },
+      {
+        case: "ルート沿いだけの間は、ルートの線の近くだけ",
+        surroundingsShown: false,
+        splicedRoute: null,
+        near: [true, false, false],
+      },
+      {
+        case: "編集中は、編集している線の近くだけ",
+        surroundingsShown: false,
+        splicedRoute: EDITED,
+        near: [false, true, false],
+      },
+    ])("$case", ({ surroundingsShown, splicedRoute, near }) => {
+      const { map, handle } = createRecordingMap();
+
+      rebuild(map, {
+        ...shown({ supply_poi: true }, { surroundingsShown }),
+        routePath: ROUTE,
+        splicedRoute,
+      });
+
+      const filter = handle.layer(pointLayerId("supply_poi"))?.filter;
+      const at: [number, number][] = [
+        [139.705, 35.7001],
+        [139.705, 35.7101],
+        [139.705, 35.705],
+      ];
+      expect(at.map((lngLat) => matchesFilterAtPoint(filter, CONVENIENCE, lngLat))).toEqual(near);
     });
   });
   describe("基礎地図の店・施設の印", () => {
@@ -170,7 +205,7 @@ describe("状態を地図へ伝えた結果", () => {
       rebuild(
         map,
         sceneState({
-          look: { layerVisibility: { route: true } },
+          look: {},
           routes: [route] as never,
           selectedRouteId: "a",
           travelledKm: 1.5,
@@ -225,7 +260,7 @@ describe("状態を地図へ伝えた結果", () => {
       rebuild(
         map,
         sceneState({
-          look: { layerVisibility: { route: true }, lens },
+          look: { lens },
           catalog: {
             routeStyleModes: costRouteStyleModes(catalog, "light"),
           },
@@ -252,13 +287,29 @@ describe("状態を地図へ伝えた結果", () => {
       expect(detailColors(handle)).toEqual(expected.map((label) => colorOf[label]));
     });
 
-    it("費用の軸の一覧が届く前（モードが0件）も、ルート線を値に依らず中立色の1色で引く", () => {
+    it.each([
+      { case: "費用の軸の一覧が届く前（モードが0件）", look: {}, routeStyleModes: [] },
+      {
+        case: "負担を数える軸が無い間（何も数えていないのに、評価して1色になったように読ませない）",
+        look: { costsCounted: false },
+        routeStyleModes: costRouteStyleModes(costAxisCatalogFromResponse(costAxisCatalog()), "light"),
+      },
+    ])("$case も、ルート線を値に依らず中立色の1色で引く", ({ look, routeStyleModes }) => {
       const { map, handle } = createRecordingMap();
       rebuild(
         map,
         sceneState({
-          look: { layerVisibility: { route: true } },
-          routes: [{ ...route, segments: [segment(139.7, 139.71), segment(139.71, 139.72)] }] as never,
+          look,
+          catalog: { routeStyleModes },
+          routes: [
+            {
+              ...route,
+              segments: [
+                { ...segment(139.7, 139.71), distance_km: 2, ...penaltyFields({ ascent: 30 }, 2) },
+                { ...segment(139.71, 139.72), distance_km: 2, ...penaltyFields({ ascent: 0 }, 2) },
+              ],
+            },
+          ] as never,
           selectedRouteId: "a",
         }),
       );

@@ -6,7 +6,7 @@
 書き、表に入った区画・鍵・街区を見る。範囲は道路の取込の範囲で、見本の道を範囲の宣言つきで取り込んで決める。
 
 ここで見ないもの:
-- 配布元から手元へ写す取得（`scripts/fetch_abr.py`・`scripts/fetch_isj_blocks.py`）→ どのテストも通さない
+- 配布元から手元へ写す取得（`app/batch/source_adapters/abr.py: fetch_abr`・`app/batch/source_adapters/isj_block.py: fetch_isj_blocks`）→ どのテストも通さない
   （網の向こうを読むだけで、範囲に掛かる都道府県の決め方はアダプタと同じ関数を通る）
 - 表記の揃え方の1つずつ → `test_address_area.py`
 """
@@ -19,11 +19,11 @@ from pathlib import Path
 import pytest
 
 from app.batch import derive_addresses
+from app.batch.common import write_fetch_record
 from app.batch.ingest import ingest_source
 from app.batch.source_adapters import abr, isj_block
 from app.domain.address_area import standardize_address
 from app.infrastructure.source_models import Source
-from tests.conftest import empty_ingested_tables
 from tests.source_ingest import ingest_records, profile_within, way_record
 
 pytestmark = pytest.mark.asyncio(loop_scope="module")
@@ -31,8 +31,6 @@ pytestmark = pytest.mark.asyncio(loop_scope="module")
 #: 取込の範囲（min_lat, min_lon, max_lat, max_lon）。
 BBOX = (35.40, 139.20, 35.80, 139.80)
 PROFILE = profile_within(BBOX)
-SNAPSHOT = PROFILE.source(Source.ABR).rows.snapshot
-ISJ_VERSION = PROFILE.source(Source.ISJ_BLOCK).rows.version
 
 # 配布の CSV の見出し（配布のまま）。
 PREF_COLUMNS = "lg_code,pref,pref_kana,pref_roma,efct_date,ablt_date,remarks"
@@ -169,7 +167,7 @@ def _position(code: str, lon: float, lat: float, srid: str) -> dict[str, str]:
 
 def _write_abr() -> None:
     def path(stem: str) -> Path:
-        return abr.archive_path(SNAPSHOT, stem)
+        return abr.archive_path(stem)
 
     _write_csv_zip(path("mt_pref_all"), PREF_COLUMNS, [{"lg_code": c, "pref": n} for c, n, _, _ in PREFECTURES])
     _write_csv_zip(path("mt_pref_pos_all"), POS_COLUMNS,
@@ -194,6 +192,7 @@ def _write_abr() -> None:
             {"lg_code": c, "machiaza_id": town_id, "blk_id": blk_id, "rsdt_addr_flg": flag, "rep_lon": str(lon),
              "rep_lat": str(lat), "rep_srid": "EPSG:6668"}
             for c, town_id, blk_id, flag, lon, lat in BLOCK_POSITIONS if c.startswith(prefecture)])
+    write_fetch_record(abr.DATA_DIR)
 
 
 def _write_isj() -> None:
@@ -207,11 +206,12 @@ def _write_isj() -> None:
             if pref == name:
                 writer.writerow([pref, city, oaza, koaza, number, "9", "0.0", "0.0", str(lat), str(lon), residential,
                                  representative, "0", deleted])
-        path = isj_block.archive_path(ISJ_VERSION, prefecture)
+        path = isj_block.archive_path(prefecture)
         path.parent.mkdir(parents=True, exist_ok=True)
         with zipfile.ZipFile(path, "w") as archive:
             archive.writestr(f"{prefecture}_2025.csv", text.getvalue().encode("cp932"))
-            archive.writestr(f"{ISJ_VERSION}.html", "<html></html>")
+            archive.writestr("24.0a.html", "<html></html>")
+    write_fetch_record(isj_block.DATA_DIR, versions=dict.fromkeys(names, "24.0a"))
 
 
 @pytest.fixture
@@ -305,12 +305,3 @@ async def test_街区は住居表示の区域でABRの街区を鍵で地番の�
         ("1330510001101", "45"): ("parcel", pytest.approx(139.271), pytest.approx(35.746)),
         ("1410110001001", "5"): ("parcel", pytest.approx(139.671), pytest.approx(35.501)),
     }
-
-
-async def test_住所の生データが無ければ止まる(derive_conn):
-    """区画の無い作り直しは、検索と施設の辺りを黙って空にするので、止める。"""
-    await empty_ingested_tables(derive_conn)
-    await ingest_records("osm_way", [way_record(1, [(139.70, 35.69), (139.701, 35.691)], [1, 2])], conn=derive_conn)
-
-    with pytest.raises(RuntimeError, match="abr"):
-        await derive_addresses.derive(derive_conn)

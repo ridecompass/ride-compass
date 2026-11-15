@@ -1,0 +1,12 @@
+# 週1回。VMが止まっていた間に過ぎた回は、起動したときに1回打つ（Persistent=true）。
+# 時刻は仮で、初回を手で流して長さを測ってから決め直し、それまで有効にしない（systemdは時刻の無いtimerを読み込まない）。
+# DBのバックアップ（03:17から）・VMの自動更新（04:30。PostgreSQLを止める）・派生データベースの書き出し（04:40）と重ねない。
+[Unit]
+Description=Weekly RideCompass source refetch, reingest and rederive
+
+[Timer]
+OnCalendar=Sun *-*-* 05:07:00 Asia/Tokyo
+Persistent=true
+
+[Install]
+WantedBy=timers.target

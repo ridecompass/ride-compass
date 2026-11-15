@@ -19,7 +19,7 @@
 | `features/admin/AdminPanels/DbStatusPanel.tsx` | 派生データの鮮度台帳が拠る土台（取込のrunの失敗・行の有無・プランナの統計・放置されたトランザクション）を、ほかのパネルと同じ1行の形で見せる | `/admin`「データ保守」タブ |
 | `features/admin/AdminPanels/TileCachePanel.tsx` | サーバー側のタイルファイルキャッシュの全消去。全利用者へ影響するため認証の内側にだけ置き、基礎地図のタイルをブラウザが持つ時間（消去が各利用者の画面へ届くまでの遅れ）を添える | `/admin`「データ保守」タブ |
 | `features/admin/AdminPanels/ReportCard.tsx`・`features/admin/AdminPanels/StatusRowList.tsx` | 「材料」「データ保守」の集計のカード（DB全体の走査を伴うので、開いたときには取らず「集計する」を押したときだけ取る。説明はⓘの奥）と、点検の行の一覧（名前の右に規模、開くと中身。手当ての要否を丸の色と読み上げの文の両方で持つ）。件数・時点の書き方（`features/admin/AdminPanels/ReportCard.tsx: formatCount`・`features/admin/AdminPanels/ReportCard.tsx: formatMoment`）も持つ | 上記のパネル |
-| `components/HeaderMenu/HeaderMenu.tsx` | 使い方の説明の入口（「使い方を見る」。[ページ全体構成](page-composition.md)「使い方の説明」）・地図の表示を再描画（[地図: 静的レイヤー](static-map-layers.md)「まとめて戻す操作」）・地図を暗くする（同「暗い地図」。押した状態を見せる入切）・走行の記録のコピー（下記「走行の計測」。記録があるときだけ）・デバッグログ表示・バージョン表示を1個のメニューアイコンへ集約したRadix Popover。バージョン表示は、動いている版（コミットの頭8文字）を窓に出し、確かめ待ちの変更が本番に出たかを利用者が画面から見分けられるようにする | `app/HomeHeader.tsx`（`/`のヘッダー） |
+| `components/HeaderMenu/HeaderMenu.tsx` | 使い方の説明の入口（「使い方を見る」。[ページ全体構成](page-composition.md)「使い方の説明」）・地図の表示を再描画（[地図: 静的レイヤー](static-map-layers.md)「まとめて戻す操作」）・走行の記録のコピー（下記「走行の計測」。記録があるときだけ）・デバッグログ表示・バージョン表示を1個のメニューアイコンへ集約したRadix Popover。バージョン表示は、動いている版（コミットの頭8文字）を窓に出し、確かめ待ちの変更が本番に出たかを利用者が画面から見分けられるようにする | `app/HomeHeader.tsx`（`/`のヘッダー） |
 | `features/admin/DebugPanel/DebugPanel.tsx` | デバッグログ表示のON/OFFトグル | `/admin`「開発者」タブ |
 | `components/DebugConsole/DebugConsole.tsx` | 地図イベント・外部API呼び出しの詳細ログを時系列表示するフローティングパネル。**表示中の行をそのままの形でコピーできる**（絞り込みを無視して全件にすると、絞って見つけた数行を渡したいときに関係ない行まで混ざる） | `app/HomeHeader.tsx`（`/`のヘッダーの下）、`HeaderMenu.tsx: HeaderMenu`から開閉 |
 | `features/admin/SystemStatusPanel/SystemStatusPanel.tsx` | backend `/api/debug/stats`の集計・フロントバージョン・予報（MSM）の同期鮮度を表示するフローティングパネル | `/admin`「開発者」タブ |
@@ -60,7 +60,7 @@ app/admin/page.tsx（独立URL、Basic認証保護下）
   └─ タブ「開発者」　　: DebugPanel + BackendStatus + SystemStatusPanel + BackendLogsPanel
 
 app/page.tsx（メインページ、地図を持つ、認証なし）
-  └─ header: HeaderMenu（使い方を見る・地図の表示を再描画・地図を暗くする・デバッグログ表示・バージョン表示ボタン）
+  └─ header: HeaderMenu（使い方を見る・地図の表示を再描画・デバッグログ表示・バージョン表示ボタン）
        └─ DebugConsole（debugEnabled時のみHeaderMenuに項目表示、開閉はheader直下で管理）
 ```
 

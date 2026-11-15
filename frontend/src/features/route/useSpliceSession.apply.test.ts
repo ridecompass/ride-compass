@@ -1,7 +1,7 @@
 /**
  * 区間の乗り換えの編集（`useSpliceSession.ts`）の「作成」——評価の間は作成中で、評価した経路を元の候補と一緒に渡して
- * 編集を終える（評価が既にある候補と同じ道なら、作らずにその候補を渡す）。差分を見た組み合わせは投げ直さず、連打しても
- * 投げるのは1回。評価を待つ間に作り直して始め直すと、届いた評価で作らない。
+ * 編集を終える（評価が既にある候補と同じ道なら、作らずにその候補を渡す）。差分を見た組み合わせは投げ直さない。
+ * 評価を待つ間に作り直して始め直すと、届いた評価で作らない。
  *
  * ここで見ないもの:
  * - 始め方・乗り換え・戻す・やめる → `useSpliceSession.test.ts`
@@ -103,21 +103,6 @@ describe("作成", () => {
     await press(rendered.result.current.panel?.onApply);
 
     expect(rendered.onApplied).toHaveBeenCalledWith({ existingRouteId: "via-q" });
-  });
-
-  it("連打しても投げるのは1回で、渡すのも1回", async () => {
-    const rendered = renderSplice();
-    await startEditing(rendered);
-    tapStretch(rendered);
-    evaluations.respond([evaluated(ELSEWHERE)]);
-
-    await act(async () => {
-      const apply = rendered.result.current.panel?.onApply;
-      await Promise.all([apply?.(), apply?.()]);
-    });
-
-    expect(evaluations.submitted).toHaveLength(1);
-    expect(rendered.onApplied).toHaveBeenCalledTimes(1);
   });
 
   it("評価を待っている間に作り直して編集を始め直したら、あとから届いた評価で作らず、始め直した編集を閉じない", async () => {

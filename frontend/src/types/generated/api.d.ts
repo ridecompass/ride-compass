@@ -596,6 +596,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/derived-database": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_derived_database_api_derived_database_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/db-status": {
         parameters: {
             query?: never;
@@ -799,10 +815,6 @@ export interface components {
             client_tuning: {
                 [key: string]: number;
             };
-            /** Tile Versions */
-            tile_versions: {
-                [key: string]: string;
-            };
             /** Accident Years */
             accident_years: number[];
             road_classes: components["schemas"]["RoadClassCatalog"];
@@ -892,6 +904,8 @@ export interface components {
             description: string;
             /** Icon Id */
             icon_id: string;
+            /** Color */
+            color: string;
             lens: components["schemas"]["LensBands"];
         };
         /** CostAxisCatalogResponse */
@@ -1681,6 +1695,8 @@ export interface components {
             segments: components["schemas"]["RouteSegmentDetail"][];
             /** Estimated Duration Seconds */
             estimated_duration_seconds: number | null;
+            /** Wind From Previous Run */
+            wind_from_previous_run: boolean;
             /** Cost Seconds */
             cost_seconds: number;
             penalty: components["schemas"]["PenaltyBreakdown"];
@@ -1893,7 +1909,7 @@ export interface components {
          * TimelineKind
          * @enum {string}
          */
-        TimelineKind: "thunder";
+        TimelineKind: "thunder" | "snow" | "snow_accretion" | "icing" | "avalanche" | "low_temperature" | "frost";
         /** TimelineKindLevels */
         TimelineKindLevels: {
             /** Advisory Label */
@@ -2004,6 +2020,10 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+            /** Input */
+            input?: unknown;
+            /** Context */
+            ctx?: Record<string, never>;
         };
         /** WayValueFormula */
         WayValueFormula: {
@@ -3252,6 +3272,33 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["DerivedDataFreshnessReport"];
                 };
+            };
+        };
+    };
+    get_derived_database_api_derived_database_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/zip": unknown;
+                };
+            };
+            /** @description 書き出しがまだ無い */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

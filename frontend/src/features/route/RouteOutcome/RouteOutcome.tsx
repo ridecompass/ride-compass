@@ -14,6 +14,7 @@ import { costLensPaint, LENS_QUANTITY_LABEL } from "@/lib/mapDisplay/costLensPai
 import type { MapTheme } from "@/lib/mapTheme";
 import { NO_DATA_LEGEND_BAND } from "@/lib/mapDisplay/mapColorLegend";
 import { bandAt, valueBands } from "@/lib/mapDisplay/valueScale";
+import { routeClock } from "@/lib/routeClock";
 import { formatPenaltyMinutes } from "@/lib/routePenalty";
 import RouteProfile from "@/features/route/RouteProfile/RouteProfile";
 import type { ProfileLayerSelection } from "@/features/route/RouteProfile/useProfileLayers";
@@ -141,6 +142,9 @@ export default function RouteOutcome({ results, generation, splice, profileLayer
       {generation.destinationCorrected && (
         <WarningText>指定した地点は自転車で行けない場所だったため、近くの自転車で行ける地点へ移しました。</WarningText>
       )}
+      {routes.some((route) => route.wind_from_previous_run) && (
+        <WarningText>風の予報が更新されていないため、前の予報で作りました。</WarningText>
+      )}
       {reusedRouteId !== null && (
         <p className={cn(textVariants({ variant: "hint" }), "m-0")}>
           作った組み合わせは既存の候補「{nameOf(reusedRouteId)}」と同じ道のため、その候補を選びました
@@ -224,6 +228,7 @@ export default function RouteOutcome({ results, generation, splice, profileLayer
                   facts={route.facts.axes}
                   scaleKm={longestDistanceKm}
                   waypointKms={route.waypoint_distances_km}
+                  arrivalClock={routeClock(route)}
                   selected={selectedRouteSegment}
                   onSelect={results.selectSegment}
                   segmentOnMap={results.segmentOnMap}

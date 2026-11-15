@@ -22,6 +22,7 @@ from app.domain import leg_costs, traffic
 from app.domain.attributes import CategoricalColumn
 from app.domain.search_materials import SearchMaterials
 from app.domain.cost_axes import EFFORT_AXES, CostAxisDefinitions
+from app.domain.cost_preference import CostPreference
 from app.domain.ledger_costs import LedgerParameters
 from app.domain.leg_costs import LegCostArrays, LegCostComposer, LegValues
 from app.domain.road_network import MaterialFills
@@ -38,10 +39,10 @@ COST_SCALE = 3.0
 SURFACE = "class:rolling"
 STOP_DENSITY = dict(zip(leg_costs.POI_COUNT_KINDS, leg_costs.stop_count_material_ids(), strict=True))
 NORTH, SOUTH = 0.0, 180.0
-#: 費目の帳簿の式の係数。`effective_strength`は代償の全体に掛ける強さで、0なら費用は所要時間そのもの。
+#: 費目の帳簿の式の係数。`effective_strength`は代償の全体に掛ける強さ。つまみを無効にすると、どの軸も数えず費用は所要時間そのもの。
 STRENGTH = LedgerParameters(effective_strength=0.5, multipliers={}, effort_alpha=1.0, burden_seconds_per_km=100.0,
-                            effort_weight_exponent=0.0)
-NO_PENALTY = dataclasses.replace(STRENGTH, effective_strength=0.0)
+                            effort_weight_exponent=0.0, counts=CostPreference().counts)
+NO_PENALTY = dataclasses.replace(STRENGTH, effective_strength=0.0, counts=CostPreference(strength=0.0).counts)
 
 #: 取込の範囲全体の分布を持たない（欠けた材料は今までどおり0の扱い）。
 NO_FILLS = MaterialFills(numeric_means={}, class_shares={})
@@ -74,6 +75,7 @@ def _series(speeds_by_hour: list[float], from_deg: float = NORTH) -> WindForecas
         lattice=MsmBlock(
             grid=MsmGrid(lat_min=35.0, lon_min=139.0, d_lat=0.05, d_lon=0.0625, n_lat=1, n_lon=1), row0=0, col0=0, rows=1, cols=1,
         ),
+        latest_run_end=START + timedelta(hours=len(speeds_by_hour)),
     )
 
 

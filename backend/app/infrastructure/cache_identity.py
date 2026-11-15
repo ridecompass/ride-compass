@@ -9,7 +9,6 @@ import hashlib
 from pathlib import Path
 
 from app.domain.landcover import LANDCOVER_CLASSES
-from app.infrastructure.derived_data_meta import DataRevisions
 
 # 土地被覆ラスタタイル。同じ配色のまま、元のGeoTIFFを別の年次・別の版へ差し替えたときと、
 # ラスタの読み方・描き方（`landcover_raster.py`）を変えたときに上げる（画素が変わるのに
@@ -51,20 +50,12 @@ def cache_identity(revision: str, *shape_sources: object) -> str:
     return f"{revision}-{shape_digest(*shape_sources)}"
 
 
-def tile_version(revisions: DataRevisions, shape: str) -> str:
-    """配信するタイルの世代。`<派生の世代>.<生データの世代>-<形の署名>`。
-
-    `revisions`は`derived_data_meta.get_revisions()`の値。
-    """
-    return f"{revisions.derived}.{revisions.imported}-{shape}"
-
-
 #: 土地被覆ラスタタイルのURLへ入る世代（配色・クラス構成と手書きリビジョンから決まる）。
 #:
 #: **どのラスタを開いているかはここへ入れられない**。この値は生成物
 #: （`region-tile-config.json`）を通してフロントのURLへ焼き込まれ、生成はビルド機で行う
-#: ——ラスタの置き場所は環境変数（`LULC_RASTER_PATHS`）で環境ごとに違うため、入れると
-#: 生成物がビルド機の設定で決まり、本番の実際の構成とずれる。**実際に開けている**ラスタ
+#: ——どのラスタ（ゾーン・年）があるかは環境の置き場の中身で決まるため、入れると
+#: 生成物がビルド機の置き場で決まり、本番の実際の構成とずれる。**実際に開けている**ラスタ
 #: 構成への追随はサーバー側のディスクの鍵（`region_tile_cache.py: landcover_generation`）で行い、
 #: ブラウザ側は`cache_policy.py`が`immutable`を付けないことで再検証できるようにしてある。
 LANDCOVER_TILE_VERSION = cache_identity(LANDCOVER_REVISION, LANDCOVER_CLASSES)
@@ -99,5 +90,5 @@ def region_tile_kind(key: str) -> str | None:
 
 
 def region_tile_key(kind: str, generation: str, z: int, x: int, y: int, extension: str) -> str:
-    """地域タイル1枚のディスクの鍵。世代はURLへ入る世代と同じ文字列から組む。"""
+    """地域タイル1枚のディスクの鍵。"""
     return f"{region_tile_generation_prefix(kind, generation)}{z}/{x}/{y}.{extension}"

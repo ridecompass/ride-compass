@@ -55,7 +55,7 @@ type Shape = readonly [number, number][];
  * 変わったら閉じる。`shape`は押した物の形で、寄せるアイコンはこれへ寄せる。
  */
 export type MapPopup =
-  /** 押した所に描かれている名前のある点。区間を選んでいる間に開いたら`segment`はその区間で、区間の中身へ戻れる。 */
+  /** 押した所に描かれている点。区間を選んでいる間に開いたら`segment`はその区間で、区間の中身へ戻れる。 */
   | {
       kind: "point";
       lngLat: [number, number];

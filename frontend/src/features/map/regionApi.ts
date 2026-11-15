@@ -4,41 +4,9 @@ import { apiPath } from "@/lib/apiPath";
 import { tileBaseUrl } from "@/lib/tileBaseUrl";
 import { backendApi, requestApi } from "@/lib/apiClient";
 import regionTileConfig from "@/types/generated/region-tile-config.json";
-import { API_TIMEOUT_MS } from "@/lib/apiTimeouts";
 import type { PointTileLayer } from "@/lib/mapDisplay/pointLayers";
 
 const ROAD_SURFACE_TILE_PATH = apiPath("/api/region/road-surface-tiles/{z}/{x}/{y}.pbf");
-
-// タイルの世代。**手で上げない**——焼き込むSQLの署名とDBの派生データ・生データの世代からbackendが導き、実行時に配る（画面の設定の
-// `tile_versions`）。ビルド時の生成物に持たないのは、バッチがタイルを作り直してもデプロイは起きないため。
-// 既定値は置かない——届く前にタイルを要求すると、世代の違う中身がブラウザのキャッシュへ載って残る。
-// 既存の属性の意味を変える変更だけはデプロイの順序に注意が要る（docs/architecture/tech-stack.md「デプロイの反映確認」）。
-
-/** 配信されるタイルの系統（源泉が配る一覧）。1つでも欠けたら「未取得」。 */
-const TILE_KINDS = regionTileConfig.tile_version_kinds;
-type TileKind = (typeof TILE_KINDS)[number];
-
-declare const COMPLETE_TILE_VERSIONS: unique symbol;
-/** 全系統の世代が揃ったもの。`completeTileVersions`だけが作る（URLを組み立てる側は、揃ったかを確かめ直さない）。 */
-export type TileVersions = Readonly<Record<string, string>> & { readonly [COMPLETE_TILE_VERSIONS]: true };
-
-/** 配られた世代から、全系統が揃ったものを取り出す。1つでも欠けたら`null`。
- *
- * **画面の設定の到着と同一視しない**。世代を返さない版のbackendが200で応答すると、カタログは「取得済み」なのに
- * 世代は揃わない——そこでURLを組み立てると例外になる。空の辞書も「揃った」と見なさない。 */
-export function completeTileVersions(versions: Readonly<Record<string, string>>): TileVersions | null {
-  return TILE_KINDS.every((kind) => Boolean(versions[kind])) ? (versions as TileVersions) : null;
-}
-
-function tileVersion(versions: TileVersions, kind: TileKind): string {
-  const version = versions[kind];
-  if (!version) {
-    // 源泉が配る系統の一覧から、URLを組み立てる系統が消えたときだけ起きる（黙って既定値を使うと、世代の違う
-    // タイルがキャッシュへ載っても気づけない）。
-    throw new Error(`タイル世代の系統に${kind}がありません`);
-  }
-  return version;
-}
 
 // 基礎地図のスタイルJSON。中のタイル・スプライト・グリフのURLはbackendがBASEMAP_PUBLIC_BASE_URLで
 // 組み立てるため、`tileBaseUrl()`と同じオリジンを指すよう揃える。
@@ -49,14 +17,13 @@ export function mapStyleUrl(): string {
 
 // ベクタタイルのURL。MapLibreはWeb Workerの中で取るため相対パスでは解決できず、絶対URLが要る。`window`をSSRで
 // 読まないよう、呼んだとき（クライアントだけ）に組み立てる。
-export function roadSurfaceTileUrl(versions: TileVersions): string {
-  return `${tileBaseUrl()}${ROAD_SURFACE_TILE_PATH}?v=${tileVersion(versions, "road_surface")}`;
+export function roadSurfaceTileUrl(): string {
+  return `${tileBaseUrl()}${ROAD_SURFACE_TILE_PATH}`;
 }
 
 // 点のレイヤーはどれも同じ1つの配信で、パスのレイヤー名だけが違う。停止要因と補給の点は同じタイルを分け合う（種別の集合で分ける）。
-export function pointTileUrl(versions: TileVersions, layer: PointTileLayer): string {
-  const path = apiPath("/api/region/point-tiles/{layer}/{z}/{x}/{y}.pbf", { layer });
-  return `${tileBaseUrl()}${path}?v=${tileVersion(versions, layer)}`;
+export function pointTileUrl(layer: PointTileLayer): string {
+  return `${tileBaseUrl()}${apiPath("/api/region/point-tiles/{layer}/{z}/{x}/{y}.pbf", { layer })}`;
 }
 
 // 土地被覆のラスタタイル。世代はbackendが生成物で配る。オリジンの決め方は他のタイルと揃える。
@@ -101,7 +68,6 @@ export async function fetchRoadsAt(
 ): Promise<readonly RoadAt[]> {
   const body = { longitude: lngLat[0], latitude: lngLat[1], z, radius_m: radiusM };
   return requestApi((init) => backendApi.POST("/api/region/roads-at", { body, ...init }), {
-    timeoutMs: API_TIMEOUT_MS.default,
     category: "api:roads-at",
     messages: { failure: "道の取得に失敗しました", parseFailure: "道の取得に失敗しました" },
     requestMeta: { body },
@@ -130,7 +96,6 @@ export async function fetchRoadInspection(
     speed_kmh: conditions.speedKmh,
   };
   return requestApi((init) => backendApi.POST("/api/region/road-inspector", { body, ...init }), {
-    timeoutMs: API_TIMEOUT_MS.default,
     category: "api:road-inspector",
     messages: { failure: "道の窓の取得に失敗しました", parseFailure: "道の窓の取得に失敗しました" },
     requestMeta: { body },
@@ -152,7 +117,6 @@ export async function fetchLensMaterials(
 ): Promise<Record<string, Record<string, number>>> {
   const params = { path: { lens_id: lensId, z, x, y }, query };
   return requestApi((init) => backendApi.GET("/api/region/lens/{lens_id}/{z}/{x}/{y}", { params, ...init }), {
-    timeoutMs: API_TIMEOUT_MS.default,
     category: `api:${lensId}-lens`,
     messages: {
       failure: "道路の塗りの値の取得に失敗しました",

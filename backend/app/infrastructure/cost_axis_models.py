@@ -5,9 +5,7 @@
 変更は、本番の行を先に直してからmasterへ入れる（`domain/strict_model.py`）。
 """
 
-from datetime import datetime
-
-from sqlalchemy import Boolean, CheckConstraint, DateTime
+from sqlalchemy import Boolean, CheckConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -22,5 +20,3 @@ class CostAxisDefinitionsRow(Base):
 
     only_one: Mapped[bool] = mapped_column(Boolean, primary_key=True)
     definitions: Mapped[dict] = mapped_column(JSONB, nullable=False)
-    #: いつこの全体へ書き換えたか。DBの時計（`now()`）で揃える。
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

@@ -4,6 +4,7 @@
 反映はプロセス単位で、ほかのプロセスでの書き込みはこのプロセスへ届かない（単一プロセスのデプロイが前提）。
 """
 
+import asyncio
 import logging
 
 from sqlalchemy.exc import DataError, IntegrityError
@@ -12,8 +13,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.domain.cost_axes import CostAxisDefinitions, check_cost_axes
 from app.domain.road_classes import RoadClassDefinitions, replace_road_classes, undeclared_references
 from app.infrastructure.cost_axis_repository import read_cost_axes
-from app.infrastructure.definition_write_lock import acquire_definition_write_lock
+from app.infrastructure.region_tile_cache import discard_region_tiles
 from app.infrastructure.road_class_repository import read_road_classes, replace_road_class_rows
+from app.services.cost_axis_service import warn_surplus_class_weights
 
 logger = logging.getLogger("ridecompass.road_classes")
 
@@ -49,7 +51,7 @@ def _check_writable(definitions: RoadClassDefinitions, cost_axes: CostAxisDefini
     if cost_axis_problems:
         raise RoadClassRejectedError(
             f"費用の軸の定義が新しい区分に合わなくなるため確定しません（{'／'.join(cost_axis_problems)}）。"
-            "先に費用の軸の区分の重さを直してください"
+            "先に費用の軸の定義を新しい区分に合わせてください（足す区分の重さは、区分より先に書ける）"
         )
 
 
@@ -63,15 +65,11 @@ class RoadClassAdminService:
         return await read_road_classes(self._session)
 
     async def replace(self, definitions: RoadClassDefinitions) -> RoadClassDefinitions:
-        """全体を入れ替え、書いた全体を返す。
-
-        定義の書き込みの鍵を取ってから費用の軸を読む——取らないと、確かめてから確定するまでの間に、消す区分を指す費用の軸が
-        書ける。
-        """
+        """全体を入れ替え、書いた全体を返す。"""
         session = self._session
         try:
-            await acquire_definition_write_lock(session)
-            _check_writable(definitions, await read_cost_axes(session))
+            cost_axes = await read_cost_axes(session)
+            _check_writable(definitions, cost_axes)
             await replace_road_class_rows(session, definitions)
             await session.commit()
         except (IntegrityError, DataError) as error:
@@ -81,4 +79,8 @@ class RoadClassAdminService:
             await session.rollback()
             raise
         _apply(definitions)
+        # 路面タイルは区分の色を焼いているので、前の区分で焼いたものを捨てる。
+        await asyncio.to_thread(discard_region_tiles)
+        if cost_axes is not None:
+            warn_surplus_class_weights(cost_axes, definitions)
         return definitions

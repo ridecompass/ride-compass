@@ -4,8 +4,7 @@
  *
  * 叩く先の母集団はこのファイルがexportする関数の全部。1つずつ呼び、出た要求を受け手まで辿る:
  * - 画面と同じオリジン: `app/**\/route.ts`に口がある。管理APIの口（`app/admin/api/[...path]`）なら、転送先がbackendの
- *   契約（`openapi.json`）にある同じメソッドの操作で、本文の有無と項目名も契約と合い、**クライアントの待ち時間が
- *   転送の待ち時間を超えない**（超えると転送が先に打ち切り、クライアントを延ばしても症状が変わらない）。
+ *   契約（`openapi.json`）にある同じメソッドの操作で、本文の有無と項目名も契約と合う。
  * - 別のオリジン（backendを直接）: backendの契約にそのメソッドのパスがある。
  *
  * 画面と同じオリジンの口は相対パスで呼ぶので、ブラウザと同じく相対パスを解決できるDOMの環境で動かす。
@@ -19,11 +18,10 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 
 import { HttpResponse } from "msw";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as adminApi from "@/features/admin/adminApi";
 import * as adminRoute from "@/app/admin/api/[...path]/route";
-import { ADMIN_PROXY_TIMEOUT_MS } from "@/lib/apiTimeouts";
 import { onBackend, onUrl } from "@/testing/backendServer";
 import { openApi } from "@/testing/openApi";
 
@@ -51,17 +49,14 @@ interface Recorded {
   url: string;
   method: string;
   body: string | undefined;
-  timeoutMs: number | undefined;
 }
-/** 直前に作られた待ち時間の印の長さ。要求は1つずつ出るので、出た時点の値がその要求の待ち時間。 */
-let lastTimeoutMs: number | undefined;
 let recorded: Recorded[] = [];
 
 async function dispatch(request: Request): Promise<Response> {
   const text = await request.text();
   const body = text === "" ? undefined : text;
   const { method, url } = request;
-  recorded.push({ url, method, body, timeoutMs: lastTimeoutMs });
+  recorded.push({ url, method, body });
   if (new URL(url).pathname.startsWith("/admin/api/")) {
     const handler = (adminRoute as unknown as Record<string, (request: Request) => Promise<Response>>)[method];
     return handler(new Request(url, { method, body }));
@@ -77,16 +72,7 @@ const functions = Object.entries(adminApi).filter(([, value]) => typeof value ==
 describe("叩く先", () => {
   beforeEach(() => {
     recorded = [];
-    lastTimeoutMs = undefined;
-    vi.spyOn(AbortSignal, "timeout").mockImplementation((ms: number) => {
-      lastTimeoutMs = ms;
-      return new AbortController().signal;
-    });
     onUrl("*", dispatch);
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
   });
 
   it("関数が1つ以上ある", () => {
@@ -114,7 +100,6 @@ describe("叩く先", () => {
     const [toBackend] = forwarded;
     const operation = backendOperation(new URL(toBackend.url).pathname, toBackend.method);
     expect(operation, `${name}: ${toBackend.method} ${toBackend.url}`).toBeDefined();
-    expect(fromClient.timeoutMs!, `${name}の待ち時間が転送より長い`).toBeLessThanOrEqual(ADMIN_PROXY_TIMEOUT_MS);
 
     expect(fromClient.body !== undefined, `${name}の本文の有無が契約と違う`).toBe(operation!.requestBody !== undefined);
     const schemaRef = operation!.requestBody?.content["application/json"]?.schema.$ref;

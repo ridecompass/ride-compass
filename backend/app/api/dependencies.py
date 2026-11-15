@@ -17,6 +17,7 @@ from cachetools import LRUCache
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.api.generation_slots import GenerationSlots
 from app.config import settings
 from app.domain.route_request import RequestedConditions
 from app.infrastructure.address_search import AddressSearchQuery
@@ -26,7 +27,7 @@ from app.infrastructure.db_status import DbStatusQuery
 from app.infrastructure.derived_data_freshness import DerivedDataFreshnessQuery
 from app.infrastructure.flood_client import new_flood_cache
 from app.infrastructure.gsi_tile_client import NOT_FOUND_MAX_ENTRIES, GsiTileClient
-from app.infrastructure.http_client import JMA_JSON_TIMEOUT, SLOW_JSON_TIMEOUT, TILE_PROXY_TIMEOUT, get_http_client
+from app.infrastructure.http_client import get_http_client
 from app.infrastructure.jma_amedas_client import new_latest_time_cache, new_station_table_cache
 from app.infrastructure.jma_tile_client import JmaTileClient, JmaTileSharedState
 from app.infrastructure.jma_warning_client import new_area_data_cache, new_warning_cache
@@ -62,7 +63,7 @@ from app.services.wbgt_service import WbgtService
 from app.services.weather_service import WeatherService
 
 
-#: DBのセッション工場。タイル配信と同じ短いcommand_timeoutのものと、ルート生成・全表走査の集計が使う長いもの。
+#: DBのセッション工場。タイル配信と同じプールのものと、1本の接続を長く持つルート生成・全表走査の集計が使うもの。
 TileSessions = Annotated[async_sessionmaker[AsyncSession], Depends(get_session_factory)]
 LongSessions = Annotated[async_sessionmaker[AsyncSession], Depends(get_route_generation_session_factory)]
 
@@ -88,18 +89,18 @@ def get_weather_service():
 
 
 def get_warning_service():
-    return WarningService(get_http_client(JMA_JSON_TIMEOUT), area_data_cache=_area_data_cache, warning_cache=_warning_cache)
+    return WarningService(get_http_client(), area_data_cache=_area_data_cache, warning_cache=_warning_cache)
 
 
 def get_warning_timeline_service():
     return WarningTimelineService(
-        get_http_client(JMA_JSON_TIMEOUT), area_data_cache=_area_data_cache, timeline_cache=_timeline_cache
+        get_http_client(), area_data_cache=_area_data_cache, timeline_cache=_timeline_cache
     )
 
 
 def get_amedas_service():
     return JmaAmedasService(
-        get_http_client(JMA_JSON_TIMEOUT),
+        get_http_client(),
         get_jma_tile_client(),
         station_table_cache=_station_table_cache,
         latest_time_cache=_latest_time_cache,
@@ -109,7 +110,7 @@ def get_amedas_service():
 
 def get_wbgt_service():
     return WbgtService(
-        get_http_client(SLOW_JSON_TIMEOUT),
+        get_http_client(),
         point_master_cache=_point_master_cache,
         forecast_cache=_forecast_cache,
         cells_cache=_point_cells_cache,
@@ -117,7 +118,7 @@ def get_wbgt_service():
 
 
 def get_flood_service():
-    return FloodService(get_http_client(SLOW_JSON_TIMEOUT), area_data_cache=_area_data_cache, flood_cache=_flood_cache)
+    return FloodService(get_http_client(), area_data_cache=_area_data_cache, flood_cache=_flood_cache)
 
 
 #: 同時に動く生成どうしが分け合うメモリ。生成ごとのサービスはリクエストごとに作られるため、プロセスの側で持つ。
@@ -147,6 +148,14 @@ def get_route_generation_setup_opener(long_sessions: LongSessions) -> RouteGener
     DBセッションはハンドラ関数が返った時点で閉じられるため、ジョブが自分でセッションを開いて閉じる。
     """
     return partial(_open_route_generation_setup, long_sessions)
+
+
+#: ルート生成の同時実行の枠と待ち行列。生成はリクエストをまたいで走るため、プロセスの側で持つ。
+_generation_slots = GenerationSlots(settings.generate_max_concurrent, settings.generate_max_queued)
+
+
+def get_generation_slots() -> GenerationSlots:
+    return _generation_slots
 
 
 LandcoverTileReader = Callable[[int, int, int], Awaitable[bytes]]
@@ -193,11 +202,11 @@ async def get_road_inspector_service(tile_sessions: TileSessions, lens: LensServ
 
 
 def get_basemap_client():
-    return BasemapClient(get_http_client(TILE_PROXY_TIMEOUT), settings.basemap_public_base_url)
+    return BasemapClient(get_http_client(), settings.basemap_public_base_url)
 
 
 def get_jma_tile_client():
-    return JmaTileClient(get_http_client(TILE_PROXY_TIMEOUT), _jma_tile_shared)
+    return JmaTileClient(get_http_client(), _jma_tile_shared)
 
 
 #: 整備区域外の記憶。クライアントはリクエストごとに作られるため、プロセスの側で持つ。
@@ -205,12 +214,11 @@ _gsi_not_found_paths: LRUCache = LRUCache(maxsize=NOT_FOUND_MAX_ENTRIES)
 
 
 def get_gsi_tile_client():
-    return GsiTileClient(get_http_client(TILE_PROXY_TIMEOUT), _gsi_not_found_paths)
+    return GsiTileClient(get_http_client(), _gsi_not_found_paths)
 
 
 # 以下の管理API向けのうち、書き込み・1テーブル読みで足りるものはタイル配信と同じ
-# セッション工場を使い、全表走査を伴う集計はルート生成用の長いcommand_timeoutを使う
-# （短い方だと集計が最後まで走らずキャンセルされる）。
+# セッション工場を使い、全表走査を伴う集計はルート生成と同じプールを使う（タイル配信の接続を長く塞がない）。
 async def get_tuning_service(tile_sessions: TileSessions):
     async with tile_sessions() as session:
         yield TuningService(session, TuningOverrideStore(session))

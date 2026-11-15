@@ -48,15 +48,10 @@ def _harmless_startup(monkeypatch):
     TestClientのcontext manager内でイベントループが回っている間に実際に発火しうる。
     本物は外部への実HTTP問い合わせや**実ディスクの削除**を行う。対象は`main.py`の
     宣言から導く。
-
-    `get_http_client`もダミーへ差し替える: `httpx.AsyncClient`の生成はSSLコンテキスト
-    構築を伴い、環境によっては1回あたり約1秒かかる。ジョブを無害化済みで返り値を
-    実際には使わないため、安全にこのコストを避けられる。
     """
     monkeypatch.setattr(main_module, "refresh_definitions", bound(main_module.refresh_definitions, _noop))
     for name in _startup_job_attribute_names():
         monkeypatch.setattr(main_module, name, bound(getattr(main_module, name), _noop))
-    monkeypatch.setattr(main_module, "get_http_client", lambda timeout: None)
 
 
 class _RecordingScheduler(AsyncIOScheduler):

@@ -1,6 +1,6 @@
 // @vitest-environment node
 /**
- * `features/ride/routeProgress.ts`——現在地を、ルートの上のどこと見るか。
+ * `lib/routeProgress.ts`——現在地を、ルートの上のどこと見るか。
  * - 最も近い点の距離。ルートから離れていても最も近い点
  * - 往復で同じ道を2度通るところは、前の位置から続く側。前の位置が無ければ始点に近い側。前後に同じだけ離れていれば前へ進んだ側
  * - 続く側が最も近い点より余裕以上に遠ければ、最も近い点へ移る
@@ -15,7 +15,7 @@ import { projectOnTrack, routeTrack } from "@/lib/routeDistance";
 import { moved } from "@/testing/movedPoint";
 import { routeThrough } from "@/testing/routeFixtures";
 
-import { ROUTE_MATCH_SLACK_M, locateOnRoute, offRoute } from "./routeProgress";
+import { ROUTE_MATCH_SLACK_M, locateOnRoute, offRoute } from "@/lib/routeProgress";
 
 // 北緯35度の上を、東へ経度0.02度進んで同じ道を戻る往復（片道 2km として、行きは0〜2km、帰りは2〜4km）。
 const WEST: readonly [number, number] = [139, 35];

@@ -14,7 +14,8 @@ from app.domain.attributes import CategoricalColumn
 from app.domain.cost_axes import EFFORT_AXES, CostAxisDefinitions
 from app.domain.cycling_speed import RiderProfile, SegmentRide, kickoff_extra_j, wheel_power_w
 from app.domain.leg_costs import burden_weights
-from app.domain.ledger_costs import LedgerCosts, LedgerParameters, burden_per_km
+from app.domain.cost_preference import CostPreference
+from app.domain.ledger_costs import LedgerCosts, LedgerParameters, burden_per_km, current_ledger_parameters
 from app.domain.material_catalog import GRADIENT_PERCENT
 from app.domain.road_network import MaterialFills
 
@@ -37,7 +38,8 @@ AXES = _axes(vibration={"kind": "categorical", "material": VIBRATION, "per_km": 
 
 def _parameters(strength=1.0, alpha=1.0, beta=180.0, exponent=0.0, disabled=(), **multipliers) -> LedgerParameters:
     return LedgerParameters(effective_strength=strength, multipliers=multipliers, effort_alpha=alpha,
-                            burden_seconds_per_km=beta, effort_weight_exponent=exponent, disabled_axes=frozenset(disabled))
+                            burden_seconds_per_km=beta, effort_weight_exponent=exponent,
+                            counts=CostPreference(disabled_axes=list(disabled)).counts)
 
 
 def _ledger(parameters: LedgerParameters, vibration_km: list[float]) -> LedgerCosts:
@@ -80,7 +82,7 @@ def test_a_disabled_axis_is_not_built_and_a_disabled_stop_axis_does_not_count_th
 
 def test_with_the_strength_off_no_axis_is_built():
     """負担の強さを無効（0）にすると、全部の軸を無効にしたのと同じく、どの軸も組まない（内訳にも地図のレンズにも出ない）。"""
-    parameters = _parameters(strength=0.0)
+    parameters = current_ledger_parameters(CostPreference(strength=0.0))
     weights = burden_weights(AXES, parameters, {VIBRATION: CategoricalColumn.encode(["gravel"])},
                              MaterialFills(numeric_means={}, class_shares={}))
     ledger = LedgerCosts(AXES, parameters, wheel_power_w(RIDER), kickoff_extra_j(RIDER), weights, np.full(1, 1000.0))

@@ -7,6 +7,8 @@ cache-asideのため、Redis接続自体の障害はfail-fastさせない。
 import time
 
 import redis.asyncio as redis
+from redis.asyncio.retry import Retry
+from redis.backoff import NoBackoff
 
 from app.config import settings
 
@@ -14,7 +16,7 @@ _client: redis.Redis | None = None
 
 # 接続確立・コマンド応答の待ち上限。既定値のままだと疎通不能時の1回の失敗検知に数秒かかる。
 # Redisは常に同一ホスト（本番は`--network=host`）にあるため、正常時は決して到達しない
-# 短い値へ絞れる。
+# 短い値へ絞れる。打ち直しも0回にする（打ち直すと失敗の検知がその回数ぶん遅れ、冷却へ入るのも遅れる）。
 _CONNECT_TIMEOUT_SECONDS = 0.2
 _SOCKET_TIMEOUT_SECONDS = 0.2
 
@@ -34,7 +36,7 @@ def get_redis_client() -> redis.Redis:
             settings.redis_url,
             socket_connect_timeout=_CONNECT_TIMEOUT_SECONDS,
             socket_timeout=_SOCKET_TIMEOUT_SECONDS,
-            retry_on_timeout=False,
+            retry=Retry(NoBackoff(), 0),
         )
     return _client
 

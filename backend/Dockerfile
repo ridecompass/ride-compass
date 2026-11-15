@@ -20,7 +20,7 @@ COPY app ./app
 # 直後の最初のルート生成がコンパイルを待たない。numbaのキャッシュはCPUの型と元のファイルの更新時刻に
 # 結び付くが、組み立てと実行は同じVM・同じイメージのファイルで行う。
 RUN python -c "from app.domain.routing import compile_search_kernels; compile_search_kernels()"
-# scripts: デプロイが起動前に実行する運用スクリプト（土地被覆ラスタの取得等）を同梱する。
+# scripts: デプロイが起動前に実行する運用スクリプト（気象庁の区域の境界の取得等）を同梱する。
 COPY scripts ./scripts
 
 EXPOSE 8000

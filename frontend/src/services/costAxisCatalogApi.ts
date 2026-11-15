@@ -1,5 +1,4 @@
 import { backendApi, getOptions, requestApi } from "@/lib/apiClient";
-import { API_TIMEOUT_MS } from "@/lib/apiTimeouts";
 import type { paths } from "@/types/generated/api";
 
 /** 費用の軸の一覧の、画面での名前（取得の失敗・読み込み中の文が使う）。 */
@@ -10,7 +9,6 @@ export function getCostAxisCatalog() {
   return requestApi(
     (init) => backendApi.GET("/api/cost-axes", init),
     getOptions({
-      timeoutMs: API_TIMEOUT_MS.catalog,
       category: "api:costAxisCatalog",
       errorLabel: COST_AXIS_CATALOG_LABEL,
     }),
@@ -27,6 +25,6 @@ export type LensEquivalentsResponse =
 export function getLensEquivalents(query: LensEquivalentsQuery) {
   return requestApi(
     (init) => backendApi.GET("/api/cost-axes/lens-equivalents", { params: { query }, ...init }),
-    getOptions({ timeoutMs: API_TIMEOUT_MS.catalog, category: "api:lensEquivalents", errorLabel: "凡例の目安" }),
+    getOptions({ category: "api:lensEquivalents", errorLabel: "凡例の目安" }),
   );
 }

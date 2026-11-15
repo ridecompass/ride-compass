@@ -18,7 +18,6 @@ import {
 } from "@/features/map/scene/groups/routes";
 import { ROUTE_SEGMENT_INDEX_PROPERTY } from "@/features/map/scene/groups/routeSources";
 import { POINT_HIT_TARGET, pointLayerOfSceneLayer } from "@/features/map/scene/groups/points";
-import { sidePointLayerOfSceneLayer } from "@/features/map/scene/groups/sidePoints";
 import { FEATURE_KEY_PROPERTY, ROAD_LINE_SOURCE_ID, shownRoadTrackOf } from "@/features/map/scene/groups/roadLines";
 import { ROAD_TILE_SOURCE_LAYER } from "@/features/map/scene/applyToMap";
 import { roadFeatureKey } from "@/features/map/MapView/roadFacts";
@@ -32,7 +31,7 @@ import { MapGestures, type MapGestureAction } from "@/features/map/MapView/mapGe
 
 /**
  * 地図を押したときの意味。地点: 選んでいる地点を置く・ピンを押すとその地点を選ぶ。乗り換え: 乗り換える区間を選ぶ。開く: 押した物
- * （名前のある点・選んでいるルートの区間）の小窓を開き、候補の線を押すとそのルートを選び、長押しすると押した所に近い道も開く（決まりは
+ * （点・選んでいるルートの区間）の小窓を開き、候補の線を押すとそのルートを選び、長押しすると押した所に近い道を開く（決まりは
  * `docs/modules/frontend/static-map-layers.md`「地図を押したときと地図の小窓」）。
  */
 export type MapTapMode = "points" | "splice" | "open";
@@ -60,7 +59,7 @@ export interface MapTapState {
   onRouteSegmentSelect: (selection: SelectedRouteSegment | null) => void;
   /** 選んでいる候補。押した区間は、この候補の同じ番号の区間。 */
   selectedRoute: { readonly segments: readonly RouteSegmentDetail[] } | null;
-  /** 点の位置を、選んでいる区間に当てたルートの上の位置。区間を選んでいない・区間の形が無ければnull。 */
+  /** 点の位置を、選んでいるルートに当てたルートの上の位置。ルートを選んでいない・ルートの形が無ければnull。 */
   sidePointAlong: (lngLat: readonly [number, number]) => { km: number; offsetM: number } | null;
   onSpliceStretchSelect: (index: number) => void;
   onRouteSelect: (routeId: string) => void;
@@ -82,9 +81,9 @@ function nearestPointOnLineString(
   return [lng, lat];
 }
 
-/** 押された地物のレイヤーが点の層（「表示」の層か、区間の近くに描いた層）なら、その点の宣言。 */
+/** 押された地物のレイヤーが点の層なら、その点の宣言。 */
 function pointLayerAt(feature: MapGeoJSONFeature): PointLayer | undefined {
-  return pointLayerOfSceneLayer(feature.layer.id) ?? sidePointLayerOfSceneLayer(feature.layer.id);
+  return pointLayerOfSceneLayer(feature.layer.id);
 }
 
 /** 名前のある点（店など）の地物なら、探して選んだ施設と同じ形の候補（辺りは置いた位置から引く）。 */
@@ -95,14 +94,6 @@ function namedSpotOf(feature: MapGeoJSONFeature): PlaceCandidate | null {
   if (name === null) return null;
   const [longitude, latitude] = feature.geometry.coordinates;
   return { kind: "facility", level: "point", name, area: null, latitude, longitude };
-}
-
-/** 押せる物か。点は名前のある点だけ（名前の無い点は位置と凡例以上の情報を持たないので、押せる物に数えず、下の物を開く）。
- * ポインタを動かすたびに呼ぶので、名前だけを見て、点の形には触らない。 */
-function isOpenable(feature: MapGeoJSONFeature, target: string): boolean {
-  if (target !== POINT_HIT_TARGET) return true;
-  const point = pointLayerAt(feature);
-  return point !== undefined && pointPlaceName(point, feature.properties) !== null;
 }
 
 /** 押した所（緯度経度と、地図の左上からの画素）。マウスの出来事も指の出来事も持つ。 */
@@ -167,16 +158,11 @@ export function bindMapTaps(map: MapLibreMap, latest: { readonly current: MapTap
     map.on("moveend", () => gestures.handle({ type: "moveend" })),
   ];
 
-  // 長押しは、開く意味の間だけ受け、押した物の小窓を開き、開ける物が無ければ押した所に近い道を開く。
+  // 長押しは、開く意味の間だけ受け、上に点や区間が描かれていても押した所に近い道を開く（どこにでも点が描かれる所で、道を
+  // 開けなくならないように）。
   function handleLongPress(e: PointedAt) {
     if (latest.current.tapMode !== "open") return;
     roadAsk += 1;
-    const features = interactiveFeaturesAt(e.point);
-    const hit = openableFeatureAmong(features);
-    if (hit !== null) {
-      openHit(hit, e, features);
-      return;
-    }
     popups.close();
     void openRoadAt(e);
   }
@@ -188,12 +174,12 @@ export function bindMapTaps(map: MapLibreMap, latest: { readonly current: MapTap
   }
 
   /** 意味ごとに押して開ける対象で、押した所に重なった地物のうち一番上に描かれたもの（乗り換えの帯は区間の上に描くので、
-   * 重なった所は帯を選ぶ）。開けない物（開けない対象・名前の無い点）は、上に重なっていても飛ばす。 */
+   * 重なった所は帯を選ぶ）。開けない対象は、上に重なっていても飛ばす。 */
   function openableFeatureAmong(features: readonly MapGeoJSONFeature[]) {
     const openable = OPENABLE_TARGETS[latest.current.tapMode];
     for (const feature of features) {
       const target = sceneHitTargetsOfLayer(latest.current.scene, feature.layer.id).find((t) => openable.has(t));
-      if (target !== undefined && isOpenable(feature, target)) return { feature, target };
+      if (target !== undefined) return { feature, target };
     }
     return null;
   }
@@ -233,26 +219,20 @@ export function bindMapTaps(map: MapLibreMap, latest: { readonly current: MapTap
     open(hit.feature, e, features);
   }
 
-  // 押した所に描かれている名前のある点を、束ねた点の中まで全部並べる（重なった点は、上の1つだけでなく中が分かるように）。点の
+  // 押した所に描かれている点を、束ねた点の中まで全部並べる（重なった点は、上の1つだけでなく中が分かるように）。点の
   // 位置は押した所でなく点そのもの（外の地図で探す位置。押した所は絵の端のことがある）。小窓は押した代表点の位置へ出す。
   function openPoint(_feature: MapGeoJSONFeature, _e: PointedAt, features: readonly MapGeoJSONFeature[]) {
     const points = features.flatMap((feature) => {
       const layer = pointLayerAt(feature);
-      if (layer === undefined || feature.geometry.type !== "Point" || !isOpenable(feature, POINT_HIT_TARGET)) return [];
+      if (layer === undefined || feature.geometry.type !== "Point") return [];
       const [lng, lat] = feature.geometry.coordinates;
       return [{ layer, feature, at: [lng, lat] as [number, number] }];
     });
     if (points.length === 0) return;
-    // 開ける点は名前を宣言している（`isOpenable`）。
     const found = points.flatMap(({ layer, feature, at: pointAt }) =>
-      pointMembers(layer, feature.properties, pointAt).map(({ name, at }) => ({
-        at,
-        facility: facilityOf(
-          layer,
-          { ...feature.properties, [layer.point_name_property!]: name },
-          at,
-          latest.current.sidePointAlong(at),
-        ),
+      pointMembers(layer, feature.properties, pointAt).map((member) => ({
+        at: member.at,
+        facility: facilityOf(layer, feature.properties, member, latest.current.sidePointAlong(member.at)),
       })),
     );
     popups.openPoint(

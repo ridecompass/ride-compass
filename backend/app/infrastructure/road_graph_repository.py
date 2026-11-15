@@ -37,12 +37,12 @@ from app.infrastructure import derived_data_meta
 from app.infrastructure.material_joins import material_from_clause
 from app.infrastructure.orm_base import declared_metadata
 from app.infrastructure.road_tile_sql import (
+    DERIVED_DATABASE_ROWS_SQL,
     FEATURE_MATERIALS_IN_TILE_SQL,
     ROAD_SURFACE_TILE_MVT_SQL,
     ROADS_AT_SQL,
 )
 from app.infrastructure.source_models import (
-    COVERAGE_SQL,
     INGESTED_BBOX_SQL,
     Source,
     nodes_lookup_sql,
@@ -147,7 +147,7 @@ ORDER BY ids.ord
 # （`infrastructure/road_network_store.py`）に作る。道の通行方向（`way_directions.direction`）が逆向きの枝を
 # 作ってよいかを決める。
 
-#: 取込範囲全体の区間（向きを持たない1行）。どの道も通行方向の行を持つ（通行方向の段が数を比べて守る）ので、
+#: 取込範囲全体の区間（向きを持たない1行）。どの道も通行方向の行を持つ（通行方向の段が道ごとに1行を書く）ので、
 #: どの区間も通行方向を持つ。並びは`domain/road_network.py`の行順の前提。端のそばの向きは、
 #: 折れ線の向き（始点→終点）に進むときと逆に進むときの両方を持ち、端から`:bearing_distance_m`の道のりの点までで測る
 #: （区間がそれより短ければ端から端を見る）。
@@ -253,21 +253,21 @@ class RoadGraphRepository:
     # --- 世代・カバレッジ ----------------------------------------------------
 
     async def get_data_revisions(self) -> derived_data_meta.DataRevisions:
-        """派生データと生データの世代。派生の世代は道路網全体の配列の置き場の名前に、
-        両方が配信する地図タイルの世代に入る。"""
+        """派生データと生データの世代。派生の世代は道路網全体の配列の置き場の名前に、両方が派生データベースの書き出しの名前に入る。"""
         return await derived_data_meta.get_revisions(self._session)
 
     async def get_accident_years(self) -> list[int]:
         """事故データの収録年。
 
-        今の派生の表を作った事故の取込（`derived_data_meta.py: DerivedSourceRunRow`）の宣言（`rows.years`）を
-        そのまま返す。最新の取込の宣言を読むと、取り込み直してから派生の作り直しが入れ替わるまでの間、
+        今の派生の表を作った事故の取込（`derived_data_meta.py: DerivedSourceRunRow`）が読んだ年（素性の`years`）を
+        そのまま返す。素性に年の無い取込は、取込の宣言（`rows.years`）が年を持っていた頃のもので、宣言から読む。
+        最新の取込を読むと、取り込み直してから派生の作り直しが入れ替わるまでの間、
         古い数を新しい年数で割る。実データの発生年を数えると、事故が1件も無かった年が落ちる。
         年数は`accident_count_per_km_year`の分母に、年そのものは地図の説明文に使う。どちらもここが
         正本で、**表示側は年を自分で持たない**。
         """
         row = await self._session.execute(text(
-            "SELECT r.profile->'source'->'rows'->'years' AS years"
+            "SELECT COALESCE(r.origin->'years', r.profile->'source'->'rows'->'years') AS years"
             f" FROM {derived_data_meta.DerivedSourceRunRow.__tablename__} d"
             " JOIN source_runs r ON r.run_id = d.run_id WHERE d.source = :source"), {"source": Source.ACCIDENT})
         value = row.scalar()
@@ -279,13 +279,8 @@ class RoadGraphRepository:
         """事故データの収録年数。`accident_count_per_km_year`の分母。"""
         return len(await self.get_accident_years())
 
-    async def is_covered(self, bbox: BoundingBox) -> bool:
-        """その範囲の生データを取り込んでいるか。判定は取込の宣言から導く。"""
-        row = await self._session.execute(text(f"SELECT covered FROM ({COVERAGE_SQL}) c"), _bbox_params(bbox))
-        return bool(row.scalar())
-
     async def get_ingested_area(self) -> BoundingBox | None:
-        """取り込んだ範囲（`is_covered`が判定に使うのと同じ範囲）。道路をまだ取り込んでいなければNone。"""
+        """取り込んだ範囲（成功した最新の道路の取込が宣言した範囲）。道路をまだ取り込んでいなければNone。"""
         row = (await self._session.execute(text(INGESTED_BBOX_SQL))).mappings().one_or_none()
         if row is None:
             return None
@@ -316,8 +311,14 @@ class RoadGraphRepository:
         """区間の端点になりうるノード全件を`chunk_size`行ずつ流す（`osm_node_id`の昇順）。"""
         return self._stream(_NETWORK_NODES_SQL, chunk_size)
 
-    async def _stream(self, statement: TextClause, chunk_size: int) -> AsyncIterator[Sequence[Row]]:
-        result = await self._session.stream(statement)
+    def stream_derived_database_rows(self, accident_years: int, chunk_size: int) -> AsyncIterator[Sequence[Row]]:
+        """派生データベースの全行を`chunk_size`行ずつ流す（`road_tile_sql.py: DERIVED_DATABASE_ROWS_SQL`の列）。
+        `accident_years`は事故の件数を年あたりにする年数（`get_accident_years_covered`）。"""
+        return self._stream(DERIVED_DATABASE_ROWS_SQL, chunk_size, {"accident_years": accident_years})
+
+    async def _stream(self, statement: TextClause, chunk_size: int,
+                      params: dict[str, object] | None = None) -> AsyncIterator[Sequence[Row]]:
+        result = await self._session.stream(statement, params)
         async for chunk in result.partitions(chunk_size):
             yield chunk
 

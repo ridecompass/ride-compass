@@ -34,7 +34,7 @@ const TILES = {
 };
 
 function pointLayerOf(role: string, hiddenKeys: Readonly<Record<string, readonly string[]>> = {}) {
-  const layers = pointGroup.build({ tiles: TILES, visible: { [role]: true }, hiddenKeys }).layers;
+  const layers = pointGroup.build({ tiles: TILES, visible: { [role]: true }, hiddenKeys, nearPath: null }).layers;
   const layer = layers.find((l) => l.role === role);
   if (layer === undefined) throw new Error(`${role} の層が無い`);
   return layer;
@@ -63,8 +63,7 @@ describe("点の凡例", () => {
         expect(POINT_ICONS).toContainEqual(expect.objectContaining({ color: entry.color, glyph: entry.glyph }));
       } else {
         // 点の大きさの見本は、地図のどの行の絵とも同じ外形で、地図の絵記号の大きさに現れる。
-        const outlineOf = (color: string, glyph: PointGlyph) =>
-          (pointIconParts(color, glyph, "box")[0] as { d: string }).d;
+        const outlineOf = (color: string, glyph: PointGlyph) => (pointIconParts(color, glyph)[0] as { d: string }).d;
         for (const drawn of colorAxis.categories) {
           expect(entry.glyph && outlineOf(entry.color, entry.glyph)).toBe(outlineOf(drawn.color, drawn.glyph));
         }

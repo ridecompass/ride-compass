@@ -17,14 +17,14 @@ from fastapi import FastAPI
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.infrastructure.http_client import close_all_http_clients
+from app.infrastructure.http_client import close_http_client
 from app.main import app
 
 
 @asynccontextmanager
 async def _without_db(_app: FastAPI) -> AsyncIterator[None]:
     yield
-    await close_all_http_clients()
+    await close_http_client()
 
 
 app.router.lifespan_context = _without_db

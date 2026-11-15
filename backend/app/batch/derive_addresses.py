@@ -18,8 +18,7 @@
   2つ以上当たれば区画のIDの小さいほう。ABR の街区を1つでも持つ区画（住居表示の区域）には位置参照情報の地番を入れない。
   同じ区画に同じ番号が2つ以上当たれば（区画にしない小字の地番が大字に寄る等）1つにする。
 
-`abr`の取込が無ければ止まる（区画の無い作り直しは、検索を黙って空にする）。位置参照情報の取込が無ければ地番は空
-（住居表示の街区は入る）。道の網とは何も読み合わない。
+位置参照情報の取込が無ければ地番は空（住居表示の街区は入る）。道の網とは何も読み合わない。
 """
 
 import logging
@@ -48,8 +47,6 @@ from app.infrastructure.source_models import (
     ABR_PREFECTURES_SOURCE_SQL,
     ABR_TOWNS_SOURCE_SQL,
     ISJ_BLOCKS_SOURCE_SQL,
-    Source,
-    latest_succeeded_run_sql,
 )
 
 logger = logging.getLogger("ridecompass.derive_addresses")
@@ -255,9 +252,6 @@ def _link_parcels(areas: Sequence[_Area], names: Sequence[asyncpg.Record]) -> li
 async def derive(conn: asyncpg.Connection) -> None:
     """住所の区画・鍵・街区を入れ直す。"""
     started = time.perf_counter()
-    if await conn.fetchval(f"SELECT run_id FROM {latest_succeeded_run_sql(Source.ABR)} latest") is None:
-        raise RuntimeError("住所の生データ（abr）の取込が無い。scripts/fetch_abr.py と"
-                           " ingest_cli --source abr を流してから作り直す")
     bbox = await conn.fetchrow(INGESTED_BBOX_SQL)
     areas = _in_range(_build_areas(await conn.fetch(ABR_PREFECTURES_SOURCE_SQL), await conn.fetch(ABR_CITIES_SOURCE_SQL),
                                    await conn.fetch(ABR_TOWNS_SOURCE_SQL)), bbox)

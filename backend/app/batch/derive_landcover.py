@@ -62,10 +62,6 @@ FROM ({class_percentages_sql(_COUNT_CLASSES)}) p
 async def _derive_edges(conn: asyncpg.Connection, ring_outer_m: float, ring_inner_m: float) -> None:
     started = time.perf_counter()
     tiles = await conn.fetchval(f"SELECT count(*) FROM {LANDCOVER_TILES_SQL} t")
-    if not tiles:
-        logger.warning("土地被覆タイルが1枚も取り込まれていません")
-        return
-
     edges = await conn.fetchval("SELECT count(*) FROM road_edges")
     await conn.execute(_BUILD_RINGS, ring_outer_m, ring_inner_m)
     await conn.execute("CREATE INDEX ON _rings USING GIST (ring4326)")
