@@ -42,8 +42,9 @@ PostGIS統合テスト（`road_graph_session`フィクスチャを使うもの�
 取り次ぎの向け先は`frontend/src/lib/backendRewrites.ts`が決める: APIの呼び出し（`/prod/…`）とタイルは本番のbackend
 （宛先は`production-origins.json`）へ、地図の下地だけは開発機のbackendへ向ける（本番の下地のスタイルは本番のbackendの
 住所を中に持ち、画面から直接は読めない）。開発機のbackendは、下地のスタイルが中に持つ住所と許す相手に、開発機の
-LANの住所を入れて起きる（`backend/scripts/dev_prod_data_backend.py`）。管理画面（`/admin`）は、本番を読み書きしないよう
-いつも開発機のbackendへ転送する。
+LANの住所を入れて起きる（`backend/scripts/dev_prod_data_backend.py`）。起動の段で開発機のDBを読まないので、開発機のDBが今のコードに
+追いついていなくても起きる。管理画面（`/admin`）は、本番を読み書きしないよういつも開発機のbackendへ転送するので、開発機のDBが
+追いついていないと開けない。
 
 ## 開発機の本体のチェックアウトの遅れ
 
