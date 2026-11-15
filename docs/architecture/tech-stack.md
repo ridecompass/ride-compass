@@ -410,8 +410,8 @@ CIと`docker-compose.yml`も上げる。** CIが本番と違う版で合否を�
 - CIは`backend/Dockerfile`のイメージの中ではなく、ランナーのPython（`setup-python`）で
   テストする。版はそのイメージの`FROM`から取る（`.github/actions/python/action.yml`）。Pythonの依存はwheelが自前のライブラリ（GEOS・PROJ等）を同梱するため本番と
   同じものになるが、**wheelに同梱されないOSのライブラリ**（例: rasterioが要る`libexpat`）の
-  差はCIでは見えない。それは`deploy-backend.yml`がコンテナを入れ替える前の
-  `import app.main`で止まる。
+  差はCIのテストでは見えない。それはCIの`backend-image`（本番と同じDockerfile・aarch64の像の中の
+  `import app.main`）で止まる。
 - `postgis/postgis`の18以降のイメージは、データの置き場（`VOLUME`）が`/var/lib/postgresql`で、
   17以前（`/var/lib/postgresql/data`）と違う。データ形式もメジャー版の間で互換が無く、
   旧版のボリュームは新しい版で開けない。
