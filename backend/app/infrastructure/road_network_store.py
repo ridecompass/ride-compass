@@ -340,12 +340,14 @@ async def _read_profiles(
     owner = np.cumsum(first) - 1  # 行 → 点を持つ区間の番号
     unique_rows = np.flatnonzero(first)
     profiles = await repository.get_edge_elevation_profiles(way[unique_rows].tolist(), segment[unique_rows].tolist())
-    points = np.fromiter((len(p) for p in profiles), dtype=np.int32, count=len(profiles))
+    points = np.fromiter((len(elevation) for elevation, _ in profiles), dtype=np.int32, count=len(profiles))
     starts = np.cumsum(points, dtype=np.int64) - points
-    elevation = _concatenate(profiles, np.float32)
-    distribution = grade_distribution(starts, points, elevation, distance_m[unique_rows])
+    elevation = _concatenate([elevation for elevation, _ in profiles], np.float32)
+    position = _concatenate([position for _, position in profiles], np.float32)
+    distribution = grade_distribution(starts, points, elevation, position, distance_m[unique_rows])
     return {
         "edge_profile_start": starts[owner], "edge_profile_points": points[owner], "profile_elevation_m": elevation,
+        "profile_position": position,
         "profile_distribution_grade": distribution.grade, "profile_distribution_share": distribution.share,
     }
 

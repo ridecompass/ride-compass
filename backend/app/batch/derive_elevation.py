@@ -1,8 +1,8 @@
 """標高のタイルを区間に沿った断面の点で引いて、区間の標高と勾配（`edge_elevation`）にする。
 
-**断面の点は、区間を等しい道のりに刻んだ点**で、刻みは較正値（引数`profile_step_m`）以下にする。形状点で引くと、
-点の間隔が描き手ごとにばらつき、細かく描いた道ほど標高データの揺らぎを登りとして積む。刻みが勾配をならす幅になる
-——刻みより短い区間は両端の2点だけで、刻みより細かい起伏は数えない。
+**標高を拾う点は、区間を等しい道のりに分けた点**で、間隔は較正値（引数`profile_step_m`）以下にする。形状点で引くと、
+点の間隔が描き手ごとにばらつき、細かく描いた道ほど標高データの揺らぎを登りとして積む。拾った点は、揺れの閾値（引数
+`profile_tolerance_m`）で間引いてから表に残す（`domain/attributes.py: elevation_values_sql`）。
 
 **橋かトンネルの区間は刻まずに両端だけを引く**。配信元のDEMは地表面の値で構造物の高さを反映しないため
 （https://maps.gsi.go.jp/development/hyokochi.html に明記）、中間の点は桁や坑道ではなく下の地形を指す——谷を渡る平らな橋で、
@@ -39,7 +39,12 @@ from app.batch.dem_tile_store import PRODUCT_PRIORITY
 from app.domain.attributes import elevation_values_sql
 from app.domain.region import tile_position_sql
 from app.domain.material_sql import IS_BRIDGE_SQL, IS_TUNNEL_SQL
-from app.domain.tuning import BRIDGE_END_BEARINGS, ELEVATION_PROFILE_STEP_ID, require_tuning
+from app.domain.tuning import (
+    BRIDGE_END_BEARINGS,
+    ELEVATION_PROFILE_STEP_ID,
+    ELEVATION_PROFILE_TOLERANCE_ID,
+    require_tuning,
+)
 from app.infrastructure.source_models import DEM_TILES_SQL, WAYS_SOURCE_SQL
 
 logger = logging.getLogger("ridecompass.derive_elevation")
@@ -147,9 +152,10 @@ WHERE v.osm_way_id IS NOT NULL
 """
 
 _ELEVATION_COLUMNS = ("start_elevation_m", "end_elevation_m", "elevation_gain_m", "elevation_loss_m",
-                      "average_grade", "steepest_gain_percent", "steepest_loss_percent", "elevation_profile_m")
+                      "average_grade", "steepest_gain_percent", "steepest_loss_percent", "elevation_profile_m",
+                      "elevation_profile_along_m")
 
-#: 値の出た区間だけを入れる。`$1`は断面の刻みの上限（m）。
+#: 値の出た区間だけを入れる。`$1`は揺れを消す閾値（m）。
 _INSERT_ELEVATION = f"""
 INSERT INTO edge_elevation (osm_way_id, segment_index, {", ".join(_ELEVATION_COLUMNS)})
 SELECT osm_way_id, segment_index, {", ".join(_ELEVATION_COLUMNS)}
@@ -165,7 +171,8 @@ async def _products_in_priority(conn: asyncpg.Connection) -> list[tuple[str, int
     return [(p, zooms[p]) for p in PRODUCT_PRIORITY if p in zooms]
 
 
-async def _derive_elevation(conn: asyncpg.Connection, profile_step_m: float, bridge_end_radius_m: float) -> None:
+async def _derive_elevation(conn: asyncpg.Connection, profile_step_m: float, profile_tolerance_m: float,
+                            bridge_end_radius_m: float) -> None:
     started = time.perf_counter()
     products = await _products_in_priority(conn)
     await conn.execute("TRUNCATE edge_elevation")
@@ -189,13 +196,16 @@ async def _derive_elevation(conn: asyncpg.Connection, profile_step_m: float, bri
                     product, zoom, filled, remaining, vertices)
         await conn.execute("ANALYZE _vertex_elev")
     await conn.execute(_RAISE_BRIDGE_ENDS)
-    updated = affected_rows(await conn.execute(_INSERT_ELEVATION, profile_step_m))
+    updated = affected_rows(await conn.execute(_INSERT_ELEVATION, profile_tolerance_m))
 
     logger.info("標高: 計算した区間 %d/%d本に値が付いた / %.1f秒", updated, edges, time.perf_counter() - started)
 
 
-async def derive(conn: asyncpg.Connection, *, profile_step_m: float, bridge_end_radius_m: float) -> None:
-    """`profile_step_m`は断面の刻みの上限（m）、`bridge_end_radius_m`は橋の端の標高を探す半径（m）。"""
+async def derive(conn: asyncpg.Connection, *, profile_step_m: float, profile_tolerance_m: float,
+                 bridge_end_radius_m: float) -> None:
+    """`profile_step_m`は標高を拾う間隔の上限（m）、`profile_tolerance_m`は揺れを消す閾値（m）、`bridge_end_radius_m`は
+    橋の端の標高を探す半径（m）。"""
     require_tuning({ELEVATION_PROFILE_STEP_ID: profile_step_m}, profile_step_m > 0, "0より大きい")
+    require_tuning({ELEVATION_PROFILE_TOLERANCE_ID: profile_tolerance_m}, profile_tolerance_m >= 0, "0以上")
     async with conn.transaction():
-        await _derive_elevation(conn, profile_step_m, bridge_end_radius_m)
+        await _derive_elevation(conn, profile_step_m, profile_tolerance_m, bridge_end_radius_m)

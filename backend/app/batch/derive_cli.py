@@ -73,6 +73,7 @@ from app.domain.tuning import (
     ACCIDENT_MATCH_DISTANCE_ID,
     ELEVATION_BRIDGE_END_RADIUS_ID,
     ELEVATION_PROFILE_STEP_ID,
+    ELEVATION_PROFILE_TOLERANCE_ID,
     LANDCOVER_RING_INNER_ID,
     LANDCOVER_RING_OUTER_ID,
     REGULATION_EDGE_SHARE_ID,
@@ -120,7 +121,8 @@ STAGES: tuple[DeriveStage, ...] = (
                  "accident_match_distance_m": ACCIDENT_MATCH_DISTANCE_ID}),
     # 標高の段は、道から区間が橋かトンネルかだけを読み、その値を区間ごとに表へ残す。
     DeriveStage("elevation", derive_elevation, frozenset({Source.OSM_WAY, Source.DEM}), ("topology",), ("edge_elevation",),
-                {"profile_step_m": ELEVATION_PROFILE_STEP_ID, "bridge_end_radius_m": ELEVATION_BRIDGE_END_RADIUS_ID}),
+                {"profile_step_m": ELEVATION_PROFILE_STEP_ID, "profile_tolerance_m": ELEVATION_PROFILE_TOLERANCE_ID,
+                 "bridge_end_radius_m": ELEVATION_BRIDGE_END_RADIUS_ID}),
     DeriveStage("landcover", derive_landcover, frozenset({Source.LULC}), ("topology",), ("edge_landcover", "way_landcover"),
                 {"ring_outer_m": LANDCOVER_RING_OUTER_ID, "ring_inner_m": LANDCOVER_RING_INNER_ID}),
     DeriveStage("traffic_regulations", derive_traffic_regulations, frozenset({Source.JARTIC_REGULATION}), ("topology",),

@@ -400,7 +400,7 @@ def merge_road_classes(segments: list[EdgeSegment]) -> dict[str, list[RoadClassS
 
 def steepest_signed_percent(elevation: ElevationAttribute | None) -> float | None:
     """道1本の続く坂の斜度（%、走る向きの符号つき）。一番急な登りがあればその値、無ければ一番急な下りを負の値で、
-    どちらも無ければ0（-0にしない）。ならす幅は道の断面の刻みで、区間の中で計算し直さず道の値（区間の標高の表）から出す。
+    どちらも無ければ0（-0にしない）。区間の中で計算し直さず道の値（区間の標高の表）から出す。
     値が無ければNone。"""
     if elevation is None or elevation.steepest_gain_percent is None or elevation.steepest_loss_percent is None:
         return None

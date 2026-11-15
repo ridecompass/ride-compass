@@ -2,15 +2,20 @@
 
 import numpy as np
 
-from app.domain.elevation_profile import FLAT, ElevationProfiles, GradeDistribution
+from app.domain.elevation_profile import FLAT, ElevationProfiles, GradeDistribution, along_fractions
 
 
-def profiles(*rows: list[float | None], forward=None, distribution: GradeDistribution = FLAT) -> ElevationProfiles:
-    """区間の行ごとに、順方向に並べた点の標高（Noneは値の無い点）の断面。`forward`が偽の行は勾配の符号を返して読む。"""
+def profiles(*rows: list[float | None], forward=None, distribution: GradeDistribution = FLAT,
+             positions: list[list[float]] | None = None) -> ElevationProfiles:
+    """区間の行ごとに、順方向に並べた点の標高（Noneは値の無い点）の断面。`forward`が偽の行は勾配の符号を返して読む。
+    `positions`は行ごとの点の位置（区間の長さに対する割合）で、無ければ等しい間隔に置く。"""
     points = np.array([len(row) for row in rows], dtype=np.int32)
     elevation = np.array([np.nan if v is None else v for row in rows for v in row], dtype=np.float32)
     direction = np.ones(len(rows), dtype=bool) if forward is None else np.asarray(forward, dtype=bool)
-    return ElevationProfiles(np.cumsum(points, dtype=np.int64) - points, points, direction, elevation, distribution)
+    position = np.array([p for row, placed in zip(rows, positions or [()] * len(rows), strict=True)
+                         for p in (placed if len(placed) else along_fractions((), len(row)))], dtype=np.float32)
+    return ElevationProfiles(np.cumsum(points, dtype=np.int64) - points, points, direction, elevation, position,
+                             distribution)
 
 
 def grade_profiles(gradient_percent: np.ndarray, distance_m: np.ndarray) -> ElevationProfiles:
@@ -28,5 +33,6 @@ def two_point_profiles(start_elevation_m: np.ndarray, end_elevation_m: np.ndarra
                        for a, b, f in zip(start_elevation_m, end_elevation_m, forward, strict=True)))
     return {
         "edge_profile_start": built.start, "edge_profile_points": built.points, "profile_elevation_m": built.elevation_m,
+        "profile_position": built.position,
         "profile_distribution_grade": FLAT.grade, "profile_distribution_share": FLAT.share,
     }

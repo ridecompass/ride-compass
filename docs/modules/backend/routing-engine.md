@@ -924,8 +924,8 @@ numbaでJITする探索とその部品はこのファイルにまとめて置く
   **`RouteSegmentDetail`のフィールドは、ビンへの畳み方（`BIN_FIELD_MERGERS`）を必ず宣言する**。`_merge_segment_bin`は
   この表だけからビンを組み立てる。候補の代償の内訳は、丸める前のEdge単位の区間から足す（丸めたビンを足すと、丸めの分が積もる）。
   区間の中の道ごとの両端の標高（`elevations`）は平均せず、中の区間の並びをつなぐ（画面は道ごとの両端を結んで標高の線を描く）。
-  区間の続く坂の斜度（`domain/route.py: steepest_signed_percent`）は、道の一番急な登りと下り（区間の標高の表。ならす幅は
-  断面の刻み、[標高](elevation.md)「断面の刻み」）から作り、ビンへは登りがあれば登りの最大、無ければ一番急な下りで畳む
+  区間の続く坂の斜度（`domain/route.py: steepest_signed_percent`）は、道の一番急な登りと下り（区間の標高の表。点の拾い方と間引き方は
+  [標高](elevation.md)「断面の点の拾い方と間引き方」）から作り、ビンへは登りがあれば登りの最大、無ければ一番急な下りで畳む
   （`domain/route.py: merge_sustained_gradients`）。区間の平均勾配は登って下る区間で打ち消し合うので、区間の小窓の「最大」は
   この値を読む。区間の平均勾配（`average_gradient_percent`）は道の平均勾配（区間の標高の表）で、ビンへは値のある道の距離で
   重みづけて畳む（`domain/route.py: merge_average_gradients`）。

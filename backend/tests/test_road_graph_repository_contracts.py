@@ -229,14 +229,18 @@ async def test_paired_edge_columns_are_not_swapped():
 
 
 async def test_an_edge_without_an_elevation_row_has_no_profile_points():
-    """断面の点は区間ごとに渡した順に返し、標高の行が無い区間は点を持たない（点が2つ未満の区間は、所要時間が全体の
-    勾配の分布で埋める）。"""
-    repo, _ = _repo([_Row(elevation_profile_m=[1.0, np.nan, 3.0]), _Row(elevation_profile_m=None)])
+    """断面の点は区間ごとに渡した順に、標高と位置（区間の長さに対する割合）の組で返す。標高の行が無い区間は点を持たず
+    （点が2つ未満の区間は、所要時間が全体の勾配の分布で埋める）、位置を持たない行（作り直す前の行）は点を等しい間隔に置く。"""
+    repo, _ = _repo([_Row(elevation_profile_m=[1.0, np.nan, 3.0], elevation_profile_along_m=[0.0, 4.0, 10.0]),
+                     _Row(elevation_profile_m=[2.0, 5.0], elevation_profile_along_m=None),
+                     _Row(elevation_profile_m=None, elevation_profile_along_m=None)])
 
-    known, missing = await repo.get_edge_elevation_profiles([1, 2], [0, 0])
+    known, unplaced, missing = await repo.get_edge_elevation_profiles([1, 2, 3], [0, 0, 0])
 
-    assert np.array_equal(known, [1.0, np.nan, 3.0], equal_nan=True)
-    assert len(missing) == 0
+    assert np.array_equal(known[0], [1.0, np.nan, 3.0], equal_nan=True)
+    assert np.allclose(known[1], [0.0, 0.4, 1.0])
+    assert (list(unplaced[0]), list(unplaced[1])) == ([2.0, 5.0], [0.0, 1.0])
+    assert (len(missing[0]), len(missing[1])) == (0, 0)
 
 
 # --- way粒度の読み出し --------------------------------------------------------

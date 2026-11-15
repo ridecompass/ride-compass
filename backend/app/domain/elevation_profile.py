@@ -1,8 +1,9 @@
 """区間の断面の点の並び（標高）と、所要時間と体力を求める単位の「点の間」の勾配。
 
-断面の点は、区間を等しい道のりに刻んだ位置の標高（`infrastructure/derived_models.py: EdgeElevationRow.elevation_profile_m`）で、
-道路網の配列は全区間の点を順方向に並べてつないだ1本の標高の配列と、向きつきの行ごとの始まりの位置・点の数・順方向かで
-持つ（区間の両向きの行は同じ点を指し、逆向きの行は勾配の符号を返して読む）。点の間の長さは、区間の長さ÷（点の数−1）。
+断面の点は、区間に沿って拾った標高を揺れの閾値で間引いた点（`infrastructure/derived_models.py: EdgeElevationRow.elevation_profile_m`）で、
+点の間隔はそろわない。道路網の配列は全区間の点を順方向に並べてつないだ1本の標高の配列と、点ごとの位置（区間の長さに対する
+割合。始まりが0、終わりが1）の配列と、向きつきの行ごとの始まりの位置・点の数・順方向かで持つ（区間の両向きの行は同じ点を指し、
+逆向きの行は勾配の符号を返して読む）。点の間の長さは、区間の長さ×（隣の点との位置の差）。
 
 **点の間は、リクエストに1回だけJITで平らな並びに詰める**（`flatten_spans`）。所要時間は探索の範囲の全区間について
 風の時刻ごとに解くため、numpyで点の間（区間の数倍）の配列を組むと、それだけで探索が1秒前後遅くなる。
@@ -54,11 +55,21 @@ class ElevationProfiles:
     points: np.ndarray  # int32
     forward: np.ndarray  # bool
     elevation_m: np.ndarray  # float32、値の無い点はNaN
+    position: np.ndarray  # float32、点ごとの位置（区間の長さに対する割合）
     distribution: GradeDistribution
 
     def take(self, rows: np.ndarray) -> "ElevationProfiles":
         return ElevationProfiles(np.asarray(self.start[rows]), np.asarray(self.points[rows]),
-                                 np.asarray(self.forward[rows]), self.elevation_m, self.distribution)
+                                 np.asarray(self.forward[rows]), self.elevation_m, self.position, self.distribution)
+
+
+def along_fractions(along_m: np.ndarray, points: int) -> np.ndarray:
+    """1区間の点の道のりの位置（m）を、区間の長さに対する割合（float32）にする。位置が点の数と合わない（持たない）か区間の
+    長さが0なら、`points`個の点を等しい間隔に置く。"""
+    along = np.asarray(along_m, dtype=np.float32)
+    if len(along) == points >= 2 and along[-1] > 0:
+        return along / along[-1]
+    return np.linspace(0.0, 1.0, points, dtype=np.float32)
 
 
 @njit(cache=True, nogil=True)
@@ -75,7 +86,8 @@ def interval_grade(lower_m: float, upper_m: float, length_m: float) -> float:
 
 
 @njit(cache=True, nogil=True)
-def unknown_lengths_m(start: np.ndarray, points: np.ndarray, elevation_m: np.ndarray, distance_m: np.ndarray) -> np.ndarray:
+def unknown_lengths_m(start: np.ndarray, points: np.ndarray, elevation_m: np.ndarray, position: np.ndarray,
+                      distance_m: np.ndarray) -> np.ndarray:
     """区間の行ごとの、標高の無い長さ（m）の和。点が2つ未満の区間は区間全体。"""
     unknown = np.zeros(len(points))
     for row in range(len(points)):
@@ -83,9 +95,9 @@ def unknown_lengths_m(start: np.ndarray, points: np.ndarray, elevation_m: np.nda
         if count < 2:
             unknown[row] = distance_m[row]
             continue
-        step = distance_m[row] / (count - 1)
         first = start[row]
         for i in range(count - 1):
+            step = distance_m[row] * (position[first + i + 1] - position[first + i])
             if np.isnan(interval_grade(elevation_m[first + i], elevation_m[first + i + 1], step)):
                 unknown[row] += step
     return unknown
@@ -93,7 +105,7 @@ def unknown_lengths_m(start: np.ndarray, points: np.ndarray, elevation_m: np.nda
 
 @njit(cache=True, nogil=True)
 def flatten_spans(start: np.ndarray, points: np.ndarray, forward: np.ndarray, elevation_m: np.ndarray,
-                   distance_m: np.ndarray, unknown_m: np.ndarray, fill_grade: np.ndarray,
+                   position: np.ndarray, distance_m: np.ndarray, unknown_m: np.ndarray, fill_grade: np.ndarray,
                    fill_share: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """区間の行ごとの、値のある点の間と、標高の無い長さを分布の階級ごとに分けた道を、`(行, 長さ, 走る向きの勾配)`の
     平らな並びにする（風に依らないので、リクエストに1回。`domain/cycling_speed.py`が風の時刻ごとに解くループを1本の平らな
@@ -108,10 +120,10 @@ def flatten_spans(start: np.ndarray, points: np.ndarray, forward: np.ndarray, el
     for row in range(len(points)):
         count = points[row]
         if count >= 2:
-            step = distance_m[row] / (count - 1)
             sign = 1.0 if forward[row] else -1.0
             first = start[row]
             for i in range(count - 1):
+                step = distance_m[row] * (position[first + i + 1] - position[first + i])
                 grade = interval_grade(elevation_m[first + i], elevation_m[first + i + 1], step)
                 if not np.isnan(grade):
                     span_row[found] = row
@@ -128,7 +140,7 @@ def flatten_spans(start: np.ndarray, points: np.ndarray, forward: np.ndarray, el
 
 
 @njit(cache=True, nogil=True)
-def _known_grades(start: np.ndarray, points: np.ndarray, elevation_m: np.ndarray,
+def _known_grades(start: np.ndarray, points: np.ndarray, elevation_m: np.ndarray, position: np.ndarray,
                   distance_m: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """値のある点の間の`(順方向に読んだ勾配, 長さ)`。"""
     total = 0
@@ -141,9 +153,9 @@ def _known_grades(start: np.ndarray, points: np.ndarray, elevation_m: np.ndarray
         count = points[row]
         if count < 2:
             continue
-        step = distance_m[row] / (count - 1)
         first = start[row]
         for i in range(count - 1):
+            step = distance_m[row] * (position[first + i + 1] - position[first + i])
             grade = interval_grade(elevation_m[first + i], elevation_m[first + i + 1], step)
             if not np.isnan(grade):
                 grades[found] = grade
@@ -152,12 +164,13 @@ def _known_grades(start: np.ndarray, points: np.ndarray, elevation_m: np.ndarray
     return grades[:found], lengths[:found]
 
 
-def grade_distribution(start: np.ndarray, points: np.ndarray, elevation_m: np.ndarray,
+def grade_distribution(start: np.ndarray, points: np.ndarray, elevation_m: np.ndarray, position: np.ndarray,
                        distance_m: np.ndarray) -> GradeDistribution:
     """区間ごとに1行で渡した点の間の勾配の分布（道のりの重み）。どの向きにも走るので、順方向に読んだ勾配と、その逆向き
     （符号を返した勾配）を半分ずつ数える。値のある間が1つも無ければ、平地だけの分布。"""
     grades, lengths = _known_grades(np.asarray(start, dtype=np.int64), np.asarray(points, dtype=np.int64),
-                                    np.asarray(elevation_m, dtype=np.float32), np.asarray(distance_m, dtype=np.float64))
+                                    np.asarray(elevation_m, dtype=np.float32), np.asarray(position, dtype=np.float32),
+                                    np.asarray(distance_m, dtype=np.float64))
     if len(grades) == 0:
         return FLAT
     centers = np.arange(-_DISTRIBUTION_LIMIT, _DISTRIBUTION_LIMIT + _DISTRIBUTION_STEP / 2, _DISTRIBUTION_STEP)

@@ -37,7 +37,7 @@ from app.domain.cost_axes import (
 from app.domain.geo import length_weighted_mean
 from app.domain.material_catalog import MaterialSpec, material_spec
 from app.domain.route import STOP_COUNT_DECIMALS, WIND_MS_DECIMALS, AxisFact
-from app.domain.elevation_profile import FLAT, ElevationProfiles
+from app.domain.elevation_profile import FLAT, ElevationProfiles, along_fractions
 from app.domain.search_materials import SearchMaterials
 from app.domain.ledger_costs import LedgerCosts, LedgerParameters, burden_per_km
 from app.domain.road_network import MaterialFills
@@ -300,7 +300,7 @@ def compile_leg_cost_kernels() -> None:
     """費用の組み立てのJIT（走行モデルとビンの仕上げ）を、本番と同じ引数の型で1回ずつ呼んでコンパイルする
     （`domain/routing.py: compile_search_kernels`がイメージの組み立てで呼ぶ）。"""
     flat = ElevationProfiles(np.zeros(1, dtype=np.int64), np.full(1, 2, dtype=np.int32), np.ones(1, dtype=bool),
-                             np.zeros(2, dtype=np.float32), FLAT)
+                             np.zeros(2, dtype=np.float32), along_fractions((), 2), FLAT)
     model = SegmentSpeedModel(RiderProfile(cruise_speed_kmh=20.0), flat, np.ones(1), np.zeros(1), np.zeros(1))
     seconds = model.travel_seconds(np.zeros(1), np.zeros(1))
     model.ride(np.zeros(1), np.zeros(1), 1.0)

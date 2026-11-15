@@ -205,19 +205,26 @@ async def test_a_bridge_or_tunnel_does_not_climb_the_terrain_under_it(elevation_
         11: (10.0, 10.0), 12: (0.0, 0.0)}
 
 
-@pytest.mark.parametrize(("profile_step_m", "climb"), [(50.0, (10.0, 10.0)), (5000.0, (0.0, 0.0))],
-                         ids=["刻みが細かい", "刻みが区間より長い"])
-async def test_the_profile_step_decides_how_fine_a_rise_and_fall_is_counted(elevation_conn, profile_step_m, climb):
-    """谷を渡って戻る区間（約770m）の上り下りは、刻みで区間に沿って引いた点で数える。刻みが区間より長ければ両端の
-    2点だけになり、刻みより細かい起伏は数えない。"""
+@pytest.mark.parametrize(("profile_step_m", "profile_tolerance_m", "climb"),
+                         [(50.0, 0.3, (10.0, 10.0)), (5000.0, 0.3, (0.0, 0.0)), (50.0, 20.0, (0.0, 0.0))],
+                         ids=["間隔が細かい", "間隔が区間より長い", "閾値が起伏より高い"])
+async def test_the_step_and_the_tolerance_decide_how_fine_a_rise_and_fall_is_counted(
+        elevation_conn, profile_step_m, profile_tolerance_m, climb):
+    """谷を渡って戻る区間（約770m）の上り下りは、間隔で区間に沿って引いた点を閾値で間引いて数える。間隔が区間より長ければ
+    両端の2点だけになり、閾値より低い起伏は揺れとして消える。残した点の位置は、標高と同じ並びで区間の始まりから終わりまで。"""
     await ingest_records("osm_way", [_way(11, VALLEY_PIXELS)], conn=elevation_conn)
     async with elevation_conn.transaction():
         await derive_topology.derive(elevation_conn)
-        await derive_elevation_at_default_step(elevation_conn, profile_step_m=profile_step_m)
+        await derive_elevation_at_default_step(elevation_conn, profile_step_m=profile_step_m,
+                                               profile_tolerance_m=profile_tolerance_m)
 
     row = await elevation_conn.fetchrow(
-        "SELECT elevation_gain_m, elevation_loss_m FROM edge_elevation WHERE osm_way_id = 11")
+        "SELECT ee.elevation_gain_m, ee.elevation_loss_m, ee.elevation_profile_m, ee.elevation_profile_along_m, e.distance_m"
+        " FROM edge_elevation ee JOIN road_edges e USING (osm_way_id, segment_index) WHERE ee.osm_way_id = 11")
     assert (row["elevation_gain_m"], row["elevation_loss_m"]) == climb
+    along = row["elevation_profile_along_m"]
+    assert len(along) == len(row["elevation_profile_m"])
+    assert (along[0], along == sorted(along), along[-1]) == (0.0, True, pytest.approx(row["distance_m"], rel=1e-6))
 
 
 #: 橋の端を置く画素。左（10m）の端で、右へ約10m（画素で2つ半）の所から上（20m）になる。水門の下の水面のように、構造物を

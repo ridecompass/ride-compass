@@ -221,14 +221,16 @@ class EdgeElevationRow(_EdgeKey, Base):
     # 標高が付いた区間でも、勾配として数える点の間が無い区間は平均勾配を持たない
     # （`domain/attributes.py: elevation_values_sql`）。
     average_grade: Mapped[float | None] = mapped_column(REAL, nullable=True)
-    #: 順方向に走ったときの、断面の刻みの間で一番急な登りと下りの勾配（%、どちらも0以上）。勾配として数える点の間が
+    #: 順方向に走ったときの、断面の点の間で一番急な登りと下りの勾配（%、どちらも0以上）。勾配として数える点の間が
     #: 無い区間は持たない（`domain/attributes.py: elevation_values_sql`）。逆向きは2列を入れ替えて読む。
     steepest_gain_percent: Mapped[float | None] = mapped_column(REAL, nullable=True)
     steepest_loss_percent: Mapped[float | None] = mapped_column(REAL, nullable=True)
-    #: 順方向に並べた断面の点の標高（m）。点は区間を等しい道のりに刻んだ位置で、間隔は区間の長さ÷（点の数−1）。値の無い
-    #: 点はNULL。上の要約の列は、どれもこの点から出す（`domain/attributes.py: elevation_values_sql`）。作り直す前の行は持たない
+    #: 順方向に並べた断面の点の標高（m）。点の位置は`elevation_profile_along_m`が持つ。値の無い点はNULL。上の要約の列は、どれもこの点から出す（`domain/attributes.py: elevation_values_sql`）。作り直す前の行は持たない
     #: （空を許すのは、行の入った本番の表へ列を足せるようにするため）。
     elevation_profile_m: Mapped[list[float | None] | None] = mapped_column(ARRAY(REAL), nullable=True)
+    #: 断面の点ごとの、区間の始まりから道に沿って測った位置（m）。`elevation_profile_m`と同じ並び。点は揺れを間引いた
+    #: あとの点なので間隔はそろわない。作り直す前の行は持たない。
+    elevation_profile_along_m: Mapped[list[float] | None] = mapped_column(ARRAY(REAL), nullable=True)
 
 
 class EdgeLandcoverRow(_EdgeKey, _Landcover, Base):

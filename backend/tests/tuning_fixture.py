@@ -32,6 +32,7 @@ TUNING = {
     'accident.match_max_distance_m': 30.0,
     'accident.fatal_weight': 3.0,
     'elevation.profile_step_m': 50.0,
+    'elevation.profile_tolerance_m': 0.3,
     'elevation.bridge_end_radius_m': 10.0,
     'landcover.ring_outer_m': 100.0,
     'landcover.ring_inner_m': 10.0,
