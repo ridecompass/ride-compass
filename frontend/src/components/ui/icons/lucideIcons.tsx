@@ -44,6 +44,7 @@ import {
   Snowflake,
   Star,
   Sun,
+  SunDim,
   Target,
   Thermometer,
   Trash,
@@ -143,6 +144,8 @@ export const MapUnlockedIcon = fromLucide(LockOpen);
 export const VoiceOnIcon = fromLucide(Volume2);
 /** 走行中の音声案内を切っている間（押すと入れる）。 */
 export const VoiceOffIcon = fromLucide(VolumeOff);
+/** 走行中に、画面を点けたままほぼ黒の画面にする。 */
+export const DarkScreenIcon = fromLucide(SunDim);
 /** 取れなかったものを取り直す。 */
 export const RetryIcon = fromLucide(RotateCw);
 /** 取れていない情報がある印。警報の色と取り違えないよう、三角の形を使わない。 */
