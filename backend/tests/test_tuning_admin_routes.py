@@ -6,7 +6,7 @@
 ここで見ないもの:
 - すべての口に認証が要ること → `test_admin_route_authorization.py`（`/api/admin/`配下の全ルートを走査する）
 - 認証情報の照合そのもの（誤った・未設定の認証情報） → `admin_auth`のテスト
-- 範囲の外の値の判定 → `infrastructure/tuning_overrides.py`のテスト
+- 計算が成り立たない値で止まること（保存は値を断らない） → `test_tuning_conditions.py`
 - 較正値の宣言の中身 → `domain/tuning.py`のテスト
 - 宣言の項目（単位・範囲・効き方の名前）を応答へそのまま写すこと——書き写しで、判断が無い
 

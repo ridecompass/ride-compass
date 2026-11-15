@@ -1,4 +1,4 @@
-"""道の区分の管理API（`/api/admin/road-classes`）と、書いた区分が画面の設定（`GET /api/client-config`）へ届くこと。
+"""道の区分の管理API（`/api/admin/road-classes`）と、書いた区分が画面の設定（`GET /api/client-config`）と地図のタイルへ届くこと。
 
 注入から本物を通し、アプリのセッション工場をテストDBへ向ける。表の制約が守る形はここで見ない（構造仕様15）。コードの宣言を
 名指す欄は宣言にある名で書く（宣言の実在を書く側が確かめる）。
@@ -22,6 +22,9 @@ from app.domain.road_classes import (
     AvoidanceClassification,
     AvoidanceOverride,
 )
+from app.infrastructure import tile_cache
+from app.infrastructure.cache_identity import region_tile_key
+from app.infrastructure.region_tile_cache import MVT_TILE_GENERATIONS
 from app.main import app
 from tests.admin_auth import AUTH_HEADERS
 from tests.road_class_fixture import classification, fact_is, map_layer, road_classes
@@ -55,8 +58,12 @@ async def client(road_graph_session, app_on_test_database, admin_credentials):
 
 
 async def test_written_definitions_are_read_back_and_served(client):
-    """書いた全体がそのまま読み戻り、公開した分け方が画面の設定に出る。"""
+    """書いた全体がそのまま読み戻り、公開した分け方が画面の設定に出る。前の区分の色で焼いた路面タイルは配らない。"""
+    baked = region_tile_key("road_surface", MVT_TILE_GENERATIONS["road_surface"], 14, 1, 1, "pbf")
+    tile_cache.set(baked, b"baked-with-the-previous-classes", "application/x-protobuf")
+
     assert (await client.put(PATH, json=DEFINITIONS, headers=AUTH_HEADERS)).status_code == 200
+    assert tile_cache.get(baked) is None
     assert (await client.get(PATH, headers=AUTH_HEADERS)).json() == DEFINITIONS
     served = (await client.get("/api/client-config")).json()["road_classes"]
     assert [(layer["id"], [c["key"] for c in layer["classes"]]) for layer in served["map_layers"]] == [("surface", ["paved", "unpaved"])]

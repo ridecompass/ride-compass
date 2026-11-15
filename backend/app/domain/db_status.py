@@ -60,18 +60,3 @@ def import_attention(*, succeeded: bool, status_label: str, latest_succeeded_id:
         "それ以降の取り込みは反映されていない"
     ]
 
-
-def source_needs_rebuild(*, derived_run_id: int | None, latest_run_id: int | None) -> bool:
-    """派生データを作り直しに使った取込が、成功した最新の取込でない（取込が1度も成功していない・まだ作り直しに
-    使っていない、も含む）。"""
-    return latest_run_id is None or derived_run_id != latest_run_id
-
-
-def table_needs_rebuild(*, recorded: bool, added: tuple[str, ...], removed: tuple[str, ...]) -> bool:
-    """表を作り直しが要る（今の表を作ったときの列の記録が無い・記録が今の宣言の列と違う のどちらか）。"""
-    return not recorded or bool(added or removed)
-
-
-def tuning_needs_rebuild(*, derived_value: float | None, current_value: float) -> bool:
-    """較正値を変えたのに派生を作り直していない（今の派生を作った値の記録が無い、も含む）。"""
-    return derived_value != current_value

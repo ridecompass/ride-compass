@@ -27,7 +27,7 @@ class JmaTileIndexAvailable(JmaTileIndex):
 
 
 class JmaTileIndexUnavailable(StrictModel):
-    """インデックス未保存・Redis障害。どのタイルについても在否を言わない。"""
+    """インデックス未保存。どのタイルについても在否を言わない。"""
 
     available: Literal[False] = False
 

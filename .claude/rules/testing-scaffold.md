@@ -73,7 +73,7 @@ paths:
 - **起こし直しの報告に seams 数を入れる**（本数・行数と並べて）
 - **共有フェイクへ出すのは3箇所目から**（CLAUDE.md「同じ操作を3回やったら仕組み化を
   検討する」）。寄せる前に、その外部が本当に3つから読まれるべきかを1度問う。共有の足場があるのに写した定義・差し替え・組み立ては、
-  構造テスト（`backend/tests/structure/test_scaffold_copies.py`・`frontend/src/structure/scaffoldCopies.test.ts`）が落とす
+  frontend では構造テスト（`frontend/src/structure/scaffoldCopies.test.ts`）が落とす
 
 **この歯止めを検知器にしない**（[fixing.md](fixing.md)「検知器を足す条件は厳しい」）。数えるのは起こし直しの
 報告のときで、判断は人が行う。
@@ -103,10 +103,10 @@ paths:
 | HTTP（クライアントを受け取る実装） | respx | 経路（`respx.Router`）で応答を決め、`tests/fake_http.py: client_for`で本物の`httpx.AsyncClient`にして渡す。どのURLへも同じ応答で足りるなら`answering`。要求は`router.calls`で見る（見てよいのは状態を変える要求だけ。testing.md「確かめる高さ」の差し替えの箇条） |
 | HTTP（実装が自分で`httpx.stream`等を呼ぶ） | respx | pytestのフィクスチャ`respx_mock`。実装の中で作られる`httpx.Client`を、1テストで何度も作らせない |
 | 時計 | freezegun | フィクスチャ`clock`（`tests/conftest.py`）。`tick`・`move_to`で進める |
-| Redis | fakeredis | フィクスチャ`fake_redis`（`tests/conftest.py`）。接続の失敗は`redis_server.connected = False` |
+| Redis | fakeredis | フィクスチャ`fake_redis`（`tests/conftest.py`） |
 
-例外は窓・TTLを数える単調時計（`backend/tests/conftest.py: MonotonicClock`。回数制限・
-データの世代の読み直しが読む）で、これらのモジュールが読む時計だけを差し替える。
+例外は窓を数える単調時計（`backend/tests/conftest.py: MonotonicClock`。回数制限・
+所要時間の測りが読む）で、これらのモジュールが読む時計だけを差し替える。
 
 `admin_credentials`は、認証情報が設定されている前提に立つテストが引数で取る。ファイル内の
 全テストが管理画面APIを叩く場合もautouseで配らない。

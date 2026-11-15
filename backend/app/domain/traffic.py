@@ -15,9 +15,9 @@ from typing import Literal, get_args
 from app.domain.geo import ground_m_sql
 from app.domain.tuning import (
     TUNING_PARAMETERS_BY_ID,
+    checked_tuning_value,
     event_seconds_parameter_id,
     event_share_parameter_id,
-    tuning_value,
 )
 
 # 交差点判定の次数しきい値（この数以上の異なる隣接Nodeを持つNodeを交差点とみなす）。
@@ -200,9 +200,10 @@ def stop_event(group: str, name: str) -> StopEvent:
     """止まる出来事（`group`は`stop`＝停止要因［種類は`POI_COUNT_KINDS`のキー］・`turn`＝曲がる所）を、いま効いている
     較正値から組む（走ってみて決める値のため、管理画面から変えられる）。減速だけの出来事は巡航速度の
     `stop.slowed_speed_ratio`倍から戻すので、漕ぎ出しは止まってからの（1 − 割合²）倍。"""
-    share = tuning_value(event_share_parameter_id(group, name))
-    slowed = tuning_value("stop.slowed_speed_ratio")
-    return StopEvent(share=share, wait_seconds=tuning_value(event_seconds_parameter_id(group, name)),
+    share = checked_tuning_value(event_share_parameter_id(group, name), lambda v: v >= 0, "0以上")
+    slowed = checked_tuning_value("stop.slowed_speed_ratio", lambda v: -1 <= v <= 1, "-1以上1以下")
+    wait_seconds = checked_tuning_value(event_seconds_parameter_id(group, name), lambda v: v >= 0, "0以上")
+    return StopEvent(share=share, wait_seconds=wait_seconds,
                      kickoffs=share * ((1.0 - slowed * slowed) if (group, name) in SLOWING_EVENTS else 1.0))
 
 

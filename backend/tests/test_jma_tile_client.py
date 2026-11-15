@@ -95,15 +95,15 @@ async def test_a_fetch_without_a_content_type_is_served_as_generic_bytes(upstrea
 
 
 async def test_tiles_are_shared_through_redis_and_time_listings_are_kept_in_this_process(
-    upstream, fake_redis, redis_server, client
+    upstream, fake_redis, client
 ):
-    """タイルは全プロセスで共有し、時刻一覧は2分で変わるのでプロセス内に置く。Redisが落ちると片方だけが消える。"""
+    """タイルは全プロセスで共有し、時刻一覧は2分で変わるのでプロセス内に置く。Redisを空にすると片方だけが消える。"""
     upstream.get(f"/{TILE}").respond(content=OPAQUE, content_type="image/png")
     upstream.get(f"/{LISTING}").respond(json=[], content_type="application/json")
     await client(upstream).fetch(TILE)
     await client(upstream).fetch(LISTING)
 
-    redis_server.connected = False
+    await fake_redis.flushall()
 
     assert await client(upstream).get_cached(TILE) is None
     assert await client(upstream).get_cached(LISTING) == (b"[]", "application/json")
@@ -123,12 +123,12 @@ async def test_a_missing_tile_is_told_apart_from_failures_and_remembered_as_noth
     assert await client(upstream).get_cached(TILE) is UPSTREAM_NOT_FOUND
 
 
-async def test_a_missing_time_listing_is_remembered_in_this_process(upstream, fake_redis, redis_server, client):
+async def test_a_missing_time_listing_is_remembered_in_this_process(upstream, fake_redis, client):
     upstream.get(f"/{LISTING}").respond(404)
 
     assert await client(upstream).fetch(LISTING) is UPSTREAM_NOT_FOUND
 
-    redis_server.connected = False
+    await fake_redis.flushall()
     assert await client(upstream).get_cached(LISTING) is UPSTREAM_NOT_FOUND
 
 

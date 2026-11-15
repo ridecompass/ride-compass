@@ -32,7 +32,7 @@ from app.domain.material_catalog import (
     material_value_sql,
 )
 from app.domain.region import BoundingBox, RoadAt
-from app.domain.tuning import TURN_BEARING_DISTANCE_ID
+from app.domain.tuning import TURN_BEARING_DISTANCE_ID, require_tuning
 from app.infrastructure import derived_data_meta
 from app.infrastructure.material_joins import material_from_clause
 from app.infrastructure.orm_base import declared_metadata
@@ -253,8 +253,7 @@ class RoadGraphRepository:
     # --- 世代・カバレッジ ----------------------------------------------------
 
     async def get_data_revisions(self) -> derived_data_meta.DataRevisions:
-        """派生データと生データの世代。派生の世代は道路網全体の配列の置き場の名前に、
-        両方が配信する地図タイルの世代に入る。"""
+        """派生データと生データの世代。派生の世代は道路網全体の配列の置き場の名前に、両方が派生データベースの書き出しの名前に入る。"""
         return await derived_data_meta.get_revisions(self._session)
 
     async def get_accident_years(self) -> list[int]:
@@ -306,7 +305,9 @@ class RoadGraphRepository:
 
     def stream_network_edges(self, chunk_size: int, tuning: Mapping[str, float]) -> AsyncIterator[Sequence[Row]]:
         """取込範囲全体の区間を`chunk_size`行ずつ流す（`_NETWORK_EDGES_SQL`の並び）。`tuning`は`get_network_tuning`の値。"""
-        return self._stream(_NETWORK_EDGES_SQL.bindparams(bearing_distance_m=tuning[TURN_BEARING_DISTANCE_ID]), chunk_size)
+        bearing_distance_m = tuning[TURN_BEARING_DISTANCE_ID]
+        require_tuning({TURN_BEARING_DISTANCE_ID: bearing_distance_m}, bearing_distance_m >= 0, "0以上")
+        return self._stream(_NETWORK_EDGES_SQL.bindparams(bearing_distance_m=bearing_distance_m), chunk_size)
 
     def stream_network_nodes(self, chunk_size: int) -> AsyncIterator[Sequence[Row]]:
         """区間の端点になりうるノード全件を`chunk_size`行ずつ流す（`osm_node_id`の昇順）。"""

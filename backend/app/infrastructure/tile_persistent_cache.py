@@ -16,13 +16,12 @@ import diskcache
 
 from app.config import settings
 from app.infrastructure.data_paths import DATA_DIR
-from app.infrastructure.tile_cache import DISK_READ_ERRORS, DISK_STORE_ERRORS
 
 logger = logging.getLogger("ridecompass.tile_persistent_cache")
 
 CACHE_DIR = DATA_DIR / "tile_persistent_cache"
 
-# 路面タイルの世代を鍵に持つ値は、派生の表と生データが変われば世代ごと読まれなくなる。鮮度の制約が無いので、
+# タイルの値は、焼く中身を変えた側が捨てる（`region_tile_cache.py: discard_region_tiles`）ので鮮度の制約が無い。
 # 失っても読み直すだけのものとして長く持ち、DBへの再問い合わせを抑える。
 _TILE_ENTRY_TTL_SECONDS = 24 * 3600
 
@@ -54,30 +53,28 @@ def close() -> None:
 
 def get_by_key(key: tuple) -> Any | None:
     """任意のタプルキーで読む。キーの設計は呼び出し元が持つ（先頭要素をnamespaceにする）。
-    未キャッシュ・破損時はNone。"""
-    try:
-        started = time.monotonic()
-        value = cache().get(key)
-        read_ms = (time.monotonic() - started) * 1000
-    except DISK_READ_ERRORS as exc:  # 破損エントリ・SQLite障害はいずれも未キャッシュ扱いにする
-        logger.warning("tile persistent cache read failed key=%r, treating as cache miss error=%r", key, exc)
-        return None
+    未キャッシュならNone。"""
+    started = time.monotonic()
+    value = cache().get(key)
+    read_ms = (time.monotonic() - started) * 1000
     if value is not None:
         logger.debug("tile persistent cache hit key=%r read_ms=%.1f", key, read_ms)
     return value
 
 
 def set_by_key(key: tuple, value: Any, *, expire: float) -> None:
-    """任意のタプルキーで書き、`expire`（秒）で失効させる。
+    """任意のタプルキーで書き、`expire`（秒）で失効させる。"""
+    cache().set(key, value, expire=expire)
 
-    置き場の障害（ディスクフル等）で書けなければ、警告ログを出して書かずに進む（キャッシュに書けないことが応答を
-    止める理由にはならない）。pickleにできない値は実装の誤りなので投げる。
+
+def delete_namespace(namespace: str) -> None:
+    """先頭の要素が`namespace`の鍵を全部消す。
+
+    鍵を全部読み終えてから消す（読みながら消すと、読み進める位置が消した分だけずれる）。
     """
-    try:
-        cache().set(key, value, expire=expire)
-    except DISK_STORE_ERRORS as exc:  # 置き場の障害は、書かずに進む
-        logger.warning("tile persistent cache write failed key=%r error=%r", key, exc)
-
+    stale = [key for key in cache().iterkeys() if isinstance(key, tuple) and key[:1] == (namespace,)]
+    for key in stale:
+        cache().delete(key)
 
 
 async def get_tile_entry(key: tuple) -> Any | None:
@@ -86,5 +83,5 @@ async def get_tile_entry(key: tuple) -> Any | None:
 
 
 async def set_tile_entry(key: tuple, value: Any) -> None:
-    """路面タイルの世代（鍵に入れる）に結んだ値を書く。"""
+    """タイルの値を書く（失効は`_TILE_ENTRY_TTL_SECONDS`）。"""
     await asyncio.to_thread(set_by_key, key, value, expire=_TILE_ENTRY_TTL_SECONDS)

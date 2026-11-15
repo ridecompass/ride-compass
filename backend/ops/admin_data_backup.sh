@@ -10,13 +10,11 @@ set -euo pipefail
 
 # 書き出しはDBのディスクの、PostgreSQLのdata_directoryの外に置く。OSのディスクと/runには入らない大きさになる。
 # 前の回の書き出しは次の回まで残し、バケットへ置けなかった回も手元から送り直せるようにする。
-backup_dir=/mnt/pgdata/ridecompass-backup
+# 本物の書き出しに触れずに止め（空き・戻せる形か）を試すときだけ、BACKUP_DIRで試しの場所へ向ける。
+backup_dir=${BACKUP_DIR:-/mnt/pgdata/ridecompass-backup}
 # 圧縮は可逆なものから、本番で書き出して枠に余裕を持って収まったもの（pg_dumpの--compressの書き方）。
 # 強さを上げると、縮みはほぼ止まって時間だけが延び、本番の1コアを長くふさぐ。
 compress=zstd:9
-# バケットに置くのは常に1個で、無料の枠（10GB）に収める。超えるなら置かずに落ちる。
-# 枠は少ないほうの読み（10^10バイト）で取り、DBが育って枠に迫ったら、超える前に落ちて気づけるだけ余らせる。
-max_bytes=9500000000
 
 mkdir -p "$backup_dir"
 # DB名は、デプロイ済みのbackendと同じ接続先の設定から取る（接続先・利用者・パスワードは出さない——
@@ -58,11 +56,6 @@ exec {lock_input}>&-
 wait "$source_lock_PID"
 # 置く前に、戻せる形のアーカイブであることを確かめる。
 pg_restore --list "$next" > /dev/null
-bytes=$(stat -c %s "$next")
-if (( bytes > max_bytes )); then
-  echo "書き出しがバケットの枠に収まらないので置きません bytes=$bytes max=$max_bytes" >&2
-  exit 1
-fi
 
 # 認証はインスタンス・プリンシパル（鍵をVMに置かない）。VMに許すのはこのバケットのオブジェクトの一覧・作成・削除だけ。
 # 公開イメージは空の設定（資格なし）で取る。rootのDockerの設定にghcr.ioの失効した資格が残っていると、

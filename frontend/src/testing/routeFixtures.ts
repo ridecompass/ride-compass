@@ -16,7 +16,7 @@ export function makeRouteCandidate(overrides: Partial<RouteCandidate> = {}): Rou
     elevation_gain_m: null,
     segments: [],
     estimated_duration_seconds: null,
-    wind_from_previous_run: false,
+    wind_previous_run_from: null,
     cost_seconds: 0,
     penalty: { axis_seconds: {}, preferred_seconds: 0, avoided_seconds: 0, total_seconds: 0 },
     penalty_seconds_per_km: null,

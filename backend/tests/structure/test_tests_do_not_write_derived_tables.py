@@ -13,7 +13,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from app.infrastructure.derived_data_freshness import derived_tables
+from app.infrastructure.orm_base import derived_tables
 
 TESTS_ROOT = Path(__file__).resolve().parent.parent
 

@@ -36,7 +36,7 @@ from app.infrastructure import (
     tile_cache,
     tile_persistent_cache,
 )
-from app.infrastructure.derived_data_freshness import derived_tables
+from app.infrastructure.orm_base import derived_tables
 from app.infrastructure.orm_base import declared_metadata
 from app.infrastructure.source_models import SourceFeatureRow, SourceRunRow
 from app.infrastructure.derived_data_meta import DerivedDataMetaRow, replace_tuning
@@ -49,7 +49,6 @@ from app.infrastructure.road_graph_repository import (
 from app.config import settings
 from app.domain.cost_axes import replace_cost_axes
 from app.domain.tuning import TUNING_VALUES
-from app.services import derived_data_revision_service
 from scripts.schema_gap import collect_gaps
 from tests.admin_auth import ADMIN_PASSWORD, ADMIN_USERNAME
 from tests.cost_axes_fixture import cost_axes
@@ -151,17 +150,6 @@ async def app_database_at(monkeypatch: pytest.MonkeyPatch, url: str):
         await database.dispose_engines()
 
 
-@pytest.fixture(autouse=True)
-def _closed_redis_circuit_breaker():
-    """redis_client.pyのサーキットブレーカーは閉じた状態から始める。
-
-    状態はプロセス内のモジュール変数に残るため、Redis疎通不能をシミュレートするテストが
-    1つでも実行されると、無関係な後続テスト（正常系のフェイクRedisを使うテスト）まで
-    「クールダウン中」と誤判定されてしまう。
-    """
-    redis_client.record_redis_success()
-
-
 @pytest.fixture
 def clock():
     """時計を止める（freezegun）。`tick(秒)`で進めたぶんだけ進み、`move_to`でその時刻へ飛ぶ。
@@ -180,28 +168,22 @@ def clock():
 
 
 @pytest.fixture
-def redis_server():
-    """Redisの代役（fakeredis）のサーバ。`connected = False`にすると、以後のコマンドが接続の失敗になる。
-
-    テストごとに作る——サーバを渡さずに作ったfakeredisのクライアントは同じ接続先どうしで中身を共有し、
-    前のテストが書いたキーが残る。
-    """
-    return fakeredis.FakeServer()
-
-
-@pytest.fixture
-async def fake_redis(monkeypatch, redis_server):
-    """空のRedis。接続を作る所（`redis.asyncio.from_url`）を同じサーバのfakeredisへ差し、共有クライアントを
+async def fake_redis(monkeypatch):
+    """空のRedis。接続を作る所（`redis.asyncio.from_url`）をテストごとに作ったfakeredisのサーバへ差し、共有クライアントを
     閉じる口（`redis_client.py: close_redis_client`）で作る前に戻すので、`get_redis_client`を読むどの
-    モジュールからも同じものが見える。返すのはその共有クライアントで、値は生のバイト列で返る。"""
-    monkeypatch.setattr(redis.asyncio, "from_url", functools.partial(fakeredis.FakeAsyncRedis.from_url, server=redis_server))
+    モジュールからも同じものが見える。返すのはその共有クライアントで、値は生のバイト列で返る。
+
+    サーバをテストごとに作る——サーバを渡さずに作ったfakeredisのクライアントは同じ接続先どうしで中身を共有し、
+    前のテストが書いたキーが残る。"""
+    server = fakeredis.FakeServer()
+    monkeypatch.setattr(redis.asyncio, "from_url", functools.partial(fakeredis.FakeAsyncRedis.from_url, server=server))
     await redis_client.close_redis_client()
     yield redis_client.get_redis_client()
     await redis_client.close_redis_client()
 
 
 class MonotonicClock:
-    """回数制限・外部I/Oの記録・所要時間の測り・データの世代の読み直しが読む単調時計。止まっていて、進めたぶんだけ進む。"""
+    """回数制限・外部I/Oの記録・所要時間の測りが読む単調時計。止まっていて、進めたぶんだけ進む。"""
 
     def __init__(self) -> None:
         self._now = 0.0
@@ -215,35 +197,28 @@ class MonotonicClock:
 
 @pytest.fixture(autouse=True, scope="session")
 def _monotonic_clock_for_the_session():
-    """回数制限・所要時間の測り・データの世代の読み直しが読む時計を、テストが進める時計へ替える。
+    """回数制限・所要時間の測りが読む時計を、テストが進める時計へ替える。
 
-    戻すのはセッションの終わりだけ。途中で実時計へ戻すと、進めた時計で数えた回数・窓の始まり・TTLが
+    戻すのはセッションの終わりだけ。途中で実時計へ戻すと、進めた時計で数えた回数・窓の始まりが
     未来の時刻として残り、後のテストに食い込む。freezegun（`clock`）はこの時計を動かさない——止めた時刻は
-    2026年の暦の秒で、実時計の単調時計より大きいので、戻った後の窓・TTLが明けなくなる。
+    2026年の暦の秒で、実時計の単調時計より大きいので、戻った後の窓が明けなくなる。
     """
     clock = MonotonicClock()
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(rate_limiter, "time", clock)
         patch.setattr(stopwatch, "time", clock)
-        patch.setattr(derived_data_revision_service, "time", clock)
         yield clock
 
 
 @pytest.fixture(autouse=True)
 def monotonic_clock(_monotonic_clock_for_the_session) -> MonotonicClock:
-    """テストごとに、回数制限の窓・データの世代のTTLのどちらよりも長く進める。
+    """テストごとに、回数制限の窓より長く進める。
 
-    どれもプロセス大域の記録で、進めないと前のテストの回数が今のテストの上限に食い込み、
-    前のテストが読んだ世代のままTTLの内側でリポジトリが世代を聞かれない。
+    回数はプロセス大域の記録で、進めないと前のテストの回数が今のテストの上限に食い込む。
     記録そのものには触らない。
     """
     clock = _monotonic_clock_for_the_session
-    clock.advance(
-        max(
-            rate_limiter.WINDOW_SECONDS,
-            settings.derived_data_revision_check_interval_seconds,
-        )
-    )
+    clock.advance(rate_limiter.WINDOW_SECONDS)
     return clock
 
 

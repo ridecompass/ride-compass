@@ -130,6 +130,7 @@ ROUTE_POLICIES: Final[tuple[tuple[str, CachePolicy], ...]] = (
     # 天候（URLに緯度経度を含むため地点ごとに別エントリになる）
     ("/api/weather", SHORT),
     ("/api/weather/msm-grid", SHORT),
+    ("/api/weather/msm-status", SHORT),
     ("/api/weather/warnings", VOLATILE),
     ("/api/weather/wbgt", VOLATILE),
     ("/api/weather/flood-forecast", VOLATILE),

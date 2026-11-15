@@ -180,6 +180,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/weather/msm-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_msm_status_api_weather_msm_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/place-search": {
         parameters: {
             query?: never;
@@ -580,22 +596,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/admin/derived-data/freshness": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["get_derived_data_freshness_api_admin_derived_data_freshness_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/derived-database": {
         parameters: {
             query?: never;
@@ -815,27 +815,9 @@ export interface components {
             client_tuning: {
                 [key: string]: number;
             };
-            /** Tile Versions */
-            tile_versions: {
-                [key: string]: string;
-            };
             /** Accident Years */
             accident_years: number[];
             road_classes: components["schemas"]["RoadClassCatalog"];
-        };
-        /** ColumnNulls */
-        ColumnNulls: {
-            /** Column */
-            column: string;
-            /** Null Count */
-            null_count: number;
-        };
-        /** ColumnsChange */
-        ColumnsChange: {
-            /** Added */
-            added: string[];
-            /** Removed */
-            removed: string[];
         };
         /** Condition */
         Condition: {
@@ -969,7 +951,7 @@ export interface components {
             /** Imports */
             imports: components["schemas"]["ImportRunEntry"][];
             /** Tables */
-            tables: components["schemas"]["app__services__db_status_service__TableEntry"][];
+            tables: components["schemas"]["TableEntry"][];
             connections: components["schemas"]["ConnectionEntry"];
             /** Database Bytes */
             database_bytes: number;
@@ -1001,20 +983,6 @@ export interface components {
             /** Debug Mode */
             debug_mode: boolean;
             msm: components["schemas"]["MsmFreshnessResponse"] | null;
-        };
-        /** DerivedDataFreshnessReport */
-        DerivedDataFreshnessReport: {
-            /**
-             * Computed At
-             * Format: date-time
-             */
-            computed_at: string;
-            /** Sources */
-            sources: components["schemas"]["SourceEntry"][];
-            /** Tables */
-            tables: components["schemas"]["app__services__derived_data_freshness_service__TableEntry"][];
-            /** Tuning */
-            tuning: components["schemas"]["TuningEntry"][];
         };
         /** ElevationStretch */
         ElevationStretch: {
@@ -1125,6 +1093,8 @@ export interface components {
             highest_hourly_precipitation_mm: number | null;
             /** Highest Hourly Wind Speed Ms */
             highest_hourly_wind_speed_ms: number | null;
+            /** Latest Run End */
+            latest_run_end: string;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -1356,6 +1326,11 @@ export interface components {
              */
             op: "missing";
         };
+        /** MsmForecastStatus */
+        MsmForecastStatus: {
+            /** Latest Run End */
+            latest_run_end: string;
+        };
         /** MsmFreshnessResponse */
         MsmFreshnessResponse: {
             /** Last Run At */
@@ -1377,6 +1352,8 @@ export interface components {
             longitude_step_deg: number;
             /** Points */
             points: components["schemas"]["MsmGridPointForecast"][];
+            /** Latest Run End */
+            latest_run_end: string;
         };
         /** MsmGridPointForecast */
         MsmGridPointForecast: {
@@ -1699,8 +1676,8 @@ export interface components {
             segments: components["schemas"]["RouteSegmentDetail"][];
             /** Estimated Duration Seconds */
             estimated_duration_seconds: number | null;
-            /** Wind From Previous Run */
-            wind_from_previous_run: boolean;
+            /** Wind Previous Run From */
+            wind_previous_run_from: string | null;
             /** Cost Seconds */
             cost_seconds: number;
             penalty: components["schemas"]["PenaltyBreakdown"];
@@ -1874,17 +1851,6 @@ export interface components {
             /** Seconds Per Km */
             seconds_per_km: number;
         };
-        /** SourceEntry */
-        SourceEntry: {
-            /** Source */
-            source: string;
-            /** Derived Run Id */
-            derived_run_id: number | null;
-            /** Latest Run Id */
-            latest_run_id: number | null;
-            /** Needs Rebuild */
-            needs_rebuild: boolean;
-        };
         /** SucceededRunCounts */
         SucceededRunCounts: {
             /** Id */
@@ -1894,6 +1860,25 @@ export interface components {
              * Format: date-time
              */
             finished_at: string;
+        };
+        /** TableEntry */
+        TableEntry: {
+            /** Table Name */
+            table_name: string;
+            /** Row Count */
+            row_count: number;
+            /** Total Bytes */
+            total_bytes: number;
+            /** Dead Tuples */
+            dead_tuples: number;
+            /** Analyzed At */
+            analyzed_at: string | null;
+            /** Vacuumed At */
+            vacuumed_at: string | null;
+            /** Needs Attention */
+            needs_attention: boolean;
+            /** Note */
+            note: string;
         };
         /** ThresholdEquivalents */
         ThresholdEquivalents: {
@@ -1951,21 +1936,6 @@ export interface components {
             lens: components["schemas"]["LensBands"];
             /** Lens Id */
             lens_id: string;
-        };
-        /** TuningEntry */
-        TuningEntry: {
-            /** Param Id */
-            param_id: string;
-            /** Label */
-            label: string;
-            /** Unit */
-            unit: string;
-            /** Derived Value */
-            derived_value: number | null;
-            /** Current Value */
-            current_value: number;
-            /** Needs Rebuild */
-            needs_rebuild: boolean;
         };
         /** TuningParameterView */
         TuningParameterView: {
@@ -2065,37 +2035,6 @@ export interface components {
             deg: number;
             /** Label */
             label: string;
-        };
-        /** TableEntry */
-        app__services__db_status_service__TableEntry: {
-            /** Table Name */
-            table_name: string;
-            /** Row Count */
-            row_count: number;
-            /** Total Bytes */
-            total_bytes: number;
-            /** Dead Tuples */
-            dead_tuples: number;
-            /** Analyzed At */
-            analyzed_at: string | null;
-            /** Vacuumed At */
-            vacuumed_at: string | null;
-            /** Needs Attention */
-            needs_attention: boolean;
-            /** Note */
-            note: string;
-        };
-        /** TableEntry */
-        app__services__derived_data_freshness_service__TableEntry: {
-            /** Table Name */
-            table_name: string;
-            /** Row Count */
-            row_count: number;
-            /** Columns */
-            columns: components["schemas"]["ColumnNulls"][];
-            columns_change: components["schemas"]["ColumnsChange"] | null;
-            /** Needs Rebuild */
-            needs_rebuild: boolean;
         };
     };
     responses: never;
@@ -2437,6 +2376,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_msm_status_api_weather_msm_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MsmForecastStatus"];
                 };
             };
         };
@@ -3255,26 +3214,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_derived_data_freshness_api_admin_derived_data_freshness_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DerivedDataFreshnessReport"];
                 };
             };
         };

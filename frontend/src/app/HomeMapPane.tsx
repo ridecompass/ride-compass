@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import FirstVisitIntro from "@/components/FirstVisitIntro/FirstVisitIntro";
 import { Button } from "@/components/ui/Button/Button";
 import { cardVariants } from "@/components/ui/Card/Card";
@@ -18,6 +18,7 @@ import MapView from "@/features/map/MapView/MapView";
 import type { MapTapMode } from "@/features/map/MapView/mapTaps";
 import type { useMapView } from "@/features/map/view/useMapView";
 import RideBottom from "@/features/ride/RideBottom/RideBottom";
+import RideDarkScreen, { RideDarkScreenButton } from "@/features/ride/RideDarkScreen/RideDarkScreen";
 import RideLockButton from "@/features/ride/RideLockButton/RideLockButton";
 import RideModeButton from "@/features/ride/RideModeButton/RideModeButton";
 import RideVoiceButton from "@/features/ride/RideVoiceButton/RideVoiceButton";
@@ -91,6 +92,9 @@ export default function HomeMapPane({
   const { results, splice } = route;
   const { progress, upcomingTurn, voice } = guidance;
   const navigating = riding.status !== "off";
+  // ほぼ黒の画面を出しているか。入るのは音声案内を入れている間だけで、出したあとは音声案内を切っても出したまま。案内を終えると閉じる。
+  const [dark, setDark] = useState(false);
+  if (!navigating && dark) setDark(false);
   const selected = results.selectedCandidate;
   const selection = results.selectedRouteSegment;
   // 走行中の道のりのグラフ（候補が無ければ出さない。結果の図と同じくなぞると地点を選び、地図にその区間の小窓を出す）。
@@ -256,7 +260,16 @@ export default function HomeMapPane({
         />
         {navigating && <RideLockButton locked={riding.locked} onLock={riding.lock} onUnlock={riding.unlock} />}
         {voice.available && <RideVoiceButton on={voice.on} onToggle={voice.toggle} />}
+        {voice.on && <RideDarkScreenButton onEnter={() => setDark(true)} />}
       </div>
+      {dark && (
+        <RideDarkScreen
+          turn={upcomingTurn}
+          voiceOn={voice.on}
+          onVoiceToggle={voice.toggle}
+          onExit={() => setDark(false)}
+        />
+      )}
       {navigating && (
         <RideBottom
           status={riding.status}

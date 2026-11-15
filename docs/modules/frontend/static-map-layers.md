@@ -30,7 +30,6 @@
 | `features/map/scene/buildScene.ts` | 地図に載るもの全部を1つのsceneへ組み立てる唯一の口（`features/map/scene/buildScene.ts: buildMapScene`）。受け取るのは実行時にしか決まらない値だけで、見た目の値は各グループが持つ。家族を1つ足すのはここの並びへ1行足すこと |
 | `features/map/scene/applyToMap.ts` | 画面の状態を地図へ当てる唯一の入口（状態→各家族の入力`features/map/scene/applyToMap.ts: sceneInputsFrom`→`buildMapScene`→`features/map/scene/applyToMap.ts: applyMapScene`）。作り直しも同じ道を通り、空から当て直すだけが違う。**再描画で失われる表示状態（filter・feature-state・visibility）を持つ描画は、ここから辿れる位置へ置く**——辿れないものは`setStyle()`後に作り直されない。**入力の型はsceneの側で宣言する**（`MapView`のpropsから借りると、sceneと`MapView`が互いをimportし合う） |
 | `features/map/maplibreWorker.ts` | MapLibreのWorkerの場所を、ビルド前に静的配信へ複製したもの（`scripts/copy-maplibre-worker.mjs`）へ向ける。地図を作る前に呼ばないと、Workerがバンドラの解決できないURLを読みに行き、スタイル処理とタイル取得が止まる |
-| `lib/mapDisplay/tileVersionGated.ts` | タイルの世代が届くまで要求できない情報源の集合（`lib/mapDisplay/tileVersionGated.ts: TILE_VERSION_GATED_SOURCES`）と、それを読むレイヤーを持つチップのグループの名前（`lib/mapDisplay/tileVersionGated.ts: tileVersionGatedGroupLabels`）。地図のレイヤーと、画面の設定を取れないことを告げる文（`hooks/useClientConfig.ts: clientConfigFetchFailure`）が同じ集合を読む |
 | `lib/mapDisplay/legendFilter.ts` | 凡例の行の型（`lib/mapDisplay/legendFilter.ts: LegendEntry`）と、凡例で隠した行を落とす絞り込み式の組み立て（ルート線のモードが使う） |
 | `lib/mapDisplay/landcoverClasses.ts` | 土地被覆のクラス（表示名・色・割合列・地図に塗るか）。backendのレジストリ由来の生成物（`landcover-classes.json`）を読むだけの薄い層で、凡例（表示専用の凡例`readOnlyLegends.ts`）と道のりのグラフの「緑と水」の帯が共有する。色は地図タイルの塗りと同じ値のため、凡例と地図がずれない。**凡例は塗るクラスだけ**（`lib/mapDisplay/landcoverClasses.ts: LANDCOVER_PAINTED_CLASSES`）——塗らないクラスを並べると色見本があるのに地図のどこにも無い表になる |
 | `features/map/layers/primaryAttributes.ts` | 一次属性の名前（`features/map/layers/primaryAttributes.ts: PRIMARY_ATTRIBUTE_LABELS`。道の窓の事実の項目名が読む）と、属性idのうち地図のレイヤーを持つものの引き方。どちらも源泉の宣言から導き、対応表を持たない |
@@ -58,7 +57,7 @@
 | `services/placeLinkApi.ts` | 地図の点の名前から開く外の地図のリンクを backend（`GET /api/place-link`）に引く口と、点ごとに取得を共有する問い合わせ（`services/placeLinkApi.ts: placeLinkQuery`） |
 | `features/map/MapView/RoadInspectorPopup.tsx`（上の帯と属性の箇所） | 道をクリックしたときの詳細（**Reactで描き、MapLibreのPopupへportalで差し込む**）。上の帯に、道の層を出していればその先頭の層の線と同じ見本（`features/map/scene/groups/roadLines.ts: shownRoadTrackOf`）・名前（名前の無い道は出さない）・事実の要約（路面等）を出し、属性（タイルの事実と、負担を取ったときに届くタグ。**同じ項目は1度だけ**で、日本語の値だけを出し、英語の生の値と登録外のタグはその中の「その他のタグ」にさらに畳む）は畳む——地図の上の小さな枠に収めるため。中身の高さには上限を付けて中でスクロールさせ、中身が伸び縮みしたら置く向きを決め直す（MapLibreのPopupは地図が動いたときにしか決め直さず、開いた後に伸びた中身が画面の外へはみ出す）。道のストレス（開いたら取りに行く、地図のレンズと同じ値と事実）は[地図: レンズ・ルート色分け](map-axis-coloring.md)の同じファイルの行。**デバッグログONのときだけ`osm_way_id`を出す**——値がおかしい道を見つけたとき、地図で押した1本をそのままbackendの調査へ渡せるようにする。一般の利用者には読めない値のため常時は出さない |
 | `features/map/MapView/roadFacts.ts` | クリックした道の「事実」（例: 道路名・路面の種類・農道・林道の等級・トンネル）をタイルのプロパティから組み立てる純関数。項目名と値の呼び名、タイルのどの属性を読むか（`features/map/MapView/roadFacts.ts: tile_property`）は材料カタログ（生成物`material-catalog.json`）から引く。材料の外の列（識別子・道路名）の名前は生成物`region-tile-config.json`の`region-tile-config.json: road_surface.properties`から引き、押した道のway_id・フィーチャーの鍵もここの関数（`roadWayId`・`roadFeatureKey`）で読む。該当しない項目は行ごと出さない（「なし」が並ぶと該当する項目が埋もれる）。路面の種類（材料`surface`。区分ではなくタグの値の呼び名）だけは値が無くても「不明」として出す——どの道でも最初に見たい項目で、行ごと消すと「舗装されていない」と読める |
-| `features/map/regionApi.ts`（`features/map/regionApi.ts: roadSurfaceTileUrl`/`features/map/regionApi.ts: pointTileUrl`とタイル世代の判定） | ベクタタイルのURLテンプレート（`features/map/regionApi.ts: fetchLensMaterials`は[地図: レンズ・ルート色分け](map-axis-coloring.md)の管轄）。点のレイヤーはどれも1つの配信（backend `GET /api/region/point-tiles/{layer}/...`）で、URLはレイヤー名（生成物`region-tile-config.json`の`region-tile-config.json: point_layers`の鍵。タイルの世代の系統の名前でもある）で組み、source-layer名も同じ一覧から読む。世代はbackendから実行時に届き、**全系統が揃ったもの（`completeTileVersions`だけが作る`TileVersions`）でしかURLを組み立てない** |
+| `features/map/regionApi.ts`（`features/map/regionApi.ts: roadSurfaceTileUrl`/`features/map/regionApi.ts: pointTileUrl`） | ベクタタイルのURLテンプレート（`features/map/regionApi.ts: fetchLensMaterials`は[地図: レンズ・ルート色分け](map-axis-coloring.md)の管轄）。点のレイヤーはどれも1つの配信（backend `GET /api/region/point-tiles/{layer}/...`）で、URLはレイヤー名（生成物`region-tile-config.json`の`region-tile-config.json: point_layers`の鍵）で組み、source-layer名も同じ一覧から読む |
 | `lib/tileBaseUrl.ts` | タイル配信元オリジンの決定（既定はフロント自身のオリジン＝rewrites経由、`lib/tileBaseUrl.ts: NEXT_PUBLIC_TILE_BASE_URL`設定時はbackend直接）。路面/POI/事故タイル・基礎地図スタイル（`features/map/regionApi.ts: mapStyleUrl`）・国土地理院色別標高図・JMA動的タイル（[動的気象レイヤー](dynamic-weather-layers.md)）が共通に使う |
 | `features/map/MapOverlayControls/MapOverlayControls.tsx` | 地図の左上の「表示」のボタンと、押すと開く地図に出す情報の一覧（下記「最上位グルーピング」）。群への束ね方と並びはレイヤーカタログ（`features/map/MapOverlayControls/MapOverlayControls.tsx: mapOverlayGroupFor`・`mapLayers.ts: MAP_OVERLAY_GROUP_ORDER`）から導く。一覧は「重ねる情報」と「範囲と色」のタブに分ける。「重ねる情報」は群の見出しで中身をたため、群ごとに一覧に並べる項目を選べ、末尾にまとめて戻す操作（下記「まとめて戻す操作」）を並べる。「範囲と色」は`features/map/MapOverlayControls/MapLookSettings.tsx`が描く |
 | `features/map/MapOverlayControls/MapLookSettings.tsx` | 「表示」の「範囲と色」のタブ。表示する範囲（ルート沿い・地図全体。下記「ルートの近くの点」）と地図の色（明るい・暗い。下記「暗い地図」）を2択で選び、説明は見出しのⓘで行のすぐ下に開く |
@@ -535,40 +534,6 @@ ONにしても何も塗られない。「データが無い地域」と区別で
 表示ON/OFFでは出し分けない。ONにする前に「いまの縮尺では出ない」と分かる方が、ONにして
 から何も起きない理由を探すより早い。
 
-**同じ判定を複数の出し先へ出すときは、判定を1か所で行い、結果を配る。** チップの案内文と
-状態ドットは、ズームと世代の判定を`overlayChips.ts`の1か所で行い、どちらもそこから作る——
-出し先ごとに判定すると、片方だけ抑制し忘れて「ドットは出ているのに理由の文が無い」食い違いが
-生まれる。
-
-## 「配信情報を取得できず表示できません」の案内
-
-タイルの世代は`GET /api/client-config`（画面の設定）が運び、地図は共有の画面の設定と同じ取得の応答から世代を導く
-（`features/map/mapCatalog.ts: mapConfigFromResponse`）。**届くまでソースを作らない**——先に作ると
-世代の違う中身がブラウザのキャッシュへ載って以後ずっと残る。したがって画面の設定の取得が
-失敗した間、道路・POI・事故は地図から**丸ごと消える**。これ自体は正しい挙動で、直すべきは
-「消えた理由が画面のどこにも無い」ことだけである（利用者からは「この地域にデータが無い」と
-見える）。
-
-ズーム不足と同じ仕組みに乗せる。対象は**記述子が宣言した情報源が世代を要るレイヤー**で、
-`mapLayers.ts: tileVersionGatedLayerIds`が引く。`overlayChips.ts`がそのチップへ状態ドットを
-付ける——まだ取得中なら`loading`、取得が終わったのに世代が無ければ`error`。
-`TILE_VERSIONS_MISSING_NOTICE`は**取得が終わってから**出す——取得中に「取得できず」と出すと、
-待てば出るものを壊れていると読ませる。
-
-**暗黙の前提**: 「世代が揃ったか」を画面の設定の取得完了で代用しない。世代の系統が欠けた応答が
-200で返る窓では、設定は取得済みなのに世代は揃わず、そこでURLを組み立てた側が
-例外になる。判定は`features/map/regionApi.ts: completeTileVersions`だけが答え、揃うまで地図の一覧の世代（`features/map/mapCatalog.ts: MapCatalog.tileVersions`）は`null`のまま。
-
-宣言は源泉に1つ。タイルで配る情報源は**世代を配るタイルの系統の名前**を名乗る（backendの
-`map_display.py`が一次属性の`tile_kind`から導く）ので、世代を要る情報源は系統の一覧
-（生成物`region-tile-config.json`の`tile_version_kinds`。`lib/mapDisplay/tileVersionGated.ts`が読む）そのものになる。どのレイヤーがその
-情報源を読むかも源泉の宣言で、レイヤーごとに「世代を要るか」は持たない——2つ持たせると
-ずれたときに「描けていないのにチップが黙る」。
-
-同じ失敗の再試行導線は常設ヘッダーの「未取得」の印（[ページ全体構成](page-composition.md)「失敗・空・待ちの
-伝え方」）にある（画面の設定の取得失敗として告知する。描けないものの名前は、世代を要るレイヤーを持つチップのグループの名前から
-作る。`hooks/useClientConfig.ts: clientConfigFetchFailure`）。地図側は理由を出すだけで、再試行ボタンは置かない。
-
 **暗黙の前提**: レンズの層（レンズの線）も同じ路面タイルを共有し、道ごとの鍵を持つ`features/map/regionApi.ts: ROAD_TILE_MIN_ZOOM`から
 描く（`scene/groups/axisLines.ts`の層の`minzoom`）が、地図上チップを持たないため案内の出し先が無い。
 
@@ -811,7 +776,7 @@ JSの例外は飛ばず、`map.on("error")`にしか出ない。画面上は**�
 描かれない**。記録用の代役地図は式を検証しないため、`scene/scene.allLayers.contract.test.ts`が
 出せるものを全部出した状態の宣言（凡例の絞り込みを含む）をMapLibreと同じ版のstyle検証
 （`@maplibre/maplibre-gl-style-spec: validateStyleMin`）へ通す。実際のアプリの配線（カタログ・
-タイル世代・保存されたレイヤーのON/OFFから組まれたもの）が本物の地図の`addLayer`を通ることは、
+保存されたレイヤーのON/OFFから組まれたもの）が本物の地図の`addLayer`を通ることは、
 E2Eの`e2e/map-runtime.spec.ts`「宣言された地図レイヤーを全部ONにしても、スタイル検証のエラーが
 出ない」が見る（取得の失敗以外の地図のエラーが0件）。タイルの中身を読む評価時の誤り（下の
 欠損値の比較等）は、E2Eのタイルが空なので、どちらでも捕まらない。

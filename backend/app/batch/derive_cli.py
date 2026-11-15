@@ -30,9 +30,9 @@
 何も読み込まれていない。
 段へ渡るのは`STAGES`が宣言した較正値だけである。
 
-**作り直しの記録（作った取込・表の列・使った較正値。`derived_data_meta.py`）は、鍵（取込のソース・表・較正値）ごとに、
-それを使う段が全部流れたときだけ今の値にし、ほかは前回の記録を残す**（`carried_over`）——流さなかった段の表は前回の取込・列・
-較正値で作ったままなので、今の値を書くと鮮度の台帳と、記録を読む所（事故密度の分母・地図の点のタイル等）が表と食い違う。
+**作り直しの記録（作った取込・使った較正値。`derived_data_meta.py`）は、鍵（取込のソース・較正値）ごとに、
+それを使う段が全部流れたときだけ今の値にし、ほかは前回の記録を残す**（`carried_over`）——流さなかった段の表は前回の取込・
+較正値で作ったままなので、今の値を書くと記録を読む所（事故密度の分母・地図の点のタイル等）が表と食い違う。
 道路網の配列が読む較正値は、配列（`NETWORK`）が毎回流れるので毎回今の値になる。
 """
 
@@ -67,8 +67,7 @@ from app.batch.common import (
     run_batch_cli,
 )
 from app.infrastructure.tuning_overrides import load_tuning_values
-from app.infrastructure import derived_data_meta, road_network_store
-from app.infrastructure.derived_data_freshness import declared_columns
+from app.infrastructure import derived_data_meta, region_tile_cache, road_network_store
 from app.domain.tuning import (
     ACCIDENT_FATAL_WEIGHT_ID,
     ACCIDENT_MATCH_DISTANCE_ID,
@@ -178,9 +177,8 @@ def _users(pairs: Iterable[tuple[str, str]]) -> dict[str, frozenset[str]]:
     return {key: frozenset(names) for key, names in users.items()}
 
 
-#: 作り直しの記録の鍵ごとの、その鍵を使う段（道路網の配列は`NETWORK`）。取込のソースは読む段、表は書く段、較正値は読む段。
+#: 作り直しの記録の鍵ごとの、その鍵を使う段（道路網の配列は`NETWORK`）。
 SOURCE_USERS = _users((source, stage.name) for stage in STAGES for source in stage.sources)
-TABLE_USERS = _users((table, stage.name) for stage in STAGES for table in stage.tables)
 TUNING_USERS = _users([*((param, stage.name) for stage in STAGES for param in stage.tuning.values()),
                        *((param, NETWORK) for param in NETWORK_TUNING)])
 
@@ -190,7 +188,7 @@ _V = TypeVar("_V")
 def carried_over(previous: Mapping[str, _V], current: Mapping[str, _V], users: Mapping[str, frozenset[str]],
                  ran: Iterable[str]) -> dict[str, _V]:
     """作り直しの記録に書く値（鍵は`users`の鍵）: 使う段が全部流れた鍵は今の値、ほかは前回の記録。前回に無ければ書かない——
-    読み手は記録の無い較正値を読めず（読む段を流し直す）、鮮度の台帳は記録の無い鍵を作り直しが要る側に数える。"""
+    読み手は記録の無い較正値を読めない（読む段を流し直す）。"""
     done = {*ran, NETWORK}
     result: dict[str, _V] = {}
     for key, used_by in users.items():
@@ -288,7 +286,6 @@ async def _read_tuning(database_url: str) -> dict[str, float]:
 async def run(database_url: str, stages: Sequence[str] | None = None) -> int:
     """`stages`の段（Noneか空なら全部の段）と、その出力を読む後ろの段を作り直し、道路網の配列を作って入れ替える。"""
     ran = stages_to_run(stages)
-    columns = declared_columns()
     tuning = await _read_tuning(database_url)
     conn = await asyncpg.connect(asyncpg_dsn(database_url))
     if not await conn.fetchval("SELECT pg_try_advisory_lock(hashtext($1))", SOURCE_DATA_LOCK):
@@ -299,13 +296,12 @@ async def run(database_url: str, stages: Sequence[str] | None = None) -> int:
     try:
         runs = {row["source"]: row["run_id"] for row in await conn.fetch(LATEST_SUCCEEDED_RUNS_SQL)}
         previous = await derived_data_meta.read_records(conn)
-        # 作った取込・列・較正値の記録も作業用のスキーマで書く——事故密度の分母が取込の記録から読まれ、作業用の
+        # 作った取込・較正値の記録も作業用のスキーマで書く——事故密度の分母が取込の記録から読まれ、作業用の
         # スキーマから作る道路網の配列も数と同じ取込の年で割り、記録した較正値で読むため。どの記録も派生の表と一緒に入れ替わる。
         tables = [*(table for stage in ran for table in stage.tables), *derived_data_meta.RECORD_TABLES]
         await _create_work_tables(conn, tables)
         done = [stage.name for stage in ran]
         await derived_data_meta.replace_source_runs(conn, carried_over(previous.runs, runs, SOURCE_USERS, done))
-        await derived_data_meta.replace_columns(conn, carried_over(previous.columns, columns, TABLE_USERS, done))
         await derived_data_meta.replace_tuning(conn, carried_over(previous.tuning, tuning, TUNING_USERS, done))
         for index, stage in enumerate(ran, 1):
             stage_started = time.perf_counter()
@@ -326,8 +322,11 @@ async def run(database_url: str, stages: Sequence[str] | None = None) -> int:
             logger.warning("作業用のスキーマ %s を消せなかった（次の作り直しの最初に消す）",
                            _WORK_SCHEMA, exc_info=True)
         await conn.close()
-    logger.info("派生を作り直して入れ替えた: 流した段 %s / 派生データの世代 %d / %s",
-                "→".join([*(stage.name for stage in ran), NETWORK]), revision, format_duration(time.perf_counter() - started))
+    # 置き場はbackendと同じディスクで、入れ替えた表で焼いていないタイルを配らないよう、入れ替えの後に捨てる。
+    discarded = region_tile_cache.discard_region_tiles()
+    logger.info("派生を作り直して入れ替えた: 流した段 %s / 派生データの世代 %d / 捨てた地域タイル %d / %s",
+                "→".join([*(stage.name for stage in ran), NETWORK]), revision, discarded,
+                format_duration(time.perf_counter() - started))
     return 0
 
 

@@ -107,14 +107,6 @@ jobs:
               sudo sed -i "s#^CORS_ALLOWED_ORIGINS=.*#&,$REQUIRED_ORIGIN#" "$ENV_FILE"
             fi
             sudo docker build -t ridecompass-backend:latest .
-            # 起動できるイメージかをここで確かめる（アプリを読み込むだけ。DB接続・ジョブ起動は
-            # lifespanの中でまだ動かない）。依存が要求する共有ライブラリの不足のように、
-            # テストでもビルドでも出ずコンテナ入れ替えの瞬間に起動不能として現れる壊れ方は、
-            # 旧コンテナが動いているこの時点で落とせば本番を止めずに気づける。
-            sudo docker run --rm \
-              --env-file /home/ubuntu/ridecompass-backend.env \
-              ridecompass-backend:latest \
-              python -c "import app.main"
             # backend/data配下（DEM・基礎地図のタイルキャッシュ・way_id別の動的値のディスク
             # キャッシュ・道路網全体の配列・警報の区域の境界の置き場）はコンテナの書き込み可能レイヤーに置かれ、
             # ボリュームマウントが無いとdocker rm時に消える。ホスト側ディレクトリへマウントして

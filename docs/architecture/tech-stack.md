@@ -75,7 +75,7 @@
 Dependabotは、masterが同じ版になってもPull Requestを閉じないことがあり、閉じる条件は公式の文書に無い。依存の版上げを
 取り込むタスクは、同じ版を出しているDependabotのPull Requestをissueの本文に番号で名指し、完了の条件に
 「dependabot の #<番号> が閉じている」を書く（判定役は、issueが名指したDependabotのPull Requestだけを担当が閉じてよいものと
-読む。`.github/claude-task/settings.json`の`autoMode`）。閉じるのは実装担当で、マージのあとの残りとして済ませる:
+読む）。閉じるのは実装担当で、マージのあとの残りとして済ませる:
 `gh pr view <番号> -R ridecompass/ride-compass --json state`が`OPEN`なら
 `gh pr close <番号> -R ridecompass/ride-compass --comment "<取り込んだ Pull Request> で同じ版を取り込んだ"`で閉じる。
 
@@ -117,8 +117,7 @@ Windowsでは`uvicorn --reload`がリローダー親プロセスとワーカー�
 
 **本番の宛先は、リポジトリの根の`production-origins.json`だけが持つ。** ワークフロー（像のビルド・デプロイ・デプロイのあとの
 確かめ）と道具（例: `prod_route_check.py`）はそこから読む。値を書くしかない所（下の表・担当の設定の説明の文等）は、
-`backend/tests/structure/test_single_owner_values.py`が持ち主と照らし、違えば全部の Pull Request の CI
-（`ci.yml`の`doc-reading-tests`）が落ちる。宛先が変わったら、このファイルと照らしで落ちた所を同じ Pull Request で直す。マージすると、
+宛先が変わったら、このファイルと同じ Pull Request で直す。マージすると、
 `ci.yml: changes`がこのファイルの変更をbackendとfrontendの両方の変更に数えるので、frontendの像が新しい宛先で作られて出て、
 backendのデプロイがCORSの許可へ新しいfrontendの宛先を足す。
 
@@ -351,8 +350,7 @@ publicリポジトリで標準のGitHubホストランナーを使う実行を�
     書けない。担当は持ち時間いっぱいまで動くので、レーン0を担当だけに与え、ほかのジョブはレーン1以降に置く（同じレーンに置くと、
     担当が終わるまで待つ）。同じ実行の中で並んで始まるジョブは別のレーンへ、長いジョブ（変異テストの全部の測り）は始まりの
     短いジョブとだけ同じレーンへ置き、Pull Request の CI の通しの長さを延ばさない。
-  - レーンの数と、どのジョブもレーンを持つことは `backend/tests/structure/test_workflow_lanes.py: LANES` のテストが持ち、
-    ワークフローを足す・ジョブを足すときに書き漏れると落ちる。
+  - ワークフローを足す・ジョブを足すときは、どのジョブにもレーンを書く。
 
 **privateにしたら、この節の前提が崩れる。** 公式の同じページによれば、Freeプランのprivate
 リポジトリは標準ランナーで月2,000分までで、支払い方法が未登録なら使い切った時点で実行が止まる
@@ -413,8 +411,8 @@ CIと`docker-compose.yml`も上げる。** CIが本番と違う版で合否を�
 - CIは`backend/Dockerfile`のイメージの中ではなく、ランナーのPython（`setup-python`）で
   テストする。版はそのイメージの`FROM`から取る（`.github/actions/python/action.yml`）。Pythonの依存はwheelが自前のライブラリ（GEOS・PROJ等）を同梱するため本番と
   同じものになるが、**wheelに同梱されないOSのライブラリ**（例: rasterioが要る`libexpat`）の
-  差はCIでは見えない。それは`deploy-backend.yml`がコンテナを入れ替える前の
-  `import app.main`で止まる。
+  差はCIのテストでは見えない。それはCIの`backend-image`（本番と同じDockerfile・aarch64の像の中の
+  `import app.main`）で止まる。
 - `postgis/postgis`の18以降のイメージは、データの置き場（`VOLUME`）が`/var/lib/postgresql`で、
   17以前（`/var/lib/postgresql/data`）と違う。データ形式もメジャー版の間で互換が無く、
   旧版のボリュームは新しい版で開けない。
@@ -471,8 +469,7 @@ journald.conf（https://www.freedesktop.org/software/systemd/man/latest/journald
 
 ## 本番Redisの設定
 
-Redisは「TTL付きキャッシュ、または実データ源へのフォールバックが必ず効くcache-aside」
-専用の層で、**正本データを持たない**（方針は[caching.md](../../.claude/rules/caching.md)）。
+Redisは失っても上流から取り直せる短命キャッシュ専用の層で、**正本データを持たない**（方針は[caching.md](../../.claude/rules/caching.md)）。
 本番はOracle Cloud VMへネイティブに導入する（backendコンテナが`--network=host`のため
 追加設定なしで到達できる）。ローカル開発は`docker-compose.yml`のredisサービス。
 

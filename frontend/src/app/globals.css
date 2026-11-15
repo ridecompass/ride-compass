@@ -75,6 +75,7 @@
   --z-header-popover: 46;
   --z-floating-panel: 50;
   --z-top-popover: 60;
+  --z-ride-dark: 65;
   --z-usage-guide: 70;
 
   /* 地図の右上の列のボタン（components/ui/ButtonのmapCtrl）の実寸。拡大・縮小と方位磁針も、その下に積むボタンも

@@ -13,7 +13,7 @@
 |---|---|
 | domain | `way_value_formula.py`（中立の式の木の型と、numpyでの評価）・`gradient.py`（道を辿る向きを走行方位で選ぶ木と、勾配の桁）・`lens_values.py`（タイルのフィーチャーと辿る向きで網の行を束ね、1kmあたりの代償の秒にする・地図の式の木・押した道の区間の秒と事実）・`lens_equivalents.py`（段の境目の秒の、標準の条件での事実の目安）・`lens_total.py`（総合のレンズのidと、軸ごとの値から総合を出す決まり。ルートの線も読む）・`feature_materials.py`（タイル1枚のフィーチャーごとの材料の型） |
 | services | `lens_service.py`（タイル1枚のレンズの値と、押した道のレンズの値と事実）・`feature_materials.py`（タイルのフィーチャーごとの材料を読み、ディスクへ持つ。地図の線の層の値）・`region_service.py: RoadInspectorService`（道の窓） |
-| infrastructure | `feature_material_cache.py`（タイルのフィーチャーごとの材料。ディスク経由）・`tile_persistent_cache.py`（呼び出し元が設計したタプルの鍵でPythonオブジェクトを置く汎用のディスクキャッシュ。`diskcache`の包み。路面タイルの世代に結んだ値を24時間持つ口`tile_persistent_cache.py: set_tile_entry`も持つ） |
+| infrastructure | `feature_material_cache.py`（タイルのフィーチャーごとの材料。ディスク経由）・`tile_persistent_cache.py`（呼び出し元が設計したタプルの鍵でPythonオブジェクトを置く汎用のディスクキャッシュ。`diskcache`の包み。名前空間ごとに捨てられる、24時間持つ口`tile_persistent_cache.py: set_tile_entry`も持つ） |
 | api | `region.py`（`GET /api/region/lens/{lens_id}/...`・`POST /api/region/road-inspector`）・`dependencies.py`（`dependencies.py: get_lens_service`・`dependencies.py: get_road_inspector_service`） |
 
 フィーチャーごとの材料をDBから取り出す`infrastructure/road_graph_repository.py: get_feature_materials_in_tile`と、そのSQL
@@ -97,8 +97,8 @@ SQLと式の木の材料では作れない体力（走行の模型）を、backe
 タイル1枚ぶんのフィーチャーごとに、全部の材料（`domain/material_catalog.py: material_value_sql`を持つ材料）を読む
 （`infrastructure/road_tile_sql.py: FEATURE_MATERIALS_IN_TILE_SQL`）。路面タイルが焼く地図の線の層の値（`FeatureMaterialService.road_layer_values`。
 `services/region_service.py: RegionService.get_road_surface_tile`が読む）は、これに区分の列（`domain/road_classes.py: class_columns`）を
-読むたびに当てて求める——持つものに区分を含めないので、区分を書き換えても材料を作り直さずに済む（路面タイルは世代に区分の
-指紋を入れて焼き直す。`services/tile_version_service.py: road_surface_tile_shape`）。
+読むたびに当てて求める——持つものに区分を含めないので、区分を書き換えても材料を作り直さずに済む（路面タイルは区分の書き換えのあとに捨てて焼き直す。
+`infrastructure/region_tile_cache.py: discard_region_tiles`）。
 
 - フィーチャーの並びと材料の表の結び方は路面タイルと同じ（区間単位のズームは区間の値、way単位のズームと区間を
   持たない道は道1本の行の値。密度の分母の長さもフィーチャーと同じ側から取る）。
@@ -110,11 +110,11 @@ SQLと式の木の材料では作れない体力（走行の模型）を、backe
 
 ## キャッシュ（`infrastructure/feature_material_cache.py`）
 
-読んだタイルの材料をディスク（`tile_persistent_cache`）へ持つ。鍵は`(路面タイルの世代, 読み方の署名, z, x, y)`で、
+読んだタイルの材料をディスク（`tile_persistent_cache`）へ持つ。鍵は`(読み方の署名, z, x, y)`で、
 区分・走行方位・時刻を入れない——材料はどれにも依らない。
 
-- **路面タイルの世代**: 材料の鍵は路面タイルの`feature_key`と一致して初めて意味を持ち、派生の作り直しで同じSQLでも
-  別の値になる。世代は派生の表と生データの両方を覆い、事故の収録年数も派生の作り直しと一緒に変わる。
+- **地域タイルと一緒に捨てる**（`infrastructure/region_tile_cache.py: discard_region_tiles`）: 材料は路面タイルの`feature_key`と
+  一致して初めて意味を持ち、派生の作り直しで同じSQLでも別の値になる。事故の収録年数も派生の作り直しと一緒に変わる。
 - **読み方の署名**（`services/feature_materials.py: FEATURE_MATERIALS_VALUE_SHAPE`）: 読み出しのSQLの形と、持つ値の
   列の組から機械で署名する。SQLを変えたデプロイの直後から前の読み方のエントリは読まれなくなり、TTL（24時間）で失効する。
 - 取込範囲外・空のタイル・DB障害は持たない（次の要求で読み直す）。

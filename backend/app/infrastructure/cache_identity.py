@@ -9,7 +9,6 @@ import hashlib
 from pathlib import Path
 
 from app.domain.landcover import LANDCOVER_CLASSES
-from app.infrastructure.derived_data_meta import DataRevisions
 
 # 土地被覆ラスタタイル。同じ配色のまま、元のGeoTIFFを別の年次・別の版へ差し替えたときと、
 # ラスタの読み方・描き方（`landcover_raster.py`）を変えたときに上げる（画素が変わるのに
@@ -49,14 +48,6 @@ def shape_digest(*sources: object) -> str:
 def cache_identity(revision: str, *shape_sources: object) -> str:
     """`<リビジョン>-<形の署名>`。タイルURL・ディスクパスへそのまま入れる。"""
     return f"{revision}-{shape_digest(*shape_sources)}"
-
-
-def tile_version(revisions: DataRevisions, shape: str) -> str:
-    """配信するタイルの世代。`<派生の世代>.<生データの世代>-<形の署名>`。
-
-    `revisions`は`derived_data_meta.get_revisions()`の値。
-    """
-    return f"{revisions.derived}.{revisions.imported}-{shape}"
 
 
 #: 土地被覆ラスタタイルのURLへ入る世代（配色・クラス構成と手書きリビジョンから決まる）。
@@ -99,5 +90,5 @@ def region_tile_kind(key: str) -> str | None:
 
 
 def region_tile_key(kind: str, generation: str, z: int, x: int, y: int, extension: str) -> str:
-    """地域タイル1枚のディスクの鍵。世代はURLへ入る世代と同じ文字列から組む。"""
+    """地域タイル1枚のディスクの鍵。"""
     return f"{region_tile_generation_prefix(kind, generation)}{z}/{x}/{y}.{extension}"

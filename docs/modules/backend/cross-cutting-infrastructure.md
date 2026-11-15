@@ -48,7 +48,6 @@ DB接続・Redis・HTTPクライアント・レート制限・ログ・デバッ
 | ops | `source_refresh.sh` | 本番VMのホストで、別のコンテナを立てて全部の元の取得・取込・派生の作り直しを順に打ち、通った時刻を書く。下の「元の取り直し」 |
 | ops | `ridecompass-source-refresh.service`・`ridecompass-source-refresh.timer` | それを週1回打つsystemdのユニット（VMへの登録は手で1回） |
 | scripts | `schema_gap.py` | 実DBのスキーマとORMの宣言（`orm_base.declared_metadata`）の差を出す。宣言どおりの表を同じ接続の一時スキーマへ作ってから巻き戻すまでの間に、`public`とカタログを突き合わせる——制約・既定値・索引の式をPostgreSQLが正規化した形で比べるので、CHECKの式・主キー・一意も比べられる。名前は比べない。取込が作る子パーティション（生データの区画）は、列のNULL許容だけをアダプタの宣言（`batch/ingest.py: partition_required_columns`）と比べ、カタログの値だけを読む（取込が入れ直している最中でも、そのロックを待たずに測れる）。本番DBへは、backendのデプロイがコンテナを入れ替えたあとに毎回当てる（新しいコードの読み書きを壊しうる差があればデプロイが失敗で終わり、本番が宣言より多く持つだけの差は出すだけ。docs/architecture/tech-stack.md「デプロイの反映確認」）ほか、手で`run_probe.py`から当てる |
-| scripts | `lost_constraints.py` | 2つの版の`backend/app`をgitから取り出し、ORMが宣言する表・制約を名前抜きの同じ形へ揃えて、消えたものを出す（DBは使わない）。SQLの文の中の絞り込みは見ない——断片をつないで組み立てるSQLは文字列から構文木を取れないものが残るため |
 | scripts | `mutation/` | 変異テストの台本。mutmut 3.8.0（測るときだけ入れる）には`app`の関数の中の変異の生成と、関数ごとに通るテストの記録だけをさせ（`gen.py`）、変異ごとに別のプロセスでそのテストを最後まで回して、落ちたテストを記録する（`runner.py`・`mutkill.py`）。回す変異と基準の並べ方と一覧の口（`plan.py`）・記録を層や道具に依らない表（Stryker の結果の JSON の形）にする（`report.py`）・生き残りの振り分け（`classify.py`・`importtime.py`）・その表からテストの見直しの候補を出し、前回と比べる（`review.py`）。定時の測りで重なりの候補を消すタスクの本文を書く（`cleanup_issue.py`）・テストを消す前とあとの検知率を出す（`score.py`）。台本どうしが同じに読むもの（変異と基準の名前・記録・一覧の口）と生き残りの判断は`_shared.py`が持ち、全部の測りの表と Pull Request の知らせは同じ判断で数える。回し方は[run-checks/SKILL.md](../../../.claude/skills/run-checks/SKILL.md)「変異テストでテストの効きを測る」、見直しの1回の進め方は[test-review/SKILL.md](../../../.claude/skills/test-review/SKILL.md) |
 | scripts | `_stdio.py` | `scripts/`の実行口と、リポジトリの根の`scripts/`の道具・フックが共通で使う、標準の入出力のUTF-8化。backendの像の中の実行口も読むので、根の側ではなくここに置く |
 | scripts | `run_probe.py` | 調査用のスクリプトを本番DBに対して走らせる（手元のPythonから本番DBを引くか、本番のbackendコンテナの中で走らせる）。手元実行では接続文字列をSQLAlchemy用と素のasyncpg用の両方の形で環境変数へ渡す。プローブの後ろに書いた引数はそのままプローブへ渡す |
@@ -85,8 +84,7 @@ DB接続・Redis・HTTPクライアント・レート制限・ログ・デバッ
   書き出すときは既定値の項目も必ず載るため、契約をそれに合わせ、画面が型を補正せずに生成型のまま使えるようにする。
   要求と応答の両方に現れるモデル（軸の形等）は、FastAPIが`<名前>-Input`と`<名前>-Output`に分けて書き出す。
 - **応答の項目がnullになるかを同じ応答の別の項目が決めるなら、形で表す**——状態ごとのモデルの共用体
-  （例: `api/routers/routes.py: RouteGenerateJobDone`）か、一緒に在る項目を1つのモデルへまとめた任意の項目
-  （例: `infrastructure/derived_data_freshness.py: ColumnsChange`）。項目ごとの`X | None`で並べると、
+  （例: `api/routers/routes.py: RouteGenerateJobDone`）か、一緒に在る項目を1つのモデルへまとめた任意の項目。項目ごとの`X | None`で並べると、
   画面は起きない組み合わせまで分岐と既定値で受けることになる。
 - 環境変数を読む`config.py: Settings`だけは対象外。プロセスの環境変数には無関係なものが
   常に含まれるため`extra="ignore"`でなければ起動しない。
@@ -296,38 +294,21 @@ frontend側（`src/proxy.ts`）も同じ資格情報を別のBasic認証チェ�
 どの層に持つか・TTLをどう決めるか・無効化の手段といった方針は[.claude/rules/caching.md](../../../.claude/rules/caching.md)と[.claude/rules/caching-retention.md](../../../.claude/rules/caching-retention.md)が
 正本で、ここは実装の説明に絞る。
 
-「Redisが使えるか確認→クライアント取得→`log_external_call`で計測→失敗は握り潰して
-未キャッシュ扱い→成否をサーキットブレーカーへ記録」という定型文を1本にまとめたもの。値の形で入口が分かれる——
+「クライアント取得→`log_external_call`で計測→未保存・壊れた値を外れとして数える」という定型文を1本にまとめたもの。値の形で入口が分かれる——
 JSONは`get_json`/`set_json`、バイナリは`get_bytes`/`set_bytes`、観測所ごとのような複数の項目はHashの`get_hash`と、
 複数のキーのHashをTTLとともに1往復（pipeline）で書く`set_hashes`。接続は値を生のバイト列で返し、JSONはここでデコードする。
 `get_bytes`・`get_hash`は呼び出し元の解釈関数へ生のバイト列を渡し、解釈できない値は未キャッシュ（miss）として扱う。呼び出し元はキー設計・TTL・値の意味づけだけを持つ。
 
-読みの口は「値・保存なし（None）・取れない（`UNAVAILABLE`。冷却中・接続を作れない・コマンドの失敗）」の3通りを返す。
-保存なしなら上流から取り直して書けばよいが、取れない間に取り直すと上流へ同じ問い合わせを繰り返すので、
-取り直しの重い呼び出し元はこれで分けられる。分けない呼び出し元は両方を未キャッシュとして扱う。
-`simple_api_client.py: cached_fetch`がプロセス内`TTLCache`側で担っている役割の、Redis版。
-
-**fail-openが前提**: 扱うのはいずれも正本を持たないキャッシュのため、Redis障害・接続不能・
-壊れたエントリはすべて「未キャッシュ」（`get_json`はNone）へ倒し、呼び出し元が通常の取得
-経路へ進めるようにする。キャッシュの不調でアプリの機能を止めない。
+Redisの障害（届かない・コマンドの失敗）は捕まえずに送り出す。`log_external_call`が失敗として記録し、その要求・バッチの回が失敗する。
 
 新しくRedisへ持つキャッシュはこれを使う（例: 気象庁タイル本体の`jma_tile_redis_cache`・在否インデックスの
 `jma_tile_index`・アメダスの`jma_amedas_store`）。タイル本体は値がバイナリ（PNG/PBF）なので`get_bytes`/`set_bytes`に乗せている。
 自前の骨格を持ってよい場合は.claude/rules/caching-retention.md「Redisへ持つときは`redis_json_cache`を使う」の「自前で骨格を書いてよい例外」が決める。
 
-## Redisクライアント（`redis_client.py`、サーキットブレーカー）
+## Redisクライアント（`redis_client.py`）
 
-JMA気象データの短命キャッシュが使う共有接続。値を生のバイト列で読み書きする接続を1本だけ持つ。
-接続を作れない（`redis_url`の誤り等）ときはサーキットブレーカーを開け、WARNING（`cache:redis-client`）を出す。**接続/ソケットタイムアウトを明示的に0.2秒へ短縮**している（既定タイムアウトの
-ままだと疎通不能環境で1回の接続試行に数秒かかりうるため。ルート生成の
-ホットパスに乗ると「PostGIS往復を減らす」という本来の目的に反する遅延になる）。
-
-**サーキットブレーカー**: `redis_available()`が直近の失敗（`record_redis_failure()`）から
-`CIRCUIT_COOLDOWN_SECONDS=10.0`秒以内なら`False`を返し、呼び出し元はRedis自体への
-接続試行そのものをスキップしてPostGISへ即座にフォールバックできる（0.2秒×リクエスト数の
-累積コストを避ける）。Redis接続自体の障害はfail-fastさせない設計（`main.py`のlifespanでも
-疎通確認しない）。すべての用途がTTL付きキャッシュまたはPostGIS[正本]への即座フォールバック
-可能なcache-asideであるため。
+JMA気象データの短命キャッシュが使う共有接続。値を生のバイト列で読み書きする接続を1本だけ持ち、待ちと打ち直しは`redis-py`の既定に任せる。
+`main.py`のlifespanでは疎通を確かめない。
 
 ## HTTPクライアントの共有（`http_client.py`）
 
@@ -436,7 +417,7 @@ systemdのtimerが毎日、DBの全体を`pg_dump`（custom形式・圧縮あり
 「本番DBを失ったとき」）。
 
 - **バケットに置くのは常に1個**。書き出しはObject Storageの無料の枠に2個は入らない大きさなので、確かめの通った新しい書き出しが
-  手元にできてから前の1個を消し、新しいものを置く。枠を超える書き出しは置かずに失敗する（上限は同じスクリプトの定数）。
+  手元にできてから前の1個を消し、新しいものを置く。
 - **手元にも1個残す**。書き出しはDBのディスクの、PostgreSQLの`data_directory`の外へ書き、次の回まで消さない。バケットへ置く途中で
   落ちても、手元から送り直せる。VMごと失ったときはバケットのものから戻す。書き出す前に、そのディスクの空きがDBの大きさより
   少なければ書かずに失敗する（OSのディスクと`/run`には書き出しが入らない）。
@@ -520,7 +501,7 @@ push型更新と同じ前提）。`JobRecord`は状態ごとの型の共用体�
 - ジョブ本体（ルート生成）が読む状態は、webプロセスの中にある（道路網全体の配列・道の区分と費用の軸の定義と較正値。
   管理APIの書き込みで読み直す）。別プロセスのワーカーはそれを共有できず、同じものを別に持って別に
   読み直すことになる——上の「1プロセスの境界」が止めている形そのもの。
-- Redisは失っても困らないキャッシュだけを置くfail-openの層で、ルート生成はRedisを読まない
+- Redisは失っても困らないキャッシュだけを置く層で、ルート生成はRedisを読まない
   （[ルート生成エンジン](routing-engine.md)「キャッシュ」）。ジョブの列をRedisへ置くと、
   Redisの障害が生成の失敗になる。
 

@@ -4,7 +4,7 @@
  * 地図への値・操作部品への値。
  *
  * 画面から受け取るのはルートの文脈・走行条件・利用者の値だけで、レンズやレイヤーの種類を知らない。画面の設定・費用の
- * 軸の一覧・タイル世代は共有の源泉から読む。
+ * 軸の一覧は共有の源泉から読む。
  */
 import { useMemo, useState, type ComponentProps } from "react";
 
@@ -13,8 +13,7 @@ import {
   buildDefaultLayerVisibility,
   deriveFetchLayerStatus,
   ROAD_LINE_MIN_ZOOM,
-  tileNotice,
-  tileVersionGatedLayerIds,
+  TILE_ZOOM_TOO_WIDE_NOTICE,
   tileZoomTooWideLayerIds,
   type LayerDataStatusByLayer,
   type MapLayerVisibility,
@@ -30,6 +29,9 @@ import { costLensOptions, costLensPremises } from "@/features/map/costLens";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useWayMaterials } from "@/features/map/useWayMaterials";
 import { useDynamicWeatherLayers } from "@/features/map/useDynamicWeatherLayers";
+import { useLatestRunEnd } from "@/features/map/useWeatherGrid";
+import { isPreviousRunTime, previousRunNotice } from "@/lib/previousRun";
+import { HOUR_MS } from "@/lib/duration";
 import { useStoredState } from "@/hooks/useStoredState";
 import type { Coordinates, RoadAvoidanceOverride } from "@/types/route";
 import { avoidanceChoiceOf, type RoadTabMap } from "@/lib/roadAvoidance";
@@ -186,6 +188,15 @@ export function useMapView({
   const speedKmh = riding?.speedKmh ?? ride.speedKmh;
   const wayConditions = useMemo(() => ({ bearingDeg, at: ride.at, speedKmh }), [bearingDeg, ride.at, speedKmh]);
   const wayMaterials = useWayMaterials(fetchLenses, viewport, wayConditions, costPreference, totalLens?.axisId ?? null);
+  // 出発時刻の風を引くレンズは、引く予報の時刻が最新のrunの終わりから先なら前に出た予報の風で塗っている。材料の口は
+  // 出発時刻に最も近い正時（ちょうど中間は後の正時）の風を引く。
+  const paintsForecast = fetchLenses.some((candidate) => candidate.materialConditions.includes("at"));
+  const latestRunEnd = useLatestRunEnd(paintsForecast);
+  const forecastHour = new Date(Math.floor((ride.at.getTime() + HOUR_MS / 2) / HOUR_MS) * HOUR_MS);
+  const lensCaveat =
+    latestRunEnd !== undefined && isPreviousRunTime(forecastHour, latestRunEnd)
+      ? previousRunNotice(latestRunEnd, "風")
+      : null;
   const [roadTabOnMap, setRoadTabOnMap] = useStoredState("ridecompass:road-tab-on-map", "道路タブを地図で見るか", true);
   // 道路タブを出していて「地図で見る」がONの間だけ、段を地図の道に塗る。段の値は出し入れで作り直さない。
   const roadAvoidanceShown = roadTabShown && roadTabOnMap;
@@ -193,15 +204,11 @@ export function useMapView({
     () => avoidanceChoiceOf(config.roadClasses.avoidance, roadAvoidance, mapTheme),
     [config.roadClasses.avoidance, roadAvoidance, mapTheme],
   );
-  // 道路タブで塗っている間は、塗れない理由（拡大が足りない・タイルの世代が届かない）を道路タブに出す（道の層を出していないと、地図の上の
-  // 行の状態の印が無い）。
-  const roadTabMapNotice = roadAvoidanceShown
-    ? tileNotice({
-        versionMissing: mapCatalog.tileVersions === null,
-        catalogSettled: config.loaded || config.failed,
-        zoomTooWide: viewport !== null && ROAD_LINE_MIN_ZOOM !== undefined && viewport.zoom < ROAD_LINE_MIN_ZOOM,
-      })
-    : null;
+  // 道路タブで塗っている間は、拡大が足りず塗れないことを道路タブに出す（道の層を出していないと、地図の上の行の状態の印が無い）。
+  const roadTabMapNotice =
+    roadAvoidanceShown && viewport !== null && ROAD_LINE_MIN_ZOOM !== undefined && viewport.zoom < ROAD_LINE_MIN_ZOOM
+      ? TILE_ZOOM_TOO_WIDE_NOTICE
+      : null;
   // 式の木の条件の名前（`bearing_deg`・`speed_kmh`）で地図へ渡す。速度が数でない間は値の無いことにする。
   const formulaConditions = useMemo(
     () => ({ bearing_deg: bearingDeg, ...(Number.isFinite(speedKmh) ? { speed_kmh: speedKmh } : {}) }),
@@ -252,9 +259,8 @@ export function useMapView({
     visibility: layerVisibility,
     hidden,
     dataStatus: { ...mapLayerStatus, ...weather.dynamicWeatherDataStatus },
+    caveats: weather.dynamicWeatherNotices,
     zoomTooWideLayerIds: viewport ? tileZoomTooWideLayerIds(mapCatalog.layers, viewport.zoom) : [],
-    versionMissingLayerIds: mapCatalog.tileVersions ? [] : tileVersionGatedLayerIds(mapCatalog.layers),
-    catalogSettled: config.loaded || config.failed,
   });
   const setShown = (id: string, on: boolean) => setLayerVisibility((prev) => ({ ...prev, [id]: on }));
   const setHiddenFor = (key: string, keys: readonly string[]) => setHidden((prev) => withHiddenKeys(prev, key, keys));
@@ -279,6 +285,7 @@ export function useMapView({
       onSetHiddenLegendKeys: (keys) => setHiddenFor(lens, keys),
       hasDetail,
       premises: costLensPremises(painted, costCatalog, lensEquivalents),
+      caveat: lensCaveat,
       catalogNotice: !costCatalog.loaded
         ? costCatalog.failed
           ? "負担の種類の一覧を取得できないため、塗る負担を選べません。"

@@ -20,7 +20,7 @@
 - 辺りの決め方（辺の上・境界の外・名前の無い境界・配布の境界の読み方） → `test_stop_place_areas.py`。置いた位置の辺りも
   同じ SQL の部品（`infrastructure/place_area_query.py: area_label_sql`）で決めるので、ここでは境界の中と外の両側だけを見る
 - 回数制限の窓 → `test_rate_limiter.py`
-- Cache-Control の値と、失敗の応答に付けないこと → `test_cache_policy.py`
+- Cache-Control の値 → `test_cache_policy.py`
 - 入力の長さ（`domain/place_search.py: PlaceQuery`の制約で、FastAPIが422で返す）
 """
 

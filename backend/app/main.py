@@ -21,8 +21,7 @@ from app.domain.time_zone import JST
 from app.infrastructure.database import get_session_factory
 from app.infrastructure.debug_control import install_ring_buffer_handler
 from app.infrastructure.http_client import get_http_client
-from app.infrastructure import road_network_store
-from app.infrastructure.region_tile_cache import PRUNE_INTERVAL_HOURS
+from app.infrastructure import region_tile_cache, road_network_store
 from app.infrastructure.msm_client import refresh as refresh_msm
 from app.infrastructure.process_resources import close_process_resources
 from app.infrastructure.request_log import format_log_lines, request_log_middleware
@@ -91,26 +90,18 @@ async def _sync_msm_job() -> None:
 
 
 async def _prune_stale_disk_generations_job() -> None:
-    """ディスク永続化キャッシュの古い世代を削除する。
+    """ディスクの置き場から、いまのコードの形でない世代を削除する。
 
-    世代番号は参照先を切り替えるだけで、ディスク上の古い実体は残り続ける。削除対象が
+    世代は参照先を切り替えるだけで、ディスク上の古い実体は残り続ける。削除対象が
     大きい（数百MB規模）ことがあるためスレッドで実行する。
     """
+    log = logging.getLogger("ridecompass.disk_generation_prune")
     freed = await asyncio.to_thread(road_network_store.prune_other_shapes)
     if freed:
-        logging.getLogger("ridecompass.disk_generation_prune").info(
-            "ディスク永続キャッシュの旧世代を削除しました freed_mb=%.1f", freed / 1e6
-        )
-
-
-async def _prune_stale_region_tiles_job() -> None:
-    """いま配っていない世代の地域タイル（路面・点・土地被覆）をディスクから消す。"""
-    async with open_region_service(get_session_factory()) as region_service:
-        removed = await region_service.prune_other_tile_generations()
+        log.info("ディスク永続キャッシュの旧世代を削除しました freed_mb=%.1f", freed / 1e6)
+    removed = await asyncio.to_thread(region_tile_cache.prune_other_generations)
     if removed:
-        logging.getLogger("ridecompass.disk_generation_prune").info(
-            "地域タイルの旧世代を削除しました removed=%d", removed
-        )
+        log.info("地域タイルの旧世代を削除しました removed=%d", removed)
 
 
 #: 派生データベースの書き出しの入口（`scripts/export_derived_database.py`）。
@@ -174,14 +165,6 @@ async def lifespan(app: FastAPI):
         trigger="date",
         run_date=datetime.now(),
         id="prune_stale_disk_generations",
-    )
-    # 地域タイルの世代は再起動なしにも変わる（派生の作り直し・取込）ので、起動直後のあとも定期に回す。
-    scheduler.add_job(
-        _prune_stale_region_tiles_job,
-        trigger="interval",
-        hours=PRUNE_INTERVAL_HOURS,
-        next_run_time=datetime.now(),
-        id="prune_stale_region_tiles",
     )
     # 置くのは派生を作り直した世代のときだけで、同じ世代なら書き出しのプロセスが何もせずに終える。
     scheduler.add_job(
