@@ -12,7 +12,7 @@ from sqlalchemy import Column
 from sqlalchemy.dialects import postgresql
 
 from app.infrastructure.derived_models import RoadEdgeRow
-from app.infrastructure.derived_data_freshness import derived_tables
+from app.infrastructure.orm_base import derived_tables
 
 _EDGE_KEY = ("osm_way_id", "segment_index")
 _WAY_KEY = ("osm_way_id",)

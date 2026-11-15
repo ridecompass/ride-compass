@@ -82,6 +82,8 @@ description: "検査とテストを手元・作業ブランチのCI・masterのC
 - 型情報（`py.typed`）を配っていないライブラリは、まず型のスタブ（typeshedの`types-*`等）を探し、
   あれば本体の版に合わせて`requirements-dev.txt`へ固定する。無いものだけを設定の`ignore_missing_imports`の節へ足す
   （そのライブラリへの呼び出しは照合されなくなる）。
+- **`python_version`は本番のイメージ（`backend/Dockerfile`の`FROM`）の版にそろえる**（`mypy.ini`は版をほかから読めず、照らす検査も無いので、
+  イメージの版を上げるときに同じ差分で上げる。ずれると、本番の版に無い書き方をmypyが通す）。
 - **Linuxとして検査する**（`platform = linux`。本番とCIがLinuxで動き、Linuxにしか無い関数（`os.getloadavg`等）が開発機でだけ指摘にならないため）。
 - `scripts/`は`mypy_path`に入れる（スクリプトは`from _stdio import …`のように同じ場所のモジュールを読む）。
   backendの道具が読むリポジトリ直下の`scripts/`のモジュール（`checkout_freshness.py`・`repo_git.py`等）も入れる。

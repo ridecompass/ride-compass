@@ -1,5 +1,14 @@
 {
   "language": "japanese",
+  "permissions": {
+    "deny": [
+      "Bash(git push *master*)",
+      "PowerShell(git push *master*)"
+    ],
+    "ask": [
+      "Edit(scripts/size_thresholds.json)"
+    ]
+  },
   "hooks": {
     "SessionStart": [
       {
