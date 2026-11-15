@@ -8,6 +8,8 @@ export interface UpcomingTurn {
   /** 曲がる所の、ルートの始点からの距離（km）。同じ地点を2度曲がるルートでも、曲がる所ごとに違う。 */
   alongKm: number;
   distanceM: number;
+  /** その交差点に集まるほかの道が、交差点から離れる向き（真北から時計回りの度）。 */
+  otherRoadBearingsDeg: number[];
 }
 
 /**
@@ -24,5 +26,6 @@ export function nextTurn(turns: readonly RouteTurn[], progressKm: number | null)
     longitude: turn.longitude,
     alongKm: turn.distance_km,
     distanceM: (turn.distance_km - progressKm) * 1000,
+    otherRoadBearingsDeg: turn.other_road_bearings_deg,
   };
 }

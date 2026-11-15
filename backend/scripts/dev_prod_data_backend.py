@@ -3,12 +3,11 @@
 本番のデータで開く画面は、地図の下地だけを開発機の backend から取る。下地のスタイルは中のタイルの住所を
 `BASEMAP_PUBLIC_BASE_URL` から組むので、同じ Wi-Fi の端末からも届くよう、開発機の LAN の住所の frontend を指させ、
 その住所を許す相手に足して起こす。LAN の住所は `RC_LAN_HOST` で上書きできる（外へ出る口が複数あって違う方を引くとき）。
+起動の段は DB を読まない（`serve_capture.py: serve`）ので、開発機の DB が今のコードに追いついていなくても起きる。
 """
 
 import os
 import socket
-
-import uvicorn
 
 #: 開発機の frontend の番号（`next dev` の既定）。
 FRONTEND_PORT = 3000
@@ -26,7 +25,10 @@ def main() -> None:
     os.environ["BASEMAP_PUBLIC_BASE_URL"] = f"{frontend}/api/basemap"
     os.environ["CORS_ALLOWED_ORIGINS"] = f"http://localhost:{FRONTEND_PORT},{frontend}"
     print(f"本番のデータで開く画面: {frontend}（この PC では http://localhost:{FRONTEND_PORT} でも開ける）", flush=True)
-    uvicorn.run("app.main:app", app_dir="backend", host="0.0.0.0", port=8000)
+    # 設定は読み込んだときに環境変数から決まるので、上で入れてから本体を読み込む。
+    from serve_capture import serve
+
+    serve("0.0.0.0", 8000)
 
 
 if __name__ == "__main__":

@@ -72,9 +72,12 @@ describe("候補の上の知らせ", () => {
     }
   });
 
-  it.each([true, false])("前に出た予報の風で作った候補が並ぶ間だけ、そのことを知らせる（当たる: %s）", (on) => {
-    renderOutcome({ results: resultsOf({ generated: [FAST, { ...SLOW, wind_from_previous_run: on }] }) });
-    expect(screen.queryByText(/前の予報で作りました/) !== null).toBe(on);
+  it.each([
+    ["2026-11-16T15:00", "11/16 15:00から先の風は、前の予報の値です。"],
+    [null, null],
+  ])("前に出た予報の風で作った候補が並ぶ間だけ、その風に替わる時刻を知らせる（%s）", (from, notice) => {
+    renderOutcome({ results: resultsOf({ generated: [FAST, { ...SLOW, wind_previous_run_from: from }] }) });
+    expect(screen.queryByText(/前の予報の値です/)?.textContent ?? null).toBe(notice);
   });
 
   it("乗り換えで作った経路と同じ道だったので選んだ候補は、一覧の名前で知らせ、そのカードを一覧の横の見える範囲へ送る", () => {

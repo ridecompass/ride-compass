@@ -1,7 +1,6 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "entry": [
-    "scripts/audit-test-rewrite.mjs",
     "scripts/capture.mjs",
     "scripts/image.mjs",
     "scripts/structure-population.mjs",

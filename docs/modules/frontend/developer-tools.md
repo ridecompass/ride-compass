@@ -15,8 +15,7 @@
 | `features/admin/adminApi.ts` | `/admin`の各パネルが叩く口の薄いラッパー（例: 材料の欠損割合・較正値の書き換え・直近のログ・死活）。管理APIは`lib/apiClient.ts: adminApiClient`、認証の要らない稼働状況の口は`lib/apiClient.ts: backendApi`を通る | `/admin`の各パネル |
 | `features/admin/AdminPanels/MaterialCoveragePanel.tsx` | 材料ごとの欠損割合（backend `GET /api/admin/material-catalog/coverage`）を欠損の扱いごとに分けて欠損の高い順に並べる。欠損を取込側で推測して埋めず、実態を見せて「埋めるか」の判断を定義の側へ委ねる。母集団の名前と欠損の扱いの見出しは材料カタログの宣言が配り、宣言に無い扱いの材料は未分類の群が拾う | `/admin`「材料」タブ |
 | `features/admin/AdminPanels/TuningPanel.tsx` | 走ってみて決める較正値（backendの`domain/tuning.py`の宣言）をデプロイなしに変える画面。並べる項目はbackendが宣言から導き、効き方ごとにまとめる（変えたのに効かない群を見分ける）。入力は「DBへ保存」でまとめて送る（値の正本はDBで、画面に既定は無い） | `/admin`「較正値」タブ |
-| `features/admin/AdminPanels/DerivedDataFreshnessPanel.tsx` | 派生データ（precomputeバッチの出力）が、取り込んだ生データより古いまま残っていないかを見る。作り直しが要るかはbackendが決める | `/admin`「データ保守」タブ |
-| `features/admin/AdminPanels/DbStatusPanel.tsx` | 派生データの鮮度台帳が拠る土台（取込のrunの失敗・行の有無・プランナの統計・放置されたトランザクション）を、ほかのパネルと同じ1行の形で見せる | `/admin`「データ保守」タブ |
+| `features/admin/AdminPanels/DbStatusPanel.tsx` | 本番DBの土台（取込のrunの失敗・行の有無・プランナの統計・放置されたトランザクション）を、ほかのパネルと同じ1行の形で見せる | `/admin`「データ保守」タブ |
 | `features/admin/AdminPanels/TileCachePanel.tsx` | サーバー側のタイルファイルキャッシュの全消去。全利用者へ影響するため認証の内側にだけ置き、基礎地図のタイルをブラウザが持つ時間（消去が各利用者の画面へ届くまでの遅れ）を添える | `/admin`「データ保守」タブ |
 | `features/admin/AdminPanels/ReportCard.tsx`・`features/admin/AdminPanels/StatusRowList.tsx` | 「材料」「データ保守」の集計のカード（DB全体の走査を伴うので、開いたときには取らず「集計する」を押したときだけ取る。説明はⓘの奥）と、点検の行の一覧（名前の右に規模、開くと中身。手当ての要否を丸の色と読み上げの文の両方で持つ）。件数・時点の書き方（`features/admin/AdminPanels/ReportCard.tsx: formatCount`・`features/admin/AdminPanels/ReportCard.tsx: formatMoment`）も持つ | 上記のパネル |
 | `components/HeaderMenu/HeaderMenu.tsx` | 使い方の説明の入口（「使い方を見る」。[ページ全体構成](page-composition.md)「使い方の説明」）・地図の表示を再描画（[地図: 静的レイヤー](static-map-layers.md)「まとめて戻す操作」）・走行の記録のコピー（下記「走行の計測」。記録があるときだけ）・デバッグログ表示・バージョン表示を1個のメニューアイコンへ集約したRadix Popover。バージョン表示は、動いている版（コミットの頭8文字）を窓に出し、確かめ待ちの変更が本番に出たかを利用者が画面から見分けられるようにする | `app/HomeHeader.tsx`（`/`のヘッダー） |
@@ -29,6 +28,9 @@
 | `hooks/useCopyToClipboard.ts` | クリップボードへの書き込みと結果表示（コピー済み・失敗）。Clipboard APIは[SecureContext]のため、httpのIPアクセス等では`navigator.clipboard`自体がundefinedになる——`.catch()`はPromiseの拒否しか捕まえず、プロパティアクセスの同期TypeErrorをtryで受けないとボタンが無反応のままになる。失敗は握り潰さず文言を返す | `DebugConsole`・`BackendLogsPanel` |
 | `hooks/useDebugLog.ts`・`lib/debugLog.ts` | デバッグモードON/OFF状態・ログエントリのシングルストア（`useSyncExternalStore`） | |
 | `lib/rideMetrics.ts` | 走行の計測: 走行モードの間、1分ごとの数をまとめた行を端末に残す（下記「走行の計測」） | 位置（`features/ride/useRideMode.ts`）・向き（`features/ride/useDeviceHeading.ts`）・地図（`features/map/MapView/useMapLifecycle.ts`）・ページ（`app/page.tsx`）が数える口を呼び、`HeaderMenu`の「走行の記録をコピー」で写す |
+| `lib/rideTrack.ts` | 走りの位置の記録: 管理画面で記録を入れた端末だけ、走行モードの間に受けた位置と走行の状態の移り変わりを走りごとに溜める（下記「走りの位置の記録」） | 位置と状態（`features/ride/useRideMode.ts`）が記録の口を呼ぶ |
+| `features/admin/RideTrackPanel/RideTrackPanel.tsx` | 走りの位置の記録の入り切りと、溜めた走りの一覧・JSON の書き出し・消去 | `/admin`「開発者」タブ |
+| `lib/downloadFile.ts` | ブラウザにファイルを保存させる | `RideTrackPanel`・`features/route/gpxExport.ts: downloadGpx` |
 | `app/api/version/route.ts`・`services/versionApi.ts` | フロントエンドの動いている版（コミット・起動時刻）を返すNext.js route handlerと、それを読む口（`SystemStatusPanel`と`HeaderMenu`のバージョン表示が読む） | |
 
 ## 開発の道具（`frontend/scripts/`）
@@ -44,7 +46,6 @@
 | `capture/` | 撮影の段（Playwright）の足場。`scripts/capture.mjs`が渡した脚本を流して撮る段と、脚本へ渡す道具（画面の操作・キーボードを重ねた画像・作業ツリーの backend への振り向け・画像の名前）と、脚本の例（`capture/examples/`）を持つ |
 | `capture/ride-simulation.ts` | 模擬走行の脚本（`scripts/capture.mjs --script`で流す）。ルートを作って走行モードを始め、選んだルートの線に沿って毎秒1点ずつ位置と、Android の Chrome と同じ向きの出来事を届け、走行の記録（下記「走行の計測」）とページの CPU の時間を出力へ書く。直す前と後を同じ条件で比べるためのもので、地図を GPU を使わずに描くので時間の絶対値はスマホと合わない（回数で比べる）。打ち方は脚本の先頭 |
 | `scripts/dev-prod-data.mjs` | 開発機の画面を本番のbackendのデータで開く開発サーバーを起こす（[setup.md](../../architecture/setup.md)「開発機の画面を本番のデータで開く」）。取り次ぎの向け先とAPIの宛先は`next.config.ts`が切り替えから決める |
-| `scripts/audit-test-rewrite.mjs` | 実装から起こし直したテストを外から測る（`.claude/rules/testing-rewrite.md`の手順） |
 | `scripts/structure-population.mjs`・`scripts/structure-population/` | 画面がbackendの宣言を持ち直している形の候補を構文木から列挙する（周期レビューの「構造の問い」のfrontendの母集団）。候補を出すだけで判じない。語彙（生成物の値・現象の語・軸名）の読み取りと、字句の置かれた文脈の判定は`scripts/structure-population/`の下に分けて持つ |
 | `scripts/mutation/` | 変異テスト（Stryker）の設定と、書き換えるファイルを本に分ける・結果を比べる・報告する台本 |
 | `src/structure/`（`*.test.ts`を除く） | 構造の検査（同じ場所の`*.test.ts`）が読む道具: 検査の母集団の根と木の歩き方（`src/structure/sourceTree.ts`）・テストの構文の読み取り・足場の境界と写しの判定・母集団が空のときに何も確かめずに通るループの判定等。画面には載らない |
@@ -55,8 +56,8 @@
 app/admin/page.tsx（独立URL、Basic認証保護下）
   ├─ タブ「材料」（既定）: MaterialCoveragePanel（材料ごとの欠損割合）
   ├─ タブ「較正値」　　: TuningPanel（走ってみて決める値の編集）
-  ├─ タブ「データ保守」: DerivedDataFreshnessPanel（派生データの鮮度台帳）+ DbStatusPanel
-  │                     （本番DBの状態）+ TileCachePanel（タイルファイルキャッシュの全消去）
+  ├─ タブ「データ保守」: DbStatusPanel（本番DBの状態）+ TileCachePanel
+  │                     （タイルファイルキャッシュの全消去）
   └─ タブ「開発者」　　: DebugPanel + BackendStatus + SystemStatusPanel + BackendLogsPanel
 
 app/page.tsx（メインページ、地図を持つ、認証なし）
@@ -96,6 +97,18 @@ localStorage経由で`/`側へ共有される（`HeaderMenu`はデバッグロ�
 1分の終わりの倍率と層の数・ページの描き直しの数・通信の行き先ごとの数と転送の量・50ms 以上かかった処理（Long Tasks）・描き遅れたコマ（Long Animation Frames）と
 その中で時間を使ったスクリプトの上位・JavaScript のメモリ・画面が隠れていた秒数。電池（`navigator.getBattery`）・メモリ（`performance.memory`）・Long Animation Frames は
 Chrome にだけある口で、無い端末ではその項目を null・0 のまま残す。転送の量は、キャッシュから読んだ分と、量を明かさない別のオリジンの応答を0に数える。
+
+## 走りの位置の記録
+
+ブラウザの GPS で止まった秒が測れるかを、時計の記録と比べて確かめるための記録。走行の計測（座標を残さない）と違って座標を残すので、
+`/admin`の「開発者」タブで記録を入れた端末だけが溜め、どこへも送らない。走行モードを始めると走りを1つ始め、休んで続けても同じ走りを
+続け、止めると終える。位置ごとに走り始めからの時刻・緯度経度・誤差・端末が出した速さを、状態の移り変わりと一緒に残す。
+
+- 位置が届くたびに走り全体を書き直すと、点の数に比例して重くなるので、点は区切りごとの鍵へ足す（区切りの点の数・1回の走りの点の上限・
+  残す走りの数は`lib/rideTrack.ts`の定数）。書けなかったら（容量の上限等）、案内を止めずにその走りの記録だけをやめる。
+- 画面のエラーの境目の「端末に保存した値を消して再試行」は、走りの記録（鍵の頭`lib/rideTrack.ts: RIDE_TRACK_KEY_PREFIX`）を消さない。
+  地図の画面は記録を読まないので落ちる元にならず、ほかに写しが無いため。
+- 書き出したファイルは、開発機で時計の記録と並べて比べる。
 
 ## 暗黙の前提
 

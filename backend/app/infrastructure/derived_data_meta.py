@@ -1,5 +1,4 @@
-"""派生データの世代（1行のみ、id=1固定）と、今の派生の表を作った取込（`derived_source_runs`）・列（`derived_columns`）・
-較正値（`derived_tuning`）。
+"""派生データの世代（1行のみ、id=1固定）と、今の派生の表を作った取込（`derived_source_runs`）・較正値（`derived_tuning`）。
 
 世代は、派生の作り直しが作り直した表を入れ替えるたびに進める単調カウンタで、読み手は中身が作り直されたかをこの値で
 見分ける。生データの世代と一緒に読める（`get_revisions`）。
@@ -37,8 +36,7 @@ class DerivedDataMetaRow(Base):
 class DerivedSourceRunRow(Base):
     """今の`public`の派生の表を作った取込。ソースごとに1行。
 
-    そのソースを読む段が全部流れたら作り直しを始めた時点の成功した最新の取込を、そうでなければ前回の記録を書く
-    （鮮度台帳がソースごとに比べる）。作り直す派生の表と一緒に作業用のスキーマで書き、表ごと入れ替える（`derive_cli.py`）——
+    そのソースを読む段が全部流れたら作り直しを始めた時点の成功した最新の取込を、そうでなければ前回の記録を書く。作り直す派生の表と一緒に作業用のスキーマで書き、表ごと入れ替える（`derive_cli.py`）——
     事故密度の分母がこの記録の事故の取込の年から読まれる（`road_graph_repository.py: get_accident_years`）ので、
     入れ替えの前に作業用のスキーマから作る道路網の配列も、入れ替えの後の読み手も、数と同じ取込の年を読む。段が読んだ
     生データがこの記録と一致するのは、取込と作り直しが同時に走らないためである。
@@ -48,20 +46,6 @@ class DerivedSourceRunRow(Base):
 
     source: Mapped[str] = mapped_column(String, primary_key=True)
     run_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("source_runs.run_id"), nullable=False)
-
-
-class DerivedColumnRow(Base):
-    """今の`public`の派生の表を作ったときの、表ごとの列（ORMの宣言）。表と列ごとに1行。
-
-    流した段の表は今の宣言の列を、流さなかった段の表は前回の記録を書く。鮮度台帳（`derived_data_freshness.py`）がこの記録と
-    今の宣言を比べ、最後に作り直した後に列を足した・消した表（足した列は全行がNULLのまま）を作り直しが要る側に数える。
-    `derived_source_runs`と同じく作業用のスキーマで書き、表ごと入れ替える。
-    """
-
-    __tablename__ = "derived_columns"
-
-    table_name: Mapped[str] = mapped_column(String, primary_key=True)
-    column_name: Mapped[str] = mapped_column(String, primary_key=True)
 
 
 class DerivedTuningRow(Base):
@@ -79,8 +63,7 @@ class DerivedTuningRow(Base):
 
 
 #: 派生の表と一緒に作業用のスキーマで書き、表ごと入れ替える作り直しの記録の表。
-RECORD_TABLES: tuple[str, ...] = (DerivedSourceRunRow.__tablename__, DerivedColumnRow.__tablename__,
-                                  DerivedTuningRow.__tablename__)
+RECORD_TABLES: tuple[str, ...] = (DerivedSourceRunRow.__tablename__, DerivedTuningRow.__tablename__)
 
 
 def recorded_tuning_sql(param_id: str) -> str:
@@ -126,32 +109,21 @@ async def replace_source_runs(conn: asyncpg.Connection, runs: dict[str, int]) ->
     await _replace_rows(conn, DerivedSourceRunRow.__tablename__, ("source", "run_id"), runs.items())
 
 
-async def replace_columns(conn: asyncpg.Connection, columns: Mapping[str, frozenset[str]]) -> None:
-    """派生の表を作ったときの列を`columns`へ置き換える。"""
-    await _replace_rows(
-        conn, DerivedColumnRow.__tablename__, ("table_name", "column_name"),
-        [(table, name) for table, names in columns.items() for name in sorted(names)])
-
-
 @dataclass(frozen=True)
 class DeriveRecords:
-    """今の`public`の派生の表を作ったときの記録（作った取込・表ごとの列・使った較正値）。"""
+    """今の`public`の派生の表を作ったときの記録（作った取込・使った較正値）。"""
 
     runs: dict[str, int]
-    columns: dict[str, frozenset[str]]
     tuning: dict[str, float]
 
 
 async def read_records(conn: asyncpg.Connection) -> DeriveRecords:
-    """今の`public`の作り直しの記録。段を選んだ作り直しが流さなかった段の分を残すために、鮮度台帳が記録と今の値を比べるために読む。"""
+    """今の`public`の作り直しの記録。段を選んだ作り直しが、流さなかった段の分を残すために読む。"""
     runs = {row["source"]: row["run_id"] for row in await conn.fetch(
         f"SELECT source, run_id FROM public.{DerivedSourceRunRow.__tablename__}")}
-    columns: dict[str, set[str]] = {}
-    for row in await conn.fetch(f"SELECT table_name, column_name FROM public.{DerivedColumnRow.__tablename__}"):
-        columns.setdefault(row["table_name"], set()).add(row["column_name"])
     tuning = {row["param_id"]: row["value"] for row in await conn.fetch(
         f"SELECT param_id, value FROM public.{DerivedTuningRow.__tablename__}")}
-    return DeriveRecords(runs=runs, columns={table: frozenset(names) for table, names in columns.items()}, tuning=tuning)
+    return DeriveRecords(runs=runs, tuning=tuning)
 
 
 async def replace_tuning(conn: asyncpg.Connection, values: Mapping[str, float]) -> None:

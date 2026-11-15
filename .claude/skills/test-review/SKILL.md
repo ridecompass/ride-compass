@@ -160,8 +160,7 @@ testing.md の2問目（その答えはモジュールの外——利用者の�
      - backend: 表の `mutant` を1行ずつ `only.txt`（置き場は `backend/scripts/mutation/`）に書いて作業ブランチへ push し、
        `gh workflow run mutation.yml -R ridecompass/ride-compass --ref <作業ブランチ> -f ref=<作業ブランチ> -f issue=<子の番号>` で回す
        （一覧だけを回し、当て直しと review は走らない）。成果物 `mutation-*` の `results.jsonl` で表の変異が全部 `killed` で、
-       `kills/` にその行の `kept_test` があることを見る。`only.txt` は消してから Pull Request を出す（残すと
-       `backend/tests/structure/test_mutation_lists_absent.py` が CI で落とす）。
+       `kills/` にその行の `kept_test` があることを見る。`only.txt` は消してから Pull Request を出す。
      - frontend: 表の `mutant` の書き換え（見直しの `report.json` で引いたファイル・場所・書き換え）のファイルを `-f mutate=<frontend
        からのパス,...>` に渡し、`gh workflow run mutation-frontend.yml -R ridecompass/ride-compass --ref master -f ref=<作業ブランチ>
        -f issue=<子の番号> -f mutate=<…>` で回す（名指したファイルだけを1本で回す）。成果物 `mutation-frontend-shard-0` の
@@ -189,7 +188,7 @@ testing.md の2問目（その答えはモジュールの外——利用者の�
 単体テストの変異テストの全部の測りは、毎月定時に起きる（backend は1日、frontend は2日の 02:23（日本時間）。.claude/skills/run-checks/SKILL.md
 「変異テストでテストの効きを測る」）。測り終えて重なりの候補があれば、測りの review の段が、種類が保守の「テストの重なりを消す（<層>、<年月> の定期の測りから）」を
 起こす（本文は `backend/scripts/mutation/cleanup_issue.py` が書く）。重なりの候補はユーザーに問わずに消すもの（.claude/rules/testing-review.md「重なり」）なので、
-このタスクの担当は、この節だけで始めから Pull Request まで進める。効き・書き方・隔離・e2e は、このタスクでは見ない（上の「テストの見直しを回す」が持つ）。
+ゲートが入口で問う採否（docs/conventions/flow.md「ステータスと割り当て」の「入口」）のあとは、このタスクの担当が、この節だけで始めから Pull Request まで進める。効き・書き方・隔離・e2e は、このタスクでは見ない（上の「テストの見直しを回す」が持つ）。
 
 1. **測りの見直しを取る**: 本文の背景にある実行の id と成果物の名前で、作業ツリーの外へ取る。
 

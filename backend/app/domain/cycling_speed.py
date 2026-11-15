@@ -29,7 +29,7 @@ from app.domain.elevation_profile import ElevationProfiles, flatten_spans, unkno
 from app.domain.road_classes import class_material_id, current_road_classes
 from app.domain.search_graph import kernel_array
 from app.domain.traffic import stop_count_material_ids
-from app.domain.tuning import BASE_CRR_ID, tuning_value
+from app.domain.tuning import BASE_CRR_ID, checked_tuning_value, require_tuning, tuning_value
 from app.domain.wind import drag_increases_m2_s2, kmh_to_ms
 
 _AIR_DENSITY_KG_M3 = 1.225
@@ -289,17 +289,24 @@ class SegmentSpeedModel:
             start, points, kernel_array(profiles.forward, np.bool_), elevation, distance, self.unknown_m,
             kernel_array(profiles.distribution.grade, np.float64), kernel_array(profiles.distribution.share, np.float64))
         crr = kernel_array(crr, np.float32)
+        # 体力と漕ぎ出しが負・無限大にならない値だけで解く（上限倍率が1未満だと平地の出力を越えた分が負になる）。
+        require_tuning({"speed.mass_kg": profile.mass_kg}, profile.mass_kg > 0, "0より大きい")
+        power_per_force = checked_tuning_value("speed.extra_power_per_force", lambda v: v >= 0, "0以上")
+        max_ratio = checked_tuning_value("speed.max_climb_power_ratio", lambda v: v >= 1, "1以上")
+        walking_kmh = checked_tuning_value("speed.walking_kmh", lambda v: v > 0, "0より大きい")
         self._kickoff_extra_j = kickoff_extra_j(profile)
         #: 平地・無風の巡航速度のホイール出力（W）。体力を秒へ換算する基準（`domain/ledger_costs.py`）。
         self.flat_power_w = wheel_power_w(profile)
+        require_tuning({"speed.cda_m2": profile.cda_m2, BASE_CRR_ID: profile.crr, "speed.mass_kg": profile.mass_kg},
+                       self.flat_power_w > 0, "巡航速度で平地の出力が0より大きくなる組")
         rider = np.empty(9, dtype=np.float32)
         rider[_RIDER_WEIGHT] = profile.mass_kg * _GRAVITY_M_S2
         rider[_RIDER_FLAT_POWER] = self.flat_power_w
         rider[_RIDER_BASE_CRR] = profile.crr
-        rider[_RIDER_POWER_PER_FORCE] = tuning_value("speed.extra_power_per_force")
-        rider[_RIDER_MAX_RATIO] = tuning_value("speed.max_climb_power_ratio")
+        rider[_RIDER_POWER_PER_FORCE] = power_per_force
+        rider[_RIDER_MAX_RATIO] = max_ratio
         rider[_RIDER_DRAG] = 0.5 * _AIR_DENSITY_KG_M3 * profile.cda_m2
-        rider[_RIDER_LOWEST] = kmh_to_ms(tuning_value("speed.walking_kmh"))
+        rider[_RIDER_LOWEST] = kmh_to_ms(walking_kmh)
         rider[_RIDER_HIGHEST] = kmh_to_ms(top_speed_kmh(profile.cruise_speed_kmh))
         rider[_RIDER_CRUISE] = profile.cruise_speed_ms
         self._rider = rider

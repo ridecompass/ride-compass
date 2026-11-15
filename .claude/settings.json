@@ -1,5 +1,10 @@
 {
   "language": "japanese",
+  "permissions": {
+    "ask": [
+      "Edit(scripts/size_thresholds.json)"
+    ]
+  },
   "hooks": {
     "SessionStart": [
       {

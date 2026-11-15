@@ -1,7 +1,6 @@
 """`app/config.py`の設定が、カンマ区切りの値を一覧へ分けること。
 
-ここで見ないもの: 値の読み込み（.env・環境変数）はpydantic-settingsの持ち物。各項目が本番で読まれているかは
-`tests/structure/test_settings_readers.py`が見る。
+ここで見ないもの: 値の読み込み（.env・環境変数）はpydantic-settingsの持ち物。
 """
 
 from app.config import Settings

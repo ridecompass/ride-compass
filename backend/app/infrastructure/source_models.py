@@ -53,6 +53,8 @@ class Source(StrEnum):
     ESTAT_SMALL_AREA = "estat_small_area"
     ISJ_BLOCK = "isj_block"
     JARTIC_REGULATION = "jartic_regulation"
+    MAPILLARY_STREET_LIGHT = "mapillary_street_light"
+    MAPILLARY_SEQUENCE = "mapillary_sequence"
     DEM = "dem"
     LULC = "lulc"
 
@@ -200,7 +202,7 @@ COVERAGE_SQL = f"""
 
 
 #: 取込の成功したソースごとに、成功した最新の取込（`source`・`run_id`）を1行ずつ出す問い合わせ。
-#: 派生の作り直しが「どの取込から作ったか」として記録し（`batch/derive_cli.py`）、鮮度台帳がその記録と比べる。
+#: 派生の作り直しが「どの取込から作ったか」として記録する（`batch/derive_cli.py`）。
 LATEST_SUCCEEDED_RUNS_SQL = (
     f"SELECT DISTINCT ON (source) source, run_id FROM {SourceRunRow.__tablename__}"
     f" WHERE status = '{SourceRunStatus.SUCCEEDED}' ORDER BY source, run_id DESC")

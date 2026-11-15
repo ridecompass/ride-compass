@@ -1,13 +1,17 @@
 "use client";
 
+import { useMemo } from "react";
+
+import { turnShape } from "@/components/TurnArrow/turnShape";
 import { nextTurn } from "@/features/ride/nextTurn";
 import { rideRemaining } from "@/features/ride/rideRemaining";
 import { useRideProgress } from "@/features/ride/useRideProgress";
 import { useTurnVoice } from "@/features/ride/useTurnVoice";
 import type { useRideMode } from "@/features/ride/useRideMode";
 import type { RouteResults } from "@/features/route/useRouteResults";
+import { routeTrack } from "@/lib/routeDistance";
 
-/** 走行モードの間、現在地を選んだ候補の上の距離へ当て（プロファイルの印と、地図とプロファイルの薄めに使う）、次に曲がる所と残りを出し、音声案内を入れていれば次に曲がる所を読む。 */
+/** 走行モードの間、現在地を選んだ候補の上の距離へ当て（プロファイルの印と、地図とプロファイルの薄めに使う）、次に曲がる所と残りを出し、音声案内を入れていれば次に曲がる所とルートを外れた・戻ったことを読む。 */
 export function useRideGuidance({
   riding,
   results,
@@ -32,8 +36,13 @@ export function useRideGuidance({
 
   const ridingRoute = navigating ? results.selectedCandidate : null;
   // 次に曲がる所。ルートを外れている間は計画どおりに走っていないので出さない。
-  const upcomingTurn = progress.offRoute ? null : nextTurn(ridingRoute?.turns ?? [], progress.km);
-  const voice = useTurnVoice(navigating, upcomingTurn);
+  const turn = progress.offRoute ? null : nextTurn(ridingRoute?.turns ?? [], progress.km);
+  const track = useMemo(() => (ridingRoute === null ? null : routeTrack(ridingRoute.segments)), [ridingRoute]);
+  const upcomingTurn =
+    turn === null || track === null
+      ? null
+      : { ...turn, shape: turnShape(track, turn.alongKm, turn.otherRoadBearingsDeg) };
+  const voice = useTurnVoice(navigating, upcomingTurn, progress.offRoute);
   return {
     progress,
     upcomingTurn,

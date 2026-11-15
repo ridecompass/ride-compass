@@ -8,6 +8,7 @@ from pydantic import WithJsonSchema, computed_field
 
 from app.domain.attributes import ElevationAttribute
 from app.domain.lens_total import lens_values_with_total
+from app.domain.msm_grid import ForecastTime
 from app.domain.geo import Latitude, Longitude, length_weighted_mean
 from app.domain.gradient import GRADIENT_VALUE_DECIMALS
 from app.domain.graph import LeanEdge
@@ -23,6 +24,8 @@ COST_SECONDS_DECIMALS = 1
 STOP_COUNT_DECIMALS = 1
 #: 応答の風の速さ（m/s）の桁。
 WIND_MS_DECIMALS = 1
+#: 応答の道の向き（度）の桁。
+ROAD_BEARING_DEG_DECIMALS = 0
 
 
 # GeoJSONのLineString（座標は[経度, 緯度]）。契約には形を載せるが、検証はしない——数千点の座標を
@@ -227,6 +230,9 @@ class RouteTurn(StrictModel):
     direction: Literal["left", "right", "uturn"]
     latitude: float
     longitude: float
+    # その交差点に集まる道のうち、経路が入る道と出る道でないものの、交差点から離れる向き（真北から時計回りの度。昇順）。
+    # 交差点から進めない道も入る。曲がる所の絵に、入らない道として描くための値。
+    other_road_bearings_deg: list[float]
 
 
 class EvaluatedRoute(StrictModel):
@@ -241,8 +247,9 @@ class EvaluatedRoute(StrictModel):
     # 所要時間の見積もり（秒）。区間の走行時間（`domain/cycling_speed.py`の走行モデルが巡航速度と区間の条件から求めた
     # 速度）＋停止の待ち＋ターンの待ち。経路の選び方には使っておらず、表示のためだけに持つ。
     estimated_duration_seconds: float | None
-    # 出発から着くまでに、風の予報の最新のrunの終わりから先の（前に出たrunの）風を引いたか。
-    wind_from_previous_run: bool
+    # 出発から着くまでに風の予報の最新のrunの終わりから先の（前に出たrunの）風を引いたなら、その終わりの時刻（この時刻から
+    # 先の風が前に出たrunのもの）。引いていなければNone。
+    wind_previous_run_from: ForecastTime | None
     # 並べ方の値（秒）。探索が最小にした費用そのもの（区間の費用＋曲がる所の費用）。所要時間と内訳（`penalty`）の和に、
     # 丸めの差を除いて等しい。
     cost_seconds: float

@@ -80,15 +80,15 @@ describe("RoadInspectorPopup", () => {
     );
     renderPopup();
     expect(screen.getByText("負担を読み込んでいます")).toBeInTheDocument();
-    const breakdown = async () => screen.findByRole("group", { name: "負担の内訳" });
-
-    // 軸は絵で出し、名前は読み上げに残す。負担の無い軸は出さない。内訳は軸の一覧より先に届きうるので、名前が付くまで待つ。
-    await waitFor(async () =>
-      expect(await breakdown()).toHaveTextContent(/^負担 \+7秒登坂\+4秒摩擦\+2秒向かい風\+1秒$/),
+    // 軸は絵で出し、名前は読み上げに残す。負担の無い軸は出さない。軸の名前は一覧の応答から引くので、負担と別に届くのを待つ。
+    await waitFor(() =>
+      expect(screen.getByRole("group", { name: "負担の内訳" })).toHaveTextContent(
+        /^負担 \+7秒登坂\+4秒摩擦\+2秒向かい風\+1秒$/,
+      ),
     );
     expect(screen.getByText("逆向き")).toBeInTheDocument();
     await user.click(screen.getByRole("radio", { name: "換算前" }));
-    expect(await breakdown()).toHaveTextContent(/^登坂登り 0m摩擦砂利$/);
+    expect(await screen.findByRole("group", { name: "負担の内訳" })).toHaveTextContent(/^登坂登り 0m摩擦砂利$/);
   });
 
   it("属性は畳み、日本語の値だけを項目ごとに1度出し、英語の生の値と登録外のタグは「その他のタグ」にさらに畳む", async () => {

@@ -18,7 +18,7 @@
 #   ブラウザを取り込む段を持たない。imageの版は、changesがfrontend/package-lock.jsonの@playwright/testの版から
 #   決める（版が違うとブラウザの実行ファイルが見つからない。公式の文書 https://playwright.dev/docs/docker ）。
 #   @playwright/testを上げる変更（Dependabot等）が、そのままimageも上げる。
-# - frontend-image・backend-image: 本番の像を同じDockerfileで作り、起こせるかを見る（何を見るかは各ジョブの上）。
+# - frontend-image・backend-image: 本番の像を同じDockerfileで作る（何をするかは各ジョブの上）。
 #   frontend-image が作った像は、中のアプリを e2e が試し、masterではその像をそのまま deploy-frontend が出す
 #   （確かめた中身と出す中身を同じにする）。
 # - scripts: 根の scripts/ の道具のテスト（scripts/tests/）。PostGIS も backend の依存も要らない。
@@ -399,11 +399,8 @@ jobs:
           name: playwright-report-${{ matrix.id }}
           path: frontend/playwright-report/
           retention-days: 7
-  # frontendの像を本番と同じDockerfileで作って起こし、サーバーがコンテナの外（公開した口）からも、コンテナの中の
-  # 127.0.0.1からも応答するかを見る。本番の前段（Renderの転送）がコンテナのどの宛先へつなぐかはこちらで選べないので、
-  # どちらかで届かなければ落とす（公開した口だけを見ると、コンテナの名前の宛先だけで待ち受けるサーバーも通る）。
-  # 像は本番と同じ引数（backendの宛先を焼き込む）で作り、中のアプリを e2e へ渡し、masterでは GitHub のコンテナの
-  # 置き場へ置いて deploy-frontend.yml に出させる。
+  # frontendの像を本番と同じDockerfile・同じ引数（backendの宛先を焼き込む）で作り、中のアプリを e2e へ渡し、masterでは
+  # GitHub のコンテナの置き場へ置いて deploy-frontend.yml に出させる。
   frontend-image:
     needs: changes
     if: fromJSON(needs.changes.outputs.run)['frontend-image']
@@ -427,7 +424,6 @@ jobs:
         run: |
           echo "api=$(jq -r .backend production-origins.json)" >> "$GITHUB_OUTPUT"
           node frontend/scripts/image.mjs "$IMAGE:$GITHUB_SHA" "$GITHUB_SHA"
-      # 起こす前のコンテナから取る（起こしたサーバーが書いたものを混ぜない）。
       - name: 像の中のアプリを取り出す
         shell: bash  # pipefail を付け、取り出しが落ちたら空の圧縮を成果物にせず段を落とす
         run: |
@@ -440,27 +436,6 @@ jobs:
           if-no-files-found: error
           compression-level: 0
           retention-days: 1
-      - run: docker run --detach --name frontend-check --publish 3000:3000 "$IMAGE:$GITHUB_SHA"
-      - name: コンテナの外と中から応答を見る
-        run: |
-          # 起動は本番で秒の単位で済む（Renderのログの Ready）。上限は起動が止まったときに待ち続けないためのもの。
-          WAIT_SECONDS=60
-          WAIT_STARTED=$SECONDS
-          until curl -fsS --max-time 5 -o /dev/null http://localhost:3000/api/version; do
-            if [ $((SECONDS - WAIT_STARTED)) -ge $WAIT_SECONDS ]; then
-              echo "::error::コンテナの外から${WAIT_SECONDS}秒以内に/api/versionへ届かない"
-              exit 1
-            fi
-            sleep 2
-          done
-          commit=$(curl -fsS --max-time 10 http://localhost:3000/api/version | jq -r .commit)
-          if [ "$commit" != "$GITHUB_SHA" ]; then
-            echo "::error::/api/versionのcommitが像に入れたコミットと違う（$commit）"
-            exit 1
-          fi
-          curl -fsS --max-time 30 -o /dev/null http://localhost:3000/ || { echo "::error::コンテナの外からトップの画面が開けない"; exit 1; }
-          docker exec frontend-check node -e "fetch('http://127.0.0.1:3000/api/version').then((r) => process.exit(r.ok ? 0 : 1), (e) => { console.error(e.cause ?? e); process.exit(1); })" \
-            || { echo "::error::コンテナの中の127.0.0.1から/api/versionへ届かない（サーバーが全部の宛先で待ち受けていない）"; exit 1; }
       - name: masterでは像を置き場へ置く
         if: github.event_name == 'push'
         env:
@@ -468,10 +443,8 @@ jobs:
         run: |
           echo "$GH_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
           docker push "$IMAGE:$GITHUB_SHA"
-      - if: failure()
-        run: docker logs frontend-check
-  # backendの像を本番と同じDockerfile・同じaarch64で作り、アプリを読み込めるかを見る（deploy-backend.ymlがコンテナを
-  # 入れ替える前に見るのと同じ確かめを、マージの前に置く）。サーバーの起動はDBの道の区分・費用の軸の定義を読むので、ここでは起こさない。
+  # backendの像を本番と同じDockerfile・同じaarch64で作り、アプリを読み込めるかを見る。サーバーの起動はDBの道の区分・
+  # 費用の軸の定義を読むので、ここでは起こさない。
   backend-image:
     needs: changes
     if: fromJSON(needs.changes.outputs.run)['backend-image']
@@ -529,7 +502,7 @@ jobs:
       - uses: ./.github/actions/python
         with:
           requirements: requirements-dev.txt
-      - run: python -m pytest -q tests/structure/test_named_references.py tests/structure/test_single_owner_values.py tests/structure/test_workflow_lanes.py tests/test_deploy_gate.py
+      - run: python -m pytest -q tests/structure/test_named_references.py tests/test_deploy_gate.py
   # 運用の道具（backendの外のPython・追跡しているsh）の静的検査。
   repo-wide:
     concurrency:

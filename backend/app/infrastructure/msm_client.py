@@ -69,6 +69,8 @@ class MsmGridPointWeatherSeries:
     precipitation_mm: np.ndarray
     #: 地上2mの気温[℃]。
     temperature_c: np.ndarray
+    #: 最新のrunの予報の終わり（`MsmGridPointSeries.latest_run_end`）。
+    latest_run_end: datetime
 
 
 @dataclass(frozen=True)
@@ -81,6 +83,8 @@ class MsmWeatherGridSeries:
     wind_v_ms: np.ndarray
     #: その時刻までの1時間の降水量[mm]。
     precipitation_mm: np.ndarray
+    #: 最新のrunの予報の終わり（`MsmGridPointSeries.latest_run_end`）。
+    latest_run_end: datetime
 
 
 # 同期・読み出しの対象変数（配信元の変数名 → 読み出しの結果の項目）。増やすと同期量がそのぶん
@@ -471,10 +475,10 @@ async def _read[S: _Selection](
 async def read_grid_points(latitudes: np.ndarray, longitudes: np.ndarray) -> MsmGridPointWeatherSeries:
     """地点ごとの最寄りの格子点の風・降水・気温の時系列（格子点の値のまま、現在時刻の正時から`domain/weather_elements.py: MSM_FORECAST_HOURS`時間ぶん）。読めなければ
     `MsmUnavailableError`。"""
-    points, times, values, _ = await _read(
+    points, times, values, latest_run_end = await _read(
         lambda grid: grid.nearest_points(latitudes, longitudes), MsmGridPoints.values, tuple(FORECAST_VARIABLES),
     )
-    return MsmGridPointWeatherSeries(times=times, points=points, **values)
+    return MsmGridPointWeatherSeries(times=times, points=points, latest_run_end=latest_run_end, **values)
 
 
 async def read_grid_block(south: float, west: float, north: float, east: float) -> MsmGridPointSeries:
@@ -492,9 +496,9 @@ async def read_weather_grid(
     """矩形のうち格子の範囲に入る部分の格子点を、点の数が`max_points`以下になるよう間引いた
     （`domain/msm.py: MsmBlock.thinned_points`）格子点ごとの風と降水の時系列（格子点の値のまま、点の番号の順）。
     読めなければ`MsmUnavailableError`。"""
-    points, times, values, _ = await _read(
+    points, times, values, latest_run_end = await _read(
         lambda grid: grid.block_overlapping(south, west, north, east).thinned_points(max_points),
         MsmGridPoints.values,
         _WIND_AND_PRECIPITATION_VARIABLES,
     )
-    return MsmWeatherGridSeries(times=times, points=points, **values)
+    return MsmWeatherGridSeries(times=times, points=points, latest_run_end=latest_run_end, **values)

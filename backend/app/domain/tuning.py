@@ -14,7 +14,9 @@ id・管理画面が並べる項目・変更が効くために何をやり直す
 現れない。
 """
 
+import math
 from collections import Counter
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from enum import Enum
 
@@ -473,6 +475,26 @@ TUNING_VALUES: dict[str, float] = {}
 def tuning_value(param_id: str) -> float:
     """いま効いている較正値。"""
     return TUNING_VALUES[param_id]
+
+
+class TuningValueError(ValueError):
+    """較正値の値では、それを使う計算が成り立たない（壊れた結果を出さずに止まる）。条件は値を使う計算の所が持ち、
+    管理者が直せるよう較正値の見出し・id・値を名指す。"""
+
+
+def require_tuning(values: Mapping[str, float], holds: bool, condition: str) -> None:
+    """`holds`が偽か、`values`（較正値のid → 使う値）に有限でない値があれば、較正値と条件`condition`を名指して断る。"""
+    if holds and all(math.isfinite(value) for value in values.values()):
+        return
+    named = "、".join(f"{TUNING_PARAMETERS_BY_ID[param_id].label}（{param_id}）= {value!r}" for param_id, value in values.items())
+    raise TuningValueError(f"較正値 {named} では計算できません（{condition}であること）。管理画面で値を直してください")
+
+
+def checked_tuning_value(param_id: str, holds: Callable[[float], bool], condition: str) -> float:
+    """いま効いている較正値。`holds`を満たさなければ`require_tuning`で断る。"""
+    value = tuning_value(param_id)
+    require_tuning({param_id: value}, holds(value), condition)
+    return value
 
 
 def tuning_parameters_by_effect() -> list[TuningParameter]:
