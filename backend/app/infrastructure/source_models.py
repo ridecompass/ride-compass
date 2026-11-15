@@ -53,6 +53,8 @@ class Source(StrEnum):
     ESTAT_SMALL_AREA = "estat_small_area"
     ISJ_BLOCK = "isj_block"
     JARTIC_REGULATION = "jartic_regulation"
+    MAPILLARY_STREET_LIGHT = "mapillary_street_light"
+    MAPILLARY_SEQUENCE = "mapillary_sequence"
     DEM = "dem"
     LULC = "lulc"
 

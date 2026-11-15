@@ -48,6 +48,8 @@ async def batch_session_factory(
 def configure_cli_logging() -> None:
     """バッチと取得の道具が端末へ出すログの書式。"""
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
+    # httpxは1リクエストごとに要求のURLを問い合わせごとINFOで出し、鍵を問い合わせで渡す口では鍵がログに残る。
+    logging.getLogger("httpx").setLevel(logging.WARNING)
 
 
 def run_batch_cli(
