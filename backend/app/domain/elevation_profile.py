@@ -21,6 +21,7 @@ from dataclasses import dataclass
 
 import numpy as np
 from numba import njit
+from numpy.typing import ArrayLike
 
 #: 舗装された公道としてありうる勾配の上限（%）。世界でも最急の公道が35%前後のため、これを超える値は道の起伏ではなく
 #: 標高データの読み違い（両端が路面でない地物を指した等）である。点の間の勾配がこれを超えたら、その間を勾配として
@@ -63,7 +64,7 @@ class ElevationProfiles:
                                  np.asarray(self.forward[rows]), self.elevation_m, self.position, self.distribution)
 
 
-def along_fractions(along_m: np.ndarray, points: int) -> np.ndarray:
+def along_fractions(along_m: ArrayLike, points: int) -> np.ndarray:
     """1区間の点の道のりの位置（m）を、区間の長さに対する割合（float32）にする。位置が点の数と合わない（持たない）か区間の
     長さが0なら、`points`個の点を等しい間隔に置く。"""
     along = np.asarray(along_m, dtype=np.float32)
