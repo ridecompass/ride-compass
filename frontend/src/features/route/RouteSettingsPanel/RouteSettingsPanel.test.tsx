@@ -3,7 +3,8 @@
  *
  * 見るもの: 一覧を取れないときの告知と再試行で軸が出ること、書いていない軸は標準を選んだ状態で出し、無効と段を選ぶと、その軸を
  * 無効と倍率の片方にだけ置いて上げること、「標準に戻す」が標準の間は押せず、押すと倍率と無効を標準に戻すこと、負担の強さが無効の
- * 間は倍率が効かないと添えること。
+ * 間は倍率が効かないと添えること。段を、通りやすくする向き（標準より小さい）と避ける向き（標準より大きい）で塗り分けること
+ * （色そのものは jsdom が CSS を当てないので、段の印 `data-direction` で見る）。
  *
  * ここで見ないもの: 選んだ倍率が生成の要求に載ること → `app/page.test.tsx`。軸の名前・(i)の奥の説明（一覧の値をそのまま描く）。
  *
@@ -95,5 +96,19 @@ describe("倍率", () => {
     expect(vibration.getByRole("radio", { name: "無効" })).toBeEnabled();
     // どの軸も標準なら、つまみが無効でも戻すものは無い。
     expect(screen.getByRole("button", { name: "標準に戻す" })).toBeDisabled();
+  });
+
+  it("倍率の段を、標準より小さい段は通りやすくする向き、大きい段は避ける向きで塗り、標準と無効は塗らない", async () => {
+    serveCostAxisCatalog();
+    renderPanel();
+
+    const levels = await levelsOf("振動の倍率");
+    const directions = levels.getAllByRole("radio").map((radio) => [radio.textContent, radio.dataset.direction]);
+    expect(directions).toEqual([
+      ["無効", undefined],
+      ["×0.5", "prefer"],
+      ["×1", undefined],
+      ["×2", "avoid"],
+    ]);
   });
 });
