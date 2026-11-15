@@ -109,7 +109,7 @@ def main() -> int:
 
     def start() -> None:
         profile = load_source_profile(args.profile)
-        fetch_sources(profile, profile.bulk_names() if args.all else args.source)
+        fetch_sources(profile, [spec.name for spec in profile.sources] if args.all else args.source)
 
     return run_fetch_cli(start, logger=logger)
 

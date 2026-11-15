@@ -372,10 +372,8 @@ CIだけに置いているため、CIの分数が尽きると検査そのもの�
 | 同 | `FLOW_BOT_TOKEN` | hidakagit-botが作ったfine-grained。届くのはridecompass/ride-compass-tasksだけ。Contentsは読み書き（担当の手番の記録をリリースへ置く）。期限2027-09-29 | 担当と流れの道具が置き場へ書く。変異テストの全部の測りの定時の起こしが、重なりの候補を消すタスクを置き場へ起こす。開発機ではユーザー環境変数の同じ名前 |
 | 同 | `CLAUDE_CODE_OAUTH_TOKEN` | Claudeの契約のトークン（GitHubのトークンではない） | `claude-task.yml` |
 | 同 | `CLOUDFLARE_API_TOKEN`・`CLOUDFLARE_ACCOUNT_ID` | Cloudflare | ゲートと回答フォームの公開（`ci.yml`の`deploy-gate`） |
-| 同 | `MAPILLARY_TOKEN` | hidakagitがMapillaryの開発者の画面で登録したアプリのClient Token（読むだけ。GitHubのトークンではない）。期限は未記録 | `claude-task.yml`（担当の環境変数。Mapillaryの街灯の点の付き方の測定） |
 | 同 | `ORACLE_VM_HOST`・`ORACLE_VM_SSH_KEY` | 本番のVM | backendのデプロイ |
 | 同 | `RENDER_FRONTEND_DEPLOY_HOOK_URL` | Render | frontendのデプロイ |
-| 本番のVMのenvファイル`/home/ubuntu/ridecompass-backend.env` | `MAPILLARY_TOKEN` | Actionsの秘密の値の`MAPILLARY_TOKEN`と同じClient Token | 元の取り直しの取得の入口（`backend/app/batch/fetch_cli.py`）がMapillaryのタイルを読む |
 | ゲートのWorker（`ridecompass-gate`） | `APP_ID`・`APP_KEY`・`WEBHOOK_SECRET` | GitHub Appの鍵とWebhookの秘密 | ゲート |
 | 回答フォームのWorker（`ride-compass-answer`） | `APP_ID`・`APP_KEY`・`FORM_TOKEN` | `FORM_TOKEN`はhidakagitが作ったfine-grained `ridecompass-answer-form-2`。Resource ownerはridecompassで、届くのはridecompass/ride-compass-tasksだけ。期限2027-09-29 | 回答フォームの答えをhidakagitの名義で書く |
 | Renderのワークスペースの資格（Container Registry Credentials） | `ghcr-read` | hidakagitが作ったclassic `render-ghcr-read`。`read:packages`だけ（GitHubのコンテナの置き場はclassicのトークンだけを受ける）。期限なし | Renderの`ride-compass-frontend`が、非公開のfrontendのコンテナイメージを取る（サービスの Settings → Image の Credential） |

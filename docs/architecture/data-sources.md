@@ -8,6 +8,9 @@
 
 - **外部データソースを新しく使う前**に、提供元の公式ページで利用条件を読み、下の表へ
   1行足す。商用利用が不可・不明なら採用しない（不明なまま使い始めない）。
+  利用条件は、商用の可否と表記の要件だけでなく**禁止事項の全文**を読み、このアプリの機能（ルートを作る・走行中に
+  位置に合わせて案内する・地図に出す・配布物に入れる）と取り方（範囲の全部をまとめて取る・保存する）に当たる禁止が
+  無いかを照らしてから、取得や設計に入る（下の「使わないと決めたソース」の Mapillary は、これを読まずに作り始めた）。
 - **既存のソースの使い方を変える前**（表示だけだったものを評価・ルート計算へ使う、
   取得したものを再配布する等）に、その行の条件がその使い方を許すかを読み直す。
 - **OSM の値を使う材料・配信を足す・変える前**と、OSM 以外の値を道へ結ぶ前に、下の「OSM から作った値と独自の層」の持ち方に合うかを見る。
@@ -50,7 +53,6 @@ git grep -h -o -E "https?://[a-zA-Z0-9.-]+" -- backend/app backend/scripts front
 | Overture Maps places（Overture Maps Foundation。地点の出どころは Meta・Microsoft・Foursquare・AllThePlaces・PinMeTo・DAC・Uberall・OpenTravel 等で、1つの地点の出どころは1つ） | アダプタ`overture_places` | テーマは出どころごとに CDLA Permissive 2.0（Meta・Microsoft・PinMeTo・DAC・Uberall・OpenTravel 等）・Apache 2.0（Foursquare）・CC0 1.0（AllThePlaces）。OpenStreetMap のデータを含まず、ODbL の共有の義務がかからない。Foursquare の NOTICE は、ライセンスの写しを渡すこと・変えた所を目立つように示すこと・NOTICE の全文を残すことを求め、API の形で配るなら NOTICE の内容を開発者向けの文書に目立つように載せることを勧める | 可（CDLA Permissive 2.0・Apache 2.0・CC0 1.0 のどれも商用の利用を制限しない） | 出どころごとの表示（Overture の出典の文書の文言。出典の文書に載る前の新しい出どころは、配布の地点が持つ`sources[].license`でライセンスを見る）。Foursquare は著作権の1行・Apache 2.0・Overture の形へ変えた旨・NOTICE。`backend/app/domain/map_display.py: ALWAYS_SHOWN_ATTRIBUTIONS`の行と、そこからリンクする`frontend/public/licenses/`の Apache 2.0 の本文・NOTICE の写し（変えた旨を末尾に足したもの）が満たす | [出典](https://docs.overturemaps.org/attribution/)・[places](https://docs.overturemaps.org/guides/places/)・[Foursquare NOTICE](https://opensource.foursquare.com/places-notice-txt/) | 2026-10-22 |
 | 文化遺産オンライン（文化庁・国立情報学研究所）の国の指定・登録の文化財の建造物を、ジャパンサーチ（国立国会図書館）の簡易Web APIで | アダプタ`bunka_heritages` | ジャパンサーチのサイトポリシー「データの利用について」: メタデータはデータベースの紹介ページの条件に従い、書かれていなければ CC0 1.0。文化遺産オンラインの紹介ページの条件は「解説文：CC BY」だけで、使う項目（名称・位置・所有者・指定の別）に条件は無い（解説文は使わない）。文化遺産オンラインのサイト自体は「無断で転用・引用・改変することを禁じます」と書くが、簡易Web APIで取れるのは連携機関が API での提供を許したものだけ（簡易Web APIガイド 1.2）で、その条件がジャパンサーチの紹介ページに付いているので、それに従う。API は間を空けて打つよう求め、上限の目安は示さない（同 1.4） | 可（CC0・CC BY） | 条件は無いが、サイトポリシーの記載例の形（「ジャパンサーチ「文化遺産オンライン（文化庁・国立情報学研究所）」のメタデータを改変して利用」＋紹介ページのURL）で`ALWAYS_SHOWN_ATTRIBUTIONS`に出す | [サイトポリシー](https://jpsearch.go.jp/policy)・[紹介ページ](https://jpsearch.go.jp/database/bunka)・[簡易Web APIガイド](https://jpsearch.go.jp/static/developer/webapi/ja.html)・[文化遺産オンライン](https://online.bunka.go.jp/about) | 2026-10-08 |
 | 交通規制情報（公益財団法人日本道路交通情報センター（JARTIC）。都道府県警察の交通規制データベースを拡張版標準フォーマットにしたもの） | アダプタ`jartic_regulation` | JARTIC のオープンデータの利用規約。商用を含めて使え、CC BY 4.0 と互換。出典の記載を求め、加工したら出典とは別に加工した旨を求める（記載例「（公益財団法人日本道路交通情報センター）（当該ページの URL）「断面交通量情報」を加工して作成」）。翻案・公衆送信を自由に認め（第2条）、ライセンスを問わないので、区間に掛かる規制へ加工して ODbL の派生データベースに含めて配れる（2026-11-14確認） | 可 | 出典（公益財団法人日本道路交通情報センター＋「各種情報の提供」のページの URL）と加工した旨。規約の記載例の形で`backend/app/domain/map_display.py: ALWAYS_SHOWN_ATTRIBUTIONS`に出す | [各種情報の提供](https://www.jartic.or.jp/service/opendata/)・[利用規約](https://www.jartic.or.jp/d/opendata/riyou_kiyaku.pdf) | 2026-11-08 |
-| Mapillary のベクタータイル（道の写真から見つけた物の点`mly_map_feature_point`と、写真を撮った線`mly1_public`） | アダプタ`mapillary_map_feature_point`・`mapillary_sequence` | Mapillary の利用規約。口を使う権利は再許諾できず取り消しうる（3(a)）。ほかの利用者が撮ったもの（その写真から作った物の点・線を含む）は CC BY-SA で使える（3(b)。データセットによっては CC BY-NC-SA が優先する）。口のもの（Mapillary Services）の全部・一部を写して配ること・売ること・派生物を作ることは、Mapillary か許諾者が明示して認めた範囲の外では禁じる（5）。5 が派生物を禁じるので、ODbL の派生データベースに含めて配れない。濫用を疑えば読み出しを絞り、client_id を取り消せる（11） | 可（12 は製品の改善・開発を含む商用の利用を、再識別を防ぐ条件付きで認める） | 口のデータ（API・ベクタータイル）を使ったら、Mapillary のロゴを見えるように出し、Mapillary のトップページへリンクする（11） | [利用規約](https://www.mapillary.com/terms)・[API の文書](https://www.mapillary.com/developer/api-documentation) | 2026-11-14 |
 
 公共データ利用規約（PDL1.0）は商用利用を認め、CC BY 4.0と互換である
 （[デジタル庁](https://www.digital.go.jp/resources/open_data/public_data_license_v1.0)）。
@@ -62,8 +64,8 @@ git grep -h -o -E "https?://[a-zA-Z0-9.-]+" -- backend/app backend/scripts front
 持たない。取ったものの版と取った時刻は置き場の記録（`backend/app/batch/common.py: FETCH_RECORD_NAME`）に残り、取込がそれを取込の素性
 （`source_runs.origin`）へ写すので、取り込んだ行がどの版のものかは取込の記録で引ける。最後まで取れなかった取得は記録を残さず、その置き場は取り込めない。
 
-取り直すのは週1回の元の取り直し（[production-data/SKILL.md](../../.claude/skills/production-data/SKILL.md)「元の取り直し」）で、宣言の元を
-人が読まずに最新の版で入れる（宣言で`bulk: false`にした元は除き、手で取る）。元ごとの節の「版ごとに人が見るもの」は、周期レビュー（[review.md](../../.claude/commands/review.md)「整合性」の
+取り直すのは週1回の元の取り直し（[production-data/SKILL.md](../../.claude/skills/production-data/SKILL.md)「元の取り直し」）で、全部の元を
+人が読まずに最新の版で入れる。元ごとの節の「版ごとに人が見るもの」は、周期レビュー（[review.md](../../.claude/commands/review.md)「整合性」の
 「外部データソースの利用条件」）が見る。列が変わって読めなければ取込が落ち、その回は止まって知らされる。
 
 ### Overture Maps の地点（places）
@@ -110,22 +112,6 @@ git grep -h -o -E "https?://[a-zA-Z0-9.-]+" -- backend/app backend/scripts front
 1. [各種情報の提供](https://www.jartic.or.jp/service/opendata/)の利用規約と、拡張版標準フォーマットの説明書の版を読み、
    出典の求めが変わっていれば`ALWAYS_SHOWN_ATTRIBUTIONS`の行を合わせ（生成物`mapDisplay.ts`を作り直す）、列や共通規制種別コードが
    変わっていればアダプタと`rows.kinds`を合わせる。
-
-### Mapillary のタイル
-
-| 項目 | 内容 |
-|---|---|
-| 取る版 | 配信元は版を持たず、今のタイルだけを返す。記録には取った時刻・タイルセット・ズーム・枚数が残る |
-| 配布の頻度 | 公表されていない（写真が上がるたびに変わる） |
-| 取り方 | 取込の範囲を覆う宣言のズーム（`source_profile.yaml`の`grid.zoom`）のタイルの全部を、層ごとに読む。範囲を覆う z14 のタイルは15,065枚で、両方の層で 30,130枚。週の元の取り直しには入れず（宣言の`bulk: false`）、手で`--source`を渡して取る |
-| 読む速さ | `backend/app/batch/source_adapters/mapillary_tile.py: _MAX_CONCURRENT`（2）の並びで、1つの読み手が1枚ごとに`backend/app/batch/source_adapters/mapillary_tile.py: _INTERVAL_SECONDS`（0.5秒）空ける |
-
-読む速さの根拠: タイルの口の上限は1日50,000件（API の文書の Rate limits）だが、上限の内でも短い間に多く読むと断る——
-2026-10-10 に16並びで約3,000枚を読んだところでログインへの転送のあと403を返し、24時間で戻った。2026-10-11 に2並び・0.5秒おきで1,604枚を
-断られずに読めた。2026-11-15 に本番の VM で同じ速さ（2.2枚/秒）で点の層を読むと、64分・8,693枚目でログインへの転送（302）を返した。1回で範囲の全部は読めないので、週の元の取り直しには入れない（取得が落ちると、その回は取込と作り直しへ進まない）。断られたら置いたタイルを残して止まり、次に打つとまだ置いていないタイルから続ける。
-
-版ごとに人が見るもの: 版が無いので、周期レビューで[利用規約](https://www.mapillary.com/terms)を読み、表の行（利用条件・表記の要件）を合わせる。
-層の属性が変わって読めなければ取込が落ちる。
 
 ### 住所の区画の元データ（アドレス・ベース・レジストリ・e-Stat の小地域の境界・街区レベル位置参照情報）
 
@@ -249,10 +235,11 @@ ODbL 1.0 と指針に**書いてあること**（[ODbL 1.0](https://opendatacomm
 
 ## 使わないと決めたソース
 
-商用利用が不可なため採用しない。
+利用条件で、このアプリの使い方が許されないため採用しない。
 
 | ソース | 理由 | 公式ページ | 確認日 |
 |---|---|---|---|
+| Mapillary（道の写真から見つけた物の点・写真を撮った線） | 利用規約 5.1 が、実時間のナビゲーションやルート案内（機器の位置に同期した turn-by-turn）のアプリと一緒に Mapillary のサービスを使うことを、例外なしに禁じる。このアプリは走行モードでその案内を持つ。ほかに、範囲の全部をタイルで読んで保存する使い方は、5.1 の承認されていない抽出・写しの禁止に当たりうる（公式の SDK も同じ z14 のタイルを1枚ずつ読む。本番の VM から 2.2枚/秒で読むと 8,693枚目で断られた） | [利用規約](https://www.mapillary.com/terms) | 2026-11-15 |
 | 国土数値情報 緊急輸送道路（N10）・重要物流道路（N12） | 使用許諾条件が「非商用」 | [N10](https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-N10-v2_0.html)・[N12](https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-N12-2021.html)・[非商用の定義](https://nlftp.mlit.go.jp/ksj/other/agreement_02.html) | 2026-09-23 |
 
 国土数値情報は**データごとに**使用許諾条件が違う（商用可のものもある）。国土数値情報から
