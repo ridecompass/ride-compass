@@ -3248,9 +3248,7 @@ export interface operations {
     receive_ride_api_rides_post: {
         parameters: {
             query?: never;
-            header?: {
-                "X-Ride-Key"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };

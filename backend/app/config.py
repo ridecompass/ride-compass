@@ -90,9 +90,6 @@ class Settings(BaseSettings):
     admin_basic_auth_username: str = ""
     admin_basic_auth_password: str = ""
 
-    # 走りの記録を受ける口（api/routers/ride_tracks.py）へ書くための鍵。空文字のときは誰も書けない。
-    ride_track_key: str = ""
-
     # 短命キャッシュ専用で、失っても外部から取り直せるものしか置かない——Redis側に
     # 永続化（RDB/AOF）設定は要らない。本番はVM上にネイティブ導入し、backendコンテナは
     # --network=hostで起動するためこの既定値のまま到達できる。

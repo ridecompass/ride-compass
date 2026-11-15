@@ -1,11 +1,11 @@
 /**
- * `lib/rideTrack.ts`——走りの記録。書くための鍵を入れた端末だけが、走行モードの間の位置と出来事・推したルート・生成の条件・
- * 見せた予報を走りごとに溜め、走り終えたものを送る形（受ける口`POST /api/rides`）で出す。
+ * `lib/rideTrack.ts`——走りの記録。走行モードの間の位置と出来事・推したルート・生成の条件・見せた予報を走りごとに溜め、
+ * 走り終えたものを送る形（受ける口`POST /api/rides`）で出す。
  *
  * 記録中の走りと最後に受けた予報はモジュールが持つので、読み込み直しはモジュールを読み直して作る（端末の保存値は残る）。
  *
  * ここで見ないもの: 走行モード・候補・予報から記録へ渡すことと、走り終えに送ること（`app/page.rideControl.test.tsx`）、
- * 鍵を入れる窓（`components/HeaderMenu/HeaderMenu.test.tsx`）、画面のエラーの境目が記録を残すこと（`app/error.test.tsx`）。
+画面のエラーの境目が記録を残すこと（`app/error.test.tsx`）。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -48,16 +48,7 @@ afterEach(() => {
 });
 
 describe("走りの記録", () => {
-  it("鍵を入れていなければ、走っても何も溜めない", () => {
-    track.startRideTrack(START_MS);
-    track.recordRideTrackFix(fix(1_000));
-    track.stopRideTrack(START_MS + 2_000);
-
-    expect(track.pendingRideUploads()).toEqual([]);
-  });
-
-  it("鍵を入れていれば、点を送る形の整数で、出来事・初めて出た候補（受けたまま。同じ道の並びでも条件が違えば別に）と条件・始める前からと走る間に見せた予報と一緒に溜め、走り終えたものだけを送る側へ出す", () => {
-    track.setRideTrackWriteKey("key");
+  it("点を送る形の整数で、出来事・初めて出た候補（受けたまま。同じ道の並びでも条件が違えば別に）と条件・始める前からと走る間に見せた予報と一緒に溜め、走り終えたものだけを送る側へ出す", () => {
     track.noteRideTrackForecast("gridPointToday", { hours: [1] }, START_MS - 60_000);
     track.startRideTrack(START_MS);
     track.recordRideTrackRoute(ROUTE, CONDITIONS, START_MS);
@@ -102,7 +93,6 @@ describe("走りの記録", () => {
   });
 
   it("読み込み直しから戻すときは、休んだまま終えても記録の途中の走りを続けて終え、戻さずに始めると、終える前に閉じた走りを終えたものにして新しい走りにする", async () => {
-    track.setRideTrackWriteKey("key");
     track.startRideTrack(START_MS);
     track.recordRideTrackFix(fix(1_000));
     track.recordRideTrackStatus("resting", START_MS + 2_000);
@@ -124,7 +114,6 @@ describe("走りの記録", () => {
   });
 
   it("送れていない走りが上限まで溜まっていれば、一番古い走りを捨てて新しい走りを記録する", () => {
-    track.setRideTrackWriteKey("key");
     vi.spyOn(console, "warn").mockImplementation(() => {});
     for (let ride = 0; ride <= track.MAX_STORED_RIDES; ride += 1) {
       track.startRideTrack(START_MS + ride * HOUR_MS);
@@ -146,7 +135,6 @@ describe("走りの記録", () => {
   });
 
   it("端末に書けなくなったら、送っていない古い走りを消して書き直し、今の走りの記録を続ける", () => {
-    track.setRideTrackWriteKey("key");
     track.startRideTrack(START_MS);
     track.stopRideTrack(START_MS + 1_000);
     track.startRideTrack(START_MS + HOUR_MS);
@@ -175,7 +163,6 @@ describe("走りの記録", () => {
   });
 
   it("1回の走りに溜める点は上限まで", () => {
-    track.setRideTrackWriteKey("key");
     track.startRideTrack(START_MS);
     for (let second = 0; second <= track.MAX_POINTS_PER_RIDE; second += 1)
       track.recordRideTrackFix(fix(second * 1_000));
@@ -185,7 +172,6 @@ describe("走りの記録", () => {
   });
 
   it("端末に書けなくなったら、投げずにその走りの記録をやめ、案内を終えると溜めた分を送る側へ出す", () => {
-    track.setRideTrackWriteKey("key");
     track.startRideTrack(START_MS);
     track.recordRideTrackFix(fix(1_000));
     const storage = window.localStorage;

@@ -4,7 +4,7 @@
 
 `/admin`（`app/admin/page.tsx`、Basic認証保護下。画面の題は「管理・開発者ツール」）にある管理の画面（材料・較正値・データ保守）と
 開発者向け補助機能（ログ表示・システム状況）、その認証の境界と、一般公開ページ`page.tsx`（`/`、認証なし）のヘッダーメニューから直接操作
-できる機能（デバッグログ表示・走りの記録の鍵）。
+できる機能（デバッグログ表示）。
 
 **対象ファイル**
 
@@ -27,9 +27,8 @@
 | `hooks/useCopyToClipboard.ts` | クリップボードへの書き込みと結果表示（コピー済み・失敗）。Clipboard APIは[SecureContext]のため、httpのIPアクセス等では`navigator.clipboard`自体がundefinedになる——`.catch()`はPromiseの拒否しか捕まえず、プロパティアクセスの同期TypeErrorをtryで受けないとボタンが無反応のままになる。失敗は握り潰さず文言を返す | `DebugConsole`・`BackendLogsPanel` |
 | `hooks/useDebugLog.ts`・`lib/debugLog.ts` | デバッグモードON/OFF状態・ログエントリのシングルストア（`useSyncExternalStore`） | |
 | `lib/rideMetrics.ts` | 走行の計測: 走行モードの間、1分ごとの数をまとめた行を端末に残す（下記「走行の計測」） | 位置（`features/ride/useRideMode.ts`）・向き（`features/ride/useDeviceHeading.ts`）・地図（`features/map/MapView/useMapLifecycle.ts`）・ページ（`app/page.tsx`）が数える口を呼び、`HeaderMenu`の「走行の記録をコピー」で写す |
-| `lib/rideTrack.ts` | 走りの記録: 書くための鍵を入れた端末だけ、走行モードの間の位置と出来事・推したルート・生成の条件・見せた予報を走りごとに溜める（下記「走りの記録」） | 位置・出来事（`features/ride/useRideMode.ts`）・候補と条件と読み込み直し（`app/useRideGuidance.ts`）・予報（`features/conditions/useWeatherConditions.ts`）が記録の口を呼ぶ |
-| `services/rideTrackApi.ts` | 走り終えて送っていない走りを、鍵を付けて`POST /api/rides`へ古い順に送り、書けたものを端末で消す。本文は本番の nginx の要求の大きさの上限（既定の 1MB）に長い走りも収めるため、gzip で縮めて送る | 案内を終えたとき（`useRideMode.ts`） |
-| `components/HeaderMenu/RideTrackDialog.tsx` | 書くための鍵を入れる・外す窓と、送っていない走りの数 | `HeaderMenu`の「走りの記録」 |
+| `lib/rideTrack.ts` | 走りの記録: 走行モードの間の位置と出来事・推したルート・生成の条件・見せた予報を走りごとに溜める（下記「走りの記録」） | 位置・出来事（`features/ride/useRideMode.ts`）・候補と条件と読み込み直し（`app/useRideGuidance.ts`）・予報（`features/conditions/useWeatherConditions.ts`）が記録の口を呼ぶ |
+| `services/rideTrackApi.ts` | 走り終えて送っていない走りを、`POST /api/rides`へ古い順に送り、書けたものを端末で消す。本文は本番の nginx の要求の大きさの上限（既定の 1MB）に長い走りも収めるため、gzip で縮めて送る | 案内を終えたとき（`useRideMode.ts`） |
 | `app/api/version/route.ts`・`services/versionApi.ts` | フロントエンドの動いている版（コミット・起動時刻）を返すNext.js route handlerと、それを読む口（`SystemStatusPanel`と`HeaderMenu`のバージョン表示が読む） | |
 
 ## 開発の道具（`frontend/scripts/`）
@@ -99,9 +98,9 @@ Chrome にだけある口で、無い端末ではその項目を null・0 のま
 
 ## 走りの記録
 
-推したルートと実走を開発機の較正の道具で照らすための記録。走行の計測（座標を残さない）と違って座標を残すので、同意の仕組みなしで
-記録してよい人（開発者と、直接頼んで了解をもらった人）が、ヘッダーのメニューの「走りの記録」で書くための鍵を入れた端末だけが溜める。
-鍵は管理画面の資格情報と別で、走るたびにログインさせない。走行モードを始めると走りを1つ始め、休んで続けても・読み込み直して戻しても
+推したルートと実走を開発機の較正の道具で照らすための記録。走行の計測（座標を残さない）と違って座標を残す。アプリを使うのは
+URL を渡した人だけの段階なので、走行モードを使ったどの端末でも記録し、送る（公開の前に、ログインと同意で記録する人を分ける）。
+走行モードを始めると走りを1つ始め、休んで続けても・読み込み直して戻しても
 同じ走りを続け、案内を終えると終えて送る。残すのは端末が出したまま・アプリが受けたままの値と出来事で、止まり・外れ等の解釈はしない。
 
 | 残すもの | 中身 |

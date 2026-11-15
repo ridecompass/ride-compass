@@ -15,7 +15,7 @@
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { pendingRideCount, setRideTrackWriteKey, stopRideTrack, type RideUploadBody } from "@/lib/rideTrack";
+import { pendingRideCount, stopRideTrack, type RideUploadBody } from "@/lib/rideTrack";
 import { gunzippedJson, inTurn, onSameOrigin, onUrl } from "@/testing/backendServer";
 import { installGeolocation } from "@/testing/geolocation";
 import {
@@ -57,8 +57,7 @@ afterEach(() => {
 });
 
 describe("走行モードの操作", () => {
-  it("鍵を入れていれば、位置・候補と生成の条件・見せた予報・休むを1つの走りとして溜め、案内を終えるとその走りを鍵を付けて送る。送れなければ端末に残して次に案内を終えたときに一緒に送り、送れたら端末から消す", async () => {
-    setRideTrackWriteKey("ride-key");
+  it("走行モードの間の位置・候補と生成の条件・見せた予報・休むを1つの走りとして溜め、案内を終えるとその走りを送る。送れなければ端末に残して次に案内を終えたときに一緒に送り、送れたら端末から消す", async () => {
     onSameOrigin("GET", "/api/version", () => Response.json({ commit: "abc1234", started_at: "2026-11-16T00:00:00Z" }));
     const sent = onUrl(
       "*/api/rides",
@@ -87,7 +86,6 @@ describe("走行モードの操作", () => {
     await user.click(screen.getByRole("button", { name: "案内を終える" }));
 
     await waitFor(() => expect(sent).toHaveLength(1));
-    expect(sent[0].headers.get("X-Ride-Key")).toBe("ride-key");
     const ride = (await gunzippedJson(sent[0])) as RideUploadBody;
     expect(ride.points.map(([, lat, lon, ele, , speed, course]) => [lat, lon, ele, speed, course])).toEqual([
       [Math.round(RIDDEN_MIDDLE.latitude * 1e6), Math.round(RIDDEN_MIDDLE.longitude * 1e6), 124, 400, 90],

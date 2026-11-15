@@ -10,7 +10,12 @@ import { clientConfigResponse } from "@/testing/clientConfig";
 import { TWO_COST_AXES } from "@/testing/costAxes";
 import type { ClientConfigResponse, CostAxisCatalogResponse } from "@/types/route";
 
-export const backendServer = setupServer();
+// 走行モードを使うと、どのテストでも走り始めに画面の版を読み、案内を終えたときに走りを送る（`lib/rideTrack.ts`）。走りの記録を
+// 見ないテストでも出る要求なので、既定で応える（テストごとの片付けでも残る）。応え方を見るテストは、自分で上書きする。
+export const backendServer = setupServer(
+  http.get("*/api/version", () => HttpResponse.json({ commit: null, started_at: "2026-11-16T00:00:00Z" })),
+  http.post(`${API_BASE_URL}/api/rides`, () => new HttpResponse(null, { status: 204 })),
+);
 
 export interface SentRequest {
   method: string;

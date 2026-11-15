@@ -22,7 +22,7 @@ backendが公開するHTTP APIの**全体の形**と、エンドポイントを�
 | 地点の検索 | `/api/place-search`・`/api/place-area` | 不要 | 502（対象範囲を読めない）。空の応答は「当たらなかった」・「辺りが無い」だけ |
 | 地図タイル | `/api/region/*-tiles`・`/api/jma-tile/*`・`/api/gsi-*-tile/*` | 不要 | 空タイル（取込範囲の外）／502／503（DBの障害） |
 | 画面の設定・費用の軸 | `/api/client-config`・`/api/cost-axes`・`/api/cost-axes/lens-equivalents` | 不要（読み取り専用） | 503（DBの障害） |
-| 走りの記録 | `POST /api/rides`（本文は gzip で縮めて送れる。`Content-Encoding: gzip`） | 書くための鍵（`X-Ride-Key`。管理の資格情報と別） | 401（鍵が合わない・置いていない）／413（戻した本文が上限を超える） |
+| 走りの記録 | `POST /api/rides`（本文は gzip で縮めて送れる。`Content-Encoding: gzip`） | 不要（アプリを使うのは URL を渡した人だけの段階。公開の前にログインと同意へ置き換える） | 413（戻した本文が上限を超える）／422 |
 | 管理 | `/api/admin/*` | HTTP Basic必須 | 401／404／422／503（DBの障害。どの口も`api/failure_replies.py`の1か所で返す） |
 
 ## 全体に効く約束

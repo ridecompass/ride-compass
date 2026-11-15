@@ -1,6 +1,6 @@
 // 走りの記録。走行モードの間に受けた位置と走りの出来事・推したルート・生成の条件・見せた予報を、走りごとに端末へ溜め、
-// 走り終えたものを送る形で出す。溜めるのは、書くための鍵を入れた端末だけ（入れていない端末では何もしない）。
-// 鍵を入れた人が、同意の仕組みなしで記録してよい人（開発者と、直接頼んで了解をもらった人）。
+// 走り終えたものを送る形で出す。走行モードを使ったどの端末でも記録する（アプリを使うのは URL を渡した人だけの段階で、
+// 公開の前にログインと同意へ置き換える）。
 //
 // 点は送る形（受ける口`POST /api/rides`の`points`）のまま溜め、送るときに詰め替えない。位置が届くたびに走り全体を書き直すと、
 // 点の数に比例して重くなるので、点は区切り（`POINTS_PER_CHUNK`）ごとの鍵へ足し、位置ごとに書き直す見出しは小さく保つ
@@ -26,7 +26,6 @@ type Forecast = RideUploadBody["forecasts"][number];
 
 /** 走りの記録の鍵の頭。画面のエラーの境目が保存値を全部消すときも、これで始まる鍵は残す。 */
 export const RIDE_TRACK_KEY_PREFIX = "ridecompass:ride-track:";
-const WRITE_KEY_KEY = `${RIDE_TRACK_KEY_PREFIX}key`;
 const INDEX_KEY = `${RIDE_TRACK_KEY_PREFIX}rides`;
 const LABEL = "走りの記録";
 /** 1つの鍵に入れる点の数。 */
@@ -99,17 +98,6 @@ function readOrNull<T>(key: string): T | null {
   }
 }
 
-/** 端末に入れた書くための鍵（無ければ null）。 */
-export function rideTrackWriteKey(): string | null {
-  return readOrNull<string>(WRITE_KEY_KEY);
-}
-
-/** 書くための鍵を入れる（null で外す）。 */
-export function setRideTrackWriteKey(key: string | null): void {
-  if (key === null) removeStoredValue(WRITE_KEY_KEY);
-  else writeStored(WRITE_KEY_KEY, LABEL, key);
-}
-
 function rideIds(): string[] {
   return readOrNull<string[]>(INDEX_KEY) ?? [];
 }
@@ -172,11 +160,11 @@ function pushEvent(kind: EventKind, nowMs: number, routeKey: string | null = nul
 }
 
 /**
- * 読み込み直しから走行モードを戻すとき（休んだまま戻すときも）。鍵を入れていて、記録の途中の走り（最後に始めて、まだ終えて
+ * 読み込み直しから走行モードを戻すとき（休んだまま戻すときも）。記録の途中の走り（最後に始めて、まだ終えて
  * いないもの）があれば、それを続ける。
  */
 export function continueRideTrack(nowMs: number): void {
-  if (recording !== null || rideTrackWriteKey() === null) return;
+  if (recording !== null) return;
   const id = rideIds().at(-1);
   const meta = id === undefined ? null : readMeta(id);
   if (meta === null || meta.ended) return;
@@ -195,11 +183,11 @@ export function continueRideTrack(nowMs: number): void {
 }
 
 /**
- * 走行モードで位置を受け始めたとき。鍵を入れていれば走りの記録を始める。休んだあとに続けるとき・読み込み直して続けている
+ * 走行モードで位置を受け始めたとき。走りの記録を始める。休んだあとに続けるとき・読み込み直して続けている
  * ときは、同じ走りを続ける。記録の途中の走りが残っていれば（終える前に閉じた等）、終えたものにして送る側へ回し、新しい走りを始める。
  */
 export function startRideTrack(nowMs: number): void {
-  if (recording !== null || rideTrackWriteKey() === null) return;
+  if (recording !== null) return;
   for (const id of rideIds()) {
     const meta = readMeta(id);
     if (meta !== null && !meta.ended) saveMeta({ ...meta, ended: true });

@@ -9,7 +9,6 @@ import { getQueryClient } from "@/lib/queryClient";
 import {
   recordRideTrackFix,
   recordRideTrackStatus,
-  rideTrackWriteKey,
   setRideTrackAppVersion,
   startRideTrack,
   stopRideTrack,
@@ -260,14 +259,13 @@ export function useRideMode(plausibleMaxKmh: number | undefined): UseRideModeRes
     setStatus("waiting");
     startRideMetrics();
     startRideTrack(Date.now());
-    // 記録しているなら、走りを記録した画面の版を添える（読めなければ null。版のために走りを止めない）。
-    if (rideTrackWriteKey() !== null)
-      void getQueryClient()
-        .fetchQuery(frontendVersionQuery)
-        .then(
-          (version) => setRideTrackAppVersion(version.commit),
-          () => setRideTrackAppVersion(null),
-        );
+    // 走りを記録した画面の版を添える（読めなければ null。版のために走りを止めない）。
+    void getQueryClient()
+      .fetchQuery(frontendVersionQuery)
+      .then(
+        (version) => setRideTrackAppVersion(version.commit),
+        () => setRideTrackAppVersion(null),
+      );
     debugLog("ride:mode", "始めた");
     watchId.current = navigator.geolocation.watchPosition(
       (received) => {

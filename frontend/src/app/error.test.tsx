@@ -1,17 +1,11 @@
 /**
- * `app/error.tsx`——画面のエラーの境目。端末の保存値を消して再試行するとき、走りの記録（送るまでほかに写しが無い）と鍵は残す。
+ * `app/error.tsx`——画面のエラーの境目。端末の保存値を消して再試行するとき、走りの記録（送るまでほかに写しが無い）は残す。
  */
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
 
-import {
-  pendingRideCount,
-  rideTrackWriteKey,
-  setRideTrackWriteKey,
-  startRideTrack,
-  stopRideTrack,
-} from "@/lib/rideTrack";
+import { pendingRideCount, startRideTrack, stopRideTrack } from "@/lib/rideTrack";
 
 import ErrorBoundary from "./error";
 
@@ -20,8 +14,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-it("「端末に保存した値を消して再試行」は、走りの記録と鍵を残して、ほかの保存値を消してから再試行する", async () => {
-  setRideTrackWriteKey("key");
+it("「端末に保存した値を消して再試行」は、走りの記録を残して、ほかの保存値を消してから再試行する", async () => {
   startRideTrack(0);
   stopRideTrack(1_000);
   localStorage.setItem("ridecompass:place-history", "[]");
@@ -33,6 +26,5 @@ it("「端末に保存した値を消して再試行」は、走りの記録と�
 
   expect(localStorage.getItem("ridecompass:place-history")).toBeNull();
   expect(pendingRideCount()).toBe(1);
-  expect(rideTrackWriteKey()).toBe("key");
   expect(retry).toHaveBeenCalled();
 });

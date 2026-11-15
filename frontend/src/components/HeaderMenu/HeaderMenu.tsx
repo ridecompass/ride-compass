@@ -7,7 +7,6 @@ import { Button } from "@/components/ui/Button/Button";
 import { DialogContent, DialogRoot } from "@/components/ui/Dialog/Dialog";
 import { LogIcon } from "@/components/ui/icons/icons";
 import { CopyIcon, HelpIcon, MenuIcon, RedrawMapIcon, VersionIcon } from "@/components/ui/icons/lucideIcons";
-import { RideTrackDialog } from "./RideTrackDialog";
 import { textVariants } from "@/components/ui/Text/Text";
 import { Toggle } from "@/components/ui/Toggle/Toggle";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
@@ -35,10 +34,9 @@ export default function HeaderMenu({
   onRedrawMap,
 }: HeaderMenuProps) {
   const [open, setOpen] = useState(false);
-  // 開いている窓（バージョン・走りの記録）。
-  const [dialog, setDialog] = useState<"version" | "rideTrack" | null>(null);
-  // メニューが閉じきってから入る先（説明を見る状態・窓）。
-  const afterClose = useRef<"guide" | "version" | "rideTrack" | null>(null);
+  const [versionOpen, setVersionOpen] = useState(false);
+  // メニューが閉じきってから入る先（説明を見る状態・バージョンの窓）。
+  const afterClose = useRef<"guide" | "version" | null>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const { copied, error: copyError, copy } = useCopyToClipboard();
   // 直近の走行の記録（`lib/rideMetrics.ts`）。メニューを開いたときに読む（走り終えてから開いて写す）。
@@ -73,7 +71,7 @@ export default function HeaderMenu({
             event.preventDefault();
             trigger.current?.focus();
             if (next === "guide") onStartUsageGuide();
-            else setDialog(next);
+            else setVersionOpen(true);
           }}
         >
           {/* メニューを閉じてから入る（開いたままだと、次に押す部品の上にメニューが残る）。 */}
@@ -128,18 +126,6 @@ export default function HeaderMenu({
           <Button
             variant="menu"
             size="sm"
-            usage="走りを記録して送るための鍵を、この端末に入れます。"
-            onClick={() => {
-              afterClose.current = "rideTrack";
-              setOpen(false);
-            }}
-          >
-            <LogIcon size={15} />
-            走りの記録
-          </Button>
-          <Button
-            variant="menu"
-            size="sm"
             usage="いま動いているバージョンを表示します。"
             onClick={() => {
               afterClose.current = "version";
@@ -151,9 +137,8 @@ export default function HeaderMenu({
           </Button>
         </PopoverContent>
       </Popover>
-      <DialogRoot open={dialog !== null} onOpenChange={(next) => !next && setDialog(null)}>
-        {dialog === "version" && <VersionDialog />}
-        {dialog === "rideTrack" && <RideTrackDialog />}
+      <DialogRoot open={versionOpen} onOpenChange={setVersionOpen}>
+        {versionOpen && <VersionDialog />}
       </DialogRoot>
     </>
   );

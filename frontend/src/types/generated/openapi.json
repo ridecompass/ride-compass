@@ -1862,33 +1862,15 @@
           "rides"
         ],
         "operationId": "receive_ride_api_rides_post",
-        "parameters": [
-          {
-            "name": "X-Ride-Key",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Ride-Key"
-            }
-          }
-        ],
         "requestBody": {
-          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/RideUpload"
               }
             }
-          }
+          },
+          "required": true
         },
         "responses": {
           "204": {
