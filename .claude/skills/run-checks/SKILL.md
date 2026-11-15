@@ -218,7 +218,7 @@ gh workflow run mutation.yml -R ridecompass/ride-compass --ref master -f ref=<�
   - `baseline.txt`: 変異を入れずに、関数ごとに同じテストの組み合わせを同じ並びで2回回す（基準。行は関数の名前か、全部なら `*`）。
     基準で落ちるテストは、テストどうしの依存や揺れで落ちていて、変異の回で落ちても見つけたとは言えない。全部の測りでは
     基準を変異と一緒に回す（`plan.py` の `MUT_WITH_BASELINE`）ので、手で置くのは基準だけを回したいときだけ。
-  - どれも master へ入れない（入った Pull Request は `backend/tests/structure/test_mutation_lists_absent.py` が CI で落とす）。
+  - どれも master へ入れない。
 - **結果は成果物**: 見直しの `mutation-review`（90日。`summary.md`・`candidates.md`・`review.json`・`report.json`。読み方は test-review スキルの3）と、
   元の記録の `mutation-<番号>`・`recheck-<番号>`（14日）。元の記録から表と候補を出し直すときは、`gh run download <実行の id> -R ridecompass/ride-compass -D <場所>` で取り、
   測った版のチェックアウトの `backend/` で `python scripts/mutation/report.py <場所> <当て直しの成果物の場所> <表のファイル>` と
