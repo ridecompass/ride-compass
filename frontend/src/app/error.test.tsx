@@ -5,7 +5,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
 
-import { pendingRideCount, startRideTrack, stopRideTrack } from "@/lib/rideTrack";
+import { pendingRideUploads, startRideTrack, stopRideTrack } from "@/lib/rideTrack";
 
 import ErrorBoundary from "./error";
 
@@ -25,6 +25,6 @@ it("「端末に保存した値を消して再試行」は、走りの記録を�
   await userEvent.click(screen.getByRole("button", { name: "端末に保存した値を消して再試行" }));
 
   expect(localStorage.getItem("ridecompass:place-history")).toBeNull();
-  expect(pendingRideCount()).toBe(1);
+  expect(pendingRideUploads().length).toBe(1);
   expect(retry).toHaveBeenCalled();
 });

@@ -131,7 +131,7 @@ describe("走りの記録", () => {
     localStorage.setItem("ridecompass:ride-track:rides", "{壊れた");
     vi.spyOn(console, "warn").mockImplementation(() => {});
 
-    expect(track.pendingRideCount()).toBe(0);
+    expect(track.pendingRideUploads().length).toBe(0);
   });
 
   it("端末に書けなくなったら、送っていない古い走りを消して書き直し、今の走りの記録を続ける", () => {

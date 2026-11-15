@@ -7,7 +7,8 @@
 // （ルートの線・条件・予報は別の鍵に、変わったときだけ書く）。
 // 書けなかった（容量の上限等）ときは、送っていない古い走りを古い順に消して書き直し、消せる走りが無いのに書けなければ、案内を止めずに
 // その走りの記録だけをやめる（溜めた分は、案内を終えたときに送る）。読めない（壊れた）値は無いものとして
-// 扱い、投げない——走行モード・メニューの窓が描く中で読むので、投げると画面ごと落ち、エラーの境目の全消しもこの記録は残すため抜けられない。
+// 扱い、投げない——走行モードを始める・止める・読み込み直して戻す中で読むので、投げると走行モードが動かなくなり、エラーの境目の
+// 全消しもこの記録は残すため抜けられない。
 // 送るまで消さないので、送れない走りが溜まって端末の保存領域を埋めないよう、溜める走りの数に上限（`MAX_STORED_RIDES`）を持ち、
 // 上限に当たったら一番古い走りを捨てて新しい走りを記録する（送れないまま残る走りで、記録が止まらないように）。
 
@@ -307,11 +308,6 @@ export function noteRideTrackForecast(kind: string, value: Forecast, nowMs: numb
   if (recording === null || recording.full) return;
   recording.extras.forecasts.push(forecast);
   saveExtras(recording);
-}
-
-/** 走り終えて、まだ送っていない走りの数。 */
-export function pendingRideCount(): number {
-  return rideIds().filter((id) => readMeta(id)?.ended === true).length;
 }
 
 /** 走り終えて、まだ送っていない走り（古い順）。 */

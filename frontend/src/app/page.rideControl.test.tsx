@@ -15,7 +15,7 @@
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { pendingRideCount, stopRideTrack, type RideUploadBody } from "@/lib/rideTrack";
+import { pendingRideUploads, stopRideTrack, type RideUploadBody } from "@/lib/rideTrack";
 import { gunzippedJson, inTurn, onSameOrigin, onUrl } from "@/testing/backendServer";
 import { installGeolocation } from "@/testing/geolocation";
 import {
@@ -97,12 +97,12 @@ describe("走行モードの操作", () => {
     expect(Object.keys(ride.conditions)).toEqual(Object.keys(ride.routes));
     expect((ride.forecasts as { kind: string }[]).map(({ kind }) => kind)).toContain("gridPointToday");
     expect(ride.app_version).toBe("abc1234");
-    expect(pendingRideCount()).toBe(1);
+    expect(pendingRideUploads().length).toBe(1);
 
     await user.click(rideButton());
     await user.click(rideButton());
     await user.click(screen.getByRole("button", { name: "案内を終える" }));
-    await waitFor(() => expect(pendingRideCount()).toBe(0));
+    await waitFor(() => expect(pendingRideUploads().length).toBe(0));
     expect(await gunzippedJson(sent[1])).toEqual(ride);
   });
 
