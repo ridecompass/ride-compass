@@ -7,7 +7,6 @@ import DebugPanel from "@/features/admin/DebugPanel/DebugPanel";
 import BackendLogsPanel from "@/features/admin/BackendLogsPanel/BackendLogsPanel";
 import SystemStatusPanel from "@/features/admin/SystemStatusPanel/SystemStatusPanel";
 import MaterialCoveragePanel from "@/features/admin/AdminPanels/MaterialCoveragePanel";
-import DerivedDataFreshnessPanel from "@/features/admin/AdminPanels/DerivedDataFreshnessPanel";
 import DbStatusPanel from "@/features/admin/AdminPanels/DbStatusPanel";
 import TileCachePanel from "@/features/admin/AdminPanels/TileCachePanel";
 import TuningPanel from "@/features/admin/AdminPanels/TuningPanel";
@@ -54,7 +53,6 @@ export default function AdminPage() {
         </TabsContent>
 
         <TabsContent className={TAB_PANEL_CLASS} value="maintenance">
-          <DerivedDataFreshnessPanel />
           <DbStatusPanel />
           <TileCachePanel />
         </TabsContent>

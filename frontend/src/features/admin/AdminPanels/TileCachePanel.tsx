@@ -14,8 +14,7 @@ import refreshIntervals from "@/types/generated/refresh-intervals.json";
 const BASEMAP_BROWSER_CACHE = formatMinutes(refreshIntervals.basemap_browser_cache_seconds);
 
 // 「データ保守」タブ（/admin）から、サーバー側のタイルファイルキャッシュを全消去するパネル。
-// 隣のDerivedDataFreshnessPanelが「古いかどうかを見る」のに対し、こちらは「古いものを
-// 捨てる」操作側。全利用者へ影響するためBasic認証の内側（/admin）にだけ置く。
+// 全利用者へ影響するためBasic認証の内側（/admin）にだけ置く。
 export default function TileCachePanel() {
   const clear = useMutation({ mutationFn: refreshTileCache }, getQueryClient());
 

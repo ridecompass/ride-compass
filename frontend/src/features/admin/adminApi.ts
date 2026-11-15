@@ -22,13 +22,6 @@ export function getMaterialCoverage() {
 
 // データ保守
 
-export function getDerivedDataFreshness() {
-  return requestApi(
-    (init) => adminApiClient.GET("/derived-data/freshness", init),
-    adminOptions("派生データ鮮度台帳の取得"),
-  );
-}
-
 export function getDbStatus() {
   return requestApi((init) => adminApiClient.GET("/db-status", init), adminOptions("DB状態の取得"));
 }

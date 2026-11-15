@@ -21,7 +21,7 @@ from app.domain.tuning import TUNING_PARAMETERS, TuningEffect
 from app.infrastructure import road_network_store, tile_cache
 from app.infrastructure.region_tile_cache import MVT_TILE_GENERATIONS
 from app.infrastructure.cache_identity import region_tile_key
-from app.infrastructure.derived_data_freshness import derived_tables
+from app.infrastructure.orm_base import derived_tables
 from app.infrastructure.road_graph_repository import RoadGraphRepository
 from app.infrastructure.source_models import PARTY_TYPE_CODES
 from tests.conftest import (

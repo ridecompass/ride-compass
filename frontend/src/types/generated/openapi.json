@@ -1880,28 +1880,6 @@
         }
       }
     },
-    "/api/admin/derived-data/freshness": {
-      "get": {
-        "operationId": "get_derived_data_freshness_api_admin_derived_data_freshness_get",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DerivedDataFreshnessReport"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ]
-      }
-    },
     "/api/derived-database": {
       "get": {
         "operationId": "get_derived_database_api_derived_database_get",
@@ -2819,50 +2797,6 @@
         ],
         "title": "ClientConfigResponse"
       },
-      "ColumnNulls": {
-        "properties": {
-          "column": {
-            "type": "string",
-            "title": "Column"
-          },
-          "null_count": {
-            "type": "integer",
-            "title": "Null Count"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "column",
-          "null_count"
-        ],
-        "title": "ColumnNulls"
-      },
-      "ColumnsChange": {
-        "properties": {
-          "added": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Added"
-          },
-          "removed": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Removed"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "added",
-          "removed"
-        ],
-        "title": "ColumnsChange"
-      },
       "Condition": {
         "properties": {
           "op": {
@@ -3185,7 +3119,7 @@
           },
           "tables": {
             "items": {
-              "$ref": "#/components/schemas/app__services__db_status_service__TableEntry"
+              "$ref": "#/components/schemas/TableEntry"
             },
             "type": "array",
             "title": "Tables"
@@ -3294,45 +3228,6 @@
           "msm"
         ],
         "title": "DebugStatsResponse"
-      },
-      "DerivedDataFreshnessReport": {
-        "properties": {
-          "computed_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Computed At"
-          },
-          "sources": {
-            "items": {
-              "$ref": "#/components/schemas/SourceEntry"
-            },
-            "type": "array",
-            "title": "Sources"
-          },
-          "tables": {
-            "items": {
-              "$ref": "#/components/schemas/app__services__derived_data_freshness_service__TableEntry"
-            },
-            "type": "array",
-            "title": "Tables"
-          },
-          "tuning": {
-            "items": {
-              "$ref": "#/components/schemas/TuningEntry"
-            },
-            "type": "array",
-            "title": "Tuning"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "computed_at",
-          "sources",
-          "tables",
-          "tuning"
-        ],
-        "title": "DerivedDataFreshnessReport"
       },
       "ElevationStretch": {
         "properties": {
@@ -6212,49 +6107,6 @@
         ],
         "title": "SecondsExample"
       },
-      "SourceEntry": {
-        "properties": {
-          "source": {
-            "type": "string",
-            "title": "Source"
-          },
-          "derived_run_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Derived Run Id"
-          },
-          "latest_run_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Latest Run Id"
-          },
-          "needs_rebuild": {
-            "type": "boolean",
-            "title": "Needs Rebuild"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "source",
-          "derived_run_id",
-          "latest_run_id",
-          "needs_rebuild"
-        ],
-        "title": "SourceEntry"
-      },
       "SucceededRunCounts": {
         "properties": {
           "id": {
@@ -6274,6 +6126,71 @@
           "finished_at"
         ],
         "title": "SucceededRunCounts"
+      },
+      "TableEntry": {
+        "properties": {
+          "table_name": {
+            "type": "string",
+            "title": "Table Name"
+          },
+          "row_count": {
+            "type": "integer",
+            "title": "Row Count"
+          },
+          "total_bytes": {
+            "type": "integer",
+            "title": "Total Bytes"
+          },
+          "dead_tuples": {
+            "type": "integer",
+            "title": "Dead Tuples"
+          },
+          "analyzed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Analyzed At"
+          },
+          "vacuumed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vacuumed At"
+          },
+          "needs_attention": {
+            "type": "boolean",
+            "title": "Needs Attention"
+          },
+          "note": {
+            "type": "string",
+            "title": "Note"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "table_name",
+          "row_count",
+          "total_bytes",
+          "dead_tuples",
+          "analyzed_at",
+          "vacuumed_at",
+          "needs_attention",
+          "note"
+        ],
+        "title": "TableEntry"
       },
       "ThresholdEquivalents": {
         "properties": {
@@ -6423,52 +6340,6 @@
           "lens_id"
         ],
         "title": "TotalLens"
-      },
-      "TuningEntry": {
-        "properties": {
-          "param_id": {
-            "type": "string",
-            "title": "Param Id"
-          },
-          "label": {
-            "type": "string",
-            "title": "Label"
-          },
-          "unit": {
-            "type": "string",
-            "title": "Unit"
-          },
-          "derived_value": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Derived Value"
-          },
-          "current_value": {
-            "type": "number",
-            "title": "Current Value"
-          },
-          "needs_rebuild": {
-            "type": "boolean",
-            "title": "Needs Rebuild"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "param_id",
-          "label",
-          "unit",
-          "derived_value",
-          "current_value",
-          "needs_rebuild"
-        ],
-        "title": "TuningEntry"
       },
       "TuningParameterView": {
         "properties": {
@@ -6947,114 +6818,6 @@
           "label"
         ],
         "title": "WindDirection"
-      },
-      "app__services__db_status_service__TableEntry": {
-        "properties": {
-          "table_name": {
-            "type": "string",
-            "title": "Table Name"
-          },
-          "row_count": {
-            "type": "integer",
-            "title": "Row Count"
-          },
-          "total_bytes": {
-            "type": "integer",
-            "title": "Total Bytes"
-          },
-          "dead_tuples": {
-            "type": "integer",
-            "title": "Dead Tuples"
-          },
-          "analyzed_at": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Analyzed At"
-          },
-          "vacuumed_at": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Vacuumed At"
-          },
-          "needs_attention": {
-            "type": "boolean",
-            "title": "Needs Attention"
-          },
-          "note": {
-            "type": "string",
-            "title": "Note"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "table_name",
-          "row_count",
-          "total_bytes",
-          "dead_tuples",
-          "analyzed_at",
-          "vacuumed_at",
-          "needs_attention",
-          "note"
-        ],
-        "title": "TableEntry"
-      },
-      "app__services__derived_data_freshness_service__TableEntry": {
-        "properties": {
-          "table_name": {
-            "type": "string",
-            "title": "Table Name"
-          },
-          "row_count": {
-            "type": "integer",
-            "title": "Row Count"
-          },
-          "columns": {
-            "items": {
-              "$ref": "#/components/schemas/ColumnNulls"
-            },
-            "type": "array",
-            "title": "Columns"
-          },
-          "columns_change": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ColumnsChange"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "needs_rebuild": {
-            "type": "boolean",
-            "title": "Needs Rebuild"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "table_name",
-          "row_count",
-          "columns",
-          "columns_change",
-          "needs_rebuild"
-        ],
-        "title": "TableEntry"
       }
     },
     "securitySchemes": {

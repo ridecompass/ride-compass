@@ -43,7 +43,6 @@ ROUTE_CASES = {
     ("PUT", "/api/admin/cost-axes"): ("/api/admin/cost-axes", COST_AXES_BODY, 503),
     ("PUT", "/api/admin/tuning/{param_id}"): (f"/api/admin/tuning/{TUNING_PARAMETERS[0].id}", {"value": TUNING[TUNING_PARAMETERS[0].id]}, 503),
     ("GET", "/api/admin/material-catalog/coverage"): ("/api/admin/material-catalog/coverage", None, 503),
-    ("GET", "/api/admin/derived-data/freshness"): ("/api/admin/derived-data/freshness", None, 503),
     ("GET", "/api/admin/db-status"): ("/api/admin/db-status", None, 503),
     ("POST", "/api/admin/basemap/refresh"): ("/api/admin/basemap/refresh", None, 200),
     ("GET", "/api/admin/debug/mode"): ("/api/admin/debug/mode", None, 200),

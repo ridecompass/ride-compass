@@ -1,5 +1,5 @@
 /**
- * `app/admin/page.tsx` の「データ保守」タブ——タイルのキャッシュは押したときだけ消し、派生データの鮮度台帳と本番DBの状態は
+ * `app/admin/page.tsx` の「データ保守」タブ——タイルのキャッシュは押したときだけ消し、本番DBの状態は
  * 押したときだけ集計して、手当ての要る件数と行を出すこと。
  *
  * どれも開いただけでは要求を出さない（DB全体の走査・全利用者へ効く消去のため）。応答を与えていない要求はテストを落とすので、
@@ -13,7 +13,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
 import { heldReplies, inTurn, onSameOrigin } from "@/testing/backendServer";
-import type { DbStatusResponse, DerivedDataFreshnessResponse } from "@/types/route";
+import type { DbStatusResponse } from "@/types/route";
 
 import AdminPage from "./page";
 
@@ -64,110 +64,6 @@ describe("AdminPage データ保守 タイルキャッシュ", () => {
     expect(await screen.findByText(/^消去しました。/)).toHaveTextContent("Cache-Control");
     expect(screen.queryByText("タイルキャッシュの消去に失敗しました")).not.toBeInTheDocument();
     expect(sent).toHaveLength(2);
-  });
-});
-
-describe("AdminPage データ保守 派生データ鮮度台帳", () => {
-  const TITLE = "派生データ鮮度台帳";
-
-  function freshness(overrides: Partial<DerivedDataFreshnessResponse>): DerivedDataFreshnessResponse {
-    return { computed_at: "2026-09-24T01:02:03Z", sources: [], tables: [], tuning: [], ...overrides };
-  }
-
-  it("作り直しの要るソース・表・較正値を数えて先頭に出し、開いた先に取込の番号・列の増減・値なしの件数・較正値の新旧を並べる。全部最新ならそう言う", async () => {
-    onSameOrigin(
-      "GET",
-      "/admin/api/derived-data/freshness",
-      inTurn(
-        Response.json(
-          freshness({
-            sources: [
-              { source: "osm", latest_run_id: 5, derived_run_id: 3, needs_rebuild: true },
-              { source: "accidents", latest_run_id: null, derived_run_id: null, needs_rebuild: false },
-            ],
-            tables: [
-              {
-                table_name: "way_values",
-                row_count: 1200,
-                columns: [
-                  { column: "slope", null_count: 4 },
-                  { column: "width", null_count: 0 },
-                ],
-                columns_change: { added: ["slope"], removed: ["old_a", "old_b"] },
-                needs_rebuild: true,
-              },
-              { table_name: "edges", row_count: 10, columns: [], columns_change: null, needs_rebuild: false },
-            ],
-            tuning: [
-              {
-                param_id: "ring",
-                label: "帯の幅",
-                unit: "m",
-                derived_value: 30,
-                current_value: 40,
-                needs_rebuild: true,
-              },
-              {
-                param_id: "step",
-                label: "断面の刻み",
-                unit: "m",
-                derived_value: null,
-                current_value: 5,
-                needs_rebuild: true,
-              },
-            ],
-          }),
-        ),
-        Response.json(
-          freshness({ sources: [{ source: "osm", latest_run_id: 5, derived_run_id: 5, needs_rebuild: false }] }),
-        ),
-      ),
-    );
-    const user = await openMaintenanceTab();
-    await user.click(within(card(TITLE)).getByRole("button", { name: "集計する" }));
-
-    expect(await within(card(TITLE)).findByText("4件が作り直し待ち")).toBeInTheDocument();
-    expect(rowNames(card(TITLE))).toEqual([
-      "取込",
-      "osm",
-      "accidents",
-      "派生の表",
-      "way_values",
-      "edges",
-      "較正値",
-      "帯の幅",
-      "断面の刻み",
-    ]);
-    expect(within(card(TITLE)).getByText("osm").closest("summary")).toHaveTextContent("作り直しが必要");
-    expect(within(card(TITLE)).getByText("accidents").closest("summary")).toHaveTextContent("最新");
-    expect(detailOf(card(TITLE), "osm")).toEqual([
-      ["成功した最新の取込", "#5"],
-      ["作り直しに使った取込", "#3"],
-    ]);
-    expect(detailOf(card(TITLE), "accidents")).toEqual([
-      ["成功した最新の取込", "なし（取込が1度も成功していない）"],
-      ["作り直しに使った取込", "なし（まだ作り直しに使っていない）"],
-    ]);
-    expect(detailOf(card(TITLE), "way_values")).toEqual([
-      ["作り直しの後に足した列", "slope"],
-      ["作り直しの後に消した列", "old_a、old_b"],
-      ["slope", "値なし 4件"],
-    ]);
-    expect(detailOf(card(TITLE), "edges")).toEqual([
-      ["作ったときの列", "記録なし（列を記録する作り直しをまだしていない）"],
-    ]);
-    expect(within(card(TITLE)).getByText("帯の幅").closest("summary")).toHaveTextContent("作り直しが必要");
-    expect(detailOf(card(TITLE), "帯の幅")).toEqual([
-      ["今の値", "40m"],
-      ["作り直しに使った値", "30m"],
-    ]);
-    expect(detailOf(card(TITLE), "断面の刻み")).toEqual([
-      ["今の値", "5m"],
-      ["作り直しに使った値", "なし（まだ作り直しに使っていない）"],
-    ]);
-
-    await user.click(within(card(TITLE)).getByRole("button", { name: "再集計する" }));
-    expect(await within(card(TITLE)).findByText("すべて最新")).toBeInTheDocument();
   });
 });
 
