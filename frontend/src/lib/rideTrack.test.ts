@@ -123,20 +123,19 @@ describe("走りの記録", () => {
     expect(next.started_at).toBe("2026-11-16T02:00:00.000Z");
   });
 
-  it("送れていない走りが上限まで溜まっていれば、新しい走りを記録しない。送れたものを消すと、また記録する", () => {
+  it("送れていない走りが上限まで溜まっていれば、一番古い走りを捨てて新しい走りを記録する", () => {
     track.setRideTrackWriteKey("key");
     vi.spyOn(console, "warn").mockImplementation(() => {});
     for (let ride = 0; ride <= track.MAX_STORED_RIDES; ride += 1) {
       track.startRideTrack(START_MS + ride * HOUR_MS);
       track.stopRideTrack(START_MS + ride * HOUR_MS + 1_000);
     }
-    expect(track.pendingRideCount()).toBe(track.MAX_STORED_RIDES);
 
-    track.removeRideTrack(track.pendingRideUploads()[0].id);
-    track.startRideTrack(START_MS + 9 * HOUR_MS);
-    track.stopRideTrack(START_MS + 9 * HOUR_MS + 1_000);
-
-    expect(track.pendingRideUploads().at(-1)?.started_at).toBe("2026-11-16T09:00:00.000Z");
+    expect(track.pendingRideUploads().map((ride) => ride.started_at)).toEqual([
+      "2026-11-16T01:00:00.000Z",
+      "2026-11-16T02:00:00.000Z",
+      "2026-11-16T03:00:00.000Z",
+    ]);
   });
 
   it("端末の走りの記録が壊れていても、投げずに無いものとして扱う", () => {

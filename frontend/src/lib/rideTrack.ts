@@ -7,7 +7,8 @@
 // （ルートの線・条件・予報は別の鍵に、変わったときだけ書く）。
 // 書けなかった（容量の上限等）ときは、案内を止めずにその走りの記録だけをやめる（溜めた分は、案内を終えたときに送る）。読めない（壊れた）値は無いものとして
 // 扱い、投げない——走行モード・メニューの窓が描く中で読むので、投げると画面ごと落ち、エラーの境目の全消しもこの記録は残すため抜けられない。
-// 送るまで消さないので、送れない走りが溜まって端末の保存領域を埋めないよう、溜める走りの数に上限（`MAX_STORED_RIDES`）を持つ。
+// 送るまで消さないので、送れない走りが溜まって端末の保存領域を埋めないよう、溜める走りの数に上限（`MAX_STORED_RIDES`）を持ち、
+// 上限に当たったら一番古い走りを捨てて新しい走りを記録する（送れないまま残る走りで、記録が止まらないように）。
 
 import { debugLog } from "@/lib/debugLog";
 import { readStored, removeStoredValue, writeStored } from "@/lib/safeStorage";
@@ -29,7 +30,7 @@ const INDEX_KEY = `${RIDE_TRACK_KEY_PREFIX}rides`;
 const LABEL = "走りの記録";
 /** 1つの鍵に入れる点の数。 */
 const POINTS_PER_CHUNK = 60;
-/** 端末に溜める走りの数（送っていないものと、記録中のもの）。これだけ溜まっていたら、新しい走りを記録しない。 */
+/** 端末に溜める走りの数（送っていないものと、記録中のもの）。これだけ溜まっていたら、一番古い走りを捨てて新しい走りを記録する。 */
 export const MAX_STORED_RIDES = 3;
 
 /** 走りの見出し。位置が届くたびに書き直すので、大きくなるものを持たない。 */
@@ -186,14 +187,9 @@ export function startRideTrack(nowMs: number): void {
     const meta = readMeta(id);
     if (meta !== null && !meta.ended) saveMeta({ ...meta, ended: true });
   }
-  if (rideIds().length >= MAX_STORED_RIDES) {
-    debugLog(
-      "ride:track",
-      "送っていない走りが溜まっているので、この走りは記録しない",
-      { stored: rideIds().length },
-      "warn",
-    );
-    return;
+  for (const oldest of rideIds().slice(0, Math.max(0, rideIds().length - MAX_STORED_RIDES + 1))) {
+    debugLog("ride:track", "送っていない走りが溜まっているので、一番古い走りを捨てた", { id: oldest }, "warn");
+    removeRideTrack(oldest);
   }
   const meta: TrackMeta = {
     id: crypto.randomUUID(),
