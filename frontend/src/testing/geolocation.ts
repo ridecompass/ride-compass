@@ -10,8 +10,9 @@ export interface PendingRequest {
   fail: () => void;
 }
 
-/** 受け取りへ届ける1回の測位。省いた項目は、向き・速さが分からず、誤差10m・時刻0で測ったものとする。 */
+/** 受け取りへ届ける1回の測位。省いた項目は、標高・向き・速さが分からず、誤差10m・時刻0で測ったものとする。 */
 interface Fix extends Coordinates {
+  altitude?: number | null;
   heading?: number | null;
   speed?: number | null;
   accuracy?: number;
@@ -59,11 +60,11 @@ export function installGeolocation(current?: Coordinates | null) {
     /** 続いている受け取りの数。 */
     watching: () => watches.size,
     /** 受け取り中の全員へ、測った位置を届ける。 */
-    deliver({ heading = null, speed = null, accuracy = 10, timestamp = 0, ...point }: Fix) {
+    deliver({ altitude = null, heading = null, speed = null, accuracy = 10, timestamp = 0, ...point }: Fix) {
       act(() => {
         for (const watch of watches.values()) {
           watch.onSuccess({
-            coords: { latitude: point.latitude, longitude: point.longitude, heading, speed, accuracy },
+            coords: { latitude: point.latitude, longitude: point.longitude, altitude, heading, speed, accuracy },
             timestamp,
           } as GeolocationPosition);
         }

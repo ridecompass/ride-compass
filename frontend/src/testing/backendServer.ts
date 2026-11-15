@@ -78,6 +78,11 @@ export function onUrl(url: string, reply: (request: Request) => Response | Promi
   return sent;
 }
 
+/** gzip で縮めて送られた要求（`Content-Encoding: gzip`）の JSON の本文を戻して読む。 */
+export function gunzippedJson(request: Request): Promise<unknown> {
+  return new Response(request.body!.pipeThrough(new DecompressionStream("gzip"))).json();
+}
+
 /** 画面の設定の取得に`response`を返す（多くの画面が描くと同時に取る）。 */
 export function serveClientConfig(response: ClientConfigResponse = clientConfigResponse()): void {
   onBackend("GET", "/api/client-config", () => Response.json(response));

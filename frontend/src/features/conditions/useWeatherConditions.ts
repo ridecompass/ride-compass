@@ -1,8 +1,9 @@
 "use client";
 
 import { keepPreviousData, useQuery, type UseQueryResult } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { getQueryClient } from "@/lib/queryClient";
+import { noteRideTrackForecast } from "@/lib/rideTrack";
 import { leftTheArea } from "@/lib/validArea";
 import { SECOND_MS } from "@/lib/duration";
 import {
@@ -108,7 +109,11 @@ function useLocationFetch<T>(
 }
 
 /** ルートを通る時刻に当たる、警報級の時系列の注意報級の時間帯。ルートの形が変わるたびと、間隔ごとに取り直す。 */
-function useRouteWarningTimeline(route: WarningRoute | null): { items: WarningBadgeItem[]; error: string | null } {
+function useRouteWarningTimeline(route: WarningRoute | null): {
+  data: Awaited<ReturnType<typeof getRouteWarningTimeline>> | undefined;
+  items: WarningBadgeItem[];
+  error: string | null;
+} {
   const segments = route?.segments;
   const sampled = useMemo(() => (segments ? routePointsEvery(segments, ROUTE_POINT_STEP_KM) : []), [segments]);
   const pointsKey = useMemo(
@@ -135,7 +140,7 @@ function useRouteWarningTimeline(route: WarningRoute | null): { items: WarningBa
       route.fromKm,
     );
   }, [route, data, error, sampled]);
-  return { items, error: route === null ? null : error };
+  return { data, items, error: route === null ? null : error };
 }
 
 /** 天気・観測・警報等を取る。ふだんは`location`（出発地）で取り、走行中は今の位置`following`で取る。選んだルート`route`が
@@ -159,6 +164,13 @@ export function useWeatherConditions(
   const wbgtStatus = wbgt.error ? null : wbgt.data;
   const floodForecasts = flood.error ? null : flood.data;
   const routeTimeline = useRouteWarningTimeline(route);
+  // 走りの記録に、そのとき見せた予報を受けたまま残す（中身が変わったときだけ。取り直して同じなら同じ値が返る）。
+  useEffect(() => {
+    if (gridPointToday.data) noteRideTrackForecast("gridPointToday", gridPointToday.data, Date.now());
+  }, [gridPointToday.data]);
+  useEffect(() => {
+    if (routeTimeline.data) noteRideTrackForecast("routeWarningTimeline", routeTimeline.data, Date.now());
+  }, [routeTimeline.data]);
 
   const warningBadgeItems = useMemo<WarningBadgeItem[]>(() => {
     const jmaItems: WarningBadgeItem[] = weatherWarnings

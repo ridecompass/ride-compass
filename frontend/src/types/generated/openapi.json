@@ -1917,6 +1917,57 @@
           }
         ]
       }
+    },
+    "/api/rides": {
+      "post": {
+        "tags": [
+          "rides"
+        ],
+        "operationId": "receive_ride_api_rides_post",
+        "parameters": [
+          {
+            "name": "X-Ride-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ride-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RideUpload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -3937,6 +3988,7 @@
         ],
         "title": "JmaTileIndexUnavailable"
       },
+      "JsonValue": {},
       "LastError": {
         "properties": {
           "type": {
@@ -4821,6 +4873,176 @@
         ],
         "title": "PlaceSearchResult"
       },
+      "RideUpload": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At"
+          },
+          "app_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "App Version"
+          },
+          "device": {
+            "type": "string",
+            "title": "Device"
+          },
+          "points": {
+            "items": {
+              "prefixItems": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              ],
+              "type": "array",
+              "maxItems": 8,
+              "minItems": 8
+            },
+            "type": "array",
+            "title": "Points"
+          },
+          "events": {
+            "items": {
+              "prefixItems": [
+                {
+                  "type": "integer",
+                  "minimum": 0.0
+                },
+                {
+                  "type": "string",
+                  "enum": [
+                    "start",
+                    "rest",
+                    "resume",
+                    "reload",
+                    "route",
+                    "end"
+                  ]
+                },
+                {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              ],
+              "type": "array",
+              "maxItems": 3,
+              "minItems": 3
+            },
+            "type": "array",
+            "title": "Events"
+          },
+          "routes": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "type": "object",
+            "title": "Routes"
+          },
+          "conditions": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "type": "object",
+            "title": "Conditions"
+          },
+          "forecasts": {
+            "items": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "type": "array",
+            "title": "Forecasts"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "started_at",
+          "app_version",
+          "device",
+          "points",
+          "events",
+          "routes",
+          "conditions",
+          "forecasts"
+        ],
+        "title": "RideUpload"
+      },
       "RoadAt": {
         "properties": {
           "properties": {
@@ -5597,6 +5819,17 @@
             "type": "boolean",
             "title": "Is Fastest"
           },
+          "network_revision": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Network Revision"
+          },
           "penalty_seconds_per_km": {
             "anyOf": [
               {
@@ -5632,6 +5865,7 @@
           "id",
           "kind",
           "is_fastest",
+          "network_revision",
           "penalty_seconds_per_km"
         ],
         "title": "RouteCandidate"

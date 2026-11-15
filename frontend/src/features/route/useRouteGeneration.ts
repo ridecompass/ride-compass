@@ -13,7 +13,7 @@ import {
 } from "@/features/route/generationRequest";
 import { generateRoutes, type GenerationProgress } from "@/features/route/routeApi";
 import type { GenerationConditionsState } from "@/features/route/useGenerationConditions";
-import type { Coordinates, RouteCandidate } from "@/types/route";
+import type { Coordinates, GenerationConditions, RouteCandidate } from "@/types/route";
 
 /** 押した「生成」の直近の結果。失敗は前の候補を残したまま出すため、候補0件の理由と分けて持つ。 */
 export type GenerationNotice = { kind: "failed" | "empty"; message: string };
@@ -32,6 +32,8 @@ interface GeneratedConditions {
   destinationCorrected: boolean;
   /** 送った入力そのもの。乗り換えで合成した経路も同じ条件で評価する。 */
   input: GenerationInput;
+  /** backendが実際に使った条件（応答の`conditions`。補った避け方・距離の許容幅・補正した目的地を含む）。 */
+  applied: GenerationConditions;
 }
 
 export interface RouteGenerationInputs {
@@ -130,6 +132,7 @@ export function useRouteGeneration({
         key: generationConditionsKey(generatedInput),
         destinationCorrected: Boolean(corrected),
         input: generatedInput,
+        applied: used,
       });
       // 候補が出たことは「ルート結果」の一覧と合図で分かるので、案内は候補0件のときだけ持つ。
       if (candidates.length === 0) {
@@ -202,6 +205,8 @@ export function useRouteGeneration({
     destinationCorrected: generatedConditions?.destinationCorrected ?? false,
     /** 表示中の候補を作った生成の入力（生成していなければnull）。 */
     generatedInput: generatedConditions?.input ?? null,
+    /** 表示中の候補を作った生成で、backendが実際に使った条件（生成していなければnull）。 */
+    appliedConditions: generatedConditions?.applied ?? null,
     clearNotice,
     clear,
   };

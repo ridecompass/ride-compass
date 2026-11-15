@@ -245,7 +245,7 @@ def generator_for(
     """道路網を全体の配列として置き場へ置き、本物の`GraphService`とエンジンの上に戦略層（`RouteGenerator`）を組む。"""
     serve_road_network(root, network)
     return assemble_route_generation_setup(
-        GraphService(NetworkRepository(network), SearchMemory()), Weather(wind),
+        GraphService(NetworkRepository(network), SearchMemory(), road_network_store.current()), Weather(wind),
         RequestedConditions(
             cost_preference=CostPreference(), road_avoidance=road_avoidance or {}, assumed_speed_kmh=assumed_speed_kmh,
         ),

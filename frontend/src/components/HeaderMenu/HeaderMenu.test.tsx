@@ -6,18 +6,21 @@
  * デバッグログの項目がデバッグモードの間だけ出て、開閉の状態を名前で出し、押すと開閉の操作が上がること、
  * 走行の記録が端末にあるときだけ「走行の記録をコピー」が出て、押すと記録を写すこと、
  * 「バージョン表示」を押すと、フロントの版の口（`/api/version`）が返した版が窓に出ること。
+ * 「走りの記録」の窓で鍵を入れる・外すと端末の記録が入り切りし、送っていない走りの数を出すこと。
  *
  * ここで見ないもの: デバッグモードそのもののON/OFF → `features/admin/DebugPanel/DebugPanel.tsx`（このメニューは呼び出し側から受け取るだけ）。
  * 説明を見る状態で部品の使い方が出ること → `components/UsageGuide/UsageGuide.test.tsx`（メニューのボタンの使い方の文は宣言）。
  * 押下の状態（`aria-pressed`）——`components/ui/Toggle`へそのまま渡すだけ。
  * 版をどこから読むか → `app/api/version/route.test.ts`。走行の記録の中身 → `lib/rideMetrics.test.ts`。
+ * 走りの記録の溜め方 → `lib/rideTrack.test.ts`。
  */
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { FrontendVersion } from "@/services/versionApi";
 import { formatRideMetrics, readRideMetrics, startRideMetrics, stopRideMetrics } from "@/lib/rideMetrics";
+import { rideTrackWriteKey, startRideTrack, stopRideTrack } from "@/lib/rideTrack";
 import { onSameOrigin } from "@/testing/backendServer";
 
 import HeaderMenu from "./HeaderMenu";
@@ -39,6 +42,8 @@ async function openMenu(props: Partial<React.ComponentProps<typeof HeaderMenu>> 
   await userEvent.click(screen.getByRole("button", { name: "メニュー" }));
   return { onToggleDebugConsole, onStartUsageGuide, onRedrawMap };
 }
+
+afterEach(() => localStorage.clear());
 
 describe("HeaderMenu", () => {
   it("「使い方を見る」を押すと、メニューが閉じてフォーカスが開くボタンへ戻ってから、説明を見る状態に入る操作が上がる", async () => {
@@ -95,6 +100,27 @@ describe("HeaderMenu", () => {
 
     expect(await navigator.clipboard.readText()).toBe(formatRideMetrics(readRideMetrics()!));
     expect(screen.getByRole("button", { name: "走行の記録をコピーしました" })).toBeInTheDocument();
+  });
+
+  it("「走りの記録」の窓で鍵を入れると記録が入り、送っていない走りの数を出し、鍵を外すと記録が切れる", async () => {
+    await openMenu();
+    await userEvent.click(screen.getByRole("button", { name: "走りの記録" }));
+    const dialog = await screen.findByRole("dialog", { name: "走りの記録" });
+
+    await userEvent.type(within(dialog).getByRole("textbox", { name: "書くための鍵" }), " ride-key ");
+    await userEvent.click(within(dialog).getByRole("button", { name: "入れる" }));
+    expect(rideTrackWriteKey()).toBe("ride-key");
+
+    startRideTrack(Date.now());
+    stopRideTrack(Date.now());
+    await userEvent.click(screen.getByRole("button", { name: /閉じる/ }));
+    await userEvent.click(screen.getByRole("button", { name: "メニュー" }));
+    await userEvent.click(screen.getByRole("button", { name: "走りの記録" }));
+    const reopened = await screen.findByRole("dialog", { name: "走りの記録" });
+    expect(reopened).toHaveTextContent("送っていない走り: 1件");
+
+    await userEvent.click(within(reopened).getByRole("button", { name: "鍵を外す" }));
+    expect(rideTrackWriteKey()).toBeNull();
   });
 
   describe("バージョン表示", () => {

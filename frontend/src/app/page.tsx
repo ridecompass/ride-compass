@@ -108,7 +108,7 @@ export default function Home() {
     onOutcome: panels.notifyRouteOutcome,
   });
   const { results } = route;
-  const guidance = useRideGuidance({ riding, results });
+  const guidance = useRideGuidance({ riding, results, appliedConditions: route.generation.appliedConditions });
   const generatedPreference = route.generation.generatedInput?.costPreference;
   // ルートを出している間は、そのルートを生成したときの値で地図も塗る（ルートの線と周りの道を同じ量にする）。
   const mapCostPreference = generatedPreference ?? conditions.costPreference;

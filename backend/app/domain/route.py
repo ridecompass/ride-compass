@@ -315,6 +315,9 @@ class RouteCandidate(EvaluatedRoute):
     # 所要時間だけで探した1本（基準線）。距離を決めずに出発地と違う所で終わる生成で、比べる相手があるときだけ1本に付く。
     # 画面はこの1本を一覧の「最速」に置き、時間の列の基準にする。
     is_fastest: bool
+    # 探索が区間を切り出した道路網の世代（`RoadNetwork.revision`）。`edge_ids`がどの版の道路網の区間かを、後から照らすときに
+    # 分ける。候補を組み立てる途中はNoneで、候補を返す生成の入口が付ける。
+    network_revision: int | None = None
 
 
 def along_route_km(distances_km: Iterable[float]) -> list[float]:

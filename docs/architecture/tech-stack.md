@@ -124,7 +124,7 @@ backendのデプロイがCORSの許可へ新しいfrontendの宛先を足す。
 | | 宛先 | 中身 |
 |---|---|---|
 | frontend | `https://ride-compass-frontend.onrender.com` | Render。backendのCORSの許可に無ければ、`deploy-backend.yml`がデプロイのたびに足す |
-| backend | `https://193-123-166-150.sslip.io` | Oracle Cloud VM。VMのnginxがTLS（certbot）を終端し、`127.0.0.1:8000`のコンテナへ渡す。名前はVMの公開IPをsslip.ioで引けるようにしたもので、**IPが変わると宛先も変わる** |
+| backend | `https://193-123-166-150.sslip.io` | Oracle Cloud VM。VMのnginxがTLS（certbot）を終端し、`127.0.0.1:8000`のコンテナへ渡す。名前はVMの公開IPをsslip.ioで引けるようにしたもので、**IPが変わると宛先も変わる**。nginxの設定は`client_max_body_size`を置かず、要求の本文の上限は既定の1MB（超えると413） |
 
 **画面がbackendを呼ぶ宛先は、像のビルドのときに埋め込まれる。** ブラウザからのAPIは`NEXT_PUBLIC_API_URL`、タイルは
 `NEXT_PUBLIC_TILE_BASE_URL`（[static-map-layers.md](../modules/frontend/static-map-layers.md)）、rewritesと管理画面の転送の先は
@@ -376,6 +376,7 @@ CIだけに置いているため、CIの分数が尽きると検査そのもの�
 | 同 | `ORACLE_VM_HOST`・`ORACLE_VM_SSH_KEY` | 本番のVM | backendのデプロイ |
 | 同 | `RENDER_FRONTEND_DEPLOY_HOOK_URL` | Render | frontendのデプロイ |
 | 本番のVMのenvファイル`/home/ubuntu/ridecompass-backend.env` | `MAPILLARY_TOKEN` | Actionsの秘密の値の`MAPILLARY_TOKEN`と同じClient Token | 元の取り直しの取得の入口（`backend/app/batch/fetch_cli.py`）がMapillaryのタイルを読む |
+| 同 | `RIDE_TRACK_KEY` | 走りの記録の書くための鍵（開発者と、記録を頼んだ人の端末のヘッダーのメニュー「走りの記録」にも入れる） | 走りを受ける口（`backend/app/api/routers/ride_tracks.py`）が照らす |
 | ゲートのWorker（`ridecompass-gate`） | `APP_ID`・`APP_KEY`・`WEBHOOK_SECRET` | GitHub Appの鍵とWebhookの秘密 | ゲート |
 | 回答フォームのWorker（`ride-compass-answer`） | `APP_ID`・`APP_KEY`・`FORM_TOKEN` | `FORM_TOKEN`はhidakagitが作ったfine-grained `ridecompass-answer-form-2`。Resource ownerはridecompassで、届くのはridecompass/ride-compass-tasksだけ。期限2027-09-29 | 回答フォームの答えをhidakagitの名義で書く |
 | Renderのワークスペースの資格（Container Registry Credentials） | `ghcr-read` | hidakagitが作ったclassic `render-ghcr-read`。`read:packages`だけ（GitHubのコンテナの置き場はclassicのトークンだけを受ける）。期限なし | Renderの`ride-compass-frontend`が、非公開のfrontendのコンテナイメージを取る（サービスの Settings → Image の Credential） |
