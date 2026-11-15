@@ -9,8 +9,8 @@ import { describe, expect, it } from "vitest";
 import { nextTurn } from "./nextTurn";
 
 const TURNS = [
-  { distance_km: 1.2, direction: "left" as const, latitude: 35.1, longitude: 139.1 },
-  { distance_km: 3.5, direction: "right" as const, latitude: 35.2, longitude: 139.2 },
+  { distance_km: 1.2, direction: "left" as const, latitude: 35.1, longitude: 139.1, other_road_bearings_deg: [] },
+  { distance_km: 3.5, direction: "right" as const, latitude: 35.2, longitude: 139.2, other_road_bearings_deg: [90] },
 ];
 
 describe("nextTurn", () => {
@@ -24,6 +24,7 @@ describe("nextTurn", () => {
         longitude: 139.2,
         alongKm: 3.5,
         distanceM: expect.closeTo(2300, 6),
+        otherRoadBearingsDeg: [90],
       },
     },
     { case: "曲がる所を全部過ぎた", progressKm: 3.5, expected: null },

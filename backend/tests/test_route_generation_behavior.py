@@ -26,7 +26,7 @@ import numpy as np
 import pytest
 
 from app.domain.cost_axes import EFFORT_AXES
-from app.domain.geo import KM_PER_DEGREE_LATITUDE, haversine_distance_km, km_per_degree_longitude
+from app.domain.geo import KM_PER_DEGREE_LATITUDE, bearing_between, haversine_distance_km, km_per_degree_longitude
 from app.domain.graph import edge_key, node_key
 from app.domain.road_classes import TRUE_FACT_VALUE
 from app.domain.road_network import RoadNetwork
@@ -833,6 +833,27 @@ async def test_turns_are_listed_where_the_route_changes_direction_at_a_branch(en
         ]
         for (_, _, km), (_, _, along_km) in zip(turns, expected):
             assert km == pytest.approx(along_km, abs=0.02)
+
+
+@pytest.mark.parametrize("oneway_ways", [(), (3,)], ids=["two_way", "one_way_from_the_west"])
+async def test_a_turn_lists_the_other_roads_of_its_crossing_by_the_direction_they_leave_it(engine_over, oneway_ways):
+    """曲がる所は、その交差点に集まる道のうち経路が入る道・出る道でないものを、交差点から離れる向きで持つ——画面はこれを
+    曲がる所の絵に描き、どの道へ入るかを入らない道と見比べさせる。向こうから来るだけの一方通行（西から交差点へ入る道）も、
+    交差点に見える道なので入る。南から来て東へ曲がる十字路で、残りは北西寄りの道と西の道。"""
+    south, crossing, east = (BASE_LAT, BASE_LON), (BASE_LAT + LAT_STEP, BASE_LON), (BASE_LAT + LAT_STEP, BASE_LON + LON_STEP)
+    west, north_west = (BASE_LAT + LAT_STEP, BASE_LON - LON_STEP), (BASE_LAT + 2 * LAT_STEP, BASE_LON - LON_STEP / 2)
+    points = {1: south, 2: crossing, 3: east, 4: west, 5: north_west}
+    ways = {1: (1, 2), 2: (2, 3), 3: (4, 2), 4: (2, 5)}
+    generator = engine_over(road_network(ways, points, oneway_ways=oneway_ways))
+
+    (candidate, *_) = (await generator.generate_via_waypoints(
+        Coordinates(latitude=south[0], longitude=south[1]), [],
+        destination=Coordinates(latitude=east[0], longitude=east[1]), max_routes=1, start_time=DEPARTURE)).candidates
+
+    at_crossing = Coordinates(latitude=crossing[0], longitude=crossing[1])
+    away = sorted(round(bearing_between(at_crossing, Coordinates(latitude=p[0], longitude=p[1]))) for p in (west, north_west))
+    assert [((turn.latitude, turn.longitude), turn.direction, turn.other_road_bearings_deg) for turn in candidate.turns] == [
+        (pytest.approx(crossing), "right", away)]
 
 
 async def test_a_segment_and_a_turn_sit_where_the_segments_before_them_add_up_to(engine_over):

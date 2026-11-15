@@ -11,7 +11,6 @@ import {
   CloudOff,
   Copy,
   CornerUpLeft,
-  CornerUpRight,
   Download,
   Droplet,
   EllipsisVertical,
@@ -157,10 +156,6 @@ export const ShowSectionOnMapIcon = fromLucide(ZoomIn);
 export const StreetViewIcon = fromLucide(PersonStanding);
 /** 編集で作ったルートの元にしたルートを見る。 */
 export const ShowOriginIcon = fromLucide(CornerUpLeft);
-/** 走行中の曲がる所の案内: 左折。 */
-export const TurnLeftIcon = fromLucide(CornerUpLeft);
-/** 走行中の曲がる所の案内: 右折。 */
-export const TurnRightIcon = fromLucide(CornerUpRight);
 /** 畳んだ俯瞰図を開く。 */
 export const OverviewMapIcon = fromLucide(MapShape);
 /** 施設の道からの距離（道を外れて歩く距離）。 */

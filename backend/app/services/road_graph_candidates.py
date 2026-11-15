@@ -27,6 +27,7 @@ from app.domain.route import (
     EvaluatedRoute,
     RouteTurn,
     DISTANCE_KM_DECIMALS,
+    ROAD_BEARING_DEG_DECIMALS,
     ELEVATION_M_DECIMALS,
     aggregate_segments_into_bins,
     route_bin_slices,
@@ -45,7 +46,7 @@ from app.domain.route_search import (
     transition_values_along,
 )
 from app.domain.stopwatch import add_elapsed_ms, start_timer
-from app.domain.turn_structure import TurnExpandedStructure, TurnKind, turns_along
+from app.domain.turn_structure import TurnExpandedStructure, TurnKind, other_roads_at_turns, turns_along
 from app.services.graph_service import GraphService
 from app.domain.loop_routing import TracedLoop
 from app.services.road_graph_context import (
@@ -241,7 +242,7 @@ def _build_candidate(
     elevation_gain_m = elevation_gain(np.array([
         attribute.elevation_gain_m if (attribute := elevation_by_edge.get(edge.edge_id)) is not None else np.nan
         for edge in edges_in_path]))
-    turns = _route_turns(context.turn_structure, orientation.entries, edges_in_path, along_km)
+    turns = _route_turns(context.turn_structure, orientation.path, orientation.entries, edges_in_path, along_km)
     turn_kickoffs = float(sum(orientation.turn_kickoffs))
     facts = _route_facts(orientation, context, elevation_gain_m, turn_kickoffs)
     add_elapsed_ms(context.evaluate_steps_ms, "segments", segments_started)
@@ -373,17 +374,21 @@ _TURN_DIRECTION = {TurnKind.LEFT: "left", TurnKind.RIGHT: "right", TurnKind.UTUR
 
 
 def _route_turns(
-    structure: TurnExpandedStructure, entries: list[int | None], edges_in_path: list[LeanEdge], along_km: list[float]
+    structure: TurnExpandedStructure, path: list[int], entries: list[int | None], edges_in_path: list[LeanEdge],
+    along_km: list[float],
 ) -> list[RouteTurn]:
     """経路が分かれ道で曲がる所を、応答の形にする。距離は曲がった先の区間の始まりの道のり（`along_km`）、地点はその区間の始点。"""
+    path_turns = turns_along(structure, entries)
+    other_roads = other_roads_at_turns(structure, path, path_turns)
     turns = []
-    for turn in turns_along(structure, entries):
+    for turn, bearings in zip(path_turns, other_roads):
         latitude, longitude = edges_in_path[turn.index].geometry[0]
         turns.append(RouteTurn(
             distance_km=along_km[turn.index],
             direction=_TURN_DIRECTION[turn.kind],
             latitude=latitude,
             longitude=longitude,
+            other_road_bearings_deg=[round(bearing, ROAD_BEARING_DEG_DECIMALS) for bearing in bearings],
         ))
     return turns
 

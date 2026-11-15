@@ -24,6 +24,8 @@ COST_SECONDS_DECIMALS = 1
 STOP_COUNT_DECIMALS = 1
 #: 応答の風の速さ（m/s）の桁。
 WIND_MS_DECIMALS = 1
+#: 応答の道の向き（度）の桁。
+ROAD_BEARING_DEG_DECIMALS = 0
 
 
 # GeoJSONのLineString（座標は[経度, 緯度]）。契約には形を載せるが、検証はしない——数千点の座標を
@@ -228,6 +230,9 @@ class RouteTurn(StrictModel):
     direction: Literal["left", "right", "uturn"]
     latitude: float
     longitude: float
+    # その交差点に集まる道のうち、経路が入る道と出る道でないものの、交差点から離れる向き（真北から時計回りの度。昇順）。
+    # 交差点から進めない道も入る。曲がる所の絵に、入らない道として描くための値。
+    other_road_bearings_deg: list[float]
 
 
 class EvaluatedRoute(StrictModel):
