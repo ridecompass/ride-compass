@@ -110,6 +110,13 @@ describe("RideConditionBar 出発時刻", () => {
     expect(screen.getByRole("radio", { name: "5分" })).toBeChecked();
   });
 
+  it("開いたまま刻みを5分へ切り替えると、目盛りを5分刻みに作り直す", async () => {
+    const props = renderBar({ departureTime: jst("2026-09-24T09:05") });
+    await openRuler("5分");
+    await userEvent.click(screen.getByRole("button", { name: "出発時刻を1つ次へ" }));
+    expect(props.onDepartureTimeChange).toHaveBeenCalledWith(jst("2026-09-24T09:10"));
+  });
+
   it("閉じて開き直すと、開き直した時刻から目盛りを作り直す", async () => {
     renderBar({ departureTime: jst("2026-09-24T09:05") });
     const trigger = screen.getByRole("button", { name: /^出発時刻:/ });
