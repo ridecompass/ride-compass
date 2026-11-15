@@ -20,7 +20,6 @@
 
 ここで見ないもの:
 - StrictModelが未知の欄を断ること → `tests/test_strict_model.py`
-- 表の列の既定値 → `test_column_defaults.py`
 """
 
 from __future__ import annotations

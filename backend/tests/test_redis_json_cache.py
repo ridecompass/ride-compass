@@ -5,7 +5,6 @@
 
 ここで見ないもの:
 - 冷却の長さそのもの・クライアントの作り方 → `test_redis_client.py`。ここでは冷却の長さを本物の定数から読む
-- 骨格を写さずにここを通しているか → `tests/structure/test_redis_skeleton.py`
 - キー設計・TTL・値の意味づけ → 呼び出し元のテスト（例: `test_jma_tile_redis_cache.py`）
 """
 
