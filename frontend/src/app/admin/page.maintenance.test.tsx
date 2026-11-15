@@ -1,8 +1,7 @@
 /**
- * `app/admin/page.tsx` の「データ保守」タブ——タイルのキャッシュは押したときだけ消し、本番DBの状態は
- * 押したときだけ集計して、手当ての要る件数と行を出すこと。
+ * `app/admin/page.tsx` の「データ保守」タブ——本番DBの状態は押したときだけ集計して、手当ての要る件数と行を出すこと。
  *
- * どれも開いただけでは要求を出さない（DB全体の走査・全利用者へ効く消去のため）。応答を与えていない要求はテストを落とすので、
+ * 開いただけでは要求を出さない（DB全体の走査のため）。応答を与えていない要求はテストを落とすので、
  * 押す前に応答を与えないことで、押すまで送らないことを見る。
  *
  * ここで見ないもの:
@@ -12,7 +11,7 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
-import { heldReplies, inTurn, onSameOrigin } from "@/testing/backendServer";
+import { inTurn, onSameOrigin } from "@/testing/backendServer";
 import type { DbStatusResponse } from "@/types/route";
 
 import AdminPage from "./page";
@@ -45,27 +44,6 @@ function detailOf(container: HTMLElement, name: string): [string | null, string 
     dt.nextElementSibling?.textContent ?? null,
   ]);
 }
-
-describe("AdminPage データ保守 タイルキャッシュ", () => {
-  const CLEAR = "タイルキャッシュを消去する";
-
-  it("押すまで消さない。消去中はそう出し、失敗なら理由を、押し直して成功すれば消したことだけを出す", async () => {
-    const held = heldReplies();
-    const user = await openMaintenanceTab();
-    const sent = onSameOrigin("POST", "/admin/api/basemap/refresh", held.reply);
-
-    await user.click(screen.getByRole("button", { name: CLEAR }));
-    expect(screen.getByRole("button", { name: "消去中…" })).toBeInTheDocument();
-    await held.answer(0, Response.json({ detail: "タイルキャッシュの消去に失敗しました" }, { status: 500 }));
-    expect(await screen.findByText("タイルキャッシュの消去に失敗しました")).toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: CLEAR }));
-    await held.answer(1, Response.json({}));
-    expect(await screen.findByText(/^消去しました。/)).toHaveTextContent("Cache-Control");
-    expect(screen.queryByText("タイルキャッシュの消去に失敗しました")).not.toBeInTheDocument();
-    expect(sent).toHaveLength(2);
-  });
-});
 
 describe("AdminPage データ保守 本番DBの状態", () => {
   const TITLE = "本番DBの状態";

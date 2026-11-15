@@ -16,7 +16,6 @@
 | `features/admin/AdminPanels/MaterialCoveragePanel.tsx` | 材料ごとの欠損割合（backend `GET /api/admin/material-catalog/coverage`）を欠損の扱いごとに分けて欠損の高い順に並べる。欠損を取込側で推測して埋めず、実態を見せて「埋めるか」の判断を定義の側へ委ねる。母集団の名前と欠損の扱いの見出しは材料カタログの宣言が配り、宣言に無い扱いの材料は未分類の群が拾う | `/admin`「材料」タブ |
 | `features/admin/AdminPanels/TuningPanel.tsx` | 走ってみて決める較正値（backendの`domain/tuning.py`の宣言）をデプロイなしに変える画面。並べる項目はbackendが宣言から導き、効き方ごとにまとめる（変えたのに効かない群を見分ける）。入力は「DBへ保存」でまとめて送る（値の正本はDBで、画面に既定は無い） | `/admin`「較正値」タブ |
 | `features/admin/AdminPanels/DbStatusPanel.tsx` | 本番DBの土台（取込のrunの失敗・行の有無・プランナの統計・放置されたトランザクション）を、ほかのパネルと同じ1行の形で見せる | `/admin`「データ保守」タブ |
-| `features/admin/AdminPanels/TileCachePanel.tsx` | サーバー側のタイルファイルキャッシュの全消去。全利用者へ影響するため認証の内側にだけ置き、基礎地図のタイルをブラウザが持つ時間（消去が各利用者の画面へ届くまでの遅れ）を添える | `/admin`「データ保守」タブ |
 | `features/admin/AdminPanels/ReportCard.tsx`・`features/admin/AdminPanels/StatusRowList.tsx` | 「材料」「データ保守」の集計のカード（DB全体の走査を伴うので、開いたときには取らず「集計する」を押したときだけ取る。説明はⓘの奥）と、点検の行の一覧（名前の右に規模、開くと中身。手当ての要否を丸の色と読み上げの文の両方で持つ）。件数・時点の書き方（`features/admin/AdminPanels/ReportCard.tsx: formatCount`・`features/admin/AdminPanels/ReportCard.tsx: formatMoment`）も持つ | 上記のパネル |
 | `components/HeaderMenu/HeaderMenu.tsx` | 使い方の説明の入口（「使い方を見る」。[ページ全体構成](page-composition.md)「使い方の説明」）・地図の表示を再描画（[地図: 静的レイヤー](static-map-layers.md)「まとめて戻す操作」）・走行の記録のコピー（下記「走行の計測」。記録があるときだけ）・デバッグログ表示・バージョン表示を1個のメニューアイコンへ集約したRadix Popover。バージョン表示は、動いている版（コミットの頭8文字）を窓に出し、確かめ待ちの変更が本番に出たかを利用者が画面から見分けられるようにする | `app/HomeHeader.tsx`（`/`のヘッダー） |
 | `features/admin/DebugPanel/DebugPanel.tsx` | デバッグログ表示のON/OFFトグル | `/admin`「開発者」タブ |
@@ -56,7 +55,7 @@
 app/admin/page.tsx（独立URL、Basic認証保護下）
   ├─ タブ「材料」（既定）: MaterialCoveragePanel（材料ごとの欠損割合）
   ├─ タブ「較正値」　　: TuningPanel（走ってみて決める値の編集）
-  ├─ タブ「データ保守」: DbStatusPanel（本番DBの状態）+ TileCachePanel
+  ├─ タブ「データ保守」: DbStatusPanel（本番DBの状態）
   │                     （タイルファイルキャッシュの全消去）
   └─ タブ「開発者」　　: DebugPanel + BackendStatus + SystemStatusPanel + BackendLogsPanel
 

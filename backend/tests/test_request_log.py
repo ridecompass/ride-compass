@@ -38,14 +38,14 @@ def test_access_log_line_carries_the_request_id(caplog):
     ("path", "status_code", "level"),
     [
         # タイル系(高頻度)の成功と「そのタイルは無い」404はDEBUG、通常エンドポイントの成功はINFO。
-        ("/api/basemap/tiles/1", 200, logging.DEBUG),
+        ("/api/gsi-relief-tile/1/1/1.png", 200, logging.DEBUG),
         ("/api/jma-tile/bosai/jmatile/data/1.png", 404, logging.DEBUG),
         ("/api/jma-tile-index", 200, logging.INFO),
         # 4xxはWARNING(ただし429は別途record_rate_limit_rejectionが出すためDEBUG)、5xxはERROR。
         ("/api/gsi-terrain-tile/20/1/1.png", 400, logging.WARNING),
         ("/api/routes/generate", 404, logging.WARNING),
         ("/api/routes/generate", 429, logging.DEBUG),
-        ("/api/basemap/tiles/1", 502, logging.ERROR),
+        ("/api/gsi-relief-tile/1/1/1.png", 502, logging.ERROR),
     ],
 )
 def test_access_level_policy(path, status_code, level):
@@ -57,7 +57,7 @@ def _app_with_access_log() -> FastAPI:
     test_app = FastAPI()
     test_app.middleware("http")(request_log_middleware(TILE_PATH_PREFIXES))
 
-    @test_app.get("/api/basemap/missing")
+    @test_app.get("/api/gsi-relief-tile/missing")
     def missing_tile():
         return Response(status_code=404)
     return test_app
@@ -73,11 +73,11 @@ def test_access_log_line_reports_the_request_at_the_level_of_its_path(caplog):
     タイルの404がWARNINGへ上がると、視界の分だけ並ぶ正常な404で運用のログが埋まる。
     """
     caplog.set_level(logging.DEBUG, logger="ridecompass.access")
-    TestClient(_app_with_access_log()).get("/api/basemap/missing")
+    TestClient(_app_with_access_log()).get("/api/gsi-relief-tile/missing")
 
     [record] = _access_records(caplog)
     assert record.levelno == logging.DEBUG
-    assert re.fullmatch(r"GET /api/basemap/missing -> 404 in \d+ms client=testclient", record.getMessage())
+    assert re.fullmatch(r"GET /api/gsi-relief-tile/missing -> 404 in \d+ms client=testclient", record.getMessage())
 
 
 def test_access_log_line_names_unknown_client_when_the_server_gives_none(caplog):
@@ -88,10 +88,10 @@ def test_access_log_line_names_unknown_client_when_the_server_gives_none(caplog)
         await inner({**scope, "client": None}, receive, send)
 
     caplog.set_level(logging.DEBUG, logger="ridecompass.access")
-    TestClient(without_client).get("/api/basemap/missing")
+    TestClient(without_client).get("/api/gsi-relief-tile/missing")
 
     [record] = _access_records(caplog)
-    assert re.fullmatch(r"GET /api/basemap/missing -> 404 in \d+ms client=unknown", record.getMessage())
+    assert re.fullmatch(r"GET /api/gsi-relief-tile/missing -> 404 in \d+ms client=unknown", record.getMessage())
 
 
 def _formatted_line(created_utc: tuple[int, int, int, int, int, int], msecs: float) -> str:

@@ -6,7 +6,7 @@ import type { ErrorEvent as MapLibreErrorEvent, Map as MapLibreMap } from "mapli
 
 import type { Coordinates } from "@/types/route";
 import { createBaseMap, viewportOf } from "@/features/map/baseMap";
-import { mapStyleUrl } from "@/features/map/regionApi";
+import { BASEMAP_STYLE_URL } from "@/features/map/basemapStyle";
 import { isStyleReady, reloadStyle } from "@/features/map/layers/mapStyleOps";
 import { registerJmaTileProtocol } from "@/features/map/layers/jmaTileProtocol";
 import type { MapLook } from "@/features/map/view/mapLook";
@@ -191,7 +191,7 @@ export function useMapLifecycle(
     const map = mapRef.current;
     if (!map || refreshToken === 0) return;
     // クエリでスタイルURLを変えることで、ブラウザのHTTPキャッシュではなく取り直しにする。
-    reloadStyle(map, `${mapStyleUrl()}?t=${Date.now()}`, {
+    reloadStyle(map, `${BASEMAP_STYLE_URL}?t=${Date.now()}`, {
       onLoaded: () => {
         setStyleLoadFailed(false);
         redraw(map);

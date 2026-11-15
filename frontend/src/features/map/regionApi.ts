@@ -8,13 +8,6 @@ import type { PointTileLayer } from "@/lib/mapDisplay/pointLayers";
 
 const ROAD_SURFACE_TILE_PATH = apiPath("/api/region/road-surface-tiles/{z}/{x}/{y}.pbf");
 
-// 基礎地図のスタイルJSON。中のタイル・スプライト・グリフのURLはbackendがBASEMAP_PUBLIC_BASE_URLで
-// 組み立てるため、`tileBaseUrl()`と同じオリジンを指すよう揃える。
-const MAP_STYLE_PATH = apiPath("/api/basemap/{path}", { path: "styles/liberty" });
-export function mapStyleUrl(): string {
-  return `${tileBaseUrl()}${MAP_STYLE_PATH}`;
-}
-
 // ベクタタイルのURL。MapLibreはWeb Workerの中で取るため相対パスでは解決できず、絶対URLが要る。`window`をSSRで
 // 読まないよう、呼んだとき（クライアントだけ）に組み立てる。
 export function roadSurfaceTileUrl(): string {

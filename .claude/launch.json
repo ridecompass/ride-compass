@@ -14,12 +14,6 @@
       "autoPort": false
     },
     {
-      "name": "backend-prod-data",
-      "runtimeExecutable": "backend/.venv/Scripts/python.exe",
-      "runtimeArgs": ["backend/scripts/dev_prod_data_backend.py"],
-      "port": 8000
-    },
-    {
       "name": "frontend-prod-data",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev:prod-data", "--prefix", "frontend"],

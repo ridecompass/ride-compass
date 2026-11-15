@@ -291,12 +291,11 @@ gh workflow run mutation.yml -R ridecompass/ride-compass --ref master -f ref=<�
     本番へは書き込まず、生成は1回の流しで1回だけ送る。
     ブラウザは`--disable-web-security`で起こす（`playwright.live.config.ts`。本番のbackendのCORSは本番のfrontendのオリジンしか許さない）。
   - **前提**（`e2e-live/global-setup.ts`が最初に確かめ、欠けていれば「前提不成立: 直し方」で止める）: 向け先のbackendが応答する
-    （設定からは起動しない）。基礎地図のスタイルのURLがE2Eのオリジン（`http://localhost:3200`）かbackendそのものを指す（手元の
-    backendは`BASEMAP_PUBLIC_BASE_URL=http://localhost:3200/api/basemap`で起動する）。起点は`E2E_LIVE_POINT=緯度,経度`でbackendの
+    （設定からは起動しない）。起点は`E2E_LIVE_POINT=緯度,経度`でbackendの
     DBの取込範囲の中を与える（取込範囲はリポジトリに記録が無い。既定はアプリの既定地点で、範囲外なら前提不成立で止まる）。予報（MSM）が古ければ、時刻を入力に取る枝は「該当なし」になる。
   - **手元のbackendの起動は`python backend/scripts/serve_e2e_live.py`**（開発機の作業ツリーから。裏で走らせて出力を読む）。
-    作業ツリーには`.env`が無いので、本体のチェックアウトの`backend/.env`（DBの向け先・土地被覆ラスタのパス等）を読み、上の基礎地図のURLだけを
-    起動の環境に足して（`.env`のファイルは書き換えない）、作業ツリーのコードを本体の`backend/.venv`で起動する。ポートは8000が塞がっていれば
+    作業ツリーには`.env`が無いので、本体のチェックアウトの`backend/.env`（DBの向け先・土地被覆ラスタのパス等）を読み
+    （`.env`のファイルは書き換えない）、作業ツリーのコードを本体の`backend/.venv`で起動する。ポートは8000が塞がっていれば
     空いているものを選び、起点は開発DBの区間のうち路面タイルに道が出る点を選ぶ。`/health`が返ると、向け先と起点を埋めたビルドと実行のコマンド、
     止め方（backendのpid）を出す。
   - **手順**: 手元のbackendなら起動の出力のとおり、`cd frontend && NEXT_PUBLIC_API_URL=<backend> BACKEND_INTERNAL_URL=<backend> npm run build` →
@@ -304,7 +303,7 @@ gh workflow run mutation.yml -R ridecompass/ride-compass --ref master -f ref=<�
     をシナリオごとに1回。本番のbackendなら、本番と同じくタイルもbackendへ向けて
     `cd frontend && NEXT_PUBLIC_API_URL=<本番の backend> NEXT_PUBLIC_TILE_BASE_URL=<本番の backend> BACKEND_INTERNAL_URL=<本番の backend> npm run build` →
     `cd frontend && E2E_LIVE_API=<本番の backend> ./node_modules/.bin/playwright test -c playwright.live.config.ts <シナリオ>`（起点は既定のまま）。
-    backendの向け先を変えたらビルドし直す（`NEXT_PUBLIC_API_URL`と`BACKEND_INTERNAL_URL`（Next.jsのサーバーが中継する基礎地図・タイルの行き先）等はビルドに埋め込まれる）。
+    backendの向け先を変えたらビルドし直す（`NEXT_PUBLIC_API_URL`と`BACKEND_INTERNAL_URL`（Next.jsのサーバーが中継するタイルの行き先）等はビルドに埋め込まれる）。
   - **誰がいつ回すか**: 地図の描き方（`features/map/scene/`等）・タイルへ焼く値・費用の軸の一覧・動的値の
     配信・気象の描き方・ルート生成の応答に触る変更の担当が、**Pull Requestを出す前に1回**回し、
     実行したコマンドと結果（落ちた枝・「該当なし」・「外部要因」）をPull Requestの本文の検証へ書く。担当のランナーは本番のbackendへ向けて回す。

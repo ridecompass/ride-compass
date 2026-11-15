@@ -499,7 +499,7 @@ OSMは中央分離帯のある道路の上下線を別々のwayとして持ち�
 見る）と、道の区分の入れ替え（`services/road_class_service.py: RoadClassAdminService.replace`）。取込のあとは必ず派生を作り直すので、
 取込は捨てない。
 
-どちらも同じ置き場の基礎地図・地理院のタイル（鍵が`region/`で始まらない）には触らない。理由は[キャッシュ方針](../../../.claude/rules/caching-retention.md)「無効化」。
+どちらも同じ置き場の地理院のタイル（鍵が`region/`で始まらない）には触らない。理由は[キャッシュ方針](../../../.claude/rules/caching-retention.md)「無効化」。
 
 ### 路面タイルが1フィーチャーとして焼く単位（`EDGE_UNIT_MIN_ZOOM`）
 

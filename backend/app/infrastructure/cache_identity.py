@@ -73,7 +73,7 @@ def raster_set_fingerprint(raster_paths: list[str]) -> str:
     return hashlib.sha256(joined.encode("utf-8")).hexdigest()[:16]
 
 
-#: 地域タイルのディスクの鍵の頭。同じ置き場に同居する基礎地図・地理院のタイル（配信元のパスが鍵）と分ける。
+#: 地域タイルのディスクの鍵の頭。同じ置き場に同居する地理院のタイル（配信元のパスが鍵）と分ける。
 _REGION_TILE_KEY_ROOT = "region/"
 
 

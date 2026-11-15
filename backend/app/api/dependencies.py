@@ -21,7 +21,6 @@ from app.api.generation_slots import GenerationSlots
 from app.config import settings
 from app.domain.route_request import RequestedConditions
 from app.infrastructure.address_search import AddressSearchQuery
-from app.infrastructure.basemap_client import BasemapClient
 from app.infrastructure.database import get_route_generation_session_factory, get_session_factory
 from app.infrastructure.db_status import DbStatusQuery
 from app.infrastructure.flood_client import new_flood_cache
@@ -197,10 +196,6 @@ async def get_road_inspector_service(tile_sessions: TileSessions, lens: LensServ
     """道の窓。道の一次属性を引くセッションと、DBを読まないレンズの値。"""
     async with tile_sessions() as session:
         yield RoadInspectorService(RegionService(repository=RoadGraphRepository(session)), lens)
-
-
-def get_basemap_client():
-    return BasemapClient(get_http_client(), settings.basemap_public_base_url)
 
 
 def get_jma_tile_client():
