@@ -5,7 +5,7 @@
  * 見るだけで地図の下に出すこと・「表示」と「負担で塗る」は走っていないときと同じに出し、走行中に効かない操作は出さないこと・
  * 方位磁針で北が上と進む向きが上を切り替え、地図を指で動かして休んでいる間はその場で北が上に戻すこと）と、
  * 届いた現在地がプロファイルの印と地図のルート線の薄めと走りの帯の残りへ同じ距離で渡り、到着予想が位置を受けた時刻と選んだ候補の計画から出ること、この先の経由地の印に同じ見込みの時刻が添わること、
- * 次に曲がる所がカードと地図の札に出ること、音声案内を入れると次に曲がる所を初めて知ったときと手前の段ごとに読み、ルートを外れた・戻ったことを読むこと（読み上げを持たない端末ではボタンを出さないこと）、ルートを外れた・戻ったことが走りの帯に出ること、読み込み直しても走行モードが続くこと、
+ * 次に曲がる所がカードと地図の札に出ること、音声案内を入れると次に曲がる所を初めて知ったときと手前の段ごとに読み、ルートを外れた・戻ったことを読むこと（読み上げを持たない端末ではボタンを出さないこと）、音声案内を入れている間に入れる黒の画面が次に曲がる所と音声案内の入り切りだけを出し、その間も読み上げが続くこと、ルートを外れた・戻ったことが走りの帯に出ること、読み込み直しても走行モードが続くこと、
  * 読み込み直しで iPhone がスマホの向きを読む許しを聞けなかったら、ボタンの横から求め直して現在地の印に向きを出せること、
  * 走行中も左下に俯瞰図を出すこと。
  *
@@ -299,6 +299,53 @@ describe("走行モード", () => {
     expect(speech.cancels()).toBe(1);
     await user.click(screen.getByRole("button", { name: "走行モード" }));
     expect(screen.getByRole("button", { name: "音声案内" })).toHaveAttribute("aria-pressed", "false");
+    vi.unstubAllGlobals();
+  });
+
+  it("音声案内を入れている間は黒の画面へ入れ、黒の画面は次に曲がる所の向きと距離と音声案内の入り切りだけを出し、その間も位置を受けて読み上げ、触れると地図に戻る", async () => {
+    const geolocation = installGeolocation(HERE);
+    const speech = installSpeechSynthesis();
+    const { user } = renderHome();
+    // 東へ2km進むルートで、経度0.001度が約0.1km。0.6kmで右折する。
+    const along = (km: number) => ({ latitude: 35.7, longitude: 139.7 + km / 100, accuracy: 20 });
+    const segment = makeRouteSegment({
+      start_latitude: 35.7,
+      start_longitude: 139.7,
+      end_latitude: 35.7,
+      end_longitude: 139.72,
+      distance_km: 2,
+      estimated_arrival_time: "2026-10-13T09:00:00+09:00",
+    });
+    const turns = [{ distance_km: 0.6, direction: "right" as const, ...along(0.6) }];
+    jobs.respond([{ ...RIDDEN, segments: [segment], distance_km: 2, turns }], LOOP_CONDITIONS);
+    await generate(user);
+    await waitFor(() => expect(candidateTabs()).toHaveLength(1));
+    await user.click(screen.getByRole("button", { name: "走行モード" }));
+    geolocation.deliver(along(0));
+    expect(screen.queryByRole("button", { name: "黒の画面" })).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "音声案内" }));
+    await user.click(screen.getByRole("button", { name: "黒の画面" }));
+    const dark = screen.getByRole("dialog", { name: "黒の画面" });
+    expect(dark).toHaveTextContent("600m 右折");
+
+    // 黒の画面の間も位置を受け、距離を出し直して手前の段で読む。
+    geolocation.deliver(along(0.1));
+    expect(dark).toHaveTextContent("500m 右折");
+    expect(speech.texts().at(-1)).toBe("500メートル先、右折です");
+
+    // 黒の画面のまま音声案内を切り・入れできる。
+    const voice = within(dark).getByRole("button", { name: "音声案内" });
+    await user.click(voice);
+    expect(voice).toHaveAttribute("aria-pressed", "false");
+    await user.click(voice);
+    expect(voice).toHaveAttribute("aria-pressed", "true");
+    expect(speech.texts().slice(-2)).toEqual(["音声案内を入れました", "500メートル先、右折です"]);
+    expect(screen.getByRole("dialog", { name: "黒の画面" })).toBe(dark);
+
+    await user.click(within(dark).getByRole("button", { name: "地図に戻る" }));
+    expect(screen.queryByRole("dialog", { name: "黒の画面" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "音声案内" }));
     vi.unstubAllGlobals();
   });
 

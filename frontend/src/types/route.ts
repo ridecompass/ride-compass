@@ -67,6 +67,5 @@ export type JmaTileIndexResponse = GetJson<"/api/jma-tile-index">;
 export type MaterialCoverageResponse = Schemas["MaterialCoverageReport"];
 export type MaterialCoverageEntry = MaterialCoverageResponse["materials"][number];
 
-// 派生データの鮮度台帳。GET /api/admin/derived-data/freshnessの応答。
-export type DerivedDataFreshnessResponse = Schemas["DerivedDataFreshnessReport"];
+// 本番DBの状態。GET /api/admin/db-statusの応答。
 export type DbStatusResponse = Schemas["DbStatusReport"];

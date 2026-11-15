@@ -48,7 +48,6 @@ DB接続・Redis・HTTPクライアント・レート制限・ログ・デバッ
 | ops | `source_refresh.sh` | 本番VMのホストで、別のコンテナを立てて全部の元の取得・取込・派生の作り直しを順に打ち、通った時刻を書く。下の「元の取り直し」 |
 | ops | `ridecompass-source-refresh.service`・`ridecompass-source-refresh.timer` | それを週1回打つsystemdのユニット（VMへの登録は手で1回） |
 | scripts | `schema_gap.py` | 実DBのスキーマとORMの宣言（`orm_base.declared_metadata`）の差を出す。宣言どおりの表を同じ接続の一時スキーマへ作ってから巻き戻すまでの間に、`public`とカタログを突き合わせる——制約・既定値・索引の式をPostgreSQLが正規化した形で比べるので、CHECKの式・主キー・一意も比べられる。名前は比べない。取込が作る子パーティション（生データの区画）は、列のNULL許容だけをアダプタの宣言（`batch/ingest.py: partition_required_columns`）と比べ、カタログの値だけを読む（取込が入れ直している最中でも、そのロックを待たずに測れる）。本番DBへは、backendのデプロイがコンテナを入れ替えたあとに毎回当てる（新しいコードの読み書きを壊しうる差があればデプロイが失敗で終わり、本番が宣言より多く持つだけの差は出すだけ。docs/architecture/tech-stack.md「デプロイの反映確認」）ほか、手で`run_probe.py`から当てる |
-| scripts | `lost_constraints.py` | 2つの版の`backend/app`をgitから取り出し、ORMが宣言する表・制約を名前抜きの同じ形へ揃えて、消えたものを出す（DBは使わない）。SQLの文の中の絞り込みは見ない——断片をつないで組み立てるSQLは文字列から構文木を取れないものが残るため |
 | scripts | `mutation/` | 変異テストの台本。mutmut 3.8.0（測るときだけ入れる）には`app`の関数の中の変異の生成と、関数ごとに通るテストの記録だけをさせ（`gen.py`）、変異ごとに別のプロセスでそのテストを最後まで回して、落ちたテストを記録する（`runner.py`・`mutkill.py`）。回す変異と基準の並べ方と一覧の口（`plan.py`）・記録を層や道具に依らない表（Stryker の結果の JSON の形）にする（`report.py`）・生き残りの振り分け（`classify.py`・`importtime.py`）・その表からテストの見直しの候補を出し、前回と比べる（`review.py`）。定時の測りで重なりの候補を消すタスクの本文を書く（`cleanup_issue.py`）・テストを消す前とあとの検知率を出す（`score.py`）。台本どうしが同じに読むもの（変異と基準の名前・記録・一覧の口）と生き残りの判断は`_shared.py`が持ち、全部の測りの表と Pull Request の知らせは同じ判断で数える。回し方は[run-checks/SKILL.md](../../../.claude/skills/run-checks/SKILL.md)「変異テストでテストの効きを測る」、見直しの1回の進め方は[test-review/SKILL.md](../../../.claude/skills/test-review/SKILL.md) |
 | scripts | `_stdio.py` | `scripts/`の実行口と、リポジトリの根の`scripts/`の道具・フックが共通で使う、標準の入出力のUTF-8化。backendの像の中の実行口も読むので、根の側ではなくここに置く |
 | scripts | `run_probe.py` | 調査用のスクリプトを本番DBに対して走らせる（手元のPythonから本番DBを引くか、本番のbackendコンテナの中で走らせる）。手元実行では接続文字列をSQLAlchemy用と素のasyncpg用の両方の形で環境変数へ渡す。プローブの後ろに書いた引数はそのままプローブへ渡す |
@@ -84,8 +83,7 @@ DB接続・Redis・HTTPクライアント・レート制限・ログ・デバッ
   書き出すときは既定値の項目も必ず載るため、契約をそれに合わせ、画面が型を補正せずに生成型のまま使えるようにする。
   要求と応答の両方に現れるモデル（軸の形等）は、FastAPIが`<名前>-Input`と`<名前>-Output`に分けて書き出す。
 - **応答の項目がnullになるかを同じ応答の別の項目が決めるなら、形で表す**——状態ごとのモデルの共用体
-  （例: `api/routers/routes.py: RouteGenerateJobDone`）か、一緒に在る項目を1つのモデルへまとめた任意の項目
-  （例: `infrastructure/derived_data_freshness.py: ColumnsChange`）。項目ごとの`X | None`で並べると、
+  （例: `api/routers/routes.py: RouteGenerateJobDone`）か、一緒に在る項目を1つのモデルへまとめた任意の項目。項目ごとの`X | None`で並べると、
   画面は起きない組み合わせまで分岐と既定値で受けることになる。
 - 環境変数を読む`config.py: Settings`だけは対象外。プロセスの環境変数には無関係なものが
   常に含まれるため`extra="ignore"`でなければ起動しない。

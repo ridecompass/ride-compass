@@ -68,7 +68,7 @@ docs/conventions/ にある（.claude/rules/・.claude/skills/ のものはパ�
 | 起票する・流れ（手順・道具・ゲート・検査）で困った | .claude/skills/file-issue/SKILL.md: 流れの摩擦を記録する・起票する・issue の形・ラベルと種類と欄（規模の札・優先度の見積もり）・前後関係と組 |
 | 問う・保留する | .claude/skills/ask/SKILL.md: 問い・答え・保留と棚卸 |
 | 文書を書く | 上の「ドキュメント階層」／.claude/rules/documentation.md（全文）／.claude/rules/comments.md: 残すと決めたものの行き先 |
-| 流れの道具（`tools/flow-gate`・担当のワークフロー）を変える | flow.md: ゲートを変える・公開する・担当の権限・担当が書けないファイル／.claude/skills/task-work/SKILL.md: 検証担当（1） |
+| 流れの道具（`tools/flow-gate`・担当のワークフロー）を変える | flow.md: ゲートを変える・公開する・担当が書けないファイル／.claude/skills/task-work/SKILL.md: 検証担当（1） |
 | 作業ツリーを作る・依存を入れる | docs/architecture/setup.md: 作業ツリーどうしで node_modules を共有しない |
 | 周期レビューをする | .claude/commands/review.md（全文） |
 
