@@ -22,6 +22,7 @@ from app.domain.cost_preference import CostPreference
 from app.domain.road_avoidance import level_multipliers
 from app.domain.tuning import (
     ELEVATION_PROFILE_STEP_ID,
+    ELEVATION_PROFILE_TOLERANCE_ID,
     STOP_CLUSTER_DISTANCE_ID,
     TUNING_PARAMETERS_BY_ID,
     TURN_BEARING_DISTANCE_ID,
@@ -110,6 +111,8 @@ async def test_a_rebuild_stops_naming_a_value_its_sql_cannot_run_with(road_graph
         with pytest.raises(TuningValueError, match=STOP_CLUSTER_DISTANCE_ID):
             await derive_counts.derive(conn, cluster_distance_m=-1.0, accident_fatal_weight=1.0, accident_match_distance_m=1.0)
         with pytest.raises(TuningValueError, match=ELEVATION_PROFILE_STEP_ID):
-            await derive_elevation.derive(conn, profile_step_m=0.0, bridge_end_radius_m=1.0)
+            await derive_elevation.derive(conn, profile_step_m=0.0, profile_tolerance_m=0.3, bridge_end_radius_m=1.0)
+        with pytest.raises(TuningValueError, match=ELEVATION_PROFILE_TOLERANCE_ID):
+            await derive_elevation.derive(conn, profile_step_m=5.0, profile_tolerance_m=-0.1, bridge_end_radius_m=1.0)
     with pytest.raises(TuningValueError, match=TURN_BEARING_DISTANCE_ID):
         road_graph_repository.stream_network_edges(1, {TURN_BEARING_DISTANCE_ID: -1.0})

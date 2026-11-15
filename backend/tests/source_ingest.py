@@ -33,6 +33,7 @@ from app.domain.tuning import (
     ACCIDENT_MATCH_DISTANCE_ID,
     ELEVATION_BRIDGE_END_RADIUS_ID,
     ELEVATION_PROFILE_STEP_ID,
+    ELEVATION_PROFILE_TOLERANCE_ID,
     STOP_CLUSTER_DISTANCE_ID,
 )
 from app.infrastructure.source_models import WAY_KIND_TAG
@@ -220,10 +221,11 @@ async def derive_nodes_at_default_radius(conn: asyncpg.Connection) -> None:
 
 
 async def derive_elevation_at_default_step(conn: asyncpg.Connection, **tuning: float) -> None:
-    """標高の派生の段を、断面の刻みと橋の端の半径をテストの較正値（`tuning`で渡したものはその値）にして流す。"""
+    """標高の派生の段を、拾う間隔と揺れの閾値と橋の端の半径をテストの較正値（`tuning`で渡したものはその値）にして流す。"""
     await derive_elevation.derive(
         conn,
         **{"profile_step_m": TUNING[ELEVATION_PROFILE_STEP_ID],
+           "profile_tolerance_m": TUNING[ELEVATION_PROFILE_TOLERANCE_ID],
            "bridge_end_radius_m": TUNING[ELEVATION_BRIDGE_END_RADIUS_ID], **tuning})
 
 

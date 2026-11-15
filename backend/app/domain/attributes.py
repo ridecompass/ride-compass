@@ -22,7 +22,7 @@ class ElevationAttribute(StrictModel):
     elevation_gain_m: float
     elevation_loss_m: float
     average_grade: float | None
-    # 進む向きに見た、断面の刻みの間で一番急な登りと下りの勾配（%、どちらも0以上）。値が無ければNone。
+    # 進む向きに見た、断面の点の間で一番急な登りと下りの勾配（%、どちらも0以上）。値が無ければNone。
     steepest_gain_percent: float | None
     steepest_loss_percent: float | None
 
@@ -153,48 +153,73 @@ EDGE_ROW_ARRAY_FIELDS: tuple[str, ...] = tuple(
 )
 
 
-def elevation_values_sql(vertices: str, step_m: str) -> str:
-    """区間の点列（標高の断面）から、標高と勾配の値を出すSQL。
+#: 一番急な勾配に数える点の間の最短の長さ（m）。これより短い間は、標高データの揺れが勾配を大きく揺らす（GraphHopper の
+#: https://github.com/graphhopper/graphhopper/blob/master/core/src/main/java/com/graphhopper/routing/util/SlopeCalculator.java
+#: の`MIN_LENGTH`と同じ値と理由）。獲得標高・平均勾配と所要時間は、短い間も数える。
+STEEPEST_MIN_INTERVAL_M = 2.0
+
+
+def elevation_values_sql(vertices: str, tolerance_m: str) -> str:
+    """区間に沿って拾った点（標高の断面）を揺れの閾値で間引き、残した点から標高と勾配の値を出すSQL。
 
     `vertices`は`(osm_way_id, segment_index, ord, along_m, elev)`を返す関係。`along_m`は区間の始まりから
     道に沿って測った点の位置（m）で、距離はすべてこの差で測る——点どうしを直線で測ると、曲がった区間で道のりより短く出て
     勾配が大きく出る。区間の長さは最後の点の位置。
 
-    **要約の列は、どれも断面の隣り合う2点の間（点の間）のうち、勾配として数える間だけから出す**。数えるかは
+    **間引きは、断面（横が道のり、縦が標高）に Douglas-Peucker をかける**（PostGIS の`ST_Simplify`。閾値`tolerance_m`はSQLの式で
+    渡す）。閾値以下の揺れを消す。残る点の間の勾配は元の点の間の一番急な勾配を越えない（GraphHopper の ramer のならしと、そのあとの
+    間引きと同じ）が、高さが閾値の数倍に満たない短い段は、前後の点と一緒になだらかに残ることがある。値の無い点をまたいで間引かない
+    ——値のある点の続きごとに間引き、値の無い点は残す。残す点は、点の順（`ord`）を M の値に載せて取り戻す。
+
+    **要約の列は、どれも残した点の隣り合う2点の間（点の間）のうち、勾配として数える間だけから出す**。数えるかは
     所要時間が点の間を読むときと同じ判定（`domain/elevation_profile.py: interval_grade`）で、両端に値があり、長さが0でなく、
     道のりで割った勾配が公道としてありうる上限以下の間だけを数える。値の無い点をまたいだ2点を隣どうしとして
     均さない——欠けた所の起伏が均された差として混ざる。獲得/喪失は数える間の上りと下りの和、平均勾配（`average_grade`）は
     （獲得−喪失）÷数える間の長さの和。数える間が無い区間は、平均勾配と一番急な勾配を持たず、獲得/喪失は0になる。
 
-    一番急な勾配（`steepest_gain_percent`・`steepest_loss_percent`）は、数える間の勾配のうち、登りと下りの
-    それぞれの最大の大きさ（どちらも0以上）。点の間隔が勾配をならす幅になる。**区間が`step_m`（断面の刻み。SQLの式で渡す）
-    より短ければ、両端の差を刻みの幅で割る**——数十mの道の跳ね上がりを、その短さのまま急な坂にしない。数えるかは、ならす前の勾配で決める。
+    一番急な勾配（`steepest_gain_percent`・`steepest_loss_percent`）は、数える間のうち`STEEPEST_MIN_INTERVAL_M`以上の間の勾配の、
+    登りと下りのそれぞれの最大の大きさ（どちらも0以上）。その長さの間が無い区間は、平均勾配を持っても一番急な勾配を持たない。
 
-    値のある点が2つ未満の区間は返らない。値と一緒に、断面の点の標高を順に並べた`elevation_profile_m`（値の無い点はNULL）も
-    返す——要約の列は、この並びの点の間から出る。
+    値のある点が2つ未満の区間は返らない。値と一緒に、残した点の標高と位置を順に並べた`elevation_profile_m`（値の無い点はNULL）と
+    `elevation_profile_along_m`も返す——要約の列は、この並びの点の間から出る。
     """
     return f"""
--- 標高は残す断面の点と同じ精度（real）に落としてから比べる。所要時間はその点を読むので、上限ちょうどの間で数えるかが分かれない。
+-- 標高と位置は残す断面の点と同じ精度（real）に落としてから比べる。所要時間はその点を読むので、上限ちょうどの間で数えるかが分かれない。
 WITH v AS (
-    SELECT osm_way_id, segment_index, ord, along_m, elev::real::float8 AS elev FROM ({vertices}) s),
+    SELECT osm_way_id, segment_index, ord, along_m::real::float8 AS along_m, elev::real::float8 AS elev FROM ({vertices}) s),
+-- 値の無い点で区切った、値のある点の続きの番号（値の無い点は次の続きの頭に入る）と、続きの中の値のある点の数。
+runs AS (
+    SELECT *, count(elev) OVER (PARTITION BY osm_way_id, segment_index, run) AS run_known
+    FROM (SELECT *, count(*) FILTER (WHERE elev IS NULL) OVER (PARTITION BY osm_way_id, segment_index ORDER BY ord) AS run
+          FROM v) n),
+simplified AS (
+    SELECT osm_way_id, segment_index, ST_M(d.geom)::int AS ord
+    FROM (SELECT osm_way_id, segment_index,
+                 ST_Simplify(ST_MakeLine(ST_MakePointM(along_m, elev, ord) ORDER BY ord), {tolerance_m}) AS line
+          FROM runs WHERE elev IS NOT NULL AND run_known >= 3 GROUP BY osm_way_id, segment_index, run) l
+    CROSS JOIN LATERAL ST_DumpPoints(l.line) d),
+kept AS (
+    SELECT r.osm_way_id, r.segment_index, r.ord, r.along_m, r.elev
+    FROM runs r LEFT JOIN simplified k
+      ON k.osm_way_id = r.osm_way_id AND k.segment_index = r.segment_index AND k.ord = r.ord
+    WHERE r.elev IS NULL OR r.run_known < 3 OR k.ord IS NOT NULL),
 pairs AS (
-    SELECT *, max(along_m) OVER (PARTITION BY osm_way_id, segment_index) AS length_m,
-           elev - lag(elev) OVER w AS diff,
+    SELECT *, elev - lag(elev) OVER w AS diff,
            along_m - lag(along_m) OVER w AS d
-    FROM v WINDOW w AS (PARTITION BY osm_way_id, segment_index ORDER BY ord)),
+    FROM kept WINDOW w AS (PARTITION BY osm_way_id, segment_index ORDER BY ord)),
 counted AS (
-    SELECT *, CASE WHEN d > 0 AND abs(diff) * 100 <= {MAX_PLAUSIBLE_GRADE_PERCENT} * d
-                   THEN diff / (CASE WHEN length_m < {step_m} THEN {step_m} ELSE d END) * 100 END AS g
+    SELECT *, CASE WHEN d > 0 AND abs(diff) * 100 <= {MAX_PLAUSIBLE_GRADE_PERCENT} * d THEN diff / d * 100 END AS g
     FROM pairs),
 raw AS (
     SELECT osm_way_id, segment_index,
            array_agg(elev::real ORDER BY ord) AS elevation_profile_m,
+           array_agg(along_m::real ORDER BY ord) AS elevation_profile_along_m,
            array_agg(elev ORDER BY ord) FILTER (WHERE elev IS NOT NULL) AS known,
            coalesce(sum(greatest(diff, 0)) FILTER (WHERE g IS NOT NULL), 0) AS gain,
            coalesce(sum(greatest(-diff, 0)) FILTER (WHERE g IS NOT NULL), 0) AS loss,
            sum(d) FILTER (WHERE g IS NOT NULL) AS counted_m,
-           max(greatest(g, 0)) FILTER (WHERE g IS NOT NULL) AS steepest_up,
-           max(greatest(-g, 0)) FILTER (WHERE g IS NOT NULL) AS steepest_down
+           max(greatest(g, 0)) FILTER (WHERE g IS NOT NULL AND d >= {STEEPEST_MIN_INTERVAL_M}) AS steepest_up,
+           max(greatest(-g, 0)) FILTER (WHERE g IS NOT NULL AND d >= {STEEPEST_MIN_INTERVAL_M}) AS steepest_down
     FROM counted GROUP BY osm_way_id, segment_index)
 SELECT osm_way_id, segment_index,
        round(known[1]::numeric, 1) AS start_elevation_m,
@@ -204,6 +229,6 @@ SELECT osm_way_id, segment_index,
        round(((gain - loss) / counted_m * 100)::numeric, {AVERAGE_GRADE_DECIMALS}) AS average_grade,
        round(steepest_up::numeric, {AVERAGE_GRADE_DECIMALS})   AS steepest_gain_percent,
        round(steepest_down::numeric, {AVERAGE_GRADE_DECIMALS}) AS steepest_loss_percent,
-       elevation_profile_m
+       elevation_profile_m, elevation_profile_along_m
 FROM raw WHERE cardinality(known) >= 2
 """

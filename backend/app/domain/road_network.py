@@ -83,6 +83,7 @@ class RoadNetwork:
     edge_profile_start: np.ndarray  # int64
     edge_profile_points: np.ndarray  # int32
     profile_elevation_m: np.ndarray  # float32、行数は区間ではなく点の数
+    profile_position: np.ndarray  # float32、点ごとの位置（区間の長さに対する割合）。行数は`profile_elevation_m`と同じ
     # 標高の無い所を埋める、道路網全体の点の間の勾配の分布（`domain/elevation_profile.py: grade_distribution`。組むときに1回求める）。
     profile_distribution_grade: np.ndarray  # float64、行数は階級の数
     profile_distribution_share: np.ndarray  # float64
@@ -103,6 +104,8 @@ class RoadNetwork:
         if len(self.edge_profile_start) and int(np.max(self.edge_profile_start + self.edge_profile_points)) > len(
                 self.profile_elevation_m):
             wrong["edge_profile_start"] = len(self.profile_elevation_m)
+        if len(self.profile_position) != len(self.profile_elevation_m):
+            wrong["profile_position"] = len(self.profile_position)
         wrong_columns = {
             name: (matrix.shape[1], len(ids))
             for name, matrix, ids in (
@@ -129,7 +132,7 @@ class RoadNetwork:
         distribution = GradeDistribution(np.asarray(self.profile_distribution_grade),
                                          np.asarray(self.profile_distribution_share))
         return ElevationProfiles(self.edge_profile_start, self.edge_profile_points, self.edge_forward,
-                                 self.profile_elevation_m, distribution)
+                                 self.profile_elevation_m, self.profile_position, distribution)
 
     @cached_property
     def road_tile_rows(self) -> "TileRows":

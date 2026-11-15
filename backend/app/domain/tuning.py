@@ -141,8 +141,10 @@ LANDCOVER_RING_INNER_ID = "landcover.ring_inner_m"
 REGULATION_LINE_HALF_WIDTH_ID = "traffic_regulation.line_half_width_m"
 REGULATION_EDGE_SHARE_ID = "traffic_regulation.edge_share"
 REGULATION_MAX_ANGLE_ID = "traffic_regulation.max_angle_deg"
-#: 区間の標高の断面を刻む幅の上限のid。
+#: 区間の標高を拾う間隔の上限のid。
 ELEVATION_PROFILE_STEP_ID = "elevation.profile_step_m"
+#: 拾った標高の揺れを消す閾値のid。
+ELEVATION_PROFILE_TOLERANCE_ID = "elevation.profile_tolerance_m"
 #: 橋の端の標高を、端の点の周りで探す半径のid。
 ELEVATION_BRIDGE_END_RADIUS_ID = "elevation.bridge_end_radius_m"
 #: 橋の端の点の周りで標高を引く方位の数。北から等しい角度で並べる。
@@ -222,9 +224,15 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
     # --- 標高 ---
     TuningParameter(
         ELEVATION_PROFILE_STEP_ID,
-        "標高の断面の刻み", "m", TuningEffect.DERIVE_REBUILD,
-        "区間をこの道のり以下の等しい刻みに分けた点で標高を引き、獲得標高と勾配を出す。刻みが勾配をならす幅になる。"
-        "狭めるほど短い起伏まで登りに数えるが、道の脇の地形（堤防の斜面等）や標高データの誤差による急な変化も登りとして数える。",
+        "標高を拾う間隔", "m", TuningEffect.DERIVE_REBUILD,
+        "区間をこの道のり以下の等しい間隔に分けた点で標高を引く。標高データの格子より広げると、格子が持つ短い起伏を拾わない。"
+        "狭めるほど作り直しの時間が延びる。",
+    ),
+    TuningParameter(
+        ELEVATION_PROFILE_TOLERANCE_ID,
+        "標高の揺れを消す閾値", "m", TuningEffect.DERIVE_REBUILD,
+        "拾った標高のうち、この高さ以下の上下を揺れとして消し、残した点の間で獲得標高と勾配を出す。高さがこの数倍に満たない"
+        "短い段は、なだらかに残ることがある。広げるほど短い起伏も消え、狭めるほど標高データの誤差による上下も登りとして数える。",
     ),
     TuningParameter(
         ELEVATION_BRIDGE_END_RADIUS_ID,

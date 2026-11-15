@@ -280,13 +280,14 @@ class SegmentSpeedModel:
         start = kernel_array(profiles.start, np.int64)
         points = kernel_array(profiles.points, np.int64)
         elevation = kernel_array(profiles.elevation_m, np.float32)
+        position = kernel_array(profiles.position, np.float32)
         distance = kernel_array(distance_m, np.float64)
         #: 区間の行ごとの長さ（m、float64）。
         self.distance_m = distance
         #: 区間の行ごとの標高の無い長さ（m）。全体の分布で埋めて走る（所要時間の欠けの割合が読む）。
-        self.unknown_m = unknown_lengths_m(start, points, elevation, distance)
+        self.unknown_m = unknown_lengths_m(start, points, elevation, position, distance)
         span_row, span_length, span_grade = flatten_spans(
-            start, points, kernel_array(profiles.forward, np.bool_), elevation, distance, self.unknown_m,
+            start, points, kernel_array(profiles.forward, np.bool_), elevation, position, distance, self.unknown_m,
             kernel_array(profiles.distribution.grade, np.float64), kernel_array(profiles.distribution.share, np.float64))
         crr = kernel_array(crr, np.float32)
         # 体力と漕ぎ出しが負・無限大にならない値だけで解く（上限倍率が1未満だと平地の出力を越えた分が負になる）。
