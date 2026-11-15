@@ -64,8 +64,7 @@ description: "タスクを実装担当・検証担当として進める手順（
    - 「やること」の項目の行き先（.claude/skills/file-issue/SKILL.md「issue の形」の「やることの行き先」）は、自分の分の最後の条件にチェックを
      付ける前に書く。ゲートが「行き先を名指していない」と知らせて戻したら、名指された項目に書く。手を付けていない項目は、同じ要望なら子か
      切り出しへ移してその番号を、続けるかをユーザーが決めるなら問うてその答えを行き先にする（見送りを自分で決めない）。
-4. `tasks#<番号>:` の件名でコミットし、`git push origin orch/tasks-<番号>` を、ほかのコマンドとつながずに1つで打つ（拒否の一覧の
-   `Bash(git push *master*)` はつないだ全文に当たる）。手元で回す検査と整形は .claude/skills/run-checks/SKILL.md「手元の検査の回し方」だけが決め、
+4. `tasks#<番号>:` の件名でコミットし、`git push origin orch/tasks-<番号>` を、ほかのコマンドとつながずに1つで打つ。手元で回す検査と整形は .claude/skills/run-checks/SKILL.md「手元の検査の回し方」だけが決め、
    全体は CI に任せる。作業ブランチの強制 push は断られるので、直しは足すコミットにする。
 5. マージの前に済ませる本番への書き込みが要るなら、出さずに `docs/conventions/flow.md`「担当」の「自動で進めないもの」のとおり返す。
    **下書きの** Pull Request を出す（`gh pr create --draft --base master --head orch/tasks-<番号> --title <題名> --body-file <本文>`。gh の既定の
