@@ -98,8 +98,9 @@ export default function RouteSettingsPanel({ costPreference, onCostPreferenceCha
               </span>
               <CostLevelPicker
                 aria-label={`${axis.label}の倍率`}
-                usage="この種類の負担を所要時間に足すときに掛ける倍率を選びます。「無効」はこの負担を数えず、結果にも地図にも出しません。"
+                usage="この種類の負担を所要時間に足すときに掛ける倍率を選びます。倍率が小さいほどこの負担を軽く見て通りやすくし、大きいほど重く見て避けます。「無効」はこの負担を数えず、結果にも地図にも出しません。"
                 levels={AXIS_LEVELS}
+                directional
                 value={setting}
                 onChange={(next) => onCostPreferenceChange(withAxisSetting(costPreference, axis.axisId, next))}
               />

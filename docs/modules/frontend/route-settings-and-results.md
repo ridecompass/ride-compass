@@ -10,7 +10,7 @@
 | ファイル | 責務 |
 |---|---|
 | `features/route/RouteForm/RouteForm.tsx` | 全長の目標（入り切りとルーラー）と候補数ステッパーを並べた1行（どの幅でも折り返さない）・地点（出発地・経由地・目的地）の置き場。「ルート設定」区分の各タブの中身を`Tabs.Content`として並べる（タブ列と選択状態は外、下記参照） |
-| `features/route/RouteSettingsPanel/CostLevelPicker.tsx` | 全体のつまみと軸ごとの倍率の段（×0.5・×1…）を選ぶ横並びの選び手。軸ごとの倍率では、段の前に無効を並べる |
+| `features/route/RouteSettingsPanel/CostLevelPicker.tsx` | 全体のつまみと軸ごとの倍率の段（×0.5・×1…）を選ぶ横並びの選び手。軸ごとの倍率では、段の前に無効を並べ、標準より小さい（その負担を軽く見て通りやすくする）段と大きい（避ける）段を、道路タブの「好む」「なるべく避ける」と同じ配色の役割で塗る（全体のつまみは塗らない） |
 | `lib/costPreference.ts` | 利用者の費用の好み（つまみと倍率と無効の軸）そのものの決まり: 標準・軸を数えるか・軸の倍率の引き方・地図のレンズの要求へ載せる書き方（ルートと地図の両方が読む） |
 | `features/route/RouteForm/SettingsTabsList.tsx` | 「ルート設定」のタブ列（条件・負担・道路・保存済み）。道路のタブの名前は、地図の道路のまとまりの名前（`lib/screenNames.ts: ROAD_SETTINGS_TAB_NAME`）。見出し行に置き、選ぶ状態は囲む`Tabs.Root`から読む |
 | `features/route/RouteForm/RouteSettingsForm.tsx` | `RouteForm`へ、負担・道路・条件の保存・保存した条件の一覧の4つのタブの中身を、生成の条件と保存した条件から組んで渡す |
