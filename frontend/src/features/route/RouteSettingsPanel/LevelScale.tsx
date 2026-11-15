@@ -27,7 +27,13 @@ export default function LevelScale<K extends string>({ levels, value, onChange, 
     <span className="ml-auto flex items-center gap-1.5">
       <ToggleGroup variant="scale" {...props} value={value} onValueChange={(next) => onChange(next as K)}>
         {levels.map((option) => (
-          <ToggleGroupItem key={option.key} value={option.key} aria-label={option.label}>
+          <ToggleGroupItem
+            key={option.key}
+            value={option.key}
+            aria-label={option.label}
+            // 数えない段は目盛りの外に置く（項目の地で目盛りの線を隠す。線の上の「–」は線と見分けられない）。
+            className={cn(option.off && "bg-[var(--background)]")}
+          >
             {option.key === value ? (
               <span
                 aria-hidden="true"
@@ -38,7 +44,7 @@ export default function LevelScale<K extends string>({ levels, value, onChange, 
             ) : option.off ? (
               <span
                 aria-hidden="true"
-                className="bg-[var(--background)] text-[length:var(--font-size-xs)] leading-none text-[var(--color-muted)]"
+                className="text-[length:var(--font-size-xs)] leading-none text-[var(--color-muted)]"
               >
                 –
               </span>
