@@ -17,14 +17,6 @@ afterEach(() => {
 });
 
 describe("UsageGuide 終える・説明を閉じる", () => {
-  it("案内の「やめる」を押すと、終える操作が上がる", async () => {
-    const { onEnd } = renderScreen();
-
-    await userEvent.click(screen.getByRole("button", { name: "やめる" }));
-
-    expect(onEnd).toHaveBeenCalledTimes(1);
-  });
-
   describe("部品の外を押したとき", () => {
     it("説明を出す前なら、何もしない", async () => {
       const { onEnd } = renderScreen();
@@ -79,7 +71,7 @@ describe("UsageGuide 終える・説明を閉じる", () => {
       expect(latest).toHaveBeenCalledTimes(1);
     });
 
-    it("案内の上のボタンはキーでも押せる", async () => {
+    it("案内の「やめる」を押すと（キーで押しても）、終える操作が上がる", async () => {
       const { onEnd } = renderScreen();
       screen.getByRole("button", { name: "やめる" }).focus();
 

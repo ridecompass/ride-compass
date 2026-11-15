@@ -2,7 +2,7 @@
  * 走りの帯（`features/ride/RideBar/RideBar.tsx`）——走行モードの間、画面の上の1行にルートの残り・到着予想・今の速さ・風を出す。
  *
  * ここで見ないもの:
- * - 走行モードの間だけ天気の帯の代わりに出ること → `app/page.ride.test.tsx`
+ * - 走行モードの間だけ天気の帯の代わりに出ること・ルートを外れている間だけ外れたと出すこと → `app/page.ride.test.tsx`
  * - 残りと到着予想の出し方 → `rideRemaining.test.ts`
  * - 風の矢印を地図の向きに合わせて回すこと → `features/conditions/WeatherPanel/WeatherPanel.test.tsx`
  */
@@ -62,13 +62,5 @@ describe("RideBar", () => {
     render(<RideBar {...props({ remaining })} />);
     for (const text of texts) expect(bar()).toHaveTextContent(text);
     for (const text of absent) expect(bar()).not.toHaveTextContent(text);
-  });
-
-  it("ルートを外れている間だけ、外れていることを出す", () => {
-    const remaining = { remainingKm: 3, arrivalAt: null };
-    const { rerender } = render(<RideBar {...props({ remaining, offRoute: true })} />);
-    expect(screen.getByRole("status", { name: "ルートを外れています" })).toBeInTheDocument();
-    rerender(<RideBar {...props({ remaining })} />);
-    expect(screen.queryByRole("status", { name: "ルートを外れています" })).toBeNull();
   });
 });

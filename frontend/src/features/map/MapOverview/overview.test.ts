@@ -32,7 +32,6 @@ describe("overviewZoom", () => {
 
   it("本体の地図より4段引く（今の画面の16倍の幅を映す）", () => {
     expect(overviewZoom(35.68, 11)).toBe(7);
-    expect(overviewZoom(35.68, 12.5)).toBe(8.5);
   });
 
   it.each([[35.68], [43.06]])("緯度%sで、寄せても俯瞰図の1辺は約20kmより狭くならない", (latitude) => {

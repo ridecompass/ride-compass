@@ -1,10 +1,9 @@
 /**
  * 生成の条件（`useGenerationConditions.ts`）の地点（出発地以外）——地図のタップで置く地点の選び（経由地は足すか、何番目を
- * 置き直すか）と、経由地・目的地を動かす・消すこと、出発地・経由地・目的地の通る順の入れ替えと、検索・名前のある点で置いた地点の候補（その位置のままの間だけ）。
+ * 置き直すか）と、経由地・目的地を動かす・消すこと、出発地・経由地・目的地の通る順の入れ替えと、検索・名前のある点で置いた地点の候補（その位置のままの間だけ）と、周回の間に覚えておく目的地。
  * 地点は保存しない。
  *
  * ここで見ないもの:
- * - 周回の間に覚えておく目的地 → `useGenerationConditions.test.ts`
  * - 地図で置いた出発地を位置の持ち主が受け取ったあと → `hooks/useLocation.test.ts`
  * - 地図のタップが選んだ地点を置く場面（「ルート設定」の「条件」タブが効いている間だけ） → `app/page.map.test.tsx`
  * - 条件を生成へ送る形 → `useRouteGeneration.test.ts`
@@ -55,7 +54,7 @@ beforeEach(() => {
 });
 
 describe("地点", () => {
-  // 目的地を置くのは周回を外した間（周回の間の目的地は上の「周回」）。
+  // 目的地を置くのは周回を外した間なので、既定は周回を外しておく。
   beforeEach(() => window.localStorage.setItem("ridecompass:loop", "false"));
 
   it("選んだ地点を置き、選んだままにする（続けて置くとその地点を置き直す）", () => {
@@ -69,22 +68,12 @@ describe("地点", () => {
     expect(result.current.selectedPoint).toEqual({ role: "destination" });
   });
 
-  it("新しい経由地を選ぶと置くたびに足し、生成が受け付ける数に達したらそれ以上は足さない", () => {
+  it("新しい経由地を選ぶと置くたびに足し、生成が受け付ける数に達したら、地図でも検索でもそれ以上は足さない（開いた候補の一覧から、達した後にも選べる）", () => {
     const max = routeGenerateConfig.max_waypoints;
     const { result } = renderConditions();
     act(() => result.current.selectPoint({ role: "waypoint", index: null }));
 
     for (let i = 0; i <= max; i++) act(() => result.current.placeAtSelected(point(i), null));
-
-    expect(result.current.waypoints).toEqual([...Array(max).keys()].map(point));
-  });
-
-  it("生成が受け付ける数に達したら、検索で選んだ地点も経由地に足さない（開いた候補の一覧から、達した後にも選べる）", () => {
-    const max = routeGenerateConfig.max_waypoints;
-    const { result } = renderConditions();
-    act(() => result.current.selectPoint({ role: "waypoint", index: null }));
-    for (let i = 0; i < max; i++) act(() => result.current.placeAtSelected(point(i), null));
-
     act(() => result.current.placeFound("waypoint", candidateAt(A, "寄る店"), null));
 
     expect(result.current.waypoints).toEqual([...Array(max).keys()].map(point));
@@ -263,20 +252,28 @@ describe("地点", () => {
     expect(result.current.selectedPoint).toEqual({ role: "waypoint", index: 1 });
   });
 
-  it("経由地と目的地は一度に消せ、出発地はそのまま残し、出発地を選んでいることに戻る", () => {
-    const { result, onOriginPlace } = renderConditions();
-    act(() => result.current.selectPoint({ role: "waypoint", index: null }));
-    act(() => result.current.placeAtSelected(A, null));
-    act(() => result.current.placeAtSelected(B, null));
-    act(() => result.current.setDestination(C));
+  it.each([
+    { label: "周回を外した間", loop: false, destination: null },
+    { label: "周回の間", loop: true, destination: C },
+  ])(
+    "$labelは経由地と目的地を一度に消せ、出発地はそのまま残し、出発地を選んでいることに戻る（周回の間は覚えている目的地を残す）",
+    ({ loop, destination }) => {
+      const { result, onOriginPlace } = renderConditions();
+      act(() => result.current.setDestination(C));
+      act(() => result.current.setLoop(loop));
+      act(() => result.current.selectPoint({ role: "waypoint", index: null }));
+      act(() => result.current.placeAtSelected(A, null));
+      act(() => result.current.placeAtSelected(B, null));
 
-    act(() => result.current.clearPoints());
+      act(() => result.current.clearPoints());
 
-    expect(result.current.waypoints).toEqual([]);
-    expect(result.current.destination).toBeNull();
-    expect(result.current.selectedPoint).toEqual({ role: "origin" });
-    expect(onOriginPlace).not.toHaveBeenCalled();
-  });
+      expect(result.current.waypoints).toEqual([]);
+      expect(result.current.selectedPoint).toEqual({ role: "origin" });
+      expect(onOriginPlace).not.toHaveBeenCalled();
+      act(() => result.current.setLoop(false));
+      expect(result.current.destination).toEqual(destination);
+    },
+  );
 
   it("検索で選んだ地点はその役割で置く（経由地は番号を指せばそれを置き直し、指さなければ足してその経由地を選ぶ）", () => {
     const { result, onOriginPlace } = renderConditions();
