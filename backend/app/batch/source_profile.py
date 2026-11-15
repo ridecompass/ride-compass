@@ -69,6 +69,8 @@ class SourceSpec:
     rows: Any
     #: ラスタ・タイル系の格子の指定。型はアダプタが宣言する（`register_adapter`の`grid`）。
     grid: Any
+    #: `--all`（週の元の取り直し・まっさらなDBの立ち上げ）で扱うか。宣言の`bulk: false`で外し、外した元は`--source`で名指して扱う。
+    in_bulk: bool = True
 
 
 @dataclass(frozen=True)
@@ -84,11 +86,16 @@ class SourceProfile:
                 return spec
         raise SourceProfileError(f"プロファイルに '{name}' がありません")
 
+    def bulk_names(self) -> list[str]:
+        """`--all`で扱う元の名前（宣言の並び順）。"""
+        return [spec.name for spec in self.sources if spec.in_bulk]
+
 
 def _parse_source(raw: dict[str, Any], adapters: dict[str, Any]) -> SourceSpec:
     entry = adapters[raw["adapter"]]
     return SourceSpec(name=raw["name"], adapter=raw["adapter"],
-                      rows=entry.rows(**raw.get("rows", {})), grid=entry.grid(**raw.get("grid", {})))
+                      rows=entry.rows(**raw.get("rows", {})), grid=entry.grid(**raw.get("grid", {})),
+                      in_bulk=raw.get("bulk", True))
 
 
 def _registered_adapters() -> dict[str, Any]:

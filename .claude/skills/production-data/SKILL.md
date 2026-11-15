@@ -5,7 +5,7 @@ description: "本番の元を取り直す・派生データを作り直す・本
 
 ## 元の取り直し
 
-- 対象: 全部の元（`backend/app/batch/source_profile.yaml`）を上流から最新で取り直し、全部取り込み直し、派生を全部作り直す。本番VMの
+- 対象: 宣言の元（`backend/app/batch/source_profile.yaml`。`bulk: false`の元は除く）を上流から最新で取り直し、全部取り込み直し、派生を全部作り直す。本番VMの
   systemdのtimer（`backend/ops/ridecompass-source-refresh.timer`）が週1回起こし、`backend/ops/source_refresh.sh`が別のコンテナで
   取得 → 取込 → 作り直しを順に打つ。仕組みは[横断基盤](../../../docs/modules/backend/cross-cutting-infrastructure.md)「元の取り直し」。
   元ごとに手で取得・取込を打つ手順は持たない。
