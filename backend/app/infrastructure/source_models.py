@@ -490,17 +490,24 @@ INGESTED_DEM_PRODUCTS_SQL = (
     f"SELECT attrs->>'product' AS product, min((attrs->>'z')::int) AS zoom FROM {DEM_TILES_SQL} t GROUP BY 1")
 
 
-def dem_pixel_value_sql(tile: str, fx: str, fy: str, tx: str, ty: str) -> str:
-    """標高タイルの行`tile`（`DEM_TILES_SQL`の行の別名）の、タイル座標（小数）`fx`・`fy`（整数部`tx`・`ty`）に当たる画素の
-    標高（m）の式。値の無い画素はNULL。
+#: 標高タイルの行（`DEM_TILES_SQL`の行の別名`t`）の画素を1回だけ展開する列（`vals`・`nodata`・`width`・`scale`）。点を引く式
+#: （`dem_pixel_value_sql`）はこの列を読む。**展開はタイルごとに1回にする**——点ごとに`ST_Value`で引くと、そのたびにタイル全体が
+#: 読み出される。値の無い画素も生の値のまま受けて`nodata`と比べる。NULLを含む配列は、添字で引くたびに先頭から数え直す。
+#: 呼び手は、この列を`OFFSET 0`の副問い合わせに置く（平らにされると、引く点ごとに展開し直す）。幅は`attrs`が持つ——rasterから
+#: 読むと、そのたびに画素が実体化される。標高は`scale`で割って戻す（取込が整数へ詰めているため。尺度だけはrasterが持てない）。
+DEM_TILE_PIXELS_SQL = ("ST_DumpValues(t.rast, 1, false) AS vals, ST_BandNoDataValue(t.rast, 1) AS nodata, "
+                       "(t.attrs->>'width')::int AS width, (t.attrs->>'scale')::float AS scale")
+
+
+def dem_pixel_value_sql(pixels: str, fx: str, fy: str, tx: str, ty: str) -> str:
+    """展開した標高タイル（`DEM_TILE_PIXELS_SQL`の列を持つ行の別名`pixels`）の、タイル座標（小数）`fx`・`fy`（整数部`tx`・`ty`）に
+    当たる画素の標高（m）の式。値の無い画素はNULL。
 
     **どの画素かは算術で出す。**`ST_Intersects(rast, 点)`で絞ると当たり判定のたびにタイルの画素が実体化され、外枠だけで
-    絞ると境界線上の点が隣のタイルへ割り当たる。番地で決めれば、rasterに触らずに1画素へ確定する。標高は`scale`で割って戻す
-    （取込が整数へ詰めているため。尺度だけはrasterが持てない）。幅は`attrs`が持つ——rasterから読むと、そのたびに画素が
-    実体化される。"""
-    width = f"({tile}.attrs->>'width')::int"
-    return (f"ST_Value({tile}.rast, 1, least({width}, floor(({fx} - {tx}) * {width})::int + 1), "
-            f"least({width}, floor(({fy} - {ty}) * {width})::int + 1)) / ({tile}.attrs->>'scale')::float")
+    絞ると境界線上の点が隣のタイルへ割り当たる。番地で決めれば、rasterに触らずに1画素へ確定する。"""
+    width = f"{pixels}.width"
+    return (f"NULLIF({pixels}.vals[least({width}, floor(({fy} - {ty}) * {width})::int + 1)]"
+            f"[least({width}, floor(({fx} - {tx}) * {width})::int + 1)], {pixels}.nodata) / {pixels}.scale")
 
 #: 土地被覆タイル（1枚=1行）。
 LANDCOVER_TILES_SQL = _raster_tiles_sql(Source.LULC)
