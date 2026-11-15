@@ -1,12 +1,14 @@
 /**
- * `RouteSettingsPanel/RouteSettingsPanel.tsx`——「負担」タブ。費用の軸ごとに、倍率の段か無効を選ぶ。
+ * `RouteSettingsPanel/RouteSettingsPanel.tsx`——「負担」タブ。一番上の「全体」で負担の全部を数える割合を、その下で費用の軸ごとに
+ * 割合の段か無効を選ぶ。
  *
- * 見るもの: 一覧を取れないときの告知と再試行で軸が出ること、書いていない軸は標準を選んだ状態で出し、無効と段を選ぶと、その軸を
- * 無効と倍率の片方にだけ置いて上げること、「標準に戻す」が標準の間は押せず、押すと倍率と無効を標準に戻すこと、負担の強さが無効の
- * 間は倍率が効かないと添えること。段を、通りやすくする向き（標準より小さい）と避ける向き（標準より大きい）で塗り分けること
- * （色そのものは jsdom が CSS を当てないので、段の印 `data-direction` で見る）。
+ * 見るもの: 一覧を取れないときの告知と再試行で軸が出ること、全体の行が軸の行より上に割合の段で出て、選ぶと全体の割合を上げること、
+ * 書いていない軸は標準を選んだ状態で出し、無効と段を選ぶと、その軸を無効と倍率の片方にだけ置いて上げること、「標準に戻す」が
+ * 標準の間は押せず、押すと軸の割合と無効を標準に戻すこと、全体が無効の間は軸の割合が効かないと添えること。選んだ段の丸の色
+ * （軸の行は標準より小さい段が通りやすくする向き・大きい段が避ける向きの色、全体の行は小さい段が灰色）。
  *
- * ここで見ないもの: 選んだ倍率が生成の要求に載ること → `app/page.test.tsx`。軸の名前・(i)の奥の説明（一覧の値をそのまま描く）。
+ * ここで見ないもの: 選んだ割合が生成の要求に載ること → `app/page.test.tsx`。軸の名前・(i)の奥の説明（一覧の値をそのまま描く）。
+ * 目盛りの印の形（`RouteSettingsPanel/LevelScale.tsx`が描き、道路タブと同じ）。
  *
  * 差し替えたもの: 費用の軸の一覧の応答（網の層）。つまみと倍率は親が持つので、テストの包みが上がった値を持ち直して渡す。
  */
@@ -52,7 +54,7 @@ describe("費用の軸の一覧", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "再試行" }));
 
-    expect(await screen.findByRole("radiogroup", { name: "振動の倍率" })).toBeInTheDocument();
+    expect(await screen.findByRole("radiogroup", { name: "振動の割合" })).toBeInTheDocument();
     expect(screen.queryByRole("status")).toBeNull();
   });
 });
@@ -65,8 +67,8 @@ describe("倍率", () => {
       strength: 1.5,
       multipliers: { ascent: 1 },
     });
-    const vibration = await levelsOf("振動の倍率");
-    expect(vibration.getByRole("radio", { name: "×1" })).toBeChecked();
+    const vibration = await levelsOf("振動の割合");
+    expect(vibration.getByRole("radio", { name: "100%" })).toBeChecked();
     expect(screen.getByRole("button", { name: "標準に戻す" })).toBeDisabled();
 
     await userEvent.click(vibration.getByRole("radio", { name: "無効" }));
@@ -76,7 +78,7 @@ describe("倍率", () => {
       multipliers: { ascent: 1 },
       disabled_axes: ["vibration"],
     });
-    await userEvent.click(vibration.getByRole("radio", { name: "×2" }));
+    await userEvent.click(vibration.getByRole("radio", { name: "200%" }));
     expect(onCostPreferenceChange).toHaveBeenLastCalledWith({
       ...STANDARD_COST_PREFERENCE,
       strength: 1.5,
@@ -88,27 +90,59 @@ describe("倍率", () => {
     expect(onCostPreferenceChange).toHaveBeenLastCalledWith({ ...STANDARD_COST_PREFERENCE, strength: 1.5 });
   });
 
-  it("負担の強さが無効の間は、倍率が効かないと添える（倍率は選べるまま）", async () => {
+  it("全体が無効の間は、軸の割合が効かないと添える（軸の割合は選べるまま）", async () => {
     serveCostAxisCatalog();
     renderPanel({ ...STANDARD_COST_PREFERENCE, strength: 0 });
-    const vibration = await levelsOf("振動の倍率");
-    expect(screen.getByRole("status")).toHaveTextContent("負担の強さが無効のため、ここの倍率は使いません");
+    const vibration = await levelsOf("振動の割合");
+    expect(screen.getByRole("status")).toHaveTextContent("全体が無効のため、種類ごとの割合は使いません");
     expect(vibration.getByRole("radio", { name: "無効" })).toBeEnabled();
     // どの軸も標準なら、つまみが無効でも戻すものは無い。
     expect(screen.getByRole("button", { name: "標準に戻す" })).toBeDisabled();
   });
 
-  it("倍率の段を、標準より小さい段は通りやすくする向き、大きい段は避ける向きで塗り、標準と無効は塗らない", async () => {
+  it("全体の行は軸の行より上に割合の段で出て、選ぶと全体の割合を上げる。軸の行も割合の段で出る", async () => {
+    serveCostAxisCatalog();
+    const { onCostPreferenceChange } = renderPanel();
+    const vibration = await levelsOf("振動の割合");
+    const overall = await levelsOf("全体の割合");
+    const names = (group: typeof overall) =>
+      group.getAllByRole("radio").map((radio) => radio.getAttribute("aria-label"));
+    expect(names(overall)).toEqual(["無効", "50%", "100%", "150%", "200%"]);
+    expect(names(vibration)).toEqual(["無効", "50%", "100%", "200%"]);
+    const [overallGroup, firstAxisGroup] = screen.getAllByRole("radiogroup");
+    expect(overallGroup).toHaveAccessibleName("全体の割合");
+    expect(firstAxisGroup).not.toHaveAccessibleName("全体の割合");
+
+    await userEvent.click(overall.getByRole("radio", { name: "150%" }));
+    expect(onCostPreferenceChange).toHaveBeenLastCalledWith({ ...STANDARD_COST_PREFERENCE, strength: 1.5 });
+  });
+
+  it("選んだ段の丸を、軸の行は小さい段を通りやすくする向き・大きい段を避ける向きの色で、全体の行は小さい段を灰色で塗る", async () => {
     serveCostAxisCatalog();
     renderPanel();
+    // 段を1つずつ選び、選んだ段に出る丸の色を読む。
+    async function colorsOf(name: string) {
+      const group = await levelsOf(name);
+      const colors: Record<string, string> = {};
+      for (const radio of group.getAllByRole("radio")) {
+        await userEvent.click(radio);
+        colors[radio.getAttribute("aria-label") ?? ""] = radio.querySelector("span")?.style.background ?? "";
+      }
+      return colors;
+    }
 
-    const levels = await levelsOf("振動の倍率");
-    const directions = levels.getAllByRole("radio").map((radio) => [radio.textContent, radio.dataset.direction]);
-    expect(directions).toEqual([
-      ["無効", undefined],
-      ["×0.5", "prefer"],
-      ["×1", undefined],
-      ["×2", "avoid"],
-    ]);
+    expect(await colorsOf("振動の割合")).toEqual({
+      無効: "var(--color-muted)",
+      "50%": "var(--color-road-avoidance-prefer)",
+      "100%": "var(--color-muted)",
+      "200%": "var(--color-road-avoidance-avoid)",
+    });
+    expect(await colorsOf("全体の割合")).toEqual({
+      無効: "var(--color-muted)",
+      "50%": "var(--color-muted)",
+      "100%": "var(--color-muted)",
+      "150%": "var(--color-road-avoidance-avoid)",
+      "200%": "var(--color-road-avoidance-avoid)",
+    });
   });
 });

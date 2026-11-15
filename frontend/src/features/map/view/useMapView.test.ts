@@ -138,7 +138,7 @@ describe("useMapView", () => {
   });
 
   it.each([
-    { case: "負担の強さを無効にした間", costPreference: { ...STANDARD_COST_PREFERENCE, strength: 0 } },
+    { case: "負担の全体を無効にした間", costPreference: { ...STANDARD_COST_PREFERENCE, strength: 0 } },
     {
       case: "全部の軸を個別に無効にした間",
       costPreference: { ...STANDARD_COST_PREFERENCE, disabled_axes: ["ascent", "vibration"] },

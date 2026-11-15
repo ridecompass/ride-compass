@@ -1,15 +1,12 @@
 // 「ルート設定」区分の各タブの中身（`features/route/RouteForm/RouteForm.tsx`）を描いて操る足場。生成の条件とほかの props の既定を置き、
 // 選んでいる地点を持つ親の代わりと`Tabs`で包んで描き、上げた操作を受け取る関数と、条件やタブを変えて描き直す関数を返す。
 // タブの中身を描くには`Tabs`の中に置く必要があるので、囲む側の代わりに`Tabs`で包む。
-// 費用の軸の一覧（`TWO_COST_AXES`）も返す。
 import { render, screen, within } from "@testing-library/react";
 import { useState, type ComponentProps, type ReactNode } from "react";
 import { vi } from "vitest";
 
 import { Tabs } from "@/components/ui/Tabs/Tabs";
 import RouteForm, { type SettingsTab } from "@/features/route/RouteForm/RouteForm";
-import { STANDARD_COST_PREFERENCE } from "@/lib/costPreference";
-import { serveCostAxisCatalog } from "@/testing/backendServer";
 import type { PointTarget } from "@/types/route";
 
 type Props = ComponentProps<typeof RouteForm>;
@@ -28,7 +25,6 @@ const BASE = {
   distanceInput: "30",
   maxRoutesInput: "8",
   distanceTargeted: true,
-  costPreference: STANDARD_COST_PREFERENCE,
   waypoints: [],
   destination: null,
   origin: ORIGIN,
@@ -73,7 +69,6 @@ export function renderForm(options: Options = {}, tab: SettingsTab = "generate")
     setDistanceInput: vi.fn(),
     setMaxRoutesInput: vi.fn(),
     setDistanceTargeted: vi.fn(),
-    setCostPreference: vi.fn(),
     setLoop: vi.fn(),
     removeWaypoint: vi.fn(),
     reorderPoints: vi.fn(),
@@ -136,7 +131,6 @@ export function renderForm(options: Options = {}, tab: SettingsTab = "generate")
       </Selecting>
     );
   };
-  serveCostAxisCatalog();
   const view = render(element(tab));
   return {
     ...handlers,

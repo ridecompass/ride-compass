@@ -292,7 +292,7 @@ export function useMapView({
           : "負担の種類の一覧を読み込んでいます。"
         : totalCounted
           ? null
-          : `「条件」タブの負担の強さか「負担」タブの全部の種類が${DISABLED_LABEL}のため、塗れる負担はありません。`,
+          : `「負担」タブの全体か全部の種類が${DISABLED_LABEL}のため、塗れる負担はありません。`,
       dataStatus: lensFetch
         ? deriveFetchLayerStatus(
             lensFetch.loading,
