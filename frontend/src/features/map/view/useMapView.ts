@@ -195,7 +195,7 @@ export function useMapView({
   const forecastHour = new Date(Math.floor((ride.at.getTime() + HOUR_MS / 2) / HOUR_MS) * HOUR_MS);
   const lensCaveat =
     latestRunEnd !== undefined && isPreviousRunTime(forecastHour, latestRunEnd)
-      ? previousRunNotice("この時刻の風")
+      ? previousRunNotice(latestRunEnd, "風")
       : null;
   const [roadTabOnMap, setRoadTabOnMap] = useStoredState("ridecompass:road-tab-on-map", "道路タブを地図で見るか", true);
   // 道路タブを出していて「地図で見る」がONの間だけ、段を地図の道に塗る。段の値は出し入れで作り直さない。

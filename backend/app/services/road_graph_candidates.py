@@ -275,7 +275,7 @@ def _build_candidate(
         facts=facts,
         # 所要時間＝区間の走行時間＋停止の待ち＋ターンの待ち（最後の区間を抜けた時刻）。
         estimated_duration_seconds=duration_seconds,
-        wind_from_previous_run=context.composer.reads_previous_run((duration_seconds or 0.0) / 3600),
+        wind_previous_run_from=context.composer.previous_run_from((duration_seconds or 0.0) / 3600),
         missing_travel_data_share=(
             context.composer.missing_travel_data_share(np.asarray(orientation.rows, dtype=np.int64))
             if orientation.rows else None

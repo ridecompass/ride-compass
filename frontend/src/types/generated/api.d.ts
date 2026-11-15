@@ -1720,8 +1720,8 @@ export interface components {
             segments: components["schemas"]["RouteSegmentDetail"][];
             /** Estimated Duration Seconds */
             estimated_duration_seconds: number | null;
-            /** Wind From Previous Run */
-            wind_from_previous_run: boolean;
+            /** Wind Previous Run From */
+            wind_previous_run_from: string | null;
             /** Cost Seconds */
             cost_seconds: number;
             penalty: components["schemas"]["PenaltyBreakdown"];

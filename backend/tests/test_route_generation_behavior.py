@@ -788,7 +788,7 @@ async def test_a_route_ridden_on_the_wind_of_a_previous_run_is_marked(engine_ove
         at(SOUTH_WEST), [], destination=at(SOUTH_EAST), max_routes=3, start_time=DEPARTURE)).candidates
 
     assert candidates
-    assert {candidate.wind_from_previous_run for candidate in candidates} == {expected}
+    assert {candidate.wind_previous_run_from for candidate in candidates} == {latest_run_end if expected else None}
 
 
 async def test_segment_arrival_times_run_from_the_departure_within_the_duration(engine_over):
