@@ -37,12 +37,10 @@ export function prodDataBackend(
 
 /**
  * 取り次ぎの一覧。本番のデータで開くときは、タイルと API の呼び出しを本番の backend へ向ける。
- * 地図の下地だけは開発機の backend から取る（本番の下地のスタイルは本番の backend の住所を中に持ち、画面から直接は読めない）。
  */
 export function backendRewrites(internalBackend: string, prodData: string | null): Rewrite[] {
   const tiles = prodData ?? internalBackend;
   return [
-    { source: "/api/basemap/:path*", destination: `${internalBackend}/api/basemap/:path*` },
     ...TILE_PATHS.map((path) => ({ source: `${path}/:path*`, destination: `${tiles}${path}/:path*` })),
     // 地図の出典表記が同じオリジンの相対の住所でリンクする、派生データベースの書き出し。
     { source: DERIVED_DATABASE_PATH, destination: `${tiles}${DERIVED_DATABASE_PATH}` },

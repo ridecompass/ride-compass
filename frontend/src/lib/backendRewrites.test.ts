@@ -35,14 +35,12 @@ describe("prodDataBackend", () => {
 });
 
 describe("backendRewrites", () => {
-  it("本番のデータで開くときは、地図の下地だけを開発機の backend に残し、タイルと API を本番の backend へ向ける", () => {
+  it("本番のデータで開くときは、タイルと API をどれも本番の backend へ向ける", () => {
     const rewrites = backendRewrites(LOCAL, PROD);
     const target = (source: string) => rewrites.find((r) => r.source === source)?.destination;
-    expect(target("/api/basemap/:path*")).toBe(`${LOCAL}/api/basemap/:path*`);
     expect(target("/api/region/road-surface-tiles/:path*")).toBe(`${PROD}/api/region/road-surface-tiles/:path*`);
     expect(target(`${PROD_DATA_API_PREFIX}/:path*`)).toBe(`${PROD}/:path*`);
-    const toLocal = rewrites.filter((r) => r.destination.startsWith(LOCAL)).map((r) => r.source);
-    expect(toLocal).toEqual(["/api/basemap/:path*"]);
+    expect(rewrites.filter((r) => r.destination.startsWith(LOCAL))).toEqual([]);
   });
 
   it("地図の出典表記が同じオリジンの住所でリンクする backend の口は、どれも取り次ぐ（取り次がないと、リンクが画面の 404 になる）", () => {

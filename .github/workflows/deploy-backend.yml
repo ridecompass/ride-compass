@@ -107,7 +107,7 @@ jobs:
               sudo sed -i "s#^CORS_ALLOWED_ORIGINS=.*#&,$REQUIRED_ORIGIN#" "$ENV_FILE"
             fi
             sudo docker build -t ridecompass-backend:latest .
-            # backend/data配下（DEM・基礎地図のタイルキャッシュ・way_id別の動的値のディスク
+            # backend/data配下（DEM・色別標高図・地域のタイルのキャッシュ・way_id別の動的値のディスク
             # キャッシュ・道路網全体の配列・警報の区域の境界の置き場）はコンテナの書き込み可能レイヤーに置かれ、
             # ボリュームマウントが無いとdocker rm時に消える。ホスト側ディレクトリへマウントして
             # デプロイをまたいで残す。

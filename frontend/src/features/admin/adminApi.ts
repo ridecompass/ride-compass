@@ -26,10 +26,6 @@ export function getDbStatus() {
   return requestApi((init) => adminApiClient.GET("/db-status", init), adminOptions("DB状態の取得"));
 }
 
-export async function refreshTileCache(): Promise<void> {
-  await requestApi((init) => adminApiClient.POST("/basemap/refresh", init), adminOptions("タイルキャッシュの消去"));
-}
-
 // 較正値
 
 /** 較正値1件の宣言と、いま効いている値。項目はbackendが宣言から導く。 */

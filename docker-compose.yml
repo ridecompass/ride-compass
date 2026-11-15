@@ -2,7 +2,7 @@ services:
   frontend:
     build:
       context: ./frontend
-      # 画面のJSの宛先とrewrites（/api/basemap等の取り次ぎ）の宛先は、ビルドのときに焼き込まれるので、
+      # 画面のJSの宛先とrewrites（タイル等の取り次ぎ）の宛先は、ビルドのときに焼き込まれるので、
       # 実行時のenvironmentでは変わらない。
       args:
         NEXT_PUBLIC_API_URL: http://localhost:8000
@@ -29,13 +29,12 @@ services:
       - path: .env
         required: false
     environment:
-      # CORSの許可元と基礎地図の書き換え先は、ブラウザから見たfrontendのオリジン（上のfrontendの
+      # CORSの許可元は、ブラウザから見たfrontendのオリジン（上のfrontendの
       # ports:）に従う。config.pyの既定値（手元でnext devを起動したときのオリジン）と今は同じ値だが、
       # 既定値を変えてもcomposeのfrontendの公開先は変わらないため、ここで書く。
       CORS_ALLOWED_ORIGINS: http://localhost:3000
       # SQLAlchemyの非同期エンジン（asyncpgドライバ）用のURLスキーム。
       DATABASE_URL: postgresql+asyncpg://ridecompass:ridecompass@postgres:5432/ridecompass
-      BASEMAP_PUBLIC_BASE_URL: http://localhost:3000/api/basemap
       # JMA気象データの短命キャッシュ。
       # サービス名"redis"はDockerネットワーク内のみで解決するため、config.pyの既定値
       # （localhost、本番--network=host用）をここで上書きする。

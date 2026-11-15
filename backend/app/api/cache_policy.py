@@ -55,11 +55,6 @@ PERMANENT = CachePolicy(max_age_seconds=24 * 60 * 60, immutable=True)
 IMMUTABLE_TILE = CachePolicy(max_age_seconds=jma_tile_redis_cache.TTL_SECONDS, immutable=True)
 #: 取込バッチが走るまで変化しないタイル（路面・事故・POI・土地被覆など）。
 BATCH_TILE = CachePolicy(max_age_seconds=60 * 60)
-#: 基礎地図（OpenFreeMap）。管理画面のタイルキャッシュ全消去
-#: （`POST /api/admin/basemap/refresh`）はサーバー側のファイルキャッシュしか消せず
-#: ブラウザの保持分へ手が届かないため、消した効果が各利用者の画面へ現れるのはこの
-#: `max-age`ぶん遅れる。押す頻度と表示速度の釣り合いで10分にしてある。
-BASEMAP = CachePolicy(max_age_seconds=10 * 60)
 #: 派生の作り直しまで答えが変わらない引き当てと書き出し（地点の検索。住所（住所の区画の表）も施設（地点の表）も
 #: 派生の作り直しのときにしか変わらない。施設を近い順に並べる点はURLに入るので、同じURLの答えは変わらない。派生データベースの
 #: 書き出しは、作り直した世代を毎日1回置き直す）。caching-retention.md「TTLの決め方」の「ほぼ不変なマスタ」。
@@ -103,7 +98,6 @@ TILE_ROUTE_POLICIES: Final[tuple[tuple[str, CachePolicy], ...]] = (
     # 同じ国土地理院のDEMタイルを、MapLibreが読めるTerrain-RGBへ変換して返す。
     # 変換は決定的で、元のタイルと同じく配信元が更新しない。
     ("/api/gsi-terrain-tile/", PERMANENT),
-    ("/api/basemap/", BASEMAP),
     ("/api/region/road-surface-tiles/", BATCH_TILE),
     ("/api/region/point-tiles/", BATCH_TILE),
     # 年次のラスタをそのまま塗ったもの。配色・クラス構成の変化はURLの世代が表すが、

@@ -3,8 +3,8 @@ from collections import deque
 
 from cachetools import TTLCache
 
-# 路面ベクタタイル・basemapプロキシは認証なしで叩けるため、x/y（または path）を
-# 総当たりされるとディスク（tile_cache）や上流（OpenFreeMap等）への負荷が
+# 路面ベクタタイル・タイルの中継は認証なしで叩けるため、x/y（または path）を
+# 総当たりされるとディスク（tile_cache）や上流（気象庁・国土地理院等）への負荷が
 # 無制限にかかりうる。プロセス内メモリのみの簡易な移動窓レート制限で歯止めをかける。
 WINDOW_SECONDS = 60.0
 

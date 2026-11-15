@@ -25,7 +25,7 @@ describe("apiPath", () => {
   });
 
   it("値は区切りの`/`を含めてそのまま埋める", () => {
-    expect(apiPath("/api/basemap/{path}", { path: "styles/liberty" })).toBe("/api/basemap/styles/liberty");
+    expect(apiPath("/api/jma-tile/{path}", { path: "hrpns/1/2/3.png" })).toBe("/api/jma-tile/hrpns/1/2/3.png");
   });
 
   // 落ちることは型検査（`tsc --noEmit`）が`@ts-expect-error`の行で見る（型が緩むと、使われない印として落ちる）。

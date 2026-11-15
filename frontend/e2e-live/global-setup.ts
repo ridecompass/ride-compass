@@ -1,8 +1,7 @@
 import { LIVE_API, LIVE_POINT, decodeRoadTile, tileOf } from "./live";
 import regionTileConfig from "@/types/generated/region-tile-config.json";
-import { LIVE_ORIGIN } from "../playwright.live.config";
 
-// 前提の不成立（backendが動いていない・起点が取込範囲外・基礎地図のURLのずれ・予報が古い）を最初に確かめ、
+// 前提の不成立（backendが動いていない・起点が取込範囲外・予報が古い）を最初に確かめ、
 // 個々のテストの失敗として出さずに「前提不成立: 何を直せばよいか」で止める。テストの失敗は壊れ方の検知だけにする。
 
 class Unmet extends Error {
@@ -27,20 +26,6 @@ export default async function globalSetup(): Promise<void> {
     throw new Unmet(
       `起点（${LIVE_POINT.latitude},${LIVE_POINT.longitude}）の路面タイル ${z}/${x}/${y} に道が無い（HTTP ${tile.status}）`,
       "backendのDBの取込範囲の中の地点を E2E_LIVE_POINT=緯度,経度 で与える",
-    );
-  }
-
-  const style = (await (await fetch(`${LIVE_API}/api/basemap/styles/liberty`)).json()) as {
-    sources: Record<string, { url?: string; tiles?: string[] }>;
-  };
-  const urls = Object.values(style.sources).flatMap((source) => [source.url, ...(source.tiles ?? [])].filter(Boolean));
-  // 基礎地図はE2Eのオリジン（rewritesでbackendへ届く）かbackendそのものから取れる。ほかのオリジン（既定の向け先のdevサーバー等）は
-  // 誰も応答せず、地図が描かれないのを壊れとして出してしまう。
-  const foreign = urls.filter((url) => ![LIVE_ORIGIN, LIVE_API].some((origin) => url!.startsWith(`${origin}/`)));
-  if (foreign.length > 0) {
-    throw new Unmet(
-      `基礎地図のスタイルのURLがE2Eのオリジン（${LIVE_ORIGIN}）もbackend（${LIVE_API}）も指していない: ${foreign[0]}`,
-      `手元のbackendなら BASEMAP_PUBLIC_BASE_URL=${LIVE_ORIGIN}/api/basemap で起動し直す`,
     );
   }
 

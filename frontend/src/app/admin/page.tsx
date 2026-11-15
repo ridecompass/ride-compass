@@ -9,7 +9,6 @@ import BackendLogsPanel from "@/features/admin/BackendLogsPanel/BackendLogsPanel
 import SystemStatusPanel from "@/features/admin/SystemStatusPanel/SystemStatusPanel";
 import MaterialCoveragePanel from "@/features/admin/AdminPanels/MaterialCoveragePanel";
 import DbStatusPanel from "@/features/admin/AdminPanels/DbStatusPanel";
-import TileCachePanel from "@/features/admin/AdminPanels/TileCachePanel";
 import TuningPanel from "@/features/admin/AdminPanels/TuningPanel";
 import { useDebugEnabled } from "@/hooks/useDebugLog";
 import { buttonVariants } from "@/components/ui/Button/Button";
@@ -55,7 +54,6 @@ export default function AdminPage() {
 
         <TabsContent className={TAB_PANEL_CLASS} value="maintenance">
           <DbStatusPanel />
-          <TileCachePanel />
         </TabsContent>
 
         <TabsContent className={TAB_PANEL_CLASS} value="developer">

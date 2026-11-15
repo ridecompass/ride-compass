@@ -120,7 +120,7 @@ def test_only_the_generations_being_served_stay_on_disk(configure_rasters):
         "表に無い系統": region_tile_key("road-surface", road_surface_now, 12, 1, 1, "pbf"),
         "土地被覆の今のラスタ構成": region_tile_key("landcover", landcover_now, 12, 1, 1, "png"),
         "土地被覆の別のラスタ構成": region_tile_key("landcover", landcover_with_another_zone, 12, 1, 1, "png"),
-        "基礎地図（地域タイルでない）": "styles/liberty",
+        "地理院の色別標高図（地域タイルでない）": "xyz/relief/12/3637/1612.png",
     }
     _store(*keys.values())
 
@@ -130,7 +130,7 @@ def test_only_the_generations_being_served_stay_on_disk(configure_rasters):
     assert {name for name, key in keys.items() if key in kept} == {
         "路面の今の形",
         "土地被覆の今のラスタ構成",
-        "基礎地図（地域タイルでない）",
+        "地理院の色別標高図（地域タイルでない）",
     }
     assert removed == len(keys) - len(kept)
 
@@ -141,17 +141,17 @@ def test_the_landcover_generation_carries_the_tile_version(configure_rasters):
 
 
 async def test_discarding_after_a_rebuild_drops_every_region_tile_and_the_feature_materials(configure_rasters):
-    """作り直しのあと、前の表で焼いた絵と材料を配らない。基礎地図は表から作らないので残す。"""
+    """作り直しのあと、前の表で焼いた絵と材料を配らない。地理院のタイルは表から作らないので残す。"""
     landcover = region_tile_cache.landcover_generation(raster_paths())
     region_keys = [
         region_tile_key("road_surface", region_tile_cache.MVT_TILE_GENERATIONS["road_surface"], 12, 1, 1, "pbf"),
         region_tile_key("landcover", landcover, 12, 1, 1, "png"),
     ]
-    _store(*region_keys, "styles/liberty")
+    _store(*region_keys, "xyz/relief/12/3637/1612.png")
     materials = FeatureMaterials(feature_keys=("1-0",), columns={"num_a": np.array([1.0])})
     await feature_material_cache.set_tile_materials(12, 1, 1, materials, value_shape="shape")
 
     removed = region_tile_cache.discard_region_tiles()
 
-    assert (removed, _kept(*region_keys, "styles/liberty")) == (len(region_keys), {"styles/liberty"})
+    assert (removed, _kept(*region_keys, "xyz/relief/12/3637/1612.png")) == (len(region_keys), {"xyz/relief/12/3637/1612.png"})
     assert await feature_material_cache.get_tile_materials(12, 1, 1, value_shape="shape") is None
