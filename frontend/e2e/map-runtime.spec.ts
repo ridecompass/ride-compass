@@ -94,7 +94,7 @@ test("地図が描ける（Workerが動き、ソースの面が画素になる�
 // sceneが組むレイヤーの式は、MapLibreのスタイル検証（addLayer時）を実ブラウザでしか通らない。
 // 検証に落ちても例外にはならず、map.on("error")へ出てそのレイヤーだけが黙って描かれない
 // （docs/modules/frontend/static-map-layers.md「MapLibreの式を組むときの前提」）。
-// タイル世代を配り（無いとタイルのソース自体が作られない）、宣言されたレイヤーを全部ONにして、
+// 宣言されたレイヤーを全部ONにして、
 // 取得の失敗（sourceIdを持つ）以外の地図のエラーが1件も出ないことを見る。
 test("宣言された地図レイヤーを全部ONにしても、スタイル検証のエラーが出ない", async ({ page }) => {
   const styleErrors: string[] = [];
@@ -115,7 +115,7 @@ test("宣言された地図レイヤーを全部ONにしても、スタイル検
   });
   await page.goto("/");
   await expect(page.getByText("地図を読み込み中…")).toBeHidden({ timeout: 15_000 });
-  // 一部のレイヤーはカタログ・世代が届いてから作られる。落ち着くのを待つ。
+  // 一部のレイヤーはカタログが届いてから作られる。落ち着くのを待つ。
   await page.waitForTimeout(3000);
 
   expect(styleErrors).toEqual([]);

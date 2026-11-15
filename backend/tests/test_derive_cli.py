@@ -1,7 +1,7 @@
 """派生の作り直し（`batch/derive_cli.py`）が、できあがるまで読み手に途中の状態を見せないこと。
 
 段そのものの値の出し方は段ごとのテスト（`test_derive_*.py`）が持つ。ここは入口が負う契約——
-作業用のスキーマで作り、1つのトランザクションで入れ替え、世代を進め、その中身から作った道路網を置く・
+作業用のスキーマで作り、1つのトランザクションで入れ替え、世代を進め、その中身から作った道路網を置き、前の表で焼いた地域タイルを捨てる・
 作った取込を記録する・取込と同時に走らない・管理画面で変えた較正値を段へ渡す——を見る。
 段は本物を通し、読み手の目で見るための覗き窓だけを段の後ろに挟む。
 見ないもの: 取込の間に作り直しが止まること → `test_ingest.py`。段を選ぶこと・段の宣言 →
@@ -18,7 +18,9 @@ from app.batch import derive_cli
 from app.domain.accident import PartyType
 from app.domain.material_catalog import ACCIDENT_COUNT_PER_KM_YEAR
 from app.domain.tuning import TUNING_PARAMETERS, TuningEffect
-from app.infrastructure import road_network_store
+from app.infrastructure import road_network_store, tile_cache
+from app.infrastructure.region_tile_cache import MVT_TILE_GENERATIONS
+from app.infrastructure.cache_identity import region_tile_key
 from app.infrastructure.derived_data_freshness import derived_tables
 from app.infrastructure.road_graph_repository import RoadGraphRepository
 from app.infrastructure.source_models import PARTY_TYPE_CODES
@@ -136,8 +138,11 @@ def _observe_after(stage_name: str, monkeypatch, observe) -> None:
 async def test_readers_see_the_previous_tables_until_the_swap_and_the_rebuilt_ones_after(
         derived_before, schemas_at_start, monkeypatch):
     """段が書き終えても、入れ替えまでは読み手は前の表を読む。入れ替えの後は、前から開いている接続の
-    準備済みの文も作り直した表を読み、世代が1つ進み、その世代の道路網は作り直した表から作られている。"""
+    準備済みの文も作り直した表を読み、世代が1つ進み、その世代の道路網は作り直した表から作られている。
+    前の表で焼いた地図のタイルは配らない。"""
     structure_before = await derived_before.fetch(_STRUCTURE_SQL, list(DERIVED))
+    baked = region_tile_key("road_surface", MVT_TILE_GENERATIONS["road_surface"], 14, 1, 1, "pbf")
+    tile_cache.set(baked, b"baked-from-the-previous-tables", "application/x-protobuf")
     await _ingest_ways(derived_before, ONEWAY)
     async with raw_connection() as reader:
         direction = await reader.prepare("SELECT direction FROM way_directions WHERE osm_way_id = $1")
@@ -162,6 +167,7 @@ async def test_readers_see_the_previous_tables_until_the_swap_and_the_rebuilt_on
     # 入れ替えた表は、前の表と同じ名前の索引・制約を持つ。
     assert await derived_before.fetch(_STRUCTURE_SQL, list(DERIVED)) == structure_before
     assert await _schemas(derived_before) == schemas_at_start
+    assert tile_cache.get(baked) is None
 
 
 async def test_a_failed_rebuild_changes_nothing_readers_see(derived_before, schemas_at_start, monkeypatch):

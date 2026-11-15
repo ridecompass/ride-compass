@@ -22,7 +22,7 @@ logger = logging.getLogger("ridecompass.tile_persistent_cache")
 
 CACHE_DIR = DATA_DIR / "tile_persistent_cache"
 
-# 路面タイルの世代を鍵に持つ値は、派生の表と生データが変われば世代ごと読まれなくなる。鮮度の制約が無いので、
+# タイルの値は、焼く中身を変えた側が捨てる（`region_tile_cache.py: discard_region_tiles`）ので鮮度の制約が無い。
 # 失っても読み直すだけのものとして長く持ち、DBへの再問い合わせを抑える。
 _TILE_ENTRY_TTL_SECONDS = 24 * 3600
 
@@ -79,6 +79,19 @@ def set_by_key(key: tuple, value: Any, *, expire: float) -> None:
         logger.warning("tile persistent cache write failed key=%r error=%r", key, exc)
 
 
+def delete_namespace(namespace: str) -> None:
+    """先頭の要素が`namespace`の鍵を全部消す。
+
+    鍵を全部読み終えてから消す（読みながら消すと、読み進める位置が消した分だけずれる）。置き場の障害は警告だけにする——
+    消せなければ失効か容量の上限が退避するまで残るだけで、配信は止めない。
+    """
+    try:
+        stale = [key for key in cache().iterkeys() if isinstance(key, tuple) and key[:1] == (namespace,)]
+        for key in stale:
+            cache().delete(key)
+    except DISK_STORE_ERRORS as exc:  # 置き場の障害は、消さずに残すことへ倒す
+        logger.warning("tile persistent cache delete failed namespace=%s error=%r", namespace, exc)
+
 
 async def get_tile_entry(key: tuple) -> Any | None:
     """`set_tile_entry`で書いた値を読む。"""
@@ -86,5 +99,5 @@ async def get_tile_entry(key: tuple) -> Any | None:
 
 
 async def set_tile_entry(key: tuple, value: Any) -> None:
-    """路面タイルの世代（鍵に入れる）に結んだ値を書く。"""
+    """タイルの値を書く（失効は`_TILE_ENTRY_TTL_SECONDS`）。"""
     await asyncio.to_thread(set_by_key, key, value, expire=_TILE_ENTRY_TTL_SECONDS)

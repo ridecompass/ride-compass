@@ -67,7 +67,7 @@ from app.batch.common import (
     run_batch_cli,
 )
 from app.infrastructure.tuning_overrides import load_tuning_values
-from app.infrastructure import derived_data_meta, road_network_store
+from app.infrastructure import derived_data_meta, region_tile_cache, road_network_store
 from app.infrastructure.derived_data_freshness import declared_columns
 from app.domain.tuning import (
     ACCIDENT_FATAL_WEIGHT_ID,
@@ -326,8 +326,11 @@ async def run(database_url: str, stages: Sequence[str] | None = None) -> int:
             logger.warning("作業用のスキーマ %s を消せなかった（次の作り直しの最初に消す）",
                            _WORK_SCHEMA, exc_info=True)
         await conn.close()
-    logger.info("派生を作り直して入れ替えた: 流した段 %s / 派生データの世代 %d / %s",
-                "→".join([*(stage.name for stage in ran), NETWORK]), revision, format_duration(time.perf_counter() - started))
+    # 置き場はbackendと同じディスクで、入れ替えた表で焼いていないタイルを配らないよう、入れ替えの後に捨てる。
+    discarded = region_tile_cache.discard_region_tiles()
+    logger.info("派生を作り直して入れ替えた: 流した段 %s / 派生データの世代 %d / 捨てた地域タイル %d / %s",
+                "→".join([*(stage.name for stage in ran), NETWORK]), revision, discarded,
+                format_duration(time.perf_counter() - started))
     return 0
 
 

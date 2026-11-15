@@ -1,5 +1,5 @@
 """地図の配信が評価するタイルの材料を読む口（`services/feature_materials.py: FeatureMaterialService`）が、読んだ材料を
-路面タイルの世代と読み方の署名ごとに持つことと、地図の線の層の値をフィーチャーごとに配ること。差し替えるのはDB（リポジトリ）だけで、ディスクの置き場は`conftest.py`の
+読み方の署名ごとに持つことと、地図の線の層の値をフィーチャーごとに配ること。差し替えるのはDB（リポジトリ）だけで、ディスクの置き場は`conftest.py`の
 autouseがテストごとの一時ディレクトリへ差し替える。
 
 ここで見ないもの:
@@ -16,7 +16,6 @@ from app.domain.feature_materials import FeatureMaterials
 from app.domain.hard_filters import HARD_FILTER_PROPERTY
 from app.domain.road_classes import EMPTY_ROAD_CLASSES
 from app.infrastructure import debug_log
-from app.infrastructure.derived_data_meta import DataRevisions
 from app.infrastructure.road_graph_repository import RoadGraphRepository
 from app.services import feature_materials
 from app.services.feature_materials import FeatureMaterialService
@@ -31,14 +30,10 @@ def _materials(value: float) -> FeatureMaterials:
 
 
 class FakeFeatureMaterialsRepository:
-    """RoadGraphRepositoryのうち、タイルの材料と世代と事故の収録年数だけを答えるフェイク。引数は本物の定義へ当てて照合する。"""
+    """RoadGraphRepositoryのうち、タイルの材料と事故の収録年数だけを答えるフェイク。引数は本物の定義へ当てて照合する。"""
 
     def __init__(self, materials: FeatureMaterials):
         self.materials = materials
-        self.revision = 1
-
-    async def get_data_revisions(self):
-        return DataRevisions(derived=self.revision, imported=1)
 
     async def get_accident_years_covered(self):
         return 1
@@ -55,7 +50,7 @@ async def _num_a(service: FeatureMaterialService) -> float:
 
 
 async def test_a_tile_read_once_is_served_from_the_cache():
-    """DBの中身が変わっても、同じ世代の間は前に読んだ材料を返す。外した1回と当たった1回が、運用の統計の
+    """DBの中身が変わっても、捨てるまでは前に読んだ材料を返す。外した1回と当たった1回が、運用の統計の
     ヒット率に載る（集計はプロセスの寿命の間に足されるだけなので差で見る）。"""
     repository = FakeFeatureMaterialsRepository(_materials(1.0))
     service = FeatureMaterialService(repository)
@@ -72,8 +67,7 @@ async def test_a_tile_read_once_is_served_from_the_cache():
 
 
 async def test_a_deploy_that_changes_how_the_materials_are_read_reads_the_tile_again(monkeypatch):
-    """読み出しのSQLを変えたデプロイは、DBの世代も路面タイルの形も動かさない。署名が鍵に届いていないと、前の読み方の
-    材料がTTLの間返り続ける。"""
+    """読み出しのSQLを変えたデプロイはDBを作り直さない。署名が鍵に届いていないと、前の読み方の材料がTTLの間返り続ける。"""
     repository = FakeFeatureMaterialsRepository(_materials(1.0))
     service = FeatureMaterialService(repository)
     await _num_a(service)

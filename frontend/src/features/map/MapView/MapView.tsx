@@ -50,7 +50,7 @@ interface MapViewProps {
   /** 出発地点の色。位置が取れず既定の地点（"default"）のときだけ灰色にする。 */
   locationSource: LocationSource;
   /** 地図の見え方（`features/map/view/useMapView`）。状態そのものと地図からのイベントだけで、
-   * 画面の設定・タイル世代のような共有の源泉から導けるものはここで読む。 */
+   * 画面の設定のような共有の源泉から導けるものはここで読む。 */
   look: MapLook;
   /** 地図を塗るのに使っている走行の条件。道を押したときの内訳にも同じ値を渡す（揃えないと色と数字が食い違う）。 */
   rideConditions: RideConditions;

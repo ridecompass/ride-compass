@@ -1,12 +1,11 @@
-"""`infrastructure/cache_identity.py`——キャッシュ鍵（形の署名・配信するタイルの世代）の組み立て。
+"""`infrastructure/cache_identity.py`——キャッシュ鍵（形の署名）の組み立て。
 
-入口は`shape_digest`・`cache_identity`・`tile_version`。署名の材料は
+入口は`shape_digest`・`cache_identity`。署名の材料は
 架空のdataclassとSQLで与え、本番の表・SQLの中身には踏み込まない。
 
 ここで見ないもの:
 - 道路網の置き場が署名で選ばれること → `test_road_network_store.py`
 - 開いているラスタの構成の指紋（`raster_set_fingerprint`）で土地被覆のタイルを入れ替えること → `test_region_tile_cache.py`
-- 世代をDBから読んでTTLで持つこと → `test_derived_data_revision_service.py`
 """
 
 import dataclasses
@@ -15,7 +14,6 @@ import re
 from sqlalchemy import bindparam, text
 
 from app.infrastructure import cache_identity
-from app.infrastructure.derived_data_meta import DataRevisions
 
 
 @dataclasses.dataclass
@@ -70,7 +68,3 @@ def test_the_identity_is_the_revision_followed_by_the_signature():
     assert identity == f"2-{cache_identity.shape_digest('SELECT 1')}"
     assert cache_identity.cache_identity("3", "SELECT 1") != identity
 
-
-def test_a_tile_version_carries_both_revisions():
-    """取込だけを流した（派生の世代は動かない）ときも世代が変わるよう、両方の世代を持つ。"""
-    assert cache_identity.tile_version(DataRevisions(derived=0, imported=3), "abc") == "0.3-abc"

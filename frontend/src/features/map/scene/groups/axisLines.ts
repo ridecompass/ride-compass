@@ -43,7 +43,7 @@ export type AxisLineState = {
     readonly hiddenBandKeys: readonly string[];
   }[];
   readonly conditions: WayConditions;
-  readonly sourceLayer: string | null;
+  readonly sourceLayer: string;
 };
 
 type AxisLine = AxisLineState["axes"][number];
@@ -122,8 +122,6 @@ function featureStatesFor(state: AxisLineState): MapSceneFeatureStates {
 }
 
 export const axisLineGroup = declareGroup<AxisLineState>((state) => {
-  if (state.sourceLayer === null) return { sources: [], layers: [] };
-
   const sources: readonly SceneSourceEntry[] = [
     // 宣言そのものは道路の線が持つ。ここは材料だけを同じソースへ載せる。
     {
@@ -138,7 +136,7 @@ export const axisLineGroup = declareGroup<AxisLineState>((state) => {
     role,
     tier: "lensLine",
     source: ROAD_LINE_SOURCE_ID,
-    sourceLayer: state.sourceLayer ?? undefined,
+    sourceLayer: state.sourceLayer,
     type: "line",
     minzoom: LENS_LAYER_MIN_ZOOM,
   });
