@@ -52,8 +52,17 @@ beforeEach(() => {
 });
 
 /** 要素の中に描いた矢印の線。 */
-function arrowPaths(element: HTMLElement) {
+function arrowPaths(element: Element) {
   return [...element.querySelectorAll("path")].map((path) => path.getAttribute("d"));
+}
+
+/** 絵の線`path`の端の点（絵の単位。真ん中が交差点で、`y`は下が正）。 */
+function endsOf(path: Element) {
+  const points = [...path.getAttribute("d")!.matchAll(/(-?[\d.]+) (-?[\d.]+)/g)].map(([, x, y]) => ({
+    x: Number(x),
+    y: Number(y),
+  }));
+  return { first: points[0], last: points.at(-1)! };
 }
 
 describe("走行モード", () => {
@@ -212,11 +221,19 @@ describe("走行モード", () => {
     expect(shadedEnd()![0]).toBeGreaterThan(first![0]);
   });
 
-  it("走行中は、現在地より先でいちばん近い曲がる所の向きと距離を地図の上のカードに出し、その地点にカードと同じ矢印の札を出す", async () => {
+  it("走行中は、現在地より先でいちばん近い曲がる所の絵と距離を地図の上のカードに出し、その地点にカードと同じ絵の札を出す。絵は交差点へ入る向きを上にし、その交差点のほかの道を薄く描く", async () => {
     const geolocation = installGeolocation(HERE);
     const { user } = renderHome();
     const turnPoint = { latitude: 35.7, longitude: 139.708 };
-    jobs.respond([{ ...RIDDEN, turns: [{ distance_km: 0.8, direction: "right", ...turnPoint }] }], LOOP_CONDITIONS);
+    jobs.respond(
+      [
+        {
+          ...RIDDEN,
+          turns: [{ distance_km: 0.8, direction: "right", other_road_bearings_deg: [0, 180], ...turnPoint }],
+        },
+      ],
+      LOOP_CONDITIONS,
+    );
     await generate(user);
     await waitFor(() => expect(candidateTabs()).toHaveLength(1));
     await user.click(screen.getByRole("button", { name: "走行モード" }));
@@ -229,6 +246,15 @@ describe("走行モード", () => {
     const [mark] = marksAt(turnPoint).map((mark) => mark.element);
     expect(mark).toHaveAccessibleName("曲がる所: 右折");
     expect(arrowPaths(mark)).toEqual(arrowPaths(card));
+    // 東へ進むルートなので、ルートの線は下から入って上へ抜け、北と南の道は左と右へ出る。
+    const [route] = [...card.querySelectorAll("svg > path")].map(endsOf);
+    expect(route.first.y).toBeGreaterThan(36);
+    expect(route.last.y).toBeLessThan(14);
+    const otherRoads = [...card.querySelectorAll("g[opacity] path")].map((path) => endsOf(path).last);
+    expect(otherRoads).toEqual([
+      { x: expect.closeTo(4, 0), y: expect.closeTo(24, 0) },
+      { x: expect.closeTo(44, 0), y: expect.closeTo(24, 0) },
+    ]);
     // 現在地の印（強調色の丸）と取り違えないよう、丸でも強調色でもない。
     expect(mark.style.borderRadius).not.toBe("50%");
     expect(mark.style.background).not.toContain("--color-accent");
@@ -254,8 +280,8 @@ describe("走行モード", () => {
       estimated_arrival_time: "2026-10-13T09:00:00+09:00",
     });
     const turns = [
-      { distance_km: 0.6, direction: "right" as const, ...along(0.6) },
-      { distance_km: 1.9, direction: "left" as const, ...along(1.9) },
+      { distance_km: 0.6, direction: "right" as const, other_road_bearings_deg: [], ...along(0.6) },
+      { distance_km: 1.9, direction: "left" as const, other_road_bearings_deg: [], ...along(1.9) },
     ];
     jobs.respond([{ ...RIDDEN, segments: [segment], distance_km: 2, turns }], LOOP_CONDITIONS);
     await generate(user);
@@ -302,7 +328,7 @@ describe("走行モード", () => {
     vi.unstubAllGlobals();
   });
 
-  it("音声案内を入れている間は黒の画面へ入れ、黒の画面は次に曲がる所の向きと距離と音声案内の入り切りだけを出し、その間も位置を受けて読み上げ、触れると地図に戻る", async () => {
+  it("音声案内を入れている間は黒の画面へ入れ、黒の画面は次に曲がる所の絵（カードと同じ）と距離と向きと音声案内の入り切りだけを出し、その間も位置を受けて読み上げ、触れると地図に戻る", async () => {
     const geolocation = installGeolocation(HERE);
     const speech = installSpeechSynthesis();
     const { user } = renderHome();
@@ -316,7 +342,7 @@ describe("走行モード", () => {
       distance_km: 2,
       estimated_arrival_time: "2026-10-13T09:00:00+09:00",
     });
-    const turns = [{ distance_km: 0.6, direction: "right" as const, ...along(0.6) }];
+    const turns = [{ distance_km: 0.6, direction: "right" as const, other_road_bearings_deg: [0], ...along(0.6) }];
     jobs.respond([{ ...RIDDEN, segments: [segment], distance_km: 2, turns }], LOOP_CONDITIONS);
     await generate(user);
     await waitFor(() => expect(candidateTabs()).toHaveLength(1));
@@ -328,6 +354,9 @@ describe("走行モード", () => {
     await user.click(screen.getByRole("button", { name: "黒の画面" }));
     const dark = screen.getByRole("dialog", { name: "黒の画面" });
     expect(dark).toHaveTextContent("600m 右折");
+    expect(arrowPaths(dark.querySelector("svg")!)).toEqual(
+      arrowPaths(screen.getByRole("status", { name: "600m先で右折" })),
+    );
 
     // 黒の画面の間も位置を受け、距離を出し直して手前の段で読む。
     geolocation.deliver(along(0.1));

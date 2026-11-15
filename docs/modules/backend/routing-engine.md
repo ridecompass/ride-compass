@@ -527,7 +527,9 @@ idの文字列や要求の形から決め直さない。
 ないので案内に入れない。距離は始点からの道のりで、正本は`domain/route.py: along_route_km`（区間の距離を応答の桁へ丸めて
 から積む）。区間の`cumulative_distance_km`も同じ関数を読むので、画面が区間の`distance_km`を積んで数えるルートの上の位置
 （`frontend/src/lib/routeDistance.ts: routeStretches`）と同じ物差しになる。候補全体の`distance_km`は生の和を丸めた値で、
-区間を積んだ値とは丸めの分だけ食い違いうる。地点は曲がった先の区間の始点。
+区間を積んだ値とは丸めの分だけ食い違いうる。地点は曲がった先の区間の始点。曲がる所ごとに、その交差点に集まる道のうち経路が入る道・出る道でない道の、
+交差点から離れる向きを持つ（`domain/turn_structure.py: other_roads_at_turns`。曲がり方の絵に入らない道として描くための値）。道は隣のノードで
+1本に数え、交差点から進めない一方通行の道も入れる（見える道として交差点にある）。部分グラフの外の道は数えない。
 
 #### 候補の経由地の道のり（`RouteCandidate.waypoint_distances_km`）
 

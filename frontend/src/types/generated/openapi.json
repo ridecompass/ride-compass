@@ -6059,6 +6059,13 @@
           "longitude": {
             "type": "number",
             "title": "Longitude"
+          },
+          "other_road_bearings_deg": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Other Road Bearings Deg"
           }
         },
         "additionalProperties": false,
@@ -6067,7 +6074,8 @@
           "distance_km",
           "direction",
           "latitude",
-          "longitude"
+          "longitude",
+          "other_road_bearings_deg"
         ],
         "title": "RouteTurn"
       },

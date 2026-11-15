@@ -1,4 +1,5 @@
 import { TurnArrow, turnLabel } from "@/components/TurnArrow/TurnArrow";
+import type { TurnShape } from "@/components/TurnArrow/turnShape";
 import { Button } from "@/components/ui/Button/Button";
 import { DarkScreenIcon, VoiceOffIcon, VoiceOnIcon } from "@/components/ui/icons/lucideIcons";
 import { formatAlongDistance } from "@/lib/geoDistance";
@@ -24,14 +25,14 @@ export function RideDarkScreenButton({ onEnter }: { onEnter: () => void }) {
 }
 
 interface RideDarkScreenProps {
-  turn: UpcomingTurn | null;
+  turn: (UpcomingTurn & { shape: TurnShape }) | null;
   voiceOn: boolean;
   onVoiceToggle: () => void;
   onExit: () => void;
 }
 
 /**
- * 走行モードの間、画面全体を覆うほぼ黒の画面。次に曲がる所の向きと距離と、音声案内の入り切りだけを暗い灰色で出す。
+ * 走行モードの間、画面全体を覆うほぼ黒の画面。次に曲がる所の絵と距離と、音声案内の入り切りだけを暗い灰色で出す。
  * 地図の上に重ねるだけで地図と走行モードは描いたままなので、位置の更新と読み上げは止まらない。入り切りのほかの所に触れると地図に戻る。
  */
 export default function RideDarkScreen({ turn, voiceOn, onVoiceToggle, onExit }: RideDarkScreenProps) {
@@ -53,7 +54,7 @@ export default function RideDarkScreen({ turn, voiceOn, onVoiceToggle, onExit }:
       <div className={`pointer-events-none relative flex h-full flex-col items-center justify-center gap-4 ${DIM}`}>
         {turn !== null && (
           <>
-            <TurnArrow direction={turn.direction} size={120} />
+            <TurnArrow shape={turn.shape} size={120} />
             <p className="text-[2.75rem] leading-none font-bold tabular-nums">
               {formatAlongDistance(turn.distanceM)} {turnLabel(turn.direction)}
             </p>

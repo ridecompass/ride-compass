@@ -1838,6 +1838,8 @@ export interface components {
             latitude: number;
             /** Longitude */
             longitude: number;
+            /** Other Road Bearings Deg */
+            other_road_bearings_deg: number[];
         };
         /** RouteWarningTimeline */
         RouteWarningTimeline: {

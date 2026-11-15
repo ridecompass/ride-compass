@@ -75,6 +75,10 @@ class TurnExpandedStructure:
     # 状態（有向Edge）の始点・終点Node index。
     edge_from: np.ndarray
     edge_to: np.ndarray
+    # 状態ごとの、始点のそばの向きと終点のそばの向き（真北から時計回りの度）。曲がりを測った向きで、曲がる所の
+    # 交差点に集まる道の向きも同じ値から読む。
+    start_bearing_deg: np.ndarray
+    end_bearing_deg: np.ndarray
     # 逆向き（転置）の遷移。目的地から遡る木が使う。最初に要求されたときだけ組む
     # （前向きだけの探索では要らないため）。
     _reverse: tuple[np.ndarray, np.ndarray, np.ndarray] | None = field(
@@ -220,6 +224,7 @@ def build_turn_expanded_structure(
         turn_seconds=seconds_table[code], turn_kickoffs=kickoffs_table[code],
         turn_kind=_guided_turn_kinds(wait_kind, delta, is_uturn, branch, source, state_count),
         edge_from=edge_from, edge_to=edge_to,
+        start_bearing_deg=start_bearing_deg, end_bearing_deg=end_bearing_deg,
     )
 
 
@@ -268,3 +273,29 @@ def turns_along(structure: TurnExpandedStructure, entries: Sequence[int | None])
         if kind != TurnKind.STRAIGHT:
             turns.append(_PathTurn(index=index, kind=kind))
     return turns
+
+
+def other_roads_at_turns(structure: TurnExpandedStructure, path: Sequence[int], turns: Sequence[_PathTurn]) -> list[list[float]]:
+    """曲がる所ごとの、交差点に集まる道のうち経路が入る道と出る道でないものの、交差点から離れる向き（真北から時計回りの度。
+    0以上360未満の昇順）。`path`は経路の区間の番号、`turns`はその経路の`turns_along`。
+
+    道は交差点の隣のノードで1本に数える（両向きに進める道は向きごとに区間を持つ）。向こうから来る一方通行のように
+    交差点から進めない道も数える——画面はこれを交差点の絵に描き、利用者が入らない道と見比べて入る道を選べるようにする。
+    部分グラフの外の道は数えない。
+    """
+    if not turns:
+        return []
+    edge_from, edge_to = structure.edge_from, structure.edge_to
+    nodes = [int(edge_to[path[turn.index - 1]]) for turn in turns]
+    leaving_edges = np.flatnonzero(np.isin(edge_from, nodes))
+    arriving_edges = np.flatnonzero(np.isin(edge_to, nodes))
+    roads = []
+    for turn, node in zip(turns, nodes):
+        on_route = {int(edge_from[path[turn.index - 1]]), int(edge_to[path[turn.index]])}
+        away: dict[int, float] = {}
+        for edge in leaving_edges[edge_from[leaving_edges] == node].tolist():
+            away.setdefault(int(edge_to[edge]), float(structure.start_bearing_deg[edge]) % 360.0)
+        for edge in arriving_edges[edge_to[arriving_edges] == node].tolist():
+            away.setdefault(int(edge_from[edge]), (float(structure.end_bearing_deg[edge]) + 180.0) % 360.0)
+        roads.append(sorted(bearing for neighbor, bearing in away.items() if neighbor not in on_route))
+    return roads
