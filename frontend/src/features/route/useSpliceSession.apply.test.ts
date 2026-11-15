@@ -29,6 +29,7 @@ import {
   serveSpliceEvaluations,
   startEditing,
   tapStretch,
+  type RenderedSplice,
 } from "@/testing/spliceSession";
 
 let evaluations: ReturnType<typeof serveSpliceEvaluations>;
@@ -105,6 +106,35 @@ describe("作成", () => {
     expect(rendered.onApplied).toHaveBeenCalledWith({ existingRouteId: "via-q" });
   });
 
+  it.each([
+    {
+      label: "作り直す",
+      interrupt: (rendered: RenderedSplice) => rendered.rerender({ ...PROPS, generatedInput: { ...BASIS } }),
+    },
+    {
+      label: "編集をやめる",
+      interrupt: (rendered: RenderedSplice) => act(() => rendered.result.current.panel?.onCancel()),
+    },
+  ])("評価を待っている間に「$label」と、あとから届いた評価で作らない", async ({ interrupt }) => {
+    const rendered = renderSplice();
+    await startEditing(rendered);
+    tapStretch(rendered);
+    const pending = evaluations.deferred();
+    let applying: unknown;
+    act(() => {
+      applying = rendered.result.current.panel?.onApply();
+    });
+
+    interrupt(rendered);
+    await act(async () => {
+      await pending.resolve([evaluated(ELSEWHERE)]);
+      await applying;
+    });
+
+    expect(rendered.onApplied).not.toHaveBeenCalled();
+    expect(rendered.result.current.editingRoute).toBeNull();
+  });
+
   it("評価を待っている間に作り直して編集を始め直したら、あとから届いた評価で作らず、始め直した編集を閉じない", async () => {
     const rendered = renderSplice();
     await startEditing(rendered);
@@ -129,7 +159,12 @@ describe("作成", () => {
 
   it.each([
     {
-      label: "評価が空で返る",
+      label: "評価が理由を付けて空で返る",
+      outcome: () => evaluations.respond([], "組み合わせた経路がつながっていないため評価できませんでした。"),
+      message: "組み合わせた経路がつながっていないため評価できませんでした。",
+    },
+    {
+      label: "評価が理由を付けずに空で返る",
       outcome: () => evaluations.respond([]),
       message: "組み合わせたルートを評価できませんでした",
     },

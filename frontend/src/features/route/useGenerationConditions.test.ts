@@ -3,7 +3,7 @@
  * 保存する値（地点以外）は開き直しても残る。倍率は、費用の軸の一覧が届いた後に、今の軸のものだけを送る。
  *
  * ここで見ないもの:
- * - 地点（出発地以外）の置き方・動かし方・消し方と、検索・名前のある点で置いた地点の候補と、周回の間に覚えておく目的地 →
+ * - 地点（出発地以外）の置き方・動かし方・消し方と、検索・名前のある点で置いた地点の候補 →
  *   `useGenerationConditions.points.test.ts`
  * - 一覧が届かない間に倍率を送らないこと → `useRouteGeneration.result.test.ts`
  * - 保存の読み書きそのもの → `hooks/useStoredState.test.tsx`
@@ -18,9 +18,13 @@ import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { heldReplies, onBackend } from "@/testing/backendServer";
+import type { Coordinates } from "@/types/route";
 
 import { useGenerationConditions } from "./useGenerationConditions";
 import { STANDARD_COST_PREFERENCE } from "@/lib/costPreference";
+
+const A: Coordinates = { latitude: 35.1, longitude: 139.1 };
+const B: Coordinates = { latitude: 35.2, longitude: 139.2 };
 
 function renderConditions() {
   const onOriginPlace = vi.fn();
@@ -51,6 +55,21 @@ describe("周回と全長の目標", () => {
     act(() => first.result.current[set](false));
 
     expect(reopen(first).result.current[read]).toBe(false);
+  });
+
+  it("周回の間に経由地と目的地を一度に消すと、経由地だけを消して覚えている目的地は残す", () => {
+    const { result } = renderConditions();
+    act(() => result.current.setLoop(false));
+    act(() => result.current.setDestination(A));
+    act(() => result.current.setLoop(true));
+    act(() => result.current.selectPoint({ role: "waypoint", index: null }));
+    act(() => result.current.placeAtSelected(B, null));
+
+    act(() => result.current.clearPoints());
+    act(() => result.current.setLoop(false));
+
+    expect(result.current.waypoints).toEqual([]);
+    expect(result.current.destination).toEqual(A);
   });
 });
 
