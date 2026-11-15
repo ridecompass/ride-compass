@@ -164,7 +164,7 @@ describe("保存した設定", () => {
     const dialog = screen.getByRole("dialog", { name: "「週末」を反映します" });
     expect(within(dialog).getByText("目的地へ・経由 2地点・候補 8本")).toBeInTheDocument();
     expect(within(dialog).getByText("保存した地点に固定")).toBeInTheDocument();
-    expect(await within(dialog).findByText("振動 ×2")).toBeInTheDocument();
+    expect(await within(dialog).findByText("振動 200%")).toBeInTheDocument();
   });
 
   it("窓の「反映する」を押したときだけ呼び出し、反映したことを出す", async () => {
