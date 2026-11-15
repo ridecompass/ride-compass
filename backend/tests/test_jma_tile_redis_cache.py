@@ -5,8 +5,7 @@
 ここで見ないもの:
 - どのタイルを空とみなすか → `test_jma_tile_content.py`。ここでは空の代表を1つずつ使う
 - いつ`set_empty`を呼ぶか（確定した404） → `test_jma_tile_client.py`
-- Redisの障害で何も持たず、例外を出さないこと → `test_redis_json_cache.py`（ここは`get_bytes`・`set_bytes`へ委ねるだけ）
-- 一度も書いていないパスの外れ → 同じ。ここでは別のパスが外れるテストが通す
+- 一度も書いていないパスの外れ → `test_redis_json_cache.py`（ここは`get_bytes`・`set_bytes`へ委ねるだけ）。ここでは別のパスが外れるテストが通す
 - 後から書いた値が前の値を置き換えること → Redisの`SET`の振る舞いで、ここに判断が無い
 """
 

@@ -160,8 +160,7 @@ testing.md の2問目（その答えはモジュールの外——利用者の�
      - backend: 表の `mutant` を1行ずつ `only.txt`（置き場は `backend/scripts/mutation/`）に書いて作業ブランチへ push し、
        `gh workflow run mutation.yml -R ridecompass/ride-compass --ref <作業ブランチ> -f ref=<作業ブランチ> -f issue=<子の番号>` で回す
        （一覧だけを回し、当て直しと review は走らない）。成果物 `mutation-*` の `results.jsonl` で表の変異が全部 `killed` で、
-       `kills/` にその行の `kept_test` があることを見る。`only.txt` は消してから Pull Request を出す（残すと
-       `backend/tests/structure/test_mutation_lists_absent.py` が CI で落とす）。
+       `kills/` にその行の `kept_test` があることを見る。`only.txt` は消してから Pull Request を出す。
      - frontend: 表の `mutant` の書き換え（見直しの `report.json` で引いたファイル・場所・書き換え）のファイルを `-f mutate=<frontend
        からのパス,...>` に渡し、`gh workflow run mutation-frontend.yml -R ridecompass/ride-compass --ref master -f ref=<作業ブランチ>
        -f issue=<子の番号> -f mutate=<…>` で回す（名指したファイルだけを1本で回す）。成果物 `mutation-frontend-shard-0` の

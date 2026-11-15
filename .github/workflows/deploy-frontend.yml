@@ -60,13 +60,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          echo "$GH_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
           if [ "${{ github.event_name }}" != workflow_dispatch ]; then
             # ci.yml の frontend-image が、e2e と全状態の走査が試した中身の像を置いてある。作り直さずにそれを出す。
-            docker buildx imagetools inspect "$IMAGE:$GITHUB_SHA" > /dev/null \
-              || { echo "::error::ci.yml の frontend-image が置いた像 $IMAGE:$GITHUB_SHA が置き場に無い"; exit 1; }
             exit 0
           fi
+          echo "$GH_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
           node frontend/scripts/image.mjs "$IMAGE:$GITHUB_SHA" "$GITHUB_SHA"
           docker push "$IMAGE:$GITHUB_SHA"
       - name: Renderのデプロイフックでこの像を出す

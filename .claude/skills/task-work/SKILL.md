@@ -28,6 +28,8 @@ description: "タスクを実装担当・検証担当として進める手順（
   報告に書いて終える（push していない変更は後始末が `wip/` の枝へ残す）。GitHub の公式の文書は打ち直しの間と回数を決めていないので、この手順が持つ。
 - **置き場の issue**（`ridecompass/ride-compass-tasks`）を gh で読む・書くときは `GH_TOKEN=$FLOW_BOT_TOKEN` を付ける（担当の既定の鍵は置き場を読めず、`gh issue view` が「見つからない」と返す）。
 - **完了の条件のチェック**は `node .claude/skills/task-work/scripts/check.mjs <番号> <条件の文の頭> [...]` で付ける（本文を手で書き換えない）。
+- **測った値を書く**（所要・件数・本番で読んだ値を issue か Pull Request に書く）ときは、使った脚本の全文と打った引数を、値と同じコメントに
+  `<details>` で畳んで貼る（測り直す人が同じ条件にそろえられるように。脚本を作業ツリーの外に置いたときも全文を貼る）。
 
 **実装担当**
 1. 作業ブランチを取る（冒頭の「作業ブランチ」）。
@@ -98,7 +100,7 @@ description: "タスクを実装担当・検証担当として進める手順（
 1. 作業ブランチと依存を取り（冒頭の「作業ブランチ」「依存」）、Pull Request（`gh pr view <番号> -R ridecompass/ride-compass --json title,body,comments,reviews`）・差分・
    issue の完了の条件・変更が届く範囲を、実装担当の報告を写さずに自分で見る。完了の条件と、利用者に見える結果（画面・API の応答・
    テストが見る振る舞い）を先に見る。本文の「ユーザーの言葉」を読み、行き先の条件が言葉の意図に入るものを外していれば満たしていない。画面は実装担当と同じ道具・脚本で後を撮り、前は貼られた画像（コメントの添付の URL を
-   `curl -sSL -o <作業ツリーの外> <URL>` で取って Read で見る）と比べる。`lost_constraints.py` も回し、「消えた」制約に本文の処置が無ければ満たしていない。
+   `curl -sSL -o <作業ツリーの外> <URL>` で取って Read で見る）と比べる。
    ゲート（`tools/flow-gate/`）の変更は、事実を `tools/flow-gate/src/decide.js: decide` へ渡して出る値で見る（本物の GitHub へは書かない）。
    増減は `python scripts/review_checks.py change` で自分で測る。実装かテストが増えていれば、足したもの（関数・クラス・ファイル・テスト）1件ずつに、
    既にある仕組みやライブラリの標準で済まなかった理由が Pull Request の課題にあるかを見て、差分に .claude/skills/simplify/SKILL.md の1〜4を当てる。

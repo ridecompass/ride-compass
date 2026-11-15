@@ -55,11 +55,10 @@ paths:
   捕まえずに送り出す例外は何も書かなくてよい。
 - **例外（`log_external_call`を使わないキャッシュ）**: `infrastructure/detour_ratio_cache.py`
   （プロセス内メモリのみのLRUで、失敗しうる経路が無い）は対象外。
-  `tile_persistent_cache.py`（ディスクI/O、失敗しうる）は`log_external_call`を経由せず、成功を専用loggerの
-  DEBUG、失敗をWARNINGで出す——`feature_material_cache.py`を
-  読む材料のサービス（`services/feature_materials.py`）が`log_external_call`で囲み、そちらがhit/missを
-  数えるため、下の層で二重に数えない。`tile_cache.py`（タイルの生バイトのディスクキャッシュ）も同じ形で、失敗を
-  WARNINGで出し、hit/missは読むクライアント（`basemap_client.py`等）の`log_external_call`が数える。
+  `tile_persistent_cache.py`（ディスクI/O）は`log_external_call`を経由せず、障害を捕まえずに送り出す——`feature_material_cache.py`を
+  読む材料のサービス（`services/feature_materials.py`）が`log_external_call`で囲み、そちらがhit/missと失敗を
+  数えるため、下の層で二重に数えない。`tile_cache.py`（タイルの生バイトのディスクキャッシュ）も同じ形で、hit/missと失敗は
+  読むクライアント（`basemap_client.py`等）の`log_external_call`が数える。
 
 ### 429拒否 → `record_rate_limit_rejection`
 
