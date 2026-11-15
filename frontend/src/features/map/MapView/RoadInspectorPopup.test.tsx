@@ -6,7 +6,7 @@
  *   要るか」の1問目）。値を要求の項目へ載せることは`features/map/regionApi.test.ts`が見る
  * - 利用者の値・走行の条件が変わったときに負担を取り直すか → `RoadInspectorPopup.refetch.test.tsx`
  */
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
@@ -82,8 +82,10 @@ describe("RoadInspectorPopup", () => {
     expect(screen.getByText("負担を読み込んでいます")).toBeInTheDocument();
     const breakdown = async () => screen.findByRole("group", { name: "負担の内訳" });
 
-    // 軸は絵で出し、名前は読み上げに残す。負担の無い軸は出さない。
-    expect(await breakdown()).toHaveTextContent(/^負担 \+7秒登坂\+4秒摩擦\+2秒向かい風\+1秒$/);
+    // 軸は絵で出し、名前は読み上げに残す。負担の無い軸は出さない。内訳は軸の一覧より先に届きうるので、名前が付くまで待つ。
+    await waitFor(async () =>
+      expect(await breakdown()).toHaveTextContent(/^負担 \+7秒登坂\+4秒摩擦\+2秒向かい風\+1秒$/),
+    );
     expect(screen.getByText("逆向き")).toBeInTheDocument();
     await user.click(screen.getByRole("radio", { name: "換算前" }));
     expect(await breakdown()).toHaveTextContent(/^登坂登り 0m摩擦砂利$/);
