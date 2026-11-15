@@ -104,7 +104,7 @@ def test_a_ride_reading_hours_after_the_latest_run_is_told(latest_run_end, hours
     """前に出たrunの風で作ったルートに、但し書きを出す。"""
     series = dataclasses.replace(_series(), latest_run_end=T0 + timedelta(hours=latest_run_end))
 
-    assert series.reads_previous_run(T0, hours) is expected
+    assert series.previous_run_from(T0, hours) == (series.latest_run_end if expected else None)
 
 
 # --- 通過予定時刻 ---

@@ -283,7 +283,7 @@ describe("useDynamicWeatherLayers", () => {
     expect(result.current.dynamicWeatherNotices.windVector).toBeUndefined();
 
     rerender({ at: new Date("2026-10-07T04:00:00Z") });
-    expect(result.current.dynamicWeatherNotices.windVector).toMatch(/この時刻の.+は前に出た予報の値です/);
+    expect(result.current.dynamicWeatherNotices.windVector).toMatch(/^10\/7 13:00から先の.+は、前の予報の値です。$/);
   });
 
   it("表示範囲が少し動くだけなら格子点を取り直さず、矢印を描き直さない。大きく動けば取り直す", async () => {

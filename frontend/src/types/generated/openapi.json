@@ -5618,9 +5618,16 @@
             ],
             "title": "Estimated Duration Seconds"
           },
-          "wind_from_previous_run": {
-            "type": "boolean",
-            "title": "Wind From Previous Run"
+          "wind_previous_run_from": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wind Previous Run From"
           },
           "cost_seconds": {
             "type": "number",
@@ -5717,7 +5724,7 @@
           "elevation_gain_m",
           "segments",
           "estimated_duration_seconds",
-          "wind_from_previous_run",
+          "wind_previous_run_from",
           "cost_seconds",
           "penalty",
           "facts",
