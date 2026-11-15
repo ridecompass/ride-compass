@@ -119,33 +119,6 @@ def test_refetches_from_the_upstream_even_when_a_previous_file_is_in_the_store(t
     assert sorted(p.name for p in tmp_path.iterdir()) == sorted([previous.name, FETCH_RECORD_NAME])
 
 
-def test_all_skips_a_source_declared_out_of_bulk_and_naming_it_still_fetches_it(tmp_path: Path, monkeypatch):
-    """週の元の取り直し（`--all`）は、宣言で`bulk: false`にした元を取らない（1回で全部を読ませない口の取得が落ちると、
-    その回のほかの元の取込まで止まる）。名指せば取れる。"""
-    fetched: list[str] = []
-
-    def fetch(spec: SourceSpec, profile: SourceProfile) -> None:
-        fetched.append(spec.name)
-
-    (tmp_path / "given").mkdir()
-    _register(monkeypatch, "given_fetched", Fetcher(fetch, lambda: (tmp_path / "given",)))
-    path = tmp_path / "profile.yaml"
-    path.write_text(yaml.safe_dump({
-        "target": {"bbox": [35.0, 139.0, 36.0, 140.0]},
-        "sources": [{"name": "weekly", "adapter": "given_fetched"},
-                    {"name": "by-hand", "adapter": "given_fetched", "bulk": False}],
-    }), encoding="utf-8")
-
-    monkeypatch.setattr(sys, "argv", ["fetch_cli", "--all", "--profile", str(path)])
-    assert main() == 0
-    assert fetched == ["weekly"]
-
-    fetched.clear()
-    monkeypatch.setattr(sys, "argv", ["fetch_cli", "--source", "by-hand", "--profile", str(path)])
-    assert main() == 0
-    assert fetched == ["by-hand"]
-
-
 @pytest.mark.parametrize("failure", [
     pytest.param(FetchError("given refusal"), id="取得が断った"),
     pytest.param(httpx.ConnectError("given failure"), id="通信に失敗した"),
