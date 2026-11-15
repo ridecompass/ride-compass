@@ -28,6 +28,9 @@ description: "開発機の対話のセッションでタスクを進める決ま
   （`gh pr checks <番号> -R ridecompass/ride-compass --watch`、`gh run watch <id> -R ridecompass/ride-compass --exit-status`、担当の実行は
   `gh run list -R ridecompass/ride-compass -w claude-task.yml` を終わるまで繰り返す）、通れば次の手（マージ・確かめ）へ進み、区切りごとに知らせる。
   デスクトップアプリの CI の見張りは、CI が通っても会話を起こさない。
+- **止める**: 起こした issue・担当の実行が誤っていると気づいたら、その場で `node .claude/skills/dev-session/scripts/stop.mjs <番号>`
+  （`GH_TOKEN=$FLOW_BOT_TOKEN` を付ける）で保留にする。保留を見たゲートが担当の実行を取り消す。止めたことと理由を issue に書き、保留を解くのは
+  ユーザーに任せる。
 - **裏の作業役に任せる**: その場で手順を書き起こさず、task-work の担当の手順で進めるよう渡し、対話作業の issue を閉じない・問いを書かない、とだけ足す。
 - **戻せない操作**（本番への書き込み・消す）は、対象・中身・差（前 → 後）・戻せないことと、それで何が起きうるかをチャットで見せ、
   ユーザーの言葉をもらってから進める。

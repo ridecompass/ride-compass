@@ -3,7 +3,7 @@
 import { originOf } from "./family.js";
 import { FIELDS, startTime, valuesOf } from "./fields.js";
 import { pages } from "./github.js";
-import { APPLIED, answerText, askerOf, conditions, droppedQuestion, isAnswer, isQuestion, latestQuestion, norm, questionHead, readProblems, remaining, unboundSteps } from "./questions.js";
+import { APPLIED, answerText, approvedSplitTitles, askerOf, conditions, droppedQuestion, isAnswer, isQuestion, latestQuestion, norm, questionHead, readProblems, remaining, unboundSteps } from "./questions.js";
 
 // 対話作業か。種類は作るとき（最初に付いた種類）で決まり、あとから境目をまたいで変えても変わらない（types は今より前の種類の古い順）。
 const dialogOf = (config, types, type) => [...types, type].find(Boolean) === config.dialogType;
@@ -57,7 +57,7 @@ const SUITES = "checkSuites(last:30){nodes{status conclusion createdAt workflowR
 const checkRuns = (config, commit) => (commit?.checkSuites.nodes ?? []).filter((s) => s.workflowRun?.file?.path.endsWith(`/${config.checks.workflow}`));
 const query = () => `query($to:String!,$tn:String!,$n:Int!,$co:String!,$cn:String!,$head:String!){
  t:repository(owner:$to,name:$tn){issueTypes(first:20){nodes{id name}} labels(first:100){nodes{id name}}
-  issue(number:$n){id state stateReason closedAt body author{login} issueType{name} assignees(first:10){nodes{login}} labels(first:20){nodes{name}}
+  issue(number:$n){id title state stateReason closedAt body author{login} issueType{name} assignees(first:10){nodes{login}} labels(first:20){nodes{name}}
   comments(last:40){totalCount nodes{body createdAt author{login}}} ${FIELDS} ${relationsOf(true)} blocking(first:20){nodes{number state}}
   timelineItems(first:50,itemTypes:[ISSUE_TYPE_CHANGED_EVENT]){nodes{...on IssueTypeChangedEvent{prevIssueType{name} issueType{name}}}}}}
  c:repository(owner:$co,name:$cn){pullRequests(headRefName:$head,first:5,orderBy:{field:CREATED_AT,direction:DESC}){nodes{
@@ -203,7 +203,11 @@ export async function readFacts(gh, config, number, runs) {
   // ranMoved は、最後に終わった担当の実行で状態か約束が動いたか（前提を張ったのも数える）。deploy は、自分か子の変更が本番に出たか
   // （deployOf。マージした issue と子を持つ issue だけが読む）。
   const later = { deploy: () => (merged || i.subIssues.nodes.length ? deployOf(gh, config, [number, ...i.subIssues.nodes.map((x) => x.number)], merged?.mergedAt) : null), superseded: () => movedSince(gh, config, number, answer.createdAt), droppedAsked: () => ever((x) => x.includes(asking)),
-    adoptAsked: () => ever((x) => x.startsWith(questionHead("採否"))), ranMoved: async () => handed > Date.parse(ended.from) || (await blockedDuring(gh, config, number, ended.from)) || movedOf(gh, config, number, ended, conds) };
+    adoptAsked: () => ever((x) => x.startsWith(questionHead("採否"))),
+    splitApproved: async () => {
+      const from = p?.number ?? originOf(norm(i.body));
+      return Boolean(from) && approvedSplitTitles(await allComments(gh, config, from)).includes(i.title.trim());
+    }, ranMoved: async () => handed > Date.parse(ended.from) || (await blockedDuring(gh, config, number, ended.from)) || movedOf(gh, config, number, ended, conds) };
   return { ...task, later, author: i.author?.login, parent: p && { number: p.number }, origin: originOf(norm(i.body)), blocks: i.blocking.nodes.length > 0, unread, answerRead, answerApplied, number,
     id: i.id, closedAs: i.stateReason, body: i.body, remaining: conds.filter((x) => !x.done), unbound: unboundSteps(i.body, number), question, dead, types, dialog,
     ids: { types: byName(t.issueTypes), labels: byName(t.labels) }, handed, ended: ended && { kind: ended.kind }, runs: held,

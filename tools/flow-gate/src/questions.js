@@ -290,6 +290,19 @@ function parseAnswer(text) {
 }
 export const answerText = (text) => parseAnswer(text)?.text ?? "";
 
+// 分けてよいと認めた題名: issue のコメント（古い順）の「分割」の問いのうち、次の答えの決定が続けるものの、判断材料の「分けるもの」に「」で
+// 囲んで並べた題名。答えの無い問い・続けると答えなかった問いの題名は入れない。
+export function approvedSplitTitles(comments) {
+  const head = questionHead("分割");
+  return comments.flatMap((c, i) => {
+    if (!norm(c).startsWith(head)) return [];
+    const reply = comments.slice(i + 1).find((x) => isAnswer(x) || isQuestion(x));
+    if (!reply || !isAnswer(reply) || parseAnswer(reply).decision !== "続ける") return [];
+    const listed = /^\*\*分けるもの\*\*: (.+)$/m.exec(norm(c))?.[1] ?? "";
+    return [...listed.matchAll(/「([^」]+)」/g)].map((m) => m[1].trim());
+  });
+}
+
 // コメントの並びから今の問いと、その答え（無ければ null）。by は今の問いの書き手（渡したときだけ、ラベルの出す者と照らす）。問いは、ラベルの形と、
 // 回答内容の節の行（rows）を持つ。読めない問いも答えを待つ問いで、読めない所（problems）を持ち、ラベルの形を持たず、回答内容を無いものとする
 // （回答フォームは書く欄と次遷移だけで答えを受け、ゲートはその次遷移で決める）。
