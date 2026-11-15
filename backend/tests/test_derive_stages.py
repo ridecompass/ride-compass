@@ -27,7 +27,7 @@ from app.domain.landcover import PERCENT_CLASSES
 from app.domain.region import BoundingBox
 from app.domain.tuning import LANDCOVER_RING_OUTER_ID
 from app.infrastructure import derived_data_meta, road_network_store
-from app.infrastructure.derived_data_freshness import derived_tables
+from app.infrastructure.orm_base import derived_tables
 from app.infrastructure.source_models import PARTY_TYPE_CODES, PEDESTRIAN_ROAD_KIND, Source
 from tests.conftest import (
     empty_ingested_tables,
@@ -236,7 +236,7 @@ async def test_a_partial_rebuild_runs_only_the_chosen_stages_and_records_only_wh
     """交差点の段を選ぶと、それを読む数の段と一緒に流し、作業用のスキーマにはその表と記録の表だけを作る。流さなかった段の表は
     前の値のまま残り、道路網の配列は世代を進めて作る。記録は、使う段が全部流れた取込・較正値だけを今の値にする——取り直した
     事故（数の段が読む）と変えた信号の半径（交差点の段）は入り、取り直した土地被覆と変えた帯の幅（土地被覆の段）は前回のまま
-    （流さなかった段の表は前回の取込と較正値で作ったままで、記録を読む所（鮮度の台帳・事故密度の分母等）が表と食い違わない）。"""
+    （流さなかった段の表は前回の取込と較正値で作ったままで、記録を読む所（事故密度の分母等）が表と食い違わない）。"""
     values, revision = await _values(world), await _revision(world)
     before = await derived_data_meta.read_records(world)
     accident = await _ingest_accidents(world)

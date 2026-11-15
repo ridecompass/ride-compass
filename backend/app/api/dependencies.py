@@ -24,7 +24,6 @@ from app.infrastructure.address_search import AddressSearchQuery
 from app.infrastructure.basemap_client import BasemapClient
 from app.infrastructure.database import get_route_generation_session_factory, get_session_factory
 from app.infrastructure.db_status import DbStatusQuery
-from app.infrastructure.derived_data_freshness import DerivedDataFreshnessQuery
 from app.infrastructure.flood_client import new_flood_cache
 from app.infrastructure.gsi_tile_client import NOT_FOUND_MAX_ENTRIES, GsiTileClient
 from app.infrastructure.http_client import get_http_client
@@ -40,7 +39,6 @@ from app.infrastructure.place_address_query import PlaceAddressQuery
 from app.infrastructure.tuning_overrides import TuningOverrideStore
 from app.infrastructure.wbgt_client import new_forecast_cache, new_point_master_cache
 from app.services.db_status_service import DbStatusService
-from app.services.derived_data_freshness_service import DerivedDataFreshnessService
 from app.services.flood_service import FloodService
 from app.services.graph_service import GraphService, SearchMemory
 from app.services.jma_amedas_service import JmaAmedasService
@@ -243,7 +241,3 @@ async def get_db_status_service(long_sessions: LongSessions):
     async with long_sessions() as session:
         yield DbStatusService(DbStatusQuery(session))
 
-
-async def get_derived_data_freshness_service(long_sessions: LongSessions):
-    async with long_sessions() as session:
-        yield DerivedDataFreshnessService(DerivedDataFreshnessQuery(session))

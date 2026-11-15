@@ -36,7 +36,7 @@ from app.infrastructure import (
     tile_cache,
     tile_persistent_cache,
 )
-from app.infrastructure.derived_data_freshness import derived_tables
+from app.infrastructure.orm_base import derived_tables
 from app.infrastructure.orm_base import declared_metadata
 from app.infrastructure.source_models import SourceFeatureRow, SourceRunRow
 from app.infrastructure.derived_data_meta import DerivedDataMetaRow, replace_tuning

@@ -11,7 +11,6 @@ from app.api.routers import (
     basemap,
     db_status,
     debug_admin,
-    derived_data_freshness,
     derived_database,
     gsi_tile,
     health,
@@ -43,6 +42,5 @@ api_router.include_router(client_config.router)
 api_router.include_router(cost_axis_catalog.router)
 api_router.include_router(material_catalog.router)
 api_router.include_router(debug_admin.router)
-api_router.include_router(derived_data_freshness.router)
 api_router.include_router(derived_database.router)
 api_router.include_router(db_status.router)

@@ -10,8 +10,7 @@ from sqlalchemy import MetaData
 from sqlalchemy.orm import DeclarativeBase
 
 #: 表の`info`に付ける印（`__table_args__`の最後に`{"info": DERIVED}`）。生データから作り直す派生の表であることを
-#: 宣言する。鮮度台帳（`derived_data_freshness.py`）が数える表と、材料の式が読む列を持つ表（`road_graph_repository.py`）は、
-#: この印から導く。
+#: 宣言する。派生の表の一覧（`derived_tables`）はこの印から導く。
 DERIVED_KEY = "derived"
 DERIVED = {DERIVED_KEY: True}
 
@@ -41,3 +40,9 @@ def declared_metadata() -> MetaData:
     for module in TABLE_MODULES:
         importlib.import_module(module)
     return Base.metadata
+
+
+def derived_tables() -> list:
+    """表の印（`DERIVED`）を持つ表（＝派生データ）。"""
+    return [table for table in declared_metadata().sorted_tables
+            if table.info.get(DERIVED_KEY)]
