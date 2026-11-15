@@ -9,7 +9,7 @@
  * 送ること、結果が出たら閉じていた「ルート結果」を開くこと、候補が「ルート結果」と地図の両方へ出て、選んだ候補が地図でも
  * 選ばれ、区間を持つかで周りの塗りが決まること、全消去は確認の窓で「消す」を押してから両方から消えること、候補がある間だけ
  * 条件のずれの印が点き全消去で消えること、走行条件の想定速度・出発時刻が生成と地図の道の詳細へ同じ値で渡ること、
- * 「条件」タブの負担の強さと「負担」タブの軸ごとの無効が生成の要求に載り、無効の軸が「負担で塗る」に出ないこと、負担を説明する文の
+ * 「負担」タブの全体の割合と軸ごとの無効が生成の要求に載り、無効の軸が「負担で塗る」に出ないこと、負担を説明する文の
  * 軸の並びとルートの後の「負担で塗る」の総合の名前が費用の軸の一覧から引かれること、「条件」タブで保存した条件が地図で置いた
  * 出発地を持ち、呼び出すとその出発地から生成すること、「道路」タブの段を、タブを出していて「地図で見る」がONの間だけ地図の道に
  * 塗ること。
@@ -192,15 +192,15 @@ describe("ルートを作る", () => {
     expect(origin(await generate(user))).toEqual(PLACED);
   });
 
-  it("「条件」タブで選んだ負担の強さと、「負担」タブで無効にした軸が、生成の要求に載る", async () => {
+  it("「負担」タブで選んだ全体の割合と無効にした軸が、生成の要求に載る", async () => {
     serveCostAxisCatalog();
     const { user } = renderHome();
-    await user.click(
-      within(screen.getByRole("radiogroup", { name: "負担の強さ" })).getByRole("radio", { name: "×1.5" }),
-    );
     await user.click(screen.getByRole("tab", { name: "負担" }));
     await user.click(
-      within(await screen.findByRole("radiogroup", { name: "振動の倍率" })).getByRole("radio", { name: "無効" }),
+      within(screen.getByRole("radiogroup", { name: "全体の割合" })).getByRole("radio", { name: "150%" }),
+    );
+    await user.click(
+      within(await screen.findByRole("radiogroup", { name: "振動の割合" })).getByRole("radio", { name: "無効" }),
     );
 
     jobs.respond([FIRST], LOOP_CONDITIONS);
@@ -219,10 +219,11 @@ describe("ルートを作る", () => {
     await waitFor(() =>
       expect(screen.getByRole("tab", { name: "負担" })).toHaveAttribute(
         "data-usage",
-        expect.stringContaining("負担[甲・乙]の"),
+        expect.stringContaining("負担[甲・乙]を"),
       ),
     );
-    await user.click(screen.getByRole("button", { name: "負担の強さの説明を表示" }));
+    await user.click(screen.getByRole("tab", { name: "負担" }));
+    await user.click(screen.getByRole("button", { name: "全体の説明を表示" }));
     expect(await screen.findByText(/余分にかかるもの\[甲・乙\]を時間に直した/)).toBeInTheDocument();
     await user.keyboard("{Escape}");
 
@@ -235,7 +236,7 @@ describe("ルートを作る", () => {
     const { user } = renderHome();
     await user.click(screen.getByRole("tab", { name: "負担" }));
     await user.click(
-      within(await screen.findByRole("radiogroup", { name: "振動の倍率" })).getByRole("radio", { name: "無効" }),
+      within(await screen.findByRole("radiogroup", { name: "振動の割合" })).getByRole("radio", { name: "無効" }),
     );
     await user.click(screen.getByRole("button", { name: "パネルを閉じる" }));
     await user.click(screen.getByRole("button", { name: /^負担で塗る: / }));

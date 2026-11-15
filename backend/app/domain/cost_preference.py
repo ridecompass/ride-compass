@@ -18,7 +18,8 @@ STANDARD_COST_FACTOR = 1.0
 
 
 class CostLevel(NamedTuple):
-    """利用者が選ぶつまみ・倍率の段（値と、画面が出す名前）。名前は掛ける数そのもの（「強め」のような言葉は量が伝わらない）。"""
+    """利用者が選ぶつまみ・倍率の段（値と、画面が出す名前）。名前は負担を数える割合（「強め」のような言葉は量が伝わらない）。
+    道の区分の倍率（`multiplier_label`の「×0.5」）は道の重さそのものに掛ける数で働きが違うので、同じ書き方にしない。"""
 
     value: float
     label: str
@@ -34,7 +35,7 @@ DISABLED_LABEL = "無効"
 
 
 def _levels(*values: float) -> tuple[CostLevel, ...]:
-    return tuple(CostLevel(value, DISABLED_LABEL if value == 0 else multiplier_label(value)) for value in values)
+    return tuple(CostLevel(value, DISABLED_LABEL if value == 0 else f"{round(value * 100)}%") for value in values)
 
 
 #: 全体のつまみの段。0は「無効」で、どの軸も数えない（全部の軸を無効にしたのと同じ。`CostPreference.counts`）。

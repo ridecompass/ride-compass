@@ -31,7 +31,7 @@ export const DISABLED_LABEL = routeGenerateConfig.disabled_label;
 /** 軸を数えない（無効）ことを、倍率と並べて選ぶ値。 */
 export const AXIS_OFF = "off";
 /** 軸ごとの設定: 倍率か、無効。 */
-export type AxisSetting = number | typeof AXIS_OFF;
+type AxisSetting = number | typeof AXIS_OFF;
 
 /** 軸`axisId`の設定を`setting`にした好み。1つの軸は倍率と無効のどちらか一方にだけ書く（両方に書くと backend が断る）。 */
 export function withAxisSetting(preference: CostPreference, axisId: string, setting: AxisSetting): CostPreference {

@@ -10,12 +10,12 @@ const settingsTabs = (axisNames: string): readonly { value: SettingsTab; label: 
   {
     value: "generate",
     label: "条件",
-    usage: "地点・全長の目標・候補の数・負担の強さを決め、いまの設定や地点に名前を付けて保存します。",
+    usage: "地点・全長の目標・候補の数を決め、いまの設定や地点に名前を付けて保存します。",
   },
   {
     value: "weights",
     label: "負担",
-    usage: `負担${axisNames}の種類ごとに、所要時間に足すときに掛ける倍率を決めます。`,
+    usage: `所要時間に足す負担${axisNames}を、全体と種類ごとに、どれだけの割合で数えるかを決めます。`,
   },
   {
     value: "exclusions",

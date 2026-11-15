@@ -5,7 +5,6 @@ import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
 import { Badge } from "@/components/ui/Badge/Badge";
 import { Checkbox } from "@/components/ui/Checkbox/Checkbox";
 import { LockedIcon } from "@/components/ui/icons/lucideIcons";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/ToggleGroup/ToggleGroup";
 import { Dot } from "@/components/ui/Dot/Dot";
 import { textVariants } from "@/components/ui/Text/Text";
 import {
@@ -16,6 +15,7 @@ import {
   type RoadTabMap,
 } from "@/lib/roadAvoidance";
 import { cn } from "@/lib/cn";
+import LevelScale from "./LevelScale";
 import type { RoadAvoidanceOverride, RoadAvoidanceView } from "@/types/route";
 
 // 「ルート設定」区分の「道路」タブ。道の区分の行ごとに、費用に掛ける倍率の段（好む・少し好む・通る・少し避ける・なるべく避ける・通らない）を目盛りで選び、
@@ -167,37 +167,13 @@ function AvoidanceLevelRow({
       >
         {description}
       </InfoPopover>
-      <span className="ml-auto flex items-center gap-1.5">
-        <ToggleGroup
-          variant="scale"
-          aria-label={`${label}の避け方`}
-          usage="この行に該当する道の費用に掛ける倍率を、目盛りの点を押して選びます。長い目盛りは指定なしです。左ほど好んで通り[遠回りでも選びやすくなります]、右ほど避けます[遠回りが小さければ別の道を通ります]。右端は経路から完全に外します。"
-          value={level}
-          onValueChange={(next) => onLevelChange(next as AvoidanceLevel)}
-        >
-          {levels.map((option) => (
-            <ToggleGroupItem key={option.key} value={option.key} aria-label={option.label}>
-              {option.key === level ? (
-                <span
-                  aria-hidden="true"
-                  className="block size-3.5 rounded-full border-2 border-[var(--background)]"
-                  // 塗らない段は目立たない色。
-                  style={{ background: option.color ?? "var(--color-muted)" }}
-                />
-              ) : (
-                <span
-                  aria-hidden="true"
-                  className={cn("block w-px bg-[var(--color-muted)]", isPainted(option) ? "h-2.5" : "h-3.5")}
-                />
-              )}
-            </ToggleGroupItem>
-          ))}
-        </ToggleGroup>
-        {/* 選んでいる段の倍率。色はつまみが持つ（薄い色の文字は明るい画面で読めない）。 */}
-        <span className="w-9 text-right text-[length:var(--font-size-xs)] tabular-nums">
-          {levels.find(({ key }) => key === level)?.label}
-        </span>
-      </span>
+      <LevelScale
+        aria-label={`${label}の避け方`}
+        usage="この行に該当する道の費用に掛ける倍率を、目盛りの点を押して選びます。長い目盛りは指定なしです。左ほど好んで通り[遠回りでも選びやすくなります]、右ほど避けます[遠回りが小さければ別の道を通ります]。右端は経路から完全に外します。"
+        levels={levels}
+        value={level}
+        onChange={onLevelChange}
+      />
     </div>
   );
 }

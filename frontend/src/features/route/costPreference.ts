@@ -24,7 +24,7 @@ function levelLabel(levels: readonly CostLevel[], value: number): string {
 export function costPreferenceDescription(preference: CostPreference, catalog: CostAxisCatalog): string {
   const parts = [
     ...(preference.strength !== STANDARD_COST_FACTOR
-      ? [`負担の強さ ${levelLabel(COST_STRENGTH_LEVELS, preference.strength)}`]
+      ? [`全体 ${levelLabel(COST_STRENGTH_LEVELS, preference.strength)}`]
       : []),
     ...(countsCosts(preference) ? catalog.axes : []).flatMap((axis) => {
       const setting = axisSettingOf(preference, axis.axisId);

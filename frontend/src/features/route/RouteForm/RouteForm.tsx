@@ -16,12 +16,8 @@ import Ruler, { type RulerFrame } from "@/components/ui/Ruler/Ruler";
 import { textVariants } from "@/components/ui/Text/Text";
 import { panelIconToggleClass, Toggle } from "@/components/ui/Toggle/Toggle";
 import { useClientConfig } from "@/hooks/useClientConfig";
-import { costAxisNamesNote, useCostAxisCatalog } from "@/hooks/useCostAxisCatalog";
 import { CLIENT_TUNING_IDS, clientTuningValue } from "@/lib/clientConfig";
 import { cn } from "@/lib/cn";
-import CostLevelPicker from "@/features/route/RouteSettingsPanel/CostLevelPicker";
-import { COST_STRENGTH_LEVELS } from "@/features/route/costPreference";
-import { DISABLED_LABEL } from "@/lib/costPreference";
 
 /** 「ルート設定」区分のタブ。タブ列（`SettingsTabsList.tsx`）と選択状態は外が持ち（見出し行に置くため）、
  * ここは各タブの中身だけを描く。 */
@@ -40,8 +36,6 @@ interface RouteFormProps extends Omit<RoutePointsProps, "conditions"> {
       | "setMaxRoutesInput"
       | "distanceTargeted"
       | "setDistanceTargeted"
-      | "costPreference"
-      | "setCostPreference"
     >;
   /** 保存した候補を、その役割の地点として置き、置いた地点の詳しくを見せる（経由地は足す）。 */
   onPlaceFound: (role: PinRole, candidate: PlaceCandidate, waypointIndex: number | null) => void;
@@ -93,20 +87,11 @@ export default function RouteForm({
   savedConditionsPanel,
   ...points
 }: RouteFormProps) {
-  const {
-    distanceTargeted,
-    setDistanceTargeted,
-    distanceInput,
-    setDistanceInput,
-    maxRoutesInput,
-    setMaxRoutesInput,
-    costPreference,
-    setCostPreference,
-  } = conditions;
+  const { distanceTargeted, setDistanceTargeted, distanceInput, setDistanceInput, maxRoutesInput, setMaxRoutesInput } =
+    conditions;
   const distanceToggleName = distanceTargeted ? "全長の目標をやめる" : "全長の目標を決める";
   // 許容差は管理画面の較正値（目標の距離に対する割合）。引けない間は幅の文を出さない（較正したのとは別の数を出さない）。
   const distanceToleranceRatio = clientTuningValue(useClientConfig(), CLIENT_TUNING_IDS.distanceToleranceRatio);
-  const costCatalog = useCostAxisCatalog();
 
   // 範囲の端ではボタンを押せなくするので、足した値は範囲を出ない。
   function stepMaxRoutes(delta: number) {
@@ -185,27 +170,6 @@ export default function RouteForm({
             </div>
           </div>
           <div className="flex-none">{saveConditionsButton}</div>
-        </div>
-
-        {/* 全体のつまみ。軸ごとの倍率は「負担」タブが持つ。 */}
-        <div className="mb-2 flex items-center gap-1.5">
-          <span className={cn(textVariants({ variant: "hint" }), "flex-shrink-0")}>負担の強さ</span>
-          <CostLevelPicker
-            aria-label="負担の強さ"
-            usage="所要時間に足す負担を、どれだけ強く数えるかを選びます。"
-            levels={COST_STRENGTH_LEVELS}
-            value={costPreference.strength}
-            onChange={(strength) => setCostPreference((prev) => ({ ...prev, strength }))}
-          />
-          <InfoPopover triggerAriaLabel="負担の強さの説明" triggerClassName="flex-none">
-            {/* JSXの改行は半角スペースになるので、文字列として繋ぐ。 */}
-            {"所要時間に足す負担を、どれだけ強く数えるかを決めます。" +
-              `負担は、平地を走るより余分にかかるもの${costAxisNamesNote(costCatalog)}を時間に直したものです。` +
-              "道は、所要時間と、この強さを掛けた負担との和が小さくなるように選びます。" +
-              "×1 が標準で、×2 にすると所要時間が延びても負担の小さい道を選びやすくなります。" +
-              `${DISABLED_LABEL}にすると負担を数えず、所要時間だけで選びます[結果にも地図にも負担を出しません]。` +
-              "負担の種類ごとの倍率は「負担」タブで選べます。"}
-          </InfoPopover>
         </div>
 
         <RoutePoints conditions={conditions} {...points} />

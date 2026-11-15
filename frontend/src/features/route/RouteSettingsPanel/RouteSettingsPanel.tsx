@@ -2,7 +2,7 @@
 
 import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
 import { axisIconFor } from "@/components/ui/icons/axisIconPalette";
-import { COST_MULTIPLIER_LEVELS } from "@/features/route/costPreference";
+import { COST_MULTIPLIER_LEVELS, COST_STRENGTH_LEVELS, type CostLevel } from "@/features/route/costPreference";
 import {
   AXIS_OFF,
   DISABLED_LABEL,
@@ -11,10 +11,10 @@ import {
   axisSettingOf,
   countsCosts,
   withAxisSetting,
-  type AxisSetting,
 } from "@/lib/costPreference";
 import {
   costAxisCatalogFetchFailure,
+  costAxisNamesNote,
   retryCostAxisCatalogFetch,
   useCostAxisCatalog,
   type CostAxis,
@@ -22,7 +22,7 @@ import {
 import type { CostPreference } from "@/types/route";
 import { Button } from "@/components/ui/Button/Button";
 import { RetryIcon } from "@/components/ui/icons/lucideIcons";
-import CostLevelPicker from "./CostLevelPicker";
+import LevelScale, { type ScaleLevel } from "./LevelScale";
 import { cn } from "@/lib/cn";
 import { textVariants } from "@/components/ui/Text/Text";
 import { calloutVariants } from "@/components/ui/Callout/Callout";
@@ -35,18 +35,38 @@ function renderAxisIcon(axis: CostAxis) {
   return <Icon size={14} />;
 }
 
+// 標準より小さい段の色。軸ごとの段は、その負担を軽く見て通りやすくするので、道路タブの「好む」と同じ色の役割。全体の段は
+// 負担をまとめて軽く見るだけで、どの道を好むのでもないので灰色にする。大きい段は、どちらも道路タブの「なるべく避ける」の役割。
+const AXIS_LOWER_COLOR = "var(--color-road-avoidance-prefer)";
+const STRENGTH_LOWER_COLOR = "var(--color-muted)";
+const HIGHER_COLOR = "var(--color-road-avoidance-avoid)";
+
+/** 段`levels`を目盛りの段にする。0の段は無効（数えない）で、標準の段は塗らない。 */
+function scaleLevels(levels: readonly CostLevel[], lowerColor: string): ScaleLevel<string>[] {
+  return levels.map(({ value, label }) => ({
+    key: String(value),
+    label,
+    color:
+      value === 0 || value === STANDARD_COST_FACTOR ? null : value < STANDARD_COST_FACTOR ? lowerColor : HIGHER_COLOR,
+    off: value === 0,
+  }));
+}
+
+const STRENGTH_SCALE = scaleLevels(COST_STRENGTH_LEVELS, STRENGTH_LOWER_COLOR);
 /** 軸ごとの段: 無効（数えない）を先に、続けて倍率の段。 */
-const AXIS_LEVELS: readonly { value: AxisSetting; label: string }[] = [
-  { value: AXIS_OFF, label: DISABLED_LABEL },
-  ...COST_MULTIPLIER_LEVELS,
+const AXIS_SCALE: ScaleLevel<string>[] = [
+  { key: AXIS_OFF, label: DISABLED_LABEL, color: null, off: true },
+  ...scaleLevels(COST_MULTIPLIER_LEVELS, AXIS_LOWER_COLOR),
 ];
+
+const STANDARD_LABEL = COST_MULTIPLIER_LEVELS.find(({ value }) => value === STANDARD_COST_FACTOR)?.label;
 
 interface RouteSettingsPanelProps {
   costPreference: CostPreference;
   onCostPreferenceChange: (next: CostPreference) => void;
 }
 
-/** 「ルート設定」の「負担」タブ。費用の軸ごとに、倍率の段か無効（数えない）を選ぶ。全体のつまみは「条件」タブが持つ。 */
+/** 「ルート設定」の「負担」タブ。一番上の「全体」で負担の全部を数える割合を選び、その下で費用の軸ごとに、割合の段か無効（数えない）を選ぶ。 */
 export default function RouteSettingsPanel({ costPreference, onCostPreferenceChange }: RouteSettingsPanelProps) {
   const catalog = useCostAxisCatalog();
   const catalogFailure = costAxisCatalogFetchFailure(catalog);
@@ -78,9 +98,30 @@ export default function RouteSettingsPanel({ costPreference, onCostPreferenceCha
       {!catalog.loaded && !catalog.failed && (
         <p className={textVariants({ variant: "hint" })}>{COST_AXIS_CATALOG_LABEL}を読み込んでいます。</p>
       )}
+      <div className="flex items-center gap-2 border-b border-[var(--color-border-muted)] pb-1.5">
+        <span className="flex min-w-0 flex-1 items-center gap-1">
+          <span className="truncate font-semibold">全体</span>
+          <InfoPopover triggerAriaLabel="全体の説明">
+            {/* JSXの改行は半角スペースになるので、文字列として繋ぐ。 */}
+            {"所要時間に足す負担の全部を、どれだけの割合で数えるかを決めます。" +
+              `負担は、平地を走るより余分にかかるもの${costAxisNamesNote(catalog)}を時間に直したものです。` +
+              "道は、所要時間と、この割合を掛けた負担との和が小さくなるように選びます。" +
+              `${STANDARD_LABEL} が標準で、大きくすると所要時間が延びても負担の小さい道を選びやすくなります。` +
+              `${DISABLED_LABEL}にすると負担を数えず、所要時間だけで選びます[結果にも地図にも負担を出しません]。` +
+              "下の種類ごとの割合は、この割合にさらに掛かります。"}
+          </InfoPopover>
+        </span>
+        <LevelScale
+          aria-label="全体の割合"
+          usage="所要時間に足す負担の全部を、どれだけの割合で数えるかを選びます。"
+          levels={STRENGTH_SCALE}
+          value={String(costPreference.strength)}
+          onChange={(key) => onCostPreferenceChange({ ...costPreference, strength: Number(key) })}
+        />
+      </div>
       {!countsCosts(costPreference) && catalog.axes.length > 0 && (
         <p className={textVariants({ variant: "hint" })} role="status">
-          {`「条件」タブの負担の強さが${DISABLED_LABEL}のため、ここの倍率は使いません。`}
+          {`全体が${DISABLED_LABEL}のため、種類ごとの割合は使いません。`}
         </p>
       )}
       <ul className={cn("flex flex-col gap-1.5", !countsCosts(costPreference) && "opacity-50")}>
@@ -96,13 +137,16 @@ export default function RouteSettingsPanel({ costPreference, onCostPreferenceCha
                 <span className="truncate">{axis.label}</span>
                 <InfoPopover triggerAriaLabel={`${axis.label}の説明`}>{axis.description}</InfoPopover>
               </span>
-              <CostLevelPicker
-                aria-label={`${axis.label}の倍率`}
-                usage="この種類の負担を所要時間に足すときに掛ける倍率を選びます。倍率が小さいほどこの負担を軽く見て通りやすくし、大きいほど重く見て避けます。「無効」はこの負担を数えず、結果にも地図にも出しません。"
-                levels={AXIS_LEVELS}
-                directional
-                value={setting}
-                onChange={(next) => onCostPreferenceChange(withAxisSetting(costPreference, axis.axisId, next))}
+              <LevelScale
+                aria-label={`${axis.label}の割合`}
+                usage="この種類の負担を、どれだけの割合で数えるかを、目盛りの点を押して選びます。長い目盛りが標準です。左ほどこの負担を軽く見て通りやすくし、右ほど重く見て避けます。左端の「–」はこの負担を数えず、結果にも地図にも出しません。"
+                levels={AXIS_SCALE}
+                value={String(setting)}
+                onChange={(key) =>
+                  onCostPreferenceChange(
+                    withAxisSetting(costPreference, axis.axisId, key === AXIS_OFF ? AXIS_OFF : Number(key)),
+                  )
+                }
               />
             </li>
           );
@@ -110,7 +154,7 @@ export default function RouteSettingsPanel({ costPreference, onCostPreferenceCha
       </ul>
       {catalog.axes.length > 0 && (
         <Button
-          usage="負担の種類ごとの倍率と無効を、すべて標準[×1]に戻します。"
+          usage={`負担の種類ごとの割合と無効を、すべて標準[${STANDARD_LABEL}]に戻します（全体の割合は変えません）。`}
           variant="secondary"
           className="self-end"
           disabled={standard}

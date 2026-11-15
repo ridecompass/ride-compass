@@ -81,7 +81,7 @@ def test_a_disabled_axis_is_not_built_and_a_disabled_stop_axis_does_not_count_th
 
 
 def test_with_the_strength_off_no_axis_is_built():
-    """負担の強さを無効（0）にすると、全部の軸を無効にしたのと同じく、どの軸も組まない（内訳にも地図のレンズにも出ない）。"""
+    """負担の全体の割合を無効（0）にすると、全部の軸を無効にしたのと同じく、どの軸も組まない（内訳にも地図のレンズにも出ない）。"""
     parameters = current_ledger_parameters(CostPreference(strength=0.0))
     weights = burden_weights(AXES, parameters, {VIBRATION: CategoricalColumn.encode(["gravel"])},
                              MaterialFills(numeric_means={}, class_shares={}))
