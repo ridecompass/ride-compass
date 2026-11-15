@@ -43,7 +43,6 @@
 | `capture/` | 撮影の段（Playwright）の足場。`scripts/capture.mjs`が渡した脚本を流して撮る段と、脚本へ渡す道具（画面の操作・キーボードを重ねた画像・作業ツリーの backend への振り向け・画像の名前）と、脚本の例（`capture/examples/`）を持つ |
 | `capture/ride-simulation.ts` | 模擬走行の脚本（`scripts/capture.mjs --script`で流す）。ルートを作って走行モードを始め、選んだルートの線に沿って毎秒1点ずつ位置と、Android の Chrome と同じ向きの出来事を届け、走行の記録（下記「走行の計測」）とページの CPU の時間を出力へ書く。直す前と後を同じ条件で比べるためのもので、地図を GPU を使わずに描くので時間の絶対値はスマホと合わない（回数で比べる）。打ち方は脚本の先頭 |
 | `scripts/dev-prod-data.mjs` | 開発機の画面を本番のbackendのデータで開く開発サーバーを起こす（[setup.md](../../architecture/setup.md)「開発機の画面を本番のデータで開く」）。取り次ぎの向け先とAPIの宛先は`next.config.ts`が切り替えから決める |
-| `scripts/audit-test-rewrite.mjs` | 実装から起こし直したテストを外から測る（`.claude/rules/testing-rewrite.md`の手順） |
 | `scripts/structure-population.mjs`・`scripts/structure-population/` | 画面がbackendの宣言を持ち直している形の候補を構文木から列挙する（周期レビューの「構造の問い」のfrontendの母集団）。候補を出すだけで判じない。語彙（生成物の値・現象の語・軸名）の読み取りと、字句の置かれた文脈の判定は`scripts/structure-population/`の下に分けて持つ |
 | `scripts/mutation/` | 変異テスト（Stryker）の設定と、書き換えるファイルを本に分ける・結果を比べる・報告する台本 |
 | `src/structure/`（`*.test.ts`を除く） | 構造の検査（同じ場所の`*.test.ts`）が読む道具: 検査の母集団の根と木の歩き方（`src/structure/sourceTree.ts`）・テストの構文の読み取り・足場の境界と写しの判定・母集団が空のときに何も確かめずに通るループの判定等。画面には載らない |
