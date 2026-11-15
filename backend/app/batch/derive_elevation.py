@@ -46,11 +46,11 @@ from app.domain.tuning import (
     require_tuning,
 )
 from app.infrastructure.source_models import (
-    DEM_TILE_PIXELS_SQL,
     DEM_TILES_SQL,
     INGESTED_DEM_PRODUCTS_SQL,
     WAYS_SOURCE_SQL,
     dem_pixel_value_sql,
+    dem_tile_pixels_sql,
 )
 
 logger = logging.getLogger("ridecompass.derive_elevation")
@@ -110,7 +110,7 @@ CREATE TEMP TABLE _vertex_elev (vid bigint PRIMARY KEY, elev double precision) O
 _VERTEX_TILE_X, _VERTEX_TILE_Y = tile_position_sql("v.lon", "v.lat", "$1")
 
 #: 1製品ぶん、まだ値の無い頂点の、その製品のズームでのタイルの番地。**製品を優先順に1つずつ流す**ので、上の製品に
-#: 値のある頂点は下の製品を読まない——読む画素は欠けた頂点の分だけ増える。製品ごとにズームが違っても、
+#: 値のある頂点は下の製品を読まない——下の製品は、欠けた頂点のあるタイルだけを読む。製品ごとにズームが違っても、
 #: その製品のズームで番地を出せば同じ式で済む。
 _VERTEX_TILES = f"""
 CREATE TEMP TABLE _vertex_tile ON COMMIT DROP AS
@@ -119,7 +119,7 @@ FROM _vertex v
 CROSS JOIN LATERAL (SELECT {_VERTEX_TILE_X} AS fx, {_VERTEX_TILE_Y} AS fy) p
 WHERE NOT EXISTS (SELECT 1 FROM _vertex_elev e WHERE e.vid = v.vid)
 """
-#: 頂点のあるタイルを1枚ずつ展開し、そのタイルの頂点に画素を引く（`infrastructure/source_models.py: DEM_TILE_PIXELS_SQL`）。
+#: 頂点のあるタイルを1枚ずつ展開し、そのタイルの頂点に画素を引く（`infrastructure/source_models.py: dem_tile_pixels_sql`）。
 #: タイルの頂点は番地の索引で引く。`$1`は製品。
 _FILL_FROM_PRODUCT = f"""
 INSERT INTO _vertex_elev (vid, elev)
@@ -127,7 +127,7 @@ SELECT a.vid, a.elev
 FROM (SELECT DISTINCT tx, ty FROM _vertex_tile) k
 JOIN {DEM_TILES_SQL} t
   ON t.attrs->>'product' = $1 AND (t.attrs->>'x')::int = k.tx AND (t.attrs->>'y')::int = k.ty
-CROSS JOIN LATERAL (SELECT {DEM_TILE_PIXELS_SQL} OFFSET 0) g
+{dem_tile_pixels_sql("t", "g")}
 CROSS JOIN LATERAL (
   SELECT v.vid, {dem_pixel_value_sql("g", "v.fx", "v.fy", "v.tx", "v.ty")} AS elev
   FROM _vertex_tile v WHERE v.tx = k.tx AND v.ty = k.ty OFFSET 0) a

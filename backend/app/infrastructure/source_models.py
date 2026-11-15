@@ -490,17 +490,20 @@ INGESTED_DEM_PRODUCTS_SQL = (
     f"SELECT attrs->>'product' AS product, min((attrs->>'z')::int) AS zoom FROM {DEM_TILES_SQL} t GROUP BY 1")
 
 
-#: 標高タイルの行（`DEM_TILES_SQL`の行の別名`t`）の画素を1回だけ展開する列（`vals`・`nodata`・`width`・`scale`）。点を引く式
-#: （`dem_pixel_value_sql`）はこの列を読む。**展開はタイルごとに1回にする**——点ごとに`ST_Value`で引くと、そのたびにタイル全体が
-#: 読み出される。値の無い画素も生の値のまま受けて`nodata`と比べる。NULLを含む配列は、添字で引くたびに先頭から数え直す。
-#: 呼び手は、この列を`OFFSET 0`の副問い合わせに置く（平らにされると、引く点ごとに展開し直す）。幅は`attrs`が持つ——rasterから
-#: 読むと、そのたびに画素が実体化される。標高は`scale`で割って戻す（取込が整数へ詰めているため。尺度だけはrasterが持てない）。
-DEM_TILE_PIXELS_SQL = ("ST_DumpValues(t.rast, 1, false) AS vals, ST_BandNoDataValue(t.rast, 1) AS nodata, "
-                       "(t.attrs->>'width')::int AS width, (t.attrs->>'scale')::float AS scale")
+def dem_tile_pixels_sql(tile: str, pixels: str) -> str:
+    """標高タイルの行`tile`（`DEM_TILES_SQL`の行の別名）の画素を1回だけ展開し、別名`pixels`の行（`vals`・`nodata`・`width`・
+    `scale`）として結ぶ句（`FROM`の後ろに置く）。点を引く式（`dem_pixel_value_sql`）はこの行を読む。
+
+    **展開はタイルごとに1回にする**——点ごとに`ST_Value`で引くと、そのたびにタイル全体が読み出される。`OFFSET 0`は副問い合わせを
+    平らにさせない（平らにされると、引く点ごとに展開し直す）。値の無い画素も生の値のまま受けて`nodata`と比べる（NULLを含む配列は、
+    添字で引くたびに先頭から数え直す）。幅は`attrs`が持つ——rasterから読むと、そのたびに画素が実体化される。標高は`scale`で割って
+    戻す（取込が整数へ詰めているため。尺度だけはrasterが持てない）。"""
+    return (f"CROSS JOIN LATERAL (SELECT ST_DumpValues({tile}.rast, 1, false) AS vals, ST_BandNoDataValue({tile}.rast, 1) AS nodata, "
+            f"({tile}.attrs->>'width')::int AS width, ({tile}.attrs->>'scale')::float AS scale OFFSET 0) {pixels}")
 
 
 def dem_pixel_value_sql(pixels: str, fx: str, fy: str, tx: str, ty: str) -> str:
-    """展開した標高タイル（`DEM_TILE_PIXELS_SQL`の列を持つ行の別名`pixels`）の、タイル座標（小数）`fx`・`fy`（整数部`tx`・`ty`）に
+    """展開した標高タイル（`dem_tile_pixels_sql`の行の別名`pixels`）の、タイル座標（小数）`fx`・`fy`（整数部`tx`・`ty`）に
     当たる画素の標高（m）の式。値の無い画素はNULL。
 
     **どの画素かは算術で出す。**`ST_Intersects(rast, 点)`で絞ると当たり判定のたびにタイルの画素が実体化され、外枠だけで
