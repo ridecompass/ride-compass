@@ -1,41 +1,16 @@
 """Redisへ持つcache-asideの共通骨格（JSON・生のバイト列・Hash）。
 
-呼び出し元が持つのはキー設計・TTL・値の意味づけだけで、可用性チェックから
-サーキットブレーカーへの記録までをここが引き受ける。
+呼び出し元が持つのはキー設計・TTL・値の意味づけだけで、`log_external_call`での計測はここが引き受ける。
 """
 
 import json
 from collections.abc import Awaitable, Callable, Mapping
-from enum import Enum
-from typing import Any, Literal, cast
+from typing import Any, cast
 
 import redis.asyncio as redis
 
-from app.infrastructure.debug_log import log_external_call, mark_failed
-from app.infrastructure.redis_client import (
-    get_redis_client,
-    record_redis_failure,
-    record_redis_success,
-    redis_available,
-)
-
-#: Redisの障害（届かない・時間切れ・コマンドの失敗）として受ける例外。実装の誤りは受けない。
-_REDIS_ERRORS = (redis.RedisError, OSError)
-
-
-class Unavailable(Enum):
-    """読みの口が返す「取れない」（冷却中・接続を作れない・コマンドの失敗）。保存なし（None）とは分ける——
-    保存なしなら取り直して書けばよいが、取れない間に取り直すと、上流へ同じ問い合わせを繰り返す。"""
-
-    UNAVAILABLE = "unavailable"
-
-
-UNAVAILABLE: Literal[Unavailable.UNAVAILABLE] = Unavailable.UNAVAILABLE
-
-
-def _client_or_none() -> redis.Redis | None:
-    """サーキットブレーカーが開いている間は接続自体を試さない。"""
-    return get_redis_client() if redis_available() else None
+from app.infrastructure.debug_log import log_external_call
+from app.infrastructure.redis_client import get_redis_client
 
 
 async def _get(
@@ -43,21 +18,11 @@ async def _get(
     decode: Callable[[Any], Any | None],
     category: str,
     log_fields: dict[str, Any],
-) -> Any | None | Unavailable:
+) -> Any | None:
     """`read`は保存が無ければNoneを返す。`decode`がNoneを返したエントリ（壊れた・形の違う値）は未キャッシュ扱いにし、
     missとして記録する。"""
-    client = _client_or_none()
-    if client is None:
-        return UNAVAILABLE
     with log_external_call(category, **log_fields) as fields:
-        try:
-            raw = await read(client)
-        except _REDIS_ERRORS as exc:  # Redis障害は「取れない」へのfail-open対象
-            record_redis_failure()
-            mark_failed(fields, exc)
-            return UNAVAILABLE
-        record_redis_success()
-        fields["result"] = "ok"
+        raw = await read(get_redis_client())
         value = None if raw is None else decode(raw)
         fields["cache"] = "hit" if value is not None else "miss"
         return value
@@ -68,22 +33,12 @@ async def _set(
     category: str,
     log_fields: dict[str, Any],
 ) -> None:
-    client = _client_or_none()
-    if client is None:
-        return
-    with log_external_call(category, **log_fields) as fields:
-        try:
-            await write(client)
-        except _REDIS_ERRORS as exc:
-            record_redis_failure()
-            mark_failed(fields, exc)
-            return
-        record_redis_success()
-        fields["result"] = "ok"
+    with log_external_call(category, **log_fields):
+        await write(get_redis_client())
 
 
-async def get_json(key: str, *, category: str, **log_fields: Any) -> Any | None | Unavailable:
-    """キーに対応するJSONを返す。未保存・壊れたエントリはNone、Redisを呼べない・失敗したときは`UNAVAILABLE`。
+async def get_json(key: str, *, category: str, **log_fields: Any) -> Any | None:
+    """キーに対応するJSONを返す。未保存・壊れたエントリはNone。
 
     `category`は`log_external_call`のカテゴリ（`/api/debug/stats`の集計単位）。
     """
@@ -98,28 +53,28 @@ def _json_or_none(raw: bytes) -> Any | None:
 
 
 async def set_json(key: str, value: Any, *, ttl_seconds: int, category: str, **log_fields: Any) -> None:
-    """値をJSONで保存する。Redis障害時は黙って諦める（呼び出し元は成否を気にしない）。"""
+    """値をJSONで保存する。"""
     await set_bytes(key, json.dumps(value).encode(), ttl_seconds=ttl_seconds, category=category, **log_fields)
 
 
 async def get_bytes(
     key: str, *, decode: Callable[[bytes], Any | None], category: str, **log_fields: Any
-) -> Any | None | Unavailable:
+) -> Any | None:
     """キーに対応するバイト列を文字列へデコードせずに`decode`へ渡し、その結果を返す。
-    未保存・`decode`がNoneを返したエントリはNone、Redisを呼べない・失敗したときは`UNAVAILABLE`。"""
+    未保存・`decode`がNoneを返したエントリはNone。"""
     return await _get(lambda client: client.get(key), decode, category, log_fields)
 
 
 async def set_bytes(key: str, value: bytes, *, ttl_seconds: int, category: str, **log_fields: Any) -> None:
-    """バイト列をそのまま保存する。Redis障害時は黙って諦める。"""
+    """バイト列をそのまま保存する。"""
     await _set(lambda client: client.set(key, value, ex=ttl_seconds), category, log_fields)
 
 
 async def get_hash(
     key: str, *, decode: Callable[[dict[bytes, bytes]], Any | None], category: str, **log_fields: Any
-) -> Any | None | Unavailable:
+) -> Any | None:
     """キーのHashの全項目（項目名・値ともバイト列）を`decode`へ渡し、その結果を返す。
-    未保存・`decode`がNoneを返したエントリはNone、Redisを呼べない・失敗したときは`UNAVAILABLE`。"""
+    未保存・`decode`がNoneを返したエントリはNone。"""
 
     async def read(client: redis.Redis) -> dict[bytes, bytes] | None:
         # redis-pyは同期・非同期のクライアントで型を共有し、戻り値を`Awaitable[X] | X`と宣言している。
@@ -130,7 +85,7 @@ async def get_hash(
 
 
 async def set_hashes(hashes: Mapping[str, Mapping[str, str]], *, ttl_seconds: int, category: str) -> None:
-    """キーごとのHashを、TTLとともに1往復（pipeline）で書く。Redis障害時は黙って諦める。"""
+    """キーごとのHashを、TTLとともに1往復（pipeline）で書く。"""
 
     async def write(client: redis.Redis) -> None:
         pipe = client.pipeline(transaction=False)
