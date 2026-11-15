@@ -83,4 +83,5 @@ marker=/home/ubuntu/ridecompass-cache-data/admin_data_backup_at
 date -u +%Y-%m-%dT%H:%M:%S+00:00 > "$marker.tmp"
 mv "$marker.tmp" "$marker"
 
+bytes=$(stat -c %s "$backup_dir/latest.dump")
 echo "DBの全体を置きました object=$name bytes=$bytes db=$db_name compress=$compress"
