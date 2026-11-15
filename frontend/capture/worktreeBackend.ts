@@ -3,7 +3,7 @@ import type { APIResponse, Page, Route } from "@playwright/test";
 // 撮影で、選んだパスの頭の要求だけを作業ツリーの backend（scripts/capture.mjs の --backend）へ向ける。
 
 export interface WorktreeBackend {
-  /** 作業ツリーの backend（backend/scripts/serve_capture.py）のオリジン。 */
+  /** 作業ツリーの backend（backend/scripts/serve_without_db.py）のオリジン。 */
   origin: string;
   /** --api の backend のオリジン。 */
   api: string;
