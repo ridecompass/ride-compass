@@ -78,9 +78,13 @@ const SPLICE_PLACES: Places = {
 /** 走査の費用の軸の一覧が持つ道のストレスの軸の数。公開の軸が増えると見込む最大の数で、軸が並ぶ部品の溢れをこの数で見る。 */
 const SCAN_BURDEN_AXES = 25;
 
+/** 走査で生成する1本目の候補の経由地の距離。利用者が置ける端の形として、近い2つ（道のりのグラフの着く時刻の札が並ぶ）と終点のそばを持つ。 */
+const SCAN_WAYPOINT_KMS = [5.0, 5.8, 19.9];
+
 /**
  * 走査の模擬応答。アプリを開く前に入れる。費用の軸は既定の2本に道のストレスの軸を`SCAN_BURDEN_AXES`本足す（倍率のタブ・負担の
  * 内訳・レンズの一覧が軸の数だけ伸びる）。乗り換えの入口が出るように、画面の設定は区間を割る下限の較正値を持つ。
+ * 生成の応答の1本目の候補は`SCAN_WAYPOINT_KMS`の経由地を通る。
  */
 export async function installScanMocks(page: Page): Promise<void> {
   const costAxes = costAxisCatalog(
@@ -90,6 +94,9 @@ export async function installScanMocks(page: Page): Promise<void> {
   const config = clientConfigFixture({ client_tuning: { "splice.min_stretch_km": 0 } });
   await page.route(`${API_BASE}/api/cost-axes*`, (route) => route.fulfill({ json: costAxes }));
   await page.route(`${API_BASE}/api/client-config*`, (route) => route.fulfill({ json: config }));
+  const generated = routeGenerateResponseFixture();
+  generated.routes[0].waypoint_distances_km = SCAN_WAYPOINT_KMS;
+  await page.route(`${API_BASE}/api/routes/generate/*`, (route) => route.fulfill({ json: doneJobFixture(generated) }));
 }
 
 /**
