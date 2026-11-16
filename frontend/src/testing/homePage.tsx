@@ -85,7 +85,6 @@ export function serveHome() {
   onBackend("GET", "/api/weather/warnings", () => Response.json({ warnings: [] }));
   onBackend("GET", "/api/weather/wbgt", () => Response.json({ reading: null }));
   onBackend("GET", "/api/weather/flood-forecast", () => Response.json({ forecasts: [] }));
-  onBackend("GET", "/api/weather/msm-status", () => Response.json({ latest_run_end: "2099-01-01T00:00" }));
   onBackend("POST", "/api/weather/route-warning-timeline", () => Response.json({ areas: [] }));
   onBackend("GET", "/api/place-area", () => Response.json({ area: null }));
   onBackend("GET", "/api/place-link", ({ query }) =>

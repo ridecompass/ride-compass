@@ -81,7 +81,7 @@ SQLと式の木の材料では作れない体力（走行の模型）を、backe
 
 | エンドポイント | 返すもの |
 |---|---|
-| `GET /api/region/lens/{lens_id}/{z}/{x}/{y}?speed_kmh=&at=&strength=&multipliers=` | フィーチャーの鍵→道の向き・逆向きの1kmあたりの代償の秒と道の向き。知らないレンズは404 |
+| `GET /api/region/lens/{lens_id}/{z}/{x}/{y}?speed_kmh=&at=&strength=&multipliers=` | フィーチャーの鍵→道の向き・逆向きの1kmあたりの代償の秒と道の向き（`materials`）と、引いた風が前に出た予報のものなら前のrunに替わる時刻（`wind_previous_run_from`）。知らないレンズは404 |
 | `POST /api/region/road-inspector` | 上の「道の窓」 |
 
 - 鍵はタイルが焼いた`feature_key`と同じもので、ズームによって区間・wayのどちらかになる。値の無い材料は載せない。

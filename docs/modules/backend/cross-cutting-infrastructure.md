@@ -41,7 +41,7 @@ DB接続・Redis・HTTPクライアント・レート制限・ログ・デバッ
 | infrastructure | `job_registry.py` | 汎用の非同期ジョブレジストリ（プロセス内メモリのみ） |
 | domain | `ride_track.py` | 端末が送る走り（`POST /api/rides`の本文）の型 |
 | infrastructure | `ride_gpx.py` | 走りを GPX 1.1 に直す処理。時刻・緯度経度・標高（走った地点の地形の標高。無い点は端末の高さ）は標準の欄、速さと進む向きは Garmin の`TrackPointExtension` v2、端末の高さ・位置と標高の誤差・出来事・画面とサーバーの版・端末の名前は自前の名前空間。休むごとに`trkseg`を分ける |
-| infrastructure | `ride_track_models.py` | 走りの記録の表`ride_tracks`（走り1回を1行。GPX と、推したルート（候補を受けたまま）、生成の条件と予報（`context`）を受けたまま）。同じ走りの id は先の行のまま書かない。走った地点ごとの地形の標高を、取り込んだ標高タイルから道の標高と同じ製品の並びで引く問い合わせ（`infrastructure/ride_track_models.py: ground_elevations_m`）も持つ。読むのは開発機の較正の道具だけ（`run_probe.py`） |
+| infrastructure | `ride_track_models.py` | 走りの記録の表`ride_tracks`（走り1回を1行。GPX と、推したルート（候補を受けたまま）、生成の条件と予報（`context`）を受けたまま）。同じ走りの id は先の行のまま書かない。走った地点ごとの地形の標高を、取り込んだ標高タイルから製品の優先の順に引く問い合わせ（`infrastructure/dem_elevation.py: fill_elevations`）も持つ。読むのは開発機の較正の道具だけ（`run_probe.py`） |
 | services | `ride_track_service.py` | 走り1回を書く取引。送り直し（同じ id の行がある）なら地形の標高を引かずに終え、無ければ標高を引いて GPX に直して書く。接続は1本を長く持つ工場のもの |
 | api | `ride_tracks.py` | 走りを受ける口`POST /api/rides`。受けたサーバーの版を添えて書く。gzip で縮めた本文は戻して読む（戻した大きさに上限） |
 | infrastructure | `tuning_overrides.py` | 較正値の値（宣言の全idの行をDBへ持つ。値の正本）の読み書き。プロセス内の値へは書かない |

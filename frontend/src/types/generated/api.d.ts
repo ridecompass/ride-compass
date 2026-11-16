@@ -180,22 +180,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/weather/msm-status": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["get_msm_status_api_weather_msm_status_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/place-search": {
         parameters: {
             query?: never;
@@ -1198,6 +1182,17 @@ export interface components {
             along: components["schemas"]["LensDirection"] | null;
             against: components["schemas"]["LensDirection"] | null;
         };
+        /** LensMaterials */
+        LensMaterials: {
+            /** Materials */
+            materials: {
+                [key: string]: {
+                    [key: string]: number;
+                };
+            };
+            /** Wind Previous Run From */
+            wind_previous_run_from: string | null;
+        };
         /** LinearBurden */
         LinearBurden: {
             /**
@@ -1289,11 +1284,6 @@ export interface components {
              * @enum {string}
              */
             op: "missing";
-        };
-        /** MsmForecastStatus */
-        MsmForecastStatus: {
-            /** Latest Run End */
-            latest_run_end: string;
         };
         /** MsmFreshnessResponse */
         MsmFreshnessResponse: {
@@ -2394,26 +2384,6 @@ export interface operations {
             };
         };
     };
-    get_msm_status_api_weather_msm_status_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MsmForecastStatus"];
-                };
-            };
-        };
-    };
     search_places_api_place_search_get: {
         parameters: {
             query: {
@@ -2638,11 +2608,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: {
-                            [key: string]: number;
-                        };
-                    };
+                    "application/json": components["schemas"]["LensMaterials"];
                 };
             };
             /** @description Validation Error */

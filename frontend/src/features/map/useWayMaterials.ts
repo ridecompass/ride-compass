@@ -35,6 +35,8 @@ interface WayMaterialsFetch {
   hasFetched: boolean;
   /** 上限で画面の端のタイルを取らなかったか。 */
   truncated: boolean;
+  /** 表示中のタイルのどれかの値が前に出た予報の風を引いたなら、その素性（応答の`wind_previous_run_from`）。 */
+  windPreviousRunFrom: string | null;
 }
 
 const EMPTY_RESULTS: ReadonlyMap<string, WayMaterialsFetch> = new Map();
@@ -60,12 +62,15 @@ function lensMaterials(
 
 /** 1つのレンズの、表示中のタイルごとの結果をまとめる。 */
 function lensFetch(results: readonly TileResult[], truncated: boolean): WayMaterialsFetch {
+  const responses = results.flatMap((result) => (result.data ? [result.data] : []));
   return {
-    materials: mergeTileValues(results.flatMap((result) => (result.data ? [result.data] : []))),
+    materials: mergeTileValues(responses.map((response) => response.materials)),
     loading: results.some((result) => result.isFetching),
     error: results.find((result) => result.error !== null)?.error?.message ?? null,
     hasFetched: results.some((result) => result.isFetched || result.isPlaceholderData),
     truncated,
+    windPreviousRunFrom:
+      responses.find((response) => response.wind_previous_run_from !== null)?.wind_previous_run_from ?? null,
   };
 }
 

@@ -35,28 +35,16 @@ function renderAxisIcon(axis: CostAxis) {
   return <Icon size={14} />;
 }
 
-// 標準より小さい段の色。軸ごとの段は、その負担を軽く見て通りやすくするので、道路タブの「好む」と同じ色の役割。全体の段は
-// 負担をまとめて軽く見るだけで、どの道を好むのでもないので灰色にする。大きい段は、どちらも道路タブの「なるべく避ける」の役割。
-const AXIS_LOWER_COLOR = "var(--color-road-avoidance-prefer)";
-const STRENGTH_LOWER_COLOR = "var(--color-muted)";
-const HIGHER_COLOR = "var(--color-road-avoidance-avoid)";
-
-/** 段`levels`を目盛りの段にする。0の段は無効（数えない）で、標準の段は塗らない。 */
-function scaleLevels(levels: readonly CostLevel[], lowerColor: string): ScaleLevel<string>[] {
-  return levels.map(({ value, label }) => ({
-    key: String(value),
-    label,
-    color:
-      value === 0 || value === STANDARD_COST_FACTOR ? null : value < STANDARD_COST_FACTOR ? lowerColor : HIGHER_COLOR,
-    off: value === 0,
-  }));
+/** 段`levels`を目盛りの段にする。0の段は無効（数えない）。色は道路タブの段と同じく宣言が配る明るい地の色。 */
+function scaleLevels(levels: readonly CostLevel[]): ScaleLevel<string>[] {
+  return levels.map(({ value, label, color }) => ({ key: String(value), label, color, off: value === 0 }));
 }
 
-const STRENGTH_SCALE = scaleLevels(COST_STRENGTH_LEVELS, STRENGTH_LOWER_COLOR);
+const STRENGTH_SCALE = scaleLevels(COST_STRENGTH_LEVELS);
 /** 軸ごとの段: 無効（数えない）を先に、続けて倍率の段。 */
 const AXIS_SCALE: ScaleLevel<string>[] = [
   { key: AXIS_OFF, label: DISABLED_LABEL, color: null, off: true },
-  ...scaleLevels(COST_MULTIPLIER_LEVELS, AXIS_LOWER_COLOR),
+  ...scaleLevels(COST_MULTIPLIER_LEVELS),
 ];
 
 const STANDARD_LABEL = COST_MULTIPLIER_LEVELS.find(({ value }) => value === STANDARD_COST_FACTOR)?.label;

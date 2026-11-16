@@ -85,7 +85,6 @@ MSMは数値予報モデルの出力で観測値・公式発表の代わりに�
 | `GET /api/weather/amedas` | 気象庁アメダス実測値（Redis読み取り専用）と、天気コードの晴れ・くもりに推計気象分布（天気） | 503（置き場を読めない・観測値が無い。理由つき）・502 | 30 |
 | `GET /api/weather` | 気象庁MSMの、地点の最寄りの格子点の今日の値（ローカルの同期ファイル） | 502 | 30 |
 | `GET /api/weather/msm-grid` | 気象庁MSMの格子点の風・降水（ローカルの同期ファイル）。範囲は`min_lon`・`min_lat`・`max_lon`・`max_lat` | 502（範囲が不正・広すぎれば400） | 30 |
-| `GET /api/weather/msm-status` | 同期した気象庁MSMの予報の状態（最新のrunの予報の終わり。メタ情報だけを読む） | 502（同期が済んでいない） | なし |
 
 **警報・WBGT・洪水予報の空の応答は「出ていない」だけを表す**（警報なし・予報なし・暑さ指数の段なし）。
 地点を区域・情報提供地点へ解決できない、配信元から取れない等で出ているかが分からないときは502で返す
@@ -541,5 +540,5 @@ run初期時刻から数時間遅れる。そのため現在時刻から先の�
 置き場に置かずに成功し、読み出しはそのチャンクから先を値の無い時刻として扱う（今を含むチャンクが無ければ同期は失敗する）。どこから先が前のrunの値かは`infrastructure/msm_client.py: MsmGridPointSeries.latest_run_end`で返し、風の予報（`domain/wind.py: WindForecastSeries.latest_run_end`）を
 経て、ルートの候補が着くまでにその先の風を引いたなら、前に出たrunの風に替わる時刻（最新のrunの終わり）を応答の`wind_previous_run_from`に載せる。地図の格子点（`GET /api/weather/msm-grid`）と
 今日の値（`GET /api/weather`）は同じ境を応答の`latest_run_end`に載せ、これより先の時刻の値が前のrunのものとする（この時刻を含む）。
-レンズの材料は道の鍵から材料への表で欄を載せられないので、同じ境を`GET /api/weather/msm-status`で別に返す。
+レンズの材料（`GET /api/region/lens/{lens_id}/{z}/{x}/{y}`）は、引いた風が前のrunのものなら、前に出たrunの風に替わる時刻を応答の`wind_previous_run_from`に載せる。
 どの応答も、値そのものは前のrunかを区別しない。

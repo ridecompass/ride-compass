@@ -1,0 +1,68 @@
+"""地点の標高を、取り込んだ標高タイル（`source_features`の`raster`）から DB の中で引く。
+
+同じ地点に複数の製品のタイルがありうる。**どの製品の値を採るかは点ごとに決める**——配信元の定める精度の順
+（`domain/gsi_tiles.py: PRODUCT_PRIORITY`）に見て、値のある最初の製品を採る。どの製品にも値が無い点は欠測のまま残る。
+
+**製品を優先順に1つずつ流す**ので、上の製品に値のある点は下の製品を読まない——下の製品は、欠けた点のあるタイルだけを読む。
+製品ごとにズームが違っても、その製品のズームで番地を出せば同じ式で済む。
+"""
+
+import asyncpg
+
+from app.domain.gsi_tiles import PRODUCT_PRIORITY
+from app.domain.region import tile_position_sql
+from app.infrastructure.source_models import (
+    DEM_TILES_SQL,
+    INGESTED_DEM_PRODUCTS_SQL,
+    dem_pixel_value_sql,
+    dem_tile_pixels_sql,
+)
+
+_POINT_TILE_X, _POINT_TILE_Y = tile_position_sql("v.lon", "v.lat", "$1")
+
+
+async def products_in_priority(conn: asyncpg.Connection) -> list[tuple[str, int]]:
+    """取り込まれた製品とそのズームを、値を採る順に並べる。順を知らない製品は読まない。"""
+    zooms = {r["product"]: r["zoom"] for r in await conn.fetch(INGESTED_DEM_PRODUCTS_SQL)}
+    return [(p, zooms[p]) for p in PRODUCT_PRIORITY if p in zooms]
+
+
+async def fill_elevations(conn: asyncpg.Connection, points: str, elevations: str,
+                          products: list[tuple[str, int]]) -> dict[str, int]:
+    """表`points`（列`vid`・`lon`・`lat`）の点の標高を、製品`products`（`products_in_priority`の並び）の順に引いて、
+    一時の表`elevations`（列`vid`が主キー・`elev`）を作り直して入れる。値のある点だけが行を持つ。製品ごとに入れた行の数を返す。
+
+    点はタイルの番地の表へ一度実体にし、索引を張ってから引く——関数から直に結合すると行数を見積もれず、プランナがタイル側を
+    入れ子で読み直す計画を選ぶ。タイルは1枚ずつ1回だけ展開し、そのタイルの点を番地の索引で引く
+    （`infrastructure/source_models.py: dem_tile_pixels_sql`）。表は取引の終わりに消える一時の表として作るので、取引の中で呼ぶ。"""
+    await conn.execute(f"DROP TABLE IF EXISTS {elevations}")
+    await conn.execute(f"CREATE TEMP TABLE {elevations} (vid bigint PRIMARY KEY, elev double precision) ON COMMIT DROP")
+    filled = {}
+    for product, zoom in products:
+        await conn.execute("DROP TABLE IF EXISTS _dem_point_tile")
+        await conn.execute(f"""
+CREATE TEMP TABLE _dem_point_tile ON COMMIT DROP AS
+SELECT v.vid, p.fx, p.fy, floor(p.fx)::int AS tx, floor(p.fy)::int AS ty
+FROM {points} v
+CROSS JOIN LATERAL (SELECT {_POINT_TILE_X} AS fx, {_POINT_TILE_Y} AS fy) p
+WHERE NOT EXISTS (SELECT 1 FROM {elevations} e WHERE e.vid = v.vid)
+""", zoom)
+        await conn.execute("CREATE INDEX ON _dem_point_tile (tx, ty)")
+        await conn.execute("ANALYZE _dem_point_tile")
+        filled[product] = await conn.fetchval(f"""
+WITH added AS (
+INSERT INTO {elevations} (vid, elev)
+SELECT a.vid, a.elev
+FROM (SELECT DISTINCT tx, ty FROM _dem_point_tile) k
+JOIN {DEM_TILES_SQL} t
+  ON t.attrs->>'product' = $1 AND (t.attrs->>'x')::int = k.tx AND (t.attrs->>'y')::int = k.ty
+{dem_tile_pixels_sql("t", "g")}
+CROSS JOIN LATERAL (
+  SELECT v.vid, {dem_pixel_value_sql("g", "v.fx", "v.fy", "v.tx", "v.ty")} AS elev
+  FROM _dem_point_tile v WHERE v.tx = k.tx AND v.ty = k.ty OFFSET 0) a
+WHERE a.elev IS NOT NULL
+RETURNING 1)
+SELECT count(*) FROM added
+""", product)
+        await conn.execute(f"ANALYZE {elevations}")
+    return filled

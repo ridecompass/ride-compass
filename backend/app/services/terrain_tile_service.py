@@ -3,7 +3,8 @@
 **画素は道の標高と同じ製品の並びで埋める**（`domain/gsi_tiles.py: PRODUCT_PRIORITY`。DEM5A→DEM5B→DEM5C→DEM10B）——上の製品の
 タイルに値の無い画素がある間だけ、次の製品のタイルを読んで埋める。欠けの無い所が読むのは1枚。製品の上限より細かいズームでは、
 その製品の上限のズームのタイルの、そのタイルに当たる部分を引き伸ばして使う。どの製品にも値の無い画素は海抜0mにする
-（`infrastructure/gsi_dem_png.py`）。配信元の陰影起伏図も、精度の良い製品から順に重ねて作られている
+（`infrastructure/gsi_dem_png.py`）。DB の標高タイルを点で引く`infrastructure/dem_elevation.py: fill_elevations`へは寄せない
+——読む元が配信元の PNG で、1枚のタイルの全画素を配列で重ねるため。配信元の陰影起伏図も、精度の良い製品から順に重ねて作られている
 （https://maps.gsi.go.jp/development/ichiran.html の陰影起伏図の欄）。
 
 変換後のタイルはキャッシュしない。ネットワークを使うのは変換前のタイルの取得だけで、そちらは
