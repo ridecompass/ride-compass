@@ -21,6 +21,8 @@
 
 import asyncio
 import logging
+from collections.abc import Callable
+from contextlib import AbstractAsyncContextManager
 
 from app.domain.stopwatch import elapsed_ms, start_timer
 from app.domain.jma_tile_specs import (
@@ -47,6 +49,7 @@ from app.infrastructure.simple_api_client import UnexpectedShapeError
 from app.infrastructure.http_client import UpstreamNotFound
 from app.infrastructure.jma_tile_client import JmaTileClient, get_target_times
 from app.infrastructure.jma_tile_index import JmaTileIndex, JmaTileIndexCoverage, JmaTileIndexElement, set_index
+from app.services.region_service import RegionService
 
 logger = logging.getLogger("ridecompass.jma_tile_prewarm_service")
 
@@ -192,3 +195,13 @@ async def prewarm_jma_tiles(client: JmaTileClient, area: BoundingBox) -> None:
         total_bytes,
         elapsed_ms(started),
     )
+
+
+async def prewarm_ingested_area(
+    open_region_service: Callable[[], AbstractAsyncContextManager[RegionService]], client: JmaTileClient
+) -> None:
+    """サービスの対象範囲を温める。範囲が読めなければ温めない（原因は`RegionService.get_ingested_area`がWARNINGで残す）。"""
+    async with open_region_service() as region_service:
+        area = await region_service.get_ingested_area()
+    if area is not None:
+        await prewarm_jma_tiles(client, area)

@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.failure_replies import install_failure_replies
 from app.api.cache_policy import TILE_PATH_PREFIXES, CachePolicyMiddleware
-from app.api.dependencies import get_amedas_service, get_jma_tile_client, open_region_service
+from app.api.dependencies import get_amedas_service, get_jma_tile_prewarm
 from app.api.routers import api_router
 from app.config import settings
 from app.infrastructure.database import get_session_factory
@@ -25,7 +25,6 @@ from app.infrastructure.request_log import format_log_lines, request_log_middlew
 from app.infrastructure.response_compression import ContentTypeGZipMiddleware
 from app.infrastructure.jma_amedas_client import AMEDAS_REFRESH_INTERVAL_MINUTES
 from app.services.definitions_loading import refresh_definitions
-from app.services.jma_tile_prewarm_service import prewarm_jma_tiles
 
 logging.basicConfig(level=logging.DEBUG if settings.debug_mode else logging.INFO)
 for _handler in logging.getLogger().handlers:
@@ -70,11 +69,7 @@ async def _refresh_amedas_job() -> None:
 
 
 async def _prewarm_jma_tile_job() -> None:
-    """対象範囲が読めなければ温めない（原因は`RegionService.get_ingested_area`がWARNINGで残す）。"""
-    async with open_region_service(get_session_factory()) as region_service:
-        area = await region_service.get_ingested_area()
-    if area is not None:
-        await prewarm_jma_tiles(get_jma_tile_client(), area)
+    await get_jma_tile_prewarm()()
 
 
 async def _sync_msm_job() -> None:
