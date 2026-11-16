@@ -31,7 +31,6 @@ from app.batch.source_profile import NoFields, SourceProfile, SourceSpec, Target
 from app.domain.region import BoundingBox, tile_bounds_lonlat, tiles_covering_bbox
 from app.domain.tuning import (
     ACCIDENT_MATCH_DISTANCE_ID,
-    ELEVATION_BRIDGE_END_RADIUS_ID,
     ELEVATION_PROFILE_STEP_ID,
     ELEVATION_PROFILE_TOLERANCE_ID,
     STOP_CLUSTER_DISTANCE_ID,
@@ -221,12 +220,11 @@ async def derive_nodes_at_default_radius(conn: asyncpg.Connection) -> None:
 
 
 async def derive_elevation_at_default_step(conn: asyncpg.Connection, **tuning: float) -> None:
-    """標高の派生の段を、拾う間隔と揺れの閾値と橋の端の半径をテストの較正値（`tuning`で渡したものはその値）にして流す。"""
+    """標高の派生の段を、拾う間隔と揺れの閾値をテストの較正値（`tuning`で渡したものはその値）にして流す。"""
     await derive_elevation.derive(
         conn,
         **{"profile_step_m": TUNING[ELEVATION_PROFILE_STEP_ID],
-           "profile_tolerance_m": TUNING[ELEVATION_PROFILE_TOLERANCE_ID],
-           "bridge_end_radius_m": TUNING[ELEVATION_BRIDGE_END_RADIUS_ID], **tuning})
+           "profile_tolerance_m": TUNING[ELEVATION_PROFILE_TOLERANCE_ID], **tuning})
 
 
 async def derive_counts_at_default_tuning(conn: asyncpg.Connection, **tuning: float) -> None:
