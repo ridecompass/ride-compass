@@ -5,7 +5,8 @@
 // 書いた文があれば Claude が読んでから当てる。
 import { GitHub, batch } from "./github.js";
 import { byName, jstText } from "./facts.js";
-import { NEXT, answerBody, answerProblem, answerUrl, askerOf, conditions, isQuestion, isQuestionLabel, latestQuestion, withValues } from "./questions.js";
+import { answerUrl, conditions } from "./body.js";
+import { NEXT, answerBody, answerProblem, askerOf, isQuestion, isQuestionLabel, latestQuestion, withValues } from "./questions.js";
 
 const RECENT = 5; // 材料に載せる最近のコメント（上に出した問いのコメントは数えない）
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);

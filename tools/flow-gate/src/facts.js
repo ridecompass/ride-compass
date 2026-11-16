@@ -3,7 +3,8 @@
 import { originOf } from "./family.js";
 import { FIELDS, startTime, valuesOf } from "./fields.js";
 import { pages } from "./github.js";
-import { APPLIED, answerText, approvedSplitTitles, askerOf, conditions, droppedQuestion, isAnswer, isQuestion, latestQuestion, norm, questionHead, readProblems, remaining, unboundSteps } from "./questions.js";
+import { conditions, norm, remaining, unboundSteps } from "./body.js";
+import { APPLIED, answerText, approvedSplitTitles, askerOf, droppedQuestion, isAnswer, isQuestion, latestQuestion, questionHead, readProblems } from "./questions.js";
 
 // 対話作業か。種類は作るとき（最初に付いた種類）で決まり、あとから境目をまたいで変えても変わらない（types は今より前の種類の古い順）。
 const dialogOf = (config, types, type) => [...types, type].find(Boolean) === config.dialogType;

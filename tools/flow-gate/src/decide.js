@@ -6,7 +6,8 @@
 // 担当の実行は、状態か約束のどちらかを動かして終わる。どちらも動かさずに終わったらイレギュラーとしてユーザーに渡す。
 // 返すのは、ゲートが保つ値の全部（ステータス・欄「実行の status」・開き閉じ・種類・担当者・本文・問いのラベル・PR をレビュー可能にするか・出す問い・
 // 取り消す実行）。ゲートは今の値と違う所だけを書くので、同じ事実からは何度決めても同じになる。
-import { APPLIED, confirmConditions, confirmRows, droppedOf, questionLabel, splitBody, unfilled, withButton } from "./questions.js";
+import { confirmConditions, splitBody, unfilled, withButton } from "./body.js";
+import { APPLIED, confirmRows, droppedOf, questionLabel } from "./questions.js";
 
 // 読むのに要求の要る事実（src/facts.js: readFacts の later）は、決め方が使うときだけ読む。まだ読んでいなければ Need を投げ、src/gate.js: settle が
 // 読んでから決め直す（決め方の順番を、事実を読む側に写さない）。
