@@ -15,7 +15,7 @@ import MapOverlayControls from "@/features/map/MapOverlayControls/MapOverlayCont
 import MapOverview from "@/features/map/MapOverview/MapOverview";
 import { anyWeatherShown, overviewShown } from "@/features/map/MapOverview/overview";
 import MapView from "@/features/map/MapView/MapView";
-import type { MapTapMode } from "@/features/map/MapView/mapTaps";
+import type { MapTapMode } from "@/features/map/MapView/mapTapHits";
 import type { useMapView } from "@/features/map/view/useMapView";
 import RideBottom from "@/features/ride/RideBottom/RideBottom";
 import RideDarkScreen, { RideDarkScreenButton } from "@/features/ride/RideDarkScreen/RideDarkScreen";

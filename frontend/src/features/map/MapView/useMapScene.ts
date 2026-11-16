@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 
 import type { MapCatalog } from "@/features/map/mapCatalog";
-import { sceneInputsFrom } from "@/features/map/scene/applyToMap";
+import { sceneInputsFrom } from "@/features/map/scene/sceneInputs";
 import { buildMapScene, type SceneInputs } from "@/features/map/scene/buildScene";
 import { interactiveSceneLayerIds } from "@/features/map/scene/mapScene";
 

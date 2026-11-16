@@ -10,38 +10,25 @@ import type {
 import { segmentPath } from "@/lib/routeDistance";
 import { fetchRoadsAt, ROAD_TILE_MAX_ZOOM, ROAD_TILE_MIN_ZOOM } from "@/features/map/regionApi";
 import { tileContainingLonLat } from "@/features/map/layers/dynamicWayValues";
-import { sceneHitTargetsOfLayer, type MapScene } from "@/features/map/scene/mapScene";
+import type { MapScene } from "@/features/map/scene/mapScene";
 import {
   ROUTE_HIT_TARGET_CANDIDATE,
   ROUTE_HIT_TARGET_SEGMENT,
   ROUTE_HIT_TARGET_SPLICE_BAND,
 } from "@/features/map/scene/groups/routes";
 import { ROUTE_SEGMENT_INDEX_PROPERTY } from "@/features/map/scene/groups/routeSources";
-import { POINT_HIT_TARGET, pointLayerOfSceneLayer } from "@/features/map/scene/groups/points";
+import { POINT_HIT_TARGET } from "@/features/map/scene/groups/points";
 import { FEATURE_KEY_PROPERTY, ROAD_LINE_SOURCE_ID, shownRoadTrackOf } from "@/features/map/scene/groups/roadLines";
-import { ROAD_TILE_SOURCE_LAYER } from "@/features/map/scene/applyToMap";
+import { ROAD_TILE_SOURCE_LAYER } from "@/features/map/scene/sceneInputs";
 import { roadFeatureKey } from "@/features/map/MapView/roadFacts";
 import type { MapLook } from "@/features/map/view/mapLook";
 import { distinctFacilities, facilityOf } from "@/components/MapPopup/facilityRows";
 import type { MapPopupControls } from "@/features/map/MapView/useMapPopups";
-import { pointMembers, pointPlaceName, type PointLayer } from "@/lib/mapDisplay/pointLayers";
+import { pointMembers } from "@/lib/mapDisplay/pointLayers";
 import { projectOnEdge, type EdgeProjection } from "@/lib/localPlane";
 import { groundMetersPerPixel } from "@/lib/mapScale";
 import { MapGestures, type MapGestureAction } from "@/features/map/MapView/mapGestures";
-
-/**
- * 地図を押したときの意味。地点: 選んでいる地点を置く・ピンを押すとその地点を選ぶ。乗り換え: 乗り換える区間を選ぶ。開く: 押した物
- * （点・選んでいるルートの区間）の小窓を開き、候補の線を押すとそのルートを選び、長押しすると押した所に近い道を開く（決まりは
- * `docs/modules/frontend/static-map-layers.md`「地図を押したときと地図の小窓」）。
- */
-export type MapTapMode = "points" | "splice" | "open";
-
-/** 押して受ける物。 */
-const OPENABLE_TARGETS: Record<MapTapMode, ReadonlySet<string>> = {
-  points: new Set(),
-  splice: new Set([ROUTE_HIT_TARGET_SPLICE_BAND]),
-  open: new Set([ROUTE_HIT_TARGET_SEGMENT, POINT_HIT_TARGET, ROUTE_HIT_TARGET_CANDIDATE]),
-};
+import { namedSpotOf, openableFeatureAmong, pointsAmong, type MapTapMode } from "@/features/map/MapView/mapTapHits";
 
 /** 押した所から道を拾う幅（画素）。指の幅ほどずれても、その道を押したとみなす。 */
 const ROAD_REACH_PX = 20;
@@ -79,21 +66,6 @@ function nearestPointOnLineString(
   if (best !== null) return best.point;
   const [lng, lat] = coordinates[0] ?? point;
   return [lng, lat];
-}
-
-/** 押された地物のレイヤーが点の層なら、その点の宣言。 */
-function pointLayerAt(feature: MapGeoJSONFeature): PointLayer | undefined {
-  return pointLayerOfSceneLayer(feature.layer.id);
-}
-
-/** 名前のある点（店など）の地物なら、探して選んだ施設と同じ形の候補（辺りは置いた位置から引く）。 */
-function namedSpotOf(feature: MapGeoJSONFeature): PlaceCandidate | null {
-  const point = pointLayerAt(feature);
-  if (point === undefined || feature.geometry.type !== "Point") return null;
-  const name = pointPlaceName(point, feature.properties);
-  if (name === null) return null;
-  const [longitude, latitude] = feature.geometry.coordinates;
-  return { kind: "facility", level: "point", name, area: null, latitude, longitude };
 }
 
 /** 押した所（緯度経度と、地図の左上からの画素）。マウスの出来事も指の出来事も持つ。 */
@@ -173,15 +145,8 @@ export function bindMapTaps(map: MapLibreMap, latest: { readonly current: MapTap
     return layers.length === 0 ? [] : map.queryRenderedFeatures(point, { layers });
   }
 
-  /** 意味ごとに押して開ける対象で、押した所に重なった地物のうち一番上に描かれたもの（乗り換えの帯は区間の上に描くので、
-   * 重なった所は帯を選ぶ）。開けない対象は、上に重なっていても飛ばす。 */
-  function openableFeatureAmong(features: readonly MapGeoJSONFeature[]) {
-    const openable = OPENABLE_TARGETS[latest.current.tapMode];
-    for (const feature of features) {
-      const target = sceneHitTargetsOfLayer(latest.current.scene, feature.layer.id).find((t) => openable.has(t));
-      if (target !== undefined) return { feature, target };
-    }
-    return null;
+  function openableAt(features: readonly MapGeoJSONFeature[]) {
+    return openableFeatureAmong(latest.current.scene, latest.current.tapMode, features);
   }
 
   // 地点の意味の間は、地物を開かずに、押した所へ選んでいる地点を置く（道の上を目的地にしたいこともある）。名前のある
@@ -198,7 +163,7 @@ export function bindMapTaps(map: MapLibreMap, latest: { readonly current: MapTap
         run: () => latest.current.onPointPlace({ latitude: at.latitude, longitude: at.longitude }, spot),
       };
     }
-    const hit = openableFeatureAmong(features);
+    const hit = openableAt(features);
     return { hitsTarget: hit !== null, run: () => (hit === null ? popups.close() : openHit(hit, e, features)) };
   }
 
@@ -222,12 +187,7 @@ export function bindMapTaps(map: MapLibreMap, latest: { readonly current: MapTap
   // 押した所に描かれている点を、束ねた点の中まで全部並べる（重なった点は、上の1つだけでなく中が分かるように）。点の
   // 位置は押した所でなく点そのもの（外の地図で探す位置。押した所は絵の端のことがある）。小窓は押した代表点の位置へ出す。
   function openPoint(_feature: MapGeoJSONFeature, _e: PointedAt, features: readonly MapGeoJSONFeature[]) {
-    const points = features.flatMap((feature) => {
-      const layer = pointLayerAt(feature);
-      if (layer === undefined || feature.geometry.type !== "Point") return [];
-      const [lng, lat] = feature.geometry.coordinates;
-      return [{ layer, feature, at: [lng, lat] as [number, number] }];
-    });
+    const points = pointsAmong(features);
     if (points.length === 0) return;
     const found = points.flatMap(({ layer, feature, at: pointAt }) =>
       pointMembers(layer, feature.properties, pointAt).map((member) => ({
@@ -318,7 +278,7 @@ export function bindMapTaps(map: MapLibreMap, latest: { readonly current: MapTap
       map.getCanvas().style.cursor = "crosshair";
       return;
     }
-    const hit = openableFeatureAmong(interactiveFeaturesAt(e.point));
+    const hit = openableAt(interactiveFeaturesAt(e.point));
     map.getCanvas().style.cursor = hit !== null ? "pointer" : "";
   }
 
