@@ -3,7 +3,7 @@
  * `lib/routeDistance.ts`——ルートの上の距離と、地図の地点の行き来。
  * - `routeStretches`: 区間ごとの始まりと終わりの距離。線の点ごとの道のりがあればそれを読み、無い区間は区間の長さを積み上げる
  * - `routeEdgeKms`: Edgeの境界ごとの距離（線の点ごとの道のりを境界の位置で引く）
- * - `pointAlongSegment`: 区間の道なりの形の上で割合だけ進んだ地点。経度は緯度で縮めて長さを測る。形が無ければ両端を結ぶ直線の上
+ * - `pointAlongSegment`: 区間の道なりの形の上で割合だけ進んだ地点。形が無ければ両端を結ぶ直線の上
  * - `splitSegmentAt`: 区間の形を割合の地点で前と後ろに分ける（分けた点は両方に入る）
  * - `routeTrack`・`projectOnTrack`: ルートの形を辺へ分け、地点に最も近い辺の上の点のルートの上の距離と隔たり
  * - `routePointsEvery`: ルートの形の上に一定の距離おきに置いた点
@@ -105,24 +105,11 @@ describe("pointAlongSegment", () => {
         [1, 0],
         [1, 1],
       ]),
+      point_distances_m: [0, 500, 1000],
     });
     expect(pointAlongSegment(bent, 0.25)).toEqual([0.5, 0]);
     expect(pointAlongSegment(bent, 0.75)[0]).toBeCloseTo(1);
     expect(pointAlongSegment(bent, 0.75)[1]).toBeCloseTo(0.5);
-  });
-
-  it("経度方向の長さは緯度で縮めて測る", () => {
-    // 北緯60度では経度2度と緯度1度がほぼ同じ長さなので、2つの辺の長さは等しい。
-    const bent = segment({
-      geometry: line([
-        [0, 60],
-        [2, 60],
-        [2, 61],
-      ]),
-    });
-    const [lng, lat] = pointAlongSegment(bent, 0.5);
-    expect(lng).toBeCloseTo(2);
-    expect(lat).toBeCloseTo(60);
   });
 
   it("形が無ければ、区間の始点と終点を結ぶ直線の上", () => {
@@ -142,10 +129,12 @@ describe("pointAlongSegment", () => {
     expect(
       pointAlongSegment(
         segment({
+          distance_km: 0,
           geometry: line([
             [139.7, 35.6],
             [139.7, 35.6],
           ]),
+          point_distances_m: [0, 0],
         }),
         0.5,
       ),
@@ -161,6 +150,7 @@ describe("pointAlongSegment", () => {
             [1, 0],
             [2, 0],
           ]),
+          point_distances_m: [0, 0, 1000],
         }),
         0,
       ),
@@ -176,6 +166,7 @@ describe("splitSegmentAt", () => {
         [1, 0],
         [1, 1],
       ]),
+      point_distances_m: [0, 500, 1000],
     });
     expect(splitSegmentAt(bent, 0.25)).toEqual({
       before: [
@@ -199,7 +190,7 @@ describe("splitSegmentAt", () => {
   });
 });
 
-// 北緯35度の上を東へ進む区間と、そこから北へ折れる区間。辺の両端の距離は、形の長さの割合を区間の距離へ当てたもの。
+// 北緯35度の上を東へ進む区間と、そこから北へ折れる区間。
 const track = routeTrack([
   segment({
     distance_km: 2,
@@ -208,6 +199,7 @@ const track = routeTrack([
       [139.01, 35],
       [139.02, 35],
     ]),
+    point_distances_m: [0, 1000, 2000],
   }),
   segment({
     distance_km: 1,
@@ -215,6 +207,7 @@ const track = routeTrack([
       [139.02, 35],
       [139.02, 35.01],
     ]),
+    point_distances_m: [2000, 3000],
   }),
 ]);
 
@@ -250,6 +243,7 @@ describe("routePointsEvery", () => {
             [139.005, 35],
             [139.01, 35],
           ]),
+          point_distances_m: [0, 500, 1000],
         }),
         segment({
           distance_km: 0.5,
@@ -257,6 +251,7 @@ describe("routePointsEvery", () => {
             [139.01, 35],
             [139.01, 35.01],
           ]),
+          point_distances_m: [1000, 1500],
         }),
       ],
       0.4,

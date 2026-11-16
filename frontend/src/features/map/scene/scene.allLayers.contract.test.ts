@@ -65,6 +65,7 @@ describe("レイヤーを横断する要求", () => {
           end_longitude: 139.71,
           end_latitude: 35.61,
           geometry: line,
+          point_distances_m: [0, 1000],
           ...penaltyFields({}, 1),
         },
       ],

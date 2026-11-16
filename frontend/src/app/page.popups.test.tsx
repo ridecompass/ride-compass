@@ -165,7 +165,6 @@ describe("地図の小窓", () => {
   it("区間の小窓は、上の帯に到達予想、その下に負担の合計と負担のある軸ごとの分を出し、押しただけでは地図は動かず、寄せるアイコンで区間へ寄せる", async () => {
     serveCostAxisCatalog();
     const segment = makeRouteSegment({
-      cumulative_distance_km: 1,
       estimated_arrival_time: "2026-10-05T00:30:00Z",
       penalty: {
         axis_seconds: { ascent: 120, vibration: 0 },

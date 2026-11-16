@@ -2,10 +2,10 @@
 //
 // ルートの上の距離は、線の点ごとの道のり（応答の`point_distances_m`。backendが測った、ルートの始まりからの道のり）を読む
 // ——道のりのグラフの距離・地図の上の地点・現在地の位置・曲がる所・乗り換えが、どれも同じ物差しで行き来する。点の間は、
-// 両端の道のりを形の上で直線に割り振る。点ごとの道のりを持たない区間（形の無い区間・道のりを持たない古い保存の応答）だけは、
-// 前の区間の終わりから区間の長さ（`distance_km`）を形の長さの割合で分ける。
+// 両端の道のりを形の上で直線に割り振る。形の無い区間（点ごとの道のりも無い）だけは、前の区間の終わりから区間の長さ
+// （`distance_km`）を始点と終点を結ぶ直線に置く。
 
-import { longitudeScale, projectOnEdge } from "@/lib/localPlane";
+import { projectOnEdge } from "@/lib/localPlane";
 import type { Coordinates, RouteCandidate, RouteSegmentDetail } from "@/types/route";
 
 export type RouteSegmentShape = Pick<
@@ -39,23 +39,11 @@ export function routeStretches<S extends RouteSegmentShape>(segments: readonly S
 }
 
 /**
- * 区間の形（`segmentPath`）の点ごとのルートの上の距離（km）。点ごとの道のりがあればそれを読み、無い区間は`startKm`から
- * 区間の長さを形の長さの割合で分ける。
+ * 区間の形（`segmentPath`）の点ごとのルートの上の距離（km）。点ごとの道のりを読み、形の無い区間は`startKm`から区間の長さを置く。
  */
 export function segmentPointKms(segment: RouteSegmentShape, startKm: number): number[] {
-  const distances = segment.point_distances_m;
-  if (segment.geometry !== null && distances != null && distances.length === segment.geometry.coordinates.length) {
-    return distances.map((m) => m / 1000);
-  }
-  const path = segmentPath(segment);
-  const lengths = edgeLengths(path);
-  const total = lengths.reduce((sum, length) => sum + length, 0);
-  const length = Math.max(0, segment.distance_km);
-  let along = 0;
-  return path.map((_, i) => {
-    if (i > 0) along += lengths[i - 1];
-    return startKm + (total === 0 ? (i === path.length - 1 ? length : 0) : (along / total) * length);
-  });
+  if (segment.point_distances_m !== null) return segment.point_distances_m.map((m) => m / 1000);
+  return [startKm, startKm + Math.max(0, segment.distance_km)];
 }
 
 /** 区間の道なりの形。形が無い区間（2点未満のEdge等）は、始点と終点を結ぶ直線。 */
@@ -66,12 +54,6 @@ export function segmentPath(segment: RouteSegmentShape): LngLat[] {
         [segment.start_longitude, segment.start_latitude],
         [segment.end_longitude, segment.end_latitude],
       ];
-}
-
-/** 形の辺ごとの長さ。区間は短いので、緯度で経度方向を縮めた平面の距離で足りる（割合を決めるだけで、長さそのものは使わない）。 */
-function edgeLengths(path: readonly LngLat[]): number[] {
-  const scale = longitudeScale(path[0][1]);
-  return path.slice(1).map(([lng, lat], i) => Math.hypot((lng - path[i][0]) * scale, lat - path[i][1]));
 }
 
 /** 区間の形の上で、区間の道のりの割合`fraction`だけ進んだ点と、その点が載る辺（`index`から`index + 1`）。 */

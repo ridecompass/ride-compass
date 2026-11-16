@@ -96,6 +96,7 @@ describe("useWeatherConditions ルートの警報級の時系列", () => {
             [139.77, 35.68],
           ],
         },
+        point_distances_m: [0, 1000],
       }),
     ],
     clock: (km: number) => Date.parse("2026-10-21T18:00:00+09:00") + km * 8 * HOUR_MS,

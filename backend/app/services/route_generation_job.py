@@ -16,7 +16,6 @@ from app.domain.road_network import RoadNetwork
 from app.domain.route import Coordinates, RouteCandidate
 from app.domain.route_request import DistanceTarget, RequestedConditions, RouteTarget
 from app.domain.strict_model import StrictModel
-from app.domain.time_zone import JST
 from app.infrastructure import job_registry
 from app.infrastructure.debug_log import record_rate_limit_rejection
 from app.infrastructure.heap_release import release_freed_heap
@@ -40,8 +39,6 @@ class GenerationConditions(StrictModel):
     longitude: float
     # 全長の目標距離（無ければNone）。
     distance_km: float | None
-    # 使った目標距離からの許容差（km。目標に対する割合の較正値から決めた長さ）。全長の目標が無ければNone。
-    distance_tolerance_km: float | None
     cost_preference: CostPreference
     # 道の区分ごとの避け方（実際に適用された値）。
     road_avoidance: RoadAvoidanceOverride
@@ -59,8 +56,6 @@ class GenerationConditions(StrictModel):
     # 一方通行の袋等）ため、出て戻れる最寄りNodeへ寄せ直して探索した場合の座標。寄せ直さなかった
     # （`destination`をそのまま使えた）場合はNone。
     corrected_destination: Coordinates | None
-    # ISO8601（JST）。周回の風評価は生成時刻に依存するため、厳密な再現はできない点に注意
-    generated_at: str
 
 
 class RouteGenerateResponse(StrictModel):
@@ -93,7 +88,6 @@ async def generate_route_response(
             latitude=origin.latitude,
             longitude=origin.longitude,
             distance_km=target.distance_km if isinstance(target, DistanceTarget) else None,
-            distance_tolerance_km=generated.distance_tolerance_km,
             cost_preference=applied.cost_preference,
             road_avoidance=RoadAvoidanceOverride(dict(applied.road_avoidance)),
             max_routes=generated.max_routes,
@@ -102,7 +96,6 @@ async def generate_route_response(
             waypoints=waypoints,
             destination=destination,
             corrected_destination=generated.corrected_destination,
-            generated_at=datetime.now(JST).isoformat(),
         ),
     )
 

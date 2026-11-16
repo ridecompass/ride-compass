@@ -237,7 +237,7 @@ def _build_candidate(
     segments_started = start_timer()
     geometry, edge_point_offsets, point_distances_m = concat_edge_geometries(edges_in_path)
     along_km = along_route_km(point_distances_m, edge_point_offsets)
-    segments = _build_segment_details(orientation, along_km, (geometry["coordinates"], point_distances_m, edge_point_offsets),
+    segments = _build_segment_details(orientation, (geometry["coordinates"], point_distances_m, edge_point_offsets),
                                       elevation_by_edge, context, start_time)
     elevation_gain_m = elevation_gain(np.array([
         attribute.elevation_gain_m if (attribute := elevation_by_edge.get(edge.edge_id)) is not None else np.nan
@@ -287,7 +287,6 @@ def _build_candidate(
 
 def _build_segment_details(
     orientation: _Orientation,
-    along_km: list[float],
     line: tuple[list[list[float]], list[float], list[int]],
     elevation_by_edge: dict,
     context: RoadGraphContext,
@@ -324,9 +323,7 @@ def _build_segment_details(
                 start_longitude=start_lon,
                 end_latitude=end_lat,
                 end_longitude=end_lon,
-                cumulative_distance_km=along_km[index],
                 distance_km=orientation.distances_km[index],
-                edge_index=index,
                 sustained_gradient_percent=steepest_signed_percent(elevation_attr),
                 average_gradient_percent=elevation_attr.average_grade if elevation_attr else None,
                 estimated_arrival_time=(

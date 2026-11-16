@@ -81,10 +81,7 @@ export function routeThrough(
           start_longitude: prevLon,
           end_latitude: lat,
           end_longitude: lon,
-          cumulative_distance_km: segments.reduce((km, segment) => km + segment.distance_km, 0),
           distance_km: distanceKm,
-          edge_start: index - 1,
-          edge_end: index,
         }),
       );
     }
@@ -107,7 +104,6 @@ export function makeGenerationConditions(overrides: Partial<GenerationConditions
     latitude: 0,
     longitude: 0,
     distance_km: 0,
-    distance_tolerance_km: 0,
     cost_preference: STANDARD_COST_PREFERENCE,
     road_avoidance: {},
     max_routes: 0,
@@ -116,7 +112,6 @@ export function makeGenerationConditions(overrides: Partial<GenerationConditions
     waypoints: null,
     destination: null,
     corrected_destination: null,
-    generated_at: "",
     ...overrides,
   };
 }
@@ -130,10 +125,7 @@ export function makeRouteSegment(overrides: Partial<RouteSegmentDetail> = {}): R
     start_longitude: 0,
     end_latitude: 0,
     end_longitude: 0,
-    cumulative_distance_km: 0,
     distance_km: 0,
-    edge_start: 0,
-    edge_end: 0,
     estimated_arrival_time: null,
     penalty: { axis_seconds: {}, preferred_seconds: 0, avoided_seconds: 0, total_seconds: 0 },
     lens_seconds_per_km: null,

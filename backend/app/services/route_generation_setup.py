@@ -83,8 +83,6 @@ class _GeneratedRoutes:
     corrected_destination: Coordinates | None
     # 候補数の上限。
     max_routes: int
-    # 使った目標距離からの許容差（目標に対する割合の較正値から決めた長さ）。全長の目標が無ければNone。
-    distance_tolerance_km: float | None
     conditions: _AppliedConditions
 
 
@@ -103,7 +101,6 @@ async def generate_route_candidates(
 
     仕上げの戦略は要求の検証が型で選び済みで、ここは型ごとの入口へ渡すだけ（距離の有無を見直さない）。
     """
-    tolerance_km: float | None = None
     # 読むのはディスクの置き場なので、イベントループの外で。
     network = await asyncio.to_thread(road_network_store.current)
     async with open_setup(network) as setup:
@@ -125,11 +122,10 @@ async def generate_route_candidates(
                     start_time=start_time,
                 )
             case DistanceTarget():
-                tolerance_km = distance_tolerance_km(target.distance_km)
                 generated = await generator.generate_loops(
                     origin=origin,
                     distance_km=target.distance_km,
-                    distance_tolerance_km=tolerance_km,
+                    distance_tolerance_km=distance_tolerance_km(target.distance_km),
                     max_routes=max_routes,
                     start_time=start_time,
                     points=target.points,
@@ -144,6 +140,5 @@ async def generate_route_candidates(
             no_candidates_reason=generated.no_candidates_reason,
             corrected_destination=generated.corrected_destination,
             max_routes=max_routes,
-            distance_tolerance_km=tolerance_km,
             conditions=setup.conditions,
         )

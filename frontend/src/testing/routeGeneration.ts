@@ -66,12 +66,10 @@ export function used(overrides: Partial<GenerationConditions> = {}): GenerationC
     latitude: ORIGIN.latitude,
     longitude: ORIGIN.longitude,
     distance_km: 30,
-    distance_tolerance_km: 5,
     cost_preference: STANDARD_COST_PREFERENCE,
     max_routes: routeGenerateConfig.default_max_routes,
     start_time: T1.toISOString(),
     assumed_speed_kmh: 20,
-    generated_at: "2026-10-04T09:00:30Z",
     ...overrides,
   });
 }

@@ -155,11 +155,7 @@ class RouteSegmentDetail(StrictModel):
     start_longitude: float
     end_latitude: float
     end_longitude: float
-    cumulative_distance_km: float
     distance_km: float
-    # 区間が候補の`edge_ids`のどこにあたるか（`edge_ids[edge_start:edge_end]`が区間の道）。区間の近くの点を引く口へ渡す鍵の範囲。
-    edge_start: int
-    edge_end: int
     # 区間の続く坂の斜度（%、走る向きの符号つき）。道の一番急な登りと下りから`steepest_signed_percent`が作り、ビンへは
     # `_merge_sustained_gradients`で畳む。値が無ければNone。
     sustained_gradient_percent: float | None = None
@@ -192,10 +188,7 @@ class EdgeSegment:
     start_longitude: float
     end_latitude: float
     end_longitude: float
-    cumulative_distance_km: float
     distance_km: float
-    # 候補の`edge_ids`の中の、この道の位置。
-    edge_index: int
     sustained_gradient_percent: float | None
     average_gradient_percent: float | None
     estimated_arrival_time: str
@@ -448,10 +441,7 @@ BIN_FIELD_MERGERS: dict[str, Callable[[list[EdgeSegment]], object]] = {
     "start_longitude": lambda segments: segments[0].start_longitude,
     "end_latitude": lambda segments: segments[-1].end_latitude,
     "end_longitude": lambda segments: segments[-1].end_longitude,
-    "cumulative_distance_km": lambda segments: segments[0].cumulative_distance_km,
     "distance_km": lambda segments: _summed_km(segment.distance_km for segment in segments),
-    "edge_start": lambda segments: segments[0].edge_index,
-    "edge_end": lambda segments: segments[-1].edge_index + 1,
     "sustained_gradient_percent": _merge_sustained_gradients,
     "average_gradient_percent": _merge_average_gradients,
     "estimated_arrival_time": lambda segments: segments[0].estimated_arrival_time,
