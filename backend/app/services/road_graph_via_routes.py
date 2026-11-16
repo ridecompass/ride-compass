@@ -14,13 +14,8 @@ from app.domain.route_search import (
     leg_of_edge_by_half,
     rank_by_pareto_layers,
 )
-from app.domain.routing import (
-    JunctionPaths,
-    add_terminal_candidate,
-    build_turn_expanded_tree,
-    combine_forward_backward_at_nodes,
-    turn_expanded_shortest_path,
-)
+from app.domain.routing import build_turn_expanded_tree, turn_expanded_shortest_path
+from app.domain.tree_paths import JunctionPaths, add_terminal_candidate, combine_forward_backward_at_nodes
 from app.domain.route_diversity import EdgeSetOverlap, select_diverse_by_overlap
 from app.domain.wind import (
     cruise_hours,

@@ -1,7 +1,7 @@
 """`app/domain/node_spatial_index.py`——置いた点に一番近いノード。
 
 ここで見ないもの:
-- 出て戻れるノードの集まり → `test_routing.py`
+- 出て戻れるノードの集まり → `test_connectivity.py`
 """
 import numpy as np
 import pytest
