@@ -16,9 +16,8 @@ from pathlib import Path
 import numpy as np
 
 from app.services.route_generation_setup import assemble_route_generation_setup
-from app.domain.geo import bearing_between, haversine_distance_km
+from app.domain.geo import haversine_distance_km
 from app.domain.graph import edge_key, node_key, parse_edge_key
-from app.domain.material_catalog import GRADIENT_PERCENT
 from app.domain.landcover import LANDCOVER_CLASSES
 from app.domain.traffic import stop_count_material_ids
 from app.domain.cost_preference import CostPreference
@@ -30,7 +29,7 @@ from app.domain.msm import MsmBlock, MsmGrid
 from app.domain.wind import WindForecastSeries
 from app.infrastructure import road_network_store
 from app.services.graph_service import GraphService, SearchMemory
-from tests.profile_fixture import two_point_profiles
+from tests.road_network_fixture import road_network as build_road_network
 
 #: 道の区分の条件と0次ハードフィルタが読む事実の列。
 HIGHWAY, TUNNEL = "highway", "has_tunnel"
@@ -107,80 +106,39 @@ def road_network(
 
     `bad_ways`は避けたい材料が1（それ以外は0）、`bad_forward_ways`は始点→終点の向きだけ避けたい材料が1、
     `oneway_ways`は始点→終点だけ走れる。
-    勾配はどの道も平ら（0%）で、`gradient_of`（道→始点から終点へ登る%）の道だけその勾配（逆向きは下り）を持ち、`no_gradient_ways`だけ値が無い。停止要因（信号・一時停止等）はどの道にも無い（0件）。
+    標高はどの道も0mで平らで、`elevation_of`（道→(始点, 終点)の標高m）の道はその標高、`gradient_of`（道→始点から終点へ登る%）の
+    道は始点の0mからその勾配で登り、`no_gradient_ways`だけ標高も勾配の値も無い。停止要因（信号・一時停止等）はどの道にも無い（0件）。
     `stop_density_of`（道→1kmあたりの回数）の道だけ、どの種類の停止要因もその密度で持つ。
-    標高はどの道にも無く、`elevation_of`（道→(始点, 終点)の標高m）の道だけ持つ（獲得・損失は両端の差）。
     道路の種類（`HIGHWAY`）はどの道も生活道路（residential）で、`motorway_ways`だけ高速道路。トンネル（`TUNNEL`）は`tunnel_ways`だけ。
     ほかのタグの事実は無く、区分（`tests/road_class_fixture.py`で入れる）はこの2つの事実から決まる。
     土地被覆の割合はどの道にも無く、`landcover_of`（道→割合の材料のid→%）の道だけ持つ。"""
-    node_ids = np.array(sorted({osm for pair in ways.values() for osm in pair}), dtype=np.int64)
-    rows: list[tuple[int, bool, int, int]] = []
-    for way, (start, end) in sorted(ways.items()):
-        rows.append((way, True, start, end))
-        if way not in oneway_ways:
-            rows.append((way, False, end, start))
-    lat = np.array([coordinates[int(i)][0] for i in node_ids])
-    lon = np.array([coordinates[int(i)][1] for i in node_ids])
-    row_of = {int(osm): i for i, osm in enumerate(node_ids)}
-    tail = np.array([row_of[a] for _w, _f, a, _b in rows], dtype=np.int32)
-    head = np.array([row_of[b] for _w, _f, _a, b in rows], dtype=np.int32)
-    n = len(rows)
-    way_of_row = np.array([w for w, _f, _a, _b in rows], dtype=np.int64)
-    forward = np.array([f for _w, f, _a, _b in rows])
-    points = [(Coordinates(latitude=lat[a], longitude=lon[a]), Coordinates(latitude=lat[b], longitude=lon[b]))
-              for a, b in zip(tail, head, strict=True)]
-    bad = (np.isin(way_of_row, list(bad_ways)) | (np.isin(way_of_row, list(bad_forward_ways)) & forward)).astype(float)
-    gradient = np.where(np.isin(way_of_row, list(no_gradient_ways)), np.nan, 0.0)
-    for way, percent in (gradient_of or {}).items():
-        gradient[way_of_row == way] = np.where(forward[way_of_row == way], percent, -percent)
-    stop_count = np.zeros(n)
-    for way, density in (stop_density_of or {}).items():
-        stop_count[way_of_row == way] = density
-    start_elevation = np.full(n, np.nan)
-    end_elevation = np.full(n, np.nan)
-    for way, (start_m, end_m) in (elevation_of or {}).items():
-        start_elevation[way_of_row == way] = np.where(forward[way_of_row == way], start_m, end_m)
-        end_elevation[way_of_row == way] = np.where(forward[way_of_row == way], end_m, start_m)
-    climb = end_elevation - start_elevation
-    distance_m = np.array([haversine_distance_km(a, b) * 1000 for a, b in points])
-    # 道は一様な坂なので、一番急な勾配は平均の勾配そのもの。
-    grade = climb / distance_m * 100
-    # 断面は両端の2点。標高のある道はその標高、ほかは勾配の材料どおりに0mから登る（勾配の値の無い道は点を持たない）。
-    known = ~np.isnan(start_elevation)
-    profile_start = np.where(known, start_elevation, np.where(np.isnan(gradient), np.nan, 0.0))
-    profile_end = np.where(known, end_elevation, gradient / 100 * distance_m)
-    return RoadNetwork(
-        revision=1,
-        node_osm_id=node_ids, node_lat=lat, node_lon=lon,
-        node_has_signals=np.zeros(len(node_ids), dtype=bool), node_max_rank=np.zeros(len(node_ids), dtype=np.int64),
-        # 集まる道の本数は、1本1区間の道の端として現れる回数（一方通行の道も数える）。
-        node_branch_count=np.bincount(
-            [row_of[osm] for pair in ways.values() for osm in pair], minlength=len(node_ids)).astype(np.int16),
-        edge_way_id=way_of_row, edge_segment=np.zeros(n, dtype=np.int32),
-        edge_forward=forward,
-        edge_from=tail, edge_to=head,
-        edge_highway=np.zeros(n, dtype=np.int16), highway_vocab=("residential",),
-        edge_min_lon=np.minimum(lon[tail], lon[head]), edge_min_lat=np.minimum(lat[tail], lat[head]),
-        edge_max_lon=np.maximum(lon[tail], lon[head]), edge_max_lat=np.maximum(lat[tail], lat[head]),
-        edge_start_bearing_deg=np.full(n, np.nan), edge_end_bearing_deg=np.full(n, np.nan),
-        numeric_ids=(BAD_MATERIAL, GRADIENT_PERCENT, *stop_count_material_ids(), TUNNEL,
-                     *(c.percent_field for c in LANDCOVER_CLASSES)),
-        numeric_values=np.column_stack([
-            bad, gradient, *(stop_count for _ in stop_count_material_ids()),
-            np.isin(way_of_row, list(tunnel_ways)).astype(float),
-            *(np.array([(landcover_of or {}).get(int(way), {}).get(c.percent_field, np.nan) for way in way_of_row])
-              for c in LANDCOVER_CLASSES),
-        ]),
-        categorical_ids=(HIGHWAY,),
-        categorical_codes=np.where(np.isin(way_of_row, list(motorway_ways)), 2, 1).astype(np.int16)[:, None],
-        categorical_vocab=((None, "residential", "motorway"),),
-        distance_m=distance_m,
-        bearing_deg=np.array([bearing_between(a, b) for a, b in points]),
-        mid_lat=(lat[tail] + lat[head]) / 2, mid_lon=(lon[tail] + lon[head]) / 2,
-        start_elevation_m=start_elevation, end_elevation_m=end_elevation,
-        elevation_gain_m=np.maximum(climb, 0.0), elevation_loss_m=np.maximum(-climb, 0.0),
-        steepest_gain_percent=np.maximum(grade, 0.0), steepest_loss_percent=np.maximum(-grade, 0.0),
-        **two_point_profiles(profile_start, profile_end, forward),
+    def length_m(way: int) -> float:
+        (a_lat, a_lon), (b_lat, b_lon) = (coordinates[osm] for osm in ways[way])
+        return haversine_distance_km(Coordinates(latitude=a_lat, longitude=a_lon),
+                                     Coordinates(latitude=b_lat, longitude=b_lon)) * 1000
+
+    elevation = {way: (0.0, 0.0) for way in ways if way not in no_gradient_ways}
+    elevation |= {way: (0.0, percent / 100 * length_m(way)) for way, percent in (gradient_of or {}).items()}
+    elevation |= dict(elevation_of or {})
+
+    def bad(rows):
+        return (np.isin(rows.way, list(bad_ways)) | (np.isin(rows.way, list(bad_forward_ways)) & rows.forward)).astype(float)
+
+    def stop_count(rows):
+        return np.array([(stop_density_of or {}).get(int(way), 0.0) for way in rows.way])
+
+    def landcover(field):
+        return lambda rows: [(landcover_of or {}).get(int(way), {}).get(field, np.nan) for way in rows.way]
+
+    return build_road_network(
+        coordinates, {(way, 0): pair for way, pair in ways.items()},
+        oneway=[(way, 0) for way in oneway_ways], elevation_of={(way, 0): pair for way, pair in elevation.items()},
+        numeric={
+            BAD_MATERIAL: bad, **{material: stop_count for material in stop_count_material_ids()},
+            TUNNEL: lambda rows: np.isin(rows.way, list(tunnel_ways)).astype(float),
+            **{c.percent_field: landcover(c.percent_field) for c in LANDCOVER_CLASSES},
+        },
+        categorical={HIGHWAY: lambda rows: ["motorway" if way in motorway_ways else "residential" for way in rows.way]},
     )
 
 

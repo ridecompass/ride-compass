@@ -1,17 +1,13 @@
 """東西に並ぶ7つのノードと3本の道の、小さな取込範囲全体の道路網（`RoadNetwork`）。
 
 使う側: `test_road_network.py`（切り出し・材料・標高属性・区間の行）・`test_graph_service.py`（探索範囲の入口）。
-材料の名前は架空（`num_a` 等）。平均勾配だけは区間の材料の列から読むため、その材料の名前を対象の名前空間から読む。
+材料の名前は架空（`num_a` 等）。
 """
 
 import numpy as np
 
-from app.domain import road_network
 from app.domain.road_network import RoadNetwork
-from tests.profile_fixture import two_point_profiles
-
-NAN = float("nan")
-GRADE = road_network.GRADIENT_PERCENT
+from tests.road_network_fixture import road_network
 
 # ノード（osm_node_id の昇順）。すべて北緯35度の上に東西に並ぶ。
 NODES = [
@@ -32,55 +28,19 @@ EDGES = [
     (30, 0, True, 4, 5),
     (30, 1, True, 5, 6),
 ]
+DIRECTIONS = {(way, segment, forward) for way, segment, forward, *_ in EDGES}
 
 
 def network() -> RoadNetwork:
-    """西に道10・道20（139.00〜139.02E）、東に道30（139.10〜139.14E）がある道路網。"""
-    lat = np.full(len(NODES), 35.0)
-    lon = np.array([node_lon for _, node_lon in NODES])
-    edge_from = np.array([tail for *_, tail, _ in EDGES], dtype=np.int32)
-    edge_to = np.array([head for *_, head in EDGES], dtype=np.int32)
-    n = len(EDGES)
-    row = np.arange(n, dtype=np.float64)
-    forward = np.array([forward for _, _, forward, *_ in EDGES], dtype=bool)
-    start_elevation = np.array([10.0, 22.0, 5.0, NAN, 7.0])
-    end_elevation = np.array([22.0, 10.0, 5.0, NAN, 10.0])
-    return RoadNetwork(
+    """西に道10・道20（139.00〜139.02E）、東に道30（139.10〜139.14E）がある道路網。道30の1区間目だけ標高が無く、
+    道20は標高があるが公道としてありえない勾配（勾配の値が無い）。"""
+    names = [osm_id for osm_id, _ in NODES]
+    return road_network(
+        {osm_id: (35.0, node_lon) for osm_id, node_lon in NODES},
+        {(way, segment): (names[tail], names[head]) for way, segment, forward, tail, head in EDGES if forward},
+        oneway=[(way, segment) for way, segment, *_ in EDGES if (way, segment, False) not in DIRECTIONS],
+        elevation_of={(10, 0): (10.0, 22.0), (20, 0): (5.0, 505.0), (30, 1): (7.0, 10.0)},
+        numeric={"num_a": lambda rows: np.arange(len(rows.way)) * 10.0},
+        categorical={"cat_a": lambda rows: ["x", "x", "y", None, "y"]},
         revision=7,
-        node_osm_id=np.array([osm_id for osm_id, _ in NODES], dtype=np.int64),
-        node_lat=lat,
-        node_lon=lon,
-        node_has_signals=np.zeros(len(NODES), dtype=bool),
-        node_max_rank=np.zeros(len(NODES), dtype=np.int64),
-        # 区間の端として現れる回数。道30の2区間が接するノード105だけが2本。
-        node_branch_count=np.array([1, 1, 1, 1, 1, 2, 1], dtype=np.int16),
-        edge_way_id=np.array([way for way, *_ in EDGES], dtype=np.int64),
-        edge_segment=np.array([segment for _, segment, *_ in EDGES], dtype=np.int32),
-        edge_forward=forward,
-        edge_from=edge_from,
-        edge_to=edge_to,
-        edge_highway=np.zeros(n, dtype=np.int16),
-        highway_vocab=("residential",),
-        edge_min_lon=np.minimum(lon[edge_from], lon[edge_to]),
-        edge_min_lat=np.minimum(lat[edge_from], lat[edge_to]),
-        edge_max_lon=np.maximum(lon[edge_from], lon[edge_to]),
-        edge_max_lat=np.maximum(lat[edge_from], lat[edge_to]),
-        edge_start_bearing_deg=np.array([80.0, 260.0, 100.0, 90.0, NAN]),
-        edge_end_bearing_deg=np.array([100.0, 280.0, 80.0, 90.0, NAN]),
-        numeric_ids=("num_a", GRADE),
-        numeric_values=np.column_stack([row * 10, [3.0, -3.0, NAN, 1.5, 2.5]]),
-        categorical_ids=("cat_a",),
-        categorical_codes=np.array([[1], [1], [2], [0], [2]], dtype=np.int16),
-        categorical_vocab=((None, "x", "y"),),
-        distance_m=row * 100 + 100,
-        bearing_deg=np.array([90.0, 270.0, 90.0, 90.0, NAN]),
-        mid_lat=lat[edge_from],
-        mid_lon=(lon[edge_from] + lon[edge_to]) / 2,
-        start_elevation_m=start_elevation,
-        end_elevation_m=end_elevation,
-        elevation_gain_m=np.array([12.0, 0.0, 0.0, NAN, 3.0]),
-        elevation_loss_m=np.array([0.0, 12.0, 0.0, NAN, 0.0]),
-        steepest_gain_percent=np.array([12.0, 0.0, 0.0, NAN, 3.0]),
-        steepest_loss_percent=np.array([0.0, 12.0, 0.0, NAN, 0.0]),
-        **two_point_profiles(start_elevation, end_elevation, forward),
     )

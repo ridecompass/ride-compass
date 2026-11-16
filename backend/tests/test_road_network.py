@@ -131,13 +131,20 @@ def test_the_fills_are_the_distance_weighted_distributions_of_the_whole_network(
 
     fills = material_fills(whole, classes[0], [class_material_id("k")])
 
-    # 区間の距離は100〜500m。num_aは0〜40、勾配は3番目の区間だけ値が無い。区分は道30の1区間目だけ値が無い。
-    assert fills.numeric_means == pytest.approx({"num_a": 40000 / 1500, GRADIENT_PERCENT: 1550 / 1200})
-    assert fills.class_shares == {class_material_id("k"): pytest.approx({"is_x": 300 / 1100, "is_y": 800 / 1100})}
+    # 区間の長さは経度の差に比べて4:4:10:20:20（同じ緯度の上）。num_aは0〜40。勾配は道20と道30の1区間目、区分は道30の
+    # 1区間目だけ値が無い。勾配を長さで重みづけた和は区間の登りの和で、道10の両向きは打ち消し合い、道30の2区間目の3mだけが残る。
+    assert fills.numeric_means == pytest.approx({
+        "num_a": (10 * 4 + 20 * 10 + 30 * 20 + 40 * 20) / 58,
+        GRADIENT_PERCENT: 3.0 * 100 / whole.distance_m[[0, 1, 4]].sum(),
+    }, rel=1e-4)
+    assert fills.class_shares == {class_material_id("k"): pytest.approx({"is_x": 8 / 38, "is_y": 30 / 38}, rel=1e-4)}
 
 
 def test_the_elevation_attribute_reads_the_average_grade_from_the_material_and_the_steepest_slopes():
-    attribute = elevation_attribute(network(), 0, "10:0:f")
+    whole = network()
+    grade = 12.0 / whole.distance_m[0] * 100  # 道10は両端の2点だけの一様な坂で、平均も一番急な所も同じ勾配
+
+    attribute = elevation_attribute(whole, 0, "10:0:f")
 
     assert attribute is not None
     assert attribute.model_dump() == {
@@ -146,8 +153,8 @@ def test_the_elevation_attribute_reads_the_average_grade_from_the_material_and_t
         "end_elevation_m": 22.0,
         "elevation_gain_m": 12.0,
         "elevation_loss_m": 0.0,
-        "average_grade": 3.0,
-        "steepest_gain_percent": 12.0,
+        "average_grade": pytest.approx(grade),
+        "steepest_gain_percent": pytest.approx(grade),
         "steepest_loss_percent": 0.0,
     }
 
