@@ -4,19 +4,17 @@
  * 見ること: スマホで走行中は下部タブを隠すこと・休んでいる間は位置を受けずにルートと進み具合を残し、「続きから走る」で続けること・地図を指で動かした間だけ
  * 「現在地へ戻る」を出すこと、走行中に帯の「ルート」で開いたパネルで選び直す・作り直すと走行モードが新しい候補を追い（地図をその候補へ収め直さない）、
  * パネルを出していない間は地図で何も変えも開きもしないこと、「このルートで走る」でその候補で走り始めてシートを閉じ、
- * 止めると走る前のシートへ戻ること。走行中にロックしていても「表示」で地図の色を暗くできること。鍵のボタンでロックすると追い直して地図の手ぶりと押しを受けず、2か所を順に押すと外れること。パネルの中で区間を選んでも追い続けて地図を動かさず、「区間を地図で見る」で追うのを休んでその区間へ寄せ、選びを外すと追い直すこと。
+ * 止めると走る前のシートへ戻ること。パネルの中で区間を選んでも追い続けて地図を動かさず、「区間を地図で見る」で追うのを休んでその区間へ寄せ、選びを外すと追い直すこと。
  *
- * ここで見ないもの: 走っている間に見えるもの（帯・プロファイル・進み具合・次に曲がる所）は`app/page.ride.test.tsx`が見る。
- * 読み込み直したときに走りの記録が同じ走りを続けること——記録中の走りはモジュールが持ち、テストの中で描き直してもモジュールは
- * 読み直されないので、ここでは作れない。続け方は`lib/rideTrack.test.ts`がモジュールを読み直して見る。
+ * ここで見ないもの: 走っている間に見えるもの（帯・プロファイル・進み具合）は`app/page.ride.test.tsx`、次に曲がる所の案内は
+ * `app/page.rideGuidance.test.tsx`、走りの記録は`app/page.rideTrack.test.tsx`、ロックは`app/page.rideLock.test.tsx`が見る。
  *
  * 差し替えたもの: backend の応答（網の層）、位置情報の取得、地図の描画（`maplibre-gl`）。子の部品は本物を描く。
  */
-import { act, fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { pendingRideUploads, stopRideTrack, type RideUploadBody } from "@/lib/rideTrack";
-import { gunzippedJson, inTurn, onSameOrigin, onUrl } from "@/testing/backendServer";
+import { stopRideTrack } from "@/lib/rideTrack";
 import { installGeolocation } from "@/testing/geolocation";
 import {
   ELSEWHERE,
@@ -37,9 +35,7 @@ import {
   serveHome,
   useMobileLayout,
 } from "@/testing/homePage";
-import { UNLOCK_CHOICE_MS } from "@/features/ride/RideLockButton/RideLockButton";
 import { mapOnScreen } from "@/testing/maplibre";
-import { themedPaint } from "@/features/map/basemapTheme";
 import { makeRouteSegment } from "@/testing/routeFixtures";
 
 vi.mock("maplibre-gl", () => import("@/testing/maplibre"));
@@ -57,55 +53,6 @@ afterEach(() => {
 });
 
 describe("走行モードの操作", () => {
-  it("走行モードの間の位置・候補と生成の条件・見せた予報・休むを1つの走りとして溜め、案内を終えるとその走りを送る。送れなければ端末に残して次に案内を終えたときに一緒に送り、送れたら端末から消す", async () => {
-    onSameOrigin("GET", "/api/version", () => Response.json({ commit: "abc1234", started_at: "2026-11-16T00:00:00Z" }));
-    const sent = onUrl(
-      "*/api/rides",
-      inTurn(
-        new Response(null, { status: 503 }),
-        new Response(null, { status: 204 }),
-        new Response(null, { status: 204 }),
-      ),
-    );
-    vi.spyOn(console, "error").mockImplementation(() => {});
-    vi.spyOn(console, "warn").mockImplementation(() => {});
-    const geolocation = installGeolocation(HERE);
-    const first = renderHome();
-    jobs.respond([RIDDEN], LOOP_CONDITIONS);
-    await generate(first.user);
-    await waitFor(() => expect(candidateTabs()).toHaveLength(1));
-    const rideButton = () => screen.getByRole("button", { name: "走行モード" });
-
-    await first.user.click(rideButton());
-    geolocation.deliver({ ...RIDDEN_MIDDLE, altitude: 12.4, speed: 4, heading: 90, timestamp: Date.now() + 1_000 });
-    const { user } = first;
-    await user.click(rideButton());
-    await user.click(screen.getByRole("button", { name: "休む" }));
-    await user.click(screen.getByRole("button", { name: "続きから走る" }));
-    await user.click(rideButton());
-    await user.click(screen.getByRole("button", { name: "案内を終える" }));
-
-    await waitFor(() => expect(sent).toHaveLength(1));
-    const ride = (await gunzippedJson(sent[0])) as RideUploadBody;
-    expect(ride.points.map(([, lat, lon, ele, , speed, course]) => [lat, lon, ele, speed, course])).toEqual([
-      [Math.round(RIDDEN_MIDDLE.latitude * 1e6), Math.round(RIDDEN_MIDDLE.longitude * 1e6), 124, 400, 90],
-    ]);
-    expect(ride.events.map(([, kind]) => kind)).toEqual(
-      expect.arrayContaining(["start", "route", "rest", "resume", "end"]),
-    );
-    expect(Object.values(ride.routes)).toEqual([RIDDEN]);
-    expect(Object.keys(ride.conditions)).toEqual(Object.keys(ride.routes));
-    expect((ride.forecasts as { kind: string }[]).map(({ kind }) => kind)).toContain("gridPointToday");
-    expect(ride.app_version).toBe("abc1234");
-    expect(pendingRideUploads().length).toBe(1);
-
-    await user.click(rideButton());
-    await user.click(rideButton());
-    await user.click(screen.getByRole("button", { name: "案内を終える" }));
-    await waitFor(() => expect(pendingRideUploads().length).toBe(0));
-    expect(await gunzippedJson(sent[1])).toEqual(ride);
-  });
-
   it("走行モードのボタンで休むと、位置を受けるのをやめてルートと進み具合を残し、読み込み直しても休んだまま戻り、地図の下の「続きから走る」で休む前の進み具合から続ける。地図を指で動かすと「現在地へ戻る」を出し、ボタンで案内を終えると止める", async () => {
     const geolocation = installGeolocation(HERE);
     const first = renderHome();
@@ -228,92 +175,6 @@ describe("走行モードの操作", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(screen.queryByRole("navigation", { name: "パネル切り替え" })).toBeNull();
     expect(screen.getByRole("group", { name: "走りの数字" })).toBeInTheDocument();
-  });
-
-  it("走行中に鍵のボタンでロックすると、地図を指で動かして休んでいれば追い直し、地図の手ぶりの操作を止め、地図を押しても何も開かず閉じない。鍵を押して横に出る「ロックを外す」を押すと外れ、選ばずにいると時間で閉じ、案内を終えるとロックも外れる", async () => {
-    const geolocation = installGeolocation(HERE);
-    const { user } = renderHome();
-    jobs.respond([RIDDEN], LOOP_CONDITIONS);
-    await generate(user);
-    await waitFor(() => expect(candidateTabs()).toHaveLength(1));
-    const [drawnSegment] = mapOnScreen().sourceFeatures("route-segments");
-    const rideButton = () => screen.getByRole("button", { name: "走行モード" });
-    const lockButton = () => screen.getByRole("button", { name: "ロック" });
-    const backToHere = () => screen.queryByRole("button", { name: "現在地へ戻る" });
-    const unlockChoice = () => screen.queryByRole("button", { name: "ロックを外す" });
-    const segmentPopup = () => screen.queryByRole("group", { name: "区間の小窓の上の帯" });
-    // 走っていない間は鍵を出さない。
-    expect(screen.queryByRole("button", { name: "ロック" })).toBeNull();
-    await user.click(rideButton());
-    geolocation.deliver({ ...RIDDEN_MIDDLE, accuracy: 20 });
-    clickSegment(drawnSegment, HERE);
-    expect(segmentPopup()).toBeInTheDocument();
-    act(() => mapOnScreen().emit("movestart", { originalEvent: new MouseEvent("mousedown") }));
-    expect(backToHere()).toBeInTheDocument();
-
-    await user.click(lockButton());
-    expect(lockButton()).toHaveAttribute("aria-pressed", "true");
-    expect(rideButton()).toHaveAttribute("data-ride", "following");
-    expect(backToHere()).toBeNull();
-    // 指の操作が地図を動かさないかは実ブラウザの MapLibre でしか出ないので、e2e/ride-mode-touch.spec.ts が指を送って見る。
-    expect(mapOnScreen().stoppedGestures()).toEqual(
-      expect.arrayContaining(["dragPan", "touchZoomRotate", "doubleClickZoom"]),
-    );
-    // 開いていた小窓は、地図の外れを押しても閉じず、ほかの物を押しても開かない。
-    clickMap(ELSEWHERE);
-    expect(segmentPopup()).toBeInTheDocument();
-
-    // 鍵を押すと外す選びを出し、選ばずにいると時間で閉じてロックのまま。
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-    try {
-      fireEvent.click(lockButton());
-      expect(unlockChoice()).toBeInTheDocument();
-      act(() => vi.advanceTimersByTime(UNLOCK_CHOICE_MS));
-      expect(unlockChoice()).toBeNull();
-    } finally {
-      vi.useRealTimers();
-    }
-    expect(lockButton()).toHaveAttribute("aria-pressed", "true");
-
-    await user.click(lockButton());
-    await user.click(unlockChoice()!);
-    expect(lockButton()).toHaveAttribute("aria-pressed", "false");
-    expect(mapOnScreen().stoppedGestures()).toEqual([]);
-
-    // ロックして案内を終え、また始めるとロックしていない。
-    await user.click(lockButton());
-    await user.click(rideButton());
-    await user.click(screen.getByRole("button", { name: "案内を終える" }));
-    expect(mapOnScreen().stoppedGestures()).toEqual([]);
-    await user.click(rideButton());
-    expect(lockButton()).toHaveAttribute("aria-pressed", "false");
-  });
-
-  it("走行中にロックしていても、「表示」の「範囲と色」で地図の色を暗いにでき、基礎地図が暗くなる", async () => {
-    const geolocation = installGeolocation(HERE);
-    const { user } = renderHome();
-    jobs.respond([RIDDEN], LOOP_CONDITIONS);
-    await generate(user);
-    await waitFor(() => expect(candidateTabs()).toHaveLength(1));
-    const basemap = [{ id: "background", type: "background", paint: { "background-color": "#f8f4f0" } }];
-    // 基礎地図の色は、描き直して読み込んだ基礎地図の様式に当てる。
-    await user.click(screen.getByRole("button", { name: "メニュー" }));
-    await user.click(screen.getByRole("button", { name: "地図の表示を再描画" }));
-    act(() => {
-      mapOnScreen().loadStyle(basemap);
-      mapOnScreen().emit("style.load");
-    });
-    await user.click(screen.getByRole("button", { name: "走行モード" }));
-    geolocation.deliver({ ...RIDDEN_MIDDLE, accuracy: 20 });
-    await user.click(screen.getByRole("button", { name: "ロック" }));
-
-    await user.click(screen.getByRole("button", { name: "地図に出す情報" }));
-    await user.click(screen.getByRole("tab", { name: "範囲と色" }));
-    await user.click(screen.getByRole("radio", { name: "暗い" }));
-
-    expect(mapOnScreen().layerPaint("background")?.["background-color"]).toBe(
-      themedPaint({ theme: "dark", muted: false }, basemap[0].paint)["background-color"],
-    );
   });
 
   it("走行中も、地図を押しても地点を置かず、押した物は走っていない間と同じに扱い（線を押すとそのルートを選び、区間を押すと小窓を出す）、ピンは押せる物に数えない", async () => {

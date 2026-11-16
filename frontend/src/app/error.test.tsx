@@ -5,7 +5,8 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
 
-import { pendingRideUploads, startRideTrack, stopRideTrack } from "@/lib/rideTrack";
+import { startRideTrack, stopRideTrack } from "@/lib/rideTrack";
+import { pendingRideUploads } from "@/lib/rideTrackStore";
 
 import ErrorBoundary from "./error";
 

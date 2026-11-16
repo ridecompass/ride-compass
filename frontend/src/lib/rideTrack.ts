@@ -6,54 +6,38 @@
 // 点の数に比例して重くなるので、点は区切り（`POINTS_PER_CHUNK`）ごとの鍵へ足し、位置ごとに書き直す見出しは小さく保つ
 // （ルートの線・条件・予報は別の鍵に、変わったときだけ書く）。
 // 書けなかった（容量の上限等）ときは、送っていない古い走りを古い順に消して書き直し、消せる走りが無いのに書けなければ、案内を止めずに
-// その走りの記録だけをやめる（溜めた分は、案内を終えたときに送る）。読めない（壊れた）値は無いものとして
-// 扱い、投げない——走行モードを始める・止める・読み込み直して戻す中で読むので、投げると走行モードが動かなくなり、エラーの境目の
-// 全消しもこの記録は残すため抜けられない。
+// その走りの記録だけをやめる（溜めた分は、案内を終えたときに送る）。
 // 送るまで消さないので、送れない走りが溜まって端末の保存領域を埋めないよう、溜める走りの数に上限（`MAX_STORED_RIDES`）を持ち、
 // 上限に当たったら一番古い走りを捨てて新しい走りを記録する（送れないまま残る走りで、記録が止まらないように）。
 
 import { debugLog } from "@/lib/debugLog";
-import { readStored, removeStoredValue, writeStored } from "@/lib/safeStorage";
-import type { components } from "@/types/generated/api";
+import {
+  readChunk,
+  readExtras,
+  readMeta,
+  removeRideTrack,
+  rideIds,
+  writeChunk,
+  writeExtras,
+  writeIndex,
+  writeMakingRoom,
+  writeMeta,
+  type Forecast,
+  type StoredEvent,
+  type StoredPoint,
+  type TrackExtras,
+  type TrackMeta,
+} from "@/lib/rideTrackStore";
 import type { GenerationConditions, RouteCandidate } from "@/types/route";
 
-type Schemas = components["schemas"];
-/** 送る走り1回（受ける口の形）。 */
-export type RideUploadBody = Schemas["RideUpload"];
-type StoredPoint = RideUploadBody["points"][number];
-type StoredEvent = RideUploadBody["events"][number];
 type EventKind = StoredEvent[1];
-type Forecast = RideUploadBody["forecasts"][number];
 
-/** 走りの記録の鍵の頭。画面のエラーの境目が保存値を全部消すときも、これで始まる鍵は残す。 */
-export const RIDE_TRACK_KEY_PREFIX = "ridecompass:ride-track:";
-const INDEX_KEY = `${RIDE_TRACK_KEY_PREFIX}rides`;
-const LABEL = "走りの記録";
 /** 1つの鍵に入れる点の数。 */
 const POINTS_PER_CHUNK = 60;
 /** 端末に溜める走りの数（送っていないものと、記録中のもの）。これだけ溜まっていたら、一番古い走りを捨てて新しい走りを記録する。 */
 export const MAX_STORED_RIDES = 3;
 /** 1回の走りに溜める点の上限（1秒に1点で24時間）。越えた分は溜めない。 */
 export const MAX_POINTS_PER_RIDE = 24 * 3600;
-
-/** 走りの見出し。位置が届くたびに書き直すので、大きくなるものを持たない。 */
-type TrackMeta = {
-  id: string;
-  /** 走り始めの時刻（ISO）。 */
-  startedAt: string;
-  device: string;
-  /** 走りを記録した画面の版（分かる前は undefined、分からなければ null）。 */
-  appVersion?: string | null;
-  chunks: number;
-  points: number;
-  /** 出来事: [走り始めからの ms, 種類, 替えた先のルート（`route`のときだけ）]。 */
-  events: StoredEvent[];
-  /** 走り終えたか（終えたものだけを送る）。 */
-  ended: boolean;
-};
-
-/** 走りの間に変わったときだけ書くもの。 */
-type TrackExtras = Pick<RideUploadBody, "routes" | "conditions" | "forecasts">;
 
 /** 受けた位置1つ。端末が出さなかった値は null。 */
 export type TrackFix = {
@@ -80,78 +64,19 @@ let recording: Recording | null = null;
 // アプリが最後に受けた予報（種類ごと）。走りを始めたときに、その時点で見せていた予報として残す。
 const latestForecasts = new Map<string, Forecast>();
 
-const metaKey = (id: string) => `${RIDE_TRACK_KEY_PREFIX}${id}`;
-const extrasKey = (id: string) => `${RIDE_TRACK_KEY_PREFIX}${id}:extras`;
-const chunkKey = (id: string, index: number) => `${RIDE_TRACK_KEY_PREFIX}${id}:${index}`;
-
-// 読めない値は、無いものとして扱う（上の冒頭）。
-function readOrNull<T>(key: string): T | null {
-  try {
-    return readStored<T>(key, LABEL);
-  } catch (error) {
-    debugLog(
-      "ride:track",
-      "端末の走りの記録を読めなかったので、無いものとして扱った",
-      { error: String(error) },
-      "warn",
-    );
-    return null;
-  }
-}
-
-function rideIds(): string[] {
-  return readOrNull<string[]>(INDEX_KEY) ?? [];
-}
-
-function readMeta(id: string): TrackMeta | null {
-  return readOrNull<TrackMeta>(metaKey(id));
-}
-
-function readExtras(id: string): TrackExtras {
-  return readOrNull<TrackExtras>(extrasKey(id)) ?? { routes: {}, conditions: {}, forecasts: [] };
-}
-
-function readChunk(id: string, index: number): StoredPoint[] {
-  return readOrNull<StoredPoint[]>(chunkKey(id, index)) ?? [];
-}
-
-// 書けなかったら、送っていない古い走り（書く走り`keep`のほか）を古い順に消して書き直し、消せる走りが無ければその走りの記録をやめる
-// （案内は続ける）。書けたか返す。
+// 書けなかったら古い走りを消して書き直し、それでも書けなければその走りの記録をやめる（案内は続ける）。書けたか返す。
 function save(write: () => void, keep: string | undefined = recording?.meta.id): boolean {
-  for (;;) {
-    try {
-      write();
-      return true;
-    } catch (error) {
-      // 書く走りのほかに、送っていない古い走りがあれば、古い順に消して書き直す。
-      const oldest = rideIds().find((id) => id !== keep);
-      if (oldest !== undefined) {
-        debugLog("ride:track", "端末に書けなかったので、送っていない一番古い走りを消した", { id: oldest }, "warn");
-        try {
-          removeRideTrack(oldest);
-          continue;
-        } catch {
-          // 消すのにも書けなければ、下でこの走りの記録をやめる。
-        }
-      }
-      debugLog(
-        "ride:track",
-        "走りの記録を端末に書けなかったので、この走りの記録をやめた",
-        { error: String(error) },
-        "warn",
-      );
-      if (recording !== null) recording.full = true;
-      return false;
-    }
-  }
+  if (writeMakingRoom(write, keep)) return true;
+  if (recording !== null) recording.full = true;
+  return false;
 }
 
 function saveMeta(meta: TrackMeta): void {
-  save(() => writeStored(metaKey(meta.id), LABEL, meta), meta.id);
+  save(() => writeMeta(meta), meta.id);
 }
 
 function saveExtras(current: Recording): void {
-  save(() => writeStored(extrasKey(current.meta.id), LABEL, current.extras));
+  save(() => writeExtras(current.meta.id, current.extras));
 }
 
 function pushEvent(kind: EventKind, nowMs: number, routeKey: string | null = null): void {
@@ -216,7 +141,7 @@ export function startRideTrack(nowMs: number): void {
   };
   recording = current;
   // 一覧に載せられなかった走りは記録しない（一覧に無い鍵は送りも消しもしないので、残ると領域を食う）。
-  if (!save(() => writeStored(INDEX_KEY, LABEL, [...rideIds(), meta.id]))) {
+  if (!save(() => writeIndex([...rideIds(), meta.id]))) {
     recording = null;
     return;
   }
@@ -260,8 +185,8 @@ export function recordRideTrackFix(fix: TrackFix): void {
   ]);
   meta.points += 1;
   save(() => {
-    writeStored(chunkKey(meta.id, meta.chunks - 1), LABEL, chunk);
-    writeStored(metaKey(meta.id), LABEL, meta);
+    writeChunk(meta.id, meta.chunks - 1, chunk);
+    writeMeta(meta);
   });
   if (chunk.length >= POINTS_PER_CHUNK) current.chunk = [];
 }
@@ -308,38 +233,4 @@ export function noteRideTrackForecast(kind: string, value: Forecast, nowMs: numb
   if (recording === null || recording.full) return;
   recording.extras.forecasts.push(forecast);
   saveExtras(recording);
-}
-
-/** 走り終えて、まだ送っていない走り（古い順）。 */
-export function pendingRideUploads(): RideUploadBody[] {
-  return rideIds().flatMap((id) => {
-    const meta = readMeta(id);
-    if (meta === null || !meta.ended) return [];
-    const points: StoredPoint[] = [];
-    for (let index = 0; index < meta.chunks; index += 1) points.push(...readChunk(id, index));
-    return [
-      {
-        id,
-        started_at: meta.startedAt,
-        app_version: meta.appVersion ?? null,
-        device: meta.device,
-        points,
-        events: meta.events,
-        ...readExtras(id),
-      },
-    ];
-  });
-}
-
-/** 送れた走りを端末から消す。 */
-export function removeRideTrack(id: string): void {
-  const meta = readMeta(id);
-  for (let index = 0; index < (meta?.chunks ?? 0); index += 1) removeStoredValue(chunkKey(id, index));
-  removeStoredValue(metaKey(id));
-  removeStoredValue(extrasKey(id));
-  writeStored(
-    INDEX_KEY,
-    LABEL,
-    rideIds().filter((known) => known !== id),
-  );
 }
