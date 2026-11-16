@@ -66,7 +66,7 @@
 - **ルートの線**: backendは区間に代償の内訳（`penalty`）と、地図のレンズと同じ量（`lens_seconds_per_km`。レンズid→1kmあたりの
   代償の秒）を載せる。ルートの線のモードはこの値を地図と同じ段で塗る。長さ0の区間は値を持たず、「データなし」の破線になる。
 - **一覧が届く前**（ルートの線のモードが0件の間）と**数える軸が1つも無い間**は、ルートの線を値に依らず中立色の1色で引く
-  （`features/map/scene/applyToMap.ts`）。何も数えていないのに総合で塗ると、評価して1色になったように読める。
+  （`features/map/scene/sceneInputs.ts`）。何も数えていないのに総合で塗ると、評価して1色になったように読める。
 
 ## レンズの選び方
 
@@ -86,7 +86,7 @@
 
 **レンズ状態は1つ**（`features/map/view/useMapView.ts: lens`。localStorageキーは`ridecompass:route-style-mode`。選択肢に無い値は
 `UNSELECTED_LENS_ID`へ戻す——費用の軸の一覧が届いてから読み直す）。ルート前は全道路、ルート後はルート線をこの1つの値から
-導く——地図へはレンズと周りを出すか（`surroundingsShown`）を渡し、どのレンズの線を出すかは地図側（`scene/applyToMap.ts`）が
+導く——地図へはレンズと周りを出すか（`surroundingsShown`）を渡し、どのレンズの線を出すかは地図側（`scene/sceneInputs.ts`）が
 導く。道ごとの材料は塗っているレンズの分だけ取り（`useMapView`）、塗っていないレンズの材料は取らない。ルート後も全道路の塗りを
 残すかは「表示」の「範囲と色」の表示する範囲（既定はルート沿い。点の層も同じ切り替えに従う）。ルートの線はいつも出す。
 レンズは生成リクエストに載らず、切り替えてもルートを作り直さない。
@@ -102,7 +102,7 @@
 - `valueBands(paint)`: 塗る宣言から求める段の並び（低い段から、段ごとに鍵・下限・範囲の文字・色）。体感ラベルは件数が段の数と
   合うときだけ範囲の前に添える（`mapColorLegend.ts: bandLabelsForBandCount`）。**件数が段階数と合わないラベルは添えずに捨てる**
   ——ずらして添えると最上位の段階のラベルが実際より狭い範囲を指す嘘になる。
-  **ルート前の道の線（`scene/applyToMap.ts`）・ルート後のルート線（`routeStyleModes.ts`）・凡例（`features/map/view/lens.ts`）・候補の帯
+  **ルート前の道の線（`scene/sceneInputs.ts`）・ルート後のルート線（`routeStyleModes.ts`）・凡例（`features/map/view/lens.ts`）・候補の帯
   （`bandAt`）がすべてこの1つの関数を通る**ため、同じレンズの同じ段はどこでも同じ鍵・色になる。
 - `bandCondition(bands, index, value)`: 値（MapLibreの式）が段に入るときに真になる式（`>= 下限`・`< 次の下限`）。
   ルート後のルート線の色・ルート後の凡例の絞り込みはこれで段を引き、ルート前の道の線の色は下の`bandStep`で引く。どれも
@@ -233,7 +233,7 @@ viewportと走る条件（時刻・想定速度）をそれぞれデバウンス
 契約（依存配列に直接入る）。対象が0件の間はfetchせず結果も空へ戻す。
 
 戻り値はレンズのid→1レンズぶんの結果の`ReadonlyMap`で、対象外のレンズは含まない（読む側は`get`で引き、
-無ければ未取得として扱う。`scene/applyToMap.ts`・`useMapView.ts`）。1レンズぶんの結果:
+無ければ未取得として扱う。`scene/sceneInputs.ts`・`useMapView.ts`）。1レンズぶんの結果:
 
 - `materials`（feature_key→材料の名前→値、表示中のタイルを統合済み）——レンズの線のfeature-stateへそのまま移す。
   **鍵は文字列のまま保つ**——路面タイルの`feature_key`はズームによってway_idにもedge_idにもなり
@@ -284,7 +284,7 @@ features/map/view/useMapView.ts
   ▼
 <MapView look={{ …, lens, surroundingsShown, wayMaterials: 上のMapそのもの, wayConditions: 走る条件 }} .../>
   │   （レンズの一覧は MapView が地図の一覧の共有ストアから読む）
-  ├─ sceneInputsFrom(...)（scene/applyToMap.ts）がレンズごとの段（レンズのdisplayから）・式の木・材料・
+  ├─ sceneInputsFrom(...)（scene/sceneInputs.ts）がレンズごとの段（レンズのdisplayから）・式の木・材料・
   │   取得中フラグ・隠した段と走る条件をレンズの線の入力へ移す
   ├─ buildMapScene → レンズの線（scene/groups/axisLines.ts）が、路面タイルのソースへ
   │   レンズごとのfeature-state（キーはレンズのidと材料の名前から機械的に決まる）と、地図全体のglobal-stateと、
@@ -325,8 +325,8 @@ features/map/view/useMapView.ts
 | 追従するもの | 導出元 |
 |---|---|
 | `MapLayerId`・`MapLayerDescriptor`（地図UIからの除外を含む） | 地図の一覧の`layers`（`buildMapLayers`） |
-| MapLibreの線レイヤー・色式・濃さ・feature-state | `scene/applyToMap.ts: sceneInputsFrom`が`lenses`をレンズの線（`scene/groups/axisLines.ts`）の入力へ移す |
-| 表示ON/OFF（レンズ選択） | レンズと周りを出すか（`useMapView`の`surroundingsShown`）から`scene/applyToMap.ts`が導く |
+| MapLibreの線レイヤー・色式・濃さ・feature-state | `scene/sceneInputs.ts: sceneInputsFrom`が`lenses`をレンズの線（`scene/groups/axisLines.ts`）の入力へ移す |
+| 表示ON/OFF（レンズ選択） | レンズと周りを出すか（`useMapView`の`surroundingsShown`）から`scene/sceneInputs.ts`が導く |
 | 道ごとの材料のフェッチと走る条件の取捨 | `useWayMaterials` + 一覧の`map_lens.material_conditions` |
 | 道の値の式 | 一覧の`map_lens.formula`（`scene/wayValueFormula.ts`が地図の式へ置き換える） |
 | 塗る段・凡例・ルートの線のモード | `costLenses`（レンズの`display`）・`lensLegend`・`costRouteStyleModes` |

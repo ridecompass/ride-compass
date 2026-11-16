@@ -1,5 +1,5 @@
 import type { MapLayerDataSource, MapLayerDescriptor } from "@/features/map/layers/mapLayers";
-import { ROAD_TILE_SOURCE_LAYER } from "@/features/map/scene/applyToMap";
+import { ROAD_TILE_SOURCE_LAYER } from "@/features/map/scene/sceneInputs";
 import { POINT_TILE_SOURCES } from "@/features/map/scene/groups/points";
 import { AREA_SOURCE_ID } from "@/features/map/scene/groups/areaRasters";
 import { ROAD_LINE_SOURCE_ID } from "@/features/map/scene/groups/roadLines";

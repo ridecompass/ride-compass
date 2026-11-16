@@ -19,6 +19,7 @@
 | `features/map/scene/groups/roadLines.ts` | 道路の線（例: 路面の種類・トンネル・自転車レーン）を、路面タイルに焼いた層の値と`roadTracks.ts`の行から式へ組んだ配色と、道路タブを地図で見ている間に道路タブの段を道に塗る線（下記「道路タブの段」）と、詳細を見ている1本の強調。**線レイヤーで分類を運ぶのは色だけで、太さは情報を持たず、線種が運ぶのは値が無いこと（タグが無い道＝「データなし」の破線）だけ**——1本の線へ複数の分類を載せると、色の意味が他方のON/OFFで入れ替わる。同時表示は横へ平行に割り付けて分ける |
 | `lib/mapDisplay/pointLayers.ts` | 点で描く属性（`lib/mapDisplay/pointLayers.ts: POINT_LAYERS`）と、点の値が入る行（`lib/mapDisplay/pointLayers.ts: pointCategoryOf`）・大きさの軸と行の半径・点の名前（`lib/mapDisplay/pointLayers.ts: pointPlaceName`）・束ねた代表点の中の名前のある点（`lib/mapDisplay/pointLayers.ts: pointMembers`）。地図の点・地図の凡例・点のポップアップ・道のりのグラフの印が同じ宣言を読むので、同じ点が地図とグラフで同じ色・呼び名になる |
 | `features/map/scene/groups/points.ts` | 停止要因POI・補給休憩POI・事故・立ち寄り先の分類・配色・点の絵と枠・描き始める縮尺と積む順・束ねた点の数の文字と、同じタイルを分け合う条件・ルートの近くだけに絞る条件（下記「ルートの近くの点」） |
+| `features/map/scene/groups/pointBasemapPois.ts` | 点の層の行が出ている間に基礎地図から隠す店・施設の種類 |
 | `lib/mapDisplay/sidePoints.ts` | 近くの点の距離の上限（backendの`domain/map_display.py: SEGMENT_NEARBY_POINT_MAX_DISTANCE_M`を生成物から読む）・選んでいるルートの線と、点の位置をそれに当てた道のりと道からの距離（`lib/mapDisplay/sidePoints.ts: routeSide`） |
 | `features/map/layers/pointIcon.ts` | 絵記号で描く点の、地図へ登録する画素。形は見本（`components/PointIconSwatch/PointIconSwatch.tsx`）の宣言を読む。**単体テストは持たない**（`sdfIcon.ts`と同じく、テスト環境のcanvasは2D描画を実装せず、形は座標の宣言そのもの） |
 | `components/PointIconSwatch/PointIconSwatch.tsx` | 地図の点の見本。点の絵の形（行の色の角丸四角の枠に載せる白い線の絵記号と、枠を持たない標識の絵）の宣言と、
@@ -28,7 +29,8 @@
 | `features/map/scene/mapSceneGroups.ts` | 家族（面・道路の線・点・レンズの線・ルート・気象）を「いまの状態から、載っているべきレイヤーの並びを返す」1つの形で宣言する型と、それらを1つのsceneへ畳む`features/map/scene/mapSceneGroups.ts: composeScene`（同じソースを名乗る家族を1本へまとめる） |
 | `features/map/scene/sceneBuilders.ts` | sceneを組み立てる道具のうち、どの家族でも同じ形になるもの（ソース名・レイヤーidを作る唯一の口。型で縛り、手で文字列を組み立てられないようにする）・地物ごとの値を名前ごとのfeature-stateへ移す口（`scene/sceneBuilders.ts: featureStatesByName`。同じ入力からは同じ参照を返す）等 |
 | `features/map/scene/buildScene.ts` | 地図に載るもの全部を1つのsceneへ組み立てる唯一の口（`features/map/scene/buildScene.ts: buildMapScene`）。受け取るのは実行時にしか決まらない値だけで、見た目の値は各グループが持つ。家族を1つ足すのはここの並びへ1行足すこと |
-| `features/map/scene/applyToMap.ts` | 画面の状態を地図へ当てる唯一の入口（状態→各家族の入力`features/map/scene/applyToMap.ts: sceneInputsFrom`→`buildMapScene`→`features/map/scene/applyToMap.ts: applyMapScene`）。作り直しも同じ道を通り、空から当て直すだけが違う。**再描画で失われる表示状態（filter・feature-state・visibility）を持つ描画は、ここから辿れる位置へ置く**——辿れないものは`setStyle()`後に作り直されない。**入力の型はsceneの側で宣言する**（`MapView`のpropsから借りると、sceneと`MapView`が互いをimportし合う） |
+| `features/map/scene/applyToMap.ts` | 画面の状態を地図へ当てる唯一の入口（状態→各家族の入力`features/map/scene/sceneInputs.ts: sceneInputsFrom`→`buildMapScene`→`features/map/scene/applyToMap.ts: applyScene`）。作り直しも同じ道を通り、空から当て直すだけが違う。**再描画で失われる表示状態（filter・feature-state・visibility）を持つ描画は、ここから辿れる位置へ置く**——辿れないものは`setStyle()`後に作り直されない |
+| `features/map/scene/sceneInputs.ts` | 画面の状態（`features/map/scene/sceneInputs.ts: SceneLook`）から、各家族の入力を組み、どのレイヤーを出すか・家族ごとの隠した行を導く。**入力の型はsceneの側で宣言する**（`MapView`のpropsから借りると、sceneと`MapView`が互いをimportし合う） |
 | `features/map/maplibreWorker.ts` | MapLibreのWorkerの場所を、ビルド前に静的配信へ複製したもの（`scripts/copy-maplibre-worker.mjs`）へ向ける。地図を作る前に呼ばないと、Workerがバンドラの解決できないURLを読みに行き、スタイル処理とタイル取得が止まる |
 | `lib/mapDisplay/legendFilter.ts` | 凡例の行の型（`lib/mapDisplay/legendFilter.ts: LegendEntry`）と、凡例で隠した行を落とす絞り込み式の組み立て（ルート線のモードが使う） |
 | `lib/mapDisplay/landcoverClasses.ts` | 土地被覆のクラス（表示名・色・割合列・地図に塗るか）。backendのレジストリ由来の生成物（`landcover-classes.json`）を読むだけの薄い層で、凡例（表示専用の凡例`readOnlyLegends.ts`）と道のりのグラフの「緑と水」の帯が共有する。色は地図タイルの塗りと同じ値のため、凡例と地図がずれない。**凡例は塗るクラスだけ**（`lib/mapDisplay/landcoverClasses.ts: LANDCOVER_PAINTED_CLASSES`）——塗らないクラスを並べると色見本があるのに地図のどこにも無い表になる |
@@ -40,9 +42,12 @@
 | `features/map/scene/applyMapScene.ts` | 宣言を地図へ当てる唯一の実装（`features/map/scene/applyMapScene.ts: addImage`/`features/map/scene/applyMapScene.ts: addSource`/`features/map/scene/applyMapScene.ts: addLayer`/`features/map/scene/applyMapScene.ts: setPaintProperty`/`features/map/scene/applyMapScene.ts: setFilter`/`features/map/scene/applyMapScene.ts: setFeatureState`）。前回の宣言との差分だけを当て、段の順に差し込む |
 | `features/map/MapView/MapView.tsx`（静的レイヤーの箇所のみ） | 画面の状態をsceneの入力へ渡し、組んだ宣言を地図へ当てる配線。レイヤーの描画コードは持たない |
 | `features/map/MapView/useMapScene.ts` | 地図に載るもの全部の入力から scene を組む唯一の口と、そこから押せるレイヤーを引く |
-| `features/map/MapView/mapTaps.ts` | 地図を押す・なぞる操作。押した所で一番上の地物を、そのレイヤーが宣言した当たり判定の対象（`hitTargets`）のうち、地図を押したときの意味（`features/map/MapView/mapTaps.ts: MapTapMode`）が開ける対象で開く手続きへ振り分け、長押しで開ける物が無ければ押した所に近い道を backend に問う。地図の出来事（MapLibre の型が約束するものだけ）を判断の部品へ渡し、決まった操作を開く手続きへ渡す |
+| `features/map/MapView/mapTaps.ts` | 地図を押す・なぞる操作。押した所で一番上の地物を、そのレイヤーが宣言した当たり判定の対象（`hitTargets`）のうち、地図を押したときの意味（`features/map/MapView/mapTapHits.ts: MapTapMode`）が開ける対象で開く手続きへ振り分け、長押しで開ける物が無ければ押した所に近い道を backend に問う。地図の出来事（MapLibre の型が約束するものだけ）を判断の部品へ渡し、決まった操作を開く手続きへ渡す |
 | `features/map/MapView/mapGestures.ts` | 地図に触れた操作が、タップか長押しか地図を動かす操作かの判断（下記「地図を押したときと地図の小窓」の「押したとき」）。地図にもブラウザにも触れず、出来事を時刻と一緒に受けて、判断の時が来たら返す |
-| `features/map/MapView/useMapPopups.tsx` | 地図の小窓（点・道・区間）の状態と開閉と置き方。**小窓はいつも1つ**で、点と道は押して開き、区間は選んでいる区間から導く（押して開いた中身が無ければ区間の中身。区間の選びが変わると、その区間に属さない中身を閉じる）。MapLibreのPopupを1つ器にしてportalで描き、どの小窓も指す地点と間の幅だけで置く（決まりは下記「地図を押したときと地図の小窓」）。選択の持ち主が変わると押して開いた中身を閉じ、閉じる（×・何も無い所を押す）と区間の選びも外す |
+| `features/map/MapView/mapTapHits.ts` | 地図を押したときの意味ごとに開ける対象と、押した所に重なった地物から開く1つを選ぶ判断 |
+| `features/map/MapView/useMapPopups.ts` | 地図の小窓（点・道・区間）の状態と開閉。**小窓はいつも1つ**で、点と道は押して開き、区間は選んでいる区間から導く（押して開いた中身が無ければ区間の中身。区間の選びが変わると、その区間に属さない中身を閉じる）。選択の持ち主が変わると押して開いた中身を閉じ、閉じる（×・何も無い所を押す）と区間の選びも外す |
+| `features/map/MapView/useMapPopupMount.tsx` | 小窓を地図へ載せて置くこと。MapLibreのPopupを1つ器にしてportalで描き、どの小窓も指す地点と間の幅だけで置く（決まりは下記「地図を押したときと地図の小窓」）。上の帯をつまんでずらすことと、見えている所の内側へ押し込めること |
+| `features/map/MapView/MapPopupContent.tsx` | 小窓の中身（点・道・区間）と、Street View のカメラの向き |
 | `features/map/MapView/popupPlacement.ts` | 小窓を見えている所の内側へ押し込めたときの左上（画面のpx）。見えている所が無い地図（描く前・隠れている間）では動かさない |
 | `features/map/MapView/layerDataSources.ts` | レイヤーのデータ取得状態の算出元（`features/map/MapView/layerDataSources.ts: buildLayerDataSources`）。レイヤーカタログの情報源の名前を、取得を見るMapLibreのソースへ引く |
 | `features/map/baseMap.ts` | 基礎地図のスタイル・出典の表記・MapLibreの部品の日本語の文言で地図を作る（`features/map/baseMap.ts: createBaseMap`）。一般の地図（`MapView.tsx`）が使い、載せるものは場面で当てる。地図が今見ている範囲の読み取り（`features/map/baseMap.ts: viewportOf`）もここが持つ。俯瞰図（`features/map/MapOverview/MapOverview.tsx`）は`inset`で、操作を受けず出典の表記を持たない地図として作る（出典は同じ画面の本体の地図が出す）。基礎地図の文字は薄れさせずに出し入れする（MapLibre の`fadeDuration`を0にする）——薄れる間は地図全体を描き直し続けるので、ずらすたびに操作が重くなる |
@@ -98,7 +103,7 @@ JSONや落雷の地点のGeoJSONのようにアプリのfetch()で読む小さ�
 
 `MapView`が受け取る静的レイヤーの表示状態は`look.layerVisibility`
 （`MapLayerId`→boolean）1つで、**レイヤーを足してもこのpropは変わらない**。レンズの層の
-表示は選んでいるレンズ（`features/map/scene/applyToMap.ts: SceneLook.lens`）と周りを出すか（`features/map/scene/applyToMap.ts: SceneLook.surroundingsShown`）で決まり、レンズごとのpropを持たない
+表示は選んでいるレンズ（`features/map/scene/sceneInputs.ts: SceneLook.lens`）と周りを出すか（`features/map/scene/sceneInputs.ts: SceneLook.surroundingsShown`）で決まり、レンズごとのpropを持たない
 （[design-principles.md](../../architecture/design-principles.md)構造仕様3）。
 
 レイヤー専用のpropを増やす形だと、型宣言・分割代入・再描画対象の列挙・依存配列・可視状態の
@@ -245,7 +250,7 @@ DOM/MapLibreを一切知らない。`MapView.tsx`は画面の状態をsceneの�
 出どころから出すので、同じ種類を基礎地図（OpenStreetMap）と同時に出すとODbLの共有の義務がかかる（[データソース](../../architecture/data-sources.md)）。
 出している間だけ隠す形は、OpenStreetMap財団の指針（Horizontal Map Layers Guideline）が共有の要らない例に名指した形（基礎地図から
 同じ種類を除く）ではなく、同時に出さないので要らないと読んだ推測に立つ（法の専門家の判断ではない）。
-行ごとに隠す種類は点の層の宣言の隣（`groups/points.ts: BASEMAP_POIS_BY_ROW`。鍵は源泉の点の属性と行の鍵で型を縛る）が持ち、
+行ごとに隠す種類は点の層の宣言の隣（`groups/pointBasemapPois.ts: BASEMAP_POIS_BY_ROW`。鍵は源泉の点の属性と行の鍵で型を縛る）が持ち、
 `mapStyleOps.ts`は種類を知らない。値はOpenMapTilesのスキーマの値で、種類はスキーマが束ねた`class`（束ねる先の無い値は
 `subclass`と同じ値）で名指し、`class`が粗すぎる種類だけ`subclass`（元のOSMのタグの値）で名指す（コンビニは店全体の`class=shop`に入る）。
 銭湯・温泉はスキーマに値が無いので隠さない。病院・銀行・郵便局・学校と駅・バス・空港はどの行も名指さない。基礎地図の絞りが
@@ -390,7 +395,7 @@ MSMを配るOpen-MeteoのCC BY 4.0も、リンク付きのクレジット・ラ�
 **綴りを手で書かない。** 家族の外でidが要るとき（押されたレイヤーの判定・テスト）は、
 その家族が出すソース名と役割を`sceneLayerId`へ渡して作る。
 
-## 地図を押したときと地図の小窓（`MapView/mapTaps.ts`・`MapView/useMapPopups.tsx`）
+## 地図を押したときと地図の小窓（`MapView/mapTaps.ts`・`MapView/useMapPopups.ts`）
 
 地図を押したときの動きと地図の小窓は、この節の決まりだけで決まる。場合を足すときは、この節の決まりを書き換えてから足す（決まりの外に場合分けを重ねない）。
 
@@ -412,7 +417,7 @@ MSMを配るOpen-MeteoのCC BY 4.0も、リンク付きのクレジット・ラ�
 小窓は押した直後に閉じ、道が返ってから開く（問うている間に押し直したら、前の答えは捨てる）。押した道の強調は、返った道の線の形で描く——
 区間で塗る倍率では区間、引いた倍率では道1本が光り、小窓の値と同じ単位になる。地点のピンは押せる物に数えない——上を押すと、下にある物がそのまま開く。点は名前の有無に関わらず押すと点の小窓を開き、名前の無い点は種類の名前で並べる（小窓の上の帯から Street View を開ける）。束ねた代表点は、名前のある点を1か所ずつ、名前の無い残りを種類の名前と数（「3か所」）の1行で並べる。
 
-**小窓はいつも1つで、作りと置き方は同じ。** 最後に押した物の中身を出す。どの小窓も上の帯と塊で組み、右上に Street View のリンク・地図を寄せるアイコン・×（幅32px・高さ44px。間を詰めて上の帯のつまめる所を広く残す）を置く。Street View のリンクは、小窓の地点（点は点の位置、道と区間は押した所）の Street View を別のタブの Google マップで開き（`lib/streetViewUrl.ts: streetViewUrl`）、カメラは押した物の線の、地点に最も近い辺の向き（`lib/localPlane.ts: nearestEdge`）を進む向きへ向ける（`MapView/useMapPopups.tsx: lookingOf`）。区間はルートの一部なので、線の向きがそのまま進む向き。道は両向きに走れるので、辺の両向きのうち、押した道がルートと重なればルートの進む向きに、重ならず走行中なら今の進む向きに近い側（`lib/localPlane.ts: nearerSide`）にし、どちらでもなければ渡さない（Google が地点から決める）。点は道筋を持たないので渡さない。どの小窓も押した所を指し、向き（地点の上・下・左・右のどちらに出すか）は MapLibre の Popup が地図の枠に収まる側を選ぶ（`anchor`を指定しない）。押した物に小窓がかぶったら、利用者が上の帯をつまんでずらす（`components/MapPopup/MapPopupParts.tsx: PopupHeader`。どの小窓も同じ）。ずらした小窓は、閉じるまで指す地点からのずれを保ち、地図を動かすと一緒に動き、押した所を指さないので矢印を出さず、四隅を同じに丸める。ずらす前は、見えている所からはみ出す分を内側へ押し込める（`MapView/popupPlacement.ts: popupInsideVisible`）——Popup は向きを選ぶだけで中へはずらさないので、上にも下にも収まらない背の高い小窓や、端の近くで開いた小窓が画面の外へ出る。ずらした後は、上の帯の一部（`MapView/useMapPopups.tsx: DRAGGED_POPUP_KEEP_PX`）が見えている所に残る分だけ押し込め、左・右・下へは外へ出てよい——全体を押し込めると、地図の幅いっぱいの小窓は横へずらせない。地図が動き終えたときと中身の大きさが変わったときに置き直す。幅を中身に合わせること（`maxWidth`）と、地図の上に重ねた部品を避けること（`padding`）は Popup の標準の設定で済ませる。名前は折り返さず、小窓の幅を中身に合わせて広げ、地図の幅を超えるときだけ空白で折る。高さには上限があり、あふれたら中でスクロールする。×・何も無い所を押す・パネルを切り替えると閉じる。区間の小窓を出している間に点を押すと、区間の選びを残し、点の小窓の上の帯に「‹ 区間」を置いて戻れるようにする。点のほかの物を押すと、区間の選びを外す。
+**小窓はいつも1つで、作りと置き方は同じ。** 最後に押した物の中身を出す。どの小窓も上の帯と塊で組み、右上に Street View のリンク・地図を寄せるアイコン・×（幅32px・高さ44px。間を詰めて上の帯のつまめる所を広く残す）を置く。Street View のリンクは、小窓の地点（点は点の位置、道と区間は押した所）の Street View を別のタブの Google マップで開き（`lib/streetViewUrl.ts: streetViewUrl`）、カメラは押した物の線の、地点に最も近い辺の向き（`lib/localPlane.ts: nearestEdge`）を進む向きへ向ける（`MapView/MapPopupContent.tsx: lookingOf`）。区間はルートの一部なので、線の向きがそのまま進む向き。道は両向きに走れるので、辺の両向きのうち、押した道がルートと重なればルートの進む向きに、重ならず走行中なら今の進む向きに近い側（`lib/localPlane.ts: nearerSide`）にし、どちらでもなければ渡さない（Google が地点から決める）。点は道筋を持たないので渡さない。どの小窓も押した所を指し、向き（地点の上・下・左・右のどちらに出すか）は MapLibre の Popup が地図の枠に収まる側を選ぶ（`anchor`を指定しない）。押した物に小窓がかぶったら、利用者が上の帯をつまんでずらす（`components/MapPopup/MapPopupParts.tsx: PopupHeader`。どの小窓も同じ）。ずらした小窓は、閉じるまで指す地点からのずれを保ち、地図を動かすと一緒に動き、押した所を指さないので矢印を出さず、四隅を同じに丸める。ずらす前は、見えている所からはみ出す分を内側へ押し込める（`MapView/popupPlacement.ts: popupInsideVisible`）——Popup は向きを選ぶだけで中へはずらさないので、上にも下にも収まらない背の高い小窓や、端の近くで開いた小窓が画面の外へ出る。ずらした後は、上の帯の一部（`MapView/useMapPopupMount.tsx: DRAGGED_POPUP_KEEP_PX`）が見えている所に残る分だけ押し込め、左・右・下へは外へ出てよい——全体を押し込めると、地図の幅いっぱいの小窓は横へずらせない。地図が動き終えたときと中身の大きさが変わったときに置き直す。幅を中身に合わせること（`maxWidth`）と、地図の上に重ねた部品を避けること（`padding`）は Popup の標準の設定で済ませる。名前は折り返さず、小窓の幅を中身に合わせて広げ、地図の幅を超えるときだけ空白で折る。高さには上限があり、あふれたら中でスクロールする。×・何も無い所を押す・パネルを切り替えると閉じる。区間の小窓を出している間に点を押すと、区間の選びを残し、点の小窓の上の帯に「‹ 区間」を置いて戻れるようにする。点のほかの物を押すと、区間の選びを外す。
 
 **小窓の中身。**
 
@@ -428,7 +433,7 @@ MSMを配るOpen-MeteoのCC BY 4.0も、リンク付きのクレジット・ラ�
 
 道に付く層（負担で塗った周りの道と点の層）は、ルートを選んでいる間はルート沿いだけに出し、「表示」の「範囲と色」の表示する範囲で
 地図全体（端末に保存する。既定はルート沿い）を選んでいる間だけ地図全体に出す。ルートの区間が確定するまでは地図全体に出し、ルート沿いは選べない。判定は地図の見え方（`features/map/view/useMapView.ts`）の1か所が持ち、
-地図へは`features/map/scene/applyToMap.ts: SceneLook.surroundingsShown`で渡す。地形・天気・災害の層は道の外に広がるものを見るので絞らない。
+地図へは`features/map/scene/sceneInputs.ts: SceneLook.surroundingsShown`で渡す。地形・天気・災害の層は道の外に広がるものを見るので絞らない。
 
 点の層は、ルート沿いだけに出す間、「表示」で出している層（見出しのチェックと内訳の行の両方に従う）の点のうち、選んでいるルート全体の線（地点の並びを編集している間は、編集している線）から
 `lib/mapDisplay/sidePoints.ts: SIDE_POINT_MAX_DISTANCE_M`以内のものだけを描く。区間を選んでも、走行中でも、絞る線はルート全体のまま変えない
@@ -632,10 +637,10 @@ ONにしても何も塗られない。「データが無い地域」と区別で
 - **このアプリが重ねる線の色は、backendが明るい地用と暗い地用の両方を配り、画面は地の明るさで選ぶ**（設計原則 構造仕様1）。
   道の区分の色は画面の設定の`road_classes`の各区分が`color`と`color_on_dark`で持ち（暗い地用は`domain/display_palette.py`の
   分類色を明度の下限を上げて作る）、役割の色（レンズの段・ルートの縁取り等）は`palette.json`の`semantic`と`semantic_on_dark`で届く。
-  選ぶのは`features/map/mapCatalog.ts: mapConfigFromResponse`（道の区分）・`features/map/costLens.ts: costLenses`（レンズの段）と、`features/map/scene/applyToMap.ts: routeStateFrom`
+  選ぶのは`features/map/mapCatalog.ts: mapConfigFromResponse`（道の区分）・`features/map/costLens.ts: costLenses`（レンズの段）と、`features/map/scene/sceneInputs.ts: routeStateFrom`
   （`lib/mapTheme.ts: semanticColorsOn`。ルートの線）。点の色・候補地の印は白い縁取りで地から浮くので、明るい地用の1組のまま。
   道のりのグラフ等、地図の外の部品はパネルの上にあるので、明るい地用の色を使う。
-- **道路タブの段を塗っている間は、基礎地図を灰色に薄める**（`features/map/scene/applyToMap.ts: basemapLookOf`）。地の明るさで作った塗りの色の
+- **道路タブの段を塗っている間は、基礎地図を灰色に薄める**（`features/map/scene/sceneInputs.ts: basemapLookOf`）。地の明るさで作った塗りの色の
   彩度を落とし、明るさを地色（`basemap_ground`を同じ地の明るさで作った色）の明るさへ寄せ、絵の印をさらに透かす。規則の値は
   `domain/display_palette.py: BASEMAP_MUTED_SATURATION_SCALE`・`BASEMAP_MUTED_GROUND_PULL`・`BASEMAP_MUTED_ICON_OPACITY_SCALE`が持ち、
   `palette.json`の`basemap_muted`で届く。地色へ寄せるので、暗い地図と重ねても暗いまま薄まる。当てる道は暗い地図と同じ（`themeBasemap`が
@@ -899,7 +904,7 @@ backendの宣言で別の呼び方をすることになる）。
 対訳表に載らない値は生のまま出る（`roadFacts.ts: valueLabel`の`?? value`）。停止要因/補給POIの
 `kind`はOSMの生値ではなくbackendの分類器が付ける内部名なので、対訳が無ければ生値ではなく
 「不明」を出す（[design-principles.md](../../architecture/design-principles.md)UI仕様「内部名を画面に出さない」）。
-小窓の中身はどれもReactで描き（`useMapPopups.tsx`がPopupの器へportalで差し込む）、**値をテキストとして入れる**。
+小窓の中身はどれもReactで描き（`useMapPopupMount.tsx`がPopupの器へportalで差し込む）、**値をテキストとして入れる**。
 
 **`Popup.setHTML()`は使わない**。MapLibreの`setHTML()`は受け取った文字列をサニタイズせず
 そのまま`innerHTML`へ入れる（APIの文書に「信頼できる内容にだけ使うこと」と明記され、

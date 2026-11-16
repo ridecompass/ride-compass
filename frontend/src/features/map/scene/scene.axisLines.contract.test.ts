@@ -7,7 +7,8 @@ import { describe, expect, it } from "vitest";
 import { createRecordingMap } from "@/testing/mapTrace/recordingMap";
 import { rebuild, roadLayerId, shown } from "@/testing/sceneContract";
 import { ROAD_LINE_SOURCE_ID } from "@/features/map/scene/groups/roadLines";
-import { applyScene, sceneInputsFrom } from "@/features/map/scene/applyToMap";
+import { applyScene } from "@/features/map/scene/applyToMap";
+import { sceneInputsFrom } from "@/features/map/scene/sceneInputs";
 import { buildMapScene } from "@/features/map/scene/buildScene";
 
 describe("レンズの線", () => {

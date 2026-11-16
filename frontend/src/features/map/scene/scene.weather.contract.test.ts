@@ -10,7 +10,8 @@
 import { describe, expect, it } from "vitest";
 
 import { createRecordingMap, type RecordingMap } from "@/testing/mapTrace/recordingMap";
-import { applyScene, sceneInputsFrom } from "@/features/map/scene/applyToMap";
+import { applyScene } from "@/features/map/scene/applyToMap";
+import { sceneInputsFrom } from "@/features/map/scene/sceneInputs";
 import { sceneState } from "@/testing/sceneState";
 import { buildMapScene } from "@/features/map/scene/buildScene";
 import type { DynamicWeatherGroupState } from "@/features/map/layers/dynamicWeather";
