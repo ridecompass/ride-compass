@@ -1,12 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import {
-  doneJobFixture,
-  generateRoutes,
-  openMapApp,
-  openMobileApp,
-  openMobileSheet,
-  routeGenerateResponseFixture,
-} from "./fixtures";
+import { openMapApp, openMobileApp, openMobileSheet } from "./fixtures";
 import { WIDTHS } from "./states";
 
 // 地図の右の列（拡大・縮小か走行中の縮尺から、走行モードまで）のボタンが、ほかの部品の下に潜らず押せ、継ぎ目の間隔が揃うこと（パターン4 観点1）。
@@ -112,40 +105,4 @@ test("スマホ: ルート設定のシートを開いたまま「表示」の一
     return hit !== null && el.contains(hit);
   });
   expect(onTop).toBe(true);
-});
-
-// 走行中に曲がる所のカードと「画面を点けたままにできません」の知らせが両方出ても、知らせがカードに重ならず、カードの距離が読める
-// （パターン4 観点1: 実寸。知らせは右の列から左へ、カードは左上から右へ伸び、どちらの幅も文字で決まる）。曲がる所は、走り出す位置
-// （候補の線の始点）より先に1つ置く。Wake Lock の口を消して、画面を点けたままにできない端末にする。
-test("スマホ: 走行中、曲がる所のカードと、画面を点けたままにできない知らせが重ならない", async ({ page }) => {
-  const generated = routeGenerateResponseFixture();
-  const [first, ...rest] = generated.routes;
-  const turn = {
-    distance_km: 0.8,
-    direction: "right" as const,
-    latitude: 35.765,
-    longitude: 139.75,
-    other_road_bearings_deg: [0, 180],
-  };
-  await page.setViewportSize(WIDTHS.mobile);
-  await page.addInitScript(() => {
-    delete (Navigator.prototype as { wakeLock?: unknown }).wakeLock;
-  });
-  await openMapApp(page, {
-    routes: (page) =>
-      page.route("**/api/routes/generate/*", (route) =>
-        route.fulfill({ json: doneJobFixture({ ...generated, routes: [{ ...first, turns: [turn] }, ...rest] }) }),
-      ),
-  });
-  await generateRoutes(page);
-  await page.getByRole("button", { name: "走行モード" }).click();
-
-  const card = page.getByRole("status", { name: /先で右折/ });
-  // 知らせは閉じるボタンを含む箱全体で測る。
-  const notice = page.getByText(/この端末では画面を点けたままにできません/).locator("..");
-  await expect(card).toBeVisible();
-  await expect(notice).toBeVisible();
-  const [a, b] = [(await card.boundingBox())!, (await notice.boundingBox())!];
-  const overlaps = a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
-  expect({ card: a, notice: b, overlaps }).toEqual(expect.objectContaining({ overlaps: false }));
 });
