@@ -40,7 +40,7 @@ WHERE abs(lat) < {MAX_MERCATOR_LATITUDE}
 """
 
 
-async def ground_elevations_m(session: AsyncSession, lat_lon: list[tuple[float, float]]) -> list[float | None]:
+async def _ground_elevations_m(session: AsyncSession, lat_lon: list[tuple[float, float]]) -> list[float | None]:
     """地点（緯度, 経度）ごとの地形の標高（m。取り込んだ範囲の外・値の無い画素はNone）を、渡した順に。画素を引く関数
     （`infrastructure/dem_elevation.py: fill_elevations`）は asyncpg の接続を受けるので、セッションの下の接続で流す。"""
     if not lat_lon:
@@ -59,7 +59,7 @@ async def store_ride_track(session: AsyncSession, upload: RideUpload, *, server_
     書かない。取引の区切り（`commit`）は呼び出し元が持つ。"""
     if await session.get(RideTrackRow, upload.id) is not None:  # 送り直し。地形の標高を引き直さない
         return
-    ground = await ground_elevations_m(session, [(lat / 1e6, lon / 1e6) for _, lat, lon, *_ in upload.points])
+    ground = await _ground_elevations_m(session, [(lat / 1e6, lon / 1e6) for _, lat, lon, *_ in upload.points])
     dumped = upload.model_dump(mode="json", include={"routes", "conditions", "forecasts"})
     await session.execute(
         pg_insert(RideTrackRow)

@@ -161,9 +161,9 @@ class RouteSegmentDetail(StrictModel):
     edge_start: int
     edge_end: int
     # 区間の続く坂の斜度（%、走る向きの符号つき）。道の一番急な登りと下りから`steepest_signed_percent`が作り、ビンへは
-    # `merge_sustained_gradients`で畳む。値が無ければNone。
+    # `_merge_sustained_gradients`で畳む。値が無ければNone。
     sustained_gradient_percent: float | None = None
-    # 区間の平均勾配（%、走る向きの符号つき）。道の平均勾配（区間の標高の表）を、ビンへは`merge_average_gradients`で
+    # 区間の平均勾配（%、走る向きの符号つき）。道の平均勾配（区間の標高の表）を、ビンへは`_merge_average_gradients`で
     # 値のある道の距離で重みづけて畳む。値が無ければNone。
     average_gradient_percent: float | None = None
     estimated_arrival_time: str | None = None
@@ -393,7 +393,7 @@ def _summed_km(distances: Iterable[float]) -> float:
     return round(sum(distances), DISTANCE_KM_DECIMALS)
 
 
-def merge_road_classes(segments: list[EdgeSegment]) -> dict[str, list[RoadClassStretch]]:
+def _merge_road_classes(segments: list[EdgeSegment]) -> dict[str, list[RoadClassStretch]]:
     """区間の並びの道の区分を、レイヤごとにつなぐ。距離0の区間を落とし、隣どうしで値が同じ区間は1つにまとめる。"""
     merged: dict[str, list[RoadClassStretch]] = {}
     for layer in segments[0].road_classes:
@@ -421,7 +421,7 @@ def steepest_signed_percent(elevation: ElevationAttribute | None) -> float | Non
     return 0.0
 
 
-def merge_sustained_gradients(segments: Sequence[EdgeSegment]) -> float | None:
+def _merge_sustained_gradients(segments: Sequence[EdgeSegment]) -> float | None:
     """区間の続く坂の斜度をビンへ畳む。登りの区間があれば登りの最大、無ければ一番急な下り（最も負の値）。
     区間の値は「登りがあれば登り」で作ってあるので、区間の値だけから道全体で同じ決まりの値になる。値が無ければNone。"""
     values = [segment.sustained_gradient_percent for segment in segments if segment.sustained_gradient_percent is not None]
@@ -431,7 +431,7 @@ def merge_sustained_gradients(segments: Sequence[EdgeSegment]) -> float | None:
     return steepest_climb if steepest_climb > 0 else min(values)
 
 
-def merge_average_gradients(segments: Sequence[EdgeSegment]) -> float | None:
+def _merge_average_gradients(segments: Sequence[EdgeSegment]) -> float | None:
     """区間の平均勾配をビンへ畳む。値のある区間の平均勾配を、その区間の距離で重みづけた平均（-0にしない）。
     値のある区間が無ければNone。"""
     mean = length_weighted_mean(
@@ -452,10 +452,10 @@ BIN_FIELD_MERGERS: dict[str, Callable[[list[EdgeSegment]], object]] = {
     "distance_km": lambda segments: _summed_km(segment.distance_km for segment in segments),
     "edge_start": lambda segments: segments[0].edge_index,
     "edge_end": lambda segments: segments[-1].edge_index + 1,
-    "sustained_gradient_percent": merge_sustained_gradients,
-    "average_gradient_percent": merge_average_gradients,
+    "sustained_gradient_percent": _merge_sustained_gradients,
+    "average_gradient_percent": _merge_average_gradients,
     "estimated_arrival_time": lambda segments: segments[0].estimated_arrival_time,
-    "road_classes": merge_road_classes,
+    "road_classes": _merge_road_classes,
     "penalty": merge_penalty_breakdowns,
 }
 
@@ -520,7 +520,7 @@ def _between(positions: list[float], values: list[float], at: float) -> float:
     return values[i] + (values[i + 1] - values[i]) * t
 
 
-def edge_points(edge: LeanEdge, shape_at: list[float]) -> list[tuple[list[float], float]]:
+def _edge_points(edge: LeanEdge, shape_at: list[float]) -> list[tuple[list[float], float]]:
     """道1本の、走る向きに並べた線の点（RFC 7946 の位置）と、点ごとの道の長さに対する位置（始まりが0、終わりが1）。
     `shape_at`は道の形の点の位置（`_shape_positions`）。
 
@@ -562,7 +562,7 @@ def edge_points(edge: LeanEdge, shape_at: list[float]) -> list[tuple[list[float]
 
 def concat_edge_geometries(edges: list[LeanEdge]) -> tuple[dict, list[int], list[float]]:
     """経路上のEdge群を、ひとつながりのGeoJSON LineStringと、Edgeの境界点の位置と、点ごとのルートの始まりからの道のり（m）へ
-    変換する。線の点は`edge_points`（形の点と断面の点を合わせ、標高を持つ）。点ごとの道のりは、Edgeの始まりまでの長さの和に、
+    変換する。線の点は`_edge_points`（形の点と断面の点を合わせ、標高を持つ）。点ごとの道のりは、Edgeの始まりまでの長さの和に、
     Edgeの中の位置×Edgeの長さを足したもの。
 
     隣接するEdgeの境界点（前Edgeの終端＝次Edgeの始端）は重複させないため、**座標列だけ
@@ -579,7 +579,7 @@ def concat_edge_geometries(edges: list[LeanEdge]) -> tuple[dict, list[int], list
     start_m = 0.0
     for edge, shape_at in zip(edges, _shape_positions(edges)):
         offsets.append(max(len(coordinates) - 1, 0))
-        points = edge_points(edge, shape_at)
+        points = _edge_points(edge, shape_at)
         skip = _merge_shared_point(coordinates, [point for point, _ in points[:1]])
         for point, at in points[skip:]:
             coordinates.append(point)

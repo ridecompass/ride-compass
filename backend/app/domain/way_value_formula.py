@@ -162,10 +162,6 @@ def mul(left: FormulaNode, right: FormulaNode) -> Binary:
     return Binary(op="mul", left=left, right=right)
 
 
-def div(left: FormulaNode, right: FormulaNode) -> Binary:
-    return Binary(op="div", left=left, right=right)
-
-
 def case(when: FormulaNode, then: FormulaNode, otherwise: FormulaNode) -> Case:
     return Case(when=when, then=then, otherwise=otherwise)
 

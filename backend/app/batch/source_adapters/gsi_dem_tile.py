@@ -4,7 +4,7 @@
 分けずに済む。同じタイル座標に複数の製品があれば、その数だけ行ができる——どの製品の値を
 採るかは画素ごとの判断で、派生（`derive_elevation.py`）が持つ。
 
-取得（`fetch_dem_tiles`）は、取込のトランザクションの外で配信元から`app/batch/dem_tile_store.py`が指す置き場へタイルを写し、
+取得（`_fetch_dem_tiles`）は、取込のトランザクションの外で配信元から`app/batch/dem_tile_store.py`が指す置き場へタイルを写し、
 取込はそこにあるものを読む——トランザクションの中でHTTPを叩くと、関東全域（z15で約6万枚）では外部の一時的な失敗ひとつで
 全部やり直しになる。取得は**プロファイルが挙げた製品を、それぞれのズームで全タイル取る**。1つの製品が返したからといって
 他の製品を取りやめない。その製品に無いタイル（404）は製品ごとに区域外の印を置き、置くタイルの更新時刻は配信元の最終更新
@@ -124,7 +124,7 @@ def _product_tiles(product: str, zoom: int, profile: SourceProfile) -> ProductTi
     return ProductTiles(product=product, zoom=zoom, covering=len(covering), stored=tuple(stored), absent=absent)
 
 
-def gsi_dem_adapter_inputs(spec: SourceSpec, profile: SourceProfile) -> DemInputs:
+def _gsi_dem_adapter_inputs(spec: SourceSpec, profile: SourceProfile) -> DemInputs:
     root = dem_tile_store.TILE_ROOT
     products = tuple(_product_tiles(str(product), int(zoom), profile) for product, zoom in spec.grid.products.items())
     return DemInputs(files=tuple(dem_tile_store.tile_path(root, tiles.product, tiles.zoom, x, y)
@@ -199,12 +199,12 @@ async def _fetch_products(spec: SourceSpec, profile: SourceProfile) -> None:
                         " / ".join(f"{k} {v:,}" for k, v in counts.items()), time.perf_counter() - started)
 
 
-def fetch_dem_tiles(spec: SourceSpec, profile: SourceProfile) -> None:
+def _fetch_dem_tiles(spec: SourceSpec, profile: SourceProfile) -> None:
     asyncio.run(_fetch_products(spec, profile))
 
 
-@register_adapter("gsi_dem_tile", grid=DemGrid, required=(SourceFeatureRow.rast,), inputs=gsi_dem_adapter_inputs,
-                  fetcher=Fetcher(fetch_dem_tiles, lambda: (dem_tile_store.TILE_ROOT,)))
+@register_adapter("gsi_dem_tile", grid=DemGrid, required=(SourceFeatureRow.rast,), inputs=_gsi_dem_adapter_inputs,
+                  fetcher=Fetcher(_fetch_dem_tiles, lambda: (dem_tile_store.TILE_ROOT,)))
 async def read_gsi_dem_tiles(spec: SourceSpec, profile: SourceProfile, inputs: DemInputs,
                              origin: dict[str, Any]) -> AsyncIterator[SourceRecord]:
     root = dem_tile_store.TILE_ROOT
