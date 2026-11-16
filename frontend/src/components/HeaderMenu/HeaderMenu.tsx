@@ -11,7 +11,8 @@ import { textVariants } from "@/components/ui/Text/Text";
 import { Toggle } from "@/components/ui/Toggle/Toggle";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
 import { getQueryClient } from "@/lib/queryClient";
-import { formatRideMetrics, readRideMetrics } from "@/lib/rideMetrics";
+import { readRideMetrics } from "@/lib/rideMetrics";
+import { formatRideMetrics } from "@/lib/rideMetricsFormat";
 import { frontendVersionQuery } from "@/services/versionApi";
 
 interface HeaderMenuProps {

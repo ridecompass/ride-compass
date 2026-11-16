@@ -5,7 +5,8 @@
  */
 import { afterEach, expect, it, vi } from "vitest";
 
-import { pendingRideUploads, startRideTrack, stopRideTrack } from "@/lib/rideTrack";
+import { startRideTrack, stopRideTrack } from "@/lib/rideTrack";
+import { pendingRideUploads } from "@/lib/rideTrackStore";
 import { gunzippedJson, heldReplies, onUrl } from "@/testing/backendServer";
 
 import { sendRideTracks } from "./rideTrackApi";

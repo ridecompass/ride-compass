@@ -1,6 +1,6 @@
 import { backendApi } from "@/lib/apiClient";
 import { debugLog } from "@/lib/debugLog";
-import { pendingRideUploads, removeRideTrack } from "@/lib/rideTrack";
+import { pendingRideUploads, removeRideTrack } from "@/lib/rideTrackStore";
 
 // 送っている間にもう一度呼ばれたら（送りの最中にもう一度案内を終えた等）、今の送りが済んでから送り直す。
 let sending: Promise<void> | null = null;
