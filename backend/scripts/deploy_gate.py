@@ -57,6 +57,10 @@ NOT_DEPLOYED = (
     "backend/scripts/prod_marker_check.py",
     # 本番の予報（MSM）の配信の止まりの見張り。定時に、ランナーから本番の`/api/debug/stats`を読む（像の中では動かさない）。
     "backend/scripts/prod_msm_check.py",
+    # 本番の地点の検索の所要の見張り。定時に、ランナーから本番の`/api/place-search`を引く（像の中では動かさない）。
+    "backend/scripts/prod_place_search_check.py",
+    # 所要の上限を見る確かめが共有する、本番の公開の口の引き方（像の中では動かさない）。
+    "backend/scripts/_timed_get.py",
     "backend/app/domain/warning_display.py",
 )
 

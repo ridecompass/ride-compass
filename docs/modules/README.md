@@ -65,6 +65,7 @@
 | 残った作業ツリーとスクラッチの片付け（`scripts/worktree_sweep.py`） | [architecture/setup.md](../architecture/setup.md)「残った作業ツリーとスクラッチの片付け」 | 消すものと消さないもの・打つ所 |
 | 本番でルートを作る確かめ（`backend/scripts/prod_route_check.py`） | [architecture/tech-stack.md](../architecture/tech-stack.md)「本番でルートを作る確かめ」 | 何を見て落とすか・どこから回すか・待ちの上限の根拠 |
 | 本番の点のタイルの確かめ（`backend/scripts/prod_point_tile_check.py`） | [architecture/tech-stack.md](../architecture/tech-stack.md)「本番の点のタイルの確かめ」 | 何を見て落とすか・どこから回すか・上限の根拠 |
+| 本番の地点の検索の確かめ（`backend/scripts/prod_place_search_check.py`） | [architecture/tech-stack.md](../architecture/tech-stack.md)「本番の地点の検索の確かめ」 | 何を見て落とすか・どこから回すか・上限の根拠 |
 
 判断の目安は**「その制約を、コードだけを読んで知れるか」**。知れないならモジュール設計書の
 範囲外で、docs/architecture/側を見る。

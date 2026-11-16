@@ -11,9 +11,6 @@
 from __future__ import annotations
 
 import sys
-import time
-import urllib.error
-import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -22,6 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from app.domain.region import ROAD_TILE_MAX_ZOOM, ROAD_TILE_MIN_ZOOM, tile_position
 from app.infrastructure.point_tile_layers import POINT_TILE_LAYERS
 from app.infrastructure.vector_tile import encode_empty_tile
+from _timed_get import timed_get
 
 #: 点の密な所（緯度, 経度）。新宿駅の真ん中で、都心の駅前のためどの点の層も点が密に入る。
 DENSE_POINT = (35.6896, 139.7006)
@@ -29,8 +27,6 @@ DENSE_POINT = (35.6896, 139.7006)
 ZOOMS = range(ROAD_TILE_MIN_ZOOM, ROAD_TILE_MAX_ZOOM + 1)
 #: 1枚を取り終えるまでの上限（秒）。超えたら失敗にする。
 TILE_LIMIT_SECONDS = 10.0
-#: 1回の要求の上限（秒）。1枚の上限（`TILE_LIMIT_SECONDS`）を超えた遅さを、時間切れでなく所要として測れる長さにする。
-REQUEST_TIMEOUT_SECONDS = 30
 
 
 @dataclass(frozen=True)
@@ -76,17 +72,8 @@ def problems(tiles: list[FetchedTile]) -> list[str]:
 
 
 def fetch(origin: str, layer: str, z: int, x: int, y: int) -> FetchedTile:
-    started = time.monotonic()
-    url = f"{origin}/api/region/point-tiles/{layer}/{z}/{x}/{y}.pbf"
-    try:
-        with urllib.request.urlopen(url, timeout=REQUEST_TIMEOUT_SECONDS) as response:
-            body = response.read()
-            status: int | str = response.status
-    except urllib.error.HTTPError as error:
-        body, status = b"", error.code
-    except OSError as error:
-        body, status = b"", repr(error)
-    return FetchedTile(layer, z, x, y, time.monotonic() - started, status, body)
+    response = timed_get(f"{origin}/api/region/point-tiles/{layer}/{z}/{x}/{y}.pbf")
+    return FetchedTile(layer, z, x, y, response.seconds, response.status, response.body)
 
 
 def main() -> int:
