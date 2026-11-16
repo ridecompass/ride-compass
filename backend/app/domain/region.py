@@ -101,7 +101,7 @@ def bbox_covering_points(points: Sequence[LatLon], margin_km: float) -> Bounding
 
 
 
-def tile_lonlat(x: float, y: float, z: int) -> tuple[float, float]:
+def _tile_lonlat(x: float, y: float, z: int) -> tuple[float, float]:
     """小数のXYZタイル座標（`tile_position`の値）の経度・緯度`(lon, lat)`。`tile_position`の逆。"""
     n = 2**z
     return x / n * 360.0 - 180.0, math.degrees(math.atan(math.sinh(math.pi * (1 - 2 * y / n))))
@@ -109,8 +109,8 @@ def tile_lonlat(x: float, y: float, z: int) -> tuple[float, float]:
 
 def tile_bounds_lonlat(z: int, x: int, y: int) -> BoundingBox:
     """標準的なXYZスライピータイル（Web Mercator）のz/x/yから、そのタイルが覆う緯度経度の範囲を求める。"""
-    lon_left, lat_top = tile_lonlat(x, y, z)
-    lon_right, lat_bottom = tile_lonlat(x + 1, y + 1, z)
+    lon_left, lat_top = _tile_lonlat(x, y, z)
+    lon_right, lat_bottom = _tile_lonlat(x + 1, y + 1, z)
     return BoundingBox(
         min_latitude=lat_bottom,
         min_longitude=lon_left,

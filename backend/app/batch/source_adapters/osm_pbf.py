@@ -204,18 +204,18 @@ def _record_replication_timestamp(path: Path, origin: dict[str, Any]) -> None:
         origin["replication_timestamp"] = stamp
 
 
-def osm_way_inputs(spec: SourceSpec, profile: SourceProfile) -> AdapterInputs:
+def _osm_way_inputs(spec: SourceSpec, profile: SourceProfile) -> AdapterInputs:
     return AdapterInputs(files=(_pbf_path(spec.rows),))
 
 
-def fetch_osm_way(spec: SourceSpec, profile: SourceProfile) -> None:
+def _fetch_osm_way(spec: SourceSpec, profile: SourceProfile) -> None:
     """wayのソースが読む抽出ファイルを取る。頂点のソースは参照先のwayと同じファイルを読むので、取得を持たない。"""
     fetch_file(PBF_URL.format(name=spec.rows.file), DATA_DIR / spec.rows.file,
                read_timeout=_READ_TIMEOUT_SECONDS, logger=logger)
 
 
-@register_adapter("osm_pbf_way", rows=OsmWayRows, required=(SourceFeatureRow.payload,), inputs=osm_way_inputs,
-                  fetcher=Fetcher(fetch_osm_way, lambda: (DATA_DIR,)))
+@register_adapter("osm_pbf_way", rows=OsmWayRows, required=(SourceFeatureRow.payload,), inputs=_osm_way_inputs,
+                  fetcher=Fetcher(_fetch_osm_way, lambda: (DATA_DIR,)))
 async def read_osm_ways(spec: SourceSpec, profile: SourceProfile, inputs: AdapterInputs,
                         origin: dict[str, Any]) -> AsyncIterator[SourceRecord]:
     from app.batch.pbf_source import stream_ways

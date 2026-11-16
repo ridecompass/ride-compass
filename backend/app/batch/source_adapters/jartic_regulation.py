@@ -2,7 +2,7 @@
 
 **入力を上流から手元へ写すことと、外部の形を読んで1件ずつ返すことだけ**を行う。規制を区間へ当てるのは派生の段である。
 
-取得（`fetch_jartic_regulations`）は配布元から、取込は手元から、配布の zip（都道府県ごと。中に cp932 の CSV が1つ）を扱う。
+取得（`_fetch_jartic_regulations`）は配布元から、取込は手元から、配布の zip（都道府県ごと。中に cp932 の CSV が1つ）を扱う。
 都道府県は、住所の生データと同じく取込の範囲に掛かる都道府県（`source_adapters/abr.py: range_prefectures`。ABR の市区町村の
 代表点から決めるので、取得は ABR を取ったあとに流す）。都道府県とファイルの対応は配布元の一覧（`LISTING_URL`）が持ち、手で表を
 持たない。配布元は最新の版しか置かないので、取得は一覧が指す版を取り、都道府県ごとの版を置き場に記録する。
@@ -64,7 +64,7 @@ def archive_path(prefecture: str) -> Path:
     return DATA_DIR / f"{prefecture}.zip"
 
 
-def jartic_regulation_inputs(spec: SourceSpec, profile: SourceProfile) -> RangeInputs:
+def _jartic_regulation_inputs(spec: SourceSpec, profile: SourceProfile) -> RangeInputs:
     return range_inputs(profile, archive_path)
 
 
@@ -97,8 +97,8 @@ def _listed_links() -> dict[str, str]:
     return {target["id"].removeprefix("R"): target["link"] for target in entry["targetList"]}
 
 
-def fetch_jartic_regulations(spec: SourceSpec, profile: SourceProfile) -> None:
-    inputs = jartic_regulation_inputs(spec, profile)
+def _fetch_jartic_regulations(spec: SourceSpec, profile: SourceProfile) -> None:
+    inputs = _jartic_regulation_inputs(spec, profile)
     logger.info("範囲に掛かる都道府県: %s", ", ".join(inputs.prefectures))
     links = _listed_links()
     unlisted = [code for code in inputs.prefectures if code not in links]
@@ -109,8 +109,8 @@ def fetch_jartic_regulations(spec: SourceSpec, profile: SourceProfile) -> None:
     write_fetch_record(DATA_DIR, versions={code: links[code].split("/")[1] for code in inputs.prefectures})
 
 
-@register_adapter("jartic_regulation", rows=JarticRegulationRows, inputs=jartic_regulation_inputs,
-                  fetcher=Fetcher(fetch_jartic_regulations, lambda: (DATA_DIR,)))
+@register_adapter("jartic_regulation", rows=JarticRegulationRows, inputs=_jartic_regulation_inputs,
+                  fetcher=Fetcher(_fetch_jartic_regulations, lambda: (DATA_DIR,)))
 async def read_jartic_regulations(spec: SourceSpec, profile: SourceProfile, inputs: RangeInputs,
                                   origin: dict[str, Any]) -> AsyncIterator[SourceRecord]:
     rows: JarticRegulationRows = spec.rows

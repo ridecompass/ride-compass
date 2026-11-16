@@ -38,7 +38,7 @@ def tile_path(root: Path, product: str, zoom: int, x: int, y: int) -> Path:
     return root / _directory(product) / str(zoom) / str(x) / f"{y}{TILE_SUFFIX}"
 
 
-def absent_path(root: Path, product: str, zoom: int, x: int, y: int) -> Path:
+def _absent_path(root: Path, product: str, zoom: int, x: int, y: int) -> Path:
     return root / "_absent" / _directory(product) / str(zoom) / str(x) / f"{y}{ABSENT_SUFFIX}"
 
 
@@ -47,7 +47,7 @@ def is_stored(root: Path, product: str, zoom: int, x: int, y: int) -> bool:
 
 
 def is_absent(root: Path, product: str, zoom: int, x: int, y: int) -> bool:
-    return absent_path(root, product, zoom, x, y).exists()
+    return _absent_path(root, product, zoom, x, y).exists()
 
 
 def read_tile(root: Path, product: str, zoom: int, x: int, y: int) -> bytes:
@@ -73,6 +73,6 @@ def write_tile(root: Path, product: str, zoom: int, x: int, y: int, content: byt
 
 
 def mark_absent(root: Path, product: str, zoom: int, x: int, y: int) -> None:
-    path = absent_path(root, product, zoom, x, y)
+    path = _absent_path(root, product, zoom, x, y)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.touch()

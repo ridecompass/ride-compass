@@ -27,7 +27,7 @@ def get_session_factory() -> async_sessionmaker[AsyncSession]:
     return _session_factory
 
 
-# ルート生成と、全表走査を伴う管理APIの集計が使う。どちらも1本の接続を長く持つため、タイル配信とはプールを分ける。
+# ルート生成と、全表走査を伴う管理APIの集計と、走りの記録の書き込み（地形の標高を引く）が使う。どれも1本の接続を長く持つため、タイル配信とはプールを分ける。
 _route_generation_session_factory: async_sessionmaker[AsyncSession] | None = None
 
 

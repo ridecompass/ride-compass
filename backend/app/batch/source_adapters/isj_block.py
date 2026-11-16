@@ -67,7 +67,7 @@ def read_rows(path: Path) -> Generator[dict[str, str]]:
     return read_zip_csv(path, ENCODING)
 
 
-def isj_block_inputs(spec: SourceSpec, profile: SourceProfile) -> RangeInputs:
+def _isj_block_inputs(spec: SourceSpec, profile: SourceProfile) -> RangeInputs:
     return range_inputs(profile, archive_path)
 
 
@@ -77,7 +77,7 @@ def _page(url: str, form: dict[str, str]) -> str:
     return response.content.decode(_PAGE_ENCODING)
 
 
-def latest_version(prefecture: str) -> str:
+def _latest_version(prefecture: str) -> str:
     """都道府県`prefecture`の全域の街区レベルの配布のうち、最も新しい版（例: `24.0a`）。"""
     whole = re.search(rf'value="(\d+)" name="ac" id="_ac{prefecture}000"', _page(CITIES_URL, {"pc": prefecture}))
     if whole is None:
@@ -90,17 +90,17 @@ def latest_version(prefecture: str) -> str:
 
 
 def fetch_isj_blocks(spec: SourceSpec, profile: SourceProfile) -> None:
-    inputs = isj_block_inputs(spec, profile)
+    inputs = _isj_block_inputs(spec, profile)
     logger.info("範囲に掛かる都道府県: %s", ", ".join(inputs.prefectures))
     versions = {}
     for code, path in zip(inputs.prefectures, inputs.archives, strict=True):
-        versions[code] = latest_version(code)
+        versions[code] = _latest_version(code)
         fetch_file(DOWNLOAD_URL.format(version=versions[code], prefecture=code), path,
                    read_timeout=_READ_TIMEOUT_SECONDS, logger=logger)
     write_fetch_record(DATA_DIR, versions=versions)
 
 
-@register_adapter("isj_block", inputs=isj_block_inputs,
+@register_adapter("isj_block", inputs=_isj_block_inputs,
                   fetcher=Fetcher(fetch_isj_blocks, lambda: (DATA_DIR,)))
 async def read_isj_blocks(spec: SourceSpec, profile: SourceProfile, inputs: RangeInputs,
                           origin: dict[str, Any]) -> AsyncIterator[SourceRecord]:

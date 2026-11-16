@@ -17,7 +17,6 @@ from app.domain.region import MAX_MERCATOR_LATITUDE
 from app.domain.ride_track import RideUpload
 from app.infrastructure.dem_elevation import fill_elevations, products_in_priority
 from app.infrastructure.orm_base import Base
-from app.infrastructure.ride_gpx import ride_gpx
 
 
 class RideTrackRow(Base):
@@ -54,18 +53,18 @@ async def ground_elevations_m(session: AsyncSession, lat_lon: list[tuple[float, 
     return [elevations.get(i) for i in range(1, len(lat_lon) + 1)]
 
 
-async def store_ride_track(session: AsyncSession, upload: RideUpload, *, server_commit: str | None) -> None:
-    """走り1回を1行書く（GPX の先頭の情報に、受けたサーバーの版と、走った地点ごとの地形の標高を添える）。同じ id の行が既にあれば
-    書かない。取引の区切り（`commit`）は呼び出し元が持つ。"""
-    if await session.get(RideTrackRow, upload.id) is not None:  # 送り直し。地形の標高を引き直さない
-        return
-    ground = await ground_elevations_m(session, [(lat / 1e6, lon / 1e6) for _, lat, lon, *_ in upload.points])
+async def ride_track_exists(session: AsyncSession, ride_id: UUID) -> bool:
+    return await session.get(RideTrackRow, ride_id) is not None
+
+
+async def insert_ride_track(session: AsyncSession, upload: RideUpload, *, gpx: str) -> None:
+    """走り1回の行を書く。同じ id の行が既にあれば書かない。"""
     dumped = upload.model_dump(mode="json", include={"routes", "conditions", "forecasts"})
     await session.execute(
         pg_insert(RideTrackRow)
         .values(
             ride_id=upload.id,
-            gpx=ride_gpx(upload, server_commit=server_commit, ground_elevation_m=ground),
+            gpx=gpx,
             routes=dumped["routes"],
             context={"conditions": dumped["conditions"], "forecasts": dumped["forecasts"]},
         )

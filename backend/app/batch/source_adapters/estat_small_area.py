@@ -63,11 +63,11 @@ def boundary_path(prefecture: str) -> Path:
     return DATA_DIR / f"{prefecture}.zip"
 
 
-def estat_small_area_inputs(spec: SourceSpec, profile: SourceProfile) -> RangeInputs:
+def _estat_small_area_inputs(spec: SourceSpec, profile: SourceProfile) -> RangeInputs:
     return range_inputs(profile, boundary_path)
 
 
-def latest_survey() -> str:
+def _latest_survey() -> str:
     """配布元が置く国勢調査の小地域の境界のうち、最も新しい年の統計調査の識別子（例: `A002005212020`）。"""
     response = httpx.get(SURVEYS_URL, timeout=fetch_timeout(_SURVEYS_READ_TIMEOUT_SECONDS), follow_redirects=True)
     response.raise_for_status()
@@ -110,8 +110,8 @@ def _read_prefecture(path: Path, transformer: pyproj.Transformer) -> list[Source
 
 
 def fetch_estat_small_areas(spec: SourceSpec, profile: SourceProfile) -> None:
-    survey = latest_survey()
-    inputs = estat_small_area_inputs(spec, profile)
+    survey = _latest_survey()
+    inputs = _estat_small_area_inputs(spec, profile)
     logger.info("統計調査 %s の範囲に掛かる都道府県: %s", survey, ", ".join(inputs.prefectures))
     for code, path in zip(inputs.prefectures, inputs.archives, strict=True):
         fetch_file(DOWNLOAD_URL.format(survey=survey, prefecture=code), path,
@@ -119,7 +119,7 @@ def fetch_estat_small_areas(spec: SourceSpec, profile: SourceProfile) -> None:
     write_fetch_record(DATA_DIR, survey=survey)
 
 
-@register_adapter("estat_small_area", inputs=estat_small_area_inputs,
+@register_adapter("estat_small_area", inputs=_estat_small_area_inputs,
                   fetcher=Fetcher(fetch_estat_small_areas, lambda: (DATA_DIR,)))
 async def read_estat_small_areas(spec: SourceSpec, profile: SourceProfile, inputs: RangeInputs,
                                  origin: dict[str, Any]) -> AsyncIterator[SourceRecord]:

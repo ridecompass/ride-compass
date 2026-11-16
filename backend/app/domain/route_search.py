@@ -166,7 +166,7 @@ def retrace_penalized(costs: np.ndarray, travel_seconds: np.ndarray) -> np.ndarr
 PENALTY_PER_KM_QUANTUM = 0.1
 
 
-def penalty_key(per_km: np.ndarray) -> np.ndarray:
+def _penalty_key(per_km: np.ndarray) -> np.ndarray:
     """1kmあたりの代償の秒を、`PENALTY_PER_KM_QUANTUM`の刻みの数にしたもの（同点の比べに使う）。"""
     return np.rint(np.asarray(per_km, dtype=float) / PENALTY_PER_KM_QUANTUM).astype(np.int64)
 
@@ -217,7 +217,7 @@ def rank_by_pareto_layers(
     良い候補が後ろの番号に居るだけで検討から外れる。
     """
     penalty = penalty_seconds_per_km(cost, seconds, length_m)
-    keyed = penalty_key(penalty)
+    keyed = _penalty_key(penalty)
     layer = pareto_layer_index(
         distance_key, penalty,
         quantum_a=checked_tuning_value("search.pareto_distance_quantum_m", lambda v: v > 0, "0より大きい"), quantum_b=PENALTY_PER_KM_QUANTUM, max_items=max_items,
@@ -427,7 +427,7 @@ def candidate_order(candidate: EvaluatedRoute, *, loop: bool) -> float:
     if not loop:
         return candidate.cost_seconds
     per_km = candidate.penalty_per_km()
-    return float("inf") if per_km is None else float(penalty_key(np.asarray(per_km)))
+    return float("inf") if per_km is None else float(_penalty_key(np.asarray(per_km)))
 
 
 def keep_routes_with_baseline(

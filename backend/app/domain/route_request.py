@@ -43,7 +43,7 @@ MAX_ASSUMED_SPEED_KMH = 60.0
 AssumedSpeedKmh = Annotated[float, Field(ge=MIN_ASSUMED_SPEED_KMH, le=MAX_ASSUMED_SPEED_KMH)]
 
 
-def request_error(message: str) -> PydanticCustomError:
+def _request_error(message: str) -> PydanticCustomError:
     """要求の誤り。文は画面の結果欄へそのまま出るので、利用者が読める日本語で書く
     （`ValueError`は「Value error, 」の前置きが付いて返る）。"""
     return PydanticCustomError("route_request", message)
@@ -51,18 +51,18 @@ def request_error(message: str) -> PydanticCustomError:
 
 def check_waypoint_count(count: int) -> None:
     if count > MAX_WAYPOINTS:
-        raise request_error(f"経由地は{MAX_WAYPOINTS}地点までです。")
+        raise _request_error(f"経由地は{MAX_WAYPOINTS}地点までです。")
 
 
 def check_spliced_edge_count(count: int) -> None:
     if count > MAX_SPLICED_EDGES:
-        raise request_error("組み合わせたルートが長すぎるため評価できません。")
+        raise _request_error("組み合わせたルートが長すぎるため評価できません。")
 
 
 def check_points_within_reach(farthest_km: float) -> None:
     """`farthest_km`は出発地から最も遠い経由地・目的地までの距離。"""
     if farthest_km > MAX_ROUTE_DISTANCE_KM:
-        raise request_error(f"経由地・目的地は出発地から{MAX_ROUTE_DISTANCE_KM}km以内に置いてください。")
+        raise _request_error(f"経由地・目的地は出発地から{MAX_ROUTE_DISTANCE_KM}km以内に置いてください。")
 
 
 #: 距離も経由地も無く、終点が出発地と同じ要求（目的地を置かない・目的地が出発地へ寄る）を断る文。目的地が出発地へ寄るかは
@@ -72,7 +72,7 @@ NOTHING_TO_GENERATE = "距離か、経由地・目的地を指定してくださ
 
 def nothing_to_generate_error() -> PydanticCustomError:
     """出発地だけで、距離も経由地・目的地も無い要求の誤り。"""
-    return request_error(NOTHING_TO_GENERATE)
+    return _request_error(NOTHING_TO_GENERATE)
 
 
 @dataclass(frozen=True)

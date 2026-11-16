@@ -241,10 +241,10 @@ def slice_network(
     min_lon: float, min_lat: float, max_lon: float, max_lat: float,
 ) -> RoadSlice:
     """区間の形の外接矩形が範囲に重なる区間を取り出す。範囲の外へはみ出す区間も、端点ごと含む。"""
-    return slice_rows(network, classes, rows_in_bbox(network, min_lon, min_lat, max_lon, max_lat))
+    return slice_rows(network, classes, _rows_in_bbox(network, min_lon, min_lat, max_lon, max_lat))
 
 
-def rows_in_bbox(network: RoadNetwork, min_lon: float, min_lat: float, max_lon: float, max_lat: float,
+def _rows_in_bbox(network: RoadNetwork, min_lon: float, min_lat: float, max_lon: float, max_lat: float,
                  rows: np.ndarray | None = None) -> np.ndarray:
     """区間の形の外接矩形が範囲に重なる区間の行（昇順）。`rows`（昇順）を渡すと、その行の中だけを比べる。"""
     among = slice(None) if rows is None else rows
@@ -260,7 +260,7 @@ def rows_in_tile(network: RoadNetwork, z: int, x: int, y: int) -> np.ndarray:
     """タイル`z/x/y`（`ROAD_TILE_MIN_ZOOM`以上）に区間の形の外接矩形が重なる区間の行（昇順）。全区間は比べず、そのタイルを
     含む`ROAD_TILE_MIN_ZOOM`のタイルに重なる行（`RoadNetwork.road_tile_rows`）の中だけを比べる。"""
     bbox = tile_bounds_lonlat(z, x, y)
-    return rows_in_bbox(network, bbox.min_longitude, bbox.min_latitude, bbox.max_longitude, bbox.max_latitude,
+    return _rows_in_bbox(network, bbox.min_longitude, bbox.min_latitude, bbox.max_longitude, bbox.max_latitude,
                         network.road_tile_rows.rows_of(z, x, y))
 
 
