@@ -228,16 +228,16 @@ async def test_the_step_and_the_tolerance_decide_how_fine_a_rise_and_fall_is_cou
     assert (along[0], along == sorted(along), along[-1]) == (0.0, True, pytest.approx(row["distance_m"], rel=1e-6))
 
 
-#: 橋の端を置く画素。左（10m）の端で、右へ約10m（画素で2つ半）の所から上（20m）になる。水門の下の水面のように、構造物を
+#: 橋・トンネルの端を置く画素。左（10m）の端で、右へ約8m（画素で2つ）の所から上（20m）になる。水門の下の水面のように、構造物を
 #: 除いた低い所に橋の端が入った形。
 LOW_END = 126
 
 
-@pytest.mark.parametrize(("structure", "climb"), [({"bridge": "yes"}, 0.0), ({"tunnel": "yes"}, 10.0)],
-                         ids=["橋", "トンネル"])
-async def test_a_bridge_end_takes_the_highest_ground_around_it(elevation_conn, structure, climb):
-    """橋の端の頂点は、その点と周り（既定の半径）の一番高い値を採る。端を共有する道も同じ値を採るので、低い端から高い所へ
-    上る偽の坂ができない。トンネルの坑口には当てない（周りの山肌を拾わない）。"""
+@pytest.mark.parametrize("structure", [{"bridge": "yes"}, {"tunnel": "yes"}], ids=["橋", "トンネル"])
+async def test_a_structure_end_takes_the_ground_along_the_road_beyond_it(elevation_conn, structure):
+    """橋・トンネルの端の頂点は、構造物でない道に沿って50m以内の地面の標高で直り、続く道はその端から50m以内を直線に引き直す
+    ——構造物の区間の端も続く道も直した値を採り、低い端から高い所へ上る偽の段が、続く道の断面に残らない。構造物に接しない
+    道は、同じ所に段が残る。"""
     end = _pixel_center(40, LOW_END)
     await ingest_records("osm_way", [
         way_record(21, [_pixel_center(40, 100), end], [210, 211], structure),
@@ -245,16 +245,50 @@ async def test_a_bridge_end_takes_the_highest_ground_around_it(elevation_conn, s
         _way(23, ((60, LOW_END), (60, 200)))], conn=elevation_conn)
     async with elevation_conn.transaction():
         await derive_topology.derive(elevation_conn)
+        await derive_elevation_at_default_step(elevation_conn, profile_step_m=5.0)
+
+    rows = await elevation_conn.fetch(
+        "SELECT osm_way_id, elevation_profile_m FROM edge_elevation WHERE osm_way_id IN (21, 22, 23)")
+    assert {r["osm_way_id"]: (r["elevation_profile_m"][-1], min(r["elevation_profile_m"][1:])) for r in rows} == {
+        21: (20.0, 20.0), 22: (20.0, 20.0), 23: (20.0, 10.0)}
+
+
+async def test_a_structure_end_keeps_its_value_when_the_fix_would_steepen_a_road_it_touches(elevation_conn):
+    """直した値で、端に接する道の勾配が前より急になるなら直さない。端から約8mの頂点（10m）と、50mで打ち切った所（20m）の
+    重み付きの平均は約10.2mで、平らな8mの道に坂を作る。"""
+    near = (40, 122)
+    await ingest_records("osm_way", [
+        way_record(31, [_pixel_center(40, 100), _pixel_center(40, 120)], [310, 311], {"bridge": "yes"}),
+        way_record(32, [_pixel_center(40, 120), _pixel_center(*near)], [311, 321]),
+        way_record(33, [_pixel_center(*near), _pixel_center(40, 160)], [321, 331])], conn=elevation_conn)
+    async with elevation_conn.transaction():
+        await derive_topology.derive(elevation_conn)
+        await derive_elevation_at_default_step(elevation_conn)
+
+    row = await elevation_conn.fetchrow("SELECT start_elevation_m, end_elevation_m FROM edge_elevation WHERE osm_way_id = 32")
+    assert (row["start_elevation_m"], row["end_elevation_m"]) == (10.0, 10.0)
+
+
+async def test_an_inner_node_of_a_structure_is_interpolated_from_the_nodes_leading_outside(elevation_conn):
+    """途中の頂点で2本に分かれた橋の、その頂点（真下は 20m）は、外へつながる両端（10m・20m）の間を距離で直線に補う（15m）。"""
+    await ingest_records("osm_way", [
+        way_record(41, [_pixel_center(40, 100), _pixel_center(40, 130)], [410, 411], {"bridge": "yes"}),
+        way_record(42, [_pixel_center(40, 130), _pixel_center(40, 160)], [411, 421], {"bridge": "yes"}),
+        way_record(43, [_pixel_center(40, 90), _pixel_center(40, 100)], [430, 410]),
+        way_record(44, [_pixel_center(40, 160), _pixel_center(40, 170)], [421, 440])], conn=elevation_conn)
+    async with elevation_conn.transaction():
+        await derive_topology.derive(elevation_conn)
         await derive_elevation_at_default_step(elevation_conn)
 
     rows = await elevation_conn.fetch(
-        "SELECT osm_way_id, elevation_gain_m FROM edge_elevation WHERE osm_way_id IN (22, 23)")
-    assert {r["osm_way_id"]: r["elevation_gain_m"] for r in rows} == {22: climb, 23: 10.0}
+        "SELECT osm_way_id, start_elevation_m, end_elevation_m FROM edge_elevation WHERE osm_way_id IN (41, 42)")
+    assert {r["osm_way_id"]: (r["start_elevation_m"], r["end_elevation_m"]) for r in rows} == {
+        41: (10.0, 15.0), 42: (15.0, 20.0)}
 
 
 async def test_splitting_the_roads_into_chunks_does_not_change_any_value(elevation_conn):
     """区間を点の数で塊に分けて流しても、どの区間の値も変わらない。1点ごとに切ると区間がそれぞれ別の塊に入り、橋の端を
-    共有する橋と続く道も別の塊になる——どちらも周りの一番高い値を採る。"""
+    共有する橋と続く道も別の塊になる——どちらも直した端の値を採る。"""
     end = _pixel_center(40, LOW_END)
     await ingest_records("osm_way", [
         *(_way(way_id, pixels) for way_id, pixels, _ in CASES),

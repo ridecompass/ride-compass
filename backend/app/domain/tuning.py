@@ -145,10 +145,6 @@ REGULATION_MAX_ANGLE_ID = "traffic_regulation.max_angle_deg"
 ELEVATION_PROFILE_STEP_ID = "elevation.profile_step_m"
 #: 拾った標高の揺れを消す閾値のid。
 ELEVATION_PROFILE_TOLERANCE_ID = "elevation.profile_tolerance_m"
-#: 橋の端の標高を、端の点の周りで探す半径のid。
-ELEVATION_BRIDGE_END_RADIUS_ID = "elevation.bridge_end_radius_m"
-#: 橋の端の点の周りで標高を引く方位の数。北から等しい角度で並べる。
-BRIDGE_END_BEARINGS = 8
 
 
 TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
@@ -233,13 +229,6 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
         "標高の揺れを消す閾値", "m", TuningEffect.DERIVE_REBUILD,
         "拾った標高のうち、この高さ以下の上下を揺れとして消し、残した点の間で獲得標高と勾配を出す。高さがこの数倍に満たない"
         "短い段は、なだらかに残ることがある。広げるほど短い起伏も消え、狭めるほど標高データの誤差による上下も登りとして数える。",
-    ),
-    TuningParameter(
-        ELEVATION_BRIDGE_END_RADIUS_ID,
-        "橋の端の標高を探す半径", "m", TuningEffect.DERIVE_REBUILD,
-        f"橋の端の点の標高は、その点とこの半径の{BRIDGE_END_BEARINGS}方位の点のうち一番高い値を採る。標高データは橋などの構造物を除いた地表の値で、"
-        "橋の端が除かれた範囲に入ると水面や谷底を拾うため。広げるほど除かれた範囲の外へ届くが、谷の斜面の上の高い所も拾いやすい。"
-        "0にすると端の点の値だけを使う。",
     ),
     # --- 土地被覆 ---
     TuningParameter(
