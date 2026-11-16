@@ -6,7 +6,7 @@
 // 担当の実行は、状態か約束のどちらかを動かして終わる。どちらも動かさずに終わったらイレギュラーとしてユーザーに渡す。
 // 返すのは、ゲートが保つ値の全部（ステータス・欄「実行の status」・開き閉じ・種類・担当者・本文・問いのラベル・PR をレビュー可能にするか・出す問い・
 // 取り消す実行）。ゲートは今の値と違う所だけを書くので、同じ事実からは何度決めても同じになる。
-import { APPLIED, droppedOf, questionLabel, splitBody, unfilled, withButton } from "./questions.js";
+import { APPLIED, confirmConditions, confirmRows, droppedOf, questionLabel, splitBody, unfilled, withButton } from "./questions.js";
 
 // 読むのに要求の要る事実（src/facts.js: readFacts の later）は、決め方が使うときだけ読む。まだ読んでいなければ Need を投げ、src/gate.js: settle が
 // 読んでから決め直す（決め方の順番を、事実を読む側に写さない）。
@@ -73,6 +73,9 @@ function runStatus(f, status) {
 function alive(f, q, config) {
   if (q.form?.by !== "ゲート") return true;
   if (q.form.text && q.text !== q.form.text) return false; // 決まった文が変わった問いは、今の文で問い直す
+  // 確かめの問いは、本文の確かめる条件（文・ユーザーの言葉・見る所と要点）が変わったら、今の条件で問い直す（問いの読み方は空白を詰める）。
+  const rows = (list) => JSON.stringify(list.map((r) => [r.text, ...r.attrs.flat()].map((x) => x.replace(/\s+/g, " ").trim())));
+  if (q.kind === "確かめ" && rows(q.rows) !== rows(confirmRows(confirmConditions(f.body)))) return false;
   const dropped = droppedOf(q.text);
   const once = { ...(q.kind === "採否" && { adoptAsked: false }), ...(dropped && { droppedAsked: false }) };
   const s = status({ ...f, ...once, question: null, unread: false, runs: [], status: null }, config);
@@ -145,10 +148,11 @@ const held = (f, t) => (DISPATCH.includes(t.status) && waiting(f) ? { ...t, stat
 const unchecked = (c) => ({ status: c.stage && c.stage !== "COMPLETED" ? "検査" : "実装" });
 
 // 1階: 成果物の事実と関係性から、次に結果を出す者の行為を決める（上から最初に当たる行）。次に結果を出すのが、いま手放した担当と
-// 同じ種類のまま（状態が動かず）、その実行で約束も動いていなければ、担当は責務を果たさずに終えた。
+// 同じ種類のまま（状態が動かず）、その実行で約束も動いていなければ、担当は責務を果たさずに終えた。Claude の利用の上限・認証で止まった実行は
+// 担当の責務の外なので、そのままの種類に残し、見回りが止めを解いてから振り直す（src/patrol.js: stopReason）。
 const table = (f) => {
   const t = held(f, rows(f));
-  return f.ended && t.status === f.ended.kind && !need(f, "ranMoved") ? { status: "回答", ask: "イレギュラー" } : t;
+  return f.ended && t.status === f.ended.kind && !f.ended.quota && !need(f, "ranMoved") ? { status: "回答", ask: "イレギュラー" } : t;
 };
 function rows(f) {
   // 約束が全部果たされても閉じなかった（行き先の無い項目か言葉が残る）なら、行き先を書くのは実装担当。
@@ -168,7 +172,9 @@ function rows(f) {
   const deploy = need(f, "deploy");
   if (deploy && !deploy.passed) return { status: "検査" };
   // 見る所と要点に埋めていない印が残る条件は、ユーザーが本文を開かずに答えられないので問わず、埋めるのは実装担当。
+  // 開発機で持っている間（ラベル「開発機で作業中」）は、結果を issue に書いてラベルを外すまで問わない。
   if (f.remaining.every((c) => c.verify === "ユーザー")) {
+    if (f.dev) return { status: "実装" };
     const hollow = f.remaining.filter(unfilled);
     return hollow.length ? { status: "実装", hollow } : { status: "回答", ask: "確かめ" };
   }

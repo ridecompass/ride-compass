@@ -8,7 +8,9 @@ import { checkQuestion, norm } from "../../../../tools/flow-gate/src/questions.j
 function main() {
   const [number, file] = process.argv.slice(2);
   if (!isNumber(number) || !file) usage("node .claude/skills/ask/scripts/ask.mjs <issue の番号> <問いのファイル>");
-  const question = norm(readFileSync(file, "utf8")).trim();
+  // 書式（tools/flow-gate/question_forms/）を写して埋めたときの「## 問い」の行より前（「出す者:」の行）は形の決まりなので、出さない。
+  const text = norm(readFileSync(file, "utf8"));
+  const question = text.slice(Math.max(0, text.search(/^## 問い/m))).trim();
   const problems = checkQuestion(config.questionForms, question, "Claude");
   if (problems.length) {
     console.error(`問いが形に合わないので出さない: ${problems.join("・")}`);

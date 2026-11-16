@@ -1,6 +1,6 @@
 // 出来事1件の処理。出来事が指す issue をゲートが決め直し、見回りが振り出す（振り出したタスクは、実行の始まりの知らせで決め直す）。
-// 定時は、時刻が事実になるもの（着手可能日時・利用の上限の止めが解ける）の振り出しと、取りこぼした出来事の直し（ユーザーの番でない開いた
-// issue を1件ずつの出来事（recheck）として受け箱に入れ、ゲートに決め直させる。見回りは状態を決めない）。
+// 定時は、時刻が事実になるもの（着手可能日時・利用の上限の止めが解ける）の振り出しと、取りこぼした出来事の直し（開いた issue を1件ずつの
+// 出来事（recheck）として受け箱に入れ、ゲートに決め直させる。見回りは状態を決めない）。
 import { recentRuns, runOf } from "./facts.js";
 import { ignored, route, settle } from "./gate.js";
 import { dispatch, openTasks } from "./patrol.js";
@@ -10,9 +10,9 @@ export async function handle(gh, { inbox }, config, name, payload) {
     // 担当の実行の一覧と開いた issue の一覧は、定時の1回につき1回ずつ読み、振り出しと決め直しの両方に使う（持ち続けない）。
     const [runs, tasks] = await Promise.all([recentRuns(gh, config), openTasks(gh, config)]);
     await dispatch(gh, config, [], Object.keys(config.slots), runs, tasks);
-    // 前の回の決め直しがまだ受け箱に残っていれば、重ねて入れない。ユーザーの番のものは、ユーザーの出来事で決め直す。
+    // 前の回の決め直しがまだ受け箱に残っていれば、重ねて入れない。ユーザーの番のものも入れる（回答の出来事を取りこぼすと止まったままになる）。
     const queued = new Set((await inbox.pending("recheck")).map((p) => p.number));
-    for (const t of tasks) if (!t.assignees.includes(config.user) && !queued.has(t.number)) await inbox.push("recheck", { number: t.number });
+    for (const t of tasks) if (!queued.has(t.number)) await inbox.push("recheck", { number: t.number });
     return;
   }
   if (name === "recheck") {
