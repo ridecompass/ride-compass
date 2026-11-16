@@ -55,12 +55,26 @@ from app.infrastructure.source_models import (
 
 logger = logging.getLogger("ridecompass.derive_elevation")
 
+#: 1つの塊に入れる点の数の目安（点の表・番地の表・値の表がメモリに収まる大きさ）。全部の点を一度に一時の表へ載せると、
+#: 本番（約5,500万点）では3つの表が約14GBになってVM のメモリ（12GB）に収まらず、ディスクを読み書きして点の数の比より
+#: 2〜5倍遅くなった。本番の範囲で340万点までは、点の数に比例する速さで流れることを確かめた（tasks#1509）。
+CHUNK_POINTS = 3_000_000
+
+#: 区間の形と、断面の刻みの数・塊の番号。`$1`は刻みの上限（m）、`$2`は塊の点の数の目安。
+#:
+#: 刻みの数は「区間の長さ÷`$1`」の切り上げで、橋かトンネルの区間は1（両端だけ）。塊は、区間を始まりの点の geohash の順に
+#: 並べ、点の数（刻み＋1）を積んで`$2`ごとに切る——geohash の順は近い区間を続けて並べるので、塊が狭い範囲にまとまり、
+#: 塊の境をまたぐ標高のタイルが少ない。
 _SHAPES = f"""CREATE TEMP TABLE _shape ON COMMIT DROP AS
-SELECT e.osm_way_id, e.segment_index, e.geom, e.distance_m, e.from_node_id, e.to_node_id,
-       ({IS_TUNNEL_SQL} OR {IS_BRIDGE_SQL}) AS on_structure, {IS_BRIDGE_SQL} AS on_bridge
-FROM road_edges e JOIN {WAYS_SOURCE_SQL} w ON w.osm_way_id = e.osm_way_id
+SELECT s.*, ((sum(s.steps + 1) OVER (ORDER BY ST_GeoHash(ST_StartPoint(s.geom)), s.osm_way_id, s.segment_index) - 1)
+             / $2::bigint)::int AS chunk
+FROM (SELECT b.*, CASE WHEN b.on_structure THEN 1 ELSE greatest(1, ceil(b.distance_m / $1::float8))::int END AS steps
+      FROM (SELECT e.osm_way_id, e.segment_index, e.geom, e.distance_m, e.from_node_id, e.to_node_id,
+                   ({IS_TUNNEL_SQL} OR {IS_BRIDGE_SQL}) AS on_structure, {IS_BRIDGE_SQL} AS on_bridge
+            FROM road_edges e JOIN {WAYS_SOURCE_SQL} w ON w.osm_way_id = e.osm_way_id) b) s
 """
-#: 橋の区間の端の頂点とその位置。標高を周りの一番高い値にする頂点。
+#: 橋の区間の端の頂点とその位置。標高を周りの一番高い値にする頂点。端を共有する区間が別の塊に入っても同じ値を採るよう、
+#: 塊に分ける前の全部の区間から作る。
 _BRIDGE_ENDS = """CREATE TEMP TABLE _bridge_end ON COMMIT DROP AS
 SELECT DISTINCT ON (node_id) node_id, geom FROM (
   SELECT from_node_id AS node_id, ST_StartPoint(geom) AS geom FROM _shape WHERE on_bridge
@@ -71,23 +85,22 @@ ORDER BY node_id
 #: 断面の点を一度実体にしてからタイルへ結合する。関数から直に結合すると行数を見積もれず、
 #: プランナがタイル側を入れ子で読み直す計画を選ぶ。
 #:
-#: 刻みの数は「区間の長さ÷`$1`（刻みの上限）」の切り上げで、点は地表の道のりで等しく置く（`geography`の内挿）。
+#: 1つの塊（`$1`）の区間の点。点は地表の道のりで等しく置く（`geography`の内挿）。
 #: 経緯度のまま内挿すると、東西と南北で1度の長さが違うぶん、曲がった区間で点の間隔がずれる。両端は内挿せずに形の端を使い、
 #: 内挿の副問い合わせは`OFFSET 0`で外へ展開させない（展開されると経度と緯度の取り出しごとに内挿が走る）。
 _VERTICES = """
 CREATE TEMP TABLE _vertex ON COMMIT DROP AS
-SELECT row_number() OVER () AS vid, s.osm_way_id, s.segment_index, i AS ord, s.distance_m * i / k.steps AS along_m,
+SELECT row_number() OVER () AS vid, s.osm_way_id, s.segment_index, i AS ord, s.distance_m * i / s.steps AS along_m,
        ST_X(p.geom) AS lon, ST_Y(p.geom) AS lat, s.on_structure,
-       CASE WHEN i = 0 THEN s.from_node_id WHEN i = k.steps THEN s.to_node_id END AS node_id
+       CASE WHEN i = 0 THEN s.from_node_id WHEN i = s.steps THEN s.to_node_id END AS node_id
 FROM _shape s
-CROSS JOIN LATERAL (SELECT CASE WHEN s.on_structure THEN 1
-                                ELSE greatest(1, ceil(s.distance_m / $1::float8))::int END AS steps) k
-CROSS JOIN LATERAL generate_series(0, k.steps) AS i
+CROSS JOIN LATERAL generate_series(0, s.steps) AS i
 CROSS JOIN LATERAL (
     SELECT CASE WHEN i = 0 THEN ST_StartPoint(s.geom)
-                WHEN i = k.steps THEN ST_EndPoint(s.geom)
-                ELSE ST_LineInterpolatePoint(s.geom::geography, i::float8 / k.steps)::geometry END AS geom
+                WHEN i = s.steps THEN ST_EndPoint(s.geom)
+                ELSE ST_LineInterpolatePoint(s.geom::geography, i::float8 / s.steps)::geometry END AS geom
     OFFSET 0) p
+WHERE s.chunk = $1
 """
 
 #: 橋の端の周りの方位（`domain/tuning.py: BRIDGE_END_BEARINGS`）の点を、区間を持たない頂点（`osm_way_id`が空）として足す。`$1`は半径（m）。画素は区間の頂点と
@@ -171,45 +184,64 @@ async def _products_in_priority(conn: asyncpg.Connection) -> list[tuple[str, int
     return [(p, zooms[p]) for p in PRODUCT_PRIORITY if p in zooms]
 
 
-async def _derive_elevation(conn: asyncpg.Connection, profile_step_m: float, profile_tolerance_m: float,
-                            bridge_end_radius_m: float) -> None:
-    started = time.perf_counter()
-    products = await _products_in_priority(conn)
-    await conn.execute("TRUNCATE edge_elevation")
-    edges = await conn.fetchval("SELECT count(*) FROM road_edges")
-    await conn.execute(_SHAPES)
-    await conn.execute("ANALYZE _shape")
-    await conn.execute(_BRIDGE_ENDS)
-    await conn.execute("ANALYZE _bridge_end")
-    await conn.execute(_VERTICES, profile_step_m)
-    probes = affected_rows(await conn.execute(_BRIDGE_END_PROBES, bridge_end_radius_m))
-    logger.info("標高: 橋の端 %d点を、周り%.0fmの%d方位の点のうち一番高い値にする",
-                probes // BRIDGE_END_BEARINGS, bridge_end_radius_m, BRIDGE_END_BEARINGS)
+async def _derive_chunk(conn: asyncpg.Connection, chunk: int, products: list[tuple[str, int]],
+                        profile_tolerance_m: float, bridge_end_radius_m: float, filled: dict[str, int]) -> tuple[int, int, int]:
+    """1つの塊の区間の標高を出して書き、その塊の点の数・値の無い点の数・書いた区間の数を返す。`filled`へ製品ごとの値の付いた
+    点の数を足す。"""
+    for table in ("_vertex", "_vertex_elev"):
+        await conn.execute(f"DROP TABLE IF EXISTS {table}")
+    await conn.execute(_VERTICES, chunk)
+    await conn.execute(_BRIDGE_END_PROBES, bridge_end_radius_m)
     await conn.execute("ANALYZE _vertex")
     await conn.execute(_VERTEX_ELEVATION_TABLE)
-    vertices = await conn.fetchval("SELECT count(*) FROM _vertex")
-    remaining = vertices
+    vertices = remaining = await conn.fetchval("SELECT count(*) FROM _vertex")
     for product, zoom in products:
         await conn.execute("DROP TABLE IF EXISTS _vertex_tile")
         await conn.execute(_VERTEX_TILES, zoom)
         await conn.execute("CREATE INDEX ON _vertex_tile (tx, ty)")
         await conn.execute("ANALYZE _vertex_tile")
-        filled = affected_rows(await conn.execute(_FILL_FROM_PRODUCT, product))
-        remaining -= filled
-        logger.info("標高: %s（z%d）で頂点 %d点に値が付いた / 残り %d/%d点",
-                    product, zoom, filled, remaining, vertices)
+        count = affected_rows(await conn.execute(_FILL_FROM_PRODUCT, product))
+        filled[product] += count
+        remaining -= count
         await conn.execute("ANALYZE _vertex_elev")
     await conn.execute(_RAISE_BRIDGE_ENDS)
-    updated = affected_rows(await conn.execute(_INSERT_ELEVATION, profile_tolerance_m))
+    written = affected_rows(await conn.execute(_INSERT_ELEVATION, profile_tolerance_m))
+    return vertices, remaining, written
 
+
+async def _derive_elevation(conn: asyncpg.Connection, profile_step_m: float, profile_tolerance_m: float,
+                            bridge_end_radius_m: float, chunk_points: int) -> None:
+    started = time.perf_counter()
+    products = await _products_in_priority(conn)
+    await conn.execute("TRUNCATE edge_elevation")
+    edges = await conn.fetchval("SELECT count(*) FROM road_edges")
+    await conn.execute(_SHAPES, profile_step_m, chunk_points)
+    await conn.execute("CREATE INDEX ON _shape (chunk)")
+    await conn.execute("ANALYZE _shape")
+    await conn.execute(_BRIDGE_ENDS)
+    await conn.execute("ANALYZE _bridge_end")
+    chunks = [r["chunk"] for r in await conn.fetch("SELECT DISTINCT chunk FROM _shape ORDER BY chunk")]
+    logger.info("標高: 区間 %d本を%d個の塊に分けた。橋の端 %d点を、周り%.0fmの%d方位の点のうち一番高い値にする",
+                edges, len(chunks), await conn.fetchval("SELECT count(*) FROM _bridge_end"), bridge_end_radius_m,
+                BRIDGE_END_BEARINGS)
+    filled = dict.fromkeys((product for product, _ in products), 0)
+    vertices = missing = updated = 0
+    for done, chunk in enumerate(chunks, 1):
+        points, remaining, written = await _derive_chunk(conn, chunk, products, profile_tolerance_m,
+                                                         bridge_end_radius_m, filled)
+        vertices, missing, updated = vertices + points, missing + remaining, updated + written
+        logger.info("標高: 塊 %d/%d・点 %d（値の無い点 %d）・区間 %d本を書いた / %.0f秒",
+                    done, len(chunks), points, remaining, written, time.perf_counter() - started)
+    logger.info("標高: 製品ごとに値が付いた点 %s / 値の無い点 %d/%d点",
+                "・".join(f"{product} {count}" for product, count in filled.items()), missing, vertices)
     logger.info("標高: 計算した区間 %d/%d本に値が付いた / %.1f秒", updated, edges, time.perf_counter() - started)
 
 
 async def derive(conn: asyncpg.Connection, *, profile_step_m: float, profile_tolerance_m: float,
-                 bridge_end_radius_m: float) -> None:
+                 bridge_end_radius_m: float, chunk_points: int = CHUNK_POINTS) -> None:
     """`profile_step_m`は標高を拾う間隔の上限（m）、`profile_tolerance_m`は揺れを消す閾値（m）、`bridge_end_radius_m`は
-    橋の端の標高を探す半径（m）。"""
+    橋の端の標高を探す半径（m）、`chunk_points`は1つの塊に入れる点の数の目安。塊の分け方は値を変えない。"""
     require_tuning({ELEVATION_PROFILE_STEP_ID: profile_step_m}, profile_step_m > 0, "0より大きい")
     require_tuning({ELEVATION_PROFILE_TOLERANCE_ID: profile_tolerance_m}, profile_tolerance_m >= 0, "0以上")
     async with conn.transaction():
-        await _derive_elevation(conn, profile_step_m, profile_tolerance_m, bridge_end_radius_m)
+        await _derive_elevation(conn, profile_step_m, profile_tolerance_m, bridge_end_radius_m, chunk_points)
