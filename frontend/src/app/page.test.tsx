@@ -3,7 +3,8 @@
  * ページの結合テストは場面ごとにファイルを分け、ここはルートを作る流れを見る。地図を押したときに起きることは
  * `app/page.map.test.tsx`、選んだ区間を地図で見ることは`app/page.sectionOnMap.test.tsx`、地図に置く地点は`app/page.places.test.tsx`、区間の乗り換えの編集は`app/page.splice.test.tsx`、
  * 走行モードは`app/page.ride.test.tsx`（見えるもの）と`app/page.rideControl.test.tsx`（操作）、画面の枠
- * （地図の上の操作・ヘッダー・メニュー）は`app/page.layout.test.tsx`、スマホのシートは`app/page.mobile.test.tsx`が見る。
+ * （地図の上の操作）は`app/page.layout.test.tsx`、右上の方位磁針は`app/page.compass.test.tsx`、ヘッダーとメニューは`app/page.header.test.tsx`、
+ * ルートの近くの点は`app/page.routePoints.test.tsx`、スマホのシートは`app/page.mobile.test.tsx`が見る。
  *
  * 見ること（利用者の操作の流れで、ある機能の変化が別の機能の振る舞いを変える受け渡し）: 「ルート生成」が地図の塗りを添えて
  * 送ること、結果が出たら閉じていた「ルート結果」を開くこと、候補が「ルート結果」と地図の両方へ出て、選んだ候補が地図でも

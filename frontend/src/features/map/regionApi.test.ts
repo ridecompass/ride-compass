@@ -82,7 +82,7 @@ describe("押した道の内訳（fetchAxisInspector）", () => {
 describe("地図が塗るレンズの道ごとの材料（fetchLensMaterials）", () => {
   it("レンズとタイルをパスへ、走る条件を問い合わせへ載せ、道ごとの材料を返す", async () => {
     const sent = onBackend("GET", "/api/region/lens/:lensId/:z/:x/:y", () =>
-      Response.json({ "101": { lens_along: 3.5 }, "102": { lens_against: 1 } }),
+      Response.json({ materials: { "101": { lens_along: 3.5 } }, wind_previous_run_from: null }),
     );
 
     const result = await api.fetchLensMaterials("ascent", 15, 29100, 12900, {
@@ -90,7 +90,7 @@ describe("地図が塗るレンズの道ごとの材料（fetchLensMaterials）"
       speed_kmh: 25,
     });
 
-    expect(result).toEqual({ "101": { lens_along: 3.5 }, "102": { lens_against: 1 } });
+    expect(result).toEqual({ materials: { "101": { lens_along: 3.5 } }, wind_previous_run_from: null });
     expect(sent.map(({ method, path, query }) => ({ method, path, query }))).toEqual([
       {
         method: "GET",

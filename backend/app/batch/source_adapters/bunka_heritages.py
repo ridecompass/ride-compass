@@ -64,7 +64,7 @@ def heritages_path() -> Path:
     return DATA_DIR / "architecture.jsonl"
 
 
-def bunka_heritages_inputs(spec: SourceSpec, profile: SourceProfile) -> AdapterInputs:
+def _bunka_heritages_inputs(spec: SourceSpec, profile: SourceProfile) -> AdapterInputs:
     return AdapterInputs(files=(heritages_path(),))
 
 
@@ -93,7 +93,7 @@ def fetch_bunka_heritages(spec: SourceSpec, profile: SourceProfile) -> None:
     write_fetch_record(DATA_DIR)
 
 
-@register_adapter("bunka_heritages", rows=BunkaHeritageRows, inputs=bunka_heritages_inputs,
+@register_adapter("bunka_heritages", rows=BunkaHeritageRows, inputs=_bunka_heritages_inputs,
                   fetcher=Fetcher(fetch_bunka_heritages, lambda: (DATA_DIR,)))
 async def read_bunka_heritages(spec: SourceSpec, profile: SourceProfile, inputs: AdapterInputs,
                                origin: dict[str, Any]) -> AsyncIterator[SourceRecord]:

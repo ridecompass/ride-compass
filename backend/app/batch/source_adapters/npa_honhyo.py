@@ -3,7 +3,7 @@
 **入力を上流から手元へ写すことと、外部の形を読んで1件ずつ返すことだけ**を行う。ステージング・差し替え・run記録は
 `ingest.py`の共通経路が持つ。
 
-取得（`fetch_honhyo`）は配布元が一覧に載せる全部の年の本票CSVを手元へ写し、取った年を置き場に記録する。
+取得（`_fetch_honhyo`）は配布元が一覧に載せる全部の年の本票CSVを手元へ写し、取った年を置き場に記録する。
 取込は記録の年の本票CSVを手元から読む。
 
 列は捨てずに全部`attrs`へ入れる。何が後で要るかは取込の時点では決められない——
@@ -95,7 +95,7 @@ def honhyo_path(year: int) -> Path:
     return DATA_DIR / f"honhyo_{year}.csv"
 
 
-def listed_years() -> list[int]:
+def _listed_years() -> list[int]:
     """配布元の一覧のページが載せる年（古い順）。"""
     response = httpx.get(LISTING_URL, timeout=fetch_timeout(_LISTING_READ_TIMEOUT_SECONDS), follow_redirects=True)
     response.raise_for_status()
@@ -105,20 +105,20 @@ def listed_years() -> list[int]:
     return years
 
 
-def npa_honhyo_inputs(spec: SourceSpec, profile: SourceProfile) -> AdapterInputs:
+def _npa_honhyo_inputs(spec: SourceSpec, profile: SourceProfile) -> AdapterInputs:
     return AdapterInputs(files=tuple(honhyo_path(year) for year in read_fetch_record(DATA_DIR)["years"]))
 
 
-def fetch_honhyo(spec: SourceSpec, profile: SourceProfile) -> None:
-    years = listed_years()
+def _fetch_honhyo(spec: SourceSpec, profile: SourceProfile) -> None:
+    years = _listed_years()
     for year in years:
         fetch_file(HONHYO_URL_TEMPLATE.format(year=year), honhyo_path(year),
                    read_timeout=_READ_TIMEOUT_SECONDS, logger=logger)
     write_fetch_record(DATA_DIR, years=years)
 
 
-@register_adapter("npa_honhyo", inputs=npa_honhyo_inputs,
-                  fetcher=Fetcher(fetch_honhyo, lambda: (DATA_DIR,)))
+@register_adapter("npa_honhyo", inputs=_npa_honhyo_inputs,
+                  fetcher=Fetcher(_fetch_honhyo, lambda: (DATA_DIR,)))
 async def read_npa_honhyo(spec: SourceSpec, profile: SourceProfile, inputs: AdapterInputs,
                           origin: dict[str, Any]) -> AsyncIterator[SourceRecord]:
     target = profile.target

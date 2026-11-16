@@ -19,7 +19,8 @@ import {
   overviewWeather,
   overviewZoom,
 } from "@/features/map/MapOverview/overview";
-import { applyScene, weatherStateFrom, type SceneLook } from "@/features/map/scene/applyToMap";
+import { applyScene } from "@/features/map/scene/applyToMap";
+import { weatherStateFrom, type SceneLook } from "@/features/map/scene/sceneInputs";
 import { buildOverviewScene } from "@/features/map/scene/buildScene";
 import { viewportCenter, type MapViewport } from "@/features/map/view/mapLook";
 import { useStoredState } from "@/hooks/useStoredState";

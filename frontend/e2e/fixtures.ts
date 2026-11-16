@@ -63,9 +63,6 @@ export async function installApiMocks(page: Page): Promise<void> {
   await page.route(`${API_BASE}/api/weather/warnings*`, (route) => route.fulfill({ json: noWarnings }));
   await page.route(`${API_BASE}/api/weather/wbgt*`, (route) => route.fulfill({ json: noWbgt }));
   await page.route(`${API_BASE}/api/weather/flood-forecast*`, (route) => route.fulfill({ json: noFlood }));
-  // 出発時刻の風で塗るレンズが読む、予報の状態。最新の予報がどの時刻まであるとして答える（前に出た予報の但し書きを出さない）。
-  const msmStatus: components["schemas"]["MsmForecastStatus"] = { latest_run_end: "2099-01-01T00:00" };
-  await page.route(`${API_BASE}/api/weather/msm-status`, (route) => route.fulfill({ json: msmStatus }));
   // ルートを通る時刻の警報級の見込みも、通る区域が無い成功応答にする（選んだ候補があると取りに行く）。
   const noRouteTimeline: components["schemas"]["RouteWarningTimeline"] = { areas: [] };
   await page.route(`${API_BASE}/api/weather/route-warning-timeline`, (route) =>
@@ -86,7 +83,9 @@ export async function installApiMocks(page: Page): Promise<void> {
   await page.route(`${API_BASE}/api/cost-axes*`, (route) => route.fulfill({ json: TWO_COST_AXES }));
   await page.route(`${API_BASE}/api/cost-axes/lens-equivalents*`, (route) => route.fulfill({ json: {} }));
   // レンズで塗る道ごとの材料。材料を持つ道が無い形で答える。
-  await page.route(`${API_BASE}/api/region/lens/**`, (route) => route.fulfill({ json: {} }));
+  await page.route(`${API_BASE}/api/region/lens/**`, (route) =>
+    route.fulfill({ json: { materials: {}, wind_previous_run_from: null } }),
+  );
 
   // 地点の詳しくが、置いた位置の辺りを引く。辺り無し（境界の外）で答える。
   await page.route(`${API_BASE}/api/place-area*`, (route) => route.fulfill({ json: { area: null } }));

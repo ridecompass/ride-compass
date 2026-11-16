@@ -3,10 +3,11 @@ import { AXIS_OFF, axisSettingOf, countsCosts, DISABLED_LABEL, STANDARD_COST_FAC
 import type { CostPreference } from "@/types/route";
 import routeGenerateConfig from "@/types/generated/route-generate-config.json";
 
-/** つまみと倍率の段（値と名前。backendの宣言）。 */
+/** つまみと倍率の段（値と名前と色。塗らない段は色が無い。backendの宣言）。 */
 export interface CostLevel {
   value: number;
   label: string;
+  color: string | null;
 }
 
 /** 全体のつまみの段。 */

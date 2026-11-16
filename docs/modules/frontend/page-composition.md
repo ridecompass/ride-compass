@@ -26,7 +26,7 @@
 | types | `types/route.ts`（`types/route.ts: RouteCandidate`等の生成APIレスポンス型）・`types/generated/api.d.ts`（backendのOpenAPIから生成した口の型。下記の呼び出し口が型を推論する元）・`types/fetchFailure.ts`（常設ヘッダーの「未取得」の印に並ぶ項目の型。下記「失敗・空・待ちの伝え方」） |
 | components（特定モジュールの責務ではない共通部品） | `BottomSheet/BottomSheet.tsx`（モバイル下部シート、下記「モバイル/デスクトップのレイアウト分岐」節参照）・`Disclosure/Disclosure.tsx`（折りたたみ表示、[ルート設定・結果パネル](route-settings-and-results.md)等が使う）・`SectionDisclosure/SectionDisclosure.tsx`（デスクトップの左のパネルの1区分。効いているパネルの印を見出しに出す`Disclosure`）・`UsageGuide/UsageGuide.tsx`（説明を見る状態。下記「使い方の説明」）・`UsageGuide/UsageTooltip.tsx`（アイコンだけの部品の長押し・マウスを重ねたときのツールチップ。下記「長押しのツールチップ」）・`UsageGuide/usageTarget.ts`（押された要素から説明する部品・名前・使い方の文を引き、アイコンだけで見えている部品かを決める）・`FirstVisitIntro/FirstVisitIntro.tsx`（初めて開いたときだけ出す案内。下記「初回の案内」）・`TurnArrow/TurnArrow.tsx`（曲がる所の絵と読み上げの言葉。曲がる所のカードと地図の曲がる所の札が同じ絵を出す）・`TurnArrow/turnShape.ts`（曲がる所の前後のルートの形を、交差点へ入る向きを上にした平面へ写し、ほかの道の向きを同じ向きへ回す）・`HeaderStat/HeaderStat.tsx`（画面の上の1行の数字1つ・数値と単位・風の矢印と速さ。同じ枠に入れ替わって出る天気の帯と走りの帯が同じに読めるよう、両方がこれで描く） |
 | features/conditions/RideConditionBar | `RideConditionBar.tsx`（地図右上、拡大・縮小と方位磁針の直下の走行条件アイコン列本体。出発時刻・想定速度とも列の幅のアイコンボタンで、アイコンの下へ現在値（出発時刻は当日なら「12:40」、別の日は「9/24」「12:40」の2行。想定速度は「20km/h」）を出す。表示・`aria-label`・`RideConditionBar.tsx: title`は同じ文字列から作る。タップしたポップオーバー内はドラッグ式タイムライン（「今」の目盛りを選ぶと追従へ戻す。刻みは端末に覚える）＋`input[type=datetime-local]`の直接指定[出発時刻、日本時間で読み書きする]、スライダー＋数値入力[想定速度。平地・無風の巡航速度であることを添え、(i)の奥に、走行モデルの決まりを標準値を入れた文として画面の設定（`travel_model_wording`）から書く——引けない間は出さない]）・`departureTimeline.ts`（出発時刻ポップオーバーのドラッグタイムライン用の目盛り生成。気象レイヤーの実フレームには依存しない自己完結した合成タイムライン） |
-| features/map/MapNavigationControl | `MapNavigationControl.tsx`（地図右上の拡大・縮小（走行中は倍率のボタン）と、地図の北を指す方位磁針。下記「地図の向き」）・`features/map/mapHeading.ts`（地図の向きを8方位の呼び名と度で読むことと、道の値を求める走る向きの刻み） |
+| features/map/MapNavigationControl | `MapNavigationControl.tsx`（地図右上の拡大・縮小（走行中は倍率のボタン）と、地図の北を指す方位磁針。下記「地図の向き」）・`HeadingDial.tsx`（方位磁針を押すと開くダイヤルと針）・`features/map/mapHeading.ts`（地図の向きを8方位の呼び名と度で読むことと、道の値を求める走る向きの刻み） |
 | features/ride | `useRideMode.ts`（走行モードの状態と、地図へ渡す値。下記「走行モード」）・`lib/liveValue.ts`（1秒に何十回も変わる値を状態にせずに渡す口。読む所だけが知らせを受けて描き直す。スマホの向きに使う）・`travelBearing.ts`（受け取った位置から進む向きを決める）・`lib/routeProgress.ts`（現在地をルートの上のどこと見るか。地図の点の小窓も同じ当て方を使う）・`useRouteProgress.ts`（走行モードの間、届いた位置を選んだ候補の上の距離へ当て続ける）・`useRideProgress.ts`（ルートの上の位置と一時保存を組にし、読み込み直したら前に当てた位置から続ける）・`useRideWayConditions.ts`（走行中に地図の道の値を取る向き・速さ。実際の進む向きと速さ）・`rideRemaining.ts`（ルートの残りと、選んだ候補の計画から出す到着予想）・`useScreenWakeLock.ts`（位置を受けている間、画面が自動で消えないよう端末に頼む）・`useDeviceHeading.ts`（位置を受けている間、スマホが向いている方角を端末のコンパスから読む）・`RideModeButton/RideModeButton.tsx`（地図の右の列の末尾の走行モードのボタン。走行モードの間は、休む（休んでいれば続きから走る）か案内を終えるかを選ばせ、横に始められなかった理由を、走行モードの間は地図の左上の積みに向きを読む許しを求め直すボタン・画面を点けたままにできないことを出す）・`RideLockButton/RideLockButton.tsx`（走行モードの間、走行モードのボタンの下に置く、地図への触れを受け付けないロックの鍵のボタン。下記「走行モード」の「ロック」）・`RideBar/RideBar.tsx`（走行モードの間、画面の上の1行に出す走りの数字）・`rideSession.ts`（走行中のルートの一時保存の書き方・読み方・期限）・`useRideSession.ts`（一時保存を書き、開いたときに復元を知らせる）・`nextTurn.ts`（ルートの曲がる所の並びから、現在地より先でいちばん近いものを選ぶ）・`TurnCard/TurnCard.tsx`（次に曲がる所の向きと距離のカード）・`turnCall.ts`（次に曲がる所までの道のりから読み上げる段と言葉を決める）・`useTurnVoice.ts`（音声案内の入り切りと、入れている間に段ごとに1回ずつ読み上げ、ルートを外れた・戻ったことを読むこと）・`RideVoiceButton/RideVoiceButton.tsx`（走行モードの間、ロックの鍵のボタンの下に置く音声案内の入り切りのボタン。下記「走行モード」の「音声案内」）・`RideDarkScreen/RideDarkScreen.tsx`（音声案内を入れている間に右の列から入る、画面全体を覆うほぼ黒の画面と、入るボタン。下記「走行モード」の「黒の画面」）・`RideBottom/RideBottom.tsx`（走行モードの間の地図の下端: 続きから走る・現在地へ戻る操作、ルートを外れた知らせ、道のりのグラフ、その上の左の俯瞰図） |
 | features/map/MapView（走行モード） | `useRideFollow.ts`（走行モードの値を受けて、現在地の点・追うカメラ・指で動かしたら休む知らせ・方位磁針を押したときの向きを地図へ当てる）・`rideZoom.ts`（走行中の倍率のボタンが回す基準の倍率の段と、走る速さから追っている間の倍率をどれだけ引くかを決める）・`useTurnMark.tsx`（走行中に次に曲がる所の地点に、曲がる所の絵の札を出す） |
 | features/conditions/DynamicLayerTimeSlider | `DynamicLayerTimeSlider.tsx`（時刻のルーラー（`components/ui/Ruler/Ruler.tsx`）に、選んだ時刻の文・刻みの切り替え・1コマ送り・現在へ戻すボタンを添えたタイムラインUI。`RideConditionBar`が出発時刻ピッカーとして使う唯一の呼び出し元） |
@@ -307,7 +307,7 @@ backendも日本時間で扱う。`domain/time_zone.py`）。暦と時刻の取�
 押すことが別の操作になっているのは、「ルート設定」の「条件」タブ（選んでいる地点を置く・ピンを押すとその地点を選ぶ・つかんで動かす）と、
 編集中（乗り換える区間を選ぶ）だけで、ほか（「ルート結果」・閉じている・ほかのタブ・走行中）はどれも同じに、押した物の小窓を開く
 （決まりは[静的地図レイヤー](static-map-layers.md)「地図を押したときと地図の小窓」）。今やっている作業と押した結果が一致し、役割を選ぶ操作が要らない。
-どの地物を開けるかは地図の側（`features/map/MapView/mapTaps.ts: MapTapMode`）が意味ごとに持ち、開けない地物が上に重なっていても飛ばす。
+どの地物を開けるかは地図の側（`features/map/MapView/mapTapHits.ts: MapTapMode`）が意味ごとに持ち、開けない地物が上に重なっていても飛ばす。
 
 効いているパネルは、モバイルは開いているシート、デスクトップはパネル（サイドバー）を出していて畳んでおらず開いている区分で、
 2つとも開いていれば最後に触った区分（中を押す・中へ移る。結果が届いたら「ルート結果」）。効いている区分は上の線と題を強調色にし、題の
@@ -374,7 +374,7 @@ MapLibreが自分の部品（出典の開閉、ポップアップの閉じる、
 MapLibreの部品を新しく足すときは、その部品の文言のキー（`maplibre-gl/src/ui/default_locale.ts`）も足す。
 
 **暗黙の前提**: 道ごとの材料と取得中かは、レンズid→取得結果の1つの`Map`として
-見え方の値（`features/map/scene/applyToMap.ts: SceneLook.wayMaterials`）に載る（design-principles.md構造仕様3「軸ごとに
+見え方の値（`features/map/scene/sceneInputs.ts: SceneLook.wayMaterials`）に載る（design-principles.md構造仕様3「軸ごとに
 propを新設しない」）。塗る段（種類・単位・しきい値・段階ラベル）はレンズそのもの（`lib/mapDisplay/mapLens.ts: MapLens.display`）が持ち、
 別の値では渡さない——レンズと塗る段を別々に配ると、片方にだけ在るレンズが生まれ、それを既定値で埋める経路が要る。
 地図は費用の軸の一覧を共有の取得から自分で読むため、費用の軸が増えてもどの受け口も変わらない。
@@ -533,7 +533,7 @@ Reactの外（デバッグの記録・走行の計測・走りの記録・走行
 - 地図の見えている範囲の真ん中（`useMapView`の`center`）→ 地点を探す欄（`RouteForm`の`mapCenter`）。施設の候補を近い順に並べる点。
 - 地図の見え方の値（`useMapView`の`look`）→ `MapView`。レイヤーのON/OFF・レンズ・塗っているレンズ・
   隠した行・取得結果の状態そのものだけを渡し、そこから導けるもの（どのレイヤーを出すか・家族ごとの
-  隠した行）は地図側のscene（`features/map/scene/applyToMap.ts`）が導く。
+  隠した行）は地図側のscene（`features/map/scene/sceneInputs.ts`）が導く。
   レンズ・道の線の層は`MapView`と`useMapView`がそれぞれ同じ取得（共有の画面の設定と費用の軸の一覧と、そこから地図だけが読む
   ものを導く`features/map/useMapCatalog.ts`）から読み、`page.tsx`は渡さない。
 

@@ -100,14 +100,14 @@ export async function fetchRoadInspection(
 export type LensMaterialsQuery = paths["/api/region/lens/{lens_id}/{z}/{x}/{y}"]["get"]["parameters"]["query"];
 
 /** 路面タイルと同じz/x/yの中の道ごとの、レンズ`lensId`（総合か費用の軸）の材料（道の向き・逆向きに辿った1kmあたりの
- * 代償の秒と道の向き。値の無い材料は鍵ごと無い）。 */
+ * 代償の秒と道の向き。値の無い材料は鍵ごと無い）と、その値が前に出た予報の風を引いた素性。 */
 export async function fetchLensMaterials(
   lensId: string,
   z: number,
   x: number,
   y: number,
   query: LensMaterialsQuery,
-): Promise<Record<string, Record<string, number>>> {
+): Promise<components["schemas"]["LensMaterials"]> {
   const params = { path: { lens_id: lensId, z, x, y }, query };
   return requestApi((init) => backendApi.GET("/api/region/lens/{lens_id}/{z}/{x}/{y}", { params, ...init }), {
     category: `api:${lensId}-lens`,
@@ -115,6 +115,6 @@ export async function fetchLensMaterials(
       failure: "道路の塗りの値の取得に失敗しました",
       parseFailure: "道路の塗りの値の解析に失敗しました",
     },
-    successMeta: (data) => ({ wayCount: Object.keys(data).length }),
+    successMeta: (data) => ({ wayCount: Object.keys(data.materials).length }),
   });
 }

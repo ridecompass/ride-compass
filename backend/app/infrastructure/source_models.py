@@ -157,7 +157,7 @@ class SourceFeatureRow(Base):
     rast: Mapped[object | None] = mapped_column(Raster(spatial_index=False), nullable=True)
 
 
-def latest_succeeded_run_sql(source: Source) -> str:
+def _latest_succeeded_run_sql(source: Source) -> str:
     """そのソースの成功した最新の取込1行（`source_runs`の全列）を指す副問い合わせ。
 
     生データに入っているのはこのrunの行だけなので、派生の基準も取込の範囲もここから読む。
@@ -166,7 +166,7 @@ def latest_succeeded_run_sql(source: Source) -> str:
 
 
 def latest_succeeded_run_by_column_sql(source_column: str) -> str:
-    """`latest_succeeded_run_sql`の、ソースを外側の問い合わせの列（`r.source`等）で指す形。
+    """`_latest_succeeded_run_sql`の、ソースを外側の問い合わせの列（`r.source`等）で指す形。
     ソースごとに並べる読み手（取込の一覧）が、行ごとに相関させて使う。"""
     return (f"(SELECT * FROM {SourceRunRow.__tablename__} WHERE source = {source_column}"
             f" AND status = '{SourceRunStatus.SUCCEEDED}' ORDER BY run_id DESC LIMIT 1)")
@@ -184,7 +184,7 @@ INGESTED_BBOX_SQL = f"""
         (profile->'target'->'bbox'->>1)::double precision AS min_lon,
         (profile->'target'->'bbox'->>2)::double precision AS max_lat,
         (profile->'target'->'bbox'->>3)::double precision AS max_lon
-    FROM {latest_succeeded_run_sql(Source.OSM_WAY)} latest
+    FROM {_latest_succeeded_run_sql(Source.OSM_WAY)} latest
 """
 
 #: 要求タイルが取込範囲に入るか（`covered`）。範囲を判定するタイルのSQL（点のタイルは

@@ -64,11 +64,3 @@ class MsmGridForecast(StrictModel):
     points: list[MsmGridPointForecast]
     #: 最新のrunの予報の終わり（この時刻を含まない）。この時刻から先の値は、配信が止まっている間に前に出たrunの値を読んだもの。
     latest_run_end: ForecastTime
-
-
-class MsmForecastStatus(StrictModel):
-    """MSMの予報の状態（`GET /api/weather/msm-status`）。値を応答に載せない読み手（道ごとの負担の塗り等）が、選んだ時刻が
-    前のrunの値かを見分けるために読む。"""
-
-    #: 最新のrunの予報の終わり（`MsmGridForecast.latest_run_end`）。
-    latest_run_end: ForecastTime

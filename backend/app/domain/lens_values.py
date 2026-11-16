@@ -25,6 +25,7 @@ from app.domain.graph import edge_feature_key
 from app.domain.gradient import ROAD_BEARING_LEAF, travel_direction_formula
 from app.domain.ledger_costs import LedgerCosts, LedgerParameters
 from app.domain.leg_costs import axis_facts, burden_weights, travel_inputs
+from app.domain.msm_grid import ForecastTime
 from app.domain.region import EDGE_UNIT_MIN_ZOOM
 from app.domain.road_network import MaterialFills, RoadNetwork, rows_in_tile
 from app.domain.strict_model import StrictModel
@@ -175,6 +176,15 @@ def _summed_by_direction(features: LensFeatures, per_row: np.ndarray) -> np.ndar
     total = np.bincount(slot, weights=np.asarray(per_row, dtype=np.float64), minlength=size)
     present = np.bincount(slot, minlength=size) > 0
     return np.where(present, total, np.nan).reshape(len(features), 2)
+
+
+class LensMaterials(StrictModel):
+    """タイル1枚の、地図のレンズの道ごとの材料と、その値が引いた風の素性。"""
+
+    #: フィーチャーの鍵→道の向き・逆向きに辿った1kmあたりの代償の秒と道の向き（値の無い材料は載せない）。
+    materials: dict[str, dict[str, float]]
+    #: 引いた風が最新のrunの終わりから先の（前に出たrunの）ものなら、その終わりの時刻。そうでなければNone。
+    wind_previous_run_from: ForecastTime | None
 
 
 class LensAxisSeconds(StrictModel):

@@ -32,7 +32,7 @@ from app.config import settings
 from app.domain.flood_forecast import ActiveFloodForecast
 from app.domain.jma_amedas import AmedasObservation, WindDirection
 from app.domain.jma_warning import ActiveWarning
-from app.domain.msm_grid import MSM_GRID_MAX_AREA_SQ_DEG, MsmForecastStatus, MsmGridForecast, MsmGridPointForecast
+from app.domain.msm_grid import MSM_GRID_MAX_AREA_SQ_DEG, MsmGridForecast, MsmGridPointForecast
 from app.domain.time_zone import JST
 from app.domain.twilight import Twilight
 from app.domain.weather import GridPointToday
@@ -110,7 +110,6 @@ GRID_POINT_TODAY = GridPointToday(
     highest_hourly_wind_speed_ms=3.1,
     latest_run_end=datetime(2026, 10, 21, 0, 0),
 )
-MSM_STATUS = MsmForecastStatus(latest_run_end=datetime(2026, 10, 9, 0, 0))
 ROUTE_TIMELINE = RouteWarningTimeline(
     areas=[
         RouteAreaTimeline(
@@ -169,9 +168,6 @@ class FakeService:
     async def get_msm_grid(self, bbox):
         return self._give()
 
-    def get_forecast_status(self):
-        return self._give()
-
     async def get_route_timeline(self, points):
         return self._give()
 
@@ -197,14 +193,6 @@ def test_the_msm_grid_route_returns_the_grid_points_with_local_times(override_de
         ],
         "latest_run_end": "2026-10-09T00:00",
     }
-
-
-def test_the_msm_status_route_returns_the_end_of_the_latest_run_as_a_local_time(override_dependency):
-    override_dependency(get_weather_service, lambda: FakeService(MSM_STATUS))
-
-    response = client.get("/api/weather/msm-status")
-
-    assert (response.status_code, response.json()) == (200, {"latest_run_end": "2026-10-09T00:00"})
 
 
 #: 面積が上限をわずかに超える正方形の一辺[度]。
@@ -241,7 +229,6 @@ _AMEDAS_UNAVAILABLE = (AmedasUnavailableError("置き場を読めない"), 503, 
     ("GET", "/api/weather/amedas", {"params": POINT}, get_amedas_service, _AMEDAS_UNAVAILABLE),
     ("GET", "/api/weather", {"params": POINT}, get_weather_service, _MSM_UNAVAILABLE),
     ("GET", "/api/weather/msm-grid", {"params": TOKYO_BBOX}, get_weather_service, _MSM_UNAVAILABLE),
-    ("GET", "/api/weather/msm-status", {}, get_weather_service, _MSM_UNAVAILABLE),
     ("POST", "/api/weather/route-warning-timeline", {"json": ROUTE_POINTS}, get_warning_timeline_service, _UPSTREAM_FAILED),
 ])
 def test_a_source_that_could_not_be_obtained_is_a_failure_not_an_empty_answer(

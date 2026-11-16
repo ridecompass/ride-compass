@@ -23,6 +23,7 @@ from app.domain.lens_values import (
     LENS_ALONG_LEAF,
     LensFeatures,
     LensInspection,
+    LensMaterials,
     LensTable,
     lens_inspection,
     lens_table,
@@ -44,32 +45,30 @@ _CATEGORY = "region:lens"
 
 @dataclass(frozen=True)
 class _TileLens:
-    """タイル1枚のレンズの値と、道の窓が引く事実の入力。"""
+    """タイル1枚のレンズの値と、道の窓が引く事実の入力と、引いた風の素性（`LensMaterials.wind_previous_run_from`）。"""
 
     table: LensTable
     facts: LensFactInputs
+    wind_previous_run_from: datetime | None
 
 
 class LensService:
     def __init__(self, weather_service: WeatherService):
         self._weather_service = weather_service
 
-    async def tile_table(self, z: int, x: int, y: int, at: datetime | None, speed_kmh: float,
-                         preference: CostPreference) -> LensTable:
-        """タイルのフィーチャーの、時刻`at`（省略すると今）の風と想定速度`speed_kmh`と利用者の値`preference`（つまみと倍率。
-        ルート生成と同じ値で塗る）でのレンズの値。風を読めない・時刻が予報の範囲の外なら投げる。"""
-        tile = await self._tile(z, x, y, at, speed_kmh, preference)
-        assert tile is not None  # フィーチャーを絞らなければ、空のタイルも空の表で返る
-        return tile.table
-
     async def way_materials(self, lens_id: str, z: int, x: int, y: int, at: datetime | None,
-                            speed_kmh: float, preference: CostPreference) -> dict[str, dict[str, float]] | None:
-        """レンズ`lens_id`の、タイルのフィーチャーごとの道ごとの材料（道の向き・逆向きに辿った値と道の向き。値の無い材料は
-        載せない）。知らないレンズか、利用者が無効にした軸のレンズ（表に無い）ならNone。"""
+                            speed_kmh: float, preference: CostPreference) -> LensMaterials | None:
+        """レンズ`lens_id`の、タイルのフィーチャーの、時刻`at`（省略すると今）の風と想定速度`speed_kmh`と利用者の値
+        `preference`（つまみと倍率。ルート生成と同じ値で塗る）での道ごとの材料。知らないレンズか、利用者が無効にした軸の
+        レンズ（表に無い）ならNone。風を読めない・時刻が予報の範囲の外なら投げる。"""
         if lens_id not in {TOTAL_LENS_ID, *cost_axis_ids(current_cost_axes())}:
             return None
-        table = await self.tile_table(z, x, y, at, speed_kmh, preference)
-        return _way_materials(table, lens_id) if lens_id in table.values else None
+        tile = await self._tile(z, x, y, at, speed_kmh, preference)
+        assert tile is not None  # フィーチャーを絞らなければ、空のタイルも空の表で返る
+        if lens_id not in tile.table.values:
+            return None
+        return LensMaterials(materials=_way_materials(tile.table, tile.table.values[lens_id]),
+                             wind_previous_run_from=tile.wind_previous_run_from)
 
     async def inspect(self, feature_key: str, z: int, x: int, y: int, bearing_deg: float, at: datetime | None,
                       speed_kmh: float, preference: CostPreference) -> LensInspection | None:
@@ -130,20 +129,20 @@ def _prepare(network: RoadNetwork, z: int, x: int, y: int, axes: CostAxisDefinit
 def _tile_lens(features: LensFeatures, materials: EdgeMaterialColumns, axes: CostAxisDefinitions, fills: MaterialFills,
                speed_kmh: float, preference: CostPreference, wind: tuple[WindForecastSeries, datetime] | None,
                elevation_gain_m: np.ndarray) -> _TileLens:
-    components = None
+    components = previous_run_from = None
     if wind is not None:
         series, target = wind
         components = WindContext(
             bearing_deg=materials.bearing_deg, wind_series=series, forecast_index=series.time_index(target, 0.0),
             wind_points=series.lattice.points_of(materials.mid_lat, materials.mid_lon)).components()
+        previous_run_from = series.previous_run_from(target, 0.0)
     return _TileLens(*lens_table(features, materials.columns, materials.distance_m, materials.elevation_profiles, axes,
-                                 current_ledger_parameters(preference), speed_kmh, fills, components, elevation_gain_m))
+                                 current_ledger_parameters(preference), speed_kmh, fills, components, elevation_gain_m),
+                     previous_run_from)
 
 
-def _way_materials(table: LensTable, lens_id: str) -> dict[str, dict[str, float]] | None:
-    values = table.values.get(lens_id)
-    if values is None:
-        return None
+def _way_materials(table: LensTable, values: np.ndarray) -> dict[str, dict[str, float]]:
+    """レンズの値`values`の、フィーチャーごとの道の向き・逆向きに辿った値と道の向き（値の無い材料は載せない）。"""
     features = table.features
     result: dict[str, dict[str, float]] = {}
     for key, (along, against), bearing in zip(features.keys, values.tolist(), features.bearing_deg.tolist()):

@@ -70,7 +70,7 @@ def _count_checks(table: str) -> tuple[CheckConstraint, ...]:
                  for column in _COUNT_COLUMNS)
 
 
-def landcover_checks(table: str) -> tuple[CheckConstraint, ...]:
+def _landcover_checks(table: str) -> tuple[CheckConstraint, ...]:
     """土地被覆の表（区間・道）の制約。有効画素は正で、割合は全部あって合計が100。"""
     total = " + ".join(_LANDCOVER_COLUMNS)
     return (
@@ -81,7 +81,7 @@ def landcover_checks(table: str) -> tuple[CheckConstraint, ...]:
     )
 
 
-def vocabulary_check(table: str, column: str, values: frozenset[str]) -> CheckConstraint:
+def _vocabulary_check(table: str, column: str, values: frozenset[str]) -> CheckConstraint:
     """派生の段がSQLで直接書く語彙の列に、domainの宣言の外の値を入れさせない制約。NULLは通す。"""
     return CheckConstraint(f"{column} IN ({sql_literals(sorted(values))})", name=f"{table}_{column}_known")
 
@@ -237,7 +237,7 @@ class EdgeLandcoverRow(_EdgeKey, _Landcover, Base):
     """区間の周りの帯の土地被覆の割合。有効画素の足りた区間だけが行を持つ。"""
 
     __tablename__ = "edge_landcover"
-    __table_args__ = (_edge_key("edge_landcover"), *landcover_checks("edge_landcover"), {"info": DERIVED})
+    __table_args__ = (_edge_key("edge_landcover"), *_landcover_checks("edge_landcover"), {"info": DERIVED})
 
 
 class EdgeCountsRow(_EdgeKey, _Counts, Base):
@@ -260,8 +260,8 @@ class EdgeTrafficRegulationRow(_EdgeKey, Base):
     __tablename__ = "edge_traffic_regulations"
     __table_args__ = (
         _edge_key(__tablename__),
-        vocabulary_check(__tablename__, "pedestrian_road", frozenset(REGULATION_HOURS)),
-        vocabulary_check(__tablename__, "pedestrian_road_bicycle", frozenset(REGULATION_HOURS)),
+        _vocabulary_check(__tablename__, "pedestrian_road", frozenset(REGULATION_HOURS)),
+        _vocabulary_check(__tablename__, "pedestrian_road_bicycle", frozenset(REGULATION_HOURS)),
         _not_stronger_check(__tablename__, "pedestrian_road_bicycle", "pedestrian_road"),
         {"info": DERIVED},
     )
@@ -276,7 +276,7 @@ class WayDirectionRow(_WayKey, Base):
     """道1本の性質（通行方向・上下線分離）。区間粒度の対応物を持たない。道ごとに1行。"""
 
     __tablename__ = "way_directions"
-    __table_args__ = (vocabulary_check("way_directions", "direction", DIRECTIONS), {"info": DERIVED})
+    __table_args__ = (_vocabulary_check("way_directions", "direction", DIRECTIONS), {"info": DERIVED})
 
     #: 通行方向（forward/backward/both）。タグからの判断なので、生データではなくここに置く。
     #: 探索が有向グラフをメモリ上で組むときに、逆向きの枝を作ってよいかを決める。
@@ -294,7 +294,7 @@ class WayLandcoverRow(_WayKey, _Landcover, Base):
     """
 
     __tablename__ = "way_landcover"
-    __table_args__ = (*landcover_checks("way_landcover"), {"info": DERIVED})
+    __table_args__ = (*_landcover_checks("way_landcover"), {"info": DERIVED})
 
 
 class WayCountsRow(_WayKey, _Counts, Base):
@@ -308,7 +308,7 @@ class NodeKindRow(Base):
     """種別（信号・横断歩道・車止め・コンビニ等）の付いたノード。グラフの頂点でない点も持つ。"""
 
     __tablename__ = "node_kinds"
-    __table_args__ = (vocabulary_check("node_kinds", "kind", NODE_KINDS), {"info": DERIVED})
+    __table_args__ = (_vocabulary_check("node_kinds", "kind", NODE_KINDS), {"info": DERIVED})
 
     osm_node_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=False)
     #: 分類器が付けた種別。
@@ -337,7 +337,7 @@ class AddressAreaRow(Base):
 
     __tablename__ = "address_areas"
     __table_args__ = (
-        vocabulary_check("address_areas", "level", frozenset(ADDRESS_AREA_LEVELS)),
+        _vocabulary_check("address_areas", "level", frozenset(ADDRESS_AREA_LEVELS)),
         CheckConstraint("(level = 'prefecture') = (parent_id IS NULL)", name="address_areas_root_is_prefecture"),
         # 境界の中の代表点で区画を探す（境界と区画の結び付け）。
         Index("idx_address_areas_geom", "geom", postgresql_using="gist"),
@@ -382,7 +382,7 @@ class AddressBlockRow(Base):
 
     __tablename__ = "address_blocks"
     __table_args__ = (
-        vocabulary_check("address_blocks", "kind", frozenset(BLOCK_KINDS)),
+        _vocabulary_check("address_blocks", "kind", frozenset(BLOCK_KINDS)),
         {"info": DERIVED},
     )
 
@@ -407,8 +407,8 @@ class PlaceRow(Base):
 
     __tablename__ = "places"
     __table_args__ = (
-        vocabulary_check("places", "source", frozenset({Source.OVERTURE_PLACE, Source.BUNKA_HERITAGE})),
-        vocabulary_check("places", "place_group", frozenset(StopPlaceGroup)),
+        _vocabulary_check("places", "source", frozenset({Source.OVERTURE_PLACE, Source.BUNKA_HERITAGE})),
+        _vocabulary_check("places", "place_group", frozenset(StopPlaceGroup)),
         CheckConstraint("confidence BETWEEN 0 AND 1", name="places_confidence_is_ratio"),
         # チェーンの鍵の語彙は並べない——チェーンの語（`domain/stop_place.py: CHAIN_WORDS`）を足すたびに本番の表の制約を
         # 変えることになる。

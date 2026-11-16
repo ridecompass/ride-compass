@@ -525,23 +525,6 @@
         }
       }
     },
-    "/api/weather/msm-status": {
-      "get": {
-        "operationId": "get_msm_status_api_weather_msm_status_get",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MsmForecastStatus"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/place-search": {
       "get": {
         "operationId": "search_places_api_place_search_get",
@@ -1021,14 +1004,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "additionalProperties": {
-                    "type": "object",
-                    "additionalProperties": {
-                      "type": "number"
-                    }
-                  },
-                  "title": "Response Region Lens Api Region Lens  Lens Id   Z   X   Y  Get"
+                  "$ref": "#/components/schemas/LensMaterials"
                 }
               }
             }
@@ -4021,6 +3997,38 @@
         ],
         "title": "LensInspection"
       },
+      "LensMaterials": {
+        "properties": {
+          "materials": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "type": "number"
+              },
+              "type": "object"
+            },
+            "type": "object",
+            "title": "Materials"
+          },
+          "wind_previous_run_from": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wind Previous Run From"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "materials",
+          "wind_previous_run_from"
+        ],
+        "title": "LensMaterials"
+      },
       "LinearBurden": {
         "properties": {
           "kind": {
@@ -4261,20 +4269,6 @@
           "op"
         ],
         "title": "Missing"
-      },
-      "MsmForecastStatus": {
-        "properties": {
-          "latest_run_end": {
-            "type": "string",
-            "title": "Latest Run End"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "latest_run_end"
-        ],
-        "title": "MsmForecastStatus"
       },
       "MsmFreshnessResponse": {
         "properties": {

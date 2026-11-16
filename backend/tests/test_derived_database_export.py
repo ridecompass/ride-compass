@@ -1,7 +1,7 @@
-"""OSM の派生データベースの書き出し（`scripts/export_derived_database.py`・`infrastructure/derived_database_export.py`）と、
+"""OSM の派生データベースの書き出し（`batch/derive_cli.py: export_derived_database`・`infrastructure/derived_database_export.py`）と、
 それを配る口（`GET /api/derived-database`）。
 
-書き出しは入口（スクリプトの`run`）から打ち、配る口から ZIP を取って中身を読む。置き場（`ROOT`）はテストごとの一時ディレクトリ。
+書き出しは作り直しの入口の書き出し（`export_derived_database`）から打ち、配る口から ZIP を取って中身を読む。置き場（`ROOT`）はテストごとの一時ディレクトリ。
 DBを使うテストは、道とノードを取込の入口から入れ、派生の作り直し（`batch/derive_cli.py: run`）で区間と材料まで作ってから書き出す
 （本番で作れる行だけを使う。.claude/rules/testing-backend.md パターン8）。
 
@@ -12,6 +12,7 @@ DBを使うテストは、道とノードを取込の入口から入れ、派生
 
 import csv
 import io
+import re
 import zipfile
 
 import pytest
@@ -19,9 +20,9 @@ from fastapi.testclient import TestClient
 
 from app.batch import derive_cli
 from app.batch.common import SOURCE_DATA_LOCK
+from app.domain.map_display import ALWAYS_SHOWN_ATTRIBUTIONS, DERIVED_DATABASE_ATTRIBUTIONS
 from app.infrastructure import derived_database_export
 from app.main import app
-from scripts import export_derived_database
 from tests.conftest import postgis_database_url, raw_connection
 from tests.source_ingest import abr_prefecture_record, ingest_records, point_record, way_record
 
@@ -76,18 +77,22 @@ def test_nothing_to_download_before_the_first_export():
 
 @_on_test_db
 async def test_the_export_hands_every_segment_with_its_values_under_the_odbl_notice(export_root):
-    """受け取った人が、道ごとの値を道・区間の鍵と形付きで、ODbL の表示と一緒に取れる。前の書き出しは残さない（置くのは最新の1つだけ）。"""
+    """受け取った人が、道ごとの値を道・区間の鍵と形付きで、ODbL の表示と、地図と同じ元の出典と一緒に取れる。
+    前の書き出しは残さない（置くのは最新の1つだけ）。"""
     await _derive()
     export_root.mkdir()
     stale = export_root / "ridecompass-derived-database-000000000000-r0-i0.zip"
     stale.write_bytes(b"old")
 
-    assert await export_derived_database.run(postgis_database_url()) == 0
+    await derive_cli.export_derived_database(postgis_database_url())
 
     archive = _download()
     readme = archive.read(derived_database_export.README_FILE).decode("utf-8")
     assert "Open Database License (ODbL) 1.0" in readme
     assert "© OpenStreetMap contributors" in readme
+    for attribution in DERIVED_DATABASE_ATTRIBUTIONS:
+        assert attribution in ALWAYS_SHOWN_ATTRIBUTIONS
+        assert all(url in readme for url in re.findall(r'href="([^"]+)"', attribution))
     rows = list(csv.DictReader(io.TextIOWrapper(archive.open(derived_database_export.DATA_FILE), encoding="utf-8")))
     by_key = {(row["osm_way_id"], row["segment_index"]): row for row in rows}
     assert sorted(by_key) == [("100", "0"), ("100", "1"), ("200", "0")]
@@ -106,6 +111,6 @@ async def test_nothing_is_written_while_an_import_or_rebuild_holds_the_source_da
     await _derive()
     async with raw_connection() as holder:
         await holder.execute("SELECT pg_advisory_lock(hashtext($1))", SOURCE_DATA_LOCK)
-        assert await export_derived_database.run(postgis_database_url()) == 0
+        await derive_cli.export_derived_database(postgis_database_url())
 
     assert derived_database_export.latest() is None
