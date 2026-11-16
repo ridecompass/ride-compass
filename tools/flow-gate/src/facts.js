@@ -3,7 +3,8 @@
 import { originOf } from "./family.js";
 import { FIELDS, startTime, valuesOf } from "./fields.js";
 import { pages } from "./github.js";
-import { APPLIED, answerText, approvedSplitTitles, askerOf, conditions, droppedQuestion, isAnswer, isQuestion, latestQuestion, norm, questionHead, readProblems, remaining, unboundSteps } from "./questions.js";
+import { conditions, norm, remaining, unboundSteps } from "./body.js";
+import { APPLIED, answerText, approvedSplitTitles, askerOf, droppedQuestion, isAnswer, isQuestion, latestQuestion, questionHead, readProblems } from "./questions.js";
 
 // 対話作業か。種類は作るとき（最初に付いた種類）で決まり、あとから境目をまたいで変えても変わらない（types は今より前の種類の古い順）。
 const dialogOf = (config, types, type) => [...types, type].find(Boolean) === config.dialogType;
@@ -112,6 +113,17 @@ async function movedSince(gh, config, number, since) {
 // 担当の終わりのコメントの形（.github/claude-task/after.js が書き、ゲートと回答フォームが読む）。見出しの kind は担当の種類。
 export const endHead = (kind) => `### ${kind}担当の終わり`;
 const END = /^### (\S+)担当の終わり/;
+// 終わりのコメントの、担当が Claude の利用の上限・認証で止まった印の行（戻る時刻は、担当の最後の発言から読めたときだけ書く）。
+const QUOTA = "利用の上限で止まった";
+export const quotaLine = (reset) => `${QUOTA}: ${reset ?? "戻る時刻は読めなかった"}`;
+const quotaOf = (body) => new RegExp(`^${QUOTA}: (.+)$`, "m").exec(body)?.[1] ?? null;
+// 上限で止まった実行の戻る時刻（ミリ秒。その実行の終わりのコメントに書かれていなければ null）。
+export async function quotaReset(gh, config, run) {
+  const { comments } = (await gh.gql(`query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){issue(number:$n){comments(last:20){nodes{body}}}}}`,
+    { ...repo(config), n: run.number })).repository.issue;
+  const end = comments.nodes.map((c) => norm(c.body)).findLast((b) => END.test(b) && b.includes(`/actions/runs/${run.id}`));
+  return Date.parse(end && quotaOf(end)) || null;
+}
 // 終わりのコメントの「読み始め」の行（担当の段が始まった時刻。それより前のユーザーの文を担当が読んでいる）。
 export const readFromLine = (at) => `読み始め: ${at}`;
 const readFromOf = (body) => /^読み始め: (\S+)$/m.exec(body)?.[1] ?? null;
@@ -125,7 +137,8 @@ function endedOf(nodes) {
   if (k < 0 || nodes.slice(k + 1).some((n) => isAnswer(n.body))) return null;
   const body = norm(nodes[k].body);
   const at = body.indexOf(`\n${START}\n`);
-  return { kind: END.exec(body)[1], from: readFromOf(body) ?? nodes[k].createdAt, before: at < 0 ? null : conditions(body.slice(at + START.length + 2)) };
+  return { kind: END.exec(body)[1], from: readFromOf(body) ?? nodes[k].createdAt, before: at < 0 ? null : conditions(body.slice(at + START.length + 2)),
+    quota: quotaOf(body) !== null };
 }
 // その実行で約束が動いたか: 読み始めより今のチェックが多いか、読み始めの行のうち今の本文に無い行が、全部移管先（子・兄弟・この issue を
 // 指す issue）の条件にある。消えた行があるときだけ移管先を読む（要求1回）。読み始めの条件が無ければ動いていない。
@@ -183,7 +196,8 @@ export async function readFacts(gh, config, number, runs) {
   // 今の問いへの答えを、Claude が読んだか・ゲートが当てたか（書いた文のある答えは、読んだあとに一度だけ当てる）。
   const asked = nodes.findLastIndex((n) => isQuestion(n.body));
   const answer = asked < 0 ? null : nodes.slice(asked + 1).find((n) => isAnswer(n.body));
-  const answerRead = Boolean(answer) && reads.some((x) => x > at(answer));
+  // Claude が書いた答え（.claude/skills/ask/scripts/answer.mjs）は、ユーザーの言葉を読んでから書くので、読んだに数える。
+  const answerRead = Boolean(answer) && (by(answer, config.claude) || reads.some((x) => x > at(answer)));
   const answerApplied = Boolean(answer) && nodes.some((n) => at(n) > at(answer) && norm(n.body).startsWith(APPLIED));
   // 今の問いは、ラベルの形に合い、ラベルの出す者が書いたものだけを読む。
   const asker = asked < 0 ? null : askerOf(config, nodes[asked].author?.login);

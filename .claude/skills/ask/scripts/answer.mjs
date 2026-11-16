@@ -5,7 +5,8 @@
 //   確かめることの値は、答えと同じ1回の要求で本文の約束へ書く（回答フォームと同じ。tools/flow-gate/src/questions.js: withValues）。書いた文のファイルには、ユーザーの言葉の引用を含めて書く。
 import { readFileSync } from "node:fs";
 import { bot, comment, config, graphqlData, isNumber, usage } from "../../../../tools/flow-gate/src/bot.js";
-import { answerBody, answerProblem, askerOf, isQuestion, latestQuestion, norm, withValues } from "../../../../tools/flow-gate/src/questions.js";
+import { norm } from "../../../../tools/flow-gate/src/body.js";
+import { answerBody, answerProblem, askerOf, isQuestion, latestQuestion, withValues } from "../../../../tools/flow-gate/src/questions.js";
 
 // 本文と、コメントと書いた者を新しい方から1ページ読む。今の問いは末尾にあるので、読んだ中に問いが無いときだけ前のページを足す。
 const READ = "query($owner:String!,$name:String!,$number:Int!,$before:String){repository(owner:$owner,name:$name){issue(number:$number){id body " +

@@ -1,9 +1,9 @@
 // 完了の条件の行に印を付ける。条件は文の頭で指し、ゲートと同じ読み方で、残りの条件のうちちょうど1つに当たる行にだけ付ける
-// （tools/flow-gate/src/questions.js: checkByText。ユーザーが確かめる行は断る）。合わなければ書かずに理由を出して 1 で終わる。
+// （tools/flow-gate/src/body.js: checkByText。ユーザーが確かめる行は断る）。合わなければ書かずに理由を出して 1 で終わる。
 // 読んでから書くまでに本文が変わっていたら（ゲートや担当が書いた）、上書きせずに打ち直させる。
 // 使い方: node .claude/skills/task-work/scripts/check.mjs <issue の番号> <条件の文の頭> [<条件の文の頭> ...]
 import { bot, config, isNumber, usage } from "../../../../tools/flow-gate/src/bot.js";
-import { checkByText, misboundSteps } from "../../../../tools/flow-gate/src/questions.js";
+import { checkByText, misboundSteps } from "../../../../tools/flow-gate/src/body.js";
 
 // 印を付けて、書いたことか書かなかった理由を返す。
 function check(gh, number, heads) {

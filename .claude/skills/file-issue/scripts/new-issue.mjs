@@ -10,7 +10,7 @@ import { readFileSync } from "node:fs";
 import { bot, config, graphql, graphqlData, isNumber, messages, usage } from "../../../../tools/flow-gate/src/bot.js";
 import { CHILD_FIELDS, NO_GRANDCHILD, makesGrandchild, originLine, originOf } from "../../../../tools/flow-gate/src/family.js";
 import { SET_FIELDS, fieldProblems, fieldValues } from "../../../../tools/flow-gate/src/fields.js";
-import { conditions, folds, misboundSteps, norm } from "../../../../tools/flow-gate/src/questions.js";
+import { conditions, folds, misboundSteps, norm } from "../../../../tools/flow-gate/src/body.js";
 
 // 畳んだ節の名前と順（2 は種類ごとに1つ）。
 const SECTIONS = [["不具合: 起きていること", "要望: 困りごと", "保守: 背景", "調査: 明らかにしたいこと"], ["ユーザーの言葉"], ["やること", "調べ方"], ["決めること"],

@@ -6,7 +6,8 @@ import { batch } from "./github.js";
 import { byName, readFacts, subjectTasks } from "./facts.js";
 import { NO_GRANDCHILD, makesGrandchild } from "./family.js";
 import { fieldValues } from "./fields.js";
-import { askText, confirmConditions, droppedQuestion, isQuestionLabel, norm } from "./questions.js";
+import { confirmConditions, norm } from "./body.js";
+import { askText, droppedQuestion, isQuestionLabel } from "./questions.js";
 
 // 決めた問い（種類の名前か、見送りの相手を持つもの）の文。確かめに並べる条件は、書く本文（決めた本文）から取る。
 const askBody = (ask, config, body) =>
