@@ -37,6 +37,7 @@ import pytest
 import pytest_asyncio
 
 from app.batch import dem_tile_store, derive_topology
+from app.batch.derive_elevation import CHUNK_POINTS
 from app.batch.ingest import ingest_source
 from app.domain.region import tile_bounds_lonlat
 from tests.conftest import empty_ingested_tables
@@ -249,3 +250,24 @@ async def test_a_bridge_end_takes_the_highest_ground_around_it(elevation_conn, s
     rows = await elevation_conn.fetch(
         "SELECT osm_way_id, elevation_gain_m FROM edge_elevation WHERE osm_way_id IN (22, 23)")
     assert {r["osm_way_id"]: r["elevation_gain_m"] for r in rows} == {22: climb, 23: 10.0}
+
+
+async def test_splitting_the_roads_into_chunks_does_not_change_any_value(elevation_conn):
+    """区間を点の数で塊に分けて流しても、どの区間の値も変わらない。1点ごとに切ると区間がそれぞれ別の塊に入り、橋の端を
+    共有する橋と続く道も別の塊になる——どちらも周りの一番高い値を採る。"""
+    end = _pixel_center(40, LOW_END)
+    await ingest_records("osm_way", [
+        *(_way(way_id, pixels) for way_id, pixels, _ in CASES),
+        _way(11, VALLEY_PIXELS), _way(12, VALLEY_PIXELS, {"tunnel": "yes"}),
+        way_record(21, [_pixel_center(40, 100), end], [210, 211], {"bridge": "yes"}),
+        way_record(22, [end, _pixel_center(40, 200)], [211, 221])], conn=elevation_conn)
+    tables = {}
+    for chunk_points in (CHUNK_POINTS, 1):
+        async with elevation_conn.transaction():
+            await derive_topology.derive(elevation_conn)
+            await derive_elevation_at_default_step(elevation_conn, chunk_points=chunk_points)
+        tables[chunk_points] = [dict(r) for r in await elevation_conn.fetch(
+            "SELECT * FROM edge_elevation ORDER BY osm_way_id, segment_index")]
+
+    assert {r["osm_way_id"] for r in tables[1]} >= {11, 12, 21, 22}
+    assert tables[1] == tables[CHUNK_POINTS]
