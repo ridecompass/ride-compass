@@ -70,16 +70,14 @@ from app.domain.turn_structure import (
     build_turn_expanded_structure,
     edge_bearings,
 )
+from app.domain.connectivity import largest_strongly_connected_nodes, nodes_reached_without_retracing
 from app.domain.routing import (
-    TreePathOverlap,
     TurnExpandedTree,
     build_turn_expanded_tree,
     tree_cost_bound,
-    largest_strongly_connected_nodes,
-    nodes_reached_without_retracing,
-    turn_expanded_path_edge_indices,
     turn_expanded_shortest_path,
 )
+from app.domain.tree_paths import TreePathOverlap, turn_expanded_path_edge_indices
 from app.domain.route_diversity import overlap_ratio, physical_overlap_ratio, select_diverse_by_overlap
 from app.domain.wind import (
     cruise_hours,
@@ -471,7 +469,7 @@ class RoadGraphEngine:
            代え、木に沿った往路の**実距離**が周回のリングに入るNodeにする（`domain/route_search.py: turnaround_band`）。
            どちらも最短実距離ではなく軸コスト最適経路の実距離で定義する——重みを極端に振った設定ほど往路が遠回りする
            ため、最短実距離基準だと往路だけで目標の半分を超え距離フィルタで全滅する。
-           行き来に来た道を戻るしかないNode（袋小路の奥。`domain/routing.py: nodes_reached_without_retracing`の外）は
+           行き来に来た道を戻るしかないNode（袋小路の奥。`domain/connectivity.py: nodes_reached_without_retracing`の外）は
            帯に入れない——帰りの罰は袋小路を通れるよう有限なので、そこで折り返す周回は来た道を戻る。
         3. 帯の中心からのずれ・往路の1kmあたりの代償の秒のパレート層の順に並べる（`rank_by_pareto_layers`）。
         4. 上位から順に、既採用候補と往路の重複率が重なりの上限（`domain/route_search.py: corridor_overlap_ratios`）を

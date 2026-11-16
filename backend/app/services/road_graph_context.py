@@ -51,10 +51,9 @@ class RoadGraphContext:
     # 起点のノード番号（`road`の切り出しの番号）。
     origin_node: int
     # 1リクエスト内で繰り返す最寄りNodeの探索（prepareの起点・前段の
-    # 各経由地・仕上げの目的地）を都度線形探索せず使い回すための索引
-    # （domain/routing.py参照）。
+    # 各経由地・仕上げの目的地）を都度線形探索せず使い回すための索引。
     node_index: NodeSpatialIndex
-    # 置いた点を寄せてよいNode（ノード番号順の真偽。`domain/routing.py: largest_strongly_connected_nodes`）。
+    # 置いた点を寄せてよいNode（ノード番号順の真偽。`domain/connectivity.py: largest_strongly_connected_nodes`）。
     # 起点・経由地・目的地をどれもこの中へ寄せるので、置いた点どうしは互いに行き来できる。
     accessible: np.ndarray
     # 探索で通れる区間（区間の番号順の真偽。探索から除く区間でないもの）。

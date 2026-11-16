@@ -4,7 +4,7 @@
 小さな道路網を配列へ直し（区間の行は渡した順）、`lazy_of`・`build_all`が探索用グラフの区間の番号と
 名前を結ぶ。値は探索用グラフと遷移が読む列（位置・端点・距離・方位）だけを指定する。
 
-使う側: `test_search_graph.py`・`test_turn_structure.py`・`test_node_spatial_index.py`・`test_routing.py`。
+使う側: `test_search_graph.py`・`test_turn_structure.py`・`test_node_spatial_index.py`・`test_routing.py`・`test_tree_paths.py`・`test_connectivity.py`・`test_search_kernels.py`。
 """
 import dataclasses
 import math
@@ -185,3 +185,29 @@ LINE_EDGES = {
 ONE_WAY_NODES = {k: PLUS_NODES[k] for k in ("C", "N", "E", "W")}
 # `CN`だけが一方通行の幹線（Cから出るのみ）。Cへ「入る」区間だけを見ると階級が拾えない。
 ONE_WAY_EDGES = {k: PLUS_EDGES[k] for k in ("WC", "CW", "CE", "EC", "CN")}
+
+
+def make_grid(size, cell=0.01, base_lat=35.0, base_lon=139.0):
+    """`size`×`size`の格子。全Edgeが双方向・距離100m。"""
+    nodes = {}
+    edges = {}
+    for row in range(size):
+        for col in range(size):
+            nodes[f"n{row}_{col}"] = (base_lat + row * cell, base_lon + col * cell)
+    for row in range(size):
+        for col in range(size):
+            here = f"n{row}_{col}"
+            if col + 1 < size:
+                east = f"n{row}_{col + 1}"
+                edges[f"{here}>{east}"] = (here, east, 100.0, 90.0)
+                edges[f"{east}>{here}"] = (east, here, 100.0, 270.0)
+            if row + 1 < size:
+                north = f"n{row + 1}_{col}"
+                edges[f"{here}>{north}"] = (here, north, 100.0, 0.0)
+                edges[f"{north}>{here}"] = (north, here, 100.0, 180.0)
+    return make_graph(nodes, edges)
+
+
+def out_states(lazy, node_id):
+    node_index = lazy.node_id_to_index[node_id]
+    return np.flatnonzero(lazy.graph.edge_from == node_index).astype(np.int64)

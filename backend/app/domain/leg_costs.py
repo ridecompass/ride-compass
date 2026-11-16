@@ -298,7 +298,7 @@ def _bin_cost_arrays(
 
 def compile_leg_cost_kernels() -> None:
     """費用の組み立てのJIT（走行モデルとビンの仕上げ）を、本番と同じ引数の型で1回ずつ呼んでコンパイルする
-    （`domain/routing.py: compile_search_kernels`がイメージの組み立てで呼ぶ）。"""
+    （`domain/search_kernels.py: compile_search_kernels`がイメージの組み立てで呼ぶ）。"""
     flat = ElevationProfiles(np.zeros(1, dtype=np.int64), np.full(1, 2, dtype=np.int32), np.ones(1, dtype=bool),
                              np.zeros(2, dtype=np.float32), along_fractions((), 2), FLAT)
     model = SegmentSpeedModel(RiderProfile(cruise_speed_kmh=20.0), flat, np.ones(1), np.zeros(1), np.zeros(1))
