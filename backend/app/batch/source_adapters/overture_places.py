@@ -67,11 +67,11 @@ def places_path() -> Path:
     return DATA_DIR / "places.parquet"
 
 
-def overture_places_inputs(spec: SourceSpec, profile: SourceProfile) -> AdapterInputs:
+def _overture_places_inputs(spec: SourceSpec, profile: SourceProfile) -> AdapterInputs:
     return AdapterInputs(files=(places_path(),))
 
 
-def latest_release() -> str:
+def _latest_release() -> str:
     """配布元の目録が最新とする版の名前（例: `2026-10-21.0`）。"""
     response = httpx.get(CATALOG_URL, timeout=fetch_timeout(_CATALOG_READ_TIMEOUT_SECONDS), follow_redirects=True)
     response.raise_for_status()
@@ -80,7 +80,7 @@ def latest_release() -> str:
 
 def fetch_overture_places(spec: SourceSpec, profile: SourceProfile) -> None:
     """最新の版の範囲の地点を書く。"""
-    release = latest_release()
+    release = _latest_release()
     url = PLACES_URL_TEMPLATE.format(release=release)
     min_lat, min_lon, max_lat, max_lon = profile.target.bbox
 
@@ -98,7 +98,7 @@ def fetch_overture_places(spec: SourceSpec, profile: SourceProfile) -> None:
     write_fetch_record(DATA_DIR, release=release)
 
 
-@register_adapter("overture_places", rows=OverturePlaceRows, inputs=overture_places_inputs,
+@register_adapter("overture_places", rows=OverturePlaceRows, inputs=_overture_places_inputs,
                   fetcher=Fetcher(fetch_overture_places, lambda: (DATA_DIR,)))
 async def read_overture_places(spec: SourceSpec, profile: SourceProfile, inputs: AdapterInputs,
                                origin: dict[str, Any]) -> AsyncIterator[SourceRecord]:

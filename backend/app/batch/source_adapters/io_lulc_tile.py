@@ -5,7 +5,7 @@
 
 ズームは元データの分解能から決める（10m画素なのでz14が7.73m/画素で釣り合う）。
 
-取得（`fetch_lulc_rasters`）は、取込の範囲（`target.bbox`）に掛かるUTMゾーンごとに、配布元が出している最新の年のラスタを
+取得（`_fetch_lulc_rasters`）は、取込の範囲（`target.bbox`）に掛かるUTMゾーンごとに、配布元が出している最新の年のラスタを
 置き場（`data_paths.py: RASTER_DIR`）へ取る。ゾーンと年は配布元のSTAC APIの品目の検索で引く（品目1つがゾーン×年の
 GeoTIFF1枚）。取込と地図のラスタタイルは、置き場にあるラスタを全部読む。
 """
@@ -48,7 +48,7 @@ class LulcGrid:
     zoom: int
 
 
-def lulc_adapter_inputs(spec: SourceSpec, profile: SourceProfile) -> AdapterInputs:
+def _lulc_adapter_inputs(spec: SourceSpec, profile: SourceProfile) -> AdapterInputs:
     """置き場のGeoTIFF。"""
     # rasterioのimport順の制約（PROJデータの固定）を持つモジュールを経由して読む。
     from app.infrastructure.landcover_raster import open_rasters
@@ -89,7 +89,7 @@ def _search(profile: SourceProfile) -> list[dict[str, Any]]:
     return items
 
 
-def fetch_lulc_rasters(spec: SourceSpec, profile: SourceProfile) -> None:
+def _fetch_lulc_rasters(spec: SourceSpec, profile: SourceProfile) -> None:
     """範囲に掛かるゾーンごとに、最新の年のラスタを置き場へ取る。"""
     hrefs = _latest_rasters(_search(profile))
     if not hrefs:
@@ -99,8 +99,8 @@ def fetch_lulc_rasters(spec: SourceSpec, profile: SourceProfile) -> None:
                    read_timeout=_READ_TIMEOUT_SECONDS, logger=logger)
 
 
-@register_adapter("io_lulc_tile", grid=LulcGrid, required=(SourceFeatureRow.rast,), inputs=lulc_adapter_inputs,
-                  fetcher=Fetcher(fetch_lulc_rasters, lambda: (data_paths.RASTER_DIR,)))
+@register_adapter("io_lulc_tile", grid=LulcGrid, required=(SourceFeatureRow.rast,), inputs=_lulc_adapter_inputs,
+                  fetcher=Fetcher(_fetch_lulc_rasters, lambda: (data_paths.RASTER_DIR,)))
 async def read_lulc_tiles(spec: SourceSpec, profile: SourceProfile, inputs: AdapterInputs,
                           origin: dict[str, Any]) -> AsyncIterator[SourceRecord]:
     from app.infrastructure.landcover_raster import open_rasters, tile_classes

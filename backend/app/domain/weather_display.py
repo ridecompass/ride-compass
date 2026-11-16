@@ -17,7 +17,7 @@ class ValueColorStop(NamedTuple):
     name: str
 
 
-def ascending_stops(*stops: ValueColorStop) -> tuple[ValueColorStop, ...]:
+def _ascending_stops(*stops: ValueColorStop) -> tuple[ValueColorStop, ...]:
     """段の並び。**値の昇順でなければ読み込んだ時点で落とす**——画面は段を帯の下限として
     この順のまま塗り分けの式と凡例へ組み立てるため、順が崩れると地図のレイヤーが黙って
     描かれなくなる。"""
@@ -49,7 +49,7 @@ class RiskLevel(NamedTuple):
 #: 塗り替えて配るため、気象庁のタイル・MSMの格子点の升目の塗り・凡例が同じ段で読める。いちばん弱い段の下限より
 #: 弱い雨は塗らない——気象庁の画面ではほぼ白で雨と読めない段で、色を付けると、気象庁やその配色に従う配信サイトで降っていない
 #: 所が雨に見える。10mm/h以上の名前は気象庁「雨の強さと降り方」の分類、それ未満は公式の区分が無いため自前で名付ける。
-PRECIPITATION_COLOR_STOPS: tuple[ValueColorStop, ...] = ascending_stops(
+PRECIPITATION_COLOR_STOPS: tuple[ValueColorStop, ...] = _ascending_stops(
     ValueColorStop(1, "#68ccfb", "弱い雨"),
     ValueColorStop(5, "#38bdf8", "ザーッ"),
     ValueColorStop(10, "#3b82f6", "やや強い雨"),
@@ -61,7 +61,7 @@ PRECIPITATION_COLOR_STOPS: tuple[ValueColorStop, ...] = ascending_stops(
 
 #: 風速（m/s）。段の切れ目はビューフォート風力階級の上限で、名前は自転車で走るときの
 #: 感じ方へ寄せてある。走行困難域（Bf7以上）は粒度を粗くする。
-WIND_SPEED_COLOR_STOPS: tuple[ValueColorStop, ...] = ascending_stops(
+WIND_SPEED_COLOR_STOPS: tuple[ValueColorStop, ...] = _ascending_stops(
     ValueColorStop(0, "#7dd3fc", "微風"),
     ValueColorStop(1.5, "#38bdf8", "そよ風"),
     ValueColorStop(3.3, "#22d3ee", "心地よい風"),
