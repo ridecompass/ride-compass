@@ -1,5 +1,5 @@
 # 週1回。VMが止まっていた間に過ぎた回は、起動したときに1回打つ（Persistent=true）。
-# DBのバックアップ（03:17から）・VMの自動更新（04:30。PostgreSQLを止める）・派生データベースの書き出し（04:40から）が
+# DBのバックアップ（03:17から）・VMの自動更新（04:30。PostgreSQLを止める）が
 # 終わってから始め、次の日のバックアップより前に終わる時刻に置く（1回の長さは .claude/skills/production-data/SKILL.md「元の取り直しの登録」）。
 [Unit]
 Description=Weekly RideCompass source refetch, reingest and rederive

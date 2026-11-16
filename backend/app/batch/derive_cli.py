@@ -20,6 +20,9 @@
 外部キーで指す値の表を空にする）。
 作り直しは取込・DBのバックアップと同時に走らない（`common.py: SOURCE_DATA_LOCK`）。
 
+**コマンドとして打つと、作り直しの終わりに OSM の派生データベースを書き出す**（`export_derived_database`）。配る書き出しが
+作り直した世代に追いつくのは、この時だけである。
+
 **作り直しは作業用のスキーマで行い、道路網の配列まで作ってから1つのトランザクションで`public`の
 表と入れ替える**（仕組みと理由は`docs/modules/backend/static-road-attributes.md`「派生」）。
 段のSQLは表の名前をスキーマを付けずに書く——接続の`search_path`が作業用のスキーマを先に探し、
@@ -47,6 +50,7 @@ from types import ModuleType
 from typing import TypeVar
 
 import asyncpg
+from sqlalchemy import text
 
 from app.batch import (
     derive_addresses,
@@ -67,7 +71,7 @@ from app.batch.common import (
     run_batch_cli,
 )
 from app.infrastructure.tuning_overrides import load_tuning_values
-from app.infrastructure import derived_data_meta, region_tile_cache, road_network_store
+from app.infrastructure import derived_data_meta, derived_database_export, region_tile_cache, road_network_store
 from app.domain.tuning import (
     ACCIDENT_FATAL_WEIGHT_ID,
     ACCIDENT_MATCH_DISTANCE_ID,
@@ -330,12 +334,31 @@ async def run(database_url: str, stages: Sequence[str] | None = None) -> int:
     return 0
 
 
+async def export_derived_database(database_url: str) -> None:
+    """今の世代の派生データベースを書き出す（`infrastructure/derived_database_export.py`）。取込・派生の作り直し・
+    バックアップが鍵を持っていれば書かずに終える——その途中を読むと道と値が別々の世代になる。"""
+    async with batch_session_factory(database_url) as session_factory, session_factory() as session:
+        # 鍵は接続に付く。書き出しと同じセッション（同じ接続）で取り、外すのは接続を閉じるとき——書き出しが落ちて
+        # トランザクションが壊れても、外し損ねない。
+        if not (await session.execute(text("SELECT pg_try_advisory_lock(hashtext(:lock))"),
+                                      {"lock": SOURCE_DATA_LOCK})).scalar_one():
+            logger.warning("取込・派生の作り直し・バックアップが走っているので、派生データベースを書き出さずに終えます")
+            return
+        await derived_database_export.ensure_current(session)
+
+
+async def _derive_and_export(database_url: str, stages: Sequence[str] | None) -> int:
+    await run(database_url, stages)
+    await export_derived_database(database_url)
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="生データから派生を作り直す（選んだ段と、それを読む後ろの段。選ばなければ全部の段）")
     parser.add_argument("--stages", nargs="+", metavar="段",
                         help=f"作り直す段（{', '.join(STAGE_NAMES)}）。その出力を読む後ろの段も流す。"
                              f"{NETWORK}は段を流さず道路網の配列だけを作る")
-    return run_batch_cli(parser, lambda args, database_url: run(database_url, args.stages))
+    return run_batch_cli(parser, lambda args, database_url: _derive_and_export(database_url, args.stages))
 
 
 if __name__ == "__main__":
