@@ -1,10 +1,9 @@
-import asyncio
 from functools import partial
 from datetime import datetime
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from pydantic import Field, PrivateAttr, RootModel, field_validator, model_validator
+from pydantic import Field, PrivateAttr, field_validator, model_validator
 
 from app.domain.time_zone import as_jst
 from app.api.dependencies import (
@@ -12,11 +11,10 @@ from app.api.dependencies import (
     get_generation_slots,
     get_route_generation_setup_opener,
 )
-from app.api.generation_slots import GenerationSlots
+from app.api.failure_replies import failure_reply
 from app.api.rate_limit import client_id, enforce_rate_limit
 from app.config import settings
 from app.domain.cost_preference import CostPreference, RequestedCostPreference
-from app.domain.road_avoidance import AvoidanceLevel
 from app.domain.route_request import (
     MAX_ROUTE_DISTANCE_KM,
     MAX_ROUTES,
@@ -37,20 +35,19 @@ from app.domain.route_request import (
 )
 from app.domain.geo import Latitude, Longitude, haversine_distance_km
 from app.domain.errors import GENERATION_BUSY_MESSAGE
-from app.domain.route import Coordinates, RouteCandidate
-from app.api.failure_replies import failure_reply
+from app.domain.route import Coordinates
 from app.infrastructure import job_registry
 from app.infrastructure.debug_log import record_rate_limit_rejection
-from app.infrastructure.heap_release import release_freed_heap
-from app.services.route_generation_setup import generate_route_candidates
+from app.services.generation_slots import GenerationSlots
+from app.services.route_generation_job import (
+    RoadAvoidanceOverride,
+    RouteGenerateResponse,
+    generate_route_response,
+    run_route_generation_job,
+)
 from app.domain.strict_model import StrictModel
 
 router = APIRouter()
-
-
-class RoadAvoidanceOverride(RootModel[dict[str, AvoidanceLevel]]):
-    """避け方を選べる行（`<分け方>.<区分>`）→避け方（好む・通る・なるべく避ける・通らない）。要求では行の一部でもよく、
-    応答には今の区分の行を全部エコーする（`domain/road_avoidance.py: resolve_road_avoidance`）。"""
 
 
 class RouteGenerateRequest(StrictModel):
@@ -135,44 +132,6 @@ class RouteGenerateRequest(StrictModel):
         return self._target
 
 
-class GenerationConditions(StrictModel):
-    """この生成に実際に適用された条件のエコー（再現用）。
-
-    cost_preference は今の費用の軸を全部書いた形。レスポンスJSONを保存すれば、同じ条件をcost_preferenceとして
-    そのまま再送して再現できる。
-    """
-
-    latitude: float
-    longitude: float
-    # 全長の目標距離（無ければNone）。
-    distance_km: float | None
-    cost_preference: CostPreference
-    # 道の区分ごとの避け方（実際に適用された値）。
-    road_avoidance: RoadAvoidanceOverride
-    # 候補数の上限。
-    max_routes: int
-    # 実際に適用された出発時刻（JST）。
-    start_time: datetime
-    # 仮定巡航速度（km/h、実際に適用された値）。
-    assumed_speed_kmh: float
-    # 指定された経由地（未指定はNone、周回候補の生成）。
-    waypoints: list[Coordinates] | None
-    # 指定された目的地（未指定はNone、経由地のみなら起点に戻る周回）。
-    destination: Coordinates | None
-    # `destination`の一番近いNodeから出て戻れない（メインの道路網から孤立した歩道橋・私有地内通路、
-    # 一方通行の袋等）ため、出て戻れる最寄りNodeへ寄せ直して探索した場合の座標。寄せ直さなかった
-    # （`destination`をそのまま使えた）場合はNone。
-    corrected_destination: Coordinates | None
-
-
-class RouteGenerateResponse(StrictModel):
-    routes: list[RouteCandidate]
-    conditions: GenerationConditions
-    # routesが空のとき、原因の要約。サーバーログを見ずに利用者が原因を切り分けられるようにする。
-    # routesが1件以上あるときは常にNone。
-    no_candidates_reason: str | None
-
-
 class RouteGenerateJobCreatedResponse(StrictModel):
     """`POST /api/routes/generate`の応答。
 
@@ -221,10 +180,25 @@ async def generate_routes(
         )
         raise HTTPException(status_code=429, detail=GENERATION_BUSY_MESSAGE)
     job_id = job_registry.create_job()
+    generate = partial(
+        generate_route_response,
+        open_setup,
+        RequestedConditions(
+            cost_preference=request.cost_preference,
+            road_avoidance=dict(request.road_avoidance.root),
+            assumed_speed_kmh=request.assumed_speed_kmh,
+        ),
+        origin=Coordinates(latitude=request.latitude, longitude=request.longitude),
+        target=request.target,
+        start_time=request.start_time,
+        max_routes=request.max_routes,
+        waypoints=request.waypoints,
+        destination=request.destination,
+    )
     # ジョブ本体は`BackgroundTasks`ではなく`create_task`で起動する。`BackgroundTasks`は
     # レスポンス送出が完了してから実行されるため、送出中の失敗（クライアント切断・
     # ミドルウェアの例外）でジョブが一度も起動せず、記録したジョブが待ちのまま残る。
-    slots.start(partial(_run_generate_job, job_id, request, open_setup, slots, client_id(http_request)))
+    slots.start(partial(run_route_generation_job, job_id, slots, client_id(http_request), failure_reply, generate))
     return RouteGenerateJobCreatedResponse(job_id=job_id)
 
 
@@ -246,84 +220,3 @@ async def get_generate_job(
     if isinstance(record, job_registry.JobFailed):
         return RouteGenerateJobFailed(error=record.error)
     return RouteGenerateJobPending(status=record.status)
-
-
-async def _run_generate_job(
-    job_id: str,
-    request: RouteGenerateRequest,
-    open_setup: RouteGenerationSetupOpener,
-    slots: GenerationSlots,
-    client: str,
-) -> None:
-    """`generate_routes`が`api/generation_slots.py: GenerationSlots.start`で起動するジョブ本体。
-    例外はここで捕捉してjob_registryへ記録する——切り離されたタスクの例外はどこにも
-    伝播せず、素通しするとサーバーログにしか残らずクライアントは永久にポーリングし
-    続けることになる。
-
-    同時実行の枠が空くまで待ちの状態で待ち、`settings.generate_queue_wait_seconds`のうちに空かなければ混み合いとして
-    失敗にする。
-
-    待ちと生成を合わせて、結果を持つ時間（`job_registry.JOB_TTL_SECONDS`）で打ち切る。"""
-    deadline = asyncio.timeout(job_registry.JOB_TTL_SECONDS)
-    acquired = False
-    try:
-        async with deadline:
-            if not await slots.acquire(settings.generate_queue_wait_seconds):
-                record_rate_limit_rejection(
-                    "generate-queue-wait", client, f"wait={settings.generate_queue_wait_seconds:.0f}s"
-                )
-                job_registry.set_failed(job_id, GENERATION_BUSY_MESSAGE)
-                return
-            acquired = True
-            job_registry.set_running(job_id)
-            target = request.target
-            generated = await generate_route_candidates(
-                partial(
-                    open_setup,
-                    RequestedConditions(
-                        cost_preference=request.cost_preference,
-                        road_avoidance=dict(request.road_avoidance.root),
-                        assumed_speed_kmh=request.assumed_speed_kmh,
-                    ),
-                ),
-                origin=Coordinates(latitude=request.latitude, longitude=request.longitude),
-                target=target,
-                start_time=request.start_time,
-                max_routes=request.max_routes,
-            )
-        applied = generated.conditions
-        response = RouteGenerateResponse(
-            routes=generated.candidates,
-            no_candidates_reason=generated.no_candidates_reason,
-            conditions=GenerationConditions(
-                latitude=request.latitude,
-                longitude=request.longitude,
-                distance_km=target.distance_km if isinstance(target, DistanceTarget) else None,
-                cost_preference=applied.cost_preference,
-                road_avoidance=RoadAvoidanceOverride(dict(applied.road_avoidance)),
-                max_routes=generated.max_routes,
-                start_time=request.start_time,
-                assumed_speed_kmh=applied.assumed_speed_kmh,
-                waypoints=request.waypoints,
-                destination=request.destination,
-                corrected_destination=generated.corrected_destination,
-            ),
-        )
-        job_registry.set_done(job_id, response)
-    # ジョブの例外は何であれジョブの失敗としてポーリングへ返す（握りつぶさない）。
-    except Exception as exc:  # noqa: BLE001
-        # 想定した失敗は口と同じ文（`failure_reply`）で、時間切れはその旨で返す。決め方に無い例外（実装の誤り等）は、文に
-        # 接続先やSQLが混じりうるので決まった文を返す。
-        reply = failure_reply(exc)
-        job_registry.set_failed(
-            job_id,
-            f"ルート生成が{job_registry.JOB_TTL_SECONDS:.0f}秒のうちに終わりませんでした" if deadline.expired()
-            else reply[1] if reply is not None
-            else "ルート生成に失敗しました。時間をおいて再度お試しください。",
-        )
-    finally:
-        if acquired:
-            slots.release()
-            # 生成が作って捨てた配列の領域を返す。返さないと、それまでで一番大きい生成の分が anon に残り、
-            # 生成どうしが分け合うメモリ（`services/graph_service.py: SearchMemory`）が前提にする取り置きを食う。
-            await asyncio.to_thread(release_freed_heap)

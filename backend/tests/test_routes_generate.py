@@ -27,7 +27,7 @@ import httpx
 import pytest
 
 from app.api import dependencies
-from app.api.generation_slots import GenerationSlots
+from app.services.generation_slots import GenerationSlots
 from app.config import settings
 from app.domain.cost_axes import EFFORT_AXES
 from app.domain.errors import GENERATION_BUSY_MESSAGE

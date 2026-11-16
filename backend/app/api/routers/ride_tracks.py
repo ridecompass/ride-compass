@@ -8,13 +8,12 @@
 import zlib
 from collections.abc import Callable
 
-from fastapi import APIRouter, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.routing import APIRoute
 
-from app.api.dependencies import TileSessions
-from app.config import settings
+from app.api.dependencies import get_ride_track_service
 from app.domain.ride_track import RideUpload
-from app.infrastructure.ride_track_models import store_ride_track
+from app.services.ride_track_service import RideTrackService
 
 #: 戻した本文の大きさの上限。小さく縮めて巨大に膨らむ本文でメモリを食わせないよう、1秒1点で長く走った走りに推したルートと
 #: 予報を足しても届かない大きさで切る（点1つは約50バイトで、100時間分でも約18MB）。
@@ -48,8 +47,6 @@ router = APIRouter(prefix="/api/rides", tags=["rides"], route_class=_GzipRoute)
 
 
 @router.post("", status_code=status.HTTP_204_NO_CONTENT)
-async def receive_ride(upload: RideUpload, tile_sessions: TileSessions) -> None:
+async def receive_ride(upload: RideUpload, rides: RideTrackService = Depends(get_ride_track_service)) -> None:
     """走り1回を書く。同じ走りが二度届いても先の行のまま、書けたものとして返す（端末はこれを見て手元の記録を消す）。"""
-    async with tile_sessions() as session:
-        await store_ride_track(session, upload, server_commit=settings.git_commit)
-        await session.commit()
+    await rides.store(upload)
