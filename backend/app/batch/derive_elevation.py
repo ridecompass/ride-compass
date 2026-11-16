@@ -32,9 +32,8 @@ https://github.com/graphhopper/graphhopper/blob/master/core/src/main/java/com/gr
 
 **画素はDB内で引く。**画素をプロセスへ取り出さず、頂点のあるタイルをDBの中で1枚ずつ展開して引く。
 
-同じ地点に複数の製品のタイルがありうる。**どの製品の値を採るかは画素ごとに決める**
-——配信元の定める精度の順（`domain/gsi_tiles.py: PRODUCT_PRIORITY`）に見て、値のある最初の製品を
-採る。どの製品にも値が無い画素は欠測のまま残る。
+同じ地点に複数の製品のタイルがありうる。どの製品の値を採るかは点ごとに決める
+（`infrastructure/dem_elevation.py: fill_elevations`）。頂点ごとに採った標高は表`_vertex_elev`に入り、行の無い頂点は値が無い。
 
 
 値の出し方そのものはdomainが持つ（`elevation_values_sql`）。このバッチは画素の引き方を
@@ -49,21 +48,14 @@ import asyncpg
 
 from app.batch.common import affected_rows
 from app.domain.attributes import elevation_values_sql
-from app.domain.gsi_tiles import PRODUCT_PRIORITY
-from app.domain.region import tile_position_sql
 from app.domain.material_sql import IS_BRIDGE_SQL, IS_TUNNEL_SQL
 from app.domain.tuning import (
     ELEVATION_PROFILE_STEP_ID,
     ELEVATION_PROFILE_TOLERANCE_ID,
     require_tuning,
 )
-from app.infrastructure.source_models import (
-    DEM_TILES_SQL,
-    INGESTED_DEM_PRODUCTS_SQL,
-    WAYS_SOURCE_SQL,
-    dem_pixel_value_sql,
-    dem_tile_pixels_sql,
-)
+from app.infrastructure.dem_elevation import fill_elevations, products_in_priority
+from app.infrastructure.source_models import WAYS_SOURCE_SQL
 
 logger = logging.getLogger("ridecompass.derive_elevation")
 
@@ -214,40 +206,6 @@ CROSS JOIN LATERAL (
 WHERE s.chunk = $1
 """
 
-#: 頂点ごとに採った標高。値のある画素だけを入れるので、行の無い頂点はまだどの製品でも
-#: 値が見つかっていない。
-_VERTEX_ELEVATION_TABLE = """
-CREATE TEMP TABLE _vertex_elev (vid bigint PRIMARY KEY, elev double precision) ON COMMIT DROP
-"""
-
-#: 頂点のタイル座標（小数）の式。`$1`は製品のズーム。
-_VERTEX_TILE_X, _VERTEX_TILE_Y = tile_position_sql("v.lon", "v.lat", "$1")
-
-#: 1製品ぶん、まだ値の無い頂点の、その製品のズームでのタイルの番地。**製品を優先順に1つずつ流す**ので、上の製品に
-#: 値のある頂点は下の製品を読まない——下の製品は、欠けた頂点のあるタイルだけを読む。製品ごとにズームが違っても、
-#: その製品のズームで番地を出せば同じ式で済む。
-_VERTEX_TILES = f"""
-CREATE TEMP TABLE _vertex_tile ON COMMIT DROP AS
-SELECT v.vid, p.fx, p.fy, floor(p.fx)::int AS tx, floor(p.fy)::int AS ty
-FROM _vertex v
-CROSS JOIN LATERAL (SELECT {_VERTEX_TILE_X} AS fx, {_VERTEX_TILE_Y} AS fy) p
-WHERE NOT EXISTS (SELECT 1 FROM _vertex_elev e WHERE e.vid = v.vid)
-"""
-#: 頂点のあるタイルを1枚ずつ展開し、そのタイルの頂点に画素を引く（`infrastructure/source_models.py: dem_tile_pixels_sql`）。
-#: タイルの頂点は番地の索引で引く。`$1`は製品。
-_FILL_FROM_PRODUCT = f"""
-INSERT INTO _vertex_elev (vid, elev)
-SELECT a.vid, a.elev
-FROM (SELECT DISTINCT tx, ty FROM _vertex_tile) k
-JOIN {DEM_TILES_SQL} t
-  ON t.attrs->>'product' = $1 AND (t.attrs->>'x')::int = k.tx AND (t.attrs->>'y')::int = k.ty
-{dem_tile_pixels_sql("t", "g")}
-CROSS JOIN LATERAL (
-  SELECT v.vid, {dem_pixel_value_sql("g", "v.fx", "v.fy", "v.tx", "v.ty")} AS elev
-  FROM _vertex_tile v WHERE v.tx = k.tx AND v.ty = k.ty OFFSET 0) a
-WHERE a.elev IS NOT NULL
-"""
-
 #: 構造物の種類（`$1`）の区間でつながった頂点の組（いちばん小さい頂点の番号を組の名にする）。名が変わらなくなるまで隣から写す。
 _STRUCTURE_STEPS = """CREATE TEMP TABLE _structure_step ON COMMIT DROP AS
 SELECT node_id, adj FROM _endpoint WHERE structure = $1
@@ -327,34 +285,20 @@ FROM ({elevation_values_sql(_VERTEX_ELEVATIONS, "$1::float8")}) v
 """
 
 
-async def _products_in_priority(conn: asyncpg.Connection) -> list[tuple[str, int]]:
-    """取り込まれた製品とそのズームを、画素の値を採る順に並べる。順を知らない製品は読まない。"""
-    rows = await conn.fetch(INGESTED_DEM_PRODUCTS_SQL)
-    zooms = {r["product"]: r["zoom"] for r in rows}
-    return [(p, zooms[p]) for p in PRODUCT_PRIORITY if p in zooms]
-
-
 async def _fill_vertices(conn: asyncpg.Connection, products: list[tuple[str, int]],
                          filled: dict[str, int]) -> tuple[int, int]:
     """今の`_vertex`の点へ、製品を優先順に流して画素の値を`_vertex_elev`に引き、点の数と値の無い点の数を返す。`filled`へ
     製品ごとの値の付いた点の数を足す。"""
     await conn.execute("ANALYZE _vertex")
-    await conn.execute(_VERTEX_ELEVATION_TABLE)
     points = remaining = await conn.fetchval("SELECT count(*) FROM _vertex")
-    for product, zoom in products:
-        await conn.execute("DROP TABLE IF EXISTS _vertex_tile")
-        await conn.execute(_VERTEX_TILES, zoom)
-        await conn.execute("CREATE INDEX ON _vertex_tile (tx, ty)")
-        await conn.execute("ANALYZE _vertex_tile")
-        count = affected_rows(await conn.execute(_FILL_FROM_PRODUCT, product))
+    for product, count in (await fill_elevations(conn, "_vertex", "_vertex_elev", products)).items():
         filled[product] += count
         remaining -= count
-        await conn.execute("ANALYZE _vertex_elev")
     return points, remaining
 
 
 async def _drop_vertex_tables(conn: asyncpg.Connection) -> None:
-    for table in ("_vertex", "_vertex_elev", "_vertex_tile"):
+    for table in ("_vertex", "_vertex_elev"):
         await conn.execute(f"DROP TABLE IF EXISTS {table}")
 
 
@@ -484,7 +428,7 @@ async def _derive_chunk(conn: asyncpg.Connection, chunk: int, products: list[tup
 async def _derive_elevation(conn: asyncpg.Connection, profile_step_m: float, profile_tolerance_m: float,
                             chunk_points: int) -> None:
     started = time.perf_counter()
-    products = await _products_in_priority(conn)
+    products = await products_in_priority(conn)
     await conn.execute("TRUNCATE edge_elevation")
     edges = await conn.fetchval("SELECT count(*) FROM road_edges")
     await conn.execute(_SHAPES, profile_step_m, chunk_points)

@@ -1,10 +1,8 @@
 import asyncio
 import gc
 import logging
-import sys
 from contextlib import asynccontextmanager
 from datetime import datetime
-from pathlib import Path
 
 from apscheduler.events import EVENT_JOB_ERROR, JobExecutionEvent
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -17,7 +15,6 @@ from app.api.cache_policy import TILE_PATH_PREFIXES, CachePolicyMiddleware
 from app.api.dependencies import get_amedas_service, get_jma_tile_client, open_region_service
 from app.api.routers import api_router
 from app.config import settings
-from app.domain.time_zone import JST
 from app.infrastructure.database import get_session_factory
 from app.infrastructure.debug_control import install_ring_buffer_handler
 from app.infrastructure.http_client import get_http_client
@@ -104,23 +101,6 @@ async def _prune_stale_disk_generations_job() -> None:
         log.info("地域タイルの旧世代を削除しました removed=%d", removed)
 
 
-#: 派生データベースの書き出しの入口（`scripts/export_derived_database.py`）。
-_EXPORT_DERIVED_DATABASE_SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "export_derived_database.py"
-#: 書き出しを打つ時刻（日本時間）。DBのバックアップ
-#: （`backend/ops/ridecompass-admin-data-backup.timer`）が鍵を外したあとの、利用の少ない時間に置く——バックアップが鍵を
-#: 持つ間は書かずに終わる。
-_EXPORT_DERIVED_DATABASE_AT = {"hour": 4, "minute": 40, "timezone": JST}
-
-
-async def _export_derived_database_job() -> None:
-    """派生データベースを書き出す。全件を読んでZIPに詰めるのに数分以上かかり、圧縮がCPUを使い切るので、配信の
-    イベントループで回さず、優先度を下げた別のプロセスで打つ。ログはそのプロセスが同じ出力へ書く。"""
-    process = await asyncio.create_subprocess_exec(
-        "nice", "-n", "10", sys.executable, str(_EXPORT_DERIVED_DATABASE_SCRIPT))
-    if await process.wait() != 0:
-        raise RuntimeError(f"派生データベースの書き出しが終了コード{process.returncode}で終わりました")
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     async with get_session_factory()() as session:
@@ -165,13 +145,6 @@ async def lifespan(app: FastAPI):
         trigger="date",
         run_date=datetime.now(),
         id="prune_stale_disk_generations",
-    )
-    # 置くのは派生を作り直した世代のときだけで、同じ世代なら書き出しのプロセスが何もせずに終える。
-    scheduler.add_job(
-        _export_derived_database_job,
-        trigger="cron",
-        **_EXPORT_DERIVED_DATABASE_AT,
-        id="export_derived_database",
     )
     scheduler.start()
     yield

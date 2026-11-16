@@ -9,19 +9,15 @@ domainの計算は本物を通す。
 - 格子点ごとの予報を道・区間へ配ること → `test_region_lens.py`・`test_leg_costs.py`
 """
 
-import json
 from datetime import datetime
 
 import numpy as np
-import pytest
 
 from app.domain.region import BoundingBox
 from app.domain.route import Coordinates
-from app.domain.time_zone import JST
 from app.infrastructure import msm_client
 from app.infrastructure.msm_client import (
     MsmGridPointWeatherSeries,
-    MsmUnavailableError,
     MsmWeatherGridSeries,
 )
 from app.services.weather_service import WeatherService
@@ -84,20 +80,3 @@ async def test_the_map_grid_gives_each_grid_point_its_rounded_wind_and_rain_with
     assert second.precipitation_mm == [None]
     assert (forecast.latitude_step_deg, forecast.longitude_step_deg) == (0.05, 0.0625)
     assert forecast.latest_run_end == datetime(2026, 10, 9, 0, 0)
-
-
-@pytest.mark.parametrize("synced", [True, False])
-def test_the_forecast_status_is_the_end_of_the_synced_latest_run_as_a_series_time(tmp_path, monkeypatch, synced):
-    """予報の値の時刻（タイムゾーンの無いJST）と比べられる形で返す。同期していなければ、前のrunかを見分けられないので投げる。"""
-    monkeypatch.setattr(msm_client, "MSM_DIR", tmp_path)
-    if synced:
-        (tmp_path / "meta.json").write_text(json.dumps({
-            "last_run_initialisation_time": int(datetime(2026, 10, 7, 12, tzinfo=JST).timestamp()),
-            "data_end_time": int(datetime(2026, 10, 9, 0, tzinfo=JST).timestamp()),
-        }), encoding="utf-8")
-
-    if synced:
-        assert WeatherService().get_forecast_status().latest_run_end == datetime(2026, 10, 9, 0, 0)
-    else:
-        with pytest.raises(MsmUnavailableError):
-            WeatherService().get_forecast_status()

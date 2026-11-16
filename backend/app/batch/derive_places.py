@@ -24,6 +24,8 @@
 
 辺り（`area`）は、入れた地点の位置を含む小地域の境界の名前（`infrastructure/place_area_query.py: area_label_sql`）で、
 入れるときに求める（あとから全行を書き換えると、死んだ行が全行ぶん残ったまま表が入れ替わる）。
+地点は名前（表記の揺れを除いた形）の順に入れ、名前の頭が同じ地点を表の中の近いページに置く（理由と測った値は
+docs/modules/backend/place-search.md「引き方」）。`CLUSTER`で並べ直すと入れた表をもう一度書き直すので、入れるときに並べる。
 ほかの段の表も道の網も読まない。
 """
 
@@ -149,6 +151,7 @@ FROM (
     ) keyed
     ORDER BY place_group, chain, kind, merge_key, confidence DESC, overture_id
 ) kept
+ORDER BY kept.normalized_name COLLATE "C"
 """
 
 #: 寺社の所有者ごとの建物（1つの建物に寺社の所有者が2人いれば2行）。
@@ -180,6 +183,7 @@ FROM (
 ) centered
 ORDER BY normalized_name, merge_key, ST_Distance({ground_m_sql("geom")}, {ground_m_sql("center")}), heritage_id
 ) kept
+ORDER BY kept.normalized_name COLLATE "C"
 """
 
 

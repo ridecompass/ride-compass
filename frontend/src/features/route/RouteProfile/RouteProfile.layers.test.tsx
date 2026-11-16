@@ -47,12 +47,15 @@ describe("RouteProfile の「表示」の図", () => {
   it("「表示」のタブの現在地の印は、最初の折れ線のその地点の値の高さに置き、その地点に値が無ければ図の中ほどに置く", async () => {
     const { rerender } = renderProfile({ scaleKm: 2, progressKm: 0.25 });
     await openLayers();
-    const mark = () => screen.getByRole("img", { name: "現在地" });
+    const mark = () => {
+      const { style } = screen.getByRole("img", { name: "現在地" });
+      return { left: style.getPropertyValue("--at"), top: style.top };
+    };
     // 標高12〜31.6mの1/4の高さ（上下の余白8を除いた84の1/4だけ下端から上がる）。
-    expect(mark().style).toMatchObject({ left: "12.5%", top: "71%" });
+    expect(mark()).toEqual({ left: "12.5%", top: "71%" });
 
     rerender(profileElement({ progressKm: 1.5 }));
-    expect(mark().style).toMatchObject({ left: "75%", top: "50%" });
+    expect(mark()).toEqual({ left: "75%", top: "50%" });
   });
 
   it("道の区分のレイヤは、レイヤごとに地図と同じ色の帯を出し、帯に現れた区分の凡例を「グラフに出す情報」の一覧の行に出す", async () => {

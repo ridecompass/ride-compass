@@ -173,6 +173,18 @@ async def test_each_place_keeps_its_name_without_variations_in_notation(derive_c
     assert await derive_conn.fetchval("SELECT search_name FROM places") == "セブンイレブン新宿西口ノオ店cafe"
 
 
+async def test_places_lie_in_the_table_in_the_order_of_their_names(derive_conn, overture_dir):
+    """名前の頭が同じ地点が表の中で散ると、地点の検索の1文字の入力が表のほぼ全部のページを読み、メモリから外れた1回目に
+    数秒待たせる。群の順とも識別子の順とも違う並びの見本で、表の行の物理の順（`ctid`）を見る。"""
+    await _places(derive_conn, [
+        _place("c", LON, FOOD),
+        _place("a", LON + APART, ["lodging", "hotel"]),
+        _place("b", LON + 2 * APART, ["travel_and_transportation", "train_station"]),
+    ])
+
+    assert [row["name"] for row in await derive_conn.fetch("SELECT name FROM places ORDER BY ctid")] == ["a", "b", "c"]
+
+
 async def test_the_convenience_group_takes_only_convenience_chains(derive_conn, overture_dir):
     """Overture のコンビニの分類には、コンビニでない店・個人の店も入っている。群「コンビニ」はコンビニのチェーンの名前か
     ブランドに当たる店だけで、ほかは群を持たない地点として入る。ほかの群はチェーンを問わない。"""

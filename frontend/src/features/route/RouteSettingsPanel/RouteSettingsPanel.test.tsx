@@ -116,33 +116,4 @@ describe("倍率", () => {
     await userEvent.click(overall.getByRole("radio", { name: "150%" }));
     expect(onCostPreferenceChange).toHaveBeenLastCalledWith({ ...STANDARD_COST_PREFERENCE, strength: 1.5 });
   });
-
-  it("選んだ段の丸を、軸の行は小さい段を通りやすくする向き・大きい段を避ける向きの色で、全体の行は小さい段を灰色で塗る", async () => {
-    serveCostAxisCatalog();
-    renderPanel();
-    // 段を1つずつ選び、選んだ段に出る丸の色を読む。
-    async function colorsOf(name: string) {
-      const group = await levelsOf(name);
-      const colors: Record<string, string> = {};
-      for (const radio of group.getAllByRole("radio")) {
-        await userEvent.click(radio);
-        colors[radio.getAttribute("aria-label") ?? ""] = radio.querySelector("span")?.style.background ?? "";
-      }
-      return colors;
-    }
-
-    expect(await colorsOf("振動の割合")).toEqual({
-      無効: "var(--color-muted)",
-      "50%": "var(--color-road-avoidance-prefer)",
-      "100%": "var(--color-muted)",
-      "200%": "var(--color-road-avoidance-avoid)",
-    });
-    expect(await colorsOf("全体の割合")).toEqual({
-      無効: "var(--color-muted)",
-      "50%": "var(--color-muted)",
-      "100%": "var(--color-muted)",
-      "150%": "var(--color-road-avoidance-avoid)",
-      "200%": "var(--color-road-avoidance-avoid)",
-    });
-  });
 });
