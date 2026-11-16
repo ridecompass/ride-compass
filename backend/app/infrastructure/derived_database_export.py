@@ -1,14 +1,15 @@
 """OSM の派生データベース（道ごとの値）を、ODbL の表示を付けた1つの ZIP に書き出し、ディスクへ置く。
 
 地図のタイル・道の鍵を付けた値の配信・ルートは OSM の派生データベースを公に使うので、その全体を受け取った人が取れるように
-する（docs/architecture/data-sources.md「OSM から作った値と独自の層」）。書くのは毎日の定期の実行（`scripts/export_derived_database.py`）
-だけで、backend は置かれた最新の1つを配るだけにする。取込・派生の作り直しと同時に書かないための鍵は、その入口が持つ。
+する（docs/architecture/data-sources.md「OSM から作った値と独自の層」）。書くのは派生の作り直しの入口（`batch/derive_cli.py: main`）の
+終わりだけで、backend は置かれた最新の1つを配るだけにする。取込・派生の作り直しと同時に書かないための鍵は、その入口が持つ。
 
 置き場は`data/derived_database/`で、中に置くのは最新の1つだけ。名前は形の署名と派生・生データの世代を持ち、今の世代・形の
 ものが既にあれば書かない。書き終えるまでは読み手が拾わない名前（先頭が`.`）に書き、最後に名前を付け替えてから古いものを消す。
 """
 
 import csv
+import html
 import io
 import logging
 import re
@@ -20,6 +21,7 @@ from pathlib import Path
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.domain.map_display import DERIVED_DATABASE_ATTRIBUTIONS
 from app.domain.material_catalog import MATERIAL_CATALOG
 from app.infrastructure.cache_identity import shape_digest
 from app.infrastructure.data_paths import DATA_DIR
@@ -43,6 +45,14 @@ def _material_line(material_id: str) -> str:
     return f"- {material_id}: {spec.label}{unit}。{' '.join(spec.description.split())}"
 
 
+_LINK = re.compile(r'<a href="([^"]*)"[^>]*>(.*?)</a>')
+
+
+def _plain_attribution(attribution_html: str) -> str:
+    """地図の出典表記（HTML）を、リンク先を文字の後ろに並べた文にする。"""
+    return "- " + html.unescape(_LINK.sub(r"\2 (\1)", attribution_html))
+
+
 #: ODbL 4.3 の表示と、OSM 以外の元データの出典・加工した旨・加工した主体（PDL1.0 1.1.2・CC BY 4.0 3(a)）と、列の説明。
 README = f"""RideCompass derived database / RideCompass 派生データベース
 
@@ -53,13 +63,7 @@ https://opendatacommons.org/licenses/odbl/1-0/
 
 The database as a whole is made available under the ODbL 1.0. It also contains values made from the
 following sources, which were processed by RideCompass:
-- 地理院タイル（標高タイル）を加工して作成（国土地理院、https://maps.gsi.go.jp/development/ichiran.html）。勾配。
-- 交通事故統計情報（警察庁、https://www.npa.go.jp/publications/statistics/koutsuu/opendata/index_opendata.html）を
-  加工して作成。区間の周りの事故の件数を、区間の長さと収録の年数で割った値。
-- 10m Annual Land Use Land Cover: Esri, Impact Observatory, Microsoft (CC BY 4.0,
-  https://creativecommons.org/licenses/by/4.0/)。区間の周りの土地被覆の割合に加工。
-- 公益財団法人日本道路交通情報センター「交通規制情報」（https://www.jartic.or.jp/service/opendata/）を加工して作成。
-  区間に掛かる歩行者用道路の規制に加工。
+{chr(10).join(_plain_attribution(attribution) for attribution in DERIVED_DATABASE_ATTRIBUTIONS)}
 These processed values are not made by, and are not endorsed by, the original providers.
 加工した値は、元データの提供元が作成したものではありません。
 
