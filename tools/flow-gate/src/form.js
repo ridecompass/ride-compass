@@ -74,7 +74,10 @@ const fold = (title, inner, open = false) => (inner ? `<details${open ? " open" 
 // 回答内容（案は1行ずつの丸に推奨の印と理由を添え、確かめること・済ませることは1行ずつの YES／NO）と書く欄、「この issue を」の次遷移のボタン。
 // 行は隠しの欄でも送り、開いたあとに問いが変わっていないかを照らす。読めない問いは、読めない所を先に出し、回答内容を出さない。
 // YES／NO の初めの値は、確かめることなら本文の約束の今の値、済ませることなら NO。
-const why = (r) => r.attrs.map(([n, v]) => `<span class="why">${esc(n)}: ${esc(v)}</span>`).join("");
+// 属性の値の Markdown のリンクと画像（`[<文>](<URL>)`・`![<見出し>](<URL>)`）は、開けるリンクにする（添付の画像は GitHub にサインインした画面でしか
+// 読めず、このフォームには写せない）。
+const linked = (v) => esc(v).replace(/!?\[([^\]]+)\]\((https:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+const why = (r) => r.attrs.map(([n, v]) => `<span class="why">${esc(n)}: ${linked(v)}</span>`).join("");
 const yesNo = (name, yes) => `<div class="seg">${[["YES", yes], ["NO", !yes]].map(([v, on]) => `<label><input type="radio" name="${name}" value="${v}"${on ? " checked" : ""}>${v}</label>`).join("")}</div>`;
 function answerFields(q, body) {
   const plan = q.header === "### 案";

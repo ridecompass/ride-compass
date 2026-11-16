@@ -311,7 +311,7 @@ gh workflow run mutation.yml -R ridecompass/ride-compass --ref master -f ref=<�
     応答にも触らない変更では、回さない理由を`e2e-live`の語を添えて同じ所へ書く。触らない変更では回さない。門にはしない（CIに載せない）。
 
 - **画面を撮る道具は`frontend/capture/`に置き、`playwright.capture.config.ts`で走らせる。テストではなく、CIに載せない**
-  （判定を持たず、画像を出すだけ。Pull Requestの修正前後のキャプチャに使う）。入口は`node scripts/capture.mjs`の1つで、引数と使い方は
+  （判定を持たず、画像を出すだけ。Pull Requestの修正後のキャプチャと、見た目を変えない変更の前後の一致に使う）。入口は`node scripts/capture.mjs`の1つで、引数と使い方は
   スクリプトの先頭にある。撮影は「開く版」（`--app`: 本番・作業ツリー・git の版）×「応答」（`--api`: e2e のモック
   `frontend/e2e/fixtures.ts: installApiMocks`・本物の backend。`--backend` で選んだパスの頭だけを作業ツリーの backend が返す）×「脚本」
   （`frontend/capture/context.ts: CaptureScript`）に分かれ、手元で起動する版には本番と同じ組の環境変数を渡す（渡していなければ撮る前に止まる）。
