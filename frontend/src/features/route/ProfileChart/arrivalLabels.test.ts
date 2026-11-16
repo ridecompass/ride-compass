@@ -1,7 +1,7 @@
 // @vitest-environment node
 /**
- * 対象: 道のりのグラフの経由地の着く時刻の札の置き方（`placeArrivalLabels`）。札の大きさを測って渡す部品と、実際の画面で札どうしが
- * 重ならないことは、全状態の走査（`frontend/e2e/all-states.spec.ts`）が見る。
+ * 対象: 道のりのグラフの経由地の着く時刻の札の置き方（`placeArrivalLabels`）。札の大きさを測って渡す部品は見ない（テスト環境は
+ * 描いた大きさを持たない）。
  */
 import { describe, expect, it } from "vitest";
 

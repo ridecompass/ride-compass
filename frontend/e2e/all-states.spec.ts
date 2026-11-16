@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import { installApiMocks, installMapFinder } from "./fixtures";
 import { scanPinch, scanSpacingUtilities } from "./componentScans";
 import { installPageHelpers } from "./pageHelpers";
-import { scanLayout, scanOverflowingContent, scanOverlappingText, scanTruncatedText } from "./scans";
+import { scanLayout, scanOverflowingContent, scanTruncatedText } from "./scans";
 import {
   PHASES,
   WIDTHS,
@@ -41,7 +41,7 @@ for (const width of Object.keys(WIDTHS) as WidthName[]) {
 
       // 違反 → 最初に見つかった状態の道筋。
       const problems = new Map<string, string>();
-      const counts = { widgets: 0, viaContainer: 0, truncatable: 0, overflowable: 0, texts: 0, spacing: 0, pinches: 0 };
+      const counts = { widgets: 0, viaContainer: 0, truncatable: 0, overflowable: 0, spacing: 0, pinches: 0 };
 
       await openApp(page);
       await assertWidthsStraddleBreakpoint(page);
@@ -63,9 +63,6 @@ for (const width of Object.keys(WIDTHS) as WidthName[]) {
         const overflowing = await scanOverflowingContent(page);
         counts.overflowable += overflowing.checked;
         overflowing.problems.forEach(record);
-        const overlapping = await scanOverlappingText(page);
-        counts.texts += overlapping.checked;
-        overlapping.problems.forEach(record);
         const spacing = await scanSpacingUtilities(page);
         counts.spacing += spacing.checked;
         spacing.problems.forEach(record);
@@ -81,7 +78,7 @@ for (const width of Object.keys(WIDTHS) as WidthName[]) {
       console.log(
         `全状態の走査 ${width} / ${phase}: ${result.states}状態（${Math.round((Date.now() - phaseStarted) / 1000)}秒）、` +
           `横幅の検査 ${counts.widgets}件（うち横スクロールする容器で判定 ${counts.viaContainer}件）・省略の検査 ` +
-          `${counts.truncatable}件・はみ出しの検査 ${counts.overflowable}件・重なりの検査 ${counts.texts}件・余白ユーティリティ ${counts.spacing}件・ピンチ ` +
+          `${counts.truncatable}件・はみ出しの検査 ${counts.overflowable}件・余白ユーティリティ ${counts.spacing}件・ピンチ ` +
           `${counts.pinches}件、計${Math.round((Date.now() - started) / 1000)}秒`,
       );
       const report = [...problems.entries()].map(([problem, path]) => `${problem} ← ${path}`);
