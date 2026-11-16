@@ -28,7 +28,6 @@ from app.domain.route import (
     RouteTurn,
     DISTANCE_KM_DECIMALS,
     ROAD_BEARING_DEG_DECIMALS,
-    ELEVATION_M_DECIMALS,
     aggregate_segments_into_bins,
     route_bin_slices,
     steepest_signed_percent,
@@ -328,11 +327,6 @@ def _build_segment_details(
                 cumulative_distance_km=along_km[index],
                 distance_km=orientation.distances_km[index],
                 edge_index=index,
-                # 標高の表は単精度で持つので、表に入れた桁へ丸め直す。
-                start_elevation_m=(
-                    round(elevation_attr.start_elevation_m, ELEVATION_M_DECIMALS) if elevation_attr else None
-                ),
-                end_elevation_m=round(elevation_attr.end_elevation_m, ELEVATION_M_DECIMALS) if elevation_attr else None,
                 sustained_gradient_percent=steepest_signed_percent(elevation_attr),
                 average_gradient_percent=elevation_attr.average_grade if elevation_attr else None,
                 estimated_arrival_time=(

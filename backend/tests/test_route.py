@@ -28,7 +28,7 @@ def _segments(distances: list[float], **fields_per_segment) -> list[EdgeSegment]
             start_latitude=35.0, start_longitude=139.0 + i * 0.01,
             end_latitude=35.0, end_longitude=139.0 + (i + 1) * 0.01,
             cumulative_distance_km=cumulative, distance_km=distance, edge_index=i,
-            **({"geometry": None, "point_distances_m": None, "start_elevation_m": None, "end_elevation_m": None, "sustained_gradient_percent": None,
+            **({"geometry": None, "point_distances_m": None, "sustained_gradient_percent": None,
                 "average_gradient_percent": None, "estimated_arrival_time": "2026-09-22T08:10:00+09:00",
                 "axis_seconds": {}, "preferred_seconds": 0.0, "avoided_seconds": 0.0, "road_classes": {}}
                | {name: values[i] for name, values in fields_per_segment.items()}),

@@ -952,15 +952,6 @@ export interface components {
             debug_mode: boolean;
             msm: components["schemas"]["MsmFreshnessResponse"] | null;
         };
-        /** ElevationStretch */
-        ElevationStretch: {
-            /** Distance Km */
-            distance_km: number;
-            /** Start Elevation M */
-            start_elevation_m: number | null;
-            /** End Elevation M */
-            end_elevation_m: number | null;
-        };
         /** ExampleEquivalents */
         ExampleEquivalents: {
             /**
@@ -1821,8 +1812,6 @@ export interface components {
             edge_start: number;
             /** Edge End */
             edge_end: number;
-            /** Elevations */
-            elevations: components["schemas"]["ElevationStretch"][];
             /** Sustained Gradient Percent */
             sustained_gradient_percent: number | null;
             /** Average Gradient Percent */
