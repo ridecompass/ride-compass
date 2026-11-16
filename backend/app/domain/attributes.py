@@ -153,7 +153,8 @@ EDGE_ROW_ARRAY_FIELDS: tuple[str, ...] = tuple(
 )
 
 
-#: 一番急な勾配に数える点の間の最短の長さ（m）。これより短い間は、標高データの揺れが勾配を大きく揺らす（GraphHopper の
+#: 一番急な勾配を測る最短の長さ（m）。1つ前の点の間がこれ以下なら、その点で測らない。数える間の途切れない続きの長さが
+#: これより短ければ、その続きの両端では測らない。短い間ほど標高データの揺れが勾配を大きく揺らす（GraphHopper の
 #: https://github.com/graphhopper/graphhopper/blob/master/core/src/main/java/com/graphhopper/routing/util/SlopeCalculator.java
 #: の`MIN_LENGTH`と同じ値と理由）。獲得標高・平均勾配と所要時間は、短い間も数える。
 STEEPEST_MIN_INTERVAL_M = 2.0
@@ -177,8 +178,14 @@ def elevation_values_sql(vertices: str, tolerance_m: str) -> str:
     均さない——欠けた所の起伏が均された差として混ざる。獲得/喪失は数える間の上りと下りの和、平均勾配（`average_grade`）は
     （獲得−喪失）÷数える間の長さの和。数える間が無い区間は、平均勾配と一番急な勾配を持たず、獲得/喪失は0になる。
 
-    一番急な勾配（`steepest_gain_percent`・`steepest_loss_percent`）は、数える間のうち`STEEPEST_MIN_INTERVAL_M`以上の間の勾配の、
-    登りと下りのそれぞれの最大の大きさ（どちらも0以上）。その長さの間が無い区間は、平均勾配を持っても一番急な勾配を持たない。
+    一番急な勾配（`steepest_gain_percent`・`steepest_loss_percent`）は、GraphHopper の`SlopeCalculator`の max_slope の式で測る:
+    3点目からの点ごとに、1つ前の2点の標高の平均から今の点までの勾配（長さは今の間と前の間の半分の和）を、前の間が
+    `STEEPEST_MIN_INTERVAL_M`より長いときだけ取り、区間の両端の勾配も候補にする。隣り合う2点だけで測ると、
+    短い間の揺れがそのまま一番急になる。この勾配は今の間と前の間の勾配を重みづけて平均したものなので、2つの間がどちらも
+    数える間のときだけ取る。数えない間で途切れた区間は、途切れない続きごとを GraphHopper の1区間として測る（欠けた所を
+    またいで均さない。欠けの無い区間では式のとおり）。GraphHopper は絶対値の一番大きい1つを持つが、ここでは登りと下りを分けて、
+    それぞれの最大の大きさ（どちらも0以上）を持つ。長さが`STEEPEST_MIN_INTERVAL_M`以上の続きが無い区間は、平均勾配を持っても
+    一番急な勾配を持たない。
 
     値のある点が2つ未満の区間は返らない。値と一緒に、残した点の標高と位置を順に並べた`elevation_profile_m`（値の無い点はNULL）と
     `elevation_profile_along_m`も返す——要約の列は、この並びの点の間から出る。
@@ -210,6 +217,21 @@ pairs AS (
 counted AS (
     SELECT *, CASE WHEN d > 0 AND abs(diff) * 100 <= {MAX_PLAUSIBLE_GRADE_PERCENT} * d THEN diff / d * 100 END AS g
     FROM pairs),
+-- 一番急な勾配の候補（GraphHopper の max_slope）。数える間の途切れない続き（`span`）ごとに、1つ前の2点の標高の平均から今の点までの
+-- 勾配（今の間と前の間がどちらも数える間で、前の間が最短の長さより長いとき）と、続きの両端の勾配（続きの長さが最短の長さ以上のとき）。
+slopes AS (
+    SELECT *, CASE WHEN g IS NOT NULL AND lag(g) OVER w IS NOT NULL AND lag(d) OVER w > {STEEPEST_MIN_INTERVAL_M}
+                   THEN (diff + lag(diff) OVER w / 2) / (d + lag(d) OVER w / 2) * 100 END AS s,
+              count(*) FILTER (WHERE g IS NULL) OVER w AS span
+    FROM counted WINDOW w AS (PARTITION BY osm_way_id, segment_index ORDER BY ord)),
+candidates AS (
+    SELECT osm_way_id, segment_index, s AS slope FROM slopes WHERE s IS NOT NULL
+    UNION ALL
+    SELECT osm_way_id, segment_index, sum(diff) / sum(d) * 100
+    FROM slopes WHERE g IS NOT NULL GROUP BY osm_way_id, segment_index, span HAVING sum(d) >= {STEEPEST_MIN_INTERVAL_M}),
+steepest AS (
+    SELECT osm_way_id, segment_index, max(greatest(slope, 0)) AS up, max(greatest(-slope, 0)) AS down
+    FROM candidates GROUP BY osm_way_id, segment_index),
 raw AS (
     SELECT osm_way_id, segment_index,
            array_agg(elev::real ORDER BY ord) AS elevation_profile_m,
@@ -217,9 +239,7 @@ raw AS (
            array_agg(elev ORDER BY ord) FILTER (WHERE elev IS NOT NULL) AS known,
            coalesce(sum(greatest(diff, 0)) FILTER (WHERE g IS NOT NULL), 0) AS gain,
            coalesce(sum(greatest(-diff, 0)) FILTER (WHERE g IS NOT NULL), 0) AS loss,
-           sum(d) FILTER (WHERE g IS NOT NULL) AS counted_m,
-           max(greatest(g, 0)) FILTER (WHERE g IS NOT NULL AND d >= {STEEPEST_MIN_INTERVAL_M}) AS steepest_up,
-           max(greatest(-g, 0)) FILTER (WHERE g IS NOT NULL AND d >= {STEEPEST_MIN_INTERVAL_M}) AS steepest_down
+           sum(d) FILTER (WHERE g IS NOT NULL) AS counted_m
     FROM counted GROUP BY osm_way_id, segment_index)
 SELECT osm_way_id, segment_index,
        round(known[1]::numeric, 1) AS start_elevation_m,
@@ -227,8 +247,8 @@ SELECT osm_way_id, segment_index,
        round(gain::numeric, 1)    AS elevation_gain_m,
        round(loss::numeric, 1)    AS elevation_loss_m,
        round(((gain - loss) / counted_m * 100)::numeric, {AVERAGE_GRADE_DECIMALS}) AS average_grade,
-       round(steepest_up::numeric, {AVERAGE_GRADE_DECIMALS})   AS steepest_gain_percent,
-       round(steepest_down::numeric, {AVERAGE_GRADE_DECIMALS}) AS steepest_loss_percent,
+       round(t.up::numeric, {AVERAGE_GRADE_DECIMALS})   AS steepest_gain_percent,
+       round(t.down::numeric, {AVERAGE_GRADE_DECIMALS}) AS steepest_loss_percent,
        elevation_profile_m, elevation_profile_along_m
-FROM raw WHERE cardinality(known) >= 2
+FROM raw LEFT JOIN steepest t USING (osm_way_id, segment_index) WHERE cardinality(known) >= 2
 """

@@ -116,11 +116,10 @@ async def test_fluctuations_within_the_tolerance_are_removed(road_graph_session)
     assert row["elevation_profile_along_m"] == [0.0, 4 * STEP_M]
 
 
-async def test_a_short_steep_rise_beyond_the_tolerance_keeps_its_steepness(road_graph_session):
-    """閾値を越える短い急坂は、間引いたあとも元の急さのまま一番急な勾配になる（平らな前後に均されない）。"""
+async def test_a_short_steep_rise_beyond_the_tolerance_keeps_its_points(road_graph_session):
+    """閾値を越える短い急坂は、間引いたあとも坂の上下の点が残る（平らな前後に均されない）。"""
     row = await one(road_graph_session, [10.0, 10.0, 10.0 + rise(12), 10.0 + rise(12), 10.0 + rise(12)], tolerance_m=0.3)
 
-    assert row["steepest_gain_percent"] == pytest.approx(12.0, abs=0.005)
     assert row["elevation_profile_along_m"] == [0.0, STEP_M, 2 * STEP_M, 4 * STEP_M]
 
 
@@ -150,23 +149,43 @@ async def test_an_implausible_step_is_not_counted(road_graph_session, percent, k
 async def test_a_road_is_graded_at_its_own_point_spacing(road_graph_session):
     """勾配は点の間隔そのもので測る（決まった幅で割り直すと、間隔が違うぶん勾配が違って出る）。"""
     spacing = STEP_M * 0.6
-    row = await one(road_graph_session, [0.0, 6.0, 6.0], along=[0.0, spacing, 2 * spacing])
+    row = await one(road_graph_session, [0.0, 6.0], along=[0.0, spacing])
 
     assert row["steepest_gain_percent"] == pytest.approx(6.0 / spacing * 100, abs=0.005)
 
 
-async def test_the_steepest_climb_and_descent_are_taken_between_neighbouring_points(road_graph_session):
-    """登って下る区間でも打ち消し合わず、登りと下りのそれぞれで一番急な間を出す（どちらも0以上）。"""
-    row = await one(road_graph_session, [100.0, 100.0 + rise(3), 100.0 + rise(3) + rise(8), 100.0 + rise(3) + rise(8) - rise(5)])
+async def test_the_steepest_is_measured_from_the_mean_of_the_two_previous_points(road_graph_session):
+    """一番急は、1つ前の2点の標高の平均から今の点までで測る（GraphHopper の max_slope）。平らな間のあとの 10% の間は、
+    10 ÷（100 + 100/2）で 6.67%。登って下る区間でも打ち消し合わず、登りと下りを別々に出す（どちらも0以上）。"""
+    row = await one(road_graph_session, [0.0, 0.0, rise(10), rise(10), 0.0])
 
-    assert row["steepest_gain_percent"] == pytest.approx(8.0, abs=0.005)
-    assert row["steepest_loss_percent"] == pytest.approx(5.0, abs=0.005)
+    assert row["steepest_gain_percent"] == pytest.approx(rise(10) / (1.5 * STEP_M) * 100, abs=0.005)
+    assert row["steepest_loss_percent"] == pytest.approx(rise(10) / (1.5 * STEP_M) * 100, abs=0.005)
+
+
+@pytest.mark.parametrize(("previous_m", "counted"), [(STEEPEST_MIN_INTERVAL_M, False), (STEEPEST_MIN_INTERVAL_M * 1.25, True)])
+async def test_a_point_after_a_short_interval_is_not_measured(road_graph_session, previous_m, counted):
+    """1つ前の間が最短の長さ以下なら、その点では測らない（区間の両端の勾配だけが残る）。"""
+    climb_m = 50.0
+    row = await one(road_graph_session, [0.0, 0.0, 5.0], along=[0.0, previous_m, previous_m + climb_m])
+
+    from_mean = 5.0 / (climb_m + previous_m / 2) * 100
+    end_to_end = 5.0 / (climb_m + previous_m) * 100
+    assert row["steepest_gain_percent"] == pytest.approx(from_mean if counted else end_to_end, abs=0.005)
 
 
 async def test_a_road_that_only_climbs_has_no_steepest_descent(road_graph_session):
     row = await one(road_graph_session, [100.0, 100.0 + rise(2), 100.0 + rise(6)])
 
-    assert (row["steepest_gain_percent"], row["steepest_loss_percent"]) == (pytest.approx(4.0, abs=0.005), 0.0)
+    assert (row["steepest_gain_percent"], row["steepest_loss_percent"]) == (pytest.approx(rise(5) / (1.5 * STEP_M) * 100, abs=0.005), 0.0)
+
+
+async def test_the_steepest_is_measured_in_each_stretch_between_uncounted_intervals(road_graph_session):
+    """数えない間（値の無い点・ありえない勾配）で途切れた区間は、途切れない続きごとを1つの区間として測る——欠けた所の
+    向こうの下りも、一番急な下りに数える。"""
+    row = await one(road_graph_session, [100.0, 100.0 + rise(3), None, 100.0 + rise(8), 100.0 + rise(6)])
+
+    assert (row["steepest_gain_percent"], row["steepest_loss_percent"]) == (pytest.approx(3.0, abs=0.005), pytest.approx(2.0, abs=0.005))
 
 
 async def test_segments_are_computed_separately(road_graph_session):
@@ -206,5 +225,3 @@ async def test_the_summary_counts_the_same_steps_as_the_travel_time(road_graph_s
         assert (row["average_grade"], row["steepest_gain_percent"], row["steepest_loss_percent"]) == (None, None, None)
     else:
         assert row["average_grade"] == pytest.approx(rises.sum() / lengths.sum() * 100, abs=0.005)
-        assert row["steepest_gain_percent"] == pytest.approx(max(grades.max(), 0) * 100, abs=0.005)
-        assert row["steepest_loss_percent"] == pytest.approx(max(-grades.min(), 0) * 100, abs=0.005)
