@@ -3,7 +3,7 @@
 3×3の格子（1辺約1km。長さの要るテストには大きな格子・任意の道と地点の道路網も）を`RoadNetwork`で組み、プロセス境界（DB・天気の予報ファイル）だけを代役にし、道路網は本番と同じ置き場（一時ディレクトリ）から読ませて、
 本物の`GraphService`・エンジンの組み立て（`services/route_generation_setup.py: assemble_route_generation_setup`）・戦略層を通す。
 
-使う側: `test_route_generation_behavior.py`（戦略層の入口）・`test_routes_generate.py`（HTTPの入口）・
+使う側: `test_route_generation_behavior.py`・`test_route_generation_segments.py`（戦略層の入口）・`test_routes_generate.py`（HTTPの入口）・
 `test_search_kernels.py`（生成の経路がPythonから呼ぶJIT）・`test_route_generator.py`（経由地の無い周回の指定だけ）。
 """
 
@@ -26,6 +26,7 @@ from app.domain.road_network import RoadNetwork
 from app.domain.route import Coordinates
 from app.domain.route_request import FixedPoints, RequestedConditions
 from app.domain.msm import MsmBlock, MsmGrid
+from app.domain.time_zone import JST
 from app.domain.wind import WindForecastSeries
 from app.infrastructure import road_network_store
 from app.services.graph_service import GraphService, SearchMemory
@@ -280,3 +281,12 @@ def ways_of(candidate) -> list[int]:
 def nodes_of(candidate) -> list[int]:
     """候補が通るノードのOSMのid（`node_key`の逆）を、通る順に。"""
     return [int(node_id.rsplit("-", 1)[1]) for node_id in candidate.node_ids]
+
+
+#: 生成の出発時刻。
+DEPARTURE = datetime(2026, 9, 22, 8, 10, tzinfo=JST)
+
+
+def fastest_of(candidates):
+    """一覧の中で所要時間が最小の候補（基準線）。"""
+    return min(candidates, key=lambda c: c.estimated_duration_seconds)
