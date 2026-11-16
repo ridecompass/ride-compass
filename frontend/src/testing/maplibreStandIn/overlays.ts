@@ -19,11 +19,14 @@ export class Marker extends Evented {
   draggable: boolean;
   private lngLat: LngLat = { lng: 0, lat: 0 };
   private map: StandInMap | null = null;
+  private rotation = 0;
+  private readonly alignedToMap: boolean;
 
-  constructor(options: { element: HTMLElement; draggable?: boolean }) {
+  constructor(options: { element: HTMLElement; draggable?: boolean; rotationAlignment?: "map" | "viewport" | "auto" }) {
     super();
     this.element = options.element;
     this.draggable = options.draggable ?? false;
+    this.alignedToMap = options.rotationAlignment === "map";
   }
 
   setLngLat(lngLat: readonly [number, number] | LngLat) {
@@ -39,8 +42,14 @@ export class Marker extends Evented {
     return this.element;
   }
 
-  setRotation() {
+  setRotation(rotation = 0) {
+    this.rotation = rotation;
     return this;
+  }
+
+  /** 画面で印を回している角度（上から時計回りの度）。地図に合わせた（`rotationAlignment: "map"`）印は地図の向きの分だけ戻る。 */
+  screenRotationDeg() {
+    return this.rotation - (this.alignedToMap ? (this.map?.getBearing() ?? 0) : 0);
   }
 
   setDraggable(draggable: boolean) {

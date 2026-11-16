@@ -60,8 +60,8 @@ export interface MapOnScreen {
   sourceIds(): string[];
   /** GeoJSON のソースへ最後に渡された地物。ソースが無ければ空。 */
   sourceFeatures(sourceId: string): GeoJSON.Feature[];
-  /** 地図に置いた印。 */
-  markers(): { coordinates: Coordinates; draggable: boolean; element: HTMLElement }[];
+  /** 地図に置いた印。`screenRotationDeg`は画面で印を回している角度（上から時計回りの度）。 */
+  markers(): { coordinates: Coordinates; draggable: boolean; element: HTMLElement; screenRotationDeg: number }[];
   /** 地図を範囲へ寄せた（`fitBounds`）ときの範囲と倍率の上限を、寄せた順に。 */
   fits(): readonly FittedBounds[];
   /** 求めたスタイル（最初の1つと、取り直しの分）。 */
@@ -112,6 +112,7 @@ function onScreen(map: StandInMap): MapOnScreen {
         coordinates: { latitude: marker.getLngLat().lat, longitude: marker.getLngLat().lng },
         draggable: marker.draggable,
         element: marker.element,
+        screenRotationDeg: marker.screenRotationDeg(),
       })),
     fits: () => map.fits,
     styles: map.styles,
