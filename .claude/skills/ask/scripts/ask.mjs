@@ -3,7 +3,8 @@
 // 使い方: node .claude/skills/ask/scripts/ask.mjs <issue の番号> <問いのファイル>
 import { readFileSync } from "node:fs";
 import { bot, comment, config, isNumber, usage } from "../../../../tools/flow-gate/src/bot.js";
-import { checkQuestion, norm } from "../../../../tools/flow-gate/src/questions.js";
+import { norm } from "../../../../tools/flow-gate/src/body.js";
+import { checkQuestion } from "../../../../tools/flow-gate/src/questions.js";
 
 function main() {
   const [number, file] = process.argv.slice(2);
