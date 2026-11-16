@@ -1,9 +1,7 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { CLIENT_TUNING_IDS } from "@/lib/clientConfig";
-import { getQueryClient } from "@/lib/queryClient";
 import { serveClientConfig } from "@/testing/backendServer";
 import { clientConfigResponse } from "@/testing/clientConfig";
 import { jst } from "@/testing/jst";
@@ -18,11 +16,6 @@ vi.mock("embla-carousel-react", () => ({
   default: () => [() => {}, { scrollTo: vi.fn(), on: vi.fn(), off: vi.fn(), selectedScrollSnap: () => 0 }],
 }));
 vi.mock("embla-carousel-wheel-gestures", () => ({ WheelGesturesPlugin: () => ({}) }));
-// 速度を変える条件の並びはbackendの走行モデルの宣言。架空の並びへ差し替え、説明がそれを書くことを見る。
-vi.mock("@/types/generated/route-generate-config.json", async (importOriginal) => {
-  const original = await importOriginal<{ default: typeof routeGenerateConfig }>();
-  return { default: { ...original.default, segment_speed_conditions: ["条件ア", "条件イ"] } };
-});
 
 const NOW = jst("2026-09-24T09:07");
 const { max_assumed_speed_kmh: MAX } = routeGenerateConfig;
@@ -173,47 +166,12 @@ describe("RideConditionBar 想定速度", () => {
     expect(props.onSpeedKmhChange).toHaveBeenCalledWith(MAX);
   });
 
-  it("(i)の奥に、走行モデルが速度を変える条件として宣言する並びを書く", async () => {
+  it("(i)の奥に、画面の設定が配る走行モデルの決まりの文を書く", async () => {
+    serveClientConfig(clientConfigResponse({ travel_model_wording: "走行モデルの決まりの文" }));
     renderBar();
     await userEvent.click(screen.getByRole("button", { name: /^想定速度:/ }));
     await userEvent.click(await screen.findByRole("button", { name: "想定速度の説明を表示" }));
-    expect(await screen.findByText(/区間ごとの条件ア・条件イに合わせて速度を変えて計算します/)).toBeInTheDocument();
-  });
-
-  it("(i)の奥に、画面の設定が配る体格・機材の標準値を書く", async () => {
-    serveClientConfig(
-      clientConfigResponse({
-        client_tuning: {
-          [CLIENT_TUNING_IDS.massKg]: 72,
-          [CLIENT_TUNING_IDS.cdaM2]: 0.4,
-          [CLIENT_TUNING_IDS.maxDescentKmh]: 50,
-          [CLIENT_TUNING_IDS.walkingKmh]: 5,
-        },
-      }),
-    );
-    renderBar();
-    await userEvent.click(screen.getByRole("button", { name: /^想定速度:/ }));
-    await userEvent.click(await screen.findByRole("button", { name: "想定速度の説明を表示" }));
-    expect(await screen.findByText(/総質量は72kg.*CdAは0.4m².*下りは50km\/hまで.*5km\/h以下/)).toBeInTheDocument();
-  });
-
-  it("体格・機材の標準値を画面の設定から1つでも引けなければ、標準値の文を出さない", async () => {
-    serveClientConfig(
-      clientConfigResponse({
-        client_tuning: {
-          [CLIENT_TUNING_IDS.massKg]: 72,
-          [CLIENT_TUNING_IDS.cdaM2]: 0.4,
-          [CLIENT_TUNING_IDS.maxDescentKmh]: 50,
-        },
-      }),
-    );
-    renderBar();
-    await userEvent.click(screen.getByRole("button", { name: /^想定速度:/ }));
-    await userEvent.click(await screen.findByRole("button", { name: "想定速度の説明を表示" }));
-    expect(await screen.findByText(/平らな道を風の無いときに巡航する速度です/)).toBeInTheDocument();
-    // 画面の設定が届いてから確かめる（届く前も文を出さないので、届く前に見ると引けたかを見分けない）。
-    await waitFor(() => expect(getQueryClient().isFetching()).toBe(0));
-    expect(screen.queryByText(/標準値で計算します/)).not.toBeInTheDocument();
+    expect(await screen.findByText("走行モデルの決まりの文")).toBeInTheDocument();
   });
 });
 

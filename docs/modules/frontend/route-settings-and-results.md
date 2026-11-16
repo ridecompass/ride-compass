@@ -157,8 +157,8 @@
   （`RouteCandidate.penalty`）。数は内訳の和（軸ごとの秒と、好む道で下げた秒・避ける道で上乗せした秒。応答の`total_seconds`）を、候補のカードは「負担」の語と分の数字（「負担 +18」。所要時間の差と読み違えさせない）、開いた内訳は「+N分」で書き、
   好む道で下げて負になった秒は「−」で書く（`lib/routePenalty.ts: formatPenalty`・`formatPenaltyMinutes`）。
   所要時間と負担の和が候補を並べた費用になる。
-- **所要時間の説明**: (i)は、区間ごとに速度を変える条件の名前を走行モデルの宣言（`domain/cycling_speed.py: SEGMENT_SPEED_CONDITIONS`。
-  生成物`route-generate-config.json`の`segment_speed_conditions`）から差し込む。想定速度の(i)（`RideConditionBar`）も同じ並びを使う。
+- **所要時間と負担の説明**: (i)の文のうち backend の宣言から決まる部分（所要時間の見積もり方・候補の並べ方は生成物
+  `route-generate-config.json`、費用の軸の名前と曲がる所の漕ぎ出しを入れる軸は`/api/cost-axes`）は、配られた文と名前を差し込み、画面で書き直さない。
 - **所要時間の前提が崩れたことの注記**: 所要時間のすぐ下に、`missing_travel_data_share`（勾配か停止要因の件数の値が無く、
   全体の平均で数えた区間の距離の割合）が丸めて1%以上なら「データの無い区間が◯%」を出す——平均で埋めた所要時間を
   黙って見せない。0%は判断の材料にならないため出さない。backendがEdge単位で数えた値をそのまま使う。

@@ -375,7 +375,7 @@ _LAYER_SPECS: dict[str, MapLayerSpec] = {
         description=(f"周囲の緑・水辺・農地を面で重ねる{f'[{_UNPAINTED_LANDCOVER}は塗らない]' if _UNPAINTED_LANDCOVER else ''}",),
         panel_hint=(
             "衛星画像から分類した10m四方ごとの土地の使われ方です。1区画に1種類だけが入るため、"
-            "ルートの結果の「緑と水」が使う「道路の周囲",
+            f"ルートの結果の「{PRIMARY_ATTRIBUTES_BY_ID['landcover'].label}」が使う「道路の周囲",
             LayerTextSlot("landcoverRingOuterM", after="m"),
             "の割合」とは違い、混ざらずそのまま見えます。"
             + (

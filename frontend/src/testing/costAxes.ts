@@ -41,6 +41,7 @@ export function costAxisCatalog(...axes: CostAxisEntry[]): CostAxisCatalogRespon
       lens: { thresholds: [10], band_labels: ["軽い", "重い"] },
     },
     map_lens: { formula: ALONG_FORMULA, material_conditions: ["at", "speed_kmh"] },
+    turn_kickoff_wording: "",
   };
 }
 

@@ -35,6 +35,8 @@ export interface CostAxisCatalog {
   axisColors: Readonly<Record<string, string>>;
   /** 地図のレンズ。届くまで・失敗の間はnull。 */
   lenses: CostLensCatalog | null;
+  /** 曲がる所の漕ぎ出しをどの軸の負担に入れるかの文。届くまで・失敗の間はnull。 */
+  turnKickoffWording: string | null;
   /** 取得が成功したか。falseの間は`axes`が空なので、今の軸と揃うことを要る処理（倍率を送る）はこれで未確定を区別する。 */
   loaded: boolean;
   /** 取得に失敗し、まだ一度も成功していないか（`loaded`と同時にtrueにならない）。 */
@@ -45,6 +47,7 @@ const EMPTY: CostAxisCatalog = {
   axes: [],
   axisColors: {},
   lenses: null,
+  turnKickoffWording: null,
   loaded: false,
   failed: false,
 };
@@ -72,6 +75,7 @@ export function costAxisCatalogFromResponse(response: CostAxisCatalogResponse): 
       },
       mapLens: response.map_lens,
     },
+    turnKickoffWording: response.turn_kickoff_wording,
     loaded: true,
     failed: false,
   };

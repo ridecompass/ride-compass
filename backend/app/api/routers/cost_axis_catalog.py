@@ -21,7 +21,7 @@ from app.domain.cost_axes import (
 from app.domain.display_palette import cost_series_colors
 from app.domain.cost_preference import STANDARD_COST_FACTOR, CostPreference, RequestedCostPreference
 from app.domain.lens_total import TOTAL_LENS_ID
-from app.domain.ledger_costs import current_ledger_parameters
+from app.domain.ledger_costs import current_ledger_parameters, turn_kickoff_wording
 from app.domain.lens_equivalents import LensEquivalents, lens_equivalents
 from app.domain.lens_values import LENS_MATERIAL_CONDITIONS, lens_way_formula
 from app.domain.road_classes import current_road_classes
@@ -64,6 +64,8 @@ class CostAxisCatalogResponse(StrictModel):
     axes: list[CostAxisCatalogEntry]
     total_lens: TotalLens
     map_lens: MapLens
+    #: 曲がる所の漕ぎ出しをどの軸の負担に入れるかの文。
+    turn_kickoff_wording: str
 
 
 @router.get("/api/cost-axes", response_model=CostAxisCatalogResponse)
@@ -80,6 +82,7 @@ async def get_cost_axis_catalog() -> CostAxisCatalogResponse:
         ],
         total_lens=TotalLens(lens_id=TOTAL_LENS_ID, **definitions.total_lens.model_dump()),
         map_lens=MapLens(formula=lens_way_formula(), material_conditions=list(LENS_MATERIAL_CONDITIONS)),
+        turn_kickoff_wording=turn_kickoff_wording(definitions),
     )
 
 

@@ -44,8 +44,23 @@ _GRAVITY_M_S2 = 9.80665
 _SPEED_SOLVE_ITERATIONS = 12
 
 #: 区間ごとに速度を変える道と天気の条件の、画面で呼ぶ名前（走行方程式の重力・空気抵抗・転がり抵抗の順）。
-#: 画面の所要時間の説明はこの並びを差し込む。方程式に条件を足したら、ここにも足す。
+#: 方程式に条件を足したら、ここにも足す。
 SEGMENT_SPEED_CONDITIONS: tuple[str, ...] = ("坂", "風", "路面")
+
+#: 利用者が入れる巡航速度が何の速さかを、利用者に言う名前（出力を逆算する条件、`wheel_power_w`）。
+CRUISE_SPEED_LABEL = "平地・無風で巡航する速さ"
+
+
+def travel_model_wording() -> str:
+    """巡航速度から区間の速度を決める決まりを、いま効いている標準値を入れて利用者に言う文。"""
+    return (
+        f"所要時間は、平地・無風をこの速度で走る力を求め、区間ごとの{'・'.join(SEGMENT_SPEED_CONDITIONS)}に合わせて"
+        "速度を変えて計算します。"
+        f"体格と機材は標準の値で計算します。総質量は{tuning_value('speed.mass_kg'):g}kg[体重・車体・装備の合計]、"
+        f"空気抵抗CdAは{tuning_value('speed.cda_m2'):g}m²[ロードバイクでブラケットを握る姿勢]です。"
+        f"下りは{tuning_value('speed.max_descent_kmh'):g}km/hまで[想定速度のほうが速ければ想定速度まで]出し、"
+        f"登りで{tuning_value('speed.walking_kmh'):g}km/h以下になる所は押して歩くとみなします。"
+    )
 
 def rolling_resistance_material_id() -> str | None:
     """走行モデルが転がり抵抗に読む区分の列の材料id（転がり抵抗の表が指す分け方。指していなければNone）。"""
