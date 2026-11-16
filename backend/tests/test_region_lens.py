@@ -26,11 +26,12 @@ from app.domain.material_catalog import material_spec
 from app.domain.route import AxisFact
 from app.main import app
 from app.services.lens_service import LensService
+from dataclasses import replace
 from datetime import datetime
 
 from app.domain.time_zone import JST
 from tests.route_world import (
-    BAD_MATERIAL, COORDINATES, CENTER, NORTH_EAST, SOUTH_WEST, WAYS, Weather, at, edges_of, generator_for, road_network,
+    BAD_MATERIAL, CALM, COORDINATES, CENTER, NORTH_EAST, SOUTH_WEST, WAYS, Weather, at, edges_of, generator_for, road_network,
     serve_road_network,
 )
 
@@ -71,7 +72,7 @@ async def _lens(client, lens_id: str, **preference: float | str) -> dict[str, di
     response = await client.get(f"/api/region/lens/{lens_id}/{Z}/{X}/{Y}",
                                 params={"speed_kmh": ASSUMED_SPEED_KMH, **preference})
     assert response.status_code == 200, response.text
-    return response.json()
+    return response.json()["materials"]
 
 
 async def test_each_axis_lens_paints_its_own_penalty_seconds_per_km_and_the_total_paints_their_sum(
@@ -111,7 +112,7 @@ async def test_the_route_and_the_map_lens_count_the_same_seconds_on_the_same_roa
         for x, y in tiles:
             response = await client.get(f"/api/region/lens/{axis_id}/{Z}/{x}/{y}", params={"speed_kmh": ASSUMED_SPEED_KMH})
             assert response.status_code == 200, response.text
-            lenses[axis_id].update(response.json())
+            lenses[axis_id].update(response.json()["materials"])
 
     assert candidates
     for candidate in candidates:
@@ -197,14 +198,13 @@ async def test_the_inspector_gives_both_directions_and_the_facts_behind_them(cos
     service = LensService(Weather())
 
     inspection = await service.inspect(str(CLIMBING_WAY), Z, X, Y, 0.0, None, ASSUMED_SPEED_KMH, CostPreference())
-    table = await service.tile_table(Z, X, Y, None, ASSUMED_SPEED_KMH, CostPreference())
+    total = await service.way_materials("total", Z, X, Y, None, ASSUMED_SPEED_KMH, CostPreference())
 
-    assert inspection is not None and inspection.along is not None and inspection.against is not None
-    index = table.features.keys.index(str(CLIMBING_WAY))
+    assert total is not None and inspection is not None and inspection.along is not None and inspection.against is not None
     (row,) = np.flatnonzero((network.edge_way_id == CLIMBING_WAY) & network.edge_forward)
     assert inspection.painted == "along"
     assert inspection.along.total_seconds == pytest.approx(
-        table.values["total"][index, 0] * float(network.distance_m[row]) / 1000.0)
+        total.materials[str(CLIMBING_WAY)][LENS_ALONG_LEAF] * float(network.distance_m[row]) / 1000.0)
     assert inspection.along.facts["ascent"].value == pytest.approx(network.elevation_gain_m[row], abs=0.05)
     assert inspection.against.facts["ascent"].value == 0.0
     bad = material_spec(BAD_MATERIAL)
@@ -229,6 +229,25 @@ async def test_a_new_road_network_generation_paints_its_own_roads(client, cost_a
         {**WAYS, new_way: (CENTER, new_node)}, {**COORDINATES, new_node: (lat, lon + 0.001)}))
 
     assert str(new_way) in await _lens(client, "total")
+
+
+@pytest.mark.parametrize(
+    ("latest_run_end", "expected"), [(datetime(2026, 9, 22, 9), None), (datetime(2026, 9, 22, 8), "2026-09-22T08:00")],
+    ids=["最新のrunの中の時刻", "最新のrunの終わりから先の時刻"],
+)
+async def test_the_lens_tells_that_it_painted_the_wind_of_a_previous_run(
+        client, override_dependency, cost_axes, road_network_root, latest_run_end, expected):
+    """配信元が新しいrunを出さない間も前に出たrunの風で塗り、画面が但し書きを出せるよう、その終わりの時刻を返す。08:29は
+    08:00の風を引く。"""
+    override_dependency(dependencies.get_lens_service,
+                        lambda: LensService(Weather(replace(CALM, latest_run_end=latest_run_end))))
+    serve_road_network(road_network_root, road_network(WAYS, COORDINATES))
+
+    response = await client.get(f"/api/region/lens/total/{Z}/{X}/{Y}",
+                                params={"speed_kmh": ASSUMED_SPEED_KMH, "at": "2026-09-22T08:29:00+09:00"})
+
+    assert response.status_code == 200, response.text
+    assert response.json()["wind_previous_run_from"] == expected
 
 
 async def test_an_unknown_lens_has_nothing_to_paint(client, road_network_root, cost_axes):

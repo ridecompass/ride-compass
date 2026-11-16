@@ -71,28 +71,24 @@ describe("useMapView", () => {
   });
 
   it.each([
-    ["2026-10-07T13:00", null],
+    [null, null],
     ["2026-10-07T12:00", "10/7 12:00から先の風は、前の予報の値です。"],
-  ])(
-    "出発時刻の風で塗るレンズは、最新の予報の終わりが%sなら、前に出た予報の風だと凡例に添える",
-    async (latestRunEnd, notice) => {
-      serve();
-      onBackend("GET", "/api/weather/msm-status", () => Response.json({ latest_run_end: latestRunEnd }));
-      onBackend("GET", "/api/region/lens/ascent/:z/:x/:y", () => Response.json({}));
-      // 出発時刻は日本時間の12時。最も近い正時の12時の風を引く。
-      const { result } = renderMapView();
-      await waitFor(() => expect(result.current.lensControl.axisOptions).toHaveLength(LENS_COUNT));
+  ])("材料の応答が前に出た風の予報の素性%sを返せば、凡例にその但し書きを添える", async (previousRunFrom, notice) => {
+    serve();
+    onBackend("GET", "/api/region/lens/ascent/:z/:x/:y", () =>
+      Response.json({ materials: {}, wind_previous_run_from: previousRunFrom }),
+    );
+    const { result } = renderMapView();
+    await waitFor(() => expect(result.current.lensControl.axisOptions).toHaveLength(LENS_COUNT));
 
-      act(() => result.current.lensControl.onLensChange("ascent"));
-      act(() => result.current.look.onViewportChange(VIEWPORT));
-      // 予報の状態は材料と同時に取りに行き、材料は間引いてから取るので、材料を取り終えれば状態も届いている。
-      await waitFor(() => expect(result.current.look.wayMaterials.get("ascent")?.loading).toBe(false), {
-        timeout: 3000,
-      });
-      if (notice === null) expect(result.current.lensControl.caveat).toBeNull();
-      else expect(result.current.lensControl.caveat).toContain(notice);
-    },
-  );
+    act(() => result.current.lensControl.onLensChange("ascent"));
+    act(() => result.current.look.onViewportChange(VIEWPORT));
+    await waitFor(() => expect(result.current.look.wayMaterials.get("ascent")?.loading).toBe(false), {
+      timeout: 3000,
+    });
+    if (notice === null) expect(result.current.lensControl.caveat).toBeNull();
+    else expect(result.current.lensControl.caveat).toContain(notice);
+  });
 
   it("レンズは総合と費用の軸の順に並び、選んだレンズの1kmあたりの負担の秒を想定速度つきで取り、凡例の下に段の境目の目安を出す", async () => {
     serve(
@@ -108,7 +104,7 @@ describe("useMapView", () => {
       Response.json({ ascent: { kind: "thresholds", fact: "斜度", unit: "%", values: [2.1] } }),
     );
     const sent = onBackend("GET", "/api/region/lens/ascent/:z/:x/:y", () =>
-      Response.json({ "1-0": { lens_along: 5, road_bearing_deg: 0 } }),
+      Response.json({ materials: { "1-0": { lens_along: 5, road_bearing_deg: 0 } }, wind_previous_run_from: null }),
     );
     const { result } = renderMapView();
     await waitFor(() =>
@@ -165,7 +161,7 @@ describe("useMapView", () => {
   it("走る向きは地図の上の向きを [0, 360) の10°刻みへ丸めて地図へ渡し、材料の要求へ向きを載せないので向きを変えても取り直さない。走行中は実際に走る向きと速度を渡す", async () => {
     serve();
     const sent = onBackend("GET", "/api/region/lens/ascent/:z/:x/:y", () =>
-      Response.json({ way_1: { lens_along: 12 } }),
+      Response.json({ materials: { way_1: { lens_along: 12 } }, wind_previous_run_from: null }),
     );
     const { result, rerender } = renderMapView();
     await waitFor(() => expect(result.current.lensControl.axisOptions).toHaveLength(LENS_COUNT));

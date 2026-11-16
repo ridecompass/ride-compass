@@ -6,7 +6,6 @@ from app.domain.msm_grid import (
     PRECIPITATION_MM_DECIMALS,
     WIND_DIRECTION_DEG_DECIMALS,
     WIND_SPEED_MS_DECIMALS,
-    MsmForecastStatus,
     MsmGridForecast,
     MsmGridPointForecast,
     rounded_coordinates,
@@ -14,7 +13,6 @@ from app.domain.msm_grid import (
 )
 from app.domain.route import Coordinates
 from app.domain.region import BoundingBox
-from app.domain.time_zone import as_series_time
 from app.domain.weather import GridPointToday, grid_point_today
 from app.domain.wind import WindForecastSeries
 from app.infrastructure import msm_client
@@ -73,13 +71,6 @@ class WeatherService:
             ],
             latest_run_end=series.latest_run_end,
         )
-
-    def get_forecast_status(self) -> MsmForecastStatus:
-        """同期したMSMの予報の状態。同期が済んでいなければ投げる。"""
-        current = msm_client.freshness()
-        if current is None:
-            raise MsmUnavailableError("MSMのメタ情報が未同期です")
-        return MsmForecastStatus(latest_run_end=as_series_time(current.data_end_at))
 
     async def get_wind_forecast_lattice(self, bbox: BoundingBox) -> WindForecastSeries:
         """`bbox`を覆うMSMの格子点ごとの時別風向・風速の予報系列（1時間刻み、JSTのローカル時刻、格子点の値のまま）。
