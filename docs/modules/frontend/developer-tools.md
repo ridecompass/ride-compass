@@ -26,8 +26,11 @@
 | `components/FloatingPanel/FloatingPanel.tsx` | `DebugConsole`/`SystemStatusPanel`が共有するドラッグ可能な浮動パネルの共通シェル（`react-rnd`ベース）。画面の大きさが変わったら（端末の回転等）画面の中へ寄せ直す。使い方の説明の案内（[ページ全体構成](page-composition.md)「使い方の説明」）も使う | 両パネルと使い方の説明の案内の実装基盤 |
 | `hooks/useCopyToClipboard.ts` | クリップボードへの書き込みと結果表示（コピー済み・失敗）。Clipboard APIは[SecureContext]のため、httpのIPアクセス等では`navigator.clipboard`自体がundefinedになる——`.catch()`はPromiseの拒否しか捕まえず、プロパティアクセスの同期TypeErrorをtryで受けないとボタンが無反応のままになる。失敗は握り潰さず文言を返す | `DebugConsole`・`BackendLogsPanel` |
 | `hooks/useDebugLog.ts`・`lib/debugLog.ts` | デバッグモードON/OFF状態・ログエントリのシングルストア（`useSyncExternalStore`） | |
-| `lib/rideMetrics.ts` | 走行の計測: 走行モードの間、1分ごとの数をまとめた行を端末に残す（下記「走行の計測」） | 位置（`features/ride/useRideMode.ts`）・向き（`features/ride/useDeviceHeading.ts`）・地図（`features/map/MapView/useMapLifecycle.ts`）・ページ（`app/page.tsx`）が数える口を呼び、`HeaderMenu`の「走行の記録をコピー」で写す |
-| `lib/rideTrack.ts` | 走りの記録: 走行モードの間の位置と出来事・推したルート・生成の条件・見せた予報を走りごとに溜める（下記「走りの記録」） | 位置・出来事（`features/ride/useRideMode.ts`）・候補と条件と読み込み直し（`app/useRideGuidance.ts`）・予報（`features/conditions/useWeatherConditions.ts`）が記録の口を呼ぶ |
+| `lib/rideMetrics.ts` | 走行の計測: 走行モードの間、1分ごとの数をまとめた行を端末に残す（下記「走行の計測」） | 位置（`features/ride/rideRecording.ts`）・向き（`features/ride/useDeviceHeading.ts`）・地図（`features/map/MapView/useMapLifecycle.ts`）・ページ（`app/page.tsx`）が数える口を呼び、`HeaderMenu`の「走行の記録をコピー」で写す |
+| `lib/rideMetricsObserve.ts` | 走行の計測のうち、標準の観測の口（通信・Long Tasks・Long Animation Frames・電池）を張って数えることと、地図が描き続けた理由の読み | `lib/rideMetrics.ts`が記録の間だけ張る |
+| `lib/rideMetricsFormat.ts` | 走行の計測の記録を、写す形（1分1行の CSV。下記「走行の計測」）にする | `HeaderMenu`の「走行の記録をコピー」 |
+| `lib/rideTrack.ts` | 走りの記録: 走行モードの間の位置と出来事・推したルート・生成の条件・見せた予報を走りごとに溜める（下記「走りの記録」） | 位置・出来事（`features/ride/rideRecording.ts`）・候補と条件と読み込み直し（`app/useRideGuidance.ts`）・予報（`features/conditions/useWeatherConditions.ts`）が記録の口を呼ぶ |
+| `lib/rideTrackStore.ts` | 走りの記録の端末の置き場: 走りを一覧・見出し・変わったときだけ書くもの・点の区切りの鍵に分けて読み書きし、書けなければ古い走りを消して書き直し、走り終えたものを送る形で組み立てる | `lib/rideTrack.ts`が書き、`services/rideTrackApi.ts`が送るものを読んで送れたものを消し、`app/error.tsx`が鍵の頭で残す |
 | `services/rideTrackApi.ts` | 走り終えて送っていない走りを、`POST /api/rides`へ古い順に送り、書けたものを端末で消す。本文は本番の nginx の要求の大きさの上限（既定の 1MB）に長い走りも収めるため、gzip で縮めて送る | 案内を終えたとき（`useRideMode.ts`） |
 | `app/api/version/route.ts`・`services/versionApi.ts` | フロントエンドの動いている版（コミット・起動時刻）を返すNext.js route handlerと、それを読む口（`SystemStatusPanel`と`HeaderMenu`のバージョン表示が読む） | |
 
@@ -119,7 +122,7 @@ URL を渡した人だけの段階なので、走行モードを使ったどの�
   失う）。送るまで消さないので、溜まりきったら一番古い走りを捨てて新しい走りを記録する。終える前に閉じた走りは、次に（読み込み直しの戻しでなく）始めたときに
   終えたものにして、次に案内を終えたときに送る。
 - 位置ごとに書き直す走りの見出しは小さく保ち、ルートの線・生成の条件・予報は別の鍵に、変わったときだけ書く。
-- 画面のエラーの境目の「端末に保存した値を消して再試行」は、走りの記録（鍵の頭`lib/rideTrack.ts: RIDE_TRACK_KEY_PREFIX`）を消さない。
+- 画面のエラーの境目の「端末に保存した値を消して再試行」は、走りの記録（鍵の頭`lib/rideTrackStore.ts: RIDE_TRACK_KEY_PREFIX`）を消さない。
   記録の読みは、読めない値を無いものとして扱って画面を落とさず、送るまでほかに写しが無いため。
 - 受けた走りは backend が GPX にして表に残す（[横断的なインフラ](../backend/cross-cutting-infrastructure.md)の`ride_tracks`の行）。
 

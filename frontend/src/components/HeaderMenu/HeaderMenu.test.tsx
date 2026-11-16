@@ -17,7 +17,8 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import type { FrontendVersion } from "@/services/versionApi";
-import { formatRideMetrics, readRideMetrics, startRideMetrics, stopRideMetrics } from "@/lib/rideMetrics";
+import { readRideMetrics, startRideMetrics, stopRideMetrics } from "@/lib/rideMetrics";
+import { formatRideMetrics } from "@/lib/rideMetricsFormat";
 import { onSameOrigin } from "@/testing/backendServer";
 
 import HeaderMenu from "./HeaderMenu";

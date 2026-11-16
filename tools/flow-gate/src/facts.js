@@ -9,11 +9,16 @@ import { APPLIED, answerText, approvedSplitTitles, askerOf, conditions, droppedQ
 const dialogOf = (config, types, type) => [...types, type].find(Boolean) === config.dialogType;
 // 矢印1本でつながる issue（前提・子・親）の読み方。1件を決め直すときも、振り出しの一覧も同じ（親の本文は、1件を決め直すときだけ要る）。
 export const relationsOf = (body = false) => `blockedBy(first:20){nodes{number state stateReason}} subIssues(first:50){nodes{number state stateReason}}
- parent{number state stateReason ${body ? "body" : ""} labels(first:20){nodes{name}} ${FIELDS}}`;
+ parent{number state stateReason ${body ? "body" : ""} labels(first:20){nodes{name}} ${FIELDS}
+ timelineItems(last:1,itemTypes:[CLOSED_EVENT]){nodes{...on ClosedEvent{actor{login}}}}}`;
+// 親が閉じて、子が要らなくなったか（流れの文書「終わる」: 親が見送りで閉じたか、ユーザーが完成で閉じた）。ゲートが親を完成で閉じても、
+// 子は自分の約束で終わる。
+const parentGone = (config, p) => p.state === "CLOSED"
+  && !(p.stateReason === "COMPLETED" && p.timelineItems.nodes[0]?.actor?.login !== config.user);
 // 完成でなく閉じた（見送り・重複）相手は、その結果を当てにできないので、続けるかを問う側に数える。
 const dropped = (x) => x.state === "CLOSED" && ["NOT_PLANNED", "DUPLICATE"].includes(x.stateReason);
 // issue の欄とラベルから、欄と待ちを組む（1件を決め直すときも、振り出しの一覧も同じ）。子（親を持つ issue）は、優先度・着手可能日時・
-// 急ぎ・保留を自分では持たず、親の値を見る（親が閉じていれば、閉じるのを待つ子なので振り出さない）。待つ相手は前提と子で、どちらも同じに扱う。
+// 急ぎ・保留を自分では持たず、親の値を見る（親が閉じて子が要らなくなっていれば（parentGone）、閉じるのを待つ子なので振り出さない）。待つ相手は前提と子で、どちらも同じに扱う。
 export function taskOf(config, issue) {
   const now = new Date();
   const f = config.fields;
@@ -30,7 +35,7 @@ export function taskOf(config, issue) {
   return { status: own[f.status.name], run: own[f.run.name], priority: from[f.priority.name], type: issue.issueType?.name ?? null,
     open: issue.state === "OPEN", blocked: waits.some((w) => w.state === "OPEN"), dropped: waits.filter(dropped).map((w) => w.number),
     future: Boolean(text) && (!start || start > now), badStart: mine && startTime(mine) === null ? mine : null,
-    urgent: names(parent ?? issue).includes(config.urgentLabel), held: Boolean(parent) && (parent.state === "CLOSED" || from[f.status.name] === "保留"),
+    urgent: names(parent ?? issue).includes(config.urgentLabel), held: Boolean(parent) && (parentGone(config, parent) || from[f.status.name] === "保留"),
     labels, dev: labels.includes(config.devLabel), dialog: issue.issueType?.name === config.dialogType, // 1件を決め直すときは、作ったときの種類で読み直す
     assignees: issue.assignees.nodes.map((a) => a.login) };
 }
@@ -184,9 +189,9 @@ export async function readFacts(gh, config, number, runs) {
   const asker = asked < 0 ? null : askerOf(config, nodes[asked].author?.login);
   const latest = latestQuestion(comments, config.questionForms, asker);
   const question = latest && { ...latest, at: at(nodes[asked]) };
-  // 子は、親が閉じて開き直されないなら（要望が満たされた・やめた）生きていない。条件が残ったまま完成で閉じた親は、ゲートが開き直す。
+  // 子は、親が閉じて要らなくなり（parentGone）、開き直されないなら生きていない。条件が残ったまま完成で閉じた親は、ゲートが開き直す。
   const p = i.parent;
-  const dead = Boolean(p) && p.state === "CLOSED" && !(p.stateReason === "COMPLETED" && remaining(p.body).length);
+  const dead = Boolean(p) && parentGone(config, p) && !(p.stateReason === "COMPLETED" && remaining(p.body).length);
   // 一度でも出した問いか。最近のコメントに無く、それより前のコメントがあれば、さかのぼって全部を読む（答えたあとに問い直さない）。
   let older = null;
   const ever = async (has) => comments.some(has) || (i.comments.totalCount > nodes.length && (older ??= await allComments(gh, config, number)).some(has));

@@ -5,7 +5,7 @@
 応答の型（`RouteCandidate`等）の検証はPydanticが持つ。
 
 ここで見ないもの:
-- 区間の値をコスト配列から読んで区間を組み立てること、区間とビンと候補の代償の秒の内訳 → `test_route_generation_behavior.py`
+- 区間の値をコスト配列から読んで区間を組み立てること、区間とビンと候補の代償の秒の内訳 → `test_route_generation_segments.py`
 """
 
 import pytest

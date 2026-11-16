@@ -1,5 +1,5 @@
 /**
- * `lib/rideTrack.ts`——走りの記録。走行モードの間の位置と出来事・推したルート・生成の条件・見せた予報を走りごとに溜め、
+ * `lib/rideTrack.ts`——走りの記録（端末の置き場は`lib/rideTrackStore.ts`）。走行モードの間の位置と出来事・推したルート・生成の条件・見せた予報を走りごとに溜め、
  * 走り終えたものを送る形（受ける口`POST /api/rides`）で出す。
  *
  * 記録中の走りと最後に受けた予報はモジュールが持つので、読み込み直しはモジュールを読み直して作る（端末の保存値は残る）。
@@ -9,6 +9,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { pendingRideUploads } from "@/lib/rideTrackStore";
 import { makeGenerationConditions, makeRouteCandidate } from "@/testing/routeFixtures";
 
 type RideTrack = typeof import("@/lib/rideTrack");
@@ -65,10 +66,10 @@ describe("走りの記録", () => {
     track.recordRideTrackRoute({ ...ROUTE, edge_ids: ["e3"] }, null, START_MS + 160_000);
     track.recordRideTrackRoute(ROUTE, makeGenerationConditions({ distance_km: 99 }), START_MS + 170_000);
     track.recordRideTrackRoute(ROUTE, CONDITIONS, START_MS + 180_000);
-    expect(track.pendingRideUploads()).toEqual([]);
+    expect(pendingRideUploads()).toEqual([]);
     track.stopRideTrack(START_MS + 200_000);
 
-    const [ride] = track.pendingRideUploads();
+    const [ride] = pendingRideUploads();
     expect(ride.started_at).toBe("2026-11-16T00:00:00.000Z");
     expect(ride.points).toHaveLength(131);
     expect(ride.points[0]).toEqual([1_000, 35681234, 139767124, 124, 43, 556, 87, 52]);
@@ -107,7 +108,7 @@ describe("走りの記録", () => {
     track.startRideTrack(START_MS + 2 * HOUR_MS);
     track.stopRideTrack(START_MS + 3 * HOUR_MS);
 
-    const [continued, closed, next] = track.pendingRideUploads();
+    const [continued, closed, next] = pendingRideUploads();
     expect(continued.events.map(([, kind]) => kind)).toEqual(["start", "rest", "reload", "end"]);
     expect(closed.events.map(([, kind]) => kind)).toEqual(["start"]);
     expect(next.started_at).toBe("2026-11-16T02:00:00.000Z");
@@ -120,7 +121,7 @@ describe("走りの記録", () => {
       track.stopRideTrack(START_MS + ride * HOUR_MS + 1_000);
     }
 
-    expect(track.pendingRideUploads().map((ride) => ride.started_at)).toEqual([
+    expect(pendingRideUploads().map((ride) => ride.started_at)).toEqual([
       "2026-11-16T01:00:00.000Z",
       "2026-11-16T02:00:00.000Z",
       "2026-11-16T03:00:00.000Z",
@@ -131,7 +132,7 @@ describe("走りの記録", () => {
     localStorage.setItem("ridecompass:ride-track:rides", "{壊れた");
     vi.spyOn(console, "warn").mockImplementation(() => {});
 
-    expect(track.pendingRideUploads().length).toBe(0);
+    expect(pendingRideUploads().length).toBe(0);
   });
 
   it("端末に書けなくなったら、送っていない古い走りを消して書き直し、今の走りの記録を続ける", () => {
@@ -157,7 +158,7 @@ describe("走りの記録", () => {
     track.recordRideTrackFix(fix(HOUR_MS + 2_000));
     track.stopRideTrack(START_MS + HOUR_MS + 3_000);
 
-    const rides = track.pendingRideUploads();
+    const rides = pendingRideUploads();
     expect(rides.map((ride) => ride.started_at)).toEqual(["2026-11-16T01:00:00.000Z"]);
     expect(rides[0].points.map(([atMs]) => atMs)).toEqual([1_000, 2_000]);
   });
@@ -168,7 +169,7 @@ describe("走りの記録", () => {
       track.recordRideTrackFix(fix(second * 1_000));
     track.stopRideTrack(START_MS + (track.MAX_POINTS_PER_RIDE + 1) * 1_000);
 
-    expect(track.pendingRideUploads()[0].points).toHaveLength(track.MAX_POINTS_PER_RIDE);
+    expect(pendingRideUploads()[0].points).toHaveLength(track.MAX_POINTS_PER_RIDE);
   });
 
   it("端末に書けなくなったら、投げずにその走りの記録をやめ、案内を終えると溜めた分を送る側へ出す", () => {
@@ -192,6 +193,6 @@ describe("走りの記録", () => {
     track.recordRideTrackFix(fix(3_000));
     track.stopRideTrack(START_MS + 4_000);
 
-    expect(track.pendingRideUploads()[0].points.map(([atMs]) => atMs)).toEqual([1_000]);
+    expect(pendingRideUploads()[0].points.map(([atMs]) => atMs)).toEqual([1_000]);
   });
 });

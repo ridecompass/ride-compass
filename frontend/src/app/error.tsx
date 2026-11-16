@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { Button } from "@/components/ui/Button/Button";
-import { RIDE_TRACK_KEY_PREFIX } from "@/lib/rideTrack";
+import { RIDE_TRACK_KEY_PREFIX } from "@/lib/rideTrackStore";
 import { clearStoredValues } from "@/lib/safeStorage";
 
 export default function Error({ error, retry }: { error: Error & { digest?: string }; retry: () => void }) {

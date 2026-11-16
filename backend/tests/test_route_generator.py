@@ -2,7 +2,7 @@
 
 ここで見ないもの:
 - 折返し点の選定・経路探索・評価の中身 → `RoadGraphEngine`（`test_route_generation_behavior.py`と、その判断の部品は`test_route_search.py`）。ここでは代役に置き換える
-- 区間から候補への集約の計算（費用・代償の内訳・事実の量） → `test_route_generation_behavior.py`・`test_route.py`
+- 区間から候補への集約の計算（費用・代償の内訳・事実の量） → `test_route_generation_segments.py`・`test_route.py`
 - 距離あり・距離なしのどちらの入口を使うか（要求の検証が選ぶ）とAPIの受け口 → `test_routes_generate.py`
 - エンジンへ渡す引数（探索の範囲・経由地の並び・出発時刻・候補数）と、エンジンを呼んだか・何回か → 読むだけの呼び出しなので
   確かめない。経由地を順に通って起点か目的地で終わること・目的地の補正を引き継ぐことは`test_route_generation_behavior.py`が経路で見る

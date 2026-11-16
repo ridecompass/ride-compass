@@ -2,15 +2,12 @@
 
 import { useRef, useState } from "react";
 import FirstVisitIntro from "@/components/FirstVisitIntro/FirstVisitIntro";
-import { Button } from "@/components/ui/Button/Button";
-import { cardVariants } from "@/components/ui/Card/Card";
-import { LocateIcon } from "@/components/ui/icons/icons";
-import { textVariants } from "@/components/ui/Text/Text";
 import UsageGuide from "@/components/UsageGuide/UsageGuide";
 import UsageTooltip from "@/components/UsageGuide/UsageTooltip";
 import RideConditionBar from "@/features/conditions/RideConditionBar/RideConditionBar";
 import type { useRideConditions } from "@/features/conditions/useRideConditions";
 import LensControl from "@/features/map/LensControl/LensControl";
+import LocateButton from "@/features/map/LocateButton/LocateButton";
 import MapOverlayControls from "@/features/map/MapOverlayControls/MapOverlayControls";
 import MapOverview from "@/features/map/MapOverview/MapOverview";
 import { anyWeatherShown, overviewShown } from "@/features/map/MapOverview/overview";
@@ -226,31 +223,11 @@ export default function HomeMapPane({
               linkedDeparture={mapView.lensConditions.includes("at")}
               linkedSpeed={mapView.lensConditions.includes("speed_kmh")}
             />
-            <div className="relative flex">
-              <Button
-                variant="mapCtrl"
-                size="mapCtrl"
-                onClick={() => place.locateMe(onFocusPoint)}
-                disabled={place.locating}
-                aria-label="現在地に移動"
-                title="現在地に移動"
-                usage="現在地を取得し直して、地図をそこへ動かします。出発地は変えません。"
-                className={cn(place.locating && "cursor-wait opacity-60")}
-              >
-                {place.locating ? "…" : <LocateIcon />}
-              </Button>
-              {place.locateError && (
-                <p
-                  className={cn(
-                    cardVariants({ variant: "float" }),
-                    textVariants({ variant: "error" }),
-                    "pointer-events-none absolute top-0 right-full mr-2 w-max max-w-55 border-0 px-2.5 py-1.5",
-                  )}
-                >
-                  {place.locateError}
-                </p>
-              )}
-            </div>
+            <LocateButton
+              locating={place.locating}
+              error={place.locateError}
+              onLocate={() => place.locateMe(onFocusPoint)}
+            />
           </>
         )}
         <RideModeButton
