@@ -930,10 +930,10 @@ numbaでJITする探索と、探索の中へ展開する部品を置く。JITの
   前の道の点を採り、前の道の点が標高を持たず次の道の点が持つときだけ次の道の点を採る（`domain/route.py: _merge_shared_point`）。
   区間の続く坂の斜度（`domain/route.py: steepest_signed_percent`）は、道の一番急な登りと下り（区間の標高の表。点の拾い方と間引き方は
   [標高](elevation.md)「断面の点の拾い方と間引き方」）から作り、ビンへは登りがあれば登りの最大、無ければ一番急な下りで畳む
-  （`domain/route.py: merge_sustained_gradients`）。区間の平均勾配は登って下る区間で打ち消し合うので、区間の小窓の「最大」は
+  （`domain/route.py: _merge_sustained_gradients`）。区間の平均勾配は登って下る区間で打ち消し合うので、区間の小窓の「最大」は
   この値を読む。区間の平均勾配（`average_gradient_percent`）は道の平均勾配（区間の標高の表）で、ビンへは値のある道の距離で
-  重みづけて畳む（`domain/route.py: merge_average_gradients`）。
-  道の区分（`road_classes`）は平均せず、中の区間の部分をつないで隣どうしの同じ値を1つにまとめる（`merge_road_classes`）。
+  重みづけて畳む（`domain/route.py: _merge_average_gradients`）。
+  道の区分（`road_classes`）は平均せず、中の区間の部分をつないで隣どうしの同じ値を1つにまとめる（`_merge_road_classes`）。
   宣言の無いフィールドは
   `domain/route.py`の読み込み時に落ちる——放っておくと、型でも例外でも現れないまま
   APIからは「そのフィールドだけ既定値（空・null・0）」に見える。母集団は型を問わずモデルの
@@ -943,7 +943,7 @@ numbaでJITする探索と、探索の中へ展開する部品を置く。JITの
   拾い方と間引き方」）を差し込んだ点の並び**で、点は RFC 7946 の位置（標高のある点は[経度, 緯度, 標高]、無い点は[経度, 緯度]。
   https://www.rfc-editor.org/rfc/rfc7946 の 3.1.1）。点ごとのルートの始まりからの道のり（m）は、点と同じ並びの別の配列
   `point_distances_m`で持つ（RFC 7946 は位置を3つより伸ばさないよう求める）。差し込みと道の形の点の標高は
-  `domain/route.py: edge_points`が決め、道の断面は道の形と一緒に引く（`infrastructure/road_graph_repository.py: _EDGE_GEOMETRIES_SQL`）。
+  `domain/route.py: _edge_points`が決め、道の断面は道の形と一緒に引く（`infrastructure/road_graph_repository.py: _EDGE_GEOMETRIES_SQL`）。
   区間の線と道のりは、ルート全体の線からEdgeの境界で切り出す——別に組むと、区間と全体の点がずれる。
 - **`RouteCandidate.edge_point_offsets`は、その経路のEdgeが`geometry.coordinates`の
   どこで切り替わるか**を`edge_ids`より1件多く持つ。隣接Edgeの境界点は重複させずに連結する
@@ -1079,7 +1079,7 @@ backendは置き場を読むだけで、読むのは`current()`の1か所であ�
   どれもここを通り、省略された評価条件（利用者の値・想定速度・避け方）の既定もここで1度だけ決める。
   エンジンは既定を持たず、解決済みの値だけを受け取る——既定を2か所で持つと、経路ごとに
   違う条件で探すことになり、しかもどちらも正常に見える。
-- **画面の操作で届く上限の外れは、日本語の文で断る**（`domain/route_request.py: request_error`）。
+- **画面の操作で届く上限の外れは、日本語の文で断る**（`domain/route_request.py: _request_error`）。
   例: 経由地の数・経由地と目的地の遠さ・乗り換えで組んだ経路の長さ。画面は422の文を結果欄へ
   そのまま出すため、組み込みの制約の英語の文（`ValueError`なら「Value error, 」の前置き）が利用者に見える。
   件数の制約は契約（OpenAPI）に載せるため残し、制約より先に動く検証（`mode="before"`）で日本語にする。

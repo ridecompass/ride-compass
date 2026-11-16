@@ -13,7 +13,7 @@ OSM由来の道路データ（PBF取込）・警察庁事故データ・土地�
 |---|---|
 | domain | `attributes.py`・`accident.py`・`stop_place.py`（立ち寄り先の群と、地点を群へ入れる語・同じ店をまとめる距離とチェーンの見分け方・言語違いの同じ場所を連絡先で寄せる群と距離・文化財の所有者から寺社を見分ける語）・`traffic.py`（OSMタグの解釈と分類。停止要因・補給POIの種別、通行方向、道の階級）・`landcover.py`（土地被覆クラス別割合の算出と、数える帯の幅。割合の列の名前の規則。土地被覆の材料）・`traffic_regulation.py`（交通規制1件がいつ・誰に効くかの判断。終日か時間帯か・普通自転車も対象か。規制が効く時間帯の語彙）・`divided_carriageway.py`（上下線が分かれた道の片側かのしきい値と判定のSQL式、一方通行の材料の値式）・`map_display.py`・`display_palette.py`（地図の束ね方・レイヤーごとの種別と情報源と既定表示と名前と説明と最初に凡例で隠す行・常に出す出典・描く寸法と配色。画面へは`scripts/export_openapi.py`の生成物を経由してだけ届く。本番プロセスは`map_display.py`の種別の鍵だけを、道の区分の入れ替えで地図の線の層のまとめ先を照らすのに読む（`road_classes.py: undeclared_references`）。`display_palette.py`は色の段を本番も読む。読み方は[地図: 静的レイヤー](../frontend/static-map-layers.md)）・`registry.py`（一次属性の宣言の型）・`primary_attributes.py`（一次属性の語彙の宣言——地図での束ね方・凡例の行・名前——と、宣言だけから導く式。ビルド時生成物`primaryAttributes.ts`の元）（[region.py](routing-engine.md)は別モジュール管轄）・`db_status.py`（本番DBの数を「注意が要るか」へ読むしきい値と判定） |
 | services | `region_service.py`・`landcover_tile_service.py`（土地被覆ラスタタイルの配信）・`db_status_service.py`（本番DBの数を読み、domainの`db_status.py`の判定で注意の印を付けたレポートにする。レポートの型は応答の型を兼ねる） |
-| infrastructure | `vector_tile.py`・`tile_cache.py`・`region_tile_cache.py`（地域タイルのディスクの口。鍵・キャッシュ確認→取得→書き戻しの骨格・旧世代の掃除・DBを書き換えたあとの捨て）・`landcover_raster.py`（土地被覆GeoTIFFの読み取り・再投影・着色）・`source_models.py`（外部ソースの生データを、ソースによらない1つの形で持つ。点・線・ラスタのタイルを同じ骨格へ載せ、取込1回ぶんを`source_models.py: source_runs`が記録する。コードが名指すソース名と取込の状態の綴り［`source_models.py: Source`・`source_models.py: SourceRunStatus`］、ソースごとの生データを読む副問い合わせ、ソースの成功した最新の取込を指す副問い合わせ［`source_models.py: latest_succeeded_run_sql`。派生の基準・取込の範囲はここから読む］、全ソースの成功した最新の取込［`source_models.py: LATEST_SUCCEEDED_RUNS_SQL`。派生の作り直しが記録する］、成功した取込の数［`source_models.py: succeeded_run_count`。生データの世代］もここが持つ）・`derived_models.py`（生データから導いたもの。表は「書く段 × 行の母集団」ごとに分け、どの表も書く段は1つ。部分索引の条件の式［`derived_models.py: grouped_place_sql`・`derived_models.py: CONTINUABLE_KEY_SQL`］も持ち、派生の段と範囲で引く読み手も同じ式で絞る）・`orm_base.py`（ORMの基底。どのモデルからも辿れる位置に置き、モデル同士がimportで絡まないようにする。全表を載せたmetadata［`orm_base.py: declared_metadata`。importの有無で表が欠けないよう、全表を見る側はここを通す。importするモジュールの並びは`orm_base.py: TABLE_MODULES`］と、派生の表の印［`orm_base.py: DERIVED`。派生の表の一覧（`orm_base.py: derived_tables`）はここから導く］もここが持つ）・`point_tile_layers.py`（点のタイルのレイヤーの宣言。名前・source-layer名・焼き込むSQL。配信・世代の表・生成物はここから組み立てる）・`db_status.py`（本番DBの状態＝取込runの最終実行・テーブルの実数と容量・統計とVACUUMの鮮度・接続）・`proj_data.py`（rasterioが参照するPROJデータをrasterio同梱のものへ固定する。別インストールの`proj.db`を掴むとEPSG解決が失敗するため、rasterioのimport前に呼ぶ）・`derived_database_export.py`（OSM の派生データベースを ODbL の表示を付けた ZIP に書き出し、最新の1つだけを置く。下の「派生データベースの書き出し」） |
+| infrastructure | `vector_tile.py`・`tile_cache.py`・`region_tile_cache.py`（地域タイルのディスクの口。鍵・キャッシュ確認→取得→書き戻しの骨格・旧世代の掃除・DBを書き換えたあとの捨て）・`landcover_raster.py`（土地被覆GeoTIFFの読み取り・再投影・着色）・`source_models.py`（外部ソースの生データを、ソースによらない1つの形で持つ。点・線・ラスタのタイルを同じ骨格へ載せ、取込1回ぶんを`source_models.py: source_runs`が記録する。コードが名指すソース名と取込の状態の綴り［`source_models.py: Source`・`source_models.py: SourceRunStatus`］、ソースごとの生データを読む副問い合わせ、ソースの成功した最新の取込を指す副問い合わせ［`source_models.py: _latest_succeeded_run_sql`。派生の基準・取込の範囲はここから読む］、全ソースの成功した最新の取込［`source_models.py: LATEST_SUCCEEDED_RUNS_SQL`。派生の作り直しが記録する］、成功した取込の数［`source_models.py: succeeded_run_count`。生データの世代］もここが持つ）・`derived_models.py`（生データから導いたもの。表は「書く段 × 行の母集団」ごとに分け、どの表も書く段は1つ。部分索引の条件の式［`derived_models.py: grouped_place_sql`・`derived_models.py: CONTINUABLE_KEY_SQL`］も持ち、派生の段と範囲で引く読み手も同じ式で絞る）・`orm_base.py`（ORMの基底。どのモデルからも辿れる位置に置き、モデル同士がimportで絡まないようにする。全表を載せたmetadata［`orm_base.py: declared_metadata`。importの有無で表が欠けないよう、全表を見る側はここを通す。importするモジュールの並びは`orm_base.py: TABLE_MODULES`］と、派生の表の印［`orm_base.py: DERIVED`。派生の表の一覧（`orm_base.py: derived_tables`）はここから導く］もここが持つ）・`point_tile_layers.py`（点のタイルのレイヤーの宣言。名前・source-layer名・焼き込むSQL。配信・世代の表・生成物はここから組み立てる）・`db_status.py`（本番DBの状態＝取込runの最終実行・テーブルの実数と容量・統計とVACUUMの鮮度・接続）・`proj_data.py`（rasterioが参照するPROJデータをrasterio同梱のものへ固定する。別インストールの`proj.db`を掴むとEPSG解決が失敗するため、rasterioのimport前に呼ぶ）・`derived_database_export.py`（OSM の派生データベースを ODbL の表示を付けた ZIP に書き出し、最新の1つだけを置く。下の「派生データベースの書き出し」） |
 | api | `region.py`（路面/点/土地被覆タイル・押した所に近い道）・`_tile_http.py`（タイルの口が共有する座標検証・応答組み立て・レート制限と同時実行の上限）・`db_status.py`（`GET /api/admin/db-status`、Basic認証必須）・`derived_database.py`（`GET /api/derived-database`、認証なし。置いてある書き出しを返す） |
 | batch | `ingest.py`（外部ソースの共通取込経路。アダプタから受けた1件ずつをステージングへ積み、そのソースのパーティションだけを入れ替え、`source_runs`へ適用した絞り込みごと記録する。runを開く記録と失敗の記録は入れ替えと別のトランザクションで書き、成功の記録は入れ替えと同じトランザクションで書く——失敗した取込は行を元のまま残して`failed`のrunが残り、`succeeded`のrunの行は必ず入っている）・`ingest_cli.py`（その入口）・`source_profile.py`／`source_profile.yaml`（取り込む母集団の宣言。実装には範囲を書かない）・`source_adapters/`（外部の形を開いて1件ずつ返す実装と、その入力を上流から手元へ写す取得（`ingest.py: Fetcher`で登録する）。`overture_places.py`はOverture Mapsの地点のGeoParquet（DuckDBで読む。取込は配信元を叩かず手元にあるものを読み、範囲・確からしさ・名前で母集団の外の地点を落とす。分類では落とさない）、`bunka_heritages.py`は国の文化財の建造物（ジャパンサーチの項目を1行1件のJSONで並べたもの。範囲・指定の別・位置の有無で落とし、寺社かは見ない）、`jartic_regulation.py`はJARTICの交通規制情報（都道府県ごとの zip の CSV。範囲に掛かる都道府県は住所の生データと同じく ABR の市区町村の代表点で決める。宣言した共通規制種別コードの規制を線か面にして、範囲の枠に掛かるものだけを返す。自分と交わる面は面に直し、線でも面でもない形があれば取込を失敗にする）、`npa_honhyo.py`は警察庁の本票CSV（取込は配信元を叩かず、手元にあるものを読む。度分秒をつないだ数字列の緯度・経度を度へ読み、日本の範囲を外れた値は壊れた値として落とす）、`osm_pbf.py`はOSMのPBF（way・node。タグを絞らず全部持つ。PBFの読み取り自体は`pbf_source.py`が持ち、pyosmiumへの依存をそこへ閉じ込める）、`io_lulc_tile.py`は土地被覆ラスタをタイルへ切って、`gsi_dem_tile.py`は地理院の標高タイル——製品×タイル1枚を1行として返し、標高はint32（0.01m単位）で詰める。面のタイルは`raster_wkb.py`がPostGISの`raster`へ包む。位置・画素の大きさ・型・欠測値をその値自身に持たせ、読み手が属性から形を組み立てなくてよいようにする）・`derive_cli.py`（派生を作り直す入口。段の順番と、段ごとの入力（読むソース・前の段・書く表・較正値）の宣言はここだけが持つ。較正値は始めにDBの表から読み、段へ値で渡す。作り直す段は引数で選び（選ばなければ全部の段）、流す段の表だけを作業用のスキーマで作り、道路網の配列まで作ってから`public`の表と入れ替えて世代を進める。配列は毎回作る。コマンドとして打つと、終わりに派生データベースを書き出す）・`derive_topology.py`（生データから区間`road_edges`・区間を持つ道の鍵・区間の端点とその枝数を導く。切る位置は2本以上の道が通るノード）・`derive_nodes.py`（ノードの種別と、頂点の信号の有無・集まる道の最大階級。種別の判断は取込ではなくここで行うため、判断が変わっても生データは取り直さない）・`derive_counts.py`（区間と道に付く数の値。停止要因はまとまり1つを経路上で1回になるよう区間へ割り振り、道の値は区間の和から導くため地図と評価で食い違わない）・`derive_elevation.py`（標高のタイルを線へ落とす。区間を等しい刻みに分けた点で測る）・`derive_landcover.py`（土地被覆の画像を線へ落とす。中心線の周りの帯に落ちる画素を数える）・`derive_traffic_regulations.py`（交通規制の場所を区間へ重ねる。規制1件の判断はdomainの`traffic_regulation.py`が、配布のコードの読み替えは`source_models.py: regulation_slots`が持つ）・`derive_way_directions.py`（道1本の性質。通行方向をタグから決め、上下線分離は逆向きに並走する相方の有無で判定する）・`derive_places.py`（地点。下の「地点」）・`common.py`（バッチ間共通ヘルパ。asyncpg用DSN変換・`common.py: SOURCE_DATA_LOCK`［取込と派生の作り直しが同時に走らないよう両方が取る鍵の名前。DBのバックアップも書き出す間は持つ］・`common.py: place_file`［取得が配布元から取ったものを置く共通の手順。一時ファイル経由で置き、手元の同じ名前のものは置き換える。中身は開いて確かめず、読めないことはそれを読む取込が知らせる。URLの1ファイルを写す`common.py: fetch_file`はこの上に乗る］・`common.py: fetch_timeout`［配布元から1つのファイルを取るときのタイムアウト。応答の途中で黙ってよい秒数だけを取得が渡す］・`common.py: FetchError`［取得が断るときの例外。入口が失敗の終了コードにする］・`common.py: batch_session_factory`[エンジン生成と破棄。表を先に探すスキーマを指定できる]・`common.py: run_batch_cli`[DBを書く入口（例: `ingest_cli.py`・`derive_cli.py`・`scripts/bootstrap_database.py`）の骨格。ログの設定・`--database-url`の読み取りを持ち、入口は自分の引数と本体だけを書く]・`configure_cli_logging`[バッチと取得が端末へ出すログの書式]）・`fetch_cli.py`（取得の入口。プロファイルの並び順にアダプタの取得を呼び、置き場ごとに、取る前からあって置き換わらなかったファイルを取り終えたあとに消す。取得を持たないアダプタのソースは飛ばす。取得の道具の骨格（`fetch_cli.py: run_fetch_cli`。ログの設定・終了コード・通信の失敗の1行）も持つ）・`scripts/bootstrap_database.py`（まっさらなDBを使える状態まで立ち上げる。スキーマ→取込→派生の順はここだけが持ち、途中から流し直せる） |
 
@@ -182,7 +182,7 @@ int32の0.01m単位、土地被覆はuint8）で持つ。位置・画素の大�
 
 **作り直しに使った較正値も記録する**（`derived_data_meta.py: DerivedTuningRow`、表`derived_tuning`）。較正値ごとに、それを読む段
 （道路網の配列を含む。配列は毎回作る）が流れたら今の値を、そうでなければ前回の記録を、取込の記録と同じく作業用のスキーマで書いて
-派生の表と一緒に入れ替える（記録に共通の決まりは`derive_cli.py: carried_over`）。派生の外で同じ値を読む所（地図の停止の点の
+派生の表と一緒に入れ替える（記録に共通の決まりは`derive_cli.py: _carried_over`）。派生の外で同じ値を読む所（地図の停止の点の
 まとめ方・ルートの印の事故の付け方と点のまとめ方・道路網の配列の曲がりの向き）は、管理画面の今の値ではなくこの記録を
 読む——値を変えてから作り直すまでの間も、派生の表と食い違わない。
 
@@ -231,7 +231,7 @@ domainの判断へは値で渡す。
 直す場所が1つで済む。読み手は`source_features`をソース名で絞らない。ソース名と取込の状態の綴りも
 同じファイルの`StrEnum`（`Source`・`SourceRunStatus`）だけが持つ。綴りの食い違いはエラーにならず
 0件を読む問い合わせとして静かに通るため、ソースや状態を受け取る関数
-（`latest_succeeded_run_sql`・`batch/ingest.py: _close_run`）は`StrEnum`を受け、文字列を渡すと型検査が落ちる。SQLの文字列の形（`'accident'`・
+（`_latest_succeeded_run_sql`・`batch/ingest.py: _close_run`）は`StrEnum`を受け、文字列を渡すと型検査が落ちる。SQLの文字列の形（`'accident'`・
 `'succeeded'`等）でも`source_models.py`の外に書かない（こちらは検査が無く、レビューで見る）。生データの表の宣言と同じファイルに置くのは、表を読む文は実行する層が持つ
 （材料の式は`domain/material_sql.py`が別名`w`の列に対して書く）ため。派生の段（batch）と読み出し
 （infrastructure）の両方が読めるのはinfrastructureだけである。全件の副問い合わせ（`*_SOURCE_SQL`）は空間で絞る読み手と全件を流す段が、
@@ -361,7 +361,7 @@ OpenStreetMapの寺社の分類は、伝統的な寺社と新しい宗教団体�
 交通規制の表は規制が当たった区間だけが行を持ち、行が無いことは規制が無いことを表す（材料の欠損ではない）。自転車も対象の列は、当たった規制のどれも普通自転車を対象にしないときNULLになる。
 有効画素が足りない区間（ラスタが覆っていない・雲に覆われていた・タイルが1枚も無い）は土地被覆の行を持たず、道は、割合を持つ区間が
 1本も無ければ行を持たない。行のある区間・道は、有効画素が正で割合を全部持ち、合計が100であることを表の制約
-（`derived_models.py: landcover_checks`）が守るので、読み手は有効画素がNULLかだけで割合の有無を決める。区間の標高は
+（`derived_models.py: _landcover_checks`）が守るので、読み手は有効画素がNULLかだけで割合の有無を決める。区間の標高は
 始点・終点・獲得・喪失の4列が揃って入り、勾配は標高のある区間にだけ入る（勾配は4列があっても欠けうる）。
 地点の表（`places`）は名前のある地点を全部持ち、列のNULLは次を表す: 群（`place_group`）は群に入らない地点（検索にだけ出る）、
 チェーン（`chain`）はチェーンが分からない、分類の道筋（`categories`）は分類を持たない出どころ（文化財の寺社）、住所（`address`）は
@@ -408,7 +408,7 @@ OpenStreetMapの寺社の分類は、伝統的な寺社と新しい宗教団体�
 派生バッチがDB内で結果を`way_directions.direction`へ置く。判定に使うタグを
 増やしたら派生を流し直せば反映される（生データはタグを全部持っているため取り直しは不要）。
 列の語彙（`traffic.py: DIRECTIONS`）は同じ表と既定値から導き、表の検査制約もそこから作る
-（`derived_models.py: vocabulary_check`。ノードの種別`node_kinds.kind`も`traffic.py: NODE_KINDS`から同じく作る）。
+（`derived_models.py: _vocabulary_check`。ノードの種別`node_kinds.kind`も`traffic.py: NODE_KINDS`から同じく作る）。
 段はSQLで直接書くため、宣言の外の値を止められるのはこの制約だけである。
 
 ### 上下線が分かれた道の片側か（`way_directions.divided`）
@@ -638,7 +638,7 @@ z9で約3MB（28万本・167万点）。z9より引くと1画面で数十MBに�
   （ゾーンを1枚足したとき・起動時に1枚だけ置かれていなかったときに、継ぎ目の古い絵を返し続けない）。ディスクに焼いたタイルは期限を持たないため、読み方・描き方を変えて画素が
   変わるときは`infrastructure/cache_identity.py: LANDCOVER_REVISION`を上げる（署名はレジストリしか見ず、
   上げなければ焼いた古い絵を返し続ける）。
-- 取得（`source_adapters/io_lulc_tile.py: fetch_lulc_rasters`）: 配布元のSTAC APIの品目の検索で範囲に掛かるゾーン×年の
+- 取得（`source_adapters/io_lulc_tile.py: _fetch_lulc_rasters`）: 配布元のSTAC APIの品目の検索で範囲に掛かるゾーン×年の
   GeoTIFFを引き、ゾーンごとに最新の年を置き場へ取る。取得の入口は置き換わらなかった前のファイルを消すので、新しい年が出れば前の年と替わる。
   描く側は置き場のファイルが変われば開き直し（`landcover_raster.py: open_rasters`）、タイル1枚の鍵と絵を同じ一揃いから作るので、
   配信中のbackendも替わった年を描く。

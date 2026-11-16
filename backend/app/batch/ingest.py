@@ -63,7 +63,7 @@ class AdapterInputs:
 
     def origin(self) -> dict[str, Any]:
         """runの`origin`へ残す、読んだ入力の素性。"""
-        return {"files": [file_origin(path) for path in self.files]}
+        return {"files": [_file_origin(path) for path in self.files]}
 
 
 #: アダプタが読む入力を、行を読まずに答える関数。
@@ -125,7 +125,7 @@ def register_adapter[I: AdapterInputs](name: str, *, inputs: InputsOf[I], rows: 
     return decorate
 
 
-def file_origin(path: Path) -> dict[str, Any]:
+def _file_origin(path: Path) -> dict[str, Any]:
     """読んだファイルの素性。**取り直したかどうかを後から言えるだけの材料**を残す。"""
     stat = path.stat()
     return {"path": str(path), "bytes": stat.st_size,

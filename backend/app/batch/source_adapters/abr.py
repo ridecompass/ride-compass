@@ -61,7 +61,7 @@ ENCODING = "utf-8-sig"
 JGD2011 = "EPSG:6668"
 
 
-def archive_name(stem: str) -> str:
+def _archive_name(stem: str) -> str:
     return f"{stem}.csv.zip"
 
 
@@ -75,7 +75,7 @@ def block_stems(prefecture: str) -> tuple[str, str]:
     return f"mt_rsdtdsp_blk_pref{prefecture}", f"mt_rsdtdsp_blk_pos_pref{prefecture}"
 
 
-def prefecture_stems(prefecture: str) -> tuple[str, ...]:
+def _prefecture_stems(prefecture: str) -> tuple[str, ...]:
     """範囲に掛かる都道府県ごとに取るファイルの名前の頭（町字の位置参照拡張と、住居表示の街区のテキストと位置参照拡張）。"""
     return (town_position_stem(prefecture), *block_stems(prefecture))
 
@@ -83,16 +83,16 @@ def prefecture_stems(prefecture: str) -> tuple[str, ...]:
 _PREFECTURE_STEM = re.compile(r"^(?P<kind>.+)_pref\d{2}$")
 
 
-def archive_url(stem: str) -> str:
+def _archive_url(stem: str) -> str:
     """配布元の URL。全国の1ファイルは`mt_pref/mt_pref_all.csv.zip`の形、都道府県ごとは`mt_town_pos/pref/…`の形。"""
     if match := _PREFECTURE_STEM.match(stem):
-        return f"{BASE_URL}/{match['kind']}/pref/{archive_name(stem)}"
-    return f"{BASE_URL}/{stem.removesuffix('_all')}/{archive_name(stem)}"
+        return f"{BASE_URL}/{match['kind']}/pref/{_archive_name(stem)}"
+    return f"{BASE_URL}/{stem.removesuffix('_all')}/{_archive_name(stem)}"
 
 
 def archive_path(stem: str) -> Path:
     """取り出したファイルの置き場。取得と取込で同じ導き方を使う。"""
-    return DATA_DIR / archive_name(stem)
+    return DATA_DIR / _archive_name(stem)
 
 
 def read_rows(path: Path) -> Generator[dict[str, str]]:
@@ -104,7 +104,7 @@ def _has_point(row: dict[str, str]) -> bool:
     return bool(row.get("rep_lon")) and bool(row.get("rep_lat"))
 
 
-def city_positions_path() -> Path:
+def _city_positions_path() -> Path:
     """市区町村の代表点の配布。範囲に掛かる都道府県はこれで決める。"""
     return archive_path("mt_city_pos_all")
 
@@ -114,7 +114,7 @@ def range_prefectures(target: Target) -> list[str]:
     取得も取込も、住所の生データの外のソースも、範囲に掛かる都道府県はこれで決める。"""
     return target.prefectures(
         (row["lg_code"][:2], float(row["rep_lat"]), float(row["rep_lon"]))
-        for row in read_rows(city_positions_path()) if _has_point(row))
+        for row in read_rows(_city_positions_path()) if _has_point(row))
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -134,7 +134,7 @@ def range_inputs(profile: SourceProfile, archive_of: Callable[[str], Path]) -> R
     """範囲に掛かる都道府県と、`archive_of`が都道府県ごとに決めた配布。範囲を決めるのに読む ABR の市区町村の代表点も入力に入れる。"""
     prefectures = range_prefectures(profile.target)
     archives = tuple(archive_of(code) for code in prefectures)
-    return RangeInputs(files=(city_positions_path(), *archives),
+    return RangeInputs(files=(_city_positions_path(), *archives),
                        prefectures=tuple(prefectures), archives=archives)
 
 
@@ -200,7 +200,7 @@ class AbrInputs(AdapterInputs):
         return {**super().origin(), "prefectures": list(self.town_positions)}
 
 
-def abr_inputs(spec: SourceSpec, profile: SourceProfile) -> AbrInputs:
+def _abr_inputs(spec: SourceSpec, profile: SourceProfile) -> AbrInputs:
     nationwide = {stem: archive_path(stem) for stem in NATIONWIDE_ARCHIVES}
     prefectures = range_prefectures(profile.target)
     town_positions = {code: archive_path(town_position_stem(code)) for code in prefectures}
@@ -212,19 +212,19 @@ def abr_inputs(spec: SourceSpec, profile: SourceProfile) -> AbrInputs:
 
 def fetch_abr(spec: SourceSpec, profile: SourceProfile) -> None:
     def fetch(stem: str) -> None:
-        fetch_file(archive_url(stem), archive_path(stem), read_timeout=_READ_TIMEOUT_SECONDS, logger=logger)
+        fetch_file(_archive_url(stem), archive_path(stem), read_timeout=_READ_TIMEOUT_SECONDS, logger=logger)
 
     for stem in NATIONWIDE_ARCHIVES:
         fetch(stem)
     prefectures = range_prefectures(profile.target)
     logger.info("範囲に掛かる都道府県: %s", ", ".join(prefectures))
     for code in prefectures:
-        for stem in prefecture_stems(code):
+        for stem in _prefecture_stems(code):
             fetch(stem)
     write_fetch_record(DATA_DIR)
 
 
-@register_adapter("abr", inputs=abr_inputs, fetcher=Fetcher(fetch_abr, lambda: (DATA_DIR,)))
+@register_adapter("abr", inputs=_abr_inputs, fetcher=Fetcher(fetch_abr, lambda: (DATA_DIR,)))
 async def read_abr(spec: SourceSpec, profile: SourceProfile, inputs: AbrInputs,
                    origin: dict[str, Any]) -> AsyncIterator[SourceRecord]:
     paths, town_positions = inputs.nationwide, inputs.town_positions

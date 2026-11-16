@@ -34,7 +34,7 @@
 段へ渡るのは`STAGES`が宣言した較正値だけである。
 
 **作り直しの記録（作った取込・使った較正値。`derived_data_meta.py`）は、鍵（取込のソース・較正値）ごとに、
-それを使う段が全部流れたときだけ今の値にし、ほかは前回の記録を残す**（`carried_over`）——流さなかった段の表は前回の取込・
+それを使う段が全部流れたときだけ今の値にし、ほかは前回の記録を残す**（`_carried_over`）——流さなかった段の表は前回の取込・
 較正値で作ったままなので、今の値を書くと記録を読む所（事故密度の分母・地図の点のタイル等）が表と食い違う。
 道路網の配列が読む較正値は、配列（`NETWORK`）が毎回流れるので毎回今の値になる。
 """
@@ -189,7 +189,7 @@ TUNING_USERS = _users([*((param, stage.name) for stage in STAGES for param in st
 _V = TypeVar("_V")
 
 
-def carried_over(previous: Mapping[str, _V], current: Mapping[str, _V], users: Mapping[str, frozenset[str]],
+def _carried_over(previous: Mapping[str, _V], current: Mapping[str, _V], users: Mapping[str, frozenset[str]],
                  ran: Iterable[str]) -> dict[str, _V]:
     """作り直しの記録に書く値（鍵は`users`の鍵）: 使う段が全部流れた鍵は今の値、ほかは前回の記録。前回に無ければ書かない——
     読み手は記録の無い較正値を読めない（読む段を流し直す）。"""
@@ -305,8 +305,8 @@ async def run(database_url: str, stages: Sequence[str] | None = None) -> int:
         tables = [*(table for stage in ran for table in stage.tables), *derived_data_meta.RECORD_TABLES]
         await _create_work_tables(conn, tables)
         done = [stage.name for stage in ran]
-        await derived_data_meta.replace_source_runs(conn, carried_over(previous.runs, runs, SOURCE_USERS, done))
-        await derived_data_meta.replace_tuning(conn, carried_over(previous.tuning, tuning, TUNING_USERS, done))
+        await derived_data_meta.replace_source_runs(conn, _carried_over(previous.runs, runs, SOURCE_USERS, done))
+        await derived_data_meta.replace_tuning(conn, _carried_over(previous.tuning, tuning, TUNING_USERS, done))
         for index, stage in enumerate(ran, 1):
             stage_started = time.perf_counter()
             logger.info("段 %s を開始（%d/%d）", stage.name, index, len(ran))

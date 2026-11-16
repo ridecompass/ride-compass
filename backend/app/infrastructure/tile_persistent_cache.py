@@ -51,7 +51,7 @@ def close() -> None:
         _opened_cache = None
 
 
-def get_by_key(key: tuple) -> Any | None:
+def _get_by_key(key: tuple) -> Any | None:
     """任意のタプルキーで読む。キーの設計は呼び出し元が持つ（先頭要素をnamespaceにする）。
     未キャッシュならNone。"""
     started = time.monotonic()
@@ -62,7 +62,7 @@ def get_by_key(key: tuple) -> Any | None:
     return value
 
 
-def set_by_key(key: tuple, value: Any, *, expire: float) -> None:
+def _set_by_key(key: tuple, value: Any, *, expire: float) -> None:
     """任意のタプルキーで書き、`expire`（秒）で失効させる。"""
     cache().set(key, value, expire=expire)
 
@@ -79,9 +79,9 @@ def delete_namespace(namespace: str) -> None:
 
 async def get_tile_entry(key: tuple) -> Any | None:
     """`set_tile_entry`で書いた値を読む。"""
-    return await asyncio.to_thread(get_by_key, key)
+    return await asyncio.to_thread(_get_by_key, key)
 
 
 async def set_tile_entry(key: tuple, value: Any) -> None:
     """タイルの値を書く（失効は`_TILE_ENTRY_TTL_SECONDS`）。"""
-    await asyncio.to_thread(set_by_key, key, value, expire=_TILE_ENTRY_TTL_SECONDS)
+    await asyncio.to_thread(_set_by_key, key, value, expire=_TILE_ENTRY_TTL_SECONDS)
