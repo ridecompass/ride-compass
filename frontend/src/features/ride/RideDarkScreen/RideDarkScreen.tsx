@@ -1,6 +1,7 @@
 import { TurnArrow, turnLabel } from "@/components/TurnArrow/TurnArrow";
 import type { TurnShape } from "@/components/TurnArrow/turnShape";
 import { Button } from "@/components/ui/Button/Button";
+import { GoalFlagIcon, OffRouteIcon } from "@/components/ui/icons/icons";
 import { DarkScreenIcon, VoiceOffIcon, VoiceOnIcon } from "@/components/ui/icons/lucideIcons";
 import { formatAlongDistance } from "@/lib/geoDistance";
 
@@ -26,16 +27,28 @@ export function RideDarkScreenButton({ onEnter }: { onEnter: () => void }) {
 
 interface RideDarkScreenProps {
   turn: (UpcomingTurn & { shape: TurnShape }) | null;
+  /** ルートを外れているか。外れている間は曲がる所の代わりに外れたことを出す。 */
+  offRoute: boolean;
+  /** ルートの残り（km）。曲がる所が無い間に出す。まだ現在地をルートへ当てていなければnull。 */
+  remainingKm: number | null;
   voiceOn: boolean;
   onVoiceToggle: () => void;
   onExit: () => void;
 }
 
 /**
- * 走行モードの間、画面全体を覆うほぼ黒の画面。次に曲がる所の絵と距離と、音声案内の入り切りだけを暗い灰色で出す。
+ * 走行モードの間、画面全体を覆うほぼ黒の画面。ルートを外れていればそのことを、外れていなければ次に曲がる所の絵と距離を、曲がる所が
+ * 残っていなければルートの残りを、音声案内の入り切りと一緒に暗い灰色で出す。
  * 地図の上に重ねるだけで地図と走行モードは描いたままなので、位置の更新と読み上げは止まらない。入り切りのほかの所に触れると地図に戻る。
  */
-export default function RideDarkScreen({ turn, voiceOn, onVoiceToggle, onExit }: RideDarkScreenProps) {
+export default function RideDarkScreen({
+  turn,
+  offRoute,
+  remainingKm,
+  voiceOn,
+  onVoiceToggle,
+  onExit,
+}: RideDarkScreenProps) {
   return (
     <div
       role="dialog"
@@ -52,13 +65,27 @@ export default function RideDarkScreen({ turn, voiceOn, onVoiceToggle, onExit }:
         className="absolute inset-0 rounded-none border-0 bg-black hover:enabled:bg-black"
       />
       <div className={`pointer-events-none relative flex h-full flex-col items-center justify-center gap-4 ${DIM}`}>
-        {turn !== null && (
+        {offRoute ? (
+          <>
+            <OffRouteIcon size={120} />
+            <p className="px-4 text-center text-[2rem] leading-tight font-bold">ルートを外れています</p>
+          </>
+        ) : turn !== null ? (
           <>
             <TurnArrow shape={turn.shape} size={120} />
             <p className="text-[2.75rem] leading-none font-bold tabular-nums">
               {formatAlongDistance(turn.distanceM)} {turnLabel(turn.direction)}
             </p>
           </>
+        ) : (
+          remainingKm !== null && (
+            <>
+              <GoalFlagIcon size={120} />
+              <p className="text-[2.75rem] leading-none font-bold tabular-nums">
+                残り {formatAlongDistance(remainingKm * 1000)}
+              </p>
+            </>
+          )
         )}
         <Button
           variant="ghost"
@@ -67,7 +94,7 @@ export default function RideDarkScreen({ turn, voiceOn, onVoiceToggle, onExit }:
           aria-label="音声案内"
           aria-pressed={voiceOn}
           usage="音声案内を入れる・切ります。黒の画面のままです。"
-          className={`pointer-events-auto mt-12 gap-2 rounded-full border-2 bg-black px-7 py-3.5 text-[1.375rem] hover:enabled:bg-black hover:enabled:text-[#666] ${DIM}`}
+          className={`pointer-events-auto mt-12 gap-2 rounded-full border-2 bg-black px-7 py-3.5 text-[1.375rem] font-bold hover:enabled:bg-black hover:enabled:text-[#666] ${DIM}`}
         >
           {voiceOn ? <VoiceOnIcon size={24} /> : <VoiceOffIcon size={24} />}
           音声案内 {voiceOn ? "入" : "切"}
