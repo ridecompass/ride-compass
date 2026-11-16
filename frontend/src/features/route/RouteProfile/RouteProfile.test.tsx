@@ -108,7 +108,7 @@ describe("RouteProfile", () => {
       screen.getAllByRole("img", { name: /^経由地/ }).map((mark) => ({
         name: mark.getAttribute("aria-label"),
         number: mark.textContent,
-        left: mark.style.left,
+        left: mark.style.getPropertyValue("--at"),
         opacity: mark.style.opacity,
       }));
     const expected = [

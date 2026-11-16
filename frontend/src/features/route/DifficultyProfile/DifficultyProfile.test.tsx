@@ -119,7 +119,7 @@ describe("DifficultyProfile", () => {
         travelledPaths: travelled?.querySelectorAll("path").length ?? 0,
         aheadPaths: ahead?.querySelectorAll("path").length ?? 0,
         aheadFilter: ahead?.getAttribute("filter") ?? null,
-        mark: mark === null ? null : { left: mark.style.left, top: mark.style.top },
+        mark: mark === null ? null : { left: mark.style.getPropertyValue("--at"), top: mark.style.top },
       };
     };
     const drawnPaths = 2;
