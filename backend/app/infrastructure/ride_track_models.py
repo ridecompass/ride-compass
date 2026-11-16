@@ -4,17 +4,20 @@
 """
 
 from datetime import datetime
+from typing import cast
 from uuid import UUID
 
+import asyncpg
 from sqlalchemy import DateTime, Text, func
 from sqlalchemy.dialects.postgresql import JSONB, insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.domain.region import MAX_MERCATOR_LATITUDE
-from app.domain.ride_track import RideUpload, ride_gpx
+from app.domain.ride_track import RideUpload
 from app.infrastructure.dem_elevation import fill_elevations, products_in_priority
 from app.infrastructure.orm_base import Base
+from app.infrastructure.ride_gpx import ride_gpx
 
 
 class RideTrackRow(Base):
@@ -42,7 +45,7 @@ async def ground_elevations_m(session: AsyncSession, lat_lon: list[tuple[float, 
     （`infrastructure/dem_elevation.py: fill_elevations`）は asyncpg の接続を受けるので、セッションの下の接続で流す。"""
     if not lat_lon:
         return []
-    conn = (await (await session.connection()).get_raw_connection()).driver_connection
+    conn = cast(asyncpg.Connection, (await (await session.connection()).get_raw_connection()).driver_connection)
     async with conn.transaction():
         await conn.execute("DROP TABLE IF EXISTS _ground_point")
         await conn.execute(_GROUND_POINTS_SQL, [lat for lat, _ in lat_lon], [lon for _, lon in lat_lon])

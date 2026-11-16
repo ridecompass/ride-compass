@@ -1,4 +1,4 @@
-"""`domain/ride_track.py`——端末が送った走りを GPX 1.1 に直す。
+"""`infrastructure/ride_gpx.py`——端末が送った走りを GPX 1.1 に直す。
 
 開発機の較正の道具は、この GPX を GPX 1.1 の標準の欄（時刻・緯度経度・標高）と Garmin の `TrackPointExtension` で読む。
 ここでは、出した GPX を XML として読み戻し、端末の詰めた値が単位どおりの値で標準と拡張の欄に入ることと、標準の標高の欄が
@@ -10,13 +10,8 @@
 from uuid import uuid4
 from xml.etree import ElementTree as ET
 
-from app.domain.ride_track import (
-    GPX_NAMESPACE,
-    RIDE_NAMESPACE,
-    TRACK_POINT_EXTENSION_NAMESPACE,
-    RideUpload,
-    ride_gpx,
-)
+from app.domain.ride_track import RideUpload
+from app.infrastructure.ride_gpx import GPX_NAMESPACE, RIDE_NAMESPACE, TRACK_POINT_EXTENSION_NAMESPACE, ride_gpx
 
 NS = {"g": GPX_NAMESPACE, "tpx": TRACK_POINT_EXTENSION_NAMESPACE, "rc": RIDE_NAMESPACE}
 

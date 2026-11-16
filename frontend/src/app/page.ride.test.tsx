@@ -5,8 +5,8 @@
  * 見るだけで地図の下に出すこと・「表示」と「負担で塗る」は走っていないときと同じに出し、走行中に効かない操作は出さないこと・
  * 方位磁針で北が上と進む向きが上を切り替え、地図を指で動かして休んでいる間はその場で北が上に戻すこと）と、
  * 届いた現在地がプロファイルの印と地図のルート線の薄めと走りの帯の残りへ同じ距離で渡り、到着予想が位置を受けた時刻と選んだ候補の計画から出ること、この先の経由地の印に同じ見込みの時刻が添わること、
- * 次に曲がる所がカードと地図の札に出ること、音声案内を入れると次に曲がる所を初めて知ったときと手前の段ごとに読み、ルートを外れた・戻ったことを読むこと（読み上げを持たない端末ではボタンを出さないこと）、音声案内を入れている間に入れる黒の画面が次に曲がる所と音声案内の入り切りだけを出し、その間も読み上げが続くこと、ルートを外れた・戻ったことが走りの帯に出ること、読み込み直しても走行モードが続くこと、
- * 読み込み直しで iPhone がスマホの向きを読む許しを聞けなかったら、ボタンの横から求め直して現在地の印に向きを出せること、
+ * 次に曲がる所がカードと地図の札に出ること、音声案内を入れると次に曲がる所を初めて知ったときと手前の段ごとに読み、ルートを外れた・戻ったことを読むこと（読み上げを持たない端末ではボタンを出さないこと）、音声案内を入れている間に入れる黒の画面が次に曲がる所（外れている間は外れたこと、曲がる所が無ければ残り）と音声案内の入り切りだけを出し、その間も読み上げが続くこと、ルートを外れた・戻ったことが走りの帯に出ること、読み込み直しても走行モードが続くこと、
+ * 読み込み直しで iPhone がスマホの向きを読む許しを聞けなかったら、走行中の知らせから求め直して現在地の印に向きを出せること、
  * 走行中も左下に俯瞰図を出すこと。
  *
  * ここで見ないもの: 休む・帯の「ルート」で出したパネル・地図を押すこと・「このルートで走る」・スマホで走行中に下部タブを隠すこと（帯の「ルート」のシートを閉じた後に見る）は`app/page.rideControl.test.tsx`が見る。
@@ -243,7 +243,8 @@ describe("走行モード", () => {
     // カードは距離だけを文字で出し、向きの言葉は読み上げの名前にだけ出す。
     expect(card).toHaveTextContent("300m");
     expect(card).not.toHaveTextContent("右折");
-    const [mark] = marksAt(turnPoint).map((mark) => mark.element);
+    const [placed] = marksAt(turnPoint);
+    const mark = placed.element;
     expect(mark).toHaveAccessibleName("曲がる所: 右折");
     expect(arrowPaths(mark)).toEqual(arrowPaths(card));
     // 東へ進むルートなので、ルートの線は下から入って上へ抜け、北と南の道は左と右へ出る。
@@ -255,6 +256,11 @@ describe("走行モード", () => {
       { x: expect.closeTo(4, 0), y: expect.closeTo(24, 0) },
       { x: expect.closeTo(44, 0), y: expect.closeTo(24, 0) },
     ]);
+    // 札の絵は入る向き（東）を上に描くので、北を上にした地図では東を上から右へ回し、札の中の道を真下の地図の道とそろえる。
+    // 地図を回しても、回した分だけ戻して地図の道とそろったままにする。
+    expect(placed.screenRotationDeg).toBeCloseTo(90, 0);
+    act(() => mapOnScreen().rotateByHand(90));
+    expect(marksAt(turnPoint)[0].screenRotationDeg).toBeCloseTo(0, 0);
     // 現在地の印（強調色の丸）と取り違えないよう、丸でも強調色でもない。
     expect(mark.style.borderRadius).not.toBe("50%");
     expect(mark.style.background).not.toContain("--color-accent");
@@ -328,7 +334,7 @@ describe("走行モード", () => {
     vi.unstubAllGlobals();
   });
 
-  it("音声案内を入れている間は黒の画面へ入れ、黒の画面は次に曲がる所の絵（カードと同じ）と距離と向きと音声案内の入り切りだけを出し、その間も位置を受けて読み上げ、触れると地図に戻る", async () => {
+  it("音声案内を入れている間は黒の画面へ入れ、黒の画面は次に曲がる所の絵（カードと同じ）と距離と向き（外れている間は外れたこと、曲がる所が無ければ残り）と音声案内の入り切りだけを出し、その間も位置を受けて読み上げ、触れると地図に戻る", async () => {
     const geolocation = installGeolocation(HERE);
     const speech = installSpeechSynthesis();
     const { user } = renderHome();
@@ -371,6 +377,13 @@ describe("走行モード", () => {
     expect(voice).toHaveAttribute("aria-pressed", "true");
     expect(speech.texts().slice(-2)).toEqual(["音声案内を入れました", "500メートル先、右折です"]);
     expect(screen.getByRole("dialog", { name: "黒の画面" })).toBe(dark);
+
+    // 外れている間は外れたことを、曲がる所を全部過ぎたら残りを出す。
+    geolocation.deliver({ ...along(0.1), latitude: 35.702 });
+    expect(dark).toHaveTextContent("ルートを外れています");
+    expect(dark).not.toHaveTextContent("右折");
+    geolocation.deliver(along(0.8));
+    expect(dark).toHaveTextContent("残り 1.2km");
 
     await user.click(within(dark).getByRole("button", { name: "地図に戻る" }));
     expect(screen.queryByRole("dialog", { name: "黒の画面" })).toBeNull();
