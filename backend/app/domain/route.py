@@ -513,7 +513,7 @@ def _shape_positions(edges: list[LeanEdge]) -> list[list[float]]:
 
 def _between(positions: list[float], values: list[float], at: float) -> float:
     """位置の並び`positions`（昇順）の上の値の並び`values`を、位置`at`で直線に読む（範囲の外は端の値）。道1本の点の数個に
-    使うので`np.interp`を呼ばない（1回ごとに配列へ写す手間で、ルート1本の線の組み立てが数倍遅くなる）。"""
+    使うので`np.interp`を呼ばない（1回ごとに配列へ写す手間で、ルート1本の線の組み立てが遅くなる）。"""
     i = min(max(bisect_right(positions, at) - 1, 0), len(positions) - 2)
     span = positions[i + 1] - positions[i]
     t = min(max((at - positions[i]) / span, 0.0), 1.0) if span > 0 else 0.0
