@@ -262,7 +262,7 @@ URLも変わるため、ブラウザキャッシュ（`api/cache_policy.py`）�
 
 **定期プリウォーム（`services/jma_tile_prewarm_service.py`）**: `main.py`のAPScheduler
 （アメダスと同じ`interval`トリガー、`jma_tile_prewarm_interval_minutes`＝10分、
-`next_run_time=datetime.now()`で起動直後にも即時実行）が、サービスの対象範囲
+`next_run_time=datetime.now()`で起動直後にも即時実行。1回は`api/dependencies.py: get_jma_tile_prewarm`が組む）が、サービスの対象範囲
 （取り込んだ道路の範囲。`RegionService.get_ingested_area`が成功した最新の道路の取込の記録から読む——ルート生成の
 「取込範囲か」と同じ行を読むので、取込範囲を広げればプリウォームも同じ範囲へ広がる）ぶんのタイルをあらかじめ`JmaTileClient.get()`
 経由でRedisへ温める。範囲が読めない回は温めない（在否インデックスも書かない）。対象ズームは上記`effective_max_zoom()`が導出した上限まで——超過

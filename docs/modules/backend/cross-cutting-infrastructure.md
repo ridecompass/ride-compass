@@ -18,7 +18,7 @@ DB接続・Redis・HTTPクライアント・レート制限・ログ・デバッ
 | domain | `stopwatch.py` | ログへ出す所要時間の測り方（測り始めの`stopwatch.py: start_timer`とミリ秒の整数の`stopwatch.py: elapsed_ms`）。測り始めと終わりは同じ時計で読む |
 | domain | `strict_model.py` | 全Pydanticモデルの基底（`strict_model.py: StrictModel`）。未知のフィールドを黙って捨てず例外にする |
 | api | `admin_auth.py` | 管理API共通の認可境界 |
-| api | `failure_replies.py` | 想定した失敗（上流から取れない→502・MSMを読めない・アメダスの観測値の置き場を読めない・DBに届かない→503）を、どの口でも理由つきで返すアプリ単位の例外の扱い。ルート生成のジョブの失敗の文も同じ`failure_reply`で決める（下の「DB障害として扱う例外」・`fetch_upstream`の段） |
+| api | `failure_replies.py` | 想定した失敗（上流から取れない→502・MSMを読めない・アメダスの観測値の置き場を読めない・DBに届かない→503）を、どの口でも理由つきで返すアプリ単位の例外の扱い。ルート生成のジョブの失敗の文も同じ`api/failure_replies.py: failure_reply`で決める（下の「DB障害として扱う例外」・`fetch_upstream`の段） |
 | api | `admin_paths.py` | 管理APIの経路の接頭辞（認可・キャッシュの決まりが、この下の口をまとめて扱う） |
 | api | `cache_policy.py` | 応答の`Cache-Control`（パスとポリシーの対応表・付与ミドルウェア） |
 | api | `dependencies.py`（横断的な部分のみ、他は各モジュール参照） | DI工場（公開関数は注入の口だけ） |
@@ -41,7 +41,8 @@ DB接続・Redis・HTTPクライアント・レート制限・ログ・デバッ
 | infrastructure | `job_registry.py` | 汎用の非同期ジョブレジストリ（プロセス内メモリのみ） |
 | domain | `ride_track.py` | 端末が送る走り（`POST /api/rides`の本文）の型 |
 | infrastructure | `ride_gpx.py` | 走りを GPX 1.1 に直す処理。時刻・緯度経度・標高（走った地点の地形の標高。無い点は端末の高さ）は標準の欄、速さと進む向きは Garmin の`TrackPointExtension` v2、端末の高さ・位置と標高の誤差・出来事・画面とサーバーの版・端末の名前は自前の名前空間。休むごとに`trkseg`を分ける |
-| infrastructure | `ride_track_models.py` | 走りの記録の表`ride_tracks`（走り1回を1行。GPX と、推したルート（候補を受けたまま）、生成の条件と予報（`context`）を受けたまま）。同じ走りの id は先の行のまま書かない。書くとき、走った地点ごとの地形の標高を、取り込んだ標高タイルから道の標高と同じ製品の並びで引く（`infrastructure/ride_track_models.py: ground_elevations_m`）。読むのは開発機の較正の道具だけ（`run_probe.py`） |
+| infrastructure | `ride_track_models.py` | 走りの記録の表`ride_tracks`（走り1回を1行。GPX と、推したルート（候補を受けたまま）、生成の条件と予報（`context`）を受けたまま）。同じ走りの id は先の行のまま書かない。走った地点ごとの地形の標高を、取り込んだ標高タイルから道の標高と同じ製品の並びで引く問い合わせ（`infrastructure/ride_track_models.py: ground_elevations_m`）も持つ。読むのは開発機の較正の道具だけ（`run_probe.py`） |
+| services | `ride_track_service.py` | 走り1回を書く取引。送り直し（同じ id の行がある）なら地形の標高を引かずに終え、無ければ標高を引いて GPX に直して書く。接続は1本を長く持つ工場のもの |
 | api | `ride_tracks.py` | 走りを受ける口`POST /api/rides`。受けたサーバーの版を添えて書く。gzip で縮めた本文は戻して読む（戻した大きさに上限） |
 | infrastructure | `tuning_overrides.py` | 較正値の値（宣言の全idの行をDBへ持つ。値の正本）の読み書き。プロセス内の値へは書かない |
 | services | `definitions_loading.py` | DBの定義（道の区分・軸定義・較正値）をプロセスへ読み込む1つの入口と、その順。起動時と、起動を通らない道具が呼ぶ |
@@ -473,7 +474,7 @@ push型更新と同じ前提）。`JobRecord`は状態ごとの型の共用体�
 完了（`JobDone`。結果）・失敗（`JobFailed`。理由）のうち終わった2つだけが終わった時刻を持つ。完了
 （done/failed）から`JOB_TTL_SECONDS`秒経過したジョブは、次の`create_job()`
 呼び出し時に掃除する（専用の定期タスクは新設せず、`rate_limiter.py`と同じ「呼ばれた
-ついでに掃除」方式）。ルート生成のジョブも同じ時間で打ち切る（`routes.py: _run_generate_job`）。ジョブの失敗の文は、口と同じ`api/failure_replies.py: failure_reply`で決める（決め方に無い例外だけは、文に接続先やSQLが混じりうるので決まった文）。ルート生成に特化させず`result: Any`型で汎用化してあるため、
+ついでに掃除」方式）。ルート生成のジョブも同じ時間で打ち切る（`services/route_generation_job.py: run_route_generation_job`）。ジョブの失敗の文は、口と同じ`api/failure_replies.py: failure_reply`で決める（決め方に無い例外だけは、文に接続先やSQLが混じりうるので決まった文）。ルート生成に特化させず`result: Any`型で汎用化してあるため、
 本モジュール自体はルート生成の型を知らない（`routes.py`との循環import回避）。
 
 ジョブを打ち切る時間は、生成の最悪の所要を安全マージン込みで上回る値にする。根拠にする最悪ケースは本番の実測

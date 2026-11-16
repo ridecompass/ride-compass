@@ -17,7 +17,7 @@ from cachetools import LRUCache
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.api.generation_slots import GenerationSlots
+from app.services.generation_slots import GenerationSlots
 from app.config import settings
 from app.domain.road_network import RoadNetwork
 from app.domain.route_request import RequestedConditions
@@ -42,12 +42,14 @@ from app.services.db_status_service import DbStatusService
 from app.services.flood_service import FloodService
 from app.services.graph_service import GraphService, SearchMemory
 from app.services.jma_amedas_service import JmaAmedasService
+from app.services.jma_tile_prewarm_service import prewarm_ingested_area
 from app.services.landcover_tile_service import get_landcover_tile
 from app.services.lens_service import LensService
 from app.services.material_coverage_service import MaterialCoverageService
 from app.services.nearest_point_areas import new_cells_cache
 from app.services.place_search_service import PlaceSearchReads, PlaceSearchService
 from app.services.region_service import RoadInspectorService, RegionService
+from app.services.ride_track_service import RideTrackService
 from app.services.route_generation_setup import (
     RouteGenerationSetup,
     assemble_route_generation_setup,
@@ -61,7 +63,7 @@ from app.services.wbgt_service import WbgtService
 from app.services.weather_service import WeatherService
 
 
-#: DBのセッション工場。タイル配信と同じプールのものと、1本の接続を長く持つルート生成・全表走査の集計が使うもの。
+#: DBのセッション工場。タイル配信と同じプールのものと、1本の接続を長く持つもの（ルート生成・全表走査の集計・走りの記録の書き込み）。
 TileSessions = Annotated[async_sessionmaker[AsyncSession], Depends(get_session_factory)]
 LongSessions = Annotated[async_sessionmaker[AsyncSession], Depends(get_route_generation_session_factory)]
 
@@ -166,14 +168,13 @@ def get_landcover_tile_reader() -> LandcoverTileReader:
 
 
 @asynccontextmanager
-async def open_region_service(tile_sessions: async_sessionmaker[AsyncSession]) -> AsyncIterator[RegionService]:
-    """地域サービスの開き方。HTTPの要求の外（定期ジョブ）と、要求の依存が開く。"""
+async def _open_region_service(tile_sessions: async_sessionmaker[AsyncSession]) -> AsyncIterator[RegionService]:
     async with tile_sessions() as session:
         yield RegionService(repository=RoadGraphRepository(session))
 
 
 async def get_region_service(tile_sessions: TileSessions):
-    async with open_region_service(tile_sessions) as region_service:
+    async with _open_region_service(tile_sessions) as region_service:
         yield region_service
 
 
@@ -209,6 +210,16 @@ _gsi_not_found_paths: LRUCache = LRUCache(maxsize=NOT_FOUND_MAX_ENTRIES)
 
 def get_gsi_tile_client():
     return GsiTileClient(get_http_client(), _gsi_not_found_paths)
+
+
+def get_jma_tile_prewarm() -> Callable[[], Awaitable[None]]:
+    """気象庁タイルの定期プリウォームの1回（HTTPの要求の外の定期ジョブが呼ぶ）。"""
+    return partial(prewarm_ingested_area, partial(_open_region_service, get_session_factory()), get_jma_tile_client())
+
+
+async def get_ride_track_service(long_sessions: LongSessions):
+    async with long_sessions() as session:
+        yield RideTrackService(session, server_commit=settings.git_commit)
 
 
 # 以下の管理API向けのうち、書き込み・1テーブル読みで足りるものはタイル配信と同じ

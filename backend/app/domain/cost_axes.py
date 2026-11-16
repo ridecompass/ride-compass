@@ -16,6 +16,7 @@ from typing import Annotated, Literal
 
 from pydantic import Field, field_validator, model_validator
 
+from app.domain.display_palette import cost_series_colors
 from app.domain.lens_total import TOTAL_LENS_ID
 from app.domain.material_catalog import material_dtype
 from app.domain.road_classes import CLASS_MATERIAL_PREFIX, RoadClassDefinitions
@@ -184,6 +185,33 @@ def replace_cost_axes(definitions: CostAxisDefinitions) -> None:
 def cost_axis_ids(definitions: CostAxisDefinitions) -> tuple[str, ...]:
     """費用の軸のid。体力の軸をコードの表の順、続けて道のストレスの軸を定義の順で。"""
     return (*EFFORT_AXES, *definitions.burden)
+
+
+class CostAxisCatalogEntry(StrictModel):
+    """費用の軸1本の、画面が読む見せ方。"""
+
+    axis_id: str
+    #: 軸の費目を書く帳簿。体力（`effort`）は走行の模型の物理の費目、道のストレス（`burden`）は材料 × 1kmあたりの重さ。
+    ledger: Literal["effort", "burden"]
+    label: str
+    description: str
+    icon_id: str
+    #: 軸の識別色（どの画面でも同じ軸は同じ色）。軸の数で決まるので、一覧と一緒に配る。
+    color: str
+    #: 地図のレンズの段（境目は1kmあたりの代償の秒）。境目が利用者の値でどれだけの事実に当たるかの目安は
+    #: `GET /api/cost-axes/lens-equivalents`。
+    lens: LensBands
+
+
+def cost_axis_catalog(definitions: CostAxisDefinitions) -> list[CostAxisCatalogEntry]:
+    """費用の軸の見せ方と識別色を、`cost_axis_ids`の順で。"""
+    axis_ids = cost_axis_ids(definitions)
+    entries = []
+    for axis_id, color in zip(axis_ids, cost_series_colors(len(axis_ids)), strict=True):
+        ledger, axis = ("effort", definitions.effort[axis_id]) if axis_id in EFFORT_AXES else ("burden", definitions.burden[axis_id])
+        entries.append(CostAxisCatalogEntry(axis_id=axis_id, ledger=ledger, label=axis.label, description=axis.description,
+                                            icon_id=axis.icon_id, color=color, lens=axis.lens))
+    return entries
 
 
 def burden_material_ids(definitions: CostAxisDefinitions) -> tuple[str, ...]:
