@@ -12,9 +12,11 @@ from app.infrastructure import derived_database_export
 
 router = APIRouter()
 
+DERIVED_DATABASE_PATH = "/api/derived-database"
+
 
 @router.get(
-    "/api/derived-database",
+    DERIVED_DATABASE_PATH,
     response_class=FileResponse,
     responses={200: {"content": {"application/zip": {}}}, 404: {"description": "書き出しがまだ無い"}},
 )

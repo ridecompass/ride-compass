@@ -13,8 +13,9 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.domain.gsi_tiles import PRODUCT_PRIORITY
 from app.domain.region import MAX_MERCATOR_LATITUDE, tile_position_sql
-from app.domain.ride_track import RideUpload, ride_gpx
+from app.domain.ride_track import RideUpload
 from app.infrastructure.orm_base import Base
+from app.infrastructure.ride_gpx import ride_gpx
 from app.infrastructure.source_models import (
     DEM_TILES_SQL,
     INGESTED_DEM_PRODUCTS_SQL,

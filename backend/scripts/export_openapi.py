@@ -34,6 +34,7 @@ from app.domain.route_request import (
     MIN_ROUTES,
 )
 from app.api.routers.debug_admin import LogLevelName
+from app.api.routers.derived_database import DERIVED_DATABASE_PATH
 from app.infrastructure.source_models import SOURCE_RUN_STATUS_LABELS
 from app.infrastructure.point_tile_layers import POINT_TILE_LAYERS
 from app.infrastructure.vector_tile import ROAD_FEATURE_PROPERTIES, ROAD_SURFACE_LAYER_NAME
@@ -178,6 +179,8 @@ PALETTE_PATH = GENERATED_DIR / "palette.json"
 WEATHER_SCALES_PATH = GENERATED_DIR / "weather-scales.json"
 MAP_DISPLAY_PATH = GENERATED_DIR / "mapDisplay.ts"
 VOCABULARY_PATH = GENERATED_DIR / "vocabulary.ts"
+#: 画面が静的ファイルとして配る置き場（中のファイルは`/`からの同じパスで配られる）。
+FRONTEND_PUBLIC_DIR = Path(__file__).resolve().parents[2] / "frontend" / "public"
 
 
 def _strip_prose(node: object, *, keep: bool = False) -> object:
@@ -241,6 +244,24 @@ def _map_layer_entry(spec: MapLayerSpec) -> dict:
 def _layer_text(text: LayerText) -> list:
     """説明の文。文はそのまま、差し込み口は名前と前後の文の組にする。"""
     return [part if isinstance(part, str) else part._asdict() for part in text]
+
+
+def _public_path(*parts: str) -> str:
+    """画面が配る静的ファイルのパス。ファイルが無ければ落とす（出典のリンクが切れたまま焼かない）。"""
+    path = FRONTEND_PUBLIC_DIR.joinpath(*parts)
+    if not path.is_file():
+        raise FileNotFoundError(path)
+    return "/" + path.relative_to(FRONTEND_PUBLIC_DIR).as_posix()
+
+
+def _always_shown_attributions() -> list[str]:
+    """出典の差し込み口へ、リンク先を配る口・ファイルのパスを埋める。"""
+    links = {
+        "derived_database": DERIVED_DATABASE_PATH,
+        "apache_license": _public_path("licenses", "apache-2.0.txt"),
+        "foursquare_notice": _public_path("licenses", "foursquare-places-NOTICE.txt"),
+    }
+    return [attribution.format_map(links) for attribution in ALWAYS_SHOWN_ATTRIBUTIONS]
 
 
 def _weather_element_entry(element: WeatherElement) -> dict:
@@ -396,7 +417,7 @@ def main() -> None:
             # 数値予報モデルの計算値に添える断りの文。
             "modelValueDisclaimer": MODEL_VALUE_DISCLAIMER,
             # 地図へ常に出す出典。
-            "alwaysShownAttributions": list(ALWAYS_SHOWN_ATTRIBUTIONS),
+            "alwaysShownAttributions": _always_shown_attributions(),
             # 値が無い線の破線（道・レンズ・ルートで共有）。
             "noDataDash": list(NO_DATA_DASH),
             "road": {
