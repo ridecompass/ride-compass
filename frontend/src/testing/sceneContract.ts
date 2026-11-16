@@ -1,6 +1,7 @@
 // sceneの契約テスト（`features/map/scene/scene.*.contract.test.ts`）が、本番と同じ入口
 // （`sceneInputsFrom`→`buildMapScene`→`applyScene`）で地図へ伝えるためのレンズ・道の線の層と道具。
-import { applyScene, sceneInputsFrom } from "@/features/map/scene/applyToMap";
+import { applyScene } from "@/features/map/scene/applyToMap";
+import { sceneInputsFrom } from "@/features/map/scene/sceneInputs";
 import { buildMapScene } from "@/features/map/scene/buildScene";
 import { ROAD_LINE_SOURCE_ID } from "@/features/map/scene/groups/roadLines";
 import { sceneLayerId } from "@/features/map/scene/sceneBuilders";

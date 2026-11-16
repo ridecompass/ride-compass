@@ -23,16 +23,3 @@ def grade_profiles(gradient_percent: np.ndarray, distance_m: np.ndarray) -> Elev
     rise = np.asarray(gradient_percent, dtype=np.float64) / 100.0 * np.asarray(distance_m, dtype=np.float64)
     return profiles(*([] if np.isnan(r) else [0.0, float(r)] for r in rise))
 
-
-def two_point_profiles(start_elevation_m: np.ndarray, end_elevation_m: np.ndarray,
-                       forward: np.ndarray) -> dict[str, np.ndarray]:
-    """道路網（`domain/road_network.py: RoadNetwork`）の断面の欄。区間の行ごとに、走る向きの始まりと終わりの2点を
-    道の順方向に並べて持つ。標高の無い行（始まりがNaN）は点を持たず、平地で埋める。"""
-    forward = np.asarray(forward, dtype=bool)
-    built = profiles(*([] if np.isnan(a) else ([a, b] if f else [b, a])
-                       for a, b, f in zip(start_elevation_m, end_elevation_m, forward, strict=True)))
-    return {
-        "edge_profile_start": built.start, "edge_profile_points": built.points, "profile_elevation_m": built.elevation_m,
-        "profile_position": built.position,
-        "profile_distribution_grade": FLAT.grade, "profile_distribution_share": FLAT.share,
-    }

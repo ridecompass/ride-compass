@@ -1,38 +1,22 @@
 /**
  * `app/page.tsx`——トップページの画面の枠（地図の上の操作・ヘッダー・メニュー）。
  *
- * 見ること: 地図の表示をまとめて戻す操作（「表示」の一覧の末尾と右上のメニュー）、右上の方位磁針（地図の北を指し、
- * 開いたダイヤルで地図を回して北へ戻す。なぞる途中で閉じたら回さない。塗っているレンズの式が走行方位を読むときだけ、連動と出す）と拡大・縮小、地図を読み込み中の覆いが上限の時間で外れること、層の取得状態の数え直しと
- * 再描画の失敗の案内、「表示」の「範囲と色」で地図を暗くすること（基礎地図の色を暗くし、描き直しても保ち、覚える）、区分の開閉の保存、左下の俯瞰図（気象の層を出して寄せると出て、道路を消した下地に同じ気象の層を描き、引くと消え、畳んだことを覚える）、
- * ヘッダーの「未取得」に並ぶ出所と「現在地に移動」の失敗、「現在地に移動」が出発地を変えずに地図を寄せて現在地に点を
- * 出すこと、メニューから入る使い方の説明とデバッグログ。
+ * 見ること: 地図の表示をまとめて戻す操作（「表示」の一覧の末尾と右上のメニュー）、地図を読み込み中の覆いが上限の時間で外れること、
+ * 層の取得状態の数え直しと再描画の失敗の案内、「表示」の「範囲と色」で地図を暗くすること（基礎地図の色を暗くし、描き直しても保ち、
+ * 覚える）、区分の開閉の保存、左下の俯瞰図（気象の層を出して寄せると出て、道路を消した下地に同じ気象の層を描き、引くと消え、
+ * 畳んだことを覚える）。
  *
- * ここで見ないもの: スマホの下部タブとシートは`app/page.mobile.test.tsx`が見る。
+ * ここで見ないもの: スマホの下部タブとシートは`app/page.mobile.test.tsx`が、右上の方位磁針と拡大・縮小は
+ * `app/page.compass.test.tsx`が、ヘッダーとメニューは`app/page.header.test.tsx`が見る。
  *
  * 差し替えたもの: backend の応答（網の層）、位置情報の取得、地図の描画（`maplibre-gl`）。子の部品は本物を描く。
  */
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { act, render, screen, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { setDebugEnabled } from "@/lib/debugLog";
-import { HOUR_MS, SECOND_MS } from "@/lib/duration";
-import refreshIntervals from "@/types/generated/refresh-intervals.json";
-import { heldReplies, onBackend, serveCostAxisCatalog } from "@/testing/backendServer";
-import { TWO_COST_AXES } from "@/testing/costAxes";
-import { LENS_LINK_DESCRIPTION } from "@/lib/lensLink";
-import type { CostAxisCatalogResponse } from "@/types/route";
-import { installGeolocation } from "@/testing/geolocation";
-import {
-  ELSEWHERE,
-  HERE,
-  ROAD_CLASS_COLOR,
-  clickMap,
-  marksAt,
-  renderHome,
-  section,
-  serveHome,
-  showRoadSurface,
-} from "@/testing/homePage";
+import { HOUR_MS } from "@/lib/duration";
+import { onBackend } from "@/testing/backendServer";
+import { ROAD_CLASS_COLOR, renderHome, section, serveHome, showRoadSurface } from "@/testing/homePage";
 import { themedPaint } from "@/features/map/basemapTheme";
 import { LAYER_DATA_STATUS_LABELS } from "@/features/map/layers/mapLayers";
 import { LIBERTY_POI_LAYERS } from "@/testing/libertyPoiLayers";
@@ -42,25 +26,8 @@ import Home from "./page";
 
 vi.mock("maplibre-gl", () => import("@/testing/maplibre"));
 
-type LensFormula = CostAxisCatalogResponse["map_lens"]["formula"];
-
-/** 走行方位で、道の向きの値を読むか逆向きの値を読むかを選ぶ木。 */
-const BY_BEARING: LensFormula = {
-  value: {
-    op: "case",
-    when: { op: "lt", left: { op: "condition", name: "bearing_deg" }, right: { op: "const", value: 180 } },
-    then: { op: "feature", name: "lens_along" },
-    otherwise: { op: "feature", name: "lens_against" },
-  },
-  undetermined: { op: "const", value: 0 },
-};
-
 beforeEach(() => {
   serveHome();
-});
-
-afterEach(() => {
-  setDebugEnabled(false);
 });
 
 describe("画面の枠", () => {
@@ -104,69 +71,6 @@ describe("画面の枠", () => {
     await user.click(screen.getByRole("button", { name: "メニュー" }));
     await user.click(screen.getByRole("button", { name: "地図の表示を再描画" }));
     expect(mapOnScreen().styles).toHaveLength(before + 1);
-  });
-
-  it.each([
-    ["走行方位の節を持つ", BY_BEARING, LENS_LINK_DESCRIPTION],
-    ["走行方位の節を持たない", TWO_COST_AXES.map_lens.formula, null],
-  ])("塗っているレンズの式の木が%sなら、右上の方位磁針の連動の印は %s", async (_, formula, description) => {
-    serveCostAxisCatalog({ ...TWO_COST_AXES, map_lens: { ...TWO_COST_AXES.map_lens, formula } });
-    const { user } = renderHome();
-    await user.click(screen.getByRole("button", { name: /^負担で塗る: / }));
-    await user.click(await screen.findByRole("radio", { name: /登坂/ }));
-
-    expect(screen.getByRole("button", { name: "地図の向き" }).getAttribute("aria-description")).toBe(description);
-  });
-
-  it("右上の方位磁針は地図の北を指し、押すと開くダイヤルの輪をなぞる・矢印のキーで地図が回り、真ん中の針で北が上に戻る。ダイヤルの文は方位と度だけ。＋・－で拡大・縮小し、長押しで1本指の拡大・縮小の案内が出る", async () => {
-    const { user } = renderHome();
-    const compass = screen.getByRole("button", { name: "地図の向き" });
-    const needleTurn = () => compass.querySelector<HTMLElement>("[style]")?.style.transform;
-
-    act(() => mapOnScreen().rotateByHand(90));
-    expect(needleTurn()).toBe("rotate(-90deg)");
-
-    await user.click(compass);
-    const dial = await screen.findByRole("slider", { name: "地図の向き" });
-    expect(dial).toHaveAttribute("aria-valuetext", "E 90°");
-    expect(screen.getByRole("dialog").textContent).toMatch(/^[A-Z0-9° ]+$/);
-    dial.focus();
-    await user.keyboard("{ArrowLeft}");
-    expect(mapOnScreen().bearing()).toBe(85);
-    // 輪の中心の真上から真右へ、時計回りに4分の1なぞると、指の下の方位が付いてくるよう地図は反時計回りに回る。
-    const center = dial.getBoundingClientRect();
-    const cx = center.left + center.width / 2;
-    const cy = center.top + center.height / 2;
-    fireEvent.pointerDown(dial, { clientX: cx, clientY: cy - 50 });
-    fireEvent.pointerMove(window, { clientX: cx + 50, clientY: cy });
-    fireEvent.pointerUp(window);
-    expect(mapOnScreen().bearing()).toBe(355);
-    expect(needleTurn()).toBe("rotate(-355deg)");
-    await user.click(screen.getByRole("button", { name: "北を上にする" }));
-    expect(mapOnScreen().bearing()).toBe(0);
-    await user.keyboard("{Escape}");
-
-    const zoom = mapOnScreen().zoom();
-    await user.click(screen.getByRole("button", { name: "拡大" }));
-    expect(mapOnScreen().zoom()).toBe(zoom + 1);
-    await user.click(screen.getByRole("button", { name: "縮小" }));
-    expect(mapOnScreen().zoom()).toBe(zoom);
-    fireEvent.pointerDown(screen.getByRole("button", { name: "拡大" }), { pointerType: "touch", button: 0 });
-    expect(await screen.findByRole("tooltip", {}, { timeout: 2000 })).toHaveTextContent(
-      /指を離さずに上下へ動かしても拡大・縮小できます/,
-    );
-  });
-
-  it("輪をなぞっている途中でダイヤルを閉じても、その後の指の動きで地図は回らない", async () => {
-    const { user } = renderHome();
-    await user.click(screen.getByRole("button", { name: "地図の向き" }));
-    const dial = await screen.findByRole("slider", { name: "地図の向き" });
-    const center = dial.getBoundingClientRect();
-    fireEvent.pointerDown(dial, { clientX: center.left, clientY: center.top - 50 });
-    await user.keyboard("{Escape}");
-    expect(screen.queryByRole("slider", { name: "地図の向き" })).toBeNull();
-    fireEvent.pointerMove(window, { clientX: center.left + 50, clientY: center.top });
-    expect(mapOnScreen().bearing()).toBe(0);
   });
 
   it("基礎地図が描けず（`load`が来ず）ても、地図を読み込み中の覆いは上限の時間で外れる", () => {
@@ -323,69 +227,5 @@ describe("画面の枠", () => {
     act(() => mapOnScreen().moveTo(near, 12));
     await again.user.click(await screen.findByRole("button", { name: "俯瞰図を開く" }));
     expect(screen.getByRole("region", { name: "俯瞰図" })).toBeInTheDocument();
-  });
-
-  it("ヘッダーの「未取得」に、現在地・画面の設定・警報の取れないものが並ぶ。「現在地に移動」が取れなければ地図の上に理由を出す", async () => {
-    installGeolocation(null);
-    onBackend("GET", "/api/client-config", () => Response.json({ detail: "失敗" }, { status: 502 }));
-    onBackend("GET", "/api/weather/warnings", () => Response.json({ detail: "失敗" }, { status: 502 }));
-    const { user } = renderHome();
-    const missing = () => screen.getByRole("button", { name: /を取得できていません。押すと/ });
-    await waitFor(() => expect(missing()).toHaveAccessibleName(/現在地.*画面の設定|画面の設定.*現在地/));
-    expect(missing()).not.toHaveAccessibleName(/警報/);
-
-    await user.click(screen.getByRole("button", { name: "現在地に移動" }));
-    expect(screen.getByText(/現在地を取得できませんでした/)).toBeInTheDocument();
-
-    clickMap(HERE);
-    await waitFor(() => expect(missing()).toHaveAccessibleName(/警報/));
-    expect(missing()).not.toHaveAccessibleName(/現在地/);
-  });
-
-  it("ヘッダーの観測値の失敗の印は、間隔ごとに取り直している間も出したままにする", async () => {
-    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
-    try {
-      onBackend("GET", "/api/weather/amedas", () => Response.json({ detail: "失敗" }, { status: 502 }));
-      renderHome();
-      const mark = () => screen.queryByRole("img", { name: "観測値を取得できません" });
-      await waitFor(() => expect(mark()).not.toBeNull());
-
-      const held = heldReplies();
-      onBackend("GET", "/api/weather/amedas", held.reply);
-      act(() => vi.advanceTimersByTime(refreshIntervals.amedas_seconds * SECOND_MS));
-      await waitFor(() => expect(held.arrived()).toBe(1));
-      expect(mark()).not.toBeNull();
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("「現在地に移動」は現在地を取り直して地図を寄せ、出発地は変えずに現在地に点を出す", async () => {
-    const { user } = renderHome();
-    clickMap(ELSEWHERE);
-    expect(marksAt(ELSEWHERE)).toHaveLength(1);
-
-    await user.click(screen.getByRole("button", { name: "現在地に移動" }));
-
-    expect(marksAt(ELSEWHERE)).toHaveLength(1);
-    expect(screen.getByRole("img", { name: "現在地" })).toBeInTheDocument();
-    expect(marksAt(HERE).map(({ element }) => element.getAttribute("aria-label"))).toEqual(["現在地"]);
-  });
-
-  it("メニューから使い方の説明に入って「やめる」で抜け、デバッグログをメニューから開いてログの側から閉じられる", async () => {
-    const { user } = renderHome();
-    // 地図を開いたあとに入れる（代役の地図は基礎地図の道路を持たず、地図がそのことをデバッグログへ警告する）。
-    act(() => setDebugEnabled(true));
-    await user.click(screen.getByRole("button", { name: "メニュー" }));
-    await user.click(screen.getByRole("button", { name: "使い方を見る" }));
-    expect(screen.getByText("説明モード")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "やめる" }));
-    expect(screen.queryByText("説明モード")).toBeNull();
-
-    await user.click(screen.getByRole("button", { name: "メニュー" }));
-    await user.click(screen.getByRole("button", { name: "デバッグログを表示" }));
-    expect(screen.getByText(/^デバッグログ\[/)).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: /^デバッグログ\[.*を閉じる$/ }));
-    expect(screen.queryByText(/^デバッグログ\[/)).toBeNull();
   });
 });

@@ -15,19 +15,22 @@ import type {
   SelectedRouteSegment,
 } from "@/types/route";
 import type { RideConditions } from "@/features/map/regionApi";
-import { applyScene, basemapLookOf, type SpliceStretchInput } from "@/features/map/scene/applyToMap";
+import { applyScene } from "@/features/map/scene/applyToMap";
+import { basemapLookOf, type SpliceStretchInput } from "@/features/map/scene/sceneInputs";
 import type { MapLook } from "@/features/map/view/mapLook";
 import { useMapCatalog } from "@/features/map/useMapCatalog";
 import { useJmaTileIndex } from "@/features/map/useJmaTileIndex";
 import MapNavigationControl from "@/features/map/MapNavigationControl/MapNavigationControl";
 import MapLoadStatus from "@/features/map/MapView/MapLoadStatus";
 import { fitBoundsToRoute, flyToVisible } from "@/features/map/MapView/mapCamera";
-import { bindMapTaps, type MapTapMode } from "@/features/map/MapView/mapTaps";
+import { bindMapTaps } from "@/features/map/MapView/mapTaps";
+import type { MapTapMode } from "@/features/map/MapView/mapTapHits";
 import { rideZoomBase } from "@/features/map/MapView/rideZoom";
 import { useMapLifecycle } from "@/features/map/MapView/useMapLifecycle";
 import { useCandidateMarkers } from "@/features/map/MapView/useCandidateMarkers";
 import { useMapMarkers } from "@/features/map/MapView/useMapMarkers";
-import { useMapPopupMount, useMapPopups } from "@/features/map/MapView/useMapPopups";
+import { useMapPopupMount } from "@/features/map/MapView/useMapPopupMount";
+import { useMapPopups } from "@/features/map/MapView/useMapPopups";
 import { useMapScene } from "@/features/map/MapView/useMapScene";
 import { useRideFollow, type RideFollow } from "@/features/map/MapView/useRideFollow";
 import { useSectionFocus } from "@/features/map/MapView/useSectionFocus";

@@ -7,7 +7,7 @@ import type {
 } from "maplibre-gl";
 
 import type { DynamicWeatherRenderPayload } from "@/features/map/layers/dynamicWeather";
-import type { SceneLook } from "@/features/map/scene/applyToMap";
+import type { SceneLook } from "@/features/map/scene/sceneInputs";
 import { weatherMarkSizePx } from "@/features/map/scene/groups/weather";
 import type { MapScene } from "@/features/map/scene/mapScene";
 import { viewportCenter, type MapViewport } from "@/features/map/view/mapLook";

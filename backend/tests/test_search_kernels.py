@@ -72,6 +72,7 @@ async def test_route_generation_calls_from_python_only_the_jit_that_the_image_ba
     `app`の全モジュールが持つJITの関数を、Pythonからの呼び出しを記録する包みへ差し替えて数える。探索の中から
     の呼び出しはコンパイル済みの本体どうしで結ばれ、包みを通らない。"""
     search_kernels.compile_search_kernels()  # 包む前に本体を用意する（包んだ後にコンパイルすると、部品の代わりに包みを読む）
+    network = grid_network()  # 道路網を組むのは派生の作り直しで、生成の経路ではないので、数える前に組む
     called: set[str] = set()
 
     def recording(name, dispatcher):
@@ -96,7 +97,7 @@ async def test_route_generation_calls_from_python_only_the_jit_that_the_image_ba
         ),
         latest_run_end=times[-1] + timedelta(hours=1),
     )
-    generator = generator_for(road_network_root, grid_network(), wind)
+    generator = generator_for(road_network_root, network, wind)
     departure = datetime(2026, 9, 22, 8, tzinfo=timezone(timedelta(hours=9)))
     assert (await generator.generate_loops(
             at(CENTER), 4.0, 1.5, points=NO_POINTS, max_routes=3, start_time=departure)).candidates
