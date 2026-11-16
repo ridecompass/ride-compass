@@ -130,11 +130,12 @@ _HILLSHADE_LAYER_ID = "hillshade"
 #: ズームから補い降水の色を塗り替えて、MSMの格子は地点・時刻へ補間して使っている。気象レイヤーの出典もここが持つ（気象庁のデータは常設の表示
 #: で常に使うため）。住所の区画は地点の検索で常に使う。地点（立ち寄り先と地点の検索の施設）は出典を1か所にまとめるためここに置く。基礎地図は配信元のTileJSONが出典を持つので
 #: 入れない（入れると2回並ぶ）。データ源を足したら、利用条件（docs/architecture/data-sources.md）と合わせてここも見る。
+#: 自分の口・静的ファイルへのリンクは`{名前}`の差し込み口で書く。パスはそれを配る口・ファイルが持ち、生成物を組むときに埋める。
 ALWAYS_SHOWN_ATTRIBUTIONS: tuple[str, ...] = (
     '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">'
     "OpenStreetMap contributors</a>",
-    # OSM の派生データベースは公に使う間、受け取った人へ渡せるようにする（ODbL 4.6）。リンクは画面と同じオリジンの相対パス。
-    '道ごとの値の<a href="/api/derived-database" target="_blank" rel="noreferrer">派生データベース</a>'
+    # OSM の派生データベースは公に使う間、受け取った人へ渡せるようにする（ODbL 4.6）。
+    '道ごとの値の<a href="{derived_database}" target="_blank" rel="noreferrer">派生データベース</a>'
     '(<a href="https://opendatacommons.org/licenses/odbl/1-0/" target="_blank" rel="noreferrer">ODbL 1.0</a>)',
     '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noreferrer">'
     "地理院タイル(標高タイル)</a>を加工して作成",
@@ -151,7 +152,7 @@ ALWAYS_SHOWN_ATTRIBUTIONS: tuple[str, ...] = (
     "Esri, Impact Observatory, Microsoft</a> (CC BY 4.0)",
     *ADDRESS_AREA_ATTRIBUTIONS,
     # Overture の地点は出どころごとに表示が要る（公式の文書 https://docs.overturemaps.org/attribution/ ）。
-    # Foursquare の行は Apache 2.0 で、ライセンスの写し・変えた旨・NOTICE の全文を渡す（frontend/public/licenses/）。
+    # Foursquare の行は Apache 2.0 で、ライセンスの写し・変えた旨・NOTICE の全文を渡す。
     '地点: <a href="https://overturemaps.org/" target="_blank" rel="noreferrer">Overture Maps Foundation</a>'
     "の名前のある地点を、種類で分け近くの同じ店をまとめて加工。"
     "Data from Meta, Microsoft, PinMeTo, DAC, Uberall, OpenTravel "
@@ -159,9 +160,9 @@ ALWAYS_SHOWN_ATTRIBUTIONS: tuple[str, ...] = (
     "AllThePlaces "
     '(<a href="https://creativecommons.org/publicdomain/zero/1.0/" target="_blank" rel="noreferrer">CC0 1.0</a>), '
     "Foursquare (Copyright 2024 Foursquare Labs, Inc. All rights reserved. Available under "
-    '<a href="/licenses/apache-2.0.txt" target="_blank" rel="noreferrer">Apache 2.0</a>. '
+    '<a href="{apache_license}" target="_blank" rel="noreferrer">Apache 2.0</a>. '
     "Foursquare data was transformed to the Overture schema. "
-    '<a href="/licenses/foursquare-places-NOTICE.txt" target="_blank" rel="noreferrer">NOTICE</a>)',
+    '<a href="{foursquare_notice}" target="_blank" rel="noreferrer">NOTICE</a>)',
     # ジャパンサーチのサイトポリシーの出典の記載例（編集・加工して使う場合）の形。
     '寺社: ジャパンサーチ「<a href="https://jpsearch.go.jp/database/bunka" target="_blank" rel="noreferrer">'
     "文化遺産オンライン[文化庁・国立情報学研究所]</a>」のメタデータを改変して利用[所有者で寺社ごとにまとめた]",

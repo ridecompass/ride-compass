@@ -9,7 +9,6 @@
 """
 
 from typing import Annotated, Literal
-from urllib.parse import quote
 
 from pydantic import StringConstraints
 
@@ -105,18 +104,8 @@ def allot_candidates(addresses: list[PlaceCandidate], facilities: list[PlaceCand
 _PLACE_NAME_MAX_LENGTH = 200
 PlaceName = Annotated[str, StringConstraints(min_length=1, max_length=_PLACE_NAME_MAX_LENGTH)]
 
-#: 外の地図の店の検索（Google の Maps URLs の`search`。キーも料金も要らない）。
-_MAPS_SEARCH_URL = "https://www.google.com/maps/search/?api=1&query="
-
-
-def maps_search_url(name: str, where: str) -> str:
-    """名前と所在（住所か辺り）で店を開く外の地図のリンク。公式の文書（Maps URLs）が店を開く形として勧める「名前,住所」。
-    名前と座標を1つの検索語にすると、Google は座標を効かせず名前だけで引き、見ている辺りの同じ名前の別の店を開く。"""
-    return _MAPS_SEARCH_URL + quote(f"{name},{where}", safe="")
-
-
 class PlaceLink(StrictModel):
     """地図の点の名前から開く外の地図のリンク。"""
 
-    #: 点の所在（住所か辺り）が分からなければ持たない（理由は`maps_search_url`）。
+    #: 点の所在（住所か辺り）が分からなければ持たない（理由は`services/place_search_service.py: maps_search_url`）。
     url: str | None

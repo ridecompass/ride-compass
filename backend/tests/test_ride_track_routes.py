@@ -2,7 +2,7 @@
 
 注入から本物を通し、アプリのセッション工場をテストDBへ向ける。
 
-ここで見ないもの: 詰めた走りを GPX に直す中身 → `test_ride_track.py`
+ここで見ないもの: 詰めた走りを GPX に直す中身 → `test_ride_gpx.py`
 """
 
 import gzip
@@ -18,7 +18,7 @@ from sqlalchemy import delete, select
 from app.api.routers.ride_tracks import MAX_DECOMPRESSED_BYTES
 from app.domain.gsi_tiles import PRODUCT_PRIORITY
 from app.domain.region import BoundingBox
-from app.domain.ride_track import GPX_NAMESPACE, RIDE_NAMESPACE
+from app.infrastructure.ride_gpx import GPX_NAMESPACE, RIDE_NAMESPACE
 from app.infrastructure.ride_track_models import RideTrackRow
 from app.main import app
 from tests.source_ingest import dem_tile_records, ingest_records
