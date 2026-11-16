@@ -24,6 +24,7 @@ function props(overrides: Partial<Props> = {}): Props {
     onPress: () => {},
     onRest: () => {},
     onResume: () => {},
+    noticeHost: null,
     ...overrides,
   };
 }

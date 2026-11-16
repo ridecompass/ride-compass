@@ -90,10 +90,11 @@ export default function HomeMapPane({
 }: HomeMapPaneProps) {
   const costCatalog = useCostAxisCatalog();
   const { results, splice } = route;
-  const { progress, upcomingTurn, voice } = guidance;
+  const { progress, upcomingTurn, voice, remaining } = guidance;
   const navigating = riding.status !== "off";
   // ほぼ黒の画面を出しているか。入るのは音声案内を入れている間だけで、出したあとは音声案内を切っても出したまま。案内を終えると閉じる。
   const [dark, setDark] = useState(false);
+  const [rideNoticeHost, setRideNoticeHost] = useState<HTMLDivElement | null>(null);
   if (!navigating && dark) setDark(false);
   const selected = results.selectedCandidate;
   const selection = results.selectedRouteSegment;
@@ -165,8 +166,8 @@ export default function HomeMapPane({
       >
         {searchBar}
       </div>
-      {/* 検索の欄の下の段の左に「表示」（重ねる情報の一覧）と、走行中は次に曲がる所のカードを縦に積む。どちらも走行中も出す
-          （小さいので走りの邪魔にならず、走りながら重ねる情報を替えられる）。 */}
+      {/* 検索の欄の下の段の左に「表示」（重ねる情報の一覧）と、走行中は次に曲がる所のカードと走行モードの知らせを縦に積む。どちらも走行中も出す
+          （小さいので走りの邪魔にならず、走りながら重ねる情報を替えられる）。知らせを右の列から左へ伸ばすと、狭い幅でカードの距離を覆う。 */}
       <div
         {...mapOverlayEdge("top")}
         className="pointer-events-none absolute top-[var(--map-below-search-top)] left-3 z-[var(--z-map-control)] flex flex-col items-start gap-2"
@@ -175,6 +176,7 @@ export default function HomeMapPane({
         {upcomingTurn !== null && (
           <TurnCard direction={upcomingTurn.direction} distanceM={upcomingTurn.distanceM} shape={upcomingTurn.shape} />
         )}
+        {navigating && <div ref={setRideNoticeHost} className="empty:hidden" />}
       </div>
       {/* 検索の欄の下の段の中央に「負担で塗る」を置く。走行中も、ルートの線と道の色が何かを示すため同じ大きさで出す。
           左右の余白は、右の縦の列を両側で避ける幅（中央に置くため。左上の「表示」は列と同じ幅なので、これで避けられる）。
@@ -259,6 +261,7 @@ export default function HomeMapPane({
           onPress={riding.press}
           onRest={riding.rest}
           onResume={riding.resume}
+          noticeHost={navigating ? rideNoticeHost : null}
         />
         {navigating && <RideLockButton locked={riding.locked} onLock={riding.lock} onUnlock={riding.unlock} />}
         {voice.available && <RideVoiceButton on={voice.on} onToggle={voice.toggle} />}
@@ -267,6 +270,8 @@ export default function HomeMapPane({
       {dark && (
         <RideDarkScreen
           turn={upcomingTurn}
+          offRoute={progress.offRoute}
+          remainingKm={remaining?.remainingKm ?? null}
           voiceOn={voice.on}
           onVoiceToggle={voice.toggle}
           onExit={() => setDark(false)}
