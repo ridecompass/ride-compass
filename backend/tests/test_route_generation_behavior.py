@@ -908,18 +908,19 @@ async def test_the_distance_along_the_route_is_the_length_of_the_roads_behind(en
     assert beyond.cumulative_distance_km == pytest.approx(road_km, abs=0.005)
 
 
-async def test_each_segment_starts_and_ends_at_the_elevation_of_its_road_in_the_direction_ridden(engine_over):
-    """画面は区間の端の標高を距離に沿って結んで描き、区間の小窓に平均勾配を出す。逆向きに走る道で端と符号を入れ替えないと、
-    登りが下りに描かれる。南東→南西の最速は道101（標高が無い）と、西→東に引いた道100を東→西へ走る区間。"""
+async def test_each_segment_line_carries_the_elevation_of_its_road_in_the_direction_ridden(engine_over):
+    """画面は区間の線の点の標高（RFC 7946 の3つ目）を距離に沿って結んで描き、区間の小窓に平均勾配を出す。逆向きに走る道で
+    標高の並びと勾配の符号を入れ替えないと、登りが下りに描かれる。南東→南西の最速は道101（標高が無いので点は標高を持たない）と、
+    西→東に引いた道100を東→西へ走る区間。"""
     generator = engine_over(grid_network(elevation_of={100: (10.0, 12.04)}, gradient_of={100: 2.0}))
 
     candidates = (await generator.generate_via_waypoints(
         at(SOUTH_EAST), [], destination=at(SOUTH_WEST), max_routes=3, start_time=DEPARTURE)).candidates
 
     first, second = fastest_of(candidates).segments
-    assert [[(e.start_elevation_m, e.end_elevation_m) for e in s.elevations] for s in (first, second)] == [
-        [(None, None)], [(12.0, 10.0)],
-    ]
+    # 区間の境目の点は次の道（標高のある道）の始まりと同じ点なので、標高を持つ。
+    assert all(len(point) == 2 for point in first.geometry["coordinates"][:-1])
+    assert (second.geometry["coordinates"][0][2], second.geometry["coordinates"][-1][2]) == (12.0, 10.0)
     assert [s.average_gradient_percent for s in (first, second)] == [None, -2.0]
 
 

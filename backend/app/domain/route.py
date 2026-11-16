@@ -60,14 +60,6 @@ class RoadClassStretch(StrictModel):
     value: str | None
 
 
-class ElevationStretch(StrictModel):
-    """区間の中の道（Edge）1本の、走る向きの始まりと終わりの標高（m）。その道に標高が無ければどちらもNone。"""
-
-    distance_km: float
-    start_elevation_m: float | None
-    end_elevation_m: float | None
-
-
 class PenaltyBreakdown(StrictModel):
     """代償の秒の内訳（費目の帳簿の式、`domain/ledger_costs.py`）。所要時間・軸ごとの代償・避け方の倍率が増減した秒の和が費用になる。
 
@@ -168,8 +160,6 @@ class RouteSegmentDetail(StrictModel):
     # 区間が候補の`edge_ids`のどこにあたるか（`edge_ids[edge_start:edge_end]`が区間の道）。区間の近くの点を引く口へ渡す鍵の範囲。
     edge_start: int
     edge_end: int
-    # 区間の中の道ごとの両端の標高を、通る順に。道の距離の和は区間の距離と丸めの分だけずれうる。
-    elevations: list[ElevationStretch]
     # 区間の続く坂の斜度（%、走る向きの符号つき）。道の一番急な登りと下りから`steepest_signed_percent`が作り、ビンへは
     # `merge_sustained_gradients`で畳む。値が無ければNone。
     sustained_gradient_percent: float | None = None
@@ -206,9 +196,6 @@ class EdgeSegment:
     distance_km: float
     # 候補の`edge_ids`の中の、この道の位置。
     edge_index: int
-    # 走る向きの始まりと終わりの標高（m）。標高が無ければどちらもNone。
-    start_elevation_m: float | None
-    end_elevation_m: float | None
     sustained_gradient_percent: float | None
     average_gradient_percent: float | None
     estimated_arrival_time: str
@@ -366,9 +353,15 @@ def aggregate_segments_into_bins(segments: list[EdgeSegment], slices: Sequence[s
     return [_merge_segment_bin(segments[chunk]) for chunk in slices]
 
 
-def _continues(coordinates: list[list[float]], points: list[list[float]]) -> bool:
-    """`points`の先頭の点が、`coordinates`の終点と同じ位置か（経度・緯度で比べる。境界の点は前後の道で標高が違いうる）。"""
-    return bool(coordinates and points) and coordinates[-1][:2] == points[0][:2]
+def _merge_shared_point(coordinates: list[list[float]], points: list[list[float]]) -> int:
+    """`points`をつなぐ前に、先頭の点が`coordinates`の終点と同じ位置（経度・緯度で比べる。境界の点は前後の道で標高が違いうる）
+    なら1つの点にまとめ、`points`の先頭から飛ばす点の数（1）を返す。違えば0。まとめた点は終点のままにするが、終点が標高を
+    持たず先頭の点が持つなら先頭の点に替える——標高の無い道から標高のある道へ移る境目で、次の道の始まりの標高が抜けないように。"""
+    if not (coordinates and points) or coordinates[-1][:2] != points[0][:2]:
+        return 0
+    if len(coordinates[-1]) < len(points[0]):
+        coordinates[-1] = points[0]
+    return 1
 
 
 def _concat_segment_lines(segments: list[EdgeSegment]) -> tuple[list[list[float]], list[float]]:
@@ -378,7 +371,7 @@ def _concat_segment_lines(segments: list[EdgeSegment]) -> tuple[list[list[float]
     for segment in segments:
         if segment.geometry is None or segment.point_distances_m is None:
             continue
-        skip = 1 if _continues(coordinates, segment.geometry["coordinates"]) else 0
+        skip = _merge_shared_point(coordinates, segment.geometry["coordinates"])
         coordinates.extend(segment.geometry["coordinates"][skip:])
         distances.extend(segment.point_distances_m[skip:])
     return coordinates, distances
@@ -459,10 +452,6 @@ BIN_FIELD_MERGERS: dict[str, Callable[[list[EdgeSegment]], object]] = {
     "distance_km": lambda segments: _summed_km(segment.distance_km for segment in segments),
     "edge_start": lambda segments: segments[0].edge_index,
     "edge_end": lambda segments: segments[-1].edge_index + 1,
-    "elevations": lambda segments: [
-        {"distance_km": s.distance_km, "start_elevation_m": s.start_elevation_m, "end_elevation_m": s.end_elevation_m}
-        for s in segments
-    ],
     "sustained_gradient_percent": merge_sustained_gradients,
     "average_gradient_percent": merge_average_gradients,
     "estimated_arrival_time": lambda segments: segments[0].estimated_arrival_time,
@@ -591,7 +580,7 @@ def concat_edge_geometries(edges: list[LeanEdge]) -> tuple[dict, list[int], list
     for edge, shape_at in zip(edges, _shape_positions(edges)):
         offsets.append(max(len(coordinates) - 1, 0))
         points = edge_points(edge, shape_at)
-        skip = 1 if _continues(coordinates, [point for point, _ in points[:1]]) else 0
+        skip = _merge_shared_point(coordinates, [point for point, _ in points[:1]])
         for point, at in points[skip:]:
             coordinates.append(point)
             distances.append(round(start_m + at * edge.distance_m, POINT_DISTANCE_M_DECIMALS))
