@@ -786,6 +786,8 @@ export interface components {
             /** Accident Years */
             accident_years: number[];
             road_classes: components["schemas"]["RoadClassCatalog"];
+            /** Travel Model Wording */
+            travel_model_wording: string;
         };
         /** Condition */
         Condition: {
@@ -868,6 +870,8 @@ export interface components {
             axes: components["schemas"]["CostAxisCatalogEntry"][];
             total_lens: components["schemas"]["TotalLens"];
             map_lens: components["schemas"]["MapLens"];
+            /** Turn Kickoff Wording */
+            turn_kickoff_wording: string;
         };
         /** CostAxisDefinitions */
         CostAxisDefinitions: {

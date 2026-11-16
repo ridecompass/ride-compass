@@ -268,7 +268,6 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
         "speed.cda_m2",
         "空気抵抗 CdA", "m²", TuningEffect.IMMEDIATE,
         "走る姿勢の空気抵抗の係数と前面投影面積の積。",
-        shown_to_users=True,
     ),
     TuningParameter(
         BASE_CRR_ID,
@@ -310,7 +309,6 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
         "speed.mass_kg",
         "総質量", "kg", TuningEffect.IMMEDIATE,
         "体重＋車体＋装備。",
-        shown_to_users=True,
     ),
     TuningParameter(
         "speed.max_descent_kmh",
@@ -322,7 +320,6 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
         "speed.walking_kmh",
         "押して歩く速度", "km/h", TuningEffect.IMMEDIATE,
         "登りでこれ以下になったら押して歩くとみなす。",
-        shown_to_users=True,
     ),
     TuningParameter(
         "cost.effort_alpha",
@@ -436,7 +433,7 @@ TUNING_PARAMETERS: tuple[TuningParameter, ...] = (
         "gradient.perpendicular_band_deg",
         "勾配を示さない直角からの幅", "度", TuningEffect.CLIENT_RELOAD,
         "走る向きに対して直角からこの角度以内の道は、どちら向きに辿るか決まらないため、その向きでの勾配を示さない"
-        "（地図では向きで決まらない道として塗る）。広げるほど勾配を示さない道が増える。",
+        "（地図では勾配の段で塗らない）。広げるほど勾配を示さない道が増える。",
     ),
     # --- 画面が使う値（カタログ取得でフロントへ配る） ---
     TuningParameter(

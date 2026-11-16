@@ -24,11 +24,13 @@ import { NumberInput } from "@/components/ui/NumberInput/NumberInput";
 import { Input } from "@/components/ui/Input/Input";
 import { textVariants } from "@/components/ui/Text/Text";
 import InfoPopover from "@/components/ui/InfoPopover/InfoPopover";
-import { useClientConfig } from "@/hooks/useClientConfig";
-import { CLIENT_TUNING_IDS, clientTuningValue, type ClientConfig } from "@/lib/clientConfig";
+import { useClientConfigSelect } from "@/hooks/useClientConfig";
+import type { ClientConfigResponse } from "@/types/route";
 
-/** 区間ごとに速度を変える条件の名前（backendの走行モデルが宣言する並び）。 */
-const SPEED_CONDITIONS = routeGenerateConfig.segment_speed_conditions.join("・");
+/** 想定速度が何の速さか（backendの走行モデルが逆算に使う条件）。 */
+const CRUISE_SPEED_LABEL = routeGenerateConfig.cruise_speed_label;
+
+const selectTravelModelWording = (response: ClientConfigResponse) => response.travel_model_wording;
 
 interface RideConditionBarProps {
   /** 出発時刻（気象レイヤーの表示時刻と同じ共有state）。 */
@@ -47,19 +49,6 @@ interface RideConditionBarProps {
 }
 
 const subscribeNothing = () => () => {};
-
-/** 想定速度の説明に出す走行モデルの標準値（管理画面の較正値）。1つでも引けなければ`null`——
- * 引けない間は標準値の文を出さない（較正したのとは別の数を出さない）。 */
-function riderDefaultsOf(catalog: ClientConfig) {
-  const massKg = clientTuningValue(catalog, CLIENT_TUNING_IDS.massKg);
-  const cdaM2 = clientTuningValue(catalog, CLIENT_TUNING_IDS.cdaM2);
-  const maxDescentKmh = clientTuningValue(catalog, CLIENT_TUNING_IDS.maxDescentKmh);
-  const walkingKmh = clientTuningValue(catalog, CLIENT_TUNING_IDS.walkingKmh);
-  if (massKg === undefined || cdaM2 === undefined || maxDescentKmh === undefined || walkingKmh === undefined) {
-    return null;
-  }
-  return { massKg, cdaM2, maxDescentKmh, walkingKmh };
-}
 
 /** 列のアイコンボタン。アイコンの下へ現在値を出し、読み上げ（aria-label）・ホバー（title）は同じ名前から作る。
  * `PopoverTrigger asChild`が開閉の props と ref をここへ渡すので、受けたものはそのままボタンへ通す。 */
@@ -137,7 +126,8 @@ export default function RideConditionBar({
   linkedDeparture,
   linkedSpeed,
 }: RideConditionBarProps) {
-  const riderDefaults = riderDefaultsOf(useClientConfig());
+  // 走行モデルの決まりの文（標準値は管理画面の較正値）。届くまでは出さない。
+  const travelModelWording = useClientConfigSelect(selectTravelModelWording).data;
   // 出発時刻の文言は描いた時刻で決まる。ページはビルド時に描かれるので、サーバーとハイドレーションの描画では
   // 出さず、ハイドレーションのあとに出す（出すとビルドの時刻の文言とずれ、ハイドレーションが不一致で失敗する）。
   const hydrated = useSyncExternalStore(
@@ -203,7 +193,7 @@ export default function RideConditionBar({
             name={`想定速度: ${speedLabel}`}
             icon={<SpeedGaugeIcon />}
             linked={linkedSpeed}
-            usage="平地・無風で巡航する速さを決めます。所要時間と、区間ごとの到達予想の時刻に使います。"
+            usage={`${CRUISE_SPEED_LABEL}を決めます。所要時間と、区間ごとの到達予想の時刻に使います。`}
           >
             {speedLabel}
           </ConditionTrigger>
@@ -214,7 +204,7 @@ export default function RideConditionBar({
           align="end"
           collisionPadding={POPOVER_COLLISION_PADDING_PX}
         >
-          <div className="flex items-center gap-2" data-usage="平地・無風で巡航する速さを、つまみか数値で決めます。">
+          <div className="flex items-center gap-2" data-usage={`${CRUISE_SPEED_LABEL}を、つまみか数値で決めます。`}>
             <input
               type="range"
               aria-label="想定速度スライダー"
@@ -239,20 +229,10 @@ export default function RideConditionBar({
             <span className={textVariants({ variant: "hint" })}>km/h</span>
           </div>
           <div className="flex items-center gap-1">
-            <p className={textVariants({ variant: "hint" })}>平地・無風で巡航する速度</p>
+            <p className={textVariants({ variant: "hint" })}>{CRUISE_SPEED_LABEL}</p>
             <InfoPopover triggerAriaLabel="想定速度の説明">
-              {/* JSXの改行は半角スペースになるので、文字列として繋ぐ。 */}
-              <p>
-                {"平らな道を風の無いときに巡航する速度です。信号待ちや坂を含めた普段の平均速度ではありません。" +
-                  `所要時間は、平地をこの速度で走る力を求め、区間ごとの${SPEED_CONDITIONS}に合わせて速度を変えて計算します。`}
-              </p>
-              {riderDefaults && (
-                <p>
-                  {`体格と機材は標準の値で計算します。総質量は${riderDefaults.massKg}kg[体重・車体・装備の合計]、` +
-                    `空気抵抗CdAは${riderDefaults.cdaM2}m²[ロードバイクでブラケットを握る姿勢]です。` +
-                    `下りは${riderDefaults.maxDescentKmh}km/hまで[想定速度のほうが速ければ想定速度まで]出し、登りで${riderDefaults.walkingKmh}km/h以下になる所は押して歩くとみなします。`}
-                </p>
-              )}
+              <p>{`${CRUISE_SPEED_LABEL}です。信号待ちや坂を含めた普段の平均速度ではありません。`}</p>
+              {travelModelWording && <p>{travelModelWording}</p>}
             </InfoPopover>
           </div>
         </PopoverContent>

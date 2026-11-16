@@ -7,6 +7,7 @@
 from fastapi import APIRouter, Depends
 
 from app.api.dependencies import get_region_service
+from app.domain.cycling_speed import travel_model_wording
 from app.domain.road_class_catalog import RoadClassCatalog, road_class_catalog
 from app.domain.road_classes import current_road_classes
 from app.domain.strict_model import StrictModel
@@ -24,6 +25,8 @@ class ClientConfigResponse(StrictModel):
     accident_years: list[int]
     # 道の区分（`domain/road_class_catalog.py: road_class_catalog`）。
     road_classes: RoadClassCatalog
+    # 巡航速度から区間の速度を決める決まりの文。標準値は較正値なので、生成物でなくここで配る。
+    travel_model_wording: str
 
 
 @router.get("/api/client-config", response_model=ClientConfigResponse)
@@ -33,4 +36,5 @@ async def get_client_config(region_service: RegionService = Depends(get_region_s
         client_tuning={**client_tuning_values(), **await region_service.get_rebuilt_client_tuning()},
         accident_years=await region_service.get_accident_years(),
         road_classes=road_class_catalog(current_road_classes()),
+        travel_model_wording=travel_model_wording(),
     )
