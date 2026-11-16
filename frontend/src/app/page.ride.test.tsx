@@ -243,7 +243,8 @@ describe("走行モード", () => {
     // カードは距離だけを文字で出し、向きの言葉は読み上げの名前にだけ出す。
     expect(card).toHaveTextContent("300m");
     expect(card).not.toHaveTextContent("右折");
-    const [mark] = marksAt(turnPoint).map((mark) => mark.element);
+    const [placed] = marksAt(turnPoint);
+    const mark = placed.element;
     expect(mark).toHaveAccessibleName("曲がる所: 右折");
     expect(arrowPaths(mark)).toEqual(arrowPaths(card));
     // 東へ進むルートなので、ルートの線は下から入って上へ抜け、北と南の道は左と右へ出る。
@@ -255,6 +256,11 @@ describe("走行モード", () => {
       { x: expect.closeTo(4, 0), y: expect.closeTo(24, 0) },
       { x: expect.closeTo(44, 0), y: expect.closeTo(24, 0) },
     ]);
+    // 札の絵は入る向き（東）を上に描くので、北を上にした地図では東を上から右へ回し、札の中の道を真下の地図の道とそろえる。
+    // 地図を回しても、回した分だけ戻して地図の道とそろったままにする。
+    expect(placed.screenRotationDeg).toBeCloseTo(90, 0);
+    act(() => mapOnScreen().rotateByHand(90));
+    expect(marksAt(turnPoint)[0].screenRotationDeg).toBeCloseTo(0, 0);
     // 現在地の印（強調色の丸）と取り違えないよう、丸でも強調色でもない。
     expect(mark.style.borderRadius).not.toBe("50%");
     expect(mark.style.background).not.toContain("--color-accent");
