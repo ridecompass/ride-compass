@@ -22,7 +22,8 @@ class ElevationAttribute(StrictModel):
     elevation_gain_m: float
     elevation_loss_m: float
     average_grade: float | None
-    # 進む向きに見た、断面の点の間で一番急な登りと下りの勾配（%、どちらも0以上）。値が無ければNone。
+    # 進む向きに走ったときの一番急な登りと下りの勾配（%、どちらも0以上）。下りは、逆向きに走ったときの一番急な登りと
+    # 同じ値。値が無ければNone。
     steepest_gain_percent: float | None
     steepest_loss_percent: float | None
 
@@ -184,7 +185,9 @@ def elevation_values_sql(vertices: str, tolerance_m: str) -> str:
     短い間の揺れがそのまま一番急になる。この勾配は今の間と前の間の勾配を重みづけて平均したものなので、2つの間がどちらも
     数える間のときだけ取る。数えない間で途切れた区間は、途切れない続きごとを GraphHopper の1区間として測る（欠けた所を
     またいで均さない。欠けの無い区間では式のとおり）。GraphHopper は絶対値の一番大きい1つを持つが、ここでは登りと下りを分けて、
-    それぞれの最大の大きさ（どちらも0以上）を持つ。長さが`STEEPEST_MIN_INTERVAL_M`以上の続きが無い区間は、平均勾配を持っても
+    それぞれの最大の大きさ（どちらも0以上）を持つ。登りは点の順に、下りは逆の順に並べた点（逆向きに走ったときの登り）に式を
+    当てる——式は前の点を見るので、同じ点でも並べる向きで値が変わる。こうすると、逆向きの区間の値は登りと下りの入れ替えで
+    決まる（`ElevationAttribute.reversed_as`）。長さが`STEEPEST_MIN_INTERVAL_M`以上の続きが無い区間は、平均勾配を持っても
     一番急な勾配を持たない。
 
     値のある点が2つ未満の区間は返らない。値と一緒に、残した点の標高と位置を順に並べた`elevation_profile_m`（値の無い点はNULL）と
@@ -219,18 +222,21 @@ counted AS (
     FROM pairs),
 -- 一番急な勾配の候補（GraphHopper の max_slope）。数える間の途切れない続き（`span`）ごとに、1つ前の2点の標高の平均から今の点までの
 -- 勾配（今の間と前の間がどちらも数える間で、前の間が最短の長さより長いとき）と、続きの両端の勾配（続きの長さが最短の長さ以上のとき）。
+-- 登りは点の順に見て1つ前の間（`lag`）、下りは逆の順に見て1つ前の間（`lead`）を使う。
 slopes AS (
     SELECT *, CASE WHEN g IS NOT NULL AND lag(g) OVER w IS NOT NULL AND lag(d) OVER w > {STEEPEST_MIN_INTERVAL_M}
-                   THEN (diff + lag(diff) OVER w / 2) / (d + lag(d) OVER w / 2) * 100 END AS s,
+                   THEN (diff + lag(diff) OVER w / 2) / (d + lag(d) OVER w / 2) * 100 END AS up,
+              CASE WHEN g IS NOT NULL AND lead(g) OVER w IS NOT NULL AND lead(d) OVER w > {STEEPEST_MIN_INTERVAL_M}
+                   THEN -(diff + lead(diff) OVER w / 2) / (d + lead(d) OVER w / 2) * 100 END AS down,
               count(*) FILTER (WHERE g IS NULL) OVER w AS span
     FROM counted WINDOW w AS (PARTITION BY osm_way_id, segment_index ORDER BY ord)),
 candidates AS (
-    SELECT osm_way_id, segment_index, s AS slope FROM slopes WHERE s IS NOT NULL
+    SELECT osm_way_id, segment_index, up, down FROM slopes WHERE up IS NOT NULL OR down IS NOT NULL
     UNION ALL
-    SELECT osm_way_id, segment_index, sum(diff) / sum(d) * 100
+    SELECT osm_way_id, segment_index, sum(diff) / sum(d) * 100, -sum(diff) / sum(d) * 100
     FROM slopes WHERE g IS NOT NULL GROUP BY osm_way_id, segment_index, span HAVING sum(d) >= {STEEPEST_MIN_INTERVAL_M}),
 steepest AS (
-    SELECT osm_way_id, segment_index, max(greatest(slope, 0)) AS up, max(greatest(-slope, 0)) AS down
+    SELECT osm_way_id, segment_index, max(greatest(up, 0)) AS up, max(greatest(down, 0)) AS down
     FROM candidates GROUP BY osm_way_id, segment_index),
 raw AS (
     SELECT osm_way_id, segment_index,

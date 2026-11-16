@@ -156,11 +156,28 @@ async def test_a_road_is_graded_at_its_own_point_spacing(road_graph_session):
 
 async def test_the_steepest_is_measured_from_the_mean_of_the_two_previous_points(road_graph_session):
     """一番急は、1つ前の2点の標高の平均から今の点までで測る（GraphHopper の max_slope）。平らな間のあとの 10% の間は、
-    10 ÷（100 + 100/2）で 6.67%。登って下る区間でも打ち消し合わず、登りと下りを別々に出す（どちらも0以上）。"""
+    10 ÷（100 + 100/2）で 6.67%。下りは逆向きに走ったときの登りで、逆の順に見ると 10% の間の前に間が無いので、
+    その次の平らな間の終わりの点で（10 − 10/2）÷ 150 の 3.33%。登って下る区間でも打ち消し合わず、どちらも0以上。"""
     row = await one(road_graph_session, [0.0, 0.0, rise(10), rise(10), 0.0])
 
     assert row["steepest_gain_percent"] == pytest.approx(rise(10) / (1.5 * STEP_M) * 100, abs=0.005)
-    assert row["steepest_loss_percent"] == pytest.approx(rise(10) / (1.5 * STEP_M) * 100, abs=0.005)
+    assert row["steepest_loss_percent"] == pytest.approx(rise(10) / 2 / (1.5 * STEP_M) * 100, abs=0.005)
+
+
+@pytest.mark.parametrize("elevations", [
+    [0.0, 0.0, rise(10), rise(10), 0.0],
+    [100.0, 100.0 + rise(3), None, 100.0 + rise(8), 100.0 + rise(6), 100.0 + rise(9)],
+    [10.0, 10.0 + rise(7), 10.0 + rise(2), 10.0 + rise(12), 10.0 + rise(1)],
+], ids=["平らのあとの坂", "値の無い点", "登り下り"])
+async def test_the_steepest_descent_is_the_steepest_climb_ridden_the_other_way(road_graph_session, elevations):
+    """同じ点を逆に並べた区間では、一番急な登りと下りが入れ替わる（逆向きの区間は入れ替えで作る）。"""
+    along = [STEP_M * i for i in range(len(elevations))]
+    rows = await values(road_graph_session, {(1, 0): elevations, (1, 1): elevations[::-1]},
+                        along={(1, 0): along, (1, 1): along})
+
+    forward, backward = rows[(1, 0)], rows[(1, 1)]
+    assert (forward["steepest_gain_percent"], forward["steepest_loss_percent"]) == (
+        pytest.approx(backward["steepest_loss_percent"], abs=0.005), pytest.approx(backward["steepest_gain_percent"], abs=0.005))
 
 
 @pytest.mark.parametrize(("previous_m", "counted"), [(STEEPEST_MIN_INTERVAL_M, False), (STEEPEST_MIN_INTERVAL_M * 1.25, True)])
