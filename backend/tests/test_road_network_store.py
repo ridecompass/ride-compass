@@ -35,7 +35,7 @@ from app.infrastructure import road_network_store
 from app.infrastructure.road_graph_repository import RoadGraphRepository
 from tests.conftest import postgis_database_url, raw_connection
 from tests.source_ingest import abr_prefecture_record, ingest_records, point_record, way_record, zigzag_point
-from tests.profile_fixture import two_point_profiles
+from tests.road_network_fixture import road_network
 
 #: DBから組むテストの印（テスト用DBへ繋ぎ、接続とイベントループをファイルで共有する。testing-backend.md パターン2）。
 _ON_TEST_DB = (pytest.mark.asyncio(loop_scope="module"), pytest.mark.usefixtures("road_graph_session"))
@@ -56,45 +56,14 @@ def store(road_network_root):
 # --- 置き場の読み書き（DBを使わない） -------------------------------------------------
 
 
-def _network(revision: int, distance_m: float = 100.0) -> RoadNetwork:
+def _network(revision: int, east_lon: float = 139.001) -> RoadNetwork:
     """ノード2つ・有向の区間2本（同じ区間の両向き）の道路網。材料の名前は架空。"""
-    return RoadNetwork(
-        revision=revision,
-        node_osm_id=np.array([1, 2], dtype=np.int64),
-        node_lat=np.array([35.0, 35.001]),
-        node_lon=np.array([139.0, 139.001]),
-        node_has_signals=np.array([False, True]),
-        node_max_rank=np.array([0, 3], dtype=np.int64),
-        node_branch_count=np.array([1, 1], dtype=np.int16),
-        edge_way_id=np.array([10, 10], dtype=np.int64),
-        edge_segment=np.array([0, 0], dtype=np.int32),
-        edge_forward=np.array([True, False]),
-        edge_from=np.array([0, 1], dtype=np.int32),
-        edge_to=np.array([1, 0], dtype=np.int32),
-        edge_highway=np.array([0, 0], dtype=np.int16),
-        highway_vocab=("residential",),
-        edge_min_lon=np.array([139.0, 139.0]),
-        edge_min_lat=np.array([35.0, 35.0]),
-        edge_max_lon=np.array([139.001, 139.001]),
-        edge_max_lat=np.array([35.001, 35.001]),
-        edge_start_bearing_deg=np.array([40.0, np.nan]),
-        edge_end_bearing_deg=np.array([50.0, np.nan]),
-        numeric_ids=("num_a",),
-        numeric_values=np.array([[1.5], [np.nan]]),
-        categorical_ids=("cat_a", "cat_b"),
-        categorical_codes=np.array([[1, 0], [2, 1]], dtype=np.int16),
-        categorical_vocab=((None, "x", "y"), (None, "z")),
-        distance_m=np.array([distance_m, distance_m]),
-        bearing_deg=np.array([45.0, np.nan]),
-        mid_lat=np.array([35.0005, 35.0005]),
-        mid_lon=np.array([139.0005, 139.0005]),
-        start_elevation_m=np.array([10.0, np.nan]),
-        end_elevation_m=np.array([12.0, np.nan]),
-        elevation_gain_m=np.array([2.0, np.nan]),
-        elevation_loss_m=np.array([0.0, np.nan]),
-        steepest_gain_percent=np.array([4.0, np.nan]),
-        steepest_loss_percent=np.array([0.0, np.nan]),
-        **two_point_profiles(np.array([10.0, np.nan]), np.array([12.0, np.nan]), np.array([True, False])),
+    return road_network(
+        {1: (35.0, 139.0), 2: (35.001, east_lon)}, {(10, 0): (1, 2)},
+        elevation_of={(10, 0): (10.0, 12.0)},
+        numeric={"num_a": lambda rows: [1.5, np.nan]},
+        categorical={"cat_a": lambda rows: ["x", "y"], "cat_b": lambda rows: [None, "z"]},
+        signal_nodes=[2], max_rank_of={2: 3}, revision=revision,
     )
 
 
@@ -172,7 +141,7 @@ def test_a_newer_revision_placed_by_the_batch_is_read_on_the_next_call():
     first = road_network_store.current()
     assert road_network_store.current() is first
 
-    road_network_store.save(_network(revision=3, distance_m=250.0))
+    road_network_store.save(_network(revision=3, east_lon=139.002))
 
     assert road_network_store.current().revision == 3
 

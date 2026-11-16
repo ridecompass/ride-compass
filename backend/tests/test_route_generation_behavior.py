@@ -27,6 +27,7 @@ import pytest
 
 from app.domain.cost_axes import EFFORT_AXES
 from app.domain.geo import KM_PER_DEGREE_LATITUDE, bearing_between, haversine_distance_km, km_per_degree_longitude
+from app.domain.gradient import GRADIENT_VALUE_DECIMALS
 from app.domain.graph import edge_key, node_key
 from app.domain.road_classes import TRUE_FACT_VALUE
 from app.domain.road_network import RoadNetwork
@@ -912,7 +913,7 @@ async def test_each_segment_line_carries_the_elevation_of_its_road_in_the_direct
     """画面は区間の線の点の標高（RFC 7946 の3つ目）を距離に沿って結んで描き、区間の小窓に平均勾配を出す。逆向きに走る道で
     標高の並びと勾配の符号を入れ替えないと、登りが下りに描かれる。南東→南西の最速は道101（標高が無いので点は標高を持たない）と、
     西→東に引いた道100を東→西へ走る区間。"""
-    generator = engine_over(grid_network(elevation_of={100: (10.0, 12.04)}, gradient_of={100: 2.0}))
+    generator = engine_over(grid_network(elevation_of={100: (10.0, 12.0)}, no_gradient_ways={101}))
 
     candidates = (await generator.generate_via_waypoints(
         at(SOUTH_EAST), [], destination=at(SOUTH_WEST), max_routes=3, start_time=DEPARTURE)).candidates
@@ -921,7 +922,11 @@ async def test_each_segment_line_carries_the_elevation_of_its_road_in_the_direct
     # 区間の境目の点は次の道（標高のある道）の始まりと同じ点なので、標高を持つ。
     assert all(len(point) == 2 for point in first.geometry["coordinates"][:-1])
     assert (second.geometry["coordinates"][0][2], second.geometry["coordinates"][-1][2]) == (12.0, 10.0)
-    assert [s.average_gradient_percent for s in (first, second)] == [None, -2.0]
+    (east_lon, east_lat, _), (west_lon, west_lat, _) = second.geometry["coordinates"][0], second.geometry["coordinates"][-1]
+    road_m = haversine_distance_km(Coordinates(latitude=east_lat, longitude=east_lon),
+                                   Coordinates(latitude=west_lat, longitude=west_lon)) * 1000
+    assert first.average_gradient_percent is None
+    assert second.average_gradient_percent == round(-2.0 / road_m * 100, GRADIENT_VALUE_DECIMALS)
 
 
 async def test_each_segment_carries_its_road_classes(engine_over):
