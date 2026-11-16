@@ -100,12 +100,34 @@ describe("maplibre-gl の代役", () => {
     element.setAttribute("aria-label", "目印");
     const marker = new Marker({ element, draggable: true }).setLngLat([139.7, 35.7]).addTo(map as never);
 
-    expect(mapOnScreen().markers()).toEqual([{ coordinates: AT, draggable: true, element }]);
+    expect(mapOnScreen().markers()).toEqual([{ coordinates: AT, draggable: true, element, screenRotationDeg: 0 }]);
     expect(map.getContainer()).toContainElement(element);
 
     marker.remove();
     expect(mapOnScreen().markers()).toEqual([]);
     expect(map.getContainer()).not.toContainElement(element);
+    map.remove();
+  });
+
+  it("地図に合わせて回した印は、地図を回した分だけ画面で戻り、画面に合わせた印は戻らない", () => {
+    const map = drawMap();
+    const rotation = (rotationAlignment: "map" | "viewport") => {
+      const element = document.createElement("div");
+      new Marker({ element, rotationAlignment })
+        .setLngLat([139.7, 35.7])
+        .setRotation(90)
+        .addTo(map as never);
+      return () =>
+        mapOnScreen()
+          .markers()
+          .find((mark) => mark.element === element)?.screenRotationDeg;
+    };
+    const onMap = rotation("map");
+    const onViewport = rotation("viewport");
+
+    mapOnScreen().rotateByHand(30);
+    expect(onMap()).toBe(60);
+    expect(onViewport()).toBe(90);
     map.remove();
   });
 

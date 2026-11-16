@@ -8,14 +8,25 @@
 from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
+from urllib.parse import quote
 
 from app.domain.geo import LatLon
-from app.domain.place_search import PlaceArea, PlaceLink, PlaceSearchResult, allot_candidates, maps_search_url
+from app.domain.place_search import PlaceArea, PlaceLink, PlaceSearchResult, allot_candidates
 from app.infrastructure.address_search import AddressSearchQuery
 from app.infrastructure.facility_search import FacilitySearchQuery
 from app.infrastructure.place_address_query import PlaceAddressQuery
 from app.infrastructure.place_area_query import PlaceAreaQuery
 from app.services.region_service import RegionService
+
+
+#: 外の地図の店の検索（Google の Maps URLs の`search`。キーも料金も要らない）。
+_MAPS_SEARCH_URL = "https://www.google.com/maps/search/?api=1&query="
+
+
+def maps_search_url(name: str, where: str) -> str:
+    """名前と所在（住所か辺り）で店を開く外の地図のリンク。公式の文書（Maps URLs）が店を開く形として勧める「名前,住所」。
+    名前と座標を1つの検索語にすると、Google は座標を効かせず名前だけで引き、見ている辺りの同じ名前の別の店を開く。"""
+    return _MAPS_SEARCH_URL + quote(f"{name},{where}", safe="")
 
 
 class PlaceSearchAreaUnavailable(Exception):

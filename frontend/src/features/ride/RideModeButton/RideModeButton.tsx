@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { createPortal } from "react-dom";
 
 import { Button } from "@/components/ui/Button/Button";
 import { cardVariants } from "@/components/ui/Card/Card";
@@ -18,8 +19,6 @@ const WAKE_LOCK_UNAVAILABLE =
 
 const HEADING_NEEDS_GESTURE = "現在地のマーカーにスマホの向きを表示するには、向きの取得を許可する必要があります。";
 
-const NOTICE_CARD = "absolute top-0 right-full mr-2 w-max max-w-55 border-0 px-2.5 py-1.5";
-
 interface RideModeButtonProps {
   status: RideStatus;
   error: string | null;
@@ -32,10 +31,12 @@ interface RideModeButtonProps {
   onRest: () => void;
   /** 休んでいれば、続きから走る。 */
   onResume: () => void;
+  /** 知らせを置く所。null ならボタンの左に置く。 */
+  noticeHost: HTMLElement | null;
 }
 
 /** 地図の右の列の走行モードのボタン。走行モードの間に押すと、案内を終えるか、休む（休んでいれば続きから走る）かを選ばせる。始められなかった理由と、
- * スマホの向きを読む許しを求め直すボタンと、画面を点けたままにできない端末であることを、ボタンの横に出す。最後のものは走っている間ずっと地図を覆わないよう閉じられ、
+ * スマホの向きを読む許しを求め直すボタンと、画面を点けたままにできない端末であることを、ボタンの横（`noticeHost`があればその中）に出す。最後のものは走っている間ずっと地図を覆わないよう閉じられ、
  * 閉じたあとはボタンの角の印と読み上げの説明に残す。 */
 export default function RideModeButton({
   status,
@@ -45,6 +46,7 @@ export default function RideModeButton({
   onPress,
   onRest,
   onResume,
+  noticeHost,
 }: RideModeButtonProps) {
   const [wakeNoticeClosed, setWakeNoticeClosed] = useState(false);
   const [choosing, setChoosing] = useState(false);
@@ -57,6 +59,61 @@ export default function RideModeButton({
     setChoosing(false);
     action();
   };
+
+  const noticePlace = cn(
+    "w-max max-w-55 border-0 px-2.5 py-1.5",
+    noticeHost === null && "absolute top-0 right-full mr-2",
+  );
+  const notice =
+    error !== null ? (
+      <p
+        className={cn(
+          cardVariants({ variant: "float" }),
+          textVariants({ variant: "error" }),
+          "pointer-events-none",
+          noticePlace,
+        )}
+      >
+        {error}
+      </p>
+    ) : onRequestHeading !== null ? (
+      <div
+        className={cn(
+          cardVariants({ variant: "float" }),
+          "pointer-events-auto flex flex-col items-start gap-1.5",
+          noticePlace,
+        )}
+      >
+        <p className={textVariants({ variant: "hint" })}>{HEADING_NEEDS_GESTURE}</p>
+        <Button
+          variant="primary"
+          size="sm"
+          onClick={onRequestHeading}
+          usage="スマホの向きを取得する許可を求めます。許可すると、現在地のマーカーにスマホが向いている方角を表示します。"
+        >
+          向きを出す
+        </Button>
+      </div>
+    ) : (
+      wakeLockUnavailable &&
+      !wakeNoticeClosed && (
+        <div
+          className={cn(cardVariants({ variant: "float" }), "pointer-events-auto flex items-start gap-1", noticePlace)}
+        >
+          <p className={textVariants({ variant: "hint" })}>{WAKE_LOCK_UNAVAILABLE}</p>
+          <Button
+            usage="このお知らせを閉じます。"
+            variant="ghost"
+            size="iconRound"
+            onClick={() => setWakeNoticeClosed(true)}
+            aria-label="閉じる"
+            className="flex-none text-[var(--foreground)]"
+          >
+            ✕
+          </Button>
+        </div>
+      )
+    );
 
   return (
     <div className="relative flex">
@@ -116,59 +173,7 @@ export default function RideModeButton({
           </Button>
         </PopoverContent>
       </Popover>
-      {error !== null ? (
-        <p
-          className={cn(
-            cardVariants({ variant: "float" }),
-            textVariants({ variant: "error" }),
-            "pointer-events-none",
-            NOTICE_CARD,
-          )}
-        >
-          {error}
-        </p>
-      ) : onRequestHeading !== null ? (
-        <div
-          className={cn(
-            cardVariants({ variant: "float" }),
-            "pointer-events-auto flex flex-col items-start gap-1.5",
-            NOTICE_CARD,
-          )}
-        >
-          <p className={textVariants({ variant: "hint" })}>{HEADING_NEEDS_GESTURE}</p>
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={onRequestHeading}
-            usage="スマホの向きを取得する許可を求めます。許可すると、現在地のマーカーにスマホが向いている方角を表示します。"
-          >
-            向きを出す
-          </Button>
-        </div>
-      ) : (
-        wakeLockUnavailable &&
-        !wakeNoticeClosed && (
-          <div
-            className={cn(
-              cardVariants({ variant: "float" }),
-              "pointer-events-auto flex items-start gap-1",
-              NOTICE_CARD,
-            )}
-          >
-            <p className={textVariants({ variant: "hint" })}>{WAKE_LOCK_UNAVAILABLE}</p>
-            <Button
-              usage="このお知らせを閉じます。"
-              variant="ghost"
-              size="iconRound"
-              onClick={() => setWakeNoticeClosed(true)}
-              aria-label="閉じる"
-              className="flex-none text-[var(--foreground)]"
-            >
-              ✕
-            </Button>
-          </div>
-        )
-      )}
+      {noticeHost === null ? notice : createPortal(notice, noticeHost)}
     </div>
   );
 }
